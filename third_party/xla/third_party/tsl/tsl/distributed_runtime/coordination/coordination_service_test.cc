@@ -497,9 +497,9 @@ TEST_F(CoordinateTwoTasksTest, TestSetGetValues) {
 
   // Get simple key
   absl::Notification n1;
-  StatusOr<std::string> ret;
+  absl::StatusOr<std::string> ret;
   coord_service_->GetKeyValueAsync(
-      "key0", [&](const StatusOr<std::string>& status_or_value) {
+      "key0", [&](const absl::StatusOr<std::string>& status_or_value) {
         ret = status_or_value;
         n1.Notify();
       });
@@ -509,7 +509,8 @@ TEST_F(CoordinateTwoTasksTest, TestSetGetValues) {
   // Get key with redundant slashes
   absl::Notification n2;
   coord_service_->GetKeyValueAsync(
-      "path//to///key1////", [&](const StatusOr<std::string>& status_or_value) {
+      "path//to///key1////",
+      [&](const absl::StatusOr<std::string>& status_or_value) {
         ret = status_or_value;
         n2.Notify();
       });
@@ -521,7 +522,7 @@ TEST_F(CoordinateTwoTasksTest, TestSetGetValues) {
   // Get key that is not available
   absl::Notification n3;
   coord_service_->GetKeyValueAsync(
-      "key0", [&](const StatusOr<std::string>& status_or_value) {
+      "key0", [&](const absl::StatusOr<std::string>& status_or_value) {
         ret = status_or_value;
         n3.Notify();
       });
@@ -541,7 +542,9 @@ TEST_F(CoordinateTwoTasksTest, TestSetGetValues) {
       // service shutdown. Hence, we use a shared pointer for notification so
       // that the it will not be deallocated before the pending callback is
       // cleaned up.
-      [n4](const StatusOr<std::string>& status_or_value) { n4->Notify(); });
+      [n4](const absl::StatusOr<std::string>& status_or_value) {
+        n4->Notify();
+      });
   EXPECT_FALSE(n4->HasBeenNotified());
 }
 
@@ -554,7 +557,8 @@ TEST(CoordinationServiceTest, TryGetKeyValue) {
           Env::Default(), config, std::move(client_cache));
 
   // Try to get nonexistent key.
-  StatusOr<std::string> result = coord_service->TryGetKeyValue("test_key");
+  absl::StatusOr<std::string> result =
+      coord_service->TryGetKeyValue("test_key");
   EXPECT_TRUE(absl::IsNotFound(result.status()));
 
   // Insert key value.

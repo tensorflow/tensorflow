@@ -209,7 +209,7 @@ void CoordinationServiceRpcHandler::GetKeyValueAsync(
   response->mutable_kv()->set_key(request->key());
   service_->GetKeyValueAsync(
       request->key(), [response, done = std::move(done)](
-                          const StatusOr<std::string>& status_or_value) {
+                          const absl::StatusOr<std::string>& status_or_value) {
         if (status_or_value.ok()) {
           response->mutable_kv()->set_value(status_or_value.value());
         }

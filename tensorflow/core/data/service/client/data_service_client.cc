@@ -40,6 +40,7 @@ limitations under the License.
 #include "tensorflow/core/data/service/worker_client.h"
 #include "tensorflow/core/data/service/worker_impl.h"
 #include "tensorflow/core/data/utils.h"
+#include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/metrics.h"
 #include "tensorflow/core/framework/model.h"
@@ -101,7 +102,8 @@ DataServiceClient::~DataServiceClient() {
           << iteration_client_id_;
 }
 
-Status DataServiceClient::Initialize() {
+Status DataServiceClient::Initialize(Allocator* allocator) {
+  allocator_ = allocator;
   TF_RETURN_IF_ERROR(ValidateDataServiceParams(params_));
   VLOG(3) << "Connecting to " << params_.address
           << " in tf.data service client.";
@@ -332,7 +334,8 @@ DataServiceClient::CreateWorkerClient(const std::string& protocol,
                                       const TaskInfo& task_info) {
   TF_ASSIGN_OR_RETURN(DataTransferServerInfo transfer_server,
                       GetTransferServer(protocol, task_info));
-  return CreateDataServiceWorkerClient(params_.protocol, transfer_server);
+  return CreateDataServiceWorkerClient(params_.protocol, transfer_server,
+                                       allocator_);
 }
 
 StatusOr<std::unique_ptr<DataServiceWorkerClient>>
@@ -344,7 +347,8 @@ StatusOr<std::unique_ptr<DataServiceWorkerClient>>
 DataServiceClient::CreateAlternativeWorkerClientWithGrpcFallback(
     const DataTransferServerInfo& transfer_server, const TaskInfo& task_info) {
   StatusOr<std::unique_ptr<DataServiceWorkerClient>> worker =
-      CreateDataServiceWorkerClient(params_.protocol, transfer_server);
+      CreateDataServiceWorkerClient(params_.protocol, transfer_server,
+                                    allocator_);
   if (worker.ok()) {
     LOG(INFO) << "Successfully started client for data transfer protocol '"
               << transfer_server.protocol() << "' for worker '"
@@ -371,7 +375,7 @@ DataServiceClient::CreateWorkerClient(const TaskInfo& task_info) {
     DataTransferServerInfo info;
     info.set_protocol(kLocalTransferProtocol);
     info.set_address(task_info.worker_address());
-    return CreateDataServiceWorkerClient(params_.protocol, info);
+    return CreateDataServiceWorkerClient(params_.protocol, info, allocator_);
   }
   if (!params_.data_transfer_protocol.empty()) {
     TF_ASSIGN_OR_RETURN(

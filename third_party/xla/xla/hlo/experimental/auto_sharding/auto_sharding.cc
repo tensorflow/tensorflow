@@ -3798,6 +3798,12 @@ absl::StatusOr<bool> AutoSharding::Run(
     VLOG(1) << "Trying mesh shape " << spmd::ToString(mesh_shapes[i]);
     AutoShardingOption this_option = option_;
     this_option.device_mesh_shape = mesh_shapes[i];
+    if (this_option.device_mesh_shape.size() !=
+        this_option.device_mesh_alpha.size()) {
+      this_option.device_mesh_alpha.clear();
+      this_option.device_mesh_beta.clear();
+      TF_RETURN_IF_ERROR(this_option.CheckAndSetup());
+    }
     auto pass = new AutoShardingImplementation(this_option);
     auto module_clone = CloneModule(module);
     auto pass_result =

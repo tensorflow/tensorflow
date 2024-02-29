@@ -20,6 +20,7 @@ limitations under the License.
 #include <cstddef>
 #include <variant>
 
+#include "absl/types/span.h"
 #include "tensorflow/lite/experimental/shlo/data_type.h"
 #include "tensorflow/lite/experimental/shlo/quantized_tensor_element_type.h"
 #include "tensorflow/lite/experimental/shlo/shape.h"
@@ -50,6 +51,7 @@ struct Tensor {
   DataType StorageType() const;
 
   DimensionSize NumElements() const;
+  size_t SizeInBytes() const;
 
   TensorType& tensor_type();
   const TensorType& tensor_type() const;
@@ -70,6 +72,12 @@ struct Tensor {
     return reinterpret_cast<const T*>(data);
   }
 
+  template <DataType data_type, typename T = Storage<data_type>::Type>
+  absl::Span<const T> Flat() const {
+    return absl::MakeConstSpan(GetDataAs<data_type>(),
+                               static_cast<size_t>(NumElements()));
+  }
+
   std::variant<TensorType, QuantizedTensorType> type;
 
   // If type is TensorType, the type should be Storage<type.element_type>::Type.
@@ -79,6 +87,12 @@ struct Tensor {
   // The size of the array must be equal to Size(shape).
   void* data = nullptr;
 };
+
+bool operator==(const TensorType& lhs, const TensorType& rhs);
+bool operator!=(const TensorType& lhs, const TensorType& rhs);
+
+bool operator==(const QuantizedTensorType& lhs, const QuantizedTensorType& rhs);
+bool operator!=(const QuantizedTensorType& lhs, const QuantizedTensorType& rhs);
 
 }  // namespace shlo_ref
 

@@ -83,7 +83,7 @@ class FallbackBatchResource : public tensorflow::serving::BatchResourceBase {
     }
   };
 
-  static StatusOr<tfrt::ResourceContext*> GetClientGraphResourceContext(
+  static absl::StatusOr<tfrt::ResourceContext*> GetClientGraphResourceContext(
       OpKernelContext* context) {
     const tfrt::ExecutionContext* exec_ctx = nullptr;
     TF_RETURN_IF_ERROR(GetTfrtExecutionContext(context, &exec_ctx));
@@ -97,7 +97,7 @@ class FallbackBatchResource : public tensorflow::serving::BatchResourceBase {
                : exec_ctx->resource_context();
   }
 
-  static StatusOr<std::unique_ptr<BatchTask>> CreateBatchTask(
+  static absl::StatusOr<std::unique_ptr<BatchTask>> CreateBatchTask(
       OpKernelContext* context) {
     const tfrt::ExecutionContext* exec_ctx = nullptr;
     TF_RETURN_IF_ERROR(GetTfrtExecutionContext(context, &exec_ctx));
@@ -275,7 +275,7 @@ Status SetUpKernelFallbackCompatRequestContextForBatch(
       src_fallback_request_state->runtime_config());
 }
 
-StatusOr<RCReference<tfrt::RequestContext>> SetUpRequestContext(
+absl::StatusOr<RCReference<tfrt::RequestContext>> SetUpRequestContext(
     HostContext* host_ctx, tfrt::ResourceContext* resource_context,
     tfrt_stub::OpKernelRunnerTable* runner_table,
     tfd::FallbackResourceArray* resource_array,

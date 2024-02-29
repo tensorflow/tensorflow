@@ -110,7 +110,7 @@ Status SetPerCoreArgShapes(
     }
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Adds TPU_REPLICATED_CORE device assignments to the _Arg and _Retval
@@ -137,7 +137,7 @@ Status AssignDevicesToArgsAndRetvals(
           << sharding.DebugString();
     }
     node->AddAttr("_XlaSharding", sharding.SerializeAsString());
-    return OkStatus();
+    return absl::OkStatus();
   };
   for (Node* node : graph->op_nodes()) {
     if (node->type_string() == kArgOp) {
@@ -154,7 +154,7 @@ Status AssignDevicesToArgsAndRetvals(
       TF_RETURN_IF_ERROR(assign(node, retval_core_mapping[index].sharding));
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 void ConvertGraphShapeInfoToShapeMap(
@@ -247,7 +247,7 @@ Status OptimizeGraph(const tpu::TPUCompileMetadataProto& metadata,
 
   TF_RETURN_IF_ERROR(RewriteTensorListWithConstElement(graph->get(), fld));
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Populates the mapping from return value to ShardingAndIndex.
@@ -280,7 +280,7 @@ Status AssignReturnValueToCore(
       }
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // If the metadata specifies any bounded dynamic shapes in the arg then create
@@ -302,7 +302,7 @@ Status MaybeBuildBoundedDynamicArgValues(
     TF_RETURN_IF_ERROR(LiteralToHostTensor(literal, DT_BOOL, &dynamism_tensor));
     arg.value_dynamism = dynamism_tensor;
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Populates the arguments, core mapping and per core argument shape for the
@@ -392,7 +392,7 @@ Status BuildComputationArgumentDescriptions(
   TF_RET_CHECK(constant_count == guaranteed_constants_size)
       << "Not all of the constant tensors were consumed.";
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 }  // namespace
 
@@ -539,7 +539,7 @@ Status GetShardingInfo(
     TF_RETURN_IF_ERROR(SetPerCoreArgShapes(
         proto_arg, i, &xla_arg_shape, arg_core_mapping, per_core_arg_shapes));
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace tpu

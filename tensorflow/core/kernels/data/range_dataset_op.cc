@@ -15,6 +15,7 @@ limitations under the License.
 #include "tensorflow/core/kernels/data/range_dataset_op.h"
 
 #include <functional>
+#include <optional>
 #include <string>
 #include <utility>
 
@@ -310,12 +311,13 @@ class RangeDatasetOp::Dataset : public DatasetBase {
         *end_of_sequence = true;
         return absl::OkStatus();
       }
-      int64_t output_index = ctx->index_mapper()(element_count_++);
-      if (output_index < 0) {
+      std::optional<int64_t> output_index =
+          ctx->index_mapper()(element_count_++);
+      if (!output_index.has_value()) {
         *end_of_sequence = true;
         return absl::OkStatus();
       }
-      int64_t value = dataset()->start_ + output_index * dataset()->step_;
+      int64_t value = dataset()->start_ + *output_index * dataset()->step_;
       *end_of_sequence = false;
       return ConvertOutputTypes(output_dtypes(), out_tensors, value);
     }

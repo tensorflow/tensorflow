@@ -1280,8 +1280,8 @@ class ConvertGenericOp : public ConversionPattern {
     // This pattern only handle selected ops.
     if (!isa<mhlo::BitcastConvertOp, mhlo::BroadcastInDimOp,
              mhlo::ConcatenateOp, mhlo::ConstantOp, mhlo::DynamicReshapeOp,
-             mhlo::GatherOp, mhlo::MaxOp, mhlo::MinOp, mhlo::PadOp,
-             mhlo::ReduceWindowOp, mhlo::ReshapeOp, mhlo::ReturnOp,
+             mhlo::DynamicSliceOp, mhlo::GatherOp, mhlo::MaxOp, mhlo::MinOp,
+             mhlo::PadOp, mhlo::ReduceWindowOp, mhlo::ReshapeOp, mhlo::ReturnOp,
              mhlo::SelectOp, mhlo::SliceOp, mhlo::TransposeOp,
              mhlo::GetDimensionSizeOp, mhlo::DynamicBroadcastInDimOp>(op)) {
       return failure();

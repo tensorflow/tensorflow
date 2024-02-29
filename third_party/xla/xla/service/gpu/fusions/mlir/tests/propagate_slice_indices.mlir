@@ -1,12 +1,12 @@
 // RUN: mlir_fusions_opt %s -split-input-file -xla-gpu-propagate-slice-indices | FileCheck %s
 
 module {
-  func.func @add(%arg0: f32, %arg1: f32) -> f32 {
+  func.func private @add(%arg0: f32, %arg1: f32) -> f32 {
     %sum = arith.addf %arg0, %arg1 : f32
     func.return %sum : f32
   }
 
-  func.func @tensorarg(%arg0: tensor<43xf32>, %arg1: index) -> f32 {
+  func.func private @tensorarg(%arg0: tensor<43xf32>, %arg1: index) -> f32 {
     %v1 = arith.constant 2.0 : f32
     %v2 = tensor.extract %arg0[%arg1] : tensor<43xf32>
     %sum = func.call @add(%v1, %v2) : (f32, f32) -> f32

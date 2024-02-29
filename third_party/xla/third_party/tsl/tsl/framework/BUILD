@@ -382,7 +382,6 @@ cc_library(
     deps = [
         "//tsl/platform:logging",
         "@com_google_absl//absl/container:fixed_array",
-        "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
     ],
@@ -397,6 +396,11 @@ cc_library(
         ":serving_device_selector",
         "@com_google_absl//absl/strings:string_view",
     ],
+)
+
+cc_library(
+    name = "real_time_in_memory_metric",
+    hdrs = ["real_time_in_memory_metric.h"],
 )
 
 tsl_cc_test(
@@ -462,5 +466,15 @@ tsl_cc_test(
         "//tsl/platform:test_main",
         "//tsl/protobuf:error_codes_proto_impl_cc",
         "//tsl/util:device_name_utils",
+    ],
+)
+
+tsl_cc_test(
+    name = "real_time_in_memory_metric_test",
+    srcs = ["real_time_in_memory_metric_test.cc"],
+    deps = [
+        ":real_time_in_memory_metric",
+        "//tsl/platform:test",
+        "//tsl/platform:test_main",
     ],
 )

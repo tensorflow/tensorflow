@@ -21,6 +21,7 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/layout_util.h"
@@ -67,6 +68,20 @@ Layout::Layout()
     : index_primitive_type_(PRIMITIVE_TYPE_INVALID),
       pointer_primitive_type_(PRIMITIVE_TYPE_INVALID) {}
 
+SplitConfigProto SplitConfig::ToProto() const {
+  SplitConfigProto split_config_proto;
+  split_config_proto.set_dimension(dimension_);
+  for (int64_t i : split_indices_) {
+    split_config_proto.add_split_indices(i);
+  }
+  return split_config_proto;
+}
+
+std::string SplitConfig::ToString() const {
+  return absl::StrCat("(", dimension_, ":", absl::StrJoin(split_indices_, ","),
+                      ")");
+}
+
 Layout::Layout(absl::Span<const int64_t> minor_to_major)
     : index_primitive_type_(PRIMITIVE_TYPE_INVALID),
       pointer_primitive_type_(PRIMITIVE_TYPE_INVALID),
@@ -80,6 +95,7 @@ Layout::Layout(absl::Span<const int64_t> minor_to_major,
                PrimitiveType index_primitive_type,
                PrimitiveType element_primitive_type,
                int64_t element_size_in_bits, int64_t memory_space,
+               absl::Span<const SplitConfig> split_configs,
                std::unique_ptr<Shape> physical_shape,
                int64_t dynamic_shape_metadata_prefix_bytes)
     : index_primitive_type_(index_primitive_type),
@@ -88,6 +104,7 @@ Layout::Layout(absl::Span<const int64_t> minor_to_major,
       element_size_in_bits_(element_size_in_bits),
       minor_to_major_(minor_to_major.begin(), minor_to_major.end()),
       tiles_(tiles.begin(), tiles.end()),
+      split_configs_(split_configs.begin(), split_configs.end()),
       tail_padding_alignment_in_elements_(tail_padding_alignment_in_elements),
       physical_shape_(std::move(physical_shape)),
       dynamic_shape_metadata_prefix_bytes_(
@@ -120,6 +137,7 @@ Layout::Layout(const Layout& other)
       element_size_in_bits_(other.element_size_in_bits_),
       minor_to_major_(other.minor_to_major_),
       tiles_(other.tiles_),
+      split_configs_(other.split_configs_),
       tail_padding_alignment_in_elements_(
           other.tail_padding_alignment_in_elements_),
       physical_shape_(other.physical_shape_ != nullptr
@@ -146,6 +164,7 @@ Layout& Layout::operator=(const Layout& other) {
     pointer_primitive_type_ = other.pointer_primitive_type_;
     element_size_in_bits_ = other.element_size_in_bits_;
     memory_space_ = other.memory_space_;
+    split_configs_ = other.split_configs_;
     if (other.physical_shape_ != nullptr) {
       physical_shape_ = std::make_unique<Shape>(*other.physical_shape_);
     } else {
@@ -187,6 +206,9 @@ Layout& Layout::operator=(Layout&& other) = default;
   layout.set_pointer_primitive_type(proto.pointer_primitive_type());
   layout.set_element_size_in_bits(proto.element_size_in_bits());
   layout.set_memory_space(proto.memory_space());
+  for (const SplitConfigProto& split_config_proto : proto.split_configs()) {
+    layout.add_split_configs(SplitConfig::CreateFromProto(split_config_proto));
+  }
   if (proto.has_physical_shape()) {
     *layout.mutable_physical_shape() = Shape(proto.physical_shape());
   }
@@ -219,6 +241,9 @@ LayoutProto Layout::ToProto() const {
   proto.set_pointer_primitive_type(pointer_primitive_type());
   proto.set_element_size_in_bits(element_size_in_bits_);
   proto.set_memory_space(memory_space_);
+  for (const SplitConfig& split_config : split_configs()) {
+    *proto.add_split_configs() = split_config.ToProto();
+  }
   if (has_physical_shape()) {
     *proto.mutable_physical_shape() = physical_shape_->ToProto();
   }
@@ -327,6 +352,13 @@ void Layout::Print(Printer* printer) const {
     printer->Append(memory_space());
     printer->Append(")");
   }
+  if (!split_configs().empty()) {
+    print_colon();
+    printer->Append("SC");
+    for (const auto& split_config : split_configs()) {
+      printer->Append(split_config.ToString());
+    }
+  }
 
   if (has_physical_shape()) {
     print_colon();
@@ -405,6 +437,9 @@ bool Layout::Equal::operator()(const Layout& lhs, const Layout& rhs) {
     return false;
   }
   if (!ignore_memory_space_ && lhs.memory_space() != rhs.memory_space()) {
+    return false;
+  }
+  if (!ignore_split_configs_ && lhs.split_configs() != rhs.split_configs()) {
     return false;
   }
   if (!ignore_physical_shape_) {

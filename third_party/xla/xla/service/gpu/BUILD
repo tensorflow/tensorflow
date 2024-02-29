@@ -357,6 +357,7 @@ cc_library(
         "//xla/service/gpu/runtime:nccl_all_gather_thunk",
         "//xla/service/gpu/runtime:nccl_all_reduce_thunk",
         "//xla/service/gpu/runtime:nccl_all_to_all_thunk",
+        "//xla/service/gpu/runtime:nccl_collective_permute_thunk",
         "//xla/service/gpu/runtime:norm_thunk",
         "//xla/service/gpu/runtime:outfeed_thunk",
         "//xla/service/gpu/runtime:replica_id_thunk",
@@ -847,14 +848,12 @@ cc_library(
 cc_library(
     name = "nccl_collective_thunks",
     srcs = [
-        "nccl_collective_permute_thunk.cc",
         "nccl_collective_thunk.cc",
         "nccl_p2p_thunk_common.cc",
         "nccl_recv_thunk.cc",
         "nccl_send_thunk.cc",
     ],
     hdrs = [
-        "nccl_collective_permute_thunk.h",
         "nccl_collective_thunk.h",
         "nccl_p2p_thunk_common.h",
         "nccl_recv_thunk.h",
@@ -2355,7 +2354,7 @@ cc_library(
         "@local_tsl//tsl/platform:status",
     ] + if_cuda_is_configured([
         "@local_config_cuda//cuda:cuda_headers",
-        "@local_tsl//tsl/cuda:cusolver",
+        "//xla/tsl/cuda:cusolver",
     ]) + if_rocm_is_configured([
         "@local_config_rocm//rocm:rocm_headers",
         "//xla/stream_executor/rocm:rocblas_wrapper",
@@ -4612,10 +4611,16 @@ cc_library(
     ],
 )
 
-xla_cc_test(
+xla_test(
     name = "cudnn_fused_mha_rewriter_test",
     srcs = ["cudnn_fused_mha_rewriter_test.cc"],
-    tags = tf_cuda_tests_tags(),
+    backend_tags = {"gpu": [
+        "requires-gpu-nvidia",
+    ]},
+    backends = [
+        "gpu",
+    ],
+    local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]),
     deps = [
         ":backend_configs_cc",
         ":cublas_cudnn",
@@ -4644,7 +4649,10 @@ xla_cc_test(
         "@local_tsl//tsl/lib/core:status_test_util",
         "@local_tsl//tsl/platform:statusor",
         "@local_tsl//tsl/platform:test_main",
-    ],
+    ] + if_cuda_is_configured([
+        "@local_config_cuda//cuda:cuda_headers",
+        "@local_config_cuda//cuda:cudnn_header",
+    ]),
 )
 
 xla_test(

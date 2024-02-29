@@ -68,6 +68,7 @@ namespace gpu {
 namespace {
 
 static constexpr int64_t kCollectiveMemorySpaceColor = 1;
+static constexpr int64_t kNoStreamId = 0;
 
 bool IsTypeSupportedByNccl(PrimitiveType element_type,
                            Thunk::Kind reduction_op) {
@@ -235,8 +236,12 @@ static absl::StatusOr<NcclCliqueKey> GetNcclCliqueKey(
         "Partial replica groups are not allowed when using NCCL_COMM_ID "
         "environment configuration.");
   }
+  static const bool enable_per_stream_comms =
+      xla::GetDebugOptionsFromFlags().xla_gpu_enable_nccl_per_stream_comms();
 
-  return NcclCliqueKey(std::move(participants), stream_id, stream_kind);
+  return NcclCliqueKey(std::move(participants),
+                       enable_per_stream_comms ? stream_id : kNoStreamId,
+                       stream_kind);
 }
 
 absl::StatusOr<NcclApi::NcclCommHandle> GetNcclComm(
@@ -388,8 +393,12 @@ absl::Status NcclCollectiveThunk::Prepare(const PrepareParams& params,
       participants,
       collectives->global_device_id_map ? &local_devices : nullptr);
   AsyncStreamKind stream_kind = GetAsyncStreamKind();
+  static const bool enable_per_stream_comms =
+      xla::GetDebugOptionsFromFlags().xla_gpu_enable_nccl_per_stream_comms();
   return resource_requests.AddClique(
-      NcclCliqueKey(std::move(participants), GetStreamId(), stream_kind),
+      NcclCliqueKey(std::move(participants),
+                    enable_per_stream_comms ? GetStreamId() : kNoStreamId,
+                    stream_kind),
       num_local_participants);
 }
 
@@ -480,8 +489,8 @@ Status NcclCollectiveThunk::ExecuteOnStream(const ExecuteParams& params) {
 
     RendezvousSingle(first_call_rendezvous_flag_, rendezvous_name,
                      rendezvous_key, num_local_participants,
-                     /*warn_stuck_timeout=*/absl::Seconds(10),
-                     /*terminate_timeout=*/absl::Seconds(30));
+                     /*warn_stuck_timeout=*/absl::Seconds(20),
+                     /*terminate_timeout=*/absl::Seconds(40));
   }
 
   return absl::OkStatus();

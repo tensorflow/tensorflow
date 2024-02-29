@@ -1620,4 +1620,9 @@ REGISTER_OP("ListDataset")
                                                            "output_types"))
     .SetShapeFn(shape_inference::ScalarShape);
 
+REGISTER_OP("IteratorGetModelProto")
+    .Input("iterator: resource")
+    .Output("model_proto: string")
+    .SetShapeFn(shape_inference::ScalarShape);
+
 }  // namespace tensorflow

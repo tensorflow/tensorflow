@@ -48,6 +48,10 @@ namespace {
 /// that are currently required, currently mixing std, linalg and gpu.
 class GpuKernelToNVVMPass
     : public impl::GpuKernelToNVVMPassBase<GpuKernelToNVVMPass> {
+ public:
+  explicit GpuKernelToNVVMPass(bool useBarePtrCallConv) {
+    this->useBarePtrCallConv = useBarePtrCallConv;
+  }
   void runOnOperation() override;
 };
 
@@ -95,6 +99,7 @@ void GpuKernelToNVVMPass::runOnOperation() {
 
   RewritePatternSet patterns(&getContext());
   LowerToLLVMOptions llvmOpts(&getContext(), DataLayout(getOperation()));
+  llvmOpts.useBarePtrCallConv = useBarePtrCallConv;
   LLVMTypeConverter converter(&getContext(), llvmOpts);
   populateCommonPatterns(converter, patterns);
   populateGpuToNVVMConversionPatterns(converter, patterns);
@@ -120,8 +125,9 @@ void GpuKernelToROCDLPass::runOnOperation() {
   }
 }
 
-std::unique_ptr<OperationPass<gpu::GPUModuleOp>> createGpuKernelToNvvmPass() {
-  return std::make_unique<GpuKernelToNVVMPass>();
+std::unique_ptr<OperationPass<gpu::GPUModuleOp>> createGpuKernelToNvvmPass(
+    bool useBarePtrCallConv) {
+  return std::make_unique<GpuKernelToNVVMPass>(useBarePtrCallConv);
 }
 
 std::unique_ptr<OperationPass<gpu::GPUModuleOp>> createGpuKernelToRocdlPass() {

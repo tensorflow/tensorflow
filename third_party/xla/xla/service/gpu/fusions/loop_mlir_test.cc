@@ -14,56 +14,183 @@ limitations under the License.
 ==============================================================================*/
 #include "xla/service/gpu/fusions/loop_mlir.h"
 
+#include <memory>
 #include <string>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
-#include "llvm/Support/raw_ostream.h"
-#include "mlir/Dialect/Affine/IR/AffineOps.h"  // from @llvm-project
-#include "mlir/Dialect/Func/Extensions/InlinerExtension.h"  // from @llvm-project
-#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
-#include "mlir/Dialect/GPU/IR/GPUDialect.h"  // from @llvm-project
-#include "mlir/Dialect/Math/IR/Math.h"  // from @llvm-project
-#include "mlir/Dialect/MemRef/Transforms/Passes.h"  // from @llvm-project
-#include "mlir/Dialect/SCF/IR/SCF.h"  // from @llvm-project
-#include "mlir/Dialect/Tensor/IR/Tensor.h"  // from @llvm-project
-#include "mlir/IR/DialectRegistry.h"  // from @llvm-project
-#include "mlir/IR/MLIRContext.h"  // from @llvm-project
-#include "mlir/Pass/PassManager.h"  // from @llvm-project
-#include "xla/hlo/ir/hlo_casting_utils.h"
-#include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
-#include "xla/service/gpu/gpu_device_info_for_tests.h"
+#include "absl/status/statusor.h"
+#include "xla/error_spec.h"
+#include "xla/service/gpu/fusions/mlir/mlir_fusion_emitter.h"
+#include "xla/service/gpu/fusions/mlir_emitter_test_base.h"
 #include "xla/service/gpu/hlo_fusion_analysis.h"
-#include "xla/stream_executor/device_description.h"
+#include "xla/service/gpu/model/indexing_test_utils.h"
 #include "xla/tests/filecheck.h"
-#include "xla/tests/hlo_test_base.h"
 #include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace gpu {
 namespace {
 
-class MlirLoopFusionTest : public HloTestBase {
+class MlirLoopFusionTest : public MlirEmitterTestBase {
  public:
-  MlirLoopFusionTest() {
-    context_.loadDialect<mlir::tensor::TensorDialect, mlir::func::FuncDialect,
-                         mlir::affine::AffineDialect, mlir::arith::ArithDialect,
-                         mlir::math::MathDialect, mlir::scf::SCFDialect,
-                         mlir::mhlo::MhloDialect, mlir::gpu::GPUDialect>();
-    mlir::DialectRegistry registry;
-    mlir::func::registerInlinerExtension(registry);
-    context_.appendDialectRegistry(registry);
+  std::unique_ptr<MlirFusionEmitterBase> GetEmitter(
+      const HloFusionAnalysis& analysis) override {
+    return std::make_unique<MlirLoopFusion>(analysis);
   }
-
-  stream_executor::DeviceDescription device_info_ =
-      TestGpuDeviceInfo::RTXA6000DeviceInfo();
-  mlir::MLIRContext context_;
 };
+
+TEST_F(MlirLoopFusionTest, ThreadId_IndexingUnrolled) {
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+    HloModule module
+
+    neg {
+      %input = f32[100,200,300] parameter(0)
+      ROOT neg = f32[100,200,300] negate(%input)
+    }
+
+    ENTRY entry {
+      %input = f32[100,200,300] parameter(0)
+      ROOT %fusion = f32[100,200,300] fusion(%input), kind=kLoop, calls=neg
+    })"));
+
+  auto* root = module->entry_computation()->root_instruction();
+  auto analysis = AnalyzeFusion(*root, device_info_);
+  MlirLoopFusion fusion(analysis);
+  auto thread_id_to_output_indexing =
+      fusion.ComputeThreadIdToOutputIndexing(/*root_index=*/0, &mlir_context_);
+
+  EXPECT_THAT(thread_id_to_output_indexing->ToString(thread_id_printer_),
+              MatchIndexingString(R"(
+  (th_x, th_y, th_z, bl_x, bl_y, bl_z)[chunk_id, unroll_id] -> (
+   (((bl_x * 16 + th_x floordiv 8) floordiv 3 + chunk_id * 5376) floordiv 625) mod 100,
+   (((th_x + bl_x * 128) floordiv 3 + chunk_id * 43008) floordiv 25) mod 200,
+   th_x * 4 + bl_x * 512 + chunk_id * 516096 + unroll_id -
+     (((th_x + bl_x * 128) floordiv 3 + chunk_id * 43008) floordiv 25) * 300
+  )
+  domain:
+  th_x in [0, 127]
+  th_y in [0, 0]
+  th_z in [0, 0]
+  bl_x in [0, 1007]
+  bl_y in [0, 0]
+  bl_z in [0, 0]
+  chunk_id in [0, 11]
+  unroll_id in [0, 3]
+  (th_x + bl_x * 128) * 4 + chunk_id * 516096 in [0, 5999996]
+)"));
+}
+
+TEST_F(MlirLoopFusionTest, ThreadId_IndexingNotUnrolled) {
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+    HloModule module
+
+    neg {
+      %input = f32[20] parameter(0)
+      ROOT neg = f32[20] negate(%input)
+    }
+
+    ENTRY entry {
+      %input = f32[20] parameter(0)
+      ROOT %fusion = f32[20] fusion(%input), kind=kLoop, calls=neg
+    })"));
+
+  auto* root = module->entry_computation()->root_instruction();
+  auto analysis = AnalyzeFusion(*root, device_info_);
+
+  MlirLoopFusion fusion(analysis);
+  auto thread_id_to_output_indexing =
+      fusion.ComputeThreadIdToOutputIndexing(/*root_index=*/0, &mlir_context_);
+  EXPECT_THAT(thread_id_to_output_indexing->ToString(thread_id_printer_),
+              MatchIndexingString(R"(
+              (th_x, th_y, th_z, bl_x, bl_y, bl_z)[chunk_id, unroll_id] -> (th_x)
+              domain:
+              th_x in [0, 19]
+              th_y in [0, 0]
+              th_z in [0, 0]
+              bl_x in [0, 0]
+              bl_y in [0, 0]
+              bl_z in [0, 0]
+              chunk_id in [0, 0]
+              unroll_id in [0, 0]
+            )"));
+  auto thread_id_to_input_indexing = fusion.ComputeThreadIdToInputIndexing(
+      /*root_index=*/0, /*hero_operand_index=*/0, &mlir_context_);
+  EXPECT_THAT(thread_id_to_input_indexing->ToString(thread_id_printer_),
+              MatchIndexingString(R"(
+              (th_x, th_y, th_z, bl_x, bl_y, bl_z)[chunk_id, unroll_id] -> (th_x)
+              domain:
+              th_x in [0, 19]
+              th_y in [0, 0]
+              th_z in [0, 0]
+              bl_x in [0, 0]
+              bl_y in [0, 0]
+              bl_z in [0, 0]
+              chunk_id in [0, 0]
+              unroll_id in [0, 0]
+            )"));
+}
+
+TEST_F(MlirLoopFusionTest, ThreadId_Broadcast) {
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+    HloModule module
+
+    bcast {
+      %input = f32[20] parameter(0)
+      ROOT bcast = f32[10, 20, 30] broadcast(%input), dimensions={1}
+    }
+
+    ENTRY entry {
+      %input = f32[20] parameter(0)
+      ROOT %fusion = f32[10, 20, 30] fusion(%input), kind=kLoop, calls=bcast
+    })"));
+
+  auto* root = module->entry_computation()->root_instruction();
+  auto analysis = AnalyzeFusion(*root, device_info_);
+
+  MlirLoopFusion fusion(analysis);
+  auto thread_id_to_output_indexing =
+      fusion.ComputeThreadIdToOutputIndexing(/*root_index=*/0, &mlir_context_);
+  EXPECT_THAT(thread_id_to_output_indexing->ToString(thread_id_printer_),
+              MatchIndexingString(R"(
+              (th_x, th_y, th_z, bl_x, bl_y, bl_z)[chunk_id, unroll_id] -> (
+                ((bl_x * 16 + th_x floordiv 8) floordiv 75) mod 10,
+                ((bl_x * 64 + th_x floordiv 2) floordiv 15) mod 20,
+                (th_x + bl_x * 128) mod 30)
+                domain:
+                th_x in [0, 127]
+                th_y in [0, 0]
+                th_z in [0, 0]
+                bl_x in [0, 46]
+                bl_y in [0, 0]
+                bl_z in [0, 0]
+                chunk_id in [0, 0]
+                unroll_id in [0, 0]
+                th_x + bl_x * 128 in [0, 5999]
+            )"));
+  auto thread_id_to_input_indexing = fusion.ComputeThreadIdToInputIndexing(
+      /*root_index=*/0, /*hero_operand_index=*/0, &mlir_context_);
+  EXPECT_THAT(thread_id_to_input_indexing->ToString(thread_id_printer_),
+              MatchIndexingString(R"(
+              (th_x, th_y, th_z, bl_x, bl_y, bl_z)[chunk_id, unroll_id] -> (
+                ((bl_x * 64 + th_x floordiv 2) floordiv 15) mod 20)
+                domain:
+                th_x in [0, 127]
+                th_y in [0, 0]
+                th_z in [0, 0]
+                bl_x in [0, 46]
+                bl_y in [0, 0]
+                bl_z in [0, 0]
+                chunk_id in [0, 0]
+                unroll_id in [0, 0]
+                th_x + bl_x * 128 in [0, 5999]
+            )"));
+}
 
 TEST_F(MlirLoopFusionTest, NoCodeDuplication) {
   // This test HLO is copied from
   // xla/service/fusion_node_indexing_evaluation_test.cc.
-  auto module = ParseAndReturnVerifiedModule(R"(
+  auto kHloString = R"(
 HloModule test_module
 %fused_computation (param: f32[6]) -> f32[2] {
   %param = f32[6]{0} parameter(0)
@@ -86,30 +213,21 @@ ENTRY entry_computation {
   add = f32[] add(p0, p0)
   broadcast = f32[6]{0} broadcast(add), dimensions={}
   ROOT %fusion = f32[2]{0} fusion(broadcast), kind=kLoop, calls=%fused_computation
-})")
-                    .value();
+})";
 
-  auto* root = module->entry_computation()->root_instruction();
-  auto analysis = AnalyzeFusion(*root, device_info_);
+  TF_ASSERT_OK_AND_ASSIGN(auto ir, EmitIR(kHloString));
 
-  MlirLoopFusion fusion(analysis);
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto mlir_module,
-      fusion.CreateMLIRModule(context_, *Cast<HloFusionInstruction>(root),
-                              "fused_computation", nullptr));
-
-  std::string out;
-  llvm::raw_string_ostream os(out);
-  mlir_module->print(os);
-  ASSERT_TRUE(RunFileCheck(out, R"(
+  ASSERT_TRUE(RunFileCheck(ir, R"(
 // CHECK-COUNT-4: arith.add
 // CHECK-NOT: arith.add
 )")
                   .value());
+
+  EXPECT_TRUE(RunAndCompareNoHloPasses(kHloString, ErrorSpec{1e-3}));
 }
 
 TEST_F(MlirLoopFusionTest, TwoUsersConsistentIndexing) {
-  auto module = ParseAndReturnVerifiedModule(R"(
+  auto kHloString = R"(
 HloModule test_module
 %fused_computation (param: f32[6]) -> f32[2] {
   %p0 = f32[2]{0} parameter(0)
@@ -125,24 +243,18 @@ ENTRY entry_computation {
   p0 = f32[2] parameter(0)
   p1 = f32[2] parameter(1)
   ROOT %fusion = f32[2] fusion(p0, p1), kind=kLoop, calls=%fused_computation
-})")
-                    .value();
+})";
 
-  auto* root = module->entry_computation()->root_instruction();
-  auto analysis = AnalyzeFusion(*root, device_info_);
+  TF_ASSERT_OK_AND_ASSIGN(auto ir, EmitIR(kHloString));
 
-  MlirLoopFusion fusion(analysis);
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto mlir_module,
-      fusion.CreateMLIRModule(context_, *Cast<HloFusionInstruction>(root),
-                              "fused_computation", nullptr));
-
-  std::string out;
-  llvm::raw_string_ostream os(out);
-  mlir_module->print(os);
-  ASSERT_TRUE(RunFileCheck(out, R"(
+  ASSERT_TRUE(RunFileCheck(ir, R"(
     // CHECK: func.func @fused_computation
     // CHECK-NEXT: gpu.thread_id
+    // CHECK-NEXT: pure_call @fused_computation_atan2
+    // CHECK-NEXT: tensor.insert
+    // CHECK-NEXT: return
+
+    // CHECK: func.func private @fused_computation_atan2
     // CHECK-NEXT: tensor.extract
     // CHECK-NEXT: tensor.extract
     // CHECK-NEXT: addf
@@ -150,13 +262,15 @@ ENTRY entry_computation {
     // CHECK-NEXT: mulf
     // CHECK-NEXT: divf
     // CHECK-NEXT: atan2
-    // CHECK-NEXT: tensor.insert
+    // CHECK-NEXT: return
     )")
                   .value());
+
+  EXPECT_TRUE(RunAndCompareNoHloPasses(kHloString, ErrorSpec{1e-3}));
 }
 
 TEST_F(MlirLoopFusionTest, IotaCopyBitcastBroadcastReshapeReverseTranspose) {
-  auto module = ParseAndReturnVerifiedModule(R"(
+  auto kHloString = R"(
 HloModule test_module
 %fused_computation {
   %iota = f32[10,20,30] iota(), iota_dimension=2
@@ -170,31 +284,21 @@ HloModule test_module
 
 ENTRY entry_computation {
   ROOT %fusion = s32[60,20,7,150] fusion(), kind=kLoop, calls=%fused_computation
-})")
-                    .value();
+})";
 
-  auto* root = module->entry_computation()->root_instruction();
-  auto analysis = AnalyzeFusion(*root, device_info_);
+  TF_ASSERT_OK_AND_ASSIGN(auto ir, EmitIR(kHloString));
 
-  MlirLoopFusion fusion(analysis);
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto mlir_module,
-      fusion.CreateMLIRModule(context_, *Cast<HloFusionInstruction>(root),
-                              "fused_computation", nullptr));
-
-  std::string out;
-  llvm::raw_string_ostream os(out);
-  mlir_module->print(os);
-
-  ASSERT_TRUE(RunFileCheck(out, R"(
-    // CHECK-COUNT-1: func.func
+  ASSERT_TRUE(RunFileCheck(ir, R"(
+    // CHECK-COUNT-2: func.func
     // CHECK-NOT:     func.func
   )")
                   .value());
+
+  EXPECT_TRUE(RunAndCompareNoHloPasses(kHloString, ErrorSpec{1e-3}));
 }
 
 TEST_F(MlirLoopFusionTest, VariadicReduce) {
-  auto module = ParseAndReturnVerifiedModule(R"(
+  auto kHloString = R"(
   HloModule Test, is_scheduled=true
 
 Add {
@@ -220,35 +324,28 @@ ENTRY main {
   c = f32[] constant(0)
   ROOT fusion = (f32[200]{0}, f32[200]{0}) fusion(f32[5,200,300]{2,1,0} a, f32[5,200,300]{2,1,0} b, f32[] c), kind=kLoop, calls=fused_computation
 }
-    )")
-                    .value();
+    )";
 
-  auto* root = module->entry_computation()->root_instruction();
-  auto analysis = AnalyzeFusion(*root, device_info_);
+  TF_ASSERT_OK_AND_ASSIGN(auto ir, EmitIR(kHloString));
 
-  MlirLoopFusion fusion(analysis);
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto mlir_module,
-      fusion.CreateMLIRModule(context_, *Cast<HloFusionInstruction>(root),
-                              "fused_computation", nullptr));
-
-  std::string out;
-  llvm::raw_string_ostream os(out);
-  mlir_module->print(os);
-
-  ASSERT_TRUE(RunFileCheck(out, R"(
+  ASSERT_TRUE(RunFileCheck(ir, R"(
     // CHECK: #[[MAP:.*]] = affine_map<()[s0, s1] -> ((s0 + s1 * 128) mod 200)>
     // CHECK: func @fused_computation(
     // CHECK:   %[[TID_X:.*]] = gpu.thread_id x
     // CHECK:   %[[BID_X:.*]] = gpu.block_id x
     // CHECK:   %[[IDX:.*]] = affine.apply #[[MAP]]()[%[[TID_X]], %[[BID_X]]]
+    // CHECK:   %[[SCALARS_0:.*]], %[[SCALARS_1:.*]] = xla_gpu.pure_call @fused_computation_d_1
+    // CHECK:   %[[INSERTED_1:.*]] = tensor.insert %[[SCALARS_0]] into %{{.*}}[%[[IDX]]]
+    // CHECK:   %[[INSERTED_2:.*]] = tensor.insert %[[SCALARS_1]] into %{{.*}}[%[[IDX]]]
+    // CHECK:   yield %[[INSERTED_1]], %[[INSERTED_2]]
+
+    // CHECK: func private @fused_computation_d_1
     // CHECK:   %[[RET:.*]]:2 = func.call @Add_t
     // CHECK:   yield %[[RET]]#0, %[[RET]]#1
-    // CHECK:   %[[INSERTED_1:.*]] = tensor.insert %{{.*}}#0 into %{{.*}}[%[[IDX]]]
-    // CHECK:   %[[INSERTED_2:.*]] = tensor.insert %{{.*}}#1 into %{{.*}}[%[[IDX]]]
-    // CHECK:   yield %[[INSERTED_1]], %[[INSERTED_2]]
 )")
                   .value());
+
+  EXPECT_TRUE(RunAndCompareNoHloPasses(kHloString, ErrorSpec{1e-3}));
 }
 
 }  // namespace

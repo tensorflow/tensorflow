@@ -19,13 +19,16 @@ limitations under the License.
 #ifndef XLA_SERVICE_SHAPE_INFERENCE_H_
 #define XLA_SERVICE_SHAPE_INFERENCE_H_
 
+#include <cstdint>
+#include <optional>
+#include <utility>
 #include <vector>
 
 #include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/shape.h"
 #include "xla/statusor.h"
-#include "xla/types.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
@@ -48,6 +51,13 @@ class ShapeInference {
                                                  const Shape& shape);
   static absl::StatusOr<Shape> InferUnaryOpShape(HloOpcode opcode,
                                                  const HloInstruction* operand);
+
+  // For ternary ops, only scalar broadcasting is supported.
+  // Return the non-scalar shape that all scalars should be broadcasted too
+  // Returns status if non-scalar operands do not match.
+  // Returns first shape when all shapes are scalar.
+  static absl::StatusOr<std::optional<Shape>> InferScalarBroadcastShape(
+      absl::Span<const Shape> shapes);
 
   // Infers the shape produced by applying the given binary operation to the
   // given input shapes.
@@ -341,7 +351,13 @@ class ShapeInference {
   static absl::StatusOr<Shape> InferDotOpShape(
       const Shape& lhs, const Shape& rhs,
       const DotDimensionNumbers& dimension_numbers,
-      std::optional<PrimitiveType> preferred_element_type);
+      std::optional<PrimitiveType> preferred_element_type,
+      absl::Span<const SparsityDescriptor> sparsity = {});
+
+  // Helper that infers the shape of the sparse dot metadata.
+  static absl::StatusOr<Shape> InferSparseDotMetadataShape(
+      const Shape& operand_shape, const DotDimensionNumbers& dimension_numbers,
+      const SparsityDescriptor& sparsity, PrimitiveType element_type = U16);
 
   // Helper that infers the shape of the tensor produced by a gather operation
   // with the given input shape, gather indices shape and gather dimension
@@ -411,6 +427,9 @@ class ShapeInference {
   // (for example ComputationBuilder::AddInDim). smaller_shape must be a
   // lower-rank shape than larger_shape. Returns the shape that the
   // smaller_shape is broadcast to.
+  //
+  // Since this method is only used by InferBinaryOpShape transitively, this
+  // method also supports inference of unbounded dynamic dimensions.
   static absl::StatusOr<Shape> InferInDimBroadcastShape(
       const Shape& smaller_shape, const Shape& larger_shape,
       absl::Span<const int64_t> broadcast_dimensions);

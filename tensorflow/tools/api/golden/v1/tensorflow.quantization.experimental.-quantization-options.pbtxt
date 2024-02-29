@@ -61,6 +61,8 @@ tf_proto {
       number: 10
       label: LABEL_OPTIONAL
       type: TYPE_BOOL
+      oneof_index: 1
+      proto3_optional: true
     }
     field {
       name: "enable_two_input_tensors"
@@ -121,6 +123,9 @@ tf_proto {
     }
     oneof_decl {
       name: "_freeze_all_variables"
+    }
+    oneof_decl {
+      name: "_enable_per_channel_quantization"
     }
     reserved_range {
       start: 3

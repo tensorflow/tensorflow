@@ -15,7 +15,9 @@ limitations under the License.
 #ifndef XLA_SERVICE_GPU_FUSIONS_MLIR_COMPUTATION_PARTITIONER_H_
 #define XLA_SERVICE_GPU_FUSIONS_MLIR_COMPUTATION_PARTITIONER_H_
 
+#include <functional>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
@@ -54,9 +56,20 @@ namespace mlir_converter {
 //
 // Note that this partitioning will sometimes create silly subgraphs that should
 // (and will) be inlined, e. g. containing only a constant or only a broadcast.
+//
+// There are two hooks to customize this partitioning:
+// - is_subgraph_root: forces the clusterer to start a new subgraph at a given
+//   instruction. The instruction is guaranteed to be a in a different subgraph
+//   than its users.
+// - operand_is_function_argument: marks an operand as a value that is provided
+//   to the function as an argument (instead of being generated through a call).
 class PartitionedComputation {
  public:
-  explicit PartitionedComputation(const HloComputation* computation);
+  explicit PartitionedComputation(
+      const HloComputation* computation,
+      std::function<bool(const HloInstruction*)> is_subgraph_root = nullptr,
+      std::function<bool(const HloInstruction*, int)>
+          operand_is_function_argument = nullptr);
 
   struct Subgraph {
     // A unique name of the subgraph. Used for function names.
@@ -67,6 +80,15 @@ class PartitionedComputation {
 
     // The roots. These are guaranteed not to have users inside the subgraph.
     std::vector<const HloInstruction*> roots;
+
+    // For operands that are function arguments (not function calls), stores the
+    // mapping from operand to the argument index. The arguments always come
+    // after the tensor parameters and output indices; the indices are relative
+    // to the argument after the last index argument.
+    absl::flat_hash_map<std::pair<const HloInstruction*, int>, int>
+        injected_param_indices;
+
+    std::string ToString() const;
   };
 
   absl::Span<const Subgraph> subgraphs() const { return subgraphs_; }
@@ -82,6 +104,8 @@ class PartitionedComputation {
     return *instructions_to_subgraphs_.at(instr);
   }
 
+  std::string ToString() const;
+
  private:
   const HloComputation* computation_;
   std::vector<Subgraph> subgraphs_;
@@ -89,26 +113,57 @@ class PartitionedComputation {
       instructions_to_subgraphs_;
 };
 
+// Given a root of a subgraph, returns the corresponding function.
+using CallTargetProvider =
+    std::function<mlir::func::FuncOp(const HloInstruction* instr)>;
+
 // A collection of PartitionedComputations, starting at a fusion computation and
 // including all transitively called computations.
 class PartitionedComputations {
  public:
-  explicit PartitionedComputations(const HloComputation* fusion);
+  explicit PartitionedComputations(
+      const HloComputation* fusion,
+      std::function<bool(const HloInstruction*)> is_subgraph_root = nullptr,
+      std::function<bool(const HloInstruction*, int)>
+          operand_is_function_argument = nullptr);
+
+  // Partitions the fusion and isolates the given instructions in their own
+  // subgraphs. The values of these instructions will be function arguments
+  // in their user subgraphs.
+  //
+  // Example: param -> exp -> transpose -> neg
+  // If the transpose is isolated and injected, we will get three subgraphs: one
+  // for the exp, one for the transpose and one for the neg. The neg subgraph
+  // will have an extra argument for the value of the transpose.
+  explicit PartitionedComputations(
+      const HloComputation* fusion,
+      const absl::flat_hash_set<const HloInstruction*>&
+          isolated_and_injected_instructions);
 
   const PartitionedComputation& FindPartitionedComputation(
       const HloComputation* computation) const {
     return *computation_to_partitioning_.at(computation);
   }
 
+  const PartitionedComputation::Subgraph& FindSubgraph(
+      const HloInstruction* instr) const;
+
   absl::Span<const PartitionedComputation> partitioned_computations() const {
     return partitioned_computations_;
   }
+
+  // Creates a call target lookup function for use with SubgraphToMlir.
+  CallTargetProvider CreateCallTargetProvider(
+      const absl::flat_hash_map<const PartitionedComputation::Subgraph*,
+                                mlir::func::FuncOp>& subgraph_to_func) const;
 
   // Declares func.func ops for each subgraph in each computation and returns a
   // mapping from subgraph to declared function.
   absl::flat_hash_map<const PartitionedComputation::Subgraph*,
                       mlir::func::FuncOp>
   DeclareFunctions(mlir::ModuleOp module) const;
+
+  std::string ToString() const;
 
  private:
   std::vector<PartitionedComputation> partitioned_computations_;

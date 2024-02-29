@@ -7680,6 +7680,211 @@ ENTRY entry {
                     &prefetch_interval_picker);
 }
 
+TEST_P(MemorySpaceAssignmentTest, AsyncOpCustomFusionShortLiveRange) {
+  absl::string_view hlo_string = R"(
+HloModule Module, is_scheduled=true
+
+fused_computation_start {
+  param0 = f32[2,1] parameter(0)
+  negate = f32[2,1] negate(param0)
+  ROOT custom-call = (f32[2,1], f32[2,1], u32[], u32[]) custom-call(negate), custom_call_target="AsyncOpStart"
+}
+
+fused_computation_update {
+  param0 = f32[2,1] parameter(0)
+  param1 = f32[2,1] parameter(1)
+  param2 = f32[2,1] parameter(2)
+  param3 = f32[2,1] parameter(3)
+  param4 = u32[] parameter(4)
+  param5 = u32[] parameter(5)
+  add = f32[2,1] add(param0, param1)
+  negate = f32[2,1] negate(param2)
+  ROOT tuple = (f32[2,1], f32[2,1], f32[2,1], f32[2,1], u32[], u32[]) tuple(add, param2, param3, negate, param4, param5)
+}
+
+fused_computation_done {
+  param0 = f32[2,1] parameter(0)
+  param1 = f32[2,1] parameter(1)
+  param2 = u32[] parameter(2)
+  param3 = u32[] parameter(3)
+  negate = f32[2,1] negate(param0)
+  ROOT custom-call = f32[2,1] custom-call(param0, param1, negate, param2, param3), custom_call_target="AsyncOpDone"
+}
+
+ENTRY main {
+  param = f32[2,1] parameter(0)
+  negate1 = f32[2,1] negate(param)
+  negate2 = f32[2,1] negate(negate1)
+  fusion1 = (f32[2,1], f32[2,1], u32[], u32[]) fusion(negate1), kind=kCustom, output_to_operand_aliasing={{0}: (0, {})}, calls=fused_computation_start
+  negate3 = f32[2,1] negate(negate2)
+  negate4 = f32[2,1] negate(negate3)
+  gte0 = f32[2,1] get-tuple-element(fusion1), index=0
+  gte1 = f32[2,1] get-tuple-element(fusion1), index=1
+  gte2 = u32[] get-tuple-element(fusion1), index=2
+  gte3 = u32[] get-tuple-element(fusion1), index=3
+  fusion2 = (f32[2,1], f32[2,1], f32[2,1], f32[2,1], u32[], u32[]) fusion(negate4, negate2, gte0, gte1, gte2, gte3), kind=kLoop, output_to_operand_aliasing={{1}: (2, {}), {2}: (3, {}), {3}: (3, {}), {4}: (4, {}), {5}: (5, {})}, calls=fused_computation_update
+  gte4 = f32[2,1] get-tuple-element(fusion2), index=0
+  negate5 = f32[2,1] negate(gte4)
+  gte5 = f32[2,1] get-tuple-element(fusion2), index=1
+  gte6 = f32[2,1] get-tuple-element(fusion2), index=2
+  gte7 = u32[] get-tuple-element(fusion2), index=4
+  gte8 = u32[] get-tuple-element(fusion2), index=5
+  fusion3 = f32[2,1] fusion(gte5, gte6, gte7, gte8), kind=kCustom, output_to_operand_aliasing={{}: (1, {})}, calls=fused_computation_done
+  ROOT add = f32[2,1] add(negate5, fusion3)
+}
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  Options options = DefaultMemorySpaceOptions();
+  options.position_requires_contiguous_allocation_fn =
+      [](const HloPosition& position) {
+        std::string_view inst_name = position.instruction->name();
+        if (inst_name == "fusion1" ||
+            (inst_name == "fusion2" && position.index != ShapeIndex({0}))) {
+          return true;
+        }
+        return false;
+      };
+  AssignMemorySpace(module.get(), options);
+
+  HloInstruction* fusion1 =
+      module->entry_computation()->GetInstructionWithName("fusion1");
+  HloInstruction* fusion2 =
+      module->entry_computation()->GetInstructionWithName("fusion2");
+  HloInstruction* fusion3 =
+      module->entry_computation()->GetInstructionWithName("fusion3");
+
+  EXPECT_THAT(fusion2->operand(2), op::GetTupleElement(fusion1, 0));
+  EXPECT_THAT(fusion2->operand(3), op::GetTupleElement(fusion1, 1));
+  EXPECT_THAT(fusion3->operand(0), op::GetTupleElement(fusion2, 1));
+  EXPECT_THAT(fusion3->operand(1), op::GetTupleElement(fusion2, 2));
+  if (allocate_across_sequential_calls()) {
+    EXPECT_THAT(fusion2->operand(2)->shape().layout().memory_space(),
+                kAlternateMemorySpace);
+    EXPECT_THAT(fusion2->operand(3)->shape().layout().memory_space(),
+                kAlternateMemorySpace);
+    EXPECT_THAT(fusion3->operand(0)->shape().layout().memory_space(),
+                kAlternateMemorySpace);
+    EXPECT_THAT(fusion3->operand(1)->shape().layout().memory_space(),
+                kAlternateMemorySpace);
+  }
+  // Operand 0 and 1 should get alternate memory allocations and so is the
+  // output {0}.
+  EXPECT_THAT(fusion2->operand(0)->shape().layout().memory_space(),
+              kAlternateMemorySpace);
+  EXPECT_THAT(fusion2->operand(1)->shape().layout().memory_space(),
+              kAlternateMemorySpace);
+  EXPECT_THAT(
+      ShapeUtil::GetSubshape(fusion2->shape(), {0}).layout().memory_space(),
+      kAlternateMemorySpace);
+}
+
+TEST_P(MemorySpaceAssignmentTest, AsyncOpCustomFusionLongLiveRange) {
+  absl::string_view hlo_string = R"(
+HloModule Module, is_scheduled=true
+
+fused_computation_start {
+  param0 = f32[2,1] parameter(0)
+  negate = f32[2,1] negate(param0)
+  ROOT custom-call = (f32[2,1], f32[2,1], u32[], u32[]) custom-call(negate), custom_call_target="AsyncOpStart"
+}
+
+fused_computation_update {
+  param0 = f32[2,1] parameter(0)
+  param1 = f32[2,1] parameter(1)
+  param2 = f32[2,1] parameter(2)
+  param3 = f32[2,1] parameter(3)
+  param4 = u32[] parameter(4)
+  param5 = u32[] parameter(5)
+  add = f32[2,1] add(param0, param1)
+  negate = f32[2,1] negate(param2)
+  ROOT tuple = (f32[2,1], f32[2,1], f32[2,1], f32[2,1], u32[], u32[]) tuple(add, param2, param3, negate, param4, param5)
+}
+
+fused_computation_done {
+  param0 = f32[2,1] parameter(0)
+  param1 = f32[2,1] parameter(1)
+  param2 = u32[] parameter(2)
+  param3 = u32[] parameter(3)
+  negate = f32[2,1] negate(param0)
+  ROOT custom-call = f32[2,1] custom-call(param0, param1, negate, param2, param3), custom_call_target="AsyncOpDone"
+}
+
+ENTRY main {
+  param = f32[2,1] parameter(0)
+  negate1 = f32[2,1] negate(param)
+  negate2 = f32[2,1] negate(negate1)
+  fusion1 = (f32[2,1], f32[2,1], u32[], u32[]) fusion(negate1), kind=kCustom, output_to_operand_aliasing={{0}: (0, {})}, calls=fused_computation_start
+  negate3 = f32[2,1] negate(negate2)
+  negate4 = f32[2,1] negate(negate3)
+  negate5 = f32[2,1] negate(negate4)
+  negate6 = f32[2,1] negate(negate5)
+  negate7 = f32[2,1] negate(negate6)
+  negate8 = f32[2,1] negate(negate7)
+  negate9 = f32[2,1] negate(negate8)
+  negate10 = f32[2,1] negate(negate9)
+  negate11 = f32[2,1] negate(negate10)
+  negate12 = f32[2,1] negate(negate11)
+  gte0 = f32[2,1] get-tuple-element(fusion1), index=0
+  gte1 = f32[2,1] get-tuple-element(fusion1), index=1
+  gte2 = u32[] get-tuple-element(fusion1), index=2
+  gte3 = u32[] get-tuple-element(fusion1), index=3
+  fusion2 = (f32[2,1], f32[2,1], f32[2,1], f32[2,1], u32[], u32[]) fusion(negate12, negate2, gte0, gte1, gte2, gte3), kind=kLoop, output_to_operand_aliasing={{1}: (2, {}), {2}: (3, {}), {3}: (3, {}), {4}: (4, {}), {5}: (5, {})}, calls=fused_computation_update
+  gte4 = f32[2,1] get-tuple-element(fusion2), index=0
+  negate13 = f32[2,1] negate(gte4)
+  gte5 = f32[2,1] get-tuple-element(fusion2), index=1
+  gte6 = f32[2,1] get-tuple-element(fusion2), index=2
+  gte7 = u32[] get-tuple-element(fusion2), index=4
+  gte8 = u32[] get-tuple-element(fusion2), index=5
+  fusion3 = f32[2,1] fusion(gte5, gte6, gte7, gte8), kind=kCustom, output_to_operand_aliasing={{}: (1, {})}, calls=fused_computation_done
+  ROOT add = f32[2,1] add(negate13, fusion3)
+}
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  Options options = DefaultMemorySpaceOptions();
+  options.position_requires_contiguous_allocation_fn =
+      [](const HloPosition& position) {
+        std::string_view inst_name = position.instruction->name();
+        if (inst_name == "fusion1" ||
+            (inst_name == "fusion2" && position.index != ShapeIndex({0}))) {
+          return true;
+        }
+        return false;
+      };
+  AssignMemorySpace(module.get(), options);
+
+  HloInstruction* fusion1 =
+      module->entry_computation()->GetInstructionWithName("fusion1");
+  HloInstruction* fusion2 =
+      module->entry_computation()->GetInstructionWithName("fusion2");
+  HloInstruction* fusion3 =
+      module->entry_computation()->GetInstructionWithName("fusion3");
+  EXPECT_THAT(fusion2->operand(2), op::GetTupleElement(fusion1, 0));
+  EXPECT_THAT(fusion2->operand(2)->shape().layout().memory_space(),
+              kDefaultMemorySpace);
+  EXPECT_THAT(fusion2->operand(3), op::GetTupleElement(fusion1, 1));
+  EXPECT_THAT(fusion2->operand(3)->shape().layout().memory_space(),
+              kDefaultMemorySpace);
+  EXPECT_THAT(fusion3->operand(0), op::GetTupleElement(fusion2, 1));
+  EXPECT_THAT(fusion3->operand(0)->shape().layout().memory_space(),
+              kDefaultMemorySpace);
+  EXPECT_THAT(fusion3->operand(1), op::GetTupleElement(fusion2, 2));
+  EXPECT_THAT(fusion3->operand(1)->shape().layout().memory_space(),
+              kDefaultMemorySpace);
+  // Operand 0 and 1 should get alternate memory allocations and so is the
+  // output {0}.
+  EXPECT_THAT(fusion2->operand(0)->shape().layout().memory_space(),
+              kAlternateMemorySpace);
+  EXPECT_THAT(fusion2->operand(1)->shape().layout().memory_space(),
+              kAlternateMemorySpace);
+  EXPECT_THAT(
+      ShapeUtil::GetSubshape(fusion2->shape(), {0}).layout().memory_space(),
+      kAlternateMemorySpace);
+}
+
 INSTANTIATE_TEST_SUITE_P(MemorySpaceAssignmentInstantiation,
                          MemorySpaceAssignmentTest,
                          ::testing::Values(false, true));

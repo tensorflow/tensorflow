@@ -74,6 +74,39 @@ limitations under the License.
 #include "xla/xla_data.pb.h"
 #include "tsl/lib/strings/proto_serialization.h"
 
+namespace pybind11 {
+namespace detail {
+
+template <>
+struct type_caster<xla::OpMetadata> {
+ public:
+  PYBIND11_TYPE_CASTER(xla::OpMetadata, _("xla::OpMetadata"));
+
+  // PyObject -> C++ conversion.
+  bool load(handle handle, bool) {
+    pybind11::handle op_type = getattr(handle, "op_type");
+    if (!op_type.is_none()) {
+      value.set_op_type(op_type.cast<std::string>());
+    }
+    pybind11::handle op_name = getattr(handle, "op_name");
+    if (!op_name.is_none()) {
+      value.set_op_name(op_name.cast<std::string>());
+    }
+    pybind11::handle source_file = getattr(handle, "source_file");
+    if (!source_file.is_none()) {
+      value.set_source_file(source_file.cast<std::string>());
+    }
+    pybind11::handle source_line = getattr(handle, "source_line");
+    if (!source_line.is_none()) {
+      value.set_source_line(source_line.cast<int32_t>());
+    }
+    return true;
+  }
+};
+
+}  // namespace detail
+}  // namespace pybind11
+
 namespace xla {
 namespace {
 

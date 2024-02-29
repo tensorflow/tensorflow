@@ -546,7 +546,8 @@ Status IteratorBase::InitializeBase(IteratorContext* ctx,
       auto factory = [ctx, this](model::Node::Args args) {
         return CreateNode(ctx, std::move(args));
       };
-      model->AddNode(std::move(factory), name(), parent->model_node(), &node_);
+      model->AddNode(std::move(factory), prefix(), parent->model_node(),
+                     &node_);
       cleanup_fns_.push_back([this, model]() { model->RemoveNode(node_); });
     }
   }
@@ -776,17 +777,10 @@ void DatasetBase::Initialize(const Metadata& metadata) {
     LOG_EVERY_N_SEC(ERROR, 10) << s;
   }
   metadata_ = metadata;
-  if (absl::StrContains(metadata_.name(), ":")) {
-    // Type string is already included in the name, no need to add it.
-    return;
-  }
   if (metadata_.name() == "") {
     static std::atomic<int64_t> id_counter(0);
     *metadata_.mutable_name() =
         strings::StrCat(type_string(), ":", id_counter.fetch_add(1));
-  } else {
-    *metadata_.mutable_name() =
-        strings::StrCat(type_string(), ":", metadata_.name());
   }
 }
 
@@ -841,9 +835,9 @@ Status DatasetBase::Get(OpKernelContext* ctx, int64 index,
       "Random access is not implemented for this dataset.");
 }
 
-StatusOr<DatasetBase*> DatasetBase::Finalize(
+absl::StatusOr<DatasetBase*> DatasetBase::Finalize(
     OpKernelContext* ctx,
-    std::function<StatusOr<core::RefCountPtr<DatasetBase>>()>
+    std::function<absl::StatusOr<core::RefCountPtr<DatasetBase>>()>
         make_finalized_dataset) const {
   mutex_lock l(mu_);
   if (!finalized_dataset_) {

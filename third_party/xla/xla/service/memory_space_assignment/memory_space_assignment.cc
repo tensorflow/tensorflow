@@ -927,7 +927,13 @@ void AlternateMemoryBestFitHeap::CreateAllocationValues(
       CHECK(HloDataflowAnalysis::IsAsynchronousOperationDone(
           allocation_value.uses().at(0).hlo_use.instruction->opcode()));
       VLOG(3) << "Mark " << allocation_value.ToShortString()
-              << " to require contiguous allocation.";
+              << " to require contiguous allocation because it is an async "
+                 "start operation.";
+      allocation_value.set_requires_contiguous_allocation(true);
+    } else if (options_.position_requires_contiguous_allocation_fn(
+                   allocation_value.defining_position())) {
+      VLOG(3) << "Mark " << allocation_value.ToShortString()
+              << " to require contiguous allocation because of options.";
       allocation_value.set_requires_contiguous_allocation(true);
     }
     VLOG(3) << "Created allocation value: "

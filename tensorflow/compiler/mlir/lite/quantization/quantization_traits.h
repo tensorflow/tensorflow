@@ -18,8 +18,15 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_MLIR_LITE_QUANTIZATION_QUANTIZATION_TRAITS_H_
 #define TENSORFLOW_COMPILER_MLIR_LITE_QUANTIZATION_QUANTIZATION_TRAITS_H_
 
+#include <cmath>
+#include <cstdint>
+#include <vector>
+
 #include "mlir/Dialect/Quant/QuantTypes.h"  // from @llvm-project
-#include "mlir/Support/LLVM.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypeInterfaces.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
+#include "mlir/IR/OpDefinition.h"  // from @llvm-project
+#include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 
 using QuantizedType = mlir::quant::QuantizedType;
@@ -27,7 +34,7 @@ using UniformQuantizedType = mlir::quant::UniformQuantizedType;
 
 namespace mlir {
 namespace quant {
-// Verify that the op satisfies the same operands and results scales
+// Verifies that the op satisfies the same operands and results scales
 // constraints. Note that this constraint can only be applied on some
 // storage types of the op.
 LogicalResult VerifySameScales(Operation* op);
@@ -47,7 +54,7 @@ struct QuantizationSpecTraitBase : public TraitBase<ConcreteType, TraitType> {
   static bool IsQuantizable() { return true; }
 };
 
-// This class provides the API for TFL ops that has a fixed output value range.
+// This class provides the API for ops that has a fixed output value range.
 // This is used as a trait like this:
 //
 //   class SoftmaxOp
@@ -70,13 +77,13 @@ class FixedResultUniformScale {
    public:
     QuantizedType GetResultQuantizedType(int index) {
       auto op = this->getOperation();
-      auto result_type =
+      const auto result_type =
           op->getResult(index).getType().template cast<ShapedType>();
       if (!result_type.getElementType().template isa<FloatType>()) return {};
       Builder builder(op->getContext());
-      IntegerType storage_type = builder.getIntegerType(BitWidth);
+      const IntegerType storage_type = builder.getIntegerType(BitWidth);
       const double scale = static_cast<double>(ScaleMantissa) *
-                           ::pow(10.0, static_cast<double>(ScaleExp));
+                           std::pow(10.0, static_cast<double>(ScaleExp));
       return UniformQuantizedType::getChecked(
           Sign, storage_type, result_type.getElementType(), scale, ZeroPoint,
           StorageTypeMin, StorageTypeMax, builder.getUnknownLoc());
@@ -84,7 +91,7 @@ class FixedResultUniformScale {
   };
 };
 
-// This class provides the API for TFL ops that has input as bias. This is used
+// This class provides the API for ops that has input as bias. This is used
 // as a trait like this:
 //
 //   class Conv2DOp
@@ -129,7 +136,7 @@ class AffineOpCoefficient {
   };
 };
 
-// This class provides the API for TFL ops that can be quantized.
+// This class provides the API for ops that can be quantized.
 // This is as a trait like this:
 //
 //   class LessOp : public Op<LessOp, OpTrait::quant::QuantizableResult> {

@@ -14,13 +14,16 @@ limitations under the License.
 ==============================================================================*/
 #include "xla/service/gpu/fusions/mlir/computation_partitioner.h"
 
+#include <functional>
 #include <optional>
+#include <sstream>
 #include <string>
 #include <utility>
 #include <vector>
 
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
 #include "absl/container/node_hash_map.h"
 #include "absl/log/check.h"
 #include "absl/strings/str_cat.h"
@@ -52,7 +55,8 @@ namespace mlir_converter {
 namespace {
 
 absl::flat_hash_map<const HloInstruction*, int> PartitionGraphByIndexing(
-    const HloComputation& computation) {
+    const HloComputation& computation,
+    std::function<bool(const HloInstruction*)> is_subgraph_root) {
   constexpr int kRootIndexing = 0;
   int next_indexing = 1;
   absl::flat_hash_map<const HloInstruction*, int> indexing;
@@ -62,15 +66,16 @@ absl::flat_hash_map<const HloInstruction*, int> PartitionGraphByIndexing(
     auto it = indexing.find(instr);
     if (it != indexing.end()) return it->second;
 
+    if (is_subgraph_root(instr)) {
+      return indexing[instr] = next_indexing++;
+    }
     if (instr->opcode() != HloOpcode::kTuple &&
         !HloInstruction::IsOpElementwise(instr->opcode())) {
       return indexing[instr] = next_indexing++;
     }
-
     if (instr->user_count() == 0) {
       return indexing[instr] = kRootIndexing;
     }
-
     // If all users have the same indexing, we can reuse it.
     std::optional<int> instr_indexing = std::nullopt;
     for (auto* user : instr->users()) {
@@ -84,32 +89,78 @@ absl::flat_hash_map<const HloInstruction*, int> PartitionGraphByIndexing(
     }
     return indexing[instr] = instr_indexing ? *instr_indexing : next_indexing++;
   };
-
   for (auto* instr : computation.instructions()) {
     indexing_for_instr(instr);
   }
-
   return indexing;
 }
 
 }  // namespace
 
+std::string PartitionedComputation::Subgraph::ToString() const {
+  std::ostringstream ss;
+  ss << "SUBGRAPH " << name << " {\n";
+  for (auto instr : instructions_post_order) {
+    ss << "  ";
+    if (absl::c_linear_search(roots, instr)) {
+      ss << "ROOT ";
+    }
+    ss << instr->ToString() << "\n";
+  }
+  ss << "}";
+  return ss.str();
+}
+
+std::string PartitionedComputation::ToString() const {
+  std::ostringstream ss;
+  ss << "PartitionedComputation " << computation_->name() << ":";
+  for (const Subgraph& subgraph : subgraphs_) {
+    ss << "\n" << subgraph.ToString();
+  }
+  return ss.str();
+}
+
+std::string PartitionedComputations::ToString() const {
+  std::ostringstream ss;
+  ss << "PartitionedComputations:";
+  for (const auto& partitioned_computation : partitioned_computations_) {
+    ss << "\n" << partitioned_computation.ToString();
+  }
+  return ss.str();
+}
+
 PartitionedComputation::PartitionedComputation(
-    const HloComputation* computation)
+    const HloComputation* computation,
+    std::function<bool(const HloInstruction*)> is_subgraph_root,
+    std::function<bool(const HloInstruction*, int)>
+        operand_is_function_argument)
     : computation_(computation) {
+  CHECK_NE(computation, nullptr);
+  if (!is_subgraph_root) {
+    is_subgraph_root = [](const HloInstruction*) { return false; };
+  }
+  if (!operand_is_function_argument) {
+    operand_is_function_argument = [](const HloInstruction*, int) {
+      return false;
+    };
+  }
+
   // For each instruction, figure out what function it goes in. Parameters don't
   // count.
   absl::node_hash_map<const HloInstruction*,
                       tensorflow::UnionFind<const HloInstruction*>>
       disjoint_sets;
-  auto indexing = PartitionGraphByIndexing(*computation);
+  auto indexing = PartitionGraphByIndexing(*computation, is_subgraph_root);
   for (auto* instruction : computation->instructions()) {
     if (instruction->opcode() == HloOpcode::kParameter) continue;
     disjoint_sets[instruction].Get() = instruction;
   }
   for (auto* instruction : computation->instructions()) {
     if (instruction->opcode() == HloOpcode::kParameter) continue;
-    bool can_merge =
+
+    // If the instruction has to become a subgraph root, then we do not merge.
+    bool can_merge = !is_subgraph_root(instruction);
+    can_merge &=
         instruction->user_count() == 1 ||
         (instruction->user_count() > 1 &&
          absl::c_all_of(instruction->users(), [&](const HloInstruction* user) {
@@ -127,8 +178,8 @@ PartitionedComputation::PartitionedComputation(
       // which has the benefit of leading to slightly easier to read IR.
       return user->opcode() == HloOpcode::kConcatenate;
     };
-    can_merge &= !absl::c_any_of(instruction->users(), is_bad_gather);
-    can_merge &= !absl::c_any_of(instruction->users(), is_concat);
+    can_merge &= absl::c_none_of(instruction->users(), is_bad_gather);
+    can_merge &= absl::c_none_of(instruction->users(), is_concat);
     if (can_merge) {
       auto& set = disjoint_sets[instruction];
       for (auto* user : instruction->users()) {
@@ -145,14 +196,30 @@ PartitionedComputation::PartitionedComputation(
 
   subgraphs_.reserve(functions.size());
   for (auto& [cluster_id, instructions] : functions) {
+    auto is_different_cluster = [cluster_id = cluster_id,
+                                 &disjoint_sets](auto* user) {
+      return disjoint_sets[user].Get() != cluster_id;
+    };
+
     std::vector<const HloInstruction*> roots;
+    absl::flat_hash_map<std::pair<const HloInstruction*, int>, int>
+        operands_to_index;
     for (auto* instruction : instructions) {
       if (instruction->user_count() == 0 ||
-          absl::c_any_of(instruction->users(),
-                         [cluster_id = cluster_id, &disjoint_sets](auto* user) {
-                           return disjoint_sets[user].Get() != cluster_id;
-                         })) {
+          absl::c_any_of(instruction->users(), is_different_cluster)) {
         roots.push_back(instruction);
+      }
+
+      for (auto [operand_index, operand] :
+           llvm::enumerate(instruction->operands())) {
+        std::pair<const HloInstruction*, int> key(
+            instruction, static_cast<int>(operand_index));
+        if (is_different_cluster(operand) &&
+            operand_is_function_argument(instruction, operand_index) &&
+            !operands_to_index.contains(key)) {
+          int index = operands_to_index.size();
+          operands_to_index[key] = index;
+        }
       }
     }
     CHECK(!roots.empty()) << "No roots found";
@@ -164,7 +231,8 @@ PartitionedComputation::PartitionedComputation(
     subgraphs_.push_back(
         Subgraph{.name = std::move(name),
                  .instructions_post_order = std::move(instructions),
-                 .roots = std::move(roots)});
+                 .roots = std::move(roots),
+                 .injected_param_indices = std::move(operands_to_index)});
   }
 
   for (const auto& subgraph : subgraphs_) {
@@ -174,7 +242,11 @@ PartitionedComputation::PartitionedComputation(
   }
 }
 
-PartitionedComputations::PartitionedComputations(const HloComputation* fusion) {
+PartitionedComputations::PartitionedComputations(
+    const HloComputation* fusion,
+    std::function<bool(const HloInstruction*)> is_subgraph_root,
+    std::function<bool(const HloInstruction*, int)>
+        operand_is_function_argument) {
   // Collect all transitively called computations (including the fusion itself).
   absl::flat_hash_set<const HloComputation*> seen;
   std::vector<const HloComputation*> computations;
@@ -191,10 +263,33 @@ PartitionedComputations::PartitionedComputations(const HloComputation* fusion) {
   partitioned_computations_.reserve(computations.size());
   for (auto* computation : computations) {
     computation_to_partitioning_[computation] =
-        &partitioned_computations_.emplace_back(
-            PartitionedComputation{computation});
+        &partitioned_computations_.emplace_back(PartitionedComputation{
+            computation, is_subgraph_root, operand_is_function_argument});
   }
 }
+
+PartitionedComputations::PartitionedComputations(
+    const HloComputation* fusion,
+    const absl::flat_hash_set<const HloInstruction*>&
+        isolated_and_injected_instructions)
+    : PartitionedComputations(
+          fusion,
+          [&]() {
+            absl::flat_hash_set<const HloInstruction*> operands;
+            for (auto* instruction : isolated_and_injected_instructions) {
+              operands.insert(instruction->operands().begin(),
+                              instruction->operands().end());
+            }
+            return [&isolated_and_injected_instructions,
+                    operands](const HloInstruction* instruction) {
+              return isolated_and_injected_instructions.contains(instruction) ||
+                     operands.contains(instruction);
+            };
+          }(),
+          [&](const HloInstruction* instruction, int operand_index) {
+            return isolated_and_injected_instructions.contains(
+                instruction->operand(operand_index));
+          }) {}
 
 absl::flat_hash_map<const PartitionedComputation::Subgraph*, mlir::func::FuncOp>
 PartitionedComputations::DeclareFunctions(mlir::ModuleOp module) const {
@@ -213,6 +308,19 @@ PartitionedComputations::DeclareFunctions(mlir::ModuleOp module) const {
     }
   }
   return mapping;
+}
+
+const PartitionedComputation::Subgraph& PartitionedComputations::FindSubgraph(
+    const HloInstruction* instr) const {
+  return FindPartitionedComputation(instr->parent()).FindSubgraph(instr);
+}
+
+CallTargetProvider PartitionedComputations::CreateCallTargetProvider(
+    const absl::flat_hash_map<const PartitionedComputation::Subgraph*,
+                              mlir::func::FuncOp>& subgraph_to_func) const {
+  return [&, this](const HloInstruction* instr) {
+    return subgraph_to_func.at(&FindSubgraph(instr));
+  };
 }
 
 mlir::func::FuncOp CreateSubgraphMlirFunction(
@@ -255,15 +363,32 @@ mlir::func::FuncOp CreateSubgraphMlirFunction(
               "xla.range",
               b.getIndexArrayAttr({0, one_root_shape->dimensions(dim) - 1}))}));
     }
+
+    // Populate arguments for injected parameters (values that are computed
+    // outside the function and are passed into it).
+    int operand_offset = parameter_types.size();
+    parameter_types.resize(operand_offset +
+                           subgraph.injected_param_indices.size());
+    arg_attrs.resize(parameter_types.size());
+
+    for (auto [user_and_operand_index, extra_parameter_index] :
+         subgraph.injected_param_indices) {
+      auto [user, operand_index] = user_and_operand_index;
+      parameter_types[operand_offset + extra_parameter_index] =
+          element_type(user->operand(operand_index)->shape());
+    }
   } else {
     for (auto* param : computation->parameter_instructions()) {
       parameter_types.push_back(element_type(param->shape()));
     }
   }
   auto ty = b.getFunctionType(parameter_types, result_types);
-  return b.create<mlir::func::FuncOp>(
+  auto func_op = b.create<mlir::func::FuncOp>(
       subgraph.name, ty,
       /*attrs=*/llvm::ArrayRef<mlir::NamedAttribute>{}, arg_attrs);
+  // Needed so that the function can potentially be inlined in-place.
+  func_op.setPrivate();
+  return func_op;
 }
 
 }  // namespace mlir_converter

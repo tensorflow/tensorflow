@@ -1,7 +1,7 @@
 # StableHLO Device Profile reference implementation
 
 package(
-    default_applicable_licenses = ["//tensorflow:LICENSE"],
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:LICENSE"],
     default_visibility = [":__subpackages__"],
 )
 

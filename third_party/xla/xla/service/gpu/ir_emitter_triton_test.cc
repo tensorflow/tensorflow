@@ -4074,10 +4074,10 @@ ENTRY e {
                                 R"(
 CHECK-NOT: mma
 CHECK: selp.f32
-CHECK: st.shared.f32
-CHECK: ld.shared.v4.f32
+CHECK: st.shared{{(\.v[24])?}}.f32
+CHECK: ld.shared{{(\.v[24])?}}.f32
 CHECK: fma.rn.f32
-CHECK: st.shared.f32
+CHECK: st.shared{{(\.v[24])?}}.f32
 )");
 }
 

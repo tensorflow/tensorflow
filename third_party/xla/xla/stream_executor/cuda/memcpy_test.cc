@@ -13,7 +13,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#if GOOGLE_CUDA
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/platform_manager.h"
@@ -28,19 +27,15 @@ namespace stream_executor {
 TEST(MemcpyTest, PinnedHostMemory) {
   Platform* platform = PlatformManager::PlatformWithName("CUDA").value();
   StreamExecutor* executor = platform->ExecutorForDevice(0).value();
-  Stream stream(executor);
-  TF_ASSERT_OK(stream.Initialize());
-  ASSERT_TRUE(stream.ok());
+  auto stream = executor->CreateStream().value();
 
   TF_ASSERT_OK_AND_ASSIGN(auto d_ptr,
                           executor->HostMemoryAllocate(sizeof(int)));
   DeviceMemoryBase d_mem(d_ptr->opaque(), sizeof(int));
 
   int h_ptr;
-  TF_ASSERT_OK(stream.Memcpy(&h_ptr, d_mem, d_mem.size()));
-  EXPECT_TRUE(stream.BlockHostUntilDone().ok());
+  TF_ASSERT_OK(stream->Memcpy(&h_ptr, d_mem, d_mem.size()));
+  EXPECT_TRUE(stream->BlockHostUntilDone().ok());
 }
 
 }  // namespace stream_executor
-
-#endif  // GOOGLE_CUDA

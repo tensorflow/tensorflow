@@ -22,7 +22,9 @@ limitations under the License.
 #include <vector>
 
 #include "absl/status/status.h"
+#include "absl/strings/string_view.h"
 #include "xla/pjrt/c/pjrt_c_api.h"
+#include "xla/pjrt/c/pjrt_c_api_profiler_extension.h"
 #include "xla/pjrt/distributed/key_value_store_interface.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_future.h"
@@ -271,6 +273,46 @@ absl::Span<PJRT_DeviceDescription* const> DeviceDescriptions(
 
 absl::StatusOr<xla::CompiledMemoryStats> GetCompiledMemoryStats(
     const PJRT_Api* api, PJRT_Executable* executable);
+
+// Creates a PJRT_Profiler_Extension and adds a producer trace with
+// the given name. The created PJRT_Profiler_Extension will be used in argument
+// structs to pass the producer traceme context id to add a corresponding
+// consumer trace in the API implementation.
+PJRT_Profiler_Extension CreatePjrtProfilerExtension(
+    absl::string_view traceme_name);
+
+// Traverses an extension chain to find an extension struct with type
+// `type`. `in` can either be a PJRT_Api* or a pointer to an Args struct --
+// anything with an `extension_start` field. The ExtType template parameter
+// specifies the C extension type of the returned struct, if found (i.e. a
+// specific extension struct that is layout-compatible with
+// PJRT_Extension_Base).
+template <typename ExtType, typename InputType>
+ExtType* FindExtension(InputType* in, PJRT_Extension_Type type) {
+  PJRT_Extension_Base* ext = in->extension_start;
+  while (ext != nullptr) {
+    if (ext->type == type) {
+      return reinterpret_cast<ExtType*>(ext);
+    }
+    ext = ext->next;
+  }
+  // 'type' wasn't found in extension chain
+  return nullptr;
+}
+
+// Gets a traceme context id attached to PJRT_Profiler_Extension.
+// Returns -1 if there is no PJRT_Profiler_Extension in args.
+template <typename InputType>
+int64_t GetTracemeContextId(InputType* args) {
+  PJRT_Profiler_Extension* profiler_extension =
+      FindExtension<PJRT_Profiler_Extension>(
+          args, PJRT_Extension_Type::PJRT_Extension_Type_Profiler);
+  int64_t traceme_context_id = -1;
+  if (profiler_extension != nullptr) {
+    traceme_context_id = profiler_extension->traceme_context_id;
+  }
+  return traceme_context_id;
+}
 
 }  // namespace pjrt
 

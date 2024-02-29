@@ -104,6 +104,9 @@ bool IsQuantizedTensorType(Type type);
 // Returns true if all operands and results are quantized.
 bool IsOpFullyQuantized(Operation* op);
 
+// Returns true iff none among operand and result tensors are quantized.
+bool IsOpNotQuantized(Operation* op);
+
 }  // namespace quant
 }  // namespace mlir
 

@@ -141,7 +141,7 @@ static bool IsCommand(const HloInstruction* hlo,
     const FusionBackendConfig& backend_config =
         gpu_config->fusion_backend_config();
     if (backend_config.kind() == kCuDnnFusionKind) {
-      return false;
+      return config.enabled_commands.contains(DebugOptions::CUDNN);
     }
     const auto& custom_config = backend_config.custom_fusion_config();
     if (custom_config.name() == "address_computation") {

@@ -1,0 +1,21 @@
+Internal patch, waiting for b/315666466 to be fixed
+diff --git a/python/src/llvm.cc b/python/src/llvm.cc
+--- a/python/src/llvm.cc
++++ b/python/src/llvm.cc
+@@ -1,4 +1,4 @@
+-﻿#include "mlir/IR/BuiltinOps.h" // mlir::ModuleOp
++#include "mlir/IR/BuiltinOps.h" // mlir::ModuleOp
+ #include "mlir/Target/LLVMIR/LLVMTranslationInterface.h"
+ #include "mlir/Target/LLVMIR/ModuleTranslation.h"
+ #include "triton/Tools/Sys/GetEnv.hpp"
+@@ -195,7 +195,10 @@ void init_triton_llvm(py::module &&m) {
+     // some scheduling that helps performance in some cases. We should work on
+     // using NVPTX target instead and address the performance regressions with
+     // some scheduling solution.
++    // TODO(b/315666466): Re-enable once assertions have been fixed
++    #if _LIBCPP_HARDENING_MODE == _LIBCPP_HARDENING_MODE_NONE
+     tuningOptions.SLPVectorization = true;
++    #endif
+ 
+     PassBuilder pb(nullptr /*targetMachine*/, tuningOptions, std::nullopt,
+                    instrCbPtr);

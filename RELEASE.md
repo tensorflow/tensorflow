@@ -26,6 +26,10 @@
 * <IF A CHANGE CLOSES A GITHUB ISSUE, IT SHOULD BE DOCUMENTED HERE>
 * <NOTES SHOULD BE GROUPED PER AREA>
 
+* GPU
+    * Support for NVIDIA GPUs with compute capability 8.9 (e.g. L4 & L40) has
+      been added to TF binary distributions (Python wheels).
+
 ## Keras
 
 <INSERT SMALL BLURB ABOUT RELEASE FOCUS AREA AND POTENTIAL TOOLCHAIN CHANGES>
@@ -34,6 +38,9 @@
 
 * <DOCUMENT BREAKING CHANGES HERE>
 * <THIS SECTION SHOULD CONTAIN API, ABI AND BEHAVIORAL BREAKING CHANGES>
+* GPU
+    * Support for NVIDIA GPUs with compute capability 5.x (Maxwell generation)
+      has been removed from TF binary distributions (Python wheels).
 
 ### Known Caveats
 

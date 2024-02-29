@@ -10,6 +10,7 @@ package(
         "//learning/pathways/serving/transforms:__pkg__",
         "//tensorflow/compiler/mlir:__pkg__",
         "//tensorflow/compiler/mlir/tensorflow:__pkg__",
+        "//tensorflow/compiler/mlir/tf2xla/api:__subpackages__",
         "//tensorflow/compiler/mlir/tf2xla/internal:__subpackages__",
     ],
     licenses = ["notice"],
@@ -483,6 +484,7 @@ cc_library(
     deps = [
         ":lowering_passes_inc_gen",
         "//tensorflow/compiler/mlir/tensorflow",
+        "//tensorflow/compiler/mlir/tf2xla/transforms:legalization_op_config",
         "//tensorflow/core:lib",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:FuncDialect",

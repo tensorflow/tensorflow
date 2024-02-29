@@ -15,6 +15,7 @@ limitations under the License.
 #include "xla/service/gpu/fusions/mlir/computation_partitioner.h"
 
 #include <string>
+#include <utility>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
@@ -24,6 +25,8 @@ limitations under the License.
 #include "mlir/IR/ImplicitLocOpBuilder.h"  // from @llvm-project
 #include "mlir/IR/Location.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
+#include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/tests/hlo_test_base.h"
 
 namespace xla {
@@ -113,6 +116,29 @@ TEST_F(ComputationPartitionerTest, TupleRoot) {
   EXPECT_THAT(computation.GetRootSubgraph().instructions_post_order, SizeIs(3));
 }
 
+TEST_F(ComputationPartitionerTest, EnforcePartitioning) {
+  auto module = ParseAndReturnVerifiedModule(R"(
+    HloModule test_module
+    fused_computation {
+      %p0 = f32[64, 32] parameter(0)
+      %p1 = f32[64, 32] parameter(1)
+      %add = f32[64, 32] add(p0, p1)
+      %transpose = f32[32, 64] transpose(%add), dimensions={1, 0}
+      %exp = f32[32, 64] exponential(%transpose)
+      ROOT %root = f32[32, 64] tanh(%exp)
+    })")
+                    .value();
+
+  auto* fusion = module->GetComputationWithName("fused_computation");
+  ASSERT_NE(fusion, nullptr);
+  PartitionedComputation computation(fusion, [](const HloInstruction* instr) {
+    return instr->opcode() == HloOpcode::kTranspose;
+  });
+  ASSERT_THAT(computation.subgraphs(), SizeIs(2));
+  EXPECT_THAT(computation.GetRootSubgraph().roots, SizeIs(1));
+  EXPECT_THAT(computation.GetRootSubgraph().instructions_post_order, SizeIs(2));
+}
+
 TEST_F(ComputationPartitionerTest, PartiallyMergable) {
   auto module = ParseAndReturnVerifiedModule(R"(
     HloModule test_module
@@ -135,6 +161,15 @@ TEST_F(ComputationPartitionerTest, PartiallyMergable) {
   ASSERT_THAT(computation.subgraphs(), SizeIs(2));
   EXPECT_THAT(computation.GetRootSubgraph().instructions_post_order,
               ElementsAre(transpose, sub));
+}
+
+std::string PrintAndErase(mlir::func::FuncOp func) {
+  std::string out;
+  llvm::raw_string_ostream os(out);
+  os << func;
+  // Erase the function so we don't leak memory.
+  func.erase();
+  return out;
 }
 
 TEST_F(ComputationPartitionerTest, SubgraphSignatures) {
@@ -162,15 +197,6 @@ TEST_F(ComputationPartitionerTest, SubgraphSignatures) {
       ROOT %fusion = f32[10] fusion(%p0, %p1), kind=kLoop, calls=fusion
     })")
                     .value();
-  auto print = [](mlir::func::FuncOp func) {
-    // Set visibility to private so the function verifies.
-    func.setSymVisibility("private");
-    std::string out;
-    llvm::raw_string_ostream os(out);
-    os << func;
-    func.erase();
-    return out;
-  };
 
   mlir::MLIRContext context;
   context.loadDialect<mlir::func::FuncDialect>();
@@ -178,14 +204,63 @@ TEST_F(ComputationPartitionerTest, SubgraphSignatures) {
 
   PartitionedComputation fusion(module->GetComputationWithName("fusion"));
   EXPECT_EQ(
-      print(CreateSubgraphMlirFunction(fusion.GetRootSubgraph(), builder)),
+      PrintAndErase(
+          CreateSubgraphMlirFunction(fusion.GetRootSubgraph(), builder)),
       "func.func private @fusion_reduce(tensor<10x10xf32, dense<[0, 1]> : "
       "tensor<2xi64>>, tensor<10x10xf32>, index {xla.range = [0 : index, 9 : "
       "index]}) -> f32");
 
   PartitionedComputation add(module->GetComputationWithName("add"));
-  EXPECT_EQ(print(CreateSubgraphMlirFunction(add.GetRootSubgraph(), builder)),
-            "func.func private @add_add(f32, f32) -> f32");
+  EXPECT_EQ(
+      PrintAndErase(CreateSubgraphMlirFunction(add.GetRootSubgraph(), builder)),
+      "func.func private @add_add(f32, f32) -> f32");
+}
+
+TEST_F(ComputationPartitionerTest, SubgraphSignaturesWithInjectedValues) {
+  auto module = ParseAndReturnVerifiedModule(R"(
+    HloModule test_module
+
+    %fused_computation {
+      %p0 = f32[2,16,17] parameter(0)
+      %log = f32[2,16,17] log(%p0)
+      %transpose = f32[2,17,16] transpose(%log), dimensions={0,2,1}
+      %p1 = f32[] parameter(1)
+      %bc = f32[2,17,16] broadcast(%p1), dimensions={}
+      ROOT %add = f32[2,17,16] add(%transpose, %bc)
+    }
+
+    ENTRY main {
+      %p0 = f32[2,16,17] parameter(0)
+      %p1 = f32[] parameter(1)
+      ROOT %fusion = f32[2,17,16] fusion(%p0, %p1), kind=kInput,
+            calls=%fused_computation
+    }
+  )")
+                    .value();
+
+  mlir::MLIRContext context;
+  context.loadDialect<mlir::func::FuncDialect>();
+  mlir::ImplicitLocOpBuilder builder(mlir::UnknownLoc::get(&context), &context);
+
+  // We force a split at the transpose (like the transpose emitter would do) and
+  // enforce that the transpose is injected as a parameter into the epilogue.
+  auto* fused_computation = module->GetComputationWithName("fused_computation");
+  PartitionedComputations fusion(
+      fused_computation,
+      /*isolated_and_injected_instructions=*/
+      {fused_computation->GetInstructionWithName("transpose")});
+  auto& root_graph = fusion.FindSubgraph(fused_computation->root_instruction());
+  auto& injected_params = root_graph.injected_param_indices;
+  EXPECT_EQ(injected_params.size(), 1);
+  std::pair<const HloInstruction*, int> injected_operand_key(
+      fused_computation->root_instruction(), 0);
+  ASSERT_TRUE(injected_params.contains(injected_operand_key));
+  EXPECT_EQ(injected_params.at(injected_operand_key), 0);
+  EXPECT_EQ(PrintAndErase(CreateSubgraphMlirFunction(root_graph, builder)),
+            "func.func private @fused_computation_add(tensor<2x16x17xf32>, "
+            "tensor<f32>, index {xla.range = [0 : index, 1 : index]}, index "
+            "{xla.range = [0 : index, 16 : index]}, index {xla.range = [0 : "
+            "index, 15 : index]}, f32) -> f32");
 }
 
 }  // namespace

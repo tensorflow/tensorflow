@@ -635,9 +635,9 @@ TEST_F(TfrtSessionTest, GetRuntime) {
 
 TEST_F(TfrtSessionTest, RegisterTwiceCrashes) {
   TfrtSessionFactory::RegisterInitializer(
-      [](tfrt_stub::Runtime*) { return OkStatus(); });
+      [](tfrt_stub::Runtime*) { return absl::OkStatus(); });
   ASSERT_DEBUG_DEATH(TfrtSessionFactory::RegisterInitializer(
-                         [](tfrt_stub::Runtime*) { return OkStatus(); }),
+                         [](tfrt_stub::Runtime*) { return absl::OkStatus(); }),
                      "");
 }
 }  // namespace

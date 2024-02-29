@@ -1036,6 +1036,7 @@ void FunctionLibraryRuntimeImpl::ExecutorArgsFromOptions(
   exec_args->rendezvous = run_opts.rendezvous;
   exec_args->stats_collector = run_opts.stats_collector;
   exec_args->cancellation_manager = run_opts.cancellation_manager;
+  exec_args->session_config = config_;
   exec_args->step_container = run_opts.step_container;
   if (run_opts.runner) {
     exec_args->runner = *run_opts.runner;

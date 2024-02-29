@@ -20,13 +20,13 @@ limitations under the License.
 #include <optional>
 #include <string>
 
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/compiler.h"
 #include "xla/service/xla_compile_result.pb.h"
 #include "xla/util.h"
-#include "tsl/platform/status.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla {
 
@@ -37,15 +37,29 @@ namespace xla {
 // provided, the post-optimization module will be stored in it.
 //
 // This is the expected entry point to the compilation functionality.
-StatusOr<std::string> CompileExecutable(
+absl::StatusOr<std::string> CompileExecutable(
     std::unique_ptr<HloModule> hlo_module, absl::string_view platform,
     std::optional<Compiler::TargetConfig> target_config,
     CompilationResult& result);
 
 // Merges the measured duration into compilation_result and writes
 // compilation_result to result_output_file in the wire format.
-Status WriteResultFile(const std::string& result_output_file, TimerStats& stats,
-                       CompilationResult& compilation_result);
+absl::Status WriteResultFile(absl::string_view result_output_file,
+                             TimerStats& stats,
+                             CompilationResult& compilation_result);
+
+// Loads the HLO, MHLO, or StableHLO module at the given file path.
+absl::StatusOr<std::unique_ptr<HloModule>> LoadModule(
+    absl::string_view module_path);
+
+// Full entry point if you want to wrap a binary around this functionality.
+// See flag definitions in ../service/xla_compile_main.cc for semantics.
+absl::Status XlaCompileMain(
+    absl::string_view module_path, absl::string_view output_path,
+    absl::string_view platform, absl::string_view gpu_target_config_path,
+    absl::string_view autotune_results_path, absl::string_view symbol_repo,
+    absl::string_view symbol_id, bool use_attached_device,
+    bool wait_for_uploads, absl::string_view result_output_file);
 
 }  // namespace xla
 

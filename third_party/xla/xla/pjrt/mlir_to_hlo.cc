@@ -186,13 +186,6 @@ Status MlirToXlaComputation(mlir::ModuleOp module,
   mlir::BaseScopedDiagnosticHandler diagnostic_handler(module->getContext());
   {
     mlir::PassManager pm(module->getContext());
-    if (legalize_sparse_ops) {
-      // Convert sparse operations to custom_calls in order to translate sparse
-      // operations into XLA HLO.
-      pm.addNestedPass<mlir::func::FuncOp>(
-          mlir::mhlo::createLegalizeSparseOperationsPass(
-              /*legalizeToCustomCalls=*/true));
-    }
     pm.addPass(mlir::mhlo::createStablehloLegalizeToHloPass());
     pm.addNestedPass<mlir::func::FuncOp>(
         mlir::mhlo::createChloLegalizeToHloPass(

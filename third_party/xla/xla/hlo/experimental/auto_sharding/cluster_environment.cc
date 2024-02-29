@@ -23,6 +23,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/types/span.h"
 #include "xla/hlo/experimental/auto_sharding/auto_sharding_strategy.h"
 #include "xla/hlo/experimental/auto_sharding/auto_sharding_util.h"
 #include "xla/service/spmd/spmd_partitioner_util.h"
@@ -134,8 +135,8 @@ double ClusterEnvironment::AllToAllCost(double num_bytes, int mesh_dim) const {
 
 // Do not consider device id changes yet.
 double ClusterEnvironment::ReshardingCostMixedMeshShape(
-    const Shape& shape, std::vector<int64_t> src_tensor_dim_to_mesh_dim,
-    std::vector<int64_t> dst_tensor_dim_to_mesh_dim) const {
+    const Shape& shape, absl::Span<const int64_t> src_tensor_dim_to_mesh_dim,
+    absl::Span<const int64_t> dst_tensor_dim_to_mesh_dim) const {
   int64_t num_devices = device_mesh_.num_elements();
   double resharding_costs = 0.0;
   for (size_t i = 0; i < shape.rank(); ++i) {
@@ -165,7 +166,7 @@ double ClusterEnvironment::ReshardingCostMixedMeshShape(
 
 double ClusterEnvironment::CollectivePermuteCost(
     double num_bytes,
-    const std::vector<std::pair<int64_t, int64_t>>& src_dst_pairs) const {
+    absl::Span<const std::pair<int64_t, int64_t>> src_dst_pairs) const {
   absl::flat_hash_map<int64_t, std::vector<int64_t>> device_to_index_map;
   device_mesh_.Each([&](absl::Span<const int64_t> indices, int64_t device) {
     std::vector<int64_t> indices_vector;

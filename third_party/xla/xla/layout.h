@@ -90,6 +90,64 @@ class Tile {
 
 using TileVector = absl::InlinedVector<Tile, 3>;
 
+// Describes how data is split between different memories. Each SplitConfig
+// object represents a split in one dimension. Each SplitConfig is associated
+// with a vector of split indices which point to the points in the iteration
+// where the splits occur. For example, if the dimension contains 1024 elements,
+// a split indices value of {512} indicates splitting this dimension into two
+// right through the middle. The dimension here refers to the physical dimension
+// such that 0 is the majormost dimension and rank-1 is the minormost dimension.
+class SplitConfig {
+ public:
+  SplitConfig(int64_t dimension, absl::Span<const int64_t> split_indices)
+      : dimension_(dimension),
+        split_indices_(split_indices.begin(), split_indices.end()) {}
+
+  static SplitConfig CreateFromProto(
+      const SplitConfigProto& split_config_proto) {
+    return SplitConfig(split_config_proto.dimension(),
+                       split_config_proto.split_indices());
+  }
+  SplitConfigProto ToProto() const;
+
+  bool operator==(const SplitConfig& other) const {
+    return dimension() == other.dimension() &&
+           split_indices() == other.split_indices();
+  }
+  bool operator!=(const SplitConfig& other) const { return !(*this == other); }
+
+  std::string ToString() const;
+
+  // Returns the dimension that is split.
+  int64_t dimension() const { return dimension_; }
+  SplitConfig& set_dimension(int64_t dimension) {
+    dimension_ = dimension;
+    return *this;
+  }
+
+  // Returns the indices where splits occur.
+  absl::Span<const int64_t> split_indices() const { return split_indices_; }
+  int64_t split_indices(int64_t idx) const { return split_indices_.at(idx); }
+  int64_t split_indices_size() const { return split_indices_.size(); }
+  SplitConfig& add_split_indices(int64_t split_index) {
+    split_indices_.push_back(split_index);
+    return *this;
+  }
+  SplitConfig& clear_split_indices() {
+    split_indices_.clear();
+    return *this;
+  }
+
+  template <typename H>
+  friend H AbslHashValue(H h, const SplitConfig& t) {
+    return H::combine(std::move(h), t.dimension_, t.split_indices_);
+  }
+
+ private:
+  int64_t dimension_;
+  absl::InlinedVector<int64_t, 1> split_indices_;
+};
+
 // TODO: Rename the `dim_level_types` field to `lvl_types`, so that it
 // matches `mlir::sparse_tensor::SparseTensorEncodingAttr`.
 class Layout {
@@ -113,6 +171,7 @@ class Layout {
                   PrimitiveType index_primitive_type = PRIMITIVE_TYPE_INVALID,
                   PrimitiveType element_primitive_type = PRIMITIVE_TYPE_INVALID,
                   int64_t element_size_in_bits = 0, int64_t memory_space = 0,
+                  absl::Span<const SplitConfig> split_configs = {},
                   std::unique_ptr<Shape> physical_shape = nullptr,
                   int64_t dynamic_shape_metadata_prefix_bytes = 0);
 
@@ -168,6 +227,11 @@ class Layout {
       return *this;
     }
 
+    Equal& IgnoreSplitConfigs() {
+      ignore_split_configs_ = true;
+      return *this;
+    }
+
     Equal& IgnorePhysicalShape() {
       ignore_physical_shape_ = true;
       return *this;
@@ -195,6 +259,7 @@ class Layout {
     bool ignore_index_primitive_type_ = false;
     bool ignore_pointer_primitive_type_ = false;
     bool ignore_memory_space_ = false;
+    bool ignore_split_configs_ = false;
     bool ignore_physical_shape_ = false;
   };
 
@@ -337,6 +402,20 @@ class Layout {
     return *this;
   }
 
+  int split_configs_size() const { return split_configs_.size(); }
+  const SplitConfig& split_configs(int index) const {
+    return split_configs_.at(index);
+  }
+  SplitConfig* mutable_split_configs(int index) {
+    return &split_configs_.at(index);
+  }
+  Layout& add_split_configs(const SplitConfig& split_config) {
+    split_configs_.push_back(split_config);
+    return *this;
+  }
+  void clear_split_configs() { split_configs_.clear(); }
+  absl::Span<const SplitConfig> split_configs() const { return split_configs_; }
+
   // Methods for accessing the physical shape.
   bool has_physical_shape() const { return physical_shape_ != nullptr; }
   const Shape& physical_shape() const {
@@ -365,7 +444,7 @@ class Layout {
     return H::combine(std::move(h), l.minor_to_major_, l.tiles_,
                       l.element_size_in_bits_, l.index_primitive_type_,
                       l.pointer_primitive_type_, l.memory_space_,
-                      l.tail_padding_alignment_in_elements_);
+                      l.split_configs_, l.tail_padding_alignment_in_elements_);
   }
 
  private:
@@ -411,6 +490,10 @@ class Layout {
 
   // The tiles used in tiling-based layout.
   TileVector tiles_;
+
+  // The split configurations of the shape, which describes how the storage of
+  // the tensor is split between different physical memories.
+  absl::InlinedVector<SplitConfig, 1> split_configs_;
 
   // The shape is padded at the end to multiple of, in terms of number of
   // elements. This is useful when tiling does not bring the shape to certain

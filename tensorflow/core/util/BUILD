@@ -739,8 +739,8 @@ tf_kernel_library(
     deps = [
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
-        "@local_tsl//tsl/cuda:cusolver",
         "@local_xla//xla/stream_executor/cuda:cublas_plugin",
+        "@local_xla//xla/tsl/cuda:cusolver",
     ],
 )
 
@@ -781,7 +781,7 @@ tf_kernel_library(
     ] + if_cuda([
         "@local_xla//xla/stream_executor/cuda:cuda_blas_utils",
         "@local_xla//xla/stream_executor",
-        "@local_tsl//tsl/cuda:cusparse",
+        "@local_xla//xla/tsl/cuda:cusparse",
         "@local_config_cuda//cuda:cub_headers",
     ]) + if_rocm([
         "@local_xla//xla/stream_executor/rocm:rocsolver_wrapper",

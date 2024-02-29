@@ -17,11 +17,15 @@ limitations under the License.
 // the HostExecutor implementation.
 #include "xla/stream_executor/host/host_stream.h"
 
+#include <cfenv>  // NOLINT
+#include <cstddef>
 #include <queue>
 #include <utility>
 
 #include "absl/functional/any_invocable.h"
+#include "absl/log/check.h"
 #include "absl/status/status.h"
+#include "absl/synchronization/mutex.h"
 #include "absl/synchronization/notification.h"
 #include "tsl/platform/denormal.h"
 #include "tsl/platform/env.h"

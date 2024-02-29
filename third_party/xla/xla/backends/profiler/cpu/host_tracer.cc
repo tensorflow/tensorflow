@@ -19,9 +19,9 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/log/log.h"
+#include "absl/status/status.h"
 #include "tsl/platform/errors.h"
-#include "tsl/platform/status.h"
-#include "tsl/platform/types.h"
 #include "tsl/profiler/backends/cpu/host_tracer_utils.h"
 #include "tsl/profiler/backends/cpu/traceme_recorder.h"
 #include "tsl/profiler/lib/profiler_interface.h"

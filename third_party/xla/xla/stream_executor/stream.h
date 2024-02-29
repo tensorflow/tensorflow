@@ -31,15 +31,18 @@ limitations under the License.
 #include "absl/base/attributes.h"
 #include "absl/base/thread_annotations.h"
 #include "absl/functional/any_invocable.h"
+#include "absl/log/check.h"
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/synchronization/mutex.h"
+#include "absl/types/span.h"
+#include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/event.h"
 #include "xla/stream_executor/fft.h"
 #include "xla/stream_executor/kernel.h"
 #include "xla/stream_executor/launch_dim.h"
 #include "xla/stream_executor/platform.h"
-#include "xla/stream_executor/platform/port.h"
 #include "xla/stream_executor/stream_executor_pimpl.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/thread_annotations.h"
@@ -316,8 +319,14 @@ class Stream {
     return !status_.ok();
   }
 
+  // Sets the error state if operation_retcode is false.
+  // This is a useful shorthand for many stream routines.
+  void CheckError(bool operation_retcode) TF_LOCKS_EXCLUDED(mu_);
+
   // Checks the status and logs the error message, if any.
   void CheckStatus(absl::Status status) TF_LOCKS_EXCLUDED(mu_);
+
+  void SetError() { CheckError(false /* = operation_retcode */); }
 
   // The StreamExecutor that supports the operation of this stream.
   StreamExecutor *parent_;

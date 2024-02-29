@@ -35,6 +35,17 @@ py_strict_library(
 )
 
 py_strict_library(
+    name = "checkpoint_adapter",
+    srcs = ["checkpoint_adapter.py"],
+    srcs_version = "PY3",
+    deps = [
+        "//tensorflow/python/framework:tensor",
+        "//tensorflow/python/trackable:base",
+        "@absl_py//absl/logging",
+    ],
+)
+
+py_strict_library(
     name = "async_checkpoint_helper",
     srcs = ["async_checkpoint_helper.py"],
     srcs_version = "PY3",

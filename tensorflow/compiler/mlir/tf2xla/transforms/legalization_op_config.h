@@ -29,6 +29,9 @@ bool IsOpLegalizedWithMlir(Operation& op);
 // Given the type ID, check if it's legalized with MLIR.
 bool IsTypeLegalizedWithMlir(const TypeID& type_id);
 
+// Returns true if the op is considered a dynamic padder op.
+bool IsDynamicPadderOp(const TypeID& type_id);
+
 // Returns True if this op has a Tf2XLA fallback. Currently, this is not the
 // inverse of the !IsOpLegalizedWithMlir, but it should be.
 bool HasTf2XlaFallback(const TypeID& type_id);

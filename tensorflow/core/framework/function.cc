@@ -1246,7 +1246,7 @@ void FunctionRecord::finalize() {
   }
 }
 
-StatusOr<FunctionDef*> FunctionRecord::mutable_fdef() {
+absl::StatusOr<FunctionDef*> FunctionRecord::mutable_fdef() {
   if (finalized_) {
     return Status(absl::StatusCode::kPermissionDenied,
                   "Can not mutate FunctionDef after finalization.");
@@ -1961,7 +1961,7 @@ FunctionLibraryDefinition FunctionLibraryDefinition::ReachableDefinitions(
   return ReachableFunctionLibraryDefinition(*this, func.node_def());
 }
 
-StatusOr<FunctionLibraryDefinition>
+absl::StatusOr<FunctionLibraryDefinition>
 FunctionLibraryDefinition::ReachableDefinitions(
     const std::string& function_name) const {
   auto* func = Find(function_name);

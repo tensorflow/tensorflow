@@ -670,6 +670,7 @@ Status DirectSession::RunInternal(
   args.collective_executor =
       (run_state.collective_executor ? run_state.collective_executor->get()
                                      : nullptr);
+  args.session_config = &options_.config;
   args.session_state = &session_state_;
   args.session_handle = session_handle_;
   args.tensor_store = &run_state.tensor_store;
@@ -1021,6 +1022,7 @@ Status DirectSession::PRunSetup(const std::vector<string>& input_names,
   // because RunOptions is not passed in so we can't know whether
   // their use is intended.
   args.collective_executor = nullptr;
+  args.session_config = &options_.config;
   args.runner = [this, pool](Executor::Args::Closure c) {
     pool->Schedule(std::move(c));
   };

@@ -37,7 +37,6 @@ limitations under the License.
 #include "xla/python/pjrt_ifrt/xla_compiler.h"
 #include "xla/python/pprof_profile_builder.h"
 #include "xla/python/py_array.h"
-#include "xla/python/py_buffer.h"
 #include "xla/python/py_executable.h"
 #include "xla/python/py_host_callback.h"
 #include "xla/python/py_values.h"
@@ -297,7 +296,6 @@ PyClient::MakeCrossHostReceiveBuffers(absl::Span<const Shape> shapes,
     CHECK_EQ(descriptors.serialized_descriptors.size(), 1);
     const std::string& desc = descriptors.serialized_descriptors[0];
     pybind11::bytes py_desc = pybind11::bytes(desc);
-    auto traceback = Traceback::Get();
     auto* client =
         llvm::dyn_cast_or_null<ifrt::PjRtCompatibleClient>(ifrt_client());
     if (client == nullptr) {
@@ -493,16 +491,17 @@ StatusOr<py::bytes> PyClient::HeapProfile() {
           "only.");
     }
     for (const auto& buffer : arr->pjrt_buffers()) {
-      TF_RETURN_IF_ERROR(
-          add_buffer_to_profile(buffer.get(), array->traceback.get()));
+      TF_RETURN_IF_ERROR(add_buffer_to_profile(
+          buffer.get(), array->traceback ? array->traceback->get() : nullptr));
     }
   }
 
   for (PyLoadedExecutable* executable = executables_; executable;
        executable = executable->next_) {
     if (!executable->is_deleted()) {
-      HeapProfileKey key{executable->traceback(),
-                         executable->SizeOfGeneratedCodeInBytes(), nullptr};
+      HeapProfileKey key{
+          executable->traceback() ? executable->traceback()->get() : nullptr,
+          executable->SizeOfGeneratedCodeInBytes(), nullptr};
       ++entries[key];
     }
   }

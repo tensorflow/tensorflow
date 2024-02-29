@@ -194,12 +194,15 @@ Status ShapeVerifier::HandleCopy(HloInstruction* copy) {
 }
 
 Status ShapeVerifier::HandleDot(HloInstruction* dot) {
+  auto sparsity = Cast<HloDotInstruction>(dot)->sparsity();
+  TF_RETURN_IF_ERROR(
+      CheckOperandCount(dot, HloDotInstruction::kOperands + sparsity.size()));
   TF_ASSIGN_OR_RETURN(
       const Shape expected,
       ShapeInference::InferDotOpShape(
           dot->operand(0)->shape(), dot->operand(1)->shape(),
           dot->dot_dimension_numbers(),
-          /*preferred_element_type=*/dot->shape().element_type()));
+          /*preferred_element_type=*/dot->shape().element_type(), sparsity));
   if (auto nibble_count =
           absl::c_count(dot->precision_config().operand_precision(),
                         PrecisionConfig::PACKED_NIBBLE)) {
@@ -219,6 +222,24 @@ Status ShapeVerifier::HandleDot(HloInstruction* dot) {
             "%s.",
             dot->operand(1)->ToString());
       }
+    }
+  }
+  for (int i = 0; i < sparsity.size(); ++i) {
+    const SparsityDescriptor& descriptor = sparsity[i];
+    TF_RET_CHECK(descriptor.index() == 0 || descriptor.index() == 1);
+    TF_ASSIGN_OR_RETURN(const Shape expected_metadata_shape,
+                        ShapeInference::InferSparseDotMetadataShape(
+                            dot->operand(descriptor.index())->shape(),
+                            dot->dot_dimension_numbers(), descriptor));
+    const Shape actual_metadata_shape =
+        dot->operand(HloDotInstruction::kOperands + i)->shape();
+    if (!ShapeUtil::Compatible(actual_metadata_shape,
+                               expected_metadata_shape)) {
+      return Internal(
+          "Expected sparse dot metadata to have shape equal to %s, actual "
+          "shape is %s:\n%s",
+          StringifyShape(expected_metadata_shape),
+          StringifyShape(actual_metadata_shape), dot->ToString());
     }
   }
   return CheckShape(dot, expected);

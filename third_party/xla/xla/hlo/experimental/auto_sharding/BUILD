@@ -102,6 +102,7 @@ cc_library(
         ":auto_sharding_strategy",
         "//xla:statusor",
         "//xla:util",
+        "@com_google_absl//absl/container:btree",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/log",
@@ -224,6 +225,7 @@ cc_library(
         "//xla:shape_util",
         "//xla/hlo/ir:hlo",
         "//xla/service/spmd:spmd_partitioner",
+        "@com_google_absl//absl/types:span",
     ],
 )
 

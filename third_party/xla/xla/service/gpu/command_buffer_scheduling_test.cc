@@ -49,6 +49,7 @@ class CommandBufferSchedulingTest : public HloTestBase {
     debug_options.add_xla_gpu_enable_command_buffer(DebugOptions::FUSION);
     debug_options.add_xla_gpu_enable_command_buffer(DebugOptions::CONDITIONALS);
     debug_options.add_xla_gpu_enable_command_buffer(DebugOptions::COLLECTIVES);
+    debug_options.add_xla_gpu_enable_command_buffer(DebugOptions::CUDNN);
     debug_options.set_xla_gpu_graph_min_graph_size(2);
     return debug_options;
   }
@@ -949,6 +950,60 @@ TEST_F(CommandBufferSchedulingTest, Conditional) {
   RunAndFilecheckHloRewrite(
       hlo, CommandBufferScheduling(device_desc(), kCudaVersion, kCudaVersion),
       expected, [](HloModule* module) {
+        EXPECT_TRUE(module->has_schedule());
+        TF_CHECK_OK(module->schedule().Verify());
+      });
+}
+
+TEST_F(CommandBufferSchedulingTest, CuDnnFusionGraphCaptureWorks) {
+  const std::string kHloText = R"(
+HloModule m, is_scheduled=true
+
+fusion0 {
+  p0 = f32[64,64] parameter(0)
+  p1 = f32[64,64] parameter(1)
+  ROOT d = f32[64,64] dot(p0, p1),
+    lhs_contracting_dims={1}, rhs_contracting_dims={0}
+}
+
+fusion1 {
+  p0 = f32[64,64] parameter(0)
+  p1 = f32[64,64] parameter(1)
+  ROOT d = f32[64,64] dot(p0, p1),
+    lhs_contracting_dims={0}, rhs_contracting_dims={1}
+}
+
+fusion_a {
+  p0 = f32[64,64] parameter(0)
+  p1 = f32[64,64] parameter(1)
+  ROOT a = f32[64,64] add(p0, p1)
+}
+
+ENTRY e {
+  p0 = f32[64,64] parameter(0)
+  p1 = f32[64,64] parameter(1)
+  d0 = f32[64,64] fusion(p0, p1), kind=kCustom,
+    calls=fusion0,
+    backend_config={"fusion_backend_config": {"kind":"__cudnn$fusion"}}
+  a = f32[64,64] fusion(d0, d0), kind=kLoop, calls=fusion_a
+  ROOT d1 = f32[64,64] fusion(a, p1), kind=kCustom,
+    calls=fusion1,
+    backend_config={"fusion_backend_config": {"kind":"__cudnn$fusion"}}
+})";
+
+  const std::string kExpected = R"(
+; CHECK: ENTRY
+; CHECK-NEXT: parameter
+; CHECK-NEXT: parameter
+; CHECK-NEXT: ROOT
+; CHECK-SAME: call(
+; CHECK-SAME: to_apply=%command_buffer
+})";
+
+  RunAndFilecheckHloRewrite(
+      kHloText,
+      CommandBufferScheduling(device_desc(), kCudaVersion, kCudaVersion),
+      kExpected, [](HloModule* module) {
         EXPECT_TRUE(module->has_schedule());
         TF_CHECK_OK(module->schedule().Verify());
       });

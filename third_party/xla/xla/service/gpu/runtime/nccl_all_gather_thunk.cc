@@ -37,20 +37,11 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
-using mlir::lmhlo_gpu::AllGatherStartOp;
-
 namespace impl {
 NcclAllGatherConfig GetNcclAllGatherConfig(
     const HloAllGatherInstruction* inst) {
   NcclAllGatherConfig config;
   config.config = GetNcclCollectiveConfig(inst, inst->use_global_device_ids());
-  return config;
-}
-
-NcclAllGatherConfig GetNcclAllGatherConfig(AllGatherStartOp op) {
-  NcclAllGatherConfig config;
-  config.config =
-      GetNcclCollectiveConfigForMlir(op, op.getUseGlobalDeviceIds());
   return config;
 }
 
@@ -70,31 +61,7 @@ absl::Status CheckImplementableInst(const HloAllGatherInstruction* inst) {
 
   return absl::OkStatus();
 }
-
-absl::Status CheckImplementable(AllGatherStartOp op) {
-  for (mlir::Value operand : op.getInputs()) {
-    TF_RETURN_IF_ERROR(IsValidOperand(operand, Thunk::kNcclAllGather));
-    Shape shape = GetShape(operand);
-    if (!ShapeUtil::IsEffectivelyMostMajorDimension(
-            shape, op.getAllGatherDimension())) {
-      return absl::AbortedError(absl::StrFormat(
-          "all-gather dim %u is not the most major in input shape %s",
-          op.getAllGatherDimension(), shape.ToString(/*print_layout=*/true)));
-    }
-  }
-  return absl::OkStatus();
-}
 }  // namespace impl
-
-NcclAllGatherStartThunk::NcclAllGatherStartThunk(
-    ThunkInfo thunk_info, NcclApi* nccl_api, AllGatherStartOp op,
-    std::vector<NcclCollectiveThunk::Buffer> buffers)
-    : NcclCollectiveThunk(Thunk::kNcclAllGatherStart, thunk_info, nccl_api,
-                          op.getIsSync()),
-      config_(impl::GetNcclAllGatherConfig(op)),
-      buffers_(std::move(buffers)) {
-  CHECK_EQ(config_.config.operand_count, buffers_.size());
-}
 
 NcclAllGatherStartThunk::NcclAllGatherStartThunk(
     ThunkInfo thunk_info, NcclApi* nccl_api,
@@ -107,21 +74,10 @@ NcclAllGatherStartThunk::NcclAllGatherStartThunk(
 }
 
 /*static*/ absl::Status NcclAllGatherStartThunk::CheckImplementable(
-    AllGatherStartOp op, int64_t replica_count, int64_t partition_count) {
-  return AddOpDescription<NcclAllGatherStartThunk>(
-      impl::CheckImplementable(op), op, replica_count, partition_count);
-}
-
-/*static*/ absl::Status NcclAllGatherStartThunk::CheckImplementable(
     const HloAllGatherInstruction* inst, int64_t replica_count,
     int64_t partition_count) {
   return AddOpDescription<NcclAllGatherStartThunk>(
       impl::CheckImplementableInst(inst), inst, replica_count, partition_count);
-}
-
-/*static*/ CollectiveOpGroupMode NcclAllGatherStartThunk::GetGroupMode(
-    AllGatherStartOp op) {
-  return impl::GetNcclAllGatherConfig(op).config.group_mode;
 }
 
 /*static*/ CollectiveOpGroupMode NcclAllGatherStartThunk::GetGroupMode(

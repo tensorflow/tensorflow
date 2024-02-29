@@ -36,6 +36,7 @@ limitations under the License.
 #include "tensorflow/core/data/service/worker.grpc.pb.h"
 #include "tensorflow/core/data/service/worker.pb.h"
 #include "tensorflow/core/data/service/worker_impl.h"
+#include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/dataset.pb.h"
 #include "tensorflow/core/framework/metrics.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -56,9 +57,10 @@ namespace data {
 
 StatusOr<std::unique_ptr<DataServiceWorkerClient>>
 CreateDataServiceWorkerClient(const std::string& dispatcher_protocol,
-                              const DataTransferServerInfo& info) {
+                              const DataTransferServerInfo& info,
+                              Allocator* allocator) {
   auto client = std::make_unique<DataServiceWorkerClient>(
-      info.address(), dispatcher_protocol, info.protocol());
+      info.address(), dispatcher_protocol, info.protocol(), allocator);
   TF_RETURN_IF_ERROR(client->Initialize());
   TF_RETURN_WITH_CONTEXT_IF_ERROR(
       client->CheckCompatibility(info.compatibility_info()),
@@ -80,7 +82,7 @@ Status DataServiceWorkerClient::EnsureInitialized() {
     return absl::OkStatus();
   }
   TF_RETURN_IF_ERROR(DataTransferClient::Build(
-      GetDataTransferProtocol(), {protocol_, address_}, &client_));
+      GetDataTransferProtocol(), {protocol_, address_, allocator_}, &client_));
   return absl::OkStatus();
 }
 

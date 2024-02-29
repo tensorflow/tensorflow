@@ -56,6 +56,7 @@ limitations under the License.
 #include "xla/mlir_hlo/mhlo/transforms/passes.h"
 #include "xla/pjrt/c/pjrt_c_api.h"
 #include "xla/pjrt/c/pjrt_c_api_helpers.h"
+#include "xla/pjrt/c/pjrt_c_api_profiler_extension.h"
 #include "xla/pjrt/compile_options.pb.h"
 #include "xla/pjrt/distributed/key_value_store_interface.h"
 #include "xla/pjrt/mlir_to_hlo.h"
@@ -105,12 +106,6 @@ namespace xla {
 
 static StatusOr<const PjRtCApiTopologyDescription> InitClientTopoDesc(
     const PJRT_Api* c_api, PJRT_Client* c_client) {
-  if (c_api->pjrt_api_version.major_version == 0 &&
-      c_api->pjrt_api_version.minor_version < 36) {
-    return Unimplemented(
-        "Getting TopologyDescription for PJRT client requires plugin with PJRT "
-        "C API version >= 0.36");
-  }
   StatusOr<PJRT_TopologyDescription*> c_topo =
       pjrt::GetTopologyDescription(c_client, c_api);
   TF_RETURN_IF_ERROR(c_topo.status());
@@ -360,7 +355,10 @@ static StatusOr<std::unique_ptr<PjRtLoadedExecutable>> InitializeArgsAndCompile(
     const std::string& format) {
   PJRT_Client_Compile_Args args;
   args.struct_size = PJRT_Client_Compile_Args_STRUCT_SIZE;
-  args.extension_start = nullptr;
+  PJRT_Profiler_Extension profiler_extension =
+      pjrt::CreatePjrtProfilerExtension("PJRT_Client_Compile linkage");
+  args.extension_start =
+      reinterpret_cast<PJRT_Extension_Base*>(&profiler_extension);
   args.client = client;
   TF_ASSIGN_OR_RETURN(const CompileOptionsProto options_proto,
                       options.ToProto());
@@ -1127,14 +1125,6 @@ StatusOr<std::string> PjRtCApiExecutable::SerializeExecutable() const {
 
 StatusOr<std::string> PjRtCApiExecutable::FingerprintExecutable() const {
   const PJRT_Api* c_api_ = pjrt_c_api();
-  if (c_api_->pjrt_api_version.major_version == 0 &&
-      c_api_->pjrt_api_version.minor_version < 35) {
-    // TODO(yeounoh): To be removed after 01/20/2024.
-    return xla::Unimplemented(
-        "Getting fingerprint from unloaded PJRT executable requires plugin "
-        "with PJRT C API version >= 0.35");
-  }
-
   PJRT_Executable_Fingerprint_Args args;
   args.struct_size = PJRT_Executable_Fingerprint_Args_STRUCT_SIZE;
   args.extension_start = nullptr;
@@ -1430,7 +1420,6 @@ PjRtCApiLoadedExecutable::GetCommonExecuteArgs(
 
   PJRT_LoadedExecutable_Execute_Args args;
   args.struct_size = PJRT_LoadedExecutable_Execute_Args_STRUCT_SIZE;
-  args.extension_start = nullptr;
   args.executable = c_loaded_executable();
   args.options = &c_options;
   args.options->struct_size = PJRT_ExecuteOptions_STRUCT_SIZE;
@@ -1535,6 +1524,11 @@ PjRtCApiLoadedExecutable::Execute(
                            non_donatable_input_indices_storage));
 
   args.execute_device = nullptr;
+  PJRT_Profiler_Extension profiler_extension =
+      pjrt::CreatePjrtProfilerExtension(
+          "PJRT_LoadedExecutable_Execute linkage");
+  args.extension_start =
+      reinterpret_cast<PJRT_Extension_Base*>(&profiler_extension);
 
   RETURN_STATUS_IF_PJRT_ERROR(
       pjrt_c_api()->PJRT_LoadedExecutable_Execute(&args), pjrt_c_api());
@@ -1603,6 +1597,11 @@ PjRtCApiLoadedExecutable::ExecuteWithSingleDevice(
 
   args.execute_device =
       tensorflow::down_cast<PjRtCApiDevice*>(device)->c_device();
+  PJRT_Profiler_Extension profiler_extension =
+      pjrt::CreatePjrtProfilerExtension(
+          "PJRT_LoadedExecutable_Execute linkage");
+  args.extension_start =
+      reinterpret_cast<PJRT_Extension_Base*>(&profiler_extension);
 
   RETURN_STATUS_IF_PJRT_ERROR(
       pjrt_c_api()->PJRT_LoadedExecutable_Execute(&args), pjrt_c_api());

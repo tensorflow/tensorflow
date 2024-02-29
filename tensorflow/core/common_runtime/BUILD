@@ -2851,7 +2851,7 @@ tf_cuda_cc_test(
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
         "@eigen_archive//:eigen3",
-    ] + if_cuda(["@local_tsl//tsl/cuda:cudart"]),
+    ] + if_cuda(["@local_xla//xla/tsl/cuda:cudart"]),
 )
 
 # This is identical to :common_runtime_direct_session_test with the addition of

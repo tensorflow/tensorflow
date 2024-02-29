@@ -1,5 +1,5 @@
-// RUN: mlir_fusions_opt %s -split-input-file -xla-gpu-expand-conversions="include-bf16=true" -canonicalize | FileCheck %s -check-prefixes=CHECK,CHECK-BF16 -dump-input=always
-// RUN: mlir_fusions_opt %s -split-input-file -xla-gpu-expand-conversions="include-bf16=false" -canonicalize | FileCheck %s -check-prefixes=CHECK,CHECK-NO-BF16 -dump-input=always
+// RUN: mlir_fusions_opt %s -split-input-file -xla-gpu-expand-conversions="include-bf16=true" -canonicalize | FileCheck %s -check-prefixes=CHECK,CHECK-BF16
+// RUN: mlir_fusions_opt %s -split-input-file -xla-gpu-expand-conversions="include-bf16=false" -canonicalize | FileCheck %s -check-prefixes=CHECK,CHECK-NO-BF16
 
 module {
   func.func @f64_to_bf16(%arg0: f64) -> bf16 {

@@ -309,12 +309,16 @@ bool IsComputeCapabilityAndCudnnSupported(
     stream_executor::CudaComputeCapability cc,
     stream_executor::dnn::VersionInfo cudnn_version,
     stream_executor::dnn::VersionInfo supported_cudnn_version) {
-  if (cc.IsAtLeastAmpere() && cudnn_version >= supported_cudnn_version) {
+  // Enforce capability minor == 0 because hardware with a non-zero minor
+  // number typically has insufficient shared memory for cuDNN FMHA.
+  if (cc.IsAtLeastAmpere() && cc.minor == 0 &&
+      cudnn_version >= supported_cudnn_version) {
     return true;
   }
   VLOG(2) << absl::StrFormat(
       "CudnnFusedMHARewriter did not run. Unsupported compute "
-      "capability(%s; should be >= 8.0) or cudnn version(%s; should be >= %s)",
+      "capability(%s; major should be >= 8, minor should be 0) or cudnn version"
+      "(%s; should be >= %s)",
       cc.ToString(), cudnn_version.ToString(),
       supported_cudnn_version.ToString());
   return false;
@@ -1856,7 +1860,10 @@ absl::StatusOr<bool> CudnnFusedMHARewriter::Run(
         comp->parent()->config().debug_options();
     const auto cudnn_version =
         GetRealCuDNNVersion(cudnn_version_, stream_executor_);
-#if CUDA_VERSION < 12000
+#if !defined(GOOGLE_CUDA) || CUDA_VERSION < 12000
+    // CUDA needs to be >= 12.0 for cuDNN to work with all supported hardware.
+    // Some cuDNN versions work with CUDA 11, but it is impractical for us to
+    // test those combinations so just disable them.
     return false;
 #endif
     if (!debug_options.xla_gpu_enable_cudnn_fmha() ||

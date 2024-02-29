@@ -16,9 +16,12 @@ limitations under the License.
 
 #include <cstdint>
 #include <functional>
+#include <iterator>
+#include <utility>
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/container/node_hash_map.h"
 #include "absl/log/check.h"
@@ -57,6 +60,7 @@ limitations under the License.
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 #include "xla/mlir_hlo/mhlo/transforms/map_mhlo_to_scalar_op.h"
 #include "xla/primitive_util.h"
+#include "xla/service/gpu/fusions/mlir/ir/xla_gpu_ops.h"
 #include "xla/service/gpu/hlo_traversal.h"
 #include "xla/service/gpu/model/indexing_analysis.h"
 #include "xla/status_macros.h"
@@ -833,29 +837,48 @@ bool IsHloConversionSupported(const HloFusionAdaptor& fusion,
       });
 }
 
-absl::Status SubgraphToMlirFunction(
-    const PartitionedComputation& computation,
-    const PartitionedComputation::Subgraph& subgraph, mlir::func::FuncOp& func,
-    const CallTargetProvider& call_target_provider) {
-  TF_RET_CHECK(func != nullptr);
-  mlir::ImplicitLocOpBuilder builder(func.getLoc(), func->getContext());
-  builder.setInsertionPointToStart(func.addEntryBlock());
-  auto indices = func.getArguments().drop_front(
-      computation.computation().num_parameters());
-  auto parameters = func.getArguments().take_front(
-      computation.computation().num_parameters());
-  TF_ASSIGN_OR_RETURN(
-      auto results, SubgraphToMlir(computation, subgraph, call_target_provider,
-                                   parameters, indices, builder));
-  builder.create<mlir::func::ReturnOp>(results);
-  return absl::OkStatus();
+absl::StatusOr<llvm::SmallVector<mlir::Value>> ProvideParameter(
+    const PartitionedComputation& computation, const HloInstruction* instr,
+    int operand_index, mlir::ValueRange indices,
+    const CallTargetProvider& call_target_provider,
+    mlir::ImplicitLocOpBuilder& builder) {
+  auto& caller_subgraph = computation.FindSubgraph(instr);
+  auto this_fn = call_target_provider(caller_subgraph.roots[0]);
+
+  auto* operand = instr->operand(operand_index);
+  if (operand->opcode() == HloOpcode::kParameter) {
+    mlir::Value value = this_fn.getArgument(operand->parameter_number());
+    if (value.getType().isa<mlir::TensorType>()) {
+      value = builder.create<mlir::tensor::ExtractOp>(value, indices);
+    } else {
+      TF_RET_CHECK(indices.size() == 0);
+    }
+    return {{value}};
+  }
+
+  const auto& injected_params = caller_subgraph.injected_param_indices;
+  if (auto it = injected_params.find(std::make_pair(instr, operand_index));
+      it != injected_params.end()) {
+    auto injected_param_values =
+        this_fn.getArguments().take_back(injected_params.size());
+    return {{injected_param_values[it->second]}};
+  }
+
+  auto callee = call_target_provider(operand);
+  llvm::SmallVector<mlir::Value> operands(
+      this_fn.getArguments().take_front(instr->parent()->num_parameters()));
+  absl::c_copy(indices, std::back_inserter(operands));
+  return builder.create<PureCallOp>(callee, operands).getResults();
 }
+
+namespace {
 
 absl::StatusOr<llvm::SmallVector<mlir::Value>> SubgraphToMlir(
     const PartitionedComputation& computation,
     const PartitionedComputation::Subgraph& subgraph,
     const CallTargetProvider& call_target_provider, mlir::ValueRange parameters,
-    mlir::ValueRange indices, mlir::ImplicitLocOpBuilder& builder) {
+    mlir::ValueRange indices, mlir::ValueRange injected_param_values,
+    mlir::ImplicitLocOpBuilder& builder) {
   llvm::SmallVector<mlir::Value> results;
   absl::node_hash_map<std::pair<const HloInstruction*, std::vector<void*>>,
                       llvm::SmallVector<mlir::Value>>
@@ -864,47 +887,17 @@ absl::StatusOr<llvm::SmallVector<mlir::Value>> SubgraphToMlir(
   std::function<absl::StatusOr<llvm::SmallVector<mlir::Value>>(
       const HloInstruction* instr, mlir::ValueRange indices)>
       emit_instr;
-  absl::flat_hash_map<mlir::Operation*, llvm::SmallVector<mlir::func::CallOp>>
-      calls;
 
   auto provide_operand = [&](const HloInstruction* instr, int index,
                              mlir::ValueRange indices)
       -> absl::StatusOr<llvm::SmallVector<mlir::Value>> {
     auto* operand = instr->operand(index);
-    if (operand->opcode() == HloOpcode::kParameter) {
-      mlir::Value value = parameters[operand->parameter_number()];
-      if (value.getType().isa<mlir::TensorType>()) {
-        value = builder.create<mlir::tensor::ExtractOp>(value, indices);
-      } else {
-        CHECK_EQ(indices.size(), 0);
-      }
-      return {{value}};
-    }
-
-    const auto& target_subgraph = computation.FindSubgraph(operand);
-    if (&target_subgraph == &subgraph) {
+    if (operand->opcode() != HloOpcode::kParameter &&
+        &computation.FindSubgraph(operand) == &subgraph) {
       return emit_instr(operand, indices);
     }
-
-    auto callee = call_target_provider(operand);
-    llvm::SmallVector<mlir::Value> operands(parameters);
-    absl::c_copy(indices, std::back_inserter(operands));
-
-    // Check if we already have a call to this function in scope and reuse it
-    // if so. func.call is not pure, even if the call target is pure, so CSE
-    // won't clean this up.
-    auto& existing_calls = calls[callee];
-    for (auto call : existing_calls) {
-      if (call.getOperands() == operands &&
-          call->getParentRegion()->findAncestorBlockInRegion(
-              *builder.getInsertionBlock())) {
-        return call.getResults();
-      }
-    }
-    return existing_calls
-        .emplace_back(builder.create<mlir::func::CallOp>(
-            call_target_provider(operand), operands))
-        .getResults();
+    return ProvideParameter(computation, instr, index, indices,
+                            call_target_provider, builder);
   };
 
   emit_instr = [&](const HloInstruction* instr, mlir::ValueRange indices)
@@ -945,6 +938,31 @@ absl::StatusOr<llvm::SmallVector<mlir::Value>> SubgraphToMlir(
     results.append(root_results.begin(), root_results.end());
   }
   return results;
+}
+
+}  // namespace
+
+absl::Status SubgraphToMlirFunction(
+    const PartitionedComputation& computation,
+    const PartitionedComputation::Subgraph& subgraph, mlir::func::FuncOp& func,
+    const CallTargetProvider& call_target_provider) {
+  TF_RET_CHECK(func != nullptr);
+  mlir::ImplicitLocOpBuilder builder(func.getLoc(), func->getContext());
+  builder.setInsertionPointToStart(func.addEntryBlock());
+  auto parameters = func.getArguments().take_front(
+      computation.computation().num_parameters());
+  auto indices_and_injected_params = func.getArguments().drop_front(
+      computation.computation().num_parameters());
+  int num_injected_params = subgraph.injected_param_indices.size();
+  auto indices = indices_and_injected_params.drop_back(num_injected_params);
+  auto injected_params =
+      indices_and_injected_params.take_back(num_injected_params);
+  TF_ASSIGN_OR_RETURN(
+      auto results,
+      SubgraphToMlir(computation, subgraph, call_target_provider, parameters,
+                     indices, injected_params, builder));
+  builder.create<mlir::func::ReturnOp>(results);
+  return absl::OkStatus();
 }
 
 }  // namespace mlir_converter

@@ -119,9 +119,7 @@ TEST(EventMgr, WarnIfInCallback) {
   auto stream_exec = se::GPUMachineManager()->ExecutorForDevice(0).value();
   TEST_EventMgr em(stream_exec, GPUOptions());
   TEST_EventMgrHelper th(&em);
-  std::unique_ptr<se::Stream> stream(new se::Stream(stream_exec));
-  CHECK(stream);
-  stream->Init();
+  TF_ASSERT_OK_AND_ASSIGN(auto stream, stream_exec->CreateStream());
   bool hit = false;
   th.StartPollingLoop();
   device_event_mgr::WarnIfInCallback([&hit] { hit = true; });
@@ -439,9 +437,7 @@ static void BM_no_ops(::testing::benchmark::State& state) {
   const int iters = state.max_iterations;
 
   auto stream_exec = se::GPUMachineManager()->ExecutorForDevice(0).value();
-  std::unique_ptr<se::Stream> stream(new se::Stream(stream_exec));
-  CHECK(stream);
-  stream->Init();
+  TF_ASSERT_OK_AND_ASSIGN(auto stream, stream_exec->CreateStream());
   TEST_EventMgr em(stream_exec, GPUOptions());
 
   auto benchmark_exec = [&]() {

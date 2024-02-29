@@ -232,7 +232,7 @@ struct ConvertStatsToQDQs : public OpRewritePattern<quantfork::StatisticsOp> {
         rmin = std::min(rmin, 0.0);
         rmax = std::max(rmax, 0.0);
         if (num_bits == 16) {
-          // TODO(b/266536261): Since the kernel implementation assumes that
+          // TODO: b/266536261 - Since the kernel implementation assumes that
           // 16x8 integer quantization is symmetric, this MLIR quantizer
           // supports only symmetric quantization.
           rmax = std::max(std::abs(rmin), std::abs(rmax));
@@ -260,7 +260,7 @@ struct ConvertStatsToQDQs : public OpRewritePattern<quantfork::StatisticsOp> {
       rmin = std::min(rmin, 0.0);
       rmax = std::max(rmax, 0.0);
       if (num_bits == 16) {
-        // TODO(b/266536261): Since the kernel implementation assumes that
+        // TODO: b/266536261 - Since the kernel implementation assumes that
         // 16x8 integer quantization is symmetric, this MLIR quantizer supports
         // only symmetric quantization.
         rmax = std::max(std::abs(rmin), std::abs(rmax));
@@ -893,28 +893,6 @@ quant::QuantizedType GetUniformQuantizedTypeForBias(
     const std::vector<quant::QuantizedType>& op_types, int adjusted_quant_dim,
     bool legacy_float_scale = false);
 
-// Propagates quantization parameters across ops in this function and satisfy
-// the quantization specification of the ops. This methods assumes the initial
-// quantization parameters are stored as adjacent quantize and dequantize ops
-// and the propagation results are materialized by inserting pairs of quantize
-// and dequantize ops to this function. Set `disable_per_channel` to true to not
-// use per channel quantization even the op supports it.
-// Setting `infer_tensor_range` to true, to infer quantization parameters from
-// the activation ops and weight constants. This is only used for post-training
-// quantization.
-void ApplyQuantizationParamsPropagation(mlir::func::FuncOp func, bool is_signed,
-                                        int bit_width, bool disable_per_channel,
-                                        OpQuantSpecGetter op_quant_spec_getter,
-                                        bool infer_tensor_ranges,
-                                        bool legacy_float_scale = false,
-                                        bool is_qdq_conversion = false);
-
-void ApplyQuantizationParamsPropagation(
-    mlir::func::FuncOp func, bool is_signed, int bit_width,
-    bool disable_per_channel, OpQuantSpecGetter op_quant_spec_getter,
-    OpQuantScaleSpecGetter op_quant_scale_spec_getter, bool infer_tensor_ranges,
-    bool legacy_float_scale = false, bool is_qdq_conversion = false);
-
 // Gets quantization scale specs (e.g. fixed output range, same result and
 // operand scales) from the default quantization interfaces. The op should
 // outlive returned spec for its interface methods to be properly referenced.
@@ -940,17 +918,17 @@ quant::UniformQuantizedType GetFixedOutputRange(bool is_signed, int bit_width,
                                                 Type tensor_type, double scale,
                                                 int64_t zero_point);
 
-// Extrace min and max values from the DenseFPElementsAttr, and stores them into
-// `mins` and `maxs`. When mins and maxs are extracted per-channel, `dim_size`
-// is number of channels and `slice_size` is the size of slice per each channel.
-// When `symmetric` is true, the range is expanded to [-M, M].
+// Extracts min and max values from the DenseFPElementsAttr, and stores them
+// into `mins` and `maxs`. When mins and maxs are extracted per-channel,
+// `dim_size` is number of channels and `slice_size` is the size of slice per
+// each channel. When `symmetric` is true, the range is expanded to [-M, M].
 void ExtractMinMaxFromAttr(DenseFPElementsAttr values, int dim_size,
                            int slice_size, bool symmetric,
                            SmallVectorImpl<double>& mins,
                            SmallVectorImpl<double>& maxs);
 
 // Returns the quantized type for the
-// input_type/min/max/storag_type_width/narrow_range.
+// input_type/min/max/storage_type_width/narrow_range.
 Type GetQuantizedType(Builder builder, Type input_type, ArrayRef<double> min,
                       ArrayRef<double> max, int quant_dim,
                       int storage_type_width, bool narrow_range, bool is_signed,

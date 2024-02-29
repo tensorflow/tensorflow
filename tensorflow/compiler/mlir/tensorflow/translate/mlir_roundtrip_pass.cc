@@ -33,7 +33,7 @@ namespace tensorflow {
 
 using mlir::MLIRContext;
 
-static tsl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> Import(
+static absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> Import(
     const GraphOptimizationPassOptions& options, const Graph& graph,
     MLIRContext* context) {
   // TODO(fengliuai): get debug info at runtime.

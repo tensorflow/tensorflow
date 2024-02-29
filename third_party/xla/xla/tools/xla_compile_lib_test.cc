@@ -45,6 +45,7 @@ namespace xla {
 namespace {
 
 using ::testing::IsEmpty;
+using ::testing::IsNull;
 using ::testing::Not;
 using ::tsl::testing::IsOk;
 using ::tsl::testing::IsOkAndHolds;
@@ -149,6 +150,59 @@ TEST_F(XlaCompileLibTest, DISABLED_ON_GPU(WriteResultFileWritesTheFile)) {
   EXPECT_EQ(5, got_result.perf_stats().total_duration().seconds());
   EXPECT_EQ(0.5 * tsl::EnvTime::kSecondsToNanos,
             got_result.perf_stats().total_duration().nanos());
+}
+
+TEST_F(XlaCompileLibTest, LoadModuleErrors) {
+  EXPECT_THAT(LoadModule("/does/not/exist"), Not(IsOk()));
+}
+
+TEST_F(XlaCompileLibTest, LoadModuleLoadsTextFormat) {
+  const std::string module_file =
+      tsl::io::JoinPath(tsl::testing::TmpDir(), "module.txt");
+  TF_ASSERT_OK(tsl::WriteStringToFile(tsl::Env::Default(), module_file,
+                                      module_->ToString()));
+
+  EXPECT_THAT(LoadModule(module_file), IsOkAndHolds(Not(IsNull())));
+}
+
+TEST_F(XlaCompileLibTest, DISABLED_ON_GPU(MainForCpu)) {
+  const std::string module_file =
+      tsl::io::JoinPath(tsl::testing::TmpDir(), "module.txt");
+  TF_ASSERT_OK(tsl::WriteStringToFile(tsl::Env::Default(), module_file,
+                                      module_->ToString()));
+
+  const std::string output_path =
+      tsl::io::JoinPath(tsl::testing::TmpDir(), "output");
+  const std::string result_file =
+      tsl::io::JoinPath(tsl::testing::TmpDir(), "result.pb");
+
+  TF_EXPECT_OK(XlaCompileMain(module_file, output_path, "cpu",
+                              /* gpu_target_config_path= */ "",
+                              /* autotune_results_path= */ "",
+                              /* symbol_repo= */ "", /* symbol_id= */ "",
+                              /* use_attached_device=*/false,
+                              /* wait_for_uploads */ false,
+                              /* result_output_file=*/result_file));
+}
+
+TEST_F(XlaCompileLibTest, DISABLED_ON_CPU(MainForGpu)) {
+  const std::string module_file =
+      tsl::io::JoinPath(tsl::testing::TmpDir(), "module.txt");
+  TF_ASSERT_OK(tsl::WriteStringToFile(tsl::Env::Default(), module_file,
+                                      module_->ToString()));
+
+  const std::string output_path =
+      tsl::io::JoinPath(tsl::testing::TmpDir(), "output");
+  const std::string result_file =
+      tsl::io::JoinPath(tsl::testing::TmpDir(), "result.pb");
+
+  TF_EXPECT_OK(XlaCompileMain(module_file, output_path, "gpu",
+                              /* gpu_target_config_path= */ "",
+                              /* autotune_results_path= */ "",
+                              /* symbol_repo= */ "", /* symbol_id= */ "",
+                              /* use_attached_device=*/true,
+                              /* wait_for_uploads */ false,
+                              /* result_output_file=*/result_file));
 }
 
 }  // namespace

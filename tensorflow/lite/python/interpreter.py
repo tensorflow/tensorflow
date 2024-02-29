@@ -352,7 +352,7 @@ class Interpreter:
   Models obtained from `TfLiteConverter` can be run in Python with
   `Interpreter`.
 
-  As an example, lets generate a simple Keras model and convert it to TFLite
+  As an example, let's generate a simple Keras model and convert it to TFLite
   (`TfLiteConverter` also supports other input formats with `from_saved_model`
   and `from_concrete_function`)
 
@@ -597,7 +597,7 @@ class Interpreter:
         'shape': The shape of the tensor.
         'quantization': Deprecated, use 'quantization_parameters'. This field
             only works for per-tensor quantization, whereas
-            'quantization_parameters' works in all cases.
+            'quantization_parameters' work in all cases.
         'quantization_parameters': The parameters used to quantize the tensor:
           'scales': List of scales (one if per-tensor quantization)
           'zero_points': List of zero_points (one if per-tensor quantization)
@@ -762,7 +762,7 @@ class Interpreter:
     ]
 
   def get_signature_list(self):
-    """Gets list of SignatureDefs in the model.
+    """Gets the list of SignatureDefs in the model.
 
     Example,
     ```
@@ -780,7 +780,7 @@ class Interpreter:
     Returns:
       A list of SignatureDef details in a dictionary structure.
       It is keyed on the SignatureDef method name, and the value holds
-      dictionary of inputs and outputs.
+      a dictionary of inputs and outputs.
     """
     full_signature_defs = self._interpreter.GetSignatureDefs()
     for _, signature_def in full_signature_defs.items():
@@ -830,19 +830,19 @@ class Interpreter:
     None can be passed for signature_key if the model has a single Signature
     only.
 
-    All names used are this specific SignatureDef names.
+    All names used are these specific SignatureDef names.
 
 
     Args:
       signature_key: Signature key for the SignatureDef, it can be None if and
-        only if the model has a single SignatureDef. Default value is None.
+        only if the model has a single SignatureDef. The Default value is None.
 
     Returns:
       This returns a callable that can run inference for SignatureDef defined
       by argument 'signature_key'.
       The callable will take key arguments corresponding to the arguments of the
       SignatureDef, that should have numpy values.
-      The callable will returns dictionary that maps from output names to numpy
+      The callable will return dictionary that maps from output names to numpy
       values of the computed results.
 
     Raises:
@@ -878,9 +878,9 @@ class Interpreter:
   def tensor(self, tensor_index):
     """Returns function that gives a numpy view of the current tensor buffer.
 
-    This allows reading and writing to this tensors w/o copies. This more
+    This allows reading and writing to these tensors w/o copies. This more
     closely mirrors the C++ Interpreter class interface's tensor() member, hence
-    the name. Be careful to not hold these output references through calls
+    the name. Be careful not to hold these output references through calls
     to `allocate_tensors()` and `invoke()`. This function cannot be used to read
     intermediate results.
 
@@ -901,7 +901,7 @@ class Interpreter:
     than necessary. If you do, then the interpreter can no longer be invoked,
     because it is possible the interpreter would resize and invalidate the
     referenced tensors. The NumPy API doesn't allow any mutability of the
-    the underlying buffers.
+    underlying buffers.
 
     WRONG:
 
@@ -911,7 +911,7 @@ class Interpreter:
     interpreter.allocate_tensors()  # This will throw RuntimeError
     for i in range(10):
       input.fill(3.)
-      interpreter.invoke()  # this will throw RuntimeError since input,output
+      interpreter.invoke()  # this will throw RuntimeError since input, output
     ```
 
     Args:

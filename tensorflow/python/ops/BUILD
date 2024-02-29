@@ -2074,6 +2074,7 @@ py_strict_library(
         ":math_ops_gen",
         ":nn_ops_gen",
         ":sparse_ops_gen",
+        "//tensorflow/python/compat",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:dtypes",

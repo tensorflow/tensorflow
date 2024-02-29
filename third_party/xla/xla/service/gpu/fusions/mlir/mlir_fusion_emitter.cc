@@ -27,8 +27,8 @@ limitations under the License.
 #include "mlir/Conversion/AffineToStandard/AffineToStandard.h"  // from @llvm-project
 #include "mlir/Dialect/Affine/IR/AffineOps.h"  // from @llvm-project
 #include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
-#include "mlir/Dialect/Arith/Transforms/Passes.h"  // from @llvm-project
 #include "mlir/Dialect/Bufferization/IR/BufferizableOpInterface.h"  // from @llvm-project
+#include "mlir/Dialect/ControlFlow/IR/ControlFlow.h"  // from @llvm-project
 #include "mlir/Dialect/Func/Extensions/InlinerExtension.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/GPU/IR/GPUDialect.h"  // from @llvm-project
@@ -49,6 +49,9 @@ limitations under the License.
 #include "mlir/Interfaces/DataLayoutInterfaces.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
+#include "mlir/Target/LLVMIR/Dialect/Builtin/BuiltinToLLVMIRTranslation.h"  // from @llvm-project
+#include "mlir/Target/LLVMIR/Dialect/LLVMIR/LLVMToLLVMIRTranslation.h"  // from @llvm-project
+#include "mlir/Target/LLVMIR/Dialect/NVVM/NVVMToLLVMIRTranslation.h"  // from @llvm-project
 #include "mlir/Target/LLVMIR/Export.h"  // from @llvm-project
 #include "mlir/Transforms/Passes.h"  // from @llvm-project
 #include "xla/hlo/ir/hlo_instructions.h"
@@ -56,6 +59,7 @@ limitations under the License.
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/gpu/fusions/fusion_emitter.h"
 #include "xla/service/gpu/fusions/mlir/elemental_hlo_to_mlir.h"
+#include "xla/service/gpu/fusions/mlir/ir/xla_gpu_ops.h"
 #include "xla/service/gpu/fusions/mlir/passes.h"
 #include "xla/service/gpu/fusions/mlir/type_util.h"
 #include "xla/service/gpu/ir_emitter_context.h"
@@ -67,6 +71,7 @@ limitations under the License.
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
 #include "tsl/platform/errors.h"
+#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace gpu {
@@ -209,8 +214,11 @@ MlirFusionEmitterBase::CreateLLVMModule(
   mlir::PassManager pm(&mlir_context);
   // TODO(jreiffers): Proper inlining and CSE of function calls.
   pm.addPass(mlir::createCanonicalizerPass());
+  pm.addPass(mlir::createInlinerPass());
+  pm.addPass(mlir::createCanonicalizerPass());
   pm.addPass(mlir::createCSEPass());
   pm.addPass(CreatePropagateSliceIndicesPass());
+  pm.addPass(CreateLowerFuncPass());
   pm.addPass(CreateLowerTensorsPass());
   pm.addPass(CreateMergePointersToSameSlicePass());
 
@@ -247,11 +255,15 @@ MlirFusionEmitterBase::CreateMLIRModule(
     const BufferAssignment* buffer_assignment) const {
   context.loadDialect<mlir::tensor::TensorDialect, mlir::func::FuncDialect,
                       mlir::affine::AffineDialect, mlir::arith::ArithDialect,
-                      mlir::math::MathDialect, mlir::scf::SCFDialect,
-                      mlir::mhlo::MhloDialect, mlir::gpu::GPUDialect,
-                      mlir::NVVM::NVVMDialect>();
+                      mlir::cf::ControlFlowDialect, mlir::math::MathDialect,
+                      mlir::scf::SCFDialect, mlir::mhlo::MhloDialect,
+                      mlir::gpu::GPUDialect, mlir::NVVM::NVVMDialect,
+                      xla::gpu::XlaGpuDialect>();
   mlir::DialectRegistry registry;
   mlir::func::registerInlinerExtension(registry);
+  mlir::registerBuiltinDialectTranslation(registry);
+  mlir::registerLLVMDialectTranslation(registry);
+  mlir::registerNVVMDialectTranslation(registry);
   context.appendDialectRegistry(registry);
 
   mlir::OpBuilder builder(&context);
@@ -334,10 +346,10 @@ MlirFusionEmitterBase::CreateMLIRModule(
 absl::StatusOr<llvm::SmallVector<mlir::Value>>
 MlirFusionEmitterBase::EmitLoopNest(
     mlir::ImplicitLocOpBuilder& b, mlir::ValueRange output_tensors,
-    const IndexingMap& thread_to_output_map,
+    const IndexingMap& indexing_map,
     const std::function<absl::StatusOr<llvm::SmallVector<mlir::Value>>(
-        mlir::ValueRange outputs_tensors, mlir::ValueRange output_indices)>&
-        create_body) const {
+        mlir::ValueRange outputs_tensors, mlir::ValueRange dim_values,
+        mlir::ValueRange symbol_values)>& create_body) const {
   llvm::SmallVector<mlir::Value> map_dims{
       EmitThreadId(b, 0), EmitThreadId(b, 1), EmitThreadId(b, 2),
       EmitBlockId(b, 0),  EmitBlockId(b, 1),  EmitBlockId(b, 2)};
@@ -352,8 +364,8 @@ MlirFusionEmitterBase::EmitLoopNest(
       make_loops;
   make_loops = [&](int i, mlir::ValueRange current_outputs)
       -> absl::StatusOr<llvm::SmallVector<mlir::Value>> {
-    if (i < thread_to_output_map.GetAffineMap().getNumSymbols()) {
-      auto range = thread_to_output_map.GetSymbolRange(i);
+    if (i < indexing_map.GetAffineMap().getNumSymbols()) {
+      auto range = indexing_map.GetSymbolRange(i);
       auto for_op = b.create<mlir::scf::ForOp>(cst(range.lower_bound),
                                                cst(range.upper_bound + 1),
                                                cst(1), current_outputs);
@@ -365,15 +377,13 @@ MlirFusionEmitterBase::EmitLoopNest(
       b.setInsertionPointAfter(for_op);
       return for_op.getResults();
     }
-    auto is_in_bounds = mlir_converter::CheckConstraints(
-        thread_to_output_map, map_dims, map_symbols, b);
+    auto is_in_bounds = mlir_converter::CheckConstraints(indexing_map, map_dims,
+                                                         map_symbols, b);
     auto if_op = b.create<mlir::scf::IfOp>(mlir::TypeRange{current_outputs},
                                            is_in_bounds, true, true);
     b.setInsertionPointToStart(if_op.getBody(0));
-    auto output_indices = mlir_converter::ApplyAffineMap(
-        thread_to_output_map.GetAffineMap(), map_dims, map_symbols, b);
     TF_ASSIGN_OR_RETURN(auto results,
-                        create_body(current_outputs, output_indices));
+                        create_body(current_outputs, map_dims, map_symbols));
     b.create<mlir::scf::YieldOp>(results);
     b.setInsertionPointToStart(if_op.getBody(1));
     b.create<mlir::scf::YieldOp>(current_outputs);

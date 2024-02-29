@@ -1070,6 +1070,10 @@ class XlaBuilder {
   StatusOr<XlaOp> AddBroadcastSequence(const Shape& output_shape,
                                        XlaOp operand);
 
+  // Internal helper method that broadcasts a scalar to the shape of the output.
+  absl::StatusOr<XlaOp> BroadcastScalarToOutputShape(XlaOp scalar,
+                                                     XlaOp output);
+
   // Internal helper method for creating a Reshape op with the already inferred
   // shape.
   virtual StatusOr<XlaOp> ReshapeInternal(const Shape& shape, XlaOp operand,

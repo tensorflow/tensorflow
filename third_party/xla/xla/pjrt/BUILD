@@ -363,6 +363,17 @@ cc_library(
 )
 
 cc_library(
+    name = "pjrt_layout",
+    hdrs = ["pjrt_layout.h"],
+    visibility = ["//xla:friends"],
+    deps = [
+        "//xla:shape_util",
+        "//xla:statusor",
+        "//xla/service:hlo_parser",
+    ],
+)
+
+cc_library(
     name = "layout_mode",
     srcs = ["layout_mode.cc"],
     hdrs = ["layout_mode.h"],
@@ -687,6 +698,7 @@ cc_library(
         "//xla/mlir_hlo:mhlo_passes",
         "//xla/pjrt/c:pjrt_c_api_hdrs",
         "//xla/pjrt/c:pjrt_c_api_helpers",
+        "//xla/pjrt/c:pjrt_c_api_profiler_extension_hdrs",
         "//xla/pjrt/distributed:key_value_store_interface",
         "//xla/service:computation_placer_hdr",
         "//xla/service:hlo_cost_analysis",

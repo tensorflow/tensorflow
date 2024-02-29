@@ -16,6 +16,7 @@ limitations under the License.
 #include <cstdint>
 #include <functional>
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -226,8 +227,7 @@ class GlobalShuffleDatasetOp::Dataset::Iterator
   }
 
  private:
-  std::function<int64_t(int64_t)> GetIndexMapper(
-      std::function<int64_t(int64_t)> parent_index_mapper) const
+  IndexMapperFn GetIndexMapper(IndexMapperFn parent_index_mapper) const
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
     uint32_t seed = static_cast<uint32_t>(seed_);
     uint32_t seed2 = static_cast<uint32_t>(seed2_);
@@ -235,9 +235,13 @@ class GlobalShuffleDatasetOp::Dataset::Iterator
     uint64_t max_index =
         cardinality_ > 0 ? static_cast<uint64_t>(cardinality_ - 1) : 0;
     return [parent_index_mapper, seed, seed2, seed3,
-            max_index](int64_t element_position) -> int64_t {
+            max_index](int64_t element_position) -> std::optional<int64_t> {
       if (parent_index_mapper != nullptr) {
-        element_position = parent_index_mapper(element_position);
+        std::optional<int64_t> shuffled_element_position =
+            parent_index_mapper(element_position);
+        if (shuffled_element_position.has_value()) {
+          element_position = *shuffled_element_position;
+        }
       }
       // This could happen if the source dataset generates more elements than
       // needed by the intermediate transformations. For example, when shuffling
@@ -246,9 +250,8 @@ class GlobalShuffleDatasetOp::Dataset::Iterator
       // `batch` drops remainders, the cardinality is 3. In this case, the
       // element position exceeds the max index. The caller should check the
       // return value and return end_of_sequence accordingly.
-      // TODO(b/325112575): Update `index_mapper` to return `std::optional`.
-      if (element_position < 0 || element_position > max_index) {
-        return -1;
+      if (element_position > max_index) {
+        return std::nullopt;
       }
       return static_cast<int64_t>(tensorflow::random::index_shuffle(
           static_cast<uint64_t>(element_position), {seed, seed2, seed3},

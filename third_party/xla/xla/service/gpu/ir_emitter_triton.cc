@@ -855,7 +855,7 @@ void StripParameterAddressSpaces(mlir::RewriterBase& rewriter,
 
   // Convert generic address spaces back to original ones within the function
   // body.
-  mlir::Block* entry = generic_func.addEntryBlock();
+  mlir::Block* entry = generic_func.addEntryBlock(rewriter);
   rewriter.setInsertionPointToEnd(entry);
   SmallVector<Value> converted_args;
   for (auto [arg, type] :

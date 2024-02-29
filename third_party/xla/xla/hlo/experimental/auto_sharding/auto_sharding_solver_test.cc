@@ -136,7 +136,6 @@ AutoShardingSolverRequest DefaultAutoShardingSolverRequest() {
   AddCosts(request.mutable_value_costs(), v);
   request.mutable_instruction_names()->Add(instruction_names.begin(),
                                            instruction_names.end());
-  AddCosts(request.mutable_computation_costs(), c);
   return request;
 }
 
@@ -218,7 +217,6 @@ AutoShardingSolverRequest AutoShardingSolverRequestWithEquivalences() {
   AddCosts(request.mutable_value_costs(), v);
   request.mutable_instruction_names()->Add(instruction_names.begin(),
                                            instruction_names.end());
-  AddCosts(request.mutable_computation_costs(), c);
   return request;
 }
 
@@ -363,6 +361,7 @@ TEST(CallORToolsSolverTest, HandlesMemoryEdgeCosts) {
                                          7000, 7100, 7200, 7300}};
   AddEdges(request.mutable_live_edges(), live_edges);
   AddCosts(request.mutable_memory_edge_costs(), memory_edge_costs);
+  request.set_enable_memory_edge_costs(true);
 
   const AutoShardingSolverResult result = CallORToolsSolver(request);
 
@@ -707,6 +706,10 @@ TEST(ScaleRequest, SkipsScaling) {
   AddCosts(expected_request.mutable_resharding_costs(), expected_r);
   expected_request.mutable_coeff_limit()->set_coeff(1e7);
   EXPECT_THAT(request, ::testing::EqualsProto(expected_request));
+}
+
+TEST(ValidateRequest, AcceptsAutoShardingSolverRequest) {
+  ValidateRequest(DefaultAutoShardingSolverRequest());
 }
 
 // clang-format on

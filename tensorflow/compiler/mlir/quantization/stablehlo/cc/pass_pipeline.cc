@@ -27,6 +27,7 @@ limitations under the License.
 
 namespace mlir::quant::stablehlo {
 
+using ::stablehlo::quantization::DebuggerConfig;
 using ::stablehlo::quantization::PipelineConfig;
 using ::stablehlo::quantization::QuantizationSpecs;
 using ::stablehlo::quantization::StaticRangePtqPreset;
@@ -34,8 +35,17 @@ using ::tensorflow::quantization::CalibrationOptions;
 
 void AddPreCalibrationPasses(OpPassManager& pm,
                              const CalibrationOptions& calibration_options,
-                             const QuantizationSpecs& quantization_specs) {
+                             const QuantizationSpecs& quantization_specs,
+                             const DebuggerConfig& debugger_config) {
+  // For models with NCHW convolution format. This pass is required because
+  // downstream pipeline handles NHWC convolution better for most cases.
+  pm.addNestedPass<func::FuncOp>(createNchwConvolutionToNhwcPass());
   pm.addPass(CreateLiftQuantizableSpotsAsFunctionsPass(quantization_specs));
+  if (debugger_config.debugger_type() !=
+      DebuggerConfig::DEBUGGER_TYPE_UNSPECIFIED) {
+    pm.addPass(CreateAddDumpTensorOpPass(debugger_config.debugger_type(),
+                                         debugger_config.log_dir_path()));
+  }
   pm.addNestedPass<func::FuncOp>(
       CreateInsertCustomAggregationOpsPass(calibration_options));
   pm.addPass(CreateIssueIDsOfCustomAggregationOpsPass());
@@ -50,6 +60,8 @@ void AddPostCalibrationPasses(
   QuantizeCompositeFunctionsPassOptions options;
   options.enable_per_channel_quantized_weight_ =
       static_range_ptq_preset.enable_per_channel_quantized_weight();
+  // For debugging purposes.
+  options.mlir_dump_file_name_ = "quantize_composite_functions";
   pm.addNestedPass<func::FuncOp>(
       CreateConvertCustomAggregationOpToQuantStatsPass());
   pm.addPass(createQuantizeCompositeFunctionsPass(options));

@@ -26,9 +26,9 @@ is built on MLIR's Affine Map infrastructure and adds HLO semantics.
 
 ### Coalescing
 
-Reasoning about memory coalescing becomes becomes feasible for non-trivial
-cases, when we know what elements/slices of the inputs are read to compute an
-element of the output.
+Reasoning about memory coalescing becomes feasible for non-trivial cases, when
+we know what elements/slices of the inputs are read to compute an element of the
+output.
 
 ### Operand Utilization
 
@@ -101,7 +101,7 @@ struct Range {
 
 struct IndexingMap {
  mlir::AffineMap affine_map;
- std::vector<Range> dimension_ranges;
+ std::vector<Range> dim_ranges;
  std::vector<Range> symbol_ranges;
  llvm::DenseMap<mlir::AffineExpr, Range> expr_ranges;
 };

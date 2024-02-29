@@ -184,6 +184,9 @@ Status GraphRunner::Run(Graph* graph, FunctionLibraryRuntime* function_library,
 
   CancellationManager cancellation_manager;
   args.cancellation_manager = &cancellation_manager;
+  if (function_library != nullptr) {
+    args.session_config = function_library->config_proto();
+  }
 
   // Run the graph.
   TF_RETURN_IF_ERROR(executor->Run(args));

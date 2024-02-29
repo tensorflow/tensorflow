@@ -119,11 +119,13 @@ bool IsTokenType(mlir::Type type) {
          type.isa<mlir::mhlo::TokenType>();
 }
 
-tsl::StatusOr<std::unique_ptr<XlaCallModuleLoader>> XlaCallModuleLoader::Create(
-    mlir::MLIRContext *context, int version, std::string module_str,
-    std::vector<std::string> disabled_checks,
-    std::vector<std::string> platforms, int num_invocation_args,
-    bool main_has_token_input_output) {
+absl::StatusOr<std::unique_ptr<XlaCallModuleLoader>>
+XlaCallModuleLoader::Create(mlir::MLIRContext *context, int version,
+                            std::string module_str,
+                            std::vector<std::string> disabled_checks,
+                            std::vector<std::string> platforms,
+                            int num_invocation_args,
+                            bool main_has_token_input_output) {
   std::unique_ptr<XlaCallModuleLoader> loader(new XlaCallModuleLoader);
   TF_RETURN_IF_ERROR(loader->LoadModule(
       context, version, std::move(module_str), std::move(disabled_checks),
@@ -580,7 +582,7 @@ absl::Status XlaCallModuleLoader::LowerModuleToMhlo() {
   return absl::OkStatus();
 }
 
-tsl::StatusOr<xla::XlaComputation> XlaCallModuleLoader::ToXlaComputation() {
+absl::StatusOr<xla::XlaComputation> XlaCallModuleLoader::ToXlaComputation() {
   xla::HloProto proto;
   mlir::MlirToHloConversionOptions options;
   TF_RETURN_IF_ERROR(

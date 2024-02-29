@@ -259,21 +259,6 @@ class FunctionalHloRunner {
       absl::Span<const std::string> hlo_files, InputFormat input_format,
       const PerDeviceLiteralVecType& arguments = {});
 
-  // Loads an HLO module from hlo_file according to input_format and run it.
-  // The module arguments are provided by `argument_literals`. The arguments per
-  // device is defined by the `per_device_index_vec`, which should contain a
-  // vector of indices for each local device. This means different device may
-  // use the same argument literals. This is essential to run HLO modules with
-  // large arguments (e.g., models with large weights).
-  static absl::StatusOr<PerDeviceLiteralVecType> LoadAndRun(
-      PjRtClient& client, const DebugOptions& debug_options,
-      const PreprocessingOptions& preproc_options,
-      const CompileOptions& compile_options,
-      const RunningOptions& running_options,
-      absl::Span<const std::string> hlo_files, InputFormat input_format,
-      const LiteralVec& argument_literals,
-      const PerDeviceIndexVecType& per_device_index_vec);
-
   // Loads and compiles an HLO for debugging purposes.
   //
   // This function allows compiling multi-device HLOs on machines with fewer
@@ -294,20 +279,6 @@ class FunctionalHloRunner {
       const CompileOptions& compile_options,
       const RunningOptions& running_options, HloModule* hlo_module,
       const PerDeviceLiteralVecType& arguments = {});
-
-  // Compiles and runs the given HLO module with the given arguments for each
-  // device. The module arguments are provided by `argument_literals`. The
-  // arguments per device is defined by the `per_device_index_vec`, which should
-  // contain a vector of indices for each local device. This means different
-  // devices may use the same argument literals. This is essential to run HLO
-  // modules with large arguments (e.g., models with large weights).
-  static absl::StatusOr<PerDeviceLiteralVecType> CompileAndRun(
-      PjRtClient& client, const DebugOptions& debug_options,
-      const PreprocessingOptions& preproc_options,
-      const CompileOptions& compile_options,
-      const RunningOptions& running_options, HloModule* hlo_module,
-      const LiteralVec& argument_literals,
-      const PerDeviceIndexVecType& argument_indices);
 
   // Compiles the HLO module.
   static absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>> Compile(
@@ -330,14 +301,6 @@ class FunctionalHloRunner {
   static absl::StatusOr<PerDeviceLiteralVecType> Run(
       PjRtClient& client, PjRtLoadedExecutable* executable,
       const PerDeviceLiteralVecType& arguments,
-      const RunningOptions& running_options);
-
-  // Runs the executable, where the module arguments are provided through
-  // a shared literal vector and per-device indices.
-  static absl::StatusOr<PerDeviceLiteralVecType> Run(
-      PjRtClient& client, PjRtLoadedExecutable* executable,
-      const LiteralVec& argument_literals,
-      const PerDeviceIndexVecType& argument_indices,
       const RunningOptions& running_options);
 
   static absl::StatusOr<std::unique_ptr<HloModule>> ReadModuleFromHloTextFile(

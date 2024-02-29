@@ -32,6 +32,15 @@ int64_t MinThreadsXRowReduction(const HloModuleConfig& hlo_module_config);
 inline constexpr int64_t BatchedReductionRaceFreeBound() { return 8; }
 
 struct ReductionDimensions {
+  // The reduction dimension indices used below.
+  constexpr static int kRowMajorReducedDimension = 0;
+  constexpr static int kRowKeptDimension = 1;
+  constexpr static int kRowMinorReducedDimension = 2;
+
+  constexpr static int kColMajorKeptDimension = 0;
+  constexpr static int kColReducedDimension = 1;
+  constexpr static int kColMinorKeptDimension = 2;
+
   // Indicates whether the reduction is a row reduction or a column reduction.
   bool is_row_reduction;
 

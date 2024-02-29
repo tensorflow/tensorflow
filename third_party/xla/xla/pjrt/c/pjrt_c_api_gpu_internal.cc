@@ -185,6 +185,7 @@ PLUGIN_Profiler_Api profiler_api{
 };
 
 PJRT_Profiler_Extension profiler_extension{
+    /*struct_size=*/PJRT_Profiler_Extension_STRUCT_SIZE,
     /*type=*/PJRT_Extension_Type::PJRT_Extension_Type_Profiler,
     /*next=*/nullptr,
     /*profiler_api=*/&profiler_api,
@@ -216,18 +217,21 @@ PJRT_Error* PJRT_Gpu_Register_Custom_Call(
   }
 }
 
-PJRT_Gpu_Custom_Call custom_call{
-    /*type=*/PJRT_Extension_Type::PJRT_Extension_Type_Gpu_Custom_Call,
-    /*next=*/&profiler_extension,
-    /*custom_call=*/PJRT_Gpu_Register_Custom_Call,
-};
+const PJRT_Api* GetGpuPjrtApi() {
+  static PJRT_Gpu_Custom_Call custom_call{
+      /*struct_size=*/PJRT_Gpu_Custom_Call_STRUCT_SIZE,
+      /*type=*/PJRT_Extension_Type::PJRT_Extension_Type_Gpu_Custom_Call,
+      /*next=*/reinterpret_cast<PJRT_Extension_Base*>(&profiler_extension),
+      /*custom_call=*/PJRT_Gpu_Register_Custom_Call,
+  };
+  static const PJRT_Api pjrt_api =
+      pjrt::CreatePjrtApi(pjrt::gpu_plugin::PJRT_Client_Create,
+                          pjrt::gpu_plugin::PJRT_GpuDeviceTopology_Create,
+                          pjrt::PJRT_Plugin_Initialize_NoOp,
+                          reinterpret_cast<PJRT_Extension_Base*>(&custom_call));
 
-constexpr PJRT_Api pjrt_api = pjrt::CreatePjrtApi(
-    pjrt::gpu_plugin::PJRT_Client_Create,
-    pjrt::gpu_plugin::PJRT_GpuDeviceTopology_Create,
-    pjrt::PJRT_Plugin_Initialize_NoOp, static_cast<void*>(&custom_call));
-
-const PJRT_Api* GetGpuPjrtApi() { return &pjrt_api; }
+  return &pjrt_api;
+}
 
 }  // namespace gpu_plugin
 }  // namespace pjrt

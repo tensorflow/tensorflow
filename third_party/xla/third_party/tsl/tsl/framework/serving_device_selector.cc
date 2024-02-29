@@ -68,10 +68,10 @@ DeviceReservation& DeviceReservation::operator=(DeviceReservation&& r) {
   // To make tracked execution time as accurate as possible, we only record this
   // execution time if two programs ran back-to-back without host round trip.
   if (!device_state.timer_reset && !had_error) {
-    LOG(INFO) << "Complete. update device[" << device_index
-              << "], priority: " << priority
-              << ", prefetch: " << static_cast<int>(prefetch_results)
-              << ", time: " << now_ns - device_state.last_started_ns;
+    VLOG(4) << "Complete. update device[" << device_index
+            << "], priority: " << priority
+            << ", prefetch: " << static_cast<int>(prefetch_results)
+            << ", time: " << now_ns - device_state.last_started_ns;
     const_cast<ExecutionInfo*>(execution_info)
         ->AddTime(now_ns - device_state.last_started_ns, prefetch_results);
     // Only update min_exec_time_ when running_average is updated. This avoids

@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef XLA_PYTHON_PY_ARRAY_H_
 #define XLA_PYTHON_PY_ARRAY_H_
 
+#include <cstdint>
 #include <memory>
 #include <optional>
 #include <string_view>
@@ -24,20 +25,50 @@ limitations under the License.
 
 // placeholder for index annotation headers
 #include "llvm/Support/Casting.h"
+#include "pybind11/numpy.h"  // from @pybind11
 #include "pybind11/pybind11.h"  // from @pybind11
+#include "pybind11/pytypes.h"  // from @pybind11
+#include "pybind11/stl.h"  // from @pybind11
 #include "xla/python/ifrt/array.h"
+#include "xla/python/ifrt/future.h"
 #include "xla/python/pjrt_ifrt/pjrt_array.h"
-#include "xla/python/py_buffer.h"
-#include "xla/python/types.h"
+#include "xla/python/py_client.h"
+#include "xla/python/traceback.h"
+#include "xla/shape.h"
+#include "xla/status.h"
+#include "xla/statusor.h"
 
 namespace xla {
+
+// Private to PyArray, but you cannot forward declare member classes.
+// Not thread safe; assumes the GIL is held.
+class PyHostValue {
+ public:
+  PyHostValue();
+  ~PyHostValue();
+
+  PyHostValue(const PyHostValue&) = delete;
+  PyHostValue(PyHostValue&&) = delete;
+  PyHostValue& operator=(const PyHostValue&) = delete;
+  PyHostValue& operator=(PyHostValue&&) = delete;
+
+  Status CopyToHostAsync(std::optional<Shape>& dynamic_shape_holder,
+                         ifrt::Array* ifrt_array);
+
+  StatusOr<pybind11::object> AsNumPyArray(
+      std::optional<Shape>& dynamic_shape_holder, ifrt::Array* ifrt_array);
+
+ private:
+  ifrt::Future<Status> ready_;
+  pybind11::array value_;
+};
 
 // Private to PyArray, but you cannot forward declare member classes.
 struct PyArray_Storage {
   PyArray_Storage(pybind11::object aval, bool weak_type, pybind11::dtype dtype,
                   std::vector<int64_t> shape, pybind11::object sharding,
                   bool committed, std::shared_ptr<PyClient> py_client,
-                  std::shared_ptr<Traceback> traceback,
+                  std::optional<nb_traceback> traceback,
                   tsl::RCReference<ifrt::Array> ifrt_array);
 
   // TODO(yashkatariya): remove this once the transition completes.
@@ -60,12 +91,12 @@ struct PyArray_Storage {
   bool committed = false;
 
   std::shared_ptr<PyClient> py_client;
-  std::shared_ptr<Traceback> traceback;
+  std::optional<nb_traceback> traceback;
   tsl::RCReference<ifrt::Array> ifrt_array;
 
   // optional field, used only in python
   std::vector<PyArray> py_arrays;
-  std::shared_ptr<PyHostValue> host_value;  // Protected by the GIL.
+  PyHostValue host_value;  // Protected by the GIL.
   std::optional<Shape> dynamic_shape = std::nullopt;
 
   // Doubly-linked list of all PyArrays known to the client. Protected by the
@@ -100,16 +131,18 @@ class PyArray : public pybind11::object {
   PyArray(pybind11::object aval, bool weak_type, pybind11::dtype dtype,
           std::vector<int64_t> shape, pybind11::object sharding,
           std::shared_ptr<PyClient> py_client,
-          std::shared_ptr<Traceback> traceback,
+          std::optional<nb_traceback> traceback,
           tsl::RCReference<ifrt::Array> ifrt_array, bool committed,
           bool skip_checks);
 
   static PyArray MakeFromSingleDeviceArray(
-      std::shared_ptr<PyClient> py_client, std::shared_ptr<Traceback> traceback,
+      std::shared_ptr<PyClient> py_client,
+      std::optional<nb_traceback> traceback,
       tsl::RCReference<ifrt::Array> ifrt_array, bool weak_type, bool committed);
 
   static PyArray MakeFromIfrtArrayAndSharding(
-      std::shared_ptr<PyClient> py_client, std::shared_ptr<Traceback> traceback,
+      std::shared_ptr<PyClient> py_client,
+      std::optional<nb_traceback> traceback,
       tsl::RCReference<ifrt::Array> ifrt_array, pybind11::object sharding,
       bool weak_type, bool committed, bool skip_checks);
 
@@ -138,7 +171,7 @@ class PyArray : public pybind11::object {
     return GetStorage().py_client;
   }
 
-  const std::shared_ptr<Traceback>& traceback() const {
+  const std::optional<nb_traceback>& traceback() const {
     return GetStorage().traceback;
   }
 

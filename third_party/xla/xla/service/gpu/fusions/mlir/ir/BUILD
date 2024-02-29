@@ -18,6 +18,8 @@ td_library(
     srcs = glob(["*.td"]),
     includes = ["."],
     deps = [
+        "@llvm-project//mlir:CallInterfacesTdFiles",
+        "@llvm-project//mlir:InferTypeOpInterfaceTdFiles",
         "@llvm-project//mlir:OpBaseTdFiles",
         "@llvm-project//mlir:SideEffectInterfacesTdFiles",
     ],
@@ -56,7 +58,10 @@ cc_library(
     deps = [
         ":xla_gpu_ops_inc_gen",
         "@llvm-project//llvm:Support",
-        "@llvm-project//mlir:ControlFlowInterfaces",
+        "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:InferTypeOpInterface",
+        "@llvm-project//mlir:Support",
+        "@llvm-project//mlir:Transforms",
     ],
 )

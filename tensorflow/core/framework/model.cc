@@ -155,7 +155,7 @@ class ModelTimingPriorityQueue {
   }
 
   // Pops the top item from the queue, i.e. node with the largest total time.
-  StatusOr<std::pair<double, Node*>> PopSlowestStageRoot() {
+  absl::StatusOr<std::pair<double, Node*>> PopSlowestStageRoot() {
     if (stage_roots_queue_.empty()) {
       return errors::Internal(
           "Model timing priority queue is empty during stage-based "
@@ -2286,8 +2286,9 @@ void Model::AddNode(Node::Factory factory, const string& name,
                     std::shared_ptr<Node>* out_node) {
   // The name captures the sequence of iterators joined by `::`. We only use the
   // last element of the sequence as the name node.
+  auto node_name = str_util::Split(name, ':', str_util::SkipEmpty()).back();
   mutex_lock l(mu_);
-  std::shared_ptr<Node> node = factory({id_counter_++, name, parent});
+  std::shared_ptr<Node> node = factory({id_counter_++, node_name, parent});
   if (!output_) {
     output_ = node;
   }
@@ -2795,7 +2796,7 @@ double Model::ComputeSnapshotProcessingTimeNsec() const {
   }
 
   ModelTimingPriorityQueue priority_queue(*model_timing);
-  StatusOr<std::pair<double, Node*>> critical_root_status =
+  absl::StatusOr<std::pair<double, Node*>> critical_root_status =
       priority_queue.PopSlowestStageRoot();
   if (!critical_root_status.ok()) {
     return 0.0;
@@ -2846,7 +2847,7 @@ void Model::OptimizeStageBasedAsyncInterleaveManyNodes(
   ModelTimingPriorityQueue priority_queue(model_timing);
   NodeParallelismParameters node_parallelism;
   while (!cancellation_manager->IsCancelled()) {
-    StatusOr<std::pair<double, Node*>> critical_root_status =
+    absl::StatusOr<std::pair<double, Node*>> critical_root_status =
         priority_queue.PopSlowestStageRoot();
     if (!critical_root_status.ok()) {
       // All async interleave many nodes have been processed.
@@ -2927,7 +2928,7 @@ void Model::OptimizeStageBasedNonAsyncInterleaveManyNodes(
   }
   ModelTiming model_timing(snapshot);
   ModelTimingPriorityQueue priority_queue(model_timing);
-  StatusOr<std::pair<double, Node*>> critical_root_status =
+  absl::StatusOr<std::pair<double, Node*>> critical_root_status =
       priority_queue.PopSlowestStageRoot();
   if (!critical_root_status.ok()) {
     metrics::RecordTFDataAutotuneStoppingCriteria("empty_critical_queue");

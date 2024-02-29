@@ -21,6 +21,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/status/status.h"
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/common_runtime/input_colocation_exemption_registry.h"
 #include "tensorflow/core/data/dataset_utils.h"
@@ -105,6 +106,10 @@ class ParallelMapDatasetOp::Dataset : public DatasetBase {
         captured_func_(std::move(captured_func)),
         op_version_(op_version) {
     input_->Ref();
+    random_indexing_compatible_ = absl::OkStatus();
+    if (input_ != nullptr) {
+      random_indexing_compatible_ = input_->RandomIndexingCompatible();
+    }
   }
 
   ~Dataset() override { input_->Unref(); }
@@ -159,6 +164,10 @@ class ParallelMapDatasetOp::Dataset : public DatasetBase {
   Status CheckExternalState() const override {
     TF_RETURN_IF_ERROR(captured_func_->CheckExternalState());
     return input_->CheckExternalState();
+  }
+
+  absl::Status RandomIndexingCompatible() const override {
+    return random_indexing_compatible_;
   }
 
  protected:
@@ -355,6 +364,10 @@ class ParallelMapDatasetOp::Dataset : public DatasetBase {
 
     Status RestoreInternal(IteratorContext* ctx,
                            IteratorStateReader* reader) override {
+      if (ctx->element_count().has_value()) {
+        return RestoreInput(ctx, reader, input_impl_);
+      }
+
       mutex_lock l(*mu_);
       TF_RETURN_IF_ERROR(RestoreInput(ctx, reader, input_impl_));
       DCHECK(invocation_results_.empty());
@@ -746,6 +759,7 @@ class ParallelMapDatasetOp::Dataset : public DatasetBase {
   // This is used for random access provided by Get().
   mutable std::unique_ptr<InstantiatedCapturedFunction>
       instantiated_captured_func_;
+  absl::Status random_indexing_compatible_;
 };
 
 ParallelMapDatasetOp::ParallelMapDatasetOp(OpKernelConstruction* ctx)

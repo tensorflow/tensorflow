@@ -444,6 +444,9 @@ class Memory:
   def __str__(self) -> str: ...
   def addressable_by_devices(self) -> List[Device]: ...
 
+class PjRtLayout:
+  def __str__(self) -> str: ...
+
 class GpuAllocatorConfig:
   class Kind(enum.IntEnum):
     DEFAULT: int

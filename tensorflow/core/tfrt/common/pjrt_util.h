@@ -34,7 +34,7 @@ Status SetPjRtClientInTFGlobalResourceManager(
 
 // Gets (the most recent) PJRT client for device_type from
 // TFGlobalResourceManager.
-StatusOr<xla::PjRtClient*> GetPjRtClient(const DeviceType& device_type);
+absl::StatusOr<xla::PjRtClient*> GetPjRtClient(const DeviceType& device_type);
 
 }  // namespace tensorflow
 

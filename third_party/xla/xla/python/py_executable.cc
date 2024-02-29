@@ -55,7 +55,7 @@ Status PyShardedToken::Await() {
 PyLoadedExecutable::PyLoadedExecutable(
     std::shared_ptr<PyClient> client,
     std::unique_ptr<ifrt::LoadedExecutable> ifrt_loaded_executable,
-    std::shared_ptr<Traceback> traceback,
+    std::optional<nb_traceback> traceback,
     std::optional<std::string> fingerprint)
     : client_(std::move(client)),
       ifrt_loaded_executable_(std::move(ifrt_loaded_executable)),

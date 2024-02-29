@@ -66,6 +66,8 @@ class LiteralSlice;
 // Abstract base class for literals.
 class LiteralBase {
  public:
+  using DynamicSizeType = ShapeUtil::DynamicSizeType;
+
   virtual ~LiteralBase() = 0;
 
   // Literals are equal if they have compatible shapes and the same data
@@ -157,9 +159,9 @@ class LiteralBase {
   NativeT Get(absl::Span<const int64_t> multi_index) const;
 
   // Get the dynamic size on dim_index in the literal at the given shape_index.
-  int32_t GetDynamicSize(int64_t dim_index,
-                         const ShapeIndex& shape_index) const;
-  int32_t GetDynamicSize(int64_t dim_index) const;
+  DynamicSizeType GetDynamicSize(int64_t dim_index,
+                                 const ShapeIndex& shape_index) const;
+  DynamicSizeType GetDynamicSize(int64_t dim_index) const;
 
   // Returns the element value at index (0, ..., 0), however many zeroes are
   // required for that index.
@@ -496,8 +498,8 @@ class LiteralBase {
     template <typename NativeT>
     void Set(absl::Span<const int64_t> index, NativeT value);
 
-    int32_t GetDynamicSize(int64_t dim_index) const;
-    void SetDynamicSize(int64_t dim_index, int32_t size);
+    DynamicSizeType GetDynamicSize(int64_t dim_index) const;
+    void SetDynamicSize(int64_t dim_index, DynamicSizeType size);
     void AllocateBuffers();
     void DeallocateBuffers();
     // Gets/sets the buffer holding the array data.
@@ -525,8 +527,6 @@ class LiteralBase {
       from.rep_.emplace<Uninitialized>();
     }
 
-    using DynamicSizeType = int32_t;
-
     // Gets/sets the buffer holding dynamic sizes.
     const DynamicSizeType* dynamic_size_buffer() const {
       DCHECK(LayoutUtil::IsDenseArray(*subshape_));
@@ -534,7 +534,7 @@ class LiteralBase {
           buffer() + dynamic_size_buffer_offset());
     }
     DynamicSizeType* dynamic_size_buffer() {
-      return const_cast<int32_t*>(
+      return const_cast<DynamicSizeType*>(
           const_cast<const Piece*>(this)->dynamic_size_buffer());
     }
 
@@ -854,8 +854,8 @@ class MutableLiteralBase : public LiteralBase {
 
   // Set the dynamic size on dim_index in the literal at the given shape_index.
   void SetDynamicSize(int64_t dim_index, const ShapeIndex& shape_index,
-                      int32_t size);
-  void SetDynamicSize(int64_t dim_index, int32_t size);
+                      DynamicSizeType size);
+  void SetDynamicSize(int64_t dim_index, DynamicSizeType size);
 
   // Returns a pointer to the underlying buffer holding the array at the given
   // shape index. CHECKs if the subshape of the literal at the given ShapeIndex

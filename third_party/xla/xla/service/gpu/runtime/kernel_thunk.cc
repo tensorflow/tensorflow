@@ -123,6 +123,10 @@ absl::Status KernelThunk::ExecuteOnStream(const ExecuteParams& params) {
   std::optional<se::ClusterDim> cluster_dim;
   const se::Kernel* kernel = nullptr;
 
+  TF_ASSIGN_OR_RETURN(
+      se::Stream * stream,
+      GetStreamForExecution(Thunk::execution_stream_id(), params));
+
   {
     absl::MutexLock lock(&mutex_);
     auto it = kernel_cache_.find(executor);
@@ -143,15 +147,15 @@ absl::Status KernelThunk::ExecuteOnStream(const ExecuteParams& params) {
   }
 
   if (VLOG_IS_ON(100)) {
-    PrintBufferContents(params.stream, buffer_args);
+    PrintBufferContents(stream, buffer_args);
   }
 
   if (cluster_dim.has_value()) {
     return ExecuteKernelOnStream(*kernel, buffer_args, launch_dimensions,
-                                 cluster_dim.value(), params.stream);
+                                 cluster_dim.value(), stream);
   } else {
     return ExecuteKernelOnStream(*kernel, buffer_args, launch_dimensions,
-                                 params.stream);
+                                 stream);
   }
 }
 

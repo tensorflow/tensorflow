@@ -218,7 +218,7 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@local_tsl//tsl/profiler/lib:scoped_annotation",
     ] + if_not_android([
-        "//tensorflow/core/profiler/backends/cpu:annotation_stack",
+        "@local_tsl//tsl/profiler/backends/cpu:annotation_stack",
     ]),
 )
 

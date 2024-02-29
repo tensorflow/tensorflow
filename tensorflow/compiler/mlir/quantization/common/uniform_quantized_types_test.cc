@@ -19,12 +19,18 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/strings/string_view.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/Quant/QuantOps.h"  // from @llvm-project
 #include "mlir/Dialect/Quant/QuantTypes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/Location.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
+#include "mlir/IR/OwningOpRef.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
+#include "stablehlo/dialect/StablehloOps.h"  // from @stablehlo
+#include "tensorflow/compiler/mlir/quantization/common/test_base.h"
 
 namespace mlir {
 namespace quant {
@@ -32,6 +38,7 @@ namespace {
 
 using ::testing::ElementsAreArray;
 using ::testing::IsNull;
+using ::testing::Ne;
 using ::testing::NotNull;
 using ::testing::Test;
 
@@ -580,6 +587,130 @@ TEST_F(IsSupportedByTfliteQuantizeOrDequantizeOpsTest, StorageTypeUI8Succeeds) {
       /*zeroPoint=*/0, /*storageTypeMin=*/-128, /*storageTypeMax=*/127);
   EXPECT_TRUE(IsSupportedByTfliteQuantizeOrDequantizeOps(
       dyn_cast_or_null<IntegerType>(qi8_type.getStorageType())));
+}
+
+using IsOpFullyQuantizedTest = QuantizationTestBase;
+
+TEST_F(IsOpFullyQuantizedTest, TrueIfOpFullyQuantized) {
+  constexpr absl::string_view kFullyQuantizedAdd = R"mlir(
+    func.func @fully_quantized_add(%arg0: tensor<2x!quant.uniform<i8:f32, 1.000000e+00:0>>) -> tensor<2x!quant.uniform<i8:f32, 1.000000e+00:0>> {
+      %0 = stablehlo.add %arg0, %arg0 : tensor<2x!quant.uniform<i8:f32, 1.000000e+00:0>>
+      return %0 : tensor<2x!quant.uniform<i8:f32, 1.000000e+00:0>>
+    }
+  )mlir";
+
+  OwningOpRef<ModuleOp> module_op = ParseModuleOpString(kFullyQuantizedAdd);
+  auto func_op = module_op->lookupSymbol<func::FuncOp>("fully_quantized_add");
+  ASSERT_THAT(func_op, NotNull());
+
+  auto add_op_itr = func_op.getBody().op_begin<mlir::stablehlo::AddOp>();
+  ASSERT_THAT(add_op_itr,
+              Ne(func_op.getBody().op_end<mlir::stablehlo::AddOp>()));
+
+  EXPECT_TRUE(IsOpFullyQuantized(*add_op_itr));
+}
+
+TEST_F(IsOpFullyQuantizedTest, FalseIfOpNotQuantized) {
+  constexpr absl::string_view kNotQuantizedAdd = R"mlir(
+    func.func @not_quantized_add(%arg0: tensor<2xf32>) -> tensor<2xf32> {
+      %0 = stablehlo.add %arg0, %arg0 : tensor<2xf32>
+      return %0 : tensor<2xf32>
+    }
+  )mlir";
+
+  OwningOpRef<ModuleOp> module_op = ParseModuleOpString(kNotQuantizedAdd);
+  auto func_op = module_op->lookupSymbol<func::FuncOp>("not_quantized_add");
+  ASSERT_THAT(func_op, NotNull());
+
+  auto add_op_itr = func_op.getBody().op_begin<mlir::stablehlo::AddOp>();
+  ASSERT_THAT(add_op_itr,
+              Ne(func_op.getBody().op_end<mlir::stablehlo::AddOp>()));
+
+  EXPECT_FALSE(IsOpFullyQuantized(*add_op_itr));
+}
+
+TEST_F(IsOpFullyQuantizedTest, FalseIfOpPartiallyQuantized) {
+  constexpr absl::string_view kQuantizeOp = R"mlir(
+    func.func @quantize(%arg0: tensor<2xf32>) -> tensor<2x!quant.uniform<i8:f32, 1.000000e+00:0>> {
+      %0 = stablehlo.uniform_quantize %arg0 : (tensor<2xf32>) -> tensor<2x!quant.uniform<i8:f32, 1.000000e+00:0>>
+      return %0 : tensor<2x!quant.uniform<i8:f32, 1.000000e+00:0>>
+    }
+  )mlir";
+
+  OwningOpRef<ModuleOp> module_op = ParseModuleOpString(kQuantizeOp);
+  auto func_op = module_op->lookupSymbol<func::FuncOp>("quantize");
+  ASSERT_THAT(func_op, NotNull());
+
+  auto uniform_quantize_op_itr =
+      func_op.getBody().op_begin<mlir::stablehlo::UniformQuantizeOp>();
+  ASSERT_THAT(
+      uniform_quantize_op_itr,
+      Ne(func_op.getBody().op_end<mlir::stablehlo::UniformQuantizeOp>()));
+
+  EXPECT_FALSE(IsOpFullyQuantized(*uniform_quantize_op_itr));
+}
+
+using IsOpNotQuantizedTest = QuantizationTestBase;
+
+TEST_F(IsOpNotQuantizedTest, TrueIfOpNotQuantized) {
+  constexpr absl::string_view kNotQuantizedAdd = R"mlir(
+    func.func @not_quantized_add(%arg0: tensor<2xf32>) -> tensor<2xf32> {
+      %0 = stablehlo.add %arg0, %arg0 : tensor<2xf32>
+      return %0 : tensor<2xf32>
+    }
+  )mlir";
+
+  OwningOpRef<ModuleOp> module_op = ParseModuleOpString(kNotQuantizedAdd);
+  auto func_op = module_op->lookupSymbol<func::FuncOp>("not_quantized_add");
+  ASSERT_THAT(func_op, NotNull());
+
+  auto add_op_itr = func_op.getBody().op_begin<mlir::stablehlo::AddOp>();
+  ASSERT_THAT(add_op_itr,
+              Ne(func_op.getBody().op_end<mlir::stablehlo::AddOp>()));
+
+  EXPECT_TRUE(IsOpNotQuantized(*add_op_itr));
+}
+
+TEST_F(IsOpNotQuantizedTest, FalseIfOpQuantized) {
+  constexpr absl::string_view kQuantizedAdd = R"mlir(
+    func.func @quantized_add(%arg0: tensor<2x!quant.uniform<i8:f32, 1.000000e+00:0>>) -> tensor<2x!quant.uniform<i8:f32, 1.000000e+00:0>> {
+      %0 = stablehlo.add %arg0, %arg0 : tensor<2x!quant.uniform<i8:f32, 1.000000e+00:0>>
+      return %0 : tensor<2x!quant.uniform<i8:f32, 1.000000e+00:0>>
+    }
+  )mlir";
+
+  OwningOpRef<ModuleOp> module_op = ParseModuleOpString(kQuantizedAdd);
+  auto func_op = module_op->lookupSymbol<func::FuncOp>("quantized_add");
+  ASSERT_THAT(func_op, NotNull());
+
+  auto add_op_itr = func_op.getBody().op_begin<mlir::stablehlo::AddOp>();
+  ASSERT_THAT(add_op_itr,
+              Ne(func_op.getBody().op_end<mlir::stablehlo::AddOp>()));
+
+  EXPECT_FALSE(IsOpNotQuantized(*add_op_itr));
+}
+
+TEST_F(IsOpNotQuantizedTest, FalseIfOpPartiallyQuantized) {
+  constexpr absl::string_view kQuantizeOp = R"mlir(
+    func.func @quantize(%arg0: tensor<2xf32>) -> tensor<2x!quant.uniform<i8:f32, 1.000000e+00:0>> {
+      %0 = stablehlo.uniform_quantize %arg0 : (tensor<2xf32>) -> tensor<2x!quant.uniform<i8:f32, 1.000000e+00:0>>
+      return %0 : tensor<2x!quant.uniform<i8:f32, 1.000000e+00:0>>
+    }
+  )mlir";
+
+  OwningOpRef<ModuleOp> module_op = ParseModuleOpString(kQuantizeOp);
+  auto func_op = module_op->lookupSymbol<func::FuncOp>("quantize");
+  ASSERT_THAT(func_op, NotNull());
+
+  auto uniform_quantize_op_itr =
+      func_op.getBody().op_begin<mlir::stablehlo::UniformQuantizeOp>();
+  ASSERT_THAT(
+      uniform_quantize_op_itr,
+      Ne(func_op.getBody().op_end<mlir::stablehlo::UniformQuantizeOp>()));
+
+  // `uniform_quantize` is considered partially quantized because its output is
+  // a quantized tensor whereas its input is not quantized.
+  EXPECT_FALSE(IsOpNotQuantized(*uniform_quantize_op_itr));
 }
 
 }  // namespace

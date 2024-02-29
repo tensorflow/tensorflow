@@ -417,6 +417,8 @@ Status RestoreTensorsV2(OpKernelContext* context, const Tensor& prefix,
     // we don't have any expensive operations.
     std::unique_ptr<thread::ThreadPool> reader_pool;
     if (!pool_restore_ops.empty()) {
+      // TODO(spetrovic): Instead of a fixed size 8, use the value from:
+      //    context->session_config()->intra_op_parallelism_threads()
       reader_pool.reset(
           new thread::ThreadPool(Env::Default(), "restore_tensors", 8));
       for (auto* op : pool_restore_ops) {

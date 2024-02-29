@@ -126,6 +126,7 @@ cc_library(
         ":command_buffer_cmd",
         ":conditional_thunk",
         ":copy_thunk",
+        ":cudnn_thunk",
         ":custom_call_thunk",
         ":gemm_thunk",
         ":kernel_thunk",
@@ -591,6 +592,34 @@ cc_library(
 )
 
 cc_library(
+    name = "nccl_collective_permute_thunk",
+    srcs = ["nccl_collective_permute_thunk.cc"],
+    hdrs = ["nccl_collective_permute_thunk.h"],
+    deps = [
+        "//xla:status_macros",
+        "//xla:xla_data_proto_cc",
+        "//xla/hlo/ir:hlo",
+        "//xla/mlir_hlo:lhlo_gpu",
+        "//xla/service:collective_ops_utils",
+        "//xla/service:global_device_id",
+        "//xla/service/gpu:backend_configs_cc",
+        "//xla/service/gpu:ir_emission_utils",
+        "//xla/service/gpu:nccl_api",
+        "//xla/service/gpu:nccl_collective_thunks",
+        "//xla/service/gpu:thunk",
+        "//xla/stream_executor",
+        "//xla/translate/mhlo_to_hlo:attribute_exporter",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/strings:string_view",
+        "@local_tsl//tsl/platform:errors",
+        "@local_tsl//tsl/platform:statusor",
+    ],
+)
+
+cc_library(
     name = "norm_thunk",
     srcs = ["norm_thunk.cc"],
     hdrs = ["norm_thunk.h"],
@@ -742,19 +771,18 @@ cc_library(
 
 cc_library(
     name = "cudnn_thunk",
-    srcs = if_cuda_is_configured(["cudnn_thunk.cc"]),
-    hdrs = if_cuda_is_configured(["cudnn_thunk.h"]),
-    deps = if_cuda_is_configured([
+    srcs = ["cudnn_thunk.cc"],
+    hdrs = ["cudnn_thunk.h"],
+    deps = [
         "//xla:status",
+        "//xla/service:buffer_assignment",
         "//xla/service/gpu:kernel_arguments",
         "//xla/service/gpu:thunk",
-        "//xla/service:buffer_assignment",
         "//xla/stream_executor",
         "//xla/stream_executor:device_memory",
-        "@com_google_absl//absl/strings:string_view",
-        "@local_tsl//tsl/platform:logging",
-    ]) + [
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/types:span",
+        "@local_tsl//tsl/platform:logging",
     ],
 )

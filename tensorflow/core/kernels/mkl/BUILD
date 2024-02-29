@@ -101,6 +101,32 @@ tf_mkl_kernel_library(
     ] + MKL_DEPS,
 )
 
+tf_mkl_kernel_library(
+    name = "mkl_sparse_matrix_matmul_op",
+    srcs = [
+        "mkl_sparse_matrix_matmul_op.cc",
+    ],
+    hdrs = [
+        "mkl_kernel_util.h",
+        "mkl_matmul_ops_common.h",
+    ],
+    deps = [
+        "//tensorflow/core/kernels:cwise_op",
+        "//tensorflow/core/kernels:dense_update_functor",
+        "//tensorflow/core/kernels/sparse:kernels",
+    ] + MKL_DEPS,
+)
+
+tf_cc_test_mkl(
+    name = "mkl_sparse_matrix_matmul_op_benchmark",
+    size = "small",
+    srcs = ["mkl_sparse_matrix_matmul_op_benchmark.cc"],
+    linkstatic = 1,
+    deps = [
+        "//tensorflow/core/kernels/mkl:mkl_sparse_matrix_matmul_op",
+    ] + MKL_TEST_DEPS,
+)
+
 tf_cc_test_mkl(
     name = "mkl_quantized_conv_ops_perchannel_test",
     size = "small",

@@ -53,11 +53,3 @@ func.func @dot_to_dot_general_matrix_dot_matrix(%arg0 : tensor<4x5xi64>, %arg1 :
   %0 = "mhlo.dot"(%arg0, %arg1) : (tensor<4x5xi64>, tensor<5x4xi64>) -> tensor<4x4xi64>
   func.return %0 : tensor<4x4xi64>
 }
-
-// -----
-
-func.func @dot_to_dot_general_unranked(%arg0 : tensor<*xi64>, %arg1 : tensor<*xi64>) -> tensor<*xi64> {
-  // expected-error@+1 {{unranked operands}}
-  %0 = "mhlo.dot"(%arg0, %arg1) : (tensor<*xi64>, tensor<*xi64>) -> tensor<*xi64>
-  func.return %0 : tensor<*xi64>
-}

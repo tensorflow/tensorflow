@@ -125,13 +125,14 @@ cuda_only_cc_library(
     name = "cuda_driver",
     srcs = ["cuda_driver.cc"],
     hdrs = ["cuda_driver.h"],
-    local_defines = ["GOOGLE_CUDA=1"],
     deps = [
         "//xla/stream_executor",
         "//xla/stream_executor:device_options",
         "//xla/stream_executor/gpu:gpu_diagnostics_header",
         "//xla/stream_executor/gpu:gpu_driver_header",
         "//xla/stream_executor/gpu:gpu_types_header",
+        "//xla/tsl/cuda",
+        "//xla/tsl/cuda:cudart",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:inlined_vector",
@@ -146,8 +147,6 @@ cuda_only_cc_library(
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/types:span",
         "@local_config_cuda//cuda:cuda_headers",
-        "@local_tsl//tsl/cuda",
-        "@local_tsl//tsl/cuda:cudart",
         "@local_tsl//tsl/platform:env",
         "@local_tsl//tsl/platform:logging",
         "@local_tsl//tsl/platform:macros",
@@ -195,8 +194,9 @@ xla_cc_test(
     name = "stream_search_test",
     size = "small",
     srcs = ["stream_search_test.cc"],
-    local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]),
-    tags = tf_cuda_tests_tags(),
+    tags = tf_cuda_tests_tags() + [
+        "requires-gpu-nvidia",
+    ],
     deps = [
         ":cuda_platform",
         "//xla/stream_executor",
@@ -210,10 +210,9 @@ xla_cc_test(
 xla_cc_test(
     name = "cuda_driver_test",
     srcs = ["cuda_driver_test.cc"],
-    local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]),
     tags = tf_cuda_tests_tags() + [
-        "no_cuda_asan",  # TODO(b/171512140): re-enable.
         "no_rocm",
+        "requires-gpu-nvidia",
     ],
     deps = [
         ":cuda_driver",
@@ -228,9 +227,8 @@ xla_cc_test(
 xla_cc_test(
     name = "memcpy_test",
     srcs = ["memcpy_test.cc"],
-    local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]),
     tags = tf_cuda_tests_tags() + [
-        "no_cuda_asan",  # TODO(b/171512140): re-enable.
+        "requires-gpu-nvidia",
     ],
     deps = [
         ":cuda_platform",
@@ -321,6 +319,8 @@ cuda_only_cc_library(
         "//xla/stream_executor/gpu:gpu_timer",
         "//xla/stream_executor/gpu:gpu_types_header",
         "//xla/stream_executor/platform",
+        "//xla/tsl/cuda:cublas",
+        "//xla/tsl/cuda:cublas_lt",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
@@ -331,8 +331,6 @@ cuda_only_cc_library(
         "@com_google_absl//absl/time",
         "@eigen_archive//:eigen3",
         "@local_config_cuda//cuda:cuda_headers",
-        "@local_tsl//tsl/cuda:cublas",
-        "@local_tsl//tsl/cuda:cublas_lt",
         "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:logging",
         "@local_tsl//tsl/platform:ml_dtypes",
@@ -352,11 +350,11 @@ cuda_only_cc_library(
     hdrs = ["cuda_blas_utils.h"],
     deps = [
         "//xla/stream_executor",
+        "//xla/tsl/cuda:cublas",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@local_config_cuda//cuda:cuda_headers",
-        "@local_tsl//tsl/cuda:cublas",
         "@local_tsl//tsl/platform:errors",
     ],
 )
@@ -377,11 +375,11 @@ cuda_only_cc_library(
         "//xla/stream_executor/gpu:gpu_helpers_header",
         "//xla/stream_executor/gpu:gpu_stream_header",
         "//xla/stream_executor/platform",
+        "//xla/tsl/cuda:cufft",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@local_config_cuda//cuda:cuda_headers",
-        "@local_tsl//tsl/cuda:cufft",
         "@local_tsl//tsl/platform:logging",
         "@local_tsl//tsl/platform:statusor",
     ],
@@ -431,6 +429,7 @@ cuda_only_cc_library(
         "//xla/stream_executor/gpu:gpu_stream",
         "//xla/stream_executor/gpu:gpu_timer_header",
         "//xla/stream_executor/platform",
+        "//xla/tsl/cuda:cudnn",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:flat_hash_map",
@@ -448,7 +447,6 @@ cuda_only_cc_library(
         "@eigen_archive//:eigen3",
         "@local_config_cuda//cuda:cuda_headers",
         "@local_config_cuda//cuda:cudnn_header",
-        "@local_tsl//tsl/cuda:cudnn",
         "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:logging",
         "@local_tsl//tsl/platform:status",
@@ -643,9 +641,9 @@ cc_library(
         ":cuda_platform",
         ":cudnn_plugin",
         ":cufft_plugin",
-        "@local_tsl//tsl/cuda:cusolver",
-        "@local_tsl//tsl/cuda:cusparse",
-        "@local_tsl//tsl/cuda:tensorrt_rpath",
+        "//xla/tsl/cuda:cusolver",
+        "//xla/tsl/cuda:cusparse",
+        "//xla/tsl/cuda:tensorrt_rpath",
     ],
     alwayslink = 1,
 )
@@ -671,7 +669,7 @@ cc_library(
             ],
         }),
         [
-            "@local_tsl//tsl/cuda:cudart",
+            "//xla/tsl/cuda:cudart",
         ] + select({
             "@local_tsl//tsl:macos": ["IOKit"],
             "//conditions:default": [],

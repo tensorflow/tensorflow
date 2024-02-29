@@ -1,65 +1,11 @@
 load("//tensorflow/core/platform:build_config_root.bzl", "if_static")
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
-load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 load("//tensorflow/core/profiler/builds:build_config.bzl", "tf_profiler_copts")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = ["//tensorflow:internal"],
     licenses = ["notice"],
-)
-
-cc_library(
-    name = "host_tracer_utils",
-    hdrs = ["host_tracer_utils.h"],
-    copts = tf_profiler_copts(),
-    deps = [
-        ":traceme_recorder",
-        "//tensorflow/core:lib",
-        "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
-        "@local_tsl//tsl/profiler/backends/cpu:host_tracer_utils",
-    ],
-)
-
-cc_library(
-    name = "host_tracer",
-    deps = [
-        "@local_xla//xla/backends/profiler/cpu:host_tracer",
-    ],
-    alwayslink = True,
-)
-
-cc_library(
-    name = "host_tracer_impl",
-    hdrs = ["host_tracer.h"],
-    copts = tf_profiler_copts(),
-    visibility = ["//tensorflow/core/profiler:internal"],
-    deps = [
-        "//tensorflow/core/profiler/lib:profiler_interface",
-        "@local_xla//xla/backends/profiler/cpu:host_tracer_impl",
-    ],
-)
-
-tf_cc_test(
-    name = "host_tracer_test",
-    srcs = ["host_tracer_test.cc"],
-    deps = [
-        ":host_tracer_impl",
-        "//tensorflow/core:core_cpu_lib",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core:test",
-        "//tensorflow/core:test_main",
-        "//tensorflow/core/profiler/lib:profiler_interface",
-        "//tensorflow/core/profiler/lib:profiler_session",
-        "//tensorflow/core/profiler/lib:traceme",
-        "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
-        "//tensorflow/core/profiler/utils:xplane_schema",
-        "//tensorflow/core/profiler/utils:xplane_visitor",
-        "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/types:optional",
-        "@local_tsl//tsl/profiler/protobuf:profiler_options_proto_cc",
-    ],
 )
 
 cc_library(
@@ -95,36 +41,6 @@ cc_library(
 )
 
 cc_library(
-    name = "annotation_stack",
-    hdrs = ["annotation_stack.h"],
-    copts = tf_profiler_copts(),
-    visibility = ["//tensorflow/core/profiler:internal"],
-    deps = [
-        "//tensorflow/core:lib",
-        "@com_google_absl//absl/strings",
-        "@local_tsl//tsl/profiler/backends/cpu:annotation_stack",
-    ] + if_static([
-        ":annotation_stack_impl",
-    ]),
-)
-
-cc_library(
-    name = "annotation_stack_impl",
-    srcs = [
-        "annotation_stack.h",
-    ],
-    copts = tf_profiler_copts(),
-    visibility = ["//tensorflow/core/profiler:__pkg__"],
-    deps = [
-        "//tensorflow/core:lib",
-        "@com_google_absl//absl/strings",
-        "@local_tsl//tsl/profiler/backends/cpu:annotation_stack",
-        "@local_tsl//tsl/profiler/backends/cpu:annotation_stack_impl",
-    ],
-    alwayslink = True,
-)
-
-cc_library(
     name = "python_tracer",
     deps = [
         "@local_xla//xla/backends/profiler/cpu:python_tracer",
@@ -151,17 +67,4 @@ cc_library(
         "@local_xla//xla/backends/profiler/cpu:metadata_collector",
     ],
     alwayslink = True,
-)
-
-cc_library(
-    name = "metadata_utils",
-    hdrs = ["metadata_utils.h"],
-    visibility = ["//tensorflow/core/profiler:internal"],
-    deps = [
-        "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
-        "//tensorflow/core/profiler/utils:xplane_builder",
-        "//tensorflow/core/profiler/utils:xplane_schema",
-        "@local_xla//xla/backends/profiler/cpu:metadata_utils",
-        "@local_xla//xla/service:hlo_proto_cc",
-    ],
 )

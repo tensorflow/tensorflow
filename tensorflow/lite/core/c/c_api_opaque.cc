@@ -46,6 +46,13 @@ TfLiteTensor* Convert(TfLiteOpaqueTensor* opaque_tensor) {
   return reinterpret_cast<TfLiteTensor*>(opaque_tensor);
 }
 
+TfLiteNode* Convert(TfLiteOpaqueNode* opaque_node) {
+  // The following cast is safe only because this code is part of the
+  // TF Lite runtime implementation.  Apps using TF Lite should not rely on
+  // TfLiteOpaqueNode and TfLiteNode being equivalent.
+  return reinterpret_cast<TfLiteNode*>(opaque_node);
+}
+
 const TfLiteNode* Convert(const TfLiteOpaqueNode* opaque_node) {
   // The following cast is safe only because this code is part of the
   // TF Lite runtime implementation.  Apps using TF Lite should not rely on
@@ -348,6 +355,21 @@ TfLiteStatus TfLiteOpaqueNodeTemporaries(const TfLiteOpaqueNode* opaque_node,
   const TfLiteNode* node = Convert(opaque_node);
   *temporaries = node->temporaries->data;
   *num_temporaries = node->temporaries->size;
+  return kTfLiteOk;
+}
+
+TfLiteStatus TfLiteOpaqueNodeSetTemporaries(TfLiteOpaqueNode* opaque_node,
+                                            const int* temporaries,
+                                            int num_temporaries) {
+  if (num_temporaries < 0) {
+    return kTfLiteError;
+  }
+  TfLiteNode* node = Convert(opaque_node);
+  TfLiteIntArrayFree(node->temporaries);
+  node->temporaries = TfLiteIntArrayCreate(num_temporaries);
+  for (int i = 0; i < num_temporaries; ++i) {
+    node->temporaries->data[i] = temporaries[i];
+  }
   return kTfLiteOk;
 }
 

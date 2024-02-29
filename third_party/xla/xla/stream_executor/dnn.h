@@ -22,6 +22,7 @@ limitations under the License.
 #ifndef XLA_STREAM_EXECUTOR_DNN_H_
 #define XLA_STREAM_EXECUTOR_DNN_H_
 
+#include <cstddef>
 #include <cstdint>
 #include <limits>
 #include <memory>
@@ -37,6 +38,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/stream_executor/data_type.h"
 #include "xla/stream_executor/device_description.pb.h"

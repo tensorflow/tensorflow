@@ -37,7 +37,6 @@ using ::mlir::tf_saved_model::AssetOp;
 using ::mlir::tf_saved_model::kTfSavedModelIndexPathAttr;
 using ::mlir::tf_saved_model::LookupBoundInputOfType;
 using ::tensorflow::AssetFileDef;
-using ::tensorflow::kImportModelDefaultGraphFuncName;
 
 // Given argument attributes `arg_attrs`, returns a new set of argument
 // attributes where the "tf_saved_model.bound_input" attribute has been replaced

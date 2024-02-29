@@ -29,29 +29,37 @@ limitations under the License.
 
 #include "absl/base/casts.h"
 #include "absl/strings/str_format.h"
+#include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
+#include "absl/types/span.h"
 #include "llvm/Support/Casting.h"
 #include "pybind11/pytypes.h"  // from @pybind11
 #include "pybind11_abseil/absl_casters.h"  // from @pybind11_abseil
 #include "xla/layout_util.h"
+#include "xla/pjrt/exceptions.h"
 #include "xla/pjrt/lru_cache.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_compiler.h"
 #include "xla/pjrt/status_casters.h"
+#include "xla/primitive_util.h"
 #include "xla/python/ifrt/array.h"
 #include "xla/python/ifrt/memory.h"
 #include "xla/python/ifrt/sharding.h"
 #include "xla/python/pjrt_ifrt/pjrt_array.h"
 #include "xla/python/pjrt_ifrt/xla_sharding.h"
-#include "xla/python/py_buffer.h"
 #include "xla/python/py_values.h"
 #include "xla/python/python_ref_manager.h"
 #include "xla/python/python_utils.h"
 #include "xla/python/sharding.h"
+#include "xla/python/traceback.h"
 #include "xla/python/transfer_guard_lib.h"
 #include "xla/python/types.h"
 #include "xla/python/util.h"
 #include "xla/shape.h"
+#include "xla/shape_util.h"
+#include "xla/status.h"
+#include "xla/status_macros.h"
+#include "xla/statusor.h"
 #if GOOGLE_CUDA
 #include "xla/stream_executor/cuda/cuda_driver.h"
 #endif
@@ -62,6 +70,40 @@ namespace xla {
 namespace {
 
 namespace py = pybind11;
+
+PjRtBuffer* GetPjrtBuffer(ifrt::Array* ifrt_array) {
+  auto* arr = llvm::dyn_cast_or_null<ifrt::PjRtCompatibleArray>(ifrt_array);
+  if (arr == nullptr) {
+    throw XlaRuntimeError(
+        "This operation is implemented for a PjRt-compatible backend only.");
+  }
+  return arr->pjrt_buffers().front().get();
+}
+
+StatusOr<const Shape*> XlaDynamicShape(ifrt::Array* ifrt_array,
+                                       std::optional<Shape>& scratch) {
+  auto* pjrt_buffer = GetPjrtBuffer(ifrt_array);
+
+  if (!scratch) {
+    absl::Span<const int64_t> dims;
+    std::optional<std::vector<int64_t>> logical_dims_storage;
+    if (pjrt_buffer->has_dynamic_dimensions()) {
+      {
+        py::gil_scoped_release gil_release;
+        TF_ASSIGN_OR_RETURN(std::vector<int64_t> logical_dims,
+                            pjrt_buffer->logical_dimensions());
+        logical_dims_storage.emplace(std::move(logical_dims));
+      }
+      dims = *logical_dims_storage;
+    } else {
+      dims = pjrt_buffer->dimensions();
+    }
+    Shape shape = ShapeUtil::MakeShape(pjrt_buffer->element_type(), dims);
+    *shape.mutable_layout() = pjrt_buffer->layout();
+    scratch = std::move(shape);
+  }
+  return &scratch.value();
+}
 
 tsl::RCReference<ifrt::Array> CreateIfRtArrayFromSingleDeviceShardedPyArrays(
     py::object dtype, absl::Span<const int64_t> shape,
@@ -102,7 +144,7 @@ tsl::RCReference<ifrt::Array> CreateIfRtArrayFromSingleDeviceShardedPyArrays(
   }
   ifrt::Client* client = ifrt_arrays.front()->client();
 
-  auto ifrt_dtype = ToIfRtDType(dtype);
+  auto ifrt_dtype = DtypeToIfRtDType(dtype);
   if (!ifrt_dtype.ok()) {
     // TODO(hyeontaek): Return a Status.
     throw py::value_error(ifrt_dtype.status().ToString());
@@ -283,7 +325,7 @@ PyArray_Storage::PyArray_Storage(pybind11::object aval, bool weak_type,
                                  std::vector<int64_t> shape,
                                  pybind11::object sharding, bool committed,
                                  std::shared_ptr<PyClient> py_client,
-                                 std::shared_ptr<Traceback> traceback,
+                                 std::optional<nb_traceback> traceback,
                                  tsl::RCReference<ifrt::Array> ifrt_array)
     : fastpath_enabled(true),
       aval(std::move(aval)),
@@ -331,7 +373,7 @@ void PyArray::PyInit(py::object self, DisableFastpath) {
 }
 
 PyArray PyArray::MakeFromSingleDeviceArray(
-    std::shared_ptr<PyClient> py_client, std::shared_ptr<Traceback> traceback,
+    std::shared_ptr<PyClient> py_client, std::optional<nb_traceback> traceback,
     tsl::RCReference<ifrt::Array> ifrt_array, bool weak_type, bool committed) {
   if (!llvm::isa<ifrt::SingleDeviceSharding>(ifrt_array->sharding())) {
     throw XlaRuntimeError(
@@ -359,7 +401,7 @@ PyArray PyArray::MakeFromSingleDeviceArray(
 }
 
 PyArray PyArray::MakeFromIfrtArrayAndSharding(
-    std::shared_ptr<PyClient> py_client, std::shared_ptr<Traceback> traceback,
+    std::shared_ptr<PyClient> py_client, std::optional<nb_traceback> traceback,
     tsl::RCReference<ifrt::Array> ifrt_array, py::object sharding,
     bool weak_type, bool committed, bool skip_checks) {
   auto shape_span = ifrt_array->shape().dims();
@@ -407,7 +449,7 @@ PyArray PyArrayResultHandler::Call(PyArray py_array) const {
 PyArray::PyArray(py::object aval, bool weak_type, py::dtype dtype,
                  std::vector<int64_t> shape, py::object sharding,
                  std::shared_ptr<PyClient> py_client,
-                 std::shared_ptr<Traceback> traceback,
+                 std::optional<nb_traceback> traceback,
                  tsl::RCReference<ifrt::Array> ifrt_array, bool committed,
                  bool skip_checks) {
   auto* self =
@@ -579,9 +621,8 @@ StatusOr<size_t> PyArray::GetOnDeviceSizeInBytes() {
         "GetOnDeviceSizeInBytes() called on deleted or donated buffer");
   }
 
-  TF_ASSIGN_OR_RETURN(
-      size_t shard_size,
-      IfrtHelpers::pjrt_buffer(ifrt_array())->GetOnDeviceSizeInBytes());
+  TF_ASSIGN_OR_RETURN(size_t shard_size,
+                      GetPjrtBuffer(ifrt_array())->GetOnDeviceSizeInBytes());
   return shard_size * py::len(sharding().attr("device_set"));
 }
 
@@ -604,17 +645,15 @@ StatusOr<PyArray> PyArray::FetchSingleShard(std::string_view api) {
 StatusOr<pybind11::object> PyArray::SingleDeviceArrayToNumpyArray() {
   TF_ASSIGN_OR_RETURN(auto arr,
                       FetchSingleShard("SingleDeviceArrayToNumpyArray"));
-  return PyHostValue::AsNumPyArray(arr.GetStorage().host_value,
-                                   arr.GetStorage().dynamic_shape,
-                                   arr.ifrt_array(), arr);
+  return arr.GetStorage().host_value.AsNumPyArray(
+      arr.GetStorage().dynamic_shape, arr.ifrt_array());
 }
 
 Status PyArray::CopySingleDeviceArrayToHostAsync() {
   TF_ASSIGN_OR_RETURN(auto arr,
                       FetchSingleShard("CopySingleDeviceArrayToHostAsync"));
-  return PyHostValue::CopyToHostAsync(arr.GetStorage().host_value,
-                                      arr.GetStorage().dynamic_shape,
-                                      arr.ifrt_array());
+  return arr.GetStorage().host_value.CopyToHostAsync(
+      arr.GetStorage().dynamic_shape, arr.ifrt_array());
 }
 
 StatusOr<PyArray> PyArray::AssertUnsharded(std::string_view api) {
@@ -637,7 +676,7 @@ StatusOr<std::uintptr_t> PyArray::UnsafeBufferPointer() {
   TF_ASSIGN_OR_RETURN(auto arr, AssertUnsharded("UnsafeBufferPointer"));
 
   return py_client()->pjrt_client()->UnsafeBufferPointer(
-      IfrtHelpers::pjrt_buffer(arr.ifrt_array()));
+      GetPjrtBuffer(arr.ifrt_array()));
 }
 
 py::dict PyArray::CudaArrayInterface() {
@@ -650,7 +689,7 @@ py::dict PyArray::CudaArrayInterface() {
 
   ifrt::Array* ifrt_array = arr.ifrt_array();
   std::optional<Shape>& scratch = arr.GetStorage().dynamic_shape;
-  auto* pjrt_buffer = IfrtHelpers::pjrt_buffer(ifrt_array);
+  auto* pjrt_buffer = GetPjrtBuffer(ifrt_array);
   if (pjrt_buffer->client()->platform_id() != CudaId()) {
     throw py::attribute_error(
         "__cuda_array_interface__ is only defined for NVidia GPU buffers.");
@@ -694,7 +733,7 @@ py::dict PyArray::CudaArrayInterface() {
 
   py::dict result;
   const auto* dynamic_shape =
-      ValueOrThrow(IfrtHelpers::xla_dynamic_shape(ifrt_array, scratch));
+      ValueOrThrow(XlaDynamicShape(ifrt_array, scratch));
   result["shape"] = SpanToTuple(dynamic_shape->dimensions());
   result["typestr"] = std::move(typestr);
   std::unique_ptr<PjRtBuffer::ExternalReference> external_reference_hold =
@@ -1203,7 +1242,148 @@ PyBufferProcs PyArray_tp_as_buffer = []() {
   return procs;
 }();
 
+// Returns if shape has a major-to-minor layout.
+bool HasMajorToMinorLayout(const xla::Shape& shape) {
+  if (shape.has_layout()) {
+    for (int i = 0; i < shape.layout().minor_to_major_size(); ++i) {
+      if (shape.layout().minor_to_major(i) !=
+          shape.layout().minor_to_major_size() - 1 - i) {
+        return false;
+      }
+    }
+  }
+  return true;
+}
+
+// Returns byte_strides if shape has a non-major-to-minor layout.
+std::optional<std::vector<int64_t>> ByteStridesOrDefaultForShapeInt64(
+    const Shape& shape) {
+  if (!shape.has_layout() || HasMajorToMinorLayout(shape)) {
+    return std::nullopt;
+  }
+  return ByteStridesForShape(shape);
+}
+
 }  // namespace
+
+PyHostValue::PyHostValue() = default;
+PyHostValue::~PyHostValue() = default;
+
+StatusOr<pybind11::object> PyHostValue::AsNumPyArray(
+    std::optional<Shape>& dynamic_shape_holder, ifrt::Array* ifrt_array) {
+  if (ifrt_array->IsDeleted()) {
+    return InvalidArgument("DeviceArray has been deleted.");
+  }
+  auto* arr = llvm::dyn_cast_or_null<ifrt::PjRtCompatibleArray>(ifrt_array);
+  if (arr != nullptr) {
+    auto* pjrt_buffer = arr->pjrt_buffers().front().get();
+    TF_RET_CHECK(!pjrt_buffer->IsTuple());
+    // On CPU for non-int4 values, we can return the value in a zero-copy way.
+    // For int4 values, we must copy in order to unpack the array.
+    if (pjrt_buffer->IsOnCpu() &&
+        !primitive_util::Is4BitType(pjrt_buffer->element_type())) {
+      TF_ASSIGN_OR_RETURN(const auto* shape,
+                          XlaDynamicShape(ifrt_array, dynamic_shape_holder));
+      TF_ASSIGN_OR_RETURN(py::dtype dtype,
+                          PrimitiveTypeToDtype(shape->element_type()));
+      // Objects that must be kept alive while the array is alive.
+      struct Hold {
+        tsl::RCReference<ifrt::Array> buffer;
+        std::unique_ptr<PjRtBuffer::ExternalReference> external_reference_hold;
+      };
+      auto hold = std::make_unique<Hold>();
+      TF_ASSIGN_OR_RETURN(hold->external_reference_hold,
+                          pjrt_buffer->AcquireExternalReference());
+      hold->buffer = tsl::FormRef(ifrt_array);
+      void* data =
+          hold->external_reference_hold->OpaqueDeviceMemoryDataPointer();
+      py::capsule hold_capsule(hold.release(),
+                               [](void* h) { delete static_cast<Hold*>(h); });
+      py::array array(dtype, shape->dimensions(), ByteStridesForShape(*shape),
+                      data, hold_capsule);
+      array.attr("flags").attr("writeable") = Py_False;
+      {
+        py::gil_scoped_release gil;
+        TF_RETURN_IF_ERROR(ifrt_array->GetReadyFuture().Await());
+      }
+      return array;
+    }
+  }
+
+  TF_RETURN_IF_ERROR(CopyToHostAsync(dynamic_shape_holder, ifrt_array));
+  if (!ready_.IsReady()) {
+    py::gil_scoped_release gil;
+    TF_RETURN_IF_ERROR(ready_.Await());
+  } else {
+    TF_RETURN_IF_ERROR(ready_.Await());
+  }
+  return value_;
+}
+
+Status PyHostValue::CopyToHostAsync(std::optional<Shape>& dynamic_shape_holder,
+                                    ifrt::Array* ifrt_array) {
+  if (ready_.IsValid()) {
+    // The array value has been populated, so CopyToHostAsync has been called.
+    return OkStatus();
+  }
+  auto* arr = llvm::dyn_cast_or_null<ifrt::PjRtCompatibleArray>(ifrt_array);
+  if (arr != nullptr) {
+    auto* pjrt_buffer = arr->pjrt_buffers().front().get();
+    if (pjrt_buffer->IsOnCpu() &&
+        !primitive_util::Is4BitType(pjrt_buffer->element_type())) {
+      return OkStatus();
+    }
+  }
+  auto transfer_guard_formatter = [ifrt_array] {
+    return absl::StrCat(
+        "shape=()", absl::StrJoin(ifrt_array->shape().dims(), ","),
+        "), dtype=", ifrt_array->dtype().DebugString(),
+        ", device=", ifrt_array->sharding().devices().front()->DebugString());
+  };
+  TF_RETURN_IF_ERROR(
+      jax::ApplyTransferGuardToDeviceToHost(transfer_guard_formatter));
+
+  // TODO(b/182461453): This is a blocking call. If we further implemented
+  // populating dynamic shape metadata while fetching the literal, we wouldn't
+  // need this static approach.
+  const xla::Shape* dynamic_shape;
+  std::optional<xla::Shape> shape_holder;
+  if (llvm::isa<ifrt::PjRtCompatibleArray>(ifrt_array)) {
+    TF_ASSIGN_OR_RETURN(dynamic_shape,
+                        XlaDynamicShape(ifrt_array, dynamic_shape_holder));
+  } else {
+    // Skip querying the dynamic shape for a non-PjRt Array.
+    TF_ASSIGN_OR_RETURN(xla::PrimitiveType type,
+                        ifrt::ToPrimitiveType(ifrt_array->dtype()));
+    shape_holder = ShapeUtil::MakeShapeWithDescendingLayout(
+        type, ifrt_array->shape().dims());
+    dynamic_shape = &*shape_holder;
+  }
+
+  xla::Shape host_shape = ShapeUtil::DeviceShapeToHostShape(*dynamic_shape);
+
+  auto strides = ByteStridesOrDefaultForShapeInt64(host_shape);
+  TF_ASSIGN_OR_RETURN(py::dtype dtype,
+                      PrimitiveTypeToDtype(host_shape.element_type()));
+  value_ = py::array(dtype, host_shape.dimensions(),
+                     strides ? *strides : std::vector<int64_t>{});
+  // TODO(hyeontaek): Several PjRt runtimes assume that the host buffer uses
+  // the same transposition as the device buffer. This is different from
+  // PjRtBuffer::ToLiteral()'s semantics that the runtime respects the layout
+  // of the host buffer literal. On the other hand, the runtime often knows
+  // better about an efficient layout for the host buffer. It will be useful
+  // to revisit the semantics of PjRtBuffer::ToLiteral() to see if it is
+  // desirable for the runtime to choose the layout.
+  ready_ = ifrt_array->CopyToHostBuffer(value_.mutable_data(), strides,
+                                        ifrt::ArrayCopySemantics::kReuseInput);
+  // Make sure the destination of the copy remains alive until the copy is done.
+  value_.inc_ref();
+  ready_.OnReady([array{value_.ptr()}](Status status) {
+    GlobalPyRefManager()->AddGarbage(py::reinterpret_steal<py::object>(array));
+  });
+  value_.attr("flags").attr("writeable") = Py_False;
+  return OkStatus();
+}
 
 Status PyArray::SetUpType() {
   static constexpr char kName[] = "ArrayImpl";
@@ -1329,7 +1509,16 @@ Status PyArray::RegisterTypes(py::module& m) {
       py::is_method(type));
   type.attr("is_deleted") =
       py::cpp_function(&PyArray::IsDeleted, py::is_method(type));
-  type.attr("traceback") = jax::property_readonly(&PyArray::traceback);
+  // TODO(phawkins): just use &PyArray::traceback when
+  // nanobind port is complete.
+  type.attr("traceback") =
+      jax::property_readonly([](PyArray self) -> py::object {
+        if (self.traceback()) {
+          return py::reinterpret_borrow<py::object>(self.traceback()->ptr());
+        } else {
+          return py::none();
+        }
+      });
   type.attr("clone") = py::cpp_function(&PyArray::Clone, py::is_method(type));
   type.attr("__module__") = m.attr("__name__");
 

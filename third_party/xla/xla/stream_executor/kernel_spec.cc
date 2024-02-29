@@ -16,7 +16,6 @@ limitations under the License.
 #include "xla/stream_executor/kernel_spec.h"
 
 #include <cstddef>
-#include <cstdint>
 #include <initializer_list>
 #include <memory>
 #include <string>
@@ -24,7 +23,6 @@ limitations under the License.
 #include <utility>
 
 #include "absl/strings/string_view.h"
-#include "absl/synchronization/mutex.h"
 #include "tsl/platform/logging.h"
 
 namespace stream_executor {
@@ -39,8 +37,8 @@ CudaCubinInMemory::CudaCubinInMemory(const char *bytes,
                                      absl::string_view kernel_name)
     : KernelLoaderSpec(kernel_name), bytes_(bytes) {}
 
-bool CompareComputeCapability(const std::tuple<int, int> &lhs,
-                              const std::tuple<int, int> &rhs) {
+static bool CompareComputeCapability(const std::tuple<int, int> &lhs,
+                                     const std::tuple<int, int> &rhs) {
   return std::get<0>(lhs) < std::get<0>(rhs) ||
          (std::get<0>(lhs) == std::get<0>(rhs) &&
           std::get<1>(lhs) < std::get<1>(rhs));
@@ -49,70 +47,26 @@ bool CompareComputeCapability(const std::tuple<int, int> &lhs,
 const std::tuple<int, int> CudaPtxInMemory::kMinimumCapability{1, 0};
 
 CudaPtxInMemory::CudaPtxInMemory(absl::string_view ptx,
-                                 absl::string_view kernel_name,
-                                 bool ptx_compressed)
+                                 absl::string_view kernel_name)
     : KernelLoaderSpec(kernel_name),
       ptx_by_compute_capability_(CompareComputeCapability) {
-  if (ptx_compressed) {
-    // Lazy decompression. Put an empty string in decompressed_ptx_ showing that
-    // the original ptx is compressed.
-    decompressed_ptx_[ptx.data()] = "";
-  }
   ptx_by_compute_capability_[kMinimumCapability] = ptx.data();
 }
 
 CudaPtxInMemory::CudaPtxInMemory(
     const std::initializer_list<CudaPtxInMemory::PtxSpec> &spec_list,
-    absl::string_view kernel_name, bool ptx_compressed)
+    absl::string_view kernel_name)
     : KernelLoaderSpec(kernel_name),
       ptx_by_compute_capability_(CompareComputeCapability) {
   for (const auto &spec : spec_list) {
     int major, minor;
     absl::string_view ptx;
     std::tie(major, minor, ptx) = spec;
-    if (ptx_compressed) {
-      // Lazy decompression. Put an empty string in decompressed_ptx_ showing
-      // that the original ptx is compressed.
-      decompressed_ptx_[ptx.data()] = "";
-    }
     ptx_by_compute_capability_[std::tuple<int, int>{major, minor}] = ptx.data();
   }
 }
 
-std::string CudaPtxInMemory::DecompressPtx(const char *ptx) {
-  // Get the length of the PTX string from the beginning of the buffer.
-  uint64_t ptx_length = *reinterpret_cast<const uint64_t *>(ptx);
-  // Get the PTX string from the buffer with offset and length.
-  std::string compressed_ptx(ptx + sizeof(uint64_t),
-                             ptx + sizeof(uint64_t) + ptx_length);
-  std::string decompressed_ptx;
-  // Decompress the PTX string with bzip2.
-  LOG(FATAL) << "bzip2 decompression is not supported yet.";
-  return decompressed_ptx;
-}
-
 const char *CudaPtxInMemory::default_text() const {
-  if (ptx_by_compute_capability_.empty()) {
-    return nullptr;
-  }
-
-  absl::MutexLock lock(&mu_);
-
-  auto ptx = ptx_by_compute_capability_.begin()->second;
-  // Check if there is an entry in decompressed ptx table.
-  auto decompressed_ptx_iter = decompressed_ptx_.find(ptx);
-  if (decompressed_ptx_iter != decompressed_ptx_.end()) {
-    // If the decompressed string is empty, which means the ptx hasn't been
-    // decompressed, decompress it here.
-    if (decompressed_ptx_iter->second.empty()) {
-      decompressed_ptx_iter->second = DecompressPtx(ptx);
-    }
-    return decompressed_ptx_iter->second.c_str();
-  }
-  return ptx;
-}
-
-const char *CudaPtxInMemory::original_default_text() const {
   if (ptx_by_compute_capability_.empty()) {
     return nullptr;
   }
@@ -122,31 +76,6 @@ const char *CudaPtxInMemory::original_default_text() const {
 
 const char *CudaPtxInMemory::text(int compute_capability_major,
                                   int compute_capability_minor) const {
-  std::tuple<int, int> capability{compute_capability_major,
-                                  compute_capability_minor};
-
-  auto ptx_iter = ptx_by_compute_capability_.find(capability);
-  if (ptx_iter == ptx_by_compute_capability_.end()) {
-    return nullptr;
-  }
-
-  absl::MutexLock lock(&mu_);
-
-  // Check if there is an entry in decompressed ptx table.
-  auto decompressed_ptx_iter = decompressed_ptx_.find(ptx_iter->second);
-  if (decompressed_ptx_iter != decompressed_ptx_.end()) {
-    // If the decompressed string is empty, which means the ptx hasn't been
-    // decompressed, decompress it here.
-    if (decompressed_ptx_iter->second.empty()) {
-      decompressed_ptx_iter->second = DecompressPtx(ptx_iter->second);
-    }
-    return decompressed_ptx_iter->second.c_str();
-  }
-  return ptx_iter->second;
-}
-
-const char *CudaPtxInMemory::original_text(int compute_capability_major,
-                                           int compute_capability_minor) const {
   std::tuple<int, int> capability{compute_capability_major,
                                   compute_capability_minor};
 
@@ -176,8 +105,7 @@ MultiKernelLoaderSpec *MultiKernelLoaderSpec::AddCudaCubinInMemory(
 MultiKernelLoaderSpec *MultiKernelLoaderSpec::AddCudaPtxInMemory(
     absl::string_view ptx, absl::string_view kernel_name) {
   CHECK(cuda_ptx_in_memory_ == nullptr);
-  cuda_ptx_in_memory_.reset(
-      new CudaPtxInMemory{ptx, kernel_name, false /* ptx_compressed */});
+  cuda_ptx_in_memory_.reset(new CudaPtxInMemory{ptx, kernel_name});
   return this;
 }
 

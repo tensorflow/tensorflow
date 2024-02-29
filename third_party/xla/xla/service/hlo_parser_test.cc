@@ -1766,6 +1766,33 @@ ENTRY dot {
 )"
 },
 {
+"DotSparseOperand",
+R"(HloModule dot, entry_computation_layout={(f16[32,32]{1,0}, f16[64,32]{1,0}, u16[32,4]{1,0})->f16[32,32]{1,0}}
+
+ENTRY dot {
+  a = f16[32,32]{1,0} parameter(0)
+  b = f16[64,32]{1,0} parameter(1)
+  meta = u16[32,4]{1,0} parameter(2)
+  ROOT dot = f16[32,32]{1,0} dot(a, b, meta), lhs_contracting_dims={1}, rhs_contracting_dims={0}, sparsity=L.1@2:4
+}
+
+)"
+},
+{
+"DotSparseOperands",
+R"(HloModule dot, entry_computation_layout={(f16[32,32]{1,0}, f16[32,32]{1,0}, u16[32,4]{1,0}, u16[4,32]{1,0})->f16[32,32]{1,0}}
+
+ENTRY dot {
+  a = f16[32,32]{1,0} parameter(0)
+  b = f16[32,32]{1,0} parameter(1)
+  a_meta = u16[32,4]{1,0} parameter(2)
+  b_meta = u16[4,32]{1,0} parameter(3)
+  ROOT dot = f16[32,32]{1,0} dot(a, b, a_meta, b_meta), lhs_contracting_dims={1}, rhs_contracting_dims={0}, sparsity=L.1@2:4_R.0@2:4
+}
+
+)"
+},
+{
 "gather",
 R"(HloModule gather, entry_computation_layout={(f32[50,49,48,47,46]{4,3,2,1,0}, s64[10,9,8,7,5]{4,3,2,1,0})->f32[10,9,8,7,30,29,28,27,26]{8,7,6,5,4,3,2,1,0}}
 
@@ -4180,6 +4207,37 @@ TEST_F(HloParserTest, ParseShapeStringWithDynamicShapeMetadataPrefix) {
   Shape expected = ShapeUtil::MakeShapeWithDenseLayout(F32, {123, 456}, {1, 0},
                                                        {Tile({16, 128})});
   expected.mutable_layout()->set_dynamic_shape_metadata_prefix_bytes(1024);
+  EXPECT_EQ(expected, actual)
+      << "expected: " << ShapeUtil::HumanStringWithLayout(expected)
+      << "actual:   " << ShapeUtil::HumanStringWithLayout(actual);
+}
+
+TEST_F(HloParserTest, ParseShapeStringWithSplitConfigLayout) {
+  // Tile, memory space, and split config.
+  std::string shape_string = "pred[123,456]{1,0:T(2,128)S(3)SC(1:200)}";
+  TF_ASSERT_OK_AND_ASSIGN(Shape actual, ParseShape(shape_string));
+  Shape expected = ShapeUtil::MakeShapeWithDenseLayout(
+      PRED, {123, 456}, {1, 0}, {Tile({2, 128})}, 1, 0, 3,
+      {SplitConfig(1, {200})});
+  EXPECT_EQ(expected, actual)
+      << "expected: " << ShapeUtil::HumanStringWithLayout(expected)
+      << "actual:   " << ShapeUtil::HumanStringWithLayout(actual);
+
+  // Memory space and split config.
+  shape_string = "pred[123,456]{1,0:S(3)SC(0:10)(1:4,5)}";
+  TF_ASSERT_OK_AND_ASSIGN(actual, ParseShape(shape_string));
+  expected = ShapeUtil::MakeShapeWithDenseLayout(
+      PRED, {123, 456}, {1, 0}, {}, 1, 0, 3,
+      {SplitConfig(0, {10}), SplitConfig(1, {4, 5})});
+  EXPECT_EQ(expected, actual)
+      << "expected: " << ShapeUtil::HumanStringWithLayout(expected)
+      << "actual:   " << ShapeUtil::HumanStringWithLayout(actual);
+
+  // Split config only.
+  shape_string = "pred[123,456]{1,0:SC(1:50,200)}";
+  TF_ASSERT_OK_AND_ASSIGN(actual, ParseShape(shape_string));
+  expected = ShapeUtil::MakeShapeWithDenseLayout(
+      PRED, {123, 456}, {1, 0}, {}, 1, 0, 0, {SplitConfig(1, {50, 200})});
   EXPECT_EQ(expected, actual)
       << "expected: " << ShapeUtil::HumanStringWithLayout(expected)
       << "actual:   " << ShapeUtil::HumanStringWithLayout(actual);

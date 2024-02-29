@@ -142,7 +142,6 @@ tools/toolchains/win/bazel_211/BUILD:
 tools/toolchains/win/tf_win_05022023/BUILD:
 tools/toolchains/win_1803/py38/BUILD:
 tools/toolchains/win_1803/py39/BUILD:
-tsl/cuda/stub.bzl:
 tsl/mkl/BUILD:
 tsl/mkl/LICENSE:
 tsl/mkl/MKL_LICENSE:

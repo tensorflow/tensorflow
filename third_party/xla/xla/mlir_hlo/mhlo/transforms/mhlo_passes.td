@@ -40,15 +40,6 @@ def ChloLegalizeToHloBasisOpsPass : Pass<"chlo-legalize-to-hlo-basis-ops", "func
   let dependentDialects = ["mhlo::MhloDialect", "chlo::ChloDialect"];
 }
 
-def LegalizeSparseOpsPass : Pass<"legalize-sparse-ops", "func::FuncOp"> {
-  let summary = "Legalize from sparse ops before convert MLIR to XLA computation.";
-  let constructor = "createLegalizeSparseOperationsPass()";
-  let options = [
-    Option<"legalize_to_custom_calls_", "legalize-to-custom-calls", "bool",
-           /*default=*/"true", "Whether legalize the sparse operations to custom_calls to be able to translate sparse operations to XLA computations">,
-  ];
-}
-
 def HloCanonicalizeScatterPass : Pass<"hlo-canonicalize-scatter", "func::FuncOp"> {
   let summary = "Rewrites scatter into transposes, reshapes and a simple scatter.";
   let constructor = "createHloCanonicalizeScatterPass()";
@@ -327,11 +318,6 @@ def FlattenTuplePass : Pass<"mhlo-flatten-tuple", "func::FuncOp"> {
 def ConvertToSignlessPass : Pass<"convert-to-signless", "ModuleOp"> {
   let summary = "Pass to transform the IR to be on signless integers.";
   let constructor = "createConvertToSignlessPass()";
-}
-
-def SparseRewritingPass : Pass<"mhlo-sparse-rewriting", "func::FuncOp"> {
-  let summary = "Pass to rewrite mhlo sparse tensor types.";
-  let constructor = "createSparseRewritingPass()";
 }
 
 def MhloExpandOpsSimplifierPass

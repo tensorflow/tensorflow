@@ -342,7 +342,7 @@ class EagerContext : public ImmediateExecutionContext, public core::RefCounted {
                                         tsl::core::RefCountPtr<Rendezvous>* r) {
         mutex_lock l(global_rendezvous_mu_);
         *r = global_rendezvous_for_functions_.GetNewRef();
-        return OkStatus();
+        return absl::OkStatus();
       }};
     } else {
       return CreateRendezvousFactory();
@@ -625,7 +625,7 @@ class EagerContext : public ImmediateExecutionContext, public core::RefCounted {
                                         tsl::core::RefCountPtr<Rendezvous>* r) {
         VLOG(6) << "Creating rendezvous using the rendezvous_creator_.";
         *r = rendezvous_creator_(step_id);
-        return OkStatus();
+        return absl::OkStatus();
       }};
     }
 
@@ -639,7 +639,7 @@ class EagerContext : public ImmediateExecutionContext, public core::RefCounted {
         auto remote_r = worker_env_->rendezvous_mgr->Find(step_id);
         remote_r->Initialize(worker_session_.get()).IgnoreError();
         *r = std::move(remote_r);
-        return OkStatus();
+        return absl::OkStatus();
       }};
     }
 #endif
@@ -650,7 +650,7 @@ class EagerContext : public ImmediateExecutionContext, public core::RefCounted {
                                         tsl::core::RefCountPtr<Rendezvous>* r) {
         VLOG(6) << "Creating rendezvous using local_device_mgr.";
         *r = local_rendezvous_cache_.FindOrCreate(step_id, local_device_mgr());
-        return OkStatus();
+        return absl::OkStatus();
       }};
     }
 

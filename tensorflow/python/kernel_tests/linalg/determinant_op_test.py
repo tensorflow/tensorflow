@@ -158,6 +158,37 @@ class DeterminantOpTest(test.TestCase):
       det1_val, det2_val = self.evaluate([det1, det2])
       self.assertEqual(det1_val, det2_val)
 
+  def testInfAndNans(self):
+    # 2x2 matrices
+    self._compareDeterminant(np.array([[np.inf, 1], [1, 1]]).astype(np.float32))
+    self._compareDeterminant(
+        np.array([[np.inf, np.inf], [1, 1]]).astype(np.float32)
+    )
+    self._compareDeterminant(
+        np.array([[np.inf, -np.inf], [1, 1]]).astype(np.float32)
+    )
+    self._compareDeterminant(np.array([[np.nan, 1], [1, 1]]).astype(np.float32))
+
+    # 5x5 matrices (Eigen forces LU decomposition)
+    self._compareDeterminant(
+        np.array([
+            [np.inf, 3.0, 4.0, 5.0, 6.0],
+            [3.0, 4.0, 9.0, 2.0, 0.0],
+            [2.0, 5.0, 8.0, 3.0, 8.0],
+            [1.0, 6.0, 7.0, 4.0, 7.0],
+            [2.0, 3.0, 4.0, 5.0, 6.0],
+        ]).astype(np.float32)
+    )
+    self._compareDeterminant(
+        np.array([
+            [np.nan, 3.0, 4.0, 5.0, 6.0],
+            [3.0, 4.0, 9.0, 2.0, 0.0],
+            [2.0, 5.0, 8.0, 3.0, 8.0],
+            [1.0, 6.0, 7.0, 4.0, 7.0],
+            [2.0, 3.0, 4.0, 5.0, 6.0],
+        ]).astype(np.float32)
+    )
+
 
 class MatrixDeterminantBenchmark(test.Benchmark):
 

@@ -90,6 +90,19 @@ class QuantizedTensorElementType {
     return std::get<SmallInlinedVector<T>>(zero_points_);
   }
 
+  friend bool operator==(const QuantizedTensorElementType& lhs,
+                         const QuantizedTensorElementType& rhs) {
+    return lhs.storage_type_ == rhs.storage_type_ &&
+           lhs.expressed_type_ == rhs.expressed_type_ &&
+           lhs.quantized_dimension_ == rhs.quantized_dimension_ &&
+           lhs.scales_ == rhs.scales_ && lhs.zero_points_ == rhs.zero_points_;
+  }
+
+  friend bool operator!=(const QuantizedTensorElementType& lhs,
+                         const QuantizedTensorElementType& rhs) {
+    return !(lhs == rhs);
+  }
+
  private:
   // Most quantized tensors will likely be per tensor quantized, which will have
   // a single element in the vector. Use an InlinedVector with a single element

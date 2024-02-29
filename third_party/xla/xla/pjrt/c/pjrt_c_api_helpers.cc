@@ -35,6 +35,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/layout.h"
 #include "xla/pjrt/c/pjrt_c_api.h"
+#include "xla/pjrt/c/pjrt_c_api_profiler_extension.h"
 #include "xla/pjrt/distributed/key_value_store_interface.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_common.h"
@@ -49,6 +50,8 @@ limitations under the License.
 #include "tsl/platform/logging.h"
 #include "tsl/platform/status.h"
 #include "tsl/platform/statusor.h"
+#include "tsl/profiler/lib/connected_traceme.h"
+#include "tsl/profiler/lib/context_types.h"
 
 namespace pjrt {
 
@@ -969,6 +972,21 @@ absl::StatusOr<xla::CompiledMemoryStats> GetCompiledMemoryStats(
   results.host_alias_size_in_bytes = args.host_alias_size_in_bytes;
   results.host_temp_size_in_bytes = args.host_temp_size_in_bytes;
   return results;
+}
+
+PJRT_Profiler_Extension CreatePjrtProfilerExtension(
+    absl::string_view traceme_name) {
+  tsl::profiler::TraceMeProducer producer(
+      traceme_name, tsl::profiler::ContextType::kPjrtLibraryCall);
+  int64_t traceme_context_id = producer.GetContextId();
+  PJRT_Profiler_Extension profiler_extension{
+      /*struct_size=*/PJRT_Profiler_Extension_STRUCT_SIZE,
+      /*type=*/PJRT_Extension_Type::PJRT_Extension_Type_Profiler,
+      /*next=*/nullptr,
+      /*profiler_api=*/nullptr,
+      /*traceme_context_id=*/traceme_context_id,
+  };
+  return profiler_extension;
 }
 
 }  // namespace pjrt

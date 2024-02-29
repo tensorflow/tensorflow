@@ -3009,7 +3009,10 @@ bool FindInstanceNorm(RemapperContext* ctx, int node_index,
     return false;
   }
   Tensor gamma_tensor, beta_tensor;
-  if (!gamma_tensor.FromProto(gamma_node->attr().at("value").tensor()) ||
+  // TODO(intel-tf): Allow fusions for cases where gamma and beta aren't Consts
+  if (gamma_node->op() != "Const" ||
+      !gamma_tensor.FromProto(gamma_node->attr().at("value").tensor()) ||
+      beta_node->op() != "Const" ||
       !beta_tensor.FromProto(beta_node->attr().at("value").tensor())) {
     return false;
   }

@@ -2115,6 +2115,25 @@ func.func @slice(
 
 // -----
 
+// CHECK-LABEL: func @dynamic_slice
+func.func @dynamic_slice(
+    %arg0: tensor<?x4x!quant.uniform<i8:f32, 0.13170163023705575:-1>>,
+    %arg1: tensor<i32>,
+    %arg2: tensor<i32>
+  ) -> tensor<1x1x!quant.uniform<i8:f32, 0.13170163023705575:-1>> {
+  // CHECK: mhlo.dynamic_slice
+  // CHECK-SAME: (tensor<?x4xi8>, tensor<i32>, tensor<i32>) -> tensor<1x1xi8>
+  %0 = "mhlo.dynamic_slice"(%arg0, %arg1, %arg2) {
+    slice_sizes = dense<1> : tensor<2xi64>
+  } : (
+    tensor<?x4x!quant.uniform<i8:f32, 0.13170163023705575:-1>>, tensor<i32>,
+    tensor<i32>
+  ) -> tensor<1x1x!quant.uniform<i8:f32, 0.13170163023705575:-1>>
+  return %0 : tensor<1x1x!quant.uniform<i8:f32, 0.13170163023705575:-1>>
+}
+
+// -----
+
 // CHECK-LABEL: func @get_dimension_size
 func.func @get_dimension_size(
     %arg0: tensor<?x4x!quant.uniform<i8:f32, 0.13170163023705575:-1>>

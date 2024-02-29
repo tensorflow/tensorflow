@@ -27,6 +27,7 @@ limitations under the License.
 #include "absl/container/inlined_vector.h"
 #include "absl/strings/str_cat.h"
 #include "absl/types/span.h"
+#include "third_party/nanobind/include/nanobind/nanobind.h"
 #include "pybind11/pybind11.h"  // from @pybind11
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/python/ifrt/array.h"
@@ -208,7 +209,7 @@ struct ParsedArgumentsAsBuffers {
   CallSignature signature;
   // The concatenation of the dynamic positional arguments and the sorted
   // keyword arguments.
-  absl::InlinedVector<pybind11::object, 2> flat_dynamic_args;
+  absl::InlinedVector<nanobind::object, 2> flat_dynamic_args;
   std::vector<pybind11::object> keep_alive_objects;
 
   xla::ifrt::Client* ifrt_client;

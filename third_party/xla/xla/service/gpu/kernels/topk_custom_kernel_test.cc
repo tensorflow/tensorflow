@@ -88,9 +88,7 @@ TEST_P(TopKKernelTest, TopKFloat) {
   se::Platform* platform = se::PlatformManager::PlatformWithName(name).value();
   se::StreamExecutor* executor = platform->ExecutorForDevice(0).value();
 
-  se::Stream stream(executor);
-  TF_ASSERT_OK(stream.Initialize());
-  ASSERT_TRUE(stream.ok());
+  auto stream = executor->CreateStream().value();
 
   const auto [n_kb, k, batch_size, offset] = GetParam();
   const size_t n = n_kb * 1024 + offset;
@@ -104,10 +102,10 @@ TEST_P(TopKKernelTest, TopKFloat) {
 
   auto source = RandomVec<T>(n * batch_size);
   TF_ASSERT_OK(
-      stream.Memcpy(&input_buffer, source.data(), n * batch_size * sizeof(T)));
-  TF_ASSERT_OK(stream.MemZero(&output_values, k * batch_size * sizeof(T)));
+      stream->Memcpy(&input_buffer, source.data(), n * batch_size * sizeof(T)));
+  TF_ASSERT_OK(stream->MemZero(&output_values, k * batch_size * sizeof(T)));
   TF_ASSERT_OK(
-      stream.MemZero(&output_indices, k * batch_size * sizeof(uint32_t)));
+      stream->MemZero(&output_indices, k * batch_size * sizeof(uint32_t)));
 
   auto custom_kernel =
       GetTopKKernel("topk", PrimitiveType::F32, n, k, batch_size);
@@ -120,14 +118,14 @@ TEST_P(TopKKernelTest, TopKFloat) {
       std::vector<se::DeviceMemoryBase>(
           {input_buffer, output_values, output_indices}),
       custom_kernel->shared_memory_bytes());
-  TF_ASSERT_OK(executor->Launch(&stream, custom_kernel->thread_dims(),
+  TF_ASSERT_OK(executor->Launch(stream.get(), custom_kernel->thread_dims(),
                                 custom_kernel->block_dims(), *kernel, arr));
 
   std::vector<T> got(k);
-  ASSERT_TRUE(stream.BlockHostUntilDone().ok());
+  ASSERT_TRUE(stream->BlockHostUntilDone().ok());
   for (int i = 0; i < batch_size; i++) {
-    TF_ASSERT_OK(stream.Memcpy(got.data(), output_values.GetSlice(k * i, k),
-                               k * sizeof(T)));
+    TF_ASSERT_OK(stream->Memcpy(got.data(), output_values.GetSlice(k * i, k),
+                                k * sizeof(T)));
     std::vector<T> slice(source.data() + n * i, source.data() + n * (i + 1));
     std::sort(slice.begin(), slice.end(), std::greater<T>());
     slice.resize(k);
@@ -144,9 +142,7 @@ TEST_P(TopKKernelTest, TopKPackedNegative) {
   se::Platform* platform = se::PlatformManager::PlatformWithName(name).value();
   se::StreamExecutor* executor = platform->ExecutorForDevice(0).value();
 
-  se::Stream stream(executor);
-  TF_ASSERT_OK(stream.Initialize());
-  ASSERT_TRUE(stream.ok());
+  auto stream = executor->CreateStream().value();
 
   const auto [n_kb, k, batch_size, offset] = GetParam();
   const size_t n = n_kb * 1024 + offset;
@@ -160,10 +156,10 @@ TEST_P(TopKKernelTest, TopKPackedNegative) {
 
   auto source = RandomVecNegative<T>(n * batch_size);
   TF_ASSERT_OK(
-      stream.Memcpy(&input_buffer, source.data(), n * batch_size * sizeof(T)));
-  TF_ASSERT_OK(stream.MemZero(&output_values, k * batch_size * sizeof(T)));
+      stream->Memcpy(&input_buffer, source.data(), n * batch_size * sizeof(T)));
+  TF_ASSERT_OK(stream->MemZero(&output_values, k * batch_size * sizeof(T)));
   TF_ASSERT_OK(
-      stream.MemZero(&output_indices, k * batch_size * sizeof(uint32_t)));
+      stream->MemZero(&output_indices, k * batch_size * sizeof(uint32_t)));
 
   auto custom_kernel =
       GetTopKKernel("topk", PrimitiveType::F32, n, k, batch_size);
@@ -176,14 +172,14 @@ TEST_P(TopKKernelTest, TopKPackedNegative) {
       std::vector<se::DeviceMemoryBase>(
           {input_buffer, output_values, output_indices}),
       custom_kernel->shared_memory_bytes());
-  TF_ASSERT_OK(executor->Launch(&stream, custom_kernel->thread_dims(),
+  TF_ASSERT_OK(executor->Launch(stream.get(), custom_kernel->thread_dims(),
                                 custom_kernel->block_dims(), *kernel, arr));
 
   std::vector<T> got(k);
-  ASSERT_TRUE(stream.BlockHostUntilDone().ok());
+  ASSERT_TRUE(stream->BlockHostUntilDone().ok());
   for (int i = 0; i < batch_size; i++) {
-    TF_ASSERT_OK(stream.Memcpy(got.data(), output_values.GetSlice(k * i, k),
-                               k * sizeof(T)));
+    TF_ASSERT_OK(stream->Memcpy(got.data(), output_values.GetSlice(k * i, k),
+                                k * sizeof(T)));
     std::vector<T> slice(source.data() + n * i, source.data() + n * (i + 1));
     std::sort(slice.begin(), slice.end(), std::greater<T>());
     slice.resize(k);

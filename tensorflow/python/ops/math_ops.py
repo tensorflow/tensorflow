@@ -70,6 +70,7 @@ API docstring: tensorflow.math
 import builtins
 import numpy as np
 
+from tensorflow.python.compat import compat as forward_compat
 from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -1076,7 +1077,11 @@ def saturate_cast(value, dtype, name=None):
 
     # TODO: b/288437118 - unconditionally apply `clip_by_value` to fix `inf`
     #                     behavior.
-    if in_dtype.min < out_real_dtype.min or in_dtype.max > out_real_dtype.max:
+    if (
+        forward_compat.forward_compatible(2024, 11, 1)
+        or in_dtype.min < out_real_dtype.min
+        or in_dtype.max > out_real_dtype.max
+    ):
       # The output min/max may not actually be representable in the
       # in_dtype (e.g. casting float32 to uint32).  This can lead to undefined
       # behavior when trying to cast a value outside the valid range of the

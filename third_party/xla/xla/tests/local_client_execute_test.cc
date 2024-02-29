@@ -654,12 +654,11 @@ XLA_TEST_F(LocalClientExecuteTest, RunOnStream) {
     }
     se::StreamExecutor* executor =
         local_client_->platform()->ExecutorForDevice(d).value();
-    se::Stream stream(executor);
-    stream.Init();
+    TF_ASSERT_OK_AND_ASSIGN(auto stream, executor->CreateStream());
 
-    auto result =
-        ExecuteLocallyOrDie(computation, {}, DefaultExecutableBuildOptions(),
-                            DefaultExecutableRunOptions().set_stream(&stream));
+    auto result = ExecuteLocallyOrDie(
+        computation, {}, DefaultExecutableBuildOptions(),
+        DefaultExecutableRunOptions().set_stream(stream.get()));
     // As a check to verify that the computation ran of the device associated
     // with the stream. This is a weak check, but stronger verification is hard.
     EXPECT_EQ(d, result.device_ordinal());
@@ -675,14 +674,15 @@ XLA_TEST_F(LocalClientExecuteTest,
   // match the platform of the service (!= CPU).
   se::Platform* wrong_platform =
       se::PlatformManager::PlatformWithId(se::host::kHostPlatformId).value();
-  se::Stream wrong_stream(wrong_platform->ExecutorForDevice(0).value());
-  wrong_stream.Init();
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto wrong_stream,
+      wrong_platform->ExecutorForDevice(0).value()->CreateStream());
 
   XlaBuilder builder(TestName());
   ConstantR0<float>(&builder, 42.0f);
   auto execute_status = ExecuteLocally(
       builder.Build().value(), {}, DefaultExecutableBuildOptions(),
-      DefaultExecutableRunOptions().set_stream(&wrong_stream));
+      DefaultExecutableRunOptions().set_stream(wrong_stream.get()));
   EXPECT_FALSE(execute_status.ok());
   EXPECT_THAT(execute_status.status().message(),
               ContainsRegex("stream is for platform .*, but service targets"));
@@ -703,27 +703,6 @@ XLA_TEST_F(LocalClientExecuteTest,
   EXPECT_FALSE(execute_status.ok());
   EXPECT_THAT(execute_status.status().message(),
               ContainsRegex("allocator platform .* does not match service"));
-}
-
-XLA_TEST_F(LocalClientExecuteTest, RunOnUninitializedStream) {
-  // Try to run a computation on a stream that has not been initialized.
-  XlaBuilder builder(TestName());
-  ConstantR0<float>(&builder, 42.0f);
-
-  LOG(INFO) << "default device = " << local_client_->default_device_ordinal();
-  se::StreamExecutor* executor =
-      local_client_->platform()
-          ->ExecutorForDevice(local_client_->default_device_ordinal())
-          .value();
-  se::Stream stream(executor);
-  // Don't call stream.Init().
-
-  auto execute_status = ExecuteLocally(
-      builder.Build().value(), {}, DefaultExecutableBuildOptions(),
-      DefaultExecutableRunOptions().set_stream(&stream));
-  EXPECT_FALSE(execute_status.ok());
-  EXPECT_THAT(execute_status.status().message(),
-              ContainsRegex("stream is uninitialized or in an error state"));
 }
 
 XLA_TEST_F(LocalClientExecuteTest, CompileExecutable) {

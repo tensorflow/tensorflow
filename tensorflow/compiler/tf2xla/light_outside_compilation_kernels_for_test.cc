@@ -166,7 +166,7 @@ class TestDynamicTfXlaOp : public LightOutsideCompilationOp {
  public:
   explicit TestDynamicTfXlaOp(OpKernelConstruction* context)
       : LightOutsideCompilationOp(context) {}
-  StatusOr<OutputDimensionBoundsMap> DynamicOutputDimensions(
+  absl::StatusOr<OutputDimensionBoundsMap> DynamicOutputDimensions(
       const NodeDef& ndef, XlaOpKernelContext* ctx) const override {
     OutputDimensionBoundsMap out;
     TF_ASSIGN_OR_RETURN(auto max_bound, GetNodeAttr<int64_t>(ndef, "max_size"));
@@ -226,7 +226,7 @@ class DynamicMultidimXlaOp : public LightOutsideCompilationOp {
  public:
   explicit DynamicMultidimXlaOp(OpKernelConstruction* context)
       : LightOutsideCompilationOp(context) {}
-  StatusOr<OutputDimensionBoundsMap> DynamicOutputDimensions(
+  absl::StatusOr<OutputDimensionBoundsMap> DynamicOutputDimensions(
       const NodeDef& ndef, XlaOpKernelContext* ctx) const override {
     OutputDimensionBoundsMap out;
     for (int i = 0; i < 5; i++) {
@@ -363,7 +363,7 @@ class TestDynamicTfWithBoundXlaOp : public LightOutsideCompilationOp {
   explicit TestDynamicTfWithBoundXlaOp(OpKernelConstruction* context)
       : LightOutsideCompilationOp(context) {}
 
-  StatusOr<OutputDimensionBoundsMap> DynamicOutputDimensions(
+  absl::StatusOr<OutputDimensionBoundsMap> DynamicOutputDimensions(
       const NodeDef& ndef, XlaOpKernelContext* ctx) const override {
     OutputDimensionBoundsMap out;
     TF_ASSIGN_OR_RETURN(auto max_bound, GetNodeAttr<int64_t>(ndef, "max_size"));

@@ -2337,8 +2337,8 @@ void DOT_ReorderContracting(::testing::benchmark::State& state) {
                                         ExecutableBuildOptions()));
   auto executable = std::move(executables[0]);
 
-  se::Stream stream(executors[device_ordinal]);
-  stream.Init();
+  TF_ASSERT_OK_AND_ASSIGN(auto stream,
+                          executors[device_ordinal]->CreateStream());
 
   ExecutableRunOptions options;
   options.set_allocator(&allocator);

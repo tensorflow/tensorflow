@@ -64,7 +64,7 @@ tsl_gpu_library(
     deps = [
         "@local_tsl//tsl/platform:macros",
         "@local_tsl//tsl/platform:types",
-    ] + if_cuda(["@local_tsl//tsl/cuda:cupti"]),
+    ] + if_cuda(["//xla/tsl/cuda:cupti"]),
 )
 
 tsl_gpu_library(
@@ -161,7 +161,7 @@ tsl_gpu_library(
     visibility = ["//visibility:public"],
     deps = [
         ":cupti_interface",
-    ] + if_cuda(["@local_tsl//tsl/cuda:cupti"]),
+    ] + if_cuda(["//xla/tsl/cuda:cupti"]),
 )
 
 tsl_gpu_library(
@@ -280,7 +280,7 @@ tsl_gpu_library(
         "@local_tsl//tsl/profiler/utils:xplane_builder",
         "@local_tsl//tsl/profiler/utils:xplane_schema",
         "@local_tsl//tsl/profiler/utils:xplane_utils",
-    ] + if_cuda(["@local_tsl//tsl/cuda:cupti"]),
+    ] + if_cuda(["//xla/tsl/cuda:cupti"]),
 )
 
 tsl_gpu_library(

@@ -341,6 +341,8 @@ class MemorySpaceAssignment {
       const absl::flat_hash_set<
           std::pair<int, ShapeIndex>>& /*operands_in_alternate_memory*/,
       const absl::flat_hash_set<ShapeIndex>& /*outputs_in_alternate_memory*/)>;
+  using PositionRequiresContiguousAllocationFunction =
+      std::function<bool(const HloPosition&)>;
 
   using AllocationSequence = std::vector<std::unique_ptr<Allocation>>;
 
@@ -755,6 +757,10 @@ struct Options {
                  std::pair<int, ShapeIndex>>& /*operands_in_alternate_memory*/,
              const absl::flat_hash_set<
                  ShapeIndex>& /*outputs_in_alternate_memory*/) { return 0; };
+
+  MemorySpaceAssignment::PositionRequiresContiguousAllocationFunction
+      position_requires_contiguous_allocation_fn =
+          [](const HloPosition&) { return false; };
 
   // If true, we will try to reduce scoped allocation buffer size for all
   // instructions if their operand/output has been allocated in alternate

@@ -81,8 +81,11 @@ class HostOffloader : public HloModulePass {
   Status DynamifySlice(HloInstruction* slice);
 
   static constexpr std::array kAllowedPositionOpcodes = {
-      HloOpcode::kTuple, HloOpcode::kGetTupleElement,
-      HloOpcode::kOptimizationBarrier, HloOpcode::kParameter,
+      HloOpcode::kBitcast,
+      HloOpcode::kGetTupleElement,
+      HloOpcode::kOptimizationBarrier,
+      HloOpcode::kParameter,
+      HloOpcode::kTuple,
       HloOpcode::kWhile};
 };
 

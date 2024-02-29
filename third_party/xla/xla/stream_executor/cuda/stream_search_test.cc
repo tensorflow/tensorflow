@@ -22,8 +22,6 @@ limitations under the License.
 namespace stream_executor {
 namespace {
 
-#if GOOGLE_CUDA
-
 class StreamSearchTest : public ::testing::Test {
  public:
   Platform* GetPlatform() { return *PlatformManager::PlatformWithName("CUDA"); }
@@ -43,35 +41,28 @@ TEST_F(StreamSearchTest, NoMatchBadPtr) {
 }
 
 TEST_F(StreamSearchTest, FoundPrevExecutor) {
-  absl::StatusOr<StreamExecutor*> executor =
-      GetPlatform()->ExecutorForDevice(0);
-  EXPECT_TRUE(executor.ok());
+  TF_ASSERT_OK_AND_ASSIGN(StreamExecutor * executor,
+                          GetPlatform()->ExecutorForDevice(0));
 
-  Stream s(*executor);
-  s.Init();
+  TF_ASSERT_OK_AND_ASSIGN(auto s, executor->CreateStream());
+  TF_ASSERT_OK_AND_ASSIGN(auto s2, executor->CreateStream());
 
-  Stream s2(*executor);
-  s2.Init();
-
-  void* gpu_ptr = s.platform_specific_handle().stream;
-  void* gpu_ptr_2 = s2.platform_specific_handle().stream;
+  void* gpu_ptr = s->platform_specific_handle().stream;
+  void* gpu_ptr_2 = s2->platform_specific_handle().stream;
 
   StreamExecutorConfig c;
   c.gpu_stream = gpu_ptr;
 
-  absl::StatusOr<StreamExecutor*> found_executor =
-      GetPlatform()->GetExecutor(c);
-  EXPECT_TRUE(found_executor.ok());
-  EXPECT_EQ(*found_executor, *executor);
+  TF_ASSERT_OK_AND_ASSIGN(StreamExecutor * found_executor,
+                          GetPlatform()->GetExecutor(c));
+  EXPECT_EQ(found_executor, executor);
 
-  Stream* found1 = (*found_executor)->FindAllocatedStream(gpu_ptr);
-  EXPECT_EQ(found1, &s);
+  Stream* found1 = found_executor->FindAllocatedStream(gpu_ptr);
+  EXPECT_EQ(found1, s.get());
 
-  Stream* found2 = (*found_executor)->FindAllocatedStream(gpu_ptr_2);
-  EXPECT_EQ(found2, &s2);
+  Stream* found2 = found_executor->FindAllocatedStream(gpu_ptr_2);
+  EXPECT_EQ(found2, s2.get());
 }
-
-#endif  // GOOGLE_CUDA
 
 }  // namespace
 }  // namespace stream_executor
