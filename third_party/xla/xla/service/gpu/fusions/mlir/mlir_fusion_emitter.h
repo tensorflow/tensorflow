@@ -66,12 +66,12 @@ class MlirFusionEmitterBase : public KernelFusionInterface {
   // the dimensions specified in KernelFusionInterface. Loops are nested with
   // the symbol 0 as the outermost loop. The indices of the map's dimensions and
   // symbols are passed to the lambda separately. The return values of the
-  // function are the updated output tensors.
+  // function are the updated outputs.
   absl::StatusOr<llvm::SmallVector<mlir::Value>> EmitLoopNest(
-      mlir::ImplicitLocOpBuilder& b, mlir::ValueRange output_tensors,
+      mlir::ImplicitLocOpBuilder& b, mlir::ValueRange outputs,
       const IndexingMap& indexing_map,
       const std::function<absl::StatusOr<llvm::SmallVector<mlir::Value>>(
-          mlir::ValueRange output_tensors, mlir::ValueRange dim_values,
+          mlir::ValueRange outputs, mlir::ValueRange dim_values,
           mlir::ValueRange symbol_values)>& create_body) const;
 
   mlir::Value EmitBlockId(mlir::ImplicitLocOpBuilder& builder, int dim) const;

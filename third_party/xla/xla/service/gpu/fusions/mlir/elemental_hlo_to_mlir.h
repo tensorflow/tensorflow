@@ -57,6 +57,14 @@ absl::StatusOr<llvm::SmallVector<mlir::Value>> ProvideParameter(
     const CallTargetProvider& call_target_provider,
     mlir::ImplicitLocOpBuilder& builder);
 
+// Emits MLIR to produce the values of a range of parameters. The parameters
+// must all be scalars. The parameters are all evaluated at the same indices.
+absl::StatusOr<llvm::SmallVector<mlir::Value>> ProvideParameterRange(
+    const PartitionedComputation& computation, const HloInstruction* instr,
+    int start, int num, mlir::ValueRange indices,
+    const CallTargetProvider& call_target_provider,
+    mlir::ImplicitLocOpBuilder& builder);
+
 // Checks whether the given HLO instruction can be converted to MLIR.
 bool IsHloOpSupported(const HloInstruction* instr,
                       se::CudaComputeCapability compute_capability);

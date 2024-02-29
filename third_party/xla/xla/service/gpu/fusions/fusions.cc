@@ -41,6 +41,7 @@ limitations under the License.
 #include "xla/service/gpu/fusions/loop_mlir.h"
 #include "xla/service/gpu/fusions/mlir/elemental_hlo_to_mlir.h"
 #include "xla/service/gpu/fusions/reduction.h"
+#include "xla/service/gpu/fusions/reduction_mlir.h"
 #include "xla/service/gpu/fusions/scatter.h"
 #include "xla/service/gpu/fusions/transpose.h"
 #include "xla/service/gpu/fusions/transpose_mlir.h"
@@ -171,6 +172,12 @@ absl::StatusOr<std::unique_ptr<FusionInterface>> GetFusionEmitter(
       return std::make_unique<LoopFusion>(analysis);
     }
     case HloFusionAnalysis::EmitterFusionKind::kReduction:
+      if (enable_mlir_emitters && MlirReductionFusion::IsSupported(analysis) &&
+          mlir_converter::IsHloConversionSupported(
+              analysis.fusion(),
+              fusion_info.analysis().device_info().gpu_compute_capability())) {
+        return std::make_unique<MlirReductionFusion>(analysis);
+      }
       return std::make_unique<ReductionFusion>(analysis);
     case HloFusionAnalysis::EmitterFusionKind::kScatter:
       return std::make_unique<ScatterFusion>(analysis);

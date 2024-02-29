@@ -221,6 +221,7 @@ MlirFusionEmitterBase::CreateLLVMModule(
   pm.addPass(mlir::createCSEPass());
   pm.addPass(CreatePropagateSliceIndicesPass());
   pm.addPass(CreateLowerFuncPass());
+  pm.addPass(CreateLowerXlaGpuToScfPass());
   pm.addPass(CreateLowerTensorsPass());
   pm.addPass(mlir::createConvertComplexToStandardPass());
   pm.addPass(CreateMergePointersToSameSlicePass());
@@ -349,7 +350,7 @@ MlirFusionEmitterBase::CreateMLIRModule(
 
 absl::StatusOr<llvm::SmallVector<mlir::Value>>
 MlirFusionEmitterBase::EmitLoopNest(
-    mlir::ImplicitLocOpBuilder& b, mlir::ValueRange output_tensors,
+    mlir::ImplicitLocOpBuilder& b, mlir::ValueRange outputs,
     const IndexingMap& indexing_map,
     const std::function<absl::StatusOr<llvm::SmallVector<mlir::Value>>(
         mlir::ValueRange outputs_tensors, mlir::ValueRange dim_values,
@@ -395,7 +396,7 @@ MlirFusionEmitterBase::EmitLoopNest(
     return if_op.getResults();
   };
 
-  return make_loops(0, output_tensors);
+  return make_loops(0, outputs);
 }
 
 }  // namespace gpu

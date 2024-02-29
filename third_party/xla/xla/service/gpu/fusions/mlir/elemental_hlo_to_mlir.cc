@@ -123,7 +123,6 @@ static auto& kUnsupportedOps =
                                         HloOpcode::kOptimizationBarrier,
                                         HloOpcode::kInfeed,
                                         HloOpcode::kOutfeed,
-                                        HloOpcode::kParameter,
                                         HloOpcode::kPartitionId,
                                         HloOpcode::kRecv,
                                         HloOpcode::kRecvDone,
@@ -867,6 +866,22 @@ absl::StatusOr<llvm::SmallVector<mlir::Value>> ProvideParameter(
       this_fn.getArguments().take_front(instr->parent()->num_parameters()));
   absl::c_copy(indices, std::back_inserter(operands));
   return builder.create<PureCallOp>(callee, operands).getResults();
+}
+
+absl::StatusOr<llvm::SmallVector<mlir::Value>> ProvideParameterRange(
+    const PartitionedComputation& computation, const HloInstruction* instr,
+    int start, int num, mlir::ValueRange indices,
+    const CallTargetProvider& call_target_provider,
+    mlir::ImplicitLocOpBuilder& builder) {
+  llvm::SmallVector<mlir::Value> scalars;
+  for (int i = 0; i < num; ++i) {
+    TF_ASSIGN_OR_RETURN(auto scalar,
+                        ProvideParameter(computation, instr, i + start, indices,
+                                         call_target_provider, builder));
+    TF_RET_CHECK(scalar.size() == 1);
+    scalars.push_back(scalar.front());
+  }
+  return scalars;
 }
 
 namespace {
