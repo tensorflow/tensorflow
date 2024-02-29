@@ -38,7 +38,7 @@ const uint64_t kTpuChunkTiling = 1024;
 namespace xla {
 
 namespace {
-StatusOr<std::vector<PrimitiveType>> GetOperandTypes(
+absl::StatusOr<std::vector<PrimitiveType>> GetOperandTypes(
     XlaBuilder* builder, absl::Span<const XlaOp> operands,
     absl::Span<const XlaOp> init_values) {
   std::vector<PrimitiveType> op_types;

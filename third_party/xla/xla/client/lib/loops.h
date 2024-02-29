@@ -29,13 +29,14 @@ namespace xla {
 
 // Function that builds a loop condition. Takes as input a sequence of input
 // values, and returns a boolean value representing if the condition succeeds.
-typedef std::function<StatusOr<XlaOp>(absl::Span<const XlaOp>, XlaBuilder*)>
+typedef std::function<absl::StatusOr<XlaOp>(absl::Span<const XlaOp>,
+                                            XlaBuilder*)>
     WhileLoopHelperConditionFunction;
 
 // Function that builds a loop body. Takes as input a sequence of input values
 // and returns a sequence of output values.
-typedef std::function<StatusOr<std::vector<XlaOp>>(absl::Span<const XlaOp>,
-                                                   XlaBuilder*)>
+typedef std::function<absl::StatusOr<std::vector<XlaOp>>(
+    absl::Span<const XlaOp>, XlaBuilder*)>
     WhileLoopHelperBodyFunction;
 
 // Helper function for building an XLA while loop, where the values carried by
@@ -46,7 +47,7 @@ typedef std::function<StatusOr<std::vector<XlaOp>>(absl::Span<const XlaOp>,
 //   init: (a, b, c)
 // )
 // 'name' is a descriptive name for the loop.
-StatusOr<std::vector<XlaOp>> WhileLoopHelper(
+absl::StatusOr<std::vector<XlaOp>> WhileLoopHelper(
     const WhileLoopHelperConditionFunction& condition_function,
     const WhileLoopHelperBodyFunction& body_function,
     absl::Span<const XlaOp> initial_values, absl::string_view name,
@@ -57,11 +58,11 @@ StatusOr<std::vector<XlaOp>> WhileLoopHelper(
 // The body function (ForEachIndexBodyFunction) takes as input a pair of
 // (current iteration number, loop-carried values), and returns an updated
 // vector of the loop-carried values.
-typedef std::function<StatusOr<std::vector<XlaOp>>(
+typedef std::function<absl::StatusOr<std::vector<XlaOp>>(
     XlaOp, absl::Span<const XlaOp>, XlaBuilder*)>
     ForEachIndexBodyFunction;
 
-StatusOr<std::vector<XlaOp>> ForEachIndex(
+absl::StatusOr<std::vector<XlaOp>> ForEachIndex(
     int64_t num_iterations, PrimitiveType num_iterations_type,
     const ForEachIndexBodyFunction& body_function,
     absl::Span<const XlaOp> initial_values, absl::string_view name,

@@ -117,7 +117,7 @@ xla::XlaOp BatchDot(
 // NOTE: This function is meant for testing, there is no need to call it
 // directly.
 
-StatusOr<std::array<std::vector<int64_t>, 3>> ParseEinsumString(
+absl::StatusOr<std::array<std::vector<int64_t>, 3>> ParseEinsumString(
     absl::string_view einsum_config, int64_t x_rank, int64_t y_rank);
 
 // If an einsum config does not contain an -> one will be added and the output
