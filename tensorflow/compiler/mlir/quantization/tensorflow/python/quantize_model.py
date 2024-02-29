@@ -675,7 +675,9 @@ def _populate_quantization_options_default_values(
         _DYNAMIC_RANGE_DEFAULT_MIN_NUM_ELEMENTS_FOR_WEIGHTS,
     )
 
-  # TODO: b/307900054 - Set the per-channel quantization by default.
+  if not quantization_options.HasField('enable_per_channel_quantization'):
+    quantization_options.enable_per_channel_quantization = False
+
   if quantization_options.enable_per_channel_quantization and not (
       (
           quantization_options.op_set == quant_opts_pb2.OpSet.UNIFORM_QUANTIZED

@@ -278,7 +278,7 @@ message QuantizationOptions {
   // not applied regardless of the op support. Currently, it is supported for
   // XLA opset for SRQ on weight tensors (not activation),
   // and Uniform Quantized opset .
-  bool enable_per_channel_quantization = 10;
+  optional bool enable_per_channel_quantization = 10;
 
   // Enables two inputs of an operation to be both tensors.
   // Currently supports MatMul and BatchMatMul ops for XLA.
