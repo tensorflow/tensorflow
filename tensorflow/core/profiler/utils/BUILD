@@ -63,7 +63,10 @@ cc_library(
 cc_library(
     name = "math_utils",
     hdrs = ["math_utils.h"],
-    deps = ["@local_tsl//tsl/profiler/utils:math_utils"],
+    deps = [
+        "@com_google_absl//absl/base:core_headers",
+        "@local_tsl//tsl/profiler/utils:math_utils",
+    ],
 )
 
 cc_library(
