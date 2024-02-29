@@ -49,11 +49,11 @@ namespace xla::gpu {
 
 enum class AsyncStreamKind : int64_t {
   kCollective = 0,  // Stream for asynchronous collective ops.
-  kP2P = 1,         // Stream for P2P Send and Recv ops.
+  kP2P0 = 1,        // One Stream for P2P Send and Recv ops.
 };
 
 constexpr static int64_t kAsyncStreamTotal =
-    static_cast<int64_t>(AsyncStreamKind::kP2P) + 1;
+    static_cast<int64_t>(AsyncStreamKind::kP2P0) + 1;
 
 // Assigns a unique ID to a stream for asynchronous or synchronous execution.
 // These IDs can be used, for example, to look up the NCCL communicator.

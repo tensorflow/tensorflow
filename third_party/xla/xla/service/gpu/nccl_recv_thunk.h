@@ -43,7 +43,7 @@ class NcclRecvThunk : public NcclCollectiveThunk {
                                  se::Stream& stream,
                                  NcclApi::NcclCommHandle comm) override;
   AsyncStreamKind GetAsyncStreamKind() const override {
-    return AsyncStreamKind::kP2P;
+    return AsyncStreamKind::kP2P0;
   }
   bool NeedFirstCallRendzevous() const override { return false; }
 

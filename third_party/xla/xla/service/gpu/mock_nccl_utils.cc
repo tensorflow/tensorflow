@@ -783,7 +783,7 @@ absl::StatusOr<NcclComm::Lock> AcquireMockNcclComm(
       AcquireNcclClique(
           run_id, op_id, clique_key, clique_id_callback, 1,
           enable_clique_optimization ||
-              stream_id == GetStreamId(true, AsyncStreamKind::kP2P)));
+              stream_id == GetStreamId(true, AsyncStreamKind::kP2P0)));
 
   struct AllCommunicators {
     absl::Mutex mu;
