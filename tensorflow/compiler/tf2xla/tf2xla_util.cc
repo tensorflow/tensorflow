@@ -113,8 +113,8 @@ Status CopyAssociatedFunctions(Graph* g,
 
 // Replaces the single edge feeding into {dst,dst_input} with a new
 // src/src_output specified by {with,with_output}.
-StatusOr<Node*> ReplaceEdge(Graph* g, Node* dst, int dst_input, Node* with,
-                            int with_output) {
+absl::StatusOr<Node*> ReplaceEdge(Graph* g, Node* dst, int dst_input,
+                                  Node* with, int with_output) {
   NodeDef replace_def = dst->def();
   *replace_def.mutable_input(dst_input) = with->name();
   TF_ASSIGN_OR_RETURN(Node * replace_node, ReplaceNode(g, dst, replace_def));
@@ -311,7 +311,7 @@ Status PropagateConstIntoIfNode(Graph* g, Node* if_node,
 
 using GraphCache = absl::flat_hash_map<string, std::unique_ptr<FunctionBody>>;
 
-StatusOr<FunctionBody*> FindOrInsert(
+absl::StatusOr<FunctionBody*> FindOrInsert(
     GraphCache* cache, const NameAttrList& body_attr,
     const FunctionLibraryDefinition* lookup_fld,
     const FunctionLibraryDefinition* fallback_fld) {
@@ -337,14 +337,14 @@ StatusOr<FunctionBody*> FindOrInsert(
   return value.get();
 }
 // Determines whether a loop body is invariant for the given argument index.
-StatusOr<bool> IsLoopInvariant(const FunctionBody* loop_body, int index,
-                               const FunctionLibraryDefinition* lookup_fld,
-                               const FunctionLibraryDefinition* fallback_fld,
-                               GraphCache* cache);
+absl::StatusOr<bool> IsLoopInvariant(
+    const FunctionBody* loop_body, int index,
+    const FunctionLibraryDefinition* lookup_fld,
+    const FunctionLibraryDefinition* fallback_fld, GraphCache* cache);
 
 // Traces backward through non-modifying ops such as Identity and loop-invariant
 // While, to find a preceding source edge.
-StatusOr<const Edge*> TraverseUnmodifiedPathBackward(
+absl::StatusOr<const Edge*> TraverseUnmodifiedPathBackward(
     const Edge* src, const FunctionLibraryDefinition* lookup_fld,
     const FunctionLibraryDefinition* fallback_fld, GraphCache* cache) {
   const Edge* e = src;
@@ -378,10 +378,10 @@ StatusOr<const Edge*> TraverseUnmodifiedPathBackward(
 }
 
 // Determines whether a loop body is invariant for the given argument index.
-StatusOr<bool> IsLoopInvariant(const FunctionBody* loop_body, int index,
-                               const FunctionLibraryDefinition* lookup_fld,
-                               const FunctionLibraryDefinition* fallback_fld,
-                               GraphCache* cache) {
+absl::StatusOr<bool> IsLoopInvariant(
+    const FunctionBody* loop_body, int index,
+    const FunctionLibraryDefinition* lookup_fld,
+    const FunctionLibraryDefinition* fallback_fld, GraphCache* cache) {
   const Edge* e;
   TF_RETURN_IF_ERROR(loop_body->ret_nodes[index]->input_edge(0, &e));
   TF_ASSIGN_OR_RETURN(
@@ -478,8 +478,9 @@ Status PropagateConstIntoAndAroundWhileNode(
 
 }  // namespace
 
-StatusOr<bool> IsLoopInvariant(const FunctionBody* loop_body, int index,
-                               const FunctionLibraryDefinition* lookup_fld) {
+absl::StatusOr<bool> IsLoopInvariant(
+    const FunctionBody* loop_body, int index,
+    const FunctionLibraryDefinition* lookup_fld) {
   GraphCache cache;
   return IsLoopInvariant(loop_body, index, lookup_fld,
                          /*fallback_fld=*/nullptr, &cache);
@@ -885,7 +886,7 @@ Status CachedFunctionHandles::ReleaseAllHandles() {
   return result;
 }
 
-StatusOr<Node*> ReplaceNode(Graph* g, Node* n, const NodeDef& node_def) {
+absl::StatusOr<Node*> ReplaceNode(Graph* g, Node* n, const NodeDef& node_def) {
   // Create the replacement node.
   TF_ASSIGN_OR_RETURN(Node * new_node, g->AddNode(node_def));
 
@@ -917,9 +918,9 @@ StatusOr<Node*> ReplaceNode(Graph* g, Node* n, const NodeDef& node_def) {
   return new_node;
 }
 
-StatusOr<Node*> BuildIdentityNode(Graph* graph, const string& node_name,
-                                  DataType dtype, const Node* input,
-                                  std::optional<string> requested_device) {
+absl::StatusOr<Node*> BuildIdentityNode(
+    Graph* graph, const string& node_name, DataType dtype, const Node* input,
+    std::optional<string> requested_device) {
   // Create identity node.
   NodeDef ndef;
   ndef.set_name(node_name);
