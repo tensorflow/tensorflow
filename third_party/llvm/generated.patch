@@ -1,1 +1,12 @@
 Auto generated patch. Do not edit or delete it, even if empty.
+diff -ruN --strip-trailing-cr a/libcxx/src/new.cpp b/libcxx/src/new.cpp
+--- a/libcxx/src/new.cpp
++++ b/libcxx/src/new.cpp
+@@ -7,6 +7,7 @@
+ //===----------------------------------------------------------------------===//
+ 
+ #include "include/overridable_function.h"
++#include <__assert>
+ #include <__memory/aligned_alloc.h>
+ #include <cstddef>
+ #include <cstdlib>
