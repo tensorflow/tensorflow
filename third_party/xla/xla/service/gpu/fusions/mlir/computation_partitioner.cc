@@ -198,7 +198,11 @@ PartitionedComputation::PartitionedComputation(
   for (auto& [cluster_id, instructions] : functions) {
     auto is_different_cluster = [cluster_id = cluster_id,
                                  &disjoint_sets](auto* user) {
-      return disjoint_sets[user].Get() != cluster_id;
+      auto it = disjoint_sets.find(user);
+      if (it == disjoint_sets.end()) {
+        return true;
+      }
+      return it->second.Get() != cluster_id;
     };
 
     std::vector<const HloInstruction*> roots;
