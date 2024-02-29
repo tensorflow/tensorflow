@@ -59,7 +59,16 @@ string JobName() {
 
 int64_t JobUid() { return -1; }
 
-int64_t TaskId() { return -1; }
+int64_t TaskId() {
+  const char* task_id_cs = std::getenv("TF_TASK_ID");
+  if (task_id_cs != nullptr) {
+    int64_t task_id;
+    if (absl::SimpleAtoi(task_id_cs, &task_id)) {
+      return task_id;
+    }
+  }
+  return -1;
+}
 
 IOStatistics GetIOStatistics() { return IOStatistics(); }
 

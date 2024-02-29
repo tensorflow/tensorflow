@@ -31,6 +31,7 @@ limitations under the License.
 #include "absl/strings/ascii.h"
 #include "absl/strings/substitute.h"
 #include "absl/time/time.h"
+#include "tensorflow/core/data/dataset_utils.h"
 #include "tensorflow/core/data/service/client/common.h"
 #include "tensorflow/core/data/service/client/validate_utils.h"
 #include "tensorflow/core/data/service/common.h"
@@ -598,12 +599,17 @@ void DataServiceClient::UpdateWorkerThreads() TF_LOCKS_EXCLUDED(mu_) {
 
 void DataServiceClient::RunWorkerThread(std::function<void()> done)
     TF_LOCKS_EXCLUDED(mu_) {
+  static bool enable_nonblocking_requests =
+      GetExperiments().contains("data_service_nonblocking_requests");
   auto cleanup = gtl::MakeCleanup([done = std::move(done)]() {
     done();
     VLOG(1) << "Worker thread exiting";
   });
   VLOG(1) << "Starting worker thread";
   std::shared_ptr<Task> task_to_process;
+  int64_t num_consecutive_skipped = 0;
+  bool allow_skip = enable_nonblocking_requests;
+
   while (true) {
     std::shared_ptr<Result> result;
     {
@@ -641,9 +647,9 @@ void DataServiceClient::RunWorkerThread(std::function<void()> done)
       VLOG(3) << "Processing task " << task_to_process->info.task_id();
     }
     int64_t deadline_micros = kint64max;
-    Status s =
-        GetElementTraced(task_to_process.get(), deadline_micros,
-                         /*enqueue_result=*/!IsCoordinatedRead(), result);
+    Status s = GetElementTraced(task_to_process.get(), deadline_micros,
+                                /*enqueue_result=*/!IsCoordinatedRead(),
+                                allow_skip, result);
     if (!s.ok()) {
       mutex_lock l(mu_);
       VLOG(1) << "Failed to get element from worker "
@@ -656,6 +662,24 @@ void DataServiceClient::RunWorkerThread(std::function<void()> done)
                           s.message()));
       get_next_cv_.notify_all();
       return;
+    }
+
+    if (!IsCoordinatedRead() && enable_nonblocking_requests) {
+      if (mutex_lock l(mu_); result->skip) {
+        num_consecutive_skipped++;
+        if (num_consecutive_skipped >= tasks_.size()) {
+          // Switches to blocking call when we already skip
+          // all workers. This also ensures we do not spam the network traffic.
+          // Note that: `num_consecutive_skipped` can be greater than the task
+          // size when some tasks get removed.
+          allow_skip = false;
+          LOG(WARNING) << "`allow_skip` is turned off. Switching to blocking "
+                          "get element calls to the workers.";
+        }
+      } else {
+        num_consecutive_skipped = 0;
+        allow_skip = true;
+      }
     }
   }
 }
@@ -722,7 +746,7 @@ void DataServiceClient::AdvanceTaskIndex() TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
   }
 }
 
-Status DataServiceClient::TryGetElement(const Task& task,
+Status DataServiceClient::TryGetElement(const Task& task, bool allow_skip,
                                         GetElementResult& result) {
   GetElementRequest req;
   req.set_task_id(task.info.task_id());
@@ -731,6 +755,8 @@ Status DataServiceClient::TryGetElement(const Task& task,
     req.set_consumer_index(params_.consumer_index.value());
     req.set_round_index(task.round);
     req.set_allow_skip(true);
+  } else {
+    req.set_allow_skip(allow_skip);
   }
   if (params_.cross_trainer_cache_options) {
     req.set_trainer_id(params_.cross_trainer_cache_options->trainer_id());
@@ -756,7 +782,7 @@ void DataServiceClient::ProcessGetElementResponse(
     task.end_of_sequence = true;
     finished_tasks_++;
   }
-  if (enqueue_result && !result->end_of_sequence) {
+  if (enqueue_result && !result->end_of_sequence && !result->skip) {
     ctx_->RecordBufferEnqueue(result->element);
     results_.push(std::move(result));
   }
@@ -764,7 +790,7 @@ void DataServiceClient::ProcessGetElementResponse(
 }
 
 Status DataServiceClient::GetElementTraced(Task* task, int64_t deadline_micros,
-                                           bool enqueue_result,
+                                           bool enqueue_result, bool allow_skip,
                                            std::shared_ptr<Result> result)
     TF_LOCKS_EXCLUDED(mu_) {
   VLOG(3) << "Getting an element for task id " << task->info.task_id();
@@ -782,7 +808,8 @@ Status DataServiceClient::GetElementTraced(Task* task, int64_t deadline_micros,
            {"round_index", task->round}});
     });
   }
-  Status s = GetElement(task, deadline_micros, enqueue_result, result);
+  Status s =
+      GetElement(task, deadline_micros, enqueue_result, allow_skip, result);
   mutex_lock l(mu_);
   VLOG(3) << "Got an element for task id " << task->info.task_id();
   return s;
@@ -819,12 +846,12 @@ Status DataServiceClient::MaybeRemoveTask(Task& task, int64_t deadline_micros,
 }
 
 Status DataServiceClient::GetElement(Task* task, int64_t deadline_micros,
-                                     bool enqueue_result,
+                                     bool enqueue_result, bool allow_skip,
                                      std::shared_ptr<Result> result)
     TF_LOCKS_EXCLUDED(mu_) {
   GetElementResult get_element_result;
   while (true) {
-    Status s = TryGetElement(*task, get_element_result);
+    Status s = TryGetElement(*task, allow_skip, get_element_result);
     if (s.ok()) {
       task->num_retries = 0;
       break;
