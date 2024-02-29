@@ -889,7 +889,7 @@ inline DimensionOrConstant::DimensionOrConstant(DimensionHandle dim)
 }
 
 inline DimensionOrConstant::DimensionOrConstant(int64_t val) : val(val) {
-  if (val < 0 || val != InferenceContext::kUnknownDim) {
+  if (val < 0 && val != InferenceContext::kUnknownDim) {
       return errors::InvalidArgument("Dimension must be non-negative or equal to ",
          "InferenceContext::kUnknownDim but got ", val,".");
   }
