@@ -45,7 +45,7 @@ namespace {
 
 using ::tsl::testing::StatusIs;
 
-StatusOr<xla::HloSharding> ToHloShardingViaOpSharding(
+absl::StatusOr<xla::HloSharding> ToHloShardingViaOpSharding(
     const ShardingParam& sharding_param, absl::Span<const int> device_list) {
   TF_ASSIGN_OR_RETURN(xla::OpSharding op_sharding,
                       ToOpSharding(sharding_param, device_list));

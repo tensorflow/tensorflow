@@ -33,8 +33,8 @@ namespace xla {
 namespace ifrt {
 namespace support {
 
-StatusOr<OpSharding> ToOpSharding(const ShardingParam& sharding_param,
-                                  absl::Span<const int> device_mapping) {
+absl::StatusOr<OpSharding> ToOpSharding(const ShardingParam& sharding_param,
+                                        absl::Span<const int> device_mapping) {
   OpSharding op_sharding;
   op_sharding.set_type(OpSharding::OTHER);
 
@@ -70,7 +70,7 @@ StatusOr<OpSharding> ToOpSharding(const ShardingParam& sharding_param,
   return op_sharding;
 }
 
-StatusOr<HloSharding> ToHloSharding(const ShardingParam& sharding_param) {
+absl::StatusOr<HloSharding> ToHloSharding(const ShardingParam& sharding_param) {
   auto axis_sizes = sharding_param.minor_to_major().axis_sizes;
   llvm::SmallVector<int64_t> reshape_dims;
   reshape_dims.reserve(axis_sizes.size());
@@ -101,8 +101,8 @@ StatusOr<HloSharding> ToHloSharding(const ShardingParam& sharding_param) {
   }
 }
 
-StatusOr<ShardingParam> ToShardingParam(const HloSharding& hlo_sharding,
-                                        int rank, int num_devices) {
+absl::StatusOr<ShardingParam> ToShardingParam(const HloSharding& hlo_sharding,
+                                              int rank, int num_devices) {
   // `dim_shards` has size equal to the rank of the array, with each entry
   // representing the number of shards for the corresponding dimension.
   // `minor_to_major.permutation` and `minor_to_major.axis_sizes` must be

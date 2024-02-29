@@ -33,15 +33,15 @@ namespace support {
 //
 // Returns error when `device_mapping` can't map the logical devices in
 // `sharding_param`.
-StatusOr<OpSharding> ToOpSharding(const ShardingParam& sharding_param,
-                                  absl::Span<const int> device_mapping);
+absl::StatusOr<OpSharding> ToOpSharding(const ShardingParam& sharding_param,
+                                        absl::Span<const int> device_mapping);
 
 // Converts ShardingParam to HloSharding.
 //
 // This assumes that `sharding_param` is valid.
 // The returned HloSharding uses the same logical device ids as the
 // given ShardingParam.
-StatusOr<HloSharding> ToHloSharding(const ShardingParam& sharding_param);
+absl::StatusOr<HloSharding> ToHloSharding(const ShardingParam& sharding_param);
 
 // Converts HloSharding to ShardingParam.
 //
@@ -51,8 +51,8 @@ StatusOr<HloSharding> ToHloSharding(const ShardingParam& sharding_param);
 // Only a subset of HloShardings are supported: REPLICATED (including MAXIMAL
 // on single-device), partially replicated, fully partitioned shardings.
 // (Non-fully-replicated) MAXIMAL and MANUAL shardings are not supported.
-StatusOr<ShardingParam> ToShardingParam(const HloSharding& hlo_sharding,
-                                        int rank, int num_devices);
+absl::StatusOr<ShardingParam> ToShardingParam(const HloSharding& hlo_sharding,
+                                              int rank, int num_devices);
 
 }  // namespace support
 }  // namespace ifrt
