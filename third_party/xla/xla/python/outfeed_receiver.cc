@@ -171,10 +171,10 @@ class OutfeedReceiverImpl {
 
   void Start();
 
-  StatusOr<XlaOp> AddOutfeedToBuilder(XlaBuilder* builder, XlaOp token,
-                                      uint32_t consumer_id,
-                                      std::vector<XlaOp> arrays,
-                                      uint32_t device_idx);
+  absl::StatusOr<XlaOp> AddOutfeedToBuilder(XlaBuilder* builder, XlaOp token,
+                                            uint32_t consumer_id,
+                                            std::vector<XlaOp> arrays,
+                                            uint32_t device_idx);
 
  private:
   bool CallbackQueueHasSpace() ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
@@ -192,8 +192,8 @@ class OutfeedReceiverImpl {
   Status SendShutdownOutfeedHeader(int device_idx);
 
   // Receives a raw Literal from a device outfeed.
-  StatusOr<std::unique_ptr<Literal>> ReceiveRawFromOutfeed(PjRtDevice* device,
-                                                           const Shape& shape);
+  absl::StatusOr<std::unique_ptr<Literal>> ReceiveRawFromOutfeed(
+      PjRtDevice* device, const Shape& shape);
 
   // Enqueues received data in the callbaback queue.
   void EnqueueReceivedData(uint32_t device_idx,
@@ -352,8 +352,9 @@ void OutfeedReceiverImpl::EnqueueReceivedData(
   callback_queues_[device_idx].push(std::move(received));
 }
 
-StatusOr<std::unique_ptr<Literal>> OutfeedReceiverImpl::ReceiveRawFromOutfeed(
-    PjRtDevice* device, const Shape& shape) {
+absl::StatusOr<std::unique_ptr<Literal>>
+OutfeedReceiverImpl::ReceiveRawFromOutfeed(PjRtDevice* device,
+                                           const Shape& shape) {
   auto literal = std::make_unique<Literal>(shape);
   TF_RETURN_IF_ERROR(device->TransferFromOutfeed(literal.get()));
   return literal;
@@ -442,7 +443,7 @@ Status OutfeedReceiverImpl::SendShutdownOutfeedHeader(int device_idx) {
   return OkStatus();
 }
 
-StatusOr<XlaOp> OutfeedReceiverImpl::AddOutfeedToBuilder(
+absl::StatusOr<XlaOp> OutfeedReceiverImpl::AddOutfeedToBuilder(
     XlaBuilder* builder, XlaOp token, uint32_t consumer_id,
     std::vector<XlaOp> arrays, uint32_t device_idx) {
   XlaOp data = Tuple(builder, std::move(arrays));
@@ -498,11 +499,9 @@ OutfeedReceiver::~OutfeedReceiver() = default;
 
 void OutfeedReceiver::Start() { p_impl_->Start(); }
 
-StatusOr<XlaOp> OutfeedReceiver::AddOutfeedToBuilder(XlaBuilder* builder,
-                                                     XlaOp token,
-                                                     uint32_t consumer_id,
-                                                     std::vector<XlaOp> arrays,
-                                                     uint32_t device_idx) {
+absl::StatusOr<XlaOp> OutfeedReceiver::AddOutfeedToBuilder(
+    XlaBuilder* builder, XlaOp token, uint32_t consumer_id,
+    std::vector<XlaOp> arrays, uint32_t device_idx) {
   if (consumer_id == kOutfeedCidShutdown) {
     return InvalidArgument("Consumer ID cannot be a reserved value: %d",
                            consumer_id);
