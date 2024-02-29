@@ -889,10 +889,10 @@ inline DimensionOrConstant::DimensionOrConstant(DimensionHandle dim)
 }
 
 inline DimensionOrConstant::DimensionOrConstant(int64_t val) : val(val) {
-  DCHECK(val >= 0 || val == InferenceContext::kUnknownDim)
-      << "Dimension must be non-negative or equal to "
-         "InferenceContext::kUnknownDim but got "
-      << val;
+  if (val < 0 || val != InferenceContext::kUnknownDim) {
+      return errors::InvalidArgument("Dimension must be non-negative or equal to ",
+         "InferenceContext::kUnknownDim but got ", val,".");
+  }
 }
 
 template <class T>
