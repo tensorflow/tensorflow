@@ -67,6 +67,8 @@ limitations under the License.
 #include "tsl/framework/allocator.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/statusor.h"
+#include "tsl/profiler/lib/connected_traceme.h"
+#include "tsl/profiler/lib/context_types.h"
 
 namespace pjrt {
 
@@ -572,6 +574,11 @@ PJRT_Error* PJRT_Client_Compile(PJRT_Client_Compile_Args* args) {
       args->struct_size));
   PJRT_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
       "PJRT_Program", PJRT_Program_STRUCT_SIZE, args->program->struct_size));
+
+  int64_t traceme_context_id = pjrt::GetTracemeContextId(args);
+  tsl::profiler::TraceMeConsumer consumer(
+      "PJRT_Client_Compile", tsl::profiler::ContextType::kPjrtLibraryCall,
+      traceme_context_id);
 
   PJRT_ASSIGN_OR_RETURN(
       xla::CompileOptions options,
@@ -1344,6 +1351,12 @@ PJRT_Error* PJRT_LoadedExecutable_Execute(
   PJRT_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
       "PJRT_ExecuteOptions", PJRT_ExecuteOptions_STRUCT_SIZE,
       args->options->struct_size));
+
+  int64_t traceme_context_id = pjrt::GetTracemeContextId(args);
+  tsl::profiler::TraceMeConsumer consumer(
+      "PJRT_LoadedExecutable_Execute",
+      tsl::profiler::ContextType::kPjrtLibraryCall, traceme_context_id);
+
   xla::ExecuteOptions options;
   options.launch_id = args->options->launch_id;
   options.strict_shape_checking = true;

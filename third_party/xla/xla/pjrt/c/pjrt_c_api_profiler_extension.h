@@ -17,6 +17,7 @@ limitations under the License.
 #define XLA_PJRT_C_PJRT_C_API_PROFILER_EXTENSION_H_
 
 #include <cstddef>
+#include <cstdint>
 
 #include "xla/backends/profiler/plugin/profiler_c_api.h"
 #include "xla/pjrt/c/pjrt_c_api.h"
@@ -31,7 +32,10 @@ typedef struct PJRT_Profiler_Extension {
   size_t struct_size;
   PJRT_Extension_Type type;
   PJRT_Extension_Base* next;
+  // can be nullptr if PJRT_Profiler_Extension is used as an args extension
   PLUGIN_Profiler_Api* profiler_api;
+  // valid only when used as an args extension
+  int64_t traceme_context_id;
 } PJRT_Profiler_Extension;
 PJRT_DEFINE_STRUCT_TRAITS(PJRT_Profiler_Extension, profiler_api);
 

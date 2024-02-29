@@ -56,6 +56,7 @@ limitations under the License.
 #include "xla/mlir_hlo/mhlo/transforms/passes.h"
 #include "xla/pjrt/c/pjrt_c_api.h"
 #include "xla/pjrt/c/pjrt_c_api_helpers.h"
+#include "xla/pjrt/c/pjrt_c_api_profiler_extension.h"
 #include "xla/pjrt/compile_options.pb.h"
 #include "xla/pjrt/distributed/key_value_store_interface.h"
 #include "xla/pjrt/mlir_to_hlo.h"
@@ -354,7 +355,10 @@ static StatusOr<std::unique_ptr<PjRtLoadedExecutable>> InitializeArgsAndCompile(
     const std::string& format) {
   PJRT_Client_Compile_Args args;
   args.struct_size = PJRT_Client_Compile_Args_STRUCT_SIZE;
-  args.extension_start = nullptr;
+  PJRT_Profiler_Extension profiler_extension =
+      pjrt::CreatePjrtProfilerExtension("PJRT_Client_Compile linkage");
+  args.extension_start =
+      reinterpret_cast<PJRT_Extension_Base*>(&profiler_extension);
   args.client = client;
   TF_ASSIGN_OR_RETURN(const CompileOptionsProto options_proto,
                       options.ToProto());
@@ -1416,7 +1420,6 @@ PjRtCApiLoadedExecutable::GetCommonExecuteArgs(
 
   PJRT_LoadedExecutable_Execute_Args args;
   args.struct_size = PJRT_LoadedExecutable_Execute_Args_STRUCT_SIZE;
-  args.extension_start = nullptr;
   args.executable = c_loaded_executable();
   args.options = &c_options;
   args.options->struct_size = PJRT_ExecuteOptions_STRUCT_SIZE;
@@ -1521,6 +1524,11 @@ PjRtCApiLoadedExecutable::Execute(
                            non_donatable_input_indices_storage));
 
   args.execute_device = nullptr;
+  PJRT_Profiler_Extension profiler_extension =
+      pjrt::CreatePjrtProfilerExtension(
+          "PJRT_LoadedExecutable_Execute linkage");
+  args.extension_start =
+      reinterpret_cast<PJRT_Extension_Base*>(&profiler_extension);
 
   RETURN_STATUS_IF_PJRT_ERROR(
       pjrt_c_api()->PJRT_LoadedExecutable_Execute(&args), pjrt_c_api());
@@ -1589,6 +1597,11 @@ PjRtCApiLoadedExecutable::ExecuteWithSingleDevice(
 
   args.execute_device =
       tensorflow::down_cast<PjRtCApiDevice*>(device)->c_device();
+  PJRT_Profiler_Extension profiler_extension =
+      pjrt::CreatePjrtProfilerExtension(
+          "PJRT_LoadedExecutable_Execute linkage");
+  args.extension_start =
+      reinterpret_cast<PJRT_Extension_Base*>(&profiler_extension);
 
   RETURN_STATUS_IF_PJRT_ERROR(
       pjrt_c_api()->PJRT_LoadedExecutable_Execute(&args), pjrt_c_api());
