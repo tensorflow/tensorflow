@@ -412,6 +412,9 @@ class HloValueSemanticsPropagation : public DfsHloVisitorWithDefault {
       const HloValueSemantics& weight_gradient_semantics,
       const HloValueSemantics& other_semantics,
       HloInstruction* instruction) const;
+  absl::StatusOr<HloValueSemantics> MergeSemanticsForAnInstruction(
+      HloInstruction* instruction,
+      std::vector<HloValueSemantics>& semantics_vec) const;
   absl::StatusOr<HloValueSemantics> ComputeSemanticsFromOperands(
       HloInstruction* instruction, absl::Span<const int64_t> operand_indices,
       absl::Span<const ShapeIndex> operand_shape_indices = {}) const;
