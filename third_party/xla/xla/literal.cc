@@ -446,7 +446,7 @@ void MutableLiteralBase::CopyElementFrom(const LiteralSlice& src_literal,
   }
 }
 
-/* static */ StatusOr<Literal> MutableLiteralBase::CreateFromProto(
+/* static */ absl::StatusOr<Literal> MutableLiteralBase::CreateFromProto(
     const LiteralProto& proto, bool prohibit_empty_literal) {
   if (!proto.has_shape()) {
     return InvalidArgument("LiteralProto has no shape");
@@ -850,7 +850,7 @@ void MutableLiteralBase::PopulateInplaceInternal(
     }
 
     auto init_function = [&](absl::Span<const int64_t> indexes,
-                             int thread_id) -> StatusOr<bool> {
+                             int thread_id) -> absl::StatusOr<bool> {
       const int64_t index =
           IndexUtil::MultidimensionalIndexToLinearIndex(shape(), indexes);
       DimensionVector minor_scan_indexes(rank, 0);
@@ -878,7 +878,7 @@ void MutableLiteralBase::PopulateInplaceInternal(
           this_shape, stride_config.base, stride_config.dimensions,
           stride_config.step,
           [&init_function](
-              absl::Span<const int64_t> indexes) -> StatusOr<bool> {
+              absl::Span<const int64_t> indexes) -> absl::StatusOr<bool> {
             auto result_ignored = init_function(indexes, /*thread_id=*/-1);
             return true;
           });
@@ -989,10 +989,10 @@ Literal LiteralBase::ToStatic() const {
 
 namespace {
 template <int64_t PRIMITIVE_SIZE>
-StatusOr<Literal> BroadcastHelper(const LiteralBase& src,
-                                  const Shape& src_shape,
-                                  const Shape& result_shape,
-                                  absl::Span<const int64_t> dimensions) {
+absl::StatusOr<Literal> BroadcastHelper(const LiteralBase& src,
+                                        const Shape& src_shape,
+                                        const Shape& result_shape,
+                                        absl::Span<const int64_t> dimensions) {
   for (int64_t i = 0, end = dimensions.size(); i < end; i++) {
     TF_RET_CHECK(src_shape.dimensions(i) ==
                  result_shape.dimensions(dimensions[i]));
@@ -1057,7 +1057,7 @@ StatusOr<Literal> BroadcastHelper(const LiteralBase& src,
 }
 }  // anonymous namespace
 
-StatusOr<Literal> LiteralBase::Broadcast(
+absl::StatusOr<Literal> LiteralBase::Broadcast(
     const Shape& result_shape, absl::Span<const int64_t> dimensions) const {
   const LiteralBase& src = *this;
   const Shape& src_shape = shape();
@@ -1087,7 +1087,7 @@ StatusOr<Literal> LiteralBase::Broadcast(
   }
 }
 
-StatusOr<Literal> LiteralBase::Reshape(
+absl::StatusOr<Literal> LiteralBase::Reshape(
     absl::Span<const int64_t> dimensions) const {
   if (!LayoutUtil::IsDenseArray(shape())) {
     return InvalidArgument("Reshape is only supported for dense arrays.");
@@ -1683,8 +1683,8 @@ Status ConvertIfDestTypeMatches(const LiteralBase& src_literal,
       dst_literal.shape().element_type());
 }
 
-StatusOr<Literal> ConvertSwitch(const LiteralBase& literal,
-                                PrimitiveType primitive_dest_type) {
+absl::StatusOr<Literal> ConvertSwitch(const LiteralBase& literal,
+                                      PrimitiveType primitive_dest_type) {
   TF_RET_CHECK(LayoutUtil::IsDenseArray(literal.shape()));
   if (literal.shape().element_type() == primitive_dest_type) {
     return literal.Clone();
@@ -1713,12 +1713,13 @@ StatusOr<Literal> ConvertSwitch(const LiteralBase& literal,
 
 }  // namespace
 
-StatusOr<Literal> LiteralBase::Convert(
+absl::StatusOr<Literal> LiteralBase::Convert(
     PrimitiveType primitive_dest_type) const {
   return ConvertSwitch(*this, primitive_dest_type);
 }
 
-StatusOr<Literal> LiteralBase::BitcastConvert(const Shape& dest_shape) const {
+absl::StatusOr<Literal> LiteralBase::BitcastConvert(
+    const Shape& dest_shape) const {
   if (ShapeUtil::ByteSizeOf(dest_shape) != ShapeUtil::ByteSizeOf(shape())) {
     return InvalidArgument(
         "Can not bitcast-convert from shape %s to a shape of different size %s",
@@ -1758,7 +1759,8 @@ StatusOr<Literal> LiteralBase::BitcastConvert(const Shape& dest_shape) const {
   return out;
 }
 
-StatusOr<Literal> LiteralBase::ConvertToShape(const Shape& dest_shape) const {
+absl::StatusOr<Literal> LiteralBase::ConvertToShape(
+    const Shape& dest_shape) const {
   if (!dest_shape.IsTuple()) {
     return Convert(dest_shape.element_type());
   }

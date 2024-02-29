@@ -344,16 +344,16 @@ class LiteralBase {
 
   // Converts this literal to the given shape. Returns an error is the
   // conversion is not possible.
-  StatusOr<Literal> ConvertToShape(const Shape& dest_shape) const;
+  absl::StatusOr<Literal> ConvertToShape(const Shape& dest_shape) const;
 
   // Converts this literal to another primitive type using a bitcast
   // conversion. Returns an error if the conversion is not possible. This
   // literal must be array-shaped.
-  StatusOr<Literal> BitcastConvert(const Shape& dest_shape) const;
+  absl::StatusOr<Literal> BitcastConvert(const Shape& dest_shape) const;
 
   // Converts this literal to another primitive type. Returns an error if the
   // conversion is not possible. This literal must be array-shaped.
-  StatusOr<Literal> Convert(PrimitiveType primitive_dest_type) const;
+  absl::StatusOr<Literal> Convert(PrimitiveType primitive_dest_type) const;
 
   // Clones the underlying buffers into a new Literal.
   Literal Clone() const;
@@ -398,12 +398,12 @@ class LiteralBase {
   // dimensions. The total number of elements must not change; The
   // implementation currently only supports monotonic dim0-major layouts.
   // This literal must be an array.
-  StatusOr<Literal> Reshape(absl::Span<const int64_t> dimensions) const;
+  absl::StatusOr<Literal> Reshape(absl::Span<const int64_t> dimensions) const;
 
   // Creates a new literal by broadcasting this literal with `dimensions` to
   // yield a literal of shape `result_shape`.
-  StatusOr<Literal> Broadcast(const Shape& result_shape,
-                              absl::Span<const int64_t> dimensions) const;
+  absl::StatusOr<Literal> Broadcast(const Shape& result_shape,
+                                    absl::Span<const int64_t> dimensions) const;
 
   // Creates a new literal by reordering the dimensions of this literal.
   // The given `permutation` must be a permutation of the dimension numbers
@@ -988,8 +988,8 @@ class MutableLiteralBase : public LiteralBase {
   static Literal MoveIntoTuple(absl::Span<Literal> elements);
 
   // Serialize from a proto.
-  static StatusOr<Literal> CreateFromProto(const LiteralProto& proto,
-                                           bool prohibit_empty_literal = true);
+  static absl::StatusOr<Literal> CreateFromProto(
+      const LiteralProto& proto, bool prohibit_empty_literal = true);
 
  protected:
   // Returns the piece at the given ShapeIndex.
