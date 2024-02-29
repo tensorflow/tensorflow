@@ -769,6 +769,18 @@ bool QuantizationDriver::PropagateParamsAndReturnIfChanged() {
         continue;
       }
 
+      // If this is a QDQ conversion only, the op could have a same-scale
+      // requirement for the floating point kernel but allow per-axis
+      // quantization for the quantized kernel. If the quantized dimension
+      // changes, the following logic no longer works as the same `params`
+      // shouldn't be used for both input and output quantization params.
+      // E.g. TransposeOp's propagation is handled in
+      // `PropagateTransposedQuantDim` in PrepareQuantize.
+      if (is_qdq_conversion_ &&
+          !scale_spec->required_same_quantized_axes_func()) {
+        continue;
+      }
+
       // Use the final state to set all the operands' parameters.
       for (int i = 0; i < op->getNumOperands(); ++i) {
         if (auto type = op->getOperand(i).getType().dyn_cast<ShapedType>()) {

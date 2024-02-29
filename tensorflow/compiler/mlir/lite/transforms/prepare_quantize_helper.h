@@ -43,6 +43,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_config.h"
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_traits.h"
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_utils.h"
+#include "tensorflow/compiler/mlir/quantization/common/uniform_quantized_types.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 #include "tensorflow/lite/tools/optimize/operator_property.h"
@@ -572,6 +573,91 @@ class ConvertSvdfStatsToQDQs : public ConvertOpStatsToQDQs<TFL::SVDFOp> {
     auto op_property = operator_property::GetOperatorProperty(op_variant);
     return ConvertOpStatsToQDQs<TFL::SVDFOp>::processInputs(
         op, op_variant, op_property, rewriter);
+  }
+};
+
+class PropagateTransposedPerAxisQuantDim
+    : public OpRewritePattern<TFL::TransposeOp> {
+ public:
+  explicit PropagateTransposedPerAxisQuantDim(MLIRContext* context)
+      : OpRewritePattern<TFL::TransposeOp>(context) {}
+  LogicalResult matchAndRewrite(TFL::TransposeOp transpose_op,
+                                PatternRewriter& rewriter) const override {
+    // Check if the quantization is per-axis
+    auto dq_op = dyn_cast_or_null<quantfork::DequantizeCastOp>(
+        transpose_op.getOperand(0).getDefiningOp());
+    if (!dq_op) return failure();
+    auto q_op = dyn_cast_or_null<quantfork::QuantizeCastOp>(
+        dq_op.getOperand().getDefiningOp());
+    if (!q_op) return failure();
+    auto qtype = dq_op.getArg().getType().cast<TensorType>().getElementType();
+    auto aqtype = dyn_cast_or_null<quant::UniformQuantizedPerAxisType>(qtype);
+    if (!aqtype) return failure();
+
+    // Return if the result of TransposeOp is already quantized
+    if (!transpose_op.getResult().hasOneUse()) return failure();
+    auto next_op = *transpose_op.getResult().getUsers().begin();
+    if (dyn_cast_or_null<quantfork::QuantizeCastOp>(next_op)) return failure();
+
+    auto input_type = transpose_op.getInput().getType().cast<ShapedType>();
+    auto perm_type = transpose_op.getPerm().getType().cast<ShapedType>();
+    if (input_type.hasStaticShape() && perm_type.hasStaticShape()) {
+      if (perm_type.getNumElements() != input_type.getRank()) {
+        return transpose_op.emitOpError(
+            "perm tensor elements size is not equal to input tensor rank");
+      }
+    }
+
+    // Get permutation axes of the TransposeOp
+    DenseIntElementsAttr perm;
+    if (!matchPattern(transpose_op.getPerm(), m_Constant(&perm))) {
+      return failure();
+    }
+
+    SmallVector<int64_t, 4> axes;
+    for (const auto& axis_int : perm.getValues<APInt>()) {
+      int64_t axis = axis_int.getSExtValue();
+      if (axis < 0) {
+        axis += input_type.getRank();
+      }
+      if (axis < 0 || (input_type.hasRank() && axis >= input_type.getRank())) {
+        return transpose_op.emitOpError("perm must be in [-rank, rank)");
+      }
+      if (std::count(axes.begin(), axes.end(), axis) > 0) {
+        return transpose_op.emitOpError("perm cannot have duplicated axis");
+      }
+      axes.push_back(axis);
+    }
+
+    // Find what the quantized dimension has been transposed to
+    int new_out_quant_dim = -1;
+    for (int i = 0; i < axes.size(); ++i) {
+      if (axes[i] == aqtype.getQuantizedDimension()) {
+        new_out_quant_dim = i;
+        break;
+      }
+    }
+    if (new_out_quant_dim == -1) {
+      return transpose_op.emitOpError(
+          "new quantization dimension not found in perm");
+    }
+
+    // Insert a QDQ pair with the new quantized dimension after TransposeOp
+    auto new_qtype = quant::CreateI8F32UniformQuantizedPerAxisType(
+        transpose_op.getLoc(), *rewriter.getContext(), aqtype.getScales(),
+        aqtype.getZeroPoints(), new_out_quant_dim, /*narrow_range=*/true);
+    auto new_tensor_type = RankedTensorType::getChecked(
+        transpose_op.getLoc(), transpose_op.getType().getShape(), new_qtype);
+    rewriter.setInsertionPointAfter(transpose_op);
+    auto new_q_op = rewriter.create<quantfork::QuantizeCastOp>(
+        transpose_op.getLoc(), new_tensor_type, q_op.getArg());
+    auto new_dq_op = rewriter.create<quantfork::DequantizeCastOp>(
+        new_q_op.getLoc(), transpose_op.getResult().getType(),
+        new_q_op.getResult());
+    transpose_op.getResult().replaceAllUsesWith(new_dq_op.getResult());
+    new_q_op.setOperand(transpose_op.getResult());
+
+    return success();
   }
 };
 

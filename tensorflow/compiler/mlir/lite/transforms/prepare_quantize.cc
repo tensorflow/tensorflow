@@ -32,6 +32,7 @@ limitations under the License.
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/Quant/QuantOps.h"  // from @llvm-project
 #include "mlir/Dialect/Quant/QuantTypes.h"  // from @llvm-project
+#include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
@@ -39,6 +40,7 @@ limitations under the License.
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
 #include "tensorflow/compiler/mlir/lite/quantization/ir/FakeQuantSupport.h"
@@ -378,6 +380,10 @@ void PrepareQuantizePass::runOnOperation() {
   if (quant_specs_.post_training_quantization) {
     patterns_1.add<PrepareLstmOutputScale<LSTMOp>>(ctx);
     patterns_1.add<PrepareLstmOutputScale<UnidirectionalSequenceLSTMOp>>(ctx);
+  }
+  if (is_qdq_conversion_ ||
+      quant_specs_.qdq_conversion_mode != quant::QDQConversionMode::kQDQNone) {
+    patterns_1.add<PropagateTransposedPerAxisQuantDim>(ctx);
   }
   (void)applyPatternsAndFoldGreedily(func, std::move(patterns_1));
 
