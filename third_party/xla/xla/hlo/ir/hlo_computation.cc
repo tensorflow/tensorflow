@@ -576,6 +576,7 @@ HloComputation::ChannelDependencies HloComputation::ComputeChannelDependencies()
       case HloOpcode::kAllReduce:
       case HloOpcode::kAllGather:
       case HloOpcode::kAllToAll:
+      case HloOpcode::kCollectiveBroadcast:
       case HloOpcode::kCollectivePermute:
       case HloOpcode::kReduceScatter: {
         HloInstruction* instruction = inst.inst();

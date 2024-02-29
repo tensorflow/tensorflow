@@ -1143,6 +1143,27 @@ bool HloAllToAllInstruction::IdenticalSlowPathIgnoringChannelIdValues(
          split_dimension_ == casted_other.split_dimension();
 }
 
+HloCollectiveBroadcastInstruction::HloCollectiveBroadcastInstruction(
+    HloOpcode opcode, const Shape& shape,
+    absl::Span<HloInstruction* const> operands,
+    absl::Span<const ReplicaGroup> replica_groups, bool constrain_layout,
+    const std::optional<int64_t>& channel_id)
+    : HloCollectiveInstruction(opcode, shape, operands, replica_groups,
+                               constrain_layout, channel_id) {}
+
+HloInstructionProto HloCollectiveBroadcastInstruction::ToProto() const {
+  return HloCollectiveInstruction::ToProto();
+}
+
+std::unique_ptr<HloInstruction>
+HloCollectiveBroadcastInstruction::CloneWithNewOperandsImpl(
+    const Shape& shape, absl::Span<HloInstruction* const> new_operands,
+    HloCloneContext* /*context*/) const {
+  return std::make_unique<HloCollectiveBroadcastInstruction>(
+      opcode(), shape, new_operands, replica_groups(), constrain_layout(),
+      channel_id());
+}
+
 HloCollectivePermuteInstruction::HloCollectivePermuteInstruction(
     HloOpcode opcode, const Shape& shape, HloInstruction* operand,
     const std::vector<std::pair<int64_t, int64_t>>& source_target_pairs,

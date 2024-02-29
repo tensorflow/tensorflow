@@ -584,6 +584,7 @@ bool IsCollective(const HloInstruction* instruction) {
     case HloOpcode::kAllGatherStart:
     case HloOpcode::kAllGatherDone:
     case HloOpcode::kAllToAll:
+    case HloOpcode::kCollectiveBroadcast:
     case HloOpcode::kCollectivePermute:
     case HloOpcode::kCollectivePermuteStart:
     case HloOpcode::kCollectivePermuteDone:

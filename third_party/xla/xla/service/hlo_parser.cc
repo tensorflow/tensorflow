@@ -1765,6 +1765,23 @@ HloInstruction* HloParserImpl::CreateInstruction(  // NOLINT
           constrain_layout ? *constrain_layout : false, channel_id,
           split_dimension));
     }
+    case HloOpcode::kCollectiveBroadcast: {
+      optional<std::vector<std::vector<int64_t>>> tmp_groups;
+      attrs["replica_groups"] = {/*required=*/true,
+                                 AttrTy::kBracedInt64ListList, &tmp_groups};
+      optional<int64_t> channel_id;
+      attrs["channel_id"] = {/*required=*/false, AttrTy::kInt64, &channel_id};
+      if ((!preset_operands && !ParseOperands(&operands, builder)) ||
+          !ParseAttributes(attrs, allow_attributes)) {
+        return nullptr;
+      }
+      std::vector<ReplicaGroup> replica_groups;
+      if (tmp_groups) {
+        replica_groups = CreateReplicaGroups(*tmp_groups);
+      }
+      return builder->AddInstruction(HloInstruction::CreateCollectiveBroadcast(
+          *shape, operands, replica_groups, false, channel_id));
+    }
     case HloOpcode::kCollectivePermute:
     case HloOpcode::kCollectivePermuteStart: {
       optional<std::vector<std::vector<int64_t>>> source_targets;

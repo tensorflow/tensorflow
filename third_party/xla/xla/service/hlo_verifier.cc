@@ -783,6 +783,15 @@ Status CheckDuplicatedSourceOrTarget(HloInstruction* hlo,
 
 }  // namespace
 
+Status ShapeVerifier::HandleCollectiveBroadcast(HloInstruction* hlo) {
+  std::vector<const Shape*> operand_shapes;
+  for (const HloInstruction* operand : hlo->operands()) {
+    operand_shapes.push_back(&operand->shape());
+  }
+  return CheckShape(
+      hlo, ShapeInference::InferCollectiveBroadcastShape(operand_shapes));
+}
+
 Status ShapeVerifier::HandleCollectivePermute(HloInstruction* hlo) {
   TF_ASSIGN_OR_RETURN(
       CollectiveOpGroupMode group_mode,

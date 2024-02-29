@@ -1978,6 +1978,19 @@ ENTRY AllToAllWithSubgroups {
 )",
 /*replica_count=*/4,
 },
+// collective-broadcast
+{
+"CollectiveBroadcast",
+R"(HloModule CollectiveBroadcast, entry_computation_layout={(f32[128,32]{0,1})->f32[128,32]{0,1}}, replica_count=4
+
+ENTRY CollectiveBroadcast {
+  input = f32[128,32]{0,1} parameter(0)
+  ROOT cb = f32[128,32]{0,1} collective-broadcast(input), replica_groups={{1,0},{2,3}}
+}
+
+)",
+/*replica_count=*/4,
+},
 // collective-permute
 {
 "CollectivePermute",

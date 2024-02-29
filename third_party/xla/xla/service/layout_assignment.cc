@@ -2046,7 +2046,7 @@ absl::StatusOr<Layout> LayoutAssignment::InferArrayLayout(
       // This should not happen because we've assigned layouts to all
       // instructions preceding this one.
       return Internal("LogicalBuffer %s does not have a layout",
-                           source_buffer->ToString());
+                      source_buffer->ToString());
     }
 
     if (first_buffer_layout == nullptr) {
