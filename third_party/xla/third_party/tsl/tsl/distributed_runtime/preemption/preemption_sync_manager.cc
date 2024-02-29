@@ -133,7 +133,7 @@ absl::Status PreemptionSyncManagerImpl::Initialize(
    * service when death time is within kProtocolDuration.
    */
   preemption_notifier_->WillBePreemptedAtAsync(
-      [agent = agent_, task_name](StatusOr<absl::Time> death_time) {
+      [agent = agent_, task_name](absl::StatusOr<absl::Time> death_time) {
         if (!death_time.ok()) {
           // The preemption notifier invokes callback with Cancelled error when
           // its being destructed.
@@ -161,7 +161,7 @@ absl::Status PreemptionSyncManagerImpl::Initialize(
    */
   call_opts_ = agent_->GetKeyValueAsync(
       kPreemptionNoticeKey,
-      [this, agent = agent_](StatusOr<std::string> status_or_death_time) {
+      [this, agent = agent_](absl::StatusOr<std::string> status_or_death_time) {
         if (errors::IsCancelled(status_or_death_time.status())) {
           // The agent cancels pending GetKeyValue RPCs because of shutdown,
           // so simply log and return.
@@ -253,7 +253,7 @@ void PreemptionSyncManagerImpl::ComputeSyncCallCounter(absl::Time death_time) {
   }
 
   // 4. Retrieve every task's current call counter.
-  StatusOr<std::vector<KeyValueEntry>> all_counters =
+  absl::StatusOr<std::vector<KeyValueEntry>> all_counters =
       agent_->GetKeyValueDir(kPreemptionCounterDirKey);
   if (!all_counters.ok()) {
     LOG(ERROR) << "Preemption sync failed - unable to retrieve call counters: "
