@@ -61,7 +61,7 @@ def LowerTensorsPass :
 
   let dependentDialects = [
     "mlir::func::FuncDialect", "mlir::gpu::GPUDialect", "mlir::LLVM::LLVMDialect",
-    "mlir::tensor::TensorDialect"
+    "mlir::tensor::TensorDialect", "mlir::scf::SCFDialect",
   ];
 
   let constructor = "CreateLowerTensorsPass()";

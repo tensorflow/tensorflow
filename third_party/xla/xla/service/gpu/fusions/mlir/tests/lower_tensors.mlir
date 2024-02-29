@@ -227,3 +227,57 @@ module {
 // CHECK:            %[[ELEM_ADDR:.*]] = llvm.getelementptr inbounds %[[CAST]]
 // CHECK:            llvm.load %[[ELEM_ADDR]]
 
+// -----
+
+module {
+  func.func @atomic_rmw_f32(%in: tensor<2x4xf32>, %i: index, %j: index)
+      -> (tensor<2x4xf32>) {
+    %ret = xla_gpu.atomic_rmw %in[%i, %j] : tensor<2x4xf32> {
+      ^bb0(%current : f32):
+        %c42 = arith.constant 1.0 : f32
+        %add = arith.addf %current, %c42 : f32
+        xla_gpu.yield %add : f32
+    }
+    return %ret : tensor<2x4xf32>
+  }
+}
+
+// CHECK: @atomic_rmw_f32
+// CHECK: %[[ADDR:.*]] = llvm.getelementptr
+// CHECK-NEXT: %[[INIT:.*]] = llvm.load %[[ADDR]]
+// CHECK-NEXT: scf.while (%[[VAR:.*]] = %[[INIT]])
+// CHECK: %[[RES:.*]] = llvm.bitcast %{{.*}} : f32 to i32
+// CHECK-NEXT: llvm.cmpxchg %[[ADDR]], %[[VAR]], %[[RES]]
+
+// -----
+
+module {
+  func.func @atomic_rmw_f16(%in: tensor<2x4xf16>, %i: index, %j: index)
+      -> (tensor<2x4xf16>) {
+    %ret = xla_gpu.atomic_rmw %in[%i, %j] : tensor<2x4xf16> {
+      ^bb0(%current : f16):
+        %c1 = arith.constant 1.0 : f16
+        %add = arith.addf %current, %c1 : f16
+        xla_gpu.yield %add : f16
+    }
+    return %ret : tensor<2x4xf16>
+  }
+}
+
+// CHECK: @atomic_rmw_f16
+// CHECK: %[[ADDR:.*]] = llvm.getelementptr
+// CHECK-NEXT: %[[ADDR_INT:.*]] = llvm.ptrtoint %[[ADDR]]
+// CHECK-NEXT: %[[OFFSET:.*]] = llvm.and %[[ADDR_INT]], %{{.*}}
+// CHECK-NEXT: %[[INDEX:.*]] = llvm.mul %[[OFFSET]], %{{.*}}
+// CHECK-NEXT: %[[BASE:.*]] = llvm.getelementptr inbounds %[[ADDR]][%[[INDEX]]]
+// CHECK: %[[INIT:.*]] = llvm.load %[[BASE]]
+// CHECK-NEXT: scf.while (%[[VAR:.*]] = %[[INIT]])
+// CHECK-NEXT: %[[VAR_SHIFT:.*]] = llvm.lshr %[[VAR]], %{{.*}}
+// CHECK-NEXT: %[[VAR_TRUNC:.*]] = llvm.trunc %[[VAR_SHIFT]]
+// CHECK-NEXT: llvm.bitcast %[[VAR_TRUNC]] : i16 to f16
+// CHECK: %[[RES:.*]] = llvm.bitcast %{{.*}} : f16 to i16
+// CHECK-NEXT: %[[RES_WIDE:.*]] = llvm.zext %[[RES]]
+// CHECK-NEXT: %[[NEW_MASKED:.*]] = llvm.and %[[VAR]], %{{.*}}
+// CHECK-NEXT: %[[RES_SHIFT:.*]] = llvm.shl %[[RES_WIDE]], %{{.*}}
+// CHECK-NEXT: %[[NEW:.*]] = llvm.or %[[NEW_MASKED]], %[[RES_SHIFT]]
+// CHECK-NEXT: llvm.cmpxchg %[[BASE]], %[[VAR]], %[[NEW]]

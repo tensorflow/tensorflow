@@ -33,6 +33,7 @@ limitations under the License.
 #include "mlir/Dialect/Tensor/IR/Tensor.h"  // from @llvm-project
 #include "mlir/Dialect/Vector/Transforms/VectorTransforms.h"  // from @llvm-project
 #include "mlir/IR/AffineExpr.h"  // from @llvm-project
+#include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypeInterfaces.h"  // from @llvm-project
@@ -286,6 +287,144 @@ struct RewriteSyncThreads : mlir::OpRewritePattern<SyncThreadsOp> {
   }
 };
 
+// Implements atomic binary operations using atomic compare-and-swap
+// (atomicCAS) as follows:
+//   1. Reads the value from the memory pointed to by output_address and
+//     records it as old_output.
+//   2. Uses old_output as one of the source operand to perform the binary
+//     operation and stores the result in new_output.
+//   3. Calls atomicCAS which implements compare-and-swap as an atomic
+//     operation. In particular, atomicCAS reads the value from the memory
+//     pointed to by output_address, and compares the value with old_output. If
+//     the two values equal, new_output is written to the same memory location
+//     and true is returned to indicate that the atomic operation succeeds.
+//     Otherwise, the new value read from the memory is returned. In this case,
+//     the new value is copied to old_output, and steps 2. and 3. are repeated
+//     until atomicCAS succeeds.
+//
+// On Nvidia GPUs, atomicCAS can only operate on 32 bit and 64 bit integers. If
+// the element type of the binary operation is 32 bits or 64 bits, the integer
+// type of the same size is used for the atomicCAS operation. On the other hand,
+// if the element type is smaller than 32 bits, int32_t is used for the
+// atomicCAS operation. In this case, atomicCAS reads and writes 32 bit values
+// from the memory, which is larger than the memory size required by the
+// original atomic binary operation. We mask off the last two bits of the
+// output_address and use the result as an address to read the 32 bit values
+// from the memory. This can avoid out of bound memory accesses if tensor
+// buffers are 4 byte aligned and have a size of 4N, an assumption that the
+// runtime can guarantee.
+struct RewriteAtomicRMW : mlir::OpRewritePattern<AtomicRMWOp> {
+  using OpRewritePattern::OpRewritePattern;
+
+  mlir::LogicalResult matchAndRewrite(
+      AtomicRMWOp op, mlir::PatternRewriter& rewriter) const override {
+    namespace ml = mlir::LLVM;
+    mlir::Location loc = op.getLoc();
+
+    // Use 32-bit atomic type for small input types.
+    mlir::Type result_ty = op.getResult().getType().getElementType();
+    unsigned int result_size = result_ty.getIntOrFloatBitWidth();
+    bool small_type = result_size < 32;
+    mlir::Type atomic_ty =
+        mlir::IntegerType::get(op.getContext(), small_type ? 32 : result_size);
+
+    // Calculate load address for the input.
+    mlir::Value addr = CreateGep(op, op.getInput(), op.getIndices(), rewriter);
+    mlir::Value shift, mask;
+    if (small_type) {
+      // Update input pointer by discarding the last two bits - i.e. align to
+      // 32-bit boundary for small input types (will not result in OOB, as the
+      // input alignment is at least 32 bits).
+      mlir::Type addr_int_ty = rewriter.getI64Type();
+      mlir::Value addr_int =
+          rewriter.create<ml::PtrToIntOp>(loc, addr_int_ty, addr);
+      mlir::Value addr_offset = rewriter.create<ml::AndOp>(
+          loc, addr_int, rewriter.create<ml::ConstantOp>(loc, addr_int_ty, 3));
+      mlir::Value index = rewriter.create<ml::MulOp>(
+          loc, addr_offset,
+          rewriter.create<ml::ConstantOp>(loc, addr_int_ty, -1));
+      addr =
+          rewriter.create<ml::GEPOp>(loc, addr.getType(), rewriter.getI8Type(),
+                                     addr, index, /*inbounds=*/true);
+
+      // Calculate the bit shift (assume little-endianness).
+      mlir::Value offset =
+          rewriter.create<ml::TruncOp>(loc, atomic_ty, addr_offset);
+      shift = rewriter.create<ml::MulOp>(
+          loc, offset,
+          rewriter.create<ml::ConstantOp>(loc, offset.getType(), 8));
+
+      // Compose the update mask.
+      mlir::Value bits_long =
+          rewriter.create<ml::ConstantOp>(loc, atomic_ty, -1);
+      mlir::Value bits_short = rewriter.create<ml::ZExtOp>(
+          loc, atomic_ty,
+          rewriter.create<ml::ConstantOp>(
+              loc, rewriter.getIntegerType(result_size), -1));
+      mask = rewriter.create<ml::XOrOp>(
+          loc, bits_long, rewriter.create<ml::ShlOp>(loc, bits_short, shift));
+    }
+
+    // Load initial atomic value and create the loop.
+    mlir::Value initial = rewriter.create<ml::LoadOp>(loc, atomic_ty, addr);
+    rewriter.create<mlir::scf::WhileOp>(
+        loc, mlir::TypeRange{atomic_ty}, mlir::ValueRange{initial},
+        [&](mlir::OpBuilder& b, mlir::Location loc, mlir::ValueRange values) {
+          mlir::Value old_value = values[0];
+
+          // Convert atomic value to input value.
+          mlir::Value input_value;
+          if (small_type) {
+            mlir::Value short_value = b.create<ml::TruncOp>(
+                loc, b.getIntegerType(result_size),
+                b.create<ml::LShrOp>(loc, old_value, shift));
+            input_value = b.create<ml::BitcastOp>(loc, result_ty, short_value);
+          } else {
+            input_value = b.create<ml::BitcastOp>(loc, result_ty, old_value);
+          }
+
+          // Perform computation on the loaded input value.
+          rewriter.mergeBlocks(&op.getComputation().front(), b.getBlock(),
+                               {input_value});
+          auto yield_op = &b.getBlock()->back();
+          mlir::Value result = yield_op->getOperands().front();
+          yield_op->erase();
+
+          // Convert resulting value to atomic value.
+          mlir::Value new_value;
+          if (small_type) {
+            mlir::Value cast_value = rewriter.create<ml::ZExtOp>(
+                loc, atomic_ty,
+                rewriter.create<ml::BitcastOp>(
+                    loc, rewriter.getIntegerType(result_size), result));
+            new_value = rewriter.create<ml::OrOp>(
+                loc, rewriter.create<ml::AndOp>(loc, old_value, mask),
+                rewriter.create<ml::ShlOp>(loc, cast_value, shift));
+          } else {
+            new_value = b.create<ml::BitcastOp>(loc, atomic_ty, result);
+          }
+
+          // Try saving the result atomically, retry if failed.
+          mlir::Value cmpxchg = b.create<ml::AtomicCmpXchgOp>(
+              loc, addr, old_value, new_value,
+              /*success_ordering=*/ml::AtomicOrdering::seq_cst,
+              /*failure_ordering=*/ml::AtomicOrdering::seq_cst);
+          mlir::Value next = b.create<ml::ExtractValueOp>(loc, cmpxchg, 0);
+          mlir::Value ok = b.create<ml::ExtractValueOp>(loc, cmpxchg, 1);
+          mlir::Value low_bit =
+              b.create<ml::ConstantOp>(loc, b.getOneAttr(b.getI1Type()));
+          mlir::Value not_ok = b.create<ml::XOrOp>(loc, ok, low_bit);
+          b.create<mlir::scf::ConditionOp>(loc, not_ok, mlir::ValueRange{next});
+        },
+        [&](mlir::OpBuilder& b, mlir::Location loc, mlir::ValueRange values) {
+          b.create<mlir::scf::YieldOp>(loc, values);
+        });
+
+    rewriter.replaceOp(op, op.getOperands());
+    return mlir::success();
+  }
+};
+
 class LowerTensorsPass : public impl::LowerTensorsPassBase<LowerTensorsPass> {
  public:
   void runOnOperation() override;
@@ -293,8 +432,9 @@ class LowerTensorsPass : public impl::LowerTensorsPassBase<LowerTensorsPass> {
 
 void LowerTensorsPass::runOnOperation() {
   mlir::RewritePatternSet tensor_patterns(&getContext());
-  tensor_patterns.add<RewriteAllocateShared, RewriteSyncThreads,
-                      RewriteTensorExtract, RewriteTensorInsert>(&getContext());
+  tensor_patterns
+      .add<RewriteAllocateShared, RewriteSyncThreads, RewriteTensorExtract,
+           RewriteTensorInsert, RewriteAtomicRMW>(&getContext());
   if (mlir::failed(mlir::applyPatternsAndFoldGreedily(
           getOperation(), std::move(tensor_patterns)))) {
     signalPassFailure();
@@ -313,7 +453,7 @@ void LowerTensorsPass::runOnOperation() {
 
   getOperation()->walk([this](mlir::LLVM::LoadOp load) {
     mlir::Value addr = load.getAddr();
-    if (auto gep = load.getAddr().getDefiningOp<mlir::LLVM::GEPOp>()) {
+    while (auto gep = addr.getDefiningOp<mlir::LLVM::GEPOp>()) {
       addr = gep.getBase();
     }
     if (addr.getDefiningOp<mlir::LLVM::AddrSpaceCastOp>()) {
