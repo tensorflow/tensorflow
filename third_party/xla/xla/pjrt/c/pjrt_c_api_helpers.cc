@@ -450,15 +450,6 @@ static absl::StatusOr<PJRT_NamedValue> ConvertToPjRtNamedValue(
     c_value.float_value = std::get<float>(value);
     c_value.value_size = 1;
   } else if (std::holds_alternative<bool>(value)) {
-    // TODO: b/300294893 - Remove this after 12 weeks (12/06/2023) as that is
-    // how long we support old behavior for
-    if (api_minor_version < 30) {
-      return absl::InvalidArgumentError(absl::StrCat(
-          "Client cannot provide this option for API versions "
-          "less than 0.30. The framework PJRT API version is ",
-          PJRT_API_MAJOR, ".", PJRT_API_MINOR,
-          "and the plugin minor version is ", api_minor_version, "."));
-    }
     c_value.type = PJRT_NamedValue_Type::PJRT_NamedValue_kBool;
     c_value.bool_value = std::get<bool>(value);
     c_value.value_size = 1;
