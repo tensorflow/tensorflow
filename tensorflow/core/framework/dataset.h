@@ -1051,10 +1051,6 @@ class IteratorBase : public Checkpointable {
   // this iterator.
   virtual const string& prefix() const = 0;
 
-  // Returns a string identifying the iterator, e.g. "ParallelMapDatasetV2:<id>"
-  // or "ParallelMapDatasetV2:<user defined name>".
-  virtual const string& name() const = 0;
-
   // Indicates whether the iterator is compatible with symbolic checkpointing.
   virtual bool SymbolicCheckpointCompatible() const { return false; }
 
@@ -1450,8 +1446,6 @@ class DatasetBaseIterator : public IteratorBase {
   }
 
   const string& prefix() const override { return params_.prefix; }
-
-  const string& name() const override { return dataset()->metadata().name(); }
 
   // Returns a name to be used for the TraceMe event.
   //

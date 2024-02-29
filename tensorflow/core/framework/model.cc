@@ -2286,8 +2286,9 @@ void Model::AddNode(Node::Factory factory, const string& name,
                     std::shared_ptr<Node>* out_node) {
   // The name captures the sequence of iterators joined by `::`. We only use the
   // last element of the sequence as the name node.
+  auto node_name = str_util::Split(name, ':', str_util::SkipEmpty()).back();
   mutex_lock l(mu_);
-  std::shared_ptr<Node> node = factory({id_counter_++, name, parent});
+  std::shared_ptr<Node> node = factory({id_counter_++, node_name, parent});
   if (!output_) {
     output_ = node;
   }
