@@ -35,9 +35,7 @@ constexpr int kMaxInfeedsInFlight = 8;
 
 InfeedManager::InfeedManager(se::StreamExecutor* executor)
     : BlockingXfeedQueue(/*max_pending_xfeeds=*/kMaxInfeedsInFlight),
-      stream_(std::make_unique<se::Stream>(executor)) {
-  stream_->Initialize().IgnoreError();
-}
+      stream_(executor->CreateStream().value()) {}
 
 static absl::StatusOr<se::ScopedDeviceMemory<uint8_t>> CopyBufferToDevice(
     se::Stream* stream, int64_t size, const void* source) {

@@ -27,6 +27,7 @@ limitations under the License.
 #include "xla/stream_executor/stream.h"
 #include "xla/util.h"
 #include "tsl/platform/errors.h"
+#include "tsl/platform/statusor.h"
 #include "tsl/profiler/lib/traceme.h"
 #include "tsl/protobuf/error_codes.pb.h"
 
@@ -137,8 +138,7 @@ absl::Status LocalDeviceState::ThenExecuteCallback(
     absl::MutexLock lock(&callback_stream_map_mu_);
     auto callback_stream = callback_stream_map_->find(stream);
     if (callback_stream == callback_stream_map_->end()) {
-      auto new_stream = std::make_unique<se::Stream>(executor_);
-      TF_RETURN_IF_ERROR(new_stream->Initialize());
+      TF_ASSIGN_OR_RETURN(auto new_stream, executor_->CreateStream());
       callback_stream =
           callback_stream_map_->insert({stream, std::move(new_stream)}).first;
     }
@@ -217,8 +217,7 @@ std::unique_ptr<se::Stream> LocalDeviceState::BorrowStreamFromPool() {
   }
 
   // The stream pool is empty, create a new stream.
-  auto stream = std::make_unique<se::Stream>(compute_stream_->parent());
-  CHECK(stream->Initialize().ok());
+  auto stream = compute_stream_->parent()->CreateStream().value();
   return stream;
 }
 
