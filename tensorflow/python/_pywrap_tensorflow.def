@@ -441,9 +441,6 @@ EXPORTS
   ??_7MetaGraphDef@tensorflow@@6B@
 
 ;pywrap_saved_model
-  ?DefineConstantsModule@python@saved_model@tensorflow@@YAXVmodule_@pybind11@@@Z
-  ?DefineFingerprintingModule@python@saved_model@tensorflow@@YAXVmodule_@pybind11@@@Z
-  ?DefineMetricsModule@python@saved_model@tensorflow@@YAXVmodule_@pybind11@@@Z
   ?UnrefNonInlined@Status@lts_20230802@absl@@CAX_K@Z
   ?UnrefNonInlined@Status@lts_20230802@absl@@CAX_K@Z
   ?UnrefNonInlined@Status@lts_20230802@absl@@CAX_K@Z
