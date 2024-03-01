@@ -25,11 +25,8 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
-#include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
-#include "mlir/Dialect/SCF/IR/SCF.h"  // from @llvm-project
 #include "mlir/Dialect/Tensor/IR/Tensor.h"  // from @llvm-project
-#include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/ImplicitLocOpBuilder.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
@@ -43,10 +40,9 @@ limitations under the License.
 #include "xla/service/gpu/fusions/mlir/ir/xla_gpu_ops.h"
 #include "xla/service/gpu/hlo_fusion_analysis.h"
 #include "xla/service/gpu/launch_dimensions.h"
+#include "xla/service/gpu/model/indexing_analysis.h"
 #include "xla/service/gpu/model/indexing_map.h"
-#include "xla/shape.h"
 #include "tsl/platform/errors.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace gpu {
@@ -130,85 +126,67 @@ absl::Status MlirConcatenateFusion::EmitMlir(
   auto output_tensor_args =
       entry_function.getArguments().drop_front(num_inputs);
 
-  int64_t concat_dim = concat->concatenate_dimension();
-  int64_t operand_offset = 0;
-
   SmallVector<Value> result_tensors{output_tensor_args.begin(),
                                     output_tensor_args.end()};
 
-  auto thread_id_to_input_map = *ComputeThreadIdToInputIndexing(
-      /*root_index=*/0, /*hero_operand_index=*/0, module.getContext());
+  auto thread_id_to_output_map =
+      ComputeThreadIdToInputIndexing(
+          /*root_index=*/0, /*hero_operand_index=*/0, module.getContext())
+          .value();
 
   for (auto [operand_index, operand] : llvm::enumerate(concat->operands())) {
-    int64_t operand_concat_dim_size = operand->shape().dimensions(concat_dim);
+    auto input_to_output_map =
+        *ComputeInputToOutputIndexing(concat, /*input_id=*/operand_index,
+                                      module.getContext())
+             .indexing_maps.front()
+             .begin();
+    auto thread_id_to_input_map =
+        ComposeIndexingMaps(thread_id_to_output_map, input_to_output_map);
 
     auto loop_nest_body_builder =
         [&, operand_index = operand_index](
             ValueRange output_tensors, ValueRange dim_values,
             ValueRange symbol_values) -> SmallVector<Value> {
       auto input_indices =
+          mlir_converter::ApplyAffineMap(thread_id_to_output_map.GetAffineMap(),
+                                         dim_values, symbol_values, builder);
+
+      auto result_scalars = mlir_converter::ProvideParameter(
+          root_computation, concat, operand_index, input_indices,
+          call_target_lookup, builder);
+
+      auto output_indices =
           mlir_converter::ApplyAffineMap(thread_id_to_input_map.GetAffineMap(),
                                          dim_values, symbol_values, builder);
 
-      auto operand_concat_dim_size_val =
-          builder.create<mlir::arith::ConstantOp>(
-              builder.getIndexAttr(operand_concat_dim_size));
-      auto in_bounds = builder.create<mlir::arith::CmpIOp>(
-          mlir::arith::CmpIPredicate::ult, input_indices[concat_dim],
-          operand_concat_dim_size_val);
+      if (&root_graph != &hero_graph) {
+        // Concatenate is not the root of the computation. Call epilogue
+        // function.
+        auto epilogue_fn = subgraph_to_mlir_fn[&root_graph];
 
-      auto then_body = [&, operand_index = operand_index](mlir::OpBuilder& b,
-                                                          mlir::Location loc) {
-        mlir::ImplicitLocOpBuilder builder(loc, b);
+        SmallVector<Value> operands = input_tensors;
+        absl::c_copy(output_indices, std::back_inserter(operands));
+        absl::c_copy(result_scalars, std::back_inserter(operands));
 
-        auto result_scalars = mlir_converter::ProvideParameter(
-            root_computation, concat, operand_index, input_indices,
-            call_target_lookup, builder);
+        result_scalars =
+            builder.create<PureCallOp>(epilogue_fn, operands).getResults();
+      }
 
-        SmallVector<Value> output_indices(input_indices);
-        output_indices[concat_dim] = builder.create<mlir::arith::AddIOp>(
-            output_indices[concat_dim],
-            builder.create<mlir::arith::ConstantOp>(
-                builder.getIndexAttr(operand_offset)));
+      SmallVector<Value> result_tensors;
+      result_tensors.reserve(output_tensor_args.size());
+      for (auto [tensor, value] : llvm::zip(output_tensors, result_scalars)) {
+        result_tensors.push_back(
+            builder
+                .create<mlir::tensor::InsertOp>(value, tensor, output_indices)
+                .getResult());
+      }
 
-        if (&root_graph != &hero_graph) {
-          // Concatenate is not the root of the computation. Call epilogue
-          // function.
-          auto epilogue_fn = subgraph_to_mlir_fn[&root_graph];
-
-          SmallVector<Value> operands = input_tensors;
-          absl::c_copy(output_indices, std::back_inserter(operands));
-          absl::c_copy(result_scalars, std::back_inserter(operands));
-
-          result_scalars =
-              builder.create<PureCallOp>(epilogue_fn, operands).getResults();
-        }
-
-        SmallVector<Value> yield_tensors;
-        yield_tensors.reserve(output_tensor_args.size());
-        for (auto [tensor, value] : llvm::zip(output_tensors, result_scalars)) {
-          yield_tensors.push_back(
-              builder
-                  .create<mlir::tensor::InsertOp>(value, tensor, output_indices)
-                  .getResult());
-        }
-
-        builder.create<mlir::scf::YieldOp>(yield_tensors);
-      };
-
-      auto else_body = [&](mlir::OpBuilder& b, mlir::Location loc) {
-        b.create<mlir::scf::YieldOp>(loc, output_tensors);
-      };
-
-      return builder.create<mlir::scf::IfOp>(in_bounds, then_body, else_body)
-          .getResults();
+      return result_tensors;
     };
 
     result_tensors =
         EmitThreadLoopNest(builder, result_tensors, thread_id_to_input_map,
                            loop_nest_body_builder);
-
-    operand_offset += operand_concat_dim_size;
   }
 
   builder.create<mlir::func::ReturnOp>(result_tensors);

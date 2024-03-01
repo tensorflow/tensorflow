@@ -45,8 +45,10 @@ TEST_F(MlirConcatenateFusionTest, StandAloneConcatenate) {
     }
   )";
   TF_ASSERT_OK(EmitAndCheckIR(kHloString, R"(
-    // CHECK: #[[MAP_1:.*]] = affine_map<()[s0, s1] -> (s0 + s1 * 128)>
-    // CHECK: #[[MAP_2:.*]] = affine_map<()[s0, s1] -> ((s0 + s1 * 128) mod 400)>
+    // CHECK-DAG: #[[MAP_1:.*]] = affine_map<()[s0, s1] -> (s0 + s1 * 128)>
+    // CHECK-DAG: #[[MAP_2:.*]] = affine_map<()[s0, s1] -> ((s0 + s1 * 128) mod 400)>
+    // CHECK-DAG: #[[MAP_3:.*]] = affine_map<()[s0, s1] -> ((s0 + s1 * 128) mod 400 + 200)> 
+    // CHECK-DAG: #[[MAP_4:.*]] = affine_map<()[s0, s1] -> ((s0 + s1 * 128) mod 400 + 600)> 
 
     // CHECK-LABEL: fused_computation
     // CHECK-SAME:    %[[ARG_0:[a-zA-Z0-9]*]]: {{[^,]*}},
@@ -54,32 +56,22 @@ TEST_F(MlirConcatenateFusionTest, StandAloneConcatenate) {
     // CHECK-SAME:    %[[ARG_2:[a-zA-Z0-9]*]]: {{[^,]*}},
     // CHECK-SAME:    %[[OUTPUT:[a-zA-Z0-9]*]]: {{[^,]*}}
 
-    // CHECK-DAG: %[[C_200:.*]] = arith.constant 200
-    // CHECK-DAG: %[[C_300:.*]] = arith.constant 300
-    // CHECK-DAG: %[[C_400:.*]] = arith.constant 400
-    // CHECK-DAG: %[[C_600:.*]] = arith.constant 600
-
     // CHECK: %[[THREAD_ID:.*]] = gpu.thread_id x
     // CHECK: %[[BLOCK_ID:.*]] = gpu.block_id x
 
     // CHECK: %[[INPUT_INDEX_1:.*]] = affine.apply #[[MAP_2]]()[%[[THREAD_ID]], %[[BLOCK_ID]]]
-    // CHECK: %[[IN_BOUND_1:.*]] = arith.cmpi ult, %[[INPUT_INDEX_1:.*]], %[[C_200]]
-    // CHECK: %[[IF_1:.*]] = scf.if %[[IN_BOUND_1]]
+    // CHECK: %[[IF_1:.*]] = scf.if
     // CHECK:   %[[VAL_1:.*]] = xla_gpu.pure_call @fused_computation_param0
     // CHECK:   %[[INSERTED_1:.*]] = tensor.insert %[[VAL_1:.*]] into %[[OUTPUT]][%[[INPUT_INDEX_1]]]
 
-    // CHECK: %[[INPUT_INDEX_2:.*]] = affine.apply #[[MAP_2]]()[%[[THREAD_ID]], %[[BLOCK_ID]]]
-    // CHECK: %[[IN_BOUND_2:.*]] = arith.cmpi ult, %[[INPUT_INDEX_2:.*]], %[[C_400]]
-    // CHECK: %[[IF_2:.*]] = scf.if %[[IN_BOUND_2]]
+    // CHECK: %[[IF_2:.*]] = scf.if
     // CHECK:   %[[VAL_2:.*]] = xla_gpu.pure_call @fused_computation_param1
-    // CHECK:   %[[OUTPUT_INDEX_2:.*]] = arith.addi %[[INPUT_INDEX_2]], %[[C_200]]
+    // CHECK:   %[[OUTPUT_INDEX_2:.*]] = affine.apply #[[MAP_3]]()[%[[THREAD_ID]], %[[BLOCK_ID]]]
     // CHECK:   %[[INSERTED_2:.*]] = tensor.insert %[[VAL_2:.*]] into {{.*}}[%[[OUTPUT_INDEX_2]]]
 
-    // CHECK: %[[INPUT_INDEX_3:.*]] = affine.apply #[[MAP_2]]()[%[[THREAD_ID]], %[[BLOCK_ID]]]
-    // CHECK: %[[IN_BOUND_3:.*]] = arith.cmpi ult, %[[INPUT_INDEX_4:.*]], %[[C_300]]
-    // CHECK: %[[IF_3:.*]] = scf.if %[[IN_BOUND_3]]
+    // CHECK: %[[IF_3:.*]] = scf.if
     // CHECK:   %[[VAL_3:.*]] = xla_gpu.pure_call @fused_computation_param2
-    // CHECK:   %[[OUTPUT_INDEX_3:.*]] = arith.addi %[[INPUT_INDEX_3]], %[[C_600]]
+    // CHECK:   %[[OUTPUT_INDEX_3:.*]] = affine.apply #[[MAP_4]]()[%[[THREAD_ID]], %[[BLOCK_ID]]]
     // CHECK:   %[[INSERTED_3:.*]] = tensor.insert %[[VAL_3:.*]] into {{.*}}[%[[OUTPUT_INDEX_3]]]
   )"));
   EXPECT_TRUE(RunAndCompareNoHloPasses(kHloString, ErrorSpec{1e-3}));
@@ -104,11 +96,13 @@ TEST_F(MlirConcatenateFusionTest, PrologueEpilogue) {
     }
   )";
   TF_ASSERT_OK(EmitAndCheckIR(kHloString, R"(
+    // CHECK: #[[MAP:.*]] = affine_map<()[s0] -> (s0 + 64)>
+
     // CHECK-LABEL: fused_computation
-    // CHECK-DAG: %[[C_64:.*]] = arith.constant 64
+    // CHECK-DAG: %[[C_63:.*]] = arith.constant 63
     // CHECK: %[[THREAD_ID:.*]] = gpu.thread_id x
 
-    // CHECK: %[[IN_BOUND_1:.*]] = arith.cmpi ult, %[[THREAD_ID:.*]], %[[C_64]]
+    // CHECK: %[[IN_BOUND_1:.*]] = arith.cmpi sle, %[[THREAD_ID:.*]], %[[C_63]]
     // CHECK: %[[IF_1:.*]] = scf.if %[[IN_BOUND_1]]
     // CHECK:   %[[VAL_1_1:.*]] = xla_gpu.pure_call @fused_computation_log({{.*}}, %[[THREAD_ID]])
     // CHECK:   %[[VAL_1_2:.*]] = xla_gpu.pure_call @fused_computation_neg({{.*}}, %[[THREAD_ID]], %[[VAL_1_1]])
@@ -116,7 +110,7 @@ TEST_F(MlirConcatenateFusionTest, PrologueEpilogue) {
     // CHECK:   scf.yield %[[INSERTED_1]]
 
     // CHECK: %[[VAL_2_1:.*]] = xla_gpu.pure_call @fused_computation_exp({{.*}}, %[[THREAD_ID]])
-    // CHECK: %[[INDEX_2:.*]] = arith.addi %[[THREAD_ID]], %[[C_64]]
+    // CHECK: %[[INDEX_2:.*]] = affine.apply #[[MAP]]()[%[[THREAD_ID]]] 
     // CHECK: %[[VAL_2_2:.*]] = xla_gpu.pure_call @fused_computation_neg({{.*}}, %[[INDEX_2]], %[[VAL_2_1]])
     // CHECK: %[[INSERTED_2:.*]] = tensor.insert %[[VAL_2_2:.*]] into {{.*}}[%[[INDEX_2]]]
 

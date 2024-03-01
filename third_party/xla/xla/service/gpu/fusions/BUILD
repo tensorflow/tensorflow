@@ -756,7 +756,6 @@ cc_library(
     hdrs = ["concatenate_mlir.h"],
     deps = [
         ":concatenate",
-        "//xla:shape_util",
         "//xla/hlo/ir:hlo",
         "//xla/service/gpu:hlo_fusion_analysis",
         "//xla/service/gpu:launch_dimensions",
@@ -764,19 +763,17 @@ cc_library(
         "//xla/service/gpu/fusions/mlir:elemental_hlo_to_mlir",
         "//xla/service/gpu/fusions/mlir:mlir_fusion_emitter",
         "//xla/service/gpu/fusions/mlir/ir:xla_gpu",
+        "//xla/service/gpu/model:indexing_analysis",
         "//xla/service/gpu/model:indexing_map",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
         "@llvm-project//llvm:Support",
-        "@llvm-project//mlir:ArithDialect",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:SCFDialect",
         "@llvm-project//mlir:TensorDialect",
         "@local_tsl//tsl/platform:errors",
-        "@local_tsl//tsl/platform:statusor",
     ],
 )
 
