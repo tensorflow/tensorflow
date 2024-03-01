@@ -284,6 +284,42 @@ TEST_F(MlirTransposeFusionTest, Transpose021_NoEpilogue) {
   EXPECT_TRUE(RunAndCompareNoHloPasses(kHloString, ErrorSpec{1e-3}));
 }
 
+TEST_F(MlirTransposeFusionTest, Transpose_4D) {
+  auto kHloString = R"(
+    HloModule Transpose
+
+    %fused_computation {
+      %param_0 = f64[2,24,6,4] parameter(0)
+      ROOT %transpose= f64[6,4,2,24] transpose(f64[2,24,6,4] %param_0),
+        dimensions={2,3,0,1}
+    }
+    ENTRY main {
+      %param = f64[2,24,6,4] parameter(0)
+      ROOT %fusion = f64[6,4,2,24] fusion(%param), kind=kInput,
+        calls=%fused_computation
+    }
+  )";
+  EXPECT_TRUE(RunAndCompareNoHloPasses(kHloString, ErrorSpec{1e-3}));
+}
+
+TEST_F(MlirTransposeFusionTest, Transpose_2D) {
+  auto kHloString = R"(
+    HloModule Transpose
+
+    %fused_computation {
+      %param_0 = f64[100, 200] parameter(0)
+      ROOT %transpose= f64[200,100] transpose(f64[100, 200] %param_0),
+        dimensions={1,0}
+    }
+    ENTRY main {
+      %param = f64[100, 200] parameter(0)
+      ROOT %fusion = f64[200,100] fusion(%param), kind=kInput,
+        calls=%fused_computation
+    }
+  )";
+  EXPECT_TRUE(RunAndCompareNoHloPasses(kHloString, ErrorSpec{1e-3}));
+}
+
 }  // namespace
 }  // namespace gpu
 }  // namespace xla

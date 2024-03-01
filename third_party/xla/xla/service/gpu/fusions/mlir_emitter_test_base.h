@@ -43,6 +43,7 @@ class MlirEmitterTestBaseImpl : public HloTestBase {
 
   DebugOptions GetDebugOptionsForTest() override;
 
+  absl::StatusOr<std::string> EmitIR(std::string_view hlo_string);
   absl::Status EmitAndCheckIR(std::string_view hlo_string,
                               std::string_view pattern);
 
@@ -50,9 +51,6 @@ class MlirEmitterTestBaseImpl : public HloTestBase {
       TestGpuDeviceInfo::RTXA6000DeviceInfo();
   mlir::MLIRContext mlir_context_;
   AffineMapPrinter thread_id_printer_;
-
- private:
-  absl::StatusOr<std::string> EmitIR(std::string_view hlo_string);
 };
 
 template <typename EmitterType>

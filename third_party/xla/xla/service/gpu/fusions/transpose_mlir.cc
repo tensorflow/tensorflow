@@ -15,13 +15,9 @@ limitations under the License.
 #include "xla/service/gpu/fusions/transpose_mlir.h"
 
 #include <cstdint>
-#include <iterator>
 #include <optional>
-#include <tuple>
-#include <utility>
 #include <vector>
 
-#include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/log/check.h"
@@ -72,6 +68,8 @@ namespace {
 
 using absl::StatusOr;
 using llvm::SmallVector;
+using mlir::AffineExpr;
+using mlir::AffineMap;
 using mlir::ModuleOp;
 using mlir::RankedTensorType;
 using mlir::Value;
@@ -184,21 +182,23 @@ LaunchDimensions MlirTransposeFusion::launch_dimensions() const {
 IndexingMap GetSharedMemoryWriteIndexingMap(
     const IndexingMap& thread_id_indexing) {
   auto* mlir_context = thread_id_indexing.GetMLIRContext();
-  auto c0 = mlir::getAffineConstantExpr(0, mlir_context);
-  mlir::AffineExpr th_x, th_y, th_z;
-  mlir::bindDims(mlir_context, th_x, th_y, th_z);
-  auto zero_block_map =
-      mlir::AffineMap::get(6, 0, {th_x, th_y, th_z, c0, c0, c0}, mlir_context);
 
-  auto dim_ranges = thread_id_indexing.GetDimensionRanges();
-  for (int bl_dim = 3; bl_dim < 6; ++bl_dim) {
-    dim_ranges[bl_dim] = Range{0, 0};
-  }
-  IndexingMap composed =
-      IndexingMap{zero_block_map, dim_ranges, /*symbol_ranges=*/{}} *
-      thread_id_indexing;
-  composed.Simplify();
-  return composed;
+  AffineExpr c0 = mlir::getAffineConstantExpr(0, mlir_context);
+  AffineExpr th_x = mlir::getAffineDimExpr(0, mlir_context);
+  SmallVector<AffineExpr, 3> tile_sizes(3);
+  mlir::bindSymbolsList(mlir_context, llvm::MutableArrayRef(tile_sizes));
+
+  IndexingMap shmem_write_indexing{
+      AffineMap::get(thread_id_indexing.GetDimensionCount(),
+                     thread_id_indexing.GetSymbolCount(),
+
+                     {c0, th_x.floorDiv(32) + 4 * tile_sizes[1], th_x % 32},
+                     mlir_context),
+      thread_id_indexing.GetDimensionRanges(),
+      thread_id_indexing.GetSymbolRanges(),
+      thread_id_indexing.GetConstraints()};
+  shmem_write_indexing.Simplify();
+  return shmem_write_indexing;
 }
 
 // Returns an indexing map with block_x, block_y, block_z set to 0 and swapped
