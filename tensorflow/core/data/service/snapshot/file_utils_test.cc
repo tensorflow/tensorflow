@@ -43,7 +43,7 @@ using ::testing::IsEmpty;
 using tsl::testing::IsOkAndHolds;
 using tsl::testing::StatusIs;
 
-tsl::StatusOr<std::string> CreateTestDirectory() {
+absl::StatusOr<std::string> CreateTestDirectory() {
   std::string directory;
   if (!tsl::Env::Default()->LocalTempFilename(&directory)) {
     return tsl::errors::FailedPrecondition(
