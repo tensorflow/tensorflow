@@ -62,22 +62,25 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
+using llvm::SmallVector;
+using mlir::Value;
+using mlir::ValueRange;
 using mlir_converter::PartitionedComputation;
 using mlir_converter::PartitionedComputations;
 
 struct MlirReductionFusion::EmitterState {
   // Uses the given indexing map to reduce a subset of the inputs in a single
   // thread. The subset may be a single element.
-  absl::StatusOr<llvm::SmallVector<mlir::Value>> EmitPerThreadReducedElements(
+  absl::StatusOr<SmallVector<Value>> EmitPerThreadReducedElements(
       const IndexingMap& input_indexing, const HloInstruction* hero,
-      mlir::ValueRange inits);
+      ValueRange inits);
 
   mlir::func::FuncOp GetReducer(const HloInstruction* hero) const {
     return call_target(hero->called_computations()[0]->root_instruction());
   }
 
-  llvm::SmallVector<mlir::Value> AllocateSharedTiles(
-      const HloInstruction* hero, absl::Span<const int64_t> shape);
+  SmallVector<Value> AllocateSharedTiles(const HloInstruction* hero,
+                                         absl::Span<const int64_t> shape);
 
   const MlirReductionFusion& owner;
   mlir::ModuleOp module;
@@ -221,24 +224,23 @@ absl::Status MlirReductionFusion::EmitReduction(EmitterState& state) const {
           : thread_id,
       builder.create<mlir::arith::ConstantIndexOp>(WarpSize()));
 
-  ConstHloInstructionMap<llvm::SmallVector<mlir::Value>> inits;
+  ConstHloInstructionMap<SmallVector<Value>> inits;
   for (auto* hero : reduction_heroes_) {
     int num_inputs = hero->operand_count() / 2;
     const auto& computation =
         state.computations->FindPartitionedComputation(hero->parent());
-    TF_ASSIGN_OR_RETURN(
-        inits[hero],
+    inits[hero] =
         ProvideParameterRange(computation, hero, num_inputs, num_inputs, {},
-                              state.call_target, builder));
+                              state.call_target, builder);
   }
 
-  llvm::SmallVector<mlir::Value> shared_tiles;
+  SmallVector<Value> shared_tiles;
   for (auto* hero : reduction_heroes_) {
     TF_ASSIGN_OR_RETURN(
         auto accumulated,
         state.EmitPerThreadReducedElements(*input_indexing, hero, inits[hero]));
 
-    llvm::SmallVector<mlir::Value> tiles_for_this_hero =
+    SmallVector<Value> tiles_for_this_hero =
         state.AllocateSharedTiles(hero, shared_tile_size);
 
     // In row reductions, we can do a warp shuffle before writing to shared
@@ -253,8 +255,8 @@ absl::Status MlirReductionFusion::EmitReduction(EmitterState& state) const {
       for (auto [value, tile] : llvm::zip(accumulated, tiles_for_this_hero)) {
         shared_tiles.push_back(builder.create<PredicatedInsertOp>(
             is_first_lane, value, tile,
-            mlir::ValueRange{thread_ids[ReductionDimensions::kRowKeptDimension],
-                             warp_id}));
+            ValueRange{thread_ids[ReductionDimensions::kRowKeptDimension],
+                       warp_id}));
       }
     } else {
       // We transpose during the write, so during the read phase we can read
@@ -262,13 +264,13 @@ absl::Status MlirReductionFusion::EmitReduction(EmitterState& state) const {
       // around as well.
       for (auto [value, tile] : llvm::zip(accumulated, tiles_for_this_hero)) {
         shared_tiles.push_back(builder.create<mlir::tensor::InsertOp>(
-            value, tile, mlir::ValueRange{lane_id, warp_id}));
+            value, tile, ValueRange{lane_id, warp_id}));
       }
     }
   }
 
-  llvm::SmallVector<mlir::Value> thread_and_block_indices{
-      thread_id, zero, zero, block_id, zero, zero};
+  SmallVector<Value> thread_and_block_indices{thread_id, zero, zero,
+                                              block_id,  zero, zero};
 
   // Wait for the entire tile to be written.
   shared_tiles =
@@ -282,7 +284,7 @@ absl::Status MlirReductionFusion::EmitReduction(EmitterState& state) const {
     mlir::ImplicitLocOpBuilder b(loc, then_builder);
     int tile_index = 0;
     int next_output = 0;
-    llvm::SmallVector<mlir::Value> shared_index;
+    SmallVector<mlir::Value> shared_index;
     if (reduction_info().IsRowReduction()) {
       shared_index = {thread_ids[ReductionDimensions::kRowKeptDimension],
                       lane_id};
@@ -309,7 +311,7 @@ absl::Status MlirReductionFusion::EmitReduction(EmitterState& state) const {
       }
 
       // Load from shared memory.
-      llvm::SmallVector<mlir::Value> reduced;
+      SmallVector<Value> reduced;
       for (int i = 0; i < hero->operand_count() / 2; ++i) {
         // If a warp didn't write anything, use the init values instead.
         reduced.push_back(b.create<PredicatedExtractOp>(
@@ -330,8 +332,8 @@ absl::Status MlirReductionFusion::EmitReduction(EmitterState& state) const {
         auto output_value = reduced[i];
         // If we have an epilogue, evaluate it now.
         if (root != hero) {
-          llvm::SmallVector<mlir::Value> arguments =
-              mlir::ValueRange(state.entry_function.getArguments().take_front(
+          SmallVector<Value> arguments =
+              ValueRange(state.entry_function.getArguments().take_front(
                   root->parent()->num_parameters()));
           absl::c_copy(output_indices, std::back_inserter(arguments));
           arguments.push_back(output_value);
@@ -373,37 +375,32 @@ absl::Status MlirReductionFusion::EmitReduction(EmitterState& state) const {
   return absl::OkStatus();
 }
 
-absl::StatusOr<llvm::SmallVector<mlir::Value>>
+absl::StatusOr<SmallVector<Value>>
 MlirReductionFusion::EmitterState::EmitPerThreadReducedElements(
     const IndexingMap& input_indexing, const HloInstruction* hero,
-    mlir::ValueRange inits) {
-  auto body_builder = [&](mlir::ValueRange outputs, mlir::ValueRange dim_values,
-                          mlir::ValueRange symbol_values)
-      -> absl::StatusOr<llvm::SmallVector<mlir::Value>> {
+    ValueRange inits) {
+  auto body_builder = [&](ValueRange outputs, ValueRange dim_values,
+                          ValueRange symbol_values) -> SmallVector<Value> {
     auto indices = mlir_converter::ApplyAffineMap(
         input_indexing.GetAffineMap(), dim_values, symbol_values, builder);
-    llvm::SmallVector<mlir::Value> operands(
-        entry_function.getArguments().take_front(
-            fusion.fused_parameters().size()));
+    SmallVector<Value> operands(entry_function.getArguments().take_front(
+        fusion.fused_parameters().size()));
     absl::c_copy(indices, std::back_inserter(operands));
-    TF_ASSIGN_OR_RETURN(
-        auto values,
-        ProvideParameterRange(
-            computations->FindPartitionedComputation(hero->parent()), hero, 0,
-            hero->operand_count() / 2, indices, call_target, builder));
+    auto values = ProvideParameterRange(
+        computations->FindPartitionedComputation(hero->parent()), hero, 0,
+        hero->operand_count() / 2, indices, call_target, builder);
 
-    llvm::SmallVector<mlir::Value> reduce_args = outputs;
+    SmallVector<Value> reduce_args = outputs;
     reduce_args.append(values.begin(), values.end());
     return builder.create<PureCallOp>(GetReducer(hero), reduce_args)
         .getResults();
   };
-  return owner.EmitLoopNest(builder, inits, input_indexing, body_builder);
+  return owner.EmitThreadLoopNest(builder, inits, input_indexing, body_builder);
 }
 
-llvm::SmallVector<mlir::Value>
-MlirReductionFusion::EmitterState::AllocateSharedTiles(
+SmallVector<Value> MlirReductionFusion::EmitterState::AllocateSharedTiles(
     const HloInstruction* hero, absl::Span<const int64_t> shape) {
-  llvm::SmallVector<mlir::Value> tiles;
+  SmallVector<Value> tiles;
   for (int i = 0; i < hero->operand_count() / 2; ++i) {
     tiles.push_back(
         builder.create<AllocateSharedOp>(mlir_converter::TensorShapeToMlirType(

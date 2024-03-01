@@ -79,6 +79,10 @@ namespace xla {
 namespace gpu {
 namespace {
 
+using llvm::SmallVector;
+using mlir::Value;
+using mlir::ValueRange;
+
 void AddRanges(llvm::Function* func, const LaunchDimensions& launch_dims,
                llvm::Module* module) {
   for (auto& block : *func) {
@@ -119,8 +123,8 @@ void AddRanges(llvm::Function* func, const LaunchDimensions& launch_dims,
 
 }  // namespace
 
-mlir::Value MlirFusionEmitterBase::EmitBlockId(
-    mlir::ImplicitLocOpBuilder& builder, int dim) const {
+Value MlirFusionEmitterBase::EmitBlockId(mlir::ImplicitLocOpBuilder& builder,
+                                         int dim) const {
   const auto& counts = launch_dimensions().block_counts();
   int64_t count = dim == 0 ? counts.x : dim == 1 ? counts.y : counts.z;
   auto block_id = builder.create<mlir::gpu::BlockIdOp>(
@@ -129,8 +133,8 @@ mlir::Value MlirFusionEmitterBase::EmitBlockId(
   return block_id;
 }
 
-mlir::Value MlirFusionEmitterBase::EmitThreadId(
-    mlir::ImplicitLocOpBuilder& builder, int dim) const {
+Value MlirFusionEmitterBase::EmitThreadId(mlir::ImplicitLocOpBuilder& builder,
+                                          int dim) const {
   const auto& counts = launch_dimensions().thread_counts_per_block();
   int64_t count = dim == 0 ? counts.x : dim == 1 ? counts.y : counts.z;
   auto thread_id = builder.create<mlir::gpu::ThreadIdOp>(
@@ -276,7 +280,7 @@ MlirFusionEmitterBase::CreateMLIRModule(
   mlir::OwningOpRef<mlir::ModuleOp> module = llvm_ir::CreateMlirModuleOp(loc);
 
   // Create the entry function.
-  llvm::SmallVector<mlir::Type> param_types;
+  SmallVector<mlir::Type> param_types;
   std::optional<KernelArguments> args;
   if (buffer_assignment != nullptr) {
     TF_ASSIGN_OR_RETURN(args,
@@ -294,7 +298,7 @@ MlirFusionEmitterBase::CreateMLIRModule(
     }
 
     const auto& arg = args->args()[index];
-    llvm::SmallVector<mlir::NamedAttribute> attrs;
+    SmallVector<mlir::NamedAttribute> attrs;
     attrs.push_back(builder.getNamedAttr(
         "xla.slice_index", builder.getIndexAttr(arg.llvm_arg_index())));
     attrs.push_back(
@@ -310,7 +314,7 @@ MlirFusionEmitterBase::CreateMLIRModule(
     return builder.getDictionaryAttr(attrs);
   };
 
-  llvm::SmallVector<mlir::Attribute> arg_attrs;
+  SmallVector<mlir::Attribute> arg_attrs;
   int arg_index = 0;
   for (auto* param : fusion.operands()) {
     param_types.push_back(
@@ -348,55 +352,17 @@ MlirFusionEmitterBase::CreateMLIRModule(
   return module;
 }
 
-absl::StatusOr<llvm::SmallVector<mlir::Value>>
-MlirFusionEmitterBase::EmitLoopNest(
-    mlir::ImplicitLocOpBuilder& b, mlir::ValueRange outputs,
+SmallVector<Value> MlirFusionEmitterBase::EmitThreadLoopNest(
+    mlir::ImplicitLocOpBuilder& b, ValueRange outputs,
     const IndexingMap& indexing_map,
-    const std::function<absl::StatusOr<llvm::SmallVector<mlir::Value>>(
-        mlir::ValueRange outputs_tensors, mlir::ValueRange dim_values,
-        mlir::ValueRange symbol_values)>& create_body) const {
-  llvm::SmallVector<mlir::Value> map_dims{
-      EmitThreadId(b, 0), EmitThreadId(b, 1), EmitThreadId(b, 2),
-      EmitBlockId(b, 0),  EmitBlockId(b, 1),  EmitBlockId(b, 2)};
-  llvm::SmallVector<mlir::Value> map_symbols;
-
-  auto cst = [&](int64_t v) {
-    return b.create<mlir::arith::ConstantOp>(b.getIndexAttr(v));
-  };
-
-  std::function<absl::StatusOr<llvm::SmallVector<mlir::Value>>(
-      int, mlir::ValueRange)>
-      make_loops;
-  make_loops = [&](int i, mlir::ValueRange current_outputs)
-      -> absl::StatusOr<llvm::SmallVector<mlir::Value>> {
-    if (i < indexing_map.GetAffineMap().getNumSymbols()) {
-      auto range = indexing_map.GetSymbolRange(i);
-      auto for_op = b.create<mlir::scf::ForOp>(cst(range.lower_bound),
-                                               cst(range.upper_bound + 1),
-                                               cst(1), current_outputs);
-      map_symbols.push_back(for_op.getInductionVar());
-      b.setInsertionPointToStart(for_op.getBody());
-      TF_ASSIGN_OR_RETURN(auto results,
-                          make_loops(i + 1, for_op.getRegionIterArgs()));
-      b.create<mlir::scf::YieldOp>(results);
-      b.setInsertionPointAfter(for_op);
-      return for_op.getResults();
-    }
-    auto is_in_bounds = mlir_converter::CheckConstraints(indexing_map, map_dims,
-                                                         map_symbols, b);
-    auto if_op = b.create<mlir::scf::IfOp>(mlir::TypeRange{current_outputs},
-                                           is_in_bounds, true, true);
-    b.setInsertionPointToStart(if_op.getBody(0));
-    TF_ASSIGN_OR_RETURN(auto results,
-                        create_body(current_outputs, map_dims, map_symbols));
-    b.create<mlir::scf::YieldOp>(results);
-    b.setInsertionPointToStart(if_op.getBody(1));
-    b.create<mlir::scf::YieldOp>(current_outputs);
-    b.setInsertionPointAfter(if_op);
-    return if_op.getResults();
-  };
-
-  return make_loops(0, outputs);
+    const std::function<
+        SmallVector<Value>(ValueRange outputs_tensors, ValueRange dim_values,
+                           ValueRange symbol_values)>& create_body) const {
+  SmallVector<Value> dim_values{EmitThreadId(b, 0), EmitThreadId(b, 1),
+                                EmitThreadId(b, 2), EmitBlockId(b, 0),
+                                EmitBlockId(b, 1),  EmitBlockId(b, 2)};
+  return mlir_converter::EmitLoopNest(b, dim_values, outputs, indexing_map,
+                                      create_body);
 }
 
 }  // namespace gpu

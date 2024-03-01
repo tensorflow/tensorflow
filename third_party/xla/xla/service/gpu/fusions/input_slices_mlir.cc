@@ -49,6 +49,10 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
+using llvm::SmallVector;
+using mlir::Value;
+using mlir::ValueRange;
+
 std::optional<IndexingMap>
 MlirInputSlicesFusion::ComputeThreadIdToOutputIndexing(
     int64_t output_id, mlir::MLIRContext* ctx) const {
@@ -101,35 +105,31 @@ absl::Status MlirInputSlicesFusion::EmitMlir(
   auto output_tensor_args =
       entry_function.getArguments().drop_front(num_inputs);
 
-  TF_ASSIGN_OR_RETURN(
-      auto result_tensors,
-      EmitLoopNest(
-          builder, output_tensor_args, *indexing,
-          [&](mlir::ValueRange output_tensors, mlir::ValueRange dim_values,
-              mlir::ValueRange symbol_values)
-              -> absl::StatusOr<llvm::SmallVector<mlir::Value>> {
-            auto output_indices = mlir_converter::ApplyAffineMap(
-                indexing->GetAffineMap(), dim_values, symbol_values, builder);
-            auto root_fn = subgraph_to_mlir_fn[&root_graph];
+  auto result_tensors = EmitThreadLoopNest(
+      builder, output_tensor_args, *indexing,
+      [&](ValueRange output_tensors, ValueRange dim_values,
+          ValueRange symbol_values) -> SmallVector<Value> {
+        auto output_indices = mlir_converter::ApplyAffineMap(
+            indexing->GetAffineMap(), dim_values, symbol_values, builder);
+        auto root_fn = subgraph_to_mlir_fn[&root_graph];
 
-            llvm::SmallVector<mlir::Value> operands(
-                entry_function.getArguments().take_front(num_inputs));
-            absl::c_copy(output_indices, std::back_inserter(operands));
+        SmallVector<Value> operands(
+            entry_function.getArguments().take_front(num_inputs));
+        absl::c_copy(output_indices, std::back_inserter(operands));
 
-            auto result_scalars =
-                builder.create<PureCallOp>(root_fn, operands).getResults();
+        auto result_scalars =
+            builder.create<PureCallOp>(root_fn, operands).getResults();
 
-            llvm::SmallVector<mlir::Value> result_tensors;
-            result_tensors.reserve(output_tensor_args.size());
-            for (auto [tensor, value] :
-                 llvm::zip(output_tensors, result_scalars)) {
-              result_tensors.push_back(builder
-                                           .create<mlir::tensor::InsertOp>(
-                                               value, tensor, output_indices)
-                                           .getResult());
-            }
-            return result_tensors;
-          }));
+        SmallVector<Value> result_tensors;
+        result_tensors.reserve(output_tensor_args.size());
+        for (auto [tensor, value] : llvm::zip(output_tensors, result_scalars)) {
+          result_tensors.push_back(
+              builder
+                  .create<mlir::tensor::InsertOp>(value, tensor, output_indices)
+                  .getResult());
+        }
+        return result_tensors;
+      });
   builder.create<mlir::func::ReturnOp>(result_tensors);
 
   return absl::OkStatus();

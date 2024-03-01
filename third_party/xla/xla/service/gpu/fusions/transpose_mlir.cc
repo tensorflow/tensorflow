@@ -249,12 +249,11 @@ absl::StatusOr<SmallVector<Value, 4>> MlirTransposeFusion::EmitWriteToShMemMlir(
         RankedTensorType::get(shmem_tensor_size, elem_type));
 
     // Emit loop that writes subgraphs of transpose operands to shmem.
-    TF_ASSIGN_OR_RETURN(
-        auto shmem_result,
-        EmitLoopNest(
+    auto shmem_result =
+        EmitThreadLoopNest(
             builder, {shmem}, *input_indexing,
             [&](ValueRange output_tensors, ValueRange dim_values,
-                ValueRange symbol_values) -> StatusOr<SmallVector<Value>> {
+                ValueRange symbol_values) -> SmallVector<Value> {
               auto input_indices =
                   ApplyAffineMap(input_indexing->GetAffineMap(), dim_values,
                                  symbol_values, builder);
@@ -262,11 +261,9 @@ absl::StatusOr<SmallVector<Value, 4>> MlirTransposeFusion::EmitWriteToShMemMlir(
                   ApplyAffineMap(shmem_input_indexing.GetAffineMap(),
                                  dim_values, symbol_values, builder);
 
-              TF_ASSIGN_OR_RETURN(
-                  auto result_scalars,
-                  mlir_converter::ProvideParameter(
-                      root_computation, transpose, /*operand_index=*/0,
-                      input_indices, call_target_provider, builder));
+              auto result_scalars = mlir_converter::ProvideParameter(
+                  root_computation, transpose, /*operand_index=*/0,
+                  input_indices, call_target_provider, builder);
 
               SmallVector<Value> result_tensors;
               result_tensors.reserve(num_outputs);
@@ -276,7 +273,7 @@ absl::StatusOr<SmallVector<Value, 4>> MlirTransposeFusion::EmitWriteToShMemMlir(
                     builder.create<InsertOp>(value, tensor, shmem_indices));
               }
               return result_tensors;
-            }));
+            });
     shmem_intermediate_result.append(shmem_result.begin(), shmem_result.end());
   }
 
@@ -313,14 +310,13 @@ absl::Status MlirTransposeFusion::EmitReadFromShMemMlir(
     auto description =
         GetDescriptionForTiledTransposeEmitter(*root, *transpose);
 
+    SmallVector<Value> result_scalars;
     if (description.has_value()) {
-      SmallVector<Value> result_scalars;
-      TF_ASSIGN_OR_RETURN(
-          auto subresult_tensors,
-          EmitLoopNest(
+      auto subresult_tensors =
+          EmitThreadLoopNest(
               builder, output_tensor_args, *output_indexing,
               [&](ValueRange output_tensors, ValueRange dim_values,
-                  ValueRange symbol_values) -> StatusOr<SmallVector<Value>> {
+                  ValueRange symbol_values) -> SmallVector<Value> {
                 auto output_indices =
                     ApplyAffineMap(output_indexing->GetAffineMap(), dim_values,
                                    symbol_values, builder);
@@ -358,7 +354,7 @@ absl::Status MlirTransposeFusion::EmitReadFromShMemMlir(
                       builder.create<InsertOp>(value, tensor, output_indices));
                 }
                 return results;
-              }));
+              });
       result_tensors.append(subresult_tensors.begin(), subresult_tensors.end());
     } else {
       auto indexing = ComputeThreadIdToOutputIndexing(0, module.getContext());
@@ -369,20 +365,18 @@ absl::Status MlirTransposeFusion::EmitReadFromShMemMlir(
       auto output_tensor_args =
           entry_function.getArguments().drop_front(num_inputs);
 
-      TF_ASSIGN_OR_RETURN(
-          auto subresult_tensors,
-          EmitLoopNest(
+      auto subresult_tensors =
+          EmitThreadLoopNest(
               builder, output_tensor_args, *indexing,
               [&](ValueRange output_tensors, ValueRange dim_values,
-                  ValueRange symbol_values)
-                  -> absl::StatusOr<SmallVector<mlir::Value>> {
+                  ValueRange symbol_values) -> SmallVector<Value> {
                 auto output_indices =
                     ApplyAffineMap(indexing->GetAffineMap(), dim_values,
                                    symbol_values, builder);
 
                 // Generate the operands for the root function: input tensors +
                 // output indices.
-                llvm::SmallVector<mlir::Value> operands(
+                llvm::SmallVector<Value> operands(
                     entry_function.getArguments().take_front(num_inputs));
                 absl::c_copy(output_indices, std::back_inserter(operands));
 
@@ -397,7 +391,7 @@ absl::Status MlirTransposeFusion::EmitReadFromShMemMlir(
                       builder.create<InsertOp>(value, tensor, output_indices));
                 }
                 return results;
-              }));
+              });
       result_tensors.append(subresult_tensors.begin(), subresult_tensors.end());
     }
   }

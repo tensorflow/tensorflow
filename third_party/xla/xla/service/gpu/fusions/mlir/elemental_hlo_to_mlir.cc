@@ -63,6 +63,7 @@ limitations under the License.
 #include "xla/service/gpu/fusions/mlir/ir/xla_gpu_ops.h"
 #include "xla/service/gpu/hlo_traversal.h"
 #include "xla/service/gpu/model/indexing_analysis.h"
+#include "xla/service/gpu/model/indexing_map.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
 #include "xla/stream_executor/device_description.h"
@@ -75,6 +76,11 @@ namespace gpu {
 namespace mlir_converter {
 namespace {
 
+using llvm::SmallVector;
+using llvm::SmallVectorImpl;
+using mlir::ImplicitLocOpBuilder;
+using mlir::Location;
+using mlir::OpBuilder;
 using mlir::Value;
 using mlir::ValueRange;
 using mlir::arith::AndIOp;
@@ -82,6 +88,7 @@ using mlir::arith::CmpFOp;
 using mlir::arith::CmpFPredicate;
 using mlir::arith::CmpIOp;
 using mlir::arith::CmpIPredicate;
+using mlir::arith::ConstantIndexOp;
 using mlir::arith::ConstantOp;
 using mlir::arith::SelectOp;
 using mlir::scf::ForOp;
@@ -90,6 +97,7 @@ using mlir::scf::YieldOp;
 
 namespace arith = ::mlir::arith;
 namespace mhlo = ::mlir::mhlo;
+namespace scf = ::mlir::scf;
 
 // HLO opcodes that we never support.
 static auto& kUnsupportedOps =
@@ -202,7 +210,7 @@ bool IsUnsupportedGather(const HloInstruction* instr) {
   return false;
 }
 
-absl::StatusOr<mlir::Value> GetSingleOperandValue(
+absl::StatusOr<Value> GetSingleOperandValue(
     const OperandProvider& operand_provider, const HloInstruction* instr,
     int operand_index, ValueRange indices) {
   TF_ASSIGN_OR_RETURN(auto operand,
@@ -211,13 +219,12 @@ absl::StatusOr<mlir::Value> GetSingleOperandValue(
   return operand.front();
 }
 
-absl::StatusOr<llvm::SmallVector<Value>> EmitReduce(
+absl::StatusOr<SmallVector<Value>> EmitReduce(
     const HloInstruction* instr, ValueRange indices,
     const OperandProvider& operand_provider,
-    const CallTargetProvider& call_target_provider,
-    mlir::ImplicitLocOpBuilder& b) {
-  llvm::SmallVector<Value> reduction_indices(indices);
-  llvm::SmallVector<Value> accumulators;
+    const CallTargetProvider& call_target_provider, ImplicitLocOpBuilder& b) {
+  SmallVector<Value> reduction_indices(indices);
+  SmallVector<Value> accumulators;
   for (int i = instr->operand_count() / 2; i < instr->operand_count(); ++i) {
     TF_ASSIGN_OR_RETURN(accumulators.emplace_back(),
                         GetSingleOperandValue(operand_provider, instr, i, {}));
@@ -227,10 +234,9 @@ absl::StatusOr<llvm::SmallVector<Value>> EmitReduce(
   ForOp outermost_loop = nullptr;
   for (int dim : dims) {
     auto bound = instr->operands()[0]->shape().dimensions(dim);
-    auto loop =
-        b.create<ForOp>(b.create<ConstantOp>(b.getIndexAttr(0)),
-                        b.create<ConstantOp>(b.getIndexAttr(bound)),
-                        b.create<ConstantOp>(b.getIndexAttr(1)), accumulators);
+    auto loop = b.create<ForOp>(b.create<ConstantIndexOp>(0),
+                                b.create<ConstantIndexOp>(bound),
+                                b.create<ConstantIndexOp>(1), accumulators);
     if (outermost_loop == nullptr) {
       outermost_loop = loop;
     } else {
@@ -242,7 +248,7 @@ absl::StatusOr<llvm::SmallVector<Value>> EmitReduce(
     accumulators = {loop.getRegionIterArgs().begin(),
                     loop.getRegionIterArgs().end()};
   }
-  llvm::SmallVector<Value> args;
+  SmallVector<Value> args;
   for (int i = 0; i < instr->operand_count() / 2; ++i) {
     args.push_back(accumulators[i]);
     TF_ASSIGN_OR_RETURN(
@@ -257,24 +263,23 @@ absl::StatusOr<llvm::SmallVector<Value>> EmitReduce(
   return outermost_loop.getResults();
 }
 
-absl::StatusOr<llvm::SmallVector<Value>> EmitConcat(
+absl::StatusOr<SmallVector<Value>> EmitConcat(
     const HloInstruction* instr, ValueRange indices,
-    const OperandProvider& operand_provider, mlir::ImplicitLocOpBuilder& b) {
+    const OperandProvider& operand_provider, ImplicitLocOpBuilder& b) {
   int concat_dim =
       Cast<HloConcatenateInstruction>(instr)->concatenate_dimension();
   auto ty = *ConvertPrimitiveTypeToMLIRType(instr->shape().element_type(), b);
   int64_t offset = 0;
   IfOp outermost_if = nullptr;
-  llvm::SmallVector<Value> operand_indices = indices;
+  SmallVector<Value> operand_indices = indices;
   for (auto [index, operand] : llvm::enumerate(instr->operands())) {
     int64_t limit = offset + operand->shape().dimensions(concat_dim);
-    auto in_bounds =
-        b.create<CmpIOp>(CmpIPredicate::ult, indices[concat_dim],
-                         b.create<ConstantOp>(b.getIndexAttr(limit)));
+    auto in_bounds = b.create<CmpIOp>(CmpIPredicate::ult, indices[concat_dim],
+                                      b.create<ConstantIndexOp>(limit));
 
     auto generate_operand = [&, index = index]() {
       operand_indices[concat_dim] = b.create<arith::SubIOp>(
-          indices[concat_dim], b.create<ConstantOp>(b.getIndexAttr(offset)));
+          indices[concat_dim], b.create<ConstantIndexOp>(offset));
       TF_ASSIGN_OR_RETURN(auto operand,
                           operand_provider(instr, index, operand_indices));
       b.create<YieldOp>(operand);
@@ -383,18 +388,17 @@ absl::StatusOr<llvm::SmallVector<Value>> EmitDynamicUpdateSlice(
 
 absl::StatusOr<llvm::SmallVector<Value>> EmitGather(
     const HloInstruction* instr, ValueRange indices,
-    const OperandProvider& operand_provider, mlir::ImplicitLocOpBuilder& b) {
+    const OperandProvider& operand_provider, ImplicitLocOpBuilder& b) {
   auto row = indices[0];
-  auto zero = b.create<ConstantOp>(b.getIndexAttr(0));
+  auto zero = b.create<ConstantIndexOp>(0);
   // Gather allows the index vector to contain fewer elements than the rank
   // of the input. In that case, the remaining indices are 0.
-  llvm::SmallVector<Value> operand_indices(instr->operand(0)->shape().rank(),
-                                           zero);
+  SmallVector<Value> operand_indices(instr->operand(0)->shape().rank(), zero);
 
   // Produce start indices.
   int num_indices = instr->operand(1)->shape().dimensions(1);
   for (int i = 0; i < num_indices; ++i) {
-    auto i_val = i == 0 ? zero : b.create<ConstantOp>(b.getIndexAttr(i));
+    auto i_val = i == 0 ? zero : b.create<ConstantIndexOp>(i);
     int64_t slice_size = instr->gather_slice_sizes()[i];
     int64_t input_size = instr->operand(0)->shape().dimensions()[i];
     // Read and clamp index.
@@ -417,10 +421,10 @@ absl::StatusOr<llvm::SmallVector<Value>> EmitGather(
 
 // For a given instruction, deduces the indices of each parameter that are
 // needed for a given output index.
-llvm::SmallVector<llvm::SmallVector<Value>> GetInputIndices(
+SmallVector<SmallVector<Value>> GetInputIndices(
     const HloInstructionIndexing& indexing, ValueRange output_indices,
-    mlir::ImplicitLocOpBuilder& b) {
-  llvm::SmallVector<llvm::SmallVector<Value>> indices;
+    ImplicitLocOpBuilder& b) {
+  SmallVector<SmallVector<Value>> indices;
   for (auto& maps : indexing.indexing_maps) {
     CHECK_EQ(maps.size(), 1);
     auto map = maps.begin()->GetAffineMap();
@@ -430,9 +434,9 @@ llvm::SmallVector<llvm::SmallVector<Value>> GetInputIndices(
   return indices;
 }
 
-absl::StatusOr<llvm::SmallVector<Value>> EmitPad(
+absl::StatusOr<SmallVector<Value>> EmitPad(
     const HloInstruction* instr, ValueRange indices,
-    const OperandProvider& operand_provider, mlir::ImplicitLocOpBuilder& b) {
+    const OperandProvider& operand_provider, ImplicitLocOpBuilder& b) {
   auto indexing = ComputeOutputToInputIndexing(instr, 0, b.getContext());
   const auto& indexing_map = *indexing.indexing_maps[0].begin();
   mlir::Value is_in_bounds = CheckConstraints(indexing_map, indices, {}, b);
@@ -467,13 +471,12 @@ absl::StatusOr<llvm::SmallVector<Value>> EmitPad(
   return if_op.getResults();
 }
 
-absl::StatusOr<llvm::SmallVector<Value>> EmitParameter(
+absl::StatusOr<SmallVector<Value>> EmitParameter(
     const HloInstruction* instr, ValueRange indices,
-    const CallTargetProvider& call_target_provider,
-    mlir::ImplicitLocOpBuilder& b) {
+    const CallTargetProvider& call_target_provider, ImplicitLocOpBuilder& b) {
   auto this_fn = call_target_provider(instr);
 
-  mlir::Value value = this_fn.getArgument(instr->parameter_number());
+  Value value = this_fn.getArgument(instr->parameter_number());
   if (value.getType().isa<mlir::TensorType>()) {
     value = b.create<mlir::tensor::ExtractOp>(value, indices);
   } else {
@@ -483,10 +486,9 @@ absl::StatusOr<llvm::SmallVector<Value>> EmitParameter(
 }
 
 template <typename MhloOp, typename... ExtraArgs>
-llvm::SmallVector<mlir::Value> MapHloOp(llvm::ArrayRef<mlir::Type> result_types,
-                                        llvm::ArrayRef<mlir::Value> args,
-                                        mlir::ImplicitLocOpBuilder& b,
-                                        ExtraArgs&&... extra_args) {
+SmallVector<Value> MapHloOp(llvm::ArrayRef<mlir::Type> result_types,
+                            llvm::ArrayRef<Value> args, ImplicitLocOpBuilder& b,
+                            ExtraArgs&&... extra_args) {
   return {mhlo::MhloOpToStdScalarOp::mapOpOfType<MhloOp>(
       b.getLoc(), result_types, llvm::to_vector(mlir::TypeRange(args)),
       typename MhloOp::Adaptor(args, std::forward<ExtraArgs>(extra_args)...),
@@ -494,16 +496,16 @@ llvm::SmallVector<mlir::Value> MapHloOp(llvm::ArrayRef<mlir::Type> result_types,
 }
 
 template <typename MhloOp>
-llvm::SmallVector<mlir::Value> MapElementwiseOp(
-    llvm::ArrayRef<mlir::Value> args, mlir::ImplicitLocOpBuilder& b) {
+SmallVector<Value> MapElementwiseOp(llvm::ArrayRef<Value> args,
+                                    ImplicitLocOpBuilder& b) {
   // We use the last argument's type because of select.
   return MapHloOp<MhloOp>({args.back().getType()}, args, b);
 }
 
 }  // namespace
 
-Value ApplyAffineExpr(mlir::AffineExpr expr, mlir::ValueRange dims,
-                      mlir::ValueRange symbols, mlir::ImplicitLocOpBuilder& b) {
+Value ApplyAffineExpr(mlir::AffineExpr expr, ValueRange dims,
+                      ValueRange symbols, ImplicitLocOpBuilder& b) {
   // For unknown (but undoubtedly good) reasons, affine.apply removes unused
   // trailing dimensions, but only in the expression.
   while (dims.size() > 0 && !expr.isFunctionOfDim(dims.size() - 1)) {
@@ -512,16 +514,14 @@ Value ApplyAffineExpr(mlir::AffineExpr expr, mlir::ValueRange dims,
   while (symbols.size() > 0 && !expr.isFunctionOfSymbol(symbols.size() - 1)) {
     symbols = symbols.drop_back();
   }
-  llvm::SmallVector<Value> args(dims);
+  SmallVector<Value> args(dims);
   absl::c_copy(symbols, std::back_inserter(args));
   return b.createOrFold<mlir::affine::AffineApplyOp>(expr, args);
 }
 
-llvm::SmallVector<Value> ApplyAffineMap(mlir::AffineMap map,
-                                        mlir::ValueRange dims,
-                                        mlir::ValueRange symbols,
-                                        mlir::ImplicitLocOpBuilder& b) {
-  llvm::SmallVector<Value> result;
+SmallVector<Value> ApplyAffineMap(mlir::AffineMap map, ValueRange dims,
+                                  ValueRange symbols, ImplicitLocOpBuilder& b) {
+  SmallVector<Value> result;
   result.reserve(map.getNumResults());
   for (auto expr : map.getResults()) {
     result.push_back(ApplyAffineExpr(expr, dims, symbols, b));
@@ -542,8 +542,8 @@ Value CheckConstraint(mlir::Value constrained_value, Range range,
 }
 
 Value CheckConstraints(const IndexingMap& map, ValueRange dims,
-                       ValueRange symbols, mlir::ImplicitLocOpBuilder& b) {
-  mlir::Value ret = b.create<ConstantOp>(b.getIntegerAttr(b.getI1Type(), 1));
+                       ValueRange symbols, ImplicitLocOpBuilder& b) {
+  Value ret = b.create<ConstantOp>(b.getIntegerAttr(b.getI1Type(), 1));
   for (auto&& [expression, range] : map.GetConstraints()) {
     ret = b.create<AndIOp>(
         ret, CheckConstraint(ApplyAffineExpr(expression, dims, symbols, b),
@@ -552,11 +552,11 @@ Value CheckConstraints(const IndexingMap& map, ValueRange dims,
   return ret;
 }
 
-absl::StatusOr<llvm::SmallVector<Value>> HloToMlir(
+absl::StatusOr<SmallVector<Value>> HloToMlir(
     const HloInstruction* instr, ValueRange indices,
     const OperandProvider& operand_provider,
     const CallTargetProvider& call_target_provider,
-    mlir::ImplicitLocOpBuilder& builder) {
+    ImplicitLocOpBuilder& builder) {
   CHECK(!kUnsupportedOps.contains(instr->opcode())) << instr->ToShortString();
   CHECK(!kUnimplementedOps.contains(instr->opcode())) << instr->ToShortString();
 
@@ -603,7 +603,7 @@ absl::StatusOr<llvm::SmallVector<Value>> HloToMlir(
                         builder);
     case HloOpcode::kTuple: {
       CHECK(!IsUnsupportedTuple(instr));
-      llvm::SmallVector<Value> operands;
+      SmallVector<Value> operands;
       for (int i = 0; i < instr->operand_count(); ++i) {
         TF_ASSIGN_OR_RETURN(
             operands.emplace_back(),
@@ -625,7 +625,7 @@ absl::StatusOr<llvm::SmallVector<Value>> HloToMlir(
   auto input_indices = GetInputIndices(
       ComputeOutputToInputIndexing(instr, 0, builder.getContext()), indices,
       builder);
-  llvm::SmallVector<Value> operands;
+  SmallVector<Value> operands;
   for (auto&& [operand_number, operand_indices] :
        llvm::enumerate(input_indices)) {
     TF_ASSIGN_OR_RETURN(operands.emplace_back(),
@@ -921,11 +921,11 @@ bool IsHloConversionSupported(const HloFusionAdaptor& fusion,
       });
 }
 
-absl::StatusOr<llvm::SmallVector<mlir::Value>> ProvideParameter(
+SmallVector<Value> ProvideParameter(
     const PartitionedComputation& computation, const HloInstruction* instr,
-    int operand_index, mlir::ValueRange indices,
+    int operand_index, ValueRange indices,
     const CallTargetProvider& call_target_provider,
-    mlir::ImplicitLocOpBuilder& builder) {
+    ImplicitLocOpBuilder& builder) {
   auto& caller_subgraph = computation.FindSubgraph(instr);
   auto this_fn = call_target_provider(caller_subgraph.roots[0]);
 
@@ -940,23 +940,22 @@ absl::StatusOr<llvm::SmallVector<mlir::Value>> ProvideParameter(
   }
 
   auto callee = call_target_provider(operand);
-  llvm::SmallVector<mlir::Value> operands(
+  SmallVector<Value> operands(
       this_fn.getArguments().take_front(instr->parent()->num_parameters()));
   absl::c_copy(indices, std::back_inserter(operands));
   return builder.create<PureCallOp>(callee, operands).getResults();
 }
 
-absl::StatusOr<llvm::SmallVector<mlir::Value>> ProvideParameterRange(
+SmallVector<Value> ProvideParameterRange(
     const PartitionedComputation& computation, const HloInstruction* instr,
-    int start, int num, mlir::ValueRange indices,
+    int start, int num, ValueRange indices,
     const CallTargetProvider& call_target_provider,
-    mlir::ImplicitLocOpBuilder& builder) {
-  llvm::SmallVector<mlir::Value> scalars;
+    ImplicitLocOpBuilder& builder) {
+  SmallVector<Value> scalars;
   for (int i = 0; i < num; ++i) {
-    TF_ASSIGN_OR_RETURN(auto scalar,
-                        ProvideParameter(computation, instr, i + start, indices,
-                                         call_target_provider, builder));
-    TF_RET_CHECK(scalar.size() == 1);
+    auto scalar = ProvideParameter(computation, instr, i + start, indices,
+                                   call_target_provider, builder);
+    CHECK_EQ(scalar.size(), 1);
     scalars.push_back(scalar.front());
   }
   return scalars;
@@ -964,24 +963,24 @@ absl::StatusOr<llvm::SmallVector<mlir::Value>> ProvideParameterRange(
 
 namespace {
 
-absl::StatusOr<llvm::SmallVector<mlir::Value>> SubgraphToMlir(
+absl::StatusOr<SmallVector<Value>> SubgraphToMlir(
     const PartitionedComputation& computation,
     const PartitionedComputation::Subgraph& subgraph,
-    const CallTargetProvider& call_target_provider, mlir::ValueRange parameters,
-    mlir::ValueRange indices, mlir::ValueRange injected_param_values,
-    mlir::ImplicitLocOpBuilder& builder) {
-  llvm::SmallVector<mlir::Value> results;
+    const CallTargetProvider& call_target_provider, ValueRange parameters,
+    ValueRange indices, ValueRange injected_param_values,
+    ImplicitLocOpBuilder& builder) {
+  SmallVector<Value> results;
   absl::node_hash_map<std::pair<const HloInstruction*, std::vector<void*>>,
-                      llvm::SmallVector<mlir::Value>>
+                      SmallVector<Value>>
       cached_instructions;
 
-  std::function<absl::StatusOr<llvm::SmallVector<mlir::Value>>(
-      const HloInstruction* instr, mlir::ValueRange indices)>
+  std::function<absl::StatusOr<SmallVector<Value>>(const HloInstruction* instr,
+                                                   ValueRange indices)>
       emit_instr;
 
-  auto provide_operand = [&](const HloInstruction* instr, int index,
-                             mlir::ValueRange indices)
-      -> absl::StatusOr<llvm::SmallVector<mlir::Value>> {
+  auto provide_operand =
+      [&](const HloInstruction* instr, int index,
+          ValueRange indices) -> absl::StatusOr<SmallVector<Value>> {
     auto* operand = instr->operand(index);
     if (&computation.FindSubgraph(operand) == &subgraph) {
       return emit_instr(operand, indices);
@@ -990,8 +989,8 @@ absl::StatusOr<llvm::SmallVector<mlir::Value>> SubgraphToMlir(
                             call_target_provider, builder);
   };
 
-  emit_instr = [&](const HloInstruction* instr, mlir::ValueRange indices)
-      -> absl::StatusOr<llvm::SmallVector<mlir::Value>> {
+  emit_instr = [&](const HloInstruction* instr,
+                   ValueRange indices) -> absl::StatusOr<SmallVector<Value>> {
     // TODO(jreiffers): Check dominance, e.g.:
     //
     // padding_value = log(param)
@@ -1030,6 +1029,23 @@ absl::StatusOr<llvm::SmallVector<mlir::Value>> SubgraphToMlir(
   return results;
 }
 
+void GetLoopBoundsFromIndexingMap(ImplicitLocOpBuilder& b,
+                                  const IndexingMap& indexing_map,
+                                  SmallVectorImpl<Value>* lbs,
+                                  SmallVectorImpl<Value>* ubs,
+                                  SmallVectorImpl<Value>* steps) {
+  Value c1 = b.create<ConstantIndexOp>(1);
+
+  for (const Range& range : indexing_map.GetSymbolRanges()) {
+    lbs->push_back(b.create<ConstantIndexOp>(range.lower_bound));
+    ubs->push_back(b.create<ConstantIndexOp>(range.upper_bound + 1));
+    // Note that this is not optimal, when there are mod constraints on symbols,
+    // e.g. for reduce-window. In that case we have to extract loop steps from
+    // the mod constraints.
+    steps->push_back(c1);
+  }
+}
+
 }  // namespace
 
 absl::Status SubgraphToMlirFunction(
@@ -1037,7 +1053,7 @@ absl::Status SubgraphToMlirFunction(
     const PartitionedComputation::Subgraph& subgraph, mlir::func::FuncOp& func,
     const CallTargetProvider& call_target_provider) {
   TF_RET_CHECK(func != nullptr);
-  mlir::ImplicitLocOpBuilder builder(func.getLoc(), func->getContext());
+  ImplicitLocOpBuilder builder(func.getLoc(), func->getContext());
   builder.setInsertionPointToStart(func.addEntryBlock());
   auto parameters = func.getArguments().take_front(
       computation.computation().num_parameters());
@@ -1053,6 +1069,39 @@ absl::Status SubgraphToMlirFunction(
                      indices, injected_params, builder));
   builder.create<mlir::func::ReturnOp>(results);
   return absl::OkStatus();
+}
+
+SmallVector<Value> EmitLoopNest(
+    ImplicitLocOpBuilder& b, ValueRange dim_values, ValueRange iter_args_inits,
+    const IndexingMap& indexing_map,
+    const std::function<
+        SmallVector<Value>(ValueRange /*iter_args*/, ValueRange /*dim_values*/,
+                           ValueRange /*symbol_values*/)>& create_body) {
+  SmallVector<Value, 4> lbs, ubs, steps;
+  GetLoopBoundsFromIndexingMap(b, indexing_map, &lbs, &ubs, &steps);
+
+  scf::LoopNest loop_nest = scf::buildLoopNest(
+      b, b.getLoc(), lbs, ubs, steps, iter_args_inits,
+      [&](OpBuilder& nested_builder, Location loc, ValueRange symbol_values,
+          ValueRange iter_args) -> scf::ValueVector {
+        ImplicitLocOpBuilder nested_b(loc, nested_builder);
+        auto is_in_bounds = mlir_converter::CheckConstraints(
+            indexing_map, dim_values, symbol_values, nested_b);
+        auto if_op = nested_b.create<scf::IfOp>(
+            is_in_bounds,
+            [&](OpBuilder& then_builder, Location then_loc) -> void {
+              b.setInsertionPointToStart(then_builder.getInsertionBlock());
+              auto results = create_body(iter_args, dim_values, symbol_values);
+              b.create<scf::YieldOp>(results);
+            },
+            [&](OpBuilder& else_b, Location else_loc) {
+              b.setInsertionPointToStart(else_b.getInsertionBlock());
+              b.create<scf::YieldOp>(iter_args);
+            });
+
+        return if_op.getResults();
+      });
+  return loop_nest.results;
 }
 
 }  // namespace mlir_converter

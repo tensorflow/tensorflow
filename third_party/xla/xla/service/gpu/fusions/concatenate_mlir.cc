@@ -51,6 +51,10 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
+using llvm::SmallVector;
+using mlir::Value;
+using mlir::ValueRange;
+
 /*static*/ bool MlirConcatenateFusion::IsSupported(
     const HloFusionAnalysis& analysis) {
   if (analysis.fusion_roots().size() != 1) return false;
@@ -121,7 +125,7 @@ absl::Status MlirConcatenateFusion::EmitMlir(
   builder.setInsertionPointToStart(entry_function.addEntryBlock());
 
   int num_inputs = fusion.fused_instructions_computation()->num_parameters();
-  llvm::SmallVector<mlir::Value> input_tensors(
+  SmallVector<Value> input_tensors(
       entry_function.getArguments().take_front(num_inputs));
   auto output_tensor_args =
       entry_function.getArguments().drop_front(num_inputs);
@@ -129,8 +133,8 @@ absl::Status MlirConcatenateFusion::EmitMlir(
   int64_t concat_dim = concat->concatenate_dimension();
   int64_t operand_offset = 0;
 
-  llvm::SmallVector<mlir::Value> result_tensors{output_tensor_args.begin(),
-                                                output_tensor_args.end()};
+  SmallVector<Value> result_tensors{output_tensor_args.begin(),
+                                    output_tensor_args.end()};
 
   auto thread_id_to_input_map = *ComputeThreadIdToInputIndexing(
       /*root_index=*/0, /*hero_operand_index=*/0, module.getContext());
@@ -138,11 +142,10 @@ absl::Status MlirConcatenateFusion::EmitMlir(
   for (auto [operand_index, operand] : llvm::enumerate(concat->operands())) {
     int64_t operand_concat_dim_size = operand->shape().dimensions(concat_dim);
 
-    auto loop_nest_body_builder = [&, operand_index = operand_index](
-                                      mlir::ValueRange output_tensors,
-                                      mlir::ValueRange dim_values,
-                                      mlir::ValueRange symbol_values)
-        -> absl::StatusOr<llvm::SmallVector<mlir::Value>> {
+    auto loop_nest_body_builder =
+        [&, operand_index = operand_index](
+            ValueRange output_tensors, ValueRange dim_values,
+            ValueRange symbol_values) -> SmallVector<Value> {
       auto input_indices =
           mlir_converter::ApplyAffineMap(thread_id_to_input_map.GetAffineMap(),
                                          dim_values, symbol_values, builder);
@@ -159,11 +162,10 @@ absl::Status MlirConcatenateFusion::EmitMlir(
         mlir::ImplicitLocOpBuilder builder(loc, b);
 
         auto result_scalars = mlir_converter::ProvideParameter(
-                                  root_computation, concat, operand_index,
-                                  input_indices, call_target_lookup, builder)
-                                  .value();
+            root_computation, concat, operand_index, input_indices,
+            call_target_lookup, builder);
 
-        llvm::SmallVector<mlir::Value> output_indices(input_indices);
+        SmallVector<Value> output_indices(input_indices);
         output_indices[concat_dim] = builder.create<mlir::arith::AddIOp>(
             output_indices[concat_dim],
             builder.create<mlir::arith::ConstantOp>(
@@ -174,7 +176,7 @@ absl::Status MlirConcatenateFusion::EmitMlir(
           // function.
           auto epilogue_fn = subgraph_to_mlir_fn[&root_graph];
 
-          llvm::SmallVector<mlir::Value> operands = input_tensors;
+          SmallVector<Value> operands = input_tensors;
           absl::c_copy(output_indices, std::back_inserter(operands));
           absl::c_copy(result_scalars, std::back_inserter(operands));
 
@@ -182,7 +184,7 @@ absl::Status MlirConcatenateFusion::EmitMlir(
               builder.create<PureCallOp>(epilogue_fn, operands).getResults();
         }
 
-        llvm::SmallVector<mlir::Value> yield_tensors;
+        SmallVector<Value> yield_tensors;
         yield_tensors.reserve(output_tensor_args.size());
         for (auto [tensor, value] : llvm::zip(output_tensors, result_scalars)) {
           yield_tensors.push_back(
@@ -202,9 +204,9 @@ absl::Status MlirConcatenateFusion::EmitMlir(
           .getResults();
     };
 
-    TF_ASSIGN_OR_RETURN(result_tensors, EmitLoopNest(builder, result_tensors,
-                                                     thread_id_to_input_map,
-                                                     loop_nest_body_builder));
+    result_tensors =
+        EmitThreadLoopNest(builder, result_tensors, thread_id_to_input_map,
+                           loop_nest_body_builder);
 
     operand_offset += operand_concat_dim_size;
   }
