@@ -278,12 +278,6 @@ absl::Status Stream::WaitFor(Event *event) {
   return parent_->WaitForEvent(this, event);
 }
 
-Stream &Stream::ThenMemcpy(void *host_dst, const DeviceMemoryBase &gpu_src,
-                           uint64_t size) {
-  CheckStatus(Memcpy(host_dst, gpu_src, size));
-  return *this;
-}
-
 absl::Status Stream::Memcpy(void *host_dst, const DeviceMemoryBase &gpu_src,
                             uint64_t size) {
   if (parent_->Memcpy(this, host_dst, gpu_src, size)) {
@@ -292,24 +286,12 @@ absl::Status Stream::Memcpy(void *host_dst, const DeviceMemoryBase &gpu_src,
   return absl::InternalError("failed to memcpy");
 }
 
-Stream &Stream::ThenMemcpy(DeviceMemoryBase *gpu_dst, const void *host_src,
-                           uint64_t size) {
-  CheckStatus(Memcpy(gpu_dst, host_src, size));
-  return *this;
-}
-
 absl::Status Stream::Memcpy(DeviceMemoryBase *gpu_dst, const void *host_src,
                             uint64_t size) {
   if (parent_->Memcpy(this, gpu_dst, host_src, size)) {
     return absl::OkStatus();
   }
   return absl::InternalError("failed to memcpy");
-}
-
-Stream &Stream::ThenMemcpy(DeviceMemoryBase *gpu_dst,
-                           const DeviceMemoryBase &gpu_src, uint64_t size) {
-  CheckStatus(Memcpy(gpu_dst, gpu_src, size));
-  return *this;
 }
 
 absl::Status Stream::Memcpy(DeviceMemoryBase *gpu_dst,
