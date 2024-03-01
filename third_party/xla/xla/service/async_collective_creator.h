@@ -31,14 +31,15 @@ class AsyncCollectiveCreator : public HloModulePass {
   // Function to query the shape of the "context" for collectives that use
   // HLO async-start/async-done.
   using ContextShapeQuery =
-      std::function<std::vector<Shape>(const HloInstruction*)>;
+      std::function<std::vector<Shape>(const HloInstruction *)>;
   struct CollectiveCreatorConfig {
     HloPredicate convert_all_reduce = HloPredicateFalse;
     HloPredicate convert_all_gather = HloPredicateFalse;
+    HloPredicate convert_collective_broadcast = HloPredicateFalse;
     HloPredicate convert_collective_permute = HloPredicateFalse;
     HloPredicate convert_all_to_all = HloPredicateFalse;
     HloPredicate convert_reduce_scatter = HloPredicateFalse;
-    ContextShapeQuery get_context_shapes = [](const HloInstruction*) {
+    ContextShapeQuery get_context_shapes = [](const HloInstruction *) {
       return std::vector<Shape>{};
     };
   };
