@@ -206,6 +206,28 @@ TEST_F(ReductionTest, SmallColumnReduction) {
   EXPECT_TRUE(RunAndCompareNoHloPasses(kHloString, ErrorSpec{1e-3}));
 }
 
+TEST_F(ReductionTest, F64RowReduction) {
+  constexpr auto kHloString = R"(
+    HloModule Test, is_scheduled=true
+
+    Add {
+      lhs = f64[] parameter(0)
+      rhs = f64[] parameter(1)
+      ROOT add = f64[] add(lhs, rhs)
+    }
+    fused_computation {
+      param_0 = f64[100,128] parameter(0)
+      param_1 = f64[] parameter(1)
+      ROOT reduce = f64[100] reduce(param_0, param_1), dimensions={1}, to_apply=Add
+    }
+    ENTRY main {
+      a = f64[100,128] parameter(0)
+      c = f64[] constant(0)
+      ROOT fusion = f64[100] fusion(a, c), kind=kInput, calls=fused_computation
+    })";
+  EXPECT_TRUE(RunAndCompareNoHloPasses(kHloString, ErrorSpec{1e-3}));
+}
+
 }  // namespace
 }  // namespace gpu
 }  // namespace xla

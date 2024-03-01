@@ -142,7 +142,7 @@ def LowerXlaGpuToScfPass :
   let summary = "Lowers xla_gpu to SCF.";
 
   let dependentDialects = [
-    "mlir::gpu::GPUDialect", "mlir::scf::SCFDialect",
+    "mlir::gpu::GPUDialect", "mlir::LLVM::LLVMDialect", "mlir::scf::SCFDialect",
     "mlir::tensor::TensorDialect", "xla::gpu::XlaGpuDialect",
   ];
 

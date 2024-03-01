@@ -256,6 +256,7 @@ cc_library(
     deps = [
         ":passes_inc_gen",
         "//xla:shape_util",
+        "//xla:util",
         "//xla:xla_data_proto_cc",
         "//xla/mlir_hlo",
         "//xla/mlir_hlo:map_mhlo_to_scalar_op",

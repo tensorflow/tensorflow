@@ -30,6 +30,23 @@ module {
 // -----
 
 module {
+  func.func @reducer(%a: f64, %b: f64) -> f64 {
+    return %a : f64
+  }
+
+  func.func @shuffler(%a: f64) -> f64 {
+    %ret = xla_gpu.shuffle_reduce @reducer(%a) to 1 : f64
+    return %ret : f64
+  }
+}
+
+// CHECK: @shuffler(%[[A:.*]]: f64
+// CHECK: gpu.shuffle down {{.*}}, %[[C1]]
+// CHECK: gpu.shuffle down {{.*}}, %[[C1]]
+
+// -----
+
+module {
   func.func @predicated_insert(
       %v: i32, %tensor: tensor<2xi32>, %index: index,
       %cond: i1) -> tensor<2xi32> {
