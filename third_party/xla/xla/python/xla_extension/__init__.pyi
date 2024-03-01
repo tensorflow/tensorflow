@@ -317,6 +317,11 @@ class CompiledMemoryStats:
   output_size_in_bytes: int
   alias_size_in_bytes: int
   temp_size_in_bytes: int
+  host_generated_code_size_in_bytes: int
+  host_argument_size_in_bytes: int
+  host_output_size_in_bytes: int
+  host_alias_size_in_bytes: int
+  host_temp_size_in_bytes: int
   serialized_hlo_proto: bytes
   def __str__(self) -> str: ...
 

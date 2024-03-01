@@ -754,6 +754,16 @@ static void Init(py::module_& m) {
                      &CompiledMemoryStats::alias_size_in_bytes)
       .def_readwrite("temp_size_in_bytes",
                      &CompiledMemoryStats::temp_size_in_bytes)
+      .def_readwrite("host_generated_code_size_in_bytes",
+                     &CompiledMemoryStats::host_generated_code_size_in_bytes)
+      .def_readwrite("host_argument_size_in_bytes",
+                     &CompiledMemoryStats::host_argument_size_in_bytes)
+      .def_readwrite("host_output_size_in_bytes",
+                     &CompiledMemoryStats::host_output_size_in_bytes)
+      .def_readwrite("host_alias_size_in_bytes",
+                     &CompiledMemoryStats::host_alias_size_in_bytes)
+      .def_readwrite("host_temp_size_in_bytes",
+                     &CompiledMemoryStats::host_temp_size_in_bytes)
       .def_property_readonly("serialized_hlo_proto",
                              [](const CompiledMemoryStats& cms) -> py::bytes {
                                return py::bytes(cms.serialized_hlo_proto);
