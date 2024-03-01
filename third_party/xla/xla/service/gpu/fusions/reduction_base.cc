@@ -122,11 +122,14 @@ ReductionGroups GroupDisjointReductions(const HloFusionAnalysis& analysis) {
                       absl::flat_hash_set<HloInstructionAdaptor>>
       reachable_outputs;
   absl::flat_hash_set<HloInstructionAdaptor> roots_with_reduction;
+  absl::flat_hash_map<const HloInstruction*, int> root_indices;
   const auto& roots = analysis.fusion().GetRoots();
   ReductionGroups result;
-  result.group_id_per_root.reserve(roots.size());
+  result.group_id_per_root.resize(roots.size());
   result.is_reduction_root.reserve(roots.size());
   for (auto [root, hero] : llvm::zip(roots, analysis.fusion_heroes())) {
+    int index = root_indices.size();
+    root_indices[&root.instruction()] = index;
     disjoint_sets[root].Get() = root;
     reachable_outputs[root].insert(root);
     result.is_reduction_root.push_back(
@@ -195,18 +198,12 @@ ReductionGroups GroupDisjointReductions(const HloFusionAnalysis& analysis) {
         &root.instruction());
   }
 
-  absl::flat_hash_map<const HloInstruction*, int> set_ids;
-  for (auto&& [id, disjoint_set] : llvm::enumerate(disjoint_sets)) {
-    set_ids[&disjoint_set.second.Get().instruction()] = id;
-  }
-
-  for (auto root : roots) {
-    result.group_id_per_root.push_back(
-        set_ids[&disjoint_sets[root].Get().instruction()]);
-  }
-
   result.grouped_roots.reserve(group_map.size());
   absl::c_for_each(group_map, [&](auto& it) {
+    for (auto* root : it.second) {
+      result.group_id_per_root[root_indices[root]] =
+          result.grouped_roots.size();
+    }
     result.grouped_roots.emplace_back(std::move(it.second));
   });
   return result;
@@ -335,10 +332,13 @@ std::optional<IndexingMap> ReductionInfo::ComputeThreadIdToOutputIndexing(
 
   auto physical_shape = ShapeUtil::DeleteDimensions(hero->dimensions(),
                                                     hero->operand(0)->shape());
-
   std::vector<Range> dimension_ranges{
-      {0, tiling_.GetNumThreadsPerBlock() - 1}, {}, {},
-      {0, tiling_.GetNumBlocks() - 1},          {}, {},
+      {0, tiling_.GetNumThreadsPerBlock() - 1},
+      {},
+      {},
+      {0, tiling_.GetNumBlocks() - 1},
+      {0, static_cast<int64_t>(groups_.grouped_roots.size() - 1)},
+      {},
   };
 
   constexpr int kRowKept = ReductionDimensions::kRowKeptDimension;

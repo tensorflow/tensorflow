@@ -344,15 +344,6 @@ absl::Status MlirReductionFusion::EmitReduction(EmitterState& state) const {
 
         mlir::Value is_output_in_bounds = mlir_converter::CheckConstraints(
             *output_indexing, thread_and_block_indices, {}, b);
-        // TODO(shyshkov): Do this in CheckConstraints.
-        for (auto&& [index, range] :
-             llvm::enumerate(output_indexing->GetDimensionRanges())) {
-          is_output_in_bounds = b.create<mlir::arith::AndIOp>(
-              is_output_in_bounds,
-              mlir_converter::CheckConstraint(thread_and_block_indices[index],
-                                              range, b));
-        }
-
         updated_outputs.push_back(b.create<PredicatedInsertOp>(
             is_output_in_bounds, output_value, outputs[next_output++],
             output_indices));

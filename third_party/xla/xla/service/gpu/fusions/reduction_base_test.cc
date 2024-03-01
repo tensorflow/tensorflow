@@ -335,7 +335,7 @@ TEST_F(ReductionTest, ThreadIndexingSideOutput) {
       d1 in [0, 0]
       d2 in [0, 0]
       d3 in [0, 799]
-      d4 in [1, 0]
+      d4 in [0, 0]
       d5 in [0, 0]
       s0 in [0, 0]
       s1 in [0, 0]

@@ -16,18 +16,23 @@ limitations under the License.
 #define XLA_SERVICE_GPU_FUSIONS_MLIR_PASSES_H_
 
 #include <memory>
+#include <optional>
 
 #include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project  // IWYU pragma: keep
 #include "mlir/Dialect/GPU/IR/GPUDialect.h"  // from @llvm-project  // IWYU pragma: keep
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"  // from @llvm-project  // IWYU pragma: keep
 #include "mlir/Dialect/SCF/IR/SCF.h"  // from @llvm-project  // IWYU pragma: keep
 #include "mlir/Pass/Pass.h"  // from @llvm-project
+#include "xla/service/gpu/model/indexing_map.h"
 
 namespace xla {
 namespace gpu {
 
 #define GEN_PASS_DECL
 #include "xla/service/gpu/fusions/mlir/passes.h.inc"
+
+// Returns the range of a given value, if it can be statically determined.
+std::optional<Range> GetRange(mlir::Value value);
 
 std::unique_ptr<mlir::Pass> CreateExpandFloatOpsPass(bool enable_bf16);
 std::unique_ptr<mlir::Pass> CreateLowerFuncPass();
@@ -37,6 +42,7 @@ std::unique_ptr<mlir::Pass> CreateLowerXlaGpuToScfPass();
 std::unique_ptr<mlir::Pass> CreateMergePointersToSameSlicePass();
 std::unique_ptr<mlir::Pass> CreatePropagateSliceIndicesPass();
 std::unique_ptr<mlir::Pass> CreateSimplifyAffinePass();
+std::unique_ptr<mlir::Pass> CreateSimplifyArithPass();
 
 #define GEN_PASS_REGISTRATION
 #include "xla/service/gpu/fusions/mlir/passes.h.inc"

@@ -440,17 +440,6 @@ absl::StatusOr<SmallVector<Value>> EmitPad(
   auto indexing = ComputeOutputToInputIndexing(instr, 0, b.getContext());
   const auto& indexing_map = *indexing.indexing_maps[0].begin();
   mlir::Value is_in_bounds = CheckConstraints(indexing_map, indices, {}, b);
-  for (auto&& [index, range] :
-       llvm::enumerate(indexing_map.GetDimensionRanges())) {
-    // If the range is the full output dimension, it's always in bounds. Sadly,
-    // this doesn't get optimized automatically.
-    if (range.lower_bound == 0 &&
-        range.upper_bound == instr->shape().dimensions(index) - 1) {
-      continue;
-    }
-    is_in_bounds = b.create<AndIOp>(is_in_bounds,
-                                    CheckConstraint(indices[index], range, b));
-  }
 
   auto ty = *ConvertPrimitiveTypeToMLIRType(instr->shape().element_type(), b);
   auto if_op = b.create<IfOp>(mlir::TypeRange{ty}, is_in_bounds, true, true);
@@ -548,6 +537,9 @@ Value CheckConstraints(const IndexingMap& map, ValueRange dims,
     ret = b.create<AndIOp>(
         ret, CheckConstraint(ApplyAffineExpr(expression, dims, symbols, b),
                              range, b));
+  }
+  for (auto&& [index, range] : llvm::enumerate(map.GetDimensionRanges())) {
+    ret = b.create<AndIOp>(ret, CheckConstraint(dims[index], range, b));
   }
   return ret;
 }

@@ -35,7 +35,8 @@ module {
 // CHECK:       %[[OFFSET:.*]] = arith.addi %[[BLOCK_OFFSET]], %[[THREAD_OFFSET]]
 // CHECK:       %[[I_32:.*]] = arith.index_castui %[[I]] : index to i32
 // CHECK:       %[[UNROLL_OFFSET:.*]] = arith.addi %[[OFFSET]], %[[I_32]]
-// CHECK:       %[[UNROLL_INDEX:.*]] = arith.index_castui %[[UNROLL_OFFSET]] : i32 to index
+// CHECK:       %[[UNROLL_INDEX:.*]] = arith.index_castui %[[UNROLL_OFFSET]]
+// CHECK-SAME:    {xla.range = [0 : index, 1572863 : index]} : i32 to index
 // CHECK:       arith.index_castui %[[UNROLL_INDEX]] : index to i64
 
 // -----
@@ -51,9 +52,9 @@ module {
 // CHECK-NEXT:  %[[C100:.*]] = arith.constant 100
 // CHECK-NEXT:  %[[ARG0_32:.*]] = arith.index_castui {{.*}} : index to i32
 // CHECK-NEXT:  %[[RET_32:.*]] = arith.divui %[[ARG0_32]], %[[C100]]
-// CHECK-NEXT:  %[[RET:.*]] = arith.index_castui %[[RET_32]] : i32 to index
+// CHECK-NEXT:  %[[RET:.*]] = arith.index_castui %[[RET_32]]
+// CHECK-SAME:     {xla.range = [0 : index, 10 : index]} : i32 to index
 // CHECK-NEXT:  return %[[RET]]
-
 
 // -----
 
@@ -78,5 +79,6 @@ module {
   }
 }
 
-// CHECK: @cant_lower
-// CHECK: affine.apply
+// CHECK:       @cant_lower
+// CHECK:       affine.apply
+// CHECK-SAME:    {xla.range = [-1 : index, 10 : index]}
