@@ -851,14 +851,5 @@ def tf_google_mobile_srcs_no_runtime():
 def tf_google_mobile_srcs_only_runtime():
     return []
 
-def if_llvm_aarch64_available(then, otherwise = []):
-    return then
-
-def if_llvm_system_z_available(then, otherwise = []):
-    return select({
-        clean_dep("//tsl:linux_s390x"): then,
-        "//conditions:default": otherwise,
-    })
-
 def tf_cuda_libdevice_path_deps():
     return tf_platform_deps("cuda_libdevice_path")

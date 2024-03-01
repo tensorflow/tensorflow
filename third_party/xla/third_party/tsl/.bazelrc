@@ -449,6 +449,9 @@ test:win_clang --host_linkopt=/FORCE:MULTIPLE
 # TODO(kanglan): Change v2's define to default behavior
 build:v2 --define=tf_api_version=2 --action_env=TF2_BEHAVIOR=1
 
+# Enable all targets in XLA
+build:cpu_cross --define=with_cross_compiler_support=true
+
 # Disable XLA on mobile.
 build:xla     --define=with_xla_support=true # TODO: remove, it's on by default.
 build:android --define=with_xla_support=false
@@ -596,6 +599,8 @@ test:release_base --test_size_filters=small,medium
 
 # Target the AVX instruction set
 build:release_linux_base --config=avx_linux
+# Enable support for all targets
+build:release_base --config=cpu_cross
 
 # Disable clang extension that rejects type definitions within offsetof.
 # This was added in clang-16 by https://reviews.llvm.org/D133574.

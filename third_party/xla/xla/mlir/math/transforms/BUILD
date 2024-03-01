@@ -1,5 +1,6 @@
 load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library")
 load("@local_tsl//tsl:tsl.default.bzl", "get_compatible_with_portable")
+load("@local_tsl//tsl/platform:build_config_root.bzl", "if_llvm_x86_available")
 load("@local_tsl//tsl/platform:rules_cc.bzl", "cc_library")
 
 package(
@@ -33,6 +34,7 @@ cc_library(
     ],
     hdrs = ["passes.h"],
     compatible_with = get_compatible_with_portable(),
+    defines = if_llvm_x86_available(["TF_LLVM_X86_AVAILABLE=1"]),
     deps = [
         ":passes_inc_gen",
         "@llvm-project//mlir:ArithDialect",
@@ -43,6 +45,7 @@ cc_library(
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:Transforms",
         "@llvm-project//mlir:VectorDialect",
+    ] + if_llvm_x86_available([
         "@llvm-project//mlir:X86VectorDialect",
-    ],
+    ]),
 )

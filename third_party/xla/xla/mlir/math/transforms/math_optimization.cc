@@ -20,7 +20,10 @@ limitations under the License.
 #include "mlir/Pass/Pass.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 #include "mlir/Dialect/Vector/IR/VectorOps.h"  // from @llvm-project
+#include "mlir/IR/DialectRegistry.h"  // from @llvm-project
+#ifdef TF_LLVM_X86_AVAILABLE
 #include "mlir/Dialect/X86Vector/X86VectorDialect.h"  // from @llvm-project
+#endif
 #include "xla/mlir/math/transforms/passes.h"
 
 namespace xla {
@@ -35,8 +38,17 @@ struct MathOptimizationPass
   explicit MathOptimizationPass(bool enable_avx2) {
     enable_avx2_ = enable_avx2;
   }
+  void getDependentDialects(DialectRegistry &registry) const override;
   void runOnOperation() override;
 };
+
+void MathOptimizationPass::getDependentDialects(
+    DialectRegistry &registry) const {
+  registry.insert<vector::VectorDialect>();
+#ifdef TF_LLVM_X86_AVAILABLE
+  registry.insert<x86vector::X86VectorDialect>();
+#endif
+}
 
 void MathOptimizationPass::runOnOperation() {
   RewritePatternSet patterns(&getContext());

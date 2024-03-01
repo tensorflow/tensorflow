@@ -1,7 +1,14 @@
 load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library")
 load("//xla:xla.bzl", "xla_cc_test")
 load("@local_tsl//tsl:tsl.default.bzl", "get_compatible_with_portable")
-load("@local_tsl//tsl/platform:build_config.bzl", "if_llvm_system_z_available")
+load(
+    "@local_tsl//tsl/platform:build_config_root.bzl",
+    "if_llvm_aarch64_available",
+    "if_llvm_arm_available",
+    "if_llvm_powerpc_available",
+    "if_llvm_system_z_available",
+    "if_llvm_x86_available",
+)
 load("@local_tsl//tsl/platform:rules_cc.bzl", "cc_library")
 
 package(
@@ -114,13 +121,10 @@ cc_library(
         "//xla/mlir/runtime/ir:rt",
         "//xla/mlir_hlo:transforms_passes",
         "//xla/runtime:compiler",
-        "@llvm-project//mlir:AMXToLLVMIRTranslation",
         "@llvm-project//mlir:AffineDialect",
         "@llvm-project//mlir:AffineToStandard",
         "@llvm-project//mlir:ArithDialect",
         "@llvm-project//mlir:ArithTransforms",
-        "@llvm-project//mlir:ArmNeonToLLVMIRTranslation",
-        "@llvm-project//mlir:ArmSVEToLLVMIRTranslation",
         "@llvm-project//mlir:AsyncDialect",
         "@llvm-project//mlir:AsyncToLLVM",
         "@llvm-project//mlir:AsyncTransforms",
@@ -142,7 +146,6 @@ cc_library(
         "@llvm-project//mlir:SCFDialect",
         "@llvm-project//mlir:SparseTensorDialect",
         "@llvm-project//mlir:Transforms",
-        "@llvm-project//mlir:X86VectorToLLVMIRTranslation",
         "@local_tsl//tsl/platform:logging",
     ] + select({
         "//xla/service/cpu:experimental_mlir_gpu_enabled": [
@@ -150,7 +153,14 @@ cc_library(
             "@llvm-project//mlir:GPUTransforms",
         ],
         "//conditions:default": [],
-    }),
+    }) + if_llvm_aarch64_available([
+        "@llvm-project//mlir:ArmSVEToLLVMIRTranslation",
+    ]) + if_llvm_arm_available([
+        "@llvm-project//mlir:ArmNeonToLLVMIRTranslation",
+    ]) + if_llvm_x86_available([
+        "@llvm-project//mlir:AMXToLLVMIRTranslation",
+        "@llvm-project//mlir:X86VectorToLLVMIRTranslation",
+    ]),
     alwayslink = 1,  # has pipeline registration
 )
 
@@ -220,21 +230,14 @@ cc_library(
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:ToLLVMIRTranslation",
-    ] + select({
-        "@local_tsl//tsl:arm_any": [
-            "@llvm-project//llvm:AArch64AsmParser",
-        ],
-        "@local_tsl//tsl:linux_ppc64le": [
-            "@llvm-project//llvm:PowerPCAsmParser",
-        ],
-        "@local_tsl//tsl:macos_arm64": [
-            "@llvm-project//llvm:AArch64AsmParser",
-        ],
-        "//conditions:default": [
-            "@llvm-project//llvm:X86AsmParser",
-        ],
-    }) + if_llvm_system_z_available([
+    ] + if_llvm_aarch64_available([
+        "@llvm-project//llvm:AArch64AsmParser",
+    ]) + if_llvm_powerpc_available([
+        "@llvm-project//llvm:PowerPCAsmParser",
+    ]) + if_llvm_system_z_available([
         "@llvm-project//llvm:SystemZAsmParser",
+    ]) + if_llvm_x86_available([
+        "@llvm-project//llvm:X86AsmParser",
     ]),
 )
 

@@ -60,3 +60,39 @@ def if_static_and_not_mobile(extra_deps, otherwise = []):
         str(Label("//tsl:ios")): otherwise,
         "//conditions:default": extra_deps,
     })
+
+def if_llvm_aarch32_available(then, otherwise = []):
+    return select({
+        str(Label("//tsl:aarch32_or_cross")): then,
+        "//conditions:default": otherwise,
+    })
+
+def if_llvm_aarch64_available(then, otherwise = []):
+    return select({
+        str(Label("//tsl:aarch64_or_cross")): then,
+        "//conditions:default": otherwise,
+    })
+
+def if_llvm_arm_available(then, otherwise = []):
+    return select({
+        str(Label("//tsl:arm_or_cross")): then,
+        "//conditions:default": otherwise,
+    })
+
+def if_llvm_powerpc_available(then, otherwise = []):
+    return select({
+        str(Label("//tsl:ppc64le_or_cross")): then,
+        "//conditions:default": otherwise,
+    })
+
+def if_llvm_system_z_available(then, otherwise = []):
+    return select({
+        str(Label("//tsl:s390x_or_cross")): then,
+        "//conditions:default": otherwise,
+    })
+
+def if_llvm_x86_available(then, otherwise = []):
+    return select({
+        str(Label("//tsl:x86_or_cross")): then,
+        "//conditions:default": otherwise,
+    })
