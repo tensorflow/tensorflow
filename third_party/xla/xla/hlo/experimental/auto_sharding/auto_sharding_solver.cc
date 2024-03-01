@@ -69,6 +69,9 @@ constexpr double kMaxCostEpsilon = 1.0001;
 // same amount.
 constexpr double kMemoryMultiplier = 1e-6;
 
+// Any memory terms below this threshold will be dropped (to reduce MIP size).
+constexpr double kTinyTermThreshold = 1e-6;
+
 bool AutoShardingSolverResult::operator==(
     const AutoShardingSolverResult& other) const {
   return status == other.status &&
@@ -455,35 +458,53 @@ AutoShardingSolverResult CallORToolsSolver(
   }
   // c.
   if (request.memory_budget() > 0) {
+    int tiny_term_count = 0;
     for (LivenessIdx time_idx = 0; time_idx < request.live_size(); ++time_idx) {
-      MPConstraint* constraint = solver->MakeRowConstraint(
-          -MPSolver::infinity(), kMemoryMultiplier * request.memory_budget(),
-          absl::StrCat("mem[", time_idx, "]"));
+      MPConstraint* constraint =
+          solver->MakeRowConstraint(-MPSolver::infinity(), MPSolver::infinity(),
+                                    absl::StrCat("mem[", time_idx, "]"));
       if (overbudget_var) constraint->SetCoefficient(overbudget_var, -1.0);
+      double tiny_term_total = 0.0;  // Used to trim the memory budget downward.
       for (NodeIdx node_idx : request.live(time_idx).nodes()) {
+        double tiny_term_max = 0.0;
         for (NodeStrategyIdx j = 0; j < s[node_idx].size(); ++j) {
+          double memory_cost = request.memory_costs(node_idx).costs(j);
+          if (memory_cost < kTinyTermThreshold * request.memory_budget()) {
+            tiny_term_max = std::max(tiny_term_max, memory_cost);
+            if (memory_cost > 0.0) ++tiny_term_count;
+            continue;
+          }
+          memory_cost *= kMemoryMultiplier;
           const double accumulated_coefficient =
               constraint->GetCoefficient(s[node_idx][j]);
-          const double memory_cost =
-              kMemoryMultiplier * request.memory_costs(node_idx).costs(j);
           constraint->SetCoefficient(s[node_idx][j],
                                      accumulated_coefficient + memory_cost);
         }
+        tiny_term_total += tiny_term_max;
       }
       if (!request.live_edges().empty() && request.enable_memory_edge_costs()) {
         for (EdgeIdx edge_idx : request.live_edges(time_idx).edges()) {
+          double tiny_term_max = 0.0;
           for (EdgeStrategyIdx j = 0; j < e[edge_idx].size(); ++j) {
+            double memory_cost = request.memory_edge_costs(edge_idx).costs(j);
+            if (memory_cost < kTinyTermThreshold * request.memory_budget()) {
+              tiny_term_max = std::max(tiny_term_max, memory_cost);
+              if (memory_cost > 0.0) ++tiny_term_count;
+              continue;
+            }
+            memory_cost *= kMemoryMultiplier;
             const double accumulated_coefficient =
                 constraint->GetCoefficient(e[edge_idx][j]);
-            const double memory_cost =
-                kMemoryMultiplier *
-                request.memory_edge_costs(edge_idx).costs(j);
             constraint->SetCoefficient(e[edge_idx][j],
                                        accumulated_coefficient + memory_cost);
           }
+          tiny_term_total += tiny_term_max;
         }
       }
+      constraint->SetUB(kMemoryMultiplier *
+                        (request.memory_budget() - tiny_term_total));
     }
+    LOG(INFO) << "Number of tiny terms: " << tiny_term_count;
     if (overbudget_var) {
       solver->MutableObjective()->SetCoefficient(
           overbudget_var,
