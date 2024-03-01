@@ -16,6 +16,13 @@ limitations under the License.
 /// but should instead include "third_party/tensorflow/lite/c/c_api.h".
 /// Only the TensorFlow Lite implementation itself should include this
 /// file directly.
+///
+/// The types and functions declared in registration_external.h are
+/// part of the TensorFlow Lite Extension APIs.
+/// We reserve the right to make changes to this API in future releases,
+/// potentially including non-backwards-compatible changes, on a different
+/// schedule than for the other TensorFlow Lite APIs. See
+/// https://www.tensorflow.org/guide/versions#separate_version_number_for_tensorflow_lite_extension_apis.
 #ifndef TENSORFLOW_LITE_CORE_C_REGISTRATION_EXTERNAL_H_
 #define TENSORFLOW_LITE_CORE_C_REGISTRATION_EXTERNAL_H_
 
