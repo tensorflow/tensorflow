@@ -393,6 +393,7 @@ py_strict_library(
         "//tensorflow/python/tpu:tpu_py",
         "//tensorflow/python/util:compat",
     ] + if_google([
+        "//learning/brain/contrib/hub/public/file:tfhub_file_register",
         "//tensorflow/core/tfrt/tfrt_session",
         "//tensorflow_text:tensorflow_text",
     ]),
