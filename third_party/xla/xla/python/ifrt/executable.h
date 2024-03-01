@@ -41,18 +41,19 @@ class Executable : public llvm::RTTIExtends<Executable, llvm::RTTIRoot> {
   virtual absl::string_view name() const = 0;
 
   // Returns a fingerprint of this executable.
-  virtual StatusOr<std::optional<std::string>> Fingerprint() const = 0;
+  virtual absl::StatusOr<std::optional<std::string>> Fingerprint() const = 0;
 
   // Serializes this executable into a string. The compatibility of the
   // serialized executable is implementation-specific.
-  virtual StatusOr<std::string> Serialize() const = 0;
+  virtual absl::StatusOr<std::string> Serialize() const = 0;
 
   // The following APIs are taken from `xla::PjRtExecutable` for fast
   // prototyping. TODO(hyeontaek): Factor some of them out as
   // `XlaCompatibleExecutable`.
   virtual int num_devices() const = 0;
   virtual int64_t SizeOfGeneratedCodeInBytes() const = 0;
-  virtual StatusOr<CompiledMemoryStats> GetCompiledMemoryStats() const = 0;
+  virtual absl::StatusOr<CompiledMemoryStats> GetCompiledMemoryStats()
+      const = 0;
 
   // TODO(hyeontaek): Move the following XLA-specific methods to
   // pjrt_executable.h and put it in an `XlaCompatibleExecutable`.
@@ -63,19 +64,19 @@ class Executable : public llvm::RTTIExtends<Executable, llvm::RTTIRoot> {
   // Returns a list of output `OpSharding`.
   virtual std::optional<std::vector<OpSharding>> GetOutputShardings() const = 0;
   // Returns a list of parameter `xla::Layout`s.
-  virtual StatusOr<std::vector<Layout>> GetParameterLayouts() const = 0;
+  virtual absl::StatusOr<std::vector<Layout>> GetParameterLayouts() const = 0;
   // Returns a list of output/result `xla::Layout`s.
-  virtual StatusOr<std::vector<Layout>> GetOutputLayouts() const = 0;
+  virtual absl::StatusOr<std::vector<Layout>> GetOutputLayouts() const = 0;
   // Returns an `HloModule` (optimized) per partition.
-  virtual StatusOr<std::vector<std::shared_ptr<HloModule>>> GetHloModules()
-      const = 0;
+  virtual absl::StatusOr<std::vector<std::shared_ptr<HloModule>>>
+  GetHloModules() const = 0;
 
   using CostAnalysisValue = xla::PjRtValueType;
 
   // Returns named values for cost properties of this executable (such as
   // operations, size of input/outputs, and run time estimate). Properties may
   // differ for different implementations and platforms.
-  virtual StatusOr<absl::flat_hash_map<std::string, CostAnalysisValue>>
+  virtual absl::StatusOr<absl::flat_hash_map<std::string, CostAnalysisValue>>
   GetCostAnalysis() const = 0;
 
   static char ID;  // NOLINT
@@ -95,11 +96,11 @@ class LoadedExecutable
   virtual absl::string_view name() const = 0;
 
   // Returns a fingerprint of this executable.
-  virtual StatusOr<std::optional<std::string>> Fingerprint() const = 0;
+  virtual absl::StatusOr<std::optional<std::string>> Fingerprint() const = 0;
 
   // Serializes this executable into a string. The compatibility of the
   // serialized executable is implementation-specific.
-  virtual StatusOr<std::string> Serialize() const = 0;
+  virtual absl::StatusOr<std::string> Serialize() const = 0;
 
   // Returns a future that becomes ready when the executable is ready to be
   // used for execution.
@@ -117,7 +118,8 @@ class LoadedExecutable
   // TODO(hyeontaek): Factor some of them out as `XlaCompatibleExecutable`.
   virtual int num_devices() const = 0;
   virtual int64_t SizeOfGeneratedCodeInBytes() const = 0;
-  virtual StatusOr<CompiledMemoryStats> GetCompiledMemoryStats() const = 0;
+  virtual absl::StatusOr<CompiledMemoryStats> GetCompiledMemoryStats()
+      const = 0;
 
   // The following APIs are taken from `xla::PjRtLoadedExecutable` for fast
   // prototyping.
@@ -130,23 +132,23 @@ class LoadedExecutable
   // Returns a list of output OpSharding.
   virtual std::optional<std::vector<OpSharding>> GetOutputShardings() const = 0;
   // Returns a list of parameter `xla::Layout`s.
-  virtual StatusOr<std::vector<Layout>> GetParameterLayouts() const = 0;
+  virtual absl::StatusOr<std::vector<Layout>> GetParameterLayouts() const = 0;
   // Returns a list of output/result `xla::Layout`s.
-  virtual StatusOr<std::vector<Layout>> GetOutputLayouts() const = 0;
+  virtual absl::StatusOr<std::vector<Layout>> GetOutputLayouts() const = 0;
   // Return an HloModule (optimized) per partition.
-  virtual StatusOr<std::vector<std::shared_ptr<HloModule>>> GetHloModules()
-      const = 0;
+  virtual absl::StatusOr<std::vector<std::shared_ptr<HloModule>>>
+  GetHloModules() const = 0;
   // Returns a list of lists of memory kind strings for output. The returned
   // value is `[num_programs, num_output]`. The size of the outer list should be
   // equal to `GetHloModules()`. Under SPMD, one can use
   // `GetOutputMemoryKinds().front()`.
-  virtual StatusOr<std::vector<std::vector<absl::string_view>>>
+  virtual absl::StatusOr<std::vector<std::vector<absl::string_view>>>
   GetOutputMemoryKinds() const = 0;
 
   // Returns named values for cost properties of this executable (such as
   // operations, size of input/outputs, and run time estimate). Properties may
   // differ for different implementations and platforms.
-  virtual StatusOr<
+  virtual absl::StatusOr<
       absl::flat_hash_map<std::string, Executable::CostAnalysisValue>>
   GetCostAnalysis() const = 0;
 
@@ -180,7 +182,7 @@ class LoadedExecutable
   // incrementally. We need to have a stricter way to control this behavior
   // (e.g., having per-argument/output booleans or providing a separate barrier
   // API).
-  virtual StatusOr<ExecuteResult> Execute(
+  virtual absl::StatusOr<ExecuteResult> Execute(
       absl::Span<tsl::RCReference<Array>> args, const ExecuteOptions& options,
       std::optional<DeviceList> devices) = 0;
 

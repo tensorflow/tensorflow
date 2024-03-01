@@ -72,13 +72,13 @@ class Array : public llvm::RTTIExtends<Array, Value> {
 
   // Breaks an array up into per-device arrays. This is the elimination
   // counterpart of `Client::AssembleArrayFromSingleDeviceArrays()`.
-  virtual StatusOr<std::vector<tsl::RCReference<Array>>>
+  virtual absl::StatusOr<std::vector<tsl::RCReference<Array>>>
   DisassembleIntoSingleDeviceArrays(ArrayCopySemantics semantics) = 0;
   // Returns a shard of an Array which is fully replicated. This is an
   // optimization so that instead of disassembling into all the shards when
   // the Array is fully replicated, we can just get 1 shard out and create an
   // Array from it.
-  virtual StatusOr<tsl::RCReference<Array>> FullyReplicatedShard(
+  virtual absl::StatusOr<tsl::RCReference<Array>> FullyReplicatedShard(
       ArrayCopySemantics semantics) = 0;
 
   // Fetches the array to host and stores it as unreplicated, unsharded data.
@@ -129,7 +129,7 @@ class Array : public llvm::RTTIExtends<Array, Value> {
   //
   // It may fail if the buffer data would be sent from/to an unaddressable
   // device.
-  virtual StatusOr<tsl::RCReference<Array>> Reshard(
+  virtual absl::StatusOr<tsl::RCReference<Array>> Reshard(
       std::shared_ptr<const Sharding> new_sharding,
       ArrayCopySemantics semantics) = 0;
 

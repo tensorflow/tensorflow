@@ -96,20 +96,21 @@ class Client : public llvm::RTTIExtends<Client, llvm::RTTIRoot> {
   //
   // TODO(hyeontaek): Consider changing `on_done_with_host_buffer` into a
   // returned `Future<Status>` for consistency with other IFRT APIs.
-  virtual StatusOr<tsl::RCReference<Array>> MakeArrayFromHostBuffer(
+  virtual absl::StatusOr<tsl::RCReference<Array>> MakeArrayFromHostBuffer(
       const void* data, DType dtype, Shape shape,
       std::optional<absl::Span<const int64_t>> byte_strides,
       std::shared_ptr<const Sharding> sharding, HostBufferSemantics semantics,
       std::function<void()> on_done_with_host_buffer) = 0;
 
   // Builds a larger array out of individual per-device shards.
-  virtual StatusOr<tsl::RCReference<Array>> AssembleArrayFromSingleDeviceArrays(
+  virtual absl::StatusOr<tsl::RCReference<Array>>
+  AssembleArrayFromSingleDeviceArrays(
       Shape shape, std::shared_ptr<const Sharding> sharding,
       absl::Span<tsl::RCReference<Array>> arrays,
       ArrayCopySemantics semantics) = 0;
 
   // Builds a tuple from a sequence of values.
-  virtual StatusOr<tsl::RCReference<Tuple>> MakeTuple(
+  virtual absl::StatusOr<tsl::RCReference<Tuple>> MakeTuple(
       absl::Span<tsl::RCReference<Value>> values) = 0;
 
   // The following APIs are taken from `xla::PjRtClient` for fast prototyping.
@@ -144,10 +145,10 @@ class Client : public llvm::RTTIExtends<Client, llvm::RTTIRoot> {
 
   // TODO(hyeontaek): Consider removing this API. This API is potentially not
   // being used by JAX or will be replaced with explicit device assignment.
-  virtual StatusOr<DeviceAssignment> GetDefaultDeviceAssignment(
+  virtual absl::StatusOr<DeviceAssignment> GetDefaultDeviceAssignment(
       int num_replicas, int num_partitions) const = 0;
-  virtual StatusOr<Device*> LookupDevice(int device_id) const = 0;
-  virtual StatusOr<Device*> LookupAddressableDevice(
+  virtual absl::StatusOr<Device*> LookupDevice(int device_id) const = 0;
+  virtual absl::StatusOr<Device*> LookupAddressableDevice(
       int local_hardware_id) const = 0;
 
   // TODO(hyeontaek): Potentially remove this method to encourage supporting
@@ -155,7 +156,7 @@ class Client : public llvm::RTTIExtends<Client, llvm::RTTIRoot> {
   virtual Compiler* GetDefaultCompiler() = 0;
 
   // Returns a topology description for that covers the provided devices.
-  virtual StatusOr<std::shared_ptr<const xla::PjRtTopologyDescription>>
+  virtual absl::StatusOr<std::shared_ptr<const xla::PjRtTopologyDescription>>
   GetTopologyForDevices(absl::Span<Device* const> devices) const = 0;
 
   static char ID;  // NOLINT
