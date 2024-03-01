@@ -65,8 +65,8 @@ template <typename CppType>
   }
 }
 
-StatusOr<AffineMap> GetPermutationIfAvailable(const Shape& shape,
-                                              mlir::Builder builder) {
+absl::StatusOr<AffineMap> GetPermutationIfAvailable(const Shape& shape,
+                                                    mlir::Builder builder) {
   // N.B. IsMonotonicWithDim0Major ignores tiling, and I can't change it because
   // some XLA code relies on it treating tiled layouts as equivalent to untiled
   // layouts, so the check to rule out tiling has to come /before/ the
@@ -95,7 +95,7 @@ StatusOr<AffineMap> GetPermutationIfAvailable(const Shape& shape,
 }
 }  // namespace
 
-StatusOr<mlir::MemRefType> ConvertTensorShapeToMemRefType(
+absl::StatusOr<mlir::MemRefType> ConvertTensorShapeToMemRefType(
     const Shape& shape, mlir::Builder builder) {
   auto element_type_or =
       ConvertPrimitiveTypeToMLIRType(shape.element_type(), builder);
@@ -110,7 +110,7 @@ StatusOr<mlir::MemRefType> ConvertTensorShapeToMemRefType(
                          permutation_or.value());
 }
 
-StatusOr<mlir::DenseElementsAttr> CreateDenseElementsAttrFromLiteral(
+absl::StatusOr<mlir::DenseElementsAttr> CreateDenseElementsAttrFromLiteral(
     const LiteralBase& literal, Builder builder) {
   TF_ASSIGN_OR_RETURN(auto type,
                       ConvertTensorShapeToType<mlir::RankedTensorType>(
@@ -119,7 +119,8 @@ StatusOr<mlir::DenseElementsAttr> CreateDenseElementsAttrFromLiteral(
   // TODO(hinsu): Support remaining XLA primitive types.
   auto element_type = literal.shape().element_type();
   return primitive_util::PrimitiveTypeSwitch<StatusOr<mlir::DenseElementsAttr>>(
-      [&](auto primitive_type_constant) -> StatusOr<mlir::DenseElementsAttr> {
+      [&](auto primitive_type_constant)
+          -> absl::StatusOr<mlir::DenseElementsAttr> {
         if constexpr (primitive_util::IsArrayType(primitive_type_constant)) {
           return CreateDenseAttrFromLiteral<
               primitive_util::NativeTypeOf<primitive_type_constant>>(type,
@@ -131,7 +132,7 @@ StatusOr<mlir::DenseElementsAttr> CreateDenseElementsAttrFromLiteral(
       element_type);
 }
 
-StatusOr<int> GetElementTypeBytes(mlir::Type type) {
+absl::StatusOr<int> GetElementTypeBytes(mlir::Type type) {
   if (type.isInteger(1)) {
     return 1;
   }
@@ -154,8 +155,8 @@ mlir::DenseIntElementsAttr CreateDenseIntElementsAttrFromVector(
       vector);
 }
 
-StatusOr<mlir::Type> ConvertPrimitiveTypeToMLIRType(PrimitiveType element_type,
-                                                    mlir::Builder builder) {
+absl::StatusOr<mlir::Type> ConvertPrimitiveTypeToMLIRType(
+    PrimitiveType element_type, mlir::Builder builder) {
   switch (element_type) {
     case PrimitiveType::PRED:
       return builder.getI1Type();
@@ -210,7 +211,7 @@ mlir::mhlo::GatherDimensionNumbersAttr CreateGatherDimensionNumbers(
       get_i64_array(input.start_index_map()), input.index_vector_dim());
 }
 
-StatusOr<::xla::HloOpcode> MhloToHloOpcode(mlir::Operation* op) {
+absl::StatusOr<::xla::HloOpcode> MhloToHloOpcode(mlir::Operation* op) {
   using mlir::isa;
 
   if (isa<mlir::mhlo::ConstantOp, mlir::lmhlo::ConstantOp>(op)) {

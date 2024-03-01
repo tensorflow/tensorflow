@@ -150,7 +150,7 @@ mlir::TypeRange Untuple(const mlir::Type& type) {
 }
 
 template <typename sync_op>
-StatusOr<mlir::Operation*> HloFunctionImporter::ImportOldStyleAsyncStart(
+absl::StatusOr<mlir::Operation*> HloFunctionImporter::ImportOldStyleAsyncStart(
     llvm::SmallVectorImpl<mlir::NamedAttribute>& attributes,
     const llvm::SmallVectorImpl<mlir::Value>& operands, mlir::Location loc,
     mlir::Type result_type, mlir::OpBuilder* func_builder,
@@ -217,7 +217,7 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportOldStyleAsyncStart(
       .getOperation();
 }
 
-StatusOr<mlir::Operation*> HloFunctionImporter::ImportOldStyleAsyncDone(
+absl::StatusOr<mlir::Operation*> HloFunctionImporter::ImportOldStyleAsyncDone(
     llvm::SmallVectorImpl<NamedAttribute>& attributes,
     const llvm::SmallVectorImpl<mlir::Value>& operands, mlir::Location loc,
     mlir::Type result_type, mlir::OpBuilder* func_builder) {
@@ -391,7 +391,7 @@ Value HloFunctionImporter::CreateTupleValue(
       .getResult();
 }
 
-StatusOr<mlir::func::FuncOp> HloFunctionImporter::ImportAsFunc(
+absl::StatusOr<mlir::func::FuncOp> HloFunctionImporter::ImportAsFunc(
     const HloComputation& computation, mlir::SymbolTable& symbol_table,
     std::unordered_map<const HloComputation*, FuncOp>* function_map,
     mlir::Builder* builder, bool is_main) {
@@ -408,7 +408,7 @@ Status HloFunctionImporter::ImportAsRegion(const HloComputation& computation,
   return importer.ImportAsRegion(computation, region, flatten_region_arg_tuple);
 }
 
-StatusOr<FuncOp> HloFunctionImporter::ImportAsFunc(
+absl::StatusOr<FuncOp> HloFunctionImporter::ImportAsFunc(
     const HloComputation& computation, bool is_main) {
   std::string computation_name =
       is_main ? "main" : SanitizeFunctionName(computation.name());
@@ -545,7 +545,7 @@ Status HloFunctionImporter::ImportAsRegion(const HloComputation& computation,
   return ImportInstructions(computation, block, flatten_region_arg_tuple);
 }
 
-StatusOr<Value> HloFunctionImporter::ImportInstructionsImpl(
+absl::StatusOr<Value> HloFunctionImporter::ImportInstructionsImpl(
     const HloComputation& computation,
     const llvm::SmallVectorImpl<Value>& arguments, mlir::OpBuilder* builder) {
   // Setup the input parameters.
@@ -649,7 +649,7 @@ Status HloFunctionImporter::ImportInstructions(
   return absl::OkStatus();
 }
 
-StatusOr<Value> HloFunctionImporter::ImportInstructions(
+absl::StatusOr<Value> HloFunctionImporter::ImportInstructions(
     const HloComputation& computation,
     const llvm::SmallVectorImpl<Value>& arguments,
     mlir::SymbolTable& symbol_table, mlir::OpBuilder* builder) {
@@ -662,7 +662,7 @@ StatusOr<Value> HloFunctionImporter::ImportInstructions(
   return importer.ImportInstructionsImpl(computation, arguments, builder);
 }
 
-StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstruction(
+absl::StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstruction(
     const HloInstruction* instr,
     const llvm::SmallVectorImpl<mlir::Value>& operands,
     mlir::SymbolTable& symbol_table, mlir::OpBuilder* builder,
@@ -676,7 +676,7 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstruction(
   return importer.ImportInstructionWithLayout(instr, operands, builder, mode);
 }
 
-StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
+absl::StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
     const HloInstruction* instruction,
     const llvm::SmallVectorImpl<mlir::Value>& operands,
     mlir::OpBuilder* func_builder, DynamicShapeHandlingMode mode) {
@@ -2077,7 +2077,8 @@ void SetXlaShape(mlir::Operation* op, const Shape& shape) {
                   .getStringAttr(shape.ToString(/*print_layout=*/true)));
 }
 
-StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionWithLayout(
+absl::StatusOr<mlir::Operation*>
+HloFunctionImporter::ImportInstructionWithLayout(
     const HloInstruction* instruction,
     const llvm::SmallVectorImpl<mlir::Value>& operands,
     mlir::OpBuilder* func_builder, DynamicShapeHandlingMode mode) {
@@ -2101,8 +2102,8 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionWithLayout(
   return op;
 }
 
-StatusOr<llvm::SmallVector<mlir::Value, 4>> HloFunctionImporter::GetOperands(
-    const HloInstruction* instruction) {
+absl::StatusOr<llvm::SmallVector<mlir::Value, 4>>
+HloFunctionImporter::GetOperands(const HloInstruction* instruction) {
   llvm::SmallVector<mlir::Value, 4> operands;
   for (const auto& operand : instruction->operands()) {
     auto input_it = instruction_value_map_.find(operand);
@@ -2126,7 +2127,7 @@ Status HloFunctionImporter::GetMlirTypes(
   return absl::OkStatus();
 }
 
-StatusOr<Value> HloFunctionImporter::GetMlirValue(
+absl::StatusOr<Value> HloFunctionImporter::GetMlirValue(
     const HloInstruction* instruction) {
   auto lookup = instruction_value_map_.find(instruction);
   if (lookup != instruction_value_map_.end()) {

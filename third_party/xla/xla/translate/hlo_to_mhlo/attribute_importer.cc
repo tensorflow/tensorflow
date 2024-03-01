@@ -127,7 +127,7 @@ mlir::ArrayAttr ConvertOutputOperandAliasing(
   return builder->getArrayAttr(attrs);
 }
 
-StatusOr<mlir::mhlo::FftType> ConvertFftType(FftType type) {
+absl::StatusOr<mlir::mhlo::FftType> ConvertFftType(FftType type) {
   switch (type) {
     case FftType::FFT:
       return mlir::mhlo::FftType::FFT;
@@ -142,7 +142,7 @@ StatusOr<mlir::mhlo::FftType> ConvertFftType(FftType type) {
   }
 }
 
-StatusOr<mlir::mhlo::Transpose> ConvertTranspose(
+absl::StatusOr<mlir::mhlo::Transpose> ConvertTranspose(
     xla::TriangularSolveOptions_Transpose transpose) {
   switch (transpose) {
     case TriangularSolveOptions::NO_TRANSPOSE:
@@ -158,7 +158,7 @@ StatusOr<mlir::mhlo::Transpose> ConvertTranspose(
   }
 }
 
-StatusOr<mlir::mhlo::CustomCallApiVersion> ConvertCustomCallApiVersion(
+absl::StatusOr<mlir::mhlo::CustomCallApiVersion> ConvertCustomCallApiVersion(
     xla::CustomCallApiVersion api_version) {
   switch (api_version) {
     case xla::CustomCallApiVersion::API_VERSION_UNSPECIFIED:
@@ -179,7 +179,7 @@ StatusOr<mlir::mhlo::CustomCallApiVersion> ConvertCustomCallApiVersion(
   }
 }
 
-StatusOr<mlir::ArrayAttr> ExtractLayoutsFromShapes(
+absl::StatusOr<mlir::ArrayAttr> ExtractLayoutsFromShapes(
     const absl::Span<const Shape> shapes_with_layouts, mlir::Builder* builder) {
   std::vector<mlir::Attribute> layouts;
   for (auto& shape_and_layout : shapes_with_layouts) {
@@ -216,8 +216,8 @@ StatusOr<mlir::ArrayAttr> ExtractLayoutsFromShapes(
   return builder->getArrayAttr(layouts);
 }
 
-StatusOr<mlir::ArrayAttr> ExtractLayoutsFromTuple(const Shape shape,
-                                                  mlir::Builder* builder) {
+absl::StatusOr<mlir::ArrayAttr> ExtractLayoutsFromTuple(
+    const Shape shape, mlir::Builder* builder) {
   if (!shape.IsTuple()) return InvalidArgument("Expected shape to be Tuple");
   return ExtractLayoutsFromShapes(shape.tuple_shapes(), builder);
 }
