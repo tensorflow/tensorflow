@@ -264,6 +264,26 @@ def LHLOGPU_AllReduceDoneOp: LHLOGPU_Op<"all_reduce_done"> {
   let arguments = (ins MHLO_Token:$token);
 }
 
+def LHLOGPU_CollectiveBroadcastStartOp :
+  LHLOGPU_AsyncCollectiveCommunicationOp<"collective_broadcast_start"> {
+  let summary = "CollectiveBroadcastStart operator";
+  let arguments = (ins
+    Arg<Variadic<LHLO_Buffer>, "", [MemRead]>:$inputs,
+    Arg<Variadic<LHLO_Buffer>, "", [MemWrite]>:$outputs,
+    I64ElementsAttr:$replica_groups,
+    DefaultValuedOptionalAttr<BoolAttr, "false">:$constrain_layout,
+    OptionalAttr<MHLO_ChannelHandle>:$channel_id,
+    DefaultValuedOptionalAttr<BoolAttr, "false">:$use_global_device_ids,
+    BoolAttr:$is_sync,
+    BoolAttr:$no_parallel_custom_call
+  );
+}
+
+def LHLOGPU_CollectiveBroadcastDoneOp: LHLOGPU_Op<"collective_broadcast_done"> {
+  let summary = "CollectiveBroadcastDone operator";
+  let arguments = (ins MHLO_Token:$token);
+}
+
 def LHLOGPU_CollectivePermuteStartOp :
   LHLOGPU_AsyncCollectiveCommunicationOpBase<"collective_permute_start"> {
   let summary = "CollectivePermuteStart operator";

@@ -587,6 +587,20 @@ func.func @callee(%arg0: tensor<4xi32>, %arg1: tensor<4xi32>) -> (tensor<4xi32>,
 
 // CHECK:  HloModule
 func.func @main(%arg0: tensor<128x32xf32>) -> tensor<128x32xf32> {
+  %0 = "mhlo.collective_broadcast"(%arg0) {
+    replica_groups = dense<[[0, 1], [2, 3]]> : tensor<2x2xi64>,
+    channel_handle = #mhlo.channel_handle<handle = 1, type = 0>
+  } : (tensor<128x32xf32>) -> tensor<128x32xf32>
+  func.return %0 : tensor<128x32xf32>
+}
+// CHECK:  ENTRY
+// CHECK:  [[ARG:%.*]] = f32[128,32] parameter(0)
+// CHECK:  ROOT [[RESULT:%.*]] = f32[128,32] collective-broadcast(f32[128,32] [[ARG]]), channel_id=1
+// CHECK-SAME{LITERAL}:  replica_groups={{0,1},{2,3}}
+// -----
+
+// CHECK:  HloModule
+func.func @main(%arg0: tensor<128x32xf32>) -> tensor<128x32xf32> {
   %0 = "mhlo.collective_permute"(%arg0) {
     source_target_pairs = dense<[[0, 1], [1, 2], [2, 3]]> : tensor<3x2xi64>,
     channel_handle = #mhlo.channel_handle<handle = 1, type = 0>

@@ -834,10 +834,16 @@ bool SimplyReturnedOp(mlir::Operation* op) {
 namespace mlir {
 namespace mhlo {
 namespace {
+LogicalResult ExportXlaOp(CollectiveBroadcastOp op, OpLoweringContext ctx) {
+  auto& value_map = *ctx.values;
+  xla::XlaOp operand;
+  if (failed(GetXlaOp(op.getOperand(), value_map, &operand, op)))
+    return failure();
+  value_map[op->getResult(0)] = xla::CollectiveBroadcast(
+      operand, Convert_replica_groups(op.getReplicaGroups()),
+      Convert_channel_handle(op.getChannelHandle()));
 
-LogicalResult ExportXlaOp(CollectiveBroadcastOp, OpLoweringContext) {
-  // TODO: b/314330871 - Implement MHLO export for CollectiveBroadcastOp.
-  return failure();
+  return success();
 }
 
 LogicalResult ExportXlaOp(ComputeReshapeShapeOp, OpLoweringContext) {

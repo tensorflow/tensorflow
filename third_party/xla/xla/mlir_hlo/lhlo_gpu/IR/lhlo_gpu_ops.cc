@@ -124,6 +124,18 @@ mlir::LogicalResult AllToAllStartOp::verify() {
 }
 
 //===----------------------------------------------------------------------===//
+// CollectiveBroadcastStartOp
+//===----------------------------------------------------------------------===//
+
+mlir::LogicalResult CollectiveBroadcastStartOp::verify() {
+  CollectiveBroadcastStartOp op = *this;
+  return mlir::hlo::verifyReplicaGroups(op.getLoc(), op.getReplicaGroups(),
+                                        /*allGroupsMustHaveSameSize=*/false,
+                                        /*useGlobalDeviceIds=*/true,
+                                        /*expectedGroupSize=*/std::nullopt);
+}
+
+//===----------------------------------------------------------------------===//
 // CollectivePermuteStartOp
 //===----------------------------------------------------------------------===//
 
