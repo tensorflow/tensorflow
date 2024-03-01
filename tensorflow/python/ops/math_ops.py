@@ -4858,7 +4858,7 @@ def sparse_segment_sum(
         name=name,
     )
 
-@tf_export("sparse.sampled_addmm")
+@tf_export("sparse.sampled_addmm", v1=[])
 def sampled_addmm(indices,
       values,
       dense_shape,
