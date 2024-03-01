@@ -422,7 +422,8 @@ llvm::AllocaInst* EmitAllocaAtFunctionEntryWithCount(llvm::Type* type,
                     function->getEntryBlock().getFirstInsertionPt());
   llvm::Module* module = b->GetInsertBlock()->getModule();
   // Explicitly set local addrspace for SPIR backend.
-  int addrspace = llvm::Triple(module->getTargetTriple()).isSPIR() ? 5 : 0;
+  llvm::Triple target(module->getTargetTriple());
+  int addrspace = target.isSPIR() || target.isAMDGPU() ? 5 : 0;
   llvm::AllocaInst* alloca =
       b->CreateAlloca(type, addrspace, element_count, AsStringRef(name));
   if (alignment != 0) {
