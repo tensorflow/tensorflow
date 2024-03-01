@@ -252,9 +252,8 @@ absl::StatusOr<SmallVector<Value>> EmitReduce(
     accumulators = {loop.getRegionIterArgs().begin(),
                     loop.getRegionIterArgs().end()};
   }
-  SmallVector<Value> args;
+  SmallVector<Value> args = accumulators;
   for (int i = 0; i < instr->operand_count() / 2; ++i) {
-    args.push_back(accumulators[i]);
     TF_ASSIGN_OR_RETURN(
         args.emplace_back(),
         GetSingleOperandValue(operand_provider, instr, i, reduction_indices));

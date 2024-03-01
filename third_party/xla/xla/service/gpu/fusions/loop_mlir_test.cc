@@ -323,39 +323,36 @@ TEST_F(MlirLoopFusionTest, VariadicReduce) {
 
     Add {
       scalar_lhs.0 = f32[] parameter(0)
-      scalar_rhs.0 = f32[] parameter(1)
-      scalar_lhs.1 = f32[] parameter(2)
+      scalar_lhs.1 = f32[] parameter(1)
+      scalar_rhs.0 = f32[] parameter(2)
       scalar_rhs.1 = f32[] parameter(3)
-      add.0 = f32[] add(scalar_lhs.0, scalar_lhs.1)
-      add.1 = f32[] add(scalar_rhs.0, scalar_rhs.1)
-      ROOT t = (f32[], f32[]) tuple(add.0, add.1)
+      add = f32[] add(scalar_lhs.0, scalar_rhs.0)
+      mul = f32[] multiply(scalar_lhs.1, scalar_rhs.1)
+      ROOT t = (f32[], f32[]) tuple(add, mul)
     }
     fused_computation {
-      param_0 = f32[5,200,300]{2,1,0} parameter(0)
-      param_1 = f32[5,200,300]{2,1,0} parameter(1)
+      param_0 = f32[3,4,5]{2,1,0} parameter(0)
+      param_1 = f32[3,4,5]{2,1,0} parameter(1)
       param_2 = f32[] parameter(2)
-      ROOT d.1 = (f32[200], f32[200]) reduce(f32[5,200,300]{2,1,0} param_0,
-          f32[5,200,300]{2,1,0} %param_1, f32[] param_2, f32[] param_2),
+      ROOT d.1 = (f32[4], f32[4]) reduce(f32[3,4,5]{2,1,0} param_0,
+          f32[3,4,5]{2,1,0} %param_1, f32[] param_2, f32[] param_2),
           dimensions={0,2}, to_apply=Add
     }
     ENTRY main {
-      a = f32[5, 200, 300]{2,1,0} parameter(0)
-      b = f32[5, 200, 300]{2,1,0} parameter(1)
+      a = f32[3,4,5]{2,1,0} parameter(0)
+      b = f32[3,4,5]{2,1,0} parameter(1)
       c = f32[] constant(0)
-      ROOT fusion = (f32[200]{0}, f32[200]{0}) fusion(f32[5,200,300]{2,1,0} a,
-        f32[5,200,300]{2,1,0} b, f32[] c), kind=kLoop, calls=fused_computation
+      ROOT fusion = (f32[4]{0}, f32[4]{0}) fusion(a, b, c),
+        kind=kLoop, calls=fused_computation
     }
   )";
   TF_ASSERT_OK(EmitAndCheckIR(kHloString, R"(
-    // CHECK: #[[MAP:.*]] = affine_map<()[s0, s1] -> ((s0 + s1 * 128) mod 200)>
     // CHECK: func @fused_computation(
     // CHECK:   %[[TID_X:.*]] = gpu.thread_id x
-    // CHECK:   %[[BID_X:.*]] = gpu.block_id x
-    // CHECK:   %[[IDX:.*]] = affine.apply #[[MAP]]()[%[[TID_X]], %[[BID_X]]]
     // CHECK:   %[[SCALARS_0:.*]], %[[SCALARS_1:.*]] = xla_gpu.pure_call @fused_computation_d_1
-    // CHECK:   %[[INSERTED_1:.*]] = tensor.insert %[[SCALARS_0]] into %{{.*}}[%[[IDX]]]
-    // CHECK:   %[[INSERTED_2:.*]] = tensor.insert %[[SCALARS_1]] into %{{.*}}[%[[IDX]]]
-    // CHECK:   yield %[[INSERTED_1]], %[[INSERTED_2]]
+    // CHECK:   %[[INSERTED_1:.*]] = tensor.insert %[[SCALARS_0]] into %{{.*}}[%[[TID_X]]]
+    // CHECK:   %[[INSERTED_2:.*]] = tensor.insert %[[SCALARS_1]] into %{{.*}}[%[[TID_X]]]
+    // CHECK:   return %[[INSERTED_1]], %[[INSERTED_2]]
 
     // CHECK: func private @fused_computation_d_1
     // CHECK:   %[[RET:.*]]:2 = func.call @Add_t
