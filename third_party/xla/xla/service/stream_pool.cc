@@ -49,11 +49,9 @@ StreamPool::Ptr StreamPool::BorrowStream(se::StreamExecutor* executor,
 
   if (!stream) {
     // Create a new stream.
-    stream = std::make_unique<se::Stream>(executor);
-    stream->SetPriority(priority);
+    stream = executor->CreateStream(priority).value();
     VLOG(1) << "Set stream priority to: "
             << se::StreamPriorityToString(priority);
-    stream->Init();
     VLOG(1) << stream->DebugStreamPointers()
             << " StreamPool created new stream";
   }

@@ -32,6 +32,7 @@ limitations under the License.
 #include "xla/shape_util.h"
 #include "tsl/platform/blocking_counter.h"
 #include "tsl/platform/logging.h"
+#include "tsl/platform/statusor.h"
 
 namespace xla {
 
@@ -348,17 +349,17 @@ absl::StatusOr<ExecutionOutput> HloRunner::ExecuteWithExecutionInputs(
                                     device_shape_representation_fn_);
 
   // Get service run options.
-  se::Stream stream(backend().default_stream_executor());
-  stream.Init();
+  TF_ASSIGN_OR_RETURN(auto stream,
+                      backend().default_stream_executor()->CreateStream());
   ServiceExecutableRunOptions service_run_options =
-      GetServiceRunOptionsForDevice(backend().default_device_ordinal(), &stream,
-                                    nullptr, RunId());
+      GetServiceRunOptionsForDevice(backend().default_device_ordinal(),
+                                    stream.get(), nullptr, RunId());
   service_run_options.mutable_run_options()->set_execution_profile(profile);
 
   TF_ASSIGN_OR_RETURN(ExecutionOutput retval,
                       executable->ExecuteOnStreamWrapper(&service_run_options,
                                                          std::move(arguments)));
-  TF_RETURN_IF_ERROR(stream.BlockHostUntilDone());
+  TF_RETURN_IF_ERROR(stream->BlockHostUntilDone());
   return std::move(retval);
 }
 
@@ -409,8 +410,8 @@ absl::StatusOr<std::vector<Literal>> HloRunner::ExecuteReplicatedImpl(
         (*device_assignment)(i / num_partitions, i % num_partitions);
     TF_ASSIGN_OR_RETURN(se::StreamExecutor * executor,
                         backend().stream_executor(device));
-    streams.push_back(std::make_unique<se::Stream>(executor));
-    streams.back()->Init();
+    TF_ASSIGN_OR_RETURN(auto stream, executor->CreateStream());
+    streams.emplace_back(std::move(stream));
     service_run_options.emplace_back(GetServiceRunOptionsForDevice(
         device, streams.back().get(), device_assignment, run_id));
 

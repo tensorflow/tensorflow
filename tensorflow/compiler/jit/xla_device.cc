@@ -349,9 +349,9 @@ XlaDevice::GetDeviceContextLocked() {
     } else {
       // Directly create the stream here instead of borrowing from the stream
       // pool to avoid potential lifetime issues.
-      stream_ = std::make_unique<se::Stream>(
-          backend->stream_executors()[device_ordinal_]);
-      stream_->Init();
+      TF_ASSIGN_OR_RETURN(
+          stream_,
+          backend->stream_executors()[device_ordinal_]->CreateStream());
       TF_RETURN_IF_ERROR(EnsureStreamOkLocked(backend, "stream", &stream_,
                                               &need_new_device_context));
       (*global_compute_streams_)[device_ordinal_] = stream_;
