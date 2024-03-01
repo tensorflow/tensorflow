@@ -43,6 +43,7 @@ limitations under the License.
 #include "xla/service/gpu/fusions/reduction.h"
 #include "xla/service/gpu/fusions/reduction_mlir.h"
 #include "xla/service/gpu/fusions/scatter.h"
+#include "xla/service/gpu/fusions/scatter_mlir.h"
 #include "xla/service/gpu/fusions/transpose.h"
 #include "xla/service/gpu/fusions/transpose_mlir.h"
 #include "xla/service/gpu/fusions/triton.h"
@@ -179,8 +180,12 @@ absl::StatusOr<std::unique_ptr<FusionInterface>> GetFusionEmitter(
         return std::make_unique<MlirReductionFusion>(analysis);
       }
       return std::make_unique<ReductionFusion>(analysis);
-    case HloFusionAnalysis::EmitterFusionKind::kScatter:
+    case HloFusionAnalysis::EmitterFusionKind::kScatter: {
+      if (enable_mlir_emitters && MlirScatterFusion::IsSupported(analysis)) {
+        return std::make_unique<MlirScatterFusion>(analysis);
+      }
       return std::make_unique<ScatterFusion>(analysis);
+    }
     case HloFusionAnalysis::EmitterFusionKind::kTranspose: {
       if (enable_mlir_emitters && MlirTransposeFusion::IsSupported(analysis)) {
         return std::make_unique<MlirTransposeFusion>(analysis);

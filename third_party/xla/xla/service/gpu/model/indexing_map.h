@@ -125,6 +125,9 @@ class RangeEvaluator {
   llvm::DenseMap<mlir::AffineExpr, Range> expression_ranges_cache_;
 };
 
+std::vector<Range> RangesFromTensorSizes(
+    absl::Span<const int64_t> tensor_sizes);
+
 // Contains an affine map with N dimension expressions and M symbols:
 //   (d0, ..., d_{N - 1})[s_0, ..., s_{M - 1}] -> f(d_i, s_j)
 // Dimensions d_i correspond to the iteration space of the output tensor. Some
