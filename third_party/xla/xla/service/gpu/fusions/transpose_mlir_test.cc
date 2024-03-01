@@ -320,6 +320,31 @@ TEST_F(MlirTransposeFusionTest, Transpose_2D) {
   EXPECT_TRUE(RunAndCompareNoHloPasses(kHloString, ErrorSpec{1e-3}));
 }
 
+TEST_F(MlirTransposeFusionTest, Transpose_2D_2) {
+  auto kHloString = R"(
+    HloModule m
+
+    %fused_computation {
+      %p0 = f32[17,2820]{0,1} parameter(0)
+      %p1 = f32[30,17,94] parameter(1)
+
+      %bitcast0 = f32[2,3,5,17,94] bitcast(f32[30,17,94] %p1)
+      %transpose = f32[2,3,5,94,17] transpose(f32[2,3,5,17,94] %bitcast0), dimensions={0,1,2,4,3}
+      %bitcast1 = f32[2820,17]{1,0} bitcast(f32[2,3,5,94,17] %transpose)
+      %bitcast2 = f32[2820,17]{1,0} bitcast(f32[17,2820]{0,1} %p0)
+      %neg = f32[2820,17]{1,0} negate(f32[2820,17] %bitcast2)
+      ROOT %add = f32[2820,17]{1,0} add(f32[2820,17] %bitcast1, f32[2820,17]{1,0} %neg)
+    }
+
+    ENTRY main {
+      %p1 = f32[30,17,94]{2,1,0} parameter(1)
+      %p0 = f32[17,2820]{0,1} parameter(0)
+      ROOT %fusion = f32[2820,17]{1,0} fusion(%p0, %p1), kind=kInput, calls=%fused_computation
+    }
+  )";
+  EXPECT_TRUE(RunAndCompareNoHloPasses(kHloString, ErrorSpec{1e-3}));
+}
+
 }  // namespace
 }  // namespace gpu
 }  // namespace xla
