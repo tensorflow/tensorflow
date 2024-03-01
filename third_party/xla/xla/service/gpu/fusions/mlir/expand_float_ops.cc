@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 #include <memory>
+#include <type_traits>
 #include <utility>
 
 #include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
@@ -174,6 +175,37 @@ struct RewriteTruncF64ToBF16
   }
 };
 
+template <typename OpTy, mlir::arith::CmpFPredicate pred,
+          typename =
+              std::enable_if_t<std::is_same_v<OpTy, mlir::arith::MaximumFOp> ||
+                               std::is_same_v<OpTy, mlir::arith::MinimumFOp>>>
+struct RewriteToCmpSelect : public mlir::OpRewritePattern<OpTy> {
+  using mlir::OpRewritePattern<OpTy>::OpRewritePattern;
+
+  mlir::LogicalResult matchAndRewrite(
+      OpTy op, mlir::PatternRewriter& rewriter) const override {
+    auto lhs_is_nan = rewriter.create<mlir::arith::CmpFOp>(
+        op.getLoc(), mlir::arith::CmpFPredicate::UNE, op.getLhs(), op.getLhs());
+    auto rhs_is_not_nan = rewriter.create<mlir::arith::CmpFOp>(
+        op.getLoc(), mlir::arith::CmpFPredicate::OEQ, op.getRhs(), op.getRhs());
+
+    auto return_lhs = rewriter
+                          .create<mlir::arith::CmpFOp>(op.getLoc(), pred,
+                                                       op.getLhs(), op.getRhs())
+                          .getResult();
+
+    // logic: isNaN(lhs) || (!isNan(rhs) && return_lhs) ? lhs : rhs
+    return_lhs = rewriter.create<mlir::arith::OrIOp>(
+        op.getLoc(), lhs_is_nan,
+        rewriter.create<mlir::arith::AndIOp>(op.getLoc(), rhs_is_not_nan,
+                                             return_lhs));
+
+    rewriter.replaceOpWithNewOp<mlir::arith::SelectOp>(
+        op, op.getResult().getType(), return_lhs, op.getLhs(), op.getRhs());
+    return mlir::success();
+  }
+};
+
 class ExpandFloatOpsPass
     : public impl::ExpandFloatOpsPassBase<ExpandFloatOpsPass> {
  public:
@@ -186,8 +218,14 @@ class ExpandFloatOpsPass
     patterns.add<RewriteIntToBF16<mlir::arith::UIToFPOp>>(&getContext());
     patterns.add<RewriteBF16ToInt<mlir::arith::FPToSIOp>>(&getContext());
     patterns.add<RewriteBF16ToInt<mlir::arith::FPToUIOp>>(&getContext());
-    if (include_bf16_) {
+    if (pre_ampere_) {
       patterns.add<RewriteTruncF32ToBF16>(&getContext());
+      patterns.add<RewriteToCmpSelect<mlir::arith::MinimumFOp,
+                                      mlir::arith::CmpFPredicate::OLE>>(
+          &getContext());
+      patterns.add<RewriteToCmpSelect<mlir::arith::MaximumFOp,
+                                      mlir::arith::CmpFPredicate::OGE>>(
+          &getContext());
     }
     patterns.add<RewriteTruncF64ToBF16>(&getContext());
     mlir::populatePolynomialApproximateTanhPattern(patterns);
@@ -201,8 +239,8 @@ class ExpandFloatOpsPass
 
 }  // namespace
 
-std::unique_ptr<mlir::Pass> CreateExpandFloatOpsPass(bool enable_bf16) {
-  return createExpandFloatOpsPass(ExpandFloatOpsPassOptions{enable_bf16});
+std::unique_ptr<mlir::Pass> CreateExpandFloatOpsPass(bool pre_ampere) {
+  return createExpandFloatOpsPass(ExpandFloatOpsPassOptions{pre_ampere});
 }
 
 }  // namespace gpu

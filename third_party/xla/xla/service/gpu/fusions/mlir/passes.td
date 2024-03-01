@@ -118,22 +118,22 @@ def SimplifyAffinePass : Pass<"xla-gpu-simplify-affine", "mlir::ModuleOp"> {
 }
 
 def ExpandFloatOpsPass : Pass<"xla-gpu-expand-float-ops", "mlir::ModuleOp"> {
-   let summary = "Expands float ops that are not natively supported.";
+  let summary = "Expands float ops that are not natively supported.";
 
-   let description = [{
-      Not all float ops are natively supported, either because they don't exist
-      in hardware or they are too inaccurate.
+  let description = [{
+     Not all float ops are natively supported, either because they don't exist
+     in hardware or they are too inaccurate.
 
-      This pass replaces these ops with alternative implementations.
-   }];
+     This pass replaces these ops with alternative implementations.
+  }];
 
-   let dependentDialects = [
-      "mlir::arith::ArithDialect", "mlir::mhlo::MhloDialect"
-   ];
+  let dependentDialects = [
+    "mlir::arith::ArithDialect", "mlir::mhlo::MhloDialect"
+  ];
 
   let options = [
-    Option<"include_bf16_", "include-bf16", "bool", /*default=*/"false",
-           "Enable the BF16 <-> F32 expansion patterns.">,
+    Option<"pre_ampere_", "pre-ampere", "bool", /*default=*/"false",
+           "Rewrite ops that are not supported on architectures before Ampere">,
   ];
 }
 

@@ -364,6 +364,33 @@ TEST_F(MlirLoopFusionTest, VariadicReduce) {
   EXPECT_TRUE(RunAndCompareNoHloPasses(kHloString, ErrorSpec{1e-3}));
 }
 
+TEST_F(MlirLoopFusionTest, MinimumMaximum) {
+  auto kHloString = R"(
+    HloModule Test
+
+    fused_computation {
+      param0 = f64[] parameter(0)
+      param1 = f64[] parameter(1)
+
+      minimum = f64[] minimum(f64[] param0, f64[] param1)
+      maximum = f64[] maximum(f64[] param0, f64[] param1)
+      ROOT tuple = (f64[], f64[]) tuple(minimum, maximum)
+    }
+
+    ENTRY main {
+      param0 = f64[] parameter(0)
+      param1 = f64[] parameter(1)
+      ROOT fusion = (f64[], f64[]) fusion(f64[] param0, f64[] param1), kind=kLoop, calls=fused_computation
+    }
+  )";
+  TF_ASSERT_OK(EmitAndCheckIR(kHloString, R"(
+    // CHECK-LABEL: fused_computation_tuple
+    // CHECK:   arith.minimumf
+    // CHECK:   arith.maximumf
+  )"));
+  EXPECT_TRUE(RunAndCompareNoHloPasses(kHloString, ErrorSpec{1e-3}));
+}
+
 }  // namespace
 }  // namespace gpu
 }  // namespace xla

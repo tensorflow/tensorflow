@@ -34,7 +34,7 @@ namespace gpu {
 // Returns the range of a given value, if it can be statically determined.
 std::optional<Range> GetRange(mlir::Value value);
 
-std::unique_ptr<mlir::Pass> CreateExpandFloatOpsPass(bool enable_bf16);
+std::unique_ptr<mlir::Pass> CreateExpandFloatOpsPass(bool pre_ampere);
 std::unique_ptr<mlir::Pass> CreateLowerFuncPass();
 std::unique_ptr<mlir::Pass> CreateLowerTensorsPass();
 std::unique_ptr<mlir::Pass> CreateLowerToLLVMPass();

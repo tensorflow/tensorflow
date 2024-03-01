@@ -1,5 +1,5 @@
-// RUN: mlir_fusions_opt %s -split-input-file -xla-gpu-expand-float-ops="include-bf16=true" -canonicalize | FileCheck %s -check-prefixes=CHECK,CHECK-BF16
-// RUN: mlir_fusions_opt %s -split-input-file -xla-gpu-expand-float-ops="include-bf16=false" -canonicalize | FileCheck %s -check-prefixes=CHECK,CHECK-NO-BF16
+// RUN: mlir_fusions_opt %s -split-input-file -xla-gpu-expand-float-ops="pre-ampere=true" -canonicalize | FileCheck %s -check-prefixes=CHECK,CHECK-PRE-AMPERE
+// RUN: mlir_fusions_opt %s -split-input-file -xla-gpu-expand-float-ops="pre-ampere=false" -canonicalize | FileCheck %s -check-prefixes=CHECK,CHECK-AMPERE
 
 module {
   func.func @f64_to_bf16(%arg0: f64) -> bf16 {
@@ -10,11 +10,11 @@ module {
 
 // CHECK-LABEL:    f64_to_bf16
 // CHECK-SAME:         (%[[ARG:.*]]: f64)
-// CHECK-BF16:       arith.truncf %[[ARG]] : f64 to f32
-// CHECK-BF16-NOT:   arith.truncf
+// CHECK-PRE-AMPERE:       arith.truncf %[[ARG]] : f64 to f32
+// CHECK-PRE-AMPERE-NOT:   arith.truncf
 
-// CHECK-NO-BF16:    %[[F32:.*]] = arith.truncf %[[ARG]] : f64 to f32
-// CHECK-NO-BF16:    arith.truncf %[[F32]] : f32 to bf16
+// CHECK-AMPERE:    %[[F32:.*]] = arith.truncf %[[ARG]] : f64 to f32
+// CHECK-AMPERE:    arith.truncf %[[F32]] : f32 to bf16
 
 
 module {
@@ -75,3 +75,31 @@ module {
 
 // CHECK-LABEL: @erf
 // CHECK-NOT: erf
+
+// -----
+
+module {
+  func.func @maximumf(%arg0: f32, %arg1: f32) -> f32 {
+    %ret = arith.maximumf %arg0, %arg1 : f32
+    return %ret : f32
+  }
+}
+
+// CHECK-LABEL: @maximumf
+// CHECK-AMPERE: arith.maximumf
+// CHECK-PRE-AMPERE: arith.cmpf
+// CHECK-PRE-AMPERE: arith.select
+
+// -----
+
+module {
+  func.func @minimumf(%arg0: f32, %arg1: f32) -> f32 {
+    %ret = arith.minimumf %arg0, %arg1 : f32
+    return %ret : f32
+  }
+}
+
+// CHECK-LABEL: @minimumf
+// CHECK-AMPERE: arith.minimumf
+// CHECK-PRE-AMPERE: arith.cmpf
+// CHECK-PRE-AMPERE: arith.select
