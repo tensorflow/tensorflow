@@ -71,10 +71,12 @@ class DummyCopyFusionEmitter : public MlirFusionEmitterBase {
   }
 
  protected:
-  absl::Status EmitMlir(mlir::ModuleOp module,
-                        mlir::func::FuncOp entry_function,
-                        const HloFusionInstruction& fusion) const final {
-    mlir::ImplicitLocOpBuilder b(module->getLoc(), entry_function);
+  absl::Status EmitEntryFunction(
+      const mlir_converter::PartitionedComputations& computations,
+      const mlir_converter::CallTargetProvider& call_targets,
+      mlir::func::FuncOp entry_function,
+      const HloFusionInstruction& fusion) const {
+    mlir::ImplicitLocOpBuilder b(entry_function.getLoc(), entry_function);
     b.setInsertionPointToStart(entry_function.addEntryBlock());
     auto thread_id = EmitThreadId(b, 0);
     auto value = b.create<mlir::tensor::ExtractOp>(

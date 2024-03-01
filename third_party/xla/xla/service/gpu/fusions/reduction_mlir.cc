@@ -88,14 +88,10 @@ struct MlirReductionFusion::EmitterState {
   }
 
   const MlirReductionFusion& owner;
-  mlir::ModuleOp module;
   mlir::func::FuncOp entry_function;
   const HloFusionInstruction& fusion;
-  std::unique_ptr<PartitionedComputations> computations;
-  absl::flat_hash_map<const PartitionedComputation::Subgraph*,
-                      mlir::func::FuncOp>
-      subgraph_to_mlir_fn;
-  mlir_converter::CallTargetProvider call_target;
+  const PartitionedComputations& computations;
+  const mlir_converter::CallTargetProvider& call_target;
   mlir::ImplicitLocOpBuilder builder;
 };
 
@@ -118,59 +114,30 @@ bool MlirReductionFusion::IsSupported(const HloFusionAnalysis& analysis) {
          info.IsRaceFree();
 }
 
-absl::Status MlirReductionFusion::EmitMlir(
-    mlir::ModuleOp module, mlir::func::FuncOp entry_function,
+absl::flat_hash_set<const HloInstruction*>
+MlirReductionFusion::GetInstructionsWithCustomCodegen(
     const HloFusionInstruction& fusion) const {
-  // Reduction groups will probably be implemented in a separate pass, since
-  // they share nothing by definition.
-  TF_RET_CHECK(reduction_info().GetGroups().grouped_roots.size() == 1)
-      << "Only one reduction group is supported.";
-
   absl::flat_hash_set<const HloInstruction*> instructions_to_isolate(
       reduction_heroes_.begin(), reduction_heroes_.end());
   if (fusion.IsMultiOutputFusion()) {
     instructions_to_isolate.insert(
         fusion.fused_instructions_computation()->root_instruction());
   }
-  auto pc = std::make_unique<PartitionedComputations>(
-      fusion.fused_instructions_computation(), instructions_to_isolate);
-  auto subgraph_to_mlir_fn = pc->DeclareFunctions(module);
-  // Erase subgraphs for all reductions - these will be code generated with
-  // custom logic.
-  for (auto* root : reduction_heroes_) {
-    subgraph_to_mlir_fn.extract(&pc->FindSubgraph(root)).mapped().erase();
-  }
-  // Erase the subgraph for the tuple op.
-  if (fusion.IsMultiOutputFusion()) {
-    subgraph_to_mlir_fn
-        .extract(&pc->FindSubgraph(
-            fusion.fused_instructions_computation()->root_instruction()))
-        .mapped()
-        .erase();
-  }
+  return instructions_to_isolate;
+}
 
-  auto call_target = pc->CreateCallTargetProvider(subgraph_to_mlir_fn);
-  for (const auto& comp : pc->partitioned_computations()) {
-    for (const auto& subgraph : comp.subgraphs()) {
-      if (subgraph_to_mlir_fn.contains(&subgraph)) {
-        TF_RETURN_IF_ERROR(mlir_converter::SubgraphToMlirFunction(
-            comp, subgraph, subgraph_to_mlir_fn[&subgraph], call_target));
-      }
-    }
-  }
-
-  for (auto* root : reduction_heroes_) {
-    subgraph_to_mlir_fn[&pc->FindSubgraph(root)] = entry_function;
-  }
-
-  EmitterState state{*this,
-                     module,
-                     entry_function,
-                     fusion,
-                     std::move(pc),
-                     subgraph_to_mlir_fn,
-                     std::move(call_target),
-                     {module.getLoc(), entry_function}};
+absl::Status MlirReductionFusion::EmitEntryFunction(
+    const mlir_converter::PartitionedComputations& computations,
+    const mlir_converter::CallTargetProvider& call_targets,
+    mlir::func::FuncOp entry_function,
+    const HloFusionInstruction& fusion) const {
+  // Reduction groups will probably be implemented in a separate pass, since
+  // they share nothing by definition.
+  TF_RET_CHECK(reduction_info().GetGroups().grouped_roots.size() == 1)
+      << "Only one reduction group is supported.";
+  EmitterState state{*this,        entry_function,
+                     fusion,       computations,
+                     call_targets, {entry_function.getLoc(), entry_function}};
   state.builder.setInsertionPointToStart(entry_function.addEntryBlock());
   return EmitReduction(state);
 }
@@ -185,7 +152,7 @@ absl::Status MlirReductionFusion::EmitReduction(EmitterState& state) const {
   int num_warps = tiling.GetThreadsPerBlock()
                       [ReductionDimensions::kRowMinorReducedDimension] /
                   WarpSize();
-  auto ctx = state.module.getContext();
+  auto ctx = state.entry_function.getContext();
   auto input_indexing = ComputeThreadIdToInputIndexing(
       /*root_index=*/0, /*hero_operand_index=*/0, ctx);
   TF_RET_CHECK(input_indexing) << "Indexing is never nullopt";
@@ -250,7 +217,7 @@ absl::Status MlirReductionFusion::EmitReduction(EmitterState& state) const {
   for (auto [index, hero] : llvm::enumerate(reduction_heroes_)) {
     int num_inputs = hero->operand_count() / 2;
     const auto& computation =
-        state.computations->FindPartitionedComputation(hero->parent());
+        state.computations.FindPartitionedComputation(hero->parent());
     auto indexing = ComputeThreadIdToOutputIndexing(index, ctx);
     auto& info = hero_info[hero];
     info.inits =
@@ -264,16 +231,11 @@ absl::Status MlirReductionFusion::EmitReduction(EmitterState& state) const {
     output_offset += num_inputs;
   }
 
-  // TODO(jreiffers): This is common for all new emitters, extract it.
   auto evaluate_epilogue = [&](const HloInstruction* hero, Value output_value) {
-    auto* root = reduction_roots_.at(hero);
-    if (hero == root) return output_value;
     const auto& info = hero_info[hero];
-    auto arguments = state.FusionParams();
-    absl::c_copy(info.output_indices, std::back_inserter(arguments));
-    arguments.push_back(output_value);
-    return builder.create<PureCallOp>(state.call_target(root), arguments)
-        .getResult(0);
+    return EmitEpilogue(reduction_roots_.at(hero), hero, state.call_target,
+                        output_value, info.output_indices, builder)
+        .front();
   };
 
   SmallVector<Value> updated_outputs;
@@ -376,7 +338,7 @@ MlirReductionFusion::EmitterState::EmitPerThreadReducedElements(
     auto operands = FusionParams();
     absl::c_copy(indices, std::back_inserter(operands));
     auto values = ProvideParameterRange(
-        computations->FindPartitionedComputation(hero->parent()), hero, 0,
+        computations.FindPartitionedComputation(hero->parent()), hero, 0,
         hero->operand_count() / 2, indices, call_target, builder);
 
     SmallVector<Value> reduce_args = outputs;

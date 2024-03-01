@@ -19,7 +19,6 @@ limitations under the License.
 #include <optional>
 
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
-#include "mlir/Interfaces/DataLayoutInterfaces.h"  // from @llvm-project
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/service/gpu/fusions/loop.h"
 #include "xla/service/gpu/fusions/mlir/mlir_fusion_emitter.h"
@@ -45,9 +44,11 @@ class MlirLoopFusion : public MlirFusionEmitterBase {
       mlir::MLIRContext* ctx) const override;
 
  protected:
-  absl::Status EmitMlir(mlir::ModuleOp module,
-                        mlir::func::FuncOp entry_function,
-                        const HloFusionInstruction& fusion) const override;
+  absl::Status EmitEntryFunction(
+      const mlir_converter::PartitionedComputations& computations,
+      const mlir_converter::CallTargetProvider& call_targets,
+      mlir::func::FuncOp entry_function,
+      const HloFusionInstruction& fusion) const override;
 
  private:
   const HloFusionAnalysis& analysis_;

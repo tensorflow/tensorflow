@@ -18,8 +18,8 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/status/status.h"
 #include "mlir/Dialect/Bufferization/IR/BufferizableOpInterface.h"  // from @llvm-project
-#include "mlir/Interfaces/DataLayoutInterfaces.h"  // from @llvm-project
 #include "xla/hlo/ir/hlo_instructions.h"
+#include "xla/service/gpu/fusions/mlir/elemental_hlo_to_mlir.h"
 #include "xla/service/gpu/fusions/mlir/mlir_fusion_emitter.h"
 #include "xla/service/gpu/fusions/reduction_base.h"
 
@@ -36,9 +36,14 @@ class MlirReductionFusion : public ReductionFusionBase<MlirFusionEmitterBase> {
   static bool IsSupported(const HloFusionAnalysis& analysis);
 
  protected:
-  absl::Status EmitMlir(mlir::ModuleOp module,
-                        mlir::func::FuncOp entry_function,
-                        const HloFusionInstruction& fusion) const override;
+  absl::Status EmitEntryFunction(
+      const mlir_converter::PartitionedComputations& computations,
+      const mlir_converter::CallTargetProvider& call_targets,
+      mlir::func::FuncOp entry_function,
+      const HloFusionInstruction& fusion) const override;
+
+  absl::flat_hash_set<const HloInstruction*> GetInstructionsWithCustomCodegen(
+      const HloFusionInstruction& fusion) const override;
 
  private:
   struct EmitterState;

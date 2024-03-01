@@ -79,44 +79,21 @@ MlirConcatenateFusion::ComputeThreadIdToInputIndexing(
       GetLargestConcatOperandShape(analysis_), ctx);
 }
 
-absl::Status MlirConcatenateFusion::EmitMlir(
-    mlir::ModuleOp module, mlir::func::FuncOp entry_function,
+absl::flat_hash_set<const HloInstruction*>
+MlirConcatenateFusion::GetInstructionsWithCustomCodegen(
+    const HloFusionInstruction& fusion) const {
+  return {analysis_.fusion_heroes()[0]};
+}
+
+absl::Status MlirConcatenateFusion::EmitEntryFunction(
+    const mlir_converter::PartitionedComputations& computations,
+    const mlir_converter::CallTargetProvider& call_targets,
+    mlir::func::FuncOp entry_function,
     const HloFusionInstruction& fusion) const {
   CHECK(IsSupported(analysis_));
-
-  auto concat = analysis_.fusion_heroes()[0];
-
-  mlir_converter::PartitionedComputations computations(
-      fusion.fused_instructions_computation(),
-      /*isolated_and_injected_instructions=*/
-      {concat});
-
   const auto& root_computation = computations.FindPartitionedComputation(
       fusion.fused_instructions_computation());
-  const auto& root_graph = root_computation.GetRootSubgraph();
-  const auto& hero_graph = root_computation.FindSubgraph(concat);
-
-  auto subgraph_to_mlir_fn = computations.DeclareFunctions(module);
-  subgraph_to_mlir_fn.extract(&hero_graph).mapped().erase();
-
-  // Concatenate is inlined in the entry function. This is needed for
-  // mlir_converter::ProvideParameter to correctly get parameter value.
-  subgraph_to_mlir_fn[&hero_graph] = entry_function;
-
-  auto call_target_lookup =
-      computations.CreateCallTargetProvider(subgraph_to_mlir_fn);
-
-  for (const auto& comp : computations.partitioned_computations()) {
-    for (const auto& subgraph : comp.subgraphs()) {
-      if (&subgraph == &hero_graph) {
-        continue;
-      }
-
-      TF_RETURN_IF_ERROR(mlir_converter::SubgraphToMlirFunction(
-          comp, subgraph, subgraph_to_mlir_fn[&subgraph], call_target_lookup));
-    }
-  }
-
+  const auto* concat = analysis_.fusion_heroes()[0];
   mlir::ImplicitLocOpBuilder builder(entry_function.getLoc(), entry_function);
   builder.setInsertionPointToStart(entry_function.addEntryBlock());
 
@@ -129,15 +106,15 @@ absl::Status MlirConcatenateFusion::EmitMlir(
   SmallVector<Value> result_tensors{output_tensor_args.begin(),
                                     output_tensor_args.end()};
 
-  auto thread_id_to_output_map =
-      ComputeThreadIdToInputIndexing(
-          /*root_index=*/0, /*hero_operand_index=*/0, module.getContext())
-          .value();
+  auto thread_id_to_output_map = ComputeThreadIdToInputIndexing(
+                                     /*root_index=*/0, /*hero_operand_index=*/0,
+                                     entry_function.getContext())
+                                     .value();
 
   for (auto [operand_index, operand] : llvm::enumerate(concat->operands())) {
     auto input_to_output_map =
         *ComputeInputToOutputIndexing(concat, /*input_id=*/operand_index,
-                                      module.getContext())
+                                      entry_function.getContext())
              .indexing_maps.front()
              .begin();
     auto thread_id_to_input_map =
@@ -152,25 +129,14 @@ absl::Status MlirConcatenateFusion::EmitMlir(
                                          dim_values, symbol_values, builder);
 
       auto result_scalars = mlir_converter::ProvideParameter(
-          root_computation, concat, operand_index, input_indices,
-          call_target_lookup, builder);
-
+          root_computation, concat, operand_index, input_indices, call_targets,
+          builder);
       auto output_indices =
           mlir_converter::ApplyAffineMap(thread_id_to_input_map.GetAffineMap(),
                                          dim_values, symbol_values, builder);
-
-      if (&root_graph != &hero_graph) {
-        // Concatenate is not the root of the computation. Call epilogue
-        // function.
-        auto epilogue_fn = subgraph_to_mlir_fn[&root_graph];
-
-        SmallVector<Value> operands = input_tensors;
-        absl::c_copy(output_indices, std::back_inserter(operands));
-        absl::c_copy(result_scalars, std::back_inserter(operands));
-
-        result_scalars =
-            builder.create<PureCallOp>(epilogue_fn, operands).getResults();
-      }
+      result_scalars =
+          EmitEpilogue(analysis_.fusion_roots()[0], concat, call_targets,
+                       result_scalars, output_indices, builder);
 
       SmallVector<Value> result_tensors;
       result_tensors.reserve(output_tensor_args.size());

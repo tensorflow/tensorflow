@@ -101,8 +101,10 @@ LaunchDimensions MlirScatterFusion::launch_dimensions() const {
   return CalculateLaunchDimensions(shape, analysis_.device_info());
 }
 
-absl::Status MlirScatterFusion::EmitMlir(
-    mlir::ModuleOp module, mlir::func::FuncOp entry_function,
+absl::Status MlirScatterFusion::EmitEntryFunction(
+    const mlir_converter::PartitionedComputations& computations,
+    const mlir_converter::CallTargetProvider& call_targets,
+    mlir::func::FuncOp entry_function,
     const HloFusionInstruction& fusion) const {
   return absl::UnimplementedError(
       "MlirScatterFusion::EmitMlir is not yet implemented");

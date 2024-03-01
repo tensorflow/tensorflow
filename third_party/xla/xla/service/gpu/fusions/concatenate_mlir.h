@@ -49,9 +49,14 @@ class MlirConcatenateFusion : public MlirFusionEmitterBase {
       mlir::MLIRContext* ctx) const override;
 
  protected:
-  absl::Status EmitMlir(mlir::ModuleOp module,
-                        mlir::func::FuncOp entry_function,
-                        const HloFusionInstruction& fusion) const override;
+  absl::Status EmitEntryFunction(
+      const mlir_converter::PartitionedComputations& computations,
+      const mlir_converter::CallTargetProvider& call_targets,
+      mlir::func::FuncOp entry_function,
+      const HloFusionInstruction& fusion) const override;
+
+  absl::flat_hash_set<const HloInstruction*> GetInstructionsWithCustomCodegen(
+      const HloFusionInstruction& fusion) const override;
 
  private:
   const HloFusionAnalysis& analysis_;

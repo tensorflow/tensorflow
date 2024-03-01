@@ -16,12 +16,22 @@ limitations under the License.
 
 #include <cstdint>
 #include <functional>
+#include <iterator>
+#include <memory>
+#include <optional>
 #include <string>
+#include <utility>
 
+#include "absl/algorithm/container.h"
+#include "absl/container/flat_hash_map.h"
+#include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
 #include "llvm/ADT/SmallVector.h"
+#include "llvm/IR/Function.h"
+#include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/Instructions.h"
 #include "llvm/IR/IntrinsicsNVPTX.h"
 #include "llvm/Linker/Linker.h"
@@ -37,6 +47,7 @@ limitations under the License.
 #include "mlir/Dialect/Func/Extensions/InlinerExtension.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/GPU/IR/GPUDialect.h"  // from @llvm-project
+#include "mlir/Dialect/LLVMIR/LLVMDialect.h"  // from @llvm-project
 #include "mlir/Dialect/LLVMIR/NVVMDialect.h"  // from @llvm-project
 #include "mlir/Dialect/Math/IR/Math.h"  // from @llvm-project
 #include "mlir/Dialect/MemRef/Transforms/Passes.h"  // from @llvm-project
@@ -59,23 +70,28 @@ limitations under the License.
 #include "mlir/Target/LLVMIR/Dialect/NVVM/NVVMToLLVMIRTranslation.h"  // from @llvm-project
 #include "mlir/Target/LLVMIR/Export.h"  // from @llvm-project
 #include "mlir/Transforms/Passes.h"  // from @llvm-project
+#include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 #include "xla/mlir_hlo/mhlo/transforms/passes.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/gpu/fusions/fusion_emitter.h"
+#include "xla/service/gpu/fusions/mlir/computation_partitioner.h"
 #include "xla/service/gpu/fusions/mlir/elemental_hlo_to_mlir.h"
 #include "xla/service/gpu/fusions/mlir/ir/xla_gpu_ops.h"
 #include "xla/service/gpu/fusions/mlir/passes.h"
 #include "xla/service/gpu/fusions/mlir/type_util.h"
 #include "xla/service/gpu/ir_emitter_context.h"
 #include "xla/service/gpu/kernel_arguments.h"
+#include "xla/service/gpu/kernel_reuse_cache.h"
+#include "xla/service/gpu/launch_dimensions.h"
 #include "xla/service/gpu/model/indexing_map.h"
 #include "xla/service/gpu/runtime/kernel_thunk.h"
 #include "xla/service/gpu/target_util.h"
 #include "xla/service/llvm_ir/llvm_util.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
+#include "xla/stream_executor/device_description.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/statusor.h"
 
@@ -390,6 +406,61 @@ SmallVector<Value> MlirFusionEmitterBase::EmitThreadLoopNest(
                                 EmitBlockId(b, 1),  EmitBlockId(b, 2)};
   return mlir_converter::EmitLoopNest(b, dim_values, outputs, indexing_map,
                                       create_body);
+}
+
+absl::Status MlirFusionEmitterBase::EmitMlir(
+    mlir::ModuleOp module, mlir::func::FuncOp entry_function,
+    const HloFusionInstruction& fusion) const {
+  auto customized = GetInstructionsWithCustomCodegen(fusion);
+  mlir_converter::PartitionedComputations computations(
+      fusion.fused_instructions_computation(), customized);
+  auto subgraph_to_mlir_fn = computations.DeclareFunctions(module);
+
+  // Erase subgraphs for all customized instructions - we don't want to
+  // automatically emit functions for them.
+  for (auto* custom : customized) {
+    subgraph_to_mlir_fn.extract(&computations.FindSubgraph(custom))
+        .mapped()
+        .erase();
+  }
+
+  auto call_targets =
+      computations.CreateCallTargetProvider(subgraph_to_mlir_fn);
+  for (const auto& comp : computations.partitioned_computations()) {
+    for (const auto& subgraph : comp.subgraphs()) {
+      if (subgraph_to_mlir_fn.contains(&subgraph)) {
+        TF_RETURN_IF_ERROR(mlir_converter::SubgraphToMlirFunction(
+            comp, subgraph, subgraph_to_mlir_fn[&subgraph], call_targets));
+      }
+    }
+  }
+
+  // Restore the mapping for the customized instructions - they are emitted
+  // inside the entry function.
+  for (auto* root : customized) {
+    subgraph_to_mlir_fn[&computations.FindSubgraph(root)] = entry_function;
+  }
+
+  return EmitEntryFunction(computations, call_targets, entry_function, fusion);
+}
+
+mlir::ValueRange MlirFusionEmitterBase::EmitEpilogue(
+    const HloInstruction* root, const HloInstruction* hero,
+    const mlir_converter::CallTargetProvider& call_targets,
+    mlir::ValueRange injected_values, mlir::ValueRange output_indices,
+    mlir::ImplicitLocOpBuilder& builder) const {
+  if (root == hero) {
+    return injected_values;
+  }
+
+  auto entry_fn = call_targets(hero);
+  auto epilogue_fn = call_targets(root);
+  SmallVector<Value> operands = mlir::ValueRange(
+      entry_fn.getArguments().take_front(hero->parent()->num_parameters()));
+  absl::c_copy(output_indices, std::back_inserter(operands));
+  absl::c_copy(injected_values, std::back_inserter(operands));
+
+  return builder.create<PureCallOp>(epilogue_fn, operands).getResults();
 }
 
 }  // namespace gpu
