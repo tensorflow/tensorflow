@@ -647,11 +647,10 @@ absl::StatusOr<SmallVector<Value>> HloToMlir(
       *ConvertPrimitiveTypeToMLIRType(element_type, builder);
   switch (instr->opcode()) {
     case HloOpcode::kAbs:
-      if (primitive_util::IsComplexType(element_type)) {
-        return {MapHloOp<mhlo::AbsOp>(
-            *ConvertPrimitiveTypeToMLIRType(
-                primitive_util::ComplexComponentType(element_type), builder),
-            arg_types, operands, builder)};
+      if (primitive_util::IsComplexType(
+              instr->operand(0)->shape().element_type())) {
+        return {MapHloOp<mhlo::AbsOp>(element_mlir_type, arg_types, operands,
+                                      builder)};
       } else {
         return MapElementwiseOp<mhlo::AbsOp>(arg_types, operands, builder);
       }
