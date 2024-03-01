@@ -161,17 +161,6 @@ Stream &Stream::Init() {
   return *this;
 }
 
-Stream &Stream::ThenRecordEvent(Event *event) {
-  absl::Status status = RecordEvent(event);
-  if (!status.ok()) {
-    LOG(ERROR) << "Error recording event in stream: " << status.message()
-               << "; not marking stream as bad, as the Event object may be "
-               << "at fault. Monitor for further errors.";
-  }
-
-  return *this;
-}
-
 absl::Status Stream::RecordEvent(Event *event) {
   return parent_->RecordEvent(this, event);
 }

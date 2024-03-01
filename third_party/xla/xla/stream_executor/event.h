@@ -32,7 +32,7 @@ class StreamExecutor;
 
 // The Event class, when supported by a platform, enables low-overhead status
 // reporting for a Stream. An Event is inserted at a location in a stream via
-// the Stream::ThenRecordEvent() API. From then on, the Event's status can be
+// the Stream::RecordEvent() API. From then on, the Event's status can be
 // monitored via the nonblocking Event::PollForStatus() call.
 class Event {
  public:

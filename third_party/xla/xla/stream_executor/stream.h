@@ -185,8 +185,6 @@ class Stream {
   // marked as completed.
   // The stream does not take ownership of event - meaning that event's lifetime
   // must extend past the point at which it is marked complete!
-  ABSL_DEPRECATED("Use absl::Status returning method instead.")
-  Stream &ThenRecordEvent(Event *event);
   absl::Status RecordEvent(Event *event);
 
   // Entrain onto the stream: a memcpy to a host destination from a GPU source
