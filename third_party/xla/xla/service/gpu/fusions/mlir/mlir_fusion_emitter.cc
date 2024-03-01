@@ -16,14 +16,17 @@ limitations under the License.
 
 #include <cstdint>
 #include <functional>
+#include <string>
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/str_format.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/IR/Instructions.h"
 #include "llvm/IR/IntrinsicsNVPTX.h"
 #include "llvm/Linker/Linker.h"
 #include "llvm/Support/Casting.h"
+#include "llvm/Support/raw_ostream.h"
 #include "mlir/Conversion/AffineToStandard/AffineToStandard.h"  // from @llvm-project
 #include "mlir/Conversion/ComplexToStandard/ComplexToStandard.h"  // from @llvm-project
 #include "mlir/Conversion/ReconcileUnrealizedCasts/ReconcileUnrealizedCasts.h"  // from @llvm-project
@@ -253,7 +256,16 @@ MlirFusionEmitterBase::CreateLLVMModule(
       !device.cuda_compute_capability().IsAtLeastAmpere()));
   pm.addPass(CreateLowerToLLVMPass());
   pm.addPass(mlir::createReconcileUnrealizedCastsPass());
-  TF_RET_CHECK(pm.run(module.get()).succeeded());
+
+  if (pm.run(module.get()).failed()) {
+    std::string module_dump;
+    llvm::raw_string_ostream os(module_dump);
+    module->print(os);
+    return absl::InternalError(absl::StrFormat(
+        "Failed create LLVM module.\nHloFusionInstruction "
+        "computation:\n%s\nMLIR module:\n%s",
+        fusion.fused_instructions_computation()->ToString(), module_dump));
+  }
 
   auto llvm_module = mlir::translateModuleToLLVMIR(module.get(), llvm_context);
   TF_RET_CHECK(llvm_module != nullptr)
@@ -354,7 +366,16 @@ MlirFusionEmitterBase::CreateMLIRModule(
   pm.addPass(CreateSimplifyArithPass());
   pm.addPass(mlir::createCanonicalizerPass());
   pm.addPass(mlir::createCSEPass());
-  TF_RET_CHECK(pm.run(module.get()).succeeded());
+  if (pm.run(module.get()).failed()) {
+    std::string module_dump;
+    llvm::raw_string_ostream os(module_dump);
+    module->print(os);
+    return absl::InternalError(absl::StrFormat(
+        "Failed to simplify module.\nHloFusionInstruction "
+        "computation:\n%s\nMLIR module:\n%s",
+        fusion.fused_instructions_computation()->ToString(), module_dump));
+  }
+
   return module;
 }
 
