@@ -32,7 +32,7 @@ namespace xla {
 namespace ifrt {
 namespace {
 
-StatusOr<tsl::RCReference<Array>> MakeArray(Client* client) {
+absl::StatusOr<tsl::RCReference<Array>> MakeArray(Client* client) {
   DType dtype(DType::kF32);
   Shape shape({2, 3});
   std::vector<float> data(6);
