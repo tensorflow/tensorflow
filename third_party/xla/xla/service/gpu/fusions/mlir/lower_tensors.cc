@@ -420,7 +420,7 @@ struct RewriteAtomicRMW : mlir::OpRewritePattern<AtomicRMWOp> {
           b.create<mlir::scf::YieldOp>(loc, values);
         });
 
-    rewriter.replaceOp(op, op.getOperands());
+    rewriter.replaceOp(op, op.getInput());
     return mlir::success();
   }
 };
