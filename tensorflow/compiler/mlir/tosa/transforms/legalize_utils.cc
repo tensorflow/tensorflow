@@ -334,22 +334,35 @@ std::optional<Value> buildReshapeWithDynamicDims(PatternRewriter& rewriter,
       .getResult();
 }
 
+Value buildRescaleMultiplier(bool scale32, OpBuilder& builder, Location loc,
+                             ArrayRef<int32_t> multipliers) {
+  if (scale32) {
+    return tosa::getConstTensorInt<int32_t>(builder, loc, multipliers);
+  } else {
+    SmallVector<int16_t> vec(multipliers.begin(), multipliers.end());
+    return tosa::getConstTensorInt<int16_t>(builder, loc, vec);
+  }
+}
+
 // Create a TOSA rescale op from TFLite scaling multiplier, scaling shift, zero
 // points and rounding mode
 Value buildRescale(PatternRewriter& rewriter, Operation* op,
                    ShapedType output_type, Value input_val,
-                   int32_t scale_multiplier, int32_t scale_shit,
+                   int32_t scale_multiplier, int32_t scale_shift,
                    int64_t input_zp, int64_t output_zp, bool double_round,
                    bool scale32) {
   bool input_unsigned = input_val.getType().isUnsignedInteger();
   bool output_unsigned = output_type.isUnsignedInteger();
+  auto loc = op->getLoc();
+  Value multiplier_val =
+      buildRescaleMultiplier(scale32, rewriter, loc, {scale_multiplier});
+  auto shift_val = tosa::getConstTensorInt<int8_t>(rewriter, loc,
+                                            {static_cast<int8_t>(scale_shift)});
 
   auto rescale_op = CreateOpAndInfer<tosa::RescaleOp>(
-      rewriter, op->getLoc(), output_type, input_val,
+      rewriter, loc, output_type, input_val, multiplier_val, shift_val,
       rewriter.getI32IntegerAttr(static_cast<int32_t>(input_zp)),
       rewriter.getI32IntegerAttr(static_cast<int32_t>(output_zp)),
-      rewriter.getDenseI32ArrayAttr({scale_multiplier}),
-      rewriter.getDenseI8ArrayAttr({static_cast<int8_t>(scale_shit)}),
       rewriter.getBoolAttr(scale32), rewriter.getBoolAttr(double_round),
       rewriter.getBoolAttr(false), rewriter.getBoolAttr(input_unsigned),
       rewriter.getBoolAttr(output_unsigned));
@@ -446,6 +459,8 @@ Value buildRescaleOpConvOutput(PatternRewriter& rewriter, Operation* op,
   bool input_unsigned = input_qtype.isUnsignedInteger();
   bool output_unsigned = output_qtype.isUnsignedInteger();
 
+  auto loc = op->getLoc();
+
   if (auto weight_per_tensor_qtype =
           dyn_cast<mlir::quant::UniformQuantizedType>(
               weight_type.getElementType())) {
@@ -459,11 +474,14 @@ Value buildRescaleOpConvOutput(PatternRewriter& rewriter, Operation* op,
 
     computeMultiplierAndShift(op_tensor_scale, multiplier, shift, scale_width);
 
+    Value multiplier_val =
+        buildRescaleMultiplier(scale32, rewriter, loc, {multiplier});
+    auto shift_val =
+        tosa::getConstTensorInt<int8_t>(rewriter, loc, {static_cast<int8_t>(shift)});
+
     auto rescale_op = CreateOpAndInfer<tosa::RescaleOp>(
-        rewriter, op->getLoc(), output_type, conv_val,
+        rewriter, loc, output_type, conv_val, multiplier_val, shift_val,
         rewriter.getI32IntegerAttr(0), rewriter.getI32IntegerAttr(output_zp),
-        rewriter.getDenseI32ArrayAttr({multiplier}),
-        rewriter.getDenseI8ArrayAttr({static_cast<int8_t>(shift)}),
         rewriter.getBoolAttr(scale32), rewriter.getBoolAttr(double_round),
         rewriter.getBoolAttr(false), rewriter.getBoolAttr(input_unsigned),
         rewriter.getBoolAttr(output_unsigned));
@@ -497,13 +515,15 @@ Value buildRescaleOpConvOutput(PatternRewriter& rewriter, Operation* op,
       shift_arr.push_back(static_cast<int8_t>(shift));
     }
 
+    Value multiplier_val =
+        buildRescaleMultiplier(scale32, rewriter, loc, multiplier_arr);
+    auto shift_val = tosa::getConstTensorInt<int8_t>(rewriter, loc, shift_arr);
+
     auto rescale_op = CreateOpAndInfer<tosa::RescaleOp>(
-        rewriter, op->getLoc(), output_type, conv_val,
+        rewriter, loc, output_type, conv_val, multiplier_val, shift_val,
         rewriter.getI32IntegerAttr(0), rewriter.getI32IntegerAttr(output_zp),
-        rewriter.getDenseI32ArrayAttr(multiplier_arr),
-        rewriter.getDenseI8ArrayAttr(shift_arr), rewriter.getBoolAttr(scale32),
-        rewriter.getBoolAttr(double_round), rewriter.getBoolAttr(true),
-        rewriter.getBoolAttr(input_unsigned),
+        rewriter.getBoolAttr(scale32), rewriter.getBoolAttr(double_round),
+        rewriter.getBoolAttr(true), rewriter.getBoolAttr(input_unsigned),
         rewriter.getBoolAttr(output_unsigned));
 
     return rescale_op.getResult();

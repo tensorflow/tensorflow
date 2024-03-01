@@ -188,6 +188,7 @@ LogicalResult convert_graph_uint8_tensor(mlir::MLIRContext &context,
   size_t num_blocks_in_main = 0;
   mlir::Region *region = function.getCallableRegion();
   OpBuilder builder(&context);
+  auto loc = function.getLoc();
 
   auto tmp_const_type = RankedTensorType::get({1}, builder.getIntegerType(8));
   auto tmp_const_attr =
@@ -204,6 +205,9 @@ LogicalResult convert_graph_uint8_tensor(mlir::MLIRContext &context,
       return function.emitError("Invalid MLIR: block must be entry block");
     }
 
+    auto multiplier = tosa::getConstTensorInt<int32_t>(builder, loc, {1 << 30});
+    auto shift = tosa::getConstTensorInt<int8_t>(builder, loc, {30});
+
     // Insert rescale uint8->int8 after placeholders.
     for (Value arg : bb.getArguments()) {
       auto shaped_type = dyn_cast<ShapedType>(arg.getType());
@@ -215,15 +219,16 @@ LogicalResult convert_graph_uint8_tensor(mlir::MLIRContext &context,
         continue;
 
       // Keep original input_val use with tmp_val.
-      Value tmp_val = builder.create<TFL::ConstOp>(
-          function.getLoc(), tmp_const_type, tmp_const_attr);
+      Value tmp_val =
+          builder.create<TFL::ConstOp>(loc, tmp_const_type, tmp_const_attr);
       arg.replaceAllUsesWith(tmp_val);
+
+      // auto multiplier = tosa::getConstTensorInt32(builder, loc, {1 << 30});
+      // auto shift = tosa::getConstTensorInt8(builder, loc, {30});
       auto rescale_op = builder.create<tosa::RescaleOp>(
-          function.getLoc(), rescaled_type, arg,
+          loc, rescaled_type, arg, multiplier, shift,
           /* input_zp = */ builder.getI32IntegerAttr(rescale_input_zp),
           /* output_zp = */ builder.getI32IntegerAttr(rescale_output_zp),
-          /* multiplier = */ builder.getDenseI32ArrayAttr({1 << 30}),
-          /* shift = */ builder.getDenseI8ArrayAttr({30}),
           /* scale32 = */ builder.getBoolAttr(true),
           /* double_round = */ builder.getBoolAttr(false),
           /* per_channel = */ builder.getBoolAttr(false),
@@ -235,6 +240,9 @@ LogicalResult convert_graph_uint8_tensor(mlir::MLIRContext &context,
       tmp_val.replaceAllUsesWith(rescale_op.getResult());
       tmp_val.getDefiningOp()->erase();
     }
+
+    bb.push_front(multiplier.getDefiningOp());
+    bb.push_front(shift.getDefiningOp());
 
     // Record types of original graph output before we convert intermediate
     // tensor.
@@ -272,8 +280,8 @@ LogicalResult convert_graph_uint8_tensor(mlir::MLIRContext &context,
       Value input_val = defining_op->getResult(0);
 
       // Check if graph output is uint8 type.
-      auto shaped_output_type = dyn_cast<mlir::ShapedType>(output_types[i]);
-      if (!shaped_output_type) continue;
+      auto uint8_output_type = dyn_cast<mlir::ShapedType>(output_types[i]);
+      if (!uint8_output_type) continue;
 
       // Check if graph output is uint8 type.
       Type rescaled_type;
@@ -294,15 +302,13 @@ LogicalResult convert_graph_uint8_tensor(mlir::MLIRContext &context,
       }
 
       // Keep original input_val use with tmp_val.
-      Value tmp_val = builder.create<TFL::ConstOp>(
-          function.getLoc(), tmp_const_type, tmp_const_attr);
+      Value tmp_val =
+          builder.create<TFL::ConstOp>(loc, tmp_const_type, tmp_const_attr);
       input_val.replaceAllUsesWith(tmp_val);
       auto rescale_op = builder.create<tosa::RescaleOp>(
-          function.getLoc(), shaped_output_type, input_val,
+          loc, uint8_output_type, input_val, multiplier, shift,
           /* input_zp = */ builder.getI32IntegerAttr(operand_zp),
           /* output_zp = */ builder.getI32IntegerAttr(uint8_zp),
-          /* multiplier = */ builder.getDenseI32ArrayAttr({1 << 30}),
-          /* shift = */ builder.getDenseI8ArrayAttr({30}),
           /* scale32 = */ builder.getBoolAttr(true),
           /* double_rount = */ builder.getBoolAttr(false),
           /* per_channel = */ builder.getBoolAttr(false),
