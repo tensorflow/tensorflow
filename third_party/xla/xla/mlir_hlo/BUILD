@@ -220,63 +220,6 @@ gentbl_cc_library(
     deps = [":lhlo_ops_td_files"],
 )
 
-gentbl_cc_library(
-    name = "lhlo_gpu_ops_enums_inc_gen",
-    compatible_with = get_compatible_with_portable(),
-    strip_include_prefix = ".",
-    tbl_outs = [
-        (
-            ["-gen-enum-decls"],
-            "lhlo_gpu/IR/lhlo_gpu_ops_enums.h.inc",
-        ),
-        (
-            ["-gen-enum-defs"],
-            "lhlo_gpu/IR/lhlo_gpu_ops_enums.cc.inc",
-        ),
-    ],
-    tblgen = "@llvm-project//mlir:mlir-tblgen",
-    td_file = "lhlo_gpu/IR/lhlo_gpu_ops_enums.td",
-    deps = [":lhlo_gpu_ops_td_files"],
-)
-
-gentbl_cc_library(
-    name = "lhlo_gpu_ops_dialect_inc_gen",
-    compatible_with = get_compatible_with_portable(),
-    strip_include_prefix = ".",
-    tbl_outs = [
-        (
-            ["-gen-dialect-decls"],
-            "lhlo_gpu/IR/lhlo_gpu_ops_dialect.h.inc",
-        ),
-        (
-            ["-gen-dialect-defs"],
-            "lhlo_gpu/IR/lhlo_gpu_ops_dialect.cc.inc",
-        ),
-    ],
-    tblgen = "@llvm-project//mlir:mlir-tblgen",
-    td_file = "lhlo_gpu/IR/lhlo_gpu_ops_enums.td",
-    deps = [":lhlo_gpu_ops_td_files"],
-)
-
-gentbl_cc_library(
-    name = "lhlo_gpu_ops_attrdefs_inc_gen",
-    compatible_with = get_compatible_with_portable(),
-    strip_include_prefix = ".",
-    tbl_outs = [
-        (
-            ["-gen-attrdef-decls"],
-            "lhlo_gpu/IR/lhlo_gpu_ops_attrdefs.h.inc",
-        ),
-        (
-            ["-gen-attrdef-defs"],
-            "lhlo_gpu/IR/lhlo_gpu_ops_attrdefs.cc.inc",
-        ),
-    ],
-    tblgen = "@llvm-project//mlir:mlir-tblgen",
-    td_file = "lhlo_gpu/IR/lhlo_gpu_ops_enums.td",
-    deps = [":lhlo_gpu_ops_td_files"],
-)
-
 gentbl_filegroup(
     name = "hlo_ops_doc_gen",
     compatible_with = get_compatible_with_portable(),
@@ -320,37 +263,6 @@ cc_library(
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
     ],
-)
-
-td_library(
-    name = "lhlo_gpu_ops_td_files",
-    srcs = glob(["lhlo_gpu/IR/*.td"]),
-    compatible_with = get_compatible_with_portable(),
-    includes = ["."],
-    deps = [
-        ":hlo_ops_td_files",
-        ":lhlo_ops_td_files",
-        "@llvm-project//mlir:SideEffectInterfacesTdFiles",
-    ],
-)
-
-gentbl_cc_library(
-    name = "lhlo_gpu_ops_inc_gen",
-    compatible_with = get_compatible_with_portable(),
-    strip_include_prefix = ".",
-    tbl_outs = [
-        (
-            ["-gen-op-decls"],
-            "lhlo_gpu/IR/lhlo_gpu_ops.h.inc",
-        ),
-        (
-            ["-gen-op-defs"],
-            "lhlo_gpu/IR/lhlo_gpu_ops.cc.inc",
-        ),
-    ],
-    tblgen = "@llvm-project//mlir:mlir-tblgen",
-    td_file = "lhlo_gpu/IR/lhlo_gpu_ops.td",
-    deps = [":lhlo_gpu_ops_td_files"],
 )
 
 #TODO(aminim): revisit the naming and grouping of these rules post-move.
@@ -578,49 +490,6 @@ cc_library(
         "@llvm-project//mlir:MemRefDialect",
         "@llvm-project//mlir:ViewLikeInterface",
         "@stablehlo//:stablehlo_type_inference",
-    ],
-)
-
-cc_library(
-    name = "lhlo_gpu",
-    srcs = ["lhlo_gpu/IR/lhlo_gpu_ops.cc"],
-    hdrs = ["lhlo_gpu/IR/lhlo_gpu_ops.h"],
-    strip_include_prefix = ".",
-    deps = [
-        ":hlo_ops_common",
-        ":lhlo",
-        ":lhlo_gpu_ops_attrdefs_inc_gen",
-        ":lhlo_gpu_ops_dialect_inc_gen",
-        ":lhlo_gpu_ops_enums_inc_gen",
-        ":lhlo_gpu_ops_inc_gen",
-        ":lhlo_gpu_ops_ops",
-        ":mlir_hlo",
-        "@llvm-project//llvm:Support",
-        "@llvm-project//mlir:FuncDialect",
-        "@llvm-project//mlir:IR",
-    ],
-)
-
-cc_library(
-    name = "lhlo_gpu_ops_ops",
-    srcs = ["lhlo_gpu/IR/lhlo_gpu_ops.cc.inc"],
-    hdrs = ["lhlo_gpu/IR/lhlo_gpu_ops.h.inc"],
-    strip_include_prefix = ".",
-    deps = [
-        "@llvm-project//llvm:Support",
-        "@llvm-project//mlir:Analysis",
-        "@llvm-project//mlir:ControlFlowInterfaces",
-        "@llvm-project//mlir:CopyOpInterface",
-        "@llvm-project//mlir:FuncDialect",
-        "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:InferTypeOpInterface",
-        "@llvm-project//mlir:LoopLikeInterface",
-        "@llvm-project//mlir:Pass",
-        "@llvm-project//mlir:SideEffectInterfaces",
-        "@llvm-project//mlir:Support",
-        "@llvm-project//mlir:TransformUtils",
-        "@llvm-project//mlir:Transforms",
-        "@llvm-project//mlir:ViewLikeInterface",
     ],
 )
 
@@ -1386,7 +1255,6 @@ cc_binary(
         ":all_passes",
         ":hlo_dialect_registration",
         ":lhlo",
-        ":lhlo_gpu",
         ":transforms_gpu_passes",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:AllExtensions",

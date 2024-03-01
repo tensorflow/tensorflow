@@ -25,7 +25,6 @@ set(LIBS
         AllMhloPasses
         DeallocationPasses
         LmhloDialect
-        LmhloGPUDialect
         LmhloPasses
         MLIRBufferTransforms
         MLIRHLOGPUTransforms

@@ -615,7 +615,6 @@ cc_library(
         "//xla:status_macros",
         "//xla:xla_data_proto_cc",
         "//xla/hlo/ir:hlo",
-        "//xla/mlir_hlo:lhlo_gpu",
         "//xla/service:collective_ops_utils",
         "//xla/service:global_device_id",
         "//xla/service/gpu:backend_configs_cc",
