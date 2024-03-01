@@ -411,13 +411,11 @@ void ReplaceStablehloOpsInMainFunctionWithXlaCallModuleOps(
       bool should_add_op = true;
       while (should_add_op) {
         should_add_op = false;
-        Operation* defining_op = nullptr;
         SmallVector<Operation*> all_descendants;
         for (Value v : operands) {
           if (defined_values.contains(v)) continue;
           if (ShouldAddOpToSubgraph(v.getDefiningOp(), reverse_subgraph,
                                     ops_to_add, all_descendants)) {
-            defining_op = v.getDefiningOp();
             should_add_op = true;
             break;
           }
