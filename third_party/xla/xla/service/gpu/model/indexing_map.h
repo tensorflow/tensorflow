@@ -163,6 +163,14 @@ class IndexingMap {
     }
   }
 
+  IndexingMap(mlir::AffineMap affine_map, std::vector<Range> dim_ranges,
+              std::vector<Range> symbol_ranges,
+              const llvm::DenseMap<mlir::AffineExpr, Range>& constraints)
+      : affine_map_(affine_map),
+        dim_ranges_(std::move(dim_ranges)),
+        symbol_ranges_(std::move(symbol_ranges)),
+        constraints_(constraints) {}
+
   static IndexingMap GetUndefined() { return IndexingMap(); }
 
   static IndexingMap FromTensorSizes(

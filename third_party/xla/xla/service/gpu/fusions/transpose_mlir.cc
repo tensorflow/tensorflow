@@ -209,7 +209,8 @@ IndexingMap GetSharedMemoryReadIndexingMap(
       GetSharedMemoryWriteIndexingMap(thread_id_indexing);
   return IndexingMap{write_indexing.GetAffineMap().getSubMap({0, 2, 1}),
                      write_indexing.GetDimensionRanges(),
-                     write_indexing.GetSymbolRanges()};
+                     write_indexing.GetSymbolRanges(),
+                     write_indexing.GetConstraints()};
 }
 
 absl::StatusOr<SmallVector<Value, 4>> MlirTransposeFusion::EmitWriteToShMemMlir(
