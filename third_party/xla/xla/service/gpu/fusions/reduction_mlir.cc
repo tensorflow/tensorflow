@@ -32,6 +32,7 @@ limitations under the License.
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/GPU/IR/GPUDialect.h"  // from @llvm-project
 #include "mlir/Dialect/SCF/IR/SCF.h"  // from @llvm-project
+#include "mlir/Dialect/Tensor/IR/Tensor.h"  // from @llvm-project
 #include "mlir/IR/AffineExpr.h"  // from @llvm-project
 #include "mlir/IR/AffineMap.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
@@ -104,8 +105,8 @@ MlirReductionFusion::MlirReductionFusion(const HloFusionAnalysis& analysis)
 
 bool MlirReductionFusion::IsSupported(const HloFusionAnalysis& analysis) {
   auto info = ReductionInfo::Create(analysis);
-  return info.GetGroups().grouped_roots.size() == 1 && info.IsRowReduction() &&
-         info.GetRowsPerWarp() == 1 &&
+  return info.GetGroups().grouped_roots.size() == 1 &&
+         (!info.IsRowReduction() || info.GetRowsPerWarp() == 1) &&
          !absl::c_linear_search(info.GetGroups().is_reduction_root, false) &&
          info.IsRaceFree();
 }
@@ -165,14 +166,16 @@ absl::Status MlirReductionFusion::EmitMlir(
                      {module.getLoc(), entry_function}};
   state.builder.setInsertionPointToStart(entry_function.addEntryBlock());
 
-  if (reduction_info().IsRowReduction() &&
+  if (!reduction_info().IsRowReduction() ||
       reduction_info().GetRowsPerWarp() == 1) {
-    return EmitRowReduction(state);
+    return EmitReduction(state);
   }
   return absl::UnimplementedError("Not implemented");
 }
 
-absl::Status MlirReductionFusion::EmitRowReduction(EmitterState& state) const {
+absl::Status MlirReductionFusion::EmitReduction(EmitterState& state) const {
+  CHECK(IsSupported(analysis()))
+      << "Attempting to output code for an unsupported reduction";
   auto& builder = state.builder;
   const auto& tiling = reduction_info().GetTiling();
 
@@ -180,9 +183,14 @@ absl::Status MlirReductionFusion::EmitRowReduction(EmitterState& state) const {
   int num_warps = tiling.GetThreadsPerBlock()
                       [ReductionDimensions::kRowMinorReducedDimension] /
                   WarpSize();
-  std::vector<int64_t> shared_tile_size{
-      tiling.GetThreadsPerBlock()[ReductionDimensions::kRowKeptDimension],
-      num_warps};
+  std::vector<int64_t> shared_tile_size;
+  if (reduction_info().IsRowReduction()) {
+    shared_tile_size = {
+        tiling.GetThreadsPerBlock()[ReductionDimensions::kRowKeptDimension],
+        num_warps};
+  } else {
+    shared_tile_size = {WarpSize(), WarpSize() + 1};
+  }
 
   auto ctx = state.module.getContext();
   auto input_indexing = ComputeThreadIdToInputIndexing(
@@ -195,6 +203,8 @@ absl::Status MlirReductionFusion::EmitRowReduction(EmitterState& state) const {
       mlir::arith::CmpIPredicate::eq, lane_id, zero);
   auto thread_id = EmitThreadId(builder, 0);
   auto block_id = EmitBlockId(builder, 0);
+  mlir::Value cstTrue = builder.create<mlir::arith::ConstantOp>(
+      builder.getIntegerAttr(builder.getI1Type(), 1));
 
   auto thread_ids = mlir_converter::ApplyAffineMap(
       mlir::AffineMap::get(
@@ -206,7 +216,9 @@ absl::Status MlirReductionFusion::EmitRowReduction(EmitterState& state) const {
       {thread_id}, {}, builder);
 
   auto warp_id = builder.create<mlir::arith::DivUIOp>(
-      thread_ids[ReductionDimensions::kRowMinorReducedDimension],
+      reduction_info().IsRowReduction()
+          ? thread_ids[ReductionDimensions::kRowMinorReducedDimension]
+          : thread_id,
       builder.create<mlir::arith::ConstantIndexOp>(WarpSize()));
 
   ConstHloInstructionMap<llvm::SmallVector<mlir::Value>> inits;
@@ -225,21 +237,38 @@ absl::Status MlirReductionFusion::EmitRowReduction(EmitterState& state) const {
     TF_ASSIGN_OR_RETURN(
         auto accumulated,
         state.EmitPerThreadReducedElements(*input_indexing, hero, inits[hero]));
-    auto reducer = state.GetReducer(hero);
-    accumulated =
-        builder.create<ShuffleReduceOp>(reducer, accumulated, WarpSize() / 2)
-            .getResults();
 
-    // Write results to shared memory.
     llvm::SmallVector<mlir::Value> tiles_for_this_hero =
         state.AllocateSharedTiles(hero, shared_tile_size);
-    for (auto [value, tile] : llvm::zip(accumulated, tiles_for_this_hero)) {
-      shared_tiles.push_back(builder.create<PredicatedInsertOp>(
-          is_first_lane, value, tile,
-          mlir::ValueRange{thread_ids[ReductionDimensions::kRowKeptDimension],
-                           warp_id}));
+
+    // In row reductions, we can do a warp shuffle before writing to shared
+    // memory. In column reductions, the members of the warp process different
+    // output elements, so we need to transpose first.
+    if (reduction_info().IsRowReduction()) {
+      auto reducer = state.GetReducer(hero);
+      accumulated =
+          builder.create<ShuffleReduceOp>(reducer, accumulated, WarpSize() / 2)
+              .getResults();
+      // Write results to shared memory.
+      for (auto [value, tile] : llvm::zip(accumulated, tiles_for_this_hero)) {
+        shared_tiles.push_back(builder.create<PredicatedInsertOp>(
+            is_first_lane, value, tile,
+            mlir::ValueRange{thread_ids[ReductionDimensions::kRowKeptDimension],
+                             warp_id}));
+      }
+    } else {
+      // We transpose during the write, so during the read phase we can read
+      // sequentially. The choice is arbitrary, it would work the other way
+      // around as well.
+      for (auto [value, tile] : llvm::zip(accumulated, tiles_for_this_hero)) {
+        shared_tiles.push_back(builder.create<mlir::tensor::InsertOp>(
+            value, tile, mlir::ValueRange{lane_id, warp_id}));
+      }
     }
   }
+
+  llvm::SmallVector<mlir::Value> thread_and_block_indices{
+      thread_id, zero, zero, block_id, zero, zero};
 
   // Wait for the entire tile to be written.
   shared_tiles =
@@ -249,34 +278,47 @@ absl::Status MlirReductionFusion::EmitRowReduction(EmitterState& state) const {
   auto outputs = state.entry_function.getArguments().drop_front(
       state.fusion.fused_parameters().size());
 
-  auto write_outputs = [&](mlir::OpBuilder b, mlir::Location loc) {
+  auto write_outputs = [&](mlir::OpBuilder then_builder, mlir::Location loc) {
+    mlir::ImplicitLocOpBuilder b(loc, then_builder);
     int tile_index = 0;
     int next_output = 0;
-    llvm::SmallVector<mlir::Value> shared_index{
-        thread_ids[ReductionDimensions::kRowKeptDimension], lane_id};
+    llvm::SmallVector<mlir::Value> shared_index;
+    if (reduction_info().IsRowReduction()) {
+      shared_index = {thread_ids[ReductionDimensions::kRowKeptDimension],
+                      lane_id};
+    } else {
+      shared_index = {warp_id, lane_id};
+    }
     llvm::SmallVector<mlir::Value> updated_outputs;
     for (auto [index, hero] : llvm::enumerate(reduction_heroes_)) {
       auto output_indexing = ComputeThreadIdToOutputIndexing(index, ctx);
-      auto output_indices = mlir_converter::ApplyAffineMap(
-          output_indexing->GetAffineMap(),
-          {thread_id, zero, zero, block_id, zero, zero}, {}, builder);
+      auto output_indices =
+          mlir_converter::ApplyAffineMap(output_indexing->GetAffineMap(),
+                                         thread_and_block_indices, {}, builder);
 
-      auto is_in_bounds = b.create<mlir::arith::CmpIOp>(
-          loc, mlir::arith::CmpIPredicate::ult,
-          thread_ids[ReductionDimensions::kRowMinorReducedDimension],
-          b.create<mlir::arith::ConstantIndexOp>(loc, num_warps));
+      mlir::Value is_in_bounds;
+      if (reduction_info().IsRowReduction()) {
+        is_in_bounds = b.create<mlir::arith::CmpIOp>(
+            mlir::arith::CmpIPredicate::ult,
+            thread_ids[ReductionDimensions::kRowMinorReducedDimension],
+            b.create<mlir::arith::ConstantIndexOp>(num_warps));
+      } else {
+        // We unconditionally write a value to shared memory, so we do not need
+        // to check the bounds.
+        is_in_bounds = cstTrue;
+      }
 
       // Load from shared memory.
       llvm::SmallVector<mlir::Value> reduced;
       for (int i = 0; i < hero->operand_count() / 2; ++i) {
         // If a warp didn't write anything, use the init values instead.
         reduced.push_back(b.create<PredicatedExtractOp>(
-                               loc, is_in_bounds, inits[hero][i],
+                               is_in_bounds, inits[hero][i],
                                shared_tiles[tile_index++], shared_index)
                               .getResult());
       }
 
-      if (num_warps > 1) {
+      if (!reduction_info().IsRowReduction() || num_warps > 1) {
         auto reducer = state.GetReducer(hero);
         reduced =
             builder.create<ShuffleReduceOp>(reducer, reduced, WarpSize() / 2)
@@ -297,8 +339,20 @@ absl::Status MlirReductionFusion::EmitRowReduction(EmitterState& state) const {
               builder.create<PureCallOp>(state.call_target(root), arguments)
                   .getResult(0);
         }
+
+        mlir::Value is_output_in_bounds = mlir_converter::CheckConstraints(
+            *output_indexing, thread_and_block_indices, {}, b);
+        // TODO(shyshkov): Do this in CheckConstraints.
+        for (auto&& [index, range] :
+             llvm::enumerate(output_indexing->GetDimensionRanges())) {
+          is_output_in_bounds = b.create<mlir::arith::AndIOp>(
+              is_output_in_bounds,
+              mlir_converter::CheckConstraint(thread_and_block_indices[index],
+                                              range, b));
+        }
+
         updated_outputs.push_back(b.create<PredicatedInsertOp>(
-            loc, is_first_lane, output_value, outputs[next_output++],
+            is_output_in_bounds, output_value, outputs[next_output++],
             output_indices));
       }
     }
@@ -306,10 +360,12 @@ absl::Status MlirReductionFusion::EmitRowReduction(EmitterState& state) const {
     b.create<mlir::scf::YieldOp>(loc, updated_outputs);
   };
 
-  auto is_first_warp = builder.create<mlir::arith::CmpIOp>(
-      mlir::arith::CmpIPredicate::eq, warp_id, zero);
+  auto warp_writes = reduction_info().IsRowReduction()
+                         ? builder.create<mlir::arith::CmpIOp>(
+                               mlir::arith::CmpIPredicate::eq, warp_id, zero)
+                         : cstTrue;
   auto written = builder.create<mlir::scf::IfOp>(
-      is_first_warp, write_outputs, [&](mlir::OpBuilder b, mlir::Location loc) {
+      warp_writes, write_outputs, [&](mlir::OpBuilder b, mlir::Location loc) {
         b.create<mlir::scf::YieldOp>(loc, outputs);
       });
   builder.create<mlir::func::ReturnOp>(written.getResults());

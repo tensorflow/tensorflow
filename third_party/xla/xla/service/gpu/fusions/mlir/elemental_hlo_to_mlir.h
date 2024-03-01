@@ -96,6 +96,12 @@ llvm::SmallVector<mlir::Value> ApplyAffineMap(mlir::AffineMap map,
                                               mlir::ValueRange symbols,
                                               mlir::ImplicitLocOpBuilder& b);
 
+// Does a bounds check.
+// TODO(shyshkov): Do this in CheckConstraints and remove this function once
+// we are able to optimize unnecessary bounds checks away.
+mlir::Value CheckConstraint(mlir::Value constrained_value, Range range,
+                            mlir::ImplicitLocOpBuilder& b);
+
 // Checks all the **constraints** in the map (not the **ranges**).
 mlir::Value CheckConstraints(const IndexingMap& map, mlir::ValueRange dims,
                              mlir::ValueRange symbols,

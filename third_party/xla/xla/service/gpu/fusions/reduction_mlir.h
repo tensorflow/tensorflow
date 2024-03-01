@@ -44,7 +44,7 @@ class MlirReductionFusion : public ReductionFusionBase<MlirFusionEmitterBase> {
   struct EmitterState;
   friend struct EmitterState;
 
-  absl::Status EmitRowReduction(EmitterState& state) const;
+  absl::Status EmitReduction(EmitterState& state) const;
 
   std::vector<const HloInstruction*> reduction_heroes_;
   // The roots for each reduction hero.

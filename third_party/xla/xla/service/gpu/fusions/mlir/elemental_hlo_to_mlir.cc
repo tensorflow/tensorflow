@@ -419,18 +419,6 @@ absl::StatusOr<llvm::SmallVector<Value>> EmitGather(
   return operand_provider(instr, 0, operand_indices);
 }
 
-Value CheckConstraint(mlir::Value constrained_value, Range range,
-                      mlir::ImplicitLocOpBuilder& b) {
-  auto lb = b.create<ConstantOp>(b.getIndexAttr(range.lower_bound));
-  if (range.IsPoint()) {
-    return b.create<CmpIOp>(CmpIPredicate::eq, constrained_value, lb);
-  }
-  auto ub = b.create<ConstantOp>(b.getIndexAttr(range.upper_bound));
-  return b.create<AndIOp>(
-      b.create<CmpIOp>(CmpIPredicate::sge, constrained_value, lb),
-      b.create<CmpIOp>(CmpIPredicate::sle, constrained_value, ub));
-}
-
 // For a given instruction, deduces the indices of each parameter that are
 // needed for a given output index.
 llvm::SmallVector<llvm::SmallVector<Value>> GetInputIndices(
@@ -543,6 +531,18 @@ llvm::SmallVector<Value> ApplyAffineMap(mlir::AffineMap map,
     result.push_back(ApplyAffineExpr(expr, dims, symbols, b));
   }
   return result;
+}
+
+Value CheckConstraint(mlir::Value constrained_value, Range range,
+                      mlir::ImplicitLocOpBuilder& b) {
+  auto lb = b.create<ConstantOp>(b.getIndexAttr(range.lower_bound));
+  if (range.IsPoint()) {
+    return b.create<CmpIOp>(CmpIPredicate::eq, constrained_value, lb);
+  }
+  auto ub = b.create<ConstantOp>(b.getIndexAttr(range.upper_bound));
+  return b.create<AndIOp>(
+      b.create<CmpIOp>(CmpIPredicate::sge, constrained_value, lb),
+      b.create<CmpIOp>(CmpIPredicate::sle, constrained_value, ub));
 }
 
 Value CheckConstraints(const IndexingMap& map, ValueRange dims,

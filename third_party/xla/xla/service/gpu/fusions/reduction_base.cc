@@ -378,13 +378,17 @@ std::optional<IndexingMap> ReductionInfo::ComputeThreadIdToOutputIndexing(
             ctx),
         dimension_ranges, {});
 
-    // TODO(b/319081342): Add constraints for the writing threads
-    // (`has_output`).
     projected_index.AddConstraint(
         mlir::getAffineDimExpr(
             KernelFusionInterface::kIndexingMapThreadIdxDims[0], ctx) %
             WarpSize(),
         {0, 0});
+    if (!is_row_reduction_) {
+      projected_index.AddConstraint(
+          projected_index.GetAffineMap().getResult(1),
+          {0, tiling_.GetShape()[ReductionDimensions::kColMinorKeptDimension] -
+                  1});
+    }
 
     return ComposeIndexingMaps(
         projected_index,

@@ -69,10 +69,10 @@ TEST_F(ReductionTest, VariadicRowReduce) {
 // CHECK:          %[[A2:.*]] = xla_gpu.pure_call @fused_computation_param_0
 // CHECK:          %[[B2:.*]] = xla_gpu.pure_call @fused_computation_param_1
 // CHECK:          xla_gpu.pure_call @Add_t(%[[A]], %[[B]], %[[A2]], %[[B2]])
-// CHECK:        %[[SHUFFLED:.*]]:2 = xla_gpu.shuffle_reduce
-// CHECK-SAME:     @Add_t(%[[PER_THREAD]]#0, %[[PER_THREAD]]#1) to 16
 // CHECK:        %[[A_SHARED:.*]] = xla_gpu.allocate_shared : tensor<8x1xf32>
 // CHECK:        %[[B_SHARED:.*]] = xla_gpu.allocate_shared : tensor<8x1xf32>
+// CHECK:        %[[SHUFFLED:.*]]:2 = xla_gpu.shuffle_reduce
+// CHECK-SAME:     @Add_t(%[[PER_THREAD]]#0, %[[PER_THREAD]]#1) to 16
 // CHECK:        predicated_insert %[[SHUFFLED]]#0 into %[[A_SHARED]]
 // CHECK:        predicated_insert %[[SHUFFLED]]#1 into %[[B_SHARED]]
 // CHECK:        sync_threads
@@ -103,8 +103,8 @@ TEST_F(ReductionTest, RowReduceEpilogue) {
     })";
   TF_ASSERT_OK(EmitAndCheckIR(kHloString, R"(
     // CHECK: pure_call @Add_add
-    // CHECK: shuffle_reduce
     // CHECK: allocate_shared
+    // CHECK: shuffle_reduce
     // CHECK: sync_threads
     // CHECK: shuffle_reduce
   )"));
@@ -141,15 +141,68 @@ TEST_F(ReductionTest, RowReduceMOFEpilogue) {
     })";
   TF_ASSERT_OK(EmitAndCheckIR(kHloString, R"(
     // CHECK: pure_call @Add_add
-    // CHECK: shuffle_reduce
     // CHECK: allocate_shared
+    // CHECK: shuffle_reduce
     // CHECK: pure_call @Mul_mul
-    // CHECK: shuffle_reduce
     // CHECK: allocate_shared
+    // CHECK: shuffle_reduce
     // CHECK: sync_threads
     // CHECK: shuffle_reduce
     // CHECK: shuffle_reduce
   )"));
+  EXPECT_TRUE(RunAndCompareNoHloPasses(kHloString, ErrorSpec{1e-3}));
+}
+
+TEST_F(ReductionTest, ColumnReduction) {
+  constexpr auto kHloString = R"(
+    HloModule Test, is_scheduled=true
+
+    Add {
+      lhs = f32[] parameter(0)
+      rhs = f32[] parameter(1)
+      ROOT add = f32[] add(lhs, rhs)
+    }
+    fused_computation {
+      param_0 = f32[123,2051,321] parameter(0)
+      param_1 = f32[] parameter(1)
+      ROOT reduce = f32[123,321] reduce(param_0, param_1), dimensions={1}, to_apply=Add
+    }
+    ENTRY main {
+      a = f32[123,2051,321] parameter(0)
+      c = f32[] constant(0)
+      ROOT fusion = f32[123,321] fusion(a, c), kind=kInput, calls=fused_computation
+    })";
+  TF_ASSERT_OK(EmitAndCheckIR(kHloString, R"(
+    // CHECK: xla_gpu.pure_call @Add_add
+    // CHECK: allocate_shared
+    // CHECK: tensor.insert
+    // CHECK: sync_threads
+    // CHECK: predicated_extract
+    // CHECK: shuffle_reduce
+    // CHECK: predicated_insert
+  )"));
+  EXPECT_TRUE(RunAndCompareNoHloPasses(kHloString, ErrorSpec{1e-3}));
+}
+
+TEST_F(ReductionTest, SmallColumnReduction) {
+  constexpr auto kHloString = R"(
+    HloModule Test, is_scheduled=true
+
+    Add {
+      lhs = f32[] parameter(0)
+      rhs = f32[] parameter(1)
+      ROOT add = f32[] add(lhs, rhs)
+    }
+    fused_computation {
+      param_0 = f32[3,128,4] parameter(0)
+      param_1 = f32[] parameter(1)
+      ROOT reduce = f32[3,4] reduce(param_0, param_1), dimensions={1}, to_apply=Add
+    }
+    ENTRY main {
+      a = f32[3,128,4] parameter(0)
+      c = f32[] constant(0)
+      ROOT fusion = f32[3,4] fusion(a, c), kind=kInput, calls=fused_computation
+    })";
   EXPECT_TRUE(RunAndCompareNoHloPasses(kHloString, ErrorSpec{1e-3}));
 }
 
