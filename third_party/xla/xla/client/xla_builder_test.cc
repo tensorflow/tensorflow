@@ -643,6 +643,18 @@ TEST(XlaBuilderTest, AllReduceTuple) {
                                    .WithShapeEqualTo(&tuple_shape)));
 }
 
+TEST(XlaBuilderTest, CollectiveBroadcast) {
+  XlaBuilder b(TestName());
+  auto x = Parameter(&b, 0, ShapeUtil::MakeShape(F32, {5, 7}), "x");
+  ReplicaGroup replica_group;
+  replica_group.add_replica_ids(0);
+  replica_group.add_replica_ids(1);
+  CollectiveBroadcast(x, {replica_group});
+  TF_ASSERT_OK_AND_ASSIGN(auto module, BuildHloModule(b));
+  auto root = module->entry_computation()->root_instruction();
+  EXPECT_EQ(root->opcode(), HloOpcode::kCollectiveBroadcast);
+}
+
 TEST(XlaBuilderTest, CollectivePermute) {
   XlaBuilder b(TestName());
   auto x = Parameter(&b, 0, ShapeUtil::MakeShape(F32, {5, 7}), "x");
