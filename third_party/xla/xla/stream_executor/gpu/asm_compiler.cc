@@ -303,7 +303,9 @@ absl::StatusOr<std::vector<uint8_t>> CompileGpuAsm(int cc_major, int cc_minor,
   if (!env->LocalTempFilename(&ptx_path)) {
     return absl::InternalError("couldn't get temp PTX file name");
   }
-  TF_RETURN_IF_ERROR(tsl::WriteStringToFile(env, ptx_path, ptx_contents));
+  TF_RETURN_WITH_CONTEXT_IF_ERROR(
+      tsl::WriteStringToFile(env, ptx_path, ptx_contents),
+      "Unable to write PTX contents to: ", ptx_path);
   VLOG(2) << "ptx written to: " << ptx_path;
 
   absl::Cleanup ptx_cleaner = [&ptx_path] {

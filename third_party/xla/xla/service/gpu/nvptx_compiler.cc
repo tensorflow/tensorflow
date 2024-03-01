@@ -604,14 +604,14 @@ static absl::StatusOr<std::vector<uint8_t>> AssembleOptionsAndCompile(
 
   if (maybe_cubin.status().code() == absl::StatusCode::kCancelled) {
     // Register spilling has occurred during autotuning.
-    CHECK(options.is_autotuning_compilation);
+    CHECK(options.is_autotuning_compilation) << maybe_cubin.status();
     return maybe_cubin;
   }
 
   if (maybe_cubin.status().code() == absl::StatusCode::kResourceExhausted) {
     // Exhausting the register limit during autotuning is not a fatal
     // error, we should just skip the problematic tiling.
-    CHECK(options.is_autotuning_compilation);
+    CHECK(options.is_autotuning_compilation) << maybe_cubin.status();
     return maybe_cubin;
   }
 
