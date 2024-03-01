@@ -19,9 +19,7 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "xla/error_spec.h"
 #include "xla/service/gpu/fusions/mlir_emitter_test_base.h"
-#include "xla/tests/filecheck.h"
 #include "tsl/lib/core/status_test_util.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace gpu {
@@ -43,23 +41,23 @@ TEST_F(ReductionTest, VariadicRowReduce) {
       ROOT t = (f32[], f32[]) tuple(add.0, add.1)
     }
     fused_computation {
-      param_0 = f32[5,200,300] parameter(0)
-      param_1 = f32[5,200,300] parameter(1)
+      param_0 = f32[5,200,2048] parameter(0)
+      param_1 = f32[5,200,2048] parameter(1)
       param_2 = f32[] parameter(2)
       ROOT d.1 = (f32[5,200], f32[5,200])
         reduce(param_0, param_1, param_2, param_2), dimensions={2}, to_apply=Add
     }
     ENTRY main {
-      a = f32[5, 200, 300] parameter(0)
-      b = f32[5, 200, 300] parameter(1)
+      a = f32[5, 200, 2048] parameter(0)
+      b = f32[5, 200, 2048] parameter(1)
       c = f32[] constant(0)
       ROOT fusion = (f32[5,200], f32[5,200]) fusion(a, b, c),
         kind=kInput, calls=fused_computation
     })";
   TF_ASSERT_OK(EmitAndCheckIR(kHloString, R"(
 // CHECK:      @fused_computation
-// CHECK-SAME:   %[[ARG0:.*]]: tensor<5x200x300xf32> {xla.slice_index = 0
-// CHECK-SAME:   %[[ARG1:.*]]: tensor<5x200x300xf32> {xla.slice_index = 1
+// CHECK-SAME:   %[[ARG0:.*]]: tensor<5x200x2048xf32> {xla.slice_index = 0
+// CHECK-SAME:   %[[ARG1:.*]]: tensor<5x200x2048xf32> {xla.slice_index = 1
 // CHECK-SAME:   %[[INIT_TENSOR:.*]]: tensor<f32> {xla.slice_index = 2
 // CHECK-SAME:   %[[OUT0:.*]]: tensor<5x200xf32> {xla.slice_index = 3
 // CHECK-SAME:   %[[OUT1:.*]]: tensor<5x200xf32> {xla.slice_index = 4
@@ -69,8 +67,8 @@ TEST_F(ReductionTest, VariadicRowReduce) {
 // CHECK:          %[[A2:.*]] = xla_gpu.pure_call @fused_computation_param_0
 // CHECK:          %[[B2:.*]] = xla_gpu.pure_call @fused_computation_param_1
 // CHECK:          xla_gpu.pure_call @Add_t(%[[A]], %[[B]], %[[A2]], %[[B2]])
-// CHECK:        %[[A_SHARED:.*]] = xla_gpu.allocate_shared : tensor<8x1xf32>
-// CHECK:        %[[B_SHARED:.*]] = xla_gpu.allocate_shared : tensor<8x1xf32>
+// CHECK:        %[[A_SHARED:.*]] = xla_gpu.allocate_shared : tensor<2x4xf32>
+// CHECK:        %[[B_SHARED:.*]] = xla_gpu.allocate_shared : tensor<2x4xf32>
 // CHECK:        %[[SHUFFLED:.*]]:2 = xla_gpu.shuffle_reduce
 // CHECK-SAME:     @Add_t(%[[PER_THREAD]]#0, %[[PER_THREAD]]#1) to 16
 // CHECK:        predicated_insert %[[SHUFFLED]]#0 into %[[A_SHARED]]
@@ -225,6 +223,37 @@ TEST_F(ReductionTest, F64RowReduction) {
       c = f64[] constant(0)
       ROOT fusion = f64[100] fusion(a, c), kind=kInput, calls=fused_computation
     })";
+  // This reduction is small enough not to require shared memory.
+  TF_ASSERT_OK(EmitAndCheckIR(kHloString, R"(
+    // CHECK-NOT: allocate_shared
+  )"));
+  EXPECT_TRUE(RunAndCompareNoHloPasses(kHloString, ErrorSpec{1e-3}));
+}
+
+TEST_F(ReductionTest, MultiRowReduction) {
+  constexpr auto kHloString = R"(
+    HloModule Test, is_scheduled=true
+
+    Add {
+      lhs = f32[] parameter(0)
+      rhs = f32[] parameter(1)
+      ROOT add = f32[] add(lhs, rhs)
+    }
+    fused_computation {
+      param_0 = f32[1024,4] parameter(0)
+      param_1 = f32[] parameter(1)
+      ROOT reduce = f32[1024] reduce(param_0, param_1), dimensions={1}, to_apply=Add
+    }
+    ENTRY main {
+      a = f32[1024,4] parameter(0)
+      c = f32[] constant(0)
+      ROOT fusion = f32[1024] fusion(a, c), kind=kInput, calls=fused_computation
+    })";
+  // Multi-row reductions don't use shared memory.
+  TF_ASSERT_OK(EmitAndCheckIR(kHloString, R"(
+    // CHECK: shuffle_reduce {{.*}} to 2
+    // CHECK-NOT: allocate_shared
+  )"));
   EXPECT_TRUE(RunAndCompareNoHloPasses(kHloString, ErrorSpec{1e-3}));
 }
 
