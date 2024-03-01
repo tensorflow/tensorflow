@@ -29,7 +29,7 @@ namespace gpu {
 #define GEN_PASS_DECL
 #include "xla/service/gpu/fusions/mlir/passes.h.inc"
 
-std::unique_ptr<mlir::Pass> CreateExpandFloatConversionsPass(bool enable_bf16);
+std::unique_ptr<mlir::Pass> CreateExpandFloatOpsPass(bool enable_bf16);
 std::unique_ptr<mlir::Pass> CreateLowerFuncPass();
 std::unique_ptr<mlir::Pass> CreateLowerTensorsPass();
 std::unique_ptr<mlir::Pass> CreateLowerToLLVMPass();

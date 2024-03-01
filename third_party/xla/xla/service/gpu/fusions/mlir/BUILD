@@ -240,7 +240,7 @@ gentbl_cc_library(
 cc_library(
     name = "passes",
     srcs = [
-        "expand_float_conversions.cc",
+        "expand_float_ops.cc",
         "lower_func.cc",
         "lower_tensors.cc",
         "lower_to_llvm.cc",
@@ -281,6 +281,7 @@ cc_library(
         "@llvm-project//mlir:LLVMDialect",
         "@llvm-project//mlir:MathDialect",
         "@llvm-project//mlir:MathToLLVM",
+        "@llvm-project//mlir:MathTransforms",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:SCFDialect",
         "@llvm-project//mlir:SCFToControlFlow",

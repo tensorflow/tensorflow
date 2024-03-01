@@ -240,7 +240,7 @@ MlirFusionEmitterBase::CreateLLVMModule(
   pm.addPass(mlir::createSymbolDCEPass());
   pm.addPass(mlir::createCSEPass());
   pm.addPass(CreateLowerTensorsPass());
-  pm.addPass(CreateExpandFloatConversionsPass(
+  pm.addPass(CreateExpandFloatOpsPass(
       !device.cuda_compute_capability().IsAtLeastAmpere()));
   pm.addPass(CreateLowerToLLVMPass());
   pm.addPass(mlir::createReconcileUnrealizedCastsPass());

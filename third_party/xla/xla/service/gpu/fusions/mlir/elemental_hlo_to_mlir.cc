@@ -146,11 +146,7 @@ static auto& kUnsupportedOps =
 
 static auto& kUnimplementedOps = *new absl::flat_hash_set<HloOpcode>{
     HloOpcode::kConvolution, HloOpcode::kDot, HloOpcode::kMap,
-    HloOpcode::kReduceWindow,
-    // Custom approximations in XLA:
-    HloOpcode::kErf, HloOpcode::kTanh,
-    // Incorrect NaN handling:
-    HloOpcode::kMaximum, HloOpcode::kMinimum, HloOpcode::kClamp};
+    HloOpcode::kReduceWindow};
 
 bool IsUnsupportedConstant(const HloInstruction* instr) {
   return instr->opcode() == HloOpcode::kConstant &&

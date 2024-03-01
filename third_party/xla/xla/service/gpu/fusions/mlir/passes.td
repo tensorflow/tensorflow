@@ -102,14 +102,14 @@ def SimplifyAffinePass : Pass<"xla-gpu-simplify-affine", "mlir::ModuleOp"> {
   let constructor = "CreateSimplifyAffinePass()";
 }
 
-def ExpandFloatConversionsPass : Pass<"xla-gpu-expand-conversions", "mlir::ModuleOp"> {
-   let summary = "Expands float conversions that are not natively supported.";
+def ExpandFloatOpsPass : Pass<"xla-gpu-expand-float-ops", "mlir::ModuleOp"> {
+   let summary = "Expands float ops that are not natively supported.";
 
    let description = [{
-      Not all float conversions are natively supported, so the ones that aren't
-      need to be emulated with bitwise operations.
+      Not all float ops are natively supported, either because they don't exist
+      in hardware or they are too inaccurate.
 
-      Currently, this pass only implements bf16 conversions.
+      This pass replaces these ops with alternative implementations.
    }];
 
    let dependentDialects = [
