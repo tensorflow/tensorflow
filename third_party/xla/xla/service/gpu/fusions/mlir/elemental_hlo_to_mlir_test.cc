@@ -323,6 +323,21 @@ TEST_F(ElementalHloToMlirTest, Complex) {
   )"));
 }
 
+TEST_F(ElementalHloToMlirTest, UnsignedDiv) {
+  TF_EXPECT_OK(Run(R"(
+    ENTRY main {
+      p0 = u32[4] parameter(0)
+      p1 = u32[4] parameter(1)
+      ROOT div = u32[4] divide(p0, p1)
+    })",
+                   R"(
+    // CHECK:      @main_div(
+    // CHECK-SAME:     %[[ARG0:.*]]: tensor<4xui32>, %[[ARG1:.*]]: tensor<4xui32>,
+    // CHECK-SAME:     %[[X:.*]]: index {{.*}}
+    // CHECK:        %[[DIV:.*]] = arith.divui %{{.*}}, %{{.*}} : i32
+  )"));
+}
+
 TEST_F(ElementalHloToMlirTest, InjectedParameter) {
   TF_EXPECT_OK(Run(
       R"(

@@ -59,6 +59,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 #include "xla/mlir_hlo/mhlo/transforms/map_mhlo_to_scalar_op.h"
+#include "xla/mlir_hlo/mhlo/utils/type_conversion.h"
 #include "xla/primitive_util.h"
 #include "xla/service/gpu/fusions/mlir/ir/xla_gpu_ops.h"
 #include "xla/service/gpu/hlo_traversal.h"
@@ -158,7 +159,10 @@ static auto& kUnimplementedOps = *new absl::flat_hash_set<HloOpcode>{
 
 bool IsUnsupportedConstant(const HloInstruction* instr) {
   return instr->opcode() == HloOpcode::kConstant &&
-         !ShapeUtil::IsEffectiveScalar(instr->shape());
+         (!ShapeUtil::IsEffectiveScalar(instr->shape()) ||
+          primitive_util::IsUnsignedIntegralType(
+              instr->shape().element_type()) ||
+          primitive_util::IsComplexType(instr->shape().element_type()));
 }
 
 bool IsUnsupportedTuple(const HloInstruction* instr) {
@@ -308,7 +312,7 @@ absl::StatusOr<SmallVector<Value>> EmitConcat(
 }
 
 mlir::Value ClampIndex(mlir::Value index, int64_t high,
-                       mlir::ImplicitLocOpBuilder& b) {
+                       ImplicitLocOpBuilder& b) {
   auto zero = b.create<ConstantOp>(b.getIndexAttr(0));
   if (high <= 0) {
     return zero;
@@ -325,7 +329,7 @@ mlir::Value ClampIndex(mlir::Value index, int64_t high,
 
 absl::StatusOr<llvm::SmallVector<Value>> EmitDynamicSlice(
     const HloInstruction* instr, ValueRange indices,
-    const OperandProvider& operand_provider, mlir::ImplicitLocOpBuilder& b) {
+    const OperandProvider& operand_provider, ImplicitLocOpBuilder& b) {
   llvm::SmallVector<Value> input_indices(indices);
 
   const auto& input_shape = instr->operand(0)->shape();
@@ -342,7 +346,7 @@ absl::StatusOr<llvm::SmallVector<Value>> EmitDynamicSlice(
 
 absl::StatusOr<llvm::SmallVector<Value>> EmitDynamicUpdateSlice(
     const HloInstruction* instr, ValueRange indices,
-    const OperandProvider& operand_provider, mlir::ImplicitLocOpBuilder& b) {
+    const OperandProvider& operand_provider, ImplicitLocOpBuilder& b) {
   mlir::Value is_in_bounds =
       b.create<ConstantOp>(b.getIntegerAttr(b.getI1Type(), 1));
   mlir::SmallVector<Value> update_indices;
@@ -475,20 +479,22 @@ absl::StatusOr<SmallVector<Value>> EmitParameter(
 }
 
 template <typename MhloOp, typename... ExtraArgs>
-SmallVector<Value> MapHloOp(llvm::ArrayRef<mlir::Type> result_types,
+SmallVector<Value> MapHloOp(mlir::Type result_type,
+                            llvm::ArrayRef<mlir::Type> arg_types,
                             llvm::ArrayRef<Value> args, ImplicitLocOpBuilder& b,
                             ExtraArgs&&... extra_args) {
   return {mhlo::MhloOpToStdScalarOp::mapOpOfType<MhloOp>(
-      b.getLoc(), result_types, llvm::to_vector(mlir::TypeRange(args)),
+      b.getLoc(), result_type, arg_types,
       typename MhloOp::Adaptor(args, std::forward<ExtraArgs>(extra_args)...),
       &b)};
 }
 
 template <typename MhloOp>
-SmallVector<Value> MapElementwiseOp(llvm::ArrayRef<Value> args,
+SmallVector<Value> MapElementwiseOp(llvm::ArrayRef<mlir::Type> arg_types,
+                                    llvm::ArrayRef<Value> args,
                                     ImplicitLocOpBuilder& b) {
   // We use the last argument's type because of select.
-  return MapHloOp<MhloOp>({args.back().getType()}, args, b);
+  return MapHloOp<MhloOp>(args.back().getType(), arg_types, args, b);
 }
 
 }  // namespace
@@ -497,10 +503,10 @@ Value ApplyAffineExpr(mlir::AffineExpr expr, ValueRange dims,
                       ValueRange symbols, ImplicitLocOpBuilder& b) {
   // For unknown (but undoubtedly good) reasons, affine.apply removes unused
   // trailing dimensions, but only in the expression.
-  while (dims.size() > 0 && !expr.isFunctionOfDim(dims.size() - 1)) {
+  while (!dims.empty() && !expr.isFunctionOfDim(dims.size() - 1)) {
     dims = dims.drop_back();
   }
-  while (symbols.size() > 0 && !expr.isFunctionOfSymbol(symbols.size() - 1)) {
+  while (!symbols.empty() && !expr.isFunctionOfSymbol(symbols.size() - 1)) {
     symbols = symbols.drop_back();
   }
   SmallVector<Value> args(dims);
@@ -519,7 +525,7 @@ SmallVector<Value> ApplyAffineMap(mlir::AffineMap map, ValueRange dims,
 }
 
 Value CheckConstraint(mlir::Value constrained_value, Range range,
-                      mlir::ImplicitLocOpBuilder& b) {
+                      ImplicitLocOpBuilder& b) {
   auto lb = b.create<ConstantOp>(b.getIndexAttr(range.lower_bound));
   if (range.IsPoint()) {
     return b.create<CmpIOp>(CmpIPredicate::eq, constrained_value, lb);
@@ -584,7 +590,8 @@ absl::StatusOr<SmallVector<Value>> HloToMlir(
         index =
             builder.create<arith::IndexCastUIOp>(builder.getI64Type(), index);
       }
-      return MapHloOp<mhlo::ConvertOp>({element_mlir_type}, {index}, builder);
+      return MapHloOp<mhlo::ConvertOp>(element_mlir_type, {index.getType()},
+                                       {index}, builder);
     }
     case HloOpcode::kPad:
       return EmitPad(instr, indices, operand_provider, builder);
@@ -614,6 +621,11 @@ absl::StatusOr<SmallVector<Value>> HloToMlir(
       break;
   }
 
+  llvm::SmallVector<mlir::Type> arg_types;
+  for (auto operand : instr->operands()) {
+    arg_types.push_back(*ConvertPrimitiveTypeToMLIRType(
+        operand->shape().element_type(), builder));
+  }
   auto input_indices = GetInputIndices(
       ComputeOutputToInputIndexing(instr, 0, builder.getContext()), indices,
       builder);
@@ -637,30 +649,30 @@ absl::StatusOr<SmallVector<Value>> HloToMlir(
     case HloOpcode::kAbs:
       if (primitive_util::IsComplexType(element_type)) {
         return {MapHloOp<mhlo::AbsOp>(
-            {*ConvertPrimitiveTypeToMLIRType(
-                primitive_util::ComplexComponentType(element_type), builder)},
-            operands, builder)};
+            *ConvertPrimitiveTypeToMLIRType(
+                primitive_util::ComplexComponentType(element_type), builder),
+            arg_types, operands, builder)};
       } else {
-        return MapElementwiseOp<mhlo::AbsOp>(operands, builder);
+        return MapElementwiseOp<mhlo::AbsOp>(arg_types, operands, builder);
       }
     case HloOpcode::kAdd:
       if (element_type == PRED) {
-        return MapElementwiseOp<mhlo::OrOp>(operands, builder);
+        return MapElementwiseOp<mhlo::OrOp>(arg_types, operands, builder);
       } else {
-        return MapElementwiseOp<mhlo::AddOp>(operands, builder);
+        return MapElementwiseOp<mhlo::AddOp>(arg_types, operands, builder);
       }
     case HloOpcode::kAnd:
-      return MapElementwiseOp<mhlo::AndOp>(operands, builder);
+      return MapElementwiseOp<mhlo::AndOp>(arg_types, operands, builder);
     case HloOpcode::kAtan2:
-      return MapElementwiseOp<mhlo::Atan2Op>(operands, builder);
+      return MapElementwiseOp<mhlo::Atan2Op>(arg_types, operands, builder);
     case HloOpcode::kCbrt:
-      return MapElementwiseOp<mhlo::CbrtOp>(operands, builder);
+      return MapElementwiseOp<mhlo::CbrtOp>(arg_types, operands, builder);
     case HloOpcode::kCeil:
-      return MapElementwiseOp<mhlo::CeilOp>(operands, builder);
+      return MapElementwiseOp<mhlo::CeilOp>(arg_types, operands, builder);
     case HloOpcode::kClamp:
-      return MapElementwiseOp<mhlo::ClampOp>(operands, builder);
+      return MapElementwiseOp<mhlo::ClampOp>(arg_types, operands, builder);
     case HloOpcode::kClz:
-      return MapElementwiseOp<mhlo::ClzOp>(operands, builder);
+      return MapElementwiseOp<mhlo::ClzOp>(arg_types, operands, builder);
     case HloOpcode::kCompare: {
       auto* context = builder.getContext();
       auto dir = builder.getDictionaryAttr(builder.getNamedAttr(
@@ -671,55 +683,57 @@ absl::StatusOr<SmallVector<Value>> HloToMlir(
                   ComparisonDirectionToString(instr->comparison_direction()))
                   .value())));
       auto result_types = llvm::to_vector(mlir::TypeRange{builder.getI1Type()});
-      auto arg_types = llvm::to_vector(mlir::TypeRange(operands));
       return {{mhlo::MhloOpToStdScalarOp::mapOpOfType<mhlo::CompareOp>(
           builder.getLoc(), result_types, arg_types,
           mhlo::CompareOp::Adaptor(operands, dir), &builder)}};
     }
     case HloOpcode::kComplex:
-      return MapHloOp<mhlo::ComplexOp>({element_mlir_type}, operands, builder);
+      return MapHloOp<mhlo::ComplexOp>(element_mlir_type, arg_types, operands,
+                                       builder);
     case HloOpcode::kCos:
-      return MapElementwiseOp<mhlo::CosineOp>(operands, builder);
+      return MapElementwiseOp<mhlo::CosineOp>(arg_types, operands, builder);
     case HloOpcode::kDivide:
-      return MapElementwiseOp<mhlo::DivOp>(operands, builder);
+      return MapElementwiseOp<mhlo::DivOp>(arg_types, operands, builder);
     case HloOpcode::kErf:
-      return MapElementwiseOp<mhlo::ErfOp>(operands, builder);
+      return MapElementwiseOp<mhlo::ErfOp>(arg_types, operands, builder);
     case HloOpcode::kExp:
-      return MapElementwiseOp<mhlo::ExpOp>(operands, builder);
+      return MapElementwiseOp<mhlo::ExpOp>(arg_types, operands, builder);
     case HloOpcode::kExpm1:
-      return MapElementwiseOp<mhlo::Expm1Op>(operands, builder);
+      return MapElementwiseOp<mhlo::Expm1Op>(arg_types, operands, builder);
     case HloOpcode::kFloor:
-      return MapElementwiseOp<mhlo::FloorOp>(operands, builder);
+      return MapElementwiseOp<mhlo::FloorOp>(arg_types, operands, builder);
     case HloOpcode::kIsFinite:
-      return MapHloOp<mhlo::IsFiniteOp>({builder.getI1Type()}, operands,
-                                        builder);
+      return MapHloOp<mhlo::IsFiniteOp>(builder.getI1Type(), arg_types,
+                                        operands, builder);
     case HloOpcode::kImag:
-      return MapHloOp<mhlo::ImagOp>({element_mlir_type}, operands, builder);
+      return MapHloOp<mhlo::ImagOp>(element_mlir_type, arg_types, operands,
+                                    builder);
     case HloOpcode::kLog:
-      return MapElementwiseOp<mhlo::LogOp>(operands, builder);
+      return MapElementwiseOp<mhlo::LogOp>(arg_types, operands, builder);
     case HloOpcode::kLog1p:
-      return MapElementwiseOp<mhlo::Log1pOp>(operands, builder);
+      return MapElementwiseOp<mhlo::Log1pOp>(arg_types, operands, builder);
     case HloOpcode::kLogistic:
-      return MapElementwiseOp<mhlo::LogisticOp>(operands, builder);
+      return MapElementwiseOp<mhlo::LogisticOp>(arg_types, operands, builder);
     case HloOpcode::kMaximum:
-      return MapElementwiseOp<mhlo::MaxOp>(operands, builder);
+      return MapElementwiseOp<mhlo::MaxOp>(arg_types, operands, builder);
     case HloOpcode::kMinimum:
-      return MapElementwiseOp<mhlo::MinOp>(operands, builder);
+      return MapElementwiseOp<mhlo::MinOp>(arg_types, operands, builder);
     case HloOpcode::kMultiply:
-      return MapElementwiseOp<mhlo::MulOp>(operands, builder);
+      return MapElementwiseOp<mhlo::MulOp>(arg_types, operands, builder);
     case HloOpcode::kNegate:
-      return MapElementwiseOp<mhlo::NegOp>(operands, builder);
+      return MapElementwiseOp<mhlo::NegOp>(arg_types, operands, builder);
     case HloOpcode::kNot:
-      return MapElementwiseOp<mhlo::NotOp>(operands, builder);
+      return MapElementwiseOp<mhlo::NotOp>(arg_types, operands, builder);
     case HloOpcode::kOr:
-      return MapElementwiseOp<mhlo::OrOp>(operands, builder);
+      return MapElementwiseOp<mhlo::OrOp>(arg_types, operands, builder);
     case HloOpcode::kPopulationCount:
-      return MapHloOp<mhlo::PopulationCountOp>({element_mlir_type}, operands,
-                                               builder);
+      return MapHloOp<mhlo::PopulationCountOp>(element_mlir_type, arg_types,
+                                               operands, builder);
     case HloOpcode::kPower:
-      return MapElementwiseOp<mhlo::PowOp>(operands, builder);
+      return MapElementwiseOp<mhlo::PowOp>(arg_types, operands, builder);
     case HloOpcode::kReal:
-      return MapHloOp<mhlo::RealOp>({element_mlir_type}, operands, builder);
+      return MapHloOp<mhlo::RealOp>(element_mlir_type, arg_types, operands,
+                                    builder);
     case HloOpcode::kReducePrecision: {
       mlir::NamedAttribute exponent_bits(
           builder.getStringAttr("exponent_bits"),
@@ -728,43 +742,46 @@ absl::StatusOr<SmallVector<Value>> HloToMlir(
           builder.getStringAttr("mantissa_bits"),
           builder.getI32IntegerAttr(instr->mantissa_bits()));
       return MapHloOp<mhlo::ReducePrecisionOp>(
-          {operands.front().getType()}, operands, builder,
+          operands.front().getType(), arg_types, operands, builder,
           mlir::DictionaryAttr::get(builder.getContext(),
                                     {exponent_bits, mantissa_bits}));
     }
     case HloOpcode::kRemainder:
-      return MapElementwiseOp<mhlo::RemOp>(operands, builder);
+      return MapElementwiseOp<mhlo::RemOp>(arg_types, operands, builder);
     case HloOpcode::kRoundNearestAfz:
-      return MapElementwiseOp<mhlo::RoundOp>(operands, builder);
+      return MapElementwiseOp<mhlo::RoundOp>(arg_types, operands, builder);
     case HloOpcode::kRoundNearestEven:
-      return MapElementwiseOp<mhlo::RoundNearestEvenOp>(operands, builder);
+      return MapElementwiseOp<mhlo::RoundNearestEvenOp>(arg_types, operands,
+                                                        builder);
     case HloOpcode::kRsqrt:
-      return MapElementwiseOp<mhlo::RsqrtOp>(operands, builder);
+      return MapElementwiseOp<mhlo::RsqrtOp>(arg_types, operands, builder);
     case HloOpcode::kSelect:
-      return MapElementwiseOp<mhlo::SelectOp>(operands, builder);
+      return MapElementwiseOp<mhlo::SelectOp>(arg_types, operands, builder);
     case HloOpcode::kShiftLeft:
-      return MapElementwiseOp<mhlo::ShiftLeftOp>(operands, builder);
+      return MapElementwiseOp<mhlo::ShiftLeftOp>(arg_types, operands, builder);
     case HloOpcode::kShiftRightArithmetic:
-      return MapElementwiseOp<mhlo::ShiftRightArithmeticOp>(operands, builder);
+      return MapElementwiseOp<mhlo::ShiftRightArithmeticOp>(arg_types, operands,
+                                                            builder);
     case HloOpcode::kShiftRightLogical:
-      return MapElementwiseOp<mhlo::ShiftRightLogicalOp>(operands, builder);
+      return MapElementwiseOp<mhlo::ShiftRightLogicalOp>(arg_types, operands,
+                                                         builder);
     case HloOpcode::kSign:
-      return MapElementwiseOp<mhlo::SignOp>(operands, builder);
+      return MapElementwiseOp<mhlo::SignOp>(arg_types, operands, builder);
     case HloOpcode::kSin:
-      return MapElementwiseOp<mhlo::SineOp>(operands, builder);
+      return MapElementwiseOp<mhlo::SineOp>(arg_types, operands, builder);
     case HloOpcode::kSqrt:
-      return MapElementwiseOp<mhlo::SqrtOp>(operands, builder);
+      return MapElementwiseOp<mhlo::SqrtOp>(arg_types, operands, builder);
     case HloOpcode::kSubtract:
-      return MapElementwiseOp<mhlo::SubtractOp>(operands, builder);
+      return MapElementwiseOp<mhlo::SubtractOp>(arg_types, operands, builder);
     case HloOpcode::kTan:
-      return MapElementwiseOp<mhlo::TanOp>(operands, builder);
+      return MapElementwiseOp<mhlo::TanOp>(arg_types, operands, builder);
     case HloOpcode::kTanh:
-      return MapElementwiseOp<mhlo::TanhOp>(operands, builder);
+      return MapElementwiseOp<mhlo::TanhOp>(arg_types, operands, builder);
     case HloOpcode::kXor:
-      return MapElementwiseOp<mhlo::XorOp>(operands, builder);
+      return MapElementwiseOp<mhlo::XorOp>(arg_types, operands, builder);
     case HloOpcode::kBitcastConvert:
-      return MapHloOp<mhlo::BitcastConvertOp>({element_mlir_type}, operands,
-                                              builder);
+      return MapHloOp<mhlo::BitcastConvertOp>(element_mlir_type, arg_types,
+                                              operands, builder);
     case HloOpcode::kConvert: {
       if (operands[0].getType().isa<mlir::FloatType>() &&
           element_type == PRED) {
@@ -776,9 +793,9 @@ absl::StatusOr<SmallVector<Value>> HloToMlir(
                 ->getResults()};
       }
 
-      auto out =
-          MapHloOp<mhlo::ConvertOp>({element_mlir_type}, operands, builder)
-              .front();
+      auto out = MapHloOp<mhlo::ConvertOp>(element_mlir_type, arg_types,
+                                           operands, builder)
+                     .front();
       // Convert from float to int is saturating, but MHLO's conversion logic
       // does not implement this.
       // TODO(jreiffers): Is this a bug or a feature?
@@ -814,8 +831,8 @@ absl::StatusOr<SmallVector<Value>> HloToMlir(
       if (instr->operands()[0]->shape().element_type() == element_type) {
         return operands;
       }
-      return MapHloOp<mhlo::BitcastConvertOp>({element_mlir_type}, operands,
-                                              builder);
+      return MapHloOp<mhlo::BitcastConvertOp>(element_mlir_type, arg_types,
+                                              operands, builder);
     case HloOpcode::kCopy:
     case HloOpcode::kSlice:
     case HloOpcode::kBroadcast:
@@ -834,7 +851,6 @@ bool IsHloOpSupported(const HloInstruction* instr,
                       se::CudaComputeCapability compute_capability) {
   auto is_unsupported_type = [](const HloInstruction* instr) {
     auto e = instr->shape().element_type();
-    // TODO(jreiffers): Convert to signless.
     // TODO(akuegel): Fix remaining issues with complex.
     // TODO(jreiffers): Support fp8.
     // TODO(jreiffers): Support int4.
@@ -842,7 +858,6 @@ bool IsHloOpSupported(const HloInstruction* instr,
             primitive_util::BitWidth(e) > 1 &&
             primitive_util::BitWidth(e) < 8) ||
            primitive_util::IsComplexType(e) ||
-           primitive_util::IsUnsignedIntegralType(e) ||
            (primitive_util::IsFloatingPointType(e) &&
             primitive_util::BitWidth(e) < 16);
   };
@@ -1006,8 +1021,20 @@ absl::StatusOr<SmallVector<Value>> SubgraphToMlir(
       return entry;
     }
 
-    TF_ASSIGN_OR_RETURN(entry, HloToMlir(instr, indices, provide_operand,
-                                         call_target_provider, builder));
+    TF_ASSIGN_OR_RETURN(auto lowered_instr,
+                        HloToMlir(instr, indices, provide_operand,
+                                  call_target_provider, builder));
+
+    // Convert from signed to signless.
+    mlir::mhlo::RemoveSignTypeConverter sign_converter;
+    for (auto& lowered : lowered_instr) {
+      auto result_type = sign_converter.convertType(lowered.getType());
+      lowered = builder
+                    .create<mlir::UnrealizedConversionCastOp>(
+                        lowered.getLoc(), result_type, lowered)
+                    .getResult(0);
+    }
+    entry = lowered_instr;
     TF_RET_CHECK(!absl::c_any_of(
         entry, [](const auto& entry) { return entry == nullptr; }))
         << "null result for " << instr->ToShortString();
@@ -1059,6 +1086,20 @@ absl::Status SubgraphToMlirFunction(
       auto results,
       SubgraphToMlir(computation, subgraph, call_target_provider, parameters,
                      indices, injected_params, builder));
+
+  // We have been converting signed types to signless types. To match the
+  // function signature, we have to convert back to signed types.
+  auto function = mlir::cast<mlir::func::FuncOp>(
+      results.front().getDefiningOp()->getParentOp());
+  const auto& function_results = function.getFunctionType().getResults();
+  for (auto [index, function_result] : llvm::enumerate(function_results)) {
+    results[index] =
+        builder
+            .create<mlir::UnrealizedConversionCastOp>(
+                results[index].getLoc(), function_result, results[index])
+            .getResult(0);
+  }
+
   builder.create<mlir::func::ReturnOp>(results);
   return absl::OkStatus();
 }
