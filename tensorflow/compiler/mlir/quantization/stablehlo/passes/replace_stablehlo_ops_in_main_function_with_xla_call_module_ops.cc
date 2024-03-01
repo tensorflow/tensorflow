@@ -295,6 +295,61 @@ void UpdateStatesAndReplaceStablehloOps(
       stablehlo_func_id, module_op);
 }
 
+// Check if the op should be added to the subgraph.
+// The op should be added to the subgraph if all of its users match one
+// of following two conditions:
+// 1: The user is already in the current subgraph.
+// 2: The user will reach a dead end.
+//
+// If the op should be added to the subgraph and there are users who
+// will reach the dead end, add the ops on the dead end to the subgraph as well.
+bool ShouldAddOpToSubgraph(Operation* op,
+                           const SetVector<Operation*>& reverse_subgraph,
+                           const SetVector<Operation*>& ops_to_add,
+                           SmallVector<Operation*>& all_descendants) {
+  if (!op) {
+    return false;
+  }
+
+  SmallVector<Operation*> current_layer_descendants;
+  SmallVector<Operation*> next_layer_descendants;
+  int current_depth = 0;
+  current_layer_descendants.push_back(op);
+  // BFS downstream ops for current user.
+  // If any one of the descendants meet one of the three conditions, we return
+  // false for the current value:
+  // 1: The descendant is not in the ops_to_add.
+  // 2: The descendant is not a stablehlo op.
+  // 3: The depth of the descendant is larger than 5, we don't want to search
+  // too deep, max depth is arbitrarily chosen.
+  while (!current_layer_descendants.empty()) {
+    if (current_depth > 5) {
+      all_descendants.clear();
+      return false;
+    }
+    current_depth++;
+
+    for (Operation* descendant : current_layer_descendants) {
+      if (!IsStablehloOp(descendant) || !ops_to_add.contains(descendant)) {
+        all_descendants.clear();
+        return false;
+      }
+      for (Operation* next_descendant : descendant->getUsers()) {
+        if (reverse_subgraph.contains(next_descendant)) {
+          continue;
+        }
+        next_layer_descendants.push_back(next_descendant);
+      }
+      all_descendants.push_back(descendant);
+    }
+
+    current_layer_descendants = next_layer_descendants;
+    next_layer_descendants.clear();
+  }
+
+  return true;
+}
+
 // Replaces the StableHLO ops in the main function block with
 // tf.XlaCallModuleOps as separate subgraphs. Wires them back to the main
 // function block to be compatible with SavedModel structure.
@@ -357,23 +412,20 @@ void ReplaceStablehloOpsInMainFunctionWithXlaCallModuleOps(
       while (should_add_op) {
         should_add_op = false;
         Operation* defining_op = nullptr;
+        SmallVector<Operation*> all_descendants;
         for (Value v : operands) {
           if (defined_values.contains(v)) continue;
-          // Check if op is StableHLO op and its users are all in the current
-          // subgraph. If we add ops that have users outside the current
-          // subgraph, it will create a dangling reference.
-          if (v.getDefiningOp() && IsStablehloOp(v.getDefiningOp()) &&
-              llvm::all_of(v.getDefiningOp()->getUsers(),
-                           [&reverse_subgraph](Operation* user) {
-                             return reverse_subgraph.contains(user);
-                           })) {
+          if (ShouldAddOpToSubgraph(v.getDefiningOp(), reverse_subgraph,
+                                    ops_to_add, all_descendants)) {
             defining_op = v.getDefiningOp();
             should_add_op = true;
             break;
           }
         }
         if (should_add_op) {
-          add_to_subgraph(defining_op);
+          for (auto descendant : llvm::reverse(all_descendants)) {
+            add_to_subgraph(descendant);
+          }
         }
       }
       // Create an XlaCallModuleOp if reverse_subgraph isn't empty.
