@@ -116,7 +116,6 @@ cc_library(
         ":compiler",
         ":passes",
         "//xla/mlir/backends/cpu/transforms:passes",
-        "//xla/mlir/math/transforms:passes",
         "//xla/mlir/memref/transforms:passes",
         "//xla/mlir/runtime/ir:rt",
         "//xla/mlir_hlo:transforms_passes",

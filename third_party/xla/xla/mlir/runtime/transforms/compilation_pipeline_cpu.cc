@@ -56,7 +56,6 @@ limitations under the License.
 #endif
 #include "mlir/Transforms/Passes.h"  // from @llvm-project
 #include "xla/mlir/backends/cpu/transforms/passes.h"
-#include "xla/mlir/math/transforms/passes.h"
 #include "xla/mlir/memref/transforms/passes.h"
 #include "xla/mlir/runtime/ir/rt_dialect.h"
 #include "xla/mlir/runtime/transforms/compilation_pipeline_options.h"
@@ -114,10 +113,6 @@ static void CreateXlaCpuCompilationPipeline(mlir::OpPassManager& pm,
   pm.addPass(mlir::createInlinerPass());
   pm.addPass(mlir::createCanonicalizerPass());
   pm.addPass(mlir::createCSEPass());
-
-  // Enable math approximations to match XLA's FP accuracy spec.
-  pm.addNestedPass<mlir::func::FuncOp>(
-      xla::CreateMathApproximationPass({"all"}));
 
   // Convert all linalg operations to parallel loops.
   pm.addNestedPass<mlir::func::FuncOp>(
