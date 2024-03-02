@@ -15,6 +15,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_FRAMEWORK_METRICS_H_
 #define TENSORFLOW_CORE_FRAMEWORK_METRICS_H_
 
+#include <cstddef>
 #include <cstdint>
 #include <string>
 
@@ -196,6 +197,19 @@ void RecordTFDataServiceOptimalNumberOfWorkers(int64_t number_of_workers);
 // The `name` argument identifies the Dataset type (e.g. "TFRecordDataset").
 void RecordTFDataFilename(const string& name, const string& filename);
 
+// Records the total attempts made by file logger.
+void RecordTFDataFileLoggerAttempts();
+
+// Records the total errors encountered by file logger with this error code.
+void RecordTFDataFileLoggerErrors(error::Code code);
+
+// Records the total number of files attempted to be logged by file logger.
+void RecordTFDataFileLoggerAttemptedNumFiles(size_t num_files);
+
+// Records the total number of files that encountered errors during logging by
+// file logger with this error code.
+void RecordTFDataFileLoggerErrorsNumFiles(size_t num_files, error::Code code);
+
 // Records statistics of tf.data auto sharding.
 //
 // The `id` is a unique identifier of the input pipeline. The `policy`
@@ -226,6 +240,11 @@ void RecordTFDataError(const string& error_type, const string& error_code);
 
 // Records the framework type used to build the tf.data.Dataset.
 void RecordTFDataFrameworkType(const std::string& framework_type);
+
+// Records the number of times tf.data file logger encountered an error of this
+// type occurred with this status code.
+void RecordTFDataFileLoggerError(const string& error_type,
+                                 const string& error_code);
 
 // Records parsing of dense tensor features.
 void RecordParseDenseFeature(int64_t num_features);
