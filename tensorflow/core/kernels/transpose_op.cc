@@ -135,8 +135,8 @@ void TransposeOp::Compute(OpKernelContext* ctx) {
                                       perm.shape().DebugString()));
   // Validation for negative values inside `perm`.
   auto perm_vector = perm.vec<int>();
-  for (int i = 0; i < perm.dim_size(0); i++) {
-    if (0 > perm_vector(i)) {
+  for (int i = 0; i < perm.dim_size(0); ++i) {
+    if (perm_vector(i) < 0) {
       return errors::InvalidArgument(
           "The perm values should be non-negative "
           "but found ",
