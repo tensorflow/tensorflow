@@ -148,6 +148,7 @@ cc_library(
         "//tsl/platform:macros",
         "//tsl/platform:statusor",
         "//tsl/util:env_var",
+        "@com_google_absl//absl/strings:string_view",
     ],
 )
 
@@ -156,6 +157,7 @@ tsl_cc_test(
     srcs = ["profiler_lock_test.cc"],
     deps = [
         ":profiler_lock",
+        "//tsl/platform:statusor",
         "//tsl/platform:test",
         "//tsl/platform:test_main",
     ],
