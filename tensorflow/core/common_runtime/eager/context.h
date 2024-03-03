@@ -89,6 +89,11 @@ namespace eager {
 class RemoteMgr;
 }  // namespace eager
 
+// Check the value of the environment variable,
+// `TF_REMOTE_HANDLE_SKIP_WAIT_FOR_READY` from its cached copy in memory and if
+// not cached, reads from the environment variable.
+bool SkipRemoteHandleWaitReady();
+
 class EagerContext : public ImmediateExecutionContext, public core::RefCounted {
  public:
   static constexpr uint64 kInvalidContextId = 0;

@@ -1921,7 +1921,8 @@ Status EagerRemoteExecute(EagerOperation* op, TensorHandle** retvals,
       // guarantee that the input generation request is processed before the
       // function execution request, so wait until the remote input is ready
       // before sending it to the multi-device function device.
-      const bool wait_until_ready = op->is_function();
+      bool wait_until_ready =
+          SkipRemoteHandleWaitReady() ? false : op->is_function();
       TF_RETURN_IF_ERROR(ctx.RemoteMgr()->SerializeRemoteTensorHandle(
           input, wait_until_ready, input_handle, input_device,
           *input_device_name, serialize_resource_dtype_and_shape));

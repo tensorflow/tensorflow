@@ -60,6 +60,7 @@ limitations under the License.
 #include "tensorflow/core/public/version.h"
 #include "tensorflow/core/util/device_name_utils.h"
 #include "tsl/platform/refcount.h"
+#include "tsl/util/env_var.h"
 #if !defined(IS_MOBILE_PLATFORM)
 #include "tensorflow/core/distributed_runtime/cluster_function_library_runtime.h"
 #include "tensorflow/core/distributed_runtime/collective_param_resolver_distributed.h"
@@ -104,6 +105,16 @@ auto* eager_context_created =
 }  // namespace
 
 const int64_t EagerContext::kGlobalRendezvousId = -1;
+
+bool SkipRemoteHandleWaitReady() {
+  static bool skip_remote_handle_wait_ready = []() {
+    bool result;
+    TF_CHECK_OK(tsl::ReadBoolFromEnvVar("TF_REMOTE_HANDLE_SKIP_WAIT_FOR_READY",
+                                        false, &result));
+    return result;
+  }();
+  return skip_remote_handle_wait_ready;
+}
 
 // Find the rendezvous instance corresponding to the step id, or create a
 // new instance if not existing.
