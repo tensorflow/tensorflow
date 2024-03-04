@@ -26,6 +26,7 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/memory_types.h"
+#include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/node_def_builder.h"
 #include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/framework/types.h"
@@ -1003,12 +1004,35 @@ Status Partition(const PartitionOptions& opts, Graph* g,
 
   int32_t num_data = 0;
   int32_t num_control = 0;
-  for (const Node* dst : g->op_nodes()) {
+  for (Node* dst : g->op_nodes()) {
     dstp = opts.node_to_loc(dst);
     GraphDef* dst_graph = &(*partitions)[dstp];
     NodeDef* dst_def = dst_graph->add_node();
-    *dst_def = dst->def();
-    MergeDebugInfo(NodeDebugInfo(dst->def()), dst_def);
+    NodeDebugInfo debug_info(dst->def());
+    if (opts.can_make_destructive_changes && !opts.scheduling_for_recvs) {
+      // TODO(b/327983931): Add static_assert to catch the case where fields are
+      // added to `NodeDef`.
+      *dst_def->mutable_name() =
+          dst->def().name();  // Must be retained for access via `Node::name()`.
+      *dst_def->mutable_op() =
+          dst->def()
+              .op();  // Must be retained for access via `Node::type_string()`.
+      // Do not copy `input` or `device` because these are overwritten below.
+      // After this point, the other fields of `dst->def()` should no longer be
+      // accessed.
+      *dst_def->mutable_attr() = std::move(*dst->mutable_def()->mutable_attr());
+      if (dst->def().has_experimental_debug_info()) {
+        *dst_def->mutable_experimental_debug_info() =
+            std::move(*dst->mutable_def()->mutable_experimental_debug_info());
+      }
+      if (dst->def().has_experimental_type()) {
+        *dst_def->mutable_experimental_type() =
+            std::move(*dst->mutable_def()->mutable_experimental_type());
+      }
+    } else {
+      *dst_def = dst->def();
+    }
+    MergeDebugInfo(debug_info, dst_def);
     dst_def->set_device(dst->assigned_device_name());
     dst_def->clear_input();  // Inputs are filled below
     if (opts.need_to_record_start_times) {

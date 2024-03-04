@@ -68,6 +68,7 @@ Status PartitionFunctionGraph(
   };
   partition_options.control_flow_added = false;
   partition_options.get_tensor_name_attr = get_tensor_name_attr;
+  partition_options.can_make_destructive_changes = true;
 
   return Partition(partition_options, graph, partitions);
 }
