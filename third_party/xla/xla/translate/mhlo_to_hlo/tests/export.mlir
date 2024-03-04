@@ -3133,7 +3133,7 @@ func.func @main(%operand: tensor<?x784xf32>) -> tensor<?x784xf32> {
 // CHECK: ROOT
 // CHECK: ENTRY
 // CHECK: {{.*}} reduce{{.*}} to_apply=[[REG0]]
-// CEHCK: ROOT
+// CHECK: ROOT
 func.func @main(%arg0: tensor<2x2xf32>) -> tuple<tensor<i1>> {
   %0 = mhlo.constant dense<1.000000e+00> : tensor<f32>
   %1 = mhlo.constant dense<0.000000e+00> : tensor<f32>
@@ -3199,7 +3199,7 @@ func.func @main(%data: tensor<4x16xf32>) -> tensor<4x4xf32> {
 // CHECK: f32[] constant(0)
 // CHECK: ROOT
 // CHECK: ENTRY
-// DCHECK: ROOT {{.*}} reduce-window{{.*}} to_apply=[[REG0]]
+// CHECK: ROOT {{.*}} reduce-window{{.*}} to_apply=[[REG0]]
 func.func @main(%arg0: tensor<2x17x31x7xf32>, %arg1: tensor<f32>) -> tensor<2x16x30x7xf32> {
     %c = mhlo.constant dense<0.0> : tensor<f32>
     %0 = "mhlo.reduce_window"(%arg0, %arg1) ({
