@@ -195,6 +195,7 @@ xla_cc_test(
     size = "small",
     srcs = ["stream_search_test.cc"],
     tags = tf_cuda_tests_tags() + [
+        "no_rocm",
         "requires-gpu-nvidia",
     ],
     deps = [
@@ -228,6 +229,7 @@ xla_cc_test(
     name = "memcpy_test",
     srcs = ["memcpy_test.cc"],
     tags = tf_cuda_tests_tags() + [
+        "no_rocm",
         "requires-gpu-nvidia",
     ],
     deps = [

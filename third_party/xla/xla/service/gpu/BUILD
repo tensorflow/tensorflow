@@ -4556,6 +4556,7 @@ xla_test(
             "requires-gpu-sm80-only",
             "noasan",
             "nomsan",
+            "no_rocm",
         ],
     },
     backends = [
@@ -4717,6 +4718,7 @@ xla_test(
     srcs = ["cudnn_fused_mha_rewriter_test.cc"],
     backend_tags = {"gpu": [
         "requires-gpu-nvidia",
+        "no_rocm",
     ]},
     backends = [
         "gpu",
