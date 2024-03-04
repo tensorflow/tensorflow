@@ -267,11 +267,11 @@ absl::StatusOr<SmallVector<Value>> EmitReduce(
 }
 
 absl::StatusOr<SmallVector<Value>> EmitConcat(
-    const HloInstruction* instr, ValueRange indices,
-    const OperandProvider& operand_provider, ImplicitLocOpBuilder& b) {
+    const HloInstruction* instr, mlir::Type result_element_type,
+    ValueRange indices, const OperandProvider& operand_provider,
+    ImplicitLocOpBuilder& b) {
   int concat_dim =
       Cast<HloConcatenateInstruction>(instr)->concatenate_dimension();
-  auto ty = *ConvertPrimitiveTypeToMLIRType(instr->shape().element_type(), b);
   int64_t offset = 0;
   IfOp outermost_if = nullptr;
   SmallVector<Value> operand_indices = indices;
@@ -290,7 +290,8 @@ absl::StatusOr<SmallVector<Value>> EmitConcat(
     };
 
     if (index < instr->operand_count() - 1) {
-      auto if_op = b.create<IfOp>(mlir::TypeRange{ty}, in_bounds, true, true);
+      auto if_op = b.create<IfOp>(mlir::TypeRange{result_element_type},
+                                  in_bounds, true, true);
       if (outermost_if == nullptr) {
         outermost_if = if_op;
       } else {
@@ -355,8 +356,9 @@ absl::StatusOr<llvm::SmallVector<Value>> EmitDynamicSlice(
 }
 
 absl::StatusOr<llvm::SmallVector<Value>> EmitDynamicUpdateSlice(
-    const HloInstruction* instr, ValueRange indices,
-    const OperandProvider& operand_provider, ImplicitLocOpBuilder& b) {
+    const HloInstruction* instr, mlir::Type result_element_type,
+    ValueRange indices, const OperandProvider& operand_provider,
+    ImplicitLocOpBuilder& b) {
   mlir::Value is_in_bounds =
       b.create<ConstantOp>(b.getIntegerAttr(b.getI1Type(), 1));
   mlir::SmallVector<Value> update_indices;
@@ -384,8 +386,8 @@ absl::StatusOr<llvm::SmallVector<Value>> EmitDynamicUpdateSlice(
     update_indices.push_back(b.create<arith::SubIOp>(indices[i], start_index));
   }
 
-  auto ty = *ConvertPrimitiveTypeToMLIRType(instr->shape().element_type(), b);
-  auto if_op = b.create<IfOp>(mlir::TypeRange{ty}, is_in_bounds, true, true);
+  auto if_op = b.create<IfOp>(mlir::TypeRange{result_element_type},
+                              is_in_bounds, true, true);
   b.setInsertionPointToStart(if_op.getBody(0));
   TF_ASSIGN_OR_RETURN(
       auto updated_value,
@@ -454,14 +456,15 @@ SmallVector<SmallVector<Value>> GetInputIndices(
 }
 
 absl::StatusOr<SmallVector<Value>> EmitPad(
-    const HloInstruction* instr, ValueRange indices,
-    const OperandProvider& operand_provider, ImplicitLocOpBuilder& b) {
+    const HloInstruction* instr, mlir::Type result_element_type,
+    ValueRange indices, const OperandProvider& operand_provider,
+    ImplicitLocOpBuilder& b) {
   auto indexing = ComputeOutputToInputIndexing(instr, 0, b.getContext());
   const auto& indexing_map = *indexing.indexing_maps[0].begin();
   mlir::Value is_in_bounds = CheckConstraints(indexing_map, indices, {}, b);
 
-  auto ty = *ConvertPrimitiveTypeToMLIRType(instr->shape().element_type(), b);
-  auto if_op = b.create<IfOp>(mlir::TypeRange{ty}, is_in_bounds, true, true);
+  auto if_op = b.create<IfOp>(mlir::TypeRange{result_element_type},
+                              is_in_bounds, true, true);
   b.setInsertionPointToStart(if_op.getBody(0));
   TF_ASSIGN_OR_RETURN(auto input_value,
                       GetSingleOperandValue(
@@ -574,11 +577,29 @@ absl::StatusOr<SmallVector<Value>> HloToMlir(
   CHECK(!kUnimplementedOps.contains(instr->opcode())) << instr->ToShortString();
 
   auto element_type = instr->shape().element_type();
+  mlir::Type element_mlir_type;
+  mlir::Type result_element_type;
+  if (!instr->shape().IsTuple()) {
+    TF_ASSIGN_OR_RETURN(element_mlir_type,
+                        ConvertPrimitiveTypeToMLIRType(element_type, builder));
+
+    // During mapping to the arith dialect, we need to convert from signed
+    // integer types to signless integer types. Most mappings can infer the
+    // signless integer type from the already converted operand, but e.g. for
+    // Convert this is not possible, so we need to have the signless result
+    // element type as well. But we also still need to pass the signed integer
+    // element type, as that is needed to select the correct arith ops for
+    // unsigned element types.
+    mlir::mhlo::RemoveSignTypeConverter sign_converter;
+    result_element_type = sign_converter.convertType(element_mlir_type);
+  }
+
   // Handle ops that aren't elementwise and aren't just indexing
   // transformations.
   switch (instr->opcode()) {
     case HloOpcode::kConcatenate:
-      return EmitConcat(instr, indices, operand_provider, builder);
+      return EmitConcat(instr, result_element_type, indices, operand_provider,
+                        builder);
     case HloOpcode::kConstant:
       if (ShapeUtil::IsEffectiveScalar(instr->shape())) {
         auto val = mlir::cast<mlir::TypedAttr>(
@@ -591,12 +612,11 @@ absl::StatusOr<SmallVector<Value>> HloToMlir(
     case HloOpcode::kDynamicSlice:
       return EmitDynamicSlice(instr, indices, operand_provider, builder);
     case HloOpcode::kDynamicUpdateSlice:
-      return EmitDynamicUpdateSlice(instr, indices, operand_provider, builder);
+      return EmitDynamicUpdateSlice(instr, result_element_type, indices,
+                                    operand_provider, builder);
     case HloOpcode::kGather:
       return EmitGather(instr, indices, operand_provider, builder);
     case HloOpcode::kIota: {
-      auto element_mlir_type =
-          *ConvertPrimitiveTypeToMLIRType(element_type, builder);
       auto index = indices[Cast<HloIotaInstruction>(instr)->iota_dimension()];
       if (element_mlir_type.getIntOrFloatBitWidth() == 32) {
         index =
@@ -609,7 +629,8 @@ absl::StatusOr<SmallVector<Value>> HloToMlir(
                                        {index}, builder);
     }
     case HloOpcode::kPad:
-      return EmitPad(instr, indices, operand_provider, builder);
+      return EmitPad(instr, result_element_type, indices, operand_provider,
+                     builder);
     case HloOpcode::kParameter:
       return EmitParameter(instr, indices, call_target_provider, builder);
     case HloOpcode::kReduce:
@@ -637,9 +658,12 @@ absl::StatusOr<SmallVector<Value>> HloToMlir(
   }
 
   llvm::SmallVector<mlir::Type> arg_types;
+  arg_types.reserve(instr->operands().size());
   for (auto operand : instr->operands()) {
-    arg_types.push_back(*ConvertPrimitiveTypeToMLIRType(
-        operand->shape().element_type(), builder));
+    TF_ASSIGN_OR_RETURN(auto operand_element_type,
+                        ConvertPrimitiveTypeToMLIRType(
+                            operand->shape().element_type(), builder));
+    arg_types.push_back(operand_element_type);
   }
   auto input_indices = GetInputIndices(
       ComputeOutputToInputIndexing(instr, 0, builder.getContext()), indices,
@@ -657,18 +681,6 @@ absl::StatusOr<SmallVector<Value>> HloToMlir(
         << instr->ToShortString();
   }
   CHECK_NE(operands.size(), 0);
-
-  auto element_mlir_type =
-      *ConvertPrimitiveTypeToMLIRType(element_type, builder);
-
-  // During mapping to the arith dialect, we need to convert from signed integer
-  // types to signless integer types. Most mappings can infer the signless
-  // integer type from the already converted operand, but e.g. for Convert this
-  // is not possible, so we need to have the signless result element type as
-  // well. But we also still need to pass the signed integer element type, as
-  // that is needed to select the correct arith ops for unsigned element types.
-  mlir::mhlo::RemoveSignTypeConverter sign_converter;
-  auto result_element_type = sign_converter.convertType(element_mlir_type);
 
   switch (instr->opcode()) {
     case HloOpcode::kAbs:
@@ -934,18 +946,7 @@ SmallVector<Value> ProvideParameter(
   SmallVector<Value> operands(
       this_fn.getArguments().take_front(instr->parent()->num_parameters()));
   absl::c_copy(indices, std::back_inserter(operands));
-  SmallVector<Value> results =
-      builder.create<PureCallOp>(callee, operands).getResults();
-
-  // Convert from signed to signless.
-  mlir::mhlo::RemoveSignTypeConverter sign_converter;
-  for (auto& result : results) {
-    auto signless_type = sign_converter.convertType(result.getType());
-    result =
-        builder.create<mlir::UnrealizedConversionCastOp>(signless_type, result)
-            .getResult(0);
-  }
-  return results;
+  return builder.create<PureCallOp>(callee, operands).getResults();
 }
 
 SmallVector<Value> ProvideParameterRange(
@@ -987,8 +988,18 @@ absl::StatusOr<SmallVector<Value>> SubgraphToMlir(
     if (&computation.FindSubgraph(operand) == &subgraph) {
       return emit_instr(operand, indices);
     }
-    return ProvideParameter(computation, instr, index, indices,
-                            call_target_provider, builder);
+    auto results = ProvideParameter(computation, instr, index, indices,
+                                    call_target_provider, builder);
+    // Convert from signed to signless.
+    mlir::mhlo::RemoveSignTypeConverter sign_converter;
+    for (auto& result : results) {
+      auto signless_type = sign_converter.convertType(result.getType());
+      result =
+          builder
+              .create<mlir::UnrealizedConversionCastOp>(signless_type, result)
+              .getResult(0);
+    }
+    return results;
   };
 
   emit_instr = [&](const HloInstruction* instr,

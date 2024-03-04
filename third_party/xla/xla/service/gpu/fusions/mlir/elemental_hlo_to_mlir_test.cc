@@ -183,6 +183,38 @@ TEST_F(ElementalHloToMlirTest, Concatenate) {
   )"));
 }
 
+TEST_F(ElementalHloToMlirTest, ConcatenateUnsigned) {
+  TF_EXPECT_OK(Run(R"(
+    ENTRY main {
+      p0 = u32[10,20,30] parameter(0)
+      p1 = u32[10,15,30] parameter(1)
+      ROOT r = u32[10,35,30] concatenate(p0, p1), dimensions={1}
+    })",
+                   R"(
+    // CHECK:      @main_r(
+    // CHECK-SAME:     %[[ARG0:.*]]: tensor<10x20x30xui32>,
+    // CHECK-SAME:     %[[ARG1:.*]]: tensor<10x15x30xui32>
+    // CHECK-SAME:     %[[X:.*]]: index {{{.*}}}, %[[Y:.*]]: index {{{.*}}},
+    // CHECK-SAME:     %[[Z:.*]]: index {{{.*}}}
+    // CHECK-DAG:    %[[C20:.*]] = arith.constant 20
+    // CHECK:        %[[IN_BOUNDS:.*]] = arith.cmpi ult, %[[Y]], %[[C20]]
+    // CHECK:        %[[CONCAT:.*]] = scf.if %[[IN_BOUNDS]]
+    // CHECK:          %[[P0_VAL:.*]] = xla_gpu.pure_call @main_p0
+    // CHECK-SAME:         %[[X]], %[[Y]], %[[Z]]
+    // CHECK:          %[[CAST0:.*]] = builtin.unrealized_conversion_cast %[[P0_VAL]]
+    // CHECK:          scf.yield %[[CAST0]]
+    // CHECK:        } else {
+    // CHECK:          %[[OFFSET:.*]] = arith.subi %[[Y]], %[[C20]]
+    // CHECK:          %[[P1_VAL:.*]] = xla_gpu.pure_call @main_p1
+    // CHECK-SAME:         %[[X]], %[[OFFSET]], %[[Z]]
+    // CHECK:          %[[CAST1:.*]] = builtin.unrealized_conversion_cast %[[P1_VAL]]
+    // CHECK:          scf.yield %[[CAST1]]
+    // CHECK:        }
+    // CHECK:        %[[CAST2:.*]] = builtin.unrealized_conversion_cast %[[CONCAT]]
+    // CHECK:        return %[[CAST2]]
+  )"));
+}
+
 TEST_F(ElementalHloToMlirTest, Gather) {
   TF_EXPECT_OK(Run(R"(
     ENTRY main {
@@ -250,6 +282,52 @@ TEST_F(ElementalHloToMlirTest, Pad) {
     // CHECK:          scf.yield %[[PAD_VAL]]
     // CHECK:        }
     // CHECK:        return %[[RET]]
+  )"));
+}
+
+TEST_F(ElementalHloToMlirTest, PadUnsigned) {
+  TF_EXPECT_OK(Run(R"(
+    ENTRY main {
+      p0 = u32[4, 4] parameter(0)
+      p1 = u32[] parameter(1)
+      ROOT pad = u32[12, 16] pad(p0, p1), padding=1_4_1x4_8_0
+    })",
+                   R"(
+    // CHECK:      @main_pad(
+    // CHECK-SAME:     %[[ARG0:.*]]: tensor<4x4xui32>,
+    // CHECK-SAME:     %[[ARG1:.*]]: tensor<ui32>,
+    // CHECK-SAME:     %[[X:.*]]: index {{{.*}}}, %[[Y:.*]]: index {{{.*}}}
+    // CHECK-DAG:    %[[C0:.*]] = arith.constant 0
+    // CHECK-DAG:    %[[C1:.*]] = arith.constant 1
+    // CHECK-DAG:    %[[C4:.*]] = arith.constant 4
+    // CHECK-DAG:    %[[C7:.*]] = arith.constant 7
+    // CHECK:        %[[CONSTRAINT_VAL:.*]] = affine.apply
+    // CHECK-SAME:     <()[s0] -> (s0 - ((s0 - 1) floordiv 2) * 2 - 1)>
+    // CHECK-SAME:     ()[%[[X]]]
+    // CHECK:        %[[CONSTRAINT:.*]] = arith.cmpi eq, %[[CONSTRAINT_VAL]], %[[C0]]
+    // CHECK:        %[[X_L:.*]] = arith.cmpi sge, %[[X]], %[[C1]]
+    // CHECK:        %[[X_H:.*]] = arith.cmpi sle, %[[X]], %[[C7]]
+    // CHECK:        %[[X_BOUNDS:.*]] = arith.andi %[[X_L]], %[[X_H]]
+    // CHECK:        %[[X_AND_CONSTRAINT:.*]] = arith.andi %[[CONSTRAINT]], %[[X_BOUNDS]]
+    // CHECK:        %[[Y_L:.*]] = arith.cmpi sge, %[[Y]], %[[C4]]
+    // CHECK:        %[[Y_H:.*]] = arith.cmpi sle, %[[Y]], %[[C7]]
+    // CHECK:        %[[Y_BOUNDS:.*]] = arith.andi %[[Y_L]], %[[Y_H]]
+    // CHECK:        %[[FROM_INPUT:.*]] = arith.andi %[[X_AND_CONSTRAINT]], %[[Y_BOUNDS]]
+    // CHECK:        %[[RET:.*]] = scf.if %[[FROM_INPUT]]
+    // CHECK:          %[[X_IN:.*]] = affine.apply
+    // CHECK-SAME:         <()[s0] -> ((s0 - 1) floordiv 2)>()[%[[X]]]
+    // CHECK:          %[[Y_IN:.*]] = affine.apply
+    // CHECK-SAME:         <()[s0] -> (s0 - 4)>()[%[[Y]]]
+    // CHECK:          %[[VAL:.*]] = tensor.extract %[[ARG0]][%[[X_IN]], %[[Y_IN]]]
+    // CHECK:          %[[CAST0:.*]] = builtin.unrealized_conversion_cast %[[VAL]]
+    // CHECK:          scf.yield %[[CAST0]]
+    // CHECK:        } else {
+    // CHECK:          %[[PAD_VAL:.*]] = tensor.extract %[[ARG1]][]
+    // CHECK:          %[[CAST1:.*]] = builtin.unrealized_conversion_cast %[[PAD_VAL]]
+    // CHECK:          scf.yield %[[CAST1]]
+    // CHECK:        }
+    // CHECK:          %[[CAST2:.*]] = builtin.unrealized_conversion_cast %[[RET]]
+    // CHECK:        return %[[CAST2]]
   )"));
 }
 
@@ -511,6 +589,58 @@ TEST_F(ElementalHloToMlirTest, DynamicUpdateSlice) {
     // CHECK:          tensor.extract %[[ARG1]][%[[UPDATES_X]]
     // CHECK:        } else {
     // CHECK:          tensor.extract %[[ARG0]][%[[X]]
+  )"));
+}
+
+TEST_F(ElementalHloToMlirTest, DynamicUpdateSliceUnsigned) {
+  TF_EXPECT_OK(Run(R"(
+    ENTRY main {
+      in = u32[20,30] parameter(0)
+      updates = u32[5,6] parameter(1)
+      i0 = s32[] parameter(2)
+      i1 = s32[] parameter(3)
+      ROOT updated = u32[20,30] dynamic-update-slice(in, updates, i0, i1)
+    })",
+                   R"(
+    // CHECK:      @main_updated(
+    // CHECK-SAME:     %[[ARG0:.*]]: tensor<20x30xui32>, %[[ARG1:.*]]: tensor<5x6xui32>
+    // CHECK-SAME:     %[[I0_T:.*]]: tensor<i32>, %[[I1_T:.*]]: tensor<i32>,
+    // CHECK-SAME:     %[[X:.*]]: index {{{.*}}}, %[[Y:.*]]: index {
+    // CHECK-DAG:    %[[C0:.*]] = arith.constant 0
+    // CHECK-DAG:    %[[C5:.*]] = arith.constant 5
+    // CHECK-DAG:    %[[C6:.*]] = arith.constant 6
+    // CHECK-DAG:    %[[C15:.*]] = arith.constant 15
+    // CHECK-DAG:    %[[C24:.*]] = arith.constant 24
+    // CHECK:        %[[I0:.*]] = tensor.extract %[[I0_T]]
+    // CHECK:        %[[I0_1:.*]] = arith.index_cast %[[I0]]
+    // CHECK:        %[[I0_2:.*]] = arith.minsi %[[I0_1]], %[[C15]]
+    // CHECK:        %[[START_X:.*]] = arith.maxsi %[[I0_2]], %[[C0]]
+    // CHECK:        %[[END_X:.*]] = arith.addi %[[START_X]], %[[C5]]
+    // CHECK:        %[[LOW_X:.*]] = arith.cmpi sge, %[[X]], %[[START_X]]
+    // CHECK:        %[[HIGH_X:.*]] = arith.cmpi slt, %[[X]], %[[END_X]]
+    // CHECK:        %[[BOUNDS_X:.*]] = arith.andi %[[LOW_X]], %[[HIGH_X]]
+    // CHECK:        %[[UPDATES_X:.*]] = arith.subi %[[X]], %[[START_X]]
+    // CHECK:        arith.andi
+    // CHECK:        %[[BOUNDS:.*]] = arith.andi
+    // CHECK:        scf.if %[[BOUNDS]]
+    // CHECK:          %[[VAL0:.*]] = tensor.extract %[[ARG1]][%[[UPDATES_X]]
+    // CHECK:          builtin.unrealized_conversion_cast %[[VAL0]]
+    // CHECK:        } else {
+    // CHECK:          %[[VAL1:.*]] = tensor.extract %[[ARG0]][%[[X]]
+    // CHECK:          builtin.unrealized_conversion_cast %[[VAL1]]
+  )"));
+}
+
+TEST_F(ElementalHloToMlirTest, IotaUnsigned) {
+  TF_EXPECT_OK(Run(R"(
+    ENTRY main {
+      ROOT iota = u32[10,20] iota(), iota_dimension=0
+    })",
+                   R"(
+    // CHECK:      @main_iota(
+    // CHECK-SAME:     %[[I0:.*]]: index {{.*}}, %[[I1:.*]]: index {{.*}} {
+    // CHECK:        %[[VAL:.*]] = arith.index_castui %[[I0]] : index to i32
+    // CHECK:        builtin.unrealized_conversion_cast %[[VAL]] : i32 to ui32
   )"));
 }
 
