@@ -44,7 +44,7 @@ TEST(UtilsTest, EstimatedSizeBytes) {
 TEST(UtilsTest, EstimatedVariantSizeBytes) {
   // Variant Tensor of size 1000.
   std::unique_ptr<CompressedElement> compressed{
-      protobuf::Arena::CreateMessage<CompressedElement>(nullptr)};
+      protobuf::Arena::Create<CompressedElement>(nullptr)};
   compressed->set_data(std::string(1000, 'a'));
   Tensor tensor(DT_VARIANT, TensorShape({}));
   tensor.scalar<Variant>()() = *compressed;
@@ -58,7 +58,7 @@ TEST(UtilsTest, EstimatedMixedElementsSizeBytes) {
 
   // Variant Tensor of size 1000.
   std::unique_ptr<CompressedElement> compressed{
-      protobuf::Arena::CreateMessage<CompressedElement>(nullptr)};
+      protobuf::Arena::Create<CompressedElement>(nullptr)};
   compressed->set_data(std::string(1000, 'a'));
   Tensor variant_tensor(DT_VARIANT, TensorShape({}));
   variant_tensor.scalar<Variant>()() = *compressed;

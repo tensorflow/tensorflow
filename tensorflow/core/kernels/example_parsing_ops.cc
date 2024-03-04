@@ -965,7 +965,7 @@ class ParseSingleSequenceExampleOp : public OpKernel {
     options.start_block_size = std::max(options.start_block_size, block_size);
     options.max_block_size = std::max(options.max_block_size, block_size);
     protobuf::Arena arena(options);
-    auto& ex = *protobuf::Arena::CreateMessage<SequenceExample>(&arena);
+    auto& ex = *protobuf::Arena::Create<SequenceExample>(&arena);
 
     OP_REQUIRES(
         ctx, ParseProtoUnlimited(&ex, serialized_t()),

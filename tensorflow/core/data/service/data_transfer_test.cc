@@ -85,7 +85,7 @@ TEST(DataTransferTest, EstimateVariantMemoryUsageBytes) {
   const size_t data_size = 1000;
 
   std::unique_ptr<CompressedElement> compressed{
-      protobuf::Arena::CreateMessage<CompressedElement>(nullptr)};
+      protobuf::Arena::Create<CompressedElement>(nullptr)};
   compressed->set_data(std::string(data_size, 'a'));
 
   Tensor tensor(DT_VARIANT, TensorShape({}));
