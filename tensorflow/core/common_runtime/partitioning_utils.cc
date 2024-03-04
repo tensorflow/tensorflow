@@ -25,6 +25,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/arg_ret_placement.h"
 #include "tensorflow/core/common_runtime/graph_constructor.h"
 #include "tensorflow/core/framework/function.h"
+#include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/graph/graph_partition.h"
@@ -122,12 +123,14 @@ Status PartitionFunctionGraph(
       PartitionFunctionGraph(device_set, graph.get(), &partitions,
                              /*node_to_loc=*/nullptr, get_tensor_name_attr));
 
+  const OpRegistryInterface* default_registry =
+      graph->flib_def().default_registry();
+  graph.reset();
   for (auto& partition : partitions) {
     const string& device = partition.first;
     GraphDef& graph_def = partition.second;
     // Each partition gets a new graph.
-    std::unique_ptr<Graph> subgraph(
-        new Graph(graph->flib_def().default_registry()));
+    auto subgraph = std::make_unique<Graph>(default_registry);
     GraphConstructorOptions opts;
     opts.allow_internal_ops = true;
     opts.expect_device_spec = true;
