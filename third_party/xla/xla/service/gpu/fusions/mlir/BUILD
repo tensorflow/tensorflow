@@ -115,6 +115,8 @@ xla_cc_test(
         "@com_google_googletest//:gtest",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:AffineDialect",
+        "@llvm-project//mlir:AsmParser",
+        "@llvm-project//mlir:DLTIDialect",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:LLVMDialect",

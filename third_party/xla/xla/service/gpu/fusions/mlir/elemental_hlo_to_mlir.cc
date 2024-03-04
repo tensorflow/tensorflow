@@ -50,6 +50,7 @@ limitations under the License.
 #include "mlir/IR/Types.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/IR/ValueRange.h"  // from @llvm-project
+#include "mlir/Interfaces/DataLayoutInterfaces.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "xla/comparison_util.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
@@ -618,14 +619,11 @@ absl::StatusOr<SmallVector<Value>> HloToMlir(
       return EmitGather(instr, indices, operand_provider, builder);
     case HloOpcode::kIota: {
       auto index = indices[Cast<HloIotaInstruction>(instr)->iota_dimension()];
-      if (element_mlir_type.getIntOrFloatBitWidth() == 32) {
-        index =
-            builder.create<arith::IndexCastUIOp>(builder.getI32Type(), index);
-      } else {
-        index =
-            builder.create<arith::IndexCastUIOp>(builder.getI64Type(), index);
-      }
-      return MapHloOp<mhlo::ConvertOp>(element_mlir_type, {index.getType()},
+      auto index_type = builder.getIntegerType(
+          mlir::DataLayout::closest(builder.getInsertionBlock()->getParentOp())
+              .getTypeSizeInBits(index.getType()));
+      index = builder.create<arith::IndexCastUIOp>(index_type, index);
+      return MapHloOp<mhlo::ConvertOp>(result_element_type, {index_type},
                                        {index}, builder);
     }
     case HloOpcode::kPad:

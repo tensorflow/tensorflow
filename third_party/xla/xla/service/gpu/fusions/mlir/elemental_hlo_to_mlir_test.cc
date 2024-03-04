@@ -20,7 +20,9 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
 #include "llvm/Support/raw_ostream.h"
+#include "mlir/AsmParser/AsmParser.h"  // from @llvm-project
 #include "mlir/Dialect/Affine/IR/AffineOps.h"  // from @llvm-project
+#include "mlir/Dialect/DLTI/DLTI.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"  // from @llvm-project
 #include "mlir/Dialect/Math/IR/Math.h"  // from @llvm-project
@@ -54,7 +56,7 @@ class ElementalHloToMlirTest : public HloTestBase {
                          mlir::affine::AffineDialect, mlir::arith::ArithDialect,
                          mlir::math::MathDialect, mlir::scf::SCFDialect,
                          mlir::mhlo::MhloDialect, mlir::LLVM::LLVMDialect,
-                         xla::gpu::XlaGpuDialect>();
+                         mlir::DLTIDialect, xla::gpu::XlaGpuDialect>();
   }
 
   // Converts the root subgraph of the entry function of the given hlo module to
@@ -69,6 +71,10 @@ class ElementalHloToMlirTest : public HloTestBase {
     mlir::ImplicitLocOpBuilder builder(mlir::UnknownLoc::get(&context_),
                                        &context_);
     auto module = llvm_ir::CreateMlirModuleOp(builder.getLoc());
+    (*module)->setAttr(
+        mlir::DLTIDialect::kDataLayoutAttrName,
+        mlir::parseAttribute("#dlti.dl_spec<#dlti.dl_entry<index,32:i32>>",
+                             builder.getContext()));
     builder.setInsertionPointToStart(module->getBody());
     auto* entry_computation = hlo_module->entry_computation();
     PartitionedComputations partitioned_computations(
@@ -641,6 +647,23 @@ TEST_F(ElementalHloToMlirTest, IotaUnsigned) {
     // CHECK-SAME:     %[[I0:.*]]: index {{.*}}, %[[I1:.*]]: index {{.*}} {
     // CHECK:        %[[VAL:.*]] = arith.index_castui %[[I0]] : index to i32
     // CHECK:        builtin.unrealized_conversion_cast %[[VAL]] : i32 to ui32
+  )"));
+}
+
+TEST_F(ElementalHloToMlirTest, IotaComplex) {
+  TF_EXPECT_OK(Run(R"(
+    ENTRY main {
+      ROOT iota = c64[6,4,5] iota(), iota_dimension=1
+    })",
+                   R"(
+    // CHECK:      @main_iota(
+    // CHECK-SAME:     %[[X:.*]]: index {{{.*}}}, %[[Y:.*]]: index {{{.*}}},
+    // CHECK-SAME:     %[[Z:.*]]: index {{{.*}}}
+    // CHECK:        %[[ZERO:.*]] = arith.constant 0.000000e+00 : f32
+    // CHECK:        %[[I:.*]] = arith.index_castui %[[Y]] : index to i32
+    // CHECK:        %[[F:.*]] = arith.sitofp %[[I]] : i32 to f32
+    // CHECK:        %[[RET:.*]] = complex.create %[[F]], %[[ZERO]] : complex<f32>
+    // CHECK:        return %[[RET]]
   )"));
 }
 
