@@ -22,7 +22,6 @@ limitations under the License.
 #ifndef XLA_STREAM_EXECUTOR_STREAM_EXECUTOR_H_
 #define XLA_STREAM_EXECUTOR_STREAM_EXECUTOR_H_
 
-#include "xla/stream_executor/multi_platform_manager.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor_pimpl.h"  // IWYU pragma: export
 
