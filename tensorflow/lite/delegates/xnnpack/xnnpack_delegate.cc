@@ -3439,6 +3439,12 @@ class Subgraph {
           for (int i = 0; i < output_channels; ++i) {
             filter_params->scale->data[i] = filter_tensor.params.scale;
           }
+          TfLiteIntArrayFree(filter_params->zero_point);
+          filter_params->zero_point = TfLiteIntArrayCreate(output_channels);
+          for (int i = 0; i < output_channels; ++i) {
+            filter_params->zero_point->data[i] =
+                filter_tensor.params.zero_point;
+          }
         }
         uint32_t dq_quantized_id = XNN_INVALID_VALUE_ID;
         std::vector<size_t> input_dims(
@@ -4032,6 +4038,12 @@ class Subgraph {
           filter_params->scale = TfLiteFloatArrayCreate(output_channels);
           std::fill_n(filter_params->scale->data, output_channels,
                       filter_tensor.params.scale);
+          TfLiteIntArrayFree(filter_params->zero_point);
+          filter_params->zero_point = TfLiteIntArrayCreate(output_channels);
+          for (int i = 0; i < output_channels; ++i) {
+            filter_params->zero_point->data[i] =
+                filter_tensor.params.zero_point;
+          }
         }
         uint32_t dq_quantized_id = XNN_INVALID_VALUE_ID;
         size_t num_nonbatch_dims = 0;
