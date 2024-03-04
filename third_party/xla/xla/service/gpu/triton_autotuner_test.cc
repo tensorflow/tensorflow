@@ -48,6 +48,7 @@ limitations under the License.
 #include "xla/tests/hlo_test_base.h"
 #include "xla/tests/test_utils.h"
 #include "xla/tests/verified_hlo_module.h"
+#include "xla/tools/hlo_decomposer.h"
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/lib/core/status_test_util.h"
@@ -88,9 +89,8 @@ ENTRY entry {
 })")
                                                   .value();
 
-  std::unique_ptr<HloModule> extracted_module =
-      AutotunerUtil::ExtractInstructionIntoNewModule(
-          *module->entry_computation()->root_instruction()->operand(0));
+  std::unique_ptr<HloModule> extracted_module = ExtractInstructionIntoNewModule(
+      *module->entry_computation()->root_instruction()->operand(0));
 
   // Destroy the original module to be sure that the extracted one has no
   // dependency on it.
@@ -127,11 +127,10 @@ ENTRY entry {
                                                   .value();
 
   std::unique_ptr<HloModule> extracted_module =
-      AutotunerUtil::ExtractComputationIntoNewModule(
-          *module->entry_computation()
-               ->root_instruction()
-               ->operand(0)
-               ->fused_instructions_computation());
+      ExtractComputationIntoNewModule(*module->entry_computation()
+                                           ->root_instruction()
+                                           ->operand(0)
+                                           ->fused_instructions_computation());
 
   // Destroy the original module to be sure that the extracted one has no
   // dependency on it.
@@ -426,12 +425,12 @@ ENTRY e {
   p0 = f16[55,120]{1,0} parameter(0)
   p1 = f16[120,20]{1,0} parameter(1)
   ROOT _ = f16[55,20] fusion(p0, p1), kind=kCustom, calls=triton_dot,
-    backend_config={"fusion_backend_config":{kind: "__triton_gemm", triton_gemm_config: {"block_m":16,"block_n":64,"block_k":32,"split_k":3,"num_stages":1,"num_warps":2}}}
+    backend_config={"fusion_backend_config":{kind: "__triton_gemm", triton_gemm_config: {"block_m":16,"block_n":64,"block_k":32,"split_k":3,"num_stages":1,"num_warps":2,"num_ctas":1}}}
 })";
 
   MatchOptimizedHlo(kHloText, R"(
 ; CHECK: f16[3,55,20]
-; CHECK: {"block_m":16,"block_n":64,"block_k":32,"split_k":3,"num_stages":1,"num_warps":2}
+; CHECK: {"block_m":16,"block_n":64,"block_k":32,"split_k":3,"num_stages":1,"num_warps":2,"num_ctas":1}
 ; CHECK: f16[55,20]{1,0} {{(reduce|fusion)}}
 )");
 
@@ -455,7 +454,7 @@ ENTRY %e {
   %get-tuple-element.7020 = s8[12288,1536]{1,0} parameter(0)
   %convert = s8[4,12288]{1,0} parameter(1)
   ROOT %triton = s8[4,1536]{1,0} fusion(s8[12288,1536]{1,0} %get-tuple-element.7020, s8[4,12288]{1,0} %convert), kind=kCustom, calls=%triton_gemm_dot,
-    backend_config={"fusion_backend_config":{"kind":"__triton_gemm","triton_gemm_config":{"block_m":"256","block_n":"256","block_k":"16","split_k":"1","num_stages":"1","num_warps":"16"}}}
+    backend_config={"fusion_backend_config":{"kind":"__triton_gemm","triton_gemm_config":{"block_m":"256","block_n":"256","block_k":"16","split_k":"1","num_stages":"1","num_warps":"16","num_ctas":"1"}}}
 })";
 
   if (!GetCudaComputeCapability().IsAtLeast(
@@ -493,7 +492,7 @@ ENTRY %e {
   %get-tuple-element.7020 = s8[12288,1536]{1,0} parameter(0)
   %convert = s8[4,12288]{1,0} parameter(1)
   ROOT %triton = s8[4,1536]{1,0} fusion(s8[12288,1536]{1,0} %get-tuple-element.7020, s8[4,12288]{1,0} %convert), kind=kCustom, calls=%triton_gemm_dot,
-    backend_config={"fusion_backend_config":{"kind":"__triton_gemm","triton_gemm_config":{"block_m":"256","block_n":"256","block_k":"16","split_k":"1","num_stages":"1","num_warps":"16"}}}
+    backend_config={"fusion_backend_config":{"kind":"__triton_gemm","triton_gemm_config":{"block_m":"256","block_n":"256","block_k":"16","split_k":"1","num_stages":"1","num_warps":"16","num_ctas":"1"}}}
 })";
 
   if (!GetCudaComputeCapability().IsAtLeast(
@@ -535,7 +534,7 @@ ENTRY %e {
   %p0 = s8[12288,1536]{1,0} parameter(0)
   %p1 = f16[4,12288]{1,0} parameter(1)
   ROOT %triton_dot = f16[4,1536]{1,0} fusion(s8[12288,1536]{1,0} %p0, f16[4,12288]{1,0} %p1), kind=kCustom, calls=%triton_gemm_dot,
-    backend_config={"fusion_backend_config":{"kind":"__triton_gemm","triton_gemm_config":{"block_m":"16","block_n":"32","block_k":"16","split_k":"1","num_stages":"1","num_warps":"2"}}}
+    backend_config={"fusion_backend_config":{"kind":"__triton_gemm","triton_gemm_config":{"block_m":"16","block_n":"32","block_k":"16","split_k":"1","num_stages":"1","num_warps":"2","num_ctas":"1"}}}
 })";
 
   auto module = ParseAndReturnVerifiedModule(kHloText).value();
@@ -631,7 +630,7 @@ ENTRY e {
         RunFileCheck(
             module->ToString(HloPrintOptions{}.set_print_operand_shape(false)),
             R"(
-// CHECK: backend_config={"operation_queue_id":"0","wait_on_operation_queues":[],"fusion_backend_config":{"kind":"__triton_gemm","triton_gemm_config":{"block_m":"32","block_n":"32","block_k":"32","split_k":"1","num_stages":"1","num_warps":"4"}}}
+// CHECK: backend_config={"operation_queue_id":"0","wait_on_operation_queues":[],"fusion_backend_config":{"kind":"__triton_gemm","triton_gemm_config":{"block_m":"32","block_n":"32","block_k":"32","split_k":"1","num_stages":"1","num_warps":"4","num_ctas":"1"}}}
             )"));
     EXPECT_TRUE(filecheck_matches);
   } else {

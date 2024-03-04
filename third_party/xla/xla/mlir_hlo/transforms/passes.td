@@ -18,26 +18,6 @@ limitations under the License.
 
 include "mlir/Pass/PassBase.td"
 
-def BufferPacking : Pass<"buffer-packing", "func::FuncOp"> {
-  let summary = "Pass to pack allocated buffer to reduce memory consumption.";
-  let description = [{The pass tries to pack smaller buffers into larger buffers.
-  To do this, it sorts all allocated buffers by multiple criteria depends on the
-  selected window-size.
-  After this sorting, the buffers are checked whether subsequent buffers can be
-  packed into them.}];
-  let dependentDialects = ["func::FuncDialect","memref::MemRefDialect",
-    "arith::ArithDialect"];
-  let constructor = "createBufferPackingPass()";
-  let options = [
-   Option<"window_size_", "window-size", "unsigned",
-           /*default=*/"5", "The window size blurs the start position of an"
-           "allocated buffer. Buffers allocated in the same sliding window area"
-           "are treated equally in terms of starting position, withing the"
-           "sliding window area they are sorted by memory size."
-           "A window size of zero sorts the buffers only by memory size.">,
-  ];
-}
-
 def CollapseParallelLoopsTo1DPass : Pass<"collapse-parallel-loops-to-1d"> {
   let summary = "Collapses multidimensional loops.";
   let description = [{ The pass converts a multidimensional `scf.parallel` loop
@@ -69,18 +49,6 @@ def TileLoopsPass : Pass<"tile-loops", "func::FuncOp"> {
                "in that dimension.", "llvm::cl::ZeroOrMore">,
   ];
   let dependentDialects = ["affine::AffineDialect"];
-}
-
-def MemoryCount : Pass<"memory-count", "func::FuncOp"> {
-  let summary = "Test pass to count the allocated memory of a module.";
-  let description = [{A test pass that prints the size of allocated memory of a
-  module.}];
-  let constructor = "createMemoryCountPass()";
-}
-
-def TestUserange : Pass<"test-print-userange", "func::FuncOp"> {
-  let summary = "Test pass for checking userange intervals.";
-  let constructor = "createTestUserangePass()";
 }
 
 def TestShapeComponentAnalysis : Pass<"test-print-shape-components",

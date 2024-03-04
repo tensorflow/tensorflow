@@ -2,7 +2,7 @@
 load(
     "//tsl:tsl.bzl",
     "if_google",
-    "set_external_visibility",
+    "internal_visibility",
 )
 load(
     "//tsl/platform:build_config.bzl",
@@ -10,7 +10,12 @@ load(
 )
 
 package(
-    default_visibility = ["//visibility:public"],
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
+    default_visibility = internal_visibility([
+        "//tensorflow/core:__subpackages__",
+        "//tsl:internal",
+        "//tensorflow_models:__subpackages__",
+    ]),
     features = if_google(["-parse_headers"]),
     licenses = ["notice"],
 )
@@ -98,7 +103,10 @@ tf_proto_library(
     name = "test_log_proto",
     srcs = ["test_log.proto"],
     make_default_target_header_only = True,
-    visibility = ["//visibility:public"],
+    visibility = internal_visibility([
+        "//tensorflow/core:__subpackages__",
+        "//tsl/util:__pkg__",
+    ]),
 )
 
 tf_proto_library(

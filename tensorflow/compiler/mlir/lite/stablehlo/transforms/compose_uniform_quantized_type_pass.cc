@@ -38,7 +38,7 @@ limitations under the License.
 #include "stablehlo/dialect/StablehloOps.h"  // from @stablehlo
 #include "tensorflow/compiler/mlir/lite/stablehlo/transforms/passes.h"
 #include "tensorflow/compiler/mlir/quantization/common/attrs_and_constraints.h"
-#include "tensorflow/compiler/mlir/quantization/stablehlo/uniform_quantized_types.h"
+#include "tensorflow/compiler/mlir/quantization/common/uniform_quantized_types.h"
 
 #define DEBUG_TYPE "stablehlo-compose-uniform-quantized-type"
 

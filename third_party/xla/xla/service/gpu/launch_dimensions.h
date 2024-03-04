@@ -102,7 +102,7 @@ struct LaunchDimensionsConfig {
   // a block of unroll_factor elements. Otherwise each thread will
   // handle only unroll_factor.
   bool few_waves = false;
-  // If `row_optimized` is true, then the block size will equal to
+  // If `row_vectorized` is true, then the block size will equal to
   // `hlo.shape().dimensions().back()/unroll_factor`.
   // Currently few_waves and row_vectorized do not work together.
   bool row_vectorized = false;

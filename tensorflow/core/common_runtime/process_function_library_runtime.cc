@@ -144,7 +144,7 @@ Status ProcessFunctionLibraryRuntime::SendTensors(
   }
   TF_RETURN_IF_ERROR(SendTensorsToRendezvous(
       rendezvous, device_context, alloc_attrs, keys, tensors_to_send));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 /* static */
@@ -174,7 +174,7 @@ Status ProcessFunctionLibraryRuntime::GetRetTypes(
     auto miter = mdevice_data_.find(h);
     if (miter != mdevice_data_.end()) {
       *ret_types = miter->second->ret_types_;
-      return OkStatus();
+      return absl::OkStatus();
     }
     auto fiter = function_data_.find(h);
     if (fiter != function_data_.end()) {
@@ -194,7 +194,7 @@ Status ProcessFunctionLibraryRuntime::GetDeviceIncarnation(
     return errors::InvalidArgument("Device name: ", device_name, " not found.");
   }
   *incarnation = flr->device()->attributes().incarnation();
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status ProcessFunctionLibraryRuntime::GetDeviceContext(
@@ -208,14 +208,14 @@ Status ProcessFunctionLibraryRuntime::GetDeviceContext(
   string device_type = device->parsed_name().type;
   if (device_type == "CPU" || device_type == "TPU_SYSTEM") {
     // "TPU_SYSTEM" indicates that `device` is a CPU.
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   if (device->IsRemoteCallAllowed()) {
     auto* dev_info = flr->device()->tensorflow_accelerator_device_info();
     if (dev_info) {
       *device_context = dev_info->default_context;
-      return OkStatus();
+      return absl::OkStatus();
     }
   }
 
@@ -236,7 +236,7 @@ void ProcessFunctionLibraryRuntime::InitializeDeviceAndFlr() {
   if (parent_ != nullptr && parent_->remote_device_mgr() != nullptr) {
     for (auto d : parent_->remote_device_mgr()->ListDevices()) {
       Device* device = nullptr;
-      if (device_mgr_->LookupDevice(d->name(), &device) == OkStatus()) {
+      if (device_mgr_->LookupDevice(d->name(), &device) == absl::OkStatus()) {
         // If this device exists in device_mgr, i.e., a local device,
         // add this device from the instance included in device_mgr_
         device_set_->AddDevice(device);
@@ -417,7 +417,7 @@ Status FunctionRetsToTensors(const std::vector<FunctionRet>* function_rets,
     // NOLINTNEXTLINE
     tensors->push_back(absl::get<Tensor>(ret));
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 }  // namespace
 
@@ -488,7 +488,7 @@ Status ProcessFunctionLibraryRuntime::InstantiateMultiDevice(
     if (it != table_.end()) {
       *handle = it->second;
       ++mdevice_data_[*handle]->instantiation_counter_;
-      return OkStatus();
+      return absl::OkStatus();
     }
   }
 
@@ -765,7 +765,7 @@ Status ProcessFunctionLibraryRuntime::InstantiateMultiDevice(
   if (should_publish_function_graphs) {
     PublishSubgraphs(function_name, std::move(function_records));
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status ProcessFunctionLibraryRuntime::GetOutputDevices(
@@ -812,7 +812,7 @@ Status ProcessFunctionLibraryRuntime::GetOutputDevices(
     }
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status ProcessFunctionLibraryRuntime::PrepareRunMultiDevice(
@@ -844,7 +844,7 @@ Status ProcessFunctionLibraryRuntime::PrepareRunMultiDevice(
         " without an appropriate cross process Rendezvous.");
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 std::vector<string> ProcessFunctionLibraryRuntime::GetOrderedSubgraphs(
@@ -961,7 +961,7 @@ Status ProcessFunctionLibraryRuntime::RunMultiDeviceSync(
       return s;
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 void ProcessFunctionLibraryRuntime::RunMultiDeviceAsync(
@@ -1105,12 +1105,12 @@ Status ProcessFunctionLibraryRuntime::IsCrossProcess(
   const auto& mdevice_it = mdevice_data_.find(handle);
   if (mdevice_it != mdevice_data_.end()) {
     *is_cross_process = mdevice_it->second->is_cross_process_;
-    return OkStatus();
+    return absl::OkStatus();
   }
   const auto& it = function_data_.find(handle);
   if (it != function_data_.end()) {
     *is_cross_process = it->second->is_cross_process();
-    return OkStatus();
+    return absl::OkStatus();
   }
   return errors::InvalidArgument("Handle ", handle, " not found.");
 }
@@ -1156,7 +1156,7 @@ Status ProcessFunctionLibraryRuntime::RemoveHandle(
   mutex_lock l(mu_);
   table_.erase(function_data_[handle]->function_key());
   function_data_.erase(handle);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status ProcessFunctionLibraryRuntime::ReleaseMultiDeviceHandle(
@@ -1167,7 +1167,7 @@ Status ProcessFunctionLibraryRuntime::ReleaseMultiDeviceHandle(
     auto it = mdevice_data_.find(handle);
     --it->second->instantiation_counter_;
     if (it->second->instantiation_counter_ != 0) {
-      return OkStatus();
+      return absl::OkStatus();
     }
     mdata = std::move(it->second);
     table_.erase(mdata->function_key_);
@@ -1205,7 +1205,7 @@ Status ProcessFunctionLibraryRuntime::ReleaseMultiDeviceHandle(
 Status ProcessFunctionLibraryRuntime::ReleaseHandle(
     FunctionLibraryRuntime::Handle handle) {
   // Return directly if all function handles has already been released.
-  if (flr_map_ == nullptr) return OkStatus();
+  if (flr_map_ == nullptr) return absl::OkStatus();
 
   if (IsMultiDevice(handle)) {
     return ReleaseMultiDeviceHandle(handle);
@@ -1293,7 +1293,7 @@ Status ProcessFunctionLibraryRuntime::GetComponentArgs(
       comp_args->args.push_back(args[it.index]);
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 #if !defined(IS_MOBILE_PLATFORM)
@@ -1315,7 +1315,7 @@ Status ProcessFunctionLibraryRuntime::GetComponentArgs(
       comp_args->args.push_back(comp_args->remote_args.back().get());
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 #endif  // IS_MOBILE_PLATFORM
 
@@ -1500,7 +1500,7 @@ void ProcessFunctionLibraryRuntime::Run(
             return;
           }
         }
-        done(OkStatus());
+        done(absl::OkStatus());
       });
 }
 
@@ -1650,7 +1650,7 @@ Status ProcessFunctionLibraryRuntime::Clone(
     tf_shared_lock l(mu_);
     for (auto* d : composite_devices_) (*out_pflr)->AddCompositeDevice(d);
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace tensorflow

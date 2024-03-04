@@ -45,7 +45,7 @@ cd tensorflow-git-dir
 # Here is a single-line example of running a script on Linux to build the
 # GPU version of TensorFlow for Python 3.12, using the public TF bazel cache and
 # a local build cache:
-TFCI=py312,linux_x86_cuda,multicache ci/official/wheel.sh
+TFCI=py312,linux_x86_cuda,public_cache,disk_cache ci/official/wheel.sh
 
 # First, set your TFCI variable to choose the environment settings.
 #   TFCI is a comma-separated list of filenames from the envs directory, which
@@ -57,9 +57,10 @@ TFCI=py312,linux_x86_cuda,multicache ci/official/wheel.sh
 #   value in the "env_vars" list that you can choose to copy that environment.
 #      Ex. 1: TFCI=py311,linux_x86_cuda,nightly_upload  (nightly job)
 #      Ex. 2: TFCI=py39,linux_x86,rbe                   (continuous job)
-#   Non-Googlers should replace "nightly_upload" or "rbe" with "multicache".
-#   Googlers should replace "nightly_upload" with "multicache" or "rbe", if
-#     you have set up your system to use RBE (see further below).
+#   Non-Googlers should replace "nightly_upload" or "rbe" with
+#   "public_cache,disk_cache".
+#   Googlers should replace "nightly_upload" with "public_cache,disk_cache" or
+#   "rbe", if you have set up your system to use RBE (see further below).
 #
 # Here is how to choose your TFCI value:
 # 1. A Python version must come first, because other scripts reference it.
@@ -74,7 +75,9 @@ TFCI=py312,linux_x86_cuda,multicache ci/official/wheel.sh
 #      Ex. linux_x86_cuda   -- x86_64 Linux platform, with Nvidia CUDA support
 #      Ex. macos_arm64      -- arm64 MacOS platform
 # 3. Add modifiers. Some modifiers for local execution are:
-#      Ex. multicache -- Use a local cache combined with TF's public cache
+#      Ex. disk_cache -- Use a local cache
+#      Ex. public_cache -- Use TF's public cache (read-only)
+#      Ex. public_cache_push -- Use TF's public cache (read and write, Googlers only)
 #      Ex. rbe        -- Use RBE for faster builds (Googlers only; see below)
 #      Ex. no_docker  -- Disable docker on enabled platforms
 #    See full examples below for more details on these. Some other modifiers are:
@@ -94,7 +97,7 @@ TFCI=py312,linux_x86_cuda,multicache ci/official/wheel.sh
 #      or tests passing incorrectly.
 #    - Automatic LLVM updates are known to extend build time even with
 #      the cache; this is unavoidable.
-export TFCI=py311,linux_x86,multicache
+export TFCI=py311,linux_x86,public_cache,disk_cache
 
 # Recommended: Configure Docker. (Linux only)
 #
@@ -127,7 +130,7 @@ export TFCI=py311,linux_x86,multicache
 #   it is only available to a limited set of internal TensorFlow developers.
 #
 #   RBE is incompatible with local caching, so you must remove
-#   ci/official/envs/local_multicache from your $TFCI file.
+#   disk_cache, public_cache, and public_cache_push from your $TFCI file.
 #
 # To use RBE, you must first run `gcloud auth application-default login`, then:
 export TFCI=py311,linux_x86,rbe

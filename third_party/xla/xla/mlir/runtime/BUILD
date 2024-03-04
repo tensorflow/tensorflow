@@ -22,7 +22,8 @@ package_group(
 )
 
 package(
-    default_visibility = ["//visibility:public"],
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
+    default_visibility = [":friends"],
     licenses = ["notice"],
 )
 
@@ -40,6 +41,7 @@ xla_cc_binary(
     deps = [
         "//xla/mlir/math/transforms:passes",
         "//xla/mlir/memref/transforms:passes",
+        "//xla/mlir/runtime/ir:rt",
         "//xla/mlir/runtime/ir/tests:testlib",
         "//xla/mlir/runtime/transforms:compilation_pipeline_cpu",
         "//xla/mlir/runtime/transforms:compilation_pipeline_gpu",
@@ -50,5 +52,6 @@ xla_cc_binary(
         "@llvm-project//mlir:MathDialect",
         "@llvm-project//mlir:MemRefDialect",
         "@llvm-project//mlir:MlirOptLib",
+        "@llvm-project//mlir:Support",
     ],
 )

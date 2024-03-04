@@ -52,6 +52,7 @@ PrefetchedSplitProvider::PrefetchedSplitProvider(
     UpdateStatus(std::move(status));
     return;
   }
+  absl::MutexLock l(&mu_);
   thread_pool_ = RunPrefetchThreads();
 }
 
@@ -160,13 +161,15 @@ PrefetchedSplitProvider::GetSplitFromProvider() ABSL_LOCKS_EXCLUDED(mu_) {
 }
 
 absl::Status PrefetchedSplitProvider::Reset() ABSL_LOCKS_EXCLUDED(mu_) {
+  std::unique_ptr<tsl::thread::ThreadPool> thread_pool;
   {
     absl::MutexLock l(&mu_);
     reset_ = true;
     ready_to_push_.SignalAll();
     ready_to_pop_.SignalAll();
+    thread_pool = std::move(thread_pool_);
   }
-  thread_pool_.reset();
+  thread_pool.reset();
   TF_RETURN_IF_ERROR(split_provider_->Reset());
 
   absl::MutexLock l(&mu_);
@@ -182,10 +185,14 @@ absl::Status PrefetchedSplitProvider::Reset() ABSL_LOCKS_EXCLUDED(mu_) {
 }
 
 void PrefetchedSplitProvider::Cancel() {
-  // Finishes the in-flight threads.
   UpdateStatus(
       absl::CancelledError("tf.data prefetched split provider is shut down."));
-  thread_pool_.reset();
+  // Finishes the in-flight threads.
+  std::unique_ptr<tsl::thread::ThreadPool> thread_pool;
+  {
+    absl::MutexLock l(&mu_);
+    thread_pool = std::move(thread_pool_);
+  }
 }
 
 absl::Status PrefetchedSplitProvider::InitDirs() {

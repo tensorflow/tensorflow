@@ -52,5 +52,24 @@ TEST_F(GpuCopyTest, UseMemcpy) {
                      /*match_optimized_ir=*/false);
 }
 
+TEST_F(GpuCopyTest, CopyTranspose) {
+  const char* hlo_text = R"(
+    HloModule Test
+
+    fused_computation {
+      param_0 = f32[100,200,300]{2,1,0} parameter(0)
+      ROOT b.1 = f32[100,200,300]{2,0,1} copy(f32[100,200,300]{2,1,0} param_0)
+    }
+
+    ENTRY main {
+      a = f32[100, 200, 300]{2,1,0} parameter(0)
+      ROOT wrapped_b = f32[100,200,300]{2,0,1} fusion(f32[100,200,300]{2,1,0} %a), kind=kLoop, calls=fused_computation
+    })";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> optimized_module,
+                          ParseAndReturnVerifiedModule(hlo_text));
+
+  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-5, 1e-5}));
+}
+
 }  // namespace gpu
 }  // namespace xla

@@ -28,7 +28,9 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/flat_hash_set.h"
+#include "absl/log/log.h"
 #include "llvm/ADT/ArrayRef.h"
+#include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/Hashing.h"
 #include "llvm/ADT/PointerUnion.h"
 #include "llvm/ADT/STLExtras.h"
@@ -67,6 +69,7 @@ limitations under the License.
 #include "mlir/Support/DebugStringHelper.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
+#include "mlir/Support/TypeID.h"  // from @llvm-project
 #include "mlir/Transforms/FoldUtils.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_executor.h"
@@ -434,6 +437,24 @@ Type GetType(Attribute shape_attr, Attribute type_attr) {
   else
     return UnrankedTensorType::get(type.getValue());
 }
+}  // namespace
+
+// Returns whether type can be further refined.
+bool CanBeRefined(Type type) {
+  auto shape_type = type.dyn_cast<ShapedType>();
+  if (!shape_type) return false;
+
+  // Returns whether type with subtypes can be further refined.
+  auto can_refine_subtypes = [](TF::TensorFlowTypeWithSubtype tws) {
+    return tws.GetSubtypes().empty() ||
+           llvm::any_of(tws.GetSubtypes(), CanBeRefined);
+  };
+  auto type_with_subtype =
+      shape_type.getElementType().dyn_cast<TF::TensorFlowTypeWithSubtype>();
+  if (type_with_subtype && can_refine_subtypes(type_with_subtype)) return true;
+
+  return !shape_type.hasStaticShape();
+}
 
 // Returns a new arg type based on the shape and element type. If there are
 // dynamic bounds attribute to the arg, update the bounds based on the shape
@@ -462,25 +483,6 @@ Type GetNewArgType(Type old_arg_type, ArrayRef<int64_t> shape,
     }
   }
   return new_arg_type;
-}
-
-}  // namespace
-
-// Returns whether type can be further refined.
-bool CanBeRefined(Type type) {
-  auto shape_type = type.dyn_cast<ShapedType>();
-  if (!shape_type) return false;
-
-  // Returns whether type with subtypes can be further refined.
-  auto can_refine_subtypes = [](TF::TensorFlowTypeWithSubtype tws) {
-    return tws.GetSubtypes().empty() ||
-           llvm::any_of(tws.GetSubtypes(), CanBeRefined);
-  };
-  auto type_with_subtype =
-      shape_type.getElementType().dyn_cast<TF::TensorFlowTypeWithSubtype>();
-  if (type_with_subtype && can_refine_subtypes(type_with_subtype)) return true;
-
-  return !shape_type.hasStaticShape();
 }
 
 // Combination of value producer and port of value produced (e.g.,
@@ -728,7 +730,8 @@ Attribute ComputeOutputComponent(const ValuePort& value_port,
 class ShapeInference {
  public:
   ShapeInference(int64_t graph_version, ModuleOp module,
-                 bool propagate_caller_callee_constants);
+                 bool propagate_caller_callee_constants,
+                 ArrayRef<TypeID> ops_to_skip);
 
   LogicalResult ComputeInputsRequiredForOutput(ValuePort value_port,
                                                ValuePortInputs* inputs) {
@@ -901,8 +904,8 @@ class ShapeInference {
   bool RefineResultType(Operation* op, Value result,
                         Type potential_refined_type);
 
-  // Infers the shape from a (Stateful)PartionedCall operation by looking up the
-  // called function and propagating the return type.
+  // Infers the shape from a (Stateful)PartitionedCall operation by looking up
+  // the called function and propagating the return type.
   bool InferShapeForCall(CallOpInterface call_op);
 
   bool InferShapeForCast(Operation* op);
@@ -1006,6 +1009,9 @@ class ShapeInference {
 
   int64_t graph_version_;
 
+  // Op types for which shape inference should be skipped.
+  llvm::SmallDenseSet<TypeID> ops_to_skip_;
+
   // TODO(b/154065712): Remove propagate_caller_callee_constants once using
   // SCCP pass instead.
   bool propagate_caller_callee_constants_;
@@ -1020,11 +1026,15 @@ class ShapeInference {
 };
 
 ShapeInference::ShapeInference(int64_t graph_version, ModuleOp module,
-                               bool propagate_caller_callee_constants)
+                               bool propagate_caller_callee_constants,
+                               ArrayRef<TypeID> ops_to_skip)
     : tf_dialect_(module->getContext()->getLoadedDialect<TensorFlowDialect>()),
       symbol_users_(symbol_table_, module),
       graph_version_(graph_version),
       propagate_caller_callee_constants_(propagate_caller_callee_constants) {
+  for (const auto& op_type : ops_to_skip) {
+    ops_to_skip_.insert(op_type);
+  }
   // Create symbol table for module.
   symbol_table_.getSymbolTable(module);
 }
@@ -1079,8 +1089,8 @@ bool ShapeInference::RefineResultType(Operation* op, Value result,
                                                  result);
 }
 
-// Infers the shape from a (Stateful)PartionedCall operation by looking up the
-// called function and propagating the return type.
+// Infers the shape from a (Stateful)PartitionedCall operation by looking up
+// the called function and propagating the return type.
 bool ShapeInference::InferShapeForCall(CallOpInterface call_op) {
   func::FuncOp func =
       dyn_cast_or_null<func::FuncOp>(call_op.resolveCallable(&symbol_table_));
@@ -1256,8 +1266,6 @@ bool ShapeInference::InferShapeForXlaCallModule(XlaCallModuleOp op) {
 
   tsl::Status status = loader->RefineDynamicShapes(input_shapes);
   if (!status.ok()) {
-    llvm::errs() << "Failed during XlaCallModule shape refinement: "
-                 << status.ToString();
     // Do not return false here.
     //
     // RefineDynamicShapes returns ok only when it produces full static shapes.
@@ -1266,6 +1274,7 @@ bool ShapeInference::InferShapeForXlaCallModule(XlaCallModuleOp op) {
     // to abort here.
     // TODO(b/316639984): improve RefineDynamicShapes return values to include
     // these info.
+    VLOG(1) << "Failed during XlaCallModule shape refinement: " << status;
   }
   mlir::ResultRange op_results = op.getResults();
   // The main_outputs may include tokens that are not among the op_results;
@@ -1972,8 +1981,17 @@ bool ShapeInference::InferShapeForXlaGatherOp(XlaGatherOp op) {
     return false;
 
   DenseIntElementsAttr slice_sizes_attr;
-  if (!matchPattern(op.getSliceSizes(), m_Constant(&slice_sizes_attr)))
+  if (DenseIntElementsAttr attr;
+      matchPattern(op.getSliceSizes(), m_Constant(&attr))) {
+    slice_sizes_attr = attr;
+  } else if (const auto it = results_.find(ValuePort(op.getSliceSizes()));
+             it != results_.end() &&
+             llvm::isa_and_nonnull<DenseIntElementsAttr>(it->second)) {
+    slice_sizes_attr = llvm::cast<DenseIntElementsAttr>(it->second);
+  } else {
     return false;
+  }
+
   llvm::SmallVector<int64_t> slice_sizes;
   for (const auto& attr : slice_sizes_attr.getValues<APInt>()) {
     slice_sizes.push_back(attr.getSExtValue());
@@ -3135,6 +3153,14 @@ FailureOr<bool> ShapeInference::InferShapeUntilFixPoint(
     LLVM_DEBUG(llvm::dbgs()
                << "Shape inference, iteration " << iteration << "\n");
     auto res = region->walk([&](Operation* op) {
+      auto abstract_op = op->getRegisteredInfo();
+      if (abstract_op && ops_to_skip_.contains(abstract_op->getTypeID())) {
+        LLVM_DEBUG(llvm::dbgs()
+                   << "Skipping shape inference for explicitly skipped op '"
+                   << op->getName() << "'.\n");
+        return WalkResult::advance();
+      }
+
       DCOMMENT_OP(op, "Inferring for");
       if (auto infer_ti = dyn_cast<InferTypeOpInterface>(op)) {
         DCOMMENT("\tRefinining with type op interface");
@@ -3201,9 +3227,11 @@ static FailureOr<bool> InferShapeForFunction(ShapeInference& context,
 FailureOr<bool> InferShapeForFunction(func::FuncOp func,
                                       ArrayRef<ArrayRef<int64_t>> arg_shapes,
                                       int64_t graph_version,
-                                      int64_t max_iterations) {
+                                      int64_t max_iterations,
+                                      ArrayRef<TypeID> ops_to_skip) {
   ShapeInference context(graph_version, func->getParentOfType<ModuleOp>(),
-                         /*propagate_caller_callee_constants=*/true);
+                         /*propagate_caller_callee_constants=*/true,
+                         ops_to_skip);
   if (arg_shapes.empty()) {
     return InferShapeForFunction(context, func, max_iterations);
   }
@@ -3255,7 +3283,8 @@ FailureOr<bool> InferShapeForFunction(func::FuncOp func,
   return true;
 }
 
-FailureOr<bool> InferModuleShape(ModuleOp module, int64_t max_iterations) {
+FailureOr<bool> InferModuleShape(ModuleOp module, int64_t max_iterations,
+                                 ArrayRef<TypeID> ops_to_skip) {
   auto producer_or = tensorflow::GetTfGraphProducerVersion(module);
   if (!producer_or.ok()) {
     // TODO(jpienaar): Keeping the existing behavior for now but this could
@@ -3268,7 +3297,8 @@ FailureOr<bool> InferModuleShape(ModuleOp module, int64_t max_iterations) {
   // TODO(jpienaar): Clean up propagate_NextIterationSinkOp_callee_constants if
   // it is no longer needed.
   ShapeInference context(producer, module,
-                         /*propagate_caller_callee_constants=*/false);
+                         /*propagate_caller_callee_constants=*/false,
+                         ops_to_skip);
   if (auto main = module.lookupSymbol<mlir::func::FuncOp>("main"))
     context.enqueue(main);
   for (auto func : module.getOps<func::FuncOp>()) context.enqueue(func);

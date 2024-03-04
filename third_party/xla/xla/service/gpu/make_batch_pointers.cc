@@ -66,7 +66,7 @@ absl::Status MakeBatchPointers(se::Stream* stream,
 
   TF_RETURN_IF_ERROR(
       stream->ThenLaunch(se::ThreadDim(kThreads, 1, 1),
-                         se::BlockDim(CeilOfRatio(n, kThreads), 1, 1), *kernel,
+                         se::BlockDim(CeilOfRatio(n, kThreads), 1, 1), kernel,
                          base_ptr, stride_bytes, n, ptrs_out));
 #endif
   return absl::OkStatus();

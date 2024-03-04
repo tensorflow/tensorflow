@@ -1,7 +1,7 @@
 diff --ruN a/stablehlo/CMakeLists.txt b/stablehlo/CMakeLists.txt
 --- stablehlo/CMakeLists.txt
 +++ stablehlo/CMakeLists.txt
-@@ -13,131 +13,20 @@
+@@ -13,153 +13,20 @@
  # See the License for the specific language governing permissions and
  # limitations under the License.
  #
@@ -25,6 +25,11 @@ diff --ruN a/stablehlo/CMakeLists.txt b/stablehlo/CMakeLists.txt
 -if(POLICY CMP0116)
 -  cmake_policy(SET CMP0116 OLD)
 -endif()
+-
+-# Support for return(PROPAGATE ...) in functions.
+-if (POLICY CMP0140)
+-  cmake_policy(SET CMP0140 NEW)
+-endif()
 +# This build of StableHLO is meant to be embedded in MLIR-HLO.
 +# As a result, its root CMakeLists.txt is different from the original
 +# CMakeLists.txt from https://github.com/openxla/stablehlo.
@@ -39,6 +44,9 @@ diff --ruN a/stablehlo/CMakeLists.txt b/stablehlo/CMakeLists.txt
 -option(STABLEHLO_BUILD_EMBEDDED "Build StableHLO as part of another project" OFF)
 -option(STABLEHLO_ENABLE_BINDINGS_PYTHON "Enables StableHLO Python bindings" OFF)
 -option(STABLEHLO_ENABLE_STRICT_BUILD "Build StableHLO with strict warnings and warnings as errors" OFF)
+-option(STABLEHLO_ENABLE_SANITIZER "Enable a sanitizer [OFF, address]" OFF)
+-option(STABLEHLO_ENABLE_SPLIT_DWARF "Enable split DWARF if the platform supports it" OFF)
+-option(STABLEHLO_ENABLE_LLD "Use LLD as the linker if available" OFF)
  
 -#-------------------------------------------------------------------------------
 -# Project setup and globals
@@ -53,29 +61,6 @@ diff --ruN a/stablehlo/CMakeLists.txt b/stablehlo/CMakeLists.txt
 -  project(stablehlo LANGUAGES CXX C)
 -  set(CMAKE_C_STANDARD 11)
 -  set(CMAKE_CXX_STANDARD 17)
--endif()
--
--# Build with ccache if the package is present
--set(LLVM_CCACHE_BUILD OFF CACHE BOOL "Set to ON for a ccache enabled build")
--if(LLVM_CCACHE_BUILD)
--  find_program(CCACHE_PROGRAM ccache)
--  if(CCACHE_PROGRAM)
--      set(LLVM_CCACHE_MAXSIZE "" CACHE STRING "Size of ccache")
--      set(LLVM_CCACHE_DIR "" CACHE STRING "Directory to keep ccached data")
--      set(LLVM_CCACHE_PARAMS "CCACHE_CPP2=yes CCACHE_HASHDIR=yes"
--          CACHE STRING "Parameters to pass through to ccache")
--
--      set(CCACHE_PROGRAM "${LLVM_CCACHE_PARAMS} ${CCACHE_PROGRAM}")
--      if (LLVM_CCACHE_MAXSIZE)
--        set(CCACHE_PROGRAM "CCACHE_MAXSIZE=${LLVM_CCACHE_MAXSIZE} ${CCACHE_PROGRAM}")
--      endif()
--      if (LLVM_CCACHE_DIR)
--        set(CCACHE_PROGRAM "CCACHE_DIR=${LLVM_CCACHE_DIR} ${CCACHE_PROGRAM}")
--      endif()
--      set_property(GLOBAL PROPERTY RULE_LAUNCH_COMPILE ${CCACHE_PROGRAM})
--  else()
--    message(FATAL_ERROR "Unable to find the program ccache. Set LLVM_CCACHE_BUILD to OFF")
--  endif()
 -endif()
 -
 -#-------------------------------------------------------------------------------
@@ -114,8 +99,37 @@ diff --ruN a/stablehlo/CMakeLists.txt b/stablehlo/CMakeLists.txt
 -  message(STATUS "Building StableHLO embedded in another project")
 -endif()
 -
+-# Add the CMake modules specific to StableHLO
+-list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_LIST_DIR}/cmake")
+-
 -if(LLVM_ENABLE_ZLIB)
 -  find_package(ZLIB)
+-endif()
+-
+-#-------------------------------------------------------------------------------
+-# Performance configuration
+-#-------------------------------------------------------------------------------
+-
+-include(CheckCXXCompilerFlag)
+-include(CheckLinkerFlag)
+-if (STABLEHLO_ENABLE_LLD)
+-  message(STATUS "Enabling LLD as the linker")
+-  add_link_options("-fuse-ld=lld")
+-endif()
+-
+-if(STABLEHLO_ENABLE_SPLIT_DWARF)
+-    check_cxx_compiler_flag(-gsplit-dwarf STABLEHLO_SUPPORTS_SPLIT_DWARF)
+-    if (STABLEHLO_SUPPORTS_SPLIT_DWARF)
+-      message(STATUS "Enabling split-dwarf build")
+-      add_compile_options(-gsplit-dwarf -ggnu-pubnames)
+-    endif()
+-    check_linker_flag(CXX "-Wl,--gdb-index" STABLEHLO_SUPPORTS_GDB_INDEX)
+-    # If we set LLD it doesn't seem to affect the check_linker_flag above.
+-    # Account for it with the generator expression OR
+-    if (STABLEHLO_SUPPORTS_GDB_INDEX OR STABLEHLO_ENABLE_LLD)
+-      message(STATUS "Enabling GDB index in binary")
+-      add_link_options("-Wl,--gdb-index")
+-    endif()
 -endif()
 -
 -include(TableGen)
@@ -128,6 +142,14 @@ diff --ruN a/stablehlo/CMakeLists.txt b/stablehlo/CMakeLists.txt
 -include_directories(${CMAKE_CURRENT_BINARY_DIR})
 -link_directories(${LLVM_BUILD_LIBRARY_DIR})
 -add_definitions(${LLVM_DEFINITIONS})
+-
+-
+-#-------------------------------------------------------------------------------
+-# Sanitizer configuration
+-#-------------------------------------------------------------------------------
+-
+-include(SetupSanitizers)
+-setup_sanitizers()
 -
 -#-------------------------------------------------------------------------------
 -# Python configuration
@@ -155,7 +177,7 @@ diff --ruN a/stablehlo/stablehlo/CMakeLists.txt b/stablehlo/stablehlo/CMakeLists
 diff --ruN a/stablehlo/stablehlo/experimental/BUILD.bazel b/stablehlo/stablehlo/experimental/BUILD.bazel
 --- stablehlo/stablehlo/experimental/BUILD.bazel
 +++ stablehlo/stablehlo/experimental/BUILD.bazel
-@@ -0,0 +1,114 @@
+@@ -0,0 +1,115 @@
 +# Copyright 2023 The StableHLO Authors. All Rights Reserved.
 +#
 +# Licensed under the Apache License, Version 2.0 (the "License");
@@ -226,6 +248,7 @@ diff --ruN a/stablehlo/stablehlo/experimental/BUILD.bazel b/stablehlo/stablehlo/
 +cc_library(
 +    name = "experimental_stablehlo_passes",
 +    srcs = [
++        "transforms/ChloRecomposeOps.cpp",
 +        "transforms/StablehloCanonicalizeDynamism.cpp",
 +        "transforms/StablehloRefineShapes.cpp",
 +    ],
@@ -423,7 +446,7 @@ diff --ruN a/stablehlo/stablehlo/experimental/dialect/CMakeLists.txt b/stablehlo
 diff --ruN a/stablehlo/stablehlo/experimental/dialect/StablehloOps.cpp b/stablehlo/stablehlo/experimental/dialect/StablehloOps.cpp
 --- stablehlo/stablehlo/experimental/dialect/StablehloOps.cpp
 +++ stablehlo/stablehlo/experimental/dialect/StablehloOps.cpp
-@@ -0,0 +1,641 @@
+@@ -0,0 +1,504 @@
 +/* Copyright 2023 The StableHLO Authors.
 +
 +Licensed under the Apache License, Version 2.0 (the "License");
@@ -925,150 +948,13 @@ diff --ruN a/stablehlo/stablehlo/experimental/dialect/StablehloOps.cpp b/stableh
 +  return DynamicTopKOpAdaptor(op);
 +}
 +
-+LogicalResult TopKOpAdaptor::verify() {
-+  if (op_->getNumOperands() != 1)
-+    return op_.emitError("expects size(operands) = 1");
-+  if (op_->getNumResults() != 2)
-+    return op_.emitError("expects size(results) = 2");
-+  if (!op_.getBackendConfig().empty())
-+    return op_.emitError() << "expects an empty backend_config";
-+  if (op_.getCallTargetName() != "mhlo.topk")
-+    return op_.emitError() << "expects @mhlo.topk";
-+
-+  auto operand = op_.getInputs()[0];
-+  auto values = op_.getResults()[0];
-+  auto indices = op_.getResults()[1];
-+  DictionaryAttr topkAttributes =
-+      op_->getAttrOfType<DictionaryAttr>("mhlo.attributes");
-+  if (!topkAttributes) {
-+    return op_.emitError()
-+           << "mhlo.attributes missing or not a dictionary attribute";
-+  }
-+
-+  IntegerAttr k_attr = topkAttributes.get("k").dyn_cast_or_null<IntegerAttr>();
-+  if (!k_attr) {
-+    return op_.emitError() << "mhlo.attributes.k not present or not an integer";
-+  }
-+  int64_t k = k_attr.getInt();
-+
-+  // mhlo.topk_c5
-+  if (k < 0) return op_.emitError() << "expects k >= 0";
-+
-+  // mhlo.topk_i1
-+  auto operandType = operand.getType().dyn_cast<ShapedType>();
-+  if (!operandType || !operandType.hasRank() || operandType.getRank() < 1 ||
-+      !operandType.getElementType().isIntOrFloat())
-+    return op_.emitError()
-+           << "expects operand #0 "
-+           << "to be a tensor of integer or floating-point type "
-+           << "of rank at least 1";
-+
-+  // mhlo.topk_o1
-+  auto valuesType = values.getType().dyn_cast<ShapedType>();
-+  if (!valuesType || !valuesType.hasRank() || valuesType.getRank() < 1 ||
-+      !valuesType.getElementType().isIntOrFloat())
-+    return op_.emitError()
-+           << "expects values (result #0) "
-+           << "to be a tensor of integer or floating-point type "
-+           << "of rank at least 1";
-+
-+  // mhlo.topk_o2
-+  auto indicesType = indices.getType().dyn_cast<ShapedType>();
-+  if (!indicesType || !indicesType.hasRank() || indicesType.getRank() < 1 ||
-+      !indicesType.getElementType().isSignlessInteger(32))
-+    return op_.emitError() << "expects indices (result #1) "
-+                           << "to be a tensor of si32 of rank at least 1";
-+
-+  // mhlo.topk_c1 && mhlo.topk_c2
-+  auto operandLastDim = operandType.getRank() - 1;
-+  SmallVector<int64_t> expectedValuesShape(operandType.getShape());
-+  expectedValuesShape[operandLastDim] = k;
-+  if (failed(verifyCompatibleShape(expectedValuesShape, valuesType.getShape())))
-+    return op_.emitError() << "expects the values shape to match the operand "
-+                              "shape in all but the last dimension, and "
-+                              "that the last dimension of the values shape "
-+                              "has a size k";
-+
-+  // mhlo.topk_c3
-+  if (valuesType.getElementType() != operandType.getElementType())
-+    return op_.emitError()
-+           << "expects the values element type to be the same as the operand "
-+           << "element type";
-+
-+  // mhlo.topk_c4
-+  if (failed(
-+          verifyCompatibleShape(indicesType.getShape(), valuesType.getShape())))
-+    return op_.emitError()
-+           << "expects the indices shape to match the values shape";
-+
-+  return success();
-+}
-+
-+TypedValue<ShapedType> TopKOpAdaptor::getOperand() {
-+  return op_.getInputs()[0].cast<TypedValue<ShapedType>>();
-+}
-+
-+TypedValue<ShapedType> TopKOpAdaptor::getValues() {
-+  return op_.getResults()[0].cast<TypedValue<ShapedType>>();
-+}
-+
-+TypedValue<ShapedType> TopKOpAdaptor::getIndices() {
-+  return op_.getResults()[1].cast<TypedValue<ShapedType>>();
-+}
-+
-+int64_t TopKOpAdaptor::getK() {
-+  DictionaryAttr topkAttributes =
-+      op_->getAttrOfType<DictionaryAttr>("mhlo.attributes");
-+  return topkAttributes.get("k").cast<mlir::IntegerAttr>().getInt();
-+}
-+
-+bool TopKOpAdaptor::getLargest() {
-+  DictionaryAttr topkAttributes =
-+      op_->getAttrOfType<DictionaryAttr>("mhlo.attributes");
-+  IntegerAttr largest =
-+      topkAttributes.get("largest").dyn_cast_or_null<mlir::IntegerAttr>();
-+
-+  return (!largest) ? true : largest.getInt();
-+}
-+
-+std::optional<TopKOpAdaptor> getTopKOp(CustomCallOp op) {
-+  if (op.getCallTargetName() != "mhlo.topk") return {};
-+  return TopKOpAdaptor(op);
-+}
-+
-+LogicalResult TanOpAdaptor::verify() {
-+  if (op_->getNumOperands() != 1)
-+    return op_.emitError("expects size(operands) = 1");
-+  if (op_->getNumResults() != 1)
-+    return op_.emitError("expects size(results) = 1");
-+  auto operand = op_.getInputs()[0];
-+  auto result = op_.getResults()[0];
-+
-+  // tan_c1
-+  auto operandType = operand.getType().dyn_cast<ShapedType>();
-+  auto resultType = result.getType().dyn_cast<ShapedType>();
-+  if (!hlo::isCompatibleForHloTypeInference(operandType, resultType))
-+    return op_.emitError()
-+           << "expects operand and result to have compatible shapes";
-+  return success();
-+}
-+
-+TypedValue<ShapedType> TanOpAdaptor::getOperand() {
-+  return op_.getInputs()[0].cast<TypedValue<ShapedType>>();
-+}
-+
-+std::optional<TanOpAdaptor> getTanOp(CustomCallOp op) {
-+  if (op.getCallTargetName() != "mhlo.tan") return {};
-+  return TanOpAdaptor(op);
-+}
-+
 +}  // namespace experimental
 +}  // namespace stablehlo
 +}  // namespace mlir
 diff --ruN a/stablehlo/stablehlo/experimental/dialect/StablehloOps.h b/stablehlo/stablehlo/experimental/dialect/StablehloOps.h
 --- stablehlo/stablehlo/experimental/dialect/StablehloOps.h
 +++ stablehlo/stablehlo/experimental/dialect/StablehloOps.h
-@@ -0,0 +1,347 @@
+@@ -0,0 +1,230 @@
 +/* Copyright 2023 The StableHLO Authors.
 +
 +Licensed under the Apache License, Version 2.0 (the "License");
@@ -1294,123 +1180,6 @@ diff --ruN a/stablehlo/stablehlo/experimental/dialect/StablehloOps.h b/stablehlo
 +// "stablehlo.dynamic_top_k".
 +std::optional<DynamicTopKOpAdaptor> getDynamicTopKOp(CustomCallOp op);
 +
-+///////////////////
-+// MHLO Op Wrappers
-+// There are some ops in MHLO which have experimental support in StableHLO
-+// programs by representing them as custom_calls with the target `mhlo.op_name`.
-+// The level of support of these ops is similar to the other custom_calls in
-+// this file. Generally these ops will be added to StableHLO and their
-+// experimental support can be deprecated in favor of op's type inference.
-+///////////////////
-+
-+// The TopK experiment provides a StableHLO adapter to MHLO TopKOp.
-+// In the future we expect stablehlo.top_k to be added which will use the same
-+// refinement rules.
-+//
-+// Within this experiment, TopKOp is represented via the serialized MHLO
-+// `stablehlo.custom_call @mhlo.topk` custom call.
-+//
-+// The semantics of experimental TopKOp are inherited from the semantics of
-+// mhlo.topk.
-+//
-+// #### Inputs
-+//
-+// | Label | Name            | Type                                         |
-+// |-------|-----------------|----------------------------------------------|
-+// | (I1)  | `operand`       | tensor of integer or floating-point type     |
-+// | (I2)  | `k`             | constant of type si64                        |
-+// | (I3)  | `largest`       | constant of type i1                          |
-+//
-+// #### Outputs
-+//
-+// | Name           | Type                                     |
-+// |----------------|------------------------------------------|
-+// | `values`       | tensor of integer or floating-point type |
-+// | `indices`      | tensor of si32 type                      |
-+//
-+// #### Constraints
-+//
-+// * (C1) `shape(values)[:-1] = shape(operand)[:-1]`
-+// * (C2) `shape(values)[-1] = k`
-+// * (C3) `element_type(values) = element_type(operand)`
-+// * (C4) `shape(indices) = shape(values)`
-+// * (C5) `k >= 0`
-+//
-+class TopKOpAdaptor {
-+ public:
-+  TopKOpAdaptor(CustomCallOp op) : op_(op) {}
-+  operator Operation*() { return op_; }
-+  Operation* operator->() { return op_; }
-+
-+  // These accessors assume that the operation is well-formed (i.e. that it
-+  // can pass verification).
-+  TypedValue<ShapedType> getOperand();
-+  TypedValue<ShapedType> getValues();
-+  TypedValue<ShapedType> getIndices();
-+  int64_t getK();
-+  bool getLargest();
-+
-+  // Verifies the constraints documented above.
-+  // Emits errors if errors are detected.
-+  LogicalResult verify();
-+
-+ private:
-+  CustomCallOp op_;
-+};
-+
-+// Wraps a custom call in a TopKOpAdaptor.
-+// Fails if the call_target_name of the custom call doesn't match
-+// "mhlo.topk".
-+std::optional<TopKOpAdaptor> getTopKOp(CustomCallOp op);
-+
-+// The TanOp experiment provides a StableHLO adapter to MHLO TanOp.
-+// In the future we expect stablehlo.tan to be added which will use the same
-+// refinement rules.
-+//
-+// Within this experiment, TanOp is represented via the serialized MHLO
-+// `stablehlo.custom_call @mhlo.tan` custom call. S
-+//
-+// Semantics of experimental TanOp are inherited from semantics of mhlo.tan.
-+//
-+// #### Inputs
-+//
-+// | Label | Name            | Type                                         |
-+// |-------|-----------------|----------------------------------------------|
-+// | (I1)  | `operand`       | tensor of floating-point or complex type     |
-+//
-+// #### Outputs
-+//
-+// | Name           | Type                                     |
-+// |----------------|------------------------------------------|
-+// | `result`       | tensor of floating-point or complex type |
-+//
-+// #### Constraints
-+//
-+// * (C1) baseline_type(operand) = baseline_type(result)
-+//
-+class TanOpAdaptor {
-+ public:
-+  TanOpAdaptor(CustomCallOp op) : op_(op) {}
-+  operator Operation*() { return op_; }
-+  Operation* operator->() { return op_; }
-+
-+  // These accessors assume that the operation is well-formed (i.e. that it
-+  // can pass verification).
-+  TypedValue<ShapedType> getOperand();
-+
-+  // Verifies the constraints documented above.
-+  // Emits errors if errors are detected.
-+  LogicalResult verify();
-+
-+ private:
-+  CustomCallOp op_;
-+};
-+
-+// Wraps a custom call in a TanOpAdaptor.
-+// Fails if the call_target_name of the custom call doesn't match
-+// "mhlo.tan".
-+std::optional<TanOpAdaptor> getTanOp(CustomCallOp op);
-+
 +}  // namespace experimental
 +}  // namespace stablehlo
 +}  // namespace mlir
@@ -1512,6 +1281,61 @@ diff --ruN a/stablehlo/stablehlo/experimental/tests/CMakeLists.txt b/stablehlo/s
 +  stablehlo-translate
 +)
 +add_dependencies(check-stablehlo-quick check-experimental-stablehlo-tests)
+diff --ruN a/stablehlo/stablehlo/experimental/tests/chlo_recompose_ops.mlir b/stablehlo/stablehlo/experimental/tests/chlo_recompose_ops.mlir
+--- stablehlo/stablehlo/experimental/tests/chlo_recompose_ops.mlir
++++ stablehlo/stablehlo/experimental/tests/chlo_recompose_ops.mlir
+@@ -0,0 +1,51 @@
++// RUN: experimental-stablehlo-opt --experimental-chlo-recompose-ops --split-input-file --verify-diagnostics %s | FileCheck %s
++
++// -----
++
++// CHECK-LABEL: func @recompose_topk
++func.func @recompose_topk(%arg0: tensor<5x16xf32>) -> (tensor<?x?xf32>, tensor<?x?xi32>) {
++  // CHECK: %values, %indices = chlo.top_k(%arg0, k = 4) {largest = true} : tensor<5x16xf32> -> (tensor<?x?xf32>, tensor<?x?xi32>)
++  %0:2 = stablehlo.custom_call @mhlo.topk(%arg0) {
++    mhlo.attributes = { k = 4 : i64, largest = true}
++  } : (tensor<5x16xf32>) -> (tensor<?x?xf32>, tensor<?x?xi32>)
++  return %0#0, %0#1 : tensor<?x?xf32>, tensor<?x?xi32>
++}
++
++// -----
++
++// CHECK-LABEL: func @recompose_topk_invalid_attr
++func.func @recompose_topk_invalid_attr(%arg0: tensor<5x16xf32>) -> (tensor<?x?xf32>, tensor<?x?xi32>) {
++  // CHECK: stablehlo.custom_call @mhlo.topk
++  %0:2 = stablehlo.custom_call @mhlo.topk(%arg0) {
++    mhlo.attributes = { k = 4 : i64, largest = false}
++  } : (tensor<5x16xf32>) -> (tensor<?x?xf32>, tensor<?x?xi32>)
++  return %0#0, %0#1 : tensor<?x?xf32>, tensor<?x?xi32>
++}
++
++// -----
++
++// CHECK-LABEL: @recompose_tan
++func.func @recompose_tan(%arg0: tensor<16xf32>) -> tensor<?xf32> {
++  // CHECK: %0 = chlo.tan %arg0 : tensor<16xf32> -> tensor<?xf32>
++  %0 = "stablehlo.custom_call"(%arg0) {
++    call_target_name = "mhlo.tan",
++    mhlo.attributes = {},
++    mhlo.version = 1 : i64
++  } : (tensor<16xf32>) -> tensor<?xf32>
++  func.return %0 : tensor<?xf32>
++}
++
++// -----
++
++// CHECK-LABEL: @recompose_erf
++func.func @recompose_erf(%arg0: tensor<3x20x20xbf16>) -> tensor<?x20x20xbf16> {
++  // CHECK: %0 = chlo.erf %arg0 : tensor<3x20x20xbf16> -> tensor<?x20x20xbf16>
++  %0 = "stablehlo.custom_call"(%arg0) {
++    backend_config = "",
++    call_target_name = "mhlo.erf",
++    mhlo.attributes = {},
++    mhlo.version = 1 : i64
++  } : (tensor<3x20x20xbf16>) -> tensor<?x20x20xbf16>
++  func.return %0 : tensor<?x20x20xbf16>
++}
++
 diff --ruN a/stablehlo/stablehlo/experimental/tests/lit.cfg.py b/stablehlo/stablehlo/experimental/tests/lit.cfg.py
 --- stablehlo/stablehlo/experimental/tests/lit.cfg.py
 +++ stablehlo/stablehlo/experimental/tests/lit.cfg.py
@@ -1601,11 +1425,11 @@ diff --ruN a/stablehlo/stablehlo/experimental/tests/stablehlo_canonicalize_dynam
 +  //          CHECK-NEXT:     %[[VAL1:.*]] = stablehlo.add %arg2, %arg3 : tensor<f32>
 +  //          CHECK-NEXT:     stablehlo.return %[[VAL1]] : tensor<f32>
 +  //          CHECK-NEXT: }) {
-+  //          CHECK-SAME:   base_dilations = dense<[2, 1]> : tensor<2xi64>,
++  //          CHECK-SAME:   base_dilations = array<i64: 2, 1>,
 +  // CHECK-SAME{LITERAL}:   padding = dense<[[2, 1], [0, 0]]> : tensor<2x2xi64>,
-+  //          CHECK-SAME:   window_dilations = dense<[3, 1]> : tensor<2xi64>,
-+  //          CHECK-SAME:   window_dimensions = dense<[2, 1]> : tensor<2xi64>,
-+  //          CHECK-SAME:   window_strides = dense<[4, 1]> : tensor<2xi64>
++  //          CHECK-SAME:   window_dilations = array<i64: 3, 1>,
++  //          CHECK-SAME:   window_dimensions = array<i64: 2, 1>,
++  //          CHECK-SAME:   window_strides = array<i64: 4, 1>
 +  //          CHECK-SAME: } : (tensor<3x2xf32>, tensor<f32>) -> tensor<2x2xf32>
 +  %0 = stablehlo.constant dense<[2, 1]> : tensor<2xi64>
 +  %1 = stablehlo.constant dense<[4, 1]> : tensor<2xi64>
@@ -1633,11 +1457,11 @@ diff --ruN a/stablehlo/stablehlo/experimental/tests/stablehlo_canonicalize_dynam
 +  //          CHECK-NEXT:     %[[VAL1:.*]] = stablehlo.add %arg2, %arg3 : tensor<f32>
 +  //          CHECK-NEXT:     stablehlo.return %[[VAL1]] : tensor<f32>
 +  //          CHECK-NEXT: }) {
-+  //          CHECK-SAME:   base_dilations = dense<[2, 1]> : tensor<2xi64>,
++  //          CHECK-SAME:   base_dilations = array<i64: 2, 1>,
 +  // CHECK-SAME{LITERAL}:   padding = dense<[[2, 1], [0, 0]]> : tensor<2x2xi64>,
-+  //          CHECK-SAME:   window_dilations = dense<[3, 1]> : tensor<2xi64>,
-+  //          CHECK-SAME:   window_dimensions = dense<[2, 1]> : tensor<2xi64>,
-+  //          CHECK-SAME:   window_strides = dense<[4, 1]> : tensor<2xi64>
++  //          CHECK-SAME:   window_dilations = array<i64: 3, 1>,
++  //          CHECK-SAME:   window_dimensions = array<i64: 2, 1>,
++  //          CHECK-SAME:   window_strides = array<i64: 4, 1>
 +  //          CHECK-SAME: } : (tensor<?x2xf32>, tensor<f32>) -> tensor<?x2xf32>
 +  %0 = stablehlo.constant dense<[2, 1]> : tensor<2xi64>
 +  %1 = stablehlo.constant dense<[4, 1]> : tensor<2xi64>
@@ -1938,7 +1762,7 @@ diff --ruN a/stablehlo/stablehlo/experimental/tests/stablehlo_canonicalize_dynam
 diff --ruN a/stablehlo/stablehlo/experimental/tests/stablehlo_refine_shapes.mlir b/stablehlo/stablehlo/experimental/tests/stablehlo_refine_shapes.mlir
 --- stablehlo/stablehlo/experimental/tests/stablehlo_refine_shapes.mlir
 +++ stablehlo/stablehlo/experimental/tests/stablehlo_refine_shapes.mlir
-@@ -0,0 +1,196 @@
+@@ -0,0 +1,42 @@
 +// RUN: experimental-stablehlo-opt --experimental-stablehlo-refine-shapes --split-input-file --verify-diagnostics %s | FileCheck %s
 +
 +// CHECK-LABEL: @main
@@ -1980,160 +1804,6 @@ diff --ruN a/stablehlo/stablehlo/experimental/tests/stablehlo_refine_shapes.mlir
 +  %k = stablehlo.constant dense<4> : tensor<ui64>
 +  %1:2 = stablehlo.custom_call @stablehlo.dynamic_top_k(%arg0, %k) : (tensor<16xf32>, tensor<ui64>) -> (tensor<?xf32>, tensor<?xi32>)
 +  return %1#0, %1#1 : tensor<?xf32>, tensor<?xi32>
-+}
-+
-+// -----
-+
-+// CHECK-LABEL: func @refine_mhlo_topk
-+func.func @refine_mhlo_topk(%arg0: tensor<5x16xf32>) -> (tensor<?x?xf32>, tensor<?x?xi32>) {
-+  // CHECK: mhlo.topk{{.*}} -> (tensor<5x4xf32>, tensor<5x4xi32>)
-+  %0:2 = stablehlo.custom_call @mhlo.topk(%arg0) {
-+    mhlo.attributes = { k = 4 : i64, largest = true}
-+  } : (tensor<5x16xf32>) -> (tensor<?x?xf32>, tensor<?x?xi32>)
-+  return %0#0, %0#1 : tensor<?x?xf32>, tensor<?x?xi32>
-+}
-+
-+// -----
-+
-+// CHECK-LABEL: func @refine_mhlo_error_too_many_operands
-+func.func @refine_mhlo_error_too_many_operands(%arg0: tensor<5x16xf32>) -> (tensor<?x?xf32>, tensor<?x?xi32>) {
-+  // expected-error@+1{{expects size(operands) = 1}}
-+  %0:2 = stablehlo.custom_call @mhlo.topk(%arg0, %arg0) {
-+    mhlo.attributes = { k = 4 : i64, largest = true}
-+  } : (tensor<5x16xf32>, tensor<5x16xf32>) -> (tensor<?x?xf32>, tensor<?x?xi32>)
-+  return %0#0, %0#1 : tensor<?x?xf32>, tensor<?x?xi32>
-+}
-+
-+// -----
-+
-+// CHECK-LABEL: func @refine_mhlo_error_too_few_results
-+func.func @refine_mhlo_error_too_few_results(%arg0: tensor<5x16xf32>) -> (tensor<?x?xf32>) {
-+  // expected-error@+1{{expects size(results) = 2}}
-+  %0 = stablehlo.custom_call @mhlo.topk(%arg0) {
-+    mhlo.attributes = { k = 4 : i64, largest = true}
-+  } : (tensor<5x16xf32>) -> (tensor<?x?xf32>)
-+  return %0 : tensor<?x?xf32>
-+}
-+
-+// -----
-+
-+// CHECK-LABEL: func @refine_mhlo_error_wrong_output_1_type
-+func.func @refine_mhlo_error_wrong_output_1_type(%arg0: tensor<5x16xf32>) -> (tensor<f32>, tensor<?x?xi32>) {
-+  // expected-error@+1{{expects values (result #0) to be a tensor of integer or floating-point type of rank at least 1}}
-+  %0:2 = stablehlo.custom_call @mhlo.topk(%arg0) {
-+    mhlo.attributes = { k = 4 : i64, largest = true}
-+  } : (tensor<5x16xf32>) -> (tensor<f32>, tensor<?x?xi32>)
-+  return %0#0, %0#1 : tensor<f32>, tensor<?x?xi32>
-+}
-+
-+// -----
-+
-+// CHECK-LABEL: func @refine_mhlo_error_wrong_output_2_type
-+func.func @refine_mhlo_error_wrong_output_2_type(%arg0: tensor<5x16xf32>) -> (tensor<?x?xf32>, tensor<?x?xf32>) {
-+  // expected-error@+1{{expects indices (result #1) to be a tensor of si32 of rank at least 1}}
-+  %0:2 = stablehlo.custom_call @mhlo.topk(%arg0) {
-+    mhlo.attributes = { k = 4 : i64, largest = true}
-+  } : (tensor<5x16xf32>) -> (tensor<?x?xf32>, tensor<?x?xf32>)
-+  return %0#0, %0#1 : tensor<?x?xf32>, tensor<?x?xf32>
-+}
-+
-+// -----
-+
-+// CHECK-LABEL: func @refine_mhlo_error_c1_wrong_output_shape
-+func.func @refine_mhlo_error_c1_wrong_output_shape(%arg0: tensor<5x16xf32>) -> (tensor<?x?x?xf32>, tensor<?x?xi32>) {
-+  // expected-error@+1{{expects the values shape to match the operand}}
-+  %0:2 = stablehlo.custom_call @mhlo.topk(%arg0) {
-+    mhlo.attributes = { k = 4 : i64, largest = true}
-+  } : (tensor<5x16xf32>) -> (tensor<?x?x?xf32>, tensor<?x?xi32>)
-+  return %0#0, %0#1 : tensor<?x?x?xf32>, tensor<?x?xi32>
-+}
-+
-+// -----
-+
-+// CHECK-LABEL: func @refine_mhlo_error_c2_last_dim_not_k
-+func.func @refine_mhlo_error_c2_last_dim_not_k(%arg0: tensor<5x16xf32>) -> (tensor<?x5xf32>, tensor<?x?xi32>) {
-+  // expected-error@+1{{expects the values shape to match the operand}}
-+  %0:2 = stablehlo.custom_call @mhlo.topk(%arg0) {
-+    mhlo.attributes = { k = 4 : i64, largest = true}
-+  } : (tensor<5x16xf32>) -> (tensor<?x5xf32>, tensor<?x?xi32>)
-+  return %0#0, %0#1 : tensor<?x5xf32>, tensor<?x?xi32>
-+}
-+
-+// -----
-+
-+// CHECK-LABEL: func @refine_mhlo_error_c3_wrong_output_type
-+func.func @refine_mhlo_error_c3_wrong_output_type(%arg0: tensor<5x16xf32>) -> (tensor<?x?xi32>, tensor<?x?xi32>) {
-+  // expected-error@+1{{expects the values element type to be the same as the operand element type}}
-+  %0:2 = stablehlo.custom_call @mhlo.topk(%arg0) {
-+    mhlo.attributes = { k = 4 : i64, largest = true}
-+  } : (tensor<5x16xf32>) -> (tensor<?x?xi32>, tensor<?x?xi32>)
-+  return %0#0, %0#1 : tensor<?x?xi32>, tensor<?x?xi32>
-+}
-+
-+// -----
-+
-+// CHECK-LABEL: func @refine_mhlo_error_c4_outputs_shape_mismatch
-+func.func @refine_mhlo_error_c4_outputs_shape_mismatch(%arg0: tensor<5x16xf32>) -> (tensor<?x4xf32>, tensor<?x5xi32>) {
-+  // expected-error@+1{{expects the indices shape to match the values shape}}
-+  %0:2 = stablehlo.custom_call @mhlo.topk(%arg0) {
-+    mhlo.attributes = { k = 4 : i64, largest = true}
-+  } : (tensor<5x16xf32>) -> (tensor<?x4xf32>, tensor<?x5xi32>)
-+  return %0#0, %0#1 : tensor<?x4xf32>, tensor<?x5xi32>
-+}
-+
-+// -----
-+
-+// CHECK-LABEL: func @refine_mhlo_error_c5_negative_k
-+func.func @refine_mhlo_error_c5_negative_k(%arg0: tensor<5x16xf32>) -> (tensor<?x?xf32>, tensor<?x?xi32>) {
-+  // expected-error@+1{{expects k >= 0}}
-+  %0:2 = stablehlo.custom_call @mhlo.topk(%arg0) {
-+    mhlo.attributes = { k = -4 : i64, largest = true}
-+  } : (tensor<5x16xf32>) -> (tensor<?x?xf32>, tensor<?x?xi32>)
-+  return %0#0, %0#1 : tensor<?x?xf32>, tensor<?x?xi32>
-+}
-+
-+
-+// -----
-+
-+// CHECK-LABEL: @refine_tan
-+func.func @refine_tan(%arg0: tensor<16xf32>) -> tensor<?xf32> {
-+  // CHECK: mhlo.tan{{.*}} -> tensor<16xf32>
-+  %0 = "stablehlo.custom_call"(%arg0) {
-+    call_target_name = "mhlo.tan",
-+    mhlo.attributes = {},
-+    mhlo.version = 1 : i64
-+  } : (tensor<16xf32>) -> tensor<?xf32>
-+  func.return %0 : tensor<?xf32>
-+}
-+
-+// -----
-+
-+// tan_op I1
-+// CHECK-LABEL: func @tan_op_error_too_many_inputs
-+func.func @tan_op_error_too_many_inputs(%arg0: tensor<1xf32>) -> (tensor<1xf32>) {
-+  // expected-error@+1{{expects size(operands) = 1}}
-+  %0 = "stablehlo.custom_call"(%arg0, %arg0) {call_target_name = "mhlo.tan", mhlo.attributes = {}, mhlo.version = 1 : i64} : (tensor<1xf32>, tensor<1xf32>) -> tensor<1xf32>
-+  return %0 : tensor<1xf32>
-+}
-+
-+// -----
-+
-+// tan_op O1
-+// CHECK-LABEL: func @tan_op_error_too_many_outputs
-+func.func @tan_op_error_too_many_outputs(%arg0: tensor<1xf32>) -> (tensor<1xf32>) {
-+  // expected-error@+1{{expects size(results) = 1}}
-+  %0:2 = "stablehlo.custom_call"(%arg0) {call_target_name = "mhlo.tan", mhlo.attributes = {}, mhlo.version = 1 : i64} : (tensor<1xf32>) -> (tensor<1xf32>, tensor<1xf32>)
-+  return %0#1 : tensor<1xf32>
-+}
-+
-+// -----
-+
-+// tan_op C1
-+// CHECK-LABEL: func @tan_op_error_values_bad_element_type
-+func.func @tan_op_error_values_bad_element_type(%arg0: tensor<1xf32>) -> (tensor<1xi32>) {
-+  // expected-error@+1{{expects operand and result to have compatible shapes}}
-+  %0 = "stablehlo.custom_call"(%arg0) {call_target_name = "mhlo.tan", mhlo.attributes = {}, mhlo.version = 1 : i64} : (tensor<1xf32>) -> tensor<1xi32>
-+  return %0 : tensor<1xi32>
 +}
 diff --ruN a/stablehlo/stablehlo/experimental/tools/CMakeLists.txt b/stablehlo/stablehlo/experimental/tools/CMakeLists.txt
 --- stablehlo/stablehlo/experimental/tools/CMakeLists.txt
@@ -2233,7 +1903,7 @@ diff --ruN a/stablehlo/stablehlo/experimental/tools/StablehloOptMain.cpp b/stabl
 diff --ruN a/stablehlo/stablehlo/experimental/transforms/CMakeLists.txt b/stablehlo/stablehlo/experimental/transforms/CMakeLists.txt
 --- stablehlo/stablehlo/experimental/transforms/CMakeLists.txt
 +++ stablehlo/stablehlo/experimental/transforms/CMakeLists.txt
-@@ -0,0 +1,39 @@
+@@ -0,0 +1,40 @@
 +# Copyright 2023 The StableHLO Authors.
 +#
 +# Licensed under the Apache License, Version 2.0 (the "License");
@@ -2254,6 +1924,7 @@ diff --ruN a/stablehlo/stablehlo/experimental/transforms/CMakeLists.txt b/stable
 +
 +add_mlir_dialect_library(ExperimentalStablehloPasses
 +  PARTIAL_SOURCES_INTENDED
++  ChloRecomposeOps.cpp
 +  StablehloCanonicalizeDynamism.cpp
 +  StablehloRefineShapes.cpp
 +
@@ -2273,10 +1944,182 @@ diff --ruN a/stablehlo/stablehlo/experimental/transforms/CMakeLists.txt b/stable
 +  StablehloPasses
 +  StablehloTypeInference
 +)
+diff --ruN a/stablehlo/stablehlo/experimental/transforms/ChloRecomposeOps.cpp b/stablehlo/stablehlo/experimental/transforms/ChloRecomposeOps.cpp
+--- stablehlo/stablehlo/experimental/transforms/ChloRecomposeOps.cpp
++++ stablehlo/stablehlo/experimental/transforms/ChloRecomposeOps.cpp
+@@ -0,0 +1,168 @@
++/* Copyright 2024 The StableHLO Authors.
++Licensed under the Apache License, Version 2.0 (the "License");
++you may not use this file except in compliance with the License.
++You may obtain a copy of the License at
++
++    http://www.apache.org/licenses/LICENSE-2.0
++
++Unless required by applicable law or agreed to in writing, software
++distributed under the License is distributed on an "AS IS" BASIS,
++WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++See the License for the specific language governing permissions and
++limitations under the License.
++==============================================================================*/
++
++#include <cstdint>
++#include <functional>
++
++#include "llvm/ADT/SmallVector.h"
++#include "mlir/Dialect/Func/IR/FuncOps.h"
++#include "mlir/IR/Attributes.h"
++#include "mlir/IR/BuiltinAttributes.h"
++#include "mlir/IR/PatternMatch.h"
++#include "mlir/Support/LogicalResult.h"
++#include "mlir/Transforms/GreedyPatternRewriteDriver.h"
++#include "stablehlo/dialect/ChloOps.h"
++#include "stablehlo/dialect/StablehloOps.h"
++#include "stablehlo/experimental/dialect/StablehloOps.h"
++#include "stablehlo/experimental/transforms/Passes.h"
++
++namespace mlir {
++namespace stablehlo {
++namespace experimental {
++
++#define GEN_PASS_DEF_CHLORECOMPOSEOPSPASS
++#include "stablehlo/experimental/transforms/Passes.h.inc"
++
++namespace {
++
++FailureOr<DictionaryAttr> getCustomCallOpAttributes(CustomCallOp op,
++                                                    PatternRewriter& rewriter) {
++  auto attrs = op->getAttrOfType<DictionaryAttr>("mhlo.attributes");
++  if (!attrs)
++    return rewriter.notifyMatchFailure(
++        op, "Expected mhlo.attributes dictionary attribute.");
++  return attrs;
++}
++
++LogicalResult verifyCustomCallOpAttributes(
++    CustomCallOp op, PatternRewriter& rewriter,
++    std::function<LogicalResult(NamedAttribute)> verifyFn) {
++  auto attrs = getCustomCallOpAttributes(op, rewriter);
++  if (failed(attrs)) return failure();
++
++  for (auto attr : attrs->getValue()) {
++    if (failed(verifyFn(attr))) return failure();
++  }
++  return success();
++}
++
++// Experimental and public ops in MHLO that do not exist yet in StableHLO
++// can be encoded as a StableHLO CustomCallOp to allow round-tripping
++// between dialects. Some of these ops are CHLO ops that are accelerated by XLA.
++// For these ops we can recompose to CHLO.
++//
++// Example:
++//  %0 = stablehlo.custom_call @mhlo.topk(...) {...}
++//  ==>
++//   %0 = "chlo.topk"(...) {...}
++template <typename OpType>
++LogicalResult recomposeChloOpFromCustomCall(stablehlo::CustomCallOp op,
++                                            PatternRewriter& rewriter) {
++  // Only call_target_name, backend_config, called_computations, mhlo.version,
++  // and mhlo.attributes are compatible with the extensibility protocol.
++  auto isSupportedAttrName = [](NamedAttribute attr) {
++    auto name = attr.getName();
++    return name == "call_target_name" || name == "backend_config" ||
++           name == "called_computations" || name == "mhlo.attributes" ||
++           name == "mhlo.version";
++  };
++  if (!llvm::all_of(op->getAttrs(), isSupportedAttrName) ||
++      !op.getBackendConfig().empty()) {
++    return rewriter.notifyMatchFailure(
++        op, "CHLO Recompose custom call did not have required attributes.");
++  }
++  if (!op.getCalledComputations().empty())
++    return rewriter.notifyMatchFailure(op, "Ops with regions not supported.");
++
++  auto attrs = getCustomCallOpAttributes(op, rewriter);
++  if (failed(attrs)) return failure();
++
++  rewriter.replaceOpWithNewOp<OpType>(op, op->getResultTypes(),
++                                      op->getOperands(), attrs->getValue());
++  return success();
++}
++
++struct TopKOpRecomposePattern : public OpRewritePattern<CustomCallOp> {
++  using OpRewritePattern::OpRewritePattern;
++  LogicalResult matchAndRewrite(CustomCallOp op,
++                                PatternRewriter& rewriter) const override {
++    if (op.getCallTargetName() != "mhlo.topk") return failure();
++    auto res = verifyCustomCallOpAttributes(
++        op, rewriter, [&](NamedAttribute attr) -> LogicalResult {
++          if (attr.getName() != "largest") return success();
++          if (attr.getValue().cast<BoolAttr>().getValue() == false)
++            return rewriter.notifyMatchFailure(
++                op, "largest = false is not supported.");
++          return success();
++        });
++    if (failed(res)) return failure();
++    return recomposeChloOpFromCustomCall<chlo::TopKOp>(op, rewriter);
++  }
++};
++
++struct TanOpRecomposePattern : public OpRewritePattern<CustomCallOp> {
++  using OpRewritePattern::OpRewritePattern;
++  LogicalResult matchAndRewrite(CustomCallOp op,
++                                PatternRewriter& rewriter) const override {
++    if (op.getCallTargetName() != "mhlo.tan") return failure();
++    return recomposeChloOpFromCustomCall<chlo::TanOp>(op, rewriter);
++  }
++};
++
++struct ErfOpRecomposePattern : public OpRewritePattern<CustomCallOp> {
++  using OpRewritePattern::OpRewritePattern;
++  LogicalResult matchAndRewrite(CustomCallOp op,
++                                PatternRewriter& rewriter) const override {
++    if (op.getCallTargetName() != "mhlo.erf") return failure();
++    return recomposeChloOpFromCustomCall<chlo::ErfOp>(op, rewriter);
++  }
++};
++
++}  // namespace
++
++struct ChloRecomposeOpsPass
++    : public impl::ChloRecomposeOpsPassBase<ChloRecomposeOpsPass> {
++  using ChloRecomposeOpsPassBase::ChloRecomposeOpsPassBase;
++
++  void runOnOperation() override {
++    // Do a single traversal to recompose CustomCallOp to CHLO ops.
++    GreedyRewriteConfig config;
++    config.useTopDownTraversal = true;
++    config.enableRegionSimplification = true;
++    config.maxIterations = 1;
++    config.maxNumRewrites = GreedyRewriteConfig::kNoLimit;
++    config.strictMode = GreedyRewriteStrictness::ExistingOps;
++
++    RewritePatternSet patterns(&getContext());
++    patterns.add<TopKOpRecomposePattern>(&getContext());
++    patterns.add<TanOpRecomposePattern>(&getContext());
++    patterns.add<ErfOpRecomposePattern>(&getContext());
++
++    // Only apply to CustomCallOps
++    auto moduleOp = getOperation();
++    llvm::SmallVector<Operation*> candidateOps;
++    moduleOp.walk([&](CustomCallOp op) { candidateOps.push_back(op); });
++
++    if (failed(applyOpPatternsAndFold(candidateOps, std::move(patterns),
++                                      config))) {
++      moduleOp.emitError("Failed to converge ChloRecomposeOps in ")
++          << config.maxIterations << " iterations";
++      return signalPassFailure();
++    }
++  }
++};
++
++}  // namespace experimental
++}  // namespace stablehlo
++}  // namespace mlir
 diff --ruN a/stablehlo/stablehlo/experimental/transforms/Passes.h b/stablehlo/stablehlo/experimental/transforms/Passes.h
 --- stablehlo/stablehlo/experimental/transforms/Passes.h
 +++ stablehlo/stablehlo/experimental/transforms/Passes.h
-@@ -0,0 +1,37 @@
+@@ -0,0 +1,36 @@
 +/* Copyright 2023 The StableHLO Authors.
 +
 +Licensed under the Apache License, Version 2.0 (the "License");
@@ -2303,9 +2146,8 @@ diff --ruN a/stablehlo/stablehlo/experimental/transforms/Passes.h b/stablehlo/st
 +namespace mlir {
 +namespace stablehlo {
 +namespace experimental {
-+  
-+#define GEN_PASS_DECL_STABLEHLOCANONICALIZEDYNAMISMPASS
-+#define GEN_PASS_DECL_STABLEHLOREFINESHAPESPASS
++
++#define GEN_PASS_DECL
 +#define GEN_PASS_REGISTRATION
 +#include "stablehlo/experimental/transforms/Passes.h.inc"
 +
@@ -2317,7 +2159,7 @@ diff --ruN a/stablehlo/stablehlo/experimental/transforms/Passes.h b/stablehlo/st
 diff --ruN a/stablehlo/stablehlo/experimental/transforms/Passes.td b/stablehlo/stablehlo/experimental/transforms/Passes.td
 --- stablehlo/stablehlo/experimental/transforms/Passes.td
 +++ stablehlo/stablehlo/experimental/transforms/Passes.td
-@@ -0,0 +1,31 @@
+@@ -0,0 +1,39 @@
 +/* Copyright 2023 The StableHLO Authors.
 +
 +Licensed under the Apache License, Version 2.0 (the "License");
@@ -2349,10 +2191,18 @@ diff --ruN a/stablehlo/stablehlo/experimental/transforms/Passes.td b/stablehlo/s
 +    Experimental version of the --stablehlo-refine-shapes pass.
 +  }];
 +}
++
++def ChloRecomposeOpsPass : Pass<"experimental-chlo-recompose-ops", "ModuleOp"> {
++  let summary = "(Experimental) Recompose CHLO ops serialized as custom calls.";
++  let description = [{
++    Experimental version of CHLO serialization support.
++  }];
++  let dependentDialects = ["chlo::ChloDialect"];
++}
 diff --ruN a/stablehlo/stablehlo/experimental/transforms/StablehloCanonicalizeDynamism.cpp b/stablehlo/stablehlo/experimental/transforms/StablehloCanonicalizeDynamism.cpp
 --- stablehlo/stablehlo/experimental/transforms/StablehloCanonicalizeDynamism.cpp
 +++ stablehlo/stablehlo/experimental/transforms/StablehloCanonicalizeDynamism.cpp
-@@ -0,0 +1,167 @@
+@@ -0,0 +1,171 @@
 +/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
 +   Copyright 2023 The StableHLO Authors.
 +Licensed under the Apache License, Version 2.0 (the "License");
@@ -2419,10 +2269,10 @@ diff --ruN a/stablehlo/stablehlo/experimental/transforms/StablehloCanonicalizeDy
 +      return rewriter.notifyMatchFailure(op, "expected static padding");
 +    auto newOp = rewriter.create<ReduceWindowOp>(
 +        op->getLoc(), op->getResultTypes(), op.getInputs(), op.getInitValues(),
-+        rewriter.getI64TensorAttr(windowDimensions),
-+        rewriter.getI64TensorAttr(windowStrides),
-+        rewriter.getI64TensorAttr(baseDilations),
-+        rewriter.getI64TensorAttr(windowDilations),
++        rewriter.getDenseI64ArrayAttr(windowDimensions),
++        rewriter.getDenseI64ArrayAttr(windowStrides),
++        rewriter.getDenseI64ArrayAttr(baseDilations),
++        rewriter.getDenseI64ArrayAttr(windowDilations),
 +        hlo::getPaddingAttr(&rewriter, padding));
 +
 +    // Inline the called computation into newOp.
@@ -2509,8 +2359,12 @@ diff --ruN a/stablehlo/stablehlo/experimental/transforms/StablehloCanonicalizeDy
 +    patterns.add<CanonicalizeDynamicReduceWindowOpPattern>(&getContext());
 +    patterns.add<CanonicalizeDynamicRngBitGeneratorOpPattern>(&getContext());
 +    patterns.add<CanonicalizeDynamicTopKOpPattern>(&getContext());
-+    if (failed(applyPatternsAndFoldGreedily(getOperation(), std::move(patterns),
++
++    auto funcOp = getOperation();
++    if (failed(applyPatternsAndFoldGreedily(funcOp, std::move(patterns),
 +                                            config))) {
++      funcOp.emitError("Failed to converge StablehloCanonicalizeDynamism in ")
++          << config.maxIterations << " iterations";
 +      return signalPassFailure();
 +    }
 +  }
@@ -2523,7 +2377,7 @@ diff --ruN a/stablehlo/stablehlo/experimental/transforms/StablehloCanonicalizeDy
 diff --ruN a/stablehlo/stablehlo/experimental/transforms/StablehloRefineShapes.cpp b/stablehlo/stablehlo/experimental/transforms/StablehloRefineShapes.cpp
 --- stablehlo/stablehlo/experimental/transforms/StablehloRefineShapes.cpp
 +++ stablehlo/stablehlo/experimental/transforms/StablehloRefineShapes.cpp
-@@ -0,0 +1,196 @@
+@@ -0,0 +1,170 @@
 +/* Copyright 2022 The StableHLO Authors.
 +Licensed under the Apache License, Version 2.0 (the "License");
 +you may not use this file except in compliance with the License.
@@ -2654,33 +2508,6 @@ diff --ruN a/stablehlo/stablehlo/experimental/transforms/StablehloRefineShapes.c
 +  }
 +};
 +
-+struct RefineTopKOpPattern : public OpRewritePattern<CustomCallOp> {
-+  using OpRewritePattern::OpRewritePattern;
-+  LogicalResult matchAndRewrite(CustomCallOp impl,
-+                                PatternRewriter& rewriter) const override {
-+    auto maybeOp = getTopKOp(impl);
-+    if (!maybeOp || failed(maybeOp->verify())) return failure();
-+    TopKOpAdaptor op = *maybeOp;
-+
-+    auto operandType = op.getOperand().getType().cast<ShapedType>();
-+    SmallVector<int64_t> outputShape(operandType.getShape());
-+    outputShape.back() = op.getK();
-+    return refineReturnTypes(rewriter, op, {{outputShape}, {outputShape}});
-+  }
-+};
-+
-+struct RefineTanOpPattern : public OpRewritePattern<CustomCallOp> {
-+  using OpRewritePattern::OpRewritePattern;
-+  LogicalResult matchAndRewrite(CustomCallOp impl,
-+                                PatternRewriter& rewriter) const override {
-+    auto maybeOp = getTanOp(impl);
-+    if (!maybeOp || failed(maybeOp->verify())) return failure();
-+    TanOpAdaptor op = *maybeOp;
-+    return refineReturnShape(rewriter, op,
-+                             op.getOperand().getType().getShape());
-+  }
-+};
-+
 +struct StablehloRefineShapesPass
 +    : public impl::StablehloRefineShapesPassBase<StablehloRefineShapesPass> {
 +  using StablehloRefineShapesPassBase::StablehloRefineShapesPassBase;
@@ -2698,7 +2525,7 @@ diff --ruN a/stablehlo/stablehlo/experimental/transforms/StablehloRefineShapes.c
 +    GreedyRewriteConfig config;
 +    config.useTopDownTraversal = true;
 +    config.enableRegionSimplification = true;
-+    config.maxIterations = 2;
++    config.maxIterations = 3;
 +    config.maxNumRewrites = GreedyRewriteConfig::kNoLimit;
 +    config.strictMode = GreedyRewriteStrictness::AnyOp;
 +
@@ -2707,10 +2534,11 @@ diff --ruN a/stablehlo/stablehlo/experimental/transforms/StablehloRefineShapes.c
 +    patterns.add<RefineDynamicReduceWindowOpPattern>(&getContext());
 +    patterns.add<RefineDynamicRngBitGeneratorOpPattern>(&getContext());
 +    patterns.add<RefineDynamicTopKOpPattern>(&getContext());
-+    patterns.add<RefineTanOpPattern>(&getContext());
-+    patterns.add<RefineTopKOpPattern>(&getContext());
 +    if (failed(
 +            applyPatternsAndFoldGreedily(func, std::move(patterns), config))) {
++      func.emitError()
++          << "Greedy rewriter in StablehloRefineShapes does not converge after "
++          << config.maxIterations << " iterations.";
 +      return signalPassFailure();
 +    }
 +  }
@@ -2720,4 +2548,61 @@ diff --ruN a/stablehlo/stablehlo/experimental/transforms/StablehloRefineShapes.c
 +}  // namespace experimental
 +}  // namespace stablehlo
 +}  // namespace mlir
+diff --ruN a/stablehlo/stablehlo/transforms/ChloDecompositionPatterns.td b/stablehlo/stablehlo/transforms/ChloDecompositionPatterns.td
+--- stablehlo/stablehlo/transforms/ChloDecompositionPatterns.td
++++ stablehlo/stablehlo/transforms/ChloDecompositionPatterns.td
+@@ -1,6 +1,6 @@
+ // Copyright 2020 The IREE Authors
+ //
+-// Licensed under the Apache License v2.0 with LLVM Exceptions.
++// Licensed under the Apache License, Version 2.0 with LLVM Exceptions.
+ // See https://llvm.org/LICENSE.txt for license information.
+ // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+ 
+diff --ruN a/stablehlo/stablehlo/transforms/ChloLegalizeToStablehlo.cpp b/stablehlo/stablehlo/transforms/ChloLegalizeToStablehlo.cpp
+--- stablehlo/stablehlo/transforms/ChloLegalizeToStablehlo.cpp
++++ stablehlo/stablehlo/transforms/ChloLegalizeToStablehlo.cpp
+@@ -1,6 +1,6 @@
+ // Copyright 2020 The IREE Authors
+ //
+-// Licensed under the Apache License v2.0 with LLVM Exceptions.
++// Licensed under the Apache License, Version 2.0 with LLVM Exceptions.
+ // See https://llvm.org/LICENSE.txt for license information.
+ // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+ 
+diff --ruN a/stablehlo/stablehlo/transforms/StablehloAggressiveSimplification.cpp b/stablehlo/stablehlo/transforms/StablehloAggressiveSimplification.cpp
+--- stablehlo/stablehlo/transforms/StablehloAggressiveSimplification.cpp
++++ stablehlo/stablehlo/transforms/StablehloAggressiveSimplification.cpp
+@@ -1,6 +1,6 @@
+ // Copyright 2023 The IREE Authors
+ //
+-// Licensed under the Apache License v2.0 with LLVM Exceptions.
++// Licensed under the Apache License, Version 2.0 with LLVM Exceptions.
+ // See https://llvm.org/LICENSE.txt for license information.
+ // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+ 
+@@ -126,9 +126,8 @@
+ 
+     // The canonical form has the constant operand as the RHS.
+     if (isa<IntegerType>(type.getElementType()) && lhsAttr && !rhsAttr) {
+-      rewriter.modifyOpInPlace(op, [op, lhs, rhs] {
+-        op->setOperands(ValueRange{rhs, lhs});
+-      });
++      rewriter.modifyOpInPlace(
++          op, [op, lhs, rhs] { op->setOperands(ValueRange{rhs, lhs}); });
+       return success();
+     }
+ 
+@@ -221,9 +220,8 @@
+ 
+     // The canonical form has the constant operand as the RHS.
+     if (isa<IntegerType>(type.getElementType()) && lhsAttr && !rhsAttr) {
+-      rewriter.modifyOpInPlace(op, [op, lhs, rhs] {
+-        op->setOperands(ValueRange{rhs, lhs});
+-      });
++      rewriter.modifyOpInPlace(
++          op, [op, lhs, rhs] { op->setOperands(ValueRange{rhs, lhs}); });
+       return success();
+     }
+ 
 

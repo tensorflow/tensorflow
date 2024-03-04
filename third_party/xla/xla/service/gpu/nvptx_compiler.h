@@ -72,6 +72,12 @@ class NVPTXCompiler : public GpuCompiler {
       se::GpuComputeCapability gpu_version, bool relocatable,
       const HloModule* debug_module, const CompileOptions& options) override;
 
+  enum class LinkingMethod {
+    kNone,
+    kNvLink,
+    kDriver,
+  };
+
  private:
   absl::StatusOr<bool> CanUseLinkModules(
       const HloModuleConfig& module_config) override;
@@ -83,16 +89,11 @@ class NVPTXCompiler : public GpuCompiler {
 
   absl::Mutex mutex_;
 
-  enum class LinkingMethod {
-    kNone,
-    kNvLink,
-    kDriver,
-  };
   absl::flat_hash_map<std::string, LinkingMethod> linking_methods_
       ABSL_GUARDED_BY(mutex_);
 
   absl::StatusOr<LinkingMethod> ChooseLinkingMethod(
-      const std::string& preferred_cuda_dir);
+      const DebugOptions& debug_options);
 
   // Tries to compile the given ptx string to cubin.  Returns a vector with the
   // compiled cubin if compilation succeeded.

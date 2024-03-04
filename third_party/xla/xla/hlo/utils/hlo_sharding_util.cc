@@ -2907,7 +2907,8 @@ bool DeviceGroupsAreMatch(GroupedSharding& lhs, GroupedSharding& rhs,
   }
 
   bool matching_groups = true;
-  absl::flat_hash_map<int64_t, int64_t> device_to_ref_group;
+  std::vector<int64_t> device_to_ref_group(lhs.device_groups.size() *
+                                           lhs.device_groups[0].size());
   for (int64_t g = 0; g < lhs.device_groups.size(); ++g) {
     for (int64_t device : lhs.device_groups[g]) {
       device_to_ref_group[device] = g;

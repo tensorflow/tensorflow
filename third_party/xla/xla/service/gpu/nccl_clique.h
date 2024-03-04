@@ -1,4 +1,4 @@
-/* Copyright 2024 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2024 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -18,15 +18,21 @@ limitations under the License.
 
 #include <cstddef>
 #include <cstdint>
-#include <vector>
+#include <functional>
+#include <memory>
+#include <optional>
+#include <string>
+#include <utility>
 
+#include "absl/container/btree_map.h"
+#include "absl/functional/function_ref.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/str_format.h"
 #include "xla/executable_run_options.h"
-#include "xla/service/global_device_id.h"
 #include "xla/service/gpu/nccl_api.h"
 #include "xla/service/gpu/nccl_clique_key.h"
 #include "xla/service/lockable.h"
-#include "tsl/lib/gtl/int_type.h"
+#include "xla/stream_executor/stream_executor.h"
 
 namespace xla::gpu {
 
@@ -62,21 +68,76 @@ absl::StatusOr<const NcclCliqueIdCallback*> GetNcclCliqueIdCallback(
     bool is_local);
 
 //===----------------------------------------------------------------------===//
-// NcclComm
+// NcclClique
 //===----------------------------------------------------------------------===//
 
-TSL_LIB_GTL_DEFINE_INT_TYPE(OpId, int64_t);
+// A group of NCCL communicators making up a clique. With NCCL it's notoriously
+// easy to get a deadlock, so we take extra care by grouping communicators into
+// cliques and making sure that we have a well defined order of all collective
+// operations that does not lead to deadlocks.
+class NcclCliqueCommunicators {
+ public:
+  NcclCliqueCommunicators(
+      NcclCliqueKey clique_key, std::optional<NcclCliqueId> clique_id,
+      absl::btree_map<int32_t, NcclApi::OwnedNcclComm> communicators);
 
-struct NcclComm : public Lockable<NcclApi::NcclCommHandle> {
-  explicit NcclComm(NcclApi::NcclCommHandle comm) : Lockable(comm) {}
+  // Returns a NCCL communicator for a given rank if it's in a clique.
+  std::optional<NcclApi::NcclCommHandle> comm(int32_t rank);
+
+  // Return true if clique is local: all communicators belong to current
+  // process. Non-local cliques spans multiple processes (typically hosts).
+  bool IsLocal() const;
+
+  // Calls `fn` for each communicator in the clique.
+  void ForEachComm(
+      absl::FunctionRef<void(int32_t, NcclApi::NcclCommHandle)> fn);
+
+  const NcclCliqueKey& clique_key() const { return clique_key_; }
+  const std::optional<NcclCliqueId>& clique_id() const { return clique_id_; }
+  size_t num_communicators() const { return communicators_.size(); }
+
+  std::string DebugString() const;
+
+ private:
+  NcclCliqueKey clique_key_;
+  std::optional<NcclCliqueId> clique_id_;
+
+  // TODO(ezhulenev): Switch this map to GlobalDeviceId key.
+  absl::btree_map<int32_t, NcclApi::OwnedNcclComm> communicators_;
 };
 
-// Acquires an exclusive access to NCCL communicator owned by a NCCL clique.
-absl::StatusOr<NcclComm::Lock> AcquireNcclComm(
-    RunId run_id, OpId op_id, std::vector<GlobalDeviceId> participants,
-    size_t num_local_participants,
+struct NcclCliqueName {
+  static std::string ToString(const NcclCliqueCommunicators& comms) {
+    return absl::StrFormat("lockable clique %s", comms.clique_key().ToString());
+  }
+};
+
+struct NcclClique : public Lockable<NcclCliqueCommunicators, NcclCliqueName> {
+  // We keep acquired cliques in a sorted container to guarantee that all
+  // participants iterate over cliques in the same order.
+  using AcquiredCliquesMap =
+      absl::btree_map<NcclCliqueKey, std::shared_ptr<NcclClique::Lock>,
+                      std::greater<NcclCliqueKey>>;
+
+  NcclClique(NcclCliqueKey clique_key, std::optional<NcclCliqueId> clique_id,
+             absl::btree_map<int32_t, NcclApi::OwnedNcclComm> communicators)
+      : Lockable(std::move(clique_key), clique_id, std::move(communicators)) {}
+
+  std::string DebugString() const;
+};
+
+// Acquires an shared access to a NCCL clique (NcclClique::Lock collectively
+// owned by `num_local_participants` threads). XLA uses this lock to serialize
+// execution of all collective operations sharing a `clique_id`.
+//
+// If clique for a given key does not exist it will be initialized from newly
+// created communicators or maybe created by splitting of the already acquired
+// cliques.
+absl::StatusOr<std::shared_ptr<NcclClique::Lock>> AcquireNcclClique(
+    se::StreamExecutor* device, RunId run_id, NcclCliqueKey clique_key,
     const NcclCliqueIdCallback& clique_id_callback, int32_t rank,
-    int64_t stream_id, bool enable_clique_optimization);
+    size_t num_local_participants,
+    const NcclClique::AcquiredCliquesMap& acquired_cliques);
 
 }  // namespace xla::gpu
 

@@ -57,8 +57,8 @@ enum class DataType : uint8_t {
 
 inline std::ostream& operator<<(std::ostream& os, const DataType dtype) {
   static constexpr const char* kDataTypeNames[] = {
-      "PRED", "S8",  "S16", "S32", "S64", "U8",   "U16",
-      "U32",  "U64", "F16", "F32", "F64", "BF16",
+      "INVALID", "PRED", "S8",  "S16", "S32", "S64", "U8",
+      "U16",     "U32",  "U64", "F16", "F32", "F64", "BF16",
   };
   return os << kDataTypeNames[static_cast<int>(dtype)];
 }
@@ -130,33 +130,36 @@ template <DataType dtype>
 struct always_false : std::false_type {};
 
 template <DataType dtype>
-struct PtrType {
+struct DataTypeToNative {
   static_assert(always_false<dtype>::value, "unsupported data type");
 };
 
 // clang-format off
-template <> struct PtrType<DataType::PRED> { using Type = bool; };
-template <> struct PtrType<DataType::U8>   { using Type = uint8_t; };
-template <> struct PtrType<DataType::U16>  { using Type = uint16_t; };
-template <> struct PtrType<DataType::U32>  { using Type = uint32_t; };
-template <> struct PtrType<DataType::U64>  { using Type = uint64_t; };
-template <> struct PtrType<DataType::S8>   { using Type = int8_t; };
-template <> struct PtrType<DataType::S16>  { using Type = int16_t; };
-template <> struct PtrType<DataType::S32>  { using Type = int32_t; };
-template <> struct PtrType<DataType::S64>  { using Type = int64_t; };
-template <> struct PtrType<DataType::F16>  { using Type = uint16_t; };
-template <> struct PtrType<DataType::F32>  { using Type = float; };
-template <> struct PtrType<DataType::F64>  { using Type = double; };
-template <> struct PtrType<DataType::BF16> { using Type = uint16_t; };
+template <> struct DataTypeToNative<DataType::PRED> { using type = bool; };
+template <> struct DataTypeToNative<DataType::U8>   { using type = uint8_t; };
+template <> struct DataTypeToNative<DataType::U16>  { using type = uint16_t; };
+template <> struct DataTypeToNative<DataType::U32>  { using type = uint32_t; };
+template <> struct DataTypeToNative<DataType::U64>  { using type = uint64_t; };
+template <> struct DataTypeToNative<DataType::S8>   { using type = int8_t; };
+template <> struct DataTypeToNative<DataType::S16>  { using type = int16_t; };
+template <> struct DataTypeToNative<DataType::S32>  { using type = int32_t; };
+template <> struct DataTypeToNative<DataType::S64>  { using type = int64_t; };
+template <> struct DataTypeToNative<DataType::F16>  { using type = uint16_t; };
+template <> struct DataTypeToNative<DataType::F32>  { using type = float; };
+template <> struct DataTypeToNative<DataType::F64>  { using type = double; };
+template <> struct DataTypeToNative<DataType::BF16> { using type = uint16_t; };
 // clang-format on
 
 inline constexpr size_t kDynamicRank = std::numeric_limits<size_t>::max();
+
+template <DataType dtype>
+using NativeType = typename DataTypeToNative<dtype>::type;
 
 }  // namespace internal
 
 template <DataType dtype, size_t rank = internal::kDynamicRank>
 struct Buffer {
-  typename internal::PtrType<dtype>::Type* data;
+  internal::NativeType<dtype>* data;
   Span<const int64_t> dimensions;
 };
 
@@ -203,22 +206,26 @@ struct ArgDecoding<Buffer<dtype, rank>> {
       return diagnostic.Emit("Wrong argument type: expected ")
              << XLA_FFI_ArgType_BUFFER << " but got " << type;
     }
+
     auto* buf = reinterpret_cast<XLA_FFI_Buffer*>(arg);
+
     if (auto actual_dtype = static_cast<DataType>(buf->dtype);
         actual_dtype != dtype) {
       return diagnostic.Emit("Wrong buffer dtype: expected ")
              << dtype << " but got " << actual_dtype;
     }
-    auto* data =
-        static_cast<typename internal::PtrType<dtype>::Type*>(buf->data);
+
     if constexpr (rank != internal::kDynamicRank) {
       if (buf->rank != rank) {
-        diagnostic.Emit("Wrong buffer rank: expected ")
-            << rank << " but got " << buf->rank;
-        return std::nullopt;
+        return diagnostic.Emit("Wrong buffer rank: expected ")
+               << rank << " but got " << buf->rank;
       }
     }
-    return Buffer<dtype, rank>{data, Span<const int64_t>(buf->dims, rank)};
+
+    Buffer<dtype, rank> buffer;
+    buffer.data = static_cast<internal::NativeType<dtype>*>(buf->data);
+    buffer.dimensions = Span<const int64_t>(buf->dims, buf->rank);
+    return buffer;
   }
 };
 

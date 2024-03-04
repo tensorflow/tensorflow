@@ -54,6 +54,10 @@ limitations under the License.
 #include "tsl/platform/errors.h"
 #include "tsl/platform/statusor.h"
 
+#if GOOGLE_CUDA
+#include "third_party/gpus/cuda/include/cuda.h"
+#endif
+
 namespace xla {
 namespace gpu {
 namespace {
@@ -469,15 +473,11 @@ StatusOr<bool> IsFlashAttention(
   TF_RET_CHECK(seq_q.size() == 1);
   TF_RET_CHECK(seq_k.size() == 1);
   TF_RET_CHECK(hidden_dim.size() == 1);
-  auto is_fixed_topology =
-      (custom_call_name == kCudnnfMHAScaleBiasSoftmaxDropoutCallTarget ||
-       custom_call_name == kCudnnfMHAScaleBiasSoftmaxCallTarget);
 
   auto is_seqlen_supported = seq_q[0] > 512 && seq_k[0] > 512 &&
                              seq_q[0] % 64 == 0 && seq_k[0] % 64 == 0;
   auto is_hidden_dim_supported = hidden_dim[0] == 64 || hidden_dim[0] == 128;
-  auto is_flash_attention =
-      is_seqlen_supported && is_hidden_dim_supported && is_fixed_topology;
+  auto is_flash_attention = is_seqlen_supported && is_hidden_dim_supported;
   auto is_cross_attention = seq_q[0] != seq_k[0];
 
   // flash attention requires cuDNN 8.9.3 to run non-fused QKV
@@ -665,10 +665,12 @@ MatchFwdResult MatchBmm1UnfusedBiasSoftmaxBmm2(MatchFwdResult previous_result,
       OptionalConvert(first_bmm_pattern.WithOneUse()),
       OptionalConvert(
           m::Broadcast(m::Constant(&scale).WithPredicate(IsScalar))));
-
   if (Match(softmax_input,
-            OptionalConvert(OptionalBitcast(first_bmm_pattern)))) {
+            OptionalConvert(OptionalBitcast(m::AnyOf<HloInstruction>(
+                first_bmm_pattern, unfused_scaled_bmm_subpattern))))) {
+    // bmm1 - (scale) - softmax
     match_result.matched_bmm_1 = bmm_1;
+    match_result.matched_scale = scale;
     match_result.matched_custom_call_name =
         has_dropout ? kCudnnfMHASoftmaxDropoutCallTarget
                     : kCudnnfMHASoftmaxCallTarget;
@@ -679,6 +681,7 @@ MatchFwdResult MatchBmm1UnfusedBiasSoftmaxBmm2(MatchFwdResult previous_result,
                            unfused_scaled_bmm_subpattern.WithOneUse(),
                            first_bmm_pattern.WithOneUse()))),
                        m::Op(&bias))))) {
+    // bmm1 - (scale) - bias - softmax
     match_result.matched_bmm_1 = bmm_1;
     match_result.matched_scale = scale;
     match_result.matched_bias = bias;
@@ -736,7 +739,6 @@ MatchFwdResult MatchBmm1ScaleBiasMaskSoftmaxDropoutBmm2(
       matched_result.has_match = false;
       return matched_result;
     }
-    matched_result.is_causal_mask |= IsCausalMaskPattern(mask);
     if (has_dropout) {
       // Found BMM1 - (Scale) - (bias) - Mask - Softmax - dropout - BMM2
       matched_result.matched_custom_call_name =
@@ -1222,11 +1224,8 @@ absl::StatusOr<bool> IsMHABlockSupported(
     return false;
   }
 
-  if (is_training &&
-      (custom_call_name != kCudnnfMHAScaleBiasSoftmaxDropoutCallTarget &&
-       custom_call_name != kCudnnfMHAScaleBiasSoftmaxCallTarget &&
-       custom_call_name != kCudnnfMHAScaleBiasMaskSoftmaxDropoutCallTarget &&
-       custom_call_name != kCudnnfMHAScaleBiasMaskSoftmaxCallTarget)) {
+  // cuDNN FMHA requires softmax for backward
+  if (is_training && custom_call_name == kCudnnfMHABmmBmmCallTarget) {
     VLOG(3) << "Unsupported fused MHA training pattern.\n";
     return false;
   }
@@ -1259,9 +1258,16 @@ absl::StatusOr<bool> IsMHABlockSupported(
   if (is_flash_attention) {
     if (is_causal_mask) {
       // if bias is causal mask, needs to remove bias from name
-      custom_call_name = MHACallHasDropout(custom_call_name)
-                             ? kCudnnfMHASoftmaxDropoutCallTarget
-                             : kCudnnfMHASoftmaxCallTarget;
+      if (custom_call_name == kCudnnfMHAScaleBiasSoftmaxDropoutCallTarget) {
+        custom_call_name = kCudnnfMHASoftmaxDropoutCallTarget;
+      } else if (custom_call_name == kCudnnfMHAScaleBiasSoftmaxCallTarget) {
+        custom_call_name = kCudnnfMHASoftmaxCallTarget;
+      } else if (custom_call_name ==
+                 kCudnnfMHAScaleBiasMaskSoftmaxDropoutCallTarget) {
+        custom_call_name = kCudnnfMHAScaleMaskSoftmaxDropoutCallTarget;
+      } else if (custom_call_name == kCudnnfMHAScaleBiasMaskSoftmaxCallTarget) {
+        custom_call_name = kCudnnfMHAScaleMaskSoftmaxCallTarget;
+      }
     }
     return true;
   }
@@ -1482,7 +1488,7 @@ absl::StatusOr<HloInstruction*> FuseFwdMultiHeadedAttentionBlock(
       } else if (bmm2_grad2_user->opcode() == HloOpcode::kTranspose) {
         activation_output = bmm2_grad2_user;
       } else {
-        return InternalError("Unexpected activation patterns");
+        return Internal("Unexpected activation patterns");
       }
     }
     // if it is flash attention, should output softmax stats to the bwd
@@ -1852,6 +1858,9 @@ absl::StatusOr<bool> CudnnFusedMHARewriter::Run(
         comp->parent()->config().debug_options();
     const auto cudnn_version =
         GetRealCuDNNVersion(cudnn_version_, stream_executor_);
+#if CUDA_VERSION < 12000
+    return false;
+#endif
     if (!debug_options.xla_gpu_enable_cudnn_fmha() ||
         !IsComputeCapabilityAndCudnnSupported(
             compute_capability_, cudnn_version,

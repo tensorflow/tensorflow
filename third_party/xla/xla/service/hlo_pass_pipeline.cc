@@ -99,29 +99,6 @@ void RecordPassEndMetadata(HloModuleGroup& module_group,
   }
 }
 
-void SetInstructionMetadata(HloModule& module) {
-  StatusOr<int64_t> pass_id = module.metadata()->current_pass_id();
-  if (!pass_id.ok()) {
-    LOG(FATAL) << pass_id.status();
-  }
-  for (xla::HloComputation* computation : module.computations()) {
-    for (xla::HloInstruction* instruction : computation->instructions()) {
-      if (instruction->metadata().creation_pass_id() == 0) {
-        instruction->set_creation_pass_id(*pass_id);
-      }
-      if (instruction->metadata().logical_creation_pass_id() == 0) {
-        instruction->set_logical_creation_pass_id(*pass_id);
-      }
-    }
-  }
-}
-
-void SetInstructionMetadata(HloModuleGroup& module_group) {
-  for (HloModule* module : module_group.modules()) {
-    SetInstructionMetadata(*module);
-  }
-}
-
 }  // namespace
 
 template <typename HloT>
@@ -179,7 +156,6 @@ StatusOr<bool> HloPassPipeline::RunPassesInternal(
       RunInvariantCheckers(hlo, kPipelineStart, execution_threads));
 
   RecordPassStartMetadata(*hlo, std::string(kPipelineStart), pipeline_name);
-  SetInstructionMetadata(*hlo);
   MaybeDumpHloAndSaveFilenames(*hlo,
                                /*after_pass_name=*/kPipelineStart,
                                /*before_pass_name=*/passes.empty()
@@ -207,7 +183,6 @@ StatusOr<bool> HloPassPipeline::RunPassesInternal(
           pass_name, absl::StatusCodeToString(status.code()));
     }
     TF_ASSIGN_OR_RETURN(bool pass_changed, status_or_changed);
-    SetInstructionMetadata(*hlo);
     if (!dump_regex.empty() && (pass_changed || dump_regex != ".*")) {
       MaybeDumpHloAndSaveFilenames(*hlo,
                                    /*after_pass_name=*/pass_name,

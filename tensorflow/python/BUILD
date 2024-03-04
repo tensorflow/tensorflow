@@ -546,6 +546,7 @@ tf_python_pybind_extension(
         "_pywrap_toco_api.pyi",
     ],
     deps = [
+        "//tensorflow/compiler/mlir/quantization/tensorflow/python:py_function_lib",
         "//tensorflow/python/lib/core:pybind11_lib",
         "//third_party/python_runtime:headers",
         "@pybind11",

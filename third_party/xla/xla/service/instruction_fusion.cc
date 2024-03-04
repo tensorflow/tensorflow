@@ -183,6 +183,7 @@ bool IsAlwaysDuplicable(const HloInstruction& instruction) {
     case HloOpcode::kCustomCall:
     case HloOpcode::kDomain:
     case HloOpcode::kDot:
+    case HloOpcode::kErf:
     case HloOpcode::kExp:
     case HloOpcode::kExpm1:
     case HloOpcode::kFft:

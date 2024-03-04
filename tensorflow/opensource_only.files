@@ -284,6 +284,8 @@ tf_staging/third_party/nccl/generated_names.bzl.tpl:
 tf_staging/third_party/nccl/nccl_configure.bzl:
 tf_staging/third_party/nccl/system.BUILD.tpl:
 tf_staging/third_party/nlohmann_json.BUILD:
+tf_staging/third_party/nvtx/BUILD:
+tf_staging/third_party/nvtx/LICENSE:
 tf_staging/third_party/ortools/BUILD:
 tf_staging/third_party/ortools/glpk.BUILD:
 tf_staging/third_party/ortools/ortools.patch:

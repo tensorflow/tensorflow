@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/service/collective_ops_utils.h"
 
+#include <cstdint>
 #include <iterator>
 #include <optional>
 #include <sstream>
@@ -22,10 +23,16 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/strings/string_view.h"
+#include "xla/hlo/ir/hlo_computation.h"
+#include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/service/computation_placer.h"
 #include "xla/service/global_device_id.h"
+#include "xla/service/hlo_parser.h"
+#include "xla/shape_util.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/lib/core/status_test_util.h"
+#include "tsl/platform/statusor.h"
 #include "tsl/platform/test.h"
 
 namespace xla {
@@ -58,6 +65,52 @@ TEST(CollectiveOpsUtilsTest, GetParticipatingIDs_ReplicaGroups) {
           .value();
   std::vector<int> expected = {1, 5};
   EXPECT_EQ(actual, expected);
+}
+
+TEST(CollectiveOpsUtilsTest, CollectiveWithChannelId) {
+  absl::string_view hlo_string = R"(
+  HloModule module, is_scheduled=true
+
+  ENTRY %cluster {
+    %param0 = f32[512]{0} parameter(0)
+    %copy0 = f32[512]{0} copy(param0)
+    %reshape0 = f32[1,1,512]{2,0,1} reshape(f32[512]{0} %copy0)
+    %all-gather = f32[1,4,512]{2,0,1} all-gather(f32[1,1,512]{2,0,1} %reshape0), channel_id=3621, replica_groups={{0,1,2,3}}, dimensions={1}, use_global_device_ids=true
+    %copy1 = f32[1,4,512]{2,0,1} copy(all-gather)
+    ROOT root = f32[1,4,512]{2,1,0} copy(%copy1)
+  })";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnUnverifiedModule(hlo_string));
+
+  HloInstruction *all_gather =
+      module->entry_computation()->GetInstructionWithName("all-gather");
+
+  EXPECT_TRUE(IsCollectiveWithChannelId(all_gather));
+}
+
+TEST(CollectiveOpsUtilsTest, CollectiveWithChannelId2) {
+  ReplicaGroup group;
+  for (int64_t i = 0; i < 8; i++) {
+    group.add_replica_ids(i);
+  }
+
+  auto builder = HloComputation::Builder("CollectiveWithChannelId2");
+  TF_ASSERT_OK_AND_ASSIGN(
+      HloInstruction * param_0,
+      builder.AddParameter(HloInstruction::CreateParameter(
+          0, ShapeUtil::MakeShape(BF16, {1, 512, 4096}), "p0")));
+  HloInstruction *instr =
+      builder.AddInstruction(HloInstruction::CreateAllGather(
+          ShapeUtil::MakeShape(BF16, {1, 4096, 4096}), {param_0}, 1, {group},
+          true, 231, true));
+  auto computation = builder.Build(
+      builder.AddInstruction(HloInstruction::CreateTuple({instr})));
+  auto fusion =
+      HloInstruction::CreateFusion(ShapeUtil::MakeShape(BF16, {1, 4096, 4096}),
+                                   HloInstruction::FusionKind::kOutput,
+                                   {param_0}, computation.get(), "fusion");
+
+  EXPECT_TRUE(IsCollectiveWithChannelId(fusion.get()));
 }
 
 }  // namespace

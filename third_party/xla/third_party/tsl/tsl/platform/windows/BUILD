@@ -1,6 +1,7 @@
 # Tensorflow windows-specific implementations of tensorflow/core/platform libraries.
 load(
     "//tsl:tsl.bzl",
+    "internal_visibility",
     "tsl_copts",
 )
 load("//tsl:tsl.default.bzl", "filegroup")
@@ -10,7 +11,11 @@ load(
 )
 
 package(
-    default_visibility = ["//visibility:public"],
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
+    default_visibility = internal_visibility([
+        "//tensorflow/core/platform:__pkg__",
+        "//tsl/platform:__pkg__",
+    ]),
     licenses = ["notice"],
 )
 
@@ -36,7 +41,6 @@ cc_library(
         "no_oss",
         "nobuilder",
     ],
-    visibility = ["//visibility:public"],
     deps = [
         ":error_windows",
         ":wide_char",
@@ -84,7 +88,6 @@ cc_library(
         "no_oss",
         "nobuilder",
     ],
-    visibility = ["//visibility:public"],
     deps = [
         ":env",
     ],
@@ -99,7 +102,6 @@ cc_library(
         "no_oss",
         "nobuilder",
     ],
-    visibility = ["//visibility:public"],
     deps = [
         "//tsl/platform:types",
     ],
@@ -115,7 +117,9 @@ cc_library(
         "no_oss",
         "nobuilder",
     ],
-    visibility = ["//visibility:public"],
+    # This code is highly windows specific and should only be used with care
+    # from this package.
+    visibility = ["//visibility:private"],
 )
 
 cc_library(
@@ -126,7 +130,6 @@ cc_library(
         "no_oss",
         "nobuilder",
     ],
-    visibility = ["//visibility:public"],
     deps = ["//tsl/platform:types"],
 )
 
@@ -139,7 +142,6 @@ cc_library(
         "no_oss",
         "nobuilder",
     ],
-    visibility = ["//visibility:public"],
     deps = [
         ":wide_char",
         "//tsl/platform:errors",
@@ -159,7 +161,6 @@ cc_library(
         "no_oss",
         "nobuilder",
     ],
-    visibility = ["//visibility:public"],
     deps = [
         ":error_windows",
         "//tsl/platform:errors",
@@ -189,7 +190,6 @@ cc_library(
         "no_oss",
         "nobuilder",
     ],
-    visibility = ["//visibility:public"],
     deps = [
         "//tsl/platform",
         "//tsl/platform:byte_order",
@@ -209,7 +209,6 @@ cc_library(
         "no_oss",
         "nobuilder",
     ],
-    visibility = ["//visibility:public"],
     deps = ["//tsl/platform:mutex"],
 )
 
@@ -222,7 +221,6 @@ cc_library(
         "no_oss",
         "nobuilder",
     ],
-    visibility = ["//visibility:public"],
     deps = [
         "//tsl/platform:mutex",
         "//tsl/platform:stacktrace",
@@ -240,7 +238,6 @@ cc_library(
         "nobuilder",
     ],
     textual_hdrs = ["subprocess.h"],
-    visibility = ["//visibility:public"],
     deps = [
         "//tsl/platform",
         "//tsl/platform:logging",
@@ -260,16 +257,14 @@ cc_library(
         "no_oss",
         "nobuilder",
     ],
-    visibility = ["//visibility:public"],
 )
 
 filegroup(
     name = "xla_cpu_runtime_srcs",
     srcs = ["env_time.cc"],
-    visibility = ["//visibility:public"],
 )
 
 exports_files(
     srcs = ["intrinsics_port.h"],
-    visibility = ["//visibility:public"],
+    visibility = internal_visibility(["//tensorflow/core/platform:__pkg__"]),
 )

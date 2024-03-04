@@ -53,8 +53,8 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
-#include "xla/stream_executor/multi_platform_manager.h"
 #include "xla/stream_executor/platform.h"
+#include "xla/stream_executor/platform_manager.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/util.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_process_state.h"
@@ -379,7 +379,7 @@ Status LightOutsideCompilationOp::CompileToCustomCallCallingTfKernel(
                    output_shape.IsTuple() ? xla::GetTupleElement(out, i) : out);
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 namespace {
@@ -557,7 +557,7 @@ Status PopulateMetadataBufferIfNeeded(OpKernelContext& ctx,
                          num_dimensions * sizeof(int32_t));
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 class FakeDeviceContext : public DeviceContext {
@@ -713,7 +713,7 @@ Status CallTfKernel(void* stream_handle, void** buffers, const char* opaque,
   }
 
   TF_RETURN_IF_ERROR(ctx.status());
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 void GenericTfCallback(void* stream_handle, void** buffers, const char* opaque,

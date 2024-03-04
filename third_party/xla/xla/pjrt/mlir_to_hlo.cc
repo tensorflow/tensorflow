@@ -62,54 +62,107 @@ static mlir::Attribute ArrayToElements(mlir::Attribute attr) {
         mlir::RankedTensorType::get(array.size(), array.getElementType()),
         array.asArrayRef());
   }
+  if (auto array = attr.dyn_cast<mlir::DenseBoolArrayAttr>()) {
+    return mlir::DenseIntElementsAttr::get(
+        mlir::RankedTensorType::get(array.size(), array.getElementType()),
+        array.asArrayRef());
+  }
   return attr;
 }
 
 static mlir::Attribute ElementsToArray(mlir::Attribute attr) {
   if (auto elements = llvm::dyn_cast<mlir::DenseIntElementsAttr>(attr)) {
-    return mlir::DenseI64ArrayAttr::get(
-        attr.getContext(), llvm::to_vector(elements.getValues<int64_t>()));
+    if (elements.getElementType().isInteger(64)) {
+      return mlir::DenseI64ArrayAttr::get(
+          attr.getContext(), llvm::to_vector(elements.getValues<int64_t>()));
+    }
+    return mlir::DenseBoolArrayAttr::get(
+        attr.getContext(), llvm::to_vector(elements.getValues<bool>()));
   }
   return attr;
 }
 
-// Convert attrs that use DenseI64ArrayAttr to use a different type of
-// Attribute. For backwards compatibility purposes, arrays should be converted
-// to DenseIntElementsAttr right before serialization, and converted back right
-// after serialization. Deserialization checks the IR is valid by default, so
-// you will need to disable that and do the verification explicitly after
-// parsing.
+static void ConvertAttr(
+    mlir::Operation* op, llvm::StringRef attr_name,
+    llvm::function_ref<mlir::Attribute(mlir::Attribute)> convert) {
+  if (auto attr = op->getAttr(attr_name)) {
+    op->setAttr(attr_name, convert(attr));
+  }
+}
+
+// Convert attrs that use DenseI64ArrayAttr (or DenseBoolArrayAttr) to use a
+// different type of Attribute. For backwards compatibility purposes, arrays
+// should be converted to DenseIntElementsAttr right before serialization, and
+// converted back right after serialization. Deserialization checks the IR is
+// valid by default, so you will need to disable that and do the verification
+// explicitly after parsing.
 void ConvertStablehloDenseAttributes(
     mlir::Operation* root_op,
     llvm::function_ref<mlir::Attribute(mlir::Attribute)> convert) {
   llvm::TypeSwitch<mlir::Operation*>(root_op)
       .Case([&](mlir::stablehlo::BroadcastOp op) {
-        op->setAttr("broadcast_sizes", convert(op->getAttr("broadcast_sizes")));
+        ConvertAttr(op, "broadcast_sizes", convert);
+      })
+      .Case([&](mlir::stablehlo::BroadcastInDimOp op) {
+        ConvertAttr(op, "broadcast_dimensions", convert);
+      })
+      .Case([&](mlir::stablehlo::ConvolutionOp op) {
+        ConvertAttr(op, "window_strides", convert);
+        ConvertAttr(op, "lhs_dilation", convert);
+        ConvertAttr(op, "rhs_dilation", convert);
+        ConvertAttr(op, "window_reversal", convert);
+      })
+      .Case([&](mlir::stablehlo::DynamicBroadcastInDimOp op) {
+        ConvertAttr(op, "broadcast_dimensions", convert);
+        ConvertAttr(op, "known_expanding_dimensions", convert);
+        ConvertAttr(op, "known_nonexpanding_dimensions", convert);
+      })
+      .Case([&](mlir::stablehlo::DynamicConvOp op) {
+        ConvertAttr(op, "window_strides", convert);
+        ConvertAttr(op, "lhs_dilation", convert);
+        ConvertAttr(op, "rhs_dilation", convert);
+        ConvertAttr(op, "window_reversal", convert);
       })
       .Case([&](mlir::stablehlo::DynamicSliceOp op) {
-        op->setAttr("slice_sizes", convert(op->getAttr("slice_sizes")));
+        ConvertAttr(op, "slice_sizes", convert);
       })
       .Case([&](mlir::stablehlo::FftOp op) {
-        op->setAttr("fft_length", convert(op->getAttr("fft_length")));
+        ConvertAttr(op, "fft_length", convert);
+      })
+      .Case([&](mlir::stablehlo::GatherOp op) {
+        ConvertAttr(op, "slice_sizes", convert);
+      })
+      .Case([&](mlir::stablehlo::MapOp op) {
+        ConvertAttr(op, "dimensions", convert);
       })
       .Case([&](mlir::stablehlo::PadOp op) {
-        op->setAttr("edge_padding_low",
-                    convert(op->getAttr("edge_padding_low")));
-        op->setAttr("edge_padding_high",
-                    convert(op->getAttr("edge_padding_high")));
-        op->setAttr("interior_padding",
-                    convert(op->getAttr("interior_padding")));
+        ConvertAttr(op, "edge_padding_low", convert);
+        ConvertAttr(op, "edge_padding_high", convert);
+        ConvertAttr(op, "interior_padding", convert);
+      })
+      .Case([&](mlir::stablehlo::ReduceOp op) {
+        ConvertAttr(op, "dimensions", convert);
+      })
+      .Case([&](mlir::stablehlo::ReduceWindowOp op) {
+        ConvertAttr(op, "window_dimensions", convert);
+        ConvertAttr(op, "window_strides", convert);
+        ConvertAttr(op, "base_dilations", convert);
+        ConvertAttr(op, "window_dilations", convert);
       })
       .Case([&](mlir::stablehlo::ReverseOp op) {
-        op->setAttr("dimensions", convert(op->getAttr("dimensions")));
+        ConvertAttr(op, "dimensions", convert);
+      })
+      .Case([&](mlir::stablehlo::SelectAndScatterOp op) {
+        ConvertAttr(op, "window_dimensions", convert);
+        ConvertAttr(op, "window_strides", convert);
       })
       .Case([&](mlir::stablehlo::SliceOp op) {
-        op->setAttr("start_indices", convert(op->getAttr("start_indices")));
-        op->setAttr("limit_indices", convert(op->getAttr("limit_indices")));
-        op->setAttr("strides", convert(op->getAttr("strides")));
+        ConvertAttr(op, "start_indices", convert);
+        ConvertAttr(op, "limit_indices", convert);
+        ConvertAttr(op, "strides", convert);
       })
       .Case([&](mlir::stablehlo::TransposeOp op) {
-        op->setAttr("permutation", convert(op->getAttr("permutation")));
+        ConvertAttr(op, "permutation", convert);
       });
 }
 
@@ -195,7 +248,7 @@ StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ParseMlirModuleString(
 
   // In
   // https://github.com/google/jax/commit/184e3a88004680dbf34328b05c5fc0d869cc4a93,
-  // fields on some ops were changed to use DenseI64ArrayAttr instead of
+  // fields on some ops were changed to use Dense{Bool,I64}ArrayAttr instead of
   // I64DenseElementsAttr (DenseIntElementsAttr). Some clients still expect
   // dense elements, not dense arrays, so when serializing we always convert the
   // arrays to elements. The elements need to be converted back to arrays when
@@ -229,7 +282,7 @@ StatusOr<std::string> SerializeUsingNativeBytecode(mlir::ModuleOp module) {
   config.setDesiredBytecodeVersion(1);
   // In
   // https://github.com/google/jax/commit/184e3a88004680dbf34328b05c5fc0d869cc4a93,
-  // fields on some ops were changed to use DenseI64ArrayAttr instead of
+  // fields on some ops were changed to use Dense{Bool,I64}ArrayAttr instead of
   // I64DenseElementsAttr (DenseIntElementsAttr). Some clients still expect
   // dense elements, not dense arrays, so convert the arrays to elements before
   // serializing. The elements need to be converted back to arrays when

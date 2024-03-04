@@ -422,8 +422,9 @@ class ShapeUtil {
   static Shape MakeShapeWithDenseLayout(
       PrimitiveType element_type, absl::Span<const int64_t> dimensions,
       absl::Span<const int64_t> minor_to_major,
-      absl::Span<const Tile> tiles = {}, int64_t element_size_in_bits = 0,
-      int64_t memory_space = 0);
+      absl::Span<const Tile> tiles = {},
+      int64_t tail_padding_alignment_in_elements = 1,
+      int64_t element_size_in_bits = 0, int64_t memory_space = 0);
 
   // Constructs a new sparse array shape with the given minor_to_major order and
   // dim_level_types in its Layout. Returns a value shape such that
@@ -436,6 +437,7 @@ class ShapeUtil {
       absl::Span<const bool> dim_ordered = {},
       PrimitiveType index_primitive_type = PRIMITIVE_TYPE_INVALID,
       PrimitiveType pointer_primitive_type = PRIMITIVE_TYPE_INVALID,
+      int64_t tail_padding_alignment_in_elements = 1,
       int64_t element_size_in_bits = 0, int64_t memory_space = 0,
       std::optional<Shape> physical_shape = std::nullopt);
 
@@ -991,6 +993,9 @@ class ShapeUtil {
   // layout. Ignores tiling. `strides` must have size equal to the number of
   // dimensions of `shape`.
   static Status ByteStrides(const Shape& shape, absl::Span<int64_t> strides);
+  // Same as above but returns the stride array, or std::nullopt if error.
+  static std::optional<absl::InlinedVector<int64_t, 4>> ByteStrides(
+      const Shape& shape);
 
   // Returns the array size in bytes (layout/tiling required), all paddings are
   // included.

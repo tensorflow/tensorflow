@@ -238,6 +238,24 @@ class LayoutNormalizationVisitor : public DfsHloRewriteVisitor {
     return OkStatus();
   }
 
+  Status HandleIota(HloInstruction* hlo) override {
+    VLOG(3) << "Input iota: " << hlo->ToString();
+    auto s = hlo->shape();
+    auto normalized_shape = Normalize(s);
+    std::vector<int64_t> orig_output_layout_as_permutation =
+        ToTransposeDimensions(s.layout());
+    int64_t iota_dimension = hlo->dimensions()[0];
+    int64_t new_iota_dimension =
+        FindIndex(orig_output_layout_as_permutation, iota_dimension);
+    auto normalized_iota = hlo->AddInstruction(
+        HloInstruction::CreateIota(normalized_shape, new_iota_dimension));
+    SetVisited(*normalized_iota);
+    VLOG(3) << "Generated iota: " << normalized_iota->ToString();
+    auto bc_to_orig = MakeBitcastHlo(normalized_iota, s);
+    TF_RETURN_IF_ERROR(ReplaceInstruction(hlo, bc_to_orig));
+    return OkStatus();
+  }
+
   // BitcastConvert is only layout-preserving if it doesn't change the rank.
   Status HandleBitcastConvert(HloInstruction* hlo) override {
     // If the rank isn't changing this is just an unary op.

@@ -21,8 +21,10 @@ limitations under the License.
 #include <vector>
 
 #include <gtest/gtest.h>
+#include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/time/time.h"
+#include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
@@ -30,6 +32,8 @@ limitations under the License.
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
 #include "xla/service/gpu/model/gpu_hlo_cost_analysis.h"
+#include "xla/service/gpu/model/gpu_indexing_performance_model.h"
+#include "xla/service/gpu/model/gpu_performance_model_base.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
@@ -68,13 +72,18 @@ class GpuPerformanceModelTest : public HloTestBase {
         fused_consumers);
   }
 
+  mlir::MLIRContext mlir_context_;
   GpuHloCostAnalysis::Options options_{ShapeSizeBytesFunction(),
                                        /*per_second_rates=*/{},
                                        /*count_multiple_input_accesses=*/true};
   // The reference times in the test cases below are measured
   // on A6000 by profiling the execution of the HLOs.
-  se::DeviceDescription dev_info_{TestGpuDeviceInfo::RTXA6000DeviceInfo()};
-  GpuHloCostAnalysis analysis_{options_, &dev_info_};
+  se::DeviceDescription device_info_{TestGpuDeviceInfo::RTXA6000DeviceInfo()};
+  GpuHloCostAnalysis analysis_{options_, &device_info_};
+
+  GpuPerformanceModelWithIndexingAnalysis indexing_cost_model_{
+      &device_info_, ShapeSizeBytesFunction(), &mlir_context_};
+
   GpuPerformanceModelTest() : HloTestBase() {}
 };
 
@@ -103,6 +112,9 @@ ENTRY e {
   auto prio_t = EstimateRunTimesForPriorityFusion(root);
   // Dominated by the DRAM bandwidth.
   EXPECT_NEAR(absl::ToInt64Microseconds(prio_t.time_unfused), 53, 10);
+
+  auto indexing_t = indexing_cost_model_.EstimateRunTimes(root);
+  EXPECT_NEAR(absl::ToInt64Microseconds(indexing_t.time_unfused), 53, 10);
 }
 
 TEST_F(GpuPerformanceModelTest, SmallReadWrite) {
@@ -137,6 +149,9 @@ ENTRY e {
                                .reification_cost()
                                .end_to_end_cycles();
   EXPECT_NEAR(recorded_cycles, 257.7, 0.1);
+
+  auto indexing_t = indexing_cost_model_.EstimateRunTimes(root);
+  EXPECT_NEAR(absl::ToInt64Microseconds(indexing_t.time_unfused), 1, 1);
 }
 
 TEST_F(GpuPerformanceModelTest, LargeReadWrite) {
@@ -261,23 +276,6 @@ TEST_F(GpuPerformanceModelTest, UnusedParameter) {
   EXPECT_NEAR(absl::ToInt64Microseconds(t.time_unfused), 1, 1);
 }
 
-using GpuPerformanceWithCollectiveModelTest = GpuPerformanceModelTest;
-
-TEST_F(GpuPerformanceWithCollectiveModelTest, TestNvmlLibraryLoading) {
-#if GOOGLE_CUDA
-  EXPECT_TRUE(GpuPerformanceWithCollectiveModel::InitNvml());
-  // After successful init, we try to use one of the
-  // nvml functions to see if the result is good.
-  nvmlDevice_t nvml_device;
-  nvmlReturn_t get_device_result =
-      xla_nvmlDeviceGetHandleByIndex(0, &nvml_device);
-  EXPECT_TRUE(get_device_result == NVML_SUCCESS);
-
-  EXPECT_TRUE(GpuPerformanceWithCollectiveModel::InitNvml());
-
-#endif  // GOOGLE_CUDA
-}
-
 TEST_F(GpuPerformanceModelTest, ComputeBoundReducesWithSameLaunchDimensions) {
   // We compare two compute-bound reduces that do ~the same amount of compute
   // and have the same launch dimensions. The result should be approximately
@@ -331,7 +329,7 @@ ENTRY fusion {
   auto run = [&](absl::string_view hlo_text)
       -> absl::StatusOr<GpuPerformanceModel::RunTimes> {
     TF_ASSIGN_OR_RETURN(auto module, ParseAndReturnVerifiedModule(hlo_text));
-    GpuHloCostAnalysis analysis(options_, &dev_info_);
+    GpuHloCostAnalysis analysis(options_, &device_info_);
     TF_RETURN_IF_ERROR(module->entry_computation()->Accept(&analysis));
 
     auto* producer =

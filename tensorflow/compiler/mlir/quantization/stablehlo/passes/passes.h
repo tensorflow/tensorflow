@@ -19,13 +19,13 @@ limitations under the License.
 #include <memory>
 #include <string>
 
+#include "absl/status/statusor.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
-#include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
-#include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_config.h"
+#include "tensorflow/compiler/mlir/quantization/stablehlo/quantization_config.pb.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/quantization_options.pb.h"
 
 namespace mlir::quant::stablehlo {
@@ -33,22 +33,22 @@ namespace mlir::quant::stablehlo {
 // Creates a `QuantizePass` that quantizes ops according to surrounding qcast /
 // dcast ops.
 std::unique_ptr<OperationPass<ModuleOp>> CreateQuantizePass(
-    const quant::QuantizationSpecs& quantization_specs);
+    const quant::QuantizationSpecs& quantization_specs,
+    bool enable_per_channel_quantized_weight = true);
 
 // Creates a pass that quantizes weight component of StableHLO graph.
 std::unique_ptr<OperationPass<func::FuncOp>> CreateQuantizeWeightPass(
     const ::stablehlo::quantization::QuantizationComponentSpec&
         quantization_component_spec = {});
 
-// Creates an instance of the StableHLO dialect PrepareQuantize pass without any
-// arguments. Preset method of SRQ is set to the quantization option by default.
-std::unique_ptr<OperationPass<func::FuncOp>> CreatePrepareQuantizePass(
-    bool enable_per_channel_quantization = false, int bit_width = 8);
-
 // Converts a serialized StableHLO module to bfloat16 and output serialized
 // module.
-FailureOr<std::string> ConvertSerializedStableHloModuleToBfloat16(
-    MLIRContext* context, StringRef serialized_stablehlo_module);
+absl::StatusOr<std::string> ConvertSerializedStableHloModuleToBfloat16(
+    StringRef serialized_stablehlo_module);
+
+std::unique_ptr<OperationPass<ModuleOp>>
+CreateLiftQuantizableSpotsAsFunctionsPass(
+    const ::stablehlo::quantization::QuantizationSpecs& quantization_specs);
 
 // Adds generated pass default constructors or options definitions.
 #define GEN_PASS_DECL

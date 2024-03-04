@@ -152,6 +152,32 @@ std::optional<HloSharding> PropagateDimwiseSharding(
   return input_spec;
 }
 
+HloSharding PropagateDimwiseShardingSlice(const HloSharding& input_spec,
+                                          const Shape& old_shape,
+                                          const Shape& new_shape,
+                                          const Array<int64_t>& device_mesh) {
+  if (input_spec.IsReplicated()) {
+    return input_spec;
+  }
+
+  CHECK(old_shape.IsArray());
+
+  std::vector<int64_t> tensor_to_mesh_dim =
+      GetTensorDimToMeshDim(new_shape.rank(), input_spec, device_mesh,
+                            /* consider_reverse_device_meshes */ false);
+
+  std::vector<int64_t> tensor_dims;
+  std::vector<int64_t> mesh_dims;
+  for (size_t i = 0; i < new_shape.rank(); ++i) {
+    if (new_shape.dimensions(i) == old_shape.dimensions(i) &&
+        tensor_to_mesh_dim[i] > -1) {
+      tensor_dims.push_back(i);
+      mesh_dims.push_back(tensor_to_mesh_dim[i]);
+    }
+  }
+  return Tile(new_shape, tensor_dims, mesh_dims, device_mesh);
+}
+
 // Propagate sharding for ReduceWindow-like operations.
 // The sharding can successfully propagate if the window operation only happens
 // on tensor dimensions that are not tiled.
@@ -356,6 +382,7 @@ void BatchDimMapForward(const std::vector<HloInstruction*>& instructions,
       case HloOpcode::kBitcastConvert:
       case HloOpcode::kCopy:
       case HloOpcode::kCos:
+      case HloOpcode::kErf:
       case HloOpcode::kExp:
       case HloOpcode::kExpm1:
       case HloOpcode::kFloor:
@@ -615,6 +642,7 @@ void BatchDimMapBackward(const std::vector<HloInstruction*>& instructions,
       case HloOpcode::kBitcastConvert:
       case HloOpcode::kCopy:
       case HloOpcode::kCos:
+      case HloOpcode::kErf:
       case HloOpcode::kExp:
       case HloOpcode::kExpm1:
       case HloOpcode::kFloor:
@@ -1427,7 +1455,8 @@ void FixMixedMeshShapeResharding(HloInstruction* inst, int operand_num,
                                  const Array<int64_t>& device_mesh,
                                  ReshardingCache* resharding_cache) {
   HloInstruction* operand = inst->mutable_operand(operand_num);
-  if (operand->opcode() == HloOpcode::kOutfeed) {
+  if (operand->opcode() == HloOpcode::kOutfeed ||
+      operand->opcode() == HloOpcode::kSendDone) {
     return;
   }
 
@@ -1556,7 +1585,6 @@ HloSharding Tile(const Shape& tensor_shape,
     tile_assignment_dimensions[tensor_dims[i]] = device_mesh.dim(mesh_dims[i]);
     split_prod *= device_mesh.dim(mesh_dims[i]);
   }
-
   // Replicate on remaining mesh dimensions
   bool replicate_on_last_tile_dim = false;
   if (split_prod < device_mesh.num_elements()) {
@@ -1733,18 +1761,13 @@ AliasSet BuildAliasSet(const HloModule* module,
   for (const HloComputation* computation : module->computations()) {
     for (const HloInstruction* instruction : computation->instructions()) {
       if (instruction->opcode() == HloOpcode::kWhile) {
+        // Aliasing between the while op, and the parameters of its body and
+        // conditional computations is handled by making the latter follow the
+        // input tuple to thew while loop in the function
+        // BuildStrategyAndCost().
         traverse_tuple_alias(
             strategy_map.at(instruction).get(),
             strategy_map.at(instruction->while_body()->root_instruction())
-                .get());
-        traverse_tuple_alias(
-            strategy_map.at(instruction).get(),
-            strategy_map.at(instruction->while_body()->parameter_instruction(0))
-                .get());
-        traverse_tuple_alias(
-            strategy_map.at(instruction).get(),
-            strategy_map
-                .at(instruction->while_condition()->parameter_instruction(0))
                 .get());
       } else if (instruction->opcode() == HloOpcode::kConditional) {
         auto branch_computations = instruction->branch_computations();
@@ -1798,8 +1821,7 @@ Status CheckAliasSetCompatibility(const AliasSet& alias_set,
              "tensors and may result in large memory consumption: "
           << "(" << instructions.at(src_strategy_group->instruction_id)->name()
           << ", " << instructions.at(dst_strategy_group->instruction_id)->name()
-          << ")"
-          << "\n"
+          << ")" << "\n"
           << "(" << src_strategy_group->node_idx << ", "
           << dst_strategy_group->node_idx << ")\n"
           << src_strategy_group->ToString() << "\n"

@@ -14,6 +14,7 @@
 # ============================================================================
 from absl.testing import absltest
 
+from xla.build_tools import test_utils
 from xla.build_tools.lint import diff_parser
 
 
@@ -23,15 +24,15 @@ class ParseDiffTest(absltest.TestCase):
   def setUpClass(cls):
     super().setUpClass()
 
-    base_path = "third_party/xla/build_tools/lint"
+    testdata = test_utils.xla_src_root() / "build_tools" / "lint" / "testdata"
 
-    with open(f"{base_path}/testdata/bad_cc.diff") as f:
+    with (testdata / "bad_cc.diff").open() as f:
       cls.bad_cc_diff = f.read()
 
-    with open(f"{base_path}/testdata/important_cc.diff") as f:
+    with (testdata / "important_cc.diff").open() as f:
       cls.important_cc_diff = f.read()
 
-    with open(f"{base_path}/testdata/crosstool.diff") as f:
+    with (testdata / "crosstool.diff").open() as f:
       cls.crosstool_diff = f.read()
 
   def test_parse_important_cc_diff(self):

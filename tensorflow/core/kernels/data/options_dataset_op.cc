@@ -82,7 +82,7 @@ class OptionsDatasetOp::Dataset : public DatasetBase {
 
   Status InputDatasets(std::vector<const DatasetBase*>* inputs) const override {
     inputs->push_back(input_);
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   Status CheckExternalState() const override {
@@ -100,7 +100,7 @@ class OptionsDatasetOp::Dataset : public DatasetBase {
     TF_RETURN_IF_ERROR(b->AddDataset(
         this, {input_graph_node},
         {std::make_pair(kSerializedOptions, serialized_options_attr)}, output));
-    return OkStatus();
+    return absl::OkStatus();
   }
 
  private:

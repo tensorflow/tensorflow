@@ -409,10 +409,8 @@ absl::Status CreateTensorSharedImage2DBuffer(id<MTLBuffer> buffer,
 }
 
 TensorStorageType GetFastestStorageType(const GpuInfo& gpu_info) {
-  const bool a7_or_a8 =
-      gpu_info.IsApple() && (gpu_info.apple_info.IsA7GenerationGpu() ||
-                             gpu_info.apple_info.IsA8GenerationGpu());
-  if (a7_or_a8) {
+  if (gpu_info.IsApple() &&
+      gpu_info.apple_info.IsFamilyOrLower(AppleInfo::Family::kApple2)) {
     return TensorStorageType::TEXTURE_2D;
   } else {
     return TensorStorageType::BUFFER;

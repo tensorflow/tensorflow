@@ -10562,6 +10562,29 @@ func DatasetCardinality(scope *Scope, input_dataset tf.Output, optional ...Datas
 	return op.Output(0)
 }
 
+// Returns the fingerprint of `input_dataset`.
+//
+// Returns the fingerprint of `input_dataset`.
+//
+// Arguments:
+//
+//	input_dataset: A variant tensor representing the dataset to return fingerprint for.
+//
+// Returns The fingerprint of `input_dataset` in `uint64`
+func DatasetFingerprint(scope *Scope, input_dataset tf.Output) (fingerprint tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "DatasetFingerprint",
+		Input: []tf.Input{
+			input_dataset,
+		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
 // Creates a dataset from the given `graph_def`.
 //
 // Creates a dataset from the provided `graph_def`.

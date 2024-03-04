@@ -6,7 +6,8 @@ load("@local_tsl//tsl:tsl.bzl", "tsl_copts")
 load("@local_tsl//tsl:tsl.default.bzl", "filegroup")
 
 package(
-    default_visibility = ["//visibility:public"],
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
+    default_visibility = [":friends"],
     licenses = ["notice"],
 )
 
@@ -24,14 +25,12 @@ filegroup(
         "**/*.cc",
         "**/*.h",
     ]),
-    visibility = ["//visibility:public"],
 )
 
 cc_library(
     name = "cpu_codegen_test",
     testonly = True,
     hdrs = ["cpu_codegen_test.h"],
-    visibility = ["//visibility:public"],
     deps = [
         "//xla/service:cpu_plugin",
         "//xla/tests:llvm_irgen_test_base",

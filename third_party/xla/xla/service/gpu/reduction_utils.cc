@@ -229,5 +229,13 @@ bool IsRealReductionHero(const HloInstruction& root,
                              GetReductionKindAndContiguousComponents(hero));
 }
 
+bool AreReductionsMultiOutputFusionCompatible(
+    const HloInstruction* reduce_hero, const HloInstruction* first_reduce) {
+  // The reduction kind must be the same for all reduce heroes inside of a
+  // multioutput fusion.
+  return GetReductionKindAndContiguousComponents(*reduce_hero) ==
+         GetReductionKindAndContiguousComponents(*first_reduce);
+}
+
 }  // namespace gpu
 }  // namespace xla

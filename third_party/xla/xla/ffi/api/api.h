@@ -320,6 +320,7 @@ struct ArgDecoding;
 //
 //   template <>
 //   struct AttrDecoding<MyType> {
+//    using Type = <handler argument type for attribute type MyType>
 //    static std::optional<MyType> Decode(XLA_FFI_AttrType type, void* attr,
 //                                        DiagnosticEngine&);
 //   }
@@ -461,7 +462,9 @@ struct Decode {
 
 template <typename T>
 struct internal::Decode<internal::AttrTag<T>> {
-  static std::optional<T> call(DecodingOffsets& offsets, DecodingContext& ctx,
+  using R = typename AttrDecoding<T>::Type;
+
+  static std::optional<R> call(DecodingOffsets& offsets, DecodingContext& ctx,
                                DiagnosticEngine& diagnostic) {
     // Find decoded attribute corresponding to the given attribute index.
     int64_t i = offsets.attrs++;
@@ -677,7 +680,7 @@ struct FnArgType {
 // Extracts the underlying type from the attribute type tag.
 template <typename T>
 struct FnArgType<internal::AttrTag<T>> {
-  using Type = T;
+  using Type = typename AttrDecoding<T>::Type;
 };
 
 // Extracts the underlying type from the context type tag.
@@ -897,6 +900,7 @@ inline std::ostream& operator<<(std::ostream& os, const XLA_FFI_AttrType type) {
 #define XLA_FFI_REGISTER_SCALAR_ATTR_DECODING(T, TYPE)                \
   template <>                                                         \
   struct AttrDecoding<T> {                                            \
+    using Type = T;                                                   \
     static std::optional<T> Decode(XLA_FFI_AttrType type, void* attr, \
                                    DiagnosticEngine& diagnostic) {    \
       if (type != TYPE) {                                             \
@@ -916,6 +920,7 @@ XLA_FFI_REGISTER_SCALAR_ATTR_DECODING(float, XLA_FFI_AttrType_F32);
 
 template <>
 struct AttrDecoding<std::string_view> {
+  using Type = std::string_view;
   static std::optional<std::string_view> Decode(XLA_FFI_AttrType type,
                                                 void* attr,
                                                 DiagnosticEngine& diagnostic) {
@@ -931,6 +936,7 @@ struct AttrDecoding<std::string_view> {
 
 template <>
 struct AttrDecoding<Dictionary> {
+  using Type = Dictionary;
   static std::optional<Dictionary> Decode(XLA_FFI_AttrType type, void* attr,
                                           DiagnosticEngine& diagnostic) {
     if (type != XLA_FFI_AttrType_DICTIONARY) {
@@ -1022,6 +1028,7 @@ auto DictionaryDecoder(Members... m) {
 #define XLA_FFI_REGISTER_STRUCT_ATTR_DECODING(T, ...)                 \
   template <>                                                         \
   struct AttrDecoding<T> {                                            \
+    using Type = T;                                                   \
     static std::optional<T> Decode(XLA_FFI_AttrType type, void* attr, \
                                    DiagnosticEngine& diagnostic) {    \
       if (type != XLA_FFI_AttrType_DICTIONARY) {                      \

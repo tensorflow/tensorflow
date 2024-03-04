@@ -3,6 +3,7 @@ cudnnActivationForward
 cudnnAddTensor
 cudnnAdvInferVersionCheck
 cudnnAdvTrainVersionCheck
+cudnnAdvVersionCheck
 cudnnBackendCreateDescriptor
 cudnnBackendDestroyDescriptor
 cudnnBackendExecute
@@ -20,6 +21,7 @@ cudnnCTCLoss
 cudnnCTCLoss_v8
 cudnnCnnInferVersionCheck
 cudnnCnnTrainVersionCheck
+cudnnCnnVersionCheck
 cudnnConvolutionBackwardBias
 cudnnConvolutionBackwardData
 cudnnConvolutionBackwardFilter
@@ -175,6 +177,7 @@ cudnnGetTensorNdDescriptor
 cudnnGetTensorSizeInBytes
 cudnnGetTensorTransformDescriptor
 cudnnGetVersion
+cudnnGraphVersionCheck
 cudnnIm2Col
 cudnnInitTransformDest
 cudnnLRNCrossChannelBackward
@@ -189,6 +192,7 @@ cudnnNormalizationForwardTraining
 cudnnOpTensor
 cudnnOpsInferVersionCheck
 cudnnOpsTrainVersionCheck
+cudnnOpsVersionCheck
 cudnnPoolingBackward
 cudnnPoolingForward
 cudnnQueryRuntimeError

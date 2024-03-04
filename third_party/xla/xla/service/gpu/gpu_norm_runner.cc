@@ -27,38 +27,60 @@ namespace xla {
 namespace gpu {
 
 absl::Status RunGpuNorm(const gpu::GpuNormConfig& config,
-                        const se::DeviceMemoryBase& input_buffer,
+                        const se::DeviceMemoryBase& x_buffer,
                         const se::DeviceMemoryBase& scale_buffer,
-                        const se::DeviceMemoryBase& bias_buffer,
-                        const se::DeviceMemoryBase& output_buffer,
+                        const se::DeviceMemoryBase& y_or_dx_buffer,
+                        std::optional<se::DeviceMemoryBase> bias_buffer,
+                        std::optional<se::DeviceMemoryBase> dy_buffer,
                         std::optional<se::DeviceMemoryBase> expectation_buffer,
                         std::optional<se::DeviceMemoryBase> norm_factor_buffer,
+                        std::optional<se::DeviceMemoryBase> dscale_buffer,
+                        std::optional<se::DeviceMemoryBase> dbias_buffer,
                         const se::DeviceMemoryBase& scratch_memory,
                         se::Stream* stream, RunNormOptions options) {
   se::dnn::LazyOpRunner<se::dnn::NormOp>* lazy_runner =
       options.norm_runner->AsNormRunner();
   std::optional<se::dnn::LazyOpRunner<se::dnn::NormOp>> local_runner;
 
-  se::dnn::NormOp::Config ln_config{config.epsilon,
-                                    config.input_descriptor,
+  TF_ASSIGN_OR_RETURN(se::dnn::NormKind kind,
+                      GetDNNNormKindFromCudnnNormKind(config.kind));
+
+  se::dnn::NormOp::Config ln_config{kind,
+                                    config.epsilon,
+                                    config.x_descriptor,
                                     config.scale_descriptor,
+                                    config.y_or_dx_descriptor,
                                     config.bias_descriptor,
-                                    config.output_descriptor,
+                                    config.dy_descriptor,
                                     config.expectation_descriptor,
-                                    config.norm_factor_descriptor};
+                                    config.norm_factor_descriptor,
+                                    config.dscale_descriptor,
+                                    config.dbias_descriptor};
   TF_ASSIGN_OR_RETURN(auto* runner,
                       lazy_runner->GetOrCreateRunner(ln_config, stream));
 
   std::vector<se::DeviceMemoryBase> operands;
-  operands.emplace_back(input_buffer);
+  operands.emplace_back(x_buffer);
   operands.emplace_back(scale_buffer);
-  operands.emplace_back(bias_buffer);
-  operands.emplace_back(output_buffer);
-  if (expectation_buffer) {
-    operands.emplace_back(expectation_buffer.value());
+  operands.emplace_back(y_or_dx_buffer);
+
+  // The remaining operands are composed of inputs followed by outputs of the
+  // library call. The expectation and norm factor are outputs of the forward
+  // training layer norm, and inputs of the backward layer norm.
+  if (config.kind == CudnnNormKind::kLayerForwardInfer ||
+      config.kind == CudnnNormKind::kLayerForwardTrain) {
+    operands.emplace_back(bias_buffer.value());
   }
-  if (norm_factor_buffer) {
+  if (config.kind == CudnnNormKind::kLayerForwardTrain) {
+    operands.emplace_back(expectation_buffer.value());
     operands.emplace_back(norm_factor_buffer.value());
+  }
+  if (config.kind == CudnnNormKind::kLayerBackward) {
+    operands.emplace_back(dy_buffer.value());
+    operands.emplace_back(expectation_buffer.value());
+    operands.emplace_back(norm_factor_buffer.value());
+    operands.emplace_back(dscale_buffer.value());
+    operands.emplace_back(dbias_buffer.value());
   }
 
   return (*runner)(stream, options.profile_result, scratch_memory, operands);

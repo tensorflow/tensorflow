@@ -13,7 +13,8 @@
 # limitations under the License.
 # ==============================================================================
 """Base test class for quantize_model Tests."""
-from typing import Mapping, Sequence, Optional, Tuple, List
+
+from typing import List, Mapping, Optional, Sequence, Tuple
 
 from absl.testing import parameterized
 import numpy as np
@@ -53,10 +54,8 @@ class QuantizedModelTest(test.TestCase, parameterized.TestCase):
       input_shape: Sequence[int],
       weight_shape: Sequence[int],
       saved_model_path: str,
-      has_bias: bool = False,
+      bias_fn: Optional[ops.Operation] = None,
       activation_fn: Optional[ops.Operation] = None,
-      bias_size: Optional[int] = None,
-      use_biasadd: bool = True,
   ) -> module.Module:
     class MatmulModel(module.Module):
       """A simple model with a single matmul.
@@ -67,40 +66,28 @@ class QuantizedModelTest(test.TestCase, parameterized.TestCase):
       def __init__(
           self,
           weight_shape: Sequence[int],
-          bias_size: Optional[int] = None,
-          activation_fn: Optional[ops.Operation] = None,
-          use_biasadd: bool = True,
       ) -> None:
         """Initializes a MatmulModel.
 
         Args:
           weight_shape: Shape of the weight tensor.
-          bias_size: If None, do not use bias. Else, use given size as bias.
-          activation_fn: The activation function to be used. No activation
-            function if None.
-          use_biasadd: If True, use BiasAdd for adding bias, else use AddV2.
         """
-        self.bias_size = bias_size
-        self.activation_fn = activation_fn
-        self.use_biasadd = use_biasadd
         self.filters = np.random.uniform(low=-1.0, high=1.0, size=weight_shape)
 
-        if bias_size is not None:
-          self.bias = np.random.uniform(low=-1.0, high=1.0, size=bias_size)
-
-      def has_bias(self) -> bool:
-        return self.bias_size is not None
+        if bias_fn is not None:
+          self.bias = np.random.uniform(
+              low=-1.0, high=1.0, size=weight_shape[-1]
+          )
 
       def has_reshape(self) -> bool:
-        return self.has_bias() and self.bias_size != self.filters.shape[-1]
+        return self.bias_fn() and self.bias_size != self.filters.shape[-1]
 
       @def_function.function
       def matmul(self, input_tensor: core.Tensor) -> Mapping[str, core.Tensor]:
         """Performs a matrix multiplication.
 
-        Depending on self.has_bias and self.activation_fn, it may add a bias
-        term or
-        go through the activaction function.
+        Depending on self.bias_fn and self.activation_fn, it may add a bias
+        term or go through the activaction function.
 
         Args:
           input_tensor: Input tensor to matmul with the filter.
@@ -109,18 +96,13 @@ class QuantizedModelTest(test.TestCase, parameterized.TestCase):
           A map of: output key -> output result.
         """
         out = math_ops.matmul(input_tensor, self.filters, name='sample/matmul')
-
+        if bias_fn is not None:
+          out = bias_fn(out, self.bias)
+        if activation_fn is not None:
+          out = activation_fn(out)
         return {'output': out}
 
-    # If bias_size is not explictly given, it should default to width of weight.
-    if bias_size is None and has_bias:
-      bias_size = weight_shape[-1]
-
-    # Verify that when bias_size is not None, has_bias should be True.
-    # And if bias_size is None, has_bias should be False.
-    assert (bias_size is None) != has_bias
-
-    model = MatmulModel(weight_shape, bias_size, activation_fn)
+    model = MatmulModel(weight_shape)
     saved_model_save.save(
         model,
         saved_model_path,
@@ -227,9 +209,9 @@ class QuantizedModelTest(test.TestCase, parameterized.TestCase):
       input_shape: Sequence[int],
       filter_shape: Sequence[int],
       saved_model_path: str,
-      has_bias: bool = False,
-      has_batch_norm: bool = False,
+      bias_fn: Optional[ops.Operation] = None,
       activation_fn: Optional[ops.Operation] = None,
+      has_batch_norm: bool = False,
       strides: Sequence[int] = (1, 1, 1, 1),
       dilations: Sequence[int] = (1, 1, 1, 1),
       padding: str = 'SAME',
@@ -277,6 +259,10 @@ class QuantizedModelTest(test.TestCase, parameterized.TestCase):
             data_format='NHWC',
             name='sample/conv',
         )
+        if bias_fn is not None:
+          out = nn_ops.bias_add(out, self.bias)
+        if activation_fn is not None:
+          out = activation_fn(out)
         if has_batch_norm:
           # Fusing is supported for non-training case.
           out, _, _, _, _, _ = nn_ops.fused_batch_norm_v3(

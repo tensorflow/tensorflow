@@ -146,6 +146,7 @@ tf_cuda_library(
         "@local_xla//xla:status_macros",
         "@local_xla//xla/stream_executor",
         "@local_xla//xla/stream_executor:lazy_op_runner",
+        "@local_xla//xla/stream_executor:platform_manager",
         "@local_xla//xla/stream_executor/gpu:gpu_init",
     ],
 )

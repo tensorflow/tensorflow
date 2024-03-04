@@ -43,8 +43,6 @@ scipy ~= 1.11.3; python_version >= '3.12' # Earliest version for Python 3.12
 # Required for TFLite import from JAX tests
 jax ~= 0.4.1; python_version <= '3.11'
 jaxlib ~= 0.4.1; python_version <= '3.11' # Earliest version for Python 3.11
-# Needs to be addressed. Unblocked 2.4 branchcut cl/338377048
-PyYAML ~= 6.0
 # For uploading
 auditwheel ~= 5.0.0
 twine ~= 3.6.0

@@ -80,7 +80,7 @@ AutoShardingSolverRequest DefaultAutoShardingSolverRequest() {
                         {20, 21, 22},
                         {30, 31, 32, 33},
                         {40, 41, 42, 43},
-                        {50, 51, 52, 53}};
+                        {50, 51, 52}};
   const CostMatrix d = {{100, 110, 120, 130},
                         {200, 210, 220},
                         {300, 310, 320, 330},
@@ -117,6 +117,88 @@ AutoShardingSolverRequest DefaultAutoShardingSolverRequest() {
   const CostMatrix v = {{0, 1, 1,
                          1, 0, 1,
                          1, 1, 0}};
+  const std::vector<std::string> instruction_names = {"A", "B", "C", "D", "E"};
+
+  AutoShardingSolverRequest request;
+  request.set_num_nodes(5);
+  request.set_memory_budget(1500000);
+  request.mutable_s_len()->Add(s_len.begin(), s_len.end());
+  request.mutable_s_follow()->Add(s_follow.begin(), s_follow.end());
+  request.mutable_edges()->Add(edges.begin(), edges.end());
+  AddNodes(request.mutable_live(), live);
+  AddCosts(request.mutable_computation_costs(), c);
+  AddCosts(request.mutable_communication_costs(), d);
+  AddCosts(request.mutable_memory_costs(), m);
+  AddCosts(request.mutable_departure_costs(), p);
+  AddCosts(request.mutable_resharding_costs(), r);
+  AddCosts(request.mutable_duration_costs(), t);
+  request.mutable_aliases()->Add(aliases.begin(), aliases.end());
+  AddCosts(request.mutable_value_costs(), v);
+  request.mutable_instruction_names()->Add(instruction_names.begin(),
+                                           instruction_names.end());
+  AddCosts(request.mutable_computation_costs(), c);
+  return request;
+}
+
+AutoShardingSolverRequest AutoShardingSolverRequestWithEquivalences() {
+  const auto s_len = {4, 3, 7, 7, 3};
+  const auto s_follow = {-1, -1, -1, 2, -1};
+  AutoShardingSolverRequest_Pair edge1, edge2;
+  edge1.set_first(0);
+  edge1.set_second(2);
+  edge2.set_first(1);
+  edge2.set_second(2);
+  const auto edges = {edge1, edge2};
+  const NodeMatrix live = {{1, 0},
+                           {1, 0},
+                           {1, 2, 0},
+                           {1, 2, 3, 0},
+                           {1, 3, 0}};
+  const CostMatrix c = {{10, 10, 10, 10},
+                        {20, 20, 20},
+                        {30, 30, 31, 30, 30, 30, 30},
+                        {40, 40, 40, 40, 40, 40, 40},
+                        {50, 50, 50}};
+  const CostMatrix d = {{100, 100, 100, 100},
+                        {200, 200, 200},
+                        {300, 300, 300, 300, 300, 300, 300},
+                        {400, 400, 400, 400, 400, 400, 410},
+                        {500, 500, 500}};
+  const CostMatrix m = {{10000, 10000, 10000, 10000},
+                        {20000, 20000, 20000},
+                        {30000, 30000, 30000, 31000, 30000, 30000, 30000},
+                        {40000, 40000, 40000, 40000, 40000, 40000, 40000},
+                        {50000, 50000, 50000}};
+  const CostMatrix p = {{1.0, 0.0, 1.0, 1.0},
+                        {1.0, 0.0, 1.0},
+                        {1.0, 0.0, 1.0, 1.0, 1.0, 1.0, 1.0},
+                        {1.0, 0.0, 1.0, 1.0, 1.0, 1.0, 1.0},
+                        {1.0, 0.0, 1.0}};
+  const CostMatrix r = {{1000, 1000, 1000, 1000, 1000, 1000, 1000,
+                         2000, 2000, 2000, 2000, 2000, 2000, 2000,
+                         3000, 3000, 3000, 3000, 3100, 3000, 3000,
+                         4000, 4000, 4000, 4000, 4000, 4000, 4000},
+                        {5000, 5000, 5000, 5000, 5000, 5000, 5000,
+                         6000, 6000, 6000, 6000, 6000, 6000, 6000,
+                         7000, 7000, 7000, 7000, 7000, 7000, 7000}};
+  const CostMatrix t = {{70000, 70000, 70000, 70000, 70000, 70000, 70000,
+                         60000, 60000, 60000, 60000, 60000, 60000, 60000,
+                         50000, 50000, 50000, 50000, 50000, 50000, 50000,
+                         40000, 40000, 40000, 40000, 40000, 40000, 40000},
+                        {30000, 30000, 30000, 30000, 30000, 30000, 30000,
+                         20000, 20000, 20000, 20000, 20000, 20000, 20000,
+                         10000, 10000, 10000, 10000, 10000, 10000, 10000}};
+  AutoShardingSolverRequest_Pair alias;
+  alias.set_first(2);
+  alias.set_second(4);
+  const auto aliases = {alias};
+  const CostMatrix v = {{0, 1, 0,
+                         0, 1, 0,
+                         0, 1, 0,
+                         0, 1, 0,
+                         0, 1, 0,
+                         1, 0, 1,
+                         0, 1, 0}};
   const std::vector<std::string> instruction_names = {"A", "B", "C", "D", "E"};
 
   AutoShardingSolverRequest request;
@@ -287,6 +369,21 @@ TEST(CallORToolsSolverTest, HandlesMemoryEdgeCosts) {
   const std::vector<NodeStrategyIdx> s_val = {0, 0, 1, 1, 0};
   const std::vector<EdgeStrategyIdx> e_val = {1, 1};
   const double objective_value = 7872.0;
+  const AutoShardingSolverResult expected_result = {
+      std::make_tuple(
+          std::move(s_val), std::move(e_val), objective_value), false};
+  EXPECT_EQ(result, expected_result);
+}
+
+TEST(CallORToolsSolverTest, SolvesWithEquivalences) {
+  const AutoShardingSolverRequest request =
+      AutoShardingSolverRequestWithEquivalences();
+
+  const AutoShardingSolverResult result = CallORToolsSolver(request);
+
+  const std::vector<NodeStrategyIdx> s_val = {0, 0, 5, 5, 1};
+  const std::vector<EdgeStrategyIdx> e_val = {5, 5};
+  const double objective_value = 7650.0;
   const AutoShardingSolverResult expected_result = {
       std::make_tuple(
           std::move(s_val), std::move(e_val), objective_value), false};

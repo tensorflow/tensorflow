@@ -71,13 +71,13 @@ class AssertPrevDatasetParams : public DatasetParams {
     input_names->reserve(input_dataset_params_.size() + 1);
     input_names->emplace_back(AssertPrevDatasetOp::kInputDataset);
     input_names->emplace_back(AssertPrevDatasetOp::kTransformations);
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   Status GetAttributes(AttributeVector* attr_vector) const override {
     *attr_vector = {{AssertPrevDatasetOp::kOutputShapes, output_shapes_},
                     {AssertPrevDatasetOp::kOutputTypes, output_dtypes_}};
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   string dataset_type() const override {

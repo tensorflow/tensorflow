@@ -53,6 +53,10 @@ std::unique_ptr<OperationPass<func::FuncOp>> createLegalizeToStdPass();
 std::unique_ptr<OperationPass<func::FuncOp>> createChloLegalizeToHloPass(
     bool legalizeBroadcasts = true, bool expandCompositions = true);
 
+/// Lowers specific ops from the CHLO dialect to an HLO basis opset
+std::unique_ptr<OperationPass<func::FuncOp>>
+createChloLegalizeToHloBasisOpsPass();
+
 // Lowers from sparse ops in CHLO dialect to Linalg dialect.
 std::unique_ptr<OperationPass<func::FuncOp>> createLegalizeSparseOperationsPass(
     bool legalizeToCustomCalls = true);
@@ -143,15 +147,6 @@ std::unique_ptr<OperationPass<func::FuncOp>> createConstraintFusionPass();
 // them through equivalent 1D or 2D reductions.
 std::unique_ptr<OperationPass<func::FuncOp>> createGroupReductionDimensionsPass(
     bool preferColumnsReductions = true);
-
-/// Rank specialization passes:
-///   - Find compatible operations and group them together in one rank
-///     specialization cluster.
-///   - Lower rank specialization clusters to SCF and ranked operations.
-std::unique_ptr<OperationPass<func::FuncOp>>
-createRankSpecializationClusterPass();
-std::unique_ptr<OperationPass<func::FuncOp>> createRankSpecializationToSCFPass(
-    int64_t maxTargetRank = 5);
 
 std::unique_ptr<OperationPass<func::FuncOp>> createOptimizeMhloPass();
 std::unique_ptr<OperationPass<func::FuncOp>> createLowerComplexPass();

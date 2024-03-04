@@ -49,18 +49,6 @@ namespace gpu {
 
 using absl::StrAppend;
 
-namespace {
-// Returns whether operand is a floating-point literal with the given value.
-bool IsFPLiteralWithValue(const HloInstruction* operand, float value) {
-  if (operand->opcode() == HloOpcode::kConstant &&
-      operand->literal().IsAllFloat(value)) {
-    return true;
-  }
-  return operand->opcode() == HloOpcode::kBroadcast &&
-         IsFPLiteralWithValue(operand->operand(0), value);
-}
-}  // namespace
-
 GpuElementalIrEmitter::GpuElementalIrEmitter(
     IrEmitterContext& ir_emitter_context, llvm::IRBuilder<>* b)
     : ElementalIrEmitter(ir_emitter_context.llvm_module(), b),
@@ -107,29 +95,6 @@ absl::StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitDeviceMathCall(
     result = FPCast(result, b()->getHalfTy());
   }
   return result;
-}
-
-absl::StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitLlvmIntrinsicMathCall(
-    const std::string& callee_name, absl::Span<llvm::Value* const> operands,
-    absl::Span<const PrimitiveType> input_types, PrimitiveType output_type) {
-  // llvm intrinsics differentiate between half/float/double functions via
-  // the suffixes ".f16", ".f32" and ".f64".
-  std::string munged_callee = callee_name;
-  switch (output_type) {
-    case F16:
-      StrAppend(&munged_callee, ".f16");
-      break;
-    case F32:
-      StrAppend(&munged_callee, ".f32");
-      break;
-    case F64:
-      StrAppend(&munged_callee, ".f64");
-      break;
-    default:
-      return Unimplemented("Bad type for llvm intrinsic math call: %s",
-                           PrimitiveType_Name(output_type));
-  }
-  return EmitMathCall(munged_callee, operands, input_types, output_type);
 }
 
 absl::StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitMathCall(
@@ -330,6 +295,22 @@ absl::StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitTanh(
                 value->getType(), "tanh");
 }
 
+StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitErf(PrimitiveType prim_type,
+                                                      llvm::Value* value) {
+  if (prim_type == F64) {
+    return EmitDeviceMathCall(TargetDeviceFunctionID::kErf, {value},
+                              {prim_type}, prim_type);
+  }
+  // Upcast F16 to F32 if necessary.
+  llvm::Type* type = prim_type == F16 ? b()->getFloatTy() : value->getType();
+  if (type == b()->getFloatTy()) {
+    llvm::Value* x = FPCast(value, type);
+    auto* result = llvm_ir::EmitErfF32(b(), x);
+    return FPCast(result, value->getType());
+  }
+  return Unimplemented("erf");
+}
+
 absl::StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitComplexAbs(
     PrimitiveType prim_type, llvm::Value* value) {
   return EmitDeviceMathCall(TargetDeviceFunctionID::kHypot,
@@ -341,19 +322,6 @@ absl::StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitCbrt(
     PrimitiveType prim_type, llvm::Value* value) {
   return EmitDeviceMathCall(TargetDeviceFunctionID::kCbrt, {value}, {prim_type},
                             prim_type);
-}
-
-llvm::Value* GpuElementalIrEmitter::EmitThreadId() {
-  llvm::Value* block_id = IntCast(
-      EmitCallToTargetIntrinsic(TargetIntrinsicID::kBlockIdx, {}, {}, b()),
-      b()->getIntNTy(128), /*isSigned=*/true, "block.id");
-  llvm::Value* thread_id_in_block = IntCast(
-      EmitCallToTargetIntrinsic(TargetIntrinsicID::kThreadIdx, {}, {}, b()),
-      b()->getIntNTy(128), /*isSigned=*/true, "thread.id");
-  llvm::Value* threads_per_block = IntCast(
-      EmitCallToTargetIntrinsic(TargetIntrinsicID::kBlockDimx, {}, {}, b()),
-      b()->getIntNTy(128), /*isSigned=*/true, "threads_per_block");
-  return NSWAdd(NSWMul(block_id, threads_per_block), thread_id_in_block);
 }
 
 absl::StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitF32ToBF16(

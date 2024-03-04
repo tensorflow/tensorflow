@@ -107,9 +107,6 @@ std::string AutoShardingOption::ToString() const {
   lines.push_back(absl::StrCat("nd_sharding_iteratively_strict_search_space: ",
                                nd_sharding_iteratively_strict_search_space));
 
-  lines.push_back(absl::StrCat("allow_replicated_strategy_for_dot_and_conv: ",
-                               allow_replicated_strategy_for_dot_and_conv));
-
   lines.push_back(absl::StrCat("device_mesh_shape: [",
                                absl::StrJoin(device_mesh_shape, ","), "]"));
   lines.push_back(absl::StrCat("device_mesh_alpha: [",

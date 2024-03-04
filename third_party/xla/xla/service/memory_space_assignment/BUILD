@@ -5,6 +5,7 @@ load(
     "//xla:xla.bzl",
     "xla_cc_test",
 )
+load("@local_tsl//tsl:tsl.bzl", "internal_visibility")
 load(
     "@local_tsl//tsl/platform:build_config.bzl",
     "tf_proto_library",
@@ -12,7 +13,8 @@ load(
 load("@local_tsl//tsl/platform:rules_cc.bzl", "cc_library")
 
 package(
-    default_visibility = ["//visibility:public"],
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
+    default_visibility = internal_visibility([":friends"]),
     licenses = ["notice"],
 )
 
@@ -28,17 +30,19 @@ tf_proto_library(
     srcs = ["memory_space_assignment.proto"],
     cc_api_version = 2,
     make_default_target_header_only = True,
-    visibility = ["//visibility:public"],
 )
 
 cc_library(
     name = "memory_space_assignment",
     srcs = ["memory_space_assignment.cc"],
     hdrs = ["memory_space_assignment.h"],
-    visibility = ["//visibility:public"],
     deps = [
+        ":allocation",
+        ":cost_analysis",
         ":memory_space_assignment_proto_cc",
+        ":prefetch_interval_picker",
         ":repacking",
+        ":slice",
         ":tuning_utils",
         ":utils",
         "//xla:debug_options_flags",
@@ -47,6 +51,7 @@ cc_library(
         "//xla:status_macros",
         "//xla:statusor",
         "//xla:util",
+        "//xla:xla_data_proto_cc",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/utils:hlo_live_range",
         "//xla/service:buffer_value",
@@ -58,7 +63,6 @@ cc_library(
         "//xla/service:hlo_proto_cc",
         "//xla/service:hlo_value",
         "//xla/service:time_utils",
-        "//xla/service:tuple_util",
         "//xla/service/heap_simulator",
         "//xla/service/heap_simulator:allocation_block",
         "@com_google_absl//absl/algorithm:container",
@@ -84,9 +88,14 @@ xla_cc_test(
     name = "memory_space_assignment_test",
     srcs = ["memory_space_assignment_test.cc"],
     deps = [
+        ":allocation",
+        ":cost_analysis",
         ":memory_space_assignment",
         ":memory_space_assignment_proto_cc",
+        ":prefetch_interval_picker",
         ":repacking",
+        ":slice",
+        ":testing_utils",
         "//xla:shape_util",
         "//xla:status",
         "//xla:statusor",
@@ -126,7 +135,6 @@ xla_cc_test(
 cc_library(
     name = "repacking",
     hdrs = ["repacking.h"],
-    visibility = ["//visibility:public"],
     deps = [
         "//xla:statusor",
         "//xla/service/heap_simulator:allocation_block",
@@ -138,7 +146,6 @@ cc_library(
     name = "best_fit_repacker",
     srcs = ["best_fit_repacker.cc"],
     hdrs = ["best_fit_repacker.h"],
-    visibility = ["//visibility:public"],
     deps = [
         ":repacking",
         "//xla:comparison_util",
@@ -160,7 +167,6 @@ cc_library(
     name = "utils",
     srcs = ["utils.cc"],
     hdrs = ["utils.h"],
-    visibility = ["//visibility:public"],
     deps = [
         "//xla/hlo/ir:hlo",
         "//xla/service:hlo_value",
@@ -169,13 +175,162 @@ cc_library(
 )
 
 cc_library(
+    name = "slice",
+    srcs = ["slice.cc"],
+    hdrs = [
+        "slice.h",
+    ],
+    deps = [
+        ":memory_space_assignment_proto_cc",
+        "//xla:shape_util",
+        "//xla/service/heap_simulator",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+cc_library(
+    name = "allocation",
+    srcs = ["allocation.cc"],
+    hdrs = [
+        "allocation.h",
+    ],
+    deps = [
+        ":cost_analysis",
+        ":memory_space_assignment_proto_cc",
+        ":slice",
+        "//xla:shape_util",
+        "//xla:status",
+        "//xla:util",
+        "//xla/hlo/ir:hlo",
+        "//xla/service:hlo_value",
+        "//xla/service:time_utils",
+        "//xla/service:tuple_util",
+        "//xla/service/heap_simulator",
+        "//xla/service/heap_simulator:allocation_block",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/functional:function_ref",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
+        "@local_tsl//tsl/platform:errors",
+    ],
+)
+
+cc_library(
     name = "tuning_utils",
     srcs = ["tuning_utils.cc"],
     hdrs = ["tuning_utils.h"],
-    visibility = ["//visibility:public"],
     deps = [
         "//xla/hlo/ir:hlo",
         "//xla/service/heap_simulator",
+    ],
+)
+
+cc_library(
+    name = "cost_analysis",
+    srcs = ["cost_analysis.cc"],
+    hdrs = ["cost_analysis.h"],
+    deps = [
+        "//xla:shape_util",
+        "//xla:statusor",
+        "//xla:util",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/utils:hlo_live_range",
+        "//xla/service:call_graph",
+        "//xla/service:hlo_alias_analysis",
+        "//xla/service:hlo_buffer",
+        "//xla/service:hlo_cost_analysis",
+        "//xla/service:hlo_value",
+        "//xla/service/heap_simulator",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/functional:function_ref",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/types:span",
+        "@local_tsl//tsl/platform:statusor",
+    ],
+)
+
+xla_cc_test(
+    name = "cost_analysis_test",
+    srcs = ["cost_analysis_test.cc"],
+    deps = [
+        ":cost_analysis",
+        "//xla:shape_util",
+        "//xla:status",
+        "//xla/hlo/ir:hlo",
+        "//xla/service:hlo_cost_analysis",
+        "//xla/tests:hlo_test_base",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_googletest//:gtest_main",
+        "@local_tsl//tsl/lib/core:status_test_util",
+        "@local_tsl//tsl/platform:errors",
+        "@local_tsl//tsl/platform:statusor",
+    ],
+)
+
+cc_library(
+    name = "prefetch_interval_picker",
+    srcs = ["prefetch_interval_picker.cc"],
+    hdrs = ["prefetch_interval_picker.h"],
+    deps = [
+        ":cost_analysis",
+        ":memory_space_assignment_proto_cc",
+        "//xla:shape_util",
+        "//xla:status",
+        "//xla:util",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/utils:hlo_live_range",
+        "//xla/service:hlo_proto_cc",
+        "//xla/service:hlo_value",
+        "//xla/service/heap_simulator",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
+        "@local_tsl//tsl/platform:logging",
+    ],
+)
+
+cc_library(
+    name = "testing_utils",
+    testonly = True,
+    hdrs = ["testing_utils.h"],
+    deps = [
+        ":cost_analysis",
+        "//xla:shape_util",
+        "//xla:statusor",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/utils:hlo_live_range",
+        "//xla/service:call_graph",
+        "//xla/service:hlo_alias_analysis",
+        "//xla/service:hlo_cost_analysis",
+        "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/types:span",
+        "@local_tsl//tsl/platform:statusor",
+    ],
+)
+
+xla_cc_test(
+    name = "prefetch_interval_picker_test",
+    srcs = ["prefetch_interval_picker_test.cc"],
+    deps = [
+        ":cost_analysis",
+        ":prefetch_interval_picker",
+        ":testing_utils",
+        "//xla:shape_util",
+        "//xla/hlo/ir:hlo",
+        "//xla/service:hlo_cost_analysis",
+        "//xla/service:hlo_value",
+        "//xla/tests:hlo_test_base",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_googletest//:gtest_main",
+        "@local_tsl//tsl/platform:statusor",
     ],
 )
 

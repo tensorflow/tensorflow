@@ -281,8 +281,8 @@ tf_cc_test(
         ":kernel_stats_utils",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
-        "//tensorflow/core/profiler/backends/gpu:cupti_collector_header",
         "//tensorflow/core/profiler/protobuf:kernel_stats_proto_cc",
+        "@local_xla//xla/backends/profiler/gpu:cupti_collector",
     ],
 )
 

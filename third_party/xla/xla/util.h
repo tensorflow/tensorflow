@@ -48,6 +48,7 @@ limitations under the License.
 #include "Eigen/Core"  // from @eigen_archive
 #include "xla/status.h"
 #include "xla/status_macros.h"
+#include "xla/types.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/lib/math/math_util.h"
 #include "tsl/platform/bfloat16.h"
@@ -55,7 +56,6 @@ limitations under the License.
 #include "tsl/platform/errors.h"  // IWYU pragma: keep
 #include "tsl/platform/logging.h"
 #include "tsl/platform/ml_dtypes.h"
-#include "tsl/platform/threadpool.h"
 
 namespace xla {
 
@@ -211,13 +211,6 @@ void StridedCopy(D* dest, int64_t dest_stride, const S* src, int64_t src_stride,
 // propagated upwards.
 Status AddStatus(Status prior, absl::string_view context);
 Status AppendStatus(Status prior, absl::string_view context);
-
-template <typename... Args>
-Status InternalError(const absl::FormatSpec<Args...>& format,
-                     const Args&... args) {
-  return WithLogBacktrace(
-      tsl::errors::Internal(absl::StrFormat(format, args...)));
-}
 
 // This macro defines the arguments to be used as an error
 // message to be passed to absl::StrFormat, and returns a status in the
@@ -581,9 +574,7 @@ auto SignAndMagnitude(T x) {
   BitType x_abs_bits = Eigen::numext::bit_cast<BitType>(Eigen::numext::abs(x));
   const BitType x_bits = Eigen::numext::bit_cast<BitType>(x);
   const BitType x_sign = x_bits ^ x_abs_bits;
-  if constexpr (std::is_same_v<T, tsl::float8_e4m3b11> ||
-                std::is_same_v<T, tsl::float8_e4m3fnuz> ||
-                std::is_same_v<T, tsl::float8_e5m2fnuz>) {
+  if constexpr (!has_negative_zero_v<T>) {
     //  f8e4m3b11, f8e4m3fnuz, and f8e5m2fnuz don't support -0, adjust negative
     //  numbers to fill in the gap.
     if (x_sign) {
@@ -774,37 +765,6 @@ inline bool HloPredicateFalse(const HloInstruction*) { return false; }
 
 using Vector2 = std::array<int64_t, 2>;
 using Vector3 = std::array<int64_t, 3>;
-
-// A class for storing either an owned thread pool or a non-owning pointer to an
-// external thread pool.
-class MaybeOwningThreadPool {
- public:
-  // Gets or creates a thread pool.
-  //
-  // See the code for the logic.
-  static MaybeOwningThreadPool GetOrCreate(
-      int parallelism, tsl::thread::ThreadPool* default_thread_pool,
-      int default_parallelism);
-
-  // Not owning (nullptr).
-  MaybeOwningThreadPool();
-  // Not owning.
-  explicit MaybeOwningThreadPool(tsl::thread::ThreadPool* thread_pool);
-  // Owning.
-  explicit MaybeOwningThreadPool(
-      std::unique_ptr<tsl::thread::ThreadPool> thread_pool);
-  tsl::thread::ThreadPool* get();
-  const tsl::thread::ThreadPool* get() const;
-  tsl::thread::ThreadPool* operator->();
-  const tsl::thread::ThreadPool* operator->() const;
-  explicit operator bool() const;
-  bool operator!() const;
-
- private:
-  std::variant<tsl::thread::ThreadPool*,
-               std::unique_ptr<tsl::thread::ThreadPool>>
-      thread_pool_;
-};
 
 }  // namespace xla
 

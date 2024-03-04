@@ -15,8 +15,8 @@ limitations under the License.
 
 #include "absl/status/status.h"
 #include "absl/synchronization/mutex.h"
-#include "xla/stream_executor/multi_platform_manager.h"
 #include "xla/stream_executor/platform.h"
+#include "xla/stream_executor/platform_manager.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "tsl/lib/core/status_test_util.h"
@@ -27,7 +27,7 @@ namespace se = stream_executor;
 
 TEST(HostStream, EnforcesFIFOOrder) {
   se::Platform* platform =
-      se::MultiPlatformManager::PlatformWithName("Host").value();
+      se::PlatformManager::PlatformWithName("Host").value();
   se::StreamExecutor* executor = platform->ExecutorForDevice(0).value();
   se::Stream stream(executor);
   stream.Init();
@@ -51,7 +51,7 @@ TEST(HostStream, EnforcesFIFOOrder) {
 
 TEST(HostStream, ReportsHostCallbackError) {
   se::Platform* platform =
-      se::MultiPlatformManager::PlatformWithName("Host").value();
+      se::PlatformManager::PlatformWithName("Host").value();
   se::StreamExecutor* executor = platform->ExecutorForDevice(0).value();
   se::Stream stream(executor);
   stream.Init();
@@ -66,7 +66,7 @@ TEST(HostStream, ReportsHostCallbackError) {
 
 TEST(HostStream, ReportsFirstHostCallbackError) {
   se::Platform* platform =
-      se::MultiPlatformManager::PlatformWithName("Host").value();
+      se::PlatformManager::PlatformWithName("Host").value();
   se::StreamExecutor* executor = platform->ExecutorForDevice(0).value();
   se::Stream stream(executor);
   stream.Init();

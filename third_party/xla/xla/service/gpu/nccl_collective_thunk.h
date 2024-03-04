@@ -25,8 +25,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/base/thread_annotations.h"
-#include "absl/container/flat_hash_map.h"
-#include "absl/functional/function_ref.h"
+#include "absl/container/node_hash_map.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/synchronization/mutex.h"
@@ -37,13 +36,13 @@ limitations under the License.
 #include "xla/service/collective_ops_utils.h"
 #include "xla/service/global_device_id.h"
 #include "xla/service/gpu/buffer_allocations.h"
-#include "xla/service/gpu/gpu_executable_run_options.h"
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/nccl_api.h"
 #include "xla/service/gpu/nccl_clique.h"
 #include "xla/service/gpu/nccl_clique_key.h"
 #include "xla/service/gpu/thunk.h"
 #include "xla/service/llvm_ir/llvm_util.h"
+#include "xla/service/rendezvous.h"
 #include "xla/shape.h"
 #include "xla/status.h"
 #include "xla/stream_executor/device_memory.h"
@@ -68,6 +67,7 @@ struct NcclCollectiveConfig {
   template <typename OpT>
   void SetCollectiveOpKindAndID(OpT op);
   void SetCollectiveOpKindAndID(const HloCollectivePermuteInstruction* instr);
+  void SetCollectiveOpKindAndID(const HloSendRecvInstruction* instr);
   bool IsDegenerate(int64_t replica_count, int64_t partition_count) const;
 };
 
@@ -110,6 +110,9 @@ NcclCollectiveConfig GetNcclCollectiveConfigForMlir(
 // NcclCollectiveThunk
 //===----------------------------------------------------------------------===//
 
+// Forward declare.
+class NcclCollectiveDoneThunk;
+
 // Thunk base class for NCCL collective operations.
 class NcclCollectiveThunk : public Thunk {
  public:
@@ -126,37 +129,36 @@ class NcclCollectiveThunk : public Thunk {
     mlir::Value destination_value;
   };
 
-  class AsyncExecutor {
-   public:
-    // Executes the function on the async communications stream and records a
-    // completion event.
-    absl::Status Execute(
-        absl::FunctionRef<Status(const ExecuteParams&, se::Stream&,
-                                 NcclApi::NcclCommHandle)>
-            fn,
-        const ExecuteParams& params, NcclApi::NcclCommHandle comm,
-        AsyncStreamKind stream_kind);
-    // Blocks the compute stream until async communication is complete.
-    absl::Status Await(const ExecuteParams& params);
+  // Completion events for asynchronous collective operations (operations
+  // launched on a dedicated stream that is synchronized with main compute
+  // stream only when needed).
+  class AsyncEvents {
+   private:
+    friend class NcclCollectiveThunk;
+    friend class NcclCollectiveDoneThunk;
+
+    absl::Status Initialize(se::StreamExecutor* executor);
+    absl::StatusOr<se::Event*> GetEvent(se::StreamExecutor* executor);
 
    private:
     absl::Mutex mu_;
-    // Store done events (by device ordinal) for the done thunk to wait on.
-    absl::flat_hash_map<int, se::Event> done_events_ ABSL_GUARDED_BY(mu_);
+    absl::node_hash_map<se::StreamExecutor*, se::Event> events_
+        ABSL_GUARDED_BY(mu_);
   };
 
   // Logging support.
   static std::string GetDeviceString(
       const Thunk::CollectiveExecuteParams& params);
 
-  AsyncExecutor* async_executor() { return async_.get(); }
-
   absl::Status Prepare(const PrepareParams& params,
                        ResourceRequests& resource_requests) override;
+
+  absl::Status Initialize(const InitializeParams& params) override;
 
   absl::Status ExecuteOnStream(const ExecuteParams& params) override;
 
   NcclApi* nccl_api() const { return nccl_api_; }
+  std::shared_ptr<AsyncEvents> async_events() const { return async_events_; }
 
  protected:
   virtual absl::Status RunNcclCollective(const ExecuteParams& params,
@@ -167,16 +169,34 @@ class NcclCollectiveThunk : public Thunk {
     return AsyncStreamKind::kCollective;
   }
 
+  // A collective thunk is normally an independent operation in a sense that
+  // different instances of the same collective thunk communicate each other.
+  // The only exception are SendThunk and RecvThunk. Assume two devices are
+  // executing a program contains the following instructions, the Recv from
+  // device 1 will release the Send from device 0. Adding first call
+  // rendezvous on the SendThunk would cause a runtime deadlock.
+  //  Send(src_target={0,1})
+  //  Recv(src_target={0,1})
+  virtual bool NeedFirstCallRendzevous() const { return true; }
+
  private:
-  bool IsAsync() const { return async_ != nullptr; }
+  bool IsAsync() const { return async_events_ != nullptr; }
   int64_t GetStreamId() const {
     return xla::gpu::GetStreamId(IsAsync(), GetAsyncStreamKind());
   }
 
   NcclApi* nccl_api_;
+  std::shared_ptr<AsyncEvents> async_events_;
 
-  bool first_call_to_execute_ = true;
-  std::unique_ptr<AsyncExecutor> async_;  // null if not async.
+  // After a first call to this particular instance of a NCCL collective thunk
+  // we do a round of rendezvous to make sure that all participants successfully
+  // allocated on-device state required for executing collective operation. This
+  // is required to avoid deadlocks when one device goes too far ahead and
+  // causes a deadlock in CUDA driver (root cause is mysterious).
+  //
+  // TODO(ezhulenev): Try to move this flag to NCCL clique as we need to make
+  // sure that all NCCL resources are allocated just once.
+  RendezvousSingleFlag first_call_rendezvous_flag_;
 };
 
 //===----------------------------------------------------------------------===//
@@ -185,14 +205,17 @@ class NcclCollectiveThunk : public Thunk {
 
 class NcclCollectiveDoneThunk : public Thunk {
  public:
-  NcclCollectiveDoneThunk(Thunk::Kind kind, ThunkInfo thunk_info,
-                          NcclCollectiveThunk::AsyncExecutor& async);
+  NcclCollectiveDoneThunk(
+      Thunk::Kind kind, ThunkInfo thunk_info,
+      std::shared_ptr<NcclCollectiveThunk::AsyncEvents> async_events);
 
   absl::Status ExecuteOnStream(const ExecuteParams& params) override;
 
  private:
-  NcclCollectiveThunk::AsyncExecutor& async_;
+  std::shared_ptr<NcclCollectiveThunk::AsyncEvents> async_events_;
 };
+
+//===----------------------------------------------------------------------===//
 
 absl::Status IsValidOperand(mlir::Value operand, Thunk::Kind reduction_op);
 
@@ -234,18 +257,17 @@ size_t GetNumLocalParticipants(
     const std::vector<GlobalDeviceId>& participants,
     const std::vector<GlobalDeviceId>* local_devices);  // may be null
 
-absl::StatusOr<NcclComm::Lock> LockNcclComm(
+absl::StatusOr<NcclApi::NcclCommHandle> GetNcclComm(
     const Thunk::CollectiveExecuteParams& params,
+    const Thunk::CollectiveCliques& collective_cliques,
     const std::vector<ReplicaGroup>& replica_groups,
-    CollectiveOpGroupMode group_mode, int64_t op_id, int64_t stream_id,
-    bool enable_clique_optimization);
+    CollectiveOpGroupMode group_mode, int64_t stream_id);
 
 struct DeviceBufferPair {
   PrimitiveType element_type;
   int64_t element_count;
   se::DeviceMemoryBase source_buffer;
   se::DeviceMemoryBase destination_buffer;
-  // TODO(b/320767790): Remove once memory space added to DeviceMemoryBase.
   int64_t source_memory_space;
   int64_t destination_memory_space;
 };

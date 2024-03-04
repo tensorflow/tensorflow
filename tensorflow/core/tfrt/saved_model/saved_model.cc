@@ -50,6 +50,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tfrt/translate/tfrt_compile_options.h"
 #include "xla/status_macros.h"
 #include "tensorflow/core/framework/function.pb.h"
+#include "tensorflow/core/framework/metrics.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/framework/types.h"
@@ -478,7 +479,9 @@ SavedModelImpl::LoadSavedModel(Options options,
     LOG(INFO) << "Found AOT package. Register required dialects.";
     RegisterTfrtDialectsForAot(registry);
   }
-  RegisterMlirDialect(registry);
+  RegisterMlirDialect(
+      registry,
+      options.graph_execution_options.compile_options.backend_compiler);
   mlir::MLIRContext context(registry);
 
   // Step 1: Import saved model from a proto to an MLIR module.
@@ -559,9 +562,6 @@ SavedModelImpl::LoadSavedModel(Options options,
                                   meta_graph_def.signature_def(), options);
   }
 
-  auto runner_table = std::make_unique<OpKernelRunnerTable>();
-  auto resource_array = std::make_unique<tfd::FallbackResourceArray>();
-
   auto kernel_registry = std::make_unique<mlrt::KernelRegistry>();
 
   // Creates a ResourceContext and populate it with per model resource from
@@ -595,6 +595,7 @@ SavedModelImpl::LoadSavedModel(Options options,
           bef, LoadBefAndMlir(options.graph_execution_options.compile_options,
                               mlir_module.get(), saved_model_dir_string,
                               fallback_state.get()));
+      metrics::UpdateAotBefMlirLoadCount();
     }
 
   } else {
@@ -647,6 +648,9 @@ SavedModelImpl::LoadSavedModel(Options options,
         bef_file, tfrt::CreateBefFileFromBefBuffer(
                       *options.graph_execution_options.runtime, bef));
   }
+
+  auto runner_table = std::make_unique<OpKernelRunnerTable>();
+  auto resource_array = std::make_unique<tfd::FallbackResourceArray>();
   if (loaded_executable) {
     RETURN_IF_ERROR_IN_INIT(RunBytecodeInitializers(
         graph_executor->options(), initializers_and_signatures,
@@ -1016,7 +1020,8 @@ StatusOr<std::reference_wrapper<const SavedModelImpl::LoadingResult>>
 SavedModelImpl::LoadJoinedSignature(const JoinedSignature& joined_signature) {
   // Step 1: Import the combined subgraph from proto to an MLIR module.
   mlir::DialectRegistry registry;
-  RegisterMlirDialect(registry);
+  RegisterMlirDialect(
+      registry, graph_executor_->options().compile_options.backend_compiler);
   mlir::MLIRContext context(registry);
 
   ASSIGN_OR_RETURN_IN_IMPORT(auto module,

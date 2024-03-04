@@ -640,6 +640,11 @@ HloRunner::CreateExecutableWithBufferAssignment(
       LOG(WARNING) << "Ignoring buffer assignment provided because hlo passes "
                       "are enabled.";
     }
+    // Setup intra-op threads in module config
+    if (backend().eigen_intra_op_thread_pool() != nullptr) {
+      module->mutable_config().set_intra_op_parallelism_threads(
+          backend().eigen_intra_op_thread_pool()->NumThreads());
+    }
     auto module_group = std::make_unique<HloModuleGroup>(std::move(module));
     TF_ASSIGN_OR_RETURN(
         auto executables,

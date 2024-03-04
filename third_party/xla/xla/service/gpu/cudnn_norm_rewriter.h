@@ -24,7 +24,7 @@ namespace xla {
 namespace gpu {
 
 // Rewrites norm patterns into Custom Calls to the cuDNN library. Currently, the
-// forward pass of layer norm patterns is implemented.
+// forward and backward passes of layer norm patterns are implemented.
 class CudnnNormRewriter : public HloModulePass {
  public:
   explicit CudnnNormRewriter(se::CudaComputeCapability cuda_compute_capability);

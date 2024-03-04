@@ -96,7 +96,7 @@ void PjRtDeviceContext::CopyDeviceTensorToCPU(const Tensor* device_tensor,
   profiler::TraceMe traceme("PjRtDeviceContext::CopyDeviceTensorToCPU");
   if (device_tensor->NumElements() == 0) {
     VLOG(2) << "CopyDeviceTensorToCPU empty tensor";
-    done(OkStatus());
+    done(absl::OkStatus());
     return;
   }
   auto literal = std::make_unique<xla::MutableBorrowingLiteral>();
@@ -149,7 +149,7 @@ void PjRtDeviceContext::CopyCPUTensorToDevice(const Tensor* cpu_tensor,
   profiler::TraceMe traceme("PjRtDeviceContext::CopyCPUTensorToDevice");
   if (cpu_tensor->NumElements() == 0) {
     VLOG(2) << "CopyCPUTensorToDevice empty tensor";
-    done(OkStatus());
+    done(absl::OkStatus());
     return;
   }
 
@@ -243,7 +243,7 @@ void PjRtDeviceToDeviceCopy(DeviceContext* send_dev_context,
   profiler::TraceMe traceme("PjRtDevice_DeviceToDeviceCopy");
   if (input->NumElements() == 0) {
     VLOG(2) << "PjRtDevice_DeviceToDeviceCopy empty tensor";
-    done(OkStatus());
+    done(absl::OkStatus());
     return;
   }
 

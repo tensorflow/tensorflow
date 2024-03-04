@@ -166,6 +166,8 @@ Status FilterStrategy(const HloInstruction* ins, const Shape& shape,
 Status HandleDot(std::unique_ptr<StrategyGroup>& strategy_group,
                  StrategyGroups& strategy_groups, StrategyMap& strategy_map,
                  const HloInstruction* ins, size_t instruction_id,
+                 const HloInstructionSequence& instruction_sequence,
+                 const HloCostAnalysis& hlo_cost_analysis,
                  const ClusterEnvironment& cluster_env,
                  const InstructionBatchDimMap& batch_map,
                  const AutoShardingOption& option, const CallGraph& call_graph);
@@ -173,6 +175,8 @@ Status HandleDot(std::unique_ptr<StrategyGroup>& strategy_group,
 Status HandleConv(std::unique_ptr<StrategyGroup>& strategy_group,
                   StrategyGroups& strategy_groups, StrategyMap& strategy_map,
                   const HloInstruction* ins, size_t instruction_id,
+                  const HloInstructionSequence& instruction_sequence,
+                  const HloCostAnalysis& hlo_cost_analysis,
                   const ClusterEnvironment& cluster_env,
                   const InstructionBatchDimMap& batch_map,
                   const AutoShardingOption& option,
@@ -269,7 +273,7 @@ std::unique_ptr<StrategyGroup> CreateElementwiseOperatorStrategies(
     size_t instruction_id, const HloInstruction* ins,
     const StrategyMap& strategy_map, const ClusterEnvironment& cluster_env,
     const InstructionDepthMap& depth_map, const AliasMap& alias_map,
-    StableHashMap<int64_t, std::vector<ShardingStrategy>>&
+    const StableHashMap<int64_t, std::vector<ShardingStrategy>>&
         pretrimmed_strategy_map,
     int64_t max_depth, StrategyGroups& strategy_groups,
     AssociativeDotPairs& associative_dot_pairs);
@@ -341,7 +345,7 @@ std::unique_ptr<StrategyGroup> MaybeFollowInsStrategyGroup(
     const StrategyGroup* src_strategy_group, const Shape& shape,
     size_t instruction_id, bool have_memory_cost,
     StrategyGroups& strategy_groups, const ClusterEnvironment& cluster_env,
-    StableHashMap<NodeIdx, std::vector<ShardingStrategy>>&
+    const StableHashMap<NodeIdx, std::vector<ShardingStrategy>>&
         pretrimmed_strategy_map);
 
 void RemoveInvalidShardingsWithShapes(const Shape& shape,

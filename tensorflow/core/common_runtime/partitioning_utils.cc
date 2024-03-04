@@ -108,7 +108,7 @@ Status MakeSendRecvDependencyExplicit(Graph* graph) {
     }
     graph->AddControlEdge(send_recv_pair.send_node, send_recv_pair.recv_node);
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace
@@ -136,7 +136,7 @@ Status PartitionFunctionGraph(
     subgraphs->emplace(device, std::move(subgraph));
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 StatusOr<std::unique_ptr<Graph>> InsertTransferOps(
@@ -259,7 +259,7 @@ Status UpdateArgAndRetvalMetadata(
         ret_nodes, ints_on_device, *ret_alloc_attrs));
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 string FunctionNameGenerator::GetName() {

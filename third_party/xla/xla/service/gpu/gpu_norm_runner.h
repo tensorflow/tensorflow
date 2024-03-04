@@ -36,26 +36,45 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
+inline absl::StatusOr<xla::gpu::CudnnNormKind> AsCudnnNormKind(
+    xla::gpu::CudnnNormBackendConfig_Kind kind) {
+  switch (kind) {
+    case xla::gpu::CudnnNormBackendConfig::LAYER_FWD_INFER:
+      return xla::gpu::CudnnNormKind::kLayerForwardInfer;
+    case xla::gpu::CudnnNormBackendConfig::LAYER_FWD_TRAIN:
+      return xla::gpu::CudnnNormKind::kLayerForwardTrain;
+    case xla::gpu::CudnnNormBackendConfig::LAYER_BWD:
+      return xla::gpu::CudnnNormKind::kLayerBackward;
+    default:
+      return xla::Internal("Unknown norm kind.");
+  }
+}
+
 // Intermediate structure used as input to construct GpuNormConfig.
 struct GpuNormDescriptor {
   CudnnNormBackendConfig backend_config;
-  Shape input_shape;
+  Shape x_shape;
   Shape scale_shape;
-  Shape bias_shape;
-  Shape output_shape;
+  std::optional<Shape> bias_shape;
+  Shape y_or_dx_shape;
   std::optional<Shape> expectation_shape;
   std::optional<Shape> norm_factor_shape;
+  std::optional<Shape> dy_shape;
+  std::optional<Shape> dscale_shape;
+  std::optional<Shape> dbias_shape;
   size_t scratch_size;
 };
 
 // Structure to describe static properties of a fused norm op.
 struct GpuNormConfig {
   static absl::StatusOr<GpuNormConfig> For(const GpuNormDescriptor& desc) {
-    std::vector<PrimitiveType> output_types;
+    std::vector<PrimitiveType> y_or_dx_types;
 
     GpuNormConfig config;
     config.epsilon = desc.backend_config.epsilon();
     config.algorithm = se::dnn::AlgorithmDesc(desc.backend_config.algorithm());
+    TF_ASSIGN_OR_RETURN(config.kind,
+                        AsCudnnNormKind(desc.backend_config.kind()));
 
     auto tensor_descriptor_from_shape =
         [](Shape shape) -> absl::StatusOr<se::dnn::TensorDescriptor> {
@@ -66,35 +85,49 @@ struct GpuNormConfig {
                                             shape.layout().minor_to_major());
     };
 
-    TF_ASSIGN_OR_RETURN(config.input_descriptor,
-                        tensor_descriptor_from_shape(desc.input_shape));
+    TF_ASSIGN_OR_RETURN(config.x_descriptor,
+                        tensor_descriptor_from_shape(desc.x_shape));
     TF_ASSIGN_OR_RETURN(config.scale_descriptor,
                         tensor_descriptor_from_shape(desc.scale_shape));
-    TF_ASSIGN_OR_RETURN(config.bias_descriptor,
-                        tensor_descriptor_from_shape(desc.bias_shape));
-    TF_ASSIGN_OR_RETURN(config.output_descriptor,
-                        tensor_descriptor_from_shape(desc.output_shape));
+    TF_ASSIGN_OR_RETURN(config.y_or_dx_descriptor,
+                        tensor_descriptor_from_shape(desc.y_or_dx_shape));
+    if (desc.bias_shape) {
+      TF_ASSIGN_OR_RETURN(config.bias_descriptor, tensor_descriptor_from_shape(
+                                                      desc.bias_shape.value()));
+    }
     if (desc.expectation_shape) {
       TF_ASSIGN_OR_RETURN(
           config.expectation_descriptor,
           tensor_descriptor_from_shape(desc.expectation_shape.value()));
-    }
-    if (desc.norm_factor_shape) {
       TF_ASSIGN_OR_RETURN(
           config.norm_factor_descriptor,
           tensor_descriptor_from_shape(desc.norm_factor_shape.value()));
+    }
+    if (desc.dscale_shape) {
+      TF_ASSIGN_OR_RETURN(config.dy_descriptor,
+                          tensor_descriptor_from_shape(desc.dy_shape.value()));
+      TF_ASSIGN_OR_RETURN(
+          config.dscale_descriptor,
+          tensor_descriptor_from_shape(desc.dscale_shape.value()));
+      TF_ASSIGN_OR_RETURN(
+          config.dbias_descriptor,
+          tensor_descriptor_from_shape(desc.dbias_shape.value()));
     }
     return config;
   }
 
   double epsilon;
+  CudnnNormKind kind;
   se::dnn::AlgorithmDesc algorithm;
-  se::dnn::TensorDescriptor input_descriptor;
+  se::dnn::TensorDescriptor x_descriptor;
   se::dnn::TensorDescriptor scale_descriptor;
-  se::dnn::TensorDescriptor bias_descriptor;
-  se::dnn::TensorDescriptor output_descriptor;
+  std::optional<se::dnn::TensorDescriptor> bias_descriptor;
+  se::dnn::TensorDescriptor y_or_dx_descriptor;
   std::optional<se::dnn::TensorDescriptor> expectation_descriptor;
   std::optional<se::dnn::TensorDescriptor> norm_factor_descriptor;
+  std::optional<se::dnn::TensorDescriptor> dy_descriptor;
+  std::optional<se::dnn::TensorDescriptor> dscale_descriptor;
+  std::optional<se::dnn::TensorDescriptor> dbias_descriptor;
 };
 
 class NormRunner {
@@ -127,13 +160,16 @@ struct RunNormOptions {
   NormRunner* norm_runner;
 };
 
-absl::Status RunGpuNorm(const gpu::GpuNormConfig& config,
-                        const se::DeviceMemoryBase& input_buffer,
+absl::Status RunGpuNorm(const GpuNormConfig& conv_config,
+                        const se::DeviceMemoryBase& x_buffer,
                         const se::DeviceMemoryBase& scale_buffer,
-                        const se::DeviceMemoryBase& bias_buffer,
-                        const se::DeviceMemoryBase& output_buffer,
-                        std::optional<se::DeviceMemoryBase> expectation_buffer,
+                        const se::DeviceMemoryBase& y_or_dx_buffer,
+                        std::optional<se::DeviceMemoryBase> bias_buffer,
+                        std::optional<se::DeviceMemoryBase> dy_buffer,
+                        std::optional<se::DeviceMemoryBase> exepctation_buffer,
                         std::optional<se::DeviceMemoryBase> norm_factor_buffer,
+                        std::optional<se::DeviceMemoryBase> dscale_buffer,
+                        std::optional<se::DeviceMemoryBase> dbias_buffer,
                         const se::DeviceMemoryBase& scratch_memory,
                         se::Stream* stream, RunNormOptions options = {});
 

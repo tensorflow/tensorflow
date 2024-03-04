@@ -82,6 +82,13 @@ class HasEqualElementSize<list<int> shape_1, list<int> shape_2> : Constraint<
   "llvm::ArrayRef<int>({" # !interleave(shape_2, ", ") # "}))">,
   "Checks if the given dimensions contain the same number of elements.">;
 
+def ReshapableTo1DTensor : Constraint<
+  CPred<"quant::ReshapableTo1DTensor($0.getType().cast<ShapedType>())">,
+  "Checks if the value dims are all ones except the right most dim">;
+
+def ReshapeTo1DTensor : NativeCodeCall<
+  "quant::ReshapeTo1DTensor($_builder, $_loc, $0)">;
+
 def HasEqualShape : Constraint<CPred<
   "$0.getType().cast<ShapedType>().hasRank() && "
   "$1.getType().cast<ShapedType>().hasRank() && "
@@ -112,7 +119,29 @@ def ConvertAddToBiasAdd : Pat<
     (TF_ConstOp:$add_rhs IsFloatElementsAttr:$add_rhs_value)),
   (TF_BiasAddOp $conv_out, $add_rhs, (CreateStringAttr<"NHWC">)),
   [(HasRankOf<1> $add_rhs_value),
-   (HasEqualElementSize<[-1], [0]> $conv_out, $add_rhs)]>;
+   (HasEqualElementSize<[-1], [0]> $conv_out, $add_rhs)], [], (addBenefit -1)>;
+
+// Convert conv+sub+mul pattern to conv+mul+add.
+// (conv - sub) * mul -> conv * mul + (-sub) * mul
+//
+// This is needed to support Conv+BatchNorm pattern from Jax models converted
+// using jax2tf w/o native serialization. Note that Jax2tf patterns always
+// extend bias shapes to a rank of 4, e.g. 1x1x1x5.
+def ConvertSubMulToMulAdd : Pat<
+  (TF_MulOp
+    (TF_SubOp
+      (SupportedAffineOpMatcher $conv_out, $input, $weight),
+      (TF_ConstOp:$sub_rhs IsFloatElementsAttr:$sub_rhs_value)),
+    (TF_ConstOp:$mul_rhs IsFloatElementsAttr:$mul_rhs_value)),
+  (TF_AddV2Op
+    (TF_MulOp $conv_out, (ReshapeTo1DTensor $mul_rhs)),
+    (TF_MulOp
+      (TF_NegOp (ReshapeTo1DTensor $sub_rhs)),
+      (ReshapeTo1DTensor $mul_rhs))),
+  [(ReshapableTo1DTensor $mul_rhs),
+   (ReshapableTo1DTensor $sub_rhs),
+   (HasEqualElementSize<[-1], [-1]> $conv_out, $mul_rhs),
+   (HasEqualElementSize<[-1], [-1]> $conv_out, $sub_rhs)]>;
 
 // TODO(b/278493977): Create generic implementation of lifting any fused op
 // with any reshaping op
@@ -128,6 +157,7 @@ def ConvertAddWithReshapeToBiasAddWithReshape : Pat<
    (HasEqualElementSize<[-1], [0]> $reshape_out, $add_rhs)]>;
 
 // Fuse consecutive BiasAddOp and an AddV2Op.
+// We also handle the case where add_rhs has rank 4.
 def FuseBiasAndAddV2 : Pat<
   (TF_AddV2Op
     (TF_BiasAddOp:$bias_add
@@ -135,9 +165,10 @@ def FuseBiasAndAddV2 : Pat<
       (TF_ConstOp:$bias IsFloatElementsAttr:$bias_value), $data_format),
     (TF_ConstOp:$add_rhs IsFloatElementsAttr:$add_rhs_value)),
   (TF_BiasAddOp
-    $conv_out, (TF_AddV2Op $bias, $add_rhs), $data_format),
+    $conv_out, (TF_AddV2Op $bias, (ReshapeTo1DTensor $add_rhs)), $data_format),
   [(HasOneUse $bias_add),
-   (HasEqualShape $bias_value, $add_rhs_value)]>;
+   (ReshapableTo1DTensor $add_rhs),
+   (HasEqualElementSize<[-1], [-1]> $bias, $add_rhs)]>;
 
 // Fuse AffineOp followed by an MulOp patterns.
 def FuseAffineOpAndMul : Pat<

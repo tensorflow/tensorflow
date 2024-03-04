@@ -131,7 +131,7 @@ class GpuOptProvider : public OptProvider {
 }  // namespace
 }  // namespace xla
 
-REGISTER_MODULE_INITIALIZER(gpu_opt_provider, {
+STREAM_EXECUTOR_REGISTER_MODULE_INITIALIZER(gpu_opt_provider, {
   xla::OptProvider::RegisterForPlatform(
       "gpu", std::make_unique<xla::GpuOptProvider>());
 });

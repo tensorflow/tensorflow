@@ -67,7 +67,7 @@ class TestClusterFLR : public DistributedFunctionLibraryRuntime {
       *handle = next_handle_;
       next_handle_++;
     }
-    done(OkStatus());
+    done(absl::OkStatus());
   }
 
   void Run(const FunctionLibraryRuntime::Options& opts,
@@ -158,7 +158,7 @@ class ProcessFunctionLibraryRuntimeTest : public ::testing::Test {
             return tsl::core::RefCountPtr<IntraProcessRendezvous>(
                 new IntraProcessRendezvous(device_mgr));
           });
-          return OkStatus();
+          return absl::OkStatus();
         }}));
   }
 
@@ -261,7 +261,7 @@ class ProcessFunctionLibraryRuntimeTest : public ::testing::Test {
     EXPECT_TRUE(errors::IsNotFound(status)) << "Actual status: " << status;
     EXPECT_TRUE(absl::StrContains(status.message(), "not found."));
 
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   Status Run(const string& name, FunctionLibraryRuntime::Options opts,
@@ -308,7 +308,7 @@ class ProcessFunctionLibraryRuntimeTest : public ::testing::Test {
     for (size_t i = 0; i < rets.size(); ++i) {
       *rets[i] = out[i];
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   std::unique_ptr<DynamicDeviceMgr> device_mgr_;
@@ -935,7 +935,7 @@ class TestFunctionPackedArgs : public FunctionArgsInterface {
   Status GetLocalArg(const FunctionArgIndex& index,
                      Tensor* val) const override {
     *val = *packed_args_.at(index.index).at(index.sub_index).tensor;
-    return OkStatus();
+    return absl::OkStatus();
   };
 
   std::vector<Tensor> GetLocalTensors() const override { return {}; }

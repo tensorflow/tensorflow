@@ -16,44 +16,78 @@ limitations under the License.
 #ifndef XLA_SERVICE_GPU_RUNTIME_ANNOTATION_H_
 #define XLA_SERVICE_GPU_RUNTIME_ANNOTATION_H_
 
+#include <string>
+#include <string_view>
+
 #include "absl/container/flat_hash_map.h"
+#include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "tsl/profiler/lib/nvtx_utils.h"
 
 namespace xla::gpu {
+
 // Prepared information for the top level NVTX/profiler range covering an
 // HloModule
 struct ModuleAnnotation {
-  ModuleAnnotation(std::string module_name, int module_id);
-  ModuleAnnotation(const HloModule& mod);
-  std::string_view longest_op_name_prefix() const;
-  nvtxStringHandle_t NvtxRegisteredTitle() const;
-  std::string_view Title() const;
+  explicit ModuleAnnotation(std::string_view module_name);
+  explicit ModuleAnnotation(const HloModule& mod);
+
+  std::string_view longest_op_name_prefix() const { return longest_prefix; }
+  explicit operator std::string_view() const { return title_str; }
 
  private:
+  friend void RangePush(nvtxDomainHandle_t domain,
+                        const ModuleAnnotation& annotation) {
+    tsl::profiler::RangePush(domain, annotation.title);
+  }
+
   std::string longest_prefix;
   std::string title_str;
-  nvtxStringHandle_t title{};
+  nvtxStringHandle_t title;
 };
 
 // Prepared information for a kernel/thunk/fusion/... within an HloModule
 struct KernelAnnotation {
-  KernelAnnotation(const ModuleAnnotation& module_annotaion,
+  KernelAnnotation(const ModuleAnnotation& module_annotation,
                    const HloInstruction& inst);
-  nvtxStringHandle_t NvtxRegisteredTitle() const;
-  std::string_view Title() const;
+
+  explicit operator std::string_view() const { return title_str; }
 
  private:
+  friend void RangePush(nvtxDomainHandle_t domain,
+                        const KernelAnnotation& annotation) {
+    tsl::profiler::RangePush(domain, annotation.title);
+  }
+
   std::string title_str;
-  nvtxStringHandle_t title{};
+  nvtxStringHandle_t title;
 };
+
 // Parsed/prepared information for an HloModule that gets propagated to NVTX
 // ranges/profilers/... at execution time.
 struct ModuleAnnotations {
-  ModuleAnnotations(const HloModule&);
+  explicit ModuleAnnotations(std::string_view module_name);
+  explicit ModuleAnnotations(const HloModule&);
+
   ModuleAnnotation top_level;
-  absl::flat_hash_map<std::string_view, KernelAnnotation> kernels{};
+  absl::flat_hash_map<std::string_view, KernelAnnotation> kernels;
 };
+
+//===----------------------------------------------------------------------===//
+// Scoped RAII helper to set and restore thread local module annotations
+//===----------------------------------------------------------------------===//
+
+class ScopedModuleAnnotations {
+ public:
+  explicit ScopedModuleAnnotations(const ModuleAnnotations* annotations);
+  ~ScopedModuleAnnotations();
+
+ private:
+  const ModuleAnnotations* restore_;
+};
+
+const ModuleAnnotations* GetCurrentModuleAnnotations();
+
 }  // namespace xla::gpu
 
 #endif  // XLA_SERVICE_GPU_RUNTIME_ANNOTATION_H_

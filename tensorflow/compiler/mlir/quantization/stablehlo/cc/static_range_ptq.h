@@ -57,9 +57,6 @@ class StaticRangePtqComponent : public Component {
       absl::string_view src_saved_model_path,
       std::vector<std::string> signature_keys,
       std::unordered_set<std::string> tags,
-      absl::flat_hash_map<std::string,
-                          tensorflow::quantization::RepresentativeDatasetFile>
-          representative_dataset_file_map,
       absl::flat_hash_map<std::string, tensorflow::SignatureDef>
           signature_def_map,
       absl::flat_hash_map<FunctionName, FunctionAlias> function_aliases);
@@ -101,10 +98,7 @@ absl::Status QuantizeStaticRangePtq(
     const absl::flat_hash_map<std::string, tensorflow::SignatureDef>&
         signature_def_map,
     const absl::flat_hash_map<std::string, std::string>& function_aliases,
-    const tensorflow::quantization::PyFunctionLibrary& py_function_library,
-    const absl::flat_hash_map<
-        std::string, tensorflow::quantization::RepresentativeDatasetFile>&
-        representative_dataset_file_map);
+    const tensorflow::quantization::PyFunctionLibrary& py_function_library);
 // LINT.ThenChange(../python/pywrap_quantization.cc:static_range_ptq)
 
 }  // namespace mlir::quant::stablehlo

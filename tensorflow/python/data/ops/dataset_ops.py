@@ -1156,6 +1156,24 @@ class DatasetV2(
     return counter_op._counter(start, step, dtype, name=name)
     # pylint: enable=g-import-not-at-top,protected-access
 
+  def fingerprint(self):
+    """Computes the fingerprint of this `Dataset`.
+
+    If two datasets have the same fingerprint, it is guaranteeed that they
+    would produce identical elements as long as the content of the upstream
+    input files does not change and they produce data deterministically.
+
+    However, two datasets producing identical values does not always mean they
+    would have the same fingerprint due to different graph constructs.
+
+    In other words, if two datasets have different fingerprints, they could
+    still produce identical values.
+
+    Returns:
+      A scalar `tf.Tensor` of type `tf.uint64`.
+    """
+    return gen_dataset_ops.dataset_fingerprint(self._variant_tensor)
+
   def rebatch(self, batch_size, drop_remainder=False, name=None) -> "DatasetV2":
     """Creates a `Dataset` that rebatches the elements from this dataset.
 

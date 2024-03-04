@@ -16,6 +16,8 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_MLIR_QUANTIZATION_COMMON_TEST_BASE_H_
 #define TENSORFLOW_COMPILER_MLIR_QUANTIZATION_COMMON_TEST_BASE_H_
 
+#include <memory>
+
 #include <gtest/gtest.h>
 #include "absl/strings/string_view.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
@@ -25,10 +27,10 @@ limitations under the License.
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/OwningOpRef.h"  // from @llvm-project
-#include "mlir/IR/SymbolTable.h"  // from @llvm-project
 #include "mlir/Parser/Parser.h"  // from @llvm-project
 #include "stablehlo/dialect/StablehloOps.h"  // from @stablehlo
 #include "tensorflow/compiler/mlir/lite/quantization/ir/QuantOps.h"
+#include "tensorflow/compiler/mlir/quantization/stablehlo/cc/context.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_dialect.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_executor.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_saved_model.h"
@@ -40,29 +42,24 @@ using ::testing::Test;
 
 class QuantizationTestBase : public Test {
  protected:
-  QuantizationTestBase() {
-    ctx_.loadDialect<arith::ArithDialect, mlir::stablehlo::StablehloDialect,
-                     func::FuncDialect, TF::TensorFlowDialect,
-                     tf_saved_model::TensorFlowSavedModelDialect,
-                     tf_executor::TensorFlowExecutorDialect,
-                     quant::QuantizationDialect,
-                     quantfork::QuantizationForkDialect>();
+  QuantizationTestBase()
+      : ctx_(stablehlo::CreateMlirContextForQuantization()),
+        builder_(ctx_.get()) {
+    ctx_->loadDialect<arith::ArithDialect, mlir::stablehlo::StablehloDialect,
+                      func::FuncDialect, TF::TensorFlowDialect,
+                      tf_saved_model::TensorFlowSavedModelDialect,
+                      tf_executor::TensorFlowExecutorDialect,
+                      quant::QuantizationDialect,
+                      quantfork::QuantizationForkDialect>();
   }
 
   // Parses `module_op_str` to create a `ModuleOp`. Checks whether the created
   // module op is valid.
   OwningOpRef<ModuleOp> ParseModuleOpString(
       const absl::string_view module_op_str) {
-    auto module_op_ref = parseSourceString<ModuleOp>(module_op_str, &ctx_);
+    auto module_op_ref = parseSourceString<ModuleOp>(module_op_str, ctx_.get());
     EXPECT_TRUE(module_op_ref);
     return module_op_ref;
-  }
-
-  // Gets the function with the given name from the module.
-  func::FuncOp GetFunctionFromModule(ModuleOp module,
-                                     absl::string_view function_name) {
-    SymbolTable symbol_table(module);
-    return symbol_table.lookup<func::FuncOp>(function_name);
   }
 
   // Returns the first operation with the given type in the function.
@@ -74,8 +71,8 @@ class QuantizationTestBase : public Test {
     return nullptr;
   }
 
-  mlir::MLIRContext ctx_{};
-  OpBuilder builder_{&ctx_};
+  std::unique_ptr<MLIRContext> ctx_;
+  OpBuilder builder_;
 };
 
 }  // namespace mlir::quant

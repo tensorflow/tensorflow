@@ -16,24 +16,32 @@ limitations under the License.
 #include "xla/stream_executor/cuda/cuda_blas.h"
 
 #include <complex>
+#include <cstddef>
 #include <cstdint>
+#include <optional>
 #include <string>
+#include <vector>
 
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
+#include "absl/time/time.h"
 #include "Eigen/Core"  // from @eigen_archive
 #include "third_party/gpus/cuda/include/cublas_v2.h"
 #include "third_party/gpus/cuda/include/cuda.h"
+#include "third_party/gpus/cuda/include/cuda_bf16.h"
+#include "third_party/gpus/cuda/include/cuda_fp16.h"
+#include "third_party/gpus/cuda/include/driver_types.h"
+#include "third_party/gpus/cuda/include/library_types.h"
+#include "third_party/gpus/cuda/include/vector_types.h"
 #include "xla/stream_executor/blas.h"
-#include "xla/stream_executor/cuda/cuda_activation.h"
 #include "xla/stream_executor/cuda/cuda_blas_utils.h"
-#include "xla/stream_executor/cuda/cuda_helpers.h"
 #include "xla/stream_executor/cuda/cuda_platform_id.h"
-#include "xla/stream_executor/cuda/cuda_stream.h"
+#include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/gpu/gpu_activation.h"
 #include "xla/stream_executor/gpu/gpu_executor.h"
 #include "xla/stream_executor/gpu/gpu_helpers.h"
 #include "xla/stream_executor/gpu/gpu_stream.h"
@@ -45,8 +53,11 @@ limitations under the License.
 #include "xla/stream_executor/plugin_registry.h"
 #include "xla/stream_executor/scratch_allocator.h"
 #include "xla/stream_executor/stream_executor.h"
+#include "tsl/platform/errors.h"
 #include "tsl/platform/logging.h"
+#include "tsl/platform/statusor.h"
 #include "tsl/platform/tensor_float_32_utils.h"
+#include "tsl/protobuf/dnn.pb.h"
 
 namespace stream_executor {
 namespace cuda {
@@ -833,7 +844,9 @@ absl::Status CUDABlas::DoBlasGemmStridedBatchedWithAlgorithm(
 }
 
 bool CUDABlas::GetBlasGemmAlgorithms(
-    Stream *stream, std::vector<blas::AlgorithmType> *out_algorithms) {
+    Stream *stream, const gpu::MatrixDescriptor &,
+    const gpu::MatrixDescriptor &, gpu::OutputMatrixDescriptor *, const void *,
+    const void *, std::vector<blas::AlgorithmType> *out_algorithms) {
   // cublasGemmAlgo_t (and the function that accepts this type, cublasGemmEx)
   // were first introduced in CUDA 8.
   //
@@ -942,45 +955,18 @@ absl::Status CUDABlas::DoBlasGemmBatchedInternal(
 
   const size_t size = batch_count * sizeof(CUDA_T *);
 
-  // Device-side copy of pointers to matrices.
-  DeviceMemory<CUDA_T *> a;
-  DeviceMemory<CUDA_T *> b;
-  DeviceMemory<CUDA_T *> c;
-
-  // If temporary space is allocated for device-side copies of pointers to
-  // matrices, that temporary space should not be freed until this function
-  // returns. Although the values for these unique_ptrs are not set here, they
-  // are declared at this scope so they will be destroyed when the function
-  // returns.
-  //
-  // If a scratch allocator is provided, these pointers will not be used at all.
-  std::unique_ptr<TemporaryDeviceMemory<CUDA_T *>> a_temporary;
-  std::unique_ptr<TemporaryDeviceMemory<CUDA_T *>> b_temporary;
-  std::unique_ptr<TemporaryDeviceMemory<CUDA_T *>> c_temporary;
-
-  // Decide how to allocate device-side copy of pointers to matrices based on
-  // whether a scratch allocator was passed.
-  if (scratch_allocator != nullptr) {
-    TF_ASSIGN_OR_RETURN(DeviceMemory<uint8_t> a_bytes,
-                        scratch_allocator->AllocateBytes(size));
-    TF_ASSIGN_OR_RETURN(DeviceMemory<uint8_t> b_bytes,
-                        scratch_allocator->AllocateBytes(size));
-    TF_ASSIGN_OR_RETURN(DeviceMemory<uint8_t> c_bytes,
-                        scratch_allocator->AllocateBytes(size));
-    a = DeviceMemory<CUDA_T *>(a_bytes);
-    b = DeviceMemory<CUDA_T *>(b_bytes);
-    c = DeviceMemory<CUDA_T *>(c_bytes);
-  } else {
-    TF_ASSIGN_OR_RETURN(a_temporary,
-                        stream->AllocateTemporaryArray<CUDA_T *>(batch_count));
-    TF_ASSIGN_OR_RETURN(b_temporary,
-                        stream->AllocateTemporaryArray<CUDA_T *>(batch_count));
-    TF_ASSIGN_OR_RETURN(c_temporary,
-                        stream->AllocateTemporaryArray<CUDA_T *>(batch_count));
-    a = DeviceMemory<CUDA_T *>(*a_temporary->mutable_device_memory());
-    b = DeviceMemory<CUDA_T *>(*b_temporary->mutable_device_memory());
-    c = DeviceMemory<CUDA_T *>(*c_temporary->mutable_device_memory());
+  if (scratch_allocator == nullptr) {
+    return absl::InternalError("scratch_allocator is null");
   }
+  TF_ASSIGN_OR_RETURN(DeviceMemory<uint8_t> a_bytes,
+                      scratch_allocator->AllocateBytes(size));
+  TF_ASSIGN_OR_RETURN(DeviceMemory<uint8_t> b_bytes,
+                      scratch_allocator->AllocateBytes(size));
+  TF_ASSIGN_OR_RETURN(DeviceMemory<uint8_t> c_bytes,
+                      scratch_allocator->AllocateBytes(size));
+  DeviceMemory<CUDA_T *> a(a_bytes);
+  DeviceMemory<CUDA_T *> b(b_bytes);
+  DeviceMemory<CUDA_T *> c(c_bytes);
 
   if (!stream->ThenMemcpy(&a, a_raw_ptrs.data(), size).ok() ||
       !stream->ThenMemcpy(&b, b_raw_ptrs.data(), size).ok() ||
@@ -1471,5 +1457,6 @@ void initialize_cublas() {
 }  // namespace cuda
 }  // namespace stream_executor
 
-REGISTER_MODULE_INITIALIZER(register_cublas,
-                            { stream_executor::cuda::initialize_cublas(); });
+STREAM_EXECUTOR_REGISTER_MODULE_INITIALIZER(register_cublas, {
+  stream_executor::cuda::initialize_cublas();
+});

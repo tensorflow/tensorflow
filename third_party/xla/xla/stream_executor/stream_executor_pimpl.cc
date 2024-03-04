@@ -21,15 +21,13 @@ limitations under the License.
 
 #include <cstdint>
 #include <memory>
+#include <utility>
 
-#include "absl/base/const_init.h"
 #include "absl/functional/any_invocable.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
-#include "absl/strings/ascii.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
-#include "absl/synchronization/notification.h"
 #include "absl/types/span.h"
 #include "xla/stream_executor/blas.h"
 #include "xla/stream_executor/command_buffer.h"
@@ -38,6 +36,7 @@ limitations under the License.
 #include "xla/stream_executor/dnn.h"
 #include "xla/stream_executor/event.h"
 #include "xla/stream_executor/fft.h"
+#include "xla/stream_executor/host_memory_allocation.h"
 #include "xla/stream_executor/kernel.h"
 #include "xla/stream_executor/kernel_spec.h"
 #include "xla/stream_executor/launch_dim.h"
@@ -62,14 +61,6 @@ std::string StackTraceIfVLOG10() {
   }
 }
 
-// Make sure the executor is done with its work; we know (because this isn't
-// publicly visible) that all enqueued work is quick.
-void BlockOnThreadExecutor(tsl::thread::ThreadPool* executor) {
-  absl::Notification n;
-  executor->Schedule([&n]() { n.Notify(); });
-  n.WaitForNotification();
-}
-
 }  // namespace
 
 // Get per-device memory limit in bytes. Returns 0 if
@@ -88,15 +79,11 @@ StreamExecutor::StreamExecutor(
     : platform_(platform),
       implementation_(std::move(implementation)),
       device_ordinal_(device_ordinal),
-      background_threads_(new tsl::thread::ThreadPool(
-          tsl::Env::Default(), "stream_executor", kNumBackgroundThreads)),
       live_stream_count_(0),
       memory_limit_bytes_(GetMemoryLimitBytes()),
       allocator_(this) {}
 
 StreamExecutor::~StreamExecutor() {
-  BlockOnThreadExecutor(background_threads_.get());
-
   if (live_stream_count_.load() != 0) {
     LOG(WARNING) << "Not all streams were deallocated at executor destruction "
                  << "time. This may lead to unexpected/bad behavior - "
@@ -171,183 +158,6 @@ const DeviceDescription& StreamExecutor::GetDeviceDescription() const {
 
 int64_t StreamExecutor::GetDeviceLoad() const {
   return implementation_->GetDeviceLoad();
-}
-
-absl::Status StreamExecutor::GetConvolveRunners(
-    bool use_cudnn_frontend, dnn::ConvolutionKind kind,
-    dnn::DataType input_type, dnn::DataType output_type, Stream* stream,
-    const dnn::BatchDescriptor& input_descriptor, DeviceMemoryBase input_data,
-    const dnn::FilterDescriptor& filter_descriptor,
-    DeviceMemoryBase filter_data, const dnn::BatchDescriptor& output_descriptor,
-    DeviceMemoryBase output_data,
-    const dnn::ConvolutionDescriptor& convolution_descriptor, bool use_fallback,
-    ScratchAllocator* scratch_allocator, const NumericOptions& numeric_options,
-    std::vector<std::unique_ptr<const dnn::ConvRunner>>* out_exec_plans) {
-  dnn::DnnSupport* dnn_support = AsDnn();
-  if (!dnn_support) {
-    return absl::UnimplementedError("DNN library is not found.");
-  }
-  return dnn_support->GetConvolveRunners(
-      use_cudnn_frontend, kind, input_type, output_type, stream,
-      input_descriptor, input_data, filter_descriptor, filter_data,
-      output_descriptor, output_data, convolution_descriptor, use_fallback,
-      scratch_allocator, numeric_options, out_exec_plans);
-}
-
-absl::Status StreamExecutor::GetGraphConvolveRunners(
-    dnn::ConvolutionKind kind, dnn::DataType input_type,
-    dnn::DataType output_type, Stream* stream,
-    const dnn::BatchDescriptor& input_descriptor,
-    const dnn::FilterDescriptor& filter_descriptor,
-    const dnn::BatchDescriptor& output_descriptor,
-    const dnn::ConvolutionDescriptor& convolution_descriptor, bool use_fallback,
-    const NumericOptions& numeric_options,
-    std::vector<std::unique_ptr<const dnn::GraphConvRunner>>* out_exec_plans,
-    std::string serialized_graph) {
-  dnn::DnnSupport* dnn_support = AsDnn();
-  if (!dnn_support) {
-    return absl::UnimplementedError("DNN library is not found.");
-  }
-  return dnn_support->GetGraphConvolveRunners(
-      kind, input_type, output_type, stream, input_descriptor,
-      filter_descriptor, output_descriptor, convolution_descriptor,
-      use_fallback, numeric_options, out_exec_plans, serialized_graph);
-}
-
-absl::Status StreamExecutor::GetFusedConvolveRunners(
-    bool use_cudnn_frontend, dnn::ConvolutionKind kind,
-    dnn::DataType input_type, dnn::DataType bias_type,
-    dnn::DataType output_type, double conv_input_scale, double side_input_scale,
-    double leakyrelu_alpha, Stream* stream,
-    const dnn::BatchDescriptor& input_descriptor,
-    const dnn::FilterDescriptor& filter_descriptor,
-    const dnn::BatchDescriptor& bias_descriptor,
-    const dnn::BatchDescriptor& output_descriptor,
-    const dnn::ConvolutionDescriptor& convolution_descriptor, bool use_fallback,
-    dnn::ActivationMode activation_mode, const NumericOptions& numeric_options,
-    std::vector<std::unique_ptr<const dnn::FusedConvRunner>>* out_exec_plans) {
-  dnn::DnnSupport* dnn_support = AsDnn();
-  if (!dnn_support) {
-    return absl::UnimplementedError("DNN library is not found.");
-  }
-  return dnn_support->GetFusedConvolveRunners(
-      use_cudnn_frontend, kind, input_type, bias_type, output_type,
-      conv_input_scale, side_input_scale, leakyrelu_alpha, stream,
-      input_descriptor, filter_descriptor, bias_descriptor, output_descriptor,
-      convolution_descriptor, use_fallback, activation_mode, numeric_options,
-      out_exec_plans);
-}
-
-absl::Status StreamExecutor::GetFusedMatmulRunners(
-    bool use_cudnn_frontend, dnn::DataType input_type, dnn::DataType bias_type,
-    dnn::DataType output_type, Stream* stream, bool trans_a, bool trans_b,
-    uint64_t m, uint64_t n, uint64_t k, int64_t lda, int64_t ldb, int64_t ldc,
-    dnn::ActivationMode activation_mode, bool use_fallback,
-    const NumericOptions& numeric_options,
-    std::vector<std::unique_ptr<const dnn::FusedMatmulRunner>>*
-        out_exec_plans) {
-  dnn::DnnSupport* dnn_support = AsDnn();
-  if (!dnn_support) {
-    return absl::UnimplementedError("DNN library is not found.");
-  }
-
-  return dnn_support->GetFusedMatmulRunners(
-      use_cudnn_frontend, input_type, bias_type, output_type, stream, trans_a,
-      trans_b, m, n, k, lda, ldb, ldc, activation_mode, use_fallback,
-      numeric_options, out_exec_plans);
-}
-
-bool StreamExecutor::GetMIOpenConvolveAlgorithms(
-    dnn::ConvolutionKind kind, dnn::DataType element_type, Stream* stream,
-    const dnn::BatchDescriptor& input_descriptor, DeviceMemoryBase input_data,
-    const dnn::FilterDescriptor& filter_descriptor,
-    DeviceMemoryBase filter_data, const dnn::BatchDescriptor& output_descriptor,
-    DeviceMemoryBase output_data,
-    const dnn::ConvolutionDescriptor& convolution_descriptor,
-    ScratchAllocator* scratch_allocator,
-    std::vector<dnn::ProfileResult>* out_algorithms) {
-  dnn::DnnSupport* dnn_support = AsDnn();
-  if (!dnn_support) {
-    return false;
-  }
-  return dnn_support->GetMIOpenConvolveAlgorithms(
-      kind, element_type, stream, input_descriptor, input_data,
-      filter_descriptor, filter_data, output_descriptor, output_data,
-      convolution_descriptor, scratch_allocator, out_algorithms);
-}
-
-bool StreamExecutor::GetRnnAlgorithms(
-    std::vector<dnn::AlgorithmDesc>* out_algorithms) {
-  dnn::DnnSupport* dnn_support = AsDnn();
-  if (!dnn_support) {
-    return false;
-  }
-  return dnn_support->GetRnnAlgorithms(out_algorithms);
-}
-
-bool StreamExecutor::GetBlasGemmAlgorithms(
-    Stream* stream, std::vector<blas::AlgorithmType>* out_algorithms) {
-  blas::BlasSupport* blas_support = AsBlas();
-  if (!blas_support) {
-    return false;
-  }
-  return blas_support->GetBlasGemmAlgorithms(stream, out_algorithms);
-}
-
-absl::StatusOr<std::unique_ptr<dnn::RnnDescriptor>>
-StreamExecutor::createRnnDescriptor(
-    int num_layers, int hidden_size, int input_size, int cell_size,
-    int batch_size, dnn::RnnInputMode input_mode,
-    dnn::RnnDirectionMode direction_mode, dnn::RnnMode rnn_mode,
-    dnn::DataType data_type, const dnn::AlgorithmConfig& algorithm_config,
-    const NumericOptions& numeric_options, float dropout, uint64_t seed,
-    ScratchAllocator* state_allocator, bool use_padded_io) {
-  dnn::DnnSupport* dnn_support = AsDnn();
-  if (!dnn_support) {
-    return absl::UnknownError("Fail to find the dnn implementation.");
-  }
-  return dnn_support->createRnnDescriptor(
-      num_layers, hidden_size, input_size, cell_size, batch_size, input_mode,
-      direction_mode, rnn_mode, data_type, algorithm_config, numeric_options,
-      dropout, seed, state_allocator, use_padded_io);
-}
-
-absl::StatusOr<std::unique_ptr<dnn::RnnSequenceTensorDescriptor>>
-StreamExecutor::createRnnSequenceTensorDescriptor(int max_seq_length,
-                                                  int batch_size, int data_size,
-                                                  dnn::DataType data_type) {
-  dnn::DnnSupport* dnn_support = AsDnn();
-  if (!dnn_support) {
-    return absl::UnknownError("Fail to find the dnn implementation.");
-  }
-  return dnn_support->createRnnSequenceTensorDescriptor(
-      max_seq_length, batch_size, data_size, data_type);
-}
-
-absl::StatusOr<std::unique_ptr<dnn::RnnSequenceTensorDescriptor>>
-StreamExecutor::createRnnSequenceTensorDescriptor(
-    int max_seq_length, int batch_size, int data_size,
-    const absl::Span<const int>& seq_lengths, bool time_major,
-    dnn::DataType data_type) {
-  dnn::DnnSupport* dnn_support = AsDnn();
-  if (!dnn_support) {
-    return absl::UnknownError("Fail to find the dnn implementation.");
-  }
-  return dnn_support->createRnnSequenceTensorDescriptor(
-      max_seq_length, batch_size, data_size, seq_lengths, time_major,
-      data_type);
-}
-
-absl::StatusOr<std::unique_ptr<dnn::RnnStateTensorDescriptor>>
-StreamExecutor::createRnnStateTensorDescriptor(int num_layer, int batch_size,
-                                               int data_size,
-                                               dnn::DataType data_type) {
-  dnn::DnnSupport* dnn_support = AsDnn();
-  if (!dnn_support) {
-    return absl::UnknownError("Fail to find the dnn implementation.");
-  }
-  return dnn_support->createRnnStateTensorDescriptor(num_layer, batch_size,
-                                                     data_size, data_type);
 }
 
 dnn::DnnSupport* StreamExecutor::AsDnn() {
@@ -481,28 +291,29 @@ absl::Status StreamExecutor::CollectiveMemoryDeallocate(void* location) {
   return implementation_->CollectiveMemoryDeallocate(location);
 }
 
-void* StreamExecutor::HostMemoryAllocate(uint64_t size) {
+absl::StatusOr<std::unique_ptr<HostMemoryAllocation>>
+StreamExecutor::HostMemoryAllocate(uint64_t size) {
   void* buffer = implementation_->HostMemoryAllocate(size);
   VLOG(1) << "Called StreamExecutor::HostMemoryAllocate(size=" << size
           << ") returns " << buffer << StackTraceIfVLOG10();
-  return buffer;
+  if (buffer == nullptr && size > 0) {
+    return absl::InternalError(
+        absl::StrFormat("Failed to allocate HostMemory of size %d", size));
+  }
+  return std::make_unique<HostMemoryAllocation>(buffer, size, implementation());
 }
 
-void StreamExecutor::HostMemoryDeallocate(void* location) {
-  VLOG(1) << "Called StreamExecutor::HostMemoryDeallocate(location=" << location
-          << ")" << StackTraceIfVLOG10();
+void StreamExecutor::HostMemoryDeallocate(void* data, uint64_t size) {
+  VLOG(1) << "Called StreamExecutor::HostMemoryDeallocate(data=" << data << ")"
+          << StackTraceIfVLOG10();
 
-  return implementation_->HostMemoryDeallocate(location);
+  return implementation_->HostMemoryDeallocate(data);
 }
 
 bool StreamExecutor::SynchronizeAllActivity() {
   VLOG(1) << "Called StreamExecutor::SynchronizeAllActivity()"
           << StackTraceIfVLOG10();
   bool ok = implementation_->SynchronizeAllActivity();
-
-  // This should all be quick and infallible work, so we can perform the
-  // synchronization even in the case of failure.
-  BlockOnThreadExecutor(background_threads_.get());
 
   return ok;
 }
@@ -666,10 +477,6 @@ bool StreamExecutor::DeviceMemoryUsage(int64_t* free, int64_t* total) const {
   return implementation_->DeviceMemoryUsage(free, total);
 }
 
-void StreamExecutor::EnqueueOnBackgroundThread(std::function<void()> task) {
-  background_threads_->Schedule(std::move(task));
-}
-
 std::optional<AllocatorStats> StreamExecutor::GetAllocatorStats() {
   return implementation_->GetAllocatorStats();
 }
@@ -754,18 +561,15 @@ absl::StatusOr<Stream*> StreamExecutorMemoryAllocator::GetStream(
       << "The logic below only works for synchronous allocators";
   TF_ASSIGN_OR_RETURN(StreamExecutor * executor,
                       GetStreamExecutor(device_ordinal));
-  Stream* out = [&] {
-    absl::MutexLock lock(&mutex_);
-    if (!streams_.count(device_ordinal)) {
-      auto p = streams_.emplace(std::piecewise_construct,
-                                std::forward_as_tuple(device_ordinal),
-                                std::forward_as_tuple(executor));
-      p.first->second.Init();
-      return &p.first->second;
-    }
-    return &streams_.at(device_ordinal);
-  }();
-  return out;
+  absl::MutexLock lock(&mutex_);
+  if (!streams_.count(device_ordinal)) {
+    auto p = streams_.emplace(std::piecewise_construct,
+                              std::forward_as_tuple(device_ordinal),
+                              std::forward_as_tuple(executor));
+    TF_RETURN_IF_ERROR(p.first->second.Initialize());
+    return &p.first->second;
+  }
+  return &streams_.at(device_ordinal);
 }
 
 }  // namespace stream_executor

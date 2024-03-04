@@ -27,6 +27,7 @@ limitations under the License.
 #include "xla/service/hlo_module_config.h"
 #include "xla/statusor.h"
 #include "xla/stream_executor/kernel_spec.h"
+#include "xla/stream_executor/launch_dim.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/types.h"
 #include "xla/xla_data.pb.h"
@@ -91,6 +92,13 @@ absl::Status ExecuteKernelOnStream(const se::Kernel& kernel,
                                    const LaunchDimensions& dims,
                                    se::Stream* stream);
 
+// Runs loaded kernel on the stream with the provided arguments.
+absl::Status ExecuteKernelOnStream(const se::Kernel& kernel,
+                                   absl::Span<const se::DeviceMemoryBase> args,
+                                   const LaunchDimensions& dims,
+                                   const se::ClusterDim& cluster_dim,
+                                   se::Stream* stream);
+
 // Initializes `buffer` with random data on `stream`.
 // `rng_state` is an inout parameter for the pseudorandom generator state.
 // `buffer_type` determines what buffer would be filled out with.
@@ -102,6 +110,9 @@ void InitializeBuffer(se::Stream* stream, PrimitiveType buffer_type,
 
 absl::StatusOr<se::dnn::ConvolutionKind> GetDNNConvKindFromCudnnConvKind(
     CudnnConvKind kind);
+
+absl::StatusOr<se::dnn::NormKind> GetDNNNormKindFromCudnnNormKind(
+    CudnnNormKind kind);
 
 absl::StatusOr<se::dnn::FusedMHAKind> GetDNNFusedMHAKindFromCudnnfMHAKind(
     CudnnfMHAKind kind);

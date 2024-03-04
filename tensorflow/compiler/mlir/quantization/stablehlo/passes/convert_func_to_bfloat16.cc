@@ -47,7 +47,29 @@ class BFloat16TypeConverter : public TypeConverter {
   }
 };
 
-// An Op is illegal iff it is non-UQ op and it contains qint types.
+// This helper function makes legality check easier. Both convert ops in the
+// patterns below are considered legal:
+//  - BitcastConvertOp(i32 -> f32) + ConvertOp(f32 -> bf16)
+//  - ConvertOp(bf16 -> f32) -> BitcastConvertOp(f32 -> i32)
+template <typename ConvertOp, typename OtherConvertOp>
+bool IsConvertOpLegal(ConvertOp convert_op, BFloat16TypeConverter &converter) {
+  if (!converter.isLegal(convert_op.getOperand().getType())) {
+    auto other_convert_op = dyn_cast_or_null<OtherConvertOp>(
+        convert_op.getOperand().getDefiningOp());
+    return other_convert_op &&
+           converter.isLegal(other_convert_op.getOperand().getType());
+  } else if (!converter.isLegal(convert_op.getResult().getType())) {
+    if (!convert_op.getResult().hasOneUse()) {
+      return false;
+    }
+    auto other_convert_op = dyn_cast_or_null<OtherConvertOp>(
+        *convert_op.getResult().getUsers().begin());
+    return other_convert_op &&
+           converter.isLegal(other_convert_op.getResult().getType());
+  }
+  return true;
+}
+
 class BFloat16TypeConversionTarget : public ConversionTarget {
  public:
   explicit BFloat16TypeConversionTarget(MLIRContext &ctx,
@@ -58,6 +80,15 @@ class BFloat16TypeConversionTarget : public ConversionTarget {
       // types do not contain.
       if (auto func = dyn_cast<func::FuncOp>(op)) {
         if (!converter_.isSignatureLegal(func.getFunctionType())) return false;
+      } else if (auto bitcast_convert_op =
+                     dyn_cast<mlir::stablehlo::BitcastConvertOp>(op)) {
+        return IsConvertOpLegal<mlir::stablehlo::BitcastConvertOp,
+                                mlir::stablehlo::ConvertOp>(bitcast_convert_op,
+                                                            converter_);
+      } else if (auto convert_op = dyn_cast<mlir::stablehlo::ConvertOp>(op)) {
+        return IsConvertOpLegal<mlir::stablehlo::ConvertOp,
+                                mlir::stablehlo::BitcastConvertOp>(convert_op,
+                                                                   converter_);
       }
       return converter_.isLegal(op);
     });
@@ -69,13 +100,17 @@ class BFloat16TypeConversionTarget : public ConversionTarget {
 
 class BFloat16TypePattern : public ConversionPattern {
  public:
-  BFloat16TypePattern(MLIRContext *ctx, TypeConverter &converter)
+  BFloat16TypePattern(TypeConverter &converter, MLIRContext *ctx)
       : ConversionPattern(converter, MatchAnyOpTypeTag(), /*benefit=*/1, ctx) {}
 
   LogicalResult matchAndRewrite(
       Operation *op, ArrayRef<Value> operands,
       ConversionPatternRewriter &rewriter) const override {
     if (getTypeConverter()->isLegal(op)) {
+      return failure();
+    }
+    if (isa<mlir::stablehlo::BitcastConvertOp>(op)) {
+      // Skip BitcastConvertOp, which is handled by the other pattern.
       return failure();
     }
 
@@ -118,6 +153,42 @@ class BFloat16TypePattern : public ConversionPattern {
     return success();
   }
 };
+
+class BitcastConvertOpPattern
+    : public OpConversionPattern<mlir::stablehlo::BitcastConvertOp> {
+ public:
+  using OpConversionPattern::OpConversionPattern;
+
+  LogicalResult matchAndRewrite(
+      mlir::stablehlo::BitcastConvertOp op,
+      mlir::stablehlo::BitcastConvertOpAdaptor adaptor,
+      ConversionPatternRewriter &rewriter) const override {
+    bool is_input_legal =
+        getTypeConverter()->isLegal(op.getOperand().getType());
+    bool is_output_legal =
+        getTypeConverter()->isLegal(op.getResult().getType());
+    if (is_input_legal && is_output_legal) {
+      return failure();
+    } else if (is_input_legal) {
+      // output is f32, we bitcast_convert to f32 and then convert to bf16.
+      Value output = rewriter.create<mlir::stablehlo::BitcastConvertOp>(
+          op->getLoc(), op.getResult().getType(), adaptor.getOperand());
+      rewriter.replaceOpWithNewOp<mlir::stablehlo::ConvertOp>(
+          op, getTypeConverter()->convertType(op.getResult().getType()),
+          output);
+    } else if (is_output_legal) {
+      // input is f32, we convert from bf16 and then bitcast_convert.
+      Value output = rewriter.create<mlir::stablehlo::ConvertOp>(
+          op->getLoc(), op.getOperand().getType(), adaptor.getOperand());
+      rewriter.replaceOpWithNewOp<mlir::stablehlo::BitcastConvertOp>(
+          op, op.getResult().getType(), output);
+    } else {
+      // Both input/output are f32. Convert to no-op.
+      rewriter.replaceOp(op, adaptor.getOperand());
+    }
+    return success();
+  }
+};
 }  // namespace
 
 #define GEN_PASS_DEF_CONVERTFUNCTOBFLOAT16PASS
@@ -140,7 +211,8 @@ void ConvertFuncToBfloat16Pass::runOnOperation() {
   RewritePatternSet patterns(context);
 
   BFloat16TypeConverter converter;
-  patterns.add<BFloat16TypePattern>(context, converter);
+  patterns.add<BFloat16TypePattern, BitcastConvertOpPattern>(converter,
+                                                             context);
   populateFunctionOpInterfaceTypeConversionPattern<func::FuncOp>(patterns,
                                                                  converter);
   BFloat16TypeConversionTarget target(*context, converter);

@@ -17,13 +17,15 @@ limitations under the License.
 #include <vector>
 
 #include <gtest/gtest.h>
+#include "absl/strings/ascii.h"
 #include "xla/service/platform_util.h"
 #include "xla/stream_executor/gpu/gpu_test_kernels.h"
 #include "xla/stream_executor/launch_dim.h"
-#include "xla/stream_executor/multi_platform_manager.h"
 #include "xla/stream_executor/platform.h"
+#include "xla/stream_executor/platform_manager.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
+#include "tsl/platform/statusor.h"
 #include "tsl/platform/test.h"
 
 namespace stream_executor::gpu {
@@ -33,7 +35,7 @@ TEST(GpuKernelTest, Add) {
                                    DeviceMemory<int32_t>>;
   auto name = absl::AsciiStrToUpper(
       xla::PlatformUtil::CanonicalPlatformName("gpu").value());
-  Platform* platform = MultiPlatformManager::PlatformWithName(name).value();
+  Platform* platform = PlatformManager::PlatformWithName(name).value();
   StreamExecutor* executor = platform->ExecutorForDevice(0).value();
 
   Stream stream(executor);
@@ -48,8 +50,7 @@ TEST(GpuKernelTest, Add) {
       reinterpret_cast<const char*>(&internal::kAddI32KernelModule[0]), "add");
 #endif
 
-  AddI32Kernel add(executor);
-  ASSERT_TRUE(executor->GetKernel(spec, &add).ok());
+  TF_ASSERT_OK_AND_ASSIGN(auto add, AddI32Kernel::Create(executor, spec));
 
   int64_t length = 4;
   int64_t byte_length = sizeof(int32_t) * length;

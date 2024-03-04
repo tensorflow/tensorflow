@@ -77,7 +77,7 @@ class SkipDatasetOp::Dataset : public DatasetBase {
 
   Status InputDatasets(std::vector<const DatasetBase*>* inputs) const override {
     inputs->push_back(input_);
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   Status CheckExternalState() const override {
@@ -99,7 +99,7 @@ class SkipDatasetOp::Dataset : public DatasetBase {
     Node* count = nullptr;
     TF_RETURN_IF_ERROR(b->AddScalar(count_, &count));
     TF_RETURN_IF_ERROR(b->AddDataset(this, {input_graph_node, count}, output));
-    return OkStatus();
+    return absl::OkStatus();
   }
 
  private:
@@ -114,7 +114,7 @@ class SkipDatasetOp::Dataset : public DatasetBase {
                            std::vector<Tensor>* out_tensors,
                            bool* end_of_sequence) override {
       *end_of_sequence = true;
-      return OkStatus();
+      return absl::OkStatus();
     }
 
    protected:
@@ -126,12 +126,12 @@ class SkipDatasetOp::Dataset : public DatasetBase {
 
     Status SaveInternal(SerializationContext* ctx,
                         IteratorStateWriter* writer) override {
-      return OkStatus();
+      return absl::OkStatus();
     }
 
     Status RestoreInternal(IteratorContext* ctx,
                            IteratorStateReader* reader) override {
-      return OkStatus();
+      return absl::OkStatus();
     }
   };
 
@@ -153,7 +153,7 @@ class SkipDatasetOp::Dataset : public DatasetBase {
 
       if (!input_impl_) {
         *end_of_sequence = true;
-        return OkStatus();
+        return absl::OkStatus();
       }
 
       if (i_ < dataset()->count_) {
@@ -164,7 +164,7 @@ class SkipDatasetOp::Dataset : public DatasetBase {
         if (*end_of_sequence) {
           // We reached the end before the count was reached.
           input_impl_.reset();
-          return OkStatus();
+          return absl::OkStatus();
         }
       }
 
@@ -174,7 +174,7 @@ class SkipDatasetOp::Dataset : public DatasetBase {
       if (*end_of_sequence) {
         input_impl_.reset();
       }
-      return OkStatus();
+      return absl::OkStatus();
     }
 
    protected:
@@ -193,7 +193,7 @@ class SkipDatasetOp::Dataset : public DatasetBase {
       if (input_impl_) {
         TF_RETURN_IF_ERROR(SaveInput(ctx, writer, input_impl_));
       }
-      return OkStatus();
+      return absl::OkStatus();
     }
 
     Status RestoreInternal(IteratorContext* ctx,
@@ -208,7 +208,7 @@ class SkipDatasetOp::Dataset : public DatasetBase {
       } else {
         input_impl_.reset();
       }
-      return OkStatus();
+      return absl::OkStatus();
     }
 
    private:

@@ -38,6 +38,7 @@ limitations under the License.
 #include "tensorflow/compiler/jit/xla_compile_util.h"
 #include "tensorflow/compiler/tf2xla/xla_compiler.h"
 #include "xla/client/local_client.h"
+#include "tensorflow/core/framework/metrics.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/lib/core/threadpool.h"
 #include "tensorflow/core/platform/mutex.h"
@@ -317,6 +318,7 @@ DeviceCompiler<ExecutableType, ClientType>::CompileStrict(
     cache_value.compilation_status = loaded_executable->status();
     if (loaded_executable->ok()) {
       out_executable = *std::move(*loaded_executable);
+      metrics::UpdatePersistentCacheLoadCount();
     }
   } else {
     auto built_executable =

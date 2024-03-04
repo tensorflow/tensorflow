@@ -28,6 +28,13 @@ limitations under the License.
 #include "xla/pjrt/exceptions.h"
 #include "xla/python/python_ref_manager.h"
 #include "tsl/platform/logging.h"
+#include "tsl/platform/platform.h"
+
+#ifdef PLATFORM_GOOGLE
+#define Py_BUILD_CORE
+#include "internal/pycore_frame.h"
+#undef Py_BUILD_CORE
+#endif  // PLATFORM_GOOGLE
 
 namespace xla {
 
@@ -54,7 +61,22 @@ Traceback::Traceback() {
     Py_INCREF(py_frame->f_code);
     frames_.emplace_back(py_frame->f_code, py_frame->f_lasti * kLastiWordBytes);
   }
-#else   // PY_VERSION_HEX < 0x030b0000
+#else  // PY_VERSION_HEX < 0x030b0000
+
+#ifdef PLATFORM_GOOGLE
+  // This code is equivalent to the version using public APIs, but it saves us
+  // an allocation of one object per stack frame. However, this is definitely
+  // violating the API contract of CPython, so we only use this where we can be
+  // confident we know exactly which CPython we are using (internal to Google).
+  // Feel free to turn this on if you like, but it might break at any time!
+  for (_PyInterpreterFrame* f = thread_state->cframe->current_frame;
+       f != nullptr; f = f->previous) {
+    if (_PyFrame_IsIncomplete(f)) continue;
+    Py_INCREF(f->f_code);
+    frames_.emplace_back(f->f_code,
+                         _PyInterpreterFrame_LASTI(f) * sizeof(_Py_CODEUNIT));
+  }
+#else   // PLATFORM_GOOGLE
   PyFrameObject* next;
   for (PyFrameObject* py_frame = PyThreadState_GetFrame(thread_state);
        py_frame != nullptr; py_frame = next) {
@@ -62,6 +84,8 @@ Traceback::Traceback() {
     next = PyFrame_GetBack(py_frame);
     Py_XDECREF(py_frame);
   }
+#endif  // PLATFORM_GOOGLE
+
 #endif  // PY_VERSION_HEX < 0x030b0000
 }
 

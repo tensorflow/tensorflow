@@ -22,18 +22,14 @@ limitations under the License.
 #include <cstdint>
 
 #include "absl/functional/any_invocable.h"
-#include "xla/stream_executor/blas.h"
-#include "xla/stream_executor/host/host_stream.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/stream_executor/stream_executor_internal.h"
-#include "tsl/platform/errors.h"
 
 namespace stream_executor {
 namespace host {
 
 // An implementation of StreamExecutor that does no communication or interaction
 // with a device, but DOES perform memory operations backed by the host.
-// Plugin routines (BLAS) are also supported and functional.
 // Kernel invocations will fail, but host callbacks may be enqueued on this
 // executor and its associated stream, and should follow standard ordering
 // semantics.
@@ -134,19 +130,8 @@ class HostExecutor : public internal::StreamExecutorInterface {
     return true;
   }
 
-  blas::BlasSupport* CreateBlas() override;
-
-  dnn::DnnSupport* CreateDnn() override { return nullptr; }
-
-  fft::FftSupport* CreateFft() override;
-
   std::unique_ptr<internal::EventInterface> CreateEventImplementation()
       override;
-
-  std::unique_ptr<internal::KernelInterface> CreateKernelImplementation()
-      override {
-    return nullptr;
-  }
 
   std::unique_ptr<internal::StreamInterface> GetStreamImplementation() override;
 

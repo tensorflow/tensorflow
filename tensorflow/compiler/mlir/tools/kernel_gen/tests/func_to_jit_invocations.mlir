@@ -1,11 +1,11 @@
 // RUN: kernel-gen-opt %s --split-input-file \
 // RUN:   --func-to-jit-invocation="tile-sizes=1,2,3 unroll-factors=3,2,1 \
-// RUN:       max-supported-rank=32 enable-ftz=false cpu-codegen=false" | \
+// RUN:       enable-ftz=false cpu-codegen=false" | \
 // RUN: FileCheck %s
 
 // RUN: kernel-gen-opt %s --split-input-file \
 // RUN:   --func-to-jit-invocation="tile-sizes=1,2,3 unroll-factors=3,2,1 \
-// RUN:       max-supported-rank=32 enable-ftz=false cpu-codegen=false \
+// RUN:       enable-ftz=false cpu-codegen=false \
 // RUN:       jit_i64_indexed_for_large_tensors=true" | \
 // RUN: FileCheck %s --check-prefix=CHECK-JFLT
 
@@ -30,7 +30,6 @@ func.func @unary_tanh(%arg : tensor<*xf32>) -> tensor<*xf32> {
 // CHECK-SAME:      {
 // CHECK-SAME:        cpuCodegen = false
 // CHECK-SAME:        enableFtz = false
-// CHECK-SAME:        maxSupportedRank = 32 : i64
 // CHECK-SAME:        tileSizes = [1, 2, 3]
 // CHECK-SAME:        unrollFactors = [3, 2, 1]
 // CHECK-SAME:      }
@@ -49,7 +48,6 @@ func.func @unary_tanh(%arg : tensor<*xf32>) -> tensor<*xf32> {
 // CHECK-JFLT-SAME:        cpuCodegen = false
 // CHECK-JFLT-SAME:        enableFtz = false
 // CHECK-JFLT-SAME:        index64Bit = true
-// CHECK-JFLT-SAME:        maxSupportedRank = 32
 // CHECK-JFLT-SAME:        tileSizes = [1, 2, 3]
 // CHECK-JFLT-SAME:        unrollFactors = [3, 2, 1]
 // CHECK-JFLT:         %[[JIT_0:.*]] = tf_framework.jit_execute %[[JIT]](%[[ARG0]])
@@ -82,7 +80,6 @@ func.func @binary_sub(%arg0 : tensor<*xf32>, %arg1 : tensor<*xf32>) -> tensor<*x
 // CHECK-SAME:      {
 // CHECK-SAME:        cpuCodegen = false
 // CHECK-SAME:        enableFtz = false
-// CHECK-SAME:        maxSupportedRank = 32 : i64
 // CHECK-SAME:        tileSizes = [1, 2, 3]
 // CHECK-SAME:        unrollFactors = [3, 2, 1]
 // CHECK-SAME:      }
@@ -114,7 +111,6 @@ func.func @binary_sub(%arg0 : tensor<*xf32>, %arg1 : tensor<*xf32>) -> tensor<*x
 // CHECK-JFLT-SAME:      {
 // CHECK-JFLT-SAME:        cpuCodegen = false
 // CHECK-JFLT-SAME:        enableFtz = false
-// CHECK-JFLT-SAME:        maxSupportedRank = 32 : i64
 // CHECK-JFLT-SAME:        tileSizes = [1, 2, 3]
 // CHECK-JFLT-SAME:        unrollFactors = [3, 2, 1]
 // CHECK-JFLT-SAME:      }
@@ -149,7 +145,6 @@ func.func @reciprocal(%arg0: tensor<*xf32>)
 // CHECK-SAME:     cpuCodegen = false,
 // CHECK-SAME:     enableFtz = false,
 // CHECK-SAME:     index64Bit = false,
-// CHECK-SAME:     maxSupportedRank = 32 : i64,
 // CHECK-SAME:     tileSizes = [1, 2, 3],
 // CHECK-SAME:     unrollFactors = [3, 2, 1]
 // CHECK-SAME:   }
@@ -168,7 +163,6 @@ func.func @reciprocal(%arg0: tensor<*xf32>)
 // CHECK-JFLT-SAME:        cpuCodegen = false
 // CHECK-JFLT-SAME:        enableFtz = false
 // CHECK-JFLT-SAME:        index64Bit = true
-// CHECK-JFLT-SAME:        maxSupportedRank = 32
 // CHECK-JFLT-SAME:        tileSizes = [1, 2, 3]
 // CHECK-JFLT-SAME:        unrollFactors = [3, 2, 1]
 // CHECK-JFLT:         %[[JIT_0:.*]] = tf_framework.jit_execute %[[JIT]](%[[ARG0]])

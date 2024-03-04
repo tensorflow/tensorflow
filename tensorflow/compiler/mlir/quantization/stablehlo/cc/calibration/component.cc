@@ -40,6 +40,7 @@ limitations under the License.
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "tensorflow/cc/saved_model/loader.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/cc/calibration/assign_ids.h"
+#include "tensorflow/compiler/mlir/quantization/stablehlo/cc/calibration/representative_dataset.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/cc/calibration/statistics.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/cc/io.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/cc/saved_model_export.h"
@@ -60,12 +61,13 @@ limitations under the License.
 #include "tsl/platform/statusor.h"
 
 namespace mlir::quant::stablehlo {
-
 namespace {
 
 using ::stablehlo::quantization::AddCalibrationStatistics;
 using ::stablehlo::quantization::AssignIdsToCustomAggregatorOps;
+using ::stablehlo::quantization::CreateRepresentativeDatasetFileMap;
 using ::stablehlo::quantization::QuantizationConfig;
+using ::stablehlo::quantization::RepresentativeDatasetConfig;
 using ::stablehlo::quantization::io::CreateTmpDir;
 using ::stablehlo::quantization::io::GetLocalTmpFileName;
 using ::tensorflow::AssetFileDef;
@@ -77,7 +79,6 @@ using ::tensorflow::quantization::CalibrationOptions;
 using ::tensorflow::quantization::ExportedModel;
 using ::tensorflow::quantization::PreprocessAndFreezeGraph;
 using ::tensorflow::quantization::PyFunctionLibrary;
-using ::tensorflow::quantization::RepresentativeDatasetFile;
 using ::tensorflow::quantization::RunPasses;
 using ::tensorflow::quantization::UnfreezeConstantsAndSaveVariables;
 
@@ -132,7 +133,8 @@ absl::StatusOr<SmallVector<AssetFileDef>> RunExportPasses(
   }
 
   if (absl::Status pass_run_status = RunPasses(
-          /*name=*/export_opts.debug_name,
+          /*name=*/
+          export_opts.debug_name,
           /*add_passes_func=*/
           [dup_constants = export_opts.duplicate_shape_determining_constants](
               PassManager& pm) { AddExportPasses(pm, dup_constants); },
@@ -160,8 +162,6 @@ CalibrationComponent::CalibrationComponent(
     std::unordered_set<std::string> tags,
     absl::flat_hash_map<std::string, SignatureDef> signature_def_map,
     std::vector<std::string> signature_keys,
-    absl::flat_hash_map<std::string, RepresentativeDatasetFile>
-        representative_dataset_file_map,
     const CalibrationOptions& calibration_options)
     : ctx_(ABSL_DIE_IF_NULL(ctx)),                          // Crash OK
       py_function_lib_(ABSL_DIE_IF_NULL(py_function_lib)),  // Crash OK
@@ -170,7 +170,6 @@ CalibrationComponent::CalibrationComponent(
       tags_(std::move(tags)),
       signature_def_map_(std::move(signature_def_map)),
       signature_keys_(std::move(signature_keys)),
-      representative_dataset_file_map_(representative_dataset_file_map),
       calibration_options_(calibration_options) {}
 
 absl::StatusOr<ExportedModel> CalibrationComponent::ExportToSavedModel(
@@ -247,13 +246,23 @@ absl::StatusOr<ModuleOp> CalibrationComponent::Run(
       ExportedModel exported_model,
       ExportToSavedModel(module_op, precalibrated_saved_model_dir));
 
+  // Translates `RepresentativeDatasetConfig`s to signature key ->
+  // `RepresentativeDatasetFile` mapping.
+  const auto dataset_configs =
+      config.static_range_ptq_preset().representative_datasets();
+  const std::vector<RepresentativeDatasetConfig> dataset_config_vector(
+      dataset_configs.begin(), dataset_configs.end());
+  TF_ASSIGN_OR_RETURN(
+      const auto representative_dataset_file_map,
+      CreateRepresentativeDatasetFileMap(dataset_config_vector));
+
   // Runs calibration on the exported model. The statistics will be stored in a
   // separate singleton object `CalibratorSingleton` and are directly added to
   // `exported_model` without re-importing it.
   py_function_lib_->RunCalibration(precalibrated_saved_model_dir,
                                    signature_keys_, tags_, calibration_options_,
                                    /*force_graph_mode_calibration=*/true,
-                                   representative_dataset_file_map_);
+                                   representative_dataset_file_map);
 
   if (absl::Status status =
           AddCalibrationStatistics(*exported_model.mutable_graph_def(),

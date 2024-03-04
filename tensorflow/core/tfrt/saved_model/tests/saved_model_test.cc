@@ -51,7 +51,7 @@ TEST_P(SavedModelTest, BasicV1) {
   //  y = tf.compat.v1.get_variable(name='y', initializer=[1, 2, 3])
   //  r = tf.matmul(x, y)
   std::string saved_model_dir = tensorflow::GetDataDependencyFilepath(
-      "tensorflow/core/tfrt/saved_model/tests/toy_v1");
+      "tensorflow/core/tfrt/saved_model/tests/toy_v1/1");
 
   auto runtime = DefaultTfrtRuntime(/*num_threads=*/1);
   auto options = DefaultSavedModelOptions(runtime.get());
@@ -126,7 +126,7 @@ TEST_P(SavedModelTest, OnlineCostAnalysis) {
   //  y = tf.compat.v1.get_variable(name='y', initializer=[1, 2, 3])
   //  r = tf.matmul(x, y)
   std::string saved_model_dir = tensorflow::GetDataDependencyFilepath(
-      "tensorflow/core/tfrt/saved_model/tests/toy_v1");
+      "tensorflow/core/tfrt/saved_model/tests/toy_v1/1");
 
   auto runtime = DefaultTfrtRuntime(/*num_threads=*/1);
   auto options = DefaultSavedModelOptions(runtime.get());
@@ -258,7 +258,7 @@ TEST(SavedModelTest, RunMultipleSignatures) {
   //  y = tf.compat.v1.get_variable(name='y', initializer=[1, 2, 3])
   //  r = tf.matmul(x, y)
   std::string saved_model_dir = tensorflow::GetDataDependencyFilepath(
-      "tensorflow/core/tfrt/saved_model/tests/toy_v1");
+      "tensorflow/core/tfrt/saved_model/tests/toy_v1/1");
 
   auto runtime = DefaultTfrtRuntime(/*num_threads=*/1);
   auto options = DefaultSavedModelOptions(runtime.get());
@@ -370,7 +370,7 @@ TEST(SavedModelTest, RunMultipleSignatures_OverlappingNodes) {
   //  y = tf.compat.v1.get_variable(name='y', initializer=[1, 2, 3])
   //  r = tf.matmul(x, y)
   std::string saved_model_dir = tensorflow::GetDataDependencyFilepath(
-      "tensorflow/core/tfrt/saved_model/tests/toy_v1");
+      "tensorflow/core/tfrt/saved_model/tests/toy_v1/1");
 
   auto runtime = DefaultTfrtRuntime(/*num_threads=*/1);
   auto options = DefaultSavedModelOptions(runtime.get());
@@ -435,7 +435,7 @@ class SavedModelRunByTensorNamesTest : public ::testing::Test {
     //  y = tf.compat.v1.get_variable(name='y', initializer=[1, 2, 3])
     //  r = tf.matmul(x, y)
     auto saved_model_dir = tensorflow::GetDataDependencyFilepath(
-        "tensorflow/core/tfrt/saved_model/tests/toy_v1");
+        "tensorflow/core/tfrt/saved_model/tests/toy_v1/1");
     runtime_ = DefaultTfrtRuntime(/*num_threads=*/1);
     auto options = DefaultSavedModelOptions(runtime_.get());
 
@@ -537,7 +537,7 @@ TEST(SavedModelTest, CustomWorkQueue) {
   //  y = tf.compat.v1.get_variable(name='y', initializer=[1, 2, 3])
   //  r = tf.matmul(x, y)
   std::string saved_model_dir = tensorflow::GetDataDependencyFilepath(
-      "tensorflow/core/tfrt/saved_model/tests/toy_v1");
+      "tensorflow/core/tfrt/saved_model/tests/toy_v1/1");
 
   tfrt::tf::RunHandlerThreadWorkQueue::Options queue_options;
   queue_options.num_complementary_threads = 1;
@@ -583,7 +583,7 @@ TEST(SavedModelTest, RunOptionsWorkQueue) {
   //  y = tf.compat.v1.get_variable(name='y', initializer=[1, 2, 3])
   //  r = tf.matmul(x, y)
   std::string saved_model_dir = tensorflow::GetDataDependencyFilepath(
-      "tensorflow/core/tfrt/saved_model/tests/toy_v1");
+      "tensorflow/core/tfrt/saved_model/tests/toy_v1/1");
 
   auto runtime =
       tensorflow::tfrt_stub::Runtime::Create(/*num_inter_op_threads=*/4);
@@ -633,7 +633,7 @@ TEST(SavedModelTest, FunctionMetadata) {
   //  y = tf.compat.v1.get_variable(name='y', initializer=[1, 2, 3])
   //  r = tf.matmul(x, y)
   std::string saved_model_dir = tensorflow::GetDataDependencyFilepath(
-      "tensorflow/core/tfrt/saved_model/tests/toy_v1");
+      "tensorflow/core/tfrt/saved_model/tests/toy_v1/1");
 
   TFRTSavedModelTest test(saved_model_dir);
   auto* saved_model = test.GetSavedModel();
@@ -989,7 +989,7 @@ TEST(SavedModelTest, DeadlineExceeded) {
   //  y = tf.compat.v1.get_variable(name='y', initializer=[1, 2, 3])
   //  r = tf.matmul(x, y)
   std::string saved_model_dir = tensorflow::GetDataDependencyFilepath(
-      "tensorflow/core/tfrt/saved_model/tests/toy_v1");
+      "tensorflow/core/tfrt/saved_model/tests/toy_v1/1");
 
   auto runtime = DefaultTfrtRuntime(/*num_threads=*/1);
   auto options = DefaultSavedModelOptions(runtime.get());
@@ -1021,7 +1021,7 @@ TEST(SavedModelTest, DisableCompilation) {
   //  y = tf.compat.v1.get_variable(name='y', initializer=[1, 2, 3])
   //  r = tf.matmul(x, y)
   std::string saved_model_dir = tensorflow::GetDataDependencyFilepath(
-      "tensorflow/core/tfrt/saved_model/tests/toy_v1");
+      "tensorflow/core/tfrt/saved_model/tests/toy_v1/1");
 
   auto runtime = DefaultTfrtRuntime(/*num_threads=*/1);
   auto options = DefaultSavedModelOptions(runtime.get());
@@ -1060,7 +1060,7 @@ TEST(SavedModelTest, CustomModelConfig) {
   //  y = tf.compat.v1.get_variable(name='y', initializer=[1, 2, 3])
   //  r = tf.matmul(x, y)
   std::string saved_model_dir = tensorflow::GetDataDependencyFilepath(
-      "tensorflow/core/tfrt/saved_model/tests/toy_v1");
+      "tensorflow/core/tfrt/saved_model/tests/toy_v1/1");
 
   auto runtime = DefaultTfrtRuntime(/*num_threads=*/1);
 
@@ -1124,7 +1124,7 @@ class TestCompiler : public BackendCompiler {
 
 TEST(SavedModelTest, CustomCompiler) {
   std::string saved_model_dir = tensorflow::GetDataDependencyFilepath(
-      "tensorflow/core/tfrt/saved_model/tests/toy_v1");
+      "tensorflow/core/tfrt/saved_model/tests/toy_v1/1");
 
   auto runtime = DefaultTfrtRuntime(/*num_threads=*/1);
 

@@ -97,20 +97,6 @@ void HloToIrBindings::EmitBasePointersForHlos(
   }
 }
 
-llvm::Value* HloToIrBindings::EmitGetTupleElement(const HloInstruction* gte,
-                                                  llvm::Value* base_ptr) {
-  // TODO(b/26344050): tighten the alignment based on the real element type.
-  if (gte->operand(0)->opcode() != HloOpcode::kGetTupleElement) {
-    return llvm_ir::EmitGetTupleElement(
-        gte->shape(), gte->tuple_index(), /*alignment=*/1, base_ptr,
-        llvm_ir::ShapeToIrType(gte->operand(0)->shape(), module_), b_);
-  }
-  return llvm_ir::EmitGetTupleElement(
-      gte->shape(), gte->tuple_index(), /*alignment=*/1,
-      EmitGetTupleElement(gte->operand(0), base_ptr),
-      llvm_ir::ShapeToIrType(gte->operand(0)->shape(), module_), b_);
-}
-
 // Returns true if `value` has a name that should not be changed.
 static bool HasMeaningfulName(llvm::Value* value) {
   if (auto* global = llvm::dyn_cast<llvm::GlobalValue>(value)) {
@@ -149,26 +135,9 @@ llvm_ir::IrArray HloToIrBindings::GetIrArray(const HloInstruction& hlo,
   return ir_array;
 }
 
-void HloToIrBindings::UnbindAllLocalIrValues() {
-  std::vector<const HloInstruction*> hlos_to_unbind;
-  for (auto& key_value : base_ptrs_) {
-    if (!llvm::isa<llvm::GlobalVariable>(
-            (key_value.second.element({}))->stripPointerCasts())) {
-      hlos_to_unbind.push_back(key_value.first);
-    }
-  }
-  for (const HloInstruction* hlo_to_unbind : hlos_to_unbind) {
-    VLOG(2) << "Unbinding " << hlo_to_unbind->ToString();
-    base_ptrs_.erase(hlo_to_unbind);
-  }
-}
-
 std::string HloToIrBindings::ToString() const {
   std::string s = StrCat("** HloToIrBindings **\n");
   StrAppend(&s, "  is_nested_=", is_nested_, "\n");
-  StrAppend(&s,
-            "  temp_buffer_base_=", llvm_ir::DumpToString(temp_buffer_base_),
-            "\n");
 
   if (base_ptrs_.empty()) {
     return s;

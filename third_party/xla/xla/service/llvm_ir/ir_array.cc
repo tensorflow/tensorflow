@@ -373,6 +373,13 @@ IrArray::Index IrArray::Index::SourceIndexOfBitcast(
   return index;
 }
 
+IrArray::Index IrArray::Index::SourceIndexOfBitcast(
+    const Shape& operand_shape, llvm::IRBuilder<>* builder) const {
+  auto shape = ShapeUtil::MakeShape(F32, dims_);
+  *shape.mutable_layout() = layout_;
+  return SourceIndexOfBitcast(shape, operand_shape, builder);
+}
+
 IrArray::Index IrArray::Index::SourceIndexOfBroadcast(
     const Shape& shape, const Shape& operand_shape,
     absl::Span<const int64_t> dimension_mapping,

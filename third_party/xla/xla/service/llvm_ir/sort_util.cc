@@ -165,7 +165,7 @@ Status EmitTiledCompareLoop(
   llvm::Value* thread_id = gpu::EmitCallToTargetIntrinsic(
       gpu::TargetIntrinsicID::kThreadIdx, {}, {}, b);
   llvm_ir::AddRangeMetadata(0, tile_size / 2,
-                            llvm::cast<llvm::Instruction>(thread_id));
+                            llvm::cast<llvm::Instruction>(thread_id), b);
   thread_id = b->CreateIntCast(thread_id, tiled_keys_index.GetType(),
                                /*isSigned=*/true, "thread.id.x");
 

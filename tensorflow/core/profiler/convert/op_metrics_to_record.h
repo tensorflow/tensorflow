@@ -35,6 +35,13 @@ inline double GigaFlopsPerSecondPerCore(const OpMetrics& metrics) {
   return SafeDivide(metrics.flops(), PicoToNano(metrics.time_ps()));
 }
 
+inline double GigaModelFlopsPerSecondPerCore(const OpMetrics& metrics) {
+  // flops and time_ps are accumulated across all occurrences on all cores.
+  // time_ps is used instead of self_time_ps because flops for an op includes
+  // the flops executed by children (nested) ops.
+  return SafeDivide(metrics.model_flops(), PicoToNano(metrics.time_ps()));
+}
+
 // Return ByteAccessed for memory_space and operation_type.
 inline double BytesAccessedPerCore(
     const OpMetrics& metrics, uint64_t memory_space,

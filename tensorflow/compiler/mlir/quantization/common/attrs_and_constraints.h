@@ -29,6 +29,7 @@ limitations under the License.
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/quantization/tensorflow/quantization_options.pb.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
+#include "tensorflow/compiler/mlir/tensorflow/utils/xla_call_module_attrs.h"
 
 namespace mlir::quant {
 
@@ -148,6 +149,45 @@ FailureOr<T> TryCast(Operation *op, const StringRef name) {
                                  << T::getOperationName() << ").\n");
     return failure();
   }
+}
+
+FailureOr<int32_t> CastI64ToI32(int64_t value);
+
+// Tries to cast an array of int64 to int32. If any of the element in the
+// array is not in the range of int32, returns failure().
+FailureOr<SmallVector<int32_t>> CastI64ArrayToI32(
+    ArrayRef<int64_t> int64_array);
+
+// Returns the first user of the given operation, optionally of the given
+// type if provided. If there is no user or user of type, return nullptr.
+template <typename T = Operation *>
+Operation *FindUserOfType(Operation *op) {
+  for (Operation *user : op->getUsers()) {
+    if (isa<T>(user)) {
+      return user;
+    }
+  }
+  return nullptr;
+}
+
+// Returns the function attribute for the given call op which is lifted for
+// quantization.
+template <typename LiftedOp>
+inline FlatSymbolRefAttr GetFuncAttr(LiftedOp call_op) {
+  static_assert(false, "DuplicateOp for call_op is not implemented.");
+}
+
+template <>
+inline FlatSymbolRefAttr GetFuncAttr<TF::PartitionedCallOp>(
+    TF::PartitionedCallOp call_op) {
+  return call_op.getFAttr().template dyn_cast<FlatSymbolRefAttr>();
+}
+
+template <>
+inline FlatSymbolRefAttr GetFuncAttr<TF::XlaCallModuleOp>(
+    TF::XlaCallModuleOp call_op) {
+  return call_op->getAttrOfType<FlatSymbolRefAttr>(
+      TF::kStablehloEntryFunctionAttrName);
 }
 
 }  // namespace mlir::quant

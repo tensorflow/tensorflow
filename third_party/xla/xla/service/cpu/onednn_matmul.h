@@ -17,11 +17,21 @@ limitations under the License.
 #define XLA_SERVICE_CPU_ONEDNN_MATMUL_H_
 #if defined(INTEL_MKL) && defined(ENABLE_ONEDNN_V3)
 
+#include "xla/service/cpu/backend_config.pb.h"
+#include "xla/shape.h"
+
 namespace xla {
 namespace cpu {
 
+Shape OneDnnMatMulOptWeightsShape(const Shape& input_shape,
+                                  const Shape& weights_shape,
+                                  const Shape& bias_shape,
+                                  const Shape& output_shape,
+                                  const OneDnnMatMulConfig* matmul_config);
+
 extern "C" {
 extern void __xla_cpu_runtime_OneDnnMatMul(void* result, void** args);
+extern void __xla_cpu_runtime_OneDnnMatMulReorder(void* result, void** args);
 }  // extern "C"
 
 }  // namespace cpu

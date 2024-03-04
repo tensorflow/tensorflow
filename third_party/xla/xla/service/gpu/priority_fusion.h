@@ -26,7 +26,6 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
-#include "xla/service/fusion_node_indexing_evaluation.h"
 #include "xla/service/fusion_queue.h"
 #include "xla/service/gpu/fusion_process_dump.pb.h"
 #include "xla/service/gpu/model/fusion_analysis_cache.h"
@@ -73,6 +72,10 @@ class GpuPriorityFusion : public InstructionFusion {
  private:
   HloInstruction* FuseInstruction(HloInstruction* fusion_instruction,
                                   HloInstruction* producer) override;
+
+  // Consumes a unit of compiler fuel and returns true if we should
+  // continue with the transformation.
+  bool ConsumeFuel(HloInstruction* producer, HloInstruction* consumer);
 
   tsl::thread::ThreadPool* thread_pool_;
   se::DeviceDescription device_info_;

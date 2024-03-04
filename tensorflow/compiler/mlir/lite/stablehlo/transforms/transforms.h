@@ -36,7 +36,8 @@ void AddTFToStablehloPasses(OpPassManager& pm, bool skip_resize,
 void AddStablehloOptimizationPasses(OpPassManager& pm);
 
 // Adds all the backend-agonstic stableHLO optimization passes
-void AddMhloOptimizationPasses(OpPassManager& pm);
+void AddMhloOptimizationPasses(OpPassManager& pm,
+                               bool enable_stablehlo_quantizer);
 
 }  // namespace odml
 }  // namespace mlir

@@ -277,10 +277,12 @@ TEST_F(HloMatchersTest, ComparisonMatcher) {
 TEST_F(HloMatchersTest, AsyncCopyMatcher) {
   Shape shape_memspace1 = ShapeUtil::MakeShapeWithDenseLayout(
       F32, {16}, /*minor_to_major=*/{0}, /*tiles=*/{},
+      /*tail_padding_alignment_in_elements=*/1,
       /*element_size_in_bits=*/0,
       /*memory_space=*/1);
   Shape shape_memspace2 = ShapeUtil::MakeShapeWithDenseLayout(
       F32, {16}, /*minor_to_major=*/{0}, /*tiles=*/{},
+      /*tail_padding_alignment_in_elements=*/1,
       /*element_size_in_bits=*/0,
       /*memory_space=*/2);
 

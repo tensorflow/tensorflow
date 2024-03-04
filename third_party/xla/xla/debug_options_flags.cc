@@ -22,10 +22,12 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/algorithm/container.h"
 #include "absl/base/call_once.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/node_hash_map.h"
 #include "absl/strings/ascii.h"
+#include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
@@ -85,7 +87,7 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_cpu_fast_math_honor_division(true);
 
   // TODO(AyanmoI): Remove this flag when cuDNN FMHA is fully supported.
-  opts.set_xla_gpu_enable_cudnn_fmha(false);
+  opts.set_xla_gpu_enable_cudnn_fmha(true);
 
   opts.set_xla_gpu_fused_attention_use_cudnn_rng(false);
 
@@ -137,9 +139,11 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
 
   opts.set_xla_gpu_enable_xla_runtime_executable(false);
   opts.set_xla_gpu_enable_custom_fusions(false);
+  opts.set_xla_gpu_enable_address_computation_fusion(true);
   opts.set_xla_gpu_nccl_termination_timeout_seconds(-1);
   opts.set_xla_gpu_enable_shared_constants(true);
   opts.set_xla_gpu_enable_nccl_user_buffers(false);
+  opts.set_xla_gpu_enable_nccl_comm_splitting(false);
 
   // Set 4GB space limit for redzone scratch allocator.
   opts.set_xla_gpu_redzone_scratch_max_megabytes(1LL << 12);
@@ -189,7 +193,7 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
 
   opts.set_xla_gpu_exhaustive_tiling_search(false);
 
-  opts.set_xla_gpu_enable_priority_fusion(false);
+  opts.set_xla_gpu_enable_priority_fusion(true);
 
   opts.set_xla_gpu_auto_spmd_partitioning_memory_budget_gb(0);
   opts.set_xla_gpu_auto_spmd_partitioning_memory_budget_ratio(1.1);
@@ -218,6 +222,10 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_gpu_enable_llvm_module_compilation_parallelism(false);
 
   opts.set_xla_gpu_enable_libnvptxcompiler(false);
+
+  opts.set_xla_gpu_enable_dot_strength_reduction(true);
+
+  opts.set_xla_gpu_enable_bf16_6way_gemm(false);
 
   return opts;
 }
@@ -398,17 +406,76 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
 
   // Custom "sub-parser" lambda for xla_gpu_enable_command_buffer.
   auto setter_for_xla_gpu_enable_command_buffer =
-      [debug_options](const std::string& values) {
-        debug_options->clear_xla_gpu_enable_command_buffer();
-        for (const absl::string_view value : absl::StrSplit(values, ',')) {
+      [debug_options](const std::string& input) {
+        auto is_command_type = [](absl::string_view value) {
           DebugOptions::CommandBufferCmdType cmd_type;
-          if (!DebugOptions::CommandBufferCmdType_Parse(
-                  absl::AsciiStrToUpper(value), &cmd_type)) {
-            return false;
+          return DebugOptions::CommandBufferCmdType_Parse(
+              absl::AsciiStrToUpper(value), &cmd_type);
+        };
+
+        auto is_add_or_remove_command_type = [&](absl::string_view value) {
+          if (absl::StartsWith(value, "+") || absl::StartsWith(value, "-")) {
+            return (is_command_type(value.substr(1)));
           }
-          debug_options->add_xla_gpu_enable_command_buffer(cmd_type);
+          return false;
+        };
+
+        auto parse_command_type = [](absl::string_view value) {
+          DebugOptions::CommandBufferCmdType cmd_type;
+          DebugOptions::CommandBufferCmdType_Parse(absl::AsciiStrToUpper(value),
+                                                   &cmd_type);
+          return cmd_type;
+        };
+
+        auto erase_command_type = [](tsl::protobuf::RepeatedField<int>* enabled,
+                                     DebugOptions::CommandBufferCmdType type) {
+          auto it = enabled->begin();
+          while (it != enabled->end()) {
+            if (*it == type) {
+              it = enabled->erase(it);
+            } else {
+              it++;
+            }
+          }
+        };
+
+        // Disable command buffers by clearing a set of supported commands.
+        if (input.empty()) {
+          debug_options->clear_xla_gpu_enable_command_buffer();
+          return true;
         }
-        return true;
+
+        std::vector<absl::string_view> values = absl::StrSplit(input, ',');
+
+        // Overwrite a set of supported commands with a flag.
+        if (absl::c_all_of(values, is_command_type)) {
+          debug_options->clear_xla_gpu_enable_command_buffer();
+          for (const absl::string_view value : values) {
+            debug_options->add_xla_gpu_enable_command_buffer(
+                parse_command_type(value));
+          }
+          return true;
+        }
+
+        // Add or remove a commands from a default set.
+        if (absl::c_all_of(values, is_add_or_remove_command_type)) {
+          for (const absl::string_view value : values) {
+            DebugOptions::CommandBufferCmdType cmd_type =
+                parse_command_type(value.substr(1));
+            if (absl::StartsWith(value, "+")) {
+              debug_options->add_xla_gpu_enable_command_buffer(cmd_type);
+            } else if (absl::StartsWith(value, "-")) {
+              tsl::protobuf::RepeatedField<int>* enabled =
+                  debug_options->mutable_xla_gpu_enable_command_buffer();
+              erase_command_type(enabled, cmd_type);
+            }
+            return true;
+          }
+        }
+
+        // Return an error if flag value was not recognized as one of the
+        // supported modes.
+        return false;
       };
 
   // Custom "sub-parser" for xla_fuel.  Note that ConsumeFuel does not do any
@@ -1023,7 +1090,10 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
   flag_list->push_back(tsl::Flag(
       "xla_gpu_enable_command_buffer", setter_for_xla_gpu_enable_command_buffer,
       command_types_to_string(debug_options->xla_gpu_enable_command_buffer()),
-      "The types of the commands that are recorded into command buffers"));
+      "The types of the commands that are recorded into command buffers. It"
+      " can either be a list of command types or a list of command types with"
+      " + and - as prefix, which indicate adding or removing a command type"
+      " to/from the default list."));
   flag_list->push_back(tsl::Flag(
       "xla_gpu_graph_num_runs_to_instantiate",
       int32_setter_for(
@@ -1091,6 +1161,12 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       "expression. Default is all custom fusions registerered in a current "
       "process."));
   flag_list->push_back(tsl::Flag(
+      "xla_gpu_enable_address_computation_fusion",
+      bool_setter_for(
+          &DebugOptions::set_xla_gpu_enable_address_computation_fusion),
+      debug_options->xla_gpu_enable_address_computation_fusion(),
+      "Whether to enable XLA address computation fusion"));
+  flag_list->push_back(tsl::Flag(
       "xla_gpu_nccl_termination_timeout_seconds",
       int64_setter_for(
           &DebugOptions::set_xla_gpu_nccl_termination_timeout_seconds),
@@ -1108,6 +1184,12 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       "Enables NCCL User Buffer Registration. collective_memory_size in the "
       "allocator config must also be set to a non-zero value that is large "
       "enough to meet peak collective memory usage."));
+  flag_list->push_back(tsl::Flag(
+      "xla_gpu_enable_nccl_comm_splitting",
+      bool_setter_for(&DebugOptions::set_xla_gpu_enable_nccl_comm_splitting),
+      debug_options->xla_gpu_enable_nccl_comm_splitting(),
+      "Enables NCCL communicator splitting which allows sharing NCCL resources "
+      "between different NCCL cliques."));
   flag_list->push_back(tsl::Flag(
       "xla_gpu_redzone_scratch_max_megabytes",
       int64_setter_for(
@@ -1449,6 +1531,11 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       debug_options->xla_gpu_enable_libnvptxcompiler(),
       "Use libnvptxcompiler for PTX-to-GPU-assembly compilation instead of "
       "calling ptxas."));
+  flag_list->push_back(tsl::Flag(
+      "xla_gpu_enable_dot_strength_reduction",
+      bool_setter_for(&DebugOptions::set_xla_gpu_enable_dot_strength_reduction),
+      debug_options->xla_gpu_enable_dot_strength_reduction(),
+      "Enable rewriting matmuls with a vector into reductions."));
 }  // NOLINT(readability/fn_size)
 
 // Allocates flag_values and flag_objects; this function must not be called more

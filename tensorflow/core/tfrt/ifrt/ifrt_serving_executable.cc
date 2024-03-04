@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <memory>
 #include <optional>
+#include <string>
 #include <utility>
 #include <vector>
 
@@ -50,15 +51,44 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/protobuf/tpu/compile_metadata.pb.h"
+#include "tensorflow/core/tfrt/ifrt/ifrt_loaded_variable_registry.h"
 #include "tensorflow/core/tfrt/ifrt/ifrt_tensor_utils.h"
 #include "tensorflow/core/tfrt/ifrt/sharding_utils.h"
 #include "tsl/concurrency/ref_count.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/statusor.h"
+#include "tsl/platform/tstring.h"
 
 namespace tensorflow {
 namespace ifrt_serving {
 namespace {
+absl::StatusOr<std::vector<DtypeAndShape>> BuildDtypeAndShape(
+    absl::Span<const tensorflow::Tensor> inputs,
+    absl::Span<const int> variable_arg_indices,
+    const IfrtLoadedVariableRegistry& ifrt_loaded_variable_registry) {
+  std::vector<DtypeAndShape> dtypes_and_shapes;
+  dtypes_and_shapes.reserve(inputs.size());
+
+  int variable_index = 0;
+  for (int i = 0; i < inputs.size(); i++) {
+    if (variable_index < variable_arg_indices.size() &&
+        i == variable_arg_indices[variable_index]) {
+      // Get already loaded variable tensor.
+      TF_ASSIGN_OR_RETURN(auto single_array,
+                          ifrt_loaded_variable_registry.GetLoadedVariable(
+                              inputs[i].scalar<tsl::tstring>()()));
+      TF_ASSIGN_OR_RETURN(auto dtype, ToTensorDataType(single_array->dtype()));
+      dtypes_and_shapes.push_back(DtypeAndShape{
+          .dtype = dtype, .shape = ToTensorShape(single_array->shape())});
+
+      variable_index++;
+    } else {
+      dtypes_and_shapes.push_back(DtypeAndShape{.dtype = inputs[i].dtype(),
+                                                .shape = inputs[i].shape()});
+    }
+  }
+  return dtypes_and_shapes;
+}
 
 absl::StatusOr<xla::DeviceAssignment> GetXlaDeviceAssignment(
     const xla::ifrt::Client& ifrt_client,
@@ -111,28 +141,6 @@ absl::StatusOr<std::vector<xla::ifrt::Device*>> GetAssignedDevices(
   return devices;
 }
 
-absl::StatusOr<tsl::RCReference<xla::ifrt::Array>>
-CreateArrayFromHostTensorForSingleDevice(xla::ifrt::Client& ifrt_client,
-                                         const tensorflow::Tensor& tensor,
-                                         xla::ifrt::Device* device) {
-  TF_ASSIGN_OR_RETURN(auto dtype, ToIfrtDType(tensor.dtype()));
-
-  VLOG(2) << "Make single device array for buffer slice "
-          << " at " << tensor.data();
-  auto single_device_sharding =
-      xla::ifrt::SingleDeviceSharding::Create(device, xla::ifrt::MemoryKind());
-
-  return ifrt_client.MakeArrayFromHostBuffer(
-      tensor.data(), dtype, ToIfrtShape(tensor.shape()),
-      /*byte_strides=*/{}, std::move(single_device_sharding),
-      xla::ifrt::Client::HostBufferSemantics::kImmutableUntilTransferCompletes,
-      [tensor]() {
-        // Keep tensor alive
-        VLOG(2) << "Done with single device host buffer for slice "
-                << " at " << tensor.data();
-      });
-}
-
 }  // namespace
 
 absl::StatusOr<tsl::RCReference<xla::ifrt::Array>>
@@ -143,55 +151,18 @@ IfrtServingExecutable::ConvertTensorToArray(
   VLOG(2) << "Converting tensor of shape " << input_shape;
 
   TF_ASSIGN_OR_RETURN(auto hlo_sharding, xla::HloSharding::FromProto(sharding));
-  VLOG(3) << "IsTiled: " << hlo_sharding.IsTiled();
-  VLOG(3) << "IsReplicated: " << hlo_sharding.IsReplicated();
-  VLOG(3) << "IsTileMaximal: " << hlo_sharding.IsTileMaximal();
-  if (!hlo_sharding.IsTiled() && !hlo_sharding.IsReplicated() &&
-      !hlo_sharding.IsTileMaximal()) {
-    return absl::UnimplementedError(absl::StrCat(
-        "Only support MAXIMAL, OTHER or REPLICATED, but got sharding : ",
-        hlo_sharding.ToProto()));
-  }
 
-  VLOG(1) << "Hlo sharding: " << hlo_sharding.ToString();
-  VLOG(1) << "Device list size: " << device_list.size();
-
-  if (device_list.size() == 1) {
-    if (hlo_sharding.IsTiled()) {
-      return absl::InvalidArgumentError(
-          absl::StrCat("Tiled sharding", hlo_sharding.ToString(),
-                       " expect more than 1 device, but got 1 only"));
-    }
-    return CreateArrayFromHostTensorForSingleDevice(*ifrt_client_, tensor,
-                                                    device_list[0]);
-  }
-
-  // Replicate implies Maximal, but not vice versa. Only Maximal is single
-  // device.
-  if (!hlo_sharding.IsReplicated() && hlo_sharding.IsTileMaximal()) {
-    VLOG(1) << "Single device fast path for Maximal tiled tensor";
-    xla::ifrt::Device* device;
-    if (hlo_sharding.HasUniqueDevice()) {
-      int unique_device_id = hlo_sharding.GetUniqueDevice();
-      TF_ASSIGN_OR_RETURN(device, ifrt_client_->LookupDevice(unique_device_id));
-    } else {
-      device = device_list[0];
-    }
-    return CreateArrayFromHostTensorForSingleDevice(*ifrt_client_, tensor,
-                                                    device);
-  }
-
-  return MakeAssembledArrayFromHostBuffer(*ifrt_client_, tensor,
-                                          std::move(hlo_sharding), device_list,
-                                          thread_pool_device_);
+  return MakeArrayFromTensor(*ifrt_client_, tensor, device_list,
+                             std::move(hlo_sharding), thread_pool_device_);
 }
 
 absl::StatusOr<IfrtServingExecutable::CachedExecutableBundle>
 IfrtServingExecutable::CreateExecutableSynchronously(
-    absl::Span<const tensorflow::Tensor> inputs) {
-  TF_ASSIGN_OR_RETURN(Tf2HloResult tf2hlo_result,
-                      CompileTfToHlo(*module_, inputs, signature_name(),
-                                     *ifrt_client_, shape_representation_fn_));
+    absl::Span<const DtypeAndShape> dtypes_and_shapes) {
+  TF_ASSIGN_OR_RETURN(
+      Tf2HloResult tf2hlo_result,
+      CompileTfToHlo(*module_, dtypes_and_shapes, signature_name(),
+                     *ifrt_client_, shape_representation_fn_));
 
   const int num_replicas = tf2hlo_result.compile_metadata.num_replicas();
   const int num_partitions =
@@ -240,12 +211,12 @@ IfrtServingExecutable::CreateExecutableSynchronously(
 
 xla::ifrt::Future<absl::StatusOr<IfrtServingExecutable::CachedExecutableBundle>>
 IfrtServingExecutable::LookUpOrCreateExecutable(
-    absl::Span<const tensorflow::Tensor> inputs) {
+    absl::Span<const DtypeAndShape> dtypes_and_shapes) {
   std::vector<tensorflow::TensorShape> input_shapes;
-  for (const auto& tensor : inputs) {
-    input_shapes.push_back(tensor.shape());
+  for (const auto& dtype_and_shape : dtypes_and_shapes) {
+    input_shapes.push_back(dtype_and_shape.shape);
   }
-  Key key(input_shapes);
+  Key key = {input_shapes};
 
   xla::ifrt::Promise<absl::StatusOr<CachedExecutableBundle>> promise;
   xla::ifrt::Future<absl::StatusOr<CachedExecutableBundle>> future;
@@ -268,19 +239,50 @@ IfrtServingExecutable::LookUpOrCreateExecutable(
 
   LOG(INFO) << "Cache missed. Building executable";
   absl::StatusOr<CachedExecutableBundle> executable_bundle =
-      CreateExecutableSynchronously(inputs);
+      CreateExecutableSynchronously(dtypes_and_shapes);
 
   promise.Set(std::move(executable_bundle));
   return future;
 }
 
 absl::StatusOr<std::vector<tensorflow::Tensor>> IfrtServingExecutable::Execute(
-    absl::Span<const tensorflow::Tensor> inputs) {
-  TF_ASSIGN_OR_RETURN(CachedExecutableBundle executable_bundle,
-                      LookUpOrCreateExecutable(inputs).Await());
+    absl::Span<const tensorflow::Tensor> inputs,
+    absl::Span<const int> variable_arg_indices) {
+  for (int i = 1; i < variable_arg_indices.size(); i++) {
+    if (variable_arg_indices[i] <= variable_arg_indices[i - 1]) {
+      return absl::FailedPreconditionError(absl::StrCat(
+          "Expected variable_arg_indices in ascending order. But subsequence "
+          "starting at ",
+          i - 1, ": (", variable_arg_indices[i - 1], ", ",
+          variable_arg_indices[i], ")", " is not in ascending order"));
+    }
+  }
 
-  std::vector<tsl::RCReference<xla::ifrt::Array>> args;
-  args.reserve(inputs.size());
+  if (!variable_arg_indices.empty() &&
+      inputs.size() <= variable_arg_indices.back()) {
+    return absl::FailedPreconditionError(absl::StrCat(
+        "Expected at most ", inputs.size(), " inputs, but got up to ",
+        variable_arg_indices.back(), " variables."));
+  }
+
+  // Ensure the variable tensor holds a valid key: a scalar string tensor.
+  for (const int i : variable_arg_indices) {
+    if (inputs[i].dtype() != tensorflow::DT_STRING ||
+        !tensorflow::TensorShapeUtils::IsScalar(inputs[i].shape())) {
+      return absl::FailedPreconditionError(
+          absl::StrCat("Expected a scalar tensor as loaded variable array key, "
+                       "but got type ",
+                       inputs[i].dtype(), " and shape ",
+                       inputs[i].shape().DebugString(), " at index ", i));
+    }
+  }
+
+  TF_ASSIGN_OR_RETURN(std::vector<DtypeAndShape> dtypes_and_shapes,
+                      BuildDtypeAndShape(inputs, variable_arg_indices,
+                                         ifrt_loaded_variable_registry_));
+  TF_ASSIGN_OR_RETURN(
+      CachedExecutableBundle executable_bundle,
+      LookUpOrCreateExecutable(absl::MakeSpan(dtypes_and_shapes)).Await());
 
   TF_ASSIGN_OR_RETURN(
       std::vector<xla ::ifrt::Device*> devices,
@@ -288,21 +290,35 @@ absl::StatusOr<std::vector<tensorflow::Tensor>> IfrtServingExecutable::Execute(
   xla::ifrt::DeviceList device_list(
       xla::ifrt::DeviceList::Devices(devices.begin(), devices.end()));
 
-  auto compile_metadata_arg_iter =
-      executable_bundle.compile_metadata.args().begin();
-  if (executable_bundle.compile_metadata.args().size() != inputs.size()) {
+  if (executable_bundle.compile_metadata.args().size() !=
+      dtypes_and_shapes.size()) {
     return absl::InternalError(absl::StrCat(
-        "Expect ", executable_bundle.compile_metadata.args().size(),
-        " but got ", inputs.size(), " arguments"));
+        "Expected ", executable_bundle.compile_metadata.args().size(),
+        " but got ", dtypes_and_shapes.size(), " arguments"));
   }
-  for (const auto& input_tensor : inputs) {
-    TF_ASSIGN_OR_RETURN(
-        auto single_array,
-        ConvertTensorToArray(input_tensor, device_list,
-                             compile_metadata_arg_iter->sharding()));
-    args.push_back(single_array);
-    compile_metadata_arg_iter++;
+
+  std::vector<tsl::RCReference<xla::ifrt::Array>> args;
+  args.reserve(inputs.size());
+
+  int variable_index = 0;
+  for (int i = 0; i < inputs.size(); i++) {
+    if (variable_index < variable_arg_indices.size() &&
+        i == variable_arg_indices[variable_index]) {
+      TF_ASSIGN_OR_RETURN(auto single_array,
+                          ifrt_loaded_variable_registry_.GetLoadedVariable(
+                              inputs[i].scalar<tsl::tstring>()()));
+      args.push_back(single_array);
+      variable_index++;
+    } else {
+      TF_ASSIGN_OR_RETURN(
+          auto single_array,
+          ConvertTensorToArray(
+              inputs[i], device_list,
+              executable_bundle.compile_metadata.args()[i].sharding()));
+      args.push_back(single_array);
+    }
   }
+  DCHECK_EQ(args.size(), dtypes_and_shapes.size());
 
   VLOG(2) << "Start Execution";
 
@@ -315,9 +331,6 @@ absl::StatusOr<std::vector<tensorflow::Tensor>> IfrtServingExecutable::Execute(
   TF_RETURN_IF_ERROR(status);
 
   std::vector<tensorflow::Tensor> outputs;
-  std::vector<xla::ifrt::Future<absl::Status>> output_futures;
-  output_futures.reserve(execution_result.outputs.size());
-  outputs.reserve(execution_result.outputs.size());
 
   if (executable_bundle.compile_metadata.retvals().size() !=
       execution_result.outputs.size()) {
@@ -332,50 +345,19 @@ absl::StatusOr<std::vector<tensorflow::Tensor>> IfrtServingExecutable::Execute(
     const tpu::TPUCompileMetadataProto::Retval& metadata_retval =
         executable_bundle.compile_metadata.retvals()[i];
 
-    TF_RETURN_IF_ERROR(tensorflow::TensorShape::BuildTensorShape(
-        array_for_copy->shape().dims(), &tensor_shape));
-    TF_ASSIGN_OR_RETURN(tensorflow::DataType data_type,
-                        ToTensorDataType(array_for_copy->dtype()));
-
-    tensorflow::Tensor tensor(data_type, std::move(tensor_shape));
-
     // IFRT's return does not contain sufficient information; so we use
     // sharding spec from metadata.
     VLOG(2) << "Output sharding: " << array_for_copy->sharding().DebugString();
-    VLOG(2) << "Metadata sharding: " << metadata_retval.sharding();
+
     TF_ASSIGN_OR_RETURN(auto hlo_sharding, xla::HloSharding::FromProto(
                                                metadata_retval.sharding()));
-
-    // TODO(b/313922535): support sharded outputs.
-    if (!hlo_sharding.IsReplicated()) {
-      return absl::UnimplementedError(
-          absl::StrCat("Only supported replicated output. But got ",
-                       hlo_sharding.ToString()));
-    }
-
-    TF_ASSIGN_OR_RETURN(auto fully_replicated_array,
-                        array_for_copy->FullyReplicatedShard(
-                            xla::ifrt::ArrayCopySemantics::kDonateInput));
-
-    if (fully_replicated_array->shape() !=
-        xla::ifrt::Shape(tensor.shape().dim_sizes())) {
-      return absl::UnimplementedError(
-          absl::StrCat("Not fully replicated output. Expected ",
-                       tensor.shape().DebugString(), " but got ",
-                       fully_replicated_array->shape().DebugString()));
-    }
-
-    xla::ifrt::Future<absl::Status> copy_future =
-        fully_replicated_array->CopyToHostBuffer(
-            tensor.data(), /*byte_strides=*/std::nullopt,
-            xla::ifrt::ArrayCopySemantics::kAlwaysCopy);
-
-    output_futures.push_back(copy_future);
+    TF_ASSIGN_OR_RETURN(
+        tensorflow::Tensor tensor,
+        MakeTensorFromArray(*ifrt_client_, *array_for_copy, hlo_sharding,
+                            device_list, thread_pool_device_));
     outputs.push_back(std::move(tensor));
   }
 
-  TF_RETURN_IF_ERROR(
-      xla::ifrt::JoinFutures(absl::MakeSpan(output_futures)).Await());
   return outputs;
 }
 

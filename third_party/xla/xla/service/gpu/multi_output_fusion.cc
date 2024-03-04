@@ -208,10 +208,7 @@ FusionDecision ProducerCandidateIsFusible(
 
   GpuPerformanceModel::RunTimes t = GpuPerformanceModel::EstimateRunTimes(
       &producer, cost_analysis, GpuPerformanceModelOptions::Default(),
-
-      // `EstimateRunTimes`'s interface violates const correctness, so we
-      // need the const cast here.
-      {const_cast<HloInstruction*>(&consumer)},
+      /*fused_consumers=*/{&consumer},
       /*multi_output=*/true);
   if (t.time_fused > t.time_unfused) {
     return "will execute slower if fused";
@@ -462,8 +459,7 @@ absl::StatusOr<bool> GpuMultiOutputFusion::DoMultiOutputFusion() {
               << consumer_for_fusion->name();
     } else {
       input_fusion = computation_->AddInstruction(HloInstruction::CreateFusion(
-          consumer_for_fusion->shape(),
-          ChooseFusionKind(*producer, *consumer_for_fusion),
+          consumer_for_fusion->shape(), ChooseFusionKind(*consumer_for_fusion),
           consumer_for_fusion));
       VLOG(2) << "Fuse producer " << producer->name() << " and its consumer "
               << consumer_for_fusion->name() << " into "

@@ -389,6 +389,7 @@ INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(CosineOp)
 INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(CrossReplicaSumOp)
 INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(DivOp)
 INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(DomainOp)
+INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(ErfOp)
 INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(ExpOp)
 INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(Expm1Op)
 INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(FloorOp)
@@ -2392,6 +2393,16 @@ void BroadcastInDimOp::getCanonicalizationPatterns(RewritePatternSet& results,
 //===----------------------------------------------------------------------===//
 
 LogicalResult DynamicBroadcastInDimOp::verify() {
+  // Check for unranked dynamism. Unranked dynamism is not supported by
+  // StableHLO (hlo::verifyReshapeOp will fail) and we can't verify
+  // anything statically in that case anyway.
+  auto outputdimensionsType =
+      getOutputDimensions().getType().cast<ShapedType>();
+  auto resultType = getResult().getType().cast<ShapedType>();
+  if (!outputdimensionsType.hasRank() || !resultType.hasRank()) {
+    return success();
+  }
+
   return hlo::verifyDynamicBroadcastInDimOp(
       getLoc(), getOperand(), getOutputDimensions(),
       llvm::to_vector(getBroadcastDimensions().getValues<int64_t>()),
@@ -2854,6 +2865,13 @@ LogicalResult ConcatenateOp::reifyReturnTypeShapes(
 //===----------------------------------------------------------------------===//
 
 LogicalResult DynamicReshapeOp::verify() {
+  // Check for unranked dynamism. Unranked dynamism is not supported by
+  // StableHLO (hlo::verifyDynamicReshapeOp will fail) and we can't verify
+  // anything statically in that case anyway.
+  auto resultType = getResult().getType().cast<ShapedType>();
+  auto outputShapeType = getOutputShape().getType().cast<ShapedType>();
+  if (!resultType.hasRank() || !outputShapeType.hasStaticShape())
+    return success();
   return hlo::verifyDynamicReshapeOp(getLoc(), getOutputShape(), getResult());
 }
 
@@ -4604,6 +4622,14 @@ LogicalResult DynamicPadOp::reifyReturnTypeShapes(
 //===----------------------------------------------------------------------===//
 
 LogicalResult ReshapeOp::verify() {
+  // Check for unranked dynamism. Unranked dynamism is not supported by
+  // StableHLO (hlo::verifyReshapeOp will fail) and we can't verify
+  // anything statically in that case anyway.
+  auto operandType = getOperand().getType().cast<ShapedType>();
+  auto resultType = getResult().getType().cast<ShapedType>();
+  if (!operandType.hasRank() || !resultType.hasRank()) {
+    return success();
+  }
   return hlo::verifyReshapeOp(getLoc(), getOperand(), getResult());
 }
 
@@ -4915,6 +4941,7 @@ UNARY_FOLDER_FLOAT(RoundNearestEvenOp, RoundNearestEven)
 UNARY_FOLDER_FLOAT(RoundOp, Round)
 
 UNARY_FOLDER_UPCAST_TO_F64(CosineOp, std::cos, AnyValue)
+UNARY_FOLDER_UPCAST_TO_F64(ErfOp, std::erf, AnyValue)
 UNARY_FOLDER_UPCAST_TO_F64(ExpOp, std::exp, AnyValue)
 UNARY_FOLDER_UPCAST_TO_F64(LogisticOp, logistic, AnyValue)
 UNARY_FOLDER_UPCAST_TO_F64(LogOp, std::log, PositiveValue)

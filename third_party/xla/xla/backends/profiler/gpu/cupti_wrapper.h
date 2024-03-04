@@ -55,7 +55,7 @@ class CuptiWrapper : public xla::profiler::CuptiInterface {
       CUpti_BuffersCallbackRequestFunc func_buffer_requested,
       CUpti_BuffersCallbackCompleteFunc func_buffer_completed) override;
 
-  CUptiResult GetDeviceId(CUcontext context, tsl::uint32* deviceId) override;
+  CUptiResult GetDeviceId(CUcontext context, uint32_t* deviceId) override;
 
   CUptiResult GetTimestamp(uint64_t* timestamp) override;
 
@@ -77,93 +77,6 @@ class CuptiWrapper : public xla::profiler::CuptiInterface {
 
   CUptiResult Unsubscribe(CUpti_SubscriberHandle subscriber) override;
 
-  // CUPTI event API
-  CUptiResult DeviceEnumEventDomains(
-      CUdevice device, size_t* array_size_bytes,
-      CUpti_EventDomainID* domain_array) override;
-
-  CUptiResult DeviceGetEventDomainAttribute(CUdevice device,
-                                            CUpti_EventDomainID event_domain,
-                                            CUpti_EventDomainAttribute attrib,
-                                            size_t* value_size,
-                                            void* value) override;
-
-  CUptiResult DisableKernelReplayMode(CUcontext context) override;
-
-  CUptiResult EnableKernelReplayMode(CUcontext context) override;
-
-  CUptiResult DeviceGetNumEventDomains(CUdevice device,
-                                       uint32_t* num_domains) override;
-
-  CUptiResult EventDomainEnumEvents(CUpti_EventDomainID event_domain,
-                                    size_t* array_size_bytes,
-                                    CUpti_EventID* event_array) override;
-
-  CUptiResult EventDomainGetNumEvents(CUpti_EventDomainID event_domain,
-                                      uint32_t* num_events) override;
-
-  CUptiResult EventGetAttribute(CUpti_EventID event,
-                                CUpti_EventAttribute attrib, size_t* value_size,
-                                void* value) override;
-
-  CUptiResult EventGetIdFromName(CUdevice device, const char* event_name,
-                                 CUpti_EventID* event) override;
-
-  CUptiResult EventGroupDisable(CUpti_EventGroup event_group) override;
-
-  CUptiResult EventGroupEnable(CUpti_EventGroup event_group) override;
-
-  CUptiResult EventGroupGetAttribute(CUpti_EventGroup event_group,
-                                     CUpti_EventGroupAttribute attrib,
-                                     size_t* value_size, void* value) override;
-
-  CUptiResult EventGroupReadEvent(CUpti_EventGroup event_group,
-                                  CUpti_ReadEventFlags flags,
-                                  CUpti_EventID event,
-                                  size_t* event_value_buffer_size_bytes,
-                                  uint64_t* event_value_buffer) override;
-
-  CUptiResult EventGroupSetAttribute(CUpti_EventGroup event_group,
-                                     CUpti_EventGroupAttribute attrib,
-                                     size_t value_size, void* value) override;
-
-  CUptiResult EventGroupSetsCreate(
-      CUcontext context, size_t event_id_array_size_bytes,
-      CUpti_EventID* event_id_array,
-      CUpti_EventGroupSets** event_group_passes) override;
-
-  CUptiResult EventGroupSetsDestroy(
-      CUpti_EventGroupSets* event_group_sets) override;
-
-  // CUPTI metric API
-  CUptiResult DeviceEnumMetrics(CUdevice device, size_t* arraySizeBytes,
-                                CUpti_MetricID* metricArray) override;
-
-  CUptiResult DeviceGetNumMetrics(CUdevice device,
-                                  uint32_t* num_metrics) override;
-
-  CUptiResult MetricGetIdFromName(CUdevice device, const char* metric_name,
-                                  CUpti_MetricID* metric) override;
-
-  CUptiResult MetricGetNumEvents(CUpti_MetricID metric,
-                                 uint32_t* num_events) override;
-
-  CUptiResult MetricEnumEvents(CUpti_MetricID metric,
-                               size_t* event_id_array_size_bytes,
-                               CUpti_EventID* event_id_array) override;
-
-  CUptiResult MetricGetAttribute(CUpti_MetricID metric,
-                                 CUpti_MetricAttribute attrib,
-                                 size_t* value_size, void* value) override;
-
-  CUptiResult MetricGetValue(CUdevice device, CUpti_MetricID metric,
-                             size_t event_id_array_size_bytes,
-                             CUpti_EventID* event_id_array,
-                             size_t event_value_array_size_bytes,
-                             uint64_t* event_value_array,
-                             uint64_t time_duration,
-                             CUpti_MetricValue* metric_value) override;
-
   CUptiResult GetResultString(CUptiResult result, const char** str) override;
 
   CUptiResult GetContextId(CUcontext context, uint32_t* context_id) override;
@@ -178,6 +91,76 @@ class CuptiWrapper : public xla::profiler::CuptiInterface {
  private:
   CuptiWrapper(const CuptiWrapper&) = delete;
   void operator=(const CuptiWrapper&) = delete;
+};
+
+// This is an implementation of CuptiWrapper that implements all load bearing
+// APIs as no-op. This is a stub that keeps XLA profiler functional, but all
+// collected profiles will be empty.
+class CuptiWrapperStub : public xla::profiler::CuptiInterface {
+ public:
+  CuptiWrapperStub() {}
+
+  ~CuptiWrapperStub() override {}
+
+  // CUPTI activity API
+  CUptiResult ActivityDisable(CUpti_ActivityKind kind) override;
+
+  CUptiResult ActivityEnable(CUpti_ActivityKind kind) override;
+
+  CUptiResult ActivityFlushAll(uint32_t flag) override;
+
+  CUptiResult ActivityGetNextRecord(uint8_t* buffer,
+                                    size_t valid_buffer_size_bytes,
+                                    CUpti_Activity** record) override;
+
+  CUptiResult ActivityGetNumDroppedRecords(CUcontext context,
+                                           uint32_t stream_id,
+                                           size_t* dropped) override;
+
+  CUptiResult ActivityConfigureUnifiedMemoryCounter(
+      CUpti_ActivityUnifiedMemoryCounterConfig* config,
+      uint32_t count) override;
+
+  CUptiResult ActivityRegisterCallbacks(
+      CUpti_BuffersCallbackRequestFunc func_buffer_requested,
+      CUpti_BuffersCallbackCompleteFunc func_buffer_completed) override;
+
+  CUptiResult GetDeviceId(CUcontext context, uint32_t* deviceId) override;
+
+  CUptiResult GetTimestamp(uint64_t* timestamp) override;
+
+  // cuptiFinalize is only defined in CUDA8 and above.
+  // To enable it in CUDA8, the environment variable CUPTI_ENABLE_FINALIZE must
+  // be set to 1.
+  CUptiResult Finalize() override;
+
+  // CUPTI callback API
+  CUptiResult EnableCallback(uint32_t enable, CUpti_SubscriberHandle subscriber,
+                             CUpti_CallbackDomain domain,
+                             CUpti_CallbackId cbid) override;
+
+  CUptiResult EnableDomain(uint32_t enable, CUpti_SubscriberHandle subscriber,
+                           CUpti_CallbackDomain domain) override;
+
+  CUptiResult Subscribe(CUpti_SubscriberHandle* subscriber,
+                        CUpti_CallbackFunc callback, void* userdata) override;
+
+  CUptiResult Unsubscribe(CUpti_SubscriberHandle subscriber) override;
+
+  CUptiResult GetResultString(CUptiResult result, const char** str) override;
+
+  CUptiResult GetContextId(CUcontext context, uint32_t* context_id) override;
+
+  CUptiResult GetStreamIdEx(CUcontext context, CUstream stream,
+                            uint8_t per_thread_stream,
+                            uint32_t* stream_id) override;
+
+  void CleanUp() override {}
+  bool Disabled() const override { return false; }
+
+ private:
+  CuptiWrapperStub(const CuptiWrapperStub&) = delete;
+  void operator=(const CuptiWrapperStub&) = delete;
 };
 
 }  // namespace profiler

@@ -88,18 +88,6 @@ if [[ "${OSTYPE}" =~ darwin* ]]; then
   source ./ci/official/utilities/setup_macos.sh
 fi
 
-# Force-disable uploads if the job initiator is not louhi-bridge-server
-# (the user that triggers all of the nightly and release jobs on Louhi)
-# This is temporary: it's currently standard practice for employees to
-# run nightly jobs for testing purposes. We're aiming to move away from
-# this with more convenient methods, but as long as it's possible to do,
-# we want to make sure those extra jobs don't upload anything.
-# TODO(angerson) Remove this once artifact staging is done; after that,
-# simply running a nightly again will not risk upload anything.
-if [[ "${KOKORO_BUILD_INITIATOR:-}" != "louhi-bridge-server" ]]; then
-  source ./ci/official/envs/no_upload
-fi
-
 # Create and expand to the full path of TFCI_OUTPUT_DIR
 export TFCI_OUTPUT_DIR=$(realpath "$TFCI_OUTPUT_DIR")
 mkdir -p "$TFCI_OUTPUT_DIR"

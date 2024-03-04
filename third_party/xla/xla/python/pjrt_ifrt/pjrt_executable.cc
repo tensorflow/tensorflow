@@ -265,7 +265,6 @@ StatusOr<std::unique_ptr<LoadedExecutable>> PjRtLoadedExecutable::Create(
   TF_ASSIGN_OR_RETURN(
       auto pjrt_loaded_executable,
       client->pjrt_client()->Compile(module, std::move(compile_options)));
-  TF_RETURN_IF_ERROR(UpgradeVersionedStablehlo(module));
 
   if (auto_spmd_partitioning) {
     // TODO(hyeontaek): Use a full shape and a sharding rather than a per-shard

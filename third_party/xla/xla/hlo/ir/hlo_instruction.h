@@ -95,6 +95,7 @@ class HloPrintOptions {
         print_large_constants_(false),
         print_only_essential_constants_(false),
         print_metadata_(true),
+        print_metadata_only_op_name_(false),
         print_backend_config_(true),
         print_infeed_outfeed_config_(true),
         compact_operands_(false),
@@ -200,6 +201,13 @@ class HloPrintOptions {
   // If true, metadata will be printed.
   HloPrintOptions& set_print_metadata(bool value) {
     print_metadata_ = value;
+    return *this;
+  }
+
+  // If true and print_metadata is true, metadata op name will be printed. Other
+  // metadata values will be omitted.
+  HloPrintOptions& set_print_metadata_only_op_name(bool value) {
+    print_metadata_only_op_name_ = value;
     return *this;
   }
 
@@ -369,6 +377,9 @@ class HloPrintOptions {
     return print_subcomputation_mode_;
   }
   bool print_metadata() const { return print_metadata_; }
+  bool print_metadata_only_op_name() const {
+    return print_metadata_only_op_name_;
+  }
   bool print_backend_config() const { return print_backend_config_; }
   bool print_infeed_outfeed_config() const {
     return print_infeed_outfeed_config_;
@@ -408,6 +419,7 @@ class HloPrintOptions {
   bool print_large_constants_;
   bool print_only_essential_constants_;
   bool print_metadata_;
+  bool print_metadata_only_op_name_;
   bool print_backend_config_;
   bool print_infeed_outfeed_config_;
   bool compact_operands_;
@@ -1036,6 +1048,10 @@ class HloInstruction {
   // and returns the receive buffer. The operand must be kRecv.
   static std::unique_ptr<HloInstruction> CreateRecvDone(
       HloInstruction* operand, bool is_host_transfer = false);
+  // Similar to the above, but the operand doesn't have to be a kRecv.
+  static std::unique_ptr<HloInstruction> CreateRecvDone(
+      HloInstruction* operand, int64_t channel_id,
+      bool is_host_transfer = false);
 
   // Creates a slice instruction, where the operand is sliced by the given
   // start/limit indices.
@@ -1357,7 +1373,7 @@ class HloInstruction {
   // Returns true if this instruction has a side effect. An instruction has a
   // side effect if it uses certain opcodes or calls a computation with a side
   // effect.
-  bool HasSideEffect() const;
+  virtual bool HasSideEffect() const;
 
   // Returns the result shape of this instruction.
   const Shape& shape() const;
@@ -1655,6 +1671,13 @@ class HloInstruction {
   // this means it either is a bitcast, or it is a transpose that is effectively
   // a bitcast.
   bool IsEffectiveBitcast() const;
+
+  // Returns true if this instruction is asynchronous with the
+  // async_execution_thread set to `execution_thread`.
+  bool IsAsyncInstructionWithExecutionThread(
+      absl::string_view execution_thread) const {
+    return IsAsynchronous() && async_execution_thread() == execution_thread;
+  };
 
   // Gets/sets the to_apply HloComputation for Call, Map, Reduce, etc.
   // The setter should only be called by HloModule or HloComputation methods.
@@ -2085,11 +2108,7 @@ class HloInstruction {
 
   // Sets the debug metadata for this instruction, excluding creation_pass_id,
   // which should never be copied anywhere.
-  void set_metadata(const OpMetadata& metadata) {
-    int64_t creation_pass_id = metadata_->creation_pass_id();
-    *metadata_ = metadata;
-    metadata_->set_creation_pass_id(creation_pass_id);
-  }
+  void set_metadata(const OpMetadata& metadata) { *metadata_ = metadata; }
 
   void set_size_of_generated_code_in_bytes(int64_t code_size_in_bytes) {
     metadata_->set_size_of_generated_code_in_bytes(code_size_in_bytes);
@@ -2099,14 +2118,8 @@ class HloInstruction {
     metadata_->set_size_of_memory_working_set_in_bytes(
         working_set_size_in_bytes);
   }
-  void set_creation_pass_id(int64_t pass_id) {
-    metadata_->set_creation_pass_id(pass_id);
-  }
   void set_metadata_op_name(const std::string& name) {
     metadata_->set_op_name(name);
-  }
-  void set_logical_creation_pass_id(int64_t pass_id) {
-    metadata_->set_logical_creation_pass_id(pass_id);
   }
   void set_metadata_deduplicated_name(std::string deduplicated_name) {
     metadata_->set_deduplicated_name(std::move(deduplicated_name));
@@ -2682,6 +2695,7 @@ class HloInstruction {
   };
 
   int unique_id_;  // Unique to this HloInstruction within a HloModule
+  uint32_t index_in_parent_;  // Index that identifies inst in HloComputation
 
   // Opcode for this instruction.
   HloOpcode opcode_;

@@ -1356,7 +1356,7 @@ class SparseSegmentGradV2OpCommon {
       Tensor* sorted_unique_indices = nullptr;
       TF_RETURN_IF_ERROR(context->allocate_output(1, TensorShape({0}),
                                                   &sorted_unique_indices));
-      return OkStatus();
+      return absl::OkStatus();
     }
 
     auto input_flat = input.flat_outer_dims<T>();
@@ -1367,7 +1367,7 @@ class SparseSegmentGradV2OpCommon {
         context, operation, input_flat, indices_vec, segment_vec,
         dense_output_shape, done);
 
-    return OkStatus();
+    return absl::OkStatus();
   }
 };
 

@@ -4138,7 +4138,7 @@ TEST_F(HloParserTest, ParseShapeStringWithElementSizeInBits) {
   std::string shape_string = "s4[123,456]{1,0:T(2,128)E(4)}";
   TF_ASSERT_OK_AND_ASSIGN(Shape actual, ParseShape(shape_string));
   Shape expected = ShapeUtil::MakeShapeWithDenseLayout(S4, {123, 456}, {1, 0},
-                                                       {Tile({2, 128})}, 4);
+                                                       {Tile({2, 128})}, 1, 4);
   EXPECT_EQ(expected, actual)
       << "expected: " << ShapeUtil::HumanStringWithLayout(expected)
       << "actual:   " << ShapeUtil::HumanStringWithLayout(actual);
@@ -4148,8 +4148,8 @@ TEST_F(HloParserTest, ParseShapeStringWithMemorySpaceLayout) {
   // Tile, element size, and memory space.
   std::string shape_string = "pred[123,456]{1,0:T(2,128)S(3)}";
   TF_ASSERT_OK_AND_ASSIGN(Shape actual, ParseShape(shape_string));
-  Shape expected = ShapeUtil::MakeShapeWithDenseLayout(PRED, {123, 456}, {1, 0},
-                                                       {Tile({2, 128})}, 0, 3);
+  Shape expected = ShapeUtil::MakeShapeWithDenseLayout(
+      PRED, {123, 456}, {1, 0}, {Tile({2, 128})}, 1, 0, 3);
   EXPECT_EQ(expected, actual)
       << "expected: " << ShapeUtil::HumanStringWithLayout(expected)
       << "actual:   " << ShapeUtil::HumanStringWithLayout(actual);
@@ -4157,8 +4157,8 @@ TEST_F(HloParserTest, ParseShapeStringWithMemorySpaceLayout) {
   // Element size and memory space.
   shape_string = "pred[123,456]{1,0:S(3)}";
   TF_ASSERT_OK_AND_ASSIGN(actual, ParseShape(shape_string));
-  expected =
-      ShapeUtil::MakeShapeWithDenseLayout(PRED, {123, 456}, {1, 0}, {}, 0, 3);
+  expected = ShapeUtil::MakeShapeWithDenseLayout(PRED, {123, 456}, {1, 0}, {},
+                                                 1, 0, 3);
   EXPECT_EQ(expected, actual)
       << "expected: " << ShapeUtil::HumanStringWithLayout(expected)
       << "actual:   " << ShapeUtil::HumanStringWithLayout(actual);
@@ -4166,8 +4166,8 @@ TEST_F(HloParserTest, ParseShapeStringWithMemorySpaceLayout) {
   // Memory space only.
   shape_string = "pred[123,456]{1,0:S(3)}";
   TF_ASSERT_OK_AND_ASSIGN(actual, ParseShape(shape_string));
-  expected =
-      ShapeUtil::MakeShapeWithDenseLayout(PRED, {123, 456}, {1, 0}, {}, 0, 3);
+  expected = ShapeUtil::MakeShapeWithDenseLayout(PRED, {123, 456}, {1, 0}, {},
+                                                 1, 0, 3);
   EXPECT_EQ(expected, actual)
       << "expected: " << ShapeUtil::HumanStringWithLayout(expected)
       << "actual:   " << ShapeUtil::HumanStringWithLayout(actual);
@@ -5055,6 +5055,76 @@ ENTRY %Entry (p0: f32[10]) -> f32[20] {
                   tsl::error::INVALID_ARGUMENT,
                   HasSubstr("Expect async_execution_thread to be main, "
                             "but got foo_thread")));
+}
+
+TEST_F(HloParserTest, PipelinedSendRecv) {
+  const std::string hlo_string = R"(
+  HloModule test
+  cond {
+    param = (u32[], u32[2], (u32[2], u32[], token[])) parameter(0)
+    count = get-tuple-element(%param), index=0
+    ub = u32[] constant(1)
+    ROOT result = pred[] compare(count, ub), direction=LT
+  }
+
+  body {
+    param = (u32[], u32[2], (u32[2], u32[], token[])) parameter(0)
+    count = get-tuple-element(%param), index=0
+    send-data = get-tuple-element(%param), index=1
+
+    after-all.0 = token[] after-all()
+    send.0 = (u32[2], u32[], token[]) send(send-data, after-all.0),
+      channel_id=1,
+      frontend_attributes={
+        _xla_send_recv_source_target_pairs="{{1,0}}"
+      }
+
+    recv.0 = (u32[2], u32[], token[]) get-tuple-element(param), index=2
+    recv-done.0 = (u32[2], token[]) recv-done(recv.0), channel_id=1
+    recv-data.0 = u32[2] get-tuple-element(recv-done.0), index=0
+
+    c1 = u32[] constant(1)
+    new_count = u32[] add(count, c1)
+
+    after-all.0.n = token[] after-all()
+    recv.0.n = (u32[2], u32[], token[]) recv(after-all.0.n), channel_id=1,
+      frontend_attributes={
+        _xla_send_recv_source_target_pairs="{{1,0}}"
+      }
+
+    send-done.0 = token[] send-done(send.0), channel_id=1
+
+    ROOT result = (u32[], u32[2], (u32[2], u32[], token[])) tuple(new_count, recv-data.0, recv.0.n)
+  }
+
+  ENTRY test_computation {
+    c0 = u32[] constant(0)
+    init = u32[2] broadcast(c0), dimensions={}
+    after-all.0.p = token[] after-all()
+    recv.0.p = (u32[2], u32[], token[]) recv(after-all.0.p), channel_id=1,
+      frontend_attributes={
+        _xla_send_recv_source_target_pairs="{{1,0}}"
+      }
+
+    while_init = (u32[], u32[2], (u32[2], u32[], token[])) tuple(c0, init, recv.0.p)
+    while_result = (u32[], u32[2], (u32[2], u32[], token[])) while(while_init), body=body, condition=cond
+
+    send-data.q = u32[2] get-tuple-element(while_result), index=1
+    after-all.0.q = token[] after-all()
+    send.0.q = (u32[2], u32[], token[]) send(send-data.q, after-all.0.q),
+      channel_id=1,
+      frontend_attributes={
+        _xla_send_recv_source_target_pairs="{{1,0}}"
+      }
+
+    recv.0.q = (u32[2], u32[], token[]) get-tuple-element(while_result), index=2
+    recv-done.0.q = (u32[2], token[]) recv-done(recv.0.q), channel_id=1
+    send-done.0.q = token[] send-done(send.0.q), channel_id=1
+
+    ROOT recv-data.0.q = u32[2] get-tuple-element(recv-done.0.q), index=0
+      })";
+  auto result = ParseAndReturnUnverifiedModule(hlo_string);
+  EXPECT_EQ(OkStatus(), result.status());
 }
 
 }  // namespace

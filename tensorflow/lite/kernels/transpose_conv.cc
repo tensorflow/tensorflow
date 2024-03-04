@@ -655,6 +655,8 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   if (IsDynamicTensor(output)) {
     TF_LITE_ENSURE_OK(context, ResizeTensor(context, output_shape, output));
   }
+  TF_LITE_ENSURE_EQ(context, SizeOfDimension(input, 0),
+                    SizeOfDimension(output, 0));
   if (data->has_col2im && IsDynamicTensor(col2im)) {
     TF_LITE_ENSURE_OK(context, ResizeCol2ImTensor(context, output_shape,
                                                   weights, input, col2im));

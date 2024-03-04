@@ -19,15 +19,25 @@ limitations under the License.
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/EquivalenceClasses.h"
 #include "llvm/ADT/STLExtras.h"
+#include "llvm/ADT/SmallSet.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/raw_ostream.h"
+#include "mlir/Analysis/DataFlow/ConstantPropagationAnalysis.h"  // from @llvm-project
+#include "mlir/Analysis/DataFlow/DeadCodeAnalysis.h"  // from @llvm-project
+#include "mlir/Analysis/DataFlow/SparseAnalysis.h"  // from @llvm-project
+#include "mlir/Analysis/DataFlowFramework.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
+#include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/OperationSupport.h"  // from @llvm-project
 #include "mlir/IR/SymbolTable.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
+#include "mlir/IR/Visitors.h"  // from @llvm-project
+#include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/analysis/resource_alias_analysis.h"
+#include "tensorflow/compiler/mlir/tensorflow/analysis/resource_dataflow.h"
 #include "tensorflow/compiler/mlir/tensorflow/analysis/side_effect_analysis.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_executor.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
@@ -48,12 +58,19 @@ using OperationSetTy = SmallPtrSet<Operation*, 4>;
 using ResourceToOpsMapTy = DenseMap<ResourceId, OperationSetTy>;
 
 #define GEN_PASS_DEF_EXECUTORCONVERTCONTROLTODATAOUTPUTSPASS
+#define GEN_PASS_DECL_EXECUTORCONVERTCONTROLTODATAOUTPUTSPASS
 #include "tensorflow/compiler/mlir/tensorflow/transforms/tf_passes.h.inc"
 
-class ConvertControlToDataOutputsPass
+struct ConvertControlToDataOutputsPass
     : public impl::ExecutorConvertControlToDataOutputsPassBase<
           ConvertControlToDataOutputsPass> {
- public:
+  ConvertControlToDataOutputsPass() = default;
+  explicit ConvertControlToDataOutputsPass(
+      bool composite_tpuexecute_side_effects)
+      : ExecutorConvertControlToDataOutputsPassBase(
+            ExecutorConvertControlToDataOutputsPassOptions{
+                composite_tpuexecute_side_effects}) {}
+
   void runOnOperation() override;
 };
 
@@ -74,6 +91,41 @@ SmallVector<TF::WhileOp> GetWhileCallers(func::FuncOp func,
   return while_callers;
 }
 
+bool IsResourceType(Type type) {
+  if (auto tensor_type = type.dyn_cast<TensorType>()) {
+    return tensor_type.getElementType().isa<TF::ResourceType>();
+  }
+  return false;
+}
+
+bool OnlyOperatesOnCompositeDevices(TF::TPUExecuteAndUpdateVariablesOp& op,
+                                    const DataFlowSolver& solver) {
+  llvm::SmallSet<int, 8> read_array;
+  for (const Attribute& attr : op.getDeviceVarReadsIndices()) {
+    read_array.insert(attr.cast<IntegerAttr>().getInt());
+  }
+  llvm::SmallSet<int, 8> update_array;
+  for (const Attribute& attr : op.getDeviceVarUpdatesIndices()) {
+    update_array.insert(attr.cast<IntegerAttr>().getInt());
+  }
+  for (auto& arg : op->getOpOperands()) {
+    if (!IsResourceType(arg.get().getType())) {
+      continue;
+    }
+    auto lattice =
+        solver.lookupState<TF::ResourceDataflowAnalysis::StateT>(arg.get())
+            ->getValue();
+    bool is_read = read_array.contains(arg.getOperandNumber());
+    bool is_update = update_array.contains(arg.getOperandNumber());
+    // We want the resource operands that are on composite devices to be the
+    // exact same set as the resource operands that are read or updated.
+    if ((is_read || is_update) != lattice.is_on_composite_device) {
+      return false;
+    }
+  }
+  return true;
+}
+
 // Populates `chain_resource_to_ops_map`, the map from all resources that need
 // to be chained to the set of operations that access the resource, and
 // `resource_equivalence_classes`. Resources are equivalent if they are accessed
@@ -81,7 +133,8 @@ SmallVector<TF::WhileOp> GetWhileCallers(func::FuncOp func,
 void CollectChainResources(
     func::FuncOp func, ResourceToOpsMapTy& chain_resource_to_ops_map,
     llvm::EquivalenceClasses<ResourceId>& resource_equivalence_classes,
-    const TF::SideEffectAnalysis::Info& side_effect_analysis) {
+    const TF::SideEffectAnalysis::Info& side_effect_analysis,
+    const DataFlowSolver& solver, bool composite_tpuexecute_side_effects) {
   auto graph_op = cast<GraphOp>(func.front().front());
 
   // For each op in the graph, get the resources it uses and update the access
@@ -92,6 +145,17 @@ void CollectChainResources(
     // internal op perfectly. Hence this assertion should never fail.
     assert(island.WrapsSingleOp());
     Operation& op = island.GetBody().front();
+
+    // If the op only operates on resources stored on devices that are
+    // "COMPOSITE", then this op is defined to work in parallel with other
+    // TPUExecute* ops. So we don't need to track resources for it.
+    // TODO(b/325290168): Do this check per resource, not per op.
+    if (auto execute = llvm::dyn_cast<TF::TPUExecuteAndUpdateVariablesOp>(op)) {
+      if (composite_tpuexecute_side_effects &&
+          OnlyOperatesOnCompositeDevices(execute, solver)) {
+        return WalkResult::advance();
+      }
+    }
 
     ResourceId prev_resource_id = kInvalidResourceId;
     for (auto resource_id_read_only_pair :
@@ -113,6 +177,7 @@ void CollectChainResources(
         prev_resource_id = resource_id;
       }
     }
+    return WalkResult::advance();
   });
 }
 
@@ -386,7 +451,8 @@ TF::WhileOp RewriteWhileOp(TF::WhileOp while_op, int num_resource_inputs,
 void ConvertControlToDataOutputs(
     func::FuncOp while_body, SmallVectorImpl<TF::WhileOp>& while_callers,
     OperationSetTy& recompute_analysis_for_funcs,
-    const TF::SideEffectAnalysis::Info& side_effect_analysis) {
+    const TF::SideEffectAnalysis::Info& side_effect_analysis,
+    const DataFlowSolver& solver, bool composite_tpuexecute_side_effects) {
   if (while_callers.empty()) return;
 
   // Collect access information for each resource in the while body that needs
@@ -395,7 +461,8 @@ void ConvertControlToDataOutputs(
   ResourceToOpsMapTy chain_resource_to_ops_map;
   llvm::EquivalenceClasses<ResourceId> resource_equivalence_classes;
   CollectChainResources(while_body, chain_resource_to_ops_map,
-                        resource_equivalence_classes, side_effect_analysis);
+                        resource_equivalence_classes, side_effect_analysis,
+                        solver, composite_tpuexecute_side_effects);
 
   // Check for presence of unknown side-effecting ops within the while loop
   // body. These ops act as barriers and the optimization would not yield much
@@ -459,6 +526,13 @@ void ConvertControlToDataOutputs(
 
 void ConvertControlToDataOutputsPass::runOnOperation() {
   ModuleOp module = getOperation();
+
+  DataFlowSolver solver;
+  solver.load<dataflow::DeadCodeAnalysis>();
+  solver.load<dataflow::SparseConstantPropagation>();
+  solver.load<TF::ResourceDataflowAnalysis>();
+  if (failed(solver.initializeAndRun(module))) return signalPassFailure();
+
   // This pass assumes that all functions are suitable for export i.e., each
   // function has a single tf_executor.graph op and all islands wrap the
   // internal op perfectly. Verify that in the beginning once.
@@ -500,7 +574,8 @@ void ConvertControlToDataOutputsPass::runOnOperation() {
     }
     ConvertControlToDataOutputs(
         while_body, while_callers, recompute_analysis_for_funcs,
-        side_effect_analysis.GetAnalysisForFunc(while_body));
+        side_effect_analysis.GetAnalysisForFunc(while_body), solver,
+        composite_tpuexecute_side_effects_);
   }
 }
 
@@ -509,6 +584,13 @@ void ConvertControlToDataOutputsPass::runOnOperation() {
 std::unique_ptr<OperationPass<ModuleOp>>
 CreateTFExecutorConvertControlToDataOutputsPass() {
   return std::make_unique<ConvertControlToDataOutputsPass>();
+}
+
+std::unique_ptr<OperationPass<ModuleOp>>
+CreateTFExecutorConvertControlToDataOutputsPass(
+    bool composite_tpuexecute_side_effects) {
+  return std::make_unique<ConvertControlToDataOutputsPass>(
+      composite_tpuexecute_side_effects);
 }
 
 }  // namespace tf_executor

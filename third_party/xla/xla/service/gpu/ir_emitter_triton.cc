@@ -19,6 +19,7 @@ limitations under the License.
 #include <cmath>
 #include <cstdint>
 #include <functional>
+#include <limits>
 #include <memory>
 #include <optional>
 #include <queue>
@@ -103,12 +104,14 @@ limitations under the License.
 #include "xla/service/gpu/target_util.h"
 #include "xla/service/gpu/triton_fusion_analysis.h"
 #include "xla/service/gpu/triton_tiling_propagation.h"
+#include "xla/service/hlo_module_config.h"
 #include "xla/service/llvm_ir/llvm_util.h"
 #include "xla/shape_util.h"
 #include "xla/status.h"
 #include "xla/status_macros.h"
 #include "xla/statusor.h"
 #include "xla/stream_executor/device_description.h"
+#include "xla/stream_executor/launch_dim.h"
 #include "xla/translate/hlo_to_mhlo/hlo_function_importer.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
@@ -119,14 +122,13 @@ limitations under the License.
 #include "tsl/platform/statusor.h"
 #include "tsl/platform/tensor_float_32_utils.h"
 #include "triton/Conversion/NVGPUToLLVM/NVGPUToLLVMPass.h"
-#include "triton/Conversion/TritonGPUToLLVM/TritonGPUToLLVMPass.h"
+#include "triton/Conversion/TritonGPUToLLVM/Passes.h"
 #include "triton/Conversion/TritonToTritonGPU/TritonToTritonGPUPass.h"
 #include "triton/Dialect/Triton/IR/Dialect.h"
 #include "triton/Dialect/Triton/IR/Types.h"
 #include "triton/Dialect/Triton/Transforms/Passes.h"
 #include "triton/Dialect/TritonGPU/Transforms/Passes.h"
 #include "triton/Dialect/TritonNvidiaGPU/Transforms/Passes.h"
-#include "triton/Target/PTX/TmaMetadata.h"
 
 namespace xla {
 namespace gpu {
@@ -140,6 +142,7 @@ namespace mt = ::mlir::triton;
 using ::llvm::SmallVector;
 using mlir::ArrayRef;
 using mlir::ImplicitLocOpBuilder;
+using ::mlir::ShapedType;
 using ::mlir::Type;
 using ::mlir::Value;
 using mlir::ValueRange;
@@ -219,7 +222,7 @@ ma::ConstantOp CreateConst(ImplicitLocOpBuilder& b, Type type, T value,
 }
 
 Value ZerosLike(ImplicitLocOpBuilder& b, Value x) {
-  if (auto src_shaped_ty = x.getType().dyn_cast<mlir::ShapedType>()) {
+  if (auto src_shaped_ty = x.getType().dyn_cast<ShapedType>()) {
     Type src_ty = src_shaped_ty.getElementType();
     return CreateConst(b, src_ty, 0, src_shaped_ty.getShape());
   }
@@ -227,7 +230,7 @@ Value ZerosLike(ImplicitLocOpBuilder& b, Value x) {
 }
 
 Value OnesLike(ImplicitLocOpBuilder& b, Value x) {
-  if (auto src_shaped_ty = x.getType().dyn_cast<mlir::ShapedType>()) {
+  if (auto src_shaped_ty = x.getType().dyn_cast<ShapedType>()) {
     Type src_ty = src_shaped_ty.getElementType();
     return CreateConst(b, src_ty, 1, src_shaped_ty.getShape());
   }
@@ -240,7 +243,7 @@ Value Cast(ImplicitLocOpBuilder& b, Value value, Type dst_element_ty) {
   Type src_element_ty = src_ty;
   Type fp32_ty = b.getF32Type();
   Type dst_ty = dst_element_ty;
-  if (auto src_shaped_ty = src_ty.dyn_cast<mlir::ShapedType>()) {
+  if (auto src_shaped_ty = src_ty.dyn_cast<ShapedType>()) {
     src_element_ty = src_shaped_ty.getElementType();
     dst_ty = src_shaped_ty.clone(src_shaped_ty.getShape(), dst_element_ty);
     fp32_ty = src_shaped_ty.clone(src_shaped_ty.getShape(), b.getF32Type());
@@ -731,20 +734,26 @@ absl::StatusOr<Value> EmitScope(
   return values[instructions.back()];
 }
 
-absl::Status CreateTritonPipeline(mlir::OpPassManager& pm,
-                                  const se::CudaComputeCapability& cc,
-                                  const TritonGemmConfig& config) {
+// Create Triton pipeline.
+//
+// `out_cluster_info` must be kept alive at least until pm.run() is called.
+// It should be read after that. We have to pass the cluster dims to
+// LaunchDimensions. Triton currently uses this as an out-parameter to return
+// the cluster dims determined based on `config.num_ctas` and a heuristic. There
+// are some signs that show that this was intended to be used as an in-out
+// parameter which would give a hint to Triton which cluster dims we prefer to
+// use, but that's not the case currently.
+absl::Status CreateTritonPipeline(
+    mlir::OpPassManager& pm, const se::CudaComputeCapability& cc,
+    const TritonGemmConfig& config,
+    mlir::triton::nvidia_gpu::ClusterInfo& out_cluster_info) {
   const int ccAsInt = cc.major * 10 + cc.minor;
   const int threadsPerWarp = 32;
-  mlir::triton::nvidia_gpu::ClusterInfo clusterInfo;
-  clusterInfo.clusterDimX = config.cluster_dims.x;
-  clusterInfo.clusterDimY = config.cluster_dims.y;
-  clusterInfo.clusterDimZ = config.cluster_dims.z;
 
   // Based on make_ttir() in
-  // @triton//:python/triton/compiler/backends/cuda.py
-  pm.addPass(mt::createRewriteTensorPointerPass(ccAsInt));
+  // @triton//:third_party/nvidia/backend/compiler.py
   pm.addPass(mlir::createInlinerPass());
+  pm.addPass(mt::createRewriteTensorPointerPass());
   pm.addPass(mt::createCombineOpsPass());
   pm.addPass(mlir::createCanonicalizerPass());
   pm.addPass(mt::createReorderBroadcastPass());
@@ -753,13 +762,11 @@ absl::Status CreateTritonPipeline(mlir::OpPassManager& pm,
   pm.addPass(mlir::createSymbolDCEPass());
 
   // Based on make_ttgir() in
-  // @triton//:python/triton/compiler/backends/cuda.py
+  // @triton//:third_party/nvidia/backend/compiler.py
   pm.addPass(mt::createConvertTritonToTritonGPUPass(
       config.num_warps, threadsPerWarp, config.num_ctas, ccAsInt));
   pm.addPass(mt::gpu::createCoalescePass());
-  pm.addPass(mlir::createTritonNvidiaGPUPlanCTAPass(&clusterInfo));
-  pm.addPass(mlir::createTritonGPURewriteTensorPointerPass(ccAsInt));
-  pm.addPass(mlir::createTritonNvidiaGPUPlanCTAPass(&clusterInfo));
+  pm.addPass(mlir::createTritonNvidiaGPUPlanCTAPass(&out_cluster_info));
   pm.addPass(mt::gpu::createRemoveLayoutConversionsPass());
   pm.addPass(mt::gpu::createOptimizeThreadLocalityPass());
   pm.addPass(mt::gpu::createAccelerateMatmulPass(ccAsInt));
@@ -767,63 +774,34 @@ absl::Status CreateTritonPipeline(mlir::OpPassManager& pm,
   pm.addPass(mt::gpu::createOptimizeDotOperandsPass());
   pm.addPass(mlir::createCSEPass());
 
-  if (cc.IsAtLeastHopper() && config.enable_warp_specialization) {
-    // Triton currently doesn't support warp specialization for num_warps != 4.
-    // TODO from Triton to add support here:
-    // https://github.com/openai/triton/blob/1bc9c0ea67e4cbec2c77d4acde3173aa7d51c8f9/python/triton/compiler/backends/cuda.py#L119
-    if (config.num_warps != 4) {
-      return absl::UnimplementedError(
-          "Triton currently doesn't support warp specialization for "
-          "num_warps != 4.");
-    }
-    // Ideally, we should run
-    // 'mlir::createTritonNvidiaGPUWSFeasibilityCheckingPass(ccAsInt)' at this
-    // point on the IR to check if warp specialization is feasible. Instead, we
-    // are relying on failures as indication of infeasibility during
-    // auto-tuning.
-    pm.addPass(mlir::createTritonNvidiaGPUWSDecomposingPass(ccAsInt));
-    pm.addPass(mlir::createTritonNvidiaGPUWSPipelinePass(
-        config.num_stages, config.num_warps, ccAsInt));
-    pm.addPass(mlir::createTritonNvidiaGPUWSMutexPass(ccAsInt));
-    pm.addPass(mlir::createTritonNvidiaGPUWSMaterializationPass(ccAsInt));
-    pm.addPass(mlir::createLoopInvariantCodeMotionPass());
-    pm.addPass(mlir::createCSEPass());
-  } else {
+  if (cc.IsAtLeastAmpere()) {
     pm.addPass(mt::gpu::createPipelinePass(config.num_stages, config.num_warps,
                                            config.num_ctas, ccAsInt));
   }
-
-  pm.addPass(mlir::createTritonNvidiaGPUMaterializeLoadStorePass(
-      config.num_warps, ccAsInt));
-  if (ccAsInt <= 80) {
-    pm.addPass(mlir::triton::gpu::createPrefetchPass());
+  if (!cc.IsAtLeastHopper()) {
+    pm.addPass(mt::gpu::createPrefetchPass());
   }
+
   pm.addPass(mt::gpu::createOptimizeDotOperandsPass());
   pm.addPass(mt::gpu::createRemoveLayoutConversionsPass());
-  pm.addPass(mt::gpu::createDecomposeConversionsPass());
-  pm.addPass(mlir::createTritonNvidiaGPUWSFixupMissingAttrs());
+  pm.addPass(mt::gpu::createReduceDataDuplicationPass());
   pm.addPass(mt::gpu::createReorderInstructionsPass());
   pm.addPass(mlir::createCSEPass());
   pm.addPass(mlir::createSymbolDCEPass());
   if (cc.IsAtLeastHopper()) {
     pm.addPass(mlir::createTritonNvidiaGPUFenceInsertionPass(ccAsInt));
   }
-  pm.addPass(mlir::createTritonNvidiaGPUWSFixupMissingAttrs());
   pm.addPass(mlir::createCanonicalizerPass());
 
   // Based on make_llir() in
-  // @triton//:python/triton/compiler/backends/cuda.py
+  // @triton//:third_party/nvidia/backend/compiler.py
+  pm.addPass(mlir::triton::gpu::createDecomposeUnsupportedConversionsPass());
   pm.addPass(mlir::createConvertSCFToCFPass());
   pm.addPass(mlir::createConvertIndexToLLVMPass());
-  // // TODO(b/316566238): Use TMA info collected here in XLA runtime.
-  mlir::triton::gpu::TMAMetadataTy tma_infos;
-  pm.addPass(mt::createConvertTritonGPUToLLVMPass(ccAsInt,
-                                                  /*target=*/mlir::triton::NVVM,
-                                                  &tma_infos));
-  if (cc.IsAtLeastHopper() && config.enable_warp_specialization) {
-    pm.addPass(mlir::createLoopInvariantCodeMotionPass());
-    pm.addPass(mlir::createCSEPass());
-  }
+  pm.addPass(mlir::triton::gpu::createAllocateSharedMemoryPass());
+  pm.addPass(
+      mt::createConvertTritonGPUToLLVMPass(ccAsInt,
+                                           /*target=*/mlir::triton::NVVM));
   pm.addPass(mt::createConvertNVGPUToLLVMPass());
   pm.addPass(mlir::createArithToLLVMConversionPass());
   pm.addPass(mlir::createCanonicalizerPass());
@@ -1546,6 +1524,94 @@ ConstHloInstructionSet ScopeInputs(const TritonFusionAnalysis& analysis,
   return result;
 }
 
+// Truncates |input| of F32 type to the number representable in Bf16 toward
+// zero.
+// It is used for Emit6xBfloat16MatMul.
+Value TruncateToBF16TowardsZero(ImplicitLocOpBuilder& b, Value input) {
+  ShapedType input_type = input.getType().dyn_cast<ShapedType>();
+  Type input_type_as_i32 = input_type.clone(b.getI32Type());
+  Value input_as_i32 = b.create<mt::BitcastOp>(input_type_as_i32, input);
+  Value mask = CreateConst<uint32_t>(b, b.getI32Type(), 0xFFFF0000u,
+                                     input_type.getShape());
+  Value high_bits = b.create<ma::AndIOp>(input_type_as_i32, input_as_i32, mask);
+
+  return b.create<mt::BitcastOp>(input_type, high_bits);
+}
+
+// Finds the middle 8 bits of |input|'s mantissa.
+// It is used for Emit6xBfloat16MatMul.
+Value SoftMiddleEight(ImplicitLocOpBuilder& b, Value input) {
+  Value high = TruncateToBF16TowardsZero(b, input);
+  return b.create<ma::SubFOp>(input, high);
+}
+
+// Finds the low 8 bits of |input|'s mantissa.
+// It is used for Emit6xBfloat16MatMul.
+Value SoftLowEight(ImplicitLocOpBuilder& b, Value input) {
+  // Find the middle bits of the middle bits, and these are the low eight
+  // bits.
+  return SoftMiddleEight(b, SoftMiddleEight(b, input));
+}
+
+// Rounds |input| to BF16 type.
+// It is used for Emit6xBfloat16MatMul.
+Value RoundToBF16(ImplicitLocOpBuilder& b, Value input) {
+  return Cast(b, input, b.getBF16Type());
+}
+
+// Leverages BF16 datatype for F32 matmul computation. It follows the guidance
+// from https://arxiv.org/pdf/1904.06376.pdf.
+StatusOr<Value> Emit6xBfloat16MatMul(ImplicitLocOpBuilder& b, Value lhs,
+                                     Value rhs, Value acc) {
+  Type f32 = b.getF32Type();
+  TF_RET_CHECK(lhs.getType().cast<ShapedType>().getElementType() == f32);
+  TF_RET_CHECK(rhs.getType().cast<ShapedType>().getElementType() == f32);
+  TF_RET_CHECK(acc.getType().cast<ShapedType>().getElementType() == f32);
+
+  Value lhs_high = RoundToBF16(b, TruncateToBF16TowardsZero(b, lhs));
+  Value lhs_middle =
+      RoundToBF16(b, TruncateToBF16TowardsZero(b, SoftMiddleEight(b, lhs)));
+  Value lhs_low =
+      RoundToBF16(b, TruncateToBF16TowardsZero(b, SoftLowEight(b, lhs)));
+
+  Value rhs_high = RoundToBF16(b, TruncateToBF16TowardsZero(b, rhs));
+  Value rhs_middle =
+      RoundToBF16(b, TruncateToBF16TowardsZero(b, SoftMiddleEight(b, rhs)));
+  Value rhs_low =
+      RoundToBF16(b, TruncateToBF16TowardsZero(b, SoftLowEight(b, rhs)));
+
+  auto bf16_dot = [&](Value lhs_bf16, Value rhs_bf16,
+                      Value accumulator) -> Value {
+    return b.create<mt::DotOp>(lhs_bf16, rhs_bf16, accumulator,
+                               /*allowTF32=*/false,
+                               /*maxNumImpreciseAcc=*/0);
+  };
+
+  Value local_acc = ZerosLike(b, acc);
+  Value result = bf16_dot(lhs_middle, rhs_middle, local_acc);
+  result = bf16_dot(lhs_low, rhs_high, result);
+  result = bf16_dot(lhs_high, rhs_low, result);
+  result = bf16_dot(lhs_middle, rhs_high, result);
+  result = bf16_dot(lhs_high, rhs_middle, result);
+  // If lhs is 1.0, we will have lhs_high = 1.0 and lhs_low = 0.0.
+  // If rhs is +infinity, we will have:
+  // +infinity * 1.0 = +infinity
+  // +infinity * 0.0 = NaN
+  // We would get the wrong result if we sum these partial products. Instead, we
+  // must override any accumulated result if the last partial product is
+  // non-finite. See b/115844437.
+  Value positive_inf = CreateConst<float>(
+      b, b.getF32Type(), std::numeric_limits<float>::infinity(),
+      result.getType().cast<ShapedType>().getShape());
+  Value abs_result = b.create<mm::AbsFOp>(result);
+  Value is_finite =
+      b.create<ma::CmpFOp>(ma::CmpFPredicate::OGT, positive_inf, abs_result);
+  result = b.create<ma::SelectOp>(is_finite, result, ZerosLike(b, result));
+  result = bf16_dot(lhs_high, rhs_high, result);
+  result = b.create<ma::AddFOp>(acc, result);
+  return result;
+}
+
 // Variable naming: lhs [m, k] x rhs [k, n] -> out [m, n].
 absl::Status EmitMatMul(mlir::OpBuilder builder,
                         absl::string_view libdevice_path,
@@ -1734,15 +1800,30 @@ absl::Status EmitMatMul(mlir::OpBuilder builder,
                         [](const int precision) {
                           return precision != PrecisionConfig::DEFAULT;
                         });
-
-    // Execute matrix multiplication of input tiles and pass the accumulator.
-    // TODO(manany): Should be looked into once we enable Hopper workloads.
-    // maxNumImpreciseAcc flag was introduced for Hopper to accumulate in a
-    // lower precision than the output type. The change was introduced here:
-    // https://github.com/openai/triton/commit/31b0c521427109a8eda609b58d756c380b21599a
-    Value accumulator_next = b.create<mt::DotOp>(dot_input_lhs, dot_input_rhs,
-                                                 iter_args.back(), allow_tf32,
-                                                 /*maxNumImpreciseAcc=*/0);
+    const HloModule* hlo_module = computation->parent();
+    Type f32 = b.getF32Type();
+    // BF16 datatype is not supported before Ampere.
+    const bool use_bf16_6x =
+        device_info.cuda_compute_capability().IsAtLeastAmpere() &&
+        hlo_module->config().debug_options().xla_gpu_enable_bf16_6way_gemm() &&
+        dot_input_lhs.getType().cast<ShapedType>().getElementType() == f32 &&
+        dot_input_rhs.getType().cast<ShapedType>().getElementType() == f32;
+    Value accumulator_next;
+    if (use_bf16_6x) {
+      StatusOr<Value> accumulator_next_or = Emit6xBfloat16MatMul(
+          b, dot_input_lhs, dot_input_rhs, iter_args.back());
+      TF_CHECK_OK(accumulator_next_or.status());
+      accumulator_next = accumulator_next_or.value();
+    } else {
+      // Execute matrix multiplication of input tiles and pass the accumulator.
+      // TODO(manany): Should be looked into once we enable Hopper workloads.
+      // maxNumImpreciseAcc flag was introduced for Hopper to accumulate in a
+      // lower precision than the output type. The change was introduced here:
+      // https://github.com/openai/triton/commit/31b0c521427109a8eda609b58d756c380b21599a
+      accumulator_next = b.create<mt::DotOp>(dot_input_lhs, dot_input_rhs,
+                                             iter_args.back(), allow_tf32,
+                                             /*maxNumImpreciseAcc=*/0);
+    }
     iter_args_next.push_back(accumulator_next);
 
     b.create<mlir::scf::YieldOp>(iter_args_next);
@@ -1918,6 +1999,7 @@ absl::Status EmitSoftMax(mlir::OpBuilder builder,
     Value base_offset = batch_iterspec ? row_offset : zero_offset;
 
     // We assume that the reduced axis of this parameter has length row_len.
+    // TODO(b/316637896): Relax assumption that param reduce_dim_len == row_len.
     CHECK_EQ(reduce_dim_len, row_len);
 
     // block_size must be a power of two.
@@ -1997,11 +2079,9 @@ absl::StatusOr<std::unique_ptr<llvm::Module>> TranslateLLVMToLLVMIR(
 
 namespace {
 
-std::string GetLibdevicePath(const HloComputation* hlo_computation) {
-  return nvptx::LibDevicePath(hlo_computation->parent()
-                                  ->config()
-                                  .debug_options()
-                                  .xla_gpu_cuda_data_dir());
+std::string GetLibdevicePath(const HloModuleConfig& hlo_config) {
+  return nvptx::LibDevicePath(
+      hlo_config.debug_options().xla_gpu_cuda_data_dir());
 }
 
 }  // namespace
@@ -2041,9 +2121,9 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> CreateTritonModule(
   fn.addEntryBlock();
   b.setInsertionPointToStart(&fn.front());
 
-  TF_RETURN_IF_ERROR(ir_emitter(b, GetLibdevicePath(hlo_computation),
-                                device_info, analysis, hlo_computation, fn,
-                                config));
+  TF_RETURN_IF_ERROR(
+      ir_emitter(b, GetLibdevicePath(hlo_computation->parent()->config()),
+                 device_info, analysis, hlo_computation, fn, config));
 
   b.create<mt::ReturnOp>(loc);
 
@@ -2117,12 +2197,21 @@ absl::StatusOr<TritonWrapperResult> TritonWrapper(
   VLOG(2) << config.ToString();
 
   // Compile Triton kernel to LLVM.
-  std::optional<llvm::raw_fd_ostream> log_stream;
   const HloModule* hlo_module = hlo_computation->parent();
+  return CompileTritonToLLVM(hlo_module->config(), hlo_module->name(), cc,
+                             device_info, config, triton_module.get(),
+                             llvm_module, mlir_context);
+}
 
+// TODO(b/325220878): Replace TritonGemmConfig with a more generic abstraction.
+absl::StatusOr<TritonWrapperResult> CompileTritonToLLVM(
+    const HloModuleConfig& hlo_config, absl::string_view hlo_module_name,
+    const se::CudaComputeCapability& cc,
+    const se::DeviceDescription& device_info, const TritonGemmConfig& config,
+    mlir::ModuleOp triton_module, llvm::Module* llvm_module,
+    mlir::MLIRContext& mlir_context) {
   bool should_verify =
-      (hlo_module->config().debug_options().xla_gpu_llvm_verification_level() >=
-       1);
+      (hlo_config.debug_options().xla_gpu_llvm_verification_level() >= 1);
 #ifndef NDEBUG
   should_verify = true;
 #endif
@@ -2130,13 +2219,14 @@ absl::StatusOr<TritonWrapperResult> TritonWrapper(
   mlir::PassManager pm(&mlir_context);
   pm.enableVerifier(should_verify);
 
-  if (hlo_module->config().debug_options().xla_gpu_dump_llvmir()) {
+  std::optional<llvm::raw_fd_ostream> log_stream;
+  if (hlo_config.debug_options().xla_gpu_dump_llvmir()) {
     const std::string basename =
-        absl::StrCat(absl::string_view(tsl::io::Basename(hlo_module->name())),
+        absl::StrCat(absl::string_view(tsl::io::Basename(hlo_module_name)),
                      ".triton-passes.log");
     std::string outputs_dir;
     if (!tsl::io::GetTestUndeclaredOutputsDir(&outputs_dir)) {
-      outputs_dir = hlo_module->config().debug_options().xla_dump_to();
+      outputs_dir = hlo_config.debug_options().xla_dump_to();
     }
     if (!outputs_dir.empty()) {
       std::string path = tsl::io::JoinPath(outputs_dir, basename);
@@ -2160,7 +2250,8 @@ absl::StatusOr<TritonWrapperResult> TritonWrapper(
     }
   }
 
-  if (!CreateTritonPipeline(pm, cc, config).ok()) {
+  mlir::triton::nvidia_gpu::ClusterInfo cluster_info;
+  if (!CreateTritonPipeline(pm, cc, config, /*out*/ cluster_info).ok()) {
     return Internal("Failed to create Triton pipeline.");
   }
   if (log_stream.has_value()) {
@@ -2173,7 +2264,7 @@ absl::StatusOr<TritonWrapperResult> TritonWrapper(
   // llvm::Linker::linkModules() segfaults if we don't strip locations.
   pm.addPass(mlir::createStripDebugInfoPass());
 
-  bool succeeded = mlir::succeeded(pm.run(*triton_module));
+  bool succeeded = mlir::succeeded(pm.run(triton_module));
 
   if (log_stream.has_value()) {
     log_stream->flush();
@@ -2184,8 +2275,7 @@ absl::StatusOr<TritonWrapperResult> TritonWrapper(
   }
 
   const int shared_mem_bytes =
-      (*triton_module)
-          ->getAttrOfType<mlir::IntegerAttr>("triton_gpu.shared")
+      triton_module->getAttrOfType<mlir::IntegerAttr>("triton_gpu.shared")
           .getInt();
   VLOG(2) << "Shared memory usage: " << shared_mem_bytes << " B";
   if (shared_mem_bytes > device_info.shared_memory_per_block_optin()) {
@@ -2196,8 +2286,8 @@ absl::StatusOr<TritonWrapperResult> TritonWrapper(
 
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<llvm::Module> ll_triton_module,
-      TranslateLLVMToLLVMIR(&llvm_module->getContext(), *triton_module,
-                            GetLibdevicePath(hlo_computation)));
+      TranslateLLVMToLLVMIR(&llvm_module->getContext(), triton_module,
+                            GetLibdevicePath(hlo_config)));
   VLogModule(5, *ll_triton_module);
   if (should_verify) {
     VerifyModule(*ll_triton_module);
@@ -2216,7 +2306,24 @@ absl::StatusOr<TritonWrapperResult> TritonWrapper(
     VerifyModule(*llvm_module);
   }
 
-  return {{shared_mem_bytes}};
+  // `cluster_info` must be read after pm.run().
+  std::optional<se::ClusterDim> cluster_dim;
+  if (config.num_ctas > 1) {
+    VLOG(3) << "num_ctas: " << config.num_ctas
+            << ", cluster_info: " << cluster_info.clusterDimX << ","
+            << cluster_info.clusterDimY << "," << cluster_info.clusterDimZ;
+    if (cluster_info.clusterDimX > 1 || cluster_info.clusterDimY > 1 ||
+        cluster_info.clusterDimZ > 1) {
+      cluster_dim =
+          se::ClusterDim(cluster_info.clusterDimX, cluster_info.clusterDimY,
+                         cluster_info.clusterDimZ);
+    }
+  } else {
+    TF_RET_CHECK(cluster_info.clusterDimX == 1 &&
+                 cluster_info.clusterDimY == 1 &&
+                 cluster_info.clusterDimZ == 1);
+  }
+  return {{shared_mem_bytes, cluster_dim}};
 }
 
 }  // namespace gpu

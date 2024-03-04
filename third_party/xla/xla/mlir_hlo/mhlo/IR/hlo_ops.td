@@ -305,6 +305,23 @@ def MHLO_CosineOp: MHLO_UnaryElementwiseOp<"cosine",
   let hasCustomHLOConverter = 1;
 }
 
+def MHLO_ErfOp: MHLO_UnaryElementwiseOp<"erf",
+    [Pure, HLO_CompatibleOperandsAndResultType], MHLO_FpTensor> {
+  let summary = "Erf operation";
+  let description = [{
+    Performs element-wise erf operation on `operand` tensor and produces a
+    `result` tensor.
+
+    See:
+    https://github.com/openxla/stablehlo/blob/main/docs/spec.md#erf
+
+    Example:
+    ```mlir
+    %result = mhlo.erf %operand : tensor<2x2xf32>
+    ```
+  }];
+  let hasFolder = 1;
+}
 def MHLO_ExpOp: MHLO_UnaryElementwiseOp<"exponential",
     [Pure, HLO_CompatibleOperandsAndResultType], MHLO_FpComplexOrQuantizedIntTensor> {
   let summary = "Exp operation";

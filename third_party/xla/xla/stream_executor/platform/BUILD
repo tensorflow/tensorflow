@@ -1,10 +1,11 @@
 load("//xla/stream_executor:build_defs.bzl", "stream_executor_friends")
-load("@local_tsl//tsl:tsl.bzl", "set_external_visibility")
+load("@local_tsl//tsl:tsl.bzl", "internal_visibility")
 load("@local_tsl//tsl/platform:build_config.bzl", "tf_stream_executor_deps")
 load("@local_tsl//tsl/platform:rules_cc.bzl", "cc_library")
 
 package(
-    default_visibility = ["//visibility:public"],
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
+    default_visibility = internal_visibility([":friends"]),
     licenses = ["notice"],
 )
 
@@ -20,7 +21,6 @@ cc_library(
         "platform.h",
         "port.h",
     ],
-    visibility = ["//visibility:public"],
     deps = [
         "@local_tsl//tsl/platform:logging",
         "@local_tsl//tsl/platform:macros",
@@ -31,7 +31,6 @@ cc_library(
 cc_library(
     name = "dso_loader",
     hdrs = ["dso_loader.h"],
-    visibility = ["//visibility:public"],
     deps = [
         ":platform",
     ] + tf_stream_executor_deps("dso_loader", "//xla/stream_executor/platform/"),

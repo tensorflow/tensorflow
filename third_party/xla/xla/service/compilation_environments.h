@@ -97,6 +97,8 @@ class CompilationEnvironments {
   T& GetMutableEnv();
   template <typename T>
   const T& GetEnv();
+  template <typename T>
+  bool HasEnv();
 
   // Removes all added environments.
   void Clear() { environments_.clear(); }
@@ -146,6 +148,12 @@ T& CompilationEnvironments::GetMutableEnv() {
 template <typename T>
 const T& CompilationEnvironments::GetEnv() {
   return GetMutableEnv<T>();
+}
+
+template <typename T>
+bool CompilationEnvironments::HasEnv() {
+  auto descriptor = T::descriptor();
+  return environments_.find(descriptor) != environments_.end();
 }
 
 }  // namespace xla

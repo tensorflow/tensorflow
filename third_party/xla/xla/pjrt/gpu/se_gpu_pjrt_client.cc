@@ -18,6 +18,7 @@ limitations under the License.
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <limits>
 #include <map>
 #include <memory>
 #include <optional>
@@ -329,6 +330,10 @@ class AsyncHostToDeviceTransferManager
     }
 
     ++transfers_in_flight_;
+    // Release the lock before transfer in case transfer or cleanup could be
+    // called on this thread, to avoid deadlock.
+    l.Release();
+
     auto event = device_->local_device_state()->event_pool().AllocateEvent(
         stream->parent());
     if (transfer_size != 0) {
@@ -336,9 +341,6 @@ class AsyncHostToDeviceTransferManager
     }
     device_->local_device_state()->event_pool().ThenRecordEvent(stream,
                                                                 event.value());
-    // Release the lock before calling ThenDoHostCallback in case cleanup
-    // could be called on this thread, to avoid deadlock.
-    l.Release();
 
     auto cleanup = [this, buffer_index, event = std::move(event).value(),
                     stream, is_last_transfer,
@@ -585,7 +587,8 @@ StatusOr<std::unique_ptr<StreamExecutorExecutable>> FromProto(
   }
   return std::make_unique<StreamExecutorExecutable>(
       compile_options, std::move(deserialized_aot_executables),
-      proto.num_replicas(), proto.num_partitions(), proto.name());
+      proto.num_replicas(), proto.num_partitions(), proto.name(),
+      proto.fingerprint());
 }
 #endif
 }  // namespace
@@ -611,6 +614,24 @@ StreamExecutorGpuClient::LoadSerialized(absl::string_view serialized,
   return Load(std::move(se_executable));
 #endif
   return absl::InternalError("LoadSerialized only works with cuda or rocm.");
+}
+
+StatusOr<std::unique_ptr<PjRtLoadedExecutable>>
+StreamExecutorGpuClient::DeserializeExecutable(
+    absl::string_view serialized, std::optional<CompileOptions> options) {
+  if (serialized.size() > std::numeric_limits<int>::max()) {
+    return Internal(
+        "StreamExecutorGpuClient::DeserializeExecutable proto too large "
+        "(>2GB)");
+  }
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+  StreamExecutorExecutableProto proto;
+  if (proto.ParseFromArray(serialized.data(), serialized.size())) {
+    TF_ASSIGN_OR_RETURN(auto se_executable, FromProto(proto));
+    return Load(std::move(se_executable));
+  }
+#endif
+  return PjRtStreamExecutorClient::DeserializeExecutable(serialized, options);
 }
 
 StatusOr<std::unique_ptr<PjRtLoadedExecutable>> StreamExecutorGpuClient::Load(
@@ -777,20 +798,17 @@ GetStreamExecutorGpuDeviceAllocator(
   }
 
   // Add any additional allocators for alternate memory spaces.
-  if (allocator_config.collective_memory_size != 0) {
-    for (const auto& ordinal_and_device : addressable_devices) {
-      TF_ASSIGN_OR_RETURN(
-          auto collective_bfc_allocator,
-          CreateCollectiveBFCAllocator(
-              ordinal_and_device.second->executor(),
-              /*allocator_memory=*/allocator_config.collective_memory_size,
-              /*preallocate=*/true));
-      allocators.emplace_back(std::move(collective_bfc_allocator),
-                              ordinal_and_device.second->compute_stream(),
-                              /*memory_space=*/1);
-    }
+  for (const auto& ordinal_and_device : addressable_devices) {
+    TF_ASSIGN_OR_RETURN(
+        auto collective_bfc_allocator,
+        CreateCollectiveBFCAllocator(
+            ordinal_and_device.second->executor(),
+            /*memory_fraction=*/1.0 - allocator_config.memory_fraction,
+            allocator_config.collective_memory_size));
+    allocators.emplace_back(std::move(collective_bfc_allocator),
+                            ordinal_and_device.second->compute_stream(),
+                            /*memory_space=*/1);
   }
-
   return std::make_unique<se::MultiDeviceAdapter>(platform,
                                                   std::move(allocators));
 }
@@ -928,8 +946,9 @@ absl::StatusOr<tsl::AllocatorStats> StreamExecutorGpuDevice::GetAllocatorStats()
   auto* allocator_adapter = dynamic_cast<se::MultiDeviceAdapter*>(
       tensorflow::down_cast<PjRtStreamExecutorClient*>(client())->allocator());
   if (!allocator_adapter) {
-    return FailedPrecondition(
-        "GetAllocatorStats() only works with MultiDeviceAdapter allocator");
+    return Unimplemented(
+        "GetAllocatorStats() is only implemented with MultiDeviceAdapter "
+        "allocator");
   }
 
   TF_ASSIGN_OR_RETURN(auto allocator, allocator_adapter->GetAllocator(
@@ -974,8 +993,6 @@ StatusOr<std::unique_ptr<PjRtClient>> GetStreamExecutorGpuClient(
   if (options.enable_mock_nccl) {
     gpu_run_options->set_enable_mock_nccl_collectives();
   }
-  absl::flat_hash_map<std::string, std::string> device_maps;
-  absl::Mutex mu;
   std::shared_ptr<KeyValueStoreInterface> kv_store = options.kv_store;
   if (options.enable_mock_nccl) {
     kv_store = std::make_shared<InMemoryKeyValueStore>();

@@ -81,6 +81,10 @@ struct MhloToScalarOp<mhlo::CosineOp> {
   using COp = ::mlir::complex::CosOp;
 };
 template <>
+struct MhloToScalarOp<mhlo::ErfOp> {
+  using FOp = ::mlir::math::ErfOp;
+};
+template <>
 struct MhloToScalarOp<mhlo::ExpOp> {
   using FOp = ::mlir::math::ExpOp;
   using COp = ::mlir::complex::ExpOp;
@@ -470,10 +474,9 @@ inline Value mapMhloOpToStdScalarOp<mhlo::ReducePrecisionOp>(
   mlir::ImplicitLocOpBuilder b(loc, *builder);
 
   // Integer and float types for casting and constant generation.
-  auto floatType =
-      argTypes.front().cast<TensorType>().getElementType().cast<FloatType>();
+  auto floatType = getElementTypeOrSelf(argTypes.front()).cast<FloatType>();
   int64_t nbits = floatType.getWidth();
-  auto intType = mlir::IntegerType::get(loc.getContext(), floatType.getWidth());
+  auto intType = mlir::IntegerType::get(loc.getContext(), nbits);
 
   Value xAsInt = b.create<arith::BitcastOp>(intType, adaptor.getOperand());
 
@@ -1072,13 +1075,18 @@ template <>
 inline Value mapMhloOpToStdScalarOp<mhlo::LogisticOp>(
     Location loc, ArrayRef<Type> resultTypes, ArrayRef<Type> /*argTypes*/,
     mhlo::LogisticOp::Adaptor adaptor, OpBuilder* b) {
-  // 1.0 / (1.0 - exp(-x))
+  // 1.0 / (1.0 + exp(-x))
   Value negX = mapMhloOpToStdScalarOp<mhlo::NegOp>(
       loc, resultTypes, resultTypes, {adaptor.getOperand()}, b);
   Value expNegX = mapMhloOpToStdScalarOp<mhlo::ExpOp>(loc, resultTypes,
                                                       resultTypes, {{negX}}, b);
 
-  Value oneFloat = b->create<arith::ConstantOp>(loc, b->getF32FloatAttr(1.0));
+  Type type = getElementTypeOrSelf(resultTypes[0]);
+  Value oneFloat =
+      type.isa<ComplexType>()
+          ? b->create<arith::ConstantOp>(loc, b->getF32FloatAttr(1.0))
+          : getConstantOrSplat(b, loc, resultTypes[0],
+                               FloatAttr::get(type, 1.0f));
   Value one = mapConvertOpToStdScalarOp(loc, resultTypes, resultTypes,
                                         {oneFloat.getType()}, {{oneFloat}}, b);
   Value oneAddExprNegX = mapMhloOpToStdScalarOp<mhlo::AddOp>(

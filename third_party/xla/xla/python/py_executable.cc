@@ -354,29 +354,35 @@ StatusOr<PyExecuteResults> PyLoadedExecutable::ExecuteSharded(
 
 StatusOr<std::vector<std::shared_ptr<HloModule>>>
 PyLoadedExecutable::HloModules() const {
+  py::gil_scoped_release gil_release;
   return ifrt_loaded_executable_->GetHloModules();
 }
 
 StatusOr<std::vector<std::vector<absl::string_view>>>
 PyLoadedExecutable::GetOutputMemoryKinds() const {
+  py::gil_scoped_release gil_release;
   return ifrt_loaded_executable_->GetOutputMemoryKinds();
 }
 
 StatusOr<std::vector<Layout>> PyLoadedExecutable::GetParameterLayouts() const {
+  py::gil_scoped_release gil_release;
   return ifrt_loaded_executable_->GetParameterLayouts();
 }
 
 StatusOr<std::vector<Layout>> PyLoadedExecutable::GetOutputLayouts() const {
+  py::gil_scoped_release gil_release;
   return ifrt_loaded_executable_->GetOutputLayouts();
 }
 
 std::optional<std::vector<OpSharding>>
 PyLoadedExecutable::GetParameterShardings() const {
+  py::gil_scoped_release gil_release;
   return ifrt_loaded_executable_->GetParameterShardings();
 }
 
 std::optional<std::vector<OpSharding>> PyLoadedExecutable::GetOutputShardings()
     const {
+  py::gil_scoped_release gil_release;
   return ifrt_loaded_executable_->GetOutputShardings();
 }
 

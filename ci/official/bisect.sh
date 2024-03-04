@@ -34,6 +34,6 @@
 #   export TF_ANY_MODE=test
 set -euxo pipefail
 cd "$(dirname "$0")/../../"  # tensorflow/
-export TFCI="$(echo $TFCI | sed 's/,nightly_upload/,multicache/')"
+export TFCI="$(echo $TFCI | sed 's/,nightly_upload/,public_cache,disk_cache/')"
 git bisect start "$TF_BISECT_BAD" "$TF_BISECT_GOOD"
 git bisect run $TF_BISECT_SCRIPT

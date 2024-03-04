@@ -43,20 +43,10 @@ class HloToIrBindings {
   void BindHloToIrValue(const HloInstruction& hlo, llvm::Value* ir_value,
                         ShapeIndexView shape_index = {});
 
-  // Unbinds all IR values that's defined in an LLVM function, e.g., function
-  // arguments and stack variables. Global variables will be kept in bindings_.
-  //
-  // This method is called after emitting code for each top-level HLO. The local
-  // IR values are out of scope at that point and should not be used.
-  void UnbindAllLocalIrValues();
-
   // Returns whether `hlo` is bound to an LLVM IR value.
   bool BoundToIrValue(const HloInstruction& hlo) const {
     return base_ptrs_.contains(&hlo);
   }
-
-  llvm::Value* GetTempBufferBase() const { return temp_buffer_base_; }
-  void SetTempBufferBase(llvm::Value* v) { temp_buffer_base_ = v; }
 
   // A helper method that returns the base pointer of the IrArray containing the
   // output of "inst".at the given ShapeIndex.
@@ -81,10 +71,6 @@ class HloToIrBindings {
   std::string ToString() const;
 
  private:
-  // Emits IR to resolve (possibly) recursive GetTupleElement instructions.
-  llvm::Value* EmitGetTupleElement(const HloInstruction* gte,
-                                   llvm::Value* base_ptr);
-
   const bool is_nested_;
 
   llvm::IRBuilder<>* b_;
@@ -96,9 +82,6 @@ class HloToIrBindings {
   // in the ShapeTree.
   absl::flat_hash_map<const HloInstruction*, ShapeTree<llvm::Value*>>
       base_ptrs_;
-
-  // The address of the memory block that contains all temporary buffers.
-  llvm::Value* temp_buffer_base_ = nullptr;
 };
 
 }  // namespace gpu

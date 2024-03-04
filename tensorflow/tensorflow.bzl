@@ -82,7 +82,7 @@ def register_extension_info(**kwargs):
 # not contain rc or alpha, only numbers.
 # Also update tensorflow/core/public/version.h
 # and tensorflow/tools/pip_package/setup.py
-VERSION = "2.16.0"
+VERSION = "2.17.0"
 VERSION_MAJOR = VERSION.split(".")[0]
 two_gpu_tags = ["requires-gpu-nvidia:2", "manual", "no_pip"]
 
@@ -2547,7 +2547,7 @@ def py_test(deps = [], data = [], kernels = [], exec_properties = None, test_rul
         }),
         data = data + select({
             "//conditions:default": kernels,
-            clean_dep("//tensorflow:no_tensorflow_py_deps"): ["//tensorflow/tools/pip_package:win_pip_package_marker"],
+            clean_dep("//tensorflow:no_tensorflow_py_deps"): [],
         }),
         exec_properties = exec_properties,
         **kwargs

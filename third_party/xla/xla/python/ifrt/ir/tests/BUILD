@@ -2,7 +2,6 @@ load("//xla:lit.bzl", "enforce_glob", "lit_test_suite")
 load("//xla:xla.bzl", "xla_cc_test")
 
 package(
-    default_visibility = ["//visibility:public"],
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     licenses = ["notice"],
 )
@@ -52,7 +51,7 @@ cc_library(
     testonly = True,
     srcs = ["executable_impl_test_base.cc"],
     hdrs = ["executable_impl_test_base.h"],
-    visibility = ["//visibility:public"],
+    visibility = ["//xla/python/ifrt:friends"],
     deps = [
         "//xla:status_macros",
         "//xla/mlir_hlo:hlo_dialect_registration",
@@ -76,7 +75,7 @@ cc_library(
     name = "executable_impl_test_lib",
     testonly = True,
     srcs = ["executable_impl_test_lib.cc"],
-    visibility = ["//visibility:public"],
+    visibility = ["//xla/python/ifrt:friends"],
     deps = [
         ":executable_impl_test_base",
         "//xla/pjrt:pjrt_executable",

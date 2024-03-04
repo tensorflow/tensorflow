@@ -25,11 +25,17 @@
 #include <utility>
 #include <vector>
 
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
+#include "llvm/ADT/SmallVector.h"
+#include "llvm/ADT/StringRef.h"
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "xla/primitive_util.h"
 #include "xla/runtime/custom_call.h"
 #include "xla/runtime/custom_call_registry.h"
 #include "xla/runtime/executable.h"
+#include "xla/runtime/memref_view.h"
+#include "xla/service/custom_call_status.h"
 #include "xla/service/custom_call_status_internal.h"
 #include "xla/service/custom_call_target_registry.h"
 #include "xla/service/hlo.pb.h"

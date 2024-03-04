@@ -58,6 +58,10 @@ using ::operations_research::MPConstraint;
 using ::operations_research::MPSolver;
 using ::operations_research::MPVariable;
 
+// We need to nudge the maximum cost (if present) slightly, since the constraint
+// solver cannot guarantee exact numerical precision.
+constexpr double kMaxCostEpsilon = 1.0001;
+
 bool AutoShardingSolverResult::operator==(
     const AutoShardingSolverResult& other) const {
   return status == other.status &&
@@ -183,6 +187,8 @@ void ScaleCoeffs(
 AutoShardingSolverRequest ScaleRequest(
     const AutoShardingSolverRequest& request) {
   if (!request.has_coeff_limit()) return request;
+  VLOG(0) << "Scaling request by coefficient limit: "
+          << request.coeff_limit().coeff();
   double max_coeff = 0.0;
   max_coeff = std::max(max_coeff, MaxCoeff(request.communication_costs()));
   max_coeff = std::max(max_coeff, MaxCoeff(request.computation_costs()));
@@ -273,14 +279,15 @@ AutoShardingSolverResult CallORToolsSolver(
   if (solver->ProblemType() ==
       operations_research::MPSolver::SAT_INTEGER_PROGRAMMING) {
     // Set random_seed, interleave_search and share_binary_clauses for
-    // determinism, and num_workers for parallelism.
+    // determinism, mip_max_bound (to handle large costs), and num_workers for
+    // parallelism.
     solver_parameter_str =
         request.deterministic_mode()
             ? absl::StrCat(
                   "share_binary_clauses:false,random_seed:1,interleave_"
-                  "search:true,num_workers:",
+                  "search:true,mip_max_bound:1e9,num_workers:",
                   num_workers)
-            : absl::StrCat("num_workers:", num_workers);
+            : absl::StrCat("mip_max_bound:1e9,num_workers:", num_workers);
     solver->SetSolverSpecificParametersAsString(solver_parameter_str);
   }
 #endif
@@ -289,15 +296,6 @@ AutoShardingSolverResult CallORToolsSolver(
   std::vector<std::vector<MPVariable*>> e(num_edges);
   MPVariable* overbudget_var = nullptr;
   MPVariable* makespan_var = nullptr;
-  MPVariable* cost_var =
-      solver->MakeNumVar(0.0,
-                         request.has_max_cost() ? request.max_cost().coeff()
-                                                : MPSolver::infinity(),
-                         "cost");
-  MPConstraint* cost_constraint =
-      solver->MakeRowConstraint(-MPSolver::infinity(), 0.0, "cost_constraint");
-  cost_constraint->SetCoefficient(cost_var, -1.0);
-  solver->MutableObjective()->SetCoefficient(cost_var, 1.0);
 
   size_t unique_nodes = 0;
   for (NodeIdx node_idx = 0; node_idx < request.num_nodes(); ++node_idx) {
@@ -311,6 +309,8 @@ AutoShardingSolverResult CallORToolsSolver(
 
   for (NodeIdx node_idx = 0; node_idx < request.num_nodes(); ++node_idx) {
     if (request.s_follow(node_idx) >= 0) {
+      CHECK_EQ(request.s_len(node_idx),
+               request.s_len(request.s_follow(node_idx)));
       // Copies the variable of followed instruction to the following
       // instruction.
       s[node_idx] = s[request.s_follow(node_idx)];
@@ -344,45 +344,58 @@ AutoShardingSolverResult CallORToolsSolver(
   }
 
   if (request.has_makespan_coeff()) {
-    makespan_var = CreateMakespanVar(request, e, *solver, *cost_constraint);
+    makespan_var = CreateMakespanVar(request, e, *solver);
   }
 
   // Construct objective function.
   // Node costs
+  absl::flat_hash_set<MPVariable*> infinity_vars;
   for (NodeIdx node_idx = 0; node_idx < request.num_nodes(); ++node_idx) {
     for (NodeStrategyIdx j = 0; j < s[node_idx].size(); ++j) {
       double accumulated_coefficient =
-          cost_constraint->GetCoefficient(s[node_idx][j]);
+          solver->MutableObjective()->GetCoefficient(s[node_idx][j]);
       double coefficient = request.computation_costs(node_idx).costs(j) +
                            request.communication_costs(node_idx).costs(j);
+      if (coefficient >= kInfinityCost) {
+        infinity_vars.insert(s[node_idx][j]);
+        continue;
+      }
       AddSalt(absl::StrCat(node_idx, "S", j), request.saltiplier(),
               &coefficient);
-      cost_constraint->SetCoefficient(s[node_idx][j],
-                                      accumulated_coefficient + coefficient);
+      solver->MutableObjective()->SetCoefficient(
+          s[node_idx][j], accumulated_coefficient + coefficient);
     }
   }
   // Edge costs
   for (EdgeIdx edge_idx = 0; edge_idx < num_edges; ++edge_idx) {
     for (EdgeStrategyIdx j = 0; j < e[edge_idx].size(); ++j) {
       double accumulated_coefficient =
-          cost_constraint->GetCoefficient(e[edge_idx][j]);
+          solver->MutableObjective()->GetCoefficient(e[edge_idx][j]);
       double coefficient = request.resharding_costs(edge_idx).costs(j);
+      if (coefficient >= kInfinityCost) {
+        infinity_vars.insert(e[edge_idx][j]);
+        continue;
+      }
       AddSalt(absl::StrCat(edge_idx, "E", j), request.saltiplier(),
               &coefficient);
-      cost_constraint->SetCoefficient(e[edge_idx][j],
-                                      accumulated_coefficient + coefficient);
+      solver->MutableObjective()->SetCoefficient(
+          e[edge_idx][j], accumulated_coefficient + coefficient);
     }
   }
+  LOG(INFO) << "Number of infinity terms: " << infinity_vars.size();
 
   // Add constraints.
   // 0. Do not choose solutions with infinity costs, as it will make the
   // objective value so large that other solution choices do not matter anymore.
-  // Remove these constraints once b/238210866 is done.
+  // Also eliminate strategies that are known to be dominated by others.
+  const NodeStrategies shaved_strategies =
+      StrategyShaver(request).FindShavedStrategies();
   for (NodeIdx node_idx = 0; node_idx < request.num_nodes(); ++node_idx) {
     if (s[node_idx].empty() || request.s_follow(node_idx) >= 0) continue;
     bool all_infinity = true;
     for (NodeStrategyIdx j = 0; j < s[node_idx].size(); ++j) {
-      if (cost_constraint->GetCoefficient(s[node_idx][j]) >= kInfinityCost) {
+      if (infinity_vars.contains(s[node_idx][j]) ||
+          shaved_strategies.contains({node_idx, j})) {
         MPConstraint* constraint = solver->MakeRowConstraint(
             0.0, 0.0,
             absl::StrCat("infinitycost: s[", node_idx, "][", j, "] = 0"));
@@ -399,7 +412,7 @@ AutoShardingSolverResult CallORToolsSolver(
     if (e[edge_idx].empty() || e_follow[edge_idx] >= 0) continue;
     bool all_infinity = true;
     for (EdgeStrategyIdx j = 0; j < e[edge_idx].size(); ++j) {
-      if (cost_constraint->GetCoefficient(e[edge_idx][j]) >= kInfinityCost) {
+      if (infinity_vars.contains(e[edge_idx][j])) {
         MPConstraint* constraint = solver->MakeRowConstraint(
             0.0, 0.0,
             absl::StrCat("infinitycost: e[", edge_idx, "][", j, "] = 0"));
@@ -468,8 +481,8 @@ AutoShardingSolverResult CallORToolsSolver(
       }
     }
     if (overbudget_var) {
-      cost_constraint->SetCoefficient(overbudget_var,
-                                      request.overbudget_coeff().coeff());
+      solver->MutableObjective()->SetCoefficient(
+          overbudget_var, request.overbudget_coeff().coeff());
       solver->MutableObjective()->SetOffset(request.overbudget_coeff().coeff() *
                                             min_memory_overbudget);
     }
@@ -500,8 +513,8 @@ AutoShardingSolverResult CallORToolsSolver(
           absl::StrCat("f for i = ", edge_idx, ", p = ", p));
       constraint->SetCoefficient(s[edge.first()][p], -1.0);
       for (NodeStrategyIdx q = 0; q < s[edge.second()].size(); ++q) {
-        constraint->SetCoefficient(e[edge_idx][p * s[edge.second()].size() + q],
-                                   1.0);
+        const EdgeStrategyIdx j = p * s[edge.second()].size() + q;
+        constraint->SetCoefficient(e[edge_idx][j], 1.0);
       }
     }
   }
@@ -515,8 +528,8 @@ AutoShardingSolverResult CallORToolsSolver(
           absl::StrCat("g for i = ", edge_idx, ", q = ", q));
       constraint->SetCoefficient(s[edge.second()][q], -1.0);
       for (NodeStrategyIdx p = 0; p < s[edge.first()].size(); ++p) {
-        constraint->SetCoefficient(e[edge_idx][p * s[edge.second()].size() + q],
-                                   1.0);
+        const EdgeStrategyIdx j = p * s[edge.second()].size() + q;
+        constraint->SetCoefficient(e[edge_idx][j], 1.0);
       }
     }
   }
@@ -555,6 +568,15 @@ AutoShardingSolverResult CallORToolsSolver(
         constraint->SetCoefficient(s[node_idx][j],
                                    accumulated_coefficient + departure_cost);
       }
+    }
+  }
+  if (request.has_max_cost()) {
+    double max_cost = kMaxCostEpsilon * request.max_cost().coeff();
+    max_cost -= solver->Objective().offset();
+    MPConstraint* cost_constraint = solver->MakeRowConstraint(
+        -MPSolver::infinity(), max_cost, "cost_constraint");
+    for (const auto [var, coeff] : solver->Objective().terms()) {
+      cost_constraint->SetCoefficient(var, coeff);
     }
   }
 
@@ -605,17 +627,21 @@ AutoShardingSolverResult CallORToolsSolver(
     solver->SetTimeLimit(
         absl::Seconds(request.solver_timeout().solver_timeout_in_seconds()));
   }
+  if (request.enable_output()) {
+    solver->EnableOutput();
+  }
   VLOG(0) << "Starting solver " << solver->ProblemType() << "\n"
           << "Solver parameter string: " << solver_parameter_str << "\n"
           << "Number of workers: " << num_workers << "\n"
           << "Number of threads: " << solver->GetNumThreads() << "\n"
           << "Time limit: " << solver->time_limit() << "\n"
-          << "Number variables for ILP: " << solver->NumVariables() << "\n"
+          << "Aliases: " << request.aliases_size() << "\n"
           << "Unique nodes: " << unique_nodes << "\n"
           << "Unique edges: " << unique_edges << "\n"
           << "Total instructions: " << request.num_nodes() << "\n"
           << "Memory budget: " << request.memory_budget() / (1024 * 1024 * 1024)
           << "GB\n"
+          << "Number variables for ILP: " << solver->NumVariables() << "\n"
           << "Number of ILP constraints: " << solver->NumConstraints() << "\n"
           << "Deterministic mode: " << request.deterministic_mode() << "\n"
           << "Module name: " << request.module_name();

@@ -20,7 +20,7 @@ limitations under the License.
 #include "xla/mlir_hlo/lhlo/IR/lhlo_ops.h"
 #include "xla/service/gpu/fusions/fusion_emitter.h"
 #include "xla/service/gpu/ir_emitter_context.h"
-#include "xla/service/gpu/runtime3/copy_thunk.h"
+#include "xla/service/gpu/runtime/copy_thunk.h"
 #include "xla/service/gpu/thunk.h"
 #include "xla/statusor.h"
 

@@ -1,7 +1,7 @@
-load("tsl.bzl", "if_google", "if_oss")
 load("@bazel_skylib//lib:selects.bzl", "selects")
 load("@bazel_skylib//rules:common_settings.bzl", "bool_flag", "bool_setting")
 load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
+load("tsl.bzl", "if_google", "if_oss")
 
 # copybara:uncomment package(default_applicable_licenses = ["//tensorflow:license"])
 
@@ -132,7 +132,6 @@ config_setting(
         "apple_platform_type": "macos",
         "cpu": "darwin",
     },
-    visibility = ["//visibility:public"],
 )
 
 config_setting(
@@ -145,7 +144,6 @@ config_setting(
         "apple_platform_type": "macos",
         "cpu": "darwin_x86_64",
     },
-    visibility = ["//visibility:public"],
 )
 
 selects.config_setting_group(

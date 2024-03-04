@@ -28,6 +28,7 @@ limitations under the License.
 
 #include <cstddef>
 #include <cstdint>
+#include <tuple>
 
 #include "xla/stream_executor/platform/port.h"
 #include "tsl/platform/logging.h"
@@ -62,12 +63,16 @@ class DeviceMemoryBase {
   bool operator==(std::nullptr_t other) const { return is_null(); }
   bool operator!=(std::nullptr_t other) const { return !is_null(); }
 
+  bool operator==(const DeviceMemoryBase &other) const {
+    return opaque_ == other.opaque_ && size_ == other.size_;
+  }
+
   // Provides a partial order between device memory values.
   //
   // This operator is provided so that this object can be used as a key in an
   // ordered map.
   bool operator<(const DeviceMemoryBase &other) const {
-    return opaque() < other.opaque();
+    return std::tie(opaque_, size_) < std::tie(other.opaque_, other.size_);
   }
 
   // Returns the size, in bytes, for the backing memory.

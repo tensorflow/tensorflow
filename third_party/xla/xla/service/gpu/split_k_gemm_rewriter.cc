@@ -379,9 +379,9 @@ absl::Status MakeDotSplitKBatch(HloInstruction* dot_fusion,
       dot_fusion->parent()->AddInstruction(HloInstruction::CreateConstant(
           LiteralUtil::Zero(root->shape().element_type())));
   // The batch dimension to reduce is the first one by construction.
-  TF_ASSIGN_OR_RETURN(
-      HloInstruction * reduce,
-      MakeReduceHlo(dot_fusion, zero, /*dimensions=*/{0}, HloOpcode::kAdd));
+  TF_ASSIGN_OR_RETURN(HloInstruction * reduce,
+                      MakeReduceHlo(dot_fusion, zero, /*dimensions=*/{0},
+                                    HloOpcode::kAdd, &dot_fusion->metadata()));
 
   // The output of the reduce has to have the layout of the original dot.
   *reduce->mutable_shape()->mutable_layout() = output_layout;

@@ -66,9 +66,10 @@ absl::string_view BoolToString(bool b) { return b ? "true" : "false"; }
     absl::Span<const int64_t> minor_to_major,
     absl::Span<const DimLevelType> dim_level_types,
     absl::Span<const bool> dim_unique, absl::Span<const bool> dim_ordered,
-    absl::Span<const Tile> tiles, PrimitiveType index_primitive_type,
-    PrimitiveType pointer_primitive_type, int64_t element_size_in_bits,
-    int64_t memory_space, std::optional<Shape> physical_shape,
+    absl::Span<const Tile> tiles, int64_t tail_padding_alignment_in_elements,
+    PrimitiveType index_primitive_type, PrimitiveType pointer_primitive_type,
+    int64_t element_size_in_bits, int64_t memory_space,
+    std::optional<Shape> physical_shape,
     int64_t dynamic_shape_metadata_prefix_bytes) {
   Layout layout;
   for (int64_t dimension_number : minor_to_major) {
@@ -94,6 +95,8 @@ absl::string_view BoolToString(bool b) { return b ? "true" : "false"; }
     }
     *layout.add_tiles() = tile;
   }
+  layout.set_tail_padding_alignment_in_elements(
+      tail_padding_alignment_in_elements);
   layout.set_index_primitive_type(index_primitive_type);
   layout.set_pointer_primitive_type(pointer_primitive_type);
   layout.set_element_size_in_bits(element_size_in_bits);
@@ -325,6 +328,12 @@ Layout CreateDefaultLayoutForRank(int64_t rank) {
                         }),
           shape.ShortDebugString());
     }
+  }
+
+  if (layout.tail_padding_alignment_in_elements() <= 0) {
+    return InvalidArgument(
+        "layout tail_padding_alignment_in_elements field is <= 0: {%d}",
+        layout.tail_padding_alignment_in_elements());
   }
 
   if (LayoutUtil::IsSparse(layout)) {

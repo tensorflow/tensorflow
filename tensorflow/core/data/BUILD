@@ -190,6 +190,7 @@ cc_library(
     # copybara:uncomment copts = ["-Wthread-safety-analysis"],
     deps = [
         ":dataset_utils",
+        ":serialization_utils",
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
@@ -226,9 +227,9 @@ cc_library(
         ":tfdataz_metrics",
         "//tensorflow/core/platform:env",
         "//tensorflow/core/platform:numbers",
+        "//tensorflow/core/platform:status",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/container:flat_hash_set",
-        "@com_google_absl//absl/strings",
         "@local_tsl//tsl/platform:logging",
     ],
 )
@@ -278,6 +279,7 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/core:framework",
+        "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
         "//tensorflow/core/platform:env",
         "//tensorflow/core/platform:mutex",
@@ -414,6 +416,7 @@ cc_library(
         "//tensorflow/core/platform:stringpiece",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/strings",
         "@local_tsl//tsl/platform:statusor",
     ],
 )
@@ -529,6 +532,8 @@ cc_library(
         ":dataset_utils",
         ":root_dataset",
         ":serialization_utils",
+        ":tf_data_memory_logger",
+        ":tfdataz_metrics",
         ":unbounded_thread_pool",
         "//tensorflow/core:all_kernels",
         "//tensorflow/core:core_cpu_internal",

@@ -30,6 +30,7 @@ limitations under the License.
 #include "xla/layout_util.h"
 #include "xla/service/gpu/gpu_fusible.h"
 #include "xla/service/hlo_creation_utils.h"
+#include "xla/service/sub_byte_normalization.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/errors.h"
 
@@ -712,6 +713,15 @@ absl::StatusOr<bool> GpuHorizontalLoopFusion::Run(
   // Run on the entry computation is actually enough.
   TF_ASSIGN_OR_RETURN(bool changed,
                       RunOnComputation(module->entry_computation()));
+
+  if (changed) {
+    // Correctly set element_size_in_bits for any int4 added slice and
+    // concatenate instructions
+    TF_ASSIGN_OR_RETURN(
+        [[maybe_unused]] bool unused,
+        SubByteNormalization{SubByteNormalization::SET_ELEMENT_SIZE}.Run(
+            module));
+  }
 
   return changed;
 }

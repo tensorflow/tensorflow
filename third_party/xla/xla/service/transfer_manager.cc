@@ -15,23 +15,30 @@ limitations under the License.
 
 #include "xla/service/transfer_manager.h"
 
+#include <cstdint>
 #include <functional>
 #include <memory>
-#include <string>
 #include <utility>
+#include <vector>
 
+#include "absl/base/const_init.h"
 #include "absl/cleanup/cleanup.h"
-#include "absl/strings/str_cat.h"
+#include "absl/container/flat_hash_map.h"
+#include "absl/synchronization/mutex.h"
+#include "xla/literal.h"
 #include "xla/service/compiler.h"
 #include "xla/service/maybe_owning_device_memory.h"
+#include "xla/service/shaped_buffer.h"
+#include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/status.h"
 #include "xla/status_macros.h"
-#include "xla/types.h"
+#include "xla/stream_executor/platform.h"
+#include "xla/stream_executor/stream.h"
 #include "xla/util.h"
+#include "tsl/platform/errors.h"
 #include "tsl/platform/logging.h"
 #include "tsl/platform/notification.h"
-
-using absl::StrCat;
 
 namespace xla {
 

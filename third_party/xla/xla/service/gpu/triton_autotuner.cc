@@ -74,6 +74,7 @@ limitations under the License.
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/gpu/redzone_allocator.h"
 #include "xla/stream_executor/stream.h"
+#include "xla/tools/hlo_decomposer.h"
 #include "xla/util.h"
 #include "xla/xla.pb.h"
 #include "tsl/lib/core/bits.h"
@@ -133,7 +134,7 @@ class TritonAutotunerVisitor : public DfsHloRewriteVisitor {
                   return absl::InternalError(absl::StrCat(
                       "Expect autotune result cache hit for deviceless "
                       "compilation (HLO: ",
-                      hlo->ToString()));
+                      hlo->ToString(), ")"));
                 }
                 return absl::InternalError("Expect autotune result cache hit.");
               }));
@@ -156,8 +157,9 @@ class TritonAutotunerVisitor : public DfsHloRewriteVisitor {
 
     // This cannot be the "else" branch of the previous "if".
     if (backend_config.has_triton_gemm_config()) {
-      const TritonGemmConfig config =
-          TritonGemmConfig::FromProto(backend_config.triton_gemm_config());
+      TF_ASSIGN_OR_RETURN(
+          const TritonGemmConfig config,
+          TritonGemmConfig::FromProto(backend_config.triton_gemm_config()));
       if (config.split_k > 1) {
         TF_RETURN_IF_ERROR(MakeDotSplitKBatch(hlo, config));
       }
@@ -290,23 +292,12 @@ constexpr std::array<int, 6> BLOCK_SIZES = {16, 32, 64, 128, 256, 512};
 constexpr std::array<int, 4> NUM_STAGES = {1, 2, 3, 4};
 constexpr std::array<int, 4> NUM_WARPS = {2, 4, 8, 16};
 constexpr std::array<int, 5> SPLIT_K = {1, 2, 4, 8, 16};
-
-// For arch >= Hopper autotuning.
-constexpr std::array<TritonGemmConfig::ClusterDims, 7> CLUSTER_DIMS = {
-    TritonGemmConfig::ClusterDims(1, 1, 1),
-    TritonGemmConfig::ClusterDims(2, 2, 1),
-    TritonGemmConfig::ClusterDims(2, 4, 1),
-    TritonGemmConfig::ClusterDims(4, 2, 1),
-    TritonGemmConfig::ClusterDims(4, 4, 1),
-    TritonGemmConfig::ClusterDims(2, 8, 1),
-    TritonGemmConfig::ClusterDims(8, 2, 1),
-};
-constexpr std::array<bool, 2> WARP_SPECIALIZATION = {false, true};
-
-// Currently we believe that num_ctas is inferable from cluster_dims.
-int InferNumCtas(TritonGemmConfig::ClusterDims cluster_dims) {
-  return cluster_dims.x * cluster_dims.y * cluster_dims.z;
-}
+// This is the number of blocks per cluster.
+//
+// Clusters have 3 dimensions (x,y,z) and only 1 <= x*y*z <= 16 are supported.
+// Triton doesn't support (3,3,1) and possibly other non-"power of 2" values.
+// It's possible that some other values may be(come) supported.
+constexpr std::array<int, 5> NUM_CTAS = {1, 2, 4, 8, 16};
 
 std::vector<TritonGemmConfig> GetExhaustiveMatmulAutotuneConfigs(
     const HloDotInstruction& dot,
@@ -331,9 +322,7 @@ std::vector<TritonGemmConfig> GetExhaustiveMatmulAutotuneConfigs(
           continue;
         }
         for (int block_n : BLOCK_SIZES) {
-          // Exclude configs not supported by MMA layout v2.
-          if (block_n > limit.block_n ||
-              (mma_layout_v2 && (block_m * block_n / 256) % num_warps != 0)) {
+          if (block_n > limit.block_n) {
             continue;
           }
           for (int block_k : BLOCK_SIZES) {
@@ -351,15 +340,14 @@ std::vector<TritonGemmConfig> GetExhaustiveMatmulAutotuneConfigs(
                     block_m, block_n, block_k, split_k, num_stages, num_warps));
                 continue;
               }
-
               // Arch >= Hopper autotuning.
-              for (bool enable_ws : WARP_SPECIALIZATION) {
-                for (TritonGemmConfig::ClusterDims cluster_dims :
-                     CLUSTER_DIMS) {
-                  configs.push_back(TritonGemmConfig(
-                      block_m, block_n, block_k, split_k, num_stages, num_warps,
-                      InferNumCtas(cluster_dims), cluster_dims, enable_ws));
-                }
+              // We only want to autotune this if it provides any speedup. So
+              // please think about that before adding it to the default
+              // autotuning parameters.
+              for (int num_ctas : NUM_CTAS) {
+                configs.push_back(TritonGemmConfig(block_m, block_n, block_k,
+                                                   split_k, num_stages,
+                                                   num_warps, num_ctas));
               }
             }
           }
@@ -398,14 +386,13 @@ std::vector<TritonGemmConfig> GetFixedMatmulAutotuneConfigs(
         std::back_inserter(configs));
   }
   if (compute_capability.IsAtLeast(se::CudaComputeCapability::HOPPER)) {
-    configs.erase(
-        std::remove_if(configs.begin(), configs.end(),
-                       [](const Config& config) {
-                         return (config.block_m * config.block_n / 256) %
-                                    config.num_warps !=
-                                0;
-                       }),
-        configs.end());
+    absl::c_copy(
+        std::vector<Config>{
+            Config(16, 32, 32, 8, 1, 2),
+            Config(16, 64, 128, 8, 1, 4),
+            Config(16, 64, 128, 16, 3, 4),
+        },
+        std::back_inserter(configs));
   }
   configs.erase(std::remove_if(configs.begin(), configs.end(),
                                [&](const Config& config) {
@@ -447,7 +434,7 @@ absl::StatusOr<std::unique_ptr<HloModule>> TritonGemmAutotuneExtractor(
     const HloFusionInstruction* fusion, DebugOptions debug_opts,
     bool allow_filtering_kernels_spilling_registers) {
   std::unique_ptr<HloModule> new_module =
-      AutotunerUtil::ExtractInstructionIntoNewModule(*fusion);
+      ExtractInstructionIntoNewModule(*fusion);
   // Reduce memory usage during compilation by disabling GPU runtime.
   debug_opts.set_xla_gpu_enable_xla_runtime_executable(false);
   // TODO(anlunx): Disable command buffers for now because it breaks triton
@@ -484,7 +471,7 @@ absl::StatusOr<std::unique_ptr<HloModule>> TritonGemmAutotuneExtractor(
     if (root->opcode() == HloOpcode::kReduce) {
       HloInstruction* fusion_instruction =
           entry_computation->AddInstruction(HloInstruction::CreateFusion(
-              root->shape(), ChooseFusionKind(*root, *root), root));
+              root->shape(), ChooseFusionKind(*root), root));
       HloInstruction* init_value = root->mutable_operand(1);
       TF_CHECK_OK(
           entry_computation->ReplaceInstruction(root, fusion_instruction));
@@ -501,7 +488,7 @@ absl::StatusOr<std::unique_ptr<HloModule>> CublasGemmAutotuneExtractor(
   const HloComputation* fusion_computation =
       fusion->called_computations().at(0);
   std::unique_ptr<HloModule> new_module =
-      AutotunerUtil::ExtractComputationIntoNewModule(*fusion_computation);
+      ExtractComputationIntoNewModule(*fusion_computation);
   new_module->mutable_config().set_debug_options(debug_opts);
 
   GemmRewriter rewriter(config.GetGpuComputeCapability());
@@ -669,6 +656,7 @@ CompileMany(const AutotuneConfig& config, AutotunerCompileUtil& util,
       const GemmConfigSet& gemm_config_set = key_value.second;
 
       for (const TritonGemmConfig& gemm_config : gemm_config_set.configs) {
+        VLOG(5) << "Compiling " << gemm_config.ToString();
         TF_ASSIGN_OR_RETURN(
             bool has_executable,
             compile(
@@ -851,17 +839,20 @@ absl::StatusOr<AutotuneResult> Execute(const AutotuneConfig& config,
   return best_triton;
 }
 
-absl::Status DumpAutotunedFusion(const AutotuneConfig& config,
+absl::Status DumpAutotunedFusion(const AutotuneConfig& autotune_config,
                                  AutotunerCompileUtil& util,
                                  const AutotuneResult result,
                                  const HloFusionInstruction* fusion,
                                  int fusion_id) {
+  TF_ASSIGN_OR_RETURN(TritonGemmConfig triton_gemm_config,
+                      TritonGemmConfig::FromProto(result.triton()));
+  const se::DeviceDescription& device_desc =
+      autotune_config.GetExecutor()->GetDeviceDescription();
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<HloModule> module,
       util.ExtractModule([&](const DebugOptions& debug_opts) {
         return TritonGemmAutotuneExtractor(
-            TritonGemmConfig::FromProto(result.triton()),
-            config.GetExecutor()->GetDeviceDescription(), fusion, debug_opts,
+            triton_gemm_config, device_desc, fusion, debug_opts,
             /*allow_filtering_kernels_spilling_registers=*/true);
       }));
   module->set_name(std::string(fusion->name()));

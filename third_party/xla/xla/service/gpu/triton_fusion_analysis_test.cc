@@ -39,6 +39,28 @@ using ::testing::FieldsAre;
 
 using TritonDotAnalysisTest = HloTestBase;
 
+TEST_F(TritonDotAnalysisTest, QueryingOutputScopeParametersAlwaysWorks) {
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(R"(
+triton_dot {
+  p0 = f32[8,8] parameter(0)
+  ROOT dot = f32[8,8] dot(p0, p0),
+    lhs_contracting_dims={1}, rhs_contracting_dims={0}
+}
+
+ENTRY e {
+  p0 = f32[8,8] parameter(0)
+  ROOT r = f32[8,8] fusion(p0), kind=kCustom, calls=triton_dot
+})"));
+  TF_ASSERT_OK_AND_ASSIGN(
+      const auto analysis,
+      TritonFusionAnalysis::Execute(*module->entry_computation()
+                                         ->root_instruction()
+                                         ->called_computations()[0]));
+  EXPECT_TRUE(
+      analysis.ScopeParameters(TritonFusionAnalysis::Scope::OUTPUT).empty());
+}
+
 TEST_F(TritonDotAnalysisTest, NopBitcasts) {
   const std::string hlo_text = R"(
 HloModule t
@@ -832,6 +854,40 @@ ENTRY main {
       module->entry_computation()->root_instruction()->called_computations()[0];
   TF_ASSERT_OK_AND_ASSIGN(const auto analysis,
                           TritonFusionAnalysis::Execute(*computation));
+}
+
+TEST_F(TritonSoftmaxAnalysisTest, SliceWithinTritonSoftmaxIsNotSupported) {
+  // Slices cannot yet be tiled into triton softmax (b/316637896) because they
+  // cannot be emitted.
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(R"(
+HloModule t
+
+add {
+  p0 = f32[] parameter(0)
+  p1 = f32[] parameter(1)
+  ROOT add = f32[] add(p0, p1)
+}
+
+triton_softmax_computation {
+  param_0 = f32[27,260]{1,0} parameter(0)
+  slice = f32[4,127]{1,0} slice(param_0), slice={[7:27:5], [6:260:2]}
+  constant_0 = f32[] constant(0)
+  reduce = f32[4]{0} reduce(slice,  constant_0), dimensions={1}, to_apply=add
+  ROOT broadcast = f32[4,127]{1,0} broadcast(reduce), dimensions={0}
+}
+
+ENTRY main {
+  param_0 = f32[27,260]{1,0} parameter(0)
+  ROOT fusion = f32[4,127]{1,0} fusion(param_0), kind=kCustom,
+    calls=triton_softmax_computation,
+    backend_config={"kind":"__triton_softmax"}
+})"));
+
+  const HloComputation* computation =
+      module->entry_computation()->root_instruction()->called_computations()[0];
+  const auto analysis = TritonFusionAnalysis::Execute(*computation);
+  EXPECT_FALSE(analysis.ok());
 }
 
 }  // namespace

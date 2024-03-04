@@ -25,8 +25,8 @@ limitations under the License.
 #include "xla/service/platform_util.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
-#include "xla/stream_executor/multi_platform_manager.h"
 #include "xla/stream_executor/platform.h"
+#include "xla/stream_executor/platform_manager.h"
 #include "xla/test.h"
 #include "xla/xla_data.pb.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
@@ -340,8 +340,8 @@ TEST(XlaJitCompiledCpuFunction, CanCompileWithAdditionalPlatform) {
     string name_;
   };
 
-  TF_EXPECT_OK(se::MultiPlatformManager::RegisterPlatform(
-      std::make_unique<FakePlatform>()));
+  TF_EXPECT_OK(
+      se::PlatformManager::RegisterPlatform(std::make_unique<FakePlatform>()));
   xla::Compiler::RegisterCompilerFactory(kFakePlatformId, []() {
     return std::unique_ptr<xla::Compiler>(nullptr);
   });
