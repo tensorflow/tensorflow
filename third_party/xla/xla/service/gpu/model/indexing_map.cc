@@ -103,21 +103,24 @@ class AffineExprSimplifier {
 };
 
 AffineExpr AffineExprSimplifier::RewriteMod(AffineBinaryOpExpr mod) {
-  auto lhs_simplified = SimplifyOnce(mod.getLHS());
-
-  auto lhs = range_evaluator_->ComputeExpressionRange(lhs_simplified);
   auto rhs = range_evaluator_->ComputeExpressionRange(mod.getRHS());
-
-  // a % b where b is always larger than a?
-  if (0 <= lhs.lower_bound && lhs.upper_bound < rhs.lower_bound) {
-    return lhs_simplified;
-  }
 
   // The logic below assumes we have a constant RHS.
   if (!rhs.IsPoint()) {
     return mod;
   }
   int64_t m = rhs.lower_bound;
+  // Can only happen in cases where it doesn't matter, return 0.
+  if (m == 0) {
+    return mlir::getAffineConstantExpr(0, mod.getContext());
+  }
+
+  auto lhs_simplified = SimplifyOnce(mod.getLHS());
+  auto lhs = range_evaluator_->ComputeExpressionRange(lhs_simplified);
+  // a % b where b is always larger than a?
+  if (0 <= lhs.lower_bound && lhs.upper_bound < rhs.lower_bound) {
+    return lhs_simplified;
+  }
 
   Range no_multiplier_range{0, 0};
   int64_t multiplier_gcd = -1;

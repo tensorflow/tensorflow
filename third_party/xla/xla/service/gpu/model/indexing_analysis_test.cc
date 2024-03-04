@@ -355,6 +355,37 @@ TEST_F(IndexingAnalysisTest, CopyNothing) {
                           )"))));
 }
 
+TEST_F(IndexingAnalysisTest, ReshapeNothing) {
+  auto ir = R"(
+    HloModule m
+    ENTRY e {
+      p0 = f32[1,0,0] parameter(0)
+      ROOT reshape = f32[0] reshape(p0)
+    }
+  )";
+  auto input_indexing =
+      GetOutputToInputIndexingForEntryComputation(ir, /*output_id=*/0);
+  input_indexing.Simplify();
+  EXPECT_THAT(input_indexing.indexing_maps,
+              ElementsAre(ElementsAre(MatchIndexingMap(R"(
+                            (d0) -> (0, 0, 0)
+                            domain:
+                            d0 in [0, -1]
+                          )"))));
+
+  auto output_indexing =
+      GetInputToOutputIndexingForEntryComputation(ir, /*input_id=*/0);
+  output_indexing.Simplify();
+  EXPECT_THAT(output_indexing.indexing_maps,
+              ElementsAre(ElementsAre(MatchIndexingMap(R"(
+                            (d0, d1, d2) -> (0)
+                            domain:
+                            d0 in [0, 0]
+                            d1 in [0, -1]
+                            d2 in [0, -1]
+                          )"))));
+}
+
 TEST_F(IndexingAnalysisTest, PhysicalLayoutTestInputPermutation) {
   auto ir = R"(
     HloModule m
