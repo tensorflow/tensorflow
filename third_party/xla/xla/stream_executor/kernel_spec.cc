@@ -37,27 +37,18 @@ CudaCubinInMemory::CudaCubinInMemory(const char *bytes,
                                      absl::string_view kernel_name)
     : KernelLoaderSpec(kernel_name), bytes_(bytes) {}
 
-static bool CompareComputeCapability(const std::tuple<int, int> &lhs,
-                                     const std::tuple<int, int> &rhs) {
-  return std::get<0>(lhs) < std::get<0>(rhs) ||
-         (std::get<0>(lhs) == std::get<0>(rhs) &&
-          std::get<1>(lhs) < std::get<1>(rhs));
-}
-
 const std::tuple<int, int> CudaPtxInMemory::kMinimumCapability{1, 0};
 
 CudaPtxInMemory::CudaPtxInMemory(absl::string_view ptx,
                                  absl::string_view kernel_name)
-    : KernelLoaderSpec(kernel_name),
-      ptx_by_compute_capability_(CompareComputeCapability) {
+    : KernelLoaderSpec(kernel_name) {
   ptx_by_compute_capability_[kMinimumCapability] = ptx.data();
 }
 
 CudaPtxInMemory::CudaPtxInMemory(
     const std::initializer_list<CudaPtxInMemory::PtxSpec> &spec_list,
     absl::string_view kernel_name)
-    : KernelLoaderSpec(kernel_name),
-      ptx_by_compute_capability_(CompareComputeCapability) {
+    : KernelLoaderSpec(kernel_name) {
   for (const auto &spec : spec_list) {
     int major, minor;
     absl::string_view ptx;
