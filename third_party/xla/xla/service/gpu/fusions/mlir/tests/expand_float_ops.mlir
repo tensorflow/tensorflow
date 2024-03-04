@@ -103,3 +103,17 @@ module {
 // CHECK-AMPERE: arith.minimumf
 // CHECK-PRE-AMPERE: arith.cmpf
 // CHECK-PRE-AMPERE: arith.select
+
+// -----
+
+module {
+  func.func @minimumf64(%arg0: f64, %arg1: f64) -> f64 {
+    %ret = arith.minimumf %arg0, %arg1 : f64
+    return %ret : f64
+  }
+}
+
+// CHECK-LABEL: @minimumf64
+// CHECK-NOT: minimumf
+// CHECK: arith.cmpf
+// CHECK: arith.select

@@ -21,6 +21,7 @@ limitations under the License.
 #include "mlir/Dialect/Math/Transforms/Passes.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
+#include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
@@ -175,15 +176,19 @@ struct RewriteTruncF64ToBF16
   }
 };
 
-template <typename OpTy, mlir::arith::CmpFPredicate pred,
-          typename =
-              std::enable_if_t<std::is_same_v<OpTy, mlir::arith::MaximumFOp> ||
-                               std::is_same_v<OpTy, mlir::arith::MinimumFOp>>>
+template <typename OpTy, mlir::arith::CmpFPredicate pred>
 struct RewriteToCmpSelect : public mlir::OpRewritePattern<OpTy> {
   using mlir::OpRewritePattern<OpTy>::OpRewritePattern;
 
+  RewriteToCmpSelect(mlir::MLIRContext* context, bool include_f32)
+      : mlir::OpRewritePattern<OpTy>(context), include_f32(include_f32) {}
+
   mlir::LogicalResult matchAndRewrite(
       OpTy op, mlir::PatternRewriter& rewriter) const override {
+    if (op.getType().isF32() && !include_f32) {
+      return rewriter.notifyMatchFailure(op, "not rewriting f32 min/max");
+    }
+
     auto lhs_is_nan = rewriter.create<mlir::arith::CmpFOp>(
         op.getLoc(), mlir::arith::CmpFPredicate::UNE, op.getLhs(), op.getLhs());
     auto rhs_is_not_nan = rewriter.create<mlir::arith::CmpFOp>(
@@ -204,6 +209,8 @@ struct RewriteToCmpSelect : public mlir::OpRewritePattern<OpTy> {
         op, op.getResult().getType(), return_lhs, op.getLhs(), op.getRhs());
     return mlir::success();
   }
+
+  bool include_f32;
 };
 
 class ExpandFloatOpsPass
@@ -220,13 +227,13 @@ class ExpandFloatOpsPass
     patterns.add<RewriteBF16ToInt<mlir::arith::FPToUIOp>>(&getContext());
     if (pre_ampere_) {
       patterns.add<RewriteTruncF32ToBF16>(&getContext());
-      patterns.add<RewriteToCmpSelect<mlir::arith::MinimumFOp,
-                                      mlir::arith::CmpFPredicate::OLE>>(
-          &getContext());
-      patterns.add<RewriteToCmpSelect<mlir::arith::MaximumFOp,
-                                      mlir::arith::CmpFPredicate::OGE>>(
-          &getContext());
     }
+    patterns.add<RewriteToCmpSelect<mlir::arith::MinimumFOp,
+                                    mlir::arith::CmpFPredicate::OLE>>(
+        &getContext(), /*include_f32=*/pre_ampere_);
+    patterns.add<RewriteToCmpSelect<mlir::arith::MaximumFOp,
+                                    mlir::arith::CmpFPredicate::OGE>>(
+        &getContext(), /*include_f32=*/pre_ampere_);
     patterns.add<RewriteTruncF64ToBF16>(&getContext());
     mlir::populatePolynomialApproximateTanhPattern(patterns);
     mlir::populatePolynomialApproximateErfPattern(patterns);
