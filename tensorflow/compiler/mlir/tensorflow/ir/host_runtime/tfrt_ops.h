@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPILER_MLIR_TENSORFLOW_IR_TFRT_OPS_H_
-#define TENSORFLOW_COMPILER_MLIR_TENSORFLOW_IR_TFRT_OPS_H_
+#ifndef TENSORFLOW_COMPILER_MLIR_TENSORFLOW_IR_HOST_RUNTIME_TFRT_OPS_H_
+#define TENSORFLOW_COMPILER_MLIR_TENSORFLOW_IR_HOST_RUNTIME_TFRT_OPS_H_
 
 #include "mlir/Bytecode/BytecodeOpInterface.h"  // from @llvm-project  // IWYU pragma: keep
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
@@ -25,6 +25,6 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_traits.h"
 
 #define GET_OP_CLASSES
-#include "tensorflow/compiler/mlir/tensorflow/ir/tfrt_ops.h.inc"
+#include "tensorflow/compiler/mlir/tensorflow/ir/host_runtime/tfrt_ops.h.inc"
 
-#endif  // TENSORFLOW_COMPILER_MLIR_TENSORFLOW_IR_TFRT_OPS_H_
+#endif  // TENSORFLOW_COMPILER_MLIR_TENSORFLOW_IR_HOST_RUNTIME_TFRT_OPS_H_

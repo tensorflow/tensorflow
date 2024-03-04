@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/compiler/mlir/tensorflow/ir/tfrt_ops.h"
+#include "tensorflow/compiler/mlir/tensorflow/ir/host_runtime/tfrt_ops.h"
 
 #include <cstdint>
 
@@ -146,4 +146,4 @@ mlir::LogicalResult IfrtCallOp::verify() {
 //===----------------------------------------------------------------------===//
 
 #define GET_OP_CLASSES
-#include "tensorflow/compiler/mlir/tensorflow/ir/tfrt_ops.cc.inc"
+#include "tensorflow/compiler/mlir/tensorflow/ir/host_runtime/tfrt_ops.cc.inc"
