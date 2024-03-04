@@ -18,6 +18,7 @@ limitations under the License.
 #include <optional>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/log/check.h"
@@ -25,8 +26,8 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/STLExtras.h"
+#include "llvm/ADT/SmallPtrSet.h"
 #include "llvm/ADT/SmallVector.h"
-#include "llvm/Support/raw_ostream.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/Tensor/IR/Tensor.h"  // from @llvm-project
 #include "mlir/IR/AffineExpr.h"  // from @llvm-project
@@ -67,6 +68,7 @@ namespace gpu {
 namespace {
 
 using absl::StatusOr;
+using llvm::SmallPtrSet;
 using llvm::SmallVector;
 using mlir::AffineExpr;
 using mlir::AffineMap;
@@ -84,22 +86,23 @@ using mlir_converter::CallTargetProvider;
 using mlir_converter::PartitionedComputation;
 
 // Traverses use-def chain from hero to root and composes indexing maps.
-IndexingMap GetThreadIdIndexingForRoot(const IndexingMap& hero_output_indexing,
-                                       const HloInstruction* hero,
-                                       const HloInstruction* root,
-                                       MLIRContext* mlir_context) {
-  if (hero == root) {
+IndexingMap GetThreadIdIndexingForRoot(
+    const IndexingMap& hero_output_indexing, const HloInstruction* hero,
+    const SmallPtrSet<const HloInstruction*, 16>& roots,
+    MLIRContext* mlir_context) {
+  if (roots.contains(hero)) {
     return hero_output_indexing;
   }
+
   IndexingMap root_indexing = hero_output_indexing;
   const HloInstruction* op = hero;
-  while (op != root) {
-    CHECK_EQ(op->user_count(), 1)
-        << "Support only ops with a single user in epilogue";
+  while (!roots.contains(op)) {
+    // There could be multiple roots, but they all should have compatible
+    // indexing maps.
     auto* user = op->users().front();
     HloInstructionIndexing user_indexing = ComputeInputToOutputIndexing(
         user, user->operand_index(op), mlir_context);
-    CHECK_EQ(user_indexing.indexing_maps.size(), 1);
+
     root_indexing = root_indexing * *user_indexing.indexing_maps[0].begin();
     root_indexing.Simplify();
     op = user;
@@ -257,11 +260,20 @@ absl::StatusOr<SmallVector<Value, 4>> MlirTransposeFusion::EmitWriteToShMemMlir(
   int num_inputs = fusion.fused_instructions_computation()->num_parameters();
   int num_outputs = entry_function.getArguments().size() - num_inputs;
 
+  SmallPtrSet<const HloInstruction*, 8> emitted_heros;
+
   SmallVector<Value> shmem_intermediate_result;
   for (const auto& [root_index, hero_and_root] : llvm::enumerate(
            llvm::zip(analysis_.fusion_heroes(), analysis_.fusion_roots()))) {
     const HloInstruction* transpose = std::get<0>(hero_and_root);
     const HloInstruction* root = std::get<1>(hero_and_root);
+
+    // The same hero can occure only multiple (hero, root) pair. We should emit
+    // the write to shmem only once.
+    if (!emitted_heros.insert(transpose).second) {
+      continue;
+    }
+
     // Skip non-transpose heroes and handle them in EmitReadFromShMemMlir.
     auto description =
         GetDescriptionForTiledTransposeEmitter(*root, *transpose);
@@ -321,10 +333,21 @@ absl::Status MlirTransposeFusion::EmitReadFromShMemMlir(
 
   int num_inputs = fusion.fused_instructions_computation()->num_parameters();
 
-  auto output_tensor_args =
-      entry_function.getArguments().drop_front(num_inputs);
+  SmallPtrSet<const HloInstruction*, 16> hero_roots{
+      analysis_.fusion_roots().begin(), analysis_.fusion_roots().end()};
+
+  // Cache for root indexing per hero. If multiple roots use the same hero, they
+  // will have identical indexing.
+  absl::flat_hash_map<const HloInstruction*, IndexingMap> root_to_hero_indexing;
 
   int transpose_hero_count = 0;
+
+  // Map from hero instruction to shmem tensor value.
+  absl::flat_hash_map<const HloInstruction*, Value> hero_to_shmem_tensor;
+
+  ValueRange output_tensor_args =
+      entry_function.getArguments().drop_front(num_inputs);
+
   for (const auto& [root_index, hero_and_root] : llvm::enumerate(
            llvm::zip(analysis_.fusion_heroes(), analysis_.fusion_roots()))) {
     const HloInstruction* transpose = std::get<0>(hero_and_root);
@@ -334,8 +357,15 @@ absl::Status MlirTransposeFusion::EmitReadFromShMemMlir(
     auto output_indexing =
         ComputeThreadIdToOutputIndexing(root_index, mlir_context);
     TF_RET_CHECK(output_indexing) << "Indexing is never nullopt";
-    IndexingMap root_indexing = GetThreadIdIndexingForRoot(
-        *output_indexing, transpose, root, mlir_context);
+
+    if (!root_to_hero_indexing.contains(transpose)) {
+      root_to_hero_indexing.emplace(
+          transpose, GetThreadIdIndexingForRoot(*output_indexing, transpose,
+                                                hero_roots, mlir_context));
+    }
+
+    const IndexingMap& root_indexing = root_to_hero_indexing.at(transpose);
+
     IndexingMap shmem_output_indexing =
         GetSharedMemoryReadIndexingMap(*output_indexing);
     auto description =
@@ -343,7 +373,7 @@ absl::Status MlirTransposeFusion::EmitReadFromShMemMlir(
 
     if (description.has_value()) {
       auto subresult_tensors = EmitThreadLoopNest(
-          builder, output_tensor_args, *output_indexing,
+          builder, output_tensor_args[root_index], *output_indexing,
           [&](ValueRange output_tensors, ValueRange dim_values,
               ValueRange symbol_values) -> SmallVector<Value> {
             auto root_indices =
@@ -353,12 +383,16 @@ absl::Status MlirTransposeFusion::EmitReadFromShMemMlir(
                 ApplyAffineMap(shmem_output_indexing.GetAffineMap(), dim_values,
                                symbol_values, builder);
 
+            if (!hero_to_shmem_tensor.contains(transpose)) {
+              hero_to_shmem_tensor[transpose] =
+                  shmem_tensors[transpose_hero_count];
+              ++transpose_hero_count;
+            }
+
             mlir::Value value = builder.create<ExtractOp>(
-                shmem_tensors[transpose_hero_count], shmem_indices);
+                hero_to_shmem_tensor[transpose], shmem_indices);
             auto result_scalars = EmitEpilogue(root, transpose, call_targets,
                                                value, root_indices, builder);
-
-            ++transpose_hero_count;
             SmallVector<Value> results;
             results.reserve(output_tensor_args.size());
             for (auto [tensor, value] :

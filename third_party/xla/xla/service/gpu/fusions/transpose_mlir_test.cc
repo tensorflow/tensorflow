@@ -345,6 +345,28 @@ TEST_F(MlirTransposeFusionTest, Transpose_2D_2) {
   EXPECT_TRUE(RunAndCompareNoHloPasses(kHloString, ErrorSpec{1e-3}));
 }
 
+TEST_F(MlirTransposeFusionTest, MultipleRootsForTranspose) {
+  auto kHloString = R"(
+    HloModule m
+
+    %fused_computation {
+      %iota.0 = s32[200,200]{1,0} iota(), iota_dimension=1
+      %iota.1 = s32[200,200]{1,0} iota(), iota_dimension=0
+      %compare = pred[200,200]{1,0} compare(s32[200,200]{1,0} %iota.0, s32[200,200]{1,0} %iota.1), direction=GE
+      %transpose = pred[200,200]{1,0} transpose(pred[200,200]{1,0} %compare), dimensions={1,0}
+      %copy = pred[200,200]{1,0} copy(pred[200,200]{1,0} %transpose)
+      %copy.1 = pred[200,200]{1,0} copy(pred[200,200]{1,0} %transpose)
+      ROOT %tuple = (pred[200,200]{1,0}, pred[200,200]{1,0}, pred[200,200]{1,0}) 
+            tuple(pred[200,200]{1,0} %transpose, pred[200,200]{1,0} %copy, pred[200,200]{1,0} %copy.1)
+    }
+
+    ENTRY main {
+      ROOT %fusion = (pred[200,200]{1,0}, pred[200,200]{1,0}, pred[200,200]{1,0}) fusion(), kind=kInput, calls=%fused_computation
+    }
+  )";
+  EXPECT_TRUE(RunAndCompareNoHloPasses(kHloString, ErrorSpec{1e-3}));
+}
+
 }  // namespace
 }  // namespace gpu
 }  // namespace xla

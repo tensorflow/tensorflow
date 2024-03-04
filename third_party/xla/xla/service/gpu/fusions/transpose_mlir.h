@@ -18,6 +18,7 @@ limitations under the License.
 #include <cstdint>
 #include <optional>
 
+#include "absl/container/flat_hash_set.h"
 #include "llvm/ADT/SmallVector.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/ImplicitLocOpBuilder.h"  // from @llvm-project
@@ -69,6 +70,15 @@ class MlirTransposeFusion : public MlirFusionEmitterBase {
 
   absl::flat_hash_set<const HloInstruction*> GetInstructionsWithCustomCodegen(
       const HloFusionInstruction& fusion) const override {
+    if (fusion.fused_expression_root()->opcode() == HloOpcode::kTuple) {
+      absl::flat_hash_set<const HloInstruction*> result{
+          shmem_transposes_.begin(), shmem_transposes_.end()};
+      // In multi-output fusion with transpose, each root epilogue will be
+      // generated separately.
+      result.insert(fusion.fused_expression_root());
+      return result;
+    }
+
     return shmem_transposes_;
   }
 
