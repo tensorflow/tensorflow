@@ -1339,6 +1339,15 @@ struct MhloOpToStdScalarOp {
     return impl::mapMhloOpToStdScalarOp<MhloOpTy>(loc, resultTypes, argTypes,
                                                   adaptor, b);
   }
+
+  static Value mapConvertOpToStdScalarOp(Location loc,
+                                         ArrayRef<Type> targetTypes,
+                                         ArrayRef<Type> resultTypes,
+                                         ArrayRef<Type> argTypes,
+                                         ValueRange args, OpBuilder* b) {
+    return impl::mapConvertOpToStdScalarOp(loc, targetTypes, resultTypes,
+                                           argTypes, args, b);
+  }
 };
 
 }  // namespace mhlo

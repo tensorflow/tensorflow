@@ -354,6 +354,18 @@ TEST_F(ElementalHloToMlirTest, UnsignedDiv) {
   )"));
 }
 
+TEST_F(ElementalHloToMlirTest, ConvertToUnsigned) {
+  TF_EXPECT_OK(Run(R"(
+    ENTRY main {
+      p0 = f32[4] parameter(0)
+      ROOT convert = u32[4] convert(p0)
+    })",
+                   R"(
+    // CHECK:      @main_convert(
+    // CHECK:        arith.fptoui %{{.*}} : f32 to i32
+  )"));
+}
+
 TEST_F(ElementalHloToMlirTest, InjectedParameter) {
   TF_EXPECT_OK(Run(
       R"(
@@ -430,6 +442,36 @@ TEST_F(ElementalHloToMlirTest, DynamicSlice) {
     // CHECK:        %[[I1_2:.*]] = arith.minsi %[[I1_1]], %[[C25]]
     // CHECK:        %[[I1_3:.*]] = arith.maxsi %[[I1_2]], %[[C0]]
     // CHECK:        %[[Y_IN:.*]] = arith.addi %[[Y]], %[[I1_3]]
+    // CHECK:        %[[RET:.*]] = tensor.extract %[[ARG0]][%[[X_IN]], %[[Y_IN]]]
+    // CHECK:        return %[[RET]]
+  )"));
+}
+
+TEST_F(ElementalHloToMlirTest, DynamicSliceUnsignedIndices) {
+  TF_EXPECT_OK(Run(R"(
+    ENTRY main {
+      in = f32[20,30] parameter(0)
+      i0 = u32[] parameter(1)
+      i1 = u32[] parameter(2)
+      ROOT slice = f32[4,5] dynamic-slice(in, i0, i1), dynamic_slice_sizes={4,5}
+    })",
+                   R"(
+    // CHECK:      @main_slice(
+    // CHECK-SAME:     %[[ARG0:.*]]: tensor<20x30xf32>,
+    // CHECK-SAME:     %[[I0_T:.*]]: tensor<ui32>, %[[I1_T:.*]]: tensor<ui32>,
+    // CHECK-SAME:     %[[X:.*]]: index {{{.*}}}, %[[Y:.*]]: index {
+    // CHECK-DAG:    %[[C16:.*]] = arith.constant 16
+    // CHECK-DAG:    %[[C25:.*]] = arith.constant 25
+    // CHECK:        %[[I0:.*]] = tensor.extract %[[I0_T]]
+    // CHECK:        %[[I0_SIGNLESS:.*]] = builtin.unrealized_conversion_cast %[[I0]] : ui32 to i32
+    // CHECK:        %[[I0_1:.*]] = arith.index_castui %[[I0_SIGNLESS]]
+    // CHECK:        %[[I0_2:.*]] = arith.minui %[[I0_1]], %[[C16]]
+    // CHECK:        %[[X_IN:.*]] = arith.addi %[[X]], %[[I0_2]]
+    // CHECK:        %[[I1:.*]] = tensor.extract %[[I1_T]]
+    // CHECK:        %[[I1_SIGNLESS:.*]] = builtin.unrealized_conversion_cast %[[I1]] : ui32 to i32
+    // CHECK:        %[[I1_1:.*]] = arith.index_castui %[[I1_SIGNLESS]]
+    // CHECK:        %[[I1_2:.*]] = arith.minui %[[I1_1]], %[[C25]]
+    // CHECK:        %[[Y_IN:.*]] = arith.addi %[[Y]], %[[I1_2]]
     // CHECK:        %[[RET:.*]] = tensor.extract %[[ARG0]][%[[X_IN]], %[[Y_IN]]]
     // CHECK:        return %[[RET]]
   )"));

@@ -310,19 +310,27 @@ absl::StatusOr<SmallVector<Value>> EmitConcat(
   return outermost_if.getResults();
 }
 
-mlir::Value ClampIndex(mlir::Value index, int64_t high,
+mlir::Value ClampIndex(mlir::Value index, bool is_unsigned, int64_t high,
                        ImplicitLocOpBuilder& b) {
   auto zero = b.create<ConstantOp>(b.getIndexAttr(0));
   if (high <= 0) {
     return zero;
   }
 
-  if (index.getType() != b.getIndexType()) {
-    index = b.create<arith::IndexCastOp>(b.getIndexType(), index);
+  if (is_unsigned) {
+    if (index.getType() != b.getIndexType()) {
+      index = b.create<arith::IndexCastUIOp>(b.getIndexType(), index);
+    }
+    index = b.create<arith::MinUIOp>(
+        index, b.create<ConstantOp>(b.getIndexAttr(high)));
+  } else {
+    if (index.getType() != b.getIndexType()) {
+      index = b.create<arith::IndexCastOp>(b.getIndexType(), index);
+    }
+    index = b.create<arith::MinSIOp>(
+        index, b.create<ConstantOp>(b.getIndexAttr(high)));
+    index = b.create<arith::MaxSIOp>(index, zero);
   }
-  index = b.create<arith::MinSIOp>(index,
-                                   b.create<ConstantOp>(b.getIndexAttr(high)));
-  index = b.create<arith::MaxSIOp>(index, zero);
   return index;
 }
 
@@ -335,8 +343,11 @@ absl::StatusOr<llvm::SmallVector<Value>> EmitDynamicSlice(
   for (int i = 0; i < input_shape.rank(); ++i) {
     TF_ASSIGN_OR_RETURN(
         auto offset, GetSingleOperandValue(operand_provider, instr, i + 1, {}));
-    offset = ClampIndex(
-        offset, input_shape.dimensions(i) - instr->shape().dimensions(i), b);
+    offset =
+        ClampIndex(offset,
+                   primitive_util::IsUnsignedIntegralType(
+                       instr->operand(i + 1)->shape().element_type()),
+                   input_shape.dimensions(i) - instr->shape().dimensions(i), b);
     input_indices[i] = b.create<arith::AddIOp>(input_indices[i], offset);
   }
 
@@ -355,8 +366,10 @@ absl::StatusOr<llvm::SmallVector<Value>> EmitDynamicUpdateSlice(
     TF_ASSIGN_OR_RETURN(
         auto start_index,
         GetSingleOperandValue(operand_provider, instr, i + 2, {}));
-    start_index =
-        ClampIndex(start_index, instr->shape().dimensions(i) - update_size, b);
+    start_index = ClampIndex(start_index,
+                             primitive_util::IsUnsignedIntegralType(
+                                 instr->operand(i + 2)->shape().element_type()),
+                             instr->shape().dimensions(i) - update_size, b);
 
     auto end_index = b.create<arith::AddIOp>(
         start_index, b.create<ConstantOp>(b.getIndexAttr(update_size)));
@@ -410,7 +423,10 @@ absl::StatusOr<llvm::SmallVector<Value>> EmitGather(
     TF_RET_CHECK(input_index.size() == 1)
         << "Expected operand to be a single value.";
     operand_indices[i] =
-        ClampIndex(input_index.front(), input_size - slice_size, b);
+        ClampIndex(input_index.front(),
+                   primitive_util::IsUnsignedIntegralType(
+                       instr->operand(1)->shape().element_type()),
+                   input_size - slice_size, b);
   }
 
   // Add offsets.
@@ -644,6 +660,16 @@ absl::StatusOr<SmallVector<Value>> HloToMlir(
 
   auto element_mlir_type =
       *ConvertPrimitiveTypeToMLIRType(element_type, builder);
+
+  // During mapping to the arith dialect, we need to convert from signed integer
+  // types to signless integer types. Most mappings can infer the signless
+  // integer type from the already converted operand, but e.g. for Convert this
+  // is not possible, so we need to have the signless result element type as
+  // well. But we also still need to pass the signed integer element type, as
+  // that is needed to select the correct arith ops for unsigned element types.
+  mlir::mhlo::RemoveSignTypeConverter sign_converter;
+  auto result_element_type = sign_converter.convertType(element_mlir_type);
+
   switch (instr->opcode()) {
     case HloOpcode::kAbs:
       if (primitive_util::IsComplexType(
@@ -778,58 +804,18 @@ absl::StatusOr<SmallVector<Value>> HloToMlir(
     case HloOpcode::kXor:
       return MapElementwiseOp<mhlo::XorOp>(arg_types, operands, builder);
     case HloOpcode::kBitcastConvert:
-      return MapHloOp<mhlo::BitcastConvertOp>(element_mlir_type, arg_types,
+      return MapHloOp<mhlo::BitcastConvertOp>(result_element_type, arg_types,
                                               operands, builder);
     case HloOpcode::kConvert: {
-      if (operands[0].getType().isa<mlir::FloatType>() &&
-          element_type == PRED) {
-        return {
-            builder
-                .create<CmpFOp>(CmpFPredicate::UNE, operands[0],
-                                builder.create<ConstantOp>(builder.getFloatAttr(
-                                    operands[0].getType(), 0.0)))
-                ->getResults()};
-      }
-
-      auto out = MapHloOp<mhlo::ConvertOp>(element_mlir_type, arg_types,
-                                           operands, builder)
-                     .front();
-      // Convert from float to int is saturating, but MHLO's conversion logic
-      // does not implement this.
-      // TODO(jreiffers): Is this a bug or a feature?
-      if (auto int_ty = out.getType().dyn_cast<mlir::IntegerType>()) {
-        auto in = operands[0];
-        if (auto float_ty = in.getType().dyn_cast<mlir::FloatType>()) {
-          auto cst_int = [&](int64_t x) {
-            return builder.create<arith::ConstantIntOp>(x, int_ty);
-          };
-          auto cst_float = [&](int64_t x) {
-            return builder.create<ConstantOp>(
-                builder.getFloatAttr(float_ty, x));
-          };
-          int64_t min = llvm::minIntN(int_ty.getWidth());
-          int64_t max = llvm::maxIntN(int_ty.getWidth());
-          // x <= static_cast<float>(INT_MIN) ? INT_MIN : ...
-          out = builder.create<SelectOp>(
-              builder.create<CmpFOp>(CmpFPredicate::OLE, in, cst_float(min)),
-              cst_int(min), out);
-          // x >= static_cast<float>(INT_MAX) ? INT_MAX : ...
-          out = builder.create<SelectOp>(
-              builder.create<CmpFOp>(CmpFPredicate::OGE, in, cst_float(max)),
-              cst_int(max), out);
-          // isnan(x) ? 0 : ...
-          out = builder.create<SelectOp>(
-              builder.create<CmpFOp>(CmpFPredicate::UNO, in, in), cst_int(0),
-              out);
-        }
-      }
-      return {{out}};
+      return {{mhlo::MhloOpToStdScalarOp::mapConvertOpToStdScalarOp(
+          builder.getLoc(), element_mlir_type, result_element_type, arg_types,
+          operands, &builder)}};
     }
     case HloOpcode::kBitcast:
       if (instr->operands()[0]->shape().element_type() == element_type) {
         return operands;
       }
-      return MapHloOp<mhlo::BitcastConvertOp>(element_mlir_type, arg_types,
+      return MapHloOp<mhlo::BitcastConvertOp>(result_element_type, arg_types,
                                               operands, builder);
     case HloOpcode::kCopy:
     case HloOpcode::kSlice:
@@ -852,8 +838,7 @@ bool IsHloOpSupported(const HloInstruction* instr,
     // TODO(akuegel): Fix remaining issues with complex.
     // TODO(jreiffers): Support fp8.
     // TODO(jreiffers): Support int4.
-    return primitive_util::IsUnsignedIntegralType(e) ||
-           (primitive_util::IsIntegralType(e) &&
+    return (primitive_util::IsIntegralType(e) &&
             primitive_util::BitWidth(e) > 1 &&
             primitive_util::BitWidth(e) < 8) ||
            primitive_util::IsComplexType(e) ||
@@ -949,7 +934,18 @@ SmallVector<Value> ProvideParameter(
   SmallVector<Value> operands(
       this_fn.getArguments().take_front(instr->parent()->num_parameters()));
   absl::c_copy(indices, std::back_inserter(operands));
-  return builder.create<PureCallOp>(callee, operands).getResults();
+  SmallVector<Value> results =
+      builder.create<PureCallOp>(callee, operands).getResults();
+
+  // Convert from signed to signless.
+  mlir::mhlo::RemoveSignTypeConverter sign_converter;
+  for (auto& result : results) {
+    auto signless_type = sign_converter.convertType(result.getType());
+    result =
+        builder.create<mlir::UnrealizedConversionCastOp>(signless_type, result)
+            .getResult(0);
+  }
+  return results;
 }
 
 SmallVector<Value> ProvideParameterRange(
