@@ -35,6 +35,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/stats_publisher_interface.h"
 #include "tensorflow/core/common_runtime/eager/rendezvous_cache.h"
 #include "tensorflow/core/framework/device_attributes.pb.h"
+#include "tensorflow/core/framework/function.pb.h"
 #include "tensorflow/core/lib/core/refcount.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
 #include "tensorflow/core/nccl/collective_communicator.h"
@@ -56,10 +57,12 @@ limitations under the License.
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/graph_def_util.h"
 #include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/core/platform/refcount.h"
 #include "tensorflow/core/protobuf/config.pb.h"
 #include "tensorflow/core/public/version.h"
 #include "tensorflow/core/util/device_name_utils.h"
 #include "tsl/platform/refcount.h"
+#include "tsl/platform/statusor.h"
 #include "tsl/util/env_var.h"
 #if !defined(IS_MOBILE_PLATFORM)
 #include "tensorflow/core/distributed_runtime/cluster_function_library_runtime.h"
@@ -716,13 +719,14 @@ ImmediateExecutionTensorHandle* EagerContext::TFTensorHandleFromInterface(
 }
 
 Status EagerContext::RegisterFunction(AbstractFunction* f) {
-  FunctionDef* fdef;
-  TF_RETURN_IF_ERROR(f->GetFunctionDef(&fdef));
-  if (!fdef) {
-    return errors::InvalidArgument("GetFunctionDef returned nullptr.");
+  TF_ASSIGN_OR_RETURN(core::RefCountPtr<FunctionRecord> record,
+                      f->GetFunctionRecord());
+  if (!record) {
+    return absl::InvalidArgumentError("GetFunctionRecord returned nullptr.");
   }
-  return AddFunctionDef(*fdef, FunctionDefLibrary(),
-                        register_abstract_functions_local_only_);
+
+  return AddFunctionRecord(std::move(record), FunctionDefLibrary(),
+                           register_abstract_functions_local_only_);
 }
 
 bool EagerContext::UsesTFRT() { return false; }
@@ -968,6 +972,16 @@ Status EagerContext::AddFunctionDef(const FunctionDef& fdef,
                                     const FunctionDefLibrary& library,
                                     const bool add_to_local_only,
                                     const StackTracesMap& stack_traces) {
+  core::RefCountPtr<FunctionRecord> func_record(
+      new FunctionRecord(fdef, stack_traces, true));
+  return AddFunctionRecord(std::move(func_record), library, add_to_local_only);
+}
+
+Status EagerContext::AddFunctionRecord(
+    core::RefCountPtr<FunctionRecord> func_record,
+    const FunctionDefLibrary& library, bool add_to_local_only) {
+  const FunctionDef& fdef = func_record->fdef();
+  const StackTracesMap& stack_traces = func_record->stack_traces();
   auto fdefs_to_add =
       small_constants_optimizer::FoldInputTensors(fdef, func_lib_def_);
   for (const auto& fdef_to_add : fdefs_to_add) {
@@ -1014,7 +1028,8 @@ Status EagerContext::AddFunctionDef(const FunctionDef& fdef,
     }
     is_first_ref = registered_function->RefCountIsOne();
     if (is_first_ref) {
-      TF_RETURN_IF_ERROR(func_lib_def_.AddFunctionDef(fdef, stack_traces));
+      TF_RETURN_IF_ERROR(
+          func_lib_def_.AddFunctionRecord(func_record.GetNewRef()));
       TF_RETURN_IF_ERROR(func_lib_def_.AddLibrary(library));
     }
   }

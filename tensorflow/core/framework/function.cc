@@ -1427,6 +1427,13 @@ Status FunctionLibraryDefinition::AddFunctionDefHelper(
   return status;
 }
 
+Status FunctionLibraryDefinition::AddFunctionRecord(
+    core::RefCountPtr<FunctionRecord> record) TF_LOCKS_EXCLUDED(mu_) {
+  mutex_lock l(mu_);
+  bool added;
+  return AddHelper(record.get(), &added);
+}
+
 Status FunctionLibraryDefinition::AddHelper(FunctionRecord* registration,
                                             bool* added) {
   *added = false;

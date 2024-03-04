@@ -455,6 +455,8 @@ class FunctionLibraryDefinition : public OpRegistryInterface {
       TF_LOCKS_EXCLUDED(mu_);
   Status AddFunctionDef(FunctionDef&& fdef, StackTracesMap&& stack_traces = {})
       TF_LOCKS_EXCLUDED(mu_);
+  Status AddFunctionRecord(core::RefCountPtr<FunctionRecord> record)
+      TF_LOCKS_EXCLUDED(mu_);
 
   // Adds gradient definition 'grad' to this function library.
   // This is a no-op if 'grad' already exists in this function library.

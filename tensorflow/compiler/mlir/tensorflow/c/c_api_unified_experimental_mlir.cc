@@ -19,6 +19,7 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/ADT/iterator_range.h"
@@ -55,11 +56,15 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_type.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/dump_mlir_util.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
+#include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/lib/llvm_rtti/llvm_rtti.h"
 #include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/platform/refcount.h"
+#include "tsl/platform/errors.h"
+#include "tsl/platform/statusor.h"
 
 namespace mlir {
 namespace TF {
@@ -233,7 +238,10 @@ class MlirFunction : public AbstractFunction {
         module_(std::move(module)),
         func_(func) {}
 
-  Status GetFunctionDef(tensorflow::FunctionDef** f) override;
+  Status GetFunctionDef(const tensorflow::FunctionDef** f) override;
+
+  absl::StatusOr<tensorflow::core::RefCountPtr<tensorflow::FunctionRecord>>
+  GetFunctionRecord() override;
 
   // For LLVM style RTTI.
   static bool classof(const AbstractFunction* ptr) {
@@ -244,7 +252,7 @@ class MlirFunction : public AbstractFunction {
   std::unique_ptr<MLIRContext> context_;
   OwningOpRef<mlir::ModuleOp> module_;
   func::FuncOp func_;
-  std::unique_ptr<tensorflow::FunctionDef> fdef_;
+  tensorflow::core::RefCountPtr<tensorflow::FunctionRecord> func_record_;
 };
 
 class MlirFunctionContext : public TracingContext {
@@ -526,10 +534,18 @@ Status MlirAbstractOp::SetAttrFunctionList(
   return Unimplemented("SetAttrFunctionList has not been implemented yet.");
 }
 
-Status MlirFunction::GetFunctionDef(tensorflow::FunctionDef** f) {
-  if (fdef_) {
-    *f = fdef_.get();
-    return absl::OkStatus();
+Status MlirFunction::GetFunctionDef(const tensorflow::FunctionDef** f) {
+  if (!func_record_) {
+    TF_ASSIGN_OR_RETURN(auto func_record, GetFunctionRecord());
+  }
+  *f = &func_record_->fdef();
+  return absl::OkStatus();
+}
+
+absl::StatusOr<tensorflow::core::RefCountPtr<tensorflow::FunctionRecord>>
+MlirFunction::GetFunctionRecord() {
+  if (func_record_) {
+    return func_record_.GetNewRef();
   }
   PassManager pm(func_.getContext());
   ::tensorflow::applyTensorflowAndCLOptions(pm);
@@ -545,11 +561,14 @@ Status MlirFunction::GetFunctionDef(tensorflow::FunctionDef** f) {
   TF_RETURN_IF_ERROR(diag_handler.ConsumeStatus());
 
   tensorflow::GraphExportConfig configs;
-  fdef_ = std::make_unique<tensorflow::FunctionDef>();
+
+  tensorflow::FunctionDef fdef;
   TF_RETURN_IF_ERROR(
-      ConvertMlirFunctionToFunctionLibraryDef(func_, configs, fdef_.get()));
-  *f = fdef_.get();
-  return absl::OkStatus();
+      ConvertMlirFunctionToFunctionLibraryDef(func_, configs, &fdef));
+  func_record_ = tensorflow::core::RefCountPtr<tensorflow::FunctionRecord>(
+      new tensorflow::FunctionRecord(std::move(fdef), {}, true));
+
+  return func_record_.GetNewRef();
 }
 
 Status MlirAbstractOp::Execute(absl::Span<AbstractTensorHandle*> retvals,

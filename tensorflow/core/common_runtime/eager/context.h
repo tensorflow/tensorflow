@@ -256,6 +256,14 @@ class EagerContext : public ImmediateExecutionContext, public core::RefCounted {
                         bool add_to_local_only = false,
                         const StackTracesMap& stack_traces = {});
 
+  // `library` contains all FunctionDefs and GradientDefs to expand `fdef`. Add
+  // it to the local FunctionLibraryDefinition as well, but no need to add it
+  // to the KernelAndDevice cache since they won't be executed as
+  // KernelAndDevices.
+  Status AddFunctionRecord(core::RefCountPtr<FunctionRecord> func_record,
+                           const FunctionDefLibrary& library,
+                           bool add_to_local_only = false);
+
   // Adds a component function (i.e. containing a subgraph of a multi-process
   // function) implemented as `fdef`.
   //
