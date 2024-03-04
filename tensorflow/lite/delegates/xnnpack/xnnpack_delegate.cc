@@ -300,7 +300,7 @@ xnn_datatype GetXNNPackDatatype(TfLiteContext* context,
         TF_LITE_KERNEL_LOG(
             context,
             "mismatching number of quantization parameters %d and outer "
-            "dimension %d for INT8 tensor %d in XNNPACK delegate",
+            "dimension %d for INT32 tensor %d in XNNPACK delegate",
             quantization_params->scale->size, SizeOfDimension(&tensor, 0), t);
         return xnn_datatype_invalid;
       }
