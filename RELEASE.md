@@ -1,6 +1,8 @@
 # Release 2.15.1
 
-<REPLACE THIS TEXT WITH THE RELEASE NOTES>
+### Bug Fixes and Other Changes
+
+*   `ml_dtypes` runtime dependency is updated to `0.3.1` to fix package conflict issues
 
 # Release 2.15.0
 
