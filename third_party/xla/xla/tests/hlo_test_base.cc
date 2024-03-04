@@ -648,16 +648,16 @@ HloTestBase::RunAndCompareTwoModulesInternal(
 
 ::testing::AssertionResult HloTestBase::Run(
     string_view hlo_string, bool run_hlo_passes, ExecutionProfile* profile,
-    const tsl::protobuf::Message* backend_config) {
+    const tsl::protobuf::Message* backend_config, bool use_random_data) {
   auto module_or_status = ParseAndReturnVerifiedModule(hlo_string);
   if (!module_or_status.ok()) {
     return ::testing::AssertionFailure()
            << "Error while parsing HLO text format: "
            << module_or_status.status().ToString();
   }
-
   std::unique_ptr<HloModule> module = std::move(module_or_status.value());
-  const auto fake_arguments = MakeFakeArguments(module.get()).value();
+  const auto fake_arguments =
+      MakeFakeArguments(module.get(), use_random_data).value();
   std::vector<Literal*> fake_argument_ptrs;
   absl::c_transform(
       fake_arguments, std::back_inserter(fake_argument_ptrs),
