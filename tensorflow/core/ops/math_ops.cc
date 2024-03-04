@@ -1896,6 +1896,9 @@ REGISTER_OP("DenseBincount")
         c->set_output(0, c->MakeShape({size_val}));
       } else if (c->Rank(c->input(0)) == 2) {
         c->set_output(0, c->MakeShape({c->Dim(c->input(0), 0), size_val}));
+      } else {
+        return errors::InvalidArgument("input must not be a scalar. "
+            "Recieved input of rank ", c->Rank(c->input(0)));
       }
       return absl::OkStatus();
     });
