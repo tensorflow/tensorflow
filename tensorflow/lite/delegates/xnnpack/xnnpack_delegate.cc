@@ -3417,6 +3417,14 @@ class Subgraph {
     const int kernel_width = SizeOfDimension(&filter_tensor, 2);
     const int input_channels = SizeOfDimension(&filter_tensor, 3);
     const int groups = SizeOfDimension(&input_tensor, 3) / input_channels;
+    // Input tensor shape is not yet known.
+    if (groups == 0) {
+      TF_LITE_KERNEL_LOG(
+          logging_context,
+          "groups of zero is not supported by CONV_2D operator #%d",
+          node_index);
+      return kTfLiteError;
+    }
 
     uint32_t flags;
     TF_LITE_ENSURE_STATUS(CalculatePadding(
