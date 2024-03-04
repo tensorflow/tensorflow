@@ -38,8 +38,8 @@ namespace xla {
 
 struct CanonicalAsyncOp {
   HloOpcode outer;  // kAsyncStart or kAsyncDone
-  HloOpcode inner;  // kAllReduce, kAllGather, kAllToAll, kCollectivePermute,
-                    // or kReduceScatter
+  HloOpcode inner;  // kAllReduce, kAllGather, kAllToAll, kCollectiveBroadcast,
+                    // kCollectivePermute, or kReduceScatter
 };
 
 CanonicalAsyncOp DefaultGetCanonicalAsyncOp(const HloInstruction& hlo);
@@ -61,7 +61,8 @@ enum class ResourceType {
   kSendRecv = 7,
   kSendHost = 8,
   kRecvHost = 9,
-  kNumResources = 10,
+  kCollectiveBroadcast = 10,
+  kNumResources = 11,
   kTargetDefinedResourcesBound = 10000,
 };
 
@@ -93,6 +94,7 @@ class HloGraphNode;
 class HloScheduleGraph;
 
 struct SchedulerConfig {
+  int64_t collective_broadcast_overlap_limit = 1;
   int64_t collective_permute_overlap_limit = 1;
   int64_t all_to_all_overlap_limit = 1;
   int64_t all_gather_overlap_limit = 1;
@@ -880,6 +882,7 @@ class LatencyHidingScheduler : public HloModulePass {
     const HloComputation* computation = nullptr;
     double all_gather_wasted_cycles = 0;
     double all_reduce_wasted_cycles = 0;
+    double collective_broadcast_wasted_cycles = 0;
     double collective_permute_wasted_cycles = 0;
     double all_to_all_wasted_cycles = 0;
     double reduce_scatter_wasted_cycles = 0;
