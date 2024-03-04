@@ -93,7 +93,7 @@ ThrowIfErrorWrapper(xla::Status (C::*)(Args...))
 template <typename... Args>
 struct ThrowIfErrorWrapper<xla::Status(Args...), xla::Status (&)(Args...)> {
   explicit ThrowIfErrorWrapper(xla::Status (&f)(Args...)) : func(f) {}
-  void operator()(Args... args) {
+  void operator()(Args... args) const {
     xla::ThrowIfError(func(std::forward<Args>(args)...));
   }
   xla::Status (&func)(Args...);
@@ -122,7 +122,7 @@ struct ThrowIfErrorWrapper<xla::Status (C::*)(Args...) const, F> {
 template <typename C, typename... Args>
 struct ThrowIfErrorWrapper<xla::Status(Args...), C> {
   explicit ThrowIfErrorWrapper(xla::Status (C::*ptmf)(Args...)) : ptmf(ptmf) {}
-  void operator()(C& instance, Args... args) {
+  void operator()(C& instance, Args... args) const {
     xla::ThrowIfError((instance.*ptmf)(std::forward<Args>(args)...));
   }
   xla::Status (C::*ptmf)(Args...);
@@ -170,7 +170,7 @@ template <typename R, typename... Args>
 struct ValueOrThrowWrapper<xla::StatusOr<R>(Args...),
                            xla::StatusOr<R> (&)(Args...)> {
   explicit ValueOrThrowWrapper(xla::StatusOr<R> (&f)(Args...)) : func(f) {}
-  R operator()(Args... args) {
+  R operator()(Args... args) const {
     return xla::ValueOrThrow(func(std::forward<Args>(args)...));
   }
   xla::StatusOr<R> (&func)(Args...);
@@ -198,7 +198,7 @@ template <typename R, typename C, typename... Args>
 struct ValueOrThrowWrapper<xla::StatusOr<R>(Args...), C> {
   explicit ValueOrThrowWrapper(xla::StatusOr<R> (C::*ptmf)(Args...))
       : ptmf(ptmf) {}
-  R operator()(C& instance, Args... args) {
+  R operator()(C& instance, Args... args) const {
     return xla::ValueOrThrow((instance.*ptmf)(std::forward<Args>(args)...));
   }
   xla::StatusOr<R> (C::*ptmf)(Args...);
