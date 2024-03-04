@@ -62,17 +62,17 @@ struct Tensor {
   const TensorElementType& tensor_element_type() const;
   const QuantizedTensorElementType& quantized_tensor_element_type() const;
 
-  template <DataType data_type, typename T = Storage<data_type>::Type>
+  template <DataType data_type, typename T = typename Storage<data_type>::Type>
   T* GetDataAs() {
     return reinterpret_cast<T*>(data);
   }
 
-  template <DataType data_type, typename T = Storage<data_type>::Type>
+  template <DataType data_type, typename T = typename Storage<data_type>::Type>
   const T* GetDataAs() const {
     return reinterpret_cast<const T*>(data);
   }
 
-  template <DataType data_type, typename T = Storage<data_type>::Type>
+  template <DataType data_type, typename T = typename Storage<data_type>::Type>
   absl::Span<const T> Flat() const {
     return absl::MakeConstSpan(GetDataAs<data_type>(),
                                static_cast<size_t>(NumElements()));
