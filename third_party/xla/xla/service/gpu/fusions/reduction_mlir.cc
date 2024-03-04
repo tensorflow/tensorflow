@@ -148,14 +148,11 @@ absl::Status MlirReductionFusion::EmitReduction(EmitterState& state) const {
   auto& builder = state.builder;
   const auto& tiling = reduction_info().GetTiling();
 
-  // We need one shared element per warp.
-  int num_warps = tiling.GetThreadsPerBlock()
-                      [ReductionDimensions::kRowMinorReducedDimension] /
-                  WarpSize();
+  // The number of warps working on one element in a row reduction.
+  int num_warps_row = tiling.GetThreadsPerBlock()
+                          [ReductionDimensions::kRowMinorReducedDimension] /
+                      WarpSize();
   auto ctx = state.entry_function.getContext();
-  auto input_indexing = ComputeThreadIdToInputIndexing(
-      /*root_index=*/0, /*hero_operand_index=*/0, ctx);
-  TF_RET_CHECK(input_indexing) << "Indexing is never nullopt";
 
   auto zero = builder.create<mlir::arith::ConstantIndexOp>(0);
   auto lane_id = builder.create<mlir::gpu::LaneIdOp>();
@@ -195,14 +192,14 @@ absl::Status MlirReductionFusion::EmitReduction(EmitterState& state) const {
     shared_tile_size = {WarpSize(), WarpSize() + 1};
     shared_write_indices = {lane_id, warp_id};
     shared_read_indices = {warp_id, lane_id};
-  } else if (reduction_info().GetRowsPerWarp() == 1 && num_warps > 1) {
+  } else if (reduction_info().GetRowsPerWarp() == 1 && num_warps_row > 1) {
     auto kKept = ReductionDimensions::kRowKeptDimension;
-    shared_tile_size = {tiling.GetThreadsPerBlock()[kKept], num_warps};
+    shared_tile_size = {tiling.GetThreadsPerBlock()[kKept], num_warps_row};
     shared_write_condition = is_first_lane;
     shared_read_condition = builder.create<mlir::arith::CmpIOp>(
         mlir::arith::CmpIPredicate::ult,
         thread_ids[ReductionDimensions::kRowMinorReducedDimension],
-        builder.create<mlir::arith::ConstantIndexOp>(num_warps));
+        builder.create<mlir::arith::ConstantIndexOp>(num_warps_row));
     shared_write_indices = {thread_ids[kKept], warp_id};
     shared_read_indices = {thread_ids[kKept], lane_id};
   }
@@ -241,6 +238,7 @@ absl::Status MlirReductionFusion::EmitReduction(EmitterState& state) const {
   SmallVector<Value> updated_outputs;
   for (auto [hero_index, hero] : llvm::enumerate(reduction_heroes_)) {
     const auto& info = hero_info[hero];
+    auto input_indexing = ComputeThreadIdToInputIndexing(hero_index, 0, ctx);
     TF_ASSIGN_OR_RETURN(
         auto accumulated,
         state.EmitPerThreadReducedElements(*input_indexing, hero, info.inits));
@@ -297,12 +295,10 @@ absl::Status MlirReductionFusion::EmitReduction(EmitterState& state) const {
                               .getResult());
       }
 
-      if (!reduction_info().IsRowReduction() || num_warps > 1) {
-        reduced = builder
-                      .create<ShuffleReduceOp>(state.GetReducer(hero), reduced,
-                                               WarpSize() / 2)
-                      .getResults();
-      }
+      reduced = builder
+                    .create<ShuffleReduceOp>(state.GetReducer(hero), reduced,
+                                             WarpSize() / 2)
+                    .getResults();
 
       for (auto [output_value, dest] : llvm::zip(reduced, info.outputs)) {
         updated_outputs.push_back(b.create<PredicatedInsertOp>(

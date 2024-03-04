@@ -257,6 +257,55 @@ TEST_F(ReductionTest, MultiRowReduction) {
   EXPECT_TRUE(RunAndCompareNoHloPasses(kHloString, ErrorSpec{1e-3}));
 }
 
+TEST_F(ReductionTest, NonPowerOfTwoRowReduction) {
+  constexpr auto kHloString = R"(
+    HloModule Test, is_scheduled=true
+
+    Add {
+      lhs = f64[] parameter(0)
+      rhs = f64[] parameter(1)
+      ROOT add = f64[] add(lhs, rhs)
+    }
+    fused_computation {
+      param_0 = f64[100,568] parameter(0)
+      param_1 = f64[] parameter(1)
+      ROOT reduce = f64[100] reduce(param_0, param_1), dimensions={1}, to_apply=Add
+    }
+    ENTRY main {
+      a = f64[100,568] parameter(0)
+      c = f64[] constant(0)
+      ROOT fusion = f64[100] fusion(a, c), kind=kInput, calls=fused_computation
+    })";
+  TF_ASSERT_OK(EmitAndCheckIR(kHloString, R"(
+    // CHECK: allocate_shared
+  )"));
+  EXPECT_TRUE(RunAndCompareNoHloPasses(kHloString, ErrorSpec{1e-3}));
+}
+
+TEST_F(ReductionTest, MixedIndexing) {
+  constexpr auto kHloString = R"(
+    HloModule module
+    add {
+      p0 = f32[] parameter(0)
+      p1 = f32[] parameter(1)
+      ROOT add = f32[] add(p0, p1)
+    }
+    fusion {
+      %param_0 = f32[64,128] parameter(0)
+      %constant_0 = f32[] constant(0)
+      %reduce.1 = f32[128] reduce(f32[64,128] %param_0, f32[] %constant_0), dimensions={0}, to_apply=%add
+      %neg = f32[64,128] negate(f32[64,128] %param_0)
+      %bitcast = f32[8,8,128]{2,1,0} bitcast(f32[64,128] %neg)
+      %reduce.2 = f32[128] reduce(f32[8,8,128]{2,1,0} %bitcast, f32[] %constant_0), dimensions={0,1}, to_apply=%add
+      ROOT %tuple.12 = (f32[128], f32[128]) tuple(f32[128] %reduce.1, f32[128] %reduce.2)
+    }
+    ENTRY entry {
+      %param_0 = f32[64,128] parameter(0)
+      ROOT %fusion = (f32[128], f32[128]) fusion(%param_0), kind=kInput, calls=fusion
+    })";
+  EXPECT_TRUE(RunAndCompareNoHloPasses(kHloString, ErrorSpec{1e-3}));
+}
+
 }  // namespace
 }  // namespace gpu
 }  // namespace xla
