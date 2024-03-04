@@ -1,12 +1,22 @@
 Auto generated patch. Do not edit or delete it, even if empty.
-diff -ruN --strip-trailing-cr a/libcxx/src/new.cpp b/libcxx/src/new.cpp
---- a/libcxx/src/new.cpp
-+++ b/libcxx/src/new.cpp
-@@ -7,6 +7,7 @@
- //===----------------------------------------------------------------------===//
+diff -ruN --strip-trailing-cr a/llvm/test/CodeGen/Hexagon/loop_align_count.ll b/llvm/test/CodeGen/Hexagon/loop_align_count.ll
+--- a/llvm/test/CodeGen/Hexagon/loop_align_count.ll
++++ b/llvm/test/CodeGen/Hexagon/loop_align_count.ll
+@@ -1,6 +1,7 @@
+ ; RUN: llc -march=hexagon -mcpu=hexagonv73 -O2 -mattr=+hvxv73,hvx-length64b \
+ ; RUN: -debug-only=hexagon-loop-align 2>&1 < %s | FileCheck %s
+ ; Validate that there are 4 bundles in the loop.
++; REQUIRES: asserts
  
- #include "include/overridable_function.h"
-+#include <__assert>
- #include <__memory/aligned_alloc.h>
- #include <cstddef>
- #include <cstdlib>
+ ; CHECK: Loop Align Pass:
+ ; CHECK: Bundle Count : 4
+diff -ruN --strip-trailing-cr a/llvm/test/CodeGen/Hexagon/loop_align_count.mir b/llvm/test/CodeGen/Hexagon/loop_align_count.mir
+--- a/llvm/test/CodeGen/Hexagon/loop_align_count.mir
++++ b/llvm/test/CodeGen/Hexagon/loop_align_count.mir
+@@ -1,5 +1,6 @@
+ # RUN: llc -march=hexagon -O3 -run-pass hexagon-loop-align -o - %s\
+ # RUN: -debug-only=hexagon-loop-align -verify-machineinstrs 2>&1 | FileCheck %s
++# REQUIRES: asserts
+ 
+ # Test that we only count til endloop instruction and we align this
+ # loop to 32.
