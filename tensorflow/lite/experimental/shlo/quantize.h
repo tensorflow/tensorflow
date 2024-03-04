@@ -29,7 +29,7 @@ inline constexpr StorageT Quantize(ExpressedT expressed_value,
                                    StorageT zero_point, ExpressedT scale_inv,
                                    StorageT min_value, StorageT max_value) {
   const ExpressedT rounding_extra =
-      (expressed_value > 0) ? ExpressedT(0.5) : ExpressedT(-0.5);
+      (expressed_value > 0) ? ExpressedT(0.5f) : ExpressedT(-0.5f);
   ExpressedT tmp = expressed_value * scale_inv + rounding_extra;
 
   // Clamp the value in case of overflow/underflow. This is needed to avoid

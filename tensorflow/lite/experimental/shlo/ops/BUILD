@@ -35,8 +35,8 @@ cc_test(
     deps = [
         ":benchmark_util",
         ":is_finite",
+        "//tensorflow/lite/experimental/shlo:bf16",
         "//tensorflow/lite/experimental/shlo:data_type",
-        "//tensorflow/lite/experimental/shlo:quantized_tensor_element_type",
         "//tensorflow/lite/experimental/shlo:shape",
         "//tensorflow/lite/experimental/shlo:tensor",
         "//tensorflow/lite/experimental/shlo:tensor_matcher",

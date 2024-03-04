@@ -21,6 +21,7 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/types/span.h"
+#include "tensorflow/lite/experimental/shlo/bf16.h"
 #include "tensorflow/lite/experimental/shlo/data_type.h"
 #include "tensorflow/lite/experimental/shlo/shape.h"
 #include "tensorflow/lite/experimental/shlo/tensor.h"
@@ -58,16 +59,20 @@ INSTANTIATE_TEST_SUITE_P(
     Unquantized, IsFiniteTest,
     ::testing::Values(
         Params{TensorWithData::Create<DataType::kBF16>(
-                   Shape{{7}}, {+NAN, -NAN, -INFINITY, +INFINITY, -1, 0, 1}),
+                   Shape{{7}},
+                   {BF16{+NAN}, BF16{-NAN}, BF16{-INFINITY}, BF16{+INFINITY},
+                    BF16{-1.0f}, BF16{0.0f}, BF16{1.0f}}),
                TensorWithData::Create<DataType::kI1>(
                    Shape{{7}}, {false, false, false, false, true, true, true})},
         Params{TensorWithData::Create<DataType::kF16>(
-                   Shape{{7}}, {+NAN, -NAN, -INFINITY, +INFINITY, -1, 0, 1}),
+                   Shape{{7}},
+                   {+NAN, -NAN, -INFINITY, +INFINITY, -1.0f, 0.0f, 1.0f}),
                TensorWithData::Create<DataType::kI1>(
                    Shape{{7}}, {false, false, false, false, true, true, true})},
         Params{
             TensorWithData::Create<DataType::kF32>(
-                Shape{{7}}, {+NAN, -NAN, -INFINITY, +INFINITY, -1, 0, 1}),
+                Shape{{7}},
+                {+NAN, -NAN, -INFINITY, +INFINITY, -1.0f, 0.0f, 1.0f}),
             TensorWithData::Create<DataType::kI1>(
                 Shape{{7}}, {false, false, false, false, true, true, true})}));
 
@@ -75,7 +80,7 @@ INSTANTIATE_TEST_SUITE_P(
     Quantized, IsFiniteTest,
     ::testing::Values(Params{
         .operand = TensorWithData::Create<DataType::kSI32, DataType::kF32>(
-            Shape{{7}}, {0, -1, 0, 1, 1, 0, 1}, 0.1, 0),
+            Shape{{7}}, {0.0f, -1.0f, 0.0f, 1.0f, 1.0f, 0.0f, 1.0f}, 0.1f, 0),
         .expected = TensorWithData::Create<DataType::kI1>(
             Shape{{7}}, {true, true, true, true, true, true, true})}));
 }  // namespace
