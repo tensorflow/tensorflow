@@ -329,14 +329,7 @@ Service::BuildAotResults(
     TF_ASSIGN_OR_RETURN(
         auto module, CreateModuleFromProto(*proto, config, run_backend_only));
     DumpHloModuleIfEnabled(*module, kBeforeOptimizationsDumpName);
-    if (run_backend_only) {
-      module_group->push_back(std::move(module));
-    } else {
-      TF_ASSIGN_OR_RETURN(auto module_after_opt,
-                          backend->compiler()->RunHloPasses(
-                              std::move(module), executors[0][0], options));
-      module_group->push_back(std::move(module_after_opt));
-    }
+    module_group->push_back(std::move(module));
   }
 
   AotCompilationOptions aot_options(backend->compiler()->PlatformId());

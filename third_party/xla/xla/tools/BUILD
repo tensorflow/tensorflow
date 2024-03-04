@@ -676,6 +676,7 @@ tsl_gpu_library(
         "//xla/service:xla_compile_result_proto_cc_impl",
         "//xla/service/cpu:cpu_compiler",
         "//xla/service/cpu:cpu_executable",
+        "//xla/stream_executor",
         "//xla/stream_executor:device_memory_allocator",
         "@com_google_absl//absl/cleanup",
         "@com_google_absl//absl/status",
