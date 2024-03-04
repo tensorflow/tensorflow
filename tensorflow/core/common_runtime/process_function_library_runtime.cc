@@ -24,6 +24,7 @@ limitations under the License.
 #include <utility>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/types/optional.h"
 #include "absl/types/variant.h"
@@ -535,25 +536,34 @@ Status ProcessFunctionLibraryRuntime::InstantiateMultiDevice(
   const uint64 optimization_start_time_usecs = Env::Default()->NowMicros();
   // Look up for optimized function graph in library. If found, skip
   // `OptimizeFunctionGraph` step.
-  OptimizedFunctionGraph* optimized_graph_proto =
+  std::optional<absl::StatusOr<OptimizedFunctionGraph>> optimized_graph_proto =
       options.lib_def != nullptr
           ? options.lib_def->FindOptimizedFunctionGraph(function_name)
           : lib_def_->FindOptimizedFunctionGraph(function_name);
-  if (optimized_graph_proto != nullptr) {
-    LOG(INFO) << "Found AOT'd graph for function: " << function_name;
-    metrics::UpdateFunctionGraphOptimizationSavingTime(
-        optimized_graph_proto->optimization_time_usecs(),
-        metrics::GraphOptimizationSource::kAot);
-    metrics::IncrementFunctionGraphOptimizationCacheHitCount(
-        1, metrics::GraphOptimizationSource::kAot);
+
+  if (optimized_graph_proto.has_value()) {
+    if (optimized_graph_proto->ok()) {
+      LOG(INFO) << "Found AOT'd graph for function: " << function_name;
+      metrics::UpdateFunctionGraphOptimizationSavingTime(
+          optimized_graph_proto->value().optimization_time_usecs(),
+          metrics::GraphOptimizationSource::kAot);
+      metrics::IncrementFunctionGraphOptimizationCacheHitCount(
+          1, metrics::GraphOptimizationSource::kAot);
+    } else {
+      LOG(WARNING) << "Failed to create AOT'd graph for function: "
+                   << function_name
+                   << " with status: " << optimized_graph_proto->status();
+    }
   }
 
   StatusOr<OptimizedFunctionGraphInfo> optimized_graph_info =
-      optimized_graph_proto == nullptr
+      (!optimized_graph_proto.has_value() ||
+       !optimized_graph_proto.value().ok())
           ? OptimizeFunctionGraphOrReadFromFileCache(
                 function_name, attrs, options, *dev_set, lib_def_,
                 composite_devices, cpu_device, default_device, env_)
-          : OptimizedFunctionGraphInfo::FromProto(*optimized_graph_proto);
+          : OptimizedFunctionGraphInfo::FromProto(
+                std::move(optimized_graph_proto.value().value()));
   if (!optimized_graph_info.ok()) return optimized_graph_info.status();
 
   // Resets the library registration correctly.

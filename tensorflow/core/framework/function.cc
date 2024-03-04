@@ -1277,7 +1277,8 @@ FunctionLibraryDefinition::FunctionLibraryDefinition(
     key_value_pair.second->Ref();
   }
   func_grad_ = other.func_grad_;
-  optimized_function_graph_map_ = other.optimized_function_graph_map_;
+  optimized_function_graph_creator_map_ =
+      other.optimized_function_graph_creator_map_;
 }
 
 FunctionLibraryDefinition::FunctionLibraryDefinition(
@@ -1312,8 +1313,8 @@ FunctionLibraryDefinition& FunctionLibraryDefinition::operator=(
   default_registry_ = std::move(other.default_registry_);
   records_ = std::move(other.records_);
   func_grad_ = std::move(other.func_grad_);
-  optimized_function_graph_map_ =
-      std::move(other.optimized_function_graph_map_);
+  optimized_function_graph_creator_map_ =
+      std::move(other.optimized_function_graph_creator_map_);
   return *this;
 }
 
