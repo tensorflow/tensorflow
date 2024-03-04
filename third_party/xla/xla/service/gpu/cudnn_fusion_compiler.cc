@@ -420,5 +420,16 @@ absl::StatusOr<bool> CuDnnFusionCompiler::Run(
   return CuDnnFusionVisitor(config_).RunOnModule(module, execution_threads);
 }
 
+int CuDnnFusionCompiler::GetAvailablePlanCount(
+    const HloFusionInstruction& hlo) const {
+  se::Stream& stream = *config_.GetStream().value();
+  auto graph = PrepareGraph(hlo, stream);
+  if (!graph.ok()) {
+    return 0;
+  }
+  constexpr int64_t kMaxPlans = 10;
+  return std::min(graph->Graph().get_execution_plan_count(), kMaxPlans);
+}
+
 }  // namespace gpu
 }  // namespace xla

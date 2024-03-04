@@ -167,6 +167,7 @@ class TritonAutotunerTest : public StatelessAutotunerTest {
         StatelessAutotunerTest::GetDebugOptionsForTest();
     debug_options.set_xla_gpu_enable_triton_gemm(true);
     debug_options.set_xla_gpu_cublas_fallback(false);
+    debug_options.set_xla_gpu_cudnn_gemm_fusion(false);
     return debug_options;
   }
 
@@ -202,12 +203,16 @@ class TritonAutotunerTest : public StatelessAutotunerTest {
             dot_fusion = dot_fusion->operand(0);
           }
           CHECK_EQ(dot_fusion->opcode(), HloOpcode::kFusion);
-          CHECK_GT(dot_fusion->backend_config<GpuBackendConfig>()
-                       .value()
-                       .fusion_backend_config()
-                       .triton_gemm_config()
-                       .block_m(),
-                   0);
+          if (!dot_fusion->backend_config<GpuBackendConfig>()
+                   ->fusion_backend_config()
+                   .has_cudnn_fusion_config()) {
+            CHECK_GT(dot_fusion->backend_config<GpuBackendConfig>()
+                         .value()
+                         .fusion_backend_config()
+                         .triton_gemm_config()
+                         .block_m(),
+                     0);
+          }
         });
   }
 };
@@ -547,6 +552,32 @@ ENTRY %e {
                         /*is_autotuning_compilation=*/true})
           .value();
   EXPECT_NE(executable, nullptr);
+}
+
+TEST_F(TritonAutotunerTest, AutotuneCuDnnFusion) {
+  if (!GetCudaComputeCapability().IsAtLeast(
+          se::CudaComputeCapability::AMPERE)) {
+    GTEST_SKIP() << "cuDNN fusion autotuning is not tested before Ampere.";
+  }
+  const std::string kHlo = R"(
+fusion1 {
+  p0 = f32[3,28,32] parameter(0)
+  p1 = f32[3,28,32] parameter(1)
+  ROOT d = f32[3,32,32] dot(p0, p1),
+    lhs_batch_dims={0}, rhs_batch_dims={0},
+    lhs_contracting_dims={1}, rhs_contracting_dims={1}
+}
+
+ENTRY e {
+  p0 = f32[3,28,32] parameter(0)
+  p1 = f32[3,28,32] parameter(1)
+  ROOT _ = f32[3,32,32] fusion(p0, p1), kind=kCustom, calls=fusion1,
+    backend_config={"fusion_backend_config": {kind: "__cudnn$fusion"}}
+})";
+
+  CheckTritonAutotuning(kHlo, R"(
+// CHECK: "plan_id":
+)");
 }
 
 // TODO(b/281489442): Write a testcase called

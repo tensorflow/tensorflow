@@ -19,6 +19,7 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/gpu/autotuner_util.h"
 #include "xla/service/hlo_pass_interface.h"
@@ -40,6 +41,8 @@ class CuDnnFusionCompiler : public HloModulePass {
   absl::StatusOr<bool> Run(
       HloModule* module,
       const absl::flat_hash_set<absl::string_view>& execution_threads) override;
+
+  int GetAvailablePlanCount(const HloFusionInstruction& hlo) const;
 
  private:
   AutotuneConfig config_;
