@@ -100,6 +100,16 @@ cc_library(
     deps = [":data_type"],
 )
 
+cc_test(
+    name = "dispatch_test",
+    srcs = ["dispatch_test.cc"],
+    deps = [
+        ":dispatch",
+        "@com_google_absl//absl/status",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
 cc_library(
     name = "quantize",
     hdrs = ["quantize.h"],
