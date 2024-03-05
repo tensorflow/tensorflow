@@ -1,4 +1,5 @@
 # Implementation of StableHLO operations.
+load("//tensorflow/lite/experimental/shlo:build_def.bzl", "shlo_ref_linkopts")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:LICENSE"],
@@ -32,6 +33,7 @@ cc_library(
 cc_test(
     name = "is_finite_test",
     srcs = ["is_finite_test.cc"],
+    linkopts = shlo_ref_linkopts(),
     deps = [
         ":benchmark_util",
         ":is_finite",
@@ -50,6 +52,7 @@ cc_test(
 cc_test(
     name = "is_finite_bench",
     srcs = ["is_finite_bench.cc"],
+    linkopts = shlo_ref_linkopts(),
     deps = [
         ":benchmark_util",
         ":is_finite",

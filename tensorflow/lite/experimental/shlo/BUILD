@@ -1,4 +1,5 @@
 # StableHLO Reference Library
+load("build_def.bzl", "shlo_ref_linkopts")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:LICENSE"],
@@ -38,6 +39,7 @@ cc_library(
 cc_test(
     name = "shape_test",
     srcs = ["shape_test.cc"],
+    linkopts = shlo_ref_linkopts(),
     deps = [
         ":shape",
         "@com_google_googletest//:gtest_main",
@@ -59,6 +61,7 @@ cc_library(
 cc_test(
     name = "quantized_tensor_element_type_test",
     srcs = ["quantized_tensor_element_type_test.cc"],
+    linkopts = shlo_ref_linkopts(),
     deps = [
         ":data_type",
         ":f16",
@@ -80,6 +83,7 @@ cc_library(
 cc_test(
     name = "bf16_test",
     srcs = ["bf16_test.cc"],
+    linkopts = shlo_ref_linkopts(),
     deps = [
         ":bf16",
         "@com_google_absl//absl/base",
@@ -117,6 +121,7 @@ cc_library(
 cc_test(
     name = "dispatch_test",
     srcs = ["dispatch_test.cc"],
+    linkopts = shlo_ref_linkopts(),
     deps = [
         ":dispatch",
         ":status_matcher",
@@ -134,6 +139,7 @@ cc_library(
 cc_test(
     name = "quantize_test",
     srcs = ["quantize_test.cc"],
+    linkopts = shlo_ref_linkopts(),
     deps = [
         ":data_type",
         ":quantize",
@@ -178,6 +184,7 @@ cc_library(
 cc_test(
     name = "tensor_matcher_test",
     srcs = ["tensor_matcher_test.cc"],
+    linkopts = shlo_ref_linkopts(),
     deps = [
         ":data_type",
         ":shape",
