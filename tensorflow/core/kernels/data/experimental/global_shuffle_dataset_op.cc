@@ -235,23 +235,22 @@ class GlobalShuffleDatasetOp::Dataset::Iterator
     uint64_t max_index =
         cardinality_ > 0 ? static_cast<uint64_t>(cardinality_ - 1) : 0;
     return [parent_index_mapper, seed, seed2, seed3,
-            max_index](int64_t element_position) -> std::optional<int64_t> {
+            max_index](int64_t element_position) -> int64_t {
       if (parent_index_mapper != nullptr) {
-        std::optional<int64_t> shuffled_element_position =
-            parent_index_mapper(element_position);
-        if (shuffled_element_position.has_value()) {
-          element_position = *shuffled_element_position;
-        }
+        element_position = parent_index_mapper(element_position);
       }
       // This could happen if the source dataset generates more elements than
       // needed by the intermediate transformations. For example, when shuffling
       // `range(10).batch(3, drop_remainder=True)`, the last element of `range`
       // has index 9, which maps to the 4th batched element. However, since
       // `batch` drops remainders, the cardinality is 3. In this case, the
-      // element position exceeds the max index. The caller should check the
-      // return value and return end_of_sequence accordingly.
+      // element position exceeds the max index. The caller is responsible to
+      // handle this case properly.
       if (element_position > max_index) {
-        return std::nullopt;
+        return element_position;
+      }
+      if (max_index == 0) {
+        return 0;
       }
       return static_cast<int64_t>(tensorflow::random::index_shuffle(
           static_cast<uint64_t>(element_position), {seed, seed2, seed3},
