@@ -107,6 +107,7 @@ limitations under the License.
 #include "xla/service/gpu/launch_dimensions.h"
 #include "xla/service/gpu/matmul_utils.h"
 #include "xla/service/gpu/nccl_api.h"
+#include "xla/service/gpu/nccl_collective_broadcast_thunk.h"
 #include "xla/service/gpu/nccl_collective_thunk.h"
 #include "xla/service/gpu/nccl_recv_thunk.h"
 #include "xla/service/gpu/nccl_send_thunk.h"
@@ -2717,7 +2718,6 @@ absl::Status IrEmitterUnnested::EmitHloInstruction(
           Thunk::kNcclAllReduceStart, all_reduce, all_reduce,
           all_reduce->use_global_device_ids());
     }
-
     case HloOpcode::kAsyncDone: {
       const HloInstruction* wrapped = instr->async_wrapped_instruction();
       switch (wrapped->opcode()) {
@@ -2725,6 +2725,8 @@ absl::Status IrEmitterUnnested::EmitHloInstruction(
           return EmitNcclAsyncDone(Thunk::kNcclReduceScatterDone, instr);
         case HloOpcode::kAllToAll:
           return EmitNcclAsyncDone(Thunk::kNcclAllToAllDone, instr);
+        case HloOpcode::kCollectiveBroadcast:
+          return EmitNcclAsyncDone(Thunk::kNcclCollectiveBroadcastDone, instr);
         default: {
           if (wrapped->has_backend_config()) {
             TF_ASSIGN_OR_RETURN(
@@ -2759,6 +2761,14 @@ absl::Status IrEmitterUnnested::EmitHloInstruction(
           return EmitNcclThunk<NcclAllToAllStartThunk, HloAllToAllInstruction>(
               Thunk::kNcclAllToAll, instr, all_to_all, std::nullopt);
         }
+        case HloOpcode::kCollectiveBroadcast: {
+          auto* collective_broadcast =
+              Cast<HloCollectiveBroadcastInstruction>(wrapped);
+          return EmitNcclThunk<NcclCollectiveBroadcastStartThunk,
+                               HloCollectiveBroadcastInstruction>(
+              Thunk::kNcclCollectiveBroadcast, instr, collective_broadcast,
+              std::nullopt);
+        }
         default: {
           if (wrapped->has_backend_config()) {
             TF_ASSIGN_OR_RETURN(
@@ -2784,13 +2794,11 @@ absl::Status IrEmitterUnnested::EmitHloInstruction(
 
     case HloOpcode::kCall:
       return EmitCommandBufferThunk(instr);
-
     case HloOpcode::kCollectivePermuteDone:
       return EmitNcclAsyncDone(Thunk::kNcclCollectivePermuteDone, instr);
     case HloOpcode::kCollectivePermuteStart:
       return EmitCollectivePermute(
           Cast<HloCollectivePermuteInstruction>(instr));
-
     case HloOpcode::kConditional:
       return EmitConditional(instr);
     case HloOpcode::kConstant:

@@ -212,6 +212,14 @@ class NcclApi {
                                  ReductionKind reduction_kind,
                                  NcclCommHandle comm, se::Stream* stream) = 0;
 
+  // Copy data in `send_buff` from the root GPU to the `recv_buff` on
+  // all GPUs.
+  //
+  // https://docs.nvidia.com/deeplearning/nccl/user-guide/docs/api/colls.html#ncclbroadcast
+  virtual absl::Status Broadcast(se::DeviceMemoryBase send_buffer,
+                                 se::DeviceMemoryBase recv_buffer,
+                                 PrimitiveType dtype, size_t count, size_t root,
+                                 NcclCommHandle comm, se::Stream* stream) = 0;
   // Reduce data in `send_buff` from all GPUs using the `reduction_kind`
   // operation and leave the reduced result scattered over the devices so that
   // the `recv_buff` on rank `i` will contain the i-th block of the result.

@@ -1096,6 +1096,7 @@ absl::Status GpuCompiler::OptimizeHloModule(
       // config.
       AsyncCollectiveCreator::CollectiveCreatorConfig config;
       config.convert_all_reduce = HloPredicateTrue;
+      config.convert_collective_broadcast = HloPredicateTrue;
       config.convert_collective_permute = HloPredicateTrue;
       config.convert_all_gather = HloPredicateTrue;
       config.convert_reduce_scatter = HloPredicateTrue;
@@ -1123,6 +1124,11 @@ absl::Status GpuCompiler::OptimizeHloModule(
           case HloOpcode::kAsyncStart: {
             auto async_inst = Cast<HloAsyncInstruction>(inst);
             switch (async_inst->async_wrapped_opcode()) {
+              case HloOpcode::kCollectiveBroadcast:
+                return enable_all_async ||
+                       hlo_module->config()
+                           .debug_options()
+                           .xla_gpu_enable_async_collective_broadcast();
               case HloOpcode::kReduceScatter:
                 return enable_all_async ||
                        hlo_module->config()

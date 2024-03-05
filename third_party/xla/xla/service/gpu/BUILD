@@ -860,12 +860,14 @@ cc_library(
 cc_library(
     name = "nccl_collective_thunks",
     srcs = [
+        "nccl_collective_broadcast_thunk.cc",
         "nccl_collective_thunk.cc",
         "nccl_p2p_thunk_common.cc",
         "nccl_recv_thunk.cc",
         "nccl_send_thunk.cc",
     ],
     hdrs = [
+        "nccl_collective_broadcast_thunk.h",
         "nccl_collective_thunk.h",
         "nccl_p2p_thunk_common.h",
         "nccl_recv_thunk.h",

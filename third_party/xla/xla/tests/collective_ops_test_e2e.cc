@@ -79,6 +79,7 @@ class AsyncCollectiveOps : public CollectiveOpsTestE2E,
     // Enable or disable all async collectives based on test parameter.
     const bool enable_async = GetParam();
     debug_options.set_xla_gpu_enable_async_all_reduce(enable_async);
+    debug_options.set_xla_gpu_enable_async_collective_broadcast(enable_async);
     debug_options.set_xla_gpu_enable_async_collective_permute(enable_async);
     debug_options.set_xla_gpu_enable_async_all_gather(enable_async);
     debug_options.set_xla_gpu_enable_async_reduce_scatter(enable_async);
@@ -225,6 +226,38 @@ XLA_TEST_P(AsyncCollectiveOps, AsyncAllGatherMixedTypes) {
     LiteralTestUtil::ExpectR1Equal<uint32_t>({10, 15, 11, 16}, results[0]);
     LiteralTestUtil::ExpectR1Equal<float>({10.0, 15.0, 11.0, 16.0}, results[1]);
   }
+}
+
+XLA_TEST_P(AsyncCollectiveOps, AsyncCollectiveBroadcast) {
+  const absl::string_view kModuleStr = R"(
+  HloModule test
+  ENTRY test_computation {
+    replica = u32[] replica-id()
+    ten = u32[] constant(10)
+    sum = u32[] add(replica, ten)
+    p = u32[2] broadcast(sum), dimensions={}
+    bcast = u32[2] collective-broadcast(p), replica_groups={{1, 0}}
+    ROOT res = copy(bcast)
+  }
+  )";
+  const int64_t kNumReplicas = 2;
+  const bool enable_async_collective_broadcast = GetParam();
+  TF_ASSERT_OK_AND_ASSIGN(auto executable,
+                          CreateExecutable(kModuleStr, kNumReplicas));
+  EXPECT_TRUE(executable->has_module());
+  HloInstruction* cb_start =
+      FindInstruction(&executable->module(), HloOpcode::kAsyncStart);
+  HloInstruction* cb_done =
+      FindInstruction(&executable->module(), HloOpcode::kAsyncDone);
+  EXPECT_THAT(cb_start, NotNull());
+  EXPECT_THAT(cb_done, NotNull());
+  EXPECT_EQ(IsAsync(cb_start), enable_async_collective_broadcast);
+
+  TF_ASSERT_OK_AND_ASSIGN(std::vector<Literal> results,
+                          ExecuteReplicated(executable.get(), kNumReplicas));
+  ASSERT_EQ(results.size(), kNumReplicas);
+  LiteralTestUtil::ExpectR1Equal<uint32_t>({11, 11}, results[0]);
+  LiteralTestUtil::ExpectR1Equal<uint32_t>({11, 11}, results[1]);
 }
 
 XLA_TEST_P(AsyncCollectiveOps, AsyncCollectivePermute) {

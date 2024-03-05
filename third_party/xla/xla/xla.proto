@@ -380,6 +380,7 @@ message DebugOptions {
   // Convert synchronous collective ops into asynchronous.
   bool xla_gpu_enable_async_collectives = 238;
   bool xla_gpu_enable_async_all_reduce = 152;
+  bool xla_gpu_enable_async_collective_broadcast = 278;
   bool xla_gpu_enable_async_collective_permute = 183;
   bool xla_gpu_enable_async_all_gather = 199;
   bool xla_gpu_enable_async_reduce_scatter = 200;
@@ -703,7 +704,7 @@ message DebugOptions {
   // Let GEMM fusion autotuning probe cuDNN as a backend.
   bool xla_gpu_cudnn_gemm_fusion = 277;
 
-  // Next id: 278
+  // Next id: 279
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.

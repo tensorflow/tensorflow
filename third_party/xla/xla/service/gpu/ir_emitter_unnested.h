@@ -194,6 +194,9 @@ class IrEmitterUnnested : public IrEmitter {
   template <typename ThunkType>
   absl::Status EmitReplicaOrPartitionId(const HloInstruction* instr);
 
+  absl::Status EmitCollectiveBroadcast(
+      const HloCollectiveBroadcastInstruction* instr);
+
   absl::Status EmitCollectivePermute(
       const HloCollectivePermuteInstruction* instr);
 

@@ -1061,6 +1061,10 @@ void BuildXlaCompilerSubmodule(py::module& m) {
       .def_property("xla_gpu_enable_async_all_gather",
                     &DebugOptions::xla_gpu_enable_async_all_gather,
                     &DebugOptions::set_xla_gpu_enable_async_all_gather)
+      .def_property(
+          "xla_gpu_enable_async_collective_broadcast",
+          &DebugOptions::xla_gpu_enable_async_collective_broadcast,
+          &DebugOptions::set_xla_gpu_enable_async_collective_broadcast)
       .def_property("xla_gpu_enable_async_collective_permute",
                     &DebugOptions::xla_gpu_enable_async_collective_permute,
                     &DebugOptions::set_xla_gpu_enable_async_collective_permute)

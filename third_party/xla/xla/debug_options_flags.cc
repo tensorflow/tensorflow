@@ -126,6 +126,7 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_gpu_enable_async_collectives(true);
   opts.set_xla_gpu_enable_async_all_reduce(true);
   opts.set_xla_gpu_enable_async_all_gather(false);
+  opts.set_xla_gpu_enable_async_collective_broadcast(true);
   opts.set_xla_gpu_enable_async_collective_permute(false);
   opts.set_xla_gpu_enable_async_all_to_all(false);
   opts.set_xla_gpu_enable_async_reduce_scatter(false);
@@ -965,6 +966,12 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       bool_setter_for(&DebugOptions::set_xla_gpu_enable_async_all_reduce),
       debug_options->xla_gpu_enable_async_all_reduce(),
       "Converts synchronous all-reduce ops into asynchronous."));
+  flag_list->push_back(tsl::Flag(
+      "xla_gpu_enable_async_collective_broadcast",
+      bool_setter_for(
+          &DebugOptions::set_xla_gpu_enable_async_collective_broadcast),
+      debug_options->xla_gpu_enable_async_collective_broadcast(),
+      "Converts synchronous collective-broadcast ops into asynchronous."));
   flag_list->push_back(tsl::Flag(
       "xla_gpu_enable_async_collective_permute",
       bool_setter_for(

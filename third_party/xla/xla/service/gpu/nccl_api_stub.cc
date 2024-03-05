@@ -125,6 +125,13 @@ class NcclApiStub final : public NcclApi {
     return UnimplementedError();
   }
 
+  absl::Status Broadcast(se::DeviceMemoryBase send_buffer,
+                         se::DeviceMemoryBase recv_buffer, PrimitiveType dtype,
+                         size_t count, size_t root, NcclCommHandle comm,
+                         se::Stream* stream) final {
+    return UnimplementedError();
+  }
+
   absl::Status ReduceScatter(se::DeviceMemoryBase, se::DeviceMemoryBase,
                              PrimitiveType, size_t, ReductionKind,
                              NcclCommHandle, se::Stream*) final {
