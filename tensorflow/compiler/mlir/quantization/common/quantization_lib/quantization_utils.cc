@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/compiler/mlir/lite/quantization/quantization_utils.h"
+#include "tensorflow/compiler/mlir/quantization/common/quantization_lib/quantization_utils.h"
 
 #include <algorithm>
 #include <cmath>
@@ -50,7 +50,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/quantization/ir/QuantOps.h"
 #include "tensorflow/compiler/mlir/lite/quantization/ir/QuantizeUtils.h"
 #include "tensorflow/compiler/mlir/lite/quantization/ir/UniformSupport.h"
-#include "tensorflow/compiler/mlir/lite/quantization/quantization_traits.h"
+#include "tensorflow/compiler/mlir/quantization/common/quantization_lib/quantization_traits.h"
 #include "tensorflow/lite/kernels/internal/portable_tensor_utils.h"
 #include "tensorflow/lite/tools/optimize/quantization_utils.h"
 
@@ -58,7 +58,7 @@ namespace mlir {
 
 // This includes the interface class definition. It couldn't be in a namespace
 // because the table gen doesn't emit the namespace when it is used.
-#include "tensorflow/compiler/mlir/lite/quantization/quantization_interface.cc.inc"
+#include "tensorflow/compiler/mlir/quantization/common/quantization_lib/quantization_interface.cc.inc"
 
 namespace quant {
 namespace {

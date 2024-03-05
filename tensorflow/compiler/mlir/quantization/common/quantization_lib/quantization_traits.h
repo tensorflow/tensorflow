@@ -15,8 +15,8 @@ limitations under the License.
 
 // This file defines the op traits used in the MLIR TensorFlow Lite dialect.
 
-#ifndef TENSORFLOW_COMPILER_MLIR_LITE_QUANTIZATION_QUANTIZATION_TRAITS_H_
-#define TENSORFLOW_COMPILER_MLIR_LITE_QUANTIZATION_QUANTIZATION_TRAITS_H_
+#ifndef TENSORFLOW_COMPILER_MLIR_QUANTIZATION_COMMON_QUANTIZATION_LIB_QUANTIZATION_TRAITS_H_
+#define TENSORFLOW_COMPILER_MLIR_QUANTIZATION_COMMON_QUANTIZATION_LIB_QUANTIZATION_TRAITS_H_
 
 #include <cmath>
 #include <cstdint>
@@ -42,7 +42,7 @@ LogicalResult VerifySameScales(Operation* op);
 
 // This includes the interface class definition. It couldn't be in a namespace
 // because the table gen doesn't emit the namespace when it is used.
-#include "tensorflow/compiler/mlir/lite/quantization/quantization_interface.h.inc"
+#include "tensorflow/compiler/mlir/quantization/common/quantization_lib/quantization_interface.h.inc"
 
 namespace OpTrait {
 namespace quant {
@@ -149,4 +149,4 @@ class QuantizableResult
 }  // namespace OpTrait
 }  // namespace mlir
 
-#endif  // TENSORFLOW_COMPILER_MLIR_LITE_QUANTIZATION_QUANTIZATION_TRAITS_H_
+#endif  // TENSORFLOW_COMPILER_MLIR_QUANTIZATION_COMMON_QUANTIZATION_LIB_QUANTIZATION_TRAITS_H_
