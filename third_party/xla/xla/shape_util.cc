@@ -912,6 +912,46 @@ Shape ShapeUtil::PrependMajorDimension(int64_t bound, Shape shape) {
          ByteSizeOfPrimitiveType(shape.element_type());
 }
 
+/* static */ absl::StatusOr<int64_t> ShapeUtil::SerializedSize(
+    const Shape& shape) {
+  return SerializedSizeWithProto(shape, shape.ToProto());
+}
+
+/* static */ absl::StatusOr<int64_t> ShapeUtil::SerializedSizeWithProto(
+    const Shape& shape, const ShapeProto& proto) {
+  // The size computed here must be kept in sync with the serialized format as
+  // described in the comments for LiteralBase::SerializeWithShapeProto in
+  // literal.h.
+  TF_RETURN_IF_ERROR(ValidateShapeWithOptionalLayout(shape));
+  int64_t size = sizeof(int64_t) + proto.ByteSizeLong();
+
+  TF_RETURN_IF_ERROR(ShapeUtil::ForEachSubshapeWithStatus(
+      shape, [&](const Shape& subshape, const ShapeIndex& index) {
+        if (subshape.IsTuple()) {
+          return OkStatus();
+        }
+        if (!subshape.IsArray()) {
+          return InvalidArgument("Shape cannot be serialiized: %s",
+                                 shape.ToString());
+        }
+        if (subshape.is_dynamic()) {
+          size += sizeof(DynamicSizeType) * subshape.rank();
+        }
+        if (subshape.element_type() == PRED) {
+          // PRED is packed 8 elements per byte.
+          size += CeilOfRatio<int64_t>(ElementsIn(subshape), 8);
+        } else if (primitive_util::Is4BitType(subshape.element_type())) {
+          // 4-bit types are packed 2 elements per byte.
+          size += CeilOfRatio<int64_t>(ElementsIn(subshape), 2);
+        } else {
+          size += ByteSizeOfElements(subshape);
+        }
+        return OkStatus();
+      }));
+
+  return size;
+}
+
 /* static */ Status ShapeUtil::ValidateShapeWithOptionalLayoutInternal(
     const Shape& shape) {
   if (shape.element_type() == PRIMITIVE_TYPE_INVALID ||

@@ -366,6 +366,20 @@ std::optional<int64_t> LiteralBase::GetFirstInteger() const {
       shape().element_type());
 }
 
+absl::Status LiteralBase::SerializeToString(std::string* output) const {
+  ShapeProto shape_proto = shape().ToProto();
+  TF_ASSIGN_OR_RETURN(int64_t size,
+                      ShapeUtil::SerializedSizeWithProto(shape(), shape_proto));
+  output->resize(size);
+  return SerializeWithShapeProto(shape_proto, output->data());
+}
+
+absl::StatusOr<std::string> LiteralBase::SerializeAsString() const {
+  std::string result;
+  TF_RETURN_IF_ERROR(SerializeToString(&result));
+  return std::move(result);
+}
+
 template <typename NativeT>
 Status MutableLiteralBase::CopySliceFromInternal(
     const LiteralBase& src_literal, absl::Span<const int64_t> src_base,
