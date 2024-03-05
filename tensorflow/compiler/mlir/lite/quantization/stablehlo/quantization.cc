@@ -74,7 +74,7 @@ absl::StatusOr<mlir::ModuleOp> RunQuantization(
     const SavedModelBundle* saved_model_bundle,
     const absl::string_view saved_model_dir,
     const std::unordered_set<std::string>& saved_model_tags,
-    const QuantizationConfig& quantization_config,
+    QuantizationConfig& quantization_config,
     const PyFunctionLibrary* quantization_py_function_lib,
     mlir::ModuleOp module_op) {
   if (saved_model_bundle == nullptr) {
@@ -87,6 +87,11 @@ absl::StatusOr<mlir::ModuleOp> RunQuantization(
     return absl::InvalidArgumentError(
         "Failed to run quantization. `quantization_py_function_lib` should not "
         "be nullptr.");
+  }
+
+  if (!quantization_config.has_calibration_options()) {
+    *quantization_config.mutable_calibration_options() =
+        mlir::quant::stablehlo::GetDefaultCalibrationOptions();
   }
 
   const absl::flat_hash_map<std::string, SignatureDef> signature_def_map =

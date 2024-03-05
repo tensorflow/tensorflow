@@ -98,6 +98,7 @@ pytype_strict_library(
         ":pywrap_function_lib",
         ":representative_dataset",
         ":save_model",
+        "//tensorflow/compiler/mlir/quantization/stablehlo:quantization_config_proto_py",
         "//tensorflow/compiler/mlir/quantization/tensorflow:exported_model_proto_py",
         "//tensorflow/compiler/mlir/quantization/tensorflow:quantization_options_proto_py",
         "//tensorflow/compiler/mlir/quantization/tensorflow/calibrator:calibration_algorithm",
@@ -163,6 +164,7 @@ cc_library(
     hdrs = ["py_function_lib.h"],
     compatible_with = get_compatible_with_portable(),
     deps = [
+        "//tensorflow/compiler/mlir/quantization/stablehlo:quantization_config_proto_cc",
         "//tensorflow/compiler/mlir/quantization/stablehlo/cc/calibration:min_max_value",
         "//tensorflow/compiler/mlir/quantization/tensorflow:exported_model_proto_cc",
         "//tensorflow/compiler/mlir/quantization/tensorflow:quantization_options_proto_cc",
@@ -207,6 +209,7 @@ tf_python_pybind_extension(
     deps = [
         ":py_function_lib",
         ":type_casters",
+        "//tensorflow/compiler/mlir/quantization/stablehlo:quantization_config_proto_cc",
         "//tensorflow/compiler/mlir/quantization/stablehlo/cc/calibration:min_max_value",
         "//tensorflow/compiler/mlir/quantization/tensorflow:exported_model_proto_cc",
         "//tensorflow/compiler/mlir/quantization/tensorflow:quantization_options_proto_cc",

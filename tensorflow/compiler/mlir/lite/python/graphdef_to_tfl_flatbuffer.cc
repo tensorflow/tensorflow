@@ -40,7 +40,7 @@ limitations under the License.
 namespace tensorflow {
 
 absl::Status ConvertGraphDefToTFLiteFlatBuffer(
-    const toco::ModelFlags& model_flags, const toco::TocoFlags& toco_flags,
+    const toco::ModelFlags& model_flags, toco::TocoFlags& toco_flags,
     const GraphDebugInfo& debug_info, const GraphDef& input,
     std::string* result) {
   using ::tflite::optimize::ReducedPrecisionSupport;

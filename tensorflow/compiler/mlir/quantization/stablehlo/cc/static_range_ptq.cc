@@ -74,21 +74,11 @@ using ::tensorflow::MLIRImportOptions;
 using ::tensorflow::SavedModelBundle;
 using ::tensorflow::SavedModelSignatureDefsToMlirImport;
 using ::tensorflow::SignatureDef;
-using ::tensorflow::quantization::CalibrationOptions;
 using ::tensorflow::quantization::ExportedModel;
 using ::tensorflow::quantization::PreprocessAndFreezeGraph;
 using ::tensorflow::quantization::PyFunctionLibrary;
 using ::tensorflow::quantization::RunPasses;
 using ::tensorflow::quantization::UnfreezeConstantsAndSaveVariables;
-
-// Create default configuration for the calibration step, which is the min/max
-// calibration method.
-CalibrationOptions GetDefaultCalibrationOptions() {
-  CalibrationOptions options{};
-  options.set_calibration_method(
-      CalibrationOptions::CALIBRATION_METHOD_MIN_MAX);
-  return options;
-}
 
 // Sets up and runs the passes for exporting `module_op`. The behavior of the
 // exporting passes is controlled by `export_opts`. Returns `AssetFileDef`s that
@@ -229,16 +219,12 @@ StaticRangePtqComponent::StaticRangePtqComponent(
     absl::flat_hash_map<std::string, SignatureDef> signature_def_map,
     absl::flat_hash_map<FunctionName, FunctionAlias> function_aliases)
     : ctx_(ctx) {
-  const CalibrationOptions calibration_options = GetDefaultCalibrationOptions();
-
   // Initialize the three sub-components.
-  sub_components_[0] =
-      std::make_unique<PreCalibrationComponent>(ctx_, calibration_options);
+  sub_components_[0] = std::make_unique<PreCalibrationComponent>(ctx_);
   sub_components_[1] = std::make_unique<CalibrationComponent>(
       ctx_, py_function_library, src_saved_model_path,
       std::move(function_aliases), std::move(tags),
-      std::move(signature_def_map), std::move(signature_keys),
-      calibration_options);
+      std::move(signature_def_map), std::move(signature_keys));
   sub_components_[2] = std::make_unique<PostCalibrationComponent>(ctx_);
 }
 
@@ -257,13 +243,17 @@ absl::StatusOr<ModuleOp> StaticRangePtqComponent::Run(
 absl::Status QuantizeStaticRangePtq(
     const absl::string_view src_saved_model_path,
     const absl::string_view dst_saved_model_path,
-    const QuantizationConfig& quantization_config,
+    QuantizationConfig quantization_config,
     const std::vector<std::string>& signature_keys,
     const absl::flat_hash_map<std::string, SignatureDef>& signature_def_map,
     const PyFunctionLibrary& py_function_library) {
   std::unordered_set<std::string> tags;
   tags.insert(quantization_config.tf_saved_model().tags().begin(),
               quantization_config.tf_saved_model().tags().end());
+  if (!quantization_config.has_calibration_options()) {
+    *quantization_config.mutable_calibration_options() =
+        GetDefaultCalibrationOptions();
+  }
 
   std::unique_ptr<MLIRContext> ctx = CreateMlirContextForQuantization();
 

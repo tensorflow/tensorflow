@@ -157,9 +157,62 @@ message DebuggerConfig {
   string log_dir_path = 3;
 }
 
+// Defines various calibration options.
+message CalibrationOptions {
+  // Configurations for calibration methods.
+  // NEXT ID: 7
+  enum CalibrationMethod {
+    CALIBRATION_METHOD_UNSPECIFIED = 0;
+    // Use the min, max values of all sample datasets.
+    CALIBRATION_METHOD_MIN_MAX = 1;
+    // Use the average of min, max values in each sample dataset.
+    CALIBRATION_METHOD_AVERAGE_MIN_MAX = 2;
+    // Use the min/max percentile value of histogram.
+    CALIBRATION_METHOD_HISTOGRAM_PERCENTILE = 3;
+    // Use the histogram mid values that minimize MSE error.
+    // This is very slow algorithm because it computes all errors for all
+    // histogram mid value pairs. Therefore the value of num_bins is recommended
+    // to be 256 or less.
+    CALIBRATION_METHOD_HISTOGRAM_MSE_BRUTEFORCE = 4;
+    // Use the histogram mid values that minimize MSE error.
+    // This is an algorithm that finds the bin with the max frequency in the
+    // histogram and expands the range.
+    CALIBRATION_METHOD_HISTOGRAM_MSE_MAX_FREQUENCY = 5;
+    // Use the histogram mid values that minimize MSE error. This is an
+    // algorithm that starts with the center in thehistogram and expands the
+    // range.
+    CALIBRATION_METHOD_HISTOGRAM_MSE_SYMMETRIC = 6;
+  }
+
+  // Parameters required for calibration.
+  // NEXT ID: 4
+  message CalibrationParameters {
+    // The number of bins when histogram is initialized. It can be increased
+    // because histogram is dynamically expanded by sample inputs.
+    // initial_num_bins is 256 by default.
+    int32 initial_num_bins = 1;
+    // min_percentile is only used in HISTOGRAM_PERCENTILE.
+    // min_percentile is 0.001 by default.
+    float min_percentile = 2;
+    // max_percentile is only used in HISTOGRAM_PERCENTILE.
+    // max_percentile is 99.999 by default.
+    float max_percentile = 3;
+  }
+
+  // Determines how to calibrate.
+  // The default calibration method is MIN_MAX.
+  CalibrationMethod calibration_method = 1;
+
+  // Defines the parameters required for calibration. Parameters such as the
+  // number of bins in the histogram and percentile belong to it.
+  // MIN_MAX and AVERAGE_MIN_MAX don't require this parameter and methods
+  // starting with HISTOGRAM require this parameter.
+  CalibrationParameters calibration_parameters = 2;
+}
+
 // Quantization configuration for StableHLO Quantizer. This is the primary
 // message containing all configurable options.
-// Next ID: 6
+// Next ID: 7
 message QuantizationConfig {
   // Config presets provide predefined popular or common quantization specs.
   // Lightweight users may choose one of the presets for quick experiments. Each
@@ -182,4 +235,9 @@ message QuantizationConfig {
 
   // Configures the quantization debugger.
   DebuggerConfig debugger_config = 5;
+
+  // Defines calibration options for quantization. This option is only used for
+  // activation of static range quantization (SRQ). Quantization calibration
+  // method is set to MIN_MAX by default.
+  CalibrationOptions calibration_options = 6;
 }

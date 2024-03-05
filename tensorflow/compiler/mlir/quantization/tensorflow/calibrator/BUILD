@@ -43,6 +43,7 @@ cc_library(
         ":calibration_statistics_collector_histogram",
         ":calibration_statistics_collector_min_max",
         ":calibration_statistics_proto_cc",
+        "//tensorflow/compiler/mlir/quantization/stablehlo:quantization_config_proto_cc",
         "//tensorflow/compiler/mlir/quantization/tensorflow:quantization_options_proto_cc",
         "//tensorflow/core:framework",
         "@com_google_absl//absl/base:core_headers",
@@ -61,6 +62,7 @@ cc_library(
     deps = if_static([":calibrator_singleton_impl"]) + [
         ":calibration_statistics_collector_base",
         ":calibration_statistics_proto_cc",
+        "//tensorflow/compiler/mlir/quantization/stablehlo:quantization_config_proto_cc",
         "//tensorflow/compiler/mlir/quantization/tensorflow:quantization_options_proto_cc",
         "//tensorflow/core:framework",
         "@com_google_absl//absl/container:flat_hash_map",
@@ -90,6 +92,7 @@ cc_library(
     deps = [
         ":calibration_statistics_collector_base",
         ":calibration_statistics_proto_cc",
+        "//tensorflow/compiler/mlir/quantization/stablehlo:quantization_config_proto_cc",
         "//tensorflow/compiler/mlir/quantization/tensorflow:quantization_options_proto_cc",
     ],
 )
@@ -102,6 +105,7 @@ cc_library(
     deps = [
         ":calibration_statistics_collector_base",
         ":calibration_statistics_proto_cc",
+        "//tensorflow/compiler/mlir/quantization/stablehlo:quantization_config_proto_cc",
         "//tensorflow/compiler/mlir/quantization/tensorflow:quantization_options_proto_cc",
     ],
 )
@@ -114,6 +118,7 @@ cc_library(
     deps = [
         ":calibration_statistics_collector_base",
         ":calibration_statistics_proto_cc",
+        "//tensorflow/compiler/mlir/quantization/stablehlo:quantization_config_proto_cc",
         "//tensorflow/compiler/mlir/quantization/tensorflow:quantization_options_proto_cc",
     ],
 )
@@ -123,7 +128,7 @@ pytype_strict_library(
     srcs = ["calibration_algorithm.py"],
     deps = [
         ":calibration_statistics_proto_py",
-        "//tensorflow/compiler/mlir/quantization/tensorflow:quantization_options_proto_py",
+        "//tensorflow/compiler/mlir/quantization/stablehlo:quantization_config_proto_py",
         "//third_party/py/numpy",
     ],
 )
@@ -134,7 +139,7 @@ pytype_strict_contrib_test(
     deps = [
         ":calibration_algorithm",
         ":calibration_statistics_proto_py",
-        "//tensorflow/compiler/mlir/quantization/tensorflow:quantization_options_proto_py",
+        "//tensorflow/compiler/mlir/quantization/stablehlo:quantization_config_proto_py",
         "//tensorflow/python/platform:client_testlib",
         "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
@@ -180,6 +185,7 @@ tf_cc_test(
     deps = [
         ":calibration_statistics_proto_cc",
         ":calibrator_singleton_impl",
+        "//tensorflow/compiler/mlir/quantization/stablehlo:quantization_config_proto_cc",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "@com_google_googletest//:gtest_main",
@@ -196,6 +202,7 @@ tf_kernel_library(
     ],
     deps = [
         ":calibrator_singleton_impl",
+        "//tensorflow/compiler/mlir/quantization/stablehlo:quantization_config_proto_cc",
         "//tensorflow/compiler/mlir/quantization/tensorflow:quantization_options_proto_cc",
         "//tensorflow/core:framework",
     ],
@@ -226,7 +233,7 @@ tf_py_strict_test(
         ":gen_custom_aggregator_op_wrapper",
         ":pywrap_calibration",
         "//tensorflow:tensorflow_py",
-        "//tensorflow/compiler/mlir/quantization/tensorflow:quantization_options_proto_py",
+        "//tensorflow/compiler/mlir/quantization/stablehlo:quantization_config_proto_py",
         "//tensorflow/python:pywrap_tensorflow",
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:ops",

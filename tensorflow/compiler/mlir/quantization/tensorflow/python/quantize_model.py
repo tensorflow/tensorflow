@@ -52,7 +52,9 @@ _UnitWiseQuantizationSpec = tf_export.tf_export(
 )(quant_opts_pb2.UnitWiseQuantizationSpec)
 
 _PresetMethod = _QuantizationMethod.PresetMethod
-_CalibrationMethod = quant_opts_pb2.CalibrationOptions.CalibrationMethod
+_CalibrationMethod = (
+    stablehlo_quant_config_pb2.CalibrationOptions.CalibrationMethod
+)
 
 _QuantizationComponent = _QuantizationComponentSpec.QuantizationComponent
 _TensorType = _QuantizationComponentSpec.TensorType
