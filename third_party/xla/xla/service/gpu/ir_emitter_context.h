@@ -88,14 +88,6 @@ class IrEmitterContext {
 
   std::vector<GpuExecutable::ConstantInfo>& constants() { return constants_; }
 
-  absl::Span<const BufferAllocation* const> allocations() const {
-    return allocations_;
-  }
-
-  void set_allocations(absl::Span<const BufferAllocation* const> allocations) {
-    allocations_ = allocations;
-  }
-
   // Emit a constant with a given number of element, given byte size of the
   // element, given symbol name and content.
   void emit_constant(int64_t num_elements, int64_t bytes_per_element,
@@ -113,12 +105,6 @@ class IrEmitterContext {
  private:
   const HloModule* hlo_module_;
   const BufferAssignment* buffer_assignment_;
-
-  // Stores pointer to buffer allocations in the order of the LMHLO entry args.
-  // LMHLO-based emitters need the ordering to locate the buffer allocation.
-  // This should be removed once LMHLO-based emitters are removed.
-  absl::Span<const BufferAllocation* const> allocations_;
-
   std::string platform_name_;
   const se::DeviceDescription& gpu_device_info_;
   mlir::MLIRContext* mlir_context_;
