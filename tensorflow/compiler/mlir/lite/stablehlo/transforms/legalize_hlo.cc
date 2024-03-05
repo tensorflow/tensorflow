@@ -15,6 +15,7 @@ limitations under the License.
 
 // This file implements logic for legalizing HLO to TensorFlow.
 
+#include <cassert>
 #include <cstddef>
 #include <cstdint>
 #include <cstdlib>
@@ -34,9 +35,11 @@ limitations under the License.
 #include "llvm/ADT/SmallSet.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
+#include "llvm/ADT/ilist.h"
 #include "llvm/Support/Casting.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
+#include "mlir/Dialect/Quant/QuantTypes.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributeInterfaces.h"  // from @llvm-project
@@ -44,6 +47,7 @@ limitations under the License.
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypeInterfaces.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
+#include "mlir/IR/Diagnostics.h"  // from @llvm-project
 #include "mlir/IR/ImplicitLocOpBuilder.h"  // from @llvm-project
 #include "mlir/IR/Location.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
@@ -55,17 +59,23 @@ limitations under the License.
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/IR/ValueRange.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
+#include "mlir/Pass/PassRegistry.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
 #include "stablehlo/dialect/BroadcastUtils.h"  // from @stablehlo
 #include "stablehlo/dialect/ChloOps.h"  // from @stablehlo
+#include "tensorflow/compiler/mlir/lite/stablehlo/transforms/hlo_matchers.h"
+#include "tensorflow/compiler/mlir/lite/stablehlo/transforms/legalize_hlo_conversions/reduce.h"
 #include "tensorflow/compiler/mlir/lite/stablehlo/transforms/legalize_hlo_conversions/util.h"
 #include "tensorflow/compiler/mlir/lite/stablehlo/transforms/passes.h"
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_dialect.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 #include "tensorflow/core/framework/kernel_shape_util.h"
 #include "tensorflow/core/lib/math/math_util.h"
+#include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/util/padding.h"
 
 namespace mlir {
 namespace odml {
@@ -1422,274 +1432,6 @@ class ConvertDynamicUpdateSliceOp
   };
 };
 
-// It returns "true" when Value $iota is obtained from the following mlir code:
-//
-// $iota = "mhlo.iota"(){iota_dimension = $dimensions[0]},
-//
-// where $dimensions must have size 1 and iota can have rank>=1.
-// It usually used for matching rank 1 iota since the iotaOp will be folded to
-// IotaOp + BroadCastInDimOp except for the case when result shape is rank 1.
-bool MatchSingleIota(DenseIntElementsAttr dimensions, Value iota) {
-  auto iota_op = dyn_cast_or_null<mhlo::IotaOp>(iota.getDefiningOp());
-  if (!iota_op || dimensions.getNumElements() != 1) return false;
-  auto dim = *dimensions.value_begin<APInt>();
-  return dim == iota_op.getIotaDimension();
-}
-
-// It matches %iota generated from the following mlir codes:
-//
-// %iota_r1 = "mhlo.iota"(){iota_dimension = 0} :() -> tensor<Lxi32>
-// %iota = "mhlo.broadcast_in_dim(%iota_r1){
-//    broadcast_dimensions = dense<[$dimensions[0]]>},
-//
-// where %dimensions is of size 1. It ususally comes from an IotaOp that is
-// folded to IotaOp (rank1) + BroadCastInDimOp.
-bool MatchIotaBroadCastInDim(DenseIntElementsAttr dimensions, Value iota) {
-  auto iota_broadcast =
-      dyn_cast_or_null<mhlo::BroadcastInDimOp>(iota.getDefiningOp());
-  if (!iota_broadcast || iota_broadcast.getBroadcastDimensions() != dimensions)
-    return false;
-  if (!isa_and_nonnull<mhlo::IotaOp>(
-          iota_broadcast.getOperand().getDefiningOp()))
-    return false;
-  return true;
-}
-
-// Matches %iota generated from the following code (rank 3 example):
-//
-// %iota_r1 = "mhlo.iota"(){iota_dimension = 0 : i32} : () -> tensor<44xi32>
-// %iota = "mhlo.reshape"(%iota_r1): (tensor<44xi32>) -> tensor<1x1x44xi32>
-//
-// Where $dimensions is of size 1 and $dimensions[0] = 2.
-//
-// In general matches a 1-D Iota with multiple dimensions of size 1 added
-// through a reshape.
-bool MatchReshapedIota(DenseIntElementsAttr dimensions, Value iota) {
-  if (dimensions.getNumElements() != 1) return false;
-  auto reshape_op = dyn_cast_or_null<mhlo::ReshapeOp>(iota.getDefiningOp());
-  if (!reshape_op) return false;
-  auto operand_type =
-      reshape_op.getOperand().getType().dyn_cast<RankedTensorType>();
-  if (!operand_type || !operand_type.hasStaticShape()) return false;
-  auto reshape_type = reshape_op.getType().cast<RankedTensorType>();
-
-  // Reshape can take a 1-D iota input and add extra dims of size one.
-  if (operand_type.getRank() != 1) return false;
-  if (!dyn_cast_or_null<mhlo::IotaOp>(reshape_op.getOperand().getDefiningOp()))
-    return false;
-
-  int64_t iota_dim = (*dimensions.value_begin<APInt>()).getSExtValue();
-  for (int64_t i = 0, e = reshape_type.getRank(); i < e; ++i) {
-    if (i == iota_dim) {
-      if (reshape_type.getDimSize(i) != operand_type.getDimSize(0))
-        return false;
-    } else if (reshape_type.getDimSize(i) != 1) {
-      return false;
-    }
-  }
-  return true;
-}
-
-// It matches %iota generated from the following mlir codes:
-//
-// %iota_r1 = mhlo.constant dense<[0, 1, 2, ..., L]>
-// %iota = "mhlo.broadcast_in_dim(%iota_r1){
-//    broadcast_dimensions = dense<[$dimensions[0]]>},
-//
-// where $dimensions is of size 1. It ususally comes from an IotaOp that is
-// folded to ConstOp (folded rank1 iota) + BroadCastInDimOp.
-bool MatchConstIotaBroadCastInDim(DenseIntElementsAttr dimensions, Value iota) {
-  if (dimensions.getNumElements() != 1) return false;
-  auto iota_broadcast =
-      dyn_cast_or_null<mhlo::BroadcastInDimOp>(iota.getDefiningOp());
-  if (!iota_broadcast || iota_broadcast.getBroadcastDimensions() != dimensions)
-    return false;
-  DenseElementsAttr range_const;
-  if (!matchPattern(iota_broadcast.getOperand(), m_Constant(&range_const)))
-    return false;
-  int index = 0;
-  for (auto value : range_const.getValues<APInt>()) {
-    if (value != index++) return false;
-  }
-  return true;
-}
-
-// Facilitate access to 1-d backing data for a tensor so that values in a 1-d
-// slice of the tensor can be accessed as if part of an ArrayView.
-class StridedArrayViewBase {
- protected:
-  StridedArrayViewBase(ArrayRef<int64_t> shape, ArrayRef<int64_t> index,
-                       int64_t axis) {
-    assert(shape.size() == index.size());
-    assert(axis < shape.size());
-    assert(axis >= 0);
-    assert(index[axis] == 0);
-    offset_ = IndexToOffset(shape, index);
-    stride_ = StrideForAxis(shape, axis);
-    size_ = shape[axis];
-  }
-
-  // Returns the size of the 1-d slice across the tensor.
-  int64_t size() const { return size_; }
-
-  // Calculates the next index in a tensor excluding a specified axis.
-  //
-  // Returns the next index where one exists.
-  // If there is no valid next index, returns `std::nullopt`.
-  //
-  // `index` should have the same size as `shape`.
-  // Each value `dim` in `index` should be in [0, shape[dim]).
-  static std::optional<SmallVector<int64_t>> NextTensorIndex(
-      SmallVector<int64_t> index, ArrayRef<int64_t> shape, int64_t fixed_axis) {
-#ifndef NDEBUG
-    assert(shape.size() == index.size());
-    assert(fixed_axis < shape.size());
-    assert(fixed_axis >= 0);
-    assert(index[fixed_axis] == 0);
-    for (size_t i = 0; i < shape.size(); ++i) {
-      assert(index[i] < shape[i]);
-      assert(index[i] >= 0);
-    }
-#endif  // NDEBUG
-    for (int64_t dim = shape.size() - 1; dim >= 0; --dim) {
-      if (dim == fixed_axis) continue;
-      ++index[dim];
-      if (index[dim] < shape[dim]) return std::move(index);
-      index[dim] = 0;
-    }
-    return std::nullopt;
-  }
-
- protected:
-  // Calculates how many values to skip across a 1-D contiguous array that holds
-  // backing data for a given shape to access the value at a given index along a
-  // StridedArrayView across a higher dimensional shape.
-  //
-  // The index `i` must be in [0, shape[axis])` where `shape` is the shape
-  // of the tensor and `axis` is the axis along the tensor that the
-  // StridedArrayView indexes along.
-  int64_t OffsetForIndex(int64_t i) const { return offset_ + i * stride_; }
-
- private:
-  // Calculates how many values to skip across a 1-D contiguous array that holds
-  // backing data for a given shape to access the next value along a given axis.
-  //
-  // `axis` should be a valid dimension in `shape`.
-  static int64_t StrideForAxis(ArrayRef<int64_t> shape, int64_t axis) {
-    int64_t stride = 1;  // Start with the trailing dimension.
-    for (int64_t dim = shape.size() - 1; dim > axis; --dim) {
-      stride *= shape[dim];
-    }
-    return stride;
-  }
-
-  // Calculates how many values to skip across a 1-D contiguous array that holds
-  // backing data for a given shape to access data at a specified index.
-  //
-  // `index` should have the same size as `shape`.
-  // Each value `dim` in `index` should be in [0, shape[dim]).
-  static int64_t IndexToOffset(ArrayRef<int64_t> shape,
-                               ArrayRef<int64_t> index) {
-#ifndef NDEBUG
-    assert(shape.size() == index.size());
-    for (size_t i = 0; i < shape.size(); ++i) {
-      assert(index[i] < shape[i]);
-      assert(index[i] >= 0);
-    }
-#endif  // NDEBUG
-    int64_t offset = 0;
-    int64_t stride = 1;
-    for (int64_t dim = shape.size() - 1; dim >= 0; --dim) {
-      offset += index[dim] * stride;
-      stride *= shape[dim];
-    }
-    return offset;
-  }
-
-  int64_t offset_;
-  int64_t stride_;
-  int64_t size_;
-};
-
-template <typename T>
-class StridedArrayView;  // Class requires specialization.
-
-// Wraps a DenseIntElementsAttr that holds backing data for a tensor so that
-// int64_t values in a 1-d slice of the tensor can be accessed as if part of an
-// ArrayView.
-template <>
-class StridedArrayView<DenseIntElementsAttr> : StridedArrayViewBase {
- public:
-  StridedArrayView(const DenseIntElementsAttr& data, ArrayRef<int64_t> shape,
-                   ArrayRef<int64_t> index, int64_t axis)
-      : StridedArrayViewBase(shape, index, axis), data_(data) {
-    int64_t element_count = 1;
-    for (int64_t i = 0, e = shape.size(); i < e; ++i) {
-      element_count *= shape[i];
-    }
-    assert(data.getNumElements() == element_count);
-  }
-
-  using StridedArrayViewBase::NextTensorIndex;
-  using StridedArrayViewBase::size;
-
-  int64_t operator[](int64_t i) const {
-    return data_.getValues<APInt>()[OffsetForIndex(i)].getSExtValue();
-  }
-
- private:
-  const DenseIntElementsAttr& data_;
-};
-
-// Matches %iota generated from the following mlir codes (rank 2 example):
-//
-// %iota = mhlo.constant dense<[[0, 1, 2, ..., L],
-//                              [0, 1, 2, ..., L]
-//                              ...
-//                              [0, 1, 2, ..., L]]>,
-// where $dimensions is of size 1.
-//
-// StridedArrayViews are used to check the iota property across the constant
-// data so that the iota dimension does not need to be the (inner) z-dimension.
-bool MatchIotaConst(DenseIntElementsAttr dimensions, Value iota) {
-  DenseIntElementsAttr iota_const_attr;
-  if (!matchPattern(iota, m_Constant(&iota_const_attr))) return false;
-
-  auto iota_type = iota_const_attr.getType();
-  auto iota_shape = iota_type.getShape();
-  auto reduce_dim = (*dimensions.value_begin<APInt>()).getSExtValue();
-  if (reduce_dim < 0) reduce_dim += iota_type.getRank();
-
-  auto index =
-      std::optional<SmallVector<int64_t>>(std::in_place, iota_type.getRank());
-  while (index.has_value()) {
-    StridedArrayView<DenseIntElementsAttr> array_view(
-        iota_const_attr, iota_shape, *index, reduce_dim);
-    for (int64_t i = 0; i < array_view.size(); ++i) {
-      if (array_view[i] != i) return false;
-    }
-    index = StridedArrayView<DenseIntElementsAttr>::NextTensorIndex(
-        std::move(*index), iota_shape, reduce_dim);
-  }
-
-  return true;
-}
-
-// The following 5 different forms of mhlo::iota will be matched:
-// 1. IotaOp.
-// 2. IotaOp + BroadCastInDim.
-// 3. IotaOp + Reshape.
-// 4. Constant (folded Iota) + BroadCastInDim.
-// 5. Constant (folded result).
-// Moreover, the dimensions has to match the iota_dimension.
-bool MatchIota(DenseIntElementsAttr dimensions, Value iota) {
-  return MatchSingleIota(dimensions, iota) ||
-         MatchIotaBroadCastInDim(dimensions, iota) ||
-         MatchReshapedIota(dimensions, iota) ||
-         MatchConstIotaBroadCastInDim(dimensions, iota) ||
-         MatchIotaConst(dimensions, iota);
-}
-
 template <typename ReturnOpType>
 bool MatchTopKComparator(Region& comparator) {
   if (!comparator.hasOneBlock()) return false;
@@ -2336,183 +2078,12 @@ class ConvertReduceOpToTfAny
   }
 };
 
-template <typename TfReduce, typename TfArgReduce, typename TfBooleanReduce>
-class ConvertReduceOpToTfArgMinMax
-    : public OpConversionPattern<mhlo::ReduceOp> {
- public:
-  using OpConversionPattern::OpConversionPattern;
-  LogicalResult matchAndRewrite(
-      mhlo::ReduceOp reduce_op, OpAdaptor adaptor,
-      ConversionPatternRewriter& rewriter) const final {
-    if (reduce_op.getInputs().size() != 2) return failure();
-    if (reduce_op.getDimensions().getNumElements() != 1) return failure();
-
-    // Check that the operand init is the expected value.
-    DenseElementsAttr operand_init;
-    if (!matchPattern(reduce_op.getInitValues().front(),
-                      m_Constant(&operand_init)))
-      return failure();
-    if (!IsValueInitValue(operand_init)) return failure();
-
-    // Check that the iota init is zero.
-    DenseElementsAttr iota_init;
-    if (!matchPattern(reduce_op.getInitValues().back(), m_Constant(&iota_init)))
-      return failure();
-    if (iota_init.getValues<APInt>()[0] != 0) return failure();
-
-    // Verify that the second argument is an Iota op along the same dimension
-    // as the reduction.
-    Value iota = reduce_op.getInputs().back();
-    if (!MatchIota(reduce_op.getDimensions(), iota)) return failure();
-
-    // Match the reduction computation.
-    const bool is_float = operand_init.getElementType().isa<FloatType>();
-    if (failed(matchReduceComputation(reduce_op.getBody(), is_float)))
-      return failure();
-
-    Value operand = reduce_op.getInputs().front();
-    int64_t axis = reduce_op.getDimensions().getValues<int64_t>()[0];
-
-    auto dim_type = RankedTensorType::get({1}, rewriter.getI64Type());
-    auto reduction_indices = rewriter.create<TF::ConstOp>(
-        reduce_op.getLoc(), dim_type, rewriter.getI64TensorAttr({axis}));
-
-    // Generate a Max and an ArgMax of as the mhlo op returns both while in TF
-    // we have separate ops for them. If only one of them is used then the other
-    // one will be garbage collected later.
-    if (!operand.getType().isa<ShapedType>()) return failure();
-    auto operand_type = operand.getType().cast<ShapedType>();
-    if (operand_type.getElementType().isInteger(1)) {
-      // TF does not support min or max on boolean (int1) arguments.
-      // Use AnyOp for MaxOp and AllOp for MinOp.
-      auto tf_reduce_op = rewriter.create<TfBooleanReduce>(
-          reduce_op.getLoc(), reduce_op->getResult(0).getType(), operand,
-          reduction_indices,
-          /*keep_dim=*/rewriter.getBoolAttr(false));
-      auto tf_argreduce_op = rewriter.create<TfArgReduce>(
-          reduce_op.getLoc(), reduce_op->getResult(1).getType(), operand,
-          reduction_indices);
-
-      rewriter.replaceOp(reduce_op, {tf_reduce_op, tf_argreduce_op});
-    } else {
-      auto tf_reduce_op = rewriter.create<TfReduce>(
-          reduce_op.getLoc(), reduce_op->getResult(0).getType(), operand,
-          reduction_indices,
-          /*keep_dim=*/rewriter.getBoolAttr(false));
-
-      auto tf_argreduce_op = rewriter.create<TfArgReduce>(
-          reduce_op.getLoc(), reduce_op->getResult(1).getType(), operand,
-          reduction_indices);
-
-      rewriter.replaceOp(reduce_op, {tf_reduce_op, tf_argreduce_op});
-    }
-    return success();
-  }
-
-  // Pattern matches the following reduction function for ArgMax/ArgMin:
-  // %0 = compare{GT}(%lhs_value, %rhs_value)
-  // %1 = compare{NE}(%lhs_value, %lhs_value)
-  // %2 = or(%0, %1)
-  // %3 = select(%2, %lhs_value, %rhs_value)
-  // %4 = compare{EQ}(%lhs_value, %rhs_value)
-  // %5 = compare{LT}(%lhs_index, %rhs_index)
-  // %6 = and(%4, %5)
-  // %7 = or(%2, %6)
-  // %8 = select(%7, %lhs_index, %rhs_index)
-  // return %3, %8
-  // Also note that %1 may be folded if %lhs_value is of integer types.
-  LogicalResult matchReduceComputation(Region& computation,
-                                       bool is_float) const {
-    Block& body = computation.front();
-    if (body.getNumArguments() != 4) return failure();
-
-    mhlo::ReturnOp return_op = dyn_cast<mhlo::ReturnOp>(body.back());
-    if (!return_op || return_op.getNumOperands() != 2) return failure();
-
-    mhlo::SelectOp value_select = llvm::dyn_cast_or_null<mhlo::SelectOp>(
-        return_op.getOperand(0).getDefiningOp());
-    if (!value_select || value_select.getOnTrue() != body.getArgument(0) ||
-        value_select.getOnFalse() != body.getArgument(2))
-      return failure();
-
-    if (is_float) {
-      mhlo::OrOp value_or = llvm::dyn_cast_or_null<mhlo::OrOp>(
-          value_select.getOperand(0).getDefiningOp());
-      if (!value_or) return failure();
-
-      mhlo::CompareOp value_gt = llvm::dyn_cast_or_null<mhlo::CompareOp>(
-          value_or.getLhs().getDefiningOp());
-      if (!value_gt ||
-          value_gt.getComparisonDirection() != CompareDirection() ||
-          value_gt.getLhs() != body.getArgument(0) ||
-          value_gt.getRhs() != body.getArgument(2))
-        return failure();
-
-      mhlo::CompareOp value_ne = llvm::dyn_cast_or_null<mhlo::CompareOp>(
-          value_or.getRhs().getDefiningOp());
-      if (!value_ne ||
-          value_ne.getComparisonDirection() != mhlo::ComparisonDirection::NE ||
-          value_ne.getLhs() != body.getArgument(0) ||
-          value_ne.getRhs() != body.getArgument(0))
-        return failure();
-    } else {
-      mhlo::CompareOp value_gt = llvm::dyn_cast_or_null<mhlo::CompareOp>(
-          value_select.getOperand(0).getDefiningOp());
-      if (!value_gt ||
-          value_gt.getComparisonDirection() != CompareDirection() ||
-          value_gt.getLhs() != body.getArgument(0) ||
-          value_gt.getRhs() != body.getArgument(2))
-        return failure();
-    }
-
-    mhlo::SelectOp index_select = llvm::dyn_cast_or_null<mhlo::SelectOp>(
-        return_op.getOperand(1).getDefiningOp());
-    if (!index_select || index_select.getOnTrue() != body.getArgument(1) ||
-        index_select.getOnFalse() != body.getArgument(3))
-      return failure();
-
-    mhlo::OrOp index_or = llvm::dyn_cast_or_null<mhlo::OrOp>(
-        index_select.getPred().getDefiningOp());
-
-    if (!index_or || index_or.getLhs() != value_select.getPred())
-      return failure();
-
-    mhlo::AndOp index_and =
-        llvm::dyn_cast_or_null<mhlo::AndOp>(index_or.getRhs().getDefiningOp());
-    if (!index_and) return failure();
-
-    mhlo::CompareOp value_eq = llvm::dyn_cast_or_null<mhlo::CompareOp>(
-        index_and.getLhs().getDefiningOp());
-    if (!value_eq ||
-        value_eq.getComparisonDirection() != mhlo::ComparisonDirection::EQ ||
-        value_eq.getLhs() != body.getArgument(0) ||
-        value_eq.getRhs() != body.getArgument(2))
-      return failure();
-
-    mhlo::CompareOp index_lt = llvm::dyn_cast_or_null<mhlo::CompareOp>(
-        index_and.getRhs().getDefiningOp());
-    if (!index_lt ||
-        index_lt.getComparisonDirection() != mhlo::ComparisonDirection::LT ||
-        index_lt.getLhs() != body.getArgument(1) ||
-        index_lt.getRhs() != body.getArgument(3))
-      return failure();
-
-    return success();
-  }
-
-  virtual mhlo::ComparisonDirection CompareDirection() const = 0;
-
-  virtual bool IsValueInitValue(const DenseElementsAttr& attr) const = 0;
-};
-
 class ConvertReduceOpToTfArgmax
-    : public ConvertReduceOpToTfArgMinMax<TF::MaxOp, TF::ArgMaxOp, TF::AnyOp> {
+    : public ConvertReduceOpToArgMinMax<TF::MaxOp, TF::ArgMaxOp, TF::AnyOp,
+                                        true> {
  public:
-  using ConvertReduceOpToTfArgMinMax::ConvertReduceOpToTfArgMinMax;
+  using ConvertReduceOpToArgMinMax::ConvertReduceOpToArgMinMax;
 
-  mhlo::ComparisonDirection CompareDirection() const override {
-    return mhlo::ComparisonDirection::GT;
-  }
   bool IsValueInitValue(const DenseElementsAttr& attr) const override {
     auto element_type = attr.getType().getElementType();
     if (attr.getNumElements() != 1 || !element_type.isIntOrFloat())
@@ -2532,13 +2103,11 @@ class ConvertReduceOpToTfArgmax
 };
 
 class ConvertReduceOpToTfArgmin
-    : public ConvertReduceOpToTfArgMinMax<TF::MinOp, TF::ArgMinOp, TF::AllOp> {
+    : public ConvertReduceOpToArgMinMax<TF::MinOp, TF::ArgMinOp, TF::AllOp,
+                                        false> {
  public:
-  using ConvertReduceOpToTfArgMinMax::ConvertReduceOpToTfArgMinMax;
+  using ConvertReduceOpToArgMinMax::ConvertReduceOpToArgMinMax;
 
-  mhlo::ComparisonDirection CompareDirection() const override {
-    return mhlo::ComparisonDirection::LT;
-  }
   bool IsValueInitValue(const DenseElementsAttr& attr) const override {
     auto element_type = attr.getType().getElementType();
     if (attr.getNumElements() != 1 || !element_type.isIntOrFloat())

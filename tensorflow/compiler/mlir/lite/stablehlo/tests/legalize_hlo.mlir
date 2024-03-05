@@ -4142,9 +4142,41 @@ func.func @convert_scatter_sub(%arg0: tensor<20x6xf32>, %arg1: tensor<4x1xi32>, 
   func.return %0 : tensor<20x6xf32>
 }
 
+// CHECK-LABEL:   func @convert_pytorch_argmax
+func.func @convert_pytorch_argmax(%arg0: tensor<1x9xi32>) -> tensor<1xi32> {
+  %0 = mhlo.constant dense<0> : tensor<i32>
+  %1 = mhlo.constant dense<-2147483648> : tensor<i32>
+  %2 = "mhlo.iota"() {iota_dimension = 0 : i64} : () -> tensor<9xi32>
+  %3 = mhlo.reshape %2 : (tensor<9xi32>) -> tensor<1x9xi32>
+  %4:2 = mhlo.reduce(%arg0 init: %1), (%3 init: %0) across dimensions = [1] : (tensor<1x9xi32>, tensor<1x9xi32>, tensor<i32>, tensor<i32>) -> (tensor<1xi32>, tensor<1xi32>)
+    reducer(%arg1: tensor<i32>, %arg3: tensor<i32>) (%arg2: tensor<i32>, %arg4: tensor<i32>)  {
+    %6 = mhlo.compare  GE, %arg1, %arg3 : (tensor<i32>, tensor<i32>) -> tensor<i1>
+    %7 = mhlo.select %6, %arg1, %arg3 : tensor<i1>, tensor<i32>
+    %8 = mhlo.compare  EQ, %arg1, %arg3 : (tensor<i32>, tensor<i32>) -> tensor<i1>
+    %9 = mhlo.minimum %arg2, %arg4 : tensor<i32>
+    %10 = mhlo.select %6, %arg2, %arg4 : tensor<i1>, tensor<i32>
+    %11 = mhlo.select %8, %9, %10 : tensor<i1>, tensor<i32>
+    mhlo.return %7, %11 : tensor<i32>, tensor<i32>
+  }
+  func.return %4#1 : tensor<1xi32>
+
+  // CHECK-DAG:  %cst = "tf.Const"() <{value = dense<0> : tensor<i32>}> : () -> tensor<i32>
+  // CHECK:  %cst_0 = "tf.Const"() <{value = dense<-2147483648> : tensor<i32>}> : () -> tensor<i32>
+  // CHECK-DAG:  %cst_1 = "tf.Const"() <{value = dense<0> : tensor<i32>}> : () -> tensor<i32>
+  // CHECK-DAG:  %cst_2 = "tf.Const"() <{value = dense<9> : tensor<i32>}> : () -> tensor<i32>
+  // CHECK:  %cst_3 = "tf.Const"() <{value = dense<1> : tensor<i32>}> : () -> tensor<i32>
+  // CHECK:  %0 = "tf.Range"(%cst_1, %cst_2, %cst_3) : (tensor<i32>, tensor<i32>, tensor<i32>) -> tensor<9xi32>
+  // CHECK:  %cst_4 = arith.constant dense<[1, 9]> : tensor<2xi64>
+  // CHECK:  %1 = "tf.Reshape"(%0, %cst_4) : (tensor<9xi32>, tensor<2xi64>) -> tensor<1x9xi32>
+  // CHECK:  %cst_5 = arith.constant dense<1> : tensor<1xi32>
+  // CHECK:  %2 = "tf.Max"(%arg0, %cst_5) <{keep_dims = false}> : (tensor<1x9xi32>, tensor<1xi32>) -> tensor<1xi32>
+  // CHECK:  %3 = "tf.ArgMax"(%arg0, %cst_5) : (tensor<1x9xi32>, tensor<1xi32>) -> tensor<1xi32>
+  // CHECK:  return %3 : tensor<1xi32>
+}
+
 // CHECK-LABEL:   func @convert_argmax(
 // CHECK-SAME:                         %[[VAL_0:.*]]: tensor<4x32x256xf32>) -> (tensor<4x32xf32>, tensor<4x32xi32>) {
-// CHECK:           %[[VAL_9:.*]] = "tf.Const"{{.*}}value = dense<2> : tensor<1xi64>
+// CHECK:           %[[VAL_9:.*]] = arith.constant dense<2> : tensor<1xi32>
 // CHECK:           %[[VAL_10:.*]] = "tf.Max"(%[[VAL_0]], %[[VAL_9]]) <{keep_dims = false}> : {{.*}} -> tensor<4x32xf32>
 // CHECK:           %[[VAL_11:.*]] = "tf.ArgMax"(%[[VAL_0]], %[[VAL_9]]) : {{.*}} -> tensor<4x32xi32>
 // CHECK:           return %[[VAL_10]], %[[VAL_11]]
@@ -4175,9 +4207,9 @@ func.func @convert_argmax(%arg0: tensor<4x32x256xf32>) -> (tensor<4x32xf32>, ten
 // CHECK-DAG:       %[[VAL_1:.*]] = "tf.Const"() <{value = dense<0xFF800000> : tensor<f32>}> : () -> tensor<f32>
 // CHECK-DAG:       %[[VAL_2:.*]] = "tf.Const"() <{value = dense<0> : tensor<i32>}> : () -> tensor<i32>
 // CHECK-DAG:       %[[VAL_3:.*]] = "tf.Const"() <{value = dense<{{\[\[}}[0, 1, 2, 3], [0, 1, 2, 3]], {{\[\[}}0, 1, 2, 3], [0, 1, 2, 3]]]> : tensor<2x2x4xi32>}> : () -> tensor<2x2x4xi32>
-// CHECK-DAG:       %[[VAL_4:.*]] = "tf.Const"() <{value = dense<2> : tensor<1xi64>}> : () -> tensor<1xi64>
-// CHECK:           %[[VAL_5:.*]] = "tf.Max"(%[[VAL_0]], %[[VAL_4]]) <{keep_dims = false}> : (tensor<2x2x4xf32>, tensor<1xi64>) -> tensor<2x2xf32>
-// CHECK:           %[[VAL_6:.*]] = "tf.ArgMax"(%[[VAL_0]], %[[VAL_4]]) : (tensor<2x2x4xf32>, tensor<1xi64>) -> tensor<2x2xi32>
+// CHECK-DAG:       %[[VAL_4:.*]] = arith.constant dense<2> : tensor<1xi32>
+// CHECK:           %[[VAL_5:.*]] = "tf.Max"(%[[VAL_0]], %[[VAL_4]]) <{keep_dims = false}> : (tensor<2x2x4xf32>, tensor<1xi32>) -> tensor<2x2xf32>
+// CHECK:           %[[VAL_6:.*]] = "tf.ArgMax"(%[[VAL_0]], %[[VAL_4]]) : (tensor<2x2x4xf32>, tensor<1xi32>) -> tensor<2x2xi32>
 // CHECK:           return %[[VAL_5]], %[[VAL_6]] : tensor<2x2xf32>, tensor<2x2xi32>
 // CHECK:         }
 func.func @convert_argmax_constant(%arg0: tensor<2x2x4xf32>) -> (tensor<2x2xf32>, tensor<2x2xi32>) {
@@ -4205,9 +4237,9 @@ func.func @convert_argmax_constant(%arg0: tensor<2x2x4xf32>) -> (tensor<2x2xf32>
 // CHECK-DAG:       %[[VAL_1:.*]] = "tf.Const"() <{value = dense<0xFF800000> : tensor<f32>}> : () -> tensor<f32>
 // CHECK-DAG:       %[[VAL_2:.*]] = "tf.Const"() <{value = dense<0> : tensor<i32>}> : () -> tensor<i32>
 // CHECK-DAG:       %[[VAL_3:.*]] = "tf.Const"() <{value = dense<{{\[\[}}0, 0, 0, 0], [1, 1, 1, 1], [2, 2, 2, 2], [3, 3, 3, 3]]> : tensor<4x4xi32>}> : () -> tensor<4x4xi32>
-// CHECK-DAG:       %[[VAL_4:.*]] = "tf.Const"() <{value = dense<0> : tensor<1xi64>}> : () -> tensor<1xi64>
-// CHECK:           %[[VAL_5:.*]] = "tf.Max"(%[[VAL_0]], %[[VAL_4]]) <{keep_dims = false}> : (tensor<4x4xf32>, tensor<1xi64>) -> tensor<4xf32>
-// CHECK:           %[[VAL_6:.*]] = "tf.ArgMax"(%[[VAL_0]], %[[VAL_4]]) : (tensor<4x4xf32>, tensor<1xi64>) -> tensor<4xi32>
+// CHECK-DAG:       %[[VAL_4:.*]] = arith.constant dense<0> : tensor<1xi32>
+// CHECK:           %[[VAL_5:.*]] = "tf.Max"(%[[VAL_0]], %[[VAL_4]]) <{keep_dims = false}> : (tensor<4x4xf32>, tensor<1xi32>) -> tensor<4xf32>
+// CHECK:           %[[VAL_6:.*]] = "tf.ArgMax"(%[[VAL_0]], %[[VAL_4]]) : (tensor<4x4xf32>, tensor<1xi32>) -> tensor<4xi32>
 // CHECK:           return %[[VAL_5]], %[[VAL_6]] : tensor<4xf32>, tensor<4xi32>
 // CHECK:         }
 func.func @convert_argmax_constant_non_z_axis(%arg0: tensor<4x4xf32>) -> (tensor<4xf32>, tensor<4xi32>) {
@@ -4238,9 +4270,9 @@ func.func @convert_argmax_constant_non_z_axis(%arg0: tensor<4x4xf32>) -> (tensor
 // CHECK:           %[[VAL_4:.*]] = "tf.Range"(%[[VAL_1]], %[[VAL_2]], %[[VAL_3]]) : (tensor<i32>, tensor<i32>, tensor<i32>) -> tensor<2xi32>
 // CHECK-DAG:       %[[VAL_5:.*]] = "tf.Const"() <{value = dense<false> : tensor<i1>}> : () -> tensor<i1>
 // CHECK-DAG:       %[[VAL_6:.*]] = "tf.Const"() <{value = dense<0> : tensor<i32>}> : () -> tensor<i32>
-// CHECK-DAG:       %[[VAL_7:.*]] = "tf.Const"() <{value = dense<0> : tensor<1xi64>}> : () -> tensor<1xi64>
-// CHECK:           %[[VAL_8:.*]] = "tf.Any"(%[[VAL_0]], %[[VAL_7]]) <{keep_dims = false}> : (tensor<2xi1>, tensor<1xi64>) -> tensor<i1>
-// CHECK:           %[[VAL_9:.*]] = "tf.ArgMax"(%[[VAL_0]], %[[VAL_7]]) : (tensor<2xi1>, tensor<1xi64>) -> tensor<i32>
+// CHECK-DAG:       %[[VAL_7:.*]] = arith.constant dense<0> : tensor<1xi32>
+// CHECK:           %[[VAL_8:.*]] = "tf.Any"(%[[VAL_0]], %[[VAL_7]]) <{keep_dims = false}> : (tensor<2xi1>, tensor<1xi32>) -> tensor<i1>
+// CHECK:           %[[VAL_9:.*]] = "tf.ArgMax"(%[[VAL_0]], %[[VAL_7]]) : (tensor<2xi1>, tensor<1xi32>) -> tensor<i32>
 // CHECK:           return %[[VAL_9]] : tensor<i32>
 // CHECK:         }
 
@@ -4264,7 +4296,7 @@ func.func @convert_argmax_bool(%arg0: tensor<2xi1>) -> tensor<i32> {
 
 // CHECK-LABEL:   func @convert_argmin(
 // CHECK-SAME:                         %[[VAL_0:.*]]: tensor<4x32x256xf32>) -> (tensor<4x32xf32>, tensor<4x32xi32>) {
-// CHECK:           %[[VAL_9:.*]] = "tf.Const"{{.*}}value = dense<2> : tensor<1xi64>
+// CHECK:           %[[VAL_9:.*]] = arith.constant dense<2> : tensor<1xi32>
 // CHECK:           %[[VAL_10:.*]] = "tf.Min"(%[[VAL_0]], %[[VAL_9]]) <{keep_dims = false}> : {{.*}} -> tensor<4x32xf32>
 // CHECK:           %[[VAL_11:.*]] = "tf.ArgMin"(%[[VAL_0]], %[[VAL_9]]) : {{.*}} -> tensor<4x32xi32>
 // CHECK:           return %[[VAL_10]], %[[VAL_11]]
@@ -4292,7 +4324,7 @@ func.func @convert_argmin(%arg0: tensor<4x32x256xf32>) -> (tensor<4x32xf32>, ten
 
 // CHECK-LABEL:   func @convert_argmin_i16(
 // CHECK-SAME:                         %[[VAL_0:.*]]: tensor<2xi16>) -> (tensor<i16>, tensor<i32>) {
-// CHECK:           %[[VAL_9:.*]] = "tf.Const"{{.*}}value = dense<0> : tensor<1xi64>
+// CHECK:           %[[VAL_9:.*]] = arith.constant dense<0> : tensor<1xi32>
 // CHECK:           %[[VAL_10:.*]] = "tf.Min"(%[[VAL_0]], %[[VAL_9]]) <{keep_dims = false}> : {{.*}} -> tensor<i16>
 // CHECK:           %[[VAL_11:.*]] = "tf.ArgMin"(%[[VAL_0]], %[[VAL_9]]) : {{.*}} -> tensor<i32>
 // CHECK:           return %[[VAL_10]], %[[VAL_11]]
@@ -4323,9 +4355,9 @@ func.func @convert_argmin_i16(%arg0: tensor<2xi16>) -> (tensor<i16>, tensor<i32>
 // CHECK-DAG:       %[[VAL_1:.*]] = "tf.Const"() <{value = dense<0x7F800000> : tensor<f32>}> : () -> tensor<f32>
 // CHECK-DAG:       %[[VAL_2:.*]] = "tf.Const"() <{value = dense<0> : tensor<i32>}> : () -> tensor<i32>
 // CHECK-DAG:       %[[VAL_3:.*]] = "tf.Const"() <{value = dense<{{\[\[}}[0, 1, 2, 3], [0, 1, 2, 3]], {{\[\[}}0, 1, 2, 3], [0, 1, 2, 3]]]> : tensor<2x2x4xi32>}> : () -> tensor<2x2x4xi32>
-// CHECK-DAG:       %[[VAL_4:.*]] = "tf.Const"() <{value = dense<2> : tensor<1xi64>}> : () -> tensor<1xi64>
-// CHECK:           %[[VAL_5:.*]] = "tf.Min"(%[[VAL_0]], %[[VAL_4]]) <{keep_dims = false}> : (tensor<2x2x4xf32>, tensor<1xi64>) -> tensor<2x2xf32>
-// CHECK:           %[[VAL_6:.*]] = "tf.ArgMin"(%[[VAL_0]], %[[VAL_4]]) : (tensor<2x2x4xf32>, tensor<1xi64>) -> tensor<2x2xi32>
+// CHECK-DAG:       %[[VAL_4:.*]] = arith.constant dense<2> : tensor<1xi32>
+// CHECK:           %[[VAL_5:.*]] = "tf.Min"(%[[VAL_0]], %[[VAL_4]]) <{keep_dims = false}> : (tensor<2x2x4xf32>, tensor<1xi32>) -> tensor<2x2xf32>
+// CHECK:           %[[VAL_6:.*]] = "tf.ArgMin"(%[[VAL_0]], %[[VAL_4]]) : (tensor<2x2x4xf32>, tensor<1xi32>) -> tensor<2x2xi32>
 // CHECK:           return %[[VAL_5]], %[[VAL_6]] : tensor<2x2xf32>, tensor<2x2xi32>
 // CHECK:         }
 func.func @convert_argmin_constant(%arg0: tensor<2x2x4xf32>) -> (tensor<2x2xf32>, tensor<2x2xi32>) {
@@ -4356,9 +4388,9 @@ func.func @convert_argmin_constant(%arg0: tensor<2x2x4xf32>) -> (tensor<2x2xf32>
 // CHECK:           %[[VAL_4:.*]] = "tf.Range"(%[[VAL_1]], %[[VAL_2]], %[[VAL_3]]) : (tensor<i32>, tensor<i32>, tensor<i32>) -> tensor<2xi32>
 // CHECK-DAG:       %[[VAL_5:.*]] = "tf.Const"() <{value = dense<false> : tensor<i1>}> : () -> tensor<i1>
 // CHECK-DAG:       %[[VAL_6:.*]] = "tf.Const"() <{value = dense<0> : tensor<i32>}> : () -> tensor<i32>
-// CHECK-DAG:       %[[VAL_7:.*]] = "tf.Const"() <{value = dense<0> : tensor<1xi64>}> : () -> tensor<1xi64>
-// CHECK:           %[[VAL_8:.*]] = "tf.All"(%[[VAL_0]], %[[VAL_7]]) <{keep_dims = false}> : (tensor<2xi1>, tensor<1xi64>) -> tensor<i1>
-// CHECK:           %[[VAL_9:.*]] = "tf.ArgMin"(%[[VAL_0]], %[[VAL_7]]) : (tensor<2xi1>, tensor<1xi64>) -> tensor<i32>
+// CHECK-DAG:       %[[VAL_7:.*]] = arith.constant dense<0> : tensor<1xi32>
+// CHECK:           %[[VAL_8:.*]] = "tf.All"(%[[VAL_0]], %[[VAL_7]]) <{keep_dims = false}> : (tensor<2xi1>, tensor<1xi32>) -> tensor<i1>
+// CHECK:           %[[VAL_9:.*]] = "tf.ArgMin"(%[[VAL_0]], %[[VAL_7]]) : (tensor<2xi1>, tensor<1xi32>) -> tensor<i32>
 // CHECK:           return %[[VAL_9]] : tensor<i32>
 // CHECK:         }
 func.func @convert_argmin_bool(%arg0: tensor<2xi1>) -> tensor<i32> {
@@ -4389,9 +4421,9 @@ func.func @convert_argmin_bool(%arg0: tensor<2xi1>) -> tensor<i32> {
 // CHECK:           %[[VAL_6:.*]] = "tf.Range"(%[[VAL_3]], %[[VAL_4]], %[[VAL_5]]) : (tensor<i32>, tensor<i32>, tensor<i32>) -> tensor<32xi32>
 // CHECK-DAG:       %[[VAL_7:.*]] = arith.constant dense<[1, 32, 1]> : tensor<3xi64>
 // CHECK:           %[[VAL_8:.*]] = "tf.Reshape"(%[[VAL_6]], %[[VAL_7]]) : (tensor<32xi32>, tensor<3xi64>) -> tensor<1x32x1xi32>
-// CHECK-DAG:       %[[VAL_9:.*]] = "tf.Const"() <{value = dense<1> : tensor<1xi64>}> : () -> tensor<1xi64>
-// CHECK:           %[[VAL_10:.*]] = "tf.Max"(%[[VAL_0]], %[[VAL_9]]) <{keep_dims = false}> : (tensor<1x32x1xf32>, tensor<1xi64>) -> tensor<1x1xf32>
-// CHECK:           %[[VAL_11:.*]] = "tf.ArgMax"(%[[VAL_0]], %[[VAL_9]]) : (tensor<1x32x1xf32>, tensor<1xi64>) -> tensor<1x1xi32>
+// CHECK-DAG:       %[[VAL_9:.*]] = arith.constant dense<1> : tensor<1xi32>
+// CHECK:           %[[VAL_10:.*]] = "tf.Max"(%[[VAL_0]], %[[VAL_9]]) <{keep_dims = false}> : (tensor<1x32x1xf32>, tensor<1xi32>) -> tensor<1x1xf32>
+// CHECK:           %[[VAL_11:.*]] = "tf.ArgMax"(%[[VAL_0]], %[[VAL_9]]) : (tensor<1x32x1xf32>, tensor<1xi32>) -> tensor<1x1xi32>
 // CHECK:           return %[[VAL_10]], %[[VAL_11]] : tensor<1x1xf32>, tensor<1x1xi32>
 // CHECK:         }
 func.func @convert_argmax_with_reshaped_iota(%arg0: tensor<1x32x1xf32>) -> (tensor<1x1xf32>, tensor<1x1xi32>) {

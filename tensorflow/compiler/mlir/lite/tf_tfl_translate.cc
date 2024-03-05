@@ -293,6 +293,7 @@ int main(int argc, char **argv) {
   pass_config.enable_stablehlo_conversion = enable_stablehlo_conversion;
   pass_config.legalize_custom_tensor_list_ops = legalize_custom_tensor_list_ops;
   pass_config.enable_hlo_to_tf_conversion = enable_hlo_to_tf_conversion;
+  pass_config.disable_hlo_to_tfl_conversion = disable_hlo_to_tfl_conversion;
   pass_config.reduce_type_precision = reduce_type_precision;
 
   toco::TocoFlags toco_flags;
