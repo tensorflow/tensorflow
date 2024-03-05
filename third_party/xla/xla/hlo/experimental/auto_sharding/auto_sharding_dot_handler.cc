@@ -92,18 +92,6 @@ class HandlerBase {
                          absl::Span<const HloSharding> input_specs,
                          double compute_cost, double communication_cost);
 
-  bool CheckDims(const HloInstruction* ins, const DimMap& dim_map) const {
-    for (const auto& [tensor_dim, mesh_dim] : dim_map) {
-      auto shape_dim = ins->shape().dimensions().at(tensor_dim);
-      auto device_mesh_dim = device_mesh_.dim(mesh_dim);
-      if (shape_dim < device_mesh_dim) return false;
-      if (option_.only_allow_divisible_intermediate &&
-          !IsDivisible(shape_dim, device_mesh_dim))
-        return false;
-    }
-    return true;
-  }
-
   HloSharding CreateInputSpec(const HloInstruction* ins, const DimMap& dim_map,
                               const Array<int64_t>& device_mesh) const {
     if (dim_map.empty()) return HloSharding::Replicate();
