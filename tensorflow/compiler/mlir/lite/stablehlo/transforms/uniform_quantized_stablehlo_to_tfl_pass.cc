@@ -110,7 +110,7 @@ double GetBiasScale(const double input_scale, const double filter_scale) {
 // filter value from [i, o] -> [o, i]. This is because we assume `[i, o]`
 // format for `stablehlo.dot_general` (i.e. contracting dimension == 1)
 // whereas `tfl.fully_connected` accepts an OI format.
-TFL::QConstOp CreateTflConstOpForFilter(
+TFL::QConstOp CreateTransposedTflConstOpForFilter(
     stablehlo::ConstantOp filter_constant_op, PatternRewriter& rewriter,
     bool is_per_channel) {
   const auto filter_values = filter_constant_op.getValue()
@@ -175,6 +175,39 @@ TFL::QConstOp CreateTflConstOpForFilter(
       filter_constant_op.getLoc(),
       /*output=*/TypeAttr::get(new_filter_result_type),
       /*value=*/new_filter_constant_value_attr);
+}
+
+// Creates the `tfl.qconst` for filter. If `rhs_op` is a `stablehlo.constant`,
+// this transposes the filter value from [i, o] -> [o, i]. This is because we
+// assume `[i, o]` format for `stablehlo.dot_general` (i.e. contracting
+// dimension == 1) whereas `tfl.fully_connected` accepts an `[o, i]` format.
+// If there is already a [i, o] -> [o, i] `stablehlo.transpose` in between the
+// constant and `rhs_op`, simply create an equivalent `tfl.qconst` from the
+// `stablehlo.constant` because it already suffices the desired format.
+//
+// It should be guaranteed that `rhs_op` is either:
+// 1. `stablehlo.constant`
+// 2. `stablehlo.constant`->`stablehlo.transpose`.
+//
+// TODO: b/328156969 - Support the case where the RHS doesn't come from a
+// constant.
+TFL::QConstOp CreateTflConstOpForFilter(Operation* rhs_op,
+                                        PatternRewriter& rewriter,
+                                        const bool is_per_channel) {
+  if (auto filter_constant_op = dyn_cast_or_null<stablehlo::ConstantOp>(rhs_op);
+      filter_constant_op != nullptr) {
+    return CreateTransposedTflConstOpForFilter(filter_constant_op, rewriter,
+                                               is_per_channel);
+  } else {
+    auto transpose_op = cast<stablehlo::TransposeOp>(rhs_op);
+    auto constant_op =
+        cast<stablehlo::ConstantOp>(transpose_op.getOperand().getDefiningOp());
+
+    return rewriter.create<TFL::QConstOp>(
+        constant_op.getLoc(),
+        /*output=*/TypeAttr::get(constant_op.getResult().getType()),
+        /*value=*/constant_op.getValue());
+  }
 }
 
 // Creates a new `tfl.qconst` op for the bias. The bias values are 0s, because
@@ -368,9 +401,14 @@ class RewriteUniformDequantizeOp
 // is not specified in the StableHLO dialect. Update the spec to allow this.
 class RewriteQuantizedDotGeneralOpToTflFullyConnectedOrBatchMatmulOp
     : public OpRewritePattern<stablehlo::DotGeneralOp> {
-  using OpRewritePattern<stablehlo::DotGeneralOp>::OpRewritePattern;
-
  public:
+  // Sets benefit to 10 to make this pattern more preferred than smaller local
+  // transformations like `stablehlo.transpose`->`tfl.transpose`, as this
+  // pattern involves `stablehlo.transpose` in some cases.
+  explicit RewriteQuantizedDotGeneralOpToTflFullyConnectedOrBatchMatmulOp(
+      MLIRContext* ctx)
+      : OpRewritePattern<stablehlo::DotGeneralOp>(ctx, /*benefit=*/10) {}
+
   LogicalResult match(stablehlo::DotGeneralOp op) const override {
     const stablehlo::DotDimensionNumbersAttr dot_dimension_nums =
         op.getDotDimensionNumbers();
@@ -506,13 +544,15 @@ class RewriteQuantizedDotGeneralOpToTflFullyConnectedOrBatchMatmulOp
       return failure();
     }
 
-    const auto filter_type = op.getRhs().getType().cast<TensorType>();
+    const Value filter = op.getRhs();
+    const auto filter_type = filter.getType().cast<TensorType>();
     if (filter_type.getRank() != 2) {
       LLVM_DEBUG(llvm::dbgs()
                  << "Filter tensor expected to have a tensor rank of 2. Got: "
                  << filter_type << ".\n");
       return failure();
     }
+
     if (has_i32_output) {
       if (!IsI8F32UniformQuantizedType(filter_type.getElementType())) {
         LLVM_DEBUG(llvm::dbgs() << "Expected a per-channel uniform quantized "
@@ -535,6 +575,21 @@ class RewriteQuantizedDotGeneralOpToTflFullyConnectedOrBatchMatmulOp
         !isa<stablehlo::ConstantOp>(add_op->getOperand(1).getDefiningOp())) {
       LLVM_DEBUG(llvm::dbgs() << "Expected a `stablehlo.constant` as the "
                               << "rhs of `stablehlo.add`.\n");
+    }
+
+    // Make sure the filter is a constant or a constant transpose.
+    Operation* filter_op = filter.getDefiningOp();
+    const bool is_constant = isa_and_nonnull<stablehlo::ConstantOp>(filter_op);
+    const bool is_constant_transpose =
+        isa_and_nonnull<stablehlo::TransposeOp>(filter_op) &&
+        isa_and_nonnull<stablehlo::ConstantOp>(
+            filter_op->getOperand(0).getDefiningOp());
+    if (!is_constant && !is_constant_transpose) {
+      LLVM_DEBUG(
+          llvm::dbgs()
+          << "Expected a `stablehlo.constant` or "
+             "`stablehlo.constant`->`stablehlo.transpose` for the rhs.\n");
+      return failure();
     }
 
     return success();
@@ -564,6 +619,7 @@ class RewriteQuantizedDotGeneralOpToTflFullyConnectedOrBatchMatmulOp
                               << filter.getType() << "\n");
       return failure();
     }
+
     return success();
   }
 
@@ -658,25 +714,16 @@ class RewriteQuantizedDotGeneralOpToTflFullyConnectedOrBatchMatmulOp
     const Value rhs_value = op.getRhs();
     const Value lhs_value = op.getLhs();
 
-    Operation* rhs_op = rhs_value.getDefiningOp();
-    const auto filter_constant_op =
-        dyn_cast_or_null<stablehlo::ConstantOp>(rhs_op);
-
     // Set to `nullptr` because this attribute only matters when the input is
     // dynamic-range quantized.
     const BoolAttr asymmetric_quantize_inputs = nullptr;
 
-    // Checks for `tfl.fully_connected` condition.
-
     // StableHLO Quantizer does not yet support per-channel quantization of
     // dot_general.
     const bool is_per_channel = !has_i32_output;
-    // Create the new filter constant - transpose filter value
-    // from [i, o] -> [o, i]. This is because we assume `[i, o]` format for
-    // `stablehlo.dot_general` (i.e. contracting dimension == 1) whereas
-    // `tfl.fully_connected` accepts an OI format.
-    TFL::QConstOp new_filter_constant_op =
-        CreateTflConstOpForFilter(filter_constant_op, rewriter, is_per_channel);
+
+    TFL::QConstOp filter_constant_op = CreateTflConstOpForFilter(
+        rhs_value.getDefiningOp(), rewriter, is_per_channel);
 
     const double input_scale = lhs_value.getType()
                                    .cast<TensorType>()
@@ -694,13 +741,13 @@ class RewriteQuantizedDotGeneralOpToTflFullyConnectedOrBatchMatmulOp
     // If there is no explicit bias, create a dummy value filled with zeroes.
     if (!fuse_bias_constant) {
       bias_tfl_op = CreateTflConstOpForDummyBias(
-          op.getLoc(), input_scale, new_filter_constant_op, rewriter,
+          op.getLoc(), input_scale, filter_constant_op, rewriter,
           is_per_channel, *op.getContext());
     }
     rewriter.replaceOpWithNewOp<TFL::FullyConnectedOp>(
         op, /*output=*/output_type,
         /*input=*/lhs_value,
-        /*filter=*/new_filter_constant_op.getResult(),
+        /*filter=*/filter_constant_op.getResult(),
         /*bias=*/bias_tfl_op.getResult(),
         /*fused_activation_function=*/rewriter.getStringAttr("NONE"),
         /*weights_format=*/rewriter.getStringAttr("DEFAULT"),

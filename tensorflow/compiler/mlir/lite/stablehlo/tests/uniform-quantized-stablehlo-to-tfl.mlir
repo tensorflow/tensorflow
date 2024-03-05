@@ -525,6 +525,57 @@ func.func @dot_general_with_bias_same_shape_srq(%arg0: tensor<1x1024x!quant.unif
 
 // -----
 
+// Tests that when the weight tensor for `stablehlo.dot_general` has a
+// `stablehlo.constant` -> `stablehlo.transpose` pattern, the
+// `stablehlo.constant` is directly transformed to `tfl.pseudo_qconst`, which
+// becomes the rhs of `tfl.fully_connected`. This is because
+// `tfl.fully_connected` accepts a [o, i] format for rhs, which
+// `stablehlo.constant` op already has before the transpose.
+
+// CHECK-LABEL: dot_general_upstream_srq_constant_transpose_rhs
+func.func @dot_general_upstream_srq_constant_transpose_rhs(%arg0: tensor<1x3x!quant.uniform<i8:f32, 5.000000e+00:-128>>) -> tensor<1x2x!quant.uniform<i8:f32, 4.000000e+00:7>> {
+  %0 = stablehlo.constant() {value = dense<1> : tensor<2x3xi8>} : () -> tensor<2x3x!quant.uniform<i8:f32, 3.000000e+00:-23>>
+  %1 = stablehlo.transpose %0, dims = [1, 0] : (tensor<2x3x!quant.uniform<i8:f32, 3.000000e+00:-23>>) -> tensor<3x2x!quant.uniform<i8:f32, 3.000000e+00:-23>>
+  %2 = stablehlo.dot_general %arg0, %1, contracting_dims = [1] x [0] : (tensor<1x3x!quant.uniform<i8:f32, 5.000000e+00:-128>>, tensor<3x2x!quant.uniform<i8:f32, 3.000000e+00:-23>>) -> tensor<1x2x!quant.uniform<i32:f32, 2.000000e+00>>
+  %3 = stablehlo.uniform_quantize %2 : (tensor<1x2x!quant.uniform<i32:f32, 2.000000e+00>>) -> tensor<1x2x!quant.uniform<i8:f32, 4.000000e+00:7>>
+  return %3 : tensor<1x2x!quant.uniform<i8:f32, 4.000000e+00:7>>
+}
+// CHECK-SAME: %[[ARG:.+]]: tensor<1x3x!quant.uniform<i8:f32, 5.000000e+00:-128>>
+
+// Checks that the `tfl.pseudo_qconst` corresponding to the `stablehlo.constant`
+// has the same shape.
+// CHECK: %[[QCONST_0:.+]] = "tfl.pseudo_qconst"() {{.*}} : () -> tensor<2x3x!quant.uniform<i8:f32, 3.000000e+00:-23>>
+// CHECK: %[[QCONST_1:.+]] = "tfl.pseudo_qconst"() {{.*}} : () -> tensor<2x!quant.uniform<i32:f32, 1.500000e+01:-23>>
+// CHECK: %[[FULLY_CONNECTED:.+]] = "tfl.fully_connected"(%[[ARG]], %[[QCONST_0]], %[[QCONST_1]]) {fused_activation_function = "NONE", keep_num_dims = false, weights_format = "DEFAULT"} : (tensor<1x3x!quant.uniform<i8:f32, 5.000000e+00:-128>>, tensor<2x3x!quant.uniform<i8:f32, 3.000000e+00:-23>>, tensor<2x!quant.uniform<i32:f32, 1.500000e+01:-23>>) -> tensor<1x2x!quant.uniform<i8:f32, 4.000000e+00:7>>
+
+// Also checks that the i32 -> i8 uniform quantize is absorbed into
+// `tfl.fully_connected`.
+// CHECK: return %[[FULLY_CONNECTED]] : tensor<1x2x!quant.uniform<i8:f32, 4.000000e+00:7>>
+
+// -----
+
+// Tests that when the weight tensor for `stablehlo.dot_general` is coming from
+// `stablehlo.transpose` and its operand is not a `stablehlo.constant`
+// (e.g. argument), the conversion to `tfl.fully_connected` doesn't happen.
+
+// CHECK-LABEL: dot_general_upstream_srq_arg_transpose_rhs
+func.func @dot_general_upstream_srq_arg_transpose_rhs(%arg0: tensor<1x3x!quant.uniform<i8:f32, 5.000000e+00:-128>>, %arg1: tensor<2x3x!quant.uniform<i8:f32, 3.000000e+00:-23>>) -> tensor<1x2x!quant.uniform<i8:f32, 4.000000e+00:7>> {
+  %1 = stablehlo.transpose %arg1, dims = [1, 0] : (tensor<2x3x!quant.uniform<i8:f32, 3.000000e+00:-23>>) -> tensor<3x2x!quant.uniform<i8:f32, 3.000000e+00:-23>>
+  %2 = stablehlo.dot_general %arg0, %1, contracting_dims = [1] x [0] : (tensor<1x3x!quant.uniform<i8:f32, 5.000000e+00:-128>>, tensor<3x2x!quant.uniform<i8:f32, 3.000000e+00:-23>>) -> tensor<1x2x!quant.uniform<i32:f32, 2.000000e+00>>
+  %3 = stablehlo.uniform_quantize %2 : (tensor<1x2x!quant.uniform<i32:f32, 2.000000e+00>>) -> tensor<1x2x!quant.uniform<i8:f32, 4.000000e+00:7>>
+  return %3 : tensor<1x2x!quant.uniform<i8:f32, 4.000000e+00:7>>
+}
+// Checks that the `stablehlo.dot_general` is not converted to
+// `tfl.fully_connected`. Also notice that the `stablehlo.transpose` and
+// `stablehlo.uniform_quantize` are converted separately.
+
+// CHECK: tfl.transpose
+// CHECK: stablehlo.dot_general
+// CHECK-NOT: tfl.fully_connected
+// CHECK: tfl.quantize
+
+// -----
+
 // Tests static range quantized dot_general with qi32 -> qi8 requantization is
 // properly lowered to `tfl.batch_matmul`.
 
