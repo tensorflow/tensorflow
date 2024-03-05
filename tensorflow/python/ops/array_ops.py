@@ -2101,7 +2101,7 @@ def matrix_diag(diagonal,
   # The main diagonal.
   diagonal = np.array([[1, 2, 3, 4],            # Input shape: (2, 4)
                        [5, 6, 7, 8]])
-  tf.matrix_diag(diagonal) ==> [[[1, 0, 0, 0],  # Output shape: (2, 4, 4)
+  tf.linalg.diag(diagonal) ==> [[[1, 0, 0, 0],  # Output shape: (2, 4, 4)
                                  [0, 2, 0, 0],
                                  [0, 0, 3, 0],
                                  [0, 0, 0, 4]],
@@ -2113,7 +2113,7 @@ def matrix_diag(diagonal,
   # A superdiagonal (per batch).
   diagonal = np.array([[1, 2, 3],  # Input shape: (2, 3)
                        [4, 5, 6]])
-  tf.matrix_diag(diagonal, k = 1)
+  tf.linalg.diag(diagonal, k = 1)
     ==> [[[0, 1, 0, 0],  # Output shape: (2, 4, 4)
           [0, 0, 2, 0],
           [0, 0, 0, 3],
@@ -2130,7 +2130,7 @@ def matrix_diag(diagonal,
                         [[2, 3, 0],
                          [6, 7, 9],
                          [0, 9, 1]]])
-  tf.matrix_diag(diagonals, k = (-1, 1))
+  tf.linalg.diag(diagonals, k = (-1, 1))
     ==> [[[1, 8, 0],  # Output shape: (2, 3, 3)
           [4, 2, 9],
           [0, 5, 3]],
@@ -2145,7 +2145,7 @@ def matrix_diag(diagonal,
                         [[0, 2, 3],
                          [6, 7, 9],
                          [9, 1, 0]]])
-  tf.matrix_diag(diagonals, k = (-1, 1), align="RIGHT_LEFT")
+  tf.linalg.diag(diagonals, k = (-1, 1), align="RIGHT_LEFT")
     ==> [[[1, 8, 0],  # Output shape: (2, 3, 3)
           [4, 2, 9],
           [0, 5, 3]],
@@ -2155,13 +2155,13 @@ def matrix_diag(diagonal,
 
   # Rectangular matrix.
   diagonal = np.array([1, 2])  # Input shape: (2)
-  tf.matrix_diag(diagonal, k = -1, num_rows = 3, num_cols = 4)
+  tf.linalg.diag(diagonal, k = -1, num_rows = 3, num_cols = 4)
     ==> [[0, 0, 0, 0],  # Output shape: (3, 4)
          [1, 0, 0, 0],
          [0, 2, 0, 0]]
 
   # Rectangular matrix with inferred num_cols and padding_value = 9.
-  tf.matrix_diag(diagonal, k = -1, num_rows = 3, padding_value = 9)
+  tf.linalg.diag(diagonal, k = -1, num_rows = 3, padding_value = 9)
     ==> [[9, 9],  # Output shape: (3, 2)
          [1, 9],
          [9, 2]]
