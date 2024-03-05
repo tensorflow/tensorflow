@@ -185,7 +185,7 @@ cc_library(
     srcs = ["schema_conversion_utils.cc"],
     hdrs = ["schema_conversion_utils.h"],
     compatible_with = get_compatible_with_portable(),
-    visibility = [":utils_friends"],
+    visibility = ["//visibility:public"],
     deps = [
         ":schema_fbs",
         "//tensorflow/lite/kernels/internal:compatibility",
