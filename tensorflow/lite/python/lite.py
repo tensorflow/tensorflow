@@ -61,6 +61,7 @@ from tensorflow.lite.python.util import convert_debug_info_func as _convert_debu
 from tensorflow.lite.python.util import freeze_graph as _freeze_graph
 from tensorflow.lite.python.util import get_debug_info as _get_debug_info
 from tensorflow.lite.python.util import get_grappler_config as _get_grappler_config
+from tensorflow.lite.python.util import get_model_hash as _get_model_hash
 from tensorflow.lite.python.util import get_sparsity_modes as _get_sparsity_modes
 from tensorflow.lite.python.util import get_tensor_name as _get_tensor_name
 from tensorflow.lite.python.util import get_tensors_from_tensor_names as _get_tensors_from_tensor_names
@@ -1148,7 +1149,9 @@ class TFLiteConverterBase:
     # Populates the conversion metadata.
     # TODO(b/202090541): Collects sparsity block size information.
     sparsity_modes = _get_sparsity_modes(model_object)
+    model_hash = _get_model_hash(model_object)
     self._metadata.options.modelOptimizationModes.extend(sparsity_modes)
+    self._metadata.environment.modelHash = model_hash
     model_object = _populate_conversion_metadata(model_object, self._metadata)
     return flatbuffer_utils.convert_object_to_bytearray(model_object)
 
