@@ -129,8 +129,9 @@ This release contains contributions from many people at Google, as well as:
     keras
 * **Apple Silicon users:** If you previously installed TensorFlow using
     `pip install tensorflow-macos`, please update your installation method. Use
-    `pip install tensorflow` from now on. Starting with TF 2.17, the
-    `tensorflow-macos` package will no longer receive updates.
+    `pip install tensorflow` from now on.
+* **Mac x86 users:** Mac x86 builds are being deprecated and will no longer be
+  released as a Pip package from TF 2.17 onwards.
 
 ### Known Caveats
 
