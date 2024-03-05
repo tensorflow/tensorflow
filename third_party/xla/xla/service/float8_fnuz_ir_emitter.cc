@@ -73,7 +73,7 @@ absl::StatusOr<llvm::Type*> PrimitiveTypeToLLVMType(llvm::IRBuilder<>* b,
     case F8E5M2FNUZ:
       return b->getInt8Ty();
     case BF16:
-      return b->getInt16Ty();
+      return b->getBFloatTy();
     case F16:
       return b->getHalfTy();
     case F32:

@@ -208,28 +208,6 @@ absl::StatusOr<llvm::Value*> EmitReducePrecisionIR(
   return result;
 }
 
-absl::StatusOr<llvm::Value*> DefaultEmitF32ToBF16Impl(llvm::Value* f32_value,
-                                                      llvm::IRBuilder<>* b) {
-  TF_ASSIGN_OR_RETURN(
-      auto reduced_precision,
-      EmitReducePrecisionIR(
-          /*src_ty=*/F32, f32_value,
-          /*dest_exponent_bits=*/primitive_util::ExponentWidth(BF16),
-          /*dest_mantissa_bits=*/primitive_util::SignificandWidth(BF16) - 1,
-          /*quiet_nans=*/true, b));
-  auto as_int32 = b->CreateBitCast(reduced_precision, b->getInt32Ty());
-  auto shifted = b->CreateLShr(as_int32, 16);
-  auto truncated = b->CreateTrunc(shifted, b->getInt16Ty());
-  return b->CreateBitCast(truncated, b->getInt16Ty());
-}
-
-llvm::Value* EmitBF16ToF32(llvm::Value* bf16_value, llvm::IRBuilder<>* b) {
-  auto as_int16 = b->CreateBitCast(bf16_value, b->getInt16Ty());
-  auto as_int32 = b->CreateZExt(as_int16, b->getInt32Ty());
-  auto shifted = b->CreateShl(as_int32, 16);
-  return b->CreateBitCast(shifted, b->getFloatTy());
-}
-
 absl::StatusOr<llvm::Value*> EmitF16ToF8e5m2(llvm::Value* f16_value,
                                              llvm::IRBuilder<>* b) {
   TF_ASSIGN_OR_RETURN(
@@ -608,10 +586,6 @@ absl::StatusOr<llvm::Value*> ElementalIrEmitter::EmitIntegerUnaryOp(
                        primitive_util::IsSignedIntegralType(from_type));
       }
       if (primitive_util::IsFloatingPointType(to_type)) {
-        if (to_type == BF16) {
-          return EmitF32ToBF16(EmitIntegralToFloating(operand_value, from_type,
-                                                      F32, module_, b_));
-        }
         if (to_type == F8E5M2) {
           return EmitF16ToF8e5m2(
               EmitIntegralToFloating(operand_value, from_type, F16, module_,
@@ -741,7 +715,8 @@ absl::StatusOr<llvm::Value*> ElementalIrEmitter::EmitFloatUnaryOp(
       }
       if (from_type == BF16) {
         TF_RET_CHECK(to_type != BF16);
-        operand_value = EmitBF16ToF32(operand_value, b_);
+        // The code below expects the source type to be F32.
+        operand_value = b_->CreateFPExt(operand_value, b_->getFloatTy());
         from_type = F32;
         if (from_type == to_type) {
           return operand_value;
@@ -796,13 +771,11 @@ absl::StatusOr<llvm::Value*> ElementalIrEmitter::EmitFloatUnaryOp(
             nullptr);
       }
       if (to_type == BF16) {
-        // Cast to F32 first. Other floating point formats are not supported by
-        // EmitReducePrecisionIR.
-        if (from_type != F32) {
-          operand_value = b_->CreateFPCast(
-              operand_value, llvm_ir::PrimitiveTypeToIrType(F32, module_));
+        // F16 to BF16 has to go through an intermediate F32.
+        if (from_type == F16) {
+          operand_value = b_->CreateFPExt(operand_value, b_->getFloatTy());
         }
-        return EmitF32ToBF16(operand_value);
+        return FPCast(operand_value, b_->getBFloatTy());
       }
       if (to_type == F8E5M2) {
         // Cast to F16 first. Casts to F8E5M2 must be from F16.
@@ -1312,10 +1285,7 @@ absl::StatusOr<llvm::Value*> ElementalIrEmitter::EmitFloatBinaryOp(
     // matches C++'s semantics.
     case HloOpcode::kCompare: {
       PrimitiveType operand_type = op->operand(0)->shape().element_type();
-      if (operand_type == BF16) {
-        lhs_value = EmitBF16ToF32(lhs_value, b_);
-        rhs_value = EmitBF16ToF32(rhs_value, b_);
-      } else if (operand_type == F8E5M2) {
+      if (operand_type == F8E5M2) {
         lhs_value = EmitF8e5m2ToF16(lhs_value, b_);
         rhs_value = EmitF8e5m2ToF16(rhs_value, b_);
       } else if (operand_type == F8E4M3FN) {
@@ -2951,8 +2921,8 @@ absl::StatusOr<llvm::Value*> ElementalIrEmitter::EmitElementalDot(
   TF_ASSIGN_OR_RETURN(llvm::Value * rhs_value, rhs_generator(rhs_index));
 
   if (primitive_type == BF16) {
-    lhs_value = EmitBF16ToF32(lhs_value, b_);
-    rhs_value = EmitBF16ToF32(rhs_value, b_);
+    lhs_value = b_->CreateFPExt(lhs_value, b_->getFloatTy());
+    rhs_value = b_->CreateFPExt(rhs_value, b_->getFloatTy());
   }
 
   llvm::Value* next_accumulator =
@@ -2964,7 +2934,7 @@ absl::StatusOr<llvm::Value*> ElementalIrEmitter::EmitElementalDot(
   llvm::Value* result =
       Load(accumulator_alloca->getAllocatedType(), accumulator_alloca);
 
-  return primitive_type == BF16 ? EmitF32ToBF16(result) : result;
+  return primitive_type == BF16 ? FPTrunc(result, b_->getBFloatTy()) : result;
 }
 
 llvm_ir::ElementGenerator ElementalIrEmitter::MakeElementGenerator(
@@ -3117,9 +3087,7 @@ llvm_ir::ElementGenerator ElementalIrEmitter::MakeElementGenerator(
               primitive_util::IsFloatingPointType(component_element_type))
               << component_element_type;
           llvm::Type* float_ir_type;
-          if (component_element_type == BF16) {
-            float_ir_type = llvm_ir::PrimitiveTypeToIrType(F32, module_);
-          } else if (component_element_type == F8E4M3FNUZ) {
+          if (component_element_type == F8E4M3FNUZ) {
             float_ir_type = llvm_ir::PrimitiveTypeToIrType(F16, module_);
           } else if (component_element_type == F8E5M2FNUZ) {
             float_ir_type = llvm_ir::PrimitiveTypeToIrType(F16, module_);
@@ -3129,10 +3097,8 @@ llvm_ir::ElementGenerator ElementalIrEmitter::MakeElementGenerator(
           }
           llvm::Value* float_val =
               b_->CreateUIToFP(elem_index_linear, float_ir_type);
-          if (component_element_type == BF16) {
-            TF_ASSIGN_OR_RETURN(iota_result, EmitF32ToBF16(float_val));
-          } else if (component_element_type == F8E4M3FNUZ ||
-                     component_element_type == F8E5M2FNUZ) {
+          if (component_element_type == F8E4M3FNUZ ||
+              component_element_type == F8E5M2FNUZ) {
             TF_ASSIGN_OR_RETURN(
                 iota_result, EmitFloatingToF8fnuz(F16, float_val,
                                                   component_element_type, b_));
@@ -3278,11 +3244,6 @@ llvm::Value* ElementalIrEmitter::EmitExtractReal(llvm::Value* value) {
 
 llvm::Value* ElementalIrEmitter::EmitExtractImag(llvm::Value* value) {
   return ExtractValue(value, {1});
-}
-
-absl::StatusOr<llvm::Value*> ElementalIrEmitter::EmitF32ToBF16(
-    llvm::Value* f32_value) {
-  return DefaultEmitF32ToBF16Impl(f32_value, b_);
 }
 
 llvm::Value* ElementalIrEmitter::EmitComposeComplex(const HloInstruction* op,
