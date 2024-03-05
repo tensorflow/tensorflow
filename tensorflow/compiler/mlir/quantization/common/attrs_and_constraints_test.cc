@@ -36,7 +36,6 @@ limitations under the License.
 namespace mlir::quant {
 namespace {
 
-using ::mlir::quant::QuantizationTestBase;
 using ::mlir::stablehlo::AddOp;
 using ::mlir::stablehlo::ConvolutionOp;
 using ::mlir::stablehlo::DotGeneralOp;
@@ -45,7 +44,7 @@ using ::testing::ElementsAreArray;
 using ::testing::Eq;
 using ::testing::NotNull;
 
-class AttrsAndConstraintsTest : public QuantizationTestBase {};
+using AttrsAndConstraintsTest = ::mlir::quant::QuantizationTestBase;
 
 constexpr absl::string_view kModuleStatic = R"mlir(
   module {

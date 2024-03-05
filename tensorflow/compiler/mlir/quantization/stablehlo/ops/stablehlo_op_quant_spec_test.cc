@@ -32,7 +32,7 @@ namespace {
 
 using ::testing::NotNull;
 
-class IsOpQuantizableStableHloTest : public QuantizationTestBase {};
+using IsOpQuantizableStableHloTest = ::mlir::quant::QuantizationTestBase;
 
 // Quantizable ops: constants
 // Non-quantizable ops: normal StableHLO ops and terminators

@@ -38,7 +38,7 @@ namespace {
 
 using ::testing::NotNull;
 
-class LiftAsFunctionCallTest : public QuantizationTestBase {};
+using LiftAsFunctionCallTest = ::mlir::quant::QuantizationTestBase;
 
 constexpr absl::string_view kModuleLifted = R"mlir(
   module {

@@ -34,7 +34,6 @@ limitations under the License.
 namespace mlir::quant::stablehlo {
 namespace {
 
-using ::mlir::quant::QuantizationTestBase;
 using ::stablehlo::quantization::QuantizationConfig;
 using ::tensorflow::quantization::CalibrationOptions;
 using ::testing::Contains;
@@ -63,8 +62,7 @@ MATCHER_P2(HasStringAttr, name, value_matcher,
              result_listener);
 }
 
-// TODO: b/315746734 - Use test-only passes for in-depth and easier testing.
-class PreCalibrationComponentTest : public QuantizationTestBase {};
+using PreCalibrationComponentTest = ::mlir::quant::QuantizationTestBase;
 
 TEST_F(PreCalibrationComponentTest,
        HasCustomAggregatorOpAndQuantizableFuncForSimpleDotGeneral) {

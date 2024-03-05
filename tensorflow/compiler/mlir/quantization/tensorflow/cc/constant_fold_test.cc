@@ -37,7 +37,7 @@ namespace {
 using ::testing::NotNull;
 using ::testing::SizeIs;
 
-class ConstantFoldingTest : public QuantizationTestBase {};
+using ConstantFoldingTest = ::mlir::quant::QuantizationTestBase;
 
 TEST_F(ConstantFoldingTest, FoldLargeConstant) {
   constexpr absl::string_view kModuleCode = R"mlir(
