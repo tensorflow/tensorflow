@@ -30,8 +30,9 @@ using BitWidth = ::stablehlo::quantization::QuantizationComponentSpec_BitWidth;
 // Sets component, bit type and bit width information to the given spec
 // instance.
 void SetQuantizationComponentSpec(QuantizationComponentSpec* spec,
-                                  QuantizationComponent component,
-                                  BitType bit_type, BitWidth bit_width) {
+                                  const QuantizationComponent& component,
+                                  const BitType bit_type,
+                                  const BitWidth bit_width) {
   spec->set_quantization_component(component);
   spec->set_bit_type(bit_type);
   spec->set_bit_width(bit_width);
@@ -43,9 +44,9 @@ void SetQuantizationComponentSpec(QuantizationComponentSpec* spec,
       quantization_options_.quantization_method().custom_quantization_method();
   QuantizationComponentSpec *activation_component, *weight_component,
       *bias_component;
-  auto preset_method = quantization_options_.quantization_method()
-                           .preset_quantization_method()
-                           .preset_method();
+  const auto preset_method = quantization_options_.quantization_method()
+                                 .preset_quantization_method()
+                                 .preset_method();
   if (!preset_method) return quantization_options_;
   switch (preset_method) {
     case PresetQuantizationMethod::FLOAT16:

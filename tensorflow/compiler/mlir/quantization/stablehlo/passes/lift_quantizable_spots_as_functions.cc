@@ -63,7 +63,7 @@ Attribute DefaultOrNullAttr(OpBuilder& builder, const Attribute& attr) {
 // Checks whether the value of a constant equals the given float, regardless
 // of the tensor dimension.
 bool FloatValueEquals(const Attribute& attr, const double value) {
-  auto fp_attr = attr.dyn_cast_or_null<DenseFPElementsAttr>();
+  const auto fp_attr = attr.dyn_cast_or_null<DenseFPElementsAttr>();
   if (!fp_attr) return false;
 
   if (fp_attr.isSplat()) {
