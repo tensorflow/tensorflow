@@ -747,9 +747,13 @@ cc_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
         "@local_xla//xla:shape_util",
         "@local_xla//xla:statusor",
         "@local_xla//xla:xla_data_proto_cc",
+        "@local_xla//xla/client:xla_builder",
+        "@local_xla//xla/hlo/ir:hlo",
     ],
     alwayslink = 1,
 )
