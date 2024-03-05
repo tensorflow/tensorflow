@@ -53,7 +53,22 @@ absl::StatusOr<bool> ReduceScatterDecomposer::Run(
       if (rs->channel_id()) {
         channel_id = next_channel_id++;
       }
+      if (should_decompose_ && !should_decompose_(rs)) {
+        continue;
+      }
+      if (avoid_decompose_) {
+        VLOG(2) << "Wants to decompose: " << rs->ToString();
+        HloInstruction *new_rs = avoid_decompose_(rs, should_decompose_);
+        if (new_rs) {
+          VLOG(2) << "New rs: " << new_rs->ToString();
+          TF_RETURN_IF_ERROR(rs->ReplaceAllUsesWith(new_rs));
+          TF_RETURN_IF_ERROR(rs->parent()->RemoveInstruction(rs));
+          continue;
+        }
+        VLOG(2) << "Actually decompose";
+      }
 
+      VLOG(2) << "Decompose: " << rs->ToString();
       // Create an all-reduce
       HloComputation *apply_clone = module->AddComputationAndUnifyNamesAndIds(
           rs->to_apply()->Clone(), /*is_entry=*/false);
