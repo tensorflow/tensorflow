@@ -45,13 +45,13 @@ absl::StatusOr<MetaGraphDef*> FindMetaGraphDef(
 // finds the MetaGraphDef that matches the given set of tags and writes it to
 // the `meta_graph_def` parameter. Returns a failure status when the SavedModel
 // file does not exist or no MetaGraphDef matches the tags.
-Status ReadMetaGraphDefFromSavedModel(const string& export_dir,
+Status ReadMetaGraphDefFromSavedModel(absl::string_view export_dir,
                                       const std::unordered_set<string>& tags,
                                       MetaGraphDef* meta_graph_def);
 
 // Store debug info from the SavedModel export dir.
 Status ReadSavedModelDebugInfoIfPresent(
-    const string& export_dir,
+    absl::string_view export_dir,
     std::unique_ptr<GraphDebugInfo>* debug_info_proto);
 
 }  // namespace tensorflow
