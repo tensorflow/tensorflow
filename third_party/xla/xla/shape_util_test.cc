@@ -216,6 +216,9 @@ TEST(ShapeUtilTest, EqualDynamicShapes) {
   EXPECT_FALSE(
       ShapeUtil::Equal(ShapeUtil::MakeShape(F32, {4, 3}, {true, false}),
                        ShapeUtil::MakeShape(F32, {4, 3}, {false, false})));
+  EXPECT_FALSE(ShapeUtil::Equal(
+      ShapeUtil::MakeShape(F32, {Shape::kUnboundedSize}, {true}),
+      ShapeUtil::MakeShape(F32, {2}, {true})));
 }
 
 TEST(ShapeUtilTest, CompatibleDynamicShapes) {
