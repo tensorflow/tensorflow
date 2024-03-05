@@ -114,6 +114,7 @@ xla::Status PjrtErrorToStatus(const PJRT_Error* error, const PJRT_Api* api);
 absl::StatusCode PjrtErrorToStatusCode(const PJRT_Error* error,
                                        const PJRT_Api* api);
 
+absl::StatusCode PjrtErrorCodeToStatusCode(PJRT_Error_Code code);
 PJRT_Error_Code StatusCodeToPjrtErrorCode(absl::StatusCode code);
 
 // Conversion helper from xla::PrimitiveType to PJRT_Buffer_Type.

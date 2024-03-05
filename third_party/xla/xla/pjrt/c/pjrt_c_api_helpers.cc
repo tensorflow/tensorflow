@@ -29,6 +29,7 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/time/time.h"
@@ -49,7 +50,6 @@ limitations under the License.
 #include "tsl/platform/errors.h"
 #include "tsl/platform/logging.h"
 #include "tsl/platform/status.h"
-#include "tsl/platform/statusor.h"
 #include "tsl/profiler/lib/connected_traceme.h"
 #include "tsl/profiler/lib/context_types.h"
 
@@ -114,11 +114,11 @@ PJRT_LoadedExecutableDeleter MakeLoadedExecutableDeleter(const PJRT_Api* api) {
   };
 }
 
-xla::Status PjrtErrorToStatus(const PJRT_Error* error, const PJRT_Api* api) {
-  xla::Status status;
+absl::Status PjrtErrorToStatus(const PJRT_Error* error, const PJRT_Api* api) {
+  absl::Status status;
   if (error != nullptr) {
-    status = xla::Status(PjrtErrorToStatusCode(error, api),
-                         GetPjrtErrorMessage(error, api));
+    status = absl::Status(PjrtErrorToStatusCode(error, api),
+                          GetPjrtErrorMessage(error, api));
   }
   return status;
 }
@@ -148,7 +148,10 @@ PJRT_Error_Code GetErrorCode(const PJRT_Error* error, const PJRT_Api* api) {
 
 absl::StatusCode PjrtErrorToStatusCode(const PJRT_Error* error,
                                        const PJRT_Api* api) {
-  PJRT_Error_Code code = GetErrorCode(error, api);
+  return PjrtErrorCodeToStatusCode(GetErrorCode(error, api));
+}
+
+absl::StatusCode PjrtErrorCodeToStatusCode(PJRT_Error_Code code) {
   switch (code) {
     case PJRT_Error_Code_CANCELLED:
     case PJRT_Error_Code_UNKNOWN:
@@ -216,7 +219,7 @@ absl::string_view GetPjrtErrorMessage(const PJRT_Error* error,
 void LogFatalIfPjrtError(PJRT_Error* error, const PJRT_Api* api) {
   std::unique_ptr<PJRT_Error, pjrt::PJRT_ErrorDeleter> _error(
       error, MakeErrorDeleter(api));
-  xla::Status _status = PjrtErrorToStatus(_error.get(), api);
+  absl::Status _status = PjrtErrorToStatus(_error.get(), api);
   if (!_status.ok()) {
     LOG(FATAL) << "Unexpected error status " << _status.message();
   }
@@ -386,9 +389,9 @@ xla::PjRtClient::HostBufferSemantics ConvertFromPjRtHostBufferSemantics(
   }
 }
 
-xla::PjRtFuture<xla::Status> ConvertCEventToCppFuture(PJRT_Event* c_event,
-                                                      const PJRT_Api* c_api) {
-  using xla::Status, xla::PjRtFuture;
+xla::PjRtFuture<absl::Status> ConvertCEventToCppFuture(PJRT_Event* c_event,
+                                                       const PJRT_Api* c_api) {
+  using absl::Status, xla::PjRtFuture;
   PJRT_Event_OnReady_Args event_onready_args;
   event_onready_args.struct_size = PJRT_Event_OnReady_Args_STRUCT_SIZE;
   event_onready_args.extension_start = nullptr;
@@ -398,7 +401,7 @@ xla::PjRtFuture<xla::Status> ConvertCEventToCppFuture(PJRT_Event* c_event,
   event_onready_args.user_arg = new std::function<void(PJRT_Error*)>(
       [promise, c_event, c_api](PJRT_Error* error) mutable {
         if (error != nullptr) {
-          xla::Status s = ::pjrt::PjrtErrorToStatus(error, c_api);
+          absl::Status s = ::pjrt::PjrtErrorToStatus(error, c_api);
           promise.Set(s);
           ::pjrt::MakeErrorDeleter(c_api)(error);
         } else {
@@ -415,7 +418,7 @@ xla::PjRtFuture<xla::Status> ConvertCEventToCppFuture(PJRT_Event* c_event,
 
   PJRT_Error* error = c_api->PJRT_Event_OnReady(&event_onready_args);
   if (error != nullptr) {
-    xla::Status s = ::pjrt::PjrtErrorToStatus(error, c_api);
+    absl::Status s = ::pjrt::PjrtErrorToStatus(error, c_api);
     return PjRtFuture<Status>(s);
   }
   return PjRtFuture<Status>(std::move(promise));
@@ -538,7 +541,7 @@ static absl::StatusOr<PJRT_NamedValue_Type> GetPjrtNamedValueType(
                                       cpp_value.index());
 }
 
-xla::Status ValidateCreateOptions(
+absl::Status ValidateCreateOptions(
     const absl::flat_hash_map<std::string, xla::PjRtValueType>& value_map,
     const absl::flat_hash_map<std::string, PJRT_NamedValue_Type>&
         expected_name_and_types) {
@@ -573,9 +576,9 @@ static std::string StructSizeErrorMsg(absl::string_view struct_name,
   return error_msg;
 }
 
-xla::Status ActualStructSizeIsGreaterOrEqual(absl::string_view struct_name,
-                                             size_t expected_size,
-                                             size_t actual_size) {
+absl::Status ActualStructSizeIsGreaterOrEqual(absl::string_view struct_name,
+                                              size_t expected_size,
+                                              size_t actual_size) {
   if (actual_size < expected_size) {
     return tsl::errors::InvalidArgument(
         StructSizeErrorMsg(struct_name, expected_size, actual_size));
@@ -700,7 +703,7 @@ static PJRT_KeyValueGetCFunc ToKVGetCFunc(
 static PJRT_KeyValuePutCFunc ToKVPutCFunc(
     xla::KeyValueStoreInterface* kv_store) {
   return [kv_store](PJRT_KeyValuePutCallback_Args* args) -> PJRT_Error* {
-    xla::Status status =
+    absl::Status status =
         kv_store->Set(std::string_view(args->key, args->key_size),
                       std::string_view(args->value, args->value_size));
     if (!status.ok()) {
@@ -718,7 +721,7 @@ static PJRT_KeyValueGetCallback ToCKVGetCallback(
     PJRT_KeyValueGetCFunc* kv_get_c_func =
         reinterpret_cast<PJRT_KeyValueGetCFunc*>(args->user_arg);
     if (kv_get_c_func == nullptr) {
-      xla::Status status = xla::InvalidArgument(
+      absl::Status status = xla::InvalidArgument(
           "got nullptr for PJRT_KeyValueGet_Args.user_arg");
       return (*args->callback_error)(StatusCodeToPjrtErrorCode(status.code()),
                                      status.message().data(),
@@ -734,7 +737,7 @@ static PJRT_KeyValuePutCallback ToCKVPutCallback(
     PJRT_KeyValuePutCFunc* kv_put_c_func =
         reinterpret_cast<PJRT_KeyValuePutCFunc*>(args->user_arg);
     if (kv_put_c_func == nullptr) {
-      xla::Status status = xla::InvalidArgument(
+      absl::Status status = xla::InvalidArgument(
           "got nullptr for PJRT_KeyValuePut_Args.user_arg");
       return (*args->callback_error)(StatusCodeToPjrtErrorCode(status.code()),
                                      status.message().data(),

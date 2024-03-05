@@ -520,6 +520,30 @@ cc_library(
 )
 
 cc_library(
+    name = "custom_partition_callback",
+    srcs = ["custom_partition_callback.cc"],
+    hdrs = ["custom_partition_callback.h"],
+    deps = [
+        "//xla:debug_options_flags",
+        "//xla:util",
+        "//xla/client:xla_computation",
+        "//xla/hlo/ir:hlo",
+        "//xla/pjrt:mlir_to_hlo",
+        "//xla/pjrt/c:pjrt_c_api_hdrs",
+        "//xla/pjrt/c:pjrt_c_api_helpers",
+        "//xla/service:call_inliner",
+        "//xla/service:custom_call_sharding_helper",
+        "//xla/service:hlo_pass_pipeline",
+        "//xla/service/spmd:spmd_partitioner",
+        "@com_google_absl//absl/cleanup",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+cc_library(
     name = "custom_call_sharding",
     srcs = ["custom_call_sharding.cc"],
     hdrs = ["custom_call_sharding.h"],
@@ -531,17 +555,16 @@ cc_library(
     features = ["-use_header_modules"],
     visibility = ["//visibility:private"],
     deps = [
+        ":custom_partition_callback",
         ":inspect_sharding",
         # placeholder for index annotation deps
-        "//xla/client:xla_computation",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "//xla:shape_util",
+        "//xla:util",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/utils:hlo_sharding_util",
-        "//xla/pjrt:mlir_to_hlo",
         "//xla/pjrt:status_casters",
-        "//xla/service:call_inliner",
-        "//xla/service:custom_call_sharding_helper",
-        "//xla/service:hlo_pass_pipeline",
-        "//xla/service/spmd:spmd_partitioner",
         "@local_tsl//tsl/platform:errors",
         "@pybind11",
     ],

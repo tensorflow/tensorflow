@@ -19,185 +19,138 @@ limitations under the License.
 #include <memory>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <tuple>
 #include <utility>
 #include <vector>
 
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "pybind11/pybind11.h"  // from @pybind11
 #include "pybind11/stl.h"  // from @pybind11
-#include "xla/client/xla_computation.h"
-#include "xla/hlo/ir/hlo_casting_utils.h"
-#include "xla/hlo/ir/hlo_instructions.h"
-#include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/hlo/utils/hlo_sharding_util.h"
-#include "xla/pjrt/mlir_to_hlo.h"
 #include "xla/pjrt/status_casters.h"
+#include "xla/python/custom_partition_callback.h"
 #include "xla/python/inspect_sharding.h"
-#include "xla/service/call_inliner.h"
-#include "xla/service/custom_call_sharding_helper.h"
-#include "xla/service/hlo_pass_pipeline.h"
-#include "xla/service/spmd/spmd_partitioner_util.h"
+#include "xla/shape.h"
+#include "xla/util.h"
 #include "tsl/platform/errors.h"
 
 namespace xla {
 
 namespace py = ::pybind11;
 
-std::vector<Shape> GetArgShapes(const HloInstruction* instruction) {
-  std::vector<Shape> result;
-  result.reserve(instruction->operand_count());
-  for (HloInstruction* operand : instruction->operands()) {
-    result.push_back(operand->shape());
-  }
-  return result;
-}
-
-std::vector<std::optional<HloSharding>> GetArgShardings(
-    const HloInstruction* instruction) {
-  std::vector<std::optional<HloSharding>> result;
-  result.reserve(instruction->operand_count());
-  for (HloInstruction* operand : instruction->operands()) {
-    if (operand->has_sharding()) {
-      result.push_back(operand->sharding());
-    } else {
-      result.push_back(std::nullopt);
-    }
-  }
-  return result;
-}
-
-HloInstruction* InlineHloComputation(HloInstruction* instruction,
-                                     HloComputation* computation,
-                                     HloComputation::Builder* builder,
-                                     std::vector<HloInstruction*> operands,
-                                     std::function<int64_t()> new_channel,
-                                     const std::string& suffix) {
-  HloCloneContext context(instruction->GetModule(), suffix);
-
-  absl::flat_hash_map<HloInstruction*, HloInstruction*> replacements;
-  auto resolve = [&](HloInstruction* inst) {
-    auto it = replacements.find(inst);
-    if (it == replacements.end()) {
-      throw py::key_error(
-          absl::StrCat("Could not find mapping for: ", inst->ToString()));
-    }
-    return it->second;
-  };
-
-  for (auto* inst : computation->MakeInstructionPostOrder()) {
-    if (inst->opcode() == HloOpcode::kParameter) {
-      replacements.emplace(inst, operands[inst->parameter_number()]);
-    } else {
-      std::vector<HloInstruction*> new_operands;
-      new_operands.reserve(inst->operand_count());
-      for (HloInstruction* operand : inst->mutable_operands()) {
-        new_operands.push_back(resolve(operand));
-      }
-      auto* new_inst = builder->AddInstruction(
-          inst->CloneWithNewOperands(inst->shape(), new_operands, &context));
-      HloChannelInstruction* channel_instr =
-          DynCast<HloChannelInstruction>(new_inst);
-      if (channel_instr && channel_instr->channel_id().has_value()) {
-        new_inst->set_channel_id(new_channel());
-      }
-      replacements.emplace(inst, new_inst);
-    }
-  }
-  return resolve(computation->root_instruction());
-}
-
-class PyCustomCallPartitioner : public CustomCallPartitioner {
+class PyCustomCallPartitionerCallbacks {
  public:
-  PyCustomCallPartitioner(py::object prop_user_sharding, py::object partition,
-                          py::object infer_sharding_from_operands,
-                          bool can_side_effecting_have_replicated_sharding)
+  PyCustomCallPartitionerCallbacks(py::object prop_user_sharding,
+                                   py::object partition,
+                                   py::object infer_sharding_from_operands)
       : prop_user_sharding_(prop_user_sharding),
         partition_(partition),
-        infer_sharding_from_operands_(infer_sharding_from_operands),
-        can_side_effecting_have_replicated_sharding_(
-            can_side_effecting_have_replicated_sharding) {}
-  xla::Status Partition(spmd::SpmdPartitioningVisitor* partitioner,
-                        HloInstruction* instruction) const override {
+        infer_sharding_from_operands_(infer_sharding_from_operands) {
+    callbacks_.version = 0;
+    callbacks_.private_data = this;
+    callbacks_.dtor = +[](JAX_CustomCallPartitioner_Callbacks* self) {
+      delete GetSelfPtr(self);
+    };
+    callbacks_.partition = +[](JAX_CustomCallPartitioner_Callbacks* self,
+                               JAX_CustomCallPartitioner_Partition_Args* args) {
+      jax::PopulateResults(GetSelfPtr(self)->CallPartition(args), args);
+    };
+    callbacks_.infer_sharding =
+        +[](JAX_CustomCallPartitioner_Callbacks* self,
+            JAX_CustomCallPartitioner_InferShardingFromOperands_Args* args) {
+          jax::PopulateResults(
+              GetSelfPtr(self)->CallInferShardingFromOperands(args), args);
+        };
+    callbacks_.propagate_user_sharding =
+        +[](JAX_CustomCallPartitioner_Callbacks* self,
+            JAX_CustomCallPartitioner_PropagateUserSharding_Args* args) {
+          jax::PopulateResults(
+              GetSelfPtr(self)->CallPropagateUserSharding(args), args);
+        };
+  }
+
+  absl::StatusOr<
+      std::tuple<std::string, std::vector<xla::HloSharding>, xla::HloSharding>>
+  CallPartition(JAX_CustomCallPartitioner_Partition_Args* args) const {
+    if (args->header.api_version != 0) {
+      return absl::InternalError("API version mismatch.");
+    }
+    TF_ASSIGN_OR_RETURN(auto args_tuple, jax::ReadArgs(args));
+    std::vector<xla::Shape> shapes = std::move(std::get<0>(args_tuple));
+    std::vector<std::optional<xla::HloSharding>> shardings =
+        std::move(std::get<1>(args_tuple));
+    xla::Shape result_shape = std::move(std::get<2>(args_tuple));
+    std::optional<xla::HloSharding> result_sharding =
+        std::move(std::get<3>(args_tuple));
+    std::string_view backend_config = std::move(std::get<4>(args_tuple));
+
+    {
+      py::gil_scoped_acquire gil;
+      try {
+        auto py_result = partition_(shapes, shardings, result_shape,
+                                    result_sharding, py::bytes(backend_config));
+        try {
+          auto result = py::cast<
+              std::tuple<std::string, std::vector<HloSharding>, HloSharding>>(
+              py_result);
+          if (std::get<1>(result).size() != args->num_args) {
+            return xla::Internal(
+                "Shardings returned from partitioning: lengths must match: %d "
+                "vs %d",
+                std::get<1>(result).size(), args->num_args);
+          }
+          return result;
+        } catch (const py::cast_error& e) {
+          return xla::Internal(
+              "Shardings returned from partitioning: expected "
+              "Tuple[bytes, List[HloSharding], HloSharding] got: %s",
+              py::repr(py_result));
+        }
+      } catch (const pybind11::error_already_set& e) {
+        return xla::Internal("custom_partitioner: %s", e.what());
+      }
+    }
+  }
+
+  absl::StatusOr<std::optional<xla::HloSharding>> CallInferShardingFromOperands(
+      JAX_CustomCallPartitioner_InferShardingFromOperands_Args* args) const {
+    if (args->header.api_version != 0) {
+      return absl::InternalError("API version mismatch.");
+    }
+    TF_ASSIGN_OR_RETURN(auto args_tuple, jax::ReadArgs(args));
+    std::vector<xla::Shape> arg_shapes = std::move(std::get<0>(args_tuple));
+    std::vector<std::optional<xla::HloSharding>> arg_shardings =
+        std::move(std::get<1>(args_tuple));
+    xla::Shape result_shape = std::move(std::get<2>(args_tuple));
+    std::string_view backend_config = std::move(std::get<3>(args_tuple));
+
+    std::optional<HloSharding> result;
     py::gil_scoped_acquire gil;
     try {
-      auto py_result =
-          partition_(GetArgShapes(instruction), GetArgShardings(instruction),
-                     instruction->shape(), instruction->sharding(),
-                     py::bytes(instruction->raw_backend_config_string()));
-
-      XlaComputation computation_scratch;
-      const XlaComputation* computation;
-      std::vector<HloSharding> arg_shardings;
-      std::optional<HloSharding> result_sharding;
-      try {
-        py::object m;
-        std::tie(m, arg_shardings, result_sharding) = py::cast<
-            std::tuple<py::object, std::vector<HloSharding>, HloSharding>>(
-            py_result);
-        if (py::isinstance<py::bytes>(m)) {
-          std::string mlir_module = py::cast<std::string>(m);
-          TF_RETURN_IF_ERROR(ParseMlirModuleStringAndConvertToXlaComputation(
-              mlir_module, computation_scratch, /*use_tuple_args=*/false,
-              /*return_tuple=*/false));
-          computation = &computation_scratch;
-        } else {
-          // TODO(parkers): Remove fallback.
-          computation = py::cast<const XlaComputation*>(m);
-        }
-      } catch (const py::cast_error& e) {
-        return xla::Internal(
-            "Shardings returned from partitioning %s: expected "
-            "Tuple[bytes, List[HloSharding], HloSharding] got: %s",
-            instruction->ToString(), py::repr(py_result));
+      auto py_result = infer_sharding_from_operands_(
+          arg_shapes, arg_shardings, result_shape, py::bytes(backend_config));
+      if (py_result.is_none()) {
+        return std::nullopt;
       }
-      auto hlo_module_config =
-          xla::HloModule::CreateModuleConfigFromProto(
-              computation->proto(), xla::DefaultDebugOptionsIgnoringFlags())
-              .value();
-      TF_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> hlo_module,
-                          xla::HloModule::CreateFromProto(computation->proto(),
-                                                          hlo_module_config));
-      std::vector<HloInstruction*> operands;
-      operands.reserve(instruction->operand_count());
-      if (arg_shardings.size() != instruction->operand_count()) {
-        return xla::Internal(
-            "Shardings returned from partitioning %s must match: %d vs %d",
-            instruction->ToString(), arg_shardings.size(),
-            instruction->operand_count());
-      }
-      for (size_t i = 0; i < instruction->operand_count(); ++i) {
-        operands.push_back(
-            partitioner->GetPartitionedHlo(instruction->mutable_operand(i))
-                .Reshard(arg_shardings[i])
-                .hlo());
-      }
-
-      // The custom call module does not go through the main compiler pipeline,
-      // so inline all calls here explicitly, since some targets require it.
-      HloPassPipeline pipeline("custom-call-inliner");
-      pipeline.AddPass<CallInliner>();
-      TF_RETURN_IF_ERROR(pipeline.Run(hlo_module.get(), {}).status());
-
-      auto* partitioned_hlo = InlineHloComputation(
-          instruction, hlo_module->entry_computation(), partitioner->builder(),
-          operands, [partitioner]() { return partitioner->NewChannel(); },
-          "_custom_call_lowering_rule");
-      partitioned_hlo->set_sharding(result_sharding.value());
-
-      spmd::PartitionedHlo result_partitioned =
-          spmd::PartitionedHlo(partitioned_hlo, instruction->shape(),
-                               partitioner->MakePartitioningState())
-              .Reshard(instruction->sharding());
-
-      partitioner->SetPartitionedHlo(instruction, result_partitioned);
-      return xla::OkStatus();
+      return py::cast<HloSharding>(py_result);
     } catch (const pybind11::error_already_set& e) {
       return xla::Internal("custom_partitioner: %s", e.what());
     }
   }
-  HloSharding PropagateUserSharding(
-      const HloInstruction* instruction, const HloInstruction* user,
-      const HloSharding& sharding) const override {
+
+  absl::StatusOr<xla::HloSharding> CallPropagateUserSharding(
+      JAX_CustomCallPartitioner_PropagateUserSharding_Args* args) const {
+    if (args->header.api_version != 0) {
+      return absl::InternalError("API version mismatch.");
+    }
+    TF_ASSIGN_OR_RETURN(auto args_tuple, jax::ReadArgs(args));
+    xla::HloSharding result_sharding = std::move(std::get<0>(args_tuple));
+    xla::Shape result_shape = std::move(std::get<1>(args_tuple));
+    std::string_view backend_config = std::move(std::get<2>(args_tuple));
+
     py::gil_scoped_acquire gil;
     try {
       // TODO(parkers): expand this API to handle the `user` sharding.
@@ -205,44 +158,26 @@ class PyCustomCallPartitioner : public CustomCallPartitioner {
       // the user is a get-tuple-element. In this case we must update only
       // part of the sharding spec.
       auto result = py::cast<HloSharding>(prop_user_sharding_(
-          sharding, instruction->shape(),
-          py::bytes(instruction->raw_backend_config_string())));
+          result_sharding, result_shape, py::bytes(backend_config)));
       return result;
     } catch (const pybind11::error_already_set& e) {
-      LOG(FATAL) << absl::StrFormat("custom_partitioner: %s", e.what());
+      return xla::Internal("custom_partitioner: %s", e.what());
     }
-  }
-  std::optional<HloSharding> InferShardingFromOperands(
-      const HloInstruction* instruction) const override {
-    std::optional<HloSharding> result;
-    std::vector<Shape> arg_shapes = GetArgShapes(instruction);
-    auto arg_shardings = GetArgShardings(instruction);
-    py::gil_scoped_acquire gil;
-    try {
-      auto py_result = infer_sharding_from_operands_(
-          arg_shapes, arg_shardings, instruction->shape(),
-          py::bytes(instruction->raw_backend_config_string()));
-      if (py_result.is_none()) {
-        return std::nullopt;
-      }
-      return py::cast<HloSharding>(py_result);
-    } catch (const pybind11::error_already_set& e) {
-      LOG(FATAL) << absl::StrFormat("custom_partitioner: %s", e.what());
-    }
-    return result;
-  }
-  bool IsCustomCallShardable(const HloInstruction* instruction) const override {
-    return true;
-  }
-  bool CanSideEffectingHaveReplicatedSharding() const override {
-    return can_side_effecting_have_replicated_sharding_;
   }
 
-  absl::Status status_set_;
+  JAX_CustomCallPartitioner_Callbacks* callbacks() { return &callbacks_; }
+
+ private:
+  static PyCustomCallPartitionerCallbacks* GetSelfPtr(
+      JAX_CustomCallPartitioner_Callbacks* callbacks) {
+    return reinterpret_cast<PyCustomCallPartitionerCallbacks*>(
+        callbacks->private_data);
+  }
+
+  JAX_CustomCallPartitioner_Callbacks callbacks_;
   py::object prop_user_sharding_;
   py::object partition_;
   py::object infer_sharding_from_operands_;
-  bool can_side_effecting_have_replicated_sharding_;
 };
 
 namespace {
@@ -268,11 +203,14 @@ void BuildCustomCallShardingPybindAPI(pybind11::module& m) {
       [](std::string name, py::object prop_user_sharding, py::object partition,
          py::object infer_sharding_from_operands,
          bool can_side_effecting_have_replicated_sharding) {
+        auto* c_fns =
+            (new PyCustomCallPartitionerCallbacks(prop_user_sharding, partition,
+                                                  infer_sharding_from_operands))
+                ->callbacks();
+        c_fns->can_side_effecting_have_replicated_sharding =
+            can_side_effecting_have_replicated_sharding;
         RegisterCustomCallPartitioner(
-            name,
-            std::make_unique<PyCustomCallPartitioner>(
-                prop_user_sharding, partition, infer_sharding_from_operands,
-                can_side_effecting_have_replicated_sharding));
+            name, jax::CreateCApiCustomCallPartitioner(c_fns));
       },
       R"(Registers a partitioner for a custom-call operation.
 
