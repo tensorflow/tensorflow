@@ -4,6 +4,7 @@
 
 *   TensorFlow Windows Build:
     *   Clang is now the default compiler to build TensorFlow CPU wheels on the Windows Platform starting with this release. The currently supported version is LLVM/clang 17. The official Wheels-published on PyPI will be based on Clang; however, users retain the option to build wheels using the MSVC compiler following the steps mentioned in https://www.tensorflow.org/install/source_windows as has been the case before
+ *   TensorFlow 2.16 will be released as TF 2.16.1 (instead of 2.16.0). The patch release will be done as 2.16.2 during the next release cycle.
 
 ### Breaking Changes
 
