@@ -119,7 +119,7 @@ cc_test(
     srcs = ["dispatch_test.cc"],
     deps = [
         ":dispatch",
-	":status_matcher",
+        ":status_matcher",
         "@com_google_absl//absl/status",
         "@com_google_googletest//:gtest_main",
     ],
@@ -146,7 +146,7 @@ cc_library(
     testonly = True,
     hdrs = ["status_matcher.h"],
     deps = [
-	"@com_google_absl//absl/status",
+        "@com_google_absl//absl/status",
         "@com_google_googletest//:gtest_main",
     ],
 )
