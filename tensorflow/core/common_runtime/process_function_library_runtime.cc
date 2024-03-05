@@ -637,21 +637,6 @@ Status ProcessFunctionLibraryRuntime::InstantiateMultiDevice(
       &data_lib_def, absl::StrCat(function_name, "_", random::New64()));
   const int num_subgraphs = subgraphs->size();
   gtl::InlinedVector<Status, 4> instantiate_status(num_subgraphs);
-  BlockingCounter counter(static_cast<int>(num_subgraphs));
-  // NOTE: Only use thread pool to instantiate sub-function when there are
-  // more than a threshold (default 8) of sub-functions. We want to avoid cost
-  // of switching thread when there are only a few sub-functions. However, for
-  // very large graphs, it may be necessary to increase this threshold to avoid
-  // running out of memory.
-  std::function<void(std::function<void()>)> runner;
-  if (default_thread_pool_ != nullptr &&
-      num_subgraphs > GetParallelSubgraphThreshold()) {
-    runner = [this](std::function<void()> fn) {
-      default_thread_pool_->Schedule(fn);
-    };
-  } else {
-    runner = [](std::function<void()> fn) { fn(); };
-  }
 
   // Before instantiating component functions, determine synchronous execution.
   data->enable_sync_execution = false;
@@ -669,116 +654,147 @@ Status ProcessFunctionLibraryRuntime::InstantiateMultiDevice(
     }
   }
 
-  // Instantiate each component function (subgraph).
-  for (auto& pair : *subgraphs) {
-    Status* status = &instantiate_status[i];
-    ComponentFunctionData* comp_data = &data->glue_[pair.first];
-    comp_data->name = name_generator.GetName();
-    runner([this, &pair, dev_set, comp_data, &data_lib_def, &control_ret,
-            &options, status, &counter, &data] {
-      const string& target = pair.first;
+  auto instantiate_component = [this, dev_set, &data_lib_def, &control_ret,
+                                &options,
+                                &data](const string& target,
+                                       std::unique_ptr<Graph> subgraph,
+                                       ComponentFunctionData* comp_data,
+                                       std::function<void(Status)> done) {
+    const string& device_type =
+        dev_set->FindDeviceByName(target)->device_type();
 
-      const string& device_type =
-          dev_set->FindDeviceByName(target)->device_type();
-      std::unique_ptr<Graph> subgraph = std::move(pair.second);
+    bool ints_on_device =
+        (device_type == "TPU" || device_type == "XLA_CPU" ||
+         device_type == "XLA_GPU" || options.int_args_and_retvals_on_device);
+    Int32FulltypePass int32_fulltype(
+        "ProcessFunctionLibraryRuntime::InstantiateMultiDevice");
+    Status s = int32_fulltype.ProcessGraph(subgraph.get(), ints_on_device);
+    if (!s.ok()) {
+      done(s);
+      return;
+    }
 
-      bool ints_on_device =
-          (device_type == "TPU" || device_type == "XLA_CPU" ||
-           device_type == "XLA_GPU" || options.int_args_and_retvals_on_device);
-      Int32FulltypePass int32_fulltype(
-          "ProcessFunctionLibraryRuntime::InstantiateMultiDevice");
-      status->Update(
-          int32_fulltype.ProcessGraph(subgraph.get(), ints_on_device));
-      if (!status->ok()) {
-        counter.DecrementCount();
-        return;
-      }
-      status->Update(UpdateArgAndRetvalMetadata(
-          subgraph.get(), &comp_data->arg_indices, &comp_data->ret_indices,
-          &comp_data->arg_alloc_attrs, &comp_data->ret_alloc_attrs,
-          ints_on_device));
-      if (!status->ok()) {
-        counter.DecrementCount();
-        return;
-      }
-      FunctionDef shard;
-      status->Update(
-          GraphToFunctionDef(*subgraph, comp_data->name, control_ret, &shard));
+    s = UpdateArgAndRetvalMetadata(subgraph.get(), &comp_data->arg_indices,
+                                   &comp_data->ret_indices,
+                                   &comp_data->arg_alloc_attrs,
+                                   &comp_data->ret_alloc_attrs, ints_on_device);
+    if (!s.ok()) {
+      done(s);
+      return;
+    }
 
-      // TODO(b/327983931): `GraphToFunctionDef()` should take a `Graph&&`,
-      // so that the `NodeDef`s can be reused as much as possible.
-      subgraph.reset();
+    FunctionDef shard;
+    s = GraphToFunctionDef(*subgraph, comp_data->name, control_ret, &shard);
+    if (!s.ok()) {
+      done(s);
+      return;
+    }
 
-      if (!status->ok()) {
-        counter.DecrementCount();
-        return;
-      }
+    // TODO(b/327983931): `GraphToFunctionDef()` should take a `Graph&&`,
+    // so that the `NodeDef`s can be reused as much as possible.
+    subgraph.reset();
 
-      // NOTE(mrry): Currently, `shard.attr()` is never set by
-      // `GraphToFunctionDef()` but we previously used it directly in the
-      // call to `Instantiate()`. To avoid subtle bugs, we retain a copy here
-      // before the move in case `GraphToFunctionDef()` changes in future.
-      AttrValueMap attrs(shard.attr());
+    // NOTE(mrry): Currently, `shard.attr()` is never set by
+    // `GraphToFunctionDef()` but we previously used it directly in the
+    // call to `Instantiate()`. To avoid subtle bugs, we retain a copy here
+    // before the move in case `GraphToFunctionDef()` changes in future.
+    AttrValueMap attrs(shard.attr());
 
-      status->Update(data_lib_def.AddFunctionDef(std::move(shard)));
-      if (!status->ok()) {
-        counter.DecrementCount();
-        return;
-      }
-      FunctionLibraryRuntime::InstantiateOptions opts;
-      opts.executor_type = options.executor_type;
-      opts.target = target;
-      opts.lib_def = &data_lib_def;
-      opts.create_kernels_eagerly = options.create_kernels_eagerly;
-      opts.state_handle = options.state_handle;
-      opts.allow_small_function_optimizations = data->enable_sync_execution;
-      opts.allow_control_flow_sync_execution =
-          options.allow_control_flow_sync_execution;
-      AttrValue ints_on_device_attr;
-      ints_on_device_attr.set_b(options.int_args_and_retvals_on_device);
-      attrs.insert(
-          {FunctionLibraryDefinition::kIntsOnDeviceAttr, ints_on_device_attr});
-      VLOG(1) << "Start instantiating component function " << comp_data->name
-              << " on device " << target;
-      VLOG(4) << DebugString(shard);
+    s = data_lib_def.AddFunctionDef(std::move(shard));
+    if (!s.ok()) {
+      done(s);
+      return;
+    }
 
-      auto* component_handle = new FunctionLibraryRuntime::Handle;
-      auto done = [this, status, comp_data, component_handle, &data,
-                   &counter](const Status& s) {
-        status->Update(s);
+    FunctionLibraryRuntime::InstantiateOptions opts;
+    opts.executor_type = options.executor_type;
+    opts.target = target;
+    opts.lib_def = &data_lib_def;
+    opts.create_kernels_eagerly = options.create_kernels_eagerly;
+    opts.state_handle = options.state_handle;
+    opts.allow_small_function_optimizations = data->enable_sync_execution;
+    opts.allow_control_flow_sync_execution =
+        options.allow_control_flow_sync_execution;
+    AttrValue ints_on_device_attr;
+    ints_on_device_attr.set_b(options.int_args_and_retvals_on_device);
+    attrs.insert(
+        {FunctionLibraryDefinition::kIntsOnDeviceAttr, ints_on_device_attr});
+    VLOG(1) << "Start instantiating component function " << comp_data->name
+            << " on device " << target;
 
-        VLOG(1) << "Finished instantiating component function "
-                << comp_data->name << " with handle " << *component_handle
-                << " status: " << s;
-        if (status->ok()) {
-          {
-            mutex_lock l(mu_);
-            if (function_data_[*component_handle]->is_cross_process()) {
-              data->is_cross_process_ = true;
-            }
+    auto* component_handle = new FunctionLibraryRuntime::Handle;
+    auto wrapped_done = [this, comp_data, component_handle, &data,
+                         done = std::move(done)](const Status& s) {
+      VLOG(1) << "Finished instantiating component function " << comp_data->name
+              << " with handle " << *component_handle << " status: " << s;
+      if (s.ok()) {
+        {
+          mutex_lock l(mu_);
+          if (function_data_[*component_handle]->is_cross_process()) {
+            data->is_cross_process_ = true;
           }
-          comp_data->handle = *component_handle;
         }
-        delete component_handle;
-        counter.DecrementCount();
-      };
-
-      FunctionLibraryRuntime* flr = GetFLR(opts.target);
-      if (flr != nullptr) {
-        // Initialize local function synchronously.
-        Status s = flr->Instantiate(comp_data->name, AttrSlice(&attrs), opts,
-                                    component_handle);
-        done(s);
-      } else {
-        opts.ret_indices = comp_data->ret_indices;
-        // Initialize remote function asynchronously.
-        InstantiateRemote(comp_data->name, AttrSlice(&attrs), opts,
-                          component_handle, done);
+        comp_data->handle = *component_handle;
       }
-    });
-    i += 1;
+      delete component_handle;
+      done(s);
+    };
+
+    FunctionLibraryRuntime* flr = GetFLR(opts.target);
+    if (flr != nullptr) {
+      // Initialize local function synchronously.
+      Status s = flr->Instantiate(comp_data->name, AttrSlice(&attrs), opts,
+                                  component_handle);
+      wrapped_done(s);
+    } else {
+      opts.ret_indices = comp_data->ret_indices;
+      // Initialize remote function asynchronously.
+      InstantiateRemote(comp_data->name, AttrSlice(&attrs), opts,
+                        component_handle, std::move(wrapped_done));
+    }
+  };
+
+  // Instantiate each component function (subgraph).
+  //
+  // NOTE: Only use thread pool to instantiate sub-function when there are
+  // more than a threshold (default 8) of sub-functions. We want to avoid cost
+  // of switching thread when there are only a few sub-functions. However, for
+  // very large graphs, it may be necessary to increase this threshold to avoid
+  // running out of memory.
+  if (default_thread_pool_ != nullptr &&
+      num_subgraphs > GetParallelSubgraphThreshold()) {
+    BlockingCounter counter(static_cast<int>(num_subgraphs));
+    for (auto& pair : *subgraphs) {
+      Status* status = &instantiate_status[i];
+      ComponentFunctionData* comp_data = &data->glue_[pair.first];
+      comp_data->name = name_generator.GetName();
+      default_thread_pool_->Schedule(
+          [&instantiate_component, &pair, comp_data, &counter, status]() {
+            instantiate_component(pair.first, std::move(pair.second), comp_data,
+                                  [&counter, status](Status s) {
+                                    status->Update(s);
+                                    counter.DecrementCount();
+                                  });
+          });
+      i += 1;
+    }
+    counter.Wait();
+  } else {
+    for (auto& pair : *subgraphs) {
+      Notification n;
+      Status* status = &instantiate_status[i];
+      ComponentFunctionData* comp_data = &data->glue_[pair.first];
+      comp_data->name = name_generator.GetName();
+      instantiate_component(pair.first, std::move(pair.second), comp_data,
+                            [&n, status](Status s) {
+                              status->Update(s);
+                              n.Notify();
+                            });
+      n.WaitForNotification();
+      i += 1;
+    }
   }
-  counter.Wait();
+
   StatusGroup group;
   for (auto& status : instantiate_status) {
     group.Update(status);
