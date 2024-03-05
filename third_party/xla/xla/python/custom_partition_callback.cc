@@ -425,6 +425,7 @@ void PopulateResults(
   if (PopulateErrorHeader(args->header, result.status())) {
     return;
   }
+  args->has_result_sharding = result->has_value();
   if (result->has_value()) {
     auto* data = new std::string((*result)->ToProto().SerializeAsString());
     args->header.data = data;
