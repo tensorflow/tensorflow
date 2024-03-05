@@ -554,6 +554,36 @@ ENTRY %e {
   EXPECT_NE(executable, nullptr);
 }
 
+class TritonAutotunerDumpTest : public TritonAutotunerTest {
+ public:
+  DebugOptions GetDebugOptionsForTest() override {
+    DebugOptions debug_options = TritonAutotunerTest::GetDebugOptionsForTest();
+    debug_options.set_xla_gpu_cublas_fallback(true);
+    debug_options.set_xla_gpu_dump_autotuned_triton_fusions(true);
+    return debug_options;
+  }
+};
+
+TEST_F(TritonAutotunerDumpTest, DumpingFusionsWorksWithFallback) {
+  // Computation is chosen such that relatively heavy math operations before the
+  // GEMM are not worth fusing because they would get duplicated many times and
+  // slow down execution. Therefore autotuning picks cuBLAS here.
+  const std::string kHloText = R"(
+ENTRY e {
+  p0 = f32[3333,3333] parameter(0)
+  s = f32[3333,3333] sine(p0)
+  p1 = f32[3333,3333] parameter(1)
+  c = f32[3333,3333] cosine(p1)
+  ROOT dot = f32[3333,3333] dot(s, c),
+    lhs_contracting_dims={1}, rhs_contracting_dims={0}
+})";
+
+  MatchOptimizedHlo(kHloText, R"(
+; CHECK: cublas
+; CHECK-NOT: triton
+)");
+}
+
 TEST_F(TritonAutotunerTest, AutotuneCuDnnFusion) {
   if (!GetCudaComputeCapability().IsAtLeast(
           se::CudaComputeCapability::AMPERE)) {

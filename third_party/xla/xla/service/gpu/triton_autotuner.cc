@@ -974,8 +974,16 @@ absl::Status DumpAutotunedFusion(const AutotuneConfig& autotune_config,
                                  const AutotuneResult result,
                                  const HloFusionInstruction* fusion,
                                  int fusion_id) {
-  TF_ASSIGN_OR_RETURN(TritonGemmConfig triton_gemm_config,
-                      TritonGemmConfig::FromProto(result.triton()));
+  TritonGemmConfig triton_gemm_config;
+  if (!result.has_triton()) {
+    LOG(WARNING) << "Using empty triton GEMM config for op " << fusion->name();
+    // Empty TritonGemmConfig has all zero values which is good enough to keep
+    // fused computation in the dump but illustrate that Triton is not used for
+    // it after autotuning.
+  } else {
+    TF_ASSIGN_OR_RETURN(triton_gemm_config,
+                        TritonGemmConfig::FromProto(result.triton()));
+  }
   const se::DeviceDescription& device_desc =
       autotune_config.GetExecutor()->GetDeviceDescription();
   TF_ASSIGN_OR_RETURN(
