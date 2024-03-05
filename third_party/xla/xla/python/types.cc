@@ -25,45 +25,50 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/status/statusor.h"
+#include "third_party/nanobind/include/nanobind/nanobind.h"
+#include "third_party/nanobind/include/nanobind/stl/string_view.h"  // IWYU pragma: keep
 #include "xla/pjrt/exceptions.h"
 #include "xla/python/ifrt/dtype.h"
+#include "xla/python/nb_helpers.h"
+#include "xla/python/nb_numpy.h"
 #include "xla/python/pjrt_ifrt/pjrt_array.h"
 #include "xla/status_macros.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
 
+namespace nb = nanobind;
 namespace py = pybind11;
 
 namespace {
 
 struct CustomDtypes {
-  py::dtype bfloat16;
-  py::dtype float8_e4m3fn;
-  py::dtype float8_e4m3b11fnuz;
-  py::dtype float8_e4m3fnuz;
-  py::dtype float8_e5m2;
-  py::dtype float8_e5m2fnuz;
-  py::dtype int4;
-  py::dtype uint4;
+  nb_dtype bfloat16;
+  nb_dtype float8_e4m3fn;
+  nb_dtype float8_e4m3b11fnuz;
+  nb_dtype float8_e4m3fnuz;
+  nb_dtype float8_e5m2;
+  nb_dtype float8_e5m2fnuz;
+  nb_dtype int4;
+  nb_dtype uint4;
 };
 
 const CustomDtypes& GetCustomDtypes() {
   static const CustomDtypes& custom_dtypes = *[]() {
-    py::module ml_dtypes = py::module::import("ml_dtypes");
+    nb::module_ ml_dtypes = nb::module_::import_("ml_dtypes");
     auto* dtypes = new CustomDtypes;
-    dtypes->bfloat16 = py::dtype::from_args(ml_dtypes.attr("bfloat16"));
+    dtypes->bfloat16 = nb_dtype::from_args(ml_dtypes.attr("bfloat16"));
     dtypes->float8_e4m3fn =
-        py::dtype::from_args(ml_dtypes.attr("float8_e4m3fn"));
-    dtypes->float8_e5m2 = py::dtype::from_args(ml_dtypes.attr("float8_e5m2"));
+        nb_dtype::from_args(ml_dtypes.attr("float8_e4m3fn"));
+    dtypes->float8_e5m2 = nb_dtype::from_args(ml_dtypes.attr("float8_e5m2"));
     dtypes->float8_e4m3b11fnuz =
-        py::dtype::from_args(ml_dtypes.attr("float8_e4m3b11fnuz"));
+        nb_dtype::from_args(ml_dtypes.attr("float8_e4m3b11fnuz"));
     dtypes->float8_e4m3fnuz =
-        py::dtype::from_args(ml_dtypes.attr("float8_e4m3fnuz"));
+        nb_dtype::from_args(ml_dtypes.attr("float8_e4m3fnuz"));
     dtypes->float8_e5m2fnuz =
-        py::dtype::from_args(ml_dtypes.attr("float8_e5m2fnuz"));
-    dtypes->int4 = py::dtype::from_args(ml_dtypes.attr("int4"));
-    dtypes->uint4 = py::dtype::from_args(ml_dtypes.attr("uint4"));
+        nb_dtype::from_args(ml_dtypes.attr("float8_e5m2fnuz"));
+    dtypes->int4 = nb_dtype::from_args(ml_dtypes.attr("int4"));
+    dtypes->uint4 = nb_dtype::from_args(ml_dtypes.attr("uint4"));
     return dtypes;
   }();
   return custom_dtypes;
@@ -71,7 +76,7 @@ const CustomDtypes& GetCustomDtypes() {
 
 }  // namespace
 
-absl::StatusOr<PrimitiveType> DtypeToPrimitiveType(const py::dtype& np_type) {
+absl::StatusOr<PrimitiveType> DtypeToPrimitiveType(const nb_dtype& np_type) {
   static auto& builtin_dtypes =
       *new absl::flat_hash_map<std::tuple<char, char, int>, PrimitiveType>({
           {{'?', 'b', 1}, PRED},
@@ -100,17 +105,17 @@ absl::StatusOr<PrimitiveType> DtypeToPrimitiveType(const py::dtype& np_type) {
   }
 
   struct DtypeEq {
-    bool operator()(const py::dtype& a, const py::dtype& b) const {
+    bool operator()(const nb_dtype& a, const nb_dtype& b) const {
       return a.equal(b);
     }
   };
   struct DtypeHash {
-    ssize_t operator()(const py::dtype& key) const { return py::hash(key); }
+    ssize_t operator()(const nb_dtype& key) const { return nb_hash(key); }
   };
   static auto* custom_dtype_map = []() {
     const CustomDtypes& custom_dtypes = GetCustomDtypes();
     auto* map =
-        new absl::flat_hash_map<py::dtype, PrimitiveType, DtypeHash, DtypeEq>();
+        new absl::flat_hash_map<nb_dtype, PrimitiveType, DtypeHash, DtypeEq>();
     map->emplace(custom_dtypes.bfloat16, BF16);
     map->emplace(custom_dtypes.float8_e4m3fn, F8E4M3FN);
     map->emplace(custom_dtypes.float8_e4m3b11fnuz, F8E4M3B11FNUZ);
@@ -127,35 +132,43 @@ absl::StatusOr<PrimitiveType> DtypeToPrimitiveType(const py::dtype& np_type) {
     return custom_it->second;
   }
   return InvalidArgument("Unknown NumPy dtype %s char %c kind %c itemsize %d",
-                         static_cast<std::string>(py::repr(np_type)),
+                         nb::cast<std::string_view>(nb::repr(np_type)),
                          np_type.char_(), np_type.kind(), np_type.itemsize());
 }
 
-absl::StatusOr<py::dtype> PrimitiveTypeToDtype(PrimitiveType type) {
+absl::StatusOr<PrimitiveType> DtypeToPrimitiveType(const py::dtype& np_type) {
+  return DtypeToPrimitiveType(nb::borrow<nb_dtype>(np_type.ptr()));
+}
+
+absl::StatusOr<nb_dtype> PrimitiveTypeToNbDtype(PrimitiveType type) {
   const CustomDtypes& custom_dtypes = GetCustomDtypes();
+  auto to_nb_dtype = [](int typenum) -> nb_dtype {
+    return nb::steal<nb_dtype>(
+        reinterpret_cast<PyObject*>(PyArray_DescrFromType(typenum)));
+  };
   switch (type) {
     case PRED:
-      return py::dtype::of<bool>();
+      return to_nb_dtype(NPY_BOOL);
     case S4:
       return custom_dtypes.int4;
     case S8:
-      return py::dtype::of<int8_t>();
+      return to_nb_dtype(NPY_INT8);
     case S16:
-      return py::dtype::of<int16_t>();
+      return to_nb_dtype(NPY_INT16);
     case S32:
-      return py::dtype::of<int32_t>();
+      return to_nb_dtype(NPY_INT32);
     case S64:
-      return py::dtype::of<int64_t>();
+      return to_nb_dtype(NPY_INT64);
     case U4:
       return custom_dtypes.uint4;
     case U8:
-      return py::dtype::of<uint8_t>();
+      return to_nb_dtype(NPY_UINT8);
     case U16:
-      return py::dtype::of<uint16_t>();
+      return to_nb_dtype(NPY_UINT16);
     case U32:
-      return py::dtype::of<uint32_t>();
+      return to_nb_dtype(NPY_UINT32);
     case U64:
-      return py::dtype::of<uint64_t>();
+      return to_nb_dtype(NPY_UINT64);
     case F8E4M3FN:
       return custom_dtypes.float8_e4m3fn;
     case F8E4M3B11FNUZ:
@@ -169,58 +182,67 @@ absl::StatusOr<py::dtype> PrimitiveTypeToDtype(PrimitiveType type) {
     case BF16:
       return custom_dtypes.bfloat16;
     case F16:
-      return py::dtype("e");  // PEP 3118 code for "float16
+      return to_nb_dtype(NPY_HALF);
     case F32:
-      return py::dtype::of<float>();
+      return to_nb_dtype(NPY_FLOAT);
     case F64:
-      return py::dtype::of<double>();
+      return to_nb_dtype(NPY_DOUBLE);
     case C64:
-      return py::dtype::of<std::complex<float>>();
+      return to_nb_dtype(NPY_COMPLEX64);
     case C128:
-      return py::dtype::of<std::complex<double>>();
+      return to_nb_dtype(NPY_COMPLEX128);
     default:
       return Unimplemented("Unimplemented primitive type %s",
                            PrimitiveType_Name(type));
   }
 }
 
-absl::StatusOr<pybind11::dtype> IfrtDtypeToDtype(ifrt::DType dtype) {
+absl::StatusOr<py::dtype> PrimitiveTypeToDtype(PrimitiveType type) {
+  TF_ASSIGN_OR_RETURN(nb_dtype np_type, PrimitiveTypeToNbDtype(type));
+  return py::reinterpret_steal<py::dtype>(np_type.release().ptr());
+}
+
+absl::StatusOr<nb_dtype> IfrtDtypeToNbDtype(ifrt::DType dtype) {
   const CustomDtypes& custom_dtypes = GetCustomDtypes();
+  auto to_nb_dtype = [](int typenum) -> nb_dtype {
+    return nb::steal<nb_dtype>(
+        reinterpret_cast<PyObject*>(PyArray_DescrFromType(typenum)));
+  };
   switch (dtype.kind()) {
     case ifrt::DType::kPred:
-      return py::dtype::of<bool>();
+      return to_nb_dtype(NPY_BOOL);
     case ifrt::DType::kS4:
-      return custom_dtypes.int4;
+      return to_nb_dtype(NPY_INT8);
     case ifrt::DType::kS8:
-      return py::dtype::of<int8_t>();
+      return to_nb_dtype(NPY_INT8);
     case ifrt::DType::kS16:
-      return py::dtype::of<int16_t>();
+      return to_nb_dtype(NPY_INT16);
     case ifrt::DType::kS32:
-      return py::dtype::of<int32_t>();
+      return to_nb_dtype(NPY_INT32);
     case ifrt::DType::kS64:
-      return py::dtype::of<int64_t>();
+      return to_nb_dtype(NPY_INT64);
     case ifrt::DType::kU4:
-      return custom_dtypes.uint4;
+      return to_nb_dtype(NPY_UINT8);
     case ifrt::DType::kU8:
-      return py::dtype::of<uint8_t>();
+      return to_nb_dtype(NPY_UINT8);
     case ifrt::DType::kU16:
-      return py::dtype::of<uint16_t>();
+      return to_nb_dtype(NPY_UINT16);
     case ifrt::DType::kU32:
-      return py::dtype::of<uint32_t>();
+      return to_nb_dtype(NPY_UINT32);
     case ifrt::DType::kU64:
-      return py::dtype::of<uint64_t>();
+      return to_nb_dtype(NPY_UINT64);
     case ifrt::DType::kF16:
-      return py::dtype("e");  // PEP 3118 code for "float16"
+      return to_nb_dtype(NPY_HALF);
     case ifrt::DType::kF32:
-      return py::dtype::of<float>();
+      return to_nb_dtype(NPY_FLOAT);
     case ifrt::DType::kF64:
-      return py::dtype::of<double>();
+      return to_nb_dtype(NPY_DOUBLE);
     case ifrt::DType::kBF16:
       return custom_dtypes.bfloat16;
     case ifrt::DType::kC64:
-      return py::dtype::of<std::complex<float>>();
+      return to_nb_dtype(NPY_COMPLEX64);
     case ifrt::DType::kC128:
-      return py::dtype::of<std::complex<double>>();
+      return to_nb_dtype(NPY_COMPLEX128);
     case ifrt::DType::kF8E4M3FN:
       return custom_dtypes.float8_e4m3fn;
     case ifrt::DType::kF8E4M3B11FNUZ:
@@ -238,11 +260,16 @@ absl::StatusOr<pybind11::dtype> IfrtDtypeToDtype(ifrt::DType dtype) {
       // part of dtype. Using 'O' allows us to represent variable-length bytes
       // and is also consistent with TensorFlow's tensor -> ndarray conversion
       // logic (see `TF_DataType_to_PyArray_TYPE`).
-      return py::dtype("O");
+      return to_nb_dtype(NPY_OBJECT);
     default:
       return Unimplemented("Unimplemented primitive type %s",
                            dtype.DebugString());
   }
+}
+
+absl::StatusOr<pybind11::dtype> IfrtDtypeToDtype(ifrt::DType dtype) {
+  TF_ASSIGN_OR_RETURN(nb_dtype np_type, IfrtDtypeToNbDtype(dtype));
+  return py::reinterpret_steal<py::dtype>(np_type.release().ptr());
 }
 
 absl::StatusOr<ifrt::DType> DtypeToIfRtDType(py::dtype dtype) {
