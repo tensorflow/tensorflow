@@ -27,7 +27,7 @@ namespace xla {
 class DynamicDimensionSimplifier : public HloModulePass {
  public:
   absl::string_view name() const override {
-    return "dynamic dimension simplifier";
+    return "dynamic-dimension-simplifier";
   }
 
   using HloPassInterface::Run;
