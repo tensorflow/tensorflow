@@ -635,7 +635,8 @@ Status CpuCompiler::RunHloPassesThroughLayoutAssn(
 
     spmd_pipeline.AddPass<ShardingPropagation>(
         /*is_spmd=*/true, /*propagate_metadata=*/false,
-        module->config().allow_spmd_sharding_propagation_to_output());
+        module->config().allow_spmd_sharding_propagation_to_output(),
+        module->config().allow_spmd_sharding_propagation_to_parameters());
     spmd_pipeline.AddPass<spmd::StatefulRngSpmdPartitioner>(
         num_partitions, module->config().replica_count());
     TF_RETURN_IF_ERROR(spmd_pipeline.Run(module).status());

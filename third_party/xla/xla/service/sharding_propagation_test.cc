@@ -10138,6 +10138,182 @@ ENTRY %entry {
               op::Sharding("{devices=[4]0,1,2,3}"));
 }
 
+TEST_F(ShardingPropagationTest,
+       DoNotPropagateToParameterIfNotDivisible_WithSharding) {
+  const char* const hlo_string = R"(
+HloModule module
+
+ENTRY %entry {
+  %param0 = f32[4] parameter(0), sharding={replicated}
+  %param1 = f32[3] parameter(1), sharding={replicated}
+  %pad_value = f32[] constant(0)
+  %pad = f32[4] pad(%param1, %pad_value), padding=0_1
+  ROOT %add = f32[4] add(%param0, %pad), sharding={devices=[4]0,1,2,3}
+})";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  TF_ASSERT_OK_AND_ASSIGN(
+      bool changed,
+      ShardingPropagation(
+          /*is_spmd=*/true, /*propagate_metadata=*/true,
+          /*allow_spmd_sharding_propagation_to_output=*/{false},
+          /*allow_spmd_sharding_propagation_to_parameters=*/{false, true})
+          .Run(module.get()));
+  XLA_VLOG_LINES(1, module->ToString());
+  EXPECT_TRUE(changed);
+  EXPECT_THAT(module->entry_computation()->parameter_instruction(0),
+              op::Sharding("{replicated}"));
+  // Replicate the input since the propagated sharding does not evenly partition
+  // it.
+  EXPECT_THAT(module->entry_computation()->parameter_instruction(1),
+              op::Sharding("{replicated}"));
+}
+
+TEST_F(ShardingPropagationTest,
+       DoNotPropagateToParameterIfNotDivisible_WithoutSharding) {
+  const char* const hlo_string = R"(
+HloModule module
+
+ENTRY %entry {
+  %param0 = f32[4] parameter(0), sharding={replicated}
+  %param1 = f32[3] parameter(1)
+  %pad_value = f32[] constant(0)
+  %pad = f32[4] pad(%param1, %pad_value), padding=0_1
+  ROOT %add = f32[4] add(%param0, %pad), sharding={devices=[4]0,1,2,3}
+})";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  TF_ASSERT_OK_AND_ASSIGN(
+      bool changed,
+      ShardingPropagation(
+          /*is_spmd=*/true, /*propagate_metadata=*/true,
+          /*allow_spmd_sharding_propagation_to_output=*/{false},
+          /*allow_spmd_sharding_propagation_to_parameters=*/{false, true})
+          .Run(module.get()));
+  XLA_VLOG_LINES(1, module->ToString());
+  EXPECT_TRUE(changed);
+  EXPECT_THAT(module->entry_computation()->parameter_instruction(0),
+              op::Sharding("{replicated}"));
+  // Replicate the input since the propagated sharding does not evenly partition
+  // it.
+  EXPECT_THAT(module->entry_computation()->parameter_instruction(1),
+              op::Sharding("{replicated}"));
+}
+
+TEST_F(ShardingPropagationTest,
+       DoNotPropagateToOutputIfNotDivisible_WithSharding) {
+  const char* const hlo_string = R"(
+HloModule module
+
+ENTRY %entry {
+  %param0 = f32[4] parameter(0), sharding={replicated}
+  %param1 = f32[4] parameter(1), sharding={replicated}
+  %add = f32[4] add(%param0, %param1), sharding={devices=[4]0,1,2,3}
+  ROOT %slice = f32[3] slice(%add), slice={[0:3:1]}, sharding={replicated}
+})";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  TF_ASSERT_OK_AND_ASSIGN(
+      bool changed,
+      ShardingPropagation(
+          /*is_spmd=*/true, /*propagate_metadata=*/true,
+          /*allow_spmd_sharding_propagation_to_output=*/{true},
+          /*allow_spmd_sharding_propagation_to_parameters=*/{false, false})
+          .Run(module.get()));
+  XLA_VLOG_LINES(1, module->ToString());
+  EXPECT_TRUE(changed);
+  // Replicate the output since the propagated sharding does not evenly
+  // partition it.
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              op::Sharding("{replicated}"));
+}
+
+TEST_F(ShardingPropagationTest,
+       DoNotPropagateToOutputIfNotDivisible_WithoutSharding) {
+  const char* const hlo_string = R"(
+HloModule module
+
+ENTRY %entry {
+  %param0 = f32[4] parameter(0), sharding={replicated}
+  %param1 = f32[4] parameter(1), sharding={replicated}
+  %add = f32[4] add(%param0, %param1), sharding={devices=[4]0,1,2,3}
+  ROOT %slice = f32[3] slice(%add), slice={[0:3:1]}
+})";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  TF_ASSERT_OK_AND_ASSIGN(
+      bool changed,
+      ShardingPropagation(
+          /*is_spmd=*/true, /*propagate_metadata=*/true,
+          /*allow_spmd_sharding_propagation_to_output=*/{true},
+          /*allow_spmd_sharding_propagation_to_parameters=*/{false, false})
+          .Run(module.get()));
+  XLA_VLOG_LINES(1, module->ToString());
+  EXPECT_TRUE(changed);
+  // Replicate the output since the propagated sharding does not evenly
+  // partition it.
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              op::Sharding("{replicated}"));
+}
+
+TEST_F(ShardingPropagationTest,
+       DoNotPropagateToOutputTupleIfNotDivisible_WithSharding) {
+  const char* const hlo_string = R"(
+HloModule module
+
+ENTRY %entry {
+  %param0 = f32[4] parameter(0), sharding={replicated}
+  %param1 = f32[4] parameter(1), sharding={replicated}
+  %add = f32[4] add(%param0, %param1), sharding={devices=[4]0,1,2,3}
+  %slice = f32[3] slice(%add), slice={[0:3:1]}
+  ROOT %tuple = (f32[4], f32[3]) tuple(%add, %slice), sharding={{replicated}, {replicated}}
+})";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  TF_ASSERT_OK_AND_ASSIGN(
+      bool changed,
+      ShardingPropagation(
+          /*is_spmd=*/true, /*propagate_metadata=*/true,
+          /*allow_spmd_sharding_propagation_to_output=*/{false, true},
+          /*allow_spmd_sharding_propagation_to_parameters=*/{false, false})
+          .Run(module.get()));
+  XLA_VLOG_LINES(1, module->ToString());
+  EXPECT_TRUE(changed);
+  // Replicate the output tuple element since the propagated sharding does not
+  // evenly partition it.
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              op::Sharding("{{replicated}, {replicated}}"));
+}
+
+TEST_F(ShardingPropagationTest,
+       DoNotPropagateToOutputTupleIfNotDivisible_WithoutSharding) {
+  const char* const hlo_string = R"(
+HloModule module
+
+ENTRY %entry {
+  %param0 = f32[4] parameter(0), sharding={replicated}
+  %param1 = f32[4] parameter(1), sharding={replicated}
+  %add = f32[4] add(%param0, %param1), sharding={devices=[4]0,1,2,3}
+  %slice = f32[3] slice(%add), slice={[0:3:1]}
+  ROOT %tuple = (f32[4], f32[3]) tuple(%add, %slice)
+})";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  TF_ASSERT_OK_AND_ASSIGN(
+      bool changed,
+      ShardingPropagation(
+          /*is_spmd=*/true, /*propagate_metadata=*/true,
+          /*allow_spmd_sharding_propagation_to_output=*/{true, true},
+          /*allow_spmd_sharding_propagation_to_parameters=*/{false, false})
+          .Run(module.get()));
+  XLA_VLOG_LINES(1, module->ToString());
+  EXPECT_TRUE(changed);
+  // Replicate the output tuple element since the propagated sharding does not
+  // evenly partition it.
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              op::Sharding("{{devices=[4]0,1,2,3}, {replicated}}"));
+}
+
 TEST_F(ShardingPropagationTest, PropagateShardLikeDifferentSharding) {
   const char* const hlo_string = R"(
 HloModule module

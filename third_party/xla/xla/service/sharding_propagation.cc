@@ -3391,6 +3391,69 @@ absl::StatusOr<bool> ShardingPropagation::Run(
       }
     }
   }
+  // Replicate the parameter/output sharding if the propagated sharding does not
+  // evenly partition the parameter/output.
+  std::function<bool(const Shape&, const HloSharding&)> evenly_partitions =
+      [&evenly_partitions](const Shape& shape,
+                           const HloSharding& sharding) -> bool {
+    if (!sharding.IsTiled()) {
+      return true;
+    }
+    if (sharding.IsTileMaximal()) {
+      return sharding.IsReplicated();
+    }
+    if (sharding.IsTuple()) {
+      for (int64_t i = 0; i < ShapeUtil::TupleElementCount(shape); ++i) {
+        if (!evenly_partitions(ShapeUtil::GetTupleElementShape(shape, i),
+                               sharding.GetSubSharding(shape, {i}))) {
+          return false;
+        }
+      }
+    }
+    for (int64_t i = 0; i < shape.dimensions_size(); ++i) {
+      if (shape.dimensions(i) % sharding.tile_assignment().dim(i) != 0) {
+        return false;
+      }
+    }
+    return true;
+  };
+  if (allow_spmd_sharding_propagation_to_output_ &&
+      root_instruction->has_sharding()) {
+    if (root_instruction->shape().IsTuple() &&
+        allow_spmd_sharding_propagation_to_output_vector_.size() ==
+            root_instruction->shape().tuple_shapes_size()) {
+      // The output shape is a tuple and sharding propagation is allowed for at
+      // least one of its elements.
+      HloSharding root_sharding = root_instruction->sharding();
+      for (int64_t i = 0; i < root_instruction->shape().tuple_shapes_size();
+           ++i) {
+        if (allow_spmd_sharding_propagation_to_output_vector_[i] &&
+            !evenly_partitions(root_instruction->shape().tuple_shapes(i),
+                               root_sharding.tuple_elements()[i])) {
+          root_sharding.tuple_elements()[i] = HloSharding::Replicate();
+        }
+      }
+      root_instruction->set_sharding(std::move(root_sharding));
+    } else if (!root_instruction->shape().IsTuple()) {
+      // The output shape is not tuple and sharding propagation is allowed.
+      if (!evenly_partitions(root_instruction->shape(),
+                             root_instruction->sharding())) {
+        root_instruction->set_sharding(HloSharding::Replicate());
+      }
+    }
+  }
+  if (allow_spmd_sharding_propagation_to_parameters_ &&
+      allow_spmd_sharding_propagation_to_parameters_vector_.size() ==
+          params.size()) {
+    // Sharding propagation is allowed for at least one parameter.
+    for (int64_t i = 0; i < params.size(); ++i) {
+      if (params[i]->has_sharding() &&
+          allow_spmd_sharding_propagation_to_parameters_vector_[i] &&
+          !evenly_partitions(params[i]->shape(), params[i]->sharding())) {
+        params[i]->set_sharding(HloSharding::Replicate());
+      }
+    }
+  }
   TF_RETURN_IF_ERROR(CanonicalizeLayouts(module));
 
   VLOG(1) << "Sharding propagation completed after " << iterations
