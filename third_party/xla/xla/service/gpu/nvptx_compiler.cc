@@ -552,8 +552,8 @@ static absl::StatusOr<std::vector<uint8_t>> AssembleOptionsAndCompile(
           cc.major, cc.minor, ptx.c_str(), ptxas_config, cancel_if_reg_spill);
     }
 
-    return se::CompileGpuAsm(cc.major, cc.minor, ptx.c_str(), ptxas_config,
-                             cancel_if_reg_spill);
+    return se::CompileGpuAsmUsingPtxAs(cc.major, cc.minor, ptx.c_str(),
+                                       ptxas_config, cancel_if_reg_spill);
   }();
 
   if (maybe_cubin.ok()) {

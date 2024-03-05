@@ -444,6 +444,8 @@ gpu_only_cc_library(
         ":gpu_types_header",
         "//xla:util",
         "//xla/stream_executor",
+        "//xla/stream_executor/cuda:ptx_compiler",
+        "//xla/stream_executor/cuda:ptx_compiler_support",
         "//xla/stream_executor/platform",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/cleanup",

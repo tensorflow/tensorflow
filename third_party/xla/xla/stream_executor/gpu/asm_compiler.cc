@@ -44,6 +44,8 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
+#include "xla/stream_executor/cuda/ptx_compiler.h"
+#include "xla/stream_executor/cuda/ptx_compiler_support.h"
 #include "xla/stream_executor/gpu/gpu_asm_opts.h"
 #include "xla/stream_executor/gpu/gpu_driver.h"
 #include "xla/stream_executor/gpu/gpu_types.h"
@@ -279,10 +281,9 @@ absl::StatusOr<std::array<int64_t, 3>> GetAsmCompilerVersion(
   return GetToolVersion(ptxas_path);
 }
 
-absl::StatusOr<std::vector<uint8_t>> CompileGpuAsm(int cc_major, int cc_minor,
-                                                   const char* ptx_contents,
-                                                   GpuAsmOpts options,
-                                                   bool cancel_if_reg_spill) {
+absl::StatusOr<std::vector<uint8_t>> CompileGpuAsmUsingPtxAs(
+    int cc_major, int cc_minor, const char* ptx_contents, GpuAsmOpts options,
+    bool cancel_if_reg_spill) {
   TF_ASSIGN_OR_RETURN(auto ptxas_version_tuple,
                       GetAsmCompilerVersion(options.preferred_cuda_dir));
   if (ptxas_version_tuple == std::array<int64_t, 3>{12, 3, 103}) {
@@ -570,6 +571,22 @@ absl::StatusOr<std::vector<uint8_t>> BundleGpuAsm(
   TF_RETURN_IF_ERROR(
       tsl::ReadFileToString(tsl::Env::Default(), result_path, &result_blob));
   return std::vector<uint8_t>(result_blob.begin(), result_blob.end());
+}
+
+absl::StatusOr<std::vector<uint8_t>> CompileGpuAsm(int cc_major, int cc_minor,
+                                                   const char* ptx_contents,
+                                                   GpuAsmOpts options,
+                                                   bool cancel_if_reg_spill) {
+  if (IsLibNvPtxCompilerSupported()) {
+    VLOG(3) << "Compiling GPU ASM with libnvptxcompiler";
+    return CompileGpuAsmUsingLibNvPtxCompiler(cc_major, cc_minor, ptx_contents,
+                                              options, cancel_if_reg_spill);
+  }
+
+  VLOG(3) << "Compiling GPU ASM with PTXAS. Libnvptxcompiler compilation "
+             "not supported.";
+  return CompileGpuAsmUsingPtxAs(cc_major, cc_minor, ptx_contents, options,
+                                 cancel_if_reg_spill);
 }
 
 }  // namespace stream_executor

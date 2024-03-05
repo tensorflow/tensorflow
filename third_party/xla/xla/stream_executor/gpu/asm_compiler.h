@@ -64,6 +64,10 @@ absl::StatusOr<std::vector<uint8_t>> CompileGpuAsm(
     int cc_major, int cc_minor, const char* ptx_contents, GpuAsmOpts options,
     bool cancel_if_reg_spill = false);
 
+absl::StatusOr<std::vector<uint8_t>> CompileGpuAsmUsingPtxAs(
+    int cc_major, int cc_minor, const char* ptx_contents, GpuAsmOpts options,
+    bool cancel_if_reg_spill = false);
+
 // Same as CompileGpuAsm, but caches the result, and returns unowned view of
 // the compiled binary.
 //
