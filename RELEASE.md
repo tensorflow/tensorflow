@@ -20,12 +20,12 @@
 
 *   To continue using Keras 2.0, do the following.
 
-*   1.  Install tf-keras via pip install tf-keras~=2.16
+*   1.  Install `tf-keras` via `pip install tf-keras~=2.16`
 
-    1.  To switch tf.keras to use Keras 2 (tf-keras), set the environment variable TF_USE_LEGACY_KERAS=1 directly or in your python program by import os;os.environ["TF_USE_LEGACY_KERAS"]=1. Please note that this will set it for all packages in your Python runtime program
+    1.  To switch `tf.keras` to use Keras 2 (`tf-keras`), set the environment variable `TF_USE_LEGACY_KERAS=1` directly or in your python program with `import os;os.environ["TF_USE_LEGACY_KERAS"]="1"`. Please note that this will set it for all packages in your Python runtime program
 
-*   1.  Change import of keras from tensorflow as follows
-*   import tensorflow.keras as keras and import keras to import tf_keras as keras
+    1.  Change the keras import: replace `import tensorflow.keras as keras` or `import keras` with `import tf_keras as keras`. Update any `tf.keras` references to `keras`.
+       
 * **Apple Silicon users:** If you previously installed TensorFlow using `pip install tensorflow-macos`, please update your installation method. Use `pip install tensorflow` from now on.
 * **Mac x86 users:** Mac x86 builds are being deprecated and will no longer be
   released as a Pip package from TF 2.17 onwards. 
