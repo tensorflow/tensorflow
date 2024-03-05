@@ -13,6 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "xla/stream_executor/cuda/ptx_compiler.h"
+
 #include <sys/types.h>
 
 #include <cstdint>
@@ -24,13 +26,11 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "xla/stream_executor/cuda/ptx_compiler_support.h"
 #include "xla/stream_executor/device_description.h"
-#include "xla/stream_executor/gpu/asm_compiler.h"
 #include "xla/stream_executor/gpu/gpu_asm_opts.h"
 #include "tsl/platform/status_matchers.h"
 #include "tsl/platform/test.h"
-
-#ifdef ENABLE_LIBNVPTXCOMPILER_SUPPORT
 
 namespace {
 
@@ -162,20 +162,32 @@ absl::StatusOr<std::vector<uint8_t>> CompileHelper(
       cc.major, cc.minor, ptx_input, options, cancel_if_reg_spill);
 }
 
-TEST(NvPtxCompilerTest, IdentifiesUnsupportedArchitecture) {
+class PtxCompilerTest : public ::testing::Test {
+  void SetUp() override {
+    // This can't be in the constructor because `GTEST_SKIP` can't be called
+    // from constructors.
+    if (!stream_executor::IsLibNvPtxCompilerSupported()) {
+      // We skip these tests if this is a build without libnvptxcompiler
+      // support.
+      GTEST_SKIP();
+    }
+  }
+};
+
+TEST_F(PtxCompilerTest, IdentifiesUnsupportedArchitecture) {
   stream_executor::GpuAsmOpts options{};
   EXPECT_THAT(
       CompileHelper(stream_executor::CudaComputeCapability{100, 0}, kSimplePtx),
       tsl::testing::StatusIs(absl::StatusCode::kUnimplemented));
 }
 
-TEST(NvPtxCompilerTest, CanCompileSingleCompilationUnit) {
+TEST_F(PtxCompilerTest, CanCompileSingleCompilationUnit) {
   stream_executor::GpuAsmOpts options{};
   EXPECT_THAT(CompileHelper(kDefaultComputeCapability, kSimplePtx),
               tsl::testing::IsOk());
 }
 
-TEST(NvPtxCompilerTest, CancelsOnRegSpill) {
+TEST_F(PtxCompilerTest, CancelsOnRegSpill) {
   // We have to disable optimization here, otherwise PTXAS will optimize our
   // trivial register usages away and we don't spill as intended.
   EXPECT_THAT(CompileHelper(kDefaultComputeCapability, kSpillingPtx,
@@ -190,7 +202,7 @@ TEST(NvPtxCompilerTest, CancelsOnRegSpill) {
               tsl::testing::IsOk());
 }
 
-TEST(NvPtxCompilerTest, AcceptsExtraArguments) {
+TEST_F(PtxCompilerTest, AcceptsExtraArguments) {
   // It's tricky to test whether `extra_arguments` works without depending on
   // too much nvptx internals. So we pass the `--generate-line-info` flags and
   // expect strictly larger outputs than without the flag.
@@ -215,5 +227,3 @@ TEST(NvPtxCompilerTest, AcceptsExtraArguments) {
 }
 
 }  // namespace
-
-#endif  // if defined(ENABLE_LIBNVPTXCOMPILER_SUPPORT)

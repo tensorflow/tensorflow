@@ -89,9 +89,10 @@ limitations under the License.
 #include "xla/service/reshape_mover.h"
 #include "xla/service/tuple_simplifier.h"
 #include "xla/status.h"
-#include "xla/statusor.h"
 #include "xla/stream_executor/cuda/cuda_diagnostics.h"
 #include "xla/stream_executor/cuda/cuda_platform_id.h"
+#include "xla/stream_executor/cuda/ptx_compiler.h"
+#include "xla/stream_executor/cuda/ptx_compiler_support.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/dnn.h"
 #include "xla/stream_executor/gpu/asm_compiler.h"
@@ -545,13 +546,10 @@ static absl::StatusOr<std::vector<uint8_t>> AssembleOptionsAndCompile(
       options.is_autotuning_compilation;
 
   absl::StatusOr<std::vector<uint8_t>> maybe_cubin = [&] {
-    if (hlo_module_config.debug_options().xla_gpu_enable_libnvptxcompiler()) {
-#ifdef ENABLE_LIBNVPTXCOMPILER_SUPPORT
+    if (hlo_module_config.debug_options().xla_gpu_enable_libnvptxcompiler() &&
+        se::IsLibNvPtxCompilerSupported()) {
       return se::CompileGpuAsmUsingLibNvPtxCompiler(
           cc.major, cc.minor, ptx.c_str(), ptxas_config, cancel_if_reg_spill);
-#else
-      LOG(FATAL) << "Libnvptxcompiler is not supported in this build.";
-#endif
     }
 
     return se::CompileGpuAsm(cc.major, cc.minor, ptx.c_str(), ptxas_config,

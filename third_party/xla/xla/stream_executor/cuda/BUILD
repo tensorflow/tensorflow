@@ -517,30 +517,88 @@ cuda_only_cc_library(
     ],
 )
 
-cc_library(name = "libnvptxcompiler_empty")
-
-# This intermediate target is needed because we can't nest `select` statements.
-alias(
-    name = "libnvptxcompiler_if_enabled",
-    actual = select({
-        ":libnvptxcompiler_support_enabled": "@local_config_cuda//cuda:nvptxcompiler",
-        "//conditions:default": ":libnvptxcompiler_empty",
+cc_library(
+    name = "ptx_compiler_support",
+    srcs = ["ptx_compiler_support.cc"],
+    hdrs = ["ptx_compiler_support.h"],
+    local_defines = select({
+        ":libnvptxcompiler_support_enabled": [
+            "LIBNVPTXCOMPILER_SUPPORT=true",
+        ],
+        "//conditions:default": [
+            "LIBNVPTXCOMPILER_SUPPORT=false",
+        ],
     }),
+)
+
+cc_library(
+    name = "ptx_compiler_stub",
+    srcs = [
+        "ptx_compiler_stub.cc",
+    ],
+    deps = [
+        "//xla/stream_executor/gpu:gpu_asm_opts",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+    ],
+)
+
+cc_library(
+    name = "ptx_compiler_impl",
+    srcs = [
+        "ptx_compiler_impl.cc",
+    ],
     tags = ["manual"],
+    deps = [
+        "//xla/stream_executor/gpu:gpu_asm_opts",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/cleanup",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
+        "@local_config_cuda//cuda:cuda_headers",
+        "@local_config_cuda//cuda:nvptxcompiler",
+    ],
+)
+
+cc_library(
+    name = "ptx_compiler",
+    hdrs = ["ptx_compiler.h"],
+    deps = select({
+        ":libnvptxcompiler_support_enabled": [":ptx_compiler_impl"],
+        "//conditions:default": [":ptx_compiler_stub"],
+    }) + [
+        "//xla/stream_executor/gpu:gpu_asm_opts",
+        "@com_google_absl//absl/status:statusor",
+    ],
+)
+
+xla_cc_test(
+    name = "ptx_compiler_test",
+    srcs = ["ptx_compiler_test.cc"],
+    tags = tf_cuda_tests_tags(),
+    deps = [
+        ":ptx_compiler",
+        ":ptx_compiler_support",
+        "//xla/stream_executor:device_description",
+        "//xla/stream_executor/gpu:gpu_asm_opts",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_googletest//:gtest",
+        "@local_tsl//tsl/platform:status_matchers",
+        "@local_tsl//tsl/platform:test",
+        "@local_tsl//tsl/platform:test_main",
+    ],
 )
 
 cuda_only_cc_library(
     name = "cuda_asm_compiler",
     srcs = ["cuda_asm_compiler.cc"],
     copts = tf_additional_gpu_compilation_copts(),
-    local_defines = select({
-        ":libnvptxcompiler_support_enabled": [
-            "ENABLE_LIBNVPTXCOMPILER_SUPPORT=1",
-        ],
-        "//conditions:default": [],
-    }),
     deps = [
-        ":libnvptxcompiler_if_enabled",
         "//xla:status_macros",
         "//xla/stream_executor:stream_executor_headers",
         "//xla/stream_executor/gpu:asm_compiler_header",
@@ -561,30 +619,6 @@ cuda_only_cc_library(
         "@local_tsl//tsl/platform:status",
         "@local_tsl//tsl/platform:statusor",
         "@local_tsl//tsl/platform:subprocess",
-    ],
-)
-
-xla_cc_test(
-    name = "cuda_asm_compiler_test",
-    srcs = ["cuda_asm_compiler_test.cc"],
-    local_defines = select({
-        ":libnvptxcompiler_support_enabled": [
-            "ENABLE_LIBNVPTXCOMPILER_SUPPORT=1",
-        ],
-        "//conditions:default": [],
-    }),
-    tags = tf_cuda_tests_tags(),
-    deps = [
-        ":cuda_asm_compiler",  # buildcleaner: keep
-        "//xla/stream_executor:device_description",
-        "//xla/stream_executor/gpu:asm_compiler",  # buildcleaner: keep
-        "//xla/stream_executor/gpu:gpu_asm_opts",
-        "@com_google_absl//absl/status",
-        "@com_google_absl//absl/status:statusor",
-        "@com_google_googletest//:gtest",
-        "@local_tsl//tsl/platform:status_matchers",
-        "@local_tsl//tsl/platform:test",
-        "@local_tsl//tsl/platform:test_main",
     ],
 )
 
@@ -683,4 +717,8 @@ cc_library(
     name = "cudnn_frontend_helpers",
     srcs = ["cudnn_frontend_helpers.cc"],
     hdrs = ["cudnn_frontend_helpers.h"],
+)
+
+cc_library(
+    name = "cuda_nvptxcompiler",
 )
