@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/lite/experimental/shlo/bf16.h"
 #include "tensorflow/lite/experimental/shlo/data_type.h"
 #include "tensorflow/lite/experimental/shlo/shape.h"
+#include "tensorflow/lite/experimental/shlo/status_matcher.h"
 #include "tensorflow/lite/experimental/shlo/tensor.h"
 #include "tensorflow/lite/experimental/shlo/tensor_matcher.h"
 #include "tensorflow/lite/experimental/shlo/tensor_with_data.h"

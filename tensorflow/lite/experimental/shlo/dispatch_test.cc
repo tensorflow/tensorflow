@@ -17,7 +17,9 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+
 #include "absl/status/status.h"
+#include "tensorflow/lite/experimental/shlo/status_matcher.h"
 
 namespace {
 
