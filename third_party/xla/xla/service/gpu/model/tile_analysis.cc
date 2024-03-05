@@ -151,24 +151,8 @@ AffineMap SubstituteAllIndicesAndKnownSymbolsWithSameValue(
 //
 // Strictly solving (1) may yield negative strides (e.g. in the case of
 // reverse). Conceptually, negative strides denote of a decremental iteration
-// order over indices {0, ..., size_expr{i} - 1}. Since all indices within a
-// tile are captured at the same time (they are only explicit here as a
-// convenience), we can reverse this iteration order by replacing
-//   index_expr{i}
-// with
-//   (size_expr{i} - 1 - index_expr{i}).
-//
-// This gives us a new expression
-//
-//     change-iteration-order(offset_expr{i} + stride_expr{i} * index_expr{i})
-//   = offset_expr{i} - |stride_expr{i}| * (size_expr{i} - 1 - index_expr{i})
-//   = offset_expr{i} - |stride_expr{i}| * (size_expr{i} - 1) +
-//     |stride_expr{i}| * index_expr{i}
-//   = offset_expr'{i} + stride_expr'{i} * index_expr{i}
-// where
-//   offset_expr'{i} = offset_expr{i} - |stride_expr{i}| * (size_expr{i} - 1)
-//   stride_expr'{i} = |stride_expr{i}| = -stride_expr{i}
-// and size, offset, and stride expressions are positive.
+// order over indices {0, ..., size_expr{i} - 1}. This is not normalized in
+// symbolic tiles, and must be handled by consumers.
 //
 // The resulting affine maps elide known symbols from the list of parameter
 // symbols, since they will have been replaced by constants.
@@ -188,19 +172,18 @@ std::optional<RawSymbolicTile> RawSymbolicTileFromIndexingMap(
   // offsets_expr = f'(0, ..., 0)[0, ..., 0]
   AffineMap f_prime_0 = SubstituteAllIndicesAndKnownSymbolsWithSameValue(
       affine_map, getAffineConstantExpr(0, mlir_context), num_known_symbols);
-  llvm::ArrayRef<AffineExpr> unnormalized_offset_expressions =
-      f_prime_0.getResults();
+  llvm::ArrayRef<AffineExpr> offset_expressions = f_prime_0.getResults();
 
   // Compute f'(1, ..., 1)[1, ..., 1].
   AffineMap f_prime_1 = SubstituteAllIndicesAndKnownSymbolsWithSameValue(
       affine_map, getAffineConstantExpr(1, mlir_context), num_known_symbols);
 
   // strides_expr = f'(1, ..., 1)[1, ..., 1] - f'(0, ..., 0)[0, ..., 0]
-  std::vector<AffineExpr> signed_stride_expressions;
-  signed_stride_expressions.reserve(num_results);
+  std::vector<AffineExpr> stride_expressions;
+  stride_expressions.reserve(num_results);
   for (auto [sub_lhs, sub_rhs] :
-       llvm::zip(f_prime_1.getResults(), f_prime_0.getResults())) {
-    signed_stride_expressions.push_back(
+       llvm::zip(f_prime_1.getResults(), offset_expressions)) {
+    stride_expressions.push_back(
         simplifyAffineExpr(sub_lhs - sub_rhs, affine_map.getNumDims(),
                            affine_map.getNumSymbols()));
   }
@@ -221,9 +204,8 @@ std::optional<RawSymbolicTile> RawSymbolicTileFromIndexingMap(
   std::vector<AffineExpr> size_expressions;
   size_expressions.reserve(num_results);
   constexpr int kSizePositionWithinTileParameters = 1;
-  for (auto [offset_expr, stride_expr, input_expr] :
-       llvm::zip(unnormalized_offset_expressions, signed_stride_expressions,
-                 affine_map.getResults())) {
+  for (auto [offset_expr, stride_expr, input_expr] : llvm::zip(
+           offset_expressions, stride_expressions, affine_map.getResults())) {
     AffineExpr size_expr;
     if (stride_expr == getAffineConstantExpr(0, mlir_context)) {
       size_expr = getAffineConstantExpr(1, mlir_context);
@@ -252,31 +234,6 @@ std::optional<RawSymbolicTile> RawSymbolicTileFromIndexingMap(
       });
     }
     size_expressions.push_back(size_expr);
-  }
-
-  // Normalize offsets and strides to be non-negative if possible.
-  std::vector<AffineExpr> offset_expressions;
-  offset_expressions.reserve(num_results);
-  std::vector<AffineExpr> stride_expressions;
-  stride_expressions.reserve(num_results);
-  RangeEvaluator range_evaluator(indexing_map.GetDimensionRanges(),
-                                 indexing_map.GetSymbolRanges(),
-                                 indexing_map.GetMLIRContext());
-  for (auto [offset_expr, stride_expr, size_expr] :
-       llvm::zip(unnormalized_offset_expressions, signed_stride_expressions,
-                 size_expressions)) {
-    if (range_evaluator.IsAlwaysPositiveOrZero(stride_expr)) {
-      offset_expressions.push_back(offset_expr);
-      stride_expressions.push_back(stride_expr);
-    } else if (range_evaluator.IsAlwaysNegativeOrZero(stride_expr)) {
-      offset_expressions.push_back(offset_expr + stride_expr * size_expr);
-      stride_expressions.push_back(-stride_expr);
-    } else {
-      // In that case, the comparison is inconclusive---the expression may be
-      // both positive or negative depending on the parameters. We can not
-      // produce a tile that satisfies the "non-negative" requirements.
-      return std::nullopt;
-    }
   }
 
   int64_t num_symbols = affine_map.getNumSymbols();
