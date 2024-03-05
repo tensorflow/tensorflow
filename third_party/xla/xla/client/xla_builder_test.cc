@@ -1743,6 +1743,7 @@ struct BinaryOpTestCase {
 constexpr absl::string_view kBroadcastDimensionMismatch =
     "Broadcast dimension 0 mismatch: 2 != -9223372036854775808; f32[2] and "
     "f32[?,10].";
+std::array<const int64_t, 1> zero_array = {0};
 
 class XlaBuilderUnboundedUnaryOpTest
     : public ::testing::TestWithParam<UnaryOpTestCase> {};
@@ -2381,28 +2382,28 @@ INSTANTIATE_TEST_SUITE_P(
     ::testing::ValuesIn<BinaryOpTestCase>({
         {"f32[1, ?, 2, ?, <=2, ?, ?]", "f32[?, 1, ?, 2, ?, <=2, ?]",
          /*broadcast_dimensions=*/{}, "f32[?, ?, 2, 2, <=2, <=2, ?]", &Add},
-        {"f32[?, 10]", "f32[1]", /*broadcast_dimensions=*/{0}, "f32[?, 10]",
-         &Add},
+        {"f32[?, 10]", "f32[1]", /*broadcast_dimensions=*/zero_array,
+         "f32[?, 10]", &Add},
         {"f32[1, ?, 2, ?, <=2, ?, ?]", "f32[?, 1, ?, 2, ?, <=2, ?]",
          /*broadcast_dimensions=*/{}, "f32[?, ?, 2, 2, <=2, <=2, ?]", &Div},
-        {"f32[?, 10]", "f32[1]", /*broadcast_dimensions=*/{0}, "f32[?, 10]",
-         &Div},
+        {"f32[?, 10]", "f32[1]", /*broadcast_dimensions=*/zero_array,
+         "f32[?, 10]", &Div},
         {"f32[1, ?, 2, ?, <=2, ?, ?]", "f32[?, 1, ?, 2, ?, <=2, ?]",
          /*broadcast_dimensions=*/{}, "f32[?, ?, 2, 2, <=2, <=2, ?]", &Max},
-        {"f32[?, 10]", "f32[1]", /*broadcast_dimensions=*/{0}, "f32[?, 10]",
-         &Max},
+        {"f32[?, 10]", "f32[1]", /*broadcast_dimensions=*/zero_array,
+         "f32[?, 10]", &Max},
         {"f32[1, ?, 2, ?, <=2, ?, ?]", "f32[?, 1, ?, 2, ?, <=2, ?]",
          /*broadcast_dimensions=*/{}, "f32[?, ?, 2, 2, <=2, <=2, ?]", &Mul},
-        {"f32[?, 10]", "f32[1]", /*broadcast_dimensions=*/{0}, "f32[?, 10]",
-         &Mul},
+        {"f32[?, 10]", "f32[1]", /*broadcast_dimensions=*/zero_array,
+         "f32[?, 10]", &Mul},
         {"f32[1, ?, 2, ?, <=2, ?, ?]", "f32[?, 1, ?, 2, ?, <=2, ?]",
          /*broadcast_dimensions=*/{}, "f32[?, ?, 2, 2, <=2, <=2, ?]", &Pow},
-        {"f32[?, 10]", "f32[1]", /*broadcast_dimensions=*/{0}, "f32[?, 10]",
-         &Pow},
+        {"f32[?, 10]", "f32[1]", /*broadcast_dimensions=*/zero_array,
+         "f32[?, 10]", &Pow},
         {"f32[1, ?, 2, ?, <=2, ?, ?]", "f32[?, 1, ?, 2, ?, <=2, ?]",
          /*broadcast_dimensions=*/{}, "f32[?, ?, 2, 2, <=2, <=2, ?]", &Sub},
-        {"f32[?, 10]", "f32[1]", /*broadcast_dimensions=*/{0}, "f32[?, 10]",
-         &Sub},
+        {"f32[?, 10]", "f32[1]", /*broadcast_dimensions=*/zero_array,
+         "f32[?, 10]", &Sub},
     }));
 
 }  // namespace

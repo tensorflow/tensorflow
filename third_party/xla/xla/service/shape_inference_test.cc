@@ -49,6 +49,7 @@ constexpr absl::string_view kBroadcastDimensionMismatchErrorMessage =
     "Broadcast dimension 0 mismatch";
 constexpr absl::string_view kIncompatibleBinaryOpShapeErrorMessage =
     "Binary op with incompatible shapes";
+std::array<const int64_t, 1> zero_array = {0};
 
 class ShapeInferenceTest : public ::testing::Test {
  protected:
@@ -4540,12 +4541,9 @@ INSTANTIATE_TEST_SUITE_P(UnboundedDynamism, UnboundedAndOpShapeInferenceTest,
                               // ?   | ?   | []    | ?
                               {"s32[?]", "s32[?]", {}, "s32[?]"},
                               // 1   | ?,3 | [0]   | ?,3
-                              {"s32[1]", "s32[?,3]", {0}, "s32[?,3]"},
+                              {"s32[1]", "s32[?,3]", zero_array, "s32[?,3]"},
                               // 2   | ?,3 | [0]   | err
-                              {"s32[2]",
-                               "s32[?,3]",
-                               {0},
-                               "",
+                              {"s32[2]", "s32[?,3]", zero_array, "",
                                kBroadcastDimensionMismatchErrorMessage},
                               // ?,2 | ?,3 | []    | err
                               {"s32[?,2]",
@@ -4572,12 +4570,9 @@ INSTANTIATE_TEST_SUITE_P(UnboundedDynamism, UnboundedBinaryOpShapeInferenceTest,
                               // ?   | ?   | []    | ?
                               {"f32[?]", "f32[?]", {}, "f32[?]"},
                               // 1   | ?,3 | [0]   | ?,3
-                              {"f32[1]", "f32[?,3]", {0}, "f32[?,3]"},
+                              {"f32[1]", "f32[?,3]", zero_array, "f32[?,3]"},
                               // 2   | ?,3 | [0]   | err
-                              {"f32[2]",
-                               "f32[?,3]",
-                               {0},
-                               "",
+                              {"f32[2]", "f32[?,3]", zero_array, "",
                                kBroadcastDimensionMismatchErrorMessage},
                               // ?,2 | ?,3 | []    | err
                               {"f32[?,2]",
@@ -4605,12 +4600,9 @@ INSTANTIATE_TEST_SUITE_P(UnboundedDynamism,
                               // ?   | ?   | []    | ?
                               {"f32[?]", "f32[?]", {}, "pred[?]"},
                               // 1   | ?,3 | [0]   | ?,3
-                              {"f32[1]", "f32[?,3]", {0}, "pred[?,3]"},
+                              {"f32[1]", "f32[?,3]", zero_array, "pred[?,3]"},
                               // 2   | ?,3 | [0]   | err
-                              {"f32[2]",
-                               "f32[?,3]",
-                               {0},
-                               "",
+                              {"f32[2]", "f32[?,3]", zero_array, "",
                                kBroadcastDimensionMismatchErrorMessage},
                               // ?,2 | ?,3 | []    | err
                               {"f32[?,2]",
