@@ -103,6 +103,14 @@ int64_t SizeFunction(const BufferValue& value) {
   return ShapeSize(value.shape());
 }
 
+int64_t ReservedScopedMemoryFunction(
+    const HloInstruction* instruction,
+    const absl::flat_hash_set<std::pair<int, ShapeIndex>>&
+        operands_in_alternate_memory,
+    const absl::flat_hash_set<ShapeIndex>& outputs_in_alternate_memory) {
+  return 0;
+}
+
 template <typename MessageType>
 StatusOr<MessageType> ParseTextProto(const std::string& text_proto) {
   tsl::protobuf::TextFormat::Parser parser;
@@ -9634,7 +9642,9 @@ class MemoryBoundLoopOptimizerTest : public HloTestBase {
 
   StatusOr<MemoryBoundLoopOptimizer*> CreateOptimizer(
       int loop_start, int loop_end, const HloModule* module,
-      uint64_t alternate_memory_size = 256) {
+      uint64_t alternate_memory_size = 256,
+      const MemorySpaceAssignment::ReservedScopedMemoryFunction&
+          reserved_scoped_memory_fn = ReservedScopedMemoryFunction) {
     TF_RETURN_IF_ERROR(Initialize(module, alternate_memory_size));
     MemoryBoundLoopOptimizerOptions optimizer_options;
     optimizer_options.set_enabled(true);
@@ -9644,13 +9654,16 @@ class MemoryBoundLoopOptimizerTest : public HloTestBase {
         optimizer_,
         MemoryBoundLoopOptimizer::Create(
             loop_start, loop_end, alternate_memory_size, optimizer_options,
-            *live_range_, *alias_analysis_, *cost_analysis_, SizeFunction));
+            *live_range_, *alias_analysis_, *cost_analysis_, SizeFunction,
+            reserved_scoped_memory_fn));
     return optimizer_.get();
   }
 
   StatusOr<std::unique_ptr<HloModule>> ParseAndCreateOptimizer(
       absl::string_view hlo_loop_str, uint64_t alternate_memory_size,
-      int& loop_start_idx, MemoryBoundLoopOptimizer** optimizer) {
+      int& loop_start_idx, MemoryBoundLoopOptimizer** optimizer,
+      const MemorySpaceAssignment::ReservedScopedMemoryFunction&
+          reserved_scoped_memory_fn = ReservedScopedMemoryFunction) {
     int loop_end_idx;
     TF_ASSIGN_OR_RETURN(
         std::string module_str,
@@ -9658,8 +9671,9 @@ class MemoryBoundLoopOptimizerTest : public HloTestBase {
     TF_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> module,
                         ParseAndReturnVerifiedModule(module_str));
     TF_ASSIGN_OR_RETURN(
-        *optimizer, CreateOptimizer(loop_start_idx, loop_end_idx, module.get(),
-                                    alternate_memory_size));
+        *optimizer,
+        CreateOptimizer(loop_start_idx, loop_end_idx, module.get(),
+                        alternate_memory_size, reserved_scoped_memory_fn));
     return std::move(module);
   }
 
@@ -10053,6 +10067,41 @@ TEST_F(MemoryBoundLoopOptimizerTest, SimplePrefetch) {
         module->entry_computation()->GetInstructionWithName(inst_name);
     EXPECT_TRUE(seen_uses.contains(HloUse{inst, 0})) << inst_name;
     EXPECT_TRUE(seen_uses.contains(HloUse{inst, 1})) << inst_name;
+  }
+}
+
+// Specify a ReservedScopedMemoryFunction to the loop optimizer that causes each
+// HLO to reserve the entire alternate memory. If the loop optimizer is
+// correctly accounting for reserved scoped memory, it should not put any
+// allocations in alternate memory, which we test.
+TEST_F(MemoryBoundLoopOptimizerTest, ReservedScopedMemory) {
+  absl::string_view hlo_loop_str = R"(
+    $op0 = f32[1,4] add(f32[1,4] $prev_op3, f32[1,4] $prev_op4)
+    $op1 = f32[1,4] add(f32[1,4] $prev_op4, f32[1,4] $op0)
+    $op2 = f32[1,4] add(f32[1,4] $op0, f32[1,4] $op1)
+    $op3 = f32[1,4] add(f32[1,4] $op1, f32[1,4] $op2)
+    $op4 = f32[1,4] add(f32[1,4] $param0, f32[1,4] $op3)
+    ROOT $root = tuple($op4, $param0)
+  )";
+  int loop_start_idx;
+  MemoryBoundLoopOptimizer* optimizer;
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto module,
+      ParseAndCreateOptimizer(
+          hlo_loop_str,
+          /*alternate_memory_size=*/128, loop_start_idx, &optimizer,
+          [](const HloInstruction*,
+             const absl::flat_hash_set<std::pair<int, ShapeIndex>>&,
+             const absl::flat_hash_set<ShapeIndex>&) { return 128; }));
+
+  optimizer->Optimize();
+  for (const MemoryBoundLoopOptimizer::LoopValue& loop_value :
+       optimizer->loop_values()) {
+    LOG(INFO) << "Loop value: " << loop_value.ToString();
+    for (const auto& allocation : loop_value.allocations) {
+      ASSERT_NE(static_cast<int64_t>(allocation->memory_space()),
+                kAlternateMemorySpace);
+    }
   }
 }
 
