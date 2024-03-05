@@ -94,7 +94,12 @@ cc_library(
     name = "batch_scheduler_hdrs",
     hdrs = ["batch_scheduler.h"],
     deps = [
-        "//tensorflow/core:framework_headers_lib",
+        "//tensorflow/core:framework_lite",
+        "//tensorflow/core:portable_gif_internal",
+        "//tensorflow/core/lib/core:notification",
+        "//tensorflow/core/lib/core:status",
+        "//tensorflow/core/platform:thread_annotations",
+        "//tensorflow/core/profiler/lib:traceme",
     ],
 )
 
@@ -127,6 +132,7 @@ tf_cc_test(
         "//tensorflow/core:lib",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
