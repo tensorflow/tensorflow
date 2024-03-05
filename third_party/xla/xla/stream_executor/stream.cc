@@ -152,15 +152,6 @@ absl::Status Stream::Initialize() {
   return absl::InternalError("failed to allocate stream during initialization");
 }
 
-Stream &Stream::Init() {
-  absl::Status status = Initialize();
-  if (!status.ok()) {
-    LOG(ERROR) << status;
-  }
-
-  return *this;
-}
-
 absl::Status Stream::RecordEvent(Event *event) {
   return parent_->RecordEvent(this, event);
 }
