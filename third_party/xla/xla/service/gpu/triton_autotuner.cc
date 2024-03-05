@@ -377,15 +377,22 @@ std::vector<TritonGemmConfig> GetFixedMatmulAutotuneConfigs(
     const se::CudaComputeCapability compute_capability, const int max_split_k) {
   // Shorter name for better formatting.
   using Config = TritonGemmConfig;
-  std::vector<Config> configs = {
-      Config(32, 32, 256, 1, 1, 4), Config(64, 32, 32, 16, 1, 4),
-      Config(32, 64, 64, 4, 1, 4),  Config(128, 128, 64, 4, 1, 4),
-      Config(16, 16, 256, 1, 1, 4), Config(16, 128, 32, 16, 1, 4),
-      Config(16, 64, 128, 1, 1, 4), Config(16, 128, 32, 8, 1, 4),
-      Config(16, 16, 512, 1, 1, 4), Config(32, 16, 512, 1, 1, 4),
-      Config(64, 32, 64, 1, 2, 8)};
+
+  std::vector<Config> configs;
+  auto filter_fn = [&](const Config& config) {
+    return config.split_k <= max_split_k;
+  };
+  absl::c_copy_if(
+      std::vector<Config>{
+          Config(32, 32, 256, 1, 1, 4), Config(64, 32, 32, 16, 1, 4),
+          Config(32, 64, 64, 4, 1, 4), Config(128, 128, 64, 4, 1, 4),
+          Config(16, 16, 256, 1, 1, 4), Config(16, 128, 32, 16, 1, 4),
+          Config(16, 64, 128, 1, 1, 4), Config(16, 128, 32, 8, 1, 4),
+          Config(16, 16, 512, 1, 1, 4), Config(32, 16, 512, 1, 1, 4),
+          Config(64, 32, 64, 1, 2, 8)},
+      std::back_inserter(configs), filter_fn);
   if (compute_capability.IsAtLeast(se::CudaComputeCapability::AMPERE)) {
-    absl::c_copy(
+    absl::c_copy_if(
         std::vector<Config>{
             Config(128, 256, 32, 1, 3, 8),  Config(256, 128, 32, 1, 3, 8),
             Config(256, 64, 32, 1, 4, 4),   Config(64, 256, 32, 1, 4, 4),
@@ -398,22 +405,17 @@ std::vector<TritonGemmConfig> GetFixedMatmulAutotuneConfigs(
             Config(16, 16, 256, 1, 3, 4),   Config(128, 128, 64, 2, 1, 8),
             Config(64, 64, 64, 1, 2, 4),    Config(16, 64, 256, 8, 1, 4),
             Config(256, 256, 128, 1, 3, 8)},
-        std::back_inserter(configs));
+        std::back_inserter(configs), filter_fn);
   }
   if (compute_capability.IsAtLeast(se::CudaComputeCapability::HOPPER)) {
-    absl::c_copy(
+    absl::c_copy_if(
         std::vector<Config>{
             Config(16, 32, 32, 8, 1, 2),
             Config(16, 64, 128, 8, 1, 4),
             Config(16, 64, 128, 16, 3, 4),
         },
-        std::back_inserter(configs));
+        std::back_inserter(configs), filter_fn);
   }
-  configs.erase(std::remove_if(configs.begin(), configs.end(),
-                               [&](const Config& config) {
-                                 return config.split_k > max_split_k;
-                               }),
-                configs.end());
   return configs;
 }
 
