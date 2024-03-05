@@ -16,12 +16,17 @@ limitations under the License.
 #ifndef XLA_PJRT_PJRT_LAYOUT_H_
 #define XLA_PJRT_PJRT_LAYOUT_H_
 
+#include <memory>
 #include <string>
 #include <utility>
 
+#include "absl/log/check.h"
+#include "absl/strings/string_view.h"
 #include "xla/layout.h"
 #include "xla/service/hlo_parser.h"
 #include "xla/statusor.h"
+#include "tsl/platform/casts.h"
+#include "tsl/platform/statusor.h"
 
 namespace xla {
 
@@ -61,6 +66,16 @@ class PjRtXlaLayout : public PjRtLayout {
  private:
   Layout xla_layout_;
 };
+
+// TODO(b/327524065): make callers use PjRtLayout directly instead of assuming
+// an xla::Layout and get rid of this function.
+inline Layout GetXlaLayoutUnsafe(
+    const std::unique_ptr<PjRtLayout>& pjrt_layout) {
+  PjRtXlaLayout* xla_layout =
+      tensorflow::down_cast<PjRtXlaLayout*>(pjrt_layout.get());
+  CHECK(xla_layout != nullptr) << "Got unexpected layout type";
+  return xla_layout->xla_layout();
+}
 
 }  // namespace xla
 

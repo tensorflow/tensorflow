@@ -176,6 +176,7 @@ cc_library(
         ":pjrt_device_description",
         ":pjrt_executable",
         ":pjrt_future",
+        ":pjrt_layout",
         ":utils",
         "//xla:literal",
         "//xla:shape_util",
@@ -371,6 +372,10 @@ cc_library(
         "//xla:shape_util",
         "//xla:statusor",
         "//xla/service:hlo_parser",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/strings",
+        "@local_tsl//tsl/platform:casts",
+        "@local_tsl//tsl/platform:statusor",
     ],
 )
 
@@ -686,6 +691,7 @@ cc_library(
         ":pjrt_device_description",
         ":pjrt_executable",
         ":pjrt_future",
+        ":pjrt_layout",
         "//xla:literal",
         "//xla:shape_util",
         "//xla:status",

@@ -47,6 +47,7 @@ limitations under the License.
 #include "xla/pjrt/pjrt_device_description.h"
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/pjrt/pjrt_future.h"
+#include "xla/pjrt/pjrt_layout.h"
 #include "xla/service/computation_placer.h"
 #include "xla/service/hlo_cost_analysis.h"
 #include "xla/shape.h"
@@ -453,7 +454,7 @@ class PjRtCApiBuffer : public PjRtBuffer {
 
   absl::Span<const int64_t> dimensions() const override;
 
-  const Layout& layout() const override;
+  std::unique_ptr<PjRtLayout> layout() const override;
 
   // PJRT C API doesn't support tuple buffers.
   bool IsTuple() const override { return false; }
@@ -547,7 +548,7 @@ class PjRtCApiBuffer : public PjRtBuffer {
   // we set on `readiness_event` modifies `readiness_promise_`.
   std::shared_ptr<PjRtFuture<Status>::Promise> readiness_promise_;
   // Set and cached the first time layout() is called.
-  mutable std::optional<xla::Layout> layout_;
+  mutable std::optional<PjRtXlaLayout> layout_;
   // Set and cached the first time is_dynamic_dimension() is called.
   mutable std::optional<absl::InlinedVector<bool, InlineRank()>>
       is_dynamic_dimension_;

@@ -67,6 +67,7 @@ limitations under the License.
 #include "xla/pjrt/pjrt_device_description.h"
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/pjrt/pjrt_future.h"
+#include "xla/pjrt/pjrt_layout.h"
 #include "xla/service/computation_placer.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/service/hlo_module_config.h"
@@ -1710,7 +1711,7 @@ absl::Span<const int64_t> PjRtCApiBuffer::dimensions() const {
   return absl::Span<const int64_t>(args.dims, args.num_dims);
 }
 
-const Layout& PjRtCApiBuffer::layout() const {
+std::unique_ptr<PjRtLayout> PjRtCApiBuffer::layout() const {
   {
     absl::MutexLock lock(&mu_);
     if (!layout_.has_value()) {
@@ -1728,7 +1729,7 @@ const Layout& PjRtCApiBuffer::layout() const {
       layout_.emplace(*cpp_layout);
     }
   }
-  return *layout_;
+  return std::make_unique<PjRtXlaLayout>(*layout_);
 }
 
 bool PjRtCApiBuffer::has_dynamic_dimensions() const {
