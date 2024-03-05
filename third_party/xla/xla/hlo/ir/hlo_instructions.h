@@ -268,6 +268,8 @@ class HloAsyncInstruction : public HloInstruction {
     return async_wrapped_instruction()->HasSideEffect();
   }
 
+  HloAsyncInstruction* next() { return async_chain_next_; }
+
  protected:
   // Helper to constructs async-{start,update,done}.
   HloAsyncInstruction(HloOpcode opcode, const Shape& shape,
@@ -310,6 +312,9 @@ class HloAsyncStartInstruction : public HloAsyncInstruction {
   void set_async_execution_thread(
       absl::string_view async_execution_thread) override;
   HloInstructionProto ToProto() const override;
+
+  Status ReplaceOperandWithDifferentShape(int64_t operand_num,
+                                          HloInstruction* new_operand) override;
 
  private:
   void PrintExtraAttributesImpl(AttributePrinter& printer,

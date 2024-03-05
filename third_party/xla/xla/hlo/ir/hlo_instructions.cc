@@ -476,6 +476,24 @@ HloAsyncStartInstruction::CloneWithNewOperandsImpl(
       async_execution_thread_);
 }
 
+Status HloAsyncStartInstruction::ReplaceOperandWithDifferentShape(
+    int64_t operand_num, HloInstruction* new_operand) {
+  TF_RETURN_IF_ERROR(HloInstruction::ReplaceOperandWithDifferentShape(
+      operand_num, new_operand));
+
+  HloAsyncInstruction* current = this;
+  while (current->opcode() != HloOpcode::kAsyncDone) {
+    // Update parameter shape in async bundle.
+    Shape* operand_shape =
+        current->mutable_shape()->mutable_tuple_shapes(0)->mutable_tuple_shapes(
+            operand_num);
+    *operand_shape = new_operand->shape();
+    current = current->next();
+  }
+
+  return OkStatus();
+}
+
 HloCopyStartInstruction::HloCopyStartInstruction(
     const Shape& shape, HloInstruction* operand,
     std::optional<int> cross_program_prefetch_index)

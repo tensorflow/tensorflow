@@ -1605,8 +1605,8 @@ class HloInstruction {
   Status ReplaceOperandWith(int64_t operand_num, HloInstruction* new_operand);
 
   // Same as ReplaceOperandWith(), but new_operand can have a different shape.
-  Status ReplaceOperandWithDifferentShape(int64_t operand_num,
-                                          HloInstruction* new_operand);
+  virtual Status ReplaceOperandWithDifferentShape(int64_t operand_num,
+                                                  HloInstruction* new_operand);
 
   // Decomposes fusion back to individual parts.
   Status Defuse();

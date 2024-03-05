@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <initializer_list>
 #include <memory>
+#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -1797,5 +1798,97 @@ TEST_F(LayoutAssignmentTest, AliasConstrainedParamterWithUnconstrainedOutput) {
             m->entry_computation_layout().parameter_layout(0).shape());
 }
 
+TEST_F(LayoutAssignmentTest, DontPropagateAcrossAsyncCalls) {
+  constexpr std::string_view hlo = R"(
+HloModule main, entry_computation_layout={(f32[16,8]{0,1}) -> f32[16,8]{0,1}}
+
+%comp (inputs.0: f32[16,8]{1,0}) -> f32[16,8]{1,0} {
+  ROOT %root = f32[16,8]{1,0} parameter(0)
+}
+
+ENTRY %main (arg.0: f32[16,8]{0,1}) -> f32[16,8]{0,1} {
+  %arg.0 = f32[16,8]{0,1} parameter(0)
+  %call-start = ((f32[16,8]{1,0}), f32[16,8]{1,0}, s32[]) call-start(f32[16,8]{0,1} %arg.0), to_apply=%comp, async_execution_thread="thread"
+  %call-update = ((f32[16,8]{1,0}), f32[16,8]{1,0}, s32[]) call-update(((f32[16,8]{1,0}), f32[16,8]{1,0}, s32[]) %call-start)
+  ROOT %call-done = f32[16,8]{1,0} call-done(((f32[16,8]{1,0}), f32[16,8]{1,0}, s32[]) %call-update)
+}
+ )";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
+  LayoutAssignment layout_assignment(module->mutable_entry_computation_layout(),
+                                     nullptr);
+  EXPECT_IS_OK(layout_assignment
+                   .Run(module.get(), {HloInstruction::kMainExecutionThread})
+                   .status());
+
+  // Layouts of async calls should match the layouts of the called computation.
+  const HloInstruction* call_start =
+      FindInstruction(module.get(), "call-start");
+  ExpectLayoutIs(call_start->operand(0)->shape(), {1, 0});
+  ExpectLayoutIs(call_start->shape().tuple_shapes(0).tuple_shapes(0), {1, 0});
+
+  const HloInstruction* call_update =
+      FindInstruction(module.get(), "call-update");
+  ExpectLayoutIs(
+      call_update->operand(0)->shape().tuple_shapes(0).tuple_shapes(0), {1, 0});
+  ExpectLayoutIs(call_update->shape().tuple_shapes(0).tuple_shapes(0), {1, 0});
+
+  const HloInstruction* call_done = FindInstruction(module.get(), "call-done");
+  ExpectLayoutIs(call_done->operand(0)->shape().tuple_shapes(0).tuple_shapes(0),
+                 {1, 0});
+
+  // Copies should be inserted before and after the async call to preserve
+  // layouts between the program shape and async call.
+  EXPECT_EQ(call_start->operand(0)->opcode(), HloOpcode::kCopy);
+  EXPECT_EQ(call_done->users().size(), 1);
+  EXPECT_EQ(call_done->users()[0]->opcode(), HloOpcode::kCopy);
+}
+
+TEST_F(LayoutAssignmentTest, DontPropagateAcrossAsyncCustomCalls) {
+  constexpr std::string_view hlo = R"(
+HloModule main, entry_computation_layout={(f32[16,8]{0,1}) -> f32[16,8]{0,1}}
+
+ENTRY %main (arg.0: f32[16,8]{0,1}) -> f32[16,8]{0,1} {
+  %arg.0 = f32[16,8]{0,1} parameter(0)
+  %custom-call-start = ((f32[16,8]{1,0}), f32[16,8]{1,0}, s32[]) custom-call-start(f32[16,8]{0,1} %arg.0), custom_call_target="comp", operand_layout_constraints={f32[16,8]{1,0}}, async_execution_thread="thread"
+  %custom-call-update = ((f32[16,8]{1,0}), f32[16,8]{1,0}, s32[]) custom-call-update(((f32[16,8]{1,0}), f32[16,8]{1,0}, s32[]) %custom-call-start)
+  ROOT %custom-call-done = f32[16,8]{1,0} custom-call-done(((f32[16,8]{1,0}), f32[16,8]{1,0}, s32[]) %custom-call-update)
+}
+ )";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
+  LayoutAssignment layout_assignment(module->mutable_entry_computation_layout(),
+                                     nullptr);
+  EXPECT_IS_OK(layout_assignment
+                   .Run(module.get(), {HloInstruction::kMainExecutionThread})
+                   .status());
+
+  // Layouts of async calls should match the layouts of the called computation.
+  const HloInstruction* custom_call_start =
+      FindInstruction(module.get(), "custom-call-start");
+  ExpectLayoutIs(custom_call_start->operand(0)->shape(), {1, 0});
+  ExpectLayoutIs(custom_call_start->shape().tuple_shapes(0).tuple_shapes(0),
+                 {1, 0});
+
+  const HloInstruction* custom_call_update =
+      FindInstruction(module.get(), "custom-call-update");
+  ExpectLayoutIs(
+      custom_call_update->operand(0)->shape().tuple_shapes(0).tuple_shapes(0),
+      {1, 0});
+  ExpectLayoutIs(custom_call_update->shape().tuple_shapes(0).tuple_shapes(0),
+                 {1, 0});
+
+  const HloInstruction* custom_call_done =
+      FindInstruction(module.get(), "custom-call-done");
+  ExpectLayoutIs(
+      custom_call_done->operand(0)->shape().tuple_shapes(0).tuple_shapes(0),
+      {1, 0});
+
+  // Copies should be inserted before and after the async call to preserve
+  // layouts between the program shape and async call.
+  EXPECT_EQ(custom_call_start->operand(0)->opcode(), HloOpcode::kCopy);
+  EXPECT_EQ(custom_call_done->users().size(), 1);
+  EXPECT_EQ(custom_call_done->users()[0]->opcode(), HloOpcode::kCopy);
+}
 }  // namespace
 }  // namespace xla
