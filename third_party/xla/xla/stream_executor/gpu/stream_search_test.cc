@@ -24,7 +24,13 @@ namespace {
 
 class StreamSearchTest : public ::testing::Test {
  public:
-  Platform* GetPlatform() { return *PlatformManager::PlatformWithName("CUDA"); }
+  Platform* GetPlatform() {
+#if GOOGLE_CUDA
+    return *PlatformManager::PlatformWithName("CUDA");
+#elif TENSORFLOW_USE_ROCM
+    return *PlatformManager::PlatformWithName("ROCM");
+#endif
+  }
 };
 
 TEST_F(StreamSearchTest, NoMatchBadPtr) {

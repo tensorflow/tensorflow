@@ -25,7 +25,11 @@ limitations under the License.
 namespace stream_executor {
 
 TEST(MemcpyTest, PinnedHostMemory) {
+#if GOOGLE_CUDA
   Platform* platform = PlatformManager::PlatformWithName("CUDA").value();
+#elif TENSORFLOW_USE_ROCM
+  Platform* platform = PlatformManager::PlatformWithName("ROCM").value();
+#endif
   StreamExecutor* executor = platform->ExecutorForDevice(0).value();
   auto stream = executor->CreateStream().value();
 

@@ -700,3 +700,48 @@ xla_test(
         "//xla/stream_executor/rocm:rocm_platform",
     ]),
 )
+
+xla_cc_test(
+    name = "memcpy_test",
+    srcs = ["memcpy_test.cc"],
+    local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]) + if_rocm_is_configured([
+        "TENSORFLOW_USE_ROCM=1",
+    ]),
+    tags = tf_gpu_tests_tags(),
+    deps = [
+        "//xla/stream_executor",
+        "//xla/stream_executor:device_memory",
+        "//xla/stream_executor:platform_manager",
+        "@local_tsl//tsl/lib/core:status_test_util",
+        "@local_tsl//tsl/platform:statusor",
+        "@local_tsl//tsl/platform:test",
+        "@local_tsl//tsl/platform:test_main",
+    ] + if_cuda([
+        "//xla/stream_executor/cuda:cuda_platform",
+    ]) + if_rocm([
+        "//xla/stream_executor/rocm:rocm_platform",
+    ]),
+)
+
+xla_cc_test(
+    name = "stream_search_test",
+    size = "small",
+    srcs = ["stream_search_test.cc"],
+    local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]) + if_rocm_is_configured([
+        "TENSORFLOW_USE_ROCM=1",
+    ]),
+    tags = tf_gpu_tests_tags() + [
+        "requires-gpu-nvidia",
+    ],
+    deps = [
+        "//xla/stream_executor",
+        "//xla/stream_executor/host:host_platform",
+        "@com_google_absl//absl/status:statusor",
+        "@local_tsl//tsl/platform:test",
+        "@local_tsl//tsl/platform:test_main",
+    ] + if_cuda([
+        "//xla/stream_executor/cuda:cuda_platform",
+    ]) + if_rocm([
+        "//xla/stream_executor/rocm:rocm_platform",
+    ]),
+)

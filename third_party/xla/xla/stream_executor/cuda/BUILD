@@ -191,24 +191,6 @@ cuda_only_cc_library(
 )
 
 xla_cc_test(
-    name = "stream_search_test",
-    size = "small",
-    srcs = ["stream_search_test.cc"],
-    tags = tf_cuda_tests_tags() + [
-        "no_rocm",
-        "requires-gpu-nvidia",
-    ],
-    deps = [
-        ":cuda_platform",
-        "//xla/stream_executor",
-        "//xla/stream_executor/host:host_platform",
-        "@com_google_absl//absl/status:statusor",
-        "@local_tsl//tsl/platform:test",
-        "@local_tsl//tsl/platform:test_main",
-    ],
-)
-
-xla_cc_test(
     name = "cuda_driver_test",
     srcs = ["cuda_driver_test.cc"],
     tags = tf_cuda_tests_tags() + [
@@ -220,25 +202,6 @@ xla_cc_test(
         "//xla/stream_executor/gpu:gpu_driver_header",
         "@com_google_absl//absl/log",
         "@local_config_cuda//cuda:cuda_headers",
-        "@local_tsl//tsl/platform:test",
-        "@local_tsl//tsl/platform:test_main",
-    ],
-)
-
-xla_cc_test(
-    name = "memcpy_test",
-    srcs = ["memcpy_test.cc"],
-    tags = tf_cuda_tests_tags() + [
-        "no_rocm",
-        "requires-gpu-nvidia",
-    ],
-    deps = [
-        ":cuda_platform",
-        "//xla/stream_executor",
-        "//xla/stream_executor:device_memory",
-        "//xla/stream_executor:platform_manager",
-        "@local_tsl//tsl/lib/core:status_test_util",
-        "@local_tsl//tsl/platform:statusor",
         "@local_tsl//tsl/platform:test",
         "@local_tsl//tsl/platform:test_main",
     ],
