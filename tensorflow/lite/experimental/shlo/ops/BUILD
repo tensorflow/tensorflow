@@ -38,6 +38,7 @@ cc_test(
         "//tensorflow/lite/experimental/shlo:bf16",
         "//tensorflow/lite/experimental/shlo:data_type",
         "//tensorflow/lite/experimental/shlo:shape",
+        "//tensorflow/lite/experimental/shlo:status_matcher",
         "//tensorflow/lite/experimental/shlo:tensor",
         "//tensorflow/lite/experimental/shlo:tensor_matcher",
         "//tensorflow/lite/experimental/shlo:tensor_with_data",
