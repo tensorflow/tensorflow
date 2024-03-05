@@ -1,4 +1,4 @@
-# Release 2.16.0
+# Release 2.16.1
 
 ## TensorFlow
 
@@ -26,7 +26,9 @@
 
     1.  Change the keras import: replace `import tensorflow.keras as keras` or `import keras` with `import tf_keras as keras`. Update any `tf.keras` references to `keras`.
        
-* **Apple Silicon users:** If you previously installed TensorFlow using `pip install tensorflow-macos`, please update your installation method. Use `pip install tensorflow` from now on. Starting with TF 2.17, the `tensorflow-macos` package will no longer receive updates.
+* **Apple Silicon users:** If you previously installed TensorFlow using `pip install tensorflow-macos`, please update your installation method. Use `pip install tensorflow` from now on.
+* **Mac x86 users:** Mac x86 builds are being deprecated and will no longer be
+  released as a Pip package from TF 2.17 onwards. 
 
 ### Known Caveats
 
