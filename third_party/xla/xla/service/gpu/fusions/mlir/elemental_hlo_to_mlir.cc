@@ -682,13 +682,8 @@ absl::StatusOr<SmallVector<Value>> HloToMlir(
 
   switch (instr->opcode()) {
     case HloOpcode::kAbs:
-      if (primitive_util::IsComplexType(
-              instr->operand(0)->shape().element_type())) {
         return {MapHloOp<mhlo::AbsOp>(element_mlir_type, arg_types, operands,
                                       builder)};
-      } else {
-        return MapElementwiseOp<mhlo::AbsOp>(arg_types, operands, builder);
-      }
     case HloOpcode::kAdd:
       if (element_type == PRED) {
         return MapElementwiseOp<mhlo::OrOp>(arg_types, operands, builder);
@@ -822,11 +817,6 @@ absl::StatusOr<SmallVector<Value>> HloToMlir(
           operands, &builder)}};
     }
     case HloOpcode::kBitcast:
-      if (instr->operands()[0]->shape().element_type() == element_type) {
-        return operands;
-      }
-      return MapHloOp<mhlo::BitcastConvertOp>(result_element_type, arg_types,
-                                              operands, builder);
     case HloOpcode::kCopy:
     case HloOpcode::kSlice:
     case HloOpcode::kBroadcast:

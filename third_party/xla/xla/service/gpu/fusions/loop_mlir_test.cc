@@ -297,7 +297,7 @@ TEST_F(MlirLoopFusionTest, IotaCopyBitcastBroadcastReshapeReverseTranspose) {
     %fused_computation {
       %iota = f32[10,20,30] iota(), iota_dimension=2
       %copy = f32[10,20,30] copy(%iota)
-      %bitcast = s32[10,20,30] bitcast(%copy)
+      %bitcast = s32[10,20,30] bitcast-convert(%copy)
       %broadcast = s32[2,10,3,20,5,30,7] broadcast(%bitcast),
         dimensions={1,3,5}
       %reshape = s32[20,60,150,7] reshape(%broadcast)
