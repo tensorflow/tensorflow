@@ -20,6 +20,7 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "xla/hlo/experimental/auto_sharding/auto_sharding.pb.h"
 #include "xla/hlo/experimental/auto_sharding/auto_sharding_strategy.h"
@@ -709,7 +710,7 @@ TEST(ScaleRequest, SkipsScaling) {
 }
 
 TEST(ValidateRequest, AcceptsAutoShardingSolverRequest) {
-  ValidateRequest(DefaultAutoShardingSolverRequest());
+  CHECK_OK(ValidateRequest(DefaultAutoShardingSolverRequest()));
 }
 
 // clang-format on

@@ -36,11 +36,12 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
-#include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/time/clock.h"
 #include "absl/time/time.h"
 #include "xla/hlo/experimental/auto_sharding/auto_sharding_strategy.h"
+#include "xla/status.h"
+#include "xla/status_macros.h"
 #include "xla/util.h"
 #include "tsl/platform/fingerprint.h"
 #include "tsl/platform/hash.h"
@@ -659,6 +660,7 @@ AutoShardingSolverResult CallORToolsSolver(
           << "Number of workers: " << num_workers << "\n"
           << "Number of threads: " << solver->GetNumThreads() << "\n"
           << "Time limit: " << solver->time_limit() << "\n"
+          << "Request valid: " << ValidateRequest(request).ok() << "\n"
           << "Aliases: " << request.aliases_size() << "\n"
           << "Unique nodes: " << unique_nodes << "\n"
           << "Unique edges: " << unique_edges << "\n"
@@ -1002,23 +1004,23 @@ std::vector<std::string> Rationalize(const AutoShardingSolverRequest& request,
   return rationales;
 }
 
-void ValidateRequest(const AutoShardingSolverRequest& request) {
+Status ValidateRequest(const AutoShardingSolverRequest& request) {
   const int num_nodes = request.num_nodes();
   const int num_edges = request.edges_size();
-  CHECK_EQ(num_nodes, request.computation_costs_size());
-  CHECK_EQ(num_nodes, request.communication_costs_size());
-  CHECK_EQ(num_nodes, request.memory_costs_size());
-  CHECK_EQ(num_edges, request.resharding_costs_size());
+  TF_RET_CHECK(num_nodes == request.computation_costs_size());
+  TF_RET_CHECK(num_nodes == request.communication_costs_size());
+  TF_RET_CHECK(num_nodes == request.memory_costs_size());
+  TF_RET_CHECK(num_edges == request.resharding_costs_size());
 
   for (NodeIdx u = 0; u < num_nodes; ++u) {
     const int num_strategies = request.computation_costs(u).costs_size();
-    CHECK_GE(num_strategies, 1);
-    CHECK_EQ(num_strategies, request.communication_costs(u).costs_size());
-    CHECK_EQ(num_strategies, request.memory_costs(u).costs_size());
+    TF_RET_CHECK(num_strategies >= 1);
+    TF_RET_CHECK(num_strategies == request.communication_costs(u).costs_size());
+    TF_RET_CHECK(num_strategies == request.memory_costs(u).costs_size());
     for (NodeStrategyIdx strategy = 0; strategy < num_strategies; ++strategy) {
-      CHECK_GE(request.computation_costs(u).costs(strategy), 0.0);
-      CHECK_GE(request.communication_costs(u).costs(strategy), 0.0);
-      CHECK_GE(request.memory_costs(u).costs(strategy), 0.0);
+      TF_RET_CHECK(request.computation_costs(u).costs(strategy) >= 0.0);
+      TF_RET_CHECK(request.communication_costs(u).costs(strategy) >= 0.0);
+      TF_RET_CHECK(request.memory_costs(u).costs(strategy) >= 0.0);
     }
   }
 
@@ -1026,12 +1028,12 @@ void ValidateRequest(const AutoShardingSolverRequest& request) {
   for (EdgeIdx e = 0; e < num_edges; ++e) {
     const int u = request.edges(e).first();
     const int v = request.edges(e).second();
-    CHECK_GE(u, 0);
-    CHECK_LT(u, num_nodes);
-    CHECK_GE(v, 0);
-    CHECK_LT(v, num_nodes);
-    CHECK_LT(u, v);
-    CHECK_EQ(edges_seen.count({u, v}), 0);
+    TF_RET_CHECK(u >= 0);
+    TF_RET_CHECK(u < num_nodes);
+    TF_RET_CHECK(v >= 0);
+    TF_RET_CHECK(v < num_nodes);
+    TF_RET_CHECK(u < v);
+    TF_RET_CHECK(edges_seen.count({u, v}) == 0);
     edges_seen.insert({u, v});
 
     const int num_strategies = request.resharding_costs(e).costs_size();
@@ -1039,9 +1041,10 @@ void ValidateRequest(const AutoShardingSolverRequest& request) {
     const int num_v_strategies = request.computation_costs(v).costs_size();
     CHECK_EQ(num_strategies, num_u_strategies * num_v_strategies);
     for (EdgeStrategyIdx strategy = 0; strategy < num_strategies; ++strategy) {
-      CHECK_GE(request.resharding_costs(e).costs(strategy), 0.0);
+      TF_RET_CHECK(request.resharding_costs(e).costs(strategy) >= 0.0);
     }
   }
+  return OkStatus();
 }
 
 }  // namespace spmd
