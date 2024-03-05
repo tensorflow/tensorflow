@@ -445,6 +445,53 @@ ENTRY main.24 {
   EXPECT_FALSE(HaveRemainingOffloadAnnotations(module.get()));
 }
 
+TEST_F(HostOffloaderTest, NoCopyMultipleUsers) {
+  const std::string& hlo_string = R"(
+HloModule my_module
+ENTRY main {
+  data_param = f32[2048] parameter(0)
+  offload_custom_call = f32[2048] custom-call(data_param), custom_call_target="PipelineForward"
+  sine = f32[2048] sine(data_param)
+  load_custom_call = f32[2048] custom-call(offload_custom_call), custom_call_target="PipelineBackward"
+  ROOT add = f32[2048] add(sine, load_custom_call)
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunHostOffloader(module.get()));
+
+  EXPECT_TRUE(changed);
+
+  // Look for the following pattern:
+  //   parameter
+  //     /  \
+  //  sine  copy
+  //     |   |
+  //     |  copy
+  //     |  /
+  //     add
+  HloInstruction* param;
+  HloInstruction* sine;
+  HloInstruction* copy_to_host;
+  HloInstruction* copy_to_device;
+  HloInstruction* add;
+  const auto param_pattern = m::Parameter(&param, 0);
+  ASSERT_THAT(
+      module->entry_computation()->root_instruction(),
+      GmockMatch(m::Add(
+          &add, m::Sin(&sine, param_pattern),
+          m::Copy(&copy_to_device, m::Copy(&copy_to_host, param_pattern)))));
+  TestShapeHasMemorySpace(param->shape(), Layout::kDefaultMemorySpace);
+  TestShapeHasMemorySpace(sine->shape(), Layout::kDefaultMemorySpace);
+  TestShapeHasMemorySpace(copy_to_host->shape(), kHostMemorySpaceColor);
+  TestShapeHasMemorySpace(copy_to_device->shape(), Layout::kDefaultMemorySpace);
+  TestShapeHasMemorySpace(add->shape(), Layout::kDefaultMemorySpace);
+
+  EXPECT_FALSE(HaveRemainingOffloadAnnotations(module.get()));
+}
+
 TEST_F(HostOffloaderTest, BasicDusDsWithMultipleBroadcastUsers) {
   const std::string& hlo_string = R"(
 HloModule my_module
@@ -1644,6 +1691,83 @@ ENTRY main {
   EXPECT_THAT(dus1, GmockMatch(m::DynamicUpdateSlice(m::Op(), m::Copy(),
                                                      m::Op(), m::Op(), m::Op(),
                                                      m::Op(), m::Op())));
+}
+
+TEST_F(HostOffloaderTest, ParameterStreaming) {
+  const std::string& hlo_string = R"(
+HloModule ParameterStreaming, entry_computation_layout={(s32[2,1]{1,0:T(2,128)S(5)}, s32[2,1]{1,0:T(2,128)})->(s32[2,1]{1,0:T(2,128)S(5)}, s32[2,1]{1,0:T(2,128)S(5)})}
+
+ENTRY main {
+  param_0 = s32[2,1]{1,0} parameter(0)
+  param_1 = s32[2,1]{1,0} parameter(1)
+  constant_2 = s32[] constant(2)
+  constant_4 = s32[] constant(4)
+  broadcast_0 = s32[2,1]{1,0} broadcast(constant_2), dimensions={}
+  multiply_0 = s32[2,1]{1,0} multiply(param_1, broadcast_0)
+  custom_call = s32[2,1]{1,0} custom-call(param_0), custom_call_target="PipelineBackward"
+  multiply_1 = s32[2,1]{1,0} multiply(multiply_0, custom_call)
+  broadcast_1 = s32[2,1]{1,0} broadcast(constant_4), dimensions={}
+  multiply_2 = s32[2,1]{1,0} multiply(multiply_1, broadcast_1)
+  ROOT tuple = (s32[2,1]{1,0}, s32[2,1]{1,0}) tuple(multiply_2, multiply_1)
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunHostOffloader(module.get()));
+
+  EXPECT_TRUE(changed);
+
+  // Look for the following pattern:
+  //         constant
+  //            |
+  // param1 broadcast  param0
+  //     \  /           /
+  //   multiply      copy
+  //       \         /
+  //        \       /
+  //         multiply   constant
+  //         |     |       |
+  //         |  ---+---broadcast
+  //         | /   |
+  //      multiply |
+  //            \  |
+  //            tuple
+  HloInstruction* param_1;
+  HloInstruction* broadcast_0;
+  HloInstruction* multiply_0;
+  HloInstruction* param_0;
+  HloInstruction* copy;
+  HloInstruction* multiply_1;
+  HloInstruction* broadcast_1;
+  HloInstruction* multiply_2;
+  HloInstruction* tuple;
+  auto multiplyPattern =
+      m::Multiply(&multiply_1,
+                  m::Multiply(&multiply_0, m::Parameter(&param_1),
+                              m::Broadcast(&broadcast_0, m::ConstantScalar(2))),
+                  m::Copy(&copy, m::Parameter(&param_0)));
+  ASSERT_THAT(module->entry_computation()->root_instruction(),
+              GmockMatch(m::Tuple(
+                  &tuple,
+                  m::Multiply(&multiply_2, multiplyPattern,
+                              m::Broadcast(&broadcast_1, m::ConstantScalar(4))),
+                  multiplyPattern)));
+  TestShapeHasMemorySpace(param_1->shape(), Layout::kDefaultMemorySpace);
+  TestShapeHasMemorySpace(broadcast_0->shape(), Layout::kDefaultMemorySpace);
+  TestShapeHasMemorySpace(multiply_0->shape(), Layout::kDefaultMemorySpace);
+  TestShapeHasMemorySpace(param_0->shape(), kHostMemorySpaceColor);
+  TestShapeHasMemorySpace(copy->shape(), Layout::kDefaultMemorySpace);
+  TestShapeHasMemorySpace(multiply_1->shape(), Layout::kDefaultMemorySpace);
+  TestShapeHasMemorySpace(broadcast_1->shape(), Layout::kDefaultMemorySpace);
+  TestShapeHasMemorySpace(multiply_2->shape(), Layout::kDefaultMemorySpace);
+  TestShapeHasMemorySpace(ShapeUtil::GetSubshape(tuple->shape(), {0}),
+                          Layout::kDefaultMemorySpace);
+  TestShapeHasMemorySpace(ShapeUtil::GetSubshape(tuple->shape(), {1}),
+                          Layout::kDefaultMemorySpace);
+
+  EXPECT_FALSE(HaveRemainingOffloadAnnotations(module.get()));
 }
 
 }  // namespace
