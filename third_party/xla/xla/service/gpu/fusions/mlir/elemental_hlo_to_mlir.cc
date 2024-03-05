@@ -623,8 +623,9 @@ absl::StatusOr<SmallVector<Value>> HloToMlir(
           mlir::DataLayout::closest(builder.getInsertionBlock()->getParentOp())
               .getTypeSizeInBits(index.getType()));
       index = builder.create<arith::IndexCastUIOp>(index_type, index);
-      return MapHloOp<mhlo::ConvertOp>(result_element_type, {index_type},
-                                       {index}, builder);
+      return {{mhlo::MhloOpToStdScalarOp::mapConvertOpToStdScalarOp(
+          builder.getLoc(), element_mlir_type, result_element_type,
+          {index_type}, {index}, &builder)}};
     }
     case HloOpcode::kPad:
       return EmitPad(instr, result_element_type, indices, operand_provider,

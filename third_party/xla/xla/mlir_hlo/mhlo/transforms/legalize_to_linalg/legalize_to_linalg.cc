@@ -1471,6 +1471,7 @@ class IotaConverter : public OpConversionPattern<OpTy> {
       ConversionPatternRewriter& rewriter) const final {
     ShapedType resultShapedType = getHloOpResultType(iotaOp);
     if (!resultShapedType) return failure();
+    Type targetElementType = resultShapedType.getElementType();
     resultShapedType = this->typeConverter->convertType(resultShapedType)
                            .template dyn_cast<ShapedType>();
 
@@ -1503,9 +1504,9 @@ class IotaConverter : public OpConversionPattern<OpTy> {
               nestedBuilder.getIntegerType(
                   unwrappedResultElementType.getIntOrFloatBitWidth()),
               indexOp);
-          castOp = mhlo::MhloOpToStdScalarOp::mapOpOfType<mhlo::ConvertOp>(
-              nestedLoc, resultElementType, castOp.getType(), {castOp},
-              &nestedBuilder);
+          castOp = mhlo::MhloOpToStdScalarOp::mapConvertOpToStdScalarOp(
+              nestedLoc, targetElementType, resultElementType, castOp.getType(),
+              {castOp}, &nestedBuilder);
           nestedBuilder.create<linalg::YieldOp>(nestedLoc, castOp);
         },
         linalg::getPrunedAttributeList(iotaOp));
@@ -1524,6 +1525,7 @@ class IotaToMapConverter : public OpConversionPattern<OpTy> {
       ConversionPatternRewriter& rewriter) const final {
     ShapedType resultTy = getHloOpResultType(iotaOp);
     if (!resultTy) return failure();
+    Type targetElementType = resultTy.getElementType();
     resultTy = this->typeConverter->convertType(resultTy)
                    .template dyn_cast<ShapedType>();
 
@@ -1538,10 +1540,9 @@ class IotaToMapConverter : public OpConversionPattern<OpTy> {
               nestedLoc, iotaOp.getIotaDimension());
           index = nestedBuilder.create<arith::IndexCastOp>(
               nestedLoc, nestedBuilder.getI64Type(), index);
-          Value result =
-              mhlo::MhloOpToStdScalarOp::mapOpOfType<mhlo::ConvertOp>(
-                  nestedLoc, resultTy.getElementType(), index.getType(),
-                  {ValueRange{index}}, &nestedBuilder);
+          Value result = mhlo::MhloOpToStdScalarOp::mapConvertOpToStdScalarOp(
+              nestedLoc, targetElementType, resultTy.getElementType(),
+              index.getType(), {ValueRange{index}}, &nestedBuilder);
           nestedBuilder.create<linalg::YieldOp>(nestedLoc, ValueRange{result});
         },
         linalg::getPrunedAttributeList(iotaOp));

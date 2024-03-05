@@ -1330,12 +1330,6 @@ struct MhloOpToStdScalarOp {
   static Value mapOpOfType(Location loc, ArrayRef<Type> resultTypes,
                            ArrayRef<Type> argTypes,
                            typename MhloOpTy::Adaptor adaptor, OpBuilder* b) {
-    if (std::is_same<MhloOpTy, mhlo::ConvertOp>::value) {
-      // Note: this assumes that the caller is passing result/arg types with
-      // appropriate signedness.
-      return impl::mapConvertOpToStdScalarOp(
-          loc, resultTypes, resultTypes, argTypes, adaptor.getOperands(), b);
-    }
     return impl::mapMhloOpToStdScalarOp<MhloOpTy>(loc, resultTypes, argTypes,
                                                   adaptor, b);
   }
