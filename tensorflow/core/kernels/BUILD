@@ -7897,8 +7897,10 @@ tf_kernel_library(
 
 # Library to link with when compiling the cwise_op kernels directly,
 # e.g. for selective registration.
+# should not be linked by projects that also link the cwise_op library.
 cc_library(
     name = "cwise_lib",
+    srcs = ["cwise_ops_common.cc"],
     hdrs = [
         "cwise_ops.h",
         "cwise_ops_common.h",

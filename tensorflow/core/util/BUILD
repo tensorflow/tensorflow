@@ -726,6 +726,15 @@ tf_kernel_library(
     hdrs = ["gpu_solvers.h"],
     compatible_with = [],
     features = ["-layering_check"],
+    # @local_config_cuda//cuda:cusolver_static, //third_party/eigen3:blas,
+    # and //third_party/libf2c all contain various parts of BLAS, LAPACK,
+    # and f2c helper functions in global namespace. Tell the compiler to
+    # allow multiple definitions when linking this.
+    linkopts = select({
+        "//tensorflow:macos": [],
+        "//tensorflow:windows": [],
+        "//conditions:default": ["-Wl,-z,muldefs"],
+    }),
     visibility = ["//tensorflow/core/kernels:friends"],
     deps = [
         "//tensorflow/core:framework",
