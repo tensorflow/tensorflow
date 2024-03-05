@@ -86,8 +86,11 @@ Status MapParallelization::OptimizeAndCollectStats(Cluster* cluster,
 
     auto* function =
         function_library.Find(map_node->attr().at("f").func().name());
-    if (function_utils::IsFunctionStateful(function_library, *function, true))
+    if (function_utils::IsFunctionStateful(function_library, *function, true) ||
+        (map_node->attr().contains("force_synchronous") &&
+         map_node->attr().at("force_synchronous").b())) {
       continue;
+    }
 
     auto* parallel_map =
         graph.AddNode(MakeParallelMap(map_node->name(), &graph));

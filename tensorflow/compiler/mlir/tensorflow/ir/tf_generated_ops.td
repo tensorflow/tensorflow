@@ -8604,6 +8604,7 @@ Creates a dataset that applies `f` to the outputs of `input_dataset`.
     ConfinedAttr<TF_ShapeAttrArray, [ArrayMinCount<1>]>:$output_shapes,
     DefaultValuedOptionalAttr<BoolAttr, "true">:$use_inter_op_parallelism,
     DefaultValuedOptionalAttr<BoolAttr, "false">:$preserve_cardinality,
+    DefaultValuedOptionalAttr<BoolAttr, "false">:$force_synchronous,
     DefaultValuedOptionalAttr<StrAttr, "\"\"">:$metadata
   );
 

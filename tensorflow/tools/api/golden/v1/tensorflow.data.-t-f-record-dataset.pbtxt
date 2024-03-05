@@ -131,7 +131,7 @@ tf_class {
   }
   member_method {
     name: "map"
-    argspec: "args=[\'self\', \'map_func\', \'num_parallel_calls\', \'deterministic\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\'], "
+    argspec: "args=[\'self\', \'map_func\', \'num_parallel_calls\', \'deterministic\', \'synchronous\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'None\'], "
   }
   member_method {
     name: "map_with_legacy_function"
