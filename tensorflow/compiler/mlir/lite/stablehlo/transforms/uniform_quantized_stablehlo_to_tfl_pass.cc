@@ -1825,6 +1825,111 @@ class RewriteQuantizedReduceWindowOpWithMax
   }
 };
 
+// Rewrites quantized `stablehlo.gather` to `tfl.gather_nd`.
+// 4 conditions below are checked to filter out cases where `transpose` and
+// `slice` are required for conversion to `tfl.gather_nd`.
+// Condition 1 - `start_index_map` should be an increasing sequence starting
+// from 0 with step 1.
+// Condition 2 - `index_vector_dim` should be the last dimension of
+// `start_indices`.
+// Condition 3 - `offset_dims` should be the last dimensions of `output`.
+// Condition 4 - shape of slice should be same with shape of input on the
+// offset dimensions.
+class RewriteQuantizedGatherOp : public OpRewritePattern<stablehlo::GatherOp> {
+ public:
+  using OpRewritePattern<stablehlo::GatherOp>::OpRewritePattern;
+
+  LogicalResult match(stablehlo::GatherOp op) const override {
+    const Type input_type = op.getOperand().getType();
+    const Type output_type = op.getResult().getType();
+    if (!IsQuantizedTensorType(input_type) ||
+        !IsQuantizedTensorType(output_type)) {
+      return failure();
+    }
+
+    auto output_tensor_type = output_type.cast<TensorType>();
+    if (!output_tensor_type.hasRank()) {
+      return failure();
+    }
+    int64_t output_rank = output_tensor_type.getRank();
+    ::mlir::stablehlo::GatherDimensionNumbersAttr dim_numbers =
+        op.getDimensionNumbers();
+    ArrayRef<int64_t> offset_dims = dim_numbers.getOffsetDims();
+    ArrayRef<int64_t> start_index_map = dim_numbers.getStartIndexMap();
+
+    // Check for condition 1.
+    if (start_index_map.empty() || start_index_map[0] != 0) {
+      return failure();
+    }
+    for (int64_t i = 0; i < start_index_map.size() - 1; ++i) {
+      if (start_index_map[i + 1] - start_index_map[i] != 1) {
+        return failure();
+      }
+    }
+
+    const int64_t index_vector_dim = dim_numbers.getIndexVectorDim();
+    RankedTensorType start_indices_type = op.getStartIndices().getType();
+    if (!start_indices_type.hasRank()) {
+      return failure();
+    }
+    int64_t start_indices_rank = start_indices_type.getRank();
+    // Check for condition 2.
+    if (index_vector_dim != start_indices_rank - 1) {
+      return failure();
+    }
+
+    int64_t offset_dims_len = offset_dims.size();
+    // Check for condition 3.
+    for (const auto& [index, offset_dim] : llvm::enumerate(offset_dims)) {
+      if (offset_dim != output_rank - offset_dims_len + index) {
+        return failure();
+      }
+    }
+
+    ArrayRef<int64_t> slice_sizes = op.getSliceSizes();
+    ArrayRef<int64_t> collapsed_slice_dims =
+        dim_numbers.getCollapsedSliceDims();
+    SmallVector<int64_t> slice_shape;
+    for (int64_t i = 0; i < slice_sizes.size(); ++i) {
+      // `collapsed_slice_dims` are excluded for slice shape.
+      if (!llvm::is_contained(collapsed_slice_dims, i)) {
+        slice_shape.push_back(slice_sizes[i]);
+      }
+    }
+    // Rank of slice and offset should be the same by the op constraints.
+    if (slice_shape.size() != offset_dims.size()) {
+      return failure();
+    }
+
+    // Input type is checked to be quantized tensor type.
+    const auto input_shape =
+        op.getOperand().getType().cast<TensorType>().getShape();
+    SmallVector<int64_t> input_offset_shape;
+    for (int64_t i = 0; i < input_shape.size(); ++i) {
+      if (!llvm::is_contained(start_index_map, i)) {
+        input_offset_shape.push_back(input_shape[i]);
+      }
+    }
+
+    // Check for condition 4.
+    for (auto [slice_size, input_offset_size] :
+         llvm::zip_equal(slice_shape, input_offset_shape)) {
+      if (slice_size != input_offset_size) {
+        return failure();
+      }
+    }
+
+    return success();
+  }
+
+  void rewrite(stablehlo::GatherOp op,
+               PatternRewriter& rewriter) const override {
+    rewriter.replaceOpWithNewOp<TFL::GatherNdOp>(
+        op, /*output=*/op.getResult().getType(), /*params=*/op.getOperand(),
+        /*indices=*/op.getStartIndices());
+  }
+};
+
 void UniformQuantizedStableHloToTflPass::runOnOperation() {
   func::FuncOp func_op = getOperation();
   MLIRContext& ctx = getContext();
@@ -1837,7 +1942,8 @@ void UniformQuantizedStableHloToTflPass::runOnOperation() {
                RewriteQuantizedConcatenateOp, RewriteQuantizedPadOp,
                RewriteQuantizedSliceOp, RewriteQuantizedBroadcastInDimOp,
                RewriteQuantizedReduceWindowOpWithMax,
-               RewriteQuantizedDynamicReshapeOp>(&ctx);
+               RewriteQuantizedDynamicReshapeOp, RewriteQuantizedGatherOp>(
+      &ctx);
 
   if (failed(applyPatternsAndFoldGreedily(func_op, std::move(patterns)))) {
     func_op.emitError() << "Failed to convert stablehlo ops with uniform "

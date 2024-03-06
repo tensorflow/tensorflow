@@ -1219,3 +1219,173 @@ func.func @float_dynamic_reshape(%arg0: tensor<?x3xf32>, %arg1: tensor<2xi32>) -
 // CHECK-LABEL: func @float_dynamic_reshape
 // CHECK: stablehlo.dynamic_reshape
 // CHECK-NOT: tfl.reshape
+
+// -----
+
+// Test that a quantized stablehlo.gather is converted to tfl.gather_nd.
+
+func.func @gather(
+    %arg0: tensor<3x4x2x2x!quant.uniform<i8:f32, 3.000000e-01:-5>>,
+    %arg1: tensor<2x3x2xi64>
+  ) -> tensor<2x3x2x2x!quant.uniform<i8:f32, 3.000000e-01:-5>> {
+  %0 = "stablehlo.gather"(%arg0, %arg1) {
+    dimension_numbers = #stablehlo.gather<
+      offset_dims = [2, 3],
+      collapsed_slice_dims = [0, 1],
+      start_index_map = [0, 1],
+      index_vector_dim = 2>,
+    slice_sizes = array<i64: 1, 1, 2, 2>,
+    indices_are_sorted = false
+  } : (
+    tensor<3x4x2x2x!quant.uniform<i8:f32, 3.000000e-01:-5>>,
+    tensor<2x3x2xi64>
+  ) -> tensor<2x3x2x2x!quant.uniform<i8:f32, 3.000000e-01:-5>>
+  return %0 : tensor<2x3x2x2x!quant.uniform<i8:f32, 3.000000e-01:-5>>
+}
+
+// CHECK-LABEL: func @gather
+// CHECK-SAME: %[[ARG_0:.+]]: tensor<3x4x2x2x!quant.uniform<i8:f32, 3.000000e-01:-5>>, %[[ARG_1:.+]]: tensor<2x3x2xi64>
+// CHECK: %[[GATHER:.+]] = "tfl.gather_nd"(%[[ARG_0]], %[[ARG_1]])
+// CHECK-SAME: (tensor<3x4x2x2x!quant.uniform<i8:f32, 3.000000e-01:-5>>, tensor<2x3x2xi64>) -> tensor<2x3x2x2x!quant.uniform<i8:f32, 3.000000e-01:-5>>
+// CHECK: return %[[GATHER]]
+
+// -----
+
+// Test that a quantized stablehlo.gather with unsorted start_index_map is not
+// converted to tfl.gather_nd (condition 1 is not satisfied).
+
+func.func @gather_start_index_map_not_sorted(
+    %arg0: tensor<3x4x2x2x!quant.uniform<i8:f32, 3.000000e-01:-5>>,
+    %arg1: tensor<2x3x2xi64>
+  ) -> tensor<2x3x2x2x!quant.uniform<i8:f32, 3.000000e-01:-5>> {
+  %0 = "stablehlo.gather"(%arg0, %arg1) {
+    dimension_numbers = #stablehlo.gather<
+      offset_dims = [2, 3],
+      collapsed_slice_dims = [0, 1],
+      start_index_map = [1, 0],
+      index_vector_dim = 2>,
+    slice_sizes = array<i64: 1, 1, 2, 2>,
+    indices_are_sorted = false
+  } : (
+    tensor<3x4x2x2x!quant.uniform<i8:f32, 3.000000e-01:-5>>,
+    tensor<2x3x2xi64>
+  ) -> tensor<2x3x2x2x!quant.uniform<i8:f32, 3.000000e-01:-5>>
+  return %0 : tensor<2x3x2x2x!quant.uniform<i8:f32, 3.000000e-01:-5>>
+}
+
+// CHECK-LABEL: func @gather_start_index_map_not_sorted
+// CHECK: stablehlo.gather
+// CHECK-NOT: tfl.gather_nd
+// CHECK-NOT: tfl.gather
+
+// -----
+
+// Test that a quantized stablehlo.gather is not converted to tfl.gather_nd
+// when index_vector_dim is not the last dimension of start_indices (condition 2
+// is not satisfied).
+
+func.func @gather_start_index_vector_dim_not_at_last(
+    %arg0: tensor<3x4x2x2x!quant.uniform<i8:f32, 3.000000e-01:-5>>,
+    %arg1: tensor<2x3x2xi64>
+  ) -> tensor<3x2x2x2x!quant.uniform<i8:f32, 3.000000e-01:-5>> {
+  %0 = "stablehlo.gather"(%arg0, %arg1) {
+    dimension_numbers = #stablehlo.gather<
+      offset_dims = [2, 3],
+      collapsed_slice_dims = [0, 1],
+      start_index_map = [0, 1],
+      index_vector_dim = 0>,
+    slice_sizes = array<i64: 1, 1, 2, 2>,
+    indices_are_sorted = false
+  } : (
+    tensor<3x4x2x2x!quant.uniform<i8:f32, 3.000000e-01:-5>>,
+    tensor<2x3x2xi64>
+  ) -> tensor<3x2x2x2x!quant.uniform<i8:f32, 3.000000e-01:-5>>
+  return %0 : tensor<3x2x2x2x!quant.uniform<i8:f32, 3.000000e-01:-5>>
+}
+
+// CHECK-LABEL: func @gather_start_index_vector_dim_not_at_last
+// CHECK: stablehlo.gather
+// CHECK-NOT: tfl.gather_nd
+// CHECK-NOT: tfl.gather
+
+// -----
+
+// Test that a quantized stablehlo.gather is not converted to tfl.gather_nd
+// when offset_dims are not the last dimensions of the output (condition 3 is
+// not satisfied).
+
+func.func @gather_offset_dims_not_at_last(
+    %arg0: tensor<3x4x2x2x!quant.uniform<i8:f32, 3.000000e-01:-5>>,
+    %arg1: tensor<2x3x2xi64>
+  ) -> tensor<2x2x2x3x!quant.uniform<i8:f32, 3.000000e-01:-5>> {
+  %0 = "stablehlo.gather"(%arg0, %arg1) {
+    dimension_numbers = #stablehlo.gather<
+      offset_dims = [0, 1],
+      collapsed_slice_dims = [0, 1],
+      start_index_map = [0, 1],
+      index_vector_dim = 2>,
+    slice_sizes = array<i64: 1, 1, 2, 2>,
+    indices_are_sorted = false
+  } : (
+    tensor<3x4x2x2x!quant.uniform<i8:f32, 3.000000e-01:-5>>,
+    tensor<2x3x2xi64>
+  ) -> tensor<2x2x2x3x!quant.uniform<i8:f32, 3.000000e-01:-5>>
+  return %0 : tensor<2x2x2x3x!quant.uniform<i8:f32, 3.000000e-01:-5>>
+}
+
+// CHECK-LABEL: func @gather_offset_dims_not_at_last
+// CHECK: stablehlo.gather
+// CHECK-NOT: tfl.gather_nd
+// CHECK-NOT: tfl.gather
+
+// -----
+
+// Test that a quantized stablehlo.gather is not converted to tfl.gather_nd
+// when shape of slice is not same with shape of offset (condition 4 is not
+// satisfied).
+
+func.func @gather_different_slice_and_offset(
+    %arg0: tensor<3x4x2x3x!quant.uniform<i8:f32, 3.000000e-01:-5>>,
+    %arg1: tensor<2x3x2xi64>
+  ) -> tensor<2x3x2x2x!quant.uniform<i8:f32, 3.000000e-01:-5>> {
+  %0 = "stablehlo.gather"(%arg0, %arg1) {
+    dimension_numbers = #stablehlo.gather<
+      offset_dims = [2, 3],
+      collapsed_slice_dims = [0, 1],
+      start_index_map = [0, 1],
+      index_vector_dim = 2>,
+    slice_sizes = array<i64: 1, 1, 2, 2>,
+    indices_are_sorted = false
+  } : (
+    tensor<3x4x2x3x!quant.uniform<i8:f32, 3.000000e-01:-5>>,
+    tensor<2x3x2xi64>
+  ) -> tensor<2x3x2x2x!quant.uniform<i8:f32, 3.000000e-01:-5>>
+  return %0 : tensor<2x3x2x2x!quant.uniform<i8:f32, 3.000000e-01:-5>>
+}
+
+// CHECK-LABEL: func @gather_different_slice_and_offset
+// CHECK: stablehlo.gather
+// CHECK-NOT: tfl.gather_nd
+// CHECK-NOT: tfl.gather
+
+// -----
+
+// Test that a float stablehlo.gather is not converted to tfl.gather_nd.
+
+func.func @float_gather(%arg0: tensor<3x4x2x2xf32>, %arg1: tensor<2x3x2xi64>) -> tensor<2x3x2x2xf32> {
+  %0 = "stablehlo.gather"(%arg0, %arg1) {
+    dimension_numbers = #stablehlo.gather<
+      offset_dims = [2, 3],
+      collapsed_slice_dims = [0, 1],
+      start_index_map = [0, 1],
+      index_vector_dim = 2>,
+    slice_sizes = array<i64: 1, 1, 2, 2>,
+    indices_are_sorted = false
+  } : (tensor<3x4x2x2xf32>, tensor<2x3x2xi64>) -> tensor<2x3x2x2xf32>
+  return %0 : tensor<2x3x2x2xf32>
+}
+
+// CHECK-LABEL: func @float_gather
+// CHECK: stablehlo.gather
+// CHECK-NOT: tfl.gather_nd
+// CHECK-NOT: tfl.gather
