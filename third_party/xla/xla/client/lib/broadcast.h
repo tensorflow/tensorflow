@@ -1,4 +1,4 @@
-/* Copyright 2021 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2021 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -25,7 +25,8 @@ namespace xla {
 
 // Broadcasts 'input' up to shape 'output_dims', using TensorFlow broadcasting
 // rules. Supports broadcasting a dimension of size x to size x*y, i.e., tiling.
-StatusOr<XlaOp> BroadcastTo(XlaOp input, absl::Span<int64_t const> output_dims);
+absl::StatusOr<XlaOp> BroadcastTo(XlaOp input,
+                                  absl::Span<int64_t const> output_dims);
 
 }  // namespace xla
 

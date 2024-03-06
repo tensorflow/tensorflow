@@ -1,4 +1,4 @@
-/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2019 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -31,10 +31,10 @@ limitations under the License.
 
 namespace xla {
 
-StatusOr<mlir::DenseElementsAttr> CreateDenseElementsAttrFromLiteral(
+absl::StatusOr<mlir::DenseElementsAttr> CreateDenseElementsAttrFromLiteral(
     const LiteralBase& literal, mlir::Builder builder);
 
-StatusOr<int> GetElementTypeBytes(mlir::Type type);
+absl::StatusOr<int> GetElementTypeBytes(mlir::Type type);
 
 // Creates an DenseIntElementsAttr using the elements of the vector and the
 // optional shape.
@@ -42,8 +42,8 @@ mlir::DenseIntElementsAttr CreateDenseIntElementsAttrFromVector(
     const llvm::ArrayRef<int64_t> vector, mlir::Builder builder,
     llvm::ArrayRef<int64_t> shape = {});
 
-StatusOr<mlir::Type> ConvertPrimitiveTypeToMLIRType(PrimitiveType element_type,
-                                                    mlir::Builder builder);
+absl::StatusOr<mlir::Type> ConvertPrimitiveTypeToMLIRType(
+    PrimitiveType element_type, mlir::Builder builder);
 
 mlir::mhlo::GatherDimensionNumbersAttr CreateGatherDimensionNumbers(
     const GatherDimensionNumbers& input, mlir::Builder builder);
@@ -92,12 +92,12 @@ static StatusOr<TypeT> ConvertTensorShapeToType(const Shape& xla_ty,
         return Unimplemented(
             "MHLO doesn't support bounded dynamic shapes for sparse tensors");
       llvm::SmallVector<mlir::sparse_tensor::LevelType> lts;
-      for (size_t i = 0, e = layout.dim_level_types().size(); i < e; ++i) {
-        auto dlt = layout.dim_level_types()[i];
+      for (size_t i = 0, e = layout.dim_level_types_size(); i < e; ++i) {
+        auto dlt = layout.dim_level_type(i);
         bool ordered =
-            i < layout.dim_ordered().size() ? layout.dim_ordered()[i] : true;
+            i < layout.dim_ordered_size() ? layout.dim_ordered(i) : true;
         bool unique =
-            i < layout.dim_unique().size() ? layout.dim_unique()[i] : true;
+            i < layout.dim_unique_size() ? layout.dim_unique(i) : true;
         switch (dlt) {
           case DimLevelType::DIM_DENSE:
             lts.push_back(*mlir::sparse_tensor::buildLevelType(
@@ -133,11 +133,11 @@ static StatusOr<TypeT> ConvertTensorShapeToType(const Shape& xla_ty,
   return TypeT::get(shape, element_type_or.value(), encoding);
 }
 
-StatusOr<mlir::MemRefType> ConvertTensorShapeToMemRefType(
+absl::StatusOr<mlir::MemRefType> ConvertTensorShapeToMemRefType(
     const Shape& shape, mlir::Builder builder);
 
 template <>
-inline StatusOr<mlir::MemRefType> ConvertTensorShapeToType(
+inline absl::StatusOr<mlir::MemRefType> ConvertTensorShapeToType(
     const Shape& shape, mlir::Builder builder) {
   if (shape.is_dynamic()) {
     return FailedPrecondition(  // NOLINT
@@ -148,8 +148,8 @@ inline StatusOr<mlir::MemRefType> ConvertTensorShapeToType(
 
 // Converts the given XLA shape to the template MLIR type.
 template <typename TypeT>
-static StatusOr<mlir::Type> ConvertShapeToType(const Shape& shape,
-                                               mlir::Builder builder) {
+static absl::StatusOr<mlir::Type> ConvertShapeToType(const Shape& shape,
+                                                     mlir::Builder builder) {
   if (shape.IsTuple()) {
     llvm::SmallVector<mlir::Type, 4> contents;
     contents.reserve(shape.tuple_shapes_size());
@@ -166,7 +166,7 @@ static StatusOr<mlir::Type> ConvertShapeToType(const Shape& shape,
   return ConvertTensorShapeToType<TypeT>(shape, builder);
 }
 
-::xla::StatusOr<::xla::HloOpcode> MhloToHloOpcode(mlir::Operation* op);
+absl::StatusOr< ::xla::HloOpcode> MhloToHloOpcode(mlir::Operation* op);
 
 }  // namespace xla
 

@@ -1,8 +1,13 @@
+load("@local_tsl//tsl:tsl.bzl", "internal_visibility")
 load("@local_tsl//tsl:tsl.default.bzl", "get_compatible_with_portable")
 load("@local_tsl//tsl/platform:rules_cc.bzl", "cc_library")
 
 package(
-    default_visibility = ["//visibility:public"],
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
+    default_visibility = internal_visibility([
+        "//third_party/golang/github_com/gomlx/gomlx:__subpackages__",
+        "//xla:internal",
+    ]),
     licenses = ["notice"],
 )
 
@@ -11,7 +16,6 @@ cc_library(
     srcs = ["error_util.cc"],
     hdrs = ["error_util.h"],
     compatible_with = get_compatible_with_portable(),
-    visibility = ["//visibility:public"],
     deps = [
         "@com_google_absl//absl/status",
         "@llvm-project//llvm:Support",

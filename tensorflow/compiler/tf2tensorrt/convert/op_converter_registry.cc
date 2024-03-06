@@ -89,7 +89,7 @@ class OpConverterRegistry::Impl {
                            << "TF-TRT graph segmentation experiments. This "
                            << "feature is controlled using: "
                            << "`TF_TRT_OP_FAKELIST=OpName1,OpName2`.";
-      // Forces ::LookUp to resolve to `ConvertFake` registred to `FakeOp`.
+      // Forces ::LookUp to resolve to `ConvertFake` registered to `FakeOp`.
       mutex_lock lock(mu_);
       return registry_.find("FakeOp")->second.converter;
     }

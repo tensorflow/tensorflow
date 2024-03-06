@@ -1,4 +1,4 @@
-/* Copyright 2022 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2022 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -130,6 +130,10 @@ using EdgeStrategyIdx = int64_t;  // An index into an edge's strategy vector.
 using LivenessIdx = int64_t;      // An index into the liveness vector.
 using AliasIdx = int64_t;         // An index into the alias vector.
 
+// Various classes needed to support strategy shaving.
+using NodeStrategy = std::pair<NodeIdx, NodeStrategyIdx>;
+using NodeStrategies = StableHashSet<NodeStrategy>;
+
 // A group of strategy choices (along with details like index values)
 // for each instruction.
 struct StrategyGroup {
@@ -202,6 +206,8 @@ struct StrategyGroup {
 using LivenessSet = std::vector<std::vector<const HloValue*>>;
 // A liveness set using node indices instead of HLO values.
 using LivenessNodeSet = std::vector<std::vector<NodeIdx>>;
+// A liveness set using edge indices instead of HLO values.
+using LivenessEdgeSet = std::vector<std::vector<EdgeIdx>>;
 // Map an instruction to its strategy group.
 using StrategyMap =
     StableHashMap<const HloInstruction*, std::unique_ptr<StrategyGroup>>;

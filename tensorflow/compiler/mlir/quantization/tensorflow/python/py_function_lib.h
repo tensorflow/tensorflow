@@ -21,8 +21,8 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/strings/string_view.h"
-#include "pybind11/pytypes.h"  // from @pybind11
 #include "tensorflow/compiler/mlir/quantization/stablehlo/cc/calibration/min_max_value.h"
+#include "tensorflow/compiler/mlir/quantization/stablehlo/quantization_config.pb.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/calibrator/calibration_statistics.pb.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/exported_model.pb.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/quantization_options.pb.h"
@@ -81,9 +81,10 @@ class PyFunctionLibrary {
       absl::string_view saved_model_path,
       const std::vector<std::string>& signature_keys,
       const std::unordered_set<std::string>& tags,
-      const CalibrationOptions& calibration_options,
+      const ::stablehlo::quantization::CalibrationOptions& calibration_options,
       bool force_graph_mode_calibration,
-      pybind11::object representative_dataset) const = 0;
+      const absl::flat_hash_map<std::string, RepresentativeDatasetFile>&
+          representative_dataset_file_map) const = 0;
   // LINT.ThenChange(
   //     pywrap_function_lib.pyi:run_calibration,
   //     py_function_lib.py:run_calibration,
@@ -98,7 +99,8 @@ class PyFunctionLibrary {
   virtual stablehlo::quantization::MinMaxValue GetCalibrationMinMaxValue(
       const tensorflow::calibrator::CalibrationStatistics&
           calibration_statistics,
-      const CalibrationOptions& calibration_options) const = 0;
+      const ::stablehlo::quantization::CalibrationOptions& calibration_options)
+      const = 0;
   // LINT.ThenChange(
   //     pywrap_function_lib.pyi:get_calibration_min_max_value,
   //     py_function_lib.py:get_calibration_min_max_value,

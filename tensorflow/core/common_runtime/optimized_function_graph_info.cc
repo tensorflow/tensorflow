@@ -18,6 +18,7 @@ limitations under the License.
 #include <utility>
 
 #include "tensorflow/core/common_runtime/graph_constructor.h"
+#include "tsl/platform/errors.h"
 #include "tsl/platform/status.h"
 
 namespace tensorflow {
@@ -41,7 +42,7 @@ OptimizedFunctionGraph OptimizedFunctionGraphInfo::ToProto(
 }
 
 StatusOr<OptimizedFunctionGraphInfo> OptimizedFunctionGraphInfo::FromProto(
-    const OptimizedFunctionGraph& proto) {
+    OptimizedFunctionGraph&& proto) {
   // Reconstruct the lib_def.
   FunctionLibraryDefinition lib_def(OpRegistry::Global(),
                                     proto.function_graph().library());
@@ -51,8 +52,8 @@ StatusOr<OptimizedFunctionGraphInfo> OptimizedFunctionGraphInfo::FromProto(
   GraphConstructorOptions options;
   options.allow_internal_ops = true;
   options.expect_device_spec = true;
-  TF_RETURN_IF_ERROR(
-      ConvertGraphDefToGraph(options, proto.function_graph(), graph.get()));
+  TF_RETURN_IF_ERROR(ConvertGraphDefToGraph(
+      options, std::move(proto.function_graph()), graph.get()));
 
   // Clear both library and registry as the op lookup should be from lib_def.
   graph->mutable_flib_def()->set_default_registry(nullptr);

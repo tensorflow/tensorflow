@@ -15,7 +15,11 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/lite/experimental/tac/common/utils.h"
 
+#include "llvm/Support/Casting.h"
 #include "mlir/IR/OpDefinition.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/lite/experimental/tac/common/targets.h"
+#include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
+#include "tensorflow/compiler/mlir/lite/utils/utils.h"
 
 namespace mlir {
 namespace TFL {

@@ -12,45 +12,25 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include <cstdint>
-#include <string>
-#include <type_traits>
-#include <utility>
+#include <memory>
 
-#include "absl/algorithm/container.h"
 #include "absl/status/status.h"
-#include "llvm/ADT/STLExtras.h"
-#include "llvm/Support/Debug.h"
+#include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project  // IWYU pragma: keep
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/Quant/QuantOps.h"  // from @llvm-project  // IWYU pragma: keep
-#include "mlir/Dialect/Quant/QuantTypes.h"  // from @llvm-project
-#include "mlir/Dialect/Shape/IR/Shape.h"  // from @llvm-project
-#include "mlir/IR/Block.h"  // from @llvm-project
-#include "mlir/IR/Builders.h"  // from @llvm-project
-#include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
-#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
-#include "mlir/IR/Location.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
-#include "mlir/IR/OperationSupport.h"  // from @llvm-project
-#include "mlir/IR/PatternMatch.h"  // from @llvm-project
-#include "mlir/IR/SymbolTable.h"  // from @llvm-project
-#include "mlir/IR/TypeUtilities.h"  // from @llvm-project
-#include "mlir/IR/Visitors.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project  // IWYU pragma: keep
 #include "mlir/Pass/PassRegistry.h"  // from @llvm-project
-#include "mlir/Support/LLVM.h"  // from @llvm-project
-#include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Support/TypeID.h"  // from @llvm-project
-#include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
 #include "stablehlo/dialect/StablehloOps.h"  // from @stablehlo  // IWYU pragma: keep
-#include "tensorflow/compiler/mlir/lite/quantization/quantization_config.h"
-#include "tensorflow/compiler/mlir/lite/quantization/quantization_utils.h"
+#include "tensorflow/compiler/mlir/lite/quantization/ir/QuantOps.h"  // IWYU pragma: keep
+#include "tensorflow/compiler/mlir/quantization/common/quantization_lib/quantization_config.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/passes/passes.h"
-#include "tensorflow/compiler/mlir/quantization/stablehlo/uniform_quantized_types.h"
+#include "tensorflow/compiler/mlir/quantization/stablehlo/quantization_config.pb.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/cc/run_passes.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/quantization_options.pb.h"
-#include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"  // IWYU pragma: keep
 
 #define DEBUG_TYPE "quantize-composite-functions"
 
@@ -62,16 +42,7 @@ namespace mlir::quant::stablehlo {
 namespace {
 
 using QuantMethod = tensorflow::quantization::QuantizationMethod::PresetMethod;
-using ::mlir::stablehlo::AddOp;
-using ::mlir::stablehlo::ConvolutionOp;
-using ::mlir::stablehlo::DotGeneralOp;
-using ::mlir::stablehlo::DynamicBroadcastInDimOp;
-using ::mlir::stablehlo::UniformQuantizeOp;
 using ::tensorflow::quantization::RunPassesOnModuleOp;
-
-constexpr StringRef kCompositeFuncPrefix = "composite_";
-constexpr StringRef kQuantizedFuncPrefix = "quantized_";
-constexpr StringRef kEntryFuncAttrName = "_entry_function";
 
 class QuantizeCompositeFunctionsPass
     : public impl::QuantizeCompositeFunctionsPassBase<
@@ -81,6 +52,11 @@ class QuantizeCompositeFunctionsPass
 
   using impl::QuantizeCompositeFunctionsPassBase<
       QuantizeCompositeFunctionsPass>::QuantizeCompositeFunctionsPassBase;
+
+  explicit QuantizeCompositeFunctionsPass(
+      const bool enable_per_channel_quantized_weight) {
+    enable_per_channel_quantized_weight_ = enable_per_channel_quantized_weight;
+  }
 
  private:
   void runOnOperation() override;
@@ -98,10 +74,17 @@ void QuantizeCompositeFunctionsPass::runOnOperation() {
   // allowed in the TF dialect.
   pm.enableVerifier(false);
 
-  pm.addNestedPass<func::FuncOp>(CreatePrepareQuantizePass());
+  PrepareQuantizePassOptions options;
+  options.enable_per_channel_quantized_weight_ =
+      enable_per_channel_quantized_weight_;
+  // Change this to user-given bit width once we have custom configuration.
+  options.bit_width_ = 8;
+
+  pm.addNestedPass<func::FuncOp>(createPrepareQuantizePass(options));
   // QuantizePass modifies FuncOps referenced outside of its given scope
   // and therefore requires a module-level context.
-  pm.addPass(CreateQuantizePass(quant_specs));
+  pm.addPass(
+      CreateQuantizePass(quant_specs, enable_per_channel_quantized_weight_));
   pm.addNestedPass<func::FuncOp>(createPostQuantizePass());
 
   ModuleOp module_op = getOperation();
@@ -111,7 +94,13 @@ void QuantizeCompositeFunctionsPass::runOnOperation() {
     signalPassFailure();
   }
 }
-
 }  // namespace
+
+// Creates an instance of the TensorFlow dialect QuantizeCompositeFunctionsPass.
+std::unique_ptr<OperationPass<ModuleOp>> CreateQuantizeCompositeFunctionsPass(
+    const bool enable_per_channel_quantized_weight) {
+  return std::make_unique<QuantizeCompositeFunctionsPass>(
+      enable_per_channel_quantized_weight);
+}
 
 }  // namespace mlir::quant::stablehlo

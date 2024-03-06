@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -21,7 +21,7 @@ limitations under the License.
 #include "xla/backends/interpreter/platform_id.h"
 #include "xla/stream_executor/executor_cache.h"
 #include "xla/stream_executor/stream_executor.h"
-#include "xla/stream_executor/trace_listener.h"
+#include "tsl/platform/statusor.h"
 
 namespace stream_executor {
 namespace interpreter {
@@ -39,15 +39,15 @@ class XlaInterpreterPlatform : public Platform {
 
   const std::string& Name() const override;
 
-  tsl::StatusOr<std::unique_ptr<DeviceDescription>> DescriptionForDevice(
+  absl::StatusOr<std::unique_ptr<DeviceDescription>> DescriptionForDevice(
       int ordinal) const override;
 
-  tsl::StatusOr<StreamExecutor*> ExecutorForDevice(int ordinal) override;
+  absl::StatusOr<StreamExecutor*> ExecutorForDevice(int ordinal) override;
 
-  tsl::StatusOr<StreamExecutor*> GetExecutor(
+  absl::StatusOr<StreamExecutor*> GetExecutor(
       const StreamExecutorConfig& config) override;
 
-  tsl::StatusOr<std::unique_ptr<StreamExecutor>> GetUncachedExecutor(
+  absl::StatusOr<std::unique_ptr<StreamExecutor>> GetUncachedExecutor(
       const StreamExecutorConfig& config) override;
 
  private:

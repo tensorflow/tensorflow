@@ -1,4 +1,4 @@
-/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -56,17 +56,17 @@ TEST_F(FusionAnalysisCacheTest, CachesAndInvalidates) {
   auto* negate = computation->GetInstructionWithName("n0");
   auto* fusion = module->entry_computation()->root_instruction();
 
-  EXPECT_THAT(cache_.Get(*fusion)->fusion_roots(),
+  EXPECT_THAT(cache_.Get(*fusion).fusion_roots(),
               ::testing::ElementsAre(negate));
 
   computation->set_root_instruction(broadcast);
 
-  EXPECT_THAT(cache_.Get(*fusion)->fusion_roots(),
+  EXPECT_THAT(cache_.Get(*fusion).fusion_roots(),
               ::testing::ElementsAre(negate))
       << "Analysis should be cached.";
 
   cache_.Invalidate(*fusion);
-  EXPECT_THAT(cache_.Get(*fusion)->fusion_roots(),
+  EXPECT_THAT(cache_.Get(*fusion).fusion_roots(),
               ::testing::ElementsAre(broadcast))
       << "Analysis should have been recomputed";
 }
@@ -100,17 +100,17 @@ TEST_F(FusionAnalysisCacheTest, CachesAndInvalidatesProducerConsumerFusions) {
   auto* computation = module->GetComputationWithName("f");
   auto* constant = computation->GetInstructionWithName("c0");
 
-  EXPECT_EQ(cache_.Get(*fusion, *neg)->GetEmitterFusionKind(),
+  EXPECT_EQ(cache_.Get(*fusion, *neg).GetEmitterFusionKind(),
             HloFusionAnalysis::EmitterFusionKind::kReduction);
 
   computation->set_root_instruction(constant);
 
-  EXPECT_EQ(cache_.Get(*fusion, *neg)->GetEmitterFusionKind(),
+  EXPECT_EQ(cache_.Get(*fusion, *neg).GetEmitterFusionKind(),
             HloFusionAnalysis::EmitterFusionKind::kReduction)
       << "Analysis should be cached.";
 
   cache_.Invalidate(*fusion);
-  EXPECT_EQ(cache_.Get(*fusion, *neg)->GetEmitterFusionKind(),
+  EXPECT_EQ(cache_.Get(*fusion, *neg).GetEmitterFusionKind(),
             HloFusionAnalysis::EmitterFusionKind::kLoop)
       << "Analysis should have been recomputed";
 }

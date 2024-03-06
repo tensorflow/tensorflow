@@ -1,4 +1,4 @@
-/* Copyright 2018 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2018 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -19,15 +19,23 @@ limitations under the License.
 #include <cmath>
 #include <cstdint>
 #include <memory>
+#include <string_view>
+#include <type_traits>
+#include <vector>
 
+#include "Eigen/Core"  // from @eigen_archive
 #include "xla/service/gpu/launch_dimensions.h"
 #include "xla/service/hlo_module_config.h"
+#include "xla/shape.h"
+#include "xla/statusor.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/device_memory_allocator.h"
 #include "xla/stream_executor/kernel.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/util.h"
 #include "tsl/platform/errors.h"
+#include "tsl/platform/logging.h"
+#include "tsl/platform/ml_dtypes.h"
 #include "tsl/platform/statusor.h"
 
 namespace xla {
@@ -44,22 +52,22 @@ using ComparisonKernelT =
 //
 // Returns `true` if two buffers are equal, `false` otherwise.
 template <typename ElementT>
-static StatusOr<bool> DeviceCompare(se::Stream* stream,
-                                    se::DeviceMemoryBase current,
-                                    se::DeviceMemoryBase expected,
-                                    const Shape& buffer_shape,
-                                    const HloModuleConfig& config,
-                                    std::string_view kernel_name,
-                                    void* kernel_symbol) {
+static absl::StatusOr<bool> DeviceCompare(se::Stream* stream,
+                                          se::DeviceMemoryBase current,
+                                          se::DeviceMemoryBase expected,
+                                          const Shape& buffer_shape,
+                                          const HloModuleConfig& config,
+                                          std::string_view kernel_name,
+                                          void* kernel_symbol) {
   se::StreamExecutor* executor = stream->parent();
 
   se::ScopedDeviceMemory<uint64_t> out_param =
       executor->AllocateOwnedScalar<uint64_t>();
 
-  stream->ThenMemZero(out_param.ptr(), sizeof(uint64_t));
+  TF_RETURN_IF_ERROR(stream->MemZero(out_param.ptr(), sizeof(uint64_t)));
   if (current.size() != expected.size()) {
-    return InternalError("Mismatched buffer size: %d bytes vs. %d bytes",
-                         current.size(), expected.size());
+    return Internal("Mismatched buffer size: %d bytes vs. %d bytes",
+                    current.size(), expected.size());
   }
 
   se::DeviceMemory<ElementT> current_typed(current);
@@ -67,29 +75,27 @@ static StatusOr<bool> DeviceCompare(se::Stream* stream,
   uint64_t buffer_size = current_typed.ElementCount();
 
   TF_ASSIGN_OR_RETURN(
-      std::unique_ptr<ComparisonKernelT<ElementT>> comparison_kernel,
-      (executor->CreateTypedKernel<se::DeviceMemory<ElementT>,
-                                   se::DeviceMemory<ElementT>, float, uint64_t,
-                                   se::DeviceMemory<uint64_t>>(kernel_name,
-                                                               kernel_symbol)));
+      ComparisonKernelT<ElementT> comparison_kernel,
+      (se::TypedKernel<se::DeviceMemory<ElementT>, se::DeviceMemory<ElementT>,
+                       float, uint64_t,
+                       se::DeviceMemory<uint64_t>>::Create(executor,
+                                                           kernel_name,
+                                                           kernel_symbol)));
 
   const se::DeviceDescription& gpu_device_info =
       executor->GetDeviceDescription();
 
-  TF_ASSIGN_OR_RETURN(LaunchDimensions dim,
-                      CalculateLaunchDimensions(buffer_shape, gpu_device_info));
+  LaunchDimensions dim =
+      CalculateLaunchDimensions(buffer_shape, gpu_device_info);
 
-  LaunchDimensions::Dim3D thread_counts = dim.thread_counts_per_block();
-  LaunchDimensions::Dim3D block_counts = dim.block_counts();
   TF_RETURN_IF_ERROR(stream->ThenLaunch(
-      se::ThreadDim(thread_counts.x, thread_counts.y, thread_counts.z),
-      se::BlockDim(block_counts.x, block_counts.y, block_counts.z),
-      *comparison_kernel, current_typed, expected_typed,
-      static_cast<float>(kTolerance), buffer_size, out_param.cref()));
+      dim.thread_counts_per_block(), dim.block_counts(), comparison_kernel,
+      current_typed, expected_typed, static_cast<float>(kTolerance),
+      buffer_size, out_param.cref()));
 
   uint64_t result = -1;
   CHECK_EQ(out_param->size(), sizeof(result));
-  stream->ThenMemcpy(&result, *out_param, sizeof(result));
+  TF_RETURN_IF_ERROR(stream->Memcpy(&result, *out_param, sizeof(result)));
   TF_RETURN_IF_ERROR(stream->BlockHostUntilDone());
   return result == 0;
 }
@@ -99,12 +105,15 @@ static StatusOr<bool> DeviceCompare(se::Stream* stream,
 //
 // Returns true if no differences were seen, false otherwise.
 template <typename ElementType, typename ComparisonType>
-StatusOr<bool> HostCompare(se::Stream* stream, se::DeviceMemoryBase current,
-                           se::DeviceMemoryBase expected) {
+absl::StatusOr<bool> HostCompare(se::Stream* stream,
+                                 se::DeviceMemoryBase current,
+                                 se::DeviceMemoryBase expected) {
   int64_t n = current.size() / sizeof(ElementType);
   std::vector<ElementType> host_current(n), host_expected(n);
-  stream->ThenMemcpy(host_current.data(), current, current.size());
-  stream->ThenMemcpy(host_expected.data(), expected, expected.size());
+  TF_RETURN_IF_ERROR(
+      stream->Memcpy(host_current.data(), current, current.size()));
+  TF_RETURN_IF_ERROR(
+      stream->Memcpy(host_expected.data(), expected, expected.size()));
   TF_RETURN_IF_ERROR(stream->BlockHostUntilDone());
 
   const auto canonicalize = [](ComparisonType a) -> ComparisonType {
@@ -148,13 +157,11 @@ StatusOr<bool> HostCompare(se::Stream* stream, se::DeviceMemoryBase current,
 }
 
 template <typename ElementT, typename ComparisonT>
-static StatusOr<bool> CompareEqualParameterized(se::Stream* stream,
-                                                se::DeviceMemoryBase current,
-                                                se::DeviceMemoryBase expected,
-                                                const Shape& shape,
-                                                const HloModuleConfig& config,
-                                                std::string_view kernel_name,
-                                                void* kernel_symbol) {
+static absl::StatusOr<bool> CompareEqualParameterized(
+    se::Stream* stream, se::DeviceMemoryBase current,
+    se::DeviceMemoryBase expected, const Shape& shape,
+    const HloModuleConfig& config, std::string_view kernel_name,
+    void* kernel_symbol) {
   XLA_SCOPED_LOGGING_TIMER("BufferComparator::CompareEqual");
   TF_ASSIGN_OR_RETURN(
       bool result, DeviceCompare<ElementT>(stream, current, expected, shape,
@@ -171,7 +178,7 @@ static StatusOr<bool> CompareEqualParameterized(se::Stream* stream,
   return false;
 }
 
-StatusOr<bool> BufferComparator::CompareEqual(
+absl::StatusOr<bool> BufferComparator::CompareEqual(
     se::Stream* stream, se::DeviceMemoryBase current,
     se::DeviceMemoryBase expected) const {
   switch (shape_.element_type()) {

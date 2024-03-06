@@ -1,4 +1,4 @@
-/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -16,9 +16,9 @@ limitations under the License.
 #ifndef XLA_SERVICE_GPU_MODEL_HLO_OP_PROFILER_H_
 #define XLA_SERVICE_GPU_MODEL_HLO_OP_PROFILER_H_
 
-#include <cstdint>
 #include <memory>
 
+#include "absl/status/statusor.h"
 #include "absl/time/time.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
@@ -34,13 +34,13 @@ class HloOpProfiler {
   static std::unique_ptr<HloModule> MakeModuleForMeasurements(
       HloOpcode op, PrimitiveType data_type, int chain_length);
 
-  StatusOr<absl::Duration> MeasureOpChainDuration(HloOpcode op,
-                                                  PrimitiveType data_type,
-                                                  int chain_length);
+  absl::StatusOr<absl::Duration> MeasureOpChainDuration(HloOpcode op,
+                                                        PrimitiveType data_type,
+                                                        int chain_length);
 
  public:
   explicit HloOpProfiler(HloRunner& runner);
-  StatusOr<HloInstructionProfile> MeasureClockCyclesPerOp(
+  absl::StatusOr<HloInstructionProfile> MeasureClockCyclesPerOp(
       HloOpcode op, PrimitiveType data_type);
 
  private:

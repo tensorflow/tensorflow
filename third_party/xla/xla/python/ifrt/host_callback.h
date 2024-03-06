@@ -1,4 +1,4 @@
-/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -64,7 +64,7 @@ class LoadedHostCallback
   //
   // TODO(hyeontaek): Change `Serialize()` to return `HostCallback` instead of a
   // serialized host callback directly.
-  virtual StatusOr<std::string> Serialize() const = 0;
+  virtual absl::StatusOr<std::string> Serialize() const = 0;
 
   static char ID;  // NOLINT
 };

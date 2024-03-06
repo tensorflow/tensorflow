@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -99,29 +99,6 @@ void RecordPassEndMetadata(HloModuleGroup& module_group,
   }
 }
 
-void SetInstructionMetadata(HloModule& module) {
-  StatusOr<int64_t> pass_id = module.metadata()->current_pass_id();
-  if (!pass_id.ok()) {
-    LOG(FATAL) << pass_id.status();
-  }
-  for (xla::HloComputation* computation : module.computations()) {
-    for (xla::HloInstruction* instruction : computation->instructions()) {
-      if (instruction->metadata().creation_pass_id() == 0) {
-        instruction->set_creation_pass_id(*pass_id);
-      }
-      if (instruction->metadata().logical_creation_pass_id() == 0) {
-        instruction->set_logical_creation_pass_id(*pass_id);
-      }
-    }
-  }
-}
-
-void SetInstructionMetadata(HloModuleGroup& module_group) {
-  for (HloModule* module : module_group.modules()) {
-    SetInstructionMetadata(*module);
-  }
-}
-
 }  // namespace
 
 template <typename HloT>
@@ -179,7 +156,6 @@ StatusOr<bool> HloPassPipeline::RunPassesInternal(
       RunInvariantCheckers(hlo, kPipelineStart, execution_threads));
 
   RecordPassStartMetadata(*hlo, std::string(kPipelineStart), pipeline_name);
-  SetInstructionMetadata(*hlo);
   MaybeDumpHloAndSaveFilenames(*hlo,
                                /*after_pass_name=*/kPipelineStart,
                                /*before_pass_name=*/passes.empty()
@@ -191,8 +167,8 @@ StatusOr<bool> HloPassPipeline::RunPassesInternal(
   bool changed = false;
   for (int i = 0; i < passes.size(); i++) {
     HloPassInterface* pass = passes[i];
-    XLA_SCOPED_LOGGING_TIMER(absl::StrCat("HLO pass: ", pass->name()));
     std::string pass_name = std::string(pass->name());
+    XLA_SCOPED_LOGGING_TIMER(absl::StrCat("HLO pass: ", pass_name));
     tsl::profiler::ScopedAnnotation annotation{
         [&] { return "XlaPass:" + pass_name; }};
     VLOG(1) << "  HLO pass " << pass_name;
@@ -201,21 +177,12 @@ StatusOr<bool> HloPassPipeline::RunPassesInternal(
       compilation_stats_->StartPass(pass_name);
     }
     RecordPassStartMetadata(*hlo, pass_name, pipeline_name);
-    // Embed RunHelper into lambda to enable recording of error statuses
-    auto run_helper_lambda =
-        [this, pass_name](
-            HloPassInterface* pass, HloT* hlo,
-            const absl::flat_hash_set<absl::string_view>& execution_threads) {
-          auto status_or = RunHelper(pass, hlo, execution_threads);
-          if (!status_or.ok()) {
-            compilation_stats_->RecordPassError(
-                pass_name, absl::StatusCodeToString(status_or.status().code()));
-          }
-          return status_or;
-        };
-    TF_ASSIGN_OR_RETURN(bool pass_changed,
-                        run_helper_lambda(pass, hlo, execution_threads));
-    SetInstructionMetadata(*hlo);
+    auto status_or_changed = RunHelper(pass, hlo, execution_threads);
+    if (auto status = status_or_changed.status(); !status.ok()) {
+      compilation_stats_->RecordPassError(
+          pass_name, absl::StatusCodeToString(status.code()));
+    }
+    TF_ASSIGN_OR_RETURN(bool pass_changed, status_or_changed);
     if (!dump_regex.empty() && (pass_changed || dump_regex != ".*")) {
       MaybeDumpHloAndSaveFilenames(*hlo,
                                    /*after_pass_name=*/pass_name,
@@ -226,22 +193,13 @@ StatusOr<bool> HloPassPipeline::RunPassesInternal(
     RecordPassEndMetadata(*hlo, pass_name, pass_changed);
     changed |= pass_changed;
     if (pass_changed) {
-      VLOG(3) << "  Pass caused changes " << pass->name();
-      // Embed RunInvariantCheckers into lambda to enable recording of errors
-      auto run_invariant_checkers_lambda =
-          [this](
-              HloT* hlo, absl::string_view pass_name,
-              const absl::flat_hash_set<absl::string_view>& execution_threads) {
-            auto status =
-                RunInvariantCheckers(hlo, pass_name, execution_threads);
-            if (!status.ok()) {
-              compilation_stats_->RecordPassError(
-                  pass_name, absl::StatusCodeToString(status.code()));
-            }
-            return status;
-          };
-      TF_RETURN_IF_ERROR(
-          run_invariant_checkers_lambda(hlo, pass_name, execution_threads));
+      VLOG(3) << "  Pass caused changes " << pass_name;
+      auto status = RunInvariantCheckers(hlo, pass_name, execution_threads);
+      if (!status.ok()) {
+        compilation_stats_->RecordPassError(
+            pass_name, absl::StatusCodeToString(status.code()));
+      }
+      TF_RETURN_IF_ERROR(status);
     }
     if (!pass->IsPassPipeline()) {
       compilation_stats_->EndPass(pass_name);

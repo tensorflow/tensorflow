@@ -1,4 +1,4 @@
-/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2020 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -27,6 +27,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/pjrt/distributed/client.h"
+#include "xla/pjrt/distributed/key_value_store_interface.h"
 #include "xla/pjrt/gpu/gpu_helpers.h"
 #include "xla/pjrt/gpu/gpu_topology.h"
 #include "xla/pjrt/pjrt_client.h"
@@ -59,14 +60,17 @@ class StreamExecutorGpuTopologyDescription : public PjRtTopologyDescription {
   }
   // `gpu_device_ids` is the list of logical device ids for the GPU devices and
   // will be used to initialize the GPU topology.
-  StreamExecutorGpuTopologyDescription(const PjRtPlatformId platform_id,
-                                       const absl::string_view platform_name,
-                                       const absl::string_view platform_version,
-                                       const std::vector<int>& gpu_device_ids)
+  StreamExecutorGpuTopologyDescription(
+      const PjRtPlatformId platform_id, const absl::string_view platform_name,
+      const absl::string_view platform_version,
+      const std::vector<int>& gpu_device_ids,
+      const absl::flat_hash_map<std::string, PjRtDeviceAttribute>& attributes =
+          {})
       : platform_id_(platform_id),
         platform_name_(platform_name),
         platform_version_(platform_version),
-        gpu_topology_(gpu_device_ids) {}
+        gpu_topology_(gpu_device_ids),
+        attributes_(attributes) {}
 
   bool operator==(const StreamExecutorGpuTopologyDescription& other) const {
     return this->platform_id() == other.platform_id() &&
@@ -141,7 +145,8 @@ class StreamExecutorGpuDevice : public PjRtStreamExecutorDevice {
   StreamExecutorGpuDevice(int id,
                           std::unique_ptr<LocalDeviceState> local_device_state,
                           std::string device_kind, std::string device_vendor,
-                          int node_id, int slice_index = 0);
+                          std::string compute_capability, int node_id,
+                          int slice_index = 0);
 
   int slice_index() const;
 
@@ -178,12 +183,12 @@ class StreamExecutorGpuClient : public xla::PjRtStreamExecutorClient {
             tsl::Fingerprint64(platform_name), platform_name,
             devices_.back()->device_kind(), devices_)) {}
 
-  xla::StatusOr<xla::DeviceAssignment> GetDefaultDeviceAssignment(
+  absl::StatusOr<xla::DeviceAssignment> GetDefaultDeviceAssignment(
       int num_replicas, int num_partitions) const override;
 
   absl::string_view platform_version() const override;
 
-  StatusOr<std::unique_ptr<PjRtClient::AsyncHostToDeviceTransferManager>>
+  absl::StatusOr<std::unique_ptr<PjRtClient::AsyncHostToDeviceTransferManager>>
   CreateBuffersForAsyncHostToDevice(absl::Span<const Shape> shapes,
                                     PjRtDevice* device) override;
 
@@ -191,13 +196,13 @@ class StreamExecutorGpuClient : public xla::PjRtStreamExecutorClient {
                                             int64_t offset,
                                             int64_t transfer_size) override;
 
-  StatusOr<const xla::PjRtTopologyDescription*> GetTopologyDescription()
+  absl::StatusOr<const xla::PjRtTopologyDescription*> GetTopologyDescription()
       const override {
     return &topology_;
   }
 
   // TODO(b/285385306): Enable loading a non-loaded PjRtExecutable.
-  StatusOr<std::unique_ptr<PjRtLoadedExecutable>> Load(
+  absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>> Load(
       std::unique_ptr<PjRtExecutable> executable,
       const LoadOptions& load_options) override {
     return absl::WrapUnique<PjRtLoadedExecutable>(
@@ -206,16 +211,20 @@ class StreamExecutorGpuClient : public xla::PjRtStreamExecutorClient {
 
   // TODO(b/296466237): Unify `Load` method after (de)serialization and tests on
   // existing use cases are done.
-  StatusOr<std::unique_ptr<PjRtLoadedExecutable>> Load(
+  absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>> Load(
       std::unique_ptr<PjRtExecutable> executable);
 
   // TODO(b/296466237): Unify `LoadSerializedExecutable` after fixing existing
   // tests.
-  StatusOr<std::unique_ptr<PjRtLoadedExecutable>> LoadSerialized(
+  absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>> LoadSerialized(
       absl::string_view serialized, std::optional<CompileOptions> options,
       const LoadOptions& load_options);
 
-  StatusOr<std::unique_ptr<PjRtLoadedExecutable>> Compile(
+  absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>> DeserializeExecutable(
+      absl::string_view serialized,
+      std::optional<CompileOptions> options) override;
+
+  absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>> Compile(
       const XlaComputation& computation, CompileOptions options) override;
 
  private:
@@ -225,6 +234,8 @@ class StreamExecutorGpuClient : public xla::PjRtStreamExecutorClient {
 std::vector<std::unique_ptr<PjRtStreamExecutorDevice>> BuildLocalDevices(
     std::map<int, std::unique_ptr<LocalDeviceState>> local_device_states,
     int node_id);
+
+std::string MakeComputeCapabilityString(const se::DeviceDescription* desc);
 
 struct GpuClientOptions {
   GpuAllocatorConfig allocator_config;
@@ -239,16 +250,13 @@ struct GpuClientOptions {
 
   bool should_stage_host_to_device_transfers = true;
 
-  // `kv_get` and `kv_put` are callbacks provided by the caller to access a
-  // key-value store shared between nodes. `kv_get` and `kv_put` must be
-  // non-null if `num_nodes` > 1.
-  PjRtClient::KeyValueGetCallback kv_get = nullptr;
-  PjRtClient::KeyValuePutCallback kv_put = nullptr;
+  // kv_store must be non-null if num_nodes > 1.
+  std::shared_ptr<KeyValueStoreInterface> kv_store = nullptr;
 
   bool enable_mock_nccl = false;
 };
 
-StatusOr<std::unique_ptr<PjRtClient>> GetStreamExecutorGpuClient(
+absl::StatusOr<std::unique_ptr<PjRtClient>> GetStreamExecutorGpuClient(
     const GpuClientOptions& options);
 
 }  // namespace xla

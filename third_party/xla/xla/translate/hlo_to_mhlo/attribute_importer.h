@@ -1,4 +1,4 @@
-/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2019 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -56,23 +56,23 @@ mlir::ArrayAttr ConvertOutputOperandAliasing(
                                 std::pair<int64_t, xla::ShapeIndex>>>& aliaInfo,
     mlir::Builder* builder);
 
-StatusOr<mlir::mhlo::FftType> ConvertFftType(FftType type);
-StatusOr<mlir::mhlo::Transpose> ConvertTranspose(
+absl::StatusOr<mlir::mhlo::FftType> ConvertFftType(FftType type);
+absl::StatusOr<mlir::mhlo::Transpose> ConvertTranspose(
     TriangularSolveOptions_Transpose transpose);
 
-StatusOr<mlir::mhlo::CustomCallApiVersion> ConvertCustomCallApiVersion(
+absl::StatusOr<mlir::mhlo::CustomCallApiVersion> ConvertCustomCallApiVersion(
     xla::CustomCallApiVersion api_version);
 
 // Extracts layouts from shapes and converts it into layout attributes (array of
 // rank-1 index tensors). Returns an error if any of the shapes is a tuple.
-StatusOr<mlir::ArrayAttr> ExtractLayoutsFromShapes(
+absl::StatusOr<mlir::ArrayAttr> ExtractLayoutsFromShapes(
     const absl::Span<const Shape> shapes_with_layouts, mlir::Builder* builder);
 
 // Extracts the layouts of each element from a tuple shape and returns them as
 // an array of rank-1 index tensors. Returns an error in presence of nested
 // tuple shapes.
-StatusOr<mlir::ArrayAttr> ExtractLayoutsFromTuple(const xla::Shape shape,
-                                                  mlir::Builder* builder);
+absl::StatusOr<mlir::ArrayAttr> ExtractLayoutsFromTuple(const xla::Shape shape,
+                                                        mlir::Builder* builder);
 
 }  // namespace xla
 

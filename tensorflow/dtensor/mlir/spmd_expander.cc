@@ -73,7 +73,7 @@ Status AdjustPartedLayout(const llvm::DenseMap<int, Layout>& input_layouts,
       computed_layout.getSecond() = parted;
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Returns whether DTensor should skip SPMD expansion because `op` uses parted
@@ -168,7 +168,7 @@ Status SPMDExpanderBase::ExpandOpAndSetLayout(mlir::Operation* op,
     }
     SetLayoutOnOp(*output, absl::Span<std::optional<Layout>>(
                                computed_layout.data(), computed_layout.size()));
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   // `op` may be removed/replaced from the graph during SPMD expansion, so
@@ -239,7 +239,7 @@ Status SPMDExpanderBase::ExpandOpAndSetLayout(mlir::Operation* op,
     }
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 StatusOr<llvm::DenseMap<int, Layout>> SPMDExpanderBase::ComputeLayoutForward(
@@ -299,7 +299,7 @@ Status RunSPMDExpansion(mlir::Operation* op, mlir::Operation** output) {
     VLOG(1) << "No expansion found for " << OpName(op) << "\n";
     *output = op;
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace dtensor

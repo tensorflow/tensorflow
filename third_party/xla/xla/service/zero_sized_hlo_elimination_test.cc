@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -43,7 +43,7 @@ class ZeroSizedHloEliminationTest : public HloTestBase {
             builder_.AddInstruction(HloInstruction::CreateParameter(
                 0, ShapeUtil::MakeShape(F32, {3, 0}), "zero sized param"))) {}
 
-  StatusOr<bool> RunZeroSizedElimination() {
+  absl::StatusOr<bool> RunZeroSizedElimination() {
     auto module = CreateNewVerifiedModule("zero_sized_elimination_test_module");
     module->AddEntryComputation(builder_.Build());
     return ZeroSizedHloElimination{}.Run(module.get());

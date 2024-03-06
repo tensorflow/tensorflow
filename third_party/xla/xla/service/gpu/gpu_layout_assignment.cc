@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -16,28 +16,44 @@ limitations under the License.
 #include "xla/service/gpu/gpu_layout_assignment.h"
 
 #include <cstddef>
+#include <cstdint>
 #include <initializer_list>
 #include <memory>
 #include <tuple>
 #include <utility>
+#include <variant>
 #include <vector>
 
-#include "absl/algorithm/container.h"
+#include "absl/log/check.h"
+#include "absl/log/log.h"
+#include "absl/status/status.h"
 #include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
+#include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/layout.h"
 #include "xla/layout_util.h"
+#include "xla/primitive_util.h"
 #include "xla/service/gpu/backend_configs.pb.h"
-#include "xla/service/gpu/ir_emission_utils.h"
+#include "xla/service/gpu/cublas_cudnn.h"
 #include "xla/service/gpu/matmul_utils.h"
+#include "xla/service/gpu/reduction_utils.h"
 #include "xla/service/gpu/stream_executor_util.h"
-#include "xla/status_macros.h"
+#include "xla/service/logical_buffer.h"
+#include "xla/shape.h"
+#include "xla/shape_layout.h"
+#include "xla/shape_util.h"
+#include "xla/status.h"
+#include "xla/stream_executor/device_description.h"
+#include "xla/stream_executor/dnn.h"
+#include "xla/util.h"
 #include "xla/window_util.h"
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/errors.h"
+#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace gpu {
@@ -48,7 +64,8 @@ using se::dnn::FilterLayout;
 // Returns (input, filter, output) layouts.
 static std::tuple<DataLayout, FilterLayout, DataLayout>
 HeuristicLayoutAssignment(const HloInstruction* instr,
-                          se::StreamExecutor* stream_executor) {
+                          const se::GpuComputeCapability& gpu_version,
+                          const se::dnn::VersionInfo& dnn_version) {
   // DataLayout and FilterLayout uses weird enum names. Translations:
   //   N <=> Batch or Output
   //   C <=> Depth or Input
@@ -111,10 +128,12 @@ HeuristicLayoutAssignment(const HloInstruction* instr,
   // If we're not Volta or not fp16/bfloat16, or not conv2D, the decision is
   // easy: Use NCHW.
   const bool isFloat16 = (input_ty == F16) || (input_ty == BF16);
-  if (!isFloat16 ||
-      !stream_executor->GetDeviceDescription()
-           .cuda_compute_capability()
-           .IsAtLeast(se::CudaComputeCapability::VOLTA) ||
+  const auto* cuda_compute_capability =
+      std::get_if<se::CudaComputeCapability>(&gpu_version);
+  bool is_volta =
+      cuda_compute_capability &&
+      cuda_compute_capability->IsAtLeast(se::CudaComputeCapability::VOLTA);
+  if (!isFloat16 || !is_volta ||
       instr->shape().tuple_shapes(0).dimensions_size() != 4) {
     return kAllNCHW;
   }
@@ -131,17 +150,11 @@ HeuristicLayoutAssignment(const HloInstruction* instr,
   // * we've also observed that for mixed layouts, cuDNN transposes data back
   //   and forth from a different layout combination. If we end up with
   //   transposes anyway, we prefer to have them in XLA, as they can be fused.
-  if (auto* dnn = stream_executor->AsDnn()) {
-    auto version_status = dnn->GetVersion();
-    if (version_status.ok()) {
-      auto version = std::move(version_status).value();
-      if (std::make_tuple(version.major_version(), version.minor_version()) <=
-              std::make_tuple(7, 3) &&
-          instr->custom_call_target() == kCudnnConvBackwardInputCallTarget &&
-          window_util::HasStride(instr->window())) {
-        return kAllNCHW;
-      }
-    }
+  if (std::make_tuple(dnn_version.major_version(),
+                      dnn_version.minor_version()) <= std::make_tuple(7, 3) &&
+      instr->custom_call_target() == kCudnnConvBackwardInputCallTarget &&
+      window_util::HasStride(instr->window())) {
+    return kAllNCHW;
   }
 
   // For other Volta f16 convolutions, use NHWC.
@@ -152,7 +165,7 @@ HeuristicLayoutAssignment(const HloInstruction* instr,
 // constraints are represented in terms of minor_to_major fields of both
 // operands and the output shape. Depending on the underlying algorithm, one of
 // { NCHW, NHWC } ^ 3 = 8 different layout combinations may be chosen.
-Status GpuLayoutAssignment::AddBackendConstraintsToDnnConvCustomCall(
+absl::Status GpuLayoutAssignment::AddBackendConstraintsToDnnConvCustomCall(
     HloCustomCallInstruction* instr, LayoutConstraints* constraints) {
   Shape lhs_shape = instr->operand(0)->shape();
   Shape rhs_shape = instr->operand(1)->shape();
@@ -188,7 +201,7 @@ Status GpuLayoutAssignment::AddBackendConstraintsToDnnConvCustomCall(
     FilterLayout filter;
     DataLayout output;
     std::tie(input, filter, output) =
-        HeuristicLayoutAssignment(instr, stream_executor_);
+        HeuristicLayoutAssignment(instr, gpu_version_, dnn_version_);
 
     TF_ASSIGN_OR_RETURN(
         std::tie(*input_shape->mutable_layout(),
@@ -230,13 +243,13 @@ Status GpuLayoutAssignment::AddBackendConstraintsToDnnConvCustomCall(
 
   if (instr->operand_count() > 2 && kind != CudnnConvKind::kForwardActivation &&
       kind != CudnnConvKind::kForwardGraph) {
-    return InternalError(
+    return Internal(
         "Invalid convolution. Conv has a side input, but kind is not fused "
         "conv forward or graph conv foward: %s",
         instr->ToString());
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 namespace {
@@ -269,7 +282,7 @@ bool DotCanSupportShapeWithLayout(const HloInstruction* dot,
 
 }  // namespace
 
-Status GpuLayoutAssignment::AddBackendConstraints(
+absl::Status GpuLayoutAssignment::AddBackendConstraints(
     LayoutConstraints* constraints) {
   // Add convolution constraints in reverse postorder that the earliest
   // convolution layout propagates first. This reduces the likelihood of fusion
@@ -448,10 +461,10 @@ Status GpuLayoutAssignment::AddBackendConstraints(
           all_to_all));
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-Status GpuLayoutAssignment::SetDotOperandLayout(
+absl::Status GpuLayoutAssignment::SetDotOperandLayout(
     const HloInstruction* instruction, int64_t operand,
     absl::Span<const int64_t> batch_dims, absl::Span<const int64_t> row_dims,
     absl::Span<const int64_t> col_dims) {
@@ -474,7 +487,7 @@ Status GpuLayoutAssignment::SetDotOperandLayout(
       /*dim_groups=*/{batch_dims, row_dims, col_dims});
 }
 
-Status GpuLayoutAssignment::SetOperandMajorToMinorLayout(
+absl::Status GpuLayoutAssignment::SetOperandMajorToMinorLayout(
     const HloInstruction* instruction, int64_t operand,
     std::initializer_list<absl::Span<const int64_t>> dim_groups) {
   size_t size = 0;
@@ -491,8 +504,8 @@ Status GpuLayoutAssignment::SetOperandMajorToMinorLayout(
   return SetOperandLayout(shape, instruction, operand);
 }
 
-Status GpuLayoutAssignment::SetDotLayout(const HloInstruction* instruction,
-                                         LayoutConstraints* constraints) {
+absl::Status GpuLayoutAssignment::SetDotLayout(
+    const HloInstruction* instruction, LayoutConstraints* constraints) {
   // If a user has requested a layout that we can support, use that.
   for (const HloInstruction* user : instruction->users()) {
     for (int64_t i = 0; i < user->operand_count(); ++i) {
@@ -515,13 +528,16 @@ Status GpuLayoutAssignment::SetDotLayout(const HloInstruction* instruction,
 
 bool GpuLayoutAssignment::PropagateReductionLayoutToOperand(
     const HloInstruction* user) {
-  // Propagating the layout is only beneficial if the total size of reduction
-  // dims is large enough.
+  // We try to propagate a layout to make the reduction a row reduction. But
+  // propagating the layout is only beneficial if the reduction emitter would be
+  // used for the row reduction.
   int64_t reduction_size = 1;
   for (int64_t reduction_dim : user->dimensions()) {
     reduction_size *= user->operand(0)->shape().dimensions(reduction_dim);
   }
-  return reduction_size >= 32;
+  int64_t kept_dimension_size = ShapeUtil::ElementsIn(user->shape());
+  return IsUnnestedReductionFasterThanElemental(
+      {/*is_row_reduction=*/true, {1, kept_dimension_size, reduction_size}});
 }
 
 }  // namespace gpu

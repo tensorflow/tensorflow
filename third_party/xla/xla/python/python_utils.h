@@ -1,4 +1,4 @@
-/* Copyright 2021 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2021 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -28,8 +28,8 @@ limitations under the License.
 
 namespace jax {
 
-// This file contains utilities to write Python wrapers using the C API.
-// It's used for performance critical code such as PyBuffer, jax.jit or
+// This file contains utilities to write Python wrappers using the C API.
+// It's used for performance critical code such as PyArray, jax.jit or
 // jax.pmap.
 
 // Helpers for building Python properties

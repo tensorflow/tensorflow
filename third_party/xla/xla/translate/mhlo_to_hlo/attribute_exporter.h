@@ -1,4 +1,4 @@
-/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2020 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -19,7 +19,6 @@ limitations under the License.
 #include <utility>
 
 #include "mlir/IR/Attributes.h"  // from @llvm-project
-#include "xla/mlir_hlo/lhlo_gpu/IR/lhlo_gpu_ops.h"
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/shape_util.h"
@@ -33,9 +32,6 @@ namespace xla {
 // Converts the conv dimensions attribute to XLA HLO.
 ConvolutionDimensionNumbers ConvertConvDimensionNumbers(
     mlir::mhlo::ConvDimensionNumbersAttr input);
-
-StatusOr<stream_executor::dnn::ActivationMode> ConvertConvActivationMode(
-    mlir::lmhlo_gpu::Activation input);
 
 StatusOr<std::vector<ReplicaGroup>> ConvertReplicaGroups(
     mlir::DenseIntElementsAttr input);

@@ -28,9 +28,9 @@ cc_library(
 #     name = "node_io_dump_rewriter_test",
 #     srcs = ["node_io_dump_rewriter_test.cc"],
 #     data = [
-#         "//tensorflow/core/tfrt/saved_model/tests:toy_v1/saved_model.pb",
-#         "//tensorflow/core/tfrt/saved_model/tests:toy_v1/variables/variables.data-00000-of-00001",
-#         "//tensorflow/core/tfrt/saved_model/tests:toy_v1/variables/variables.index",
+#         "//tensorflow/core/tfrt/saved_model/tests:toy_v1/1/saved_model.pb",
+#         "//tensorflow/core/tfrt/saved_model/tests:toy_v1/1/variables/variables.data-00000-of-00001",
+#         "//tensorflow/core/tfrt/saved_model/tests:toy_v1/1/variables/variables.index",
 #         "//tensorflow/core/tfrt/saved_model/tests:toy_v2/saved_model.pb",
 #         "//tensorflow/core/tfrt/saved_model/tests:toy_v2/variables/variables.data-00000-of-00001",
 #         "//tensorflow/core/tfrt/saved_model/tests:toy_v2/variables/variables.index",

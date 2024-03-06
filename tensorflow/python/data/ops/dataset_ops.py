@@ -1156,6 +1156,24 @@ class DatasetV2(
     return counter_op._counter(start, step, dtype, name=name)
     # pylint: enable=g-import-not-at-top,protected-access
 
+  def fingerprint(self):
+    """Computes the fingerprint of this `Dataset`.
+
+    If two datasets have the same fingerprint, it is guaranteeed that they
+    would produce identical elements as long as the content of the upstream
+    input files does not change and they produce data deterministically.
+
+    However, two datasets producing identical values does not always mean they
+    would have the same fingerprint due to different graph constructs.
+
+    In other words, if two datasets have different fingerprints, they could
+    still produce identical values.
+
+    Returns:
+      A scalar `tf.Tensor` of type `tf.uint64`.
+    """
+    return gen_dataset_ops.dataset_fingerprint(self._variant_tensor)
+
   def rebatch(self, batch_size, drop_remainder=False, name=None) -> "DatasetV2":
     """Creates a `Dataset` that rebatches the elements from this dataset.
 
@@ -1444,7 +1462,7 @@ class DatasetV2(
 
     #### Fully shuffling all the data
 
-    To shuffle an entire dataset, set `buffer_size=dataset.cardinality(). This
+    To shuffle an entire dataset, set `buffer_size=dataset.cardinality()`. This
     is equivalent to setting the `buffer_size` equal to the number of elements
     in the dataset, resulting in uniform shuffle.
 
@@ -1461,12 +1479,12 @@ class DatasetV2(
     ```
 
     Args:
-      buffer_size: A `tf.int64` scalar `tf.Tensor`, representing the number of
-        elements from this dataset from which the new dataset will sample. To
-        uniformly shuffle the entire dataset, use
+      buffer_size: An int or `tf.int64` scalar `tf.Tensor`, representing the
+        number of elements from this dataset from which the new dataset will
+        sample. To uniformly shuffle the entire dataset, use
         `buffer_size=dataset.cardinality()`.
-      seed: (Optional.) A `tf.int64` scalar `tf.Tensor`, representing the random
-        seed that will be used to create the distribution. See
+      seed: (Optional.) An int or `tf.int64` scalar `tf.Tensor`, representing
+        the random seed that will be used to create the distribution. See
         `tf.random.set_seed` for behavior.
       reshuffle_each_iteration: (Optional.) A boolean, which if true indicates
         that the dataset should be pseudorandomly reshuffled each time it is
@@ -2259,9 +2277,11 @@ name=None))
       map_func: A function mapping a dataset element to another dataset element.
       num_parallel_calls: (Optional.) A `tf.int64` scalar `tf.Tensor`,
         representing the number elements to process asynchronously in parallel.
-        If not specified, elements will be processed sequentially. If the value
-        `tf.data.AUTOTUNE` is used, then the number of parallel
-        calls is set dynamically based on available CPU.
+        If the value `tf.data.AUTOTUNE` is used, then the number of parallel
+        calls is set dynamically based on available CPU. If not specified, the
+        `tf.data.Options.experimental_optimization.map_parallelization` option
+        (`True` by default) controls whether the map will run as with
+        `tf.data.AUTOTUNE` or run sequentially.
       deterministic: (Optional.) When `num_parallel_calls` is specified, if this
         boolean is specified (`True` or `False`), it controls the order in which
         the transformation produces elements. If set to `False`, the
@@ -2865,44 +2885,6 @@ name=None))
     tf.saved_model.save(preprocessing_model, your_exported_model_dir,
                   signatures={'serving_default': preprocessing_model.serving_fn}
                   )
-    ```
-
-    #### Estimator
-
-    In the case of estimators, you need to generally define a `serving_input_fn`
-    which would require the features to be processed by the model while
-    inferencing.
-
-    ```python
-    def serving_input_fn():
-
-      raw_feature_spec = ... # Spec for the raw_features
-      input_fn = tf.estimator.export.build_parsing_serving_input_receiver_fn(
-          raw_feature_spec, default_batch_size=None)
-      )
-      serving_input_receiver = input_fn()
-      raw_features = serving_input_receiver.features
-
-      def preprocessing_fn(raw_feature):
-        # ... the raw_feature is preprocessed as per the use-case
-        return feature
-
-      dataset = (tf.data.Dataset.from_tensor_slices(raw_features)
-                .map(preprocessing_fn, num_parallel_calls=BATCH_SIZE)
-                .batch(BATCH_SIZE))
-
-      processed_features = dataset.get_single_element()
-
-      # Please note that the value of `BATCH_SIZE` should be equal to
-      # the size of the leading dimension of `raw_features`. This ensures
-      # that `dataset` has only element, which is a pre-requisite for
-      # using `dataset.get_single_element()`.
-
-      return tf.estimator.export.ServingInputReceiver(
-          processed_features, serving_input_receiver.receiver_tensors)
-
-    estimator = ... # A pre-built or custom estimator
-    estimator.export_saved_model(your_exported_model_dir, serving_input_fn)
     ```
 
     Args:
@@ -4266,10 +4248,8 @@ def _ensure_same_dataset_graph(dataset):
       raise ValueError(
           f"The graph {current_graph} of the iterator is different from the "
           f"graph {ds_graph} the dataset: {ds._variant_tensor} was created in. "
-          f"If you are using the Estimator API, make sure that no part of the "
-          f"dataset returned by the `input_fn` function is defined outside the "
-          f"`input_fn` function. Otherwise, make sure that the dataset is "
-          f"created in the same graph as the iterator.")
+          f"Make sure that the dataset is created in the same graph as the "
+          f"iterator.")
     for input_ds in ds._inputs():
       if input_ds not in visited:
         bfs_q.put(input_ds)
@@ -4725,6 +4705,9 @@ class NumpyIterator(tracking_base.Trackable):
   def __init__(self, dataset):
     self._iterator = iter(dataset)
     self._dataset = dataset
+
+  def __repr__(self):
+    return f"NumpyIterator(iterator={self._iterator})"
 
   def __iter__(self):
     return self

@@ -2,6 +2,7 @@ syntax = "proto3";
 
 package tensorflow.quantization;
 
+import "tensorflow/compiler/mlir/quantization/stablehlo/quantization_config.proto";
 import "tensorflow/core/framework/tensor.proto";
 
 option cc_enable_arenas = true;
@@ -131,6 +132,8 @@ enum OpSet {
 
 // Defines various calibration options.
 // NEXT ID: 3
+// TODO(b/326751656): remove after all the dependencies moved to
+// stableho.quantization.CalibrationOptions.
 message CalibrationOptions {
   // Configurations for calibration methods.
   // NEXT ID: 7
@@ -203,32 +206,7 @@ message RepresentativeDatasetFile {
 message DebuggerOptions {
   // Type of quantization debugger. Depending on the type, inputs and outputs
   // are wired differently.
-  // NEXT ID: 4
-  enum DebuggerType {
-    DEBUGGER_TYPE_UNSPECIFIED = 0;
-    // DEBUGGER_TYPE_WHOLE_MODEL creates two tf.Savedmodel - unquantized and
-    // quantized model with DumpTensor added to outputs of quantizable layers.
-    // The DumpTensor dumps entire value of its input to a specified file. When
-    // DEBUGGER_TYPE_WHOLE_MODEL is used unquantized_dump_model_path has to be
-    // specified.
-    DEBUGGER_TYPE_WHOLE_MODEL = 1;
-    // DEBUGGER_TYPE_INT_PER_LAYER creates a debugging model with both quantized
-    // and unquantized layers. The unquantized layer's input come from the
-    // previous quantized layer (Please note that this part is different part
-    // from DEBUGGER_TYPE_FLOAT_PER_LAYER). Each layer in the debugging model
-    // has a DumpTensor, and it is used to save the entire value of outputs from
-    // both the quantized and unquantized layer.
-    DEBUGGER_TYPE_INT_PER_LAYER = 2;
-    // DEBUGGER_TYPE_FLOAT_PER_LAYER creates a debugging model with both
-    // quantized and unquantized layers. The unquantized layer's input come from
-    // the previous unquantized layer (Please note that this part is different
-    // part from DEBUGGER_TYPE_INT_PER_LAYER). Each layer in the debugging model
-    // has a DumpTensor, and it is used to save the entire value of outputs from
-    // both the quantized and unquantized layer.
-    DEBUGGER_TYPE_FLOAT_PER_LAYER = 3;
-  }
-
-  DebuggerType debugger_type = 1;
+  stablehlo.quantization.DebuggerConfig.DebuggerType debugger_type = 1;
 
   // Path to save unquantized model with dump tensor ops attached.
   // Used when debugger_type is WHOLE_MODEL.
@@ -302,7 +280,7 @@ message QuantizationOptions {
   // not applied regardless of the op support. Currently, it is supported for
   // XLA opset for SRQ on weight tensors (not activation),
   // and Uniform Quantized opset .
-  bool enable_per_channel_quantization = 10;
+  optional bool enable_per_channel_quantization = 10;
 
   // Enables two inputs of an operation to be both tensors.
   // Currently supports MatMul and BatchMatMul ops for XLA.
@@ -326,7 +304,7 @@ message QuantizationOptions {
   // Defines calibration options for quantization. This option is only used for
   // activation of static range quantization (SRQ). Quantization calibration
   // method is set to MIN_MAX by default.
-  CalibrationOptions calibration_options = 15;
+  stablehlo.quantization.CalibrationOptions calibration_options = 15;
 
   // Configuration related to quantization debugger.
   DebuggerOptions debugger_options = 16;

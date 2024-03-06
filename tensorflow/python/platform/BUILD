@@ -224,6 +224,7 @@ py_strict_library(
         "//tensorflow_models:__subpackages__",
         "//third_party/cloud_tpu/convergence_tools:__subpackages__",
         "//third_party/mlperf:__subpackages__",
+        "//third_party/proto_splitter:__subpackages__",  # TODO(b/277279227): remove this dep from proto_splitter
         "//third_party/py/tf_slim:__subpackages__",
     ],
     deps = [
@@ -324,6 +325,7 @@ py_strict_library(
 py_strict_library(
     name = "flags",
     srcs = ["flags.py"],
+    visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/python/util:tf_decorator_py",
         "@absl_py//absl/flags",

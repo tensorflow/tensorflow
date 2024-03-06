@@ -23,6 +23,7 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/types/span.h"
 #include "flatbuffers/flatbuffers.h"  // from @flatbuffers
+#include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/core/c/c_api_types.h"
 #include "tensorflow/lite/kernels/cast_test_common.h"
 #include "tensorflow/lite/kernels/test_util.h"
@@ -289,6 +290,32 @@ TEST(CastOpModel, CastInt16ToUInt16) {
   ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.ExtractVector<uint16_t>(m.output()),
               ElementsAreArray({10, 20, 30, 40, 50, 60}));
+}
+
+TEST(CastOpModel, CastConstInputCachingWorks) {
+  // This tests the implementation of a performance optimization. If that
+  // optimization is changed, this test will likely break/need to be updated.
+  //
+  // We are relying on the fact that casting a constant input can be cached and
+  // that the output tensor does not need to be updated on every call.
+  CastOpModel m({TensorType_INT8, {2, 3}},
+                std::vector<int8_t>{10, 20, 30, 40, 50, 60},
+                {TensorType_FLOAT32, {2, 3}});
+  EXPECT_EQ(m.GetOutputTensor(0)->allocation_type, kTfLiteArenaRwPersistent);
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  EXPECT_THAT(m.ExtractVector<float>(m.output()),
+              ElementsAreArray({10, 20, 30, 40, 50, 60}));
+  // We are cheating here. If the values of the output tensor are cached then if
+  // we modify the cache and call the op again the output tensor values should
+  // not change.
+  float* output_data =
+      reinterpret_cast<float*>(m.GetOutputTensor(0)->data.data);
+  for (int i = 0; i < 6; ++i) {
+    ++output_data[i];
+  }
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  EXPECT_THAT(m.ExtractVector<float>(m.output()),
+              ElementsAreArray({11, 21, 31, 41, 51, 61}));
 }
 
 }  // namespace

@@ -3,9 +3,11 @@ load(
     "@local_config_rocm//rocm:build_defs.bzl",
     "if_rocm_is_configured",
 )
+load("@local_tsl//tsl:tsl.bzl", "internal_visibility")
 
 package(
-    default_visibility = ["//visibility:public"],
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
+    default_visibility = internal_visibility([":friends"]),
     licenses = ["notice"],
 )
 
@@ -26,7 +28,6 @@ cc_library(
         "gpu_backend_lib.h",
         "utils.h",
     ],
-    visibility = ["//visibility:public"],
     deps = [
         "//xla:status_macros",
         "//xla:statusor",
@@ -39,6 +40,8 @@ cc_library(
         "//xla/stream_executor:device_description",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
         "@llvm-project//llvm:Analysis",
@@ -61,6 +64,7 @@ cc_library(
         "@local_tsl//tsl/platform:logging",
         "@local_tsl//tsl/platform:path",
         "@local_tsl//tsl/platform:random",
+        "@local_tsl//tsl/platform:rocm_rocdl_path",
         "@local_tsl//tsl/profiler/lib:traceme",
         "@local_tsl//tsl/util:env_var",
     ] + if_rocm_is_configured([
@@ -80,8 +84,6 @@ xla_cc_test(
         ":llvm_gpu_backend",
         "//xla/tests:xla_internal_test_main",
         "@llvm-project//llvm:Core",
-        "@llvm-project//llvm:Support",
-        "@local_tsl//tsl/platform:logging",
         "@local_tsl//tsl/platform:path",
         "@local_tsl//tsl/platform:resource_loader",
         "@local_tsl//tsl/platform:test",

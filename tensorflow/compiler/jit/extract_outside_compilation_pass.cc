@@ -100,7 +100,7 @@ Status GetArgDataTypes(const std::vector<Node*>& arg_nodes,
       return errors::Internal("Cannot get datatype for input ", i);
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Builds XlaRecvAtHost node.
@@ -200,7 +200,7 @@ Status GetRetDataTypes(const std::vector<Node*>& ret_nodes,
       return errors::Internal("Cannot get datatype for output ", i);
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Builds XlaSendFromHost node.
@@ -431,7 +431,7 @@ Status ResetDeviceOrdinalToPlaceholderValue(Graph* g) {
                               n->DebugString());
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Cheap check to tell whether FunctionDef contains a lifted argument.
@@ -536,7 +536,7 @@ Status AddMatchingRetvalNode(const FunctionBody& function_body,
   TF_ASSIGN_OR_RETURN(Node * ret_node, function_body.graph->AddNode(ret_def));
   function_body.graph->AddEdge(arg_node, 0, ret_node, 0);
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 void ReplaceLiftedArgNodePlaceholderWithArg(
@@ -571,7 +571,7 @@ Status AddFunctionWithNewName(const std::string& new_name,
   func_attr->set_name(new_name);
   callsite_node->ClearAttr(func_attr_name);
   callsite_node->AddAttr(func_attr_name, *func_attr);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Reconnect outside compilation lifted arguments in a functional While node to
@@ -588,7 +588,7 @@ Status PostprocessLiftedArgsForWhile(
   TF_RET_CHECK(body_function_def);
 
   if (!HasLiftedArgs(*body_function_def)) {
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   // Gather all lifted args.
@@ -681,7 +681,7 @@ Status PostprocessLiftedArgsForWhile(
   TF_RETURN_IF_ERROR(AddFunctionWithNewName(new_cond_function_name, "cond",
                                             rewritten_cond_function_def,
                                             &cond_func, n, fld));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status PostprocessLiftedArgsForIf(
@@ -704,7 +704,7 @@ Status PostprocessLiftedArgsForIf(
   // Nothing to do if neither branch contains any lifted arguments.
   if (!HasLiftedArgs(*then_branch_function_def) &&
       !HasLiftedArgs(*else_branch_function_def)) {
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   std::unique_ptr<FunctionBody> then_branch_function_body;
@@ -820,7 +820,7 @@ Status PostprocessLiftedArgsForIf(
   TF_RETURN_IF_ERROR(AddFunctionWithNewName(
       new_else_function_name, "else_branch", rewritten_else_branch_function_def,
       &else_branch_func, n, fld));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status PostprocessLiftedArgsForCall(
@@ -831,7 +831,7 @@ Status PostprocessLiftedArgsForCall(
 
   // Nothing to do if the function does not contain any lifted arguments.
   if (!HasLiftedArgs(*fdef)) {
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   std::unique_ptr<FunctionBody> fbody;
@@ -917,7 +917,7 @@ Status PostprocessLiftedArgsForCall(
                                       data_types, outside_compilation_nodes, g,
                                       n);
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Creates a mapping from outside compilation cluster name to lifted argument
@@ -974,7 +974,7 @@ Status PostprocessLiftedArgs(Graph* g, FunctionLibraryDefinition* fld) {
         outside_compilation_attr_to_node, g, n, fld));
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // For an XLA computation, builds host side graph given all outside compilation
@@ -1116,7 +1116,7 @@ Status ConstructHostGraph(
                     **host_graph, fld);
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Expand XLA computation's outside compilation host side graph into main graph.
@@ -1154,7 +1154,7 @@ Status ExpandHostGraphIntoMainGraph(Graph* main_graph,
     node_map[host_graph->source_node()] = main_graph->source_node();
   }
   node_map[host_graph->sink_node()] = main_graph->sink_node();
-  Status s = OkStatus();
+  Status s = absl::OkStatus();
   auto copy_node_fn = [&](const Node* n) {
     if (!s.ok()) {
       return;
@@ -1323,7 +1323,7 @@ Status RewriteShapeInferenceGraph(const string& shape_inference_graph_name,
   TF_RETURN_IF_ERROR(
       fld->ReplaceFunction(shape_inference_graph_name, fdef_replace));
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 void SetMaximalSharding(NodeDefBuilder& node_builder) {
@@ -1397,7 +1397,7 @@ Status ReplaceKeyPlaceholderWithArgNode(const string& xla_cluster_name,
   TF_RETURN_IF_ERROR(GraphToFunctionDef(
       *g, func_name, HostGraphControlRetMapping, &replace_fdef));
   TF_RETURN_IF_ERROR(fld->ReplaceFunction(func_name, replace_fdef));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Builds host side graph for If node.
@@ -1477,7 +1477,7 @@ TF_ATTRIBUTE_NOINLINE Status BuildHostGraphForIfNode(
     TF_RETURN_IF_ERROR(fld->AddFunctionDef(oc_host_graph_fdef));
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Rewrites loop cond to add a node which sends loop cond to host.
@@ -1553,7 +1553,7 @@ TF_ATTRIBUTE_NOINLINE Status AddSendLoopPredToLoopCond(
     while_node->AddAttr("cond", *loop_cond_func);
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Rewrites while loop cond function for host.
@@ -1627,7 +1627,7 @@ Status RewriteHostWhileLoopCond(
   TF_RETURN_IF_ERROR(
       fld->ReplaceFunction(cond_host_func_name, cond_replace_fdef));
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Rewrites while loop body function for host.
@@ -1685,7 +1685,7 @@ Status RewriteHostWhileLoopBody(
   TF_RETURN_IF_ERROR(
       fld->ReplaceFunction(body_host_func_name, body_replace_fdef));
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Builds host side graph for while node.
@@ -1752,7 +1752,7 @@ TF_ATTRIBUTE_NOINLINE Status BuildHostGraphForWhileNode(
     TF_RETURN_IF_ERROR(fld->AddFunctionDef(oc_host_graph_fdef));
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Builds host graph for func call nodes.
@@ -1801,7 +1801,7 @@ Status BuildHostGraphForFuncCallNode(
     TF_RETURN_IF_ERROR(fld->AddFunctionDef(oc_host_graph_fdef));
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 TF_ATTRIBUTE_NOINLINE Status ExtractOutsideCompilationForFuncCallNode(
@@ -1843,7 +1843,7 @@ TF_ATTRIBUTE_NOINLINE Status ExtractOutsideCompilationForFuncCallNode(
 
   // If the function call does not have outside compilation, nothing to do.
   if (!func_has_outside_compilation) {
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   *has_outside_compilation = true;
@@ -1887,7 +1887,7 @@ TF_ATTRIBUTE_NOINLINE Status ExtractOutsideCompilationForFuncCallNode(
   // Record the host graph.
   host_graphs->push_back(oc_host_graph_name);
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status ExtractOutsideCompilationForIfNode(
@@ -1926,7 +1926,7 @@ Status ExtractOutsideCompilationForIfNode(
   // If then/else branch do not have outside compilation, nothing to do.
   if (!then_branch_has_outside_compilation &&
       !else_branch_has_outside_compilation) {
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   *has_outside_compilation = true;
@@ -2006,7 +2006,7 @@ Status ExtractOutsideCompilationForIfNode(
       then_branch_host_func_name, else_branch_host_func_name));
   host_graphs->push_back(oc_host_graph_name);
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status ExtractOutsideCompilationForWhileNode(
@@ -2040,7 +2040,7 @@ Status ExtractOutsideCompilationForWhileNode(
 
   // If cond/body do not have outside compilation, nothing to do.
   if (!cond_has_outside_compilation && !body_has_outside_compilation) {
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   *has_outside_compilation = true;
@@ -2107,7 +2107,7 @@ Status ExtractOutsideCompilationForWhileNode(
       cond_host_func_name, body_host_func_name));
   host_graphs->push_back(oc_host_graph_name);
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status ExtractOutsideCompilationForNodesWithAssociatedFunctions(
@@ -2149,7 +2149,7 @@ Status ExtractOutsideCompilationForNodesWithAssociatedFunctions(
         has_outside_compilation));
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status CopyOutsideCompilationConstNodes(
@@ -2194,7 +2194,7 @@ Status CopyOutsideCompilationConstNodes(
     }
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace
@@ -2300,7 +2300,7 @@ Status RewriteOutsideCompilationSubgraphFn::operator()(
   AddNodeAttr("Toutputs", send_from_host_dtypes, node_def);
   AddNodeAttr("key", absl::StrCat("host_compute_channel_", new_name), node_def);
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status ExtractOutsideCompilationForFunction(
@@ -2316,7 +2316,7 @@ Status ExtractOutsideCompilationForFunction(
   FunctionLibraryRuntime::Handle handle;
   TF_RETURN_IF_ERROR(
       flr->Instantiate(func_name, AttrSlice(&func_name_attrs.attr()), &handle));
-  Status ret_status = OkStatus();
+  Status ret_status = absl::OkStatus();
   auto cleanup_handle = gtl::MakeCleanup([&]() {
     auto s = flr->ReleaseHandle(handle);
     if (!s.ok()) {
@@ -2543,7 +2543,7 @@ Status ExtractOutsideCompilation(
   if (VLOG_IS_ON(4)) {
     DumpGraphToFile("extract_outside_compilation_after", *g, fld);
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace tensorflow

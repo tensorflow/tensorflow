@@ -1,4 +1,4 @@
-/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -22,9 +22,11 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/status/statusor.h"
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
-#include "xla/service/collective_ops_utils.h"
+#include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/service/gpu/nccl_collective_thunk.h"
+#include "xla/shape.h"
 
 namespace xla {
 namespace gpu {
@@ -58,77 +60,18 @@ struct NcclP2PConfig {
 };
 
 // Extracts source/target pairs for send/recv from frontend attributes.
-StatusOr<std::vector<std::pair<int64_t, int64_t>>> GetSourceTargetPairs(
+absl::StatusOr<std::vector<std::pair<int64_t, int64_t>>> GetSourceTargetPairs(
     mlir::DictionaryAttr frontend_attributes);
 
-// Returns the GroupMode for Send and Recv.
-template <typename OpT>
-std::enable_if_t<std::is_same_v<OpT, mlir::lmhlo::SendOp> ||
-                     std::is_same_v<OpT, mlir::lmhlo::RecvOp>,
-                 CollectiveOpGroupMode>
-GetGroupModeForSendRecv(OpT op) {
-  return GetCollectiveOpGroupMode(op.getChannelHandle().getHandle() > 1,
-                                  std::nullopt)
-      .value();
-}
-
-// Constructs the NcclP2PConfig for Send and Recv.
-template <typename OpT>
-std::enable_if_t<std::is_same_v<OpT, mlir::lmhlo::SendOp> ||
-                     std::is_same_v<OpT, mlir::lmhlo::RecvOp>,
-                 NcclP2PConfig>
-GetNcclP2PConfigForSendRecv(OpT op, int64_t replica_count,
-                            int64_t partition_count) {
-  NcclP2PConfig p2p_config;
-  auto& config = p2p_config.config;
-
-  config.operand_count = 1;
-  const Shape shape = GetShape(op.getOperand(0));
-  config.operand_element_type.push_back(shape.element_type());
-
-  const int64_t channel_id = op.getChannelHandle().getHandle();
-  config.group_mode = GetGroupModeForSendRecv(op);
-  // Emulate SetCollectiveOpKindAndID.
-  // Send and Recv ops have a non-optional channel id while collective-permute
-  // has an optional channel id. We use 0 to encode the send/recv transformed
-  // from collective-permute without a channel id.
-  if (channel_id >= 1) {
-    config.collective_op_kind = RendezvousKey::kCrossModule;
-    config.op_id = channel_id;
-  } else {
-    config.collective_op_kind = RendezvousKey::kCrossReplica;
-    mlir::ModuleOp parent = op->template getParentOfType<mlir::ModuleOp>();
-    mlir::IntegerAttr unique_id =
-        parent->getAttrOfType<mlir::IntegerAttr>("hlo.unique_id");
-    config.op_id = static_cast<int64_t>(unique_id.getInt());
-  }
-
-  // All execution instances of a send/recv together form a replica group.
-  const int64_t num_participants =
-      config.group_mode == CollectiveOpGroupMode::kCrossReplica
-          ? replica_count
-          : partition_count;
-  config.replica_groups.emplace_back();
-  ReplicaGroup& replica_group = config.replica_groups.front();
-  for (int i = 0; i < num_participants; ++i) {
-    replica_group.add_replica_ids(i);
-  }
-
-  auto source_target_pairs = GetSourceTargetPairs(op.getFrontendAttributes());
-  TF_CHECK_OK(source_target_pairs.status());
-  for (const std::pair<int64_t, int64_t>& source_target :
-       *source_target_pairs) {
-    int64_t source = source_target.first;
-    int64_t target = source_target.second;
-
-    p2p_config.id_to_source_target.insert({target, {}}).first->second.source =
-        source;
-    p2p_config.id_to_source_target.insert({source, {}}).first->second.target =
-        target;
-  }
-
-  return p2p_config;
-}
+// Constructs the NcclP2PConfig for an HLO Send or Recv instruction.
+NcclP2PConfig GetNcclP2PConfigForSendRecv(const HloSendRecvInstruction* instr,
+                                          const Shape& shape,
+                                          int64_t replica_count,
+                                          int64_t partition_count);
+// Returns the stream kind for the asynchronous stream used to execute an HLO
+// Send or Recv instruction, by inspecting the frontend attributes of the
+// instruction.
+AsyncStreamKind GetStreamKindForSendRecv(const HloSendRecvInstruction* instr);
 
 }  // namespace gpu
 }  // namespace xla

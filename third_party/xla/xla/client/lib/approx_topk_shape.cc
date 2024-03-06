@@ -1,4 +1,4 @@
-/* Copyright 2022 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2022 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -37,7 +37,7 @@ inline uint32_t log2_ceil(uint64_t value) {
 }
 
 // LINT.IfChange
-StatusOr<std::pair<int64_t, int64_t>> ApproxTopKReductionOutputSize(
+absl::StatusOr<std::pair<int64_t, int64_t>> ApproxTopKReductionOutputSize(
     int64_t input_size, int64_t rank, int64_t top_k, float recall_target,
     bool aggregate_to_topk, int64_t input_size_override) {
   if (aggregate_to_topk) {

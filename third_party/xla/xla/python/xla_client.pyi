@@ -1,4 +1,4 @@
-# Copyright 2021 The TensorFlow Authors. All Rights Reserved.
+# Copyright 2021 The OpenXLA Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -104,6 +104,9 @@ def make_tfrt_tpu_c_api_client(options: Optional[_NameValueMapping] = None) -> C
 def make_tfrt_tpu_c_api_device_topology(topology_name: Optional[str] = None, **kwargs) -> DeviceTopology:
   ...
 
+def make_c_api_device_topology(c_api: Any, topology_name: str = '', **kwargs) -> DeviceTopology:
+  ...
+
 def get_topology_for_devices(devices: List[Device]) -> DeviceTopology:
   ...
 
@@ -122,15 +125,16 @@ def pjrt_plugin_loaded(plugin_name: str) -> bool:
 def load_pjrt_plugin_dynamically(plugin_name: str, library_path: str) -> Any:
   ...
 
+def load_pjrt_plugin_with_c_api(plugin_name: str, c_api: Any) -> None:
+  ...
+
 def pjrt_plugin_initialized(plugin_name: str) -> bool:
   ...
 
 def initialize_pjrt_plugin(plugin_name: str) -> None:
   ...
 
-def generate_pjrt_gpu_plugin_options(
-    visible_devices: str = 'all',
-) -> _NameValueMapping:
+def generate_pjrt_gpu_plugin_options() -> _NameValueMapping:
   ...
 
 class OpMetadata:
@@ -235,7 +239,7 @@ def array_result_handler(
   ...
 
 def register_custom_call_target(
-    name: str, fn: Callable, platform: str = ...
+    name: str, fn: Callable, platform: str = ..., api_version: int = ...
 ) -> None:
   ...
 

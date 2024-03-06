@@ -1,4 +1,4 @@
-/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2020 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -47,7 +47,7 @@ class SpmdPartitioningTest
     : public HloTestBase,
       public ::testing::WithParamInterface<ShardingFormatPicker::ShardingType> {
  public:
-  StatusOr<std::unique_ptr<HloModule>> PartitionComputation(
+  absl::StatusOr<std::unique_ptr<HloModule>> PartitionComputation(
       absl::string_view hlo_module, int64_t num_devices,
       bool conv_halo_exchange_always_on_lhs = true,
       bool choose_faster_windowed_einsum = false,
@@ -99,7 +99,7 @@ class SpmdPartitioningTest
     TF_RETURN_IF_ERROR(pass.Run(module.get()).status());
 
     VerifyNoShardingOnCollectives(module.get());
-    return StatusOr<std::unique_ptr<HloModule>>(std::move(module));
+    return absl::StatusOr<std::unique_ptr<HloModule>>(std::move(module));
   }
 
   void VerifyNoShardingOnCollectives(HloModule* module) {
@@ -10756,11 +10756,10 @@ ENTRY %module {
   auto operand = AllOf(op::Shape("s32[8,4,1,2]"), op::AllReduce());
   auto indices = AllOf(op::Shape("s32[2,4,2]"), op::Parameter());
   auto gather = AllOf(op::Shape("s32[4,2,1,2]"), op::Gather(operand, indices));
-  EXPECT_THAT(root, op::AllReduce(op::DynamicUpdateSlice(
-                        _,
-                        op::AllReduce(op::AllReduce(
-                            op::DynamicUpdateSlice(_, gather, _, _, _, _))),
-                        _, _, _, _)));
+  EXPECT_THAT(
+      root, op::AllReduce(op::AllReduce(op::DynamicUpdateSlice(
+                _, op::AllReduce(op::DynamicUpdateSlice(_, gather, _, _, _, _)),
+                _, _, _, _))));
 }
 
 TEST_P(SpmdPartitioningTest,
@@ -11677,12 +11676,8 @@ ENTRY %module {
   auto update = AllOf(op::Shape("s32[4,2,1,2]"), op::DynamicSlice());
   auto scatter =
       AllOf(op::Shape("s32[8,4,1,2]"), op::Scatter(operand, indices, update));
-  EXPECT_THAT(
-      root,
-      op::AllReduce(op::AllReduce(op::AllReduce(op::DynamicUpdateSlice(
-          _,
-          op::DynamicSlice(op::AllReduce(op::AllReduce(scatter)), _, _, _, _),
-          _, _, _, _)))));
+  EXPECT_THAT(root, op::AllReduce(op::DynamicUpdateSlice(
+                        _, op::AllReduce(op::AllReduce(scatter)), _, _, _, _)));
 }
 
 TEST_P(SpmdPartitioningTest,
@@ -13953,6 +13948,36 @@ ENTRY %entry {
   EXPECT_THAT(topk_operand, op::Shape("bf16[64,128000]{1,0}"));
 }
 
+TEST_P(SpmdPartitioningTest, TopKCustomCallManualSharding) {
+  absl::string_view hlo_string = R"(
+HloModule module
+
+region {
+  Arg_2.22549 = s32[] parameter(2)
+  Arg_3.22550 = s32[] parameter(3)
+  Arg_0.22547 = bf16[] parameter(0)
+  Arg_1.22548 = bf16[] parameter(1)
+  ROOT compare.22551 = pred[] compare(Arg_0.22547, Arg_1.22548), direction=GT, type=TOTALORDER
+}
+
+ENTRY %entry {
+  %p0 = bf16[64,256000]{1,0} parameter(0), sharding={manual}
+  %custom-call = (bf16[64,40]{1,0}, s32[64,40]{1,0}) custom-call(bf16[64,256000]{1,0} %p0), custom_call_target="TopK", called_computations={%region}, sharding={{manual}, {manual}}
+  %get-tuple-element.336 = bf16[64,40]{1,0} get-tuple-element((bf16[64,40]{1,0}, s32[64,40]{1,0}) %custom-call), index=0, sharding={manual}
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/2));
+  VLOG(1) << module->ToString();
+  EXPECT_EQ(FindInstruction(module.get(), HloOpcode::kSort), nullptr);
+
+  auto topk_instruction = FindInstruction(module.get(), HloOpcode::kCustomCall);
+  EXPECT_EQ(topk_instruction->custom_call_target(), "TopK");
+  EXPECT_THAT(topk_instruction->operand(0), op::Shape("bf16[64,256000]{1,0}"));
+  EXPECT_THAT(topk_instruction,
+              op::Shape("(bf16[64,40]{1,0}, s32[64,40]{1,0})"));
+}
+
 TEST_P(SpmdPartitioningTest, WindowedEinsumShouldMatchLhs_b305313406) {
   absl::string_view hlo_string = R"(
 HloModule module
@@ -14012,6 +14037,46 @@ ENTRY %extracted_computation (param: f32[13,128,312,16,312]) -> f32[13,39936,499
   // Check an all-to-all is emitted for resharding.
   auto all_to_all = FindInstruction(module.get(), HloOpcode::kAllToAll);
   EXPECT_NE(all_to_all, nullptr);
+}
+
+TEST_P(SpmdPartitioningTest, SortAllGatherNonMovableDimension) {
+  const char* const hlo_string = R"(
+HloModule module
+
+top_k_gt_f32_comparator_64.35303 {
+  Arg_2.35306 = s32[] parameter(2)
+  Arg_3.35307 = s32[] parameter(3)
+  Arg_0.35304 = f32[] parameter(0)
+  Arg_1.35305 = f32[] parameter(1)
+  ROOT compare.35308 = pred[] compare(Arg_0.35304, Arg_1.35305), direction=GT
+}
+
+ENTRY entry {
+  param.0 = f32[4,16384,4096]{2,1,0} parameter(0), sharding={devices=[4,4,4]<=[64]}
+  param.1 = s32[4,16384,4096]{2,1,0} parameter(1), sharding={devices=[4,4,4]<=[64]}
+  ROOT sort.209 = (f32[4,16384,4096]{2,1,0}, s32[4,16384,4096]{2,1,0}) sort(param.0, param.1), dimensions={2}, to_apply=top_k_gt_f32_comparator_64.35303, sharding={{devices=[4,4,4]<=[64]}, {devices=[4,4,4]<=[64]}}
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto module,
+      PartitionComputation(
+          hlo_string, /*num_devices=*/64,
+          /*conv_halo_exchange_always_on_lhs=*/true,
+          /*xla_tpu_enable_log_recorder_partitioned_logging=*/true));
+  XLA_VLOG_LINES(1, module->ToString());
+
+  auto* root = module->entry_computation()->root_instruction();
+  auto* sort = FindInstruction(module.get(), HloOpcode::kSort);
+  EXPECT_THAT(
+      root,
+      AllOf(op::Tuple(),
+            op::Shape("(f32[1,4096,1024]{2,1,0}, s32[1,4096,1024]{2,1,0})")));
+  EXPECT_THAT(
+      sort,
+      AllOf(op::Sort(
+                AllOf(op::AllReduce(), op::Shape("f32[1,4096,4096]{2,1,0}")),
+                AllOf(op::AllReduce(), op::Shape("s32[1,4096,4096]{2,1,0}"))),
+            op::Shape("(f32[1,4096,4096]{2,1,0}, s32[1,4096,4096]{2,1,0})")));
 }
 
 }  // namespace

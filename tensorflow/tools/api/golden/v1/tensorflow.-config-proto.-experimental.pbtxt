@@ -131,6 +131,12 @@ tf_proto {
       type: TYPE_BOOL
     }
     field {
+      name: "stream_merge_threshold"
+      number: 31
+      label: LABEL_OPTIONAL
+      type: TYPE_INT32
+    }
+    field {
       name: "disable_functional_ops_lowering"
       number: 21
       label: LABEL_OPTIONAL

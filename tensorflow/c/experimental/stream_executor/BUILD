@@ -45,6 +45,7 @@ cc_library(
         "//tensorflow/core/common_runtime/device:device_utils",
         "//tensorflow/core/platform:strcat",
         "@com_google_absl//absl/functional:any_invocable",
+        "@local_tsl//tsl/platform:status",
         "@local_xla//xla/stream_executor",
         "@local_xla//xla/stream_executor:platform",
     ],
@@ -64,6 +65,7 @@ cc_library(
         "//tensorflow/c:c_api_macros",
         "//tensorflow/c:tf_status",
         "//tensorflow/c:tf_status_helper",
+        "@local_tsl//tsl/platform:statusor",
         "@local_xla//xla/stream_executor",
         "@local_xla//xla/stream_executor:stream_executor_internal",
     ],
@@ -79,6 +81,7 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core/protobuf:error_codes_proto_impl_cc",
+        "@local_tsl//tsl/platform:statusor",
         "@local_xla//xla/stream_executor",
     ],
 )

@@ -160,6 +160,29 @@ TEST(SparseCoreLayoutStacker, RespectsRowLimit) {
               )pb"))));
 }
 
+TEST(SparseCoreLayoutStacker, RespectsTableLimit) {
+  SparseCoreLayoutStacker stacker(2);
+  // Disable the other limits.
+  stacker.SetActivationMemoryBytesLimit(0);
+  stacker.SetVariableShardBytesLimit(0);
+
+  // Max of 2 tables per stack. Without this, all the tables would go in the
+  // same stack.
+  stacker.SetStackingTableLimit(2);
+
+  ASSERT_OK(stacker.AddTable("table1", 128, 8, "stack1", 1024));
+  ASSERT_OK(stacker.AddTable("table2", 128, 8, "stack1", 1024));
+  ASSERT_OK(stacker.AddTable("table3", 128, 8, "stack1", 1024));
+  ASSERT_OK(stacker.AddTable("table4", 128, 8, "stack1", 1024));
+  EXPECT_THAT(
+      stacker.GetLayouts(), IsOkAndHolds(Partially(EqualsProto(R"pb(
+        tables { table_name: 'table1' stacked_table_name: 'table1_table2' }
+        tables { table_name: 'table2' stacked_table_name: 'table1_table2' }
+        tables { table_name: 'table3' stacked_table_name: 'table3_table4' }
+        tables { table_name: 'table4' stacked_table_name: 'table3_table4' }
+      )pb"))));
+}
+
 }  // namespace
 }  // namespace tpu
 }  // namespace tensorflow

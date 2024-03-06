@@ -17,17 +17,25 @@ from typing import Any
 from tensorflow.compiler.mlir.quantization.tensorflow.python import py_function_lib
 from tensorflow.compiler.mlir.quantization.tensorflow.python import representative_dataset as rd
 
+
 # LINT.IfChange(static_range_ptq)
 def static_range_ptq(
     src_saved_model_path: str,
     dst_saved_model_path: str,
-    quantization_options_serialized: bytes,
+    quantization_config_serialized: bytes,
     *,
     signature_keys: list[str],
     signature_def_map_serialized: dict[str, bytes],
     function_aliases: dict[str, str],
     py_function_library: py_function_lib.PyFunctionLibrary,
-    representative_dataset: rd.RepresentativeDatasetOrMapping,
 ) -> Any: ...  # Status
+
+# LINT.ThenChange()
+
+
+# LINT.IfChange(populate_default_configs)
+def populate_default_configs(
+    user_provided_quantization_config_serialized: bytes,
+) -> bytes: ...  # QuantizationConfig
 
 # LINT.ThenChange()

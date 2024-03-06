@@ -1,4 +1,4 @@
-/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -26,7 +26,7 @@ namespace op = xla::testing::opcode_matchers;
 
 class CollectiveTransformationReordererTest : public HloTestBase {
  public:
-  StatusOr<bool> RunCollectiveTransformationReorderer(HloModule* module) {
+  absl::StatusOr<bool> RunCollectiveTransformationReorderer(HloModule* module) {
     CollectiveTransformationReorder reorderer;
     return reorderer.Run(module, {});
   }

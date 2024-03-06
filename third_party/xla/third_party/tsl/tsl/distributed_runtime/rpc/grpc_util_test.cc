@@ -16,6 +16,7 @@ limitations under the License.
 #include "tsl/distributed_runtime/rpc/grpc_util.h"
 
 #include <algorithm>
+#include <cmath>
 #include <vector>
 
 #include "grpcpp/grpcpp.h"
@@ -70,9 +71,9 @@ TestRequest MakeProto(int size) {
 }
 
 TEST(PayloadSerialization, PayloadsAreTransmitted) {
-  Status status = errors::InvalidArgument("invalid arg message");
+  absl::Status status = errors::InvalidArgument("invalid arg message");
   status.SetPayload("a", absl::Cord("\\xFF\\x02\\x03"));
-  Status status_recovered = FromGrpcStatus(ToGrpcStatus(status));
+  absl::Status status_recovered = FromGrpcStatus(ToGrpcStatus(status));
 
   ASSERT_TRUE(status_recovered.GetPayload("a").has_value());
   EXPECT_EQ(status_recovered.GetPayload("a").value(), "\\xFF\\x02\\x03");
@@ -83,7 +84,7 @@ TEST(PayloadSerialization, PayloadsCorrupted) {
       ::grpc::StatusCode::INVALID_ARGUMENT, "invalid arg message",
       "string that can not be serialized to the GrpcPayloadContainer proto");
 
-  Status converted = FromGrpcStatus(status);
+  absl::Status converted = FromGrpcStatus(status);
   EXPECT_TRUE(converted.GetPayload(kGrpcPayloadsLost).has_value());
 }
 

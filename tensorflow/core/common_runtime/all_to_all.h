@@ -34,7 +34,7 @@ class AllToAll : public CollectiveImplementationInterface {
   void Run(StatusCallback done) override;
 
   Status InitializeCollectiveParams(CollectiveParams* col_params) override {
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   // Initializes members of CollectiveContext not yet initialized, i.e. device

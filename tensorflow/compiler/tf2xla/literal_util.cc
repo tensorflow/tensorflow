@@ -43,7 +43,7 @@ Status HostTensorToBorrowingLiteral(const xla::Shape& xla_shape,
   return OkStatus();
 }
 
-StatusOr<xla::Literal> HostTensorToLiteral(const Tensor& host_tensor) {
+absl::StatusOr<xla::Literal> HostTensorToLiteral(const Tensor& host_tensor) {
   xla::BorrowingLiteral literal;
   TF_RETURN_IF_ERROR(HostTensorToBorrowingLiteral(host_tensor, &literal));
   return literal.Clone();

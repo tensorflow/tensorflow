@@ -192,10 +192,15 @@ cc_library(
     srcs = ["elementwise.cc"],
     hdrs = ["elementwise.h"],
     deps = [
+        "//tensorflow/lite/delegates/gpu/common:data_type",
         "//tensorflow/lite/delegates/gpu/common:operations",
+        "//tensorflow/lite/delegates/gpu/common:shape",
         "//tensorflow/lite/delegates/gpu/common:status",
+        "//tensorflow/lite/delegates/gpu/common:tensor",
         "//tensorflow/lite/delegates/gpu/common:types",
         "//tensorflow/lite/delegates/gpu/gl:node_shader",
+        "//tensorflow/lite/delegates/gpu/gl:object",
+        "//tensorflow/lite/delegates/gpu/gl:variable",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
     ],
@@ -211,7 +216,10 @@ cc_test(
     deps = [
         ":elementwise",
         ":test_util",
+        "//tensorflow/lite/delegates/gpu/common:data_type",
         "//tensorflow/lite/delegates/gpu/common:operations",
+        "//tensorflow/lite/delegates/gpu/common:shape",
+        "//tensorflow/lite/delegates/gpu/common:tensor",
     ] + tflite_angle_heapcheck_deps(),
 )
 

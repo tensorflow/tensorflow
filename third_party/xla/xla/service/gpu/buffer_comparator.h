@@ -1,4 +1,4 @@
-/* Copyright 2018 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2018 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -16,9 +16,10 @@ limitations under the License.
 #ifndef XLA_SERVICE_GPU_BUFFER_COMPARATOR_H_
 #define XLA_SERVICE_GPU_BUFFER_COMPARATOR_H_
 
+#include "absl/status/statusor.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/shape.h"
-#include "xla/statusor.h"
+#include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/stream_executor.h"
 
 namespace xla::gpu {
@@ -40,8 +41,9 @@ class BufferComparator {
   //     abs(a - b) / (max(abs(a), abs(b)) + 1) < tolerance
   //
   // See the implementation for the tolerance value.
-  StatusOr<bool> CompareEqual(se::Stream* stream, se::DeviceMemoryBase current,
-                              se::DeviceMemoryBase expected) const;
+  absl::StatusOr<bool> CompareEqual(se::Stream* stream,
+                                    se::DeviceMemoryBase current,
+                                    se::DeviceMemoryBase expected) const;
 
  private:
   Shape shape_;

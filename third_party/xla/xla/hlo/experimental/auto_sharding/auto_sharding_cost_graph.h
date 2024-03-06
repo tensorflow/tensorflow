@@ -1,4 +1,4 @@
-/* Copyright 2022 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2022 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -18,12 +18,15 @@ limitations under the License.
 
 #include <algorithm>
 #include <cstddef>
+#include <cstdlib>
 #include <numeric>
 #include <string>
 #include <utility>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "absl/strings/str_cat.h"
 #include "absl/types/span.h"
 #include "xla/hlo/experimental/auto_sharding/auto_sharding_strategy.h"
@@ -44,48 +47,57 @@ class CostGraph {
     adjacency_.assign(strategy_groups.size(), StableHashSet<int>());
 
     // Build the cost graph
-    for (const auto& strategies : strategy_groups) {
-      node_lens_.push_back(strategies->strategies.size());
+    for (StrategyGroup* strategy_group : strategy_groups) {
+      node_lens_.push_back(strategy_group->strategies.size());
       extra_node_costs_.push_back(
-          std::vector<double>(strategies->strategies.size(), 0.0));
+          std::vector<double>(strategy_group->strategies.size(), 0.0));
 
-      for (size_t i = 0; i < strategies->in_nodes.size(); ++i) {
-        if (!strategies->in_nodes[i]->is_tuple) {
-          NodeIdx src_idx = strategies->in_nodes[i]->node_idx;
-          NodeIdx dst_idx = strategies->node_idx;
-          Matrix edge_cost = CreateEdgeCost(src_idx, dst_idx, i, strategies);
+      const auto& in_nodes = strategy_group->in_nodes;
+      for (size_t i = 0; i < in_nodes.size(); ++i) {
+        if (!in_nodes[i]->is_tuple) {
+          NodeIdx src_idx = in_nodes[i]->node_idx;
+          NodeIdx dst_idx = strategy_group->node_idx;
+          Matrix edge_cost =
+              CreateEdgeCost(src_idx, dst_idx, i, strategy_group);
           AddEdgeCost(src_idx, dst_idx, edge_cost);
-        } else if (strategies->in_nodes[i]->is_tuple &&
-                   strategies->in_nodes.size() > 1) {
-          for (size_t l = 0; l < strategies->in_nodes[i]->childs.size(); l++) {
-            NodeIdx src_idx = strategies->in_nodes[i]->childs.at(l)->node_idx;
-            NodeIdx dst_idx = strategies->node_idx;
+        } else if (in_nodes[i]->is_tuple && in_nodes.size() > 1) {
+          for (size_t l = 0; l < in_nodes[i]->childs.size(); l++) {
+            NodeIdx src_idx = in_nodes[i]->childs.at(l)->node_idx;
+            NodeIdx dst_idx = strategy_group->node_idx;
             Matrix edge_cost =
-                CreateEdgeCost(src_idx, dst_idx, i, strategies, true);
+                CreateEdgeCost(src_idx, dst_idx, i, strategy_group, true);
             AddEdgeCost(src_idx, dst_idx, edge_cost);
           }
 
         } else {
-          CHECK_EQ(strategies->in_nodes.size(), 1)
+          CHECK_EQ(in_nodes.size(), 1)
               << "Do not support instructions with more than one tuple "
                  "operand. If this CHECK fails, we will need to fix "
                  "b/233412625.";
-          for (size_t l = 0; l < strategies->in_nodes[i]->childs.size(); l++) {
-            NodeIdx src_idx = strategies->in_nodes[i]->childs.at(l)->node_idx;
-            NodeIdx dst_idx = strategies->node_idx;
+          for (size_t l = 0; l < in_nodes[i]->childs.size(); l++) {
+            NodeIdx src_idx = in_nodes[i]->childs.at(l)->node_idx;
+            NodeIdx dst_idx = strategy_group->node_idx;
             // TODO(b/233412625) Support more general case, e.g., multiple tuple
             // operands. If there is only one operand and it's a tuple, the
             // first index of resharding_costs is for the tuple element.
-            Matrix edge_cost =
-                CreateEdgeCost(src_idx, dst_idx, /*in_node_idx=*/l, strategies);
+            Matrix edge_cost = CreateEdgeCost(
+                src_idx, dst_idx, /*in_node_idx=*/l, strategy_group);
             AddEdgeCost(src_idx, dst_idx, edge_cost);
           }
         }
       }
 
-      if (strategies->following) {
-        to_merge_pairs_.push_back(
-            {strategies->node_idx, strategies->following->node_idx});
+      if (strategy_group->following) {
+        if (strategy_group->strategies.size() ==
+            strategy_group->following->strategies.size()) {
+          to_merge_pairs_.push_back(
+              {strategy_group->node_idx, strategy_group->following->node_idx});
+        } else {
+          LOG(WARNING) << "Different strategy counts for instruction ID "
+                       << strategy_group->instruction_id
+                       << " and following instruction ID "
+                       << strategy_group->following->instruction_id;
+        }
       }
     }
 
@@ -95,20 +107,29 @@ class CostGraph {
       NodeIdx src_idx = pair.first->node_idx;
       NodeIdx dst_idx = pair.second->node_idx;
 
-      if (node_lens_[src_idx] != node_lens_[dst_idx]) {
-        continue;
-      }
-
       Matrix edge_cost(node_lens_[src_idx], node_lens_[dst_idx]);
+      absl::flat_hash_map<std::string, NodeStrategyIdx>
+          src_strategy_name_to_idx_map;
       for (NodeStrategyIdx i = 0; i < node_lens_[src_idx]; ++i) {
-        if (strategy_groups[src_idx]->strategies[i].communication_cost > 0) {
-          CHECK_LE(
-              std::abs(
-                  strategy_groups[src_idx]->strategies[i].communication_cost -
-                  strategy_groups[dst_idx]->strategies[i].communication_cost),
-              1e-6);
-          edge_cost(i, i) =
-              -strategy_groups[src_idx]->strategies[i].communication_cost;
+        const ShardingStrategy& strategy =
+            strategy_groups[src_idx]->strategies[i];
+        if (strategy.communication_cost > 0) {
+          src_strategy_name_to_idx_map[strategy.name] = i;
+        }
+      }
+      for (NodeStrategyIdx i = 0; i < node_lens_[dst_idx]; ++i) {
+        const ShardingStrategy& dst_strategy =
+            strategy_groups[dst_idx]->strategies[i];
+        if (dst_strategy.communication_cost > 0) {
+          auto it = src_strategy_name_to_idx_map.find(dst_strategy.name);
+          if (it != src_strategy_name_to_idx_map.end()) {
+            const ShardingStrategy& src_strategy =
+                strategy_groups[src_idx]->strategies[it->second];
+            CHECK_LE(std::abs(src_strategy.communication_cost -
+                              dst_strategy.communication_cost),
+                     1e-6);
+            edge_cost(it->second, i) = -src_strategy.communication_cost;
+          }
         }
       }
       AddEdgeCost(src_idx, dst_idx, edge_cost);

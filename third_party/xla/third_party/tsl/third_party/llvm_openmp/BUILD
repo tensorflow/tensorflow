@@ -19,19 +19,20 @@ load(
 load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
 
 package(
-    default_visibility = ["//visibility:public"],
+    default_visibility = [
+        "//visibility:public",
+    ],
 )
 
-exports_files(
-    ["LICENSE.txt"],
-    visibility = ["//visibility:public"],
-)
+exports_files(["LICENSE.txt"])
 
 py_binary(
     name = "expand_cmake_vars",
     srcs = ["expand_cmake_vars.py"],
     srcs_version = "PY3",
-    visibility = ["//visibility:public"],
+    visibility = [
+        "@llvm_openmp//:__subpackages__",
+    ],
 )
 
 kmp_i18n_os_type = select({
@@ -239,5 +240,4 @@ if_windows(a = libiomp5_cc_binary(
 bzl_library(
     name = "openmp_bzl",
     srcs = ["openmp.bzl"],
-    visibility = ["//visibility:public"],
 )

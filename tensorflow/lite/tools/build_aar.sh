@@ -88,16 +88,10 @@ function generate_tflite_aar {
 
   # Build the aar package.
   popd > /dev/null
-  # TODO(b/254278688): Enable 'xnn_enable_arm_fp16' with toolchain upgrade.
-  # TODO(b/297897797): Enable 'xnn_enable_arm_i8mm' with toolchain upgrade.
-  # TODO: b/315114212 - Remove `xnn_enable_vnni` when the compiler supports it.
   bazel ${CACHE_DIR_FLAG} build -c opt --config=opt --cxxopt='--std=c++17' \
         --fat_apk_cpu=${TARGET_ARCHS} \
         --define=android_dexmerger_tool=d8_dexmerger \
         --define=android_incremental_dexing_tool=d8_dexbuilder\
-        --define=xnn_enable_arm_fp16=false \
-        --define=xnn_enable_arm_i8mm=false \
-        --define=xnn_enable_avxvnni=false \
         --host_crosstool_top=@bazel_tools//tools/cpp:toolchain \
         //tmp:tensorflow-lite
 
@@ -129,17 +123,10 @@ function generate_flex_aar {
   cp ${ROOT_DIR}/tensorflow/lite/java/proguard.flags .
   popd
 
-  # Build the aar package.
-  # TODO(b/254278688): Enable 'xnn_enable_arm_fp16' with toolchain upgrade.
-  # TODO(b/297897797): Enable 'xnn_enable_arm_i8mm' with toolchain upgrade.
-  # TODO: b/315114212 - Remove `xnn_enable_vnni` when the compiler supports it.
   bazel ${CACHE_DIR_FLAG} build -c opt --config=opt --cxxopt='--std=c++17' \
       --fat_apk_cpu=${TARGET_ARCHS} \
       --define=android_dexmerger_tool=d8_dexmerger \
       --define=android_incremental_dexing_tool=d8_dexbuilder\
-      --define=xnn_enable_arm_fp16=false \
-      --define=xnn_enable_arm_i8mm=false \
-      --define=xnn_enable_avxvnni=false \
       --host_crosstool_top=@bazel_tools//tools/cpp:toolchain \
       //tmp:tensorflow-lite-select-tf-ops
 
@@ -192,19 +179,12 @@ else
   fi
 fi
 
-# Build the standard aar package of no models provided.
-# TODO(b/254278688): Enable 'xnn_enable_arm_fp16' with toolchain upgrade.
-# TODO(b/297897797): Enable 'xnn_enable_arm_i8mm' with toolchain upgrade.
-# TODO: b/315114212 - Remove `xnn_enable_vnni` when the compiler supports it.
 if [ -z ${FLAG_MODELS} ]; then
   bazel ${CACHE_DIR_FLAG} build -c opt --config=opt --cxxopt='--std=c++17' \
     --config=monolithic \
     --fat_apk_cpu=${TARGET_ARCHS} \
     --define=android_dexmerger_tool=d8_dexmerger \
     --define=android_incremental_dexing_tool=d8_dexbuilder\
-    --define=xnn_enable_arm_fp16=false \
-    --define=xnn_enable_arm_i8mm=false \
-    --define=xnn_enable_avxvnni=false \
     --host_crosstool_top=@bazel_tools//tools/cpp:toolchain \
     //tensorflow/lite/java:tensorflow-lite
 

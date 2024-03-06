@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -15,25 +15,31 @@ limitations under the License.
 
 #include "xla/service/gpu/gpu_layout_assignment.h"
 
+#include <cstdint>
 #include <memory>
 
-#include "absl/strings/str_cat.h"
+#include <gmock/gmock.h>
+#include <gtest/gtest.h>
+#include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/layout.h"
 #include "xla/layout_util.h"
 #include "xla/service/computation_layout.h"
-#include "xla/service/gpu/cublas_cudnn.h"
-#include "xla/service/gpu/gemm_rewriter.h"
 #include "xla/service/hlo_parser.h"
 #include "xla/service/pattern_matcher.h"
 #include "xla/service/pattern_matcher_gmock.h"
+#include "xla/shape.h"
 #include "xla/shape_layout.h"
 #include "xla/shape_util.h"
+#include "xla/stream_executor/device_description.h"
+#include "xla/stream_executor/dnn.h"
 #include "xla/tests/hlo_test_base.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/status_matchers.h"
+#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace gpu {
@@ -49,6 +55,23 @@ class LayoutAssignmentTest : public HloTestBase {
         .default_stream_executor()
         ->GetDeviceDescription()
         .cuda_compute_capability();
+  }
+
+  se::GpuComputeCapability GetGpuComputeCapability() {
+    return backend()
+        .default_stream_executor()
+        ->GetDeviceDescription()
+        .gpu_compute_capability();
+  }
+
+  se::dnn::VersionInfo GetDnnVersion() {
+    if (auto* dnn = backend().default_stream_executor()->AsDnn()) {
+      return *dnn->GetVersion();
+    }
+
+    // GpuLayoutAssignment has a special case heuristic for cudnn <= 7.3, but
+    // none of the tests trigger this heuristic.
+    return se::dnn::VersionInfo{8, 3, 0};
   }
 };
 
@@ -89,7 +112,7 @@ TEST_F(LayoutAssignmentTest, Elementwise) {
             ShapeLayout(result_shape_with_layout);
 
         GpuLayoutAssignment layout_assignment(
-            &computation_layout, backend().default_stream_executor());
+            &computation_layout, GetGpuComputeCapability(), GetDnnVersion());
         EXPECT_THAT(layout_assignment.Run(module.get()), IsOkAndHolds(true));
 
         for (const HloInstruction* operand : add->operands()) {
@@ -118,8 +141,8 @@ TEST_F(LayoutAssignmentTest, DotLayoutUnchangedIfValid) {
   ComputationLayout computation_layout(
       module->entry_computation()->ComputeProgramShape(),
       /*ignore_layouts=*/false);
-  GpuLayoutAssignment layout_assignment(&computation_layout,
-                                        backend().default_stream_executor());
+  GpuLayoutAssignment layout_assignment(
+      &computation_layout, GetGpuComputeCapability(), GetDnnVersion());
   EXPECT_THAT(layout_assignment.Run(module.get()), IsOkAndHolds(true));
   EXPECT_THAT(module->entry_computation()->root_instruction(),
               GmockMatch(m::Dot(m::Op().WithShape(F32, {5, 2, 3}, {1, 2, 0}),
@@ -144,8 +167,8 @@ TEST_F(LayoutAssignmentTest, DotLayoutSetToDefaultIfDefaultValid) {
   ComputationLayout computation_layout(
       module->entry_computation()->ComputeProgramShape(),
       /*ignore_layouts=*/false);
-  GpuLayoutAssignment layout_assignment(&computation_layout,
-                                        backend().default_stream_executor());
+  GpuLayoutAssignment layout_assignment(
+      &computation_layout, GetGpuComputeCapability(), GetDnnVersion());
 
   EXPECT_THAT(layout_assignment.Run(module.get()), IsOkAndHolds(true));
   EXPECT_THAT(module->entry_computation()->root_instruction(),
@@ -171,8 +194,8 @@ TEST_F(LayoutAssignmentTest, DotOperandLayoutSetToBatchRowsColsOtherwise) {
   ComputationLayout computation_layout(
       module->entry_computation()->ComputeProgramShape(),
       /*ignore_layouts=*/false);
-  GpuLayoutAssignment layout_assignment(&computation_layout,
-                                        backend().default_stream_executor());
+  GpuLayoutAssignment layout_assignment(
+      &computation_layout, GetGpuComputeCapability(), GetDnnVersion());
 
   EXPECT_THAT(layout_assignment.Run(module.get()), IsOkAndHolds(true));
   EXPECT_THAT(module->entry_computation()->root_instruction(),
@@ -197,8 +220,8 @@ TEST_F(LayoutAssignmentTest, DotOperandInconsistentDimLayouts) {
   ComputationLayout computation_layout(
       module->entry_computation()->ComputeProgramShape(),
       /*ignore_layouts=*/false);
-  GpuLayoutAssignment layout_assignment(&computation_layout,
-                                        backend().default_stream_executor());
+  GpuLayoutAssignment layout_assignment(
+      &computation_layout, GetGpuComputeCapability(), GetDnnVersion());
 
   EXPECT_THAT(layout_assignment.Run(module.get()), IsOkAndHolds(true));
   EXPECT_THAT(
@@ -225,8 +248,8 @@ TEST_F(LayoutAssignmentTest, TransposedDotLayout) {
   ComputationLayout computation_layout(
       module->entry_computation()->ComputeProgramShape(),
       /*ignore_layouts=*/false);
-  GpuLayoutAssignment layout_assignment(&computation_layout,
-                                        backend().default_stream_executor());
+  GpuLayoutAssignment layout_assignment(
+      &computation_layout, GetGpuComputeCapability(), GetDnnVersion());
 
   EXPECT_THAT(layout_assignment.Run(module.get()), IsOkAndHolds(true));
   EXPECT_THAT(
@@ -258,8 +281,8 @@ TEST_F(LayoutAssignmentTest, TransposedDotOfDotLayout) {
   ComputationLayout computation_layout(
       module->entry_computation()->ComputeProgramShape(),
       /*ignore_layouts=*/false);
-  GpuLayoutAssignment layout_assignment(&computation_layout,
-                                        backend().default_stream_executor());
+  GpuLayoutAssignment layout_assignment(
+      &computation_layout, GetGpuComputeCapability(), GetDnnVersion());
 
   EXPECT_THAT(layout_assignment.Run(module.get()), IsOkAndHolds(true));
   // The transpose layout is not supported by dot.2. Also, we need a copy
@@ -294,8 +317,8 @@ TEST_F(LayoutAssignmentTest, DotLayoutS8) {
   ComputationLayout computation_layout(
       module->entry_computation()->ComputeProgramShape(),
       /*ignore_layouts=*/false);
-  GpuLayoutAssignment layout_assignment(&computation_layout,
-                                        backend().default_stream_executor());
+  GpuLayoutAssignment layout_assignment(
+      &computation_layout, GetGpuComputeCapability(), GetDnnVersion());
 
   EXPECT_THAT(layout_assignment.Run(module.get()), IsOkAndHolds(true));
   EXPECT_THAT(module->entry_computation()->root_instruction(),
@@ -329,8 +352,8 @@ TEST_F(LayoutAssignmentTest, SortLayout) {
   ComputationLayout computation_layout(
       module->entry_computation()->ComputeProgramShape(),
       /*ignore_layouts=*/false);
-  GpuLayoutAssignment layout_assignment(&computation_layout,
-                                        backend().default_stream_executor());
+  GpuLayoutAssignment layout_assignment(
+      &computation_layout, GetGpuComputeCapability(), GetDnnVersion());
 
   EXPECT_THAT(layout_assignment.Run(module.get()), IsOkAndHolds(true));
 
@@ -355,8 +378,8 @@ TEST_F(LayoutAssignmentTest, FftLayout) {
   ComputationLayout computation_layout(
       module->entry_computation()->ComputeProgramShape(),
       /*ignore_layouts=*/false);
-  GpuLayoutAssignment layout_assignment(&computation_layout,
-                                        backend().default_stream_executor());
+  GpuLayoutAssignment layout_assignment(
+      &computation_layout, GetGpuComputeCapability(), GetDnnVersion());
 
   EXPECT_THAT(layout_assignment.Run(module.get()), IsOkAndHolds(true));
   EXPECT_THAT(module->entry_computation()->root_instruction(),
@@ -383,8 +406,8 @@ ENTRY entry {
   ComputationLayout computation_layout(
       m->entry_computation()->ComputeProgramShape());
 
-  GpuLayoutAssignment layout_assignment(&computation_layout,
-                                        backend().default_stream_executor());
+  GpuLayoutAssignment layout_assignment(
+      &computation_layout, GetGpuComputeCapability(), GetDnnVersion());
 
   EXPECT_THAT(layout_assignment.Run(m.get()), IsOkAndHolds(true));
 
@@ -495,13 +518,43 @@ ENTRY main {
                           ParseAndReturnVerifiedModule(module_str));
   ComputationLayout computation_layout(
       m->entry_computation()->ComputeProgramShape());
-  GpuLayoutAssignment layout_assignment(&computation_layout,
-                                        backend().default_stream_executor());
+  GpuLayoutAssignment layout_assignment(
+      &computation_layout, GetGpuComputeCapability(), GetDnnVersion());
 
   EXPECT_THAT(layout_assignment.Run(m.get()), IsOkAndHolds(true));
   auto reduce = m->entry_computation()->root_instruction();
   EXPECT_EQ(reduce->operand(0)->shape().layout().minor_to_major(),
             LayoutUtil::MakeLayout({3, 1, 4, 2, 0}).minor_to_major());
+}
+
+TEST_F(LayoutAssignmentTest, ReduceOperandLayoutDivisorOfWarpSize) {
+  // Same as ReduceOperandLayout, but with a small reduction dimension that
+  // is a divisor of the warp size.
+  const char* module_str = R"(
+scalar_add_computation {
+  scalar_lhs = c64[] parameter(0)
+  scalar_rhs = c64[] parameter(1)
+  ROOT add.1 = c64[] add(scalar_lhs, scalar_rhs)
+}
+
+ENTRY main {
+  param_0 = c64[512,16,1024,128]{3,2,1,0} parameter(0)
+  negate = c64[512,16,1024,128]{3,2,1,0} negate(param_0)
+  constant_7 = c64[] constant((0, 0))
+  ROOT reduce.2 = c64[512,1024,128]{2,1,0} reduce(negate, constant_7), dimensions={1}, to_apply=scalar_add_computation
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m,
+                          ParseAndReturnVerifiedModule(module_str));
+  ComputationLayout computation_layout(
+      m->entry_computation()->ComputeProgramShape());
+  GpuLayoutAssignment layout_assignment(
+      &computation_layout, GetGpuComputeCapability(), GetDnnVersion());
+
+  EXPECT_THAT(layout_assignment.Run(m.get()), IsOkAndHolds(true));
+  auto reduce = m->entry_computation()->root_instruction();
+  EXPECT_EQ(reduce->operand(0)->shape().layout().minor_to_major(),
+            LayoutUtil::MakeLayout({1, 3, 2, 0}).minor_to_major());
 }
 
 }  // namespace

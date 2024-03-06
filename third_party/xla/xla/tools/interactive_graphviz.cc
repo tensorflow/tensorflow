@@ -1,4 +1,4 @@
-/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2019 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -21,8 +21,11 @@ limitations under the License.
 // Generated visualization is opened in a new default browser window using
 // /usr/bin/sensible-browser.
 
-#include <stdio.h>
+#ifndef _WIN32
 #include <unistd.h>
+#endif
+
+#include <stdio.h>
 
 #include <functional>
 #include <string>

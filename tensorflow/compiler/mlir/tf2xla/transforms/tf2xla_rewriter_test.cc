@@ -103,7 +103,7 @@ class Tf2XlaRewriterTestPeer {
         tf2xla_rewriter_(op, empty_rewriter_,
                          /*device_type=*/"XLA_CPU_JIT") {}
 
-  tsl::StatusOr<TupleOp> ImportXlaComputationIntoModule(
+  absl::StatusOr<TupleOp> ImportXlaComputationIntoModule(
       XlaComputation& computation) {
     return tf2xla_rewriter_.ImportXlaComputation(computation);
   }
@@ -185,7 +185,7 @@ class Tf2XlaRewriterTest : public ::testing::Test {
     return main_func.getBody().front().front();
   }
 
-  StatusOr<TupleOp> ImportXlaComputationIntoModule(
+  absl::StatusOr<TupleOp> ImportXlaComputationIntoModule(
       XlaComputation& computation) {
     SourceMgrDiagnosticHandler sourceMgrHandler(source_manager_, &context_);
 
@@ -323,7 +323,7 @@ TEST_F(Tf2XlaRewriterTest, ErrorsWithInvalidNumberOfParametersToArgs) {
   EXPECT_EQ(computation.proto().computations_size(), 2);
 
   TF_ASSERT_OK(CreateMlirModule());
-  tsl::StatusOr<TupleOp> status_or_tuple_op =
+  absl::StatusOr<TupleOp> status_or_tuple_op =
       ImportXlaComputationIntoModule(computation);
   EXPECT_FALSE(status_or_tuple_op.ok());
 }

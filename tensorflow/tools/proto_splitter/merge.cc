@@ -38,11 +38,11 @@ limitations under the License.
 
 namespace tensorflow::tools::proto_splitter {
 
-using ::proto_splitter::ChunkedField;
-using ::proto_splitter::ChunkedMessage;
-using ::proto_splitter::ChunkInfo;
-using ::proto_splitter::ChunkMetadata;
-using ::proto_splitter::FieldIndex;
+using ::tensorflow::proto_splitter::ChunkedField;
+using ::tensorflow::proto_splitter::ChunkedMessage;
+using ::tensorflow::proto_splitter::ChunkInfo;
+using ::tensorflow::proto_splitter::ChunkMetadata;
+using ::tensorflow::proto_splitter::FieldIndex;
 using tools::proto_splitter::GetChunkMetadata;
 using tools::proto_splitter::GetRiegeliReader;
 using tools::proto_splitter::OnlyContainsPb;

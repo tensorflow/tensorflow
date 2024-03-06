@@ -2,20 +2,21 @@
 #   Implementation of custom numpy floats.
 
 package(
-    default_visibility = ["//visibility:public"],
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
+    default_visibility = [
+        "//visibility:public",
+    ],
     licenses = ["notice"],
 )
 
 filegroup(
     name = "numpy_hdr",
     srcs = ["numpy.h"],
-    visibility = ["//visibility:public"],
 )
 
 filegroup(
     name = "basic_hdrs",
     srcs = ["numpy.h"],
-    visibility = ["//visibility:public"],
 )
 
 cc_library(
@@ -31,7 +32,6 @@ cc_library(
         "-use_header_modules",  # Required for pybind11.
         "-parse_headers",
     ],
-    visibility = ["//visibility:public"],
     deps = [
         ":numpy",
         "//third_party/py/numpy:headers",
@@ -47,7 +47,6 @@ cc_library(
     name = "numpy",
     srcs = ["numpy.cc"],
     hdrs = ["numpy.h"],
-    visibility = ["//visibility:public"],
     deps = [
         "//third_party/py/numpy:headers",
         "//third_party/python_runtime:headers",

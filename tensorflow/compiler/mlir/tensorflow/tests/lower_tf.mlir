@@ -366,7 +366,7 @@ func.func @avoid_lowering_space_to_batch_nd(%arg0: tensor<1x8x2xf32>, %arg1: ten
 // dimension and 2 remainder dimensions.
 // CHECK-LABEL: sixdim_space_to_batch_nd
 func.func @sixdim_space_to_batch_nd(%input: tensor<3x5x7x9x10x11xf32>, %block_shape: tensor<3xi64>, %paddings: tensor<3x2xi64>) -> tensor<?x?x?x?x10x11xf32> {
-  // CHECK-DAG: [[PAD00:%.+]] = "tf.Const"()
+  // CHECK-DAG: [[PAD00:%.+]] = "tf.Const"() <{value = dense<0> : tensor<1x2xi64>}> : () -> tensor<1x2xi64>
   // CHECK-DAG: [[FULL_PADDINGS:%.+]] = "tf.ConcatV2"([[PAD00]], %arg2, [[PAD00]], [[PAD00]], {{.+}})
   // CHECK-DAG: [[INPUT_SHAPE:%.+]] = "tf.Const"() <{value = dense<[3, 5, 7, 9, 10, 11]> : tensor<6xi64>}>
   // CHECK-DAG: [[PADDED_SHAPE_SPLITS:%.+]]:6 = "tf.Split"
@@ -1302,8 +1302,8 @@ func.func @selu(%arg0: tensor<1x4x4x3xf32>) -> tensor<1x4x4x3xf32> {
     // CHECK-DAG:   %[[ZERO:.*]] = "tf.Const"() <{value = dense<0.000000e+00> : tensor<f32>}> : () -> tensor<f32>
     // CHECK-DAG:   %[[SCALE:.*]] = "tf.Const"() <{value = dense<1.05070102> : tensor<f32>}> : () -> tensor<f32>
     // CHECK-DAG:   %[[SCALED_ALPHA:.*]] = "tf.Const"() <{value = dense<1.75809932> : tensor<f32>}> : () -> tensor<f32>
-    // CHECK-NEXT:  %[[ONE:.*]] = "tf.Const"() <{value = dense<1.000000e+00> : tensor<f32>}> : () -> tensor<f32>
-    // CHECK-DAG:   %[[PRED:.*]] = "tf.Greater"(%[[FEATURES]], %[[ZERO]]) : (tensor<1x4x4x3xf32>, tensor<f32>) -> tensor<1x4x4x3xi1>
+    // CHECK-DAG:  %[[ONE:.*]] = "tf.Const"() <{value = dense<1.000000e+00> : tensor<f32>}> : () -> tensor<f32>
+    // CHECK:   %[[PRED:.*]] = "tf.Greater"(%[[FEATURES]], %[[ZERO]]) : (tensor<1x4x4x3xf32>, tensor<f32>) -> tensor<1x4x4x3xi1>
     // CHECK-NEXT:  %[[SCALED_FEATURES:.*]] = "tf.Mul"(%[[FEATURES]], %[[SCALE]]) : (tensor<1x4x4x3xf32>, tensor<f32>) -> tensor<1x4x4x3xf32>
     // CHECK-NEXT:  %[[EXP:.*]] = "tf.Exp"(%[[FEATURES]]) : (tensor<1x4x4x3xf32>) -> tensor<1x4x4x3xf32>
     // CHECK-NEXT:  %[[ELU_VAL:.*]] = "tf.Sub"(%[[EXP]], %[[ONE]]) : (tensor<1x4x4x3xf32>, tensor<f32>) -> tensor<1x4x4x3xf32>

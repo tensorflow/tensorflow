@@ -19,6 +19,7 @@ from typing import Mapping, Optional
 
 from absl import logging
 
+from tensorflow.compiler.mlir.quantization.stablehlo import quantization_config_pb2 as stablehlo_quant_config_pb2
 from tensorflow.compiler.mlir.quantization.tensorflow import quantization_options_pb2 as quant_opts_pb2
 from tensorflow.compiler.mlir.quantization.tensorflow.python import py_function_lib
 from tensorflow.compiler.mlir.quantization.tensorflow.python import pywrap_quantize_model
@@ -51,7 +52,9 @@ _UnitWiseQuantizationSpec = tf_export.tf_export(
 )(quant_opts_pb2.UnitWiseQuantizationSpec)
 
 _PresetMethod = _QuantizationMethod.PresetMethod
-_CalibrationMethod = quant_opts_pb2.CalibrationOptions.CalibrationMethod
+_CalibrationMethod = (
+    stablehlo_quant_config_pb2.CalibrationOptions.CalibrationMethod
+)
 
 _QuantizationComponent = _QuantizationComponentSpec.QuantizationComponent
 _TensorType = _QuantizationComponentSpec.TensorType
@@ -166,6 +169,31 @@ def _run_static_range_ptq(
   ).meta_info_def.function_aliases
 
   signature_def_map_serialized = _serialize_signature_def_map(signature_def_map)
+
+  if isinstance(representative_dataset, Mapping):
+    representative_dataset_map = representative_dataset
+  else:
+    representative_dataset_map = {
+        list(signature_def_map.keys())[0]: representative_dataset,
+    }
+
+  # Save the representative dataset to temporary TFRecord files.
+  path_map = {}
+  for signature_key in representative_dataset_map.keys():
+    path_map[signature_key] = tempfile.mkstemp(
+        suffix='.tfrecord', prefix=signature_key
+    )[1]  # Filepath.
+
+  dataset_file_map = repr_dataset.TfRecordRepresentativeDatasetSaver(
+      path_map
+  ).save(representative_dataset_map)
+
+  # `quantize_ptq_static_range` requires `RepresentativeDatasetFile`s to be
+  # serialized. Serialize the values to match the type.
+  dataset_file_map_serialized = {
+      signature_key: dataset_file.SerializeToString()
+      for signature_key, dataset_file in dataset_file_map.items()
+  }
   pywrap_quantize_model.quantize_ptq_static_range(
       src_saved_model_path,
       dst_saved_model_path,
@@ -174,7 +202,7 @@ def _run_static_range_ptq(
       signature_def_map_serialized=signature_def_map_serialized,
       function_aliases=dict(function_aliases),
       py_function_library=py_function_lib.PyFunctionLibrary(),
-      representative_dataset=representative_dataset,
+      representative_dataset_file_map_serialized=dataset_file_map_serialized,
   )
 
 
@@ -649,7 +677,9 @@ def _populate_quantization_options_default_values(
         _DYNAMIC_RANGE_DEFAULT_MIN_NUM_ELEMENTS_FOR_WEIGHTS,
     )
 
-  # TODO: b/307900054 - Set the per-channel quantization by default.
+  if not quantization_options.HasField('enable_per_channel_quantization'):
+    quantization_options.enable_per_channel_quantization = False
+
   if quantization_options.enable_per_channel_quantization and not (
       (
           quantization_options.op_set == quant_opts_pb2.OpSet.UNIFORM_QUANTIZED
@@ -657,15 +687,16 @@ def _populate_quantization_options_default_values(
           == _PresetMethod.METHOD_STATIC_RANGE_WEIGHT_ONLY_INT8
       )
       or (
-          quantization_options.op_set == quant_opts_pb2.OpSet.XLA
+          quantization_options.op_set
+          in (quant_opts_pb2.OpSet.XLA, quant_opts_pb2.OpSet.STABLEHLO)
           and quantization_options.quantization_method.preset_method
           == _PresetMethod.METHOD_STATIC_RANGE_INT8
       )
   ):
     raise ValueError(
         'Currently, per-channel quantization is supported for Uniform Quantized'
-        ' opset, weight only quantization, or XLA opset with static range'
-        ' quantization.'
+        ' opset, weight only quantization, or XLA/StableHLO opset with static'
+        ' range quantization.'
     )
 
   if (
@@ -704,7 +735,7 @@ def _populate_quantization_options_default_values(
 
     if (
         quantization_options.debugger_options.debugger_type
-        == quant_opts_pb2.DebuggerOptions.DebuggerType.DEBUGGER_TYPE_UNSPECIFIED
+        == stablehlo_quant_config_pb2.DebuggerConfig.DebuggerType.DEBUGGER_TYPE_UNSPECIFIED
     ):
       raise ValueError(
           'Debugger is enabled but debugger type was not specified.'
@@ -712,7 +743,7 @@ def _populate_quantization_options_default_values(
 
     if (
         quantization_options.debugger_options.debugger_type
-        == quant_opts_pb2.DebuggerOptions.DebuggerType.DEBUGGER_TYPE_WHOLE_MODEL
+        == stablehlo_quant_config_pb2.DebuggerConfig.DebuggerType.DEBUGGER_TYPE_WHOLE_MODEL
         and not quantization_options.debugger_options.unquantized_dump_model_path
     ):
       raise ValueError(
@@ -845,7 +876,7 @@ def quantize(
     )
 
   if quantization_options.representative_datasets:
-    representative_dataset = repr_dataset.RepresentativeDatasetLoader(
+    representative_dataset = repr_dataset.TfRecordRepresentativeDatasetLoader(
         quantization_options.representative_datasets
     ).load()
 

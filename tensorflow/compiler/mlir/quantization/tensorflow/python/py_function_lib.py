@@ -13,16 +13,17 @@
 # limitations under the License.
 # ==============================================================================
 """Defines a wrapper class for overridden python method definitions."""
+
 from collections.abc import Callable, Collection, Mapping, Sequence
 from typing import Optional
 
 from absl import logging
 
+from tensorflow.compiler.mlir.quantization.stablehlo import quantization_config_pb2 as stablehlo_quant_config_pb2
 from tensorflow.compiler.mlir.quantization.tensorflow import exported_model_pb2
 from tensorflow.compiler.mlir.quantization.tensorflow import quantization_options_pb2
 from tensorflow.compiler.mlir.quantization.tensorflow.calibrator import calibration_algorithm
 from tensorflow.compiler.mlir.quantization.tensorflow.calibrator import calibration_statistics_pb2
-from tensorflow.compiler.mlir.quantization.tensorflow.calibrator import pywrap_calibration
 from tensorflow.compiler.mlir.quantization.tensorflow.python import pywrap_function_lib
 from tensorflow.compiler.mlir.quantization.tensorflow.python import representative_dataset as rd
 from tensorflow.compiler.mlir.quantization.tensorflow.python import save_model
@@ -38,6 +39,7 @@ from tensorflow.python.saved_model import load
 from tensorflow.python.saved_model import loader_impl
 from tensorflow.python.trackable import autotrackable
 from tensorflow.python.types import core
+
 
 # Name of the saved model assets directory.
 _ASSETS_DIR = 'assets'
@@ -500,31 +502,6 @@ def _run_graph_for_calibration(
   logging.info('Calibration step complete.')
 
 
-def _get_min_max_from_calibrator(
-    node_id: bytes,
-    calib_opts: quantization_options_pb2.CalibrationOptions,
-) -> tuple[float, float]:
-  """Calculate min and max from statistics using calibration options.
-
-  Args:
-    node_id: bytes of node id.
-    calib_opts: Calibration options used for calculating min and max.
-
-  Returns:
-    (min_value, max_value): Min and max calculated using calib_opts.
-
-  Raises:
-    ValueError: Unsupported calibration method is given.
-  """
-  statistics: calibration_statistics_pb2.CalibrationStatistics = (
-      pywrap_calibration.get_statistics_from_calibrator(node_id)
-  )
-  min_value, max_value = calibration_algorithm.get_min_max_value(
-      statistics, calib_opts
-  )
-  return min_value, max_value
-
-
 class PyFunctionLibrary(pywrap_function_lib.PyFunctionLibrary):
   """Wrapper class for overridden python method definitions.
 
@@ -587,7 +564,7 @@ class PyFunctionLibrary(pywrap_function_lib.PyFunctionLibrary):
       tags: set[str],
       calibration_options_serialized: bytes,
       force_graph_mode_calibration: bool,
-      representative_dataset: rd.RepresentativeDatasetOrMapping,
+      representative_dataset_file_map_serialized: dict[str, bytes],
   ) -> None:
     # LINT.ThenChange(py_function_lib.h:run_calibration)
     """Runs calibration and adds calibration statistics to exported model.
@@ -599,13 +576,31 @@ class PyFunctionLibrary(pywrap_function_lib.PyFunctionLibrary):
       tags: A set of tags that identify the MetaGraphDef.
       calibration_options_serialized: Serialized `CalibrationOptions`.
       force_graph_mode_calibration: If True, runs the calibration in graph mode.
-      representative_dataset: Representative dataset to run calibration.
+      representative_dataset_file_map_serialized: Signature key ->
+        `RepresentativeDatasetFile` mapping for running the calibration step.
+        Each dataset file stores the representative dataset for the function
+        matching the signature key.
 
     Returns:
       Updated exported model (serialized) where the collected calibration
       statistics are added to `CustomerAggregator` nodes at the `min` and `max`
       attributes.
     """
+    dataset_file_map = {}
+    for (
+        signature_key,
+        dataset_file_serialized,
+    ) in representative_dataset_file_map_serialized.items():
+      dataset_file_map[signature_key] = (
+          quantization_options_pb2.RepresentativeDatasetFile.FromString(
+              dataset_file_serialized
+          )
+      )
+
+    repr_dataset_map = rd.TfRecordRepresentativeDatasetLoader(
+        dataset_file_map=dataset_file_map
+    ).load()
+
     # Uses the representative dataset to collect statistics for calibration.
     # After this operation, min & max values are stored separately in a global
     # CalibratorSingleton instance.
@@ -613,7 +608,7 @@ class PyFunctionLibrary(pywrap_function_lib.PyFunctionLibrary):
         saved_model_path,
         signature_keys,
         tags,
-        representative_dataset,
+        repr_dataset_map,
         force_graph_mode_calibration,
     )
 
@@ -642,7 +637,7 @@ class PyFunctionLibrary(pywrap_function_lib.PyFunctionLibrary):
         calibration_statistics_pb2.CalibrationStatistics.FromString(
             calibration_statistics_serialized
         ),
-        quantization_options_pb2.CalibrationOptions.FromString(
+        stablehlo_quant_config_pb2.CalibrationOptions.FromString(
             calibration_options_serialized
         ),
     )

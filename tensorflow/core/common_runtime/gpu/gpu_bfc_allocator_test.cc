@@ -22,7 +22,6 @@ limitations under the License.
 #include <optional>
 #include <vector>
 
-#include "xla/stream_executor/device_id_utils.h"
 #include "xla/stream_executor/gpu/gpu_driver.h"
 #include "xla/stream_executor/gpu/gpu_init.h"
 #include "xla/stream_executor/stream_executor.h"
@@ -43,7 +42,6 @@ limitations under the License.
 
 namespace tsl {
 namespace {
-using stream_executor::DeviceIdUtil;
 using stream_executor::GPUMachineManager;
 using tensorflow::BinSummary;
 using tensorflow::DeviceMemAllocator;
@@ -74,8 +72,7 @@ std::unique_ptr<SubAllocator> CreateVirtualMemorySubAllocator(
     size_t virtual_address_space_size = 1ull << 32) {
   PlatformDeviceId gpu_id(0);
   auto executor =
-      DeviceIdUtil::ExecutorForPlatformDeviceId(GPUMachineManager(), gpu_id)
-          .value();
+      GPUMachineManager()->ExecutorForDevice(gpu_id.value()).value();
   auto* gpu_context = reinterpret_cast<stream_executor::gpu::GpuContext*>(
       executor->platform_specific_handle().context);
   return tensorflow::GpuVirtualMemAllocator::Create(
@@ -87,9 +84,8 @@ std::unique_ptr<SubAllocator> CreateVirtualMemorySubAllocator(
 std::unique_ptr<SubAllocator> CreateGPUMemAllocator(size_t) {
   PlatformDeviceId gpu_id(0);
   return absl::WrapUnique(new DeviceMemAllocator(
-      DeviceIdUtil::ExecutorForPlatformDeviceId(GPUMachineManager(), gpu_id)
-          .value(),
-      gpu_id, /*use_unified_memory=*/false, {}, {}));
+      GPUMachineManager()->ExecutorForDevice(gpu_id.value()).value(), gpu_id,
+      stream_executor::MemoryType::kDevice, {}, {}));
 }
 
 std::unique_ptr<SubAllocator> CreateSubAllocator(

@@ -259,6 +259,11 @@ TfLiteOpaqueTensorBuilder* TfLiteOpaqueTensorBuilderSetQuantizationParams(
 TfLiteOpaqueTensorBuilder* TfLiteOpaqueTensorBuilderSetQuantization(
     TfLiteOpaqueTensorBuilder* builder, TfLiteQuantization quantization);
 
+/// Sets the allocation type of the provided 'tensor' to 'kTfLiteDynamic'.
+/// This function has no effect if the 'tensor's allocation type is already
+/// 'kTfLiteDynamic'.  The provided 'tensor' must not be null.
+void TfLiteOpaqueTensorSetAllocationTypeToDynamic(TfLiteOpaqueTensor* tensor);
+
 // --------------------------------------------------------------------------
 // Accessors for TfLiteOpaqueNode.
 
@@ -339,6 +344,15 @@ TFL_CAPI_EXPORT TfLiteStatus TfLiteOpaqueNodeInputs(
 /// remains valid throughout the lifetime of the 'opaque_node'.
 TFL_CAPI_EXPORT TfLiteStatus TfLiteOpaqueNodeOutputs(
     const TfLiteOpaqueNode* opaque_node, const int** outputs, int* num_outputs);
+
+/// Set tensor indices of temporary tensors used during the computations.
+/// These temporary tensors should be allocated using AddTensors().
+/// By default nodes don't have any temporary tensors, tensors, but ops are
+/// allowed to change that if they need scratch space of any sort.
+/// This will make a copy of the contents of the array pointed to by
+/// `temporaries`.
+TFL_CAPI_EXPORT TfLiteStatus TfLiteOpaqueNodeSetTemporaries(
+    TfLiteOpaqueNode* opaque_node, const int* temporaries, int num_temporaries);
 
 /// Loads into the provided '*temporaries' pointer the starting address of an
 /// array of indices representing the temporary tensors associated with the
@@ -769,6 +783,40 @@ void TfLiteOpaqueContextReportErrorVa(
     }                                                                         \
   } while (0)
 #endif
+
+#ifndef TF_LITE_STATIC_MEMORY
+/// Creates an opaque delegate and returns its address.  The opaque delegate
+/// will behave according to the provided `opaque_delegate_builder`.  The
+/// lifetime of the objects pointed to by any of the fields within the
+/// `opaque_delegate_builder` must outlive the returned
+/// `TfLiteOpaqueDelegate` and any `TfLiteInterpreter`,
+/// `TfLiteInterpreterOptions`, `tflite::Interpreter`, or
+/// `tflite::InterpreterBuilder` that the delegate is added to.  The returned
+/// address should be passed to `TfLiteOpaqueDelegateDelete` for deletion.  If
+/// `opaque_delegate_builder` is a null pointer, then a null pointer will be
+/// returned.
+TfLiteOpaqueDelegate* TfLiteOpaqueDelegateCreate(
+    const TfLiteOpaqueDelegateBuilder* opaque_delegate_builder);
+
+/// Deletes the provided opaque `delegate`.  This function has no effect if the
+/// `delegate` is a null pointer.
+void TfLiteOpaqueDelegateDelete(TfLiteOpaqueDelegate* delegate);
+#endif  // TF_LITE_STATIC_MEMORY
+
+/// Returns a pointer to the data associated with the provided opaque
+/// `delegate`.
+///
+/// A null pointer will be returned when:
+/// - The `delegate` is null.
+/// - The `data` field of the `TfLiteOpaqueDelegateBuilder` used to construct
+///   the `delegate` was null.
+/// - Or in case of any other error.
+/// - The `delegate` has been constructed via a `TfLiteOpaqueDelegateBuilder`,
+///   but the `data` field of the `TfLiteOpaqueDelegateBuilder` is null.
+///
+///  The data_ field of `delegate` will be returned if the
+///  `opaque_delegate_builder` field is null.
+void* TfLiteOpaqueDelegateGetData(const TfLiteOpaqueDelegate* delegate);
 
 #ifdef __cplusplus
 }  // extern "C"

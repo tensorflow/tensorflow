@@ -31,14 +31,3 @@ func.func @broadcast_to_broadcast_in_dim_dynamic_result(%arg0: tensor<3x4xi64>) 
   } : (tensor<3x4xi64>) -> tensor<1x2x?x4xi64>
   func.return %0 : tensor<1x2x?x4xi64>
 }
-
-// -----
-
-// CHECK-LABEL: @broadcast_to_broadcast_in_dim_unranked_result
-func.func @broadcast_to_broadcast_in_dim_unranked_result(%arg0: tensor<3x4xi64>) -> tensor<*xi64> {
-  // CHECK: "mhlo.broadcast"
-  %0 = "mhlo.broadcast"(%arg0) {
-    broadcast_sizes = dense<[1, 2]> : tensor<2xi64>
-  } : (tensor<3x4xi64>) -> tensor<*xi64>
-  func.return %0 : tensor<*xi64>
-}

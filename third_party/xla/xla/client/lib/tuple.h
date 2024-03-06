@@ -1,4 +1,4 @@
-/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -24,7 +24,7 @@ namespace xla {
 
 // Returns a ShapeTree where each index is a GetTupleElement instruction for
 // that subshape of the tuple.  The root index is the original argument.
-StatusOr<ShapeTree<XlaOp>> DisassembleTuple(XlaOp tuple);
+absl::StatusOr<ShapeTree<XlaOp>> DisassembleTuple(XlaOp tuple);
 
 // Assembles a tuple from a ShapeTree that contains the leaves of the tuple.
 // Non-leaf elements of the ShapeTree are ignored.  DisassembleTuple and

@@ -31,24 +31,24 @@ class XlaDeviceCompilerClient
   explicit XlaDeviceCompilerClient(xla::LocalClient* client)
       : client_(client) {}
 
-  StatusOr<std::unique_ptr<xla::LocalExecutable>> BuildExecutable(
+  absl::StatusOr<std::unique_ptr<xla::LocalExecutable>> BuildExecutable(
       const XlaCompiler::Options& options,
       const XlaCompiler::CompilationResult& result) override;
 
   // Returns a serialized AOT result obtained by exporting the available
   // `executable` using the XlaCompiler.
-  StatusOr<std::string> SerializeExecutable(
+  absl::StatusOr<std::string> SerializeExecutable(
       const xla::LocalExecutable& executable) override;
 
   // Returns a serialized AOT result obtained by compiling `result` into an AOT
   // result.
-  StatusOr<std::string> BuildSerializedExecutable(
+  absl::StatusOr<std::string> BuildSerializedExecutable(
       const XlaCompiler::Options& options,
       const XlaCompiler::CompilationResult& result) override;
 
   // Loads a serialized AOT result (`serialized_executable`) into an
   // xla::LocalExecutable and returns it.
-  StatusOr<std::unique_ptr<xla::LocalExecutable>> LoadExecutable(
+  absl::StatusOr<std::unique_ptr<xla::LocalExecutable>> LoadExecutable(
       const XlaCompiler::Options& options,
       const XlaCompiler::CompilationResult& result,
       const std::string& serialized_executable) override;

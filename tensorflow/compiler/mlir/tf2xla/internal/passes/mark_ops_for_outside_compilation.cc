@@ -45,6 +45,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops_a_m.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/lower_tf.h"
+#include "tensorflow/compiler/mlir/tensorflow/utils/attribute_utils.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/string_util.h"
 #include "tensorflow/compiler/mlir/tf2xla/transforms/legalization_op_config.h"
 #include "tensorflow/compiler/mlir/tf2xla/transforms/passes.h"
@@ -73,9 +74,6 @@ using mlir::TensorType;
 using mlir::Type;
 using mlir::Value;
 using mlir::WalkResult;
-
-constexpr char kXlaOutsideCompilationAttr[] = "_xla_outside_compilation";
-constexpr char kAllowSoftPlacementAttr[] = "allow_soft_placement";
 
 auto* auto_outside_compilation_gauge =
     tensorflow::monitoring::Gauge<bool, 0>::New(
@@ -488,7 +486,7 @@ void MarkOpsForOutsideCompilation::runOnOperation() {
     // Only if `allow_soft_placement` attribute is true should we mark ops
     // for outside compilation.
     auto soft_placement_attr =
-        cluster->getAttrOfType<BoolAttr>(kAllowSoftPlacementAttr);
+        cluster->getAttrOfType<BoolAttr>(mlir::TF::kAllowSoftPlacementAttr);
     if ((soft_placement_attr && soft_placement_attr.getValue())) {
       if (failed(MarkUncompilableOps(tf_dialect, &cluster.GetBody(),
                                      supported_ops)))

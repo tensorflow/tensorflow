@@ -55,7 +55,7 @@ class FusedMatMulOpTest : public OpsTestBase {
   void RunAndFetch(const tensorflow::Scope& root, const string& fetch,
                    Tensor* output, bool allow_gpu_device,
                    const NodeDef* fetch_node = nullptr,
-                   tsl::Status* last_status = nullptr) {
+                   absl::Status* last_status = nullptr) {
     tensorflow::GraphDef graph;
     TF_ASSERT_OK(root.ToGraphDef(&graph));
 
@@ -208,7 +208,7 @@ class FusedMatMulOpTest : public OpsTestBase {
                      .Attr("transpose_b", transpose_b)
                      .Finalize(&fused_matmul));
 
-    tsl::Status last_status;
+    absl::Status last_status;
     RunAndFetch(root, fused_matmul.name(), output, allow_gpu_device,
                 &fused_matmul, &last_status);
 

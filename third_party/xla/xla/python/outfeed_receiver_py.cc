@@ -1,4 +1,4 @@
-/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2020 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -90,9 +90,10 @@ class OutfeedReceiverForPython {
 
   void Start() { outfeed_receiver_->Start(); }
 
-  StatusOr<XlaOp> AddOutfeed(XlaBuilder* builder, XlaOp token,
-                             uint32_t consumer_id, std::vector<XlaOp> arrays,
-                             uint32_t device_idx) {
+  absl::StatusOr<XlaOp> AddOutfeed(XlaBuilder* builder, XlaOp token,
+                                   uint32_t consumer_id,
+                                   std::vector<XlaOp> arrays,
+                                   uint32_t device_idx) {
     return outfeed_receiver_->AddOutfeedToBuilder(builder, token, consumer_id,
                                                   arrays, device_idx);
   }

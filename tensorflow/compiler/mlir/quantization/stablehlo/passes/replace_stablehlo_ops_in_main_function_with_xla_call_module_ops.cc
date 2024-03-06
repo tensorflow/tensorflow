@@ -32,6 +32,7 @@ limitations under the License.
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/TypeID.h"  // from @llvm-project
 #include "stablehlo/dialect/StablehloOps.h"  // from @stablehlo
+#include "tensorflow/compiler/mlir/quantization/common/func.h"
 #include "tensorflow/compiler/mlir/quantization/common/lift_as_function_call.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/utils/stablehlo_type_utils.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
@@ -45,14 +46,14 @@ namespace mlir::quant::stablehlo {
 
 namespace {
 
-constexpr StringRef kQuantizeTargetOpAttr = "tf_quant.composite_function";
 constexpr StringRef kStablehloModuleAttrsAttrName = "_stablehlo_module_attrs";
 constexpr StringRef kUsesShapePolymorphismAttr = "jax.uses_shape_polymorphism";
 
 // Default version number for native serialization.
 constexpr int64_t kDefaultVersion = 9;
-// Default platform for XlaCallModuleOp.
+// Platforms for XlaCallModuleOp.
 constexpr StringRef kPlatformCpu = "CPU";
+constexpr StringRef kPlatformTpu = "TPU";
 
 class ReplaceStablehloOpsInMainFunctionWithXlaCallModuleOpsPass
     : public impl::
@@ -71,19 +72,6 @@ class ReplaceStablehloOpsInMainFunctionWithXlaCallModuleOpsPass
  private:
   void runOnOperation() override;
 };
-
-// Finds the main function from module_op. Returns nullptr if not found.
-// The model's signature keys will contain "@serving_default" as default TF
-// Model signature, or "@main" if it is in being exported from MLIR module to
-// GraphDef.
-func::FuncOp GetMainFunc(ModuleOp module_op) {
-  for (auto func_op : module_op.getOps<func::FuncOp>()) {
-    if (func_op.getSymName().equals("main") ||
-        func_op.getSymName().equals("serving_default"))
-      return func_op;
-  }
-  return nullptr;
-}
 
 // Creates a unique stablehlo function name based on op order.
 std::string CreateStablehloFunctionName(const int id) {
@@ -161,9 +149,10 @@ class LiveOuts {
 
 // Creates the tf.XlaCallModuleOp from attributes.
 void CreateXlaCallModuleOp(ValueRange inputs, ValueRange outputs,
-                           TypeRange result_types,
-                           ArrayRef<Operation*> reverse_subgraph,
-                           func::FuncOp stablehlo_func_op, ModuleOp module_op) {
+                           const TypeRange result_types,
+                           const SetVector<Operation*>& reverse_subgraph,
+                           const func::FuncOp stablehlo_func_op,
+                           ModuleOp module_op) {
   MLIRContext* ctx = module_op.getContext();
   OpBuilder builder(ctx);
   Operation* last_subgraph_op = reverse_subgraph.front();
@@ -175,9 +164,11 @@ void CreateXlaCallModuleOp(ValueRange inputs, ValueRange outputs,
     shape_attrs.push_back(
         tf_type::ShapeAttr::get(ctx, result_type.cast<ShapedType>()));
   }
-  auto empty_array_attr = ArrayAttr::get(ctx, {});
-  // TODO - b/310291615: Support platforms = ["TPU"].
-  auto platforms = ArrayAttr::get(ctx, {StringAttr::get(ctx, kPlatformCpu)});
+  const auto empty_array_attr = ArrayAttr::get(ctx, {});
+  // TODO: b/310291615 - find a better way for platform support.
+  const auto platforms = ArrayAttr::get(
+      ctx,
+      {StringAttr::get(ctx, kPlatformCpu), StringAttr::get(ctx, kPlatformTpu)});
 
   auto xla_call_module_op = builder.create<TF::XlaCallModuleOp>(
       module_op.getLoc(), /*output=*/result_types,
@@ -207,8 +198,8 @@ void CreateXlaCallModuleOp(ValueRange inputs, ValueRange outputs,
 // Replaces the StableHLO ops with a separate XlaCallModuleOp, then wires it
 // back into the main graph.
 void ReplaceStablehloOpsWithXlaCallModuleOp(
-    ArrayRef<Value> inputs, ArrayRef<Value> outputs,
-    ArrayRef<Operation*> reverse_subgraph, const int stablehlo_func_id,
+    const ArrayRef<Value> inputs, const ArrayRef<Value> outputs,
+    const SetVector<Operation*>& reverse_subgraph, const int stablehlo_func_id,
     ModuleOp module_op) {
   MLIRContext* ctx = module_op.getContext();
   OpBuilder builder(ctx);
@@ -216,6 +207,11 @@ void ReplaceStablehloOpsWithXlaCallModuleOp(
   // Identify arg types & arg locs.
   SmallVector<Type> arg_types;
   SmallVector<Location> arg_locs;
+
+  // Add an argument for platform_index. This allows for multiple platforms.
+  // TODO: b/310291615 - find a better way for platform support.
+  arg_types.push_back(RankedTensorType::get({}, builder.getI32Type()));
+  arg_locs.push_back(module_op.getLoc());
   for (const Value input_value : inputs) {
     arg_types.push_back(input_value.getType());
     arg_locs.push_back(input_value.getLoc());
@@ -240,8 +236,9 @@ void ReplaceStablehloOpsWithXlaCallModuleOp(
                       arg_types, arg_locs);
 
   IRMapping mapper;
-  for (auto [input, stablehlo_func_arg] :
-       llvm::zip_equal(inputs, stablehlo_func_op.getArguments())) {
+  // stablehlo_func_op has 1 extra arg for platform index.
+  for (auto [input, stablehlo_func_arg] : llvm::zip_equal(
+           inputs, stablehlo_func_op.getArguments().take_back(inputs.size()))) {
     mapper.map(input, stablehlo_func_arg);
   }
 
@@ -273,7 +270,7 @@ void ReplaceStablehloOpsWithXlaCallModuleOp(
 void UpdateStatesAndReplaceStablehloOps(
     const SetVector<Value>& operands, const SetVector<Value>& defined_values,
     const LiveOuts& liveouts, ModuleOp module_op,
-    ArrayRef<Operation*> reverse_subgraph, const int stablehlo_func_id,
+    const SetVector<Operation*>& reverse_subgraph, const int stablehlo_func_id,
     func::FuncOp main_func, const bool is_last_subgraph = false) {
   SetVector<Value> inputs = operands;
   for (Value defined_value : defined_values) {
@@ -281,7 +278,7 @@ void UpdateStatesAndReplaceStablehloOps(
   }
 
   SetVector<Value> outputs = liveouts.get_previous();
-  for (Value live_value : liveouts.get()) {
+  for (const Value live_value : liveouts.get()) {
     outputs.remove(live_value);
   }
 
@@ -300,6 +297,61 @@ void UpdateStatesAndReplaceStablehloOps(
       stablehlo_func_id, module_op);
 }
 
+// Check if the op should be added to the subgraph.
+// The op should be added to the subgraph if all of its users match one
+// of following two conditions:
+// 1: The user is already in the current subgraph.
+// 2: The user will reach a dead end.
+//
+// If the op should be added to the subgraph and there are users who
+// will reach the dead end, add the ops on the dead end to the subgraph as well.
+bool ShouldAddOpToSubgraph(Operation* op,
+                           const SetVector<Operation*>& reverse_subgraph,
+                           const SetVector<Operation*>& ops_to_add,
+                           SmallVector<Operation*>& all_descendants) {
+  if (!op) {
+    return false;
+  }
+
+  SmallVector<Operation*> current_layer_descendants;
+  SmallVector<Operation*> next_layer_descendants;
+  int current_depth = 0;
+  current_layer_descendants.push_back(op);
+  // BFS downstream ops for current user.
+  // If any one of the descendants meet one of the three conditions, we return
+  // false for the current value:
+  // 1: The descendant is not in the ops_to_add.
+  // 2: The descendant is not a stablehlo op.
+  // 3: The depth of the descendant is larger than 5, we don't want to search
+  // too deep, max depth is arbitrarily chosen.
+  while (!current_layer_descendants.empty()) {
+    if (current_depth > 5) {
+      all_descendants.clear();
+      return false;
+    }
+    current_depth++;
+
+    for (Operation* descendant : current_layer_descendants) {
+      if (!IsStablehloOp(descendant) || !ops_to_add.contains(descendant)) {
+        all_descendants.clear();
+        return false;
+      }
+      for (Operation* next_descendant : descendant->getUsers()) {
+        if (reverse_subgraph.contains(next_descendant)) {
+          continue;
+        }
+        next_layer_descendants.push_back(next_descendant);
+      }
+      all_descendants.push_back(descendant);
+    }
+
+    current_layer_descendants = next_layer_descendants;
+    next_layer_descendants.clear();
+  }
+
+  return true;
+}
+
 // Replaces the StableHLO ops in the main function block with
 // tf.XlaCallModuleOps as separate subgraphs. Wires them back to the main
 // function block to be compatible with SavedModel structure.
@@ -309,7 +361,7 @@ void ReplaceStablehloOpsInMainFunctionWithXlaCallModuleOps(
 
   // LiveOuts keeps track of live values at the output of some op. The updates
   // must be made in a reverse, bottom-up manner.
-  auto result_values = main_func_block.getTerminator()->getOperands();
+  const auto result_values = main_func_block.getTerminator()->getOperands();
   LiveOuts liveouts(result_values);
 
   // Copy ops to iterate because we will be modifying the block during
@@ -327,12 +379,12 @@ void ReplaceStablehloOpsInMainFunctionWithXlaCallModuleOps(
 
   // Create a separate subgraph invoked with XlaCallModuleOp per each
   // set of StableHLO ops in the main func block.
-  SmallVector<Operation*> reverse_subgraph;
+  SetVector<Operation*> reverse_subgraph;
   SetVector<Value> operands;
   SetVector<Value> defined_values;
 
   // Add op to the subgraph.
-  auto add_to_subgraph = [&](Operation* op) {
+  const auto add_to_subgraph = [&](Operation* op) {
     // Move on to the parent ops.
     liveouts.update(*op);
     ops_to_add.remove(op);
@@ -343,7 +395,7 @@ void ReplaceStablehloOpsInMainFunctionWithXlaCallModuleOps(
       return;
     }
 
-    reverse_subgraph.push_back(op);
+    reverse_subgraph.insert(op);
     defined_values.insert(op->getResults().begin(), op->getResults().end());
     operands.insert(op->getOperands().begin(), op->getOperands().end());
   };
@@ -354,27 +406,26 @@ void ReplaceStablehloOpsInMainFunctionWithXlaCallModuleOps(
     // When hitting a non-StableHLO op, i.e. tf.CustomAggregatorOp, start
     // recursively tracing defining ops of the current subgraph's operands. This
     // makes sure that all dependencies needed for shape inference are included
-    // in the subgraph. Tracing stops when hitting a non-StableHLO ops or an op
-    // with multiple uses. In case of the latter scenario, we have to stop
-    // because otherwise other users of the op will become dangling references.
+    // in the subgraph. We only trace StableHLO ops that have all users inside
+    // the current subgraph.
     // TODO: b/311239049 - Consider rewrite this using BFS.
     if (!IsStablehloOp(op)) {
       bool should_add_op = true;
       while (should_add_op) {
         should_add_op = false;
-        Operation* defining_op = nullptr;
+        SmallVector<Operation*> all_descendants;
         for (Value v : operands) {
           if (defined_values.contains(v)) continue;
-          // Check if op has branch and skip if so.
-          if (v.getDefiningOp() && IsStablehloOp(v.getDefiningOp()) &&
-              v.getDefiningOp()->hasOneUse()) {
-            defining_op = v.getDefiningOp();
+          if (ShouldAddOpToSubgraph(v.getDefiningOp(), reverse_subgraph,
+                                    ops_to_add, all_descendants)) {
             should_add_op = true;
             break;
           }
         }
         if (should_add_op) {
-          add_to_subgraph(defining_op);
+          for (auto descendant : llvm::reverse(all_descendants)) {
+            add_to_subgraph(descendant);
+          }
         }
       }
       // Create an XlaCallModuleOp if reverse_subgraph isn't empty.
@@ -400,7 +451,7 @@ void ReplaceStablehloOpsInMainFunctionWithXlaCallModuleOps(
   }
 }
 
-// Duplicate small constants for each use.
+// Duplicates small constants for each use.
 //
 // In the subsequent graph partitioning, constants for shape inference need to
 // be in the same subgraph. But graph partitioning stops at ops with multiple
@@ -435,7 +486,7 @@ void ReplaceStablehloOpsInMainFunctionWithXlaCallModuleOpsPass::
     runOnOperation() {
   ModuleOp module_op = getOperation();
 
-  func::FuncOp main_func = GetMainFunc(module_op);
+  func::FuncOp main_func = FindMainFuncOp(module_op);
   if (!main_func) return;
 
   DuplicateSmallConstantOps(module_op, main_func);

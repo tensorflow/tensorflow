@@ -1,4 +1,4 @@
-/* Copyright 2022 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2022 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -24,6 +24,8 @@ limitations under the License.
 #include "llvm/Support/Casting.h"
 #include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt/ir/sharding_param.h"
+#include "xla/python/ifrt/memory.h"
+#include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/sharding_test_util.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/status_matchers.h"
@@ -60,15 +62,32 @@ TEST_P(SingleDeviceShardingTest, Disassemble) {
   std::shared_ptr<const Sharding> sharding =
       SingleDeviceSharding::Create(device_list.devices().front(), MemoryKind());
 
-  Shape shape({10, 20});
-  TF_ASSERT_OK_AND_ASSIGN(auto disassembled, sharding->Disassemble(shape));
+  {  // Disassemble static shape.
+    Shape shape({10, 20});
+    TF_ASSERT_OK_AND_ASSIGN(auto disassembled, sharding->Disassemble(shape));
 
-  ASSERT_THAT(disassembled, SizeIs(1));
-  const auto& [result_shape, result_sharding] = disassembled[0];
-  ASSERT_EQ(shape, result_shape);
-  ASSERT_TRUE(llvm::isa<SingleDeviceSharding>(*result_sharding));
-  EXPECT_THAT(result_sharding->devices().devices(),
-              ElementsAreArray(device_list.devices()));
+    ASSERT_THAT(disassembled, SizeIs(1));
+    const auto& [result_shape, result_sharding] = disassembled[0];
+    ASSERT_EQ(shape, result_shape);
+    ASSERT_TRUE(llvm::isa<SingleDeviceSharding>(*result_sharding));
+    EXPECT_THAT(result_sharding->devices().devices(),
+                ElementsAreArray(device_list.devices()));
+  }
+  {  // Disassemble dynamic shape.
+    TF_ASSERT_OK_AND_ASSIGN(
+        DynamicShape dynamic_shape,
+        DynamicShape::Create(Shape({10, 20}),
+                             BoundedDynamicShapeTag({true, true})));
+    TF_ASSERT_OK_AND_ASSIGN(auto disassembled,
+                            sharding->Disassemble(dynamic_shape));
+
+    ASSERT_THAT(disassembled, SizeIs(1));
+    const auto& [result_shape, result_sharding] = disassembled[0];
+    ASSERT_EQ(dynamic_shape, result_shape);
+    ASSERT_TRUE(llvm::isa<SingleDeviceSharding>(*result_sharding));
+    EXPECT_THAT(result_sharding->devices().devices(),
+                ElementsAreArray(device_list.devices()));
+  }
 }
 
 TEST_P(OpaqueShardingTest, FailedToDisassemble) {
@@ -78,6 +97,15 @@ TEST_P(OpaqueShardingTest, FailedToDisassemble) {
 
   EXPECT_THAT(
       sharding->Disassemble(Shape({30})),
+      StatusIs(
+          tsl::error::INVALID_ARGUMENT,
+          HasSubstr("OpaqueSharding does not have shard shape information")));
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      DynamicShape dynamic_shape,
+      DynamicShape::Create(Shape({30}), BoundedDynamicShapeTag({true})));
+  EXPECT_THAT(
+      sharding->Disassemble(dynamic_shape),
       StatusIs(
           tsl::error::INVALID_ARGUMENT,
           HasSubstr("OpaqueSharding does not have shard shape information")));
@@ -110,6 +138,36 @@ TEST_P(ConcreteShardingTest, Disassemble) {
   for (int i = 0; i < 2; ++i) {
     const auto& [shape, sharding] = disassembled[i];
     EXPECT_EQ(shape, shard_shapes[i]);
+    EXPECT_TRUE(llvm::isa<SingleDeviceSharding>(*sharding));
+    EXPECT_THAT(sharding->devices().devices(),
+                ElementsAre(device_list.devices()[i]));
+  }
+}
+
+TEST_P(ConcreteShardingTest, DisassembleDynamicShape) {
+  DeviceList device_list = GetDevices({0, 1});
+  TF_ASSERT_OK_AND_ASSIGN(
+      DynamicShape dynamic_shape,
+      DynamicShape::Create(Shape({10}), BoundedDynamicShapeTag({true})));
+  TF_ASSERT_OK_AND_ASSIGN(
+      DynamicShape shard_dynamic_shape1,
+      DynamicShape::Create(Shape({3}), BoundedDynamicShapeTag({true})));
+  TF_ASSERT_OK_AND_ASSIGN(
+      DynamicShape shard_dynamic_shape2,
+      DynamicShape::Create(Shape({7}), BoundedDynamicShapeTag({true})));
+  std::vector<DynamicShape> shard_dynamic_shapes{
+      std::move(shard_dynamic_shape1), std::move(shard_dynamic_shape2)};
+  auto sharding = ConcreteSharding::Create(device_list, MemoryKind(),
+                                           dynamic_shape, shard_dynamic_shapes);
+  EXPECT_THAT(sharding->Disassemble(Shape({10})),
+              StatusIs(tsl::error::INVALID_ARGUMENT,
+                       HasSubstr("ConcreteSharding holds dynamic shape")));
+  TF_ASSERT_OK_AND_ASSIGN(auto disassembled,
+                          sharding->Disassemble(DynamicShape(dynamic_shape)));
+  ASSERT_THAT(disassembled, SizeIs(2));
+  for (int i = 0; i < disassembled.size(); ++i) {
+    const auto& [dynamic_shape, sharding] = disassembled[i];
+    EXPECT_EQ(dynamic_shape, shard_dynamic_shapes[i]);
     EXPECT_TRUE(llvm::isa<SingleDeviceSharding>(*sharding));
     EXPECT_THAT(sharding->devices().devices(),
                 ElementsAre(device_list.devices()[i]));

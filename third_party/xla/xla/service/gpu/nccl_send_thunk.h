@@ -1,4 +1,4 @@
-/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -18,9 +18,14 @@ limitations under the License.
 
 #include <cstdint>
 
-#include "xla/service/collective_ops_utils.h"
+#include "absl/status/status.h"
+#include "absl/strings/string_view.h"
+#include "xla/hlo/ir/hlo_instructions.h"
+#include "xla/service/gpu/nccl_api.h"
+#include "xla/service/gpu/nccl_clique_key.h"
 #include "xla/service/gpu/nccl_collective_thunk.h"
 #include "xla/service/gpu/nccl_p2p_thunk_common.h"
+#include "xla/stream_executor/stream.h"
 
 namespace xla {
 namespace gpu {
@@ -28,36 +33,29 @@ namespace gpu {
 // Thunk that performs a NCCL-send.
 class NcclSendThunk : public NcclCollectiveThunk {
  public:
-  static NcclP2PConfig GetNcclP2PConfig(mlir::lmhlo::SendOp,
-                                        int64_t replica_count,
-                                        int64_t partition_count);
-
-  static Status CheckImplementable(mlir::lmhlo::SendOp op,
-                                   int64_t replica_count,
-                                   int64_t partition_count);
-  static CollectiveOpGroupMode GetGroupMode(mlir::lmhlo::SendOp op);
-  static const char* GetHloOpName() { return "send"; }
-
-  NcclSendThunk(ThunkInfo thunk_info, mlir::lmhlo::SendOp op,
-                int64_t replica_count, int64_t partition_count,
-                const Buffer& buffer);
+  NcclSendThunk(ThunkInfo thunk_info, NcclApi* nccl_api,
+                const HloSendInstruction* instr, int64_t replica_count,
+                int64_t partition_count, const Buffer& buffer);
 
  protected:
   const NcclCollectiveConfig& config() const override { return config_.config; }
-  Status RunNcclCollective(const ExecuteParams& params, se::Stream& stream,
-                           ncclComm_t comm) override;
-  AsyncStreamKind GetAsyncStreamKind() const override {
-    return kAsyncStreamP2P;
-  }
+  absl::Status RunNcclCollective(const ExecuteParams& params,
+                                 se::Stream& stream,
+                                 NcclApi::NcclCommHandle comm) override;
+  AsyncStreamKind GetAsyncStreamKind() const override { return stream_kind_; }
+  bool NeedFirstCallRendzevous() const override { return false; }
 
  private:
   const NcclP2PConfig config_;
   const Buffer buffer_;
+  const AsyncStreamKind stream_kind_;
 };
 
-Status RunSend(NcclP2PConfig::SourceTargetMapEntry source_target,
-               DeviceBufferPair& buffer, se::Stream& stream, ncclComm_t comm,
-               absl::string_view device_string, int64_t current_id);
+absl::Status RunSend(NcclApi* nccl_api,
+                     NcclP2PConfig::SourceTargetMapEntry source_target,
+                     DeviceBufferPair& buffer, se::Stream& stream,
+                     NcclApi::NcclCommHandle comm,
+                     absl::string_view device_string, int64_t current_id);
 
 }  // namespace gpu
 }  // namespace xla

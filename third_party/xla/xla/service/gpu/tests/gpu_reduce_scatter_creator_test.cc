@@ -1,4 +1,4 @@
-/* Copyright 2021 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2021 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -15,17 +15,25 @@ limitations under the License.
 
 #include "xla/service/gpu/gpu_reduce_scatter_creator.h"
 
+#include <cstddef>
+#include <cstdint>
 #include <memory>
 #include <utility>
 
+#include "absl/algorithm/container.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
+#include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/service/hlo_module_config.h"
 #include "xla/service/pattern_matcher.h"
 #include "xla/service/pattern_matcher_gmock.h"
 #include "xla/tests/hlo_test_base.h"
 #include "xla/util.h"
+#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace gpu {
@@ -35,10 +43,9 @@ namespace m = ::xla::match;
 
 class GpuReduceScatterCreatorTest : public HloTestBase {
  public:
-  StatusOr<std::unique_ptr<HloModule>> RunPass(absl::string_view hlo_module,
-                                               int64_t num_replicas,
-                                               int64_t num_partitions,
-                                               bool expect_change) {
+  absl::StatusOr<std::unique_ptr<HloModule>> RunPass(
+      absl::string_view hlo_module, int64_t num_replicas,
+      int64_t num_partitions, bool expect_change) {
     HloModuleConfig config = GetModuleConfigForTest(
         /*replica_count=*/num_replicas,
         /*num_partitions=*/num_partitions);
@@ -50,7 +57,7 @@ class GpuReduceScatterCreatorTest : public HloTestBase {
       return changed.status();
     }
     EXPECT_EQ(changed.value(), expect_change);
-    return StatusOr<std::unique_ptr<HloModule>>(std::move(module));
+    return absl::StatusOr<std::unique_ptr<HloModule>>(std::move(module));
   }
 
   size_t AllReduceCount(std::unique_ptr<HloModule> &module) {

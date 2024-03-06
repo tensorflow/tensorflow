@@ -1,4 +1,4 @@
-/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -63,7 +63,7 @@ std::optional<const OpMetadata*> ParameterMetadata(
 }
 }  // namespace
 
-StatusOr<std::unique_ptr<HloModuleConfig>> GetHloModuleConfig(
+absl::StatusOr<std::unique_ptr<HloModuleConfig>> GetHloModuleConfig(
     const XlaComputation& computation,
     absl::Span<const Shape* const> argument_layouts,
     const ExecutableBuildOptions& build_options, ServiceOptions* options,

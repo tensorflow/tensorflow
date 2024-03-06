@@ -18,6 +18,7 @@ limitations under the License.
 #include <deque>
 #include <iterator>
 #include <memory>
+#include <optional>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -25,6 +26,7 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/memory/memory.h"
+#include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/attr_value_util.h"
@@ -83,6 +85,10 @@ void MergeOptions(const protobuf::MessageLite& source,
 }  // namespace internal
 
 using TraceMeMetadata = std::vector<std::pair<StringPiece, string>>;
+
+// Maps the index of dataset elements to a globally shuffled index. See the
+// comment for IteratorContext::Params::index_mapper for more details.
+using IndexMapperFn = std::function<int64_t(int64_t)>;
 
 constexpr char kTFDataFunction[] = "_tf_data_function";
 
@@ -171,6 +177,12 @@ class IteratorStateWriter {
                              const Tensor& val) = 0;
 
   virtual ~IteratorStateWriter() {}
+
+ protected:
+  // Accessible only through derived concrete class's copy/move constructors
+  IteratorStateWriter() = default;
+  IteratorStateWriter(const IteratorStateWriter&) = default;
+  IteratorStateWriter(IteratorStateWriter&&) = default;
 };
 
 // Generates a full name key for iterator checkpointing. All keys generated for
@@ -379,7 +391,8 @@ class Runner {
 // A class which provides a sequence of splits. Splits represent subdivisions of
 // a dataset, e.g. filenames or ranges within files. We use splitting to
 // partition input data into smaller pieces for distributed processing (see
-// go/tf-data-splitting-design).
+// go/tf-data-splitting-design). The SplitProvider subclasses are expected to be
+// thread-safe.
 //
 // Datasets provide a `MakeSplitProvider` method to expose a listing of their
 // splits.
@@ -406,6 +419,9 @@ class SplitProvider {
   // - If the number of splits is unknown or can't be efficiently computed,
   // returns kUnknownCardinality.
   virtual int64_t Cardinality() const { return kUnknownCardinality; }
+  // Cancels the split provider. After cancelling, all other existing and future
+  // calls should return quickly without blocking.
+  virtual void Cancel() {}
 };
 
 // Returns the runner threadpool size from an OpKernelContext.
@@ -416,7 +432,7 @@ int32_t GetRunnerThreadpoolSizeFromOpKernelContext(OpKernelContext* ctx);
 // `IteratorStateWriter` interface.
 //
 // The implementation is not thread-safe.
-class MemoryCheckpoint : public IteratorStateWriter {
+class MemoryCheckpoint final : public IteratorStateWriter {
  public:
   // IdRegistry maintains a bi-directional mapping between string and integer
   // representations of checkpoint keys.
@@ -454,6 +470,7 @@ class MemoryCheckpoint : public IteratorStateWriter {
       : id_registry_(registry) {}
 
   MemoryCheckpoint(MemoryCheckpoint&& other) = default;
+  MemoryCheckpoint(const MemoryCheckpoint& other) = default;
 
   static MemoryCheckpoint CreateRootCheckpoint(
       std::shared_ptr<IdRegistry> registry) {
@@ -520,7 +537,6 @@ class MemoryCheckpoint : public IteratorStateWriter {
  private:
   explicit MemoryCheckpoint(std::shared_ptr<IdRegistry> registry, bool is_root)
       : is_root_(is_root), id_registry_(registry) {}
-  MemoryCheckpoint(const MemoryCheckpoint&) = delete;
   void operator=(const MemoryCheckpoint&) = delete;
 
   Status status_ = OkStatus();
@@ -656,6 +672,7 @@ class IteratorContext {
           interleave_depth(ctx->interleave_depth()),
           is_restoring(ctx->is_restoring()),
           model(ctx->model()),
+          options(ctx->options()),
           ram_budget_manager(ctx->ram_budget_manager()),
           resource_mgr(ctx->resource_mgr()),
           runner(*(ctx->runner())),
@@ -666,7 +683,8 @@ class IteratorContext {
           thread_factory(ctx->thread_factory()),
           thread_pool(ctx->thread_pool()),
           id_registry(ctx->id_registry()),
-          warm_start(ctx->warm_start()) {}
+          warm_start(ctx->warm_start()),
+          index_mapper(ctx->index_mapper()) {}
 
     explicit Params(OpKernelContext* ctx)
         : collective_executor(ctx->collective_executor()),
@@ -726,11 +744,11 @@ class IteratorContext {
     // If non-null, identifies the object used for performance modeling.
     std::shared_ptr<model::Model> model = nullptr;
 
-    // Manager for the ram budget when using autotune.
-    std::shared_ptr<model::RamBudgetManager> ram_budget_manager = nullptr;
-
     // The input pipeline options.
     const Options* options = nullptr;
+
+    // Manager for the ram budget when using autotune.
+    std::shared_ptr<model::RamBudgetManager> ram_budget_manager = nullptr;
 
     // A resource manager for storing dataset-related state, e.g. random
     // seeds or cached tensors. Not owned.
@@ -771,6 +789,16 @@ class IteratorContext {
 
     // Specifies the tf.data pipeline run mode.
     RunMode run_mode = RunMode::DEFAULT;
+
+    // Maps the index of dataset elements to a shuffled index. In other words,
+    // given an index i, returns the permuted index p(i) for the iterator. Used
+    // to support global shuffling of datasets that support random access.
+    IndexMapperFn index_mapper = nullptr;
+
+    // Records the number of elements that have been produced prior to a
+    // checkpoint. This is set by globally shuffled iterators so that upstream
+    // iterators can restore the element counts in the random access mode.
+    std::optional<int64_t> restored_element_count = std::nullopt;
   };
 
   explicit IteratorContext(IteratorContext* ctx)
@@ -825,6 +853,8 @@ class IteratorContext {
 
   const std::shared_ptr<model::Model>& model() const { return params_.model; }
 
+  const Options* options() const { return params_.options; }
+
   const std::shared_ptr<model::RamBudgetManager>& ram_budget_manager() {
     return params_.ram_budget_manager;
   }
@@ -856,6 +886,14 @@ class IteratorContext {
   bool warm_start() { return params_.warm_start; }
 
   RunMode run_mode() { return params_.run_mode; }
+
+  IndexMapperFn index_mapper() const { return params_.index_mapper; }
+
+  std::optional<int64_t> restored_element_count() const {
+    return params_.restored_element_count;
+  }
+
+  void SetModel(std::shared_ptr<model::Model> model) { params_.model = model; }
 
   std::unique_ptr<thread::ThreadPool> CreateThreadPool(const string& name,
                                                        int num_threads) {
@@ -1107,13 +1145,14 @@ class IteratorBase : public Checkpointable {
     return 0;
   }
 
+  std::shared_ptr<model::Node> node_ = nullptr;
+
  private:
   // For access to `AddCleanupFunction` and `Restore`.
   friend class DatasetBase;
   friend class DatasetBaseIterator;  // for access to `node_`
 
   std::vector<std::function<void()>> cleanup_fns_;
-  std::shared_ptr<model::Node> node_ = nullptr;
   const IteratorBase* parent_ = nullptr;  // Not owned.
   uint64_t id_ = 0;
   uint64_t parent_id_ = 0;
@@ -1299,11 +1338,17 @@ class DatasetBase : public core::RefCounted {
   virtual Status Get(OpKernelContext* ctx, int64 index,
                      std::vector<Tensor>* out_tensors) const;
 
+  // Returns true if the dataset and its inputs support random access.
+  virtual absl::Status RandomIndexingCompatible() const {
+    return absl::FailedPreconditionError(
+        absl::StrCat(type_string(), " does not support random access."));
+  }
+
   // Return a finalized version of the dataset.  The returned DatasetBase is
   // unowned and lives for as long as this dataset.
-  virtual StatusOr<DatasetBase*> Finalize(
+  virtual absl::StatusOr<DatasetBase*> Finalize(
       OpKernelContext* ctx,
-      std::function<StatusOr<core::RefCountPtr<DatasetBase>>()>
+      std::function<absl::StatusOr<core::RefCountPtr<DatasetBase>>()>
           make_finalized_dataset) const;
 
   // Wrapper around a GraphDefBuilder which provides support for serializing
@@ -1425,6 +1470,16 @@ class DatasetBaseIterator : public IteratorBase {
     VLOG(2) << "Attempting to save checkpoints on iterator (prefix: "
             << prefix() << ") from " << dataset()->DebugString();
     return IteratorBase::Save(ctx, writer);
+  }
+
+  // Returns a copy of the `status` where the error message is prepended with
+  // dataset name and the iterator prefix.
+  Status AddErrorContext(const Status& status) const {
+    return Status(status.code(),
+                  strings::StrCat("Error in user-defined function passed to ",
+                                  dataset()->metadata().name(),
+                                  " transformation with iterator: ", prefix(),
+                                  ": ", status.message()));
   }
 
  protected:

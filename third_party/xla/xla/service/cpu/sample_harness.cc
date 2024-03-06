@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -58,7 +58,7 @@ int main(int argc, char** argv) {
 
   // Execute and transfer result of computation.
   xla::ExecutionProfile profile;
-  xla::StatusOr<xla::Literal> result = client->ExecuteAndTransfer(
+  absl::StatusOr<xla::Literal> result = client->ExecuteAndTransfer(
       computation,
       /*arguments=*/{param0_data.get(), param1_data.get()},
       /*execution_options=*/nullptr,

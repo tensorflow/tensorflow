@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -28,6 +28,7 @@ limitations under the License.
 
 #include "absl/algorithm/container.h"
 #include "absl/base/attributes.h"
+#include "absl/base/dynamic_annotations.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
@@ -163,12 +164,14 @@ extern const char* const kOneDnnSoftmaxSymbolName =
     "__xla_cpu_runtime_OneDnnSoftmax";
 extern const char* const kOneDnnLayerNormSymbolName =
     "__xla_cpu_runtime_OneDnnLayerNorm";
+extern const char* const kOneDnnMatMulReorderSymbolName =
+    "__xla_cpu_runtime_OneDnnMatMulReorder";
 
 namespace {
 
 // Inverses the encoding of a Shape protobuf into an LLVM global variable.
-StatusOr<Shape> DecodeSelfDescribingShapeConstant(const void* shape_ptr,
-                                                  int32_t size_bytes) {
+absl::StatusOr<Shape> DecodeSelfDescribingShapeConstant(const void* shape_ptr,
+                                                        int32_t size_bytes) {
   ShapeProto shape_proto;
   if (!shape_proto.ParseFromArray(shape_ptr, size_bytes)) {
     return tsl::errors::Internal("Failed parsing the shape proto");
@@ -182,7 +185,7 @@ StatusOr<Shape> DecodeSelfDescribingShapeConstant(const void* shape_ptr,
 }
 
 std::string ShapeString(const void* shape_ptr, int32_t shape_length) {
-  StatusOr<Shape> shape =
+  absl::StatusOr<Shape> shape =
       DecodeSelfDescribingShapeConstant(shape_ptr, shape_length);
   if (shape.ok()) {
     return ShapeUtil::HumanStringWithLayout(shape.value());
@@ -234,7 +237,7 @@ void ReleaseInfeedBufferAfterDequeueImpl(
           << device_ordinal;
 
   XfeedManager* xfeed = GetXfeedManager(device_ordinal);
-  StatusOr<Shape> shape =
+  absl::StatusOr<Shape> shape =
       DecodeSelfDescribingShapeConstant(shape_ptr, shape_length);
   xfeed->infeed()->ReleaseCurrentBuffer(buffer_length, buffer_ptr,
                                         std::move(shape));
@@ -272,7 +275,7 @@ void ReleaseOutfeedBufferAfterPopulationImpl(
           << device_ordinal;
 
   XfeedManager* xfeed = GetXfeedManager(device_ordinal);
-  StatusOr<Shape> shape =
+  absl::StatusOr<Shape> shape =
       DecodeSelfDescribingShapeConstant(shape_ptr, shape_length);
   xfeed->outfeed()->ReleaseCurrentBuffer(buffer_length, buffer_ptr,
                                          std::move(shape));
@@ -369,6 +372,10 @@ void AllToAllImpl(const ExecutableRunOptions* run_options,
 
   CollectivesInterface* collectives = GetCollectivesImpl(run_options);
 
+  ABSL_ANNOTATE_MEMORY_IS_INITIALIZED(source_buffers,
+                                      sizeof(void*) * num_buffers);
+  ABSL_ANNOTATE_MEMORY_IS_INITIALIZED(destination_buffers,
+                                      sizeof(void*) * num_buffers);
   auto communicator =
       collectives->GetCommunicator(rendezvous_key.global_devices, rank).value();
   TF_CHECK_OK(communicator->AllToAll(

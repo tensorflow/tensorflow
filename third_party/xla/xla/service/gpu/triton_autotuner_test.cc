@@ -1,4 +1,4 @@
-/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -42,12 +42,12 @@ limitations under the License.
 #include "xla/service/hlo_pass_pipeline.h"
 #include "xla/service/pattern_matcher.h"
 #include "xla/service/pattern_matcher_gmock.h"
-#include "xla/shape_util.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/tests/filecheck.h"
 #include "xla/tests/hlo_test_base.h"
 #include "xla/tests/test_utils.h"
 #include "xla/tests/verified_hlo_module.h"
+#include "xla/tools/hlo_decomposer.h"
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/lib/core/status_test_util.h"
@@ -88,9 +88,8 @@ ENTRY entry {
 })")
                                                   .value();
 
-  std::unique_ptr<HloModule> extracted_module =
-      AutotunerUtil::ExtractInstructionIntoNewModule(
-          *module->entry_computation()->root_instruction()->operand(0));
+  std::unique_ptr<HloModule> extracted_module = ExtractInstructionIntoNewModule(
+      *module->entry_computation()->root_instruction()->operand(0));
 
   // Destroy the original module to be sure that the extracted one has no
   // dependency on it.
@@ -127,11 +126,10 @@ ENTRY entry {
                                                   .value();
 
   std::unique_ptr<HloModule> extracted_module =
-      AutotunerUtil::ExtractComputationIntoNewModule(
-          *module->entry_computation()
-               ->root_instruction()
-               ->operand(0)
-               ->fused_instructions_computation());
+      ExtractComputationIntoNewModule(*module->entry_computation()
+                                           ->root_instruction()
+                                           ->operand(0)
+                                           ->fused_instructions_computation());
 
   // Destroy the original module to be sure that the extracted one has no
   // dependency on it.
@@ -169,6 +167,7 @@ class TritonAutotunerTest : public StatelessAutotunerTest {
         StatelessAutotunerTest::GetDebugOptionsForTest();
     debug_options.set_xla_gpu_enable_triton_gemm(true);
     debug_options.set_xla_gpu_cublas_fallback(false);
+    debug_options.set_xla_gpu_cudnn_gemm_fusion(false);
     return debug_options;
   }
 
@@ -204,11 +203,16 @@ class TritonAutotunerTest : public StatelessAutotunerTest {
             dot_fusion = dot_fusion->operand(0);
           }
           CHECK_EQ(dot_fusion->opcode(), HloOpcode::kFusion);
-          CHECK_GT(dot_fusion->backend_config<xla::gpu::FusionBackendConfig>()
-                       .value()
-                       .triton_gemm_config()
-                       .block_m(),
-                   0);
+          if (!dot_fusion->backend_config<GpuBackendConfig>()
+                   ->fusion_backend_config()
+                   .has_cudnn_fusion_config()) {
+            CHECK_GT(dot_fusion->backend_config<GpuBackendConfig>()
+                         .value()
+                         .fusion_backend_config()
+                         .triton_gemm_config()
+                         .block_m(),
+                     0);
+          }
         });
   }
 };
@@ -425,13 +429,13 @@ ENTRY e {
   p0 = f16[55,120]{1,0} parameter(0)
   p1 = f16[120,20]{1,0} parameter(1)
   ROOT _ = f16[55,20] fusion(p0, p1), kind=kCustom, calls=triton_dot,
-    backend_config={kind: "__triton_gemm", triton_gemm_config: {"block_m":16,"block_n":64,"block_k":32,"split_k":3,"num_stages":1,"num_warps":2}}
+    backend_config={"fusion_backend_config":{kind: "__triton_gemm", triton_gemm_config: {"block_m":16,"block_n":64,"block_k":32,"split_k":3,"num_stages":1,"num_warps":2,"num_ctas":1}}}
 })";
 
   MatchOptimizedHlo(kHloText, R"(
 ; CHECK: f16[3,55,20]
-; CHECK: {"block_m":16,"block_n":64,"block_k":32,"split_k":3,"num_stages":1,"num_warps":2}
-; CHECK: reduce
+; CHECK: {"block_m":16,"block_n":64,"block_k":32,"split_k":3,"num_stages":1,"num_warps":2,"num_ctas":1}
+; CHECK: f16[55,20]{1,0} {{(reduce|fusion)}}
 )");
 
   EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
@@ -454,7 +458,7 @@ ENTRY %e {
   %get-tuple-element.7020 = s8[12288,1536]{1,0} parameter(0)
   %convert = s8[4,12288]{1,0} parameter(1)
   ROOT %triton = s8[4,1536]{1,0} fusion(s8[12288,1536]{1,0} %get-tuple-element.7020, s8[4,12288]{1,0} %convert), kind=kCustom, calls=%triton_gemm_dot,
-    backend_config={"kind":"__triton_gemm","triton_gemm_config":{"block_m":"256","block_n":"256","block_k":"16","split_k":"1","num_stages":"1","num_warps":"16"}}
+    backend_config={"fusion_backend_config":{"kind":"__triton_gemm","triton_gemm_config":{"block_m":"256","block_n":"256","block_k":"16","split_k":"1","num_stages":"1","num_warps":"16","num_ctas":"1"}}}
 })";
 
   if (!GetCudaComputeCapability().IsAtLeast(
@@ -492,7 +496,7 @@ ENTRY %e {
   %get-tuple-element.7020 = s8[12288,1536]{1,0} parameter(0)
   %convert = s8[4,12288]{1,0} parameter(1)
   ROOT %triton = s8[4,1536]{1,0} fusion(s8[12288,1536]{1,0} %get-tuple-element.7020, s8[4,12288]{1,0} %convert), kind=kCustom, calls=%triton_gemm_dot,
-    backend_config={"kind":"__triton_gemm","triton_gemm_config":{"block_m":"256","block_n":"256","block_k":"16","split_k":"1","num_stages":"1","num_warps":"16"}}
+    backend_config={"fusion_backend_config":{"kind":"__triton_gemm","triton_gemm_config":{"block_m":"256","block_n":"256","block_k":"16","split_k":"1","num_stages":"1","num_warps":"16","num_ctas":"1"}}}
 })";
 
   if (!GetCudaComputeCapability().IsAtLeast(
@@ -534,7 +538,7 @@ ENTRY %e {
   %p0 = s8[12288,1536]{1,0} parameter(0)
   %p1 = f16[4,12288]{1,0} parameter(1)
   ROOT %triton_dot = f16[4,1536]{1,0} fusion(s8[12288,1536]{1,0} %p0, f16[4,12288]{1,0} %p1), kind=kCustom, calls=%triton_gemm_dot,
-    backend_config={"kind":"__triton_gemm","triton_gemm_config":{"block_m":"16","block_n":"32","block_k":"16","split_k":"1","num_stages":"1","num_warps":"2"}}
+    backend_config={"fusion_backend_config":{"kind":"__triton_gemm","triton_gemm_config":{"block_m":"16","block_n":"32","block_k":"16","split_k":"1","num_stages":"1","num_warps":"2","num_ctas":"1"}}}
 })";
 
   auto module = ParseAndReturnVerifiedModule(kHloText).value();
@@ -548,6 +552,62 @@ ENTRY %e {
                         /*is_autotuning_compilation=*/true})
           .value();
   EXPECT_NE(executable, nullptr);
+}
+
+class TritonAutotunerDumpTest : public TritonAutotunerTest {
+ public:
+  DebugOptions GetDebugOptionsForTest() override {
+    DebugOptions debug_options = TritonAutotunerTest::GetDebugOptionsForTest();
+    debug_options.set_xla_gpu_cublas_fallback(true);
+    debug_options.set_xla_gpu_dump_autotuned_triton_fusions(true);
+    return debug_options;
+  }
+};
+
+TEST_F(TritonAutotunerDumpTest, DumpingFusionsWorksWithFallback) {
+  // Computation is chosen such that relatively heavy math operations before the
+  // GEMM are not worth fusing because they would get duplicated many times and
+  // slow down execution. Therefore autotuning picks cuBLAS here.
+  const std::string kHloText = R"(
+ENTRY e {
+  p0 = f32[3333,3333] parameter(0)
+  s = f32[3333,3333] sine(p0)
+  p1 = f32[3333,3333] parameter(1)
+  c = f32[3333,3333] cosine(p1)
+  ROOT dot = f32[3333,3333] dot(s, c),
+    lhs_contracting_dims={1}, rhs_contracting_dims={0}
+})";
+
+  MatchOptimizedHlo(kHloText, R"(
+; CHECK: cublas
+; CHECK-NOT: triton
+)");
+}
+
+TEST_F(TritonAutotunerTest, AutotuneCuDnnFusion) {
+  if (!GetCudaComputeCapability().IsAtLeast(
+          se::CudaComputeCapability::AMPERE)) {
+    GTEST_SKIP() << "cuDNN fusion autotuning is not tested before Ampere.";
+  }
+  const std::string kHlo = R"(
+fusion1 {
+  p0 = f32[3,28,32] parameter(0)
+  p1 = f32[3,28,32] parameter(1)
+  ROOT d = f32[3,32,32] dot(p0, p1),
+    lhs_batch_dims={0}, rhs_batch_dims={0},
+    lhs_contracting_dims={1}, rhs_contracting_dims={1}
+}
+
+ENTRY e {
+  p0 = f32[3,28,32] parameter(0)
+  p1 = f32[3,28,32] parameter(1)
+  ROOT _ = f32[3,32,32] fusion(p0, p1), kind=kCustom, calls=fusion1,
+    backend_config={"fusion_backend_config": {kind: "__cudnn$fusion"}}
+})";
+
+  CheckTritonAutotuning(kHlo, R"(
+// CHECK: "plan_id":
+)");
 }
 
 // TODO(b/281489442): Write a testcase called
@@ -630,7 +690,7 @@ ENTRY e {
         RunFileCheck(
             module->ToString(HloPrintOptions{}.set_print_operand_shape(false)),
             R"(
-// CHECK: backend_config={"kind":"__triton_gemm","triton_gemm_config":{"block_m":"32","block_n":"32","block_k":"32","split_k":"1","num_stages":"1","num_warps":"4"}}
+// CHECK: backend_config={"operation_queue_id":"0","wait_on_operation_queues":[],"fusion_backend_config":{"kind":"__triton_gemm","triton_gemm_config":{"block_m":"32","block_n":"32","block_k":"32","split_k":"1","num_stages":"1","num_warps":"4","num_ctas":"1"}}}
             )"));
     EXPECT_TRUE(filecheck_matches);
   } else {
@@ -673,7 +733,6 @@ ENTRY e {
 // CHECK-SAME: "block_m":
 )");
 }
-
 
 class TritonAutotunerDisableSplitK : public TritonAutotunerTest {
  public:

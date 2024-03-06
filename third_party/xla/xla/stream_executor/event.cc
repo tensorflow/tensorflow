@@ -1,4 +1,4 @@
-/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2015 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -15,6 +15,10 @@ limitations under the License.
 
 #include "xla/stream_executor/event.h"
 
+#include <cstdint>
+
+#include "absl/log/log.h"
+#include "absl/status/status.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/stream_executor/stream_executor_internal.h"
 
@@ -52,7 +56,7 @@ Event::Status Event::PollForStatus() {
   return stream_exec_->PollForEventStatus(this);
 }
 
-tsl::Status Event::WaitForEventOnExternalStream(std::intptr_t stream) {
+absl::Status Event::WaitForEventOnExternalStream(std::intptr_t stream) {
   return stream_exec_->WaitForEventOnExternalStream(stream, this);
 }
 

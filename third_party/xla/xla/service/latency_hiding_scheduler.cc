@@ -1,4 +1,4 @@
-/* Copyright 2022 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2022 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -59,6 +59,7 @@ bool IsNopInstruction(const HloInstruction& hlo) {
   HloOpcode op = hlo.opcode();
   return op == HloOpcode::kGetTupleElement || op == HloOpcode::kBitcast ||
          op == HloOpcode::kConstant || op == HloOpcode::kParameter ||
+         op == HloOpcode::kBroadcast || op == HloOpcode::kIota ||
          hlo.IsEffectiveBitcast();
 }
 }  // namespace
@@ -74,6 +75,10 @@ CanonicalAsyncOp DefaultGetCanonicalAsyncOp(const HloInstruction& hlo) {
       return {HloOpcode::kAsyncStart, HloOpcode::kAllGather};
     case HloOpcode::kCollectivePermuteStart:
       return {HloOpcode::kAsyncStart, HloOpcode::kCollectivePermute};
+    case HloOpcode::kCopyStart:
+      return {HloOpcode::kAsyncStart, HloOpcode::kCopy};
+    case HloOpcode::kCopyDone:
+      return {HloOpcode::kAsyncDone, HloOpcode::kCopy};
     case HloOpcode::kAllReduceDone:
       return {HloOpcode::kAsyncDone, HloOpcode::kAllReduce};
     case HloOpcode::kAllGatherDone:
@@ -133,7 +138,9 @@ bool AsyncTracker::IsSupportedAsyncDone(const HloInstruction& hlo) const {
       case HloOpcode::kAllToAll:
       case HloOpcode::kAllGather:
       case HloOpcode::kAllReduce:
+      case HloOpcode::kCollectiveBroadcast:
       case HloOpcode::kCollectivePermute:
+      case HloOpcode::kCopy:
       case HloOpcode::kReduceScatter:
         return true;
       default:
@@ -160,7 +167,9 @@ bool AsyncTracker::IsSupportedAsyncStart(const HloInstruction& hlo) const {
       case HloOpcode::kAllToAll:
       case HloOpcode::kAllGather:
       case HloOpcode::kAllReduce:
+      case HloOpcode::kCollectiveBroadcast:
       case HloOpcode::kCollectivePermute:
+      case HloOpcode::kCopy:
       case HloOpcode::kReduceScatter:
         return true;
       default:
@@ -170,7 +179,7 @@ bool AsyncTracker::IsSupportedAsyncStart(const HloInstruction& hlo) const {
   return false;
 }
 
-ResourcesVector AsyncTracker::GetResourcesFromInstruction(
+ResourcesVector AsyncTracker::GetResourcesFromInstructionImpl(
     const HloInstruction& hlo) const {
   CanonicalAsyncOp op = GetCanonicalAsyncOp(hlo);
   auto get_resource_for_op = [](HloOpcode op) -> ResourceType {
@@ -181,8 +190,12 @@ ResourcesVector AsyncTracker::GetResourcesFromInstruction(
         return ResourceType::kAllGather;
       case HloOpcode::kAllToAll:
         return ResourceType::kAllToAll;
+      case HloOpcode::kCollectiveBroadcast:
+        return ResourceType::kCollectiveBroadcast;
       case HloOpcode::kCollectivePermute:
         return ResourceType::kCollectivePermute;
+      case HloOpcode::kCopy:
+        return ResourceType::kCopy;
       case HloOpcode::kReduceScatter:
         return ResourceType::kReduceScatter;
       default:
@@ -245,6 +258,14 @@ ResourcesVector AsyncTracker::GetResourcesFromInstruction(
     default:
       return ResourcesVector{};
   }
+}
+
+ResourcesVector AsyncTracker::GetResourcesFromInstruction(
+    const HloInstruction& hlo) const {
+  if (!resources_cache_.contains(&hlo)) {
+    resources_cache_.insert({&hlo, GetResourcesFromInstructionImpl(hlo)});
+  }
+  return resources_cache_.at(&hlo);
 }
 
 int64_t AsyncTracker::GetNumResourcesPerInstruction(
@@ -316,8 +337,13 @@ void AsyncTracker::SetConcurrentResourceLimits(
     absl::flat_hash_map<int64_t, int64_t>& max_concurrent_resource) const {
   // Set the limits for default resources
   max_concurrent_resource[ResourceTypeToIndex(
+      ResourceType::kCollectiveBroadcast)] =
+      config_.collective_broadcast_overlap_limit;
+  max_concurrent_resource[ResourceTypeToIndex(
       ResourceType::kCollectivePermute)] =
       config_.collective_permute_overlap_limit;
+  max_concurrent_resource[ResourceTypeToIndex(ResourceType::kCopy)] =
+      config_.copy_overlap_limit;
   max_concurrent_resource[ResourceTypeToIndex(ResourceType::kAllToAll)] =
       config_.all_to_all_overlap_limit;
   max_concurrent_resource[ResourceTypeToIndex(ResourceType::kAllGather)] =
@@ -351,14 +377,20 @@ absl::string_view AsyncTracker::GetResourceName(int64_t resource_type) const {
       return "kAllGather";
     case ResourceTypeToIndex(ResourceType::kAllReduce):
       return "kAllReduce";
+    case ResourceTypeToIndex(ResourceType::kCollectiveBroadcast):
+      return "kCollectiveBroadcast";
     case ResourceTypeToIndex(ResourceType::kCollectivePermute):
       return "kCollectivePermute";
+    case ResourceTypeToIndex(ResourceType::kCopy):
+      return "kCopy";
     case ResourceTypeToIndex(ResourceType::kSendRecv):
       return "kSendRecv";
     case ResourceTypeToIndex(ResourceType::kSendHost):
       return "kSendHost";
     case ResourceTypeToIndex(ResourceType::kRecvHost):
       return "kRecvHost";
+    case ResourceTypeToIndex(ResourceType::kReduceScatter):
+      return "kReduceScatter";
     default:
       return "Not a valid default resource";
   }
@@ -688,11 +720,6 @@ class ReadySetLt {
             "kForceDelay")) {
       return *value;
     }
-    if (early_target_scheduling_rule_) {
-      if (auto value = early_target_scheduling_rule_(a, b)) {
-        return *value;
-      }
-    }
     // Prioritize instructions that are NOPs as they have no memory pressure
     // issue and unlock different operations for being scheduled.
     if (auto value = DefaultSchedulerCore::ChooseBestCandidate(
@@ -751,6 +778,11 @@ class ReadySetLt {
                       sched_state_.memory_pressure_tracker->memory_usage() <=
                   sched_state_.config.memory_limit,
               b, "kMemoryPeakOverLimit")) {
+        return *value;
+      }
+    }
+    if (early_target_scheduling_rule_) {
+      if (auto value = early_target_scheduling_rule_(a, b)) {
         return *value;
       }
     }
@@ -1272,7 +1304,7 @@ bool DefaultSchedulerCore::AddOccupierToResource(
   return true;
 }
 
-StatusOr<HloGraphNode::TimeCost> DefaultSchedulerCore::ScheduleNode(
+absl::StatusOr<HloGraphNode::TimeCost> DefaultSchedulerCore::ScheduleNode(
     HloGraphNode* n, DefaultSchedulerCore::SchedulingState* sched_state) const {
   // Insert the node into the sequence and mark it as scheduled.
   sched_state->new_sequence_reversed.push_back(
@@ -1700,7 +1732,7 @@ Status DefaultSchedulerCore::SchedulingStep(SchedulingState* sched_state) {
   return OkStatus();
 }
 
-StatusOr<std::vector<HloInstruction*>>
+absl::StatusOr<std::vector<HloInstruction*>>
 DefaultSchedulerCore::ScheduleComputation(const HloComputation* computation) {
   const HloSchedule& module_schedule = computation->parent()->schedule();
   MemoryPressureTracker memory_pressure_tracker(
@@ -1836,6 +1868,7 @@ LatencyHidingScheduler::LatencyHidingStatistics(
     kReduceScatter,
     kSend,
     kRecv,
+    kCollectiveBroadcast,
   };
   auto opcode_to_async_kind = [](HloOpcode opcode) {
     switch (opcode) {
@@ -1843,6 +1876,8 @@ LatencyHidingScheduler::LatencyHidingStatistics(
         return AsyncKind::kAllGather;
       case HloOpcode::kAllReduce:
         return AsyncKind::kAllReduce;
+      case HloOpcode::kCollectiveBroadcast:
+        return AsyncKind::kCollectiveBroadcast;
       case HloOpcode::kCollectivePermute:
         return AsyncKind::kCollectivePermute;
       case HloOpcode::kAllToAll:
@@ -1933,6 +1968,8 @@ LatencyHidingScheduler::LatencyHidingStatistics(
       wasted_time_per_collective[AsyncKind::kAllGather],
       /*all_reduce_wasted_cycles=*/
       wasted_time_per_collective[AsyncKind::kAllReduce],
+      /*collective_broadcast_wasted_cycles=*/
+      wasted_time_per_collective[AsyncKind::kCollectiveBroadcast],
       /*collective_permute_wasted_cycles=*/
       wasted_time_per_collective[AsyncKind::kCollectivePermute],
       /*all_to_all_wasted_cycles=*/
@@ -1960,6 +1997,7 @@ std::string LatencyHidingScheduler::SchedulerStatisticsString(
   absl::StrAppend(&result, "Total wasted cycles: ",
                   sched_stats.all_gather_wasted_cycles +
                       sched_stats.all_reduce_wasted_cycles +
+                      sched_stats.collective_broadcast_wasted_cycles +
                       sched_stats.collective_permute_wasted_cycles +
                       sched_stats.all_to_all_wasted_cycles +
                       sched_stats.reduce_scatter_wasted_cycles +
@@ -1970,6 +2008,8 @@ std::string LatencyHidingScheduler::SchedulerStatisticsString(
                   sched_stats.all_reduce_wasted_cycles, "\n");
   absl::StrAppend(&result, "Wasted cycles for all-gather: ",
                   sched_stats.all_gather_wasted_cycles, "\n");
+  absl::StrAppend(&result, "Wasted cycles for collective-broadcast: ",
+                  sched_stats.collective_broadcast_wasted_cycles, "\n");
   absl::StrAppend(&result, "Wasted cycles for collective-permute: ",
                   sched_stats.collective_permute_wasted_cycles, "\n");
   absl::StrAppend(&result, "Wasted cycles for all-to-all: ",
@@ -1995,7 +2035,7 @@ void LatencyHidingScheduler::LogScheduleStatistics(
                         async_tracker_.get(), shape_size_bytes_)));
 }
 
-StatusOr<bool> LatencyHidingScheduler::Run(
+absl::StatusOr<bool> LatencyHidingScheduler::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   VLOG(5) << "Original module:";

@@ -1,0 +1,39 @@
+# Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ==============================================================================
+# Enables RBE as long as RBE is available for the selected platform.
+# The "selected" platform is considered to be
+# TFCI_BAZEL_TARGET_SELECTING_CONFIG_PREFIX. "Available" means there is
+# an entry in tensorflow/.bazelrc for build:rbe_TFCI_BAZEL_TARGET...
+#                                           ^^^^
+# This env is only valid when RBE is available on the selected platform, since
+# it enables a derived --config setting.  If RBE is not available (i.e. there
+# is no --config setting), bazel would fail and quit. This script does a quick
+# check This script checks for such errors early
+if ! grep "rbe_$TFCI_BAZEL_TARGET_SELECTING_CONFIG_PREFIX" .bazelrc; then
+  cat <<EOF
+ERROR: RBE was enabled via the 'rbe' env in the 'TFCI' variable.
+       TFCI: $TFCI
+       TFCI_BAZEL_TARGET_SELECTING_CONFIG_PREFIX is "$TFCI_BAZEL_TARGET_SELECTING_CONFIG_PREFIX".
+       But in .bazelrc, there is no "rbe_$TFCI_BAZEL_TARGET_SELECTING_CONFIG_PREFIX".
+       That setting must exist for this script to function correctly.
+EOF
+  exit 1
+fi
+TFCI_BAZEL_COMMON_ARGS="$TFCI_BAZEL_COMMON_ARGS --config rbe_$TFCI_BAZEL_TARGET_SELECTING_CONFIG_PREFIX"
+
+# These flags share the user's gcloud credentials with the container, so that bazel
+# inside the container can authenticate. Note: TF's CI does not have any credential
+# stored here.
+TFCI_DOCKER_ARGS="$TFCI_DOCKER_ARGS -v $HOME/.config/gcloud:/root/.config/gcloud"

@@ -563,7 +563,7 @@ class Graph {
   Node* AddNode(NodeDef node_def, Status* status);
 
   // Same as above, but using StatusOr. This method is always preferred.
-  StatusOr<Node*> AddNode(NodeDef node_def);
+  absl::StatusOr<Node*> AddNode(NodeDef node_def);
 
   // Copies *node, which may belong to another graph, to a new node,
   // which is returned.  Does not copy any edges.  *this owns the
@@ -970,10 +970,14 @@ inline bool IsDistributedCommunication(const Node* n) {
 // https://en.cppreference.com/w/cpp/iterator/iterator).
 
 // Iterator for stepping through the nodes of a graph.
-class NodeIter
-    : public std::iterator<std::forward_iterator_tag, Node, std::ptrdiff_t,
-                           /*Pointer*/ Node*, /*Reference*/ Node*> {
+class NodeIter {
  public:
+  using iterator_category = std::forward_iterator_tag;
+  using value_type = Node;
+  using difference_type = std::ptrdiff_t;
+  using pointer = Node*;
+  using reference = Node*;
+
   NodeIter(const Graph* graph, int id);
   bool operator==(const NodeIter& rhs) const;
   bool operator!=(const NodeIter& rhs) const;
@@ -988,10 +992,14 @@ class NodeIter
 };
 
 // Iterator for stepping through the neighbors of a node.
-class NeighborIter
-    : public std::iterator<std::forward_iterator_tag, Node, std::ptrdiff_t,
-                           /*Pointer*/ Node*, /*Reference*/ Node*> {
+class NeighborIter {
  public:
+  using iterator_category = std::forward_iterator_tag;
+  using value_type = Node;
+  using difference_type = std::ptrdiff_t;
+  using pointer = Node*;
+  using reference = Node*;
+
   NeighborIter(EdgeSet::const_iterator iter, bool incoming);
   bool operator==(const NeighborIter& rhs) const;
   bool operator!=(const NeighborIter& rhs) const;

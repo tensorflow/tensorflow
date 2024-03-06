@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -39,6 +39,7 @@ limitations under the License.
 #include "xla/service/hlo_parser.h"
 #include "xla/service/hlo_pass_fix.h"
 #include "xla/service/hlo_pass_pipeline.h"
+#include "xla/service/host_memory_offload_annotations.h"
 #include "xla/service/layout_assignment.h"
 #include "xla/service/pattern_matcher.h"
 #include "xla/service/pattern_matcher_gmock.h"
@@ -926,6 +927,78 @@ TEST_F(AlgebraicSimplifierTest,
   AlgebraicSimplifierOptions options = default_options_;
   options.set_unconditionally_simplify_reduce_of_transpose_or_reshape(true);
   ASSERT_FALSE(AlgebraicSimplifier(options).Run(m.get()).value());
+}
+
+TEST_F(AlgebraicSimplifierTest, ReduceOfNegate) {
+  const char* kModuleStr = R"(
+    HloModule m
+    add_f32 {
+      p0 = f32[] parameter(0)
+      p1 = f32[] parameter(1)
+      ROOT r = f32[] add(p0, p1)
+    }
+
+    ENTRY test {
+      p = f32[15,7] parameter(0)
+      n = negate(p)
+      ROOT reduce = f32[15] reduce(n, f32[] constant(0)), dimensions={1}, to_apply=add_f32
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  AlgebraicSimplifierOptions options = default_options_;
+  options.set_unconditionally_simplify_reduce_of_transpose_or_reshape(true);
+  ASSERT_TRUE(AlgebraicSimplifier(options).Run(m.get()).value());
+  EXPECT_THAT(
+      m->entry_computation()->root_instruction(),
+      GmockMatch(m::Negate(m::Reduce(m::Parameter(0), m::ConstantScalar(0)))));
+}
+
+TEST_F(AlgebraicSimplifierTest, ReduceBroadcastOfScalar) {
+  // Test Reduce(Broadcast(x), a, Max)
+  const char* kModuleStrForMax = R"(
+    HloModule m
+    max_f32 {
+      p0 = f32[] parameter(0)
+      p1 = f32[] parameter(1)
+      ROOT r = f32[] maximum(p0, p1)
+    }
+
+    ENTRY test {
+      p = f32[] parameter(0)
+      b = f32[1000,1000] broadcast(p), dimensions={}
+      ROOT reduce = f32[] reduce(b, f32[] constant(0)), dimensions={0,1}, to_apply=max_f32
+    }
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto m,
+                          ParseAndReturnVerifiedModule(kModuleStrForMax));
+  AlgebraicSimplifierOptions options = default_options_;
+  ASSERT_TRUE(AlgebraicSimplifier(options).Run(m.get()).value());
+  EXPECT_THAT(
+      m->entry_computation()->root_instruction(),
+      GmockMatch(m::MaximumAnyOrder(m::Parameter(0), m::ConstantScalar(0))));
+
+  // Test Reduce(Broadcast(x), a, And)
+  const char* kModuleStrForAnd = R"(
+    HloModule m
+    and_u4 {
+      p0 = u4[] parameter(0)
+      p1 = u4[] parameter(1)
+      ROOT r = u4[] and(p0, p1)
+    }
+
+    ENTRY test {
+      p = u4[] parameter(0)
+      b = u4[1000,1000] broadcast(p), dimensions={}
+      ROOT reduce = u4[] reduce(b, u4[] constant(0)), dimensions={0,1}, to_apply=and_u4
+    }
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(m, ParseAndReturnVerifiedModule(kModuleStrForAnd));
+  ASSERT_TRUE(AlgebraicSimplifier(options).Run(m.get()).value());
+  EXPECT_THAT(
+      m->entry_computation()->root_instruction(),
+      GmockMatch(m::AndAnyOrder(m::Parameter(0), m::ConstantScalar(0))));
 }
 
 // Test that Const + A is canonicalized to A + Const.
@@ -2499,6 +2572,78 @@ ENTRY main {
               GmockMatch(m::Minimum(m::Parameter(0), m::Parameter(1))));
 }
 
+TEST_F(AlgebraicSimplifierTest, MaximumOfMaximum1) {
+  const char* const hlo_string = R"(
+HloModule test
+
+ENTRY main {
+  x = f32[] parameter(0)
+  y = f32[] parameter(1)
+  max1 = f32[] maximum(x, y)
+  ROOT max = f32[] maximum(max1, y)
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(hlo_string));
+  AlgebraicSimplifier simplifier(default_options_);
+  ASSERT_TRUE(simplifier.Run(m.get()).value());
+  EXPECT_THAT(m->entry_computation()->root_instruction(),
+              GmockMatch(m::Maximum(m::Parameter(0), m::Parameter(1))));
+}
+
+TEST_F(AlgebraicSimplifierTest, MaximumOfMaximum2) {
+  const char* const hlo_string = R"(
+HloModule test
+
+ENTRY main {
+  x = f32[] parameter(0)
+  y = f32[] parameter(1)
+  max1 = f32[] maximum(x, y)
+  ROOT max = f32[] maximum(max1, x)
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(hlo_string));
+  AlgebraicSimplifier simplifier(default_options_);
+  ASSERT_TRUE(simplifier.Run(m.get()).value());
+  EXPECT_THAT(m->entry_computation()->root_instruction(),
+              GmockMatch(m::Maximum(m::Parameter(0), m::Parameter(1))));
+}
+
+TEST_F(AlgebraicSimplifierTest, MaximumOfMaximum3) {
+  const char* const hlo_string = R"(
+HloModule test
+
+ENTRY main {
+  x = f32[] parameter(0)
+  y = f32[] parameter(1)
+  max1 = f32[] maximum(x, y)
+  ROOT max = f32[] maximum(y, max1)
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(hlo_string));
+  AlgebraicSimplifier simplifier(default_options_);
+  ASSERT_TRUE(simplifier.Run(m.get()).value());
+  EXPECT_THAT(m->entry_computation()->root_instruction(),
+              GmockMatch(m::Maximum(m::Parameter(1), m::Parameter(0))));
+}
+
+TEST_F(AlgebraicSimplifierTest, MaximumOfMaximum4) {
+  const char* const hlo_string = R"(
+HloModule test
+
+ENTRY main {
+  x = f32[] parameter(0)
+  y = f32[] parameter(1)
+  max1 = f32[] maximum(x, y)
+  ROOT max = f32[] maximum(x, max1)
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(hlo_string));
+  AlgebraicSimplifier simplifier(default_options_);
+  ASSERT_TRUE(simplifier.Run(m.get()).value());
+  EXPECT_THAT(m->entry_computation()->root_instruction(),
+              GmockMatch(m::Maximum(m::Parameter(0), m::Parameter(1))));
+}
+
 TEST_F(AlgebraicSimplifierTest, TrivialReduceWindow_Add) {
   const char* const hlo_string = R"(
 HloModule test
@@ -3366,6 +3511,37 @@ TEST_F(AlgebraicSimplifierTest, CopyWithSameLayout) {
 
   // Copy has been removed.
   EXPECT_THAT(computation->root_instruction(), param0);
+}
+
+// Test that a simplification which changes copy to a bitcast is not performed
+// if layout sensitive is true.
+TEST_F(AlgebraicSimplifierTest, CopyWithDifferentMemorySpaces) {
+  auto m = CreateNewVerifiedModule();
+  HloComputation::Builder builder(TestName());
+  HloInstruction* param0 =
+      builder.AddInstruction(HloInstruction::CreateParameter(
+          0, ShapeUtil::MakeShape(F32, {2, 2}), "param0"));
+  HloInstruction* copy = builder.AddInstruction(
+      HloInstruction::CreateUnary(param0->shape(), HloOpcode::kCopy, param0));
+
+  // Set to different memory spaces.
+  param0->mutable_shape()->mutable_layout()->set_memory_space(0);
+  copy->mutable_shape()->mutable_layout()->set_memory_space(123);
+
+  HloComputation* computation =
+      m->AddEntryComputationWithLayouts(builder.Build());
+
+  EXPECT_THAT(computation->root_instruction(),
+              GmockMatch(m::Copy(m::Parameter(0))));
+
+  AlgebraicSimplifierOptions options;
+  options.set_is_layout_sensitive(true);
+  AlgebraicSimplifier simplifier(options);
+  EXPECT_FALSE(simplifier.Run(m.get()).value());
+
+  // Copy has not been removed.
+  EXPECT_THAT(computation->root_instruction(),
+              GmockMatch(m::Copy(m::Parameter(0))));
 }
 
 // Test that a reshape which could be replaced with a bitcast is not if
@@ -6148,6 +6324,30 @@ TEST_F(AlgebraicSimplifierTest, SliceDotReorder) {
               GmockMatch(m::Dot(m::Slice(m::Parameter(0)), m::Parameter(1))));
 }
 
+TEST_F(AlgebraicSimplifierTest, SliceDotReorderWithStrides) {
+  const char* hlo_string = R"(
+    HloModule module
+
+    ENTRY test {
+        a = f32[2048,2] parameter(0)
+        b = f32[2,2048] parameter(1)
+        dot = f32[2048,2048] dot(a,b),
+              lhs_contracting_dims={1},
+              rhs_contracting_dims={0}
+        ROOT slice = f32[16,256] slice(dot), slice={[0:128:8],[0:2048:8]}
+      }
+    )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  AlgebraicSimplifierOptions options;
+  options.set_use_associative_reordering(true);
+  EXPECT_TRUE(AlgebraicSimplifier(options).Run(module.get()).value());
+  ASSERT_THAT(
+      module->entry_computation()->root_instruction(),
+      GmockMatch(m::Dot(m::Slice(m::Parameter(0)), m::Slice(m::Parameter(1)))));
+}
+
 TEST_F(AlgebraicSimplifierTest, TransposeOfBatchDot) {
   const char* hlo_string = R"(
     HloModule module
@@ -7135,6 +7335,148 @@ ENTRY AddBroadcastZeroWithDynamicSlice {
   EXPECT_THAT(root->operand(1)->opcode(), HloOpcode::kPad);
 }
 
+// Test that dynamic-update-slice with a scalar broadcast does not become a pad
+// if the dynamic-update-slice is for host memory offload.
+TEST_F(AlgebraicSimplifierTest, DynamicUpdateSliceOfBroadcastToPadHostOffload) {
+  const std::string hlo_string = absl::StrFormat(
+      R"(
+HloModule DynamicUpdateSliceOfBroadcastToPadHostOffload
+
+ENTRY DynamicUpdateSliceOfBroadcastToPadHostOffload {
+  constant_bf16_0 = bf16[] constant(0)
+  broadcast_0 = bf16[56,2,2048,2,128] broadcast(constant_bf16_0), dimensions={}
+  param_0 = bf16[1,2,2048,2,128] parameter(0)
+  custom_call = bf16[1,2,2048,2,128] custom-call(param_0), custom_call_target="%s"
+  constant_s32_0 = s32[] constant(0)
+  ROOT dynamic_update_slice = bf16[56,2,2048,2,128] dynamic-update-slice(broadcast_0, custom_call, constant_s32_0, constant_s32_0, constant_s32_0, constant_s32_0, constant_s32_0)
+}
+)",
+      host_memory_offload_annotations::kMoveToHostCustomCallTarget);
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  VLOG(2) << "Before rewrite dus->pad\n" << module->ToString();
+  AlgebraicSimplifier simplifier(default_options_);
+  EXPECT_FALSE(simplifier.Run(module.get()).value());
+  VLOG(2) << "After rewrite dus->pad\n" << module->ToString();
+  // Look for the following pattern:
+  // constant(0)   param(0)
+  //      |           |
+  // broadcast   custom-call  constant(0)
+  //      |           |      /
+  //      |           |     /
+  //      |           |    /
+  //      |           |   /
+  //      |           |  /
+  // dynamic-update-slice
+  EXPECT_THAT(
+      module->entry_computation()->root_instruction(),
+      GmockMatch(m::DynamicUpdateSlice(
+          m::Broadcast(m::ConstantScalar(0)),
+          m::CustomCall(
+              {host_memory_offload_annotations::kMoveToHostCustomCallTarget},
+              m::Parameter(0)),
+          m::ConstantScalar(0), m::ConstantScalar(0), m::ConstantScalar(0),
+          m::ConstantScalar(0), m::ConstantScalar(0))));
+}
+
+// Test that dynamic-update-slice with a scalar broadcast does not become a pad
+// if the dynamic-update-slice is for host memory offload. Also disable
+// optimization if there is a reshape between the custom-call and the
+// dynamic-update-slice.
+TEST_F(AlgebraicSimplifierTest,
+       DynamicUpdateSliceOfBroadcastToPadHostOffloadWithReshape) {
+  const std::string hlo_string = absl::StrFormat(
+      R"(
+HloModule DynamicUpdateSliceOfBroadcastToPadHostOffloadWithReshape
+
+ENTRY DynamicUpdateSliceOfBroadcastToPadHostOffloadWithReshape {
+  constant_bf16_0 = bf16[] constant(0)
+  broadcast_0 = bf16[56,2,2048,2,128] broadcast(constant_bf16_0), dimensions={}
+  param_0 = bf16[2,2048,2,128] parameter(0)
+  custom_call = bf16[2,2048,2,128] custom-call(param_0), custom_call_target="%s"
+  reshape = bf16[1,2,2048,2,128] reshape(custom_call)
+  constant_s32_0 = s32[] constant(0)
+  ROOT dynamic_update_slice = bf16[56,2,2048,2,128] dynamic-update-slice(broadcast_0, reshape, constant_s32_0, constant_s32_0, constant_s32_0, constant_s32_0, constant_s32_0)
+}
+)",
+      host_memory_offload_annotations::kMoveToHostCustomCallTarget);
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  VLOG(2) << "Before rewrite dus->pad\n" << module->ToString();
+  AlgebraicSimplifier simplifier(default_options_);
+  EXPECT_FALSE(simplifier.Run(module.get()).value());
+  VLOG(2) << "After rewrite dus->pad\n" << module->ToString();
+  // Look for the following pattern:
+  //              param(0)
+  //                  |
+  // constant(0)  custom-call
+  //      |           |
+  // broadcast    reshape   constant(0)
+  //      |           |     /
+  //      |           |    /
+  //      |           |   /
+  //      |           |  /
+  // dynamic-update-slice
+  EXPECT_THAT(
+      module->entry_computation()->root_instruction(),
+      GmockMatch(m::DynamicUpdateSlice(
+          m::Broadcast(m::ConstantScalar(0)),
+          m::Reshape(m::CustomCall(
+              {host_memory_offload_annotations::kMoveToHostCustomCallTarget},
+              m::Parameter(0))),
+          m::ConstantScalar(0), m::ConstantScalar(0), m::ConstantScalar(0),
+          m::ConstantScalar(0), m::ConstantScalar(0))));
+}
+
+// Test that dynamic-update-slice with a scalar broadcast does not become a pad
+// if the dynamic-update-slice is for host memory offload. Also disable
+// optimization if there is a bitcast between the custom-call and the
+// dynamic-update-slice.
+TEST_F(AlgebraicSimplifierTest,
+       DynamicUpdateSliceOfBroadcastToPadHostOffloadWithBitcast) {
+  const std::string hlo_string = absl::StrFormat(
+      R"(
+HloModule DynamicUpdateSliceOfBroadcastToPadHostOffloadWithBitcast
+
+ENTRY DynamicUpdateSliceOfBroadcastToPadHostOffloadWithBitcast {
+  constant_bf16_0 = bf16[] constant(0)
+  broadcast_0 = bf16[56,2,2048,2,128] broadcast(constant_bf16_0), dimensions={}
+  param_0 = bf16[2,2048,2,128] parameter(0)
+  custom_call = bf16[2,2048,2,128] custom-call(param_0), custom_call_target="%s"
+  bitcast = bf16[1,2,2048,2,128] bitcast(custom_call)
+  constant_s32_0 = s32[] constant(0)
+  ROOT dynamic_update_slice = bf16[56,2,2048,2,128] dynamic-update-slice(broadcast_0, bitcast, constant_s32_0, constant_s32_0, constant_s32_0, constant_s32_0, constant_s32_0)
+}
+)",
+      host_memory_offload_annotations::kMoveToHostCustomCallTarget);
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  VLOG(2) << "Before rewrite dus->pad\n" << module->ToString();
+  AlgebraicSimplifier simplifier(default_options_);
+  EXPECT_FALSE(simplifier.Run(module.get()).value());
+  VLOG(2) << "After rewrite dus->pad\n" << module->ToString();
+  // Look for the following pattern:
+  //              param(0)
+  //                  |
+  // constant(0)  custom-call
+  //      |           |
+  // broadcast    bitcast   constant(0)
+  //      |           |     /
+  //      |           |    /
+  //      |           |   /
+  //      |           |  /
+  // dynamic-update-slice
+  EXPECT_THAT(
+      module->entry_computation()->root_instruction(),
+      GmockMatch(m::DynamicUpdateSlice(
+          m::Broadcast(m::ConstantScalar(0)),
+          m::Bitcast(m::CustomCall(
+              {host_memory_offload_annotations::kMoveToHostCustomCallTarget},
+              m::Parameter(0))),
+          m::ConstantScalar(0), m::ConstantScalar(0), m::ConstantScalar(0),
+          m::ConstantScalar(0), m::ConstantScalar(0))));
+}
+
 // Test of dynamic-update-slice with dims where update and result have the same
 // size so we can replace indices to 0.
 TEST_F(AlgebraicSimplifierTest, DynamicUpdateSliceTrivialIndices) {
@@ -7969,6 +8311,78 @@ TEST_F(AlgebraicSimplifierTest,
   ASSERT_FALSE(AlgebraicSimplifier(default_options_).Run(m.get()).value());
 }
 
+TEST_F(AlgebraicSimplifierTest, CompareGtMaxA) {
+  // Gt(Max(a,b), a) -> Gt(b,a)
+  const char* kModuleStr = R"(
+    HloModule m
+    test {
+      a = f32[4] parameter(0)
+      b = f32[4] parameter(1)
+      m0 = f32[4] maximum(a, b)
+      ROOT compare = pred[4] compare(m0, a), direction=GT
+    })";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).value());
+  EXPECT_THAT(
+      m->entry_computation()->root_instruction(),
+      GmockMatch(m::Compare(m::Parameter(1), m::Parameter(0))
+                     .WithComparisonDirection(ComparisonDirection::kGt)));
+}
+
+TEST_F(AlgebraicSimplifierTest, CompareGtMaxB) {
+  // Gt(Max(a,b), b) -> Gt(a,b)
+  const char* kModuleStr = R"(
+    HloModule m
+    test {
+      a = f32[4] parameter(0)
+      b = f32[4] parameter(1)
+      m0 = f32[4] maximum(a, b)
+      ROOT compare = pred[4] compare(m0, b), direction=GT
+    })";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).value());
+  EXPECT_THAT(
+      m->entry_computation()->root_instruction(),
+      GmockMatch(m::Compare(m::Parameter(0), m::Parameter(1))
+                     .WithComparisonDirection(ComparisonDirection::kGt)));
+}
+
+TEST_F(AlgebraicSimplifierTest, CompareGtAMin) {
+  // Gt(a, Min(a,b)) -> Gt(a,b)
+  const char* kModuleStr = R"(
+    HloModule m
+    test {
+      a = f32[4] parameter(0)
+      b = f32[4] parameter(1)
+      m0 = f32[4] minimum(a, b)
+      ROOT compare = pred[4] compare(a, m0), direction=GT
+    })";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).value());
+  EXPECT_THAT(
+      m->entry_computation()->root_instruction(),
+      GmockMatch(m::Compare(m::Parameter(0), m::Parameter(1))
+                     .WithComparisonDirection(ComparisonDirection::kGt)));
+}
+
+TEST_F(AlgebraicSimplifierTest, CompareGtBMin) {
+  // Gt(b, Min(a,b)) -> Gt(b,a)
+  const char* kModuleStr = R"(
+    HloModule m
+    test {
+      a = f32[4] parameter(0)
+      b = f32[4] parameter(1)
+      m0 = f32[4] minimum(a, b)
+      ROOT compare = pred[4] compare(b, m0), direction=GT
+    })";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).value());
+  EXPECT_THAT(
+      m->entry_computation()->root_instruction(),
+      GmockMatch(m::Compare(m::Parameter(1), m::Parameter(0))
+                     .WithComparisonDirection(ComparisonDirection::kGt)));
+}
+
 TEST_F(AlgebraicSimplifierTest, CompareIota) {
   const char* kModuleStr = R"(
     HloModule m
@@ -8232,6 +8646,30 @@ TEST_F(AlgebraicSimplifierTest, EqTrue2) {
   ASSERT_TRUE(simplifier.Run(m.get()).value());
   root = computation->root_instruction();
   EXPECT_EQ(root, param0);
+}
+
+TEST_F(AlgebraicSimplifierTest, CompareSelectCompare) {
+  // Causal mask suboptimal HLO simplification
+  // Ne(select(Ge(a, b), ones, zeros), zeros) -> Ge(a, b)
+  const char* kModuleStr = R"(
+    HloModule m
+    test {
+      a = s32[4,4] parameter(0)
+      b = s32[4,4] parameter(1)
+      %cmp0 = pred[4,4] compare(a, b), direction=GE
+      %c1 = f32[] constant(1)
+      %ones = f32[4,4] broadcast(f32[] %c1)
+      %c0 = f32[] constant(0)
+      %zeros = f32[4,4] broadcast(f32[] %c0)
+      %sel0 = f32[4,4] select(%cmp0, %ones, %zeros)
+      ROOT %cmp1 = pred[4,4] compare(%sel0, %zeros), direction=NE
+    })";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).value());
+  EXPECT_THAT(
+      m->entry_computation()->root_instruction(),
+      GmockMatch(m::Compare(m::Parameter(0), m::Parameter(1))
+                     .WithComparisonDirection(ComparisonDirection::kGe)));
 }
 
 TEST_F(AlgebraicSimplifierTest, CanDisableDotToMultiplyRewrite) {
@@ -9997,13 +10435,12 @@ TEST_F(AlgebraicSimplifierTest, TransposeOfBroadcast) {
   EXPECT_TRUE(
       RunHloPass(AlgebraicSimplifier(default_options_), m.get()).value());
   SCOPED_TRACE(m->ToString());
-  EXPECT_THAT(
-      m->entry_computation()->root_instruction(),
-      GmockMatch(
-          m::Broadcast(m::Parameter(0))
-              .WithPredicate([](const HloInstruction* instr) {
-                return instr->dimensions() == std::vector<int64_t>({0, 3});
-              })));
+  EXPECT_THAT(m->entry_computation()->root_instruction(),
+              GmockMatch(m::Broadcast(m::Parameter(0))
+                             .WithPredicate([](const HloInstruction* instr) {
+                               return instr->dimensions() ==
+                                      std::vector<int64_t>({0, 3});
+                             })));
 }
 
 TEST_F(AlgebraicSimplifierTest, TransposeBitcastOfBroadcast) {
@@ -10019,13 +10456,12 @@ TEST_F(AlgebraicSimplifierTest, TransposeBitcastOfBroadcast) {
   options.set_is_layout_sensitive(true);
   EXPECT_TRUE(RunHloPass(AlgebraicSimplifier(options), m.get()).value());
   SCOPED_TRACE(m->ToString());
-  EXPECT_THAT(
-      m->entry_computation()->root_instruction(),
-      GmockMatch(
-          m::Broadcast(m::Parameter(0))
-              .WithPredicate([](const HloInstruction* instr) {
-                return instr->dimensions() == std::vector<int64_t>({0, 3});
-              })));
+  EXPECT_THAT(m->entry_computation()->root_instruction(),
+              GmockMatch(m::Broadcast(m::Parameter(0))
+                             .WithPredicate([](const HloInstruction* instr) {
+                               return instr->dimensions() ==
+                                      std::vector<int64_t>({0, 3});
+                             })));
 }
 
 TEST_F(AlgebraicSimplifierTest, TransposeOfBroadcastWithLayoutCheckSkipped) {
@@ -10091,7 +10527,7 @@ TEST_F(AlgebraicSimplifierTest, DontSinkInstructionsInDSAsyncComputation) {
       dynamic_slice_sizes={1}
      ROOT %dynamic-slice-done = f32[1]{0}
       dynamic-slice-done(((f32[10]{0}, s32[]), f32[1]{0}, u32[])
-        %dynamic-slice-start), dynamic_slice_sizes={1}
+        %dynamic-slice-start)
    }
   )";
 
@@ -10102,6 +10538,69 @@ TEST_F(AlgebraicSimplifierTest, DontSinkInstructionsInDSAsyncComputation) {
   EXPECT_FALSE(changed);
 }
 
+TEST_F(AlgebraicSimplifierTest, NoOpSliceToDynamicOfPadToStatic) {
+  const char* kModuleStr = R"(
+    HloModule m
+    test {
+      p0 = f32[<=512] parameter(0)
+      c = (f32[512], s32[]) custom-call(p0), custom_call_target="PadToStatic"
+      gte0 = f32[512] get-tuple-element(c), index=0
+      gte1 = s32[] get-tuple-element(c), index=1
+      ROOT c2 = f32[<=512] custom-call(gte0, gte1), custom_call_target="SliceToDynamic"
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).value());
+  EXPECT_THAT(m->entry_computation()->root_instruction(),
+              GmockMatch(m::Parameter(0)));
+}
+
+TEST_F(AlgebraicSimplifierTest, DiffShapeSliceToDynamicOfPadToStatic) {
+  const char* kModuleStr = R"(
+    HloModule m
+    test {
+      p0 = f32[<=512] parameter(0)
+      c = (f32[512], s32[]) custom-call(p0), custom_call_target="PadToStatic"
+      gte0 = f32[512] get-tuple-element(c), index=0
+      gte1 = s32[] get-tuple-element(c), index=1
+      ROOT c2 = f32[<=1024] custom-call(gte0, gte1), custom_call_target="SliceToDynamic"
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  ASSERT_FALSE(AlgebraicSimplifier(default_options_).Run(m.get()).value());
+}
+
+TEST_F(AlgebraicSimplifierTest, DiffShapeSliceToDynamicDifferentPadToStatic) {
+  const char* kModuleStr = R"(
+    HloModule m
+    test {
+      p0 = f32[<=512] parameter(0)
+      c = (f32[512], s32[]) custom-call(p0), custom_call_target="PadToStatic"
+      p1 = f32[<=512] parameter(1)
+      c1 = (f32[512], s32[]) custom-call(p1), custom_call_target="PadToStatic"
+      gte0 = f32[512] get-tuple-element(c), index=0
+      gte1 = s32[] get-tuple-element(c1), index=1
+      ROOT c2 = f32[<=512] custom-call(gte0, gte1), custom_call_target="SliceToDynamic"
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  ASSERT_FALSE(AlgebraicSimplifier(default_options_).Run(m.get()).value());
+}
+
+TEST_F(AlgebraicSimplifierTest, NotPadToStaticSizeDynamicDifferentPadToStatic) {
+  const char* kModuleStr = R"(
+    HloModule m
+    test {
+      p0 = f32[<=512] parameter(0)
+      c = (f32[512], s32[]) custom-call(p0), custom_call_target="PadToStatic"
+      gte0 = f32[512] get-tuple-element(c), index=0
+      gte1 = s32[] parameter(1)
+      ROOT c2 = f32[<=512] custom-call(gte0, gte1), custom_call_target="SliceToDynamic"
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  ASSERT_FALSE(AlgebraicSimplifier(default_options_).Run(m.get()).value());
+}
 class AlgebraicSimplifierUpcastDowncastTest
     : public AlgebraicSimplifierTest,
       public ::testing::WithParamInterface<

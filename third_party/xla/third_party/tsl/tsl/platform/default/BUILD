@@ -1,12 +1,23 @@
-load("//tsl:tsl.bzl", "if_not_fuchsia", "if_not_windows", "set_external_visibility", "tsl_copts")
-load("//tsl:tsl.default.bzl", "filegroup")
-load("//tsl/platform:rules_cc.bzl", "cc_library")
+load(
+    "//tsl:tsl.bzl",
+    "if_not_fuchsia",
+    "if_not_windows",
+    "internal_visibility",
+    "tsl_copts",
+)
+load("//tsl:tsl.default.bzl", "filegroup", "tsl_grpc_cc_dependencies")
+load("@local_tsl//tsl/platform:rules_cc.bzl", "cc_library")
 
 # Tensorflow default + linux implementations of tensorflow/core/platform libraries.
 load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
 
 package(
-    default_visibility = ["//visibility:public"],
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
+    default_visibility = internal_visibility([
+        "//tensorflow/core/lib/jpeg:__pkg__",
+        "//tensorflow/core/platform:__pkg__",
+        "//tsl/platform:__pkg__",
+    ]),
     licenses = ["notice"],
 )
 
@@ -18,7 +29,6 @@ cc_library(
         "no_oss",
         "nobuilder",
     ],
-    visibility = ["//visibility:public"],
 )
 
 cc_library(
@@ -30,7 +40,6 @@ cc_library(
         "nobuilder",
     ],
     textual_hdrs = ["context.h"],
-    visibility = ["//visibility:public"],
     deps = [
         "//tsl/platform",
     ],
@@ -40,7 +49,6 @@ cc_library(
     name = "criticality",
     hdrs = ["//tsl/platform:criticality.h"],
     textual_hdrs = ["criticality.h"],
-    visibility = ["//visibility:public"],
     deps = [
         "//tsl/platform",
     ],
@@ -56,7 +64,6 @@ cc_library(
         "no_oss",
         "nobuilder",
     ],
-    visibility = ["//visibility:public"],
     deps = [
         "//tsl/platform",
         "//tsl/platform:logging",
@@ -80,7 +87,6 @@ cc_library(
         "manual",
         "nobuilder",
     ],
-    visibility = ["//visibility:public"],
     deps = [
         "//tsl/platform:load_library",
         "//tsl/platform:logging",
@@ -94,17 +100,6 @@ cc_library(
         "@local_config_rocm//rocm:rocm_headers",
         "@local_config_tensorrt//:tensorrt_headers",
     ],
-)
-
-cc_library(
-    name = "dynamic_annotations",
-    hdrs = ["dynamic_annotations.h"],
-    tags = [
-        "manual",
-        "no_oss",
-        "nobuilder",
-    ],
-    visibility = ["//visibility:public"],
 )
 
 cc_library(
@@ -124,12 +119,12 @@ cc_library(
         "//tsl/platform:ram_file_system.h",
         "//tsl/platform:threadpool.h",
     ],
+    copts = tsl_copts(),
     tags = [
         "manual",
         "no_oss",
         "nobuilder",
     ],
-    visibility = ["//visibility:public"],
     deps = [
         "//tsl/platform",
         "//tsl/platform:blocking_counter",
@@ -177,7 +172,6 @@ cc_library(
         "no_oss",
         "nobuilder",
     ],
-    visibility = ["//visibility:public"],
     deps = [
         ":env",
         "//tsl/platform:load_library",
@@ -197,7 +191,6 @@ cc_library(
         "no_oss",
         "nobuilder",
     ],
-    visibility = ["//visibility:public"],
     deps = ["//tsl/platform:types"],
 )
 
@@ -210,11 +203,25 @@ cc_library(
         "no_oss",
         "nobuilder",
     ],
-    visibility = ["//visibility:public"],
     deps = [
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
     ],
+)
+
+cc_library(
+    name = "grpc_credentials",
+    srcs = ["grpc_credentials.cc"],
+    hdrs = ["//tsl/platform:grpc_credentials.h"],
+    tags = [
+        "manual",
+        "no_oss",
+        "nobuilder",
+    ],
+    deps = [
+        "//tsl/platform:logging",
+        "@com_google_absl//absl/log:check",
+    ] + tsl_grpc_cc_dependencies(),
 )
 
 cc_library(
@@ -226,7 +233,6 @@ cc_library(
         "no_oss",
         "nobuilder",
     ],
-    visibility = ["//visibility:public"],
     deps = [
         "//tsl/platform:errors",
         "//tsl/platform:protobuf",
@@ -244,7 +250,6 @@ cc_library(
         "no_oss",
         "nobuilder",
     ],
-    visibility = ["//visibility:public"],
     deps = [
         "@com_google_absl//absl/status",
     ],
@@ -260,7 +265,6 @@ cc_library(
         "nobuilder",
     ],
     textual_hdrs = ["logging.h"],
-    visibility = ["//visibility:public"],
     deps = [
         "//tsl/platform",
         "//tsl/platform:env_time",
@@ -275,10 +279,8 @@ cc_library(
 filegroup(
     name = "xla_cpu_runtime_srcs",
     srcs = [
-        "dynamic_annotations.h",
         "integral_types.h",
     ] + if_not_windows(["env_time.cc"]),
-    visibility = ["//visibility:public"],
 )
 
 cc_library(
@@ -294,7 +296,6 @@ cc_library(
         "nobuilder",
     ],
     textual_hdrs = ["mutex.h"],
-    visibility = ["//visibility:public"],
     deps = [
         "//tsl/platform",
         "//tsl/platform:macros",
@@ -315,27 +316,11 @@ cc_library(
         "no_oss",
         "nobuilder",
     ],
-    visibility = ["//visibility:public"],
     deps = [
         "//tsl/platform:logging",
         "//tsl/platform:strcat",
     ],
     alwayslink = True,
-)
-
-cc_library(
-    name = "notification",
-    hdrs = ["notification.h"],
-    tags = [
-        "manual",
-        "no_oss",
-        "nobuilder",
-    ],
-    visibility = ["//visibility:public"],
-    deps = [
-        "//tsl/platform:mutex",
-        "//tsl/platform:types",
-    ],
 )
 
 cc_library(
@@ -365,7 +350,6 @@ cc_library(
         "no_oss",
         "nobuilder",
     ],
-    visibility = ["//visibility:public"],
     deps = [
         "//tsl/platform",
         "//tsl/platform:byte_order",
@@ -395,28 +379,8 @@ cc_library(
         "no_oss",
         "nobuilder",
     ],
-    visibility = ["//visibility:public"],
     deps = [
         "//tsl/platform:stringpiece",
-    ],
-)
-
-cc_library(
-    name = "resource_loader",
-    testonly = 1,
-    srcs = ["resource_loader.cc"],
-    hdrs = ["//tsl/platform:resource_loader.h"],
-    tags = [
-        "manual",
-        "no_oss",
-        "nobuilder",
-    ],
-    visibility = ["//visibility:public"],
-    deps = [
-        "//tsl/platform:logging",
-        "//tsl/platform:path",
-        "//tsl/platform:test",
-        "@bazel_tools//tools/cpp/runfiles",
     ],
 )
 
@@ -430,7 +394,6 @@ cc_library(
         "no_oss",
         "nobuilder",
     ],
-    visibility = ["//visibility:public"],
     deps = [
         "//tsl/platform:logging",
         "//tsl/platform:path",
@@ -443,7 +406,6 @@ cc_library(
     name = "stacktrace",
     hdrs = ["stacktrace.h"],
     linkopts = ["-ldl"],
-    visibility = ["//visibility:public"],
     deps = [
         "//tsl/platform",
         "//tsl/platform:abi",
@@ -455,7 +417,6 @@ cc_library(
     srcs = ["stacktrace_handler.cc"],
     hdrs = ["//tsl/platform:stacktrace_handler_hdrs"],
     linkstatic = 1,
-    visibility = ["//visibility:public"],
     deps = [
         "//tsl/platform",
         "//tsl/platform:stacktrace",
@@ -473,7 +434,6 @@ cc_library(
         "nobuilder",
     ],
     textual_hdrs = ["subprocess.h"],
-    visibility = ["//visibility:public"],
     deps = [
         "//tsl/platform",
         "//tsl/platform:logging",
@@ -497,7 +457,6 @@ cc_library(
         "nobuilder",
     ],
     textual_hdrs = ["tracing_impl.h"],
-    visibility = ["//visibility:public"],
     deps = [
         "//tsl/platform",
         "//tsl/platform:hash",
@@ -519,7 +478,6 @@ cc_library(
         "nobuilder",
     ],
     textual_hdrs = ["integral_types.h"],
-    visibility = ["//visibility:public"],
 )
 
 cc_library(
@@ -531,7 +489,6 @@ cc_library(
         "no_oss",
         "nobuilder",
     ],
-    visibility = ["//visibility:public"],
     deps = [
         "//tsl/platform:env",
         "//tsl/platform:mutex",
@@ -553,7 +510,7 @@ cc_library(
         "nobuilder",
     ],
     textual_hdrs = ["crash_analysis.h"],
-    visibility = ["//visibility:public"],
+    visibility = internal_visibility(["//tensorflow:__subpackages__"]),
     deps = [
         "//tsl/platform",
         "//tsl/platform:protobuf",
@@ -568,7 +525,7 @@ cc_library(
         "nobuilder",
     ],
     textual_hdrs = ["status.h"],
-    visibility = ["//visibility:public"],
+    visibility = internal_visibility(["//tensorflow:__subpackages__"]),
 )
 
 cc_library(
@@ -579,7 +536,7 @@ cc_library(
         "nobuilder",
     ],
     textual_hdrs = ["statusor.h"],
-    visibility = ["//visibility:public"],
+    visibility = internal_visibility(["//tensorflow:__subpackages__"]),
     deps = [
         "//tsl/platform:macros",
         "//tsl/platform:status",
@@ -590,19 +547,18 @@ cc_library(
 bzl_library(
     name = "cuda_build_defs_bzl",
     srcs = ["cuda_build_defs.bzl"],
-    visibility = ["//visibility:public"],
+    visibility = internal_visibility(["//tensorflow:__subpackages__"]),
 )
 
 bzl_library(
     name = "rules_cc_bzl",
     srcs = ["rules_cc.bzl"],
-    visibility = ["//visibility:public"],
 )
 
 # Export source files needed for mobile builds, which do not use granular targets.
 filegroup(
     name = "additional_mobile_srcs_no_runtime",
-    visibility = ["//visibility:public"],
+    visibility = internal_visibility(["//tensorflow/core/platform:__pkg__"]),
 )
 
 filegroup(
@@ -610,7 +566,6 @@ filegroup(
     srcs = [
         "casts.h",
         "context.h",
-        "dynamic_annotations.h",
         "env.cc",
         "integral_types.h",
         "load_library.cc",
@@ -624,7 +579,10 @@ filegroup(
         "//tsl/platform/profile_utils:cpu_utils.h",
         "//tsl/platform/profile_utils:i_cpu_utils_helper.h",
     ],
-    visibility = ["//visibility:public"],
+    visibility = internal_visibility([
+        "//tensorflow/core/platform:__pkg__",
+        "//tsl/platform:__pkg__",
+    ]),
 )
 
 filegroup(
@@ -634,14 +592,13 @@ filegroup(
         "error_logging.cc",
         "mutex.h",
         "mutex_data.h",
-        "notification.h",
         "unbounded_work_queue.cc",
         "unbounded_work_queue.h",
     ] + if_not_fuchsia([
         "subprocess.cc",
         "subprocess.h",
     ]),
-    visibility = ["//visibility:public"],
+    visibility = internal_visibility(["//tensorflow/core/platform:__pkg__"]),
 )
 
 exports_files(
@@ -653,7 +610,7 @@ exports_files(
             "test.cc",
         ],
     ),
-    visibility = ["//visibility:public"],
+    visibility = internal_visibility(["//tensorflow/core/platform:__pkg__"]),
 )
 
 exports_files(
@@ -662,5 +619,10 @@ exports_files(
         "logging.h",
         "test.cc",
     ],
-    visibility = ["//visibility:public"],
+    visibility = internal_visibility([
+        "//tensorflow/core:__pkg__",
+        "//tensorflow/core/lib/gif:__pkg__",
+        "//tensorflow/core/lib/jpeg:__pkg__",
+        "//tensorflow/core/platform:__pkg__",
+    ]),
 )

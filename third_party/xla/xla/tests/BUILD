@@ -11,7 +11,7 @@ load(
     "@local_config_rocm//rocm:build_defs.bzl",
     "if_rocm_is_configured",
 )
-load("@local_tsl//tsl:tsl.bzl", "tsl_copts")
+load("@local_tsl//tsl:tsl.bzl", "internal_visibility", "tsl_copts")
 load("@local_tsl//tsl:tsl.default.bzl", "filegroup")
 load(
     "@local_tsl//tsl/platform:build_config_root.bzl",
@@ -24,7 +24,8 @@ load(
 )
 
 package(
-    default_visibility = ["//visibility:public"],
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
+    default_visibility = internal_visibility([":friends"]),
     licenses = ["notice"],
 )
 
@@ -43,7 +44,6 @@ filegroup(
         "**/*.cc",
         "**/*.h",
     ]),
-    visibility = ["//visibility:public"],
 )
 
 # Generate test_suites for all backends, named "${backend}_tests".
@@ -55,9 +55,9 @@ cc_library(
     name = "xla_internal_test_main",
     testonly = True,
     srcs = ["xla_internal_test_main.cc"],
-    visibility = ["//visibility:public"],
     deps = [
         "//xla:debug_options_flags",
+        "@com_google_absl//absl/flags:flag",
         "@com_google_absl//absl/strings",
         "@local_tsl//tsl/platform:logging",
         "@local_tsl//tsl/platform:test",
@@ -70,7 +70,6 @@ cc_library(
     name = "test_macros_header",
     testonly = True,
     hdrs = ["test_macros.h"],
-    visibility = ["//visibility:public"],
 )
 
 # Generate a test_macros_${BACKEND} library per backend with the proper copts.
@@ -81,7 +80,6 @@ cc_library(
     testonly = True,
     srcs = ["manifest_checking_test.cc"],
     hdrs = ["manifest_checking_test.h"],
-    visibility = ["//visibility:public"],
     deps = [
         ":test_macros_header",
         "@com_google_absl//absl/container:flat_hash_map",
@@ -96,7 +94,6 @@ cc_library(
     name = "test_utils",
     srcs = ["test_utils.cc"],
     hdrs = ["test_utils.h"],
-    visibility = ["//visibility:public"],
     deps = [
         "//xla:literal",
         "//xla:literal_util",
@@ -115,7 +112,6 @@ cc_library(
     testonly = True,
     srcs = ["literal_test_util.cc"],
     hdrs = ["literal_test_util.h"],
-    visibility = ["//visibility:public"],
     deps = [
         "//xla:array2d",
         "//xla:array3d",
@@ -143,7 +139,6 @@ cc_library(
     testonly = True,
     srcs = ["verified_hlo_module.cc"],
     hdrs = ["verified_hlo_module.h"],
-    visibility = ["//visibility:public"],
     deps = [
         "//xla:shape_util",
         "//xla:status_macros",
@@ -165,7 +160,6 @@ cc_library(
     name = "pjrt_client_registry",
     srcs = ["pjrt_client_registry.cc"],
     hdrs = ["pjrt_client_registry.h"],
-    visibility = ["//visibility:public"],
     deps = [
         "//xla/pjrt:pjrt_client",
     ],
@@ -177,7 +171,6 @@ cc_library(
     srcs = [
         "pjrt_cpu_client_registry.cc",
     ],
-    visibility = ["//visibility:public"],
     deps = [
         ":pjrt_client_registry",
         "//xla/pjrt/cpu:cpu_client",
@@ -190,9 +183,9 @@ cc_library(
     srcs = [
         "pjrt_gpu_client_registry.cc",
     ],
-    visibility = ["//visibility:public"],
     deps = [
         ":pjrt_client_registry",
+        "//xla/pjrt/gpu:gpu_helpers",
         "//xla/pjrt/gpu:se_gpu_pjrt_client",
     ],
 )
@@ -202,7 +195,6 @@ cc_library(
     testonly = True,
     srcs = ["hlo_test_base.cc"],
     hdrs = ["hlo_test_base.h"],
-    visibility = ["//visibility:public"],
     deps = [
         ":filecheck",
         ":literal_test_util",
@@ -230,6 +222,7 @@ cc_library(
         "//xla/service:platform_util",
         "//xla/stream_executor",
         "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/types:span",
         "@local_tsl//tsl/lib/core:status_test_util",
         "@local_tsl//tsl/platform:logging",
@@ -269,7 +262,6 @@ cc_library(
     testonly = True,
     srcs = ["client_library_test_base.cc"],
     hdrs = ["client_library_test_base.h"],
-    visibility = ["//visibility:public"],
     deps = [
         ":literal_test_util",
         ":manifest_checking_test",
@@ -284,6 +276,7 @@ cc_library(
         "//xla:status_macros",
         "//xla:statusor",
         "//xla:test_helpers",
+        "//xla:types",
         "//xla:xla_data_proto_cc",
         "//xla/client:client_library",
         "//xla/client:global_data",
@@ -296,8 +289,8 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
         "@local_tsl//tsl/lib/core:bitmap",
-        "@local_tsl//tsl/platform:float8",
         "@local_tsl//tsl/platform:logging",
+        "@local_tsl//tsl/platform:ml_dtypes",
         "@local_tsl//tsl/platform:test",
     ],
 )
@@ -307,7 +300,6 @@ cc_library(
     testonly = True,
     srcs = ["llvm_irgen_test_base.cc"],
     hdrs = ["llvm_irgen_test_base.h"],
-    visibility = ["//visibility:public"],
     deps = [
         ":codegen_test_base",
         ":filecheck",
@@ -323,7 +315,6 @@ cc_library(
     testonly = True,
     srcs = ["codegen_test_base.cc"],
     hdrs = ["codegen_test_base.h"],
-    visibility = ["//visibility:public"],
     deps = [
         ":hlo_test_base",
         "//xla/hlo/ir:hlo",
@@ -340,7 +331,6 @@ cc_library(
     data = [
         "@llvm-project//llvm:FileCheck",
     ],
-    visibility = ["//visibility:public"],
     deps = [
         "//xla:statusor",
         "//xla:types",
@@ -350,6 +340,7 @@ cc_library(
         "@local_tsl//tsl/platform:path",
         "@local_tsl//tsl/platform:resource_loader",
         "@local_tsl//tsl/platform:subprocess",
+        "@local_tsl//tsl/platform:test",
     ],
 )
 
@@ -358,7 +349,6 @@ cc_library(
     testonly = True,
     srcs = ["local_client_test_base.cc"],
     hdrs = ["local_client_test_base.h"],
-    visibility = ["//visibility:public"],
     deps = [
         ":client_library_test_base",
         ":manifest_checking_test",
@@ -789,6 +779,7 @@ xla_test(
         "//xla:array2d",
         "//xla:array3d",
         "//xla:array4d",
+        "//xla:comparison_util",
         "//xla:literal",
         "//xla:shape_util",
         "//xla:statusor",
@@ -799,6 +790,8 @@ xla_test(
         "//xla/client:xla_builder",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/types:span",
+        "@local_tsl//tsl/platform:ml_dtypes",
+        "@ml_dtypes//:float8",
     ],
 )
 
@@ -807,7 +800,6 @@ cc_library(
     testonly = True,
     srcs = ["conv_depthwise_common.cc"],
     hdrs = ["conv_depthwise_common.h"],
-    visibility = ["//visibility:public"],
     deps = [
         ":client_library_test_base",
         ":hlo_test_base",
@@ -1086,7 +1078,7 @@ xla_test(
         "//xla/client:xla_builder",
         "//xla/client/lib:constants",
         "@local_tsl//tsl/lib/core:status_test_util",
-        "@local_tsl//tsl/platform:float8",
+        "@local_tsl//tsl/platform:ml_dtypes",
         "@local_tsl//tsl/platform:test",
     ],
 )
@@ -1309,6 +1301,7 @@ xla_test(
         "requires-gpu-sm80",
     ]},
     backends = ["gpu"],
+    tags = ["no_rocm"],  # No int8
     deps = [
         ":hlo_test_base",
         ":xla_internal_test_main",
@@ -1791,6 +1784,7 @@ xla_test(
         "//xla:test",
         "//xla/client:local_client",
         "//xla/client:xla_builder",
+        "@com_google_absl//absl/strings:string_view",
     ],
 )
 
@@ -1989,10 +1983,6 @@ xla_test(
 xla_test(
     name = "convert_test",
     srcs = ["convert_test.cc"],
-    backend_tags = {
-        # TODO(b/305009066)
-        "ghostfish_grm": ["broken"],
-    },
     deps = [
         ":client_library_test_base",
         ":literal_test_util",
@@ -2006,7 +1996,7 @@ xla_test(
         "//xla/stream_executor",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/base",
-        "@local_tsl//tsl/platform:float8",
+        "@local_tsl//tsl/platform:ml_dtypes",
         "@local_tsl//tsl/platform:test",
     ],
 )
@@ -2044,7 +2034,6 @@ xla_test(
             "multi_gpu",
             "no_oss",
             "notap",
-            "jitrt_executable",
         ],
         "cpu": [
             "notsan",
@@ -2083,7 +2072,6 @@ xla_test(
             "multi_gpu",
             "no_oss",
             "notap",
-            "jitrt_executable",
         ],
     },
     backends = [
@@ -2164,7 +2152,7 @@ xla_test(
         "//xla/client:local_client",
         "//xla/client:xla_builder",
         "//xla/stream_executor",
-        "@local_tsl//tsl/platform:float8",
+        "@local_tsl//tsl/platform:ml_dtypes",
         "@local_tsl//tsl/platform:test",
     ],
 )
@@ -2366,7 +2354,7 @@ xla_test(
 
 xla_cc_test(
     name = "llvm_compiler_test",
-    srcs = if_gpu_is_configured(["llvm_compiler_test.cc"]),
+    srcs = ["llvm_compiler_test.cc"],
     local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]) + if_rocm_is_configured([
         "TENSORFLOW_USE_ROCM",
     ]),
@@ -2527,6 +2515,7 @@ xla_test(
         "//xla/service:transfer_manager",
         "//xla/stream_executor",
         "//xla/stream_executor:device_memory_allocator",
+        "//xla/stream_executor:platform_manager",
         "//xla/stream_executor/host:host_platform",
         "//xla/stream_executor/host:host_platform_id",
         "@local_tsl//tsl/platform:env",
@@ -2744,6 +2733,7 @@ xla_cc_test(
         "//xla/client:client_library",
         "//xla/client:xla_builder",
         "//xla/service:cpu_plugin",
+        "//xla/stream_executor:platform_manager",
         "@com_google_absl//absl/synchronization",
         "@local_tsl//tsl/lib/core:status_test_util",
         "@local_tsl//tsl/platform:env",
@@ -2811,7 +2801,7 @@ xla_test(
 xla_test(
     name = "cholesky_test",
     srcs = ["cholesky_test.cc"],
-    real_hardware_only = True,
+    shard_count = 10,
     tags = [
         "optonly",
     ],
@@ -2864,6 +2854,7 @@ xla_test(
         "cpu",
     ],
     copts = tsl_copts(),
+    tags = ["no_oss"],
     deps = [
         ":hlo_test_base",
         ":test_macros_header",
@@ -2872,6 +2863,7 @@ xla_test(
         "//xla:shape_util",
         "//xla:test",
         "//xla:test_helpers",
+        "//xla/service/cpu:onednn_util",
         "@local_tsl//tsl/platform:platform_port",
     ],
 )
@@ -2909,5 +2901,21 @@ xla_test(
         "//xla:shape_util",
         "//xla:test",
         "//xla:test_helpers",
+    ],
+)
+
+xla_test(
+    name = "numerics_test",
+    srcs = ["numerics_test.cc"],
+    deps = [
+        ":hlo_test_base",
+        ":test_macros_header",
+        ":xla_internal_test_main",
+        "//xla:literal_util",
+        "//xla:statusor",
+        "//xla:test",
+        "//xla:types",
+        "//xla/hlo/ir:hlo",
+        "@local_tsl//tsl/platform:test",
     ],
 )

@@ -23,6 +23,20 @@ allprojects {
 }
 ```
 
+add nightly snapshots to dependencies (or edit as needed) to your build.gradle
+
+```groovy
+...
+dependencies {
+    ...
+    implementation 'org.tensorflow:tensorflow-lite:0.0.0-nightly-SNAPSHOT'
+    implementation 'org.tensorflow:tensorflow-lite-gpu:0.0.0-nightly-SNAPSHOT'
+    implementation 'org.tensorflow:tensorflow-lite-support:0.0.0-nightly-SNAPSHOT'
+    ...
+}
+...
+```
+
 ## Build TensorFlow Lite locally
 
 In some cases, you might wish to use a local build of TensorFlow Lite. For
@@ -135,8 +149,8 @@ Once Bazel is properly configured, you can build the TensorFlow Lite AAR from
 the root checkout directory as follows:
 
 ```sh
-bazel build -c opt --fat_apk_cpu=x86,x86_64,arm64-v8a,armeabi-v7a \
-  --host_crosstool_top=@bazel_tools//tools/cpp:toolchain \
+bazel build -c opt --cxxopt=--std=c++17 --config=android_arm64 \
+  --fat_apk_cpu=x86,x86_64,arm64-v8a,armeabi-v7a \
   --define=android_dexmerger_tool=d8_dexmerger \
   --define=android_incremental_dexing_tool=d8_dexbuilder \
   //tensorflow/lite/java:tensorflow-lite

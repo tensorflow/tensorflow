@@ -2101,7 +2101,7 @@ def TF_CeilOp : TF_Op<"Ceil", [Pure, TF_Idempotent, TF_SameOperandsAndResultType
   }];
 }
 
-def TF_CheckNumericsOp : TF_Op<"CheckNumerics", [DeclareOpInterfaceMethods<MemoryEffectsOpInterface>, DeclareOpInterfaceMethods<TF_GetResourceInstanceInterface>, TF_SameOperandsAndResultTypeResolveRef]> {
+def TF_CheckNumericsOp : TF_Op<"CheckNumerics", [TF_MustExecute, TF_NoConstantFold, TF_SameOperandsAndResultTypeResolveRef]> {
   let summary = "Checks a tensor for NaN and Inf values.";
 
   let description = [{
@@ -12461,6 +12461,18 @@ of the tensor. Rank is also known as "order", "degree", or "ndims."
   ];
 
   let hasFolder = 1;
+}
+
+def TF_ReadFileOp : TF_Op<"ReadFile", [Pure, TF_NoConstantFold]> {
+  let summary = "Reads and outputs the entire contents of the input filename.";
+
+  let arguments = (ins
+    TF_StrTensor:$filename
+  );
+
+  let results = (outs
+    TF_StrTensor:$contents
+  );
 }
 
 def TF_ReadVariableOp : TF_Op<"ReadVariableOp", []> {

@@ -68,9 +68,14 @@ TEST_F(XlaPlatformInfoTest, BuildXlaDeviceCompilerXlaDeviceMetadata) {
   TF_CHECK_OK(XlaDevice::GetMetadataFromDevice(device, &metadata));
   XlaPlatformInfo platform_info = XlaPlatformInfoFromDevice(device);
 
+  TF_ASSERT_OK_AND_ASSIGN(
+      DeviceType compilation_device_type,
+      GetCompilationDeviceType(platform_info.device_type()));
+
   XlaDeviceCompiler* xla_device_compiler = nullptr;
   TF_EXPECT_OK(BuildXlaDeviceCompiler(device, device_setup_.flr(),
-                                      platform_info, &xla_device_compiler));
+                                      platform_info, compilation_device_type,
+                                      &xla_device_compiler));
   core::ScopedUnref xla_device_compiler_ref(xla_device_compiler);
 
   EXPECT_EQ(xla_device_compiler->device_type(), metadata->jit_device_type());
@@ -89,9 +94,14 @@ TEST_F(XlaPlatformInfoTest, BuildXlaDeviceCompilerXlaDeviceCacheEnabled) {
   TF_CHECK_OK(XlaDevice::GetMetadataFromDevice(device, &metadata));
   XlaPlatformInfo platform_info = XlaPlatformInfoFromDevice(device);
 
+  TF_ASSERT_OK_AND_ASSIGN(
+      DeviceType compilation_device_type,
+      GetCompilationDeviceType(platform_info.device_type()));
+
   XlaDeviceCompiler* xla_device_compiler = nullptr;
   TF_EXPECT_OK(BuildXlaDeviceCompiler(device, device_setup_.flr(),
-                                      platform_info, &xla_device_compiler));
+                                      platform_info, compilation_device_type,
+                                      &xla_device_compiler));
   core::ScopedUnref xla_device_compiler_ref(xla_device_compiler);
 
   EXPECT_EQ(xla_device_compiler->device_type(), metadata->jit_device_type());
@@ -105,9 +115,13 @@ TEST_F(XlaPlatformInfoTest, BuildXlaDeviceCompilerNonXlaDevice) {
   Device* device = device_setup_.GetDevice(DEVICE_GPU);
 
   XlaPlatformInfo platform_info = XlaPlatformInfoFromDevice(device);
+  TF_ASSERT_OK_AND_ASSIGN(
+      DeviceType compilation_device_type,
+      GetCompilationDeviceType(platform_info.device_type()));
   XlaDeviceCompiler* xla_device_compiler = nullptr;
   TF_EXPECT_OK(BuildXlaDeviceCompiler(device, device_setup_.flr(),
-                                      platform_info, &xla_device_compiler));
+                                      platform_info, compilation_device_type,
+                                      &xla_device_compiler));
   core::ScopedUnref xla_device_compiler_ref(xla_device_compiler);
 
   EXPECT_EQ(xla_device_compiler->device_type(), DeviceType(DEVICE_GPU_XLA_JIT));
@@ -185,6 +199,7 @@ TEST_F(XlaPlatformInfoTest, BuildXlaDeviceCompilerTpuDevice) {
 
   XlaDeviceCompiler* xla_device_compiler = nullptr;
   TF_EXPECT_OK(BuildXlaDeviceCompiler(device, nullptr, platform_info,
+                                      compilation_device_type,
                                       &xla_device_compiler));
   core::ScopedUnref xla_device_compiler_ref(xla_device_compiler);
 
@@ -214,6 +229,7 @@ TEST_F(XlaPlatformInfoTest, BuildXlaDeviceCompilerNoCompilationCache) {
 
   XlaDeviceCompiler* xla_device_compiler = nullptr;
   TF_EXPECT_OK(BuildXlaDeviceCompiler(device, nullptr, platform_info,
+                                      compilation_device_type,
                                       &xla_device_compiler));
   core::ScopedUnref xla_device_compiler_ref(xla_device_compiler);
 

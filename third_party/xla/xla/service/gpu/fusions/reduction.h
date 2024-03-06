@@ -1,4 +1,4 @@
-/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -15,8 +15,23 @@ limitations under the License.
 #ifndef XLA_SERVICE_GPU_FUSIONS_REDUCTION_H_
 #define XLA_SERVICE_GPU_FUSIONS_REDUCTION_H_
 
+#include <optional>
+#include <utility>
+#include <vector>
+
+#include "absl/log/check.h"
+#include "absl/status/status.h"
+#include "llvm/IR/IRBuilder.h"
+#include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/service/gpu/fusions/fusion_emitter.h"
+#include "xla/service/gpu/fusions/reduction_base.h"
+#include "xla/service/gpu/fusions/tiling_util.h"
 #include "xla/service/gpu/hlo_fusion_analysis.h"
+#include "xla/service/gpu/ir_emitter_context.h"
+#include "xla/service/gpu/launch_dimensions.h"
+#include "xla/service/llvm_ir/ir_array.h"
+#include "xla/shape.h"
 
 namespace xla {
 namespace gpu {
@@ -87,18 +102,21 @@ namespace gpu {
 // complicating the index calculation in the code generation of the reduce
 // instructions. In other words, a block_id_y is assigned to a group and so
 // different groups can be run in parallel.
-class ReductionFusion : public FusionInterface {
+class ReductionFusion : public ReductionFusionBase<KernelFusionEmitterBase> {
  public:
-  explicit ReductionFusion(HloFusionAnalysis& analysis) : analysis_(analysis) {}
+  using ReductionFusionBase::ReductionFusionBase;
 
-  StatusOr<FusionEmissionResult> Emit(
+ protected:
+  absl::StatusOr<FusionEmissionResult> EmitInitializers(
       IrEmitterContext& ir_emitter_context,
-      ElementalIrEmitter& elemental_emitter, mlir::lmhlo::FusionOp fusion_op,
-      const HloFusionInstruction& fusion, KernelReuseCache& kernel_cache,
-      llvm::IRBuilder<>* builder) const override;
+      const HloFusionInstruction& fusion) const override;
 
- private:
-  HloFusionAnalysis& analysis_;
+  absl::Status EmitKernel(IrEmitterContext& ir_emitter_context,
+                          const HloFusionInstruction& fusion,
+                          const LaunchDimensions& launch_dims,
+                          std::vector<llvm_ir::IrArray> inputs,
+                          std::vector<llvm_ir::IrArray> outputs,
+                          llvm::IRBuilder<>* builder) const override;
 };
 
 }  // namespace gpu

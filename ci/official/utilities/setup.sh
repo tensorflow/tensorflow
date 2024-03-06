@@ -47,29 +47,30 @@ cd "$TFCI_GIT_DIR"
 # Separately, if TFCI is set *and* there are also additional TFCI_ variables
 # set in the shell environment, those variables will be restored after the
 # TFCI env has been loaded. This is useful for e.g. on-demand "generic" jobs
-# where the user may wish to change just one option. Conveniently, this method
-# even works for arrays; e.g. TFCI_SOME_ARRAY="(--array --contents)" ends up
-# as TFCI_SOME_ARRAY=(--array --contents) in the storage file and is thus
-# loaded as an array when sourced.
+# where the user may wish to change just one option.
 if [[ -z "${TFCI:-}" ]]; then
   echo '==TFCI==: The $TFCI variable is not set. This is fine as long as you'
   echo 'already sourced a TFCI env file with "set -a; source <path>; set +a".'
   echo 'If you have not, you will see a lot of undefined variable errors.'
 else
   FROM_ENV=$(mktemp)
-  # Piping into cat means grep won't abort the process if no errors are found.
-  env | grep TFCI_ | cat > "$FROM_ENV"
+  # "export -p" prints a list of environment values in a safe-to-source format,
+  # e.g. `declare -x TFCI_BAZEL_COMMON_ARGS="list of args"` for bash.
+  export -p | grep TFCI > "$FROM_ENV"
 
   # Source the default ci values
   source ./ci/official/envs/ci_default
 
-  # Sourcing TFCI twice, the first time with "-u" unset, means that variable
-  # order does not matter. i.e. "TFCI_BAR=$TFCI_FOO; TFCI_FOO=true" will work.
-  # TFCI_FOO is only valid the second time through.
+  # TODO(angerson) write this documentation
+  # Sources every env, in order, from the comma-separated list "TFCI"
+  # Assumes variables will resolve themselves correctly.
   set +u
-  source "$TFCI"
+  for env_file in ${TFCI//,/ }; do
+    source "./ci/official/envs/$env_file"
+  done
   set -u
-  source "$TFCI"
+  echo '==TFCI==: Evaluated the following TFCI variables from $TFCI:'
+  export -p | grep TFCI
 
   # Load those stored pre-existing TFCI_ vars, if any
   if [[ -s "$FROM_ENV" ]]; then
@@ -87,16 +88,6 @@ if [[ "${OSTYPE}" =~ darwin* ]]; then
   source ./ci/official/utilities/setup_macos.sh
 fi
 
-# Force-disable uploads if the job initiator is not Kokoro
-# This is temporary: it's currently standard practice for employees to
-# run nightly jobs for testing purposes. We're aiming to move away from
-# this with more convenient methods, but as long as it's possible to do,
-# we want to make sure those extra jobs don't upload anything.
-# TODO(angerson) Remove this once it's no longer relevant
-if [[ "${KOKORO_BUILD_INITIATOR:-}" != "kokoro" ]]; then
-  source ./ci/official/envs/disable_all_uploads
-fi
-
 # Create and expand to the full path of TFCI_OUTPUT_DIR
 export TFCI_OUTPUT_DIR=$(realpath "$TFCI_OUTPUT_DIR")
 mkdir -p "$TFCI_OUTPUT_DIR"
@@ -106,17 +97,18 @@ mkdir -p "$TFCI_OUTPUT_DIR"
 exec > >(tee "$TFCI_OUTPUT_DIR/script.log") 2>&1
 
 # Setup tfrun, a helper function for executing steps that can either be run
-# locally or run under Docker. docker.sh, below, redefines it as "docker exec".
-# Important: "tfrun foo | bar" is "( tfrun foo ) | bar", not tfrun (foo | bar).
-# Therefore, "tfrun" commands cannot include pipes -- which is probably for the
-# better. If a pipe is necessary for something, it is probably complex. Write a
-# well-documented script under utilities/ to encapsulate the functionality
-# instead.
+# locally or run under Docker. setup_docker.sh, below, redefines it as "docker
+# exec".
+# Important: "tfrun foo | bar" is "( tfrun foo ) | bar", not "tfrun (foo | bar)".
+# Therefore, "tfrun" commands cannot include pipes -- which is
+# probably for the better. If a pipe is necessary for something, it is probably
+# complex. Write a well-documented script under utilities/ to encapsulate the
+# functionality instead.
 tfrun() { "$@"; }
 
-# Run all "tfrun" commands under Docker. See docker.sh for details
+# Run all "tfrun" commands under Docker. See setup_docker.sh for details
 if [[ "$TFCI_DOCKER_ENABLE" == 1 ]]; then
-  source ./ci/official/utilities/docker.sh
+  source ./ci/official/utilities/setup_docker.sh
 fi
 
 # Generate an overview page describing the build

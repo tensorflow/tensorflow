@@ -28,7 +28,7 @@ namespace tensorflow {
 // status if it fails to convert the input.
 Status ConvertJaxToTFLiteFlatBuffer(const std::string& input,
                                     const toco::ModelFlags& model_flags,
-                                    const toco::TocoFlags& toco_flags,
+                                    toco::TocoFlags& toco_flags,
                                     string* result);
 
 }  // namespace tensorflow

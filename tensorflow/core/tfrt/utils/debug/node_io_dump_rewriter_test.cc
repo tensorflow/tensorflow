@@ -150,7 +150,7 @@ TEST(NodeIoDumpRewriterTest, OnGraph) {
 TEST(NodeIoDumpRewriterTest, OnSavedModelV1) {
   // Read meta_graph_def.
   std::string saved_model_dir = GetDataDependencyFilepath(
-      "tensorflow/core/tfrt/saved_model/tests/toy_v1");
+      "tensorflow/core/tfrt/saved_model/tests/toy_v1/1");
   MetaGraphDef meta_graph_def;
   TF_ASSERT_OK(ReadMetaGraphDefFromSavedModel(saved_model_dir, {"serve"},
                                               &meta_graph_def));

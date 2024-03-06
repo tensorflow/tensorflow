@@ -1,4 +1,4 @@
-/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2020 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -100,6 +100,11 @@ StatusOr<std::unique_ptr<HloModuleConfig>> CreateModuleConfig(
     }
     config->set_use_spmd_partitioning(
         execution_options->use_spmd_partitioning());
+    if (!execution_options->allow_spmd_sharding_propagation_to_parameters()
+             .empty()) {
+      config->set_allow_spmd_sharding_propagation_to_parameters(
+          execution_options->allow_spmd_sharding_propagation_to_parameters());
+    }
     if (!execution_options->allow_spmd_sharding_propagation_to_output()
              .empty()) {
       config->set_allow_spmd_sharding_propagation_to_output(

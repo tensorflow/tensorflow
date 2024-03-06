@@ -64,7 +64,7 @@ cuda_py_strict_test(
     name = "resource_variable_ops_test",
     size = "medium",
     srcs = ["resource_variable_ops_test.py"],
-    # TODO(kkb): CppMemoryChecker is flaky without these two flags, investigate.
+    # TODO(kkb): CppMemoryChecker is flaky without this flag, investigate.
     #
     # TODO(b/128347673): Re-enable.
     tags = [
@@ -153,7 +153,6 @@ tf_py_strict_test(
         "//tensorflow/python/framework:errors",
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/framework:test_lib",
-        "//tensorflow/python/layers",
         "//tensorflow/python/ops:array_ops",
         "//tensorflow/python/ops:cond",
         "//tensorflow/python/ops:init_ops",

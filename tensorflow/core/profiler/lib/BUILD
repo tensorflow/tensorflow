@@ -142,7 +142,7 @@ cc_library(
         "@local_tsl//tsl/profiler/lib:traceme",
         "@local_tsl//tsl/profiler/lib:traceme_encode",
     ] + if_not_android([
-        "//tensorflow/core/profiler/backends/cpu:traceme_recorder",
+        "@local_tsl//tsl/profiler/backends/cpu:traceme_recorder",
         "@local_tsl//tsl/profiler/utils:time_utils",
     ]),
 )
@@ -166,8 +166,6 @@ cc_library(
         ":scoped_annotation",
         ":traceme",
         "//tensorflow/core:lib",
-        "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/types:optional",
     ],
 )
 
@@ -209,6 +207,7 @@ cc_library(
     ],
 )
 
+# TODO(csigg): Remove this forwarding target.
 cc_library(
     name = "scoped_annotation",
     hdrs = ["scoped_annotation.h"],
@@ -219,23 +218,7 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@local_tsl//tsl/profiler/lib:scoped_annotation",
     ] + if_not_android([
-        "//tensorflow/core/profiler/backends/cpu:annotation_stack",
-    ]),
-)
-
-cc_library(
-    name = "scoped_annotation_stack",
-    hdrs = ["scoped_annotation_stack.h"],
-    visibility = [
-        "//visibility:private",  # Only private by automation, not intent. Owner may accept CLs adding visibility. See go/scheuklappen#explicit-private.
-    ],
-    deps = [
-        "//tensorflow/core:lib",
-        "//tensorflow/core/platform",
-        "@com_google_absl//absl/strings",
-        "@local_tsl//tsl/profiler/lib:scoped_annotation_stack",
-    ] + if_not_android([
-        "//tensorflow/core/profiler/backends/cpu:annotation_stack",
+        "@local_tsl//tsl/profiler/backends/cpu:annotation_stack",
     ]),
 )
 

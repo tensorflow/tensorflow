@@ -1,4 +1,4 @@
-/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -18,6 +18,11 @@ limitations under the License.
 
 #include <utility>
 
+#include "absl/status/status.h"
+#include "absl/strings/string_view.h"
+#include "absl/types/span.h"
+#include "xla/hlo/ir/hlo_computation.h"
+#include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/service/convert_async_collectives_to_sync.h"
 
 namespace xla {
@@ -30,7 +35,7 @@ class GpuConvertAsyncCollectivesToSync : public ConvertAsyncCollectivesToSync {
     return "gpu-convert-async-collectives-to-sync";
   }
 
-  Status ConvertAsyncInstructionsToSync(
+  absl::Status ConvertAsyncInstructionsToSync(
       HloComputation* computation,
       absl::Span<const std::pair<HloInstruction*, HloInstruction*>> async_pairs)
       const override;

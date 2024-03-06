@@ -98,7 +98,7 @@ Status ValidateInputs(const Tensor& indices_or_row_splits, const Tensor& values,
                      indices_or_row_splits.dims(), " and size of ",
                      indices_or_row_splits.NumElements(), "."));
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status ComputeRowIdsBeforePadding(const Tensor& indices_or_row_splits,
@@ -149,7 +149,7 @@ Status ComputeRowIdsBeforePadding(const Tensor& indices_or_row_splits,
                      indices_or_row_splits.dims(), " and size of ",
                      indices_or_row_splits.NumElements(), "."));
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Convert the input sparse/dense/ragged tensor into COO format and normalize

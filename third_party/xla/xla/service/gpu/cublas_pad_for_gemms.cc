@@ -1,4 +1,4 @@
-/* Copyright 2018 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2018 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -15,20 +15,31 @@ limitations under the License.
 
 #include "xla/service/gpu/cublas_pad_for_gemms.h"
 
+#include <cstdint>
+#include <vector>
+
+#include "absl/algorithm/container.h"
+#include "absl/container/flat_hash_set.h"
+#include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/literal_util.h"
 #include "xla/service/gpu/gemm_rewriter_triton.h"
 #include "xla/service/gpu/ir_emission_utils.h"
+#include "xla/shape.h"
+#include "xla/statusor.h"
+#include "xla/stream_executor/device_description.h"
 #include "xla/util.h"
-#include "xla/window_util.h"
+#include "tsl/platform/logging.h"
+#include "tsl/platform/status.h"
 
 namespace xla {
 namespace gpu {
 
-static StatusOr<bool> PadForGemm(HloDotInstruction* dot, PrimitiveType datatype,
-                                 int pad_to_multiple_of) {
+static absl::StatusOr<bool> PadForGemm(HloDotInstruction* dot,
+                                       PrimitiveType datatype,
+                                       int pad_to_multiple_of) {
   auto* lhs = dot->mutable_operand(0);
   auto* rhs = dot->mutable_operand(1);
 
@@ -177,7 +188,7 @@ static std::vector<HloDotInstruction*> GetRelevantDots(
   return gemms;
 }
 
-StatusOr<bool> CublasPadForGemms::Run(
+absl::StatusOr<bool> CublasPadForGemms::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   bool changed = false;

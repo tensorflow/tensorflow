@@ -1,4 +1,4 @@
-/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2020 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -19,12 +19,12 @@ limitations under the License.
 #include <cstdint>
 #include <memory>
 
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/stream_executor_internal.h"
 #include "xla/stream_executor/tpu/tpu_platform_interface.h"
 #include "xla/stream_executor/tpu/tpu_topology.h"
-#include "tsl/platform/status.h"
-#include "tsl/platform/statusor.h"
 
 namespace tpu {
 class TpuCore;
@@ -37,7 +37,7 @@ class TpuExecutorInterface
     : public stream_executor::internal::StreamExecutorInterface {
  public:
   template <typename T>
-  using StatusOr = tsl::StatusOr<T>;
+  using StatusOr = absl::StatusOr<T>;
 
   class TemporaryDeviceMemory {
    public:
@@ -61,9 +61,9 @@ class TpuExecutorInterface
     LOG(FATAL) << "Unimplemented.";
   }
 
-  virtual tsl::Status UnloadAllPrograms() { LOG(FATAL) << "Unimplemented."; }
+  virtual absl::Status UnloadAllPrograms() { LOG(FATAL) << "Unimplemented."; }
 
-  virtual tsl::Status EnqueueCompactionOnStreamForHbm(
+  virtual absl::Status EnqueueCompactionOnStreamForHbm(
       stream_executor::Stream* compaction_stream) {
     LOG(FATAL) << "Unimplemented.";
   }

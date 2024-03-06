@@ -32,6 +32,7 @@ limitations under the License.
 #include "tensorflow/compiler/jit/tests/device_compiler_test_helper.h"
 #include "tensorflow/compiler/jit/xla_device_compiler_client.h"
 #include "xla/client/client_library.h"
+#include "xla/stream_executor/platform_manager.h"
 #include "tensorflow/core/framework/fake_input.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/graph_to_functiondef.h"
@@ -58,7 +59,7 @@ using Signature = DeviceCompilationClusterSignature;
 xla::LocalClient* GetLocalClient() {
   // TODO(b/255826209): Figure out how to run this test with the CPU client as
   // well.
-  auto platform = se::MultiPlatformManager::PlatformWithName("cuda").value();
+  auto platform = se::PlatformManager::PlatformWithName("cuda").value();
   return xla::ClientLibrary::GetOrCreateLocalClient(platform).value();
 }
 
@@ -284,7 +285,7 @@ TEST_F(DeviceCompilerTest, CompileAsyncSuccess) {
   EXPECT_CALL(*mock_profiler_, RegisterCompilation(_, _, false))
       .WillOnce([&done] {
         done.Notify();
-        return OkStatus();
+        return absl::OkStatus();
       });
 
   auto args = SampleArgsForAddXY();

@@ -1613,16 +1613,21 @@ TfLiteStatus QuantizeBiases(ModelT* model,
                                    subgraph_idx);
               return kTfLiteError;
             }
-            TensorT* input_tensor =
-                subgraph->tensors[op->inputs[property.inputs[0].first]].get();
-            TensorT* weight_tensor =
-                subgraph->tensors[op->inputs[property.inputs[1].first]].get();
+            const int32_t input_tensor_idx =
+                op->inputs[property.inputs[0].first];
+            TensorT* input_tensor = subgraph->tensors[input_tensor_idx].get();
+            const int32_t weight_tensor_idx =
+                op->inputs[property.inputs[1].first];
+            TensorT* weight_tensor = subgraph->tensors[weight_tensor_idx].get();
             operator_property::TensorProperty weight_property =
                 property.inputs[1].second;
+
+            const bool per_axis =
+                weight_property.per_axis &&
+                utils::HasBuffer(model, subgraph, weight_tensor_idx);
             TF_LITE_ENSURE_STATUS(QuantizeBias(
-                model, input_tensor, weight_tensor, bias_tensor,
-                weight_property.per_axis, weight_property.per_axis_index,
-                bias_type, error_reporter));
+                model, input_tensor, weight_tensor, bias_tensor, per_axis,
+                weight_property.per_axis_index, bias_type, error_reporter));
           }
         } else {
           // If bias is already quantized, make sure it is quantized to 32 bit.
@@ -1712,19 +1717,10 @@ TfLiteStatus FillQuantizationParams(
 
           // Fill per channel max and min with respect to channel_dim_index.
           if (input.second.per_axis) {
-            if (tensor->shape.size() == 4) {
-              int32_t channel_dim_index = input.second.per_axis_index;
-              TF_LITE_ENSURE_STATUS(utils::FillPerChannelMinMax(
-                  float_input_data, tensor->shape, channel_dim_index,
-                  tensor->quantization.get(), error_reporter));
-            } else {
-              TF_LITE_REPORT_ERROR(
-                  error_reporter,
-                  "Could not fill max min for tensor as the dimension is %d "
-                  "and not 4 as expected.",
-                  tensor->shape.size());
-              return kTfLiteError;
-            }
+            int32_t channel_dim_index = input.second.per_axis_index;
+            TF_LITE_ENSURE_STATUS(utils::FillPerChannelMinMax(
+                float_input_data, tensor->shape, channel_dim_index,
+                tensor->quantization.get(), error_reporter));
 
             // Fill per layer max and min.
           } else if (!utils::HasMinMax(tensor) && !input.second.per_axis &&
@@ -1824,10 +1820,11 @@ TfLiteStatus EnsureBiasScaleCompatibility(
 
         if (!property.arbitrary_inputs && property.quantizable) {
           // Get input and weight tensors.
-          TensorT* input_tensor =
-              subgraph->tensors[op->inputs[property.inputs[0].first]].get();
-          TensorT* weight_tensor =
-              subgraph->tensors[op->inputs[property.inputs[1].first]].get();
+          const int32_t input_tensor_idx = op->inputs[property.inputs[0].first];
+          TensorT* input_tensor = subgraph->tensors[input_tensor_idx].get();
+          const int32_t weight_tensor_idx =
+              op->inputs[property.inputs[1].first];
+          TensorT* weight_tensor = subgraph->tensors[weight_tensor_idx].get();
           operator_property::TensorProperty weight_property =
               property.inputs[1].second;
           TF_LITE_ENSURE(error_reporter, input_tensor->quantization);
@@ -1863,7 +1860,8 @@ TfLiteStatus EnsureBiasScaleCompatibility(
           }
 
           // Ensure the tensor dimensions are compatible.
-          if (weight_property.per_axis) {
+          if (weight_property.per_axis &&
+              utils::HasBuffer(model, subgraph, weight_tensor_idx)) {
             if (bias_tensor->shape[0] !=
                 weight_tensor->shape[weight_property.per_axis_index]) {
               TF_LITE_REPORT_ERROR(

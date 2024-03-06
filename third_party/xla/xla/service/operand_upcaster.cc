@@ -1,4 +1,4 @@
-/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2020 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -25,7 +25,7 @@ limitations under the License.
 namespace xla {
 namespace {
 
-StatusOr<std::optional<Shape>> MaybeInferShape(
+absl::StatusOr<std::optional<Shape>> MaybeInferShape(
     const HloInstruction* instruction) {
   switch (instruction->opcode()) {
     case HloOpcode::kDot:
@@ -71,7 +71,7 @@ bool OperandUpcaster::InstructionMatchesPattern(HloInstruction* instruction) {
   return ShapeUtil::ElementCanUpcast(inferred_shape, instruction->shape());
 }
 
-StatusOr<HloInstruction*> OperandUpcaster::ExpandInstruction(
+absl::StatusOr<HloInstruction*> OperandUpcaster::ExpandInstruction(
     HloInstruction* instruction) {
   const bool packed_nibble =
       absl::c_count(instruction->precision_config().operand_precision(),

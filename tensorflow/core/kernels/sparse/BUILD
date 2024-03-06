@@ -53,6 +53,7 @@ tf_kernel_library(
     ],
     hdrs = [
         "kernels.h",
+        "mat_mul_op.h",
         "transpose_op.h",
         "zeros_op.h",
     ],

@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -69,7 +69,7 @@ class GpuDummyCompiler : public GpuCompiler {
     return OkStatus();
   }
 
-  StatusOr<GpuCompiler::BackendCompileResult> CompileTargetBinary(
+  absl::StatusOr<GpuCompiler::BackendCompileResult> CompileTargetBinary(
       const HloModuleConfig& module_config, llvm::Module* llvm_module,
       se::GpuComputeCapability gpu_version, bool relocatable,
       const HloModule* debug_module, const CompileOptions& options) override {
@@ -88,7 +88,7 @@ class LLVMCompilerTest : public ::testing::Test {
 
     BackendOptions backend_options;
     backend_options.set_platform(platform);
-    StatusOr<std::unique_ptr<Backend>> backend_or_status =
+    absl::StatusOr<std::unique_ptr<Backend>> backend_or_status =
         Backend::CreateBackend(backend_options);
     ASSERT_IS_OK(backend_or_status.status());
     backend_ = std::move(backend_or_status).value();

@@ -1,4 +1,4 @@
-/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -150,7 +150,7 @@ class CuptiKernelTracer {
   return module;
 }
 
-StatusOr<absl::Duration> HloOpProfiler::MeasureOpChainDuration(
+absl::StatusOr<absl::Duration> HloOpProfiler::MeasureOpChainDuration(
     HloOpcode op, PrimitiveType data_type, int chain_length) {
 #ifndef GOOGLE_CUDA
   return FailedPrecondition("Not built with --config=cuda");
@@ -202,7 +202,7 @@ HloOpProfiler::HloOpProfiler(HloRunner& runner)
       << "Failed to measure kernel runtime";
 }
 
-StatusOr<HloInstructionProfile> HloOpProfiler::MeasureClockCyclesPerOp(
+absl::StatusOr<HloInstructionProfile> HloOpProfiler::MeasureClockCyclesPerOp(
     HloOpcode op, PrimitiveType data_type) {
   VLOG(2) << "Measuring " << HloOpcodeString(op) << " "
           << primitive_util::LowercasePrimitiveTypeName(data_type);

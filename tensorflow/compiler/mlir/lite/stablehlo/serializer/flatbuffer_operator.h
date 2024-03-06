@@ -155,6 +155,19 @@ static inline std::vector<T> GetOptionalVector(
   return std::vector<T>(default_size, default_value);
 }
 
+// Handles the case when the SmallVector doesn't exist, and when it
+// doesn't returns a vector of length `default_size` all with the same value
+// `default_value`.
+template <typename T>
+static inline std::vector<T> GetOptionalVector(
+    std::optional<ArrayRef<T>> values, int64_t default_size,
+    int64_t default_value) {
+  if (values.has_value()) {
+    return std::vector<T>(values->begin(), values->end());
+  }
+  return std::vector<T>(default_size, default_value);
+}
+
 }  // namespace odml
 }  // namespace mlir
 #endif  // TENSORFLOW_COMPILER_MLIR_LITE_STABLEHLO_SERIALIZER_FLATBUFFER_OPERATOR_H_

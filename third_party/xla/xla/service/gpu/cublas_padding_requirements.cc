@@ -1,4 +1,4 @@
-/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -15,10 +15,14 @@ limitations under the License.
 
 #include "xla/service/gpu/cublas_padding_requirements.h"
 
-#include <vector>
+#include <cstdint>
+#include <variant>
 
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
+#include "xla/service/gpu/variant_visitor.h"
+#include "xla/shape.h"
+#include "xla/stream_executor/device_description.h"
 #include "xla/util.h"
 
 namespace xla {
@@ -26,17 +30,10 @@ namespace gpu {
 
 namespace {
 
-template <class... Ts>
-struct Overload : Ts... {
-  using Ts::operator()...;
-};
-template <class... Ts>
-Overload(Ts...) -> Overload<Ts...>;
-
 bool DimensionRequiresPadding(const int64_t size, const PrimitiveType data_type,
                               const se::GpuComputeCapability& gpu_cc) {
   return std::visit(
-      Overload{
+      VariantVisitor{
           [&](const se::CudaComputeCapability& cc) {
             for (const auto& req : CublasPaddingRequirements) {
               if (cc.IsAtLeast(req.min_compute_capability) &&

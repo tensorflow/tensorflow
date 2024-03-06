@@ -32,8 +32,8 @@ limitations under the License.
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
 #include "stablehlo/dialect/StablehloOps.h"  // from @stablehlo  // IWYU pragma: keep
 #include "tensorflow/compiler/mlir/lite/quantization/ir/QuantOps.h"
-#include "tensorflow/compiler/mlir/lite/quantization/quantization_config.h"
-#include "tensorflow/compiler/mlir/lite/quantization/quantization_utils.h"
+#include "tensorflow/compiler/mlir/quantization/common/quantization_lib/quantization_config.h"
+#include "tensorflow/compiler/mlir/quantization/common/quantization_lib/quantization_utils.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/passes/quantization_patterns.h"
 
 namespace mlir::quant::stablehlo {
@@ -105,15 +105,22 @@ class QuantizePass : public impl::QuantizePassBase<QuantizePass> {
 
   explicit QuantizePass() = default;
 
-  explicit QuantizePass(const QuantizationSpecs& quant_specs)
-      : quant_specs_(quant_specs) {}
+  explicit QuantizePass(const QuantizationSpecs& quant_specs,
+                        bool enable_per_channel_quantized_weight)
+      : quant_specs_(quant_specs),
+        enable_per_channel_quantized_weight_(
+            enable_per_channel_quantized_weight) {}
 
-  QuantizePass(const QuantizePass& other) : quant_specs_(other.quant_specs_) {}
+  QuantizePass(const QuantizePass& other)
+      : quant_specs_(other.quant_specs_),
+        enable_per_channel_quantized_weight_(
+            other.enable_per_channel_quantized_weight_) {}
 
  private:
   void runOnOperation() override;
 
   QuantizationSpecs quant_specs_;
+  bool enable_per_channel_quantized_weight_;
 };
 
 void QuantizePass::runOnOperation() {
@@ -130,14 +137,15 @@ void QuantizePass::runOnOperation() {
   RewritePatternSet patterns(&ctx);
   patterns.add<StableHloQuantization, StableHloQuantizationReverse>(
       &ctx, quant_params);
-  PopulateFusedGemmStylePatterns(ctx, patterns);
+  PopulateQuantizeOpWithRegionPattern(ctx, patterns);
+  PopulateFusedGemmStylePatterns(ctx, patterns,
+                                 enable_per_channel_quantized_weight_);
+  PopulateQuantizeSingularOpPatterns(ctx, patterns);
 
   if (failed(applyPatternsAndFoldGreedily(module_op, std::move(patterns)))) {
     // There are cases where no rewrites happen even if a pattern matches,
     // causing this to result in a convergence failure. Consider this as a
     // best-effort.
-    // TODO: b/305469508 - Make QuantizationPattern converge if there are no
-    // patterns that are rewritable.
     module_op.emitWarning("Failed to converge pattern at QuantizePass.");
   }
 }
@@ -145,8 +153,10 @@ void QuantizePass::runOnOperation() {
 }  // namespace
 
 std::unique_ptr<OperationPass<ModuleOp>> CreateQuantizePass(
-    const QuantizationSpecs& quantization_specs) {
-  return std::make_unique<QuantizePass>(quantization_specs);
+    const QuantizationSpecs& quantization_specs,
+    bool enable_per_channel_quantized_weight) {
+  return std::make_unique<QuantizePass>(quantization_specs,
+                                        enable_per_channel_quantized_weight);
 }
 
 }  // namespace mlir::quant::stablehlo

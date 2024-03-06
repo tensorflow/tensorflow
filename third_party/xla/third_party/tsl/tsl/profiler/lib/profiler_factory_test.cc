@@ -17,6 +17,7 @@ limitations under the License.
 #include <functional>
 #include <utility>
 
+#include "absl/memory/memory.h"
 #include "tsl/platform/macros.h"
 #include "tsl/platform/status.h"
 #include "tsl/platform/test.h"

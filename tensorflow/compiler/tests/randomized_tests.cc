@@ -536,7 +536,7 @@ int64_t ShapeNumVals(absl::Span<const int64_t> shape) {
 }
 }  // namespace
 
-// TensorGenerator is an abstact class that has one implementing class for each
+// TensorGenerator is an abstract class that has one implementing class for each
 // (DataType,T) pair. The implementing class implements RandomVals, which is
 // the only Tensor generation code that is specific to the DataType.
 template <typename T>

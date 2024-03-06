@@ -42,6 +42,9 @@ extern "C" {
 // Enable the latest XNNPACK operators and features in the delegate which have
 // not yet been enabled by default.
 #define TFLITE_XNNPACK_DELEGATE_FLAG_ENABLE_LATEST_OPERATORS 0x00000040
+// Enable XNNPack subgraph reshaping. This means that models with dynamic
+// tensors are supported and that inputs may be efficiently resized.
+#define TFLITE_XNNPACK_DELEGATE_FLAG_ENABLE_SUBGRAPH_RESHAPING 0x00000080
 
 struct TfLiteXNNPackDelegateWeightsCache;
 
@@ -57,6 +60,7 @@ typedef struct {
   // - TFLITE_XNNPACK_DELEGATE_FLAG_VARIABLE_OPERATORS
   // - TFLITE_XNNPACK_DELEGATE_FLAG_TRANSIENT_INDIRECTION_BUFFER
   // - TFLITE_XNNPACK_DELEGATE_FLAG_ENABLE_LATEST_OPERATORS
+  // - TFLITE_XNNPACK_DELEGATE_FLAG_ENABLE_SUBGRAPH_RESHAPING
   uint32_t flags;
   // Cache for packed weights, can be shared between multiple instances of
   // delegates.

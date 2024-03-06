@@ -1,4 +1,4 @@
-/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -15,25 +15,29 @@ limitations under the License.
 
 #include "xla/service/gpu/gpu_async_collective_annotator.h"
 
+#include "absl/status/statusor.h"
 #include "xla/hlo/utils/hlo_query.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 
 namespace xla {
 namespace gpu {
 
-StatusOr<bool> GpuAsyncCollectiveAnnotator::Run(
+absl::StatusOr<bool> GpuAsyncCollectiveAnnotator::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   bool changed = false;
   for (HloComputation* computation :
        module->MakeNonfusionComputations(execution_threads)) {
     for (HloInstruction* instruction : computation->instructions()) {
-      if (!hlo_query::IsAsyncCollectiveStartOp(instruction->opcode())) {
+      if (!hlo_query::IsAsyncCollectiveStartOp(instruction)) {
         continue;
       }
       CollectiveBackendConfig config;
       config.set_is_sync(!is_collective_async_(instruction));
-      TF_RETURN_IF_ERROR(instruction->set_backend_config(config));
+      TF_ASSIGN_OR_RETURN(GpuBackendConfig gpu_config,
+                          instruction->backend_config<GpuBackendConfig>());
+      *gpu_config.mutable_collective_backend_config() = config;
+      TF_RETURN_IF_ERROR(instruction->set_backend_config(gpu_config));
       changed = true;
     }
   }

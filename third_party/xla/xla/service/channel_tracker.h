@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -33,7 +33,7 @@ class ChannelTracker {
 
   // Creates a new Channel object and returns the corresponding
   // ChannelHandle for it.
-  StatusOr<ChannelHandle> NewChannel(ChannelHandle::ChannelType type);
+  absl::StatusOr<ChannelHandle> NewChannel(ChannelHandle::ChannelType type);
 
  private:
   // Guards the channel mapping.

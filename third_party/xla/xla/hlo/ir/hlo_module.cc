@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -188,7 +188,7 @@ HloComputation* HloModule::AddEntryComputationWithLayouts(
 }
 
 Status HloModule::RemoveEmbeddedComputation(HloComputation* to_remove) {
-  if (has_schedule() && !to_remove->IsCalledComputation()) {
+  if (has_schedule()) {
     schedule_->remove_computation(to_remove);
   }
 
@@ -368,6 +368,15 @@ void HloModule::Print(Printer* printer, const HloPrintOptions& options) const {
   if (config.has_entry_computation_layout()) {
     printer->Append(", entry_computation_layout={");
     entry_computation_layout().Print(printer);
+    printer->Append("}");
+  }
+  if (config.allow_spmd_sharding_propagation_to_parameters().size() != 1 ||
+      config.allow_spmd_sharding_propagation_to_parameters().back()) {
+    printer->Append(", allow_spmd_sharding_propagation_to_parameters={");
+    AppendJoin(printer, config.allow_spmd_sharding_propagation_to_parameters(),
+               ",", [](Printer* printer, bool i) {
+                 printer->Append(i ? "true" : "false");
+               });
     printer->Append("}");
   }
   if (config.allow_spmd_sharding_propagation_to_output().size() != 1 ||
@@ -702,6 +711,11 @@ StatusOr<HloModuleConfig> HloModule::CreateModuleConfigFromShape(
     }
     module_config.set_auto_spmd_partitioning_mesh_ids(mesh_ids);
     module_config.set_deduplicate_hlo(execution_options->deduplicate_hlo());
+    if (!execution_options->allow_spmd_sharding_propagation_to_parameters()
+             .empty()) {
+      module_config.set_allow_spmd_sharding_propagation_to_parameters(
+          execution_options->allow_spmd_sharding_propagation_to_parameters());
+    }
     if (!execution_options->allow_spmd_sharding_propagation_to_output()
              .empty()) {
       module_config.set_allow_spmd_sharding_propagation_to_output(
@@ -914,10 +928,12 @@ std::vector<HloComputation*> HloModule::MakeComputationPostOrder(
   absl::flat_hash_set<HloComputation*> nonroot_computations;
   nonroot_computations.reserve(computations_.size() - 1);
   for (auto& computation : computations_) {
-    for (auto* instruction : computation->instructions()) {
-      for (HloComputation* called_computation :
-           instruction->called_computations()) {
-        nonroot_computations.insert(called_computation);
+    for (const HloInstructionInfo& inst :
+         computation->instructions_with_info()) {
+      if (HloInstruction::MightHaveCalledComputations(inst.opcode())) {
+        for (HloComputation* called_computation : inst->called_computations()) {
+          nonroot_computations.insert(called_computation);
+        }
       }
     }
   }

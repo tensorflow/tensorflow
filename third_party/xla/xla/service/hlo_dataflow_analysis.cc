@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -30,6 +30,7 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/functional/function_ref.h"
+#include "absl/log/check.h"
 #include "absl/memory/memory.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
@@ -332,7 +333,7 @@ HloValue* HloDataflowAnalysis::NewHloValue(HloInstruction* instruction,
 }
 
 void HloDataflowAnalysis::MarkValueForDeletion(HloValue::Id value_id) {
-  const HloValue& value = *values_.at(value_id);
+  const HloValue& value = GetValue(value_id);
   VLOG(4) << "MarkValueForDeletion(" << value.ToShortString() << ")";
 
   value_ids_to_delete_.push_back(value_id);
@@ -526,11 +527,15 @@ bool HloDataflowAnalysis::Phi(
 }
 
 const HloValue& HloDataflowAnalysis::GetValue(HloValue::Id value_id) const {
-  return *values_.at(value_id);
+  const auto value = values_.find(value_id);
+  CHECK(value != values_.end()) << "Value not found: " << value_id;
+  return *value->second;
 }
 
 HloValue& HloDataflowAnalysis::GetValue(HloValue::Id value_id) {
-  return *values_.at(value_id);
+  const auto value = values_.find(value_id);
+  CHECK(value != values_.end()) << "Value not found: " << value_id;
+  return *value->second;
 }
 
 HloValueSet HloDataflowAnalysis::GetFlattenedValueSet(
@@ -1403,12 +1408,18 @@ void HloDataflowAnalysis::Propagate() {
 
 const InstructionValueSet& HloDataflowAnalysis::GetInstructionValueSet(
     const HloInstruction* instruction) const {
-  return *value_sets_.at(instruction);
+  const auto value_set = value_sets_.find(instruction);
+  CHECK(value_set != value_sets_.end())
+      << "Instruction " << instruction->ToString() << " not found.";
+  return *value_set->second;
 }
 
 InstructionValueSet& HloDataflowAnalysis::GetInstructionValueSet(
     const HloInstruction* instruction) {
-  return *value_sets_.at(instruction);
+  const auto value_set = value_sets_.find(instruction);
+  CHECK(value_set != value_sets_.end())
+      << "Instruction " << instruction->ToString() << " not found.";
+  return *value_set->second;
 }
 
 Status HloDataflowAnalysis::InitializeInstructionValueSets() {
@@ -1648,8 +1659,8 @@ void HloDataflowAnalysis::OptimizePhiValues() {
             HloValue::Id phi_id = values[0]->id();
             HloValue::Id new_id = phi_graph_.FindOptimizedValue(phi_id);
             if (new_id != phi_id) {
-              VLOG(1) << "Replacing " << values[0]->ToString() << " with "
-                      << GetValue(new_id).ToString();
+              VLOG(1) << "Replacing " << values[0]->ToShortString() << " with "
+                      << GetValue(new_id).ToShortString();
               value_set->Clear();
               const HloValue& new_value = GetValue(new_id);
               value_set->AddValue(&new_value);

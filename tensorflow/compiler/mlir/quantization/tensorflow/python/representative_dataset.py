@@ -144,6 +144,12 @@ class TfRecordRepresentativeDatasetSaver(RepresentativeDatasetSaver):
     Returns:
       a RepresentativeDatasetFile instance contains the path to the saved file.
     """
+    # When running in graph mode (TF1), tf.Tensor types should be converted to
+    # numpy ndarray types to be compatible with `make_tensor_proto`.
+    if not context.executing_eagerly():
+      with session.Session() as sess:
+        repr_ds = replace_tensors_by_numpy_ndarrays(repr_ds, sess)
+
     tfrecord_file_path = self.path_map[signature_def_key]
     with python_io.TFRecordWriter(tfrecord_file_path) as writer:
       for repr_sample in repr_ds:
@@ -200,6 +206,22 @@ class RepresentativeDatasetLoader:
   """Representative dataset loader.
 
   Exposes the `load` method that loads the representative dataset from files.
+  """
+
+  def load(self) -> RepresentativeDatasetMapping:
+    """Loads the representative datasets.
+
+    Returns:
+      representative dataset mapping: A loaded signature def key ->
+      representative mapping.
+    """
+    raise NotImplementedError('Method "load" is not implemented.')
+
+
+class TfRecordRepresentativeDatasetLoader(RepresentativeDatasetLoader):
+  """TFRecord representative dataset loader.
+
+  Loads representative dataset stored in TFRecord files.
   """
 
   def __init__(

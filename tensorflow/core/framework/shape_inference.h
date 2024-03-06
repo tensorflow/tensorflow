@@ -567,7 +567,8 @@ class InferenceContext {
 
   // Returns in <out> a new shape corresponding to <shape>.
   Status MakeShapeFromTensorShape(const TensorShape& shape, ShapeHandle* out);
-  StatusOr<ShapeHandle> MakeShapeFromShapeTensor(const TensorShape& shape);
+  absl::StatusOr<ShapeHandle> MakeShapeFromShapeTensor(
+      const TensorShape& shape);
 
   // Returns a new dimension of the given size.  The returned value is owned by
   // this context.

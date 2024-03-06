@@ -1,4 +1,4 @@
-/* Copyright 2022 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2022 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -48,6 +48,11 @@ Attribute convertAttr(Attribute stablehloAttr) {
   // of integrating this change. In the meantime, convert DenseArray to
   // DenseElementsAttr.
   if (auto attr = stablehloAttr.dyn_cast<DenseI64ArrayAttr>()) {
+    return DenseIntElementsAttr::get(
+        RankedTensorType::get(attr.getSize(), attr.getElementType()),
+        attr.asArrayRef());
+  }
+  if (auto attr = stablehloAttr.dyn_cast<DenseBoolArrayAttr>()) {
     return DenseIntElementsAttr::get(
         RankedTensorType::get(attr.getSize(), attr.getElementType()),
         attr.asArrayRef());
@@ -352,12 +357,12 @@ class StablehloToHloOpConverter : public OpConversionPattern<StablehloOpTy> {
     // for the generic builder.
     StablehloToHloOp<StablehloOpTy> hloOp;
     if constexpr (std::is_same<StablehloOpTy, stablehlo::CaseOp>::value) {
-      hloOp = rewriter.replaceOpWithNewOp<mhlo::CaseOp>(
-          stablehloOp, hloTypes, hloOperands, hloAttrs,
-          stablehloOp.getBranches().size());
+      hloOp = rewriter.create<mhlo::CaseOp>(stablehloOp.getLoc(), hloTypes,
+                                            hloOperands, hloAttrs,
+                                            stablehloOp.getBranches().size());
     } else {
-      hloOp = rewriter.replaceOpWithNewOp<StablehloToHloOp<StablehloOpTy>>(
-          stablehloOp, hloTypes, hloOperands, hloAttrs);
+      hloOp = rewriter.create<StablehloToHloOp<StablehloOpTy>>(
+          stablehloOp.getLoc(), hloTypes, hloOperands, hloAttrs);
     }
 
     // For backward compatibility, fix custom call with mhlo.backend_config
@@ -374,6 +379,8 @@ class StablehloToHloOpConverter : public OpConversionPattern<StablehloOpTy> {
                                              /*entryConversion=*/nullptr)))
         return failure();
     }
+
+    rewriter.replaceOp(stablehloOp, hloOp);
     return success();
   }
 };

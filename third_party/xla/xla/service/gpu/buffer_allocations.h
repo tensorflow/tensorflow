@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -26,10 +26,8 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/status.h"
-#include "xla/statusor.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/device_memory_allocator.h"
-#include "xla/stream_executor/stream_executor.h"
 
 namespace xla {
 namespace gpu {
@@ -56,17 +54,17 @@ class BufferAllocations {
 
     // Return a device address for a given buffer allocation. Returns error if
     // corresponding allocation is not yet allocated.
-    virtual StatusOr<se::DeviceMemoryBase> GetDeviceAddress(
+    virtual absl::StatusOr<se::DeviceMemoryBase> GetDeviceAddress(
         BufferAllocation::Index index) const = 0;
 
     // Adds an external allocation for a given buffer index. Returns error if
     // allocation already exists.
-    virtual Status AddAllocation(BufferAllocation::Index index,
-                                 se::DeviceMemoryBase memory) = 0;
+    virtual absl::Status AddAllocation(BufferAllocation::Index index,
+                                       se::DeviceMemoryBase memory) = 0;
 
     // Erases an external allocation for a given buffer index. Returns error if
     // allocation does not exists.
-    virtual Status EraseAllocation(BufferAllocation::Index index) = 0;
+    virtual absl::Status EraseAllocation(BufferAllocation::Index index) = 0;
   };
 
   BufferAllocations(absl::Span<se::DeviceMemoryBase const> buffers,
@@ -104,16 +102,16 @@ class BufferAllocations {
       const BufferAllocation::Slice& buffer_slice) const;
 
   // Add new allocation allocated by external allocator.
-  Status AddExternalAllocation(BufferAllocation::Index index,
-                               se::DeviceMemoryBase memory) const;
+  absl::Status AddExternalAllocation(BufferAllocation::Index index,
+                                     se::DeviceMemoryBase memory) const;
 
   // Remove allocation freed by external allocator.
-  Status EraseExternalAllocation(BufferAllocation::Index index) const;
+  absl::Status EraseExternalAllocation(BufferAllocation::Index index) const;
 
   // Tears down all buffers allocated by this object that are not in
   // `live_addresses`.
-  Status TearDown(const std::set<se::DeviceMemoryBase>& live_addresses,
-                  absl::Span<const BufferAllocation> allocations);
+  absl::Status TearDown(const std::set<se::DeviceMemoryBase>& live_addresses,
+                        absl::Span<const BufferAllocation> allocations);
 
   std::string ToString() const {
     std::string out;

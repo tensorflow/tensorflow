@@ -1,4 +1,4 @@
-/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -94,9 +94,11 @@ class Ffi {
   virtual ~Ffi() = default;
   virtual XLA_FFI_Error* Call(const XLA_FFI_CallFrame* call_frame) const = 0;
 
-  // Registers handler with an XLA runtime under the given name.
+  // Registers handler with an XLA runtime under the given name on a given
+  // platform.
   static inline XLA_FFI_Error* RegisterStaticHandler(const XLA_FFI_Api* api,
                                                      std::string_view name,
+                                                     std::string_view platform,
                                                      XLA_FFI_Handler* handler);
 
  protected:
@@ -117,13 +119,17 @@ class Ffi {
 
 XLA_FFI_Error* Ffi::RegisterStaticHandler(const XLA_FFI_Api* api,
                                           std::string_view name,
+                                          std::string_view platform,
                                           XLA_FFI_Handler* handler) {
-  std::string name_str(name);  // make a copy to guarantee it's null terminated
+  // Make copies of string views to guarantee they are null terminated.
+  std::string name_str(name);
+  std::string platform_str(platform);
 
   XLA_FFI_Handler_Register_Args args;
   args.struct_size = XLA_FFI_Handler_Register_Args_STRUCT_SIZE;
   args.priv = nullptr;
   args.name = name_str.c_str();
+  args.platform = platform_str.c_str();
   args.handler = handler;
   return api->XLA_FFI_Handler_Register(&args);
 }
@@ -314,6 +320,7 @@ struct ArgDecoding;
 //
 //   template <>
 //   struct AttrDecoding<MyType> {
+//    using Type = <handler argument type for attribute type MyType>
 //    static std::optional<MyType> Decode(XLA_FFI_AttrType type, void* attr,
 //                                        DiagnosticEngine&);
 //   }
@@ -455,7 +462,9 @@ struct Decode {
 
 template <typename T>
 struct internal::Decode<internal::AttrTag<T>> {
-  static std::optional<T> call(DecodingOffsets& offsets, DecodingContext& ctx,
+  using R = typename AttrDecoding<T>::Type;
+
+  static std::optional<R> call(DecodingOffsets& offsets, DecodingContext& ctx,
                                DiagnosticEngine& diagnostic) {
     // Find decoded attribute corresponding to the given attribute index.
     int64_t i = offsets.attrs++;
@@ -671,7 +680,7 @@ struct FnArgType {
 // Extracts the underlying type from the attribute type tag.
 template <typename T>
 struct FnArgType<internal::AttrTag<T>> {
-  using Type = T;
+  using Type = typename AttrDecoding<T>::Type;
 };
 
 // Extracts the underlying type from the context type tag.
@@ -891,6 +900,7 @@ inline std::ostream& operator<<(std::ostream& os, const XLA_FFI_AttrType type) {
 #define XLA_FFI_REGISTER_SCALAR_ATTR_DECODING(T, TYPE)                \
   template <>                                                         \
   struct AttrDecoding<T> {                                            \
+    using Type = T;                                                   \
     static std::optional<T> Decode(XLA_FFI_AttrType type, void* attr, \
                                    DiagnosticEngine& diagnostic) {    \
       if (type != TYPE) {                                             \
@@ -910,6 +920,7 @@ XLA_FFI_REGISTER_SCALAR_ATTR_DECODING(float, XLA_FFI_AttrType_F32);
 
 template <>
 struct AttrDecoding<std::string_view> {
+  using Type = std::string_view;
   static std::optional<std::string_view> Decode(XLA_FFI_AttrType type,
                                                 void* attr,
                                                 DiagnosticEngine& diagnostic) {
@@ -925,6 +936,7 @@ struct AttrDecoding<std::string_view> {
 
 template <>
 struct AttrDecoding<Dictionary> {
+  using Type = Dictionary;
   static std::optional<Dictionary> Decode(XLA_FFI_AttrType type, void* attr,
                                           DiagnosticEngine& diagnostic) {
     if (type != XLA_FFI_AttrType_DICTIONARY) {
@@ -1016,6 +1028,7 @@ auto DictionaryDecoder(Members... m) {
 #define XLA_FFI_REGISTER_STRUCT_ATTR_DECODING(T, ...)                 \
   template <>                                                         \
   struct AttrDecoding<T> {                                            \
+    using Type = T;                                                   \
     static std::optional<T> Decode(XLA_FFI_AttrType type, void* attr, \
                                    DiagnosticEngine& diagnostic) {    \
       if (type != XLA_FFI_AttrType_DICTIONARY) {                      \
@@ -1052,14 +1065,15 @@ auto DictionaryDecoder(Members... m) {
 // TODO(ezhulenev): Add a callback so that end users can log registration error
 // to appropriate logging destination, e.g. LOG(FATAL) for duplicate internal
 // FFI handlers.
-#define XLA_FFI_REGISTER_HANDLER(API, NAME, FUNC) \
-  XLA_FFI_REGISTER_HANDLER_(API, NAME, FUNC, __COUNTER__)
-#define XLA_FFI_REGISTER_HANDLER_(API, NAME, FUNC, N) \
-  XLA_FFI_REGISTER_HANDLER__(API, NAME, FUNC, N)
-#define XLA_FFI_REGISTER_HANDLER__(API, NAME, FUNC, N)                  \
-  XLA_FFI_ATTRIBUTE_UNUSED static const XLA_FFI_Error*                  \
-      xla_ffi_static_handler_##N##_registered_ = [] {                   \
-        return ::xla::ffi::Ffi::RegisterStaticHandler(API, NAME, FUNC); \
+#define XLA_FFI_REGISTER_HANDLER(API, NAME, PLATFORM, FUNC) \
+  XLA_FFI_REGISTER_HANDLER_(API, NAME, PLATFORM, FUNC, __COUNTER__)
+#define XLA_FFI_REGISTER_HANDLER_(API, NAME, PLATFORM, FUNC, N) \
+  XLA_FFI_REGISTER_HANDLER__(API, NAME, PLATFORM, FUNC, N)
+#define XLA_FFI_REGISTER_HANDLER__(API, NAME, PLATFORM, FUNC, N)           \
+  XLA_FFI_ATTRIBUTE_UNUSED static const XLA_FFI_Error*                     \
+      xla_ffi_static_handler_##N##_registered_ = [] {                      \
+        return ::xla::ffi::Ffi::RegisterStaticHandler(API, NAME, PLATFORM, \
+                                                      FUNC);               \
       }()
 
 }  // namespace xla::ffi

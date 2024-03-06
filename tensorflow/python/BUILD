@@ -79,7 +79,6 @@ py_strict_library(
     ],
     deps = [
         ":no_contrib",
-        "//tensorflow/python/estimator:estimator_py",
         "//tensorflow/python/ops:gradient_checker_v2",
         "//tensorflow/python/ops:stateful_random_ops",
         "//tensorflow/python/ops/structured:structured_ops",
@@ -98,13 +97,11 @@ py_strict_library(
     visibility = [
         "//tensorflow:__pkg__",
         "//tensorflow:internal",
-        "//tensorflow/python/estimator:__subpackages__",
         "//tensorflow/python/keras:__subpackages__",
         "//tensorflow/python/tools:__pkg__",
         "//tensorflow/python/tools/api/generator:__pkg__",
         "//tensorflow/tools/api/tests:__pkg__",
         "//tensorflow/tools/compatibility/update:__pkg__",
-        "//tensorflow_estimator:__subpackages__",
         "//third_party/py/tensorflow_privacy:__subpackages__",  # TODO(b/163395075): remove when fixed
     ],
     deps = [
@@ -121,7 +118,6 @@ py_strict_library(
     srcs_version = "PY3",
     visibility = [
         "//tensorflow:__pkg__",
-        "//tensorflow/python/estimator:__subpackages__",
         "//tensorflow/python/keras:__subpackages__",
         "//tensorflow/python/tools:__pkg__",
         "//tensorflow/python/tools/api/generator:__pkg__",
@@ -157,7 +153,6 @@ py_strict_library(
         "//tensorflow/python/distribute",
         "//tensorflow/python/distribute:combinations",  # For tf.__internal__ API.
         "//tensorflow/python/distribute:distribute_config",
-        "//tensorflow/python/distribute:estimator_training",
         "//tensorflow/python/distribute:strategy_combinations",  # For tf.__internal__,
         "//tensorflow/python/distribute/experimental/rpc:rpc_ops",
         "//tensorflow/python/dlpack",
@@ -551,6 +546,7 @@ tf_python_pybind_extension(
         "_pywrap_toco_api.pyi",
     ],
     deps = [
+        "//tensorflow/compiler/mlir/quantization/tensorflow/python:py_function_lib",
         "//tensorflow/python/lib/core:pybind11_lib",
         "//third_party/python_runtime:headers",
         "@pybind11",
@@ -769,6 +765,7 @@ pywrap_tensorflow_macro(
         "//tensorflow/cc/saved_model:fingerprinting_impl",
         "//tensorflow/cc/saved_model:loader_lite_impl",
         "//tensorflow/cc/saved_model:metrics_impl",
+        "//tensorflow/compiler/mlir/quantization/stablehlo/python:pywrap_quantization_lib_impl",
         "//tensorflow/compiler/mlir/quantization/tensorflow/python:quantize_model_cc_impl",
         "//tensorflow/compiler/mlir/tensorflow/c:mlir_c_api_registration",
         "//tensorflow/compiler/tf2tensorrt:op_converter_registry_impl",
@@ -801,7 +798,6 @@ pywrap_tensorflow_macro(
         "//tensorflow/core/kernels:data_service_ops",
         "//tensorflow/core/platform:stacktrace_handler",
         "//tensorflow/core/profiler:profiler_impl",
-        "//tensorflow/core/profiler/backends/cpu:python_tracer",
         "//tensorflow/core/profiler/internal:print_model_analysis",
         "//tensorflow/core/util:determinism",
         "//tensorflow/distribute/experimental/rpc/kernels:rpc_ops",
@@ -839,6 +835,7 @@ pywrap_tensorflow_macro(
         "@local_tsl//tsl/profiler/rpc:profiler_server_impl",
         "@local_tsl//tsl/profiler/rpc/client:profiler_client_impl",
         "@local_tsl//tsl/python/lib/core:numpy",
+        "@local_xla//xla/backends/profiler/cpu:python_tracer",
         "@local_xla//xla/stream_executor:stream_executor_impl",
     ] + select({
         "//tensorflow/compiler/mlir/python:disable_mlir_config": [],
@@ -861,9 +858,9 @@ pywrap_tensorflow_macro(
         # nvidia standalone wheels into pywrap_tensorflow_internal. We might be
         # able to remove this in the future, as these stubs should already
         # be brought in via other dependencies.
-        "@local_tsl//tsl/cuda:cudnn",
-        "@local_tsl//tsl/cuda:cufft",
-        "@local_tsl//tsl/cuda:nccl_rpath",
+        "@local_xla//xla/tsl/cuda:cudnn",
+        "@local_xla//xla/tsl/cuda:cufft",
+        "@local_xla//xla/tsl/cuda:nccl_rpath",
     ])) + if_xla_available([
         "//tensorflow/compiler/aot:tfcompile_lib",
     ]) + tf_monitoring_python_deps() + tf_additional_plugin_deps() + tf_additional_profiler_deps() + tf_additional_binary_deps(),
@@ -921,7 +918,6 @@ filegroup(
         "//tensorflow/core/grappler/utils:topological_sort",  # tf_item
         "//tensorflow/core/platform:cpu_feature_guard",  # cpu_feature_guard
         "//tensorflow/core/platform:statusor",  # tfe
-        "//tensorflow/core/profiler/backends/cpu:traceme_recorder_impl",  # profiler
         "//tensorflow/core/profiler/internal:print_model_analysis",  # tfprof
         "//tensorflow/core/profiler/rpc/client:profiler_client_impl",  # profiler
         "//tensorflow/core/util:determinism",  # determinism
@@ -951,6 +947,7 @@ filegroup(
         "//tensorflow/python/util:kernel_registry",
         "//tensorflow/tools/graph_transforms:transform_graph_lib",  # transform_graph
         "@local_tsl//tsl/platform:tensor_float_32_utils",  # tensor_float_32
+        "@local_tsl//tsl/profiler/backends/cpu:traceme_recorder_impl",  # profiler
         "@local_tsl//tsl/profiler/lib:profiler_session_impl",  # profiler
         "@local_tsl//tsl/profiler/rpc:profiler_server_impl",  # profiler
         "@local_tsl//tsl/profiler/rpc/client:profiler_client_impl",
@@ -1124,7 +1121,10 @@ tf_python_pybind_extension(
     pytype_srcs = [
         "flags_pybind.pyi",
     ],
-    visibility = ["//tensorflow/core/config:__subpackages__"],
+    visibility = [
+        "//tensorflow/core/config:__subpackages__",
+        "//tensorflow/tools/pip_package/v2:__subpackages__",
+    ],
     deps = [
         "//tensorflow/core:lib_headers_for_pybind",
         "//tensorflow/core/config:flags_headers",
@@ -1218,14 +1218,6 @@ tf_python_pybind_extension(
     ],
     static_deps = tf_python_pybind_static_deps(),
     deps = [
-        "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/hash",
-        "@com_google_absl//absl/memory",
-        "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/strings:str_format",
-        "@com_google_absl//absl/types:optional",
-        "//third_party/py/numpy:headers",
-        "//third_party/python_runtime:headers",
         "//tensorflow/c:pywrap_required_hdrs",
         "//tensorflow/c/eager:tfe_tensorhandle_internal_hdrs_only",
         "//tensorflow/compiler/jit:flags_headers_only",
@@ -1241,6 +1233,14 @@ tf_python_pybind_extension(
         "//tensorflow/python/lib/core:pybind11_lib",
         "//tensorflow/python/lib/core:pybind11_status",
         "//tensorflow/python/lib/core:safe_pyobject_ptr",
+        "//third_party/py/numpy:headers",
+        "//third_party/python_runtime:headers",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/hash",
+        "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/types:optional",
         "@pybind11",
         # copybara:uncomment "@pybind11_protobuf//pybind11_protobuf:native_proto_caster",
     ] + if_static(
@@ -1328,7 +1328,10 @@ tf_python_pybind_extension(
     pytype_srcs = [
         "_pywrap_parallel_device.pyi",
     ],
-    visibility = ["//tensorflow/python/distribute/parallel_device:__pkg__"],
+    visibility = [
+        "//tensorflow/python/distribute/parallel_device:__pkg__",
+        "//tensorflow/tools/pip_package/v2:__subpackages__",
+    ],
     deps = [
         "//tensorflow/c:pywrap_required_hdrs",
         "//tensorflow/c/eager:tfe_cancellationmanager_internal_hdrs_only",

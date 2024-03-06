@@ -1,4 +1,4 @@
-/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2015 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -28,12 +28,12 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/str_split.h"
 #include "absl/strings/string_view.h"
 #include "xla/stream_executor/device_description.pb.h"
 #include "xla/stream_executor/launch_dim.h"
-#include "xla/stream_executor/platform/port.h"
 
 namespace stream_executor {
 namespace internal {
@@ -53,8 +53,8 @@ struct CudaComputeCapability {
     HOPPER = 9
   };
 
-  CudaComputeCapability() = default;
-  CudaComputeCapability(int major, int minor) {
+  constexpr CudaComputeCapability() = default;
+  constexpr CudaComputeCapability(int major, int minor) {
     this->major = major;
     this->minor = minor;
   }

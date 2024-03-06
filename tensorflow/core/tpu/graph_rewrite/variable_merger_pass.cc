@@ -49,7 +49,7 @@ uint64 MergedOpFingerprint(absl::Span<Node* const> ops) {
 Status MergeVarHandleOps(const string& device, absl::Span<Node* const> nodes,
                          Graph* graph) {
   int num_var_handles(nodes.size());
-  if (num_var_handles <= 1) return OkStatus();
+  if (num_var_handles <= 1) return absl::OkStatus();
 
   std::vector<string> containers(num_var_handles);
   std::vector<string> names(num_var_handles);
@@ -88,13 +88,13 @@ Status MergeVarHandleOps(const string& device, absl::Span<Node* const> nodes,
       graph->AddEdge(node, t.second < 0 ? -1 : i, t.first, t.second);
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status MergeReadVariableOps(Node* handle_op, Node* control_node,
                             absl::Span<Node* const> nodes, Graph* graph) {
   int num_reads(nodes.size());
-  if (num_reads <= 1) return OkStatus();
+  if (num_reads <= 1) return absl::OkStatus();
 
   DataTypeVector dtypes(num_reads);
   for (int i = 0; i < num_reads; ++i) {
@@ -124,7 +124,7 @@ Status MergeReadVariableOps(Node* handle_op, Node* control_node,
       graph->AddEdge(node, t.second < 0 ? -1 : i, t.first, t.second);
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace
@@ -194,7 +194,7 @@ Status VariableMergerPass::Run(const GraphOptimizationPassOptions& options) {
   }
 
   VLOG(1) << DumpGraphToFile("variable_merger_pass_after", *graph);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace tensorflow

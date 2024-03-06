@@ -167,19 +167,15 @@ defining those four functions and a global registration function that usually
 looks like this:
 
 ```c++
-namespace tflite {
-namespace ops {
-namespace custom {
-  TfLiteRegistration* Register_MY_CUSTOM_OP() {
-    static TfLiteRegistration r = {my_custom_op::Init,
-                                   my_custom_op::Free,
-                                   my_custom_op::Prepare,
-                                   my_custom_op::Eval};
+namespace my_namespace {
+  const TfLiteRegistration* Register_MY_CUSTOM_OP() {
+    static const TfLiteRegistration r = {my_custom_op::Init,
+                                         my_custom_op::Free,
+                                         my_custom_op::Prepare,
+                                         my_custom_op::Eval};
     return &r;
   }
-}  // namespace custom
-}  // namespace ops
-}  // namespace tflite
+}  // namespace my_namespace
 ```
 
 Note that registration is not automatic and an explicit call to
@@ -231,8 +227,8 @@ TfLiteStatus AtanEval(TfLiteContext* context, TfLiteNode* node) {
   return kTfLiteOk;
 }
 
-TfLiteRegistration* Register_ATAN() {
-  static TfLiteRegistration r = {nullptr, nullptr, AtanPrepare, AtanEval};
+const TfLiteRegistration* Register_ATAN() {
+  static const TfLiteRegistration r = {nullptr, nullptr, AtanPrepare, AtanEval};
   return &r;
 }
 ```
@@ -259,10 +255,29 @@ code, is defined like this:
 
 ```c++
 class OpResolver {
+ public:
   virtual TfLiteRegistration* FindOp(tflite::BuiltinOperator op) const = 0;
   virtual TfLiteRegistration* FindOp(const char* op) const = 0;
-  virtual void AddBuiltin(tflite::BuiltinOperator op, TfLiteRegistration* registration) = 0;
-  virtual void AddCustom(const char* op, TfLiteRegistration* registration) = 0;
+  ...
+};
+```
+
+The `MutableOpResolver` and `BuiltinOpResolver` classes are derived from
+`OpResolver`:
+
+```c++
+class MutableOpResolver : public OpResolver {
+ public:
+  MutableOpResolver();  // Constructs an initially empty op resolver.
+  void AddBuiltin(tflite::BuiltinOperator op, const TfLiteRegistration* registration) = 0;
+  void AddCustom(const char* op, const TfLiteRegistration* registration) = 0;
+  void AddAll(const MutableOpResolver& other);
+  ...
+};
+
+class BuiltinOpResolver : public MutableOpResolver {
+ public:
+  BuiltinOpResolver();  // Constructs an op resolver with all the builtin ops.
 };
 ```
 
@@ -272,10 +287,13 @@ Regular usage requires that you use the `BuiltinOpResolver` and write:
 tflite::ops::builtin::BuiltinOpResolver resolver;
 ```
 
-To add the custom op created above, you call `AddOp` (before you pass the
-resolver to the `InterpreterBuilder`):
+To add the custom op created above, you can instead use a `MutableOpResolver`,
+and call `AddCustom` (before you pass the resolver to the
+`InterpreterBuilder`):
 
 ```c++
+tflite::ops::builtin::MutableOpResolver resolver;
+resolver.AddAll(tflite::ops::builtin::BuiltinOpResolver());
 resolver.AddCustom("Atan", Register_ATAN());
 ```
 
@@ -293,8 +311,8 @@ place your registrations in the
 
 Note that a similar process as above can be followed for supporting a set of
 operations instead of a single operator. Just add as many `AddCustom` operators
-as you need. In addition, `BuiltinOpResolver` also allows you to override
-implementations of builtins by using the `AddBuiltin`.
+as you need. In addition, `MutableOpResolver` also allows you to override
+implementations of builtins by using `AddBuiltin`.
 
 ### Test and profile your operator
 

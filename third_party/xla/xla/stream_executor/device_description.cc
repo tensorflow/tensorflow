@@ -1,4 +1,4 @@
-/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2015 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -16,9 +16,10 @@ limitations under the License.
 #include "xla/stream_executor/device_description.h"
 
 #include <cstdint>
-#include <memory>
 #include <string>
+#include <variant>
 
+#include "xla/stream_executor/launch_dim.h"
 #include "tsl/lib/math/math_util.h"
 #include "tsl/platform/logging.h"
 

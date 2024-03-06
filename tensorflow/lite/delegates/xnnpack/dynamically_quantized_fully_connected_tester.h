@@ -29,6 +29,11 @@ limitations under the License.
 namespace tflite {
 namespace xnnpack {
 
+enum class WeightsType {
+  kChannelWiseQuantizedInt8,
+  kTensorWiseQuantizedInt8,
+};
+
 class DynamicallyQuantizedFullyConnectedTester {
  public:
   DynamicallyQuantizedFullyConnectedTester() = default;
@@ -68,6 +73,12 @@ class DynamicallyQuantizedFullyConnectedTester {
   inline int32_t OutputChannels() const { return output_channels_; }
 
   std::vector<int32_t> OutputShape() const;
+
+  inline DynamicallyQuantizedFullyConnectedTester& WeightsType(
+      WeightsType weights_type) {
+    weights_type_ = weights_type;
+    return *this;
+  }
 
   inline DynamicallyQuantizedFullyConnectedTester& FilterZeroPoint(
       int32_t filter_zero_point) {
@@ -137,12 +148,16 @@ class DynamicallyQuantizedFullyConnectedTester {
     return activation_;
   }
 
+  inline enum WeightsType WeightsType() const { return weights_type_; }
+
   static int32_t ComputeSize(const std::vector<int32_t>& shape);
 
   std::vector<int32_t> input_shape_;
   int32_t input_size_ = 1;
   int32_t input_channels_ = 1;
   int32_t output_channels_ = 1;
+
+  enum WeightsType weights_type_ = WeightsType::kTensorWiseQuantizedInt8;
   int32_t filter_zero_point_ = 0;
   float filter_scale_ = 0.75f;
   bool keep_dims_ = false;

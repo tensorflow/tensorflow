@@ -78,7 +78,7 @@ struct TfTrtConversionParams {
   // in the graph based on user provided input data and profile_strategy.
   ProfileStrategy profile_strategy = ProfileStrategy::kRange;
 
-  // Whether to allow bulding TRT engines at runtime. If no TensorRT engine can
+  // Whether to allow building TRT engines at runtime. If no TensorRT engine can
   // be found in cache that can handle the given inputs during runtime, then a
   // new TensorRT engine is built at runtime if allow_build_at_runtime=True,
   // otherwise native TF is used. We recommend to set this value false and build

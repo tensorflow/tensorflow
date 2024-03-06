@@ -30,8 +30,8 @@ limitations under the License.
 #include "tensorflow/c/experimental/stream_executor/stream_executor_internal.h"
 #include "tensorflow/c/tf_status_helper.h"
 #include "xla/stream_executor/executor_cache.h"
-#include "xla/stream_executor/multi_platform_manager.h"
 #include "xla/stream_executor/platform.h"
+#include "xla/stream_executor/platform_manager.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "tensorflow/core/common_runtime/device/device_utils.h"
@@ -41,6 +41,7 @@ limitations under the License.
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/strcat.h"
 #include "tensorflow/core/platform/stringpiece.h"
+#include "tsl/platform/status.h"
 
 using tensorflow::StatusFromTF_Status;
 
@@ -362,8 +363,8 @@ class CStreamExecutor : public internal::StreamExecutorInterface {
                                size, c_status.get());
     return StatusFromTF_Status(c_status.get());
   }
-  bool Memcpy(Stream* stream, void* host_dst, const DeviceMemoryBase& gpu_src,
-              uint64 size) override {
+  tsl::Status Memcpy(Stream* stream, void* host_dst,
+                     const DeviceMemoryBase& gpu_src, uint64 size) override {
     OwnedTFStatus c_status(TF_NewStatus());
     SP_Stream stream_handle =
         static_cast<CStream*>(stream->implementation())->Handle();
@@ -372,12 +373,11 @@ class CStreamExecutor : public internal::StreamExecutorInterface {
                                   &device_mem_src, size, c_status.get());
     if (TF_GetCode(c_status.get()) != TF_OK) {
       LOG(ERROR) << TF_Message(c_status.get());
-      return false;
     }
-    return true;
+    return StatusFromTF_Status(c_status.get());
   }
-  bool Memcpy(Stream* stream, DeviceMemoryBase* gpu_dst, const void* host_src,
-              uint64 size) override {
+  tsl::Status Memcpy(Stream* stream, DeviceMemoryBase* gpu_dst,
+                     const void* host_src, uint64 size) override {
     OwnedTFStatus c_status(TF_NewStatus());
     SP_Stream stream_handle =
         static_cast<CStream*>(stream->implementation())->Handle();
@@ -386,9 +386,8 @@ class CStreamExecutor : public internal::StreamExecutorInterface {
                                   host_src, size, c_status.get());
     if (TF_GetCode(c_status.get()) != TF_OK) {
       LOG(ERROR) << TF_Message(c_status.get());
-      return false;
     }
-    return true;
+    return StatusFromTF_Status(c_status.get());
   }
   bool MemcpyDeviceToDevice(Stream* stream, DeviceMemoryBase* gpu_dst,
                             const DeviceMemoryBase& gpu_src,
@@ -573,11 +572,6 @@ class CStreamExecutor : public internal::StreamExecutorInterface {
     return std::unique_ptr<internal::EventInterface>(
         new CEvent(&device_, stream_executor_));
   }
-  std::unique_ptr<internal::KernelInterface> CreateKernelImplementation()
-      override {
-    LOG(FATAL)
-        << "CreateKernelImplementation is not supported by pluggable device.";
-  }
   std::unique_ptr<internal::StreamInterface> GetStreamImplementation()
       override {
     return std::unique_ptr<internal::StreamInterface>(
@@ -735,8 +729,8 @@ tsl::Status InitStreamExecutorPlugin(SEInitPluginFn init_fn,
           std::move(platform), params.destroy_platform, std::move(platform_fns),
           params.destroy_platform_fns, std::move(device_fns), std::move(se),
           std::move(timer_fns)));
-  TF_CHECK_OK(stream_executor::MultiPlatformManager::RegisterPlatform(
-      std::move(cplatform)));
+  TF_CHECK_OK(
+      stream_executor::PlatformManager::RegisterPlatform(std::move(cplatform)));
   // TODO(annarev): Return `use_bfc_allocator` value in some way so that it is
   // available in `PluggableDeviceProcessState` once the latter is checked in.
   return ::tensorflow::OkStatus();

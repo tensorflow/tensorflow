@@ -1,4 +1,4 @@
-/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2020 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -23,19 +23,29 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/container/flat_hash_set.h"
+#include "absl/container/inlined_vector.h"
+#include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "absl/numeric/bits.h"
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/str_join.h"
+#include "absl/strings/string_view.h"
+#include "absl/types/span.h"
 #include "xla/hlo/ir/dfs_hlo_visitor_with_default.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/collective_ops_utils.h"
 #include "xla/service/gpu/reduction_utils.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/statusor.h"
+#include "xla/stream_executor/device_description.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
+#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace gpu {
@@ -45,16 +55,16 @@ class ReductionRewriterVisitor : public DfsHloRewriteVisitor {
   explicit ReductionRewriterVisitor(se::GpuComputeCapability gpu_version)
       : gpu_version_(gpu_version) {}
 
-  Status HandleReduce(HloInstruction *hlo) override {
+  absl::Status HandleReduce(HloInstruction *hlo) override {
     if (IsMinMaxReduction(hlo)) {
       // TODO(cheshire): Also enable for integers.
       VLOG(1) << "Not performing tree expansion on min/max-reduction: "
               << hlo->ToString() << " since min/max operations are associative";
-      return OkStatus();
+      return absl::OkStatus();
     }
 
     if (!IsReductionFromOrToContiguousDimensions(*hlo)) {
-      return OkStatus();
+      return absl::OkStatus();
     }
     return RewriteReduction(hlo);
   }
@@ -70,7 +80,7 @@ class ReductionRewriterVisitor : public DfsHloRewriteVisitor {
     return false;
   }
 
-  Status RewriteReduction(HloInstruction *hlo) {
+  absl::Status RewriteReduction(HloInstruction *hlo) {
     ReductionDimensions reduction_dimensions =
         GetReductionKindAndContiguousComponents(*hlo);
     VLOG(5) << "Input: " << hlo->ToString();
@@ -102,7 +112,7 @@ class ReductionRewriterVisitor : public DfsHloRewriteVisitor {
     // Base case: everything fits.
     if (ReductionIsRaceFree(hlo->GetModule()->config(), reduction_dimensions)) {
       VLOG(3) << "Base case: dimensions fit";
-      return OkStatus();
+      return absl::OkStatus();
     }
 
     VLOG(1) << "Input: " << hlo->ToString();
@@ -253,7 +263,7 @@ class ReductionRewriterVisitor : public DfsHloRewriteVisitor {
   }
 
   // Rewrites batch dimension reduction into a separate reduce operation.
-  Status RewriteBatchDimensionLargerThanTile(
+  absl::Status RewriteBatchDimensionLargerThanTile(
       HloReduceInstruction *hlo,
       const ReductionDimensions &reduction_dimensions,
       int64_t reduced_input_dimension) {
@@ -283,7 +293,7 @@ class ReductionRewriterVisitor : public DfsHloRewriteVisitor {
   se::GpuComputeCapability gpu_version_;
 };
 
-StatusOr<bool> GpuTreeReductionRewriter::Run(
+absl::StatusOr<bool> GpuTreeReductionRewriter::Run(
     HloModule *module,
     const absl::flat_hash_set<absl::string_view> &execution_threads) {
   VLOG(5) << "Rewriter input: " << module->ToString();

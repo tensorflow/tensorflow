@@ -71,7 +71,7 @@ Status RecognizeCommands::ProcessLatestResults(const Tensor& latest_results,
     *found_command = previous_top_label_;
     *score = 0.0f;
     *is_new_command = false;
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   // Calculate the average score across all the results in the window.
@@ -122,7 +122,7 @@ Status RecognizeCommands::ProcessLatestResults(const Tensor& latest_results,
   *found_command = current_top_label;
   *score = current_top_score;
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace tensorflow

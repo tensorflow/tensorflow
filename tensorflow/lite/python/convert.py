@@ -24,6 +24,7 @@ import tempfile as _tempfile
 from typing import Optional
 import warnings
 
+from tensorflow.compiler.mlir.quantization.stablehlo import quantization_config_pb2
 from tensorflow.compiler.mlir.quantization.stablehlo import quantization_options_pb2 as quant_opts_pb2
 from tensorflow.lite.python import lite_constants
 from tensorflow.lite.python import util
@@ -229,6 +230,7 @@ def mlir_quantize(
     denylisted_ops=None,
     denylisted_nodes=None,
     enable_variable_quantization=False,
+    disable_per_channel_for_dense_layers=False,
 ):
   """Quantize `input_data_str` with calibration results.
 
@@ -254,6 +256,9 @@ def mlir_quantize(
     enable_variable_quantization: Experimental. Subject to change. Bool
       indicating whether to enable quantization of the residual variables
       remaining after the variable freezing pass.
+    disable_per_channel_for_dense_layers: Bool indicating whether to do
+      per-channel or per-tensor quantization in Fully Connected layers. Default
+      value is False meaning per-channel quantization is enabled.
 
   Returns:
     Quantized model in serialized form (e.g. a TFLITE model) with floating-point
@@ -271,6 +276,7 @@ def mlir_quantize(
       denylisted_ops,
       denylisted_nodes,
       enable_variable_quantization,
+      disable_per_channel_for_dense_layers,
   )
 
 
@@ -418,15 +424,12 @@ Alternative, use virtualenv.""")
   output_filename: str = None
   try:
     # Build all input files
-    with _tempfile.NamedTemporaryFile(
-        delete=False
-    ) as fp_conversion, _tempfile.NamedTemporaryFile(
-        delete=False
-    ) as fp_model, _tempfile.NamedTemporaryFile(
-        delete=False
-    ) as fp_input, _tempfile.NamedTemporaryFile(
-        delete=False
-    ) as fp_debug:
+    with (
+        _tempfile.NamedTemporaryFile(delete=False) as fp_conversion,
+        _tempfile.NamedTemporaryFile(delete=False) as fp_model,
+        _tempfile.NamedTemporaryFile(delete=False) as fp_input,
+        _tempfile.NamedTemporaryFile(delete=False) as fp_debug,
+    ):
       conversion_filename = fp_conversion.name
       input_filename = fp_input.name
       model_filename = fp_model.name
@@ -501,7 +504,7 @@ def build_model_flags(
     saved_model_version=0,
     saved_model_tags=None,
     saved_model_exported_names=None,
-    **_
+    **_,
 ):
   """Builds the model flags object from params.
 
@@ -577,17 +580,22 @@ def build_conversion_flags(
     enable_mlir_variable_quantization=False,
     disable_fuse_mul_and_fc=False,
     quantization_options: Optional[quant_opts_pb2.QuantizationOptions] = None,
-    mlir_dump_dir=None,
-    mlir_dump_pass_regex=None,
-    mlir_dump_func_regex=None,
-    mlir_enable_timing=None,
-    mlir_print_ir_before=None,
-    mlir_print_ir_after=None,
-    mlir_print_ir_module_scope=None,
-    mlir_elide_elementsattrs_if_larger=None,
+    ir_dump_dir=None,
+    ir_dump_pass_regex=None,
+    ir_dump_func_regex=None,
+    enable_timing=None,
+    print_ir_before=None,
+    print_ir_after=None,
+    print_ir_module_scope=None,
+    elide_elementsattrs_if_larger=None,
+    quantization_config: Optional[
+        quantization_config_pb2.QuantizationConfig
+    ] = None,
     use_buffer_offset=False,
     reduce_type_precision=False,
-    **_
+    qdq_conversion_mode=None,
+    disable_per_channel_quantization_for_dense_layers=False,
+    **_,
 ):
   """Builds protocol buffer describing a conversion of a model.
 
@@ -681,36 +689,41 @@ def build_conversion_flags(
       graph.
     disable_fuse_mul_and_fc: Disable fusing input multiplication with
       fullyconnected operations. Useful when quantizing weights.
-    quantization_options: Config to indicate quantization options of each
-      components (ex: weight, bias, activation). This can be a preset method or
-      a custom method, and allows finer, modular control. This option will
-      override any other existing quantization flags. We plan on gradually
+    quantization_options: [Deprecated] Config to indicate quantization options
+      of each components (ex: weight, bias, activation). This can be a preset
+      method or a custom method, and allows finer, modular control. This option
+      will override any other existing quantization flags. We plan on gradually
       migrating all quantization-related specs into this option.
-    mlir_dump_dir: A string specifying the target directory to output MLIR dumps
+    ir_dump_dir: A string specifying the target directory to output MLIR dumps
       produced during conversion. If populated, enables MLIR dumps.
-    mlir_dump_pass_regex: A string containing a regular expression for filtering
-      the pass names to be dumped. Effective only if `mlir_dump_dir` is
+    ir_dump_pass_regex: A string containing a regular expression for filtering
+      the pass names to be dumped. Effective only if `ir_dump_dir` is populated.
+    ir_dump_func_regex: A string containing a regular expression for filtering
+      the function names to be dumped. Effective only if `ir_dump_dir` is
       populated.
-    mlir_dump_func_regex: A string containing a regular expression for filtering
-      the function names to be dumped. Effective only if `mlir_dump_dir` is
-      populated.
-    mlir_enable_timing: A boolean, if set to true reports the execution time of
-      each MLIR pass.
-    mlir_print_ir_before: A string containing a regular expression. If
-      specified, prints MLIR before passes which match.
-    mlir_print_ir_after: A string containing a regular expression. If specified,
+    enable_timing: A boolean, if set to true reports the execution time of each
+      MLIR pass.
+    print_ir_before: A string containing a regular expression. If specified,
+      prints MLIR before passes which match.
+    print_ir_after: A string containing a regular expression. If specified,
       prints MLIR after passes which match.
-    mlir_print_ir_module_scope: A boolean, if set to true always print the
-      top-level operation when printing IR for print_ir_[before|after].
-    mlir_elide_elementsattrs_if_larger: An int, if specified elides
-      ElementsAttrs with '...' that have more elements than the given upper
-      limit.
+    print_ir_module_scope: A boolean, if set to true always print the top-level
+      operation when printing IR for print_ir_[before|after].
+    elide_elementsattrs_if_larger: An int, if specified elides ElementsAttrs
+      with '...' that have more elements than the given upper limit.
+    quantization_config: Configures the StableHLO Quantizer. See the comments in
+      `QuantizationConfig` protobuf definition for details.
     use_buffer_offset: Force the model use buffer_offset & buffer_size fields
       instead of data. i.e. store the constant tensor and custom op binaries
       outside of Flatbuffers
     reduce_type_precision: Convert some tensor types to a lower precision if all
       values within that tensor are within the range of the lower precision.
       This could have side effects e.g. reduced flatbuffer size.
+    qdq_conversion_mode: If set, assume input model is a quantized model
+      represented with QDQ ops and convert to quantized kernels.
+    disable_per_channel_quantization_for_dense_layers: If set, disables per
+      channel end enables per tensor integer quantization for weights in Dense
+      layers. The flag works only for integer quantized model.
 
   Returns:
     conversion_flags: protocol buffer describing the conversion process.
@@ -794,36 +807,43 @@ def build_conversion_flags(
       enable_mlir_variable_quantization
   )
   conversion_flags.disable_fuse_mul_and_fc = disable_fuse_mul_and_fc
-  if quantization_options:
+  if quantization_options:  # Deprecated
     conversion_flags.quantization_options.CopyFrom(quantization_options)
+  if quantization_config:
+    conversion_flags.quantization_config.CopyFrom(quantization_config)
 
   # Transfer debug options. Check for existence before populating in order to
   # leverage defaults specified in proto definition.
-  if mlir_dump_dir is not None:
-    conversion_flags.debug_options.mlir_dump_dir = mlir_dump_dir
-  if mlir_dump_pass_regex is not None:
-    conversion_flags.debug_options.mlir_dump_pass_regex = mlir_dump_pass_regex
-  if mlir_dump_func_regex is not None:
-    conversion_flags.debug_options.mlir_dump_func_regex = mlir_dump_func_regex
-  if mlir_enable_timing is not None:
-    conversion_flags.debug_options.mlir_enable_timing = mlir_enable_timing
-  if mlir_print_ir_before is not None:
-    conversion_flags.debug_options.mlir_print_ir_before = mlir_print_ir_before
-  if mlir_print_ir_after is not None:
-    conversion_flags.debug_options.mlir_print_ir_after = mlir_print_ir_after
-  if mlir_print_ir_module_scope is not None:
-    conversion_flags.debug_options.mlir_print_ir_module_scope = (
-        mlir_print_ir_module_scope
-    )
-  if mlir_elide_elementsattrs_if_larger is not None:
-    conversion_flags.debug_options.mlir_elide_elementsattrs_if_larger = (
-        mlir_elide_elementsattrs_if_larger
+  # TODO: b/319329480 - Match the debug_options fields with the user-facing
+  # flags.
+  if ir_dump_dir is not None:
+    conversion_flags.debug_options.ir_dump_dir = ir_dump_dir
+  if ir_dump_pass_regex is not None:
+    conversion_flags.debug_options.ir_dump_pass_regex = ir_dump_pass_regex
+  if ir_dump_func_regex is not None:
+    conversion_flags.debug_options.ir_dump_func_regex = ir_dump_func_regex
+  if enable_timing is not None:
+    conversion_flags.debug_options.enable_timing = enable_timing
+  if print_ir_before is not None:
+    conversion_flags.debug_options.print_ir_before = print_ir_before
+  if print_ir_after is not None:
+    conversion_flags.debug_options.print_ir_after = print_ir_after
+  if print_ir_module_scope is not None:
+    conversion_flags.debug_options.print_ir_module_scope = print_ir_module_scope
+  if elide_elementsattrs_if_larger is not None:
+    conversion_flags.debug_options.elide_elementsattrs_if_larger = (
+        elide_elementsattrs_if_larger
     )
 
   if use_buffer_offset is not None:
     conversion_flags.use_buffer_offset = use_buffer_offset
   if reduce_type_precision is not None:
     conversion_flags.reduce_type_precision = reduce_type_precision
+  if qdq_conversion_mode is not None:
+    conversion_flags.qdq_conversion_mode = qdq_conversion_mode
+  conversion_flags.disable_per_channel_quantization_for_dense_layers = (
+      disable_per_channel_quantization_for_dense_layers
+  )
   return conversion_flags
 
 
@@ -835,7 +855,7 @@ def convert_graphdef_with_arrays(
     input_arrays_with_shape,
     output_arrays,
     control_output_arrays,
-    **kwargs
+    **kwargs,
 ):
   """Convert a frozen GraphDef that can't be loaded in TF.
 

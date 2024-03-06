@@ -1,4 +1,4 @@
-/* Copyright 2022 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2022 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -21,6 +21,10 @@ include "mlir/Pass/PassBase.td"
 def GpuKernelToNVVMPass : Pass<"gpu-kernel-to-nvvm", "gpu::GPUModuleOp"> {
   let summary = "Pass to transform a gpu module to nvvm.";
   let dependentDialects = ["LLVM::LLVMDialect", "NVVM::NVVMDialect"];
+  let options = [
+      Option<"useBarePtrCallConv", "use-bare-ptr-call-conv", "bool",
+             /*default=*/"false", "Use bare pointer memref to llvm lowering">,
+  ];
   let constructor = "createGpuKernelToNvvmPass()";
 }
 

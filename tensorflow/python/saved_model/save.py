@@ -25,6 +25,7 @@ from absl import logging
 
 from tensorflow.core.framework import function_pb2
 from tensorflow.core.framework import graph_pb2
+from tensorflow.core.framework import node_def_pb2
 from tensorflow.core.framework import versions_pb2
 from tensorflow.core.protobuf import meta_graph_pb2
 from tensorflow.core.protobuf import saved_model_pb2
@@ -277,7 +278,7 @@ class _SaveableView(object):
       options: A SaveOptions instance.
     """
     self.augmented_graph_view = augmented_graph_view
-    self._options = options
+    self.options = options
 
     (self._trackable_objects, self.node_paths, self.node_ids,
      self._slot_variables, self.object_names) = (
@@ -418,9 +419,8 @@ class _SaveableView(object):
     for node_id in _dependency_sorted_node_ids(self):
       obj = self.nodes[node_id]
       tensors = obj._export_to_saved_model_graph(  # pylint: disable=protected-access
-          object_map=object_map,
-          tensor_map=tensor_map,
-          options=self._options)
+          object_map=object_map, tensor_map=tensor_map, options=self.options
+      )
       if isinstance(obj, asset.Asset):
         _add_asset_info(obj, asset_info, tensor_map[obj.asset_path])
       if tensors:
@@ -843,6 +843,95 @@ def _trace_gradient_functions(graph: ops.Graph, saveable_view: _SaveableView):
       saveable_view.gradient_defs.append(grad_def)
 
 
+def _strip_debug_nodes(meta_graph_def: meta_graph_pb2.MetaGraphDef) -> None:
+  """An experimental function to remove debug nodes from the final graph.
+
+  This function removes all Assert and CheckNumerics nodes from the meta_graph.
+  It strips the operators in both the nodes and in all of the function defs,
+  with the Assert ops being replaced by `NoOp`s and the CheckNumerics ops being
+  transformed into `Identity` ops. In addition to this, it creates control
+  inputs for the nodes that are not relevant for the op. For more information
+  about control inputs please see go/how-tensors-flow#control-dependencies.
+
+  Args:
+   meta_graph_def: The meta_graph that will be exported.
+  """
+
+  def erase_regular_node_attributes(node: node_def_pb2.NodeDef) -> None:
+    """Erases regular node attributes."""
+    attributes_to_remove = [
+        attribute
+        for attribute in node.attr.keys()
+        if not attribute.startswith("_")
+    ]
+    for attribute in attributes_to_remove:
+      node.attr.pop(attribute)
+
+  def prune_all_non_t_attributes(node: node_def_pb2.NodeDef) -> None:
+    """Prunes all attributes that are not `T`."""
+    if "T" in node.attr:
+      t_value = node.attr["T"]
+      node.ClearField("attr")
+      node.attr["T"].CopyFrom(t_value)
+    else:
+      node.ClearField("attr")
+
+  def is_control_input(name: str) -> str:
+    """Returns whether or not the input is a control input."""
+    return name and name[0] == "^"
+
+  def as_control_dep(name: str) -> str:
+    """Returns the input as a control dependency."""
+    return "^" + name.split(":")[0]
+
+  def maybe_do_strip(node: node_def_pb2.NodeDef) -> None:
+    """Strips the graph from Assert and CheckNumerics ops.
+
+    For Assert ops, this function also rewrites all of the inputs to the nodes
+    that were transformed by making them into control dependencies. It also
+    removes all of the regular node attributes, that is all node attributes
+    that do not start with `_`.
+
+    For CheckNumerics ops, this function turns the op into an Identity op,
+    which will be pruned later (according to the original implementation in
+    grappler's `debug_stripper.cc`. Then, since Identity ops only take one
+    input, it leaves the first input as is while transforming the other ones
+    into control dependencies.
+
+    Args:
+      node: The node to potentally strip.
+    """
+    if node.op == "Assert" or node.op == "PrintV2":
+      node.op = "NoOp"
+      erase_regular_node_attributes(node)
+      new_inputs = []
+      for inp in node.input:
+        if not is_control_input(inp):
+          new_inputs.append(as_control_dep(inp))
+        else:
+          new_inputs.append(inp)
+      node.ClearField("input")
+      node.input.extend(new_inputs)
+    elif node.op == "CheckNumerics" or node.op == "Print":
+      # The identity op will be pruned later.
+      node.op = "Identity"
+      prune_all_non_t_attributes(node)
+      # As Identity op only takes one input, mark redundant inputs as control
+      # inputs.
+      for i in range(1, len(node.input)):
+        if not is_control_input(node.input[i]):
+          node.input[i] = as_control_dep(node.input[i])
+
+  # First, we strip the assert nodes from the graph.
+  for node in meta_graph_def.graph_def.node:
+    maybe_do_strip(node)
+
+  # Then, we strip the assert nodes from all of the function defs.
+  for func in meta_graph_def.graph_def.library.function:
+    for node in func.node_def:
+      maybe_do_strip(node)
+
+
 def _fill_meta_graph_def(
     meta_graph_def: meta_graph_pb2.MetaGraphDef,
     saveable_view: _SaveableView,
@@ -850,6 +939,7 @@ def _fill_meta_graph_def(
     namespace_whitelist: List[str],
     save_custom_gradients: bool,
     create_saver: bool,
+    enable_debug_stripper: bool,
     defaults=None,
 ) -> Tuple[_AssetInfo, ops.Graph]:
   """Generates a MetaGraph which calls `signature_functions`.
@@ -862,6 +952,7 @@ def _fill_meta_graph_def(
     namespace_whitelist: List of strings containing whitelisted op namespaces.
     save_custom_gradients: Whether to save custom gradients.
     create_saver: Whether to add SavedModel's native save and restore ops.
+    enable_debug_stripper: Whether to strip the debug nodes from the graph.
     defaults: A dictionary mapping signature_key to dictionary of
       user_specified_name to Tensor representing default values.
 
@@ -947,13 +1038,14 @@ def _fill_meta_graph_def(
 
   meta_graph_def.graph_def.CopyFrom(graph_def)
   meta_graph_def.meta_info_def.tags.append(tag_constants.SERVING)
+  if saveable_view.options.extra_tags:
+    for tag in saveable_view.options.extra_tags:
+      meta_graph_def.meta_info_def.tags.append(tag)
   meta_graph_def.meta_info_def.tensorflow_version = versions.__version__
   meta_graph_def.meta_info_def.tensorflow_git_version = (
       versions.__git_version__)
   # We currently always strip default attributes.
   meta_graph_def.meta_info_def.stripped_default_attrs = True
-  meta_graph_def.meta_info_def.stripped_op_list.MergeFrom(
-      meta_graph.stripped_op_list_for_graph(meta_graph_def.graph_def))
   meta_graph_def.asset_file_def.extend(asset_info.asset_defs)
   for signature_key, signature in signatures.items():
     meta_graph_def.signature_def[signature_key].CopyFrom(signature)
@@ -961,6 +1053,10 @@ def _fill_meta_graph_def(
   # store tensor_content in litle endian format
   if sys.byteorder == "big":
     utils_impl.swap_function_tensor_content(meta_graph_def, "big", "little")
+  if enable_debug_stripper:
+    _strip_debug_nodes(meta_graph_def)
+  meta_graph_def.meta_info_def.stripped_op_list.MergeFrom(
+      meta_graph.stripped_op_list_for_graph(meta_graph_def.graph_def))
   return asset_info, exported_graph
 
 
@@ -1514,6 +1610,7 @@ def _build_meta_graph_impl(
       namespace_whitelist=options.namespace_whitelist,
       save_custom_gradients=options.experimental_custom_gradients,
       create_saver=not options.experimental_skip_saver,
+      enable_debug_stripper=options.experimental_debug_stripper,
       defaults=defaults,
   )
   if options.function_aliases:

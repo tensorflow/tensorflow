@@ -365,14 +365,13 @@ TfLiteStatus InterpreterBuilder::ParseNodes(
                            EnumNameBuiltinOperator(op_type));
     }
 
+    void* builtin_data = nullptr;
+    const char* init_data = nullptr;
+    size_t init_data_size = 0;
     if (op_type == BuiltinOperator_CUSTOM) {
       if (op->custom_options()) {
-        subgraph->AddNodeWithParameters(
-            FlatBufferIntArrayToVector(op->inputs()),
-            FlatBufferIntArrayToVector(op->outputs()),
-            FlatBufferIntArrayToVector(op->intermediates()),
-            reinterpret_cast<const char*>(op->custom_options()->data()),
-            op->custom_options()->size(), nullptr, registration);
+        init_data = reinterpret_cast<const char*>(op->custom_options()->data());
+        init_data_size = op->custom_options()->size();
       } else if (op->large_custom_options_offset() > 1 && allocation_) {
         if (op->large_custom_options_offset() +
                 op->large_custom_options_size() >
@@ -384,31 +383,20 @@ TfLiteStatus InterpreterBuilder::ParseNodes(
           return kTfLiteError;
         }
         // If the custom op is storing payloads outside of flatbuffers
-        subgraph->AddNodeWithParameters(
-            FlatBufferIntArrayToVector(op->inputs()),
-            FlatBufferIntArrayToVector(op->outputs()),
-            FlatBufferIntArrayToVector(op->intermediates()),
-            reinterpret_cast<const char*>(allocation_->base()) +
-                op->large_custom_options_offset(),
-            op->large_custom_options_size(), nullptr, registration);
-      } else {
-        subgraph->AddNodeWithParameters(
-            FlatBufferIntArrayToVector(op->inputs()),
-            FlatBufferIntArrayToVector(op->outputs()),
-            FlatBufferIntArrayToVector(op->intermediates()), nullptr, 0,
-            nullptr, registration);
+        init_data = reinterpret_cast<const char*>(allocation_->base()) +
+                    op->large_custom_options_offset();
+        init_data_size = op->large_custom_options_size();
       }
     } else {
-      void* builtin_data = nullptr;
       MallocDataAllocator malloc_allocator;
       TF_LITE_ENSURE_STATUS(ParseOpData(op, op_type, error_reporter_,
                                         &malloc_allocator, &builtin_data));
-      subgraph->AddNodeWithParameters(
-          FlatBufferIntArrayToVector(op->inputs()),
-          FlatBufferIntArrayToVector(op->outputs()),
-          FlatBufferIntArrayToVector(op->intermediates()), nullptr, 0,
-          builtin_data, registration);
     }
+    subgraph->AddNodeWithParameters(
+        FlatBufferIntArrayToVector(op->inputs()),
+        FlatBufferIntArrayToVector(op->outputs()),
+        FlatBufferIntArrayToVector(op->intermediates()), init_data,
+        init_data_size, builtin_data, registration);
   }
 
   return status;

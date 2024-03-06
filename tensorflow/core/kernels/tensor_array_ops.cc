@@ -75,7 +75,7 @@ Status GetHandle(OpKernelContext* ctx, string* container, string* ta_handle) {
     *container = h(0);
     *ta_handle = h(1);
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status GetTensorArray(OpKernelContext* ctx, TensorArray** tensor_array) {
@@ -88,7 +88,7 @@ Status GetTensorArray(OpKernelContext* ctx, TensorArray** tensor_array) {
     ScopedStepContainer* sc = ctx->step_container();
     if (sc == nullptr) return errors::Internal("No step container.");
     TF_RETURN_IF_ERROR(sc->Lookup(rm, container + ta_handle, tensor_array));
-    return OkStatus();
+    return absl::OkStatus();
   } else {
     return LookupResource(ctx, HandleFromInput(ctx, 0), tensor_array);
   }
@@ -100,7 +100,7 @@ Status SetupFlowControlInputs(OpKernelContext* ctx, bool set_output) {
   if (set_output) {
     TF_RETURN_IF_ERROR(ctx->set_output("flow_out", *flow_control));
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // CREATION *******************************************************************
@@ -220,7 +220,7 @@ class TensorArrayOp : public TensorArrayCreationOp {
 
     *output_tensor_array = tensor_array;
 
-    return OkStatus();
+    return absl::OkStatus();
   }
 
  private:

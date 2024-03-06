@@ -170,6 +170,11 @@ tf_staging/tensorflow/tools/pip_package/pip_smoke_test:.py
 tf_staging/tensorflow/tools/pip_package/setup:.py
 tf_staging/tensorflow/tools/pip_package/simple_console:.py
 tf_staging/tensorflow/tools/pip_package/simple_console_for_windows:.py
+tf_staging/tensorflow/tools/pip_package/v2/BUILD:
+tf_staging/tensorflow/tools/pip_package/v2/MANIFEST.in:
+tf_staging/tensorflow/tools/pip_package/v2/setup:.py
+tf_staging/tensorflow/tools/pip_package/v2/utils/BUILD:
+tf_staging/tensorflow/tools/pip_package/v2/xla_build/CMakeLists.txt:
 tf_staging/tensorflow/tools/pip_package/xla_build/CMakeLists.txt:
 tf_staging/tensorflow/tools/toolchains/BUILD:
 tf_staging/tensorflow/tools/toolchains/clang6/BUILD:
@@ -275,9 +280,12 @@ tf_staging/third_party/nccl/LICENSE:
 tf_staging/third_party/nccl/archive.BUILD:
 tf_staging/third_party/nccl/archive.patch:
 tf_staging/third_party/nccl/build_defs.bzl.tpl:
+tf_staging/third_party/nccl/generated_names.bzl.tpl:
 tf_staging/third_party/nccl/nccl_configure.bzl:
 tf_staging/third_party/nccl/system.BUILD.tpl:
 tf_staging/third_party/nlohmann_json.BUILD:
+tf_staging/third_party/nvtx/BUILD:
+tf_staging/third_party/nvtx/LICENSE:
 tf_staging/third_party/ortools/BUILD:
 tf_staging/third_party/ortools/glpk.BUILD:
 tf_staging/third_party/ortools/ortools.patch:

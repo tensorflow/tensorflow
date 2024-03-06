@@ -21,25 +21,6 @@ def QuantizeWeightPass : Pass<"stablehlo-quantize-weight", "mlir::func::FuncOp">
   let constructor = "mlir::quant::stablehlo::CreateQuantizeWeightPass()";
 }
 
-def PrepareQuantizePass : Pass<"stablehlo-prepare-quantize", "mlir::func::FuncOp"> {
-  let summary = "Prepare StableHLO dialect for static range quantization.";
-  let options = [
-    Option<"enable_per_channel_quantization_",
-        "enable-per-channel-quantization",
-        "bool", /*default=*/"true",
-        "Whether enable per-channel quantized weights.">,
-    Option<"bit_width_", "bit-width", "int", /*default=*/"8",
-        "Bitwidth of quantized integer">
-    ];
-  let constructor = "mlir::quant::stablehlo::CreatePrepareQuantizePass()";
-  let dependentDialects = [
-      "mlir::stablehlo::StablehloDialect",
-      "mlir::quant::QuantizationDialect",
-      "mlir::quantfork::QuantizationForkDialect",
-      "mlir::arith::ArithDialect",
-  ];
-}
-
 def UnfuseMhloBatchNormPass : Pass<"stablehlo-unfuse-mhlo-batch-norm", "mlir::func::FuncOp"> {
   let summary = "Unfuses batch normalization into arithmetic ops.";
 }
@@ -53,6 +34,7 @@ def LiftQuantizableSpotsAsFunctionsPass : Pass<"stablehlo-lift-quantizable-spots
     that disperse values. (ex: convolution, dot_general)
   }];
   let dependentDialects = [
+      "mlir::func::FuncDialect",
       "mlir::stablehlo::StablehloDialect",
       "TF::TensorFlowDialect",
   ];
@@ -67,30 +49,17 @@ def ReplaceStablehloOpsInMainFunctionWithXlaCallModuleOpsPass : Pass<"stablehlo-
   }];
 }
 
-def QuantizePass : Pass<"stablehlo-quantize", "mlir::ModuleOp"> {
-  let summary = "Applies static-range quantization on ops.";
-  let dependentDialects = [
-    "mlir::stablehlo::StablehloDialect",
-    "mlir::quant::QuantizationDialect",
-    "mlir::quantfork::QuantizationForkDialect",
-  ];
-}
-
 def RestoreFunctionNamePass : Pass<"stablehlo-restore-function-name", "ModuleOp"> {
   let summary = "Restores function name from XlaCallModule op.";
-}
-
-def PostQuantizePass : Pass<"stablehlo-post-quantize", "mlir::func::FuncOp"> {
-  let summary = "Apply clean-up after quantization.";
-  let dependentDialects = [
-    "mlir::stablehlo::StablehloDialect",
-    "mlir::quantfork::QuantizationForkDialect",
-  ];
 }
 
 def QuantizeCompositeFunctionsPass : Pass<"stablehlo-quantize-composite-functions", "ModuleOp"> {
   let summary = "Quantize composite functions with QDQ input / outputs.";
   let options = [
+    Option<"enable_per_channel_quantized_weight_",
+        "enable-per-channel-quantized-weight",
+        "bool", /*default=*/"true",
+        "Whether to enable per-channel quantized weights.">,
     Option<"mlir_dump_file_name_", "mlir-dump-file-name",
         "std::optional<std::string>", /*default=*/"std::nullopt",
         "MLIR dump file name.">
@@ -104,12 +73,87 @@ def QuantizeCompositeFunctionsPass : Pass<"stablehlo-quantize-composite-function
   ];
 }
 
+def PrepareQuantizePass : Pass<"stablehlo-prepare-quantize", "mlir::func::FuncOp"> {
+  let summary = "Prepare StableHLO dialect for static range quantization by converting quantfork.stats into quantfork.qcast and dcast ops.";
+  let options = [
+    Option<"enable_per_channel_quantized_weight_",
+        "enable-per-channel-quantized-weight",
+        "bool", /*default=*/"true",
+        "Whether to enable per-channel quantized weights.">,
+    Option<"bit_width_", "bit-width", "int", /*default=*/"8",
+        "Bitwidth of quantized integer">
+    ];
+  let dependentDialects = [
+      "mlir::stablehlo::StablehloDialect",
+      "mlir::quant::QuantizationDialect",
+      "mlir::quantfork::QuantizationForkDialect",
+      "mlir::arith::ArithDialect",
+  ];
+}
+
+def QuantizePass : Pass<"stablehlo-quantize", "mlir::ModuleOp"> {
+  let summary = "Applies static-range quantization on ops by converting quantfork.qcast, quantfork.dcast, and float op into uniform quantized ops .";
+  let dependentDialects = [
+    "mlir::stablehlo::StablehloDialect",
+    "mlir::quant::QuantizationDialect",
+    "mlir::quantfork::QuantizationForkDialect",
+  ];
+}
+
+def PostQuantizePass : Pass<"stablehlo-post-quantize", "mlir::func::FuncOp"> {
+  let summary = "Apply clean-up after quantization.";
+  let dependentDialects = [
+    "mlir::stablehlo::StablehloDialect",
+    "mlir::quantfork::QuantizationForkDialect",
+  ];
+}
+
 def UnwrapXlaCallModuleOpPass : Pass<"stablehlo-unwrap-xla-call-module-op", "ModuleOp"> {
   let summary = "Unwrap XlaCallModuleOps into inline functions if not used for quantizing fused patterns.";
   let dependentDialects = ["TF::TensorFlowDialect"];
 }
 
-def PopulateShapePass : Pass<"populate-shape", "ModuleOp"> {
-  let summary = "Populate output shape with known information for CustomAggregatorOp and XlaCallModuleOp.";
-  let dependentDialects = ["TF::TensorFlowDialect"];
+def ConvertFuncToBfloat16Pass : Pass<"stablehlo-convert-func-to-bfloat16", "mlir::func::FuncOp"> {
+  let summary = "Convert a StableHLO function to bfloat16";
+  let dependentDialects = ["mlir::stablehlo::StablehloDialect"];
+}
+
+def ConvertXlaCallModuleOpToBfloat16Pass : Pass<"stablehlo-convert-xla-call-module-op-to-bfloat16", "mlir::func::FuncOp"> {
+  let summary = "Convert serialized XlaCallModuleOp to bfloat16";
+  let dependentDialects = [
+    "TF::TensorFlowDialect",
+    "mlir::quant::QuantizationDialect",
+    "mlir::shape::ShapeDialect",
+    "mlir::stablehlo::StablehloDialect",
+  ];
+}
+
+def OptimizeGraphPass : Pass<"optimize-graph", "ModuleOp"> {
+  let summary = "Optimize the sub-optimal patterns after quantization.";
+  let dependentDialects = ["mlir::stablehlo::StablehloDialect",];
+}
+
+def NchwConvolutionToNhwcPass : Pass<"stablehlo-nchw-convolution-to-nhwc", "mlir::func::FuncOp"> {
+  let summary = "Converts stablehlo.convolution op of NCHW format to -> NHWC.";
+  let description = [{
+    Matches `ConvolutionOp`s with NCHW format and converts it to NHWC
+    format by inserting `TransposeOp`s to input, filter, and output tensors.
+    In terms of dimension numbers, this matches
+    `[b, f, 0, 1]x[o, i, 0, 1]->[b, f, 0, 1]` format and converts it to
+    `[b, 0, 1, f]x[0, 1, i, o]->[b, 0, 1, f]` format.
+
+    This pass is useful to convert models that conventionally use the NCHW
+    format to target hardwares that are more NHWC-friendly.
+  }];
+  let dependentDialects = ["mlir::stablehlo::StablehloDialect"];
+}
+
+def PrepareQuantizeHybridPass : Pass<"stablehlo-prepare-quantize-hybrid", "mlir::func::FuncOp"> {
+  let summary = "Prepare hybrid quantization for weight-only quantization and dynamic range quantization.";
+  let dependentDialects = [
+      "mlir::stablehlo::StablehloDialect",
+      "TF::TensorFlowDialect",
+      "mlir::quant::QuantizationDialect",
+      "mlir::quantfork::QuantizationForkDialect",
+  ];
 }

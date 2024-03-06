@@ -346,7 +346,7 @@ struct RestoreOp {
     }
     VLOG(1) << "Done restoring tensor " << idx << " : " << tensor_name << " : "
             << restored_full_shape.num_elements();
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   OpKernelContext* context;
@@ -417,6 +417,8 @@ Status RestoreTensorsV2(OpKernelContext* context, const Tensor& prefix,
     // we don't have any expensive operations.
     std::unique_ptr<thread::ThreadPool> reader_pool;
     if (!pool_restore_ops.empty()) {
+      // TODO(spetrovic): Instead of a fixed size 8, use the value from:
+      //    context->session_config()->intra_op_parallelism_threads()
       reader_pool.reset(
           new thread::ThreadPool(Env::Default(), "restore_tensors", 8));
       for (auto* op : pool_restore_ops) {
@@ -444,7 +446,7 @@ Status RestoreTensorsV2(OpKernelContext* context, const Tensor& prefix,
     }
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace tensorflow

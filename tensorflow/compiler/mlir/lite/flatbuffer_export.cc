@@ -1577,8 +1577,9 @@ Translator::BuildStablehloReduceWindowOp(
   uint32_t opcode_index =
       GetOpcodeIndex(op_name, tflite::BuiltinOperator_STABLEHLO_REDUCE_WINDOW);
 
-  auto window_dimensions = builder_.CreateVector(
-      mlir::GetVector<int64_t>(reduce_window_op.getWindowDimensions()));
+  auto wd = reduce_window_op.getWindowDimensions();
+  auto window_dimensions =
+      builder_.CreateVector(std::vector<int64_t>(wd.begin(), wd.end()));
   auto window_strides = builder_.CreateVector(
       mlir::GetOptionalVector<int64_t>(reduce_window_op.getWindowStrides()));
   auto base_dilations = builder_.CreateVector(
@@ -2031,9 +2032,9 @@ std::optional<BufferOffset<tflite::Operator>> Translator::BuildOperator(
         uint32_t opcode_index = GetOpcodeIndex(
             op_name, tflite::BuiltinOperator_STABLEHLO_BROADCAST_IN_DIM);
 
-        auto broadcast_dimensions =
-            builder_.CreateVector(mlir::GetOptionalVector<int64_t>(
-                shlo_op.getBroadcastDimensionsAttr()));
+        auto dims = shlo_op.getBroadcastDimensions();
+        auto broadcast_dimensions = builder_.CreateVector(
+            std::vector<int64_t>(dims.begin(), dims.end()));
 
         auto broadcast_option = tflite::CreateStablehloBroadcastInDimOptions(
             builder_, broadcast_dimensions);
@@ -2631,8 +2632,7 @@ Translator::CreateMetadataVector() {
       } else {
         module_.emitError(
             "all values in tfl.metadata's dictionary key-value pairs should "
-            "be "
-            "string attributes");
+            "be string attributes");
         return std::nullopt;
       }
     }

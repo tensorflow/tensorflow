@@ -214,7 +214,7 @@ class GraphConstructor {
     TF_RETURN_IF_ERROR(PopulateMissingUnusedInputMapKeys());
     UpdateUniquifiedColocationNames();
     FixupSourceAndSinkEdges(g_);
-    return OkStatus();
+    return absl::OkStatus();
   }
 
  private:
@@ -643,7 +643,7 @@ Status GraphConstructor::EnsureNoNameCollisions() {
       prefix_ = strings::StrCat(FindUniqueName(prefix_no_slash), "/");
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status GraphConstructor::ValidateInputMapAndControlDependencies() {
@@ -670,7 +670,7 @@ Status GraphConstructor::ValidateInputMapAndControlDependencies() {
           "graph");
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status GraphConstructor::BuildNodeIndex() {
@@ -714,7 +714,7 @@ Status GraphConstructor::BuildNodeIndex() {
     // Update gdef_prefixes_.
     AddPrefixes(node_def.name(), &gdef_prefixes_);
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status GraphConstructor::InitFromEdges() {
@@ -781,15 +781,15 @@ Status GraphConstructor::InitFromEdges() {
     }
     pending_count_.push_back(pending_count);
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status GraphConstructor::ValidateColocationConstraints(
     const NodeDef& node_def) {
   if (!opts_.validate_colocation_constraints || !opts_.importing)
-    return OkStatus();
+    return absl::OkStatus();
   const auto iter = node_def.attr().find(kColocationAttrName);
-  if (iter == node_def.attr().end()) return OkStatus();
+  if (iter == node_def.attr().end()) return absl::OkStatus();
   for (const string& c : iter->second.list().s()) {
     StringPiece s(c);
     if (absl::ConsumePrefix(&s, kColocationGroupPrefix) &&
@@ -799,7 +799,7 @@ Status GraphConstructor::ValidateColocationConstraints(
           "' expects to be colocated with unknown node '", s, "'");
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status GraphConstructor::MakeNode(NodeDef&& node_def, Node** node) {
@@ -811,18 +811,18 @@ Status GraphConstructor::MakeNode(NodeDef&& node_def, Node** node) {
       (opts_.propagate_device_spec && !(*node)->def().device().empty())) {
     (*node)->set_assigned_device_name((*node)->def().device());
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status GraphConstructor::ValidateShape(Node* node) {
-  if (!opts_.importing || !opts_.validate_shape) return OkStatus();
+  if (!opts_.importing || !opts_.validate_shape) return absl::OkStatus();
   TF_RETURN_IF_ERROR(refiner_->AddNode(node));
   // For nodes with the _output_shapes attribute, override the shape.
   std::vector<const TensorShapeProto*> shape_attrs;
   const char* kAttrName = "_output_shapes";
   if (!TryGetNodeAttr(node->attrs(), kAttrName, &shape_attrs)) {
     // No _output_shapes attribute, the AddNode call above was sufficient.
-    return OkStatus();
+    return absl::OkStatus();
   }
   auto* ic = refiner_->GetContext(node);
   DCHECK(ic != nullptr)
@@ -860,7 +860,7 @@ Status GraphConstructor::ValidateShape(Node* node) {
     }
   }
   node->ClearAttr(kAttrName);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status GraphConstructor::ModifyNodeDefForImport(NodeDef* node_def) {
@@ -871,7 +871,7 @@ Status GraphConstructor::ModifyNodeDefForImport(NodeDef* node_def) {
   if (versions()) {
     TF_RETURN_IF_ERROR(CheckOpDeprecation(*op_def, versions()->producer()));
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 void RemoveInputs(const std::vector<int>& inputs_to_remove, NodeDef* node_def,
@@ -1083,11 +1083,11 @@ Status GraphConstructor::IsNodeFullyMapped(const NodeDef& node_def,
   for (int i = 0; i < op_def->output_arg_size(); ++i) {
     if (opts_.input_map.find({node_def.name(), i}) == opts_.input_map.end()) {
       *is_node_mapped = false;
-      return OkStatus();
+      return absl::OkStatus();
     }
   }
   *is_node_mapped = true;
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 void GraphConstructor::DFS(int cur_node, std::vector<int>* cur_branch,
@@ -1361,7 +1361,7 @@ Status GraphConstructor::Convert() {
                                    " nodes in a cycle");
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status GraphConstructor::AddBackEdges() {
@@ -1378,15 +1378,15 @@ Status GraphConstructor::AddBackEdges() {
     VLOG(2) << "Add back edge: " << src_node->name() << " -> "
             << e.dst_node->name();
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status GraphConstructor::UpdateVersionDef() {
-  if (versions() == nullptr) return OkStatus();
+  if (versions() == nullptr) return absl::OkStatus();
 
   if (!opts_.importing) {
     g_->set_versions(*versions());
-    return OkStatus();
+    return absl::OkStatus();
   }
   VersionDef g_versions = g_->versions();
   g_versions.set_producer(
@@ -1404,11 +1404,11 @@ Status GraphConstructor::UpdateVersionDef() {
     }
   }
   g_->set_versions(g_versions);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status GraphConstructor::PopulateReturnTensors() {
-  if (opts_.return_tensors.empty()) return OkStatus();
+  if (opts_.return_tensors.empty()) return absl::OkStatus();
   for (const TensorId& id : opts_.return_tensors) {
     auto iter = opts_.input_map.find(id);
     if (iter == opts_.input_map.end()) {
@@ -1435,11 +1435,11 @@ Status GraphConstructor::PopulateReturnTensors() {
       return_tensors_->push_back({node, remapped_id.second});
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status GraphConstructor::PopulateReturnNodes() {
-  if (opts_.return_nodes.empty()) return OkStatus();
+  if (opts_.return_nodes.empty()) return absl::OkStatus();
   for (StringPiece name : opts_.return_nodes) {
     auto iter = gdef_nodes_.find(name);
     if (iter == gdef_nodes_.end()) {
@@ -1448,11 +1448,11 @@ Status GraphConstructor::PopulateReturnNodes() {
     }
     return_nodes_->push_back(iter->second.node);
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status GraphConstructor::PopulateMissingUnusedInputMapKeys() {
-  if (missing_unused_input_map_keys_ == nullptr) return OkStatus();
+  if (missing_unused_input_map_keys_ == nullptr) return absl::OkStatus();
   for (const auto& input_map_pair : opts_.input_map) {
     TensorId key = input_map_pair.first;
     if (used_input_map_keys_.count(key) > 0) continue;
@@ -1477,7 +1477,7 @@ Status GraphConstructor::PopulateMissingUnusedInputMapKeys() {
       missing_unused_input_map_keys_->push_back(key);
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 void GraphConstructor::Undo() {
@@ -1511,7 +1511,7 @@ Status GraphConstructor::MakeEdge(Node* src, int output_index, Node* dst,
         " incompatible with expected ", DataTypeString(dst_in), ".");
   }
   g_->AddEdge(src, output_index, dst, input_index);
-  return OkStatus();
+  return absl::OkStatus();
 }
 }  // namespace
 

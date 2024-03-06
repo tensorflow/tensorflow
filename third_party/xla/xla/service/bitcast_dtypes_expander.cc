@@ -1,4 +1,4 @@
-/* Copyright 2021 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2021 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -35,7 +35,7 @@ limitations under the License.
 
 namespace xla {
 
-StatusOr<HloInstruction*> BitcastDtypesExpander::ExpandInstruction(
+absl::StatusOr<HloInstruction*> BitcastDtypesExpander::ExpandInstruction(
     HloInstruction* instruction) {
   HloInstruction* input = instruction->mutable_operand(0);
   const Shape& from_shape = input->shape();

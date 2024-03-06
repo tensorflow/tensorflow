@@ -178,7 +178,7 @@ void EventMgr::EnqueueCallback(se::Stream* stream, std::function<void()> func) {
 
   std::unique_ptr<se::Event> e = std::move(free_events_.back());
   free_events_.pop_back();
-  stream->ThenRecordEvent(e.get());
+  stream->RecordEvent(e.get()).IgnoreError();
 
   bool was_empty = callbacks_.empty();
   callbacks_[stream].push_back({std::move(e), std::move(func)});

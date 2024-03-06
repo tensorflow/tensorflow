@@ -809,6 +809,7 @@ def _register_dataset(
     A scalar string tensor representing the dataset ID.
   """
   _validate_compression(compression)
+
   if isinstance(service, tuple):
     protocol, address = service
   else:

@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -16,10 +16,19 @@ limitations under the License.
 #ifndef XLA_SERVICE_GPU_PARALLEL_LOOP_EMITTER_H_
 #define XLA_SERVICE_GPU_PARALLEL_LOOP_EMITTER_H_
 
+#include <vector>
+
+#include "absl/status/status.h"
+#include "absl/strings/string_view.h"
+#include "absl/types/span.h"
+#include "llvm/IR/BasicBlock.h"
 #include "llvm/IR/IRBuilder.h"
+#include "llvm/IR/Type.h"
+#include "llvm/IR/Value.h"
 #include "xla/service/gpu/launch_dimensions.h"
 #include "xla/service/llvm_ir/ir_array.h"
 #include "xla/service/llvm_ir/loop_emitter.h"
+#include "xla/shape.h"
 
 namespace xla {
 namespace gpu {
@@ -56,8 +65,8 @@ class ParallelLoopEmitter {
       absl::string_view loop_name, llvm::Type* index_type,
       llvm::Value* base_index);
 
-  Status EmitLoop(absl::string_view loop_name = "",
-                  llvm::Type* index_type = nullptr);
+  absl::Status EmitLoop(absl::string_view loop_name = "",
+                        llvm::Type* index_type = nullptr);
 
  private:
   struct LinearBaseAndThreadIdx {
@@ -67,8 +76,9 @@ class ParallelLoopEmitter {
 
   LinearBaseAndThreadIdx EmitLinearBaseAndThreadIdx(llvm::Type* index_type,
                                                     llvm::Value* base_index);
-  Status EmitSerialLoop(absl::string_view loop_name, llvm::Type* index_type,
-                        llvm::Value* base_indvar = nullptr);
+  absl::Status EmitSerialLoop(absl::string_view loop_name,
+                              llvm::Type* index_type,
+                              llvm::Value* base_indvar = nullptr);
 
   // The thread and block dimension to parallelize the loop on.
   const LaunchDimensions launch_dimensions_;

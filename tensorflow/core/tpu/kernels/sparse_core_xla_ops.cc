@@ -58,12 +58,6 @@ static TFGaugeMetric* max_unique_ids_per_partition_gauge_ = TFGaugeMetric::New(
 namespace tensorflow {
 namespace {
 
-xla::XlaOp PowHack(xla::XlaOp base, xla::XlaOp exp) {
-  // FIXME(b/250994736) replace PowHack with xla::Pow once this bug is fixed.
-  // Approximation of xla::Pow(base, exp);
-  return xla::Exp(xla::Log(base) * exp);
-}
-
 // Get the SparseCore logical replica count.
 // TODO(agagik): get it from the tpu topology.
 StatusOr<int64_t> GetSparseCoresPerChip() { return 4; }
@@ -347,7 +341,6 @@ class XlaSparseDenseMatmulWithCsrInputOp : public XlaOpKernel {
 
 REGISTER_XLA_OP(Name("XlaSparseDenseMatmulWithCsrInput"),
                 XlaSparseDenseMatmulWithCsrInputOp);
-
 
 // Base class for all the minibatch with CSR input optimizer kernel.
 class XlaSparseDenseMatmulGradWithCsrInputBase : public XlaOpKernel {
@@ -729,7 +722,7 @@ class XlaSparseDenseMatmulGradWithAdagradMomentumAndCsrInputOp
 
       // scaled_gradient = (accumulator + epsilon)^(-1/k) * gradient
       xla::XlaOp scaled_gradients =
-          PowHack(new_accumulator + epsilon, xla::Neg(exponent)) * gradient;
+          Pow(new_accumulator + epsilon, xla::Neg(exponent)) * gradient;
 
       // momenta(t) = beta1 * momenta(t-1) + scaled_gradient(t)
       xla::XlaOp new_momenta = beta1 * momenta + scaled_gradients;
@@ -965,10 +958,9 @@ class XlaSparseDenseMatmulGradWithFtrlAndCsrInputOp
       xla::XlaOp learning_rate_power =
           xla::ConstantR0(ftrl_optimizer_builder.get(), learning_rate_power_);
 
-      xla::XlaOp power_old =
-          PowHack(accumulator, xla::Neg(learning_rate_power));
+      xla::XlaOp power_old = Pow(accumulator, xla::Neg(learning_rate_power));
       xla::XlaOp power_new =
-          PowHack(new_accumulator, xla::Neg(learning_rate_power));
+          Pow(new_accumulator, xla::Neg(learning_rate_power));
       xla::XlaOp delta_p = power_new - power_old;
 
       xla::XlaOp zero = xla::ConstantR0(ftrl_optimizer_builder.get(), 0.0f);
@@ -1246,7 +1238,7 @@ class XlaSparseCoreAdagradMomentumOp : public XlaSparseCoreOptimizerOpBase {
     }
     // scaled_gradient = (accumulator + epsilon)^(-1/k) * gradient
     xla::XlaOp scaled_gradients =
-        PowHack(accum_new + epsilon, xla::Neg(exponent)) * gradient;
+        Pow(accum_new + epsilon, xla::Neg(exponent)) * gradient;
 
     // momentum(t) = beta_1 * momentum(t-1) + scaled_gradient(t)
     xla::XlaOp momen_new = beta_1 * momen_old + scaled_gradients;
@@ -1397,8 +1389,8 @@ class XlaSparseCoreFtrlOp : public XlaSparseCoreOptimizerOpBase {
     // accumulator(t) = accumulator(t-1) + gradient(t) ^ 2
     xla::XlaOp accum_new = accum_old + gradient * gradient;
 
-    xla::XlaOp power_old = PowHack(accum_old, -learning_rate_power);
-    xla::XlaOp power_new = PowHack(accum_new, -learning_rate_power);
+    xla::XlaOp power_old = Pow(accum_old, -learning_rate_power);
+    xla::XlaOp power_new = Pow(accum_new, -learning_rate_power);
     xla::XlaOp delta_p = power_new - power_old;
 
     xla::XlaOp two = xla::ConstantR0(builder, 2.0f);

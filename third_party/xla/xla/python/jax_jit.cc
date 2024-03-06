@@ -1,4 +1,4 @@
-/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2020 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -42,6 +42,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/types/span.h"
+#include "third_party/nanobind/include/nanobind/nanobind.h"
 #include "pybind11/cast.h"  // from @pybind11
 #include "pybind11/pybind11.h"  // from @pybind11
 #include "pybind11/pytypes.h"  // from @pybind11
@@ -56,6 +57,7 @@ limitations under the License.
 
 namespace jax {
 
+namespace nb = nanobind;
 namespace py = pybind11;
 
 // TODO(phawkins): Add support for Tracers.
@@ -245,7 +247,8 @@ xla::Status ParseArguments(absl::Span<PyObject* const> positional_args,
       arguments.signature.dynamic_arg_treedefs.emplace_back(pytree_registry);
       xla::PyTreeDef& pytree_def =
           arguments.signature.dynamic_arg_treedefs.back();
-      pytree_def.Flatten(positional_args[i], arguments.flat_dynamic_args);
+      pytree_def.Flatten(nb::handle(positional_args[i]),
+                         arguments.flat_dynamic_args);
     }
   } else {
     arguments.signature.dynamic_arg_treedefs.reserve(positional_args.size());
@@ -307,11 +310,12 @@ xla::Status ParseArguments(absl::Span<PyObject* const> positional_args,
         arguments.signature.dynamic_arg_treedefs.emplace_back(pytree_registry);
         xla::PyTreeDef& pytree_def =
             arguments.signature.dynamic_arg_treedefs.back();
-        pytree_def.Flatten(kwargs[i].second, arguments.flat_dynamic_args);
+        pytree_def.Flatten(nb::handle(kwargs[i].second.ptr()),
+                           arguments.flat_dynamic_args);
       }
     }
   }
-  return ::tsl::OkStatus();
+  return absl::OkStatus();
 }
 
 void BuildJaxjitSubmodule(py::module& m) {

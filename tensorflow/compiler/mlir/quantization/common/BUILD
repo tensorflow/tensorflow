@@ -7,6 +7,7 @@ package(
     # By default, these targets should only be used within the quantization library.
     default_visibility = [
         "//learning/brain/mlir/quantization:__subpackages__",
+        "//tensorflow/compiler/mlir/lite:__subpackages__",
         "//tensorflow/compiler/mlir/quantization:__subpackages__",
     ],
     licenses = ["notice"],
@@ -29,8 +30,8 @@ cc_library(
     hdrs = ["lift_as_function_call.h"],
     compatible_with = get_compatible_with_portable(),
     deps = [
-        "//tensorflow/compiler/mlir/lite/quantization:quantization_lib",
         "//tensorflow/compiler/mlir/quantization/common:attrs_and_constraints",
+        "//tensorflow/compiler/mlir/quantization/common/quantization_lib",
         "//tensorflow/compiler/mlir/quantization/stablehlo:stablehlo_type_utils",
         "//tensorflow/compiler/mlir/quantization/tensorflow/cc:quantization_unit_loc",
         "//tensorflow/compiler/mlir/tensorflow",
@@ -51,6 +52,7 @@ tf_cc_test(
     name = "lift_as_function_call_test",
     srcs = ["lift_as_function_call_test.cc"],
     deps = [
+        ":func",
         ":lift_as_function_call",
         ":test_base",
         "//tensorflow/compiler/mlir/tensorflow",
@@ -65,14 +67,44 @@ tf_cc_test(
 )
 
 cc_library(
+    name = "func",
+    srcs = ["func.cc"],
+    hdrs = ["func.h"],
+    compatible_with = get_compatible_with_portable(),
+    deps = [
+        "//tensorflow/cc/saved_model:signature_constants",
+        "//tensorflow/compiler/mlir/tensorflow:import_model",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Support",
+    ],
+)
+
+tf_cc_test(
+    name = "func_test",
+    srcs = ["func_test.cc"],
+    compatible_with = get_compatible_with_portable(),
+    deps = [
+        ":func",
+        ":test_base",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_googletest//:gtest_main",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:IR",
+    ],
+)
+
+cc_library(
     name = "test_base",
     testonly = 1,
     srcs = [],
     hdrs = ["test_base.h"],
     compatible_with = get_compatible_with_portable(),
     deps = [
+        "//tensorflow/compiler/mlir/lite:tensorflow_lite",
         "//tensorflow/compiler/mlir/lite/quantization/ir:QuantOps",
-        "//tensorflow/compiler/mlir/quantization/stablehlo/ops:stablehlo_op_quant_spec",
+        "//tensorflow/compiler/mlir/quantization/stablehlo/cc:context",
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_types",
         "//tensorflow/core:test",
@@ -97,13 +129,31 @@ cc_library(
     ],
     compatible_with = get_compatible_with_portable(),
     deps = [
-        "//tensorflow/compiler/mlir/lite/quantization:quantization_lib",
+        "//tensorflow/compiler/mlir/quantization/common/quantization_lib",
         "//tensorflow/compiler/mlir/quantization/tensorflow:quantization_options_proto_cc",
         "//tensorflow/compiler/mlir/tensorflow",
+        "//tensorflow/compiler/mlir/tensorflow:xla_call_module_attrs",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:QuantOps",
         "@llvm-project//mlir:Support",
+    ],
+)
+
+tf_cc_test(
+    name = "attrs_and_constraints_test",
+    srcs = ["attrs_and_constraints_test.cc"],
+    deps = [
+        ":attrs_and_constraints",
+        ":func",
+        ":test_base",
+        "//tensorflow/compiler/mlir/tensorflow",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_googletest//:gtest_main",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Support",
+        "@stablehlo//:stablehlo_ops",
     ],
 )
 
@@ -114,10 +164,39 @@ td_library(
     ],
     compatible_with = get_compatible_with_portable(),
     deps = [
+        ":lift_as_function_call_td_files",
         "//tensorflow/compiler/mlir/lite:tensorflow_lite_ops_td_files",
-        "//tensorflow/compiler/mlir/quantization/common:lift_as_function_call_td_files",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_ops_td_files",
         "@llvm-project//mlir:ArithOpsTdFiles",
         "@llvm-project//mlir:FuncTdFiles",
+    ],
+)
+
+cc_library(
+    name = "uniform_quantized_types",
+    srcs = ["uniform_quantized_types.cc"],
+    hdrs = ["uniform_quantized_types.h"],
+    compatible_with = get_compatible_with_portable(),
+    deps = [
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:QuantOps",
+        "@llvm-project//mlir:Support",
+    ],
+)
+
+tf_cc_test(
+    name = "uniform_quantized_types_test",
+    srcs = ["uniform_quantized_types_test.cc"],
+    deps = [
+        ":test_base",
+        ":uniform_quantized_types",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_googletest//:gtest_main",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:QuantOps",
+        "@llvm-project//mlir:Support",
+        "@stablehlo//:stablehlo_ops",
     ],
 )

@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -75,6 +75,7 @@ bool IsRemovableWhile(HloInstruction* instruction,
     if (instruction->IsDead() && computation->IsSafelyRemovable(instruction) &&
         (!instruction->IsCustomCall("Sharding") ||
          (!instruction->operand(0)->IsRoot() &&
+          instruction->operand(0)->opcode() != HloOpcode::kParameter &&
           instruction->operand(0)->user_count() == 1)) &&
         (!instruction->HasSideEffect() ||
          (remove_cross_partition_collective_ops && maybe_collective_op &&

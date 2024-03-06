@@ -965,6 +965,7 @@ class QuantizedModelTest(test.TestCase, parameterized.TestCase):
       def __init__(self):
         """Initializes a SimpleGatherAndConvModel."""
         self.embedding_w = np.random.randn(1024, 3, 4, 3).astype('f4')
+        self.embedding_w = np.minimum(np.maximum(self.embedding_w, -4), 4)
 
         self.conv_filters = np.random.uniform(
             low=-10, high=10, size=filter_shape
@@ -978,7 +979,7 @@ class QuantizedModelTest(test.TestCase, parameterized.TestCase):
       @def_function.function(
           input_signature=[
               tensor_spec.TensorSpec(
-                  shape=[1], dtype=input_type, name='input_tensor'
+                  shape=[None], dtype=input_type, name='input_tensor'
               )
           ]
       )

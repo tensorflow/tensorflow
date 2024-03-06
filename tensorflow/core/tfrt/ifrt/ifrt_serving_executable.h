@@ -31,13 +31,19 @@ limitations under the License.
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/OwningOpRef.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/tfrt/transforms/ifrt/tf2hlo.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "xla/python/ifrt/array.h"
 #include "xla/python/ifrt/client.h"
 #include "xla/python/ifrt/executable.h"
 #include "xla/python/ifrt/future.h"
+#include "xla/python/ifrt/shape.h"
+#include "xla/python/ifrt/sharding.h"
+#include "xla/xla_data.pb.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
+#include "tensorflow/core/protobuf/tpu/compile_metadata.pb.h"
+#include "tensorflow/core/tfrt/ifrt/ifrt_loaded_variable_registry.h"
 #include "tsl/concurrency/ref_count.h"
 
 namespace tensorflow {
@@ -49,11 +55,15 @@ class IfrtServingExecutable {
       absl::string_view model_name, absl::string_view signature_name,
       mlir::OwningOpRef<mlir::ModuleOp> module,
       std::shared_ptr<xla::ifrt::Client> client,
+      const Eigen::ThreadPoolDevice* thread_pool_device,
+      const IfrtLoadedVariableRegistry* ifrt_loaded_variable_registry,
       tensorflow::XlaHelpers::ShapeRepresentationFn shape_representation_fn)
       : model_name_(std::string(model_name)),
         signature_name_(std::string(signature_name)),
         module_(std::move(module)),
         ifrt_client_(std::move(client)),
+        thread_pool_device_(*thread_pool_device),
+        ifrt_loaded_variable_registry_(*ifrt_loaded_variable_registry),
         shape_representation_fn_(std::move(shape_representation_fn)) {}
 
   // Movable but not copyable.
@@ -66,12 +76,14 @@ class IfrtServingExecutable {
   absl::string_view signature_name() const { return signature_name_; }
 
   // Executes the computation.
+  // variable_arg_indices are in sorted order.
   absl::StatusOr<std::vector<tensorflow::Tensor>> Execute(
-      absl::Span<const tensorflow::Tensor> inputs);
+      absl::Span<const tensorflow::Tensor> inputs,
+      absl::Span<const int> variable_arg_indices);
 
   int num_executables() const {
     absl::MutexLock lock(&mutex_);
-    return ifrt_executables_.size();
+    return executable_bundles_.size();
   }
 
  private:
@@ -93,6 +105,11 @@ class IfrtServingExecutable {
     }
   };
 
+  struct CachedExecutableBundle {
+    std::shared_ptr<xla::ifrt::LoadedExecutable> ifrt_executable;
+    tensorflow::tpu::TPUCompileMetadataProto compile_metadata;
+  };
+
   std::string model_name_;
   std::string signature_name_;
 
@@ -100,20 +117,33 @@ class IfrtServingExecutable {
   mlir::OwningOpRef<mlir::ModuleOp> module_;
 
   std::shared_ptr<xla::ifrt::Client> ifrt_client_;
+  const Eigen::ThreadPoolDevice& thread_pool_device_;
 
+  const IfrtLoadedVariableRegistry& ifrt_loaded_variable_registry_;
   tensorflow::XlaHelpers::ShapeRepresentationFn shape_representation_fn_;
 
   mutable absl::Mutex mutex_;
-  absl::flat_hash_map<Key, xla::ifrt::Future<absl::StatusOr<
-                               std::shared_ptr<xla::ifrt::LoadedExecutable>>>>
-      ifrt_executables_ ABSL_GUARDED_BY(mutex_);
+  absl::flat_hash_map<Key,
+                      xla::ifrt::Future<absl::StatusOr<CachedExecutableBundle>>>
+      executable_bundles_ ABSL_GUARDED_BY(mutex_);
 
   absl::StatusOr<tsl::RCReference<xla::ifrt::Array>> ConvertTensorToArray(
-      const tensorflow::Tensor& tensor);
+      const tensorflow::Tensor& tensor,
+      const xla::ifrt::DeviceList& device_list,
+      const xla::OpSharding& sharding);
 
-  xla::ifrt::Future<
-      absl::StatusOr<std::shared_ptr<xla::ifrt::LoadedExecutable>>>
-  LookUpOrCreateExecutable(absl::Span<const tensorflow::Tensor> inputs);
+  xla::ifrt::Future<absl::StatusOr<CachedExecutableBundle>>
+  LookUpOrCreateExecutable(absl::Span<const DtypeAndShape> dtypes_and_shapes);
+  absl::StatusOr<IfrtServingExecutable::CachedExecutableBundle>
+  CreateExecutableSynchronously(
+      absl::Span<const DtypeAndShape> dtypes_and_shapes);
+
+  absl::StatusOr<std::unique_ptr<xla::ifrt::Sharding>> CreateSharding(
+      int num_devices, const xla::ifrt::Shape& arg_xla_shape,
+      const xla::ifrt::Shape& sharded_shapes);
+
+  std::vector<xla::ifrt::Shape> GetArgShape(
+      int arg_index, const CachedExecutableBundle& entry);
 };
 
 }  // namespace ifrt_serving

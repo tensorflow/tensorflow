@@ -1,4 +1,4 @@
-/* Copyright 2022 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2022 The OpenXLA Authors.
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 You may obtain a copy of the License at
@@ -41,9 +41,9 @@ bool IsSupportedConstantExpression(const HloInstruction* instruction) {
 
 // Perform duplication of a certain constant expression and replace the
 // original expression for a specific user.
-StatusOr<bool> DuplicateConstantExpressionPerUser(HloComputation* computation,
-                                                  HloInstruction* to_clone,
-                                                  HloInstruction* user) {
+absl::StatusOr<bool> DuplicateConstantExpressionPerUser(
+    HloComputation* computation, HloInstruction* to_clone,
+    HloInstruction* user) {
   absl::InlinedVector<std::pair<const HloInstruction*, int>, 8> worklist(
       1, std::make_pair(to_clone, 0));
   absl::InlinedVector<const HloInstruction*, 8> to_clone_vec;
@@ -94,7 +94,7 @@ StatusOr<bool> DuplicateConstantExpressionPerUser(HloComputation* computation,
 
 }  // namespace
 
-StatusOr<bool> HloConstantSplitter::Run(
+absl::StatusOr<bool> HloConstantSplitter::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   bool changed = false;

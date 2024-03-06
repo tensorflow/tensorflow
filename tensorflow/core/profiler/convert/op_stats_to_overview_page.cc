@@ -92,7 +92,7 @@ void ComputeDeviceTips(HardwareType hardware_type,
                        OverviewPageRecommendation* re) {
   absl::string_view device_name = HardwareType_Name(hardware_type);
   absl::string_view timeline_name = device_name;
-  absl::string_view op_stats_toolname = "tensorflow_stats";
+  absl::string_view op_stats_toolname = "framework_op_stats";
   if (hardware_type == tensorflow::profiler::TPU) {
     timeline_name = "TPU core";
     op_stats_toolname = "op_profile";
