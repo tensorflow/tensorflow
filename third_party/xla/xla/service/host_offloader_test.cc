@@ -270,6 +270,90 @@ ENTRY main {
   EXPECT_FALSE(HaveRemainingOffloadAnnotations(module.get()));
 }
 
+TEST_F(HostOffloaderTest, NoCopyMultipleToDevice) {
+  const std::string& hlo_string = R"(
+HloModule my_module
+ENTRY main {
+  constant = f32[] constant(0)
+  custom_call_0 = f32[] custom-call(constant), custom_call_target="PipelineForward"
+  tuple_0 = (f32[], f32[]) tuple(custom_call_0, custom_call_0)
+  opt_barrier = (f32[], f32[]) opt-barrier(tuple_0)
+  gte_0 = f32[] get-tuple-element(opt_barrier), index=0
+  custom_call_1 = f32[] custom-call(gte_0), custom_call_target="PipelineBackward"
+  gte_1 = f32[] get-tuple-element(opt_barrier), index=1
+  custom_call_2 = f32[] custom-call(gte_1), custom_call_target="PipelineBackward"
+  ROOT tuple_1 = (f32[], f32[]) tuple(custom_call_1, custom_call_2)
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunHostOffloader(module.get()));
+
+  EXPECT_TRUE(changed);
+
+  // Look for the following pattern:
+  //  constant
+  //      |
+  //    copy
+  //    |  |
+  //    tuple
+  //      |
+  // opt-barrier
+  //    /  \
+  //  gte  gte
+  //   |    |
+  //  copy copy
+  //    \  /
+  //   tuple
+  HloInstruction* constant;
+  HloInstruction* copy_to_host_1;
+  HloInstruction* copy_to_host_2;
+  HloInstruction* tuple_1;
+  HloInstruction* opt_barrier;
+  HloInstruction* gte_1;
+  HloInstruction* copy_to_device_1;
+  HloInstruction* gte_2;
+  HloInstruction* copy_to_device_2;
+  HloInstruction* tuple_2;
+  const auto constant_pattern = m::ConstantScalar(&constant, 0);
+  const auto opt_barrier_pattern = m::OptimizationBarrier(
+      &opt_barrier,
+      m::Tuple(&tuple_1, m::Copy(&copy_to_host_1, constant_pattern),
+               m::Copy(&copy_to_host_2, constant_pattern)));
+  ASSERT_THAT(module->entry_computation()->root_instruction(),
+              GmockMatch(m::Tuple(
+                  &tuple_2,
+                  m::Copy(&copy_to_device_1,
+                          m::GetTupleElement(&gte_1, opt_barrier_pattern)),
+                  m::Copy(&copy_to_device_2,
+                          m::GetTupleElement(&gte_2, opt_barrier_pattern)))));
+  TestShapeHasMemorySpace(constant->shape(), Layout::kDefaultMemorySpace);
+  TestShapeHasMemorySpace(copy_to_host_1->shape(), kHostMemorySpaceColor);
+  TestShapeHasMemorySpace(copy_to_host_2->shape(), kHostMemorySpaceColor);
+  TestShapeHasMemorySpace(ShapeUtil::GetSubshape(tuple_1->shape(), {0}),
+                          kHostMemorySpaceColor);
+  TestShapeHasMemorySpace(ShapeUtil::GetSubshape(tuple_1->shape(), {1}),
+                          kHostMemorySpaceColor);
+  TestShapeHasMemorySpace(ShapeUtil::GetSubshape(opt_barrier->shape(), {0}),
+                          kHostMemorySpaceColor);
+  TestShapeHasMemorySpace(ShapeUtil::GetSubshape(opt_barrier->shape(), {1}),
+                          kHostMemorySpaceColor);
+  TestShapeHasMemorySpace(gte_1->shape(), kHostMemorySpaceColor);
+  TestShapeHasMemorySpace(copy_to_device_1->shape(),
+                          Layout::kDefaultMemorySpace);
+  TestShapeHasMemorySpace(gte_2->shape(), kHostMemorySpaceColor);
+  TestShapeHasMemorySpace(copy_to_device_2->shape(),
+                          Layout::kDefaultMemorySpace);
+  TestShapeHasMemorySpace(ShapeUtil::GetSubshape(tuple_2->shape(), {0}),
+                          Layout::kDefaultMemorySpace);
+  TestShapeHasMemorySpace(ShapeUtil::GetSubshape(tuple_2->shape(), {1}),
+                          Layout::kDefaultMemorySpace);
+
+  EXPECT_FALSE(HaveRemainingOffloadAnnotations(module.get()));
+}
+
 TEST_F(HostOffloaderTest, NoCopyWithOptBarrierMoreElaborate) {
   const std::string& hlo_string = R"(
 HloModule jit_f, entry_computation_layout={(f32[16]{0})->f32[16]{0}}
