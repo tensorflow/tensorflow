@@ -32,6 +32,7 @@ limitations under the License.
 #include "mlir/IR/Types.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Pass/PassRegistry.h"  // from @llvm-project
+#include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/stablehlo/transforms/passes.h"
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
@@ -173,6 +174,12 @@ class FoldBroadcastInDimBeforeBinaryElementwiseOp
       return rewriter.notifyMatchFailure(
           binary_op, "Operands should have exactly one BroadcastInDim op.");
     }
+    // When the operand other than the broadcast op is not a const op, we
+    // should not fold broadcast op.
+    auto binary_op_const_operand =
+        lhs_bcast_op ? rhs.template getDefiningOp<mhlo::ConstantOp>()
+                     : lhs.template getDefiningOp<mhlo::ConstantOp>();
+    if (!binary_op_const_operand) return failure();
     auto bcast_op = lhs_bcast_op ? lhs_bcast_op : rhs_bcast_op;
     auto const_op =
         bcast_op.getOperand().template getDefiningOp<mhlo::ConstantOp>();

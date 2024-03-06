@@ -34,11 +34,24 @@ func.func @foldBroadcastInDimBeforeMulOp_bcast_dim_1D_int() -> (tensor<1x1x2x4xi
 }
 
 // CHECK-LABEL: @foldBroadcastInDimBeforeMulOp_bcast_dim_4D_int
-func.func @foldBroadcastInDimBeforeMulOp_bcast_dim_4D_int(%arg0: tensor<1x2x1x4xi32>) -> tensor<1x2x1x4xi32> {
-  // CHECK-DAG: %[[RES:.*]] = mhlo.constant dense<{{\[\[\[\[}}0, 1, 2, 3]], {{\[\[}}0, 1, 2, 3]]]]> : tensor<1x2x1x4xi32>
+func.func @foldBroadcastInDimBeforeMulOp_bcast_dim_4D_int() -> tensor<1x2x1x4xi32> {
+  // CHECK-DAG: %[[RES:.*]] = mhlo.constant dense<{{\[\[\[\[}}0, 1, 4, 9]], {{\[\[}}0, 1, 4, 9]]]]> : tensor<1x2x1x4xi32>
   %0 = mhlo.constant dense<[[[[0, 1, 2, 3]]]]> : tensor<1x1x1x4xi32>
-  %1 = "mhlo.broadcast_in_dim"(%0) {broadcast_dimensions = dense<[0, 1, 2, 3]> : tensor<4xi64>} : (tensor<1x1x1x4xi32>) -> tensor<1x2x1x4xi32>
-  // CHECK: mhlo.multiply %[[ARG0:.*]], %[[RES]] : tensor<1x2x1x4xi32>
-  %2 = mhlo.multiply %arg0, %1 : tensor<1x2x1x4xi32>
-  return %2 : tensor<1x2x1x4xi32>
+  %1 = mhlo.constant dense<[[[[0, 1, 2, 3]], [[0, 1, 2, 3]]]]> : tensor<1x2x1x4xi32>
+  %2 = "mhlo.broadcast_in_dim"(%0) {broadcast_dimensions = dense<[0, 1, 2, 3]> : tensor<4xi64>} : (tensor<1x1x1x4xi32>) -> tensor<1x2x1x4xi32>
+  %3 = mhlo.multiply %1, %2 : tensor<1x2x1x4xi32>
+  // CHECK:      return %[[RES]] : tensor<1x2x1x4xi32>
+  return %3 : tensor<1x2x1x4xi32>
+}
+
+// CHECK: @notFoldBroadcastInDimBeforeMulOpWhenArgIsNonConst_bcast_dim_1D_int(%[[ARG:.*]]: tensor<1x1x2x4xi32>) -> tensor<1x1x2x4xi32>
+func.func @notFoldBroadcastInDimBeforeMulOpWhenArgIsNonConst_bcast_dim_1D_int(%arg0: tensor<1x1x2x4xi32>) -> (tensor<1x1x2x4xi32>) {
+  // CHECK-DAG: %[[CONST:.*]] = mhlo.constant dense<{{\[}}1, 2, 3, 4]> : tensor<4xi32>
+  %cst0 = mhlo.constant dense<[1, 2, 3, 4]> : tensor<4xi32>
+  // CHECK: %[[BROADCAST:.*]] = "mhlo.broadcast_in_dim"(%[[CONST]]) {broadcast_dimensions = dense<3> : tensor<1xi64>} : (tensor<4xi32>) -> tensor<1x1x2x4xi32>
+  %0 = "mhlo.broadcast_in_dim"(%cst0) {broadcast_dimensions = dense<3> : tensor<1xi64>} : (tensor<4xi32>) -> tensor<1x1x2x4xi32>
+  // CHECK: %[[MUL:.*]] = mhlo.multiply %[[BROADCAST]], %[[ARG]] : tensor<1x1x2x4xi32>
+  %1 = mhlo.multiply %0, %arg0 : tensor<1x1x2x4xi32>
+  // CHECK:      return %[[MUL]] : tensor<1x1x2x4xi32>
+  func.return %1 : tensor<1x1x2x4xi32>
 }
