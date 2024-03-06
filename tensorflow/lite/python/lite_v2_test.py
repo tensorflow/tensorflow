@@ -1433,7 +1433,11 @@ class FromConcreteFunctionTest(lite_v2_test_util.ModelTest):
     quantized_tflite_model = quantized_converter.convert()
     self.assertIsNotNone(quantized_tflite_model)
 
-    interp = interpreter.Interpreter(model_content=quantized_tflite_model)
+    # Do not apply delegates as XNNPack converts per tensor to per channel.
+    interp = interpreter.Interpreter(
+        model_content=quantized_tflite_model,
+        experimental_op_resolver_type=interpreter.OpResolverType.BUILTIN_WITHOUT_DEFAULT_DELEGATES,
+    )
     interp.allocate_tensors()
     detail = next((
         d
