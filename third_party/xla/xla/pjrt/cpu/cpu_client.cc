@@ -800,7 +800,7 @@ absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>> TfrtCpuClient::Compile(
   TF_RETURN_IF_ERROR(MlirToXlaComputation(
       module, xla_computation,
       /*use_tuple_args=*/options.parameter_is_tupled_arguments,
-      /*return_tuple=*/false, /*legalize_sparse_ops=*/true));
+      /*return_tuple=*/false));
   return Compile(xla_computation, options);
 }
 
