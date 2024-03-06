@@ -132,6 +132,8 @@ enum OpSet {
 
 // Defines various calibration options.
 // NEXT ID: 3
+// TODO(b/326751656): remove after all the dependencies moved to
+// stableho.quantization.CalibrationOptions.
 message CalibrationOptions {
   // Configurations for calibration methods.
   // NEXT ID: 7
@@ -302,7 +304,7 @@ message QuantizationOptions {
   // Defines calibration options for quantization. This option is only used for
   // activation of static range quantization (SRQ). Quantization calibration
   // method is set to MIN_MAX by default.
-  CalibrationOptions calibration_options = 15;
+  stablehlo.quantization.CalibrationOptions calibration_options = 15;
 
   // Configuration related to quantization debugger.
   DebuggerOptions debugger_options = 16;

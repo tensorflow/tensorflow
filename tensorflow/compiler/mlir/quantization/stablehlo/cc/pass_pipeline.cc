@@ -27,11 +27,11 @@ limitations under the License.
 
 namespace mlir::quant::stablehlo {
 
+using ::stablehlo::quantization::CalibrationOptions;
 using ::stablehlo::quantization::DebuggerConfig;
 using ::stablehlo::quantization::PipelineConfig;
 using ::stablehlo::quantization::QuantizationSpecs;
 using ::stablehlo::quantization::StaticRangePtqPreset;
-using ::tensorflow::quantization::CalibrationOptions;
 
 void AddPreCalibrationPasses(OpPassManager& pm,
                              const CalibrationOptions& calibration_options,

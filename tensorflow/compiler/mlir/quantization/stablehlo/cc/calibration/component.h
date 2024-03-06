@@ -54,8 +54,7 @@ class CalibrationComponent : public Component {
   // `tags`, `signature_def_map`, and `signature_keys` are required to properly
   // save and load the module_op to and from SavedModel.
   // `representative_dataset_file_map` contains information about the
-  // calibration dataset, and `calibration_options` configures the calibration
-  // behavior.
+  // calibration dataset.
   CalibrationComponent(
       absl::Nonnull<MLIRContext*> ctx,
       absl::Nonnull<const tensorflow::quantization::PyFunctionLibrary*>
@@ -65,8 +64,7 @@ class CalibrationComponent : public Component {
       std::unordered_set<std::string> tags,
       absl::flat_hash_map<std::string, tensorflow::SignatureDef>
           signature_def_map,
-      std::vector<std::string> signature_keys,
-      const tensorflow::quantization::CalibrationOptions& calibration_options);
+      std::vector<std::string> signature_keys);
 
   // Runs calibration on `module_op` and returns a calibrated ModuleOp with
   // calibrated statistics embedded.
@@ -109,9 +107,6 @@ class CalibrationComponent : public Component {
 
   // Signature keys to identify the functions to load & quantize.
   const std::vector<std::string> signature_keys_;
-
-  // Configures the calibration behavior.
-  const tensorflow::quantization::CalibrationOptions calibration_options_;
 };
 
 }  // namespace mlir::quant::stablehlo

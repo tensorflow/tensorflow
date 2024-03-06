@@ -37,6 +37,17 @@ limitations under the License.
 
 namespace mlir::quant::stablehlo {
 
+using ::stablehlo::quantization::CalibrationOptions;
+
+// Create default configuration for the calibration step, which is the min/max
+// calibration method.
+inline CalibrationOptions GetDefaultCalibrationOptions() {
+  CalibrationOptions options{};
+  options.set_calibration_method(
+      CalibrationOptions::CALIBRATION_METHOD_MIN_MAX);
+  return options;
+}
+
 // Component for static-range post-training quantization (PTQ).
 // TODO: b/320607042 - Add tests in python level.
 class StaticRangePtqComponent : public Component {
@@ -93,7 +104,7 @@ class StaticRangePtqComponent : public Component {
 absl::Status QuantizeStaticRangePtq(
     absl::string_view src_saved_model_path,
     absl::string_view dst_saved_model_path,
-    const ::stablehlo::quantization::QuantizationConfig& quantization_config,
+    ::stablehlo::quantization::QuantizationConfig quantization_config,
     const std::vector<std::string>& signature_keys,
     const absl::flat_hash_map<std::string, tensorflow::SignatureDef>&
         signature_def_map,

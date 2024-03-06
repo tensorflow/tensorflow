@@ -35,7 +35,6 @@ namespace mlir::quant::stablehlo {
 namespace {
 
 using ::stablehlo::quantization::QuantizationConfig;
-using ::tensorflow::quantization::CalibrationOptions;
 using ::testing::Contains;
 using ::testing::SizeIs;
 using ::testing::StartsWith;
@@ -66,7 +65,7 @@ using PreCalibrationComponentTest = ::mlir::quant::QuantizationTestBase;
 
 TEST_F(PreCalibrationComponentTest,
        HasCustomAggregatorOpAndQuantizableFuncForSimpleDotGeneral) {
-  PreCalibrationComponent component(ctx_.get(), CalibrationOptions());
+  PreCalibrationComponent component(ctx_.get());
   OwningOpRef<ModuleOp> module_op = ParseModuleOpString(R"mlir(
     module attributes {} {
       func.func @main(%arg0: tensor<1x4xf32>) -> tensor<1x3xf32> attributes {} {
