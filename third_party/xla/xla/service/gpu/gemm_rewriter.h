@@ -31,9 +31,10 @@ namespace gpu {
 //    (kMultiply (kDot A B) alpha)
 //    (kMultiply C beta))
 //
-// where A, B, C are matrixes and `alpha` and `beta` are host constants.
-// The additional requirement is that C has no other users (otherwise,
-// it does not make sense to fuse it inside the custom call).
+// where A, B, C are matrices or vectors and `alpha` and `beta` are host
+// constants. In matrix-vector multiplication, one operand must be a matrix and
+// the other must be a vector. The additional requirement is that C has no other
+// users (otherwise, it does not make sense to fuse it inside the custom call).
 //
 // Both multiplication and addition can be avoided (equivalent to setting
 // `alpha` to one and `beta` to zero).
