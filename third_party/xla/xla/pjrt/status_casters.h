@@ -178,7 +178,7 @@ struct ValueOrThrowWrapper<xla::StatusOr<R>(Args...),
 template <typename R, typename C, typename... Args, typename F>
 struct ValueOrThrowWrapper<xla::StatusOr<R> (C::*)(Args...), F> {
   explicit ValueOrThrowWrapper(F&& f) : func(std::move(f)) {}
-  R operator()(Args... args) {
+  R operator()(Args... args) const {
     return xla::ValueOrThrow(func(std::forward<Args>(args)...));
   }
   F func;

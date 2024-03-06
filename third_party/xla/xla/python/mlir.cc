@@ -14,8 +14,10 @@ limitations under the License.
 ==============================================================================*/
 
 #include <string>
+#include <string_view>
 
 #include "mhlo/transforms/passes.h"
+#include "absl/status/statusor.h"
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/Conversion/ReconcileUnrealizedCasts/ReconcileUnrealizedCasts.h"  // from @llvm-project
 #include "mlir/Dialect/Func/Extensions/AllExtensions.h"  // from @llvm-project
@@ -24,11 +26,14 @@ limitations under the License.
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/Location.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
+#include "mlir/IR/OperationSupport.h"  // from @llvm-project
+#include "mlir/IR/OwningOpRef.h"  // from @llvm-project
 #include "mlir/Parser/Parser.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
-#include "pybind11/cast.h"  // from @pybind11
-#include "pybind11/pybind11.h"  // from @pybind11
-#include "pybind11/stl.h"  // from @pybind11
+#include "mlir/Support/LogicalResult.h"  // from @llvm-project
+#include "third_party/nanobind/include/nanobind/nanobind.h"
+#include "third_party/nanobind/include/nanobind/stl/string.h"  // IWYU pragma: keep
+#include "third_party/nanobind/include/nanobind/stl/string_view.h"  // IWYU pragma: keep
 #include "stablehlo/dialect/ChloOps.h"  // from @stablehlo
 #include "stablehlo/dialect/Serialization.h"  // from @stablehlo
 #include "stablehlo/dialect/StablehloOps.h"  // from @stablehlo
@@ -39,19 +44,18 @@ limitations under the License.
 #include "xla/pjrt/mlir_to_hlo.h"
 #include "xla/pjrt/status_casters.h"
 #include "xla/python/refine_polymorphic_shapes.h"
-#include "xla/python/types.h"
 #include "xla/service/llvm_ir/llvm_util.h"
 #include "xla/status.h"
 #include "xla/translate/hlo_to_mhlo/hlo_to_mlir_hlo.h"
 #include "tsl/platform/errors.h"
 
-namespace py = pybind11;
+namespace nb = nanobind;
 
 namespace xla {
 namespace {
 
-StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ParseModule(
-    mlir::MLIRContext* context, std::string str) {
+absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ParseModule(
+    mlir::MLIRContext* context, std::string_view str) {
   mlir::OwningOpRef<mlir::ModuleOp> module;
   context->loadDialect<mlir::func::FuncDialect>();
   context->loadDialect<mlir::mhlo::MhloDialect>();
@@ -96,7 +100,7 @@ void EnablePrintBeforeAndAfter(mlir::PassManager& pm) {
 // Exists for backwards compatibility.
 // TODO(phawkins): port remaining users of XlaComputations to use mlir::Modules
 // instead and delete this function.
-StatusOr<std::string> PyXlaComputationToMlirModule(
+absl::StatusOr<std::string> PyXlaComputationToMlirModule(
     const XlaComputation& computation, bool emit_stable_hlo) {
   mlir::MLIRContext context;
   if (VLOG_IS_ON(3)) context.disableMultithreading();
@@ -121,9 +125,8 @@ StatusOr<std::string> PyXlaComputationToMlirModule(
   return PrintModule(*module);
 }
 
-StatusOr<XlaComputation> PyMlirModuleToXlaComputation(std::string mlir_module,
-                                                      bool use_tuple_args,
-                                                      bool return_tuple) {
+absl::StatusOr<XlaComputation> PyMlirModuleToXlaComputation(
+    std::string_view mlir_module, bool use_tuple_args, bool return_tuple) {
   mlir::MLIRContext context;
   TF_ASSIGN_OR_RETURN(mlir::OwningOpRef<mlir::ModuleOp> module,
                       ParseModule(&context, mlir_module));
@@ -133,7 +136,7 @@ StatusOr<XlaComputation> PyMlirModuleToXlaComputation(std::string mlir_module,
   return computation;
 }
 
-StatusOr<std::string> PyMhloToStablehlo(std::string mlir_module) {
+absl::StatusOr<std::string> PyMhloToStablehlo(const nb::bytes& mlir_module) {
   mlir::MLIRContext context;
   if (VLOG_IS_ON(3)) context.disableMultithreading();
   // JAX can be customized in a way that involves operations from custom
@@ -143,8 +146,10 @@ StatusOr<std::string> PyMhloToStablehlo(std::string mlir_module) {
   // else unchanged.
   // In order to achieve that, we're allowing unregistered dialects here.
   context.allowUnregisteredDialects(true);
-  TF_ASSIGN_OR_RETURN(mlir::OwningOpRef<mlir::ModuleOp> module,
-                      ParseModule(&context, mlir_module));
+  TF_ASSIGN_OR_RETURN(
+      mlir::OwningOpRef<mlir::ModuleOp> module,
+      ParseModule(&context,
+                  std::string_view(mlir_module.c_str(), mlir_module.size())));
   mlir::PassManager pm(&context);
   if (VLOG_IS_ON(3)) EnablePrintBeforeAndAfter(pm);
   pm.addPass(mlir::mhlo::createHloLegalizeToStablehloPass());
@@ -154,14 +159,16 @@ StatusOr<std::string> PyMhloToStablehlo(std::string mlir_module) {
   return PrintModule(*module);
 }
 
-StatusOr<std::string> PyStablehloToMhlo(std::string mlir_module) {
+absl::StatusOr<std::string> PyStablehloToMhlo(const nb::bytes& mlir_module) {
   mlir::MLIRContext context;
   if (VLOG_IS_ON(3)) context.disableMultithreading();
   // See PyMhloToStablehlo for an explanation of why we're allowing unregistered
   // dialects here.
   context.allowUnregisteredDialects(true);
-  TF_ASSIGN_OR_RETURN(mlir::OwningOpRef<mlir::ModuleOp> module,
-                      ParseModule(&context, mlir_module));
+  TF_ASSIGN_OR_RETURN(
+      mlir::OwningOpRef<mlir::ModuleOp> module,
+      ParseModule(&context,
+                  std::string_view(mlir_module.c_str(), mlir_module.size())));
   mlir::PassManager pm(&context);
   if (VLOG_IS_ON(3)) EnablePrintBeforeAndAfter(pm);
   pm.addPass(mlir::mhlo::createStablehloLegalizeToHloPass());
@@ -171,8 +178,8 @@ StatusOr<std::string> PyStablehloToMhlo(std::string mlir_module) {
   return PrintModule(*module);
 }
 
-StatusOr<py::bytes> PySerializePortableArtifact(std::string mlir_module,
-                                                std::string target) {
+absl::StatusOr<nb::bytes> PySerializePortableArtifact(
+    std::string_view mlir_module, std::string_view target) {
   mlir::MLIRContext context;
   if (VLOG_IS_ON(3)) context.disableMultithreading();
   TF_ASSIGN_OR_RETURN(mlir::OwningOpRef<mlir::ModuleOp> module,
@@ -182,13 +189,16 @@ StatusOr<py::bytes> PySerializePortableArtifact(std::string mlir_module,
   TF_ASSIGN_OR_RETURN(
       std::string bytecode,
       SerializeUsingVersionedStablehlo(*module, target, /*inplace=*/true));
-  return py::bytes(bytecode);
+  return nb::bytes(bytecode.data(), bytecode.size());
 }
 
-StatusOr<std::string> PyDeserializePortableArtifact(std::string bytecode_str) {
+absl::StatusOr<std::string> PyDeserializePortableArtifact(
+    const nb::bytes& bytecode_str) {
   mlir::MLIRContext context;
   mlir::OwningOpRef<mlir::ModuleOp> module =
-      mlir::stablehlo::deserializePortableArtifact(bytecode_str, &context);
+      mlir::stablehlo::deserializePortableArtifact(
+          std::string_view(bytecode_str.c_str(), bytecode_str.size()),
+          &context);
   if (!module)
     return tsl::errors::InvalidArgument("Failed to deserialize StableHLO");
   return PrintModule(*module);
@@ -196,40 +206,48 @@ StatusOr<std::string> PyDeserializePortableArtifact(std::string bytecode_str) {
 
 }  // namespace
 
-void BuildMlirSubmodule(py::module& m) {
-  py::module mlir_module = m.def_submodule("mlir", "MLIR/XLA integration");
+void BuildMlirSubmodule(nb::module_& m) {
+  nb::module_ mlir_module = m.def_submodule("mlir", "MLIR/XLA integration");
 
   mlir_module.def("xla_computation_to_mlir_module",
                   xla::ValueOrThrowWrapper(PyXlaComputationToMlirModule),
-                  py::arg("computation"), py::arg("emit_stable_hlo") = true);
+                  nb::arg("computation"), nb::arg("emit_stable_hlo") = true);
   mlir_module.def("mlir_module_to_xla_computation",
                   xla::ValueOrThrowWrapper(PyMlirModuleToXlaComputation),
-                  py::arg("mlir_module"), py::arg("use_tuple_args") = false,
-                  py::arg("return_tuple") = false);
+                  nb::arg("mlir_module"), nb::arg("use_tuple_args") = false,
+                  nb::arg("return_tuple") = false);
   mlir_module.def("mhlo_to_stablehlo",
                   xla::ValueOrThrowWrapper(PyMhloToStablehlo),
-                  py::arg("mlir_module"));
+                  nb::arg("mlir_module"));
   mlir_module.def("stablehlo_to_mhlo",
                   xla::ValueOrThrowWrapper(PyStablehloToMhlo),
-                  py::arg("mlir_module"));
+                  nb::arg("mlir_module"));
+  mlir_module.def(
+      "serialize_portable_artifact",
+      [](const nb::bytes& mlir_module, std::string_view target) {
+        return xla::ValueOrThrow(PySerializePortableArtifact(
+            std::string_view(mlir_module.c_str(), mlir_module.size()), target));
+      },
+      nb::arg("mlir_module"), nb::arg("target"));
   mlir_module.def("serialize_portable_artifact",
                   xla::ValueOrThrowWrapper(PySerializePortableArtifact),
-                  py::arg("mlir_module"), py::arg("target"));
+                  nb::arg("mlir_module"), nb::arg("target"));
   mlir_module.def("deserialize_portable_artifact",
                   xla::ValueOrThrowWrapper(PyDeserializePortableArtifact),
-                  py::arg("mlir_module"));
+                  nb::arg("mlir_module"));
   mlir_module.def(
       "refine_polymorphic_shapes",
-      [](std::string mlir_module, bool enable_shape_assertions,
-         bool validate_static_shapes) -> py::bytes {
+      [](nb::bytes mlir_module, bool enable_shape_assertions,
+         bool validate_static_shapes) -> nb::bytes {
         std::string buffer;
         llvm::raw_string_ostream os(buffer);
         xla::ThrowIfError(RefinePolymorphicShapes(
-            mlir_module, os, enable_shape_assertions, validate_static_shapes));
-        return py::bytes(buffer);
+            std::string_view(mlir_module.c_str(), mlir_module.size()), os,
+            enable_shape_assertions, validate_static_shapes));
+        return nb::bytes(buffer.data(), buffer.size());
       },
-      py::arg("mlir_module"), py::arg("enable_shape_assertions") = true,
-      py::arg("validate_static_shapes") = true,
+      nb::arg("mlir_module"), nb::arg("enable_shape_assertions") = true,
+      nb::arg("validate_static_shapes") = true,
       R"(Refines the dynamic shapes for a module.
         The "main" function must have static shapes and all the
         intermediate dynamic shapes depend only on the input static

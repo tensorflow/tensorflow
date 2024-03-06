@@ -19,10 +19,12 @@ limitations under the License.
 #include <deque>
 #include <memory>
 #include <utility>
+#include <vector>
 
 #include "absl/container/inlined_vector.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
+#include "third_party/nanobind/include/nanobind/nanobind.h"
 
 namespace xla {
 
@@ -30,10 +32,10 @@ namespace nb = nanobind;
 namespace py = pybind11;
 
 PythonRefManager::ManagedPyObjects::ManagedPyObjects(
-    PythonRefManager* manager, absl::Span<pybind11::object> objects)
+    PythonRefManager* manager, absl::Span<nb::object> objects)
     : manager_(manager) {
   objects_.reserve(objects.size());
-  for (pybind11::object& object : objects) {
+  for (nb::object& object : objects) {
     objects_.push_back(std::move(object));
   }
 }
@@ -46,12 +48,30 @@ PythonRefManager::ManagedPyObjects::~ManagedPyObjects() {
 
 std::shared_ptr<PythonRefManager::ManagedPyObjects>
 PythonRefManager::ManageReference(py::object object) {
+  nb::object o = nb::steal(object.release().ptr());
   return std::make_shared<ManagedPyObjects>(this,
-                                            absl::Span<py::object>(&object, 1));
+                                            absl::Span<nb::object>(&o, 1));
 }
 
 std::shared_ptr<PythonRefManager::ManagedPyObjects>
 PythonRefManager::ManageReferences(absl::Span<py::object> objects) {
+  std::vector<nb::object> objects_to_manage;
+  objects_to_manage.reserve(objects.size());
+  for (py::object& object : objects) {
+    objects_to_manage.push_back(nb::steal(object.release().ptr()));
+  }
+  return std::make_shared<ManagedPyObjects>(this,
+                                            absl::MakeSpan(objects_to_manage));
+}
+
+std::shared_ptr<PythonRefManager::ManagedPyObjects>
+PythonRefManager::ManageReference(nb::object object) {
+  return std::make_shared<ManagedPyObjects>(this,
+                                            absl::Span<nb::object>(&object, 1));
+}
+
+std::shared_ptr<PythonRefManager::ManagedPyObjects>
+PythonRefManager::ManageReferences(absl::Span<nb::object> objects) {
   return std::make_shared<ManagedPyObjects>(this, objects);
 }
 

@@ -169,31 +169,15 @@ class PmapSharding : public XLACompatibleSharding {
 
 class GSPMDSharding : public XLACompatibleSharding {
  public:
-  GSPMDSharding(pybind11::list devices, xla::OpSharding op_sharding,
-                pybind11::object memory_kind = pybind11::none(),
-                pybind11::object device_list = pybind11::none())
-      : GSPMDSharding(
-            pybind11::tuple(devices),
-            xla::ValueOrThrow(xla::HloSharding::FromProto(op_sharding)),
-            std::move(memory_kind), std::move(device_list)) {}
-
-  GSPMDSharding(pybind11::tuple devices, xla::OpSharding op_sharding,
-                pybind11::object memory_kind = pybind11::none(),
-                pybind11::object device_list = pybind11::none())
+  GSPMDSharding(pybind11::sequence devices, xla::OpSharding op_sharding,
+                pybind11::object memory_kind, pybind11::object device_list)
       : GSPMDSharding(
             std::move(devices),
             xla::ValueOrThrow(xla::HloSharding::FromProto(op_sharding)),
             std::move(memory_kind), std::move(device_list)) {}
 
-  GSPMDSharding(pybind11::list devices, xla::HloSharding op_sharding,
-                pybind11::object memory_kind = pybind11::none(),
-                pybind11::object device_list = pybind11::none())
-      : GSPMDSharding(pybind11::tuple(devices), std::move(op_sharding),
-                      std::move(memory_kind), std::move(device_list)) {}
-
-  GSPMDSharding(pybind11::tuple devices, xla::HloSharding op_sharding,
-                pybind11::object memory_kind = pybind11::none(),
-                pybind11::object device_list = pybind11::none());
+  GSPMDSharding(pybind11::sequence devices, xla::HloSharding op_sharding,
+                pybind11::object memory_kind, pybind11::object device_list);
 
   const pybind11::tuple& devices() const { return devices_; }
   const pybind11::object& memory_kind() const { return memory_kind_; }

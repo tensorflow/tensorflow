@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "xla/python/ops.h"
 
+#include <algorithm>
+#include <cstdint>
 #include <optional>
 #include <string>
 #include <tuple>
@@ -22,8 +24,13 @@ limitations under the License.
 #include <vector>
 
 #include "absl/types/span.h"
-#include "pybind11/attr.h"  // from @pybind11
-#include "pybind11/pybind11.h"  // from @pybind11
+#include "third_party/nanobind/include/nanobind/nanobind.h"
+#include "third_party/nanobind/include/nanobind/stl/optional.h"  // IWYU pragma: keep
+#include "third_party/nanobind/include/nanobind/stl/pair.h"  // IWYU pragma: keep
+#include "third_party/nanobind/include/nanobind/stl/shared_ptr.h"  // IWYU pragma: keep
+#include "third_party/nanobind/include/nanobind/stl/string.h"  // IWYU pragma: keep
+#include "third_party/nanobind/include/nanobind/stl/tuple.h"  // IWYU pragma: keep
+#include "third_party/nanobind/include/nanobind/stl/vector.h"  // IWYU pragma: keep
 #include "xla/client/lib/approx_topk.h"
 #include "xla/client/lib/approx_topk_shape.h"
 #include "xla/client/lib/comparators.h"
@@ -36,10 +43,14 @@ limitations under the License.
 #include "xla/client/xla_builder.h"
 #include "xla/client/xla_computation.h"
 #include "xla/pjrt/status_casters.h"
+#include "xla/python/nb_absl_span.h"  // IWYU pragma: keep
+#include "xla/python/nb_helpers.h"
 #include "xla/python/types.h"
 #include "xla/xla_data.pb.h"
 
-namespace pybind11 {
+namespace nb = nanobind;
+
+namespace nanobind {
 namespace detail {
 
 // XLA protocol buffers
@@ -51,408 +62,453 @@ namespace detail {
 template <>
 struct type_caster<xla::ConvolutionDimensionNumbers> {
  public:
-  PYBIND11_TYPE_CASTER(xla::ConvolutionDimensionNumbers,
-                       _("xla::ConvolutionDimensionNumbers"));
+  NB_TYPE_CASTER_FROM_PYTHON_ONLY(
+      xla::ConvolutionDimensionNumbers,
+      const_name("xla::ConvolutionDimensionNumbers"));
 
   // PyObject -> C++ conversion.
-  bool load(handle handle, bool) {
-    value.set_input_batch_dimension(
-        getattr(handle, "input_batch_dimension").cast<int64_t>());
-    value.set_input_feature_dimension(
-        getattr(handle, "input_feature_dimension").cast<int64_t>());
-    value.set_output_batch_dimension(
-        getattr(handle, "output_batch_dimension").cast<int64_t>());
-    value.set_output_feature_dimension(
-        getattr(handle, "output_feature_dimension").cast<int64_t>());
-    value.set_kernel_input_feature_dimension(
-        getattr(handle, "kernel_input_feature_dimension").cast<int64_t>());
-    value.set_kernel_output_feature_dimension(
-        getattr(handle, "kernel_output_feature_dimension").cast<int64_t>());
-    std::vector<int64_t> dims;
-    dims = getattr(handle, "input_spatial_dimensions")
-               .cast<std::vector<int64_t>>();
-    std::copy(dims.begin(), dims.end(),
-              tsl::protobuf::RepeatedFieldBackInserter(
-                  value.mutable_input_spatial_dimensions()));
-    dims = getattr(handle, "kernel_spatial_dimensions")
-               .cast<std::vector<int64_t>>();
-    std::copy(dims.begin(), dims.end(),
-              tsl::protobuf::RepeatedFieldBackInserter(
-                  value.mutable_kernel_spatial_dimensions()));
-    dims = getattr(handle, "output_spatial_dimensions")
-               .cast<std::vector<int64_t>>();
-    std::copy(dims.begin(), dims.end(),
-              tsl::protobuf::RepeatedFieldBackInserter(
-                  value.mutable_output_spatial_dimensions()));
-    return true;
+  bool from_python(handle handle, uint8_t, cleanup_list*) {
+    try {
+      value.set_input_batch_dimension(
+          cast<int64_t>(getattr(handle, "input_batch_dimension")));
+      value.set_input_feature_dimension(
+          cast<int64_t>(getattr(handle, "input_feature_dimension")));
+      value.set_output_batch_dimension(
+          cast<int64_t>(getattr(handle, "output_batch_dimension")));
+      value.set_output_feature_dimension(
+          cast<int64_t>(getattr(handle, "output_feature_dimension")));
+      value.set_kernel_input_feature_dimension(
+          cast<int64_t>(getattr(handle, "kernel_input_feature_dimension")));
+      value.set_kernel_output_feature_dimension(
+          cast<int64_t>(getattr(handle, "kernel_output_feature_dimension")));
+      std::vector<int64_t> dims;
+      dims = cast<std::vector<int64_t>>(
+          getattr(handle, "input_spatial_dimensions"));
+      std::copy(dims.begin(), dims.end(),
+                tsl::protobuf::RepeatedFieldBackInserter(
+                    value.mutable_input_spatial_dimensions()));
+      dims = cast<std::vector<int64_t>>(
+          getattr(handle, "kernel_spatial_dimensions"));
+      std::copy(dims.begin(), dims.end(),
+                tsl::protobuf::RepeatedFieldBackInserter(
+                    value.mutable_kernel_spatial_dimensions()));
+      dims = cast<std::vector<int64_t>>(
+          getattr(handle, "output_spatial_dimensions"));
+      std::copy(dims.begin(), dims.end(),
+                tsl::protobuf::RepeatedFieldBackInserter(
+                    value.mutable_output_spatial_dimensions()));
+      return true;
+    } catch (...) {
+      return false;
+    }
   }
 };
 
 template <>
 struct type_caster<xla::DotDimensionNumbers> {
  public:
-  PYBIND11_TYPE_CASTER(xla::DotDimensionNumbers, _("xla::DotDimensionNumbers"));
+  NB_TYPE_CASTER_FROM_PYTHON_ONLY(xla::DotDimensionNumbers,
+                                  const_name("xla::DotDimensionNumbers"));
 
   // PyObject -> C++ conversion.
-  bool load(handle handle, bool) {
-    std::vector<int64_t> dims;
-    dims = getattr(handle, "lhs_contracting_dimensions")
-               .cast<std::vector<int64_t>>();
-    std::copy(dims.begin(), dims.end(),
-              tsl::protobuf::RepeatedFieldBackInserter(
-                  value.mutable_lhs_contracting_dimensions()));
-    dims = getattr(handle, "rhs_contracting_dimensions")
-               .cast<std::vector<int64_t>>();
-    std::copy(dims.begin(), dims.end(),
-              tsl::protobuf::RepeatedFieldBackInserter(
-                  value.mutable_rhs_contracting_dimensions()));
-    dims = getattr(handle, "lhs_batch_dimensions").cast<std::vector<int64_t>>();
-    std::copy(dims.begin(), dims.end(),
-              tsl::protobuf::RepeatedFieldBackInserter(
-                  value.mutable_lhs_batch_dimensions()));
-    dims = getattr(handle, "rhs_batch_dimensions").cast<std::vector<int64_t>>();
-    std::copy(dims.begin(), dims.end(),
-              tsl::protobuf::RepeatedFieldBackInserter(
-                  value.mutable_rhs_batch_dimensions()));
-    return true;
+  bool from_python(handle handle, uint8_t flags, cleanup_list*) noexcept {
+    try {
+      std::vector<int64_t> dims = cast<std::vector<int64_t>>(
+          getattr(handle, "lhs_contracting_dimensions"));
+      std::copy(dims.begin(), dims.end(),
+                tsl::protobuf::RepeatedFieldBackInserter(
+                    value.mutable_lhs_contracting_dimensions()));
+      dims = cast<std::vector<int64_t>>(
+          getattr(handle, "rhs_contracting_dimensions"));
+      std::copy(dims.begin(), dims.end(),
+                tsl::protobuf::RepeatedFieldBackInserter(
+                    value.mutable_rhs_contracting_dimensions()));
+      dims =
+          cast<std::vector<int64_t>>(getattr(handle, "lhs_batch_dimensions"));
+      std::copy(dims.begin(), dims.end(),
+                tsl::protobuf::RepeatedFieldBackInserter(
+                    value.mutable_lhs_batch_dimensions()));
+      dims =
+          cast<std::vector<int64_t>>(getattr(handle, "rhs_batch_dimensions"));
+      std::copy(dims.begin(), dims.end(),
+                tsl::protobuf::RepeatedFieldBackInserter(
+                    value.mutable_rhs_batch_dimensions()));
+      return true;
+    } catch (...) {
+      return false;
+    }
   }
 };
 
 template <>
 struct type_caster<xla::GatherDimensionNumbers> {
  public:
-  PYBIND11_TYPE_CASTER(xla::GatherDimensionNumbers,
-                       _("xla::GatherDimensionNumbers"));
+  NB_TYPE_CASTER_FROM_PYTHON_ONLY(xla::GatherDimensionNumbers,
+                                  const_name("xla::GatherDimensionNumbers"));
 
   // PyObject -> C++ conversion.
-  bool load(handle handle, bool) {
-    std::vector<int64_t> dims;
-    dims = getattr(handle, "offset_dims").cast<std::vector<int64_t>>();
-    std::copy(
-        dims.begin(), dims.end(),
-        tsl::protobuf::RepeatedFieldBackInserter(value.mutable_offset_dims()));
-    dims = getattr(handle, "collapsed_slice_dims").cast<std::vector<int64_t>>();
-    std::copy(dims.begin(), dims.end(),
-              tsl::protobuf::RepeatedFieldBackInserter(
-                  value.mutable_collapsed_slice_dims()));
-    dims = getattr(handle, "start_index_map").cast<std::vector<int64_t>>();
-    std::copy(dims.begin(), dims.end(),
-              tsl::protobuf::RepeatedFieldBackInserter(
-                  value.mutable_start_index_map()));
-    value.set_index_vector_dim(
-        getattr(handle, "index_vector_dim").cast<int64_t>());
-    return true;
+  bool from_python(handle handle, uint8_t, cleanup_list*) {
+    try {
+      std::vector<int64_t> dims;
+      dims = cast<std::vector<int64_t>>(getattr(handle, "offset_dims"));
+      std::copy(dims.begin(), dims.end(),
+                tsl::protobuf::RepeatedFieldBackInserter(
+                    value.mutable_offset_dims()));
+      dims =
+          cast<std::vector<int64_t>>(getattr(handle, "collapsed_slice_dims"));
+      std::copy(dims.begin(), dims.end(),
+                tsl::protobuf::RepeatedFieldBackInserter(
+                    value.mutable_collapsed_slice_dims()));
+      dims = cast<std::vector<int64_t>>(getattr(handle, "start_index_map"));
+      std::copy(dims.begin(), dims.end(),
+                tsl::protobuf::RepeatedFieldBackInserter(
+                    value.mutable_start_index_map()));
+      value.set_index_vector_dim(
+          cast<int64_t>(getattr(handle, "index_vector_dim")));
+      return true;
+    } catch (...) {
+      return false;
+    }
   }
 };
 
 template <>
 struct type_caster<xla::ScatterDimensionNumbers> {
  public:
-  PYBIND11_TYPE_CASTER(xla::ScatterDimensionNumbers,
-                       _("xla::ScatterDimensionNumbers"));
+  NB_TYPE_CASTER_FROM_PYTHON_ONLY(xla::ScatterDimensionNumbers,
+                                  const_name("xla::ScatterDimensionNumbers"));
 
   // PyObject -> C++ conversion.
-  bool load(handle handle, bool) {
-    std::vector<int64_t> dims;
-    dims = getattr(handle, "update_window_dims").cast<std::vector<int64_t>>();
-    std::copy(dims.begin(), dims.end(),
-              tsl::protobuf::RepeatedFieldBackInserter(
-                  value.mutable_update_window_dims()));
-    dims = getattr(handle, "inserted_window_dims").cast<std::vector<int64_t>>();
-    std::copy(dims.begin(), dims.end(),
-              tsl::protobuf::RepeatedFieldBackInserter(
-                  value.mutable_inserted_window_dims()));
-    dims = getattr(handle, "scatter_dims_to_operand_dims")
-               .cast<std::vector<int64_t>>();
-    std::copy(dims.begin(), dims.end(),
-              tsl::protobuf::RepeatedFieldBackInserter(
-                  value.mutable_scatter_dims_to_operand_dims()));
-    value.set_index_vector_dim(
-        getattr(handle, "index_vector_dim").cast<int64_t>());
-    return true;
+  bool from_python(handle handle, uint8_t, cleanup_list*) {
+    try {
+      std::vector<int64_t> dims;
+      dims = cast<std::vector<int64_t>>(getattr(handle, "update_window_dims"));
+      std::copy(dims.begin(), dims.end(),
+                tsl::protobuf::RepeatedFieldBackInserter(
+                    value.mutable_update_window_dims()));
+      dims =
+          cast<std::vector<int64_t>>(getattr(handle, "inserted_window_dims"));
+      std::copy(dims.begin(), dims.end(),
+                tsl::protobuf::RepeatedFieldBackInserter(
+                    value.mutable_inserted_window_dims()));
+      dims = cast<std::vector<int64_t>>(
+          getattr(handle, "scatter_dims_to_operand_dims"));
+      std::copy(dims.begin(), dims.end(),
+                tsl::protobuf::RepeatedFieldBackInserter(
+                    value.mutable_scatter_dims_to_operand_dims()));
+      value.set_index_vector_dim(
+          cast<int64_t>(getattr(handle, "index_vector_dim")));
+      return true;
+    } catch (...) {
+      return false;
+    }
   }
 };
 
 template <>
 struct type_caster<xla::ReplicaGroup> {
  public:
-  PYBIND11_TYPE_CASTER(xla::ReplicaGroup, _("xla::ReplicaGroup"));
+  NB_TYPE_CASTER_FROM_PYTHON_ONLY(xla::ReplicaGroup,
+                                  const_name("xla::ReplicaGroup"));
 
   // PyObject -> C++ conversion.
-  bool load(handle handle, bool) {
-    std::vector<int64_t> dims;
-    dims = getattr(handle, "replica_ids").cast<std::vector<int64_t>>();
-    std::copy(
-        dims.begin(), dims.end(),
-        tsl::protobuf::RepeatedFieldBackInserter(value.mutable_replica_ids()));
-    return true;
+  bool from_python(handle handle, uint8_t, cleanup_list*) {
+    try {
+      auto dims = cast<std::vector<int64_t>>(getattr(handle, "replica_ids"));
+      std::copy(dims.begin(), dims.end(),
+                tsl::protobuf::RepeatedFieldBackInserter(
+                    value.mutable_replica_ids()));
+      return true;
+    } catch (...) {
+      return false;
+    }
   }
 };
 
 template <>
 struct type_caster<xla::PaddingConfig> {
  public:
-  PYBIND11_TYPE_CASTER(xla::PaddingConfig, _("xla::PaddingConfig"));
+  NB_TYPE_CASTER_FROM_PYTHON_ONLY(xla::PaddingConfig,
+                                  const_name("xla::PaddingConfig"));
 
   // PyObject -> C++ conversion.
-  bool load(handle handle, bool) {
-    sequence dimensions =
-        reinterpret_borrow<sequence>(getattr(handle, "dimensions"));
+  bool from_python(handle handle, uint8_t, cleanup_list*) {
+    try {
+      sequence dimensions = borrow<sequence>(getattr(handle, "dimensions"));
 
-    for (const auto& dimension : dimensions) {
-      xla::PaddingConfig::PaddingConfigDimension* config_dim =
-          value.add_dimensions();
-      config_dim->set_edge_padding_low(
-          getattr(dimension, "edge_padding_low").cast<int64_t>());
-      config_dim->set_edge_padding_high(
-          getattr(dimension, "edge_padding_high").cast<int64_t>());
-      config_dim->set_interior_padding(
-          getattr(dimension, "interior_padding").cast<int64_t>());
+      for (const auto& dimension : dimensions) {
+        xla::PaddingConfig::PaddingConfigDimension* config_dim =
+            value.add_dimensions();
+        config_dim->set_edge_padding_low(
+            cast<int64_t>(getattr(dimension, "edge_padding_low")));
+        config_dim->set_edge_padding_high(
+            cast<int64_t>(getattr(dimension, "edge_padding_high")));
+        config_dim->set_interior_padding(
+            cast<int64_t>(getattr(dimension, "interior_padding")));
+      }
+      return true;
+    } catch (...) {
+      return false;
     }
-    return true;
   }
 };
 
 template <>
 struct type_caster<xla::PrecisionConfig> {
  public:
-  PYBIND11_TYPE_CASTER(xla::PrecisionConfig, _("xla::PrecisionConfig"));
+  NB_TYPE_CASTER_FROM_PYTHON_ONLY(xla::PrecisionConfig,
+                                  const_name("xla::PrecisionConfig"));
 
   // PyObject -> C++ conversion.
-  bool load(handle handle, bool) {
-    if (handle.is_none()) {
+  bool from_python(handle handle, uint8_t, cleanup_list*) {
+    try {
+      if (handle.is_none()) {
+        return true;
+      }
+
+      sequence operand_precisions =
+          borrow<sequence>(getattr(handle, "operand_precision"));
+
+      for (const auto& operand_precision : operand_precisions) {
+        value.add_operand_precision(
+            cast<xla::PrecisionConfig::Precision>(operand_precision));
+      }
       return true;
+    } catch (...) {
+      return false;
     }
-
-    sequence operand_precisions =
-        reinterpret_borrow<sequence>(getattr(handle, "operand_precision"));
-
-    for (const auto& operand_precision : operand_precisions) {
-      value.add_operand_precision(
-          operand_precision.cast<xla::PrecisionConfig::Precision>());
-    }
-    return true;
   }
 };
 
 }  // namespace detail
-}  // namespace pybind11
+}  // namespace nanobind
 
 namespace xla {
 
-namespace py = pybind11;
-
-void BuildOpsSubmodule(py::module* m) {
+void BuildOpsSubmodule(nb::module_& m) {
   // ops submodule, containing free functions that add operators to an
   // XlaBuilder.
-  py::module ops = m->def_submodule("ops", "XLA operations");
+  nb::module_ ops = m.def_submodule("ops", "XLA operations");
 
-  py::enum_<TriangularSolveOptions::Transpose>(
+  nb::enum_<TriangularSolveOptions::Transpose>(
       ops, "TriangularSolveOptions_Transpose")
       .value("TRANSPOSE_INVALID", TriangularSolveOptions::TRANSPOSE_INVALID)
       .value("NO_TRANSPOSE", TriangularSolveOptions::NO_TRANSPOSE)
       .value("TRANSPOSE", TriangularSolveOptions::TRANSPOSE)
       .value("ADJOINT", TriangularSolveOptions::ADJOINT);
 
-  py::enum_<RandomAlgorithm>(ops, "RandomAlgorithm")
+  nb::enum_<RandomAlgorithm>(ops, "RandomAlgorithm")
       .value("RNG_DEFAULT", RandomAlgorithm::RNG_DEFAULT)
       .value("RNG_THREE_FRY", RandomAlgorithm::RNG_THREE_FRY)
       .value("RNG_PHILOX", RandomAlgorithm::RNG_PHILOX);
 
-  py::enum_<CustomCallSchedule>(ops, "CustomCallSchedule")
+  nb::enum_<CustomCallSchedule>(ops, "CustomCallSchedule")
       .value("SCHEDULE_NONE", CustomCallSchedule::SCHEDULE_NONE)
       .value("SCHEDULE_LATEST", CustomCallSchedule::SCHEDULE_LATEST)
       .value("SCHEDULE_EARLIEST", CustomCallSchedule::SCHEDULE_EARLIEST);
 
-  py::enum_<CustomCallApiVersion>(ops, "CustomCallApiVersion")
+  nb::enum_<CustomCallApiVersion>(ops, "CustomCallApiVersion")
       .value("API_VERSION_ORIGINAL", CustomCallApiVersion::API_VERSION_ORIGINAL)
       .value("API_VERSION_STATUS_RETURNING",
              CustomCallApiVersion::API_VERSION_STATUS_RETURNING)
       .value("API_VERSION_STATUS_RETURNING_UNIFIED",
              CustomCallApiVersion::API_VERSION_STATUS_RETURNING_UNIFIED);
 
-  ops.def("AfterAll", &AfterAll, py::arg("builder"), py::arg("tokens"));
-  ops.def("AllGather", &AllGather, py::arg("operand"),
-          py::arg("all_gather_dimension"), py::arg("shard_count"),
-          py::arg("replica_groups") = py::list(),
-          py::arg("channel_id") = std::nullopt,
-          py::arg("shape_with_layout") = std::nullopt,
-          py::arg("use_global_device_ids") = std::nullopt);
+  ops.def("AfterAll", &AfterAll, nb::arg("builder"), nb::arg("tokens"));
+  ops.def("AllGather", &AllGather, nb::arg("operand"),
+          nb::arg("all_gather_dimension"), nb::arg("shard_count"),
+          nb::arg("replica_groups") = nb::list(),
+          nb::arg("channel_id") = std::nullopt,
+          nb::arg("shape_with_layout") = std::nullopt,
+          nb::arg("use_global_device_ids") = std::nullopt);
   ops.def("AllReduce",
           static_cast<XlaOp (*)(
               XlaOp, const XlaComputation&, absl::Span<const ReplicaGroup>,
               const std::optional<ChannelHandle>&, const std::optional<Shape>&,
               const std::optional<bool>)>(&AllReduce),
-          py::arg("operand"), py::arg("computation"),
-          py::arg("replica_groups") = py::list(),
-          py::arg("channel_id") = std::nullopt,
-          py::arg("shape_with_layout") = std::nullopt,
-          py::arg("use_global_device_ids") = std::nullopt);
-  ops.def("ReduceScatter", &ReduceScatter, py::arg("operand"),
-          py::arg("computation"), py::arg("scatter_dimension"),
-          py::arg("shard_count"), py::arg("replica_groups") = py::list(),
-          py::arg("channel_id") = std::nullopt,
-          py::arg("layout") = std::nullopt,
-          py::arg("use_global_device_ids") = std::nullopt);
-  ops.def("AllToAll", &AllToAll, py::arg("operand"), py::arg("split_dimension"),
-          py::arg("concat_dimension"), py::arg("split_count"),
-          py::arg("replica_groups") = py::list(),
-          py::arg("layout") = std::nullopt,
-          py::arg("channel_id") = std::nullopt);
-  ops.def("ApproxTopK", &ApproxTopK, py::arg("builder"), py::arg("operands"),
-          py::arg("init_values"), py::arg("top_k"), py::arg("reduction_dim"),
-          py::arg("comparator"), py::arg("recall_target") = 0.9,
-          py::arg("aggregate_to_topk") = true,
-          py::arg("reduction_input_size_override") = -1);
-  ops.def("ApproxTopKFallback", &ApproxTopKFallback, py::arg("builder"),
-          py::arg("operands"), py::arg("init_values"), py::arg("top_k"),
-          py::arg("reduction_dim"), py::arg("comparator"),
-          py::arg("recall_target") = 0.9, py::arg("aggregate_to_topk") = true,
-          py::arg("reduction_input_size_override") = -1);
+          nb::arg("operand"), nb::arg("computation"),
+          nb::arg("replica_groups") = nb::list(),
+          nb::arg("channel_id") = std::nullopt,
+          nb::arg("shape_with_layout") = std::nullopt,
+          nb::arg("use_global_device_ids") = std::nullopt);
+  ops.def("ReduceScatter", &ReduceScatter, nb::arg("operand"),
+          nb::arg("computation"), nb::arg("scatter_dimension"),
+          nb::arg("shard_count"), nb::arg("replica_groups") = nb::list(),
+          nb::arg("channel_id") = std::nullopt,
+          nb::arg("layout") = std::nullopt,
+          nb::arg("use_global_device_ids") = std::nullopt);
+  ops.def("AllToAll", &AllToAll, nb::arg("operand"), nb::arg("split_dimension"),
+          nb::arg("concat_dimension"), nb::arg("split_count"),
+          nb::arg("replica_groups") = nb::list(),
+          nb::arg("layout") = std::nullopt,
+          nb::arg("channel_id") = std::nullopt);
+  ops.def("ApproxTopK", &ApproxTopK, nb::arg("builder"), nb::arg("operands"),
+          nb::arg("init_values"), nb::arg("top_k"), nb::arg("reduction_dim"),
+          nb::arg("comparator"), nb::arg("recall_target") = 0.9,
+          nb::arg("aggregate_to_topk") = true,
+          nb::arg("reduction_input_size_override") = -1);
+  ops.def("ApproxTopKFallback", &ApproxTopKFallback, nb::arg("builder"),
+          nb::arg("operands"), nb::arg("init_values"), nb::arg("top_k"),
+          nb::arg("reduction_dim"), nb::arg("comparator"),
+          nb::arg("recall_target") = 0.9, nb::arg("aggregate_to_topk") = true,
+          nb::arg("reduction_input_size_override") = -1);
   ops.def("ApproxTopKReductionOutputSize",
           xla::ValueOrThrowWrapper(ApproxTopKReductionOutputSize),
-          py::arg("input_size"), py::arg("rank"), py::arg("top_k"),
-          py::arg("recall_target"), py::arg("aggregate_to_topk") = true,
-          py::arg("input_size_override") = -1);
-  ops.def("BitcastConvertType", &BitcastConvertType, py::arg("operand"),
-          py::arg("new_element_type"));
-  ops.def("Broadcast", &Broadcast, py::arg("operand"), py::arg("sizes"));
-  ops.def("BroadcastInDim", &BroadcastInDim, py::arg("operand"),
-          py::arg("shape"), py::arg("broadcast_dimensions"));
-  ops.def("Call", &Call, py::arg("builder"), py::arg("computation"),
-          py::arg("operands"));
-  ops.def("Cholesky", &Cholesky, py::arg("a"), py::arg("lower") = true);
-  ops.def("Clamp", &Clamp, py::arg("min"), py::arg("operand"), py::arg("max"));
-  ops.def("Collapse", &Collapse, py::arg("operand"), py::arg("dimensions"));
-  ops.def("CollectivePermute", &CollectivePermute, py::arg("operand"),
-          py::arg("source_target_pairs"), py::arg("channel_id") = std::nullopt);
-  ops.def("ConcatInDim", &ConcatInDim, py::arg("builder"), py::arg("operands"),
-          py::arg("dimension"));
+          nb::arg("input_size"), nb::arg("rank"), nb::arg("top_k"),
+          nb::arg("recall_target"), nb::arg("aggregate_to_topk") = true,
+          nb::arg("input_size_override") = -1);
+  ops.def("BitcastConvertType", &BitcastConvertType, nb::arg("operand"),
+          nb::arg("new_element_type"));
+  ops.def("Broadcast", &Broadcast, nb::arg("operand"), nb::arg("sizes"));
+  ops.def("BroadcastInDim", &BroadcastInDim, nb::arg("operand"),
+          nb::arg("shape"), nb::arg("broadcast_dimensions"));
+  ops.def("Call", &Call, nb::arg("builder"), nb::arg("computation"),
+          nb::arg("operands"));
+  ops.def("Cholesky", &Cholesky, nb::arg("a"), nb::arg("lower") = true);
+  ops.def("Clamp", &Clamp, nb::arg("min"), nb::arg("operand"), nb::arg("max"));
+  ops.def("Collapse", &Collapse, nb::arg("operand"), nb::arg("dimensions"));
+  ops.def("CollectivePermute", &CollectivePermute, nb::arg("operand"),
+          nb::arg("source_target_pairs"), nb::arg("channel_id") = std::nullopt);
+  ops.def("ConcatInDim", &ConcatInDim, nb::arg("builder"), nb::arg("operands"),
+          nb::arg("dimension"));
   ops.def("Conditional",
           static_cast<XlaOp (*)(XlaOp, absl::Span<const XlaComputation* const>,
                                 absl::Span<const XlaOp>)>(&Conditional),
-          py::arg("branch_index"), py::arg("branch_computations"),
-          py::arg("branch_operands"));
+          nb::arg("branch_index"), nb::arg("branch_computations"),
+          nb::arg("branch_operands"));
   ops.def("Conditional",
           static_cast<XlaOp (*)(XlaOp, XlaOp, const XlaComputation&, XlaOp,
                                 const XlaComputation&)>(&Conditional),
-          py::arg("predicate"), py::arg("true_operand"),
-          py::arg("true_computation"), py::arg("false_operand"),
-          py::arg("false_computation"));
-  ops.def("Constant", &ConstantLiteral, py::arg("builder"), py::arg("literal"));
-  ops.def("ConstantLiteral", &ConstantLiteral, py::arg("builder"),
-          py::arg("literal"));
-  ops.def("ConvGeneralDilated", &ConvGeneralDilated, py::arg("lhs"),
-          py::arg("rhs"), py::arg("window_strides"), py::arg("padding"),
-          py::arg("lhs_dilation"), py::arg("rhs_dilation"),
-          py::arg("dimension_numbers"), py::arg("feature_group_count") = 1,
-          py::arg("batch_group_count") = 1,
-          py::arg("precision_config") = nullptr,
-          py::arg("preferred_element_type") = std::nullopt,
-          py::arg("window_reversal") = std::nullopt);
-  ops.def("ConvertElementType", &ConvertElementType, py::arg("operand"),
-          py::arg("new_element_type"));
-  ops.def("CreateToken", &CreateToken, py::arg("builder"));
+          nb::arg("predicate"), nb::arg("true_operand"),
+          nb::arg("true_computation"), nb::arg("false_operand"),
+          nb::arg("false_computation"));
+  ops.def("Constant", &ConstantLiteral, nb::arg("builder"), nb::arg("literal"));
+  ops.def("ConstantLiteral", &ConstantLiteral, nb::arg("builder"),
+          nb::arg("literal"));
+  ops.def("ConvGeneralDilated", &ConvGeneralDilated, nb::arg("lhs"),
+          nb::arg("rhs"), nb::arg("window_strides"), nb::arg("padding"),
+          nb::arg("lhs_dilation"), nb::arg("rhs_dilation"),
+          nb::arg("dimension_numbers"), nb::arg("feature_group_count") = 1,
+          nb::arg("batch_group_count") = 1,
+          nb::arg("precision_config") = nullptr,
+          nb::arg("preferred_element_type") = std::nullopt,
+          nb::arg("window_reversal") = std::nullopt);
+  ops.def("ConvertElementType", &ConvertElementType, nb::arg("operand"),
+          nb::arg("new_element_type"));
+  ops.def("CreateToken", &CreateToken, nb::arg("builder"));
   ops.def("CrossReplicaSum",
           static_cast<XlaOp (*)(XlaOp, absl::Span<const ReplicaGroup>)>(
               &CrossReplicaSum),
-          py::arg("operand"), py::arg("replica_groups") = py::list());
+          nb::arg("operand"), nb::arg("replica_groups") = nb::list());
   ops.def(
       "CustomCall",
-      [](XlaBuilder* builder, const py::bytes& call_target_name,
+      [](XlaBuilder* builder, const nb::bytes& call_target_name,
          absl::Span<const XlaOp> operands, const Shape& shape,
-         const py::bytes& opaque, bool has_side_effect,
+         const nb::bytes& opaque, bool has_side_effect,
          CustomCallSchedule schedule,
          CustomCallApiVersion api_version) -> XlaOp {
-        return CustomCall(builder, call_target_name, operands, shape, opaque,
-                          has_side_effect, /*output_operand_aliasing=*/{},
+        std::string call_target_name_str(call_target_name.c_str(),
+                                         call_target_name.size());
+        std::string opaque_str(opaque.c_str(), opaque.size());
+        return CustomCall(builder, call_target_name_str, operands, shape,
+                          opaque_str, has_side_effect,
+                          /*output_operand_aliasing=*/{},
                           /*literal=*/nullptr, schedule, api_version);
       },
-      py::arg("builder"), py::arg("call_target_name"), py::arg("operands"),
-      py::arg("shape"), py::arg("opaque") = py::bytes(""),
-      py::arg("has_side_effect") = false,
-      py::arg("schedule") = CustomCallSchedule::SCHEDULE_NONE,
-      py::arg("api_version") = CustomCallApiVersion::API_VERSION_ORIGINAL);
+      nb::arg("builder"), nb::arg("call_target_name"), nb::arg("operands"),
+      nb::arg("shape"), nb::arg("opaque") = nb::bytes(""),
+      nb::arg("has_side_effect") = false,
+      nb::arg("schedule") = CustomCallSchedule::SCHEDULE_NONE,
+      nb::arg("api_version") = CustomCallApiVersion::API_VERSION_ORIGINAL);
   ops.def(
       "CustomCallWithLayout",
-      [](XlaBuilder* builder, const py::bytes& call_target_name,
+      [](XlaBuilder* builder, const nb::bytes& call_target_name,
          absl::Span<const XlaOp> operands, const Shape& shape_with_layout,
          absl::Span<const Shape> operand_shapes_with_layout,
-         const py::bytes& opaque, bool has_side_effect,
+         const nb::bytes& opaque, bool has_side_effect,
          CustomCallSchedule schedule,
          CustomCallApiVersion api_version) -> XlaOp {
+        std::string call_target_name_str(call_target_name.c_str(),
+                                         call_target_name.size());
+        std::string opaque_str(opaque.c_str(), opaque.size());
         return CustomCallWithLayout(
-            builder, call_target_name, operands, shape_with_layout,
-            operand_shapes_with_layout, opaque, has_side_effect,
+            builder, call_target_name_str, operands, shape_with_layout,
+            operand_shapes_with_layout, opaque_str, has_side_effect,
             /*output_operand_aliasing=*/{},
             /*literal=*/nullptr, schedule, api_version);
       },
-      py::arg("builder"), py::arg("call_target_name"), py::arg("operands"),
-      py::arg("shape_with_layout"), py::arg("operand_shapes_with_layout"),
-      py::arg("opaque") = py::bytes(""), py::arg("has_side_effect") = false,
-      py::arg("schedule") = CustomCallSchedule::SCHEDULE_NONE,
-      py::arg("api_version") = CustomCallApiVersion::API_VERSION_ORIGINAL);
+      nb::arg("builder"), nb::arg("call_target_name"), nb::arg("operands"),
+      nb::arg("shape_with_layout"), nb::arg("operand_shapes_with_layout"),
+      nb::arg("opaque") = nb::bytes(""), nb::arg("has_side_effect") = false,
+      nb::arg("schedule") = CustomCallSchedule::SCHEDULE_NONE,
+      nb::arg("api_version") = CustomCallApiVersion::API_VERSION_ORIGINAL);
   ops.def(
       "CustomCallWithAliasing",
-      [](XlaBuilder* builder, const py::bytes& call_target_name,
+      [](XlaBuilder* builder, const nb::bytes& call_target_name,
          absl::Span<const XlaOp> operands, const Shape& shape_with_layout,
          absl::Span<const Shape> operand_shapes_with_layout,
-         const py::bytes& opaque, bool has_side_effect,
+         const nb::bytes& opaque, bool has_side_effect,
          absl::Span<const std::pair<ShapeIndex, std::pair<int64_t, ShapeIndex>>>
              output_operand_aliasing,
          const Literal* literal, CustomCallSchedule schedule,
          CustomCallApiVersion api_version) -> XlaOp {
+        std::string call_target_name_str(call_target_name.c_str(),
+                                         call_target_name.size());
+        std::string opaque_str(opaque.c_str(), opaque.size());
         return CustomCallWithLayout(
-            builder, call_target_name, operands, shape_with_layout,
-            operand_shapes_with_layout, opaque, has_side_effect,
+            builder, call_target_name_str, operands, shape_with_layout,
+            operand_shapes_with_layout, opaque_str, has_side_effect,
             output_operand_aliasing, literal, schedule, api_version);
       },
-      py::arg("builder"), py::arg("call_target_name"), py::arg("operands"),
-      py::arg("shape_with_layout"), py::arg("operand_shapes_with_layout"),
-      py::arg("opaque") = py::bytes(""), py::arg("has_side_effect") = false,
-      py::arg("output_operand_aliasing"), py::arg("literal") = nullptr,
-      py::arg("schedule") = CustomCallSchedule::SCHEDULE_NONE,
-      py::arg("api_version") = CustomCallApiVersion::API_VERSION_ORIGINAL);
+      nb::arg("builder"), nb::arg("call_target_name"), nb::arg("operands"),
+      nb::arg("shape_with_layout"), nb::arg("operand_shapes_with_layout"),
+      nb::arg("opaque") = nb::bytes(""), nb::arg("has_side_effect") = false,
+      nb::arg("output_operand_aliasing"), nb::arg("literal") = nullptr,
+      nb::arg("schedule") = CustomCallSchedule::SCHEDULE_NONE,
+      nb::arg("api_version") = CustomCallApiVersion::API_VERSION_ORIGINAL);
   ops.def(
       "CustomCallWithComputation",
-      [](XlaBuilder* builder, const std::string& call_target_name,
+      [](XlaBuilder* builder, const nb::bytes& call_target_name,
          absl::Span<const XlaOp> operands, const XlaComputation& computation,
-         const Shape& shape, const std::string& opaque, bool has_side_effect,
+         const Shape& shape, const nb::bytes& opaque, bool has_side_effect,
          absl::Span<const std::pair<ShapeIndex, std::pair<int64_t, ShapeIndex>>>
              output_operand_aliasing,
          const Literal* literal, CustomCallSchedule schedule,
          CustomCallApiVersion api_version) -> XlaOp {
+        std::string call_target_name_str(call_target_name.c_str(),
+                                         call_target_name.size());
+        std::string opaque_str(opaque.c_str(), opaque.size());
         return CustomCallWithComputation(
-            builder, call_target_name, operands, computation, shape, opaque,
-            has_side_effect, output_operand_aliasing, literal, schedule,
-            api_version);
+            builder, call_target_name_str, operands, computation, shape,
+            opaque_str, has_side_effect, output_operand_aliasing, literal,
+            schedule, api_version);
       },
-      py::arg("builder"), py::arg("call_target_name"), py::arg("operands"),
-      py::arg("computation"), py::arg("shape"),
-      py::arg("opaque") = py::bytes(""), py::arg("has_side_effect") = false,
-      py::arg("output_operand_aliasing"), py::arg("literal") = nullptr,
-      py::arg("schedule") = CustomCallSchedule::SCHEDULE_NONE,
-      py::arg("api_version") = CustomCallApiVersion::API_VERSION_ORIGINAL);
-  ops.def("Dot", &Dot, py::arg("lhs"), py::arg("rhs"),
-          py::arg("precision_config") = nullptr,
-          py::arg("preferred_element_type") = std::nullopt);
-  ops.def("DotGeneral", &DotGeneral, py::arg("lhs"), py::arg("rhs"),
-          py::arg("dimension_numbers"), py::arg("precision_config") = nullptr,
-          py::arg("preferred_element_type") = std::nullopt);
+      nb::arg("builder"), nb::arg("call_target_name"), nb::arg("operands"),
+      nb::arg("computation"), nb::arg("shape"),
+      nb::arg("opaque") = nb::bytes(""), nb::arg("has_side_effect") = false,
+      nb::arg("output_operand_aliasing"), nb::arg("literal") = nullptr,
+      nb::arg("schedule") = CustomCallSchedule::SCHEDULE_NONE,
+      nb::arg("api_version") = CustomCallApiVersion::API_VERSION_ORIGINAL);
+  ops.def("Dot", &Dot, nb::arg("lhs"), nb::arg("rhs"),
+          nb::arg("precision_config") = nullptr,
+          nb::arg("preferred_element_type") = std::nullopt);
+  ops.def("DotGeneral", &DotGeneral, nb::arg("lhs"), nb::arg("rhs"),
+          nb::arg("dimension_numbers"), nb::arg("precision_config") = nullptr,
+          nb::arg("preferred_element_type") = std::nullopt);
   ops.def("DynamicReshape",
           static_cast<XlaOp (*)(XlaOp, absl::Span<const XlaOp>,
                                 absl::Span<const int64_t>,
                                 const std::vector<bool>&)>(&DynamicReshape),
-          py::arg("operand"), py::arg("dim_sizes"), py::arg("new_size_bounds"),
-          py::arg("dims_are_dynamic"));
+          nb::arg("operand"), nb::arg("dim_sizes"), nb::arg("new_size_bounds"),
+          nb::arg("dims_are_dynamic"));
   ops.def("DynamicSlice",
           static_cast<XlaOp (*)(XlaOp, absl::Span<const XlaOp>,
                                 absl::Span<const int64_t>)>(&DynamicSlice),
-          py::arg("operand"), py::arg("start_indices"), py::arg("slice_sizes"));
+          nb::arg("operand"), nb::arg("start_indices"), nb::arg("slice_sizes"));
   ops.def("DynamicUpdateSlice",
           static_cast<XlaOp (*)(XlaOp, XlaOp, absl::Span<const XlaOp>)>(
               &DynamicUpdateSlice),
-          py::arg("operand"), py::arg("update"), py::arg("start_indices"));
+          nb::arg("operand"), nb::arg("update"), nb::arg("start_indices"));
   ops.def(
       "Eigh",
       [](XlaOp a, bool lower, int64_t max_iter, float epsilon,
@@ -461,51 +517,51 @@ void BuildOpsSubmodule(py::module* m) {
             SelfAdjointEig(a, lower, max_iter, epsilon, sort_eigenvalues);
         return std::make_pair(eigh.v, eigh.w);
       },
-      py::arg("a"), py::arg("lower") = true, py::arg("max_iter") = 15,
-      py::arg("epsilon") = 1e-5, py::arg("sort_eigenvalues") = true);
-  ops.def("Fft", &Fft, py::arg("operand"), py::arg("fft_type"),
-          py::arg("fft_length"));
-  ops.def("Gather", &Gather, py::arg("a"), py::arg("start_indices"),
-          py::arg("dimension_numbers"), py::arg("slice_sizes"),
-          py::arg("indices_are_sorted") = false);
-  ops.def("GetDimensionSize", &GetDimensionSize, py::arg("operand"),
-          py::arg("dimension"));
-  ops.def("GetTupleElement", &GetTupleElement, py::arg("tuple_data"),
-          py::arg("index"));
-  ops.def("InfeedWithToken", &InfeedWithToken, py::arg("token"),
-          py::arg("shape"), py::arg("config") = "");
+      nb::arg("a"), nb::arg("lower") = true, nb::arg("max_iter") = 15,
+      nb::arg("epsilon") = 1e-5, nb::arg("sort_eigenvalues") = true);
+  ops.def("Fft", &Fft, nb::arg("operand"), nb::arg("fft_type"),
+          nb::arg("fft_length"));
+  ops.def("Gather", &Gather, nb::arg("a"), nb::arg("start_indices"),
+          nb::arg("dimension_numbers"), nb::arg("slice_sizes"),
+          nb::arg("indices_are_sorted") = false);
+  ops.def("GetDimensionSize", &GetDimensionSize, nb::arg("operand"),
+          nb::arg("dimension"));
+  ops.def("GetTupleElement", &GetTupleElement, nb::arg("tuple_data"),
+          nb::arg("index"));
+  ops.def("InfeedWithToken", &InfeedWithToken, nb::arg("token"),
+          nb::arg("shape"), nb::arg("config") = "");
   ops.def("Iota",
           static_cast<XlaOp (*)(XlaBuilder*, const Shape&, int64_t)>(&Iota),
-          py::arg("builder"), py::arg("shape"), py::arg("iota_dimension"));
+          nb::arg("builder"), nb::arg("shape"), nb::arg("iota_dimension"));
   ops.def("Iota",
           static_cast<XlaOp (*)(XlaBuilder*, PrimitiveType, int64_t)>(&Iota),
-          py::arg("builder"), py::arg("type"), py::arg("size"));
+          nb::arg("builder"), nb::arg("type"), nb::arg("size"));
   ops.def(
       "LU",
       [](XlaOp a) -> std::tuple<XlaOp, XlaOp, XlaOp> {
         LuDecompositionResult lu = LuDecomposition(a);
         return std::make_tuple(lu.lu, lu.pivots, lu.permutation);
       },
-      py::arg("operand"));
-  ops.def("Map", &Map, py::arg("builder"), py::arg("operands"),
-          py::arg("computation"), py::arg("dimensions"),
-          py::arg("static_operands") = py::list());
-  ops.def("NextAfter", &NextAfter, py::arg("from"), py::arg("to"));
-  ops.def("OutfeedWithToken", &OutfeedWithToken, py::arg("operand"),
-          py::arg("token"), py::arg("shape_with_layout"),
-          py::arg("outfeed_config") = "");
-  ops.def("Pad", &Pad, py::arg("operand"), py::arg("padding_value"),
-          py::arg("padding_config"));
+      nb::arg("operand"));
+  ops.def("Map", &Map, nb::arg("builder"), nb::arg("operands"),
+          nb::arg("computation"), nb::arg("dimensions"),
+          nb::arg("static_operands") = nb::list());
+  ops.def("NextAfter", &NextAfter, nb::arg("from"), nb::arg("to"));
+  ops.def("OutfeedWithToken", &OutfeedWithToken, nb::arg("operand"),
+          nb::arg("token"), nb::arg("shape_with_layout"),
+          nb::arg("outfeed_config") = "");
+  ops.def("Pad", &Pad, nb::arg("operand"), nb::arg("padding_value"),
+          nb::arg("padding_config"));
   ops.def("Parameter",
           static_cast<XlaOp (*)(XlaBuilder*, int64_t, const Shape&,
                                 const std::string&, const std::vector<bool>&)>(
               &Parameter),
-          py::arg("builder"), py::arg("parameter_number"), py::arg("shape"),
-          py::arg("name") = "",
-          py::arg("replicated_at_leaf_buffers") = std::vector<bool>());
+          nb::arg("builder"), nb::arg("parameter_number"), nb::arg("shape"),
+          nb::arg("name") = "",
+          nb::arg("replicated_at_leaf_buffers") = std::vector<bool>());
   ops.def("ProductOfElementaryHouseholderReflectors",
-          &ProductOfElementaryHouseholderReflectors, py::arg("a"),
-          py::arg("taus"));
+          &ProductOfElementaryHouseholderReflectors, nb::arg("a"),
+          nb::arg("taus"));
   ops.def(
       "QR",
       [](XlaOp a, bool full_matrices) -> std::pair<XlaOp, XlaOp> {
@@ -513,24 +569,24 @@ void BuildOpsSubmodule(py::module* m) {
         QrExplicit(a, full_matrices, q, r);
         return std::make_pair(q, r);
       },
-      py::arg("operand"), py::arg("full_matrices"));
+      nb::arg("operand"), nb::arg("full_matrices"));
   ops.def(
       "QrDecomposition",
       [](XlaOp a) -> std::pair<XlaOp, XlaOp> {
         QrDecomposition d = Qr(a);
         return std::make_pair(d.q_and_r, d.taus);
       },
-      py::arg("operand"));
-  ops.def("RecvFromHost", &RecvFromHost, py::arg("token"), py::arg("shape"),
-          py::arg("handle"));
+      nb::arg("operand"));
+  ops.def("RecvFromHost", &RecvFromHost, nb::arg("token"), nb::arg("shape"),
+          nb::arg("handle"));
   ops.def("Reduce",
           static_cast<XlaOp (*)(XlaBuilder*, absl::Span<const XlaOp>,
                                 absl::Span<const XlaOp>, const XlaComputation&,
                                 absl::Span<const int64_t>)>(&Reduce),
-          py::arg("builder"), py::arg("operands"), py::arg("init_values"),
-          py::arg("computation"), py::arg("dimensions_to_reduce"));
-  ops.def("ReducePrecision", &ReducePrecision, py::arg("operand"),
-          py::arg("exponent_bits"), py::arg("mantissa_bits"));
+          nb::arg("builder"), nb::arg("operands"), nb::arg("init_values"),
+          nb::arg("computation"), nb::arg("dimensions_to_reduce"));
+  ops.def("ReducePrecision", &ReducePrecision, nb::arg("operand"),
+          nb::arg("exponent_bits"), nb::arg("mantissa_bits"));
   ops.def("ReduceWindowWithGeneralPadding",
           static_cast<XlaOp (*)(
               XlaOp, XlaOp, const XlaComputation&, absl::Span<const int64_t>,
@@ -538,10 +594,10 @@ void BuildOpsSubmodule(py::module* m) {
               absl::Span<const int64_t>,
               absl::Span<const std::pair<int64_t, int64_t>>)>(
               &ReduceWindowWithGeneralPadding),
-          py::arg("operand"), py::arg("init_value"), py::arg("computation"),
-          py::arg("window_dimensions"), py::arg("window_strides"),
-          py::arg("base_dilations"), py::arg("window_dilations"),
-          py::arg("padding"));
+          nb::arg("operand"), nb::arg("init_value"), nb::arg("computation"),
+          nb::arg("window_dimensions"), nb::arg("window_strides"),
+          nb::arg("base_dilations"), nb::arg("window_dilations"),
+          nb::arg("padding"));
   ops.def("ReduceWindowWithGeneralPadding",
           static_cast<XlaOp (*)(
               absl::Span<const XlaOp>, absl::Span<const XlaOp>,
@@ -550,59 +606,59 @@ void BuildOpsSubmodule(py::module* m) {
               absl::Span<const int64_t>,
               absl::Span<const std::pair<int64_t, int64_t>>)>(
               &ReduceWindowWithGeneralPadding),
-          py::arg("operands"), py::arg("init_values"), py::arg("computation"),
-          py::arg("window_dimensions"), py::arg("window_strides"),
-          py::arg("base_dilations"), py::arg("window_dilations"),
-          py::arg("padding"));
-  ops.def("RemoveDynamicDimension", &RemoveDynamicDimension, py::arg("operand"),
-          py::arg("dimension"));
-  ops.def("ReplicaId", &ReplicaId, py::arg("builder"));
+          nb::arg("operands"), nb::arg("init_values"), nb::arg("computation"),
+          nb::arg("window_dimensions"), nb::arg("window_strides"),
+          nb::arg("base_dilations"), nb::arg("window_dilations"),
+          nb::arg("padding"));
+  ops.def("RemoveDynamicDimension", &RemoveDynamicDimension, nb::arg("operand"),
+          nb::arg("dimension"));
+  ops.def("ReplicaId", &ReplicaId, nb::arg("builder"));
   ops.def("Reshape",
           static_cast<XlaOp (*)(XlaOp, absl::Span<const int64_t>,
                                 absl::Span<const int64_t>)>(&Reshape),
-          py::arg("operand"), py::arg("dimensions"), py::arg("new_sizes"));
+          nb::arg("operand"), nb::arg("dimensions"), nb::arg("new_sizes"));
   ops.def("Reshape",
           static_cast<XlaOp (*)(XlaOp, absl::Span<const int64_t>)>(&Reshape),
-          py::arg("operand"), py::arg("new_sizes"));
-  ops.def("Rev", &Rev, py::arg("operand"), py::arg("dimensions"));
-  ops.def("RngBitGenerator", &RngBitGenerator, py::arg("algorithm"),
-          py::arg("initial_state"), py::arg("shape"));
-  ops.def("RngNormal", &RngNormal, py::arg("mu"), py::arg("sigma"),
-          py::arg("shape"));
-  ops.def("RngUniform", &RngUniform, py::arg("a"), py::arg("b"),
-          py::arg("shape"));
+          nb::arg("operand"), nb::arg("new_sizes"));
+  ops.def("Rev", &Rev, nb::arg("operand"), nb::arg("dimensions"));
+  ops.def("RngBitGenerator", &RngBitGenerator, nb::arg("algorithm"),
+          nb::arg("initial_state"), nb::arg("shape"));
+  ops.def("RngNormal", &RngNormal, nb::arg("mu"), nb::arg("sigma"),
+          nb::arg("shape"));
+  ops.def("RngUniform", &RngUniform, nb::arg("a"), nb::arg("b"),
+          nb::arg("shape"));
   ops.def("Scatter",
           static_cast<XlaOp (*)(XlaOp, XlaOp, XlaOp, const XlaComputation&,
                                 const ScatterDimensionNumbers&, bool, bool)>(
               &Scatter),
-          py::arg("input"), py::arg("scatter_indices"), py::arg("updates"),
-          py::arg("update_computation"), py::arg("dimension_numbers"),
-          py::arg("indices_are_sorted") = false,
-          py::arg("unique_indices") = false);
+          nb::arg("input"), nb::arg("scatter_indices"), nb::arg("updates"),
+          nb::arg("update_computation"), nb::arg("dimension_numbers"),
+          nb::arg("indices_are_sorted") = false,
+          nb::arg("unique_indices") = false);
   ops.def("Scatter",
           static_cast<XlaOp (*)(absl::Span<const XlaOp>, XlaOp,
                                 absl::Span<const XlaOp>, const XlaComputation&,
                                 const ScatterDimensionNumbers&, bool, bool)>(
               &Scatter),
-          py::arg("inputs"), py::arg("scatter_indices"), py::arg("updates"),
-          py::arg("update_computation"), py::arg("dimension_numbers"),
-          py::arg("indices_are_sorted") = false,
-          py::arg("unique_indices") = false);
-  ops.def("Select", &Select, py::arg("pred"), py::arg("on_true"),
-          py::arg("on_false"));
+          nb::arg("inputs"), nb::arg("scatter_indices"), nb::arg("updates"),
+          nb::arg("update_computation"), nb::arg("dimension_numbers"),
+          nb::arg("indices_are_sorted") = false,
+          nb::arg("unique_indices") = false);
+  ops.def("Select", &Select, nb::arg("pred"), nb::arg("on_true"),
+          nb::arg("on_false"));
   ops.def("SelectAndScatterWithGeneralPadding",
-          &SelectAndScatterWithGeneralPadding, py::arg("operand"),
-          py::arg("select"), py::arg("window_dimensions"),
-          py::arg("window_strides"), py::arg("padding"), py::arg("source"),
-          py::arg("init_value"), py::arg("scatter"));
-  ops.def("SendToHost", &SendToHost, py::arg("operand"), py::arg("token"),
-          py::arg("shape_with_layout"), py::arg("handle"));
-  ops.def("SetDimensionSize", &SetDimensionSize, py::arg("operand"),
-          py::arg("val"), py::arg("dimension"));
-  ops.def("Slice", &Slice, py::arg("operand"), py::arg("start_indices"),
-          py::arg("limit_indices"), py::arg("strides"));
-  ops.def("SliceInDim", &SliceInDim, py::arg("operand"), py::arg("start_index"),
-          py::arg("limit_index"), py::arg("stride"), py::arg("dimno"));
+          &SelectAndScatterWithGeneralPadding, nb::arg("operand"),
+          nb::arg("select"), nb::arg("window_dimensions"),
+          nb::arg("window_strides"), nb::arg("padding"), nb::arg("source"),
+          nb::arg("init_value"), nb::arg("scatter"));
+  ops.def("SendToHost", &SendToHost, nb::arg("operand"), nb::arg("token"),
+          nb::arg("shape_with_layout"), nb::arg("handle"));
+  ops.def("SetDimensionSize", &SetDimensionSize, nb::arg("operand"),
+          nb::arg("val"), nb::arg("dimension"));
+  ops.def("Slice", &Slice, nb::arg("operand"), nb::arg("start_indices"),
+          nb::arg("limit_indices"), nb::arg("strides"));
+  ops.def("SliceInDim", &SliceInDim, nb::arg("operand"), nb::arg("start_index"),
+          nb::arg("limit_index"), nb::arg("stride"), nb::arg("dimno"));
   ops.def(
       "Sort",
       [](XlaBuilder* builder, absl::Span<const XlaOp> operands,
@@ -625,9 +681,9 @@ void BuildOpsSubmodule(py::module* m) {
           }
         });
       },
-      py::arg("builder"), py::arg("operands"),
-      py::arg("comparator") = std::nullopt, py::arg("dimension") = -1,
-      py::arg("is_stable") = false);
+      nb::arg("builder"), nb::arg("operands"),
+      nb::arg("comparator") = std::nullopt, nb::arg("dimension") = -1,
+      nb::arg("is_stable") = false);
   ops.def(
       "SVD",
       [](XlaOp a, int64_t max_iter,
@@ -635,28 +691,28 @@ void BuildOpsSubmodule(py::module* m) {
         auto svd = SVD(a, max_iter, epsilon);
         return std::make_tuple(svd.u, svd.d, svd.v);
       },
-      py::arg("a"), py::arg("max_iter") = 100, py::arg("epsilon") = 1e-6);
+      nb::arg("a"), nb::arg("max_iter") = 100, nb::arg("epsilon") = 1e-6);
   ops.def(
       "TopK",
       [](XlaOp input, int64_t k) {
         return TopK(input, k, /*index_type=*/PrimitiveType::S32);
       },
-      py::arg("input"), py::arg("k"));
-  ops.def("Transpose", &Transpose, py::arg("operand"), py::arg("permutation"));
-  ops.def("TriangularSolve", &TriangularSolve, py::arg("a"), py::arg("b"),
-          py::arg("left_side"), py::arg("lower"), py::arg("unit_diagonal"),
-          py::arg("transpose_a"));
-  ops.def("Tuple", &Tuple, py::arg("builder"), py::arg("elements"));
-  ops.def("While", &While, py::arg("condition"), py::arg("body"),
-          py::arg("init"));
+      nb::arg("input"), nb::arg("k"));
+  ops.def("Transpose", &Transpose, nb::arg("operand"), nb::arg("permutation"));
+  ops.def("TriangularSolve", &TriangularSolve, nb::arg("a"), nb::arg("b"),
+          nb::arg("left_side"), nb::arg("lower"), nb::arg("unit_diagonal"),
+          nb::arg("transpose_a"));
+  ops.def("Tuple", &Tuple, nb::arg("builder"), nb::arg("elements"));
+  ops.def("While", &While, nb::arg("condition"), nb::arg("body"),
+          nb::arg("init"));
 
-  ops.def("Igamma", &Igamma, py::arg("a"), py::arg("x"));
-  ops.def("Igammac", &Igammac, py::arg("a"), py::arg("x"));
-  ops.def("IgammaGradA", &IgammaGradA, py::arg("a"), py::arg("x"));
-  ops.def("RandomGammaGrad", &RandomGammaGrad, py::arg("a"), py::arg("x"));
-  ops.def("RegularizedIncompleteBeta", &RegularizedIncompleteBeta, py::arg("a"),
-          py::arg("b"), py::arg("x"));
-  ops.def("Zeta", &Zeta, py::arg("x"), py::arg("q"));
+  ops.def("Igamma", &Igamma, nb::arg("a"), nb::arg("x"));
+  ops.def("Igammac", &Igammac, nb::arg("a"), nb::arg("x"));
+  ops.def("IgammaGradA", &IgammaGradA, nb::arg("a"), nb::arg("x"));
+  ops.def("RandomGammaGrad", &RandomGammaGrad, nb::arg("a"), nb::arg("x"));
+  ops.def("RegularizedIncompleteBeta", &RegularizedIncompleteBeta, nb::arg("a"),
+          nb::arg("b"), nb::arg("x"));
+  ops.def("Zeta", &Zeta, nb::arg("x"), nb::arg("q"));
 
 #define BINARY_OP(op)                                                  \
   ops.def(                                                             \
@@ -664,8 +720,8 @@ void BuildOpsSubmodule(py::module* m) {
       [](XlaOp a, XlaOp b, std::optional<std::vector<int64_t>> dims) { \
         return dims ? op(a, b, *dims) : op(a, b);                      \
       },                                                               \
-      py::arg("lhs"), py::arg("rhs"),                                  \
-      py::arg("broadcast_dimensions") = std::nullopt)
+      nb::arg("lhs"), nb::arg("rhs"),                                  \
+      nb::arg("broadcast_dimensions") = std::nullopt)
   BINARY_OP(Eq);
   BINARY_OP(Ne);
   BINARY_OP(Ge);

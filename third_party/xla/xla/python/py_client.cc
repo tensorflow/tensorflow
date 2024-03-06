@@ -26,6 +26,7 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/types/span.h"
 #include "third_party/nanobind/include/nanobind/nanobind.h"
+#include "third_party/nanobind/include/nanobind/stl/vector.h"  // IWYU pragma: keep
 #include "xla/pjrt/exceptions.h"
 #include "xla/pjrt/mlir_to_hlo.h"
 #include "xla/pjrt/pjrt_client.h"
@@ -566,14 +567,15 @@ StatusOr<pybind11::object> PyClient::MakePythonCallbackUsingHostSendAndRecv(
 }
 
 StatusOr<std::pair<uint64_t, pybind11::object>>
-PyClient::GetEmitPythonCallbackDescriptor(
-    pybind11::function callable, absl::Span<Shape const> operand_shapes,
-    absl::Span<Shape const> result_shapes) {
+PyClient::GetEmitPythonCallbackDescriptor(pybind11::function callable,
+                                          py::object operand_shapes,
+                                          py::object result_shapes) {
   TF_ASSIGN_OR_RETURN(
       auto loaded_host_callback,
       PyCpuLoadedHostCallback::Create(
           ifrt_client(), nb::steal<nb::callable>(callable.release().ptr()),
-          operand_shapes, result_shapes));
+          nb::cast<std::vector<Shape>>(nb::handle(operand_shapes.ptr())),
+          nb::cast<std::vector<Shape>>(nb::handle(result_shapes.ptr()))));
   const uint64_t descriptor = loaded_host_callback->descriptor();
 
   py::capsule callback_capsule(loaded_host_callback.release(), [](void* ptr) {

@@ -22,6 +22,7 @@ limitations under the License.
 #include <utility>
 
 #include "absl/strings/str_cat.h"
+#include "third_party/nanobind/include/nanobind/nanobind.h"
 #include "pybind11/cast.h"  // from @pybind11
 #include "pybind11/detail/common.h"  // from @pybind11
 #include "pybind11/pybind11.h"  // from @pybind11
@@ -36,6 +37,7 @@ limitations under the License.
 
 namespace jax {
 
+namespace nb = nanobind;
 namespace py = pybind11;
 
 bool (*GetEnableMemories)() = +[] {
@@ -262,10 +264,10 @@ PmapSharding::PmapSharding(py::array devices, ShardingSpec sharding_spec)
       internal_device_list_(std::make_shared<PyDeviceList>(
           py::cast<pybind11::tuple>(devices_.attr("flat")))) {}
 
-GSPMDSharding::GSPMDSharding(py::tuple devices, xla::HloSharding op_sharding,
+GSPMDSharding::GSPMDSharding(py::sequence devices, xla::HloSharding op_sharding,
                              py::object memory_kind, py::object device_list)
     : XLACompatibleSharding(/*num_devices=*/devices.size()),
-      devices_(std::move(devices)),
+      devices_(py::tuple(devices)),
       hlo_sharding_(std::move(op_sharding)),
       memory_kind_(std::move(memory_kind)) {
   if (device_list.is_none()) {
@@ -326,24 +328,31 @@ void RegisterSharding(py::module& m) {
 
   py::class_<GSPMDSharding, XLACompatibleSharding>(m, "GSPMDSharding",
                                                    py::dynamic_attr())
-      .def(py::init<py::list, xla::OpSharding, py::object, py::object>(),
-           py::arg("devices"), py::arg("op_sharding"), py::kw_only(),
-           py::arg("memory_kind") = py::none(),
-           py::arg("_device_list") = py::none())
-      .def(py::init<py::tuple, xla::OpSharding, py::object, py::object>(),
-           py::arg("devices"), py::arg("op_sharding"), py::kw_only(),
-           py::arg("memory_kind") = py::none(),
-           py::arg("_device_list") = py::none())
-      .def(py::init<py::list, xla::HloSharding, py::object, py::object>(),
-           py::arg("devices"), py::arg("op_sharding"), py::kw_only(),
-           py::arg("memory_kind") = py::none(),
-           py::arg("_device_list") = py::none())
-      .def(py::init<py::tuple, xla::HloSharding, py::object, py::object>(),
+      .def(py::init([](py::sequence devices, py::object sharding,
+                       py::object memory_kind, py::object device_list) {
+             nb::handle nb_sharding = sharding.ptr();
+             const xla::HloSharding* hlo_sharding;
+             if (nb::try_cast<const xla::HloSharding*>(nb_sharding,
+                                                       hlo_sharding)) {
+               return std::make_unique<GSPMDSharding>(
+                   std::move(devices), *hlo_sharding, std::move(memory_kind),
+                   std::move(device_list));
+             } else {
+               return std::make_unique<GSPMDSharding>(
+                   std::move(devices), nb::cast<xla::OpSharding>(nb_sharding),
+                   std::move(memory_kind), std::move(device_list));
+             }
+           }),
            py::arg("devices"), py::arg("op_sharding"), py::kw_only(),
            py::arg("memory_kind") = py::none(),
            py::arg("_device_list") = py::none())
       .def_property_readonly("_devices", &GSPMDSharding::devices)
-      .def_property_readonly("_hlo_sharding", &GSPMDSharding::hlo_sharding)
+      .def_property_readonly(
+          "_hlo_sharding",
+          [](const GSPMDSharding& self) {
+            return py::reinterpret_steal<py::object>(
+                nb::cast(self.hlo_sharding()).release().ptr());
+          })
       .def_property_readonly("_memory_kind", &GSPMDSharding::memory_kind)
       .def_property_readonly("_internal_device_list",
                              &GSPMDSharding::internal_device_list);

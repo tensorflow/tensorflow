@@ -24,6 +24,17 @@ namespace xla {
 // TODO(phawkins): consider upstreaming this to nanobind.
 ssize_t nb_hash(nanobind::handle o);
 
+// Variant of NB_TYPE_CASTER that doesn't define from_cpp()
+#define NB_TYPE_CASTER_FROM_PYTHON_ONLY(Value_, descr)   \
+  using Value = Value_;                                  \
+  static constexpr auto Name = descr;                    \
+  template <typename T_>                                 \
+  using Cast = movable_cast_t<T_>;                       \
+  explicit operator Value*() { return &value; }          \
+  explicit operator Value&() { return (Value&)value; }   \
+  explicit operator Value&&() { return (Value&&)value; } \
+  Value value;
+
 }  // namespace xla
 
 #endif  // XLA_PYTHON_NB_HELPERS_H_

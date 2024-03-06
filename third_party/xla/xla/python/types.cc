@@ -15,25 +15,41 @@ limitations under the License.
 
 #include "xla/python/types.h"
 
-#include <complex>
+#include <cstdint>
 #include <memory>
 #include <optional>
-#include <string>
+#include <string_view>
 #include <tuple>
 #include <utility>
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/container/inlined_vector.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
+#include "absl/types/span.h"
 #include "third_party/nanobind/include/nanobind/nanobind.h"
+#include "third_party/nanobind/include/nanobind/ndarray.h"  // IWYU pragma: keep
+#include "third_party/nanobind/include/nanobind/stl/shared_ptr.h"  // IWYU pragma: keep
+#include "third_party/nanobind/include/nanobind/stl/string.h"  // IWYU pragma: keep
 #include "third_party/nanobind/include/nanobind/stl/string_view.h"  // IWYU pragma: keep
+#include "pybind11/numpy.h"  // from @pybind11
+#include "pybind11/pytypes.h"  // from @pybind11
+#include "xla/layout.h"
+#include "xla/literal.h"
 #include "xla/pjrt/exceptions.h"
 #include "xla/python/ifrt/dtype.h"
 #include "xla/python/nb_helpers.h"
 #include "xla/python/nb_numpy.h"
 #include "xla/python/pjrt_ifrt/pjrt_array.h"
+#include "xla/shape.h"
+#include "xla/shape_util.h"
 #include "xla/status_macros.h"
+#include "xla/util.h"
 #include "xla/xla_data.pb.h"
+#include "tsl/platform/logging.h"
+#include "tsl/platform/statusor.h"
+#include "tsl/python/lib/core/numpy.h"
 
 namespace xla {
 
@@ -446,18 +462,18 @@ std::vector<int64_t> StridesForShape(PrimitiveType element_type,
                                /*innermost_stride_size=*/1);
 }
 
-absl::StatusOr<py::object> LiteralToPython(
+absl::StatusOr<nb::object> LiteralToPython(
     std::shared_ptr<xla::Literal> literal) {
   xla::Literal& m = *literal;
   if (m.shape().IsTuple()) {
     std::vector<Literal> elems = m.DecomposeTuple();
-    std::vector<py::object> arrays(elems.size());
+    std::vector<nb::object> arrays(elems.size());
     for (int i = 0; i < elems.size(); ++i) {
       TF_ASSIGN_OR_RETURN(
           arrays[i],
           LiteralToPython(std::make_unique<Literal>(std::move(elems[i]))));
     }
-    py::tuple result(elems.size());
+    nb::tuple result = nb::steal<nb::tuple>(PyTuple_New(elems.size()));
     for (int i = 0; i < elems.size(); ++i) {
       PyTuple_SET_ITEM(result.ptr(), i, arrays[i].release().ptr());
     }
@@ -465,12 +481,12 @@ absl::StatusOr<py::object> LiteralToPython(
   }
   TF_RET_CHECK(m.shape().IsArray());
 
-  py::object literal_object = py::cast(literal);
-  TF_ASSIGN_OR_RETURN(py::dtype dtype,
-                      PrimitiveTypeToDtype(m.shape().element_type()));
-  return py::array(dtype, m.shape().dimensions(),
-                   ByteStridesForShape(m.shape()), m.untyped_data(),
-                   literal_object);
+  nb::object literal_object = nb::cast(literal);
+  TF_ASSIGN_OR_RETURN(nb_dtype dtype,
+                      PrimitiveTypeToNbDtype(m.shape().element_type()));
+  return nb_numpy_ndarray(dtype, m.shape().dimensions(),
+                          ByteStridesForShape(m.shape()), m.untyped_data(),
+                          literal_object);
 }
 
 template <typename IntType>
@@ -491,12 +507,9 @@ pybind11::tuple SpanToTuple(absl::Span<int64_t const> xs) {
   return IntSpanToTupleHelper(xs);
 }
 
-std::optional<CastToArrayResult> CastToArray(py::handle h) {
-  py::array array = py::array::ensure(
-      h, py::array::c_style | py::detail::npy_api::NPY_ARRAY_ALIGNED_);
-  if (!array) {
-    return std::nullopt;
-  }
+std::optional<CastToArrayResult> CastToArray(nb::handle h) {
+  auto array =
+      nb_numpy_ndarray::ensure(h, NPY_ARRAY_C_CONTIGUOUS | NPY_ARRAY_ALIGNED);
   auto type_or_status = DtypeToPrimitiveType(array.dtype());
   if (!type_or_status.ok()) {
     throw xla::XlaRuntimeError(type_or_status.status());

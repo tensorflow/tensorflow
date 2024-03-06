@@ -22,26 +22,30 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/inlined_vector.h"
+#include "absl/types/span.h"
 #include "third_party/nanobind/include/nanobind/nanobind.h"
 #include "pybind11/numpy.h"  // from @pybind11
 #include "pybind11/pybind11.h"  // from @pybind11
 #include "pybind11/pytypes.h"  // from @pybind11
 #include "pybind11/stl.h"  // from @pybind11
 #include "pybind11_abseil/absl_casters.h"  // from @pybind11_abseil
+#include "xla/layout.h"
 #include "xla/literal.h"
 #include "xla/python/ifrt/dtype.h"
 #include "xla/python/nb_numpy.h"
 #include "xla/shape.h"
+#include "xla/shape_util.h"
 #include "xla/status.h"
 #include "xla/statusor.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/protobuf.h"
 
 namespace xla {
 
 // Converts a NumPy dtype to a PrimitiveType.
 absl::StatusOr<PrimitiveType> DtypeToPrimitiveType(
     const pybind11::dtype& np_type);
+
+absl::StatusOr<PrimitiveType> DtypeToPrimitiveType(const nb_dtype& np_type);
 
 // Converts a PrimitiveType to a Numpy dtype.
 absl::StatusOr<pybind11::dtype> PrimitiveTypeToDtype(PrimitiveType type);
@@ -106,7 +110,7 @@ std::vector<int64_t> StridesForShape(PrimitiveType element_type,
 // buffers with the literals. Takes ownership of `literal` and keeps the
 // necessary pieces alive using Python reference counting.
 // Requires the GIL.
-absl::StatusOr<pybind11::object> LiteralToPython(
+absl::StatusOr<nanobind::object> LiteralToPython(
     std::shared_ptr<Literal> literal);
 
 // Converts a sequence of C++ ints to a Python tuple of ints.
@@ -124,6 +128,16 @@ template <>
 pybind11::tuple SpanToTuple(absl::Span<int const> xs);
 template <>
 pybind11::tuple SpanToTuple(absl::Span<int64_t const> xs);
+
+template <typename T>
+nanobind::tuple SpanToNbTuple(absl::Span<T const> xs) {
+  nanobind::tuple out =
+      nanobind::steal<nanobind::tuple>(PyTuple_New(xs.size()));
+  for (int i = 0; i < xs.size(); ++i) {
+    PyTuple_SET_ITEM(out.ptr(), i, nanobind::cast(xs[i]).release().ptr());
+  }
+  return out;
+}
 
 // Converts a Python iterable/sequence of T to std::vector<T>
 template <typename T>
@@ -144,15 +158,33 @@ std::vector<T> SequenceToVector(const pybind11::sequence& sequence) {
   return output;
 }
 
+template <typename T>
+std::vector<T> IterableToVector(const nanobind::iterable& iterable) {
+  std::vector<T> output;
+  for (auto item : iterable) {
+    output.push_back(nanobind::cast<T>(item));
+  }
+  return output;
+}
+template <typename T>
+std::vector<T> SequenceToVector(const nanobind::sequence& sequence) {
+  std::vector<T> output;
+  output.reserve(PySequence_Size(sequence.ptr()));
+  for (auto item : sequence) {
+    output.push_back(nanobind::cast<T>(item));
+  }
+  return output;
+}
+
 // Private helper function used in the implementation of the type caster for
 // xla::BorrowingLiteral. Converts a Python array-like object into a buffer
 // pointer and shape.
 struct CastToArrayResult {
-  pybind11::object array;  // Holds a reference to the array to keep it alive.
+  nanobind::object array;  // Holds a reference to the array to keep it alive.
   const char* buf_ptr;
   xla::Shape shape;
 };
-std::optional<CastToArrayResult> CastToArray(pybind11::handle h);
+std::optional<CastToArrayResult> CastToArray(nanobind::handle h);
 
 }  // namespace xla
 
@@ -189,6 +221,83 @@ struct type_caster<xla::BorrowingLiteral> {
       shapes.reserve(tuple.size());
       buffers.reserve(tuple.size());
       for (pybind11::handle entry : tuple) {
+        auto c = xla::CastToArray(entry.ptr());
+        if (!c) {
+          return false;
+        }
+        arrays.push_back(reinterpret_borrow<object>(c->array.ptr()));
+        buffers.push_back(c->buf_ptr);
+        shapes.push_back(c->shape);
+      }
+      value = xla::BorrowingLiteral(buffers,
+                                    xla::ShapeUtil::MakeTupleShape(shapes));
+    } else {
+      auto c = xla::CastToArray(input.ptr());
+      if (!c) {
+        return false;
+      }
+      arrays.push_back(reinterpret_borrow<object>(c->array.ptr()));
+      value = xla::BorrowingLiteral(c->buf_ptr, c->shape);
+    }
+    return true;
+  }
+};
+
+template <>
+struct type_caster<xla::LiteralSlice> {
+ public:
+  PYBIND11_TYPE_CASTER(xla::LiteralSlice, const_name("xla::LiteralSlice"));
+
+  // Pybind appears to keep type_casters alive until the callee has run.
+  type_caster<xla::BorrowingLiteral> literal_caster;
+
+  bool load(handle handle, bool convert) {
+    if (!literal_caster.load(handle, convert)) {
+      return false;
+    }
+    value = static_cast<const xla::BorrowingLiteral&>(literal_caster);
+    return true;
+  }
+};
+
+}  // namespace detail
+}  // namespace pybind11
+
+namespace nanobind {
+namespace detail {
+
+// Literals.
+// Literal data can be passed to XLA as a NumPy array; its value can be
+// cast to an xla::BorrowingLiteral or xla::LiteralSlice in a zero-copy way.
+// We don't have any literal -> numpy conversions here, since all the methods
+// that want to return arrays build Python objects directly.
+
+template <>
+struct type_caster<xla::BorrowingLiteral> {
+ public:
+  using Value = xla::BorrowingLiteral;
+  static constexpr auto Name = const_name("xla::BorrowingLiteral");  // NOLINT
+  template <typename T_>
+  using Cast = movable_cast_t<T_>;
+  explicit operator Value*() { return &value; }
+  explicit operator Value&() { return (Value&)value; }
+  explicit operator Value&&() { return (Value&&)value; }
+  Value value;
+
+  // Pybind appears to keep type_casters alive until the callee has run.
+  absl::InlinedVector<nanobind::object, 1> arrays;
+
+  bool from_python(handle input, uint8_t, cleanup_list*) {
+    // TODO(b/79707221): support nested tuples if/when XLA adds support for
+    // nested BorrowingLiterals.
+    if (nanobind::isinstance<nanobind::tuple>(input)) {
+      nanobind::tuple tuple = nanobind::borrow<nanobind::tuple>(input);
+      std::vector<xla::Shape> shapes;
+      std::vector<const char*> buffers;
+      arrays.reserve(tuple.size());
+      shapes.reserve(tuple.size());
+      buffers.reserve(tuple.size());
+      for (nanobind::handle entry : tuple) {
         auto c = xla::CastToArray(entry);
         if (!c) {
           return false;
@@ -214,21 +323,28 @@ struct type_caster<xla::BorrowingLiteral> {
 template <>
 struct type_caster<xla::LiteralSlice> {
  public:
-  PYBIND11_TYPE_CASTER(xla::LiteralSlice, _("xla::LiteralSlice"));
+  NB_TYPE_CASTER(xla::LiteralSlice, const_name("xla::LiteralSlice"));
 
   // Pybind appears to keep type_casters alive until the callee has run.
   type_caster<xla::BorrowingLiteral> literal_caster;
 
-  bool load(handle handle, bool convert) {
-    if (!literal_caster.load(handle, convert)) {
+  bool from_python(handle handle, uint8_t flags, cleanup_list* cleanup) {
+    if (!literal_caster.from_python(handle, flags, cleanup)) {
       return false;
     }
     value = static_cast<const xla::BorrowingLiteral&>(literal_caster);
     return true;
   }
+
+  static handle from_cpp(xla::LiteralSlice src, rv_policy policy,
+                         cleanup_list* cleanup) noexcept {
+    PyErr_Format(PyExc_NotImplementedError,
+                 "LiteralSlice::from_cpp not implemented");
+    return handle();
+  }
 };
 
 }  // namespace detail
-}  // namespace pybind11
+}  // namespace nanobind
 
 #endif  // XLA_PYTHON_TYPES_H_

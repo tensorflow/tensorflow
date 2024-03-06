@@ -15,8 +15,7 @@ limitations under the License.
 #include "xla/python/custom_call_sharding.h"
 
 #include <cstdint>
-#include <functional>
-#include <memory>
+#include <cstring>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -26,26 +25,30 @@ limitations under the License.
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
-#include "pybind11/pybind11.h"  // from @pybind11
-#include "pybind11/stl.h"  // from @pybind11
+#include "third_party/nanobind/include/nanobind/nanobind.h"
+#include "third_party/nanobind/include/nanobind/stl/optional.h"  // IWYU pragma: keep
+#include "third_party/nanobind/include/nanobind/stl/string.h"  // IWYU pragma: keep
+#include "third_party/nanobind/include/nanobind/stl/string_view.h"  // IWYU pragma: keep
+#include "third_party/nanobind/include/nanobind/stl/tuple.h"  // IWYU pragma: keep
+#include "third_party/nanobind/include/nanobind/stl/vector.h"  // IWYU pragma: keep
 #include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/hlo/utils/hlo_sharding_util.h"
-#include "xla/pjrt/status_casters.h"
 #include "xla/python/custom_partition_callback.h"
 #include "xla/python/inspect_sharding.h"
 #include "xla/shape.h"
 #include "xla/util.h"
-#include "tsl/platform/errors.h"
+#include "tsl/platform/logging.h"
+#include "tsl/platform/statusor.h"
 
 namespace xla {
 
-namespace py = ::pybind11;
+namespace nb = ::nanobind;
 
 class PyCustomCallPartitionerCallbacks {
  public:
-  PyCustomCallPartitionerCallbacks(py::object prop_user_sharding,
-                                   py::object partition,
-                                   py::object infer_sharding_from_operands)
+  PyCustomCallPartitionerCallbacks(nb::object prop_user_sharding,
+                                   nb::object partition,
+                                   nb::object infer_sharding_from_operands)
       : prop_user_sharding_(prop_user_sharding),
         partition_(partition),
         infer_sharding_from_operands_(infer_sharding_from_operands) {
@@ -88,28 +91,31 @@ class PyCustomCallPartitionerCallbacks {
     std::string_view backend_config = std::move(std::get<4>(args_tuple));
 
     {
-      py::gil_scoped_acquire gil;
+      nb::gil_scoped_acquire gil;
       try {
-        auto py_result = partition_(shapes, shardings, result_shape,
-                                    result_sharding, py::bytes(backend_config));
+        auto py_result =
+            partition_(shapes, shardings, result_shape, result_sharding,
+                       nb::bytes(backend_config.data(), backend_config.size()));
         try {
-          auto result = py::cast<
-              std::tuple<std::string, std::vector<HloSharding>, HloSharding>>(
+          auto [ir, arg_shardings, result_sharding] = nb::cast<
+              std::tuple<nb::bytes, std::vector<HloSharding>, HloSharding>>(
               py_result);
-          if (std::get<1>(result).size() != args->num_args) {
+          if (arg_shardings.size() != args->num_args) {
             return xla::Internal(
                 "Shardings returned from partitioning: lengths must match: %d "
                 "vs %d",
-                std::get<1>(result).size(), args->num_args);
+                arg_shardings.size(), args->num_args);
           }
-          return result;
-        } catch (const py::cast_error& e) {
+          return std::make_tuple(std::string(ir.c_str(), ir.size()),
+                                 std::move(arg_shardings),
+                                 std::move(result_sharding));
+        } catch (const nb::cast_error& e) {
           return xla::Internal(
               "Shardings returned from partitioning: expected "
               "Tuple[bytes, List[HloSharding], HloSharding] got: %s",
-              py::repr(py_result));
+              nb::cast<std::string_view>(nb::repr(py_result)));
         }
-      } catch (const pybind11::error_already_set& e) {
+      } catch (const nb::python_error& e) {
         return xla::Internal("custom_partitioner: %s", e.what());
       }
     }
@@ -128,15 +134,16 @@ class PyCustomCallPartitionerCallbacks {
     std::string_view backend_config = std::move(std::get<3>(args_tuple));
 
     std::optional<HloSharding> result;
-    py::gil_scoped_acquire gil;
+    nb::gil_scoped_acquire gil;
     try {
       auto py_result = infer_sharding_from_operands_(
-          arg_shapes, arg_shardings, result_shape, py::bytes(backend_config));
+          arg_shapes, arg_shardings, result_shape,
+          nb::bytes(backend_config.data(), backend_config.size()));
       if (py_result.is_none()) {
         return std::nullopt;
       }
-      return py::cast<HloSharding>(py_result);
-    } catch (const pybind11::error_already_set& e) {
+      return nb::cast<HloSharding>(py_result);
+    } catch (const nb::python_error& e) {
       return xla::Internal("custom_partitioner: %s", e.what());
     }
   }
@@ -151,16 +158,17 @@ class PyCustomCallPartitionerCallbacks {
     xla::Shape result_shape = std::move(std::get<1>(args_tuple));
     std::string_view backend_config = std::move(std::get<2>(args_tuple));
 
-    py::gil_scoped_acquire gil;
+    nb::gil_scoped_acquire gil;
     try {
       // TODO(parkers): expand this API to handle the `user` sharding.
       // The user is used when the custom call returns a Tuple and
       // the user is a get-tuple-element. In this case we must update only
       // part of the sharding spec.
-      auto result = py::cast<HloSharding>(prop_user_sharding_(
-          result_sharding, result_shape, py::bytes(backend_config)));
+      auto result = nb::cast<HloSharding>(prop_user_sharding_(
+          result_sharding, result_shape,
+          nb::bytes(backend_config.data(), backend_config.size())));
       return result;
-    } catch (const pybind11::error_already_set& e) {
+    } catch (const nb::python_error& e) {
       return xla::Internal("custom_partitioner: %s", e.what());
     }
   }
@@ -175,9 +183,9 @@ class PyCustomCallPartitionerCallbacks {
   }
 
   JAX_CustomCallPartitioner_Callbacks callbacks_;
-  py::object prop_user_sharding_;
-  py::object partition_;
-  py::object infer_sharding_from_operands_;
+  nb::object prop_user_sharding_;
+  nb::object partition_;
+  nb::object infer_sharding_from_operands_;
 };
 
 namespace {
@@ -188,20 +196,20 @@ void CallInspectSharding(void* obj, JAX_InspectSharding_Callback_Args* args) {
     return;
   }
   try {
-    py::gil_scoped_acquire gil;
-    py::handle(reinterpret_cast<PyObject*>(obj))(*std::move(arg));
-  } catch (const pybind11::error_already_set& e) {
+    nb::gil_scoped_acquire gil;
+    nb::handle(reinterpret_cast<PyObject*>(obj))(*std::move(arg));
+  } catch (const nb::python_error& e) {
     jax::InspectShardingSetError(args, std::string(e.what()));
   }
 }
 
 }  // namespace
 
-void BuildCustomCallShardingPybindAPI(pybind11::module& m) {
+void BuildCustomCallShardingPybindAPI(nb::module_& m) {
   m.def(
       "register_custom_call_partitioner",
-      [](std::string name, py::object prop_user_sharding, py::object partition,
-         py::object infer_sharding_from_operands,
+      [](std::string name, nb::object prop_user_sharding, nb::object partition,
+         nb::object infer_sharding_from_operands,
          bool can_side_effecting_have_replicated_sharding) {
         auto* c_fns =
             (new PyCustomCallPartitionerCallbacks(prop_user_sharding, partition,
@@ -226,20 +234,20 @@ Args:
   can_side_effecting_have_replicated_sharding: Side effecting ops are not
      allowed to have replicated sharding. Pass true to disable this check.
 )",
-      py::arg("name"), py::arg("prop_user_sharding"), py::arg("partition"),
-      py::arg("infer_sharding_from_operands"),
-      py::arg("can_side_effecting_have_replicated_sharding") = false);
+      nb::arg("name"), nb::arg("prop_user_sharding"), nb::arg("partition"),
+      nb::arg("infer_sharding_from_operands"),
+      nb::arg("can_side_effecting_have_replicated_sharding") = false);
   m.def("encode_inspect_sharding_callback",
-        [](py::object handler) -> py::bytes {
+        [](nb::object handler) -> nb::bytes {
           JAX_InspectSharding_Callback cb;
           cb.call = &CallInspectSharding;
           cb.data = handler.ptr();
           char bytes[sizeof(JAX_InspectSharding_Callback)];
-          memcpy(&bytes, &cb, sizeof(JAX_InspectSharding_Callback));
-          return py::bytes(bytes, sizeof(JAX_InspectSharding_Callback));
+          std::memcpy(&bytes, &cb, sizeof(JAX_InspectSharding_Callback));
+          return nb::bytes(bytes, sizeof(JAX_InspectSharding_Callback));
         });
 
-  py::module hlo_sharding_util_m = m.def_submodule(
+  nb::module_ hlo_sharding_util_m = m.def_submodule(
       "hlo_sharding_util", "Utilities for manipulating HloSharding.");
   hlo_sharding_util_m.def(
       "PartiallyReplicateTiledShardingOnDims",

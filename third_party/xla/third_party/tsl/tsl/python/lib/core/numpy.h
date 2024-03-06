@@ -37,6 +37,7 @@ limitations under the License.
 // clang-format on
 
 #include "numpy/arrayobject.h"  // IWYU pragma: export
+#include "numpy/npy_common.h"   // IWYU pragma: export
 #include "numpy/ufuncobject.h"  // IWYU pragma: export
 
 namespace tsl {
