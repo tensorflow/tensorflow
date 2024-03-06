@@ -17,13 +17,13 @@ limitations under the License.
 #define TENSORFLOW_LITE_DELEGATES_XNNPACK_BATCH_MATRIX_MULTIPLY_TESTER_H_
 
 #include <cstdint>
+#include <initializer_list>
 #include <vector>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/delegates/xnnpack/xnnpack_delegate.h"
-#include "tensorflow/lite/schema/schema_generated.h"
 
 namespace tflite {
 namespace xnnpack {

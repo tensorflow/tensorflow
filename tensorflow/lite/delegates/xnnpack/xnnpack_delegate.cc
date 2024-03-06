@@ -3051,123 +3051,33 @@ class Subgraph {
         delegate, logging_context, input1_tensor, node->inputs->data[0],
         node_index));
     TF_LITE_ENSURE_STATUS(CheckTensorNonDynamicAllocation(
-        delegate, logging_context, input1_tensor, node->inputs->data[1],
+        delegate, logging_context, input2_tensor, node->inputs->data[1],
         node_index));
-    const int input1_dimensions = NumDimensions(&input1_tensor);
-    if (input1_dimensions < 3) {
+    const int num_dims_a = NumDimensions(&input1_tensor);
+    if (num_dims_a < 2) {
       TF_LITE_MAYBE_KERNEL_LOG(
           logging_context,
           "failed to delegate %s node #%d. Unsupported number "
-          "of dimensions %d for tensor #%d, must be at least 3",
+          "of dimensions %d for tensor #%d, must be at least 2",
           EnumNameBuiltinOperator(BuiltinOperator_BATCH_MATMUL), node_index,
-          node->inputs->data[0], input1_dimensions);
+          node->inputs->data[0], num_dims_a);
       return kTfLiteError;
     }
-    const int input2_dimensions = NumDimensions(&input2_tensor);
-    if (input2_dimensions < 3) {
+    const int num_dims_b = NumDimensions(&input2_tensor);
+    if (num_dims_b < 2) {
       TF_LITE_MAYBE_KERNEL_LOG(
           logging_context,
           "failed to delegate %s node #%d. Unsupported number "
-          "of dimensions %d for tensor #%d, must be at least 3",
+          "of dimensions %d for tensor #%d, must be at least 2",
           EnumNameBuiltinOperator(BuiltinOperator_BATCH_MATMUL), node_index,
-          node->inputs->data[1], input2_dimensions);
+          node->inputs->data[1], num_dims_b);
       return kTfLiteError;
-    }
-    if (input1_dimensions != input2_dimensions) {
-      TF_LITE_MAYBE_KERNEL_LOG(
-          logging_context,
-          "failed to delegate %s node #%d with input tensor #%d and input "
-          "tensor #%d.  Mismatching number of dimensions for %d != %d",
-          EnumNameBuiltinOperator(BuiltinOperator_BATCH_MATMUL), node_index,
-          node->inputs->data[0], node->inputs->data[1], input1_dimensions,
-          input2_dimensions);
-      return kTfLiteError;
-    }
-    const int output_dimensions = NumDimensions(&output_tensor);
-    if (output_dimensions != input1_dimensions) {
-      TF_LITE_MAYBE_KERNEL_LOG(
-          logging_context,
-          "failed to delegate %s node #%d input tensor #%d and output tensor "
-          "#%d.  Mismatching number of dimensions for %d != %d",
-          EnumNameBuiltinOperator(BuiltinOperator_BATCH_MATMUL), node_index,
-          node->inputs->data[0], node->outputs->data[0], input1_dimensions,
-          output_dimensions);
-      return kTfLiteError;
-    }
-    // Check that all batch dimensions match.
-    for (size_t i = 0; i < input1_dimensions - 2; i++) {
-      if (input1_tensor.dims->data[i] != input2_tensor.dims->data[i]) {
-        TF_LITE_MAYBE_KERNEL_LOG(
-            logging_context,
-            "failed to delegate %s node #%d input tensor #%d and input "
-            "tensor "
-            "#%d.  Mismatch at dimensions %zu (%d != %d)",
-            EnumNameBuiltinOperator(BuiltinOperator_BATCH_MATMUL), node_index,
-            node->inputs->data[0], node->inputs->data[1], i,
-            input1_tensor.dims->data[i], input2_tensor.dims->data[i]);
-        return kTfLiteError;
-      }
-      if (input1_tensor.dims->data[i] != output_tensor.dims->data[i]) {
-        TF_LITE_MAYBE_KERNEL_LOG(
-            logging_context,
-            "failed to delegate %s node #%d input tensor #%d and output "
-            "tensor "
-            "#%d.  Mismatch at dimensions %zu (%d != %d)",
-            EnumNameBuiltinOperator(BuiltinOperator_BATCH_MATMUL), node_index,
-            node->inputs->data[0], node->outputs->data[0], i,
-            input1_tensor.dims->data[i], output_tensor.dims->data[i]);
-        return kTfLiteError;
-      }
     }
     if (params->adj_x) {
       TF_LITE_MAYBE_KERNEL_LOG(
           logging_context,
           "failed to delegate %s node #%d. adj_x is not supported",
           EnumNameBuiltinOperator(BuiltinOperator_BATCH_MATMUL), node_index);
-      return kTfLiteError;
-    }
-    // Check that channel dimension matches.
-    const size_t input1_k = input1_dimensions - 1;
-    const size_t input2_k =
-        params->adj_y ? input2_dimensions - 1 : input2_dimensions - 2;
-    if (input1_tensor.dims->data[input1_k] !=
-        input2_tensor.dims->data[input2_k]) {
-      TF_LITE_MAYBE_KERNEL_LOG(
-          logging_context,
-          "failed to delegate %s node #%d input tensor #%d and input tensor "
-          "#%d.  Mismatching number of channels (%d != %d)",
-          EnumNameBuiltinOperator(BuiltinOperator_BATCH_MATMUL), node_index,
-          node->inputs->data[0], node->inputs->data[1],
-          input1_tensor.dims->data[input1_k],
-          input2_tensor.dims->data[input2_k]);
-      return kTfLiteError;
-    }
-    const int last_dimension = input1_dimensions - 1;
-    const int input2_n =
-        params->adj_y ? input2_dimensions - 2 : input2_dimensions - 1;
-    // Check that output is [M x N].
-    if (output_tensor.dims->data[last_dimension - 1] !=
-        input1_tensor.dims->data[last_dimension - 1]) {
-      TF_LITE_MAYBE_KERNEL_LOG(
-          logging_context,
-          "failed to delegate %s node #%d input tensor #%d and output tensor "
-          "#%d.  Mismatch at second last dimension of output (%d != %d)",
-          EnumNameBuiltinOperator(BuiltinOperator_BATCH_MATMUL), node_index,
-          node->inputs->data[0], node->outputs->data[0],
-          input1_tensor.dims->data[last_dimension - 1],
-          output_tensor.dims->data[last_dimension - 1]);
-      return kTfLiteError;
-    }
-    if (output_tensor.dims->data[last_dimension] !=
-        input2_tensor.dims->data[input2_n]) {
-      TF_LITE_MAYBE_KERNEL_LOG(
-          logging_context,
-          "failed to delegate %s node #%d input tensor #%d and output tensor "
-          "#%d.  Mismatch at last dimension of output (%d != %d)",
-          EnumNameBuiltinOperator(BuiltinOperator_BATCH_MATMUL), node_index,
-          node->inputs->data[1], node->outputs->data[0],
-          input2_tensor.dims->data[last_dimension - 1],
-          output_tensor.dims->data[last_dimension]);
       return kTfLiteError;
     }
     if (subgraph != nullptr) {
