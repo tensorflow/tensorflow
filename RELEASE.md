@@ -40,6 +40,8 @@
 *  Support for Python 3.12 has been added.
 *  [tensorflow-tpu](https://pypi.org/project/tensorflow-tpu/) package is now available for easier TPU based installs.
 *  TensorFlow pip packages are now built with CUDA 12.3 and cuDNN 8.9.7
+*  Added experimental support for float16 auto-mixed precision using the new
+   AMX-FP16 instruction set on X86 CPUs.
 
 
 ### Bug Fixes and Other Changes
