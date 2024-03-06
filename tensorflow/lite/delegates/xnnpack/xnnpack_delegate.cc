@@ -3245,8 +3245,6 @@ class Subgraph {
         node_index));
 
     // Check dimensions
-    int axis = concat_params->axis;
-    if (axis < 0) axis += NumDimensions(&output_tensor);
     if (output_tensor.type == kTfLiteUInt8) {
       const int32_t zero_point =
           tensors[node->outputs->data[0]].params.zero_point;
@@ -3289,6 +3287,7 @@ class Subgraph {
 
     if (subgraph != nullptr) {
       xnn_status status = xnn_status_invalid_parameter;
+      int axis = concat_params->axis;
       if (num_inputs == 2) {
         status = xnn_define_concatenate2(
             subgraph, axis,
@@ -5918,10 +5917,6 @@ class Subgraph {
         delegate, logging_context, input_tensor, input_idx, node_index));
 
     int32_t split_dim = GetTensorData<int32_t>(&split_dim_tensor)[0];
-    if (split_dim < 0) split_dim += NumDimensions(&input_tensor);
-    TF_LITE_ENSURE(logging_context, split_dim >= 0);
-    TF_LITE_ENSURE(logging_context, split_dim < NumDimensions(&input_tensor));
-
 
     for (int i = 0; i < NumOutputs(node); i++) {
       const int output_idx = node->outputs->data[i];
