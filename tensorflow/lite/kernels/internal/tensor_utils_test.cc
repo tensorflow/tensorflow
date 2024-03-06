@@ -1079,7 +1079,10 @@ MatrixVectorData SetupMatrixVectorData(int rows, int cols, int batch,
     if ((i % 5) == 0 && negative) sign = -1;
     data.vectors.push_back(sign * (i % 50));
   }
-  data.scale_factors = {1, 2, 3, 4, 5, 6, 7, 8, 1, 2, 3, 4, 5, 6, 7, 8};
+  for (int i = 0; i < batch; i++) {
+    data.scale_factors.insert(data.scale_factors.end(),
+                              {1, 2, 3, 4, 5, 6, 7, 8});
+  }
   data.results.resize(rows * batch, init_to_one ? 1 : 0);
 
   data.zeroed_matrix = data.matrix;
