@@ -3038,7 +3038,7 @@ class RemapperControlDependencyPatternMatcher : public RemapperTest {
 
 TEST_F(RemapperControlDependencyPatternMatcher, F32) { RunTest<DT_FLOAT>(); }
 TEST_F(RemapperControlDependencyPatternMatcher, BF16) {
-  if (!IsMKLEnabled() || !IsBF16SupportedByOneDNNOnThisCPU())
+  if (!IsMKLEnabled() || !IsDataTypeSupportedByOneDNNOnThisCPU(DT_BFLOAT16))
     GTEST_SKIP() << "Intel oneDNN with bfloat16 is not supported, skipping "
                     "RemapperControlDependencyPatternMatcher with bfloat16.";
   RunTest<DT_BFLOAT16>();
