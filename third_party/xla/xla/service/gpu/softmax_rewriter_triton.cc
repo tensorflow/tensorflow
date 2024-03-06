@@ -25,8 +25,10 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
+#include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/utils/hlo_query.h"
@@ -48,6 +50,9 @@ limitations under the License.
 
 namespace xla::gpu {
 namespace {
+
+using hlo_query::IsBroadcastOfParameter;
+using hlo_query::IsBroadcastOfScalarConstant;
 
 bool HasDefaultLayout(const Shape& shape) {
   return shape.has_layout() &&
@@ -129,7 +134,78 @@ inline bool HasOneUse(const HloInstruction* instr) {
   return instr->user_count() == 1;
 }
 
-using hlo_query::IsBroadcastOfScalarConstant;
+// Supports two types of broadcast of parameters. Either to one batch
+// dim, or one reduction dim. For example the following cases are supported:
+//
+// Case #1:
+// p = f32[a] parameter(0)
+// b = f32[a,x] broadcast(p), dimensions={0}
+//
+// Case #2:
+// p = f32[a] parameter(0)
+// b = f32[x,a] broadcast(p), dimensions={1}
+//
+// Case #3:
+// p = f32[a,b] parameter(0)
+// b = f32[x,a,b] broadcast(p), dimensions={1,2}
+//
+// Other broadcast tiling patterns are currently unsupported.
+// See b/328049138 for details.
+//
+// Unsupported case #1:
+// p = f32[a] parameter(0)
+// b = f32[x,a,y] broadcast(p), dimensions={1}
+//
+// Unsupported case #2:
+// p = f32[a,b] parameter(0)
+// b = f32[x,a,y,b] broadcast(p), dimensions={1,3}
+//
+// Unsupported case #3:
+// p = f32[a] parameter(0)
+// b = f32[x,y,a] broadcast(p), dimensions={2}
+//
+// Unsupported case #4:
+// p = f32[a,b] parameter(0)
+// b = f32[a,x,b] broadcast(p), dimensions={0,2}
+bool IsBatchOrReductionDimBroadcast(const HloInstruction& hlo) {
+  CHECK_EQ(hlo.opcode(), HloOpcode::kBroadcast)
+      << "Expected broadcast " << hlo.ToShortString();
+  CHECK_EQ(hlo.operand(0)->opcode(), HloOpcode::kParameter)
+      << "Expected parameter " << hlo.operand(0)->ToShortString();
+
+  const HloBroadcastInstruction* broadcast =
+      Cast<HloBroadcastInstruction>(&hlo);
+
+  const HloParameterInstruction* parameter =
+      Cast<HloParameterInstruction>(hlo.operand(0));
+
+  // Support only one dim broadcast.
+  if (parameter->shape().dimensions_size() + 1 !=
+      broadcast->shape().dimensions_size()) {
+    return false;
+  }
+
+  // It is enough to ensure that the broadcast does not preserve both last, and
+  // first dimensions of the parameter at the same time. Otherwise the broadcast
+  // is the unsupported case #4.
+  //
+  // Preserve the first dim:
+  //   p = f32[a,b] parameter(0)
+  //   b1 = f32[a,b,c] broadcast(p), dimensions={0,1}
+  bool preserve_first_dim = broadcast->dimensions().front() == 0;
+  // Preserve the last dim:
+  //   p = f32[a,b] parameter(0)
+  //   b1 = f32[c,a,b] broadcast(p), dimensions={1,2}
+  bool preserve_last_dim = broadcast->dimensions().back() ==
+                           broadcast->shape().dimensions_size() - 1;
+  // We do not want to preserve both first and last dim, as it means the
+  // broadcast is not expanding on outermost dims.
+  return !(preserve_first_dim && preserve_last_dim);
+}
+
+bool IsSupportedBroadcastOfParameter(const HloInstruction& hlo) {
+  return IsBroadcastOfParameter(hlo) && IsBatchOrReductionDimBroadcast(hlo);
+}
 
 // Chooses which operand to use for fusion processing. Taking in a unary or
 // binary instruction, returns the first non-splat operand. If none is
@@ -138,8 +214,11 @@ HloInstruction* ChooseOperandForFusionProcessing(HloInstruction* instr) {
   CHECK_GT(instr->operand_count(), 0);
   CHECK_LE(instr->operand_count(), 2);
 
+  // TODO(b/326217416): Extend the broadcast of splat constants/parameters to a
+  // broadcast of any op.
   if (instr->operand_count() > 1 &&
-      IsBroadcastOfScalarConstant(*instr->operand(0))) {
+      (IsBroadcastOfScalarConstant(*instr->operand(0)) ||
+       IsSupportedBroadcastOfParameter(*instr->operand(0)))) {
     return instr->mutable_operand(1);
   }
   return instr->mutable_operand(0);
@@ -181,8 +260,12 @@ bool IsTriviallyFusible(HloInstruction* instr,
 
     // For simplicity we only fuse elementwise binary ops with splat operands
     // if they contain one non-splat operand.
-    if (IsBroadcastOfScalarConstant(*operand_0) ^
-        IsBroadcastOfScalarConstant(*operand_1)) {
+    // TODO(b/326217416): Extend the broadcast of splat constants/parameters to
+    // a broadcast of any op.
+    if ((IsBroadcastOfScalarConstant(*operand_0) ||
+         IsSupportedBroadcastOfParameter(*operand_0)) ^
+        (IsBroadcastOfScalarConstant(*operand_1) ||
+         IsSupportedBroadcastOfParameter(*operand_1))) {
       return IsTritonSupportedInstruction(instr, gpu_version);
     }
   }
@@ -266,32 +349,44 @@ absl::Status FuseDiamondChainImpl(const DiamondChainDescriptor& diamond_chain) {
   absl::flat_hash_map<const HloInstruction*, HloInstruction*>
       old_to_new_mapping;
 
-  old_to_new_mapping[producer] = builder.AddInstruction(
-      HloInstruction::CreateParameter(0, producer->shape(), "parameter_0"));
+  int param = 0;
+  old_to_new_mapping[producer] =
+      builder.AddInstruction(HloInstruction::CreateParameter(
+          param, producer->shape(), absl::StrCat("parameter_", param)));
+  param++;
 
-  std::function<void(const HloInstruction*)> create_computation =
-      [&](const HloInstruction* instr) -> void {
+  std::vector<HloInstruction*> parameters = {producer};
+
+  std::function<void(HloInstruction*)> create_computation =
+      [&](HloInstruction* instr) -> void {
     if (old_to_new_mapping.contains(instr)) {
       return;
     }
     std::vector<HloInstruction*> new_operands;
-    for (const HloInstruction* operand : instr->operands()) {
+    for (HloInstruction* operand : instr->mutable_operands()) {
       create_computation(operand);
       new_operands.push_back(old_to_new_mapping[operand]);
     }
-    old_to_new_mapping[instr] = builder.AddInstruction(
-        instr->CloneWithNewOperands(instr->shape(), new_operands));
+    if (instr->opcode() == HloOpcode::kParameter) {
+      old_to_new_mapping[instr] =
+          builder.AddInstruction(HloInstruction::CreateParameter(
+              param, instr->shape(), absl::StrCat("parameter_", param)));
+      parameters.push_back(instr);
+      param++;
+    } else {
+      old_to_new_mapping[instr] = builder.AddInstruction(
+          instr->CloneWithNewOperands(instr->shape(), new_operands));
+    }
   };
   create_computation(root);
-
   HloComputation* computation =
       root->GetModule()->AddComputationAndUnifyNamesAndIds(builder.Build(),
                                                            /*is_entry=*/false);
 
   HloInstruction* softmax_fusion =
       root->parent()->AddInstruction(HloInstruction::CreateFusion(
-          root->shape(), HloInstruction::FusionKind::kCustom,
-          std::vector<HloInstruction*>({producer}), computation));
+          root->shape(), HloInstruction::FusionKind::kCustom, parameters,
+          computation));
 
   softmax_fusion->GetModule()->SetAndUniquifyInstrName(softmax_fusion,
                                                        suggested_name);

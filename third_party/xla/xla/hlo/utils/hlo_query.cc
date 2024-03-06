@@ -168,6 +168,11 @@ bool IsBroadcastOfScalarConstant(const HloInstruction& instr) {
          IsScalarConstant(instr.operand(0));
 }
 
+bool IsBroadcastOfParameter(const HloInstruction& instr) {
+  return instr.opcode() == HloOpcode::kBroadcast &&
+         instr.operand(0)->opcode() == HloOpcode::kParameter;
+}
+
 HloInstruction* GetFirstInstructionWithOpcode(const HloComputation& computation,
                                               const HloOpcode opcode) {
   auto instructions = computation.instructions();

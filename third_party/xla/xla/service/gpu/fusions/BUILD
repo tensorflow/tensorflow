@@ -504,7 +504,6 @@ cc_library(
         ":fusion_emitter",
         "//xla:statusor",
         "//xla/hlo/ir:hlo",
-        "//xla/service:elemental_ir_emitter",
         "//xla/service/gpu:hlo_fusion_analysis",
         "//xla/service/gpu:ir_emission_utils",
         "//xla/service/gpu:ir_emitter_context",
