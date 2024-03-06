@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/service/gpu/triton_autotuner.h"
+#include "xla/service/gpu/gemm_fusion_autotuner.h"
 
 #include <algorithm>
 #include <array>
@@ -114,9 +114,9 @@ constexpr int kMaxTileSize = 512;
 // Default tiling when autotuning is disabled.
 constexpr TritonGemmConfig kDefaultGemmTiling = {32, 32, 32, 1, 1, 4};
 
-class TritonAutotunerVisitor : public DfsHloRewriteVisitor {
+class GemmFusionAutotunerVisitor : public DfsHloRewriteVisitor {
  public:
-  explicit TritonAutotunerVisitor(const AutotuneConfig& config)
+  explicit GemmFusionAutotunerVisitor(const AutotuneConfig& config)
       : config_(config) {}
 
   absl::Status HandleFusion(HloInstruction* hlo) override {
@@ -1096,10 +1096,10 @@ std::vector<TritonGemmConfig> GetPossibleMatmulAutotuneConfigs(
                                         compute_capability, max_split_k));
 }
 
-absl::StatusOr<bool> TritonAutotuner::Run(
+absl::StatusOr<bool> GemmFusionAutotuner::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
-  XLA_SCOPED_LOGGING_TIMER("Triton autotuner");
+  XLA_SCOPED_LOGGING_TIMER("GEMM fusion autotuner");
   const DebugOptions& debug_options = module->config().debug_options();
   TF_ASSIGN_OR_RETURN(std::optional<AutotunerCompileUtil> opt_compile_util,
                       AutotunerCompileUtil::Create(config_, debug_options));
@@ -1137,7 +1137,8 @@ absl::StatusOr<bool> TritonAutotuner::Run(
     }
   }
 
-  return TritonAutotunerVisitor(config_).RunOnModule(module, execution_threads);
+  return GemmFusionAutotunerVisitor(config_).RunOnModule(module,
+                                                         execution_threads);
 }
 
 }  // namespace gpu

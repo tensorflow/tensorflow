@@ -12,7 +12,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include "xla/service/gpu/triton_autotuner.h"
+#include "xla/service/gpu/gemm_fusion_autotuner.h"
 
 #include <algorithm>
 #include <memory>
@@ -160,7 +160,7 @@ class StatelessAutotunerTest : public HloTestBase {
   }
 };
 
-class TritonAutotunerTest : public StatelessAutotunerTest {
+class GemmFusionAutotunerTest : public StatelessAutotunerTest {
  public:
   DebugOptions GetDebugOptionsForTest() override {
     DebugOptions debug_options =
@@ -188,7 +188,7 @@ class TritonAutotunerTest : public StatelessAutotunerTest {
     tsl::thread::ThreadPool thread_pool(tsl::Env::Default(), "",
                                         tsl::port::MaxParallelism());
     DebugOptions opts;
-    pipeline.AddPass<TritonAutotuner>(
+    pipeline.AddPass<GemmFusionAutotuner>(
         AutotuneConfig{DeviceConfig{backend().default_stream_executor(),
                                     backend().memory_allocator()},
                        opts},
@@ -217,17 +217,19 @@ class TritonAutotunerTest : public StatelessAutotunerTest {
   }
 };
 
-class TritonAutotunerTestWithMorePreciseReduction : public TritonAutotunerTest {
+class GemmFusionAutotunerTestWithMorePreciseReduction
+    : public GemmFusionAutotunerTest {
  public:
   DebugOptions GetDebugOptionsForTest() override {
-    DebugOptions debug_options = TritonAutotunerTest::GetDebugOptionsForTest();
+    DebugOptions debug_options =
+        GemmFusionAutotunerTest::GetDebugOptionsForTest();
     debug_options.set_xla_gpu_triton_gemm_disable_reduced_precision_reduction(
         true);
     return debug_options;
   }
 };
 
-TEST_F(TritonAutotunerTest, VoltaUsesNoMoreThanTwoStages) {
+TEST_F(GemmFusionAutotunerTest, VoltaUsesNoMoreThanTwoStages) {
   std::unique_ptr<VerifiedHloModule> module = ParseAndReturnVerifiedModule(R"(
 ENTRY e {
   p0 = f32[1024,1024] parameter(0)
@@ -248,7 +250,7 @@ ENTRY e {
       [](const TritonGemmConfig& config) { return config.num_stages > 2; }));
 }
 
-TEST_F(TritonAutotunerTest, AmpereUsesMoreThanTwoStages) {
+TEST_F(GemmFusionAutotunerTest, AmpereUsesMoreThanTwoStages) {
   std::unique_ptr<VerifiedHloModule> module = ParseAndReturnVerifiedModule(R"(
 ENTRY e {
   p0 = f32[1024,1024] parameter(0)
@@ -269,7 +271,7 @@ ENTRY e {
       [](const TritonGemmConfig& config) { return config.num_stages > 2; }));
 }
 
-TEST_F(TritonAutotunerTest, SmallOutputCanUseLargeSplitK) {
+TEST_F(GemmFusionAutotunerTest, SmallOutputCanUseLargeSplitK) {
   std::unique_ptr<VerifiedHloModule> module = ParseAndReturnVerifiedModule(R"(
 ENTRY e {
   p0 = f32[1024,1024] parameter(0)
@@ -290,7 +292,7 @@ ENTRY e {
       [](const TritonGemmConfig& config) { return config.split_k >= 16; }));
 }
 
-TEST_F(TritonAutotunerTest, LargeOutputDoesNotUseLargeSplitK) {
+TEST_F(GemmFusionAutotunerTest, LargeOutputDoesNotUseLargeSplitK) {
   std::unique_ptr<VerifiedHloModule> module = ParseAndReturnVerifiedModule(R"(
 ENTRY e {
   p0 = f32[20480,20480] parameter(0)
@@ -311,7 +313,7 @@ ENTRY e {
       [](const TritonGemmConfig& config) { return config.split_k > 1; }));
 }
 
-TEST_F(TritonAutotunerTest, Int8FusedGemm) {
+TEST_F(GemmFusionAutotunerTest, Int8FusedGemm) {
   const std::string hlo = R"(
 HloModule module
 
@@ -334,7 +336,7 @@ ENTRY e {
   EXPECT_TRUE(RunAndCompare(hlo, ErrorSpec{/*aabs=*/5e-3, /*arel=*/5e-3}));
 }
 
-TEST_F(TritonAutotunerTest, Int8FusedGemm256) {
+TEST_F(GemmFusionAutotunerTest, Int8FusedGemm256) {
   const std::string hlo = R"(
 HloModule module
 
@@ -358,7 +360,7 @@ ENTRY e {
   EXPECT_TRUE(RunAndCompare(hlo, ErrorSpec{/*aabs=*/1e-2, /*arel=*/1e-2}));
 }
 
-TEST_F(TritonAutotunerTest, SelectsSplitK) {
+TEST_F(GemmFusionAutotunerTest, SelectsSplitK) {
   if (!GetCudaComputeCapability().IsAtLeast(
           se::CudaComputeCapability::AMPERE)) {
     GTEST_SKIP() << "No BF16 before Ampere.";
@@ -387,7 +389,7 @@ ENTRY e {
   EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/4, /*arel=*/1e-1}));
 }
 
-TEST_F(TritonAutotunerTestWithMorePreciseReduction, SelectsSplitK) {
+TEST_F(GemmFusionAutotunerTestWithMorePreciseReduction, SelectsSplitK) {
   if (!GetCudaComputeCapability().IsAtLeast(
           se::CudaComputeCapability::AMPERE)) {
     GTEST_SKIP() << "No BF16 before Ampere.";
@@ -416,7 +418,7 @@ ENTRY e {
   EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/1e-2, /*arel=*/1e-2}));
 }
 
-TEST_F(TritonAutotunerTest, ApplySplitKWithoutAlteringTiling) {
+TEST_F(GemmFusionAutotunerTest, ApplySplitKWithoutAlteringTiling) {
   const std::string kHloText = R"(
 triton_dot {
   p0 = f16[55,120] parameter(0)
@@ -441,7 +443,7 @@ ENTRY e {
   EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
 }
 
-TEST_F(TritonAutotunerTest, DoNotRunAutotuningKernelSpillingRegisters) {
+TEST_F(GemmFusionAutotunerTest, DoNotRunAutotuningKernelSpillingRegisters) {
   const std::string kHloText = R"(
 HloModule m
 
@@ -479,7 +481,8 @@ ENTRY %e {
               "Compilation result discarded due to register spilling")));
 }
 
-TEST_F(TritonAutotunerTest, DoNotFilterOutAutotuningKernelSpillingRegisters) {
+TEST_F(GemmFusionAutotunerTest,
+       DoNotFilterOutAutotuningKernelSpillingRegisters) {
   const std::string kHloText = R"(
 HloModule m
 
@@ -523,7 +526,7 @@ ENTRY %e {
   EXPECT_NE(executable, nullptr);
 }
 
-TEST_F(TritonAutotunerTest, RunAutotuningKernelNotSpillingRegisters) {
+TEST_F(GemmFusionAutotunerTest, RunAutotuningKernelNotSpillingRegisters) {
   const std::string kHloText = R"(
 HloModule m
 
@@ -554,17 +557,18 @@ ENTRY %e {
   EXPECT_NE(executable, nullptr);
 }
 
-class TritonAutotunerDumpTest : public TritonAutotunerTest {
+class GemmFusionAutotunerDumpTest : public GemmFusionAutotunerTest {
  public:
   DebugOptions GetDebugOptionsForTest() override {
-    DebugOptions debug_options = TritonAutotunerTest::GetDebugOptionsForTest();
+    DebugOptions debug_options =
+        GemmFusionAutotunerTest::GetDebugOptionsForTest();
     debug_options.set_xla_gpu_cublas_fallback(true);
     debug_options.set_xla_gpu_dump_autotuned_triton_fusions(true);
     return debug_options;
   }
 };
 
-TEST_F(TritonAutotunerDumpTest, DumpingFusionsWorksWithFallback) {
+TEST_F(GemmFusionAutotunerDumpTest, DumpingFusionsWorksWithFallback) {
   // Computation is chosen such that relatively heavy math operations before the
   // GEMM are not worth fusing because they would get duplicated many times and
   // slow down execution. Therefore autotuning picks cuBLAS here.
@@ -584,7 +588,7 @@ ENTRY e {
 )");
 }
 
-TEST_F(TritonAutotunerTest, AutotuneCuDnnFusion) {
+TEST_F(GemmFusionAutotunerTest, AutotuneCuDnnFusion) {
   if (!GetCudaComputeCapability().IsAtLeast(
           se::CudaComputeCapability::AMPERE)) {
     GTEST_SKIP() << "cuDNN fusion autotuning is not tested before Ampere.";
@@ -613,8 +617,8 @@ ENTRY e {
 // TODO(b/281489442): Write a testcase called
 // `SkipConfigsProducingDeviantResults` or similar.
 
-class TritonAutotunerLevelTest : public StatelessAutotunerTest,
-                                 public ::testing::WithParamInterface<int> {
+class GemmFusionAutotunerLevelTest : public StatelessAutotunerTest,
+                                     public ::testing::WithParamInterface<int> {
  public:
   DebugOptions GetDebugOptionsForTest() override {
     DebugOptions debug_options =
@@ -625,7 +629,7 @@ class TritonAutotunerLevelTest : public StatelessAutotunerTest,
   }
 };
 
-TEST_P(TritonAutotunerLevelTest, AllAutotuningLevelsWorkCorrectly) {
+TEST_P(GemmFusionAutotunerLevelTest, AllAutotuningLevelsWorkCorrectly) {
   const std::string kHloText = R"(
 HloModule m
 
@@ -645,7 +649,7 @@ ENTRY e {
   EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
 }
 
-TEST_P(TritonAutotunerLevelTest, Deviceless) {
+TEST_P(GemmFusionAutotunerLevelTest, Deviceless) {
   const std::string hlo = R"(
 HloModule module
 
@@ -665,7 +669,7 @@ ENTRY e {
   tsl::thread::ThreadPool thread_pool(tsl::Env::Default(), "",
                                       tsl::port::MaxParallelism());
   DebugOptions opts;
-  pipeline.AddPass<TritonAutotuner>(
+  pipeline.AddPass<GemmFusionAutotuner>(
       AutotuneConfig{DevicelessConfig{backend()
                                           .default_stream_executor()
                                           ->GetDeviceDescription()
@@ -702,19 +706,20 @@ ENTRY e {
   }
 }
 
-INSTANTIATE_TEST_SUITE_P(TritonAutotunerLevelSweep, TritonAutotunerLevelTest,
-                         ::testing::Range(0, 5));
+INSTANTIATE_TEST_SUITE_P(GemmFusionAutotunerLevelSweep,
+                         GemmFusionAutotunerLevelTest, ::testing::Range(0, 5));
 
-class TritonAutotunerExhaustiveTest : public TritonAutotunerTest {
+class GemmFusionAutotunerExhaustiveTest : public GemmFusionAutotunerTest {
  public:
   DebugOptions GetDebugOptionsForTest() override {
-    DebugOptions debug_options = TritonAutotunerTest::GetDebugOptionsForTest();
+    DebugOptions debug_options =
+        GemmFusionAutotunerTest::GetDebugOptionsForTest();
     debug_options.set_xla_gpu_exhaustive_tiling_search(true);
     return debug_options;
   }
 };
 
-TEST_F(TritonAutotunerExhaustiveTest, DISABLED_CompileOnly) {
+TEST_F(GemmFusionAutotunerExhaustiveTest, DISABLED_CompileOnly) {
   const std::string hlo = R"(
 HloModule module
 
@@ -734,16 +739,17 @@ ENTRY e {
 )");
 }
 
-class TritonAutotunerDisableSplitK : public TritonAutotunerTest {
+class GemmFusionAutotunerDisableSplitK : public GemmFusionAutotunerTest {
  public:
   DebugOptions GetDebugOptionsForTest() override {
-    DebugOptions debug_options = TritonAutotunerTest::GetDebugOptionsForTest();
+    DebugOptions debug_options =
+        GemmFusionAutotunerTest::GetDebugOptionsForTest();
     debug_options.set_xla_gpu_enable_split_k_autotuning(false);
     return debug_options;
   }
 };
 
-TEST_F(TritonAutotunerDisableSplitK, SplitKIsDisabled) {
+TEST_F(GemmFusionAutotunerDisableSplitK, SplitKIsDisabled) {
   std::unique_ptr<VerifiedHloModule> module = ParseAndReturnVerifiedModule(R"(
 ENTRY e {
   p0 = f32[1024,1024] parameter(0)

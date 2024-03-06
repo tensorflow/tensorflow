@@ -660,9 +660,9 @@ xla_test(
 )
 
 cc_library(
-    name = "triton_autotuner",
-    srcs = if_cuda_is_configured(["triton_autotuner.cc"]),
-    hdrs = if_cuda_is_configured(["triton_autotuner.h"]),
+    name = "gemm_fusion_autotuner",
+    srcs = if_cuda_is_configured(["gemm_fusion_autotuner.cc"]),
+    hdrs = if_cuda_is_configured(["gemm_fusion_autotuner.h"]),
     deps = if_cuda_is_configured([
         ":autotuner_compile_util",
         ":autotuner_util",
@@ -722,8 +722,8 @@ cc_library(
 )
 
 xla_test(
-    name = "triton_autotuner_test",
-    srcs = if_cuda_is_configured(["triton_autotuner_test.cc"]),
+    name = "gemm_fusion_autotuner_test",
+    srcs = if_cuda_is_configured(["gemm_fusion_autotuner_test.cc"]),
     backend_tags = {"gpu": [
         "requires-gpu-sm70",
     ]},
@@ -736,9 +736,9 @@ xla_test(
     deps = [
         ":autotuner_util",
         ":backend_configs_cc",
+        ":gemm_fusion_autotuner",
         ":gemm_rewriter_triton",
         ":matmul_utils",
-        ":triton_autotuner",
         "//xla:autotuning_proto_cc",
         "//xla:error_spec",
         "//xla:xla_data_proto_cc",
@@ -3821,6 +3821,7 @@ cc_library(
         ":cudnn_vectorize_convolutions",
         ":cusolver_rewriter",
         ":gemm_algorithm_picker",
+        ":gemm_fusion_autotuner",
         ":gpu_asm_opts_util",
         ":gpu_compiler",
         ":conv_algorithm_picker",
@@ -3834,7 +3835,6 @@ cc_library(
         ":move_copy_to_users",
         ":target_constants",
         ":triangular_solve_rewriter",
-        ":triton_autotuner",
         ":cudnn_fusion_compiler",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/base",

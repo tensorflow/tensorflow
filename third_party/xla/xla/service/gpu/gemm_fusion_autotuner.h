@@ -12,8 +12,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef XLA_SERVICE_GPU_TRITON_AUTOTUNER_H_
-#define XLA_SERVICE_GPU_TRITON_AUTOTUNER_H_
+#ifndef XLA_SERVICE_GPU_GEMM_FUSION_AUTOTUNER_H_
+#define XLA_SERVICE_GPU_GEMM_FUSION_AUTOTUNER_H_
 
 #include <vector>
 
@@ -35,10 +35,10 @@ namespace xla {
 namespace gpu {
 
 // Find best tiling configuration for each triton fusion outlined.
-class TritonAutotuner : public HloModulePass {
+class GemmFusionAutotuner : public HloModulePass {
  public:
-  explicit TritonAutotuner(const AutotuneConfig& config,
-                           tsl::thread::ThreadPool* thread_pool)
+  explicit GemmFusionAutotuner(const AutotuneConfig& config,
+                               tsl::thread::ThreadPool* thread_pool)
       : config_(config), thread_pool_(thread_pool) {}
 
   absl::string_view name() const override { return "triton-autotuner"; }
@@ -62,4 +62,4 @@ std::vector<TritonGemmConfig> GetPossibleMatmulAutotuneConfigs(
 }  // namespace gpu
 }  // namespace xla
 
-#endif  // XLA_SERVICE_GPU_TRITON_AUTOTUNER_H_
+#endif  // XLA_SERVICE_GPU_GEMM_FUSION_AUTOTUNER_H_
