@@ -15,28 +15,43 @@ limitations under the License.
 
 #include "xla/service/spmd/custom_call_handler.h"
 
+#include <algorithm>
+#include <cstdint>
+#include <memory>
+#include <string>
+#include <utility>
 #include <vector>
 
-#include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
+#include "absl/log/check.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
+#include "absl/types/span.h"
 #include "xla/client/lib/comparators.h"
 #include "xla/client/xla_builder.h"
+#include "xla/client/xla_computation.h"
+#include "xla/comparison_util.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
+#include "xla/hlo/ir/hlo_clone_context.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
+#include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/hlo/utils/hlo_sharding_util.h"
 #include "xla/literal_util.h"
 #include "xla/service/custom_call_sharding_helper.h"
 #include "xla/service/hlo_lexer.h"
-#include "xla/service/shape_inference.h"
+#include "xla/service/hlo_module_config.h"
 #include "xla/service/spmd/spmd_partitioner.h"
 #include "xla/service/spmd/spmd_partitioner_util.h"
+#include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/status.h"
+#include "xla/status_macros.h"
 #include "xla/util.h"
-#include "xla/window_util.h"
+#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace spmd {
@@ -82,8 +97,11 @@ Status SpmdPartitioningVisitor::HandleCustomCallTopK(HloInstruction* hlo) {
 
   const int64_t batch_dim = 0;
   const int64_t sort_dim = 1;
+
+  CHECK(sharding.IsTiled());
   const int64_t shard_count = sharding.tile_assignment().dim(sort_dim);
   const int64_t batch_dim_partition = sharding.tile_assignment().dim(batch_dim);
+
   const int64_t input_size = hlo->operand(0)->shape().dimensions(sort_dim);
   const int64_t batch_size = hlo->shape().tuple_shapes(0).dimensions(batch_dim);
   const int64_t k = hlo->shape().tuple_shapes(0).dimensions(sort_dim);
@@ -403,10 +421,6 @@ Status SpmdPartitioningVisitor::HandleCustomCall(HloInstruction* hlo) {
     return OkStatus();
   }
 
-  if (hlo->custom_call_target() == "TopK") {
-    return HandleCustomCallTopK(hlo);
-  }
-
   if (hlo->custom_call_target() == kSPMDOpRotateRight) {
     return HandleCustomCallSPMDInternal_RotateRight(hlo);
   }
@@ -437,6 +451,10 @@ Status SpmdPartitioningVisitor::HandleCustomCall(HloInstruction* hlo) {
       return instr;
     });
     return OkStatus();
+  }
+
+  if (hlo->custom_call_target() == "TopK") {
+    return HandleCustomCallTopK(hlo);
   }
 
   return DefaultAction(hlo);
