@@ -40,6 +40,6 @@ toolchain(
         "@platforms//os:macos",
         "@platforms//cpu:x86_64",
     ],
-    toolchain = "//tensorflow/tools/toolchains/cross_compile/cc:macos_x86_toolchain",
+    toolchain = "//tools/toolchains/cross_compile/cc:macos_x86_toolchain",
     toolchain_type = "@bazel_tools//tools/cpp:toolchain_type",
 )
