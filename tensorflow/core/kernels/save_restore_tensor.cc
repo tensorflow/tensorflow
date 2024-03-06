@@ -37,6 +37,7 @@ limitations under the License.
 #include "tensorflow/core/util/tensor_slice_reader.h"
 #include "tensorflow/core/util/tensor_slice_reader_cache.h"
 #include "tensorflow/core/util/tensor_slice_writer.h"
+#include "tsl/platform/env.h"
 
 namespace tensorflow {
 
@@ -271,7 +272,7 @@ struct RestoreOp {
   RestoreOp(RestoreOp&&) = default;
   RestoreOp& operator=(RestoreOp&&) = default;
 
-  bool should_run_in_pool(BundleReader* reader) const {
+  bool is_large_shape(BundleReader* reader) const {
     TensorShape restored_full_shape;
 
     // Ignore status here; we'll catch the error later.
@@ -283,8 +284,8 @@ struct RestoreOp {
   }
 
   // Run this restore operation using a new BundleReader.
-  void run_with_new_reader() {
-    BundleReader reader(Env::Default(), reader_prefix);
+  void run_with_new_reader(BundleCache* cache) {
+    BundleReader reader(tsl::Env::Default(), reader_prefix, {cache, false});
     if (!reader.status().ok()) {
       status = reader.status();
       return;
@@ -377,7 +378,9 @@ Status RestoreTensorsV2(OpKernelContext* context, const Tensor& prefix,
                            shape_and_slices_flat(i), prefix_string, dtypes[i]});
   }
 
-  BundleReader default_reader(Env::Default(), prefix_string);
+  tsl::Env* const env = tsl::Env::Default();
+  BundleCache cache(env);
+  BundleReader default_reader(env, prefix_string, {&cache, false});
   TF_RETURN_IF_ERROR(default_reader.status());
 
   TF_RETURN_IF_ERROR(default_reader.SortForSequentialAccess<RestoreOp>(
@@ -402,38 +405,58 @@ Status RestoreTensorsV2(OpKernelContext* context, const Tensor& prefix,
     return errors::InvalidArgument(error_msg);
   }
 
-  std::vector<RestoreOp*> pool_restore_ops;
-  std::vector<RestoreOp*> direct_restore_ops;
+  // Split restore ops into two groups: large and small. We schedule
+  // large ops first, to prevent them from waiting on the small op.
+  std::vector<RestoreOp*> large_restore_ops;
+  std::vector<RestoreOp*> small_restore_ops;
   for (RestoreOp& restore_op : restore_ops) {
-    if (restore_op.should_run_in_pool(&default_reader)) {
-      pool_restore_ops.push_back(&restore_op);
+    if (restore_op.is_large_shape(&default_reader)) {
+      large_restore_ops.push_back(&restore_op);
     } else {
-      direct_restore_ops.push_back(&restore_op);
+      small_restore_ops.push_back(&restore_op);
     }
   }
 
-  {
-    // Schedule any threaded operations first, skipping thread pool creation if
-    // we don't have any expensive operations.
+  if (context->session_config() != nullptr &&
+      context->session_config()->intra_op_parallelism_threads() > 0) {
+    // If an explicit restore parallelism is specified, we use it to run
+    // run both small and large restore ops in parallel.
+    auto reader_pool = std::make_unique<thread::ThreadPool>(
+        tsl::Env::Default(), "restore_tensors",
+        context->session_config()->intra_op_parallelism_threads());
+
+    // Schedule large ops first, followed by the small.
+    for (auto* op : large_restore_ops) {
+      reader_pool->Schedule(
+          [op, &cache]() { op->run_with_new_reader(&cache); });
+    }
+    for (auto* op : small_restore_ops) {
+      reader_pool->Schedule(
+          [op, &cache]() { op->run_with_new_reader(&cache); });
+    }
+  } else {
+    // If no restore parallelism is specified, we run large restore ops with
+    // a modest parallelism, and small restore ops serially.
+
+    // Avoid creating a pool if there are no large restore ops.
     std::unique_ptr<thread::ThreadPool> reader_pool;
-    if (!pool_restore_ops.empty()) {
-      // TODO(spetrovic): Instead of a fixed size 8, use the value from:
-      //    context->session_config()->intra_op_parallelism_threads()
+    if (!large_restore_ops.empty()) {
       reader_pool.reset(
           new thread::ThreadPool(Env::Default(), "restore_tensors", 8));
-      for (auto* op : pool_restore_ops) {
-        reader_pool->Schedule([op]() { op->run_with_new_reader(); });
+      for (auto* op : large_restore_ops) {
+        reader_pool->Schedule(
+            [op, &cache]() { op->run_with_new_reader(&cache); });
       }
     }
 
-    // Read small tensors from the op thread
-    for (auto* op : direct_restore_ops) {
+    // Read small tensors from the op thread.
+    for (auto* op : small_restore_ops) {
       TF_RETURN_IF_ERROR(op->run(&default_reader));
     }
   }
 
   // Check status of pool ops; this must come after the pool shuts down.
-  for (auto* op : pool_restore_ops) {
+  for (auto* op : large_restore_ops) {
     TF_RETURN_IF_ERROR(op->status);
   }
 
