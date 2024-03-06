@@ -2100,10 +2100,6 @@ void HloInstruction::SetupDerivedInstruction(
   }
 }
 
-bool HloInstruction::IsRoot() const {
-  return parent_ != nullptr && this == parent_->root_instruction();
-}
-
 bool HloInstruction::HasSideEffectNoRecurse() const {
   switch (opcode_) {
     case HloOpcode::kSend:
@@ -3978,6 +3974,7 @@ HloInstruction::HloInstruction(HloOpcode opcode, const Shape& shape)
       is_default_config_(false),
       cleaned_up_(false),
       marked_as_dead_(false),
+      is_root_(false),
       shape_(shape),
       name_(HloOpcodeString(opcode)) {
   TF_DCHECK_OK(ShapeUtil::ValidateShapeWithOptionalLayout(shape_));

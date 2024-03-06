@@ -550,6 +550,10 @@ class ShapeUtil {
   // the given Shape argument. The non-Try variants check fail if index is
   // invalid.
   static const Shape& GetSubshape(const Shape& shape, ShapeIndexView index);
+
+  // Faster version for one index.
+  static const Shape& GetSubshapeOneIndex(const Shape& shape, int64_t index);
+
   static StatusOr<const Shape*> TryGetSubshape(const Shape& shape,
                                                ShapeIndexView index);
   static Shape* GetMutableSubshape(Shape* shape, ShapeIndexView index);
@@ -560,6 +564,7 @@ class ShapeUtil {
 
   // Returns the number of leaves in the shape.
   static int64_t GetLeafCount(const Shape& shape);
+  static int64_t GetLeafCountTuple(const Shape& shape);
 
   // Retrieves all the leaf shapes and their indexes, in the order walked by
   // the ForEachSubshape() API.

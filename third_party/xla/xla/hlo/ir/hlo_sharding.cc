@@ -1019,6 +1019,16 @@ int64_t HloSharding::NumTiles() const {
                      .subspan(0, TiledDataRank()));
 }
 
+int64_t HloSharding::NumTilesLeaf() const {
+  DCHECK(!IsTuple());
+  if (IsTileMaximalLeaf()) {
+    return 1;
+  }
+  CHECK(!IsManualLeaf() & !IsUnknownLeaf());
+  return Product(absl::Span<const int64_t>(tile_assignment_.dimensions())
+                     .subspan(0, TiledDataRankLeaf()));
+}
+
 int64_t HloSharding::NumTiles(absl::Span<const int64_t> dims) const {
   if (IsTileMaximal()) {
     return 1;
@@ -1041,17 +1051,18 @@ HloSharding HloSharding::GetSubSharding(const Shape& shape,
   const Shape* sub_shape = &shape;
   for (int64_t idx : index) {
     for (int64_t i = 0; i < idx; ++i) {
-      sharding_index +=
-          ShapeUtil::GetLeafCount(ShapeUtil::GetSubshape(*sub_shape, {i}));
+      sharding_index += ShapeUtil::GetLeafCount(
+          ShapeUtil::GetSubshapeOneIndex(*sub_shape, i));
     }
-    sub_shape = &ShapeUtil::GetSubshape(*sub_shape, {idx});
+    sub_shape = &ShapeUtil::GetSubshapeOneIndex(*sub_shape, idx);
   }
   if (sub_shape->IsTuple()) {
     auto begin_it = tuple_elements_.begin() + sharding_index;
     return HloSharding::Tuple(
         *sub_shape,
         absl::MakeConstSpan(
-            &*begin_it, &*(begin_it + ShapeUtil::GetLeafCount(*sub_shape))));
+            &*begin_it,
+            &*(begin_it + ShapeUtil::GetLeafCountTuple(*sub_shape))));
   } else {
     return tuple_elements_[sharding_index];
   }
