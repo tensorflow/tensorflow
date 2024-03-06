@@ -47,10 +47,9 @@ TEST(RunQuantizationTest,
   const absl::StatusOr<std::string> tmp_saved_model_dir = CreateTmpDir();
   ASSERT_THAT(tmp_saved_model_dir, IsOk());
 
-  QuantizationConfig config;
   const absl::StatusOr<mlir::ModuleOp> quantized_module_op = RunQuantization(
       /*saved_model_bundle=*/nullptr, *tmp_saved_model_dir,
-      /*saved_model_tags=*/{}, config,
+      /*saved_model_tags=*/{}, QuantizationConfig(),
       /*quantization_py_function_lib=*/nullptr, /*module_op=*/{});
   EXPECT_THAT(
       quantized_module_op,
@@ -65,10 +64,9 @@ TEST(RunQuantizationTest,
 
   // Dummy SavedModelBundle to pass a non-nullptr argument.
   SavedModelBundle bundle{};
-  QuantizationConfig config;
   const absl::StatusOr<mlir::ModuleOp> quantized_module_op = RunQuantization(
       /*saved_model_bundle=*/&bundle, *tmp_saved_model_dir,
-      /*saved_model_tags=*/{}, config,
+      /*saved_model_tags=*/{}, QuantizationConfig(),
       /*quantization_py_function_lib=*/nullptr, /*module_op=*/{});
   EXPECT_THAT(
       quantized_module_op,

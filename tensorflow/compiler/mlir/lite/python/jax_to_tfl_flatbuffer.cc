@@ -121,7 +121,7 @@ mlir::OwningOpRef<mlir::ModuleOp> HloTextToMlirHloTranslateFunction(
 }  // namespace
 absl::Status ConvertJaxToTFLiteFlatBuffer(const std::string& input,
                                           const toco::ModelFlags& model_flags,
-                                          toco::TocoFlags& toco_flags,
+                                          const toco::TocoFlags& toco_flags,
                                           std::string* result) {
   mlir::MLIRContext context;
   mlir::quant::QuantizationSpecs quant_specs;

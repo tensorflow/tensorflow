@@ -17,7 +17,6 @@ from typing import Any
 from tensorflow.compiler.mlir.quantization.tensorflow.python import py_function_lib
 from tensorflow.compiler.mlir.quantization.tensorflow.python import representative_dataset as rd
 
-
 # LINT.IfChange(static_range_ptq)
 def static_range_ptq(
     src_saved_model_path: str,
@@ -31,7 +30,6 @@ def static_range_ptq(
 ) -> Any: ...  # Status
 
 # LINT.ThenChange()
-
 
 # LINT.IfChange(populate_default_configs)
 def populate_default_configs(

@@ -43,7 +43,7 @@ Status RegisterAllCustomOps(const toco::TocoFlags& toco_flags);
 // Populate quantization specs (or not) given user specified ranges for each
 // input arrays.
 Status PopulateQuantizationSpecs(
-    const toco::ModelFlags& model_flags, toco::TocoFlags& toco_flags,
+    const toco::ModelFlags& model_flags, const toco::TocoFlags& toco_flags,
     mlir::quant::QuantizationSpecs* quant_specs,
     std::vector<string>* node_names, std::vector<string>* node_dtypes,
     std::vector<std::optional<std::vector<int>>>* node_shapes,
@@ -53,7 +53,7 @@ Status PopulateQuantizationSpecs(
 // Convert imported MLIR file to TfLite flatbuffer.
 // This will also run relevant passes as well.
 Status ConvertMLIRToTFLiteFlatBuffer(
-    const toco::ModelFlags& model_flags, toco::TocoFlags& toco_flags,
+    const toco::ModelFlags& model_flags, const toco::TocoFlags& toco_flags,
     mlir::OwningOpRef<mlir::ModuleOp> module,
     const mlir::TFL::PassConfig& pass_config,
     const std::unordered_set<std::string>& saved_model_tags, string* result,

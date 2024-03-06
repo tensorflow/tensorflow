@@ -66,9 +66,7 @@ from tensorflow.python.types import core
 
 # Type aliases for quantization method protobuf enums.
 _PresetMethod = quant_opts_pb2.QuantizationMethod.PresetMethod
-_CalibrationMethod = (
-    stablehlo_quant_config_pb2.CalibrationOptions.CalibrationMethod
-)
+_CalibrationMethod = quant_opts_pb2.CalibrationOptions.CalibrationMethod
 
 _QuantizationComponent = (
     quant_opts_pb2.QuantizationComponentSpec.QuantizationComponent
@@ -6151,33 +6149,33 @@ class CalibrationOptionsTest(quantize_model_test_base.QuantizedModelTest):
               quant_opts_pb2.UNIFORM_QUANTIZED,
           ],
           'calibration_options': [
-              stablehlo_quant_config_pb2.CalibrationOptions(
+              quant_opts_pb2.CalibrationOptions(
                   calibration_method=_CalibrationMethod.CALIBRATION_METHOD_MIN_MAX
               ),
-              stablehlo_quant_config_pb2.CalibrationOptions(
+              quant_opts_pb2.CalibrationOptions(
                   calibration_method=_CalibrationMethod.CALIBRATION_METHOD_AVERAGE_MIN_MAX
               ),
-              stablehlo_quant_config_pb2.CalibrationOptions(
+              quant_opts_pb2.CalibrationOptions(
                   calibration_method=_CalibrationMethod.CALIBRATION_METHOD_HISTOGRAM_PERCENTILE,
-                  calibration_parameters=stablehlo_quant_config_pb2.CalibrationOptions.CalibrationParameters(
+                  calibration_parameters=quant_opts_pb2.CalibrationOptions.CalibrationParameters(
                       initial_num_bins=10,
                   ),
               ),
-              stablehlo_quant_config_pb2.CalibrationOptions(
+              quant_opts_pb2.CalibrationOptions(
                   calibration_method=_CalibrationMethod.CALIBRATION_METHOD_HISTOGRAM_MSE_BRUTEFORCE,
-                  calibration_parameters=stablehlo_quant_config_pb2.CalibrationOptions.CalibrationParameters(
+                  calibration_parameters=quant_opts_pb2.CalibrationOptions.CalibrationParameters(
                       initial_num_bins=10,
                   ),
               ),
-              stablehlo_quant_config_pb2.CalibrationOptions(
+              quant_opts_pb2.CalibrationOptions(
                   calibration_method=_CalibrationMethod.CALIBRATION_METHOD_HISTOGRAM_MSE_MAX_FREQUENCY,
-                  calibration_parameters=stablehlo_quant_config_pb2.CalibrationOptions.CalibrationParameters(
+                  calibration_parameters=quant_opts_pb2.CalibrationOptions.CalibrationParameters(
                       initial_num_bins=10,
                   ),
               ),
-              stablehlo_quant_config_pb2.CalibrationOptions(
+              quant_opts_pb2.CalibrationOptions(
                   calibration_method=_CalibrationMethod.CALIBRATION_METHOD_HISTOGRAM_MSE_SYMMETRIC,
-                  calibration_parameters=stablehlo_quant_config_pb2.CalibrationOptions.CalibrationParameters(
+                  calibration_parameters=quant_opts_pb2.CalibrationOptions.CalibrationParameters(
                       initial_num_bins=10,
                   ),
               ),
@@ -6188,7 +6186,7 @@ class CalibrationOptionsTest(quantize_model_test_base.QuantizedModelTest):
   def test_conv_ptq_model_by_calibration_options(
       self,
       target_opset: quant_opts_pb2.OpSet,
-      calibration_options: stablehlo_quant_config_pb2.CalibrationOptions,
+      calibration_options: quant_opts_pb2.CalibrationOptions,
   ):
     has_bias = True
     has_batch_norm = True
@@ -6310,21 +6308,21 @@ class CalibrationOptionsTest(quantize_model_test_base.QuantizedModelTest):
   @parameterized.named_parameters(
       {
           'testcase_name': 'with_calibration_method_unspecified',
-          'calibration_options': stablehlo_quant_config_pb2.CalibrationOptions(
+          'calibration_options': quant_opts_pb2.CalibrationOptions(
               calibration_method=_CalibrationMethod.CALIBRATION_METHOD_UNSPECIFIED
           ),
-          'default_calibration_options': stablehlo_quant_config_pb2.CalibrationOptions(
+          'default_calibration_options': quant_opts_pb2.CalibrationOptions(
               calibration_method=_CalibrationMethod.CALIBRATION_METHOD_MIN_MAX
           ),
       },
       {
           'testcase_name': 'with_histogram_percentile',
-          'calibration_options': stablehlo_quant_config_pb2.CalibrationOptions(
+          'calibration_options': quant_opts_pb2.CalibrationOptions(
               calibration_method=_CalibrationMethod.CALIBRATION_METHOD_HISTOGRAM_PERCENTILE
           ),
-          'default_calibration_options': stablehlo_quant_config_pb2.CalibrationOptions(
+          'default_calibration_options': quant_opts_pb2.CalibrationOptions(
               calibration_method=_CalibrationMethod.CALIBRATION_METHOD_HISTOGRAM_PERCENTILE,
-              calibration_parameters=stablehlo_quant_config_pb2.CalibrationOptions.CalibrationParameters(
+              calibration_parameters=quant_opts_pb2.CalibrationOptions.CalibrationParameters(
                   initial_num_bins=256,
                   min_percentile=0.001,
                   max_percentile=99.999,
@@ -6333,36 +6331,36 @@ class CalibrationOptionsTest(quantize_model_test_base.QuantizedModelTest):
       },
       {
           'testcase_name': 'with_histogram_mse_bruteforce',
-          'calibration_options': stablehlo_quant_config_pb2.CalibrationOptions(
+          'calibration_options': quant_opts_pb2.CalibrationOptions(
               calibration_method=_CalibrationMethod.CALIBRATION_METHOD_HISTOGRAM_MSE_BRUTEFORCE
           ),
-          'default_calibration_options': stablehlo_quant_config_pb2.CalibrationOptions(
+          'default_calibration_options': quant_opts_pb2.CalibrationOptions(
               calibration_method=_CalibrationMethod.CALIBRATION_METHOD_HISTOGRAM_MSE_BRUTEFORCE,
-              calibration_parameters=stablehlo_quant_config_pb2.CalibrationOptions.CalibrationParameters(
+              calibration_parameters=quant_opts_pb2.CalibrationOptions.CalibrationParameters(
                   initial_num_bins=256
               ),
           ),
       },
       {
           'testcase_name': 'with_histogram_mse_max_frequency',
-          'calibration_options': stablehlo_quant_config_pb2.CalibrationOptions(
+          'calibration_options': quant_opts_pb2.CalibrationOptions(
               calibration_method=_CalibrationMethod.CALIBRATION_METHOD_HISTOGRAM_MSE_MAX_FREQUENCY
           ),
-          'default_calibration_options': stablehlo_quant_config_pb2.CalibrationOptions(
+          'default_calibration_options': quant_opts_pb2.CalibrationOptions(
               calibration_method=_CalibrationMethod.CALIBRATION_METHOD_HISTOGRAM_MSE_MAX_FREQUENCY,
-              calibration_parameters=stablehlo_quant_config_pb2.CalibrationOptions.CalibrationParameters(
+              calibration_parameters=quant_opts_pb2.CalibrationOptions.CalibrationParameters(
                   initial_num_bins=256
               ),
           ),
       },
       {
           'testcase_name': 'with_histogram_mse_symmetric',
-          'calibration_options': stablehlo_quant_config_pb2.CalibrationOptions(
+          'calibration_options': quant_opts_pb2.CalibrationOptions(
               calibration_method=_CalibrationMethod.CALIBRATION_METHOD_HISTOGRAM_MSE_SYMMETRIC
           ),
-          'default_calibration_options': stablehlo_quant_config_pb2.CalibrationOptions(
+          'default_calibration_options': quant_opts_pb2.CalibrationOptions(
               calibration_method=_CalibrationMethod.CALIBRATION_METHOD_HISTOGRAM_MSE_SYMMETRIC,
-              calibration_parameters=stablehlo_quant_config_pb2.CalibrationOptions.CalibrationParameters(
+              calibration_parameters=quant_opts_pb2.CalibrationOptions.CalibrationParameters(
                   initial_num_bins=256
               ),
           ),
@@ -6371,8 +6369,8 @@ class CalibrationOptionsTest(quantize_model_test_base.QuantizedModelTest):
   @test_util.run_in_graph_and_eager_modes
   def test_default_calibration_options(
       self,
-      calibration_options: stablehlo_quant_config_pb2.CalibrationOptions,
-      default_calibration_options: stablehlo_quant_config_pb2.CalibrationOptions,
+      calibration_options: quant_opts_pb2.CalibrationOptions,
+      default_calibration_options: quant_opts_pb2.CalibrationOptions,
   ):
     quant_opts = quant_opts_pb2.QuantizationOptions(
         quantization_method=quant_opts_pb2.QuantizationMethod(
@@ -6501,7 +6499,7 @@ class CalibrationOptionsTest(quantize_model_test_base.QuantizedModelTest):
         signature_keys=['serving_default'],
         op_set=target_opset,
         enable_per_channel_quantization=False,
-        calibration_options=stablehlo_quant_config_pb2.CalibrationOptions(
+        calibration_options=quant_opts_pb2.CalibrationOptions(
             calibration_method=_CalibrationMethod.CALIBRATION_METHOD_MIN_MAX,
         ),
     )
@@ -6528,7 +6526,7 @@ class CalibrationOptionsTest(quantize_model_test_base.QuantizedModelTest):
         signature_keys=['serving_default'],
         op_set=target_opset,
         enable_per_channel_quantization=False,
-        calibration_options=stablehlo_quant_config_pb2.CalibrationOptions(
+        calibration_options=quant_opts_pb2.CalibrationOptions(
             calibration_method=_CalibrationMethod.CALIBRATION_METHOD_AVERAGE_MIN_MAX,
         ),
     )

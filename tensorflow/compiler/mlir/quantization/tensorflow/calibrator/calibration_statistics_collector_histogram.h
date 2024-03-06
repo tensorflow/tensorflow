@@ -19,7 +19,6 @@ limitations under the License.
 #include <deque>
 #include <optional>
 
-#include "tensorflow/compiler/mlir/quantization/stablehlo/quantization_config.pb.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/calibrator/calibration_statistics.pb.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/calibrator/calibration_statistics_collector_base.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/quantization_options.pb.h"
@@ -27,7 +26,7 @@ limitations under the License.
 namespace tensorflow {
 namespace calibrator {
 
-using ::stablehlo::quantization::CalibrationOptions;
+using tensorflow::quantization::CalibrationOptions;
 
 class CalibrationStatisticsCollectorHistogram
     : public CalibrationStatisticsCollectorBase {

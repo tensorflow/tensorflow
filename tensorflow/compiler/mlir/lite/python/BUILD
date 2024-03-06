@@ -61,6 +61,7 @@ cc_library(
         ":tf_tfl_flatbuffer_helpers",
         "//tensorflow/compiler/mlir/lite:common",
         "//tensorflow/compiler/mlir/quantization/common/quantization_lib:quantization_config",
+        "//tensorflow/compiler/mlir/quantization/tensorflow/python:py_function_lib",
         "//tensorflow/compiler/mlir/tensorflow:import_model",
         "//tensorflow/compiler/mlir/tensorflow:mlir_roundtrip_flags",
         "//tensorflow/core:lib",

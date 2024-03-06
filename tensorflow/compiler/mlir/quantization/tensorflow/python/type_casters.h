@@ -126,9 +126,9 @@ struct type_caster<tensorflow::quantization::QuantizationOptions>
           tensorflow::quantization::QuantizationOptions> {};
 
 template <>
-struct type_caster<::stablehlo::quantization::CalibrationOptions>
+struct type_caster<tensorflow::quantization::CalibrationOptions>
     : public internal::SerializedProtobufCaster<
-          ::stablehlo::quantization::CalibrationOptions> {};
+          tensorflow::quantization::CalibrationOptions> {};
 
 template <>
 struct type_caster<tensorflow::SignatureDef>

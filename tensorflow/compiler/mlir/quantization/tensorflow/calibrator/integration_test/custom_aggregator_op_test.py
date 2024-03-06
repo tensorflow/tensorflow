@@ -16,7 +16,7 @@
 
 import tensorflow  # pylint: disable=unused-import
 
-from tensorflow.compiler.mlir.quantization.stablehlo import quantization_config_pb2 as stablehlo_quant_config_pb2
+from tensorflow.compiler.mlir.quantization.tensorflow import quantization_options_pb2 as quant_opts_pb2
 from tensorflow.compiler.mlir.quantization.tensorflow.calibrator import calibration_statistics_pb2 as calib_stat_pb2
 from tensorflow.compiler.mlir.quantization.tensorflow.calibrator import custom_aggregator_op_wrapper
 from tensorflow.compiler.mlir.quantization.tensorflow.calibrator import pywrap_calibration
@@ -26,9 +26,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.platform import test
 
-_CalibrationMethod = (
-    stablehlo_quant_config_pb2.CalibrationOptions.CalibrationMethod
-)
+_CalibrationMethod = quant_opts_pb2.CalibrationOptions.CalibrationMethod
 
 
 class CustomAggregatorTest(test.TestCase):

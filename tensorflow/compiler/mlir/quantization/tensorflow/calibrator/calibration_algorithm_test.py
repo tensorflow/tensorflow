@@ -16,20 +16,18 @@
 from absl.testing import parameterized
 import numpy as np
 
-from tensorflow.compiler.mlir.quantization.stablehlo import quantization_config_pb2 as stablehlo_quant_config_pb2
+from tensorflow.compiler.mlir.quantization.tensorflow import quantization_options_pb2 as quant_opts_pb2
 from tensorflow.compiler.mlir.quantization.tensorflow.calibrator import calibration_algorithm
 from tensorflow.compiler.mlir.quantization.tensorflow.calibrator import calibration_statistics_pb2 as calib_stats_pb2
 from tensorflow.python.platform import test
 
-_CalibrationMethod = (
-    stablehlo_quant_config_pb2.CalibrationOptions.CalibrationMethod
-)
+_CalibrationMethod = quant_opts_pb2.CalibrationOptions.CalibrationMethod
 
 
 class CalibrationAlgorithmTest(test.TestCase, parameterized.TestCase):
 
   def test_min_max_max(self):
-    calib_opts = stablehlo_quant_config_pb2.CalibrationOptions(
+    calib_opts = quant_opts_pb2.CalibrationOptions(
         calibration_method=_CalibrationMethod.CALIBRATION_METHOD_MIN_MAX
     )
     statistics = calib_stats_pb2.CalibrationStatistics()
@@ -42,7 +40,7 @@ class CalibrationAlgorithmTest(test.TestCase, parameterized.TestCase):
     self.assertAllEqual((min_value, max_value), (1.0, 5.0))
 
   def test_average_min_max(self):
-    calib_opts = stablehlo_quant_config_pb2.CalibrationOptions(
+    calib_opts = quant_opts_pb2.CalibrationOptions(
         calibration_method=_CalibrationMethod.CALIBRATION_METHOD_AVERAGE_MIN_MAX
     )
     statistics = calib_stats_pb2.CalibrationStatistics()
@@ -58,32 +56,32 @@ class CalibrationAlgorithmTest(test.TestCase, parameterized.TestCase):
   @parameterized.named_parameters(
       {
           "testcase_name": "with_histogram_percentile",
-          "calibration_options": stablehlo_quant_config_pb2.CalibrationOptions(
+          "calibration_options": quant_opts_pb2.CalibrationOptions(
               calibration_method=_CalibrationMethod.CALIBRATION_METHOD_HISTOGRAM_PERCENTILE,
-              calibration_parameters=stablehlo_quant_config_pb2.CalibrationOptions.CalibrationParameters(
+              calibration_parameters=quant_opts_pb2.CalibrationOptions.CalibrationParameters(
                   min_percentile=0.001, max_percentile=99.999
               ),
           ),
       },
       {
           "testcase_name": "with_histogram_mse_bruteforce",
-          "calibration_options": stablehlo_quant_config_pb2.CalibrationOptions(
+          "calibration_options": quant_opts_pb2.CalibrationOptions(
               calibration_method=_CalibrationMethod.CALIBRATION_METHOD_HISTOGRAM_MSE_BRUTEFORCE,
-              calibration_parameters=stablehlo_quant_config_pb2.CalibrationOptions.CalibrationParameters(),
+              calibration_parameters=quant_opts_pb2.CalibrationOptions.CalibrationParameters(),
           ),
       },
       {
           "testcase_name": "with_histogram_mse_max_frequency",
-          "calibration_options": stablehlo_quant_config_pb2.CalibrationOptions(
+          "calibration_options": quant_opts_pb2.CalibrationOptions(
               calibration_method=_CalibrationMethod.CALIBRATION_METHOD_HISTOGRAM_MSE_MAX_FREQUENCY,
-              calibration_parameters=stablehlo_quant_config_pb2.CalibrationOptions.CalibrationParameters(),
+              calibration_parameters=quant_opts_pb2.CalibrationOptions.CalibrationParameters(),
           ),
       },
       {
           "testcase_name": "with_histogram_mse_symmetric",
-          "calibration_options": stablehlo_quant_config_pb2.CalibrationOptions(
+          "calibration_options": quant_opts_pb2.CalibrationOptions(
               calibration_method=_CalibrationMethod.CALIBRATION_METHOD_HISTOGRAM_MSE_SYMMETRIC,
-              calibration_parameters=stablehlo_quant_config_pb2.CalibrationOptions.CalibrationParameters(),
+              calibration_parameters=quant_opts_pb2.CalibrationOptions.CalibrationParameters(),
           ),
       },
   )

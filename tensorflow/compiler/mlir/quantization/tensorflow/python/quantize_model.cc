@@ -256,7 +256,8 @@ absl::StatusOr<ExportedModel> QuantizePtqModelPreCalibration(
     *quantization_config.mutable_debugger_config() =
         ConvertDebuggerOptionToDebuggerConfig(
             quantization_options.debugger_options());
-    PreCalibrationComponent pre_calibration_component(context.get());
+    PreCalibrationComponent pre_calibration_component(
+        context.get(), quantization_options.calibration_options());
     TF_ASSIGN_OR_RETURN(*module_ref, pre_calibration_component.Run(
                                          *module_ref, quantization_config));
   } else {

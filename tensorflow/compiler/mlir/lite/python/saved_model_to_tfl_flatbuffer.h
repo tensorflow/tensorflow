@@ -28,7 +28,7 @@ namespace tensorflow {
 // string according to the given model flags, toco flags and tags. Returns error
 // status if it fails to convert the input.
 Status ConvertSavedModelToTFLiteFlatBuffer(
-    const toco::ModelFlags& model_flags, toco::TocoFlags& toco_flags,
+    const toco::ModelFlags& model_flags, const toco::TocoFlags& toco_flags,
     string* result,
     const quantization::PyFunctionLibrary* quantization_py_function_lib);
 

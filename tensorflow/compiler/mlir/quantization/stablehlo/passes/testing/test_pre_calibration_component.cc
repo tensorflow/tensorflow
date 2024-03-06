@@ -35,6 +35,7 @@ namespace mlir::quant::stablehlo::testing {
 namespace {
 
 using ::stablehlo::quantization::QuantizationConfig;
+using ::tensorflow::quantization::CalibrationOptions;
 
 class TestPreCalibrationComponentPass
     : public impl::TestPreCalibrationComponentPassBase<
@@ -51,7 +52,8 @@ void TestPreCalibrationComponentPass::runOnOperation() {
   MLIRContext& ctx = getContext();
 
   // Simply runs the PreCalibrationComponent with a default configuration.
-  PreCalibrationComponent component(&ctx);
+  PreCalibrationComponent component(&ctx,
+                                    CalibrationOptions::default_instance());
   if (!component.Run(module_op, QuantizationConfig::default_instance()).ok()) {
     signalPassFailure();
   }

@@ -14,6 +14,8 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/compiler/mlir/quantization/stablehlo/cc/pre_calibration.h"
 
+#include <utility>
+
 #include "absl/base/nullability.h"
 #include "absl/log/die_if_null.h"
 #include "absl/status/statusor.h"
@@ -28,19 +30,21 @@ limitations under the License.
 namespace mlir::quant::stablehlo {
 
 using ::stablehlo::quantization::QuantizationConfig;
+using ::tensorflow::quantization::CalibrationOptions;
 using ::tensorflow::quantization::RunPasses;
 
 PreCalibrationComponent::PreCalibrationComponent(
-    absl::Nonnull<MLIRContext*> ctx)
-    : ctx_(ABSL_DIE_IF_NULL(ctx)) {}  // Crash OK
+    absl::Nonnull<MLIRContext*> ctx, CalibrationOptions calibration_options)
+    : ctx_(ABSL_DIE_IF_NULL(ctx)),  // Crash OK
+      calibration_options_(std::move(calibration_options)) {}
 
 absl::StatusOr<ModuleOp> PreCalibrationComponent::Run(
     ModuleOp module_op, const QuantizationConfig& config) {
   TF_RETURN_IF_ERROR(RunPasses(
       kName, /*add_passes_func=*/
       [&config, this](PassManager& pm) {
-        AddPreCalibrationPasses(pm, config.calibration_options(),
-                                config.specs(), config.debugger_config());
+        AddPreCalibrationPasses(pm, calibration_options_, config.specs(),
+                                config.debugger_config());
       },
       *ctx_, module_op));
   return module_op;

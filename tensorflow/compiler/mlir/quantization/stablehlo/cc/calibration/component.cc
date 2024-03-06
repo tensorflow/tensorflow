@@ -73,6 +73,7 @@ using ::tensorflow::MLIRImportOptions;
 using ::tensorflow::SavedModelBundle;
 using ::tensorflow::SavedModelSignatureDefsToMlirImport;
 using ::tensorflow::SignatureDef;
+using ::tensorflow::quantization::CalibrationOptions;
 using ::tensorflow::quantization::ExportedModel;
 using ::tensorflow::quantization::PreprocessAndFreezeGraph;
 using ::tensorflow::quantization::PyFunctionLibrary;
@@ -158,14 +159,16 @@ CalibrationComponent::CalibrationComponent(
     absl::flat_hash_map<FunctionName, FunctionAlias> function_aliases,
     std::unordered_set<std::string> tags,
     absl::flat_hash_map<std::string, SignatureDef> signature_def_map,
-    std::vector<std::string> signature_keys)
+    std::vector<std::string> signature_keys,
+    const CalibrationOptions& calibration_options)
     : ctx_(ABSL_DIE_IF_NULL(ctx)),                          // Crash OK
       py_function_lib_(ABSL_DIE_IF_NULL(py_function_lib)),  // Crash OK
       src_saved_model_path_(src_saved_model_path),
       function_aliases_(std::move(function_aliases)),
       tags_(std::move(tags)),
       signature_def_map_(std::move(signature_def_map)),
-      signature_keys_(std::move(signature_keys)) {}
+      signature_keys_(std::move(signature_keys)),
+      calibration_options_(calibration_options) {}
 
 absl::StatusOr<ExportedModel> CalibrationComponent::ExportToSavedModel(
     ModuleOp module_op, const absl::string_view dst_saved_model_path) {
@@ -252,14 +255,14 @@ absl::StatusOr<ModuleOp> CalibrationComponent::Run(
   // Runs calibration on the exported model. The statistics will be stored in a
   // separate singleton object `CalibratorSingleton` and are directly added to
   // `exported_model` without re-importing it.
-  py_function_lib_->RunCalibration(
-      precalibrated_saved_model_dir, signature_keys_, tags_,
-      config.calibration_options(),
-      /*force_graph_mode_calibration=*/true, representative_dataset_file_map);
+  py_function_lib_->RunCalibration(precalibrated_saved_model_dir,
+                                   signature_keys_, tags_, calibration_options_,
+                                   /*force_graph_mode_calibration=*/true,
+                                   representative_dataset_file_map);
 
-  if (absl::Status status = AddCalibrationStatistics(
-          *exported_model.mutable_graph_def(), config.calibration_options(),
-          *py_function_lib_);
+  if (absl::Status status =
+          AddCalibrationStatistics(*exported_model.mutable_graph_def(),
+                                   calibration_options_, *py_function_lib_);
       !status.ok()) {
     LOG(WARNING) << "Some CustomAggregator ops do not have min or max "
                     "values. Parts of the graph are not quantized. "

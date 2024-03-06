@@ -19,15 +19,12 @@ limitations under the License.
 #include <vector>
 
 #include <gtest/gtest.h>
-#include "tensorflow/compiler/mlir/quantization/stablehlo/quantization_config.pb.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/calibrator/calibration_statistics.pb.h"
 #include "tensorflow/core/platform/test.h"
 
 namespace tensorflow {
 namespace calibrator {
 namespace {
-
-using ::stablehlo::quantization::CalibrationOptions;
 
 TEST(CalibratorSingletonTest, SimpleMinMax) {
   std::vector<std::vector<float>> report_vec;

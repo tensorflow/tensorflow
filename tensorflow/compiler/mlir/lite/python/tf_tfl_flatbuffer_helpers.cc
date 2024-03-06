@@ -217,7 +217,7 @@ absl::Status RegisterAllCustomOps(const toco::TocoFlags& toco_flags) {
 }
 
 absl::Status PopulateQuantizationSpecs(
-    const toco::ModelFlags& model_flags, toco::TocoFlags& toco_flags,
+    const toco::ModelFlags& model_flags, const toco::TocoFlags& toco_flags,
     mlir::quant::QuantizationSpecs* quant_specs,
     std::vector<std::string>* node_names, std::vector<std::string>* node_dtypes,
     std::vector<std::optional<std::vector<int>>>* node_shapes,
@@ -345,7 +345,7 @@ absl::Status DumpOpGraphToFile(mlir::ModuleOp module,
 }
 
 absl::Status ConvertMLIRToTFLiteFlatBuffer(
-    const toco::ModelFlags& model_flags, toco::TocoFlags& toco_flags,
+    const toco::ModelFlags& model_flags, const toco::TocoFlags& toco_flags,
     mlir::OwningOpRef<mlir::ModuleOp> module,
     const mlir::TFL::PassConfig& pass_config,
     const std::unordered_set<std::string>& saved_model_tags,

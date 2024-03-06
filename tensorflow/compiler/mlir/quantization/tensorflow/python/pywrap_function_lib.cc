@@ -23,7 +23,6 @@ limitations under the License.
 #include "pybind11/pybind11.h"  // from @pybind11
 #include "pybind11/pytypes.h"  // from @pybind11
 #include "tensorflow/compiler/mlir/quantization/stablehlo/cc/calibration/min_max_value.h"
-#include "tensorflow/compiler/mlir/quantization/stablehlo/quantization_config.pb.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/calibrator/calibration_statistics.pb.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/exported_model.pb.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/python/py_function_lib.h"
@@ -36,10 +35,10 @@ namespace py = ::pybind11;
 
 namespace {
 
-using ::stablehlo::quantization::CalibrationOptions;
 using ::stablehlo::quantization::MinMaxValue;
 using ::tensorflow::SignatureDef;
 using ::tensorflow::calibrator::CalibrationStatistics;
+using ::tensorflow::quantization::CalibrationOptions;
 using ::tensorflow::quantization::ExportedModel;
 using ::tensorflow::quantization::PyFunctionLibrary;
 using ::tensorflow::quantization::RepresentativeDatasetFile;

@@ -99,11 +99,11 @@ pytype_strict_library(
         ":pywrap_function_lib",
         ":representative_dataset",
         ":save_model",
-        "//tensorflow/compiler/mlir/quantization/stablehlo:quantization_config_proto_py",
         "//tensorflow/compiler/mlir/quantization/tensorflow:exported_model_proto_py",
         "//tensorflow/compiler/mlir/quantization/tensorflow:quantization_options_proto_py",
         "//tensorflow/compiler/mlir/quantization/tensorflow/calibrator:calibration_algorithm",
         "//tensorflow/compiler/mlir/quantization/tensorflow/calibrator:calibration_statistics_proto_py",
+        "//tensorflow/compiler/mlir/quantization/tensorflow/calibrator:pywrap_calibration",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python/client:session",
         "//tensorflow/python/eager:context",
@@ -115,6 +115,7 @@ pytype_strict_library(
         "//tensorflow/python/saved_model:loader",
         "//tensorflow/python/trackable:autotrackable",
         "//tensorflow/python/types:core",
+        "//third_party/py/numpy",
         "@absl_py//absl/logging",
     ],
 )
@@ -163,14 +164,15 @@ cc_library(
     hdrs = ["py_function_lib.h"],
     compatible_with = get_compatible_with_portable(),
     deps = [
-        "//tensorflow/compiler/mlir/quantization/stablehlo:quantization_config_proto_cc",
         "//tensorflow/compiler/mlir/quantization/stablehlo/cc/calibration:min_max_value",
         "//tensorflow/compiler/mlir/quantization/tensorflow:exported_model_proto_cc",
         "//tensorflow/compiler/mlir/quantization/tensorflow:quantization_options_proto_cc",
         "//tensorflow/compiler/mlir/quantization/tensorflow/calibrator:calibration_statistics_proto_cc",
+        "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/protobuf:for_core_protos_cc",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/strings:string_view",
+        "@pybind11",
     ],
 )
 
@@ -206,7 +208,6 @@ tf_python_pybind_extension(
     deps = [
         ":py_function_lib",
         ":type_casters",
-        "//tensorflow/compiler/mlir/quantization/stablehlo:quantization_config_proto_cc",
         "//tensorflow/compiler/mlir/quantization/stablehlo/cc/calibration:min_max_value",
         "//tensorflow/compiler/mlir/quantization/tensorflow:exported_model_proto_cc",
         "//tensorflow/compiler/mlir/quantization/tensorflow:quantization_options_proto_cc",

@@ -19,13 +19,11 @@ import logging
 
 import numpy as np
 
-from tensorflow.compiler.mlir.quantization.stablehlo import quantization_config_pb2 as stablehlo_quant_config_pb2
+from tensorflow.compiler.mlir.quantization.tensorflow import quantization_options_pb2 as quant_opts_pb2
 from tensorflow.compiler.mlir.quantization.tensorflow.calibrator import calibration_statistics_pb2 as calib_stats_pb2
 
 
-_CalibrationMethod = (
-    stablehlo_quant_config_pb2.CalibrationOptions.CalibrationMethod
-)
+_CalibrationMethod = quant_opts_pb2.CalibrationOptions.CalibrationMethod
 _REGISTRY = {}
 
 
@@ -44,7 +42,7 @@ class _CalibrationAlgorithmBase(abc.ABC):
   def __init__(
       self,
       statistics: calib_stats_pb2.CalibrationStatistics,
-      calib_opts: stablehlo_quant_config_pb2.CalibrationOptions,
+      calib_opts: quant_opts_pb2.CalibrationOptions,
   ):
     self._statistics = statistics
     self._calib_opts = calib_opts
@@ -60,7 +58,7 @@ class _HistogramCalibrationAlgorithmBase(_CalibrationAlgorithmBase):
   def __init__(
       self,
       statistics: calib_stats_pb2.CalibrationStatistics,
-      calib_opts: stablehlo_quant_config_pb2.CalibrationOptions,
+      calib_opts: quant_opts_pb2.CalibrationOptions,
   ):
     """Builds histogram using statistics.histogram_statistics.
 
@@ -373,7 +371,7 @@ class _HistogramMseSymmetric(_HistogramCalibrationAlgorithmBase):
 
 def get_min_max_value(
     statistics: calib_stats_pb2.CalibrationStatistics,
-    calib_opts: stablehlo_quant_config_pb2.CalibrationOptions,
+    calib_opts: quant_opts_pb2.CalibrationOptions,
 ) -> tuple[float, float]:
   """Calculates min and max from statistics using calibration options.
 

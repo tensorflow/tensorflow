@@ -16,7 +16,6 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_MLIR_QUANTIZATION_STABLEHLO_CC_CALIBRATION_STATISTICS_H_
 
 #include "absl/status/status.h"
-#include "tensorflow/compiler/mlir/quantization/stablehlo/quantization_config.pb.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/python/py_function_lib.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/quantization_options.pb.h"
 #include "tensorflow/core/framework/graph.pb.h"
@@ -29,7 +28,7 @@ namespace stablehlo::quantization {
 // max values.
 absl::Status AddCalibrationStatistics(
     tensorflow::GraphDef& graph_def,
-    const stablehlo::quantization::CalibrationOptions& calibration_options,
+    const tensorflow::quantization::CalibrationOptions& calibration_options,
     const tensorflow::quantization::PyFunctionLibrary& py_function_library);
 
 }  // namespace stablehlo::quantization

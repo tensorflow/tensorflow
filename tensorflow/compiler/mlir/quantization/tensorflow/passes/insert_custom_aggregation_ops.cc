@@ -33,7 +33,6 @@ limitations under the License.
 #include "mlir/Support/TypeID.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/quantization/common/quantization_lib/quantization_utils.h"
-#include "tensorflow/compiler/mlir/quantization/stablehlo/quantization_config.pb.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/passes/passes.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/passes/tf_quant_ops.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/quantization_options.pb.h"
@@ -44,7 +43,7 @@ namespace mlir {
 namespace quant {
 namespace {
 
-using ::stablehlo::quantization::CalibrationOptions;
+using ::tensorflow::quantization::CalibrationOptions;
 
 constexpr StringRef kQuantTraitAttrName = "_tfl_quant_trait";
 

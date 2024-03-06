@@ -93,7 +93,7 @@ tf_proto {
       number: 15
       label: LABEL_OPTIONAL
       type: TYPE_MESSAGE
-      type_name: ".stablehlo.quantization.CalibrationOptions"
+      type_name: ".tensorflow.quantization.CalibrationOptions"
     }
     field {
       name: "debugger_options"
