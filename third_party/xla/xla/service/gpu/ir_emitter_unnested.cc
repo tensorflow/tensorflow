@@ -943,6 +943,7 @@ absl::Status IrEmitterUnnested::EmitFusedMHAThunk(
   TF_ASSIGN_OR_RETURN(const xla::gpu::CudnnfMHAKind kind,
                       xla::gpu::GetCudnnfMHAKind(instr));
   BufferAllocation::Slice mask_slice, bias_slice;
+  BufferAllocation::Slice seqlen_q_slice, seqlen_k_slice;
   std::optional<Shape> mask_shape, bias_shape;
   {
     bool has_mask = kind == CudnnfMHAKind::kScaleMaskSoftmax ||
@@ -967,6 +968,15 @@ absl::Status IrEmitterUnnested::EmitFusedMHAThunk(
       const HloInstruction* bias = instr->operand(3);
       TF_ASSIGN_OR_RETURN(bias_slice, GetAllocationSliceForHlo(bias));
       bias_shape = bias->shape();
+    }
+    int64_t seqlen_qk_operand_index = 3 + has_mask + has_bias;
+    bool has_seqlen_qk = seqlen_qk_operand_index == instr->operand_count() - 2;
+    if (has_seqlen_qk) {
+      const HloInstruction* seqlen_q = instr->operand(seqlen_qk_operand_index);
+      TF_ASSIGN_OR_RETURN(seqlen_q_slice, GetAllocationSliceForHlo(seqlen_q));
+      const HloInstruction* seqlen_k =
+          instr->operand(seqlen_qk_operand_index + 1);
+      TF_ASSIGN_OR_RETURN(seqlen_k_slice, GetAllocationSliceForHlo(seqlen_k));
     }
   }
 
@@ -1000,7 +1010,8 @@ absl::Status IrEmitterUnnested::EmitFusedMHAThunk(
   AddThunkToThunkSequence(std::make_unique<FusedMHAThunk>(
       Thunk::ThunkInfo::WithProfileAnnotation(instr), std::move(fmha_config),
       lhs_bmm1_slice, rhs_bmm1_slice, rhs_bmm2_slice, output_slice,
-      scratch_slice, mask_slice, bias_slice, activation_slice));
+      scratch_slice, mask_slice, bias_slice, activation_slice, seqlen_q_slice,
+      seqlen_k_slice));
   return absl::OkStatus();
 }
 
@@ -1080,6 +1091,15 @@ absl::Status IrEmitterUnnested::EmitFusedMHABackwardThunk(
     fwd_output_shape = instr->operand(input_index++)->shape();
   }
 
+  BufferAllocation::Slice seqlen_q_slice, seqlen_k_slice;
+  bool has_seqlen_qk = input_index == instr->operand_count() - 2;
+  if (has_seqlen_qk) {
+    const HloInstruction* seqlen_q = instr->operand(input_index);
+    TF_ASSIGN_OR_RETURN(seqlen_q_slice, GetAllocationSliceForHlo(seqlen_q));
+    const HloInstruction* seqlen_k = instr->operand(input_index + 1);
+    TF_ASSIGN_OR_RETURN(seqlen_k_slice, GetAllocationSliceForHlo(seqlen_k));
+    input_index += 2;
+  }
   TF_RET_CHECK(input_index == instr->operand_count());
 
   int output_index = 0;
@@ -1159,7 +1179,7 @@ absl::Status IrEmitterUnnested::EmitFusedMHABackwardThunk(
       bmm2_grad_gemm2_rhs_slice, d_output_slice, scratch_slice,
       d_bmm1_lhs_slice, d_bmm1_rhs_slice, d_bmm2_rhs_slice, d_s_slice,
       softmax_sum_slice, d_Q_accum_slice, mask_slice, d_bias_slice,
-      fwd_output_slice, bias_slice));
+      fwd_output_slice, bias_slice, seqlen_q_slice, seqlen_k_slice));
 
   return absl::OkStatus();
 }

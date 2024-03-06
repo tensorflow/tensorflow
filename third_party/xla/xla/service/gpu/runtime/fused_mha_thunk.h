@@ -46,7 +46,9 @@ class FusedMHAThunk : public Thunk {
                 BufferAllocation::Slice scratch_slice,
                 BufferAllocation::Slice mask_slice, /* may be null */
                 BufferAllocation::Slice bias_slice /* may be null */,
-                BufferAllocation::Slice activation_slice /* may be null */);
+                BufferAllocation::Slice activation_slice /* may be null */,
+                BufferAllocation::Slice seqlen_q_slice /* may be null */,
+                BufferAllocation::Slice seqlen_k_slice /* may be null */);
 
   FusedMHAThunk(const FusedMHAThunk&) = delete;
   FusedMHAThunk& operator=(const FusedMHAThunk&) = delete;
@@ -62,6 +64,8 @@ class FusedMHAThunk : public Thunk {
   BufferAllocation::Slice mask_buffer_;
   BufferAllocation::Slice bias_buffer_;
   BufferAllocation::Slice activation_buffer_;
+  BufferAllocation::Slice seqlen_q_buffer_;
+  BufferAllocation::Slice seqlen_k_buffer_;
 
   FusedMultiHeadedAttentionRunner& GetOrCreateRunner(
       const stream_executor::Stream* stream);
@@ -93,7 +97,9 @@ class FusedMHABackwardThunk : public Thunk {
                         BufferAllocation::Slice mask_slice,
                         BufferAllocation::Slice d_bias_slice,
                         BufferAllocation::Slice fwd_output_slice,
-                        BufferAllocation::Slice bias_slice);
+                        BufferAllocation::Slice bias_slice,
+                        BufferAllocation::Slice seqlen_q_slice,
+                        BufferAllocation::Slice seqlen_k_slice);
 
   FusedMHABackwardThunk(const FusedMHABackwardThunk&) = delete;
   FusedMHABackwardThunk& operator=(const FusedMHABackwardThunk&) = delete;
@@ -117,6 +123,8 @@ class FusedMHABackwardThunk : public Thunk {
   BufferAllocation::Slice d_bias_buffer_;
   BufferAllocation::Slice fwd_output_buffer_;
   BufferAllocation::Slice bias_buffer_;
+  BufferAllocation::Slice seqlen_q_buffer_;
+  BufferAllocation::Slice seqlen_k_buffer_;
 
   FusedMultiHeadedAttentionBackwardRunner& GetOrCreateRunner(
       const stream_executor::Stream* stream);
