@@ -18,6 +18,8 @@ limitations under the License.
 #include <memory>
 #include <utility>
 
+#include "absl/strings/str_format.h"
+
 namespace xla {
 
 StreamPool::Ptr StreamPool::BorrowStream(se::StreamExecutor* executor,
@@ -34,13 +36,13 @@ StreamPool::Ptr StreamPool::BorrowStream(se::StreamExecutor* executor,
         stream = std::move(streams_with_pri_[priority].back());
         streams_with_pri_[priority].pop_back();
         if (stream->ok()) {
-          VLOG(1) << stream->DebugStreamPointers()
-                  << " StreamPool reusing existing stream with priority: "
-                  << se::StreamPriorityToString(priority);
+          VLOG(1) << absl::StrFormat(
+              "StreamPool reusing existing stream (%p) with priority: %s",
+              stream.get(), se::StreamPriorityToString(priority));
         } else {
-          VLOG(1) << stream->DebugStreamPointers()
-                  << " stream was not ok, StreamPool deleting with priority: "
-                  << se::StreamPriorityToString(priority);
+          VLOG(1) << absl::StrFormat(
+              "Stream (%p) was not ok, deleting with : %s", stream.get(),
+              se::StreamPriorityToString(priority));
           stream = nullptr;
         }
       }
@@ -50,10 +52,9 @@ StreamPool::Ptr StreamPool::BorrowStream(se::StreamExecutor* executor,
   if (!stream) {
     // Create a new stream.
     stream = executor->CreateStream(priority).value();
-    VLOG(1) << "Set stream priority to: "
-            << se::StreamPriorityToString(priority);
-    VLOG(1) << stream->DebugStreamPointers()
-            << " StreamPool created new stream";
+    VLOG(1) << absl::StrFormat("Created new stream (%p) with priority = %s",
+                               stream.get(),
+                               se::StreamPriorityToString(priority));
   }
 
   // Return the stream wrapped in Ptr, which has our special deleter semantics.
@@ -63,8 +64,7 @@ StreamPool::Ptr StreamPool::BorrowStream(se::StreamExecutor* executor,
 
 void StreamPool::ReturnStream(se::Stream* stream) {
   if (stream->ok()) {
-    VLOG(1) << stream->DebugStreamPointers()
-            << " StreamPool returning ok stream";
+    VLOG(1) << absl::StrFormat("StreamPool returning ok stream (%p)", stream);
     absl::MutexLock lock(&mu_);
     auto priority = std::get<se::StreamPriority>(stream->priority());
     streams_with_pri_[priority].emplace_back(stream);
@@ -72,8 +72,7 @@ void StreamPool::ReturnStream(se::Stream* stream) {
     // If the stream has encountered any errors, all subsequent operations on it
     // will fail. So just delete the stream, and rely on new streams to be
     // created in the future.
-    VLOG(1) << stream->DebugStreamPointers()
-            << " StreamPool deleting !ok stream";
+    VLOG(1) << absl::StrFormat("StreamPool deleting !ok stream (%p)", stream);
     delete stream;
   }
 }

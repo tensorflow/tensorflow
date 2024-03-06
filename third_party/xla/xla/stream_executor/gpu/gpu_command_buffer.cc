@@ -162,7 +162,7 @@ absl::Status GpuCommandBuffer::Trace(
   TF_RETURN_IF_ERROR(CheckNotFinalized());
 
   VLOG(5) << "Trace into GPU command buffer graph " << graph_
-          << " on a stream: " << stream->DebugStreamPointers();
+          << " on a stream: " << stream;
 
   auto gpu_stream = AsGpuStreamValue(stream);
 

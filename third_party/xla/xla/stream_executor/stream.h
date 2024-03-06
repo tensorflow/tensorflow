@@ -292,9 +292,6 @@ class Stream {
     return parent()->GetDeviceDescription().rocm_compute_capability();
   }
 
-  // Returns a debugging string "[stream=0x...,impl=0x...]".
-  std::string DebugStreamPointers() const;
-
   void SetPriority(StreamPriority priority);
   void SetPriority(int priority);
 

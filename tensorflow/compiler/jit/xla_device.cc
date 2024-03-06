@@ -301,8 +301,8 @@ Status XlaDevice::EnsureStreamOkLocked(xla::Backend* backend,
     xla::StreamPool::Ptr ptr;
     TF_ASSIGN_OR_RETURN(ptr, backend->BorrowStream(device_ordinal_));
     *stream = std::shared_ptr<se::Stream>(std::move(ptr));
-    VLOG(1) << "XlaDevice " << this << " new " << name << " "
-            << (*stream)->DebugStreamPointers();
+    VLOG(1) << "XlaDevice " << this << " new " << name
+            << " stream=" << (*stream);
     *stream_was_changed = true;
   }
   return absl::OkStatus();
