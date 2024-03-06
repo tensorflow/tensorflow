@@ -13,7 +13,7 @@ package(
         "//tensorflow/compiler/mlir/quantization/tensorflow:internal_visibility_allowlist_package",
         "//tensorflow/lite:__subpackages__",
         "//tensorflow/python:__subpackages__",
-        "//tensorflow/tools/pip_package/v2:__subpackages__",
+        "//tensorflow/tools/pip_package:__subpackages__",
     ],
     licenses = ["notice"],
 )
@@ -201,7 +201,7 @@ tf_python_pybind_extension(
     pytype_srcs = ["pywrap_function_lib.pyi"],
     visibility = [
         "__subpackages__",
-        "//tensorflow/tools/pip_package/v2:__subpackages__",
+        "//tensorflow/tools/pip_package:__subpackages__",
     ],
     deps = [
         ":py_function_lib",

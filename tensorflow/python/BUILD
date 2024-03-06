@@ -1123,7 +1123,7 @@ tf_python_pybind_extension(
     ],
     visibility = [
         "//tensorflow/core/config:__subpackages__",
-        "//tensorflow/tools/pip_package/v2:__subpackages__",
+        "//tensorflow/tools/pip_package:__subpackages__",
     ],
     deps = [
         "//tensorflow/core:lib_headers_for_pybind",
@@ -1330,7 +1330,7 @@ tf_python_pybind_extension(
     ],
     visibility = [
         "//tensorflow/python/distribute/parallel_device:__pkg__",
-        "//tensorflow/tools/pip_package/v2:__subpackages__",
+        "//tensorflow/tools/pip_package:__subpackages__",
     ],
     deps = [
         "//tensorflow/c:pywrap_required_hdrs",

@@ -66,7 +66,7 @@ tf_wheel = rule(
         "headers": attr.label_list(allow_files = True),
         "xla_aot_compiled": attr.label_list(allow_files = True),
         "wheel_binary": attr.label(
-            default = Label("//tensorflow/tools/pip_package/v2:build_pip_package_py"),
+            default = Label("//tensorflow/tools/pip_package:build_pip_package_py"),
             executable = True,
             cfg = "exec",
         ),

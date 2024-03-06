@@ -26,7 +26,7 @@ visibility = [
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
-    default_visibility = visibility + ["//tensorflow/tools/pip_package/v2:__subpackages__"],
+    default_visibility = visibility + ["//tensorflow/tools/pip_package:__subpackages__"],
     licenses = ["notice"],
 )
 

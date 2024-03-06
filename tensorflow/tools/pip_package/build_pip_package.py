@@ -32,11 +32,11 @@ import subprocess
 import sys
 import tempfile
 
-from tensorflow.tools.pip_package.v2.utils.utils import copy_file
-from tensorflow.tools.pip_package.v2.utils.utils import create_init_files
-from tensorflow.tools.pip_package.v2.utils.utils import is_macos
-from tensorflow.tools.pip_package.v2.utils.utils import is_windows
-from tensorflow.tools.pip_package.v2.utils.utils import replace_inplace
+from tensorflow.tools.pip_package.utils.utils import copy_file
+from tensorflow.tools.pip_package.utils.utils import create_init_files
+from tensorflow.tools.pip_package.utils.utils import is_macos
+from tensorflow.tools.pip_package.utils.utils import is_windows
+from tensorflow.tools.pip_package.utils.utils import replace_inplace
 
 
 def parse_args() -> argparse.Namespace:
@@ -153,8 +153,9 @@ def prepare_aot(aot: list[str], srcs_dir: str) -> None:
       copy_file(file, srcs_dir)
 
   shutil.move(
-      os.path.join(srcs_dir, ("tensorflow/tools/pip_package/v2/"
-                              "xla_build/CMakeLists.txt")),
+      os.path.join(
+          srcs_dir, "tensorflow/tools/pip_package/xla_build/CMakeLists.txt"
+      ),
       os.path.join(srcs_dir, "CMakeLists.txt"),
   )
 
@@ -180,8 +181,8 @@ def prepare_wheel_srcs(
 
   # move MANIFEST and THIRD_PARTY_NOTICES to the root
   shutil.move(
-      os.path.join(srcs_dir, "tensorflow/tools/pip_package/v2/MANIFEST.in"),
-      os.path.join(srcs_dir, "MANIFEST.in")
+      os.path.join(srcs_dir, "tensorflow/tools/pip_package/MANIFEST.in"),
+      os.path.join(srcs_dir, "MANIFEST.in"),
   )
   shutil.move(
       os.path.join(srcs_dir,
@@ -308,9 +309,16 @@ def build_wheel(dir_path: str, cwd: str, project_name: str,
     env["collaborator_build"] = True
 
   subprocess.run(
-      [sys.executable, "tensorflow/tools/pip_package/v2/setup.py",
-       "bdist_wheel",
-       f"--dist-dir={dir_path}"], check=True, cwd=cwd, env=env)
+      [
+          sys.executable,
+          "tensorflow/tools/pip_package/setup.py",
+          "bdist_wheel",
+          f"--dist-dir={dir_path}",
+      ],
+      check=True,
+      cwd=cwd,
+      env=env,
+  )
 
 
 if __name__ == "__main__":

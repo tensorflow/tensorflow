@@ -101,7 +101,7 @@ EOF
 
 @test "Pip package generated license includes all dependencies' licenses" {
   do_external_licenses_check \
-    "//tensorflow/tools/pip_package:build_pip_package" \
+    "//tensorflow/tools/pip_package:wheel" \
     "//tensorflow/tools/pip_package:licenses"
 }
 
@@ -172,7 +172,7 @@ EOF
 
   # Get the full list of files and targets which get included into the pip
   # package
-  bazel cquery --keep_going 'deps(//tensorflow/tools/pip_package:build_pip_package)' | sort -u > $BATS_TEST_TMPDIR/pip_deps
+  bazel cquery --keep_going 'deps(//tensorflow/tools/pip_package:wheel)' | sort -u > $BATS_TEST_TMPDIR/pip_deps
   # Find all Python py_test targets not tagged "no_pip" or "manual", excluding
   # any targets in ignored packages. Combine this list of targets into a bazel
   # query list (e.g. the list becomes "target+target2+target3")
@@ -215,7 +215,7 @@ EOF
   bazel cquery \
     --experimental_cc_shared_library \
     --@local_config_cuda//:enable_cuda \
-    "somepath(//tensorflow/tools/pip_package:build_pip_package, " \
+    "somepath(//tensorflow/tools/pip_package:wheel, " \
     "@local_config_cuda//cuda:cudart + "\
     "@local_config_cuda//cuda:cudart + "\
     "@local_config_cuda//cuda:cuda_driver + "\
@@ -225,7 +225,7 @@ EOF
     "@local_config_tensorrt//:tensorrt)" --keep_going > $BATS_TEST_TMPDIR/out
 
   cat <<EOF
-There was a path found connecting //tensorflow/tools/pip_package:build_pip_package
+There was a path found connecting //tensorflow/tools/pip_package:wheel
 to a banned CUDA dependency. Here's the output from bazel query:
 EOF
   cat $BATS_TEST_TMPDIR/out
@@ -237,7 +237,7 @@ EOF
     --experimental_cc_shared_library \
     --@local_config_cuda//:enable_cuda \
     --define framework_shared_object=false \
-    "somepath(//tensorflow/tools/pip_package:build_pip_package, " \
+    "somepath(//tensorflow/tools/pip_package:wheel, " \
     "@local_config_cuda//cuda:cudart + "\
     "@local_config_cuda//cuda:cudart + "\
     "@local_config_cuda//cuda:cuda_driver + "\
@@ -247,7 +247,7 @@ EOF
     "@local_config_tensorrt//:tensorrt)" --keep_going > $BATS_TEST_TMPDIR/out
 
   cat <<EOF
-There was a path found connecting //tensorflow/tools/pip_package:build_pip_package
+There was a path found connecting //tensorflow/tools/pip_package:wheel
 to a banned CUDA dependency when '--define framework_shared_object=false' is set.
 This means that a CUDA target was probably included via an is_static condition,
 used when targeting platforms like Windows where we build statically instead
