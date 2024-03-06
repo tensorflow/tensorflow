@@ -148,6 +148,66 @@ TEST_F(MlirScatterFusionTest, ThreadId_IndexingUnrolled) {
       MatchIndexingString(kIndicesIndexing));
 }
 
+TEST_F(MlirScatterFusionTest, Scatter_UniqueIndices) {
+  auto kHloString = R"(
+    HloModule module
+
+    add {
+      %p0 = f32[] parameter(0)
+      %p1 = f32[] parameter(1)
+      ROOT %sum = f32[] add(%p0, %p1)
+    }
+    scatter {
+      %operand = f32[10,5]  parameter(0)
+      %indices = s32[8,1] parameter(1)
+      %update = f32[8,1,2] parameter(2)
+
+      ROOT %scatter = f32[10,5] scatter(
+          f32[10,5] %operand,
+          s32[8,1] %indices,
+          f32[8,1,2] %update
+        ),
+        update_window_dims={1,2},
+        inserted_window_dims={},
+        scatter_dims_to_operand_dims={0},
+        index_vector_dim=1,
+        unique_indices=true,
+        to_apply=add
+    }
+    ENTRY entry {
+      %c1 = f32[] constant(1)
+      %c1_tensor = f32[10,5]  broadcast(%c1), dimensions={}
+      %indices = s32[8,1] constant({{0}, {1}, {2}, {3}, {4}, {5}, {6}, {7}})
+      %update = f32[8, 1, 2] parameter(0)
+      ROOT %fusion = f32[10, 5] fusion(
+        %c1_tensor, %indices, %update), kind=kLoop, calls=scatter
+    }
+  )";
+  TF_ASSERT_OK(EmitAndCheckIR(kHloString, R"(
+    // CHECK-DAG: #[[$MAP_X:.*]] = affine_map<()[s0] -> (s0 floordiv 2)>
+    // CHECK-DAG: #[[$MAP_Y:.*]] = affine_map<()[s0] -> (s0 mod 2)>
+
+    // CHECK-LABEL: func.func @fused_computation(
+    // CHECK:         %[[OPERAND:[a-zA-Z0-9]*]]: tensor<10x5xf32>
+    // CHECK-SAME:    %[[INDICES:[a-zA-Z0-9]*]]: tensor<8x1xi32>
+    // CHECK-SAME:    %[[UPDATES:[a-zA-Z0-9]*]]: tensor<8x1x2xf32>
+    // CHECK-SAME:    %[[OUT:[a-zA-Z0-9]*]]: tensor<10x5xf32>
+
+    // CHECK: %[[C0:.*]] = arith.constant 0 : index
+    // CHECK: %[[TH_X:.*]] = gpu.thread_id  x
+    // CHECK: %[[UPDATE_X:.*]] = affine.apply #[[$MAP_X]]()[%[[TH_X]]]
+    // CHECK: %[[UPDATE_Y:.*]] = affine.apply #[[$MAP_Y]]()[%[[TH_X]]]
+    // CHECK: %[[UPDATE_ELEM:.*]] = xla_gpu.pure_call @scatter_update(
+    // CHECK:   %[[OPERAND]], %[[INDICES]], %[[UPDATES]], %[[UPDATE_X]], %[[C0]], %[[UPDATE_Y]])
+    // CHECK: %[[OPERAND_ELEM:.*]] = xla_gpu.pure_call @scatter_operand(
+    // CHECK:   %[[OPERAND]], %[[INDICES]], %[[UPDATES]], %[[C0]], %[[C0]])
+    // CHECK: %[[SUM:.*]] = xla_gpu.pure_call @add_sum(%[[OPERAND_ELEM]], %[[UPDATE_ELEM]]) : (f32, f32) -> f32
+    // CHECK: %[[UPDATED_OPERAND:.*]] = tensor.insert %[[SUM]] into %[[OUT]][%[[C0]], %[[C0]]] : tensor<10x5xf32>
+    // CHECK: return %[[UPDATED_OPERAND]] : tensor<10x5xf32>
+  )"));
+  EXPECT_TRUE(RunAndCompareNoHloPasses(kHloString, ErrorSpec{1e-3}));
+}
+
 }  // namespace
 }  // namespace gpu
 }  // namespace xla

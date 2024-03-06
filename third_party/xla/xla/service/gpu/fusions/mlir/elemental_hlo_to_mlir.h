@@ -110,6 +110,10 @@ llvm::SmallVector<mlir::Value> EmitLoopNest(
         mlir::ValueRange iter_args, mlir::ValueRange dim_values,
         mlir::ValueRange symbol_values)>& create_body);
 
+// Clamps
+mlir::Value ClampIndex(mlir::Value index, bool is_unsigned, int64_t high,
+                       mlir::ImplicitLocOpBuilder& b);
+
 }  // namespace mlir_converter
 }  // namespace gpu
 }  // namespace xla

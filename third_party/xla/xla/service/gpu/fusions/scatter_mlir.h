@@ -18,6 +18,7 @@ limitations under the License.
 #include <cstdint>
 #include <optional>
 
+#include "absl/container/flat_hash_set.h"
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/Interfaces/DataLayoutInterfaces.h"  // from @llvm-project
 #include "xla/hlo/ir/hlo_instructions.h"
@@ -38,7 +39,7 @@ class MlirScatterFusion : public MlirFusionEmitterBase {
       : analysis_(analysis), config_(ComputeLoopFusionConfig(analysis)) {}
   LaunchDimensions launch_dimensions() const override;
 
-  static bool IsSupported(const HloFusionAnalysis& analysis) { return false; }
+  static bool IsSupported(const HloFusionAnalysis& analysis);
 
   std::optional<IndexingMap> ComputeThreadIdToOutputIndexing(
       int64_t root_index, mlir::MLIRContext* ctx) const override;
@@ -52,6 +53,9 @@ class MlirScatterFusion : public MlirFusionEmitterBase {
       const mlir_converter::PartitionedComputations& computations,
       const mlir_converter::CallTargetProvider& call_targets,
       mlir::func::FuncOp entry_function,
+      const HloFusionInstruction& fusion) const override;
+
+  absl::flat_hash_set<const HloInstruction*> GetInstructionsWithCustomCodegen(
       const HloFusionInstruction& fusion) const override;
 
  private:

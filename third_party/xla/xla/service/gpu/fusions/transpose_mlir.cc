@@ -438,6 +438,20 @@ absl::Status MlirTransposeFusion::EmitReadFromShMemMlir(
   return absl::OkStatus();
 }
 
+absl::flat_hash_set<const HloInstruction*>
+MlirTransposeFusion::GetInstructionsWithCustomCodegen(
+    const HloFusionInstruction& fusion) const {
+  if (fusion.fused_expression_root()->opcode() == HloOpcode::kTuple) {
+    absl::flat_hash_set<const HloInstruction*> result{shmem_transposes_.begin(),
+                                                      shmem_transposes_.end()};
+    // In multi-output fusion with transpose, each root epilogue will be
+    // generated separately.
+    result.insert(fusion.fused_expression_root());
+    return result;
+  }
+  return shmem_transposes_;
+}
+
 absl::Status MlirTransposeFusion::EmitEntryFunction(
     const mlir_converter::PartitionedComputations& computations,
     const mlir_converter::CallTargetProvider& call_targets,

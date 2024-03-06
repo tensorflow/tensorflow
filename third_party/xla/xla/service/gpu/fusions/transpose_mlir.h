@@ -69,18 +69,7 @@ class MlirTransposeFusion : public MlirFusionEmitterBase {
       const HloFusionInstruction& fusion) const override;
 
   absl::flat_hash_set<const HloInstruction*> GetInstructionsWithCustomCodegen(
-      const HloFusionInstruction& fusion) const override {
-    if (fusion.fused_expression_root()->opcode() == HloOpcode::kTuple) {
-      absl::flat_hash_set<const HloInstruction*> result{
-          shmem_transposes_.begin(), shmem_transposes_.end()};
-      // In multi-output fusion with transpose, each root epilogue will be
-      // generated separately.
-      result.insert(fusion.fused_expression_root());
-      return result;
-    }
-
-    return shmem_transposes_;
-  }
+      const HloFusionInstruction& fusion) const override;
 
   absl::StatusOr<llvm::SmallVector<mlir::Value, 4>> EmitWriteToShMemMlir(
       mlir::ImplicitLocOpBuilder& builder, mlir::func::FuncOp entry_function,
