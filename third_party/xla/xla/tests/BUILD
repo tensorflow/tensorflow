@@ -1000,10 +1000,13 @@ xla_test(
         ":hlo_test_base",
         ":test_macros_header",
         ":xla_internal_test_main",
+        "//xla:array2d",
         "//xla:error_spec",
         "//xla:literal",
+        "//xla:shape_util",
         "//xla:status_macros",
         "//xla:test",
+        "//xla:types",
         "@com_google_absl//absl/strings",
     ],
 )
