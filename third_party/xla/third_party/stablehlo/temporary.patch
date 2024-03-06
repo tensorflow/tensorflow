@@ -2606,6 +2606,18 @@ diff --ruN a/stablehlo/stablehlo/experimental/transforms/StablehloRefineShapes.c
 +}  // namespace experimental
 +}  // namespace stablehlo
 +}  // namespace mlir
+diff --ruN a/stablehlo/stablehlo/reference/InterpreterOps.cpp b/stablehlo/stablehlo/reference/InterpreterOps.cpp
+--- stablehlo/stablehlo/reference/InterpreterOps.cpp
++++ stablehlo/stablehlo/reference/InterpreterOps.cpp
+@@ -160,7 +160,7 @@
+ SmallVector<InterpreterValue> evalRunParallelOp(
+     ArrayRef<InterpreterValue> inputs, std::queue<StringAttr> &infeed,
+     SmallVector<SmallVector<StringAttr>> programs, SymbolTable &symbolTable) {
+-  llvm::ThreadPool threadPool;
++  llvm::DefaultThreadPool threadPool;
+   SmallVector<std::shared_future<SmallVector<InterpreterValue>>> futures;
+ 
+   uint32_t numReplicas = programs.size();
 diff --ruN a/stablehlo/stablehlo/tests/shape_legalize_to_stablehlo.mlir b/stablehlo/stablehlo/tests/shape_legalize_to_stablehlo.mlir
 --- stablehlo/stablehlo/tests/shape_legalize_to_stablehlo.mlir
 +++ stablehlo/stablehlo/tests/shape_legalize_to_stablehlo.mlir
