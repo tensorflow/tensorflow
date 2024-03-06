@@ -657,6 +657,7 @@ cc_library(
         "analysis/resource_alias_analysis.h",
         "analysis/resource_dataflow.h",
         "analysis/side_effect_analysis.h",
+        "analysis/tf_dataflow.h",
     ],
     deps = [
         ":tensorflow",
