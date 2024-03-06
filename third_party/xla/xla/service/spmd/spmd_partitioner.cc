@@ -2827,7 +2827,8 @@ Status SpmdPartitioningVisitor::HandleSort(HloInstruction* hlo) {
     int64_t first_nonsort_nonsharded_dim = -1;
     auto nshards = tile_assignment_dims[sort_dim];
     for (int64_t dim = 0; dim < subshape.rank(); ++dim) {
-      if (dim == sort_dim || tile_assignment_dims[dim] != 1) {
+      if (dim == sort_dim || tile_assignment_dims[dim] != 1 ||
+          subshape.dimensions(dim) == 1) {
         continue;
       }
       if (first_nonsort_nonsharded_dim == -1) {

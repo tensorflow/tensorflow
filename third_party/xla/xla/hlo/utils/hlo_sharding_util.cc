@@ -3008,7 +3008,8 @@ bool IsSortOperandShardingMovable(const HloInstruction* sort_operand,
   auto tile_assignment_dims = sharding.tile_assignment().dimensions();
   const int rank = sort_operand->shape().rank();
   for (int64_t dim = 0; dim < rank; ++dim) {
-    if (dim == sort_dim || tile_assignment_dims[dim] != 1) {
+    if (dim == sort_dim || tile_assignment_dims[dim] != 1 ||
+        sort_operand->shape().dimensions(dim) == 1) {
       continue;
     }
     return true;

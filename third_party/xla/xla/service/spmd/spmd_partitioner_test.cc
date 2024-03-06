@@ -3215,6 +3215,40 @@ ENTRY entry {
   }
 }
 
+TEST_P(SpmdPartitioningTest, SortShardedOnSortDim_TwoOperands_FreeDimOfSize1) {
+  absl::string_view hlo_string = R"(
+HloModule module
+
+compare {
+  p.0.lhs = f32[] parameter(0), sharding={replicated}
+  p.0.rhs = f32[] parameter(1), sharding={replicated}
+  p.1.lhs = s32[] parameter(2), sharding={replicated}
+  p.1.rhs = s32[] parameter(3), sharding={replicated}
+  ROOT lt = pred[] compare(p.0.lhs, p.0.rhs), direction=LT, sharding={replicated}
+}
+
+ENTRY entry {
+  param.0 = f32[1,1024]{1,0} parameter(0)
+  negate.0 = f32[1,1024]{1,0} negate(param.0), sharding={devices=[1,8]<=[8]}
+  iota.0 = s32[1,1024]{1,0} iota(), iota_dimension=1, sharding={devices=[1,8]<=[8]}
+  ROOT sort.0 = (f32[1,1024]{1,0}, s32[1,1024]{1,0}) sort(negate.0, iota.0), dimensions={1}, is_stable=true, to_apply=compare, sharding={{devices=[1,8]<=[8]},{devices=[1,8]<=[8]}}
+  })";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/8));
+  VLOG(1) << module->ToString();
+  for (HloInstruction* inst : module->entry_computation()->instructions()) {
+    if (inst->opcode() == HloOpcode::kSort) {
+      for (HloInstruction* operand : inst->operands()) {
+        EXPECT_EQ(operand->shape().dimensions(0), 1);
+        EXPECT_EQ(operand->shape().dimensions(1), 1024);
+      }
+      EXPECT_THAT(inst, op::Sort(op::AllReduce(), op::AllReduce()));
+    }
+    EXPECT_NE(inst->opcode(), HloOpcode::kAllToAll);
+  }
+}
+
 TEST_P(SpmdPartitioningTest, SortShardedOnSortDim_ThreeOperands) {
   absl::string_view hlo_string = R"(
 HloModule module, entry_computation_layout={(f32[1024,1024]{1,0})->(f32[1024,1024]{1,0},s32[1024,1024]{1,0},s32[1024,1024]{1,0})}
