@@ -36,6 +36,7 @@ namespace spmd {
 // It can create a view for matrix transpose without copying the memory.
 // TODO (zhuohan): Inherit from Array2D and add Transpose and operator+ (See
 // tensorflow/compiler/xla/array2d.h;l=39)
+template <typename T>
 class Matrix {
  public:
   Matrix() : n_(0), m_(0), transpose_(false), data_(nullptr) {}
@@ -44,11 +45,11 @@ class Matrix {
     this->n_ = n;
     this->m_ = m;
     transpose_ = false;
-    data_ = std::make_shared<std::vector<double>>(n * m, 0.0);
+    data_ = std::make_shared<std::vector<T>>(n * m, T());
   }
 
   Matrix(size_t n, size_t m, bool transpose,
-         std::shared_ptr<std::vector<double>> data) {
+         std::shared_ptr<std::vector<T>> data) {
     this->n_ = n;
     this->m_ = m;
     this->transpose_ = transpose;
@@ -57,7 +58,7 @@ class Matrix {
 
   Matrix Transpose() { return Matrix(m_, n_, !transpose_, data_); }
 
-  double operator()(size_t i, size_t j) const {
+  T operator()(size_t i, size_t j) const {
     size_t idx;
     if (transpose_) {
       idx = j * n_ + i;
@@ -69,7 +70,7 @@ class Matrix {
     return (*data_)[idx];
   }
 
-  double& operator()(size_t i, size_t j) {
+  T& operator()(size_t i, size_t j) {
     size_t idx;
     if (transpose_) {
       idx = j * n_ + i;
@@ -81,7 +82,7 @@ class Matrix {
     return (*data_)[idx];
   }
 
-  Matrix operator+(const Matrix& other) {
+  Matrix<T> operator+(const Matrix<T>& other) {
     CHECK_EQ(n_, other.n_);
     CHECK_EQ(m_, other.m_);
     Matrix ret = Matrix(n_, m_);
@@ -98,7 +99,7 @@ class Matrix {
 
     for (size_t i = 0; i < n_; ++i) {
       for (size_t j = 0; j < m_; ++j) {
-        absl::StrAppend(&str, operator()(i, j), " ");
+        absl::StrAppend(&str, operator()(i, j).ToString(), " ");
       }
       absl::StrAppend(&str, "\n");
     }
@@ -109,7 +110,7 @@ class Matrix {
   size_t n_;
   size_t m_;
   bool transpose_;
-  std::shared_ptr<std::vector<double>> data_;
+  std::shared_ptr<std::vector<T>> data_;
 };
 }  // namespace spmd
 }  // namespace xla
