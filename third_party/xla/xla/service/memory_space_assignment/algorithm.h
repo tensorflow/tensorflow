@@ -1055,6 +1055,8 @@ class MsaAlgorithm : public GlobalDecreasingSizeBestFitHeap<HloValue> {
   // alternate memory.
   absl::flat_hash_map<const HloInstruction*, absl::flat_hash_set<ShapeIndex>>
       outputs_in_alternate_memory_map_;
+  // Number of value allocation retries with larger limit.
+  int64_t retry_number_;
   // Debug strings.
   std::string buffer_info_str_;
   std::string allocation_info_str_;

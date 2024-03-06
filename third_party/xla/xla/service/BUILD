@@ -3189,6 +3189,7 @@ cc_library(
         ":flatten_call_graph",
         ":hlo_cse",
         ":hlo_pass",
+        ":pattern_matcher",
         ":tuple_simplifier",
         ":while_loop_analysis",
         ":while_loop_constant_sinking",
