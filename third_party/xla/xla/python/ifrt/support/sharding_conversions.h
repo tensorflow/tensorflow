@@ -16,10 +16,10 @@ limitations under the License.
 #ifndef XLA_PYTHON_IFRT_SUPPORT_SHARDING_CONVERSIONS_H_
 #define XLA_PYTHON_IFRT_SUPPORT_SHARDING_CONVERSIONS_H_
 
+#include "absl/status/statusor.h"
 #include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/python/ifrt/ir/sharding_param.h"
-#include "xla/statusor.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
@@ -29,7 +29,8 @@ namespace support {
 // Converts ShardingParam and a device_mapping to OpSharding.
 //
 // The function assumes that `sharding_param` is valid. The logical device
-// ids from `sharding_param` are used as indices into the device_mapping.
+// ids from `sharding_param` are used as indices into the device_mapping to
+// obtain the device ids to create the OpSharding.
 //
 // Returns error when `device_mapping` can't map the logical devices in
 // `sharding_param`.

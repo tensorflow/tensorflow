@@ -21,6 +21,7 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_sharding.h"
@@ -33,7 +34,6 @@ limitations under the License.
 #include "xla/python/ifrt/sharding.h"
 #include "xla/python/ifrt/sharding_test_util.h"
 #include "xla/shape.h"
-#include "xla/statusor.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/status_matchers.h"
 #include "tsl/platform/statusor.h"
@@ -72,7 +72,7 @@ TEST(ShardingConversionsTest, Replicated) {
   EXPECT_EQ(hlo_iota_sharding, actual_hlo_sharding);
 }
 
-TEST(ShardingConversionsTest, Maximal) {
+TEST(ShardingConversionsTest, SingleDeviceReplicated) {
   ShardingParam expected_sharding_param{
       /*dim_shards=*/{1, 1}, {/*permutation=*/{0}, /*axis_sizes=*/{1}}};
   TF_ASSERT_OK_AND_ASSIGN(const xla::HloSharding hlo_iota_sharding,
@@ -80,7 +80,7 @@ TEST(ShardingConversionsTest, Maximal) {
   TF_ASSERT_OK_AND_ASSIGN(
       const xla::HloSharding hlo_sharding,
       ToHloShardingViaOpSharding(expected_sharding_param, {0}));
-  EXPECT_EQ(hlo_sharding.ToString(), "{maximal device=0}");
+  EXPECT_EQ(hlo_sharding.ToString(), "{replicated}");
   EXPECT_EQ(hlo_sharding, hlo_iota_sharding);
   TF_ASSERT_OK_AND_ASSIGN(auto sharding_param,
                           ToShardingParam(hlo_iota_sharding, 2, 1));
@@ -151,9 +151,10 @@ TEST(ShardingConversionsTest, NonTrivialDeviceAssignment) {
 TEST(ShardingConversionsTest, ErrorOnDeviceAssignment) {
   ShardingParam sharding_param{/*dim_shards=*/{2, 1, 3},
                                {/*permutation=*/{1, 0}, /*axis_sizes=*/{3, 2}}};
-  EXPECT_THAT(ToHloShardingViaOpSharding(sharding_param, {6, 5, 4, 3, 2}),
-              StatusIs(absl::StatusCode::kOutOfRange,
-                       ::testing::HasSubstr("Can't map device 5")));
+  EXPECT_THAT(
+      ToHloShardingViaOpSharding(sharding_param, {6, 5, 4, 3, 2}),
+      StatusIs(absl::StatusCode::kOutOfRange,
+               ::testing::HasSubstr("Can't map device with logical id 5")));
 }
 
 class ShardingConversionsEquivalentTest : public test_util::ShardingTest {
