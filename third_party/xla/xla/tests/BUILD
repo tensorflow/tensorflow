@@ -2175,6 +2175,29 @@ xla_test(
 )
 
 xla_test(
+    name = "compilation_cache_test",
+    srcs = ["compilation_cache_test.cc"],
+    deps = [
+        ":client_library_test_base",
+        ":literal_test_util",
+        ":test_macros_header",
+        ":test_utils",
+        ":xla_internal_test_main",
+        "//xla:literal",
+        "//xla:shape_util",
+        "//xla:statusor",
+        "//xla:xla_data_proto_cc",
+        "//xla:xla_proto_cc",
+        "//xla/client:global_data",
+        "//xla/client:local_client",
+        "//xla/client:xla_builder",
+        "//xla/client:xla_computation",
+        "@com_google_absl//absl/types:span",
+        "@local_tsl//tsl/platform:test",
+    ],
+)
+
+xla_test(
     name = "floor_ceil_test",
     srcs = ["floor_ceil_test.cc"],
     deps = [
