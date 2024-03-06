@@ -29,6 +29,10 @@ namespace shlo_ref {
 
 using TensorElementType = DataType;
 
+constexpr TensorElementType BaselineType(TensorElementType type) {
+  return type;
+}
+
 struct TensorType {
   Shape shape;
   TensorElementType element_type;

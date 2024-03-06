@@ -17,9 +17,11 @@ limitations under the License.
 #define TENSORFLOW_LITE_EXPERIMENTAL_SHLO_QUANTIZED_TENSOR_ELEMENT_TYPE_H_
 
 #include <optional>
+#include <type_traits>
 #include <utility>
 #include <variant>
 
+#include "absl/algorithm/container.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/log/absl_check.h"
 #include "absl/types/span.h"
@@ -105,6 +107,24 @@ class QuantizedTensorElementType {
     return !(lhs == rhs);
   }
 
+  friend QuantizedTensorElementType BaselineType(
+      const QuantizedTensorElementType& type) {
+    QuantizedTensorElementType baseline = type;
+    std::visit(
+        [](auto& scales) -> void {
+          using Container = std::remove_reference_t<decltype(scales)>;
+          absl::c_fill(scales, static_cast<Container::value_type>(1));
+        },
+        baseline.scales_);
+    std::visit(
+        [](auto& zero_points) -> void {
+          using Container = std::remove_reference_t<decltype(zero_points)>;
+          absl::c_fill(zero_points, static_cast<Container::value_type>(0));
+        },
+        baseline.zero_points_);
+    return baseline;
+  }
+
  private:
   // Most quantized tensors will likely be per tensor quantized, which will have
   // a single element in the vector. Use an InlinedVector with a single element
@@ -125,6 +145,7 @@ class QuantizedTensorElementType {
 
   DataType storage_type_;
   DataType expressed_type_;
+
   std::optional<Axis> quantized_dimension_;
 
   std::variant<SmallInlinedVector<Storage<DataType::kBF16>::Type>,

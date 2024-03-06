@@ -25,6 +25,16 @@ cc_library(
     ],
 )
 
+cc_test(
+    name = "tensor_test",
+    srcs = ["tensor_test.cc"],
+    deps = [
+        ":data_type",
+        ":tensor",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
 cc_library(
     name = "shape",
     srcs = ["shape.cc"],
@@ -52,6 +62,7 @@ cc_library(
     deps = [
         ":data_type",
         ":shape",
+        "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/log:absl_check",
         "@com_google_absl//absl/types:span",
