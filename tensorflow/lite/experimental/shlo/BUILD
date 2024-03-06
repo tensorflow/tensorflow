@@ -52,6 +52,7 @@ cc_test(
     linkopts = shlo_ref_linkopts(),
     deps = [
         ":shape",
+        "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest_main",
     ],
 )
