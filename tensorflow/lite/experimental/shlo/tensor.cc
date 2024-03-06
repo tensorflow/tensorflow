@@ -107,6 +107,15 @@ const QuantizedTensorElementType& Tensor::quantized_tensor_element_type()
   return quantized_tensor_type().element_type;
 }
 
+std::variant<TensorElementType, QuantizedTensorElementType>
+Tensor::element_type() const {
+  if (const TensorType* t = std::get_if<TensorType>(&type); t != nullptr) {
+    return t->element_type;
+  } else {
+    return std::get<QuantizedTensorType>(type).element_type;
+  }
+}
+
 bool operator==(const TensorType& lhs, const TensorType& rhs) {
   return lhs.element_type == rhs.element_type && lhs.shape == rhs.shape;
 }

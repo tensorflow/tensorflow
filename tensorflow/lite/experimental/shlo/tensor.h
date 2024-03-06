@@ -66,6 +66,9 @@ struct Tensor {
   const TensorElementType& tensor_element_type() const;
   const QuantizedTensorElementType& quantized_tensor_element_type() const;
 
+  std::variant<TensorElementType, QuantizedTensorElementType> element_type()
+      const;
+
   template <DataType data_type, typename T = typename Storage<data_type>::Type>
   T* GetDataAs() {
     return reinterpret_cast<T*>(data);
