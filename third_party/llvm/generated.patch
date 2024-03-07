@@ -1,1 +1,14 @@
 Auto generated patch. Do not edit or delete it, even if empty.
+diff -ruN --strip-trailing-cr a/utils/bazel/llvm-project-overlay/mlir/BUILD.bazel b/utils/bazel/llvm-project-overlay/mlir/BUILD.bazel
+--- a/utils/bazel/llvm-project-overlay/mlir/BUILD.bazel
++++ b/utils/bazel/llvm-project-overlay/mlir/BUILD.bazel
+@@ -6187,6 +6187,9 @@
+         ":NVVMToLLVMIRTranslation",
+         ":TargetLLVM",
+         ":ToLLVMIRTranslation",
++        "@cuda//:cuda_headers",
++        "@cuda//:cusparse_static",
++        "@cuda//:libcuda",
+         ":config",
+         "//llvm:NVPTXCodeGen",
+         "//llvm:Support",
