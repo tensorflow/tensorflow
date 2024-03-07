@@ -1553,7 +1553,6 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
 
   static bool SparseMatrixMatMulRewrite(const Node* n) {
     DataType T;
-    const TensorProto* proto = nullptr;
     Tensor tensor;
     bool adjoint_a, adjoint_b, transpose_a, transpose_b, transpose_out;
 
