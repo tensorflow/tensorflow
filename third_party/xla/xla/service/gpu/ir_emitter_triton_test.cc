@@ -3969,7 +3969,6 @@ ENTRY e {
   TritonGemmConfig config(32, 32, 32, 1, 1, 1);
   ASSERT_OK(
       CreateTritonIrAndFileCheck(kHloText, config, EmitMatMul, "triton_dot", R"(
-CHECK:    tt.func @triton_fn(%[[LHS:.*]]: !tt.ptr<f32, 1> {tt.divisibility = 16 : i32}, %[[RHS:.*]]: !tt.ptr<f32, 1> {tt.divisibility = 16 : i32}, %[[OUT:.*]]: !tt.ptr<f32, 1> {tt.divisibility = 16 : i32}) {
 CHECK:          %[[INFINITY:.*]] = arith.constant dense<0x7F800000> : tensor<32x32xf32>
 CHECK:          %[[C_MASK:.*]] = arith.constant dense<-65536> : tensor<32x32xi32>
 CHECK:          %[[C0:.*]] = arith.constant dense<0.000000e+00> : tensor<32x32xf32>
@@ -4015,7 +4014,6 @@ ENTRY e {
   TritonGemmConfig config(64, 32, 32, 1, 1, 4);
   ASSERT_OK(
       CreateTritonIrAndFileCheck(kHloText, config, EmitMatMul, "triton_dot", R"(
-CHECK:    tt.func @triton_fn(%[[LHS:.*]]: !tt.ptr<f32, 1> {tt.divisibility = 16 : i32}, %[[RHS:.*]]: !tt.ptr<f32, 1> {tt.divisibility = 16 : i32}, %[[OUT:.*]]: !tt.ptr<f32, 1> {tt.divisibility = 16 : i32}) {
 CHECK-COUNT-6:  %{{.*}} = tt.dot %{{.*}}, %{{.*}}, %{{.*}} {allowTF32 = false, maxNumImpreciseAcc = 0 : i32} : tensor<64x32xbf16> * tensor<32x32xbf16> -> tensor<64x32xf32>
     )"));
   EXPECT_TRUE(RunAndCompareNoHloPasses(kHloText, ErrorSpec{/*aabs=*/1e-5,
@@ -4048,7 +4046,6 @@ ENTRY e {
   TritonGemmConfig config(32, 32, 32, 1, 1, 1);
   ASSERT_OK(
       CreateTritonIrAndFileCheck(kHloText, config, EmitMatMul, "triton_dot", R"(
-CHECK:    tt.func @triton_fn(%[[LHS:.*]]: !tt.ptr<f32, 1> {tt.divisibility = 16 : i32}, %[[RHS:.*]]: !tt.ptr<f32, 1> {tt.divisibility = 16 : i32}, %[[OUT:.*]]: !tt.ptr<f32, 1> {tt.divisibility = 16 : i32}) {
 CHECK-COUNT-6:  %{{.*}} = tt.dot %{{.*}}, %{{.*}}, %{{.*}} {allowTF32 = false, maxNumImpreciseAcc = 0 : i32} : tensor<32x32xbf16> * tensor<32x32xbf16> -> tensor<32x32xf32>
     )"));
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
@@ -4095,7 +4092,6 @@ ENTRY e {
   TritonGemmConfig config(32, 32, 32, 1, 1, 1);
   ASSERT_OK(
       CreateTritonIrAndFileCheck(kHloText, config, EmitMatMul, "triton_dot", R"(
-CHECK:    tt.func @triton_fn(%[[LHS:.*]]: !tt.ptr<f32, 1> {tt.divisibility = 16 : i32}, %[[RHS:.*]]: !tt.ptr<f32, 1> {tt.divisibility = 16 : i32}, %[[OUT:.*]]: !tt.ptr<f32, 1> {tt.divisibility = 16 : i32}) {
 CHECK-COUNT-6:  %{{.*}} = tt.dot %{{.*}}, %{{.*}}, %{{.*}} {allowTF32 = false, maxNumImpreciseAcc = 0 : i32} : tensor<32x32xbf16> * tensor<32x32xbf16> -> tensor<32x32xf32>
     )"));
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
@@ -4128,7 +4124,7 @@ CHECK-COUNT-6:  %{{.*}} = tt.dot %{{.*}}, %{{.*}}, %{{.*}} {allowTF32 = false, m
 //   x_mid: -1.3240357e+36
 //   x_lo:  5.17201445e+33
 // The result of x*x would be NaN instead of positive infinity.
-TEST_F(Triton6xBF16GemmTest, Triton6xBF16GemmWorksForExtremeInputs) {
+TEST_F(Triton6xBF16GemmTest, Triton6xBF16GemmWorksForInputsWithLargeExponent) {
   if (!GetCudaComputeCapability().IsAtLeastAmpere()) {
     GTEST_SKIP() << "No BF16 before Ampere.";
   }
@@ -4154,16 +4150,16 @@ ENTRY e {
   TritonGemmConfig config(32, 32, 32, 1, 1, 1);
   ASSERT_OK(
       CreateTritonIrAndFileCheck(kHloText, config, EmitMatMul, "triton_dot", R"(
-CHECK:    tt.func @triton_fn(%[[LHS:.*]]: !tt.ptr<f32, 1> {tt.divisibility = 16 : i32}, %[[RHS:.*]]: !tt.ptr<f32, 1> {tt.divisibility = 16 : i32}, %[[OUT:.*]]: !tt.ptr<f32, 1> {tt.divisibility = 16 : i32}) {
 CHECK-COUNT-6:  %{{.*}} = tt.dot %{{.*}}, %{{.*}}, %{{.*}} {allowTF32 = false, maxNumImpreciseAcc = 0 : i32} : tensor<32x32xbf16> * tensor<32x32xbf16> -> tensor<32x32xf32>
     )"));
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           GetOptimizedModule(kHloText));
   std::vector<Literal> arguments(2);
+  constexpr float kLargeExponentFloat = 0x1.0103p72f;
   arguments[0] = LiteralUtil::CreateR2<float>(
-      {{0x1.0103p72f, 1.0f}, {-0x1.0103p72f, 1.0f}});
+      {{kLargeExponentFloat, 1.0f}, {-kLargeExponentFloat, 1.0f}});
   arguments[1] = LiteralUtil::CreateR2<float>(
-      {{0x1.0103p72f, 1.0f}, {-0x1.0103p72f, 1.0f}});
+      {{kLargeExponentFloat, 1.0f}, {-kLargeExponentFloat, 1.0f}});
   std::vector<Literal*> argument_ptrs;
   absl::c_transform(
       arguments, std::back_inserter(argument_ptrs),
@@ -4239,6 +4235,299 @@ CHECK-NOT: mma
   EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/1e-6,
                                                 /*arel=*/1e-6}));
 }
+
+class Triton3xBF16GemmTest : public TritonFilecheckTest {
+ public:
+  DebugOptions GetDebugOptionsForTest() override {
+    DebugOptions debug_options = GpuCodegenTest::GetDebugOptionsForTest();
+    // Enable triton fusion for all supported gemms.
+    debug_options.set_xla_gpu_triton_gemm_any(true);
+    // Do not fall back to cuBLAS, we are testing Triton.
+    debug_options.set_xla_gpu_cublas_fallback(false);
+    // Do not autotune split-k by default, since this prevents deterministically
+    // matching the optimized HLO.
+    debug_options.set_xla_gpu_enable_split_k_autotuning(false);
+    // Enable bf16_3way gemm to compute F32 matmul.
+    debug_options.set_xla_gpu_enable_bf16_3way_gemm(true);
+    return debug_options;
+  }
+};
+
+TEST_F(Triton3xBF16GemmTest, Emit3xBF16GemmWhenBothInputsAreF32) {
+  if (!GetCudaComputeCapability().IsAtLeastAmpere()) {
+    GTEST_SKIP() << "No BF16 before Ampere.";
+  }
+  const char* kHloText = R"(
+HloModule t
+
+triton_dot {
+  p0 = f32[5,7] parameter(0)
+  p1 = f32[7,33] parameter(1)
+  ROOT dot = f32[5,33] dot(p0, p1),
+    lhs_contracting_dims={1}, rhs_contracting_dims={0}
+}
+
+ENTRY e {
+  p0 = f32[5,7]{1,0} parameter(0)
+  p1 = f32[7,33]{1,0} parameter(1)
+  ROOT _ = f32[5,33] fusion(p0, p1), kind=kCustom, calls=triton_dot,
+    backend_config={"fusion_backend_config": {kind: "__triton_gemm",
+    triton_gemm_config:
+    {"block_m":32,"block_n":32,"block_k":32,"split_k":1,"num_stages":1,"num_warps":1,"num_ctas":1}}}
+}
+)";
+  TritonGemmConfig config(32, 32, 32, 1, 1, 1);
+  ASSERT_OK(
+      CreateTritonIrAndFileCheck(kHloText, config, EmitMatMul, "triton_dot", R"(
+CHECK:          %[[INFINITY:.*]] = arith.constant dense<0x7F800000> : tensor<32x32xf32>
+CHECK:          %[[C_MASK:.*]] = arith.constant dense<-65536> : tensor<32x32xi32>
+CHECK:          %[[C0:.*]] = arith.constant dense<0.000000e+00> : tensor<32x32xf32>
+CHECK:          %[[CAST_I32:.*]] = tt.bitcast %{{.*}} : tensor<32x32xf32> -> tensor<32x32xi32>
+CHECK:          %[[EXTRACT_HI:.*]] = arith.andi %[[CAST_I32]], %[[C_MASK]] : tensor<32x32xi32>
+CHECK:          %[[CAST_HI:.*]] = tt.bitcast %[[EXTRACT_HI]] : tensor<32x32xi32> -> tensor<32x32xf32>
+CHECK:          %[[TRUNC_TO_BF16:.*]] = arith.truncf %[[CAST_HI]] : tensor<32x32xf32> to tensor<32x32xbf16>
+CHECK-COUNT-2:  %{{.*}} = tt.dot %{{.*}}, %{{.*}}, %{{.*}} {allowTF32 = false, maxNumImpreciseAcc = 0 : i32} : tensor<32x32xbf16> * tensor<32x32xbf16> -> tensor<32x32xf32>
+CHECK:          %[[ABS:.*]] = math.absf
+CHECK:          %[[CMP:.*]] = arith.cmpf ogt, %[[INFINITY]], %[[ABS]] : tensor<32x32xf32>
+CHECK:          %[[SELECT:.*]] = arith.select %[[CMP]], %{{.*}}, %[[C0]] : tensor<32x32xi1>, tensor<32x32xf32>
+CHECK:          %[[DOT_LAST:.*]] = tt.dot %{{.*}}, %{{.*}}, %[[SELECT]] {allowTF32 = false, maxNumImpreciseAcc = 0 : i32} : tensor<32x32xbf16> * tensor<32x32xbf16> -> tensor<32x32xf32>
+CHECK:          %[[ACC:.*]] = arith.addf %[[DOT_LAST]], %[[C0]] : tensor<32x32xf32>
+    )"));
+
+  EXPECT_TRUE(RunAndCompareNoHloPasses(kHloText, ErrorSpec{/*aabs=*/1e-5,
+                                                           /*arel=*/1e-5}));
+}
+
+TEST_F(Triton3xBF16GemmTest, NoEmit3xBF16GemmWhenBothInputsAreNotF32) {
+  const char* kHloText = R"(
+HloModule t
+
+triton_dot {
+  p0 = f16[5,7] parameter(0)
+  p1 = f16[7,33] parameter(1)
+  ROOT dot = f16[5,33] dot(p0, p1),
+    lhs_contracting_dims={1}, rhs_contracting_dims={0}
+}
+
+ENTRY e {
+  p0 = f16[5,7]{1,0} parameter(0)
+  p1 = f16[7,33]{1,0} parameter(1)
+  ROOT _ = f16[5,33] fusion(p0, p1), kind=kCustom, calls=triton_dot,
+    backend_config={"fusion_backend_config": {kind: "__triton_gemm",
+    triton_gemm_config:
+    {"block_m":32,"block_n":32,"block_k":32,"split_k":1,"num_stages":1,"num_warps":1,"num_ctas":1}}}
+}
+)";
+  TritonGemmConfig config(32, 32, 32, 1, 1, 1);
+  ASSERT_OK(
+      CreateTritonIrAndFileCheck(kHloText, config, EmitMatMul, "triton_dot", R"(
+CHECK:      tt.dot
+CHECK-SAME: tensor<32x32xf16> * tensor<32x32xf16> -> tensor<32x32xf32>
+CHECK-NOT:  tt.dot
+    )"));
+}
+
+TEST_F(Triton3xBF16GemmTest, Triton3xBF16GemmWorksForLongContractingDimension) {
+  if (!GetCudaComputeCapability().IsAtLeastAmpere()) {
+    GTEST_SKIP() << "No BF16 before Ampere.";
+  }
+  const char* kHloText = R"(
+HloModule t
+
+triton_dot {
+  p0 = f32[5,2048] parameter(0)
+  p1 = f32[2048,33] parameter(1)
+  ROOT dot = f32[5,33] dot(p0, p1),
+    lhs_contracting_dims={1}, rhs_contracting_dims={0}
+}
+
+ENTRY e {
+  p0 = f32[5,2048]{1,0} parameter(0)
+  p1 = f32[2048,33]{1,0} parameter(1)
+  ROOT _ = f32[5,33] fusion(p0, p1), kind=kCustom, calls=triton_dot,
+    backend_config={"fusion_backend_config": {kind: "__triton_gemm",
+    triton_gemm_config:
+    {"block_m":64,"block_n":32,"block_k":32,"split_k":1,"num_stages":1,"num_warps":4, "num_ctas":1}}}
+}
+)";
+  TritonGemmConfig config(64, 32, 32, 1, 1, 4);
+  ASSERT_OK(
+      CreateTritonIrAndFileCheck(kHloText, config, EmitMatMul, "triton_dot", R"(
+CHECK-COUNT-3:  %{{.*}} = tt.dot %{{.*}}, %{{.*}}, %{{.*}} {allowTF32 = false, maxNumImpreciseAcc = 0 : i32} : tensor<64x32xbf16> * tensor<32x32xbf16> -> tensor<64x32xf32>
+    )"));
+  EXPECT_TRUE(RunAndCompareNoHloPasses(kHloText, ErrorSpec{/*aabs=*/1e-4,
+                                                           /*arel=*/1e-4}));
+}
+
+TEST_F(Triton3xBF16GemmTest, Triton3xBF16GemmCanHandleInfinity) {
+  if (!GetCudaComputeCapability().IsAtLeastAmpere()) {
+    GTEST_SKIP() << "No BF16 before Ampere.";
+  }
+  const char* kHloText = R"(
+HloModule t
+
+triton_dot {
+  p0 = f32[2,2] parameter(0)
+  p1 = f32[2,2] parameter(1)
+  ROOT dot = f32[2,2] dot(p0, p1),
+    lhs_contracting_dims={1}, rhs_contracting_dims={0}
+}
+
+ENTRY e {
+  p0 = f32[2,2]{1, 0} parameter(0)
+  p1 = f32[2,2]{1, 0} parameter(1)
+  ROOT _ = f32[2,2] fusion(p0, p1), kind=kCustom, calls=triton_dot,
+    backend_config={"fusion_backend_config": {kind: "__triton_gemm",
+    triton_gemm_config:
+    {"block_m":32,"block_n":32,"block_k":32,"split_k":1,"num_stages":1,"num_warps":1, "num_ctas":1}}}
+}
+)";
+  TritonGemmConfig config(32, 32, 32, 1, 1, 1);
+  ASSERT_OK(
+      CreateTritonIrAndFileCheck(kHloText, config, EmitMatMul, "triton_dot", R"(
+CHECK-COUNT-3:  %{{.*}} = tt.dot %{{.*}}, %{{.*}}, %{{.*}} {allowTF32 = false, maxNumImpreciseAcc = 0 : i32} : tensor<32x32xbf16> * tensor<32x32xbf16> -> tensor<32x32xf32>
+    )"));
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          GetOptimizedModule(kHloText));
+  std::vector<Literal> arguments(2);
+  arguments[0] =
+      LiteralUtil::CreateR2<float>({{+std::numeric_limits<float>::infinity(),
+                                     +std::numeric_limits<float>::infinity()},
+                                    {+std::numeric_limits<float>::infinity(),
+                                     +std::numeric_limits<float>::infinity()}});
+  arguments[1] = LiteralUtil::CreateR2<float>({{1.0f, 1.0f}, {1.0f, 1.0f}});
+  std::vector<Literal*> argument_ptrs;
+  absl::c_transform(
+      arguments, std::back_inserter(argument_ptrs),
+      [](const Literal& literal) { return const_cast<Literal*>(&literal); });
+
+  EXPECT_TRUE(RunAndCompareNoHloPasses(std::move(module), argument_ptrs,
+                                       ErrorSpec{/*aabs=*/0, /*arel=*/0}));
+}
+
+TEST_F(Triton3xBF16GemmTest, Triton3xBF16GemmCanHandleNaN) {
+  if (!GetCudaComputeCapability().IsAtLeastAmpere()) {
+    GTEST_SKIP() << "No BF16 before Ampere.";
+  }
+  const char* kHloText = R"(
+HloModule t
+
+triton_dot {
+  p0 = f32[2,2] parameter(0)
+  p1 = f32[2,2] parameter(1)
+  ROOT dot = f32[2,2] dot(p0, p1),
+    lhs_contracting_dims={1}, rhs_contracting_dims={0}
+}
+
+ENTRY e {
+  p0 = f32[2,2]{1, 0} parameter(0)
+  p1 = f32[2,2]{1, 0} parameter(1)
+  ROOT _ = f32[2,2] fusion(p0, p1), kind=kCustom, calls=triton_dot,
+    backend_config={"fusion_backend_config": {kind: "__triton_gemm",
+    triton_gemm_config:
+    {"block_m":32,"block_n":32,"block_k":32,"split_k":1,"num_stages":1,"num_warps":1, "num_ctas":1}}}
+}
+)";
+  TritonGemmConfig config(32, 32, 32, 1, 1, 1);
+  ASSERT_OK(
+      CreateTritonIrAndFileCheck(kHloText, config, EmitMatMul, "triton_dot", R"(
+CHECK-COUNT-3:  %{{.*}} = tt.dot %{{.*}}, %{{.*}}, %{{.*}} {allowTF32 = false, maxNumImpreciseAcc = 0 : i32} : tensor<32x32xbf16> * tensor<32x32xbf16> -> tensor<32x32xf32>
+    )"));
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          GetOptimizedModule(kHloText));
+  std::vector<Literal> arguments(2);
+  arguments[0] =
+      LiteralUtil::CreateR2<float>({{std::numeric_limits<float>::quiet_NaN(),
+                                     std::numeric_limits<float>::quiet_NaN()},
+                                    {std::numeric_limits<float>::quiet_NaN(),
+                                     std::numeric_limits<float>::quiet_NaN()}});
+  arguments[1] = LiteralUtil::CreateR2<float>(
+      {{1.0f, +std::numeric_limits<float>::infinity()},
+       {1.0f, +std::numeric_limits<float>::infinity()}});
+  std::vector<Literal*> argument_ptrs;
+  absl::c_transform(
+      arguments, std::back_inserter(argument_ptrs),
+      [](const Literal& literal) { return const_cast<Literal*>(&literal); });
+
+  EXPECT_TRUE(RunAndCompareNoHloPasses(std::move(module), argument_ptrs,
+                                       ErrorSpec{/*aabs=*/0, /*arel=*/0}));
+}
+
+TEST_F(Triton3xBF16GemmTest, Triton3xBF16GemmWorksForInputsWithLargeExponent) {
+  if (!GetCudaComputeCapability().IsAtLeastAmpere()) {
+    GTEST_SKIP() << "No BF16 before Ampere.";
+  }
+  const char* kHloText = R"(
+HloModule t
+
+triton_dot {
+  p0 = f32[2,2] parameter(0)
+  p1 = f32[2,2] parameter(1)
+  ROOT dot = f32[2,2] dot(p0, p1),
+    lhs_contracting_dims={1}, rhs_contracting_dims={0}
+}
+
+ENTRY e {
+  p0 = f32[2,2]{1, 0} parameter(0)
+  p1 = f32[2,2]{1, 0} parameter(1)
+  ROOT _ = f32[2,2] fusion(p0, p1), kind=kCustom, calls=triton_dot,
+    backend_config={"fusion_backend_config": {kind: "__triton_gemm",
+    triton_gemm_config:
+    {"block_m":32,"block_n":32,"block_k":32,"split_k":1,"num_stages":1,"num_warps":1, "num_ctas":1}}}
+}
+)";
+  TritonGemmConfig config(32, 32, 32, 1, 1, 1);
+  ASSERT_OK(
+      CreateTritonIrAndFileCheck(kHloText, config, EmitMatMul, "triton_dot", R"(
+CHECK-COUNT-3:  %{{.*}} = tt.dot %{{.*}}, %{{.*}}, %{{.*}} {allowTF32 = false, maxNumImpreciseAcc = 0 : i32} : tensor<32x32xbf16> * tensor<32x32xbf16> -> tensor<32x32xf32>
+    )"));
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          GetOptimizedModule(kHloText));
+  std::vector<Literal> arguments(2);
+  constexpr float kLargeExponentFloat = 0x1.0103p72f;
+  arguments[0] = LiteralUtil::CreateR2<float>(
+      {{kLargeExponentFloat, 1.0f}, {-kLargeExponentFloat, 1.0f}});
+  arguments[1] = LiteralUtil::CreateR2<float>(
+      {{kLargeExponentFloat, 1.0f}, {-kLargeExponentFloat, 1.0f}});
+  std::vector<Literal*> argument_ptrs;
+  absl::c_transform(
+      arguments, std::back_inserter(argument_ptrs),
+      [](const Literal& literal) { return const_cast<Literal*>(&literal); });
+
+  EXPECT_TRUE(
+      RunAndCompareNoHloPasses(std::move(module), argument_ptrs,
+                               ErrorSpec{/*aabs=*/1e-4, /*arel=*/1e-4}));
+}
+
+TEST_F(Triton3xBF16GemmTest, Emit3xBF16GemmEndToEnd) {
+  const char* kHloText = R"(
+HloModule t
+
+ENTRY e {
+  p0 = f32[5,32] parameter(0)
+  p1 = f32[32,7] parameter(1)
+  ROOT dot = f32[5,7] dot(p0, p1),
+    lhs_contracting_dims={1}, rhs_contracting_dims={0}
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> verified_module,
+                          ParseAndReturnVerifiedModule(kHloText));
+  if (GetCudaComputeCapability().IsAtLeastAmpere()) {
+    CompileAndOptionallyVerifyPtx(std::move(verified_module),
+                                  R"(
+CHECK: mma.sync.aligned.{{.*}}.row.col.f32.bf16.bf16.f32
+CHECK-NOT: mma.sync.aligned.{{.*}}.row.col.f32.tf32.tf32.f32
+)");
+  } else {
+    CompileAndOptionallyVerifyPtx(std::move(verified_module),
+                                  R"(
+CHECK-NOT: mma
+)");
+  }
+  EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/1e-5,
+                                                /*arel=*/1e-5}));
+}
+
 }  // namespace
 }  // namespace gpu
 }  // namespace xla

@@ -691,6 +691,9 @@ message DebugOptions {
   // If enabled, uses bf16_6way gemm to compute F32 gemm.
   bool xla_gpu_enable_bf16_6way_gemm = 271;
 
+  // If enabled, uses bf16_3way gemm to compute F32 gemm.
+  bool xla_gpu_enable_bf16_3way_gemm = 279;
+
   // Specify the maximum number of channels(SMs) NCCL
   // will use for collective operations.
   int64 xla_gpu_nccl_collective_max_nchannels = 273;
@@ -704,7 +707,7 @@ message DebugOptions {
   // Let GEMM fusion autotuning probe cuDNN as a backend.
   bool xla_gpu_cudnn_gemm_fusion = 277;
 
-  // Next id: 279
+  // Next id: 280
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.

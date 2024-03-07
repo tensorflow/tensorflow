@@ -1559,6 +1559,16 @@ Value RoundToBF16(ImplicitLocOpBuilder& b, Value input) {
   return Cast(b, input, b.getBF16Type());
 }
 
+// Checks |input| is finite f32 (not Nan and not infinite).
+// It is used for Emit6xBfloat16MatMul and Emit3xBfloat16MatMul.
+Value CheckFiniteF32(ImplicitLocOpBuilder& b, Value input) {
+  Value positive_inf = CreateConst<float>(
+      b, b.getF32Type(), std::numeric_limits<float>::infinity(),
+      input.getType().cast<ShapedType>().getShape());
+  Value abs_input = b.create<mm::AbsFOp>(input);
+  return b.create<ma::CmpFOp>(ma::CmpFPredicate::OGT, positive_inf, abs_input);
+}
+
 // Leverages BF16 datatype for F32 matmul computation. It follows the guidance
 // from https://arxiv.org/pdf/1904.06376.pdf.
 absl::StatusOr<Value> Emit6xBfloat16MatMul(ImplicitLocOpBuilder& b, Value lhs,
@@ -1600,12 +1610,39 @@ absl::StatusOr<Value> Emit6xBfloat16MatMul(ImplicitLocOpBuilder& b, Value lhs,
   // We would get the wrong result if we sum these partial products. Instead, we
   // must override any accumulated result if the last partial product is
   // non-finite. See b/115844437.
-  Value positive_inf = CreateConst<float>(
-      b, b.getF32Type(), std::numeric_limits<float>::infinity(),
-      result.getType().cast<ShapedType>().getShape());
-  Value abs_result = b.create<mm::AbsFOp>(result);
-  Value is_finite =
-      b.create<ma::CmpFOp>(ma::CmpFPredicate::OGT, positive_inf, abs_result);
+  Value is_finite = CheckFiniteF32(b, result);
+  result = b.create<ma::SelectOp>(is_finite, result, ZerosLike(b, result));
+  result = bf16_dot(lhs_high, rhs_high, result);
+  result = b.create<ma::AddFOp>(acc, result);
+  return result;
+}
+
+// Compute F32 matmul with 3 BF16 dots. It is less accurate than
+// Emit6xBfloat16MatMul.
+absl::StatusOr<Value> Emit3xBfloat16MatMul(ImplicitLocOpBuilder& b, Value lhs,
+                                           Value rhs, Value acc) {
+  Type f32 = b.getF32Type();
+  TF_RET_CHECK(lhs.getType().cast<ShapedType>().getElementType() == f32);
+  TF_RET_CHECK(rhs.getType().cast<ShapedType>().getElementType() == f32);
+  TF_RET_CHECK(acc.getType().cast<ShapedType>().getElementType() == f32);
+
+  Value lhs_high = RoundToBF16(b, TruncateToBF16TowardsZero(b, lhs));
+  Value lhs_low = RoundToBF16(b, SoftMiddleEight(b, lhs));
+
+  Value rhs_high = RoundToBF16(b, TruncateToBF16TowardsZero(b, rhs));
+  Value rhs_low = RoundToBF16(b, SoftMiddleEight(b, rhs));
+
+  auto bf16_dot = [&](Value lhs_bf16, Value rhs_bf16,
+                      Value accumulator) -> Value {
+    return b.create<mt::DotOp>(lhs_bf16, rhs_bf16, accumulator,
+                               /*allowTF32=*/false,
+                               /*maxNumImpreciseAcc=*/0);
+  };
+
+  Value local_acc = ZerosLike(b, acc);
+  Value result = bf16_dot(lhs_low, rhs_high, local_acc);
+  result = bf16_dot(lhs_high, rhs_low, result);
+  Value is_finite = CheckFiniteF32(b, result);
   result = b.create<ma::SelectOp>(is_finite, result, ZerosLike(b, result));
   result = bf16_dot(lhs_high, rhs_high, result);
   result = b.create<ma::AddFOp>(acc, result);
@@ -1802,15 +1839,32 @@ absl::Status EmitMatMul(mlir::OpBuilder builder,
                         });
     const HloModule* hlo_module = computation->parent();
     Type f32 = b.getF32Type();
-    // BF16 datatype is not supported before Ampere.
+    // TODO (b/316147294): Removes `xla_gpu_enable_bf16_6way_gemm` and
+    // `xla_gpu_enable_bf16_3way_gemm` flags after we support explicit
+    // precision types.
     const bool use_bf16_6x =
+        // BF16 datatype is not supported before Ampere.
         device_info.cuda_compute_capability().IsAtLeastAmpere() &&
         hlo_module->config().debug_options().xla_gpu_enable_bf16_6way_gemm() &&
         dot_input_lhs.getType().cast<ShapedType>().getElementType() == f32 &&
         dot_input_rhs.getType().cast<ShapedType>().getElementType() == f32;
+    const bool use_bf16_3x =
+        device_info.cuda_compute_capability().IsAtLeastAmpere() &&
+        hlo_module->config().debug_options().xla_gpu_enable_bf16_3way_gemm() &&
+        dot_input_lhs.getType().cast<ShapedType>().getElementType() == f32 &&
+        dot_input_rhs.getType().cast<ShapedType>().getElementType() == f32;
+    if (use_bf16_6x && use_bf16_3x) {
+      LOG(WARNING) << "Both BF16 6way gemm and 3way gemm are enabled."
+                   << " Fallback to BF16 6way gemm.";
+    }
     Value accumulator_next;
     if (use_bf16_6x) {
       absl::StatusOr<Value> accumulator_next_or = Emit6xBfloat16MatMul(
+          b, dot_input_lhs, dot_input_rhs, iter_args.back());
+      TF_CHECK_OK(accumulator_next_or.status());
+      accumulator_next = accumulator_next_or.value();
+    } else if (use_bf16_3x) {
+      absl::StatusOr<Value> accumulator_next_or = Emit3xBfloat16MatMul(
           b, dot_input_lhs, dot_input_rhs, iter_args.back());
       TF_CHECK_OK(accumulator_next_or.status());
       accumulator_next = accumulator_next_or.value();
