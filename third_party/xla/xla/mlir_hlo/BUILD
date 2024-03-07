@@ -585,7 +585,6 @@ cc_library(
         ":mhlo_rng_utils",
         ":mhlo_scatter_gather_utils",
         ":mlir_hlo",
-        ":shape_component_analysis",
         ":stablehlo_legalize_to_hlo",
         ":type_conversion",
         ":unfuse_batch_norm",
@@ -1019,7 +1018,6 @@ cc_library(
         ":lhlo",
         ":mhlo_passes",
         ":mlir_hlo",
-        ":shape_component_analysis",
         ":transforms_passes_inc_gen",
         ":type_conversion",
         "@llvm-project//llvm:Support",
@@ -1174,23 +1172,6 @@ gentbl_cc_library(
     tblgen = "@llvm-project//mlir:mlir-tblgen",
     td_file = "transforms/gpu_passes.td",
     deps = ["@llvm-project//mlir:PassBaseTdFiles"],
-)
-
-cc_library(
-    name = "shape_component_analysis",
-    srcs = ["mhlo/analysis/shape_component_analysis.cc"],
-    hdrs = ["mhlo/analysis/shape_component_analysis.h"],
-    strip_include_prefix = ".",
-    deps = [
-        ":mlir_hlo",
-        "@llvm-project//llvm:Support",
-        "@llvm-project//mlir:ArithDialect",
-        "@llvm-project//mlir:FuncDialect",
-        "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:ShapeDialect",
-        "@llvm-project//mlir:Support",
-        "@llvm-project//mlir:TensorDialect",
-    ],
 )
 
 CAPI_HEADERS = [

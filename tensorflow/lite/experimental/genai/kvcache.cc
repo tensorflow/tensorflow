@@ -71,6 +71,9 @@ TfLiteStatus KVCachePrepare(TfLiteContext* context, TfLiteNode* node) {
                     GetOutputSafe(context, node, kFullKeyTensor, &kfull));
   TF_LITE_ENSURE_OK(context,
                     GetOutputSafe(context, node, kFullValueTensor, &vfull));
+  // Need this to ensure memory remains persistent across invokes.
+  kfull->allocation_type = kTfLiteArenaRwPersistent;
+  vfull->allocation_type = kTfLiteArenaRwPersistent;
 
   kfull->type = kTfLiteFloat32;
   vfull->type = kTfLiteFloat32;
