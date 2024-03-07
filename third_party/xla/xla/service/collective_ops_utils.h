@@ -383,6 +383,13 @@ class Rendezvous {
       std::make_shared<tsl::BlockingCounter>(key_.num_local_participants)};
 };
 
+// We only pipeline Send-Recv chains with channel_id > 0, where each chain
+// has a unique channel_id, and allows multiple Send-Recv chains using
+// channel_id 0.
+inline bool MayPipelineSendRecvChannel(int64_t channel_id) {
+  return channel_id > 0;
+}
+
 constexpr char kSendRecvSourceTargetPairsAttr[] =
     "_xla_send_recv_source_target_pairs";
 

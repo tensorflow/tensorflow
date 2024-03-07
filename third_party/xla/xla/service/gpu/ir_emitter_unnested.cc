@@ -84,6 +84,7 @@ limitations under the License.
 #include "xla/mlir_hlo/transforms/gpu_passes.h"
 #include "xla/primitive_util.h"
 #include "xla/service/buffer_assignment.h"
+#include "xla/service/collective_ops_utils.h"
 #include "xla/service/custom_call_status.h"
 #include "xla/service/custom_call_target_registry.h"
 #include "xla/service/global_device_id.h"
@@ -172,6 +173,16 @@ limitations under the License.
 
 namespace xla {
 namespace gpu {
+namespace {
+
+// Construct the key for looking up the AsyncEvents for Send and Recv. Input
+// kind is the thunk kind for the corresponding done thunk.
+inline std::pair<bool, int64_t> GetSendRecvAsyncEventsKey(Thunk::Kind kind,
+                                                          int64_t channel_id) {
+  return std::make_pair(kind == Thunk::Kind::kNcclRecvDone, channel_id);
+}
+
+}  // namespace
 
 IrEmitterUnnested::IrEmitterUnnested(IrEmitterContext* ir_emitter_context)
     : IrEmitter(ir_emitter_context, /*is_nested=*/false),
@@ -2229,8 +2240,7 @@ Status IrEmitterUnnested::EmitCollectivePermute(
         /*destination_buffer=*/result_slice,
         /*mem_size=*/ShapeUtil::ByteSizeOf(shape)));
     // Signal that start thunk not created with nullptr.
-    collectives_async_events_.try_emplace(instr, nullptr);
-
+    GetCollectivesAsyncEvents().try_emplace(instr, nullptr);
   } else {
     const NcclCollectiveThunk::Buffer buffer = {
         /*element_count=*/ShapeUtil::ElementsIn(shape),
@@ -2239,7 +2249,7 @@ Status IrEmitterUnnested::EmitCollectivePermute(
     auto thunk = std::make_unique<NcclCollectivePermuteStartThunk>(
         Thunk::ThunkInfo::WithProfileAnnotation(instr), NcclApi::Default(),
         instr, replica_count, partition_count, buffer);
-    collectives_async_events_.try_emplace(instr, thunk->async_events());
+    GetCollectivesAsyncEvents().try_emplace(instr, thunk->async_events());
     AddThunkToThunkSequence(std::move(thunk));
   }
   return absl::OkStatus();
@@ -2319,7 +2329,7 @@ absl::Status IrEmitterUnnested::EmitNcclThunk(
     auto thunk = std::make_unique<NcclThunkType>(
         Thunk::ThunkInfo::WithProfileAnnotation(inst), NcclApi::Default(), inst,
         /*buffers=*/std::move(buffers));
-    collectives_async_events_.insert({async_start, thunk->async_events()});
+    GetCollectivesAsyncEvents().insert({async_start, thunk->async_events()});
     AddThunkToThunkSequence(std::move(thunk));
     return absl::OkStatus();
   }
@@ -2329,7 +2339,7 @@ absl::Status IrEmitterUnnested::EmitNcclThunk(
   }
 
   // Signal that start thunk not created with nullptr.
-  collectives_async_events_.insert({async_start, nullptr});
+  GetCollectivesAsyncEvents().insert({async_start, nullptr});
 
   VLOG(1) << "Collective call is degenerate, not doing NCCL call";
 
@@ -2355,8 +2365,27 @@ absl::Status IrEmitterUnnested::EmitNcclThunk(
 
 absl::Status IrEmitterUnnested::EmitNcclAsyncDone(Thunk::Kind kind,
                                                   const HloInstruction* inst) {
+  CollectivesAsyncEvents& collectives_async_events =
+      GetCollectivesAsyncEvents();
+  if (kind == Thunk::Kind::kNcclRecvDone ||
+      kind == Thunk::Kind::kNcclSendDone) {
+    const HloChannelInstruction* done = DynCast<HloChannelInstruction>(inst);
+    int64_t channel_id = done->channel_id().value();
+    // We only pipeline Send/Recv when channel_id > 0, and allows multiple
+    // and potentially interleaving Send/Recv chains using channel_id = 0.
+    if (MayPipelineSendRecvChannel(channel_id)) {
+      auto it = collectives_async_events.find(
+          GetSendRecvAsyncEventsKey(kind, channel_id));
+      TF_RET_CHECK(it != collectives_async_events.end())
+          << "couldn't find async events for channel_id " << channel_id;
+      AddThunkToThunkSequence(std::make_unique<NcclCollectiveDoneThunk>(
+          kind, Thunk::ThunkInfo::WithProfileAnnotation(inst), it->second));
+      return absl::OkStatus();
+    }
+  }
+
   const HloInstruction* start = inst->operand(0);
-  auto async_events = collectives_async_events_.extract(start);
+  auto async_events = collectives_async_events.extract(start);
   TF_RET_CHECK(async_events)
       << "couldn't find async events for start operation";
 
@@ -2640,7 +2669,26 @@ absl::Status IrEmitterUnnested::EmitSendThunk(const HloSendInstruction* instr) {
     auto thunk = std::make_unique<NcclSendThunk>(
         Thunk::ThunkInfo::WithProfileAnnotation(instr), NcclApi::Default(),
         instr, replica_count, partition_count, nccl_buffer);
-    collectives_async_events_.try_emplace(instr, thunk->async_events());
+    CollectivesAsyncEvents& collectives_async_events =
+        GetCollectivesAsyncEvents();
+    int64_t channel_id = instr->channel_id().value();
+    if (MayPipelineSendRecvChannel(channel_id)) {
+      std::pair<bool, int64_t> async_events_key =
+          GetSendRecvAsyncEventsKey(Thunk::Kind::kNcclSendDone, channel_id);
+      auto it = collectives_async_events.find(async_events_key);
+      if (it != collectives_async_events.end()) {
+        VLOG(0) << "Found async events " << it->second.get();
+        thunk->set_async_events(it->second);
+      } else {
+        VLOG(0) << "Used Async events create for thunk "
+                << thunk->async_events().get();
+        collectives_async_events.emplace(async_events_key,
+                                         thunk->async_events());
+      }
+    } else {
+      collectives_async_events.try_emplace(instr, thunk->async_events());
+    }
+
     AddThunkToThunkSequence(std::move(thunk));
     return absl::OkStatus();
   }
@@ -2687,7 +2735,24 @@ absl::Status IrEmitterUnnested::EmitRecvThunk(const HloRecvInstruction* instr) {
     auto thunk = std::make_unique<NcclRecvThunk>(
         Thunk::ThunkInfo::WithProfileAnnotation(instr), NcclApi::Default(),
         instr, replica_count, partition_count, nccl_buffer);
-    collectives_async_events_.try_emplace(instr, thunk->async_events());
+    CollectivesAsyncEvents& collectives_async_events =
+        GetCollectivesAsyncEvents();
+    int64_t channel_id = instr->channel_id().value();
+    if (MayPipelineSendRecvChannel(channel_id)) {
+      std::pair<bool, int64_t> async_events_key =
+          GetSendRecvAsyncEventsKey(Thunk::Kind::kNcclRecvDone, channel_id);
+      auto it = collectives_async_events.find(async_events_key);
+
+      if (it != GetCollectivesAsyncEvents().end()) {
+        thunk->set_async_events(it->second);
+      } else {
+        collectives_async_events.emplace(async_events_key,
+                                         thunk->async_events());
+      }
+    } else {
+      collectives_async_events.try_emplace(instr, thunk->async_events());
+    }
+
     AddThunkToThunkSequence(std::move(thunk));
     return absl::OkStatus();
   }
