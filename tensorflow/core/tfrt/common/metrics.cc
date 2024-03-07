@@ -19,21 +19,30 @@ limitations under the License.
 #include <string>
 
 #include "absl/strings/str_cat.h"
-#include "tensorflow/core/lib/monitoring/sampler.h"
 #include "tsl/lib/monitoring/sampler.h"
 
 namespace tensorflow {
 namespace tfrt_metrics {
 
-monitoring::SamplerCell* GetTfrtGraphExecutorLatencySampler(
+tsl::monitoring::SamplerCell* GetTfrtGraphExecutorLatencySampler(
     const std::string& model_name, int64_t model_version,
     const std::string& graph_name) {
-  static auto* cell = tensorflow::monitoring::Sampler<3>::New(
+  static auto* cell = tsl::monitoring::Sampler<3>::New(
       {"/tfrt/graph_executor/latency",
        "Tracks the latency of GraphExecutor (in microseconds) of a graph.",
        "model_name", "model_version", "graph_name"},
-      monitoring::Buckets::Exponential(10, 1.5, 33));
+      tsl::monitoring::Buckets::Exponential(10, 1.5, 33));
   return cell->GetCell(model_name, absl::StrCat(model_version), graph_name);
+}
+
+tsl::monitoring::SamplerCell* GetTfrtDeviceExecutionLatency(
+    const std::string& model_name, int64_t model_version) {
+  static auto* cell = tsl::monitoring::Sampler<2>::New(
+      {"/tfrt/device_execution/latency",
+       "Tracks the latency of device execution (in microseconds).",
+       "model_name", "model_version"},
+      tsl::monitoring::Buckets::Exponential(10, 1.5, 33));
+  return cell->GetCell(model_name, absl::StrCat(model_version));
 }
 
 }  // namespace tfrt_metrics

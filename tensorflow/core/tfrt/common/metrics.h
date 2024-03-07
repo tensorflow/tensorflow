@@ -19,15 +19,17 @@ limitations under the License.
 #include <cstdint>
 #include <string>
 
-#include "tensorflow/core/lib/monitoring/sampler.h"
 #include "tsl/lib/monitoring/sampler.h"
 
 namespace tensorflow {
 namespace tfrt_metrics {
 
-monitoring::SamplerCell* GetTfrtGraphExecutorLatencySampler(
+tsl::monitoring::SamplerCell* GetTfrtGraphExecutorLatencySampler(
     const std::string& model_name, int64_t model_version,
     const std::string& graph_name);
+
+tsl::monitoring::SamplerCell* GetTfrtDeviceExecutionLatency(
+    const std::string& model_name, int64_t model_version);
 
 }  // namespace tfrt_metrics
 }  // namespace tensorflow
