@@ -126,6 +126,7 @@ cuda_only_cc_library(
     srcs = ["cuda_driver.cc"],
     hdrs = ["cuda_driver.h"],
     deps = [
+        ":cuda_diagnostics",  # buildcleaner: keep
         "//xla/stream_executor",
         "//xla/stream_executor:device_options",
         "//xla/stream_executor/gpu:gpu_diagnostics_header",
