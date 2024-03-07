@@ -83,13 +83,13 @@ HloModule jit_f, entry_computation_layout={(f32[16,256]{0,1})->f32[16,256]{0,1}}
 ENTRY main.24 {
   Arg_0.1 = f32[16,256]{0,1} parameter(0)
   cosine.4 = f32[16,256]{0,1} cosine(Arg_0.1)
-  custom-call.5 = f32[16,256]{0,1} custom-call(cosine.4), custom_call_target="PipelineForward"
+  custom-call.5 = f32[16,256]{0,1} custom-call(cosine.4), custom_call_target="MoveToHost"
   sine.3 = f32[16,256]{0,1} sine(Arg_0.1)
   cosine.7 = f32[16,256]{0,1} cosine(sine.3)
-  custom-call.8 = f32[16,256]{0,1} custom-call(cosine.7), custom_call_target="PipelineForward"
+  custom-call.8 = f32[16,256]{0,1} custom-call(cosine.7), custom_call_target="MoveToHost"
   sine.6 = f32[16,256]{0,1} sine(sine.3)
   cosine.9 = f32[16,256]{0,1} cosine(sine.6)
-  custom-call.10 = f32[16,256]{0,1} custom-call(cosine.9), custom_call_target="PipelineForward"
+  custom-call.10 = f32[16,256]{0,1} custom-call(cosine.9), custom_call_target="MoveToHost"
   constant.2 = f32[] constant(1)
   cp = f32[16,256]{1,0} copy(custom-call.8)
   tuple.11 = (f32[16,256]{0,1}, f32[16,256]{1,0}, f32[16,256]{0,1}, f32[]) tuple(custom-call.5, cp, custom-call.10, constant.2)
@@ -97,14 +97,14 @@ ENTRY main.24 {
   get-tuple-element.16 = f32[] get-tuple-element(opt-barrier.12), index=3
   broadcast.20 = f32[16,256]{0,1} broadcast(get-tuple-element.16), dimensions={}
   get-tuple-element.15 = f32[16,256]{0,1} get-tuple-element(opt-barrier.12), index=2
-  custom-call.19 = f32[16,256]{0,1} custom-call(get-tuple-element.15), custom_call_target="PipelineBackward"
+  custom-call.19 = f32[16,256]{0,1} custom-call(get-tuple-element.15), custom_call_target="MoveToDevice"
   multiply.21 = f32[16,256]{0,1} multiply(broadcast.20, custom-call.19)
   cp2 = f32[16,256]{1,0} copy(multiply.21)
   get-tuple-element.14 = f32[16,256]{1,0} get-tuple-element(opt-barrier.12), index=1
-  custom-call.18 = f32[16,256]{1,0} custom-call(get-tuple-element.14), custom_call_target="PipelineBackward"
+  custom-call.18 = f32[16,256]{1,0} custom-call(get-tuple-element.14), custom_call_target="MoveToDevice"
   multiply.22 = f32[16,256]{1,0} multiply(cp2, custom-call.18)
   get-tuple-element.13 = f32[16,256]{0,1} get-tuple-element(opt-barrier.12), index=0
-  custom-call.17 = f32[16,256]{0,1} custom-call(get-tuple-element.13), custom_call_target="PipelineBackward"
+  custom-call.17 = f32[16,256]{0,1} custom-call(get-tuple-element.13), custom_call_target="MoveToDevice"
   cp3 = f32[16,256]{1,0} copy(custom-call.17)
   ROOT multiply.23 = f32[16,256]{1,0} multiply(multiply.22, cp3)
 }
@@ -157,7 +157,7 @@ producing_while_body {
   select_result.0 = s32[] select(compare_result.0, add_result, current_iteration_index.0)
 
   /* Annotate DUS for offload */
-  custom_call_0.0 = f32[1,8,6,2048,2048] custom-call(slice_data_0), custom_call_target="PipelineForward"
+  custom_call_0.0 = f32[1,8,6,2048,2048] custom-call(slice_data_0), custom_call_target="MoveToHost"
 
   dynamic_update_slice_0 = f32[96,8,6,2048,2048]{0,1,2,3,4} dynamic-update-slice(data_0.0, custom_call_0.0, select_result.0, constant_0.0, constant_0.0, constant_0.0, constant_0.0)
 
@@ -184,7 +184,7 @@ consuming_while_body {
   dynamic_slice_0 = f32[1,8,6,2048,2048] dynamic-slice(data_0.1, select_result.1, constant_0.1, constant_0.1, constant_0.1, constant_0.1), dynamic_slice_sizes={1,8,6,2048,2048}
 
   /* Annotate DS for offload */
-  custom_call_0.1 = f32[1,8,6,2048,2048] custom-call(dynamic_slice_0), custom_call_target="PipelineBackward"
+  custom_call_0.1 = f32[1,8,6,2048,2048] custom-call(dynamic_slice_0), custom_call_target="MoveToDevice"
 
   /* Do some work with the dynamic slice outputs. */
   tanh_0 = f32[1,8,6,2048,2048] tanh(custom_call_0.1)
@@ -209,9 +209,9 @@ ENTRY main {
   consuming_while = (s32[], f32[96,8,6,2048,2048]{0,1,3,2,4}) while(tuple_for_consuming_while), condition=consuming_while_condition, body=consuming_while_body
   second_while_output = f32[96,8,6,2048,2048]{0,1,3,2,4} get-tuple-element(consuming_while), index=1
   final_dynamic_slice_0 = f32[1,8,6,2048,2048] dynamic-slice(second_while_output, entry_param_1, constant_s32_0, constant_s32_0, constant_s32_0, constant_s32_0), dynamic_slice_sizes={1,8,6,2048,2048}
-  final_host_to_device_custom_call_0 = f32[1,8,6,2048,2048] custom-call(final_dynamic_slice_0), custom_call_target="PipelineBackward"
+  final_host_to_device_custom_call_0 = f32[1,8,6,2048,2048] custom-call(final_dynamic_slice_0), custom_call_target="MoveToDevice"
   final_slice_0 = f32[1,8,6,2048,2048] slice(second_while_output), slice={[41:42], [0:8], [0:6], [0:2048], [0:2048]}
-  final_host_to_device_custom_call_1 = f32[1,8,6,2048,2048] custom-call(final_slice_0), custom_call_target="PipelineBackward"
+  final_host_to_device_custom_call_1 = f32[1,8,6,2048,2048] custom-call(final_slice_0), custom_call_target="MoveToDevice"
   ROOT add = f32[1,8,6,2048,2048] add(final_host_to_device_custom_call_0, final_host_to_device_custom_call_1)
 }
 )";
@@ -266,7 +266,7 @@ producing_while_body {
   select_result.0 = s32[] select(compare_result.0, add_result, current_iteration_index.0)
 
   /* Annotate DUS for offload */
-  custom_call_0.0 = f32[1,8,6,2048,2048] custom-call(slice_data_0), custom_call_target="PipelineForward"
+  custom_call_0.0 = f32[1,8,6,2048,2048] custom-call(slice_data_0), custom_call_target="MoveToHost"
 
   dynamic_update_slice_0 = f32[96,8,6,2048,2048]{0,1,2,3,4} dynamic-update-slice(data_0.0, custom_call_0.0, select_result.0, constant_0.0, constant_0.0, constant_0.0, constant_0.0)
 
@@ -293,7 +293,7 @@ consuming_while_body {
   dynamic_slice_0 = f32[1,8,6,2048,2048] dynamic-slice(data_0.1, select_result.1, constant_0.1, constant_0.1, constant_0.1, constant_0.1), dynamic_slice_sizes={1,8,6,2048,2048}
 
   /* Annotate DS for offload */
-  custom_call_0.1 = f32[1,8,6,2048,2048] custom-call(dynamic_slice_0), custom_call_target="PipelineBackward"
+  custom_call_0.1 = f32[1,8,6,2048,2048] custom-call(dynamic_slice_0), custom_call_target="MoveToDevice"
 
   /* Do some work with the dynamic slice outputs. */
   tanh_0 = f32[1,8,6,2048,2048] tanh(custom_call_0.1)
@@ -319,9 +319,9 @@ ENTRY main {
   consuming_while = (s32[], f32[96,8,6,2048,2048]{0,1,3,2,4}) while(tuple_for_consuming_while), condition=consuming_while_condition, body=consuming_while_body
   second_while_output = f32[96,8,6,2048,2048]{0,1,3,2,4} get-tuple-element(consuming_while), index=1
   final_dynamic_slice_0 = f32[1,8,6,2048,2048] dynamic-slice(second_while_output, entry_param_1, constant_s32_0, constant_s32_0, constant_s32_0, constant_s32_0), dynamic_slice_sizes={1,8,6,2048,2048}
-  final_host_to_device_custom_call_0 = f32[1,8,6,2048,2048] custom-call(final_dynamic_slice_0), custom_call_target="PipelineBackward"
+  final_host_to_device_custom_call_0 = f32[1,8,6,2048,2048] custom-call(final_dynamic_slice_0), custom_call_target="MoveToDevice"
   final_slice_0 = f32[1,8,6,2048,2048] slice(second_while_output), slice={[41:42], [0:8], [0:6], [0:2048], [0:2048]}
-  final_host_to_device_custom_call_1 = f32[1,8,6,2048,2048] custom-call(final_slice_0), custom_call_target="PipelineBackward"
+  final_host_to_device_custom_call_1 = f32[1,8,6,2048,2048] custom-call(final_slice_0), custom_call_target="MoveToDevice"
   ROOT add = f32[1,8,6,2048,2048] add(final_host_to_device_custom_call_0, final_host_to_device_custom_call_1)
 }
 )";

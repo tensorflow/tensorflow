@@ -5726,6 +5726,7 @@ xla_cc_test(
     srcs = ["convert_memory_placement_to_internal_annotations_test.cc"],
     deps = [
         ":convert_memory_placement_to_internal_annotations",
+        ":host_memory_offload_annotations_hdr",
         "//xla:statusor",
         "//xla:util",
         "//xla:xla_data_proto_cc",

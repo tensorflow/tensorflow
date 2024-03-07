@@ -166,8 +166,7 @@ HloInstruction* FindDSAnnotation(HloInstruction* hlo) {
 
 }  // namespace
 
-Status HostOffloader::HandlePipelineForwardCustomCall(
-    HloInstruction* custom_call) {
+Status HostOffloader::HandleMoveToHostCustomCall(HloInstruction* custom_call) {
   VLOG(2) << "Found a custom call annotating start-of-host-offload: "
           << custom_call->ToString();
   // Save a pointer to this custom call for when we want to remove it later.
@@ -532,7 +531,7 @@ absl::StatusOr<bool> HostOffloader::TryParameterStreaming(
   return true;
 }
 
-Status HostOffloader::HandlePipelineBackwardCustomCall(
+Status HostOffloader::HandleMoveToDeviceCustomCall(
     HloInstruction* custom_call) {
   VLOG(2) << "Found a custom call annotating end-of-host-offload: "
           << custom_call->ToString();
@@ -587,11 +586,11 @@ absl::StatusOr<bool> HostOffloader::Run(
       }
       if (instruction->custom_call_target() ==
           host_memory_offload_annotations::kMoveToHostCustomCallTarget) {
-        TF_RETURN_IF_ERROR(HandlePipelineForwardCustomCall(instruction));
+        TF_RETURN_IF_ERROR(HandleMoveToHostCustomCall(instruction));
       } else if (instruction->custom_call_target() ==
                  host_memory_offload_annotations::
                      kMoveToDeviceCustomCallTarget) {
-        TF_RETURN_IF_ERROR(HandlePipelineBackwardCustomCall(instruction));
+        TF_RETURN_IF_ERROR(HandleMoveToDeviceCustomCall(instruction));
       }
     }
   }
