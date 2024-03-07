@@ -10786,5 +10786,32 @@ TEST_F(AlgebraicSimplifierTest, SparseDotMoveSliceToOperands) {
   EXPECT_EQ(descriptor.dimension(), 2);
 }
 
+TEST_F(AlgebraicSimplifierTest, SparseDotTranspose) {
+  const char* hlo_string = R"(
+    HloModule m
+    ENTRY test {
+      %lhs = f32[10,16] parameter(0)
+      %rhs = f32[32,20] parameter(1)
+      %meta = u16[10,2] parameter(2)
+      %dot = f32[10,20] dot(%lhs, %rhs, %meta),
+          lhs_contracting_dims={1}, rhs_contracting_dims={0},
+          sparsity=L.1@2:4
+      ROOT %transpose = f32[20,10] transpose(%dot), dimensions={1,0}
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  EXPECT_TRUE(AlgebraicSimplifier(default_options_).Run(module.get()).value());
+  HloInstruction* root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(root,
+              GmockMatch(SparseDotMatcher(m::Parameter(1), m::Parameter(0),
+                                          m::Parameter(2))
+                             .WithShape(F32, {20, 10})));
+  auto dot = Cast<HloDotInstruction>(root);
+  auto descriptor = dot->sparsity().front();
+  EXPECT_EQ(descriptor.index(), 1);
+  EXPECT_EQ(descriptor.dimension(), 1);
+}
+
 }  // namespace
 }  // namespace xla

@@ -8010,8 +8010,7 @@ Status AlgebraicSimplifierVisitor::HandleTranspose(HloInstruction* transpose) {
   HloInstruction *lhs, *rhs, *dot;
   if (options_.supports_non_canonical_dots() &&
       Match(operand, m::Dot(&dot, m::Op(&lhs), m::Op(&rhs))) &&
-      dot->user_count() == 1 &&
-      !Cast<HloDotInstruction>(dot)->sparse_operands()) {
+      dot->user_count() == 1) {
     TF_ASSIGN_OR_RETURN(bool did_transform, [&]() -> absl::StatusOr<bool> {
       const auto& dnums = dot->dot_dimension_numbers();
       const int64_t num_batch_dims = dnums.lhs_batch_dimensions_size();
@@ -8049,10 +8048,23 @@ Status AlgebraicSimplifierVisitor::HandleTranspose(HloInstruction* transpose) {
         new_dnums.add_rhs_batch_dimensions(
             dnums.lhs_batch_dimensions(transpose->dimensions(batch_dim)));
       }
+
+      HloDotInstruction* dot_cast = Cast<HloDotInstruction>(dot);
+      int size = dot_cast->sparse_operands();  // 0..2
+      std::vector<SparsityDescriptor> sparsity(size);
+      std::vector<HloInstruction*> sparse_meta(size);
+      for (int i = 0; i < size; ++i) {
+        SparsityDescriptor descriptor = dot_cast->sparsity()[i];
+        descriptor.set_index(1 - descriptor.index());
+        sparsity[size - i - 1] = descriptor;
+        sparse_meta[size - i - 1] =
+            dot_cast->mutable_operand(HloDotInstruction::kOperands + i);
+      }
+
       HloInstruction* new_dot =
           MakeDotHlo(rhs, lhs, new_dnums,
                      SwapOperandsInDotPrecisionConfig(dot->precision_config()),
-                     dot->shape().element_type())
+                     dot->shape().element_type(), sparsity, sparse_meta)
               .value();
       *new_dot->mutable_shape()->mutable_layout() = transpose->shape().layout();
 
