@@ -37,12 +37,14 @@ limitations under the License.
 #include <vector>
 
 #include "absl/base/attributes.h"
+#include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/functional/function_ref.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
+#include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "xla/comparison_util.h"
 #include "xla/hlo/ir/dfs_hlo_visitor.h"
@@ -2544,21 +2546,41 @@ class HloInstruction {
       return !(*this == other);
     }
 
-    bool empty() const { return proto_ == nullptr && raw_string_.empty(); }
+    bool empty() const {
+      absl::MutexLock lock{&mutex_};
+      return proto_ == nullptr && raw_string_.empty();
+    }
 
     void clear() {
       proto_.reset();
+      absl::MutexLock lock{&mutex_};
       raw_string_.clear();
     }
 
+    BackendConfigRep() = default;
+    BackendConfigRep(BackendConfigRep&& other)
+        : proto_(std::move(other.proto_)), raw_string_([&] {
+            absl::MutexLock lock{&other.mutex_};
+            return std::move(other.raw_string_);
+          }()) {}
+
     BackendConfigRep& operator=(std::string raw_string);
     BackendConfigRep& operator=(const tsl::protobuf::Message& proto);
+    BackendConfigRep& operator=(BackendConfigRep&& other) {
+      proto_ = std::move(other.proto_);
+      absl::MutexLock destination_lock{&mutex_};
+      absl::MutexLock source_lock{&other.mutex_};
+      raw_string_ = std::move(other.raw_string_);
+      return *this;
+    }
+
     void SetProto(const tsl::protobuf::Message& proto);
 
    private:
     std::unique_ptr<tsl::protobuf::Message> proto_;
     // If proto_ is not null, raw_string_ is a lazy cache of its string format.
-    mutable std::string raw_string_;
+    mutable absl::Mutex mutex_;
+    mutable std::string raw_string_ ABSL_GUARDED_BY(mutex_);
   };
 
   bool IdenticalInternal(

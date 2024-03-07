@@ -94,6 +94,7 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:cord",
         "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/types:span",
         "@local_tsl//tsl/lib/gtl:iterator_range",
         "@local_tsl//tsl/lib/gtl:map_util",
