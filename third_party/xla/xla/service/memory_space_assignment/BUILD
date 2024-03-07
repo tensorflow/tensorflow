@@ -40,6 +40,7 @@ cc_library(
         ":allocation",
         ":cost_analysis",
         ":memory_space_assignment_proto_cc",
+        ":options",
         ":prefetch_interval_picker",
         ":repacking",
         ":slice",
@@ -92,6 +93,7 @@ xla_cc_test(
         ":cost_analysis",
         ":memory_space_assignment",
         ":memory_space_assignment_proto_cc",
+        ":options",
         ":prefetch_interval_picker",
         ":repacking",
         ":slice",
@@ -226,6 +228,29 @@ cc_library(
     deps = [
         "//xla/hlo/ir:hlo",
         "//xla/service/heap_simulator",
+    ],
+)
+
+cc_library(
+    name = "options",
+    srcs = [],
+    hdrs = ["options.h"],
+    deps = [
+        ":cost_analysis",
+        ":memory_space_assignment_proto_cc",
+        ":prefetch_interval_picker",
+        ":repacking",
+        ":slice",
+        "//xla:shape_util",
+        "//xla:util",
+        "//xla/hlo/ir:hlo",
+        "//xla/service:buffer_value",
+        "//xla/service:hlo_value",
+        "//xla/service/heap_simulator",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_absl//absl/types:span",
     ],
 )
 
