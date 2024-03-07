@@ -567,20 +567,26 @@ class Interpreter:
 
     Returns:
       a dictionary containing the index, op name, and arrays with lists of the
-      indices for the inputs and outputs of the op/node.
+      indices and types for the inputs and outputs of the op/nodes.
     """
-    op_index = int(op_index)
-    op_name = self._interpreter.NodeName(op_index)
-    op_inputs = self._interpreter.NodeInputs(op_index)
-    op_outputs = self._interpreter.NodeOutputs(op_index)
-
+    operand_types = [
+        self._get_tensor_details(tensor_idx, subgraph_index=0)['dtype']
+        for tensor_idx in self._interpreter.NodeInputs(op_index)
+        if tensor_idx != -1
+    ]
+    result_types = [
+        self._get_tensor_details(tensor_idx, subgraph_index=0)['dtype']
+        for tensor_idx in self._interpreter.NodeOutputs(op_index)
+        if tensor_idx != -1
+    ]
     details = {
-        'index': op_index,
-        'op_name': op_name,
-        'inputs': op_inputs,
-        'outputs': op_outputs,
+        'index': int(op_index),
+        'op_name': self._interpreter.NodeName(op_index),
+        'inputs': self._interpreter.NodeInputs(op_index),
+        'outputs': self._interpreter.NodeOutputs(op_index),
+        'operand_types': operand_types,
+        'result_types': result_types,
     }
-
     return details
 
   def _get_tensor_details(self, tensor_index, subgraph_index):

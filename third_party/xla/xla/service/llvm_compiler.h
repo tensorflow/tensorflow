@@ -70,7 +70,7 @@ class LLVMCompiler : public Compiler {
   using Compiler::RunBackend;
   using Compiler::RunHloPasses;
 
-  StatusOr<std::vector<std::unique_ptr<Executable>>> Compile(
+  absl::StatusOr<std::vector<std::unique_ptr<Executable>>> Compile(
       std::unique_ptr<HloModuleGroup> module_group,
       std::vector<std::vector<se::StreamExecutor*>> stream_execs,
       const CompileOptions& options) override;

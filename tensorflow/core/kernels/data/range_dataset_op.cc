@@ -311,13 +311,8 @@ class RangeDatasetOp::Dataset : public DatasetBase {
         *end_of_sequence = true;
         return absl::OkStatus();
       }
-      std::optional<int64_t> output_index =
-          ctx->index_mapper()(element_count_++);
-      if (!output_index.has_value()) {
-        *end_of_sequence = true;
-        return absl::OkStatus();
-      }
-      int64_t value = dataset()->start_ + *output_index * dataset()->step_;
+      int64_t output_index = ctx->index_mapper()(element_count_++);
+      int64_t value = dataset()->start_ + output_index * dataset()->step_;
       *end_of_sequence = false;
       return ConvertOutputTypes(output_dtypes(), out_tensors, value);
     }
@@ -347,9 +342,9 @@ class RangeDatasetOp::Dataset : public DatasetBase {
 
     Status RestoreInternal(IteratorContext* ctx,
                            IteratorStateReader* reader) override {
-      if (ctx->element_count().has_value()) {
+      if (ctx->restored_element_count().has_value()) {
         tsl::mutex_lock l(mu_);
-        element_count_ = *(ctx->element_count());
+        element_count_ = *(ctx->restored_element_count());
         return absl::OkStatus();
       }
       if (reader->Contains(prefix(), kHasSplitProvider)) {

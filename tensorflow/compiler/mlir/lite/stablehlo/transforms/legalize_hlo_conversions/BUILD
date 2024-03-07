@@ -50,6 +50,25 @@ cc_library(
 )
 
 cc_library(
+    name = "reduce",
+    srcs = [
+        "reduce.cc",
+    ],
+    hdrs = [
+        "reduce.h",
+    ],
+    deps = [
+        "//tensorflow/compiler/mlir/lite/stablehlo:hlo_matchers",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:ArithDialect",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Support",
+        "@llvm-project//mlir:TransformUtils",
+        "@local_xla//xla/mlir_hlo",
+    ],
+)
+
+cc_library(
     name = "dot_general",
     srcs = [
         "dot_general.cc",

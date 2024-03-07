@@ -261,6 +261,17 @@ add {
   ROOT %clamp.3 = f32[4] clamp(f32[] %Arg_0.1, f32[4] %Arg_1.2, f32[] %Arg_2.3)
 }
 
+// CHECK-LABEL:  func private @test_collective_broadcast
+// CHECK-SAME:  ([[ARG:%.*]]: tensor<128x32xf32>) -> tensor<128x32xf32>
+%test_collective_broadcast (input: f32[128,32]) -> f32[128,32] {
+  %input = f32[128,32]{1,0} parameter(0)
+  // CHECK-NEXT:  "mhlo.collective_broadcast"([[ARG]]) {
+  // CHECK-SAME:    channel_handle = #mhlo.channel_handle<handle = 1, type = 0>,
+  // CHECK-SAME{LITERAL}    replica_groups = {{0,1}{2,3}}
+  // CHECK-SAME:  } : (tensor<128x32xf32>) -> tensor<128x32xf32>
+  ROOT root = f32[128,32]{1,0} collective-broadcast(%input), replica_groups={{0,1},{2,3}}, channel_id=1
+}
+
 // CHECK-LABEL:  func private @test_collective_permute
 // CHECK-SAME:  ([[ARG:%.*]]: tensor<128x32xf32>) -> tensor<128x32xf32>
 %test_collective_permute (input: f32[128,32]) -> f32[128,32] {

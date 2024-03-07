@@ -65,9 +65,9 @@ Shape FindMaxShape(absl::Span<const Shape*> shapes) {
   return result;
 }
 
-StatusOr<XlaOp> ReconsileBranchDifference(const Shape& left_branch_shape,
-                                          const Shape& right_branch_shape,
-                                          XlaOp left_root) {
+absl::StatusOr<XlaOp> ReconsileBranchDifference(const Shape& left_branch_shape,
+                                                const Shape& right_branch_shape,
+                                                XlaOp left_root) {
   if (left_branch_shape.IsTuple()) {
     // Invariant sanity check -- Left branch and right branch need to have
     // compatible shapes.
@@ -124,7 +124,7 @@ XlaOp DynamicConditional(XlaBuilder* builder, XlaOp predicate,
                          const XlaComputation& true_computation,
                          XlaOp false_operand,
                          const XlaComputation& false_computation) {
-  return builder->ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
+  return builder->ReportErrorOrReturn([&]() -> absl::StatusOr<XlaOp> {
     auto true_shape = true_computation.GetProgramShape().value().result();
 
     auto false_shape = false_computation.GetProgramShape().value().result();
@@ -136,8 +136,8 @@ XlaOp DynamicConditional(XlaBuilder* builder, XlaOp predicate,
 
     auto reconsile_branch =
         [](const Shape& root_shape, const Shape& operand_shape,
-           const Shape& reference_root_shape,
-           const XlaComputation& computation) -> StatusOr<XlaComputation> {
+           const Shape& reference_root_shape, const XlaComputation& computation)
+        -> absl::StatusOr<XlaComputation> {
       xla::XlaBuilder builder("dynamic_builder");
       auto param = xla::Parameter(&builder, 0, operand_shape, "param");
       auto call = Call(&builder, computation, {param});
@@ -165,7 +165,7 @@ XlaOp DynamicConditional(
     XlaBuilder* builder, XlaOp branch_index,
     absl::Span<const XlaComputation* const> branch_computations,
     absl::Span<const XlaOp> branch_operands) {
-  return builder->ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
+  return builder->ReportErrorOrReturn([&]() -> absl::StatusOr<XlaOp> {
     std::vector<Shape> root_shapes;
     root_shapes.reserve(branch_computations.size());
     for (int64_t i = 0; i < branch_computations.size(); ++i) {
@@ -194,8 +194,8 @@ XlaOp DynamicConditional(
 
     auto reconsile_branch =
         [](const Shape& root_shape, const Shape& operand_shape,
-           const Shape& reference_root_shape,
-           const XlaComputation& computation) -> StatusOr<XlaComputation> {
+           const Shape& reference_root_shape, const XlaComputation& computation)
+        -> absl::StatusOr<XlaComputation> {
       xla::XlaBuilder builder("dynamic_builder");
       auto param = xla::Parameter(&builder, 0, operand_shape, "param");
       auto call = Call(&builder, computation, {param});
@@ -227,9 +227,9 @@ XlaOp DynamicConditional(
   });
 }
 
-StatusOr<XlaOp> SetDimensionSizeWithRebound(ValueInference* value_inference,
-                                            XlaOp operand, XlaOp dimension_size,
-                                            int64_t dimension) {
+absl::StatusOr<XlaOp> SetDimensionSizeWithRebound(
+    ValueInference* value_inference, XlaOp operand, XlaOp dimension_size,
+    int64_t dimension) {
   auto inferred_bound_status_or = value_inference->AnalyzeConstant(
       dimension_size, xla::ValueInferenceMode::kUpperBound);
 
@@ -253,8 +253,8 @@ StatusOr<XlaOp> SetDimensionSizeWithRebound(ValueInference* value_inference,
   return operand;
 }
 
-StatusOr<XlaOp> SetAllDimensionSizes(ValueInference* value_inference,
-                                     XlaOp operand, XlaOp size_vector) {
+absl::StatusOr<XlaOp> SetAllDimensionSizes(ValueInference* value_inference,
+                                           XlaOp operand, XlaOp size_vector) {
   auto builder = value_inference->builder();
   TF_RETURN_IF_ERROR(builder->GetCurrentStatus());
   TF_ASSIGN_OR_RETURN(auto shape_ptr, builder->GetShapePtr(operand));

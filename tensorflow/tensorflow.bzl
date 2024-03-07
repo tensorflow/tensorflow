@@ -18,9 +18,15 @@ load(
 #
 # Returns the options to use for a C++ library or binary build.
 # Uses the ":optmode" config_setting to pick the options.
+# buildifier: disable=module-docstring
 load(
     "//tensorflow/core/platform:build_config_root.bzl",
     "if_dynamic_kernels",
+    "if_llvm_aarch32_available",
+    "if_llvm_aarch64_available",
+    "if_llvm_powerpc_available",
+    "if_llvm_system_z_available",
+    "if_llvm_x86_available",
     "if_static",
     "tf_additional_grpc_deps_py",
     "tf_additional_tpu_ops_deps",
@@ -471,6 +477,11 @@ def tf_copts(
         if_mkldnn_aarch64_acl_openmp(["-DENABLE_ONEDNN_OPENMP"]) +
         if_zendnn(["-DAMD_ZENDNN"]) +
         if_enable_acl(["-DXLA_CPU_USE_ACL=1", "-fexceptions"]) +
+        if_llvm_aarch32_available(["-DTF_LLVM_AARCH32_AVAILABLE=1"]) +
+        if_llvm_aarch64_available(["-DTF_LLVM_AARCH64_AVAILABLE=1"]) +
+        if_llvm_powerpc_available(["-DTF_LLVM_POWERPC_AVAILABLE=1"]) +
+        if_llvm_system_z_available(["-DTF_LLVM_S390X_AVAILABLE=1"]) +
+        if_llvm_x86_available(["-DTF_LLVM_X86_AVAILABLE=1"]) +
         if_android_arm(["-mfpu=neon", "-fomit-frame-pointer"]) +
         if_linux_x86_64(["-msse3"]) +
         if_ios_x86_64(["-msse4.1"]) +

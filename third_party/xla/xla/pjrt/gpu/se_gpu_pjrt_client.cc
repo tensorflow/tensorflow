@@ -931,6 +931,8 @@ Status BuildDistributedDevices(
     device_proto->set_local_device_ordinal(ordinal_and_device.first);
     device_proto->set_name(desc->name());
     device_proto->set_vendor(desc->device_vendor());
+    device_proto->set_compute_capability(
+        MakeComputeCapabilityString(desc.get()));
   }
 
   GlobalTopologyProto global_topology;
@@ -964,7 +966,8 @@ Status BuildDistributedDevices(
       }
       auto device = std::make_unique<StreamExecutorGpuDevice>(
           device_proto.global_device_id(), std::move(local_device),
-          device_proto.name(), device_proto.vendor(), node.node_id(),
+          device_proto.name(), device_proto.vendor(),
+          device_proto.compute_capability(), node.node_id(),
           device_proto.slice_index());
       devices->push_back(std::move(device));
     }
@@ -989,10 +992,22 @@ Status BuildDistributedDevices(
 
 }  // namespace
 
+std::string MakeComputeCapabilityString(const se::DeviceDescription* desc) {
+  std::string compute_capability;
+#if GOOGLE_CUDA
+  se::CudaComputeCapability cc = desc->cuda_compute_capability();
+  compute_capability =
+      std::to_string(cc.major) + "." + std::to_string(cc.minor);
+#else   // GOOGLE_CUDA
+  compute_capability = desc->rocm_compute_capability().gfx_version();
+#endif  // GOOGLE_CUDA
+  return compute_capability;
+}
+
 StreamExecutorGpuDevice::StreamExecutorGpuDevice(
     int id, std::unique_ptr<LocalDeviceState> local_device_state,
-    std::string device_kind, std::string device_vendor, int node_id,
-    int slice_index)
+    std::string device_kind, std::string device_vendor,
+    std::string compute_capability, int node_id, int slice_index)
     : PjRtStreamExecutorDevice(id, std::move(local_device_state),
                                std::move(device_kind), node_id),
       device_vendor_(std::move(device_vendor)),
@@ -1004,12 +1019,12 @@ StreamExecutorGpuDevice::StreamExecutorGpuDevice(
   std::vector<int64_t> v_coords(description().coords().begin(),
                                 description().coords().end());
 
-  description().SetAttributes({
-      {"coords", xla::PjRtDeviceAttribute(v_coords)},
-      {"core_on_chip", xla::PjRtDeviceAttribute(core_index)},
-      {"device_vendor", device_vendor_},
-      {"slice_index", static_cast<int64_t>(slice_index)},
-  });
+  description().SetAttributes(
+      {{"coords", xla::PjRtDeviceAttribute(v_coords)},
+       {"core_on_chip", xla::PjRtDeviceAttribute(core_index)},
+       {"device_vendor", device_vendor_},
+       {"slice_index", static_cast<int64_t>(slice_index)},
+       {"compute_capability", xla::PjRtDeviceAttribute(compute_capability)}});
   description().SetToString(absl::StrFormat(
       "StreamExecutorGpuDevice(device_kind=%s, id=%i, process_index=%i, "
       "slice_index=%i))",
@@ -1117,7 +1132,8 @@ std::vector<std::unique_ptr<PjRtStreamExecutorDevice>> BuildLocalDevices(
         ordinal_and_device.second->executor()->GetDeviceDescription();
     auto device = std::make_unique<StreamExecutorGpuDevice>(
         ordinal_and_device.first, std::move(ordinal_and_device.second),
-        description.name(), description.device_vendor(), node_id);
+        description.name(), description.device_vendor(),
+        MakeComputeCapabilityString(&description), node_id);
     devices.push_back(std::move(device));
   }
   return devices;

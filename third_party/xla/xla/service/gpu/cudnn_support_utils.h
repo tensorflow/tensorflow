@@ -16,12 +16,13 @@ limitations under the License.
 #ifndef XLA_SERVICE_GPU_CUDNN_SUPPORT_UTILS_H_
 #define XLA_SERVICE_GPU_CUDNN_SUPPORT_UTILS_H_
 
+#include <cstdint>
 #include <vector>
 
+#include "absl/status/statusor.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/shape.h"
 #include "xla/stream_executor/device_description.h"
-#include "tsl/platform/status.h"
 
 namespace xla {
 namespace gpu {

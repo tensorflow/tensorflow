@@ -27,7 +27,6 @@ limitations under the License.
 #include "xla/service/gpu/autotuner_util.h"
 #include "xla/service/gpu/matmul_utils.h"
 #include "xla/service/hlo_pass_interface.h"
-#include "xla/statusor.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/xla.pb.h"
 #include "tsl/platform/threadpool.h"

@@ -145,8 +145,7 @@ bool OnlyOperatesOnCompositeDevices(
       continue;
     }
     auto lattice =
-        solver.lookupState<TF::ResourceDataflowAnalysis::StateT>(arg.get())
-            ->getValue();
+        solver.lookupState<TF::ResourceDataflowState>(arg.get())->getValue();
     bool is_read = read_array.contains(arg.getOperandNumber());
     bool is_update = update_array.contains(arg.getOperandNumber());
     // We want the resource operands that are on composite devices to be the
@@ -215,8 +214,7 @@ void CollectChainResources(
       // device-specific (see below).
       bool resource_is_on_composite_device = false;
       for (Value value : alias_analysis.GetValuesForResourceId(resource_id)) {
-        auto lattice =
-            solver.lookupState<TF::ResourceDataflowAnalysis::StateT>(value);
+        auto lattice = solver.lookupState<TF::ResourceDataflowState>(value);
         if (lattice) {
           resource_is_on_composite_device |=
               lattice->getValue().is_on_composite_device;
@@ -606,7 +604,7 @@ void ConvertControlToDataOutputsPass::runOnOperation() {
   DataFlowSolver solver;
   solver.load<dataflow::DeadCodeAnalysis>();
   solver.load<dataflow::SparseConstantPropagation>();
-  solver.load<TF::ResourceDataflowAnalysis>();
+  TF::LoadResourceDataflowAnalysis(solver);
   if (failed(solver.initializeAndRun(module))) return signalPassFailure();
 
   // This pass assumes that all functions are suitable for export i.e., each

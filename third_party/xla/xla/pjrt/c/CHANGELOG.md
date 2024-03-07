@@ -1,5 +1,9 @@
 # PJRT C API changelog
 
+## 0.46
+* Update outdated struct sizes from previous changes to
+  ``PJRT_Device_AddressableMemories_Args`` and ``PJRT_ExecuteOptions``.
+
 ## 0.45
 * Breaking changes
   * Added struct_size field to beginning of PJRT_Extension_Base. This is so

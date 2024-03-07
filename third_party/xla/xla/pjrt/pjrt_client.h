@@ -47,6 +47,7 @@ limitations under the License.
 #include "xla/pjrt/pjrt_device_description.h"
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/pjrt/pjrt_future.h"
+#include "xla/pjrt/pjrt_layout.h"
 #include "xla/service/computation_placer.h"
 #include "xla/service/hlo_cost_analysis.h"
 #include "xla/shape.h"
@@ -1006,9 +1007,12 @@ class PjRtBuffer {
     return on_device_shape().dimensions();
   }
 
-  virtual const Layout& layout() const {
+  // The on-device memory layout of this buffer. Returned via unique_ptr to make
+  // memory management easier -- PjRtLayout is an abstract base class, so cannot
+  // be easily copied.
+  virtual std::unique_ptr<PjRtLayout> layout() const {
     CHECK(on_device_shape().has_layout());
-    return on_device_shape().layout();
+    return std::make_unique<PjRtXlaLayout>(on_device_shape().layout());
   }
 
   // PjRtBuffers can either represent a single array buffer or a tuple of array
@@ -1121,7 +1125,8 @@ class PjRtBuffer {
         literal_dims = dimensions();
       }
       device_shape = ShapeUtil::MakeShape(element_type(), literal_dims);
-      *device_shape.mutable_layout() = layout();
+      // TODO(b/327524065): use PjRtLayout directly instead of xla::Layout
+      *device_shape.mutable_layout() = GetXlaLayoutUnsafe(layout());
     } else {
       // TODO(skyewm): does anything need to create tuple literals? The PJRT C
       // API doesn't support tuples or {logical_}on_device_shape(), so we prefer

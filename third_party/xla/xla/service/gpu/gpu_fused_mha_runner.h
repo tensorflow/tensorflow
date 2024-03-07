@@ -16,25 +16,23 @@ limitations under the License.
 #ifndef XLA_SERVICE_GPU_GPU_FUSED_MHA_RUNNER_H_
 #define XLA_SERVICE_GPU_GPU_FUSED_MHA_RUNNER_H_
 
+#include <cstdint>
 #include <memory>
 #include <optional>
 #include <string>
 #include <utility>
 #include <variant>
-#include <vector>
 
 #include "absl/container/inlined_vector.h"
-#include "xla/hlo/ir/hlo_instruction.h"
-#include "xla/hlo/ir/hlo_instructions.h"
+#include "absl/log/log.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/cublas_cudnn.h"
 #include "xla/shape.h"
 #include "xla/status.h"
-#include "xla/statusor.h"
+#include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/dnn.h"
 #include "xla/stream_executor/lazy_op_runner.h"
 #include "xla/stream_executor/stream_executor.h"
-#include "xla/types.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
@@ -156,7 +154,9 @@ struct GpufMHAParams {
       se::DeviceMemoryBase rhs_bmm2_buffer, se::DeviceMemoryBase output_buffer,
       std::optional<se::DeviceMemoryBase> mask_buffer,
       std::optional<se::DeviceMemoryBase> bias_buffer,
-      std::optional<se::DeviceMemoryBase> activation_buffer);
+      std::optional<se::DeviceMemoryBase> activation_buffer,
+      std::optional<se::DeviceMemoryBase> seqlen_q_buffer,
+      std::optional<se::DeviceMemoryBase> seqlen_k_buffer);
 
   const GpufMHAConfig* config;  // Not owned
   se::DeviceMemoryBase lhs_bmm1_buffer;
@@ -166,6 +166,8 @@ struct GpufMHAParams {
   std::optional<se::DeviceMemoryBase> activation_buffer;
   std::optional<se::DeviceMemoryBase> mask_buffer;
   std::optional<se::DeviceMemoryBase> bias_buffer;
+  std::optional<se::DeviceMemoryBase> seqlen_q_buffer;
+  std::optional<se::DeviceMemoryBase> seqlen_k_buffer;
 };
 
 struct GpufMHABackwardParams {
@@ -185,7 +187,9 @@ struct GpufMHABackwardParams {
       std::optional<se::DeviceMemoryBase> mask_buffer,
       std::optional<se::DeviceMemoryBase> d_bias_buffer,
       std::optional<se::DeviceMemoryBase> fwd_output_buffer,
-      std::optional<se::DeviceMemoryBase> bias_buffer);
+      std::optional<se::DeviceMemoryBase> bias_buffer,
+      std::optional<se::DeviceMemoryBase> seqlen_q_buffer,
+      std::optional<se::DeviceMemoryBase> seqlen_k_buffer);
 
   const GpufMHABackwardConfig* config;  // Not owned
   se::DeviceMemoryBase bmm1_grad_gemm1_rhs_buffer;
@@ -203,6 +207,8 @@ struct GpufMHABackwardParams {
   std::optional<se::DeviceMemoryBase> d_bias_buffer;
   std::optional<se::DeviceMemoryBase> fwd_output_buffer;
   std::optional<se::DeviceMemoryBase> bias_buffer;
+  std::optional<se::DeviceMemoryBase> seqlen_q_buffer;
+  std::optional<se::DeviceMemoryBase> seqlen_k_buffer;
 };
 
 class FusedMultiHeadedAttentionRunner {
@@ -391,6 +397,8 @@ absl::Status RunGpuFMHA(const GpufMHAConfig& fmha_config,
                         std::optional<se::DeviceMemoryBase> mask_buffer,
                         std::optional<se::DeviceMemoryBase> bias_buffer,
                         std::optional<se::DeviceMemoryBase> activation_buffer,
+                        std::optional<se::DeviceMemoryBase> seqlen_q_buffer,
+                        std::optional<se::DeviceMemoryBase> seqlen_k_buffer,
                         se::Stream* stream, RunFusedMHAOptions = {});
 
 absl::Status RunGpuFMHABackward(
@@ -409,7 +417,9 @@ absl::Status RunGpuFMHABackward(
     std::optional<se::DeviceMemoryBase> mask_buffer,
     std::optional<se::DeviceMemoryBase> d_bias_buffer,
     std::optional<se::DeviceMemoryBase> fwd_output_buffer,
-    std::optional<se::DeviceMemoryBase> bias_buffer, se::Stream* stream,
+    std::optional<se::DeviceMemoryBase> bias_buffer,
+    std::optional<se::DeviceMemoryBase> seqlen_q_buffer,
+    std::optional<se::DeviceMemoryBase> seqlen_k_buffer, se::Stream* stream,
     RunFusedMHABackwardOptions = {});
 
 std::string ToString(const GpufMHAConfig& config);

@@ -53,6 +53,10 @@
 *   <INSERT MAJOR FEATURE HERE, USING MARKDOWN SYNTAX>
 *   <IF RELEASE CONTAINS MULTIPLE FEATURES FROM SAME AREA, GROUP THEM TOGETHER>
 
+*   Add `is_cpu_target_available`, which indicates whether or not TensorFlow was
+    built with support for a given CPU target. This can be useful for skipping
+    target-specific tests if a target is not supported.
+
 ### Bug Fixes and Other Changes
 
 * <SIMILAR TO ABOVE SECTION, BUT FOR OTHER IMPORTANT CHANGES / BUG FIXES>
@@ -125,8 +129,9 @@ This release contains contributions from many people at Google, as well as:
     keras
 * **Apple Silicon users:** If you previously installed TensorFlow using
     `pip install tensorflow-macos`, please update your installation method. Use
-    `pip install tensorflow` from now on. Starting with TF 2.17, the
-    `tensorflow-macos` package will no longer receive updates.
+    `pip install tensorflow` from now on.
+* **Mac x86 users:** Mac x86 builds are being deprecated and will no longer be
+  released as a Pip package from TF 2.17 onwards.
 
 ### Known Caveats
 
@@ -161,6 +166,25 @@ This release contains contributions from many people at Google, as well as:
     * Added support for `stablehlo.maximum`.
     * Added support for `stablehlo.minimum`.
     * Added boolean parameter support for `tfl.gather_nd`.
+    * C API:
+        * New API functions:
+            * `tensorflow/lite/c/c_api_experimental.h`:
+                * `TfLiteInterpreterGetVariableTensorCount`
+                * `TfLiteInterpreterGetVariableTensor`
+                * `TfLiteInterpreterGetBufferHandle`
+                * `TfLiteInterpreterSetBufferHandle`
+            * `tensorflow/lite/c/c_api_opaque.h`:
+                * `TfLiteOpaqueTensorSetAllocationTypeToDynamic`
+        * API functions promoted from experimental to stable:
+            * `tensorflow/lite/c/c_api.h`:
+                * `TfLiteInterpreterOptionsEnableCancellation`
+                * `TfLiteInterpreterCancel`
+    * C++ API:
+        * New virtual methods in the `tflite::SimpleDelegateInterface` class in `tensorflow/lite/delegates/utils/simple_delegate.h`,
+          and likewise in the `tflite::SimpleOpaqueDelegateInterface` class in `tensorflow/lite/delegates/utils/simple_opaque_delegate.h`:
+            * `CopyFromBufferHandle`
+            * `CopyToBufferHandle`
+            * `FreeBufferHandle`
 
 * `tf.train.CheckpointOptions` and `tf.saved_model.SaveOptions`
     * These now take in a new argument called `experimental_sharding_callback`.
@@ -236,7 +260,7 @@ This release contains contributions from many people at Google, as well as:
 
 This release contains contributions from many people at Google, as well as:
 
-<INSERT>, <NAME>, <HERE>, <USING>, <GITHUB>, <HANDLE>
+RoboTux, <INSERT>, <NAME>, <HERE>, <USING>, <GITHUB>, <HANDLE>
 
 # Release 2.15.0.post1
 

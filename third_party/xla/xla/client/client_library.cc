@@ -83,7 +83,7 @@ const std::optional<std::set<int>>& LocalClientOptions::allowed_devices()
 ClientLibrary::ClientLibrary() = default;
 ClientLibrary::~ClientLibrary() = default;
 
-/* static */ StatusOr<LocalClient*> ClientLibrary::GetOrCreateLocalClient(
+/* static */ absl::StatusOr<LocalClient*> ClientLibrary::GetOrCreateLocalClient(
     se::Platform* platform, const std::optional<std::set<int>>& device_set) {
   LocalClientOptions default_options;
   default_options.set_platform(platform);
@@ -91,7 +91,7 @@ ClientLibrary::~ClientLibrary() = default;
   return GetOrCreateLocalClient(default_options);
 }
 
-/* static */ StatusOr<LocalClient*> ClientLibrary::GetOrCreateLocalClient(
+/* static */ absl::StatusOr<LocalClient*> ClientLibrary::GetOrCreateLocalClient(
     const LocalClientOptions& options) {
   se::Platform* platform = options.platform();
   int replica_count = options.number_of_replicas();
@@ -139,7 +139,7 @@ ClientLibrary::~ClientLibrary() = default;
   return it->second->service.get();
 }
 
-/* static */ StatusOr<CompileOnlyClient*>
+/* static */ absl::StatusOr<CompileOnlyClient*>
 ClientLibrary::GetOrCreateCompileOnlyClient(se::Platform* platform) {
   ClientLibrary& client_library = Singleton();
   absl::MutexLock lock(&client_library.service_mutex_);

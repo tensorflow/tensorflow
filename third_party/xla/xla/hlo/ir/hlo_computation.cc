@@ -136,6 +136,7 @@ HloComputation::HloComputation(
   }
   CHECK(root_found)
       << "\nERROR: root instruction is not present in computation.";
+  root_instruction_->MarkAsRoot();
 }
 
 HloComputation::~HloComputation() {
@@ -485,6 +486,10 @@ void HloComputation::set_root_instruction(HloInstruction* new_root_instruction,
     }
   }
 
+  // `root_instruction_` can be equal to `new_root_instruction` and so it is
+  // important that we call MarkAsNonRoot before calling MarkAsRoot.
+  root_instruction_->MarkAsNonRoot();
+  new_root_instruction->MarkAsRoot();
   root_instruction_ = new_root_instruction;
 }
 
@@ -576,6 +581,7 @@ HloComputation::ChannelDependencies HloComputation::ComputeChannelDependencies()
       case HloOpcode::kAllReduce:
       case HloOpcode::kAllGather:
       case HloOpcode::kAllToAll:
+      case HloOpcode::kCollectiveBroadcast:
       case HloOpcode::kCollectivePermute:
       case HloOpcode::kReduceScatter: {
         HloInstruction* instruction = inst.inst();

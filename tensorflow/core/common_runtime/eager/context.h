@@ -89,6 +89,11 @@ namespace eager {
 class RemoteMgr;
 }  // namespace eager
 
+// Check the value of the environment variable,
+// `TF_REMOTE_HANDLE_SKIP_WAIT_FOR_READY` from its cached copy in memory and if
+// not cached, reads from the environment variable.
+bool SkipRemoteHandleWaitReady();
+
 class EagerContext : public ImmediateExecutionContext, public core::RefCounted {
  public:
   static constexpr uint64 kInvalidContextId = 0;
@@ -250,6 +255,14 @@ class EagerContext : public ImmediateExecutionContext, public core::RefCounted {
                         const FunctionDefLibrary& library,
                         bool add_to_local_only = false,
                         const StackTracesMap& stack_traces = {});
+
+  // `library` contains all FunctionDefs and GradientDefs to expand `fdef`. Add
+  // it to the local FunctionLibraryDefinition as well, but no need to add it
+  // to the KernelAndDevice cache since they won't be executed as
+  // KernelAndDevices.
+  Status AddFunctionRecord(core::RefCountPtr<FunctionRecord> func_record,
+                           const FunctionDefLibrary& library,
+                           bool add_to_local_only = false);
 
   // Adds a component function (i.e. containing a subgraph of a multi-process
   // function) implemented as `fdef`.

@@ -20,9 +20,9 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include "absl/strings/string_view.h"
+#include "mlir/IR/AffineExpr.h"  // from @llvm-project
 #include "mlir/IR/AffineMap.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
-#include "xla/service/gpu/model/affine_map_printer.h"
 #include "xla/service/gpu/model/indexing_analysis.h"
 #include "xla/tests/hlo_test_base.h"
 

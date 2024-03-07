@@ -9,4 +9,7 @@ def repo():
         sha256 = "149a3da40b0a988513d8cf5e71db3037373823505a3c92f87b988c92d7e0ab34",
         urls = tf_mirror_urls("https://github.com/wjakob/nanobind/archive/refs/tags/v1.9.2.tar.gz"),
         build_file = "//third_party/nanobind:nanobind.BUILD",
+        patch_file = [
+            "//third_party/nanobind:pr438.patch",  # Remove when updating to nanobind 2.0.0.
+        ],
     )

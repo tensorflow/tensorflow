@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "xla/service/gpu/model/indexing_map.h"
 
+#include <optional>
+
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "mlir/IR/AffineExpr.h"  // from @llvm-project
@@ -460,6 +462,41 @@ TEST_F(IndexingMapTest, RangeEvaluatorTest) {
   // d3 is always 0.
   EXPECT_TRUE(range_evaluator.IsAlwaysPositiveOrZero(d3));
   EXPECT_TRUE(range_evaluator.IsAlwaysNegativeOrZero(d3));
+}
+
+TEST(RangeComparisionTest, Comparisons) {
+  Range range{12, 64};
+  EXPECT_EQ(range > 11, true);
+  EXPECT_EQ(range > 12, std::nullopt);
+  EXPECT_EQ(range > 65, false);
+
+  EXPECT_EQ(range < 65, true);
+  EXPECT_EQ(range < 64, std::nullopt);
+  EXPECT_EQ(range < 10, false);
+
+  EXPECT_EQ(range == 11, false);
+  EXPECT_EQ(range == 15, std::nullopt);
+  EXPECT_EQ(range == 65, false);
+
+  EXPECT_EQ(range != 11, true);
+  EXPECT_EQ(range != 15, std::nullopt);
+  EXPECT_EQ(range != 65, true);
+
+  EXPECT_EQ(range >= 12, true);
+  EXPECT_EQ(range >= 64, std::nullopt);
+  EXPECT_EQ(range >= 65, false);
+
+  EXPECT_EQ(range <= 11, false);
+  EXPECT_EQ(range <= 64, true);
+  EXPECT_EQ(range <= 63, std::nullopt);
+  EXPECT_EQ(range <= 65, true);
+
+  Range point{15, 15};
+  EXPECT_EQ(point == 15, true);
+  EXPECT_EQ(point == 16, false);
+
+  EXPECT_EQ(point != 15, false);
+  EXPECT_EQ(point != 16, true);
 }
 
 // TODO(b/313840171): Simplify `((d0 * 8 + d1) mod 16) floordiv 4` to

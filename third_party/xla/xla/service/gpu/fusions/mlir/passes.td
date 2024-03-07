@@ -61,7 +61,7 @@ def LowerTensorsPass :
 
   let dependentDialects = [
     "mlir::func::FuncDialect", "mlir::gpu::GPUDialect", "mlir::LLVM::LLVMDialect",
-    "mlir::tensor::TensorDialect"
+    "mlir::tensor::TensorDialect", "mlir::scf::SCFDialect",
   ];
 
   let constructor = "CreateLowerTensorsPass()";
@@ -83,6 +83,21 @@ def MergePointersToSameSlicePass :
   let constructor = "CreateMergePointersToSameSlicePass()";
 }
 
+def SimplifyArithPass : Pass<"xla-gpu-simplify-arith", "mlir::ModuleOp"> {
+  let summary = "Simplifies arith using XLA's range-aware simplifier.";
+
+  let description = [{
+      We often emit bounds checks that are statically known to be satisfied.
+      This pass removes them.
+  }];
+
+  let dependentDialects = [
+    "mlir::arith::ArithDialect"
+  ];
+
+  let constructor = "CreateSimplifyArithPass()";
+}
+
 def SimplifyAffinePass : Pass<"xla-gpu-simplify-affine", "mlir::ModuleOp"> {
   let summary = "Simplifies affine.apply using XLA's range-aware simplifier.";
 
@@ -102,23 +117,23 @@ def SimplifyAffinePass : Pass<"xla-gpu-simplify-affine", "mlir::ModuleOp"> {
   let constructor = "CreateSimplifyAffinePass()";
 }
 
-def ExpandFloatConversionsPass : Pass<"xla-gpu-expand-conversions", "mlir::ModuleOp"> {
-   let summary = "Expands float conversions that are not natively supported.";
+def ExpandFloatOpsPass : Pass<"xla-gpu-expand-float-ops", "mlir::ModuleOp"> {
+  let summary = "Expands float ops that are not natively supported.";
 
-   let description = [{
-      Not all float conversions are natively supported, so the ones that aren't
-      need to be emulated with bitwise operations.
+  let description = [{
+     Not all float ops are natively supported, either because they don't exist
+     in hardware or they are too inaccurate.
 
-      Currently, this pass only implements bf16 conversions.
-   }];
+     This pass replaces these ops with alternative implementations.
+  }];
 
-   let dependentDialects = [
-      "mlir::arith::ArithDialect", "mlir::mhlo::MhloDialect"
-   ];
+  let dependentDialects = [
+    "mlir::arith::ArithDialect", "mlir::mhlo::MhloDialect"
+  ];
 
   let options = [
-    Option<"include_bf16_", "include-bf16", "bool", /*default=*/"false",
-           "Enable the BF16 <-> F32 expansion patterns.">,
+    Option<"pre_ampere_", "pre-ampere", "bool", /*default=*/"false",
+           "Rewrite ops that are not supported on architectures before Ampere">,
   ];
 }
 
@@ -127,7 +142,7 @@ def LowerXlaGpuToScfPass :
   let summary = "Lowers xla_gpu to SCF.";
 
   let dependentDialects = [
-    "mlir::gpu::GPUDialect", "mlir::scf::SCFDialect",
+    "mlir::gpu::GPUDialect", "mlir::LLVM::LLVMDialect", "mlir::scf::SCFDialect",
     "mlir::tensor::TensorDialect", "xla::gpu::XlaGpuDialect",
   ];
 

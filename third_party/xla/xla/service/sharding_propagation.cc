@@ -73,31 +73,49 @@ bool IsSpatiallyPartitioned(const HloInstruction* hlo) {
   return hlo->has_sharding() && IsSpatiallyPartitioned(hlo->sharding());
 }
 
-// We think manual shardings are strictly better than tile maximal shardings.
+// Returns
+// - 1, iff `lhs` is strictly better than `rhs`.
+// - 2, iff `rhs` is strictly better than `lhs`.
+// - 0 or 3, otherwise.
+//
+// Notes:
+// - We think manual shardings are strictly better than tile maximal shardings.
+// - For tuples we consider lhs to have a better sharding if none of the
+//   elements are worse and at least one element is better then in rhs
+//   sharding.
+int MaskTupleShardingStrictlyBetter(const HloSharding& lhs,
+                                    const HloSharding& rhs) {
+  DCHECK(lhs.IsTuple());
+  DCHECK(rhs.IsTuple());
+  const auto& lhs_shardings = lhs.tuple_elements();
+  const auto& rhs_shardings = rhs.tuple_elements();
+  CHECK_EQ(lhs_shardings.size(), rhs_shardings.size());
+  int mask = 0;
+  for (int64_t i = 0; i < lhs_shardings.size(); ++i) {
+    const auto& lhs_shard = lhs_shardings[i];
+    const auto& rhs_shard = rhs_shardings[i];
+    CHECK_EQ(lhs_shard.IsTuple(), rhs_shard.IsTuple());
+    if (lhs_shard.IsTuple()) {
+      mask |= MaskTupleShardingStrictlyBetter(lhs_shard, rhs_shard);
+    } else {
+      if (lhs_shard.IsManualLeaf() & rhs_shard.IsTileMaximalLeaf()) {
+        mask |= 1;
+      }
+      if (rhs_shard.IsManualLeaf() & lhs_shard.IsTileMaximalLeaf()) {
+        mask |= 2;
+      }
+    }
+    if (mask == 3) break;
+  }
+  return mask;
+}
+
 bool IsShardingStrictlyBetter(const HloSharding& lhs, const HloSharding& rhs) {
   CHECK_EQ(lhs.IsTuple(), rhs.IsTuple()) << lhs << " <> " << rhs;
   if (lhs.IsTuple()) {
-    // For tuples we consider lhs to have a better sharding if none of the
-    // elements are worse and at least one element is better then in rhs
-    // sharding.
-    const auto& lhs_shardings = lhs.tuple_elements();
-    const auto& rhs_shardings = rhs.tuple_elements();
-    CHECK_EQ(lhs_shardings.size(), rhs_shardings.size());
-    bool is_better = false;
-    for (int64_t i = 0; i < lhs_shardings.size(); ++i) {
-      if (IsShardingStrictlyBetter(rhs_shardings[i], lhs_shardings[i])) {
-        return false;
-      }
-      if (IsShardingStrictlyBetter(lhs_shardings[i], rhs_shardings[i])) {
-        is_better = true;
-      }
-    }
-    return is_better;
+    return MaskTupleShardingStrictlyBetter(lhs, rhs) == 1;
   }
-  if (lhs.IsManual() && rhs.IsTileMaximal()) {
-    return true;
-  }
-  return false;
+  return lhs.IsManualLeaf() & rhs.IsTileMaximalLeaf();
 }
 
 // Implementation for returning a improved sharding from another sharding.
@@ -3388,6 +3406,69 @@ absl::StatusOr<bool> ShardingPropagation::Run(
         } else {
           params[i]->clear_sharding();
         }
+      }
+    }
+  }
+  // Replicate the parameter/output sharding if the propagated sharding does not
+  // evenly partition the parameter/output.
+  std::function<bool(const Shape&, const HloSharding&)> evenly_partitions =
+      [&evenly_partitions](const Shape& shape,
+                           const HloSharding& sharding) -> bool {
+    if (!sharding.IsTiled()) {
+      return true;
+    }
+    if (sharding.IsTileMaximal()) {
+      return sharding.IsReplicated();
+    }
+    if (sharding.IsTuple()) {
+      for (int64_t i = 0; i < ShapeUtil::TupleElementCount(shape); ++i) {
+        if (!evenly_partitions(ShapeUtil::GetTupleElementShape(shape, i),
+                               sharding.GetSubSharding(shape, {i}))) {
+          return false;
+        }
+      }
+    }
+    for (int64_t i = 0; i < shape.dimensions_size(); ++i) {
+      if (shape.dimensions(i) % sharding.tile_assignment().dim(i) != 0) {
+        return false;
+      }
+    }
+    return true;
+  };
+  if (allow_spmd_sharding_propagation_to_output_ &&
+      root_instruction->has_sharding()) {
+    if (root_instruction->shape().IsTuple() &&
+        allow_spmd_sharding_propagation_to_output_vector_.size() ==
+            root_instruction->shape().tuple_shapes_size()) {
+      // The output shape is a tuple and sharding propagation is allowed for at
+      // least one of its elements.
+      HloSharding root_sharding = root_instruction->sharding();
+      for (int64_t i = 0; i < root_instruction->shape().tuple_shapes_size();
+           ++i) {
+        if (allow_spmd_sharding_propagation_to_output_vector_[i] &&
+            !evenly_partitions(root_instruction->shape().tuple_shapes(i),
+                               root_sharding.tuple_elements()[i])) {
+          root_sharding.tuple_elements()[i] = HloSharding::Replicate();
+        }
+      }
+      root_instruction->set_sharding(std::move(root_sharding));
+    } else if (!root_instruction->shape().IsTuple()) {
+      // The output shape is not tuple and sharding propagation is allowed.
+      if (!evenly_partitions(root_instruction->shape(),
+                             root_instruction->sharding())) {
+        root_instruction->set_sharding(HloSharding::Replicate());
+      }
+    }
+  }
+  if (allow_spmd_sharding_propagation_to_parameters_ &&
+      allow_spmd_sharding_propagation_to_parameters_vector_.size() ==
+          params.size()) {
+    // Sharding propagation is allowed for at least one parameter.
+    for (int64_t i = 0; i < params.size(); ++i) {
+      if (params[i]->has_sharding() &&
+          allow_spmd_sharding_propagation_to_parameters_vector_[i] &&
+          !evenly_partitions(params[i]->shape(), params[i]->sharding())) {
+        params[i]->set_sharding(HloSharding::Replicate());
       }
     }
   }

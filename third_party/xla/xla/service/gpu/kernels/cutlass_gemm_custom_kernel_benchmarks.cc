@@ -44,9 +44,7 @@ static void BM_RowMajorGemm(benchmark::State& state) {
   se::StreamExecutor* executor = platform->ExecutorForDevice(0).value();
   const se::DeviceDescription& device = executor->GetDeviceDescription();
 
-  se::Stream stream(executor);
-  TF_CHECK_OK(stream.Initialize());
-  ASSERT_TRUE(stream.ok());
+  TF_ASSERT_OK_AND_ASSIGN(auto stream, executor->CreateStream());
 
   // GEMM: 8192x4096 * 4096x16384 -> 8192x16384
   int32_t m = 8192;
@@ -65,18 +63,18 @@ static void BM_RowMajorGemm(benchmark::State& state) {
   se::DeviceMemory<float> b = executor->AllocateArray<float>(k * n, 0);
   se::DeviceMemory<float> c = executor->AllocateArray<float>(m * n, 0);
 
-  TF_CHECK_OK(stream.Memset32(&a, BitPattern(1.1f), a.size()));
-  TF_CHECK_OK(stream.Memset32(&b, BitPattern(1.2f), b.size()));
-  TF_CHECK_OK(stream.MemZero(&c, c.size()));
+  TF_CHECK_OK(stream->Memset32(&a, BitPattern(1.1f), a.size()));
+  TF_CHECK_OK(stream->Memset32(&b, BitPattern(1.2f), b.size()));
+  TF_CHECK_OK(stream->MemZero(&c, c.size()));
 
   se::KernelArgsDeviceMemoryArray args(
       std::vector<se::DeviceMemoryBase>({a, b, c}),
       custom_kernel->shared_memory_bytes());
 
   for (auto s : state) {
-    TF_CHECK_OK(executor->Launch(&stream, custom_kernel->thread_dims(),
+    TF_CHECK_OK(executor->Launch(stream.get(), custom_kernel->thread_dims(),
                                  custom_kernel->block_dims(), *gemm, args));
-    TF_CHECK_OK(stream.BlockHostUntilDone());
+    TF_CHECK_OK(stream->BlockHostUntilDone());
   }
 }
 

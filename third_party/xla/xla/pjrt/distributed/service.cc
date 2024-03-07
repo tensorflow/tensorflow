@@ -87,7 +87,7 @@ void CoordinationServiceImpl::StartRpcThread() {
       [service = coord_rpc_service_.get()] { service->HandleRPCsLoop(); }));
 }
 
-xla::StatusOr<std::unique_ptr<DistributedRuntimeService>>
+absl::StatusOr<std::unique_ptr<DistributedRuntimeService>>
 DistributedRuntimeService::Get(
     const std::string& address,
     std::shared_ptr<::grpc::ServerCredentials> credentials,

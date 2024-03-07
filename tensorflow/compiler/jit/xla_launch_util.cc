@@ -97,7 +97,7 @@ std::vector<const Tensor*> InputsFromContext(OpKernelContext* ctx) {
   return inputs;
 }
 
-StatusOr<std::vector<int>> GetConstantInputIndicesFromContext(
+absl::StatusOr<std::vector<int>> GetConstantInputIndicesFromContext(
     OpKernelContext* ctx) {
   std::vector<int> constant_input_indices;
   TF_RETURN_IF_ERROR(GetCompileTimeConstInputs(
@@ -144,7 +144,7 @@ static void PopulateExecutionInputBuffer(xla::ExecutionInput& execution_input,
   }
 }
 
-StatusOr<std::vector<xla::ExecutionInput>>
+absl::StatusOr<std::vector<xla::ExecutionInput>>
 XlaComputationLaunchContext::PopulateInputs(
     OpKernelContext* ctx,
     const XlaCompiler::CompilationResult* compilation_result,
@@ -218,7 +218,7 @@ static Tensor MakeTensor(DataType dtype, const TensorShape& shape,
 // Get aliased tensor from output, or make a new one for the corresponding
 // output operation. Transfers ownership of the buffer from output to the
 // returned tensor.
-static StatusOr<Tensor> GetOrCreateTensorForOutput(
+static absl::StatusOr<Tensor> GetOrCreateTensorForOutput(
     xla::ScopedShapedBuffer& output, int output_num, OpKernelContext* ctx,
     int missing_ctx_input_prefix,
     const xla::HloInputOutputAliasConfig& input_output_alias,
@@ -319,7 +319,7 @@ Status SetOutputForConstant(
   return absl::OkStatus();
 }
 
-static StatusOr<Var*> GetOrCreateResourceVar(
+static absl::StatusOr<Var*> GetOrCreateResourceVar(
     OpKernelContext* ctx, const ResourceHandle& handle,
     const XlaCompiler::ResourceUpdate& write) {
   Var* variable = nullptr;
@@ -331,7 +331,7 @@ static StatusOr<Var*> GetOrCreateResourceVar(
   return variable;
 }
 
-StatusOr<std::vector<VariableInfo>> GatherVariableInfo(
+absl::StatusOr<std::vector<VariableInfo>> GatherVariableInfo(
     OpKernelContext* ctx,
     const XlaCompiler::CompilationResult& compilation_result,
     int missing_ctx_input_prefix) {
@@ -509,7 +509,7 @@ Status XlaComputationLaunchContext::PopulateOutputs(
   return absl::OkStatus();
 }
 
-StatusOr<std::vector<XlaCompiler::Argument>>
+absl::StatusOr<std::vector<XlaCompiler::Argument>>
 XlaComputationLaunchContext::BuildXlaCompilerArguments(
     absl::Span<int const> must_be_constant_idxs,
     absl::Span<const Tensor* const> inputs,
@@ -876,7 +876,7 @@ Status RunPjRtExecutable(
   return absl::OkStatus();
 }
 
-StatusOr<std::vector<std::unique_ptr<xla::PjRtBuffer>>> RunPjRtExecutable(
+absl::StatusOr<std::vector<std::unique_ptr<xla::PjRtBuffer>>> RunPjRtExecutable(
     int num_missing_prefix_ctx_inputs, const std::vector<const Tensor*>& inputs,
     const absl::flat_hash_map<int, const Tensor*>& variable_snapshots,
     const std::vector<VariableInfo>& updated_variables,

@@ -16,16 +16,19 @@ limitations under the License.
 
 #include <functional>
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
 
 #include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "tensorflow/core/data/name_utils.h"
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tsl/platform/errors.h"
+#include "tsl/platform/thread_annotations.h"
 
 namespace tensorflow {
 namespace data {
@@ -127,6 +130,16 @@ class RepeatDatasetOp::Dataset : public DatasetBase {
   Dataset(OpKernelContext* ctx, int64_t count, const DatasetBase* input)
       : DatasetBase(DatasetContext(ctx)), count_(count), input_(input) {
     input_->Ref();
+    if (input_ != nullptr && !input_->RandomIndexingCompatible().ok()) {
+      random_indexing_compatible_ = input_->RandomIndexingCompatible();
+    } else if (count <= 0) {
+      random_indexing_compatible_ = absl::FailedPreconditionError(
+          absl::StrCat("`repeat(", count,
+                       ")` does not support random access of tf.data "
+                       "datasets."));
+    } else {
+      random_indexing_compatible_ = absl::OkStatus();
+    }
   }
 
   ~Dataset() override { input_->Unref(); }
@@ -201,6 +214,10 @@ class RepeatDatasetOp::Dataset : public DatasetBase {
     return input_->Get(ctx, index % input_->Cardinality(), out_tensors);
   }
 
+  absl::Status RandomIndexingCompatible() const override {
+    return random_indexing_compatible_;
+  }
+
  protected:
   Status AsGraphDefInternal(SerializationContext* ctx,
                             DatasetGraphDefBuilder* b,
@@ -267,8 +284,15 @@ class RepeatDatasetOp::Dataset : public DatasetBase {
         return absl::OkStatus();
       }
       while (i_ < dataset()->count_) {
-        TF_RETURN_IF_ERROR(
-            input_impl_->GetNext(ctx, out_tensors, end_of_sequence));
+        std::optional<IteratorContext> ctx_with_index_mapper =
+            GetIteratorContextWithIndexMapper(ctx);
+        TF_RETURN_IF_ERROR(input_impl_->GetNext(
+            ctx_with_index_mapper.has_value() ? &ctx_with_index_mapper.value()
+                                              : ctx,
+            out_tensors, end_of_sequence));
+        if (ctx_with_index_mapper.has_value()) {
+          ctx->MergeCheckpoint(ctx_with_index_mapper->checkpoint());
+        }
         if (!*end_of_sequence) {
           return absl::OkStatus();
         }
@@ -308,6 +332,18 @@ class RepeatDatasetOp::Dataset : public DatasetBase {
     Status RestoreInternal(IteratorContext* ctx,
                            IteratorStateReader* reader) override {
       mutex_lock l(mu_);
+      if (ctx->restored_element_count().has_value()) {
+        i_ = *ctx->restored_element_count() / dataset()->input_->Cardinality();
+        // For upstream iterators, the restored element count should be the
+        // element count within the current repetition.
+        IteratorContext::Params params(ctx);
+        params.restored_element_count =
+            *ctx->restored_element_count() % dataset()->input_->Cardinality();
+        IteratorContext ctx_with_restored_element_count(params);
+        return RestoreInput(&ctx_with_restored_element_count, reader,
+                            input_impl_);
+      }
+
       TF_RETURN_IF_ERROR(reader->ReadScalar(prefix(), kCurIteration, &i_));
       int64_t input_empty;
       TF_RETURN_IF_ERROR(
@@ -323,6 +359,38 @@ class RepeatDatasetOp::Dataset : public DatasetBase {
     }
 
    private:
+    // If the dataset is globally shuffled, returns an `IteratorContext` with
+    // the updated index_mapper.
+    std::optional<IteratorContext> GetIteratorContextWithIndexMapper(
+        IteratorContext* ctx) const TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+      std::optional<IteratorContext> ctx_with_index_mapper;
+      if (ctx->index_mapper()) {
+        IteratorContext::Params params(ctx);
+        params.index_mapper = GetIndexMapper(ctx->index_mapper());
+        ctx_with_index_mapper.emplace(params);
+      }
+      return ctx_with_index_mapper;
+    }
+
+    std::function<int64_t(int64_t)> GetIndexMapper(
+        std::function<int64_t(int64_t)> parent_index_mapper) const
+        TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+      int64_t input_cardinality = dataset()->input_->Cardinality();
+      int64_t repeat_count = i_;
+      return [parent_index_mapper, input_cardinality,
+              repeat_count](int64_t element_position) -> int64_t {
+        // First, maps the input indices from
+        // [0, input_range] to [0, input_range * repetitions].
+        // Then, reduces the shuffled indices to [0, input_range] by taking the
+        // mod. This way, the shuffling happens across repetitions.
+        int64_t repeated_element_position =
+            repeat_count * input_cardinality + element_position;
+        int64_t shuffled_element_position =
+            parent_index_mapper(repeated_element_position);
+        return shuffled_element_position % input_cardinality;
+      };
+    }
+
     mutex mu_;
     int64_t i_ TF_GUARDED_BY(mu_);
     std::unique_ptr<IteratorBase> input_impl_ TF_GUARDED_BY(mu_);
@@ -430,6 +498,7 @@ class RepeatDatasetOp::Dataset : public DatasetBase {
 
   const int64_t count_;
   const DatasetBase* const input_;
+  absl::Status random_indexing_compatible_;
 };
 
 RepeatDatasetOp::RepeatDatasetOp(OpKernelConstruction* ctx)

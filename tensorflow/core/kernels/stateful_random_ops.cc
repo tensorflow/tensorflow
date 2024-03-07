@@ -91,7 +91,7 @@ StatusOr<AlgEnumType> GetAlgId(OpKernelContext* ctx, int input_idx) {
 }
 
 template <typename AlgEnumType>
-StatusOr<ConcreteRngAlgorithm> ResolveAlg(AlgEnumType alg_id) {
+absl::StatusOr<ConcreteRngAlgorithm> ResolveAlg(AlgEnumType alg_id) {
   switch (alg_id) {
     case RNG_ALG_PHILOX:
       return ConcreteRngAlgorithm::RNG_ALG_PHILOX;
@@ -106,7 +106,8 @@ StatusOr<ConcreteRngAlgorithm> ResolveAlg(AlgEnumType alg_id) {
 }
 
 template <typename AlgEnumType>
-StatusOr<ConcreteRngAlgorithm> GetAlg(OpKernelContext* ctx, int input_idx) {
+absl::StatusOr<ConcreteRngAlgorithm> GetAlg(OpKernelContext* ctx,
+                                            int input_idx) {
   TF_ASSIGN_OR_RETURN(auto alg_id, GetAlgId<AlgEnumType>(ctx, input_idx));
   return ResolveAlg(alg_id);
 }

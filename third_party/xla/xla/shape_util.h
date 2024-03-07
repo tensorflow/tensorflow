@@ -186,6 +186,18 @@ class ShapeUtil {
   // size also includes padding if present in the layout.
   static int64_t ByteSizeOfElements(const Shape& shape);
 
+  // Returns the size in bytes for the serialized form of this shape.
+  // This serialized size includes the header of the serialized format, and so
+  // should not be used for subshapes.  Use SerializedSizeOfData for that
+  // purpose.
+  static absl::StatusOr<int64_t> SerializedSize(const Shape& shape);
+
+  // As above, but assumes the given ShapeProto is the result of
+  // shape.ToProto().  This can be used to avoid converting the shape to a
+  // protobuf multiple times.
+  static absl::StatusOr<int64_t> SerializedSizeWithProto(
+      const Shape& shape, const ShapeProto& proto);
+
   // Prints a human-readable string that represents the given shape, with or
   // without layout. e.g. "f32[42x12] {0, 1}" or "f32[64]".
   static void PrintHumanString(xla::Printer* printer, const Shape& shape);
@@ -538,6 +550,10 @@ class ShapeUtil {
   // the given Shape argument. The non-Try variants check fail if index is
   // invalid.
   static const Shape& GetSubshape(const Shape& shape, ShapeIndexView index);
+
+  // Faster version for one index.
+  static const Shape& GetSubshapeOneIndex(const Shape& shape, int64_t index);
+
   static StatusOr<const Shape*> TryGetSubshape(const Shape& shape,
                                                ShapeIndexView index);
   static Shape* GetMutableSubshape(Shape* shape, ShapeIndexView index);
@@ -548,6 +564,7 @@ class ShapeUtil {
 
   // Returns the number of leaves in the shape.
   static int64_t GetLeafCount(const Shape& shape);
+  static int64_t GetLeafCountTuple(const Shape& shape);
 
   // Retrieves all the leaf shapes and their indexes, in the order walked by
   // the ForEachSubshape() API.

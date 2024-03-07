@@ -1,12 +1,12 @@
-load("//tensorflow/compiler/tests:build_defs.bzl", "generate_backend_suites", "tf_xla_py_strict_test")
 load("//tensorflow:strict.default.bzl", "py_strict_library", "py_strict_test")
-load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
+load("//tensorflow/compiler/tests:build_defs.bzl", "generate_backend_suites", "tf_xla_py_strict_test")
 load("//tensorflow:tensorflow.default.bzl", "cuda_py_strict_test", "tf_cuda_cc_test")
 load("//tensorflow/compiler/aot:tfcompile.bzl", "tf_library")
 load(
     "//tensorflow/core/platform:build_config_root.bzl",
     "tf_cuda_tests_tags",
 )
+load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load("//tensorflow/python/tpu:tpu.bzl", "tpu_py_strict_test")
 
 package(
@@ -1524,14 +1524,13 @@ tf_xla_py_strict_test(
     python_version = "PY3",
     shard_count = 10,
     tags = [
-        "no_oss",  # b/170479349
         "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
-        "notap",  # b/170479349
         "optonly",
     ],
     deps = [
         ":xla_test",
         "//tensorflow/python/client",
+        "//tensorflow/python/client:device_lib",
         "//tensorflow/python/eager:def_function",
         "//tensorflow/python/framework:config",
         "//tensorflow/python/framework:dtypes",

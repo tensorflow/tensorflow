@@ -48,7 +48,7 @@ profiler = _xla.profiler
 
 # Just an internal arbitrary increasing number to help with backward-compatible
 # changes. In JAX, reference this via jax._src.lib.xla_extension_version.
-_version = 239
+_version = 242
 
 # Version number for MLIR:Python components.
 mlir_api_version = 55
@@ -205,21 +205,14 @@ def make_tpu_client(library_path: Optional[str] = None):
   return make_tfrt_tpu_c_api_client()
 
 
-def generate_pjrt_gpu_plugin_options(
-    visible_devices: str = 'all',
-) -> _NameValueMapping:
+def generate_pjrt_gpu_plugin_options() -> _NameValueMapping:
   """Generates the PjRt GPU plugin options.
-
-  Args:
-    visible_devices: A string of visible cuda devices.
 
   Returns:
     A dictionary of plugin options.
   """
 
   options = {}
-  if visible_devices != 'all':
-    options['visible_devices'] = [int(x) for x in visible_devices.split(',')]
   options['platform_name'] = 'cuda'
   allocator = os.getenv('XLA_PYTHON_CLIENT_ALLOCATOR', 'default').lower()
   memory_fraction = os.getenv('XLA_PYTHON_CLIENT_MEM_FRACTION', '')

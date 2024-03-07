@@ -1252,11 +1252,14 @@ MemoryBoundLoopOptimizer::Create(
     const MemoryBoundLoopOptimizerOptions& options,
     const HloLiveRange& hlo_live_range, const HloAliasAnalysis& alias_analysis,
     const CostAnalysis& cost_analysis,
-    const BufferValue::SizeFunction& size_function) {
+    const BufferValue::SizeFunction& size_function,
+    const MemorySpaceAssignment::ReservedScopedMemoryFunction&
+        reserved_scoped_memory_fn) {
   std::unique_ptr<MemoryBoundLoopOptimizer> optimizer =
       absl::WrapUnique(new MemoryBoundLoopOptimizer(
           loop_start, loop_end, alternate_memory_size, options, hlo_live_range,
-          alias_analysis, cost_analysis, size_function));
+          alias_analysis, cost_analysis, size_function,
+          reserved_scoped_memory_fn));
   TF_RETURN_IF_ERROR(optimizer->Initialize());
   return std::move(optimizer);
 }
@@ -1266,7 +1269,9 @@ MemoryBoundLoopOptimizer::MemoryBoundLoopOptimizer(
     const MemoryBoundLoopOptimizerOptions& options,
     const HloLiveRange& hlo_live_range, const HloAliasAnalysis& alias_analysis,
     const CostAnalysis& cost_analysis,
-    const BufferValue::SizeFunction& size_function)
+    const BufferValue::SizeFunction& size_function,
+    const MemorySpaceAssignment::ReservedScopedMemoryFunction&
+        reserved_scoped_memory_fn)
     : loop_start_(loop_start),
       loop_end_(loop_end),
       loop_size_(loop_end - loop_start),
@@ -1275,7 +1280,8 @@ MemoryBoundLoopOptimizer::MemoryBoundLoopOptimizer(
       hlo_live_range_(hlo_live_range),
       alias_analysis_(alias_analysis),
       cost_analysis_(cost_analysis),
-      size_function_(size_function) {}
+      size_function_(size_function),
+      reserved_scoped_memory_fn_(reserved_scoped_memory_fn) {}
 
 Status MemoryBoundLoopOptimizer::Initialize() {
   const auto& instruction_sequence =
@@ -1296,7 +1302,10 @@ Status MemoryBoundLoopOptimizer::Initialize() {
     } else {
       TF_RET_CHECK(loop_computation == inst->parent());
     }
-    remaining_memory_.push_back(alternate_memory_size_);
+    remaining_memory_.push_back(
+        alternate_memory_size_ -
+        reserved_scoped_memory_fn_(inst, /*operands_in_alternate_memory=*/{},
+                                   /*outputs_in_alternate_memory=*/{}));
   }
 
   for (int i = loop_start_ - loop_size_; i < loop_start_; ++i) {
@@ -2430,7 +2439,8 @@ Status AlternateMemoryBestFitHeap::OptimizeMemoryBoundLoop(int loop_start_idx,
       MemoryBoundLoopOptimizer::Create(
           iteration_start_idx, iteration_end_idx, options_.max_size_in_bytes,
           options_.memory_bound_loop_optimizer_options, hlo_live_range_,
-          alias_analysis_, *options_.cost_analysis, options_.size_fn));
+          alias_analysis_, *options_.cost_analysis, options_.size_fn,
+          options_.reserved_scoped_memory_fn));
   optimizer->Optimize();
 
   const int loop_optimized_allocations_original_size =
@@ -2473,6 +2483,10 @@ Status AlternateMemoryBestFitHeap::OptimizeMemoryBoundLoop(int loop_start_idx,
         for (int64_t i = loop_start_idx + use_idx; i <= loop_end_idx;
              i += loop_size) {
           HloInstruction* repeated_inst = instruction_sequence[i];
+          CHECK_EQ(use.instruction->opcode(), repeated_inst->opcode());
+          CHECK_EQ(use.instruction->operand_count(),
+                   repeated_inst->operand_count());
+          CHECK_LT(use.operand_number, repeated_inst->operand_count());
           HloUse repeated_use{repeated_inst, use.operand_number,
                               use.operand_index};
           loop_optimized_allocations_map_[repeated_use] = {use_idx, loop_size,
@@ -2622,6 +2636,7 @@ void AlternateMemoryBestFitHeap::IdentifyAndOptimizeMemoryBoundLoops() {
                instruction->opcode() == HloOpcode::kTuple ||
                instruction->opcode() == HloOpcode::kGetTupleElement;
       };
+      // We trigger this if statement until we find the start of the loop.
       if (loop_start_idx == -1) {
         if (i > optimized_loop_idx - loop_size_candidate) {
           break;
@@ -2669,7 +2684,7 @@ void AlternateMemoryBestFitHeap::IdentifyAndOptimizeMemoryBoundLoops() {
         break;
       }
       operand_distances.push_back({});
-      if (ignore_op(inst) || fingerprint_it == fingerprint_map_.end()) {
+      if (fingerprint_it == fingerprint_map_.end()) {
         continue;
       }
       absl::c_transform(inst->operands(),
@@ -2683,6 +2698,21 @@ void AlternateMemoryBestFitHeap::IdentifyAndOptimizeMemoryBoundLoops() {
         auto prev_fingerprint_it = fingerprint_map_.find(prev_inst);
         if (prev_fingerprint_it == fingerprint_map_.end()) {
           break;
+        }
+        if (ignore_op(inst) || ignore_op(prev_inst)) {
+          if (inst->opcode() != prev_inst->opcode()) {
+            VLOG(3) << "Mismatch (opcode) at " << i << ", "
+                    << (i - loop_size_candidate) << ": " << inst->opcode()
+                    << " vs " << prev_inst->opcode();
+            break;
+          }
+          if (inst->operand_count() != prev_inst->operand_count()) {
+            VLOG(3) << "Mismatch (# operands) at " << i << ", "
+                    << (i - loop_size_candidate) << ": "
+                    << inst->operand_count() << " vs "
+                    << prev_inst->operand_count();
+            break;
+          }
         }
         if (fingerprint_it->second != prev_fingerprint_it->second) {
           VLOG(3) << "Mismatch (fp) at " << i << ", "

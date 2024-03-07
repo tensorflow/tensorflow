@@ -408,7 +408,7 @@ absl::Status GpuExecutor::Submit(Stream* stream,
 
   auto exec = GpuCommandBuffer::Cast(&command_buffer)->executable();
   VLOG(3) << "Launch command buffer execuable graph " << exec
-          << " on a stream: " << stream->DebugStreamPointers();
+          << " on a stream: " << stream;
   return GpuDriver::GraphLaunch(exec, AsGpuStreamValue(stream));
 }
 

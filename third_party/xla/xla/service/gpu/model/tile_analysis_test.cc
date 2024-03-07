@@ -196,9 +196,9 @@ TEST_F(SymbolicTileTest, CanPropagateTileThroughReverse) {
 
   EXPECT_THAT(
       SymbolicTile::FromIndexingMap(*input_indexing.indexing_maps[0].begin()),
-      Optional(MatchSymbolicTile("()[s0, s1, s2] -> (-s0 - s2 * s1 + 178)",
+      Optional(MatchSymbolicTile("()[s0, s1, s2] -> (-s0 + 178)",
                                  "()[s0, s1, s2] -> (s1)",
-                                 "()[s0, s1, s2] -> (s2)")));
+                                 "()[s0, s1, s2] -> (-s2)")));
 }
 
 TEST_F(SymbolicTileTest, CanPropagateTileFromSliceOutputToInput) {

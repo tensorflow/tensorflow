@@ -317,6 +317,11 @@ class DefaultNcclApi final : public NcclApi {
                          size_t count, ReductionKind reduction_kind,
                          NcclCommHandle comm, se::Stream* stream) final;
 
+  absl::Status Broadcast(se::DeviceMemoryBase send_buffer,
+                         se::DeviceMemoryBase recv_buffer, PrimitiveType dtype,
+                         size_t count, size_t root, NcclCommHandle comm,
+                         se::Stream* stream) final;
+
   absl::Status ReduceScatter(se::DeviceMemoryBase send_buffer,
                              se::DeviceMemoryBase recv_buffer,
                              PrimitiveType dtype, size_t count,
@@ -371,6 +376,8 @@ DefaultNcclApi::CommInitRanks(int32_t nranks, const NcclCliqueId& clique_id,
   VLOG(1) << "Initialize NCCL communicator for " << ranks.size()
           << " devices; hash(id)=" << absl::HashOf(clique_id);
 
+#if !defined(TENSORFLOW_USE_ROCM) || \
+    (defined(TENSORFLOW_USE_ROCM) && TF_ROCM_VERSION > 50700)
   ncclConfig_t comm_config = NCCL_CONFIG_INITIALIZER;
   comm_config.splitShare = config.split_share;
   if (config.max_nchannels > 0) {
@@ -399,6 +406,11 @@ DefaultNcclApi::CommInitRanks(int32_t nranks, const NcclCliqueId& clique_id,
   TF_RETURN_IF_ERROR(GroupEnd());
 
   return comms;
+#else
+  return absl::UnimplementedError(absl::StrFormat(
+      "%s:%d: NCCL operation ncclCommInitRankConfig not implemented", __FILE__,
+      __LINE__));
+#endif
 }
 
 absl::StatusOr<std::vector<NcclApi::OwnedNcclComm>> DefaultNcclApi::CommSplit(
@@ -521,6 +533,26 @@ absl::Status DefaultNcclApi::AllReduce(se::DeviceMemoryBase send_buffer,
       send_buffer.opaque(), recv_buffer.opaque(), ToNcclCount(dtype, count),
       nccl_dtype, ToNcclReduction(reduction_kind), Cast(comm),
       se::gpu::AsGpuStreamValue(stream)));
+}
+
+absl::Status DefaultNcclApi::Broadcast(se::DeviceMemoryBase send_buffer,
+                                       se::DeviceMemoryBase recv_buffer,
+                                       PrimitiveType dtype, size_t count,
+                                       size_t root, NcclCommHandle comm,
+                                       se::Stream* stream) {
+  VLOG(3) << absl::StreamFormat(
+      "Launch NCCL Broadcast operation on device #%d; send_buffer=%p; "
+      "recv_buffer=%p; dtype=%s; count=%d; root=%d; comm=%p; "
+      "stream=%p",
+      stream->parent()->device_ordinal(), send_buffer.opaque(),
+      recv_buffer.opaque(), primitive_util::LowercasePrimitiveTypeName(dtype),
+      count, root, comm, stream);
+
+  TF_ASSIGN_OR_RETURN(ncclDataType_t nccl_dtype, ToNcclDataType(dtype, false));
+
+  return XLA_NCCL_STATUS(ncclBroadcast(
+      send_buffer.opaque(), recv_buffer.opaque(), ToNcclCount(dtype, count),
+      nccl_dtype, root, Cast(comm), se::gpu::AsGpuStreamValue(stream)));
 }
 
 absl::Status DefaultNcclApi::ReduceScatter(se::DeviceMemoryBase send_buffer,

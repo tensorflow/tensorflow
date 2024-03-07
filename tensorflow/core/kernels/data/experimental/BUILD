@@ -43,6 +43,7 @@ tf_kernel_library(
         "//tensorflow/core:experimental_dataset_ops_op_lib",
         "//tensorflow/core:framework",
         "//tensorflow/core/data:name_utils",
+        "@com_google_absl//absl/status",
     ],
 )
 

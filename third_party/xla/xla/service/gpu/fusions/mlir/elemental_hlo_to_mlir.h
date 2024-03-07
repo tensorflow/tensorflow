@@ -51,9 +51,17 @@ absl::StatusOr<llvm::SmallVector<mlir::Value>> HloToMlir(
 
 // Emits MLIR to produce the value(s) of a parameter. The parameter must be
 // located outside the subgraph.
-absl::StatusOr<llvm::SmallVector<mlir::Value>> ProvideParameter(
+llvm::SmallVector<mlir::Value> ProvideParameter(
     const PartitionedComputation& computation, const HloInstruction* instr,
     int operand_index, mlir::ValueRange indices,
+    const CallTargetProvider& call_target_provider,
+    mlir::ImplicitLocOpBuilder& builder);
+
+// Emits MLIR to produce the values of a range of parameters. The parameters
+// must all be scalars. The parameters are all evaluated at the same indices.
+llvm::SmallVector<mlir::Value> ProvideParameterRange(
+    const PartitionedComputation& computation, const HloInstruction* instr,
+    int start, int num, mlir::ValueRange indices,
     const CallTargetProvider& call_target_provider,
     mlir::ImplicitLocOpBuilder& builder);
 
@@ -88,10 +96,23 @@ llvm::SmallVector<mlir::Value> ApplyAffineMap(mlir::AffineMap map,
                                               mlir::ValueRange symbols,
                                               mlir::ImplicitLocOpBuilder& b);
 
-// Checks all the **constraints** in the map (not the **ranges**).
+// Checks all the constraints and dimension ranges in the map.
 mlir::Value CheckConstraints(const IndexingMap& map, mlir::ValueRange dims,
                              mlir::ValueRange symbols,
                              mlir::ImplicitLocOpBuilder& b);
+
+// Emits a loop nest over the entire domain of the indexing_map at a point
+// `dim_values`.
+llvm::SmallVector<mlir::Value> EmitLoopNest(
+    mlir::ImplicitLocOpBuilder& b, mlir::ValueRange dim_values,
+    mlir::ValueRange iter_args_inits, const IndexingMap& indexing_map,
+    const std::function<llvm::SmallVector<mlir::Value>(
+        mlir::ValueRange iter_args, mlir::ValueRange dim_values,
+        mlir::ValueRange symbol_values)>& create_body);
+
+// Clamps
+mlir::Value ClampIndex(mlir::Value index, bool is_unsigned, int64_t high,
+                       mlir::ImplicitLocOpBuilder& b);
 
 }  // namespace mlir_converter
 }  // namespace gpu

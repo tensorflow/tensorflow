@@ -17,13 +17,16 @@ limitations under the License.
 #include <vector>
 
 #include "absl/strings/substitute.h"
+#include "xla/array2d.h"
 #include "xla/error_spec.h"
 #include "xla/literal.h"
+#include "xla/shape_util.h"
 #include "xla/status_macros.h"
 #include "xla/test.h"
 #include "xla/tests/client_library_test_base.h"
 #include "xla/tests/hlo_test_base.h"
 #include "xla/tests/test_macros.h"
+#include "xla/types.h"
 
 namespace xla {
 namespace {
@@ -319,6 +322,39 @@ ENTRY main {
   Literal scatter_indices = LiteralUtil::CreateR1<int32_t>({2, 1});
   Literal updates =
       LiteralUtil::CreateR2<float>({{0.4, 1.1, 0.7}, {2.3, 3.1, 1.6}});
+  RunTest(hlo_text, &operand, &scatter_indices, &updates);
+}
+
+XLA_TEST_F(ScatterTest, TensorFlowScatter_F16) {
+  const std::string hlo_text = R"(
+HloModule TensorFlowScatter_F16
+
+add_f16 (lhs: f16[], rhs: f16[]) -> f16[] {
+  lhs = f16[] parameter(0)
+  rhs = f16[] parameter(1)
+  ROOT add = f16[] add(f16[] lhs, f16[] rhs)
+}
+
+ENTRY main {
+  operand = f16[3,3] parameter(0)
+  indices = s32[2] parameter(1)
+  updates = f16[2,3] parameter(2)
+  ROOT scatter = f16[3,3] scatter(operand, indices, updates),
+      to_apply=add_f16,
+      update_window_dims={1},
+      inserted_window_dims={0},
+      scatter_dims_to_operand_dims={0},
+      index_vector_dim=1
+}
+)";
+  Array2D<Eigen::half> operand_array(
+      {{1.1f, 2.2f, 3.3f}, {4.4f, 5.5f, 6.6f}, {7.7f, 8.8f, 9.9f}});
+  Literal operand(ShapeUtil::MakeShape(F16, {3, 3}));
+  operand.PopulateR2FromArray2D(operand_array);
+  Literal scatter_indices = LiteralUtil::CreateR1<int32_t>({2, 1});
+  Array2D<Eigen::half> updates_array({{0.4f, 1.1f, 0.7f}, {2.3f, 3.1f, 1.6f}});
+  Literal updates(ShapeUtil::MakeShape(F16, {2, 3}));
+  updates.PopulateR2FromArray2D(updates_array);
   RunTest(hlo_text, &operand, &scatter_indices, &updates);
 }
 

@@ -20,8 +20,15 @@ namespace xla {
 namespace gpu {
 namespace {
 
-class CuDnnFusionExecutionTest : public GpuCodegenTest {
+class CuDnnFusionTest : public GpuCodegenTest {
  public:
+  DebugOptions GetDebugOptionsForTest() override {
+    DebugOptions debug_options = GpuCodegenTest::GetDebugOptionsForTest();
+    // Let this group of tests just use first available plan skipping
+    // autotuning.
+    debug_options.set_xla_gpu_autotune_level(0);
+    return debug_options;
+  }
   bool IsAtLeastHopper() {
     return backend()
         .default_stream_executor()
@@ -30,6 +37,8 @@ class CuDnnFusionExecutionTest : public GpuCodegenTest {
         .IsAtLeastHopper();
   }
 };
+
+using CuDnnFusionExecutionTest = CuDnnFusionTest;
 
 TEST_F(CuDnnFusionExecutionTest, DotF32ExecutesCorrectly) {
   EXPECT_TRUE(RunAndCompare(R"(
@@ -251,6 +260,64 @@ ENTRY %e {
 })";
 
   EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
+}
+
+class CuDnnFusionRewriteTest : public CuDnnFusionTest {
+ public:
+  DebugOptions GetDebugOptionsForTest() override {
+    DebugOptions debug_options = CuDnnFusionTest::GetDebugOptionsForTest();
+    // Reset autotuning level to default.
+    debug_options.set_xla_gpu_autotune_level(
+        GetDebugOptionsFromFlags().xla_gpu_autotune_level());
+    debug_options.set_xla_gpu_cudnn_gemm_fusion(true);
+    return debug_options;
+  }
+};
+
+TEST_F(CuDnnFusionRewriteTest,
+       DoNotExecuteGemmFusionWithCuDnnWhenNotSupported) {
+  // Dimension size 61 does not satisfy the requirement on alignment
+  // (multiple of 2).
+  MatchOptimizedHlo(R"(
+ENTRY e {
+  p0 = f16[20,40,61] parameter(0)
+  p2 = f16[20,40,61] parameter(2)
+  p0n = f16[20,40,61] negate(p2)
+  p1 = f16[20,80,61] parameter(1)
+  ROOT r = f16[20,40,80] dot(p0n, p1),
+    lhs_batch_dims={0}, rhs_batch_dims={0},
+    lhs_contracting_dims={2}, rhs_contracting_dims={2}
+})",
+                    R"(
+; CHECK: ENTRY
+; CHECK-NEXT: parameter
+; CHECK-NEXT: parameter
+; CHECK-NEXT: parameter
+; CHECK-NEXT: ROOT
+; CHECK-SAME: fusion
+; CHECK-NOT: cudnn
+)");
+}
+
+TEST_F(CuDnnFusionRewriteTest, AutotuningPicksCuDnnForS8BF16OnHopper) {
+  // The test case relies on measurements by the autotuner and current
+  // performance comparison of the backends. May need to be updated if
+  // the situation changes.
+  if (!IsAtLeastHopper()) {
+    GTEST_SKIP() << "cuDNN GEMM fusion is not enabled on pre-Hopper hardware.";
+  }
+  MatchOptimizedHlo(R"(
+e {
+  p0 = bf16[720,720,720] parameter(0)
+  p1 = s8[720,720,720] parameter(1)
+  c = bf16[720,720,720] convert(p1)
+  ROOT d = bf16[720,720,720] dot(p0, c),
+    lhs_batch_dims={0}, lhs_contracting_dims={2},
+    rhs_batch_dims={0}, rhs_contracting_dims={1}
+})",
+                    R"(
+; CHECK: __cudnn$fusion
+)");
 }
 
 }  // namespace

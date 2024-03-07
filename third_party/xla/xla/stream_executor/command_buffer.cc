@@ -38,12 +38,8 @@ absl::StatusOr<std::unique_ptr<CommandBuffer>> CommandBuffer::Create(
 absl::StatusOr<std::unique_ptr<CommandBuffer>> CommandBuffer::Trace(
     StreamExecutor* executor,
     absl::AnyInvocable<absl::Status(Stream*)> function, Mode mode) {
-  Stream stream(executor);
-  if (stream.Init(); !stream.ok())
-    return absl::InternalError(
-        "Failed to initialize stream for command buffer tracing");
-
-  return Trace(executor, &stream, std::move(function), mode);
+  TF_ASSIGN_OR_RETURN(auto stream, executor->CreateStream());
+  return Trace(executor, stream.get(), std::move(function), mode);
 }
 
 absl::StatusOr<std::unique_ptr<CommandBuffer>> CommandBuffer::Trace(

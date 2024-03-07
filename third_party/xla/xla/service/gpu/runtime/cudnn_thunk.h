@@ -16,9 +16,11 @@ limitations under the License.
 #ifndef XLA_SERVICE_GPU_RUNTIME_CUDNN_THUNK_H_
 #define XLA_SERVICE_GPU_RUNTIME_CUDNN_THUNK_H_
 
+#include <memory>
 #include <string>
 #include <vector>
 
+#include "absl/base/call_once.h"
 #include "absl/status/status.h"
 #include "absl/types/span.h"
 #include "xla/service/buffer_assignment.h"

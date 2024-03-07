@@ -618,14 +618,23 @@ void ComputeMinimalReshapeIndexing(
 // This is an optimization that allows us to construct simpler affine maps,
 // otherwise we would need to linearize/delinearize even some of the simpler
 // cases.
-AffineMap ComputeReshapeIndexingMap(absl::Span<const int64_t> input_dims,
-                                    absl::Span<const int64_t> output_dims,
+AffineMap ComputeReshapeIndexingMap(const Shape& input, const Shape& output,
                                     MLIRContext* mlir_context) {
-  size_t input_rank = input_dims.size();
-  size_t output_rank = output_dims.size();
+  absl::Span<const int64_t> input_dims = input.dimensions();
+  absl::Span<const int64_t> output_dims = output.dimensions();
 
   std::vector<AffineExpr> exprs;
-  exprs.reserve(output_rank);
+  exprs.reserve(input.rank());
+
+  // If the input shape has no elements (e.g. 1000x10x0 -> 100x100x0), just set
+  // everything to 0.
+  if (ShapeUtil::ElementsIn(input) == 0) {
+    for (int i = 0; i < input.rank(); ++i) {
+      exprs.push_back(getAffineConstantExpr(0, mlir_context));
+    }
+    return AffineMap::get(output_dims.size(), /*symbolCount=*/0, exprs,
+                          mlir_context);
+  }
 
   std::vector<AffineExpr> output_dims_exprs;
 
@@ -634,9 +643,9 @@ AffineMap ComputeReshapeIndexingMap(absl::Span<const int64_t> input_dims,
   int64_t output_num_elements = 1;
   std::vector<int64_t> input_subshape, output_subshape;
   size_t input_dim_id = 0, output_dim_id = 0;
-  while (input_dim_id < input_rank || output_dim_id < output_rank ||
+  while (input_dim_id < input.rank() || output_dim_id < output.rank() ||
          !input_subshape.empty()) {
-    if (input_dim_id < input_rank &&
+    if (input_dim_id < input.rank() &&
         (input_subshape.empty() || input_num_elements < output_num_elements ||
          input_dims[input_dim_id] == 1)) {
       input_num_elements *= input_dims[input_dim_id];
@@ -644,7 +653,7 @@ AffineMap ComputeReshapeIndexingMap(absl::Span<const int64_t> input_dims,
       ++input_dim_id;
       continue;
     }
-    if (output_dim_id < output_rank &&
+    if (output_dim_id < output.rank() &&
         (output_subshape.empty() || output_num_elements < input_num_elements ||
          output_dims[output_dim_id] == 1)) {
       output_num_elements *= output_dims[output_dim_id];
@@ -668,23 +677,23 @@ AffineMap ComputeReshapeIndexingMap(absl::Span<const int64_t> input_dims,
 
 HloInstructionIndexing ComputeOutputToInputReshapeOpIndexing(
     const HloReshapeInstruction* reshape, MLIRContext* mlir_context) {
-  auto input_dims = reshape->operand(0)->shape().dimensions();
-  auto output_dims = reshape->shape().dimensions();
+  const auto& input = reshape->operand(0)->shape();
+  const auto& output = reshape->shape();
 
   IndexingMap reshape_indexing_map = IndexingMap::FromTensorSizes(
-      ComputeReshapeIndexingMap(input_dims, output_dims, mlir_context),
-      output_dims, {});
+      ComputeReshapeIndexingMap(input, output, mlir_context),
+      output.dimensions(), {});
   reshape_indexing_map.Simplify();
   return HloInstructionIndexing::FromIndexingMaps({reshape_indexing_map});
 }
 HloInstructionIndexing ComputeInputToOutputReshapeOpIndexing(
     const HloReshapeInstruction* reshape, MLIRContext* mlir_context) {
-  auto input_dims = reshape->operand(0)->shape().dimensions();
-  auto output_dims = reshape->shape().dimensions();
+  const auto& input = reshape->operand(0)->shape();
+  const auto& output = reshape->shape();
 
   IndexingMap reshape_indexing_map = IndexingMap::FromTensorSizes(
-      ComputeReshapeIndexingMap(output_dims, input_dims, mlir_context),
-      input_dims, {});
+      ComputeReshapeIndexingMap(output, input, mlir_context),
+      input.dimensions(), {});
   reshape_indexing_map.Simplify();
   return HloInstructionIndexing::FromIndexingMaps({reshape_indexing_map});
 }
@@ -777,15 +786,14 @@ IndexingMap GetBitcastMap(const Shape& input_shape, const Shape& output_shape,
     // Note: ComputeReshapeIndexingMap assumes it's computing an output->input
     // indexing, so input and output are reversed.
     return IndexingMap::FromTensorSizes(
-        ComputeReshapeIndexingMap(output_shape.dimensions(),
-                                  input_shape.dimensions(), ctx),
+        ComputeReshapeIndexingMap(output_shape, input_shape, ctx),
         input_shape.dimensions(), {});
   }
   // `trt` stands for transpose-reshape-transpose decomposition of bitcast.
   auto trt = std::get<ShapeUtil::BitcastDecompositionTrt>(decomposed_bitcast);
   auto transpose_map_1 = ComputeTransposeIndexingMap(trt.transpose1_dims, ctx);
-  auto reshape_map = ComputeReshapeIndexingMap(
-      trt.reshape_shape.dimensions(), trt.transpose1_shape.dimensions(), ctx);
+  auto reshape_map =
+      ComputeReshapeIndexingMap(trt.reshape_shape, trt.transpose1_shape, ctx);
   auto transpose_map_2 = ComputeTransposeIndexingMap(trt.transpose2_dims, ctx);
   auto bitcast_map =
       transpose_map_2.compose(reshape_map).compose(transpose_map_1);
@@ -836,6 +844,13 @@ llvm::SmallVector<AffineExpr, 4> DelinearizeInBoundsIndex(
     absl::Span<const int64_t> strides) {
   llvm::SmallVector<AffineExpr, 4> result;
   result.reserve(sizes.size());
+  if (absl::c_linear_search(sizes, 0)) {
+    for (int dim = 0; dim < sizes.size(); ++dim) {
+      result.push_back(mlir::getAffineConstantExpr(0, linear.getContext()));
+    }
+    return result;
+  }
+
   for (auto [size, stride] : llvm::zip(sizes, strides)) {
     result.push_back(linear.floorDiv(stride) % size);
   }

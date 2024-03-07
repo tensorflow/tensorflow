@@ -138,6 +138,7 @@ bool AsyncTracker::IsSupportedAsyncDone(const HloInstruction& hlo) const {
       case HloOpcode::kAllToAll:
       case HloOpcode::kAllGather:
       case HloOpcode::kAllReduce:
+      case HloOpcode::kCollectiveBroadcast:
       case HloOpcode::kCollectivePermute:
       case HloOpcode::kCopy:
       case HloOpcode::kReduceScatter:
@@ -166,6 +167,7 @@ bool AsyncTracker::IsSupportedAsyncStart(const HloInstruction& hlo) const {
       case HloOpcode::kAllToAll:
       case HloOpcode::kAllGather:
       case HloOpcode::kAllReduce:
+      case HloOpcode::kCollectiveBroadcast:
       case HloOpcode::kCollectivePermute:
       case HloOpcode::kCopy:
       case HloOpcode::kReduceScatter:
@@ -188,6 +190,8 @@ ResourcesVector AsyncTracker::GetResourcesFromInstructionImpl(
         return ResourceType::kAllGather;
       case HloOpcode::kAllToAll:
         return ResourceType::kAllToAll;
+      case HloOpcode::kCollectiveBroadcast:
+        return ResourceType::kCollectiveBroadcast;
       case HloOpcode::kCollectivePermute:
         return ResourceType::kCollectivePermute;
       case HloOpcode::kCopy:
@@ -333,6 +337,9 @@ void AsyncTracker::SetConcurrentResourceLimits(
     absl::flat_hash_map<int64_t, int64_t>& max_concurrent_resource) const {
   // Set the limits for default resources
   max_concurrent_resource[ResourceTypeToIndex(
+      ResourceType::kCollectiveBroadcast)] =
+      config_.collective_broadcast_overlap_limit;
+  max_concurrent_resource[ResourceTypeToIndex(
       ResourceType::kCollectivePermute)] =
       config_.collective_permute_overlap_limit;
   max_concurrent_resource[ResourceTypeToIndex(ResourceType::kCopy)] =
@@ -370,6 +377,8 @@ absl::string_view AsyncTracker::GetResourceName(int64_t resource_type) const {
       return "kAllGather";
     case ResourceTypeToIndex(ResourceType::kAllReduce):
       return "kAllReduce";
+    case ResourceTypeToIndex(ResourceType::kCollectiveBroadcast):
+      return "kCollectiveBroadcast";
     case ResourceTypeToIndex(ResourceType::kCollectivePermute):
       return "kCollectivePermute";
     case ResourceTypeToIndex(ResourceType::kCopy):
@@ -1295,7 +1304,7 @@ bool DefaultSchedulerCore::AddOccupierToResource(
   return true;
 }
 
-StatusOr<HloGraphNode::TimeCost> DefaultSchedulerCore::ScheduleNode(
+absl::StatusOr<HloGraphNode::TimeCost> DefaultSchedulerCore::ScheduleNode(
     HloGraphNode* n, DefaultSchedulerCore::SchedulingState* sched_state) const {
   // Insert the node into the sequence and mark it as scheduled.
   sched_state->new_sequence_reversed.push_back(
@@ -1723,7 +1732,7 @@ Status DefaultSchedulerCore::SchedulingStep(SchedulingState* sched_state) {
   return OkStatus();
 }
 
-StatusOr<std::vector<HloInstruction*>>
+absl::StatusOr<std::vector<HloInstruction*>>
 DefaultSchedulerCore::ScheduleComputation(const HloComputation* computation) {
   const HloSchedule& module_schedule = computation->parent()->schedule();
   MemoryPressureTracker memory_pressure_tracker(
@@ -1859,6 +1868,7 @@ LatencyHidingScheduler::LatencyHidingStatistics(
     kReduceScatter,
     kSend,
     kRecv,
+    kCollectiveBroadcast,
   };
   auto opcode_to_async_kind = [](HloOpcode opcode) {
     switch (opcode) {
@@ -1866,6 +1876,8 @@ LatencyHidingScheduler::LatencyHidingStatistics(
         return AsyncKind::kAllGather;
       case HloOpcode::kAllReduce:
         return AsyncKind::kAllReduce;
+      case HloOpcode::kCollectiveBroadcast:
+        return AsyncKind::kCollectiveBroadcast;
       case HloOpcode::kCollectivePermute:
         return AsyncKind::kCollectivePermute;
       case HloOpcode::kAllToAll:
@@ -1956,6 +1968,8 @@ LatencyHidingScheduler::LatencyHidingStatistics(
       wasted_time_per_collective[AsyncKind::kAllGather],
       /*all_reduce_wasted_cycles=*/
       wasted_time_per_collective[AsyncKind::kAllReduce],
+      /*collective_broadcast_wasted_cycles=*/
+      wasted_time_per_collective[AsyncKind::kCollectiveBroadcast],
       /*collective_permute_wasted_cycles=*/
       wasted_time_per_collective[AsyncKind::kCollectivePermute],
       /*all_to_all_wasted_cycles=*/
@@ -1983,6 +1997,7 @@ std::string LatencyHidingScheduler::SchedulerStatisticsString(
   absl::StrAppend(&result, "Total wasted cycles: ",
                   sched_stats.all_gather_wasted_cycles +
                       sched_stats.all_reduce_wasted_cycles +
+                      sched_stats.collective_broadcast_wasted_cycles +
                       sched_stats.collective_permute_wasted_cycles +
                       sched_stats.all_to_all_wasted_cycles +
                       sched_stats.reduce_scatter_wasted_cycles +
@@ -1993,6 +2008,8 @@ std::string LatencyHidingScheduler::SchedulerStatisticsString(
                   sched_stats.all_reduce_wasted_cycles, "\n");
   absl::StrAppend(&result, "Wasted cycles for all-gather: ",
                   sched_stats.all_gather_wasted_cycles, "\n");
+  absl::StrAppend(&result, "Wasted cycles for collective-broadcast: ",
+                  sched_stats.collective_broadcast_wasted_cycles, "\n");
   absl::StrAppend(&result, "Wasted cycles for collective-permute: ",
                   sched_stats.collective_permute_wasted_cycles, "\n");
   absl::StrAppend(&result, "Wasted cycles for all-to-all: ",
@@ -2018,7 +2035,7 @@ void LatencyHidingScheduler::LogScheduleStatistics(
                         async_tracker_.get(), shape_size_bytes_)));
 }
 
-StatusOr<bool> LatencyHidingScheduler::Run(
+absl::StatusOr<bool> LatencyHidingScheduler::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   VLOG(5) << "Original module:";

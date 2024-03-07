@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/framework/metrics.h"
 
+#include <cstddef>
 #include <cstdint>
 #include <string>
 #include <vector>
@@ -26,6 +27,7 @@ limitations under the License.
 #include "tsl/lib/monitoring/gauge.h"
 #include "tsl/lib/monitoring/sampler.h"
 #include "tsl/platform/types.h"
+#include "tsl/protobuf/error_codes.pb.h"
 
 namespace tensorflow {
 namespace metrics {
@@ -270,6 +272,30 @@ auto* tf_data_service_optimal_number_of_workers =
 auto* tf_data_filename_counter = tsl::monitoring::Counter<2>::New(
     "/tensorflow/data/filename", "The file name read by a tf.data Dataset.",
     "name", "filename");
+
+auto* tf_data_file_logger_attempts_counter = tsl::monitoring::Counter<0>::New(
+    "/tensorflow/data/file_logger_attempts",
+    "The number of times a file logger attempted to log "
+    "filenames.");
+
+auto* tf_data_file_logger_errors_counter = tsl::monitoring::Counter<1>::New(
+    "/tensorflow/data/file_logger_errors",
+    "The number of times file logger got error of this type occurred with "
+    "this ",
+    "status_code");
+
+auto* tf_data_file_logger_attempted_num_files_counter =
+    tsl::monitoring::Counter<0>::New(
+        "/tensorflow/data/file_logger_attempts_num_files",
+        "The number of files that were attempted to be logged by the file "
+        "logger.");
+
+auto* tf_data_file_logger_errors_num_files_counter =
+    tsl::monitoring::Counter<1>::New(
+        "/tensorflow/data/file_logger_errors_num_files",
+        "The number of files that encountered errors of this type and code "
+        "during logging by the file logger.",
+        "status_code");
 
 auto* tf_data_model_gauge =
     tsl::monitoring::Gauge<std::function<std::string()>, 1>::New(
@@ -659,6 +685,25 @@ void RecordTFDataServiceOptimalNumberOfWorkers(int64_t number_of_workers) {
 
 void RecordTFDataFilename(const string& name, const string& filename) {
   tf_data_filename_counter->GetCell(name, filename)->IncrementBy(1);
+}
+
+void RecordTFDataFileLoggerAttempts() {
+  tf_data_file_logger_attempts_counter->GetCell()->IncrementBy(1);
+}
+
+void RecordTFDataFileLoggerErrors(error::Code code) {
+  tf_data_file_logger_errors_counter->GetCell(error::Code_Name(code))
+      ->IncrementBy(1);
+}
+
+void RecordTFDataFileLoggerAttemptedNumFiles(size_t num_files) {
+  tf_data_file_logger_attempted_num_files_counter->GetCell()->IncrementBy(
+      num_files);
+}
+
+void RecordTFDataFileLoggerErrorsNumFiles(size_t num_files, error::Code code) {
+  tf_data_file_logger_errors_num_files_counter->GetCell(error::Code_Name(code))
+      ->IncrementBy(num_files);
 }
 
 void RecordTFDataAutoShard(const string& id, data::AutoShardPolicy policy,

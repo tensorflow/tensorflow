@@ -42,7 +42,8 @@ NcclRecvThunk::NcclRecvThunk(ThunkInfo thunk_info, NcclApi* nccl_api,
                           /*is_sync=*/false),
       config_(GetNcclP2PConfigForSendRecv(instr, instr->shape().tuple_shapes(0),
                                           replica_count, partition_count)),
-      buffer_(buffer) {}
+      buffer_(buffer),
+      stream_kind_(GetStreamKindForSendRecv(instr)) {}
 
 absl::Status NcclRecvThunk::RunNcclCollective(const ExecuteParams& params,
                                               se::Stream& stream,

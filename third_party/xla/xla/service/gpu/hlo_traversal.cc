@@ -40,6 +40,20 @@ void ResolveUsers(const HloInstruction* value, const HloInstruction* user,
     for (const auto* param_user : param->users()) {
       fn(param_user);
     }
+  } else if (user->opcode() == HloOpcode::kTuple && user->IsRoot()) {
+    if (auto* fusion = user->parent()->FusionInstruction()) {
+      // Skip through the tuple -> get-tuple-element ops and directly go to the
+      // "real" users.
+      for (const auto* gte : fusion->users()) {
+        if (gte->opcode() != HloOpcode::kGetTupleElement) {
+          fn(gte);
+          continue;
+        }
+        for (const auto* gte_user : gte->users()) {
+          ResolveUsers(gte, gte_user, fn);
+        }
+      }
+    }
   } else {
     fn(user);
   }
@@ -48,6 +62,13 @@ void ResolveUsers(const HloInstruction* value, const HloInstruction* user,
 const HloInstruction* ResolveOperand(const HloInstruction* operand) {
   if (operand->opcode() == HloOpcode::kFusion) {
     return operand->fused_expression_root();
+  }
+  // Deal with multi-output fusion operands, which are reached via a
+  // get-tuple-element op.
+  if (operand->opcode() == HloOpcode::kGetTupleElement &&
+      operand->operand(0)->opcode() == HloOpcode::kFusion) {
+    return operand->operand(0)->fused_expression_root()->operand(
+        operand->tuple_index());
   }
   if (operand->opcode() == HloOpcode::kParameter) {
     if (auto* fusion = operand->parent()->FusionInstruction()) {
@@ -149,10 +170,15 @@ class HloComputationFusion : public HloFusionAdaptor {
     result.reserve(post_order.size() - computation_->num_parameters());
 
     for (auto* instr : post_order) {
-      // Skip parameter as FusionAdaptor hides their existance.
+      // Skip parameter and root tuple as FusionAdaptor hides their existence.
       // HloInstructionAdaptor will look through them and return operands
-      // outside of the computation if necessary.
-      if (instr->opcode() == HloOpcode::kParameter) continue;
+      // outside of the computation if necessary. We don't expect to see any
+      // internal tuples, but the other logic only handles root tuples
+      // explicitly.
+      if (instr->opcode() == HloOpcode::kParameter ||
+          (instr->opcode() == HloOpcode::kTuple && instr->IsRoot())) {
+        continue;
+      }
       result.emplace_back(*instr);
     }
     return result;

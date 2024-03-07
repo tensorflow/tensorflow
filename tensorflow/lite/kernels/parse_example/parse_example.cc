@@ -490,9 +490,9 @@ Status FastParseExampleLite(
     TfLiteTensor* indices = result->sparse_indices[d];
     TfLiteTensor* values = result->sparse_values[d];
 
-    TfLiteTensor* dense_shape = result->sparse_shapes[d];
-    auto* dense_shape_ptr = reinterpret_cast<int64_t*>(dense_shape->data.raw);
-    dense_shape_ptr[1] = max_num_features;
+    TfLiteTensor* sparse_shape = result->sparse_shapes[d];
+    auto* sparse_shape_ptr = reinterpret_cast<int64_t*>(sparse_shape->data.raw);
+    sparse_shape_ptr[1] = max_num_features;
 
     TfLiteIntArray* index_shape = TfLiteIntArrayCreate(2);
     index_shape->data[0] = total_num_features;

@@ -952,6 +952,21 @@ class HloInstruction {
       const std::optional<int64_t>& channel_id,
       const std::optional<int64_t>& split_dimension = std::nullopt);
 
+  // Creates a communication instruction that broadcasts data cross replicas.
+  // Data is sent from to the first replica id in each group to the other ids in
+  // the same group. If a replica id is not a in any replica group, the output
+  // on that replica is a tensor consists of 0(s) in `shape`.
+  static std::unique_ptr<HloInstruction> CreateCollectiveBroadcast(
+      const Shape& shape, absl::Span<HloInstruction* const> operand,
+      absl::Span<const ReplicaGroup> replica_groups, bool constrain_layout,
+      const std::optional<int64_t>& channel_id);
+
+  static std::unique_ptr<HloInstruction> CreateCollectiveBroadcast(
+      const Shape& shape, HloInstruction* input, HloInstruction* output,
+      HloInstruction* input_start_indices, HloInstruction* output_start_indices,
+      absl::Span<const ReplicaGroup> replica_groups, bool constrain_layout,
+      const std::optional<int64_t>& channel_id);
+
   // Creates a communication instruction that permutes data cross replicas.
   // Data is sent/received according to the (source_replica_id,
   // target_replica_id) pairs in `source_target_pairs`. If a replica id is not a
@@ -1366,7 +1381,9 @@ class HloInstruction {
   HloOpcode* mutable_opcode() { return &opcode_; }
 
   // Returns whether this instruction is the root of its parent computation.
-  bool IsRoot() const;
+  bool IsRoot() const { return is_root_; }
+  void MarkAsRoot() { is_root_ = true; }
+  void MarkAsNonRoot() { is_root_ = false; }
 
   // Does this instruction have no users.
   bool IsDead() const { return users_.empty() && !IsRoot(); }
@@ -2716,6 +2733,9 @@ class HloInstruction {
   // Intrusive flag used by HloComputation, whether this instruction has
   // been marked as dead.
   bool marked_as_dead_ : 1;
+
+  // True if this instruction is the root of a computation.
+  bool is_root_ : 1;
 
   // Instruction operands.
   InstructionVector operands_;

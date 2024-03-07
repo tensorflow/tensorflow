@@ -868,8 +868,8 @@ absl::StatusOr<AllocateStridedResult<T>> AllocateStridedBuffer(
   res.device_mem = DeviceMemory<MAPPED_T>(batch_matrix_bytes);
   res.reallocated = true;
   if (copy_data) {
-    return ReorganizeMemory(stream, &res.device_mem, raw_ptrs, batch_count,
-                            batch_stride, true);
+    TF_RETURN_IF_ERROR(ReorganizeMemory(stream, &res.device_mem, raw_ptrs,
+                                        batch_count, batch_stride, true));
   }
   return res;
 }

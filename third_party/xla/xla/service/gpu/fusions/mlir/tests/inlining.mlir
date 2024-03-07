@@ -176,3 +176,20 @@ module {
 // CHECK: xla_gpu.pure_call @fib5
 // CHECK: arith.addf
 // CHECK: arith.addf
+
+// -----
+
+module {
+  func.func private @complex(%a: f32, %b: f32) -> complex<f32> {
+    %ret = complex.create %a, %b : complex<f32>
+    return %ret : complex<f32>
+  }
+
+  func.func @caller(%a: f32, %b: f32) -> complex<f32> {
+    %ret = xla_gpu.pure_call @complex(%a, %b) : (f32, f32) -> (complex<f32>)
+    return %ret : complex<f32>
+  }
+}
+
+// CHECK: @caller
+// CHECK-NEXT: complex.create

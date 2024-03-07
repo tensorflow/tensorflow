@@ -54,7 +54,7 @@ absl::StatusOr<EventPool::Handle> EventPool::AllocateEvent(
 
 void EventPool::ThenRecordEvent(se::Stream* stream, EventPool::Handle& handle) {
   absl::MutexLock lock(&mu_);
-  stream->ThenRecordEvent(handle.event_.get());
+  stream->RecordEvent(handle.event_.get()).IgnoreError();
   handle.sequence_number_ = next_sequence_number_++;
 }
 

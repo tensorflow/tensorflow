@@ -16,11 +16,11 @@ limitations under the License.
 
 #include "llvm/Support/Casting.h"
 #include "mlir/IR/Operation.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/tensorflow/ir/host_runtime/tfrt_ops.h.inc"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_dialect.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops_a_m.h.inc"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops_n_z.h.inc"
-#include "tensorflow/compiler/mlir/tensorflow/ir/tfrt_ops.h.inc"
 
 namespace tensorflow {
 namespace mlrt_compiler {

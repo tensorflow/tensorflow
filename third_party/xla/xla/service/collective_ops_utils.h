@@ -386,6 +386,11 @@ class Rendezvous {
 constexpr char kSendRecvSourceTargetPairsAttr[] =
     "_xla_send_recv_source_target_pairs";
 
+// When a Send or Recv is annotated with frontend attribute
+// _xla_send_recv_pipeline="1", asynchronous stream kP2P1 is used to execute the
+// Send or Recv. For all other cases, asynchronous stream kP2P0 is used.
+constexpr char kSendRecvPipelineAttr[] = "_xla_send_recv_pipeline";
+
 }  // end namespace xla
 
 #endif  // XLA_SERVICE_COLLECTIVE_OPS_UTILS_H_

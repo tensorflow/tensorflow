@@ -214,8 +214,8 @@ class PjitFunction {
   // Converts `handle` to a PjitFunction*. Does not do any checking.
   static PjitFunction* AsPjitFunctionUnchecked(py::handle handle);
 
-  xla::StatusOr<py::object> Call(py::handle callable, PyObject* const* args,
-                                 size_t nargs, PyObject* kwnames);
+  absl::StatusOr<py::object> Call(py::handle callable, PyObject* const* args,
+                                  size_t nargs, PyObject* kwnames);
 
   void ClearPythonReferences();
 
@@ -334,7 +334,7 @@ void CallShardArgFallback(
 
 // Prepares the input PjRtBuffers from the python arguments. This is equivalent
 // to shard_args() in pxla.py but for only a few supported cases.
-xla::StatusOr<std::vector<tsl::RCReference<xla::ifrt::Array>>>
+absl::StatusOr<std::vector<tsl::RCReference<xla::ifrt::Array>>>
 PrepareIfrtInputs(const xla::PyLoadedExecutable& executable,
                   ParsedArgumentsAsBuffers& arguments,
                   const std::vector<bool>& kept_args,
@@ -439,9 +439,9 @@ PrepareIfrtInputs(const xla::PyLoadedExecutable& executable,
   return num_args_arrays;
 }
 
-xla::StatusOr<py::object> PjitFunction::Call(py::handle callable,
-                                             PyObject* const* args,
-                                             size_t nargs, PyObject* kwnames) {
+absl::StatusOr<py::object> PjitFunction::Call(py::handle callable,
+                                              PyObject* const* args,
+                                              size_t nargs, PyObject* kwnames) {
   tsl::profiler::TraceMe traceme(
       [&] { return absl::StrCat("PjitFunction(", function_name_, ")"); });
   ParsedArgumentsAsBuffers arguments;
@@ -804,7 +804,8 @@ PyObject* PjitFunction_tp_vectorcall(PyObject* callable, PyObject* const* args,
     return absl::StrCat("PjitFunction(", o->fun.function_name(), ")");
   });
   try {
-    xla::StatusOr<py::object> out = o->fun.Call(callable, args, nargs, kwnames);
+    absl::StatusOr<py::object> out =
+        o->fun.Call(callable, args, nargs, kwnames);
     if (!out.ok()) {
       PyErr_SetString(PyExc_ValueError, out.status().ToString().c_str());
       return nullptr;

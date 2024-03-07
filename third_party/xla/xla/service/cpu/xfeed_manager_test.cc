@@ -41,7 +41,7 @@ class TestInfeedBuffer : public cpu::runtime::XfeedBuffer {
 
   int32_t length() override { return length_; }
   void* data() override { return nullptr; }
-  void Done(StatusOr<Shape> shape) override {
+  void Done(absl::StatusOr<Shape> shape) override {
     CHECK(!done_called_);
     done_called_ = true;
     TF_ASSERT_OK(shape.status());

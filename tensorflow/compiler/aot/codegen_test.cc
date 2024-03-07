@@ -176,6 +176,7 @@ static void CompareWithGoldenFile(
   EXPECT_EQ(golden_file_contents, expected_contents);
 }
 
+#if TF_LLVM_X86_AVAILABLE
 TEST(CodegenTest, Golden) {
   // Normally CpuCompiler::CpuCompiler does this, but in this test we've
   // bypassed the Cpu compiler so we have to do this manually.
@@ -269,6 +270,7 @@ TEST(CodegenTest, Golden) {
   CompareWithGoldenFile("tensorflow/compiler/aot/codegen_test_h.golden", header,
                         true);
 }
+#endif
 }  // namespace
 }  // namespace tfcompile
 }  // namespace tensorflow

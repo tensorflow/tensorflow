@@ -294,7 +294,8 @@ class HloTestBase : public ManifestCheckingTest {
   [[nodiscard]] ::testing::AssertionResult Run(
       const absl::string_view hlo_string, bool run_hlo_passes = true,
       ExecutionProfile* profile = nullptr,
-      const tsl::protobuf::Message* backend_config = nullptr);
+      const tsl::protobuf::Message* backend_config = nullptr,
+      bool use_random_data = true);
 
   // Same as below, except requires passing fake arguments.
   ::testing::AssertionResult RunAndCompareTwoModules(

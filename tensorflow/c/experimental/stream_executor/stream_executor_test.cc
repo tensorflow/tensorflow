@@ -281,12 +281,10 @@ TEST_F(StreamExecutorTest, CreateStream) {
 
   StreamExecutor* executor = GetExecutor(0);
   ASSERT_FALSE(stream_created);
-  Stream* stream = new Stream(executor);
-  stream->Init();
-  ASSERT_TRUE(stream->ok());
+  TF_ASSERT_OK_AND_ASSIGN(auto stream, executor->CreateStream());
   ASSERT_TRUE(stream_created);
   ASSERT_FALSE(stream_deleted);
-  delete stream;
+  stream.reset();
   ASSERT_TRUE(stream_deleted);
 }
 

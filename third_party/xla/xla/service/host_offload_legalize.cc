@@ -90,7 +90,7 @@ HloInstruction* FindDUSFromAnnotation(HloInstruction* instr) {
 }
 
 // Make sure that broadcasts are duplicated for each use.
-StatusOr<bool> DuplicateBroadcastForEachUse(HloModule* module) {
+absl::StatusOr<bool> DuplicateBroadcastForEachUse(HloModule* module) {
   bool split_at_least_one = false;
   for (HloComputation* computation : module->computations()) {
     std::vector<HloInstruction*> broadcasts;
@@ -143,7 +143,7 @@ StatusOr<bool> DuplicateBroadcastForEachUse(HloModule* module) {
 // Walk up in the chain of memory offloaded instructions. Status not-ok when
 // an instructions not supported or end of chain reached.
 // Walks one instruction at a time.
-StatusOr<std::pair<HloInstruction*, int>> WalkUpMemoryOffload(
+absl::StatusOr<std::pair<HloInstruction*, int>> WalkUpMemoryOffload(
     std::pair<HloInstruction*, int> current_value,
     const CallGraph& call_graph) {
   // TODO(maggioni): Verify that set of instructions supported in chain by
@@ -220,9 +220,9 @@ StatusOr<std::pair<HloInstruction*, int>> WalkUpMemoryOffload(
 // an instructions not supported or end of chain reached.
 // Walks one instruction at a time, but returns multiple instructions for each
 // conforming user.
-StatusOr<std::vector<std::pair<HloInstruction*, int>>> WalkDownMemoryOffload(
-    const std::pair<HloInstruction*, int64_t>& current_value,
-    const CallGraph& call_graph) {
+absl::StatusOr<std::vector<std::pair<HloInstruction*, int>>>
+WalkDownMemoryOffload(const std::pair<HloInstruction*, int64_t>& current_value,
+                      const CallGraph& call_graph) {
   // TODO(maggioni): Verify that set of instructions supported in chain by
   // legalization is in sync with host_offloader.
   VLOG(5) << "Current value in progress: " << current_value.first->ToString()
@@ -326,7 +326,7 @@ StatusOr<std::vector<std::pair<HloInstruction*, int>>> WalkDownMemoryOffload(
   return results;
 }
 
-StatusOr<bool> ProcessAnnotationForCopyMovement(
+absl::StatusOr<bool> ProcessAnnotationForCopyMovement(
     HloInstruction* instruction, const CallGraph* call_graph,
     absl::flat_hash_set<HloInstruction*>& processed_annotations,
     std::vector<HloInstruction*>& to_remove) {
@@ -528,7 +528,7 @@ StatusOr<bool> ProcessAnnotationForCopyMovement(
 }
 
 // Fixes layout changing copies in between on the path to users.
-StatusOr<bool> FixupInterveningCopies(
+absl::StatusOr<bool> FixupInterveningCopies(
     const std::vector<HloInstruction*>& copy_to_host_annotations,
     const CallGraph* call_graph) {
   absl::flat_hash_set<HloInstruction*> processed_annotations;
@@ -552,7 +552,7 @@ StatusOr<bool> FixupInterveningCopies(
 
 }  // namespace
 
-StatusOr<bool> HostOffloadLegalize::Run(
+absl::StatusOr<bool> HostOffloadLegalize::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   bool changed = false;

@@ -276,6 +276,7 @@ CanonicalAsyncOp GpuGetCanonicalAsyncOp(const HloInstruction& hlo) {
 SchedulerConfig GetSchedulerConfig(int64_t memory_limit) {
   SchedulerConfig config;
   config.all_reduce_overlap_limit = 1;
+  config.collective_broadcast_overlap_limit = 1;
   config.collective_permute_overlap_limit = 1;
   config.use_real_cost_model = false;
   config.aggressive_scheduling_policies = true;

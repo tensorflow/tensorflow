@@ -38,12 +38,16 @@ class GlobalShuffleTest(test_base.DatasetTestBase, parameterized.TestCase):
       combinations.times(
           test_base.default_test_combinations(),
           combinations.combine(
+              dataset_range=[1, 100],
               seed=[None, 42],
               use_tensor_seed=[True, False],
               prefetch=[True, False])))
   def testRange(
-      self, seed: Optional[int], use_tensor_seed: bool, prefetch: bool):
-    dataset_range = 100
+      self,
+      dataset_range: int,
+      seed: Optional[int],
+      use_tensor_seed: bool,
+      prefetch: bool):
     dataset = dataset_ops.Dataset.range(dataset_range)
     if prefetch:
       dataset = dataset.prefetch(buffer_size=dataset_ops.AUTOTUNE)
@@ -60,16 +64,16 @@ class GlobalShuffleTest(test_base.DatasetTestBase, parameterized.TestCase):
     self.assertCountEqual(output_per_iteration[0], list(range(dataset_range)))
     self.assertCountEqual(output_per_iteration[1], list(range(dataset_range)))
     self.assertCountEqual(output_per_iteration[2], list(range(dataset_range)))
-    self.assertNotEqual(output_per_iteration[0], output_per_iteration[1])
-    self.assertNotEqual(output_per_iteration[0], output_per_iteration[2])
-    self.assertNotEqual(output_per_iteration[1], output_per_iteration[2])
+    if dataset_range > 1:
+      self.assertNotEqual(output_per_iteration[0], output_per_iteration[1])
+      self.assertNotEqual(output_per_iteration[0], output_per_iteration[2])
+      self.assertNotEqual(output_per_iteration[1], output_per_iteration[2])
 
   @combinations.generate(
       combinations.times(
           test_base.default_test_combinations(),
-          combinations.combine(seed=[None, 42])))
-  def testNegativeRange(self, seed: Optional[int]):
-    dataset_range = 10
+          combinations.combine(dataset_range=[1, 100], seed=[None, 42])))
+  def testNegativeRange(self, dataset_range: int, seed: Optional[int]):
     dataset = dataset_ops.Dataset.range(dataset_range, -dataset_range, -1)
     dataset = global_shuffle_op._global_shuffle(dataset)
     dataset = dataset.repeat(3)
@@ -86,9 +90,10 @@ class GlobalShuffleTest(test_base.DatasetTestBase, parameterized.TestCase):
                           list(range(dataset_range, -dataset_range, -1)))
     self.assertCountEqual(output_per_iteration[2],
                           list(range(dataset_range, -dataset_range, -1)))
-    self.assertNotEqual(output_per_iteration[0], output_per_iteration[1])
-    self.assertNotEqual(output_per_iteration[0], output_per_iteration[2])
-    self.assertNotEqual(output_per_iteration[1], output_per_iteration[2])
+    if dataset_range > 1:
+      self.assertNotEqual(output_per_iteration[0], output_per_iteration[1])
+      self.assertNotEqual(output_per_iteration[0], output_per_iteration[2])
+      self.assertNotEqual(output_per_iteration[1], output_per_iteration[2])
 
   @combinations.generate(
       combinations.times(
@@ -162,18 +167,20 @@ class GlobalShuffleCheckpointTest(checkpoint_test_base.CheckpointTestBase,
           test_base.default_test_combinations(),
           checkpoint_test_base.default_test_combinations(),
           combinations.combine(
+              dataset_range=[1, 10],
               reshuffle_each_iteration=[True, False],
               prefetch=[True, False],
               symbolic_checkpoint=[True, False])))
   def testRange(
       self,
       verify_fn: Callable[..., None],
+      dataset_range: int,
       reshuffle_each_iteration: bool,
       prefetch: bool,
       symbolic_checkpoint: bool):
 
     def _build_dataset() -> dataset_ops.Dataset:
-      dataset = dataset_ops.Dataset.range(10)
+      dataset = dataset_ops.Dataset.range(dataset_range)
       if prefetch:
         dataset = dataset.prefetch(buffer_size=dataset_ops.AUTOTUNE)
       dataset = global_shuffle_op._global_shuffle(
@@ -187,7 +194,7 @@ class GlobalShuffleCheckpointTest(checkpoint_test_base.CheckpointTestBase,
     verify_fn(
         self,
         _build_dataset,
-        num_outputs=10,
+        num_outputs=dataset_range,
         assert_items_equal=reshuffle_each_iteration)
 
 

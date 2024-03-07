@@ -21,12 +21,14 @@ limitations under the License.
 #include <cstdint>
 #include <functional>
 #include <limits>
+#include <random>
 #include <string>
 #include <tuple>
 #include <utility>
 #include <vector>
 
 #include "absl/base/casts.h"
+#include "absl/random/random.h"
 #include "absl/strings/match.h"
 #include "absl/types/span.h"
 #include "xla/array.h"
@@ -43,6 +45,7 @@ limitations under the License.
 #include "xla/status.h"
 #include "xla/test.h"
 #include "xla/types.h"
+#include "xla/util.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/lib/core/status_test_util.h"
 #include "tsl/platform/errors.h"
@@ -2792,6 +2795,100 @@ TEST_F(LiteralUtilTest, PopulateR3FromArray3DDynamicDim2) {
 })";
   EXPECT_EQ(expected, literal.ToString());
 }
+
+class LiteralSerializationTest : public ::testing::Test,
+                                 public ::testing::WithParamInterface<Shape> {
+ public:
+  static std::vector<Shape> GenerateSimpleParams() {
+    std::vector<Shape> params;
+    for (PrimitiveType element_type :
+         {PRED,       S4,         U4,   S8,     U8,       S16,
+          U16,        S32,        U32,  S64,    U64,      F16,
+          F32,        F64,        BF16, F8E5M2, F8E4M3FN, F8E4M3B11FNUZ,
+          F8E5M2FNUZ, F8E4M3FNUZ, C64,  C128}) {
+      for (const DimensionVector& dimensions : {
+               DimensionVector{},
+               DimensionVector{0},
+               DimensionVector{1},
+               DimensionVector{7},
+               DimensionVector{8},
+               DimensionVector{9},
+               DimensionVector{0, 8},
+               DimensionVector{8, 9},
+           }) {
+        params.push_back(ShapeUtil::MakeShape(element_type, dimensions));
+      }
+    }
+    return params;
+  }
+
+  static std::vector<Shape> GenerateTupleParams() {
+    std::vector<Shape> params;
+    const Shape tuple_elements[] = {
+        ShapeUtil::MakeShape(PRED, {}),
+        ShapeUtil::MakeShape(U4, {3}),
+        ShapeUtil::MakeShape(U32, {0}),
+        ShapeUtil::MakeShape(F32, {7}),
+        ShapeUtil::MakeTupleShape({
+            ShapeUtil::MakeShape(BF16, {3}),
+            ShapeUtil::MakeShape(C64, {7}),
+        }),
+    };
+    for (const Shape& lhs : tuple_elements) {
+      for (const Shape& rhs : tuple_elements) {
+        params.push_back(ShapeUtil::MakeTupleShape({lhs, rhs}));
+      }
+    }
+    return params;
+  }
+};
+
+TEST_P(LiteralSerializationTest, Test) {
+  const Shape& shape = GetParam();
+  LOG(INFO) << "shape: " << shape.ToString();
+  absl::InsecureBitGen bitgen(std::seed_seq({42}));
+  Literal literal(shape);
+  ASSERT_NO_FATAL_FAILURE(ShapeUtil::ForEachSubshape(
+      shape, [&](const Shape& subshape, const ShapeIndex& shape_index) {
+        if (subshape.IsTuple()) {
+          return;
+        }
+        ASSERT_TRUE(subshape.IsArray());
+        primitive_util::ArrayTypeSwitch<void>(
+            [&](auto primitive_type) {
+              using NativeT = primitive_util::NativeTypeOf<primitive_type>;
+              for (auto& element : literal.data<NativeT>(shape_index)) {
+                if constexpr (std::is_same_v<NativeT, bool>) {
+                  element = absl::Uniform<int>(bitgen, 0, 2);
+                } else if constexpr (primitive_util::IsComplexType(
+                                         primitive_type)) {
+                  element = NativeT(absl::Uniform<double>(bitgen, -1.0, 1.0),
+                                    absl::Uniform<double>(bitgen, -1.0, 1.0));
+                } else if constexpr (primitive_util::IsFloatingPointType(
+                                         primitive_type)) {
+                  element = static_cast<NativeT>(
+                      absl::Uniform<double>(bitgen, -1.0, 1.0));
+                } else {
+                  element =
+                      static_cast<NativeT>(absl::Uniform<uint64_t>(bitgen));
+                }
+              }
+            },
+            subshape.element_type());
+      }));
+  TF_ASSERT_OK_AND_ASSIGN(std::string serialized, literal.SerializeAsString());
+  TF_ASSERT_OK_AND_ASSIGN(Literal deserialized,
+                          Literal::DeserializeFromString(serialized));
+  EXPECT_EQ(literal, deserialized);
+}
+
+INSTANTIATE_TEST_SUITE_P(
+    Simple, LiteralSerializationTest,
+    ::testing::ValuesIn(LiteralSerializationTest::GenerateSimpleParams()));
+
+INSTANTIATE_TEST_SUITE_P(
+    Tuples, LiteralSerializationTest,
+    ::testing::ValuesIn(LiteralSerializationTest::GenerateTupleParams()));
 
 void BM_BroadcastVectorToMatrix(::testing::benchmark::State& state) {
   const int d0 = state.range(0);

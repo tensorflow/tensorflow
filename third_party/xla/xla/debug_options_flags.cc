@@ -35,6 +35,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "xla/debug_options_parsers.h"
 #include "xla/parse_flags_from_env.h"
+#include "xla/stream_executor/cuda/ptx_compiler_support.h"
 #include "xla/xla.pb.h"
 #include "tsl/platform/protobuf.h"  // IWYU pragma: keep
 #include "tsl/util/command_line_flags.h"
@@ -125,6 +126,7 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_gpu_enable_async_collectives(true);
   opts.set_xla_gpu_enable_async_all_reduce(true);
   opts.set_xla_gpu_enable_async_all_gather(false);
+  opts.set_xla_gpu_enable_async_collective_broadcast(true);
   opts.set_xla_gpu_enable_async_collective_permute(false);
   opts.set_xla_gpu_enable_async_all_to_all(false);
   opts.set_xla_gpu_enable_async_reduce_scatter(false);
@@ -206,6 +208,7 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_gpu_enable_reduction_epilogue_fusion(true);
   opts.set_xla_gpu_enable_nccl_clique_optimization(false);
   opts.set_xla_gpu_cublas_fallback(true);
+  opts.set_xla_gpu_cudnn_gemm_fusion(false);
   opts.set_xla_gpu_enable_while_loop_double_buffering(false);
   opts.set_xla_gpu_ensure_minor_dot_contraction_dims(false);
   opts.set_xla_gpu_filter_kernels_spilling_registers_on_autotuning(true);
@@ -230,6 +233,7 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_gpu_nccl_collective_max_nchannels(0);
   opts.set_xla_gpu_nccl_p2p_max_nchannels(0);
 
+  opts.set_xla_gpu_enable_mlir_emitters(false);
   return opts;
 }
 
@@ -963,6 +967,12 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       debug_options->xla_gpu_enable_async_all_reduce(),
       "Converts synchronous all-reduce ops into asynchronous."));
   flag_list->push_back(tsl::Flag(
+      "xla_gpu_enable_async_collective_broadcast",
+      bool_setter_for(
+          &DebugOptions::set_xla_gpu_enable_async_collective_broadcast),
+      debug_options->xla_gpu_enable_async_collective_broadcast(),
+      "Converts synchronous collective-broadcast ops into asynchronous."));
+  flag_list->push_back(tsl::Flag(
       "xla_gpu_enable_async_collective_permute",
       bool_setter_for(
           &DebugOptions::set_xla_gpu_enable_async_collective_permute),
@@ -1477,6 +1487,11 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
                 "Allow Triton GEMM autotuning to fall back to cuBLAS when that "
                 "is faster."));
   flag_list->push_back(
+      tsl::Flag("xla_gpu_cudnn_gemm_fusion",
+                bool_setter_for(&DebugOptions::set_xla_gpu_cudnn_gemm_fusion),
+                debug_options->xla_gpu_cudnn_gemm_fusion(),
+                "Allow GEMM fusion autotuning probe cuDNN as a backend."));
+  flag_list->push_back(
       tsl::Flag("xla_gpu_mock_custom_calls",
                 bool_setter_for(&DebugOptions::set_xla_gpu_mock_custom_calls),
                 debug_options->xla_gpu_mock_custom_calls(),
@@ -1538,7 +1553,15 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       "Enable Hopper-specific optimizations such as MMA_V3 and pipelining."));
   flag_list->push_back(tsl::Flag(
       "xla_gpu_enable_libnvptxcompiler",
-      bool_setter_for(&DebugOptions::set_xla_gpu_enable_libnvptxcompiler),
+      [debug_options](bool enabled) {
+        if (enabled && !stream_executor::IsLibNvPtxCompilerSupported()) {
+          // This feature can't be enabled when XLA was built without
+          // libnvptxcompiler support.
+          return false;
+        }
+        debug_options->set_xla_gpu_enable_libnvptxcompiler(enabled);
+        return true;
+      },
       debug_options->xla_gpu_enable_libnvptxcompiler(),
       "Use libnvptxcompiler for PTX-to-GPU-assembly compilation instead of "
       "calling ptxas."));

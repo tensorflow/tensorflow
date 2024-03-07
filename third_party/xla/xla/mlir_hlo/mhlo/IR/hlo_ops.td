@@ -959,7 +959,7 @@ def MHLO_SubtractOp : MHLO_BinaryElementwiseOp<"subtract",
 }
 
 def MHLO_StochasticConvertOp : MHLO_Op<"stochastic_convert",
-      [Pure, AllShapesMatch<["operand", "random", "result"]>]> {
+      [Pure, Elementwise, AllShapesMatch<["operand", "random", "result"]>]> {
   let summary = "StochasticConvert operation";
   let description = [{
     This operation is a work in progress, so it is not yet included in
@@ -2384,7 +2384,8 @@ def MHLO_ConvolutionOp : MHLO_Op<"convolution", [Pure]> {
   }];
 }
 
-def MHLO_CopyOp: MHLO_Op<"copy", [Pure, HLO_CompatibleOperandsAndResultType]> {
+def MHLO_CopyOp: MHLO_Op<"copy",
+      [Pure, Elementwise, HLO_CompatibleOperandsAndResultType]> {
   let summary = "Copy operation";
   let description = [{
     This operation is private to the XLA compiler, so it is does not yet have
@@ -3610,8 +3611,8 @@ def MHLO_BitcastOp : MHLO_Op<"bitcast", [Pure]> {
   let assemblyFormat = "operands attr-dict `:` functional-type(operands, results)";
 }
 
-def MHLO_ReducePrecisionOp :
-    MHLO_Op<"reduce_precision", [HLO_CompatibleOperandsAndResultType, Pure]> {
+def MHLO_ReducePrecisionOp : MHLO_Op<"reduce_precision",
+      [HLO_CompatibleOperandsAndResultType, Pure, Elementwise]> {
   let summary = "ReducePrecision operation";
   let description = [{
     Performs element-wise conversion of `operand` to another floating-point type

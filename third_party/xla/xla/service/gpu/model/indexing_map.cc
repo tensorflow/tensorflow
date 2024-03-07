@@ -103,21 +103,24 @@ class AffineExprSimplifier {
 };
 
 AffineExpr AffineExprSimplifier::RewriteMod(AffineBinaryOpExpr mod) {
-  auto lhs_simplified = SimplifyOnce(mod.getLHS());
-
-  auto lhs = range_evaluator_->ComputeExpressionRange(lhs_simplified);
   auto rhs = range_evaluator_->ComputeExpressionRange(mod.getRHS());
-
-  // a % b where b is always larger than a?
-  if (0 <= lhs.lower_bound && lhs.upper_bound < rhs.lower_bound) {
-    return lhs_simplified;
-  }
 
   // The logic below assumes we have a constant RHS.
   if (!rhs.IsPoint()) {
     return mod;
   }
   int64_t m = rhs.lower_bound;
+  // Can only happen in cases where it doesn't matter, return 0.
+  if (m == 0) {
+    return mlir::getAffineConstantExpr(0, mod.getContext());
+  }
+
+  auto lhs_simplified = SimplifyOnce(mod.getLHS());
+  auto lhs = range_evaluator_->ComputeExpressionRange(lhs_simplified);
+  // a % b where b is always larger than a?
+  if (0 <= lhs.lower_bound && lhs.upper_bound < rhs.lower_bound) {
+    return lhs_simplified;
+  }
 
   Range no_multiplier_range{0, 0};
   int64_t multiplier_gcd = -1;
@@ -479,21 +482,21 @@ bool operator==(const Range& lhs, const Range& rhs) {
          lhs.upper_bound == rhs.upper_bound;
 }
 
+std::vector<Range> RangesFromTensorSizes(
+    absl::Span<const int64_t> tensor_sizes) {
+  std::vector<Range> ranges;
+  ranges.reserve(tensor_sizes.size());
+  for (int64_t size : tensor_sizes) {
+    ranges.push_back(Range{0, size - 1});
+  }
+  return ranges;
+}
+
 IndexingMap IndexingMap::FromTensorSizes(
     AffineMap affine_map, absl::Span<const int64_t> dim_upper_bounds,
     absl::Span<const int64_t> symbol_upper_bounds) {
-  IndexingMap indexing_map;
-  indexing_map.affine_map_ = affine_map;
-  indexing_map.dim_ranges_.reserve(dim_upper_bounds.size());
-  for (int64_t ub : dim_upper_bounds) {
-    indexing_map.dim_ranges_.push_back(Range{0, ub - 1});
-  }
-  indexing_map.symbol_ranges_.reserve(symbol_upper_bounds.size());
-  for (int64_t ub : symbol_upper_bounds) {
-    CHECK_GT(ub, 0);
-    indexing_map.symbol_ranges_.push_back(Range{0, ub - 1});
-  }
-  return indexing_map;
+  return IndexingMap{affine_map, RangesFromTensorSizes(dim_upper_bounds),
+                     RangesFromTensorSizes(symbol_upper_bounds)};
 }
 
 void IndexingMap::AddConstraint(mlir::AffineExpr expr, Range range) {

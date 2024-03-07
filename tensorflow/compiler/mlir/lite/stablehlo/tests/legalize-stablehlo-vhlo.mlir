@@ -89,3 +89,19 @@ func.func @op_with_region_mixed_shlo_tfl_shlo(%arg0: tensor<7x5xf32>, %arg1 : te
   }) {dimensions = array<i64: 0>} : (tensor<7x5xf32>, tensor<5xf32>) -> tensor<5xf32>
   func.return %0: tensor<5xf32>
 }
+
+// -----
+
+// There are cases where ODML converter relies on constants not being folded or
+// CSE'ed. This test ensures that StableHLO<->ODML conversion does not fold.
+
+// CHECK-LABEL: mixed_no_constant_folding
+func.func @mixed_no_constant_folding() -> (tensor<f32>) {
+  // CHECK:      %[[CST0:.+]] = arith.constant dense<0.000000e+00>
+  // CHECK-NEXT: %[[CST1:.+]] = arith.constant dense<0.000000e+00>
+  // CHECK-NEXT: "vhlo.add_v1"(%[[CST0]], %[[CST1]]) : (tensor<f32>, tensor<f32>) -> tensor<f32>
+  %cst_0 = arith.constant dense<0.000000e+00> : tensor<f32>
+  %cst_1 = arith.constant dense<0.000000e+00> : tensor<f32>
+  %0 = stablehlo.add %cst_0, %cst_1 : tensor<f32>
+  return %0 : tensor<f32>
+}

@@ -61,6 +61,8 @@ void AddUnfuseMhloOpsPasses(mlir::PassManager& pm) {
   pm.addNestedPass<mlir::func::FuncOp>(mlir::odml::createUnfuseBatchNormPass());
   // Fuse Conv + Mul to Conv.
   pm.addNestedPass<mlir::func::FuncOp>(mlir::odml::createFuseConvolutionPass());
+  // Fold broadcast_in_dim + Mul.
+  pm.addNestedPass<mlir::func::FuncOp>(mlir::odml::createFoldBroadcastPass());
   pm.addNestedPass<mlir::func::FuncOp>(
       mlir::mhlo::createLegalizeTorchIndexSelectToGatherPass());
 }

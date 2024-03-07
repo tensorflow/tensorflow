@@ -30,6 +30,7 @@ from tensorflow.python import pywrap_sanitizers
 from tensorflow.python import tf2
 from tensorflow.python.checkpoint import checkpoint as trackable_utils
 from tensorflow.python.checkpoint import checkpoint_management
+from tensorflow.python.data.experimental.ops import cardinality
 from tensorflow.python.data.experimental.ops import global_shuffle_op
 from tensorflow.python.data.experimental.ops import random_access
 from tensorflow.python.data.kernel_tests import checkpoint_test_base
@@ -1756,9 +1757,6 @@ class MapRandomAccessTest(test_base.DatasetTestBase, parameterized.TestCase):
 
 class MapGlobalShuffleTest(test_base.DatasetTestBase, parameterized.TestCase):
 
-  # TODO(b/325112575): Global shuffling requries a known finite cardinality. The
-  # V1 API does not preserve the dataset cardinality, so we need to assert the
-  # dataset's cardinality for the V1 API.
   @combinations.generate(
       combinations.times(
           test_base.v2_only_combinations(),
@@ -1766,7 +1764,7 @@ class MapGlobalShuffleTest(test_base.DatasetTestBase, parameterized.TestCase):
               dataset_range=[100],
               num_parallel_calls=[None, 2, dataset_ops.AUTOTUNE],
               deterministic=[True, False])))
-  def testMap(
+  def testMapV2(  # V2 API preserves cardinality by default.
       self, dataset_range: int, num_parallel_calls: int, deterministic: bool):
     dataset = dataset_ops.Dataset.range(dataset_range)
     dataset = dataset.map(
@@ -1791,6 +1789,31 @@ class MapGlobalShuffleTest(test_base.DatasetTestBase, parameterized.TestCase):
     self.assertCountEqual(dataset_output, expected)
     self.assertNotEqual(dataset_output, expected)
 
+  @combinations.generate(
+      combinations.times(
+          test_base.default_test_combinations(),
+          combinations.combine(
+              dataset_range=[100],
+              num_parallel_calls=[None, 2, dataset_ops.AUTOTUNE],
+              deterministic=[True, False])))
+  def testMapV1AndV2(
+      self, dataset_range: int, num_parallel_calls: int, deterministic: bool):
+    dataset = dataset_ops.Dataset.range(dataset_range)
+    dataset_cardinality = dataset.cardinality()
+    dataset = dataset.map(
+        lambda x: x * 2,
+        num_parallel_calls=num_parallel_calls,
+        deterministic=deterministic)
+    dataset = dataset.apply(cardinality.assert_cardinality(dataset_cardinality))
+    dataset = dataset.prefetch(buffer_size=dataset_ops.AUTOTUNE)
+    dataset = global_shuffle_op._global_shuffle(dataset)
+
+    expected = list(range(0, dataset_range * 2, 2))
+    dataset_output = self.getDatasetOutput(
+        dataset, requires_initialization=True)
+    self.assertCountEqual(dataset_output, expected)
+    self.assertNotEqual(dataset_output, expected)
+
 
 class MapGlobalShuffleCheckpointTest(checkpoint_test_base.CheckpointTestBase,
                                      parameterized.TestCase):
@@ -1804,7 +1827,7 @@ class MapGlobalShuffleCheckpointTest(checkpoint_test_base.CheckpointTestBase,
               num_parallel_calls=[None, 2, dataset_ops.AUTOTUNE],
               reshuffle_each_iteration=[True, False],
               symbolic_checkpoint=[True, False])))
-  def testMap(
+  def testMapV2(  # V2 API preserves cardinality by default.
       self,
       verify_fn: Callable[..., None],
       dataset_range: int,
@@ -1818,6 +1841,47 @@ class MapGlobalShuffleCheckpointTest(checkpoint_test_base.CheckpointTestBase,
           lambda x: x * 2,
           num_parallel_calls=num_parallel_calls,
           deterministic=True)
+      dataset = dataset.prefetch(buffer_size=dataset_ops.AUTOTUNE)
+      dataset = global_shuffle_op._global_shuffle(
+          dataset, seed=42, reshuffle_each_iteration=reshuffle_each_iteration)
+      options = options_lib.Options()
+      options.experimental_optimization.apply_default_optimizations = False
+      options.experimental_warm_start = False
+      options.experimental_symbolic_checkpoint = symbolic_checkpoint
+      return dataset.with_options(options)
+
+    verify_fn(
+        self,
+        _build_dataset,
+        num_outputs=dataset_range,
+        assert_items_equal=reshuffle_each_iteration)
+
+  @combinations.generate(
+      combinations.times(
+          test_base.default_test_combinations(),
+          checkpoint_test_base.default_test_combinations(),
+          combinations.combine(
+              dataset_range=[10],
+              num_parallel_calls=[None, 2, dataset_ops.AUTOTUNE],
+              reshuffle_each_iteration=[True, False],
+              symbolic_checkpoint=[True, False])))
+  def testMapV1AndV2(
+      self,
+      verify_fn: Callable[..., None],
+      dataset_range: int,
+      num_parallel_calls: int,
+      reshuffle_each_iteration: bool,
+      symbolic_checkpoint: bool):
+
+    def _build_dataset() -> dataset_ops.Dataset:
+      dataset = dataset_ops.Dataset.range(dataset_range)
+      dataset_cardinality = dataset.cardinality()
+      dataset = dataset.map(
+          lambda x: x * 2,
+          num_parallel_calls=num_parallel_calls,
+          deterministic=True)
+      dataset = dataset.apply(
+          cardinality.assert_cardinality(dataset_cardinality))
       dataset = dataset.prefetch(buffer_size=dataset_ops.AUTOTUNE)
       dataset = global_shuffle_op._global_shuffle(
           dataset, seed=42, reshuffle_each_iteration=reshuffle_each_iteration)

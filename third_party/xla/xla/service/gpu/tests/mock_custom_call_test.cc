@@ -14,7 +14,6 @@ limitations under the License.
 ==============================================================================*/
 
 #include "xla/service/gpu/tests/gpu_codegen_test.h"
-#include "xla/tests/hlo_test_base.h"
 
 namespace xla {
 namespace gpu {

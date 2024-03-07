@@ -24,6 +24,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/base/thread_annotations.h"
 #include "absl/cleanup/cleanup.h"
 #include "absl/container/node_hash_map.h"
 #include "absl/strings/str_cat.h"
@@ -183,7 +184,8 @@ class WeakrefLRUCache : public std::enable_shared_from_this<WeakrefLRUCache> {
                 .first->second);
   }
 
-  nb::object Call(nb::object weakref_key, nb::args args, nb::kwargs kwargs) {
+  nb::object Call(nb::object weakref_key, nb::args args,
+                  nb::kwargs kwargs) ABSL_NO_THREAD_SAFETY_ANALYSIS {
     nb::object context = cache_context_fn_();
     std::shared_ptr<Cache> cache_ptr = GetCache(UnboundWeakrefCacheEntry{
         weakref_key, this, static_cast<size_t>(xla::nb_hash(weakref_key))});
@@ -191,6 +193,7 @@ class WeakrefLRUCache : public std::enable_shared_from_this<WeakrefLRUCache> {
     ++total_queries_;
 
     bool inserted = false;
+    std::shared_ptr<CacheEntry> entry;
     {
       // Because the gil can be released during cache insertion, this forces
       // the lock order to be mu_ then gil so we must release the gil first.
@@ -199,12 +202,18 @@ class WeakrefLRUCache : public std::enable_shared_from_this<WeakrefLRUCache> {
       // cache insertion and then a second thread invalidates the cache order.
       mu_.Lock();
     }
-    Key key{context, args, kwargs};
-    auto entry = cache.GetOrCreateIfAbsent(key, [&inserted](const Key& key) {
-      inserted = true;
-      return std::make_shared<CacheEntry>();
-    });
-    mu_.Unlock();
+    {
+      // GetOrCreateIfAbsent calls into Python hash and equality functions,
+      // which may throw exceptions. The use of absl::Cleanup ensures mu_ is
+      // released if that happens.
+      absl::Cleanup unlock = [this]()
+                                 ABSL_UNLOCK_FUNCTION(mu_) { mu_.Unlock(); };
+      Key key{context, args, kwargs};
+      entry = cache.GetOrCreateIfAbsent(key, [&inserted](const Key& key) {
+        inserted = true;
+        return std::make_shared<CacheEntry>();
+      });
+    }
     if (!entry->completed.HasBeenNotified()) {
       if (inserted) {
         ++misses_;

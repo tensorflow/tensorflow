@@ -1116,11 +1116,11 @@ class AutoMixedPrecisionImpl {
       absl::flat_hash_set<int>* allow_set) const;
   NodeDef BuildCastNode(const MutableGraphView::OutputPort& src, bool to_f16,
                         const string& device) const;
-  StatusOr<NodeDef*> InsertCastNodeAtFanout(
+  absl::StatusOr<NodeDef*> InsertCastNodeAtFanout(
       const absl::flat_hash_set<int>& allow_set, const bool src_is_allow,
       const CastType& cast_type, MutableGraphView::OutputPort& src);
 
-  StatusOr<DataType> GetCastToType(const NodeDef* node) const;
+  absl::StatusOr<DataType> GetCastToType(const NodeDef* node) const;
   void CollectOutputPorts(
       const TypeAttrId& type_attr, NodeDef* node,
       std::vector<MutableGraphView::OutputPort>& output_ports) const;
@@ -2078,7 +2078,7 @@ void AutoMixedPrecisionImpl::MakeCastsAllowIfAllOutputsAllow(
 //   FP16: cast to float16
 //   FP32: cast to float32
 //   AUTO: cast to a data type that matches the fanout data type
-StatusOr<NodeDef*> AutoMixedPrecisionImpl::InsertCastNodeAtFanout(
+absl::StatusOr<NodeDef*> AutoMixedPrecisionImpl::InsertCastNodeAtFanout(
     const absl::flat_hash_set<int>& allow_set, const bool src_is_allow,
     const CastType& cast_type, MutableGraphView::OutputPort& src) {
   NodeDef* added_cast_node = nullptr;
@@ -2139,7 +2139,7 @@ StatusOr<NodeDef*> AutoMixedPrecisionImpl::InsertCastNodeAtFanout(
 
 // Get the destination data type of a cast op. Return error if the node is not
 // a Cast op.
-StatusOr<DataType> AutoMixedPrecisionImpl::GetCastToType(
+absl::StatusOr<DataType> AutoMixedPrecisionImpl::GetCastToType(
     const NodeDef* node) const {
   CHECK_EQ(node->op(), "Cast")  // Crash OK
       << "Node " << node->name() << " is not a Cast op";

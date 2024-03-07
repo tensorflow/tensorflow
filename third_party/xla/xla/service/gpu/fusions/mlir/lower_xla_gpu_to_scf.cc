@@ -13,20 +13,29 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 #include <memory>
+#include <utility>
 
+#include "llvm/ADT/SmallVector.h"
+#include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/GPU/IR/GPUDialect.h"  // from @llvm-project
+#include "mlir/Dialect/LLVMIR/LLVMDialect.h"  // from @llvm-project
+#include "mlir/Dialect/LLVMIR/LLVMTypes.h"  // from @llvm-project
 #include "mlir/Dialect/SCF/IR/SCF.h"  // from @llvm-project
 #include "mlir/Dialect/Tensor/IR/Tensor.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
+#include "mlir/IR/ImplicitLocOpBuilder.h"  // from @llvm-project
 #include "mlir/IR/Location.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
+#include "mlir/IR/Value.h"  // from @llvm-project
+#include "mlir/IR/ValueRange.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
 #include "xla/service/gpu/fusions/mlir/ir/xla_gpu_ops.h"
 #include "xla/service/gpu/ir_emission_utils.h"
+#include "xla/util.h"
 
 namespace xla {
 namespace gpu {
@@ -90,25 +99,49 @@ struct RewriteShuffleReduce : mlir::OpRewritePattern<ShuffleReduceOp> {
       return op->emitOpError("max_distance must be a power of 2 < WarpSize()");
     }
 
-    auto loc = op.getLoc();
+    mlir::ImplicitLocOpBuilder b(op.getLoc(), rewriter);
     mlir::ValueRange values = op.getOperands();
     for (int distance = max_distance; distance > 0; distance /= 2) {
+      namespace ml = mlir::LLVM;
+      auto shuffle = [&](mlir::Value v) {
+        return b
+            .create<mlir::gpu::ShuffleOp>(v, distance, WarpSize(),
+                                          mlir::gpu::ShuffleMode::DOWN)
+            .getShuffleResult();
+      };
+
       llvm::SmallVector<mlir::Value> args = values;
       for (auto value : values) {
         // Shuffle within the warps.
-        // TODO(jreiffers): Fix the lowering for types that are not supported by
-        // mlir::gpu::ShuffleOp.
-        args.push_back(
-            rewriter
-                .create<mlir::gpu::ShuffleOp>(loc, value, distance, WarpSize(),
-                                              mlir::gpu::ShuffleMode::DOWN)
-                .getShuffleResult());
+        auto ty = value.getType();
+        int bit_width = ty.getIntOrFloatBitWidth();
+
+        if (bit_width == 32) {
+          value = shuffle(value);
+        } else {
+          int n_shuffles = CeilOfRatio(bit_width, 32);
+          auto int_ty = b.getIntegerType(bit_width);
+          auto padded_int_ty = b.getIntegerType(n_shuffles * 32);
+          value = b.create<mlir::arith::BitcastOp>(int_ty, value);
+          value = b.create<mlir::arith::ExtUIOp>(padded_int_ty, value);
+          auto vector_type = ml::getVectorType(b.getI32Type(), n_shuffles);
+          value = b.create<ml::BitcastOp>(vector_type, value);
+          mlir::Value result_vec = b.create<ml::UndefOp>(vector_type);
+          for (int i = 0; i < n_shuffles; ++i) {
+            auto idx = b.create<mlir::arith::ConstantIntOp>(i, 32);
+            result_vec = b.create<ml::InsertElementOp>(
+                result_vec, shuffle(b.create<ml::ExtractElementOp>(value, idx)),
+                idx);
+          }
+          value = b.create<ml::BitcastOp>(padded_int_ty, result_vec);
+          value = b.create<mlir::arith::TruncIOp>(int_ty, value);
+          value = b.create<mlir::arith::BitcastOp>(ty, value);
+        }
+        args.push_back(value);
       }
-      values =
-          rewriter
-              .create<mlir::func::CallOp>(loc, op.getReducerAttr().getAttr(),
-                                          op.getResultTypes(), args)
-              .getResults();
+      values = b.create<mlir::func::CallOp>(op.getReducerAttr().getAttr(),
+                                            op.getResultTypes(), args)
+                   .getResults();
     }
     rewriter.replaceOp(op, values);
     return success();

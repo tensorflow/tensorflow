@@ -17,10 +17,12 @@ limitations under the License.
 #include <string>
 #include <utility>
 
-#include "absl/strings/str_replace.h"
+#include "absl/status/status.h"
+#include "xla/error_spec.h"
 #include "xla/service/gpu/tests/gpu_codegen_test.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/tests/hlo_test_base.h"
+#include "xla/tests/verified_hlo_module.h"
 #include "tsl/platform/test.h"
 
 namespace xla {

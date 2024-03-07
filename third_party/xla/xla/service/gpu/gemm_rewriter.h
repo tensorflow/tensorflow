@@ -15,9 +15,9 @@ limitations under the License.
 #ifndef XLA_SERVICE_GPU_GEMM_REWRITER_H_
 #define XLA_SERVICE_GPU_GEMM_REWRITER_H_
 
-#include <optional>
-
-#include "xla/hlo/ir/hlo_instructions.h"
+#include "absl/container/flat_hash_set.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/hlo_pass_interface.h"
 #include "xla/stream_executor/device_description.h"
@@ -31,9 +31,10 @@ namespace gpu {
 //    (kMultiply (kDot A B) alpha)
 //    (kMultiply C beta))
 //
-// where A, B, C are matrixes and `alpha` and `beta` are host constants.
-// The additional requirement is that C has no other users (otherwise,
-// it does not make sense to fuse it inside the custom call).
+// where A, B, C are matrices or vectors and `alpha` and `beta` are host
+// constants. In matrix-vector multiplication, one operand must be a matrix and
+// the other must be a vector. The additional requirement is that C has no other
+// users (otherwise, it does not make sense to fuse it inside the custom call).
 //
 // Both multiplication and addition can be avoided (equivalent to setting
 // `alpha` to one and `beta` to zero).

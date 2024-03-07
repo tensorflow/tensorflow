@@ -71,6 +71,9 @@ bool IsBroadcastedConstantOrScalar(const HloInstruction& instr);
 // scalar constant.
 bool IsBroadcastOfScalarConstant(const HloInstruction& instr);
 
+// Returns whether the `instr` is a broadcast and its input is a parameter.
+bool IsBroadcastOfParameter(const HloInstruction& instr);
+
 // Returns first HLO of the computation with the opcode, otherwise nullptr.
 HloInstruction* GetFirstInstructionWithOpcode(const HloComputation& computation,
                                               HloOpcode opcode);

@@ -169,7 +169,9 @@ PYBIND11_MODULE(_pywrap_profiler, m) {
         }
         if (!status_or_tool_data.ok()) {
           LOG(ERROR) << status_or_tool_data.status().message();
-          return py::make_tuple(py::bytes(""), py::bool_(false));
+          return py::make_tuple(
+              py::bytes(status_or_tool_data.status().message()),
+              py::bool_(false));
         }
         return py::make_tuple(py::bytes(status_or_tool_data.value()),
                               py::bool_(true));

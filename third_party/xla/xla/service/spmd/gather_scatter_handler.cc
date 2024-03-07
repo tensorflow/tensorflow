@@ -237,7 +237,7 @@ IndexBoundsForGatherScatterOperandPartitionedOnTrivialSliceDims(
 }
 
 // Function that tries to perform recursive partitioning of Gather.
-StatusOr<HloInstruction*> PartitionGather(
+absl::StatusOr<HloInstruction*> PartitionGather(
     const HloGatherInstruction* gather, PartitionedHlo operand,
     PartitionedHlo indices, const Shape& output_shape,
     const HloSharding& output_sharding, absl::Span<const int64_t> batch_dims,
@@ -246,7 +246,7 @@ StatusOr<HloInstruction*> PartitionGather(
 
 // Perform partitioning of Gather when the indices are partitioned on the
 // non-index vector dimension.
-StatusOr<HloInstruction*> PartitionGatherIndexPassthroughDimensions(
+absl::StatusOr<HloInstruction*> PartitionGatherIndexPassthroughDimensions(
     const HloGatherInstruction* gather, PartitionedHlo operand,
     PartitionedHlo indices, const Shape& output_shape,
     const HloSharding& output_sharding, absl::Span<const int64_t> batch_dims,
@@ -320,7 +320,7 @@ StatusOr<HloInstruction*> PartitionGatherIndexPassthroughDimensions(
 // Perform partitioning of Gather when the operand is split in a offset
 // dimension that is passed through (slice size is the same size of the operand
 // dimension).
-StatusOr<HloInstruction*> PartitionGatherOperandPassthroughDimensions(
+absl::StatusOr<HloInstruction*> PartitionGatherOperandPassthroughDimensions(
     const HloGatherInstruction* gather, PartitionedHlo operand,
     PartitionedHlo indices, const Shape& output_shape,
     const HloSharding& output_sharding, absl::Span<const int64_t> batch_dims,
@@ -403,7 +403,7 @@ StatusOr<HloInstruction*> PartitionGatherOperandPassthroughDimensions(
 
 // Partition a Gather when its sliced in a dimension in the operand that is
 // trivially sliced (sliced with slice size of 1).
-StatusOr<HloInstruction*> PartitionGatherTrivialSlicedOperandDimensions(
+absl::StatusOr<HloInstruction*> PartitionGatherTrivialSlicedOperandDimensions(
     const HloGatherInstruction* gather, PartitionedHlo operand,
     PartitionedHlo indices, const Shape& output_shape,
     const HloSharding& output_sharding, absl::Span<const int64_t> batch_dims,
@@ -571,7 +571,7 @@ StatusOr<HloInstruction*> PartitionGatherTrivialSlicedOperandDimensions(
 // (which means that the indices access the operand in a monotonically
 // increasing way across the respective operand dimension referenced by the
 // index).
-StatusOr<HloInstruction*> PartitionGatherIndexParallelDimensions(
+absl::StatusOr<HloInstruction*> PartitionGatherIndexParallelDimensions(
     const HloGatherInstruction* gather, PartitionedHlo operand,
     PartitionedHlo indices, const Shape& output_shape,
     const HloSharding& output_sharding, absl::Span<const int64_t> batch_dims,
@@ -780,7 +780,7 @@ std::vector<decltype(PartitionGather)*> GatherPartitionMethodsOrderedByCost(
   return ordered_partition_methods;
 }
 
-StatusOr<HloInstruction*> PartitionGather(
+absl::StatusOr<HloInstruction*> PartitionGather(
     const HloGatherInstruction* gather, PartitionedHlo operand,
     PartitionedHlo indices, const Shape& output_shape,
     const HloSharding& output_sharding, absl::Span<const int64_t> batch_dims,
@@ -980,7 +980,7 @@ std::vector<int64_t> ScatterUpdateDimsByPriority(
   return priority_dims_for_output;
 }
 
-StatusOr<HloInstruction*> PartitionScatter(
+absl::StatusOr<HloInstruction*> PartitionScatter(
     const HloScatterInstruction* scatter, std::vector<PartitionedHlo> operands,
     PartitionedHlo indices, std::vector<PartitionedHlo> updates,
     const Shape& output_shape, const HloSharding& output_sharding,
@@ -991,7 +991,7 @@ StatusOr<HloInstruction*> PartitionScatter(
 // (which means that the indices access the operand in a monotonically
 // increasing way across the respective operand dimension referenced by the
 // index).
-StatusOr<HloInstruction*> PartitionScatterIndexParallelDimensions(
+absl::StatusOr<HloInstruction*> PartitionScatterIndexParallelDimensions(
     const HloScatterInstruction* scatter, std::vector<PartitionedHlo> operands,
     PartitionedHlo indices, std::vector<PartitionedHlo> updates,
     const Shape& output_shape, const HloSharding& output_sharding,
@@ -1138,7 +1138,7 @@ StatusOr<HloInstruction*> PartitionScatterIndexParallelDimensions(
 // Perform partitioning of Scatter when the operand is split in a update window
 // dimension that is passed through (slice size is the same size of the operand
 // dimension).
-StatusOr<HloInstruction*> PartitionScatterOperandPassthroughDimensions(
+absl::StatusOr<HloInstruction*> PartitionScatterOperandPassthroughDimensions(
     const HloScatterInstruction* scatter, std::vector<PartitionedHlo> operands,
     PartitionedHlo indices, std::vector<PartitionedHlo> updates,
     const Shape& output_shape, const HloSharding& output_sharding,
@@ -1229,7 +1229,7 @@ StatusOr<HloInstruction*> PartitionScatterOperandPassthroughDimensions(
 
 // Perform partitioning of Scatter when the indices are partitioned on the
 // non-index vector dimension.
-StatusOr<HloInstruction*> PartitionScatterIndexPassthroughDimensions(
+absl::StatusOr<HloInstruction*> PartitionScatterIndexPassthroughDimensions(
     const HloScatterInstruction* scatter, std::vector<PartitionedHlo> operands,
     PartitionedHlo indices, std::vector<PartitionedHlo> updates,
     const Shape& output_shape, const HloSharding& output_sharding,
@@ -1365,7 +1365,7 @@ StatusOr<HloInstruction*> PartitionScatterIndexPassthroughDimensions(
 
 // Partition a Scatter when its sliced in a dimension in the operand that is
 // trivially sliced (sliced with slice size of 1).
-StatusOr<HloInstruction*> PartitionScatterTrivialSlicedOperandDimensions(
+absl::StatusOr<HloInstruction*> PartitionScatterTrivialSlicedOperandDimensions(
     const HloScatterInstruction* scatter, std::vector<PartitionedHlo> operands,
     PartitionedHlo indices, std::vector<PartitionedHlo> updates,
     const Shape& output_shape, const HloSharding& output_sharding,
@@ -1560,7 +1560,7 @@ std::vector<decltype(PartitionScatter)*> ScatterPartitionMethodsOrderedByCost(
   return ordered_partition_methods;
 }
 
-StatusOr<HloInstruction*> PartitionScatter(
+absl::StatusOr<HloInstruction*> PartitionScatter(
     const HloScatterInstruction* scatter, std::vector<PartitionedHlo> operands,
     PartitionedHlo indices, std::vector<PartitionedHlo> updates,
     const Shape& output_shape, const HloSharding& output_sharding,

@@ -8217,7 +8217,7 @@ class CudnnExecutionPlanRunner<void(Args...)>
       data_ptrs_vec.pop_back();
     }
 
-    if (sizeof...(Args) == 7 || sizeof...(Args) == 15) {
+    if (sizeof...(Args) == 9 || sizeof...(Args) == 17) {
       // is attention fwd or bwd
       data_ptrs_vec.erase(
           std::remove(data_ptrs_vec.begin(), data_ptrs_vec.end(), nullptr),
@@ -8270,7 +8270,7 @@ class CudnnExecutionPlanRunner<void(Args...)>
     TF_ASSIGN_OR_RETURN(std::optional<GpuTimer> timer,
                         GpuTimer::CreateIfNeeded(stream, is_profiling));
 
-    if (sizeof...(Args) == 15) {
+    if (sizeof...(Args) == 17) {
       // is training
       if (is_flash_attention_) {
         // should memset dq_accum because it is being atomic added

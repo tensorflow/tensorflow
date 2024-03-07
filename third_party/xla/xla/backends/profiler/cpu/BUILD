@@ -52,6 +52,7 @@ cc_library(
     visibility = internal_visibility([
         "//xla/python:__pkg__",
         # copybara:uncomment "//tensorflow/core/profiler:internal",
+        # copybara:uncomment "//tensorflow:internal",
     ]),
     deps = [
         ":python_tracer_impl",

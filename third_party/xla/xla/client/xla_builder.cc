@@ -3799,6 +3799,34 @@ XlaOp XlaBuilder::AllToAllTuple(
   });
 }
 
+XlaOp XlaBuilder::CollectiveBroadcast(
+    XlaOp operand, absl::Span<const ReplicaGroup> replica_groups,
+    const std::optional<ChannelHandle>& channel_id) {
+  return CollectiveBroadcastImpl(operand, replica_groups, channel_id);
+}
+
+XlaOp XlaBuilder::CollectiveBroadcastImpl(
+    XlaOp operand, absl::Span<const ReplicaGroup> replica_groups,
+    const std::optional<ChannelHandle>& channel_id) {
+  return ReportErrorOrReturn([&]() -> absl::StatusOr<XlaOp> {
+    TF_ASSIGN_OR_RETURN(const Shape* operand_shape, GetShapePtr(operand));
+    HloInstructionProto instr;
+    TF_ASSIGN_OR_RETURN(
+        Shape shape,
+        ShapeInference::InferCollectiveBroadcastShape({operand_shape}));
+    *instr.mutable_shape() = shape.ToProto();
+    for (const ReplicaGroup& group : replica_groups) {
+      *instr.add_replica_groups() = group;
+    }
+    if (channel_id.has_value()) {
+      instr.set_channel_id(channel_id->handle());
+    }
+
+    return AddInstruction(std::move(instr), HloOpcode::kCollectiveBroadcast,
+                          {operand});
+  });
+}
+
 XlaOp XlaBuilder::CollectivePermute(
     XlaOp operand,
     const std::vector<std::pair<int64_t, int64_t>>& source_target_pairs,
@@ -5310,6 +5338,13 @@ XlaOp AllToAllTuple(const XlaOp operand, int64_t split_dimension,
   return operand.builder()->AllToAllTuple(operand, split_dimension,
                                           concat_dimension, split_count,
                                           replica_groups, layout, channel_id);
+}
+
+XlaOp CollectiveBroadcast(const XlaOp operand,
+                          absl::Span<const ReplicaGroup> replica_groups,
+                          const std::optional<ChannelHandle>& channel_id) {
+  return operand.builder()->CollectiveBroadcast(operand, replica_groups,
+                                                channel_id);
 }
 
 XlaOp CollectivePermute(

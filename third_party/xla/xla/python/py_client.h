@@ -222,10 +222,12 @@ class PyClient : public std::enable_shared_from_this<PyClient> {
   // The callable receives as arguments NumPy arrays for arguments with array
   // types, and None for Token argument. The callable must return a tuple of
   // either arrays or None values.
+  // TODO(phawkins): pass operand_shapes and result_shapes as
+  // absl::Span<Shape const> when nanobind transition is complete.
   StatusOr<std::pair<uint64_t, pybind11::object>>
   GetEmitPythonCallbackDescriptor(pybind11::function callable,
-                                  absl::Span<Shape const> operand_shapes,
-                                  absl::Span<Shape const> result_shapes);
+                                  pybind11::object operand_shapes,
+                                  pybind11::object result_shapes);
   // Deprecated; please switch to emitting a `CustomCallOp` directly.
   StatusOr<XlaOp> EmitPythonCallbackFromDescriptor(
       XlaBuilder& builder, uint64_t descriptor,

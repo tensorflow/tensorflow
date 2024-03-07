@@ -41,7 +41,9 @@ limitations under the License.
 #include "xla/service/gpu/fusions/loop_mlir.h"
 #include "xla/service/gpu/fusions/mlir/elemental_hlo_to_mlir.h"
 #include "xla/service/gpu/fusions/reduction.h"
+#include "xla/service/gpu/fusions/reduction_mlir.h"
 #include "xla/service/gpu/fusions/scatter.h"
+#include "xla/service/gpu/fusions/scatter_mlir.h"
 #include "xla/service/gpu/fusions/transpose.h"
 #include "xla/service/gpu/fusions/transpose_mlir.h"
 #include "xla/service/gpu/fusions/triton.h"
@@ -148,7 +150,7 @@ absl::StatusOr<std::unique_ptr<FusionInterface>> GetFusionEmitter(
       if (enable_mlir_emitters &&
           mlir_converter::IsHloConversionSupported(
               analysis.fusion(),
-              fusion_info.analysis().device_info().gpu_compute_capability())) {
+              analysis.device_info().gpu_compute_capability())) {
         return std::make_unique<MlirInputSlicesFusion>(analysis);
       }
       return std::make_unique<InputSlicesFusion>(analysis);
@@ -165,15 +167,25 @@ absl::StatusOr<std::unique_ptr<FusionInterface>> GetFusionEmitter(
       if (enable_mlir_emitters &&
           mlir_converter::IsHloConversionSupported(
               analysis.fusion(),
-              fusion_info.analysis().device_info().gpu_compute_capability())) {
+              analysis.device_info().gpu_compute_capability())) {
         return std::make_unique<MlirLoopFusion>(analysis);
       }
       return std::make_unique<LoopFusion>(analysis);
     }
     case HloFusionAnalysis::EmitterFusionKind::kReduction:
+      if (enable_mlir_emitters && MlirReductionFusion::IsSupported(analysis) &&
+          mlir_converter::IsHloConversionSupported(
+              analysis.fusion(),
+              fusion_info.analysis().device_info().gpu_compute_capability())) {
+        return std::make_unique<MlirReductionFusion>(analysis);
+      }
       return std::make_unique<ReductionFusion>(analysis);
-    case HloFusionAnalysis::EmitterFusionKind::kScatter:
+    case HloFusionAnalysis::EmitterFusionKind::kScatter: {
+      if (enable_mlir_emitters && MlirScatterFusion::IsSupported(analysis)) {
+        return std::make_unique<MlirScatterFusion>(analysis);
+      }
       return std::make_unique<ScatterFusion>(analysis);
+    }
     case HloFusionAnalysis::EmitterFusionKind::kTranspose: {
       if (enable_mlir_emitters && MlirTransposeFusion::IsSupported(analysis)) {
         return std::make_unique<MlirTransposeFusion>(analysis);

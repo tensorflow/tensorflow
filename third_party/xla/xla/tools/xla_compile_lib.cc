@@ -55,6 +55,7 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/status.h"
 #include "xla/stream_executor/device_memory_allocator.h"
+#include "xla/stream_executor/stream_executor.h"
 #include "xla/tools/hlo_module_loader.h"
 #include "xla/util.h"
 #include "tsl/platform/env.h"
@@ -105,49 +106,40 @@ static absl::StatusOr<std::string> CompileGpuExecutable(
   auto gpu_compiler = gpu::AMDGPUCompiler();
 #endif
 
-  Compiler::CompileOptions compile_options;
+  auto module_group = std::make_unique<HloModuleGroup>(std::move(hlo_module));
 
-  stream_executor::StreamExecutor* stream_executor = nullptr;
-  std::unique_ptr<stream_executor::StreamExecutorMemoryAllocator> allocator;
   if (aot) {
-    compile_options.target_config = *target_config;
-  } else {
-    TF_RETURN_IF_ERROR(stream_executor::ValidateGPUMachineManager());
-    TF_ASSIGN_OR_RETURN(
-        stream_executor,
-        stream_executor::GPUMachineManager()->ExecutorForDevice(0));
-    allocator =
-        std::make_unique<stream_executor::StreamExecutorMemoryAllocator>(
-            stream_executor);
-    compile_options.device_allocator = allocator.get();
-  }
-
-  TF_ASSIGN_OR_RETURN(
-      std::unique_ptr<HloModule> module_after_opt,
-      gpu_compiler.RunHloPasses(std::move(hlo_module), stream_executor,
-                                compile_options));
-
-  *result.mutable_hlo_module() = module_after_opt->ToProto();
-  if (aot) {
-    auto module_group =
-        std::make_unique<HloModuleGroup>(std::move(module_after_opt));
-
     AotCompilationOptions aot_options(gpu_compiler.PlatformId());
     aot_options.set_target_config(*target_config);
+    // We need the optimized module, so we call RunHloPasses ourselves above.
+    aot_options.set_run_backend_only(true);
 
     TF_ASSIGN_OR_RETURN(
         std::vector<std::unique_ptr<AotCompilationResult>> aot_results,
         gpu_compiler.CompileAheadOfTime(std::move(module_group), aot_options));
-    TF_ASSIGN_OR_RETURN(std::string result,
+    TF_ASSIGN_OR_RETURN(std::string compile_result,
                         aot_results[0]->SerializeAsString());
-    return result;
+    *result.mutable_hlo_module() =
+        aot_results[0]->optimized_module()->ToProto();
+    return compile_result;
   }
 
+  Compiler::CompileOptions compile_options;
+  TF_RETURN_IF_ERROR(stream_executor::ValidateGPUMachineManager());
   TF_ASSIGN_OR_RETURN(
-      std::unique_ptr<Executable> executable,
-      gpu_compiler.RunBackend(std::move(module_after_opt), stream_executor,
-                              compile_options));
-  return executable->module().ToString();
+      stream_executor::StreamExecutor * stream_executor,
+      stream_executor::GPUMachineManager()->ExecutorForDevice(0));
+  auto allocator =
+      std::make_unique<stream_executor::StreamExecutorMemoryAllocator>(
+          stream_executor);
+  compile_options.device_allocator = allocator.get();
+
+  TF_ASSIGN_OR_RETURN(
+      std::vector<std::unique_ptr<Executable>> executables,
+      gpu_compiler.Compile(std::move(module_group), {{stream_executor}},
+                           compile_options));
+  *result.mutable_hlo_module() = executables[0]->module().ToProto();
+  return executables[0]->module().ToString();
 #else
   LOG(ERROR) << "Neither ROCm nor CUDA present; returning empty.";
   return "";

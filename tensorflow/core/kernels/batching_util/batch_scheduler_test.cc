@@ -15,6 +15,11 @@ limitations under the License.
 
 #include "tensorflow/core/kernels/batching_util/batch_scheduler.h"
 
+#include <cstddef>
+#include <memory>
+
+#include <gmock/gmock.h>
+#include <gtest/gtest.h>
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/test.h"
@@ -22,6 +27,10 @@ limitations under the License.
 namespace tensorflow {
 namespace serving {
 namespace {
+
+using ::testing::ElementsAre;
+using ::testing::Eq;
+using ::testing::Property;
 
 class FakeTask : public BatchTask {
  public:
@@ -37,6 +46,133 @@ class FakeTask : public BatchTask {
   FakeTask(const FakeTask&) = delete;
   void operator=(const FakeTask&) = delete;
 };
+
+TEST(TaskQueueTest, EmptyTaskQueue) {
+  TaskQueue<FakeTask> task_queue;
+
+  EXPECT_TRUE(task_queue.empty());
+  EXPECT_EQ(0, task_queue.num_tasks());
+  EXPECT_EQ(0, task_queue.size());
+}
+
+TEST(TaskQueueTest, AddTaskToTaskQueue) {
+  TaskQueue<FakeTask> task_queue;
+
+  task_queue.AddTask(std::make_unique<FakeTask>(1));
+  EXPECT_FALSE(task_queue.empty());
+  EXPECT_EQ(1, task_queue.num_tasks());
+  EXPECT_EQ(1, task_queue.size());
+}
+
+TEST(TaskQueueTest, AddTasksToTaskQueue) {
+  TaskQueue<FakeTask> task_queue;
+
+  task_queue.AddTask(std::make_unique<FakeTask>(1));
+  EXPECT_FALSE(task_queue.empty());
+  EXPECT_EQ(1, task_queue.num_tasks());
+  EXPECT_EQ(1, task_queue.size());
+
+  task_queue.AddTask(std::make_unique<FakeTask>(2));
+  EXPECT_FALSE(task_queue.empty());
+  EXPECT_EQ(2, task_queue.num_tasks());
+  EXPECT_EQ(3, task_queue.size());
+
+  task_queue.AddTask(std::make_unique<FakeTask>(3));
+  EXPECT_FALSE(task_queue.empty());
+  EXPECT_EQ(3, task_queue.num_tasks());
+  EXPECT_EQ(6, task_queue.size());
+}
+
+TEST(TaskQueueTest, RemoveTaskFromTaskQueueWithSingleTask) {
+  TaskQueue<FakeTask> task_queue;
+
+  task_queue.AddTask(std::make_unique<FakeTask>(1));
+  EXPECT_FALSE(task_queue.empty());
+  EXPECT_EQ(1, task_queue.num_tasks());
+  EXPECT_EQ(1, task_queue.size());
+
+  EXPECT_THAT(task_queue.RemoveTask(),
+              Pointee(Property(&FakeTask::size, Eq(1))));
+  EXPECT_TRUE(task_queue.empty());
+  EXPECT_EQ(0, task_queue.num_tasks());
+  EXPECT_EQ(0, task_queue.size());
+}
+
+TEST(TaskQueueTest, RemoveTaskFromTaskQueueWithMultipleTasks) {
+  TaskQueue<FakeTask> task_queue;
+
+  task_queue.AddTask(std::make_unique<FakeTask>(2));
+  EXPECT_FALSE(task_queue.empty());
+  EXPECT_EQ(1, task_queue.num_tasks());
+  EXPECT_EQ(2, task_queue.size());
+
+  task_queue.AddTask(std::make_unique<FakeTask>(1));
+  EXPECT_FALSE(task_queue.empty());
+  EXPECT_EQ(2, task_queue.num_tasks());
+  EXPECT_EQ(3, task_queue.size());
+
+  EXPECT_THAT(task_queue.RemoveTask(),
+              Pointee(Property(&FakeTask::size, Eq(2))));
+  EXPECT_FALSE(task_queue.empty());
+  EXPECT_EQ(1, task_queue.num_tasks());
+  EXPECT_EQ(1, task_queue.size());
+}
+
+TEST(TaskQueueTest, RemoveTasksFromTaskQueue) {
+  TaskQueue<FakeTask> task_queue;
+
+  task_queue.AddTask(std::make_unique<FakeTask>(1));
+  EXPECT_FALSE(task_queue.empty());
+  EXPECT_EQ(1, task_queue.num_tasks());
+  EXPECT_EQ(1, task_queue.size());
+
+  task_queue.AddTask(std::make_unique<FakeTask>(2));
+  EXPECT_FALSE(task_queue.empty());
+  EXPECT_EQ(2, task_queue.num_tasks());
+  EXPECT_EQ(3, task_queue.size());
+
+  task_queue.AddTask(std::make_unique<FakeTask>(3));
+  EXPECT_FALSE(task_queue.empty());
+  EXPECT_EQ(3, task_queue.num_tasks());
+  EXPECT_EQ(6, task_queue.size());
+
+  // The first two tasks are removed because they sum up to the size 3 as
+  // specified.
+  EXPECT_THAT(task_queue.RemoveTask(3),
+              ElementsAre(Pointee(Property(&FakeTask::size, Eq(1))),
+                          Pointee(Property(&FakeTask::size, Eq(2)))));
+  EXPECT_FALSE(task_queue.empty());
+  EXPECT_EQ(1, task_queue.num_tasks());
+  EXPECT_EQ(3, task_queue.size());
+}
+
+TEST(TaskQueueTest, RemoveTasksFewerThanArgFromTaskQueue) {
+  TaskQueue<FakeTask> task_queue;
+
+  task_queue.AddTask(std::make_unique<FakeTask>(1));
+  EXPECT_FALSE(task_queue.empty());
+  EXPECT_EQ(1, task_queue.num_tasks());
+  EXPECT_EQ(1, task_queue.size());
+
+  task_queue.AddTask(std::make_unique<FakeTask>(2));
+  EXPECT_FALSE(task_queue.empty());
+  EXPECT_EQ(2, task_queue.num_tasks());
+  EXPECT_EQ(3, task_queue.size());
+
+  task_queue.AddTask(std::make_unique<FakeTask>(3));
+  EXPECT_FALSE(task_queue.empty());
+  EXPECT_EQ(3, task_queue.num_tasks());
+  EXPECT_EQ(6, task_queue.size());
+
+  // The last task is not removed since that will end up removing tasks that
+  // sum up to the size larger than 5.
+  EXPECT_THAT(task_queue.RemoveTask(5),
+              ElementsAre(Pointee(Property(&FakeTask::size, Eq(1))),
+                          Pointee(Property(&FakeTask::size, Eq(2)))));
+  EXPECT_FALSE(task_queue.empty());
+  EXPECT_EQ(1, task_queue.num_tasks());
+  EXPECT_EQ(3, task_queue.size());
+}
 
 TEST(BatchTest, Basic) {
   Batch<FakeTask> batch;

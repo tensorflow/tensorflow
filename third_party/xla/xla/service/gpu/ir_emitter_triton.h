@@ -20,6 +20,8 @@ limitations under the License.
 #include <functional>
 #include <optional>
 
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "llvm/IR/Module.h"
 #include "mlir/IR/Builders.h"  // from @llvm-project
@@ -32,7 +34,8 @@ limitations under the License.
 #include "xla/service/gpu/launch_dimensions.h"
 #include "xla/service/gpu/matmul_utils.h"
 #include "xla/service/gpu/triton_fusion_analysis.h"
-#include "xla/statusor.h"
+#include "xla/service/hlo_module_config.h"
+#include "xla/status.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/launch_dim.h"
 #include "triton/Dialect/Triton/IR/Dialect.h"

@@ -15,13 +15,10 @@ limitations under the License.
 #include "xla/service/gpu/fusions/transpose_mlir.h"
 
 #include <cstdint>
-#include <iterator>
 #include <optional>
-#include <tuple>
-#include <utility>
 #include <vector>
 
-#include "absl/algorithm/container.h"
+#include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/log/check.h"
@@ -29,8 +26,8 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/STLExtras.h"
+#include "llvm/ADT/SmallPtrSet.h"
 #include "llvm/ADT/SmallVector.h"
-#include "llvm/Support/raw_ostream.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/Tensor/IR/Tensor.h"  // from @llvm-project
 #include "mlir/IR/AffineExpr.h"  // from @llvm-project
@@ -71,7 +68,11 @@ namespace gpu {
 namespace {
 
 using absl::StatusOr;
+using llvm::SmallPtrSet;
 using llvm::SmallVector;
+using mlir::AffineExpr;
+using mlir::AffineMap;
+using mlir::MLIRContext;
 using mlir::ModuleOp;
 using mlir::RankedTensorType;
 using mlir::Value;
@@ -82,6 +83,32 @@ using mlir::tensor::ExtractOp;
 using mlir::tensor::InsertOp;
 using mlir_converter::ApplyAffineMap;
 using mlir_converter::CallTargetProvider;
+using mlir_converter::PartitionedComputation;
+
+// Traverses use-def chain from hero to root and composes indexing maps.
+IndexingMap GetThreadIdIndexingForRoot(
+    const IndexingMap& hero_output_indexing, const HloInstruction* hero,
+    const SmallPtrSet<const HloInstruction*, 16>& roots,
+    MLIRContext* mlir_context) {
+  if (roots.contains(hero)) {
+    return hero_output_indexing;
+  }
+
+  IndexingMap root_indexing = hero_output_indexing;
+  const HloInstruction* op = hero;
+  while (!roots.contains(op)) {
+    // There could be multiple roots, but they all should have compatible
+    // indexing maps.
+    auto* user = op->users().front();
+    HloInstructionIndexing user_indexing = ComputeInputToOutputIndexing(
+        user, user->operand_index(op), mlir_context);
+
+    root_indexing = root_indexing * *user_indexing.indexing_maps[0].begin();
+    root_indexing.Simplify();
+    op = user;
+  }
+  return root_indexing;
+}
 
 Tiling ComputeTransposeTiling(const TransposeDescription& tiled_transpose) {
   constexpr int kNumRows = 4;
@@ -126,7 +153,8 @@ absl::flat_hash_set<const HloInstruction*> GetShMemTranposes(
 
 MlirTransposeFusion::MlirTransposeFusion(const HloFusionAnalysis& analysis)
     : analysis_(analysis),
-      tiling_(ComputeTransposeTiling(analysis.tiled_transpose())) {
+      tiling_(ComputeTransposeTiling(analysis.tiled_transpose())),
+      shmem_transposes_(GetShMemTranposes(analysis)) {
   for (auto [root, hero] :
        llvm::zip(analysis_.fusion_roots(), analysis_.fusion_heroes())) {
     if (auto transpose = GetDescriptionForTiledTransposeEmitter(*root, *hero)) {
@@ -138,19 +166,20 @@ MlirTransposeFusion::MlirTransposeFusion(const HloFusionAnalysis& analysis)
 
 /*static*/ bool MlirTransposeFusion::IsSupported(
     const HloFusionAnalysis& analysis) {
-  if (analysis.fusion_roots().size() != 1) return false;
-  auto* root = analysis.fusion_roots()[0];
-
-  for (auto operand : root->operands()) {
-    // Transpose operands should not be parameters, only function call are
-    // supported right now.
-    if (operand->opcode() == HloOpcode::kParameter) return false;
+  // If there is a hero, which does not have a transpose, the codegen might
+  // fail because of the incorrect thread ID mapping for that particular case.
+  for (const auto [hero, root] :
+       llvm::zip(analysis.fusion_heroes(), analysis.fusion_roots())) {
+    if (!GetDescriptionForTiledTransposeEmitter(*root, *hero)) {
+      return false;
+    }
   }
-  return true;
+  return mlir_converter::IsHloConversionSupported(
+      analysis.fusion(), analysis.device_info().gpu_compute_capability());
 }
 
 std::optional<IndexingMap> MlirTransposeFusion::ComputeThreadIdToOutputIndexing(
-    int64_t root_index, mlir::MLIRContext* ctx) const {
+    int64_t root_index, MLIRContext* ctx) const {
   const auto& hero = *analysis_.fusion_heroes()[root_index];
   const auto& root = *analysis_.fusion_roots()[root_index];
   if (!GetDescriptionForTiledTransposeEmitter(root, hero)) {
@@ -172,8 +201,7 @@ std::optional<IndexingMap> MlirTransposeFusion::ComputeThreadIdToOutputIndexing(
 }
 
 std::optional<IndexingMap> MlirTransposeFusion::ComputeThreadIdToInputIndexing(
-    int64_t root_index, int64_t hero_operand_index,
-    mlir::MLIRContext* ctx) const {
+    int64_t root_index, int64_t hero_operand_index, MLIRContext* ctx) const {
   const auto& hero = *analysis_.fusion_heroes()[root_index];
 
   return ComposeIndexingMaps(
@@ -190,21 +218,23 @@ LaunchDimensions MlirTransposeFusion::launch_dimensions() const {
 IndexingMap GetSharedMemoryWriteIndexingMap(
     const IndexingMap& thread_id_indexing) {
   auto* mlir_context = thread_id_indexing.GetMLIRContext();
-  auto c0 = mlir::getAffineConstantExpr(0, mlir_context);
-  mlir::AffineExpr th_x, th_y, th_z;
-  mlir::bindDims(mlir_context, th_x, th_y, th_z);
-  auto zero_block_map =
-      mlir::AffineMap::get(6, 0, {th_x, th_y, th_z, c0, c0, c0}, mlir_context);
 
-  auto dim_ranges = thread_id_indexing.GetDimensionRanges();
-  for (int bl_dim = 3; bl_dim < 6; ++bl_dim) {
-    dim_ranges[bl_dim] = Range{0, 0};
-  }
-  IndexingMap composed =
-      IndexingMap{zero_block_map, dim_ranges, /*symbol_ranges=*/{}} *
-      thread_id_indexing;
-  composed.Simplify();
-  return composed;
+  AffineExpr c0 = mlir::getAffineConstantExpr(0, mlir_context);
+  AffineExpr th_x = mlir::getAffineDimExpr(0, mlir_context);
+  SmallVector<AffineExpr, 3> tile_sizes(3);
+  mlir::bindSymbolsList(mlir_context, llvm::MutableArrayRef(tile_sizes));
+
+  IndexingMap shmem_write_indexing{
+      AffineMap::get(thread_id_indexing.GetDimensionCount(),
+                     thread_id_indexing.GetSymbolCount(),
+
+                     {c0, th_x.floorDiv(32) + 4 * tile_sizes[1], th_x % 32},
+                     mlir_context),
+      thread_id_indexing.GetDimensionRanges(),
+      thread_id_indexing.GetSymbolRanges(),
+      thread_id_indexing.GetConstraints()};
+  shmem_write_indexing.Simplify();
+  return shmem_write_indexing;
 }
 
 // Returns an indexing map with block_x, block_y, block_z set to 0 and swapped
@@ -215,24 +245,35 @@ IndexingMap GetSharedMemoryReadIndexingMap(
       GetSharedMemoryWriteIndexingMap(thread_id_indexing);
   return IndexingMap{write_indexing.GetAffineMap().getSubMap({0, 2, 1}),
                      write_indexing.GetDimensionRanges(),
-                     write_indexing.GetSymbolRanges()};
+                     write_indexing.GetSymbolRanges(),
+                     write_indexing.GetConstraints()};
 }
 
 absl::StatusOr<SmallVector<Value, 4>> MlirTransposeFusion::EmitWriteToShMemMlir(
-    mlir::ImplicitLocOpBuilder& builder, ModuleOp module, FuncOp entry_function,
+    mlir::ImplicitLocOpBuilder& builder, FuncOp entry_function,
     const HloFusionInstruction& fusion,
-    CallTargetProvider& call_target_provider) const {
+    const PartitionedComputation& root_computation,
+    const CallTargetProvider& call_target_provider) const {
   std::vector<int64_t> shmem_tensor_size(tiling_.GetBlockTileSize().begin(),
                                          tiling_.GetBlockTileSize().end());
 
   int num_inputs = fusion.fused_instructions_computation()->num_parameters();
   int num_outputs = entry_function.getArguments().size() - num_inputs;
 
+  SmallPtrSet<const HloInstruction*, 8> emitted_heros;
+
   SmallVector<Value> shmem_intermediate_result;
   for (const auto& [root_index, hero_and_root] : llvm::enumerate(
            llvm::zip(analysis_.fusion_heroes(), analysis_.fusion_roots()))) {
     const HloInstruction* transpose = std::get<0>(hero_and_root);
     const HloInstruction* root = std::get<1>(hero_and_root);
+
+    // The same hero can occure only multiple (hero, root) pair. We should emit
+    // the write to shmem only once.
+    if (!emitted_heros.insert(transpose).second) {
+      continue;
+    }
+
     // Skip non-transpose heroes and handle them in EmitReadFromShMemMlir.
     auto description =
         GetDescriptionForTiledTransposeEmitter(*root, *transpose);
@@ -241,7 +282,7 @@ absl::StatusOr<SmallVector<Value, 4>> MlirTransposeFusion::EmitWriteToShMemMlir(
     }
 
     auto input_indexing = ComputeThreadIdToInputIndexing(
-        root_index, /*hero_operand_index=*/0, module.getContext());
+        root_index, /*hero_operand_index=*/0, builder.getContext());
     TF_RET_CHECK(input_indexing) << "Indexing is never nullopt";
     IndexingMap shmem_input_indexing =
         GetSharedMemoryWriteIndexingMap(*input_indexing);
@@ -254,36 +295,30 @@ absl::StatusOr<SmallVector<Value, 4>> MlirTransposeFusion::EmitWriteToShMemMlir(
         RankedTensorType::get(shmem_tensor_size, elem_type));
 
     // Emit loop that writes subgraphs of transpose operands to shmem.
-    TF_ASSIGN_OR_RETURN(
-        auto shmem_result,
-        EmitLoopNest(
-            builder, {shmem}, *input_indexing,
-            [&](ValueRange output_tensors, ValueRange dim_values,
-                ValueRange symbol_values) -> StatusOr<SmallVector<Value>> {
-              auto output_indices =
-                  ApplyAffineMap(input_indexing->GetAffineMap(), dim_values,
-                                 symbol_values, builder);
-              auto shmem_indices =
-                  ApplyAffineMap(shmem_input_indexing.GetAffineMap(),
-                                 dim_values, symbol_values, builder);
-              // Generate the operands for the root function: input tensors +
-              // output indices.
-              SmallVector<Value> operands(
-                  entry_function.getArguments().take_front(num_inputs));
-              absl::c_copy(output_indices, std::back_inserter(operands));
+    auto shmem_result = EmitThreadLoopNest(
+        builder, {shmem}, *input_indexing,
+        [&](ValueRange output_tensors, ValueRange dim_values,
+            ValueRange symbol_values) -> SmallVector<Value> {
+          auto input_indices =
+              ApplyAffineMap(input_indexing->GetAffineMap(), dim_values,
+                             symbol_values, builder);
+          auto shmem_indices =
+              ApplyAffineMap(shmem_input_indexing.GetAffineMap(), dim_values,
+                             symbol_values, builder);
 
-              auto result_scalars = builder.create<PureCallOp>(
-                  call_target_provider(transpose_operand), operands);
+          auto result_scalars = mlir_converter::ProvideParameter(
+              root_computation, transpose, /*operand_index=*/0, input_indices,
+              call_target_provider, builder);
 
-              SmallVector<Value> result_tensors;
-              result_tensors.reserve(num_outputs);
-              for (auto [tensor, value] :
-                   llvm::zip(output_tensors, result_scalars.getResults())) {
-                result_tensors.push_back(
-                    builder.create<InsertOp>(value, tensor, shmem_indices));
-              }
-              return result_tensors;
-            }));
+          SmallVector<Value> result_tensors;
+          result_tensors.reserve(num_outputs);
+          for (auto [tensor, value] :
+               llvm::zip(output_tensors, result_scalars)) {
+            result_tensors.push_back(
+                builder.create<InsertOp>(value, tensor, shmem_indices));
+          }
+          return result_tensors;
+        });
     shmem_intermediate_result.append(shmem_result.begin(), shmem_result.end());
   }
 
@@ -291,104 +326,111 @@ absl::StatusOr<SmallVector<Value, 4>> MlirTransposeFusion::EmitWriteToShMemMlir(
 }
 
 absl::Status MlirTransposeFusion::EmitReadFromShMemMlir(
-    mlir::ImplicitLocOpBuilder& builder, ModuleOp module, FuncOp entry_function,
-    const HloFusionInstruction& fusion,
-    CallTargetProvider& call_target_provider, ValueRange shmem_tensors) const {
+    mlir::ImplicitLocOpBuilder& builder, FuncOp entry_function,
+    const HloFusionInstruction& fusion, const CallTargetProvider& call_targets,
+    ValueRange shmem_tensors) const {
   SmallVector<Value, 4> result_tensors;
 
   int num_inputs = fusion.fused_instructions_computation()->num_parameters();
 
-  auto output_tensor_args =
-      entry_function.getArguments().drop_front(num_inputs);
+  SmallPtrSet<const HloInstruction*, 16> hero_roots{
+      analysis_.fusion_roots().begin(), analysis_.fusion_roots().end()};
+
+  // Cache for root indexing per hero. If multiple roots use the same hero, they
+  // will have identical indexing.
+  absl::flat_hash_map<const HloInstruction*, IndexingMap> root_to_hero_indexing;
 
   int transpose_hero_count = 0;
+
+  // Map from hero instruction to shmem tensor value.
+  absl::flat_hash_map<const HloInstruction*, Value> hero_to_shmem_tensor;
+
+  ValueRange output_tensor_args =
+      entry_function.getArguments().drop_front(num_inputs);
+
   for (const auto& [root_index, hero_and_root] : llvm::enumerate(
            llvm::zip(analysis_.fusion_heroes(), analysis_.fusion_roots()))) {
     const HloInstruction* transpose = std::get<0>(hero_and_root);
     const HloInstruction* root = std::get<1>(hero_and_root);
 
+    auto* mlir_context = builder.getContext();
     auto output_indexing =
-        ComputeThreadIdToOutputIndexing(root_index, module.getContext());
+        ComputeThreadIdToOutputIndexing(root_index, mlir_context);
     TF_RET_CHECK(output_indexing) << "Indexing is never nullopt";
+
+    if (!root_to_hero_indexing.contains(transpose)) {
+      root_to_hero_indexing.emplace(
+          transpose, GetThreadIdIndexingForRoot(*output_indexing, transpose,
+                                                hero_roots, mlir_context));
+    }
+
+    const IndexingMap& root_indexing = root_to_hero_indexing.at(transpose);
+
     IndexingMap shmem_output_indexing =
         GetSharedMemoryReadIndexingMap(*output_indexing);
     auto description =
         GetDescriptionForTiledTransposeEmitter(*root, *transpose);
 
     if (description.has_value()) {
-      TF_ASSIGN_OR_RETURN(
-          auto subresult_tensors,
-          EmitLoopNest(
-              builder, output_tensor_args, *output_indexing,
-              [&](ValueRange output_tensors, ValueRange dim_values,
-                  ValueRange symbol_values) -> StatusOr<SmallVector<Value>> {
-                auto output_indices =
-                    ApplyAffineMap(output_indexing->GetAffineMap(), dim_values,
-                                   symbol_values, builder);
-                auto shmem_indices =
-                    ApplyAffineMap(shmem_output_indexing.GetAffineMap(),
-                                   dim_values, symbol_values, builder);
+      auto subresult_tensors = EmitThreadLoopNest(
+          builder, output_tensor_args[root_index], *output_indexing,
+          [&](ValueRange output_tensors, ValueRange dim_values,
+              ValueRange symbol_values) -> SmallVector<Value> {
+            auto root_indices =
+                ApplyAffineMap(root_indexing.GetAffineMap(), dim_values,
+                               symbol_values, builder);
+            auto shmem_indices =
+                ApplyAffineMap(shmem_output_indexing.GetAffineMap(), dim_values,
+                               symbol_values, builder);
 
-                // Generate the operands for the root function: input tensors +
-                // output indices.
-                SmallVector<Value> operands(
-                    entry_function.getArguments().take_front(num_inputs));
-                absl::c_copy(output_indices, std::back_inserter(operands));
+            if (!hero_to_shmem_tensor.contains(transpose)) {
+              hero_to_shmem_tensor[transpose] =
+                  shmem_tensors[transpose_hero_count];
+              ++transpose_hero_count;
+            }
 
-                operands.push_back(builder.create<ExtractOp>(
-                    shmem_tensors[transpose_hero_count++], shmem_indices));
-
-                auto result_scalars = builder.create<PureCallOp>(
-                    call_target_provider(root), operands);
-
-                SmallVector<Value> results;
-                results.reserve(output_tensor_args.size());
-                for (auto [tensor, value] :
-                     llvm::zip(output_tensors, result_scalars.getResults())) {
-                  results.push_back(
-                      builder.create<InsertOp>(value, tensor, output_indices));
-                }
-                return results;
-              }));
+            mlir::Value value = builder.create<ExtractOp>(
+                hero_to_shmem_tensor[transpose], shmem_indices);
+            auto result_scalars = EmitEpilogue(root, transpose, call_targets,
+                                               value, root_indices, builder);
+            SmallVector<Value> results;
+            results.reserve(output_tensor_args.size());
+            for (auto [tensor, value] :
+                 llvm::zip(output_tensors, result_scalars)) {
+              results.push_back(
+                  builder.create<InsertOp>(value, tensor, root_indices));
+            }
+            return results;
+          });
       result_tensors.append(subresult_tensors.begin(), subresult_tensors.end());
     } else {
-      auto indexing = ComputeThreadIdToOutputIndexing(0, module.getContext());
+      auto indexing = ComputeThreadIdToOutputIndexing(0, builder.getContext());
       TF_RET_CHECK(indexing) << "Indexing is never nullopt";
+      auto subresult_tensors = EmitThreadLoopNest(
+          builder, output_tensor_args, *indexing,
+          [&](ValueRange output_tensors, ValueRange dim_values,
+              ValueRange symbol_values) -> SmallVector<Value> {
+            auto output_indices = ApplyAffineMap(
+                indexing->GetAffineMap(), dim_values, symbol_values, builder);
 
-      int num_inputs =
-          fusion.fused_instructions_computation()->num_parameters();
-      auto output_tensor_args =
-          entry_function.getArguments().drop_front(num_inputs);
+            // Generate the operands for the root function: input tensors +
+            // output indices.
+            llvm::SmallVector<Value> operands(
+                entry_function.getArguments().take_front(num_inputs));
+            absl::c_copy(output_indices, std::back_inserter(operands));
 
-      TF_ASSIGN_OR_RETURN(
-          auto subresult_tensors,
-          EmitLoopNest(
-              builder, output_tensor_args, *indexing,
-              [&](ValueRange output_tensors, ValueRange dim_values,
-                  ValueRange symbol_values)
-                  -> absl::StatusOr<SmallVector<mlir::Value>> {
-                auto output_indices =
-                    ApplyAffineMap(indexing->GetAffineMap(), dim_values,
-                                   symbol_values, builder);
+            auto result_scalars =
+                builder.create<PureCallOp>(call_targets(root), operands);
 
-                // Generate the operands for the root function: input tensors +
-                // output indices.
-                llvm::SmallVector<mlir::Value> operands(
-                    entry_function.getArguments().take_front(num_inputs));
-                absl::c_copy(output_indices, std::back_inserter(operands));
-
-                auto result_scalars = builder.create<PureCallOp>(
-                    call_target_provider(root), operands);
-
-                SmallVector<Value> results;
-                results.reserve(output_tensor_args.size());
-                for (auto [tensor, value] :
-                     llvm::zip(output_tensors, result_scalars.getResults())) {
-                  results.push_back(
-                      builder.create<InsertOp>(value, tensor, output_indices));
-                }
-                return results;
-              }));
+            SmallVector<Value> results;
+            results.reserve(output_tensor_args.size());
+            for (auto [tensor, value] :
+                 llvm::zip(output_tensors, result_scalars.getResults())) {
+              results.push_back(
+                  builder.create<InsertOp>(value, tensor, output_indices));
+            }
+            return results;
+          });
       result_tensors.append(subresult_tensors.begin(), subresult_tensors.end());
     }
   }
@@ -396,35 +438,40 @@ absl::Status MlirTransposeFusion::EmitReadFromShMemMlir(
   return absl::OkStatus();
 }
 
-absl::Status MlirTransposeFusion::EmitMlir(
-    mlir::ModuleOp module, mlir::func::FuncOp entry_function,
+absl::flat_hash_set<const HloInstruction*>
+MlirTransposeFusion::GetInstructionsWithCustomCodegen(
     const HloFusionInstruction& fusion) const {
-  // Render subgraphs.
-  mlir_converter::PartitionedComputations computations(
-      fusion.fused_instructions_computation(), GetShMemTranposes(analysis_));
-  auto subgraph_to_mlir_fn = computations.DeclareFunctions(module);
-  auto call_targets =
-      computations.CreateCallTargetProvider(subgraph_to_mlir_fn);
-  for (const auto& comp : computations.partitioned_computations()) {
-    for (const auto& subgraph : comp.subgraphs()) {
-      TF_RETURN_IF_ERROR(mlir_converter::SubgraphToMlirFunction(
-          comp, subgraph, subgraph_to_mlir_fn[&subgraph], call_targets));
-    }
+  if (fusion.fused_expression_root()->opcode() == HloOpcode::kTuple) {
+    absl::flat_hash_set<const HloInstruction*> result{shmem_transposes_.begin(),
+                                                      shmem_transposes_.end()};
+    // In multi-output fusion with transpose, each root epilogue will be
+    // generated separately.
+    result.insert(fusion.fused_expression_root());
+    return result;
   }
+  return shmem_transposes_;
+}
 
+absl::Status MlirTransposeFusion::EmitEntryFunction(
+    const mlir_converter::PartitionedComputations& computations,
+    const mlir_converter::CallTargetProvider& call_targets,
+    mlir::func::FuncOp entry_function,
+    const HloFusionInstruction& fusion) const {
+  const auto& root_computation = computations.FindPartitionedComputation(
+      fusion.fused_instructions_computation());
   // Write intermediate results to shmem.
   mlir::ImplicitLocOpBuilder builder(entry_function.getLoc(), entry_function);
   builder.setInsertionPointToStart(entry_function.addEntryBlock());
   TF_ASSIGN_OR_RETURN(auto shmem_tensors,
-                      EmitWriteToShMemMlir(builder, module, entry_function,
-                                           fusion, call_targets));
+                      EmitWriteToShMemMlir(builder, entry_function, fusion,
+                                           root_computation, call_targets));
   // Sync GPU threads before reading from shmem.
   auto sync_threads = builder.create<SyncThreadsOp>(
       mlir::TypeRange(shmem_tensors), shmem_tensors);
 
   // Read intermediate results from shmem and compute epilogues.
-  return EmitReadFromShMemMlir(builder, module, entry_function, fusion,
-                               call_targets, sync_threads.getResults());
+  return EmitReadFromShMemMlir(builder, entry_function, fusion, call_targets,
+                               sync_threads.getResults());
 }
 
 }  // namespace gpu

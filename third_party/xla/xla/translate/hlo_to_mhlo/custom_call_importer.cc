@@ -35,7 +35,7 @@ limitations under the License.
 namespace xla {
 namespace {
 
-StatusOr<mlir::Operation*> ImportDynamicBroadcastInDimOp(
+absl::StatusOr<mlir::Operation*> ImportDynamicBroadcastInDimOp(
     mlir::StringRef backend_config, mlir::Location loc, mlir::Type result_type,
     mlir::ValueRange operands, mlir::OpBuilder* builder) {
   if (backend_config.empty()) {
@@ -69,7 +69,7 @@ StatusOr<mlir::Operation*> ImportDynamicBroadcastInDimOp(
       .getOperation();
 }
 
-StatusOr<mlir::Operation*> ImportDynamicReshapeOp(
+absl::StatusOr<mlir::Operation*> ImportDynamicReshapeOp(
     mlir::StringRef backend_config, mlir::Location loc, mlir::Type result_type,
     mlir::ValueRange operands, mlir::OpBuilder* builder) {
   if (!backend_config.empty()) {
@@ -80,7 +80,7 @@ StatusOr<mlir::Operation*> ImportDynamicReshapeOp(
       .getOperation();
 }
 
-StatusOr<mlir::Operation*> ImportRealDynamicSliceOp(
+absl::StatusOr<mlir::Operation*> ImportRealDynamicSliceOp(
     mlir::StringRef backend_config, mlir::Location loc, mlir::Type result_type,
     mlir::ValueRange operands, mlir::OpBuilder* builder) {
   if (!backend_config.empty()) {

@@ -140,6 +140,8 @@ std::vector<HloInstruction*> AsyncCollectiveCreator::MatchCollectives(
          config_.convert_all_reduce(instruction)) ||
         (op == HloOpcode::kAllGather &&
          config_.convert_all_gather(instruction)) ||
+        (op == HloOpcode::kCollectiveBroadcast &&
+         config_.convert_collective_broadcast(instruction)) ||
         (op == HloOpcode::kCollectivePermute &&
          config_.convert_collective_permute(instruction)) ||
         (op == HloOpcode::kAllToAll &&
@@ -174,6 +176,7 @@ absl::StatusOr<bool> AsyncCollectiveCreator::ReplaceCollectives(
         async_pair = CreateAsyncCollectivePermute(
             instruction, config_.get_context_shapes(instruction));
         break;
+      case HloOpcode::kCollectiveBroadcast:
       case HloOpcode::kAllToAll:
       case HloOpcode::kReduceScatter:
         async_pair = CreateAsyncStartDone(

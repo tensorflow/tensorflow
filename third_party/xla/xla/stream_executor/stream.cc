@@ -40,49 +40,6 @@ limitations under the License.
 
 namespace stream_executor {
 
-namespace {
-// Code to turn parameters to functions on stream into strings that
-// will be VLOG'ed. We need overloads, instead of
-// e.g. BatchDescriptorToVlogString(), as the code that calls these
-// functions does not know what the type of the parameter is.
-
-std::string ToVlogString(const void *ptr) {
-  if (ptr == nullptr) {
-    return "null";
-  }
-
-  // StrCat does not convert pointers to text.
-  std::ostringstream out;
-  out << ptr;
-  return out.str();
-}
-
-template <class T>
-std::string ToVlogString(const std::function<T> &f) {
-  return f == nullptr ? "null" : "<non-null function>";
-}
-
-template <class T>
-std::string ToVlogString(const absl::AnyInvocable<T> &f) {
-  return f == nullptr ? "null" : "<non-null function>";
-}
-
-std::string ToVlogString(const DeviceMemoryBase &memory) {
-  return ToVlogString(memory.opaque());
-}
-
-std::string ToVlogString(const DeviceMemoryBase *memory) {
-  return memory == nullptr ? "null" : ToVlogString(*memory);
-}
-
-std::string ToVlogString(uint32_t i) { return absl::StrCat(i); }
-
-std::string ToVlogString(uint64_t i) { return absl::StrCat(i); }
-
-std::string ToVlogString(float f) { return absl::StrCat(f); }
-
-}  // namespace
-
 Stream::Stream(StreamExecutor *parent)
     : parent_(parent),
       implementation_(parent->implementation()->GetStreamImplementation()),
@@ -152,26 +109,6 @@ absl::Status Stream::Initialize() {
   return absl::InternalError("failed to allocate stream during initialization");
 }
 
-Stream &Stream::Init() {
-  absl::Status status = Initialize();
-  if (!status.ok()) {
-    LOG(ERROR) << status;
-  }
-
-  return *this;
-}
-
-Stream &Stream::ThenRecordEvent(Event *event) {
-  absl::Status status = RecordEvent(event);
-  if (!status.ok()) {
-    LOG(ERROR) << "Error recording event in stream: " << status.message()
-               << "; not marking stream as bad, as the Event object may be "
-               << "at fault. Monitor for further errors.";
-  }
-
-  return *this;
-}
-
 absl::Status Stream::RecordEvent(Event *event) {
   return parent_->RecordEvent(this, event);
 }
@@ -191,8 +128,7 @@ absl::StatusOr<Stream *> Stream::GetOrCreateSubStream() {
       // The sub_stream is reusable.
       Stream *sub_stream = pair.first.get();
       if (sub_stream->ok()) {
-        VLOG(1) << DebugStreamPointers() << " reusing sub_stream "
-                << sub_stream->DebugStreamPointers();
+        VLOG(1) << "stream=" << this << " reusing sub_stream=" << sub_stream;
         pair.second = false;
         return sub_stream;
       }
@@ -206,8 +142,7 @@ absl::StatusOr<Stream *> Stream::GetOrCreateSubStream() {
       }
       bad_streams.push_back(std::move(sub_streams_.back().first));
       sub_streams_.pop_back();
-      VLOG(1) << DebugStreamPointers() << " dropped !ok sub_stream "
-              << sub_stream->DebugStreamPointers();
+      VLOG(1) << "stream=" << this << " dropped !ok sub_stream=" << sub_stream;
     } else {
       // The sub_stream is not reusable, move on to the next one.
       ++index;
@@ -218,8 +153,7 @@ absl::StatusOr<Stream *> Stream::GetOrCreateSubStream() {
   sub_streams_.emplace_back(std::make_unique<Stream>(parent_), false);
   Stream *sub_stream = sub_streams_.back().first.get();
   TF_RETURN_IF_ERROR(sub_stream->Initialize());
-  VLOG(1) << DebugStreamPointers() << " created new sub_stream "
-          << sub_stream->DebugStreamPointers();
+  VLOG(1) << "stream=" << this << " created new sub_stream=" << sub_stream;
 
   return sub_stream;
 }
@@ -240,15 +174,13 @@ void Stream::ReturnSubStream(Stream *sub_stream) {
 
     // Found the sub_stream.
     if (sub_stream->ok()) {
-      VLOG(1) << DebugStreamPointers() << " returned ok sub_stream "
-              << sub_stream->DebugStreamPointers();
+      VLOG(1) << "stream=" << this << " returned ok sub_stream=" << sub_stream;
       pair.second = true;
     } else {
       // The returned stream is not ok. Streams have a monotonic state
       // machine; the stream will remain in !ok forever. Swap it with the last
       // stream and pop it off.
-      VLOG(1) << DebugStreamPointers() << " returned !ok sub_stream "
-              << sub_stream->DebugStreamPointers();
+      VLOG(1) << "stream=" << this << " returned !ok sub_stream=" << sub_stream;
       const int64_t last = sub_streams_.size() - 1;
       if (index != last) {
         std::swap(pair, sub_streams_[last]);
@@ -259,9 +191,8 @@ void Stream::ReturnSubStream(Stream *sub_stream) {
     return;
   }
 
-  LOG(FATAL) << DebugStreamPointers()
-             << " did not create the returned sub-stream "
-             << sub_stream->DebugStreamPointers();
+  LOG(FATAL) << "stream=" << this << " did not create the returned sub-stream "
+             << sub_stream;
 }
 
 absl::Status Stream::WaitFor(Stream *other) {
@@ -278,12 +209,6 @@ absl::Status Stream::WaitFor(Event *event) {
   return parent_->WaitForEvent(this, event);
 }
 
-Stream &Stream::ThenMemcpy(void *host_dst, const DeviceMemoryBase &gpu_src,
-                           uint64_t size) {
-  CheckStatus(Memcpy(host_dst, gpu_src, size));
-  return *this;
-}
-
 absl::Status Stream::Memcpy(void *host_dst, const DeviceMemoryBase &gpu_src,
                             uint64_t size) {
   if (parent_->Memcpy(this, host_dst, gpu_src, size)) {
@@ -292,24 +217,12 @@ absl::Status Stream::Memcpy(void *host_dst, const DeviceMemoryBase &gpu_src,
   return absl::InternalError("failed to memcpy");
 }
 
-Stream &Stream::ThenMemcpy(DeviceMemoryBase *gpu_dst, const void *host_src,
-                           uint64_t size) {
-  CheckStatus(Memcpy(gpu_dst, host_src, size));
-  return *this;
-}
-
 absl::Status Stream::Memcpy(DeviceMemoryBase *gpu_dst, const void *host_src,
                             uint64_t size) {
   if (parent_->Memcpy(this, gpu_dst, host_src, size)) {
     return absl::OkStatus();
   }
   return absl::InternalError("failed to memcpy");
-}
-
-Stream &Stream::ThenMemcpy(DeviceMemoryBase *gpu_dst,
-                           const DeviceMemoryBase &gpu_src, uint64_t size) {
-  CheckStatus(Memcpy(gpu_dst, gpu_src, size));
-  return *this;
 }
 
 absl::Status Stream::Memcpy(DeviceMemoryBase *gpu_dst,
@@ -358,7 +271,7 @@ absl::Status Stream::BlockHostUntilDone() {
     LOG(INFO) << status_.ToString();
     absl::Status status = absl::InternalError(
         "stream did not block host until done; was already in an error state");
-    LOG(INFO) << DebugStreamPointers() << " " << status;
+    LOG(INFO) << "stream = " << this << " " << status;
     return status;
   }
 
@@ -366,12 +279,6 @@ absl::Status Stream::BlockHostUntilDone() {
   CheckError(error.ok());
 
   return error;
-}
-
-std::string Stream::DebugStreamPointers() const {
-  // Relies on the ToVlogString(const void*) overload above.
-  return absl::StrCat("[stream=", ToVlogString(this),
-                      ",impl=", ToVlogString(implementation_.get()), "]");
 }
 
 void Stream::CheckStatus(absl::Status status) {

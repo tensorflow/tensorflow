@@ -1158,7 +1158,9 @@ class MemoryBoundLoopOptimizer {
       const HloLiveRange& hlo_live_range,
       const HloAliasAnalysis& alias_analysis_,
       const CostAnalysis& cost_analysis,
-      const BufferValue::SizeFunction& size_function);
+      const BufferValue::SizeFunction& size_function,
+      const MemorySpaceAssignment::ReservedScopedMemoryFunction&
+          reserved_scoped_memory_fn);
 
   // Optimize the loop. Initialize must be called first.
   void Optimize();
@@ -1199,13 +1201,15 @@ class MemoryBoundLoopOptimizer {
     std::vector<int64_t> additional_memory_used;
   };
 
-  MemoryBoundLoopOptimizer(int loop_start, int loop_end,
-                           uint64_t alternate_memory_size,
-                           const MemoryBoundLoopOptimizerOptions& options,
-                           const HloLiveRange& hlo_live_range,
-                           const HloAliasAnalysis& alias_analysis_,
-                           const CostAnalysis& cost_analysis,
-                           const BufferValue::SizeFunction& size_function);
+  MemoryBoundLoopOptimizer(
+      int loop_start, int loop_end, uint64_t alternate_memory_size,
+      const MemoryBoundLoopOptimizerOptions& options,
+      const HloLiveRange& hlo_live_range,
+      const HloAliasAnalysis& alias_analysis_,
+      const CostAnalysis& cost_analysis,
+      const BufferValue::SizeFunction& size_function,
+      const MemorySpaceAssignment::ReservedScopedMemoryFunction&
+          reserved_scoped_memory_fn);
 
   // Initializes the data structures used by the optimizer.
   Status Initialize();
@@ -1289,6 +1293,8 @@ class MemoryBoundLoopOptimizer {
       uses_in_alternate_mem_;
   absl::flat_hash_map<const HloInstruction*, std::vector<ShapeIndex>>
       positions_in_alternate_mem_;
+  const MemorySpaceAssignment::ReservedScopedMemoryFunction&
+      reserved_scoped_memory_fn_;
 };
 
 // This class inherits from GlobalDecreasingSizeBestFitHeap with a notion of

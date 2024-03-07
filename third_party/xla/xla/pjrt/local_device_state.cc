@@ -27,6 +27,7 @@ limitations under the License.
 #include "xla/stream_executor/stream.h"
 #include "xla/util.h"
 #include "tsl/platform/errors.h"
+#include "tsl/platform/statusor.h"
 #include "tsl/profiler/lib/traceme.h"
 #include "tsl/protobuf/error_codes.pb.h"
 
@@ -58,46 +59,30 @@ LocalDeviceState::LocalDeviceState(se::StreamExecutor* executor,
   int num_device_to_device_streams =
       stream_options.has_value() ? stream_options->num_device_to_device_streams
                                  : kNumDeviceToDeviceStreams;
-  compute_stream_ = std::make_unique<se::Stream>(executor);
-  if (stream_options.has_value()) {
-    compute_stream_->SetPriority(stream_options->priority);
-  }
-  host_to_device_stream_ = std::make_unique<se::Stream>(executor);
-  if (stream_options.has_value()) {
-    host_to_device_stream_->SetPriority(stream_options->priority);
-  }
-  compute_stream_->Init();
-  host_to_device_stream_->Init();
+  auto create_stream = [executor, &stream_options]() {
+    if (stream_options.has_value()) {
+      return executor->CreateStream(stream_options->priority).value();
+    } else {
+      return executor->CreateStream().value();
+    }
+  };
+  compute_stream_ = create_stream();
+  host_to_device_stream_ = create_stream();
   if (use_callback_stream) {
     callback_stream_map_ =
         absl::flat_hash_map<se::Stream*, std::unique_ptr<se::Stream>>();
   }
   device_to_host_streams_.reserve(num_device_to_host_streams);
   for (int i = 0; i < num_device_to_host_streams; ++i) {
-    auto stream = std::make_unique<se::Stream>(executor);
-    if (stream_options.has_value()) {
-      stream->SetPriority(stream_options->priority);
-    }
-    stream->Init();
-    device_to_host_streams_.push_back(std::move(stream));
+    device_to_host_streams_.emplace_back(create_stream());
   }
   device_to_device_streams_.reserve(num_device_to_device_streams);
   for (int i = 0; i < num_device_to_device_streams; ++i) {
-    auto stream = std::make_unique<se::Stream>(executor);
-    if (stream_options.has_value()) {
-      stream->SetPriority(stream_options->priority);
-    }
-    stream->Init();
-    device_to_device_streams_.push_back(std::move(stream));
+    device_to_device_streams_.emplace_back(create_stream());
   }
   external_ready_event_streams_.reserve(kNumExternalReadyEventStreams);
   for (int i = 0; i < kNumExternalReadyEventStreams; ++i) {
-    auto stream = std::make_unique<se::Stream>(executor);
-    if (stream_options.has_value()) {
-      stream->SetPriority(stream_options->priority);
-    }
-    stream->Init();
-    external_ready_event_streams_.push_back(std::move(stream));
+    external_ready_event_streams_.emplace_back(create_stream());
   }
   execute_thread_ =
       std::make_unique<WorkerThread>(tsl::Env::Default(), "py_xla_execute");
@@ -153,8 +138,7 @@ absl::Status LocalDeviceState::ThenExecuteCallback(
     absl::MutexLock lock(&callback_stream_map_mu_);
     auto callback_stream = callback_stream_map_->find(stream);
     if (callback_stream == callback_stream_map_->end()) {
-      auto new_stream = std::make_unique<se::Stream>(executor_);
-      TF_RETURN_IF_ERROR(new_stream->Initialize());
+      TF_ASSIGN_OR_RETURN(auto new_stream, executor_->CreateStream());
       callback_stream =
           callback_stream_map_->insert({stream, std::move(new_stream)}).first;
     }
@@ -233,8 +217,7 @@ std::unique_ptr<se::Stream> LocalDeviceState::BorrowStreamFromPool() {
   }
 
   // The stream pool is empty, create a new stream.
-  auto stream = std::make_unique<se::Stream>(compute_stream_->parent());
-  CHECK(stream->Initialize().ok());
+  auto stream = compute_stream_->parent()->CreateStream().value();
   return stream;
 }
 

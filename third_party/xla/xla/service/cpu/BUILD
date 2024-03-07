@@ -20,7 +20,14 @@ load(
     "@local_tsl//tsl/mkl:build_defs.bzl",
     "mkl_deps",
 )
-load("@local_tsl//tsl/platform:build_config.bzl", "if_llvm_system_z_available", "tf_proto_library")
+load("@local_tsl//tsl/platform:build_config.bzl", "tf_proto_library")
+load(
+    "@local_tsl//tsl/platform:build_config_root.bzl",
+    "if_llvm_aarch64_available",
+    "if_llvm_powerpc_available",
+    "if_llvm_system_z_available",
+    "if_llvm_x86_available",
+)
 load("@local_tsl//tsl/platform:rules_cc.bzl", "cc_library")
 load(":build_defs.bzl", "runtime_copts")
 
@@ -366,7 +373,6 @@ cc_library(
         "@llvm-project//llvm:Support",
         "@llvm-project//llvm:Target",
         "@llvm-project//llvm:TargetParser",
-        "@llvm-project//llvm:X86CodeGen",  # fixdeps: keep
         "@llvm-project//mlir:AffineDialect",
         "@llvm-project//mlir:AffineToStandard",
         "@llvm-project//mlir:ArithDialect",
@@ -396,20 +402,14 @@ cc_library(
         "@local_tsl//tsl/platform:status",
         "@local_tsl//tsl/platform:statusor",
         "@local_tsl//tsl/protobuf:error_codes_proto_impl_cc",
-    ] + select({
-        "@local_tsl//tsl:arm_any": [
-            "@llvm-project//llvm:AArch64CodeGen",  # fixdeps: keep
-        ],
-        "@local_tsl//tsl:linux_ppc64le": [
-            "@llvm-project//llvm:PowerPCCodeGen",  # fixdeps: keep
-        ],
-        "@local_tsl//tsl:macos_arm64": [
-            "@llvm-project//llvm:AArch64CodeGen",  # fixdeps: keep
-        ],
-        "//conditions:default": [
-        ],
-    }) + if_llvm_system_z_available([
+    ] + if_llvm_aarch64_available([
+        "@llvm-project//llvm:AArch64CodeGen",  # fixdeps: keep
+    ]) + if_llvm_powerpc_available([
+        "@llvm-project//llvm:PowerPCCodeGen",  # fixdeps: keep
+    ]) + if_llvm_system_z_available([
         "@llvm-project//llvm:SystemZCodeGen",  # fixdeps: keep
+    ]) + if_llvm_x86_available([
+        "@llvm-project//llvm:X86CodeGen",  # fixdeps: keep
     ]),
 )
 

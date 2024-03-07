@@ -49,10 +49,10 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/init_mlir.h"
 #include "tensorflow/compiler/mlir/lite/common/tfl_pass_config.h"
 #include "tensorflow/compiler/mlir/lite/flatbuffer_export_flags.h"
-#include "tensorflow/compiler/mlir/lite/quantization/quantization_config.h"
 #include "tensorflow/compiler/mlir/lite/tf_tfl_translate_cl.h"
 #include "tensorflow/compiler/mlir/lite/tf_to_tfl_flatbuffer.h"
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h"
+#include "tensorflow/compiler/mlir/quantization/common/quantization_lib/quantization_config.h"
 #include "tensorflow/compiler/mlir/tensorflow/dialect_registration.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/mlir_roundtrip_flags.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/tf_mlir_translate_cl.h"
@@ -293,6 +293,7 @@ int main(int argc, char **argv) {
   pass_config.enable_stablehlo_conversion = enable_stablehlo_conversion;
   pass_config.legalize_custom_tensor_list_ops = legalize_custom_tensor_list_ops;
   pass_config.enable_hlo_to_tf_conversion = enable_hlo_to_tf_conversion;
+  pass_config.disable_hlo_to_tfl_conversion = disable_hlo_to_tfl_conversion;
   pass_config.reduce_type_precision = reduce_type_precision;
 
   toco::TocoFlags toco_flags;

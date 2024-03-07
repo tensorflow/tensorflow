@@ -64,7 +64,7 @@ absl::StatusOr<std::vector<uint8_t>> CompileGpuAsm(
     int cc_major, int cc_minor, const char* ptx_contents, GpuAsmOpts options,
     bool cancel_if_reg_spill = false);
 
-absl::StatusOr<std::vector<uint8_t>> CompileGpuAsmUsingLibNvPtxCompiler(
+absl::StatusOr<std::vector<uint8_t>> CompileGpuAsmUsingPtxAs(
     int cc_major, int cc_minor, const char* ptx_contents, GpuAsmOpts options,
     bool cancel_if_reg_spill = false);
 
@@ -92,7 +92,7 @@ struct HsacoImage {
 
 // Bundles the GPU machine code (HSA Code Object) and returns the resulting
 // binary (i.e. a fatbin) as a byte array.
-tsl::StatusOr<std::vector<uint8_t>> BundleGpuAsm(
+absl::StatusOr<std::vector<uint8_t>> BundleGpuAsm(
     std::vector<HsacoImage> images, const std::string rocm_root_dir);
 
 // Links multiple relocatable GPU images (e.g. results of ptxas -c) into a

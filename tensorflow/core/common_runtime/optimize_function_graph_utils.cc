@@ -218,10 +218,10 @@ StatusOr<OptimizedFunctionGraphInfo> ReadFromCache(const string& file_name,
 
   optimized_function_graph_proto.ParseFromString(
       optimized_function_graph_proto_str);
-  TF_ASSIGN_OR_RETURN(
-      StatusOr<OptimizedFunctionGraphInfo>
-          optimized_function_graph_info_restored,
-      OptimizedFunctionGraphInfo::FromProto(optimized_function_graph_proto));
+  TF_ASSIGN_OR_RETURN(absl::StatusOr<OptimizedFunctionGraphInfo>
+                          optimized_function_graph_info_restored,
+                      OptimizedFunctionGraphInfo::FromProto(
+                          std::move(optimized_function_graph_proto)));
 
   const absl::Duration cache_reading_duration =
       absl::Now() - cache_reading_start_time;

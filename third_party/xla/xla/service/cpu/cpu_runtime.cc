@@ -170,8 +170,8 @@ extern const char* const kOneDnnMatMulReorderSymbolName =
 namespace {
 
 // Inverses the encoding of a Shape protobuf into an LLVM global variable.
-StatusOr<Shape> DecodeSelfDescribingShapeConstant(const void* shape_ptr,
-                                                  int32_t size_bytes) {
+absl::StatusOr<Shape> DecodeSelfDescribingShapeConstant(const void* shape_ptr,
+                                                        int32_t size_bytes) {
   ShapeProto shape_proto;
   if (!shape_proto.ParseFromArray(shape_ptr, size_bytes)) {
     return tsl::errors::Internal("Failed parsing the shape proto");
@@ -185,7 +185,7 @@ StatusOr<Shape> DecodeSelfDescribingShapeConstant(const void* shape_ptr,
 }
 
 std::string ShapeString(const void* shape_ptr, int32_t shape_length) {
-  StatusOr<Shape> shape =
+  absl::StatusOr<Shape> shape =
       DecodeSelfDescribingShapeConstant(shape_ptr, shape_length);
   if (shape.ok()) {
     return ShapeUtil::HumanStringWithLayout(shape.value());
@@ -237,7 +237,7 @@ void ReleaseInfeedBufferAfterDequeueImpl(
           << device_ordinal;
 
   XfeedManager* xfeed = GetXfeedManager(device_ordinal);
-  StatusOr<Shape> shape =
+  absl::StatusOr<Shape> shape =
       DecodeSelfDescribingShapeConstant(shape_ptr, shape_length);
   xfeed->infeed()->ReleaseCurrentBuffer(buffer_length, buffer_ptr,
                                         std::move(shape));
@@ -275,7 +275,7 @@ void ReleaseOutfeedBufferAfterPopulationImpl(
           << device_ordinal;
 
   XfeedManager* xfeed = GetXfeedManager(device_ordinal);
-  StatusOr<Shape> shape =
+  absl::StatusOr<Shape> shape =
       DecodeSelfDescribingShapeConstant(shape_ptr, shape_length);
   xfeed->outfeed()->ReleaseCurrentBuffer(buffer_length, buffer_ptr,
                                          std::move(shape));

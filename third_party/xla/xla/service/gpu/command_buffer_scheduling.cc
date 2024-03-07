@@ -29,6 +29,7 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/status/status.h"
+#include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
@@ -128,8 +129,12 @@ static bool IsCommand(const HloCustomCallInstruction* hlo,
   }
 
   if (config.enabled_commands.contains(DebugOptions::CUSTOM_CALL) &&
-      hlo->custom_call_target() == "triton_kernel_call")
+      hlo->custom_call_target() == "triton_kernel_call" &&
+      // TODO(b/327718087): This is an ugly hack to prevent capturing triton
+      // custom calls that might do autotuning at run time.
+      !absl::StrContains(hlo->metadata().op_name(), "Autotuner")) {
     return true;
+  }
 
   return false;
 }

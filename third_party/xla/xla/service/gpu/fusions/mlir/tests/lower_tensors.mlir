@@ -136,6 +136,42 @@ module {
 // -----
 
 module {
+  func.func @complex_tensor_insert(
+      %arg0: tensor<10xcomplex<f32>>) -> tensor<10xcomplex<f32>> {
+    %c1 = arith.constant 1 : index
+    %real = arith.constant 3.0 : f32
+    %imag = arith.constant 2.0 : f32
+    %complex = complex.create %real, %imag : complex<f32>
+    %out = tensor.insert %complex into %arg0[%c1] : tensor<10xcomplex<f32>>
+    func.return %out : tensor<10xcomplex<f32>>
+  }
+}
+
+// CHECK: @complex_tensor_insert(%[[ARG0:.*]]: !llvm.ptr
+// CHECK: %[[C:.*]] = complex.create
+// CHECK: %[[GEP:.*]] = llvm.getelementptr inbounds %[[ARG0]][1] : (!llvm.ptr) -> !llvm.ptr, !llvm.struct<(f32, f32)>
+// CHECK: %[[CAST:.*]] = builtin.unrealized_conversion_cast %[[C]] : complex<f32> to !llvm.struct<(f32, f32)>
+// CHECK: llvm.store %[[CAST]], %[[GEP]] : !llvm.struct<(f32, f32)>, !llvm.ptr
+
+// -----
+
+module {
+  func.func @complex_tensor_extract(
+      %arg0: tensor<10xcomplex<f32>>) -> complex<f32> {
+    %c1 = arith.constant 1 : index
+    %v2 = tensor.extract %arg0[%c1] : tensor<10xcomplex<f32>>
+    func.return %v2 : complex<f32>
+  }
+}
+
+// CHECK: @complex_tensor_extract(%[[ARG0:.*]]: !llvm.ptr
+// CHECK: %[[GEP:.*]] = llvm.getelementptr inbounds %[[ARG0]][1] : (!llvm.ptr) -> !llvm.ptr, !llvm.struct<(f32, f32)>
+// CHECK: %[[LOAD:.*]] = llvm.load %[[GEP]] : !llvm.ptr -> !llvm.struct<(f32, f32)>
+// CHECK: builtin.unrealized_conversion_cast %[[LOAD]] : !llvm.struct<(f32, f32)> to complex<f32>
+
+// -----
+
+module {
   // This example is a bit silly, in real life there wouldn't be a loop (the
   // loop body would be executed by different threads). We're just doing it this
   // way so control flow with shared memory is tested as well.
@@ -191,3 +227,57 @@ module {
 // CHECK:            %[[ELEM_ADDR:.*]] = llvm.getelementptr inbounds %[[CAST]]
 // CHECK:            llvm.load %[[ELEM_ADDR]]
 
+// -----
+
+module {
+  func.func @atomic_rmw_f32(%in: tensor<2x4xf32>, %i: index, %j: index)
+      -> (tensor<2x4xf32>) {
+    %ret = xla_gpu.atomic_rmw %in[%i, %j] : tensor<2x4xf32> {
+      ^bb0(%current : f32):
+        %c42 = arith.constant 1.0 : f32
+        %add = arith.addf %current, %c42 : f32
+        xla_gpu.yield %add : f32
+    }
+    return %ret : tensor<2x4xf32>
+  }
+}
+
+// CHECK: @atomic_rmw_f32
+// CHECK: %[[ADDR:.*]] = llvm.getelementptr
+// CHECK-NEXT: %[[INIT:.*]] = llvm.load %[[ADDR]]
+// CHECK-NEXT: scf.while (%[[VAR:.*]] = %[[INIT]])
+// CHECK: %[[RES:.*]] = llvm.bitcast %{{.*}} : f32 to i32
+// CHECK-NEXT: llvm.cmpxchg %[[ADDR]], %[[VAR]], %[[RES]]
+
+// -----
+
+module {
+  func.func @atomic_rmw_f16(%in: tensor<2x4xf16>, %i: index, %j: index)
+      -> (tensor<2x4xf16>) {
+    %ret = xla_gpu.atomic_rmw %in[%i, %j] : tensor<2x4xf16> {
+      ^bb0(%current : f16):
+        %c1 = arith.constant 1.0 : f16
+        %add = arith.addf %current, %c1 : f16
+        xla_gpu.yield %add : f16
+    }
+    return %ret : tensor<2x4xf16>
+  }
+}
+
+// CHECK: @atomic_rmw_f16
+// CHECK: %[[ADDR:.*]] = llvm.getelementptr
+// CHECK-NEXT: %[[ADDR_INT:.*]] = llvm.ptrtoint %[[ADDR]]
+// CHECK-NEXT: %[[OFFSET:.*]] = llvm.and %[[ADDR_INT]], %{{.*}}
+// CHECK-NEXT: %[[INDEX:.*]] = llvm.mul %[[OFFSET]], %{{.*}}
+// CHECK-NEXT: %[[BASE:.*]] = llvm.getelementptr inbounds %[[ADDR]][%[[INDEX]]]
+// CHECK: %[[INIT:.*]] = llvm.load %[[BASE]]
+// CHECK-NEXT: scf.while (%[[VAR:.*]] = %[[INIT]])
+// CHECK-NEXT: %[[VAR_SHIFT:.*]] = llvm.lshr %[[VAR]], %{{.*}}
+// CHECK-NEXT: %[[VAR_TRUNC:.*]] = llvm.trunc %[[VAR_SHIFT]]
+// CHECK-NEXT: llvm.bitcast %[[VAR_TRUNC]] : i16 to f16
+// CHECK: %[[RES:.*]] = llvm.bitcast %{{.*}} : f16 to i16
+// CHECK-NEXT: %[[RES_WIDE:.*]] = llvm.zext %[[RES]]
+// CHECK-NEXT: %[[NEW_MASKED:.*]] = llvm.and %[[VAR]], %{{.*}}
+// CHECK-NEXT: %[[RES_SHIFT:.*]] = llvm.shl %[[RES_WIDE]], %{{.*}}
+// CHECK-NEXT: %[[NEW:.*]] = llvm.or %[[NEW_MASKED]], %[[RES_SHIFT]]
+// CHECK-NEXT: llvm.cmpxchg %[[BASE]], %[[VAR]], %[[NEW]]

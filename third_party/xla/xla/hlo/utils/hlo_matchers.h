@@ -270,6 +270,7 @@ HLO_MATCHER(Broadcast);
 HLO_MATCHER(Call);
 HLO_MATCHER(Ceil);
 HLO_MATCHER(Clamp);
+HLO_MATCHER(CollectiveBroadcast);
 HLO_MATCHER(CollectivePermute);
 HLO_MATCHER(CollectivePermuteStart);
 HLO_MATCHER(CollectivePermuteDone);

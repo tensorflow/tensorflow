@@ -50,7 +50,7 @@ class CpuInfeedBuffer : public cpu::runtime::XfeedBuffer {
 
   int32_t length() override { return length_; }
   void* data() override { return buffer_; }
-  void Done(StatusOr<Shape> /*shape*/) override { delete this; }
+  void Done(absl::StatusOr<Shape> /*shape*/) override { delete this; }
 
  private:
   int32_t length_;
@@ -62,14 +62,14 @@ class CpuOutfeedBuffer : public cpu::runtime::XfeedBuffer {
   CpuOutfeedBuffer(void* destination, int32_t length)
       : destination_(destination), length_(length) {}
 
-  StatusOr<Shape> WaitForNotification() {
+  absl::StatusOr<Shape> WaitForNotification() {
     done_.WaitForNotification();
     return status_;
   }
 
   int32_t length() override { return length_; }
   void* data() override { return destination_; }
-  void Done(StatusOr<Shape> shape) override {
+  void Done(absl::StatusOr<Shape> shape) override {
     status_ = std::move(shape);
     done_.Notify();
   }
@@ -77,13 +77,13 @@ class CpuOutfeedBuffer : public cpu::runtime::XfeedBuffer {
  private:
   void* destination_;
   int32_t length_;
-  StatusOr<Shape> status_;
+  absl::StatusOr<Shape> status_;
   tsl::Notification done_;
 };
 
 // Transfers infeed data to device. InfeedBuffer->Done() must be called to
 // clean up the memory allocated for InfeedBuffer.
-StatusOr<cpu::runtime::XfeedBuffer*> TransferBufferToInfeedInternal(
+absl::StatusOr<cpu::runtime::XfeedBuffer*> TransferBufferToInfeedInternal(
     int64_t size, const void* source) {
   if (size > std::numeric_limits<int32_t>::max()) {
     return InvalidArgument("CPU infeed of %d bytes exceeds maximum of %d bytes",
@@ -114,7 +114,7 @@ Status TransferBufferToInfeed(int device_ordinal, int64_t size,
   return OkStatus();
 }
 
-StatusOr<Shape> TransferBuffersFromOutfeedInternal(
+absl::StatusOr<Shape> TransferBuffersFromOutfeedInternal(
     int device_ordinal, absl::Span<const std::pair<void*, int64_t>> buffer_data,
     bool is_tuple) {
   std::vector<std::unique_ptr<CpuOutfeedBuffer>> buffers;
@@ -160,14 +160,14 @@ StatusOr<Shape> TransferBuffersFromOutfeedInternal(
   return std::move(outfed_shapes[0]);
 }
 
-StatusOr<Shape> TransferArrayBufferFromOutfeed(int device_ordinal,
-                                               void* destination,
-                                               int64_t size_bytes) {
+absl::StatusOr<Shape> TransferArrayBufferFromOutfeed(int device_ordinal,
+                                                     void* destination,
+                                                     int64_t size_bytes) {
   return TransferBuffersFromOutfeedInternal(
       device_ordinal, {{destination, size_bytes}}, /*is_tuple=*/false);
 }
 
-StatusOr<Shape> TransferTupleBuffersFromOutfeed(
+absl::StatusOr<Shape> TransferTupleBuffersFromOutfeed(
     int device_ordinal,
     absl::Span<const std::pair<void*, int64_t>> buffer_data) {
   return TransferBuffersFromOutfeedInternal(device_ordinal, buffer_data,

@@ -51,20 +51,20 @@ using TestTypes = ::testing::Types<TestPair<DataType::kSI4, DataType::kBF16>,
 TYPED_TEST_SUITE(QuantizationTypeTest, TestTypes);
 
 TYPED_TEST(QuantizationTypeTest, Dequantize) {
-  typename TypeParam::StorageT quantized_value = 5;
-  typename TypeParam::StorageT zero_point = 3;
-  typename TypeParam::ExpressedT scale = .5;
-  typename TypeParam::ExpressedT expected_value = 1.0;
+  typename TypeParam::StorageT quantized_value{5};
+  typename TypeParam::StorageT zero_point{3};
+  typename TypeParam::ExpressedT scale{.5f};
+  typename TypeParam::ExpressedT expected_value{1.0f};
 
   EXPECT_THAT(Dequantize(quantized_value, zero_point, scale),
               Eq(expected_value));
 }
 
 TYPED_TEST(QuantizationTypeTest, Quantize) {
-  typename TypeParam::ExpressedT expressed_value = 1.0;
-  typename TypeParam::StorageT zero_point = 3;
-  typename TypeParam::ExpressedT scale_inv = 2;
-  typename TypeParam::StorageT expected_value = 5;
+  typename TypeParam::ExpressedT expressed_value{1.0f};
+  typename TypeParam::StorageT zero_point{3};
+  typename TypeParam::ExpressedT scale_inv{2.0f};
+  typename TypeParam::StorageT expected_value{5};
 
   EXPECT_THAT((Quantize<TypeParam::kStorageType, TypeParam::kExpressedType>(
                   expressed_value, zero_point, scale_inv)),

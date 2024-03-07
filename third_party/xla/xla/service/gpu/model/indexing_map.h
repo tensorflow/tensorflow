@@ -43,9 +43,55 @@ struct Range {
 
   bool IsPoint() const { return lower_bound == upper_bound; }
 
+  bool Contains(int64_t value) const {
+    return value >= lower_bound && value <= upper_bound;
+  }
+
+  // All comparison operators here return true or false if the result is known,
+  // or nullopt if it may be either true or false.
+  std::optional<bool> operator>(int64_t value) const {
+    if (lower_bound > value) {
+      return true;
+    }
+    if (upper_bound <= value) {
+      return false;
+    }
+    return std::nullopt;
+  }
+  std::optional<bool> operator<(int64_t value) const {
+    if (upper_bound < value) {
+      return true;
+    }
+    if (lower_bound >= value) {
+      return false;
+    }
+    return std::nullopt;
+  }
+  std::optional<bool> operator>=(int64_t value) const {
+    return Not(*this < value);
+  }
+  std::optional<bool> operator<=(int64_t value) const {
+    return Not(*this > value);
+  }
+  std::optional<bool> operator==(int64_t value) const {
+    if (IsPoint()) return lower_bound == value;
+    if (!Contains(value)) return false;
+    return std::nullopt;
+  }
+  std::optional<bool> operator!=(int64_t value) const {
+    return Not(*this == value);
+  }
+
   int64_t lower_bound = 0;
   int64_t upper_bound = 0;
+
+ private:
+  static std::optional<bool> Not(std::optional<bool> val) {
+    if (val) return !*val;
+    return val;
+  }
 };
+
 std::ostream& operator<<(std::ostream& out, const Range& range);
 bool operator==(const Range& lhs, const Range& rhs);
 
@@ -79,6 +125,8 @@ class RangeEvaluator {
   llvm::DenseMap<mlir::AffineExpr, Range> expression_ranges_cache_;
 };
 
+std::vector<Range> RangesFromTensorSizes(
+    absl::Span<const int64_t> tensor_sizes);
 
 // Contains an affine map with N dimension expressions and M symbols:
 //   (d0, ..., d_{N - 1})[s_0, ..., s_{M - 1}] -> f(d_i, s_j)
@@ -117,6 +165,14 @@ class IndexingMap {
       AddConstraint(expr, range);
     }
   }
+
+  IndexingMap(mlir::AffineMap affine_map, std::vector<Range> dim_ranges,
+              std::vector<Range> symbol_ranges,
+              const llvm::DenseMap<mlir::AffineExpr, Range>& constraints)
+      : affine_map_(affine_map),
+        dim_ranges_(std::move(dim_ranges)),
+        symbol_ranges_(std::move(symbol_ranges)),
+        constraints_(constraints) {}
 
   static IndexingMap GetUndefined() { return IndexingMap(); }
 

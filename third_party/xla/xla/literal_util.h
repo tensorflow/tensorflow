@@ -123,7 +123,7 @@ class LiteralUtil {
   // Creates a scalar literal value containing the NaN value of the given
   // primitive type. Fail for non-inexact types. For complex types, returns a
   // nan + nan * j value.
-  static StatusOr<Literal> NanValue(PrimitiveType primitive_type);
+  static absl::StatusOr<Literal> NanValue(PrimitiveType primitive_type);
   // Creates a literal of the given shape where each element is `value`.
   template <typename NativeT>
   static Literal CreateFullWithDescendingLayout(
@@ -253,7 +253,7 @@ class LiteralUtil {
   // generator to populate the literal's values.
   // Returns the new literal object, or an error Status if failed.
   template <PrimitiveType type, typename T = primitive_util::NativeTypeOf<type>>
-  static StatusOr<Literal> CreateLiteralWithGenerator(
+  static absl::StatusOr<Literal> CreateLiteralWithGenerator(
       const Shape& shape,
       absl::FunctionRef<T(absl::Span<const int64_t>)> generator);
 
@@ -263,16 +263,17 @@ class LiteralUtil {
   // Returns the new literal object, or an error Status if failed.
   template <PrimitiveType type, typename E,
             typename T = primitive_util::NativeTypeOf<type>>
-  static StatusOr<Literal> CreateRandomLiteral(const Shape& shape, E* engine,
-                                               T mean, T stddev);
+  static absl::StatusOr<Literal> CreateRandomLiteral(const Shape& shape,
+                                                     E* engine, T mean,
+                                                     T stddev);
 
   // Creates a literal with the supplied shape, and initializes the literal
   // values using a normal distribution with given mean and stddev standard
   // deviation.
   // Returns the new literal object, or an error Status if failed.
   template <PrimitiveType type, typename T = primitive_util::NativeTypeOf<type>>
-  static StatusOr<Literal> CreateRandomLiteral(const Shape& shape, T mean,
-                                               T stddev);
+  static absl::StatusOr<Literal> CreateRandomLiteral(const Shape& shape, T mean,
+                                                     T stddev);
 
   //
   // End of factory methods.
@@ -535,7 +536,7 @@ template <typename NativeT>
 }
 
 template <PrimitiveType type, typename T>
-/* static */ StatusOr<Literal> LiteralUtil::CreateLiteralWithGenerator(
+/* static */ absl::StatusOr<Literal> LiteralUtil::CreateLiteralWithGenerator(
     const Shape& shape,
     absl::FunctionRef<T(absl::Span<const int64_t>)> generator) {
   using NativeT = primitive_util::NativeTypeOf<type>;
@@ -547,7 +548,7 @@ template <PrimitiveType type, typename T>
 }
 
 template <PrimitiveType type, typename E, typename T>
-/* static */ StatusOr<Literal> LiteralUtil::CreateRandomLiteral(
+/* static */ absl::StatusOr<Literal> LiteralUtil::CreateRandomLiteral(
     const Shape& shape, E* engine, T mean, T stddev) {
   using NativeT = primitive_util::NativeTypeOf<type>;
   std::normal_distribution<double> generator(mean, stddev);
@@ -558,7 +559,7 @@ template <PrimitiveType type, typename E, typename T>
 }
 
 template <PrimitiveType type, typename T>
-/* static */ StatusOr<Literal> LiteralUtil::CreateRandomLiteral(
+/* static */ absl::StatusOr<Literal> LiteralUtil::CreateRandomLiteral(
     const Shape& shape, T mean, T stddev) {
   std::minstd_rand0 engine;
   return CreateRandomLiteral<type>(shape, &engine, mean, stddev);

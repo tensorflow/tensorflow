@@ -40,6 +40,7 @@ limitations under the License.
 #include "xla/pjrt/lru_cache.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_compiler.h"
+#include "xla/pjrt/pjrt_layout.h"
 #include "xla/pjrt/status_casters.h"
 #include "xla/primitive_util.h"
 #include "xla/python/ifrt/array.h"
@@ -99,7 +100,8 @@ StatusOr<const Shape*> XlaDynamicShape(ifrt::Array* ifrt_array,
       dims = pjrt_buffer->dimensions();
     }
     Shape shape = ShapeUtil::MakeShape(pjrt_buffer->element_type(), dims);
-    *shape.mutable_layout() = pjrt_buffer->layout();
+    // TODO(b/327524065): fix this
+    *shape.mutable_layout() = GetXlaLayoutUnsafe(pjrt_buffer->layout());
     scratch = std::move(shape);
   }
   return &scratch.value();
@@ -725,7 +727,9 @@ py::dict PyArray::CudaArrayInterface() {
   py::str typestr =
       ValueOrThrow(TypeDescriptorForPrimitiveType(pjrt_buffer->element_type()));
 
-  if (!LayoutUtil::IsMonotonicWithDim0Major(pjrt_buffer->layout())) {
+  // TODO(b/327524065): use PjRtLayout directly instead of xla::Layout
+  Layout xla_layout = GetXlaLayoutUnsafe(pjrt_buffer->layout());
+  if (!LayoutUtil::IsMonotonicWithDim0Major(xla_layout)) {
     throw py::attribute_error(
         "__cuda_array_interface__ is only currently supported for "
         "buffers in row-major order.");
@@ -1175,16 +1179,19 @@ int PyArray_bf_getbuffer(PyObject* exporter, Py_buffer* view, int flags) {
       return InvalidArgument("Deleted buffer used in buffer protocol.");
     }
 
+    // TODO(b/327524065): use PjRtLayout directly instead of xla::Layout
+    Layout xla_layout = GetXlaLayoutUnsafe(buffer.layout());
+
     if (((flags & PyBUF_C_CONTIGUOUS) == PyBUF_C_CONTIGUOUS ||
          (flags & PyBUF_STRIDES) == PyBUF_ND) &&
-        !LayoutUtil::IsMonotonicWithDim0Major(buffer.layout())) {
+        !LayoutUtil::IsMonotonicWithDim0Major(xla_layout)) {
       return InvalidArgument("Buffer is not in C-contiguous layout.");
     } else if ((flags & PyBUF_F_CONTIGUOUS) == PyBUF_F_CONTIGUOUS &&
-               !LayoutUtil::IsMonotonicWithDim0Minor(buffer.layout())) {
+               !LayoutUtil::IsMonotonicWithDim0Minor(xla_layout)) {
       return InvalidArgument("Buffer is not in F-contiguous layout.");
     } else if ((flags & PyBUF_ANY_CONTIGUOUS) == PyBUF_ANY_CONTIGUOUS &&
-               !LayoutUtil::IsMonotonicWithDim0Major(buffer.layout()) &&
-               !LayoutUtil::IsMonotonicWithDim0Minor(buffer.layout())) {
+               !LayoutUtil::IsMonotonicWithDim0Major(xla_layout) &&
+               !LayoutUtil::IsMonotonicWithDim0Minor(xla_layout)) {
       return InvalidArgument("Buffer is not in contiguous layout.");
     }
     std::memset(view, 0, sizeof(Py_buffer));
@@ -1207,8 +1214,8 @@ int PyArray_bf_getbuffer(PyObject* exporter, Py_buffer* view, int flags) {
         view->shape = reinterpret_cast<Py_ssize_t*>(
             const_cast<int64_t*>(buffer.dimensions().data()));
         if ((flags & PyBUF_STRIDES) == PyBUF_STRIDES) {
-          extra->strides = ByteStridesForShape(
-              buffer.element_type(), buffer.dimensions(), buffer.layout());
+          extra->strides = ByteStridesForShape(buffer.element_type(),
+                                               buffer.dimensions(), xla_layout);
           view->strides = reinterpret_cast<Py_ssize_t*>(
               const_cast<int64_t*>(extra->strides.data()));
         }

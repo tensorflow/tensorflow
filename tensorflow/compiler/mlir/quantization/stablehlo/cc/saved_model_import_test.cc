@@ -20,6 +20,7 @@ limitations under the License.
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/OwningOpRef.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/quantization/common/test_base.h"
+#include "tensorflow/compiler/mlir/quantization/stablehlo/cc/types.h"
 
 namespace mlir::quant::stablehlo {
 namespace {
@@ -28,7 +29,7 @@ using ::testing::IsEmpty;
 using ::testing::Pair;
 using ::testing::UnorderedElementsAre;
 
-class UpdateFunctionAliasesTest : public QuantizationTestBase {};
+using UpdateFunctionAliasesTest = ::mlir::quant::QuantizationTestBase;
 
 TEST_F(UpdateFunctionAliasesTest, NoAliasesReturnsEmptyMap) {
   // MLIR @main function corresponds to the TF function "main_original".

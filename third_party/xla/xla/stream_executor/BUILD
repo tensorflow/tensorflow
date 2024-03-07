@@ -70,7 +70,6 @@ filegroup(
         "launch_dim.h",
         "memory_allocation.h",
         "module_spec.h",
-        "multi_platform_manager.h",
         "numeric_options.h",
         "platform.h",
         "platform_manager.h",
@@ -98,7 +97,6 @@ filegroup(
 STREAM_EXECUTOR_DEPENDENCIES = [
     ":device_description_proto_cc",
     ":host_or_device_scalar",
-    ":multi_platform_manager",
     "@com_google_absl//absl/algorithm:container",
     "@com_google_absl//absl/base:core_headers",
     "@com_google_absl//absl/container:inlined_vector",
@@ -261,15 +259,6 @@ cc_library(
         "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:statusor",
     ],
-)
-
-# TODO(hebecker): Remove compatibility target when all users have been migrated to :platform_manager
-cc_library(
-    name = "multi_platform_manager",
-    hdrs = ["multi_platform_manager.h"],
-    deprecation = "The type MultiPlatformManager is being renamed to PlatformManager. " +
-                  "Use target :platform_manager instead.",
-    deps = [":platform_manager"],
 )
 
 cc_library(

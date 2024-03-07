@@ -996,7 +996,9 @@ using FusedMHASignature = void(DeviceMemoryBase /*BMM1_inputA_data*/,
                                DeviceMemoryBase /* output_data */,
                                DeviceMemoryBase /* mask_data */,
                                DeviceMemoryBase /* bias_data */,
-                               DeviceMemoryBase /* activation_data */);
+                               DeviceMemoryBase /* activation_data */,
+                               DeviceMemoryBase /* seqlen_q_data */,
+                               DeviceMemoryBase /* seqlen_k_data */);
 using FusedMHARunner = OpRunner<FusedMHASignature>;
 
 using FusedMHABackwardSignature = void(
@@ -1011,7 +1013,8 @@ using FusedMHABackwardSignature = void(
     DeviceMemoryBase /* softmax_sum_data */,
     DeviceMemoryBase /* d_Q_accum_data */, DeviceMemoryBase /* mask_data */,
     DeviceMemoryBase /* d_bias_data */, DeviceMemoryBase /* fwd_output_data */,
-    DeviceMemoryBase /* bias_data */);
+    DeviceMemoryBase /* bias_data */, DeviceMemoryBase /* seqlen_q_data */,
+    DeviceMemoryBase /* seqlen_k_data */);
 using FusedMHABackwardRunner = OpRunner<FusedMHABackwardSignature>;
 
 // Describes the configuration for the algorithms that will used.

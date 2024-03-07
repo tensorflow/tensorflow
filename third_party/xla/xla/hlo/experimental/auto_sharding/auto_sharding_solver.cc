@@ -36,11 +36,12 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
-#include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/time/clock.h"
 #include "absl/time/time.h"
 #include "xla/hlo/experimental/auto_sharding/auto_sharding_strategy.h"
+#include "xla/status.h"
+#include "xla/status_macros.h"
 #include "xla/util.h"
 #include "tsl/platform/fingerprint.h"
 #include "tsl/platform/hash.h"
@@ -68,6 +69,9 @@ constexpr double kMaxCostEpsilon = 1.0001;
 // To compensate, the overbudget objective coefficient must be amplified by the
 // same amount.
 constexpr double kMemoryMultiplier = 1e-6;
+
+// Any memory terms below this threshold will be dropped (to reduce MIP size).
+constexpr double kTinyTermThreshold = 1e-6;
 
 bool AutoShardingSolverResult::operator==(
     const AutoShardingSolverResult& other) const {
@@ -455,35 +459,53 @@ AutoShardingSolverResult CallORToolsSolver(
   }
   // c.
   if (request.memory_budget() > 0) {
+    int tiny_term_count = 0;
     for (LivenessIdx time_idx = 0; time_idx < request.live_size(); ++time_idx) {
-      MPConstraint* constraint = solver->MakeRowConstraint(
-          -MPSolver::infinity(), kMemoryMultiplier * request.memory_budget(),
-          absl::StrCat("mem[", time_idx, "]"));
+      MPConstraint* constraint =
+          solver->MakeRowConstraint(-MPSolver::infinity(), MPSolver::infinity(),
+                                    absl::StrCat("mem[", time_idx, "]"));
       if (overbudget_var) constraint->SetCoefficient(overbudget_var, -1.0);
+      double tiny_term_total = 0.0;  // Used to trim the memory budget downward.
       for (NodeIdx node_idx : request.live(time_idx).nodes()) {
+        double tiny_term_max = 0.0;
         for (NodeStrategyIdx j = 0; j < s[node_idx].size(); ++j) {
+          double memory_cost = request.memory_costs(node_idx).costs(j);
+          if (memory_cost < kTinyTermThreshold * request.memory_budget()) {
+            tiny_term_max = std::max(tiny_term_max, memory_cost);
+            if (memory_cost > 0.0) ++tiny_term_count;
+            continue;
+          }
+          memory_cost *= kMemoryMultiplier;
           const double accumulated_coefficient =
               constraint->GetCoefficient(s[node_idx][j]);
-          const double memory_cost =
-              kMemoryMultiplier * request.memory_costs(node_idx).costs(j);
           constraint->SetCoefficient(s[node_idx][j],
                                      accumulated_coefficient + memory_cost);
         }
+        tiny_term_total += tiny_term_max;
       }
       if (!request.live_edges().empty() && request.enable_memory_edge_costs()) {
         for (EdgeIdx edge_idx : request.live_edges(time_idx).edges()) {
+          double tiny_term_max = 0.0;
           for (EdgeStrategyIdx j = 0; j < e[edge_idx].size(); ++j) {
+            double memory_cost = request.memory_edge_costs(edge_idx).costs(j);
+            if (memory_cost < kTinyTermThreshold * request.memory_budget()) {
+              tiny_term_max = std::max(tiny_term_max, memory_cost);
+              if (memory_cost > 0.0) ++tiny_term_count;
+              continue;
+            }
+            memory_cost *= kMemoryMultiplier;
             const double accumulated_coefficient =
                 constraint->GetCoefficient(e[edge_idx][j]);
-            const double memory_cost =
-                kMemoryMultiplier *
-                request.memory_edge_costs(edge_idx).costs(j);
             constraint->SetCoefficient(e[edge_idx][j],
                                        accumulated_coefficient + memory_cost);
           }
+          tiny_term_total += tiny_term_max;
         }
       }
+      constraint->SetUB(kMemoryMultiplier *
+                        (request.memory_budget() - tiny_term_total));
     }
+    LOG(INFO) << "Number of tiny terms: " << tiny_term_count;
     if (overbudget_var) {
       solver->MutableObjective()->SetCoefficient(
           overbudget_var,
@@ -638,6 +660,7 @@ AutoShardingSolverResult CallORToolsSolver(
           << "Number of workers: " << num_workers << "\n"
           << "Number of threads: " << solver->GetNumThreads() << "\n"
           << "Time limit: " << solver->time_limit() << "\n"
+          << "Request valid: " << ValidateRequest(request).ok() << "\n"
           << "Aliases: " << request.aliases_size() << "\n"
           << "Unique nodes: " << unique_nodes << "\n"
           << "Unique edges: " << unique_edges << "\n"
@@ -981,23 +1004,23 @@ std::vector<std::string> Rationalize(const AutoShardingSolverRequest& request,
   return rationales;
 }
 
-void ValidateRequest(const AutoShardingSolverRequest& request) {
+Status ValidateRequest(const AutoShardingSolverRequest& request) {
   const int num_nodes = request.num_nodes();
   const int num_edges = request.edges_size();
-  CHECK_EQ(num_nodes, request.computation_costs_size());
-  CHECK_EQ(num_nodes, request.communication_costs_size());
-  CHECK_EQ(num_nodes, request.memory_costs_size());
-  CHECK_EQ(num_edges, request.resharding_costs_size());
+  TF_RET_CHECK(num_nodes == request.computation_costs_size());
+  TF_RET_CHECK(num_nodes == request.communication_costs_size());
+  TF_RET_CHECK(num_nodes == request.memory_costs_size());
+  TF_RET_CHECK(num_edges == request.resharding_costs_size());
 
   for (NodeIdx u = 0; u < num_nodes; ++u) {
     const int num_strategies = request.computation_costs(u).costs_size();
-    CHECK_GE(num_strategies, 1);
-    CHECK_EQ(num_strategies, request.communication_costs(u).costs_size());
-    CHECK_EQ(num_strategies, request.memory_costs(u).costs_size());
+    TF_RET_CHECK(num_strategies >= 1);
+    TF_RET_CHECK(num_strategies == request.communication_costs(u).costs_size());
+    TF_RET_CHECK(num_strategies == request.memory_costs(u).costs_size());
     for (NodeStrategyIdx strategy = 0; strategy < num_strategies; ++strategy) {
-      CHECK_GE(request.computation_costs(u).costs(strategy), 0.0);
-      CHECK_GE(request.communication_costs(u).costs(strategy), 0.0);
-      CHECK_GE(request.memory_costs(u).costs(strategy), 0.0);
+      TF_RET_CHECK(request.computation_costs(u).costs(strategy) >= 0.0);
+      TF_RET_CHECK(request.communication_costs(u).costs(strategy) >= 0.0);
+      TF_RET_CHECK(request.memory_costs(u).costs(strategy) >= 0.0);
     }
   }
 
@@ -1005,12 +1028,12 @@ void ValidateRequest(const AutoShardingSolverRequest& request) {
   for (EdgeIdx e = 0; e < num_edges; ++e) {
     const int u = request.edges(e).first();
     const int v = request.edges(e).second();
-    CHECK_GE(u, 0);
-    CHECK_LT(u, num_nodes);
-    CHECK_GE(v, 0);
-    CHECK_LT(v, num_nodes);
-    CHECK_LT(u, v);
-    CHECK_EQ(edges_seen.count({u, v}), 0);
+    TF_RET_CHECK(u >= 0);
+    TF_RET_CHECK(u < num_nodes);
+    TF_RET_CHECK(v >= 0);
+    TF_RET_CHECK(v < num_nodes);
+    TF_RET_CHECK(u < v);
+    TF_RET_CHECK(edges_seen.count({u, v}) == 0);
     edges_seen.insert({u, v});
 
     const int num_strategies = request.resharding_costs(e).costs_size();
@@ -1018,9 +1041,10 @@ void ValidateRequest(const AutoShardingSolverRequest& request) {
     const int num_v_strategies = request.computation_costs(v).costs_size();
     CHECK_EQ(num_strategies, num_u_strategies * num_v_strategies);
     for (EdgeStrategyIdx strategy = 0; strategy < num_strategies; ++strategy) {
-      CHECK_GE(request.resharding_costs(e).costs(strategy), 0.0);
+      TF_RET_CHECK(request.resharding_costs(e).costs(strategy) >= 0.0);
     }
   }
+  return OkStatus();
 }
 
 }  // namespace spmd

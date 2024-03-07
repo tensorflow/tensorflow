@@ -34,6 +34,8 @@ import os as _os
 import site as _site
 import sys as _sys
 
+# Do not remove this line; See https://github.com/tensorflow/tensorflow/issues/42596
+from tensorflow.python import pywrap_tensorflow as _pywrap_tensorflow  # pylint: disable=unused-import
 from tensorflow.python.tools import module_util as _module_util
 from tensorflow.python.util.lazy_loader import KerasLazyLoader as _KerasLazyLoader
 

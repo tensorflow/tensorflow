@@ -49,7 +49,7 @@ class PythonRefManager {
    public:
     ManagedPyObjects() = default;
     ManagedPyObjects(PythonRefManager* manager,
-                     absl::Span<pybind11::object> objects);
+                     absl::Span<nanobind::object> objects);
 
     ~ManagedPyObjects();
 
@@ -60,7 +60,7 @@ class PythonRefManager {
 
    private:
     PythonRefManager* manager_ = nullptr;
-    absl::InlinedVector<pybind11::object, 1> objects_;
+    absl::InlinedVector<nanobind::object, 1> objects_;
   };
 
   // Creates a managed std::shared_ptr to an object. When the shared_ptr is
@@ -69,6 +69,9 @@ class PythonRefManager {
   std::shared_ptr<ManagedPyObjects> ManageReference(pybind11::object object);
   std::shared_ptr<ManagedPyObjects> ManageReferences(
       absl::Span<pybind11::object> objects);
+  std::shared_ptr<ManagedPyObjects> ManageReference(nanobind::object object);
+  std::shared_ptr<ManagedPyObjects> ManageReferences(
+      absl::Span<nanobind::object> objects);
 
   // Adds garbage objects to the manager.
   void AddGarbage(nanobind::object garbage);

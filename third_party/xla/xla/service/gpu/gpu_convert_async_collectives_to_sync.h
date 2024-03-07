@@ -18,6 +18,11 @@ limitations under the License.
 
 #include <utility>
 
+#include "absl/status/status.h"
+#include "absl/strings/string_view.h"
+#include "absl/types/span.h"
+#include "xla/hlo/ir/hlo_computation.h"
+#include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/service/convert_async_collectives_to_sync.h"
 
 namespace xla {

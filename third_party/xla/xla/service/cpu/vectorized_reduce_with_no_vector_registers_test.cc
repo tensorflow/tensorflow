@@ -26,7 +26,8 @@ namespace xla {
 namespace {
 class CodegenReduceOnArchWithNoVectorRegisters : public HloTestBase {};
 
-StatusOr<unsigned> GetTargetVectorRegisterByteSize(std::string triple) {
+absl::StatusOr<unsigned int> GetTargetVectorRegisterByteSize(
+    std::string triple) {
   // Unfortunately we need a lot of boilerplate to get to an
   // llvm::TargetMachine.
 

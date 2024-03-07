@@ -17,7 +17,6 @@ limitations under the License.
 
 #include <utility>
 
-#include "xla/mlir_hlo/lhlo_gpu/IR/lhlo_gpu_ops.h"
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 #include "xla/service/hlo_parser.h"
 #include "xla/shape_util.h"
@@ -55,32 +54,6 @@ ConvolutionDimensionNumbers ConvertConvDimensionNumbers(
   }
 
   return output;
-}
-
-StatusOr<stream_executor::dnn::ActivationMode> ConvertConvActivationMode(
-    mlir::lmhlo_gpu::Activation activation) {
-  switch (activation) {
-    case mlir::lmhlo_gpu::Activation::None:
-      return stream_executor::dnn::kNone;
-    case mlir::lmhlo_gpu::Activation::Sigmoid:
-      return stream_executor::dnn::kSigmoid;
-    case mlir::lmhlo_gpu::Activation::Tanh:
-      return stream_executor::dnn::kTanh;
-    case mlir::lmhlo_gpu::Activation::Relu:
-      return stream_executor::dnn::kRelu;
-    case mlir::lmhlo_gpu::Activation::Relu6:
-      return stream_executor::dnn::kRelu6;
-    case mlir::lmhlo_gpu::Activation::ReluX:
-      return stream_executor::dnn::kReluX;
-    case mlir::lmhlo_gpu::Activation::BandPass:
-      return stream_executor::dnn::kBandPass;
-    case mlir::lmhlo_gpu::Activation::Elu:
-      return stream_executor::dnn::kElu;
-    case mlir::lmhlo_gpu::Activation::LeakyRelu:
-      return stream_executor::dnn::kLeakyRelu;
-    default:
-      return Internal("Unexpected activation");
-  }
 }
 
 // Convert replica group from MLIR encoding to HLO.

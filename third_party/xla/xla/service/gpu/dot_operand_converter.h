@@ -16,8 +16,13 @@ limitations under the License.
 #ifndef XLA_SERVICE_GPU_DOT_OPERAND_CONVERTER_H_
 #define XLA_SERVICE_GPU_DOT_OPERAND_CONVERTER_H_
 
-#include "xla/hlo/ir/hlo_module.h"
+#include <utility>
+
+#include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
+#include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/service/op_expander_pass.h"
+#include "xla/util.h"
 
 namespace xla::gpu {
 

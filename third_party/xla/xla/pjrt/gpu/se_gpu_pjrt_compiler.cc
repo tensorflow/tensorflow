@@ -147,14 +147,10 @@ StreamExecutorGpuCompiler::Compile(CompileOptions options,
   Compiler::CompileOptions opts;
   opts.target_config = options.target_config;
 
-  if (!options.executable_build_options.run_backend_only()) {
-    TF_ASSIGN_OR_RETURN(
-        hlo_module, gpu_compiler.RunHloPasses(std::move(hlo_module),
-                                              /*stream_exec=*/nullptr, opts));
-  }
-
   AotCompilationOptions aot_options(gpu_compiler.PlatformId());
   aot_options.set_target_config(*options.target_config);
+  aot_options.set_run_backend_only(
+      options.executable_build_options.run_backend_only());
 
   const int num_replicas = hlo_module->config().replica_count();
   const int num_partitions = hlo_module->config().num_partitions();

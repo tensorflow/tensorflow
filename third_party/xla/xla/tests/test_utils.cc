@@ -663,13 +663,6 @@ std::unique_ptr<HloDotInstruction> CreateCanonicalDot(const Shape& shape,
       shape, lhs, rhs, dot_dimension_numbers, precision_config);
 }
 
-bool IsMlirLoweringEnabled() {
-  char* xla_flags = getenv("XLA_FLAGS");
-  if (!xla_flags) {
-    return false;
-  }
-  return !absl::StrContains(xla_flags, "--xla_cpu_use_xla_runtime=false") &&
-         (absl::StrContains(xla_flags, "--xla_cpu_use_xla_runtime"));
-}
+bool IsMlirLoweringEnabled() { return false; }
 
 }  // namespace xla

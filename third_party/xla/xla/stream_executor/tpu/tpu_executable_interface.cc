@@ -70,7 +70,7 @@ static Status PopulateResultTupleBuffers(const ShapedBuffer& result,
 
 }  // namespace
 
-StatusOr<ExecutionOutput>
+absl::StatusOr<ExecutionOutput>
 TpuExecutableInterface::AllocateOutputMemoryWithInputReuse(
     const Shape& shape, const HloInputOutputAliasConfig& alias_config,
     se::DeviceMemoryAllocator* allocator,
@@ -204,7 +204,7 @@ TpuExecutableInterface::AllocateOutputMemoryWithInputReuse(
   return std::move(result);
 }
 
-StatusOr<ExecutionOutput> TpuExecutableInterface::ExecuteAsyncOnStream(
+absl::StatusOr<ExecutionOutput> TpuExecutableInterface::ExecuteAsyncOnStream(
     const ServiceExecutableRunOptions* run_options,
     std::vector<ExecutionInput> arguments,
     HloExecutionProfile* /*hlo_execution_profile*/) {

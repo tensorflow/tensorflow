@@ -245,7 +245,7 @@ class IndexedArrayAnalysis {
   // NB!  By inspecting the implementation, you may be able to infer a stronger
   // caching guarantee than what is mentioned above.  Nevertheless, what is
   // stated above is the contract.
-  StatusOr<Array*> GetArrayFor(const HloInstruction* instr);
+  absl::StatusOr<Array*> GetArrayFor(const HloInstruction* instr);
 
   // Pretty-prints the expression rooted at `root`.
   std::string ToString(Array* root, bool print_constants = false);
@@ -257,28 +257,27 @@ class IndexedArrayAnalysis {
 
   // Creates an Array instance for `instr` under the assumption that all
   // operations of `instr` are present in `cache_`.
-  StatusOr<Array*> ComputeArrayFor(const HloInstruction* instr);
+  absl::StatusOr<Array*> ComputeArrayFor(const HloInstruction* instr);
 
-  StatusOr<Array*> ComputeArrayForConstant(const Literal& literal);
+  absl::StatusOr<Array*> ComputeArrayForConstant(const Literal& literal);
 
-  StatusOr<Array*> ComputeArrayForGather(
+  absl::StatusOr<Array*> ComputeArrayForGather(
       const Shape& shape, const GatherDimensionNumbers& dim_numbers,
       absl::Span<const int64_t> slice_sizes, Array* source, Array* indices);
 
-  StatusOr<Array*> ComputeArrayForDotWithIndexedLhs(
+  absl::StatusOr<Array*> ComputeArrayForDotWithIndexedLhs(
       const Shape& shape, const DotDimensionNumbers& dim_numbers,
       const PrecisionConfig& precision_config, ScalarIndexedConstantArray* lhs,
       ConstantArray* rhs);
 
-  StatusOr<Array*> ComputeArrayForDotWithIndexedRhs(
+  absl::StatusOr<Array*> ComputeArrayForDotWithIndexedRhs(
       const Shape& shape, const DotDimensionNumbers& dim_numbers,
       const PrecisionConfig& precision_config, ConstantArray* lhs,
       ScalarIndexedConstantArray* rhs);
 
-  StatusOr<Array*> ComputeArrayForDot(const Shape& shape,
-                                      const DotDimensionNumbers& dim_numbers,
-                                      const PrecisionConfig& precision_config,
-                                      Array* lhs, Array* rhs);
+  absl::StatusOr<Array*> ComputeArrayForDot(
+      const Shape& shape, const DotDimensionNumbers& dim_numbers,
+      const PrecisionConfig& precision_config, Array* lhs, Array* rhs);
 
   // This tries to fold a ScalarIndexedArray which has another
   // ScalarIndexedArray as a source into a ScalarIndexedArray that instead has a
@@ -301,30 +300,32 @@ class IndexedArrayAnalysis {
   //
   //    I2 = [I0[i]  for i in I1]
   //    G1 = [Arr[i] for i in I2]
-  StatusOr<ScalarIndexedArray*> FoldGatherOfGather(
+  absl::StatusOr<ScalarIndexedArray*> FoldGatherOfGather(
       ScalarIndexedArray* source, Array* indices, int64_t source_dim,
       absl::Span<const int64_t> output_dims, Shape shape);
 
   // Reshapes a scalar-indexed node to remove the degenerate dimensions in its
   // output.  The result is always a scalar-indexed node.
-  StatusOr<ScalarIndexedArray*> ReshapeToRemoveDegenerateDims(
+  absl::StatusOr<ScalarIndexedArray*> ReshapeToRemoveDegenerateDims(
       ScalarIndexedArray* operand);
 
   // Reshapes a scalar-indexed node such that the result has the degenerate
   // dimensions `degenerate_dims`.  The result is always a scalar-indexed node.
-  StatusOr<ScalarIndexedArray*> ReshapeToAddDegenerateDims(
+  absl::StatusOr<ScalarIndexedArray*> ReshapeToAddDegenerateDims(
       ScalarIndexedArray* operand, absl::Span<const int64_t> degenerate_dims);
 
-  StatusOr<ScalarIndexedArray*> FoldReshapeOfGather(
+  absl::StatusOr<ScalarIndexedArray*> FoldReshapeOfGather(
       const Shape& shape, ScalarIndexedConstantArray* operand);
-  StatusOr<ScalarIndexedArray*> FoldReshapeOfGatherNoDegenerateDims(
+  absl::StatusOr<ScalarIndexedArray*> FoldReshapeOfGatherNoDegenerateDims(
       const Shape& shape, ScalarIndexedConstantArray* scalar_indexed);
-  StatusOr<Array*> ComputeArrayForReshape(const Shape& shape, Array* operand);
+  absl::StatusOr<Array*> ComputeArrayForReshape(const Shape& shape,
+                                                Array* operand);
 
-  StatusOr<Array*> ComputeArrayForElementwiseBinaryOp(HloOpcode opcode,
-                                                      Array* lhs, Array* rhs);
-  StatusOr<Array*> ComputeArrayForElementwiseUnaryOp(HloOpcode opcode,
-                                                     Array* operand);
+  absl::StatusOr<Array*> ComputeArrayForElementwiseBinaryOp(HloOpcode opcode,
+                                                            Array* lhs,
+                                                            Array* rhs);
+  absl::StatusOr<Array*> ComputeArrayForElementwiseUnaryOp(HloOpcode opcode,
+                                                           Array* operand);
 
   template <typename T, typename... Args>
   T* Construct(Args&&... args) {
@@ -352,7 +353,8 @@ class IndexedArrayAnalysis {
     return &owned_literals_.back();
   }
 
-  StatusOr<Literal*> TakeOwnership(StatusOr<Literal> literal_or_error) {
+  absl::StatusOr<Literal*> TakeOwnership(
+      absl::StatusOr<Literal> literal_or_error) {
     TF_ASSIGN_OR_RETURN(Literal literal, std::move(literal_or_error));
     owned_literals_.push_back(std::move(literal));
     return &owned_literals_.back();
@@ -370,7 +372,7 @@ class IndexedArrayAnalysisPrinterPass : public HloModulePass {
  public:
   absl::string_view name() const override;
   using HloPassInterface::Run;
-  StatusOr<bool> Run(
+  absl::StatusOr<bool> Run(
       HloModule* module,
       const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 };

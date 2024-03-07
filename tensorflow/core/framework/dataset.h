@@ -88,7 +88,7 @@ using TraceMeMetadata = std::vector<std::pair<StringPiece, string>>;
 
 // Maps the index of dataset elements to a globally shuffled index. See the
 // comment for IteratorContext::Params::index_mapper for more details.
-using IndexMapperFn = std::function<std::optional<int64_t>(int64_t)>;
+using IndexMapperFn = std::function<int64_t(int64_t)>;
 
 constexpr char kTFDataFunction[] = "_tf_data_function";
 
@@ -791,14 +791,14 @@ class IteratorContext {
     RunMode run_mode = RunMode::DEFAULT;
 
     // Maps the index of dataset elements to a shuffled index. In other words,
-    // given an index i, returns the permuted index p(i) for the iterator.
-    // Returns `std::nullopt` if the input index is out of range. Used to
-    // support global shuffling of datasets that support random access.
+    // given an index i, returns the permuted index p(i) for the iterator. Used
+    // to support global shuffling of datasets that support random access.
     IndexMapperFn index_mapper = nullptr;
 
-    // This is set when restoring a globally shuffled iterator. Records the
-    // number of elements that have been produced prior to the checkpoint.
-    std::optional<int64_t> element_count = std::nullopt;
+    // Records the number of elements that have been produced prior to a
+    // checkpoint. This is set by globally shuffled iterators so that upstream
+    // iterators can restore the element counts in the random access mode.
+    std::optional<int64_t> restored_element_count = std::nullopt;
   };
 
   explicit IteratorContext(IteratorContext* ctx)
@@ -889,7 +889,9 @@ class IteratorContext {
 
   IndexMapperFn index_mapper() const { return params_.index_mapper; }
 
-  std::optional<int64_t> element_count() const { return params_.element_count; }
+  std::optional<int64_t> restored_element_count() const {
+    return params_.restored_element_count;
+  }
 
   void SetModel(std::shared_ptr<model::Model> model) { params_.model = model; }
 

@@ -32,7 +32,7 @@ namespace shlo_ref {
 // This is useful for specifying test input sizes as `KiB(8)`.
 constexpr size_t KiB(size_t kibibytes) { return kibibytes * 1024; }
 
-template <DataType data_type, typename T = Storage<data_type>::Type>
+template <DataType data_type, typename T = StorageType<data_type>>
 std::vector<T> GenerateRandomVector(size_t size) {
   std::vector<T> data(size);
   if constexpr (std::is_integral_v<T>) {

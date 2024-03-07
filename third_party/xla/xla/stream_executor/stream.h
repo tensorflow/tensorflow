@@ -110,8 +110,6 @@ class Stream {
 
   // Initialize the stream. This must be performed before entraining any other
   // operations.
-  ABSL_DEPRECATED("Use absl::Status Stream::Initialize instead.")
-  Stream &Init() TF_LOCKS_EXCLUDED(mu_);
   absl::Status Initialize();
 
   // Get or create a sub-stream from this stream. If there is any sub-stream in
@@ -185,17 +183,12 @@ class Stream {
   // marked as completed.
   // The stream does not take ownership of event - meaning that event's lifetime
   // must extend past the point at which it is marked complete!
-  ABSL_DEPRECATED("Use absl::Status returning method instead.")
-  Stream &ThenRecordEvent(Event *event);
   absl::Status RecordEvent(Event *event);
 
   // Entrain onto the stream: a memcpy to a host destination from a GPU source
   // of the given target size. host_dst must be a pointer to host memory
   // allocated by StreamExecutor::HostMemoryAllocate or otherwise allocated and
   // then registered with StreamExecutor::HostMemoryRegister.
-  ABSL_DEPRECATED("Use absl::Status returning method instead.")
-  Stream &ThenMemcpy(void *host_dst, const DeviceMemoryBase &gpu_src,
-                     uint64_t size);
   absl::Status Memcpy(void *host_dst, const DeviceMemoryBase &gpu_src,
                       uint64_t size);
 
@@ -203,9 +196,6 @@ class Stream {
   // of the given target size. host_src must be a pointer to host memory
   // allocated by StreamExecutor::HostMemoryAllocate or otherwise allocated and
   // then registered with StreamExecutor::HostMemoryRegister.
-  ABSL_DEPRECATED("Use absl::Status returning method instead.")
-  Stream &ThenMemcpy(DeviceMemoryBase *gpu_dst, const void *host_src,
-                     uint64_t size);
   absl::Status Memcpy(DeviceMemoryBase *gpu_dst, const void *host_src,
                       uint64_t size);
 
@@ -238,9 +228,6 @@ class Stream {
   // Entrain onto the stream: a memcpy to a GPU destination from a GPU source
   // of the given target size. gpu_src/dst must be pointers to GPU memory and
   // peer access must be enabled between their owning StreamExecutors.
-  ABSL_DEPRECATED("Use absl::Status returning method instead.")
-  Stream &ThenMemcpy(DeviceMemoryBase *gpu_dst, const DeviceMemoryBase &gpu_src,
-                     uint64_t size);
   absl::Status Memcpy(DeviceMemoryBase *gpu_dst,
                       const DeviceMemoryBase &gpu_src, uint64_t size);
   absl::Status MemcpyD2D(DeviceMemoryBase *gpu_dst,
@@ -304,9 +291,6 @@ class Stream {
   RocmComputeCapability GetRocmComputeCapability() const {
     return parent()->GetDeviceDescription().rocm_compute_capability();
   }
-
-  // Returns a debugging string "[stream=0x...,impl=0x...]".
-  std::string DebugStreamPointers() const;
 
   void SetPriority(StreamPriority priority);
   void SetPriority(int priority);

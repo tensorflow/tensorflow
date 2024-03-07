@@ -22,9 +22,11 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/status/statusor.h"
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
-#include "xla/service/collective_ops_utils.h"
+#include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/service/gpu/nccl_collective_thunk.h"
+#include "xla/shape.h"
 
 namespace xla {
 namespace gpu {
@@ -66,6 +68,10 @@ NcclP2PConfig GetNcclP2PConfigForSendRecv(const HloSendRecvInstruction* instr,
                                           const Shape& shape,
                                           int64_t replica_count,
                                           int64_t partition_count);
+// Returns the stream kind for the asynchronous stream used to execute an HLO
+// Send or Recv instruction, by inspecting the frontend attributes of the
+// instruction.
+AsyncStreamKind GetStreamKindForSendRecv(const HloSendRecvInstruction* instr);
 
 }  // namespace gpu
 }  // namespace xla

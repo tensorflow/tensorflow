@@ -151,8 +151,9 @@ class BatchDatasetOp::Dataset : public DatasetBase {
       TF_RETURN_IF_ERROR(input_->Get(ctx, i, &batch_element_tuple));
       batch_elements.emplace_back(std::move(batch_element_tuple));
     }
-    TF_RETURN_IF_ERROR(CopyBatch(CopyBatchParams(ctx), batch_elements,
-                                 parallel_copy_, out_tensors));
+    TF_RETURN_IF_ERROR(CopyBatch(CopyBatchParams(ctx),
+                                 std::move(batch_elements), parallel_copy_,
+                                 out_tensors));
     return absl::OkStatus();
   }
 
@@ -243,7 +244,8 @@ class BatchDatasetOp::Dataset : public DatasetBase {
       // respective slice locations. This would require a different GetNext()
       // overload that supports zero-copy, and might make sense in an
       // optimization pass.
-      TF_RETURN_IF_ERROR(CopyBatch(CopyBatchParams(ctx), batch_elements,
+      TF_RETURN_IF_ERROR(CopyBatch(CopyBatchParams(ctx),
+                                   std::move(batch_elements),
                                    dataset()->parallel_copy_, out_tensors));
 
       *end_of_sequence = false;
@@ -270,9 +272,10 @@ class BatchDatasetOp::Dataset : public DatasetBase {
     Status RestoreInternal(IteratorContext* ctx,
                            IteratorStateReader* reader) override {
       mutex_lock l(mu_);
-      if (ctx->element_count().has_value()) {
+      if (ctx->restored_element_count().has_value()) {
         IteratorContext::Params params(ctx);
-        params.element_count = *ctx->element_count() * dataset()->batch_size_;
+        params.restored_element_count =
+            *ctx->restored_element_count() * dataset()->batch_size_;
         IteratorContext ctx_copy(params);
         return RestoreInput(&ctx_copy, reader, input_impl_);
       }
@@ -309,15 +312,12 @@ class BatchDatasetOp::Dataset : public DatasetBase {
     IndexMapperFn GetIndexMapper(IndexMapperFn parent_index_mapper) const {
       int64_t batch_size = dataset()->batch_size_;
       return [parent_index_mapper,
-              batch_size](int64_t element_position) -> std::optional<int64_t> {
+              batch_size](int64_t element_position) -> int64_t {
         int64_t batch_element_position = element_position / batch_size;
         int64_t input_element_offset = element_position % batch_size;
-        std::optional<int64_t> shuffled_element_position =
+        int64_t shuffled_element_position =
             parent_index_mapper(batch_element_position);
-        if (!shuffled_element_position.has_value()) {
-          return std::nullopt;
-        }
-        return *shuffled_element_position * batch_size + input_element_offset;
+        return shuffled_element_position * batch_size + input_element_offset;
       };
     }
 

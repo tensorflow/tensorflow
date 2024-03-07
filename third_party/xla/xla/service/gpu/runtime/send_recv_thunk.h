@@ -30,7 +30,6 @@ limitations under the License.
 #include "xla/service/gpu/thunk.h"
 #include "xla/shape.h"
 #include "xla/status.h"
-#include "xla/statusor.h"
 #include "xla/stream_executor/event.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/xla_data.pb.h"

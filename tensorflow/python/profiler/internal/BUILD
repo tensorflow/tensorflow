@@ -108,7 +108,7 @@ tf_python_pybind_extension(
     visibility = [
         "//perftools/accelerators/xprof/xprofilez/integration_tests:__pkg__",
         "//tensorflow/python/profiler:__subpackages__",
-        "//tensorflow/tools/pip_package/v2:__subpackages__",
+        "//tensorflow/tools/pip_package:__subpackages__",
     ],
     deps = [
         "@local_xla//xla/python/profiler/internal:traceme_wrapper",
@@ -128,7 +128,7 @@ tf_python_pybind_extension(
         "//tensorflow/core/profiler:internal",
         "//tensorflow/python/eager:__pkg__",
         "//tensorflow/python/profiler:__pkg__",
-        "//tensorflow/tools/pip_package/v2:__subpackages__",
+        "//tensorflow/tools/pip_package:__subpackages__",
     ],
     deps = [
         ":profiler_pywrap_impl",

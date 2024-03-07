@@ -32,6 +32,8 @@ using Axis = size_t;
 inline constexpr DimensionSize kDynamicDimension = -1;
 inline constexpr Axis kMaxNumDimensions = 6;
 
+using Strides = absl::InlinedVector<DimensionSize, kMaxNumDimensions>;
+
 class Shape {
  public:
   Shape() = default;
@@ -70,6 +72,22 @@ class Shape {
 
 bool operator==(const Shape& lhs, const Shape& rhs);
 bool operator!=(const Shape& lhs, const Shape& rhs);
+
+Strides ComputeStrides(const Shape& shape);
+
+template <class T>
+Strides ComputeStrides(const absl::Span<const T> shape) {
+  absl::InlinedVector<DimensionSize, kMaxNumDimensions> strides(shape.size());
+  if (!shape.empty()) {
+    strides[shape.size() - 1] = 1;
+    if (shape.size() > 1) {
+      for (size_t i = shape.size() - 1; i != 0; --i) {
+        strides[i - 1] = shape[i] * strides[i];
+      }
+    }
+  }
+  return strides;
+}
 
 }  // namespace shlo_ref
 

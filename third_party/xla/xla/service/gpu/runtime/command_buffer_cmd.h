@@ -916,6 +916,26 @@ class AllGatherCmd : public CollectiveCmd {
   std::vector<NcclCollectiveThunk::Buffer> buffers_;
 };
 
+//===----------------------------------------------------------------------===//
+// CollectiveBroadcastCmd
+//===----------------------------------------------------------------------===//
+
+class CollectiveBroadcastCmd : public CollectiveCmd {
+ public:
+  CollectiveBroadcastCmd(ExecutionStreamId execution_stream_id,
+                         NcclApi* nccl_api, NcclCollectiveConfig config,
+                         absl::Span<const NcclCollectiveThunk::Buffer> buffers);
+
+  absl::Status Record(const Thunk::ExecuteParams& execute_params,
+                      const RecordParams& record_params,
+                      se::CommandBuffer* command_buffer) override;
+
+  BufferUsageVector buffers() override;
+
+ private:
+  std::vector<NcclCollectiveThunk::Buffer> buffers_;
+};
+
 }  // namespace xla::gpu
 
 #endif  // XLA_SERVICE_GPU_RUNTIME_COMMAND_BUFFER_CMD_H_

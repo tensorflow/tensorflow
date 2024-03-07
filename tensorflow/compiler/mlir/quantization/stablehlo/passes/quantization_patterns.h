@@ -42,15 +42,11 @@ limitations under the License.
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "stablehlo/dialect/StablehloOps.h"  // from @stablehlo
-#include "tensorflow/compiler/mlir/lite/quantization/quantization_utils.h"
+#include "tensorflow/compiler/mlir/quantization/common/quantization_lib/quantization_utils.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/ops/stablehlo_op_quant_spec.h"
 #include "tensorflow/core/framework/types.pb.h"
 
 namespace mlir::quant::stablehlo {
-
-// Checks if an op is quantizable in StableHLO quantizer. Argument op is not
-// necessarily a StableHLO op.
-bool IsOpQuantizableStableHlo(Operation* op);
 
 // Checks whether an op is connected with a quantized composite function. If
 // not, the same-scale op will not be quantized. This decision is based on the

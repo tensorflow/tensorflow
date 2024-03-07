@@ -55,7 +55,7 @@ void TriggerSaveCallbackIfFileNotExist(absl::string_view checkpoint_id,
   LOG(INFO) << "Calling a save callback: file_extension = " << file_extension
             << ", checkpoint_id = " << checkpoint_id;
   // The callback should return a string to store.
-  StatusOr<std::string> save_content = callback(checkpoint_id);
+  absl::StatusOr<std::string> save_content = callback(checkpoint_id);
   if (!save_content.ok()) {
     LOG(WARNING) << save_content.status();
     return;
@@ -109,7 +109,7 @@ void TriggerRestoreCallbackIfFileExists(absl::string_view checkpoint_id,
 //        ("checkpoint-2", "/foo/bar");
 //    "/foo/bar/checkpoint-3" --> ("checkpoint-3", "/foo/bar");
 //    "/foo/bar"              --> NotFound error
-StatusOr<std::pair<std::string, std::string>>
+absl::StatusOr<std::pair<std::string, std::string>>
 CheckpointCallbackManager::GetCheckpointIdAndPathFromPrefix(
     absl::string_view prefix) {
   for (absl::string_view path = prefix;; path = io::Dirname(path)) {
@@ -209,7 +209,7 @@ bool CheckpointCallbackManager::DoesRestoreCallbackExist(
 }
 
 void CheckpointCallbackManager::Save(absl::string_view prefix) {
-  StatusOr<std::pair<std::string, std::string>> id_and_dir =
+  absl::StatusOr<std::pair<std::string, std::string>> id_and_dir =
       GetCheckpointIdAndPathFromPrefix(prefix);
   if (!id_and_dir.ok()) {
     return;
@@ -231,7 +231,7 @@ void CheckpointCallbackManager::Save(absl::string_view prefix) {
 }
 
 void CheckpointCallbackManager::Restore(absl::string_view prefix) {
-  StatusOr<std::pair<std::string, std::string>> id_and_dir =
+  absl::StatusOr<std::pair<std::string, std::string>> id_and_dir =
       GetCheckpointIdAndPathFromPrefix(prefix);
   if (!id_and_dir.ok()) {
     return;

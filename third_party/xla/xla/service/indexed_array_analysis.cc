@@ -81,7 +81,7 @@ std::string IndexedArrayAnalysis::ToString(Array* root, bool print_constants) {
   }
 }
 
-StatusOr<Analysis::Array*> IndexedArrayAnalysis::GetArrayFor(
+absl::StatusOr<Analysis::Array*> IndexedArrayAnalysis::GetArrayFor(
     const HloInstruction* instr) {
   auto it = cache_.find(instr);
   if (it != cache_.end()) {
@@ -137,7 +137,7 @@ Status IndexedArrayAnalysis::TraverseAndPopulateCache(
   return OkStatus();
 }
 
-StatusOr<Analysis::Array*> IndexedArrayAnalysis::ComputeArrayFor(
+absl::StatusOr<Analysis::Array*> IndexedArrayAnalysis::ComputeArrayFor(
     const HloInstruction* instr) {
   Array* computed_array;
   if (instr->IsElementwise() && instr->operand_count() == 1) {
@@ -184,12 +184,12 @@ StatusOr<Analysis::Array*> IndexedArrayAnalysis::ComputeArrayFor(
   return computed_array;
 }
 
-StatusOr<Analysis::Array*> IndexedArrayAnalysis::ComputeArrayForConstant(
+absl::StatusOr<Analysis::Array*> IndexedArrayAnalysis::ComputeArrayForConstant(
     const Literal& literal) {
   return Construct<ConstantArray>(&literal);
 }
 
-StatusOr<ScalarIndexedArray*> IndexedArrayAnalysis::FoldGatherOfGather(
+absl::StatusOr<ScalarIndexedArray*> IndexedArrayAnalysis::FoldGatherOfGather(
     ScalarIndexedArray* source, Array* indices, int64_t source_dim,
     absl::Span<const int64_t> output_dims, Shape shape) {
   // We want to transform Gather(Gather(A, X), Y) => Gather(A, Gather(X, Y)).
@@ -255,7 +255,7 @@ StatusOr<ScalarIndexedArray*> IndexedArrayAnalysis::FoldGatherOfGather(
                                      std::move(shape));
 }
 
-StatusOr<Analysis::Array*> IndexedArrayAnalysis::ComputeArrayForGather(
+absl::StatusOr<Analysis::Array*> IndexedArrayAnalysis::ComputeArrayForGather(
     const Shape& shape, const GatherDimensionNumbers& dim_numbers,
     absl::Span<const int64_t> slice_sizes, Array* source, Array* indices) {
   if (dim_numbers.index_vector_dim() != indices->shape().dimensions_size()) {
@@ -468,7 +468,7 @@ Shape StripDegenerateDimensions(const Shape& shape) {
 }
 };  // namespace
 
-StatusOr<ScalarIndexedArray*>
+absl::StatusOr<ScalarIndexedArray*>
 IndexedArrayAnalysis::ReshapeToRemoveDegenerateDims(
     ScalarIndexedArray* operand) {
   const Shape& shape = operand->shape();
@@ -525,7 +525,8 @@ IndexedArrayAnalysis::ReshapeToRemoveDegenerateDims(
       StripDegenerateDimensions(operand->shape()));
 }
 
-StatusOr<ScalarIndexedArray*> IndexedArrayAnalysis::ReshapeToAddDegenerateDims(
+absl::StatusOr<ScalarIndexedArray*>
+IndexedArrayAnalysis::ReshapeToAddDegenerateDims(
     ScalarIndexedArray* operand, absl::Span<const int64_t> degenerate_dims) {
   if (degenerate_dims.empty()) {
     return operand;
@@ -602,7 +603,7 @@ StatusOr<ScalarIndexedArray*> IndexedArrayAnalysis::ReshapeToAddDegenerateDims(
       InlinedVectorToVector(new_output_dims), new_result_shape);
 }
 
-StatusOr<ScalarIndexedArray*> IndexedArrayAnalysis::FoldReshapeOfGather(
+absl::StatusOr<ScalarIndexedArray*> IndexedArrayAnalysis::FoldReshapeOfGather(
     const Shape& shape, ScalarIndexedConstantArray* operand) {
   VLOG(3) << "FoldReshapeOfGather(" << ToString(operand) << ")";
 
@@ -636,7 +637,7 @@ StatusOr<ScalarIndexedArray*> IndexedArrayAnalysis::FoldReshapeOfGather(
                                     degenerate_result_dims);
 }
 
-StatusOr<ScalarIndexedArray*>
+absl::StatusOr<ScalarIndexedArray*>
 IndexedArrayAnalysis::FoldReshapeOfGatherNoDegenerateDims(
     const Shape& shape, ScalarIndexedConstantArray* scalar_indexed) {
   VLOG(3) << "FoldReshapeOfGatherNoDegenerateDims(" << ToString(scalar_indexed)
@@ -803,7 +804,7 @@ IndexedArrayAnalysis::FoldReshapeOfGatherNoDegenerateDims(
       output_dims_for_new_scalar_indexed_node, shape);
 }
 
-StatusOr<Analysis::Array*> IndexedArrayAnalysis::ComputeArrayForReshape(
+absl::StatusOr<Analysis::Array*> IndexedArrayAnalysis::ComputeArrayForReshape(
     const Shape& shape, Array* operand) {
   if (ShapeUtil::Compatible(operand->shape(), shape)) {
     return operand;
@@ -828,7 +829,7 @@ StatusOr<Analysis::Array*> IndexedArrayAnalysis::ComputeArrayForReshape(
   return Construct<ReshapedArray>(operand, shape);
 }
 
-StatusOr<Analysis::Array*>
+absl::StatusOr<Analysis::Array*>
 IndexedArrayAnalysis::ComputeArrayForElementwiseBinaryOp(HloOpcode opcode,
                                                          Array* lhs,
                                                          Array* rhs) {
@@ -949,7 +950,7 @@ IndexedArrayAnalysis::ComputeArrayForElementwiseBinaryOp(HloOpcode opcode,
       scalar_indexed_const->shape());
 }
 
-StatusOr<Analysis::Array*>
+absl::StatusOr<Analysis::Array*>
 IndexedArrayAnalysis::ComputeArrayForElementwiseUnaryOp(HloOpcode opcode,
                                                         Array* operand) {
   auto* scalar_indexed_const =
@@ -1032,7 +1033,7 @@ bool CanFoldDotIntoIndexedArray(
 
 }  // namespace
 
-StatusOr<Analysis::Array*>
+absl::StatusOr<Analysis::Array*>
 IndexedArrayAnalysis::ComputeArrayForDotWithIndexedLhs(
     const Shape& shape, const DotDimensionNumbers& dim_numbers,
     const PrecisionConfig& precision_config, ScalarIndexedConstantArray* lhs,
@@ -1067,7 +1068,7 @@ IndexedArrayAnalysis::ComputeArrayForDotWithIndexedLhs(
       SpanToVector(lhs->output_dims()), shape);
 }
 
-StatusOr<Analysis::Array*>
+absl::StatusOr<Analysis::Array*>
 IndexedArrayAnalysis::ComputeArrayForDotWithIndexedRhs(
     const Shape& shape, const DotDimensionNumbers& dim_numbers,
     const PrecisionConfig& precision_config, ConstantArray* lhs,
@@ -1103,7 +1104,7 @@ IndexedArrayAnalysis::ComputeArrayForDotWithIndexedRhs(
       SpanToVector(rhs->output_dims()), shape);
 }
 
-StatusOr<Analysis::Array*> IndexedArrayAnalysis::ComputeArrayForDot(
+absl::StatusOr<Analysis::Array*> IndexedArrayAnalysis::ComputeArrayForDot(
     const Shape& shape, const DotDimensionNumbers& dim_numbers,
     const PrecisionConfig& precision_config, Array* lhs, Array* rhs) {
   // Intuitively, if
@@ -1149,7 +1150,7 @@ absl::string_view IndexedArrayAnalysisPrinterPass::name() const {
   return "indexed-array-analysis-printer-pass";
 }
 
-StatusOr<bool> IndexedArrayAnalysisPrinterPass::Run(
+absl::StatusOr<bool> IndexedArrayAnalysisPrinterPass::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   if (!VLOG_IS_ON(2)) {

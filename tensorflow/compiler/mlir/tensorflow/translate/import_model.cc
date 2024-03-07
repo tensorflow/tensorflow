@@ -1077,10 +1077,8 @@ absl::StatusOr<mlir::Type> ImporterBase::InferInputType(const Node& node,
                                                         mlir::Builder builder) {
   if (specs_.enable_shape_inference) {
     // TODO(jpienaar): Remove this if shape inference on import flag is removed.
-    ExtendedInferenceContext* shape_context =
-        shape_refiner_->GetExtendedContext(&node);
-    DataType dtype = shape_context->input_type(idx);
-    auto* context = shape_context->get_context();
+    auto* context = shape_refiner_->GetContext(&node);
+    DataType dtype = node.input_type(idx);
     return ConvertDataTypeAndShape(dtype, context->input(idx),
                                    context->input_handle_shapes_and_types(idx),
                                    context, builder);
@@ -1124,9 +1122,9 @@ absl::StatusOr<mlir::Type> ImporterBase::InferOutputType(
 
   if (specs_.enable_shape_inference) {
     // TODO(jpienaar): Remove this if shape inference on import flag is removed.
-    ExtendedInferenceContext* shape_context =
-        shape_refiner_->GetExtendedContext(&node);
-    return shape_ic(shape_context->get_context());
+    shape_inference::InferenceContext* shape_context =
+        shape_refiner_->GetContext(&node);
+    return shape_ic(shape_context);
   }
 
   // Treat TensorList init ops specially here as the op requires knowing its

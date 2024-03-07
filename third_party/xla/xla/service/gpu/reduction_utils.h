@@ -16,7 +16,8 @@ limitations under the License.
 #ifndef XLA_SERVICE_GPU_REDUCTION_UTILS_H_
 #define XLA_SERVICE_GPU_REDUCTION_UTILS_H_
 
-#include "absl/types/span.h"
+#include <cstdint>
+
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/util.h"

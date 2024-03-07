@@ -167,6 +167,7 @@ class TritonAutotunerTest : public StatelessAutotunerTest {
         StatelessAutotunerTest::GetDebugOptionsForTest();
     debug_options.set_xla_gpu_enable_triton_gemm(true);
     debug_options.set_xla_gpu_cublas_fallback(false);
+    debug_options.set_xla_gpu_cudnn_gemm_fusion(false);
     return debug_options;
   }
 
@@ -202,12 +203,16 @@ class TritonAutotunerTest : public StatelessAutotunerTest {
             dot_fusion = dot_fusion->operand(0);
           }
           CHECK_EQ(dot_fusion->opcode(), HloOpcode::kFusion);
-          CHECK_GT(dot_fusion->backend_config<GpuBackendConfig>()
-                       .value()
-                       .fusion_backend_config()
-                       .triton_gemm_config()
-                       .block_m(),
-                   0);
+          if (!dot_fusion->backend_config<GpuBackendConfig>()
+                   ->fusion_backend_config()
+                   .has_cudnn_fusion_config()) {
+            CHECK_GT(dot_fusion->backend_config<GpuBackendConfig>()
+                         .value()
+                         .fusion_backend_config()
+                         .triton_gemm_config()
+                         .block_m(),
+                     0);
+          }
         });
   }
 };
@@ -547,6 +552,62 @@ ENTRY %e {
                         /*is_autotuning_compilation=*/true})
           .value();
   EXPECT_NE(executable, nullptr);
+}
+
+class TritonAutotunerDumpTest : public TritonAutotunerTest {
+ public:
+  DebugOptions GetDebugOptionsForTest() override {
+    DebugOptions debug_options = TritonAutotunerTest::GetDebugOptionsForTest();
+    debug_options.set_xla_gpu_cublas_fallback(true);
+    debug_options.set_xla_gpu_dump_autotuned_triton_fusions(true);
+    return debug_options;
+  }
+};
+
+TEST_F(TritonAutotunerDumpTest, DumpingFusionsWorksWithFallback) {
+  // Computation is chosen such that relatively heavy math operations before the
+  // GEMM are not worth fusing because they would get duplicated many times and
+  // slow down execution. Therefore autotuning picks cuBLAS here.
+  const std::string kHloText = R"(
+ENTRY e {
+  p0 = f32[3333,3333] parameter(0)
+  s = f32[3333,3333] sine(p0)
+  p1 = f32[3333,3333] parameter(1)
+  c = f32[3333,3333] cosine(p1)
+  ROOT dot = f32[3333,3333] dot(s, c),
+    lhs_contracting_dims={1}, rhs_contracting_dims={0}
+})";
+
+  MatchOptimizedHlo(kHloText, R"(
+; CHECK: cublas
+; CHECK-NOT: triton
+)");
+}
+
+TEST_F(TritonAutotunerTest, AutotuneCuDnnFusion) {
+  if (!GetCudaComputeCapability().IsAtLeast(
+          se::CudaComputeCapability::AMPERE)) {
+    GTEST_SKIP() << "cuDNN fusion autotuning is not tested before Ampere.";
+  }
+  const std::string kHlo = R"(
+fusion1 {
+  p0 = f32[3,28,32] parameter(0)
+  p1 = f32[3,28,32] parameter(1)
+  ROOT d = f32[3,32,32] dot(p0, p1),
+    lhs_batch_dims={0}, rhs_batch_dims={0},
+    lhs_contracting_dims={1}, rhs_contracting_dims={1}
+}
+
+ENTRY e {
+  p0 = f32[3,28,32] parameter(0)
+  p1 = f32[3,28,32] parameter(1)
+  ROOT _ = f32[3,32,32] fusion(p0, p1), kind=kCustom, calls=fusion1,
+    backend_config={"fusion_backend_config": {kind: "__cudnn$fusion"}}
+})";
+
+  CheckTritonAutotuning(kHlo, R"(
+// CHECK: "plan_id":
+)");
 }
 
 // TODO(b/281489442): Write a testcase called

@@ -177,6 +177,33 @@ TEST_F(AsyncAllReduceCreatorTest, SplitsSingleCollectivePermuteScheduled) {
       original_instr_sequence_size + 1);
 }
 
+TEST_F(AsyncAllReduceCreatorTest, SplitsSingleCollectiveBroadcast) {
+  constexpr absl::string_view hlo_string = R"(
+  HloModule test
+  ENTRY entry {
+    p0 = f32[8,16] parameter(0)
+    ROOT cb = f32[8,16] collective-broadcast(p0), replica_groups={{7,0,1,2,3,4,5,6}}
+  }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  AsyncCollectiveCreator::CollectiveCreatorConfig config;
+  config.convert_collective_broadcast = HloPredicateTrue;
+  TF_ASSERT_OK(AsyncCollectiveCreator(config).Run(hlo_module.get()).status());
+
+  HloComputation* computation = hlo_module->entry_computation();
+  ASSERT_THAT(computation, NotNull());
+  ASSERT_EQ(computation->instruction_count(), 3);
+  const HloInstruction* done = computation->root_instruction();
+  EXPECT_EQ(done->opcode(), HloOpcode::kAsyncDone);
+  ASSERT_THAT(done->operands(), SizeIs(1));
+  const HloInstruction* start = done->operand(0);
+  EXPECT_EQ(start->opcode(), HloOpcode::kAsyncStart);
+  ASSERT_THAT(start->async_wrapped_instruction(), NotNull());
+  EXPECT_THAT(start->async_wrapped_opcode(), HloOpcode::kCollectiveBroadcast);
+}
+
 TEST_F(AsyncAllReduceCreatorTest, SplitsSingleAllToAll) {
   constexpr absl::string_view hlo_string = R"(
   HloModule test

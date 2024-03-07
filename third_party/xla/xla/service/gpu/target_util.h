@@ -18,11 +18,15 @@ limitations under the License.
 
 #include <string>
 
+#include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "llvm/IR/Attributes.h"
 #include "llvm/IR/IRBuilder.h"
+#include "llvm/IR/Instructions.h"
 #include "llvm/IR/Intrinsics.h"
 #include "llvm/IR/Module.h"
+#include "llvm/IR/Value.h"
 #include "llvm/TargetParser/Triple.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/xla_data.pb.h"

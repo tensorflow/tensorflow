@@ -5449,6 +5449,7 @@ cc_library(
     hdrs = ["stream_pool.h"],
     deps = [
         "//xla/stream_executor",
+        "@com_google_absl//absl/strings:str_format",
     ],
 )
 
@@ -5539,6 +5540,7 @@ cc_library(
         "@eigen_archive//:eigen3",
         "@local_tsl//tsl/platform:blocking_counter",
         "@local_tsl//tsl/platform:logging",
+        "@local_tsl//tsl/platform:statusor",
     ],
 )
 
@@ -5724,6 +5726,7 @@ xla_cc_test(
     srcs = ["convert_memory_placement_to_internal_annotations_test.cc"],
     deps = [
         ":convert_memory_placement_to_internal_annotations",
+        ":host_memory_offload_annotations_hdr",
         "//xla:statusor",
         "//xla:util",
         "//xla:xla_data_proto_cc",
@@ -5846,7 +5849,9 @@ cc_library(
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
         "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:statusor",
     ],

@@ -975,6 +975,11 @@ Status HloCostAnalysis::HandleAllToAll(const HloInstruction* hlo) {
   return OkStatus();
 }
 
+Status HloCostAnalysis::HandleCollectiveBroadcast(
+    const HloInstruction* /*hlo*/) {
+  return OkStatus();
+}
+
 Status HloCostAnalysis::HandleCollectivePermute(const HloInstruction* /*hlo*/) {
   return OkStatus();
 }

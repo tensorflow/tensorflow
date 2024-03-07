@@ -479,7 +479,8 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
       : gpu_version_(gpu_version) {}
 
   absl::Status HandleDot(HloInstruction *instr) override {
-    if (!IsMatrixMultiplication(*instr)) {
+    if (!IsMatrixMultiplication(*instr) &&
+        !IsMatrixVectorMultiplication(*instr)) {
       return absl::OkStatus();
     }
 
@@ -505,10 +506,18 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
 
     int64_t lhs_batch_dims_size =
         instr->dot_dimension_numbers().lhs_batch_dimensions_size();
-    int64_t lhs_stride = lhs->shape().dimensions(lhs_batch_dims_size) *
-                         lhs->shape().dimensions(lhs_batch_dims_size + 1);
-    int64_t rhs_stride = rhs->shape().dimensions(lhs_batch_dims_size) *
-                         rhs->shape().dimensions(lhs_batch_dims_size + 1);
+    bool is_lhs_vector =
+        lhs->shape().dimensions_size() == lhs_batch_dims_size + 1;
+    bool is_rhs_vector =
+        rhs->shape().dimensions_size() == lhs_batch_dims_size + 1;
+    int64_t lhs_stride =
+        is_lhs_vector ? lhs->shape().dimensions(lhs_batch_dims_size)
+                      : lhs->shape().dimensions(lhs_batch_dims_size) *
+                            lhs->shape().dimensions(lhs_batch_dims_size + 1);
+    int64_t rhs_stride =
+        is_rhs_vector ? rhs->shape().dimensions(lhs_batch_dims_size)
+                      : rhs->shape().dimensions(lhs_batch_dims_size) *
+                            rhs->shape().dimensions(lhs_batch_dims_size + 1);
 
     gemm_backend_config.set_lhs_stride(lhs_stride);
     gemm_backend_config.set_rhs_stride(rhs_stride);

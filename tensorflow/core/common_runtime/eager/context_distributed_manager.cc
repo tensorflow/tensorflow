@@ -119,7 +119,7 @@ Status AddRemoteDevicesToMgr(const std::vector<string>& added_remote_workers,
   }
 
   TF_RETURN_IF_ERROR(remote_device_mgr->AddDevices(std::move(remote_devices)));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status GetAllRemoteDevices(const std::vector<string>& remote_workers,
@@ -129,7 +129,7 @@ Status GetAllRemoteDevices(const std::vector<string>& remote_workers,
   TF_RETURN_IF_ERROR(AddRemoteDevicesToMgr(remote_workers, worker_cache,
                                            remote_device_mgr.get()));
   *device_mgr = std::move(remote_device_mgr);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status RemoveRemoteDevicesFromMgr(
@@ -147,7 +147,7 @@ Status RemoveRemoteDevicesFromMgr(
     }
   }
   TF_RETURN_IF_ERROR(remote_device_mgr->RemoveDevices(devices_to_remove));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status ListRemoteWorkers(ServerInterface* server, const string& local_worker,
@@ -156,7 +156,7 @@ Status ListRemoteWorkers(ServerInterface* server, const string& local_worker,
   remote_workers->erase(
       std::remove(remote_workers->begin(), remote_workers->end(), local_worker),
       remote_workers->end());
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 void DifferentiateWorkerLists(const std::vector<string>* current_list,
@@ -227,7 +227,7 @@ Status GetReplacedFromExistingWorkers(
       replaced_workers->emplace_back(existing_workers->at(i));
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status CreateRemoteContexts(
@@ -408,7 +408,7 @@ Status UpdateRemoteContexts(EagerContext* context,
   for (int i = 0; i < num_remote_workers; i++) {
     TF_RETURN_IF_ERROR(statuses[i]);
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status UpdateContextWithServerDef(EagerContext* context,
@@ -573,7 +573,7 @@ Status UpdateContextWithServerDef(EagerContext* context,
   }
 
   // Initialize remote eager workers.
-  Status reset_context_status = OkStatus();
+  Status reset_context_status = absl::OkStatus();
   if (reset_context) {
     reset_context_status = CreateRemoteContexts(
         context, remote_workers, context_id, context_view_id, keep_alive_secs,
@@ -772,7 +772,7 @@ Status EagerContextDistributedManager::InitializeLocalOnlyContext(
       context_->GetServer()
           ->worker_env()
           ->session_mgr->GetCoordinationServiceAgent();
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status EagerContextDistributedManager::EnableCollectiveOps(
@@ -869,7 +869,7 @@ Status EagerContextDistributedManager::EnableCollectiveOps(
         /*new_server=*/nullptr, server->worker_env()->device_mgr,
         server->worker_env()->collective_executor_mgr.get()));
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 
@@ -902,7 +902,7 @@ Status EagerContextDistributedManager::CheckRemoteAlive(
     LOG(INFO) << "Remote worker " << remote_task_name
               << " is not alive: " << remote_status.message();
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 #endif  // !IS_MOBILE_PLATFORM
 }  // namespace tensorflow

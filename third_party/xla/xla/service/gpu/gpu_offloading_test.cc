@@ -60,15 +60,16 @@ using ::testing::TempDir;
 
 class GpuCompilerTest : public HloTestBase {
  public:
-  StatusOr<std::unique_ptr<BufferAssignment>> AssignBuffers(HloModule* module) {
+  absl::StatusOr<std::unique_ptr<BufferAssignment>> AssignBuffers(
+      HloModule* module) {
     auto compiler = backend().compiler();
     return compiler->AssignBuffers(module, backend().default_stream_executor());
   }
 
  protected:
-  StatusOr<bool> RunHloRematerialization(int64_t memory_limit_bytes,
-                                         HloModule* module,
-                                         int64_t min_remat_size = 0) {
+  absl::StatusOr<bool> RunHloRematerialization(int64_t memory_limit_bytes,
+                                               HloModule* module,
+                                               int64_t min_remat_size = 0) {
     TF_EXPECT_OK(verifier().Run(module).status());
     if (!module->has_schedule()) {
       HloMemoryScheduler scheduler(

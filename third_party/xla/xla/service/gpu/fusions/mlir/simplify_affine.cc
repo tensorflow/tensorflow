@@ -48,14 +48,6 @@ namespace gpu {
 #define GEN_PASS_DEF_SIMPLIFYAFFINEPASS
 #include "xla/service/gpu/fusions/mlir/passes.h.inc"
 
-namespace {
-
-class SimplifyAffinePass
-    : public impl::SimplifyAffinePassBase<SimplifyAffinePass> {
- public:
-  void runOnOperation() override;
-};
-
 std::optional<Range> GetRange(mlir::Value value) {
   auto attr_to_range = [](mlir::Attribute attr) -> std::optional<Range> {
     if (!attr) {
@@ -90,6 +82,14 @@ std::optional<Range> GetRange(mlir::Value value) {
 
   return std::nullopt;
 }
+
+namespace {
+
+class SimplifyAffinePass
+    : public impl::SimplifyAffinePassBase<SimplifyAffinePass> {
+ public:
+  void runOnOperation() override;
+};
 
 struct RewriteAffineApply
     : mlir::OpRewritePattern<mlir::affine::AffineApplyOp> {
@@ -147,14 +147,17 @@ struct RewriteAffineApply
       return can_be_lowered(bin_op.getLHS()) && can_be_lowered(bin_op.getRHS());
     };
 
+    mlir::ImplicitLocOpBuilder b(op.getLoc(), rewriter);
     if (!can_be_lowered(expr)) {
+      auto range = range_evaluator.ComputeExpressionRange(expr);
+      op->setAttr("xla.range",
+                  b.getIndexArrayAttr({range.lower_bound, range.upper_bound}));
       return rewriter.notifyMatchFailure(op,
                                          "unable to lower the affine apply");
     }
 
     std::function<mlir::Value(mlir::AffineExpr)> lower;
 
-    mlir::ImplicitLocOpBuilder b(op.getLoc(), rewriter);
     auto int_ty = fits_32_bits ? b.getI32Type() : b.getI64Type();
     b.setInsertionPoint(op);
     lower = [&](mlir::AffineExpr expr) -> mlir::Value {
@@ -194,8 +197,13 @@ struct RewriteAffineApply
     };
 
     auto result = lower(map.GetAffineMap().getResult(0));
-    rewriter.replaceOp(
-        op, b.create<mlir::arith::IndexCastUIOp>(b.getIndexType(), result));
+    auto result_range =
+        range_evaluator.ComputeExpressionRange(map.GetAffineMap().getResult(0));
+    rewriter
+        .replaceOpWithNewOp<mlir::arith::IndexCastUIOp>(op, b.getIndexType(),
+                                                        result)
+        ->setAttr("xla.range", b.getIndexArrayAttr({result_range.lower_bound,
+                                                    result_range.upper_bound}));
     return mlir::success();
   }
 };

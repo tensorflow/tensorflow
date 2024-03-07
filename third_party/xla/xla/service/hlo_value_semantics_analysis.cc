@@ -17,6 +17,7 @@ limitations under the License.
 #include "xla/service/hlo_value_semantics_analysis.h"
 
 #include <algorithm>
+#include <cstddef>
 #include <cstdint>
 #include <iterator>
 #include <memory>
@@ -258,16 +259,16 @@ int GetMaxDepth(const ShapeTree<int>& depth_tree) {
 void SetDepthFromTupleDepth(ShapeTree<int>& depth_tree,
                             const ShapeTree<int>& tuple_depth_tree,
                             int tuple_index) {
-  depth_tree.ForEachMutableElement([&depth_tree, &tuple_depth_tree,
-                                    tuple_index](const ShapeIndex& shape_index,
-                                                 int* depth_ptr) {
-    if (depth_tree.IsLeaf(shape_index)) {
-      ShapeIndex output_index = shape_index;
-      output_index.push_front(tuple_index);
-      *depth_ptr =
-          MergeDepth(*depth_ptr, tuple_depth_tree.element(output_index));
-    }
-  });
+  depth_tree.ForEachMutableElement(
+      [&depth_tree, &tuple_depth_tree, tuple_index](
+          const ShapeIndex& shape_index, int* depth_ptr) {
+        if (depth_tree.IsLeaf(shape_index)) {
+          ShapeIndex output_index = shape_index;
+          output_index.push_front(tuple_index);
+          *depth_ptr =
+              MergeDepth(*depth_ptr, tuple_depth_tree.element(output_index));
+        }
+      });
 }
 
 }  // namespace
@@ -1398,34 +1399,14 @@ HloValueSemanticsPropagation::ComputeSemanticsFromWeightGradientAndOther(
 }
 
 absl::StatusOr<HloValueSemantics>
-HloValueSemanticsPropagation::ComputeSemanticsFromOperands(
-    HloInstruction* instruction, absl::Span<const int64_t> operand_indices,
-    absl::Span<const ShapeIndex> operand_shape_indices) const {
-  CHECK(!operand_indices.empty());
-  CHECK(operand_shape_indices.empty() ||
-        operand_indices.size() == operand_shape_indices.size());
-  VLOG(3) << __func__ << ", instruction: " << instruction->ToString();
-  std::vector<HloValueSemantics> semantics_vec;
-  for (int64_t operand_index : operand_indices) {
-    const HloInstruction* operand = instruction->operand(operand_index);
-    const HloValueSemantics* operand_semantics = analysis_->GetSemantics(
-        operand, operand_shape_indices.empty()
-                     ? ShapeIndex()
-                     : operand_shape_indices[operand_index]);
-    auto operand_height_iter = analysis_->GetEinsumHeightMap().find(operand);
-    CHECK(operand_height_iter != analysis_->GetEinsumHeightMap().end());
-    VLOG(3) << __func__ << ", operand_index: " << operand_index
-            << ", operand: " << operand->name()
-            << ", operand_semantics: " << operand_semantics->ToString()
-            << ", height: " << ToString(operand_height_iter->second);
-    semantics_vec.push_back(*operand_semantics);
-  }
+HloValueSemanticsPropagation::MergeSemanticsForAnInstruction(
+    HloInstruction* instruction,
+    std::vector<HloValueSemantics>& semantics_vec) const {
   while (semantics_vec.size() >= 2) {
     absl::Span<const HloValueSemantics> operand_list =
         absl::MakeConstSpan(semantics_vec).subspan(semantics_vec.size() - 2, 2);
     auto find_operand_index_with_label =
-        [&operand_list](
-            HloValueSemanticLabel label) -> std::optional<int64_t> {
+        [&operand_list](HloValueSemanticLabel label) -> std::optional<int64_t> {
       auto iter = absl::c_find_if(operand_list,
                                   [label](const HloValueSemantics& operand) {
                                     return operand.label() == label;
@@ -1507,6 +1488,32 @@ HloValueSemanticsPropagation::ComputeSemanticsFromOperands(
   VLOG(3) << __func__
           << ", result semantics: " << semantics_vec.back().ToString();
   return semantics_vec.back();
+}
+
+absl::StatusOr<HloValueSemantics>
+HloValueSemanticsPropagation::ComputeSemanticsFromOperands(
+    HloInstruction* instruction, absl::Span<const int64_t> operand_indices,
+    absl::Span<const ShapeIndex> operand_shape_indices) const {
+  CHECK(!operand_indices.empty());
+  CHECK(operand_shape_indices.empty() ||
+        operand_indices.size() == operand_shape_indices.size());
+  VLOG(3) << __func__ << ", instruction: " << instruction->ToString();
+  std::vector<HloValueSemantics> semantics_vec;
+  for (int64_t operand_index : operand_indices) {
+    const HloInstruction* operand = instruction->operand(operand_index);
+    const HloValueSemantics* operand_semantics = analysis_->GetSemantics(
+        operand, operand_shape_indices.empty()
+                     ? ShapeIndex()
+                     : operand_shape_indices[operand_index]);
+    auto operand_height_iter = analysis_->GetEinsumHeightMap().find(operand);
+    CHECK(operand_height_iter != analysis_->GetEinsumHeightMap().end());
+    VLOG(3) << __func__ << ", operand_index: " << operand_index
+            << ", operand: " << operand->name()
+            << ", operand_semantics: " << operand_semantics->ToString()
+            << ", height: " << ToString(operand_height_iter->second);
+    semantics_vec.push_back(*operand_semantics);
+  }
+  return MergeSemanticsForAnInstruction(instruction, semantics_vec);
 }
 
 #define RETURN_IF_ALREADY_PROPAGATED(instruction) \
@@ -1682,15 +1689,40 @@ absl::Status HloValueSemanticsPropagation::HandleCustomCall(
 absl::Status HloValueSemanticsPropagation::HandleConditional(
     HloInstruction* conditional) {
   RETURN_IF_ALREADY_PROPAGATED(conditional);
+  std::vector<ShapeTree<const HloValueSemantics*>> semantics_tree_vec;
   for (int i = 0; i < conditional->called_computations().size(); ++i) {
-    TF_RETURN_IF_ERROR(
-        analysis_->RunOnComputation(*conditional->called_computations()[i],
-                                    {conditional->operands()[i + 1]}));
+    HloComputation* computation = conditional->called_computations()[i];
+    TF_RETURN_IF_ERROR(analysis_->RunOnComputation(
+        *computation, {conditional->operands()[i + 1]}));
+    const ShapeTree<const HloValueSemantics*>& root_semantics =
+        analysis_->GetInstructionSemantics(computation->root_instruction());
+    semantics_tree_vec.push_back(root_semantics);
   }
-  HloComputation* computation = conditional->called_computations()[0];
-  const ShapeTree<const HloValueSemantics*>& root_semantics =
-      analysis_->GetInstructionSemantics(computation->root_instruction());
-  analysis_->DeepCopyHloValueSemantics(conditional, root_semantics);
+
+  std::vector<HloValueSemantics> merged_semantics_leaves;
+  TF_RETURN_IF_ERROR(semantics_tree_vec[0].ForEachElementWithStatus(
+      [&](const ShapeIndex& index,
+          const HloValueSemantics* semantics) -> Status {
+        std::vector<HloValueSemantics> semantics_vector;
+        for (size_t i = 0; i < semantics_tree_vec.size(); ++i) {
+          semantics_vector.push_back(
+              *(semantics_tree_vec[i].find(index)->second));
+        }
+        TF_ASSIGN_OR_RETURN(
+            HloValueSemantics merged,
+            MergeSemanticsForAnInstruction(conditional, semantics_vector));
+        merged_semantics_leaves.push_back(merged);
+        return OkStatus();
+      }));
+
+  ShapeTree<const HloValueSemantics*> merged_semantics(conditional->shape());
+  int idx = 0;
+  merged_semantics.ForEachMutableElement(
+      [&](const ShapeIndex& index,
+          const HloValueSemantics** semantics) -> void {
+        *semantics = &merged_semantics_leaves[idx++];
+      });
+  analysis_->DeepCopyHloValueSemantics(conditional, merged_semantics);
   return OkStatus();
 }
 

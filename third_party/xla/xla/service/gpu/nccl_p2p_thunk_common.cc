@@ -25,6 +25,7 @@ limitations under the License.
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/service/collective_ops_utils.h"
+#include "xla/service/gpu/nccl_clique_key.h"
 #include "xla/service/hlo_parser.h"
 #include "xla/shape.h"
 #include "xla/xla_data.pb.h"
@@ -104,6 +105,14 @@ NcclP2PConfig GetNcclP2PConfigForSendRecv(const HloSendRecvInstruction* instr,
   }
 
   return p2p_config;
+}
+
+AsyncStreamKind GetStreamKindForSendRecv(const HloSendRecvInstruction* instr) {
+  auto it = instr->frontend_attributes().map().find(kSendRecvPipelineAttr);
+  if (it != instr->frontend_attributes().map().end() && it->second == "1") {
+    return AsyncStreamKind::kP2P1;
+  }
+  return AsyncStreamKind::kP2P0;
 }
 
 }  // namespace gpu

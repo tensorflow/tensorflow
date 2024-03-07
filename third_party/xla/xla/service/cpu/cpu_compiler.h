@@ -154,23 +154,23 @@ class CpuCompiler : public LLVMCompiler {
   explicit CpuCompiler(bool allow_sparse_shapes);
   ~CpuCompiler() override = default;
 
-  StatusOr<std::vector<std::unique_ptr<Executable>>> Compile(
+  absl::StatusOr<std::vector<std::unique_ptr<Executable>>> Compile(
       std::unique_ptr<HloModuleGroup> module_group,
       std::vector<std::vector<se::StreamExecutor*>> stream_execs,
       const CompileOptions& options) override;
 
-  StatusOr<std::unique_ptr<HloModule>> RunHloPasses(
+  absl::StatusOr<std::unique_ptr<HloModule>> RunHloPasses(
       std::unique_ptr<HloModule> module, se::StreamExecutor* stream_exec,
       const CompileOptions& options) override;
 
-  StatusOr<std::unique_ptr<BufferAssignment>> AssignBuffers(
+  absl::StatusOr<std::unique_ptr<BufferAssignment>> AssignBuffers(
       HloModule* module, const se::StreamExecutor* stream_exec) override;
 
-  StatusOr<std::unique_ptr<Executable>> RunBackend(
+  absl::StatusOr<std::unique_ptr<Executable>> RunBackend(
       std::unique_ptr<HloModule> module, se::StreamExecutor* stream_exec,
       const CompileOptions& options) override;
 
-  StatusOr<std::vector<std::unique_ptr<AotCompilationResult>>>
+  absl::StatusOr<std::vector<std::unique_ptr<AotCompilationResult>>>
   CompileAheadOfTime(std::unique_ptr<HloModuleGroup> module_group,
                      const AotCompilationOptions& options) override;
 
@@ -178,18 +178,18 @@ class CpuCompiler : public LLVMCompiler {
 
   HloCostAnalysis::ShapeSizeFunction ShapeSizeBytesFunction() const override;
 
-  StatusOr<std::unique_ptr<AotCompilationResult>> Export(
+  absl::StatusOr<std::unique_ptr<AotCompilationResult>> Export(
       Executable* executable) const override;
 
   // Returns a (deserialized) AotCompilationResult from a serialized
   // AotCompilationResult.
-  StatusOr<std::unique_ptr<AotCompilationResult>> LoadAotCompilationResult(
-      const std::string& serialized_aot_result) override;
+  absl::StatusOr<std::unique_ptr<AotCompilationResult>>
+  LoadAotCompilationResult(const std::string& serialized_aot_result) override;
 
   // The optional `registry` supports MLIR dialects and plugins to be loaded
   // during optimization. If non-null, it will be used to construct relevant
   // MLIR contexts.
-  StatusOr<std::unique_ptr<CpuExecutable>> CompileXlaRuntimeCpuExecutable(
+  absl::StatusOr<std::unique_ptr<CpuExecutable>> CompileXlaRuntimeCpuExecutable(
       std::unique_ptr<HloModule> module,
       mlir::DialectRegistry* registry = nullptr);
 
@@ -216,7 +216,7 @@ class CpuCompiler : public LLVMCompiler {
       LLVMTargetMachineFeatures* target_machine_features,
       const CompileOptions& compile_options, bool is_mlir_compile);
 
-  StatusOr<std::unique_ptr<CpuExecutable>> CompileLegacyCpuExecutable(
+  absl::StatusOr<std::unique_ptr<CpuExecutable>> CompileLegacyCpuExecutable(
       std::unique_ptr<HloModule> module);
 
   CpuCompiler(const CpuCompiler&) = delete;

@@ -17,11 +17,11 @@ limitations under the License.
 #define XLA_PYTHON_OUTFEED_RECEIVER_PY_H_
 
 // placeholder for index annotation headers
-#include "pybind11/pybind11.h"  // from @pybind11
+#include "third_party/nanobind/include/nanobind/nanobind.h"
 
 namespace xla {
 
-void BuildOutfeedReceiverSubmodule(pybind11::module* m);
+void BuildOutfeedReceiverSubmodule(nanobind::module_& m);
 
 }  // namespace xla
 

@@ -39,8 +39,8 @@ Status XLAShapeToTensorShape(const xla::Shape& shape,
 Status TensorShapeToXLAShape(DataType dtype, const TensorShape& tensor_shape,
                              xla::Shape* shape);
 
-StatusOr<xla::Shape> TensorShapeToXLAShape(DataType dtype,
-                                           const TensorShape& tensor_shape);
+absl::StatusOr<xla::Shape> TensorShapeToXLAShape(
+    DataType dtype, const TensorShape& tensor_shape);
 
 // Converts a TensorShape into the equivalent XLA Shape proto, taking an
 // xla::PrimitiveType to specify the element type.  This never fails.
@@ -71,7 +71,7 @@ Status TensorShapeToBoundedXLAShape(DataType dtype,
 // order of the tuple elements within the tuple shape.
 // If a shape (or a subshape of a tuple shape) has missing layout, a rank long
 // sequence of -1 values will be emitted.
-StatusOr<std::vector<int>> GetShapeLayoutVector(const xla::Shape& shape);
+absl::StatusOr<std::vector<int>> GetShapeLayoutVector(const xla::Shape& shape);
 
 // Given the input shape and a linearized sequence of the minor-to-major values
 // of the layouts, create the output shape by rewriting the input shape layouts.

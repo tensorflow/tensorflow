@@ -14,7 +14,6 @@
 # ==============================================================================
 """Tests for TPUStrategy."""
 
-from absl import logging
 from absl.testing import parameterized
 
 from tensorflow.core.protobuf import config_pb2
@@ -55,10 +54,13 @@ from tensorflow.python.ops import variables
 from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.platform import flags
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.saved_model import load
+from tensorflow.python.saved_model import save
 from tensorflow.python.tpu import device_assignment as device_assignment_lib
 from tensorflow.python.tpu import tpu_hardware_feature
 from tensorflow.python.tpu import tpu_replication
 from tensorflow.python.tpu import tpu_strategy_util
+from tensorflow.python.trackable import autotrackable
 from tensorflow.python.training import server_lib
 from tensorflow.python.util import nest
 
@@ -66,6 +68,27 @@ FLAGS = flags.FLAGS
 flags.DEFINE_string("tpu", "", "Name of TPU to connect to.")
 flags.DEFINE_string("project", None, "Name of GCP project with TPU.")
 flags.DEFINE_string("zone", None, "Name of GCP zone with TPU.")
+
+
+class TestExportArchive(autotrackable.AutoTrackable):
+
+  def __init__(self, init_value):
+    self._var = variables.Variable(init_value)
+    self._fn = def_function.function(self.update_var)
+    self._packed_var = self._var._packed_var
+
+  @def_function.function
+  def update_var(self):
+    # Use packed variable in function to simulate the error
+    # in b/323080532
+    self._packed_var.assign_add(3.0).assign_sub(1.0)
+
+  def save_function(self, directory):
+    save.save(self, directory)
+
+  @property
+  def packed_var(self):
+    return self._packed_var
 
 
 def get_tpu_cluster_resolver():
@@ -285,6 +308,27 @@ class TPUStrategyTest(test.TestCase, parameterized.TestCase):
 
     ret = func()
     self.assertAllEqual(ret, 2.0)
+
+  def test_save(self, enable_packed_var):
+    strategy = get_tpu_strategy(enable_packed_var)
+    with strategy.scope():
+      v = variables.Variable(1.0)
+    export_dir = self.create_tempdir()
+    save.save(v, export_dir)
+    reloaded_var = load.load(export_dir)
+    self.assertAllEqual(reloaded_var, 1.0)
+
+  def test_packed_variable_export(self, enable_packed_var):
+    if not enable_packed_var:
+      self.skipTest("Test for Packed Variables only.")
+    strategy = get_tpu_strategy(enable_packed_var)
+    with strategy.scope():
+      export_dir = self.get_temp_dir()
+      export_archive = TestExportArchive(1.0)
+    export_archive.save_function(export_dir)
+    restored_object = load.load(export_dir)
+    with ops.device("/tpu:0"):
+      self.assertAllEqual(restored_object._packed_var, 1.0)
 
   def testStaticHashTableDatasetFnHostTrainingLoop(self, enable_packed_var):
     self._dataset_fn_tracing_count = 0
@@ -1570,4 +1614,5 @@ class VariableCreationTest(test.TestCase):
 
 
 if __name__ == "__main__":
+  ops.enable_eager_execution()
   test.main()

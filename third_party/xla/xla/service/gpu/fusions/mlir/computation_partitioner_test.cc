@@ -62,6 +62,7 @@ TEST_F(ComputationPartitionerTest, PartitionDiamonds) {
   auto* fusion = module->GetComputationWithName("fused_computation");
   ASSERT_NE(fusion, nullptr);
   PartitionedComputation computation(fusion);
+  auto param = fusion->GetInstructionWithName("param");
   auto slice01 = fusion->GetInstructionWithName("slice0.1");
   auto slice02 = fusion->GetInstructionWithName("slice0.2");
   auto add0 = fusion->GetInstructionWithName("add0");
@@ -76,23 +77,24 @@ TEST_F(ComputationPartitionerTest, PartitionDiamonds) {
   auto add3 = fusion->GetInstructionWithName("add3");
 
   const auto& graphs = computation.subgraphs();
-  ASSERT_THAT(graphs, SizeIs(4));
-  EXPECT_THAT(graphs[0].instructions_post_order,
-              ElementsAre(slice01, slice02, add0));
+  ASSERT_THAT(graphs, SizeIs(5));
+  EXPECT_THAT(graphs[0].instructions_post_order, ElementsAre(param));
   EXPECT_THAT(graphs[1].instructions_post_order,
-              ElementsAre(slice11, slice12, add1));
+              ElementsAre(slice01, slice02, add0));
   EXPECT_THAT(graphs[2].instructions_post_order,
-              ElementsAre(slice21, slice22, add2));
+              ElementsAre(slice11, slice12, add1));
   EXPECT_THAT(graphs[3].instructions_post_order,
+              ElementsAre(slice21, slice22, add2));
+  EXPECT_THAT(graphs[4].instructions_post_order,
               ElementsAre(slice31, slice32, add3));
 
-  EXPECT_THAT(graphs[0].roots, ElementsAre(add0));
-  EXPECT_THAT(graphs[1].roots, ElementsAre(add1));
-  EXPECT_THAT(graphs[2].roots, ElementsAre(add2));
-  EXPECT_THAT(graphs[3].roots, ElementsAre(add3));
+  EXPECT_THAT(graphs[1].roots, ElementsAre(add0));
+  EXPECT_THAT(graphs[2].roots, ElementsAre(add1));
+  EXPECT_THAT(graphs[3].roots, ElementsAre(add2));
+  EXPECT_THAT(graphs[4].roots, ElementsAre(add3));
 
-  EXPECT_EQ(&computation.GetRootSubgraph(), &graphs[3]);
-  EXPECT_EQ(&computation.FindSubgraph(slice21), &graphs[2]);
+  EXPECT_EQ(&computation.GetRootSubgraph(), &graphs[4]);
+  EXPECT_EQ(&computation.FindSubgraph(slice21), &graphs[3]);
 }
 
 TEST_F(ComputationPartitionerTest, TupleRoot) {
@@ -111,7 +113,7 @@ TEST_F(ComputationPartitionerTest, TupleRoot) {
   ASSERT_NE(fusion, nullptr);
   PartitionedComputation computation(fusion);
 
-  ASSERT_THAT(computation.subgraphs(), SizeIs(1));
+  ASSERT_THAT(computation.subgraphs(), SizeIs(3)) << computation.ToString();
   EXPECT_THAT(computation.GetRootSubgraph().roots, SizeIs(1));
   EXPECT_THAT(computation.GetRootSubgraph().instructions_post_order, SizeIs(3));
 }

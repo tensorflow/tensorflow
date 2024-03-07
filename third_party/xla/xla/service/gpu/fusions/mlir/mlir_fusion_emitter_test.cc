@@ -26,6 +26,7 @@ limitations under the License.
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/Dialect/Affine/IR/AffineOps.h"  // from @llvm-project
 #include "mlir/Dialect/Bufferization/IR/BufferizableOpInterface.h"  // from @llvm-project
+#include "mlir/Dialect/Complex/IR/Complex.h"  // from @llvm-project
 #include "mlir/Dialect/Func/Extensions/InlinerExtension.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/GPU/IR/GPUDialect.h"  // from @llvm-project
@@ -70,10 +71,12 @@ class DummyCopyFusionEmitter : public MlirFusionEmitterBase {
   }
 
  protected:
-  absl::Status EmitMlir(mlir::ModuleOp module,
-                        mlir::func::FuncOp entry_function,
-                        const HloFusionInstruction& fusion) const final {
-    mlir::ImplicitLocOpBuilder b(module->getLoc(), entry_function);
+  absl::Status EmitEntryFunction(
+      const mlir_converter::PartitionedComputations& computations,
+      const mlir_converter::CallTargetProvider& call_targets,
+      mlir::func::FuncOp entry_function,
+      const HloFusionInstruction& fusion) const {
+    mlir::ImplicitLocOpBuilder b(entry_function.getLoc(), entry_function);
     b.setInsertionPointToStart(entry_function.addEntryBlock());
     auto thread_id = EmitThreadId(b, 0);
     auto value = b.create<mlir::tensor::ExtractOp>(
@@ -90,9 +93,9 @@ class MlirFusionEmitterTest : public HloTestBase {
   MlirFusionEmitterTest() {
     context_.loadDialect<mlir::tensor::TensorDialect, mlir::func::FuncDialect,
                          mlir::affine::AffineDialect, mlir::arith::ArithDialect,
-                         mlir::math::MathDialect, mlir::scf::SCFDialect,
-                         mlir::mhlo::MhloDialect, mlir::gpu::GPUDialect,
-                         mlir::NVVM::NVVMDialect>();
+                         mlir::complex::ComplexDialect, mlir::math::MathDialect,
+                         mlir::scf::SCFDialect, mlir::mhlo::MhloDialect,
+                         mlir::gpu::GPUDialect, mlir::NVVM::NVVMDialect>();
     mlir::DialectRegistry registry;
     mlir::func::registerInlinerExtension(registry);
     mlir::registerBuiltinDialectTranslation(registry);

@@ -184,6 +184,7 @@ tf_cc_test(
     srcs = ["saved_model_import_test.cc"],
     deps = [
         ":saved_model_import",
+        ":types",
         "//tensorflow/compiler/mlir/quantization/common:test_base",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_googletest//:gtest_main",

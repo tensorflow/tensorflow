@@ -48,6 +48,7 @@ limitations under the License.
 #include "xla/service/gpu/matmul_utils.h"
 #include "xla/service/gpu/nccl_api.h"
 #include "xla/service/gpu/nccl_clique_key.h"
+#include "xla/service/gpu/nccl_collective_broadcast_thunk.h"
 #include "xla/service/gpu/nccl_collective_thunk.h"
 #include "xla/service/gpu/runtime/annotation.h"
 #include "xla/service/gpu/runtime/nccl_all_gather_thunk.h"
@@ -1501,6 +1502,72 @@ absl::Status AllGatherCmd::Record(const Thunk::ExecuteParams& execute_params,
 }
 
 CommandBufferCmd::BufferUsageVector AllGatherCmd::buffers() {
+  BufferUsageVector buffer_usage;
+  for (auto& buffer : buffers_) {
+    buffer_usage.emplace_back(buffer.source_buffer, MemoryAccess::kRead);
+    buffer_usage.emplace_back(buffer.destination_buffer, MemoryAccess::kWrite);
+  }
+  return buffer_usage;
+}
+
+//===----------------------------------------------------------------------===//
+// CollectiveBroadcastCmd
+//===----------------------------------------------------------------------===//
+
+CollectiveBroadcastCmd::CollectiveBroadcastCmd(
+    ExecutionStreamId execution_stream_id, NcclApi* nccl_api,
+    NcclCollectiveConfig config,
+    absl::Span<const NcclCollectiveThunk::Buffer> buffers)
+    : CollectiveCmd(execution_stream_id, nccl_api, std::move(config)),
+      buffers_(buffers.begin(), buffers.end()) {}
+
+absl::Status CollectiveBroadcastCmd::Record(
+    const Thunk::ExecuteParams& execute_params,
+    const RecordParams& record_params, se::CommandBuffer* command_buffer) {
+  TF_ASSIGN_OR_RETURN(
+      std::vector<DeviceBufferPair> device_buffers,
+      ConvertToDeviceBuffers(execute_params.buffer_allocations, buffers_,
+                             config().operand_element_type));
+
+  ExecutionScopeId execution_scope_id = GetExecutionScope(record_params);
+  VLOG(5) << "CollectiveBroadcastCmd: execution_scope_id="
+          << execution_scope_id.value();
+
+  for (size_t i = 0; i < device_buffers.size(); ++i) {
+    VLOG(5) << "  Src: " << buffers_[i].source_buffer << " ("
+            << device_buffers[i].source_buffer.opaque() << ")";
+    VLOG(5) << "  Dst: " << buffers_[i].destination_buffer << " ("
+            << device_buffers[i].destination_buffer.opaque() << ")";
+  }
+
+  if (!execute_params.collective_params || !execute_params.collective_cliques) {
+    return absl::InvalidArgumentError(
+        "CollectiveBroadcastCmd requires collective parameters and cliques");
+  }
+
+  // Today when recording collective operations into command buffers we always
+  // use a sync mode and a stream id `0`.
+  TF_ASSIGN_OR_RETURN(NcclApi::NcclCommHandle comm,
+                      GetNcclComm(*execute_params.collective_params,
+                                  *execute_params.collective_cliques,
+                                  config().replica_groups, config().group_mode,
+                                  /*stream_id=*/0, GetAsyncStreamKind()));
+
+  // Use custom allocator for persistent execution plans.
+  NcclApi::ScopedPersistentPlanAllocator scoped_allocator(
+      comm, tsl::MakeRef<NcclApi::PersistentPlanAllocator>(
+                execute_params.buffer_allocations->device_ordinal(),
+                execute_params.buffer_allocations->memory_allocator(),
+                execute_params.stream));
+
+  return AddTracedCommandBuffer(
+      execute_params, record_params, command_buffer, [&](se::Stream* stream) {
+        return RunCollectiveBroadcast(device_buffers, *stream, comm,
+                                      nccl_api());
+      });
+}
+
+CommandBufferCmd::BufferUsageVector CollectiveBroadcastCmd::buffers() {
   BufferUsageVector buffer_usage;
   for (auto& buffer : buffers_) {
     buffer_usage.emplace_back(buffer.source_buffer, MemoryAccess::kRead);

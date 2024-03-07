@@ -16,6 +16,8 @@ limitations under the License.
 #ifndef XLA_SERVICE_GPU_RUNTIME_MEMSET_THUNK_H_
 #define XLA_SERVICE_GPU_RUNTIME_MEMSET_THUNK_H_
 
+#include <cstdint>
+
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/gpu/thunk.h"
 #include "xla/status.h"

@@ -14,7 +14,7 @@
 # ==============================================================================
 """Experimental API for checkpoint adapter."""
 import abc
-from typing import List
+from typing import List, Optional
 
 from tensorflow.python.framework import tensor
 from tensorflow.python.trackable import base
@@ -90,7 +90,6 @@ class AbstractCheckpointAdapter(abc.ABC):
       path: Path to checkpoint.
     """
 
-
   @abc.abstractmethod
   def is_applicable(self, trackable: base.Trackable) -> bool:
     """Returns whether the adapter is applicable to trackable for resharding.
@@ -104,10 +103,10 @@ class AbstractCheckpointAdapter(abc.ABC):
     """
 
   @abc.abstractmethod
-  def get_reshard_callback(self, name: str) -> ReshardCallback | None:
+  def get_reshard_callback(self, name: str) -> Optional[ReshardCallback]:
     """Returns the reshard callback for the trackable with `name`."""
 
-  def maybe_reshard(self, name: str) -> tuple[str, ReshardCallback | None]:
+  def maybe_reshard(self, name: str) -> tuple[str, Optional[ReshardCallback]]:
     """Returns the updated name and ReshardCallback applicable to it."""
     callback = self.get_reshard_callback(name)
     if callback is None:

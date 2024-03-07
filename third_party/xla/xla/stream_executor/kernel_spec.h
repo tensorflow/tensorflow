@@ -148,9 +148,7 @@ class CudaPtxInMemory : public KernelLoaderSpec {
   // "<cc_major>,<cc_minor>", i.e., "2,0", "3,0", "3,5". Because CC's
   // represented in this way have a clear sorting order, map::begin() will give
   // the lowest-numbered version available, i.e. the default.
-  std::map<std::tuple<int, int>, const char *,
-           bool (*)(const std::tuple<int, int> &, const std::tuple<int, int> &)>
-      ptx_by_compute_capability_;
+  std::map<std::tuple<int, int>, const char *> ptx_by_compute_capability_;
 
   // Defines the minimum compute capability possible. Used when PTX has no
   // compute capability specified (in the single-PTX constructor).

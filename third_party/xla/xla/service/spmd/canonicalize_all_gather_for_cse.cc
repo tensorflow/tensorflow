@@ -24,7 +24,7 @@ limitations under the License.
 
 namespace xla {
 
-StatusOr<bool> CanonicalizeAllGatherForCSE::RunOnComputation(
+absl::StatusOr<bool> CanonicalizeAllGatherForCSE::RunOnComputation(
     HloComputation* comp) {
   bool changed = false;
   // Helper to find the respective shape input dimension of an shape output
@@ -92,7 +92,7 @@ StatusOr<bool> CanonicalizeAllGatherForCSE::RunOnComputation(
   return changed;
 }
 
-StatusOr<bool> CanonicalizeAllGatherForCSE::Run(
+absl::StatusOr<bool> CanonicalizeAllGatherForCSE::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   bool changed = false;

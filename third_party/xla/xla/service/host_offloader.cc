@@ -25,6 +25,8 @@ limitations under the License.
 #include "absl/container/inlined_vector.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -82,8 +84,8 @@ bool DefiningPositionIsAllowed(const HloInstruction* instruction) {
 }
 
 template <typename MatcherType>
-StatusOr<HloInstruction*> BufferHasPositionWithUser(const HloBuffer& buffer,
-                                                    MatcherType matcher) {
+absl::StatusOr<HloInstruction*> BufferHasPositionWithUser(
+    const HloBuffer& buffer, MatcherType matcher) {
   HloInstruction* result = nullptr;
   for (const HloValue* value : buffer.values()) {
     for (const HloPosition& position : value->positions()) {
@@ -102,7 +104,23 @@ StatusOr<HloInstruction*> BufferHasPositionWithUser(const HloBuffer& buffer,
 }
 
 template <typename MatcherType>
-StatusOr<std::vector<HloInstruction*>> GetBufferUsersOfType(
+absl::StatusOr<std::vector<HloInstruction*>> GetBufferPositionsWithUser(
+    const HloBuffer& buffer, MatcherType matcher) {
+  std::vector<HloInstruction*> result;
+  for (const HloValue* value : buffer.values()) {
+    for (const HloPosition& position : value->positions()) {
+      for (HloInstruction* user : position.instruction->users()) {
+        if (Match(user, matcher)) {
+          result.emplace_back(user);
+        }
+      }
+    }
+  }
+  return result;
+}
+
+template <typename MatcherType>
+absl::StatusOr<std::vector<HloInstruction*>> GetBufferUsersOfType(
     const HloBuffer& buffer, MatcherType matcher) {
   std::vector<HloInstruction*> result;
   for (const HloValue* value : buffer.values()) {
@@ -148,8 +166,7 @@ HloInstruction* FindDSAnnotation(HloInstruction* hlo) {
 
 }  // namespace
 
-Status HostOffloader::HandlePipelineForwardCustomCall(
-    HloInstruction* custom_call) {
+Status HostOffloader::HandleMoveToHostCustomCall(HloInstruction* custom_call) {
   VLOG(2) << "Found a custom call annotating start-of-host-offload: "
           << custom_call->ToString();
   // Save a pointer to this custom call for when we want to remove it later.
@@ -437,52 +454,92 @@ Status HostOffloader::MemoryOnlyOffloadInsertCopies(
 
   // Check that this buffer is finally an input to a load-from-host custom-call.
   TF_ASSIGN_OR_RETURN(
-      HloInstruction * matching_annotation,
-      BufferHasPositionWithUser(
+      std::vector<HloInstruction*> matching_annotations,
+      GetBufferPositionsWithUser(
           unique_buffer,
           match::CustomCall({host_memory_offload_annotations::
                                  kMoveToDeviceCustomCallTarget})));
-  if (matching_annotation == nullptr) {
+  if (matching_annotations.empty()) {
     return Internal(
         "The offloaded data (from %s) never feeds into a matching \"load\" "
         "annotation.",
         custom_call->name());
   }
-  expected_host_to_device_annotations_.emplace(matching_annotation);
 
-  // This fits the pattern that we're looking for. Now insert copies to do the
-  // offload and reload.
-  HloInstruction* thing_to_offload = custom_call->operands()[0];
-  // Create a copy (to host) of the first and only operand to the given custom
-  // call.
-  HloInstruction* copy_to_host =
-      custom_call->parent()->AddInstruction(HloInstruction::CreateUnary(
-          thing_to_offload->shape(), HloOpcode::kCopy, thing_to_offload));
-  // Replace all uses of the offloading custom call with the first copy.
-  TF_RETURN_IF_ERROR(custom_call->ReplaceAllUsesWith(copy_to_host));
+  // This fits the pattern that we're looking for. Save these annotations to
+  // later insert copies around.
+  annotations_for_copy_to_host_to_insert_.emplace(custom_call);
+  for (HloInstruction* matching_annotation : matching_annotations) {
+    annotations_for_copy_to_device_to_insert_.emplace(matching_annotation);
 
-  HloInstruction* operand_of_load_annotation =
-      matching_annotation->mutable_operand(0);
-  // Create another copy (back to device) of that copy.
+    // Save the matching annotation to later be removed.
+    expected_host_to_device_annotations_.emplace(matching_annotation);
+  }
+
+  AddAllPositionsToBeMovedToHostMemory(unique_buffer);
+  return OkStatus();
+}
+
+absl::StatusOr<bool> HostOffloader::TryParameterStreaming(
+    HloInstruction* custom_call) {
+  HloInstruction* operand_of_load_annotation = custom_call->mutable_operand(0);
+  const HloBuffer& unique_buffer =
+      alias_analysis_->GetUniqueBufferAt(operand_of_load_annotation);
+  bool is_defined_by_entry_param_with_host_memory_space = false;
+  const HloComputation* const entry_computation =
+      custom_call->GetModule()->entry_computation();
+  for (const HloValue* value : unique_buffer.values()) {
+    // Check if this is memory-only.
+    if (!AllPositionsAreAllowed(value)) {
+      // Found a position which is not allowed.
+      return false;
+    }
+    // Look for a value defined by a entry computation parameter.
+    HloInstruction* defining_instruction =
+        value->defining_position().instruction;
+    if (defining_instruction->opcode() == HloOpcode::kParameter) {
+      if (defining_instruction->parent() == entry_computation) {
+        const Shape& param_shape =
+            entry_computation->parent()
+                ->entry_computation_layout()
+                .parameter_shape(defining_instruction->parameter_number());
+        CHECK(param_shape.has_layout());
+        if (param_shape.layout().memory_space() == kHostMemorySpaceColor) {
+          is_defined_by_entry_param_with_host_memory_space = true;
+        }
+      }
+    }
+  }
+  if (!is_defined_by_entry_param_with_host_memory_space) {
+    VLOG(1) << absl::StreamFormat(
+        "Buffer annotated by %s is not defined by an entry computation "
+        "parameter with host memory space.",
+        custom_call->name());
+    return false;
+  }
+
+  // Create a copy to the device.
+  Shape copy_shape = operand_of_load_annotation->shape();
+  SetMemorySpace(&copy_shape, Layout::kDefaultMemorySpace);
   HloInstruction* copy_to_device =
       custom_call->parent()->AddInstruction(HloInstruction::CreateUnary(
-          copy_to_host->shape(), HloOpcode::kCopy, operand_of_load_annotation));
-  // Replace all uses of the operand of the matching annotation with the second
-  // copy.
+          copy_shape, HloOpcode::kCopy, operand_of_load_annotation));
   TF_RETURN_IF_ERROR(
       operand_of_load_annotation->ReplaceAllUsesWith(copy_to_device));
 
   AddAllPositionsToBeMovedToHostMemory(unique_buffer);
-  // Also save the position of the newly created copy-to-host to later have its
-  // memory space updated.
-  positions_to_move_to_host_memory_.emplace(HloPosition{copy_to_host});
-  return OkStatus();
+  return true;
 }
 
-Status HostOffloader::HandlePipelineBackwardCustomCall(
+Status HostOffloader::HandleMoveToDeviceCustomCall(
     HloInstruction* custom_call) {
   VLOG(2) << "Found a custom call annotating end-of-host-offload: "
           << custom_call->ToString();
+  TF_ASSIGN_OR_RETURN(bool did_parameter_streaming,
+                      TryParameterStreaming(custom_call));
+  if (did_parameter_streaming) {
+    expected_host_to_device_annotations_.emplace(custom_call);
+  }
   // Save a pointer to this custom call for later removal.
   found_host_to_device_annotations_.emplace(custom_call);
   return OkStatus();
@@ -511,7 +568,7 @@ Status HostOffloader::DynamifySlice(HloInstruction* slice) {
   return OkStatus();
 }
 
-StatusOr<bool> HostOffloader::Run(
+absl::StatusOr<bool> HostOffloader::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   bool changed = false;
@@ -529,13 +586,42 @@ StatusOr<bool> HostOffloader::Run(
       }
       if (instruction->custom_call_target() ==
           host_memory_offload_annotations::kMoveToHostCustomCallTarget) {
-        TF_RETURN_IF_ERROR(HandlePipelineForwardCustomCall(instruction));
+        TF_RETURN_IF_ERROR(HandleMoveToHostCustomCall(instruction));
       } else if (instruction->custom_call_target() ==
                  host_memory_offload_annotations::
                      kMoveToDeviceCustomCallTarget) {
-        TF_RETURN_IF_ERROR(HandlePipelineBackwardCustomCall(instruction));
+        TF_RETURN_IF_ERROR(HandleMoveToDeviceCustomCall(instruction));
       }
     }
+  }
+
+  // Insert copies to the host for the saved annotations.
+  for (HloInstruction* to_host_annotation :
+       annotations_for_copy_to_host_to_insert_) {
+    HloInstruction* data_to_host = to_host_annotation->mutable_operand(0);
+    // Create a copy (to host) of the first and only operand to the given custom
+    // call.
+    HloInstruction* copy_to_host =
+        data_to_host->parent()->AddInstruction(HloInstruction::CreateUnary(
+            data_to_host->shape(), HloOpcode::kCopy, data_to_host));
+    // Replace all uses of the to-host annotation with the first copy.
+    TF_RETURN_IF_ERROR(to_host_annotation->ReplaceAllUsesWith(copy_to_host));
+    // Also save the position of the newly created copy-to-host to later have
+    // its memory space updated.
+    positions_to_move_to_host_memory_.emplace(HloPosition{copy_to_host});
+  }
+
+  // Insert copies to the device for the saved annotations.
+  for (HloInstruction* to_device_annotation :
+       annotations_for_copy_to_device_to_insert_) {
+    HloInstruction* data_to_device = to_device_annotation->mutable_operand(0);
+    // Create another copy (back to device) of that copy.
+    HloInstruction* copy_to_device =
+        data_to_device->parent()->AddInstruction(HloInstruction::CreateUnary(
+            data_to_device->shape(), HloOpcode::kCopy, data_to_device));
+    // Replace all uses of the to-device annotation with the second copy.
+    TF_RETURN_IF_ERROR(
+        to_device_annotation->ReplaceAllUsesWith(copy_to_device));
   }
 
   // Check that we found all the annotations that we expected.

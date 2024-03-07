@@ -413,6 +413,7 @@ cc_library(
 #         "//tensorflow/core/profiler/lib:traceme",
 #         "//tensorflow/lite/core/c:common",
 #         "//tensorflow/lite/kernels:kernel_util",
+#         "@local_tsl//tsl/profiler/backends/cpu:traceme_recorder",
 #         "@com_google_absl//absl/base",
 #         "@com_google_absl//absl/debugging:stacktrace",
 #         "@com_google_absl//absl/debugging:symbolize",

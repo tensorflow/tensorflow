@@ -22,9 +22,10 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/flat_hash_set.h"
+#include "absl/status/statusor.h"
 #include "xla/hlo/experimental/auto_sharding/auto_sharding.pb.h"
 #include "xla/hlo/experimental/auto_sharding/auto_sharding_strategy.h"
-#include "xla/statusor.h"
+#include "xla/status.h"
 #include "ortools/linear_solver/linear_solver.h"
 
 namespace xla {
@@ -138,7 +139,7 @@ class StrategyShaver {
 
 // Check fail if `request` is invalid (e.g., because of negative node costs).
 // Note: This does not include checks for valid variable aliasing yet.
-void ValidateRequest(const AutoShardingSolverRequest& request);
+Status ValidateRequest(const AutoShardingSolverRequest& request);
 
 }  // namespace spmd
 }  // namespace xla

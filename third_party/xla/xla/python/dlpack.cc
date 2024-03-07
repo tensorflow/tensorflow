@@ -29,9 +29,11 @@ limitations under the License.
 #include "include/dlpack/dlpack.h"  // from @dlpack
 #include "pybind11/gil.h"  // from @pybind11
 #include "pybind11/pytypes.h"  // from @pybind11
+#include "xla/layout.h"
 #include "xla/pjrt/exceptions.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_compiler.h"
+#include "xla/pjrt/pjrt_layout.h"
 #include "xla/python/pjrt_ifrt/pjrt_array.h"
 #include "xla/python/py_array.h"
 #include "xla/python/python_ref_manager.h"
@@ -328,9 +330,12 @@ absl::StatusOr<py::capsule> BufferToDLPackManagedTensor(
 
   pack->shape = std::vector<int64_t>(pjrt_buffer->dimensions().begin(),
                                      pjrt_buffer->dimensions().end());
-  pack->strides =
-      StridesForShape(pjrt_buffer->element_type(), pjrt_buffer->dimensions(),
-                      pjrt_buffer->layout());
+
+  // TODO(b/327524065): use PjRtLayout directly instead of xla::Layout
+  Layout xla_layout = GetXlaLayoutUnsafe(pjrt_buffer->layout());
+  pack->strides = StridesForShape(pjrt_buffer->element_type(),
+                                  pjrt_buffer->dimensions(), xla_layout);
+
   dt.shape = reinterpret_cast<std::int64_t*>(pack->shape.data());
   dt.strides = reinterpret_cast<std::int64_t*>(pack->strides.data());
   dt.byte_offset = 0;

@@ -138,7 +138,6 @@ ExportedModel CreateExportedModel(
   return exported_model;
 }
 
-// TODO: b/315746734 - Test this function using a test-only pass.
 void AddExportPasses(mlir::PassManager& pm,
                      const bool duplicate_shape_determining_constants) {
   if (duplicate_shape_determining_constants) {

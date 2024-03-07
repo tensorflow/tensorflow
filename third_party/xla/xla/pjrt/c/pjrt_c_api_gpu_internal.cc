@@ -62,17 +62,18 @@ PJRT_Error* PJRT_Client_Create(PJRT_Client_Create_Args* args) {
       pjrt::ConvertFromPjRtNamedValueList(args->create_options,
                                           args->num_options);
   const auto kExpectedOptionNameAndTypes =
-      absl::flat_hash_map<std::string, PJRT_NamedValue_Type>(
-          {{"platform_name", PJRT_NamedValue_Type::PJRT_NamedValue_kString},
-           {"allocator", PJRT_NamedValue_Type::PJRT_NamedValue_kString},
-           {"memory_fraction", PJRT_NamedValue_Type::PJRT_NamedValue_kFloat},
-           {"preallocate", PJRT_NamedValue_Type::PJRT_NamedValue_kBool},
-           {"collective_memory_size",
-            PJRT_NamedValue_Type::PJRT_NamedValue_kInt64},
-           {"visible_devices",
-            PJRT_NamedValue_Type::PJRT_NamedValue_kInt64List},
-           {"node_id", PJRT_NamedValue_Type::PJRT_NamedValue_kInt64},
-           {"num_nodes", PJRT_NamedValue_Type::PJRT_NamedValue_kInt64}});
+      absl::flat_hash_map<std::string, PJRT_NamedValue_Type>({
+          {"platform_name", PJRT_NamedValue_Type::PJRT_NamedValue_kString},
+          {"allocator", PJRT_NamedValue_Type::PJRT_NamedValue_kString},
+          {"memory_fraction", PJRT_NamedValue_Type::PJRT_NamedValue_kFloat},
+          {"preallocate", PJRT_NamedValue_Type::PJRT_NamedValue_kBool},
+          {"collective_memory_size",
+           PJRT_NamedValue_Type::PJRT_NamedValue_kInt64},
+          {"visible_devices", PJRT_NamedValue_Type::PJRT_NamedValue_kInt64List},
+          {"node_id", PJRT_NamedValue_Type::PJRT_NamedValue_kInt64},
+          {"num_nodes", PJRT_NamedValue_Type::PJRT_NamedValue_kInt64},
+          {"enable_mock_nccl", PJRT_NamedValue_Type::PJRT_NamedValue_kBool},
+      });
   PJRT_RETURN_IF_ERROR(
       ValidateCreateOptions(create_options, kExpectedOptionNameAndTypes));
 
@@ -125,6 +126,11 @@ PJRT_Error* PJRT_Client_Create(PJRT_Client_Create_Args* args) {
   if (auto it = create_options.find("num_nodes"); it != create_options.end()) {
     num_nodes = std::get<int64_t>(it->second);
   }
+  bool enable_mock_nccl = false;
+  if (auto it = create_options.find("enable_mock_nccl");
+      it != create_options.end()) {
+    enable_mock_nccl = std::get<bool>(it->second);
+  }
 
   xla::GpuClientOptions options;
   options.allocator_config = allocator_config;
@@ -135,6 +141,7 @@ PJRT_Error* PJRT_Client_Create(PJRT_Client_Create_Args* args) {
   options.kv_store =
       pjrt::ToCppKeyValueStore(args->kv_get_callback, args->kv_get_user_arg,
                                args->kv_put_callback, args->kv_put_user_arg);
+  options.enable_mock_nccl = enable_mock_nccl;
   PJRT_ASSIGN_OR_RETURN(std::unique_ptr<xla::PjRtClient> client,
                         xla::GetStreamExecutorGpuClient(options));
   args->client = pjrt::CreateWrapperClient(std::move(client));

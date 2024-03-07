@@ -844,6 +844,10 @@ class XlaBuilder {
       const std::optional<Layout>& layout,
       const std::optional<ChannelHandle>& channel_id = std::nullopt);
 
+  XlaOp CollectiveBroadcast(
+      XlaOp operand, absl::Span<const ReplicaGroup> replica_groups,
+      const std::optional<ChannelHandle>& channel_id = std::nullopt);
+
   XlaOp CollectivePermute(
       XlaOp operand,
       const std::vector<std::pair<int64_t, int64_t>>& source_target_pairs,
@@ -1492,6 +1496,9 @@ class XlaBuilder {
                              absl::Span<const ReplicaGroup> replica_groups,
                              const std::optional<Layout>& layout,
                              const std::optional<ChannelHandle>& channel_id);
+  friend XlaOp CollectiveBroadcast(
+      XlaOp operand, absl::Span<const ReplicaGroup> replica_groups,
+      const std::optional<ChannelHandle>& channel_id);
   friend XlaOp CollectivePermute(
       XlaOp operand,
       const std::vector<std::pair<int64_t, int64_t>>& source_target_pairs,
@@ -1639,6 +1646,10 @@ class XlaBuilder {
                       const std::optional<ChannelHandle>& channel_id,
                       const std::optional<Shape>& layout,
                       std::optional<bool> use_global_device_ids, bool async);
+
+  XlaOp CollectiveBroadcastImpl(XlaOp operand,
+                                absl::Span<const ReplicaGroup> replica_groups,
+                                const std::optional<ChannelHandle>& channel_id);
 
   XlaOp CollectivePermuteImpl(
       XlaOp operand,
@@ -2530,6 +2541,10 @@ XlaOp AllToAllTuple(
     XlaOp operand, int64_t split_dimension, int64_t concat_dimension,
     int64_t split_count, absl::Span<const ReplicaGroup> replica_groups = {},
     const std::optional<Layout>& layout = std::nullopt,
+    const std::optional<ChannelHandle>& channel_id = std::nullopt);
+
+XlaOp CollectiveBroadcast(
+    XlaOp operand, absl::Span<const ReplicaGroup> replica_groups,
     const std::optional<ChannelHandle>& channel_id = std::nullopt);
 
 // Enqueues an collective operation that sends and receives data cross replicas.
