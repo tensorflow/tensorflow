@@ -187,6 +187,7 @@ tf_cc_test(
     size = "small",
     srcs = ["shared_batch_scheduler_test.cc"],
     deps = [
+        ":batch_scheduler",
         ":fake_clock_env",
         ":shared_batch_scheduler",
         "//tensorflow/core:lib",
@@ -196,9 +197,7 @@ tf_cc_test(
         "//tensorflow/core/platform:status_matchers",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/container:fixed_array",
-        "@com_google_absl//absl/flags:flag",
         "@com_google_absl//absl/time",
-        "@com_google_absl//absl/utility",
     ],
 )
 
