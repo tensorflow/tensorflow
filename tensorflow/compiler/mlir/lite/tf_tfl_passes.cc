@@ -455,6 +455,7 @@ void AddPostVariableFreezingTFToTFLConversionPasses(
       pass_manager->addNestedPass<mlir::func::FuncOp>(
           mlir::TFL::CreateOptimizeBatchMatmulPass());
     }
+    pass_manager->addPass(mlir::TFL::CreatePushTransposeThroughEwisePass());
     pass_manager->addNestedPass<mlir::func::FuncOp>(
         mlir::TFL::CreateOptimizePass(/*enable_canonicalization=*/true,
                                       toco_flags.disable_fuse_mul_and_fc()));
