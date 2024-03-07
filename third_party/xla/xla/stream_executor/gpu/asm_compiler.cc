@@ -21,6 +21,7 @@ limitations under the License.
 #include <cstdlib>
 #include <sstream>
 #include <string>
+#include <string_view>
 #include <tuple>
 #include <utility>
 #include <vector>
@@ -61,17 +62,15 @@ limitations under the License.
 
 namespace stream_executor {
 
-static absl::StatusOr<absl::string_view> GetToolVersionString(
+static absl::StatusOr<std::string> GetToolVersionString(
     absl::string_view binary_path) {
-  static absl::Mutex mu(absl::kConstInit);
-  static auto* seen_binary_paths ABSL_GUARDED_BY(mu) =
-      new absl::flat_hash_map<std::string, std::string>();
-
-  absl::MutexLock lock(&mu);
-  auto it = seen_binary_paths->find(binary_path);
-  if (it != seen_binary_paths->end()) {
-    // Already checked this binary, nothing to do.
-    return absl::string_view(it->second);
+  // If binary_path doesn't exist, then tsl::SubProcess will log a bunch of
+  // error messages that have confused users in the past. Therefore we first
+  // check whether the binary_path exists and error out early if not.
+  tsl::Env* env = tsl::Env::Default();
+  if (absl::Status file_exists = env->FileExists(std::string{binary_path});
+      !file_exists.ok()) {
+    return file_exists;
   }
 
   tsl::SubProcess binary;
@@ -90,21 +89,20 @@ static absl::StatusOr<absl::string_view> GetToolVersionString(
     return absl::InternalError(absl::StrFormat(
         "Running %s --version returned %d", binary_path, exit_code));
   }
-  auto emplace_it = seen_binary_paths->emplace(binary_path, std::move(out));
-  return absl::string_view(emplace_it.first->second);
+
+  return out;
 }
 
-absl::StatusOr<std::array<int64_t, 3>> GetToolVersion(
-    absl::string_view tool_path) {
-  absl::StatusOr<absl::string_view> tool_version =
-      GetToolVersionString(tool_path);
+static absl::StatusOr<ToolVersion> GetToolVersionImpl(
+    std::string_view tool_path) {
+  absl::StatusOr<std::string> tool_version = GetToolVersionString(tool_path);
   if (!tool_version.ok()) {
     return absl::FailedPreconditionError(
         absl::StrCat("Couldn't get ptxas/nvlink version string: ",
                      tool_version.status().ToString()));
   }
   static constexpr LazyRE2 kVersionRegex = {R"(\bV(\d+)\.(\d+)\.(\d+)\b)"};
-  std::array<int64_t, 3> version;
+  ToolVersion version{};
   absl::string_view vmaj_str, vmin_str, vdot_str;
   if (!RE2::PartialMatch(tool_version.value(), *kVersionRegex, &vmaj_str,
                          &vmin_str, &vdot_str) ||
@@ -116,6 +114,24 @@ absl::StatusOr<std::array<int64_t, 3>> GetToolVersion(
                      tool_path, " --version:\n", tool_version.value()));
   }
   return version;
+}
+
+absl::StatusOr<ToolVersion> GetToolVersion(std::string_view tool_path) {
+  // This is only implementing a static cache. `GetToolVersionImpl` has the
+  // actual business logic.
+  static absl::Mutex mutex(absl::kConstInit);
+  static auto cache =
+      new absl::flat_hash_map<std::string, absl::StatusOr<ToolVersion>>
+          ABSL_GUARDED_BY(mutex);
+
+  absl::MutexLock lock(&mutex);
+  auto it = cache->find(tool_path);
+  if (it != cache->end()) {
+    return it->second;
+  }
+
+  return cache->try_emplace(tool_path, GetToolVersionImpl(tool_path))
+      .first->second;
 }
 
 // Prints a warning if the ptxas at ptxas_path has known bugs.
@@ -185,33 +201,20 @@ absl::StatusOr<std::vector<uint8_t>> CompileGpuAsm(int device_ordinal,
 }
 
 absl::StatusOr<std::string> FindCudaExecutable(
-    const std::string& binary_name, const std::string& preferred_cuda_dir) {
-  static absl::Mutex mu(absl::kConstInit);
-  static auto* seen_binary_paths ABSL_GUARDED_BY(mu) =
-      new absl::flat_hash_map<std::pair<std::string, std::string>,
-                              std::string>();
-
+    std::string_view binary_name, std::string_view preferred_cuda_dir) {
 #if defined(PLATFORM_WINDOWS)
-  const std::string binary_filename = binary_name + ".exe";
+  const std::string binary_filename = std::string{binary_name} + ".exe";
 #else
-  const std::string& binary_filename = binary_name;
+  std::string_view binary_filename = binary_name;
 #endif
 
-  auto cache_key = std::make_pair(binary_name, preferred_cuda_dir);
-
-  absl::MutexLock lock(&mu);
-  auto it = seen_binary_paths->find(cache_key);
-  if (it != seen_binary_paths->end()) {
-    return it->second;
-  }
-
-  auto env = tsl::Env::Default();
   std::vector<std::string> candidates{};
 
   // #1 - Check the preferred CUDA directory
   candidates.emplace_back(
       tsl::io::JoinPath(preferred_cuda_dir, "bin", binary_filename));
 
+  // #2 - Check the PATH environment variable
   std::string_view path_env = std::getenv("PATH");
 
 #if defined(PLATFORM_WINDOWS)
@@ -220,22 +223,19 @@ absl::StatusOr<std::string> FindCudaExecutable(
   constexpr char kSearchPathSeparator = ':';
 #endif
 
-  // #2 - Check the PATH environment variable
   for (std::string_view path : absl::StrSplit(path_env, kSearchPathSeparator)) {
     candidates.emplace_back(tsl::io::JoinPath(path, binary_filename));
   }
 
-  // #2 - Check generic CUDA locations
+  // #3 - Check generic CUDA locations
   for (std::string_view path : tsl::CandidateCudaRoots()) {
     candidates.emplace_back(tsl::io::JoinPath(path, "bin", binary_filename));
   }
 
   for (const auto& candidate : candidates) {
     VLOG(2) << "Looking for " << candidate;
-    if (env->FileExists(candidate).ok() &&
-        GetToolVersionString(candidate).ok()) {
+    if (GetToolVersion(candidate).ok()) {
       VLOG(2) << "Using " << candidate;
-      seen_binary_paths->emplace(std::move(cache_key), candidate);
       return candidate;
     }
   }
