@@ -99,7 +99,7 @@ class CalibrationComponent : public Component {
 
   // Function alias mapping for pre-calibrated SavedModel. Used to preserve
   // aliased functions.
-  const absl::flat_hash_map<FunctionName, FunctionAlias> function_aliases_;
+  absl::flat_hash_map<FunctionName, FunctionAlias> function_aliases_;
 
   // Tags to identify the MetaGraphDef to load from a SavedModel.
   const std::unordered_set<std::string> tags_;

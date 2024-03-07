@@ -169,21 +169,19 @@ absl::StatusOr<ModuleOp> ImportSavedModel(
     const std::vector<std::string>& signature_keys,
     const std::unordered_set<std::string>& tags,
     const QuantizationConfig& quantization_config,
-    const absl::flat_hash_map<FunctionName, FunctionAlias>& function_aliases,
+    absl::flat_hash_map<FunctionName, FunctionAlias>& function_aliases,
     MLIRContext& ctx ABSL_ATTRIBUTE_LIFETIME_BOUND) {
   TF_ASSIGN_OR_RETURN(
       ImportedMlirModuleOp imported_module,
       SavedModelToMlirModuleOp(saved_model_path, tags, signature_keys, ctx));
   auto [module_op, saved_model_bundle] = std::move(imported_module);
 
-  const absl::flat_hash_map<FunctionName, FunctionAlias>
-      updated_function_aliases =
-          UpdateFunctionAliases(function_aliases, module_op);
+  UpdateFunctionAliases(function_aliases, module_op);
 
   // Collect the names of the functions that have aliases so that they may not
   // be inlined.
   absl::flat_hash_set<std::string> aliased_function_names;
-  absl::c_for_each(updated_function_aliases, [&](const auto& aliases) {
+  absl::c_for_each(function_aliases, [&](const auto& aliases) {
     return aliased_function_names.insert(aliases.first);
   });
 
@@ -201,7 +199,7 @@ absl::StatusOr<ExportedModel> CreateExportedModel(
     const std::vector<std::string>& signature_keys,
     const std::unordered_set<std::string>& tags,
     const QuantizationConfig& quantization_config,
-    const absl::flat_hash_map<FunctionName, FunctionAlias>& function_aliases,
+    absl::flat_hash_map<FunctionName, FunctionAlias>& function_aliases,
     MLIRContext& ctx ABSL_ATTRIBUTE_LIFETIME_BOUND, ModuleOp module_op) {
   TF_ASSIGN_OR_RETURN(const std::string checkpoint_dir, GetLocalTmpFileName());
   const ExportOptions export_opts = {
@@ -213,12 +211,10 @@ absl::StatusOr<ExportedModel> CreateExportedModel(
   TF_ASSIGN_OR_RETURN(const SmallVector<AssetFileDef> asset_file_defs,
                       RunExportPasses(export_opts, ctx, module_op));
 
-  const absl::flat_hash_map<FunctionName, FunctionAlias>
-      updated_function_aliases =
-          UpdateFunctionAliases(function_aliases, module_op);
+  UpdateFunctionAliases(function_aliases, module_op);
 
   return ConvertMlirModuleToExportedModel(
-      module_op, checkpoint_dir, updated_function_aliases,
+      module_op, checkpoint_dir, function_aliases,
       {asset_file_defs.begin(), asset_file_defs.end()});
 }
 
@@ -264,7 +260,6 @@ absl::Status QuantizeStaticRangePtq(
     const QuantizationConfig& quantization_config,
     const std::vector<std::string>& signature_keys,
     const absl::flat_hash_map<std::string, SignatureDef>& signature_def_map,
-    const absl::flat_hash_map<FunctionName, FunctionAlias>& function_aliases,
     const PyFunctionLibrary& py_function_library) {
   std::unordered_set<std::string> tags;
   tags.insert(quantization_config.tf_saved_model().tags().begin(),
@@ -272,21 +267,28 @@ absl::Status QuantizeStaticRangePtq(
 
   std::unique_ptr<MLIRContext> ctx = CreateMlirContextForQuantization();
 
+  absl::StatusOr<absl::flat_hash_map<FunctionName, FunctionAlias>>
+      function_aliases = GetFunctionAliases(src_saved_model_path, tags);
+  if (!function_aliases.ok()) {
+    return absl::InternalError(absl::StrCat(
+        "Failed to get function alias: ", function_aliases.status().message()));
+  }
+
   TF_ASSIGN_OR_RETURN(
       ModuleOp module_op,
       ImportSavedModel(src_saved_model_path, signature_keys, tags,
-                       quantization_config, function_aliases, *ctx));
+                       quantization_config, *function_aliases, *ctx));
 
   StaticRangePtqComponent static_range_ptq_component(
       ctx.get(), &py_function_library, src_saved_model_path, signature_keys,
-      tags, signature_def_map, function_aliases);
+      tags, signature_def_map, *function_aliases);
   TF_ASSIGN_OR_RETURN(module_op, static_range_ptq_component.Run(
                                      module_op, quantization_config));
 
   TF_ASSIGN_OR_RETURN(
       const ExportedModel post_calibrated_exported_model,
       CreateExportedModel(signature_keys, tags, quantization_config,
-                          function_aliases, *ctx, module_op));
+                          *function_aliases, *ctx, module_op));
 
   // Remove the `tpu` tag for exporting because the output quantized model is
   // essentially a CPU model.

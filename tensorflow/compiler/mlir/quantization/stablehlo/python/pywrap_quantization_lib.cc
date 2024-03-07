@@ -40,11 +40,10 @@ absl::Status PywrapQuantizeStaticRangePtq(
     absl::string_view dst_saved_model_path, const QuantizationConfig& config,
     const std::vector<std::string>& signature_keys,
     const absl::flat_hash_map<std::string, SignatureDef>& signature_def_map,
-    const absl::flat_hash_map<std::string, std::string>& function_aliases,
     const PyFunctionLibrary& py_function_library) {
   return QuantizeStaticRangePtq(src_saved_model_path, dst_saved_model_path,
                                 config, signature_keys, signature_def_map,
-                                function_aliases, py_function_library);
+                                py_function_library);
 }
 
 QuantizationConfig PywrapPopulateDefaults(

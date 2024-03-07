@@ -52,16 +52,12 @@ PYBIND11_MODULE(pywrap_quantization, m) {
         serialized `SignatureDef` mapping for the `signature_def_map_serialized`
         argument.
 
-        `function_aliases` maps actual function names to the function aliases,
-        as defined by the `MetaGraphDef::MetaInfoDef::function_aliases` from the
-        input SavedModel.
-
         Raises `StatusNotOk` exception if when the run was unsuccessful.
         )pbdoc",
         py::arg("src_saved_model_path"), py::arg("dst_saved_model_path"),
         py::arg("quantization_config_serialized"), py::kw_only(),
         py::arg("signature_keys"), py::arg("signature_def_map_serialized"),
-        py::arg("function_aliases"), py::arg("py_function_library"));
+        py::arg("py_function_library"));
   // LINT.ThenChange(pywrap_quantization.pyi:static_range_ptq)
 
   // If the function signature changes, likely its corresponding .pyi type

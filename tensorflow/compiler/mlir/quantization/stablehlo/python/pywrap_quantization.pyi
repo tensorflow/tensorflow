@@ -25,7 +25,6 @@ def static_range_ptq(
     *,
     signature_keys: list[str],
     signature_def_map_serialized: dict[str, bytes],
-    function_aliases: dict[str, str],
     py_function_library: py_function_lib.PyFunctionLibrary,
 ) -> Any: ...  # Status
 

@@ -184,13 +184,9 @@ absl::StatusOr<ExportedModel> CalibrationComponent::ExportToSavedModel(
   TF_ASSIGN_OR_RETURN(const SmallVector<AssetFileDef> asset_file_defs,
                       RunExportPasses(export_opts, *ctx_, module_op));
 
-  const absl::flat_hash_map<FunctionName, FunctionAlias>
-      updated_function_aliases =
-          UpdateFunctionAliases(function_aliases_, module_op);
-
   TF_ASSIGN_OR_RETURN(ExportedModel exported_model,
                       ConvertMlirModuleToExportedModel(
-                          module_op, checkpoint_dir, updated_function_aliases,
+                          module_op, checkpoint_dir, function_aliases_,
                           {asset_file_defs.begin(), asset_file_defs.end()}));
 
   py_function_lib_->SaveExportedModel(dst_saved_model_path, exported_model,
@@ -208,17 +204,14 @@ absl::StatusOr<ModuleOp> CalibrationComponent::ImportCalibratedSavedModel(
                                                tags_, signature_keys_, *ctx_));
   ModuleOp module_op = imported_module.first;
 
-  const absl::flat_hash_map<FunctionName, FunctionAlias>
-      updated_function_aliases_post_calibration =
-          UpdateFunctionAliases(function_aliases_, module_op);
+  UpdateFunctionAliases(function_aliases_, module_op);
 
   // Collect the names of the functions that have aliases so that they may not
   // be inlined.
   absl::flat_hash_set<std::string> aliased_function_names;
-  absl::c_for_each(updated_function_aliases_post_calibration,
-                   [&](const auto& aliases) {
-                     return aliased_function_names.insert(aliases.first);
-                   });
+  absl::c_for_each(function_aliases_, [&](const auto& aliases) {
+    return aliased_function_names.insert(aliases.first);
+  });
 
   // Freezing is required again since variables might have been produced
   // during the pre-calibration step. `is_inliner_run = false` to prevent the

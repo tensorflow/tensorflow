@@ -115,11 +115,6 @@ def _run_static_range_qat(
   """
   logging.info('Running static-range quantization for QAT model.')
 
-  loader = saved_model_loader.SavedModelLoader(src_saved_model_path)
-  function_aliases = loader.get_meta_graph_def_from_tags(
-      quant_opts.tags
-  ).meta_info_def.function_aliases
-
   pywrap_quantize_model.quantize_qat_model(
       src_saved_model_path,
       dst_saved_model_path,
@@ -128,7 +123,6 @@ def _run_static_range_qat(
       signature_def_map_serialized=_serialize_signature_def_map(
           signature_def_map
       ),
-      function_aliases=dict(function_aliases),
       py_function_library=py_function_lib.PyFunctionLibrary(),
   )
 
@@ -160,11 +154,6 @@ def _run_static_range_ptq(
     ValueError if the graph doesn't contain a valid signature.
   """
   logging.info('Running static-range post-training quantization.')
-
-  loader = saved_model_loader.SavedModelLoader(src_saved_model_path)
-  function_aliases = loader.get_meta_graph_def_from_tags(
-      quant_opts.tags
-  ).meta_info_def.function_aliases
 
   signature_def_map_serialized = _serialize_signature_def_map(signature_def_map)
 
@@ -198,7 +187,6 @@ def _run_static_range_ptq(
       quantization_options_serialized=quant_opts.SerializeToString(),
       signature_keys=list(quant_opts.signature_keys),
       signature_def_map_serialized=signature_def_map_serialized,
-      function_aliases=dict(function_aliases),
       py_function_library=py_function_lib.PyFunctionLibrary(),
       representative_dataset_file_map_serialized=dataset_file_map_serialized,
   )
@@ -323,12 +311,6 @@ def _dynamic_range_quantize(
   )
   logging.info('QuantizationOptions: \n%s', quantization_options)
 
-  loader = saved_model_loader.SavedModelLoader(src_saved_model_path)
-
-  function_aliases = loader.get_meta_graph_def_from_tags(
-      quantization_options.tags
-  ).meta_info_def.function_aliases
-
   signature_def_map = save_model.get_signatures_from_saved_model(
       src_saved_model_path,
       quantization_options.signature_keys,
@@ -344,7 +326,6 @@ def _dynamic_range_quantize(
       signature_def_map_serialized=_serialize_signature_def_map(
           signature_def_map
       ),
-      function_aliases=dict(function_aliases),
       py_function_library=py_function_lib.PyFunctionLibrary(),
   )
 
@@ -385,12 +366,6 @@ def _weight_only_quantize(
   )
   logging.info('QuantizationOptions: \n%s', quantization_options)
 
-  loader = saved_model_loader.SavedModelLoader(src_saved_model_path)
-
-  function_aliases = loader.get_meta_graph_def_from_tags(
-      quantization_options.tags
-  ).meta_info_def.function_aliases
-
   signature_def_map = save_model.get_signatures_from_saved_model(
       src_saved_model_path,
       list(quantization_options.signature_keys),
@@ -404,7 +379,6 @@ def _weight_only_quantize(
       signature_def_map_serialized=_serialize_signature_def_map(
           signature_def_map
       ),
-      function_aliases=dict(function_aliases),
       py_function_library=py_function_lib.PyFunctionLibrary(),
   )
 
