@@ -25,6 +25,7 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/algorithm/container.h"
+#include "absl/status/status.h"
 #include "absl/strings/string_view.h"
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/Support/raw_ostream.h"
@@ -111,13 +112,14 @@ class TritonGemmTestWithoutTritonGemmAny : public TritonGemmTest {
 
 class TritonFilecheckTest : public TritonTest {
  public:
-  absl::StatusOr<bool> CreateTritonIrAndFileCheck(
-      absl::string_view hlo_text, const TritonGemmConfig& config,
-      TritonIrEmitter emitter, absl::string_view triton_fusion_name,
-      absl::string_view filecheck_pattern);
+  absl::Status CreateTritonIrAndFileCheck(absl::string_view hlo_text,
+                                          const TritonGemmConfig& config,
+                                          TritonIrEmitter emitter,
+                                          absl::string_view triton_fusion_name,
+                                          absl::string_view filecheck_pattern);
 };
 
-absl::StatusOr<bool> TritonFilecheckTest::CreateTritonIrAndFileCheck(
+absl::Status TritonFilecheckTest::CreateTritonIrAndFileCheck(
     absl::string_view hlo_text, const TritonGemmConfig& config,
     TritonIrEmitter emitter, absl::string_view triton_fusion_name,
     absl::string_view filecheck_pattern) {
@@ -142,7 +144,11 @@ absl::StatusOr<bool> TritonFilecheckTest::CreateTritonIrAndFileCheck(
   std::string out;
   llvm::raw_string_ostream os(out);
   module->print(os);
-  return RunFileCheck(out, filecheck_pattern);
+  TF_ASSIGN_OR_RETURN(bool succeeded, RunFileCheck(out, filecheck_pattern));
+  if (!succeeded) {
+    return absl::InternalError("FileCheck failed.");
+  }
+  return absl::OkStatus();
 }
 
 TEST_F(TritonFilecheckTest, TestGemm) {
@@ -168,8 +174,8 @@ ENTRY e {
                          "num_ctas":1}}}
 })";
   TritonGemmConfig config(16, 64, 32, 1, 1, 1);
-  ASSERT_THAT(CreateTritonIrAndFileCheck(kHloText, config, EmitMatMul,
-                                         "triton_gemm_r", R"(
+  EXPECT_OK(CreateTritonIrAndFileCheck(kHloText, config, EmitMatMul,
+                                       "triton_gemm_r", R"(
 CHECK:    tt.func @triton_fn(%[[LHS:.*]]: !tt.ptr<i8, 1> {tt.divisibility = 16 : i32}, %[[RHS:.*]]: !tt.ptr<f32, 1> {tt.divisibility = 16 : i32}, %[[OUT:.*]]: !tt.ptr<f32, 1> {tt.divisibility = 16 : i32}) {
 CHECK-DAG:  %[[ZERO_KN:.*]] = arith.constant dense<0.000000e+00> : tensor<32x64xf32>
 CHECK-DAG:  %[[ZERO_MK:.*]] = arith.constant dense<0.000000e+00> : tensor<16x32xf32>
@@ -230,8 +236,7 @@ CHECK:      %[[OUT_OFFSET:.*]] = tt.advance %[[OUT_PTR]], [%[[TILE_OFFSET_M_OUT]
 CHECK:      tt.store %[[OUT_OFFSET]], %[[FOR]]#2 {boundaryCheck = array<i32: 1>, cache = 1 : i32, evict = 1 : i32} : !tt.ptr<tensor<16x64xf32>, 1>, tensor<16x64xf32>
 CHECK:      tt.return
 CHECK:    }
-)"),
-              tsl::testing::IsOkAndHolds(true));
+)"));
 }
 
 TEST_F(TritonFilecheckTest, TestSoftmaxEmitterWithSingleParameter) {
@@ -257,8 +262,8 @@ ENTRY main {
   ROOT triton_softmax = f32[125,127]{1,0} fusion(param_0), kind=kCustom, calls=triton_softmax_computation, backend_config={"fusion_backend_config": {"kind":"__triton_softmax"}}
 })";
   TritonGemmConfig config(16, 64, 32, 1, 1, 1);
-  ASSERT_THAT(CreateTritonIrAndFileCheck(kHloText, config, EmitSoftMax,
-                                         "triton_softmax_computation", R"(
+  EXPECT_OK(CreateTritonIrAndFileCheck(kHloText, config, EmitSoftMax,
+                                       "triton_softmax_computation", R"(
 CHECK:        tt.func @triton_fn(%[[P0:[^:]*]]: !tt.ptr<f32, 1> {tt.divisibility = 16 : i32}, %[[P1:[^:]*]]: !tt.ptr<f32, 1> {tt.divisibility = 16 : i32}) {
 CHECK:            %[[PID:.*]] = tt.get_program_id x : i32
 CHECK:            arith.extsi %[[PID]] : i32 to i64
@@ -282,8 +287,7 @@ CHECK-NEXT:       tt.store
 CHECK-SAME:       {boundaryCheck = array<i32: 0>, cache = 1 : i32, evict = 1 : i32} : !tt.ptr<tensor<128xf32>, 1>, tensor<128xf32>
 CHECK:            tt.return
 CHECK:        }
-)"),
-              tsl::testing::IsOkAndHolds(true));
+)"));
 }
 
 TEST_F(TritonFilecheckTest, TestSoftmaxEmitterWithSingleScalarParameter) {
@@ -310,8 +314,8 @@ ENTRY main {
   ROOT triton_softmax = f32[125,127]{1,0} fusion(param_0), kind=kCustom, calls=triton_softmax_computation, backend_config={"fusion_backend_config": {"kind":"__triton_softmax"}}
 })";
   TritonGemmConfig config(16, 64, 32, 1, 1, 1);
-  ASSERT_THAT(CreateTritonIrAndFileCheck(kHloText, config, EmitSoftMax,
-                                         "triton_softmax_computation", R"(
+  EXPECT_OK(CreateTritonIrAndFileCheck(kHloText, config, EmitSoftMax,
+                                       "triton_softmax_computation", R"(
 CHECK:        tt.func @triton_fn(%[[P0:[^:]*]]: !tt.ptr<f32, 1> {tt.divisibility = 16 : i32}, %[[P1:[^:]*]]: !tt.ptr<f32, 1> {tt.divisibility = 16 : i32}) {
 CHECK-DAG:            %[[PID:.*]] = tt.get_program_id x : i32
 CHECK-DAG:            arith.extsi %[[PID]] : i32 to i64
@@ -334,8 +338,7 @@ CHECK-NEXT:       tt.store
 CHECK-SAME:       {boundaryCheck = array<i32: 0>, cache = 1 : i32, evict = 1 : i32} : !tt.ptr<tensor<128xf32>, 1>, tensor<128xf32>
 CHECK:            tt.return
 CHECK:        }
-)"),
-              tsl::testing::IsOkAndHolds(true));
+)"));
 }
 
 TEST_F(TritonFilecheckTest, TestSoftmaxEmitterWithMultipleParameters) {
@@ -366,8 +369,8 @@ ENTRY main {
 }
 )";
   TritonGemmConfig config(16, 64, 32, 1, 1, 1);
-  ASSERT_THAT(CreateTritonIrAndFileCheck(kHloText, config, EmitSoftMax,
-                                         "triton_softmax_computation", R"(
+  EXPECT_OK(CreateTritonIrAndFileCheck(kHloText, config, EmitSoftMax,
+                                       "triton_softmax_computation", R"(
 CHECK:        tt.func @triton_fn(%[[P0:[^:]*]]: !tt.ptr<f32, 1> {tt.divisibility = 16 : i32}, %[[P1:[^:]*]]: !tt.ptr<f32, 1> {tt.divisibility = 16 : i32}, %[[P2:[^:]*]]: !tt.ptr<f32, 1> {tt.divisibility = 16 : i32}) {
 CHECK-DAG:        %[[PID:.*]] = tt.get_program_id x : i32
 CHECK-DAG:        %[[PID_i64:.*]] = arith.extsi %[[PID]] : i32 to i64
@@ -396,8 +399,7 @@ CHECK-NEXT:       tt.store
 CHECK-SAME:       {boundaryCheck = array<i32: 0>, cache = 1 : i32, evict = 1 : i32} : !tt.ptr<tensor<128xf32>, 1>, tensor<128xf32>
 CHECK:            tt.return
 CHECK:        }
-)"),
-              tsl::testing::IsOkAndHolds(true));
+)"));
 }
 
 TEST_F(TritonFilecheckTest,
@@ -431,8 +433,8 @@ ENTRY main {
 }
 )";
   TritonGemmConfig config(16, 64, 32, 1, 1, 1);
-  ASSERT_THAT(CreateTritonIrAndFileCheck(kHloText, config, EmitSoftMax,
-                                         "triton_softmax_computation", R"(
+  EXPECT_OK(CreateTritonIrAndFileCheck(kHloText, config, EmitSoftMax,
+                                       "triton_softmax_computation", R"(
 CHECK:        tt.func @triton_fn(%[[P0:[^:]*]]: !tt.ptr<f32, 1> {tt.divisibility = 16 : i32}, %[[P1:[^:]*]]: !tt.ptr<f32, 1> {tt.divisibility = 16 : i32}, %[[P2:[^:]*]]: !tt.ptr<f32, 1> {tt.divisibility = 16 : i32}) {
 CHECK-DAG:        %[[PID:.*]] = tt.get_program_id x : i32
 CHECK-DAG:        %[[PID_i64:.*]] = arith.extsi %[[PID]] : i32 to i64
@@ -462,8 +464,7 @@ CHECK-NEXT:       tt.store
 CHECK-SAME:       {boundaryCheck = array<i32: 0>, cache = 1 : i32, evict = 1 : i32} : !tt.ptr<tensor<128xf32>, 1>, tensor<128xf32>
 CHECK:            tt.return
 CHECK:        }
-)"),
-              tsl::testing::IsOkAndHolds(true));
+)"));
 }
 
 TEST_F(TritonFilecheckTest,
@@ -494,8 +495,8 @@ ENTRY main {
 }
 )";
   TritonGemmConfig config(16, 64, 32, 1, 1, 1);
-  ASSERT_THAT(CreateTritonIrAndFileCheck(kHloText, config, EmitSoftMax,
-                                         "triton_softmax_computation", R"(
+  EXPECT_OK(CreateTritonIrAndFileCheck(kHloText, config, EmitSoftMax,
+                                       "triton_softmax_computation", R"(
 CHECK:        tt.func @triton_fn(%[[P0:[^:]*]]: !tt.ptr<f32, 1> {tt.divisibility = 16 : i32}, %[[P1:[^:]*]]: !tt.ptr<f32, 1> {tt.divisibility = 16 : i32}, %[[P2:[^:]*]]: !tt.ptr<f32, 1> {tt.divisibility = 16 : i32}) {
 CHECK-DAG:        %[[PID:.*]] = tt.get_program_id x : i32
 CHECK-DAG:        %[[PID_i64:.*]] = arith.extsi %[[PID]] : i32 to i64
@@ -524,8 +525,7 @@ CHECK-NEXT:       tt.store
 CHECK-SAME:       {boundaryCheck = array<i32: 0>, cache = 1 : i32, evict = 1 : i32} : !tt.ptr<tensor<128xf32>, 1>, tensor<128xf32>
 CHECK:            tt.return
 CHECK:        }
-)"),
-              tsl::testing::IsOkAndHolds(true));
+)"));
 }
 
 TEST_F(TritonFilecheckTest,
@@ -561,8 +561,8 @@ ENTRY main {
 }
 )";
   TritonGemmConfig config(16, 64, 32, 1, 1, 1);
-  ASSERT_THAT(CreateTritonIrAndFileCheck(kHloText, config, EmitSoftMax,
-                                         "triton_softmax_computation", R"(
+  EXPECT_OK(CreateTritonIrAndFileCheck(kHloText, config, EmitSoftMax,
+                                       "triton_softmax_computation", R"(
 CHECK:        tt.func @triton_fn(%[[P0:[^:]*]]: !tt.ptr<f32, 1> {tt.divisibility = 16 : i32}, %[[P1:[^:]*]]: !tt.ptr<f32, 1> {tt.divisibility = 16 : i32}, %[[P2:[^:]*]]: !tt.ptr<f32, 1> {tt.divisibility = 16 : i32}, %[[P3:[^:]*]]: !tt.ptr<f32, 1> {tt.divisibility = 16 : i32}) {
 CHECK-DAG:        %[[PID:.*]] = tt.get_program_id x : i32
 CHECK-DAG:        %[[PID_i64:.*]] = arith.extsi %[[PID]] : i32 to i64
@@ -596,8 +596,7 @@ CHECK-NEXT:       tt.store
 CHECK-SAME:       {boundaryCheck = array<i32: 0>, cache = 1 : i32, evict = 1 : i32} : !tt.ptr<tensor<128xf32>, 1>, tensor<128xf32>
 CHECK:            tt.return
 CHECK:        }
-)"),
-              tsl::testing::IsOkAndHolds(true));
+)"));
 }
 
 TEST_F(TritonFilecheckTest, TestSoftmaxEmitterWithMultipleTiledDimensions) {
@@ -632,8 +631,8 @@ ENTRY main {
 }
 )";
   TritonGemmConfig config(16, 64, 32, 1, 1, 1);
-  ASSERT_THAT(CreateTritonIrAndFileCheck(kHloText, config, EmitSoftMax,
-                                         "triton_softmax_computation", R"(
+  EXPECT_OK(CreateTritonIrAndFileCheck(kHloText, config, EmitSoftMax,
+                                       "triton_softmax_computation", R"(
 CHECK:        tt.func @triton_fn(%[[P0:[^:]*]]: !tt.ptr<f32, 1> {tt.divisibility = 16 : i32}, %[[P1:[^:]*]]: !tt.ptr<f32, 1> {tt.divisibility = 16 : i32}, %[[P2:[^:]*]]: !tt.ptr<f32, 1> {tt.divisibility = 16 : i32}, %[[P3:[^:]*]]: !tt.ptr<f32, 1> {tt.divisibility = 16 : i32}) {
 CHECK-DAG:        %[[PID:.*]] = tt.get_program_id x : i32
 CHECK-DAG:        %[[PID_i64:.*]] = arith.extsi %[[PID]] : i32 to i64
@@ -667,8 +666,7 @@ CHECK-NEXT:       tt.store
 CHECK-SAME:       {boundaryCheck = array<i32: 0>, cache = 1 : i32, evict = 1 : i32} : !tt.ptr<tensor<128xf32>, 1>, tensor<128xf32>
 CHECK:            tt.return
 CHECK:        }
-)"),
-              tsl::testing::IsOkAndHolds(true));
+)"));
 }
 
 TEST_F(
@@ -685,27 +683,27 @@ add_computation {
 
 triton_softmax_computation {
   parameter_1 = f32[32]{0} parameter(1)
-  b1 = f32[32,16]{1,0} broadcast(parameter_1), dimensions={0}
+  broadcast_1 = f32[32,16]{1,0} broadcast(parameter_1), dimensions={0}
   parameter_0 = f32[32,16]{1,0} parameter(0)
-  add0 = f32[32,16]{1,0} add(b1, parameter_0)
+  add_0 = f32[32,16]{1,0} add(b1, parameter_0)
   c = f32[] constant(0)
-  r0 = f32[32]{0} reduce(parameter_0, c), dimensions={1}, to_apply=add_computation
-  b0 = f32[32,16]{1,0} broadcast(r0), dimensions={0}
-  ROOT add1 = f32[32,16]{1,0} add(add0, b0)
+  reduce_0 = f32[32]{0} reduce(parameter_0, c), dimensions={1}, to_apply=add_computation
+  broadcast_0 = f32[32,16]{1,0} broadcast(reduce_0), dimensions={0}
+  ROOT _ = f32[32,16]{1,0} add(add_0, broadcast_0)
 }
 
 ENTRY main {
-  p1 = f32[32,16]{1,0} parameter(1)
-  p0 = f32[32]{0} parameter(0)
-  ROOT triton_softmax = f32[32,16]{1,0} fusion(p1, p0), kind=kCustom, calls=triton_softmax_computation, backend_config={"fusion_backend_config":{"kind":"__triton_softmax"}}
+  parameter_1 = f32[32]{0} parameter(1)
+  parameter_0 = f32[32,16]{1,0} parameter(0)
+  ROOT _ = f32[32,16]{1,0} fusion(parameter_0, parameter_1), kind=kCustom, calls=triton_softmax_computation, backend_config={"fusion_backend_config":{"kind":"__triton_softmax"}}
 })";
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(kHloText));
 
   TritonGemmConfig config(16, 64, 32, 1, 1, 1);
-  ASSERT_THAT(CreateTritonIrAndFileCheck(kHloText, config, EmitSoftMax,
-                                         "triton_softmax_computation", R"(
+  ASSERT_OK(CreateTritonIrAndFileCheck(kHloText, config, EmitSoftMax,
+                                       "triton_softmax_computation", R"(
 CHECK-LABEL:   tt.func @triton_fn(
 CHECK-SAME:        %[[P0:[^:]*]]: !tt.ptr<f32, 1> {tt.divisibility = 16 : i32},
 CHECK-SAME:        %[[P1:[^:]*]]: !tt.ptr<f32, 1> {tt.divisibility = 16 : i32},
@@ -734,8 +732,7 @@ CHECK:           tt.make_tensor_ptr
 CHECK-SAME:      tensor<16xf32>
 CHECK:           tt.store
 CHECK-SAME:      {boundaryCheck = array<i32: 0>, cache = 1 : i32, evict = 1 : i32} : !tt.ptr<tensor<16xf32>, 1>, tensor<16xf32>
-)"),
-              tsl::testing::IsOkAndHolds(true));
+)"));
 
   EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/1e-1,
                                                 /*arel=*/1e-2}));
@@ -755,27 +752,27 @@ add_computation {
 
 triton_softmax_computation {
   parameter_1 = f32[32]{0} parameter(1)
-  b1 = f32[16,32]{1,0} broadcast(parameter_1), dimensions={1}
+  broadcast_1 = f32[16,32]{1,0} broadcast(parameter_1), dimensions={1}
   parameter_0 = f32[16,32]{1,0} parameter(0)
-  add0 = f32[16,32]{1,0} add(b1, parameter_0)
+  add0 = f32[16,32]{1,0} add(broadcast_1, parameter_0)
   c = f32[] constant(0)
-  r0 = f32[16]{0} reduce(parameter_0, c), dimensions={1}, to_apply=add_computation
-  b0 = f32[16,32]{1,0} broadcast(r0), dimensions={0}
-  ROOT add1 = f32[16,32]{1,0} add(add0, b0)
+  reduce_0 = f32[16]{0} reduce(parameter_0, c), dimensions={1}, to_apply=add_computation
+  broadcast_0 = f32[16,32]{1,0} broadcast(reduce_0), dimensions={0}
+  ROOT _ = f32[16,32]{1,0} add(add_0, broadcast_0)
 }
 
 ENTRY main {
-  p1 = f32[16,32]{1,0} parameter(1)
-  p0 = f32[32]{0} parameter(0)
-  ROOT triton_softmax = f32[16,32]{1,0} fusion(p1, p0), kind=kCustom, calls=triton_softmax_computation, backend_config={"fusion_backend_config":{"kind":"__triton_softmax"}}
+  parameter_0 = f32[16,32]{1,0} parameter(0)
+  parameter_1 = f32[32]{0} parameter(1)
+  ROOT _ = f32[16,32]{1,0} fusion(parameter_0,parameter_1), kind=kCustom, calls=triton_softmax_computation, backend_config={"fusion_backend_config":{"kind":"__triton_softmax"}}
 })";
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(kHloText));
 
   TritonGemmConfig config(16, 64, 32, 1, 1, 1);
-  ASSERT_THAT(CreateTritonIrAndFileCheck(kHloText, config, EmitSoftMax,
-                                         "triton_softmax_computation", R"(
+  ASSERT_OK(CreateTritonIrAndFileCheck(kHloText, config, EmitSoftMax,
+                                       "triton_softmax_computation", R"(
 CHECK-LABEL:   tt.func @triton_fn(
 CHECK-SAME:        %[[P0:[^:]*]]: !tt.ptr<f32, 1> {tt.divisibility = 16 : i32},
 CHECK-SAME:        %[[P1:[^:]*]]: !tt.ptr<f32, 1> {tt.divisibility = 16 : i32},
@@ -807,8 +804,7 @@ CHECK:           tt.make_tensor_ptr
 CHECK-SAME:      <tensor<32xf32>, 1>
 CHECK:           tt.store
 CHECK-SAME:      {boundaryCheck = array<i32: 0>, cache = 1 : i32, evict = 1 : i32} : !tt.ptr<tensor<32xf32>, 1>, tensor<32xf32>
-)"),
-              tsl::testing::IsOkAndHolds(true));
+)"));
 
   EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/1e-1, /*arel=*/1e-2}));
 }
@@ -847,13 +843,12 @@ ENTRY e {
 }
 )";
   TritonGemmConfig config(16, 16, 16, 1, 1, 1);
-  ASSERT_THAT(CreateTritonIrAndFileCheck(kHloText, config, EmitMatMul,
-                                         "triton_gemm_computation", R"(
+  EXPECT_OK(CreateTritonIrAndFileCheck(kHloText, config, EmitMatMul,
+                                       "triton_gemm_computation", R"(
 CHECK: %[[LOAD:.*]] = tt.load %{{.*}} {{.*}} : !tt.ptr<tensor<16x16xi8>, 1> -> tensor<16x16xi8>
 CHECK: %[[TRUNCI:.*]] = arith.trunci %[[LOAD]] : tensor<16x16xi8> to tensor<16x16xi1>
 CHECK: %{{.*}} = arith.andi %[[TRUNCI]], %{{.*}} : tensor<16x16xi1>
-)"),
-              tsl::testing::IsOkAndHolds(true));
+)"));
 }
 
 TEST_F(TritonFilecheckTest,
@@ -884,8 +879,8 @@ ENTRY e {
 })";
 
   TritonGemmConfig config(16, 64, 32, 1, 1, 2);
-  ASSERT_THAT(CreateTritonIrAndFileCheck(kHloText, config, EmitMatMul,
-                                         "triton_gemm", R"(
+  EXPECT_OK(CreateTritonIrAndFileCheck(kHloText, config, EmitMatMul,
+                                       "triton_gemm", R"(
 CHECK:   tt.func @triton_fn(%[[P0:[^:]*]]: !tt.ptr<f32, 1>
 CHECK-SAME:                 %[[P1:[^:]*]]: !tt.ptr<f32, 1>
 CHECK-SAME:                 %[[P2:[^:]*]]: !tt.ptr<f32, 1>
@@ -900,8 +895,7 @@ COM:       -- the second one is the relevant one.
 CHECK:     %[[PID_BATCH:.*]] = tt.get_program_id y
 CHECK-DAG: %[[OFFSET:.*]] = arith.muli %[[PID_BATCH]], %[[BATCH_STRIDE]]
 CHECK:     %[[BLOCK_BASE_PTR:.*]] = tt.addptr %[[ARG_PTR]], %[[OFFSET]]
-)"),
-              tsl::testing::IsOkAndHolds(true));
+)"));
 }
 
 TEST_F(TritonGemmTest, DoNotUseTensorCoresWithNonDefaultPrecision) {
@@ -3973,7 +3967,7 @@ ENTRY e {
 }
 )";
   TritonGemmConfig config(32, 32, 32, 1, 1, 1);
-  ASSERT_THAT(
+  ASSERT_OK(
       CreateTritonIrAndFileCheck(kHloText, config, EmitMatMul, "triton_dot", R"(
 CHECK:    tt.func @triton_fn(%[[LHS:.*]]: !tt.ptr<f32, 1> {tt.divisibility = 16 : i32}, %[[RHS:.*]]: !tt.ptr<f32, 1> {tt.divisibility = 16 : i32}, %[[OUT:.*]]: !tt.ptr<f32, 1> {tt.divisibility = 16 : i32}) {
 CHECK:          %[[INFINITY:.*]] = arith.constant dense<0x7F800000> : tensor<32x32xf32>
@@ -3989,8 +3983,7 @@ CHECK:          %[[CMP:.*]] = arith.cmpf ogt, %[[INFINITY]], %[[ABS]] : tensor<3
 CHECK:          %[[SELECT:.*]] = arith.select %[[CMP]], %{{.*}}, %[[C0]] : tensor<32x32xi1>, tensor<32x32xf32>
 CHECK:          %[[DOT_LAST:.*]] = tt.dot %{{.*}}, %{{.*}}, %[[SELECT]] {allowTF32 = false, maxNumImpreciseAcc = 0 : i32} : tensor<32x32xbf16> * tensor<32x32xbf16> -> tensor<32x32xf32>
 CHECK:          %[[ACC:.*]] = arith.addf %[[DOT_LAST]], %[[C0]] : tensor<32x32xf32>
-    )"),
-      tsl::testing::IsOkAndHolds(true));
+    )"));
 
   EXPECT_TRUE(RunAndCompareNoHloPasses(kHloText, ErrorSpec{/*aabs=*/1e-6,
                                                            /*arel=*/1e-6}));
@@ -4020,12 +4013,11 @@ ENTRY e {
 }
 )";
   TritonGemmConfig config(64, 32, 32, 1, 1, 4);
-  ASSERT_THAT(
+  ASSERT_OK(
       CreateTritonIrAndFileCheck(kHloText, config, EmitMatMul, "triton_dot", R"(
 CHECK:    tt.func @triton_fn(%[[LHS:.*]]: !tt.ptr<f32, 1> {tt.divisibility = 16 : i32}, %[[RHS:.*]]: !tt.ptr<f32, 1> {tt.divisibility = 16 : i32}, %[[OUT:.*]]: !tt.ptr<f32, 1> {tt.divisibility = 16 : i32}) {
 CHECK-COUNT-6:  %{{.*}} = tt.dot %{{.*}}, %{{.*}}, %{{.*}} {allowTF32 = false, maxNumImpreciseAcc = 0 : i32} : tensor<64x32xbf16> * tensor<32x32xbf16> -> tensor<64x32xf32>
-    )"),
-      tsl::testing::IsOkAndHolds(true));
+    )"));
   EXPECT_TRUE(RunAndCompareNoHloPasses(kHloText, ErrorSpec{/*aabs=*/1e-5,
                                                            /*arel=*/1e-5}));
 }
@@ -4054,12 +4046,11 @@ ENTRY e {
 }
 )";
   TritonGemmConfig config(32, 32, 32, 1, 1, 1);
-  ASSERT_THAT(
+  ASSERT_OK(
       CreateTritonIrAndFileCheck(kHloText, config, EmitMatMul, "triton_dot", R"(
 CHECK:    tt.func @triton_fn(%[[LHS:.*]]: !tt.ptr<f32, 1> {tt.divisibility = 16 : i32}, %[[RHS:.*]]: !tt.ptr<f32, 1> {tt.divisibility = 16 : i32}, %[[OUT:.*]]: !tt.ptr<f32, 1> {tt.divisibility = 16 : i32}) {
 CHECK-COUNT-6:  %{{.*}} = tt.dot %{{.*}}, %{{.*}}, %{{.*}} {allowTF32 = false, maxNumImpreciseAcc = 0 : i32} : tensor<32x32xbf16> * tensor<32x32xbf16> -> tensor<32x32xf32>
-    )"),
-      tsl::testing::IsOkAndHolds(true));
+    )"));
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           GetOptimizedModule(kHloText));
   std::vector<Literal> arguments(2);
@@ -4102,12 +4093,11 @@ ENTRY e {
 }
 )";
   TritonGemmConfig config(32, 32, 32, 1, 1, 1);
-  ASSERT_THAT(
+  ASSERT_OK(
       CreateTritonIrAndFileCheck(kHloText, config, EmitMatMul, "triton_dot", R"(
 CHECK:    tt.func @triton_fn(%[[LHS:.*]]: !tt.ptr<f32, 1> {tt.divisibility = 16 : i32}, %[[RHS:.*]]: !tt.ptr<f32, 1> {tt.divisibility = 16 : i32}, %[[OUT:.*]]: !tt.ptr<f32, 1> {tt.divisibility = 16 : i32}) {
 CHECK-COUNT-6:  %{{.*}} = tt.dot %{{.*}}, %{{.*}}, %{{.*}} {allowTF32 = false, maxNumImpreciseAcc = 0 : i32} : tensor<32x32xbf16> * tensor<32x32xbf16> -> tensor<32x32xf32>
-    )"),
-      tsl::testing::IsOkAndHolds(true));
+    )"));
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           GetOptimizedModule(kHloText));
   std::vector<Literal> arguments(2);
@@ -4162,12 +4152,11 @@ ENTRY e {
 }
 )";
   TritonGemmConfig config(32, 32, 32, 1, 1, 1);
-  ASSERT_THAT(
+  ASSERT_OK(
       CreateTritonIrAndFileCheck(kHloText, config, EmitMatMul, "triton_dot", R"(
 CHECK:    tt.func @triton_fn(%[[LHS:.*]]: !tt.ptr<f32, 1> {tt.divisibility = 16 : i32}, %[[RHS:.*]]: !tt.ptr<f32, 1> {tt.divisibility = 16 : i32}, %[[OUT:.*]]: !tt.ptr<f32, 1> {tt.divisibility = 16 : i32}) {
 CHECK-COUNT-6:  %{{.*}} = tt.dot %{{.*}}, %{{.*}}, %{{.*}} {allowTF32 = false, maxNumImpreciseAcc = 0 : i32} : tensor<32x32xbf16> * tensor<32x32xbf16> -> tensor<32x32xf32>
-    )"),
-      tsl::testing::IsOkAndHolds(true));
+    )"));
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           GetOptimizedModule(kHloText));
   std::vector<Literal> arguments(2);
