@@ -50,6 +50,7 @@ limitations under the License.
 #include "tsl/platform/errors.h"
 #include "tsl/platform/logging.h"
 #include "tsl/platform/status.h"
+#include "tsl/platform/statusor.h"
 #include "tsl/profiler/lib/connected_traceme.h"
 #include "tsl/profiler/lib/context_types.h"
 
@@ -425,8 +426,7 @@ xla::PjRtFuture<absl::Status> ConvertCEventToCppFuture(PJRT_Event* c_event,
 }
 
 static absl::StatusOr<PJRT_NamedValue> ConvertToPjRtNamedValue(
-    const std::string& name, const xla::PjRtValueType& value,
-    int api_minor_version) {
+    const std::string& name, const xla::PjRtValueType& value) {
   PJRT_NamedValue c_value;
   c_value.struct_size = PJRT_NamedValue_STRUCT_SIZE;
   c_value.extension_start = nullptr;
@@ -465,14 +465,12 @@ static absl::StatusOr<PJRT_NamedValue> ConvertToPjRtNamedValue(
 }
 
 absl::StatusOr<std::vector<PJRT_NamedValue>> ConvertToPjRtNamedValueList(
-    const absl::flat_hash_map<std::string, xla::PjRtValueType>& cpp_value_map,
-    int api_minor_version) {
+    const absl::flat_hash_map<std::string, xla::PjRtValueType>& cpp_value_map) {
   std::vector<PJRT_NamedValue> c_value_list;
   c_value_list.reserve(cpp_value_map.size());
   for (const auto& [name, value] : cpp_value_map) {
-    TF_ASSIGN_OR_RETURN(
-        PJRT_NamedValue c_value,
-        ConvertToPjRtNamedValue(name, value, api_minor_version));
+    TF_ASSIGN_OR_RETURN(PJRT_NamedValue c_value,
+                        ConvertToPjRtNamedValue(name, value));
     c_value_list.push_back(c_value);
   }
   return c_value_list;

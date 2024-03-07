@@ -2204,10 +2204,8 @@ StatusOr<std::unique_ptr<PjRtClient>> GetCApiClient(
   PJRT_Client_Create_Args init_args;
   init_args.struct_size = PJRT_Client_Create_Args_STRUCT_SIZE;
   init_args.extension_start = nullptr;
-  TF_ASSIGN_OR_RETURN(
-      std::vector<PJRT_NamedValue> c_options,
-      pjrt::ConvertToPjRtNamedValueList(create_options,
-                                        c_api->pjrt_api_version.minor_version));
+  TF_ASSIGN_OR_RETURN(std::vector<PJRT_NamedValue> c_options,
+                      pjrt::ConvertToPjRtNamedValueList(create_options));
   init_args.create_options = c_options.data();
   init_args.num_options = c_options.size();
 
@@ -2243,10 +2241,8 @@ absl::StatusOr<std::unique_ptr<PjRtTopologyDescription>> GetCApiTopology(
   PJRT_TopologyDescription_Create_Args init_args;
   init_args.struct_size = PJRT_TopologyDescription_Create_Args_STRUCT_SIZE;
   init_args.extension_start = nullptr;
-  TF_ASSIGN_OR_RETURN(
-      std::vector<PJRT_NamedValue> c_options,
-      pjrt::ConvertToPjRtNamedValueList(create_options,
-                                        c_api->pjrt_api_version.minor_version));
+  TF_ASSIGN_OR_RETURN(std::vector<PJRT_NamedValue> c_options,
+                      pjrt::ConvertToPjRtNamedValueList(create_options));
   init_args.create_options = c_options.data();
   init_args.num_options = c_options.size();
   init_args.topology_name = topology_name.data();
