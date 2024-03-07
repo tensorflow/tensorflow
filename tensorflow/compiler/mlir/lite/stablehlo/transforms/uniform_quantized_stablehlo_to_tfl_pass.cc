@@ -12,6 +12,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include <cmath>
 #include <cstdint>
 #include <iterator>
 #include <memory>
@@ -51,9 +52,6 @@ limitations under the License.
 namespace mlir {
 namespace odml {
 namespace {
-
-// TODO: b/311029361: Add e2e test for verifying this legalization once
-// StableHLO Quantizer API migration is complete.
 
 using ::mlir::quant::CastI64ArrayToI32;
 using ::mlir::quant::CastI64ToI32;
@@ -215,11 +213,9 @@ TFL::QConstOp CreateTflConstOpForFilter(Operation* rhs_op,
 // transformation). The quantization scale for the bias is input scale *
 // filter scale. `filter_const_op` is used to retrieve the filter scales and
 // the size of the bias constant.
-// TODO - b/309896242: Support bias fusion legalization and spatial dimension
-// check when `stride` is not 1.
 TFL::QConstOp CreateTflConstOpForDummyBias(
     const Location loc, const double input_scale, TFL::QConstOp filter_const_op,
-    PatternRewriter& rewriter, bool is_per_channel, MLIRContext& ctx) {
+    PatternRewriter& rewriter, const bool is_per_channel, MLIRContext& ctx) {
   const ArrayRef<int64_t> filter_shape =
       filter_const_op.getResult().getType().getShape();
 
@@ -395,10 +391,7 @@ class RewriteUniformDequantizeOp
 //     tensor should be the contracting dimension, i.e. [..., c_x, r_x].
 //   * The filter tensor's rank is 2. The contracting dimension should be the
 //     first dimension (dim 0), i.e. [c_y, r_y] where c_y == r_x.
-// TODO: b/309896242 - Add support for fused op case. Add support for
-// per-channel quantization.
-// TODO: b/295264927 - `stablehlo.dot_general` with per-axis quantized operands
-// is not specified in the StableHLO dialect. Update the spec to allow this.
+// TODO: b/326375838 - Add support for per-channel quantization.
 class RewriteQuantizedDotGeneralOpToTflFullyConnectedOrBatchMatmulOp
     : public OpRewritePattern<stablehlo::DotGeneralOp> {
  public:
@@ -1027,7 +1020,6 @@ class RewriteQuantizedConvolutionOp
       output_type = op.getResult().getType();
     }
 
-    // TODO: b/326332748 - Support more formats than `NHWC`.
     if (is_depthwise) {
       // The total number of depthwise convolution output channels will be
       // equal to input channel * `depth_multiplier`.
@@ -1043,7 +1035,7 @@ class RewriteQuantizedConvolutionOp
           /*dilation_w_factor=*/rewriter.getI32IntegerAttr(dilation_w_factor),
           /*fused_activation_function=*/rewriter.getStringAttr("NONE"),
           /*padding=*/
-          rewriter.getStringAttr(UseSamePadding(op, dimension_numbers)
+          rewriter.getStringAttr(IsSamePadding(op, dimension_numbers)
                                      ? kPaddingSame
                                      : kPaddingValid),
           /*stride_h=*/rewriter.getI32IntegerAttr(stride_h),
@@ -1059,7 +1051,7 @@ class RewriteQuantizedConvolutionOp
           /*dilation_w_factor=*/rewriter.getI32IntegerAttr(dilation_w_factor),
           /*fused_activation_function=*/rewriter.getStringAttr("NONE"),
           /*padding=*/
-          rewriter.getStringAttr(UseSamePadding(op, dimension_numbers)
+          rewriter.getStringAttr(IsSamePadding(op, dimension_numbers)
                                      ? kPaddingSame
                                      : kPaddingValid),
           /*stride_h=*/rewriter.getI32IntegerAttr(stride_h),
@@ -1138,19 +1130,19 @@ class RewriteQuantizedConvolutionOp
   // Create a `tfl.pad` op to apply explicit padding to the input tensor that
   // correspond to the `padding` attribute from the `stablehlo.convolution` op.
   TFL::PadOp CreateTflPadOp(Location loc,
-                            const DenseIntElementsAttr& padding_attr,
+                            const DenseIntElementsAttr padding_attr,
                             Value input_value,
                             PatternRewriter& rewriter) const {
     auto padding_values = padding_attr.getValues<int64_t>();
-    // [[h_l, h_r], [w_l, w_r]].
+    // [[h_low, h_high], [w_low, w_high]].
     DCHECK_EQ(padding_attr.size(), 4);
 
     // In StableHLO the padding attribute doesn't include the padding values for
     // input and output feature dimensions (because they are 0 anyways). In
     // TFLite, padding values for input and output feature dimensions should be
     // explicitly set to 0s. Note that TFLite's input tensor is formatted as
-    // OHWI. The resulting pad values becomes: [[0, 0], [h_l, h_r], [w_l, w_r],
-    // [0, 0]]
+    // OHWI. The resulting pad values becomes:
+    // [[0, 0], [h_low, h_high], [w_low, w_high], [0, 0]]
     SmallVector<int32_t, 8> tfl_pad_values = {0, 0};  // For output feature dim.
     for (const int64_t padding_value : padding_values) {
       tfl_pad_values.push_back(CastI64ToI32(padding_value).value());
@@ -1204,8 +1196,6 @@ class RewriteQuantizedConvolutionOp
   //   * Permutates given filter to `[i, 0, 1, o]` format.
   // General convolution (`feature_group_count` = 1)
   //   * Permutates given filter to `[o, 0, 1, i]` format.
-  // TODO: b/291598373 - Lift the assumption about the filter tensor having
-  // `[0, 1, i, o]` format.
   DenseIntElementsAttr TransposeFilterValue(
       Location loc, PatternRewriter& rewriter,
       const DenseIntElementsAttr& filter_value_attr,
@@ -1266,34 +1256,62 @@ class RewriteQuantizedConvolutionOp
     return new_filter_constant_value_attr;
   }
 
-  bool UseSamePadding(
-      Operation* op,
+  bool IsSamePadding(
+      stablehlo::ConvolutionOp op,
       stablehlo::ConvDimensionNumbersAttr dimension_numbers) const {
-    // TODO: b/294808863 - Account for dynamic shapes.
-    const ArrayRef<int64_t> input_shape =
-        op->getOperand(0).getType().cast<ShapedType>().getShape();
-    const ArrayRef<int64_t> output_shape =
-        op->getResult(0).getType().cast<ShapedType>().getShape();
-    const ArrayRef<int64_t> input_spatial_dim_inds =
-        dimension_numbers.getInputSpatialDimensions();
-    const ArrayRef<int64_t> output_spatial_dim_inds =
-        dimension_numbers.getOutputSpatialDimensions();
-    return (input_shape[input_spatial_dim_inds[0]] ==
-                output_shape[output_spatial_dim_inds[0]] &&
-            input_shape[input_spatial_dim_inds[1]] ==
-                output_shape[output_spatial_dim_inds[1]]);
+    auto get_dim_size =
+        [](ArrayRef<int64_t> shape,
+           ArrayRef<int64_t> indexes) -> std::pair<int64_t, int64_t> {
+      return {shape[indexes[0]], shape[indexes[1]]};
+    };
+    const auto [input_height, input_width] =
+        get_dim_size(op->getOperand(0).getType().cast<ShapedType>().getShape(),
+                     dimension_numbers.getInputSpatialDimensions());
+    const auto [output_height, output_width] =
+        get_dim_size(op->getResult(0).getType().cast<ShapedType>().getShape(),
+                     dimension_numbers.getOutputSpatialDimensions());
+
+    const auto [stride_height, stride_width] = GetStrides(op);
+
+    // Below convolution arithmetic for `SAME` padding calculation is referenced
+    // from https://www.tensorflow.org/api_docs/python/tf/nn/convolution.
+    // The following condition must hold true for padding to be `SAME`:
+    // output_spatial_shape[i] = ceil(input_spatial_shape[i] / strides[i])
+
+    auto get_output_dim_for_same_padding = [](int64_t input_dim,
+                                              int64_t stride_dim) -> int64_t {
+      return std::ceil(input_dim / stride_dim);
+    };
+    return output_height ==
+               get_output_dim_for_same_padding(input_height, stride_height) &&
+           output_width ==
+               get_output_dim_for_same_padding(input_width, stride_width);
   }
 
   // Determines if the padding attribute corresponds to "VALID" or "SAME".
   // If not, the input's shape should be adjusted with explicit `tfl.pad` op.
   // (https://www.tensorflow.org/api_docs/python/tf/nn).
-  bool HasProperPadding(Operation* op,
+  bool HasProperPadding(stablehlo::ConvolutionOp op,
                         stablehlo::ConvDimensionNumbersAttr dimension_numbers,
-                        const DenseIntElementsAttr& padding_attr) const {
+                        const DenseIntElementsAttr padding_attr) const {
     // If padding_attr is empty, it defaults to splat 0s.
-    return UseSamePadding(op, dimension_numbers) ||
+    return IsSamePadding(op, dimension_numbers) ||
            (!padding_attr || (padding_attr.isSplat() &&
                               padding_attr.getSplatValue<int64_t>() == 0));
+  }
+
+  // Returns the padding amount for the height and width, respectively.
+  SmallVector<int64_t, 4> GetPadding(stablehlo::ConvolutionOp op) const {
+    DenseIntElementsAttr padding_attr = op.getPaddingAttr();
+    if (!padding_attr) {
+      return {0, 0, 0, 0};
+    }
+
+    auto padding_values = padding_attr.getValues<int64_t>();
+    // Padding has [[h_low, h_high], [w_low, w_high]] format.
+    // https://github.com/openxla/stablehlo/blob/main/docs/spec.md#convolution.
+    return {padding_values[0], padding_values[1], padding_values[2],
+            padding_values[3]};
   }
 
   // Returns the stride amount for the height and width, respectively.
