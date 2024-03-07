@@ -172,14 +172,26 @@ absl::Status FusionContext::PropagateDimensionOrdersToParameters(
       // more elementwise users - they share the same tiling. Situations when
       // one instruction is read differently by different users in the same
       // scope of the dot are currently prevented during the fusion.
-      TF_RET_CHECK(parameters.insert(hlo).second);
+      if (!parameters.insert(hlo).second) {
+        return FailedPrecondition(
+            "A parameter is read differently by different users. hlo: %s",
+            hlo->ToString());
+      }
       VLOG(5) << hlo->ToString();
     }
     DimOrdersAndReqsOrError result = GetPropagatedDimOrdersAndRequirements(
         *hlo, dim_orders_.at(hlo), TransformDirection::kOutputToInput,
         properties_);
-    TF_RET_CHECK(std::holds_alternative<DimOrdersAndReqs>(result));
-    TF_RET_CHECK(CombineDimOrdersAndReqs(std::get<DimOrdersAndReqs>(result)));
+
+    if (!std::holds_alternative<DimOrdersAndReqs>(result)) {
+      return FailedPrecondition(
+          "Can not propagate dim orders and requirements.");
+    }
+
+    if (!CombineDimOrdersAndReqs(std::get<DimOrdersAndReqs>(result))) {
+      return FailedPrecondition("Can not combine dim orders and requirements.");
+    }
+
     iter_specs[hlo] = dim_orders_.at(hlo).ToTensorIterationSpec();
     for (const HloInstruction* operand : hlo->operands()) {
       if (!visited.insert(operand).second) {
