@@ -1182,6 +1182,7 @@ cc_library(
         "//xla:statusor",
         "//xla:types",
         "//xla:util",
+        "//xla/ffi:ffi_api",
         "//xla/pjrt:exceptions",
         "//xla/pjrt:mlir_to_hlo",
         "//xla/pjrt:pjrt_api",

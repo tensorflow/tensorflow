@@ -934,3 +934,4 @@ copy_array_to_devices_with_sharding = _xla.copy_array_to_devices_with_sharding
 batched_device_put = _xla.batched_device_put
 check_and_canonicalize_memory_kind = _xla.check_and_canonicalize_memory_kind
 Layout = _xla.Layout
+custom_call_targets = _xla.custom_call_targets

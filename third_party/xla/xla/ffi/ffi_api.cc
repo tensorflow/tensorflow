@@ -117,6 +117,18 @@ absl::StatusOr<XLA_FFI_Handler*> FindHandler(std::string_view name,
   return it->second;
 }
 
+absl::flat_hash_map<std::string, XLA_FFI_Handler*> StaticRegisteredHandlers(
+    std::string_view platform) {
+  absl::flat_hash_map<std::string, XLA_FFI_Handler*> calls;
+  for (const auto& [metadata, handler] : GetHandlerRegistry()) {
+    if (absl::AsciiStrToLower(platform) == metadata.second) {
+      calls[metadata.first] = handler;
+    }
+  }
+
+  return calls;
+}
+
 //===----------------------------------------------------------------------===//
 // XLA FFI Api Implementation
 //===----------------------------------------------------------------------===//

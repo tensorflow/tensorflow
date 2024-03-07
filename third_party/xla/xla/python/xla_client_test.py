@@ -453,6 +453,22 @@ def TestFactory(xla_backend,
           .API_VERSION_STATUS_RETURNING_UNIFIED)
       self._ExecuteAndCompareClose(c, expected=[1.25 + len(opaque_str)])
 
+    def testCustomCallLookup(self):
+      if self.backend.platform != "cpu":
+        self.skipTest("Test requires cpu platform")
+      if xla_client._version < 241:
+        self.skipTest("Test requires jaxlib version 241")
+
+      self.assertTrue(_CUSTOM_CALLS_REGISTERED)
+      xla_client.make_cpu_client()
+      self.assertContainsSubset(
+          [
+              call.decode()
+              for call in custom_call_for_test.cpu_custom_call_targets.keys()
+          ],
+          xla_client.custom_call_targets("Host").keys(),
+      )
+
   tests.append(ComputationsWithConstantsTest)
 
   class ComputationFromProtoTest(absltest.TestCase):

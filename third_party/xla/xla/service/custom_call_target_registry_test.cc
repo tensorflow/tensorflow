@@ -21,6 +21,10 @@ limitations under the License.
 namespace xla {
 namespace {
 
+using ::testing::_;
+using ::testing::Pair;
+using ::testing::UnorderedElementsAre;
+
 void custom_call(void*, const void**, XlaCustomCallStatus*) {}
 void custom_call2(void*, const void**, XlaCustomCallStatus*) {}
 
@@ -43,6 +47,12 @@ TEST(CustomCallRegistryTest, Registers) {
   // A second registration of the same function is fine.
   registry.Register("custom_call", reinterpret_cast<void*>(custom_call),
                     "Host");
+
+  EXPECT_THAT(
+      registry.registered_symbols("Host"),
+      UnorderedElementsAre(Pair("custom_call", _), Pair("custom_call2", _)));
+  EXPECT_THAT(registry.registered_symbols("CUDA"),
+              UnorderedElementsAre(Pair("custom_call", _)));
 }
 
 TEST(CustomCallRegistryDeathTest, RejectsDuplicateRegistrations) {
