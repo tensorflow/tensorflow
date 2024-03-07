@@ -588,7 +588,10 @@ xla_test(
         "gpu_v100",
     ],
     shard_count = 20,
-    tags = ["nomac"],
+    tags = [
+        "config-cuda-only",
+        "nomac",
+    ],
     deps = [
         ":backend_configs_cc",
         ":gpu_device_info_for_tests",
