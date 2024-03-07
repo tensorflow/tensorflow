@@ -121,6 +121,10 @@ WHL_DIR="${KOKORO_ARTIFACTS_DIR}/tensorflow/whl"
 sudo install -o ${CI_BUILD_USER} -g ${CI_BUILD_GROUP} -d ${WHL_DIR}
 WHL_DIR=$(realpath "${WHL_DIR}") # Get absolute path
 
+# configure may have chosen the wrong setting for PYTHON_LIB_PATH so
+# determine here the correct setting
+PY_SITE_PACAKGES=$(${PYTHON_BIN_PATH} -c "import site ; print(site.getsitepackages()[0])")
+
 # Determine the major.minor versions of python being used (e.g., 3.7).
 # Useful for determining the directory of the local pip installation.
 PY_MAJOR_MINOR_VER=$(${PYTHON_BIN_PATH} -c "print(__import__('sys').version)" 2>&1 | awk '{ print $1 }' | head -n 1 | cut -d. -f1-2)
@@ -129,6 +133,7 @@ update_bazel_flags
 
 bazel build \
     --action_env=PYTHON_BIN_PATH=${PYTHON_BIN_PATH} \
+    --action_env=PYTHON_LIB_PATH=${PY_SITE_PACKAGES} \
     ${TF_BUILD_FLAGS} \
     //tensorflow/tools/pip_package:build_pip_package \
     || die "Error: Bazel build failed for target: //tensorflow/tools/pip_package:build_pip_package"
@@ -166,6 +171,7 @@ start-stop-daemon -b -n portserver.py -a /usr/local/bin/python3 -S -- /usr/local
 
 bazel test ${TF_TEST_FLAGS} \
     --action_env=PYTHON_BIN_PATH=${PYTHON_BIN_PATH} \
+    --action_env=PYTHON_LIB_PATH=${PY_SITE_PACKAGES} \
     --test_env=PORTSERVER_ADDRESS=@unittest-portserver \
     --build_tag_filters=${TF_FILTER_TAGS} \
     --test_tag_filters=${TF_FILTER_TAGS} \
