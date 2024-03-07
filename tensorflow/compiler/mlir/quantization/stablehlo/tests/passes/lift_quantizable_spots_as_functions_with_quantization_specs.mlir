@@ -12,9 +12,15 @@ func.func @main(%arg0: tensor<1x1x167xf32>) -> tensor<1x1x64xf32> {
 
 // CHECK: %[[CONST:.*]] = stablehlo.constant dense<2.000000e+00>
 // CHECK: %[[XLA_CALL_MODULE:.*]] = "tf.XlaCallModule"(%arg0, %[[CONST]])
-// CHECK-SAME: {_entry_function = @composite_dot_general_fn_1, {{.*}}}
+
+// Check that the `_quantization_method` attribute contains the quantization
+// method in textproto format. Also check that it doesn't contain attributes
+// required for quantization.
+// CHECK-SAME: _entry_function = @composite_dot_general_fn_1
+// CHECK-SAME: _quantization_method = "no_quantization {}"
 // CHECK-NOT: _original_entry_function
 // CHECK-NOT: _tfl_quant_trait
+
 // CHECK: return %[[XLA_CALL_MODULE:.*]] : tensor<1x1x64xf32>
 // CHECK: }
 
