@@ -49,6 +49,7 @@ def tfadd(_):
   math_ops.add(x, y, name='x_y_sum')
 
 
+# copybara:comment_begin
 def tfadd_with_ckpt(out_dir):
   x = array_ops.placeholder(dtypes.int32, name='x_hold')
   y = variable_v1.VariableV1(constant_op.constant([0]), name='y_saved')
@@ -62,6 +63,9 @@ def tfadd_with_ckpt(out_dir):
     # Without the checkpoint, the variable won't be set to 42.
     ckpt = os.path.join(out_dir, 'test_graph_tfadd_with_ckpt.ckpt')
     saver.save(sess, ckpt)
+
+
+# copybara:comment_end
 
 
 def tfadd_with_ckpt_saver(out_dir):
@@ -87,7 +91,8 @@ def tfassert_eq(_):
   x = array_ops.placeholder(dtypes.int32, name='x_hold')
   y = array_ops.placeholder(dtypes.int32, name='y_hold')
   control_flow_assert.Assert(
-      math_ops.equal(x, y), ['Expected x == y.'], name='assert_eq')
+      math_ops.equal(x, y), ['Expected x == y.'], name='assert_eq'
+  )
   math_ops.add(x, math_ops.negative(y), name='x_y_diff')
 
 
@@ -120,7 +125,6 @@ def tfmatmulandadd(_):
 
 
 def tffunction(_):
-
   @function.Defun(dtypes.int32, dtypes.int32)
   def test_func(a, b):
     return a + b
@@ -201,7 +205,7 @@ def write_graph(build_graph, out_dir):
 def main(_):
   control_flow_util.enable_control_flow_v2()
   write_graph(tfadd, FLAGS.out_dir)
-  write_graph(tfadd_with_ckpt, FLAGS.out_dir)
+  write_graph(tfadd_with_ckpt, FLAGS.out_dir)  # copybara:comment
   write_graph(tfadd_with_ckpt_saver, FLAGS.out_dir)
   write_graph(tfassert_eq, FLAGS.out_dir)
   write_graph(tfcond, FLAGS.out_dir)
@@ -223,6 +227,7 @@ if __name__ == '__main__':
       '--out_dir',
       type=str,
       default='',
-      help='Output directory for graphs, checkpoints and savers.')
+      help='Output directory for graphs, checkpoints and savers.',
+  )
   FLAGS, unparsed = parser.parse_known_args()
   app.run(main=main, argv=[sys.argv[0]] + unparsed)

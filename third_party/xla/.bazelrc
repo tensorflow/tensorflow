@@ -380,8 +380,8 @@ build:android --cxxopt=-std=c++17
 build:android --host_cxxopt=-std=c++17
 build:ios --cxxopt=-std=c++17
 build:ios --host_cxxopt=-std=c++17
-build:linux --cxxopt=-std=c++17
-build:linux --host_cxxopt=-std=c++17
+build:linux --cxxopt=-std=c++20
+build:linux --host_cxxopt=-std=c++20
 build:macos --cxxopt=-std=c++17
 build:macos --host_cxxopt=-std=c++17
 build:windows --cxxopt=/std:c++17
