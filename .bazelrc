@@ -835,14 +835,37 @@ build:cross_compile_base --host_cpu=k8
 build:cross_compile_base --host_crosstool_top=//tensorflow/tools/toolchains/cross_compile/cc:cross_compile_toolchain_suite
 build:cross_compile_base --extra_execution_platforms=//tensorflow/tools/toolchains/cross_compile/config:linux_x86_64
 
+# XLA related settings for cross-compiled build. Certain paths are
+# different in the XLA repo.
+build:cross_compile_base_xla --host_cpu=k8
+build:cross_compile_base_xla --host_crosstool_top=//tools/toolchains/cross_compile/cc:cross_compile_toolchain_suite
+build:cross_compile_base_xla --extra_execution_platforms=//tools/toolchains/cross_compile/config:linux_x86_64
+
 build:rbe_cross_compile_base --config=rbe_base
 build:rbe_cross_compile_base --remote_instance_name=projects/tensorflow-testing/instances/default_instance
+
+# XLA depends on some local Python headers that are configured as Genrule. They
+# are present on the local host machine but not on the remote execution machine,
+# leading to build failures. To resolve the issue, the following line is added
+# to make sure all Genrule targets are excuted locally.
+build:rbe_cross_compile_base_xla --config=rbe_cross_compile_base
+build:rbe_cross_compile_base_xla --strategy=Genrule=standalone
+
+# Due to the above strategy, all Genrule commands are executed locally, but the
+# following actions invoke tools (E.g `flatc`, `llvm-tblgen`, etc.) that are
+# only executabe on the RBE (x86) machine, so the strategy_regexp options are
+# added to override and run the actions using remote strategy.
+build:rbe_cross_compile_base_xla --strategy_regexp='Generating code from table.*=remote'
+build:rbe_cross_compile_base_xla --strategy_regexp='Generating flatbuffer files.*=remote'
+build:rbe_cross_compile_base_xla --strategy_regexp='Executing genrule @llvm-project.*=remote'
 
 # Test-related settings below this point
 # We cannot run cross-compiled tests on the remote Linux x86 VMs so we need to
 # force all tests to run locally on the Aarch64 host.
 test:rbe_cross_compile_base --strategy=TestRunner=local --build_tests_only
 test:rbe_cross_compile_base --verbose_failures=true --local_test_jobs=HOST_CPUS --test_output=errors
+
+test:rbe_cross_compile_base_xla --config=rbe_cross_compile_base
 
 # START LINUX AARCH64 CROSS-COMPILE CONFIGS
 build:cross_compile_linux_arm64 --config=cross_compile_base
@@ -852,10 +875,21 @@ build:cross_compile_linux_arm64 --platforms=//tensorflow/tools/toolchains/cross_
 build:cross_compile_linux_arm64 --cpu=aarch64
 build:cross_compile_linux_arm64 --crosstool_top=//tensorflow/tools/toolchains/cross_compile/cc:cross_compile_toolchain_suite
 
+# XLA uses different paths for platforms and crosstool_top.
+build:cross_compile_linux_arm64_xla --config=cross_compile_base_xla
+build:cross_compile_linux_arm64_xla --platforms=//tools/toolchains/cross_compile/config:linux_aarch64
+build:cross_compile_linux_arm64_xla --crosstool_top=//tools/toolchains/cross_compile/cc:cross_compile_toolchain_suite
+
 # RBE cross-compile configs for Linux Aarch64
 build:rbe_cross_compile_linux_arm64 --config=cross_compile_linux_arm64
 build:rbe_cross_compile_linux_arm64 --config=rbe_cross_compile_base
 test:rbe_cross_compile_linux_arm64 --config=rbe_cross_compile_base
+
+# RBE cross-compile configs for XLA Linux Aarch64
+build:rbe_cross_compile_linux_arm64_xla --config=cross_compile_linux_arm64_xla
+build:rbe_cross_compile_linux_arm64_xla --config=rbe_cross_compile_base_xla
+test:rbe_cross_compile_linux_arm64_xla --config=rbe_cross_compile_base_xla
+
 # END LINUX AARCH64 CROSS-COMPILE CONFIGS
 
 # START MACOS CROSS-COMPILE CONFIGS
