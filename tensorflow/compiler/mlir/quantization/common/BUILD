@@ -30,7 +30,7 @@ cc_library(
     hdrs = ["lift_as_function_call.h"],
     compatible_with = get_compatible_with_portable(),
     deps = [
-        "//tensorflow/compiler/mlir/quantization/common:attrs_and_constraints",
+        ":attrs_and_constraints",
         "//tensorflow/compiler/mlir/quantization/common/quantization_lib",
         "//tensorflow/compiler/mlir/quantization/stablehlo:stablehlo_type_utils",
         "//tensorflow/compiler/mlir/quantization/tensorflow/cc:quantization_unit_loc",
