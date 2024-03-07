@@ -1024,7 +1024,7 @@ int64_t HloSharding::NumTilesLeaf() const {
   if (IsTileMaximalLeaf()) {
     return 1;
   }
-  CHECK(!IsManualLeaf() & !IsUnknownLeaf());
+  CHECK(!IsManualLeaf() && !IsUnknownLeaf());
   return Product(absl::Span<const int64_t>(tile_assignment_.dimensions())
                      .subspan(0, TiledDataRankLeaf()));
 }
