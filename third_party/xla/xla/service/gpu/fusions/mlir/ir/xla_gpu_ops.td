@@ -94,6 +94,20 @@ def XLAGPU_AtomicRMWOp : XLAGPU_Op<"atomic_rmw",
   // the updated value.
   let regions = (region SizedRegion<1>:$computation);
 
+  let skipDefaultBuilders = 1;
+  let builders = [OpBuilder<(ins "mlir::Value":$memref, "mlir::ValueRange":$ivs)>];
+
+  let extraClassDeclaration = [{
+    mlir::Block* getBody() { return &getComputation().front(); }
+    mlir::OpBuilder getBodyBuilder() {
+      return mlir::OpBuilder(getBody(), std::prev(getBody()->end()));
+    }
+    // The value stored in tensor[ivs].
+    mlir::Value getCurrentValue() {
+      return getRegion().getArgument(0);
+    }
+  }];
+
   let assemblyFormat = [{
     $input `[` $indices `]` `:` type($input) $computation attr-dict
   }];

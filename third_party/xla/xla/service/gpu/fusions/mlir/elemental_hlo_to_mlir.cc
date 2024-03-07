@@ -45,6 +45,7 @@ limitations under the License.
 #include "mlir/IR/BuiltinAttributeInterfaces.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
+#include "mlir/IR/IRMapping.h"  // from @llvm-project
 #include "mlir/IR/ImplicitLocOpBuilder.h"  // from @llvm-project
 #include "mlir/IR/TypeRange.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
@@ -80,7 +81,9 @@ namespace {
 
 using llvm::SmallVector;
 using llvm::SmallVectorImpl;
+using mlir::Block;
 using mlir::ImplicitLocOpBuilder;
+using mlir::IRMapping;
 using mlir::Location;
 using mlir::OpBuilder;
 using mlir::Value;
@@ -1132,6 +1135,25 @@ mlir::Value ClampIndex(mlir::Value index, bool is_unsigned, int64_t high,
     index = b.create<arith::MaxSIOp>(index, zero);
   }
   return index;
+}
+
+SmallVector<Value, 2> InlineBlock(OpBuilder& builder, Block& src_block,
+                                  ValueRange mapped_args) {
+  IRMapping mapping;
+  for (auto [from, to] : llvm::zip(src_block.getArguments(), mapped_args)) {
+    mapping.map(from, to);
+  }
+  for (auto& op : src_block.without_terminator()) {
+    builder.clone(op, mapping);
+  }
+  auto* terminator = src_block.getTerminator();
+  SmallVector<Value, 2> mapped_results;
+
+  mapped_results.reserve(terminator->getResults().size());
+  for (mlir::Value result : src_block.getTerminator()->getOperands()) {
+    mapped_results.push_back(mapping.lookup(result));
+  }
+  return mapped_results;
 }
 
 }  // namespace mlir_converter

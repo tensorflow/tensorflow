@@ -26,9 +26,11 @@ limitations under the License.
 #include "llvm/ADT/SmallVector.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
+#include "mlir/Dialect/SCF/IR/SCF.h"  // from @llvm-project
 #include "mlir/Dialect/Tensor/IR/Tensor.h"  // from @llvm-project
 #include "mlir/IR/AffineExpr.h"  // from @llvm-project
 #include "mlir/IR/AffineMap.h"  // from @llvm-project
+#include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/ImplicitLocOpBuilder.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
@@ -49,8 +51,14 @@ namespace gpu {
 namespace {
 
 using llvm::SmallVector;
+using mlir::Location;
+using mlir::OpBuilder;
 using mlir::Value;
 using mlir::ValueRange;
+using mlir::arith::AddIOp;
+using mlir::arith::AndIOp;
+using mlir::arith::CmpIOp;
+using mlir::arith::CmpIPredicate;
 using mlir::arith::ConstantIndexOp;
 using mlir::func::ReturnOp;
 using mlir::tensor::InsertOp;
@@ -59,22 +67,19 @@ using mlir_converter::CallTargetProvider;
 using mlir_converter::PartitionedComputations;
 using mlir_converter::ProvideParameter;
 
+namespace scf = ::mlir::scf;
+
 }  // namespace
 
 bool MlirScatterFusion::IsSupported(const HloFusionAnalysis& analysis) {
   auto* scatter = Cast<HloScatterInstruction>(analysis.fusion_heroes().front());
-  if (!scatter->unique_indices()) {
-    LOG(ERROR) << "MlirScatterFusion with atomics is not yet implemented";
-    return false;
-  }
   if (scatter->scatter_operand_count() != 1) {
     LOG(ERROR) << "Variadic scatter is not supported like in the legacy "
                   "emitter, although it is possible to make it work when the "
                   "indices are unique.";
     return false;
   }
-  // Do not enable it for now.
-  return false;
+  return true;
 }
 
 std::optional<IndexingMap> MlirScatterFusion::ComputeThreadIdToOutputIndexing(
@@ -137,6 +142,33 @@ MlirScatterFusion::GetInstructionsWithCustomCodegen(
   return {analysis_.fusion_heroes()[0]};
 }
 
+mlir::Value EmitScatterComputation(
+    const HloInstruction* scatter, ValueRange indices, Value update_elem,
+    Value output_tensor,
+    const mlir_converter::PartitionedComputation& root_computation,
+    const mlir_converter::CallTargetProvider& call_targets,
+    mlir::ImplicitLocOpBuilder& b) {
+  constexpr int kScatterOperandIndex = 0;
+  auto reducer =
+      call_targets(scatter->called_computations()[0]->root_instruction());
+  if (scatter->unique_indices()) {
+    auto operand_elem =
+        ProvideParameter(root_computation, scatter, kScatterOperandIndex,
+                         indices, call_targets, b)[0];
+    auto reduced_val = mlir_converter::InlineBlock(
+        b, reducer.getBody().front(), {operand_elem, update_elem})[0];
+
+    return b.create<InsertOp>(reduced_val, output_tensor, indices);
+  }
+  auto atomic_rmw = b.create<AtomicRMWOp>(output_tensor, indices);
+  mlir::OpBuilder body_builder = atomic_rmw.getBodyBuilder();
+  auto reduced_val = mlir_converter::InlineBlock(
+      body_builder, reducer.getBody().front(),
+      {atomic_rmw.getCurrentValue(), update_elem})[0];
+  body_builder.create<xla::gpu::YieldOp>(reducer->getLoc(), reduced_val);
+  return atomic_rmw->getResult(0);
+}
+
 // The scatter has to be canonicalized with `scatter_simplifier` pass.
 absl::Status MlirScatterFusion::EmitEntryFunction(
     const PartitionedComputations& computations,
@@ -150,6 +182,7 @@ absl::Status MlirScatterFusion::EmitEntryFunction(
       scatter->operand(kScatterOperandIndex);
   const HloInstruction* scatter_indices =
       scatter->operand(kScatterIndicesIndex);
+  const HloInstruction* scatter_update = scatter->operand(kScatterUpdateIndex);
 
   mlir::MLIRContext* mlir_context = entry_function.getContext();
   auto thread_id_to_update_map =
@@ -165,13 +198,9 @@ absl::Status MlirScatterFusion::EmitEntryFunction(
   mlir::ImplicitLocOpBuilder b(entry_function.getLoc(), entry_function);
   b.setInsertionPointToStart(entry_function.addEntryBlock());
 
-  int num_inputs = fusion.fused_instructions_computation()->num_parameters();
-  int num_outputs = entry_function.getArguments().size() - num_inputs;
-  auto output_tensor_args =
-      entry_function.getArguments().drop_front(num_inputs);
-  SmallVector<Value> result_tensors{output_tensor_args.begin(),
-                                    output_tensor_args.end()};
+  SmallVector<Value> result_tensors{entry_function.getArguments().back()};
   auto c0 = b.create<ConstantIndexOp>(0);
+
   auto scatter_result = EmitThreadLoopNest(
       b, result_tensors, thread_id_to_update_map,
       [&](ValueRange output_tensors, ValueRange dim_values,
@@ -185,40 +214,52 @@ absl::Status MlirScatterFusion::EmitEntryFunction(
                              update_tensor_indices, call_targets, b)
                 .front();
 
-        // Extract and clamp indices.
-        SmallVector<Value, 4> clamped_indices(scatter_operand->shape().rank(),
-                                              c0);
-        for (int i = 0; i < scatter_indices->shape().dimensions(1); ++i) {
-          SmallVector<Value, 4> indices_tensor_indices = {
-              update_tensor_indices.front(), b.create<ConstantIndexOp>(i)};
-          auto index =
-              ProvideParameter(root_computation, scatter, kScatterIndicesIndex,
-                               indices_tensor_indices, call_targets, b)[0];
-          index = mlir_converter::ClampIndex(
-              index, /*is_unsigned=*/false,
-              scatter_operand->shape().dimensions(i), b);
-          index = b.create<mlir::arith::AddIOp>(index,
-                                                update_tensor_indices[i + 1]);
-        }
-        // Call scatter's computation.
-        auto reducer =
-            call_targets(scatter->called_computations()[0]->root_instruction());
-        if (scatter->unique_indices()) {
-          auto operand_elem =
-              ProvideParameter(root_computation, scatter, kScatterOperandIndex,
-                               clamped_indices, call_targets, b)[0];
-          auto result_scalars = b.create<PureCallOp>(
-              reducer, llvm::ArrayRef({operand_elem, update_elem}));
-          SmallVector<Value> updated_operand;
-          updated_operand.reserve(num_outputs);
-          for (auto [tensor, value] :
-               llvm::zip(output_tensors, result_scalars.getResults())) {
-            updated_operand.push_back(
-                b.create<InsertOp>(value, tensor, clamped_indices));
+        // Extract slice offsets from scatter_indices operand, compute if the
+        // whole slice of scatter_update operand will fit into the output.
+        mlir::Value is_in_bounds =
+            b.create<mlir::arith::ConstantIntOp>(1, b.getI1Type());
+        SmallVector<Value, 4> indices{
+            llvm::ArrayRef(update_tensor_indices).drop_front()};
+        for (int i = 0; i < scatter_operand->shape().rank(); ++i) {
+          Value extracted_index = c0;
+          if (i < scatter_indices->shape().dimensions(1)) {
+            SmallVector<Value, 4> indices_tensor_indices = {
+                update_tensor_indices.front(), b.create<ConstantIndexOp>(i)};
+            extracted_index = ProvideParameter(
+                root_computation, scatter, kScatterIndicesIndex,
+                indices_tensor_indices, call_targets, b)[0];
+            if (extracted_index.getType() != b.getIndexType()) {
+              extracted_index = b.create<mlir::arith::IndexCastOp>(
+                  b.getIndexType(), extracted_index);
+            }
           }
-          return updated_operand;
+          is_in_bounds = b.create<AndIOp>(
+              is_in_bounds,
+              b.create<CmpIOp>(CmpIPredicate::sge, extracted_index, c0));
+          Value ub = b.create<ConstantIndexOp>(
+              scatter_operand->shape().dimensions(i) -
+              scatter_update->shape().dimensions(i + 1));
+          is_in_bounds = b.create<AndIOp>(
+              is_in_bounds,
+              b.create<CmpIOp>(CmpIPredicate::sle, extracted_index, ub));
+          indices[i] = b.create<AddIOp>(extracted_index, indices[i]);
         }
-        return output_tensors;
+        // Call scatter's computation if is_in_bounds.
+        Value output_tensor = output_tensors.front();
+        Value predicated_update =
+            b.create<scf::IfOp>(
+                 is_in_bounds,
+                 [&](OpBuilder& then_builder, Location then_loc) -> void {
+                   Value updated_output = EmitScatterComputation(
+                       scatter, indices, update_elem, output_tensor,
+                       root_computation, call_targets, b);
+                   b.create<scf::YieldOp>(updated_output);
+                 },
+                 [&](OpBuilder& else_b, Location else_loc) {
+                   b.create<scf::YieldOp>(output_tensor);
+                 })
+                .getResult(0);
+        return {predicated_update};
       });
   b.create<ReturnOp>(scatter_result);
   return absl::OkStatus();
