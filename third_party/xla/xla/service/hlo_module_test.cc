@@ -791,7 +791,7 @@ static HloModuleConfigProto::BoolList MakeOneHotBoolList(unsigned num_vals,
   return list;
 }
 
-static StatusOr<HloModuleConfigProto> MakeTestModuleConfigProto() {
+static absl::StatusOr<HloModuleConfigProto> MakeTestModuleConfigProto() {
   HloModuleConfigProto proto;
   // entry_computation_layout_ is optional
   proto.set_seed(0xdeadbeef);

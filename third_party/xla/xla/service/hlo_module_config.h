@@ -85,8 +85,8 @@ class HloModuleConfig {
   explicit HloModuleConfig(ComputationLayout entry_computation_layout);
 
   // Convert an HloModuleConfig to or from a proto.
-  StatusOr<HloModuleConfigProto> ToProto() const;
-  static StatusOr<std::unique_ptr<HloModuleConfig>> CreateFromProto(
+  absl::StatusOr<HloModuleConfigProto> ToProto() const;
+  static absl::StatusOr<std::unique_ptr<HloModuleConfig>> CreateFromProto(
       const HloModuleConfigProto& proto);
 
   // Assigns the repeated ShardableValueUpdatePairProto field to the given

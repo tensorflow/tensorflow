@@ -114,7 +114,7 @@ class HloModuleGroupMetadata {
   ~HloModuleGroupMetadata() = default;
 
   // Build and return the metadata for the given modules.
-  static StatusOr<std::unique_ptr<HloModuleGroupMetadata>> Build(
+  static absl::StatusOr<std::unique_ptr<HloModuleGroupMetadata>> Build(
       absl::Span<HloModule* const> modules);
 
   // Returns true if the instruction is one of the 4 channel instructions (Send,

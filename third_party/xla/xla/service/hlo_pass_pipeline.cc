@@ -107,7 +107,7 @@ Status HloPassPipeline::RunInvariantCheckers(
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   for (auto& invariant_checker : invariant_checkers_) {
     VLOG(1) << "    Invariant checker " << invariant_checker->name();
-    StatusOr<bool> changed_status =
+    absl::StatusOr<bool> changed_status =
         RunHelper(invariant_checker.get(), hlo, execution_threads);
     VLOG(1) << "    Invariant checker done " << invariant_checker->name();
     if (!changed_status.ok()) {
@@ -137,7 +137,7 @@ std::string UniqueId(const HloModuleGroup& group) {
 }  // namespace
 
 template <typename HloT>
-StatusOr<bool> HloPassPipeline::RunPassesInternal(
+absl::StatusOr<bool> HloPassPipeline::RunPassesInternal(
     HloT* hlo, const DebugOptions& debug_options,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   auto passes = GetEnabledPasses(debug_options);
@@ -284,7 +284,7 @@ void HloPassPipeline::MaybeDumpHloAndSaveFilenames(
   }
 }
 
-StatusOr<bool> HloPassPipeline::Run(
+absl::StatusOr<bool> HloPassPipeline::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   run_called_ = true;
@@ -296,7 +296,7 @@ StatusOr<bool> HloPassPipeline::Run(
                            execution_threads);
 }
 
-StatusOr<bool> HloPassPipeline::RunOnModuleGroup(
+absl::StatusOr<bool> HloPassPipeline::RunOnModuleGroup(
     HloModuleGroup* module_group,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   run_called_ = true;

@@ -47,20 +47,20 @@ class HloDCE : public HloModulePass {
   absl::string_view name() const override { return "dce"; }
 
   // Run DCE on a computation.
-  static StatusOr<bool> RunOnComputation(
+  static absl::StatusOr<bool> RunOnComputation(
       HloComputation* computation, bool remove_cross_partition_collective_ops);
 
   // Run the pass on the given module. Returns whether the module was changed
   // (instructions were removed).
   using HloPassInterface::Run;
-  StatusOr<bool> Run(
+  absl::StatusOr<bool> Run(
       HloModule* module,
       const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 
  private:
   // Finds all computations that are not called by any instruction and removes
   // them from the module. Returns whether any dead code was removed.
-  StatusOr<bool> RecursivelyRemoveDeadComputations(HloModule* module);
+  absl::StatusOr<bool> RecursivelyRemoveDeadComputations(HloModule* module);
 
   // Given a dead computation, decrements the ref count of all its called
   // computations and checks if any of the subcomputations become dead after the

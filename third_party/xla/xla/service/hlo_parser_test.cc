@@ -2597,8 +2597,8 @@ class HloParserTest : public ::testing::Test {
     EXPECT_TRUE(absl::StrContains(s, expected))
         << "'" << s << "' does not contain '" << expected << "'";
   }
-  StatusOr<std::unique_ptr<VerifiedHloModule>> ParseAndReturnVerifiedModule(
-      absl::string_view hlo_text) {
+  absl::StatusOr<std::unique_ptr<VerifiedHloModule>>
+  ParseAndReturnVerifiedModule(absl::string_view hlo_text) {
     auto module = std::make_unique<VerifiedHloModule>(
         ::testing::UnitTest::GetInstance()->current_test_info()->name(),
         HloModuleConfig(),
@@ -3747,7 +3747,7 @@ TEST(HloParserSingleOpTest, SingleOp) {
 TEST(HloParserSingleOpTest, SingleOpNoShapeProducesError) {
   const std::string text =
       "multiply(f32[2,4]{1,0} %broadcast, f32[2,4]{1,0} %x)";
-  StatusOr<std::unique_ptr<HloModule>> module =
+  absl::StatusOr<std::unique_ptr<HloModule>> module =
       ParseAndReturnUnverifiedModule(text);
   ASSERT_TRUE(!module.status().ok());
   LOG(INFO) << "Status: " << module.status();
@@ -3757,7 +3757,7 @@ TEST(HloParserSingleOpTest, SingleOpNoShapeProducesError) {
 
 TEST(HloParserSingleOpTest, SingleOpNoOperandShapesProducesError) {
   const std::string text = "%multiply = f32[2,4]{1,0} multiply(%broadcast, %x)";
-  StatusOr<std::unique_ptr<HloModule>> module =
+  absl::StatusOr<std::unique_ptr<HloModule>> module =
       ParseAndReturnUnverifiedModule(text);
   ASSERT_TRUE(!module.status().ok());
   LOG(INFO) << "Status: " << module.status();
@@ -4288,7 +4288,7 @@ TEST_F(HloParserTest, ParseInvalidShapeString) {
   std::string shape_strings[] = {"f32[123,456]foobar{0,1}", "f32[123,456]{foo}",
                                  "f32[123,456]dense{foo}"};
   for (const std::string& shape_string : shape_strings) {
-    StatusOr<Shape> result = ParseShape(shape_string);
+    absl::StatusOr<Shape> result = ParseShape(shape_string);
     ASSERT_FALSE(result.ok()) << "shape: " << shape_string;
   }
 }
@@ -4315,7 +4315,7 @@ TEST_F(HloParserTest, ParseDynamicTuple) {
 
 TEST_F(HloParserTest, ParseInvalidDimLevel) {
   constexpr std::string_view shape_string = "f32[123]{0:D(D+~)}";
-  StatusOr<Shape> result = ParseShape(shape_string);
+  absl::StatusOr<Shape> result = ParseShape(shape_string);
   ASSERT_THAT(
       result.status(),
       tsl::testing::StatusIs(

@@ -60,7 +60,7 @@ struct ConstantKey {
 // While we're here, also combine identical iota instructions, since they need
 // similar treatment.
 template <bool kIsLayoutSensitive>
-StatusOr<bool> CombineConstants(HloComputation* computation) {
+absl::StatusOr<bool> CombineConstants(HloComputation* computation) {
   // Populating the domain map is somewhat expensive -- only do it if there are
   // kDomain ops in the computation.  If there are no kDomain ops, the domain
   // map is trivial, every op gets mapped to the same domain.
@@ -215,7 +215,7 @@ struct CseKey {
 
 }  // namespace
 
-StatusOr<bool> HloCSE::Run(
+absl::StatusOr<bool> HloCSE::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   bool changed = false;

@@ -621,7 +621,7 @@ class HloCostAnalysis : public ConstDfsHloVisitor {
   // given hlo. The cost of visited sub HLO instructions is saved to
   // hlo_properties_, which will be used by functions such as
   // flop_count(hlo_instruction) to return cost of a particular HLO instruction.
-  virtual StatusOr<Properties> ProcessSubcomputation(
+  virtual absl::StatusOr<Properties> ProcessSubcomputation(
       HloComputation* computation);
 
   // Utility function to handle all element-wise operations.

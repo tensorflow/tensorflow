@@ -362,7 +362,7 @@ Status HloModuleGroupUtil::VerifyComputations(
   return OkStatus();
 }
 
-StatusOr<std::unique_ptr<HloReachabilityMap>>
+absl::StatusOr<std::unique_ptr<HloReachabilityMap>>
 HloModuleGroupUtil::ComputeReachability(
     absl::Span<HloComputation* const> computations) {
   std::vector<HloInstruction*> post_order;

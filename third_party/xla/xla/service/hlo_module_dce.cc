@@ -37,7 +37,7 @@ namespace xla {
 
 namespace {
 
-StatusOr<bool> RunWhileDCE(
+absl::StatusOr<bool> RunWhileDCE(
     HloModule* module, HloLivenessAnalysis* liveness,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   bool changed = false;
@@ -105,7 +105,7 @@ StatusOr<bool> RunWhileDCE(
 
 }  // namespace
 
-StatusOr<bool> HloModuleDCE::Run(
+absl::StatusOr<bool> HloModuleDCE::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   VLOG(2) << "Before HloModuleDCE:";

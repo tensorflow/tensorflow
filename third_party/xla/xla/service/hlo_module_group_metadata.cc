@@ -57,7 +57,7 @@ std::string HloModuleGroupMetadata::TrackedInstruction::ToString() const {
   return repr;
 }
 
-/* static */ StatusOr<std::unique_ptr<HloModuleGroupMetadata>>
+/* static */ absl::StatusOr<std::unique_ptr<HloModuleGroupMetadata>>
 HloModuleGroupMetadata::Build(absl::Span<HloModule* const> modules) {
   auto metadata = std::make_unique<HloModuleGroupMetadata>(modules);
   TF_RETURN_IF_ERROR(metadata->Build());

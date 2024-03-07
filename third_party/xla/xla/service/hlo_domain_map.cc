@@ -28,14 +28,14 @@ limitations under the License.
 
 namespace xla {
 
-/* static */ StatusOr<std::unique_ptr<HloDomainMap>> HloDomainMap::Create(
+/* static */ absl::StatusOr<std::unique_ptr<HloDomainMap>> HloDomainMap::Create(
     HloComputation* computation, std::string domain_kind) {
   auto domain_map = absl::WrapUnique(new HloDomainMap(std::move(domain_kind)));
   TF_RETURN_IF_ERROR(domain_map->Populate(computation));
   return std::move(domain_map);
 }
 
-/* static */ StatusOr<std::unique_ptr<HloDomainMap>> HloDomainMap::Create(
+/* static */ absl::StatusOr<std::unique_ptr<HloDomainMap>> HloDomainMap::Create(
     HloModule* module, std::string domain_kind) {
   auto domain_map = absl::WrapUnique(new HloDomainMap(std::move(domain_kind)));
   for (HloComputation* computation : module->computations()) {
@@ -193,7 +193,8 @@ Status HloDomainMap::ExpandDomain(HloInstruction* instruction,
   return OkStatus();
 }
 
-StatusOr<std::unique_ptr<DomainMetadata::Domain>> HloDomainMap::CreateDomain(
+absl::StatusOr<std::unique_ptr<DomainMetadata::Domain>>
+HloDomainMap::CreateDomain(
     HloInstruction* instruction,
     const InstructionOrderMap& instructions_order) const {
   auto domain = std::make_unique<DomainMetadata::Domain>();
