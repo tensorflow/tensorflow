@@ -2252,7 +2252,11 @@ Status AlgebraicSimplifierVisitor::HandleDivide(HloInstruction* divide) {
 
 absl::StatusOr<bool>
 AlgebraicSimplifierVisitor::RemoveDegenerateDimensionFromDot(
-    HloInstruction* dot) {
+    HloDotInstruction* dot) {
+  if (dot->sparse_operands()) {
+    return false;
+  }
+
   const Shape& lhs_shape = dot->operand(0)->shape();
   int64_t num_degenerate_lhs_dims = 0;
   std::vector<int64_t> lhs_dimension_map(lhs_shape.rank(), -1);
@@ -2411,7 +2415,7 @@ Status AlgebraicSimplifierVisitor::SimplifyTransposeOfBroadcast(
 
 absl::StatusOr<bool>
 AlgebraicSimplifierVisitor::RemoveTransposesFromDotOperands(
-    HloInstruction* dot) {
+    HloDotInstruction* dot) {
   const int64_t rank = dot->shape().rank();
   const auto& dnums = dot->dot_dimension_numbers();
   HloInstruction* lhs = dot->mutable_operand(0);
@@ -3000,7 +3004,12 @@ AlgebraicSimplifierVisitor::OptimizeDotOfReorderContractingDims(
 // If appropriate, reorder operation on dot operand to the mirror operation on
 // the other dot operand
 absl::StatusOr<HloInstruction*>
-AlgebraicSimplifierVisitor::AssociativeReorderDotOperator(HloInstruction* dot) {
+AlgebraicSimplifierVisitor::AssociativeReorderDotOperator(
+    HloDotInstruction* dot) {
+  if (dot->sparse_operands()) {
+    return nullptr;
+  }
+
   DotDimensionNumbers dnums = dot->dot_dimension_numbers();
   HloInstruction* lhs = dot->mutable_operand(0);
   HloInstruction* rhs = dot->mutable_operand(1);
@@ -3256,6 +3265,7 @@ AlgebraicSimplifierVisitor::AssociativeReorderDotOperator(HloInstruction* dot) {
 
 Status AlgebraicSimplifierVisitor::HandleDot(HloInstruction* dot) {
   CHECK(computation_ == dot->parent());
+  HloDotInstruction* dot_cast = Cast<HloDotInstruction>(dot);
   const auto& dnums = dot->dot_dimension_numbers();
 
   HloInstruction *lhs, *rhs;
@@ -3321,7 +3331,7 @@ Status AlgebraicSimplifierVisitor::HandleDot(HloInstruction* dot) {
   }
 
   // Reorder nested dots with associativity using flops as a heuristic
-  if (options_.use_associative_reordering()) {
+  if (options_.use_associative_reordering() && !dot_cast->sparse_operands()) {
     HloInstruction *inner, *outer;
     HloInstruction *new_inner, *new_outer;
 
@@ -3329,11 +3339,13 @@ Status AlgebraicSimplifierVisitor::HandleDot(HloInstruction* dot) {
     bool outer_lhs_dot = false;
     bool outer_rhs_dot = false;
 
-    if (lhs->opcode() == HloOpcode::kDot) {
+    if (lhs->opcode() == HloOpcode::kDot &&
+        !Cast<HloDotInstruction>(lhs)->sparse_operands()) {
       outer = dot;
       inner = lhs;
       outer_lhs_dot = true;
-    } else if (rhs->opcode() == HloOpcode::kDot) {
+    } else if (rhs->opcode() == HloOpcode::kDot &&
+               !Cast<HloDotInstruction>(rhs)->sparse_operands()) {
       outer = dot;
       inner = rhs;
       outer_rhs_dot = true;
@@ -3682,7 +3694,7 @@ Status AlgebraicSimplifierVisitor::HandleDot(HloInstruction* dot) {
 
   if (options_.use_associative_reordering()) {
     TF_ASSIGN_OR_RETURN(HloInstruction * dot_operator_reordered,
-                        AssociativeReorderDotOperator(dot));
+                        AssociativeReorderDotOperator(dot_cast));
     if (dot_operator_reordered) {
       VLOG(10) << "Reordering dot operand to its mirror";
       return ReplaceInstruction(dot, dot_operator_reordered);
@@ -3787,13 +3799,13 @@ Status AlgebraicSimplifierVisitor::HandleDot(HloInstruction* dot) {
   }
 
   TF_ASSIGN_OR_RETURN(bool removed_degenerate_dimensions,
-                      RemoveDegenerateDimensionFromDot(dot));
+                      RemoveDegenerateDimensionFromDot(dot_cast));
   if (removed_degenerate_dimensions) {
     return OkStatus();
   }
 
   TF_ASSIGN_OR_RETURN(bool removed_transposes,
-                      RemoveTransposesFromDotOperands(dot));
+                      RemoveTransposesFromDotOperands(dot_cast));
   if (removed_transposes) {
     return OkStatus();
   }
@@ -6048,7 +6060,8 @@ Status AlgebraicSimplifierVisitor::HandleSlice(HloInstruction* slice) {
   // Try to reorder slice of dot to the operand it comes from
   if (!options_.is_layout_sensitive() &&
       options_.use_associative_reordering() &&
-      slice->operand(0)->opcode() == HloOpcode::kDot) {
+      slice->operand(0)->opcode() == HloOpcode::kDot &&
+      !Cast<HloDotInstruction>(slice->operand(0))->sparse_operands()) {
     // Unpack the dot operands
     HloInstruction* dot = slice->mutable_operand(0);
     HloInstruction* lhs = dot->mutable_operand(0);
@@ -6892,7 +6905,8 @@ Status AlgebraicSimplifierVisitor::HandleReduce(HloInstruction* hlo) {
         IsScalarConstantZero(init_value) &&
         Match(reduce->to_apply()->root_instruction(),
               m::AddAnyOrder(m::Parameter(0), m::Parameter(1))) &&
-        arg->dot_dimension_numbers().lhs_batch_dimensions().empty()) {
+        arg->dot_dimension_numbers().lhs_batch_dimensions().empty() &&
+        !Cast<HloDotInstruction>(arg)->sparse_operands()) {
       // Create maps for converting AB dimensions to A and B
       DotDimensionNumbers ab_dnums = arg->dot_dimension_numbers();
       std::vector<int64_t> map_ab_a, map_ab_b;
@@ -7192,9 +7206,13 @@ Status AlgebraicSimplifierVisitor::HandleReduce(HloInstruction* hlo) {
       Match(arg, m::Dot(&dot, m::Op(&lhs), m::Op(&rhs)).WithOneUser()) &&
       Match(reduce->to_apply()->root_instruction(),
             m::AddAnyOrder(m::Parameter(0), m::Parameter(1))) &&
-      absl::c_any_of(reduce->dimensions(), [&](int64_t dim) {
-        return dim < dot->dot_dimension_numbers().lhs_batch_dimensions_size();
-      })) {
+      absl::c_any_of(
+          reduce->dimensions(),
+          [&](int64_t dim) {
+            return dim <
+                   dot->dot_dimension_numbers().lhs_batch_dimensions_size();
+          }) &&
+      !Cast<HloDotInstruction>(dot)->sparse_operands()) {
     const auto& dnums = dot->dot_dimension_numbers();
     DotDimensionNumbers new_dnums = dnums;
     new_dnums.clear_lhs_batch_dimensions();
@@ -7910,7 +7928,8 @@ Status AlgebraicSimplifierVisitor::HandleTranspose(HloInstruction* transpose) {
   HloInstruction *lhs, *rhs, *dot;
   if (options_.supports_non_canonical_dots() &&
       Match(operand, m::Dot(&dot, m::Op(&lhs), m::Op(&rhs))) &&
-      dot->user_count() == 1) {
+      dot->user_count() == 1 &&
+      !Cast<HloDotInstruction>(dot)->sparse_operands()) {
     TF_ASSIGN_OR_RETURN(bool did_transform, [&]() -> absl::StatusOr<bool> {
       const auto& dnums = dot->dot_dimension_numbers();
       const int64_t num_batch_dims = dnums.lhs_batch_dimensions_size();

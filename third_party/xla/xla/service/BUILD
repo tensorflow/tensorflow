@@ -1972,6 +1972,7 @@ cc_library(
         "//xla:status_macros",
         "//xla:statusor",
         "//xla:util",
+        "//xla:xla_data_proto_cc",
         "//xla/client:xla_builder",
         "//xla/client:xla_computation",
         "//xla/client/lib:comparators",
