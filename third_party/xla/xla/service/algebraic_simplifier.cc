@@ -18,6 +18,7 @@ limitations under the License.
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <cstddef>
 #include <cstdint>
 #include <iterator>
 #include <memory>
@@ -2253,10 +2254,6 @@ Status AlgebraicSimplifierVisitor::HandleDivide(HloInstruction* divide) {
 absl::StatusOr<bool>
 AlgebraicSimplifierVisitor::RemoveDegenerateDimensionFromDot(
     HloDotInstruction* dot) {
-  if (dot->sparse_operands()) {
-    return false;
-  }
-
   const Shape& lhs_shape = dot->operand(0)->shape();
   int64_t num_degenerate_lhs_dims = 0;
   std::vector<int64_t> lhs_dimension_map(lhs_shape.rank(), -1);
@@ -2309,6 +2306,30 @@ AlgebraicSimplifierVisitor::RemoveDegenerateDimensionFromDot(
     }
   }
 
+  std::vector<SparsityDescriptor> sparsity;
+  std::vector<HloInstruction*> sparse_meta;
+  for (int i = 0; i < dot->sparse_operands(); ++i) {
+    // Update sparse dimension number in the descriptor.
+    SparsityDescriptor descriptor = dot->sparsity()[i];
+    const std::vector<int64_t>& dimension_map =
+        descriptor.index() == 0 ? lhs_dimension_map : rhs_dimension_map;
+    CHECK_LT(static_cast<size_t>(descriptor.dimension()), dimension_map.size());
+    int preceding_dims_elided = absl::c_count_if(
+        absl::MakeSpan(dimension_map.data(), descriptor.dimension()),
+        [&](int64_t dim) { return dim == -1; });
+    descriptor.set_dimension(descriptor.dimension() - preceding_dims_elided);
+    sparsity.push_back(descriptor);
+
+    // Reshape sparsity metadata operand, if affected.
+    HloInstruction* meta =
+        dot->mutable_operand(HloDotInstruction::kOperands + i);
+    Shape new_shape = ShapeUtil::DropDegenerateDimensions(meta->shape());
+    if (!ShapeUtil::Equal(new_shape, meta->shape())) {
+      TF_ASSIGN_OR_RETURN(meta, MakeReshapeHlo(new_shape, meta));
+    }
+    sparse_meta.push_back(meta);
+  }
+
   HloInstruction* new_lhs =
       num_degenerate_lhs_dims > 0
           ? dot->parent()->AddInstruction(HloInstruction::CreateReshape(
@@ -2324,8 +2345,9 @@ AlgebraicSimplifierVisitor::RemoveDegenerateDimensionFromDot(
   TF_ASSIGN_OR_RETURN(
       auto new_dot,
       MakeDotHlo(new_lhs, new_rhs, new_dnums, dot->precision_config(),
-                 /*preferred_element_type=*/dot->shape().element_type()));
+                 dot->shape().element_type(), sparsity, sparse_meta));
   dot->SetupDerivedInstruction(new_dot);
+
   if (ShapeUtil::Compatible(dot->shape(), new_dot->shape())) {
     TF_RETURN_IF_ERROR(ReplaceInstruction(dot, new_dot));
   } else {

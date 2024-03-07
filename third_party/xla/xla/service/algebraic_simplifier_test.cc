@@ -10721,5 +10721,41 @@ GetUpcastDowncastTestCases() {
 INSTANTIATE_TEST_SUITE_P(AllTypes, AlgebraicSimplifierUpcastDowncastTest,
                          ::testing::ValuesIn(GetUpcastDowncastTestCases()));
 
+template <typename Arg0, typename Arg1, typename Arg2>
+auto SparseDotMatcher(Arg0&& arg0, Arg1&& arg1, Arg2&& arg2) {
+  return match::Op()
+      .WithOpcode(HloOpcode::kDot)
+      .WithOperand(0, std::forward<Arg0>(arg0))
+      .WithOperand(1, std::forward<Arg1>(arg1))
+      .WithOperand(2, std::forward<Arg2>(arg2));
+}
+
+TEST_F(AlgebraicSimplifierTest, SparseDotRemoveDegenerateDimensions) {
+  const char* kHlo = R"(
+    HloModule m
+    ENTRY test {
+      %lhs = f32[1,5,10,16,1] parameter(0)
+      %rhs = f32[5,1,20,1,32] parameter(1)
+      %meta = u16[10,2,1] parameter(2)
+      ROOT %dot = f32[1,5,10,20] dot(%lhs, %rhs, %meta),
+          lhs_batch_dims={0,1}, rhs_batch_dims={1,0},
+          lhs_contracting_dims={3,4}, rhs_contracting_dims={4,3},
+          sparsity=L.3@2:4
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHlo));
+  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(module.get()).value());
+  HloInstruction* root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(
+      root, GmockMatch(m::Reshape(SparseDotMatcher(m::Reshape(m::Parameter(0)),
+                                                   m::Reshape(m::Parameter(1)),
+                                                   m::Reshape(m::Parameter(2)))
+                                      .WithShape(F32, {5, 10, 20}))));
+  auto dot = Cast<HloDotInstruction>(root->operand(0));
+  auto descriptor = dot->sparsity().front();
+  EXPECT_EQ(descriptor.index(), 0);
+  EXPECT_EQ(descriptor.dimension(), 2);
+}
+
 }  // namespace
 }  // namespace xla
