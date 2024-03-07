@@ -41,56 +41,62 @@ pytype_strict_library(
     ],
 )
 
-pytype_strict_library(
-    name = "quantize_model_test_base",
-    testonly = 1,
-    srcs = ["integration_test/quantize_model_test_base.py"],
-    tags = ["no_pip"],
-    deps = [
-        "//tensorflow:tensorflow_py",
-        "//tensorflow/python/eager:def_function",
-        "//tensorflow/python/framework:dtypes",
-        "//tensorflow/python/framework:ops",
-        "//tensorflow/python/framework:tensor_spec",
-        "//tensorflow/python/module",
-        "//tensorflow/python/ops:array_ops",
-        "//tensorflow/python/ops:math_ops",
-        "//tensorflow/python/ops:nn_ops",
-        "//tensorflow/python/platform:client_testlib",
-        "//tensorflow/python/saved_model:load",
-        "//tensorflow/python/saved_model:save",
-        "//tensorflow/python/types:core",
-        "//third_party/py/numpy",
-        "@absl_py//absl/testing:parameterized",
-    ],
-)
-
-tf_py_strict_test(
-    name = "quantize_model_test",
-    srcs = ["integration_test/quantize_model_test.py"],
-    shard_count = 50,  # Parallelize the test to avoid timeouts.
-    deps = [
-        ":quantization",
-        ":quantize_model_test_base",
-        "//tensorflow/compiler/mlir/quantization/common/python:testing",
-        "//tensorflow/compiler/mlir/quantization/stablehlo:quantization_config_proto_py",
-        "//tensorflow/compiler/mlir/quantization/tensorflow/python:representative_dataset",
-        "//tensorflow/python/eager:def_function",
-        "//tensorflow/python/framework:dtypes",
-        "//tensorflow/python/framework:ops",
-        "//tensorflow/python/framework:tensor_spec",
-        "//tensorflow/python/framework:test_lib",
-        "//tensorflow/python/module",
-        "//tensorflow/python/ops:math_ops",
-        "//tensorflow/python/ops:nn_ops",
-        "//tensorflow/python/platform:client_testlib",
-        "//tensorflow/python/saved_model:load",
-        "//tensorflow/python/saved_model:save",
-        "//tensorflow/python/saved_model:tag_constants",
-        "//tensorflow/python/types:core",
-        "@absl_py//absl/testing:parameterized",
-    ],
-)
+# copybara:uncomment_begin(google-only)
+# pytype_strict_library(
+#     name = "quantize_model_test_base",
+#     testonly = 1,
+#     srcs = ["integration_test/quantize_model_test_base.py"],
+#     tags = ["no_pip"],
+#     deps = [
+#         "//third_party/py/mlir:ir",
+#         "//third_party/py/mlir:stablehlo_dialect",
+#         "//third_party/py/mlir/_mlir_libs:_mlirRegisterEverything",
+#         "//third_party/py/numpy",
+#         "//tensorflow:tensorflow_py",
+#         "//tensorflow/compiler/mlir/stablehlo",
+#         "//tensorflow/python/eager:def_function",
+#         "//tensorflow/python/framework:dtypes",
+#         "//tensorflow/python/framework:ops",
+#         "//tensorflow/python/framework:tensor_spec",
+#         "//tensorflow/python/module",
+#         "//tensorflow/python/ops:array_ops",
+#         "//tensorflow/python/ops:math_ops",
+#         "//tensorflow/python/ops:nn_ops",
+#         "//tensorflow/python/platform:client_testlib",
+#         "//tensorflow/python/saved_model:load",
+#         "//tensorflow/python/saved_model:save",
+#         "//tensorflow/python/types:core",
+#         "@absl_py//absl/testing:parameterized",
+#     ],
+# )
+#
+# tf_py_strict_test(
+#     name = "quantize_model_test",
+#     srcs = ["integration_test/quantize_model_test.py"],
+#     shard_count = 50,  # Parallelize the test to avoid timeouts.
+#     deps = [
+#         ":quantization",
+#         ":quantize_model_test_base",
+#         "//tensorflow/compiler/mlir/quantization/common/python:testing",
+#         "//tensorflow/compiler/mlir/quantization/stablehlo:quantization_config_proto_py",
+#         "//tensorflow/compiler/mlir/quantization/tensorflow/python:representative_dataset",
+#         "//tensorflow/python/eager:def_function",
+#         "//tensorflow/python/framework:dtypes",
+#         "//tensorflow/python/framework:ops",
+#         "//tensorflow/python/framework:tensor_spec",
+#         "//tensorflow/python/framework:test_lib",
+#         "//tensorflow/python/module",
+#         "//tensorflow/python/ops:math_ops",
+#         "//tensorflow/python/ops:nn_ops",
+#         "//tensorflow/python/platform:client_testlib",
+#         "//tensorflow/python/saved_model:load",
+#         "//tensorflow/python/saved_model:save",
+#         "//tensorflow/python/saved_model:tag_constants",
+#         "//tensorflow/python/types:core",
+#         "@absl_py//absl/testing:parameterized",
+#     ],
+# )
+# copybara:uncomment_end
 
 # This is a header-only target. The purpose of `pywrap_quantization_lib_*` targets is to expose only
 # the symbols that are required by `pywrap_quantization` that translates them to python functions.

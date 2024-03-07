@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
+import re
 from typing import Mapping, Optional, Sequence
 
 from absl.testing import parameterized
@@ -129,6 +130,14 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
     new_outputs = root.signatures['serving_default'](
         input_tensor=ops.convert_to_tensor(input_data)
     )
+    module_str = self._extract_first_xla_call_module_op(
+        self._output_saved_model_path
+    )
+    self.assertTrue(re.search('stablehlo.dot_general.*xi8>', module_str))
+    if bias_fn:
+      self.assertTrue(re.search('stablehlo.add.*xi32>', module_str))
+    # Consider if there is a way to check if activation fusion is properly
+    # done in MLIR level.
     # Tests that the quantized graph outputs similar values. The rtol and atol
     # values are arbitrary.
     self.assertAllClose(new_outputs, expected_outputs, rtol=0.03, atol=0.2)
@@ -389,6 +398,14 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
     new_outputs = root.signatures['serving_default'](
         input_tensor=ops.convert_to_tensor(input_data)
     )
+    module_str = self._extract_first_xla_call_module_op(
+        self._output_saved_model_path
+    )
+    self.assertTrue(re.search('stablehlo.convolution.*xi8>', module_str))
+    if bias_fn:
+      self.assertTrue(re.search('stablehlo.add.*xi32>', module_str))
+    # Consider if there is a way to check if activation fusion is properly
+    # done in MLIR level.
     # Tests that the quantized graph outputs similar values. The rtol and atol
     # values are arbitrary.
     self.assertAllClose(new_outputs, expected_outputs, rtol=0.02, atol=0.05)

@@ -17,9 +17,12 @@
 from typing import List, Mapping, Optional, Sequence, Tuple
 
 from absl.testing import parameterized
+from mlir import ir
+from mlir.dialects import stablehlo as stablehlo_dialect
 import numpy as np
 import tensorflow  # pylint: disable=unused-import
 
+from tensorflow.compiler.mlir.stablehlo import stablehlo
 from tensorflow.python.eager import def_function
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -29,6 +32,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_ops
 from tensorflow.python.platform import test
+from tensorflow.python.saved_model import load
 from tensorflow.python.saved_model import save as saved_model_save
 from tensorflow.python.types import core
 
@@ -48,6 +52,25 @@ class QuantizedModelTest(test.TestCase, parameterized.TestCase):
     # Extra output path occasionally used for comparing two different
     # quantized models.
     self._output_saved_model_path_2 = self.create_tempdir('output2').full_path
+
+  def _extract_first_xla_call_module_op(
+      self, output_saved_model_path: str
+  ) -> str:
+    """Extracts the first XlaCallModule op from output saved model to string."""
+    root = load.load(output_saved_model_path)
+    tf_graph_def = root.signatures['serving_default'].graph.as_graph_def()
+    for function in tf_graph_def.library.function:
+      for node_def in function.node_def:
+        if node_def.op == 'XlaCallModule':
+          with ir.Context() as context:
+            stablehlo_dialect.register_dialect(context)
+            # Serialization in VHLO dialect.
+            serialized = node_def.attr.get('module').s
+            # MLIR bytecode matching StableHLO version.
+            mlir_bytecode = stablehlo.deserialize_portable_artifact(serialized)
+            stablehlo_module = ir.Module.parse(mlir_bytecode, context=context)
+            return str(stablehlo_module)
+    raise ValueError('No XlaCallModule found in saved model.')
 
   def _create_matmul_model(
       self,
