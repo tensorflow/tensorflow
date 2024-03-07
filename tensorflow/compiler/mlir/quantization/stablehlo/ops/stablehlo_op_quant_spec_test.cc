@@ -75,8 +75,10 @@ constexpr absl::string_view kModuleCompositeNoAttr = R"mlir(
 )mlir";
 
 TEST_F(IsOpQuantizableStableHloTest, ConstantOpQuantizable) {
-  OwningOpRef<ModuleOp> module_op_ref = ParseModuleOpString(kModuleConstantAdd);
-  auto test_func = module_op_ref->lookupSymbol<func::FuncOp>("constant_add");
+  OwningOpRef<ModuleOp> module_op = ParseModuleOpString(kModuleConstantAdd);
+  ASSERT_TRUE(module_op);
+
+  auto test_func = module_op->lookupSymbol<func::FuncOp>("constant_add");
   ASSERT_THAT(test_func, NotNull());
 
   auto constant_op =
@@ -85,8 +87,10 @@ TEST_F(IsOpQuantizableStableHloTest, ConstantOpQuantizable) {
 }
 
 TEST_F(IsOpQuantizableStableHloTest, TerminatorOpNotQuantizable) {
-  OwningOpRef<ModuleOp> module_op_ref = ParseModuleOpString(kModuleConstantAdd);
-  auto test_func = module_op_ref->lookupSymbol<func::FuncOp>("constant_add");
+  OwningOpRef<ModuleOp> module_op = ParseModuleOpString(kModuleConstantAdd);
+  ASSERT_TRUE(module_op);
+
+  auto test_func = module_op->lookupSymbol<func::FuncOp>("constant_add");
   ASSERT_THAT(test_func, NotNull());
 
   auto return_op = FindOperationOfType<func::ReturnOp>(test_func);
@@ -94,10 +98,12 @@ TEST_F(IsOpQuantizableStableHloTest, TerminatorOpNotQuantizable) {
 }
 
 TEST_F(IsOpQuantizableStableHloTest, SameScaleOpQuantizable) {
-  OwningOpRef<ModuleOp> module_op_ref =
+  OwningOpRef<ModuleOp> module_op =
       ParseModuleOpString(kModuleCompositeSameScale);
+  ASSERT_TRUE(module_op);
+
   auto test_func =
-      module_op_ref->lookupSymbol<func::FuncOp>("same_scale_after_composite");
+      module_op->lookupSymbol<func::FuncOp>("same_scale_after_composite");
   ASSERT_THAT(test_func, NotNull());
 
   auto reshape_op = FindOperationOfType<mlir::stablehlo::ReshapeOp>(test_func);
@@ -105,8 +111,10 @@ TEST_F(IsOpQuantizableStableHloTest, SameScaleOpQuantizable) {
 }
 
 TEST_F(IsOpQuantizableStableHloTest, NonSameScaleOpNotQuantizable) {
-  OwningOpRef<ModuleOp> module_op_ref = ParseModuleOpString(kModuleConstantAdd);
-  auto test_func = module_op_ref->lookupSymbol<func::FuncOp>("constant_add");
+  OwningOpRef<ModuleOp> module_op = ParseModuleOpString(kModuleConstantAdd);
+  ASSERT_TRUE(module_op);
+
+  auto test_func = module_op->lookupSymbol<func::FuncOp>("constant_add");
   ASSERT_THAT(test_func, NotNull());
 
   auto add_op = FindOperationOfType<mlir::stablehlo::AddOp>(test_func);
@@ -114,10 +122,12 @@ TEST_F(IsOpQuantizableStableHloTest, NonSameScaleOpNotQuantizable) {
 }
 
 TEST_F(IsOpQuantizableStableHloTest, ValidXlaCallModuleOpQuantizable) {
-  OwningOpRef<ModuleOp> module_op_ref =
+  OwningOpRef<ModuleOp> module_op =
       ParseModuleOpString(kModuleCompositeSameScale);
+  ASSERT_TRUE(module_op);
+
   auto test_func =
-      module_op_ref->lookupSymbol<func::FuncOp>("same_scale_after_composite");
+      module_op->lookupSymbol<func::FuncOp>("same_scale_after_composite");
   ASSERT_THAT(test_func, NotNull());
 
   auto xla_call_module_op = FindOperationOfType<TF::XlaCallModuleOp>(test_func);
@@ -125,10 +135,11 @@ TEST_F(IsOpQuantizableStableHloTest, ValidXlaCallModuleOpQuantizable) {
 }
 
 TEST_F(IsOpQuantizableStableHloTest, InvalidXlaCallModuleOpNotQuantizable) {
-  OwningOpRef<ModuleOp> module_op_ref =
-      ParseModuleOpString(kModuleCompositeNoAttr);
+  OwningOpRef<ModuleOp> module_op = ParseModuleOpString(kModuleCompositeNoAttr);
+  ASSERT_TRUE(module_op);
+
   auto test_func =
-      module_op_ref->lookupSymbol<func::FuncOp>("composite_without_attr");
+      module_op->lookupSymbol<func::FuncOp>("composite_without_attr");
   ASSERT_THAT(test_func, NotNull());
 
   auto xla_call_module_op = FindOperationOfType<TF::XlaCallModuleOp>(test_func);
@@ -136,10 +147,12 @@ TEST_F(IsOpQuantizableStableHloTest, InvalidXlaCallModuleOpNotQuantizable) {
 }
 
 TEST_F(IsOpQuantizableStableHloTest, QuantizeDequantizeOpNotQuantizable) {
-  OwningOpRef<ModuleOp> module_op_ref =
+  OwningOpRef<ModuleOp> module_op =
       ParseModuleOpString(kModuleCompositeSameScale);
+  ASSERT_TRUE(module_op);
+
   auto test_func =
-      module_op_ref->lookupSymbol<func::FuncOp>("same_scale_after_composite");
+      module_op->lookupSymbol<func::FuncOp>("same_scale_after_composite");
   ASSERT_THAT(test_func, NotNull());
 
   auto quantize_op = FindOperationOfType<quantfork::QuantizeCastOp>(test_func);

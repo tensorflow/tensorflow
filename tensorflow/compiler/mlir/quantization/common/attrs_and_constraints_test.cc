@@ -42,6 +42,8 @@ using ::mlir::stablehlo::DotGeneralOp;
 using ::mlir::stablehlo::SubtractOp;
 using ::testing::ElementsAreArray;
 using ::testing::Eq;
+using ::testing::IsEmpty;
+using ::testing::IsNull;
 using ::testing::NotNull;
 
 using AttrsAndConstraintsTest = ::mlir::quant::QuantizationTestBase;
@@ -118,8 +120,10 @@ constexpr absl::string_view kModulePartitionedCall = R"mlir(
 )mlir";
 
 TEST_F(AttrsAndConstraintsTest, HasStaticShapeSucceedsWithStaticShapes) {
-  OwningOpRef<ModuleOp> module_op_ref = ParseModuleOpString(kModuleStatic);
-  func::FuncOp main_fn = FindMainFuncOp(*module_op_ref);
+  OwningOpRef<ModuleOp> module_op = ParseModuleOpString(kModuleStatic);
+  ASSERT_TRUE(module_op);
+
+  func::FuncOp main_fn = FindMainFuncOp(*module_op);
   ASSERT_THAT(main_fn, NotNull());
 
   Value dot_general_result =
@@ -130,8 +134,10 @@ TEST_F(AttrsAndConstraintsTest, HasStaticShapeSucceedsWithStaticShapes) {
 }
 
 TEST_F(AttrsAndConstraintsTest, HasStaticShapeFailsWithDynamicShapes) {
-  OwningOpRef<ModuleOp> module_op_ref = ParseModuleOpString(kModuleDynamic);
-  func::FuncOp main_fn = FindMainFuncOp(*module_op_ref);
+  OwningOpRef<ModuleOp> module_op = ParseModuleOpString(kModuleDynamic);
+  ASSERT_TRUE(module_op);
+
+  func::FuncOp main_fn = FindMainFuncOp(*module_op);
   ASSERT_THAT(main_fn, NotNull());
 
   Value dot_general_result =
@@ -144,14 +150,15 @@ TEST_F(AttrsAndConstraintsTest, HasStaticShapeFailsWithDynamicShapes) {
 TEST_F(AttrsAndConstraintsTest, HasRankOfReturnsTrueForMatchingRank) {
   constexpr absl::string_view kConstantOpWithRankFour =
       R"mlir(%0 = stablehlo.constant dense<0> : tensor<1x1x1x1xi8>)mlir";
-  OwningOpRef<ModuleOp> module_op_ref =
+  OwningOpRef<ModuleOp> module_op =
       ParseModuleOpString(kConstantOpWithRankFour);
+  ASSERT_TRUE(module_op);
 
-  ASSERT_FALSE(module_op_ref->getBodyRegion().empty());
-  ASSERT_FALSE(module_op_ref->getBodyRegion().front().empty());
+  ASSERT_FALSE(module_op->getBodyRegion().empty());
+  ASSERT_FALSE(module_op->getBodyRegion().front().empty());
 
   auto constant_op = dyn_cast_or_null<mlir::stablehlo::ConstantOp>(
-      module_op_ref->getBodyRegion().front().front());
+      module_op->getBodyRegion().front().front());
   ASSERT_THAT(constant_op, NotNull());
 
   EXPECT_TRUE(HasRankOf(constant_op, /*rank=*/4));
@@ -160,14 +167,15 @@ TEST_F(AttrsAndConstraintsTest, HasRankOfReturnsTrueForMatchingRank) {
 TEST_F(AttrsAndConstraintsTest, HasRankOfReturnsFalseForNonMatchingRank) {
   constexpr absl::string_view kConstantOpWithRankFour =
       R"mlir(%0 = stablehlo.constant dense<0> : tensor<1x1x1x1xi8>)mlir";
-  OwningOpRef<ModuleOp> module_op_ref =
+  OwningOpRef<ModuleOp> module_op =
       ParseModuleOpString(kConstantOpWithRankFour);
+  ASSERT_TRUE(module_op);
 
-  ASSERT_FALSE(module_op_ref->getBodyRegion().empty());
-  ASSERT_FALSE(module_op_ref->getBodyRegion().front().empty());
+  ASSERT_FALSE(module_op->getBodyRegion().empty());
+  ASSERT_FALSE(module_op->getBodyRegion().front().empty());
 
   auto constant_op = dyn_cast_or_null<mlir::stablehlo::ConstantOp>(
-      module_op_ref->getBodyRegion().front().front());
+      module_op->getBodyRegion().front().front());
   ASSERT_THAT(constant_op, NotNull());
 
   EXPECT_FALSE(HasRankOf(constant_op, /*rank=*/3));
@@ -182,10 +190,11 @@ TEST_F(AttrsAndConstraintsTest,
     }
   )mlir";
 
-  OwningOpRef<ModuleOp> module_op_ref =
+  OwningOpRef<ModuleOp> module_op =
       ParseModuleOpString(kArgumentWithUnknownDims);
+  ASSERT_TRUE(module_op);
 
-  auto func_op = module_op_ref->lookupSymbol<func::FuncOp>("unknown_dims_arg");
+  auto func_op = module_op->lookupSymbol<func::FuncOp>("unknown_dims_arg");
   ASSERT_THAT(func_op, NotNull());
   ASSERT_THAT(func_op.getNumArguments(), Eq(1));
 
@@ -199,10 +208,11 @@ TEST_F(AttrsAndConstraintsTest, HasRankOfReturnsFalseForUnknownRank) {
     }
   )mlir";
 
-  OwningOpRef<ModuleOp> module_op_ref =
+  OwningOpRef<ModuleOp> module_op =
       ParseModuleOpString(kArgumentWithUnknownRank);
+  ASSERT_TRUE(module_op);
 
-  auto func_op = module_op_ref->lookupSymbol<func::FuncOp>("unknown_rank_arg");
+  auto func_op = module_op->lookupSymbol<func::FuncOp>("unknown_rank_arg");
   ASSERT_THAT(func_op, NotNull());
   ASSERT_THAT(func_op.getNumArguments(), Eq(1));
 
@@ -210,34 +220,43 @@ TEST_F(AttrsAndConstraintsTest, HasRankOfReturnsFalseForUnknownRank) {
 }
 
 TEST_F(AttrsAndConstraintsTest, TryCastSucceeds) {
-  OwningOpRef<ModuleOp> module_op_ref = ParseModuleOpString(kModuleStatic);
-  func::FuncOp main_fn = FindMainFuncOp(*module_op_ref);
+  OwningOpRef<ModuleOp> module_op = ParseModuleOpString(kModuleStatic);
+  ASSERT_TRUE(module_op);
+
+  func::FuncOp main_fn = FindMainFuncOp(*module_op);
   ASSERT_THAT(main_fn, NotNull());
 
-  Operation* dot_general_op = FindOperationOfType<DotGeneralOp>(main_fn);
+  auto dot_general_op = FindOperationOfType<DotGeneralOp>(main_fn);
+  ASSERT_THAT(dot_general_op, NotNull());
+
   EXPECT_TRUE(succeeded(
       TryCast<DotGeneralOp>(dot_general_op, /*name=*/"dot_general_op")));
 }
 
 TEST_F(AttrsAndConstraintsTest, TryCastFailsOnWrongType) {
-  OwningOpRef<ModuleOp> module_op_ref = ParseModuleOpString(kModuleStatic);
-  func::FuncOp main_fn = FindMainFuncOp(*module_op_ref);
+  OwningOpRef<ModuleOp> module_op = ParseModuleOpString(kModuleStatic);
+  ASSERT_TRUE(module_op);
+
+  func::FuncOp main_fn = FindMainFuncOp(*module_op);
   ASSERT_THAT(main_fn, NotNull());
 
-  Operation* dot_general_op = FindOperationOfType<DotGeneralOp>(main_fn);
+  auto dot_general_op = FindOperationOfType<DotGeneralOp>(main_fn);
+  ASSERT_THAT(dot_general_op, NotNull());
+
   EXPECT_TRUE(
       failed(TryCast<AddOp>(dot_general_op, /*name=*/"dot_general_op")));
 }
 
 TEST_F(AttrsAndConstraintsTest, TryCastFailsOnNullPtr) {
-  OwningOpRef<ModuleOp> module_op_ref = ParseModuleOpString(kModuleStatic);
-  func::FuncOp main_fn = FindMainFuncOp(*module_op_ref);
+  OwningOpRef<ModuleOp> module_op = ParseModuleOpString(kModuleStatic);
+  func::FuncOp main_fn = FindMainFuncOp(*module_op);
   ASSERT_THAT(main_fn, NotNull());
 
-  Operation* op_nullptr =
+  auto op_nullptr =
       FindOperationOfType<DotGeneralOp>(main_fn)->getNextNode()->getNextNode();
   // getNextNode() returns a nullptr if at the very last node.
-  EXPECT_EQ(op_nullptr, nullptr);
+  EXPECT_THAT(op_nullptr, IsNull());
+
   EXPECT_TRUE(failed(TryCast<DotGeneralOp>(op_nullptr, /*name=*/"op_nullptr")));
   EXPECT_TRUE(failed(TryCast<DotGeneralOp>(nullptr, /*name=*/"nullptr")));
 }
@@ -267,6 +286,7 @@ TEST_F(AttrsAndConstraintsTest, I64ArrayInI32RangeAreCastedCorrectly) {
 TEST_F(AttrsAndConstraintsTest, CastingFailsForI64ArrayUnderI32Range) {
   const int64_t under_min_i32 = -2147483658;
   ArrayRef<int64_t> array_i64{under_min_i32};
+
   EXPECT_EQ(under_min_i32, llvm::minIntN(32) - 10);
   EXPECT_TRUE(failed(CastI64ArrayToI32(array_i64)));
 }
@@ -274,81 +294,109 @@ TEST_F(AttrsAndConstraintsTest, CastingFailsForI64ArrayUnderI32Range) {
 TEST_F(AttrsAndConstraintsTest, CastingFailsForI64ArrayAboveI32Range) {
   const int64_t below_max_i32 = 2147483657;
   ArrayRef<int64_t> array_i64{below_max_i32};
+
   EXPECT_EQ(below_max_i32, llvm::maxIntN(32) + 10);
   EXPECT_TRUE(failed(CastI64ArrayToI32(array_i64)));
 }
 
 TEST_F(AttrsAndConstraintsTest, FindUserOfDifferentTypes) {
-  OwningOpRef<ModuleOp> module_op_ref =
-      ParseModuleOpString(kModuleMultipleUses);
-  func::FuncOp main_fn = FindMainFuncOp(*module_op_ref);
+  OwningOpRef<ModuleOp> module_op = ParseModuleOpString(kModuleMultipleUses);
+  ASSERT_TRUE(module_op);
+
+  func::FuncOp main_fn = FindMainFuncOp(*module_op);
   ASSERT_THAT(main_fn, NotNull());
 
-  Operation* dot_general_op = FindOperationOfType<DotGeneralOp>(main_fn);
-  ASSERT_NE(FindUserOfType<AddOp>(dot_general_op), nullptr);
-  ASSERT_NE(FindUserOfType<SubtractOp>(dot_general_op), nullptr);
-  ASSERT_NE(FindUserOfType<>(dot_general_op), nullptr);
-  ASSERT_EQ(FindUserOfType<ConvolutionOp>(dot_general_op), nullptr);
+  auto dot_general_op = FindOperationOfType<DotGeneralOp>(main_fn);
+  ASSERT_THAT(dot_general_op, NotNull());
+
+  EXPECT_THAT(FindUserOfType<AddOp>(dot_general_op), NotNull());
+  EXPECT_THAT(FindUserOfType<SubtractOp>(dot_general_op), NotNull());
+  EXPECT_THAT(FindUserOfType<>(dot_general_op), NotNull());
+  EXPECT_THAT(FindUserOfType<ConvolutionOp>(dot_general_op), IsNull());
 }
 
-TEST_F(AttrsAndConstraintsTest, CallGetFuncAttr) {
-  OwningOpRef<ModuleOp> xla_module_op_ref =
-      ParseModuleOpString(kModuleXlaCallModule);
-  func::FuncOp xml_main_fn = FindMainFuncOp(*xla_module_op_ref);
-  Operation* xla_op = FindOperationOfType<TF::XlaCallModuleOp>(xml_main_fn);
-  auto xla_call_op = dyn_cast_or_null<TF::XlaCallModuleOp>(*xla_op);
-  FlatSymbolRefAttr xla_call_op_attr = GetFuncAttr(xla_call_op);
-  EXPECT_EQ(xla_call_op_attr.getValue(), "composite_fn_1");
+TEST_F(AttrsAndConstraintsTest, XlaCallModuleOpGetFuncAttr) {
+  OwningOpRef<ModuleOp> module_op = ParseModuleOpString(kModuleXlaCallModule);
+  ASSERT_TRUE(module_op);
 
-  OwningOpRef<ModuleOp> partitioned_module_op_ref =
-      ParseModuleOpString(kModulePartitionedCall);
-  func::FuncOp partitioned_main_fn = FindMainFuncOp(*partitioned_module_op_ref);
-  Operation* partitioned_op =
-      FindOperationOfType<TF::PartitionedCallOp>(partitioned_main_fn);
+  func::FuncOp main_fn = FindMainFuncOp(*module_op);
+  ASSERT_THAT(main_fn, NotNull());
+
+  auto xla_call_module_op = FindOperationOfType<TF::XlaCallModuleOp>(main_fn);
+  ASSERT_THAT(xla_call_module_op, NotNull());
+
+  FlatSymbolRefAttr xla_call_op_attr = GetFuncAttr(xla_call_module_op);
+  EXPECT_EQ(xla_call_op_attr.getValue(), "composite_fn_1");
+}
+
+TEST_F(AttrsAndConstraintsTest, PartitionedCallGetFuncAttr) {
+  OwningOpRef<ModuleOp> module_op = ParseModuleOpString(kModulePartitionedCall);
+  ASSERT_TRUE(module_op);
+
+  func::FuncOp main_fn = FindMainFuncOp(*module_op);
+  ASSERT_THAT(main_fn, NotNull());
+
   auto partitioned_call_op =
-      dyn_cast_or_null<TF::PartitionedCallOp>(*partitioned_op);
+      FindOperationOfType<TF::PartitionedCallOp>(main_fn);
+  ASSERT_THAT(partitioned_call_op, NotNull());
+
   FlatSymbolRefAttr partitioned_call_op_attr = GetFuncAttr(partitioned_call_op);
   EXPECT_EQ(partitioned_call_op_attr.getValue(), "composite_fn_1");
 }
 
 TEST_F(AttrsAndConstraintsTest, GetEntryFunctionNameCorrectly) {
-  OwningOpRef<ModuleOp> xla_module_op_ref =
-      ParseModuleOpString(kModuleXlaCallModule);
-  func::FuncOp xml_main_fn = FindMainFuncOp(*xla_module_op_ref);
-  Operation* xla_op = FindOperationOfType<TF::XlaCallModuleOp>(xml_main_fn);
-  auto xla_call_op = dyn_cast_or_null<TF::XlaCallModuleOp>(*xla_op);
+  OwningOpRef<ModuleOp> module_op = ParseModuleOpString(kModuleXlaCallModule);
+  ASSERT_TRUE(module_op);
 
-  EXPECT_EQ(GetEntryFunctionName(xla_call_op), StringRef("composite_fn_1"));
+  func::FuncOp main_fn = FindMainFuncOp(*module_op);
+  ASSERT_THAT(main_fn, NotNull());
+
+  auto xla_call_module_op = FindOperationOfType<TF::XlaCallModuleOp>(main_fn);
+  ASSERT_THAT(xla_call_module_op, NotNull());
+
+  EXPECT_EQ(GetEntryFunctionName(xla_call_module_op),
+            StringRef("composite_fn_1"));
 }
 
 TEST_F(AttrsAndConstraintsTest, GetEntryFunctionNameWhenNotSet) {
-  OwningOpRef<ModuleOp> xla_module_op_ref =
+  OwningOpRef<ModuleOp> module_op =
       ParseModuleOpString(kModuleXlaCallModuleNoEntryNoQuantTrait);
-  func::FuncOp xml_main_fn = FindMainFuncOp(*xla_module_op_ref);
-  Operation* xla_op = FindOperationOfType<TF::XlaCallModuleOp>(xml_main_fn);
-  auto xla_call_op = dyn_cast_or_null<TF::XlaCallModuleOp>(*xla_op);
+  ASSERT_TRUE(module_op);
 
-  EXPECT_EQ(GetEntryFunctionName(xla_call_op), StringRef());
+  func::FuncOp main_fn = FindMainFuncOp(*module_op);
+  ASSERT_THAT(main_fn, NotNull());
+
+  auto xla_call_module_op = FindOperationOfType<TF::XlaCallModuleOp>(main_fn);
+  ASSERT_THAT(xla_call_module_op, NotNull());
+
+  EXPECT_THAT(GetEntryFunctionName(xla_call_module_op), IsEmpty());
 }
 
 TEST_F(AttrsAndConstraintsTest, HasQuantizableTraitTrue) {
-  OwningOpRef<ModuleOp> xla_module_op_ref =
-      ParseModuleOpString(kModuleXlaCallModule);
-  func::FuncOp xml_main_fn = FindMainFuncOp(*xla_module_op_ref);
-  Operation* xla_op = FindOperationOfType<TF::XlaCallModuleOp>(xml_main_fn);
-  auto xla_call_op = dyn_cast_or_null<TF::XlaCallModuleOp>(*xla_op);
+  OwningOpRef<ModuleOp> module_op = ParseModuleOpString(kModuleXlaCallModule);
+  ASSERT_TRUE(module_op);
 
-  EXPECT_TRUE(HasQuantizableTrait(xla_call_op));
+  func::FuncOp main_fn = FindMainFuncOp(*module_op);
+  ASSERT_THAT(main_fn, NotNull());
+
+  auto xla_call_module_op = FindOperationOfType<TF::XlaCallModuleOp>(main_fn);
+  ASSERT_THAT(xla_call_module_op, NotNull());
+
+  EXPECT_TRUE(HasQuantizableTrait(xla_call_module_op));
 }
 
 TEST_F(AttrsAndConstraintsTest, HasQuantizableTraitFalse) {
-  OwningOpRef<ModuleOp> xla_module_op_ref =
+  OwningOpRef<ModuleOp> module_op =
       ParseModuleOpString(kModuleXlaCallModuleNoEntryNoQuantTrait);
-  func::FuncOp xml_main_fn = FindMainFuncOp(*xla_module_op_ref);
-  Operation* xla_op = FindOperationOfType<TF::XlaCallModuleOp>(xml_main_fn);
-  auto xla_call_op = dyn_cast_or_null<TF::XlaCallModuleOp>(*xla_op);
+  ASSERT_TRUE(module_op);
 
-  EXPECT_FALSE(HasQuantizableTrait(xla_call_op));
+  func::FuncOp main_fn = FindMainFuncOp(*module_op);
+  ASSERT_THAT(main_fn, NotNull());
+
+  auto xla_call_module_op = FindOperationOfType<TF::XlaCallModuleOp>(main_fn);
+  ASSERT_THAT(xla_call_module_op, NotNull());
+
+  EXPECT_FALSE(HasQuantizableTrait(xla_call_module_op));
 }
 
 }  // namespace

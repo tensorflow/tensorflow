@@ -600,6 +600,8 @@ TEST_F(IsOpFullyQuantizedTest, TrueIfOpFullyQuantized) {
   )mlir";
 
   OwningOpRef<ModuleOp> module_op = ParseModuleOpString(kFullyQuantizedAdd);
+  ASSERT_TRUE(module_op);
+
   auto func_op = module_op->lookupSymbol<func::FuncOp>("fully_quantized_add");
   ASSERT_THAT(func_op, NotNull());
 
@@ -619,6 +621,8 @@ TEST_F(IsOpFullyQuantizedTest, FalseIfOpNotQuantized) {
   )mlir";
 
   OwningOpRef<ModuleOp> module_op = ParseModuleOpString(kNotQuantizedAdd);
+  ASSERT_TRUE(module_op);
+
   auto func_op = module_op->lookupSymbol<func::FuncOp>("not_quantized_add");
   ASSERT_THAT(func_op, NotNull());
 
@@ -638,6 +642,8 @@ TEST_F(IsOpFullyQuantizedTest, FalseIfOpPartiallyQuantized) {
   )mlir";
 
   OwningOpRef<ModuleOp> module_op = ParseModuleOpString(kQuantizeOp);
+  ASSERT_TRUE(module_op);
+
   auto func_op = module_op->lookupSymbol<func::FuncOp>("quantize");
   ASSERT_THAT(func_op, NotNull());
 
@@ -661,6 +667,8 @@ TEST_F(IsOpNotQuantizedTest, TrueIfOpNotQuantized) {
   )mlir";
 
   OwningOpRef<ModuleOp> module_op = ParseModuleOpString(kNotQuantizedAdd);
+  ASSERT_TRUE(module_op);
+
   auto func_op = module_op->lookupSymbol<func::FuncOp>("not_quantized_add");
   ASSERT_THAT(func_op, NotNull());
 
@@ -680,6 +688,8 @@ TEST_F(IsOpNotQuantizedTest, FalseIfOpQuantized) {
   )mlir";
 
   OwningOpRef<ModuleOp> module_op = ParseModuleOpString(kQuantizedAdd);
+  ASSERT_TRUE(module_op);
+
   auto func_op = module_op->lookupSymbol<func::FuncOp>("quantized_add");
   ASSERT_THAT(func_op, NotNull());
 
@@ -699,6 +709,8 @@ TEST_F(IsOpNotQuantizedTest, FalseIfOpPartiallyQuantized) {
   )mlir";
 
   OwningOpRef<ModuleOp> module_op = ParseModuleOpString(kQuantizeOp);
+  ASSERT_TRUE(module_op);
+
   auto func_op = module_op->lookupSymbol<func::FuncOp>("quantize");
   ASSERT_THAT(func_op, NotNull());
 

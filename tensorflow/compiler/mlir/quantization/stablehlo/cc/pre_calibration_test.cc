@@ -76,6 +76,7 @@ TEST_F(PreCalibrationComponentTest,
       }
     }
   )mlir");
+  ASSERT_TRUE(module_op);
 
   absl::StatusOr<ModuleOp> pre_calibration_result =
       component.Run(*module_op, QuantizationConfig());

@@ -54,13 +54,10 @@ class QuantizationTestBase : public Test {
         quantfork::QuantizationForkDialect>();
   }
 
-  // Parses `module_op_str` to create a `ModuleOp`. Checks whether the created
-  // module op is valid.
+  // Parses `module_op_str` to create a `ModuleOp`.
   OwningOpRef<ModuleOp> ParseModuleOpString(
       const absl::string_view module_op_str) {
-    auto module_op_ref = parseSourceString<ModuleOp>(module_op_str, ctx_.get());
-    EXPECT_TRUE(module_op_ref);
-    return module_op_ref;
+    return parseSourceString<ModuleOp>(module_op_str, ctx_.get());
   }
 
   // Returns the first operation with the given type in the function.

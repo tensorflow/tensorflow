@@ -50,9 +50,11 @@ constexpr absl::string_view kModuleLifted = R"mlir(
 )mlir";
 
 TEST_F(LiftAsFunctionCallTest, LiftedFunctionSucceeds) {
-  OwningOpRef<ModuleOp> module_op_ref = ParseModuleOpString(kModuleLifted);
+  OwningOpRef<ModuleOp> module_op = ParseModuleOpString(kModuleLifted);
+  ASSERT_TRUE(module_op);
+
   auto composite_dot_general_fn =
-      module_op_ref->lookupSymbol<func::FuncOp>("composite_dot_general_fn_1");
+      module_op->lookupSymbol<func::FuncOp>("composite_dot_general_fn_1");
   ASSERT_THAT(composite_dot_general_fn, NotNull());
 
   Operation* dot_general_op =
@@ -71,8 +73,10 @@ constexpr absl::string_view kModuleStableHlo = R"mlir(
 )mlir";
 
 TEST_F(LiftAsFunctionCallTest, FunctionLiftedAsXlaCallModuleOp) {
-  OwningOpRef<ModuleOp> module_op_ref = ParseModuleOpString(kModuleStableHlo);
-  func::FuncOp main_fn = FindMainFuncOp(*module_op_ref);
+  OwningOpRef<ModuleOp> module_op = ParseModuleOpString(kModuleStableHlo);
+  ASSERT_TRUE(module_op);
+
+  func::FuncOp main_fn = FindMainFuncOp(*module_op);
   ASSERT_THAT(main_fn, NotNull());
 
   Operation* dot_general_op =
@@ -94,7 +98,7 @@ TEST_F(LiftAsFunctionCallTest, FunctionLiftedAsXlaCallModuleOp) {
           .getDefiningOp();
   const auto entry_function_symbol_ref =
       lifted_op->getAttrOfType<FlatSymbolRefAttr>("_entry_function");
-  SymbolTable symbol_table(*module_op_ref);
+  SymbolTable symbol_table(*module_op);
   auto entry_func = dyn_cast_or_null<func::FuncOp>(
       symbol_table.lookup(entry_function_symbol_ref.getValue()));
   Operation* lifted_dot_general_op =
@@ -111,8 +115,10 @@ TEST_F(LiftAsFunctionCallTest, FunctionLiftedAsXlaCallModuleOp) {
 }
 
 TEST_F(LiftAsFunctionCallTest, FunctionNoAttrLiftedAsXlaCallModuleOp) {
-  OwningOpRef<ModuleOp> module_op_ref = ParseModuleOpString(kModuleStableHlo);
-  func::FuncOp main_fn = FindMainFuncOp(*module_op_ref);
+  OwningOpRef<ModuleOp> module_op = ParseModuleOpString(kModuleStableHlo);
+  ASSERT_TRUE(module_op);
+
+  func::FuncOp main_fn = FindMainFuncOp(*module_op);
   ASSERT_THAT(main_fn, NotNull());
 
   Operation* dot_general_op =
