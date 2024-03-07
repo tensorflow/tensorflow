@@ -237,6 +237,8 @@ class MockExecutable final
               (const, final));
   MOCK_METHOD(StatusOr<std::vector<Layout>>, GetOutputLayouts, (),
               (const, final));
+  MOCK_METHOD(absl::StatusOr<std::vector<std::vector<absl::string_view>>>,
+              GetParameterMemoryKinds, (), (const, final));
   MOCK_METHOD(StatusOr<std::vector<std::shared_ptr<HloModule>>>, GetHloModules,
               (), (const, final));
   MOCK_METHOD((StatusOr<absl::flat_hash_map<std::string, CostAnalysisValue>>),
@@ -266,6 +268,8 @@ class MockLoadedExecutable final
               (const, final));
   MOCK_METHOD(StatusOr<std::vector<Layout>>, GetOutputLayouts, (),
               (const, final));
+  MOCK_METHOD(absl::StatusOr<std::vector<std::vector<absl::string_view>>>,
+              GetParameterMemoryKinds, (), (const, final));
   MOCK_METHOD(absl::StatusOr<std::vector<std::vector<absl::string_view>>>,
               GetOutputMemoryKinds, (), (const, final));
   MOCK_METHOD(StatusOr<std::vector<std::shared_ptr<HloModule>>>, GetHloModules,

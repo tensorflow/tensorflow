@@ -79,6 +79,8 @@ class LoadedExecutable final
   absl::StatusOr<std::vector<Layout>> GetParameterLayouts() const override;
   absl::StatusOr<std::vector<Layout>> GetOutputLayouts() const override;
   absl::StatusOr<std::vector<std::vector<absl::string_view>>>
+  GetParameterMemoryKinds() const override;
+  absl::StatusOr<std::vector<std::vector<absl::string_view>>>
   GetOutputMemoryKinds() const override;
   absl::StatusOr<std::vector<std::shared_ptr<HloModule>>> GetHloModules()
       const override;

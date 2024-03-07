@@ -368,6 +368,12 @@ absl::StatusOr<std::vector<Layout>> LoadedExecutable::GetOutputLayouts() const {
 }
 
 absl::StatusOr<std::vector<std::vector<absl::string_view>>>
+LoadedExecutable::GetParameterMemoryKinds() const {
+  return absl::UnimplementedError(
+      "IFRT service doesn't support LoadedExecutable::GetParameterMemoryKinds");
+}
+
+absl::StatusOr<std::vector<std::vector<absl::string_view>>>
 LoadedExecutable::GetOutputMemoryKinds() const {
   TF_ASSIGN_OR_RETURN(auto info, metadata_future_.Await());
   return info->output_memory_kinds;

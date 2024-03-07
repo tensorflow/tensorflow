@@ -321,6 +321,11 @@ PjRtExecutable::GetOutputDimensions() const {
   return output_dimensions;
 }
 
+StatusOr<std::vector<std::vector<absl::string_view>>>
+PjRtExecutable::GetParameterMemoryKinds() const {
+  return std::vector<std::vector<absl::string_view>>();
+}
+
 StatusOr<std::vector<Layout>> PjRtExecutable::GetParameterLayouts() const {
   TF_ASSIGN_OR_RETURN(std::vector<std::shared_ptr<HloModule>> hlo_modules,
                       GetHloModules());

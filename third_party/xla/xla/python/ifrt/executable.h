@@ -70,6 +70,12 @@ class Executable : public llvm::RTTIExtends<Executable, llvm::RTTIRoot> {
   // Returns an `HloModule` (optimized) per partition.
   virtual absl::StatusOr<std::vector<std::shared_ptr<HloModule>>>
   GetHloModules() const = 0;
+  // Returns a list of lists of memory kind strings for parameters. The returned
+  // value is `[num_programs, num_param]`. The size of the outer list should be
+  // equal to `GetHloModules()`. Under SPMD, one can use
+  // `GetParameterMemoryKinds().front()`.
+  virtual absl::StatusOr<std::vector<std::vector<absl::string_view>>>
+  GetParameterMemoryKinds() const = 0;
 
   using CostAnalysisValue = xla::PjRtValueType;
 
@@ -138,6 +144,12 @@ class LoadedExecutable
   // Return an HloModule (optimized) per partition.
   virtual absl::StatusOr<std::vector<std::shared_ptr<HloModule>>>
   GetHloModules() const = 0;
+  // Returns a list of lists of memory kind strings for parameters. The returned
+  // value is `[num_programs, num_param]`. The size of the outer list should be
+  // equal to `GetHloModules()`. Under SPMD, one can use
+  // `GetParameterMemoryKinds().front()`.
+  virtual absl::StatusOr<std::vector<std::vector<absl::string_view>>>
+  GetParameterMemoryKinds() const = 0;
   // Returns a list of lists of memory kind strings for output. The returned
   // value is `[num_programs, num_output]`. The size of the outer list should be
   // equal to `GetHloModules()`. Under SPMD, one can use

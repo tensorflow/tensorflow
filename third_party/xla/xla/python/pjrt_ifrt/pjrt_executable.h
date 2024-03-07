@@ -124,6 +124,12 @@ class PjRtExecutable final
     return pjrt_executable_->GetOutputLayouts();
   }
 
+  StatusOr<std::vector<std::vector<absl::string_view>>>
+  GetParameterMemoryKinds() const override {
+    DCHECK(this);
+    return pjrt_executable_->GetParameterMemoryKinds();
+  }
+
   StatusOr<std::optional<std::string>> Fingerprint() const override;
 
   StatusOr<std::string> Serialize() const override;
@@ -262,6 +268,12 @@ class PjRtLoadedExecutable final
       const override {
     DCHECK(this);
     return pjrt_loaded_executable_->GetHloModules();
+  }
+
+  StatusOr<std::vector<std::vector<absl::string_view>>>
+  GetParameterMemoryKinds() const override {
+    DCHECK(this);
+    return pjrt_loaded_executable_->GetParameterMemoryKinds();
   }
 
   StatusOr<std::vector<std::vector<absl::string_view>>> GetOutputMemoryKinds()

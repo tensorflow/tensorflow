@@ -168,6 +168,9 @@ class PyLoadedExecutable
 
   StatusOr<std::vector<std::shared_ptr<HloModule>>> HloModules() const;
 
+  StatusOr<std::vector<std::vector<absl::string_view>>>
+  GetParameterMemoryKinds() const;
+
   StatusOr<std::vector<std::vector<absl::string_view>>> GetOutputMemoryKinds()
       const;
 

@@ -888,6 +888,9 @@ static void Init(py::module_& m) {
              return py::reinterpret_steal<py::object>(
                  nb::cast(ValueOrThrow(self.HloModules())).release().ptr());
            })
+      .def("get_parameter_memory_kinds",
+           xla::ValueOrThrowWrapper(
+               &PyLoadedExecutable::GetParameterMemoryKinds))
       .def("get_output_memory_kinds",
            xla::ValueOrThrowWrapper(&PyLoadedExecutable::GetOutputMemoryKinds))
       .def("get_output_shardings",
@@ -1261,6 +1264,8 @@ static void Init(py::module_& m) {
              return py::reinterpret_steal<py::object>(
                  nb::cast(ValueOrThrow(self.GetHloModules())).release().ptr());
            })
+      .def("get_parameter_memory_kinds",
+           xla::ValueOrThrowWrapper(&PjRtExecutable::GetParameterMemoryKinds))
       .def("get_output_memory_kinds",
            xla::ValueOrThrowWrapper(&PjRtExecutable::GetOutputMemoryKinds))
       .def("get_output_shardings",
