@@ -822,13 +822,26 @@ HloSendDoneInstruction::HloSendDoneInstruction(HloSendInstruction* operand,
   AppendOperand(operand);
 }
 
+HloSendDoneInstruction::HloSendDoneInstruction(HloInstruction* operand,
+                                               int64_t channel_id,
+                                               bool is_host_transfer)
+    : HloSendRecvInstruction(HloOpcode::kSendDone, ShapeUtil::MakeTokenShape(),
+                             channel_id, is_host_transfer) {
+  AppendOperand(operand);
+}
+
 std::unique_ptr<HloInstruction>
 HloSendDoneInstruction::CloneWithNewOperandsImpl(
     const Shape& shape, absl::Span<HloInstruction* const> new_operands,
     HloCloneContext* context) const {
   CHECK_EQ(new_operands.size(), 1);
+  HloSendInstruction* send = dynamic_cast<HloSendInstruction*>(new_operands[0]);
+  if (send != nullptr) {
+    return std::make_unique<HloSendDoneInstruction>(send, is_host_transfer());
+  }
+
   return std::make_unique<HloSendDoneInstruction>(
-      Cast<HloSendInstruction>(new_operands[0]), is_host_transfer());
+      new_operands[0], channel_id().value(), is_host_transfer());
 }
 
 // Recv instruction produces a tuple of {receive buffer, U32 context}.

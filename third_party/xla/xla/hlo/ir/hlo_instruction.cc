@@ -1655,6 +1655,12 @@ HloInstruction::CreateCollectivePermuteStart(
                                                   is_host_transfer);
 }
 
+/* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateSendDone(
+    HloInstruction* operand, int64_t channel_id, bool is_host_transfer) {
+  return std::make_unique<HloSendDoneInstruction>(operand, channel_id,
+                                                  is_host_transfer);
+}
+
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateRecv(
     const Shape& shape, HloInstruction* token, int64_t channel_id,
     bool is_host_transfer) {

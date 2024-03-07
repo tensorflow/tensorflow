@@ -2206,14 +2206,15 @@ HloInstruction* HloParserImpl::CreateInstruction(  // NOLINT
           !ParseAttributes(attrs, allow_attributes)) {
         return nullptr;
       }
-      if (dynamic_cast<const HloChannelInstruction*>(operands[0]) == nullptr) {
-        return nullptr;
+
+      if (dynamic_cast<const HloChannelInstruction*>(operands[0]) != nullptr) {
+        if (channel_id != operands[0]->channel_id()) {
+          return nullptr;
+        }
       }
-      if (channel_id != operands[0]->channel_id()) {
-        return nullptr;
-      }
-      return builder->AddInstruction(
-          HloInstruction::CreateSendDone(operands[0], *is_host_transfer));
+
+      return builder->AddInstruction(HloInstruction::CreateSendDone(
+          operands[0], channel_id.value(), *is_host_transfer));
     }
     case HloOpcode::kGetTupleElement: {
       optional<int64_t> index;
