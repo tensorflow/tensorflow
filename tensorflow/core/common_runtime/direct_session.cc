@@ -367,7 +367,6 @@ DirectSession::DirectSession(const SessionOptions& options,
   }
   session_handle_ =
       strings::StrCat("direct", strings::FpToString(random::New64()));
-  int devices_added = 0;
   if (options.config.log_device_placement()) {
     const string mapping_str = device_mgr_->DeviceMappingString();
     string msg;
@@ -380,17 +379,12 @@ DirectSession::DirectSession(const SessionOptions& options,
       LOG(INFO) << msg;
     }
   }
+  // The client device is a CPU device from which we feed and fetch tensors.
+  device_set_.set_client_device(device_mgr_->HostCPU());
   for (auto d : device_mgr_->ListDevices()) {
     devices_.push_back(d);
     device_set_.AddDevice(d);
     d->op_segment()->AddHold(session_handle_);
-
-    // The first device added is special: it is the 'client device' (a
-    // CPU device) from which we feed and fetch Tensors.
-    if (devices_added == 0) {
-      device_set_.set_client_device(d);
-    }
-    ++devices_added;
   }
 }
 
