@@ -1,209 +1,1345 @@
 Auto generated patch. Do not edit or delete it, even if empty.
-diff -ruN --strip-trailing-cr a/clang/include/clang/Interpreter/Interpreter.h b/clang/include/clang/Interpreter/Interpreter.h
---- a/clang/include/clang/Interpreter/Interpreter.h
-+++ b/clang/include/clang/Interpreter/Interpreter.h
-@@ -48,8 +48,6 @@
-     UserArgs = Args;
+diff -ruN --strip-trailing-cr a/llvm/lib/Transforms/Vectorize/SLPVectorizer.cpp b/llvm/lib/Transforms/Vectorize/SLPVectorizer.cpp
+--- a/llvm/lib/Transforms/Vectorize/SLPVectorizer.cpp
++++ b/llvm/lib/Transforms/Vectorize/SLPVectorizer.cpp
+@@ -1085,9 +1085,6 @@
+       BS->clear();
+     }
+     MinBWs.clear();
+-    ReductionBitWidth = 0;
+-    CastMaxMinBWSizes.reset();
+-    TruncNodes.clear();
+     InstrElementSize.clear();
+     UserIgnoreList = nullptr;
+     PostponedGathers.clear();
+@@ -2290,7 +2287,6 @@
+   void clearReductionData() {
+     AnalyzedReductionsRoots.clear();
+     AnalyzedReductionVals.clear();
+-    AnalyzedMinBWVals.clear();
+   }
+   /// Checks if the given value is gathered in one of the nodes.
+   bool isAnyGathered(const SmallDenseSet<Value *> &Vals) const {
+@@ -2311,11 +2307,9 @@
+   /// constant and to be demoted. Required to correctly identify constant nodes
+   /// to be demoted.
+   bool collectValuesToDemote(
+-      Value *V, bool IsProfitableToDemoteRoot, unsigned &BitWidth,
+-      SmallVectorImpl<Value *> &ToDemote,
++      Value *V, SmallVectorImpl<Value *> &ToDemote,
+       DenseMap<Instruction *, SmallVector<unsigned>> &DemotedConsts,
+-      DenseSet<Value *> &Visited, unsigned &MaxDepthLevel,
+-      bool &IsProfitableToDemote) const;
++      SmallVectorImpl<Value *> &Roots, DenseSet<Value *> &Visited) const;
+ 
+   /// Check if the operands on the edges \p Edges of the \p UserTE allows
+   /// reordering (i.e. the operands can be reordered because they have only one
+@@ -2381,10 +2375,6 @@
+   /// \ returns the graph entry for the \p Idx operand of the \p E entry.
+   const TreeEntry *getOperandEntry(const TreeEntry *E, unsigned Idx) const;
+ 
+-  /// \returns Cast context for the given graph node.
+-  TargetTransformInfo::CastContextHint
+-  getCastContextHint(const TreeEntry &TE) const;
+-
+   /// \returns the cost of the vectorizable entry.
+   InstructionCost getEntryCost(const TreeEntry *E,
+                                ArrayRef<Value *> VectorizedVals,
+@@ -2935,18 +2925,11 @@
+       }
+       assert(!BundleMember && "Bundle and VL out of sync");
+     } else {
++      MustGather.insert(VL.begin(), VL.end());
+       // Build a map for gathered scalars to the nodes where they are used.
+-      bool AllConstsOrCasts = true;
+       for (Value *V : VL)
+-        if (!isConstant(V)) {
+-          auto *I = dyn_cast<CastInst>(V);
+-          AllConstsOrCasts &= I && I->getType()->isIntegerTy();
++        if (!isConstant(V))
+           ValueToGatherNodes.try_emplace(V).first->getSecond().insert(Last);
+-        }
+-      if (AllConstsOrCasts)
+-        CastMaxMinBWSizes =
+-            std::make_pair(std::numeric_limits<unsigned>::max(), 1);
+-      MustGather.insert(VL.begin(), VL.end());
+     }
+ 
+     if (UserTreeIdx.UserTE)
+@@ -3071,10 +3054,6 @@
+   /// Set of hashes for the list of reduction values already being analyzed.
+   DenseSet<size_t> AnalyzedReductionVals;
+ 
+-  /// Values, already been analyzed for mininmal bitwidth and found to be
+-  /// non-profitable.
+-  DenseSet<Value *> AnalyzedMinBWVals;
+-
+   /// A list of values that need to extracted out of the tree.
+   /// This list holds pairs of (Internal Scalar : External User). External User
+   /// can be nullptr, it means that this Internal Scalar will be used later,
+@@ -3650,18 +3629,6 @@
+   /// value must be signed-extended, rather than zero-extended, back to its
+   /// original width.
+   DenseMap<const TreeEntry *, std::pair<uint64_t, bool>> MinBWs;
+-
+-  /// Final size of the reduced vector, if the current graph represents the
+-  /// input for the reduction and it was possible to narrow the size of the
+-  /// reduction.
+-  unsigned ReductionBitWidth = 0;
+-
+-  /// If the tree contains any zext/sext/trunc nodes, contains max-min pair of
+-  /// type sizes, used in the tree.
+-  std::optional<std::pair<unsigned, unsigned>> CastMaxMinBWSizes;
+-
+-  /// Indices of the vectorized trunc nodes.
+-  DenseSet<unsigned> TruncNodes;
+ };
+ 
+ } // end namespace slpvectorizer
+@@ -6572,29 +6539,8 @@
+     case Instruction::Trunc:
+     case Instruction::FPTrunc:
+     case Instruction::BitCast: {
+-      auto [PrevMaxBW, PrevMinBW] = CastMaxMinBWSizes.value_or(
+-          std::make_pair(std::numeric_limits<unsigned>::min(),
+-                         std::numeric_limits<unsigned>::max()));
+-      if (ShuffleOrOp == Instruction::ZExt ||
+-          ShuffleOrOp == Instruction::SExt) {
+-        CastMaxMinBWSizes = std::make_pair(
+-            std::max<unsigned>(DL->getTypeSizeInBits(VL0->getType()),
+-                               PrevMaxBW),
+-            std::min<unsigned>(
+-                DL->getTypeSizeInBits(VL0->getOperand(0)->getType()),
+-                PrevMinBW));
+-      } else if (ShuffleOrOp == Instruction::Trunc) {
+-        CastMaxMinBWSizes = std::make_pair(
+-            std::max<unsigned>(
+-                DL->getTypeSizeInBits(VL0->getOperand(0)->getType()),
+-                PrevMaxBW),
+-            std::min<unsigned>(DL->getTypeSizeInBits(VL0->getType()),
+-                               PrevMinBW));
+-        TruncNodes.insert(VectorizableTree.size());
+-      }
+       TreeEntry *TE = newTreeEntry(VL, Bundle /*vectorized*/, S, UserTreeIdx,
+                                    ReuseShuffleIndicies);
+-
+       LLVM_DEBUG(dbgs() << "SLP: added a vector of casts.\n");
+ 
+       TE->setOperandsInOrder();
+@@ -8416,22 +8362,6 @@
+   return It->get();
+ }
+ 
+-TTI::CastContextHint BoUpSLP::getCastContextHint(const TreeEntry &TE) const {
+-  if (TE.State == TreeEntry::ScatterVectorize ||
+-      TE.State == TreeEntry::StridedVectorize)
+-    return TTI::CastContextHint::GatherScatter;
+-  if (TE.State == TreeEntry::Vectorize && TE.getOpcode() == Instruction::Load &&
+-      !TE.isAltShuffle()) {
+-    if (TE.ReorderIndices.empty())
+-      return TTI::CastContextHint::Normal;
+-    SmallVector<int> Mask;
+-    inversePermutation(TE.ReorderIndices, Mask);
+-    if (ShuffleVectorInst::isReverseMask(Mask, Mask.size()))
+-      return TTI::CastContextHint::Reversed;
+-  }
+-  return TTI::CastContextHint::None;
+-}
+-
+ InstructionCost
+ BoUpSLP::getEntryCost(const TreeEntry *E, ArrayRef<Value *> VectorizedVals,
+                       SmallPtrSetImpl<Value *> &CheckedExtracts) {
+@@ -8454,7 +8384,6 @@
+   // If we have computed a smaller type for the expression, update VecTy so
+   // that the costs will be accurate.
+   auto It = MinBWs.find(E);
+-  Type *OrigScalarTy = ScalarTy;
+   if (It != MinBWs.end()) {
+     ScalarTy = IntegerType::get(F->getContext(), It->second.first);
+     VecTy = FixedVectorType::get(ScalarTy, VL.size());
+@@ -8512,11 +8441,24 @@
+     UsedScalars.set(I);
+   }
+   auto GetCastContextHint = [&](Value *V) {
+-    if (const TreeEntry *OpTE = getTreeEntry(V))
+-      return getCastContextHint(*OpTE);
+-    InstructionsState SrcState = getSameOpcode(E->getOperand(0), *TLI);
+-    if (SrcState.getOpcode() == Instruction::Load && !SrcState.isAltShuffle())
+-      return TTI::CastContextHint::GatherScatter;
++    if (const TreeEntry *OpTE = getTreeEntry(V)) {
++      if (OpTE->State == TreeEntry::ScatterVectorize ||
++          OpTE->State == TreeEntry::StridedVectorize)
++        return TTI::CastContextHint::GatherScatter;
++      if (OpTE->State == TreeEntry::Vectorize &&
++          OpTE->getOpcode() == Instruction::Load && !OpTE->isAltShuffle()) {
++        if (OpTE->ReorderIndices.empty())
++          return TTI::CastContextHint::Normal;
++        SmallVector<int> Mask;
++        inversePermutation(OpTE->ReorderIndices, Mask);
++        if (ShuffleVectorInst::isReverseMask(Mask, Mask.size()))
++          return TTI::CastContextHint::Reversed;
++      }
++    } else {
++      InstructionsState SrcState = getSameOpcode(E->getOperand(0), *TLI);
++      if (SrcState.getOpcode() == Instruction::Load && !SrcState.isAltShuffle())
++        return TTI::CastContextHint::GatherScatter;
++    }
+     return TTI::CastContextHint::None;
+   };
+   auto GetCostDiff =
+@@ -8565,6 +8507,8 @@
+               TTI::CastContextHint CCH = GetCastContextHint(VL0);
+               VecCost += TTI->getCastInstrCost(VecOpcode, UserVecTy, VecTy, CCH,
+                                                CostKind);
++              ScalarCost += Sz * TTI->getCastInstrCost(VecOpcode, UserScalarTy,
++                                                       ScalarTy, CCH, CostKind);
+             }
+           }
+         }
+@@ -8581,7 +8525,7 @@
+     InstructionCost ScalarCost = 0;
+     InstructionCost VecCost = 0;
+     std::tie(ScalarCost, VecCost) = getGEPCosts(
+-        *TTI, Ptrs, BasePtr, E->getOpcode(), CostKind, OrigScalarTy, VecTy);
++        *TTI, Ptrs, BasePtr, E->getOpcode(), CostKind, ScalarTy, VecTy);
+     LLVM_DEBUG(dumpTreeCosts(E, 0, VecCost, ScalarCost,
+                              "Calculated GEPs cost for Tree"));
+ 
+@@ -8628,7 +8572,7 @@
+           NumElts = ATy->getNumElements();
+         else
+           NumElts = AggregateTy->getStructNumElements();
+-        SrcVecTy = FixedVectorType::get(OrigScalarTy, NumElts);
++        SrcVecTy = FixedVectorType::get(ScalarTy, NumElts);
+       }
+       if (I->hasOneUse()) {
+         Instruction *Ext = I->user_back();
+@@ -8796,7 +8740,13 @@
+       }
+     }
+     auto GetScalarCost = [&](unsigned Idx) -> InstructionCost {
+-      auto *VI = cast<Instruction>(UniqueValues[Idx]);
++      // Do not count cost here if minimum bitwidth is in effect and it is just
++      // a bitcast (here it is just a noop).
++      if (VecOpcode != Opcode && VecOpcode == Instruction::BitCast)
++        return TTI::TCC_Free;
++      auto *VI = VL0->getOpcode() == Opcode
++                     ? cast<Instruction>(UniqueValues[Idx])
++                     : nullptr;
+       return TTI->getCastInstrCost(Opcode, VL0->getType(),
+                                    VL0->getOperand(0)->getType(),
+                                    TTI::getCastContextHint(VI), CostKind, VI);
+@@ -8839,7 +8789,7 @@
+                                        ? CmpInst::BAD_FCMP_PREDICATE
+                                        : CmpInst::BAD_ICMP_PREDICATE;
+ 
+-      return TTI->getCmpSelInstrCost(E->getOpcode(), OrigScalarTy,
++      return TTI->getCmpSelInstrCost(E->getOpcode(), ScalarTy,
+                                      Builder.getInt1Ty(), CurrentPred, CostKind,
+                                      VI);
+     };
+@@ -8894,7 +8844,7 @@
+       TTI::OperandValueInfo Op2Info =
+           TTI::getOperandInfo(VI->getOperand(OpIdx));
+       SmallVector<const Value *> Operands(VI->operand_values());
+-      return TTI->getArithmeticInstrCost(ShuffleOrOp, OrigScalarTy, CostKind,
++      return TTI->getArithmeticInstrCost(ShuffleOrOp, ScalarTy, CostKind,
+                                          Op1Info, Op2Info, Operands, VI);
+     };
+     auto GetVectorCost = [=](InstructionCost CommonCost) {
+@@ -8913,9 +8863,9 @@
+   case Instruction::Load: {
+     auto GetScalarCost = [&](unsigned Idx) {
+       auto *VI = cast<LoadInst>(UniqueValues[Idx]);
+-      return TTI->getMemoryOpCost(Instruction::Load, OrigScalarTy,
+-                                  VI->getAlign(), VI->getPointerAddressSpace(),
+-                                  CostKind, TTI::OperandValueInfo(), VI);
++      return TTI->getMemoryOpCost(Instruction::Load, ScalarTy, VI->getAlign(),
++                                  VI->getPointerAddressSpace(), CostKind,
++                                  TTI::OperandValueInfo(), VI);
+     };
+     auto *LI0 = cast<LoadInst>(VL0);
+     auto GetVectorCost = [&](InstructionCost CommonCost) {
+@@ -8958,9 +8908,9 @@
+     auto GetScalarCost = [=](unsigned Idx) {
+       auto *VI = cast<StoreInst>(VL[Idx]);
+       TTI::OperandValueInfo OpInfo = TTI::getOperandInfo(VI->getValueOperand());
+-      return TTI->getMemoryOpCost(Instruction::Store, OrigScalarTy,
+-                                  VI->getAlign(), VI->getPointerAddressSpace(),
+-                                  CostKind, OpInfo, VI);
++      return TTI->getMemoryOpCost(Instruction::Store, ScalarTy, VI->getAlign(),
++                                  VI->getPointerAddressSpace(), CostKind,
++                                  OpInfo, VI);
+     };
+     auto *BaseSI =
+         cast<StoreInst>(IsReorder ? VL[E->ReorderIndices.front()] : VL0);
+@@ -9822,44 +9772,6 @@
+     Cost -= InsertCost;
    }
  
--  void SetTargetTriple(std::string TT) { TargetTriple = TT; }
+-  // Add the cost for reduced value resize (if required).
+-  if (ReductionBitWidth != 0) {
+-    assert(UserIgnoreList && "Expected reduction tree.");
+-    const TreeEntry &E = *VectorizableTree.front().get();
+-    auto It = MinBWs.find(&E);
+-    if (It != MinBWs.end() && It->second.first != ReductionBitWidth) {
+-      unsigned SrcSize = It->second.first;
+-      unsigned DstSize = ReductionBitWidth;
+-      unsigned Opcode = Instruction::Trunc;
+-      if (SrcSize < DstSize)
+-        Opcode = It->second.second ? Instruction::SExt : Instruction::ZExt;
+-      auto *SrcVecTy =
+-          FixedVectorType::get(Builder.getIntNTy(SrcSize), E.getVectorFactor());
+-      auto *DstVecTy =
+-          FixedVectorType::get(Builder.getIntNTy(DstSize), E.getVectorFactor());
+-      TTI::CastContextHint CCH = getCastContextHint(E);
+-      InstructionCost CastCost;
+-      switch (E.getOpcode()) {
+-      case Instruction::SExt:
+-      case Instruction::ZExt:
+-      case Instruction::Trunc: {
+-        const TreeEntry *OpTE = getOperandEntry(&E, 0);
+-        CCH = getCastContextHint(*OpTE);
+-        break;
+-      }
+-      default:
+-        break;
+-      }
+-      CastCost += TTI->getCastInstrCost(Opcode, DstVecTy, SrcVecTy, CCH,
+-                                        TTI::TCK_RecipThroughput);
+-      Cost += CastCost;
+-      LLVM_DEBUG(dbgs() << "SLP: Adding cost " << CastCost
+-                        << " for final resize for reduction from " << SrcVecTy
+-                        << " to " << DstVecTy << "\n";
+-                 dbgs() << "SLP: Current total cost = " << Cost << "\n");
+-    }
+-  }
 -
-   // General C++
-   llvm::Expected<std::unique_ptr<CompilerInstance>> CreateCpp();
+ #ifndef NDEBUG
+   SmallString<256> Str;
+   {
+@@ -10080,30 +9992,6 @@
+   // tree node for each gathered value - we have just a permutation of the
+   // single vector. If we have 2 different sets, we're in situation where we
+   // have a permutation of 2 input vectors.
+-  // Filter out entries with larger bitwidth of elements.
+-  Type *ScalarTy = VL.front()->getType();
+-  unsigned BitWidth = 0;
+-  if (ScalarTy->isIntegerTy()) {
+-    // Check if the used TEs supposed to be resized and choose the best
+-    // candidates.
+-    BitWidth = DL->getTypeStoreSize(ScalarTy);
+-    if (TEUseEI.UserTE->getOpcode() != Instruction::Select ||
+-        TEUseEI.EdgeIdx != 0) {
+-      auto UserIt = MinBWs.find(TEUseEI.UserTE);
+-      if (UserIt != MinBWs.end())
+-        BitWidth = UserIt->second.second;
+-    }
+-  }
+-  auto CheckBitwidth = [&](const TreeEntry &TE) {
+-    Type *ScalarTy = TE.Scalars.front()->getType();
+-    if (!ScalarTy->isIntegerTy())
+-      return true;
+-    unsigned TEBitWidth = DL->getTypeStoreSize(ScalarTy);
+-    auto UserIt = MinBWs.find(TEUseEI.UserTE);
+-    if (UserIt != MinBWs.end())
+-      TEBitWidth = UserIt->second.second;
+-    return BitWidth == TEBitWidth;
+-  };
+   SmallVector<SmallPtrSet<const TreeEntry *, 4>> UsedTEs;
+   DenseMap<Value *, int> UsedValuesEntry;
+   for (Value *V : VL) {
+@@ -10138,8 +10026,6 @@
+           continue;
+       }
  
-@@ -64,12 +62,11 @@
+-      if (!CheckBitwidth(*TEPtr))
+-        continue;
+       // Check if the user node of the TE comes after user node of TEPtr,
+       // otherwise TEPtr depends on TE.
+       if ((TEInsertBlock != InsertPt->getParent() ||
+@@ -10156,8 +10042,8 @@
+             continue;
+           VTE = *It->getSecond().begin();
+           // Iterate through all vectorized nodes.
+-          auto *MIt = find_if(It->getSecond(), [&](const TreeEntry *MTE) {
+-            return MTE->State == TreeEntry::Vectorize && CheckBitwidth(*MTE);
++          auto *MIt = find_if(It->getSecond(), [](const TreeEntry *MTE) {
++            return MTE->State == TreeEntry::Vectorize;
+           });
+           if (MIt == It->getSecond().end())
+             continue;
+@@ -10167,7 +10053,10 @@
+       Instruction &LastBundleInst = getLastInstructionInBundle(VTE);
+       if (&LastBundleInst == TEInsertPt || !CheckOrdering(&LastBundleInst))
+         continue;
+-      if (!CheckBitwidth(*VTE))
++      auto It = MinBWs.find(VTE);
++      // If vectorize node is demoted - do not match.
++      if (It != MinBWs.end() &&
++          It->second.first != DL->getTypeSizeInBits(V->getType()))
+         continue;
+       VToTEs.insert(VTE);
+     }
+@@ -13040,21 +12929,7 @@
+   Builder.ClearInsertionPoint();
+   InstrElementSize.clear();
  
- private:
-   static llvm::Expected<std::unique_ptr<CompilerInstance>>
--  create(std::string TT, std::vector<const char *> &ClangArgv);
-+  create(std::vector<const char *> &ClangArgv);
- 
-   llvm::Expected<std::unique_ptr<CompilerInstance>> createCuda(bool device);
- 
-   std::vector<const char *> UserArgs;
--  std::optional<std::string> TargetTriple;
- 
-   llvm::StringRef OffloadArch;
-   llvm::StringRef CudaSDKPath;
-diff -ruN --strip-trailing-cr a/clang/lib/Interpreter/Interpreter.cpp b/clang/lib/Interpreter/Interpreter.cpp
---- a/clang/lib/Interpreter/Interpreter.cpp
-+++ b/clang/lib/Interpreter/Interpreter.cpp
-@@ -132,8 +132,7 @@
- } // anonymous namespace
- 
- llvm::Expected<std::unique_ptr<CompilerInstance>>
--IncrementalCompilerBuilder::create(std::string TT,
--                                   std::vector<const char *> &ClangArgv) {
-+IncrementalCompilerBuilder::create(std::vector<const char *> &ClangArgv) {
- 
-   // If we don't know ClangArgv0 or the address of main() at this point, try
-   // to guess it anyway (it's possible on some platforms).
-@@ -163,7 +162,8 @@
-   TextDiagnosticBuffer *DiagsBuffer = new TextDiagnosticBuffer;
-   DiagnosticsEngine Diags(DiagID, &*DiagOpts, DiagsBuffer);
- 
--  driver::Driver Driver(/*MainBinaryName=*/ClangArgv[0], TT, Diags);
-+  driver::Driver Driver(/*MainBinaryName=*/ClangArgv[0],
-+                        llvm::sys::getProcessTriple(), Diags);
-   Driver.setCheckInputsExist(false); // the input comes from mem buffers
-   llvm::ArrayRef<const char *> RF = llvm::ArrayRef(ClangArgv);
-   std::unique_ptr<driver::Compilation> Compilation(Driver.BuildCompilation(RF));
-@@ -185,8 +185,7 @@
-   Argv.push_back("-xc++");
-   Argv.insert(Argv.end(), UserArgs.begin(), UserArgs.end());
- 
--  std::string TT = TargetTriple ? *TargetTriple : llvm::sys::getProcessTriple();
--  return IncrementalCompilerBuilder::create(TT, Argv);
-+  return IncrementalCompilerBuilder::create(Argv);
+-  const TreeEntry &RootTE = *VectorizableTree.front().get();
+-  Value *Vec = RootTE.VectorizedValue;
+-  if (auto It = MinBWs.find(&RootTE); ReductionBitWidth != 0 &&
+-                                      It != MinBWs.end() &&
+-                                      ReductionBitWidth != It->second.first) {
+-    IRBuilder<>::InsertPointGuard Guard(Builder);
+-    Builder.SetInsertPoint(ReductionRoot->getParent(),
+-                           ReductionRoot->getIterator());
+-    Vec = Builder.CreateIntCast(
+-        Vec,
+-        VectorType::get(Builder.getIntNTy(ReductionBitWidth),
+-                        cast<VectorType>(Vec->getType())->getElementCount()),
+-        It->second.second);
+-  }
+-  return Vec;
++  return VectorizableTree[0]->VectorizedValue;
  }
  
- llvm::Expected<std::unique_ptr<CompilerInstance>>
-@@ -214,8 +213,7 @@
+ void BoUpSLP::optimizeGatherSequence() {
+@@ -13874,42 +13749,23 @@
+ // smaller type with a truncation. We collect the values that will be demoted
+ // in ToDemote and additional roots that require investigating in Roots.
+ bool BoUpSLP::collectValuesToDemote(
+-    Value *V, bool IsProfitableToDemoteRoot, unsigned &BitWidth,
+-    SmallVectorImpl<Value *> &ToDemote,
++    Value *V, SmallVectorImpl<Value *> &ToDemote,
+     DenseMap<Instruction *, SmallVector<unsigned>> &DemotedConsts,
+-    DenseSet<Value *> &Visited, unsigned &MaxDepthLevel,
+-    bool &IsProfitableToDemote) const {
++    SmallVectorImpl<Value *> &Roots, DenseSet<Value *> &Visited) const {
+   // We can always demote constants.
+-  if (isa<Constant>(V)) {
+-    MaxDepthLevel = 1;
++  if (isa<Constant>(V))
+     return true;
+-  }
  
-   Argv.insert(Argv.end(), UserArgs.begin(), UserArgs.end());
+   // If the value is not a vectorized instruction in the expression and not used
+   // by the insertelement instruction and not used in multiple vector nodes, it
+   // cannot be demoted.
+-  // TODO: improve handling of gathered values and others.
+   auto *I = dyn_cast<Instruction>(V);
+-  if (!I || !Visited.insert(I).second || !getTreeEntry(I) ||
+-      MultiNodeScalars.contains(I) || all_of(I->users(), [&](User *U) {
++  if (!I || !getTreeEntry(I) || MultiNodeScalars.contains(I) ||
++      !Visited.insert(I).second || all_of(I->users(), [&](User *U) {
+         return isa<InsertElementInst>(U) && !getTreeEntry(U);
+       }))
+     return false;
  
--  std::string TT = TargetTriple ? *TargetTriple : llvm::sys::getProcessTriple();
--  return IncrementalCompilerBuilder::create(TT, Argv);
-+  return IncrementalCompilerBuilder::create(Argv);
+-  auto IsPotentiallyTruncated = [&](Value *V, unsigned &BitWidth) -> bool {
+-    if (MultiNodeScalars.contains(V))
+-      return false;
+-    uint32_t OrigBitWidth = DL->getTypeSizeInBits(V->getType());
+-    APInt Mask = APInt::getBitsSetFrom(OrigBitWidth, BitWidth);
+-    if (MaskedValueIsZero(V, Mask, SimplifyQuery(*DL)))
+-      return true;
+-    auto NumSignBits = ComputeNumSignBits(V, *DL, 0, AC, nullptr, DT);
+-    unsigned BitWidth1 = OrigBitWidth - NumSignBits;
+-    if (!isKnownNonNegative(V, SimplifyQuery(*DL)))
+-      ++BitWidth1;
+-    BitWidth = std::max(BitWidth, BitWidth1);
+-    return BitWidth > 0 && OrigBitWidth >= (BitWidth * 2);
+-  };
+   unsigned Start = 0;
+   unsigned End = I->getNumOperands();
+   switch (I->getOpcode()) {
+@@ -13917,14 +13773,12 @@
+   // We can always demote truncations and extensions. Since truncations can
+   // seed additional demotion, we save the truncated value.
+   case Instruction::Trunc:
+-    MaxDepthLevel = 1;
+-    if (IsProfitableToDemoteRoot)
+-      IsProfitableToDemote = true;
++    Roots.push_back(I->getOperand(0));
+     break;
+   case Instruction::ZExt:
+   case Instruction::SExt:
+-    MaxDepthLevel = 1;
+-    IsProfitableToDemote = true;
++    if (isa<ExtractElementInst, InsertElementInst>(I->getOperand(0)))
++      return false;
+     break;
+ 
+   // We can demote certain binary operations if we can demote both of their
+@@ -13934,32 +13788,23 @@
+   case Instruction::Mul:
+   case Instruction::And:
+   case Instruction::Or:
+-  case Instruction::Xor: {
+-    unsigned Level1, Level2;
+-    if (!collectValuesToDemote(I->getOperand(0), IsProfitableToDemoteRoot,
+-                               BitWidth, ToDemote, DemotedConsts, Visited,
+-                               Level1, IsProfitableToDemote) ||
+-        !collectValuesToDemote(I->getOperand(1), IsProfitableToDemoteRoot,
+-                               BitWidth, ToDemote, DemotedConsts, Visited,
+-                               Level2, IsProfitableToDemote))
++  case Instruction::Xor:
++    if (!collectValuesToDemote(I->getOperand(0), ToDemote, DemotedConsts, Roots,
++                               Visited) ||
++        !collectValuesToDemote(I->getOperand(1), ToDemote, DemotedConsts, Roots,
++                               Visited))
+       return false;
+-    MaxDepthLevel = std::max(Level1, Level2);
+     break;
+-  }
+ 
+   // We can demote selects if we can demote their true and false values.
+   case Instruction::Select: {
+     Start = 1;
+-    unsigned Level1, Level2;
+     SelectInst *SI = cast<SelectInst>(I);
+-    if (!collectValuesToDemote(SI->getTrueValue(), IsProfitableToDemoteRoot,
+-                               BitWidth, ToDemote, DemotedConsts, Visited,
+-                               Level1, IsProfitableToDemote) ||
+-        !collectValuesToDemote(SI->getFalseValue(), IsProfitableToDemoteRoot,
+-                               BitWidth, ToDemote, DemotedConsts, Visited,
+-                               Level2, IsProfitableToDemote))
++    if (!collectValuesToDemote(SI->getTrueValue(), ToDemote, DemotedConsts,
++                               Roots, Visited) ||
++        !collectValuesToDemote(SI->getFalseValue(), ToDemote, DemotedConsts,
++                               Roots, Visited))
+       return false;
+-    MaxDepthLevel = std::max(Level1, Level2);
+     break;
+   }
+ 
+@@ -13968,262 +13813,171 @@
+   case Instruction::PHI: {
+     PHINode *PN = cast<PHINode>(I);
+     for (Value *IncValue : PN->incoming_values())
+-      if (!collectValuesToDemote(IncValue, IsProfitableToDemoteRoot, BitWidth,
+-                                 ToDemote, DemotedConsts, Visited,
+-                                 MaxDepthLevel, IsProfitableToDemote))
++      if (!collectValuesToDemote(IncValue, ToDemote, DemotedConsts, Roots,
++                                 Visited))
+         return false;
+     break;
+   }
+ 
+   // Otherwise, conservatively give up.
+   default:
+-    return IsProfitableToDemote && IsPotentiallyTruncated(I, BitWidth);
++    return false;
+   }
+ 
+-  ++MaxDepthLevel;
+   // Gather demoted constant operands.
+   for (unsigned Idx : seq<unsigned>(Start, End))
+     if (isa<Constant>(I->getOperand(Idx)))
+       DemotedConsts.try_emplace(I).first->getSecond().push_back(Idx);
+   // Record the value that we can demote.
+   ToDemote.push_back(V);
+-  return IsProfitableToDemote;
++  return true;
  }
  
- llvm::Expected<std::unique_ptr<CompilerInstance>>
-diff -ruN --strip-trailing-cr a/clang/unittests/Interpreter/CMakeLists.txt b/clang/unittests/Interpreter/CMakeLists.txt
---- a/clang/unittests/Interpreter/CMakeLists.txt
-+++ b/clang/unittests/Interpreter/CMakeLists.txt
-@@ -7,7 +7,6 @@
-   )
+ void BoUpSLP::computeMinimumValueSizes() {
+   // We only attempt to truncate integer expressions.
+-  bool IsStoreOrInsertElt =
+-      VectorizableTree.front()->getOpcode() == Instruction::Store ||
+-      VectorizableTree.front()->getOpcode() == Instruction::InsertElement;
+-  if ((IsStoreOrInsertElt || UserIgnoreList) && TruncNodes.size() <= 1 &&
+-      (!CastMaxMinBWSizes || CastMaxMinBWSizes->second == 0 ||
+-       CastMaxMinBWSizes->first / CastMaxMinBWSizes->second <= 2))
++  auto &TreeRoot = VectorizableTree[0]->Scalars;
++  auto *TreeRootIT = dyn_cast<IntegerType>(TreeRoot[0]->getType());
++  if (!TreeRootIT || VectorizableTree.front()->State == TreeEntry::NeedToGather)
+     return;
  
- add_clang_unittest(ClangReplInterpreterTests
--  IncrementalCompilerBuilderTest.cpp
-   IncrementalProcessingTest.cpp
-   InterpreterTest.cpp
-   CodeCompletionTest.cpp
-diff -ruN --strip-trailing-cr a/clang/unittests/Interpreter/IncrementalCompilerBuilderTest.cpp b/clang/unittests/Interpreter/IncrementalCompilerBuilderTest.cpp
---- a/clang/unittests/Interpreter/IncrementalCompilerBuilderTest.cpp
-+++ b/clang/unittests/Interpreter/IncrementalCompilerBuilderTest.cpp
-@@ -1,35 +0,0 @@
--//=== unittests/Interpreter/IncrementalCompilerBuilderTest.cpp ------------===//
--//
--// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
--// See https://llvm.org/LICENSE.txt for license information.
--// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
--//
--//===----------------------------------------------------------------------===//
+-  unsigned NodeIdx = 0;
+-  if (IsStoreOrInsertElt &&
+-      VectorizableTree.front()->State != TreeEntry::NeedToGather)
+-    NodeIdx = 1;
 -
--#include "clang/Basic/TargetOptions.h"
--#include "clang/Frontend/CompilerInstance.h"
--#include "clang/Interpreter/Interpreter.h"
--#include "llvm/Support/Error.h"
--#include "gtest/gtest.h"
--
--using namespace llvm;
--using namespace clang;
--
--namespace {
--
--TEST(IncrementalCompilerBuilder, SetCompilerArgs) {
--  std::vector<const char *> ClangArgv = {"-Xclang", "-ast-dump-all"};
--  auto CB = clang::IncrementalCompilerBuilder();
--  CB.SetCompilerArgs(ClangArgv);
--  auto CI = cantFail(CB.CreateCpp());
--  EXPECT_TRUE(CI->getFrontendOpts().ASTDumpAll);
--}
--
--TEST(IncrementalCompilerBuilder, SetTargetTriple) {
--  auto CB = clang::IncrementalCompilerBuilder();
--  CB.SetTargetTriple("armv6-none-eabi");
--  auto CI = cantFail(CB.CreateCpp());
--  EXPECT_EQ(CI->getTargetOpts().Triple, "armv6-none-unknown-eabi");
--}
--
--} // end anonymous namespace
-diff -ruN --strip-trailing-cr a/llvm/lib/Transforms/Scalar/SROA.cpp b/llvm/lib/Transforms/Scalar/SROA.cpp
---- a/llvm/lib/Transforms/Scalar/SROA.cpp
-+++ b/llvm/lib/Transforms/Scalar/SROA.cpp
-@@ -4062,10 +4062,14 @@
-   bool unfoldGEPPhi(GetElementPtrInst &GEPI) {
-     // To prevent infinitely expanding recursive phis, bail if the GEP pointer
-     // operand (looking through the phi if it is the phi we want to unfold) is
--    // an instruction besides an alloca.
-+    // an instruction besides a static alloca.
-     PHINode *Phi = dyn_cast<PHINode>(GEPI.getPointerOperand());
-     auto IsInvalidPointerOperand = [](Value *V) {
--      return isa<Instruction>(V) && !isa<AllocaInst>(V);
-+      if (!isa<Instruction>(V))
-+        return false;
-+      if (auto *AI = dyn_cast<AllocaInst>(V))
-+        return !AI->isStaticAlloca();
-+      return true;
-     };
-     if (Phi) {
-       if (any_of(Phi->operands(), IsInvalidPointerOperand))
-diff -ruN --strip-trailing-cr a/llvm/test/Transforms/SROA/phi-gep.ll b/llvm/test/Transforms/SROA/phi-gep.ll
---- a/llvm/test/Transforms/SROA/phi-gep.ll
-+++ b/llvm/test/Transforms/SROA/phi-gep.ll
-@@ -638,6 +638,41 @@
-   ret i1 %icmp
- }
+   // Ensure the roots of the vectorizable tree don't form a cycle.
+-  if (VectorizableTree[NodeIdx]->State == TreeEntry::NeedToGather ||
+-      (NodeIdx == 0 && !VectorizableTree[NodeIdx]->UserTreeIndices.empty()) ||
+-      (NodeIdx != 0 && any_of(VectorizableTree[NodeIdx]->UserTreeIndices,
+-                              [NodeIdx](const EdgeInfo &EI) {
+-                                return EI.UserTE->Idx >
+-                                       static_cast<int>(NodeIdx);
+-                              })))
++  if (!VectorizableTree.front()->UserTreeIndices.empty())
+     return;
  
-+define i32 @test_phi_mem2reg_alloca_not_in_entry_block(i1 %arg) {
-+; CHECK-LABEL: @test_phi_mem2reg_alloca_not_in_entry_block(
-+; CHECK-NEXT:  bb:
-+; CHECK-NEXT:    [[ALLOCA:%.*]] = alloca i64, align 8
-+; CHECK-NEXT:    store i64 123, ptr [[ALLOCA]], align 4
-+; CHECK-NEXT:    br label [[BB2:%.*]]
-+; CHECK:       bb2:
-+; CHECK-NEXT:    [[ALLOCA2:%.*]] = alloca i64, align 8
-+; CHECK-NEXT:    store i64 124, ptr [[ALLOCA]], align 4
-+; CHECK-NEXT:    br i1 [[ARG:%.*]], label [[BB3:%.*]], label [[BB4:%.*]]
-+; CHECK:       bb3:
-+; CHECK-NEXT:    br label [[BB4]]
-+; CHECK:       bb4:
-+; CHECK-NEXT:    [[PHI:%.*]] = phi ptr [ [[ALLOCA]], [[BB2]] ], [ [[ALLOCA2]], [[BB3]] ]
-+; CHECK-NEXT:    [[GEP:%.*]] = getelementptr i32, ptr [[PHI]], i64 1
-+; CHECK-NEXT:    [[LOAD:%.*]] = load i32, ptr [[GEP]], align 4
-+; CHECK-NEXT:    ret i32 [[LOAD]]
-+;
-+bb:
-+  %alloca = alloca i64
-+  store i64 123, ptr %alloca
-+  br label %bb2
-+bb2:
-+  %alloca2 = alloca i64
-+  store i64 124, ptr %alloca
-+  br i1 %arg, label %bb3, label %bb4
-+bb3:
-+  br label %bb4
-+bb4:
-+  %phi = phi ptr [ %alloca, %bb2 ], [ %alloca2, %bb3 ]
-+  %gep = getelementptr i32, ptr %phi, i64 1
-+  %load = load i32, ptr %gep
-+  ret i32 %load
-+}
+-  // The first value node for store/insertelement is sext/zext/trunc? Skip it,
+-  // resize to the final type.
+-  bool IsProfitableToDemoteRoot = !IsStoreOrInsertElt;
+-  if (NodeIdx != 0 &&
+-      VectorizableTree[NodeIdx]->State == TreeEntry::Vectorize &&
+-      (VectorizableTree[NodeIdx]->getOpcode() == Instruction::ZExt ||
+-       VectorizableTree[NodeIdx]->getOpcode() == Instruction::SExt ||
+-       VectorizableTree[NodeIdx]->getOpcode() == Instruction::Trunc)) {
+-    assert(IsStoreOrInsertElt && "Expected store/insertelement seeded graph.");
+-    ++NodeIdx;
+-    IsProfitableToDemoteRoot = true;
++  // Conservatively determine if we can actually truncate the roots of the
++  // expression. Collect the values that can be demoted in ToDemote and
++  // additional roots that require investigating in Roots.
++  SmallVector<Value *, 32> ToDemote;
++  DenseMap<Instruction *, SmallVector<unsigned>> DemotedConsts;
++  SmallVector<Value *, 4> Roots;
++  for (auto *Root : TreeRoot) {
++    DenseSet<Value *> Visited;
++    if (!collectValuesToDemote(Root, ToDemote, DemotedConsts, Roots, Visited))
++      return;
+   }
+ 
+-  // Analyzed in reduction already and not profitable - exit.
+-  if (AnalyzedMinBWVals.contains(VectorizableTree[NodeIdx]->Scalars.front()))
+-    return;
++  // The maximum bit width required to represent all the values that can be
++  // demoted without loss of precision. It would be safe to truncate the roots
++  // of the expression to this width.
++  auto MaxBitWidth = 1u;
 +
- define i64 @test_unfold_phi_duplicate_phi_entry(ptr %arg, i8 %arg1, i1 %arg2) {
- ; CHECK-LABEL: @test_unfold_phi_duplicate_phi_entry(
- ; CHECK-NEXT:  bb:
-diff -ruN --strip-trailing-cr a/utils/bazel/llvm-project-overlay/mlir/BUILD.bazel b/utils/bazel/llvm-project-overlay/mlir/BUILD.bazel
---- a/utils/bazel/llvm-project-overlay/mlir/BUILD.bazel
-+++ b/utils/bazel/llvm-project-overlay/mlir/BUILD.bazel
-@@ -35,17 +35,12 @@
-         "#cmakedefine01 MLIR_DEPRECATED_GPU_SERIALIZATION_ENABLE": "#define MLIR_DEPRECATED_GPU_SERIALIZATION_ENABLE 0",
-         "#cmakedefine01 MLIR_ENABLE_EXPENSIVE_PATTERN_API_CHECKS": "#define MLIR_ENABLE_EXPENSIVE_PATTERN_API_CHECKS 0",
-         "#cmakedefine MLIR_GREEDY_REWRITE_RANDOMIZER_SEED ${MLIR_GREEDY_REWRITE_RANDOMIZER_SEED}": "/* #undef MLIR_GREEDY_REWRITE_RANDOMIZER_SEED */",
-+        "#cmakedefine01 MLIR_ENABLE_NVPTXCOMPILER": "#define MLIR_ENABLE_NVPTXCOMPILER 0",
-         "#cmakedefine01 MLIR_ENABLE_PDL_IN_PATTERNMATCH": "#define MLIR_ENABLE_PDL_IN_PATTERNMATCH 1",
-         "#cmakedefine01 MLIR_ENABLE_ROCM_CONVERSIONS": "#define MLIR_ENABLE_ROCM_CONVERSIONS 0",
-     } | if_cuda_available(
--        {
--            "#cmakedefine01 MLIR_ENABLE_CUDA_CONVERSIONS": "#define MLIR_ENABLE_CUDA_CONVERSIONS 1",
--            "#cmakedefine01 MLIR_ENABLE_NVPTXCOMPILER": "#define MLIR_ENABLE_NVPTXCOMPILER 1",
--        },
--        {
--            "#cmakedefine01 MLIR_ENABLE_CUDA_CONVERSIONS": "#define MLIR_ENABLE_CUDA_CONVERSIONS 0",
--            "#cmakedefine01 MLIR_ENABLE_NVPTXCOMPILER": "#define MLIR_ENABLE_NVPTXCOMPILER 0",
--        },
-+        {"#cmakedefine01 MLIR_ENABLE_CUDA_CONVERSIONS": "#define MLIR_ENABLE_CUDA_CONVERSIONS 1"},
-+        {"#cmakedefine01 MLIR_ENABLE_CUDA_CONVERSIONS": "#define MLIR_ENABLE_CUDA_CONVERSIONS 0"},
-     ),
-     template = "include/mlir/Config/mlir-config.h.cmake",
- )
++  // We first check if all the bits of the roots are demanded. If they're not,
++  // we can truncate the roots to this narrower type.
++  for (auto *Root : TreeRoot) {
++    auto Mask = DB->getDemandedBits(cast<Instruction>(Root));
++    MaxBitWidth = std::max<unsigned>(Mask.getBitWidth() - Mask.countl_zero(),
++                                     MaxBitWidth);
++  }
++
++  // True if the roots can be zero-extended back to their original type, rather
++  // than sign-extended. We know that if the leading bits are not demanded, we
++  // can safely zero-extend. So we initialize IsKnownPositive to True.
++  bool IsKnownPositive = true;
++
++  // If all the bits of the roots are demanded, we can try a little harder to
++  // compute a narrower type. This can happen, for example, if the roots are
++  // getelementptr indices. InstCombine promotes these indices to the pointer
++  // width. Thus, all their bits are technically demanded even though the
++  // address computation might be vectorized in a smaller type.
++  //
++  // We start by looking at each entry that can be demoted. We compute the
++  // maximum bit width required to store the scalar by using ValueTracking to
++  // compute the number of high-order bits we can truncate.
++  if (MaxBitWidth == DL->getTypeSizeInBits(TreeRoot[0]->getType()) &&
++      all_of(TreeRoot, [](Value *V) {
++        return all_of(V->users(),
++                      [](User *U) { return isa<GetElementPtrInst>(U); });
++      })) {
++    MaxBitWidth = 8u;
+ 
+-  SmallVector<Value *> ToDemote;
+-  DenseMap<Instruction *, SmallVector<unsigned>> DemotedConsts;
+-  auto ComputeMaxBitWidth = [&](ArrayRef<Value *> TreeRoot, unsigned VF,
+-                                bool IsTopRoot, bool IsProfitableToDemoteRoot,
+-                                unsigned Opcode, unsigned Limit) {
+-    ToDemote.clear();
+-    auto *TreeRootIT = dyn_cast<IntegerType>(TreeRoot[0]->getType());
+-    if (!TreeRootIT || !Opcode)
+-      return 0u;
+-
+-    if (AnalyzedMinBWVals.contains(TreeRoot.front()))
+-      return 0u;
+-
+-    unsigned NumParts = TTI->getNumberOfParts(
+-        FixedVectorType::get(TreeRoot.front()->getType(), VF));
+-
+-    // The maximum bit width required to represent all the values that can be
+-    // demoted without loss of precision. It would be safe to truncate the roots
+-    // of the expression to this width.
+-    unsigned MaxBitWidth = 1u;
+-
+-    // True if the roots can be zero-extended back to their original type,
+-    // rather than sign-extended. We know that if the leading bits are not
+-    // demanded, we can safely zero-extend. So we initialize IsKnownPositive to
+-    // True.
+     // Determine if the sign bit of all the roots is known to be zero. If not,
+     // IsKnownPositive is set to False.
+-    bool IsKnownPositive = all_of(TreeRoot, [&](Value *R) {
++    IsKnownPositive = llvm::all_of(TreeRoot, [&](Value *R) {
+       KnownBits Known = computeKnownBits(R, *DL);
+       return Known.isNonNegative();
+     });
+ 
+-    // We first check if all the bits of the roots are demanded. If they're not,
+-    // we can truncate the roots to this narrower type.
+-    for (auto *Root : TreeRoot) {
+-      unsigned NumSignBits = ComputeNumSignBits(Root, *DL, 0, AC, nullptr, DT);
+-      TypeSize NumTypeBits = DL->getTypeSizeInBits(Root->getType());
+-      unsigned BitWidth1 = NumTypeBits - NumSignBits;
+-      // If we can't prove that the sign bit is zero, we must add one to the
+-      // maximum bit width to account for the unknown sign bit. This preserves
+-      // the existing sign bit so we can safely sign-extend the root back to the
+-      // original type. Otherwise, if we know the sign bit is zero, we will
+-      // zero-extend the root instead.
+-      //
+-      // FIXME: This is somewhat suboptimal, as there will be cases where adding
+-      //        one to the maximum bit width will yield a larger-than-necessary
+-      //        type. In general, we need to add an extra bit only if we can't
+-      //        prove that the upper bit of the original type is equal to the
+-      //        upper bit of the proposed smaller type. If these two bits are
+-      //        the same (either zero or one) we know that sign-extending from
+-      //        the smaller type will result in the same value. Here, since we
+-      //        can't yet prove this, we are just making the proposed smaller
+-      //        type larger to ensure correctness.
+-      if (!IsKnownPositive)
+-        ++BitWidth1;
+-
+-      APInt Mask = DB->getDemandedBits(cast<Instruction>(Root));
+-      unsigned BitWidth2 = Mask.getBitWidth() - Mask.countl_zero();
+-      MaxBitWidth =
+-          std::max<unsigned>(std::min(BitWidth1, BitWidth2), MaxBitWidth);
+-    }
+-
+-    if (MaxBitWidth < 8 && MaxBitWidth > 1)
+-      MaxBitWidth = 8;
+-
+-    // If the original type is large, but reduced type does not improve the reg
+-    // use - ignore it.
+-    if (NumParts > 1 &&
+-        NumParts ==
+-            TTI->getNumberOfParts(FixedVectorType::get(
+-                IntegerType::get(F->getContext(), bit_ceil(MaxBitWidth)), VF)))
+-      return 0u;
+-
+-    bool IsProfitableToDemote = Opcode == Instruction::Trunc ||
+-                                Opcode == Instruction::SExt ||
+-                                Opcode == Instruction::ZExt || NumParts > 1;
+-    // Conservatively determine if we can actually truncate the roots of the
+-    // expression. Collect the values that can be demoted in ToDemote and
+-    // additional roots that require investigating in Roots.
+-    for (auto *Root : TreeRoot) {
+-      DenseSet<Value *> Visited;
+-      unsigned MaxDepthLevel;
+-      bool NeedToDemote = IsProfitableToDemote;
+-
+-      if (!collectValuesToDemote(Root, IsProfitableToDemoteRoot, MaxBitWidth,
+-                                 ToDemote, DemotedConsts, Visited,
+-                                 MaxDepthLevel, NeedToDemote) ||
+-          (MaxDepthLevel <= Limit &&
+-           !(((Opcode == Instruction::SExt || Opcode == Instruction::ZExt) &&
+-              (!IsTopRoot || !(IsStoreOrInsertElt || UserIgnoreList) ||
+-               DL->getTypeSizeInBits(Root->getType()) /
+-                       DL->getTypeSizeInBits(
+-                           cast<Instruction>(Root)->getOperand(0)->getType()) >
+-                   2)) ||
+-             (Opcode == Instruction::Trunc &&
+-              (!IsTopRoot || !(IsStoreOrInsertElt || UserIgnoreList) ||
+-               DL->getTypeSizeInBits(
+-                   cast<Instruction>(Root)->getOperand(0)->getType()) /
+-                       DL->getTypeSizeInBits(Root->getType()) >
+-                   2)))))
+-        return 0u;
+-    }
+-    // Round MaxBitWidth up to the next power-of-two.
+-    MaxBitWidth = bit_ceil(MaxBitWidth);
+-
+-    return MaxBitWidth;
+-  };
++    // Determine the maximum number of bits required to store the scalar
++    // values.
++    for (auto *Scalar : ToDemote) {
++      auto NumSignBits = ComputeNumSignBits(Scalar, *DL, 0, AC, nullptr, DT);
++      auto NumTypeBits = DL->getTypeSizeInBits(Scalar->getType());
++      MaxBitWidth = std::max<unsigned>(NumTypeBits - NumSignBits, MaxBitWidth);
++    }
++
++    // If we can't prove that the sign bit is zero, we must add one to the
++    // maximum bit width to account for the unknown sign bit. This preserves
++    // the existing sign bit so we can safely sign-extend the root back to the
++    // original type. Otherwise, if we know the sign bit is zero, we will
++    // zero-extend the root instead.
++    //
++    // FIXME: This is somewhat suboptimal, as there will be cases where adding
++    //        one to the maximum bit width will yield a larger-than-necessary
++    //        type. In general, we need to add an extra bit only if we can't
++    //        prove that the upper bit of the original type is equal to the
++    //        upper bit of the proposed smaller type. If these two bits are the
++    //        same (either zero or one) we know that sign-extending from the
++    //        smaller type will result in the same value. Here, since we can't
++    //        yet prove this, we are just making the proposed smaller type
++    //        larger to ensure correctness.
++    if (!IsKnownPositive)
++      ++MaxBitWidth;
++  }
++
++  // Round MaxBitWidth up to the next power-of-two.
++  MaxBitWidth = llvm::bit_ceil(MaxBitWidth);
++
++  // If the maximum bit width we compute is less than the with of the roots'
++  // type, we can proceed with the narrowing. Otherwise, do nothing.
++  if (MaxBitWidth >= TreeRootIT->getBitWidth())
++    return;
+ 
+   // If we can truncate the root, we must collect additional values that might
+   // be demoted as a result. That is, those seeded by truncations we will
+   // modify.
+-  // Add reduction ops sizes, if any.
+-  if (UserIgnoreList &&
+-      isa<IntegerType>(VectorizableTree.front()->Scalars.front()->getType())) {
+-    for (Value *V : *UserIgnoreList) {
+-      auto NumSignBits = ComputeNumSignBits(V, *DL, 0, AC, nullptr, DT);
+-      auto NumTypeBits = DL->getTypeSizeInBits(V->getType());
+-      unsigned BitWidth1 = NumTypeBits - NumSignBits;
+-      if (!isKnownNonNegative(V, SimplifyQuery(*DL)))
+-        ++BitWidth1;
+-      auto Mask = DB->getDemandedBits(cast<Instruction>(V));
+-      unsigned BitWidth2 = Mask.getBitWidth() - Mask.countl_zero();
+-      ReductionBitWidth =
+-          std::max(std::min(BitWidth1, BitWidth2), ReductionBitWidth);
+-    }
+-    if (ReductionBitWidth < 8 && ReductionBitWidth > 1)
+-      ReductionBitWidth = 8;
+-
+-    ReductionBitWidth = bit_ceil(ReductionBitWidth);
+-  }
+-  bool IsTopRoot = NodeIdx == 0;
+-  while (NodeIdx < VectorizableTree.size() &&
+-         VectorizableTree[NodeIdx]->State == TreeEntry::Vectorize &&
+-         VectorizableTree[NodeIdx]->getOpcode() == Instruction::Trunc)
+-    ++NodeIdx;
+-  while (NodeIdx < VectorizableTree.size()) {
+-    ArrayRef<Value *> TreeRoot = VectorizableTree[NodeIdx]->Scalars;
+-    unsigned Limit = 2;
+-    unsigned Opcode = VectorizableTree[NodeIdx]->getOpcode();
+-    if (IsTopRoot &&
+-        ReductionBitWidth ==
+-            DL->getTypeSizeInBits(
+-                VectorizableTree.front()->Scalars.front()->getType()))
+-      Limit = 3;
+-    unsigned MaxBitWidth = ComputeMaxBitWidth(
+-        TreeRoot, VectorizableTree[NodeIdx]->getVectorFactor(), IsTopRoot,
+-        IsProfitableToDemoteRoot, Opcode, Limit);
+-    IsTopRoot = false;
+-    IsProfitableToDemoteRoot = true;
+-
+-    if (TruncNodes.empty()) {
+-      NodeIdx = VectorizableTree.size();
+-    } else {
+-      NodeIdx = *TruncNodes.begin() + 1;
+-      TruncNodes.erase(TruncNodes.begin());
+-    }
+-
+-    // If the maximum bit width we compute is less than the with of the roots'
+-    // type, we can proceed with the narrowing. Otherwise, do nothing.
+-    if (MaxBitWidth == 0 ||
+-        MaxBitWidth >=
+-            cast<IntegerType>(TreeRoot.front()->getType())->getBitWidth()) {
+-      if (UserIgnoreList)
+-        AnalyzedMinBWVals.insert(TreeRoot.begin(), TreeRoot.end());
++  while (!Roots.empty()) {
++    DenseSet<Value *> Visited;
++    collectValuesToDemote(Roots.pop_back_val(), ToDemote, DemotedConsts, Roots,
++                          Visited);
++  }
++
++  // Check that all users are marked for demotion.
++  DenseSet<Value *> Demoted(ToDemote.begin(), ToDemote.end());
++  DenseSet<const TreeEntry *> Visited;
++  for (Value *V: ToDemote) {
++    const TreeEntry *TE = getTreeEntry(V);
++    assert(TE && "Expected vectorized scalar.");
++    if (!Visited.insert(TE).second)
++      continue;
++    if (!all_of(TE->UserTreeIndices, [&](const EdgeInfo &EI) {
++          return all_of(EI.UserTE->Scalars,
++                        [&](Value *V) { return Demoted.contains(V); });
++        }))
++      return;
++  }
++  // Finally, map the values we can demote to the maximum bit with we computed.
++  for (auto *Scalar : ToDemote) {
++    auto *TE = getTreeEntry(Scalar);
++    assert(TE && "Expected vectorized scalar.");
++    if (MinBWs.contains(TE))
+       continue;
+-    }
+-
+-    // Finally, map the values we can demote to the maximum bit with we
+-    // computed.
+-    for (Value *Scalar : ToDemote) {
+-      TreeEntry *TE = getTreeEntry(Scalar);
+-      assert(TE && "Expected vectorized scalar.");
+-      if (MinBWs.contains(TE))
+-        continue;
+-      bool IsSigned = any_of(TE->Scalars, [&](Value *R) {
+-        return !isKnownNonNegative(R, SimplifyQuery(*DL));
+-      });
+-      MinBWs.try_emplace(TE, MaxBitWidth, IsSigned);
+-      const auto *I = cast<Instruction>(Scalar);
+-      auto DCIt = DemotedConsts.find(I);
+-      if (DCIt != DemotedConsts.end()) {
+-        for (unsigned Idx : DCIt->getSecond()) {
+-          // Check that all instructions operands are demoted.
++    bool IsSigned = any_of(TE->Scalars, [&](Value *R) {
++      KnownBits Known = computeKnownBits(R, *DL);
++      return !Known.isNonNegative();
++    });
++    MinBWs.try_emplace(TE, MaxBitWidth, IsSigned);
++    const auto *I = cast<Instruction>(Scalar);
++    auto DCIt = DemotedConsts.find(I);
++    if (DCIt != DemotedConsts.end()) {
++      for (unsigned Idx : DCIt->getSecond()) {
++        // Check that all instructions operands are demoted.
++        if (all_of(TE->Scalars, [&](Value *V) {
++              auto SIt = DemotedConsts.find(cast<Instruction>(V));
++              return SIt != DemotedConsts.end() &&
++                     is_contained(SIt->getSecond(), Idx);
++            })) {
+           const TreeEntry *CTE = getOperandEntry(TE, Idx);
+-          if (all_of(TE->Scalars,
+-                     [&](Value *V) {
+-                       auto SIt = DemotedConsts.find(cast<Instruction>(V));
+-                       return SIt != DemotedConsts.end() &&
+-                              is_contained(SIt->getSecond(), Idx);
+-                     }) ||
+-              all_of(CTE->Scalars, Constant::classof))
+-            MinBWs.try_emplace(CTE, MaxBitWidth, IsSigned);
++          MinBWs.try_emplace(CTE, MaxBitWidth, IsSigned);
+         }
+       }
+     }
+diff -ruN --strip-trailing-cr a/llvm/test/Transforms/SLPVectorizer/AArch64/ext-trunc.ll b/llvm/test/Transforms/SLPVectorizer/AArch64/ext-trunc.ll
+--- a/llvm/test/Transforms/SLPVectorizer/AArch64/ext-trunc.ll
++++ b/llvm/test/Transforms/SLPVectorizer/AArch64/ext-trunc.ll
+@@ -17,13 +17,12 @@
+ ; CHECK-NEXT:    [[GEP0:%.*]] = getelementptr inbounds i64, ptr [[P:%.*]], i64 [[S0]]
+ ; CHECK-NEXT:    [[LOAD0:%.*]] = load i64, ptr [[GEP0]], align 4
+ ; CHECK-NEXT:    [[TMP0:%.*]] = shufflevector <4 x i32> [[SUB0]], <4 x i32> poison, <2 x i32> <i32 1, i32 2>
+-; CHECK-NEXT:    [[TMP1:%.*]] = extractelement <2 x i32> [[TMP0]], i32 0
+-; CHECK-NEXT:    [[TMP2:%.*]] = sext i32 [[TMP1]] to i64
++; CHECK-NEXT:    [[TMP1:%.*]] = sext <2 x i32> [[TMP0]] to <2 x i64>
++; CHECK-NEXT:    [[TMP2:%.*]] = extractelement <2 x i64> [[TMP1]], i32 0
+ ; CHECK-NEXT:    [[GEP1:%.*]] = getelementptr inbounds i64, ptr [[P]], i64 [[TMP2]]
+ ; CHECK-NEXT:    [[LOAD1:%.*]] = load i64, ptr [[GEP1]], align 4
+-; CHECK-NEXT:    [[TMP3:%.*]] = extractelement <2 x i32> [[TMP0]], i32 1
+-; CHECK-NEXT:    [[TMP4:%.*]] = sext i32 [[TMP3]] to i64
+-; CHECK-NEXT:    [[GEP2:%.*]] = getelementptr inbounds i64, ptr [[P]], i64 [[TMP4]]
++; CHECK-NEXT:    [[TMP3:%.*]] = extractelement <2 x i64> [[TMP1]], i32 1
++; CHECK-NEXT:    [[GEP2:%.*]] = getelementptr inbounds i64, ptr [[P]], i64 [[TMP3]]
+ ; CHECK-NEXT:    [[LOAD2:%.*]] = load i64, ptr [[GEP2]], align 4
+ ; CHECK-NEXT:    [[E3:%.*]] = extractelement <4 x i32> [[SUB0]], i32 3
+ ; CHECK-NEXT:    [[S3:%.*]] = sext i32 [[E3]] to i64
+diff -ruN --strip-trailing-cr a/llvm/test/Transforms/SLPVectorizer/AArch64/getelementptr2.ll b/llvm/test/Transforms/SLPVectorizer/AArch64/getelementptr2.ll
+--- a/llvm/test/Transforms/SLPVectorizer/AArch64/getelementptr2.ll
++++ b/llvm/test/Transforms/SLPVectorizer/AArch64/getelementptr2.ll
+@@ -1,8 +1,8 @@
+ ; NOTE: Assertions have been autogenerated by utils/update_test_checks.py
+ ;test_i16_extend NOTE: Assertions have been autogenerated by utils/update_test_checks.py
+-; RUN: opt -S -mtriple=aarch64--linux-gnu -passes=slp-vectorizer,dce,instcombine -slp-threshold=-5 -pass-remarks-output=%t < %s | FileCheck %s
++; RUN: opt -S -mtriple=aarch64--linux-gnu -passes=slp-vectorizer,dce,instcombine -slp-threshold=-7 -pass-remarks-output=%t < %s | FileCheck %s
+ ; RUN: cat %t | FileCheck -check-prefix=YAML %s
+-; RUN: opt -S -mtriple=aarch64--linux-gnu -passes='slp-vectorizer,dce,instcombine' -slp-threshold=-5 -pass-remarks-output=%t < %s | FileCheck %s
++; RUN: opt -S -mtriple=aarch64--linux-gnu -passes='slp-vectorizer,dce,instcombine' -slp-threshold=-7 -pass-remarks-output=%t < %s | FileCheck %s
+ ; RUN: cat %t | FileCheck -check-prefix=YAML %s
+ 
+ 
+diff -ruN --strip-trailing-cr a/llvm/test/Transforms/SLPVectorizer/AArch64/reduce-add-i64.ll b/llvm/test/Transforms/SLPVectorizer/AArch64/reduce-add-i64.ll
+--- a/llvm/test/Transforms/SLPVectorizer/AArch64/reduce-add-i64.ll
++++ b/llvm/test/Transforms/SLPVectorizer/AArch64/reduce-add-i64.ll
+@@ -28,11 +28,21 @@
+ define i64 @red_zext_ld_4xi64(ptr %ptr) {
+ ; CHECK-LABEL: @red_zext_ld_4xi64(
+ ; CHECK-NEXT:  entry:
+-; CHECK-NEXT:    [[TMP0:%.*]] = load <4 x i8>, ptr [[PTR:%.*]], align 1
+-; CHECK-NEXT:    [[TMP1:%.*]] = zext <4 x i8> [[TMP0]] to <4 x i16>
+-; CHECK-NEXT:    [[TMP2:%.*]] = call i16 @llvm.vector.reduce.add.v4i16(<4 x i16> [[TMP1]])
+-; CHECK-NEXT:    [[TMP3:%.*]] = zext i16 [[TMP2]] to i64
+-; CHECK-NEXT:    ret i64 [[TMP3]]
++; CHECK-NEXT:    [[LD0:%.*]] = load i8, ptr [[PTR:%.*]], align 1
++; CHECK-NEXT:    [[ZEXT:%.*]] = zext i8 [[LD0]] to i64
++; CHECK-NEXT:    [[GEP:%.*]] = getelementptr inbounds i8, ptr [[PTR]], i64 1
++; CHECK-NEXT:    [[LD1:%.*]] = load i8, ptr [[GEP]], align 1
++; CHECK-NEXT:    [[ZEXT_1:%.*]] = zext i8 [[LD1]] to i64
++; CHECK-NEXT:    [[ADD_1:%.*]] = add nuw nsw i64 [[ZEXT]], [[ZEXT_1]]
++; CHECK-NEXT:    [[GEP_1:%.*]] = getelementptr inbounds i8, ptr [[PTR]], i64 2
++; CHECK-NEXT:    [[LD2:%.*]] = load i8, ptr [[GEP_1]], align 1
++; CHECK-NEXT:    [[ZEXT_2:%.*]] = zext i8 [[LD2]] to i64
++; CHECK-NEXT:    [[ADD_2:%.*]] = add nuw nsw i64 [[ADD_1]], [[ZEXT_2]]
++; CHECK-NEXT:    [[GEP_2:%.*]] = getelementptr inbounds i8, ptr [[PTR]], i64 3
++; CHECK-NEXT:    [[LD3:%.*]] = load i8, ptr [[GEP_2]], align 1
++; CHECK-NEXT:    [[ZEXT_3:%.*]] = zext i8 [[LD3]] to i64
++; CHECK-NEXT:    [[ADD_3:%.*]] = add nuw nsw i64 [[ADD_2]], [[ZEXT_3]]
++; CHECK-NEXT:    ret i64 [[ADD_3]]
+ ;
+ entry:
+   %ld0 = load i8, ptr %ptr
+diff -ruN --strip-trailing-cr a/llvm/test/Transforms/SLPVectorizer/alt-cmp-vectorize.ll b/llvm/test/Transforms/SLPVectorizer/alt-cmp-vectorize.ll
+--- a/llvm/test/Transforms/SLPVectorizer/alt-cmp-vectorize.ll
++++ b/llvm/test/Transforms/SLPVectorizer/alt-cmp-vectorize.ll
+@@ -10,8 +10,8 @@
+ ; CHECK-NEXT:    [[TMP2:%.*]] = icmp ult <4 x i16> [[TMP0]], [[TMP1]]
+ ; CHECK-NEXT:    [[TMP3:%.*]] = icmp ugt <4 x i16> [[TMP0]], [[TMP1]]
+ ; CHECK-NEXT:    [[TMP4:%.*]] = shufflevector <4 x i1> [[TMP2]], <4 x i1> [[TMP3]], <4 x i32> <i32 0, i32 5, i32 2, i32 3>
+-; CHECK-NEXT:    [[TMP5:%.*]] = call i1 @llvm.vector.reduce.or.v4i1(<4 x i1> [[TMP4]])
+-; CHECK-NEXT:    [[TMP6:%.*]] = zext i1 [[TMP5]] to i16
++; CHECK-NEXT:    [[TMP5:%.*]] = zext <4 x i1> [[TMP4]] to <4 x i16>
++; CHECK-NEXT:    [[TMP6:%.*]] = call i16 @llvm.vector.reduce.or.v4i16(<4 x i16> [[TMP5]])
+ ; CHECK-NEXT:    [[OP_RDX:%.*]] = or i16 [[TMP6]], 0
+ ; CHECK-NEXT:    [[EXT:%.*]] = zext i16 [[OP_RDX]] to i32
+ ; CHECK-NEXT:    ret i32 [[EXT]]
+diff -ruN --strip-trailing-cr a/llvm/test/Transforms/SLPVectorizer/RISCV/reductions.ll b/llvm/test/Transforms/SLPVectorizer/RISCV/reductions.ll
+--- a/llvm/test/Transforms/SLPVectorizer/RISCV/reductions.ll
++++ b/llvm/test/Transforms/SLPVectorizer/RISCV/reductions.ll
+@@ -802,10 +802,9 @@
+ ; CHECK-LABEL: @red_zext_ld_4xi64(
+ ; CHECK-NEXT:  entry:
+ ; CHECK-NEXT:    [[TMP0:%.*]] = load <4 x i8>, ptr [[PTR:%.*]], align 1
+-; CHECK-NEXT:    [[TMP1:%.*]] = zext <4 x i8> [[TMP0]] to <4 x i16>
+-; CHECK-NEXT:    [[TMP2:%.*]] = call i16 @llvm.vector.reduce.add.v4i16(<4 x i16> [[TMP1]])
+-; CHECK-NEXT:    [[TMP3:%.*]] = zext i16 [[TMP2]] to i64
+-; CHECK-NEXT:    ret i64 [[TMP3]]
++; CHECK-NEXT:    [[TMP1:%.*]] = zext <4 x i8> [[TMP0]] to <4 x i64>
++; CHECK-NEXT:    [[TMP2:%.*]] = call i64 @llvm.vector.reduce.add.v4i64(<4 x i64> [[TMP1]])
++; CHECK-NEXT:    ret i64 [[TMP2]]
+ ;
+ entry:
+   %ld0 = load i8, ptr %ptr
+diff -ruN --strip-trailing-cr a/llvm/test/Transforms/SLPVectorizer/X86/int-bitcast-minbitwidth.ll b/llvm/test/Transforms/SLPVectorizer/X86/int-bitcast-minbitwidth.ll
+--- a/llvm/test/Transforms/SLPVectorizer/X86/int-bitcast-minbitwidth.ll
++++ b/llvm/test/Transforms/SLPVectorizer/X86/int-bitcast-minbitwidth.ll
+@@ -1,5 +1,5 @@
+ ; NOTE: Assertions have been autogenerated by utils/update_test_checks.py UTC_ARGS: --version 4
+-; RUN: opt -S --passes=slp-vectorizer -mtriple=x86_64-unknown-linux-gnu -slp-threshold=-6 < %s | FileCheck %s
++; RUN: opt -S --passes=slp-vectorizer -mtriple=x86_64-unknown-linux-gnu -slp-threshold=-3 < %s | FileCheck %s
+ 
+ define void @t(i64 %v) {
+ ; CHECK-LABEL: define void @t(
+diff -ruN --strip-trailing-cr a/llvm/test/Transforms/SLPVectorizer/X86/minbitwidth-multiuse-with-insertelement.ll b/llvm/test/Transforms/SLPVectorizer/X86/minbitwidth-multiuse-with-insertelement.ll
+--- a/llvm/test/Transforms/SLPVectorizer/X86/minbitwidth-multiuse-with-insertelement.ll
++++ b/llvm/test/Transforms/SLPVectorizer/X86/minbitwidth-multiuse-with-insertelement.ll
+@@ -6,17 +6,18 @@
+ ; CHECK-SAME: i8 [[TMP0:%.*]]) {
+ ; CHECK-NEXT:  entry:
+ ; CHECK-NEXT:    [[TMP1:%.*]] = insertelement <2 x i8> <i8 0, i8 poison>, i8 [[TMP0]], i32 1
+-; CHECK-NEXT:    [[TMP2:%.*]] = sext <2 x i8> [[TMP1]] to <2 x i32>
+-; CHECK-NEXT:    [[TMP3:%.*]] = mul <2 x i8> [[TMP1]], zeroinitializer
+-; CHECK-NEXT:    [[TMP4:%.*]] = extractelement <2 x i8> [[TMP3]], i32 0
+-; CHECK-NEXT:    [[TMP5:%.*]] = zext i8 [[TMP4]] to i32
+-; CHECK-NEXT:    [[TMP6:%.*]] = extractelement <2 x i8> [[TMP3]], i32 1
+-; CHECK-NEXT:    [[TMP7:%.*]] = zext i8 [[TMP6]] to i32
+-; CHECK-NEXT:    [[ADD:%.*]] = or i32 [[TMP5]], [[TMP7]]
++; CHECK-NEXT:    [[TMP2:%.*]] = sext <2 x i8> [[TMP1]] to <2 x i16>
++; CHECK-NEXT:    [[TMP3:%.*]] = sext <2 x i16> [[TMP2]] to <2 x i32>
++; CHECK-NEXT:    [[TMP4:%.*]] = mul <2 x i16> [[TMP2]], zeroinitializer
++; CHECK-NEXT:    [[TMP5:%.*]] = extractelement <2 x i16> [[TMP4]], i32 0
++; CHECK-NEXT:    [[TMP6:%.*]] = zext i16 [[TMP5]] to i32
++; CHECK-NEXT:    [[TMP7:%.*]] = extractelement <2 x i16> [[TMP4]], i32 1
++; CHECK-NEXT:    [[TMP8:%.*]] = zext i16 [[TMP7]] to i32
++; CHECK-NEXT:    [[ADD:%.*]] = or i32 [[TMP6]], [[TMP8]]
+ ; CHECK-NEXT:    [[SHR:%.*]] = lshr i32 [[ADD]], 1
+ ; CHECK-NEXT:    [[CONV9:%.*]] = trunc i32 [[SHR]] to i8
+ ; CHECK-NEXT:    store i8 [[CONV9]], ptr null, align 1
+-; CHECK-NEXT:    [[TMP8:%.*]] = shufflevector <2 x i32> [[TMP2]], <2 x i32> poison, <8 x i32> <i32 1, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison>
++; CHECK-NEXT:    [[TMP9:%.*]] = shufflevector <2 x i32> [[TMP3]], <2 x i32> poison, <8 x i32> <i32 1, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison>
+ ; CHECK-NEXT:    ret void
+ ;
+ entry:
+diff -ruN --strip-trailing-cr a/llvm/test/Transforms/SLPVectorizer/X86/minbitwidth-transformed-operand.ll b/llvm/test/Transforms/SLPVectorizer/X86/minbitwidth-transformed-operand.ll
+--- a/llvm/test/Transforms/SLPVectorizer/X86/minbitwidth-transformed-operand.ll
++++ b/llvm/test/Transforms/SLPVectorizer/X86/minbitwidth-transformed-operand.ll
+@@ -6,20 +6,15 @@
+ ; CHECK-SAME: i64 [[D_PROMOTED_I:%.*]]) {
+ ; CHECK-NEXT:  entry:
+ ; CHECK-NEXT:    [[AND_1_I:%.*]] = and i64 0, [[D_PROMOTED_I]]
+-; CHECK-NEXT:    [[TMP0:%.*]] = insertelement <8 x i64> <i64 0, i64 poison, i64 0, i64 0, i64 0, i64 0, i64 0, i64 0>, i64 [[AND_1_I]], i32 1
+-; CHECK-NEXT:    [[TMP1:%.*]] = trunc <8 x i64> [[TMP0]] to <8 x i1>
+-; CHECK-NEXT:    [[TMP2:%.*]] = mul <8 x i1> [[TMP1]], zeroinitializer
+ ; CHECK-NEXT:    [[AND_1_I_1:%.*]] = and i64 0, 0
+-; CHECK-NEXT:    [[TMP3:%.*]] = insertelement <8 x i64> <i64 0, i64 poison, i64 0, i64 0, i64 0, i64 0, i64 0, i64 0>, i64 [[AND_1_I_1]], i32 1
+-; CHECK-NEXT:    [[TMP4:%.*]] = trunc <8 x i64> [[TMP3]] to <8 x i1>
+-; CHECK-NEXT:    [[TMP5:%.*]] = mul <8 x i1> [[TMP4]], zeroinitializer
+-; CHECK-NEXT:    [[TMP6:%.*]] = call i1 @llvm.vector.reduce.or.v8i1(<8 x i1> [[TMP5]])
+-; CHECK-NEXT:    [[TMP7:%.*]] = zext i1 [[TMP6]] to i32
+-; CHECK-NEXT:    [[TMP8:%.*]] = call i1 @llvm.vector.reduce.or.v8i1(<8 x i1> [[TMP2]])
+-; CHECK-NEXT:    [[TMP9:%.*]] = zext i1 [[TMP8]] to i32
+-; CHECK-NEXT:    [[OP_RDX:%.*]] = or i32 [[TMP7]], [[TMP9]]
+-; CHECK-NEXT:    [[TMP10:%.*]] = and i32 [[OP_RDX]], 0
+-; CHECK-NEXT:    store i32 [[TMP10]], ptr null, align 4
++; CHECK-NEXT:    [[TMP0:%.*]] = insertelement <16 x i64> <i64 0, i64 poison, i64 0, i64 0, i64 0, i64 0, i64 0, i64 0, i64 0, i64 poison, i64 0, i64 0, i64 0, i64 0, i64 0, i64 0>, i64 [[AND_1_I_1]], i32 1
++; CHECK-NEXT:    [[TMP1:%.*]] = insertelement <16 x i64> [[TMP0]], i64 [[AND_1_I]], i32 9
++; CHECK-NEXT:    [[TMP2:%.*]] = trunc <16 x i64> [[TMP1]] to <16 x i1>
++; CHECK-NEXT:    [[TMP3:%.*]] = mul <16 x i1> [[TMP2]], zeroinitializer
++; CHECK-NEXT:    [[TMP4:%.*]] = call i1 @llvm.vector.reduce.or.v16i1(<16 x i1> [[TMP3]])
++; CHECK-NEXT:    [[TMP5:%.*]] = zext i1 [[TMP4]] to i32
++; CHECK-NEXT:    [[TMP6:%.*]] = and i32 [[TMP5]], 0
++; CHECK-NEXT:    store i32 [[TMP6]], ptr null, align 4
+ ; CHECK-NEXT:    ret void
+ ;
+ entry:
+diff -ruN --strip-trailing-cr a/llvm/test/Transforms/SLPVectorizer/X86/minimum-sizes.ll b/llvm/test/Transforms/SLPVectorizer/X86/minimum-sizes.ll
+--- a/llvm/test/Transforms/SLPVectorizer/X86/minimum-sizes.ll
++++ b/llvm/test/Transforms/SLPVectorizer/X86/minimum-sizes.ll
+@@ -17,15 +17,12 @@
+ define i8 @PR31243_zext(i8 %v0, i8 %v1, i8 %v2, i8 %v3, ptr %ptr) {
+ ; SSE-LABEL: @PR31243_zext(
+ ; SSE-NEXT:  entry:
+-; SSE-NEXT:    [[TMP0:%.*]] = insertelement <2 x i8> poison, i8 [[V0:%.*]], i64 0
+-; SSE-NEXT:    [[TMP1:%.*]] = insertelement <2 x i8> [[TMP0]], i8 [[V1:%.*]], i64 1
+-; SSE-NEXT:    [[TMP2:%.*]] = or <2 x i8> [[TMP1]], <i8 1, i8 1>
+-; SSE-NEXT:    [[TMP3:%.*]] = extractelement <2 x i8> [[TMP2]], i64 0
+-; SSE-NEXT:    [[TMP4:%.*]] = zext i8 [[TMP3]] to i64
+-; SSE-NEXT:    [[T4:%.*]] = getelementptr inbounds i8, ptr [[PTR:%.*]], i64 [[TMP4]]
+-; SSE-NEXT:    [[TMP5:%.*]] = extractelement <2 x i8> [[TMP2]], i64 1
+-; SSE-NEXT:    [[TMP6:%.*]] = zext i8 [[TMP5]] to i64
+-; SSE-NEXT:    [[T5:%.*]] = getelementptr inbounds i8, ptr [[PTR]], i64 [[TMP6]]
++; SSE-NEXT:    [[TMP0:%.*]] = or i8 [[V0:%.*]], 1
++; SSE-NEXT:    [[TMP1:%.*]] = or i8 [[V1:%.*]], 1
++; SSE-NEXT:    [[TMP2:%.*]] = zext i8 [[TMP0]] to i64
++; SSE-NEXT:    [[T4:%.*]] = getelementptr inbounds i8, ptr [[PTR:%.*]], i64 [[TMP2]]
++; SSE-NEXT:    [[TMP3:%.*]] = zext i8 [[TMP1]] to i64
++; SSE-NEXT:    [[T5:%.*]] = getelementptr inbounds i8, ptr [[PTR]], i64 [[TMP3]]
+ ; SSE-NEXT:    [[T6:%.*]] = load i8, ptr [[T4]], align 1
+ ; SSE-NEXT:    [[T7:%.*]] = load i8, ptr [[T5]], align 1
+ ; SSE-NEXT:    [[T8:%.*]] = add i8 [[T6]], [[T7]]
+@@ -76,15 +73,12 @@
+ define i8 @PR31243_sext(i8 %v0, i8 %v1, i8 %v2, i8 %v3, ptr %ptr) {
+ ; SSE-LABEL: @PR31243_sext(
+ ; SSE-NEXT:  entry:
+-; SSE-NEXT:    [[TMP0:%.*]] = insertelement <2 x i8> poison, i8 [[V0:%.*]], i64 0
+-; SSE-NEXT:    [[TMP1:%.*]] = insertelement <2 x i8> [[TMP0]], i8 [[V1:%.*]], i64 1
+-; SSE-NEXT:    [[TMP2:%.*]] = or <2 x i8> [[TMP1]], <i8 1, i8 1>
+-; SSE-NEXT:    [[TMP3:%.*]] = extractelement <2 x i8> [[TMP2]], i64 0
+-; SSE-NEXT:    [[TMP4:%.*]] = sext i8 [[TMP3]] to i64
+-; SSE-NEXT:    [[T4:%.*]] = getelementptr inbounds i8, ptr [[PTR:%.*]], i64 [[TMP4]]
+-; SSE-NEXT:    [[TMP5:%.*]] = extractelement <2 x i8> [[TMP2]], i64 1
+-; SSE-NEXT:    [[TMP6:%.*]] = sext i8 [[TMP5]] to i64
+-; SSE-NEXT:    [[T5:%.*]] = getelementptr inbounds i8, ptr [[PTR]], i64 [[TMP6]]
++; SSE-NEXT:    [[TMP0:%.*]] = or i8 [[V0:%.*]], 1
++; SSE-NEXT:    [[TMP1:%.*]] = or i8 [[V1:%.*]], 1
++; SSE-NEXT:    [[TMP2:%.*]] = sext i8 [[TMP0]] to i64
++; SSE-NEXT:    [[T4:%.*]] = getelementptr inbounds i8, ptr [[PTR:%.*]], i64 [[TMP2]]
++; SSE-NEXT:    [[TMP3:%.*]] = sext i8 [[TMP1]] to i64
++; SSE-NEXT:    [[T5:%.*]] = getelementptr inbounds i8, ptr [[PTR]], i64 [[TMP3]]
+ ; SSE-NEXT:    [[T6:%.*]] = load i8, ptr [[T4]], align 1
+ ; SSE-NEXT:    [[T7:%.*]] = load i8, ptr [[T5]], align 1
+ ; SSE-NEXT:    [[T8:%.*]] = add i8 [[T6]], [[T7]]
+@@ -95,12 +89,13 @@
+ ; AVX-NEXT:    [[TMP0:%.*]] = insertelement <2 x i8> poison, i8 [[V0:%.*]], i64 0
+ ; AVX-NEXT:    [[TMP1:%.*]] = insertelement <2 x i8> [[TMP0]], i8 [[V1:%.*]], i64 1
+ ; AVX-NEXT:    [[TMP2:%.*]] = or <2 x i8> [[TMP1]], <i8 1, i8 1>
+-; AVX-NEXT:    [[TMP3:%.*]] = extractelement <2 x i8> [[TMP2]], i64 0
+-; AVX-NEXT:    [[TMP4:%.*]] = sext i8 [[TMP3]] to i64
+-; AVX-NEXT:    [[T4:%.*]] = getelementptr inbounds i8, ptr [[PTR:%.*]], i64 [[TMP4]]
+-; AVX-NEXT:    [[TMP5:%.*]] = extractelement <2 x i8> [[TMP2]], i64 1
+-; AVX-NEXT:    [[TMP6:%.*]] = sext i8 [[TMP5]] to i64
+-; AVX-NEXT:    [[T5:%.*]] = getelementptr inbounds i8, ptr [[PTR]], i64 [[TMP6]]
++; AVX-NEXT:    [[TMP3:%.*]] = sext <2 x i8> [[TMP2]] to <2 x i16>
++; AVX-NEXT:    [[TMP4:%.*]] = extractelement <2 x i16> [[TMP3]], i64 0
++; AVX-NEXT:    [[TMP5:%.*]] = sext i16 [[TMP4]] to i64
++; AVX-NEXT:    [[T4:%.*]] = getelementptr inbounds i8, ptr [[PTR:%.*]], i64 [[TMP5]]
++; AVX-NEXT:    [[TMP6:%.*]] = extractelement <2 x i16> [[TMP3]], i64 1
++; AVX-NEXT:    [[TMP7:%.*]] = sext i16 [[TMP6]] to i64
++; AVX-NEXT:    [[T5:%.*]] = getelementptr inbounds i8, ptr [[PTR]], i64 [[TMP7]]
+ ; AVX-NEXT:    [[T6:%.*]] = load i8, ptr [[T4]], align 1
+ ; AVX-NEXT:    [[T7:%.*]] = load i8, ptr [[T5]], align 1
+ ; AVX-NEXT:    [[T8:%.*]] = add i8 [[T6]], [[T7]]
+diff -ruN --strip-trailing-cr a/llvm/test/Transforms/SLPVectorizer/X86/phi-undef-input.ll b/llvm/test/Transforms/SLPVectorizer/X86/phi-undef-input.ll
+--- a/llvm/test/Transforms/SLPVectorizer/X86/phi-undef-input.ll
++++ b/llvm/test/Transforms/SLPVectorizer/X86/phi-undef-input.ll
+@@ -15,8 +15,8 @@
+ ; CHECK-NEXT:    br label [[BB3]]
+ ; CHECK:       bb3:
+ ; CHECK-NEXT:    [[TMP4:%.*]] = phi <4 x i8> [ [[TMP3]], [[BB2]] ], [ <i8 0, i8 undef, i8 undef, i8 undef>, [[ENTRY:%.*]] ]
+-; CHECK-NEXT:    [[TMP5:%.*]] = call i8 @llvm.vector.reduce.or.v4i8(<4 x i8> [[TMP4]])
+-; CHECK-NEXT:    [[TMP6:%.*]] = zext i8 [[TMP5]] to i32
++; CHECK-NEXT:    [[TMP5:%.*]] = zext <4 x i8> [[TMP4]] to <4 x i32>
++; CHECK-NEXT:    [[TMP6:%.*]] = call i32 @llvm.vector.reduce.or.v4i32(<4 x i32> [[TMP5]])
+ ; CHECK-NEXT:    ret i32 [[TMP6]]
+ ;
+ entry:
+@@ -52,8 +52,8 @@
+ ; CHECK-NEXT:    br label [[BB3]]
+ ; CHECK:       bb3:
+ ; CHECK-NEXT:    [[TMP4:%.*]] = phi <4 x i8> [ [[TMP3]], [[BB2]] ], [ <i8 0, i8 0, i8 undef, i8 undef>, [[ENTRY:%.*]] ]
+-; CHECK-NEXT:    [[TMP5:%.*]] = call i8 @llvm.vector.reduce.or.v4i8(<4 x i8> [[TMP4]])
+-; CHECK-NEXT:    [[TMP6:%.*]] = zext i8 [[TMP5]] to i32
++; CHECK-NEXT:    [[TMP5:%.*]] = zext <4 x i8> [[TMP4]] to <4 x i32>
++; CHECK-NEXT:    [[TMP6:%.*]] = call i32 @llvm.vector.reduce.or.v4i32(<4 x i32> [[TMP5]])
+ ; CHECK-NEXT:    ret i32 [[TMP6]]
+ ;
+ entry:
+@@ -89,8 +89,8 @@
+ ; CHECK-NEXT:    br label [[BB3]]
+ ; CHECK:       bb3:
+ ; CHECK-NEXT:    [[TMP4:%.*]] = phi <4 x i8> [ [[TMP3]], [[BB2]] ], [ <i8 0, i8 0, i8 0, i8 undef>, [[ENTRY:%.*]] ]
+-; CHECK-NEXT:    [[TMP5:%.*]] = call i8 @llvm.vector.reduce.or.v4i8(<4 x i8> [[TMP4]])
+-; CHECK-NEXT:    [[TMP6:%.*]] = zext i8 [[TMP5]] to i32
++; CHECK-NEXT:    [[TMP5:%.*]] = zext <4 x i8> [[TMP4]] to <4 x i32>
++; CHECK-NEXT:    [[TMP6:%.*]] = call i32 @llvm.vector.reduce.or.v4i32(<4 x i32> [[TMP5]])
+ ; CHECK-NEXT:    ret i32 [[TMP6]]
+ ;
+ entry:
+@@ -127,8 +127,8 @@
+ ; CHECK-NEXT:    br label [[BB3]]
+ ; CHECK:       bb3:
+ ; CHECK-NEXT:    [[TMP4:%.*]] = phi <4 x i8> [ [[TMP3]], [[BB2]] ], [ <i8 0, i8 0, i8 poison, i8 undef>, [[ENTRY:%.*]] ]
+-; CHECK-NEXT:    [[TMP5:%.*]] = call i8 @llvm.vector.reduce.or.v4i8(<4 x i8> [[TMP4]])
+-; CHECK-NEXT:    [[TMP6:%.*]] = zext i8 [[TMP5]] to i32
++; CHECK-NEXT:    [[TMP5:%.*]] = zext <4 x i8> [[TMP4]] to <4 x i32>
++; CHECK-NEXT:    [[TMP6:%.*]] = call i32 @llvm.vector.reduce.or.v4i32(<4 x i32> [[TMP5]])
+ ; CHECK-NEXT:    ret i32 [[TMP6]]
+ ;
+ entry:
+@@ -165,8 +165,8 @@
+ ; CHECK-NEXT:    br label [[BB3]]
+ ; CHECK:       bb3:
+ ; CHECK-NEXT:    [[TMP4:%.*]] = phi <4 x i8> [ [[TMP3]], [[BB2]] ], [ <i8 0, i8 poison, i8 poison, i8 undef>, [[ENTRY:%.*]] ]
+-; CHECK-NEXT:    [[TMP5:%.*]] = call i8 @llvm.vector.reduce.or.v4i8(<4 x i8> [[TMP4]])
+-; CHECK-NEXT:    [[TMP6:%.*]] = zext i8 [[TMP5]] to i32
++; CHECK-NEXT:    [[TMP5:%.*]] = zext <4 x i8> [[TMP4]] to <4 x i32>
++; CHECK-NEXT:    [[TMP6:%.*]] = call i32 @llvm.vector.reduce.or.v4i32(<4 x i32> [[TMP5]])
+ ; CHECK-NEXT:    ret i32 [[TMP6]]
+ ;
+ entry:
+@@ -202,8 +202,8 @@
+ ; CHECK-NEXT:    br label [[BB3]]
+ ; CHECK:       bb3:
+ ; CHECK-NEXT:    [[TMP4:%.*]] = phi <4 x i8> [ [[TMP3]], [[BB2]] ], [ <i8 0, i8 0, i8 poison, i8 undef>, [[ENTRY:%.*]] ]
+-; CHECK-NEXT:    [[TMP5:%.*]] = call i8 @llvm.vector.reduce.or.v4i8(<4 x i8> [[TMP4]])
+-; CHECK-NEXT:    [[TMP6:%.*]] = zext i8 [[TMP5]] to i32
++; CHECK-NEXT:    [[TMP5:%.*]] = zext <4 x i8> [[TMP4]] to <4 x i32>
++; CHECK-NEXT:    [[TMP6:%.*]] = call i32 @llvm.vector.reduce.or.v4i32(<4 x i32> [[TMP5]])
+ ; CHECK-NEXT:    ret i32 [[TMP6]]
+ ;
+ entry:
+diff -ruN --strip-trailing-cr a/llvm/test/Transforms/SLPVectorizer/X86/PR35777.ll b/llvm/test/Transforms/SLPVectorizer/X86/PR35777.ll
+--- a/llvm/test/Transforms/SLPVectorizer/X86/PR35777.ll
++++ b/llvm/test/Transforms/SLPVectorizer/X86/PR35777.ll
+@@ -15,12 +15,11 @@
+ ; CHECK-NEXT:    [[TMP6:%.*]] = load <2 x double>, ptr getelementptr inbounds ([6 x double], ptr @global, i64 0, i64 4), align 16
+ ; CHECK-NEXT:    [[TMP7:%.*]] = fadd <2 x double> [[TMP6]], [[TMP5]]
+ ; CHECK-NEXT:    [[TMP8:%.*]] = fptosi <2 x double> [[TMP7]] to <2 x i32>
+-; CHECK-NEXT:    [[TMP9:%.*]] = extractelement <2 x i32> [[TMP8]], i32 0
+-; CHECK-NEXT:    [[TMP10:%.*]] = sext i32 [[TMP9]] to i64
++; CHECK-NEXT:    [[TMP9:%.*]] = sext <2 x i32> [[TMP8]] to <2 x i64>
++; CHECK-NEXT:    [[TMP10:%.*]] = extractelement <2 x i64> [[TMP9]], i32 0
+ ; CHECK-NEXT:    [[T16:%.*]] = insertvalue { i64, i64 } undef, i64 [[TMP10]], 0
+-; CHECK-NEXT:    [[TMP11:%.*]] = extractelement <2 x i32> [[TMP8]], i32 1
+-; CHECK-NEXT:    [[TMP12:%.*]] = sext i32 [[TMP11]] to i64
+-; CHECK-NEXT:    [[T17:%.*]] = insertvalue { i64, i64 } [[T16]], i64 [[TMP12]], 1
++; CHECK-NEXT:    [[TMP11:%.*]] = extractelement <2 x i64> [[TMP9]], i32 1
++; CHECK-NEXT:    [[T17:%.*]] = insertvalue { i64, i64 } [[T16]], i64 [[TMP11]], 1
+ ; CHECK-NEXT:    ret { i64, i64 } [[T17]]
+ ;
+ bb:
+diff -ruN --strip-trailing-cr a/llvm/test/Transforms/SLPVectorizer/X86/resched.ll b/llvm/test/Transforms/SLPVectorizer/X86/resched.ll
+--- a/llvm/test/Transforms/SLPVectorizer/X86/resched.ll
++++ b/llvm/test/Transforms/SLPVectorizer/X86/resched.ll
+@@ -11,26 +11,26 @@
+ ; CHECK:       if.then22.i:
+ ; CHECK-NEXT:    [[SUB_I:%.*]] = add nsw i32 undef, -1
+ ; CHECK-NEXT:    [[CONV31_I:%.*]] = and i32 undef, [[SUB_I]]
+-; CHECK-NEXT:    [[TMP0:%.*]] = insertelement <4 x i32> poison, i32 [[CONV31_I]], i32 0
+-; CHECK-NEXT:    [[TMP1:%.*]] = shufflevector <4 x i32> [[TMP0]], <4 x i32> poison, <4 x i32> zeroinitializer
+-; CHECK-NEXT:    [[TMP2:%.*]] = lshr <4 x i32> [[TMP1]], <i32 1, i32 2, i32 3, i32 4>
++; CHECK-NEXT:    [[TMP1:%.*]] = insertelement <4 x i32> poison, i32 [[CONV31_I]], i32 0
++; CHECK-NEXT:    [[SHUFFLE1:%.*]] = shufflevector <4 x i32> [[TMP1]], <4 x i32> poison, <4 x i32> zeroinitializer
++; CHECK-NEXT:    [[TMP2:%.*]] = lshr <4 x i32> [[SHUFFLE1]], <i32 1, i32 2, i32 3, i32 4>
+ ; CHECK-NEXT:    [[SHR_4_I_I:%.*]] = lshr i32 [[CONV31_I]], 5
+ ; CHECK-NEXT:    [[SHR_5_I_I:%.*]] = lshr i32 [[CONV31_I]], 6
+ ; CHECK-NEXT:    [[SHR_6_I_I:%.*]] = lshr i32 [[CONV31_I]], 7
+ ; CHECK-NEXT:    [[TMP3:%.*]] = insertelement <8 x i32> poison, i32 [[CONV31_I]], i32 0
+-; CHECK-NEXT:    [[TMP4:%.*]] = shufflevector <8 x i32> [[TMP3]], <8 x i32> poison, <8 x i32> zeroinitializer
+-; CHECK-NEXT:    [[TMP5:%.*]] = lshr <8 x i32> [[TMP4]], <i32 8, i32 9, i32 10, i32 11, i32 12, i32 13, i32 14, i32 15>
+-; CHECK-NEXT:    [[TMP6:%.*]] = insertelement <16 x i32> poison, i32 [[SUB_I]], i32 0
+-; CHECK-NEXT:    [[TMP7:%.*]] = shufflevector <4 x i32> [[TMP2]], <4 x i32> poison, <16 x i32> <i32 0, i32 1, i32 2, i32 3, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison>
+-; CHECK-NEXT:    [[TMP8:%.*]] = shufflevector <16 x i32> [[TMP6]], <16 x i32> [[TMP7]], <16 x i32> <i32 0, i32 16, i32 17, i32 18, i32 19, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison>
+-; CHECK-NEXT:    [[TMP9:%.*]] = insertelement <16 x i32> [[TMP8]], i32 [[SHR_4_I_I]], i32 5
+-; CHECK-NEXT:    [[TMP10:%.*]] = insertelement <16 x i32> [[TMP9]], i32 [[SHR_5_I_I]], i32 6
+-; CHECK-NEXT:    [[TMP11:%.*]] = insertelement <16 x i32> [[TMP10]], i32 [[SHR_6_I_I]], i32 7
+-; CHECK-NEXT:    [[TMP12:%.*]] = shufflevector <8 x i32> [[TMP5]], <8 x i32> poison, <16 x i32> <i32 0, i32 1, i32 2, i32 3, i32 4, i32 5, i32 6, i32 7, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison>
+-; CHECK-NEXT:    [[TMP13:%.*]] = shufflevector <16 x i32> [[TMP11]], <16 x i32> [[TMP12]], <16 x i32> <i32 0, i32 1, i32 2, i32 3, i32 4, i32 5, i32 6, i32 7, i32 16, i32 17, i32 18, i32 19, i32 20, i32 21, i32 22, i32 23>
+-; CHECK-NEXT:    [[TMP14:%.*]] = trunc <16 x i32> [[TMP13]] to <16 x i8>
+-; CHECK-NEXT:    [[TMP15:%.*]] = and <16 x i8> [[TMP14]], <i8 1, i8 1, i8 1, i8 1, i8 1, i8 1, i8 1, i8 1, i8 1, i8 1, i8 1, i8 1, i8 1, i8 1, i8 1, i8 1>
+-; CHECK-NEXT:    store <16 x i8> [[TMP15]], ptr undef, align 1
++; CHECK-NEXT:    [[SHUFFLE:%.*]] = shufflevector <8 x i32> [[TMP3]], <8 x i32> poison, <8 x i32> zeroinitializer
++; CHECK-NEXT:    [[TMP4:%.*]] = lshr <8 x i32> [[SHUFFLE]], <i32 8, i32 9, i32 10, i32 11, i32 12, i32 13, i32 14, i32 15>
++; CHECK-NEXT:    [[TMP5:%.*]] = insertelement <16 x i32> poison, i32 [[SUB_I]], i32 0
++; CHECK-NEXT:    [[TMP6:%.*]] = shufflevector <4 x i32> [[TMP2]], <4 x i32> poison, <16 x i32> <i32 0, i32 1, i32 2, i32 3, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison>
++; CHECK-NEXT:    [[TMP7:%.*]] = shufflevector <16 x i32> [[TMP5]], <16 x i32> [[TMP6]], <16 x i32> <i32 0, i32 16, i32 17, i32 18, i32 19, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison>
++; CHECK-NEXT:    [[TMP8:%.*]] = insertelement <16 x i32> [[TMP7]], i32 [[SHR_4_I_I]], i32 5
++; CHECK-NEXT:    [[TMP9:%.*]] = insertelement <16 x i32> [[TMP8]], i32 [[SHR_5_I_I]], i32 6
++; CHECK-NEXT:    [[TMP10:%.*]] = insertelement <16 x i32> [[TMP9]], i32 [[SHR_6_I_I]], i32 7
++; CHECK-NEXT:    [[TMP11:%.*]] = shufflevector <8 x i32> [[TMP4]], <8 x i32> poison, <16 x i32> <i32 0, i32 1, i32 2, i32 3, i32 4, i32 5, i32 6, i32 7, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison>
++; CHECK-NEXT:    [[TMP12:%.*]] = shufflevector <16 x i32> [[TMP10]], <16 x i32> [[TMP11]], <16 x i32> <i32 0, i32 1, i32 2, i32 3, i32 4, i32 5, i32 6, i32 7, i32 16, i32 17, i32 18, i32 19, i32 20, i32 21, i32 22, i32 23>
++; CHECK-NEXT:    [[TMP13:%.*]] = trunc <16 x i32> [[TMP12]] to <16 x i8>
++; CHECK-NEXT:    [[TMP14:%.*]] = and <16 x i8> [[TMP13]], <i8 1, i8 1, i8 1, i8 1, i8 1, i8 1, i8 1, i8 1, i8 1, i8 1, i8 1, i8 1, i8 1, i8 1, i8 1, i8 1>
++; CHECK-NEXT:    store <16 x i8> [[TMP14]], ptr undef, align 1
+ ; CHECK-NEXT:    unreachable
+ ; CHECK:       if.end50.i:
+ ; CHECK-NEXT:    ret void
+diff -ruN --strip-trailing-cr a/llvm/test/Transforms/SLPVectorizer/X86/reused-reductions-with-minbitwidth.ll b/llvm/test/Transforms/SLPVectorizer/X86/reused-reductions-with-minbitwidth.ll
+--- a/llvm/test/Transforms/SLPVectorizer/X86/reused-reductions-with-minbitwidth.ll
++++ b/llvm/test/Transforms/SLPVectorizer/X86/reused-reductions-with-minbitwidth.ll
+@@ -7,10 +7,12 @@
+ ; CHECK-NEXT:  entry:
+ ; CHECK-NEXT:    [[TMP0:%.*]] = insertelement <4 x i1> <i1 poison, i1 false, i1 false, i1 false>, i1 [[CMP5_NOT_31]], i32 0
+ ; CHECK-NEXT:    [[TMP1:%.*]] = select <4 x i1> [[TMP0]], <4 x i32> zeroinitializer, <4 x i32> zeroinitializer
+-; CHECK-NEXT:    [[TMP2:%.*]] = mul <4 x i32> [[TMP1]], <i32 2, i32 1, i32 1, i32 1>
+-; CHECK-NEXT:    [[TMP3:%.*]] = call i32 @llvm.vector.reduce.add.v4i32(<4 x i32> [[TMP2]])
+-; CHECK-NEXT:    [[TMP4:%.*]] = and i32 [[TMP3]], 0
+-; CHECK-NEXT:    [[CMP_NOT_I_I:%.*]] = icmp eq i32 [[TMP4]], 0
++; CHECK-NEXT:    [[TMP2:%.*]] = trunc <4 x i32> [[TMP1]] to <4 x i1>
++; CHECK-NEXT:    [[TMP3:%.*]] = zext <4 x i1> [[TMP2]] to <4 x i32>
++; CHECK-NEXT:    [[TMP4:%.*]] = mul <4 x i32> [[TMP3]], <i32 2, i32 1, i32 1, i32 1>
++; CHECK-NEXT:    [[TMP5:%.*]] = call i32 @llvm.vector.reduce.add.v4i32(<4 x i32> [[TMP4]])
++; CHECK-NEXT:    [[TMP6:%.*]] = and i32 [[TMP5]], 0
++; CHECK-NEXT:    [[CMP_NOT_I_I:%.*]] = icmp eq i32 [[TMP6]], 0
+ ; CHECK-NEXT:    ret i1 [[CMP_NOT_I_I]]
+ ;
+ entry:
+diff -ruN --strip-trailing-cr a/llvm/test/Transforms/SLPVectorizer/X86/store-insertelement-minbitwidth.ll b/llvm/test/Transforms/SLPVectorizer/X86/store-insertelement-minbitwidth.ll
+--- a/llvm/test/Transforms/SLPVectorizer/X86/store-insertelement-minbitwidth.ll
++++ b/llvm/test/Transforms/SLPVectorizer/X86/store-insertelement-minbitwidth.ll
+@@ -8,18 +8,17 @@
+ ; YAML-NEXT:  Function:        stores
+ ; YAML-NEXT:  Args:
+ ; YAML-NEXT:    - String:          'Stores SLP vectorized with cost '
+-; YAML-NEXT:    - Cost:            '-7'
++; YAML-NEXT:    - Cost:            '-3'
+ ; YAML-NEXT:    - String:          ' and with tree size '
+ ; YAML-NEXT:    - TreeSize:        '6'
+ define void @stores(ptr noalias %in, ptr noalias %inn, ptr noalias %out) {
+ ; CHECK-LABEL: @stores(
+ ; CHECK-NEXT:    [[TMP1:%.*]] = load <4 x i8>, ptr [[IN:%.*]], align 1
+ ; CHECK-NEXT:    [[TMP2:%.*]] = load <4 x i8>, ptr [[INN:%.*]], align 1
+-; CHECK-NEXT:    [[TMP3:%.*]] = zext <4 x i8> [[TMP1]] to <4 x i16>
+-; CHECK-NEXT:    [[TMP4:%.*]] = zext <4 x i8> [[TMP2]] to <4 x i16>
+-; CHECK-NEXT:    [[TMP5:%.*]] = add <4 x i16> [[TMP3]], [[TMP4]]
+-; CHECK-NEXT:    [[TMP6:%.*]] = zext <4 x i16> [[TMP5]] to <4 x i64>
+-; CHECK-NEXT:    store <4 x i64> [[TMP6]], ptr [[OUT:%.*]], align 4
++; CHECK-NEXT:    [[TMP3:%.*]] = zext <4 x i8> [[TMP1]] to <4 x i64>
++; CHECK-NEXT:    [[TMP4:%.*]] = zext <4 x i8> [[TMP2]] to <4 x i64>
++; CHECK-NEXT:    [[TMP5:%.*]] = add <4 x i64> [[TMP3]], [[TMP4]]
++; CHECK-NEXT:    store <4 x i64> [[TMP5]], ptr [[OUT:%.*]], align 4
+ ; CHECK-NEXT:    ret void
+ ;
+   %load.1 = load i8, ptr %in, align 1
+@@ -64,18 +63,17 @@
+ ; YAML-NEXT:  Function:        insertelems
+ ; YAML-NEXT:  Args:
+ ; YAML-NEXT:    - String:          'SLP vectorized with cost '
+-; YAML-NEXT:    - Cost:            '-9'
++; YAML-NEXT:    - Cost:            '-5'
+ ; YAML-NEXT:    - String:          ' and with tree size '
+ ; YAML-NEXT:    - TreeSize:        '6'
+ define <4 x i64> @insertelems(ptr noalias %in, ptr noalias %inn) {
+ ; CHECK-LABEL: @insertelems(
+ ; CHECK-NEXT:    [[TMP1:%.*]] = load <4 x i8>, ptr [[IN:%.*]], align 1
+ ; CHECK-NEXT:    [[TMP2:%.*]] = load <4 x i8>, ptr [[INN:%.*]], align 1
+-; CHECK-NEXT:    [[TMP3:%.*]] = zext <4 x i8> [[TMP1]] to <4 x i16>
+-; CHECK-NEXT:    [[TMP4:%.*]] = zext <4 x i8> [[TMP2]] to <4 x i16>
+-; CHECK-NEXT:    [[TMP5:%.*]] = add <4 x i16> [[TMP3]], [[TMP4]]
+-; CHECK-NEXT:    [[TMP6:%.*]] = zext <4 x i16> [[TMP5]] to <4 x i64>
+-; CHECK-NEXT:    ret <4 x i64> [[TMP6]]
++; CHECK-NEXT:    [[TMP3:%.*]] = zext <4 x i8> [[TMP1]] to <4 x i64>
++; CHECK-NEXT:    [[TMP4:%.*]] = zext <4 x i8> [[TMP2]] to <4 x i64>
++; CHECK-NEXT:    [[TMP5:%.*]] = add <4 x i64> [[TMP3]], [[TMP4]]
++; CHECK-NEXT:    ret <4 x i64> [[TMP5]]
+ ;
+   %load.1 = load i8, ptr %in, align 1
+   %gep.1 = getelementptr inbounds i8, ptr %in, i64 1
