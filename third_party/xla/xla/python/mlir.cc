@@ -136,7 +136,7 @@ absl::StatusOr<XlaComputation> PyMlirModuleToXlaComputation(
   return computation;
 }
 
-absl::StatusOr<std::string> PyMhloToStablehlo(const nb::bytes& mlir_module) {
+absl::StatusOr<std::string> PyMhloToStablehlo(std::string_view mlir_module) {
   mlir::MLIRContext context;
   if (VLOG_IS_ON(3)) context.disableMultithreading();
   // JAX can be customized in a way that involves operations from custom
@@ -146,10 +146,8 @@ absl::StatusOr<std::string> PyMhloToStablehlo(const nb::bytes& mlir_module) {
   // else unchanged.
   // In order to achieve that, we're allowing unregistered dialects here.
   context.allowUnregisteredDialects(true);
-  TF_ASSIGN_OR_RETURN(
-      mlir::OwningOpRef<mlir::ModuleOp> module,
-      ParseModule(&context,
-                  std::string_view(mlir_module.c_str(), mlir_module.size())));
+  TF_ASSIGN_OR_RETURN(mlir::OwningOpRef<mlir::ModuleOp> module,
+                      ParseModule(&context, mlir_module));
   mlir::PassManager pm(&context);
   if (VLOG_IS_ON(3)) EnablePrintBeforeAndAfter(pm);
   pm.addPass(mlir::mhlo::createHloLegalizeToStablehloPass());
@@ -216,9 +214,19 @@ void BuildMlirSubmodule(nb::module_& m) {
                   xla::ValueOrThrowWrapper(PyMlirModuleToXlaComputation),
                   nb::arg("mlir_module"), nb::arg("use_tuple_args") = false,
                   nb::arg("return_tuple") = false);
-  mlir_module.def("mhlo_to_stablehlo",
-                  xla::ValueOrThrowWrapper(PyMhloToStablehlo),
-                  nb::arg("mlir_module"));
+  mlir_module.def(
+      "mhlo_to_stablehlo",
+      [](const nb::bytes& mlir_module) {
+        return xla::ValueOrThrow(PyMhloToStablehlo(
+            std::string_view(mlir_module.c_str(), mlir_module.size())));
+      },
+      nb::arg("mlir_module"));
+  mlir_module.def(
+      "mhlo_to_stablehlo",
+      [](std::string_view mlir_module) {
+        return xla::ValueOrThrow(PyMhloToStablehlo(mlir_module));
+      },
+      nb::arg("mlir_module"));
   mlir_module.def("stablehlo_to_mhlo",
                   xla::ValueOrThrowWrapper(PyStablehloToMhlo),
                   nb::arg("mlir_module"));
