@@ -434,6 +434,13 @@ Status RestoreTensorsV2(OpKernelContext* context, const Tensor& prefix,
       reader_pool->Schedule(
           [op, &cache]() { op->run_with_new_reader(&cache); });
     }
+
+    // Wait for all scheduled work to finish and check the status of all
+    // ops that ran in the pool.
+    reader_pool.reset();
+    for (auto& op : restore_ops) {
+      TF_RETURN_IF_ERROR(op.status);
+    }
   } else {
     // If no restore parallelism is specified, we run large restore ops with
     // a modest parallelism, and small restore ops serially.
@@ -453,11 +460,13 @@ Status RestoreTensorsV2(OpKernelContext* context, const Tensor& prefix,
     for (auto* op : small_restore_ops) {
       TF_RETURN_IF_ERROR(op->run(&default_reader));
     }
-  }
 
-  // Check status of pool ops; this must come after the pool shuts down.
-  for (auto* op : large_restore_ops) {
-    TF_RETURN_IF_ERROR(op->status);
+    // Wait for all scheduled work to finish and check the status of all
+    // ops that ran in the pool.
+    reader_pool.reset();
+    for (auto* op : large_restore_ops) {
+      TF_RETURN_IF_ERROR(op->status);
+    }
   }
 
   for (const RestoreOp& restore_op : restore_ops) {
