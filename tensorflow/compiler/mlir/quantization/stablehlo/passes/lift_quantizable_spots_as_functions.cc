@@ -34,6 +34,7 @@ limitations under the License.
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
 #include "stablehlo/dialect/StablehloOps.h"  // from @stablehlo  // IWYU pragma: keep
 #include "tensorflow/compiler/mlir/quantization/common/attrs_and_constraints.h"
+#include "tensorflow/compiler/mlir/quantization/common/func.h"
 #include "tensorflow/compiler/mlir/quantization/common/lift_as_function_call.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/quantization_config.pb.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
@@ -110,19 +111,6 @@ namespace fusion_patterns {
 #include "tensorflow/compiler/mlir/quantization/stablehlo/passes/lift_quantizable_spots_as_functions_fusion.inc"
 }
 
-// Returns a `func::FuncOp` in `module_op` (not nested) whose name matches
-// `name`. Returns null if no such a function exists.
-// TODO: b/307620778 - Factor out "FindMainFuncOp" functionality.
-func::FuncOp FindFuncOp(ModuleOp module_op, const StringRef name) {
-  auto func_ops = module_op.getOps<func::FuncOp>();
-  auto func_itr = llvm::find_if(func_ops, [name](func::FuncOp func_op) {
-    return func_op.getName() == name;
-  });
-
-  if (func_itr == func_ops.end()) return {};
-  return *func_itr;
-}
-
 // Quantizable Unit matcher that uses lifted function's name for matching.
 class FunctionNameMatcher {
  public:
@@ -162,7 +150,7 @@ class FunctionNameMatcher {
 // TODO: b/307620778 - Support more advanced selective quantization methods.
 LogicalResult ApplyQuantizationSpec(const QuantizationSpec& spec,
                                     ModuleOp module_op) {
-  func::FuncOp main_func = FindFuncOp(module_op, "main");
+  func::FuncOp main_func = FindMainFuncOp(module_op);
   if (!main_func) return failure();
 
   const Method& quantization_method = spec.method();
@@ -181,7 +169,7 @@ LogicalResult ApplyQuantizationSpec(const QuantizationSpec& spec,
         xla_call_module_op->getAttrOfType<FlatSymbolRefAttr>("_entry_function")
             .getValue()
             .str();
-    func::FuncOp lifted_func = FindFuncOp(module_op, lifted_func_name);
+    auto lifted_func = module_op.lookupSymbol<func::FuncOp>(lifted_func_name);
 
     // Remove relevant attributes that enable quantization. This essentially
     // disables quantization for the matched `xla_call_module_op`.
