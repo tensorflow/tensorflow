@@ -1,1 +1,209 @@
 Auto generated patch. Do not edit or delete it, even if empty.
+diff -ruN --strip-trailing-cr a/clang/include/clang/Interpreter/Interpreter.h b/clang/include/clang/Interpreter/Interpreter.h
+--- a/clang/include/clang/Interpreter/Interpreter.h
++++ b/clang/include/clang/Interpreter/Interpreter.h
+@@ -48,8 +48,6 @@
+     UserArgs = Args;
+   }
+ 
+-  void SetTargetTriple(std::string TT) { TargetTriple = TT; }
+-
+   // General C++
+   llvm::Expected<std::unique_ptr<CompilerInstance>> CreateCpp();
+ 
+@@ -64,12 +62,11 @@
+ 
+ private:
+   static llvm::Expected<std::unique_ptr<CompilerInstance>>
+-  create(std::string TT, std::vector<const char *> &ClangArgv);
++  create(std::vector<const char *> &ClangArgv);
+ 
+   llvm::Expected<std::unique_ptr<CompilerInstance>> createCuda(bool device);
+ 
+   std::vector<const char *> UserArgs;
+-  std::optional<std::string> TargetTriple;
+ 
+   llvm::StringRef OffloadArch;
+   llvm::StringRef CudaSDKPath;
+diff -ruN --strip-trailing-cr a/clang/lib/Interpreter/Interpreter.cpp b/clang/lib/Interpreter/Interpreter.cpp
+--- a/clang/lib/Interpreter/Interpreter.cpp
++++ b/clang/lib/Interpreter/Interpreter.cpp
+@@ -132,8 +132,7 @@
+ } // anonymous namespace
+ 
+ llvm::Expected<std::unique_ptr<CompilerInstance>>
+-IncrementalCompilerBuilder::create(std::string TT,
+-                                   std::vector<const char *> &ClangArgv) {
++IncrementalCompilerBuilder::create(std::vector<const char *> &ClangArgv) {
+ 
+   // If we don't know ClangArgv0 or the address of main() at this point, try
+   // to guess it anyway (it's possible on some platforms).
+@@ -163,7 +162,8 @@
+   TextDiagnosticBuffer *DiagsBuffer = new TextDiagnosticBuffer;
+   DiagnosticsEngine Diags(DiagID, &*DiagOpts, DiagsBuffer);
+ 
+-  driver::Driver Driver(/*MainBinaryName=*/ClangArgv[0], TT, Diags);
++  driver::Driver Driver(/*MainBinaryName=*/ClangArgv[0],
++                        llvm::sys::getProcessTriple(), Diags);
+   Driver.setCheckInputsExist(false); // the input comes from mem buffers
+   llvm::ArrayRef<const char *> RF = llvm::ArrayRef(ClangArgv);
+   std::unique_ptr<driver::Compilation> Compilation(Driver.BuildCompilation(RF));
+@@ -185,8 +185,7 @@
+   Argv.push_back("-xc++");
+   Argv.insert(Argv.end(), UserArgs.begin(), UserArgs.end());
+ 
+-  std::string TT = TargetTriple ? *TargetTriple : llvm::sys::getProcessTriple();
+-  return IncrementalCompilerBuilder::create(TT, Argv);
++  return IncrementalCompilerBuilder::create(Argv);
+ }
+ 
+ llvm::Expected<std::unique_ptr<CompilerInstance>>
+@@ -214,8 +213,7 @@
+ 
+   Argv.insert(Argv.end(), UserArgs.begin(), UserArgs.end());
+ 
+-  std::string TT = TargetTriple ? *TargetTriple : llvm::sys::getProcessTriple();
+-  return IncrementalCompilerBuilder::create(TT, Argv);
++  return IncrementalCompilerBuilder::create(Argv);
+ }
+ 
+ llvm::Expected<std::unique_ptr<CompilerInstance>>
+diff -ruN --strip-trailing-cr a/clang/unittests/Interpreter/CMakeLists.txt b/clang/unittests/Interpreter/CMakeLists.txt
+--- a/clang/unittests/Interpreter/CMakeLists.txt
++++ b/clang/unittests/Interpreter/CMakeLists.txt
+@@ -7,7 +7,6 @@
+   )
+ 
+ add_clang_unittest(ClangReplInterpreterTests
+-  IncrementalCompilerBuilderTest.cpp
+   IncrementalProcessingTest.cpp
+   InterpreterTest.cpp
+   CodeCompletionTest.cpp
+diff -ruN --strip-trailing-cr a/clang/unittests/Interpreter/IncrementalCompilerBuilderTest.cpp b/clang/unittests/Interpreter/IncrementalCompilerBuilderTest.cpp
+--- a/clang/unittests/Interpreter/IncrementalCompilerBuilderTest.cpp
++++ b/clang/unittests/Interpreter/IncrementalCompilerBuilderTest.cpp
+@@ -1,35 +0,0 @@
+-//=== unittests/Interpreter/IncrementalCompilerBuilderTest.cpp ------------===//
+-//
+-// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+-// See https://llvm.org/LICENSE.txt for license information.
+-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+-//
+-//===----------------------------------------------------------------------===//
+-
+-#include "clang/Basic/TargetOptions.h"
+-#include "clang/Frontend/CompilerInstance.h"
+-#include "clang/Interpreter/Interpreter.h"
+-#include "llvm/Support/Error.h"
+-#include "gtest/gtest.h"
+-
+-using namespace llvm;
+-using namespace clang;
+-
+-namespace {
+-
+-TEST(IncrementalCompilerBuilder, SetCompilerArgs) {
+-  std::vector<const char *> ClangArgv = {"-Xclang", "-ast-dump-all"};
+-  auto CB = clang::IncrementalCompilerBuilder();
+-  CB.SetCompilerArgs(ClangArgv);
+-  auto CI = cantFail(CB.CreateCpp());
+-  EXPECT_TRUE(CI->getFrontendOpts().ASTDumpAll);
+-}
+-
+-TEST(IncrementalCompilerBuilder, SetTargetTriple) {
+-  auto CB = clang::IncrementalCompilerBuilder();
+-  CB.SetTargetTriple("armv6-none-eabi");
+-  auto CI = cantFail(CB.CreateCpp());
+-  EXPECT_EQ(CI->getTargetOpts().Triple, "armv6-none-unknown-eabi");
+-}
+-
+-} // end anonymous namespace
+diff -ruN --strip-trailing-cr a/llvm/lib/Transforms/Scalar/SROA.cpp b/llvm/lib/Transforms/Scalar/SROA.cpp
+--- a/llvm/lib/Transforms/Scalar/SROA.cpp
++++ b/llvm/lib/Transforms/Scalar/SROA.cpp
+@@ -4062,10 +4062,14 @@
+   bool unfoldGEPPhi(GetElementPtrInst &GEPI) {
+     // To prevent infinitely expanding recursive phis, bail if the GEP pointer
+     // operand (looking through the phi if it is the phi we want to unfold) is
+-    // an instruction besides an alloca.
++    // an instruction besides a static alloca.
+     PHINode *Phi = dyn_cast<PHINode>(GEPI.getPointerOperand());
+     auto IsInvalidPointerOperand = [](Value *V) {
+-      return isa<Instruction>(V) && !isa<AllocaInst>(V);
++      if (!isa<Instruction>(V))
++        return false;
++      if (auto *AI = dyn_cast<AllocaInst>(V))
++        return !AI->isStaticAlloca();
++      return true;
+     };
+     if (Phi) {
+       if (any_of(Phi->operands(), IsInvalidPointerOperand))
+diff -ruN --strip-trailing-cr a/llvm/test/Transforms/SROA/phi-gep.ll b/llvm/test/Transforms/SROA/phi-gep.ll
+--- a/llvm/test/Transforms/SROA/phi-gep.ll
++++ b/llvm/test/Transforms/SROA/phi-gep.ll
+@@ -638,6 +638,41 @@
+   ret i1 %icmp
+ }
+ 
++define i32 @test_phi_mem2reg_alloca_not_in_entry_block(i1 %arg) {
++; CHECK-LABEL: @test_phi_mem2reg_alloca_not_in_entry_block(
++; CHECK-NEXT:  bb:
++; CHECK-NEXT:    [[ALLOCA:%.*]] = alloca i64, align 8
++; CHECK-NEXT:    store i64 123, ptr [[ALLOCA]], align 4
++; CHECK-NEXT:    br label [[BB2:%.*]]
++; CHECK:       bb2:
++; CHECK-NEXT:    [[ALLOCA2:%.*]] = alloca i64, align 8
++; CHECK-NEXT:    store i64 124, ptr [[ALLOCA]], align 4
++; CHECK-NEXT:    br i1 [[ARG:%.*]], label [[BB3:%.*]], label [[BB4:%.*]]
++; CHECK:       bb3:
++; CHECK-NEXT:    br label [[BB4]]
++; CHECK:       bb4:
++; CHECK-NEXT:    [[PHI:%.*]] = phi ptr [ [[ALLOCA]], [[BB2]] ], [ [[ALLOCA2]], [[BB3]] ]
++; CHECK-NEXT:    [[GEP:%.*]] = getelementptr i32, ptr [[PHI]], i64 1
++; CHECK-NEXT:    [[LOAD:%.*]] = load i32, ptr [[GEP]], align 4
++; CHECK-NEXT:    ret i32 [[LOAD]]
++;
++bb:
++  %alloca = alloca i64
++  store i64 123, ptr %alloca
++  br label %bb2
++bb2:
++  %alloca2 = alloca i64
++  store i64 124, ptr %alloca
++  br i1 %arg, label %bb3, label %bb4
++bb3:
++  br label %bb4
++bb4:
++  %phi = phi ptr [ %alloca, %bb2 ], [ %alloca2, %bb3 ]
++  %gep = getelementptr i32, ptr %phi, i64 1
++  %load = load i32, ptr %gep
++  ret i32 %load
++}
++
+ define i64 @test_unfold_phi_duplicate_phi_entry(ptr %arg, i8 %arg1, i1 %arg2) {
+ ; CHECK-LABEL: @test_unfold_phi_duplicate_phi_entry(
+ ; CHECK-NEXT:  bb:
+diff -ruN --strip-trailing-cr a/utils/bazel/llvm-project-overlay/mlir/BUILD.bazel b/utils/bazel/llvm-project-overlay/mlir/BUILD.bazel
+--- a/utils/bazel/llvm-project-overlay/mlir/BUILD.bazel
++++ b/utils/bazel/llvm-project-overlay/mlir/BUILD.bazel
+@@ -35,17 +35,12 @@
+         "#cmakedefine01 MLIR_DEPRECATED_GPU_SERIALIZATION_ENABLE": "#define MLIR_DEPRECATED_GPU_SERIALIZATION_ENABLE 0",
+         "#cmakedefine01 MLIR_ENABLE_EXPENSIVE_PATTERN_API_CHECKS": "#define MLIR_ENABLE_EXPENSIVE_PATTERN_API_CHECKS 0",
+         "#cmakedefine MLIR_GREEDY_REWRITE_RANDOMIZER_SEED ${MLIR_GREEDY_REWRITE_RANDOMIZER_SEED}": "/* #undef MLIR_GREEDY_REWRITE_RANDOMIZER_SEED */",
++        "#cmakedefine01 MLIR_ENABLE_NVPTXCOMPILER": "#define MLIR_ENABLE_NVPTXCOMPILER 0",
+         "#cmakedefine01 MLIR_ENABLE_PDL_IN_PATTERNMATCH": "#define MLIR_ENABLE_PDL_IN_PATTERNMATCH 1",
+         "#cmakedefine01 MLIR_ENABLE_ROCM_CONVERSIONS": "#define MLIR_ENABLE_ROCM_CONVERSIONS 0",
+     } | if_cuda_available(
+-        {
+-            "#cmakedefine01 MLIR_ENABLE_CUDA_CONVERSIONS": "#define MLIR_ENABLE_CUDA_CONVERSIONS 1",
+-            "#cmakedefine01 MLIR_ENABLE_NVPTXCOMPILER": "#define MLIR_ENABLE_NVPTXCOMPILER 1",
+-        },
+-        {
+-            "#cmakedefine01 MLIR_ENABLE_CUDA_CONVERSIONS": "#define MLIR_ENABLE_CUDA_CONVERSIONS 0",
+-            "#cmakedefine01 MLIR_ENABLE_NVPTXCOMPILER": "#define MLIR_ENABLE_NVPTXCOMPILER 0",
+-        },
++        {"#cmakedefine01 MLIR_ENABLE_CUDA_CONVERSIONS": "#define MLIR_ENABLE_CUDA_CONVERSIONS 1"},
++        {"#cmakedefine01 MLIR_ENABLE_CUDA_CONVERSIONS": "#define MLIR_ENABLE_CUDA_CONVERSIONS 0"},
+     ),
+     template = "include/mlir/Config/mlir-config.h.cmake",
+ )
