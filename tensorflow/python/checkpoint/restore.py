@@ -15,13 +15,16 @@
 """Logic for restoring checkpointed values for Trackables."""
 
 import collections
+from typing import Optional, Mapping, Any
 
+from tensorflow.python.checkpoint import checkpoint_adapter
 from tensorflow.python.checkpoint import checkpoint_view
 from tensorflow.python.checkpoint import functional_saver
 from tensorflow.python.checkpoint import save_util_v1
 from tensorflow.python.checkpoint import saveable_compat
 from tensorflow.python.eager import context
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_io_ops as io_ops
 from tensorflow.python.ops import io_ops
@@ -38,7 +41,7 @@ from tensorflow.python.util import object_identity
 class CheckpointPosition(object):
   """Indicates a position within a `_CheckpointRestoreCoordinator`."""
 
-  __slots__ = ["_checkpoint", "_proto_id", "skip_restore"]
+  __slots__ = ["_checkpoint", "_proto_id", "skip_restore", "callback"]
 
   def __init__(self, checkpoint, proto_id):
     """Specify an object within a checkpoint.
@@ -52,6 +55,7 @@ class CheckpointPosition(object):
     # This may be set to True if the registered saver cannot be used with this
     # object.
     self.skip_restore = False
+    self.callback = checkpoint_adapter.ReshardCallback()
 
   def restore(self, trackable, reader=None):
     """Restore this value into `trackable`."""
@@ -97,14 +101,42 @@ class CheckpointPosition(object):
             f"({current_assignment} and {trackable}).")
       return False  # Not a new assignment
 
-  def is_simple_variable(self):
+  def update_resharding_callback(
+      self, callback: checkpoint_adapter.ReshardCallback
+  ):
+    """Add a resharding callback to the checkpoint.
+
+    This will be applied to the checkpoint value before being supplied to the
+    restore ops.
+
+    Args:
+     callback: Reshard callback for resharding this checkpoint position. Maybe
+       None.
+    """
+    if not isinstance(
+        self.callback, checkpoint_adapter.ReshardCallback
+    ):
+      raise TypeError("Cannot override resharding callback.")
+    self.callback = callback
+
+  def has_non_trivial_reshard_callback(self) -> bool:
+    """Determine whether this value has a non-trivial resharding callback."""
+    return not isinstance(
+        self.callback, checkpoint_adapter.ReshardCallback
+    )
+
+  def is_simple_variable(self) -> bool:
     """Determine whether this value is restorable with a Tensor initializer."""
     attributes = self.object_proto.attributes
-    return (len(attributes) == 1 and
-            attributes[0].name == constants.VARIABLE_VALUE_KEY and
-            not self.object_proto.children)
+    return (
+        len(attributes) == 1
+        and attributes[0].name == constants.VARIABLE_VALUE_KEY
+        and not self.object_proto.children
+    )
 
-  def value_tensors(self, shape_and_slices=None):
+  def value_tensors(
+      self, shape_and_slices: Optional[str] = None
+  ) -> Mapping[str, tensor.Tensor]:
     """Create value `Tensor`s for this object's attributes.
 
     Does not require that the Python object has been created. Used for
@@ -122,23 +154,36 @@ class CheckpointPosition(object):
     value_tensors = {}
     for serialized_tensor in self.object_proto.attributes:
       checkpoint_key = serialized_tensor.checkpoint_key
-      dtype = self._checkpoint.dtype_map[checkpoint_key]
-      base_type = dtype.base_dtype
       io_device = self._checkpoint.options.experimental_io_device or "cpu:0"
       with ops.init_scope():
         with ops.device(io_device):
           # Run the restore itself on the io_device(CPU or specified).
-          if (shape_and_slices is not None and
-              serialized_tensor.name in shape_and_slices):
+          if (
+              shape_and_slices is not None
+              and serialized_tensor.name in shape_and_slices
+          ):
             shape_and_slice = shape_and_slices[serialized_tensor.name]
           else:
             shape_and_slice = ""
-          value, = io_ops.restore_v2(
+          checkpoint_keys, full_shape_and_slices = (
+              self.callback.update_restore_inputs(
+                  checkpoint_key, shape_and_slice
+              )
+          )
+          dtypes = []
+          for key in checkpoint_keys:
+            dtype = self._checkpoint.dtype_map[key]
+            dtypes.append(dtype.base_dtype)
+          restored_values = io_ops.restore_v2(
               prefix=self._checkpoint.save_path_tensor,
-              tensor_names=[checkpoint_key],
-              shape_and_slices=[shape_and_slice],
-              dtypes=[base_type],
-              name="%s_checkpoint_read" % (serialized_tensor.name,))
+              tensor_names=checkpoint_keys,
+              shape_and_slices=full_shape_and_slices,
+              dtypes=dtypes,
+              name="%s_checkpoint_read" % (serialized_tensor.name,),
+          )
+          value = self.callback.reshard(
+              restored_values, shape_and_slice
+          )
         # Copy the value to the current device if necessary.
         value_tensors[serialized_tensor.name] = array_ops.identity(value)
     return value_tensors
@@ -393,8 +438,14 @@ class CheckpointPosition(object):
       return saver_name
     return None
 
-  def create_slot_variable_position(self, optimizer_object, variable,
-                                    slot_variable_id, slot_name):
+  def create_slot_variable_position(
+      self,
+      optimizer_object: Any,
+      variable: base.Trackable,
+      slot_variable_id: str,
+      slot_name: str,
+      reshard_callback: Optional[checkpoint_adapter.ReshardCallback] = None,
+  ):
     """Generates CheckpointPosition for a slot variable.
 
     Args:
@@ -402,6 +453,8 @@ class CheckpointPosition(object):
       variable: Variable associated with the slot variable.
       slot_variable_id: ID of the slot variable.
       slot_name: Name of the slot variable.
+      reshard_callback: A callback object for resharding value from checkpoint
+        at restore.
 
     Returns:
       If there is a slot variable in the `optimizer_object` that has not been
@@ -410,15 +463,28 @@ class CheckpointPosition(object):
         the slot variable itself).
     """
     slot_variable_position = CheckpointPosition(
-        checkpoint=self.checkpoint, proto_id=slot_variable_id)
+        checkpoint=self.checkpoint, proto_id=slot_variable_id
+    )
     # pylint: disable=protected-access
-    slot_variable = optimizer_object._create_or_restore_slot_variable(
-        slot_variable_position=slot_variable_position,
-        variable=variable,
-        slot_name=slot_name)
+    if reshard_callback is not None:
+      # slot_variable_shape kwarg is available only for optimizer_v2 objects.
+      slot_variable_position.update_resharding_callback(reshard_callback)
+      slot_variable = optimizer_object._create_or_restore_slot_variable(
+          slot_variable_position=slot_variable_position,
+          variable=variable,
+          slot_name=slot_name,
+          slot_variable_shape=variable.shape,
+      )
+    else:
+      slot_variable = optimizer_object._create_or_restore_slot_variable(
+          slot_variable_position=slot_variable_position,
+          variable=variable,
+          slot_name=slot_name,
+      )
     # pylint: enable=protected-access
-    if (slot_variable is not None and
-        slot_variable_position.bind_object(slot_variable)):
+    if slot_variable is not None and slot_variable_position.bind_object(
+        slot_variable
+    ):
       return slot_variable_position, slot_variable
     else:
       return None, None
@@ -447,8 +513,12 @@ class CheckpointPosition(object):
       current_position, _ = visit_queue.popleft()
 
       # Restore using the ops defined in a Saveable or registered function.
-      (new_restore_ops, new_tensor_saveables, new_python_positions,
-       new_registered_savers) = current_position._single_restore()  # pylint: disable=protected-access
+      (
+          new_restore_ops,
+          new_tensor_saveables,
+          new_python_positions,
+          new_registered_savers,
+      ) = current_position._single_restore()  # pylint: disable=protected-access
       restore_ops.extend(new_restore_ops)
       tensor_saveables.update(new_tensor_saveables)
       python_positions.extend(new_python_positions)
@@ -461,10 +531,9 @@ class CheckpointPosition(object):
 
     restore_ops.extend(
         current_position.checkpoint.restore_saveables(
-            tensor_saveables,
-            python_positions,
-            registered_savers,
-            reader=reader))
+            tensor_saveables, python_positions, registered_savers, reader=reader
+        )
+    )
     return restore_ops
 
   def _single_restore(self):
@@ -476,7 +545,8 @@ class CheckpointPosition(object):
     # need to actually restore the object.
     if checkpoint.restore_uid > trackable._update_uid:  # pylint: disable=protected-access
       restore_ops, tensor_saveables, python_positions, registered_savers = (
-          self.gather_ops_or_named_saveables())
+          self.gather_ops_or_named_saveables()
+      )
       trackable._update_uid = checkpoint.restore_uid  # pylint: disable=protected-access
     else:
       restore_ops = ()
@@ -524,8 +594,11 @@ def restore_nodes(save_path, nodes_to_restore):
     ckpt_contains_serialized_tensors = ckpt_view._object_graph_proto.nodes[  # pylint: disable=protected-access
         node_id].attributes
     node = ckpt_view._object_graph_proto.nodes[node_id]  # pylint: disable=protected-access
-    trackable_has_serialize_to_tensor = saveable_object_util.trackable_has_serialize_to_tensor(
-        current_trackable)
+    trackable_has_serialize_to_tensor = (
+        saveable_object_util.trackable_has_serialize_to_tensor(
+            current_trackable
+        )
+    )
     if not trackable_has_serialize_to_tensor:
       if not node.attributes:
         if saveable_object_util.saveable_objects_from_trackable(
@@ -539,8 +612,9 @@ def restore_nodes(save_path, nodes_to_restore):
       object_names = object_identity.ObjectIdentityDictionary()
       object_names[current_trackable] = trackable_utils.extract_object_name(
           node.attributes[0].checkpoint_key)
-      checkpoint_factory_map, _ = save_util_v1.get_checkpoint_factories_and_keys(
-          object_names, None)
+      checkpoint_factory_map, _ = (
+          save_util_v1.get_checkpoint_factories_and_keys(object_names, None)
+      )
       saveable_objects = save_util_v1.generate_saveable_objects(
           checkpoint_factory_map)[0]
       if len(node.attributes) != len(saveable_objects):
@@ -589,11 +663,21 @@ def restore_nodes(save_path, nodes_to_restore):
           save_path)
 
 
+def _maybe_get_adapter(checkpoint_position, trackable):
+  adapter = trackable._checkpoint_adapter(   # pylint: disable=protected-access
+      checkpoint_position.checkpoint.save_path_string
+  )
+  if adapter and adapter.is_applicable(trackable):
+    return adapter
+  return None
+
+
 def _queue_children_for_restoration(checkpoint_position, visit_queue):
   """Queues the restoration of trackable's children or defers them."""
   # pylint: disable=protected-access
   trackable = checkpoint_position.trackable
   trackable_children = trackable._trackable_children()
+  adapter = _maybe_get_adapter(checkpoint_position, trackable)
   for child in checkpoint_position.object_proto.children:
     # trackable._lookup_dependency can be expensive so first check if this node
     # already has an object correspondence. If so we skip this node.
@@ -615,12 +699,22 @@ def _queue_children_for_restoration(checkpoint_position, visit_queue):
         # If the field is not set, do a simple check to see if the dependency
         # has children and/or checkpointed values.
         has_value = bool(
-            child_proto.children or child_proto.attributes or
-            child_proto.slot_variables or
-            child_proto.HasField("registered_saver"))
+            child_proto.children
+            or child_proto.attributes
+            or child_proto.slot_variables
+            or child_proto.HasField("registered_saver")
+        )
       if has_value:
-        trackable._deferred_dependencies.setdefault(child.local_name,
-                                                    []).append(child_position)
+        local_trackable_name = child.local_name
+        if adapter:
+          local_trackable_name, reshard_callback = adapter.maybe_reshard(
+              child.local_name
+          )
+          if reshard_callback:
+            child_position.update_resharding_callback(reshard_callback)
+        trackable._deferred_dependencies.setdefault(
+            local_trackable_name, []
+        ).append(child_position)
     else:
       if child_position.bind_object(trackable=local_object):
         # This object's correspondence is new, so dependencies need to be
@@ -646,9 +740,18 @@ def _queue_slot_variables(checkpoint_position, visit_queue):
       checkpoint_position.proto_id, ())):
     slot_variable_position, slot_variable = (
         checkpoint_position.create_slot_variable_position(
-            trackable, deferred_slot_restoration.original_variable,
+            trackable,
+            deferred_slot_restoration.original_variable,
             deferred_slot_restoration.slot_variable_id,
-            deferred_slot_restoration.slot_name))
+            deferred_slot_restoration.slot_name,
+            # If the corresponding variable has a non trivial resharding
+            # attached, the the slot variable should be resharded in the same
+            # way.
+            checkpoint_position.reshard_callback
+            if checkpoint_position.has_non_trivial_reshard_callback()
+            else None,
+        )
+    )
     if slot_variable_position is not None:
       visit_queue.append((slot_variable_position, slot_variable))
   for slot_restoration in checkpoint.slot_restorations.pop(
@@ -672,8 +775,18 @@ def _queue_slot_variables(checkpoint_position, visit_queue):
     elif hasattr(optimizer_object, "_create_or_restore_slot_variable"):
       slot_variable_position, slot_variable = (
           checkpoint_position.create_slot_variable_position(
-              optimizer_object, trackable, slot_restoration.slot_variable_id,
-              slot_restoration.slot_name))
+              optimizer_object,
+              trackable,
+              slot_restoration.slot_variable_id,
+              slot_restoration.slot_name,
+              # If the corresponding variable has a non trivial resharding
+              # attached, the the slot variable should be resharded in the same
+              # way.
+              checkpoint_position.reshard_callback
+              if checkpoint_position.has_non_trivial_reshard_callback()
+              else None,
+          )
+      )
       if slot_variable_position is not None:
         visit_queue.append((slot_variable_position, slot_variable))
 

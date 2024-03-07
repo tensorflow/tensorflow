@@ -87,7 +87,7 @@ class EmbeddingReshardCallback(checkpoint_adapter.ReshardCallback):
     return self._object_local_name
 
   def update_restore_inputs(
-      self, checkpoint_key
+      self, checkpoint_key: str, shape_and_slice_spec: str
   ) -> tuple[Sequence[str], Sequence[str]]:
     keys = []
     slices = []
@@ -107,7 +107,9 @@ class EmbeddingReshardCallback(checkpoint_adapter.ReshardCallback):
       )
     return (keys, slices)
 
-  def reshard(self, checkpoint_values, shape_and_slice) -> tensor.Tensor:
+  def reshard(
+      self, checkpoint_values: tensor.Tensor, shape_and_slice: str
+  ) -> tensor.Tensor:
     def pad_value(value, variable_shape, table_shape):
       return array_ops.pad(
           value,
