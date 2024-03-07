@@ -35,6 +35,8 @@ limitations under the License.
 #include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/util/determinism.h"
 #include "tensorflow/core/util/padding.h"
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 
 namespace tensorflow {
 
@@ -105,8 +107,9 @@ void ParseSizes(OpKernelContext* context, const std::vector<int32>& strides,
   
   const Tensor& out_backprop = context->input(2);
   OP_REQUIRES(context, out_backprop.dims() == 4,
-              errors::InvalidArgument("out_backprop must be 4-dimensional",
-                                      out_backprop.shape().DebugString()));
+              absl::InvalidArgumentError(
+                  absl::StrCat("out_backprop must be 4-dimensional",
+                                out_backprop.shape().DebugString())));
   OP_REQUIRES_OK(context, GetWindowedOutputSize(
                               input_rows, filter_rows_eff, /*dilation_rate=*/1,
                               *stride_rows, padding, out_rows, pad_top));
