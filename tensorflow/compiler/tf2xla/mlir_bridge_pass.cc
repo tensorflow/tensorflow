@@ -89,17 +89,6 @@ bool HasDevice(mlir::ModuleOp module) {
   return !devices.device_names().empty();
 }
 
-bool HasTPUPartitionedCallOpInModule(mlir::ModuleOp module) {
-  bool has_tpu_partitioned_call = false;
-  for (auto func_op : module.getOps<mlir::func::FuncOp>()) {
-    func_op->walk([&](mlir::TF::TPUPartitionedCallOp op) {
-      has_tpu_partitioned_call = true;
-    });
-    if (has_tpu_partitioned_call) break;
-  }
-  return has_tpu_partitioned_call;
-}
-
 // V1 Compat Bridge extracts out a program into a submodule and runs clustering
 // only on the submodule.
 absl::Status RunLowerToRuntimeOpsOnSubmodule(ModuleOp parent_module,

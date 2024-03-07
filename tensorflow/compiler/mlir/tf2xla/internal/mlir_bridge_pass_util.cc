@@ -22,11 +22,13 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "llvm/ADT/StringRef.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/Visitors.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/tf2xla/tf2xla_defs.h"
 #include "tensorflow/core/common_runtime/function_body.h"
 #include "tensorflow/core/common_runtime/function_def_utils.h"
@@ -172,6 +174,17 @@ bool IsSupportedByReplicatedBridge(
 
 bool IsSupportedByReplicatedBridge(mlir::ModuleOp module) {
   return IsReplicatedGraph(module) || IsSingleCoreTPUGraph(module);
+}
+
+bool HasTPUPartitionedCallOpInModule(mlir::ModuleOp module) {
+  bool has_tpu_partitioned_call = false;
+  for (auto func_op : module.getOps<mlir::func::FuncOp>()) {
+    func_op->walk([&](mlir::TF::TPUPartitionedCallOp op) {
+      has_tpu_partitioned_call = true;
+    });
+    if (has_tpu_partitioned_call) break;
+  }
+  return has_tpu_partitioned_call;
 }
 
 }  // namespace tensorflow
