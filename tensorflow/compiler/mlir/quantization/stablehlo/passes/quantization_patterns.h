@@ -48,10 +48,6 @@ limitations under the License.
 
 namespace mlir::quant::stablehlo {
 
-// Checks if an op is quantizable in StableHLO quantizer. Argument op is not
-// necessarily a StableHLO op.
-bool IsOpQuantizableStableHlo(Operation* op);
-
 // Checks whether an op is connected with a quantized composite function. If
 // not, the same-scale op will not be quantized. This decision is based on the
 // current assumption that the performance gain of the same-scale op itself
