@@ -2,7 +2,7 @@ diff --git a/utils/bazel/llvm-project-overlay/llvm/BUILD.bazel b/utils/bazel/llv
 index c43ab727e285..7d848d2dffae 100644
 --- a/utils/bazel/llvm-project-overlay/llvm/BUILD.bazel
 +++ b/utils/bazel/llvm-project-overlay/llvm/BUILD.bazel
-@@ -30,6 +30,30 @@ exports_files([
+@@ -30,6 +30,36 @@ exports_files([
      "utils/lit/lit.py",
  ])
  
@@ -20,6 +20,12 @@ index c43ab727e285..7d848d2dffae 100644
 +        "apple_platform_type": "macos",
 +        "cpu": "darwin",
 +    },
++)
++
++py_library(
++    name = "lit_lib",
++    testonly = True,
++    srcs = ["utils/lit/lit.py"] + glob(["utils/lit/lit/**/*.py"]),
 +)
 +
 +config_setting(
