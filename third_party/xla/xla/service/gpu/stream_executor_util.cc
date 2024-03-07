@@ -333,8 +333,7 @@ absl::StatusOr<std::unique_ptr<se::Kernel>> CreateKernel(
   loader_spec.AddCudaPtxInMemory(ptx, kernel_name);
 
   if (!cubin_data.empty()) {
-    loader_spec.AddCudaCubinInMemory(
-        reinterpret_cast<const char*>(cubin_data.data()), kernel_name);
+    loader_spec.AddCudaCubinInMemory(cubin_data, kernel_name);
   }
 
   TF_ASSIGN_OR_RETURN(std::unique_ptr<se::Kernel> kernel,

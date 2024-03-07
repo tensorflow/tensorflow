@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/stream_executor/kernel_spec.h"
 
 #include <cstddef>
+#include <cstdint>
 #include <initializer_list>
 #include <memory>
 #include <string>
@@ -23,6 +24,7 @@ limitations under the License.
 #include <utility>
 
 #include "absl/strings/string_view.h"
+#include "absl/types/span.h"
 #include "tsl/platform/logging.h"
 
 namespace stream_executor {
@@ -33,9 +35,9 @@ KernelLoaderSpec::KernelLoaderSpec(absl::string_view kernel_name)
 InProcessSymbol::InProcessSymbol(void *symbol, std::string kernel_name)
     : KernelLoaderSpec(std::move(kernel_name)), symbol_(symbol) {}
 
-CudaCubinInMemory::CudaCubinInMemory(const char *bytes,
+CudaCubinInMemory::CudaCubinInMemory(absl::Span<const uint8_t> cubin_bytes,
                                      absl::string_view kernel_name)
-    : KernelLoaderSpec(kernel_name), bytes_(bytes) {}
+    : KernelLoaderSpec(kernel_name), cubin_bytes_(cubin_bytes) {}
 
 const std::tuple<int, int> CudaPtxInMemory::kMinimumCapability{1, 0};
 
@@ -87,9 +89,9 @@ MultiKernelLoaderSpec *MultiKernelLoaderSpec::AddInProcessSymbol(
 }
 
 MultiKernelLoaderSpec *MultiKernelLoaderSpec::AddCudaCubinInMemory(
-    const char *bytes, absl::string_view kernel_name) {
+    absl::Span<const uint8_t> cubin_bytes, absl::string_view kernel_name) {
   CHECK(cuda_cubin_in_memory_ == nullptr);
-  cuda_cubin_in_memory_.reset(new CudaCubinInMemory{bytes, kernel_name});
+  cuda_cubin_in_memory_.reset(new CudaCubinInMemory{cubin_bytes, kernel_name});
   return this;
 }
 
