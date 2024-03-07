@@ -97,8 +97,10 @@ genrule(
     testonly = 1,
     outs = [
         "test_graph_tfadd.pb",
-        "test_graph_tfadd_with_ckpt.ckpt",
-        "test_graph_tfadd_with_ckpt.pb",
+        # copybara:uncomment_begin
+        # "test_graph_tfadd_with_ckpt.ckpt",
+        # "test_graph_tfadd_with_ckpt.pb",
+        # copybara:uncomment_end
         "test_graph_tfadd_with_ckpt_saver.ckpt",
         "test_graph_tfadd_with_ckpt_saver.pb",
         "test_graph_tfadd_with_ckpt_saver.saver",
@@ -152,19 +154,21 @@ tfcompile_test_dep_configs = [
                 "no_mac",  # TODO(b/228273415)
             ],
         ),
-        tf_library(
-            name = "test_graph_tfadd_with_ckpt" + suffix,
-            testonly = 1,
-            config = "test_graph_tfadd_with_ckpt.config.pbtxt",
-            cpp_class = "AddWithCkptComp",
-            freeze_checkpoint = "test_graph_tfadd_with_ckpt.ckpt",
-            graph = "test_graph_tfadd_with_ckpt.pb",
-            mlir_components = mlir_component,
-            tags = [
-                "manual",
-                "no_mac",  # TODO(b/228273415)
-            ],
-        ),
+        # copybara:uncomment_begin
+        # tf_library(
+        # name = "test_graph_tfadd_with_ckpt" + suffix,
+        # testonly = 1,
+        # config = "test_graph_tfadd_with_ckpt.config.pbtxt",
+        # cpp_class = "AddWithCkptComp",
+        # freeze_checkpoint = "test_graph_tfadd_with_ckpt.ckpt",
+        # graph = "test_graph_tfadd_with_ckpt.pb",
+        # mlir_components = mlir_component,
+        # tags = [
+        # "manual",
+        # "no_mac",  # TODO(b/228273415)
+        # ],
+        # ),
+        # copybara:uncomment_end
         tf_library(
             name = "test_graph_tfadd_with_ckpt_saver" + suffix,
             testonly = 1,
