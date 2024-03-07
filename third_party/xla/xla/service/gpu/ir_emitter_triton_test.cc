@@ -685,7 +685,7 @@ triton_softmax_computation {
   parameter_1 = f32[32]{0} parameter(1)
   broadcast_1 = f32[32,16]{1,0} broadcast(parameter_1), dimensions={0}
   parameter_0 = f32[32,16]{1,0} parameter(0)
-  add_0 = f32[32,16]{1,0} add(b1, parameter_0)
+  add_0 = f32[32,16]{1,0} add(broadcast_1, parameter_0)
   c = f32[] constant(0)
   reduce_0 = f32[32]{0} reduce(parameter_0, c), dimensions={1}, to_apply=add_computation
   broadcast_0 = f32[32,16]{1,0} broadcast(reduce_0), dimensions={0}
@@ -754,7 +754,7 @@ triton_softmax_computation {
   parameter_1 = f32[32]{0} parameter(1)
   broadcast_1 = f32[16,32]{1,0} broadcast(parameter_1), dimensions={1}
   parameter_0 = f32[16,32]{1,0} parameter(0)
-  add0 = f32[16,32]{1,0} add(broadcast_1, parameter_0)
+  add_0 = f32[16,32]{1,0} add(broadcast_1, parameter_0)
   c = f32[] constant(0)
   reduce_0 = f32[16]{0} reduce(parameter_0, c), dimensions={1}, to_apply=add_computation
   broadcast_0 = f32[16,32]{1,0} broadcast(reduce_0), dimensions={0}
