@@ -98,10 +98,10 @@ int MaskTupleShardingStrictlyBetter(const HloSharding& lhs,
     if (lhs_shard.IsTuple()) {
       mask |= MaskTupleShardingStrictlyBetter(lhs_shard, rhs_shard);
     } else {
-      if (lhs_shard.IsManualLeaf() & rhs_shard.IsTileMaximalLeaf()) {
+      if (lhs_shard.IsManualLeaf() && rhs_shard.IsTileMaximalLeaf()) {
         mask |= 1;
       }
-      if (rhs_shard.IsManualLeaf() & lhs_shard.IsTileMaximalLeaf()) {
+      if (rhs_shard.IsManualLeaf() && lhs_shard.IsTileMaximalLeaf()) {
         mask |= 2;
       }
     }
@@ -115,7 +115,7 @@ bool IsShardingStrictlyBetter(const HloSharding& lhs, const HloSharding& rhs) {
   if (lhs.IsTuple()) {
     return MaskTupleShardingStrictlyBetter(lhs, rhs) == 1;
   }
-  return lhs.IsManualLeaf() & rhs.IsTileMaximalLeaf();
+  return lhs.IsManualLeaf() && rhs.IsTileMaximalLeaf();
 }
 
 // Implementation for returning a improved sharding from another sharding.
