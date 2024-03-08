@@ -138,10 +138,10 @@ void TransposeOp::Compute(OpKernelContext* ctx) {
   auto perm_size = perm.NumElements();
   for (int i = 0; i < perm_size; ++i) {
     if (perm_vector(i) < 0) {
-      return errors::InvalidArgument(
+      return absl::InvalidArgumentError(absl::StrCat(
           "The perm values should be non-negative "
           "but found ",
-          perm_vector(i), " at index ", i);
+          perm_vector(i), " at index ", i));
     }
   }
   // Although Tperm may be an int64 type, an int32 is sufficient to hold
