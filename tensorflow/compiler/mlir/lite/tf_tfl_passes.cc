@@ -155,6 +155,8 @@ void AddPreQuantizationStableHloToTfPasses(
       mlir::mhlo::createChloLegalizeToHloBasisOpsPass());
   pass_manager.addNestedPass<mlir::func::FuncOp>(
       mlir::mhlo::createChloLegalizeToHloPass());
+  pass_manager.addNestedPass<mlir::func::FuncOp>(
+      mlir::mhlo::createShapeLegalizeToHloPass());
   pass_manager.addPass(mlir::mhlo::createHloLegalizeToStablehloPass());
 
   // The following two passes find specific uniform quantization patterns in
