@@ -925,6 +925,7 @@ xla_test(
         "//xla/hlo/ir:hlo",
         "//xla/service:hlo_module_config",
         "//xla/service/gpu:cublas_cudnn",
+        "//xla/service/gpu:stream_executor_util",
         "//xla/stream_executor",
         "//xla/stream_executor:device_description",
         "//xla/stream_executor:dnn",
