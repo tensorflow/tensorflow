@@ -15,7 +15,7 @@ load(
     "cc_library",
 )
 load(
-    "//third_party/mkl:build_defs.bzl",
+    "@local_tsl//tsl/mkl:build_defs.bzl",
     "if_mkl",
 )
 

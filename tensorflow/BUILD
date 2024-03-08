@@ -35,7 +35,7 @@ load(
     "tf_additional_profiler_deps",
 )
 load(
-    "//third_party/mkl:build_defs.bzl",
+    "@local_tsl//tsl/mkl:build_defs.bzl",
     "if_mkl_ml",
 )
 load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
@@ -1095,7 +1095,7 @@ filegroup(
     name = "intel_binary_blob",
     data = if_mkl_ml(
         [
-            "//third_party/mkl:intel_binary_blob",
+            "@local_tsl//tsl/mkl:intel_binary_blob",
         ],
     ),
 )
@@ -1109,7 +1109,6 @@ bzl_library(
         "//tensorflow/core/platform:rules_cc_bzl",
         "//third_party/compute_library:build_defs_bzl",
         "//third_party/llvm_openmp:openmp_bzl",
-        "//third_party/mkl:build_defs_bzl",
         "//third_party/mkl_dnn:build_defs_bzl",
         "@bazel_skylib//lib:new_sets",
         "@bazel_skylib//rules:common_settings",
@@ -1117,6 +1116,7 @@ bzl_library(
         "@local_config_rocm//rocm:build_defs_bzl",
         "@local_config_tensorrt//:build_defs_bzl",
         "@local_tsl//tsl:tsl_bzl",
+        "@local_tsl//tsl/mkl:build_defs_bzl",
         "@local_tsl//tsl/platform/default:cuda_build_defs_bzl",
     ],
 )

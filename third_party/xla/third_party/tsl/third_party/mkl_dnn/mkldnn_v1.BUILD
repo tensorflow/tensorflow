@@ -1,7 +1,6 @@
 load("@local_tsl//tsl:tsl.bzl", "tf_openmp_copts")
-load("@local_tsl//third_party/mkl:build_defs.bzl", "if_mkl")
 load("@local_tsl//third_party/mkl_dnn:build_defs.bzl", "if_mkldnn_openmp")
-load("@local_tsl//third_party/mkl:build_defs.bzl", "if_mkl_ml")
+load("@local_tsl//tsl/mkl:build_defs.bzl", "if_mkl", "if_mkl_ml")
 load("@bazel_skylib//rules:expand_template.bzl", "expand_template")
 
 exports_files(["LICENSE"])
@@ -180,7 +179,7 @@ cc_library(
     textual_hdrs = _TEXTUAL_HDRS_LIST,
     visibility = ["//visibility:public"],
     deps = [":onednn_autogen"] + if_mkl_ml(
-        ["@local_tsl//third_party/mkl:intel_binary_blob"],
+        ["@local_tsl//tsl/mkl:intel_binary_blob"],
         [],
     ),
 )
