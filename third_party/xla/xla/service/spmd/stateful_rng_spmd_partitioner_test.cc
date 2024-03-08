@@ -120,11 +120,15 @@ TEST_F(StatefulRngSpmdPartitionerTest, VerifyThresholdSetCorrectly) {
   auto debug_options = HloTestBase::GetDebugOptionsForTest();
   int64_t threshold = 400;
   debug_options.set_xla_gpu_threshold_for_windowed_einsum_mib(threshold);
+  debug_options.set_xla_gpu_multi_streamed_windowed_einsum(true);
+
   StatefulRngSpmdPartitioner rng_spmd_partitioner(
       /*num_partitions=*/2, /*num_replicas*/ 1,
-      debug_options.xla_gpu_threshold_for_windowed_einsum_mib());
+      debug_options.xla_gpu_threshold_for_windowed_einsum_mib(),
+      debug_options.xla_gpu_multi_streamed_windowed_einsum());
   EXPECT_EQ(rng_spmd_partitioner.options().threshold_for_windowed_einsum_mib,
             threshold);
+  EXPECT_EQ(rng_spmd_partitioner.options().unroll_windowed_einsum, true);
 }
 }  // namespace
 }  // namespace spmd

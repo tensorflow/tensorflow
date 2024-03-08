@@ -142,6 +142,7 @@ limitations under the License.
 #include "xla/service/gpu/gpu_reduce_scatter_creator.h"
 #include "xla/service/gpu/gpu_sanitize_constant_names.h"
 #include "xla/service/gpu/gpu_scatter_expander.h"
+#include "xla/service/gpu/gpu_windowed_einsum_handler.h"
 #include "xla/service/gpu/hlo_fusion_stats.h"
 #include "xla/service/gpu/horizontal_loop_fusion.h"
 #include "xla/service/gpu/ir_emission_utils.h"
@@ -163,6 +164,8 @@ limitations under the License.
 #include "xla/service/gpu/runtime_intrinsics.h"
 #include "xla/service/gpu/scatter_slice_simplifier.h"
 #include "xla/service/gpu/softmax_rewriter_triton.h"
+#include "xla/service/gpu/stream_attribute_annotator.h"
+#include "xla/service/gpu/stream_attribute_async_wrapper.h"
 #include "xla/service/gpu/thunk.h"
 #include "xla/service/gpu/topk_specializer.h"
 #include "xla/service/gpu/topk_splitter.h"
@@ -688,7 +691,10 @@ absl::Status RunSPMDPasses(
         num_partitions, hlo_module->config().replica_count(),
         hlo_module->config()
             .debug_options()
-            .xla_gpu_threshold_for_windowed_einsum_mib());
+            .xla_gpu_threshold_for_windowed_einsum_mib(),
+        hlo_module->config()
+            .debug_options()
+            .xla_gpu_multi_streamed_windowed_einsum());
     spmd_pipeline.AddPass<CollectivePermuteMotion>();
     return spmd_pipeline.Run(hlo_module).status();
   } else {
@@ -705,6 +711,11 @@ absl::Status RunOptimizationPasses(
     const AlgebraicSimplifierOptions& layout_insensitive_algsimp_opts) {
   HloPassPipeline pipeline("optimization");
   AddHloVerifier(&pipeline);
+  if (hlo_module->config()
+          .debug_options()
+          .xla_gpu_multi_streamed_windowed_einsum()) {
+    pipeline.AddPass<GpuWindowedEinsumHandler>();
+  }
   pipeline.AddPass<TopKSplitter>();
   pipeline.AddPass<TopkSpecializer>();
   pipeline.AddPass<TopkDecomposer>();
@@ -1191,6 +1202,13 @@ absl::Status RunPostFusionSimplificationPasses(
   // Currently, the pass doesn't actually deduplicate the fusions.
   pipeline.AddPass<HloComputationDeduplicator>(
       /*mark_fusion_duplications=*/true);
+
+  if (hlo_module->config()
+          .debug_options()
+          .xla_gpu_multi_streamed_windowed_einsum()) {
+    pipeline.AddPass<StreamAttributeAnnotator>();
+    pipeline.AddPass<StreamAttributeAsyncWrapper>();
+  }
 
   return pipeline.Run(hlo_module).status();
 }

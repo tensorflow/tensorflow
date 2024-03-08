@@ -488,7 +488,8 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
     CHECK(!instr->mutable_operand(0)->IsRank2Transpose());
     CHECK(!instr->mutable_operand(1)->IsRank2Transpose());
     // Create a GemmBackendConfig based on the instruction.
-    GpuBackendConfig gpu_backend_config;
+    TF_ASSIGN_OR_RETURN(GpuBackendConfig gpu_backend_config,
+                        instr->backend_config<GpuBackendConfig>());
     GemmBackendConfig &gemm_backend_config =
         *gpu_backend_config.mutable_gemm_backend_config();
     gemm_backend_config.set_alpha_real(1.0);

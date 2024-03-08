@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/service/gpu/kernels/cutlass_gemm_fusion.h"
 
 #include <cstddef>
+#include <cstdint>
 #include <optional>
 #include <utility>
 #include <vector>
@@ -180,6 +181,22 @@ static absl::StatusOr<GemmWithDynamicSlice> MatchGemmWithDynamicUpdateSlice(
   return match;
 }
 
+static bool AreInstructionsOnTheSameStream(
+    absl::Span<const HloInstruction* const> instructions) {
+  absl::flat_hash_set<int64_t> stream_set;
+  for (const HloInstruction* inst : instructions) {
+    auto gpu_config = inst->backend_config<GpuBackendConfig>();
+    if (!gpu_config.ok()) {
+      continue;
+    }
+    stream_set.insert(gpu_config->operation_queue_id());
+    if (stream_set.size() > 1) {
+      return false;
+    }
+  }
+  return true;
+};
+
 //===----------------------------------------------------------------------===//
 // Cutlass Gemm Patterns
 //===----------------------------------------------------------------------===//
@@ -204,7 +221,8 @@ CutlassGemmWithDynamicUpdateSlicePattern::TryMatch(
   if (!update_slice) return std::nullopt;
 
   auto matched = MatchGemmWithDynamicUpdateSlice(update_slice);
-  if (!matched.ok()) return std::nullopt;
+  if (!matched.ok() || !AreInstructionsOnTheSameStream(matched->Instrs()))
+    return std::nullopt;
 
   CustomFusionConfig config;
   config.set_name("cutlass_gemm_with_dynamic_update_slice");

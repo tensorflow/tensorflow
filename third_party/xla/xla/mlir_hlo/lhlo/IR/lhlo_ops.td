@@ -86,6 +86,22 @@ def LHLO_CommandBufferOp: LHLO_Op<"command_buffer", []> {
   let arguments = (ins);
 }
 
+def LHLO_AsyncStartOp: LHLO_Op<"async_start", []> {
+  let summary = "Async start operator";
+  let description = [{
+    A dummy operation that represents the submission of a generic async start.
+  }];
+  let arguments = (ins);
+}
+
+def LHLO_AsyncDoneOp: LHLO_Op<"async_done", []> {
+  let summary = "Async done operator";
+  let description = [{
+    A dummy operation that represents the submission of a generic async done.
+  }];
+  let arguments = (ins);
+}
+
 //===----------------------------------------------------------------------===//
 // LMHLO unary elementwise op definitions.
 //===----------------------------------------------------------------------===//

@@ -295,7 +295,8 @@ enum class GpuResourceType {
   kGpuAsyncStreamSend = 0,         // The resource for P2P Send operation.
   kGpuAsyncStreamRecv = 1,         // The resource for P2P Recv operation.
   kGpuAsyncStreamCollectives = 2,  // The resource for collective operations.
-  kNumTargetResources = 3,
+  kGpuAsyncStreamComputes = 3,     // The resource for async compute operations.
+  kNumTargetResources = 4,
 };
 
 // Base GPU async tracker that enables async tracking only for async collectives
@@ -309,17 +310,27 @@ class GpuAsyncTrackerBase : public AsyncTracker {
       GetCanonicalAsyncOpFunc func = GpuGetCanonicalAsyncOp)
       : AsyncTracker(config, func) {}
 
+  bool IsAsyncComputeOp(const HloInstruction& hlo) const {
+    return (hlo.opcode() == HloOpcode::kAsyncStart ||
+            hlo.opcode() == HloOpcode::kAsyncDone) &&
+           !hlo_query::IsCollectiveCommunicationOp(
+               hlo.async_wrapped_opcode()) &&
+           hlo.async_execution_thread() != hlo.parent()->execution_thread();
+  }
+
   bool IsSupportedAsyncDone(const HloInstruction& hlo) const override {
-    return hlo_query::IsAsyncCollectiveDoneOp(&hlo,
-                                              /*include_send_recv=*/true) &&
-           !IsSyncCollective(hlo.operand(0));
+    return (hlo_query::IsAsyncCollectiveDoneOp(&hlo,
+                                               /*include_send_recv=*/true) &&
+            !IsSyncCollective(hlo.operand(0))) ||
+           IsAsyncComputeOp(hlo);
   }
 
   // Returns if this is an Async op start that the scheduler supports.
   bool IsSupportedAsyncStart(const HloInstruction& hlo) const override {
-    return hlo_query::IsAsyncCollectiveStartOp(&hlo,
-                                               /*include_send_recv=*/true) &&
-           !IsSyncCollective(&hlo);
+    return (hlo_query::IsAsyncCollectiveStartOp(&hlo,
+                                                /*include_send_recv=*/true) &&
+            !IsSyncCollective(&hlo)) ||
+           IsAsyncComputeOp(hlo);
   }
 };
 
@@ -348,8 +359,10 @@ class GpuAsyncTracker : public GpuAsyncTrackerBase {
         add_resource(GpuResourceType::kGpuAsyncStreamSend);
       } else if (op.inner == HloOpcode::kRecv) {
         add_resource(GpuResourceType::kGpuAsyncStreamRecv);
-      } else {
+      } else if (hlo_query::IsCollectiveCommunicationOp(op.inner)) {
         add_resource(GpuResourceType::kGpuAsyncStreamCollectives);
+      } else {
+        add_resource(GpuResourceType::kGpuAsyncStreamComputes);
       }
       return resources;
     }
@@ -380,6 +393,15 @@ class GpuAsyncTracker : public GpuAsyncTrackerBase {
     // async stream, we can increase this number and then do a post-pass on the
     // scheduled code to assign async stream-id to collectives (and actually
     // support > 1 async stream in the runtime).
+    // The only case we'd allow 2 for now is when the current resource is
+    // for an async computation operation which will be allocated with
+    // a dedicated compute stream. It can run concurrently with
+    // another collective.
+    if ((resource_type - first_target_resource) ==
+        static_cast<int64_t>(GpuResourceType::kGpuAsyncStreamComputes)) {
+      return 2;
+    }
+
     return 1;
   }
 
@@ -398,6 +420,8 @@ class GpuAsyncTracker : public GpuAsyncTrackerBase {
         return "kGpuAsyncStreamRecv";
       case GpuResourceType::kGpuAsyncStreamCollectives:
         return "kGpuAsyncStreamCollectives";
+      case GpuResourceType::kGpuAsyncStreamComputes:
+        return "kGpuAsyncStreamComputes";
       default:
         return "kUnsupportedResource";
     }

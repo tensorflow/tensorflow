@@ -687,6 +687,8 @@ message DebugOptions {
   bool xla_gpu_enable_libnvptxcompiler = 269;
 
   bool xla_gpu_enable_dot_strength_reduction = 270;
+  // Whether to use multiple compute streams to run windowed einsum.
+  bool xla_gpu_multi_streamed_windowed_einsum = 280;
 
   // If enabled, uses bf16_6way gemm to compute F32 gemm.
   bool xla_gpu_enable_bf16_6way_gemm = 271;
@@ -707,7 +709,7 @@ message DebugOptions {
   // Let GEMM fusion autotuning probe cuDNN as a backend.
   bool xla_gpu_cudnn_gemm_fusion = 277;
 
-  // Next id: 280
+  // Next id: 281
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.
