@@ -53,7 +53,7 @@ StatusOr<OptimizedFunctionGraphInfo> OptimizedFunctionGraphInfo::FromProto(
   options.allow_internal_ops = true;
   options.expect_device_spec = true;
   TF_RETURN_IF_ERROR(ConvertGraphDefToGraph(
-      options, std::move(proto.function_graph()), graph.get()));
+      options, std::move(*proto.mutable_function_graph()), graph.get()));
 
   // Clear both library and registry as the op lookup should be from lib_def.
   graph->mutable_flib_def()->set_default_registry(nullptr);
