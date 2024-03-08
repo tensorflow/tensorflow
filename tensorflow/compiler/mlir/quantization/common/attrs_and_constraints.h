@@ -37,9 +37,9 @@ namespace mlir::quant {
 
 constexpr char kAttrMapAttribute[] = "attr_map";
 
-// TODO(b/238829558): Populate quantization config based on the
+// TODO: b/238829558 - Populate quantization config based on the
 // QuantizationOptions proto.
-// TODO(b/263449239): Put the OpSet aliases separately within each file
+// TODO: b/263449239 - Put the OpSet aliases separately within each file
 using OpSet = tensorflow::quantization::OpSet;
 
 // Returns true if the value has static shape.
