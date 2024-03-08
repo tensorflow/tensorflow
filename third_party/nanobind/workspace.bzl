@@ -11,5 +11,6 @@ def repo():
         build_file = "//third_party/nanobind:nanobind.BUILD",
         patch_file = [
             "//third_party/nanobind:pr438.patch",  # Remove when updating to nanobind 2.0.0.
+            "//third_party/nanobind:pr461.patch",  # Remove when updating to nanobind 2.0.0.
         ],
     )
