@@ -47,8 +47,8 @@ const absl::string_view kHostCpusPlaneName = "Host CPUs";
 const absl::string_view kSyscallsPlaneName = "Syscalls";
 
 const absl::string_view kStepLineName = "Steps";
-const absl::string_view kTensorFlowNameScopeLineName = "TensorFlow Name Scope";
-const absl::string_view kTensorFlowOpLineName = "TensorFlow Ops";
+const absl::string_view kTensorFlowNameScopeLineName = "Framework Name Scope";
+const absl::string_view kTensorFlowOpLineName = "Framework Ops";
 const absl::string_view kXlaModuleLineName = "XLA Modules";
 const absl::string_view kXlaOpLineName = "XLA Ops";
 const absl::string_view kXlaAsyncOpLineName = "Async XLA Ops";
