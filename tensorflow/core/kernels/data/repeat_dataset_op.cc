@@ -379,6 +379,12 @@ class RepeatDatasetOp::Dataset : public DatasetBase {
       int64_t repeat_count = i_;
       return [parent_index_mapper, input_cardinality,
               repeat_count](int64_t element_position) -> int64_t {
+        if (element_position >= input_cardinality) {
+          // The input element position is out-of-range. The caller is
+          // responsible for handle this case (e.g.: returning end_of_sequence).
+          return element_position;
+        }
+
         // First, maps the input indices from
         // [0, input_range] to [0, input_range * repetitions].
         // Then, reduces the shuffled indices to [0, input_range] by taking the
