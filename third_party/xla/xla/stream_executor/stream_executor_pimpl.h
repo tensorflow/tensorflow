@@ -554,8 +554,7 @@ ScopedDeviceMemory<ElemT>::ScopedDeviceMemory(
     : ScopedDeviceMemory(parent, parent->AllocateArray<ElemT>(values.size())) {
   if (ptr() != nullptr) {
     std::vector<ElemT> local(values);
-    if (!parent->SynchronousMemcpy(ptr(), const_cast<const ElemT*>(&local[0]),
-                                   ptr()->size())) {
+    if (!parent->SynchronousMemcpy(ptr(), local.data(), ptr()->size())) {
       TF_CHECK_OK(Free());
     }
   }

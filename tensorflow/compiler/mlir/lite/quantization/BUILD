@@ -41,8 +41,6 @@ cc_library(
         "//tensorflow/compiler/mlir/lite/quantization/ir:QuantOps",
         "//tensorflow/compiler/mlir/tensorflow:import_utils",
         "//tensorflow/compiler/mlir/tensorflow:location_utils",
-        "//tensorflow/core:lib_proto_parsing",
-        "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:FuncDialect",
