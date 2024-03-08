@@ -499,6 +499,7 @@ class QuantizedConv2DOp : public OpKernel {
       OP_REQUIRES(context, input.shape().dim_size(i) != 0,
                   absl::InvalidArgumentError(
                       "Invalid input: Shapes dimension cannot be 0."));
+    }
 
     // Input filter is of the following dimensions:
     // [ filter_rows, filter_cols, in_depth, out_depth]
