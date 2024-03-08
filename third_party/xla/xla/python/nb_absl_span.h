@@ -34,13 +34,13 @@ struct type_caster<absl::Span<T const>> {
 
   using Caster = make_caster<T>;
 
-  list_caster<std::vector<T>, T> list_caster;
+  list_caster<std::vector<T>, T> vec_caster;
 
   bool from_python(handle src, uint8_t flags, cleanup_list *cleanup) noexcept {
-    if (!list_caster.from_python(src, flags, cleanup)) {
+    if (!vec_caster.from_python(src, flags, cleanup)) {
       return false;
     }
-    value = list_caster.value;
+    value = vec_caster.value;
     return true;
   }
 
