@@ -15,6 +15,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_MLIR_QUANTIZATION_COMMON_LIFT_AS_FUNCTION_CALL_H_
 #define TENSORFLOW_COMPILER_MLIR_QUANTIZATION_COMMON_LIFT_AS_FUNCTION_CALL_H_
 
+#include "absl/status/statusor.h"
 #include "llvm/ADT/SmallVector.h"
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
@@ -22,6 +23,8 @@ limitations under the License.
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/quantization/stablehlo/quantization_config.pb.h"
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 
 namespace mlir::quant {
 
@@ -49,6 +52,13 @@ bool IsInLiftedFunc(Operation &op);
 
 // Checks if the given einsum op is supported for XlaDotV2 quantization.
 bool IsEinsumSupportedByXlaDotV2(mlir::StringAttr equation_attr);
+
+// Gets the quantization method from the given `XlaCallModuleOp`. It is
+// retrieved from the `kQuantizationMethodAttr` string attribute. Returns
+// `absl::InvalidArgumentError` when the attribute doesn't exist. Returns
+// `absl::InternalError` when parsing the attribute to `Method` failed.
+absl::StatusOr<::stablehlo::quantization::Method> GetQuantizationMethod(
+    TF::XlaCallModuleOp xla_call_module_op);
 
 // Creates a function to wrap the section between arguments and results.
 // The generated function call op type will be decided by the given call_op_type

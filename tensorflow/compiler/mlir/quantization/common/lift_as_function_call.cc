@@ -22,6 +22,8 @@ limitations under the License.
 #include <string>
 
 #include "absl/container/flat_hash_set.h"
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
 #include "llvm/ADT/DenseMap.h"
@@ -47,14 +49,19 @@ limitations under the License.
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/quantization/common/attrs_and_constraints.h"
 #include "tensorflow/compiler/mlir/quantization/common/quantization_lib/quantization_utils.h"
+#include "tensorflow/compiler/mlir/quantization/stablehlo/quantization_config.pb.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/utils/stablehlo_type_utils.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/cc/quantization_unit_loc.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/xla_call_module_attrs.h"
 #include "tensorflow/core/ir/types/dialect.h"
 #include "tensorflow/core/platform/mutex.h"
+#include "tsl/platform/protobuf.h"  // IWYU pragma: keep
 
 namespace mlir::quant {
+
+using ::stablehlo::quantization::Method;
+using ::tsl::protobuf::TextFormat;
 
 // Default version number for native serialization.
 constexpr int64_t kDefaultVersion = 9;
@@ -461,6 +468,25 @@ bool IsEinsumSupportedByXlaDotV2(mlir::StringAttr equation_attr) {
   int batch_dim_size = std::max(rhs_batch_dim_size, lhs_batch_dim_size);
   return lhs_out_idx_start >= batch_dim_size &&
          rhs_out_idx_start >= batch_dim_size;
+}
+
+absl::StatusOr<Method> GetQuantizationMethod(
+    TF::XlaCallModuleOp xla_call_module_op) {
+  const auto quantization_method_attr =
+      xla_call_module_op->getAttrOfType<StringAttr>(kQuantizationMethodAttr);
+  if (!quantization_method_attr) {
+    return absl::InvalidArgumentError(absl::StrCat(
+        "Attribute ", kQuantizationMethodAttr.str(), " is not found."));
+  }
+
+  Method quantization_method;
+  const std::string method_txtpb = quantization_method_attr.getValue().str();
+  if (!TextFormat::ParseFromString(method_txtpb, &quantization_method)) {
+    return absl::InternalError(
+        absl::StrCat("Failed to parse Method from textproto: ", method_txtpb));
+  }
+
+  return quantization_method;
 }
 
 }  // namespace mlir::quant
