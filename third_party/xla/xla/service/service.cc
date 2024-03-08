@@ -424,7 +424,7 @@ Service::ExecuteParallelAndRegisterResult(
     Status block_status = streams[i]->BlockHostUntilDone();
     if (!block_status.ok()) {
       return Internal("failed to complete execution for stream %d: %s", i,
-                           block_status.message());
+                      block_status.message());
     }
   }
 
@@ -470,7 +470,7 @@ absl::StatusOr<GlobalDataHandle> Service::ExecuteAndRegisterResult(
 
   if (options_.number_of_replicas() == 1) {
     TF_ASSIGN_OR_RETURN(auto result, executable->ExecuteOnStreamWrapper(
-                                         &run_options[0], arguments[0]));
+                                         run_options.data(), arguments[0]));
     return allocation_tracker_.Register(std::move(result), result_tag);
   }
 

@@ -98,7 +98,7 @@ bool IsTpuUsed(int64_t pid) {
     int64_t fd;
     if (!absl::SimpleAtoi(ent->d_name, &fd)) continue;
     path = absl::StrCat("/proc/", pid, "/fd/", fd);
-    if (!readlink(path.c_str(), &line[0], line.size())) continue;
+    if (!readlink(path.c_str(), line.data(), line.size())) continue;
     if (line != tpu_dev_path) continue;
     return true;
   }

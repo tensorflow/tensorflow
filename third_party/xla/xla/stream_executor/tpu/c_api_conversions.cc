@@ -431,8 +431,7 @@ XLA_ShapeIndex ToC(const xla::ShapeIndex& xla_shape) {
 }
 
 xla::ShapeIndex FromC(XLA_ShapeIndex* c_shape) {
-  return xla::ShapeIndex(&c_shape->indices[0],
-                         &c_shape->indices[c_shape->count]);
+  return xla::ShapeIndex(c_shape->indices, c_shape->indices + c_shape->count);
 }
 
 void ToC(const xla::LiteralSlice& literal, XLA_Literal* c_literal) {
