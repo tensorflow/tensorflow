@@ -274,7 +274,8 @@ absl::Status GpuExecutor::GetKernel(const MultiKernelLoaderSpec& spec,
   if (spec.has_cuda_cubin_in_memory()) {
     kernel_name = &spec.cuda_cubin_in_memory().kernel_name();
 
-    const char* hsaco = spec.cuda_cubin_in_memory().bytes();
+    const char* hsaco = reinterpret_cast<const char*>(
+        spec.cuda_cubin_in_memory().cubin_bytes().data());
     absl::MutexLock lock{&in_memory_modules_mu_};
     module = in_memory_modules_[hsaco];
 
