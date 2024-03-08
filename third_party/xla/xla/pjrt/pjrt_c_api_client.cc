@@ -1080,12 +1080,11 @@ PjRtCApiExecutable::GetHloModules() const {
     pm.addPass(mlir::mhlo::createStablehloLegalizeToHloPass());
     if (mlir::failed(pm.run(module.get())))
       return xla::Internal("failed to convert to MHLO");
-    mlir::MlirToHloConversionOptions options;
     // TODO(jieying): Tuple args should really come from GetCompileOptions (or
     // equivalent) once implemented.
-    TF_RETURN_IF_ERROR(mlir::ConvertMlirHloToHlo(
-        module.get(), &hlo_proto, /*use_tuple_args=*/false,
-        /*return_tuple=*/false, options));
+    TF_RETURN_IF_ERROR(mlir::ConvertMlirHloToHlo(module.get(), &hlo_proto,
+                                                 /*use_tuple_args=*/false,
+                                                 /*return_tuple=*/false));
     xla::DebugOptions debug_options;
     TF_ASSIGN_OR_RETURN(xla::HloModuleConfig module_config,
                         xla::HloModule::CreateModuleConfigFromProto(
