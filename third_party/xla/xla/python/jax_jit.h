@@ -16,15 +16,18 @@ limitations under the License.
 #ifndef XLA_PYTHON_JAX_JIT_H_
 #define XLA_PYTHON_JAX_JIT_H_
 
-#include <memory>
+#include <Python.h>
+
 #include <optional>
 #include <stdexcept>
 #include <string>
+#include <string_view>
 #include <utility>
 #include <vector>
 
 // placeholder for index annotation headers
 #include "absl/container/inlined_vector.h"
+#include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/types/span.h"
 #include "third_party/nanobind/include/nanobind/nanobind.h"
@@ -35,6 +38,8 @@ limitations under the License.
 #include "xla/python/python_ref_manager.h"
 #include "xla/python/pytree.h"
 #include "xla/python/sharding.h"
+#include "tsl/concurrency/ref_count.h"
+#include "tsl/platform/logging.h"
 
 namespace jax {
 
@@ -99,7 +104,7 @@ std::optional<pybind11::function> GetPostHook();
 // (a) equality (delegated to Python) of the static arguments.
 struct CallSignature {
   // Not part of the signature, but we need it for error messages.
-  absl::string_view function_name;
+  std::string_view function_name;
 
   // A PyTreeDef for each dynamic argument, positional arguments first
   // followed by keyword arguments. Keyword arguments are in the order given
@@ -160,7 +165,8 @@ H AbslHashValue(H h, const CallSignature& s) {
   // slow python hashing function. Consider implementing hashing function and
   // equality checks in C++ in jax::Sharding and use those here.
   for (const auto& sharding : s.dynamic_arg_shardings) {
-    h = H::combine(std::move(h), ShardingHash(sharding));
+    // TODO(phawkins): remove .ptr() after nanobind transition is complete.
+    h = H::combine(std::move(h), ShardingHash(sharding.ptr()));
   }
 
   for (const auto& name : s.dynamic_arg_names) {
@@ -219,13 +225,13 @@ struct ParsedArgumentsAsBuffers {
 
 // Filter out static arguments, flatten and concatenate other arguments (i.e.
 // dynamic positional and keyword arguments), filling `arguments` in place.
-xla::Status ParseArguments(absl::Span<PyObject* const> positional_args,
-                           absl::Span<PyObject* const> keyword_args,
-                           pybind11::handle kwnames,
-                           absl::Span<int const> static_argnums,
-                           absl::Span<pybind11::str const> static_argnames,
-                           xla::PyTreeRegistry* pytree_registry,
-                           ParsedArgumentsAsBuffers& arguments);
+absl::Status ParseArguments(absl::Span<PyObject* const> positional_args,
+                            absl::Span<PyObject* const> keyword_args,
+                            pybind11::handle kwnames,
+                            absl::Span<int const> static_argnums,
+                            absl::Span<pybind11::str const> static_argnames,
+                            xla::PyTreeRegistry* pytree_registry,
+                            ParsedArgumentsAsBuffers& arguments);
 
 // The function to call in `xla.cc` to add the bindings for this module.
 void BuildJaxjitSubmodule(pybind11::module& m);

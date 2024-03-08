@@ -29,9 +29,6 @@ limitations under the License.
 #include <Python.h>
 
 #include <algorithm>
-#include <cstddef>
-#include <exception>
-#include <memory>
 #include <optional>
 #include <stdexcept>
 #include <string>
@@ -39,8 +36,11 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/base/attributes.h"
+#include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
+#include "absl/strings/str_join.h"
 #include "absl/types/span.h"
 #include "third_party/nanobind/include/nanobind/nanobind.h"
 #include "pybind11/cast.h"  // from @pybind11
@@ -52,7 +52,7 @@ limitations under the License.
 #include "xla/python/pytree.h"
 #include "xla/python/sharding.h"
 #include "xla/python/types.h"
-#include "tsl/platform/status.h"
+#include "tsl/platform/logging.h"
 #include "tsl/profiler/lib/traceme.h"
 
 namespace jax {
@@ -192,8 +192,10 @@ bool CallSignature::operator==(const CallSignature& other) const {
          std::equal(dynamic_arg_shardings.begin(), dynamic_arg_shardings.end(),
                     other.dynamic_arg_shardings.begin(),
                     other.dynamic_arg_shardings.end(),
-                    [](const py::object& a, const py::object& b) {
-                      return ShardingEqual(a, b);
+                    [](py::handle a, py::handle b) {
+                      // TODO(phawkins): remove .ptr() after nanobind transition
+                      // is complete.
+                      return ShardingEqual(a.ptr(), b.ptr());
                     }) &&
          std::equal(
              static_args.begin(), static_args.end(), other.static_args.begin(),
@@ -228,13 +230,13 @@ bool CallSignature::operator==(const CallSignature& other) const {
 
 // Filter out static arguments, flatten and concatenate other arguments (i.e.
 // dynamic positional and keyword arguments), filling `arguments` in place.
-xla::Status ParseArguments(absl::Span<PyObject* const> positional_args,
-                           absl::Span<PyObject* const> keyword_args,
-                           py::handle kwnames,
-                           absl::Span<int const> static_argnums,
-                           absl::Span<py::str const> static_argnames,
-                           xla::PyTreeRegistry* pytree_registry,
-                           ParsedArgumentsAsBuffers& arguments) {
+absl::Status ParseArguments(absl::Span<PyObject* const> positional_args,
+                            absl::Span<PyObject* const> keyword_args,
+                            py::handle kwnames,
+                            absl::Span<int const> static_argnums,
+                            absl::Span<py::str const> static_argnames,
+                            xla::PyTreeRegistry* pytree_registry,
+                            ParsedArgumentsAsBuffers& arguments) {
   tsl::profiler::TraceMe traceme("ParseArguments");
 
   arguments.flat_dynamic_args.reserve(positional_args.size() +

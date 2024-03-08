@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "xla/python/types.h"
 
+#include <Python.h>
+
 #include <cstdint>
 #include <memory>
 #include <optional>
@@ -487,6 +489,14 @@ absl::StatusOr<nb::object> LiteralToPython(
   return nb_numpy_ndarray(dtype, m.shape().dimensions(),
                           ByteStridesForShape(m.shape()), m.untyped_data(),
                           literal_object);
+}
+
+nb::tuple MutableSpanToNbTuple(absl::Span<nb::object> xs) {
+  nb::tuple out = nb::steal<nb::tuple>(PyTuple_New(xs.size()));
+  for (int i = 0; i < xs.size(); ++i) {
+    PyTuple_SET_ITEM(out.ptr(), i, xs[i].release().ptr());
+  }
+  return out;
 }
 
 template <typename IntType>

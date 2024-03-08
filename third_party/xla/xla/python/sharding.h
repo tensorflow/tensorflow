@@ -16,22 +16,21 @@ limitations under the License.
 #ifndef XLA_PYTHON_SHARDING_H_
 #define XLA_PYTHON_SHARDING_H_
 
+#include <cstddef>
 #include <memory>
 #include <optional>
 #include <string>
 #include <utility>
-#include <variant>
-#include <vector>
 
 // placeholder for index annotation headers
-#include "absl/types/span.h"
-#include "pybind11/cast.h"  // from @pybind11
-#include "pybind11/numpy.h"  // from @pybind11
-#include "pybind11/pybind11.h"  // from @pybind11
-#include "pybind11/pytypes.h"  // from @pybind11
+#include "absl/hash/hash.h"
+#include "third_party/nanobind/include/nanobind/nanobind.h"
+#include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/status_casters.h"
 #include "xla/python/ifrt/device.h"
+#include "xla/python/nb_class_ptr.h"
+#include "xla/python/nb_numpy.h"
 #include "xla/python/py_client.h"
 #include "xla/python/py_device_list.h"
 #include "xla/python/sharded_device_array.h"
@@ -49,7 +48,7 @@ class Sharding {
 
   virtual ~Sharding() = default;
 
-  static int SafeNumDevices(pybind11::handle sharding);
+  static int SafeNumDevices(nanobind::handle sharding);
 
  private:
   std::optional<int> num_devices_;
@@ -59,15 +58,16 @@ extern bool (*GetEnableMemories)();
 
 // Checks if the memory kind is valid, and canonicalizes the
 // memory kind to default memory on backends that support memories.
-pybind11::object CheckAndCanonicalizeMemoryKind(pybind11::object memory_kind,
-                                                PyDeviceList* device_list);
+nanobind::object CheckAndCanonicalizeMemoryKind(
+    nanobind::object memory_kind,
+    const xla::nb_class_ptr<PyDeviceList>& device_list);
 
 // Returns a hash that may sometimes return different hashes for equal values.
 // It is not a correct implementation of `__hash__` in python, but it's fine
 // for jit/pjit dispatch since it only causes spurious cache misses.
-size_t ShardingHash(const pybind11::object& sharding);
+size_t ShardingHash(nanobind::handle sharding);
 
-bool ShardingEqual(const pybind11::object& a, const pybind11::object& b);
+bool ShardingEqual(nanobind::handle a, nanobind::handle b);
 
 xla::ClientAndPtr<xla::PjRtMemorySpace> GetMemory(
     const xla::ClientAndPtr<xla::PjRtDevice>& device, const std::string& kind);
@@ -81,106 +81,106 @@ class XLACompatibleSharding : public Sharding {
 
 class NamedSharding : public XLACompatibleSharding {
  public:
-  NamedSharding(pybind11::object mesh, pybind11::object spec,
-                pybind11::object memory_kind, pybind11::object parsed_pspec,
-                pybind11::object manual_axes);
+  NamedSharding(nanobind::object mesh, nanobind::object spec,
+                nanobind::object memory_kind, nanobind::object parsed_pspec,
+                nanobind::object manual_axes);
 
-  const pybind11::object& mesh() const { return mesh_; }
-  const pybind11::object& spec() const { return spec_; }
-  const pybind11::object& memory_kind() const { return memory_kind_; }
-  const pybind11::object& parsed_pspec() const { return parsed_pspec_; }
-  const pybind11::object& manual_axes() const { return manual_axes_; }
-  void set_parsed_pspec(pybind11::object parsed_pspec) {
+  const nanobind::object& mesh() const { return mesh_; }
+  const nanobind::object& spec() const { return spec_; }
+  const nanobind::object& memory_kind() const { return memory_kind_; }
+  const nanobind::object& parsed_pspec() const { return parsed_pspec_; }
+  const nanobind::object& manual_axes() const { return manual_axes_; }
+  void set_parsed_pspec(nanobind::object parsed_pspec) {
     parsed_pspec_ = std::move(parsed_pspec);
   }
 
-  static pybind11::handle type() {
-    static auto type = pybind11::type::handle_of<NamedSharding>();
+  static nanobind::handle type() {
+    static auto type = nanobind::type<NamedSharding>();
     return type;
   }
 
-  std::shared_ptr<PyDeviceList> internal_device_list() const {
+  xla::nb_class_ptr<PyDeviceList> internal_device_list() const {
     return internal_device_list_;
   }
 
  private:
-  pybind11::object mesh_;
-  pybind11::object spec_;
-  pybind11::object memory_kind_;
-  pybind11::object parsed_pspec_;
-  pybind11::object manual_axes_;
-  std::shared_ptr<PyDeviceList> internal_device_list_;
+  nanobind::object mesh_;
+  nanobind::object spec_;
+  nanobind::object memory_kind_;
+  nanobind::object parsed_pspec_;
+  nanobind::object manual_axes_;
+  xla::nb_class_ptr<PyDeviceList> internal_device_list_;
 };
 
 class SingleDeviceSharding : public XLACompatibleSharding {
  public:
   explicit SingleDeviceSharding(
-      pybind11::object device, pybind11::object memory_kind = pybind11::none());
+      nanobind::object device, nanobind::object memory_kind = nanobind::none());
 
   // Used only in C++ to accelerate `PyArray::MakeFromSingleDeviceArray()`.
   SingleDeviceSharding(std::shared_ptr<xla::PyClient> client,
                        xla::ifrt::DeviceList device_list,
-                       pybind11::object memory_kind);
+                       nanobind::object memory_kind);
 
-  const pybind11::object& device() const { return device_; }
-  const pybind11::object& memory_kind() const { return memory_kind_; }
+  const nanobind::object& device() const { return device_; }
+  const nanobind::object& memory_kind() const { return memory_kind_; }
 
-  static pybind11::handle type() {
-    static auto type = pybind11::type::handle_of<SingleDeviceSharding>();
+  static nanobind::handle type() {
+    static auto type = nanobind::type<SingleDeviceSharding>();
     return type;
   }
 
-  std::shared_ptr<PyDeviceList> internal_device_list() const {
+  xla::nb_class_ptr<PyDeviceList> internal_device_list() const {
     return internal_device_list_;
   }
 
  private:
-  pybind11::object device_;
-  pybind11::object memory_kind_;
-  std::shared_ptr<PyDeviceList> internal_device_list_;
+  nanobind::object device_;
+  nanobind::object memory_kind_;
+  xla::nb_class_ptr<PyDeviceList> internal_device_list_;
 };
 
 // The C++ implementation of jax.PmapSharding in python. It contains a few key
 // data members and methods that are performance-critical.
 class PmapSharding : public XLACompatibleSharding {
  public:
-  PmapSharding(pybind11::array devices, ShardingSpec sharding_spec);
+  PmapSharding(xla::nb_numpy_ndarray devices, ShardingSpec sharding_spec);
 
   ~PmapSharding() override = default;
 
-  pybind11::array devices() const { return devices_; }
+  xla::nb_numpy_ndarray devices() const { return devices_; }
 
   const ShardingSpec& sharding_spec() const { return sharding_spec_; }
 
-  static pybind11::handle type() {
-    static auto type = pybind11::type::handle_of<PmapSharding>();
+  static nanobind::handle type() {
+    static auto type = nanobind::type<PmapSharding>();
     return type;
   }
 
-  std::shared_ptr<PyDeviceList> internal_device_list() const {
+  xla::nb_class_ptr<PyDeviceList> internal_device_list() const {
     return internal_device_list_;
   }
 
  private:
-  pybind11::array devices_;
+  xla::nb_numpy_ndarray devices_;
   ShardingSpec sharding_spec_;
-  std::shared_ptr<PyDeviceList> internal_device_list_;
+  xla::nb_class_ptr<PyDeviceList> internal_device_list_;
 };
 
 class GSPMDSharding : public XLACompatibleSharding {
  public:
-  GSPMDSharding(pybind11::sequence devices, xla::OpSharding op_sharding,
-                pybind11::object memory_kind, pybind11::object device_list)
+  GSPMDSharding(nanobind::sequence devices, xla::OpSharding op_sharding,
+                nanobind::object memory_kind, nanobind::object device_list)
       : GSPMDSharding(
             std::move(devices),
             xla::ValueOrThrow(xla::HloSharding::FromProto(op_sharding)),
             std::move(memory_kind), std::move(device_list)) {}
 
-  GSPMDSharding(pybind11::sequence devices, xla::HloSharding op_sharding,
-                pybind11::object memory_kind, pybind11::object device_list);
+  GSPMDSharding(nanobind::sequence devices, xla::HloSharding op_sharding,
+                nanobind::object memory_kind, nanobind::object device_list);
 
-  const pybind11::tuple& devices() const { return devices_; }
-  const pybind11::object& memory_kind() const { return memory_kind_; }
+  const nanobind::tuple& devices() const { return devices_; }
+  const nanobind::object& memory_kind() const { return memory_kind_; }
 
   size_t Hash() {
     if (!hash_.has_value()) {
@@ -189,8 +189,8 @@ class GSPMDSharding : public XLACompatibleSharding {
     return *hash_;
   }
 
-  static pybind11::handle type() {
-    static auto type = pybind11::type::handle_of<GSPMDSharding>();
+  static nanobind::handle type() {
+    static auto type = nanobind::type<GSPMDSharding>();
     return type;
   }
 
@@ -202,7 +202,7 @@ class GSPMDSharding : public XLACompatibleSharding {
            this->memory_kind().equal(other.memory_kind());
   }
 
-  std::shared_ptr<PyDeviceList> internal_device_list() const {
+  xla::nb_class_ptr<PyDeviceList> internal_device_list() const {
     return internal_device_list_;
   }
 
@@ -234,14 +234,14 @@ class GSPMDSharding : public XLACompatibleSharding {
     return hlo_sharding().IsReplicated();
   }
 
-  pybind11::tuple devices_;
+  nanobind::tuple devices_;
   xla::HloSharding hlo_sharding_;
-  pybind11::object memory_kind_;
+  nanobind::object memory_kind_;
   std::optional<size_t> hash_;
-  std::shared_ptr<PyDeviceList> internal_device_list_;
+  xla::nb_class_ptr<PyDeviceList> internal_device_list_;
 };
 
-void RegisterSharding(pybind11::module& m);
+void RegisterSharding(nanobind::module_& m);
 
 }  // namespace jax
 

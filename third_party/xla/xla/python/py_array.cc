@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "xla/python/py_array.h"
 
+#include <Python.h>
+
 #include <cstdint>
 #include <cstdlib>
 #include <cstring>
@@ -28,13 +30,16 @@ limitations under the License.
 #include <vector>
 
 #include "absl/base/casts.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "llvm/Support/Casting.h"
+#include "third_party/nanobind/include/nanobind/nanobind.h"
 #include "pybind11/pytypes.h"  // from @pybind11
 #include "pybind11_abseil/absl_casters.h"  // from @pybind11_abseil
+#include "xla/layout.h"
 #include "xla/layout_util.h"
 #include "xla/pjrt/exceptions.h"
 #include "xla/pjrt/lru_cache.h"
@@ -44,10 +49,15 @@ limitations under the License.
 #include "xla/pjrt/status_casters.h"
 #include "xla/primitive_util.h"
 #include "xla/python/ifrt/array.h"
+#include "xla/python/ifrt/device.h"
+#include "xla/python/ifrt/dtype.h"
 #include "xla/python/ifrt/memory.h"
+#include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/sharding.h"
+#include "xla/python/nb_class_ptr.h"
 #include "xla/python/pjrt_ifrt/pjrt_array.h"
 #include "xla/python/pjrt_ifrt/xla_sharding.h"
+#include "xla/python/py_client.h"
 #include "xla/python/py_values.h"
 #include "xla/python/python_ref_manager.h"
 #include "xla/python/python_utils.h"
@@ -65,11 +75,15 @@ limitations under the License.
 #include "xla/stream_executor/cuda/cuda_driver.h"
 #endif
 #include "xla/util.h"
+#include "tsl/concurrency/ref_count.h"
+#include "tsl/platform/errors.h"
+#include "tsl/platform/logging.h"
 #include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace {
 
+namespace nb = nanobind;
 namespace py = pybind11;
 
 PjRtBuffer* GetPjrtBuffer(ifrt::Array* ifrt_array) {
@@ -173,14 +187,25 @@ ifrt::MemoryKind CreateIfRtMemoryKindFromSharding(const py::object& sharding) {
   // from C++ and casted into a Python Sharding object. Thus, we cast sharding
   // to a C++ type and use C++ `memory_kind()` method, which bypasses any Python
   // attribute access.
-  auto type = sharding.get_type();
+
+  // TODO(phawkins): remove .ptr() and pybind castswhen nanobind transition is
+  // complete.
+  nb::handle type = sharding.get_type().ptr();
   if (type.is(jax::NamedSharding::type())) {
-    py_memory_kind = py::cast<jax::NamedSharding>(sharding).memory_kind();
+    py_memory_kind = py::reinterpret_borrow<py::object>(
+        nb::cast<const jax::NamedSharding*>(nb::handle(sharding.ptr()))
+            ->memory_kind()
+            .ptr());
   } else if (type.is(jax::GSPMDSharding::type())) {
-    py_memory_kind = py::cast<jax::GSPMDSharding>(sharding).memory_kind();
+    py_memory_kind = py::reinterpret_borrow<py::object>(
+        nb::cast<const jax::GSPMDSharding*>(nb::handle(sharding.ptr()))
+            ->memory_kind()
+            .ptr());
   } else if (type.is(jax::SingleDeviceSharding::type())) {
-    py_memory_kind =
-        py::cast<jax::SingleDeviceSharding>(sharding).memory_kind();
+    py_memory_kind = py::reinterpret_borrow<py::object>(
+        nb::cast<const jax::SingleDeviceSharding*>(nb::handle(sharding.ptr()))
+            ->memory_kind()
+            .ptr());
   } else {
     py_memory_kind = sharding.attr("memory_kind");
   }
@@ -390,14 +415,18 @@ PyArray PyArray::MakeFromSingleDeviceArray(
   auto aval = MakeShapedArrayCached(key);
   auto dtype = IfrtDtypeToDtype(key.dtype).value();
   const ifrt::MemoryKind memory_kind = ifrt_array->sharding().memory_kind();
-  auto py_memory_kind =
+  nb::object py_memory_kind =
       (jax::GetEnableMemories() && memory_kind.memory_kind().has_value())
-          ? py::object(py::str(*memory_kind.memory_kind()))
-          : py::none();
-  auto sharding = py::cast(std::make_unique<jax::SingleDeviceSharding>(
-      py_client, ifrt_array->sharding().devices(), std::move(py_memory_kind)));
+          ? nb::object(nb::str(memory_kind.memory_kind()->data(),
+                               memory_kind.memory_kind()->size()))
+          : nb::none();
+  nb::object sharding = make_nb_class<jax::SingleDeviceSharding>(
+      py_client, ifrt_array->sharding().devices(), std::move(py_memory_kind));
+  // TODO(phawkins): remove pybind11/nanobind translation
+  auto sharding_py =
+      py::reinterpret_steal<py::object>(sharding.release().ptr());
   return PyArray(std::move(aval), weak_type, dtype, std::move(key.dims),
-                 std::move(sharding), std::move(py_client),
+                 std::move(sharding_py), std::move(py_client),
                  std::move(traceback), std::move(ifrt_array), committed,
                  /*skip_checks=*/true);
 }
@@ -1143,7 +1172,10 @@ int PyArray_bf_getbuffer(PyObject* exporter, Py_buffer* view, int flags) {
           "Python buffer protocol is only defined for buffers with a single "
           "shard.");
     }
-    if (!py_array.sharding().get_type().is(jax::SingleDeviceSharding::type())) {
+    // TODO(phawkins): remove .ptr and py::handle when nanobind transition is
+    // complete.
+    if (!py_array.sharding().get_type().is(
+            py::handle(jax::SingleDeviceSharding::type().ptr()))) {
       return InvalidArgument(
           "Python buffer protocol is only defined for single-device sharded "
           "buffers.");

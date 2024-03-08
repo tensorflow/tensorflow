@@ -15,7 +15,11 @@ limitations under the License.
 
 #include "xla/python/pmap_lib.h"
 
+#include <Python.h>
+
 #include <algorithm>
+#include <cstddef>
+#include <cstdint>
 #include <exception>
 #include <memory>
 #include <optional>
@@ -25,36 +29,48 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/hash/hash.h"
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
 #include "absl/synchronization/notification.h"
 #include "absl/types/span.h"
-#include "absl/types/variant.h"
 #include "third_party/nanobind/include/nanobind/nanobind.h"
 #include "third_party/nanobind/include/nanobind/stl/shared_ptr.h"  // IWYU pragma: keep
+#include "third_party/nanobind/include/nanobind/stl/string.h"  // IWYU pragma: keep
+#include "third_party/nanobind/include/nanobind/stl/variant.h"  // IWYU pragma: keep
+#include "third_party/nanobind/include/nanobind/stl/vector.h"  // IWYU pragma: keep
 #include "pybind11/cast.h"  // from @pybind11
 #include "pybind11/pybind11.h"  // from @pybind11
 #include "pybind11/pytypes.h"  // from @pybind11
 #include "pybind11_abseil/absl_casters.h"  // from @pybind11_abseil
 #include "xla/pjrt/exceptions.h"
+#include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/status_casters.h"
 #include "xla/python/ifrt/array.h"
-#include "xla/python/ifrt/dtype.h"
+#include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt/memory.h"
+#include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/sharding.h"
 #include "xla/python/jax_jit.h"
 #include "xla/python/py_array.h"
+#include "xla/python/py_client.h"
 #include "xla/python/py_executable.h"
 #include "xla/python/py_values.h"
+#include "xla/python/python_ref_manager.h"
 #include "xla/python/python_utils.h"
 #include "xla/python/pytree.h"
 #include "xla/python/sharded_device_array.h"
 #include "xla/python/sharding.h"
+#include "xla/python/traceback.h"
 #include "xla/python/types.h"
-#include "xla/python/util.h"
+#include "xla/status_macros.h"
+#include "xla/util.h"
 #include "xla/xla_data.pb.h"
+#include "tsl/concurrency/ref_count.h"
 #include "tsl/platform/logging.h"
 #include "tsl/platform/statusor.h"
 #include "tsl/profiler/lib/traceme.h"
@@ -114,7 +130,7 @@ struct ShardArgResult {
 // need to fallback to Python.
 //
 // Both `devices` and `sharding_spec` has the same length.
-xla::StatusOr<ShardArgResult> ShardArg(
+absl::StatusOr<ShardArgResult> ShardArg(
     py::handle arg, absl::Span<xla::PjRtDevice* const> devices,
     const InputSpec& input_spec, py::handle py_devices,
     const py::function& python_fallback) {
@@ -123,9 +139,10 @@ xla::StatusOr<ShardArgResult> ShardArg(
     if (py_array.fastpath_enabled()) {
       if (py_array.sharding().get_type() ==
           input_spec.array_sharding.get_type()) {
-        auto* pmap_sharding = py_array.sharding().cast<jax::PmapSharding*>();
-        auto* cached_pmap_sharding =
-            input_spec.array_sharding.cast<jax::PmapSharding*>();
+        auto* pmap_sharding =
+            nb::cast<jax::PmapSharding*>(nb::handle(py_array.sharding().ptr()));
+        auto* cached_pmap_sharding = nb::cast<jax::PmapSharding*>(
+            nb::handle(input_spec.array_sharding.ptr()));
 
         if (pmap_sharding->sharding_spec() ==
             cached_pmap_sharding->sharding_spec()) {
@@ -293,8 +310,8 @@ class PmapFunction {
   // (c) call the executable
   // (d) construct `Array` objects from the outputs
   // (e) reconstruct the `PyTree`.
-  xla::StatusOr<py::object> Call(py::handle callable, PyObject* const* args,
-                                 size_t nargs, PyObject* kwnames);
+  absl::StatusOr<py::object> Call(py::handle callable, PyObject* const* args,
+                                  size_t nargs, PyObject* kwnames);
 
   py::object PythonSignature() {
     static const auto* inspect = new py::module(py::module::import("inspect"));
@@ -347,7 +364,7 @@ class PmapFunction {
   //
   // It deals with the arguments signatures and also of the global and
   // thread-local jit context.
-  xla::Status UpdateArgsSignature(ParsedArgumentsAsBuffers& arguments) {
+  absl::Status UpdateArgsSignature(ParsedArgumentsAsBuffers& arguments) {
     arguments.signature.function_name = function_name_;
 
     // Get dynamic argument signatures.
@@ -381,7 +398,7 @@ class PmapFunction {
       arguments.signature.global_extra_jit_context =
           global_state.extra_jit_context;
     }
-    return xla::Status();
+    return absl::Status();
   }
 
   // Returns, for debugging purposes (e.g. finding why some call misses the
@@ -515,9 +532,9 @@ void PmapFunction::PopulateCacheEntry(PmapCacheEntry& cache_entry,
   }
 }
 
-xla::StatusOr<py::object> PmapFunction::Call(py::handle callable,
-                                             PyObject* const* args,
-                                             size_t nargs, PyObject* kwnames) {
+absl::StatusOr<py::object> PmapFunction::Call(py::handle callable,
+                                              PyObject* const* args,
+                                              size_t nargs, PyObject* kwnames) {
   xla::GlobalPyRefManager()->MaybeCollectGarbage();
 
   // Calls the cache_miss_ function. This just calls the Python function; it may
@@ -548,7 +565,7 @@ xla::StatusOr<py::object> PmapFunction::Call(py::handle callable,
   absl::Span<PyObject* const> keyword_args(args + num_positional_args,
                                            num_keyword_args);
   ParsedArgumentsAsBuffers arguments;
-  xla::Status status =
+  absl::Status status =
       ParseArguments(positional_args, keyword_args, kwnames, static_argnums_,
                      /*static_argnames=*/{}, pytree_registry_.get(), arguments);
   if (!status.ok()) {
@@ -714,7 +731,7 @@ PmapFunction* PmapFunction::AsPmapFunctionUnchecked(py::handle handle) {
   return &(reinterpret_cast<JaxPmapFunctionObject*>(handle.ptr())->fun);
 }
 
-xla::StatusOr<PmapFunction*> AsPmapFunction(py::handle handle) {
+absl::StatusOr<PmapFunction*> AsPmapFunction(py::handle handle) {
   if (!PmapFunction::IsPmapFunction(handle)) {
     return xla::InvalidArgument("Expected a PmapFunction");
   }
@@ -733,7 +750,8 @@ PyObject* JaxPmapFunction_tp_vectorcall(PyObject* callable,
     return absl::StrCat("JaxPmapFunction(", o->fun.function_name(), ")");
   });
   try {
-    xla::StatusOr<py::object> out = o->fun.Call(callable, args, nargs, kwnames);
+    absl::StatusOr<py::object> out =
+        o->fun.Call(callable, args, nargs, kwnames);
     if (!out.ok()) {
       PyErr_SetString(PyExc_ValueError, out.status().ToString().c_str());
       return nullptr;
@@ -867,63 +885,75 @@ const int kPmapFunctionPickleVersion = 1;
 
 void BuildPmapSubmodule(py::module& m) {
   py::module pmap_lib = m.def_submodule("pmap_lib", "Jax C++ pmap library");
+  nb::module_ pmap_lib_nb = nb::cast<nb::module_>(nb::borrow(pmap_lib.ptr()));
 
-  py::class_<NoSharding> no_sharding(pmap_lib, "NoSharding");
-  no_sharding.def(py::init<>())
-      .def(py::pickle([](const NoSharding& self) { return py::make_tuple(); },
-                      [](py::tuple t) { return NoSharding{}; }))
+  nb::class_<NoSharding> no_sharding(pmap_lib_nb, "NoSharding");
+  no_sharding.def(nb::init<>())
+      .def("__getstate__",
+           [](const NoSharding& self) { return nb::make_tuple(); })
+      .def("__setstate__",
+           [](NoSharding& self, nb::tuple t) { new (&self) NoSharding(); })
       .def("__repr__",
            [](const NoSharding& chuncked) { return "NoSharding()"; })
       .def("__eq__",
-           [](const NoSharding& self, py::object obj) {
-             return py::isinstance<NoSharding>(obj);
+           [](const NoSharding& self, nb::object obj) {
+             return nb::isinstance<NoSharding>(obj);
            })
       .def("__hash__", [](const NoSharding& self) {
         const size_t hash = absl::HashOf(self);
-        return py::int_(hash);
+        return nb::int_(hash);
       });
 
-  py::class_<Chunked> chunked(pmap_lib, "Chunked");
-  chunked.def(py::init<std::vector<int>>())
-      .def(py::pickle(
-          [](const Chunked& self) { return py::make_tuple(self.chunks); },
-          [](py::tuple t) { return Chunked{t[0].cast<std::vector<int>>()}; }))
-      .def_readonly("chunks", &Chunked::chunks)
+  nb::class_<Chunked> chunked(pmap_lib_nb, "Chunked");
+  chunked.def(nb::init<std::vector<int>>())
+      .def("__getstate__",
+           [](const Chunked& self) { return nb::make_tuple(self.chunks); })
+      .def("__setstate__",
+           [](Chunked& self, nb::tuple t) {
+             new (&self) Chunked{nb::cast<std::vector<int>>(t[0])};
+           })
+      .def_ro("chunks", &Chunked::chunks)
       .def("__repr__",
            [](const Chunked& chuncked) {
              return absl::StrCat("Chunked(",
                                  absl::StrJoin(chuncked.chunks, ","), ")");
            })
-      .def("__eq__", [](const Chunked& self, py::object other) {
-        if (!py::isinstance<Chunked>(other)) {
+      .def("__eq__", [](const Chunked& self, nb::object other) {
+        if (!nb::isinstance<Chunked>(other)) {
           return false;
         }
-        return self == py::cast<const Chunked&>(other);
+        return self == nb::cast<const Chunked&>(other);
       });
 
-  py::class_<Unstacked> unstacked(pmap_lib, "Unstacked");
-  unstacked.def(py::init<int>())
-      .def(py::pickle(
-          [](const Unstacked& self) { return py::make_tuple(self.size); },
-          [](py::tuple t) { return Unstacked{t[0].cast<int>()}; }))
-      .def_readonly("size", &Unstacked::size)
+  nb::class_<Unstacked> unstacked(pmap_lib_nb, "Unstacked");
+  unstacked.def(nb::init<int>())
+      .def("__getstate__",
+           [](const Unstacked& self) { return nb::make_tuple(self.size); })
+      .def("__setstate__",
+           [](Unstacked& self, nb::tuple t) {
+             new (&self) Unstacked{nb::cast<int>(t[0])};
+           })
+      .def_ro("size", &Unstacked::size)
       .def("__repr__",
            [](const Unstacked& x) {
              return absl::StrCat("Unstacked(", x.size, ")");
            })
-      .def("__eq__", [](const Unstacked& self, py::object other) {
-        if (!py::isinstance<Unstacked>(other)) {
+      .def("__eq__", [](const Unstacked& self, nb::object other) {
+        if (!nb::isinstance<Unstacked>(other)) {
           return false;
         }
-        return self == py::cast<const Unstacked&>(other);
+        return self == nb::cast<const Unstacked&>(other);
       });
 
-  py::class_<ShardedAxis> sharded_axis(pmap_lib, "ShardedAxis");
-  sharded_axis.def(py::init<int>())
-      .def(py::pickle(
-          [](const ShardedAxis& self) { return py::make_tuple(self.axis); },
-          [](py::tuple t) { return ShardedAxis{t[0].cast<int>()}; }))
-      .def_readonly("axis", &ShardedAxis::axis)
+  nb::class_<ShardedAxis> sharded_axis(pmap_lib_nb, "ShardedAxis");
+  sharded_axis.def(nb::init<int>())
+      .def("__getstate__",
+           [](const ShardedAxis& self) { return nb::make_tuple(self.axis); })
+      .def("__setstate__",
+           [](ShardedAxis& self, nb::tuple t) {
+             new (&self) ShardedAxis{nb::cast<int>(t[0])};
+           })
+      .def_ro("axis", &ShardedAxis::axis)
       .def("__repr__",
            [](const ShardedAxis& x) {
              return absl::StrCat("ShardedAxis(axis=", x.axis, ")");
@@ -932,12 +962,15 @@ void BuildPmapSubmodule(py::module& m) {
         return self == other;
       });
 
-  py::class_<Replicated> replicated(pmap_lib, "Replicated");
-  replicated.def(py::init<int>())
-      .def(py::pickle(
-          [](const Replicated& self) { return py::make_tuple(self.replicas); },
-          [](py::tuple t) { return Replicated{t[0].cast<int>()}; }))
-      .def_readonly("replicas", &Replicated::replicas)
+  nb::class_<Replicated> replicated(pmap_lib_nb, "Replicated");
+  replicated.def(nb::init<int>())
+      .def("__getstate__",
+           [](const Replicated& self) { return nb::make_tuple(self.replicas); })
+      .def("__setstate__",
+           [](Replicated& self, nb::tuple t) {
+             new (&self) Replicated{nb::cast<int>(t[0])};
+           })
+      .def_ro("replicas", &Replicated::replicas)
       .def("__repr__",
            [](const Replicated& x) {
              return absl::StrCat("Replicated(replicas=", x.replicas, ")");
@@ -946,37 +979,39 @@ void BuildPmapSubmodule(py::module& m) {
         return self == other;
       });
 
-  py::class_<ShardingSpec> sharding_spec(pmap_lib, "ShardingSpec");
+  nb::class_<ShardingSpec> sharding_spec(pmap_lib_nb, "ShardingSpec");
   sharding_spec
-      .def(py::init<py::iterable, py::iterable>(), py::arg("sharding"),
-           py::arg("mesh_mapping"))
-      .def(py::pickle(
-          [](const ShardingSpec& self) {
-            auto sharding =
-                xla::SpanToTuple(absl::MakeConstSpan(self.GetSharding()));
-            auto mesh_mapping =
-                xla::SpanToTuple(absl::MakeConstSpan(self.GetMeshMapping()));
-            return py::make_tuple(sharding, mesh_mapping);
-          },
-          [](py::tuple t) {
-            return ShardingSpec{t[0].cast<std::vector<AvalDimSharding>>(),
-                                t[1].cast<std::vector<MeshDimAssignment>>()};
-          }))
-      .def_property_readonly(
+      .def(nb::init<nb::iterable, nb::iterable>(), nb::arg("sharding"),
+           nb::arg("mesh_mapping"))
+      .def("__getstate__",
+           [](const ShardingSpec& self) {
+             auto sharding =
+                 xla::SpanToNbTuple(absl::MakeConstSpan(self.GetSharding()));
+             auto mesh_mapping =
+                 xla::SpanToNbTuple(absl::MakeConstSpan(self.GetMeshMapping()));
+             return nb::make_tuple(sharding, mesh_mapping);
+           })
+      .def("__setstate__",
+           [](ShardingSpec& self, nb::tuple t) {
+             new (&self)
+                 ShardingSpec{nb::cast<std::vector<AvalDimSharding>>(t[0]),
+                              nb::cast<std::vector<MeshDimAssignment>>(t[1])};
+           })
+      .def_prop_ro(
           "sharding",
           [](const ShardingSpec& self) {
-            return xla::SpanToTuple(absl::MakeConstSpan(self.GetSharding()));
+            return xla::SpanToNbTuple(absl::MakeConstSpan(self.GetSharding()));
           })
-      .def_property_readonly(
-          "mesh_mapping",
-          [](const ShardingSpec& self) {
-            return xla::SpanToTuple(absl::MakeConstSpan(self.GetMeshMapping()));
-          })
+      .def_prop_ro("mesh_mapping",
+                   [](const ShardingSpec& self) {
+                     return xla::SpanToNbTuple(
+                         absl::MakeConstSpan(self.GetMeshMapping()));
+                   })
       .def("__eq__", [](const ShardingSpec& self,
                         const ShardingSpec& other) { return self == other; })
       .def("__hash__", [](const ShardingSpec& self) {
         const size_t hash = absl::HashOf(self);
-        return py::int_(hash);
+        return nb::int_(hash);
       });
 
   // We need to use heap-allocated type objects because we want to add

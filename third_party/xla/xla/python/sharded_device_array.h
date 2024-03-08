@@ -16,18 +16,13 @@ limitations under the License.
 #ifndef XLA_PYTHON_SHARDED_DEVICE_ARRAY_H_
 #define XLA_PYTHON_SHARDED_DEVICE_ARRAY_H_
 
-#include <memory>
-#include <optional>
 #include <utility>
 #include <variant>
 #include <vector>
 
 #include "absl/types/variant.h"
-#include "pybind11/cast.h"  // from @pybind11
-#include "pybind11/numpy.h"  // from @pybind11
-#include "pybind11/pybind11.h"  // from @pybind11
-#include "pybind11/pytypes.h"  // from @pybind11
-#include "xla/pjrt/pjrt_client.h"
+#include "third_party/nanobind/include/nanobind/nanobind.h"
+#include "third_party/nanobind/include/nanobind/stl/variant.h"  // IWYU pragma: keep
 #include "xla/python/types.h"
 
 // TODO(jblespiau): The current implementation moves the Python logic to C++,
@@ -177,8 +172,8 @@ class ShardingSpec {
                std::vector<MeshDimAssignment> mesh_mapping)
       : sharding_(std::move(sharding)),
         mesh_mapping_(std::move(mesh_mapping)) {}
-  ShardingSpec(pybind11::iterable py_sharding,
-               pybind11::iterable py_mesh_mapping)
+  ShardingSpec(nanobind::iterable py_sharding,
+               nanobind::iterable py_mesh_mapping)
       : sharding_(xla::IterableToVector<AvalDimSharding>(py_sharding)),
         mesh_mapping_(
             xla::IterableToVector<MeshDimAssignment>(py_mesh_mapping)) {}

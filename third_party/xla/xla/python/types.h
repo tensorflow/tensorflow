@@ -16,6 +16,8 @@ limitations under the License.
 #ifndef XLA_PYTHON_TYPES_H_
 #define XLA_PYTHON_TYPES_H_
 
+#include <Python.h>
+
 #include <cstdint>
 #include <memory>
 #include <optional>
@@ -138,6 +140,10 @@ nanobind::tuple SpanToNbTuple(absl::Span<T const> xs) {
   }
   return out;
 }
+
+// Converts a sequence of Python objects to a Python tuple, stealing the
+// references to the objects.
+nanobind::tuple MutableSpanToNbTuple(absl::Span<nanobind::object> xs);
 
 // Converts a Python iterable/sequence of T to std::vector<T>
 template <typename T>

@@ -15,7 +15,11 @@ limitations under the License.
 
 #include "xla/python/pjit.h"
 
+#include <Python.h>
+
 #include <algorithm>
+#include <cstddef>
+#include <cstdint>
 #include <exception>
 #include <memory>
 #include <optional>
@@ -26,24 +30,40 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
 #include "absl/container/inlined_vector.h"
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/str_format.h"
 #include "absl/synchronization/notification.h"
+#include "absl/types/span.h"
 #include "third_party/nanobind/include/nanobind/nanobind.h"
 #include "third_party/nanobind/include/nanobind/stl/shared_ptr.h"  // IWYU pragma: keep
 #include "pybind11/pytypes.h"  // from @pybind11
+#include "xla/pjrt/exceptions.h"
 #include "xla/pjrt/lru_cache.h"
-#include "xla/pjrt/status_casters.h"
+#include "xla/pjrt/pjrt_client.h"
 #include "xla/python/ifrt/array.h"
+#include "xla/python/ifrt/device.h"
+#include "xla/python/ifrt/memory.h"
+#include "xla/python/ifrt/sharding.h"
 #include "xla/python/jax_jit.h"
 #include "xla/python/py_array.h"
 #include "xla/python/py_executable.h"
 #include "xla/python/py_values.h"
+#include "xla/python/python_ref_manager.h"
 #include "xla/python/python_utils.h"
 #include "xla/python/pytree.h"
 #include "xla/python/sharding.h"
+#include "xla/python/traceback.h"
 #include "xla/python/transfer_guard_lib.h"
-#include "xla/python/util.h"
+#include "xla/util.h"
+#include "tsl/concurrency/ref_count.h"
 #include "tsl/platform/errors.h"
+#include "tsl/platform/logging.h"
+#include "tsl/platform/statusor.h"
 #include "tsl/profiler/lib/traceme.h"
 
 namespace jax {
@@ -249,7 +269,7 @@ class PjitFunction {
   }
 
  private:
-  xla::Status UpdateArgsSignature(ParsedArgumentsAsBuffers& arguments);
+  absl::Status UpdateArgsSignature(ParsedArgumentsAsBuffers& arguments);
 
   void PopulateCacheEntry(PjitCacheEntry& cache_entry,
                           const CallSignature& signature,
@@ -390,7 +410,8 @@ PrepareIfrtInputs(const xla::PyLoadedExecutable& executable,
 
     xla::PyArray py_array(py::reinterpret_borrow<py::object>(arg.ptr()));
     const auto& sharding = py_array.sharding();
-    int sharding_num_devices = jax::Sharding::SafeNumDevices(sharding);
+    // TODO(phawkins): remove .ptr() after nanobind transition is complete.
+    int sharding_num_devices = jax::Sharding::SafeNumDevices(sharding.ptr());
 
     // Currently only committed PyArray inputs or uncommitted PyArray on a
     // single device inputs are allowed. This is checked previously in the entry
@@ -398,7 +419,8 @@ PrepareIfrtInputs(const xla::PyLoadedExecutable& executable,
     DCHECK(py_array.committed() ||
            (!py_array.committed() && sharding_num_devices == 1));
 
-    if (sharding.get_type() == jax::PmapSharding::type()) {
+    // TODO(phawkins): remove .ptr() after nanobind transition is complete.
+    if (sharding.get_type().ptr() == jax::PmapSharding::type().ptr()) {
       CallShardArgFallback(arg.ptr(), in_shardings[dce_index],
                            shard_arg_fallback, num_args_arrays, arguments);
       continue;
@@ -516,8 +538,9 @@ absl::StatusOr<py::object> PjitFunction::Call(py::handle callable,
     //
     // TODO(chky): Consider support uncommitted PyArray in cpp when the python
     // side stablizes.
+    // TODO(phawkins): remove .ptr() after nanobind transition is complete.
     if (!py_array.committed() &&
-        jax::Sharding::SafeNumDevices(py_array.sharding()) > 1) {
+        jax::Sharding::SafeNumDevices(py_array.sharding().ptr()) > 1) {
       VLOG(2) << "PyArray argument is not committed and number of global "
                  "devices is more than 1; fallback to python.";
       return fallback_to_cache_miss();
@@ -653,7 +676,7 @@ absl::StatusOr<py::object> PjitFunction::Call(py::handle callable,
   return out;
 }
 
-xla::Status PjitFunction::UpdateArgsSignature(
+absl::Status PjitFunction::UpdateArgsSignature(
     ParsedArgumentsAsBuffers& arguments) {
   arguments.signature.function_name = function_name_;
 
@@ -692,7 +715,7 @@ xla::Status PjitFunction::UpdateArgsSignature(
   arguments.signature.thread_local_extra_jit_context = tls.extra_jit_context;
   arguments.signature.global_extra_jit_context = global_state.extra_jit_context;
 
-  return xla::OkStatus();
+  return absl::OkStatus();
 }
 
 void PjitFunction::PopulateCacheEntry(PjitCacheEntry& cache_entry,

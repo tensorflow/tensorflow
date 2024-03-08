@@ -799,8 +799,8 @@ static void Init(py::module_& m) {
         });
 
   TF_CHECK_OK(PyArray::RegisterTypes(m));
-  jax::RegisterDeviceList(m);
-  jax::RegisterSharding(m);
+  jax::RegisterDeviceList(m_nb);
+  jax::RegisterSharding(m_nb);
 
   py::class_<CompiledMemoryStats>(m, "CompiledMemoryStats")
       .def_readwrite("generated_code_size_in_bytes",
@@ -1335,11 +1335,9 @@ static void Init(py::module_& m) {
       py::arg("committed") = true, py::arg("force_copy") = false,
       py::arg("host_buffer_semantics") =
           PjRtClient::HostBufferSemantics::kZeroCopy);
-  m.def(
-      "check_and_canonicalize_memory_kind",
-      [](py::object memory_kind, jax::PyDeviceList* device_list) -> py::object {
-        return jax::CheckAndCanonicalizeMemoryKind(memory_kind, device_list);
-      });
+  m_nb.def("check_and_canonicalize_memory_kind",
+           &jax::CheckAndCanonicalizeMemoryKind, nb::arg("memory_kind").none(),
+           nb::arg("device_list"));
 }  // NOLINT(readability/fn_size)
 
 // This code in essence is a copy of PYBIND11_MODULE(). We can't just call
