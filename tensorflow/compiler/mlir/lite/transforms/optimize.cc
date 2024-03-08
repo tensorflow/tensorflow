@@ -1183,12 +1183,7 @@ struct FuseFullyConnectedAndAdd : public OpRewritePattern<TFL::AddOp> {
         add_op.getLhs().getDefiningOp());
     if (!fc_op) return failure();
 
-    // Check if the constant RHS is either 0D (scalar), or a 1D with
-    // `{num_channels}` shape.
     auto constant_val_type = constant_val.getType().cast<TensorType>();
-    if (constant_val_type.getRank() > 1) {
-      return failure();
-    }
 
     // In TFLite FullyConnect definition, bias must be a 1D tensor where
     // the number of elements is equal to the number of channels.
@@ -1197,6 +1192,8 @@ struct FuseFullyConnectedAndAdd : public OpRewritePattern<TFL::AddOp> {
     bool is_scalar_rhs = false;
     if (constant_val_type.getRank() == 0) {
       is_scalar_rhs = true;
+    } else if (constant_val_type.getRank() > 1) {
+      return failure();
     }
 
     Value filter = fc_op.getFilter();
@@ -1210,18 +1207,7 @@ struct FuseFullyConnectedAndAdd : public OpRewritePattern<TFL::AddOp> {
 
     // Rewrite
     if (is_none_bias) {
-      if (constant_val_type.getRank() == 1) {
-        // If there no pre-existing bias and the `constant_val` is 1D, simply
-        // use `constant_val` as bias.
-        bias = constant_val;
-      } else {
-        if (!is_scalar_rhs &&
-            !(IsReducedTailOfShape(constant_val.getType(), filter.getType()) &&
-              IsLastDimEqualToNumElements(filter.getType(),
-                                          constant_val.getType()))) {
-          return failure();
-        }
-
+      if (is_scalar_rhs) {
         // If the `constant_val` is scalar, we must the shape of filter
         // to properly broadcast the scalar to `{num_channels}` shape.
 
@@ -1243,33 +1229,14 @@ struct FuseFullyConnectedAndAdd : public OpRewritePattern<TFL::AddOp> {
         auto attr = rewriter.getZeroAttr(type);
         bias = rewriter.create<arith::ConstantOp>(add_op.getLoc(), type, attr);
         auto none_af = rewriter.getStringAttr("NONE");
-        if (is_scalar_rhs) {
-          bias =
-              rewriter
-                  .create<AddOp>(add_op.getLoc(), bias, constant_val, none_af)
-                  .getOutput();
-        } else {
-          // If the RHS is neither a scalar constant nor a 1d constant, look
-          // if there is opportunity to reduce the dimensionality and allow
-          // implicit broadcasting
 
-          auto new_added_value = added_value.reshape(RankedTensorType::get(
-              {added_value.getType().cast<ShapedType>().getNumElements()},
-              added_value.getType().cast<ShapedType>().getElementType()));
-
-          ::mlir::arith::ConstantOp new_constant_val =
-              rewriter.create<::mlir::arith::ConstantOp>(
-                  add_op.getLoc(),
-                  /*value=*/new_added_value);
-
-          bias = rewriter
-                     .create<::mlir::TFL::AddOp>(
-                         add_op.getLoc(),
-                         /*lhs=*/bias,
-                         /*rhs=*/new_constant_val.getResult(),
-                         /*fused_activation_function=*/none_af)
-                     .getOutput();
-        }
+        bias =
+            rewriter.create<AddOp>(add_op.getLoc(), bias, constant_val, none_af)
+                .getOutput();
+      } else {
+        // If there no pre-existing bias and the `constant_val` is 1D, simply
+        // use `constant_val` as bias.
+        bias = constant_val;
       }
     } else {
       bias = rewriter
