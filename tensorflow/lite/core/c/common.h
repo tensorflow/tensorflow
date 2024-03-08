@@ -1014,11 +1014,17 @@ typedef struct TfLiteContext {
                                          int subgraph_index);
 } TfLiteContext;
 
-/// `TfLiteRegistrationExternal` is an external version of `TfLiteRegistration`
+/// `TfLiteOperator` is an external version of `TfLiteRegistration`
 /// for C API which doesn't use internal types (such as `TfLiteContext`) but
 /// only uses stable API types (such as `TfLiteOpaqueContext`). The purpose of
 /// each field is the exactly the same as with `TfLiteRegistration`.
-typedef struct TfLiteRegistrationExternal TfLiteRegistrationExternal;
+typedef struct TfLiteOperator TfLiteOperator;
+
+#ifndef DOXYGEN_SKIP
+// For backwards compatibility.
+// Deprecated. Use TfLiteOperator instead.
+typedef TfLiteOperator TfLiteRegistrationExternal;
+#endif
 
 /// The valid values of the `inplace_operator` field in `TfLiteRegistration`.
 /// This allow an op to signal to the runtime that the same data pointer
@@ -1085,7 +1091,7 @@ static const int kTfLiteMaxSharableOpInputs = 3;
 /// It is a struct containing "methods" (C function pointers) that will be
 /// invoked by the TF Lite runtime to evaluate instances of the operation.
 ///
-/// See also `TfLiteRegistrationExternal` which is a more ABI-stable equivalent.
+/// See also `TfLiteOperator` which is a more ABI-stable equivalent.
 typedef struct TfLiteRegistration {
   /// Initializes the op from serialized data.
   /// Called only *once* for the lifetime of the op, so any one-time allocations
@@ -1156,12 +1162,12 @@ typedef struct TfLiteRegistration {
   /// properly.
   int version;
 
-  /// The external version of `TfLiteRegistration`. Since we can't use internal
-  /// types (such as `TfLiteContext`) for C API to maintain ABI stability.
-  /// C API user will provide `TfLiteRegistrationExternal` to implement custom
-  /// ops. We keep it inside of `TfLiteRegistration` and use it to route
-  /// callbacks properly.
-  TfLiteRegistrationExternal* registration_external;
+  /// The external (i.e. ABI-stable) version of `TfLiteRegistration`.
+  /// Since we can't use internal types (such as `TfLiteContext`) for C API to
+  /// maintain ABI stability.  C API user will provide `TfLiteOperator` to
+  /// implement custom ops.  We keep it inside of `TfLiteRegistration` and use
+  /// it to route callbacks properly.
+  TfLiteOperator* registration_external;
 
   /// Retrieves asynchronous kernel.
   ///
@@ -1201,7 +1207,7 @@ typedef struct TfLiteRegistration_V3 {
   int32_t builtin_code;
   const char* custom_name;
   int version;
-  TfLiteRegistrationExternal* registration_external;
+  TfLiteOperator* registration_external;
   struct TfLiteAsyncKernel* (*async_kernel)(TfLiteContext* context,
                                             TfLiteNode* node);
 } TfLiteRegistration_V3;
@@ -1227,7 +1233,7 @@ typedef struct TfLiteRegistration_V2 {
   int32_t builtin_code;
   const char* custom_name;
   int version;
-  TfLiteRegistrationExternal* registration_external;
+  TfLiteOperator* registration_external;
 } TfLiteRegistration_V2;
 
 /// \private

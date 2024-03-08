@@ -356,7 +356,7 @@ cc_library(
         "//tensorflow/lite/c:c_api_internal",
         "//tensorflow/lite/core/api:op_resolver",
         "//tensorflow/lite/core/c:common",
-        "//tensorflow/lite/core/c:registration_external",
+        "//tensorflow/lite/core/c:operator",
     ],
 )
 
@@ -393,7 +393,7 @@ cc_library(
         "//tensorflow/lite/c:c_api_internal",
         "//tensorflow/lite/core/api:op_resolver",
         "//tensorflow/lite/core/c:common",
-        "//tensorflow/lite/core/c:registration_external_without_alwayslink",
+        "//tensorflow/lite/core/c:operator_without_alwayslink",
     ],
 )
 
