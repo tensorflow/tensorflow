@@ -283,10 +283,17 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
                    });
     return result;
   };
-  const auto output_to_operand_aliasing = [&proto]() {
+  const auto output_to_operand_aliasing = [&proto]()
+      -> StatusOr<
+          std::vector<std::pair<ShapeIndex, std::pair<int64_t, ShapeIndex>>>> {
     std::vector<std::pair<ShapeIndex, std::pair<int64_t, ShapeIndex>>>
         output_to_operand_aliasing;
     for (const auto& aliasing : proto.output_operand_aliasing()) {
+      if (aliasing.output_shape_index().empty() ||
+          aliasing.operand_shape_index().empty()) {
+        return InvalidArgument(
+            "Output shape index or operand shape index is empty.");
+      }
       output_to_operand_aliasing.emplace_back(
           ShapeIndex(aliasing.output_shape_index().begin(),
                      aliasing.output_shape_index().end()),
@@ -621,8 +628,10 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
       instruction =
           CreateFusion(shape, fusion_kind, all_operands(), fused_computation);
       auto fusion_instr = DynCast<HloFusionInstruction>(instruction.get());
+      TF_ASSIGN_OR_RETURN(auto output_to_operand_aliasing_value,
+                          output_to_operand_aliasing());
       fusion_instr->set_output_to_operand_aliasing(
-          output_to_operand_aliasing());
+          output_to_operand_aliasing_value);
       break;
     }
     case HloOpcode::kRng:
@@ -990,8 +999,10 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
       precision_config.mutable_operand_precision()->Resize(
           proto.operand_ids_size(), PrecisionConfig::DEFAULT);
       *custom_call_instr->mutable_precision_config() = precision_config;
+      TF_ASSIGN_OR_RETURN(auto output_to_operand_aliasing_value,
+                          output_to_operand_aliasing());
       custom_call_instr->set_output_to_operand_aliasing(
-          output_to_operand_aliasing());
+          output_to_operand_aliasing_value);
       custom_call_instr->set_custom_call_schedule(proto.custom_call_schedule());
       custom_call_instr->set_api_version(proto.custom_call_api_version());
       break;
@@ -1173,8 +1184,10 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
       auto call_instruction = new HloCallInstruction(
           shape, all_operands(),
           computation_map.at(proto.called_computation_ids()[0]));
+      TF_ASSIGN_OR_RETURN(auto output_to_operand_aliasing_value,
+                          output_to_operand_aliasing());
       call_instruction->set_output_to_operand_aliasing(
-          output_to_operand_aliasing());
+          output_to_operand_aliasing_value);
       instruction = absl::WrapUnique(call_instruction);
       break;
     }
