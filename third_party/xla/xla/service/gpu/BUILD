@@ -4158,6 +4158,7 @@ xla_cc_test(
     tags = tf_cuda_tests_tags(),
     deps = [
         ":gpu_layout_assignment",
+        ":stream_executor_util",
         "//xla:shape_layout",
         "//xla:shape_util",
         "//xla:xla_data_proto_cc",
@@ -4668,6 +4669,7 @@ cc_library(
         ":backend_configs_cc",
         ":cublas_cudnn",
         ":matmul_utils",
+        ":stream_executor_util",
         "//xla:permutation_util",
         "//xla:shape_util",
         "//xla:status_macros",

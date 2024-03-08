@@ -43,6 +43,12 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
+// Returns DNN version info from provided stream executor when possible,
+// fallback version otherwise.
+se::dnn::VersionInfo GetDnnVersionInfo(
+    stream_executor::StreamExecutor* stream_exec,
+    se::dnn::VersionInfo fallback_version = se::dnn::VersionInfo{0, 0, 0});
+
 // Returns (input, filter, output) XLA Layout protos given the StreamExecutor
 // layouts.
 absl::StatusOr<std::tuple<Layout, Layout, Layout>>

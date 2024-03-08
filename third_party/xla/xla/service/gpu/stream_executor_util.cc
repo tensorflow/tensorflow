@@ -48,6 +48,19 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
+se::dnn::VersionInfo GetDnnVersionInfo(
+    stream_executor::StreamExecutor* stream_exec,
+    se::dnn::VersionInfo fallback_version) {
+  if (!stream_exec) {
+    return fallback_version;
+  }
+  stream_executor::dnn::DnnSupport* dnn = stream_exec->AsDnn();
+  if (!dnn) {
+    return fallback_version;
+  }
+  return dnn->GetVersion().value_or(fallback_version);
+}
+
 namespace {
 
 using se::dnn::DataLayout;

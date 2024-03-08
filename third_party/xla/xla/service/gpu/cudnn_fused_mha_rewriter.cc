@@ -40,6 +40,7 @@ limitations under the License.
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/cublas_cudnn.h"
 #include "xla/service/gpu/matmul_utils.h"
+#include "xla/service/gpu/stream_executor_util.h"
 #include "xla/service/pattern_matcher.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
@@ -287,22 +288,6 @@ double GetDropoutRateFromHlo(HloInstruction* dropout) {
   // the constant in dropout node and substract
   // from 1 here to get the actual dropout rate.
   return (1.0 - (1.0 / *dropout_rate_inv));
-}
-
-se::dnn::VersionInfo GetRealCuDNNVersion(
-    stream_executor::dnn::VersionInfo cudnn_version,
-    stream_executor::StreamExecutor* stream_exec) {
-  se::dnn::VersionInfo real_cudnn_version;
-  if (stream_exec) {
-    stream_executor::dnn::DnnSupport* dnn = stream_exec->AsDnn();
-    absl::StatusOr<se::dnn::VersionInfo> se_cudnn_version = dnn->GetVersion();
-    if (se_cudnn_version.ok()) {
-      real_cudnn_version = (*se_cudnn_version);
-    }
-  } else {
-    real_cudnn_version = cudnn_version;
-  }
-  return real_cudnn_version;
 }
 
 bool IsComputeCapabilityAndCudnnSupported(
@@ -1858,8 +1843,8 @@ absl::StatusOr<bool> CudnnFusedMHARewriter::Run(
        module->MakeNonfusionComputations(execution_threads)) {
     const DebugOptions& debug_options =
         comp->parent()->config().debug_options();
-    const auto cudnn_version =
-        GetRealCuDNNVersion(cudnn_version_, stream_executor_);
+    const se::dnn::VersionInfo cudnn_version =
+        GetDnnVersionInfo(stream_executor_, cudnn_version_);
 #if !defined(GOOGLE_CUDA) || CUDA_VERSION < 12000
     // CUDA needs to be >= 12.0 for cuDNN to work with all supported hardware.
     // Some cuDNN versions work with CUDA 11, but it is impractical for us to

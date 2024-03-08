@@ -37,6 +37,7 @@ limitations under the License.
 #include "xla/layout_util.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
+#include "xla/service/gpu/stream_executor_util.h"
 #include "xla/service/gpu/tests/gpu_codegen_test.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/stream_executor/device_description.h"
@@ -75,7 +76,8 @@ class MultiHeadedAttentionTest : public GpuCodegenTest {
           "compute capability == 0.";
       return;
     }
-    if (GetCudnnVersion() < se::dnn::VersionInfo(8, 8, 0)) {
+    if (GetDnnVersionInfo(backend().default_stream_executor()) <
+        se::dnn::VersionInfo(8, 8, 0)) {
       skip_reason_ = "cuDNN Fused MHA requires cuDNN 8.8.0 or later.";
       return;
     }
@@ -88,22 +90,6 @@ class MultiHeadedAttentionTest : public GpuCodegenTest {
         .cuda_compute_capability();
   }
 
-  se::dnn::VersionInfo GetCudnnVersion() {
-    se::dnn::VersionInfo cudnn_version;
-    stream_executor::StreamExecutor *stream_exec =
-        backend().default_stream_executor();
-    stream_executor::dnn::DnnSupport *dnn = stream_exec->AsDnn();
-    if (!dnn) {
-      return se::dnn::VersionInfo(0, 0, 0);
-    }
-    absl::StatusOr<se::dnn::VersionInfo> se_cudnn_version = dnn->GetVersion();
-    if (se_cudnn_version.ok()) {
-      cudnn_version = (*se_cudnn_version);
-    } else {
-      cudnn_version = se::dnn::VersionInfo(0, 0, 0);
-    }
-    return cudnn_version;
-  }
   ErrorSpec error_spec_{2.5E-3, 1e-5};
 
  protected:
@@ -2109,7 +2095,8 @@ class MultiHeadedAttentionBMMScaleBiasSoftmaxBMM
   template <typename T>
   void TestImpl_FMHA_Training_BMM1_Scale_Bias_Softmax_BMM2_vanilla() {
     if (skip_reason_) GTEST_SKIP() << *skip_reason_;
-    if (GetCudnnVersion() < se::dnn::VersionInfo(8, 9, 1)) {
+    if (GetDnnVersionInfo(backend().default_stream_executor()) <
+        se::dnn::VersionInfo(8, 9, 1)) {
       GTEST_SKIP() << "Backward fused MHA requires cuDNN >= 8.9.1.";
     }
     XlaBuilder builder(TestName());
@@ -2314,7 +2301,8 @@ class FlashAttentionBMMScaleCausalMaskSoftmaxBMM
   template <typename T>
   void TestImpl_Flash_Attention_BMM1_CausalMask_Softmax_BMM2() {
     if (skip_reason_) GTEST_SKIP() << *skip_reason_;
-    if (GetCudnnVersion() < se::dnn::VersionInfo(8, 9, 3)) {
+    if (GetDnnVersionInfo(backend().default_stream_executor()) <
+        se::dnn::VersionInfo(8, 9, 3)) {
       GTEST_SKIP() << "Flash Attention requires cuDNN >= 8.9.3.";
     }
     XlaBuilder builder(TestName());
@@ -2334,7 +2322,8 @@ class FlashAttentionBMMScaleCausalMaskSoftmaxBMM
   template <typename T>
   void TestImpl_Flash_Attention_Training_BMM1_CausalMask_Softmax_BMM2() {
     if (skip_reason_) GTEST_SKIP() << *skip_reason_;
-    if (GetCudnnVersion() < se::dnn::VersionInfo(8, 9, 3)) {
+    if (GetDnnVersionInfo(backend().default_stream_executor()) <
+        se::dnn::VersionInfo(8, 9, 3)) {
       GTEST_SKIP() << "Flash Attention requires cuDNN >= 8.9.3.";
     }
     XlaBuilder builder(TestName());
@@ -2549,7 +2538,8 @@ class FlashAttentionBMMScaleBiasSoftmaxBMM : public MultiHeadedAttentionTest {
   template <typename T>
   void TestImpl_Flash_Attention_BMM1_Bias_Softmax_BMM2() {
     if (skip_reason_) GTEST_SKIP() << *skip_reason_;
-    if (GetCudnnVersion() < se::dnn::VersionInfo(8, 9, 3)) {
+    if (GetDnnVersionInfo(backend().default_stream_executor()) <
+        se::dnn::VersionInfo(8, 9, 3)) {
       GTEST_SKIP() << "Flash Attention requires cuDNN >= 8.9.3.";
     }
     XlaBuilder builder(TestName());
@@ -2570,7 +2560,8 @@ class FlashAttentionBMMScaleBiasSoftmaxBMM : public MultiHeadedAttentionTest {
   template <typename T>
   void TestImpl_Flash_Attention_Training_BMM1_Bias_Softmax_BMM2() {
     if (skip_reason_) GTEST_SKIP() << *skip_reason_;
-    if (GetCudnnVersion() < se::dnn::VersionInfo(8, 9, 3)) {
+    if (GetDnnVersionInfo(backend().default_stream_executor()) <
+        se::dnn::VersionInfo(8, 9, 3)) {
       GTEST_SKIP() << "Flash Attention requires cuDNN >= 8.9.3.";
     }
     XlaBuilder builder(TestName());
@@ -2594,7 +2585,8 @@ class FlashAttentionBMMScaleBiasSoftmaxBMM : public MultiHeadedAttentionTest {
   template <typename T>
   void TestImpl_Flash_Attention_BMM1_Bias_Softmax_BMM2_Cross_Attention() {
     if (skip_reason_) GTEST_SKIP() << *skip_reason_;
-    if (GetCudnnVersion() < se::dnn::VersionInfo(8, 9, 4)) {
+    if (GetDnnVersionInfo(backend().default_stream_executor()) <
+        se::dnn::VersionInfo(8, 9, 4)) {
       GTEST_SKIP() << "Flash Attention cross attention requires "
                       "cuDNN >= 8.9.4.";
     }
@@ -2721,7 +2713,8 @@ class FlashAttentionBMMScaleBiasMaskSoftmaxBMM
   template <typename T>
   void TestImpl_Flash_Attention_Training_BMM1_Bias_Mask_Softmax_BMM2() {
     if (skip_reason_) GTEST_SKIP() << *skip_reason_;
-    if (GetCudnnVersion() < se::dnn::VersionInfo(8, 9, 3)) {
+    if (GetDnnVersionInfo(backend().default_stream_executor()) <
+        se::dnn::VersionInfo(8, 9, 3)) {
       GTEST_SKIP() << "Flash Attention requires cuDNN >= 8.9.3.";
     }
     XlaBuilder builder(TestName());
@@ -2838,7 +2831,8 @@ class FlashAttentionBMMScaleSoftmaxBMM : public MultiHeadedAttentionTest {
   template <typename T>
   void TestImpl_Flash_Attention_Training_BMM1_Softmax_BMM2() {
     if (skip_reason_) GTEST_SKIP() << *skip_reason_;
-    if (GetCudnnVersion() < se::dnn::VersionInfo(8, 9, 3)) {
+    if (GetDnnVersionInfo(backend().default_stream_executor()) <
+        se::dnn::VersionInfo(8, 9, 3)) {
       GTEST_SKIP() << "Flash Attention requires cuDNN >= 8.9.3.";
     }
     XlaBuilder builder(TestName());
@@ -2962,7 +2956,8 @@ class FlashAttentionBMMScaleMaskSoftmaxBMM : public MultiHeadedAttentionTest {
   template <typename T>
   void TestImpl_Flash_Attention_Training_BMM1_Mask_Softmax_BMM2() {
     if (skip_reason_) GTEST_SKIP() << *skip_reason_;
-    if (GetCudnnVersion() < se::dnn::VersionInfo(8, 9, 3)) {
+    if (GetDnnVersionInfo(backend().default_stream_executor()) <
+        se::dnn::VersionInfo(8, 9, 3)) {
       GTEST_SKIP() << "Flash Attention requires cuDNN >= 8.9.3.";
     }
     XlaBuilder builder(TestName());
