@@ -61,6 +61,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/utils/dump_mlir_util.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
 #include "xla/client/xla_computation.h"
+#include "xla/mlir/utils/type_util.h"
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 #include "xla/mlir_hlo/mhlo/transforms/passes.h"
 #include "xla/python/refine_polymorphic_shapes.h"
@@ -289,7 +290,7 @@ absl::Status XlaCallModuleLoader::RefineDynamicShapes(
                                           xla_shape.dimensions().end());
       TF_ASSIGN_OR_RETURN(
           mlir::Type element_type,
-          ConvertPrimitiveTypeToMLIRType(xla_shape.element_type(), builder));
+          ConvertPrimitiveTypeToMlirType(xla_shape.element_type(), builder));
       mlir::RankedTensorType type =
           mlir::RankedTensorType::get(xla_dimensions, element_type);
       // TODO(burmako): This fails with an obscure compilation error on Windows.

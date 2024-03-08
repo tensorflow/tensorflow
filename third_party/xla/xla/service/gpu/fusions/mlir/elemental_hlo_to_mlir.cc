@@ -59,6 +59,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/mlir/utils/type_util.h"
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 #include "xla/mlir_hlo/mhlo/transforms/map_mhlo_to_scalar_op.h"
 #include "xla/mlir_hlo/mhlo/utils/type_conversion.h"
@@ -561,7 +562,7 @@ absl::StatusOr<SmallVector<Value>> HloToMlir(
   mlir::Type result_element_type;
   if (!instr->shape().IsTuple()) {
     TF_ASSIGN_OR_RETURN(element_mlir_type,
-                        ConvertPrimitiveTypeToMLIRType(element_type, builder));
+                        ConvertPrimitiveTypeToMlirType(element_type, builder));
 
     // During mapping to the arith dialect, we need to convert from signed
     // integer types to signless integer types. Most mappings can infer the
@@ -639,7 +640,7 @@ absl::StatusOr<SmallVector<Value>> HloToMlir(
   arg_types.reserve(instr->operands().size());
   for (auto operand : instr->operands()) {
     TF_ASSIGN_OR_RETURN(auto operand_element_type,
-                        ConvertPrimitiveTypeToMLIRType(
+                        ConvertPrimitiveTypeToMlirType(
                             operand->shape().element_type(), builder));
     arg_types.push_back(operand_element_type);
   }

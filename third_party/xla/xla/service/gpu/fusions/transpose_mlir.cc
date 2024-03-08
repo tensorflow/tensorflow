@@ -44,6 +44,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/mlir/utils/type_util.h"
 #include "xla/permutation_util.h"
 #include "xla/service/gpu/fusions/mlir/computation_partitioner.h"
 #include "xla/service/gpu/fusions/mlir/elemental_hlo_to_mlir.h"
@@ -57,7 +58,6 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
-#include "xla/translate/hlo_to_mhlo/hlo_utils.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/errors.h"
@@ -289,7 +289,7 @@ absl::StatusOr<SmallVector<Value, 4>> MlirTransposeFusion::EmitWriteToShMemMlir(
 
     // Allocate shared memory.
     const HloInstruction* transpose_operand = transpose->operand(0);
-    auto elem_type = *ConvertPrimitiveTypeToMLIRType(
+    auto elem_type = *ConvertPrimitiveTypeToMlirType(
         transpose_operand->shape().element_type(), builder);
     auto shmem = builder.create<AllocateSharedOp>(
         RankedTensorType::get(shmem_tensor_size, elem_type));

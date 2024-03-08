@@ -26,10 +26,6 @@ namespace xla {
 // Returns a XLA Shape equivalent of a MLIR Type, else returns empty shape.
 Shape TypeToShape(mlir::Type type);
 
-// Returns a XLA PrimitiveType equivalent of a MLIR Type that represents a
-// primitive type (e.g., i8, f32), else returns PRIMITIVE_TYPE_INVALID.
-PrimitiveType TypeToPrimitiveType(mlir::Type type);
-
 }  // namespace xla
 
 #endif  // XLA_TRANSLATE_MHLO_TO_HLO_TYPE_TO_SHAPE_H_

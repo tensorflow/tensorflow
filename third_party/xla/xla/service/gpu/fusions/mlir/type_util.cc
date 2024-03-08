@@ -21,6 +21,7 @@ limitations under the License.
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
 #include "xla/layout_util.h"
+#include "xla/mlir/utils/type_util.h"
 #include "xla/shape.h"
 #include "xla/translate/hlo_to_mhlo/hlo_utils.h"
 
@@ -40,7 +41,7 @@ mlir::Type TensorShapeToMlirType(const Shape& shape, mlir::OpBuilder& b) {
   }
   return mlir::RankedTensorType::get(
       llvm::to_vector(shape.dimensions()),
-      *ConvertPrimitiveTypeToMLIRType(shape.element_type(), b), layout);
+      *ConvertPrimitiveTypeToMlirType(shape.element_type(), b), layout);
 }
 
 llvm::SmallVector<mlir::Type> ShapeToMlirTypes(const Shape& shape,
