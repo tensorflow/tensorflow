@@ -721,11 +721,22 @@ Status LayoutAssignment::AddMandatoryConstraints(
         if (parameter_layout.LayoutIsSet()) {
           // Parameter layouts must match the respective layout in
           // ComputationLayout, if there is one.
-          TF_RETURN_IF_ERROR(
-              SetInstructionLayout(parameter_layout.shape(), instruction));
+          Shape param_shape = parameter_layout.shape();
+          // Clear out memory space in layout. Host offloader will do the
+          // analysis later.
+          TF_RETURN_IF_ERROR(ShapeUtil::ForEachMutableSubshapeWithStatus(
+              &param_shape, [](Shape* subshape, const ShapeIndex& index) {
+                if (!subshape->has_layout() || !subshape->IsArray()) {
+                  return OkStatus();
+                }
+                subshape->mutable_layout()->set_memory_space(0);
+                return OkStatus();
+              }));
+
+          TF_RETURN_IF_ERROR(SetInstructionLayout(param_shape, instruction));
           if (reverse_computation_order_) {
             TF_RETURN_IF_ERROR(PropagateParameterLayoutToUsers(
-                instruction, parameter_layout.shape(), this));
+                instruction, param_shape, this));
           }
         }
       }
@@ -2516,7 +2527,8 @@ Status LayoutAssignment::PropagateComputationLayouts(
           }
           const auto& computed_subshape = ShapeUtil::GetSubshape(
               computed_computation_layout.parameter_shape(i), shape_index);
-          if (subshape.layout() != computed_subshape.layout()) {
+          if (!Layout::Equal().IgnoreMemorySpace()(
+                  subshape.layout(), computed_subshape.layout())) {
             return Internal(
                 "Assigned parameter shape %s does not match layout of "
                 "computation shape: %s",
