@@ -64,6 +64,7 @@ limitations under the License.
 #include "xla/service/gpu/cudnn_vectorize_convolutions.h"
 #include "xla/service/gpu/cusolver_rewriter.h"
 #include "xla/service/gpu/gemm_algorithm_picker.h"
+#include "xla/service/gpu/gemm_fusion_autotuner.h"
 #include "xla/service/gpu/gpu_asm_opts_util.h"
 #include "xla/service/gpu/gpu_compiler.h"
 #include "xla/service/gpu/gpu_conv_padding_legalization.h"
@@ -74,7 +75,6 @@ limitations under the License.
 #include "xla/service/gpu/move_copy_to_users.h"
 #include "xla/service/gpu/target_constants.h"
 #include "xla/service/gpu/triangular_solve_rewriter.h"
-#include "xla/service/gpu/triton_autotuner.h"
 #include "xla/service/hlo_constant_folding.h"
 #include "xla/service/hlo_cse.h"
 #include "xla/service/hlo_dataflow_analysis.h"
@@ -336,7 +336,7 @@ absl::Status NVPTXCompiler::AddConvAndGemmAutotuningPasses(
 absl::Status NVPTXCompiler::AddTritonGemmAutotuningPasses(
     HloPassPipeline* pipeline, HloModule* hlo_module,
     AutotuneConfig& autotune_config, tsl::thread::ThreadPool* thread_pool) {
-  pipeline->AddPass<TritonAutotuner>(autotune_config, thread_pool);
+  pipeline->AddPass<GemmFusionAutotuner>(autotune_config, thread_pool);
   return absl::OkStatus();
 }
 

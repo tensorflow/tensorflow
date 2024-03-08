@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/service/gpu/triton_autotuner.h"
+#include "xla/service/gpu/gemm_fusion_autotuner.h"
 
 #include <algorithm>
 #include <array>
@@ -114,9 +114,9 @@ constexpr int kMaxTileSize = 512;
 // Default tiling when autotuning is disabled.
 constexpr TritonGemmConfig kDefaultGemmTiling = {32, 32, 32, 1, 1, 4};
 
-class TritonAutotunerVisitor : public DfsHloRewriteVisitor {
+class GemmFusionAutotunerVisitor : public DfsHloRewriteVisitor {
  public:
-  explicit TritonAutotunerVisitor(const AutotuneConfig& config)
+  explicit GemmFusionAutotunerVisitor(const AutotuneConfig& config)
       : config_(config) {}
 
   absl::Status HandleFusion(HloInstruction* hlo) override {
@@ -377,22 +377,15 @@ std::vector<TritonGemmConfig> GetFixedMatmulAutotuneConfigs(
     const se::CudaComputeCapability compute_capability, const int max_split_k) {
   // Shorter name for better formatting.
   using Config = TritonGemmConfig;
-
-  std::vector<Config> configs;
-  auto filter_fn = [&](const Config& config) {
-    return config.split_k <= max_split_k;
-  };
-  absl::c_copy_if(
-      std::vector<Config>{
-          Config(32, 32, 256, 1, 1, 4), Config(64, 32, 32, 16, 1, 4),
-          Config(32, 64, 64, 4, 1, 4), Config(128, 128, 64, 4, 1, 4),
-          Config(16, 16, 256, 1, 1, 4), Config(16, 128, 32, 16, 1, 4),
-          Config(16, 64, 128, 1, 1, 4), Config(16, 128, 32, 8, 1, 4),
-          Config(16, 16, 512, 1, 1, 4), Config(32, 16, 512, 1, 1, 4),
-          Config(64, 32, 64, 1, 2, 8)},
-      std::back_inserter(configs), filter_fn);
+  std::vector<Config> configs = {
+      Config(32, 32, 256, 1, 1, 4), Config(64, 32, 32, 16, 1, 4),
+      Config(32, 64, 64, 4, 1, 4),  Config(128, 128, 64, 4, 1, 4),
+      Config(16, 16, 256, 1, 1, 4), Config(16, 128, 32, 16, 1, 4),
+      Config(16, 64, 128, 1, 1, 4), Config(16, 128, 32, 8, 1, 4),
+      Config(16, 16, 512, 1, 1, 4), Config(32, 16, 512, 1, 1, 4),
+      Config(64, 32, 64, 1, 2, 8)};
   if (compute_capability.IsAtLeast(se::CudaComputeCapability::AMPERE)) {
-    absl::c_copy_if(
+    absl::c_copy(
         std::vector<Config>{
             Config(128, 256, 32, 1, 3, 8),  Config(256, 128, 32, 1, 3, 8),
             Config(256, 64, 32, 1, 4, 4),   Config(64, 256, 32, 1, 4, 4),
@@ -405,17 +398,22 @@ std::vector<TritonGemmConfig> GetFixedMatmulAutotuneConfigs(
             Config(16, 16, 256, 1, 3, 4),   Config(128, 128, 64, 2, 1, 8),
             Config(64, 64, 64, 1, 2, 4),    Config(16, 64, 256, 8, 1, 4),
             Config(256, 256, 128, 1, 3, 8)},
-        std::back_inserter(configs), filter_fn);
+        std::back_inserter(configs));
   }
   if (compute_capability.IsAtLeast(se::CudaComputeCapability::HOPPER)) {
-    absl::c_copy_if(
+    absl::c_copy(
         std::vector<Config>{
             Config(16, 32, 32, 8, 1, 2),
             Config(16, 64, 128, 8, 1, 4),
             Config(16, 64, 128, 16, 3, 4),
         },
-        std::back_inserter(configs), filter_fn);
+        std::back_inserter(configs));
   }
+  configs.erase(std::remove_if(configs.begin(), configs.end(),
+                               [&](const Config& config) {
+                                 return config.split_k > max_split_k;
+                               }),
+                configs.end());
   return configs;
 }
 
@@ -1096,10 +1094,10 @@ std::vector<TritonGemmConfig> GetPossibleMatmulAutotuneConfigs(
                                         compute_capability, max_split_k));
 }
 
-absl::StatusOr<bool> TritonAutotuner::Run(
+absl::StatusOr<bool> GemmFusionAutotuner::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
-  XLA_SCOPED_LOGGING_TIMER("Triton autotuner");
+  XLA_SCOPED_LOGGING_TIMER("GEMM fusion autotuner");
   const DebugOptions& debug_options = module->config().debug_options();
   TF_ASSIGN_OR_RETURN(std::optional<AutotunerCompileUtil> opt_compile_util,
                       AutotunerCompileUtil::Create(config_, debug_options));
@@ -1137,7 +1135,8 @@ absl::StatusOr<bool> TritonAutotuner::Run(
     }
   }
 
-  return TritonAutotunerVisitor(config_).RunOnModule(module, execution_threads);
+  return GemmFusionAutotunerVisitor(config_).RunOnModule(module,
+                                                         execution_threads);
 }
 
 }  // namespace gpu

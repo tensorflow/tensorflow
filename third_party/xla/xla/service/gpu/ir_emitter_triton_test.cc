@@ -1065,7 +1065,7 @@ ENTRY e {
 }
 )";
 
-  // This check tests if Triton is used at all plus it runs TritonAutotuner,
+  // This check tests if Triton is used at all plus it runs GemmFusionAutotuner,
   // which verifies if the generated kernels can run without errors such as
   // CUDA_ERROR_ILLEGAL_ADDRESS.
   MatchOptimizedHlo(kHloText, R"(
