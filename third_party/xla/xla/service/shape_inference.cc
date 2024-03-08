@@ -3646,9 +3646,22 @@ ShapeInference::InferCollectivePermuteDoneShape(const Shape& operand_shape) {
   TF_RETURN_IF_ERROR(ExpectArray(operand, "clamp operand"));
   TF_RETURN_IF_ERROR(ExpectArray(max, "clamp max"));
 
-  if (!ShapeUtil::CompatibleIgnoringFpPrecision(min, operand) ||
-      !ShapeUtil::CompatibleIgnoringFpPrecision(max, operand) ||
-      !ShapeUtil::CompatibleIgnoringFpPrecision(min, max)) {
+  // min, operand, and max must have compatible element types.
+  if (!ShapeUtil::SameElementTypeIgnoringFpPrecision(min, operand) ||
+      !ShapeUtil::SameElementTypeIgnoringFpPrecision(max, operand) ||
+      !ShapeUtil::SameElementTypeIgnoringFpPrecision(min, max)) {
+    return InvalidArgument(
+        "Clamp with incompatible element types: %s, %s, % s.",
+        ShapeUtil::HumanString(min), ShapeUtil::HumanString(operand),
+        ShapeUtil::HumanString(max));
+  }
+
+  if ((!ShapeUtil::IsScalar(min) &&
+       !ShapeUtil::CompatibleIgnoringFpPrecision(min, operand)) ||
+      (!ShapeUtil::IsScalar(max) &&
+       !ShapeUtil::CompatibleIgnoringFpPrecision(max, operand)) ||
+      (!ShapeUtil::IsScalar(min) && !ShapeUtil::IsScalar(max) &&
+       !ShapeUtil::CompatibleIgnoringFpPrecision(min, max))) {
     return InvalidArgument("Clamp with incompatible shapes: %s, %s, %s.",
                            ShapeUtil::HumanString(min),
                            ShapeUtil::HumanString(operand),
@@ -3668,13 +3681,18 @@ ShapeInference::InferCollectivePermuteDoneShape(const Shape& operand_shape) {
         "Operands to select must be the same shape; got %s and %s.",
         ShapeUtil::HumanString(on_true), ShapeUtil::HumanString(on_false));
   }
+
   if (pred.element_type() != PRED) {
     return InvalidArgument(
         "Select's pred operand must have PRED element type; got %s.",
         ShapeUtil::HumanString(pred));
   }
-  if (!ShapeUtil::CompatibleIgnoringElementType(pred, on_true) ||
-      !ShapeUtil::CompatibleIgnoringElementType(pred, on_false)) {
+
+  // If pred is not scalar, it must be compatible with on_true and on_false
+  if ((!ShapeUtil::IsScalar(pred) &&
+       (!ShapeUtil::CompatibleIgnoringElementType(pred, on_true) ||
+        !ShapeUtil::CompatibleIgnoringElementType(pred, on_false))) ||
+      !ShapeUtil::CompatibleIgnoringFpPrecision(on_true, on_false)) {
     return InvalidArgument(
         "Operands to select and predicate must be the same shape; got %s and "
         "%s and %s.",
@@ -3682,9 +3700,11 @@ ShapeInference::InferCollectivePermuteDoneShape(const Shape& operand_shape) {
         ShapeUtil::HumanString(pred));
   }
 
+  Shape full_rank_shape = ShapeUtil::IsScalar(pred) ? on_true : pred;
   Shape result = ShapeUtil::ChangeElementType(
-      pred, ShapeUtil::HigherPrecisionElementType(on_true, on_false));
-  for (int64_t dimension = 0; dimension < pred.rank(); ++dimension) {
+      full_rank_shape,
+      ShapeUtil::HigherPrecisionElementType(on_true, on_false));
+  for (int64_t dimension = 0; dimension < full_rank_shape.rank(); ++dimension) {
     if (on_true.is_unbounded_dynamic_dimension(dimension) ||
         on_false.is_unbounded_dynamic_dimension(dimension)) {
       absl::StatusOr<DimAndBound> inferred = InferMostSpecificDimAndBound(
@@ -3697,7 +3717,8 @@ ShapeInference::InferCollectivePermuteDoneShape(const Shape& operand_shape) {
                          on_false.is_dynamic_dimension(dimension));
     } else {
       result.set_dynamic_dimension(
-          dimension, pred.is_dynamic_dimension(dimension) ||
+          dimension, (!ShapeUtil::IsScalar(pred) &&
+                      pred.is_dynamic_dimension(dimension)) ||
                          on_true.is_dynamic_dimension(dimension) ||
                          on_false.is_dynamic_dimension(dimension));
     }

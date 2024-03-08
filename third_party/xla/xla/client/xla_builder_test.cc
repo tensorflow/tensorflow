@@ -1937,22 +1937,11 @@ TEST(XlaBuilderTest, UnboundedClamp) {
               GmockMatch(m::Op().WithShapeEqualTo(&expected)));
 }
 
-TEST(XlaBuilderTest, UnboundedClampUnsupportedImplicitBroadcast) {
+TEST(XlaBuilderTest, UnboundedClampScalarMinImplicitBroadcast) {
   XlaBuilder b(TestName());
-  TF_ASSERT_OK_AND_ASSIGN(Shape lhs, ParseShape("f32[?, 10]"));
-  TF_ASSERT_OK_AND_ASSIGN(Shape rhs, ParseShape("f32[1]"));
+  TF_ASSERT_OK_AND_ASSIGN(Shape lhs, ParseShape("f32[]"));
+  TF_ASSERT_OK_AND_ASSIGN(Shape rhs, ParseShape("f32[?, 10]"));
   TF_ASSERT_OK_AND_ASSIGN(Shape ehs, ParseShape("f32[?, 10]"));
-  Clamp(Parameter(&b, 0, lhs, "lhs"), Parameter(&b, 1, rhs, "rhs"),
-        Parameter(&b, 2, ehs, "ehs"));
-  EXPECT_THAT(BuildHloModule(b),
-              StatusIs(_, HasSubstr("Unimplemented implicit broadcast.")));
-}
-
-TEST(XlaBuilderTest, UnboundedClampScalarOperandMax) {
-  XlaBuilder b(TestName());
-  TF_ASSERT_OK_AND_ASSIGN(Shape lhs, ParseShape("f32[?, 10]"));
-  TF_ASSERT_OK_AND_ASSIGN(Shape rhs, ParseShape("f32[]"));
-  TF_ASSERT_OK_AND_ASSIGN(Shape ehs, ParseShape("f32[]"));
   TF_ASSERT_OK_AND_ASSIGN(Shape expected, ParseShape("f32[?, 10]"));
   Clamp(Parameter(&b, 0, lhs, "lhs"), Parameter(&b, 1, rhs, "rhs"),
         Parameter(&b, 2, ehs, "ehs"));
@@ -1961,7 +1950,7 @@ TEST(XlaBuilderTest, UnboundedClampScalarOperandMax) {
               GmockMatch(m::Op().WithShapeEqualTo(&expected)));
 }
 
-TEST(XlaBuilderTest, UnboundedClampScalarMinMax) {
+TEST(XlaBuilderTest, UnboundedClampScalarMinMaxImplicitBroadcast) {
   XlaBuilder b(TestName());
   TF_ASSERT_OK_AND_ASSIGN(Shape lhs, ParseShape("f32[]"));
   TF_ASSERT_OK_AND_ASSIGN(Shape rhs, ParseShape("f32[?, 10]"));
@@ -1974,7 +1963,20 @@ TEST(XlaBuilderTest, UnboundedClampScalarMinMax) {
               GmockMatch(m::Op().WithShapeEqualTo(&expected)));
 }
 
-TEST(XlaBuilderTest, UnboundedClampScalarMinOperand) {
+TEST(XlaBuilderTest, UnboundedClampScalarOperandMaxImplicitBroadcast) {
+  XlaBuilder b(TestName());
+  TF_ASSERT_OK_AND_ASSIGN(Shape lhs, ParseShape("f32[?, 10]"));
+  TF_ASSERT_OK_AND_ASSIGN(Shape rhs, ParseShape("f32[]"));
+  TF_ASSERT_OK_AND_ASSIGN(Shape ehs, ParseShape("f32[]"));
+  TF_ASSERT_OK_AND_ASSIGN(Shape expected, ParseShape("f32[?, 10]"));
+  Clamp(Parameter(&b, 0, lhs, "lhs"), Parameter(&b, 1, rhs, "rhs"),
+        Parameter(&b, 2, ehs, "ehs"));
+  TF_ASSERT_OK_AND_ASSIGN(auto module, BuildHloModule(b));
+  EXPECT_THAT(GetRoot(*module),
+              GmockMatch(m::Op().WithShapeEqualTo(&expected)));
+}
+
+TEST(XlaBuilderTest, UnboundedClampScalarMinOperandImplicitBroadcast) {
   XlaBuilder b(TestName());
   TF_ASSERT_OK_AND_ASSIGN(Shape lhs, ParseShape("f32[]"));
   TF_ASSERT_OK_AND_ASSIGN(Shape rhs, ParseShape("f32[]"));
@@ -1985,6 +1987,18 @@ TEST(XlaBuilderTest, UnboundedClampScalarMinOperand) {
   TF_ASSERT_OK_AND_ASSIGN(auto module, BuildHloModule(b));
   EXPECT_THAT(GetRoot(*module),
               GmockMatch(m::Op().WithShapeEqualTo(&expected)));
+}
+
+TEST(XlaBuilderTest,
+     UnboundedClampUnsupportedDegenerateOperandImplicitBroadcast) {
+  XlaBuilder b(TestName());
+  TF_ASSERT_OK_AND_ASSIGN(Shape lhs, ParseShape("f32[?, 10]"));
+  TF_ASSERT_OK_AND_ASSIGN(Shape rhs, ParseShape("f32[1]"));
+  TF_ASSERT_OK_AND_ASSIGN(Shape ehs, ParseShape("f32[?, 10]"));
+  Clamp(Parameter(&b, 0, lhs, "lhs"), Parameter(&b, 1, rhs, "rhs"),
+        Parameter(&b, 2, ehs, "ehs"));
+  EXPECT_THAT(BuildHloModule(b),
+              StatusIs(_, HasSubstr("Unimplemented implicit broadcast.")));
 }
 
 TEST(XlaBuilderTest, UnboundedCompare) {
@@ -2274,7 +2288,7 @@ TEST(XlaBuilderTest, UnboundedSelectScalarPred) {
               GmockMatch(m::Op().WithShapeEqualTo(&expected)));
 }
 
-TEST(XlaBuilderTest, UnboundedSelectScalarOnTrueOnFalse) {
+TEST(XlaBuilderTest, UnboundedSelectScalarOnTrueOnFalseImplicitBroadcast) {
   XlaBuilder b(TestName());
   TF_ASSERT_OK_AND_ASSIGN(Shape lhs, ParseShape("pred[?, 10]"));
   TF_ASSERT_OK_AND_ASSIGN(Shape rhs, ParseShape("f32[]"));
@@ -2287,7 +2301,7 @@ TEST(XlaBuilderTest, UnboundedSelectScalarOnTrueOnFalse) {
               GmockMatch(m::Op().WithShapeEqualTo(&expected)));
 }
 
-TEST(XlaBuilderTest, UnboundedSelectScalarPredOnFalse) {
+TEST(XlaBuilderTest, UnboundedSelectScalarPredOnFalseImplicitBroadcast) {
   XlaBuilder b(TestName());
   TF_ASSERT_OK_AND_ASSIGN(Shape lhs, ParseShape("pred[]"));
   TF_ASSERT_OK_AND_ASSIGN(Shape rhs, ParseShape("f32[?, 10]"));
@@ -2300,7 +2314,7 @@ TEST(XlaBuilderTest, UnboundedSelectScalarPredOnFalse) {
               GmockMatch(m::Op().WithShapeEqualTo(&expected)));
 }
 
-TEST(XlaBuilderTest, UnboundedSelectScalarPredOnTrue) {
+TEST(XlaBuilderTest, UnboundedSelectScalarPredOnTrueImplicitBroadcast) {
   XlaBuilder b(TestName());
   TF_ASSERT_OK_AND_ASSIGN(Shape lhs, ParseShape("pred[]"));
   TF_ASSERT_OK_AND_ASSIGN(Shape rhs, ParseShape("f32[]"));
@@ -2313,7 +2327,8 @@ TEST(XlaBuilderTest, UnboundedSelectScalarPredOnTrue) {
               GmockMatch(m::Op().WithShapeEqualTo(&expected)));
 }
 
-TEST(XlaBuilderTest, UnboundedSelectUnsupportedImplicitBroadcast) {
+TEST(XlaBuilderTest,
+     UnboundedSelectUnsupportedDegenerateOperandImplicitBroadcast) {
   XlaBuilder b(TestName());
   TF_ASSERT_OK_AND_ASSIGN(Shape lhs, ParseShape("pred[?, 10]"));
   TF_ASSERT_OK_AND_ASSIGN(Shape rhs, ParseShape("f32[1]"));
