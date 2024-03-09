@@ -23,18 +23,20 @@ limitations under the License.
 
 namespace tensorflow {
 DataDumperLoggerConfig::DataDumperLoggerConfig(
-    std::function<std::string(const std::string &)> get_filename,
+    std::function<std::string(const std::string &, mlir::Operation *op)>
+        get_filename,
     const std::string &pass_prefix, bool print_module_scope,
-    bool print_after_only_on_change)
-    : ::tensorflow::BridgeLoggerConfig(print_module_scope,
-                                       print_after_only_on_change),
+    bool print_after_only_on_change, mlir::OpPrintingFlags op_printing_flags)
+    : ::tensorflow::BridgeLoggerConfig(
+          print_module_scope, print_after_only_on_change, op_printing_flags),
       get_filename_(get_filename),
       pass_prefix_(pass_prefix) {}
 
 void DataDumperLoggerConfig::printBeforeIfEnabled(
     mlir::Pass *pass, mlir::Operation *op, PrintCallbackFn print_callback) {
   std::string pass_name = pass->getName().str();
-  std::string filename = get_filename_(pass_prefix_ + "before_" + pass_name);
+  std::string filename =
+      get_filename_(pass_prefix_ + "before_" + pass_name, op);
 
   if (ShouldPrint(pass, op)) DumpMlir(filename, print_callback);
 }
@@ -42,7 +44,7 @@ void DataDumperLoggerConfig::printBeforeIfEnabled(
 void DataDumperLoggerConfig::printAfterIfEnabled(
     mlir::Pass *pass, mlir::Operation *op, PrintCallbackFn print_callback) {
   std::string pass_name = pass->getName().str();
-  std::string filename = get_filename_(pass_prefix_ + "after_" + pass_name);
+  std::string filename = get_filename_(pass_prefix_ + "after_" + pass_name, op);
 
   if (ShouldPrint(pass, op)) DumpMlir(filename, print_callback);
 }

@@ -21,7 +21,7 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_AOT_EMBEDDED_PROTOCOL_BUFFERS_H_
 
 #include "absl/types/span.h"
-#include "tensorflow/compiler/xla/statusor.h"
+#include "xla/statusor.h"
 #include "tensorflow/core/platform/protobuf.h"
 
 namespace tensorflow {
@@ -82,7 +82,7 @@ struct ProtobufToEmbed {
 // of all the protocol buffers are embedded into a single .o file whose content
 // is stored in the object_file_data field in the returned
 // EmbeddedProtocolBuffers instance.
-StatusOr<EmbeddedProtocolBuffers> CreateEmbeddedProtocolBuffers(
+absl::StatusOr<EmbeddedProtocolBuffers> CreateEmbeddedProtocolBuffers(
     absl::string_view target_triple,
     absl::Span<const ProtobufToEmbed> protobufs_to_embed);
 

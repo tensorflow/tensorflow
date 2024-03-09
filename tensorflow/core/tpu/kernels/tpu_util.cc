@@ -21,7 +21,7 @@ limitations under the License.
 
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_split.h"
-#include "tensorflow/compiler/xla/stream_executor/tpu/tpu_api.h"
+#include "xla/stream_executor/tpu/tpu_api.h"
 #include "tensorflow/core/platform/random.h"
 
 namespace tensorflow {
@@ -35,7 +35,7 @@ std::string ProtoKeyForComputation(const std::string& key, int core) {
   return absl::StrCat(key, ":", core);
 }
 
-xla::StatusOr<TpuCompilationCacheKey> ParseCompilationCacheKey(
+absl::StatusOr<TpuCompilationCacheKey> ParseCompilationCacheKey(
     const std::string& key) {
   const std::vector<std::string> splits = absl::StrSplit(key, '|');
   if (splits.size() == 1) {
@@ -103,7 +103,7 @@ Status DynamicShapesToTensorShapes(const InputList& dynamic_shapes,
   return OkStatus();
 }
 
-xla::StatusOr<std::unique_ptr<::grpc::ServerBuilder>> CreateServerBuilder(
+absl::StatusOr<std::unique_ptr<::grpc::ServerBuilder>> CreateServerBuilder(
     int serving_port) {
   auto server_builder = std::make_unique<::grpc::ServerBuilder>();
   server_builder->AddListeningPort(

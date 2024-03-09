@@ -1,5 +1,5 @@
-load("//tensorflow:py.default.bzl", "py_library")
-load("//tensorflow:tensorflow.bzl", "py_binary", "tf_py_test")
+load("//tensorflow:strict.default.bzl", "py_strict_binary", "py_strict_library")
+load("//tensorflow:tensorflow.default.bzl", "tf_py_strict_test")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -45,6 +45,7 @@ cc_library(
         "//tensorflow/compiler/mlir/lite/python:saved_model_to_tfl_flatbuffer",
         "//tensorflow/compiler/mlir/lite/quantization/lite:quantize_model",
         "//tensorflow/compiler/mlir/lite/sparsity:sparsify_model",
+        "//tensorflow/compiler/mlir/quantization/tensorflow/python:py_function_lib",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
@@ -79,13 +80,12 @@ cc_library(
 )
 
 # Compatibility stub. Remove when internal customers moved.
-py_library(
+py_strict_library(
     name = "tensorflow_wrap_toco",
     srcs = ["tensorflow_wrap_toco.py"],
     srcs_version = "PY3",
     visibility = [
         "//learning/expander/pod/deep_pod/utils:__subpackages__",
-        "//research/handwriting/converters/tflite:__subpackages__",
         "//tensorflow/lite:__subpackages__",
     ],
     deps = [
@@ -93,13 +93,14 @@ py_library(
     ],
 )
 
-py_binary(
+py_strict_binary(
     name = "toco_from_protos",
     srcs = ["toco_from_protos.py"],
     python_version = "PY3",
     srcs_version = "PY3",
     deps = [
         "@absl_py//absl:app",
+        "//tensorflow/compiler/mlir/quantization/tensorflow/python:py_function_lib_py",
         "//tensorflow/python:_pywrap_toco_api",
         "//tensorflow/python:pywrap_tensorflow",
         # Needed to provide PyArray_API
@@ -107,7 +108,7 @@ py_binary(
     ],
 )
 
-tf_py_test(
+tf_py_strict_test(
     name = "toco_from_protos_test",
     srcs = ["toco_from_protos_test.py"],
     python_version = "PY3",
@@ -118,6 +119,7 @@ tf_py_test(
         "//tensorflow:tensorflow_py",
         "//tensorflow/lite/toco:model_flags_proto_py",
         "//tensorflow/lite/toco:toco_flags_proto_py",
+        "//tensorflow/lite/toco:types_proto_py",
         "//tensorflow/python/platform:resource_loader",
         "//tensorflow/python/platform:test",
     ],

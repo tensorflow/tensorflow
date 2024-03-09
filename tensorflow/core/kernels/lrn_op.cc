@@ -18,7 +18,7 @@ limitations under the License.
 
 #define EIGEN_USE_THREADS
 
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
@@ -27,7 +27,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/errors.h"
 
 #if defined(TENSORFLOW_USE_CUSTOM_CONTRACTION_KERNEL)
-#include "tensorflow/tsl/framework/contraction/eigen_contraction_kernel.h"
+#include "tsl/framework/contraction/eigen_contraction_kernel.h"
 #endif
 
 #if !defined(IS_MOBILE_PLATFORM)
@@ -219,11 +219,11 @@ struct LaunchLRN<GPUDevice, T> {
     auto* stream = context->op_device_context()->stream();
     OP_REQUIRES(context, stream, errors::Internal("No GPU stream available."));
 
-    bool status =
-        stream
-            ->ThenNormalizeWithDimensions(normalize_desc, dimensions_desc,
-                                          input_data, &output_data)
-            .ok();
+    auto dnn = stream->parent()->AsDnn();
+    OP_REQUIRES(context, dnn != nullptr,
+                absl::InternalError("No DNN support for stream."));
+    bool status = dnn->DoNormalizeWithDimensions(
+        stream, normalize_desc, dimensions_desc, input_data, &output_data);
     OP_REQUIRES(context, status,
                 errors::Internal("NormalizeWithDimensions launch failed"));
 #elif TENSORFLOW_USE_ROCM
@@ -257,14 +257,14 @@ struct LaunchLRN<GPUDevice, T> {
                                                    transformed_output_shape,
                                                    &transformed_output));
 
-    perftools::gputools::dnn::BatchDescriptor dimensions_desc;
+    stream_executor::dnn::BatchDescriptor dimensions_desc;
     dimensions_desc.set_count(batch)
         .set_height(rows)
         .set_width(cols)
         .set_feature_map_count(depth)
-        .set_layout(perftools::gputools::dnn::DataLayout::kBatchDepthYX);
+        .set_layout(stream_executor::dnn::DataLayout::kBatchDepthYX);
 
-    perftools::gputools::dnn::NormalizeDescriptor normalize_desc;
+    stream_executor::dnn::NormalizeDescriptor normalize_desc;
     normalize_desc.set_bias(bias_)
         .set_range(depth_radius_)
         .set_alpha(alpha_)
@@ -279,12 +279,12 @@ struct LaunchLRN<GPUDevice, T> {
 
     auto* stream = context->op_device_context()->stream();
     OP_REQUIRES(context, stream, errors::Internal("No GPU stream available."));
+    auto dnn = stream->parent()->AsDnn();
+    OP_REQUIRES(context, dnn != nullptr,
+                absl::InternalError("No DNN support for stream."));
 
-    bool status =
-        stream
-            ->ThenNormalizeWithDimensions(normalize_desc, dimensions_desc,
-                                          input_data, &output_data)
-            .ok();
+    bool status = dnn->DoNormalizeWithDimensions(
+        stream, normalize_desc, dimensions_desc, input_data, &output_data);
     OP_REQUIRES(context, status,
                 errors::Internal("NormalizeWithDimensions launch failed"));
 
@@ -517,12 +517,13 @@ struct LaunchLRNGrad<GPUDevice, T> {
     auto* stream = context->op_device_context()->stream();
     OP_REQUIRES(context, stream, errors::Internal("No GPU stream available."));
 
-    bool status =
-        stream
-            ->ThenNormalizeBackwardWithDimensions(
-                normalize_desc, dimensions_desc, input_image_data,
-                output_image_data, input_grads_data, &output_grads_data)
-            .ok();
+    auto dnn = stream->parent()->AsDnn();
+    OP_REQUIRES(context, dnn != nullptr,
+                absl::InternalError("No DNN support for stream."));
+    bool status = dnn->DoNormalizeBackwardWithDimensions(
+        stream, normalize_desc, dimensions_desc, input_image_data,
+        output_image_data, input_grads_data, &output_grads_data,
+        /*workspace_allocator=*/nullptr);
     OP_REQUIRES(
         context, status,
         errors::Internal("NormalizeBackwardWithDimensions launch failed"));
@@ -579,14 +580,14 @@ struct LaunchLRNGrad<GPUDevice, T> {
                                                    transformed_output_shape,
                                                    &transformed_output));
 
-    perftools::gputools::dnn::BatchDescriptor dimensions_desc;
+    stream_executor::dnn::BatchDescriptor dimensions_desc;
     dimensions_desc.set_count(batch)
         .set_height(rows)
         .set_width(cols)
         .set_feature_map_count(depth)
-        .set_layout(perftools::gputools::dnn::DataLayout::kBatchDepthYX);
+        .set_layout(stream_executor::dnn::DataLayout::kBatchDepthYX);
 
-    perftools::gputools::dnn::NormalizeDescriptor normalize_desc;
+    stream_executor::dnn::NormalizeDescriptor normalize_desc;
     normalize_desc.set_bias(bias_)
         .set_range(depth_radius_)
         .set_alpha(alpha_)
@@ -616,12 +617,13 @@ struct LaunchLRNGrad<GPUDevice, T> {
 
     DnnScratchAllocator scratch_allocator(NormalizeBackwardScratchSize,
                                           context);
-    bool status = stream
-                      ->ThenNormalizeBackwardWithDimensions(
-                          normalize_desc, dimensions_desc, input_image_data,
-                          output_image_data, input_grads_data,
-                          &output_grads_data, &scratch_allocator)
-                      .ok();
+    auto dnn = stream->parent()->AsDnn();
+    OP_REQUIRES(context, dnn != nullptr,
+                absl::InternalError("No DNN support for stream."));
+    bool status = dnn->DoNormalizeBackwardWithDimensions(
+        stream, normalize_desc, dimensions_desc, input_image_data,
+        output_image_data, input_grads_data, &output_grads_data,
+        /*workspace_allocator=*/nullptr, &scratch_allocator);
     OP_REQUIRES(
         context, status,
         errors::Internal("NormalizeBackwardWithDimensions launch failed"));

@@ -111,12 +111,13 @@ class TensorFlowRefType : public TensorFlowType {
 
 // Define a class for each individual TensorFlow type (dtype), see types.def
 // for the list.
-#define HANDLE_TF_TYPE(tftype, enumerant, name)                          \
+#define HANDLE_TF_TYPE(tftype, enumerant, name_marg)                     \
   class tftype##Type : public detail::TensorFlowTypeImpl<tftype##Type> { \
    public:                                                               \
     using TFBase::TFBase;                                                \
+    static constexpr StringLiteral name = #name_marg;                    \
   };
-#define HANDLE_CUSTOM_TF_TYPE(tftype, enumerant, name)
+#define HANDLE_CUSTOM_TF_TYPE(tftype, enumerant, name_marg)
 #include "tensorflow/core/ir/types/types.def"
 
 namespace detail {
@@ -222,6 +223,7 @@ inline Type GetDefaultTypeOf(TensorFlowTypeWithSubtype type) {
 class ResourceType : public detail::TypeWithSubtypeImpl<ResourceType> {
  public:
   using TFBase::TFBase;
+  static constexpr ::mlir::StringLiteral name = "tf_type.resource";
   static std::string getTypeName() { return "ResourceType"; }
 };
 
@@ -233,6 +235,7 @@ class ResourceType : public detail::TypeWithSubtypeImpl<ResourceType> {
 class VariantType : public detail::TypeWithSubtypeImpl<VariantType> {
  public:
   using TFBase::TFBase;
+  static constexpr ::mlir::StringLiteral name = "tf_type.variant";
   static std::string getTypeName() { return "VariantType"; }
 };
 

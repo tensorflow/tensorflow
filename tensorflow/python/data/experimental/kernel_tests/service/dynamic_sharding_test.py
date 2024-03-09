@@ -57,7 +57,8 @@ class DynamicShardingTest(data_service_test_base.TestBase,
     ds = self.make_distributed_dataset(
         ds,
         cluster,
-        processing_mode=data_service_ops.ShardingPolicy.DYNAMIC)
+        processing_mode=data_service_ops.ShardingPolicy.DYNAMIC,
+        job_name=None)
     self.assertDatasetProduces(
         ds, list(range(num_elements)), assert_items_equal=True)
 

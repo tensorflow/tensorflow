@@ -47,6 +47,7 @@ extern llvm::cl::opt<bool> guarantee_all_funcs_one_use;
 extern llvm::cl::opt<bool> enable_dynamic_update_slice;
 extern llvm::cl::opt<bool> preserve_assert_op;
 extern llvm::cl::opt<bool> legalize_custom_tensor_list_ops;
+extern llvm::cl::opt<bool> reduce_type_precision;
 
 // Import saved model.
 extern llvm::cl::opt<bool> import_saved_model_object_graph;
@@ -59,11 +60,20 @@ enum HloImportType { proto, hlotxt, mlir_text };
 
 extern llvm::cl::opt<bool> import_hlo;
 extern llvm::cl::opt<HloImportType> hlo_import_type;
+
+// enable_hlo_to_tf_conversion and disable_hlo_to_tfl_conversion are used to
+// control the HLO to TF and HLO to TFLite conversion while debugging an
+// input_mlir. The default value of enable_hlo_to_tf_conversion is false, and
+// the default value of disable_hlo_to_tfl_conversion is true.
 extern llvm::cl::opt<bool> enable_hlo_to_tf_conversion;
+extern llvm::cl::opt<bool> disable_hlo_to_tfl_conversion;
 
 // quantization related flags
 extern llvm::cl::opt<bool> post_training_quantization;
 
 // TF to stablehlo pass flags
 extern llvm::cl::opt<bool> enable_stablehlo_conversion;
+
+// Wether serialize stablehlo ops or not
+extern llvm::cl::opt<bool> serialize_stablehlo_ops;
 #endif  // TENSORFLOW_COMPILER_MLIR_LITE_TF_TFL_TRANSLATE_CL_H_

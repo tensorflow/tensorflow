@@ -29,8 +29,8 @@ limitations under the License.
 #include "tensorflow/core/platform/env_time.h"
 #include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/core/protobuf/data_service.pb.h"
-#include "tensorflow/tsl/platform/errors.h"
-#include "tensorflow/tsl/protobuf/error_codes.pb.h"
+#include "tsl/platform/errors.h"
+#include "tsl/protobuf/error_codes.pb.h"
 
 namespace tensorflow {
 namespace data {
@@ -65,37 +65,21 @@ StatusOr<DataServiceMetadata> GetDataServiceMetadata(
 
 StatusOr<bool> CompressionDisabledAtRuntime(
     const std::string& dataset_id, const std::string& address,
-    const std::string& protocol,
-    const std::optional<std::string>& trainer_compression_info) {
+    const std::string& protocol, bool disable_compression_at_runtime) {
   DataServiceDispatcherClient client(address, protocol);
-  DisableCompressionAtRuntimeRequest request;
   DisableCompressionAtRuntimeResponse response;
   absl::Time deadline =
       absl::FromUnixMicros(EnvTime::NowMicros()) + kGetMetadataRetryTimeout;
-
-  request.set_dataset_id(dataset_id);
-  if (trainer_compression_info.has_value()) {
-    request.set_trainer_compression_info(*trainer_compression_info);
-  } else {
-    request.set_trainer_is_ineligible(true);
-  }
-
-  while (absl::FromUnixMicros(EnvTime::NowMicros()) < deadline) {
-    TF_RETURN_IF_ERROR(grpc_util::Retry(
-        [&]() { return client.DisableCompressionAtRuntime(request, response); },
-        absl::Substitute(
-            "Get compression disabled at runtime with dispatcher at $0.",
-            address),
-        absl::ToUnixMicros(deadline)));
-    if (response.not_enough_information()) {
-      Env::Default()->SleepForMicroseconds(
-          absl::ToInt64Microseconds(absl::Minutes(1)));
-      continue;
-    }
-    return response.compression_disabled_at_runtime();
-  }
-  return absl::DeadlineExceededError(
-      "The dispatcher did not make a runtime compression disabling decision.");
+  TF_RETURN_IF_ERROR(grpc_util::Retry(
+      [&]() {
+        return client.DisableCompressionAtRuntime(
+            dataset_id, disable_compression_at_runtime, response);
+      },
+      absl::Substitute(
+          "Get compression disabled at runtime with dispatcher at $0.",
+          address),
+      absl::ToUnixMicros(deadline)));
+  return response.compression_disabled_at_runtime();
 }
 
 StatusOr<DataServiceConfig> GetDataServiceConfig(const std::string& address,

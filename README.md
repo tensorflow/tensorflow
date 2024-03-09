@@ -6,7 +6,7 @@
 [![PyPI](https://badge.fury.io/py/tensorflow.svg)](https://badge.fury.io/py/tensorflow)
 [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.4724125.svg)](https://doi.org/10.5281/zenodo.4724125)
 [![CII Best Practices](https://bestpractices.coreinfrastructure.org/projects/1486/badge)](https://bestpractices.coreinfrastructure.org/projects/1486)
-[![OpenSSF Scorecard](https://api.securityscorecards.dev/projects/github.com/tensorflow/tensorflow/badge)](https://api.securityscorecards.dev/projects/github.com/tensorflow/tensorflow)
+[![OpenSSF Scorecard](https://api.securityscorecards.dev/projects/github.com/tensorflow/tensorflow/badge)](https://securityscorecards.dev/viewer/?uri=github.com/tensorflow/tensorflow)
 [![Fuzzing Status](https://oss-fuzz-build-logs.storage.googleapis.com/badges/tensorflow.svg)](https://bugs.chromium.org/p/oss-fuzz/issues/list?sort=-opened&can=1&q=proj:tensorflow)
 [![Fuzzing Status](https://oss-fuzz-build-logs.storage.googleapis.com/badges/tensorflow-py.svg)](https://bugs.chromium.org/p/oss-fuzz/issues/list?sort=-opened&can=1&q=proj:tensorflow-py)
 [![OSSRank](https://shields.io/endpoint?url=https://ossrank.com/shield/44)](https://ossrank.com/p/44)
@@ -114,7 +114,7 @@ apply fixes to bugs or security vulnerabilities:
 
 *   Clone the TensorFlow repo and switch to the corresponding branch for your
     desired TensorFlow version, for example, branch `r2.8` for version 2.8.
-*   Apply (that is, cherry pick) the desired changes and resolve any code
+*   Apply (that is, cherry-pick) the desired changes and resolve any code
     conflicts.
 *   Run TensorFlow tests and ensure they pass.
 *   [Build](https://www.tensorflow.org/install/source) the TensorFlow pip
@@ -166,16 +166,9 @@ Learn more about the
 
 ## Courses
 
-*   [Deep Learning with Tensorflow from Edx](https://www.edx.org/course/deep-learning-with-tensorflow)
-*   [DeepLearning.AI TensorFlow Developer Professional Certificate from Coursera](https://www.coursera.org/specializations/tensorflow-in-practice)
-*   [TensorFlow: Data and Deployment from Coursera](https://www.coursera.org/specializations/tensorflow-data-and-deployment)
-*   [Getting Started with TensorFlow 2 from Coursera](https://www.coursera.org/learn/getting-started-with-tensor-flow2)
-*   [TensorFlow: Advanced Techniques from Coursera](https://www.coursera.org/specializations/tensorflow-advanced-techniques)
-*   [TensorFlow 2 for Deep Learning Specialization from Coursera](https://www.coursera.org/specializations/tensorflow2-deeplearning)
-*   [Intro to TensorFlow for A.I, M.L, and D.L from Coursera](https://www.coursera.org/learn/introduction-tensorflow)
-*   [Machine Learning with TensorFlow on GCP from Coursera](https://www.coursera.org/specializations/machine-learning-tensorflow-gcp)
-*   [Intro to TensorFlow for Deep Learning from Udacity](https://www.udacity.com/course/intro-to-tensorflow-for-deep-learning--ud187)
-*   [Introduction to TensorFlow Lite from Udacity](https://www.udacity.com/course/intro-to-tensorflow-lite--ud190)
+* [Coursera](https://www.coursera.org/search?query=TensorFlow)
+* [Udacity](https://www.udacity.com/courses/all?search=TensorFlow)
+* [Edx](https://www.edx.org/search?q=TensorFlow)
 
 ## License
 

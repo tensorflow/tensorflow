@@ -203,7 +203,7 @@ class GatherOp : public OpKernel {
                               .HostMemory("axis"),                     \
                           GatherOp<dev##Device, type, index_type>)
 
-#define REGISTER_GATHER_CPU(type)           \
+#define REGISTER_GATHER_CPU(type)         \
   REGISTER_GATHER_FULL(CPU, type, int16); \
   REGISTER_GATHER_FULL(CPU, type, int32); \
   REGISTER_GATHER_FULL(CPU, type, int64_t)
@@ -213,19 +213,23 @@ TF_CALL_ALL_TYPES(REGISTER_GATHER_CPU);
 TF_CALL_QUANTIZED_TYPES(REGISTER_GATHER_CPU);
 TF_CALL_quint16(REGISTER_GATHER_CPU);
 TF_CALL_qint16(REGISTER_GATHER_CPU);
+TF_CALL_float8_e5m2(REGISTER_GATHER_CPU);
+TF_CALL_float8_e4m3fn(REGISTER_GATHER_CPU);
 
 #undef REGISTER_GATHER_CPU
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 // Registration of the GPU implementations.
-#define REGISTER_GATHER_GPU(type)           \
+#define REGISTER_GATHER_GPU(type)         \
   REGISTER_GATHER_FULL(GPU, type, int32); \
   REGISTER_GATHER_FULL(GPU, type, int64_t)
 
 TF_CALL_int32(REGISTER_GATHER_GPU);
 TF_CALL_int64(REGISTER_GATHER_GPU);
 TF_CALL_GPU_ALL_TYPES(REGISTER_GATHER_GPU);
+TF_CALL_float8_e5m2(REGISTER_GATHER_GPU);
+TF_CALL_float8_e4m3fn(REGISTER_GATHER_GPU);
 
 #undef REGISTER_GATHER_GPU
 

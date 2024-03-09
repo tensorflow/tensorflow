@@ -24,7 +24,7 @@ limitations under the License.
 #include "absl/strings/numbers.h"
 #include "absl/strings/str_split.h"
 #include "tensorflow/core/platform/logging.h"
-#include "tensorflow/tsl/util/env_var.h"
+#include "tsl/util/env_var.h"
 
 namespace tensorflow {
 namespace dtensor {

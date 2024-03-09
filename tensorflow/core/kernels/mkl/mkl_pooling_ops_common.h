@@ -226,6 +226,7 @@ class MklPoolingFwdPrimitiveFactory : public MklPrimitiveFactory<T> {
 #endif  // ENABLE_ONEDNN_V3
     key_creator.AddAsKey(fwdParams.padding_left);
     key_creator.AddAsKey(fwdParams.padding_right);
+    key_creator.AddAsKey(fwdParams.src_format);
     key_creator.AddAsKey<int>(static_cast<int>(fwdParams.alg_kind));
     key_creator.AddAsKey<int>(static_cast<int>(fwdParams.prop_kind));
     return key_creator.GetKey();
@@ -382,6 +383,7 @@ class MklPoolingBwdPrimitiveFactory : public MklPrimitiveFactory<T> {
 #endif  // ENABLE_ONEDNN_V3
     key_creator.AddAsKey(bwdParams.padding_left);
     key_creator.AddAsKey(bwdParams.padding_right);
+    key_creator.AddAsKey(bwdParams.src_format);
     key_creator.AddAsKey<int>(static_cast<int>(bwdParams.alg_kind));
     return key_creator.GetKey();
   }

@@ -5,6 +5,7 @@ load("//tensorflow:strict.default.bzl", "py_strict_library", "py_strict_test")
 load("//tensorflow/python/tools/api/generator:api_init_files.bzl", "KERAS_API_INIT_FILES", "TENSORFLOW_API_INIT_FILES")
 load("//tensorflow/python/tools/api/generator:api_init_files_v1.bzl", "KERAS_API_INIT_FILES_V1", "TENSORFLOW_API_INIT_FILES_V1")
 load("//tensorflow/python/tools/api/generator:api_gen.bzl", "TENSORFLOW_API_GEN_PACKAGES")
+load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -24,7 +25,7 @@ py_strict_library(
     visibility = ["//visibility:public"],
     deps = [
         ":doc_srcs",
-        "//tensorflow/python/util:tf_decorator",
+        "//tensorflow/python/util:tf_decorator_py",
         "//tensorflow/python/util:tf_export",
     ],
 )
@@ -41,17 +42,14 @@ py_strict_library(
 
 py_strict_test(
     name = "create_python_api_test",
-    srcs = [
-        "create_python_api.py",
-        "create_python_api_test.py",
-    ],
+    srcs = ["create_python_api_test.py"],
     python_version = "PY3",
     srcs_version = "PY3",
     deps = [
-        ":doc_srcs",
-        "//tensorflow/python/eager:wrap_function",
+        ":create_python_api",
+        # copybara:uncomment "//third_party/py/google/protobuf:use_fast_cpp_protos",
         "//tensorflow/python/platform:client_testlib",
-        "//tensorflow/python/util:tf_decorator",
+        "//tensorflow/python/util:tf_decorator_py",
         "//tensorflow/python/util:tf_export",
     ],
 )
@@ -68,6 +66,7 @@ py_strict_test(
     srcs_version = "PY3",
     deps = [
         ":doc_srcs",
+        # copybara:uncomment "//third_party/py/google/protobuf:use_fast_cpp_protos",
         "//tensorflow/python:no_contrib",
         "//tensorflow/python/platform:client_testlib",
     ],
@@ -89,6 +88,7 @@ py_strict_test(
         "no_pip",
     ],
     deps = [
+        # copybara:uncomment "//third_party/py/google/protobuf:use_fast_cpp_protos",
         "//tensorflow/dtensor/python:dtensor",
         "//tensorflow/lite/python:analyzer",
         "//tensorflow/lite/python:lite",
@@ -96,6 +96,12 @@ py_strict_test(
         "//tensorflow/python:modules_with_exports",
         "//tensorflow/python/platform:client_testlib",
         "//tensorflow/python/platform:resource_loader",
-        "//tensorflow/python/util:tf_decorator",
+        "//tensorflow/python/util:tf_decorator_py",
     ],
+)
+
+bzl_library(
+    name = "api_init_files",
+    srcs = ["api_init_files.bzl"],
+    visibility = ["//tensorflow/python/tools/api/generator2:__subpackages__"],
 )

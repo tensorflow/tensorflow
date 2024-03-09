@@ -15,7 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/kernels/ops_util.h"
 
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tensorflow/core/framework/kernel_shape_util.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/platform/test.h"
@@ -133,7 +133,7 @@ class OpsUtilTest : public ::testing::Test {
 
   static void VerifyBcastValues(bcast_struct bcast) {
     int new_index, new_size;
-    EXPECT_EQ(OkStatus(),
+    EXPECT_EQ(absl::OkStatus(),
               GetBroadcastSize(bcast.input.index, bcast.input.in_size,
                                bcast.input.ksize, bcast.input.stride,
                                bcast.input.pad_size, &new_index, &new_size));

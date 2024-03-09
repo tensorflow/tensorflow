@@ -25,13 +25,14 @@ limitations under the License.
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/dynamic_shape_utils.h"
-#include "tensorflow/compiler/xla/test.h"
+#include "xla/test.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
 #include "tensorflow/core/framework/tensor_util.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
-#include "tensorflow/tsl/platform/float8.h"
+#include "tensorflow/core/platform/types.h"
+#include "tsl/platform/ml_dtypes.h"
 
 namespace tensorflow {
 namespace {
@@ -147,6 +148,10 @@ TEST_F(ConvertTensorTest, Simple) {
       {tsl::float8_e4m3fn{1.0}, tsl::float8_e4m3fn{-1.0}}, DT_FLOAT8_E4M3FN,
       mlir::FloatType::getFloat8E4M3FN(&context)));
 
+  ASSERT_NO_FATAL_FAILURE(VerifyConversion<int4>(
+      {static_cast<int4>(1), static_cast<int4>(-1)}, DT_INT4,
+      mlir::IntegerType::get(&context, 4,
+                             mlir::IntegerType::SignednessSemantics::Signed)));
   ASSERT_NO_FATAL_FAILURE(VerifyConversion<int8>(
       {1, -1}, DT_INT8, mlir::IntegerType::get(&context, 8)));
   ASSERT_NO_FATAL_FAILURE(VerifyConversion<int16>(
@@ -156,6 +161,10 @@ TEST_F(ConvertTensorTest, Simple) {
   ASSERT_NO_FATAL_FAILURE(VerifyConversion<int64_t>(
       {1, -1}, DT_INT64, mlir::IntegerType::get(&context, 64)));
 
+  ASSERT_NO_FATAL_FAILURE(VerifyConversion<uint4>(
+      {static_cast<uint4>(1), static_cast<uint4>(2)}, DT_UINT4,
+      mlir::IntegerType::get(
+          &context, 4, mlir::IntegerType::SignednessSemantics::Unsigned)));
   ASSERT_NO_FATAL_FAILURE(VerifyConversion<uint8>(
       {1, 2}, DT_UINT8,
       mlir::IntegerType::get(

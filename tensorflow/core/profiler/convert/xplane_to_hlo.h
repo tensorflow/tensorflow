@@ -19,7 +19,7 @@ limitations under the License.
 #include <string>
 
 #include "absl/strings/string_view.h"
-#include "tensorflow/compiler/xla/service/hlo.pb.h"
+#include "xla/service/hlo.pb.h"
 #include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/core/profiler/convert/repository.h"
 

@@ -23,7 +23,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "third_party/eigen3/Eigen/Core"
+#include "Eigen/Core"  // from @eigen_archive
 #include "tensorflow/lite/string_type.h"
 
 namespace tflite {

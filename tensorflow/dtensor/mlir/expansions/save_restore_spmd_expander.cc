@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <algorithm>
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 
@@ -392,7 +393,7 @@ StatusOr<mlir::Operation*> ExpandSaveV2Op(mlir::Operation* op) {
     // inputs. This is generic regardless whether the inputs are constants or
     // just arguments.
     int index = it.index();
-    TF_ASSIGN_OR_RETURN(absl::optional<Layout> layout,
+    TF_ASSIGN_OR_RETURN(std::optional<Layout> layout,
                         ExtractLayoutFromOperand(tensor));
     if (!layout)
       return absl::InvalidArgumentError(

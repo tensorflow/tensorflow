@@ -178,11 +178,6 @@ class AsyncCheckpointHelper:
     # list and created the object map between the original and copied variables.
     self._initialized = False
 
-    # The callback function that needs to be executed after checkpoint write.
-    # Currently this is only applied to the scenario where CheckpointManager is
-    # used, which triggers the _write() method.
-    self._async_write_done_callback = None
-
     # The list of all nodes from the original checkpoint items.
     # TODO(chienchunh): Consider changing this to local variable.
     self._original_nodes = None
@@ -264,15 +259,18 @@ class AsyncCheckpointHelper:
     # 2. Slot variables: they need to be handled differently as they cannot be
     # retrieved from `TrackableView.descendants()`.
 
-    # Special case 1: TPU Embedding, populate object_map here
-    for t in self._saveable_trackables:
-      if hasattr(t, _TPU_EMBEDDING_ATTR):
-        self._handle_tpu_embedding(t)
-
     # Note: dir() is used rather than hasattr() here to avoid triggering
     # custom __getattr__ code, see b/152031870 for context.
-    # Special case 2: slot variables, populate object_map later
     for t in all_trackables:
+      # Special case 1: TPU Embedding, populate object_map here
+      # Special case 1: Handle TPU Embedding by addnig a dummy instance to the
+      # object map. Also add TPUEmbedding to separate list for special handling
+      # with values copy.
+      if hasattr(type(t), _TPU_EMBEDDING_ATTR):
+        self._handle_tpu_embedding(t)
+      # Special case 2: handle slot variables. The object_map is populated later
+      # when the variable values are being copied to host CPU for the first
+      # time.
       if "get_slot_names" in dir(t):
         slot_names = t.get_slot_names()
         for slot_name in slot_names:
@@ -376,7 +374,6 @@ class AsyncCheckpointHelper:
                 self.checkpointer()._write(  # pylint: disable=protected-access
                     self._save_file_prefix,
                     options=self._checkpoint_options,
-                    write_done_callback=self._async_write_done_callback,
                 )
         except Exception as e:   # # pylint: disable=broad-except
           self._async_error = e
@@ -417,9 +414,9 @@ class AsyncCheckpointHelper:
     Raises:
       AttributeError: if the input trackable is not TPUEmbedding type.
     """
-    if not hasattr(
-        tpu_embedding, _TPU_EMBEDDING_ATTR
-    ) or not callable(tpu_embedding._create_copy_for_async_checkpoint):  # pylint: disable=protected-access
+    if not hasattr(type(tpu_embedding), _TPU_EMBEDDING_ATTR) or not callable(
+        tpu_embedding._create_copy_for_async_checkpoint  # pylint: disable=protected-access
+    ):
       raise AttributeError(
           "Expecting TPUEmbedding type; got %s" % type(tpu_embedding)
       )
@@ -464,9 +461,9 @@ class AsyncCheckpointHelper:
     Returns:
       The full path of the checkpoint file.
     """
-    self._write(save_path, options)
+    return self._write(save_path, options)
 
-  def _write(self, save_path, options=None, write_done_callback=None):
+  def _write(self, save_path, options=None):
     """Save the checkpointed variables.
 
     This method has exactly the same logic as save(), except it does not
@@ -476,8 +473,6 @@ class AsyncCheckpointHelper:
     Args:
       save_path: The file prefix of the checkpoint file.
       options: Optional CheckpointOption instance.
-      write_done_callback: Optional callback function executed after the async
-        write is done.
 
     Returns:
       The full path of the checkpoint file.
@@ -510,7 +505,6 @@ class AsyncCheckpointHelper:
     if self._checkpoint_options:
       self._checkpoint_options.experimental_enable_async_checkpoint = False
 
-    self._async_write_done_callback = write_done_callback
     self._queue.put(True)  # Trigger save in async thread
 
     write_end_time = time.time()

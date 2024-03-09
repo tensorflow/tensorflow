@@ -111,14 +111,14 @@ class AutoTrackable(base.Trackable):
     #   2. force side effects of creation of concrete functions, e.g. create
     #      variables on first run.
     for fn in functions.values():
-      if isinstance(fn, core_types.GenericFunction):
+      if isinstance(fn, def_function.Function):
         fn._list_all_concrete_functions_for_serialization()  # pylint: disable=protected-access
 
     # Additional dependencies may have been generated during function tracing
     # (e.g. captured variables). Make sure we return those too.
     children = {}
     for name, child in self._checkpoint_dependencies:
-      if isinstance(child, (core_types.GenericFunction,
+      if isinstance(child, (core_types.PolymorphicFunction,
                             core_types.ConcreteFunction)):
         # Skip "tracked" functions for now since there may be objects that
         # automatically track functions that should not be saved.

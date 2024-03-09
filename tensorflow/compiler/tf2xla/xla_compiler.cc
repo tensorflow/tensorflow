@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_compiler.h"
 
 #include <algorithm>
+#include <array>
 #include <map>
 #include <memory>
 #include <numeric>
@@ -27,15 +28,17 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/compiler/mlir/tf2xla/mlir_bridge_rollout_policy.h"
+#include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/memory/memory.h"
 #include "absl/status/status.h"
+#include "absl/strings/string_view.h"
 #include "absl/types/variant.h"
 #include "tensorflow/compiler/jit/defs.h"
 #include "tensorflow/compiler/jit/flags.h"
 #include "tensorflow/compiler/jit/shape_inference.h"
 #include "tensorflow/compiler/jit/xla_compile_util.h"
-#include "tensorflow/compiler/mlir/tf2xla/api/v0/compile_mlir_util.h"
+#include "tensorflow/compiler/mlir/tf2xla/api/v1/compile_mlir_util.h"
 #include "tensorflow/compiler/mlir/utils/array_container_utils.h"
 #include "tensorflow/compiler/tf2xla/graph_compiler.h"
 #include "tensorflow/compiler/tf2xla/layout_util.h"
@@ -48,12 +51,13 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_compilation_device.h"
 #include "tensorflow/compiler/tf2xla/xla_context.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
-#include "tensorflow/compiler/xla/client/client_library.h"
-#include "tensorflow/compiler/xla/client/xla_builder.h"
-#include "tensorflow/compiler/xla/client/xla_computation.h"
-#include "tensorflow/compiler/xla/protobuf_util.h"
-#include "tensorflow/compiler/xla/shape_util.h"
-#include "tensorflow/compiler/xla/util.h"
+#include "xla/client/client_library.h"
+#include "xla/client/xla_builder.h"
+#include "xla/client/xla_computation.h"
+#include "xla/protobuf_util.h"
+#include "xla/service/hlo.pb.h"
+#include "xla/shape_util.h"
+#include "xla/util.h"
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/executor.h"
 #include "tensorflow/core/common_runtime/function.h"
@@ -71,7 +75,9 @@ limitations under the License.
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/protobuf/error_codes.pb.h"
 #include "tensorflow/core/tpu/tpu_defs.h"
+#include "tensorflow/core/util/debug_data_dumper.h"
 #include "tensorflow/core/util/dump_graph.h"
+#include "tsl/platform/tensor_float_32_utils.h"
 
 namespace tensorflow {
 namespace {
@@ -94,16 +100,16 @@ Status CheckSignature(const DataTypeVector& types,
           " but function parameter has type ", DataTypeString(types[i]));
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Uses the _Arg and _Retval nodes in the graph to determine an OpSharding for
 // each argument and return value.
-StatusOr<
+absl::StatusOr<
     std::pair<std::map<int, xla::OpSharding>, std::map<int, xla::OpSharding>>>
 ComputeArgAndRetvalShardings(const Graph& graph) {
   auto get_sharding_for_node =
-      [](const Node* n) -> StatusOr<std::optional<xla::OpSharding>> {
+      [](const Node* n) -> absl::StatusOr<std::optional<xla::OpSharding>> {
     TF_ASSIGN_OR_RETURN(
         auto sharding,
         ParseShardingFromDevice(*n, std::numeric_limits<int32>::max(),
@@ -439,11 +445,10 @@ Status BuildComputation(
 
   TF_ASSIGN_OR_RETURN(auto program_shape, computation->GetProgramShape());
   *output_shape = program_shape.result();
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace
-
 
 string XlaCompiler::Argument::HumanString() const {
   string common;
@@ -514,7 +519,7 @@ string XlaCompiler::Argument::ShapeHumanString() const {
 
 XlaCompiler::XlaCompiler(XlaCompiler::Options options)
     : options_(options),
-      initialization_status_(OkStatus()),
+      initialization_status_(absl::OkStatus()),
       next_step_id_(1),
       device_(new XlaCompilationDevice(SessionOptions(), options_.device_type)),
       device_mgr_(absl::WrapUnique(device_)) {
@@ -525,7 +530,7 @@ XlaCompiler::XlaCompiler(XlaCompiler::Options options)
   }
 
   local_flib_def_.reset(new FunctionLibraryDefinition(OpRegistry::Global(),
-                                                      FunctionDefLibrary{}));
+                                                      FunctionDefLibrary()));
   local_pflr_.reset(new ProcessFunctionLibraryRuntime(
       &device_mgr_, Env::Default(), /*config=*/nullptr,
       options.graph_def_version, local_flib_def_.get(), OptimizerOptions()));
@@ -567,7 +572,7 @@ static Status GetFunctionBody(const NameAttrList& function,
 
   *fbody = flib_runtime->GetFunctionBody(handle);
   TF_RET_CHECK(*fbody);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status XlaCompiler::FindFunctionBody(const NameAttrList& function,
@@ -594,7 +599,7 @@ Status XlaCompiler::FindFunctionBody(const NameAttrList& function,
     }
     VLOG(4) << "Function " << function.name() << " in local_flib_runtime_";
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 std::unique_ptr<Graph> XlaCompiler::GetGraph(const FunctionBody* fbody) {
@@ -602,7 +607,7 @@ std::unique_ptr<Graph> XlaCompiler::GetGraph(const FunctionBody* fbody) {
   CopyGraph(*fbody->graph, graph.get());
 
   bool is_inside_mustcompile = false;
-  TryGetNodeAttr(AttrSlice(&fbody->fdef.attr()), kXlaMustCompileAttr,
+  TryGetNodeAttr(AttrSlice(&fbody->record->fdef().attr()), kXlaMustCompileAttr,
                  &is_inside_mustcompile);
 
   // Performs a first function inlining pass before shape inference, since
@@ -811,7 +816,7 @@ Status XlaCompiler::CompileFunction(
   auto it = cache_.find({function_id, arg_vector});
   if (it != cache_.end()) {
     *result = it->second;
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   const FunctionBody* fbody;
@@ -923,7 +928,7 @@ Status XlaCompiler::CompileFunction(
   VLOG(1) << "====================================================";
 
   cache_[{function_id, arg_vector}] = *result;
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Computes the XLA shape for argument 'arg'.
@@ -954,6 +959,15 @@ Status XlaCompiler::XLAShapeForArgument(
         TF_RETURN_IF_ERROR(RewriteLayoutWithShardedShape(
             arg_sharding, /*use_fast_memory=*/false,
             options_.shape_determination_fns, xla_shape));
+        // If the arg is dynamic then we update the shape to reflect that. The
+        // arg's value_dynamism is a Tensor of bools set to the dynamism of each
+        // dimension.
+        if (arg.value_dynamism.has_value()) {
+          auto dynamism = arg.value_dynamism.value().vec<bool>();
+          for (int i = 0; i < dynamism.size(); ++i) {
+            xla_shape->set_dynamic_dimension(i, dynamism(i));
+          }
+        }
       } else {
         if (absl::holds_alternative<xla::Shape>(arg.shape)) {
           *xla_shape = std::get<xla::Shape>(arg.shape);
@@ -962,12 +976,12 @@ Status XlaCompiler::XLAShapeForArgument(
               arg.type, std::get<TensorShape>(arg.shape), xla_shape));
         }
       }
-      return OkStatus();
+      return absl::OkStatus();
     }
     case XlaCompiler::Argument::kTensorList: {
       TF_RET_CHECK(absl::holds_alternative<xla::Shape>(arg.shape));
       *xla_shape = std::get<xla::Shape>(arg.shape);
-      return OkStatus();
+      return absl::OkStatus();
     }
     case XlaCompiler::Argument::kConstantResource:
     case XlaCompiler::Argument::kResource: {
@@ -987,7 +1001,7 @@ Status XlaCompiler::XLAShapeForArgument(
           TF_RETURN_IF_ERROR(RewriteLayoutWithShardedShape(
               arg_sharding, arg.fast_mem, options_.shape_determination_fns,
               xla_shape));
-          return OkStatus();
+          return absl::OkStatus();
         }
         case XlaResource::kTensorArray: {
           if (arg.max_array_size < 0) {
@@ -1005,7 +1019,7 @@ Status XlaCompiler::XLAShapeForArgument(
                 arg.tensor_array_gradients.size() + 1, *xla_shape);
             *xla_shape = xla::ShapeUtil::MakeTupleShape(tuple_shape);
           }
-          return OkStatus();
+          return absl::OkStatus();
         }
         case XlaResource::kStack: {
           if (arg.max_array_size < 0) {
@@ -1021,7 +1035,7 @@ Status XlaCompiler::XLAShapeForArgument(
               TensorShapeToXLAShape(arg.type, shape, &buffer_shape));
           *xla_shape = xla::ShapeUtil::MakeTupleShape(
               {buffer_shape, xla::ShapeUtil::MakeShape(xla::S32, {})});
-          return OkStatus();
+          return absl::OkStatus();
         }
 
         case XlaResource::kInvalid:
@@ -1031,7 +1045,7 @@ Status XlaCompiler::XLAShapeForArgument(
     }
     case XlaCompiler::Argument::kToken: {
       *xla_shape = xla::ShapeUtil::MakeTokenShape();
-      return OkStatus();
+      return absl::OkStatus();
     }
     case XlaCompiler::Argument::kInvalid:
       return errors::Internal("Invalid argument type in XLAShapeForArgument()");
@@ -1130,7 +1144,7 @@ Status XlaCompiler::BuildArguments(
   }
 
   if (input_to_args->empty() && !use_tuple_arg) {
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   // `arg_to_inputs[c] = d` means that the c'th original arg index corresponds
@@ -1291,7 +1305,7 @@ Status XlaCompiler::BuildArguments(
     }
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 namespace {
@@ -1307,7 +1321,7 @@ Status ValidateFunctionDef(const FunctionDef* fdef,
     const OpDef* op_def;
     TF_RETURN_IF_ERROR(OpRegistry::Global()->LookUpOpDef(op, &op_def));
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // If node is PartitionedCall or StatefulPartitionedCall, returns the
@@ -1326,10 +1340,10 @@ Status GetPotentialFunctionName(const Node& node, const string** name) {
           " does not have 'func' field set");
     }
     *name = &attr_value->func().name();
-    return OkStatus();
+    return absl::OkStatus();
   }
   *name = &node.type_string();
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Check that the graph doesn't have any invalid nodes (e.g. incompatible with
@@ -1365,7 +1379,7 @@ Status ValidateGraph(const Graph* graph,
 
       return errors::InvalidArgument(errmsg);
     }
-    return OkStatus();
+    return absl::OkStatus();
   };
 
   for (const Node* node : graph->nodes()) {
@@ -1388,7 +1402,7 @@ Status ValidateGraph(const Graph* graph,
     s = FindKernelDef(device_type, node->def(), nullptr, nullptr);
     TF_RETURN_IF_ERROR(maybe_error(node, s));
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 void ConvertConstantsToExpressions(xla::XlaBuilder* builder,
@@ -1427,12 +1441,45 @@ class DummyStackTrace : public AbstractStackTrace {
       StackFrame({"dummy_file_name", 10, "dummy_function_name"})};
 };
 
-Status XlaCompiler::CompileGraph(
-    const XlaCompiler::CompileOptions& options, string const& name,
-    std::unique_ptr<Graph> graph, absl::Span<const XlaCompiler::Argument> args,
-    CompilationResult* result) {
+namespace {
+
+// Add precisions configs to the HLO module to avoid TensorFloat32 computations
+// in XLA.
+//
+// Some operations, such as Einsum are converted through MlirXlaOpKernel, which
+// doesn't set the precisions, so we set them all here.
+//
+// TODO(tdanyluk): We may want to restrict this logic to only set the operand
+// precision for F32 operands. (Historically, it was set without regard to
+// operand type in other parts of TF2XLA.)
+void IncreasePrecisionsToAvoidTF32(xla::HloModuleProto& module) {
+  static constexpr std::array<absl::string_view, 2> kOpsPossiblyUsingTF32 = {
+      "dot", "convolution"};
+
+  xla::PrecisionConfig precision_config;
+  precision_config.add_operand_precision(xla::PrecisionConfig::HIGHEST);
+  precision_config.add_operand_precision(xla::PrecisionConfig::HIGHEST);
+
+  for (xla::HloComputationProto& computation : *module.mutable_computations()) {
+    for (xla::HloInstructionProto& instruction :
+         *computation.mutable_instructions()) {
+      if (absl::c_find(kOpsPossiblyUsingTF32, instruction.opcode()) !=
+          kOpsPossiblyUsingTF32.end()) {
+        *instruction.mutable_precision_config() = precision_config;
+      }
+    }
+  }
+}
+
+}  // namespace
+
+Status XlaCompiler::CompileGraph(const XlaCompiler::CompileOptions& options,
+                                 string const& name,
+                                 std::unique_ptr<Graph> graph,
+                                 absl::Span<const XlaCompiler::Argument> args,
+                                 CompilationResult* result) {
   VLOG(1) << "Executing graph symbolically to populate XlaBuilder.: " << name;
-  if (VLOG_IS_ON(2)) {
+  if (VLOG_IS_ON(2) || DEBUG_DATA_DUMPER()->ShouldDump(name, kDebugGroupMain)) {
     VLOG(2) << "XlaCompiler::CompileGraph: "
             << DumpGraphToFile(absl::StrCat("xla_compile_graph_", name), *graph,
                                flib_runtime_->GetFunctionLibraryDefinition());
@@ -1556,10 +1603,32 @@ Status XlaCompiler::CompileGraph(
       result->input_mapping));
 
   for (const auto& [key, send] : host_compute_sends_) {
-    *result->host_compute_metadata.add_device_to_host() = send;
+    auto* d2h = result->host_compute_metadata.add_device_to_host();
+    *d2h = send;
+
+    for (int i = 0; i < d2h->metadata_size(); ++i) {
+      const std::string channel_name =
+          GetDeviceToHostChannelName(d2h->key(), i);
+      xla::ChannelHandle handle;
+      TF_RETURN_IF_ERROR(GetDeviceToHostChannelHandle(channel_name, &handle));
+      d2h->mutable_metadata(i)->set_channel_id(handle.handle());
+    }
   }
   for (const auto& [key, recv] : host_compute_recvs_) {
-    *result->host_compute_metadata.add_host_to_device() = recv;
+    auto* h2d = result->host_compute_metadata.add_host_to_device();
+    *h2d = recv;
+
+    for (int i = 0; i < h2d->metadata_size(); ++i) {
+      const std::string channel_name =
+          GetHostToDeviceChannelName(h2d->key(), i);
+      xla::ChannelHandle handle;
+      TF_RETURN_IF_ERROR(GetHostToDeviceChannelHandle(channel_name, &handle));
+      h2d->mutable_metadata(i)->set_channel_id(handle.handle());
+    }
+  }
+
+  if (!tsl::tensor_float_32_execution_enabled()) {
+    IncreasePrecisionsToAvoidTF32(*result->computation->mutable_proto());
   }
 
   VLOG(2) << "Outputs: total: " << context->retvals().size()
@@ -1567,7 +1636,7 @@ Status XlaCompiler::CompileGraph(
   VLOG(2) << "XLA output shape: "
           << xla::ShapeUtil::HumanStringWithLayout(result->xla_output_shape);
   result->collective_info = context->GetCollectiveInfo();
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status XlaCompiler::GetChannelHandle(const string& key,
@@ -1578,7 +1647,7 @@ Status XlaCompiler::GetChannelHandle(const string& key,
   }
   *channel = result.first->second;
   VLOG(1) << "Channel: " << key << " " << channel->DebugString();
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status XlaCompiler::GetHostToDeviceChannelHandle(const string& key,
@@ -1590,7 +1659,7 @@ Status XlaCompiler::GetHostToDeviceChannelHandle(const string& key,
   }
   *channel = result.first->second;
   VLOG(1) << "Host to device channel: " << key << " " << channel->DebugString();
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status XlaCompiler::GetDeviceToHostChannelHandle(const string& key,
@@ -1602,7 +1671,7 @@ Status XlaCompiler::GetDeviceToHostChannelHandle(const string& key,
   }
   *channel = result.first->second;
   VLOG(1) << "Device to host channel: " << key << " " << channel->DebugString();
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 namespace {
@@ -1629,7 +1698,7 @@ Status XlaCompiler::SetDeviceToHostMetadata(
     tf2xla::HostTransferMetadata new_transfer;
     SetTransfer(key, types, shapes, &new_transfer);
     if (xla::protobuf_util::ProtobufEquals(existing_transfer, new_transfer)) {
-      return OkStatus();
+      return absl::OkStatus();
     } else {
       return errors::InvalidArgument(
           "Duplicate calls to SetDeviceToHostMetadata with key ", key);
@@ -1637,7 +1706,7 @@ Status XlaCompiler::SetDeviceToHostMetadata(
   }
   tf2xla::HostTransferMetadata& transfer = host_compute_sends_[key];
   SetTransfer(key, types, shapes, &transfer);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status XlaCompiler::GetDeviceToHostShapes(
@@ -1652,7 +1721,7 @@ Status XlaCompiler::GetDeviceToHostShapes(
     TensorShape shape(iter->second.metadata(i).shape());
     shapes->push_back(shape);
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status XlaCompiler::SetHostToDeviceMetadata(
@@ -1663,7 +1732,7 @@ Status XlaCompiler::SetHostToDeviceMetadata(
     tf2xla::HostTransferMetadata new_transfer;
     SetTransfer(key, types, shapes, &new_transfer);
     if (xla::protobuf_util::ProtobufEquals(existing_transfer, new_transfer)) {
-      return OkStatus();
+      return absl::OkStatus();
     } else {
       return errors::InvalidArgument(
           "Duplicate calls to SetHostToDeviceMetadata with key ", key);
@@ -1671,7 +1740,7 @@ Status XlaCompiler::SetHostToDeviceMetadata(
   }
   tf2xla::HostTransferMetadata& transfer = host_compute_recvs_[key];
   SetTransfer(key, types, shapes, &transfer);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status XlaCompiler::GetHostComputeControlDependency(
@@ -1684,7 +1753,7 @@ Status XlaCompiler::GetHostComputeControlDependency(
   } else {
     *handle = iter->second;
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status XlaCompiler::SetHostComputeControlDependency(
@@ -1696,7 +1765,7 @@ Status XlaCompiler::SetHostComputeControlDependency(
         host_compute_name);
   }
   host_compute_control_output_[host_compute_name] = handle;
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 void XlaCompiler::PushNodeTokenMapping() {
@@ -1710,7 +1779,7 @@ Status XlaCompiler::PopNodeTokenMapping() {
         "empty.");
   }
   node_token_mapping_stack_.pop();
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status XlaCompiler::SetNodeToken(const string& node_name, const xla::XlaOp op) {
@@ -1724,10 +1793,10 @@ Status XlaCompiler::SetNodeToken(const string& node_name, const xla::XlaOp op) {
     return errors::FailedPrecondition("Token mapping already exists for node ",
                                       node_name);
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-StatusOr<xla::XlaOp> XlaCompiler::GetNodeToken(const string& node_name) {
+absl::StatusOr<xla::XlaOp> XlaCompiler::GetNodeToken(const string& node_name) {
   if (node_token_mapping_stack_.empty()) {
     return errors::FailedPrecondition(
         "Calling GetNodeToken() when node_token_mapping_stack_ is "

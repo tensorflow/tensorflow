@@ -1,10 +1,10 @@
 Pod::Spec.new do |s|
   s.name             = 'TensorFlowLiteObjC'
-  s.version          = '2.12.0'
+  s.version          = '2.14.0'
   s.authors          = 'Google Inc.'
   s.license          = { :type => 'Apache' }
   s.homepage         = 'https://github.com/tensorflow/tensorflow'
-  s.source           = { :git => 'https://github.com/tensorflow/tensorflow.git', :commit => '1e8f3f6a3e899fe75d3c394d4fe07f2c2b69e2ec' }
+  s.source           = { :git => 'https://github.com/tensorflow/tensorflow.git', :commit => '4dacf3f368eb7965e9b5c3bbdd5193986081c3b2' }
   s.summary          = 'TensorFlow Lite for Objective-C'
   s.description      = <<-DESC
 
@@ -15,7 +15,7 @@ Pod::Spec.new do |s|
                        DESC
 
   s.cocoapods_version = '>= 1.9.0'
-  s.ios.deployment_target = '11.0'
+  s.ios.deployment_target = '12.0'
 
   s.module_name = 'TFLTensorFlowLite'
   s.static_framework = true

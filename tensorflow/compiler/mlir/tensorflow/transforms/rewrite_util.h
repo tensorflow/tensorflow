@@ -70,9 +70,13 @@ bool IsConstantValueOf(Value value, T raw_value) {
 // devices or the device is not specified.
 bool IsOnGpuDevice(mlir::Operation *op);
 
-// Copy the attributes of `src` op to the `dest` op , and return the first
-// result of the `dest` op.
-mlir::Value CopyAttributes(mlir::Operation *src, mlir::Operation *dest);
+// Wrappers for CopyDeviceAndUnderscoredAttributes
+void CopyDeviceAndUnderscoredAttributesAdaptor(mlir::OpResult src,
+                                               mlir::OpResult dest);
+void CopyDeviceAndUnderscoredAttributesAdaptor(mlir::Operation *src,
+                                               mlir::OpResult dest);
+void CopyDeviceAndUnderscoredAttributesAdaptor(mlir::Operation *src,
+                                               mlir::Operation *dest);
 }  // namespace TF
 }  // namespace mlir
 

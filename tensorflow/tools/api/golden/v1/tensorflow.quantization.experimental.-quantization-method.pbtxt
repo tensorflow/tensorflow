@@ -1,0 +1,47 @@
+path: "tensorflow.quantization.experimental.QuantizationMethod"
+tf_proto {
+  descriptor {
+    name: "QuantizationMethod"
+    field {
+      name: "preset_method"
+      number: 4
+      label: LABEL_OPTIONAL
+      type: TYPE_ENUM
+      type_name: ".tensorflow.quantization.QuantizationMethod.PresetMethod"
+    }
+    field {
+      name: "quantization_component_specs"
+      number: 3
+      label: LABEL_REPEATED
+      type: TYPE_MESSAGE
+      type_name: ".tensorflow.quantization.QuantizationComponentSpec"
+    }
+    enum_type {
+      name: "PresetMethod"
+      value {
+        name: "METHOD_UNSPECIFIED"
+        number: 0
+      }
+      value {
+        name: "METHOD_NO_QUANTIZE"
+        number: 1
+      }
+      value {
+        name: "METHOD_STATIC_RANGE_INT8"
+        number: 2
+      }
+      value {
+        name: "METHOD_DYNAMIC_RANGE_INT8"
+        number: 3
+      }
+      value {
+        name: "METHOD_STATIC_RANGE_WEIGHT_ONLY_INT8"
+        number: 4
+      }
+    }
+    reserved_range {
+      start: 1
+      end: 3
+    }
+  }
+}

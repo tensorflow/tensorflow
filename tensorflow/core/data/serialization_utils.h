@@ -24,14 +24,17 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/strings/string_view.h"
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/dataset.pb.h"
 #include "tensorflow/core/framework/variant_tensor_data.h"
 #include "tensorflow/core/lib/core/status.h"
-#include "tensorflow/tsl/platform/statusor.h"
+#include "tsl/platform/statusor.h"
 
 namespace tensorflow {
 namespace data {
+
+inline constexpr absl::string_view kRetvalOp = "_Retval";
 
 // Reads dataset elements from the checkpoint reader using the given key prefix.
 Status ReadElementsFromCheckpoint(IteratorContext* ctx,
@@ -46,6 +49,15 @@ Status ReadElementsFromCheckpoint(IteratorContext* ctx,
 Status WriteElementsToCheckpoint(
     IteratorStateWriter* writer, StringPiece key_prefix,
     const std::vector<std::vector<Tensor>>& elements);
+
+// Updates the dataset elements in the checkpoint for given `checkpoint_indices`
+// using the given key prefix, assuming that vector of elements have
+// checkpointed these before. The elements can be read back by passing the same
+// key prefix to ReadElementsFromCheckpoint.
+Status UpdateCheckpointElements(
+    IteratorStateWriter* writer, StringPiece key_prefix,
+    const std::vector<std::vector<Tensor>>& elements,
+    const absl::flat_hash_set<int64_t>& checkpoint_indices);
 
 // Helper class for reading data from a vector of VariantTensorData objects.
 class VariantTensorDataReader : public IteratorStateReader {
@@ -81,7 +93,7 @@ class VariantTensorDataReader : public IteratorStateReader {
   std::map<string, Tensor> ReadAllTensors();
 
   // For access to ReadAllTensors()
-  friend tsl::StatusOr<absl::flat_hash_map<std::string, int64_t>>
+  friend absl::StatusOr<absl::flat_hash_map<std::string, int64_t>>
   CheckpointStats(const std::string& checkpoint_bytes);
 
   std::map<string, std::map<string, size_t>> map_;
@@ -211,7 +223,7 @@ Status AsGraphDefForRewrite(OpKernelContext* ctx, const DatasetBase* input,
 
 // Analyzes the bytes of a tf.data iterator checkpoint to identify all of the
 // keys in the checkpoint along with their sizes in bytes.
-tsl::StatusOr<absl::flat_hash_map<std::string, int64_t>> CheckpointStats(
+absl::StatusOr<absl::flat_hash_map<std::string, int64_t>> CheckpointStats(
     const std::string& checkpoint_bytes);
 
 }  // namespace data

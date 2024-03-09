@@ -24,8 +24,8 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
-#include "tensorflow/compiler/xla/client/value_inference.h"
-#include "tensorflow/compiler/xla/client/xla_builder.h"
+#include "xla/client/value_inference.h"
+#include "xla/client/xla_builder.h"
 #include "tensorflow/core/framework/numeric_op.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -119,7 +119,8 @@ class TileOp : public XlaOpKernel {
   }
 
  private:
-  TF_DISALLOW_COPY_AND_ASSIGN(TileOp);
+  TileOp(const TileOp&) = delete;
+  void operator=(const TileOp&) = delete;
 };
 
 REGISTER_XLA_OP(Name("Tile").CompileTimeConstantInput("multiples"), TileOp);

@@ -49,13 +49,14 @@ void CreateTfToMlrtPipeline(mlir::OpPassManager &pm,
                             const tfrt_stub::CostRecorder *cost_recorder) {
   pm.addPass(
       mlrt_compiler::CreateTfToMlrtPreParallelizationConversionPass(options));
-  pm.addPass(mlrt_compiler::CreateParallelizationPass(
-      options.cost_threshold, options.merge_inter_dependent_streams,
-      cost_recorder));
 
   if (options.enable_while_parallel_iterations) {
     pm.addPass(mlrt_compiler::CreateAsyncWhilePass());
   }
+
+  pm.addPass(mlrt_compiler::CreateParallelizationPass(
+      options.cost_threshold, options.merge_inter_dependent_streams,
+      cost_recorder));
 
   DCHECK(fallback_state);
   pm.addPass(

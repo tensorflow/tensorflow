@@ -653,7 +653,7 @@ Status InitialGradients(
       (*result)[id].push_back(output_gradients[i]);
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // TODO(agarwal): use an automatic mechanism for handling None arguments to
@@ -902,7 +902,7 @@ Status GradientTape<Gradient, BackwardFunction, TapeTensor>::ComputeGradient(
       }
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 template <typename Gradient, typename BackwardFunction, typename TapeTensor>
@@ -1050,10 +1050,10 @@ Status ForwardAccumulator<Gradient, BackwardFunction, TapeTensor>::Accumulate(
     call_state_.top().backward_tape->RecordOperation(
         op_type, output_tensors, input_tensor_id, input_dtypes,
         backward_function_getter, backward_function_deleter);
-    return OkStatus();
+    return absl::OkStatus();
   }
   if (!ShouldRecord(input_tensor_id, input_dtypes)) {
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   // We may need to allocate zero inputs for trainable dtypes we don't have JVPs
@@ -1118,7 +1118,7 @@ Status ForwardAccumulator<Gradient, BackwardFunction, TapeTensor>::Accumulate(
       }
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 template <typename Gradient, typename BackwardFunction, typename TapeTensor>

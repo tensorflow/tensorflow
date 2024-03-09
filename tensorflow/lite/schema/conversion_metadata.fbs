@@ -35,6 +35,10 @@ table Environment {
 
   // Original model format.
   model_type:ModelType;
+
+  // Model identification hash.
+  model_hash:int64;
+
 }
 
 // The model optimization modes.

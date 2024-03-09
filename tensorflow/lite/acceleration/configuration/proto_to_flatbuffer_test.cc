@@ -27,12 +27,16 @@ TEST(ConversionTest, EdgeTpuSettings) {
   // Define the fields to be tested.
   const std::vector<int32_t> kHardwareClusterIds{1};
   const std::string kPublicModelId = "public_model_id";
+  const tflite::proto::EdgeTpuSettings_UseLayerIrTgcBackend
+      kUseLayerIrTgcBackend =
+          tflite::proto::EdgeTpuSettings::USE_LAYER_IR_TGC_BACKEND_YES;
 
   // Create the proto settings.
   proto::ComputeSettings input_settings;
   auto* edgetpu_settings =
       input_settings.mutable_tflite_settings()->mutable_edgetpu_settings();
   edgetpu_settings->set_public_model_id(kPublicModelId);
+  edgetpu_settings->set_use_layer_ir_tgc_backend(kUseLayerIrTgcBackend);
   flatbuffers::FlatBufferBuilder flatbuffers_builder;
   *edgetpu_settings->mutable_hardware_cluster_ids() = {
       kHardwareClusterIds.begin(), kHardwareClusterIds.end()};
@@ -47,6 +51,9 @@ TEST(ConversionTest, EdgeTpuSettings) {
   EXPECT_EQ(output_settings->hardware_cluster_ids()->Get(0),
             kHardwareClusterIds[0]);
   EXPECT_EQ(output_settings->public_model_id()->str(), kPublicModelId);
+  EXPECT_EQ(output_settings->use_layer_ir_tgc_backend(),
+            tflite::EdgeTpuSettings_::
+                UseLayerIrTgcBackend_USE_LAYER_IR_TGC_BACKEND_YES);
 }
 
 // Tests converting TFLiteSettings from proto to flatbuffer format.
@@ -54,12 +61,16 @@ TEST(ConversionTest, TFLiteSettings) {
   // Define the fields to be tested.
   const std::vector<int32_t> kHardwareClusterIds{1};
   const std::string kPublicModelId = "public_model_id";
+  const tflite::proto::EdgeTpuSettings_UseLayerIrTgcBackend
+      kUseLayerIrTgcBackend =
+          tflite::proto::EdgeTpuSettings::USE_LAYER_IR_TGC_BACKEND_YES;
 
   // Create the proto settings.
   proto::TFLiteSettings input_settings;
   input_settings.set_delegate(::tflite::proto::EDGETPU);
   auto* edgetpu_settings = input_settings.mutable_edgetpu_settings();
   edgetpu_settings->set_public_model_id(kPublicModelId);
+  edgetpu_settings->set_use_layer_ir_tgc_backend(kUseLayerIrTgcBackend);
   flatbuffers::FlatBufferBuilder flatbuffers_builder;
   *edgetpu_settings->mutable_hardware_cluster_ids() = {
       kHardwareClusterIds.begin(), kHardwareClusterIds.end()};
@@ -74,6 +85,9 @@ TEST(ConversionTest, TFLiteSettings) {
   EXPECT_EQ(output_edgetpu_settings->hardware_cluster_ids()->Get(0),
             kHardwareClusterIds[0]);
   EXPECT_EQ(output_edgetpu_settings->public_model_id()->str(), kPublicModelId);
+  EXPECT_EQ(output_edgetpu_settings->use_layer_ir_tgc_backend(),
+            tflite::EdgeTpuSettings_::
+                UseLayerIrTgcBackend_USE_LAYER_IR_TGC_BACKEND_YES);
 }
 
 TEST(ConversionTest, StableDelegateLoaderSettings) {

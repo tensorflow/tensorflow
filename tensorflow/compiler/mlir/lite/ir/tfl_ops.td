@@ -19,16 +19,16 @@ limitations under the License.
 #ifndef TFL_OPS
 #define TFL_OPS
 
-include "mlir/IR/FunctionInterfaces.td"
 include "mlir/IR/OpBase.td"
 include "mlir/Interfaces/ControlFlowInterfaces.td"
+include "mlir/Interfaces/FunctionInterfaces.td"
 include "mlir/Interfaces/InferTypeOpInterface.td"
 include "mlir/Dialect/Quant/QuantOpsBase.td"
 include "mlir/Interfaces/LoopLikeInterface.td"
 include "mlir/Interfaces/SideEffectInterfaces.td"
 include "tensorflow/compiler/mlir/lite/ir/tfl_op_interfaces.td"
 include "tensorflow/compiler/mlir/lite/ir/tfl_op_enums.td"
-include "tensorflow/compiler/mlir/lite/quantization/quantization.td"
+include "tensorflow/compiler/mlir/quantization/common/quantization_lib/quantization.td"
 include "tensorflow/compiler/mlir/tensorflow/ir/tf_op_base.td"
 
 //===----------------------------------------------------------------------===//
@@ -112,6 +112,7 @@ class TFL_VariadicTensorOf<list<Type> allowedRuntimeTypes,
   Variadic<TensorOf<allowedOpTypes>>,
   TFL_RuntimeType<Variadic<TensorOf<allowedRuntimeTypes>>>;
 
+def TFL_I4 : I<4>;
 def TFL_Int32Or64 : SignlessIntOfWidths<[32, 64]>;
 
 def TFL_BoolTensor : TFL_TensorOf<[I1]>;
@@ -304,6 +305,14 @@ class TFL_OperandHasRankAtMost<int n, int m> :
   PredOpTrait<"operand " # n # " is at most " # m # "-D",
     TFL_OperandHasRankAtMostPred<n, m>>;
 
+// Not all dimentions in the tensor will contribute to the data move in a
+// TransposeOp. Effective rank is the number of dimentions != 1
+class TFL_TransposeOperandHasEffectiveRankAtMost<int n, int m> :
+  PredOpTrait<"operand " # n # " is at most " # m # "-D",
+    Or<[TFL_OperandIsUnrankedPred<n>,
+      CPred<"GetSqueezedShape($_op.getOperand(" # n #
+      ")).cast<DenseElementsAttr>().size() <= " # m>]>>;
+
 class TFL_OperandHasRankAtLeast<int n, int m> :
   PredOpTrait<"operand " # n # " is at least " # m # "-D",
     Or<[TFL_OperandIsUnrankedPred<n>,
@@ -384,20 +393,21 @@ class TFL_TCopVTEtAreSameAt<int i, int j, int num=8> : Or<[
 //===----------------------------------------------------------------------===//
 // TFL op common constraints.
 //===----------------------------------------------------------------------===//
+def OperandsSameElementTypeConstraintBasePred :
+  Or<[TCopVTEtIsSameAs<0, 1>,
+    // Two operands' values are both quantized and their type have the same
+    // underlying storage type.
+    And<[
+      SubstLeaves<"$_self", "getElementTypeOrSelf($_op.getOperand(0))",
+        quant_QuantizedType.predicate>,
+      CPred<"quant::QuantizedType::castToStorageType("
+                "getElementTypeOrSelf($_op.getOperand(0))) == "
+            "quant::QuantizedType::castToStorageType("
+                "getElementTypeOrSelf($_op.getOperand(1)))">]>]>;
 
 class OperandsSameElementTypeConstraintBase<string op> :
   PredOpTrait<op # " operands have same element type",
-    Or<[
-      TCopVTEtIsSameAs<0, 1>,
-      // Two operands' values are both quantized and their type have the same
-      // underlying storage type.
-      And<[
-        SubstLeaves<"$_self", "getElementTypeOrSelf($_op.getOperand(0))",
-          quant_QuantizedType.predicate>,
-        CPred<"quant::QuantizedType::castToStorageType("
-                  "getElementTypeOrSelf($_op.getOperand(0))) == "
-              "quant::QuantizedType::castToStorageType("
-                  "getElementTypeOrSelf($_op.getOperand(1)))">]>]>>;
+    OperandsSameElementTypeConstraintBasePred>;
 
 // This is a constraint for most of the binary ops, e.g., add, mul, div, etc.
 // Binary ops lhs & rhs should have the same value type, and is capable to
@@ -460,6 +470,8 @@ class TFL_Op<string mnemonic, list<Trait> traits = []> :
 
   // Whether the TFLite operator has options in the schema representation.
   bit hasOptions = 0b0;
+  // Whether the TFLite operator has options2 in the schema representation.
+  bit hasOptions2 = 0b0;
 
   // Use to specify a custom options type for TFLite operators where
   // the option's name does not match the TFLite operator's name.
@@ -515,9 +527,29 @@ an output element, this operation computes \\(y = |x|\\).
   let hasFolder = 1;
 }
 
+def TFL_DilateOp : TFL_Op<"dilate", [
+    PredOpTrait<"output and input must have same element type",
+      TFL_TCresVTEtIsSameAsOp<0, 0>>,
+    PredOpTrait<"output and padding value must have same element type",
+      TCresVTEtIsSameAsOpBase<0, 2>>,
+    Pure]> {
+  let summary = "Dilation operator";
+
+  let description = "Extends a tensor by adding new elements between the existing ones.";
+
+  let arguments = (ins
+     TFL_TensorOf<[I8, I16, I32, I64, UI8, UI16, UI32, UI64, F32, F64]>:$input,
+     TFL_TensorOf<[I32]>:$dilations,
+     TFL_0DTensorOf<[I8, I16, I32, I64, UI8, UI16, UI32, UI64, F32, F64]>:$padding_value
+  );
+
+  let results = (outs TFL_TensorOf<[I8, I16, I32, I64, UI8, UI16, UI32, UI64, F32, F64]>:$output);
+}
+
 def TFL_AddOp : TFL_Op<"add", [
-    TFL_RuntimePredOpTrait<"Operands do not have valid shapes",
-      CPred<"TFL::VerifyAddOpShapeConstraints(llvm::cast<AddOp>($_op))">>,
+    TFL_RuntimePredOpTrait<"Operands should have valid shapes and element type needs to match",
+      And<[CPred<"TFL::VerifyAddOpShapeConstraints(llvm::cast<AddOp>($_op))">,
+           OperandsSameElementTypeConstraintBasePred]>>,
     ResultsBroadcastableShape,
     Pure,
     Commutative,
@@ -1029,7 +1061,7 @@ def TFL_DepthwiseConv2DOp :
 def TFL_FullyConnectedOp : TFL_Op<"fully_connected", [
     Pure, AccumulatorUniformScale<2, 0, 1>,
     AffineQuantizedOpInterface,
-    AffineOpCoefficient<-1, 1>,
+    AffineOpCoefficient<0, 1>,
     TFL_SparseOp,
     DeclareOpInterfaceMethods<TFL_ArithmeticCount>,
     QuantizableResult,
@@ -1065,7 +1097,7 @@ def TFL_FullyConnectedOp : TFL_Op<"fully_connected", [
   let extraClassDeclaration = [{
     // AffineQuantizedOpInterface:
     int GetChannelDimIndex() { return 0; }
-    int GetQuantizationDimIndex() { return -1; }
+    int GetQuantizationDimIndex() { return 0; }
     // SparseOpInterface:
     std::vector<int> GetSparseOperands() { return {1}; }
     std::vector<std::vector<int>> GetFloatBlockSize() { return {{1, 4}}; }
@@ -1148,7 +1180,7 @@ def TFL_GatherOp : TFL_Op<"gather", [
   }];
 
   let arguments = (ins
-    TFL_TensorOf<[F32, I1, I8, I16, I32, I64, TFL_Str, UI8, QI8, QUI8, QI16]>:$params,
+    TFL_TensorOf<[F32, I1, TFL_I4, I8, I16, I32, I64, TFL_Str, UI8, QI8, QUI8, QI16]>:$params,
     TFL_TensorOf<[I16, I32, I64]>:$indices,
     I32Attr:$axis,
     DefaultValuedOptionalAttr<I32Attr, "0">:$batch_dims
@@ -1161,7 +1193,7 @@ def TFL_GatherOp : TFL_Op<"gather", [
   ];
 
   let results = (outs
-    TFL_TensorOf<[F32, I1, I8, I16, I32, I64, TFL_Str, UI8, QI8, QUI8, QI16]>:$output
+    TFL_TensorOf<[F32, I1, TFL_I4, I8, I16, I32, I64, TFL_Str, UI8, QI8, QUI8, QI16]>:$output
   );
 
   let hasOptions = 1;
@@ -1187,12 +1219,12 @@ def TFL_GatherNdOp : TFL_Op<"gather_nd", [
   }];
 
   let arguments = (ins
-    TFL_TensorOf<[F32, I8, I16, I64, I32, UI8, TFL_Str]>:$params,
+    TFL_TensorOf<[F32, I1, I8, I16, I64, I32, UI8, QI8, TFL_Str]>:$params,
     TFL_TensorOf<[I16, I32, I64]>:$indices
   );
 
   let results = (outs
-    TFL_TensorOf<[F32, I8, I16, I64, I32, UI8, TFL_Str]>:$output
+    TFL_TensorOf<[F32, I1, I8, I16, I64, I32, UI8, QI8, TFL_Str]>:$output
   );
 }
 
@@ -2125,16 +2157,17 @@ def TFL_LogisticOp: TFL_Op<"logistic", [
 
 def TFL_LogOp: TFL_Op<"log", [
     Pure,
-    TF_SameOperandsAndResultTypeResolveRef]> {
+    QuantizableResult,
+    TFL_SameFirstOperandAndFirstResultElementType]> {
   let summary = "Natural logarithm operator";
 
   let description = [{
     Performs element-wise natural logarithm operation on input.
   }];
 
-  let arguments = (ins TFL_FpTensor:$x);
+  let arguments = (ins TFL_TensorOf<[F32, QI8]>:$x);
 
-  let results = (outs TFL_FpTensor:$y);
+  let results = (outs TFL_TensorOf<[F32, QI8]>:$y);
 
   let hasFolder = 1;
 
@@ -2258,7 +2291,7 @@ def TFL_MeanOp : TFL_Op<"mean", [
 
   let arguments = (ins
     TFL_TensorOf<[F32, I32, I64, QI8, QUI8, UI8, QI16]>:$input,
-    TFL_TensorOf<[I32, I64]>:$axis,
+    TFL_TensorOf<[I32]>:$axis,
     BoolAttr:$keep_dims
   );
 
@@ -3463,7 +3496,7 @@ def TFL_TopKV2Op: TFL_Op<"topk_v2", [
 def TFL_TransposeOp : TFL_Op<"transpose", [
     Pure,
     QuantizableResult,
-    TFL_OperandHasRankAtMost<0, 6>,
+    TFL_TransposeOperandHasEffectiveRankAtMost<0, 6>,
     TFL_OperandHasRank<1, 1>,
     PredOpTrait<"input and output must have same element type",
       TFL_TCresVTEtIsSameAsOp<0, 0>>,
@@ -3486,6 +3519,8 @@ def TFL_TransposeOp : TFL_Op<"transpose", [
   let hasVerifier = 1;
 
   let hasFolder = 1;
+
+  let hasCanonicalizer = 1;
 
   let builders = [
     OpBuilder<(ins "Value":$input, "Value":$perm),
@@ -3891,7 +3926,7 @@ def TFL_CastOp : TFL_Op<"cast", [
   }];
 
   let arguments = (ins
-    TFL_TensorOf<[F16, F32, F64, I1, I16, UI16, I32, UI32, I64, TFL_Quint8, UI8, I8, Complex<F<32>>]>:$input
+    TFL_TensorOf<[F16, F32, F64, I1, TFL_I4, I16, UI16, I32, UI32, I64, TFL_Quint8, UI8, I8, Complex<F<32>>]>:$input
   );
 
   let results = (outs TFL_TensorOf<[F16, F32, F64, I1, I16, UI16, I32, UI32, I64, TFL_Quint8, UI8, I8, Complex<F<32>>]>:$output);
@@ -5364,12 +5399,12 @@ subsequent operation and then be optimized away, however.)
   }];
 
   let arguments = (ins
-    TFL_TensorOf<[F32, I32, I1, I8, QI8, UI8, QUI8, I16, QI16, I64, Complex<F<32>>]>:$input,
+    TFL_TensorOf<[F32, I32, I1, TFL_I4, I8, QI8, UI8, UI32, QUI8, I16, QI16, I64, Complex<F<32>>]>:$input,
     TFL_I32OrI64Tensor:$shape
   );
 
   let results = (outs
-    TFL_TensorOf<[F32, I32, I1, I8, QI8, UI8, QUI8, I16, QI16, I64, Complex<F<32>>]>:$output
+    TFL_TensorOf<[F32, I32, I1, TFL_I4, I8, QI8, UI8, UI32, QUI8, I16, QI16, I64, Complex<F<32>>]>:$output
   );
 
   let hasCanonicalizer = 1;

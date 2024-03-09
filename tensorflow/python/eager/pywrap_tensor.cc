@@ -14,7 +14,7 @@ limitations under the License.
 ==============================================================================*/
 // Must be included first
 // clang-format off
-#include "tensorflow/tsl/python/lib/core/numpy.h" //NOLINT
+#include "tsl/python/lib/core/numpy.h" //NOLINT
 // clang-format on
 
 #include "tensorflow/python/eager/pywrap_tensor.h"
@@ -36,6 +36,7 @@ limitations under the License.
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/lib/strings/strcat.h"
+#include "tensorflow/core/platform/status.h"
 #include "tensorflow/python/eager/pywrap_tensor_conversion.h"
 #include "tensorflow/python/eager/pywrap_tfe.h"
 #include "tensorflow/python/lib/core/ndarray_tensor.h"
@@ -507,7 +508,7 @@ int EagerTensor_init(EagerTensor* self, PyObject* args, PyObject* kwds) {
   self->handle_data = Py_None;
   Py_INCREF(Py_None);
   self->tensor_shape = Py_None;
-  self->status.status = ::tensorflow::OkStatus();
+  new (&self->status.status) auto(absl::OkStatus());
   self->dict = nullptr;
   self->weakreflist = nullptr;
   self->context = nullptr;
@@ -591,7 +592,7 @@ static PyObject* EagerTensor_shape_tuple(EagerTensor* self) {
   if (code != TF_OK) {
     RaiseExceptionTypeFromTFStatus(&self->status);
     // Cleanup self->status before returning.
-    self->status.status = ::tensorflow::OkStatus();
+    self->status.status = absl::OkStatus();
     return nullptr;
   }
   PyObject* shape = PyTuple_New(n);
@@ -617,7 +618,7 @@ static PyObject* EagerTensor_shape_tuple(EagerTensor* self) {
         PyErr_SetString(PyExc_RuntimeError, "Error while creating shape");
       }
       // Cleanup self->status before returning.
-      self->status.status = ::tensorflow::OkStatus();
+      self->status.status = absl::OkStatus();
       Py_DECREF(shape);
       if (dim != nullptr) Py_DECREF(dim);
       return nullptr;
@@ -631,7 +632,7 @@ static PyObject* EagerTensor_rank(EagerTensor* self) {
   int num_dims = TFE_TensorHandleNumDims(self->handle, &self->status);
   if (tensorflow::MaybeRaiseExceptionFromTFStatus(&self->status, nullptr)) {
     // Cleanup self->status before returning.
-    self->status.status = ::tensorflow::OkStatus();
+    self->status.status = absl::OkStatus();
     return nullptr;
   }
 #if PY_MAJOR_VERSION < 3
@@ -647,7 +648,7 @@ static PyObject* EagerTensor_num_elements(EagerTensor* self) {
   int n = TFE_TensorHandleNumElements(handle, &self->status);
   if (tensorflow::MaybeRaiseExceptionFromTFStatus(&self->status, nullptr)) {
     // Cleanup self->status before returning.
-    self->status.status = ::tensorflow::OkStatus();
+    self->status.status = absl::OkStatus();
     return nullptr;
   }
   return PyLong_FromLongLong(n);
@@ -698,7 +699,7 @@ static PyObject* EagerTensor_copy_to_device(EagerTensor* self, PyObject* args,
   if (tensorflow::MaybeRaiseExceptionFromTFStatus(&self->status,
                                                   PyExc_RuntimeError)) {
     // Cleanup self->status before returning.
-    self->status.status = ::tensorflow::OkStatus();
+    self->status.status = absl::OkStatus();
     return nullptr;
   }
 
@@ -715,7 +716,7 @@ static PyObject* EagerTensor_numpy_internal(EagerTensor* self) {
   if (tensorflow::MaybeRaiseExceptionFromTFStatus(&self->status, nullptr)) {
     Py_XDECREF(py_array);
     // Cleanup self->status before returning.
-    self->status.status = ::tensorflow::OkStatus();
+    self->status.status = absl::OkStatus();
     return nullptr;
   } else {
     return PyArray_Return(reinterpret_cast<PyArrayObject*>(py_array));
@@ -754,7 +755,7 @@ static PyObject* EagerTensor_device(EagerTensor* self) {
   if (tensorflow::MaybeRaiseExceptionFromTFStatus(&self->status,
                                                   PyExc_ValueError)) {
     // Cleanup self->status before returning.
-    self->status.status = ::tensorflow::OkStatus();
+    self->status.status = absl::OkStatus();
     return nullptr;
   }
 #if PY_MAJOR_VERSION >= 3
@@ -771,7 +772,7 @@ static PyObject* EagerTensor_backing_device(EagerTensor* self) {
   if (tensorflow::MaybeRaiseExceptionFromTFStatus(&self->status,
                                                   PyExc_ValueError)) {
     // Cleanup self->status before returning.
-    self->status.status = ::tensorflow::OkStatus();
+    self->status.status = absl::OkStatus();
     return nullptr;
   }
 #if PY_MAJOR_VERSION >= 3
@@ -853,7 +854,7 @@ static int EagerTensor_getbuffer(EagerTensor* self, Py_buffer* view,
   if (tensorflow::MaybeRaiseExceptionFromTFStatus(&self->status,
                                                   PyExc_BufferError)) {
     // Cleanup self->status before returning.
-    self->status.status = ::tensorflow::OkStatus();
+    self->status.status = absl::OkStatus();
     return -1;
   }
   if (PyObject_GetBuffer(py_array.get(), view, flags) < 0) {
@@ -976,7 +977,7 @@ PyObject* EagerTensorFromHandle(TFE_TensorHandle* handle,
     Py_INCREF(Py_None);
     t->tensor_shape = Py_None;
     t->handle = handle;
-    t->status.status = ::tensorflow::OkStatus();
+    new (&t->status.status) auto(absl::OkStatus());
     t->weakreflist = nullptr;
     PyObject* py_context = GetPyEagerContext();
     if (py_context == nullptr) {
@@ -1013,7 +1014,7 @@ int64_t PyEagerTensor_NumElements(PyObject* tensor) {
   if (tensorflow::MaybeRaiseExceptionFromTFStatus(&as_c_eager_tensor->status,
                                                   PyExc_ValueError)) {
     // Cleanup status before returning.
-    as_c_eager_tensor->status.status = ::tensorflow::OkStatus();
+    as_c_eager_tensor->status.status = absl::OkStatus();
     return -1;
   }
 
@@ -1094,6 +1095,15 @@ PyObject* TFE_Py_InitEagerTensor(PyObject* base_class) {
     PyErr_SetString(PyExc_RuntimeError, "Error while creating EagerTensorType");
     return nullptr;
   }
+#if PY_VERSION_HEX >= 0x030B0000
+  // Py_TPFLAGS_MANAGED_DICT is turned on by PyType_FromSpecWithBases by
+  // default. It tells Python that the class's __dict__ should be managed by VM,
+  // but EagerTensor sets a `tp_dictoffset` (below) to explicitly manage the
+  // dict. See:
+  // - https://docs.python.org/3/c-api/typeobj.html#c.Py_TPFLAGS_MANAGED_DICT
+  // - https://docs.python.org/3/c-api/typeobj.html#c.PyTypeObject.tp_dictoffset
+  EagerTensorType->tp_flags &= ~Py_TPFLAGS_MANAGED_DICT;
+#endif
   EagerTensorType->tp_dictoffset = offsetof(EagerTensor, dict);
   EagerTensorType->tp_as_buffer = &EagerTensor_as_buffer;
 #else

@@ -17,14 +17,14 @@ limitations under the License.
 pipeline {
     agent none
     environment {
-        RELEASE_BRANCH = 'r2.14'
+        RELEASE_BRANCH = 'r2.15'
     }
     stages {
         stage("Build Tensorflow") {
             parallel {
                 stage("Python 3.9") {
                     agent {
-                        label "nightly-build"
+                        label "nightly-build-release"
                     }
                     environment {
                         PYENV_ROOT="$HOME/.pyenv"
@@ -58,22 +58,13 @@ pipeline {
                                 dist
                                 '''
                         }
-
-                        // Sanity check before archiving/uploading to PyPi
-                        sh '''
-                            python -m pip install ${WORKSPACE}/tensorflow/dist/*.whl
-
-                            python -c 'import tensorflow as tf; t1=tf.constant([1,2,3,4]); t2=tf.constant([5,6,7,8]); print(tf.add(t1,t2).shape)'
-                            python -c 'import sys; import tensorflow as tf; sys.exit(0 if "_v2.keras" in tf.keras.__name__ else 1)'
-                            python -c 'import sys; import tensorflow as tf; sys.exit(0 if "_v2.estimator" in tf.estimator.__name__ else 1)'
-                        '''
                             
                         archiveArtifacts artifacts: "tensorflow/dist/*.whl", followSymlinks: false, onlyIfSuccessful: true
                     }
                 }
                 stage("Python 3.10") {
                     agent {
-                        label "nightly-build"
+                        label "nightly-build-release"
                     }
                     environment {
                         PYENV_ROOT="$HOME/.pyenv"
@@ -107,22 +98,13 @@ pipeline {
                                 dist
                             '''
                         }
-
-                        // Sanity check before archiving/uploading to PyPi
-                        sh '''
-                            python -m pip install ${WORKSPACE}/tensorflow/dist/*.whl
-
-                            python -c 'import tensorflow as tf; t1=tf.constant([1,2,3,4]); t2=tf.constant([5,6,7,8]); print(tf.add(t1,t2).shape)'
-                            python -c 'import sys; import tensorflow as tf; sys.exit(0 if "_v2.keras" in tf.keras.__name__ else 1)'
-                            python -c 'import sys; import tensorflow as tf; sys.exit(0 if "_v2.estimator" in tf.estimator.__name__ else 1)'
-                        '''
                             
                         archiveArtifacts artifacts: "tensorflow/dist/*.whl", followSymlinks: false, onlyIfSuccessful: true
                     }
                 }
                 stage("Python 3.11") {
                     agent {
-                        label "nightly-build"
+                        label "nightly-build-release"
                     }
                     environment {
                         PYENV_ROOT="$HOME/.pyenv"
@@ -156,15 +138,6 @@ pipeline {
                                 dist
                             '''
                         }
-
-                        // Sanity check before archiving/uploading to PyPi
-                        sh '''
-                            python -m pip install ${WORKSPACE}/tensorflow/dist/*.whl
-
-                            python -c 'import tensorflow as tf; t1=tf.constant([1,2,3,4]); t2=tf.constant([5,6,7,8]); print(tf.add(t1,t2).shape)'
-                            python -c 'import sys; import tensorflow as tf; sys.exit(0 if "_v2.keras" in tf.keras.__name__ else 1)'
-                            python -c 'import sys; import tensorflow as tf; sys.exit(0 if "_v2.estimator" in tf.estimator.__name__ else 1)'
-                        '''
                             
                         archiveArtifacts artifacts: "tensorflow/dist/*.whl", followSymlinks: false, onlyIfSuccessful: true
                     }

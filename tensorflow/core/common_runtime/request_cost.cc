@@ -39,4 +39,14 @@ absl::flat_hash_map<std::string, absl::Duration> RequestCost::GetCosts() const {
   return cost_map_;
 }
 
+void RequestCost::RecordBatchMetrics(const BatchMetrics& batch_metrics) {
+  absl::MutexLock lock(&mutex_);
+  batch_metrics_.push_back(batch_metrics);
+}
+
+std::vector<RequestCost::BatchMetrics> RequestCost::GetBatchMetrics() const {
+  absl::MutexLock lock(&mutex_);
+  return batch_metrics_;
+}
+
 }  // namespace tensorflow

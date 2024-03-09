@@ -19,7 +19,7 @@ limitations under the License.
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/stringpiece.h"
 #include "tensorflow/core/platform/types.h"
-#include "tensorflow/tsl/util/env_var.h"
+#include "tsl/util/env_var.h"
 
 namespace tensorflow {
 

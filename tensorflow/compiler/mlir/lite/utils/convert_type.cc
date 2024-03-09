@@ -20,7 +20,7 @@ limitations under the License.
 #include "mlir/IR/Types.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
-#include "tensorflow/compiler/xla/statusor.h"
+#include "xla/statusor.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/lite/schema/schema_generated.h"
@@ -160,7 +160,7 @@ tensorflow::DataType TflTypeToTfType(tflite::TensorType type) {
   }
 }
 
-StatusOr<tflite::TensorType> TfTypeToTflType(tensorflow::DataType type) {
+absl::StatusOr<tflite::TensorType> TfTypeToTflType(tensorflow::DataType type) {
   switch (type) {
     case tensorflow::DT_BOOL:
       return tflite::TensorType_BOOL;

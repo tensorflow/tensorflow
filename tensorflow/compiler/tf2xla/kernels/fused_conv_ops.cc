@@ -21,8 +21,8 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/kernels/conv_op_helpers.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
-#include "tensorflow/compiler/xla/client/lib/constants.h"
-#include "tensorflow/compiler/xla/client/lib/math.h"
+#include "xla/client/lib/constants.h"
+#include "xla/client/lib/math.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/util/tensor_format.h"
@@ -277,7 +277,7 @@ class FusedConv2DInt8Op : public XlaOpKernel {
     }
 
     ctx->SetOutput(0, result);
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   void Compile(XlaOpKernelContext* ctx) override {

@@ -218,6 +218,9 @@ std::vector<TF::ConstOp> GetTargetConstOps(const int64_t size_threshold,
   // TODO(b/254636388): Lift the assumption that there are no intializer
   // functions and avoid converting ConstOps inside initializer functions.
   for (auto func_op : module_op.getOps<func::FuncOp>()) {
+    // Do not unfreeze constants under these functions.
+    if (func_op.getSymName().contains("while_body")) continue;
+    if (func_op.getSymName().contains("while_cond")) continue;
     absl::c_copy_if(func_op.getOps<TF::ConstOp>(),
                     std::back_inserter(target_const_ops),
                     [size_threshold](TF::ConstOp const_op) -> bool {

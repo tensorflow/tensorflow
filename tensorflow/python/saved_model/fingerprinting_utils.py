@@ -32,7 +32,7 @@ from tensorflow.python.util import compat
 FingerprintException = fingerprinting_pywrap.FingerprintException
 
 
-def write_fingerprint(export_dir):
+def write_fingerprint(export_dir: str) -> None:
   """Write fingerprint protobuf, if requested.
 
   Writes a `tf.saved_model.experimental.Fingerprint` object to a
@@ -57,12 +57,16 @@ def write_fingerprint(export_dir):
                                         fingerprint_serialized)
 
     metrics.SetWriteFingerprint(fingerprint=fingerprint_serialized)
-    metrics.SetWritePathAndSingleprint(
-        path=export_dir,
-        singleprint=singleprint_from_fingerprint_proto(export_dir))
+    try:
+      metrics.SetWritePathAndSingleprint(
+          path=export_dir,
+          singleprint=singleprint_from_fingerprint_proto(export_dir))
+    except metrics.MetricException:
+      logging.info("path_and_singleprint metric could not be set. "
+                   "Model saving will continue.")
 
 
-def singleprint_from_saved_model_proto(export_dir):
+def singleprint_from_saved_model_proto(export_dir: str) -> str:
   """Returns the singleprint of `saved_model.pb` in `export_dir`.
 
   Args:
@@ -81,7 +85,7 @@ def singleprint_from_saved_model_proto(export_dir):
     raise ValueError(e) from None
 
 
-def singleprint_from_fingerprint_proto(export_dir):
+def singleprint_from_fingerprint_proto(export_dir: str) -> str:
   """Returns the singleprint of `fingerprint.pb` in `export_dir`.
 
   Args:
@@ -100,7 +104,7 @@ def singleprint_from_fingerprint_proto(export_dir):
     raise ValueError(e) from None
 
 
-def singleprint_from_saved_model(export_dir):
+def singleprint_from_saved_model(export_dir: str) -> str:
   """Returns the singleprint of the SavedModel in `export_dir`.
 
   First tries to construct the singleprint from `fingerprint.pb`, then from
@@ -120,26 +124,25 @@ def singleprint_from_saved_model(export_dir):
   # try generating the singleprint from `fingerprint.pb`
   try:
     return singleprint_from_fingerprint_proto(export_dir)
-  except FingerprintException:
+  except ValueError:
     pass
 
   # try creating `fingerprint.pb`, then generating the singleprint
   try:
     write_fingerprint(export_dir)
     return singleprint_from_fingerprint_proto(export_dir)
-  except FingerprintException:
+  except ValueError:
     pass
 
   # try generating the singleprint from `saved_model.pb`
   try:
     return singleprint_from_saved_model_proto(export_dir)
-  except FingerprintException as e:
+  except ValueError as e:
     raise ValueError(e) from None
 
 
-def to_proto(fingerprint):
-  if not isinstance(fingerprint, fingerprinting.Fingerprint):
-    raise TypeError("Supplied value is not a Fingerprint.")
+def to_proto(
+    fingerprint: fingerprinting.Fingerprint) -> fingerprint_pb2.FingerprintDef:
   return fingerprint_pb2.FingerprintDef(
       saved_model_checksum=fingerprint.saved_model_checksum,
       graph_def_program_hash=fingerprint.graph_def_program_hash,

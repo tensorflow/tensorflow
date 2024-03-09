@@ -22,7 +22,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/tf2xla/const_analysis.h"
 #include "tensorflow/compiler/tf2xla/literal_util.h"
-#include "tensorflow/compiler/xla/literal.h"
+#include "xla/literal.h"
 
 namespace tensorflow {
 

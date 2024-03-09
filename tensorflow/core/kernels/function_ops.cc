@@ -52,7 +52,7 @@ void ArgOp::Compute(OpKernelContext* ctx) {
 
   auto validate_type = [this](const Tensor& val) {
     if (val.dtype() == dtype_) {
-      return OkStatus();
+      return absl::OkStatus();
     } else {
       return errors::InvalidArgument("Type mismatch: actual ",
                                      DataTypeString(val.dtype()),
@@ -106,6 +106,8 @@ TF_CALL_QUANTIZED_TYPES(REGISTER);
 TF_CALL_bool(REGISTER);
 TF_CALL_float8_e5m2(REGISTER);
 TF_CALL_float8_e4m3fn(REGISTER);
+TF_CALL_int4(REGISTER);
+TF_CALL_uint4(REGISTER);
 
 REGISTER_KERNEL_BUILDER(
     Name(kDeviceArgOp).Device(DEVICE_DEFAULT).TypeConstraint<int32>("T"),
@@ -146,6 +148,8 @@ REGISTER(Variant);
 TF_CALL_bool(REGISTER);
 TF_CALL_float8_e5m2(REGISTER);
 TF_CALL_float8_e4m3fn(REGISTER);
+TF_CALL_int4(REGISTER);
+TF_CALL_uint4(REGISTER);
 
 REGISTER_KERNEL_BUILDER(Name(kRetOp)
                             .Device(DEVICE_DEFAULT)
@@ -271,7 +275,8 @@ class SymbolicGradientOp : public AsyncOpKernel {
   }
 
  private:
-  TF_DISALLOW_COPY_AND_ASSIGN(SymbolicGradientOp);
+  SymbolicGradientOp(const SymbolicGradientOp&) = delete;
+  void operator=(const SymbolicGradientOp&) = delete;
 };
 
 REGISTER_KERNEL_BUILDER(Name(kGradientOp).Device(DEVICE_CPU),

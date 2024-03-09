@@ -16,10 +16,5 @@
 set -x
 
 ARM_SKIP_TESTS="-//tensorflow/lite/... \
--//tensorflow/compiler/mlir/lite/quantization/lite:quantize_model_test \
--//tensorflow/compiler/mlir/lite/quantization/lite:quantize_weights_test \
--//tensorflow/compiler/mlir/lite/sparsity:sparsify_model_test \
--//tensorflow/compiler/xla/service/cpu/tests:cpu_eigen_dot_operation_test \
--//tensorflow/compiler/xla/service/gpu:fusion_merger_test \
 -//tensorflow/core/kernels/image:resize_bicubic_op_test \
 "

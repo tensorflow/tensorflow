@@ -28,6 +28,7 @@ from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_ops
+from tensorflow.python.ops import sort_ops
 from tensorflow.python.platform import test
 
 ALL_KEY_TYPES = [
@@ -237,12 +238,37 @@ class XlaSortOpTest(xla_test.XLATestCase, parameterized.TestCase):
 
         self._assertOpOutputMatchesExpected(wrap_sort, inputs, expected=inputs)
 
-  def testTopK(self):
-    supported_types = set([
-        dtypes.bfloat16.as_numpy_dtype, np.float16, np.float32, np.float64,
-        np.int32, np.uint32, np.int64, np.uint64, np.uint8, np.int8,
-    ])
-    for dtype in supported_types.intersection(self.numeric_types):
+  @parameterized.product(dimension=[0, 1, 2], dtype=ALL_KEY_TYPES)
+  def testArgsort(self, dimension, dtype):
+    shape = (2, 3, 4)
+    if dtype not in self._supported_key_types():
+      return
+
+    def argsort(v, axis=dimension):
+      return sort_ops.argsort(v, axis, stable=True)
+
+    x = self._shuffled_arange(shape, dtype)
+    self._assertOpOutputMatchesExpected(
+        argsort, [x], expected=[np.argsort(x, axis=dimension, kind="stable")]
+    )
+
+  @parameterized.product(
+      dtype=[
+          dtypes.bfloat16.as_numpy_dtype,
+          np.float16,
+          np.float32,
+          np.float64,
+          np.int32,
+          np.uint32,
+          np.int64,
+          np.uint64,
+          np.uint8,
+          np.int8,
+      ],
+      rank=[1, 2, 3],
+  )
+  def testTopK(self, dtype, rank):
+    if dtype in self.numeric_types:
       # Use small input size for bfloat16. Otherwise, we'll get duplicate values
       # after conversion to bfloat16, so the possible resulting index array is
       # no longer unique.
@@ -255,53 +281,26 @@ class XlaSortOpTest(xla_test.XLATestCase, parameterized.TestCase):
       else:
         array_size = 200 * 1000
         k_options = [0, 1, 2, 10, 20, 100, 1000, 200 * 1000]
-      for x in [np.arange(array_size)]:
-        np.random.shuffle(x)
-        for k in k_options:
-          indices = x.argsort()[::-1][:k]
 
-          def topk(v, k=k):
-            return nn_ops.top_k(v, k=k, sorted=True)
+      # Tile array to tensor of specified rank, then shuffle along the last dim
+      x = np.arange(array_size)
+      x = np.tile(x, (2,) * (rank - 1) + (1,))
+      np.apply_along_axis(np.random.shuffle, -1, x)
 
-          self._assertOpOutputMatchesExpected(
-              topk, [x.astype(dtype)],
-              expected=[x[indices].astype(dtype), indices])
+      sorted_indices = x.argsort(axis=-1)[..., ::-1]
+      sorted_values = np.sort(x, axis=-1)[..., ::-1]
+      for k in k_options:
+        indices = sorted_indices[..., :k]
+        expected = sorted_values[..., :k]
 
-  @parameterized.named_parameters(
-      ("HalfPrecision", dtypes.bfloat16.as_numpy_dtype),
-      ("HalfFloatPrecision", np.float16),
-      ("SinglePrecision", np.float32),
-      ("DoublePrecision", np.float64),
-      ("Int32", np.int32),
-      ("UnsignedInt32", np.uint32),
-      ("Int64", np.int64),
-      ("UnsignedInt64", np.uint64),
-  )
-  def testTopK2D(self, dtype):
-    if dtype in self.numeric_types:
-      # Use small input size for bfloat16. Otherwise, we'll get duplicate values
-      # after conversion to bfloat16, so the possible resulting index array is
-      # no longer unique.
-      if dtype in (dtypes.bfloat16.as_numpy_dtype, np.float16):
-        array_size = 10
-        k_options = [0, 1, 2, 10]
-      else:
-        array_size = 200 * 1000
-        k_options = [0, 1, 2, 10, 20, 100, 1000, 200 * 1000]
-      batch = 16
-      for x in [np.arange(batch * array_size)]:
-        np.random.shuffle(x)
-        x = np.reshape(x, [batch, array_size])
-        for k in k_options:
-          indices = x.argsort(axis=1)[::, -1:-k - 1:-1]
-          expected = np.sort(x, axis=1)[::, -1:-k - 1:-1]
+        def topk(v, k=k):
+          return nn_ops.top_k(v, k=k, sorted=True)
 
-          def topk(v, k=k):
-            return nn_ops.top_k(v, k=k, sorted=True)
-
-          self._assertOpOutputMatchesExpected(
-              topk, [x.astype(dtype)],
-              expected=[expected.astype(dtype), indices])
+        self._assertOpOutputMatchesExpected(
+            topk,
+            [x.astype(dtype)],
+            expected=[expected.astype(dtype), indices],
+        )
 
   def testTopKZeros(self):
     """Tests that positive and negative zeros sort correctly."""

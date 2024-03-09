@@ -34,11 +34,11 @@ limitations under the License.
 #include "rocm/include/hip/hip_complex.h"
 #include "rocm/include/rocblas.h"
 #include "rocm/rocm_config.h"
-#include "tensorflow/compiler/xla/stream_executor/blas.h"
+#include "xla/stream_executor/blas.h"
 #if TF_ROCM_VERSION >= 40500
-#include "tensorflow/compiler/xla/stream_executor/rocm/hipsolver_wrapper.h"
+#include "xla/stream_executor/rocm/hipsolver_wrapper.h"
 #endif
-#include "tensorflow/compiler/xla/stream_executor/rocm/rocsolver_wrapper.h"
+#include "xla/stream_executor/rocm/rocsolver_wrapper.h"
 #endif
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -589,7 +589,8 @@ class GpuSolver {
 
   std::vector<TensorReference> scratch_tensor_refs_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(GpuSolver);
+  GpuSolver(const GpuSolver&) = delete;
+  void operator=(const GpuSolver&) = delete;
 };
 
 // Helper class to allocate scratch memory and keep track of debug info.
@@ -675,8 +676,7 @@ class DeviceLapackInfo : public ScratchSpace<int> {
     se::DeviceMemoryBase wrapped_src(
         static_cast<void*>(const_cast<int*>(this->data())));
     *success =
-        stream->ThenMemcpy(copy.mutable_data(), wrapped_src, this->bytes())
-            .ok();
+        stream->Memcpy(copy.mutable_data(), wrapped_src, this->bytes()).ok();
     return copy;
   }
 };

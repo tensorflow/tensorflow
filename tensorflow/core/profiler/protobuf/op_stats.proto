@@ -5,6 +5,7 @@ package tensorflow.profiler;
 import "tensorflow/core/profiler/protobuf/diagnostics.proto";
 import "tensorflow/core/profiler/protobuf/kernel_stats.proto";
 import "tensorflow/core/profiler/protobuf/op_metrics.proto";
+import "tensorflow/core/profiler/protobuf/power_metrics.proto";
 import "tensorflow/core/profiler/protobuf/steps_db.proto";
 import "tensorflow/core/profiler/protobuf/tf_function.proto";
 import "tensorflow/core/profiler/protobuf/topology.proto";
@@ -98,6 +99,8 @@ message RunEnvironment {
   Topology system_topology = 13;
   // Whether it is a training analysis or inference analysis.
   bool is_training = 14;
+  // Power Metrics for TPU.
+  PowerMetrics power_metrics = 15;
   reserved 6;
 }
 

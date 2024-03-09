@@ -27,8 +27,9 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/strings/escaping.h"
-#include "third_party/eigen3/Eigen/Core"
+#include "Eigen/Core"  // from @eigen_archive
 #include "llvm/ADT/APFloat.h"
 #include "llvm/ADT/APInt.h"
 #include "llvm/ADT/ArrayRef.h"
@@ -74,7 +75,6 @@ INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(CeilOp);
 INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(CosOp);
 INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(LocalResponseNormalizationOp);
 INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(FloorOp);
-INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(LogOp);
 INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(RoundOp);
 INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(NegOp);
 INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(SinOp);
@@ -147,6 +147,74 @@ Operation* getDefiningBroadcastArgsOp(Value operand) {
   }
   return parent_of_defining_op;
 }
+
+// Returns shape of a ranked tensor.
+// Precondition: value_tensor's is ranked tensor.
+// Returns a Squeezed shape. Truncation here means eliminating the redundant
+// dimensions 1.
+DenseElementsAttr GetSqueezedShape(Value value_tensor) {
+  auto value_shape_type = value_tensor.getType().dyn_cast<ShapedType>();
+  assert(value_shape_type.hasRank() && "value_tensor should be ranked tensor");
+
+  auto value_shape = value_shape_type.getShape();
+  SmallVector<int32_t> return_squeeze_shape;
+  return_squeeze_shape.reserve(value_shape.size());
+
+  for (size_t dim_idx = 0; dim_idx < value_shape.size(); ++dim_idx) {
+    int64_t dim = value_shape[dim_idx];
+    if (dim == 1) {
+      continue;
+    }
+    return_squeeze_shape.push_back(
+        ShapedType::isDynamic(dim) ? -1 : static_cast<int32_t>(dim));
+  }
+
+  return mlir::DenseElementsAttr::get(
+      RankedTensorType::get(
+          {static_cast<int>(return_squeeze_shape.size())},
+          mlir::IntegerType::get(value_tensor.getContext(), 32)),
+      llvm::ArrayRef(return_squeeze_shape));
+}
+
+// This is a utility function to deduce the effective permutation to apply on
+// TFL_TransposeOp when the tensor has some dimensions with value==1
+// Example- "tfl.transpose"(tensor<56x8x56x1x1x1x7xf32>, [4, 5, 1, 2, 0, 6, 3])
+// Permutation before squeese is [4, 5, 1, 2, 0, 6, 3] becomes [1, 2, 0, 3]
+// after squeeze is perfomed to retain the relative ordering of the non-1 dims.
+DenseElementsAttr GetSqueezedPermutation(Value input_value,
+                                         Value input_permutation) {
+  auto input_shape = input_value.getType().dyn_cast<ShapedType>().getShape();
+  absl::flat_hash_map<int32_t, int32_t> permutation_map;
+
+  for (size_t before_dim_idx = 0, after_dim_idx = 0;
+       before_dim_idx < input_shape.size(); ++before_dim_idx) {
+    if (input_shape[before_dim_idx] == 1) {
+      continue;
+    }
+    permutation_map.insert({before_dim_idx, after_dim_idx++});
+  }
+
+  SmallVector<int32_t> squeezed_permutation;
+  DenseElementsAttr input_perm_const;
+  if (matchPattern(input_permutation, m_Constant(&input_perm_const))) {
+    for (int32_t idx = 0; idx < input_perm_const.getNumElements(); ++idx) {
+      size_t perm = input_perm_const.getValues<APInt>()[idx].getSExtValue();
+      if (input_shape[perm] == 1) {
+        continue;
+      }
+      squeezed_permutation.push_back(permutation_map[perm]);
+    }
+  }
+
+  return mlir::DenseElementsAttr::get(
+      RankedTensorType::get(
+          {static_cast<int>(squeezed_permutation.size())},
+          mlir::IntegerType::get(input_permutation.getContext(), 32)),
+      llvm::ArrayRef(squeezed_permutation));
+}
+
+#include "tensorflow/compiler/mlir/lite/ir/tfl_canonicalize.inc"
+
 }  // namespace
 
 // Returns true when the given type lists contain a single element of shaped
@@ -365,7 +433,7 @@ bool VerifySubOpShapeConstraints(SubOp op) {
       IsQI16Type(element_type)) {
     return VerifyOperandsHaveSameShapesOrBroadcastableShape(
         /*op=*/op.getOperation(), /*indices=*/ArrayRef<unsigned>{0, 1},
-        /*max_bcast_rank=*/5);
+        /*max_bcast_rank=*/6);
   }
 
   // Allows QI8 output when the operands have valid shapes, which are
@@ -373,7 +441,7 @@ bool VerifySubOpShapeConstraints(SubOp op) {
   if (IsQI8Type(element_type)) {
     return VerifyOperandsHaveSameShapesOrBroadcastableShape(
         /*op=*/op.getOperation(), /*indices=*/ArrayRef<unsigned>{0, 1},
-        /*max_bcast_rank=*/4);
+        /*max_bcast_rank=*/6);
   }
   return false;
 }
@@ -392,7 +460,7 @@ bool VerifyMulOpShapeConstraints(MulOp op) {
     }
     return VerifyOperandsHaveSameShapesOrBroadcastableShape(
         /*op=*/op.getOperation(), /*indices=*/ArrayRef<unsigned>{0, 1},
-        /*max_bcast_rank=*/4);
+        /*max_bcast_rank=*/6);
   }
 
   // Allows I32, I64, QI16 and F32 outputs when the operands have valid shapes,
@@ -403,7 +471,7 @@ bool VerifyMulOpShapeConstraints(MulOp op) {
       element_type.isF32()) {
     return VerifyOperandsHaveSameShapesOrBroadcastableShape(
         /*op=*/op.getOperation(), /*indices=*/ArrayRef<unsigned>{0, 1},
-        /*max_bcast_rank=*/4);
+        /*max_bcast_rank=*/6);
   }
   return false;
 }
@@ -3086,7 +3154,7 @@ void ConstOp::getCanonicalizationPatterns(RewritePatternSet& results,
 OpFoldResult CastOp::fold(FoldAdaptor adaptor) {
   auto operands = adaptor.getOperands();
   assert(operands.size() == 1);
-  if (getElementTypeOrSelf(getInput()) == getElementTypeOrSelf(getType())) {
+  if (getInput().getType() == getType()) {
     return getInput();
   }
 
@@ -3448,6 +3516,11 @@ void ComputePermutation(ArrayRef<int64_t> perms, ArrayRef<int64_t> output_shape,
 
 }  // namespace
 
+void TransposeOp::getCanonicalizationPatterns(RewritePatternSet& results,
+                                              MLIRContext* context) {
+  results.add<ConvertTransposeToDecreaseRank>(context);
+}
+
 OpFoldResult TransposeOp::fold(FoldAdaptor adaptor) {
   auto operands = adaptor.getOperands();
 
@@ -3644,11 +3717,11 @@ static void BuildTransposeOp(OpBuilder* builder, OperationState& result,
 /// during the flow of control. `operands` is a set of optional attributes that
 /// correspond to a constant value for each operand, or null if that operand is
 /// not a constant.
-void IfOp::getSuccessorRegions(std::optional<unsigned> index,
+void IfOp::getSuccessorRegions(RegionBranchPoint point,
 
                                SmallVectorImpl<RegionSuccessor>& regions) {
   // The `then` and the `else` region branch back to the parent operation.
-  if (index.has_value()) {
+  if (!point.isParent()) {
     regions.push_back(RegionSuccessor(getResults()));
     return;
   }
@@ -3710,7 +3783,7 @@ void PolyCallOp::getCanonicalizationPatterns(RewritePatternSet& results,
 }
 
 void PolyCallOp::getSuccessorRegions(
-    std::optional<unsigned> index, SmallVectorImpl<RegionSuccessor>& regions) {
+    RegionBranchPoint point, SmallVectorImpl<RegionSuccessor>& regions) {
   // Defaults to first region for TFLite execution.
 }
 
@@ -3860,7 +3933,7 @@ void WhileOp::getCanonicalizationPatterns(RewritePatternSet& results,
   results.add<WhileResultOperandsMatchAndImplicitCapture>(context);
 }
 
-Region& WhileOp::getLoopBody() { return getBody(); }
+SmallVector<Region*> WhileOp::getLoopRegions() { return {&getBody()}; }
 
 bool WhileOp::isDefinedOutsideOfLoop(Value value) {
   // TODO(jpienaar): This is to overly conservative and disables anything other

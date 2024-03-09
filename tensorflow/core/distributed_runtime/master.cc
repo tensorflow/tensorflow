@@ -55,7 +55,7 @@ limitations under the License.
 #include "tensorflow/core/protobuf/worker.pb.h"
 #include "tensorflow/core/public/session_options.h"
 #include "tensorflow/core/util/device_name_utils.h"
-#include "tensorflow/tsl/protobuf/rpc_options.pb.h"
+#include "tsl/protobuf/rpc_options.pb.h"
 
 namespace tensorflow {
 
@@ -144,7 +144,7 @@ class DeviceFinder {
     finder.Start();
     TF_RETURN_IF_ERROR(finder.Wait());
     finder.GetRemoteDevices(env->local_devices, out_remote);
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   static void GetRemoteWorkers(
@@ -356,7 +356,8 @@ class DeviceFinder {
     return false;
   }
 
-  TF_DISALLOW_COPY_AND_ASSIGN(DeviceFinder);
+  DeviceFinder(const DeviceFinder&) = delete;
+  void operator=(const DeviceFinder&) = delete;
 };
 
 void Master::CreateSession(const CreateSessionRequest* req,

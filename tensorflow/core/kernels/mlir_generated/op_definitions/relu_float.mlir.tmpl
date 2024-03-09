@@ -1,0 +1,10 @@
+func.func @Relu_platform_elem_type_output_type(%arg0: tensor<*xelem_type>) -> tensor<*xoutput_type> attributes {llvm.emit_c_interface, tf_entry} {
+  %0 = mhlo.constant dense<0.000000e+00> : tensor<elem_type>
+  %1 = shape.shape_of %arg0 : tensor<*xelem_type> -> tensor<?xindex>
+  %2 = shape.num_elements %1 : tensor<?xindex> -> index
+  %from_elements = tensor.from_elements %2 : tensor<1xindex>
+  %3 = mhlo.dynamic_reshape %arg0, %from_elements : (tensor<*xelem_type>, tensor<1xindex>) -> tensor<?xelem_type>
+  %4 = chlo.broadcast_maximum %3, %0 : (tensor<?xelem_type>, tensor<elem_type>) -> tensor<?xelem_type>
+  %5 = mhlo.dynamic_reshape %4, %1 : (tensor<?xelem_type>, tensor<?xindex>) -> tensor<*xelem_type>
+  return %5 : tensor<*xelem_type>
+}

@@ -33,7 +33,7 @@ def DefaultQuantParamsPass : Pass<"tfl-default-quant", "mlir::func::FuncOp"> {
   let constructor = "CreateDefaultQuantParamsPass()";
   let dependentDialects = ["TFL::TensorFlowLiteDialect"];
   let options = [
-    Option<"default_min_", "default-min", "double", "-1.0", 
+    Option<"default_min_", "default-min", "double", "-1.0",
                "Default minimum value for TFLite quantization">,
     Option<"default_max_", "default-max", "double", "1.0",
                "Default maximum value for TFLite quantization">,
@@ -44,8 +44,8 @@ def DefaultQuantParamsPass : Pass<"tfl-default-quant", "mlir::func::FuncOp"> {
 def DecomposeHybridQuantizationPass : Pass<"tfl-decompose-hybrid-quantization", "mlir::func::FuncOp"> {
   let summary = "Decomposes hybridge quantization to explicit quantize / dequantize";
   let description = [{
-      Decomposes (with explicit quantize/dequantize ops) selected math 
-      operations which exist in the model with hybrid quantization 
+      Decomposes (with explicit quantize/dequantize ops) selected math
+      operations which exist in the model with hybrid quantization
       (some arguments/results left in floating point).
   }];
   let constructor = "CreateDecomposeHybridQuantizationPass()";
@@ -72,7 +72,7 @@ def DenseToSparsePass : Pass<"tfl-dense-to-sparse", "mlir::func::FuncOp"> {
   let constructor = "CreateDenseToSparsePass()";
   let dependentDialects = ["TFL::TensorFlowLiteDialect"];
   let options = [
-    Option<"default_min_", "default-min", "double", "-1.0", 
+    Option<"default_min_", "default-min", "double", "-1.0",
                "Default minimum value for TFLite quantization">,
     Option<"default_max_", "default-max", "double", "1.0",
                "Default maximum value for TFLite quantization">,
@@ -158,7 +158,7 @@ def LowerStaticTensorListPass : Pass<"tfl-lower-static-tensor-list", "mlir::Modu
              "legalized by this pass, then the IR won't be changed so that "
              "tensorlist ops can pass through (default false).">,
       Option<
-        "default_to_single_batch_", "default-to-single-batch", "bool", "false", 
+        "default_to_single_batch_", "default-to-single-batch", "bool", "false",
         "When specified to true, if the tensorlist ops has unspecified batch "
         "size, this pass will assume that the batch size is one to proceed "
         "tensorlist op lowering (default true)">,
@@ -194,8 +194,13 @@ def OptimizePass : Pass<"tfl-optimize", "mlir::func::FuncOp"> {
       Option<"disable_fuse_mul_and_fc_", "disable-fuse-mul-and-fc",
              "bool", "false",
              "Disable folding mul and fully connected ops during optimization pass.">,
-
   ];
+}
+
+def OptimizeBatchMatmulPass : Pass<"tfl-optimize-batch-matmul", "mlir::func::FuncOp"> {
+  let summary = "Optimize FC with BatchMatmul within the TensorFlow Lite dialect";
+  let constructor = "CreateOptimizeBatchMatmulPass()";
+  let dependentDialects = ["TFL::TensorFlowLiteDialect"];
 }
 
 def OptimizeFunctionalOpsPass : Pass<"tfl-optimize-functional-ops", "mlir::ModuleOp"> {
@@ -304,6 +309,8 @@ def PrepareQuantizePass : Pass<"tfl-prepare-quantize", "mlir::func::FuncOp"> {
              "disable-set-input-nodes-quantization-params",
              "bool", "false",
              "Whether disable set input nodes quantization parameters.">,
+      Option<"is_qdq_conversion_", "is-qdq-conversion", "bool", "false",
+             "Whether the source graph is a QDQ model intended for conversion only.">,
   ];
 }
 
@@ -318,6 +325,9 @@ def PrepareDynamicRangeQuantizePass : Pass<"tfl-prepare-quantize-dynamic-range",
       Option<"enable_dynamic_range_per_channel_quantization_",
               "enable-dynamic-range-per-channel-quantization", "bool",
               "true", "Whether enable per-channel quantized weights.">,
+      Option<"enable_dynamic_range_per_channel_quantization_for_dense_layers_",
+              "enable-dynamic-range-per-channel-quantization-for-dense-layers", "bool",
+              "true", "Whether enable per-channel quantized weights for Fully Connected layers (default is per tensor).">,
       Option<"min_elements_for_weights_",
               "min-elements-for-weights", "int64_t", "1024",
               "The minimum number of elements in a weights array required to apply quantization.">,
@@ -450,3 +460,16 @@ def LegalizeTensorListPass : Pass<"tfl-legalize-tensorlist", "mlir::ModuleOp"> {
   let constructor = "CreateLegalizeTensorListPass()";
   let dependentDialects = ["TFL::TensorFlowLiteDialect"];
 }
+
+def ReduceTypePrecisionPass : Pass<"tfl-reduce-type-precision", "mlir::ModuleOp"> {
+  let summary = "Reduce some tensor types' precision if all values are within range.";
+  let constructor = "CreateReduceTypePrecisionPass()";
+  let dependentDialects = ["TFL::TensorFlowLiteDialect"];
+}
+
+def PushTransposeThroughEwisePass : Pass<"push-transpose-through-ewise", "mlir::ModuleOp"> {
+  let summary = "TODO";
+  let constructor = "CreatePushTransposeThroughEwisePass()";
+  let dependentDialects = ["TFL::TensorFlowLiteDialect"];
+}
+

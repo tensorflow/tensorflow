@@ -358,8 +358,8 @@ def _eager_cond_implementation(pred, true_fn, false_fn, strict, name):
     # Eager tensors from a parallel device may not have a constant
     # value. Running the cond op itself would work, but we don't have logic to
     # build cond ops without wrapping in a function first.
-    if (not isinstance(true_fn, core.GenericFunction)
-        or not isinstance(false_fn, core.GenericFunction)):
+    if (not isinstance(true_fn, core.PolymorphicFunction)
+        or not isinstance(false_fn, core.PolymorphicFunction)):
       raise TypeError("When running tf.cond on a parallel device, 'true_fn' "
                       "and 'false_fn' must be decorated with `tf.function`.")
     functions_run_eagerly = eager_function_run.functions_run_eagerly()

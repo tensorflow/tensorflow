@@ -47,7 +47,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_type.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/location_utils.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/mangling_util.h"
-#include "tensorflow/compiler/xla/status_macros.h"
+#include "xla/status_macros.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/graph_to_functiondef.h"
@@ -294,7 +294,7 @@ static bool IsRefTypeControlOp(mlir::Operation* op) {
 
 }  // anonymous namespace
 
-StatusOr<llvm::StringRef> GetTensorFlowOpName(llvm::StringRef op_name) {
+absl::StatusOr<llvm::StringRef> GetTensorFlowOpName(llvm::StringRef op_name) {
   // When being converted to MLIR, some prefixes and suffixes are added to the
   // operation types, and we have to remove them when converting the
   // operations back to a graph:
@@ -315,8 +315,8 @@ StatusOr<llvm::StringRef> GetTensorFlowOpName(llvm::StringRef op_name) {
   return op_name;
 }
 
-StatusOr<std::unique_ptr<NodeDef>> GetOperationNodeDef(mlir::Operation* inst,
-                                                       llvm::StringRef name) {
+absl::StatusOr<std::unique_ptr<NodeDef>> GetOperationNodeDef(
+    mlir::Operation* inst, llvm::StringRef name) {
   auto node_def = std::make_unique<NodeDef>();
   // Note: we do not use NodeBuilder or NodeDefBuilder as that would require
   // mapping back from the inputs to the input arguments.

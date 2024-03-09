@@ -19,6 +19,7 @@ limitations under the License.
 #include <string>
 
 #include "llvm/Support/raw_ostream.h"
+#include "tensorflow/dtensor/cc/constants.h"
 
 namespace tensorflow {
 namespace dtensor {
@@ -134,5 +135,13 @@ void DuplicateConstants(mlir::Operation* op) {
   }
 }
 
+std::string GetOperationName(mlir::ModuleOp module) {
+  auto operation_name_attr =
+      module->getAttrOfType<mlir::StringAttr>(kEagerOperationName);
+  const std::string operation_name =
+      operation_name_attr ? operation_name_attr.getValue().str() : "unknown";
+
+  return operation_name;
+}
 }  // namespace dtensor
 }  // namespace tensorflow

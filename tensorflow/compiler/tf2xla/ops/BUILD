@@ -16,11 +16,11 @@ cc_library(
     name = "xla_ops",
     srcs = ["xla_ops.cc"],
     deps = [
-        "//tensorflow/compiler/xla:xla_data_proto_cc",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/strings",
+        "@local_xla//xla:xla_data_proto_cc",
     ],
     alwayslink = 1,
 )
@@ -46,7 +46,7 @@ tf_custom_op_library(
         "xla_ops.cc",
     ],
     deps = [
-        "//tensorflow/compiler/xla:xla_data_proto_cc",
         "@com_google_absl//absl/algorithm:container",
+        "@local_xla//xla:xla_data_proto_cc",
     ],
 )

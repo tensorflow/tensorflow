@@ -16,14 +16,23 @@ limitations under the License.
 #ifndef TENSORFLOW_C_KERNELS_H_
 #define TENSORFLOW_C_KERNELS_H_
 
+#include <stddef.h>
 #include <stdint.h>
 
 #include "tensorflow/c/c_api.h"
 #include "tensorflow/c/c_api_macros.h"
 #include "tensorflow/c/experimental/stream_executor/stream_executor.h"
+#include "tensorflow/c/tf_buffer.h"
 #include "tensorflow/c/tf_datatype.h"
 #include "tensorflow/c/tf_status.h"
 #include "tensorflow/c/tf_tensor.h"
+
+// Required for IS_MOBILE_PLATFORM definition
+#include "tsl/platform/platform.h"  // IWYU pragma: keep
+
+#if !defined(IS_MOBILE_PLATFORM) && !defined(IS_SLIM_BUILD)
+#include "tensorflow/core/common_runtime/next_pluggable_device/c/tf_rendezvous_c_api.h"
+#endif
 
 #ifdef __cplusplus
 extern "C" {
@@ -272,6 +281,17 @@ TF_CAPI_EXPORT extern int64_t TF_GetStepId(TF_OpKernelContext* ctx);
 // For mobile or slim build, returns the id in the device name.
 TF_CAPI_EXPORT extern int TF_GetDeviceId(TF_OpKernelContext* ctx);
 
+// Returns the Device Name of the device that the context possesses.
+//
+// The returned TF_StringView's underlying string is owned by the OpKernel and
+// has the same lifetime as the OpKernel.
+TF_CAPI_EXPORT TF_StringView TF_GetDeviceName(TF_OpKernelContext* ctx);
+
+#if !defined(IS_MOBILE_PLATFORM) && !defined(IS_SLIM_BUILD)
+// Returns the rendezvous in the context. Not supported on mobile.
+TF_CAPI_EXPORT TF_RendezvousThunk TF_GetRendezvous(TF_OpKernelContext* ctx);
+#endif
+
 // Returns the graph def version of the given context.
 TF_CAPI_EXPORT extern int TF_GetGraphDefVersion(TF_OpKernelContext* ctx);
 
@@ -440,7 +460,7 @@ TF_CAPI_EXPORT extern void TF_OpKernelConstruction_GetAttrBoolList(
 // TF_OpKernelConstruction_GetAttrSize(ctx, attr_name, list_size,
 // total_size).
 TF_CAPI_EXPORT extern void TF_OpKernelConstruction_GetAttrStringList(
-    TF_OpKernelConstruction* ctx, const char* attr_name, char** vals,
+    TF_OpKernelConstruction* ctx, const char* attr_name, char** values,
     size_t* lengths, int max_values, void* storage, size_t storage_size,
     TF_Status* status);
 

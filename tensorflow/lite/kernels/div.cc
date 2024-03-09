@@ -175,7 +175,6 @@ void EvalDiv(TfLiteContext* context, TfLiteNode* node, TfLiteDivParams* params,
             CpuBackendContext::GetFromContext(context);
         pthreadpool_t threadpool =
             cpu_backend_context->get_xnnpack_threadpool();
-        threadpool = nullptr;
         float output_min = -std::numeric_limits<float>::infinity();
         float output_max = std::numeric_limits<float>::infinity();
         CalculateActivationRange(params->activation, &output_min, &output_max);

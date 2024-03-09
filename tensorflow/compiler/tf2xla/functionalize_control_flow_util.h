@@ -17,7 +17,7 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_TF2XLA_FUNCTIONALIZE_CONTROL_FLOW_UTIL_H_
 
 #include "absl/strings/str_join.h"
-#include "tensorflow/compiler/xla/status_macros.h"
+#include "xla/status_macros.h"
 #include "tensorflow/core/graph/control_flow.h"
 #include "tensorflow/core/graph/graph.h"
 
@@ -90,10 +90,10 @@ struct NodeCmpByNameResourcesLast {
 };
 
 // Returns the Node* created from the NodeDef in the Graph.
-StatusOr<Node*> AddNodeDefToGraph(const NodeDef& node_def, Graph* graph);
+absl::StatusOr<Node*> AddNodeDefToGraph(const NodeDef& node_def, Graph* graph);
 
 // Build a retval node of given type and index.
-StatusOr<Node*> BuildRetvalNode(Graph* graph, DataType type, int index);
+absl::StatusOr<Node*> BuildRetvalNode(Graph* graph, DataType type, int index);
 
 // Returns a textual representation of the names of the nodes in the input.
 template <typename T>

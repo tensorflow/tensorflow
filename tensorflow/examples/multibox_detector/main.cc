@@ -73,7 +73,7 @@ Status ReadLocationsFile(const string& file_name, std::vector<float>* result,
     }
   }
   *found_label_count = result->size();
-  return ::tensorflow::OkStatus();
+  return absl::OkStatus();
 }
 
 // Given an image file name, read in the data, try to decode it as an image,
@@ -135,7 +135,7 @@ Status ReadTensorFromImageFile(const string& file_name, const int input_height,
   TF_RETURN_IF_ERROR(session->Create(graph));
   TF_RETURN_IF_ERROR(
       session->Run({}, {output_name, original_name}, {}, out_tensors));
-  return ::tensorflow::OkStatus();
+  return absl::OkStatus();
 }
 
 Status SaveImage(const Tensor& tensor, const string& file_path) {
@@ -163,7 +163,7 @@ Status SaveImage(const Tensor& tensor, const string& file_path) {
   std::vector<Tensor> outputs;
   TF_RETURN_IF_ERROR(session->Run({}, {}, {output_name}, &outputs));
 
-  return ::tensorflow::OkStatus();
+  return absl::OkStatus();
 }
 
 // Reads a model graph definition from disk, and creates a session object you
@@ -182,7 +182,7 @@ Status LoadGraph(const string& graph_file_name,
   if (!session_create_status.ok()) {
     return session_create_status;
   }
-  return ::tensorflow::OkStatus();
+  return absl::OkStatus();
 }
 
 // Analyzes the output of the MultiBox graph to retrieve the highest scores and
@@ -210,7 +210,7 @@ Status GetTopDetections(const std::vector<Tensor>& outputs, int how_many_labels,
                                   {}, &out_tensors));
   *scores = out_tensors[0];
   *indices = out_tensors[1];
-  return ::tensorflow::OkStatus();
+  return absl::OkStatus();
 }
 
 // Converts an encoded location to an actual box placement with the provided
@@ -329,7 +329,7 @@ Status PrintTopDetections(const std::vector<Tensor>& outputs,
   if (!image_file_name.empty()) {
     return SaveImage(*original_tensor, image_file_name);
   }
-  return ::tensorflow::OkStatus();
+  return absl::OkStatus();
 }
 
 int main(int argc, char* argv[]) {

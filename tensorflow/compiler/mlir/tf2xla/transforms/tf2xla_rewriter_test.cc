@@ -38,16 +38,16 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tf2xla/transforms/test_utils.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
-#include "tensorflow/compiler/xla/client/xla_builder.h"
-#include "tensorflow/compiler/xla/client/xla_computation.h"
-#include "tensorflow/compiler/xla/mlir_hlo/mhlo/IR/hlo_ops.h"
-#include "tensorflow/compiler/xla/shape_util.h"
-#include "tensorflow/compiler/xla/xla_data.pb.h"
+#include "xla/client/xla_builder.h"
+#include "xla/client/xla_computation.h"
+#include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
+#include "xla/shape_util.h"
+#include "xla/xla_data.pb.h"
 #include "tensorflow/core/framework/op_kernel.h"
-#include "tensorflow/tsl/lib/core/status_test_util.h"
-#include "tensorflow/tsl/platform/errors.h"
-#include "tensorflow/tsl/platform/status.h"
-#include "tensorflow/tsl/platform/statusor.h"
+#include "tsl/lib/core/status_test_util.h"
+#include "tsl/platform/errors.h"
+#include "tsl/platform/status.h"
+#include "tsl/platform/statusor.h"
 
 namespace mlir {
 namespace mhlo {
@@ -103,7 +103,7 @@ class Tf2XlaRewriterTestPeer {
         tf2xla_rewriter_(op, empty_rewriter_,
                          /*device_type=*/"XLA_CPU_JIT") {}
 
-  tsl::StatusOr<TupleOp> ImportXlaComputationIntoModule(
+  absl::StatusOr<TupleOp> ImportXlaComputationIntoModule(
       XlaComputation& computation) {
     return tf2xla_rewriter_.ImportXlaComputation(computation);
   }
@@ -185,7 +185,7 @@ class Tf2XlaRewriterTest : public ::testing::Test {
     return main_func.getBody().front().front();
   }
 
-  StatusOr<TupleOp> ImportXlaComputationIntoModule(
+  absl::StatusOr<TupleOp> ImportXlaComputationIntoModule(
       XlaComputation& computation) {
     SourceMgrDiagnosticHandler sourceMgrHandler(source_manager_, &context_);
 
@@ -286,6 +286,19 @@ TEST_F(Tf2XlaRewriterTest, InsertsConstantParameters) {
   TF_ASSERT_OK(LegalizeModule(kModuleWithConstParam));
 }
 
+TEST_F(Tf2XlaRewriterTest, DoesntEnforceCompileTimeConstantCheck) {
+  static constexpr char kModuleWithNonConstParam[] = R"(
+  module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, producer = 1610 : i32}} {
+    func.func @main(%arg0: tensor<3x3x10xbf16>, %arg1: tensor<3xi32>) -> tensor<1x?x4xbf16> attributes {allow_soft_placement = false, tf.entry_function = {control_outputs = "", inputs = "_arg0,_arg1,_arg2", outputs = "_retval0"}} {
+      %cst = "tf.Const"() {value = dense<[1, -1, 4]> : tensor<3xi32>} : () -> tensor<3xi32>
+      %0 = "tf.Slice"(%arg0, %arg1, %cst) {_XlaHasReferenceVars = false, _xla_inferred_shapes = [#tf_type.shape<1x?x4>], device = "/job:localhost/replica:0/task:0/device:TPU:0"} : (tensor<3x3x10xbf16>, tensor<3xi32>, tensor<3xi32>) -> tensor<1x?x4xbf16>
+      return %0 : tensor<1x?x4xbf16>
+    }
+  })";
+
+  TF_ASSERT_OK(LegalizeModule(kModuleWithNonConstParam));
+}
+
 TEST_F(Tf2XlaRewriterTest, ErrorsWithInvalidNumberOfParametersToArgs) {
   XlaBuilder builder("test_builder");
   XlaComputation to_apply;
@@ -310,7 +323,7 @@ TEST_F(Tf2XlaRewriterTest, ErrorsWithInvalidNumberOfParametersToArgs) {
   EXPECT_EQ(computation.proto().computations_size(), 2);
 
   TF_ASSERT_OK(CreateMlirModule());
-  tsl::StatusOr<TupleOp> status_or_tuple_op =
+  absl::StatusOr<TupleOp> status_or_tuple_op =
       ImportXlaComputationIntoModule(computation);
   EXPECT_FALSE(status_or_tuple_op.ok());
 }

@@ -18,7 +18,7 @@ limitations under the License.
 
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/status.h"
-#include "tensorflow/tsl/platform/statusor.h"
+#include "tsl/platform/statusor.h"
 namespace tensorflow {
 using tsl::StatusOr;  // NOLINT
 }  // namespace tensorflow

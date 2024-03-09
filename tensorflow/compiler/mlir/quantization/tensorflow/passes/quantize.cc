@@ -43,11 +43,11 @@ limitations under the License.
 #include "mlir/Support/TypeID.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/quantization/ir/QuantOps.h"
-#include "tensorflow/compiler/mlir/lite/quantization/quantization_config.h"
-#include "tensorflow/compiler/mlir/lite/quantization/quantization_utils.h"
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h"
+#include "tensorflow/compiler/mlir/quantization/common/attrs_and_constraints.h"
+#include "tensorflow/compiler/mlir/quantization/common/quantization_lib/quantization_config.h"
+#include "tensorflow/compiler/mlir/quantization/common/quantization_lib/quantization_utils.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/ops/tf_op_quant_spec.h"
-#include "tensorflow/compiler/mlir/quantization/tensorflow/passes/utils.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/quantization_options.pb.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/core/framework/types.pb.h"
@@ -315,7 +315,7 @@ class QuantizeSameScaleOpsPattern
   }
 
  private:
-  // Checks whether the operation is connnected with a composite function.
+  // Checks whether the operation is connected with a composite function.
   // If not, the same-scale op will not be quantized. This decision is based
   // on the current assumption that the performance gain of the same-scale
   // op itself could not beat the overhead of the quantize and dequantize
@@ -384,7 +384,7 @@ class QuantizeSameScaleOpsPattern
     }
 
     const auto f_attr = call_op.getFAttr().dyn_cast<FlatSymbolRefAttr>();
-    if (!f_attr || !f_attr.getValue().startswith("composite_")) {
+    if (!f_attr || !f_attr.getValue().starts_with("composite_")) {
       return false;
     }
 

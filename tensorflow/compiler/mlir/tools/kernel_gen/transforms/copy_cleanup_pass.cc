@@ -60,7 +60,7 @@ void RemoveCopyIfTargetOnlyRead(func::FuncOp func) {
         }
         continue;
       }
-      if (auto effect_interface = cast<MemoryEffectOpInterface>(user)) {
+      if (auto effect_interface = dyn_cast<MemoryEffectOpInterface>(user)) {
         if (reader) {
           at_most_one_read = false;
         } else {

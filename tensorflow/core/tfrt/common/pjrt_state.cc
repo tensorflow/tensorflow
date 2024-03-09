@@ -17,8 +17,8 @@ limitations under the License.
 #include <memory>
 #include <utility>
 
-#include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
-#include "tensorflow/compiler/xla/pjrt/tf_pjrt_client.h"
+#include "xla/pjrt/pjrt_client.h"
+#include "xla/pjrt/tf_pjrt_client.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/tfrt/common/pjrt_client_factory_options.h"
 #include "tensorflow/core/tfrt/common/pjrt_client_factory_registry.h"
@@ -27,7 +27,7 @@ namespace tensorflow {
 
 PjRtState* PjRtState::Create() { return new PjRtState(); }
 
-StatusOr<xla::PjRtClient*> PjRtState::GetPjRtClient(
+absl::StatusOr<xla::PjRtClient*> PjRtState::GetPjRtClient(
     const DeviceType& device_type) {
   absl::MutexLock lock(&mu_);
   if (auto it = clients_.find(device_type); it != clients_.end()) {
@@ -37,7 +37,7 @@ StatusOr<xla::PjRtClient*> PjRtState::GetPjRtClient(
                           device_type);
 }
 
-StatusOr<xla::PjRtClient*> PjRtState::GetOrCreatePjRtClient(
+absl::StatusOr<xla::PjRtClient*> PjRtState::GetOrCreatePjRtClient(
     const DeviceType& device_type) {
   absl::MutexLock lock(&mu_);
   if (auto it = clients_.find(device_type); it != clients_.end()) {

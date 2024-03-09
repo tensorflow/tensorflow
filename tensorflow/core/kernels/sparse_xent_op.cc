@@ -19,7 +19,7 @@ limitations under the License.
 
 #include "tensorflow/core/kernels/sparse_xent_op.h"
 
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
@@ -34,7 +34,7 @@ typedef Eigen::GpuDevice GPUDevice;
 
 template <typename Index>
 Status CheckInvalidLabelIndex(const Tensor& labels, int64_t max_index) {
-  if (labels.NumElements() == 0) return OkStatus();
+  if (labels.NumElements() == 0) return absl::OkStatus();
   const auto label_values = labels.vec<Index>();
   int64_t bad_index;
   auto min_max_dim_value = std::minmax_element(
@@ -47,7 +47,7 @@ Status CheckInvalidLabelIndex(const Tensor& labels, int64_t max_index) {
         " which is outside the valid range of [0, ", max_index,
         ").  Label values: ", labels.SummarizeValue(labels.NumElements()));
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 template <typename Device, typename T, typename Index>

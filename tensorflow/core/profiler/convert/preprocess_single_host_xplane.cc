@@ -18,9 +18,9 @@ limitations under the License.
 
 #include "tensorflow/core/profiler/utils/derived_timeline.h"
 #include "tensorflow/core/profiler/utils/xplane_schema.h"
-#include "tensorflow/tsl/profiler/utils/group_events.h"
-#include "tensorflow/tsl/profiler/utils/preprocess_xplane.h"
-#include "tensorflow/tsl/profiler/utils/xplane_utils.h"
+#include "tsl/profiler/utils/group_events.h"
+#include "tsl/profiler/utils/preprocess_xplane.h"
+#include "tsl/profiler/utils/xplane_utils.h"
 
 namespace tensorflow {
 namespace profiler {

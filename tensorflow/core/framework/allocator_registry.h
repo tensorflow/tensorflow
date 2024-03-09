@@ -24,7 +24,7 @@ limitations under the License.
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/numa.h"
-#include "tensorflow/tsl/framework/allocator_registry.h"
+#include "tsl/framework/allocator_registry.h"
 
 namespace tensorflow {
 

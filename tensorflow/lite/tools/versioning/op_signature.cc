@@ -163,6 +163,15 @@ OpSignature GetOpSignature(const OperatorCode* op_code, const Operator* op,
           subgraph->tensors()->Get(op->inputs()->Get(1));
       op_sig.ext_options.fully_connected.sparse_weight =
           (weight_tensor->sparsity() != nullptr);
+      const QuantizationParameters* weight_quant =
+          weight_tensor->quantization();
+      if (weight_quant && weight_quant->scale() &&
+          weight_quant->scale()->size() && weight_tensor->shape() &&
+          weight_tensor->shape()->size()) {
+        op_sig.ext_options.fully_connected.is_per_channel_quantized =
+            weight_quant->scale()->size() > 1 &&
+            weight_quant->scale()->size() == weight_tensor->shape()->Get(0);
+      }
     } break;
 
     case BuiltinOperator_MUL: {

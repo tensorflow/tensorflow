@@ -53,7 +53,7 @@ static Status TensorMapDeviceCopy(
     TF_RETURN_IF_ERROR(copy(p.second, &to_val));
     to->tensors().emplace(to_key, to_val);
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 #define REGISTER_LIST_COPY(DIRECTION)                                        \

@@ -13,10 +13,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tensorflow/core/platform/test.h"
-#include "tensorflow/tsl/framework/contraction/eigen_contraction_kernel.h"
-#include "tensorflow/tsl/framework/fixedpoint/FixedPoint.h"
+#include "tsl/framework/contraction/eigen_contraction_kernel.h"
+#include "tsl/framework/fixedpoint/FixedPoint.h"
 
 namespace Eigen {
 namespace internal {

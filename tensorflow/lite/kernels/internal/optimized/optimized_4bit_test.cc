@@ -14,6 +14,8 @@ limitations under the License.
 ==============================================================================*/
 #include <cstdint>
 #include <cstdlib>
+#include <functional>
+#include <memory>
 #include <random>
 #include <vector>
 
@@ -34,14 +36,23 @@ struct TestPack {
         src_rows(src_rows),
         src_cols(src_cols),
         width(width),
-        depth(depth) {
-    rows = (src_rows + (width - 1)) & ~(width - 1);
-    cols = (src_cols + (depth - 1)) & ~(depth - 1);
-  }
+        depth(depth),
+        rows((src_rows + (width - 1)) & ~(width - 1)),
+        cols((src_cols + (depth - 1)) & ~(depth - 1)),
+        // Must be vector-aligned.
+        packed_data_buffer(
+            [=]() -> uint8_t* {
+              void* ptr;
+              if (posix_memalign(&ptr, 64, rows * cols + padding)) {
+                abort();
+              }
+              return static_cast<uint8_t*>(ptr);
+            }(),
+            [](uint8_t* ptr) { free(ptr); }) {}
 
-  ~TestPack() { free(packed_data); }
   void Prepack() {
-    optimized_4bit::Prepack(&packed_data, src_data.data(), rows, cols, src_rows,
+    packed_data = packed_data_buffer.get();
+    optimized_4bit::Prepack(packed_data, src_data.data(), rows, cols, src_rows,
                             src_cols, width, depth);
   }
 
@@ -51,6 +62,7 @@ struct TestPack {
     for (int i = 0; i < size; i++) {
       values[i] = packed_data[i];
     }
+    packed_data = nullptr;
     return values;
   }
 
@@ -58,10 +70,12 @@ struct TestPack {
   uint8_t* packed_data;
   int src_rows;
   int src_cols;
-  int rows;
-  int cols;
   int width;
   int depth;
+  int rows;
+  int cols;
+  int padding = optimized_4bit::kDefaultAlignmentPadding;
+  std::unique_ptr<uint8_t, std::function<void(uint8_t*)>> packed_data_buffer;
 };
 
 class RunPackTests
@@ -130,8 +144,11 @@ INSTANTIATE_TEST_SUITE_P(RunPackTests, RunPackTests,
                          ::testing::ValuesIn({
                              std::make_tuple(4, 32),
                              std::make_tuple(4, 46),
+                             std::make_tuple(4, 56),
                              std::make_tuple(5, 64),
                              std::make_tuple(5, 72),
+                             std::make_tuple(5, 80),
+                             std::make_tuple(5, 84),
                          }));
 
 struct TestQuantize {

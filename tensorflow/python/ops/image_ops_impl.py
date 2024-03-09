@@ -15,6 +15,7 @@
 """Implementation of image ops."""
 
 import functools
+
 import numpy as np
 
 from tensorflow.python.eager import context
@@ -36,9 +37,10 @@ from tensorflow.python.ops import control_flow_case
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gen_image_ops
 from tensorflow.python.ops import math_ops
-from tensorflow.python.ops import nn
+from tensorflow.python.ops import nn_impl
 from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import random_ops
+from tensorflow.python.ops import ref_variable  # pylint: disable=unused-import
 from tensorflow.python.ops import sort_ops
 from tensorflow.python.ops import stateless_random_ops
 from tensorflow.python.ops import string_ops
@@ -1084,10 +1086,14 @@ def pad_to_bounding_box_internal(image, offset_height, offset_width,
   Args:
     image: 4-D Tensor of shape `[batch, height, width, channels]` or 3-D Tensor
       of shape `[height, width, channels]`.
-    offset_height: Number of rows of zeros to add on top.
-    offset_width: Number of columns of zeros to add on the left.
-    target_height: Height of output image.
-    target_width: Width of output image.
+    offset_height: Number of rows of zeros to add on top.Must be 0-D `Tensor` of
+      dtype int32 or int64. Can also a python integer.
+    offset_width: Number of columns of zeros to add on the left.Must be 0-D
+      `Tensor` of dtype int32 or int64. Can also a python integer.
+    target_height: Height of output image.Must be 0-D `Tensor` of dtype int32 or
+      int64. Can also a python integer.
+    target_width: Width of output image.Must be 0-D `Tensor` of dtype int32 or
+      int64. Can also a python integer.
     check_dims: If True, assert that dimensions are non-negative and in range.
       In multi-GPU distributed settings, assertions can cause program slowdown.
       Setting this parameter to `False` avoids this, resulting in faster speed
@@ -1189,11 +1195,13 @@ def crop_to_bounding_box(image, offset_height, offset_width, target_height,
     image: 4-D `Tensor` of shape `[batch, height, width, channels]` or 3-D
       `Tensor` of shape `[height, width, channels]`.
     offset_height: Vertical coordinate of the top-left corner of the bounding
-      box in `image`.
+      box in `image`. Must be 0-D int32 `Tensor` or python integer.
     offset_width: Horizontal coordinate of the top-left corner of the bounding
-      box in `image`.
-    target_height: Height of the bounding box.
-    target_width: Width of the bounding box.
+      box in `image`. Must be 0-D int32 `Tensor` or python integer.
+    target_height: Height of the bounding box. Must be 0-D int32 `Tensor` or
+      python integer.
+    target_width: Width of the bounding box. Must be 0-D int32 `Tensor` or
+      python integer.
 
   Returns:
     If `image` was 4-D, a 4-D `Tensor` of shape
@@ -2022,7 +2030,8 @@ def random_brightness(image, max_delta, seed=None):
 
   Args:
     image: An image or images to adjust.
-    max_delta: float, must be non-negative.
+    max_delta: float, must be non-negative. This parameter controls the maximum
+      relative change in brightness.
     seed: A Python integer. Used to create a random seed. See
       `tf.compat.v1.set_random_seed` for behavior.
 
@@ -2912,7 +2921,7 @@ def stateless_random_jpeg_quality(image,
 
 @tf_export('image.adjust_jpeg_quality')
 @dispatch.add_dispatch_support
-def adjust_jpeg_quality(image, jpeg_quality, name=None):
+def adjust_jpeg_quality(image, jpeg_quality, dct_method='', name=None):
   """Adjust jpeg encoding quality of an image.
 
   This is a convenience method that converts an image to uint8 representation,
@@ -2948,7 +2957,7 @@ def adjust_jpeg_quality(image, jpeg_quality, name=None):
          [[1., 1., 1.],
           [1., 1., 1.]]], dtype=float32)>
 
-  Note that `jpeg_quality` 100 is still lossy compresson.
+  Note that `jpeg_quality` 100 is still lossy compression.
 
   >>> x = tf.constant([[[1, 2, 3],
   ...                   [4, 5, 6]],
@@ -2964,6 +2973,10 @@ def adjust_jpeg_quality(image, jpeg_quality, name=None):
   Args:
     image: 3D image. The size of the last dimension must be None, 1 or 3.
     jpeg_quality: Python int or Tensor of type int32. jpeg encoding quality.
+    dct_method: An optional string. Specifies the DCT method to use for JPEG
+      decompression. Currently available options are ["INTEGER_FAST",
+      "INTEGER_ACCURATE"]. Defaults to "" which maps to "INTEGER_FAST",
+      sacrificing image quality for speed.
     name: A name for this operation (optional).
 
   Returns:
@@ -2984,7 +2997,9 @@ def adjust_jpeg_quality(image, jpeg_quality, name=None):
       jpeg_quality = ops.convert_to_tensor(jpeg_quality, dtype=dtypes.int32)
     image = gen_image_ops.encode_jpeg_variable_quality(image, jpeg_quality)
 
-    image = gen_image_ops.decode_jpeg(image, channels=channels)
+    image = gen_image_ops.decode_jpeg(
+        image, channels=channels, dct_method=dct_method
+    )
     return convert_image_dtype(image, orig_dtype, saturate=True)
 
 
@@ -4349,7 +4364,8 @@ def _ssim_per_channel(img1,
   def reducer(x):
     shape = array_ops.shape(x)
     x = array_ops.reshape(x, shape=array_ops.concat([[-1], shape[-3:]], 0))
-    y = nn.depthwise_conv2d(x, kernel, strides=[1, 1, 1, 1], padding='VALID')
+    y = nn_impl.depthwise_conv2d(
+        x, kernel, strides=[1, 1, 1, 1], padding='VALID')
     return array_ops.reshape(
         y, array_ops.concat([shape[:-3], array_ops.shape(y)[1:]], 0))
 
@@ -4727,7 +4743,7 @@ def sobel_edges(image):
 
   # Output tensor has shape [batch_size, h, w, d * num_kernels].
   strides = [1, 1, 1, 1]
-  output = nn.depthwise_conv2d(padded, kernels_tf, strides, 'VALID')
+  output = nn_impl.depthwise_conv2d(padded, kernels_tf, strides, 'VALID')
 
   # Reshape to [batch_size, h, w, d, num_kernels].
   shape = array_ops.concat([image_shape, [num_kernels]], 0)

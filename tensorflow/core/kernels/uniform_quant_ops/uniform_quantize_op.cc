@@ -16,7 +16,7 @@ limitations under the License.
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/kernels/uniform_quant_ops/math_utils.h"
 #include "tensorflow/core/kernels/uniform_quant_ops/tensor_utils.h"
-#include "tensorflow/tsl/platform/errors.h"
+#include "tsl/platform/errors.h"
 
 namespace tensorflow {
 namespace {

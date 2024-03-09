@@ -17,7 +17,9 @@ limitations under the License.
 
 #include <algorithm>
 #include <cstddef>
+#include <cstdint>
 #include <iterator>
+#include <map>
 #include <memory>
 #include <optional>
 #include <string>
@@ -28,36 +30,54 @@ limitations under the License.
 #include "absl/memory/memory.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
+#include "absl/types/span.h"
 #include "llvm/Support/Casting.h"
+#include "tensorflow/c/eager/c_api.h"
 #include "tensorflow/c/eager/c_api_internal.h"
 #include "tensorflow/c/eager/parallel_device/parallel_device_lib.h"
 #include "tensorflow/c/eager/tfe_tensorhandle_internal.h"
 #include "tensorflow/c/tf_datatype.h"
 #include "tensorflow/c/tf_status.h"
 #include "tensorflow/c/tf_status_helper.h"
-#include "tensorflow/compiler/xla/status_macros.h"
+#include "tensorflow/c/tf_tensor.h"
+#include "tensorflow/c/tf_tensor_internal.h"
+#include "xla/status_macros.h"
 #include "tensorflow/core/common_runtime/graph_constructor.h"
 #include "tensorflow/core/common_runtime/shape_refiner.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/function.h"
+#include "tensorflow/core/framework/function.pb.h"
 #include "tensorflow/core/framework/node_def.pb.h"
+#include "tensorflow/core/framework/node_def_builder.h"
 #include "tensorflow/core/framework/node_def_util.h"
+#include "tensorflow/core/framework/shape_inference.h"
 #include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/framework/tensor_shape.h"
+#include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/lib/strings/proto_serialization.h"
 #include "tensorflow/core/platform/fingerprint.h"
 #include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/public/version.h"
+#include "tensorflow/core/util/device_name_utils.h"
+#include "tensorflow/core/util/managed_stack_trace.h"
 #include "tensorflow/dtensor/cc/constants.h"
 #include "tensorflow/dtensor/cc/dstatus.h"
+#include "tensorflow/dtensor/cc/dtensor_operation.h"
 #include "tensorflow/dtensor/cc/dtensor_utils.h"
 #include "tensorflow/dtensor/cc/small_constant_optimization.h"
 #include "tensorflow/dtensor/cc/tensor_layout.h"
+#include "tensorflow/dtensor/cc/tensor_with_layout.h"
+#include "tsl/platform/fingerprint.h"
+#include "tsl/platform/logging.h"  // IWYU pragma: keep
+#include "tsl/platform/status.h"
 
 namespace tensorflow {
 namespace dtensor {
+
 namespace {
 // Represents an input node during graph construction.
 // When executing a Function, `output` is used to align graph inputs
@@ -98,11 +118,11 @@ StatusOr<ResourceHandle> TensorHandleToResourceHandle(
     TFE_TensorHandle* tensor) {
   // Resolve the Tensor as resource handle such that we can get the shape and
   // dtype of the tensor it points to.
-  TF_Status status;
+  TF_StatusPtr status(TF_NewStatus(), internal::TF_StatusDeleter());
   std::unique_ptr<TF_Tensor, decltype(&TF_DeleteTensor)> tf_tensor(
-      TFE_TensorHandleResolve(tensor, &status), TF_DeleteTensor);
-  if (TF_GetCode(&status) != TF_OK) {
-    return StatusFromTF_Status(&status);
+      TFE_TensorHandleResolve(tensor, status.get()), TF_DeleteTensor);
+  if (TF_GetCode(status.get()) != TF_OK) {
+    return StatusFromTF_Status(status.get());
   }
   Tensor t;
   TF_RETURN_IF_ERROR(TF_TensorToTensor(tf_tensor.get(), &t));
@@ -224,7 +244,7 @@ Status ParseAttrMap(const Node& node, absl::string_view indices_attr,
                     std::map<int, Layout>* indices_layout_map) {
   std::vector<std::string> layouts;
   if (!TryGetNodeAttr(node.attrs(), layout_attr, &layouts)) {
-    return OkStatus();
+    return absl::OkStatus();
   }
   const TensorProto* indices;
   if (!TryGetNodeAttr(node.attrs(), indices_attr, &indices)) {
@@ -242,7 +262,7 @@ Status ParseAttrMap(const Node& node, absl::string_view indices_attr,
     indices_layout_map->emplace(
         arg_index, tensorflow::dtensor::Layout::FromString(arg_layout).value());
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status ParseResourceArgumentLayouts(
@@ -578,7 +598,7 @@ tensorflow::Fprint128 ResourceHandleWithLayout::CacheKey() const {
   return f;
 }
 
-tsl::Status ResourceHandleWithLayout::UpdateLayout(const Layout& new_layout) {
+absl::Status ResourceHandleWithLayout::UpdateLayout(const Layout& new_layout) {
   // Only set the value for deferenced layout if the incoming layout is not
   // empty. This is still hacky as we use empty layout as placeholder for
   // eagerly placed VarHandleOp.
@@ -592,7 +612,7 @@ tsl::Status ResourceHandleWithLayout::UpdateLayout(const Layout& new_layout) {
         "Attempted to overwrite an existing Layout.");
   }
   dereferenced_layout_.emplace(new_layout);
-  return tsl::OkStatus();
+  return absl::OkStatus();
 }
 
 char SparseTensorWithLayout::ID = 0;
@@ -733,7 +753,7 @@ Status InferOutputLayouts(const DTensorOperation& doperation,
     output_layouts->push_back(layout);
   }
   graph->RemoveNode(op_node);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status PrepareGraphForMlir(
@@ -924,7 +944,7 @@ Status PrepareGraphForMlir(
       ret_node->AddAttr(kDefaultLayoutAttr, layout->ToString());
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 StatusOr<std::vector<int64_t>> GetNumLocalOutputs(Node* node) {
@@ -975,7 +995,7 @@ Status SetMultiDeviceFunctionOutputs(
     }
   }
   function.num_local_outputs = std::move(num_local_outputs);
-  return OkStatus();
+  return absl::OkStatus();
 }
 }  // namespace
 
@@ -1089,7 +1109,7 @@ StatusOr<ExecutionFunctions> IdentifyAllFunctionsToExecute(
 // nodes.
 Status MaybeInsertIdentityNodes(const FunctionDef* function_def, Graph* graph) {
   if (function_def == nullptr || function_def->control_ret().empty()) {
-    return OkStatus();
+    return absl::OkStatus();
   }
   tensorflow::Status status;
   for (Node* n : graph->nodes()) {
@@ -1118,7 +1138,7 @@ Status MaybeInsertIdentityNodes(const FunctionDef* function_def, Graph* graph) {
     // Add an edge between Identity and _Retval.
     graph->AddEdge(ret_identity_node, 0, n, 0);
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 void AddDTensorFunctionAttr(FunctionDef& function_def) {

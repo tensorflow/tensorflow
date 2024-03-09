@@ -34,14 +34,14 @@ limitations under the License.
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/core/protobuf/meta_graph.pb.h"
-#include "tensorflow/tsl/platform/errors.h"
-#include "tensorflow/tsl/platform/statusor.h"
+#include "tsl/platform/errors.h"
+#include "tsl/platform/statusor.h"
 
 namespace tensorflow {
 namespace tfrt_stub {
 namespace {
 
-StatusOr<std::string> GetDumpDir(absl::string_view dump_dir) {
+absl::StatusOr<std::string> GetDumpDir(absl::string_view dump_dir) {
   if (!dump_dir.empty()) return std::string(dump_dir);
   const char* prefix = getenv("TF_DUMP_GRAPH_PREFIX");
   if (prefix != nullptr) return std::string(prefix);

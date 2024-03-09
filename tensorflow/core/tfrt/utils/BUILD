@@ -41,7 +41,6 @@ cc_library(
     ],
     deps = [
         ":error_util",
-        "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/core:framework",
         "//tensorflow/core/framework:types_proto_cc",
         "//tensorflow/core/lib/gtl:array_slice",
@@ -52,6 +51,7 @@ cc_library(
         "//tensorflow/core/tfrt/runtime",
         "//tensorflow/core/tpu:virtual_device",
         "@com_google_absl//absl/status",
+        "@local_xla//xla:status_macros",
         "@tf_runtime//:bef",
         "@tf_runtime//:befexecutor",
         "@tf_runtime//:core_runtime",
@@ -67,6 +67,7 @@ tf_cc_shared_test(
     tags = ["no_oss"],
     deps = [
         ":utils",
+        "//tensorflow/c:tf_tensor",
         "//tensorflow/core:framework",
         "//tensorflow/core/platform:errors",
         "//tensorflow/core/platform:status",
@@ -84,6 +85,7 @@ cc_library(
         "dtype.def",
         "tensor_util.h",
     ],
+    visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/core/framework:tensor_shape",
         "//tensorflow/core/framework:types_proto_cc",
@@ -93,9 +95,9 @@ cc_library(
         "//tensorflow/core/runtime_fallback/kernel:kernel_fallback_tensor",
         "//tensorflow/core/runtime_fallback/util:tensor_util",
         "//tensorflow/core/runtime_fallback/util:type_util",
-        "//third_party/eigen3",
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/strings",
+        "@eigen_archive//:eigen3",
         "@tf_runtime//:core_runtime",
         "@tf_runtime//:dtype",
         "@tf_runtime//:hostcontext",
@@ -115,6 +117,7 @@ tf_cc_test(
     tags = ["no_oss"],
     deps = [
         ":tensor_util",
+        "//tensorflow/c:tf_tensor",
         "//tensorflow/core:framework",
         "//tensorflow/core/runtime_fallback/kernel:kernel_fallback_tensor",
         "@com_google_googletest//:gtest_main",
@@ -256,7 +259,7 @@ cc_library(
     deps = [
         "//tensorflow/core/common_runtime:dma_helper",
         "//tensorflow/core/framework:tensor",
-        "//tensorflow/tsl/profiler/lib:traceme",
+        "@local_tsl//tsl/profiler/lib:traceme",
     ],
 )
 
@@ -266,6 +269,8 @@ tf_cc_test(
     tags = ["no_oss"],
     deps = [
         ":fallback_tensor",
+        "//tensorflow/core/common_runtime:dma_helper",
+        "//tensorflow/core/framework:tensor_shape",
         "@com_google_googletest//:gtest_main",
     ],
 )

@@ -94,7 +94,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/mangling_util.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/translate_utils.h"
-#include "tensorflow/compiler/xla/status_macros.h"
+#include "xla/status_macros.h"
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/common_runtime/graph_constructor.h"
 #include "tensorflow/core/common_runtime/shape_refiner.h"
@@ -135,7 +135,7 @@ limitations under the License.
 #include "tensorflow/core/protobuf/trackable_object_graph.pb.h"
 #include "tensorflow/core/util/device_name_utils.h"
 #include "tensorflow/core/util/dump_graph.h"
-#include "tensorflow/tsl/platform/statusor.h"
+#include "tsl/platform/statusor.h"
 
 static inline absl::string_view StringRefToView(llvm::StringRef ref) {
   return {ref.data(), ref.size()};
@@ -180,6 +180,17 @@ void LoadImporterDialects(mlir::MLIRContext& context) {
   context.appendDialectRegistry(registry);
   for (llvm::StringRef name : registry.getDialectNames())
     context.getOrLoadDialect(name);
+}
+
+absl::StatusOr<std::string> GetDenseTensorNameFromTensorInfo(
+    const TensorInfo& tensor_info) {
+  // TODO(b/184675681): Support other encoding cases.
+  //
+  // TODO(b/184679394): Add unit test for this check.
+  TF_RET_CHECK(tensor_info.encoding_case() == tensorflow::TensorInfo::kName)
+      << "Only dense tensor is supported, but got encoding case "
+      << tensor_info.encoding_case();
+  return tensor_info.name();
 }
 
 // This class is used to generate new MLIR function name strings that are both
@@ -252,7 +263,8 @@ class ImporterBase {
   // result types are inferred by the shape_refiner_. Result types need not be
   // unranked tensors and could be ranked tensors in cases where result type
   // depends on an op with static output shape like tf.Const.
-  StatusOr<mlir::FunctionType> InferLibFunctionType(const FunctionBody& fbody);
+  absl::StatusOr<mlir::FunctionType> InferLibFunctionType(
+      const FunctionBody& fbody);
 
   // Extracts arg and ret nodes from FunctionBody.
   void GetArgsAndRetsFromFunctionBody(
@@ -292,13 +304,13 @@ class ImporterBase {
 
   // Returns the inferred input type at index `idx` of the `node` in the
   // context.
-  StatusOr<mlir::Type> InferInputType(const Node& node, int idx,
-                                      mlir::Builder builder);
+  absl::StatusOr<mlir::Type> InferInputType(const Node& node, int idx,
+                                            mlir::Builder builder);
 
   // Returns the inferred output type at index `idx` of the `node` in the
   // context.
-  StatusOr<mlir::Type> InferOutputType(const Node& node, int idx,
-                                       mlir::Builder builder);
+  absl::StatusOr<mlir::Type> InferOutputType(const Node& node, int idx,
+                                             mlir::Builder builder);
 
   // Convert deferred TF functions to the MLIR representation.
   // Conversion is deferred for efficiency reasons, e.g., to limit depth
@@ -336,39 +348,40 @@ class ImporterBase {
 
   // Converts the inferred shape referred to by 'handle' in 'context', with
   // given element type, and returns an MLIR tensor type.
-  StatusOr<TensorType> ConvertDataTypeAndShape(
+  absl::StatusOr<TensorType> ConvertDataTypeAndShape(
       DataType dtype, const shape_inference::ShapeHandle& handle,
       const std::vector<shape_inference::ShapeAndType>* handle_subtypes,
       shape_inference::InferenceContext* context, mlir::Builder builder);
 
   // Converts the inferred shape referred to by 'handle' in 'context', with
   // given element type, and returns an MLIR tensor type.
-  StatusOr<TensorType> ConvertElementTypeAndShape(
+  absl::StatusOr<TensorType> ConvertElementTypeAndShape(
       mlir::Type element_type, const shape_inference::ShapeHandle& handle,
       shape_inference::InferenceContext* context, mlir::Builder builder);
 
   // Converts the inferred subtypes for an element type to corresponding MLIR
   // types in 'context'.
-  StatusOr<ElementSubtypes> ConvertSubtypes(
+  absl::StatusOr<ElementSubtypes> ConvertSubtypes(
       const std::vector<shape_inference::ShapeAndType>* handle_subtypes,
       shape_inference::InferenceContext* context, mlir::Builder builder);
 
   // Converts the tensor proto into an MLIR elements attribute.
-  StatusOr<mlir::ElementsAttr> ConvertTensorProto(const TensorProto& value) {
+  absl::StatusOr<mlir::ElementsAttr> ConvertTensorProto(
+      const TensorProto& value) {
     return ::tensorflow::ConvertTensorProto(value, &builder_);
   }
 
   // Converts func name in graphdef to mlir::SymbolRefAttribute.
-  StatusOr<mlir::FlatSymbolRefAttr> ConvertFunctionCallName(
+  absl::StatusOr<mlir::FlatSymbolRefAttr> ConvertFunctionCallName(
       const std::string& func_name);
 
   // Converts the given non-function-call AttrValue to an MLIR Attribute.
-  StatusOr<mlir::Attribute> ConvertAttributeValue(const AttrValue& value);
+  absl::StatusOr<mlir::Attribute> ConvertAttributeValue(const AttrValue& value);
 
   // Converts the given function-call AttrValue to MLIR Attributes and pushes
   // them to the given attributes list. For example, if there is a kFunc
   // AttrValue {name : foo, attrs : {k1 : bar, k2 : rfc}}, it will convert it to
-  // a list of MLIR Attributes: [{base_name : foo}, {base_name.k1 : bar},
+  // a list of MLIR Attributes: {{base_name : foo}, {base_name.k1 : bar},
   // {base_name.k2 : rfc}}.
   Status ConvertFunctionCallAttribute(const std::string& base_name,
                                       const AttrValue& value,
@@ -435,7 +448,7 @@ class ImporterBase {
   // the placeholder node, and the original node will be removed.
   // Note: This modifies the graph, and so any list of ordered nodes needs to be
   // reconstructed.
-  StatusOr<std::pair<Node*, bool>> CreatePlaceholderNodeForFeed(
+  absl::StatusOr<std::pair<Node*, bool>> CreatePlaceholderNodeForFeed(
       const TensorShapeProto& shape, DataType dtype, Node* node, int index,
       const std::unordered_map<string, Node*>& node_name_map);
 
@@ -574,7 +587,7 @@ using FeedsByNode = absl::flat_hash_map<
 // Creates from a `GraphImportConfig::InputArrays` a mapping from a feeds output
 // tensor name to index and ArrayInfo. Keys and values are backed by
 // `GraphImportConfig::InputArrays`.
-StatusOr<FeedsByNode> GetFeedsByNode(
+absl::StatusOr<FeedsByNode> GetFeedsByNode(
     const GraphImportConfig::InputArrays& inputs) {
   FeedsByNode feeds_by_node;
   feeds_by_node.reserve(inputs.size());
@@ -734,7 +747,8 @@ Status CopyStackTraces(const Graph& from, Graph* to) {
   return OkStatus();
 }
 
-StatusOr<std::pair<Node*, bool>> ImporterBase::CreatePlaceholderNodeForFeed(
+absl::StatusOr<std::pair<Node*, bool>>
+ImporterBase::CreatePlaceholderNodeForFeed(
     const TensorShapeProto& shape, DataType dtype, Node* node, int index,
     const std::unordered_map<string, Node*>& node_name_map) {
   DCHECK_LT(index, node->num_outputs());
@@ -1058,14 +1072,13 @@ Status ImporterBase::AddNodesToShapeRefiner(
   return OkStatus();
 }
 
-StatusOr<mlir::Type> ImporterBase::InferInputType(const Node& node, int idx,
-                                                  mlir::Builder builder) {
+absl::StatusOr<mlir::Type> ImporterBase::InferInputType(const Node& node,
+                                                        int idx,
+                                                        mlir::Builder builder) {
   if (specs_.enable_shape_inference) {
     // TODO(jpienaar): Remove this if shape inference on import flag is removed.
-    ExtendedInferenceContext* shape_context =
-        shape_refiner_->GetExtendedContext(&node);
-    DataType dtype = shape_context->input_type(idx);
-    auto* context = shape_context->get_context();
+    auto* context = shape_refiner_->GetContext(&node);
+    DataType dtype = node.input_type(idx);
     return ConvertDataTypeAndShape(dtype, context->input(idx),
                                    context->input_handle_shapes_and_types(idx),
                                    context, builder);
@@ -1076,13 +1089,13 @@ StatusOr<mlir::Type> ImporterBase::InferInputType(const Node& node, int idx,
   return mlir::UnrankedTensorType::get(element_type);
 }
 
-StatusOr<mlir::Type> ImporterBase::InferOutputType(const Node& node, int idx,
-                                                   mlir::Builder builder) {
+absl::StatusOr<mlir::Type> ImporterBase::InferOutputType(
+    const Node& node, int idx, mlir::Builder builder) {
   DataType dtype = node.properties()->output_types[idx];
 
   // Returns output type given inference context.
   auto shape_ic =
-      [&](shape_inference::InferenceContext* c) -> StatusOr<mlir::Type> {
+      [&](shape_inference::InferenceContext* c) -> absl::StatusOr<mlir::Type> {
     // TODO(b/200093974): Post triage, consider following
     // GraphConstructor::ValidateShape in checking _output_shapes always.
     if (specs_.unconditionally_use_set_output_shapes) {
@@ -1109,9 +1122,9 @@ StatusOr<mlir::Type> ImporterBase::InferOutputType(const Node& node, int idx,
 
   if (specs_.enable_shape_inference) {
     // TODO(jpienaar): Remove this if shape inference on import flag is removed.
-    ExtendedInferenceContext* shape_context =
-        shape_refiner_->GetExtendedContext(&node);
-    return shape_ic(shape_context->get_context());
+    shape_inference::InferenceContext* shape_context =
+        shape_refiner_->GetContext(&node);
+    return shape_ic(shape_context);
   }
 
   // Treat TensorList init ops specially here as the op requires knowing its
@@ -1165,7 +1178,7 @@ StatusOr<mlir::Type> ImporterBase::InferOutputType(const Node& node, int idx,
   }
 
   // Returns a simple, more conservative unranked tensor type.
-  auto default_type = [&]() -> StatusOr<mlir::Type> {
+  auto default_type = [&]() -> absl::StatusOr<mlir::Type> {
     mlir::Type element_type;
     TF_RETURN_IF_ERROR(ConvertDataType(dtype, builder, &element_type));
 
@@ -1248,7 +1261,7 @@ StatusOr<mlir::Type> ImporterBase::InferOutputType(const Node& node, int idx,
   return shape_ic(&c);
 }
 
-StatusOr<TensorType> ImporterBase::ConvertDataTypeAndShape(
+absl::StatusOr<TensorType> ImporterBase::ConvertDataTypeAndShape(
     DataType dtype, const shape_inference::ShapeHandle& handle,
     const std::vector<shape_inference::ShapeAndType>* handle_subtypes,
     shape_inference::InferenceContext* context, mlir::Builder builder) {
@@ -1267,7 +1280,7 @@ StatusOr<TensorType> ImporterBase::ConvertDataTypeAndShape(
   return ConvertElementTypeAndShape(element_type, handle, context, builder);
 }
 
-StatusOr<TensorType> ImporterBase::ConvertElementTypeAndShape(
+absl::StatusOr<TensorType> ImporterBase::ConvertElementTypeAndShape(
     mlir::Type element_type, const shape_inference::ShapeHandle& handle,
     shape_inference::InferenceContext* context, mlir::Builder builder) {
   if (!context->RankKnown(handle)) {
@@ -1294,7 +1307,7 @@ StatusOr<TensorType> ImporterBase::ConvertElementTypeAndShape(
       llvm::ArrayRef(dimensions.begin(), dimensions.end()), element_type);
 }
 
-StatusOr<ImporterBase::ElementSubtypes> ImporterBase::ConvertSubtypes(
+absl::StatusOr<ImporterBase::ElementSubtypes> ImporterBase::ConvertSubtypes(
     const std::vector<shape_inference::ShapeAndType>* handle_subtypes,
     shape_inference::InferenceContext* context, mlir::Builder builder) {
   ElementSubtypes subtypes;
@@ -1329,7 +1342,7 @@ Status ImporterBase::ConvertFunctionCallAttribute(const std::string& base_name,
   return OkStatus();
 }
 
-StatusOr<mlir::FlatSymbolRefAttr> ImporterBase::ConvertFunctionCallName(
+absl::StatusOr<mlir::FlatSymbolRefAttr> ImporterBase::ConvertFunctionCallName(
     const std::string& func_name) {
   // Some ops like XlaHostCompute op uses empty value to represent missing
   // functions. Such attribute values should be defined optional in MLIR
@@ -1341,7 +1354,7 @@ StatusOr<mlir::FlatSymbolRefAttr> ImporterBase::ConvertFunctionCallName(
   return mlir::SymbolRefAttr::get(builder_.getContext(), mlir_func_name);
 }
 
-StatusOr<mlir::Attribute> ImporterBase::ConvertAttributeValue(
+absl::StatusOr<mlir::Attribute> ImporterBase::ConvertAttributeValue(
     const AttrValue& value) {
   switch (value.value_case()) {
     case AttrValue::kFunc: {
@@ -2275,7 +2288,7 @@ Status ImporterBase::AddBackedge(mlir::Operation* sink, mlir::Operation* dst,
   return OkStatus();
 }
 
-StatusOr<mlir::FunctionType> ImporterBase::InferLibFunctionType(
+absl::StatusOr<mlir::FunctionType> ImporterBase::InferLibFunctionType(
     const FunctionBody& fbody) {
   mlir::Builder builder(context_);
 
@@ -2349,7 +2362,7 @@ StatusOr<mlir::FunctionType> ImporterBase::InferLibFunctionType(
 class GraphDefImporter : public ImporterBase {
  public:
   // Main entry point: converts the given graph to an MLIR Module.
-  static StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> Convert(
+  static absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> Convert(
       mlir::MLIRContext* context, const Graph& graph,
       const GraphDebugInfo& debug_info,
       const FunctionLibraryDefinition& flib_def, const GraphImportConfig& specs,
@@ -2370,7 +2383,7 @@ class GraphDefImporter : public ImporterBase {
   // for the function arguments are read from `specs`, but the type and shape
   // information for the function returns are inferred by the shape refiner in
   // ImporterBase.
-  StatusOr<mlir::FunctionType> InferMainFunctionType(
+  absl::StatusOr<mlir::FunctionType> InferMainFunctionType(
       const GraphImportConfig& specs, mlir::MLIRContext* context,
       absl::InlinedVector<OutputTensor, 4>* arg_nodes,
       absl::InlinedVector<OutputTensor, 4>* ret_nodes);
@@ -2379,7 +2392,7 @@ class GraphDefImporter : public ImporterBase {
   // output nodes, for function graphs. Arguments and return values are
   // determined by node op type. Type and shape information of the function are
   // inferred by the shape refiner in ImporterBase.
-  StatusOr<mlir::FunctionType> GetArgsRetsAndTypesFromFunctionGraph(
+  absl::StatusOr<mlir::FunctionType> GetArgsRetsAndTypesFromFunctionGraph(
       mlir::MLIRContext* context,
       absl::InlinedVector<OutputTensor, 4>* arg_nodes,
       absl::InlinedVector<OutputTensor, 4>* ret_nodes);
@@ -2392,7 +2405,7 @@ class GraphDefImporter : public ImporterBase {
       absl::InlinedVector<Node*, 4>* control_ret_nodes);
 };
 
-StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> GraphDefImporter::Convert(
+absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> GraphDefImporter::Convert(
     mlir::MLIRContext* context, const Graph& graph,
     const GraphDebugInfo& debug_info, const FunctionLibraryDefinition& flib_def,
     const GraphImportConfig& specs,
@@ -2546,7 +2559,7 @@ StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> GraphDefImporter::Convert(
   return module;
 }
 
-StatusOr<mlir::FunctionType> GraphDefImporter::InferMainFunctionType(
+absl::StatusOr<mlir::FunctionType> GraphDefImporter::InferMainFunctionType(
     const GraphImportConfig& specs, mlir::MLIRContext* context,
     absl::InlinedVector<OutputTensor, 4>* arg_nodes,
     absl::InlinedVector<OutputTensor, 4>* ret_nodes) {
@@ -2679,7 +2692,7 @@ StatusOr<mlir::FunctionType> GraphDefImporter::InferMainFunctionType(
   return builder.getFunctionType(arg_types, ret_types);
 }
 
-StatusOr<mlir::FunctionType>
+absl::StatusOr<mlir::FunctionType>
 GraphDefImporter::GetArgsRetsAndTypesFromFunctionGraph(
     mlir::MLIRContext* context, absl::InlinedVector<OutputTensor, 4>* arg_nodes,
     absl::InlinedVector<OutputTensor, 4>* ret_nodes) {
@@ -2775,7 +2788,7 @@ class SavedModelObjectGraphImporter : public ImporterBase {
  public:
   // Main entry point: converts all functions in the given meta graph to an MLIR
   // Module.
-  static StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> Convert(
+  static absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> Convert(
       SavedModelV2Bundle* saved_model, absl::Span<std::string> exported_names,
       mlir::MLIRContext* context, MLIRImportOptions options);
 
@@ -3077,7 +3090,7 @@ class StructuredValueLinearizer {
   //
   // If an error occurred during the linearization process, an error message
   // with `error_context` prepended will be included in the returned status.
-  StatusOr<llvm::ArrayRef<mlir::ArrayAttr>> GetLeafIndexPaths(
+  absl::StatusOr<llvm::ArrayRef<mlir::ArrayAttr>> GetLeafIndexPaths(
       llvm::StringRef error_context) const;
 
  private:
@@ -3100,7 +3113,7 @@ StructuredValueLinearizer::StructuredValueLinearizer(
   RecursivelyFindLeaves(value);
 }
 
-StatusOr<llvm::ArrayRef<mlir::ArrayAttr>>
+absl::StatusOr<llvm::ArrayRef<mlir::ArrayAttr>>
 StructuredValueLinearizer::GetLeafIndexPaths(
     llvm::StringRef error_context) const {
   if (error_message_.empty()) {
@@ -3544,7 +3557,7 @@ Status CreateSavedModelIR(
   return OkStatus();
 }
 
-StatusOr<mlir::OwningOpRef<mlir::ModuleOp>>
+absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>>
 SavedModelObjectGraphImporter::Convert(SavedModelV2Bundle* saved_model,
                                        absl::Span<std::string> exported_names,
                                        mlir::MLIRContext* context,
@@ -3604,9 +3617,9 @@ SavedModelObjectGraphImporter::Convert(SavedModelV2Bundle* saved_model,
   // examples quite a bit nicer.
   for (auto func :
        llvm::make_early_inc_range(module->getOps<mlir::func::FuncOp>())) {
-    if (func.getName().startswith("__inference__traced_save_") ||
-        func.getName().startswith("__inference__traced_restore_") ||
-        func.getName().startswith("__inference_signature_wrapper_")) {
+    if (func.getName().starts_with("__inference__traced_save_") ||
+        func.getName().starts_with("__inference__traced_restore_") ||
+        func.getName().starts_with("__inference_signature_wrapper_")) {
       func.erase();
     }
   }
@@ -3626,7 +3639,7 @@ SavedModelObjectGraphImporter::Convert(SavedModelV2Bundle* saved_model,
 
 class SimpleSavedModelMLIRImportInput : public SavedModelMLIRImportInput {
  public:
-  static StatusOr<SimpleSavedModelMLIRImportInput> Create(
+  static absl::StatusOr<SimpleSavedModelMLIRImportInput> Create(
       const MLIRImportOptions& import_options,
       const MetaGraphDef* meta_graph_def, const GraphDebugInfo& debug_info) {
     DCHECK(meta_graph_def);
@@ -3662,8 +3675,8 @@ class SimpleSavedModelMLIRImportInput : public SavedModelMLIRImportInput {
       : SavedModelMLIRImportInput(meta_graph_def, debug_info),
         graph_(std::move(graph)) {}
 
-  StatusOr<const Graph*> GetSubGraph(absl::string_view name,
-                                     GraphImportConfig& specs) override {
+  absl::StatusOr<const Graph*> GetSubGraph(absl::string_view name,
+                                           GraphImportConfig& specs) override {
     DCHECK(CheckGraphNameValidity(name));
     DCHECK(CheckGraphContainsFeedsAndFetches(specs));
     return graph_.get();
@@ -3738,7 +3751,7 @@ class SavedModelSignatureDefImporterLite {
   //
   // TODO(chky): Remove import_restore once the restore graph is correctly
   // handled in SavedModelSignatureDefImporter.
-  static StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> Convert(
+  static absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> Convert(
       SavedModelMLIRImportInput& input,
       std::optional<absl::Span<const std::string>> exported_names,
       mlir::MLIRContext* context, bool import_restore = true,
@@ -3767,7 +3780,7 @@ class SavedModelSignatureDefImporterLite {
 
   // Converts the SavedModel to the SavedModel dialect. Creates an MLIR function
   // for each signature.
-  StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ConvertSignatures();
+  absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ConvertSignatures();
   Status ConvertSignature(const std::string& sig_def_key,
                           const SignatureDef& signature_def);
 
@@ -3775,7 +3788,7 @@ class SavedModelSignatureDefImporterLite {
     std::string tensor_name;
     mlir::tf_saved_model::AssetOp op;
   };
-  StatusOr<std::vector<AssetInfo>> ConvertAssets();
+  absl::StatusOr<std::vector<AssetInfo>> ConvertAssets();
 
   // Converts the initialization graph in the SavedModel to an MLIR function.
   // Attaches `tf_saved_model.initializer_type` attribute with value
@@ -3785,7 +3798,7 @@ class SavedModelSignatureDefImporterLite {
                             llvm::StringRef initializer_type);
 
   // Converts a graph with feeds and fetches to an MLIR function.
-  StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ConvertGraph(
+  absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ConvertGraph(
       const std::string& name,
       const std::vector<std::pair<std::string, TensorInfo>>& inputs,
       const std::vector<std::pair<std::string, TensorInfo>>& outputs,
@@ -3798,7 +3811,7 @@ class SavedModelSignatureDefImporterLite {
       absl::string_view name, mlir::ModuleOp sub_module,
       const std::unordered_map<std::string, std::string>& tf_name_to_mlir_name);
 
-  StatusOr<GraphImportConfig::InputArrays> ParseInputArrays(
+  absl::StatusOr<GraphImportConfig::InputArrays> ParseInputArrays(
       llvm::ArrayRef<std::pair<std::string, TensorInfo>> inputs);
 
  private:
@@ -3812,7 +3825,7 @@ class SavedModelSignatureDefImporterLite {
   bool unconditionally_use_set_output_shapes_ = false;
 };
 
-StatusOr<std::vector<SavedModelSignatureDefImporterLite::AssetInfo>>
+absl::StatusOr<std::vector<SavedModelSignatureDefImporterLite::AssetInfo>>
 SavedModelSignatureDefImporterLite::ConvertAssets() {
   std::vector<AssetFileDef> asset_file_defs;
   TF_RETURN_IF_ERROR(
@@ -3932,7 +3945,7 @@ Status SavedModelSignatureDefImporterLite::ConvertInitializer(
                                         tf_name_to_mlir_name);
 }
 
-StatusOr<mlir::OwningOpRef<mlir::ModuleOp>>
+absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>>
 SavedModelSignatureDefImporterLite::ConvertGraph(
     const std::string& name,
     const std::vector<std::pair<std::string, TensorInfo>>& inputs,
@@ -3945,7 +3958,11 @@ SavedModelSignatureDefImporterLite::ConvertGraph(
   specs.graph_func_name = name;
   specs.prune_unused_nodes = true;
   TF_ASSIGN_OR_RETURN(specs.inputs, ParseInputArrays(inputs));
-  for (auto& output : outputs) specs.outputs.push_back(output.second.name());
+  for (auto& output : outputs) {
+    TF_ASSIGN_OR_RETURN(std::string name,
+                        GetDenseTensorNameFromTensorInfo(output.second));
+    specs.outputs.push_back(std::move(name));
+  }
   specs.control_outputs = control_outputs;
   specs.enable_shape_inference = false;
   specs.unconditionally_use_set_output_shapes =
@@ -4024,19 +4041,15 @@ Status SavedModelSignatureDefImporterLite::ConvertSignature(
                                         tf_name_to_mlir_name);
 }
 
-StatusOr<GraphImportConfig::InputArrays>
+absl::StatusOr<GraphImportConfig::InputArrays>
 SavedModelSignatureDefImporterLite::ParseInputArrays(
     llvm::ArrayRef<std::pair<std::string, TensorInfo>> inputs) {
   GraphImportConfig::InputArrays results;
   for (const auto& iter : inputs) {
     const auto& tensor_info = iter.second;
 
-    // TODO(b/184675681): Support other encoding cases.
-    //
-    // TODO(b/184679394): Add unit test for this check.
-    TF_RET_CHECK(tensor_info.encoding_case() == tensorflow::TensorInfo::kName)
-        << "Only dense tensor is supported, but got encoding case "
-        << tensor_info.encoding_case();
+    TF_ASSIGN_OR_RETURN(std::string name,
+                        GetDenseTensorNameFromTensorInfo(tensor_info));
 
     VLOG(1) << "Importing Signature Input: input_name = " << iter.first
             << ", tensor_info = " << tensor_info.DebugString();
@@ -4052,13 +4065,13 @@ SavedModelSignatureDefImporterLite::ParseInputArrays(
       array_info.shape.set_unknown_rank(true);
     }
 
-    results.insert(std::pair<std::string, ArrayInfo>(tensor_info.name(),
+    results.insert(std::pair<std::string, ArrayInfo>(std::move(name),
                                                      std::move(array_info)));
   }
   return results;
 }
 
-StatusOr<mlir::OwningOpRef<mlir::ModuleOp>>
+absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>>
 SavedModelSignatureDefImporterLite::ConvertSignatures() {
   LoadImporterDialects(*module_->getContext());
 
@@ -4166,7 +4179,7 @@ class SavedModelSignatureDefImporter {
  public:
   // Main entry point: converts all functions (specified by SignatureDefs) in
   // the given meta graph to an MLIR Module.
-  static StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> Convert(
+  static absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> Convert(
       const SavedModelBundle& bundle,
       std::optional<absl::Span<const std::string>> exported_names,
       mlir::MLIRContext* context, tensorflow::MLIRImportOptions options) {
@@ -4265,7 +4278,7 @@ Status SavedModelSignatureDefImporter::LiftVariables(
 
 SavedModelMLIRImportInput::~SavedModelMLIRImportInput() {}
 
-StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ConvertGraphdefToMlir(
+absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ConvertGraphdefToMlir(
     const GraphDef& graphdef, const GraphDebugInfo& debug_info,
     const GraphImportConfig& specs, mlir::MLIRContext* context,
     bool add_default_attributes) {
@@ -4288,7 +4301,7 @@ StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ConvertGraphdefToMlir(
                             context);
 }
 
-StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ConvertGraphToMlir(
+absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ConvertGraphToMlir(
     const Graph& graph, const GraphDebugInfo& debug_info,
     const FunctionLibraryDefinition& flib_def, const GraphImportConfig& specs,
     mlir::MLIRContext* context) {
@@ -4321,12 +4334,12 @@ StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ConvertGraphToMlir(
   return module;
 }
 
-tsl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ConvertFunctionToMlir(
+absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ConvertFunctionToMlir(
     const FunctionBody* fbody, const FunctionLibraryDefinition& flib_def,
     mlir::MLIRContext* context) {
   tensorflow::GraphDebugInfo dummy_debug_info;
   tensorflow::GraphImportConfig specs;
-  specs.graph_func_name = fbody->fdef.signature().name();
+  specs.graph_func_name = fbody->record->fdef().signature().name();
   specs.enable_shape_inference = false;
   specs.graph_as_function = true;
   for (const auto* control_ret_node : fbody->control_ret_nodes)
@@ -4336,14 +4349,14 @@ tsl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ConvertFunctionToMlir(
                                    flib_def, specs, tf_name_to_mlir_name);
 }
 
-StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ConvertSavedModelToMlir(
+absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ConvertSavedModelToMlir(
     SavedModelV2Bundle* saved_model, mlir::MLIRContext* context,
     absl::Span<std::string> exported_names, MLIRImportOptions options) {
   return SavedModelObjectGraphImporter::Convert(saved_model, exported_names,
                                                 context, options);
 }
 
-StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ConvertSavedModelV1ToMlir(
+absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ConvertSavedModelV1ToMlir(
     const SavedModelBundle& saved_model, absl::Span<std::string> exported_names,
     mlir::MLIRContext* context, MLIRImportOptions options) {
   std::optional<absl::Span<const std::string>> optional_exported_names;
@@ -4355,7 +4368,7 @@ StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ConvertSavedModelV1ToMlir(
       saved_model, optional_exported_names, context, options);
 }
 
-StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ConvertSavedModelV1ToMlirLite(
+absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ConvertSavedModelV1ToMlirLite(
     const MetaGraphDef& meta_graph_def, const GraphDebugInfo& debug_info,
     std::optional<absl::Span<const std::string>> exported_names,
     mlir::MLIRContext* context, MLIRImportOptions options) {
@@ -4366,7 +4379,7 @@ StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ConvertSavedModelV1ToMlirLite(
       options.unconditionally_use_set_output_shapes);
 }
 
-StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ConvertSavedModelV1ToMlirLite(
+absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ConvertSavedModelV1ToMlirLite(
     SavedModelMLIRImportInput& input,
     std::optional<absl::Span<const std::string>> exported_names,
     mlir::MLIRContext* context, bool unconditionally_use_set_output_shapes) {

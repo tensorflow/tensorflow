@@ -141,7 +141,7 @@ Status ComputeExpAndSum(mlir::OpBuilder& builder, const mlir::Value& logits,
       ComputeGlobalReduce(builder, exp_of_shifted_logits, logits_layout,
                           {class_dimension}, kReduceOpAdd,
                           /*keep_dims=*/true));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Computes softmax from its components. Assumes that builder's insertion point
@@ -655,10 +655,10 @@ SoftmaxLossOpSPMDExpander::ComputeLayoutForward(
   // if one is replicated.
   // backprop is softmax(features) - labels
 
-  absl::optional<Layout> features_layout;
+  std::optional<Layout> features_layout;
   if (input_layouts.find(0) != input_layouts.end())
     features_layout.emplace(input_layouts.lookup(0));
-  absl::optional<Layout> labels_layout;
+  std::optional<Layout> labels_layout;
   if (input_layouts.find(1) != input_layouts.end())
     labels_layout.emplace(input_layouts.lookup(1));
 
@@ -704,10 +704,10 @@ SoftmaxLossOpSPMDExpander::ComputeLayoutBackward(
   const bool is_sparse =
       mlir::isa<mlir::TF::SparseSoftmaxCrossEntropyWithLogitsOp>(op);
 
-  absl::optional<Layout> loss_layout;
+  std::optional<Layout> loss_layout;
   if (output_layouts.find(0) != output_layouts.end())
     loss_layout.emplace(output_layouts.lookup(0));
-  absl::optional<Layout> backprop_layout;
+  std::optional<Layout> backprop_layout;
   if (output_layouts.find(1) != output_layouts.end())
     backprop_layout.emplace(output_layouts.lookup(1));
 

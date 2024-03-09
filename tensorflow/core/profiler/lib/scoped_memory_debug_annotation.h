@@ -20,7 +20,7 @@ limitations under the License.
 #include <string>
 #include <utility>
 
-#include "tensorflow/tsl/profiler/lib/scoped_memory_debug_annotation.h"
+#include "tsl/profiler/lib/scoped_memory_debug_annotation.h"
 
 namespace tensorflow {
 namespace profiler {

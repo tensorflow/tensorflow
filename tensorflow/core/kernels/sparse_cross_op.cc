@@ -20,7 +20,7 @@ limitations under the License.
 #include <string>
 #include <vector>
 
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tensorflow/core/framework/kernel_def_builder.h"
 #include "tensorflow/core/framework/op_def_builder.h"
 #include "tensorflow/core/framework/op_kernel.h"
@@ -591,7 +591,7 @@ Status ValidateInput(const OpInputList& indices_list_in,
     }
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Extracts data about the features and populates feature data.
@@ -733,7 +733,7 @@ Status CreateOutputTensors(
   shape_vec(0) = batch_size;
   shape_vec(1) = max_cross_count;
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 template <bool HASHED_OUTPUT, typename InternalType>

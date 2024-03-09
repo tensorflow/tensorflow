@@ -92,9 +92,9 @@ set(TEST_FRAMEWORK_SRC
   ${TFLITE_SOURCE_DIR}/tools/optimize/quantization_utils.cc
   ${TFLITE_SOURCE_DIR}/tools/tool_params.cc
   ${TFLITE_SOURCE_DIR}/tools/versioning/op_version.cc
-  ${TF_SOURCE_DIR}/tsl/platform/default/env_time.cc
-  ${TF_SOURCE_DIR}/tsl/platform/default/logging.cc
-  ${TF_SOURCE_DIR}/tsl/platform/default/mutex.cc
+  ${TSL_SOURCE_DIR}/tsl/platform/default/env_time.cc
+  ${TSL_SOURCE_DIR}/tsl/platform/default/logging.cc
+  ${TSL_SOURCE_DIR}/tsl/platform/default/mutex.cc
   internal/test_util.cc
   acceleration_test_util.cc
   acceleration_test_util_internal.cc
@@ -105,6 +105,11 @@ set(TEST_FRAMEWORK_SRC
 if(NOT _TFLITE_ENABLE_NNAPI)
   list(APPEND TEST_FRAMEWORK_SRC
     ${TFLITE_SOURCE_DIR}/nnapi/nnapi_util.cc
+  )
+endif()
+if(NOT TFLITE_ENABLE_GPU)
+  list(APPEND TEST_FRAMEWORK_SRC
+    ${TFLITE_SOURCE_DIR}/tools/versioning/op_signature.cc
   )
 endif()
 

@@ -41,7 +41,7 @@ enum class DeviceCompileState {
 // Creates a single-node graph using the specified `node_def` as the only op
 // apart from the arg and retval nodes corresponding to `args` and
 // `result_types` respectively.
-StatusOr<std::unique_ptr<Graph>> CreateSingleOpGraph(
+absl::StatusOr<std::unique_ptr<Graph>> CreateSingleOpGraph(
     const NodeDef& node_def, absl::Span<const XlaArgument> args,
     absl::Span<const DataType> result_types);
 
@@ -56,6 +56,12 @@ std::string GetPjRtDeviceCompilerResourceName(const DeviceType& device_type);
 // when PjRt is used for compilation and execution.
 std::string GetPjRtDeviceCompilationProfilerResourceName(
     const DeviceType& device_type);
+
+// Gets the ResourceMgr where the DeviceCompiler is/should be stored for the
+// given `device_type`.
+absl::StatusOr<ResourceMgr*> GetResourceMgrForDeviceCompiler(
+    const OpKernelContext& ctx, const DeviceType& device_type);
+
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_COMPILER_JIT_XLA_COMPILE_UTIL_H_

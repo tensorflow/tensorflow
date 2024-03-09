@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <algorithm>
 #include <cstddef>
+#include <cstdint>
 #include <memory>
 #include <string>
 #include <utility>
@@ -63,6 +64,7 @@ limitations under the License.
 #include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/core/protobuf/error_codes.pb.h"
 #include "tensorflow/core/public/version.h"
+#include "tsl/c/tsl_status_internal.h"
 
 #if !defined(IS_MOBILE_PLATFORM)
 #include "tensorflow/core/common_runtime/eager/context_distributed_manager.h"
@@ -166,17 +168,31 @@ TF_CAPI_EXPORT extern void TFE_ContextSetServerDef(TFE_Context* ctx,
                                                    const void* proto,
                                                    size_t proto_len,
                                                    TF_Status* status) {
-  TFE_ContextSetServerDefWithTimeout(ctx, keep_alive_secs, proto, proto_len,
-                                     /*init_timeout_in_ms=*/0, status);
+  TFE_ContextSetServerDefWithTimeoutAndRetries(
+      ctx, keep_alive_secs, proto, proto_len, /*init_timeout_in_ms=*/0,
+      /*retries=*/0, status, /*clear_existing_contexts=*/false);
+}
+
+// Set server def with timeout.
+TF_CAPI_EXPORT extern void TFE_ContextSetServerDefWithTimeout(
+    TFE_Context* ctx, int keep_alive_secs, const void* proto, size_t proto_len,
+    int64_t init_timeout_in_ms, TF_Status* status,
+    bool clear_existing_contexts) {
+  TFE_ContextSetServerDefWithTimeoutAndRetries(
+      ctx, keep_alive_secs, proto, proto_len, init_timeout_in_ms,
+      /*retries=*/0, status, clear_existing_contexts);
 }
 
 // Set server_def on the context, possibly updating it.
-// TODO(b/291142876) Simplify TFE_ContextSetServerDefWithTimeout and
+// TODO(b/291142876) Simplify TFE_ContextSetServerDefWithTimeoutAndRetries and
 // TFE_ContextUpdateServerDefWithTimeout to be simple wrappers around the same
 // C++ function.
-TF_CAPI_EXPORT extern void TFE_ContextSetServerDefWithTimeout(
+// Retries are used for CreateContext calls, which is used in
+// ParameterServerStrategy initialization to be robust to worker preemption.
+TF_CAPI_EXPORT extern void TFE_ContextSetServerDefWithTimeoutAndRetries(
     TFE_Context* ctx, int keep_alive_secs, const void* proto, size_t proto_len,
-    int64_t init_timeout_in_ms, TF_Status* status) {
+    int64_t init_timeout_in_ms, int retries, TF_Status* status,
+    bool clear_existing_contexts) {
 #if defined(IS_MOBILE_PLATFORM)
   status->status = tensorflow::errors::Unimplemented(
       "TFE_ContextSetServerDef not supported on mobile");
@@ -190,7 +206,7 @@ TF_CAPI_EXPORT extern void TFE_ContextSetServerDefWithTimeout(
   status->status =
       tensorflow::unwrap(ctx)->GetDistributedManager()->SetOrUpdateServerDef(
           server_def, /*reset_context=*/true, keep_alive_secs,
-          init_timeout_in_ms);
+          init_timeout_in_ms, retries, clear_existing_contexts);
 #endif  // !IS_MOBILE_PLATFORM
 }
 
@@ -225,7 +241,7 @@ TF_CAPI_EXPORT extern void TFE_ContextUpdateServerDefWithTimeout(
   status->status =
       tensorflow::unwrap(ctx)->GetDistributedManager()->SetOrUpdateServerDef(
           server_def, /*reset_context=*/false, keep_alive_secs,
-          init_timeout_in_ms);
+          init_timeout_in_ms, /*retries=*/0);
 #endif  // !IS_MOBILE_PLATFORM
 }
 
@@ -481,7 +497,7 @@ class CustomDeviceAPI : public tensorflow::CustomDevice {
     return status.status;
   }
 
-  tensorflow::StatusOr<bool> ShallPinToThisDevice(
+  absl::StatusOr<bool> ShallPinToThisDevice(
       const ImmediateExecutionOperation* op) override {
     TF_Status status;
     // Let this custom device choose the device to pin this op on if it
@@ -541,7 +557,7 @@ class CAPICustomDeviceTensorHandle
     }
     summary = std::string(reinterpret_cast<const char*>(summary_buffer->data),
                           summary_buffer->length);
-    return OkStatus();
+    return absl::OkStatus();
   }
 
  private:

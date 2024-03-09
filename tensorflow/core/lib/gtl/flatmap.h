@@ -20,7 +20,7 @@ limitations under the License.
 #include "tensorflow/core/lib/hash/hash.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/types.h"
-#include "tensorflow/tsl/lib/gtl/flatmap.h"
+#include "tsl/lib/gtl/flatmap.h"
 
 namespace tensorflow {
 namespace gtl {

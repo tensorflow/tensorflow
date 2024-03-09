@@ -22,22 +22,21 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "mlir/Pass/Pass.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/tf2xla/api/v0/compile_mlir_util.h"
+#include "tensorflow/compiler/mlir/tf2xla/internal/test_matchers.h"
 #include "tensorflow/compiler/tf2xla/xla_compiler.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
-#include "tensorflow/compiler/xla/shape.h"
+#include "xla/shape.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/lib/monitoring/cell_reader.h"
 #include "tensorflow/core/protobuf/tpu/compile_metadata.pb.h"
 #include "tensorflow/core/tpu/kernels/tpu_compile_op_support.h"
-#include "tensorflow/tsl/platform/statusor.h"
+#include "tsl/platform/statusor.h"
 
 namespace tensorflow {
 namespace tf2xla {
 namespace internal {
 namespace {
 
-using testing::ContainsRegex;
 using tpu::MlirToHloArgs;
 using tpu::ShardingAndIndex;
 using tpu::TPUCompileMetadataProto;
@@ -92,45 +91,6 @@ tsl::StatusOr<XlaCompiler::CompilationResult> LegalizeMlirModule(
       /*shape_determination_fns=*/{}, arg_shapes, &arg_core_mapping,
       &per_core_arg_shapes, custom_legalization_passes,
       compilation_result.get());
-}
-
-/* The third party version of the Graph Analysis always returns disabled so
- * these matchers short circuit on that error. */
-MATCHER(IsOkOrFiltered,
-        "Status was OK or equal to the Graph Analysis failure") {
-  bool is_ok = arg.ok();
-  auto graph_analysis_failure =
-      (arg.status() == CompileToHloGraphAnalysisFailedError());
-  return testing::ExplainMatchResult(
-      testing::IsTrue(), is_ok || graph_analysis_failure, result_listener);
-}
-
-MATCHER_P(ComputationProtoContains, regex,
-          "If not a Graph Analysis failure then matches the computation result "
-          "with the regex") {
-  auto graph_analysis_failure =
-      arg.status() == CompileToHloGraphAnalysisFailedError();
-  if (graph_analysis_failure) {
-    return testing::ExplainMatchResult(testing::IsTrue(),
-                                       graph_analysis_failure, result_listener);
-  }
-  auto proto = arg.value().computation->proto().DebugString();
-  return testing::ExplainMatchResult(ContainsRegex(regex), proto,
-                                     result_listener);
-}
-
-MATCHER_P(
-    HasMlirModuleWith, expected,
-    "If not a Graph Analysis failure then matches the mlir module result") {
-  auto graph_analysis_failure =
-      arg.status() == CompileToHloGraphAnalysisFailedError();
-  if (graph_analysis_failure) {
-    return testing::ExplainMatchResult(testing::IsTrue(),
-                                       graph_analysis_failure, result_listener);
-  }
-  auto actual = arg.value();
-  return testing::ExplainMatchResult(ContainsRegex(expected), actual,
-                                     result_listener);
 }
 
 TEST(LegalizeWithMlirBridge, LegalizesToMhloProto) {

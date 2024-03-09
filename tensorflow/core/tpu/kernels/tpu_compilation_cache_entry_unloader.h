@@ -20,12 +20,12 @@ limitations under the License.
 
 #include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_set.h"
-#include "absl/log/log.h"
 #include "absl/synchronization/mutex.h"
 #include "tensorflow/core/framework/resource_base.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/tpu/kernels/tpu_compilation_cache_interface.h"
-#include "tensorflow/tsl/platform/macros.h"
+#include "tsl/platform/logging.h"  // IWYU pragma: keep
+#include "tsl/platform/macros.h"
 
 namespace tensorflow {
 namespace tpu {
@@ -64,7 +64,9 @@ class TpuCompilationCacheEntryUnloader : public ResourceBase {
   }
 
  private:
-  TF_DISALLOW_COPY_AND_ASSIGN(TpuCompilationCacheEntryUnloader);
+  TpuCompilationCacheEntryUnloader(const TpuCompilationCacheEntryUnloader&) =
+      delete;
+  void operator=(const TpuCompilationCacheEntryUnloader&) = delete;
   mutable absl::Mutex mu_;
   TpuCompilationCacheInterface* cache_;  // Not owned.
   absl::flat_hash_set<int64_t> cache_entry_uids_ ABSL_GUARDED_BY(mu_);

@@ -165,5 +165,7 @@ Here is a non-exhaustive list of differences:
     not supported.
 *   NumPy C API is not supported. NumPy's Cython and Swig integration are not
     supported.
+
+API docstring: tensorflow.experimental.numpy
 """
 # TODO(wangpeng): Append `tf_export`ed symbols to the comments above.

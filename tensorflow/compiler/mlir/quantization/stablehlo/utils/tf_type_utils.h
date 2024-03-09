@@ -22,8 +22,7 @@ limitations under the License.
 #include "mlir/IR/Types.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 
-namespace mlir {
-namespace stablehlo {
+namespace mlir::quant::tensorflow {
 
 // GetDenseAttrFromTensorProtoAttr returns DenseElementsAttr from tensor proto.
 FailureOr<mlir::DenseElementsAttr> GetDenseAttrFromTensorProtoAttr(
@@ -36,7 +35,9 @@ bool IsTFQintType(Type type);
 // is not qint type.
 Type GetIntTypeFromTFQint(Type type);
 
-}  // namespace stablehlo
-}  // namespace mlir
+// Check if an op is TF UniformQuantized op.
+bool IsTFUniformQuantizedOp(Operation* op);
+
+}  // namespace mlir::quant::tensorflow
 
 #endif  // TENSORFLOW_COMPILER_MLIR_QUANTIZATION_STABLEHLO_UTILS_TF_TYPE_UTILS_H_

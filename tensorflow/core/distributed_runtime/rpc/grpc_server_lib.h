@@ -37,8 +37,8 @@ limitations under the License.
 #include "tensorflow/core/framework/collective.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/platform/env.h"
-#include "tensorflow/tsl/distributed_runtime/rpc/async_service_interface.h"
-#include "tensorflow/tsl/profiler/protobuf/profiler_service.grpc.pb.h"
+#include "tsl/distributed_runtime/rpc/async_service_interface.h"
+#include "tsl/profiler/protobuf/profiler_service.grpc.pb.h"
 
 namespace tensorflow {
 

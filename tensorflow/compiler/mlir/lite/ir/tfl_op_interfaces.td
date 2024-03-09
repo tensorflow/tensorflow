@@ -38,6 +38,7 @@ def TFL_Dialect : Dialect {
 
   let useDefaultAttributePrinterParser = 1;
   let useDefaultTypePrinterParser = 1;
+  let usePropertiesForAttributes = 0;
 
   let extraClassDeclaration = [{
     ParseResult parseOneResultSameOperandTypeOp(OpAsmParser &parser,

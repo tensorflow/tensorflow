@@ -24,7 +24,7 @@ limitations under the License.
 #include "tensorflow/core/platform/raw_coding.h"
 #include "tensorflow/core/platform/stringpiece.h"
 #include "tensorflow/core/platform/types.h"
-#include "tensorflow/tsl/platform/coding.h"
+#include "tsl/platform/coding.h"
 
 namespace tensorflow {
 namespace core {

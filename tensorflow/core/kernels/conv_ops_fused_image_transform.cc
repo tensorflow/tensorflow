@@ -344,7 +344,7 @@ class FusedResizeAndPadConvFunctor {
     std::function<Status(Im2ColBufferResource<T1, kMaxChunkSize>**)> creator =
         [](Im2ColBufferResource<T1, kMaxChunkSize>** resource) {
           *resource = new Im2ColBufferResource<T1, kMaxChunkSize>();
-          return OkStatus();
+          return absl::OkStatus();
         };
     OP_REQUIRES_OK(context, context->resource_manager()->LookupOrCreate(
                                 "Conv2d", "im2col_buffer",
@@ -382,7 +382,7 @@ class FusedResizeAndPadConvFunctor {
         resize_creator =
             [](Im2ColBufferResource<T1, kResizeCacheSize>** resource) {
               *resource = new Im2ColBufferResource<T1, kResizeCacheSize>();
-              return OkStatus();
+              return absl::OkStatus();
             };
     OP_REQUIRES_OK(context, context->resource_manager()->LookupOrCreate(
                                 "Conv2d", "resize_cache",
@@ -872,7 +872,8 @@ class FusedResizeConv2DUsingGemmOp : public OpKernel {
   bool align_corners_;
   int offset_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(FusedResizeConv2DUsingGemmOp);
+  FusedResizeConv2DUsingGemmOp(const FusedResizeConv2DUsingGemmOp&) = delete;
+  void operator=(const FusedResizeConv2DUsingGemmOp&) = delete;
 };
 
 #define REGISTER_FUSED(T)                                                 \

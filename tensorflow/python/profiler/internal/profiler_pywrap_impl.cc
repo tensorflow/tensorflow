@@ -36,9 +36,9 @@ limitations under the License.
 #include "tensorflow/core/profiler/protobuf/xplane.pb.h"
 #include "tensorflow/core/profiler/rpc/client/save_profile.h"
 #include "tensorflow/core/profiler/rpc/profiler_server.h"
-#include "tensorflow/tsl/profiler/convert/xplane_to_trace_events.h"
-#include "tensorflow/tsl/profiler/rpc/client/capture_profile.h"
-#include "tensorflow/tsl/profiler/utils/session_manager.h"
+#include "tsl/profiler/convert/xplane_to_trace_events.h"
+#include "tsl/profiler/rpc/client/capture_profile.h"
+#include "tsl/profiler/utils/session_manager.h"
 
 namespace tensorflow {
 namespace profiler {
@@ -66,7 +66,7 @@ tensorflow::Status Monitor(const char* service_addr, int duration_ms,
                                               monitoring_level,
                                               display_timestamp, result));
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 tensorflow::Status ProfilerSessionWrapper::Start(
@@ -87,12 +87,12 @@ tensorflow::Status ProfilerSessionWrapper::Stop(tensorflow::string* result) {
     tsl::profiler::ConvertXSpaceToTraceEventsString(xspace, result);
     TF_RETURN_IF_ERROR(status);
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 tensorflow::Status ProfilerSessionWrapper::ExportToTensorBoard() {
   if (!session_ || logdir_.empty()) {
-    return OkStatus();
+    return absl::OkStatus();
   }
   tensorflow::profiler::XSpace xspace;
   tensorflow::Status status;

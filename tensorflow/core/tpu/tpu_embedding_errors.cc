@@ -17,13 +17,17 @@ limitations under the License.
 
 #include <string>
 
+#include "absl/strings/cord.h"
 #include "absl/strings/match.h"
+#include "absl/strings/str_cat.h"
+#include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/protobuf/tpu/tpu_embedding_configuration.pb.h"
 
 namespace tensorflow::tpu {
 
 Status AppendTpuEmbeddingErrorPayload(Status obj) {
   if (obj.ok()) {
-    return OkStatus();
+    return absl::OkStatus();
   } else {
     const std::string error_message =
         absl::StrCat(kTpuEmbeddingErrorMessage, ". ", obj.message());

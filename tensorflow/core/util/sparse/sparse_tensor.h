@@ -21,7 +21,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/base/macros.h"
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_types.h"
@@ -178,9 +178,9 @@ class SparseTensor {
   // element of the array representing one dimension. The start is the start
   // index at each dimension and the size is the size at each dimension.
   template <typename T>
-  static StatusOr<SparseTensor> Slice(const SparseTensor& tensor,
-                                      const gtl::ArraySlice<int64_t> start,
-                                      const gtl::ArraySlice<int64_t> size);
+  static absl::StatusOr<SparseTensor> Slice(
+      const SparseTensor& tensor, const gtl::ArraySlice<int64_t> start,
+      const gtl::ArraySlice<int64_t> size);
 
   // Picks out the dimensions according to `dim_indices`.
   std::vector<int64_t> PickDims(gtl::ArraySlice<int64_t> dim_indices) const {
@@ -578,7 +578,7 @@ inline Status SparseTensor::Split(const SparseTensor& input_tensor,
 }
 
 template <typename T>
-inline StatusOr<SparseTensor> SparseTensor::Slice(
+inline absl::StatusOr<SparseTensor> SparseTensor::Slice(
     const SparseTensor& input_tensor, const gtl::ArraySlice<int64_t> start,
     const gtl::ArraySlice<int64_t> size) {
   TensorShape output_shape(input_tensor.shape());

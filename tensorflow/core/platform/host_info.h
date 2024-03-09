@@ -17,11 +17,12 @@ limitations under the License.
 #define TENSORFLOW_CORE_PLATFORM_HOST_INFO_H_
 
 #include "tensorflow/core/platform/types.h"
-#include "tensorflow/tsl/platform/host_info.h"
+#include "tsl/platform/host_info.h"
 
 namespace tensorflow {
 namespace port {
 using tsl::port::Hostname;
+using tsl::port::IOStatistics;
 using tsl::port::JobName;
 using tsl::port::JobUid;
 }  // namespace port

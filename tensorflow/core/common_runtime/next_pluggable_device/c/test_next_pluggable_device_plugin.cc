@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/compiler/xla/pjrt/c/pjrt_c_api.h"
+#include "xla/pjrt/c/pjrt_c_api.h"
 #include "tensorflow/core/common_runtime/next_pluggable_device/c/plugin_c_api.h"
 
 namespace {

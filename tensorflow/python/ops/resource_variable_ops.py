@@ -49,7 +49,6 @@ from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.ops import gen_resource_variable_ops
 from tensorflow.python.ops import gen_state_ops
 from tensorflow.python.ops import handle_data_util
-from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variables
 # go/tf-wildcard-import
@@ -59,7 +58,6 @@ from tensorflow.python.ops.gen_resource_variable_ops import *
 from tensorflow.python.saved_model import nested_structure_coder
 from tensorflow.python.trackable import base as trackable
 from tensorflow.python.types import core
-from tensorflow.python.util import _pywrap_utils
 from tensorflow.python.util import compat
 from tensorflow.python.util.deprecation import deprecated
 from tensorflow.python.util.tf_export import tf_export
@@ -172,6 +170,7 @@ def _variable_handle_from_shape_and_dtype(shape,
       shape=shape,
       dtype=dtype,
       shared_name=shared_name,
+      debug_name=name,
       name=name,
       container=container)
   if initial_value is None:
@@ -369,9 +368,6 @@ def default_variable_creator_v2(next_creator=None, **kwargs):
       shape=shape,
       experimental_enable_variable_lifting=experimental_enable_variable_lifting,
       )
-
-
-variables.default_variable_creator_v2 = default_variable_creator_v2
 
 
 class BaseResourceVariable(variables.Variable, core.Tensor):
@@ -2331,10 +2327,6 @@ class UninitializedVariable(BaseResourceVariable):
         in_graph_mode=self._in_graph_mode, **unused_kwargs)
 
 
-_pywrap_utils.RegisterType("ResourceVariable", ResourceVariable)
-math_ops._resource_variable_type = ResourceVariable  # pylint: disable=protected-access
-
-
 def _dense_var_to_tensor(var, dtype=None, name=None, as_ref=False):
   return var._dense_var_to_tensor(dtype=dtype, name=name, as_ref=as_ref)  # pylint: disable=protected-access
 
@@ -2738,12 +2730,12 @@ class VariableSpec(tensor_module.DenseSpec):
         attr_value_pb2.AttrValue(s=compat.as_bytes(name)))
     return variable
 
-  def _to_tensors(self, value):
+  def to_tensors(self, value):
     assert isinstance(value, BaseResourceVariable)
     variable_accessed(value)
     return [value.handle]
 
-  def _cast(self, value, _):
+  def cast(self, value, _):
     assert isinstance(value, BaseResourceVariable)
     return value
 
@@ -2769,9 +2761,6 @@ nested_structure_coder.register_codec(
         VariableSpec, struct_pb2.TypeSpecProto.VARIABLE_SPEC
     )
 )
-
-
-_pywrap_utils.RegisterType("VariableSpec", VariableSpec)
 
 
 def write_object_proto_for_resource_variable(resource_variable,

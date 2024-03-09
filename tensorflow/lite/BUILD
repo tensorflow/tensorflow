@@ -1,13 +1,14 @@
-load("//tensorflow:tensorflow.bzl", "if_google", "if_not_windows", "if_oss", "tf_cc_test")
-load("//tensorflow/lite:build_def.bzl", "tflite_cc_shared_object", "tflite_copts", "tflite_copts_warnings", "tflite_linkopts_no_undefined", "tflite_self_contained_libs_test_suite")
-load("//tensorflow/lite:special_rules.bzl", "SPECIAL_RULES_DEPS", "internal_visibility_allowlist", "tflite_portable_test_suite")
-load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")
-load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
+load("@bazel_skylib//lib:selects.bzl", "selects")
 load("@bazel_skylib//rules:common_settings.bzl", "bool_flag")
-load("//tensorflow/lite/core/shims:cc_library_with_tflite.bzl", "alias_with_tflite", "cc_library_with_tflite")
+load("//tensorflow:tensorflow.bzl", "if_google", "if_not_windows", "if_oss", "tf_cc_test")
+load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")
+load("//tensorflow/lite:build_def.bzl", "tflite_cc_shared_object", "tflite_copts", "tflite_copts_warnings", "tflite_linkopts_no_undefined", "tflite_self_contained_libs_test_suite")
+load("//tensorflow/lite:special_rules.bzl", "SPECIAL_RULES_DEPS", "internal_visibility_allowlist", "tflite_internal_cc_3p_api_deps_src_all_visibility_allowlist", "tflite_portable_test_suite")
+load("//tensorflow/lite/core/shims:cc_library_with_tflite.bzl", "alias_with_tflite", "cc_library_with_tflite", "cc_test_with_tflite")
+load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
 
 package(
-    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:LICENSE"],
     default_visibility = ["//visibility:public"],
     licenses = ["notice"],
 )
@@ -86,20 +87,79 @@ bool_flag(
 
 config_setting(
     name = "fuchsia_mmap_disabled",
-    flag_values = if_google(
-        {
-            ":enable_fuchsia_mmap": "False",
-            "//tools/cpp:cc_target_os": "fuchsia",
-        },
-        {
-            ":enable_fuchsia_mmap": "False",
-        },
+    constraint_values = if_google(
+        ["//third_party/bazel_platforms/os:fuchsia"],
+        [],
     ),
+    flag_values = {
+        ":enable_fuchsia_mmap": "False",
+    },
     values = if_oss(
         # TODO(b/149248802) When we have a Fuchsia Bazel SDK update to use the values it sets.
         {"cpu": "fuchsia"},
         {},
     ),
+)
+
+config_setting(
+    name = "tflite_mmap_disabled_true",
+    values = {
+        "copt": "-DTFLITE_MMAP_DISABLED",
+    },
+)
+
+selects.config_setting_group(
+    name = "tflite_mmap_disabled",
+    match_any = [
+        ":fuchsia_mmap_disabled",
+        ":tflite_mmap_disabled_true",
+        "//tensorflow:windows",
+    ],
+)
+
+filegroup(
+    name = "tflite_internal_cc_3p_api_deps_src_all",
+    srcs = [
+        ":tflite_internal_cc_3p_api_deps_src",
+        "//tensorflow/lite/core:macros.h",
+        "//tensorflow/lite/core/acceleration/configuration/c:tflite_internal_cc_3p_api_deps_src",
+        "//tensorflow/lite/core/api:tflite_internal_cc_3p_api_deps_src",
+        "//tensorflow/lite/core/c:tflite_internal_cc_3p_api_deps_src",
+        "//tensorflow/lite/kernels:tflite_internal_cc_3p_api_deps_src",
+        "//tensorflow/lite/kernels/internal:tflite_internal_cc_3p_api_deps_src",
+        "//tensorflow/lite/schema:tflite_internal_cc_3p_api_deps_src",
+    ],
+    visibility = tflite_internal_cc_3p_api_deps_src_all_visibility_allowlist(),
+)
+
+filegroup(
+    name = "tflite_internal_cc_3p_api_deps_src",
+    srcs = [
+        ":allocation.cc",
+        ":allocation.h",
+        ":array.cc",
+        ":array.h",
+        ":builtin_ops.h",
+        ":logger.h",
+        ":minimal_logging.cc",
+        ":minimal_logging.h",
+        ":minimal_logging_android.cc",
+        ":mmap_allocation.cc",
+        ":mutable_op_resolver.cc",
+        ":mutable_op_resolver.h",
+        ":op_resolver.h",
+        ":portable_type_to_tflitetype.h",
+        ":stderr_reporter.cc",
+        ":stderr_reporter.h",
+        ":tensorflow_profiler_logger.h",
+        ":tensorflow_profiler_logger_shim.cc",
+        ":type_to_tflitetype.h",
+        ":util.cc",
+        ":util.h",
+    ],
+    visibility = [
+        "//visibility:private",
+    ],
 )
 
 STABLE_FRAMEWORK_LIB_HDRS = [
@@ -111,6 +171,7 @@ STABLE_FRAMEWORK_LIB_HDRS = [
     "model.h",
     "model_builder.h",
     "interpreter_builder.h",
+    "signature_runner.h",
     "mutable_op_resolver.h",
     "op_resolver.h",
     "stderr_reporter.h",
@@ -123,7 +184,6 @@ FRAMEWORK_LIB_HDRS = STABLE_FRAMEWORK_LIB_HDRS + [
     "interpreter_options.h",
     "logger.h",
     "optional_debug_tools.h",
-    "signature_runner.h",
 ]
 
 # Private header files that are included from the public API header files.
@@ -160,7 +220,6 @@ cc_library(
     copts = tflite_copts_warnings(),
     deps = [
         ":graph_info",
-        ":kernel_api",
         ":memory_planner",
         ":simple_memory_arena",
         ":util",
@@ -177,7 +236,6 @@ cc_library(
     copts = tflite_copts_warnings() + ["-DTF_LITE_TENSORFLOW_PROFILER"],
     deps = [
         ":graph_info",
-        ":kernel_api",
         ":memory_planner",
         ":simple_memory_arena_with_profiler",
         ":util",
@@ -194,11 +252,12 @@ cc_test(
     ],
     deps = [
         ":arena_planner_with_profiler",
+        ":builtin_ops",
         ":graph_info",
-        "//tensorflow/core:tflite_portable_logging",
-        "//tensorflow/lite:builtin_ops",
+        "//tensorflow/lite/c:c_api_types",
         "//tensorflow/lite/core/c:common",
-        "//tensorflow/lite/testing:util",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -354,6 +413,7 @@ cc_library(
 #         "//tensorflow/core/profiler/lib:traceme",
 #         "//tensorflow/lite/core/c:common",
 #         "//tensorflow/lite/kernels:kernel_util",
+#         "@local_tsl//tsl/profiler/backends/cpu:traceme_recorder",
 #         "@com_google_absl//absl/base",
 #         "@com_google_absl//absl/debugging:stacktrace",
 #         "@com_google_absl//absl/debugging:symbolize",
@@ -418,13 +478,7 @@ cc_library(
     srcs = [
         "allocation.cc",
     ] + select({
-        "//tensorflow:android": [
-            "mmap_allocation.cc",
-        ],
-        "//tensorflow:windows": [
-            "mmap_allocation_disabled.cc",
-        ],
-        ":fuchsia_mmap_disabled": [
+        ":tflite_mmap_disabled": [
             "mmap_allocation_disabled.cc",
         ],
         "//conditions:default": [
@@ -437,9 +491,7 @@ cc_library(
     compatible_with = get_compatible_with_portable(),
     copts = tflite_copts_warnings(),
     deps = [
-        ":string",
-        "//tensorflow/lite/core/api",
-        "//tensorflow/lite/core/c:common",
+        "//tensorflow/lite/core/api:error_reporter",
     ],
 )
 
@@ -500,6 +552,7 @@ cc_library_with_tflite(
         "//tensorflow/lite/c:common_internal",
         "//tensorflow/lite/core:cc_api_stable",
         "//tensorflow/lite/core:framework_stable",
+        "//tensorflow/lite/core:signature_runner",
         "//tensorflow/lite/core:subgraph",
         "//tensorflow/lite/core/api",
         "//tensorflow/lite/core/api:verifier",
@@ -577,6 +630,7 @@ cc_library(
 #
 # This target has restricted visibility; for a public target that exposes
 # these APIs, see 'framework_stable' above.
+#
 cc_library_with_tflite(
     name = "cc_api_stable",
     srcs = STABLE_FRAMEWORK_LIB_IMPL_HDRS,
@@ -586,11 +640,13 @@ cc_library_with_tflite(
         "interpreter_options.h",
         "model.h",
         "model_builder.h",
+        "signature_runner.h",
     ],
     compatible_with = get_compatible_with_portable(),
     copts = tflite_copts() + tflite_copts_warnings(),
     generate_opaque_delegate_target = True,
     visibility = [
+        "//research/drishti/benchmarking/async:__subpackages__",
         "//tensorflow/compiler/mlir/lite:__subpackages__",
         "//tensorflow/lite/core/kernels:__subpackages__",
         "//tensorflow/lite/core/shims:__subpackages__",
@@ -748,7 +804,7 @@ cc_library(
         "//visibility:public",
     ],
     deps = [
-        "//tensorflow/lite:stderr_reporter",
+        ":stderr_reporter",
         "//tensorflow/lite/core/api:error_reporter",
     ],
 )
@@ -778,7 +834,7 @@ cc_library(
         "//visibility:public",
     ],
     deps = [
-        "//tensorflow/lite:mutable_op_resolver",
+        ":mutable_op_resolver",
         "//tensorflow/lite/core/api:op_resolver",
     ],
 )
@@ -797,6 +853,27 @@ cc_library(
         "//tensorflow/lite/core/api:op_resolver",
         "//tensorflow/lite/core/api:op_resolver_internal",
         "//tensorflow/lite/core/c:common",
+        "//tensorflow/lite/schema:schema_fbs",
+    ],
+)
+
+cc_library_with_tflite(
+    name = "mutable_op_resolver_utils",
+    srcs = ["mutable_op_resolver_utils.cc"],
+    hdrs = ["mutable_op_resolver_utils.h"],
+    compatible_with = get_compatible_with_portable(),
+    copts = tflite_copts() + tflite_copts_warnings(),
+    tflite_deps = [
+        "//tensorflow/lite/c:c_api",
+        "//tensorflow/lite/c:c_api_opaque",
+        "//tensorflow/lite/c:common",
+    ],
+    visibility = [
+        "//visibility:public",
+    ],
+    deps = [
+        ":builtin_ops",
+        ":mutable_op_resolver",
         "//tensorflow/lite/schema:schema_fbs",
     ],
 )
@@ -939,8 +1016,8 @@ cc_library(
         "//tensorflow/lite/kernels/internal:compatibility",
         "//tensorflow/lite/schema:schema_fbs",
         "//tensorflow/lite/testing:util",
-        "//third_party/eigen3",
         "@com_google_googletest//:gtest",
+        "@eigen_archive//:eigen3",
     ],
 )
 
@@ -970,8 +1047,8 @@ cc_test(
         "//tensorflow/lite/kernels:kernel_util",
         "//tensorflow/lite/kernels/internal:compatibility",
         "//tensorflow/lite/testing:util",
-        "//third_party/eigen3",
         "@com_google_googletest//:gtest_main",
+        "@eigen_archive//:eigen3",
     ],
 )
 
@@ -998,7 +1075,6 @@ cc_test(
     deps = [
         ":simple_memory_arena",
         "//tensorflow/lite/core/c:common",
-        "//tensorflow/lite/testing:util",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -1083,6 +1159,25 @@ cc_test(
         "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/schema:schema_fbs",
         "//tensorflow/lite/testing:util",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test_with_tflite(
+    name = "mutable_op_resolver_utils_test",
+    srcs = ["mutable_op_resolver_utils_test.cc"],
+    tflite_deps = [
+        ":mutable_op_resolver_utils",
+        ":test_util",
+        "//tensorflow/lite/c:c_api",
+        "//tensorflow/lite/c:c_api_opaque",
+        "//tensorflow/lite/c:common",
+    ],
+    deps = [
+        ":builtin_ops",
+        ":mutable_op_resolver",
+        "//tensorflow/lite/c:common_internal",
+        "//tensorflow/lite/schema:schema_fbs",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -1300,7 +1395,7 @@ cc_library(
     name = "stateful_error_reporter",
     hdrs = ["stateful_error_reporter.h"],
     compatible_with = get_compatible_with_portable(),
-    deps = ["//tensorflow/lite/core/api"],
+    deps = ["//tensorflow/lite/core/api:error_reporter"],
 )
 
 # Shared lib target for convenience, pulls in the core runtime and builtin ops.
@@ -1316,6 +1411,9 @@ tflite_cc_shared_object(
     features = ["windows_export_all_symbols"],
     linkopts = tflite_linkopts_no_undefined() + select({
         "//tensorflow:macos": [
+            "-Wl,-exported_symbols_list,$(location //tensorflow/lite:tflite_exported_symbols.lds)",
+        ],
+        "//tensorflow:ios": [
             "-Wl,-exported_symbols_list,$(location //tensorflow/lite:tflite_exported_symbols.lds)",
         ],
         "//tensorflow:windows": [],
@@ -1359,6 +1457,16 @@ bzl_library(
         "//tensorflow:tensorflow_bzl",
         "//tensorflow/lite/java:aar_with_jni_bzl",
         "@bazel_skylib//rules:build_test",
+    ],
+)
+
+# This target defines the TFLITE_CONDITIONAL_NAMESPACE macro.
+cc_library_with_tflite(
+    name = "namespace",
+    hdrs = ["namespace.h"],
+    compatible_with = get_compatible_with_portable(),
+    visibility = [
+        "//visibility:public",
     ],
 )
 

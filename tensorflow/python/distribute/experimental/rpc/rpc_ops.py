@@ -18,13 +18,13 @@ from typing import Optional, Sequence, Union
 
 import tensorflow.distribute.experimental.rpc.kernels.gen_rpc_ops as gen_rpc_ops
 from tensorflow.distribute.experimental.rpc.proto import tf_rpc_service_pb2 as rpc_pb2
-from tensorflow.python.data.util import structure
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
 from tensorflow.python.eager import function as tf_function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
+from tensorflow.python.framework import none_tensor
 from tensorflow.python.framework import type_spec
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import resource_variable_ops
@@ -491,7 +491,7 @@ class StatusOrResult(object):
 
     self._check_status()
     if self._output_specs is None or isinstance(self._output_specs,
-                                                structure.NoneTensorSpec):
+                                                none_tensor.NoneTensorSpec):
       flat_output_dtypes = []
       return_none = True
     else:

@@ -37,8 +37,6 @@ limitations under the License.
 #include "absl/container/btree_map.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
-#include "absl/log/check.h"
-#include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/strings/escaping.h"
 #include "absl/strings/str_cat.h"
@@ -54,18 +52,18 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/side_effect_util.h"
 #include "tensorflow/compiler/tf2xla/tf2xla_util.h"
 #include "tensorflow/compiler/tf2xla/type_util.h"
-#include "tensorflow/compiler/xla/array2d.h"
-#include "tensorflow/compiler/xla/array4d.h"
-#include "tensorflow/compiler/xla/client/sharding_builder.h"
-#include "tensorflow/compiler/xla/service/computation_placer.h"
-#include "tensorflow/compiler/xla/shape_util.h"
-#include "tensorflow/compiler/xla/status_macros.h"
-#include "tensorflow/compiler/xla/stream_executor/tpu/c_api_decl.h"
-#include "tensorflow/compiler/xla/stream_executor/tpu/tpu_api.h"
-#include "tensorflow/compiler/xla/stream_executor/tpu/tpu_ops_c_api.h"
-#include "tensorflow/compiler/xla/stream_executor/tpu/tpu_topology.h"
-#include "tensorflow/compiler/xla/xla.pb.h"
-#include "tensorflow/compiler/xla/xla_data.pb.h"
+#include "xla/array2d.h"
+#include "xla/array4d.h"
+#include "xla/client/sharding_builder.h"
+#include "xla/service/computation_placer.h"
+#include "xla/shape_util.h"
+#include "xla/status_macros.h"
+#include "xla/stream_executor/tpu/c_api_decl.h"
+#include "xla/stream_executor/tpu/tpu_api.h"
+#include "xla/stream_executor/tpu/tpu_ops_c_api.h"
+#include "xla/stream_executor/tpu/tpu_topology.h"
+#include "xla/xla.pb.h"
+#include "xla/xla_data.pb.h"
 #include "tensorflow/core/common_runtime/device_propagation.h"
 #include "tensorflow/core/common_runtime/function_def_utils.h"
 #include "tensorflow/core/common_runtime/function_utils.h"
@@ -107,8 +105,9 @@ limitations under the License.
 #include "tensorflow/core/tpu/tpu_fingerprint_utils.h"
 #include "tensorflow/core/util/device_name_utils.h"
 #include "tensorflow/core/util/dump_graph.h"
-#include "tensorflow/tsl/platform/errors.h"
-#include "tensorflow/tsl/platform/statusor.h"
+#include "tsl/platform/errors.h"
+#include "tsl/platform/logging.h"  // IWYU pragma: keep
+#include "tsl/platform/statusor.h"
 
 namespace tensorflow {
 
@@ -4838,7 +4837,7 @@ DistributedTPURewritePass::BuildCompilationStatusReturnNodes(
   uint64_t library_fingerprint;
 
   TF_RETURN_IF_ERROR(
-      FingerprintFunctionLibrary(reachable_functions, &library_fingerprint));
+      FingerprintFunctionLibrary(reachable_functions, library_fingerprint));
   VLOG(1) << "Fingerprint functions: "
           << absl::StrJoin(reachable_functions.ListFunctionNames(), ", ");
   VLOG(1) << "library_fingerprint: " << library_fingerprint;

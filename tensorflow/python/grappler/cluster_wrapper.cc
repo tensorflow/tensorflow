@@ -65,14 +65,13 @@ tensorflow::Status _GetOpPerformanceDataAndRunTime(
     *op_performance_data = tensorflow::grappler::CostGraphToOpPerformanceData(
         run_metadata.cost_graph(), item.graph);
   }
-  return ::tensorflow::OkStatus();
+  return absl::OkStatus();
 }
 
 PYBIND11_MAKE_OPAQUE(tensorflow::grappler::Cluster);
 
 PYBIND11_MODULE(_pywrap_tf_cluster, m) {
-  py::class_<tensorflow::grappler::Cluster> grappler_cluster(
-      m, "tensorflow::grappler::Cluster");
+  py::class_<tensorflow::grappler::Cluster> grappler_cluster(m, "Cluster");
 
   m.def("TF_NewCluster",
         [](bool allow_soft_placement,

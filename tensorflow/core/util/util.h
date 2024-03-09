@@ -20,6 +20,7 @@ limitations under the License.
 
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
+#include "tensorflow/core/platform/cpu_info.h"
 
 namespace tensorflow {
 
@@ -60,6 +61,15 @@ std::string SliceDebugString(const TensorShape& shape, int64_t flat);
 
 // Check if MKL is enabled in runtime
 bool IsMKLEnabled();
+
+// Flag a warning if input type is unsupported on CPU when oneDNN is enabled
+void DataTypeUnsupportedWarning(const DataType& dt);
+
+// Check if input type is supported on CPU when oneDNN is enabled
+bool IsDataTypeSupportedByOneDNNOnThisCPU(const DataType& dt);
+
+// Check if input type supports AMX on CPU when oneDNN is enabled
+bool IsAMXDataTypeSupportedByOneDNNOnThisCPU(const DataType& dt);
 
 }  // namespace tensorflow
 

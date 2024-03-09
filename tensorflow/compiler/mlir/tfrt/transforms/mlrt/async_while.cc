@@ -17,8 +17,11 @@ limitations under the License.
 #include <linux/limits.h>
 
 #include <algorithm>
+#include <deque>
+#include <list>
 #include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "absl/container/flat_hash_set.h"
@@ -26,11 +29,13 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "llvm/ADT/APInt.h"
 #include "llvm/ADT/DenseMap.h"
+#include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SetVector.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/Casting.h"
+#include "llvm/Support/raw_ostream.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Block.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
@@ -42,9 +47,11 @@ limitations under the License.
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/SymbolTable.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
+#include "mlir/Interfaces/SideEffectInterfaces.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Support/TypeID.h"  // from @llvm-project
 #include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/tensorflow/analysis/side_effect_analysis.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tfrt/ir/mlrt/mlrt_dialect.h"
 #include "tensorflow/compiler/mlir/tfrt/ir/mlrt/tf_mlrt_ops.h"
@@ -52,6 +59,7 @@ limitations under the License.
 namespace tensorflow {
 namespace mlrt_compiler {
 namespace {
+
 // Move await right before its tensor is used.
 void MoveTFAwaitOpToFirstUse(mlir::Block &block) {
   llvm::SmallVector<tf_mlrt::TFAwaitOp> await_ops;
@@ -151,6 +159,7 @@ class AsyncWhilePass
   void runOnOperation() override {
     mlir::ModuleOp module = getOperation();
     mlir::SymbolTable symbol_table(module);
+    mlir::TF::SideEffectAnalysis side_effect_analysis(module);
 
     // Keep a record of predicate and body functions that we already used to
     // create new predicate and body functions.
@@ -165,14 +174,17 @@ class AsyncWhilePass
     // into the list
     for (auto func_op :
          llvm::make_early_inc_range(module.getOps<mlir::func::FuncOp>())) {
-      MayConvertWhileToAsyncWhile(func_op, symbol_table, processed_functions);
+      MayConvertWhileToAsyncWhile(
+          func_op, symbol_table, processed_functions,
+          side_effect_analysis.GetAnalysisForFunc(func_op));
     }
   }
 
   void MayConvertWhileToAsyncWhile(
       mlir::func::FuncOp op, mlir::SymbolTable &symbol_table,
       llvm::SmallDenseMap<llvm::StringRef, mlir::func::FuncOp>
-          &processed_functions) {
+          &processed_functions,
+      const mlir::TF::SideEffectAnalysis::Info &side_effect_analysis) {
     mlir::OpBuilder builder(op);
     for (mlir::Operation &op : llvm::make_early_inc_range(op.front())) {
       auto while_op = llvm::dyn_cast<mlir::TF::WhileOp>(&op);
@@ -181,6 +193,7 @@ class AsyncWhilePass
       // Fill in bodies
       mlir::func::FuncOp body_fn =
           symbol_table.lookup<mlir::func::FuncOp>(while_op.getBody());
+
       mlir::func::FuncOp predicate_fn =
           symbol_table.lookup<mlir::func::FuncOp>(while_op.getCond());
 
@@ -199,7 +212,7 @@ class AsyncWhilePass
         mlir::func::FuncOp new_body =
             CreateBody(builder, symbol_table, processed_functions, body_fn,
                        new_predicate_fn, predicate_determinat, argument_groups,
-                       argument_remap);
+                       argument_remap, side_effect_analysis);
 
         mlir::OpBuilder::InsertionGuard insertion_guard(builder);
         builder.setInsertionPoint(while_op);
@@ -335,11 +348,17 @@ class AsyncWhilePass
       mlir::func::FuncOp original_body_fn, mlir::func::FuncOp new_predicate_fn,
       const std::vector<int> &predicate_determinat,
       const ArgumentGroups &argument_groups,
-      const ArgumentRemap &argument_remap) {
+      const ArgumentRemap &argument_remap,
+      const mlir::TF::SideEffectAnalysis::Info &side_effect_analysis) {
     auto &processed_function = processed_functions[original_body_fn.getName()];
     if (processed_function) {
       return processed_function;
     }
+
+    // Safe to do topology sort here b/c there are no promise/future involved
+    // here.
+    SortBodyFnByFirstReadyFirstRun(original_body_fn, predicate_determinat,
+                                   side_effect_analysis);
 
     mlir::OpBuilder::InsertionGuard insertion_guard(builder);
     builder.setInsertionPointAfter(original_body_fn);
@@ -585,6 +604,134 @@ class AsyncWhilePass
     DCHECK_EQ(invariant_index,
               original_body_fn.getArguments().size() + kNonPredicateStartIndex);
     return argument_remap;
+  }
+
+  // Sorts the operations in the block to an order of first ready first run to
+  // increase the parallelism between iterations. The order of ops before the
+  // predicate can be computed remains unchanged because we prefer to have the
+  // next iteration starts as soon as possible. For ops that are
+  // ready at the same time, ops producing the final results will be executed
+  // first.
+  void SortBodyFnByFirstReadyFirstRun(
+      mlir::func::FuncOp body_fn, const std::vector<int> &predicate_determinat,
+      const mlir::TF::SideEffectAnalysis::Info &side_effect_analysis) {
+    mlir::Block &body_block = body_fn.getBody().front();
+    mlir::Operation *return_op = body_block.getTerminator();
+    if (!return_op) return;
+
+    // Ops in final execution order.
+    std::vector<mlir::Operation *> sorted_ops;
+    // Number of outstanding (not executed yet) dependency for an op. When that
+    // number hits zero, this op is ready to be executed.
+    llvm::DenseMap<mlir::Operation *, int> dependency_cnt;
+
+    // Build the graph and mark ops that depends on input arguments in the
+    // `new_ready_ops`. We will prioritize final result producing ops later on
+    // before finalizing their order.
+    std::list<mlir::Operation *> new_ready_ops;
+    for (mlir::Operation &op : body_block.without_terminator()) {
+      // Existing side effecting ops are dependencies on all subsequent ops.
+      dependency_cnt[&op] =
+          op.getNumOperands() +
+          side_effect_analysis.DirectControlPredecessors(&op).size();
+
+      // Block argument is viewed as ready right away
+      for (const mlir::Value &operand : op.getOperands()) {
+        if (!operand.getDefiningOp()) {
+          dependency_cnt[&op]--;
+        }
+      }
+      if (!dependency_cnt[&op]) new_ready_ops.push_back(&op);
+    }
+
+    // Ops that produces final returned results have priority among ops that are
+    // ready at the same time.
+    llvm::DenseSet<mlir::Operation *> final_result_producing_ops;
+    for (const auto &operand : return_op->getOperands()) {
+      if (auto *op = operand.getDefiningOp()) {
+        final_result_producing_ops.insert(op);
+      }
+    }
+
+    // The order of all ops before the predicate for the next iteration
+    // can be computed remains unchanged because we want to kick off next
+    // iteration preparation asap by making the predicate ready asap.
+    llvm::SmallDenseSet<mlir::Operation *> predicate_determined_ops;
+    for (int i : predicate_determinat) {
+      if (auto *defining_op = return_op->getOperand(i).getDefiningOp()) {
+        predicate_determined_ops.insert(defining_op);
+      }
+    }
+    auto iter = body_block.without_terminator().begin();
+    // Make those ops before predicate ready and remember them so that they
+    // don't get resorted.
+    llvm::SmallDenseSet<mlir::Operation *> pre_scheduled_ops;
+    while (!predicate_determined_ops.empty()) {
+      if (predicate_determined_ops.contains(&*iter)) {
+        predicate_determined_ops.erase(&*iter);
+      }
+      sorted_ops.push_back(&*iter);
+      pre_scheduled_ops.insert(&*iter);
+      iter++;
+    }
+
+    // Topologically sorts the ops in a breadth first order.
+    std::deque<mlir::Operation *> ready_ops;
+    MoveNewReadyOps(ready_ops, std::move(new_ready_ops),
+                    final_result_producing_ops);
+    while (!ready_ops.empty()) {
+      mlir::Operation *active_op = ready_ops.front();
+      if (!pre_scheduled_ops.contains(active_op))
+        sorted_ops.push_back(active_op);
+      ready_ops.pop_front();
+      // Do not directly push new ready ops into ready_ops yet.
+      // We will re-arrange the new ready ops by moving those producing the
+      // final results to the top so that they get executed first.
+      std::list<mlir::Operation *> new_ready_ops;
+      for (const auto &result : active_op->getOpResults()) {
+        // Uses instead of users in case users can dedup.
+        for (const auto &use : result.getUses()) {
+          int cnt = --dependency_cnt[use.getOwner()];
+          if (!cnt) new_ready_ops.push_back(use.getOwner());
+        }
+      }
+      for (auto *control_dependent :
+           side_effect_analysis.DirectControlSuccessors(active_op)) {
+        int cnt = --dependency_cnt[control_dependent];
+        if (!cnt) new_ready_ops.push_back(control_dependent);
+      }
+
+      MoveNewReadyOps(ready_ops, std::move(new_ready_ops),
+                      final_result_producing_ops);
+    }
+
+    // Update the block with the new order.
+    sorted_ops.push_back(return_op);
+    for (mlir::Operation *op : sorted_ops) {
+      op->remove();
+      body_block.push_back(op);
+    }
+  }
+
+  // Add ops in the `new_ready_ops` to `ready_ops` in the following order:
+  // ops that produces final returned result are added first and then the rest
+  // ops.
+  void MoveNewReadyOps(
+      std::deque<mlir::Operation *> &ready_ops,
+      std::list<mlir::Operation *> new_ready_ops,
+      const llvm::DenseSet<mlir::Operation *> &final_result_producing_ops) {
+    auto iter = new_ready_ops.begin();
+    while (iter != new_ready_ops.end()) {
+      if (final_result_producing_ops.contains(*iter)) {
+        ready_ops.push_back(*iter);
+        iter = new_ready_ops.erase(iter);
+      } else {
+        iter++;
+      }
+    }
+    for (mlir::Operation *op : new_ready_ops) {
+      ready_ops.push_back(op);
+    }
   }
 };
 

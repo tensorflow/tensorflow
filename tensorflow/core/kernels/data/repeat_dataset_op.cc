@@ -14,14 +14,22 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/kernels/data/repeat_dataset_op.h"
 
+#include <cstdlib>
+#include <functional>
+#include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
 
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "tensorflow/core/data/name_utils.h"
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/framework/tensor.h"
+#include "tsl/platform/errors.h"
+#include "tsl/platform/thread_annotations.h"
 
 namespace tensorflow {
 namespace data {
@@ -72,6 +80,50 @@ bool HasDataServiceInput(const DatasetBase* dataset) {
   }
   return false;
 }
+
+// Updates an input split provider with the appropriate cardinality count based
+// on how many times it is repeated.
+class RepeatedSplitProvider : public SplitProvider {
+ public:
+  explicit RepeatedSplitProvider(std::unique_ptr<SplitProvider> split_provider,
+                                 int64_t count)
+      : split_provider_(std::move(split_provider)), count_(count) {}
+
+  // Updates the cardinality based on the times the input dataset is repeated.
+  int64_t Cardinality() const override {
+    if (split_provider_->Cardinality() == 0 || count_ == 0) {
+      return 0;
+    }
+    // From tensorflow/python/data/ops/repeat_op.py, the repeat op uses -1 for
+    // infinite repetitions.
+    if (count_ < 0) {
+      return kInfiniteCardinality;
+    }
+    if (split_provider_->Cardinality() < 0) {
+      return split_provider_->Cardinality();
+    }
+    return split_provider_->Cardinality() * count_;
+  }
+
+  // The following are the same as the input split provider.
+  absl::Status GetNext(Tensor* split, bool* end_of_splits) override {
+    return split_provider_->GetNext(split, end_of_splits);
+  }
+  absl::Status Reset() override { return split_provider_->Reset(); }
+  absl::Status Save(std::function<std::string(std::string)> full_name,
+                    IteratorStateWriter* writer) override {
+    return split_provider_->Save(full_name, writer);
+  }
+  absl::Status Restore(std::function<std::string(std::string)> full_name,
+                       IteratorStateReader* reader) override {
+    return split_provider_->Restore(full_name, reader);
+  }
+  void Cancel() override { split_provider_->Cancel(); }
+
+ private:
+  const std::unique_ptr<SplitProvider> split_provider_;
+  const int64_t count_;
+};
 }  // namespace
 
 class RepeatDatasetOp::Dataset : public DatasetBase {
@@ -79,6 +131,16 @@ class RepeatDatasetOp::Dataset : public DatasetBase {
   Dataset(OpKernelContext* ctx, int64_t count, const DatasetBase* input)
       : DatasetBase(DatasetContext(ctx)), count_(count), input_(input) {
     input_->Ref();
+    if (input_ != nullptr && !input_->RandomIndexingCompatible().ok()) {
+      random_indexing_compatible_ = input_->RandomIndexingCompatible();
+    } else if (count <= 0) {
+      random_indexing_compatible_ = absl::FailedPreconditionError(
+          absl::StrCat("`repeat(", count,
+                       ")` does not support random access of tf.data "
+                       "datasets."));
+    } else {
+      random_indexing_compatible_ = absl::OkStatus();
+    }
   }
 
   ~Dataset() override { input_->Unref(); }
@@ -95,6 +157,19 @@ class RepeatDatasetOp::Dataset : public DatasetBase {
       return std::make_unique<FiniteIterator>(FiniteIterator::Params{
           this, name_utils::IteratorPrefix(kFiniteRepeat, prefix)});
     }
+  }
+
+  absl::Status MakeSplitProviders(std::vector<std::unique_ptr<SplitProvider>>*
+                                      split_providers) const override {
+    std::vector<std::unique_ptr<SplitProvider>> input_split_providers;
+    TF_RETURN_IF_ERROR(input_->MakeSplitProviders(&input_split_providers));
+
+    split_providers->clear();
+    for (auto& split_provider : input_split_providers) {
+      split_providers->push_back(std::make_unique<RepeatedSplitProvider>(
+          std::move(split_provider), count_));
+    }
+    return absl::OkStatus();
   }
 
   const DataTypeVector& output_dtypes() const override {
@@ -127,7 +202,7 @@ class RepeatDatasetOp::Dataset : public DatasetBase {
 
   Status InputDatasets(std::vector<const DatasetBase*>* inputs) const override {
     inputs->push_back(input_);
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   Status CheckExternalState() const override {
@@ -140,6 +215,10 @@ class RepeatDatasetOp::Dataset : public DatasetBase {
     return input_->Get(ctx, index % input_->Cardinality(), out_tensors);
   }
 
+  absl::Status RandomIndexingCompatible() const override {
+    return random_indexing_compatible_;
+  }
+
  protected:
   Status AsGraphDefInternal(SerializationContext* ctx,
                             DatasetGraphDefBuilder* b,
@@ -149,7 +228,7 @@ class RepeatDatasetOp::Dataset : public DatasetBase {
     Node* count = nullptr;
     TF_RETURN_IF_ERROR(b->AddScalar(count_, &count));
     TF_RETURN_IF_ERROR(b->AddDataset(this, {input_graph_node, count}, output));
-    return OkStatus();
+    return absl::OkStatus();
   }
 
  private:
@@ -164,7 +243,7 @@ class RepeatDatasetOp::Dataset : public DatasetBase {
                            std::vector<Tensor>* out_tensors,
                            bool* end_of_sequence) override {
       *end_of_sequence = true;
-      return OkStatus();
+      return absl::OkStatus();
     }
 
    protected:
@@ -176,11 +255,11 @@ class RepeatDatasetOp::Dataset : public DatasetBase {
 
     Status SaveInternal(SerializationContext* ctx,
                         IteratorStateWriter* writer) override {
-      return OkStatus();
+      return absl::OkStatus();
     }
     Status RestoreInternal(IteratorContext* ctx,
                            IteratorStateReader* reader) override {
-      return OkStatus();
+      return absl::OkStatus();
     }
   };
 
@@ -203,16 +282,24 @@ class RepeatDatasetOp::Dataset : public DatasetBase {
       mutex_lock l(mu_);  // TODO(mrry): Make locking less conservative.
       if (!input_impl_) {
         *end_of_sequence = true;
-        return OkStatus();
+        return absl::OkStatus();
       }
       while (i_ < dataset()->count_) {
-        TF_RETURN_IF_ERROR(
-            input_impl_->GetNext(ctx, out_tensors, end_of_sequence));
+        std::optional<IteratorContext> ctx_with_index_mapper =
+            GetIteratorContextWithIndexMapper(ctx);
+        TF_RETURN_IF_ERROR(input_impl_->GetNext(
+            ctx_with_index_mapper.has_value() ? &ctx_with_index_mapper.value()
+                                              : ctx,
+            out_tensors, end_of_sequence));
+        if (ctx_with_index_mapper.has_value()) {
+          ctx->MergeCheckpoint(ctx_with_index_mapper->checkpoint());
+        }
         if (!*end_of_sequence) {
-          return OkStatus();
+          return absl::OkStatus();
         }
         ctx->PurgeCheckpoint(nested_prefix(prefix(), i_));
         ++i_;
+        input_impl_.reset();
         for (const auto& provider : ctx->split_providers()) {
           TF_RETURN_IF_ERROR(provider->Reset());
         }
@@ -221,7 +308,7 @@ class RepeatDatasetOp::Dataset : public DatasetBase {
       }
       *end_of_sequence = true;
       input_impl_.reset();
-      return OkStatus();
+      return absl::OkStatus();
     }
 
    protected:
@@ -240,12 +327,24 @@ class RepeatDatasetOp::Dataset : public DatasetBase {
       if (input_impl_) {
         TF_RETURN_IF_ERROR(SaveInput(ctx, writer, input_impl_));
       }
-      return OkStatus();
+      return absl::OkStatus();
     }
 
     Status RestoreInternal(IteratorContext* ctx,
                            IteratorStateReader* reader) override {
       mutex_lock l(mu_);
+      if (ctx->restored_element_count().has_value()) {
+        i_ = *ctx->restored_element_count() / dataset()->input_->Cardinality();
+        // For upstream iterators, the restored element count should be the
+        // element count within the current repetition.
+        IteratorContext::Params params(ctx);
+        params.restored_element_count =
+            *ctx->restored_element_count() % dataset()->input_->Cardinality();
+        IteratorContext ctx_with_restored_element_count(params);
+        return RestoreInput(&ctx_with_restored_element_count, reader,
+                            input_impl_);
+      }
+
       TF_RETURN_IF_ERROR(reader->ReadScalar(prefix(), kCurIteration, &i_));
       int64_t input_empty;
       TF_RETURN_IF_ERROR(
@@ -257,10 +356,48 @@ class RepeatDatasetOp::Dataset : public DatasetBase {
       } else {
         input_impl_.reset();
       }
-      return OkStatus();
+      return absl::OkStatus();
     }
 
    private:
+    // If the dataset is globally shuffled, returns an `IteratorContext` with
+    // the updated index_mapper.
+    std::optional<IteratorContext> GetIteratorContextWithIndexMapper(
+        IteratorContext* ctx) const TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+      std::optional<IteratorContext> ctx_with_index_mapper;
+      if (ctx->index_mapper()) {
+        IteratorContext::Params params(ctx);
+        params.index_mapper = GetIndexMapper(ctx->index_mapper());
+        ctx_with_index_mapper.emplace(params);
+      }
+      return ctx_with_index_mapper;
+    }
+
+    std::function<int64_t(int64_t)> GetIndexMapper(
+        std::function<int64_t(int64_t)> parent_index_mapper) const
+        TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+      int64_t input_cardinality = dataset()->input_->Cardinality();
+      int64_t repeat_count = i_;
+      return [parent_index_mapper, input_cardinality,
+              repeat_count](size_t element_position) -> size_t {
+        if (element_position >= input_cardinality) {
+          // The input element position is out-of-range. The caller is
+          // responsible for handle this case (e.g.: returning end_of_sequence).
+          return element_position;
+        }
+
+        // First, maps the input indices from
+        // [0, input_range] to [0, input_range * repetitions].
+        // Then, reduces the shuffled indices to [0, input_range] by taking the
+        // mod. This way, the shuffling happens across repetitions.
+        size_t repeated_element_position =
+            repeat_count * input_cardinality + element_position;
+        size_t shuffled_element_position =
+            parent_index_mapper(repeated_element_position);
+        return shuffled_element_position % input_cardinality;
+      };
+    }
+
     mutex mu_;
     int64_t i_ TF_GUARDED_BY(mu_);
     std::unique_ptr<IteratorBase> input_impl_ TF_GUARDED_BY(mu_);
@@ -302,12 +439,12 @@ class RepeatDatasetOp::Dataset : public DatasetBase {
           // Otherwise, this iterator could loop infinitely.
           if (!has_data_service_input_) {
             input_impl_.reset();
-            return OkStatus();
+            return absl::OkStatus();
           }
         }
         first_call_ = false;
         if (!*end_of_sequence) {
-          return OkStatus();
+          return absl::OkStatus();
         }
         ctx->PurgeCheckpoint(nested_prefix(prefix(), i_));
         ++i_;
@@ -335,7 +472,7 @@ class RepeatDatasetOp::Dataset : public DatasetBase {
       if (input_impl_) {
         TF_RETURN_IF_ERROR(SaveInput(ctx, writer, input_impl_));
       }
-      return OkStatus();
+      return absl::OkStatus();
     }
 
     Status RestoreInternal(IteratorContext* ctx,
@@ -354,7 +491,7 @@ class RepeatDatasetOp::Dataset : public DatasetBase {
         TF_RETURN_IF_ERROR(RestoreInput(ctx, reader, input_impl_));
         first_call_ = false;
       }
-      return OkStatus();
+      return absl::OkStatus();
     }
 
    private:
@@ -368,6 +505,7 @@ class RepeatDatasetOp::Dataset : public DatasetBase {
 
   const int64_t count_;
   const DatasetBase* const input_;
+  absl::Status random_indexing_compatible_;
 };
 
 RepeatDatasetOp::RepeatDatasetOp(OpKernelConstruction* ctx)

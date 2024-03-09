@@ -730,6 +730,13 @@ def _GatherV2Grad(op: ops.Operation, grad):
     ], 0)
     params_grad = array_ops.transpose(params_grad, invert_transpose_dims)
 
+  if not isinstance(params_grad, indexed_slices_lib.IndexedSlices):
+    # Prevents mismatches in shapes when some tensor dimensions are zero.
+    params_grad = array_ops.reshape(
+        params_grad,
+        array_ops.shape(params)
+    )
+
   return [params_grad, None, None]
 
 

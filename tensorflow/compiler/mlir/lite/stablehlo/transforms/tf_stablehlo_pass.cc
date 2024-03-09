@@ -37,10 +37,10 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/lower_tf.h"
 #include "tensorflow/compiler/mlir/tf2xla/transforms/passes.h"
-#include "tensorflow/compiler/xla/mlir_hlo/mhlo/IR/hlo_ops.h"
-#include "tensorflow/compiler/xla/mlir_hlo/mhlo/IR/register.h"
-#include "tensorflow/compiler/xla/mlir_hlo/mhlo/transforms/passes.h"
-#include "tensorflow/compiler/xla/mlir_hlo/mhlo/transforms/rewriters.h"
+#include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
+#include "xla/mlir_hlo/mhlo/IR/register.h"
+#include "xla/mlir_hlo/mhlo/transforms/passes.h"
+#include "xla/mlir_hlo/mhlo/transforms/rewriters.h"
 
 namespace mlir {
 namespace odml {

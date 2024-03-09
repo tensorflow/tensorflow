@@ -16,7 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_TF2XLA_KERNELS_RNG_CONVERTER_UTILS_H_
 #define TENSORFLOW_COMPILER_TF2XLA_KERNELS_RNG_CONVERTER_UTILS_H_
 
-#include "tensorflow/compiler/xla/xla_data.pb.h"
+#include "xla/xla_data.pb.h"
 #include "tensorflow/core/framework/rng_alg.h"
 
 namespace tensorflow {

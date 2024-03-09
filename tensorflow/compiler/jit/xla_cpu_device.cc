@@ -16,6 +16,8 @@ limitations under the License.
 // Registers the XLA_CPU device, which is an XlaDevice instantiation that runs
 // operators using XLA via the XLA "Host" (CPU) backend.
 
+#include <array>
+
 #include "absl/memory/memory.h"
 #include "tensorflow/compiler/jit/defs.h"
 #include "tensorflow/compiler/jit/flags.h"
@@ -25,6 +27,7 @@ limitations under the License.
 #include "tensorflow/compiler/jit/xla_device_ops.h"
 #include "tensorflow/compiler/tf2xla/layout_util.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
+#include "xla/stream_executor/platform_manager.h"
 #include "tensorflow/core/common_runtime/device_factory.h"
 #include "tensorflow/core/lib/core/status.h"
 
@@ -43,11 +46,11 @@ Status XlaCpuDeviceFactory::ListPhysicalDevices(std::vector<string>* devices) {
   if (!flags->tf_xla_enable_xla_devices && !XlaDevicesCreationRequired()) {
     VLOG(1) << "Not creating XLA devices, tf_xla_enable_xla_devices not set "
                "and XLA device creation not requested";
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   devices->push_back(absl::StrCat("/physical_device:", DEVICE_XLA_CPU, ":0"));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status XlaCpuDeviceFactory::CreateDevices(
@@ -56,7 +59,7 @@ Status XlaCpuDeviceFactory::CreateDevices(
   XlaDeviceFlags* flags = GetXlaDeviceFlags();
   if (!flags->tf_xla_enable_xla_devices && !XlaDevicesCreationRequired()) {
     VLOG(1) << "Not creating XLA devices, tf_xla_enable_xla_devices not set";
-    return OkStatus();
+    return absl::OkStatus();
   }
   bool compile_on_demand = flags->tf_xla_compile_on_demand;
 
@@ -82,7 +85,7 @@ Status XlaCpuDeviceFactory::CreateDevices(
   (void)registrations;
 
   TF_ASSIGN_OR_RETURN(auto platform,
-                      se::MultiPlatformManager::PlatformWithName("Host"));
+                      se::PlatformManager::PlatformWithName("Host"));
 
   XlaDevice::Options options;
   options.platform = platform;
@@ -107,17 +110,17 @@ Status XlaCpuDeviceFactory::CreateDevices(
     return status;
   }
   devices->push_back(std::move(device));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 REGISTER_LOCAL_DEVICE_FACTORY(DEVICE_XLA_CPU, XlaCpuDeviceFactory);
 
 // Kernel registrations
 
-constexpr std::array<DataType, 16> kAllXlaCpuTypes = {
+constexpr std::array<DataType, 18> kAllXlaCpuTypes = {
     {DT_UINT8, DT_QUINT8, DT_UINT16, DT_INT8, DT_QINT8, DT_INT16, DT_INT32,
      DT_QINT32, DT_INT64, DT_HALF, DT_FLOAT, DT_DOUBLE, DT_COMPLEX64,
-     DT_COMPLEX128, DT_BOOL, DT_BFLOAT16}};
+     DT_COMPLEX128, DT_BOOL, DT_BFLOAT16, DT_INT4, DT_UINT4}};
 
 REGISTER_XLA_LAUNCH_KERNEL(DEVICE_XLA_CPU, XlaLocalLaunchOp, kAllXlaCpuTypes);
 REGISTER_XLA_COMPILE_KERNEL(DEVICE_XLA_CPU, XlaCompileOp, kAllXlaCpuTypes);

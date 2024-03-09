@@ -19,7 +19,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/device/device_id.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/lib/core/status.h"
-#include "tensorflow/tsl/framework/device_id_manager.h"
+#include "tsl/framework/device_id_manager.h"
 
 namespace tensorflow {
 using tsl::DeviceIdManager;  // NOLINT

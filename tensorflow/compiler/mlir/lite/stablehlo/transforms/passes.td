@@ -58,10 +58,10 @@ def ComposeUniformQuantizedTypePass : Pass<"compose-uniform-quantized-type", "Mo
   ];
 }
 
-def UniformQuantizedStablehloToTflPass
+def UniformQuantizedStableHloToTflPass
     : Pass<"uniform-quantized-stablehlo-to-tfl", "mlir::func::FuncOp"> {
   let summary = "Converts StableHLO ops using uniform quantized types to equivalent TFL ops.";
-  let constructor = "mlir::odml::CreateUniformQuantizedStablehloToTflPass()";
+  let constructor = "mlir::odml::CreateUniformQuantizedStableHloToTflPass()";
   let description = [{
     Converts StableHLO ops that accept or return uniform quantized types to
     equivalent ops in the TFLite dialect.
@@ -77,4 +77,26 @@ def LegalizeHloToTfPass : Pass<"tf-legalize-hlo", "ModuleOp"> {
   let summary = "Legalize from MHLO to the TF dialect";
   let dependentDialects = ["TF::TensorFlowDialect"];
   let constructor = "mlir::odml::CreateLegalizeHloToTfPass()";
+}
+
+def LegalizeHloToTfLitePass : Pass<"tfl-legalize-hlo", "mlir::ModuleOp"> {
+  let summary = "Legalize from MHLO to the TFLite dialect";
+  let dependentDialects = ["TFL::TensorFlowLiteDialect"];
+  let constructor = "mlir::odml::CreateLegalizeHloToTfLitePass()";
+}
+
+def LegalizeStablehloToVhloPass : Pass<"stablehlo-legalize-vhlo", "ModuleOp"> {
+  let summary = "Legalize StableHLO to VHLO for ODML.";
+  let dependentDialects = ["mlir::vhlo::VhloDialect"];
+}
+
+def LegalizeVhloToStablehloPass : Pass<"vhlo-legalize-stablehlo", "ModuleOp"> {
+  let summary = "Legalize VHLO to StableHLO for ODML.";
+  let dependentDialects = ["mlir::stablehlo::StablehloDialect"];
+}
+
+
+def UnfoldSplatConstantPass : Pass<"unfold-splat-constant-pass", "ModuleOp"> {
+  let summary = "Replaces a splat constant tensor with a BroadcastInDim op.";
+  let constructor = "mlir::odml::CreateUnfoldSplatConstantPass()";
 }

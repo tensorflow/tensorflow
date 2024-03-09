@@ -166,6 +166,12 @@ opt<bool> enable_hlo_to_tf_conversion(
     llvm::cl::init(false));
 
 // NOLINTNEXTLINE
+opt<bool> disable_hlo_to_tfl_conversion(
+    "disable-hlo-to-tfl-conversion",
+    llvm::cl::desc("Whether to disable the hlo to tfl ops conversion."),
+    llvm::cl::init(false));
+
+// NOLINTNEXTLINE
 opt<bool> preserve_assert_op(
     "preserve-assert-op",
     llvm::cl::desc("Preserve AssertOp during tfl legalization."),
@@ -188,4 +194,18 @@ opt<bool> legalize_custom_tensor_list_ops(
     "legalize-custom-tensor-list-ops",
     llvm::cl::desc("Convert \"tf.TensorList*\" ops to \"tfl.custom_op\""
                    "if they can all be supported."),
+    llvm::cl::init(false));
+
+// NOLINTNEXTLINE
+opt<bool> serialize_stablehlo_ops(
+    "serialize-stablehlo-ops",
+    llvm::cl::desc("Wether serialize stablehlo ops or not"),
+    llvm::cl::init(true));
+
+// NOLINTNEXTLINE
+opt<bool> reduce_type_precision(
+    "reduce-type-precision",
+    llvm::cl::desc("Convert tensors to a lower precision if all values are "
+                   "within the reduced precision range. This could have side "
+                   "effects triggered by downstream packing algorithms."),
     llvm::cl::init(false));

@@ -15,9 +15,12 @@ limitations under the License.
 
 // See docs in ../ops/math_ops.cc.
 
+#include <atomic>
+
 #include "tensorflow/core/platform/errors.h"
 #define EIGEN_USE_THREADS
 
+#include "absl/strings/str_cat.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/types.h"
@@ -172,6 +175,7 @@ struct BincountReduceFunctor<CPUDevice, Tidx, T, binary_output> {
                         const typename TTypes<T, 2>::ConstTensor& weights,
                         typename TTypes<T, 2>::Tensor& out,
                         const Tidx num_bins) {
+    std::atomic<int> err_neg_val = 0;
     const int num_rows = out.dimension(0);
     const int num_cols = in.dimension(1);
     ThreadPool* thread_pool =
@@ -182,7 +186,9 @@ struct BincountReduceFunctor<CPUDevice, Tidx, T, binary_output> {
           for (int64_t i = start_row; i < end_row; ++i) {
             for (int64_t j = 0; j < num_cols; ++j) {
               Tidx value = in(i, j);
-              if (value < num_bins) {
+              if (value < 0) {
+                err_neg_val = value;
+              } else if (value < num_bins) {
                 if (binary_output) {
                   out(i, value) = T(1);
                 } else {
@@ -196,6 +202,13 @@ struct BincountReduceFunctor<CPUDevice, Tidx, T, binary_output> {
             }
           }
         });
+
+    if (err_neg_val < 0) {
+      return errors::InvalidArgument(absl::StrCat(
+          "Input 'in' must be non-negative! Negative input value found: ",
+          static_cast<int>(err_neg_val)));
+    }
+
     return OkStatus();
   }
 };

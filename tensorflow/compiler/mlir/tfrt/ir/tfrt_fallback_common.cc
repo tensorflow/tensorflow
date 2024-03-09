@@ -101,6 +101,7 @@ mlir::ParseResult ParseExecuteOpCommon(mlir::OpAsmParser &parser,
       return mlir::failure();
     num_results = attr.getValue().getSExtValue();
   }
+  if (num_results < 0) return mlir::failure();
 
   llvm::SmallVector<mlir::Type, 4> operand_types;
   if (options.has_chain) operand_types.push_back(chain_type);

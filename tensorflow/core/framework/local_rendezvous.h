@@ -112,7 +112,8 @@ class LocalRendezvous {
   static std::vector<tsl::core::RefCountPtr<Rendezvous> >& aborted_rendezs_
       TF_GUARDED_BY(aborted_rendezs_mu_);
 
-  TF_DISALLOW_COPY_AND_ASSIGN(LocalRendezvous);
+  LocalRendezvous(const LocalRendezvous&) = delete;
+  void operator=(const LocalRendezvous&) = delete;
 };
 
 }  // namespace tensorflow

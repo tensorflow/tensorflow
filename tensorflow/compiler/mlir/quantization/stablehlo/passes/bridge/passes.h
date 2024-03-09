@@ -22,13 +22,7 @@ limitations under the License.
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 
-namespace mlir {
-namespace stablehlo {
-
-// Legalizes from MHLO quantized ops with MHLO quant types to MHLO primitive ops
-// like int ops.
-std::unique_ptr<OperationPass<func::FuncOp>> createConvertMHLOQuantToIntPass(
-    bool legalize_chlo = true);
+namespace mlir::quant::stablehlo {
 
 // Creates an instance of the ConvertTFQuantOpsToMHLOPass pass, which will
 // convert TF uniform quantized ops to the corresponding quantized MHLO ops.
@@ -45,12 +39,24 @@ void PopulateLegalizeTfQuantizationPatterns(MLIRContext *context,
 // int casts.
 std::unique_ptr<OperationPass<func::FuncOp>> CreateConvertTFQuantTypesPass();
 
+// Creates an instance of the VerifyQuantLegalization pass, which verifies all
+// quant ops and types are lowered.
+std::unique_ptr<OperationPass<func::FuncOp>>
+CreateVerifyQuantLegalizationPass();
+
+// Add all passes for lowering TF quant ops and types to MHLO int.
+void AddQuantizationLoweringPasses(mlir::OpPassManager &pm);
+
+// Creates an instance of OptimizeIntGraphPass, which optimizes the int graph
+// lowered from the quantized graph.
+std::unique_ptr<OperationPass<func::FuncOp>> CreateOptimizeIntGraphPass();
+
 #define GEN_PASS_REGISTRATION
-#define GEN_PASS_DECL_CONVERTMHLOQUANTTOINT
 #define GEN_PASS_DECL_CONVERTTFQUANTOPSTOMHLO
 #define GEN_PASS_DECL_CONVERTTFQUANTTYPES
+#define GEN_PASS_DECL_VERIFYQUANTLEGALIZATION
+#define GEN_PASS_DECL_OPTIMIZEINTGRAPH
 #include "tensorflow/compiler/mlir/quantization/stablehlo/passes/bridge/passes.h.inc"
-}  // namespace stablehlo
-}  // namespace mlir
+}  // namespace mlir::quant::stablehlo
 
 #endif  // TENSORFLOW_COMPILER_MLIR_QUANTIZATION_STABLEHLO_PASSES_BRIDGE_PASSES_H_

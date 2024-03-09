@@ -11,7 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-#==============================================================================
+# ==============================================================================
 """Lookup operations."""
 # pylint: disable=g-bad-name
 import collections
@@ -30,18 +30,20 @@ from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gen_lookup_ops
+# Ensure lookup gradients are registered
+from tensorflow.python.ops import lookup_grad  # pylint: disable=unused-import
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import string_ops
 # go/tf-wildcard-import
 # pylint: disable=wildcard-import
 from tensorflow.python.ops.gen_lookup_ops import *
-from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.saved_model import registration
 from tensorflow.python.trackable import asset
 # pylint: enable=wildcard-import
 from tensorflow.python.trackable import base as trackable_base
 from tensorflow.python.trackable import resource
 from tensorflow.python.training.saver import BaseSaverBuilder
+from tensorflow.python.types import internal
 from tensorflow.python.util import compat as compat_util
 from tensorflow.python.util.deprecation import deprecated
 from tensorflow.python.util.tf_export import tf_export
@@ -242,8 +244,9 @@ class InitializableLookupTableBase(LookupInterface):
         types.
     """
     key_tensor = keys
-    if isinstance(keys,
-                  (sparse_tensor.SparseTensor, ragged_tensor.RaggedTensor)):
+    # TODO(b/296302236): Remove RaggedTensor check by adding ragged
+    # dispatching.
+    if isinstance(keys, (sparse_tensor.SparseTensor, internal.RaggedTensor)):
       key_tensor = keys.values
 
     if keys.dtype.base_dtype != self._key_dtype:
@@ -260,7 +263,9 @@ class InitializableLookupTableBase(LookupInterface):
     values.set_shape(key_tensor.get_shape())
     if isinstance(keys, sparse_tensor.SparseTensor):
       return sparse_tensor.SparseTensor(keys.indices, values, keys.dense_shape)
-    elif isinstance(keys, ragged_tensor.RaggedTensor):
+    # TODO(b/296302236): Remove RaggedTensor check by adding ragged
+    # dispatching.
+    elif isinstance(keys, internal.RaggedTensor):
       return keys.with_values(values)
     else:
       return values
@@ -1148,8 +1153,9 @@ class IdTableWithHashBuckets(LookupInterface):
       raise TypeError(f"Dtype of argument `keys` must be {self._key_dtype}, "
                       f"received: {keys.dtype}")
     values = keys
-    if isinstance(keys,
-                  (sparse_tensor.SparseTensor, ragged_tensor.RaggedTensor)):
+    # TODO(b/296302236): Remove RaggedTensor check by adding ragged
+    # dispatching.
+    if isinstance(keys, (sparse_tensor.SparseTensor, internal.RaggedTensor)):
       values = keys.values
     if self._table and (self._table.key_dtype.base_dtype == dtypes.int64):
       values = math_ops.cast(values, dtypes.int64)
@@ -1174,7 +1180,9 @@ class IdTableWithHashBuckets(LookupInterface):
           ids = buckets
     if isinstance(keys, sparse_tensor.SparseTensor):
       return sparse_tensor.SparseTensor(keys.indices, ids, keys.dense_shape)
-    elif isinstance(keys, ragged_tensor.RaggedTensor):
+    # TODO(b/296302236): Remove RaggedTensor check by adding ragged
+    # dispatching.
+    elif isinstance(keys, internal.RaggedTensor):
       return keys.with_values(ids)
     return ids
 
@@ -1371,8 +1379,9 @@ class StaticVocabularyTable(LookupInterface):
       raise TypeError(f"Dtype of argument `keys` must be {self._key_dtype}, "
                       f"received: {keys.dtype}")
     values = keys
-    if isinstance(keys,
-                  (sparse_tensor.SparseTensor, ragged_tensor.RaggedTensor)):
+    # TODO(b/296302236): Remove RaggedTensor check by adding ragged
+    # dispatching.
+    if isinstance(keys, (sparse_tensor.SparseTensor, internal.RaggedTensor)):
       values = keys.values
     if self._table and (self._table.key_dtype.base_dtype == dtypes.int64):
       values = math_ops.cast(values, dtypes.int64)
@@ -1392,7 +1401,9 @@ class StaticVocabularyTable(LookupInterface):
         ids = buckets
     if isinstance(keys, sparse_tensor.SparseTensor):
       return sparse_tensor.SparseTensor(keys.indices, ids, keys.dense_shape)
-    elif isinstance(keys, ragged_tensor.RaggedTensor):
+    # TODO(b/296302236): Remove RaggedTensor check by adding ragged
+    # dispatching.
+    elif isinstance(keys, internal.RaggedTensor):
       return keys.with_values(ids)
     return ids
 
@@ -2449,23 +2460,3 @@ class DenseHashTable(LookupInterface):
           return gen_lookup_ops.lookup_table_import_v2(self.op.resource_handle,
                                                        restored_tensors[0],
                                                        restored_tensors[1])
-
-
-ops.NotDifferentiable("LookupTableFind")
-ops.NotDifferentiable("LookupTableFindV2")
-ops.NotDifferentiable("LookupTableInsert")
-ops.NotDifferentiable("LookupTableInsertV2")
-ops.NotDifferentiable("LookupTableSize")
-ops.NotDifferentiable("LookupTableSizeV2")
-ops.NotDifferentiable("HashTable")
-ops.NotDifferentiable("HashTableV2")
-ops.NotDifferentiable("InitializeTable")
-ops.NotDifferentiable("InitializeTableV2")
-ops.NotDifferentiable("InitializeTableFromTextFile")
-ops.NotDifferentiable("InitializeTableFromTextFileV2")
-ops.NotDifferentiable("MutableDenseHashTable")
-ops.NotDifferentiable("MutableDenseHashTableV2")
-ops.NotDifferentiable("MutableHashTable")
-ops.NotDifferentiable("MutableHashTableV2")
-ops.NotDifferentiable("MutableHashTableOfTensors")
-ops.NotDifferentiable("MutableHashTableOfTensorsV2")

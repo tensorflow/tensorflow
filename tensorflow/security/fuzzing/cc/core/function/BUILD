@@ -20,7 +20,7 @@ tf_cc_fuzz_test(
         "//tensorflow/core/framework:tensor",
         "//tensorflow/core/framework:types_proto_cc",
         "//tensorflow/core/function/runtime_client:runtime_client_cc",
-        "//tensorflow/tsl/platform:status",
         "@com_google_absl//absl/strings",
+        "@local_tsl//tsl/platform:status",
     ],
 )

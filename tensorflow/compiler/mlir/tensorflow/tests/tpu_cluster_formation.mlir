@@ -887,7 +887,7 @@ func.func @mixed_replicated_non_replicated_ops() {
 
 func.func @cyclic_control_dependency_no_replication() {
   "tf.opA"() {_xla_compile_device_type = "TPU"} : () -> ()
-  // expected-warning@+1 {{op has cyclic dependency with a compilation cluster}}
+  // expected-warning-re@+1 {{Op has cyclic dependency with a compilation cluster{{.*}}}}
   "tf.opB"() : () -> ()
   "tf.opC"() {_xla_compile_device_type = "TPU"} : () -> ()
   func.return
@@ -897,7 +897,7 @@ func.func @cyclic_control_dependency_no_replication() {
 
 func.func @cyclic_data_dependency_no_replication() {
   %0 = "tf.opA"() {_xla_compile_device_type = "TPU", is_stateless = true} : () -> (tensor<i32>)
-  // expected-warning@+2 {{op has cyclic dependency with a compilation cluster}}
+  // expected-warning-re@+2 {{Op has cyclic dependency with a compilation cluster{{.*}}}}
   // expected-error@+1 {{operand #0 does not dominate this use}}
   %1 = "tf.opB"(%0) {is_stateless = true} : (tensor<i32>) -> (tensor<i32>)
   // expected-note@+1 {{operand defined here (op in the same block)}}
@@ -909,7 +909,7 @@ func.func @cyclic_data_dependency_no_replication() {
 
 func.func @cyclic_control_dependency_replication() {
   "tf.opA"() {_xla_compile_device_type = "TPU", _replication_info = "cluster"} : () -> ()
-  // expected-warning@+1 {{op has cyclic dependency with a compilation cluster}}
+  // expected-warning-re@+1 {{Op has cyclic dependency with a compilation cluster{{.*}}}}
   "tf.opB"() : () -> ()
   "tf.opC"() {_xla_compile_device_type = "TPU", _replication_info = "cluster"} : () -> ()
   "tf.TPUReplicateMetadata"() {_xla_compile_device_type = "TPU", _replication_info = "cluster", device = "/device:TPU:0", num_replicas = 2, topology = "topology"} : () -> ()
@@ -921,7 +921,7 @@ func.func @cyclic_control_dependency_replication() {
 
 func.func @cyclic_data_dependency_replication() {
   %0 = "tf.opA"() {_xla_compile_device_type = "TPU", is_stateless = true} : () -> (tensor<i32>)
-  // expected-warning@+2 {{op has cyclic dependency with a compilation cluster}}
+  // expected-warning-re@+2 {{Op has cyclic dependency with a compilation cluster{{.*}}}}
   // expected-error@+1 {{operand #0 does not dominate this use}}
   %1 = "tf.opB"(%0) {is_stateless = true} : (tensor<i32>) -> (tensor<i32>)
   // expected-note@+1 {{operand defined here (op in the same block)}}
@@ -942,7 +942,7 @@ func.func @missing_metadata() {
 
 // CHECK-LABEL: func @const_with_attrs
 func.func @const_with_attrs(%arg0: tensor<*xi32>, %arg1: tensor<?xi64>) -> (tensor<?xi32>, tensor<?xi64>) {
-  // CHECK: %{{[a-z0-9_]*}} = "tf.Const"() {value = dense<-1> : tensor<1xi32>} : () -> tensor<1xi32>
+  // CHECK: %{{[a-z0-9_]*}} = "tf.Const"() <{value = dense<-1> : tensor<1xi32>}> : () -> tensor<1xi32>
   // CHECK-NEXT: %{{[a-z0-9_]*}} = "tf.Reshape"(%arg0
   // CHECK-NEXT: %{{.*}} = "tf_device.cluster"() ({
   %minus_one = "tf.Const"() {_replication_info = "cluster",

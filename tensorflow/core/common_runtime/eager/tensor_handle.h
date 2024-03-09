@@ -337,10 +337,6 @@ class TensorHandle : public ImmediateExecutionTensorHandle {
   // a TensorHandle does not outlive the EagerContext from which it came?
   EagerContext* const ctx_;
 
-  // Does not need synchronization because it can be accessed only after
-  // WaitReady() has returned. At that point, is_poisoned_ is immutable.
-  Status is_poisoned_;
-
   // If this TensorHandle 1) is a local tensor, and 2) is a resource handle or
   // refers to a remote resource handle, we store data types and shapes for
   // the underlying resource.

@@ -125,6 +125,26 @@ void StablehloToTflPass::runOnOperation() {
         continue;
       }
 
+      if (attr.isa<::mlir::DenseI64ArrayAttr>()) {
+        auto array_attr = attr.dyn_cast<mlir::DenseI64ArrayAttr>();
+        auto start = fbb->StartVector(key);
+        for (auto int_value : array_attr.asArrayRef()) {
+          fbb->Add(int_value);
+        }
+        fbb->EndVector(start, /*typed=*/true, /*fixed=*/false);
+        continue;
+      }
+
+      if (attr.isa<::mlir::DenseBoolArrayAttr>()) {
+        auto array_attr = attr.dyn_cast<mlir::DenseBoolArrayAttr>();
+        auto start = fbb->StartVector(key);
+        for (auto bool_value : array_attr.asArrayRef()) {
+          fbb->Add(bool_value);
+        }
+        fbb->EndVector(start, /*typed=*/true, /*fixed=*/false);
+        continue;
+      }
+
       if (attr.isa<::mlir::StringAttr>()) {
         fbb->String(key, attr.dyn_cast<mlir::StringAttr>().data());
         continue;

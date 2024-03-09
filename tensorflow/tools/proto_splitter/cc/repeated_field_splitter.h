@@ -20,7 +20,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "tensorflow/tools/proto_splitter/cc/composable_splitter.h"
 #include "tensorflow/tools/proto_splitter/cc/size_splitter.h"
-#include "tensorflow/tsl/platform/protobuf.h"
+#include "tsl/platform/protobuf.h"
 
 namespace tensorflow {
 namespace tools::proto_splitter {

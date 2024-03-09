@@ -190,9 +190,10 @@ void NeonRunKernelNoSDot<4, 1, 32>(const uint8_t* lhs, const int8_t* rhs,
       const int right_index = j * rows_right * rhs_layout_cols;
       const int8_t* rhs_val = rhs + right_index;
       asm volatile(KERNEL_4x1
-                   : [lhs_val] "+r"(lhs_val), [rhs_val] "+r"(rhs_val),
-                     [element_ptr] "+r"(element_ptr)
-                   : [bit_shift] "r"(bit_shift), [run_depth] "r"(run_depth)
+                   :
+                   : [lhs_val] "r"(lhs_val), [rhs_val] "r"(rhs_val),
+                     [element_ptr] "r"(element_ptr), [bit_shift] "r"(bit_shift),
+                     [run_depth] "r"(run_depth)
                    : "cc", "memory", "r0", "r1", "r2", "r3", "r4", "r5", "r6",
                      "r8", "d0", "d1", "d2", "d3", "d4", "d5", "d6", "d7", "d8",
                      "d9", "d10", "d11", "d12", "d13", "d14", "d15", "d16",

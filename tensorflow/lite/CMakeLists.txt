@@ -49,6 +49,7 @@ if(NOT TENSORFLOW_SOURCE_DIR)
   )
 endif()
 set(TF_SOURCE_DIR "${TENSORFLOW_SOURCE_DIR}/tensorflow")
+set(TSL_SOURCE_DIR "${TENSORFLOW_SOURCE_DIR}/third_party/xla/third_party/tsl")
 set(TFLITE_SOURCE_DIR "${CMAKE_CURRENT_LIST_DIR}")
 set(CMAKE_MODULE_PATH
   "${TFLITE_SOURCE_DIR}/tools/cmake/modules"
@@ -61,6 +62,7 @@ set(CMAKE_PREFIX_PATH
 include(GNUInstallDirs)
 include(CMakeDependentOption)
 option(TFLITE_ENABLE_INSTALL "Enable install rule" OFF)
+option(TFLITE_ENABLE_LABEL_IMAGE "Enable label_image example" OFF)
 option(TFLITE_ENABLE_RUY "Enable experimental RUY integration" OFF)
 option(TFLITE_ENABLE_RESOURCE "Enable experimental support for resources" ON)
 option(TFLITE_ENABLE_NNAPI "Enable NNAPI (Android only)." ON)
@@ -156,6 +158,10 @@ endif()
 find_package(cpuinfo REQUIRED)  #CPUINFO is used by XNNPACK and RUY library
 find_package(ml_dtypes REQUIRED)
 find_package(ruy REQUIRED)
+# Include TSL, which is in tensorflow/third_party
+include_directories(
+  ${TSL_SOURCE_DIR}
+)
 # Download necessary dependencies.
 # Download pthreadpool source package if it doesn't exist.
 if(SYSTEM_PTHREADPOOL)
@@ -197,7 +203,8 @@ if(CMAKE_SYSTEM_NAME MATCHES "Windows")
   # Use NOMINMAX to disable the min / max macros in windows.h as they break
   # use of std::min std::max.
   # Use NOGDI to ERROR macro which breaks TensorFlow logging.
-  list(APPEND TFLITE_TARGET_PRIVATE_OPTIONS "-DNOMINMAX" "-DNOGDI")
+  # Disable mmap, which is not available on Windows.
+  list(APPEND TFLITE_TARGET_PRIVATE_OPTIONS "-DNOMINMAX" "-DNOGDI" "-DTFLITE_MMAP_DISABLED")
   # lite/kernels/conv.cc has more than 64k sections so enable /bigobj to
   # support compilation with MSVC2015.
   if(MSVC)
@@ -263,10 +270,16 @@ else()
 endif()
 
 populate_tflite_source_vars("core" TFLITE_CORE_SRCS)
-populate_tflite_source_vars("core/acceleration/configuration" TFLITE_CORE_ACCELERATION_SRCS)
+populate_tflite_source_vars(
+  "core/acceleration/configuration" TFLITE_CORE_ACCELERATION_SRCS
+  FILTER "xnnpack_plugin.*"
+  FILTER "(_test)\\.(cc|h)$"
+)
 populate_tflite_source_vars("core/api" TFLITE_CORE_API_SRCS)
 populate_tflite_source_vars("core/async" TFLITE_CORE_ASYNC_SRCS)
 populate_tflite_source_vars("core/async/c" TFLITE_CORE_ASYNC_C_SRCS)
+populate_tflite_source_vars("core/async/interop" TFLITE_CORE_ASYNC_INTEROP_SRCS)
+populate_tflite_source_vars("core/async/interop/c" TFLITE_CORE_ASYNC_INTEROP_C_SRCS)
 populate_tflite_source_vars("core/c" TFLITE_CORE_C_SRCS)
 populate_tflite_source_vars("core/experimental/acceleration/configuration" TFLITE_CORE_EXPERIMENTAL_SRCS)
 populate_tflite_source_vars("core/kernels" TFLITE_CORE_KERNELS_SRCS)
@@ -484,6 +497,8 @@ if(TFLITE_ENABLE_XNNPACK)
     XNNPACK
   )
   list(APPEND TFLITE_TARGET_PUBLIC_OPTIONS "-DTFLITE_BUILD_WITH_XNNPACK_DELEGATE")
+  list(APPEND TFLITE_TARGET_PUBLIC_OPTIONS "-DXNNPACK_DELEGATE_ENABLE_QS8")
+  list(APPEND TFLITE_TARGET_PUBLIC_OPTIONS "-DXNNPACK_DELEGATE_ENABLE_QU8")
 endif()
 if(TFLITE_ENABLE_EXTERNAL_DELEGATE)
   populate_tflite_source_vars("delegates/external"
@@ -546,7 +561,13 @@ set(TFLITE_PROFILER_SRCS
   ${TFLITE_SOURCE_DIR}/profiling/root_profiler.h
   ${TFLITE_SOURCE_DIR}/profiling/root_profiler.cc
   ${TFLITE_SOURCE_DIR}/profiling/telemetry/profiler.cc
+  ${TFLITE_SOURCE_DIR}/profiling/telemetry/profiler.h
   ${TFLITE_SOURCE_DIR}/profiling/telemetry/telemetry.cc
+  ${TFLITE_SOURCE_DIR}/profiling/telemetry/c/telemetry_setting_internal.cc
+  ${TFLITE_SOURCE_DIR}/profiling/telemetry/c/telemetry_setting_internal.h
+  ${TFLITE_SOURCE_DIR}/profiling/telemetry/c/profiler.h
+  ${TFLITE_SOURCE_DIR}/profiling/telemetry/c/telemetry_setting.h
+  ${TFLITE_SOURCE_DIR}/profiling/telemetry/telemetry_status.h
 )
 if(CMAKE_SYSTEM_NAME MATCHES "Android")
   list(APPEND TFLITE_PROFILER_SRCS
@@ -570,6 +591,8 @@ set(_ALL_TFLITE_SRCS
   ${TFLITE_CORE_SRCS}
   ${TFLITE_CORE_ASYNC_SRCS}
   ${TFLITE_CORE_ASYNC_C_SRCS}
+  ${TFLITE_CORE_ASYNC_INTEROP_SRCS}
+  ${TFLITE_CORE_ASYNC_INTEROP_C_SRCS}
   ${TFLITE_CORE_TOOLS_SRCS}
   ${TFLITE_C_SRCS}
   ${TFLITE_DELEGATES_FLEX_SRCS}

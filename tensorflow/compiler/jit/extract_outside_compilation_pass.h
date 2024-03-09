@@ -18,7 +18,7 @@ limitations under the License.
 
 #include "absl/types/optional.h"
 #include "tensorflow/compiler/jit/encapsulate_util.h"
-#include "tensorflow/compiler/xla/status_macros.h"
+#include "xla/status_macros.h"
 #include "tensorflow/core/graph/graph.h"
 
 namespace tensorflow {

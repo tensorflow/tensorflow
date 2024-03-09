@@ -16,13 +16,13 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_KERNELS_EIGEN_BENCHMARK_H_
 #define TENSORFLOW_CORE_KERNELS_EIGEN_BENCHMARK_H_
 
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/kernels/eigen_backward_cuboid_convolutions.h"
 #include "tensorflow/core/kernels/eigen_backward_spatial_convolutions.h"
 #include "tensorflow/core/kernels/eigen_cuboid_convolution.h"
 #include "tensorflow/core/platform/test_benchmark.h"
-#include "tensorflow/tsl/framework/convolution/eigen_spatial_convolutions.h"
+#include "tsl/framework/convolution/eigen_spatial_convolutions.h"
 
 using ::tensorflow::TTypes;
 

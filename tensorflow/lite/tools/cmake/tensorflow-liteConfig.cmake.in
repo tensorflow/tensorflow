@@ -21,6 +21,7 @@ find_dependency(FlatBuffers)
 find_dependency(NEON_2_SSE)
 find_dependency(cpuinfo)
 find_dependency(ruy)
+find_dependency(gemmlowp)
 
 @PACKAGE_INIT@
 

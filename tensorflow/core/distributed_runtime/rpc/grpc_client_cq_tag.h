@@ -16,7 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_RPC_GRPC_CLIENT_CQ_TAG_H_
 #define TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_RPC_GRPC_CLIENT_CQ_TAG_H_
 
-#include "tensorflow/tsl/distributed_runtime/rpc/grpc_client_cq_tag.h"
+#include "tsl/distributed_runtime/rpc/grpc_client_cq_tag.h"
 
 namespace tensorflow {
 // NOLINTBEGIN(misc-unused-using-decls)

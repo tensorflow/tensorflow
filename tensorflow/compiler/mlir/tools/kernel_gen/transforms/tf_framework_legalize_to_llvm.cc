@@ -71,7 +71,7 @@ class ConvertToLLVMCallOpPattern : public ConvertOpToLLVMPattern<OpTy> {
     if (!attr.has_value() || attr.value().empty()) {
       Value zero = rewriter->create<LLVM::ConstantOp>(
           loc, size_ty, rewriter->getIntegerAttr(size_ty, 0));
-      Value null_ptr = rewriter->create<LLVM::NullOp>(loc, ptr_ty);
+      Value null_ptr = rewriter->create<LLVM::ZeroOp>(loc, ptr_ty);
       return std::make_pair(zero, null_ptr);
     }
 
@@ -271,8 +271,6 @@ class JITCompileFromStrOpConverter
         ConvertIntegerArrayAttrToStackAllocatedArray(
             loc, rewriter.getI64Type(), rewriter.getI64Type(),
             op.getUnrollFactors(), &rewriter);
-    Value max_supported_rank = rewriter.create<LLVM::ConstantOp>(
-        loc, rewriter.getI64Type(), op.getMaxSupportedRankAttr());
     Value enable_ftz = rewriter.create<LLVM::ConstantOp>(
         loc, rewriter.getI1Type(), op.getEnableFtzAttr());
     Value index_64bit = rewriter.create<LLVM::ConstantOp>(
@@ -285,8 +283,8 @@ class JITCompileFromStrOpConverter
         op, getVoidPtrType(), tf_func_ref,
         llvm::ArrayRef({adaptor.getCtx(), jit_module_code, tile_sizes.first,
                         tile_sizes.second, unroll_factors.first,
-                        unroll_factors.second, max_supported_rank, enable_ftz,
-                        index_64bit, cpu_codegen}));
+                        unroll_factors.second, enable_ftz, index_64bit,
+                        cpu_codegen}));
     return success();
   }
 
@@ -304,7 +302,6 @@ class JITCompileFromStrOpConverter
                            /*int64_t* tile_sizes_ptr*/ ptr_ty,
                            /*int64_t num_unroll_factors*/ i64_ty,
                            /*int64_t* unroll_factors_ptr*/ ptr_ty,
-                           /*int64_t max_supported_rank*/ i64_ty,
                            /*bool enable_ftz*/ i1_ty,
                            /*bool index_64bit*/ i1_ty,
                            /*bool cpu_codegen*/ i1_ty});
@@ -451,7 +448,7 @@ class NullContextOpConverter : public ConvertOpToLLVMPattern<NullContextOp> {
   LogicalResult matchAndRewrite(
       NullContextOp op, OpAdaptor /*adaptor*/,
       ConversionPatternRewriter &rewriter) const override {
-    rewriter.replaceOpWithNewOp<LLVM::NullOp>(op, getVoidPtrType());
+    rewriter.replaceOpWithNewOp<LLVM::ZeroOp>(op, getVoidPtrType());
     return success();
   }
 };
@@ -464,7 +461,7 @@ class NullMemRefOpConverter : public ConvertOpToLLVMPattern<NullMemRefOp> {
       NullMemRefOp null_memref_op, OpAdaptor /*adaptor*/,
       ConversionPatternRewriter &rewriter) const override {
     Location loc = null_memref_op->getLoc();
-    LLVMTypeConverter type_converter = *getTypeConverter();
+    const LLVMTypeConverter &type_converter = *getTypeConverter();
     MLIRContext *ctx = null_memref_op.getContext();
     mlir::Operation *op = null_memref_op.getOperation();
 
@@ -489,7 +486,7 @@ class NullMemRefOpConverter : public ConvertOpToLLVMPattern<NullMemRefOp> {
 
       // Prepare packed args [allocatedPtr, alignedPtr, offset, sizes, strides]
       // to create a memref descriptor.
-      Value null = rewriter.create<LLVM::NullOp>(loc, llvm_ptr_type);
+      Value null = rewriter.create<LLVM::ZeroOp>(loc, llvm_ptr_type);
       SmallVector<Value, 12> packed_values{null, null, zero};
       packed_values.append(sizes);
       packed_values.append(strides);
@@ -524,7 +521,7 @@ class NullMemRefOpConverter : public ConvertOpToLLVMPattern<NullMemRefOp> {
         sizes.front());
 
     // Populate underlying ranked descriptor.
-    Value null = rewriter.create<LLVM::NullOp>(loc, llvm_ptr_type);
+    Value null = rewriter.create<LLVM::ZeroOp>(loc, llvm_ptr_type);
     UnrankedMemRefDescriptor::setAllocatedPtr(
         rewriter, loc, underlying_desc_ptr, llvm_ptr_type, null);
     UnrankedMemRefDescriptor::setAlignedPtr(rewriter, loc, *getTypeConverter(),
@@ -565,7 +562,7 @@ class IsValidMemRefOpConverter
     }
 
     Value ptr = desc.allocatedPtr(rewriter, loc);
-    Value null = rewriter.create<LLVM::NullOp>(loc, getVoidPtrType());
+    Value null = rewriter.create<LLVM::ZeroOp>(loc, getVoidPtrType());
     Value is_not_nullptr = rewriter.create<LLVM::ICmpOp>(
         loc, rewriter.getI1Type(), LLVM::ICmpPredicate::ne, ptr, null);
 

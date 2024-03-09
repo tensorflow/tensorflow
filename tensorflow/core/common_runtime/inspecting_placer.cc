@@ -16,6 +16,7 @@ limitations under the License.
 
 #include <memory>
 #include <unordered_map>
+#include <utility>
 #include <vector>
 
 #include "absl/strings/str_join.h"
@@ -29,6 +30,7 @@ limitations under the License.
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/graph/graph_node_util.h"
 #include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/core/platform/refcount.h"
 
 namespace tensorflow {
 
@@ -100,7 +102,7 @@ class ColocationGraphToIOColocationGroups {
       const Member& member = colocation_graph_->members()[it.first];
       TF_RETURN_IF_ERROR(member.FillPossibleDevices(&possible_devices));
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 
  private:
@@ -125,13 +127,13 @@ InspectingPlacer::InspectingPlacer(const FunctionStack& stack,
 
 Status InspectingPlacer::ComputeIOColocationGroups(const Node& node,
                                                    IOColocationGroups* groups) {
-  const FunctionDef* fdef;
+  core::RefCountPtr<FunctionRecord> fdef;
   NameAttrList func;
   TF_RETURN_IF_ERROR(GetFunctionDefAndAttrs(flib_def_, node, &fdef, &func));
   std::unique_ptr<FunctionBody> fbody;
 
-  TF_RETURN_IF_ERROR(FunctionDefToBodyHelper(*fdef, AttrSlice(&func.attr()),
-                                             &flib_def_, &fbody));
+  TF_RETURN_IF_ERROR(FunctionDefToBodyHelper(
+      std::move(fdef), AttrSlice(&func.attr()), &flib_def_, &fbody));
 
   TF_RETURN_IF_ERROR(
       IsolatePlacerInspectionRequiredOps(flib_def_, fbody->graph));
@@ -154,7 +156,7 @@ Status InspectingPlacer::ComputeIOColocationGroups(const Node& node,
   converter.AssignGroups(fbody->arg_nodes, &groups->input_groups);
   converter.AssignGroups(fbody->ret_nodes, &groups->output_groups);
   TF_RETURN_IF_ERROR(converter.FillGroups(&groups->group_devices));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace tensorflow

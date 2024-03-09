@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/dtensor/mlir/expansions/meta_spmd_expander.h"
 
 #include <cstdint>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -261,7 +262,7 @@ Status VerifyPaddedDimensionNotSharded(const Layout& layout,
           "Padding over sharded dimension is not allowed.");
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace
@@ -352,7 +353,7 @@ Status VerifyTileOperandLayout(const Layout& operand_layout,
           "tile op with input sharded at dimension where `multiple` > 1 is not "
           "supported.");
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace
@@ -361,13 +362,13 @@ StatusOr<mlir::Operation*> TileSPMDExpander::ExpandOp(mlir::Operation* op) {
   auto tile_op = llvm::cast<mlir::TF::TileOp>(op);
   // After layout propagation, tile op should already have the proper output
   // layout tagged on itself.
-  TF_ASSIGN_OR_RETURN(absl::optional<Layout> output_layout,
+  TF_ASSIGN_OR_RETURN(std::optional<Layout> output_layout,
                       ExtractSingleLayoutFromOp(op));
   if (!output_layout)
     return errors::InvalidArgument(
         "TileOP doesn't have a layout after layout propagation");
 
-  TF_ASSIGN_OR_RETURN(absl::optional<Layout> operand_layout,
+  TF_ASSIGN_OR_RETURN(std::optional<Layout> operand_layout,
                       ExtractLayoutFromOperand(tile_op.getInput()));
   if (!operand_layout)
     return errors::InvalidArgument(
@@ -980,7 +981,7 @@ Status RelayoutOneHotInput(const absl::optional<Layout>& input_layout,
 
   one_hot->setOperand(0, new_input);
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace

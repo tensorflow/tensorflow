@@ -20,7 +20,11 @@ from packaging import version
 import tensorboard
 import tensorflow as tf
 from tensorflow_docs.api_generator import public_api
-import tensorflow_estimator
+
+try:
+  import tensorflow_estimator  # pylint: disable=[g-import-not-at-top, g-deprecated-tf-checker]
+except ImportError:
+  tensorflow_estimator = None
 
 
 def get_base_dirs_and_prefixes(code_url_prefix):
@@ -34,7 +38,32 @@ def get_base_dirs_and_prefixes(code_url_prefix):
         f"https://github.com/keras-team/keras/tree/v{keras.__version__}/keras"
     )
 
-  if version.parse(tf.__version__) >= version.parse("2.13"):
+  if version.parse(tf.__version__) >= version.parse("2.16"):
+    # First match takes precedence.
+    # Objects are dropped if they have no match.
+    base_dirs = [
+        # The real keras source files are now in `site-packages/keras/src/...`
+        pathlib.Path(keras.__file__).parent / "src",
+        # The generated module files in tensorflow are in keras
+        # under `site-packages/keras/api/_v2/keras/...`.
+        pathlib.Path(tf.keras.__file__).parent,
+        # The generated api-module files are now in `site-packages/keras/...`
+        pathlib.Path(keras.__file__).parent,
+        pathlib.Path(tensorboard.__file__).parent,
+        # The tensorflow base dir goes last because `tf.keras``
+        base_dir,
+    ]
+
+    code_url_prefixes = (
+        keras_url_prefix,
+        # None -> don't link to the generated keras api-module files.
+        None,
+        None,
+        f"https://github.com/tensorflow/tensorboard/tree/{tensorboard.__version__}/tensorboard",
+        code_url_prefix,
+    )
+
+  elif version.parse(tf.__version__) >= version.parse("2.13"):
     # First match takes precedence.
     # Objects are dropped if they have no match.
     base_dirs = [

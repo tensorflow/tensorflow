@@ -34,20 +34,24 @@ def EmbedTFFrameworkPass
 }
 
 def RewriteTFFrameworkAssert : Pass<"rewrite-tf-framework-assert", "ModuleOp"> {
+  let dependentDialects = ["cf::ControlFlowDialect"];
   let summary = "Pass to rewrite TFAssertOps to CondBranchOp";
   let constructor = "tf_framework::CreateRewriteTFFrameworkAssert()";
 }
 
-def TFToJITInvocationPass : Pass<"tf-to-jit-invocation", "mlir::func::FuncOp"> {
-  let summary = "Pass to rewrite all TF operations to JIT invocations";
-  let constructor = "transforms::CreateTFToJITInvocationPass()";
+def FuncToJITInvocationPass : Pass<"func-to-jit-invocation", "mlir::func::FuncOp"> {
+  let dependentDialects = [
+      "mlir::kernel_gen::tf_framework::TFFrameworkDialect",
+      "scf::SCFDialect",
+      "shape::ShapeDialect"
+  ];
+  let summary = "Pass to rewrite a function to JIT invocations";
+  let constructor = "transforms::CreateFuncToJITInvocationPass()";
   let options = [
       ListOption<"tile_sizes_", "tile-sizes", "int64_t", "Tiling sizes",
                  "llvm::cl::ZeroOrMore">,
       ListOption<"unroll_factors_", "unroll-factors", "int64_t",
                  "Unrolling in each tile dimension", "llvm::cl::ZeroOrMore">,
-      Option<"max_supported_rank_", "max-supported-rank", "int64_t",
-             /*default=*/"", "Max rank that this kernel supports">,
       Option<"enable_ftz_", "enable-ftz", "bool", /*default=*/"",
              "Enable the denormal flush to zero mode when generating code">,
       Option<"index_64bit_", "index_64bit", "bool", /*default=*/"",

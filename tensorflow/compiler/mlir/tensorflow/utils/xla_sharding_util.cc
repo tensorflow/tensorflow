@@ -37,9 +37,9 @@ limitations under the License.
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
-#include "tensorflow/compiler/xla/client/sharding_builder.h"
-#include "tensorflow/compiler/xla/service/hlo_parser.h"
-#include "tensorflow/compiler/xla/xla_data.pb.h"
+#include "xla/client/sharding_builder.h"
+#include "xla/service/hlo_parser.h"
+#include "xla/xla_data.pb.h"
 
 namespace tensorflow {
 namespace {
@@ -639,10 +639,8 @@ mlir::LogicalResult RemapOutputsFromLogicalDevices(
     mlir::tf_device::ParallelExecuteOp old_parallel_execute, int cluster_idx,
     mlir::tf_device::ParallelExecuteOp new_parallel_execute,
     mlir::OpBuilder* builder) {
-  for (const auto& result_and_index :
+  for (auto [output_index, old_parallel_execute_output] :
        llvm::enumerate(old_parallel_execute.getResults())) {
-    const auto output_index = result_and_index.index();
-    const auto old_parallel_execute_output = result_and_index.value();
     if (output_index < num_results_pre_cluster) {
       // Replace the use of those results of old parallel_execute op from host
       // with corresponding results of new parallel_execute op

@@ -16,15 +16,15 @@ limitations under the License.
 #include <memory>
 #include <utility>
 
-#include "tensorflow/compiler/xla/pjrt/tfrt_cpu_pjrt_client.h"
-#include "tensorflow/compiler/xla/statusor.h"
+#include "xla/pjrt/tfrt_cpu_pjrt_client.h"
+#include "xla/statusor.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/tfrt/common/pjrt_client_factory_options.h"
 #include "tensorflow/core/tfrt/common/pjrt_client_factory_registry.h"
 
 namespace xla {
 
-StatusOr<std::unique_ptr<xla::PjRtClient>> GetCpuClient(
+absl::StatusOr<std::unique_ptr<xla::PjRtClient>> GetCpuClient(
     const PjrtClientFactoryOptions& option) {
   TF_ASSIGN_OR_RETURN(std::unique_ptr<PjRtClient> client,
                       xla::GetTfrtCpuClient(option.cpu_options.asynchronous));

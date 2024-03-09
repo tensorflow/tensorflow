@@ -16,6 +16,6 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_PLATFORM_CORD_H_
 #define TENSORFLOW_CORE_PLATFORM_CORD_H_
 
-#include "tensorflow/tsl/platform/cord.h"  // IWYU pragma: export
+#include "tsl/platform/cord.h"  // IWYU pragma: export
 
 #endif  // TENSORFLOW_CORE_PLATFORM_CORD_H_

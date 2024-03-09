@@ -1,5 +1,9 @@
 load("@bazel_skylib//lib:selects.bzl", "selects")
-load("//tensorflow/lite:special_rules.bzl", "tflite_extra_gles_deps")
+load(
+    "//tensorflow/core/platform:build_config_root.bzl",
+    "tf_gpu_tests_tags",
+)
+load("//tensorflow/lite:special_rules.bzl", "tflite_extra_gles_deps", "tflite_portable_test_suite")
 load("//tensorflow/lite/delegates/gpu:build_defs.bzl", "gpu_delegate_linkopts")
 load("@build_bazel_rules_apple//apple:ios.bzl", "ios_static_framework")
 load("@build_bazel_rules_apple//apple:macos.bzl", "macos_dylib")
@@ -75,7 +79,6 @@ objc_library(
     srcs = ["metal_delegate.mm"],
     hdrs = ["metal_delegate.h"],
     copts = ["-std=c++17"],
-    features = ["-layering_check"],
     module_name = "TensorFlowLiteCMetal",
     sdk_frameworks = ["Metal"],
     deps = [
@@ -91,11 +94,13 @@ objc_library(
         "//tensorflow/lite/delegates/gpu/common:quantization_util",
         "//tensorflow/lite/delegates/gpu/common:shape",
         "//tensorflow/lite/delegates/gpu/common:status",
-        "//tensorflow/lite/delegates/gpu/common:tensor",
         "//tensorflow/lite/delegates/gpu/common:types",
         "//tensorflow/lite/delegates/gpu/metal:buffer_convert",
+        "//tensorflow/lite/delegates/gpu/metal:common",
         "//tensorflow/lite/delegates/gpu/metal:inference_context",
         "//tensorflow/lite/delegates/gpu/metal:metal_spatial_tensor",
+        "//tensorflow/lite/kernels:kernel_util",
+        "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/types:span",
     ],
 )
@@ -155,7 +160,7 @@ ios_static_framework(
         "metal_delegate.h",
         "metal_delegate_internal.h",
     ],
-    minimum_os_version = "11.4",
+    minimum_os_version = "12.0",
     deps = [":metal_delegate"],
 )
 
@@ -167,7 +172,7 @@ macos_dylib(
         "-all_load",
         "-dead_strip",
     ],
-    minimum_os_version = "10.13",
+    minimum_os_version = "12.0",
     tags = [
         "manual",
         "nobuilder",
@@ -237,16 +242,29 @@ cc_library(
         "//conditions:default": [
             "//tensorflow/lite/delegates/gpu/gl:api2",
         ],
+    }) + select({
+        "//tensorflow:android": [
+            ":async_buffers",
+            "//tensorflow/lite/core/async/c:task",
+            "//tensorflow/lite/core/async/interop/c:attribute_map",
+            "//tensorflow/lite/core/async/interop/c:constants",
+            "//tensorflow/lite/delegates/gpu/gl:android_sync",
+            "//tensorflow/lite/delegates/gpu/gl:egl_environment",
+            "//tensorflow/lite/delegates/utils",
+            "//tensorflow/lite/delegates/utils:async_type_helpers",
+            "//tensorflow/lite/delegates/utils:ret_macros",
+            "//tensorflow/lite/delegates/utils:sync_fence",
+        ],
+        "//conditions:default": [],
     }) + [
+        ":android_hardware_buffer",
         ":api",
         ":delegate_options",
         ":tflite_profile",
         "//tensorflow/lite:kernel_api",
         "//tensorflow/lite:minimal_logging",
-        "//tensorflow/lite/core/async:backend_async_kernel_interface",
-        "//tensorflow/lite/core/async/c:task",
-        "//tensorflow/lite/core/async/interop/c:attribute_map",
-        "//tensorflow/lite/core/async/interop/c:constants",
+        "//tensorflow/lite/async:backend_async_kernel_interface",
+        "//tensorflow/lite/core/async/interop/c:types",
         "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/delegates:serialization",
         "//tensorflow/lite/delegates/gpu/cl:api",
@@ -254,10 +272,6 @@ cc_library(
         "//tensorflow/lite/delegates/gpu/common:model_builder",
         "//tensorflow/lite/delegates/gpu/common:model_builder_helper",
         "//tensorflow/lite/delegates/gpu/common:quantization_util",
-        "//tensorflow/lite/delegates/utils",
-        "//tensorflow/lite/delegates/utils:async_type_helpers",
-        "//tensorflow/lite/delegates/utils:ret_macros",
-        "//tensorflow/lite/delegates/utils:sync_fence",
         "//tensorflow/lite/kernels:kernel_util",
         "//tensorflow/lite/profiling/telemetry",
         "//tensorflow/lite/profiling/telemetry:telemetry_status",
@@ -265,6 +279,7 @@ cc_library(
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
     ],
 )
@@ -279,3 +294,50 @@ cc_library(
         "@com_google_absl//absl/time",
     ],
 )
+
+cc_library(
+    name = "android_hardware_buffer",
+    srcs = ["android_hardware_buffer.cc"],
+    hdrs = ["android_hardware_buffer.h"],
+)
+
+cc_test(
+    name = "android_hardware_buffer_test",
+    srcs = ["android_hardware_buffer_test.cc"],
+    deps = [
+        ":android_hardware_buffer",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_library(
+    name = "async_buffers",
+    srcs = ["async_buffers.cc"],
+    hdrs = ["async_buffers.h"],
+    deps = [
+        ":android_hardware_buffer",
+        ":api",
+        "//tensorflow/lite/delegates/gpu/common:data_type",
+        "//tensorflow/lite/delegates/gpu/gl:gl_errors",
+        "@com_google_absl//absl/status",
+    ],
+)
+
+cc_test(
+    name = "async_buffers_test",
+    srcs = ["async_buffers_test.cc"],
+    tags = tf_gpu_tests_tags() + [
+        "local",
+        "nobuilder",
+        "notap",
+        "tflite_not_portable_ios",
+    ],
+    deps = [
+        ":android_hardware_buffer",
+        ":async_buffers",
+        ":delegate",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+tflite_portable_test_suite()

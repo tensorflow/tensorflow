@@ -24,7 +24,7 @@ namespace {
 using ::tensorflow::monitoring::testing::CellReader;
 
 constexpr char kPhase2CompilationStatusStreamzName[] =
-    "/tensorflow/core/tf2xla/api/v1/phase2_compilation_status";
+    "/tensorflow/core/tf2xla/api/v2/phase2_compilation_status";
 constexpr char kMlirWithFallbackModeSuccess[] = "kMlirWithFallbackModeSuccess";
 
 TEST(Metrics, Phase2ComilationStatusCounterIncremented) {

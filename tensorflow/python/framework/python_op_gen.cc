@@ -89,7 +89,12 @@ const std::unordered_map<string, string> dtype_type{
     {"_dtypes.quint16", "_atypes.QUInt16"},
     {"_dtypes.qint32", "_atypes.QInt32"},
     {"_dtypes.resource", "_atypes.Resource"},
-    {"_dtypes.variant", "_atypes.Variant"}};
+    {"_dtypes.variant", "_atypes.Variant"},
+    {"_dtypes.float8_e4m3fn", "_atypes.Float8e4m3fn"},
+    {"_dtypes.float8_e5m2", "_atypes.Float8e5m2"},
+    {"_dtypes.int4", "_atypes.Int4"},
+    {"_dtypes.uint4", "_atypes.UInt4"},
+};
 
 string AttrVarName(const string& attr_name,
                    std::unordered_map<string, string>* attr_expressions) {
@@ -2042,7 +2047,8 @@ from tensorflow.python.util.deprecation import deprecated_endpoints
 from tensorflow.python.util import dispatch as _dispatch
 from tensorflow.python.util.tf_export import tf_export
 
-from typing import TypeVar, List
+from typing import TypeVar, List, Any
+from typing_extensions import Annotated
 )");
   for (const auto& op_def : ops.op()) {
     const auto* api_def = api_defs.GetApiDef(op_def.name());
@@ -2132,12 +2138,11 @@ string GetSingleTensorArgAnnotation(
     const std::unordered_map<string, string>& type_annotations) {
   if (!arg.type_attr().empty()) {
     // Get the correct TypeVar if arg maps to an attr
-    return "_atypes.TensorFuzzingAnnotation[" +
-           type_annotations.at(arg.type_attr()) + "]";
+    return type_annotations.at(arg.type_attr());
   } else {
     // Get the dtype of the Tensor
     const string py_dtype = DataTypeToPython(arg.type(), "_dtypes.");
-    return "_atypes.TensorFuzzingAnnotation[" + dtype_type.at(py_dtype) + "]";
+    return dtype_type.at(py_dtype);
   }
 }
 
@@ -2145,10 +2150,13 @@ string GetArgAnnotation(
     const OpDef::ArgDef& arg,
     const std::unordered_map<string, string>& type_annotations) {
   if (!arg.number_attr().empty()) {
-    return strings::StrCat(
-        "List[", GetSingleTensorArgAnnotation(arg, type_annotations), "]");
+    return strings::StrCat("Annotated[List[Any], ",
+                           GetSingleTensorArgAnnotation(arg, type_annotations),
+                           "]");
   }
-  return GetSingleTensorArgAnnotation(arg, type_annotations);
+  return strings::StrCat("Annotated[Any, ",
+                         GetSingleTensorArgAnnotation(arg, type_annotations),
+                         "]");
 }
 
 }  // namespace tensorflow

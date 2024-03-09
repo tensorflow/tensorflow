@@ -341,7 +341,7 @@ std::optional<Value> convertPackOp(PatternRewriter& rewriter, Operation* op,
     reshape_output_shape.assign(output_shape_vals.begin(),
                                 output_shape_vals.end());
   }
-  IntegerAttr concat_axis_attr = rewriter.getI64IntegerAttr(concat_axis);
+  IntegerAttr concat_axis_attr = rewriter.getI32IntegerAttr(concat_axis);
   DenseI64ArrayAttr shape_attr = rewriter.getDenseI64ArrayAttr(
       tensorflow::ConvertMlirShapeToTF(reshape_output_shape));
 
@@ -627,16 +627,17 @@ std::optional<Value> convertMultiplyOp(PatternRewriter& rewriter, Operation* op,
     Value op2_rescale_rhs = removeZeroPointAndCastToInt32(
         rewriter, op, input_rhs_val, input_rhs_qtype.getZeroPoint());
 
-    auto op3_mul_op1_op2 =
-        CreateOpAndInfer<tosa::MulOp>(rewriter, op->getLoc(), rescale_type,
-                                      op1_rescale_lhs, op2_rescale_rhs, 0);
+    auto op3_mul_op1_op2 = CreateOpAndInfer<tosa::MulOp>(
+        rewriter, op->getLoc(), rescale_type, op1_rescale_lhs, op2_rescale_rhs,
+        rewriter.getI8IntegerAttr(0));
     return buildRescale(rewriter, op, output_type, op3_mul_op1_op2.getResult(),
                         output_rescale_scale, 0, output_qtype.getZeroPoint(),
                         true, scale32);
   }
 
   return CreateOpAndInfer<tosa::MulOp>(rewriter, op->getLoc(), output_type,
-                                       input_lhs_val, input_rhs_val, 0)
+                                       input_lhs_val, input_rhs_val,
+                                       rewriter.getI8IntegerAttr(0))
       .getResult();
 }
 
@@ -717,7 +718,7 @@ std::optional<Value> convertSquaredDifferenceOp(PatternRewriter& rewriter,
           rewriter, op->getLoc(), rescale_type, x_scaled, y_scaled);
       auto mul_op = CreateOpAndInfer<tosa::MulOp>(
           rewriter, op->getLoc(), rescale_type, sub_op.getResult(),
-          sub_op.getResult(), 0);
+          sub_op.getResult(), rewriter.getI8IntegerAttr(0));
 
       // Convert the operator back to the original type
       return buildRescaleFromInt32(rewriter, op, result_type, mul_op,
@@ -735,7 +736,7 @@ std::optional<Value> convertSquaredDifferenceOp(PatternRewriter& rewriter,
       CreateOpAndInfer<tosa::SubOp>(rewriter, op->getLoc(), result_type, x, y);
   return CreateOpAndInfer<tosa::MulOp>(rewriter, op->getLoc(), result_type,
                                        sub_op.getResult(), sub_op.getResult(),
-                                       0)
+                                       rewriter.getI8IntegerAttr(0))
       .getResult();
 }
 
@@ -827,7 +828,7 @@ std::optional<Value> convertConcatV2Op(PatternRewriter& rewriter, Operation* op,
 
   auto concat_op = CreateOpAndInfer<tosa::ConcatOp>(
       rewriter, op->getLoc(), result_type, values_rescaled,
-      rewriter.getI64IntegerAttr(axis));
+      rewriter.getI32IntegerAttr(axis));
 
   return concat_op.getResult();
 }
@@ -1610,7 +1611,7 @@ std::optional<Value> convertSoftmaxOp(PatternRewriter& rewriter, Operation* op,
 
       auto op2_reducemax_op1 = CreateOpAndInfer<tosa::ReduceMaxOp>(
           rewriter, op->getLoc(), int32_rsum_type, op1_rescale_in,
-          rewriter.getI64IntegerAttr(input_rank - 1));
+          rewriter.getI32IntegerAttr(input_rank - 1));
 
       auto op3_sub_op1_op2 = CreateOpAndInfer<tosa::SubOp>(
           rewriter, op->getLoc(), int32_logits_type, op1_rescale_in,
@@ -1622,13 +1623,11 @@ std::optional<Value> convertSoftmaxOp(PatternRewriter& rewriter, Operation* op,
       // 8-bit values is a 9-bit value. We only use the bottom 8 bits of each
       // table to avoid having the slope between two 16-bit table entries be
       // greater than 16 bits, causing potential interpolation errors
-      auto exp_func = [](double x) -> double { return std::exp(x); };
-
       Value exp_table_const_01, exp_table_const_02, exp_table_const_03,
           exp_table_const_04;
-      getTosaConst32bitTable(rewriter, op, beta * in_quant_type.getScale(), 0,
-                             exp_func, exp_table_const_01, exp_table_const_02,
-                             exp_table_const_03, exp_table_const_04);
+      getTosaConst32bitSoftmaxExpTable(
+          rewriter, op, beta, in_quant_type.getScale(), exp_table_const_01,
+          exp_table_const_02, exp_table_const_03, exp_table_const_04);
 
       Value op4_rescale_op3 =
           buildRescale(rewriter, op, int16_logits_type,
@@ -1704,7 +1703,7 @@ std::optional<Value> convertSoftmaxOp(PatternRewriter& rewriter, Operation* op,
       auto op15_reducesum_op14 = CreateOpAndInfer<tosa::ReduceSumOp>(
           rewriter, op->getLoc(), int32_rsum_type,
           op14_rshift_op13_12.getResult(),
-          rewriter.getI64IntegerAttr(input_rank - 1));
+          rewriter.getI32IntegerAttr(input_rank - 1));
 
       // Step 4. calculate reciprocal(sum(exp()))
       // CLZ returns the number of leading zeros which equals to headroom + 1
@@ -1811,7 +1810,7 @@ std::optional<Value> convertSoftmaxOp(PatternRewriter& rewriter, Operation* op,
 
       auto op2_reducemax_op1 = CreateOpAndInfer<tosa::ReduceMaxOp>(
           rewriter, op->getLoc(), int32_rsum_type, op1_rescale_in,
-          rewriter.getI64IntegerAttr(input_rank - 1));
+          rewriter.getI32IntegerAttr(input_rank - 1));
 
       // output range is [-65535, 0]
       auto op3_sub_op1_op2 = CreateOpAndInfer<tosa::SubOp>(
@@ -1855,7 +1854,7 @@ std::optional<Value> convertSoftmaxOp(PatternRewriter& rewriter, Operation* op,
       // Step 4. get sum(exp()). output 16.15
       auto op9_reducesum_op8 = CreateOpAndInfer<tosa::ReduceSumOp>(
           rewriter, op->getLoc(), int32_rsum_type, op8_rshift_op7.getResult(),
-          rewriter.getI64IntegerAttr(input_rank - 1));
+          rewriter.getI32IntegerAttr(input_rank - 1));
 
       // Step 5. calculate reciprocal(sum(exp()))
       // CLZ returns 32 - first non zero bit
@@ -1956,7 +1955,7 @@ std::optional<Value> convertSoftmaxOp(PatternRewriter& rewriter, Operation* op,
     // Step 1. get x - max(x)
     auto max_logits = CreateOpAndInfer<tosa::ReduceMaxOp>(
         rewriter, op->getLoc(), rsum_type, logits_value,
-        rewriter.getI64IntegerAttr(input_rank - 1));
+        rewriter.getI32IntegerAttr(input_rank - 1));
     auto normalized_logits =
         CreateOpAndInfer<tosa::SubOp>(rewriter, op->getLoc(), logits_type,
                                       logits_value, max_logits.getResult());
@@ -1969,7 +1968,7 @@ std::optional<Value> convertSoftmaxOp(PatternRewriter& rewriter, Operation* op,
     // Keep dims so we don't need to reshape later
     auto reducesum = CreateOpAndInfer<tosa::ReduceSumOp>(
         rewriter, op->getLoc(), rsum_type, exp_norm_logits.getResult(),
-        rewriter.getI64IntegerAttr(input_rank - 1));
+        rewriter.getI32IntegerAttr(input_rank - 1));
     auto denominator = CreateOpAndInfer<tosa::ReciprocalOp>(
         rewriter, op->getLoc(), reducesum.getType(), reducesum.getResult());
 
@@ -2026,7 +2025,7 @@ std::optional<Value> convertLogSoftmaxOp(PatternRewriter& rewriter,
   auto op2_reducesum_op1 = CreateOpAndInfer<tosa::ReduceSumOp>(
       rewriter, op->getLoc(),
       UnrankedTensorType::get(output_type.getElementType()),
-      op1_exp_in.getResult(), rewriter.getI64IntegerAttr(input_rank - 1));
+      op1_exp_in.getResult(), rewriter.getI32IntegerAttr(input_rank - 1));
   auto op3_reciprocal_op2 = CreateOpAndInfer<tosa::ReciprocalOp>(
       rewriter, op->getLoc(), op2_reducesum_op1.getType(),
       op2_reducesum_op1.getResult());
@@ -2406,7 +2405,7 @@ static Value reverseNegativeStride(PatternRewriter& rewriter, Operation* op,
 
     input = CreateOpAndInfer<tosa::ReverseOp>(rewriter, op->getLoc(),
                                               input.getType(), input,
-                                              rewriter.getI64IntegerAttr(axis))
+                                              rewriter.getI32IntegerAttr(axis))
                 .getResult();
   }
 
@@ -2893,7 +2892,7 @@ static Value convertGenericReduceOp(PatternRewriter& rewriter, Operation* op,
 
   return CreateOpAndInfer<T>(rewriter, loc,
                              UnrankedTensorType::get(reduce_etype), reshape_op,
-                             rewriter.getI64IntegerAttr(1));
+                             rewriter.getI32IntegerAttr(1));
 }
 
 // Common function for lowering reduce operations to TOSA ops.
@@ -2954,7 +2953,7 @@ std::optional<Value> convertReduceOpCommon(
     }
 
     for (auto axis_val : axes) {
-      auto axis_attr = rewriter.getI64IntegerAttr(axis_val);
+      auto axis_attr = rewriter.getI32IntegerAttr(axis_val);
 
       shape_vec[axis_val] = 1;
       RankedTensorType reduce_type =
@@ -3513,21 +3512,26 @@ std::optional<Value> convertQuantizeOp(PatternRewriter& rewriter, Operation* op,
   }
 
   ShapedType output_fp_type = output_type.clone(rewriter.getF32Type());
-
-  Value zp_val =
-      getTosaConstTensorSingleF32(rewriter, op, static_cast<float>(zeropoint));
-
-  auto op1_mul_in = CreateOpAndInfer<tosa::MulOp>(
+  Value result = CreateOpAndInfer<tosa::MulOp>(
       rewriter, op->getLoc(), output_fp_type, input_value,
       getTosaConstTensorSingleF32(rewriter, op, static_cast<float>(scale)), 0);
 
-  auto op2_add_op1 = CreateOpAndInfer<tosa::AddOp>(
-      rewriter, op->getLoc(), output_fp_type, op1_mul_in.getResult(), zp_val);
+  if (zeropoint != 0) {
+    // cast to i32 to add zeropoint
+    ShapedType output_i32_type = output_type.clone(rewriter.getI32Type());
+    Value cast_i32 = CreateOpAndInfer<tosa::CastOp>(rewriter, op->getLoc(),
+                                                    output_i32_type, result);
 
-  auto op3_cast_op2 = CreateOpAndInfer<tosa::CastOp>(
-      rewriter, op->getLoc(), output_type, op2_add_op1.getResult());
+    Value zp_val = getTosaConstTensorSingleI32(rewriter, op, zeropoint);
 
-  return op3_cast_op2.getResult();
+    result = CreateOpAndInfer<tosa::AddOp>(rewriter, op->getLoc(),
+                                           output_i32_type, cast_i32, zp_val);
+  }
+
+  Value final_result = CreateOpAndInfer<tosa::CastOp>(rewriter, op->getLoc(),
+                                                      output_type, result);
+
+  return final_result;
 }
 
 // Lowers Dequantize to a sequence of TOSA dequantization ops.
@@ -3744,7 +3748,7 @@ std::optional<Value> convertMirrorPadCommon(PatternRewriter& rewriter,
       } else {
         auto reverse_before_op = CreateOpAndInfer<tosa::ReverseOp>(
             rewriter, op->getLoc(), slice_before_op.getType(), slice_before_op,
-            rewriter.getI64IntegerAttr(axis));
+            rewriter.getI32IntegerAttr(axis));
         slices.push_back(reverse_before_op);
       }
     }
@@ -3766,7 +3770,7 @@ std::optional<Value> convertMirrorPadCommon(PatternRewriter& rewriter,
       } else {
         auto reverse_after_op = CreateOpAndInfer<tosa::ReverseOp>(
             rewriter, op->getLoc(), slice_after_op.getType(), slice_after_op,
-            rewriter.getI64IntegerAttr(axis));
+            rewriter.getI32IntegerAttr(axis));
         slices.push_back(reverse_after_op);
       }
     }
@@ -4397,7 +4401,7 @@ std::optional<Value> convertGatherNdOp(PatternRewriter& rewriter, Operation* op,
       rewriter, op->getLoc(),
       tensorflow::GetTypeFromTFTensorShape(tosa_indices_shape,
                                            indices_type.getElementType()),
-      flattened_indices_mul_op.getResult(), rewriter.getI64IntegerAttr(1));
+      flattened_indices_mul_op.getResult(), rewriter.getI32IntegerAttr(1));
 
   // And reshape to [N, W]
   auto tosa_indices_reshape_op = CreateOpAndInfer<tosa::ReshapeOp>(
@@ -4612,9 +4616,8 @@ std::optional<Value> convertSinOp(PatternRewriter& rewriter, Operation* op,
       DenseElementsAttr::get(fp_scalar_ty, {static_cast<float>(0.5 / M_PI)}));
 
   // 2. Remap the periodic behavior of the domain to line up within [0, 1).
-  Value fp_scaled =
-      CreateOpAndInfer<tosa::MulOp>(rewriter, loc, input_type, input, fp_scale,
-                                    rewriter.getI32IntegerAttr(0));
+  Value fp_scaled = CreateOpAndInfer<tosa::MulOp>(
+      rewriter, loc, input_type, input, fp_scale, rewriter.getI8IntegerAttr(0));
   auto floored =
       CreateOpAndInfer<tosa::FloorOp>(rewriter, loc, input_type, fp_scaled);
   auto repeated = CreateOpAndInfer<tosa::SubOp>(rewriter, loc, input_type,
@@ -4629,7 +4632,7 @@ std::optional<Value> convertSinOp(PatternRewriter& rewriter, Operation* op,
   Value two = rewriter.create<tosa::ConstOp>(
       loc, fp_scalar_ty, DenseElementsAttr::get(fp_scalar_ty, {2.0f}));
   auto scale_up = CreateOpAndInfer<tosa::MulOp>(
-      rewriter, loc, input_type, repeated, two, rewriter.getI32IntegerAttr(0));
+      rewriter, loc, input_type, repeated, two, rewriter.getI8IntegerAttr(0));
   auto translate =
       CreateOpAndInfer<tosa::SubOp>(rewriter, loc, input_type, scale_up, one);
 
@@ -4640,7 +4643,7 @@ std::optional<Value> convertSinOp(PatternRewriter& rewriter, Operation* op,
           {static_cast<float>(std::numeric_limits<int16_t>::max())}));
   auto int_scaled =
       CreateOpAndInfer<tosa::MulOp>(rewriter, loc, input_type, translate,
-                                    int_limit, rewriter.getI32IntegerAttr(0));
+                                    int_limit, rewriter.getI8IntegerAttr(0));
 
   auto int16_ty = input_type.clone(rewriter.getIntegerType(16));
   auto casted =
@@ -4675,7 +4678,7 @@ std::optional<Value> convertSinOp(PatternRewriter& rewriter, Operation* op,
           {static_cast<float>(1.0 / static_cast<float>(1 << 22))}));
 
   return CreateOpAndInfer<MulOp>(rewriter, loc, output_type, table_result_fp,
-                                 output_scale, rewriter.getI32IntegerAttr(0))
+                                 output_scale, rewriter.getI8IntegerAttr(0))
       .getResult();
 }
 
@@ -4814,9 +4817,13 @@ std::optional<Value> convertBroadcastToOp(PatternRewriter& rewriter,
       tensorflow::GetTypeFromTFTensorShape(new_shape, element_type);
 
   if (element_type.isa<FloatType>()) {
-    // F32: legalize to broadcastable Add with (0.f)
+    // F32: legalize to broadcastable Add with (-0.f), instead of 0.f.
+    // This is to preserve original values:
+    // for corner case where x = -0.f
+    // x + -0.f => -0.f (ie, equals x), whereas,
+    // x + 0.f => 0.f (ie, not equals x)
     auto const_attr =
-        DenseElementsAttr::get(output_type, rewriter.getZeroAttr(element_type));
+        DenseElementsAttr::get(output_type, FloatAttr::get(element_type, -0.0));
     Value f32_const_zero =
         rewriter.create<tosa::ConstOp>(op->getLoc(), output_type, const_attr);
     return CreateOpAndInfer<tosa::AddOp>(rewriter, op->getLoc(), output_type,
@@ -4835,34 +4842,32 @@ std::optional<Value> convertBroadcastToOp(PatternRewriter& rewriter,
         .getResult();
   }
 
-  if (isa<IntegerType>(element_type)) {
-    RankedTensorType cast_shaped_type = output_type.clone(element_type);
-    auto const_attr = DenseElementsAttr::get(
-        cast_shaped_type, rewriter.getZeroAttr(element_type));
-    Value const_zero = rewriter.create<tosa::ConstOp>(
-        op->getLoc(), cast_shaped_type, const_attr);
+  // cast type is always I32 type
+  // const_zero is always output shape with cast type
+  auto cast_type = rewriter.getI32Type();
+  RankedTensorType cast_shaped_type = output_type.clone(cast_type);
+  auto const_attr =
+      DenseElementsAttr::get(cast_shaped_type, rewriter.getZeroAttr(cast_type));
+  Value const_zero = rewriter.create<tosa::ConstOp>(
+      op->getLoc(), cast_shaped_type, const_attr);
+
+  if (element_type.isInteger(32)) {
     // I32: legalize to broadcastable Add with 0
     return CreateOpAndInfer<tosa::AddOp>(rewriter, op->getLoc(), output_type,
                                          input, const_zero)
         .getResult();
   }
 
-  if (auto quant_ty = dyn_cast<quant::UniformQuantizedType>(element_type)) {
-    auto cast_type = rewriter.getI32Type();
-    RankedTensorType cast_shaped_type = output_type.clone(cast_type);
-    auto const_attr = DenseElementsAttr::get(cast_shaped_type,
-                                             rewriter.getZeroAttr(cast_type));
-    Value const_zero = rewriter.create<tosa::ConstOp>(
-        op->getLoc(), cast_shaped_type, const_attr);
-
+  if (isa<IntegerType>(element_type) ||
+      isa<quant::UniformQuantizedType>(element_type)) {
     // for any other non-float element type:
-    // cast input to the storage type, perform an add 0, then cast back.
+    // cast input to the input_shape with cast type, perform an add 0 (with
+    // const_zero), then cast to output type.
     Value input_cast = CreateOpAndInfer<tosa::CastOp>(
         rewriter, op->getLoc(),
         /* I32 input type */ input_type.clone(cast_type), input);
     Value add_const = CreateOpAndInfer<tosa::AddOp>(
-        rewriter, op->getLoc(), output_type.clone(cast_type), input_cast,
-        const_zero);
+        rewriter, op->getLoc(), cast_shaped_type, input_cast, const_zero);
     return CreateOpAndInfer<tosa::CastOp>(rewriter, op->getLoc(), output_type,
                                           add_const)
         .getResult();

@@ -80,7 +80,7 @@ def _GetGradSource(op_or_tensor):
 @ops.RegisterGradient("TensorArrayRead")
 @ops.RegisterGradient("TensorArrayReadV2")
 @ops.RegisterGradient("TensorArrayReadV3")
-def _TensorArrayReadGrad(op, grad):
+def _TensorArrayReadGrad(op: ops.Operation, grad):
   """Gradient for TensorArrayRead.
 
   Args:
@@ -111,7 +111,7 @@ def _TensorArrayReadGrad(op, grad):
 @ops.RegisterGradient("TensorArrayWrite")
 @ops.RegisterGradient("TensorArrayWriteV2")
 @ops.RegisterGradient("TensorArrayWriteV3")
-def _TensorArrayWriteGrad(op, flow):
+def _TensorArrayWriteGrad(op: ops.Operation, flow):
   """Gradient for TensorArrayWrite.
 
   Args:
@@ -143,7 +143,7 @@ def _TensorArrayWriteGrad(op, flow):
 @ops.RegisterGradient("TensorArrayGather")
 @ops.RegisterGradient("TensorArrayGatherV2")
 @ops.RegisterGradient("TensorArrayGatherV3")
-def _TensorArrayGatherGrad(op, grad):
+def _TensorArrayGatherGrad(op: ops.Operation, grad):
   """Gradient for TensorArrayGather.
 
   Args:
@@ -174,7 +174,7 @@ def _TensorArrayGatherGrad(op, grad):
 @ops.RegisterGradient("TensorArrayScatter")
 @ops.RegisterGradient("TensorArrayScatterV2")
 @ops.RegisterGradient("TensorArrayScatterV3")
-def _TensorArrayScatterGrad(op, flow):
+def _TensorArrayScatterGrad(op: ops.Operation, flow):
   """Gradient for TensorArrayScatter.
 
   Args:
@@ -204,7 +204,7 @@ def _TensorArrayScatterGrad(op, flow):
 @ops.RegisterGradient("TensorArrayConcat")
 @ops.RegisterGradient("TensorArrayConcatV2")
 @ops.RegisterGradient("TensorArrayConcatV3")
-def _TensorArrayConcatGrad(op, grad, unused_lengths_grad):
+def _TensorArrayConcatGrad(op: ops.Operation, grad, unused_lengths_grad):
   """Gradient for TensorArrayConcat.
 
   Args:
@@ -236,7 +236,7 @@ def _TensorArrayConcatGrad(op, grad, unused_lengths_grad):
 @ops.RegisterGradient("TensorArraySplit")
 @ops.RegisterGradient("TensorArraySplitV2")
 @ops.RegisterGradient("TensorArraySplitV3")
-def _TensorArraySplitGrad(op, flow):
+def _TensorArraySplitGrad(op: ops.Operation, flow):
   """Gradient for TensorArraySplit.
 
   Args:

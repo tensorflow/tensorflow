@@ -16,22 +16,30 @@ limitations under the License.
 #include "tensorflow/dtensor/mlir/dtensor_send_recv.h"
 
 #include <string>
+#include <vector>
 
+#include "absl/status/status.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/FormatVariadic.h"
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/Support/DebugStringHelper.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_attributes.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/collection_ops_util.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_tensor.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/dtensor/cc/constants.h"
+#include "tensorflow/dtensor/cc/dstatus.h"
+#include "tensorflow/dtensor/cc/tensor_layout.h"
 #include "tensorflow/dtensor/mlir/collectives.h"
 #include "tensorflow/dtensor/mlir/device_utils.h"
+#include "tensorflow/dtensor/mlir/ir/tf_dtensor.h"
 #include "tensorflow/dtensor/mlir/layout_parsing.h"
 #include "tensorflow/dtensor/mlir/op_utils.h"
+#include "tensorflow/dtensor/mlir/shape_utils.h"
 #include "tensorflow/dtensor/mlir/spmd_expander_common.h"
 #include "tensorflow/dtensor/mlir/value_utils.h"
 
@@ -181,6 +189,25 @@ StatusOr<mlir::Operation*> LowerDTensorSendToXlaOp(
   return lowered_send_op;
 }
 
+// Creates a shape attribute of the local shape version of RecvFromOp's result.
+StatusOr<mlir::TF::ShapeAttr> GetDTensorRecvLocalShapeAttr(
+    mlir::TF::DTensorRecv dtensor_recv) {
+  if (dtensor_recv->getNumResults() != 1) {
+    return absl::InvalidArgumentError(
+        "XlaRecvFromHostOp must have exactly one result.");
+  }
+  TF_ASSIGN_OR_RETURN(std::vector<Layout> layouts,
+                      ExtractRequiredLayoutFromOp(dtensor_recv));
+  if (layouts.empty() || layouts.size() > 1) {
+    return absl::InvalidArgumentError(
+        "invalid layout for XlaRecvFromHostOp specified");
+  }
+  auto result_type = dtensor_recv->getResult(0);
+  TF_ASSIGN_OR_RETURN(auto result_shape, GetShapeOfValue(result_type));
+  auto local_shape = layouts[0].LocalShapeFromGlobalShape(result_shape);
+  return mlir::TF::ShapeAttr::get(result_type.getContext(), local_shape);
+}
+
 // Lowers DTensorRecv op to either one of XlaRecvAtHost or XlaRecvFromHost,
 // depending on src mesh cluster configuration. `output_type` can be set to the
 // specific local tensor type needed, if different from the Recv op output type.
@@ -216,10 +243,12 @@ StatusOr<mlir::Operation*> LowerDTensorRecvToXlaOp(
         dtensor_recv.getLoc(), output_types,
         /*dynamic_key=*/program_key, device_ordinal, dtensor_recv.getKeyAttr());
   } else {
+    TF_ASSIGN_OR_RETURN(auto local_shape_attr,
+                        GetDTensorRecvLocalShapeAttr(dtensor_recv));
+
     // Create XlaRecvFromHost op.
     recv_xla_op = builder.create<mlir::TF::XlaRecvFromHostOp>(
-        dtensor_recv.getLoc(), output_type,
-        ConvertTypeToTensorShapeAttr(dtensor_recv.getType()),
+        dtensor_recv.getLoc(), output_type, local_shape_attr,
         dtensor_recv.getKeyAttr());
   }
 

@@ -23,7 +23,7 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
-#include "tensorflow/compiler/xla/literal.h"
+#include "xla/literal.h"
 #include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/partial_tensor_shape.h"
@@ -85,7 +85,7 @@ Status MaybeInitializeStack(xla::XlaBuilder* builder, XlaResource* resource,
           actual_shape.DebugString());
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 class StackOp : public XlaOpKernel {
@@ -117,7 +117,8 @@ class StackOp : public XlaOpKernel {
   DataType dtype_;
   string stack_name_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(StackOp);
+  StackOp(const StackOp&) = delete;
+  void operator=(const StackOp&) = delete;
 };
 
 REGISTER_XLA_OP(
@@ -166,7 +167,8 @@ class StackPushOp : public XlaOpKernel {
  private:
   DataType dtype_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(StackPushOp);
+  StackPushOp(const StackPushOp&) = delete;
+  void operator=(const StackPushOp&) = delete;
 };
 
 REGISTER_XLA_OP(Name("StackPushV2").CompilationOnly(), StackPushOp);
@@ -221,7 +223,8 @@ class StackPopOp : public XlaOpKernel {
  private:
   DataType dtype_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(StackPopOp);
+  StackPopOp(const StackPopOp&) = delete;
+  void operator=(const StackPopOp&) = delete;
 };
 
 REGISTER_XLA_OP(Name("StackPopV2").CompilationOnly(), StackPopOp);
@@ -235,7 +238,8 @@ class StackCloseOp : public XlaOpKernel {
   }
 
  private:
-  TF_DISALLOW_COPY_AND_ASSIGN(StackCloseOp);
+  StackCloseOp(const StackCloseOp&) = delete;
+  void operator=(const StackCloseOp&) = delete;
 };
 
 REGISTER_XLA_OP(Name("StackCloseV2").CompilationOnly(), StackCloseOp);

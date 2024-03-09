@@ -15,12 +15,13 @@ limitations under the License.
 
 #include "tensorflow/core/util/tensor_bundle/tensor_bundle.h"
 
-#include <algorithm>
 #include <cstdlib>
 #include <cstring>
 #include <memory>
 #include <utility>
 
+#include "absl/base/call_once.h"
+#include "absl/synchronization/mutex.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"
@@ -36,21 +37,24 @@ limitations under the License.
 #include "tensorflow/core/lib/core/threadpool.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
 #include "tensorflow/core/lib/hash/crc32c.h"
-#include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/lib/io/table_builder.h"
-#include "tensorflow/core/lib/random/random.h"
 #include "tensorflow/core/lib/strings/str_util.h"
-#include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/platform/bfloat16.h"
 #include "tensorflow/core/platform/cord.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/mem.h"
+#include "tensorflow/core/platform/path.h"
+#include "tensorflow/core/platform/random.h"
 #include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/platform/stringprintf.h"
+#include "tensorflow/core/platform/tstring.h"
 #include "tensorflow/core/util/env_var.h"
 #include "tensorflow/core/util/saved_tensor_slice_util.h"
 #include "tensorflow/core/util/tensor_bundle/byte_swap_tensor.h"
+#include "tensorflow/core/util/tensor_bundle/naming.h"
 #include "tensorflow/core/util/tensor_slice_util.h"
-#include "tensorflow/tsl/lib/io/buffered_file.h"
+#include "tsl/lib/io/buffered_file.h"
+#include "tsl/util/byte_swap_array.h"
 
 #ifdef PLATFORM_WINDOWS
 #undef DeleteFile
@@ -768,14 +772,26 @@ Status MergeBundles(Env* env, gtl::ArraySlice<tstring> prefixes,
 BundleReader::BundleReader(
     Env* env, StringPiece prefix,
     bool enable_multi_threading_for_testing /* = false */)
+    : BundleReader(env, prefix, {nullptr, enable_multi_threading_for_testing}) {
+}
+
+BundleReader::BundleReader(Env* env, StringPiece prefix, Options options)
     : env_(env),
       prefix_(prefix),
+      cache_(options.cache),
       metadata_(nullptr),
       table_(nullptr),
       index_cache_(nullptr),
       iter_(nullptr),
       need_to_swap_bytes_(false),
-      enable_multi_threading_for_testing_(enable_multi_threading_for_testing) {
+      enable_multi_threading_for_testing_(
+          options.enable_multi_threading_for_testing) {
+  if (cache_ == nullptr) {
+    // Make a cache for use just by this BundleReader.
+    owned_cache_ = std::make_unique<BundleCache>(env);
+    cache_ = owned_cache_.get();
+  }
+
   const string filename = MetaFilename(prefix_);
   uint64 file_size;
   status_ = env_->GetFileSize(filename, &file_size);
@@ -829,12 +845,6 @@ BundleReader::~BundleReader() {
   delete table_;
   if (index_cache_) {
     delete index_cache_;
-  }
-  // InputBuffer does not own the underlying RandomAccessFile.
-  for (auto pair : data_) {
-    if (pair.second != nullptr && pair.second->file() != nullptr) {
-      delete pair.second->file();
-    }
   }
   for (auto& temp : data_) {
     delete temp.second;
@@ -899,11 +909,10 @@ Status BundleReader::GetValue(const BundleEntryProto& entry, Tensor* val) {
   // Open the data file if it has not been opened.
   io::InputBuffer* buffered_file = data_[entry.shard_id()];
   if (buffered_file == nullptr) {
-    std::unique_ptr<RandomAccessFile> file = nullptr;
-    TF_RETURN_IF_ERROR(env_->NewRandomAccessFile(
+    RandomAccessFile* file = nullptr;
+    TF_RETURN_IF_ERROR(cache_->GetFile(
         DataFilename(prefix_, entry.shard_id(), num_shards_), &file));
-    buffered_file = new io::InputBuffer(file.release(), kBufferSize);
-    // The InputBuffer and RandomAccessFile objects are both released in dtor.
+    buffered_file = new io::InputBuffer(file, kBufferSize);
     data_[entry.shard_id()] = buffered_file;
   }
   CHECK(buffered_file != nullptr);
@@ -914,7 +923,7 @@ Status BundleReader::GetValue(const BundleEntryProto& entry, Tensor* val) {
   if (DataTypeCanUseMemcpy(entry.dtype())) {
     char* backing_buffer = const_cast<char*>((ret->tensor_data().data()));
     size_t unused_bytes_read;
-    if (entry.size() > kBufferSize) {
+    if (entry.size() > kBufferSize || enable_multi_threading_for_testing_) {
       StringPiece sp;
       if (!enable_multi_threading_for_testing_ &&
           entry.size() < kLargeTensorThreshold) {
@@ -962,6 +971,8 @@ Status BundleReader::GetValue(const BundleEntryProto& entry, Tensor* val) {
             statuses[i] = std::move(status);
           });
         }
+        reader_pool = nullptr;  // Wait for reads to finish
+
         for (const auto& status : statuses) {
           TF_RETURN_IF_ERROR(status);
         }
@@ -1166,6 +1177,8 @@ Status BundleReader::GetSliceValue(StringPiece full_tensor_key,
       HANDLE_COPY(quint8)
       HANDLE_COPY(qint8)
       HANDLE_COPY(bfloat16)
+      HANDLE_COPY(int4)
+      HANDLE_COPY(uint4)
       default:
         return errors::InvalidArgument("Dtype ", DataTypeString(common_dtype),
                                        " not supported.");
@@ -1208,6 +1221,35 @@ string BundleReader::DebugString() {
     strings::StrAppend(&shape_str, "\n");
   }
   return shape_str;
+}
+
+BundleCache::BundleCache(Env* env) : env_(env) {}
+
+BundleCache::FileState* BundleCache::EnsureOpened(std::string name) {
+  // Get the file, opening it if necessary.
+  FileState* f;
+  {
+    absl::MutexLock l(&mu_);
+    auto& slot = opened_files_[name];
+    if (slot == nullptr) {
+      slot = std::make_unique<FileState>();
+    }
+    f = slot.get();
+  }
+
+  // Open the file or wait for a concurrent open to complete. We do not hold
+  // mu_ here to avoid blocking threads reading from other files.
+  absl::call_once(f->once, [this, name = std::move(name), f] {
+    f->open_status = env_->NewRandomAccessFile(name, &f->file);
+  });
+
+  return f;
+}
+
+Status BundleCache::GetFile(const std::string& fname, RandomAccessFile** file) {
+  FileState* f = EnsureOpened(fname);
+  *file = f->file.get();
+  return f->open_status;
 }
 
 namespace {

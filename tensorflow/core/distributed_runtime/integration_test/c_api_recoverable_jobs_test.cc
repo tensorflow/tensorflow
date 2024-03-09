@@ -31,8 +31,8 @@ limitations under the License.
 #include "tensorflow/core/protobuf/cluster.pb.h"
 #include "tensorflow/core/protobuf/rewriter_config.pb.h"
 #include "tensorflow/core/protobuf/tensorflow_server.pb.h"
-#include "tensorflow/tsl/lib/core/status_test_util.h"
-#include "tensorflow/tsl/protobuf/coordination_config.pb.h"
+#include "tsl/lib/core/status_test_util.h"
+#include "tsl/protobuf/coordination_config.pb.h"
 
 namespace tensorflow {
 namespace {

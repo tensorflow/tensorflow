@@ -19,7 +19,7 @@ limitations under the License.
 
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "tensorflow/compiler/jit/xla_compile_util.h"
-#include "tensorflow/compiler/mlir/tf2xla/api/v0/compile_mlir_util.h"
+#include "tensorflow/compiler/mlir/tf2xla/api/v1/compile_mlir_util.h"
 #include "tensorflow/compiler/mlir/utils/array_container_utils.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/core/framework/resource_op_kernel.h"
@@ -35,7 +35,7 @@ class MLIRContextResource : public ResourceBase {
 
   static Status Create(MLIRContextResource** resource) {
     *resource = new MLIRContextResource();
-    return OkStatus();
+    return absl::OkStatus();
   }
   mlir::MLIRContext* GetContext() { return &mlir_ctx_; }
   std::string DebugString() const override {
@@ -84,7 +84,7 @@ Status MlirXlaOpKernel::ContextToXlaArgs(
     }
     xla_args.push_back(arg);
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 MlirXlaOpKernel::MlirXlaOpKernel(OpKernelConstruction* ctx)
@@ -149,7 +149,7 @@ Status MlirXlaOpKernel::ConstructXlaOp(XlaOpKernelContext* ctx) {
     ctx->SetOutput(i, returns[i]);
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 void MlirXlaOpKernel::Compile(XlaOpKernelContext* ctx) {

@@ -25,7 +25,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/eager/eager_operation.h"
 #include "tensorflow/core/common_runtime/eager/execute_node.h"
 #include "tensorflow/core/platform/test.h"
-#include "tensorflow/tsl/lib/core/status_test_util.h"
+#include "tsl/lib/core/status_test_util.h"
 
 #define DEVICE_CPU0 "/job:localhost/replica:0/task:0/device:CPU:0"
 #define DEVICE_CPU0_TASK1 "/job:localhost/replica:0/task:1/device:CPU:0"
@@ -57,7 +57,7 @@ static Device* CreateDevice(const char* type, const char* name,
    public:
     explicit FakeDevice(const DeviceAttributes& attr, bool is_local)
         : Device(nullptr, attr), is_local_(is_local) {}
-    Status Sync() override { return OkStatus(); }
+    Status Sync() override { return absl::OkStatus(); }
     Allocator* GetAllocator(AllocatorAttributes) override { return nullptr; }
     bool IsLocal() const override { return is_local_; }
 

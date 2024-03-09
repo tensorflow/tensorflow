@@ -31,30 +31,101 @@ namespace ops {
 namespace {
 
 constexpr int kListInput = 0;
-constexpr int kIndexInput = 1;
-constexpr int kElementShapeInput = 2;
-constexpr int kOutput = 0;
 
-TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
-  TF_LITE_ENSURE(context, NumInputs(node) == 3);
+class GetItemSemantic {
+ public:
+  GetItemSemantic(TfLiteContext* ctx, TfLiteNode* node)
+      : ctx_(ctx), node_(node) {}
+
+  static constexpr int kElementShapeInputIdx = 2;
+  static constexpr int kTensorOutputIdx = 0;
+  static constexpr int kIndexInputIdx = 1;
+
+  [[nodiscard]] TfLiteStatus CheckAndHandleTensors() const {
+    TF_LITE_ENSURE(ctx_, NumInputs(node_) == 3 && NumOutputs(node_) == 1);
+    const TfLiteTensor* index_input;
+    TF_LITE_ENSURE_OK(ctx_,
+                      GetInputSafe(ctx_, node_, kIndexInputIdx, &index_input));
+    TF_LITE_ENSURE_TYPES_EQ(ctx_, index_input->type, kTfLiteInt32);
+    return kTfLiteOk;
+  }
+
+  [[nodiscard]] TfLiteStatus GetIndexVal(const TensorArray* const arr,
+                                         int& result) const {
+    const TfLiteTensor* index_input;
+    TF_LITE_ENSURE_OK(ctx_,
+                      GetInputSafe(ctx_, node_, kIndexInputIdx, &index_input));
+    TF_LITE_ENSURE_EQ(ctx_, index_input->bytes, sizeof(int));
+    result = *GetTensorData<int>(index_input);
+    return kTfLiteOk;
+  }
+
+  [[nodiscard]] TfLiteStatus HandleOutput(const TensorArray* const arr) const {
+    return kTfLiteOk;
+  }
+
+ private:
+  TfLiteContext* const ctx_;
+  TfLiteNode* const node_;
+};
+
+class PopBackSemantic {
+ public:
+  PopBackSemantic(TfLiteContext* ctx, TfLiteNode* node)
+      : ctx_(ctx), node_(node) {}
+
+  static constexpr int kElementShapeInputIdx = 1;
+  static constexpr int kTensorOutputIdx = 1;
+  static constexpr int kListOutputIdx = 0;
+
+  [[nodiscard]] TfLiteStatus CheckAndHandleTensors() const {
+    TF_LITE_ENSURE(ctx_, NumInputs(node_) == 2 && NumOutputs(node_) == 2);
+    TfLiteTensor* list_output;
+    TF_LITE_ENSURE_OK(ctx_,
+                      GetOutputSafe(ctx_, node_, kListOutputIdx, &list_output));
+    TF_LITE_ENSURE_TYPES_EQ(ctx_, list_output->type, kTfLiteVariant);
+    list_output->allocation_type = kTfLiteVariantObject;
+    return kTfLiteOk;
+  }
+
+  [[nodiscard]] TfLiteStatus GetIndexVal(const TensorArray* const arr,
+                                         int& result) const {
+    result = arr->NumElements() - 1;
+    return kTfLiteOk;
+  }
+
+  [[nodiscard]] TfLiteStatus HandleOutput(const TensorArray* const arr) const {
+    TfLiteTensor* list_output;
+    TF_LITE_ENSURE_OK(ctx_,
+                      GetOutputSafe(ctx_, node_, kListOutputIdx, &list_output));
+    TensorArray* output_arr = static_cast<TensorArray*>(
+        arr->CloneTo(static_cast<VariantData*>(list_output->data.data)));
+    output_arr->Resize(output_arr->NumElements() - 1);
+    list_output->data.data = output_arr;
+    return kTfLiteOk;
+  }
+
+ private:
+  TfLiteContext* const ctx_;
+  TfLiteNode* const node_;
+};
+
+template <class Semantic>
+TfLiteStatus Prepare(TfLiteContext* ctx, TfLiteNode* node) {
+  const auto semantic = Semantic(ctx, node);
+  TF_LITE_ENSURE_OK(ctx, semantic.CheckAndHandleTensors());
 
   const TfLiteTensor* list_input;
-  TF_LITE_ENSURE_OK(context,
-                    GetInputSafe(context, node, kListInput, &list_input));
-  TF_LITE_ENSURE_TYPES_EQ(context, list_input->type, kTfLiteVariant);
-
-  const TfLiteTensor* index_input;
-  TF_LITE_ENSURE_OK(context,
-                    GetInputSafe(context, node, kIndexInput, &index_input));
-  TF_LITE_ENSURE_TYPES_EQ(context, index_input->type, kTfLiteInt32);
+  TF_LITE_ENSURE_OK(ctx, GetInputSafe(ctx, node, kListInput, &list_input));
+  TF_LITE_ENSURE_TYPES_EQ(ctx, list_input->type, kTfLiteVariant);
 
   const TfLiteTensor* element_shape_input;
-  TF_LITE_ENSURE_OK(context, GetInputSafe(context, node, kElementShapeInput,
-                                          &element_shape_input));
-  TF_LITE_ENSURE_TYPES_EQ(context, index_input->type, kTfLiteInt32);
+  TF_LITE_ENSURE_OK(ctx, GetInputSafe(ctx, node, semantic.kElementShapeInputIdx,
+                                      &element_shape_input));
 
   TfLiteTensor* output;
-  TF_LITE_ENSURE_OK(context, GetOutputSafe(context, node, kOutput, &output));
+  TF_LITE_ENSURE_OK(
+      ctx, GetOutputSafe(ctx, node, semantic.kTensorOutputIdx, &output));
 
   const TfLiteIntArray* const out_dims_sig = output->dims_signature;
 
@@ -74,40 +145,36 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   return kTfLiteOk;
 }
 
-TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
-  const TfLiteTensor* index_input;
-  TF_LITE_ENSURE_OK(context,
-                    GetInputSafe(context, node, kIndexInput, &index_input));
-  TF_LITE_ENSURE_EQ(context, index_input->bytes, sizeof(int));
+template <class Semantic>
+TfLiteStatus Eval(TfLiteContext* ctx, TfLiteNode* node) {
+  const auto semantic = Semantic(ctx, node);
 
   const TfLiteTensor* list_input;
-  TF_LITE_ENSURE_OK(context,
-                    GetInputSafe(context, node, kListInput, &list_input));
-  TF_LITE_ENSURE_EQ(context, list_input->allocation_type, kTfLiteVariantObject);
-
-  TfLiteTensor* output;
-  TF_LITE_ENSURE_OK(context, GetOutputSafe(context, node, kOutput, &output));
-
+  TF_LITE_ENSURE_OK(ctx, GetInputSafe(ctx, node, kListInput, &list_input));
+  TF_LITE_ENSURE_EQ(ctx, list_input->allocation_type, kTfLiteVariantObject);
   const auto* arr = static_cast<const TensorArray*>(
       static_cast<VariantData*>(list_input->data.data));
-  TF_LITE_ENSURE_TYPES_EQ(context, arr->ElementType(), output->type);
 
-  const int idx = *GetTensorData<int>(index_input);
-  TF_LITE_ENSURE(context, idx >= 0 && idx < arr->NumElements());
+  int idx;
+  TF_LITE_ENSURE_OK(ctx, semantic.GetIndexVal(arr, idx));
+  TF_LITE_ENSURE(ctx, idx >= 0 && idx < arr->NumElements());
 
-  const TfLiteTensor* element = arr->At(idx);
+  TfLiteTensor* output;
+  TF_LITE_ENSURE_OK(
+      ctx, GetOutputSafe(ctx, node, semantic.kTensorOutputIdx, &output));
+  TF_LITE_ENSURE_TYPES_EQ(ctx, arr->ElementType(), output->type);
+
+  const TfLiteTensor* const element = arr->At(idx);
 
   if (element != nullptr) {
     if (IsDynamicTensor(output)) {
       size_t bytes;
-      TF_LITE_ENSURE_OK(context,
-                        BytesRequired(output->type, element->dims->data,
-                                      element->dims->size, &bytes, context));
-      TF_LITE_ENSURE_OK(context,
-                        TfLiteTensorResizeMaybeCopy(bytes, output, false));
+      TF_LITE_ENSURE_OK(ctx, BytesRequired(output->type, element->dims->data,
+                                           element->dims->size, &bytes, ctx));
+      TF_LITE_ENSURE_OK(ctx, TfLiteTensorResizeMaybeCopy(bytes, output, false));
     }
-    TF_LITE_ENSURE_OK(context, TfLiteTensorCopy(element, output));
-    return kTfLiteOk;
+    TF_LITE_ENSURE_OK(ctx, TfLiteTensorCopy(element, output));
+    return semantic.HandleOutput(arr);
   }
 
   // As in tensorflow, it is possible to "get" an empty element in the list.
@@ -116,17 +183,17 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   // the shape will be known at compile time so we can just use that.
   if (!IsDynamicTensor(output)) {
     memset(output->data.data, 0, output->bytes);
-    return kTfLiteOk;
+    return semantic.HandleOutput(arr);
   }
 
   const TfLiteTensor* element_shape_input;
-  TF_LITE_ENSURE_OK(context, GetInputSafe(context, node, kElementShapeInput,
-                                          &element_shape_input));
+  TF_LITE_ENSURE_OK(ctx, GetInputSafe(ctx, node, semantic.kElementShapeInputIdx,
+                                      &element_shape_input));
 
   IntArrayUniquePtr output_shape =
       MergeShapesOrNull(BuildTfLiteArray(*arr->ElementShape()),
                         TensorAsShape(*element_shape_input));
-  TF_LITE_ENSURE(context, output_shape != nullptr);
+  TF_LITE_ENSURE(ctx, output_shape != nullptr);
 
   const bool can_infer_shape = (element_shape_input->dims->size != 0 ||
                                 arr->ElementShape()->size != 0) &&
@@ -134,21 +201,29 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
 
   if (!can_infer_shape) {
     TF_LITE_ENSURE_MSG(
-        context,
+        ctx,
         GetShapeIfAllEqual(*arr, output_shape) == kTfLiteOk &&
             output_shape != nullptr,
         "Failed to infer the output shape for an item which has not been set.");
   }
 
-  context->ResizeTensor(context, output, output_shape.release());
+  ctx->ResizeTensor(ctx, output, output_shape.release());
   memset(output->data.data, 0, output->bytes);
-  return kTfLiteOk;
+
+  return semantic.HandleOutput(arr);
 }
 
 }  // namespace
 
 TfLiteRegistration* Register_LIST_GET_ITEM() {
-  static TfLiteRegistration r = {nullptr, nullptr, Prepare, Eval};
+  static TfLiteRegistration r = {nullptr, nullptr, Prepare<GetItemSemantic>,
+                                 Eval<GetItemSemantic>};
+  return &r;
+}
+
+TfLiteRegistration* Register_LIST_POP_BACK() {
+  static TfLiteRegistration r = {nullptr, nullptr, Prepare<PopBackSemantic>,
+                                 Eval<PopBackSemantic>};
   return &r;
 }
 

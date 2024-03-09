@@ -1002,15 +1002,15 @@ class ExportImportAcrossScopesTest(test.TestCase):
     expected = meta_graph.export_scoped_meta_graph(graph=expected_graph)[0]
 
     if use_resource:
-      # Clear all shared_name attributes before comparing, since they are
-      # orthogonal to scopes and are not updated on export/import.
+      # Clear all shared_name and debug_name attributes before comparing, since
+      # they are orthogonal to scopes and are not updated on export/import.
       for meta_graph_def in [result, expected]:
         for node in meta_graph_def.graph_def.node:
-          shared_name_attr = "shared_name"
-          shared_name_value = node.attr.get(shared_name_attr, None)
-          if shared_name_value and shared_name_value.HasField("s"):
-            if shared_name_value.s:
-              node.attr[shared_name_attr].s = b""
+          for attr_to_remove in ["shared_name", "debug_name"]:
+            attr_value = node.attr.get(attr_to_remove, None)
+            if attr_value and attr_value.HasField("s"):
+              if attr_value.s:
+                node.attr[attr_to_remove].s = b""
 
     test_util.assert_meta_graph_protos_equal(self, expected, result)
 

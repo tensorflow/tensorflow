@@ -51,7 +51,7 @@ using ::testing::UnorderedElementsAreArray;
 
 class InfiniteRange : public CachableSequence<int64_t> {
  public:
-  StatusOr<int64_t> GetNext() override { return next_++; }
+  absl::StatusOr<int64_t> GetNext() override { return next_++; }
   size_t GetElementSizeBytes(const int64_t& element) const override {
     return sizeof(element);
   }
@@ -63,7 +63,7 @@ class InfiniteRange : public CachableSequence<int64_t> {
 
 class TensorDataset : public CachableSequence<Tensor> {
  public:
-  StatusOr<Tensor> GetNext() override { return Tensor("Test Tensor"); }
+  absl::StatusOr<Tensor> GetNext() override { return Tensor("Test Tensor"); }
   size_t GetElementSizeBytes(const Tensor& element) const override {
     return element.TotalBytes();
   }
@@ -73,7 +73,7 @@ class SlowDataset : public CachableSequence<Tensor> {
  public:
   explicit SlowDataset(absl::Duration delay) : delay_(delay) {}
 
-  StatusOr<Tensor> GetNext() override {
+  absl::StatusOr<Tensor> GetNext() override {
     Env::Default()->SleepForMicroseconds(absl::ToInt64Microseconds(delay_));
     return Tensor("Test Tensor");
   }
@@ -369,7 +369,7 @@ TEST(CrossTrainerCacheTest, Cancel) {
         /*thread_options=*/{}, /*name=*/absl::StrCat("Trainer_", i),
         [&cache, &status, &mu]() {
           for (int j = 0; true; ++j) {
-            StatusOr<std::shared_ptr<const Tensor>> tensor =
+            absl::StatusOr<std::shared_ptr<const Tensor>> tensor =
                 cache.Get(absl::StrCat("Trainer_", j % 1000));
             {
               mutex_lock l(mu);

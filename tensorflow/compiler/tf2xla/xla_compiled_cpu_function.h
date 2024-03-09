@@ -20,10 +20,10 @@ limitations under the License.
 #include <string>
 #include <vector>
 
-#include "tensorflow/compiler/xla/cpu_function_runtime.h"
-#include "tensorflow/compiler/xla/executable_run_options.h"
-#include "tensorflow/compiler/xla/service/cpu/buffer_desc.h"
-#include "tensorflow/compiler/xla/service/custom_call_status_internal.h"
+#include "xla/cpu_function_runtime.h"
+#include "xla/executable_run_options.h"
+#include "xla/service/cpu/buffer_desc.h"
+#include "xla/service/custom_call_status_internal.h"
 #include "tensorflow/core/platform/types.h"
 
 // Forward-declare, rather than include, to reduce code size for users that
@@ -293,6 +293,18 @@ class XlaCompiledCpuFunction {
   // generated from the same static data, and might not be cheap to determine.
   // Recommended usage is to capture this in a variable for re-use.
   int LookupResultIndex(const string& name) const;
+
+  // Returns the name of the argument at `index`.
+  // Returns nullptr if `HasNameIndices() == false` or `index` is out of range.
+  const char* GetArgName(int index) const;
+
+  // Returns the name of the variable at `index`.
+  // Returns nullptr if `HasNameIndices() == false` or `index` is out of range.
+  const char* GetVariableName(int index) const;
+
+  // Returns the name of the result at `index`.
+  // Returns nullptr if `HasNameIndices() == false` or `index` is out of range.
+  const char* GetResultName(int index) const;
 
   // Returns the shape of the args and results. May return nullptr if the
   // program shape isn't available.

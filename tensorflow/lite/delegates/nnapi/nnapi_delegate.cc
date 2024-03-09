@@ -1459,15 +1459,48 @@ class NNAPIOpBuilder {
   TfLiteStatus TransformCosIntoSupportedOps(int lite_node_index,
                                             TfLiteNode* node,
                                             TfLiteRegistration* reg) {
-    const TfLiteTensor& theta = context_->tensors[node->inputs->data[0]];
-
-    // NNAPI only supports float sin
-    auto tensor_size = theta.bytes / sizeof(float);
+    const TfLiteTensor& input = context_->tensors[node->inputs->data[0]];
+    const TfLiteTensor& output = context_->tensors[node->outputs->data[0]];
 
     // Convert cos to sin: $cos(x) = sin(\frac{\pi}{2} - x)$
-    auto data = theta.data.f;
-    for (int i = 0; i < tensor_size; i++) {
-      data[i] = M_PI_2 - data[i];
+
+    int diff_out_ann_index;
+    // stage 1: $frac{\pi}{2} - x)$
+    {
+      // NNAPI only supports float sin
+      auto tensor_size = input.bytes / sizeof(float);
+
+      int tensor_index;
+      TF_LITE_ENSURE_OK(context_,
+                        AddNewInputConstantTensor(
+                            ANEURALNETWORKS_TENSOR_FLOAT32, kTfLiteFloat32,
+                            input.dims, std::vector<float>(tensor_size, M_PI_2),
+                            input.params, &tensor_index));
+
+      TF_LITE_ENSURE_OK(
+          context_, AddTensorInput(node->inputs->data[0], /*hybrid_op=*/false));
+
+      TF_LITE_ENSURE_OK(context_,
+                        AddScalarInt32Operand(ANEURALNETWORKS_FUSED_NONE));
+
+      TF_LITE_ENSURE_OK(
+          context_,
+          AddAdditionalOutputTensor(
+              output.dims->size, reinterpret_cast<uint32_t*>(output.dims->data),
+              ANEURALNETWORKS_TENSOR_FLOAT32, 0, 0, &diff_out_ann_index));
+
+      TF_LITE_ENSURE_OK(
+          context_, FinalizeAddOperation(ANEURALNETWORKS_SUB, lite_node_index));
+    }
+
+    // stage 2: $sin(\frac{\pi}{2} - x)$
+    {
+      augmented_inputs_.push_back(diff_out_ann_index);
+
+      TF_LITE_ENSURE_OK(context_, AddTensorOutput(node->outputs->data[0]));
+
+      TF_LITE_ENSURE_OK(
+          context_, FinalizeAddOperation(ANEURALNETWORKS_SIN, lite_node_index));
     }
 
     return kTfLiteOk;
@@ -2965,7 +2998,7 @@ bool NNAPIDelegateKernel::Validate(
       ExpectIsFloatOperator(context, node, &val_ctx);
     } break;
     case kTfLiteBuiltinTransposeConv: {
-      ExpectMaxOpVersion(version, 3, &val_ctx);
+      ExpectMaxOpVersion(version, 4, &val_ctx);
       ExpectMinAndroidSdkVersion(android_sdk_version, kMinSdkVersionForNNAPI12,
                                  &val_ctx);
       Expect((node->inputs->size > 1) &&
@@ -4042,8 +4075,7 @@ TfLiteStatus NNAPIDelegateKernel::Map(
       mapping_args.builder->AddScalarInt32Operand(builtin->padding);
       mapping_args.builder->AddScalarInt32Operand(builtin->stride_width);
       mapping_args.builder->AddScalarInt32Operand(builtin->stride_height);
-      mapping_args.builder->AddScalarInt32Operand(
-          /*ANEURALNETWORKS_FUSED_NONE*/ 0);
+      mapping_args.builder->AddScalarInt32Operand(builtin->activation);
       // Use NHWC layout for input and output.
       mapping_args.builder->AddScalarBoolOperand(false);
       *nn_op_type = ANEURALNETWORKS_TRANSPOSE_CONV;

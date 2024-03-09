@@ -16,7 +16,7 @@ limitations under the License.
 #include "tensorflow/core/framework/rendezvous.h"
 
 #include "absl/status/status.h"
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tensorflow/core/framework/cancellation.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
@@ -511,6 +511,7 @@ void BM_PingPong(::testing::benchmark::State& state) {
       TF_CHECK_OK(rendez->Recv(KeyBar(), args, &bar, &is_dead));
     }
     CHECK_EQ("bar", V(bar));
+    rendez->Unref();
   }
   state.SetItemsProcessed(messages_count * state.iterations());
   delete pool;

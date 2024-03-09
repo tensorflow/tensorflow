@@ -23,8 +23,8 @@ limitations under the License.
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/tpu/graph_rewrite/incomplete_nodedef_builder.h"
-#include "tensorflow/tsl/platform/errors.h"
-#include "tensorflow/tsl/platform/status.h"
+#include "tsl/platform/errors.h"
+#include "tsl/platform/status.h"
 
 namespace tensorflow {
 
@@ -83,7 +83,7 @@ Status CondBuilder::AddInput(const std::string& input_name,
       graph_->NewName(absl::StrCat(name_, "/", input_name)), type, debug);
   TF_RETURN_IF_ERROR(b.Device(device).Build(graph_, input));
   graph_->AddEdge(pred(), 0, *input, 1);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace tensorflow

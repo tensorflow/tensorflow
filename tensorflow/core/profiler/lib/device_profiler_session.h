@@ -25,7 +25,7 @@ limitations under the License.
 #include "tensorflow/core/profiler/lib/profiler_session.h"
 #include "tensorflow/core/profiler/protobuf/xplane.pb.h"
 #endif
-#include "tensorflow/tsl/profiler/protobuf/profiler_options.pb.h"
+#include "tsl/profiler/protobuf/profiler_options.pb.h"
 
 namespace tensorflow {
 
@@ -56,7 +56,7 @@ class DeviceProfilerSession {
     profiler::XSpace space;
     TF_RETURN_IF_ERROR(profiler_session_->CollectData(&space));
     profiler::ConvertGpuXSpaceToStepStats(space, step_stats);
-    return OkStatus();
+    return absl::OkStatus();
 #endif
   }
 

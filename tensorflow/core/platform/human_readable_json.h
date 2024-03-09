@@ -18,7 +18,7 @@ limitations under the License.
 
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/status.h"
-#include "tensorflow/tsl/platform/human_readable_json.h"
+#include "tsl/platform/human_readable_json.h"
 
 namespace tensorflow {
 using tsl::HumanReadableJsonToProto;

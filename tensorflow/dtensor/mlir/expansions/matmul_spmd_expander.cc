@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/dtensor/mlir/expansions/matmul_spmd_expander.h"
 
+#include <optional>
 #include <string>
 
 #include "absl/container/flat_hash_set.h"
@@ -101,8 +102,8 @@ StatusOr<mlir::Operation*> MatMulSPMDExpander::ExpandOp(mlir::Operation* op) {
 
 StatusOr<Layout> MatMulSPMDExpander::OutputLayoutAndReducedDims(
     bool allow_unknown_layouts, mlir::Operation* op,
-    absl::flat_hash_set<std::string>* reduced_dims,
-    absl::optional<Layout>* left, absl::optional<Layout>* right) {
+    absl::flat_hash_set<std::string>* reduced_dims, std::optional<Layout>* left,
+    std::optional<Layout>* right) {
   // These layouts are 2d layouts for the non-batch dimensions.
   Layout left_layout;
   Layout right_layout;
@@ -113,7 +114,7 @@ StatusOr<Layout> MatMulSPMDExpander::OutputLayoutAndReducedDims(
   Layout batch_layout;
 
   if (!*left || !*right) {
-    if (allow_unknown_layouts) return OkStatus();
+    if (allow_unknown_layouts) return absl::OkStatus();
     return errors::Unimplemented("failed to do SPMD expansion for ", OpName(op),
                                  " operand layouts "
                                  "unknown");
@@ -359,7 +360,7 @@ Status MatMulSPMDExpander::MaybeRelayoutInputs(
   TF_ASSIGN_OR_RETURN(
       right, EmitRelayout(op->getOperand(1), right_layout, new_right_layout));
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 StatusOr<llvm::DenseMap<int, Layout>> MatMulSPMDExpander::ComputeLayoutForward(
@@ -374,7 +375,7 @@ StatusOr<llvm::DenseMap<int, Layout>> MatMulSPMDExpander::ComputeLayoutForward(
                       GetShapeOfValue(op->getOperand(1)));
 
   // At least one input is set, calculate an output layout.
-  absl::optional<Layout> left, right;
+  std::optional<Layout> left, right;
   if (input_layouts.find(0) != input_layouts.end())
     left.emplace(input_layouts.lookup(0));
   else

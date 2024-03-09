@@ -16,7 +16,7 @@ limitations under the License.
 #include "tensorflow/core/framework/rng_alg.h"
 #include "tensorflow/core/framework/shape_inference.h"
 #include "tensorflow/core/lib/core/status.h"
-#include "tensorflow/tsl/platform/errors.h"
+#include "tsl/platform/errors.h"
 
 namespace tensorflow {
 
@@ -42,7 +42,7 @@ REGISTER_OP("StochasticCastToInt")
       TF_RETURN_IF_ERROR(
           c->WithValue(c->Dim(key, 0), RNG_KEY_SIZE, &dim));  // alg dim
       c->set_output(0, c->input(0));                          // out shape
-      return OkStatus();
+      return absl::OkStatus();
     });
 
 // TODO(b/232442915): Add support for rounding floats to lower precision floats.

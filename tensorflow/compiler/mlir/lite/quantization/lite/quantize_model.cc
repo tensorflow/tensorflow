@@ -30,10 +30,10 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/flatbuffer_export.h"
 #include "tensorflow/compiler/mlir/lite/flatbuffer_import.h"
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
-#include "tensorflow/compiler/mlir/lite/quantization/quantization_config.h"
 #include "tensorflow/compiler/mlir/lite/tf_tfl_passes.h"
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h"
 #include "tensorflow/compiler/mlir/lite/utils/convert_type.h"
+#include "tensorflow/compiler/mlir/quantization/common/quantization_lib/quantization_config.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/lite/c/c_api_types.h"
@@ -58,7 +58,8 @@ TfLiteStatus QuantizeModel(
     bool whole_model_verify, bool legacy_float_scale,
     const absl::flat_hash_set<std::string>& denylisted_ops,
     const absl::flat_hash_set<std::string>& denylisted_nodes,
-    const bool enable_variable_quantization) {
+    const bool enable_variable_quantization,
+    bool disable_per_channel_for_dense_layers) {
   // Translate TFLite names to mlir op names.
   absl::flat_hash_set<std::string> denylisted_mlir_op_names;
   for (const auto& entry : denylisted_ops) {
@@ -84,6 +85,8 @@ TfLiteStatus QuantizeModel(
   quant_specs.inference_type = tflite::TflTypeToTfType(inference_type);
   quant_specs.post_training_quantization = true;
   quant_specs.disable_per_channel = disable_per_channel;
+  quant_specs.disable_per_channel_for_dense_layers =
+      disable_per_channel_for_dense_layers;
   quant_specs.verify_numeric = verify_numeric;
   quant_specs.whole_model_verify = whole_model_verify;
   quant_specs.legacy_float_scale = legacy_float_scale;
@@ -108,7 +111,7 @@ TfLiteStatus QuantizeModel(
     output_mlir_type = input_mlir_type;
   }
 
-  tensorflow::AddQuantizationPasses(quant_specs, pm);
+  tensorflow::AddQuantizationPasses(mlir::TFL::PassConfig(quant_specs), pm);
   pm.addPass(TFL::CreateModifyIONodesPass(input_mlir_type, output_mlir_type));
   // If the first or final ops are not quantized, remove QDQ.
   pm.addPass(TFL::CreatePostQuantizeRemoveQDQPass());

@@ -14,17 +14,47 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/tfrt/fallback/fallback_state.h"
 
+#include <cstddef>
+#include <cstdint>
 #include <memory>
 #include <utility>
 #include <vector>
 
+#include "absl/strings/string_view.h"
+#include "absl/strings/strip.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/common_runtime/rendezvous_mgr.h"
+#include "tensorflow/core/framework/device_attributes.pb.h"
 #include "tensorflow/core/framework/device_factory.h"
+#include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/graph/types.h"
+#include "tensorflow/core/platform/strcat.h"
+#include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/public/version.h"
+#include "tensorflow/core/tpu/virtual_device.h"
 
 namespace tensorflow {
 namespace tfrt_stub {
+
+namespace {
+
+string DeviceName(absl::string_view name_prefix, absl::string_view device_type,
+                  int32_t task_id, size_t device_id) {
+  return strings::StrCat(absl::StripSuffix(name_prefix, "0"), task_id,
+                         "/device:", device_type, ":", device_id);
+}
+
+DeviceAttributes BuildDeviceAttributes(absl::string_view name_prefix,
+                                       const char *device_type, int32_t task_id,
+                                       size_t device_id) {
+  const DeviceAttributes attrs = Device::BuildDeviceAttributes(
+      DeviceName(name_prefix, device_type, task_id, device_id),
+      DeviceType(device_type), Bytes(16ULL << 30), DeviceLocality(),
+      strings::StrCat("device: ", device_type, " device"));
+  return attrs;
+}
+
+}  // namespace
 
 StatusOr<std::unique_ptr<FallbackState>> FallbackState::Create(
     const SessionOptions &session_options,
@@ -45,6 +75,23 @@ StatusOr<std::unique_ptr<FallbackState>> FallbackState::CreateWithCpuDevice(
   std::vector<std::unique_ptr<Device>> devices;
   TF_RETURN_IF_ERROR(DeviceFactory::AddCpuDevices(
       session_options, "/job:localhost/replica:0/task:0", &devices));
+
+  return std::make_unique<FallbackState>(session_options, std::move(devices),
+                                         fdef_lib);
+}
+
+StatusOr<std::unique_ptr<FallbackState>> FallbackState::CreateWithMockGpuDevice(
+    const SessionOptions &session_options,
+    const tensorflow::FunctionDefLibrary &fdef_lib) {
+  // Create devices.
+  std::vector<std::unique_ptr<Device>> devices;
+  TF_RETURN_IF_ERROR(DeviceFactory::AddCpuDevices(
+      session_options, "/job:localhost/replica:0/task:0", &devices));
+
+  auto device_attrs =
+      BuildDeviceAttributes("/job:localhost/replica:0/task:0", "GPU", 0, 0);
+  devices.push_back(
+      std::make_unique<VirtualDevice>(session_options.env, device_attrs));
 
   return std::make_unique<FallbackState>(session_options, std::move(devices),
                                          fdef_lib);

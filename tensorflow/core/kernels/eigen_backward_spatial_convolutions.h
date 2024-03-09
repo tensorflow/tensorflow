@@ -16,8 +16,8 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_KERNELS_EIGEN_BACKWARD_SPATIAL_CONVOLUTIONS_H_
 #define TENSORFLOW_CORE_KERNELS_EIGEN_BACKWARD_SPATIAL_CONVOLUTIONS_H_
 
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
-#include "tensorflow/tsl/framework/convolution/eigen_spatial_convolutions.h"
+#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
+#include "tsl/framework/convolution/eigen_spatial_convolutions.h"
 
 namespace Eigen {
 

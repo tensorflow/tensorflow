@@ -18,7 +18,10 @@ import collections.abc
 import os
 from typing import Iterable, Mapping, Optional, Union
 
-from tensorflow.compiler.mlir.quantization.tensorflow import quantization_options_pb2 as quant_opts_pb2
+import numpy as np
+
+from tensorflow.compiler.mlir.quantization.tensorflow import quantization_options_pb2
+from tensorflow.core.protobuf import meta_graph_pb2
 from tensorflow.python.client import session
 from tensorflow.python.data.ops import readers
 from tensorflow.python.eager import context
@@ -26,7 +29,7 @@ from tensorflow.python.framework import tensor_util
 from tensorflow.python.lib.io import python_io
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.types import core
-
+from tensorflow.python.util import tf_export
 
 # A representative sample is a map of: input_key -> input_value.
 # Ex.: {'dense_input': tf.constant([1, 2, 3])}
@@ -47,6 +50,10 @@ RepresentativeDatasetOrMapping = Union[
     RepresentativeDataset, RepresentativeDatasetMapping
 ]
 
+# Type aliases for quantization_options_pb2 messages.
+_RepresentativeDataSample = quantization_options_pb2.RepresentativeDataSample
+_RepresentativeDatasetFile = quantization_options_pb2.RepresentativeDatasetFile
+
 
 class RepresentativeDatasetSaver:
   """Representative dataset saver.
@@ -61,7 +68,7 @@ class RepresentativeDatasetSaver:
 
   def save(
       self, representative_dataset: RepresentativeDatasetMapping
-  ) -> Mapping[str, quant_opts_pb2.RepresentativeDatasetFile]:
+  ) -> Mapping[str, _RepresentativeDatasetFile]:
     """Saves the representative dataset.
 
     Args:
@@ -71,11 +78,43 @@ class RepresentativeDatasetSaver:
     raise NotImplementedError('Method "save" is not implemented.')
 
 
+@tf_export.tf_export(
+    'quantization.experimental.TfRecordRepresentativeDatasetSaver'
+)
 class TfRecordRepresentativeDatasetSaver(RepresentativeDatasetSaver):
   """Representative dataset saver in TFRecord format.
 
   Saves representative datasets for quantization calibration in TFRecord format.
   The samples are serialized as `RepresentativeDataSample`.
+
+  The `save` method return a signature key to `RepresentativeDatasetFile` map,
+  which can be used for QuantizationOptions.
+
+  Example usage:
+
+  ```python
+  # Creating the representative dataset.
+  representative_dataset = [{"input": tf.random.uniform(shape=(3, 3))}
+                        for _ in range(256)]
+
+  # Saving to a TFRecord file.
+  dataset_file_map = (
+    tf.quantization.experimental.TfRecordRepresentativeDatasetSaver(
+          path_map={'serving_default': '/tmp/representative_dataset_path'}
+      ).save({'serving_default': representative_dataset})
+  )
+
+  # Using in QuantizationOptions.
+  quantization_options = tf.quantization.experimental.QuantizationOptions(
+      signature_keys=['serving_default'],
+      representative_datasets=dataset_file_map,
+  )
+  tf.quantization.experimental.quantize_saved_model(
+      '/tmp/input_model',
+      '/tmp/output_model',
+      quantization_options=quantization_options,
+  )
+  ```
   """
 
   def __init__(self, path_map: Mapping[str, os.PathLike[str]]):
@@ -93,7 +132,7 @@ class TfRecordRepresentativeDatasetSaver(RepresentativeDatasetSaver):
       self,
       repr_ds: RepresentativeDataset,
       signature_def_key: str,
-  ) -> quant_opts_pb2.RepresentativeDatasetFile:
+  ) -> _RepresentativeDatasetFile:
     """Saves `repr_ds` to a TFRecord file.
 
     Each sample in `repr_ds` is serialized as `RepresentativeDataSample`.
@@ -105,10 +144,16 @@ class TfRecordRepresentativeDatasetSaver(RepresentativeDatasetSaver):
     Returns:
       a RepresentativeDatasetFile instance contains the path to the saved file.
     """
+    # When running in graph mode (TF1), tf.Tensor types should be converted to
+    # numpy ndarray types to be compatible with `make_tensor_proto`.
+    if not context.executing_eagerly():
+      with session.Session() as sess:
+        repr_ds = replace_tensors_by_numpy_ndarrays(repr_ds, sess)
+
     tfrecord_file_path = self.path_map[signature_def_key]
     with python_io.TFRecordWriter(tfrecord_file_path) as writer:
       for repr_sample in repr_ds:
-        sample = quant_opts_pb2.RepresentativeDataSample()
+        sample = _RepresentativeDataSample()
         for input_name, input_value in repr_sample.items():
           sample.tensor_proto_inputs[input_name].CopyFrom(
               tensor_util.make_tensor_proto(input_value)
@@ -121,13 +166,13 @@ class TfRecordRepresentativeDatasetSaver(RepresentativeDatasetSaver):
         signature_def_key,
         tfrecord_file_path,
     )
-    return quant_opts_pb2.RepresentativeDatasetFile(
+    return _RepresentativeDatasetFile(
         tfrecord_file_path=str(tfrecord_file_path)
     )
 
   def save(
       self, representative_dataset: RepresentativeDatasetMapping
-  ) -> Mapping[str, quant_opts_pb2.RepresentativeDatasetFile]:
+  ) -> Mapping[str, _RepresentativeDatasetFile]:
     """Saves the representative dataset.
 
     Args:
@@ -163,9 +208,25 @@ class RepresentativeDatasetLoader:
   Exposes the `load` method that loads the representative dataset from files.
   """
 
+  def load(self) -> RepresentativeDatasetMapping:
+    """Loads the representative datasets.
+
+    Returns:
+      representative dataset mapping: A loaded signature def key ->
+      representative mapping.
+    """
+    raise NotImplementedError('Method "load" is not implemented.')
+
+
+class TfRecordRepresentativeDatasetLoader(RepresentativeDatasetLoader):
+  """TFRecord representative dataset loader.
+
+  Loads representative dataset stored in TFRecord files.
+  """
+
   def __init__(
       self,
-      dataset_file_map: Mapping[str, quant_opts_pb2.RepresentativeDatasetFile],
+      dataset_file_map: Mapping[str, _RepresentativeDatasetFile],
   ) -> None:
     """Initializes TFRecord represenatative dataset loader.
 
@@ -182,7 +243,7 @@ class RepresentativeDatasetLoader:
     samples = []
     with context.eager_mode():
       for sample_bytes in readers.TFRecordDatasetV2(filenames=[tf_record_path]):
-        sample_proto = quant_opts_pb2.RepresentativeDataSample().FromString(
+        sample_proto = _RepresentativeDataSample.FromString(
             sample_bytes.numpy()
         )
         sample = {}
@@ -266,3 +327,40 @@ def get_num_samples(repr_ds: RepresentativeDataset) -> Optional[int]:
       return None
   else:
     return None
+
+
+def create_feed_dict_from_input_data(
+    input_data: RepresentativeSample,
+    signature_def: meta_graph_pb2.SignatureDef,
+) -> Mapping[str, np.ndarray]:
+  """Constructs a feed_dict from input data.
+
+  Note: This function should only be used in graph mode.
+
+  This is a helper function that converts an 'input key -> input value' mapping
+  to a feed dict. A feed dict is an 'input tensor name -> input value' mapping
+  and can be directly passed to the `feed_dict` argument of `sess.run()`.
+
+  Args:
+    input_data: Input key -> input value mapping. The input keys should match
+      the input keys of `signature_def`.
+    signature_def: A SignatureDef representing the function that `input_data` is
+      an input to.
+
+  Returns:
+    Feed dict, which is intended to be used as input for `sess.run`. It is
+    essentially a mapping: input tensor name -> input value. Note that the input
+    value in the feed dict is not a `Tensor`.
+  """
+  feed_dict = {}
+  for input_key, input_value in input_data.items():
+    input_tensor_name = signature_def.inputs[input_key].name
+
+    value = input_value
+    if isinstance(input_value, core.Tensor):
+      # Take the data out of the tensor.
+      value = input_value.eval()
+
+    feed_dict[input_tensor_name] = value
+
+  return feed_dict

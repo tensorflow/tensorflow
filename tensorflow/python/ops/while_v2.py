@@ -142,8 +142,6 @@ def while_loop(cond,
         return math_ops.logical_and(
             loop_counter < maximum_iterations_arg, pred)
 
-    # NOTE(skyewm): we set collections to the outer graph's collections for
-    # compatibility with TPUEstimator.
     cond_graph = func_graph_module.func_graph_from_py_func(
         cond_name,
         wrapped_cond,
@@ -323,7 +321,7 @@ def while_loop(cond,
 
 @ops.RegisterGradient("StatelessWhile")
 @ops.RegisterGradient("While")
-def _WhileGrad(op, *grads):  # pylint: disable=invalid-name
+def _WhileGrad(op: ops.Operation, *grads):  # pylint: disable=invalid-name
   """The gradient of a While op produced by while_loop."""
   # Note that op is not always the same as while_op because the gradient tape,
   # for eager mode compatibility, forgets information about the proper op. Since
@@ -1387,7 +1385,7 @@ def _is_loop_invariant(tensor, inputs, outputs):
           any(tensor is t for t in outputs))
 
 
-def _set_read_only_resource_inputs_attr(op, branch_graphs):
+def _set_read_only_resource_inputs_attr(op: ops.Operation, branch_graphs):
   """Sets the list of resource inputs which are read-only.
 
   This is used by AutomaticControlDependencies.

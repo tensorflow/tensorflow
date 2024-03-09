@@ -20,6 +20,7 @@ import sys
 # pylint: disable=invalid-import-order,g-bad-import-order
 from tensorflow.python import pywrap_tensorflow  # pylint: disable=unused-import
 from tensorflow.python import _pywrap_toco_api
+from tensorflow.compiler.mlir.quantization.tensorflow.python import py_function_lib  # pylint: disable=unused-import; required for TocoConvert to understand the type: PyFunctionLibrary
 from absl import app
 
 FLAGS = None
@@ -49,7 +50,9 @@ def execute(unused_args):
       input_str,
       False,  # extended_return
       debug_info_str,
-      enable_mlir_converter)
+      enable_mlir_converter,
+      None,  # quantization_py_function_library
+  )
   open(FLAGS.model_output_file, "wb").write(output_str)
   sys.exit(0)
 

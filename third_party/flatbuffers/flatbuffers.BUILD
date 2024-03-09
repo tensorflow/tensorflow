@@ -68,7 +68,7 @@ filegroup(
         "include/flatbuffers/vector_downward.h",
         "include/flatbuffers/verifier.h",
     ],
-    visibility = ["//:__subpackages__"],
+    visibility = ["//visibility:public"],
 )
 
 # Public flatc compiler library.
@@ -107,7 +107,7 @@ filegroup(
     srcs = [
         "include/flatbuffers/flatc.h",
     ],
-    visibility = ["//:__subpackages__"],
+    visibility = ["//visibility:public"],
 )
 
 # Library used by flatbuffer_cc_library rules.

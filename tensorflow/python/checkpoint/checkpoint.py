@@ -16,8 +16,10 @@
 
 import abc
 import collections
+import copy
 import functools
 import glob
+import inspect
 import os
 import threading
 import time
@@ -120,6 +122,21 @@ def _get_checkpoint_size(prefix):
     # Use TensorFlow's C++ FileSystem API.
     size += metrics.CalculateFileSize(file)
   return size
+
+
+def _execute_callbacks(callbacks, save_path):
+  """Executes a list of callback functions, providing `save_path` if needed."""
+  for callback in callbacks:
+    num_params = len(inspect.signature(callback).parameters)
+    if num_params == 0:
+      callback()
+    elif num_params == 1:
+      callback(save_path)
+    else:
+      raise AssertionError(
+          "Callback functions for checkpoint are required to have 0 or 1"
+          f"parameters, but this has {num_params} parameters: {callback}"
+      )
 
 
 class ObjectGraphProtoPrettyPrinter:
@@ -288,19 +305,24 @@ class _CheckpointRestoreCoordinator:
     # restored when the variable is created/tracked. These get shifted over to
     # deferred_slot_restorations if the optimizer hasn't been created when that
     # happens.
-    self.slot_restorations = {}
+    self.slot_restorations = collections.defaultdict(list)
     # Controls whether errors are printed in __del__ if some objects did not
     # match.
     self.expect_partial_attr = False
-    for node_index, node in enumerate(self.object_graph_proto.nodes):
-      for slot_reference in node.slot_variables:
-        # `node` refers to an `Optimizer`, since only these have slot variables.
-        self.slot_restorations.setdefault(
-            slot_reference.original_variable_node_id, []).append(
-                base._SlotVariableRestoration(  # pylint: disable=protected-access
-                    optimizer_id=node_index,
-                    slot_variable_id=slot_reference.slot_variable_node_id,
-                    slot_name=slot_reference.slot_name))
+    if not self.options.experimental_skip_slot_variables:
+      for node_index, node in enumerate(self.object_graph_proto.nodes):
+        for slot_reference in node.slot_variables:
+          # `node` refers to an `Optimizer`, since only these have slot
+          # variables.
+          self.slot_restorations[
+              slot_reference.original_variable_node_id
+          ].append(
+              base._SlotVariableRestoration(  # pylint: disable=protected-access
+                  optimizer_id=node_index,
+                  slot_variable_id=slot_reference.slot_variable_node_id,
+                  slot_name=slot_reference.slot_name,
+              )
+          )
 
     self._deleter = _CheckpointRestoreCoordinatorDeleter(
         self.expect_partial_attr,
@@ -772,13 +794,15 @@ class CheckpointLoadStatus(_LoadStatus):
   See `Saver.restore` for usage examples.
   """
 
-  def __init__(self, checkpoint, feed_dict, graph_view):
+  def __init__(self, checkpoint, feed_dict, graph_view, options):
     self._checkpoint = checkpoint
     self._feed_dict = feed_dict
     self._object_graph_view = graph_view
     # Keep a reference to the root, since object_graph_view might only have a
     # weakref.
     self._root = graph_view.root
+    # CheckpointOptions used for restoring
+    self._options = options
 
   def assert_consumed(self):
     """Asserts that all objects in the checkpoint have been created/matched.
@@ -794,18 +818,28 @@ class CheckpointLoadStatus(_LoadStatus):
     pretty_printer = ObjectGraphProtoPrettyPrinter(
         self._checkpoint.object_graph_proto)
     self.assert_existing_objects_matched()
+    ignore_node_ids = []
+    if self._options.experimental_skip_slot_variables:
+      for node in self._checkpoint.object_graph_proto.nodes:
+        for sv in node.slot_variables:
+          ignore_node_ids.append(sv.slot_variable_node_id)
     for node_id, node in enumerate(self._checkpoint.object_graph_proto.nodes):
       if not node.attributes:
         # Only raise exceptions for the nodes with attributes themselves. Either
         # they're ultimately not important, or they have a child with an
         # attribute.
         continue
+      if node_id in ignore_node_ids:
+        continue
       trackable = self._checkpoint.object_by_proto_id.get(node_id, None)
       if trackable is None:
         raise AssertionError(
             "Unresolved object in checkpoint "
             f"{pretty_printer.node_names[node_id]}: {node}")
-    if self._checkpoint.slot_restorations:
+    if (
+        not self._options.experimental_skip_slot_variables
+        and self._checkpoint.slot_restorations
+    ):
       # Sanity check; this collection should be clear if everything has been
       # restored.
       raise AssertionError(
@@ -845,13 +879,16 @@ class CheckpointLoadStatus(_LoadStatus):
           trackable._update_uid < self._checkpoint.restore_uid):  # pylint: disable=protected-access
         raise AssertionError(
             f"Object {node} not assigned a value from checkpoint.")
-    for trackable_object in util.list_objects(self._object_graph_view):
+    for trackable_object in util.list_objects(
+        self._object_graph_view, self._options.experimental_skip_slot_variables
+    ):
       # Remove data structures that do not contain any variables from
       # restoration checks.
-      if (isinstance(trackable_object,
-                     data_structures.TrackableDataStructure) and
-          not trackable_object._trackable_children(  # pylint: disable=protected-access
-              save_type=base.SaveType.CHECKPOINT)):
+      if isinstance(
+          trackable_object, data_structures.TrackableDataStructure
+      ) and not trackable_object._trackable_children(  # pylint: disable=protected-access
+          save_type=base.SaveType.CHECKPOINT
+      ):
         continue
       self._checkpoint.all_python_objects.add(trackable_object)
     unused_python_objects = (
@@ -874,24 +911,28 @@ class CheckpointLoadStatus(_LoadStatus):
 
   def assert_nontrivial_match(self):
     """Raises an exception if only the root object matched."""
-    for trackable_object in util.list_objects(self._object_graph_view):
+    for trackable_object in util.list_objects(
+        self._object_graph_view, self._options.experimental_skip_slot_variables
+    ):
       self._checkpoint.all_python_objects.add(trackable_object)
     if len(self._checkpoint.object_by_proto_id) <= 1:
-      unused_python_objects = (
-          object_identity.ObjectIdentitySet(
-              _objects_with_attributes(self._checkpoint.all_python_objects)) -
-          object_identity.ObjectIdentitySet(
-              self._checkpoint.object_by_proto_id.values()))
+      unused_python_objects = object_identity.ObjectIdentitySet(
+          _objects_with_attributes(self._checkpoint.all_python_objects)
+      ) - object_identity.ObjectIdentitySet(
+          self._checkpoint.object_by_proto_id.values()
+      )
       if unused_python_objects:
         raise AssertionError(
             "Nothing except the root object matched a checkpointed value. "
             "Typically this means that the checkpoint does not match the "
             "Python program. The following objects have no matching "
-            f"checkpointed value: {list(unused_python_objects)}")
+            f"checkpointed value: {list(unused_python_objects)}"
+        )
       else:
         raise AssertionError(
             "Nothing to load. No dependencies have been added to "
-            f"{self._object_graph_view.root} yet.")
+            f"{self._object_graph_view.root} yet."
+        )
     return self
 
   def run_restore_ops(self, session=None):
@@ -1493,7 +1534,8 @@ class TrackableSaver:
     load_status = CheckpointLoadStatus(
         checkpoint,
         graph_view=self._graph_view,
-        feed_dict=file_prefix_feed_dict)
+        feed_dict=file_prefix_feed_dict,
+        options=options)
     return load_status
 
 
@@ -1726,7 +1768,7 @@ class CheckpointV1(autotrackable.AutoTrackable):
                 dtype=dtypes.int64,
                 trainable=False))
 
-  def write(self, file_prefix, session=None):
+  def write(self, file_prefix, session=None, options=None):
     """Writes a training checkpoint.
 
     The checkpoint includes variables created by this object and any
@@ -1744,13 +1786,14 @@ class CheckpointV1(autotrackable.AutoTrackable):
       session: The session to evaluate variables in. Ignored when executing
         eagerly. If not provided when graph building, the default session is
         used.
+      options: Optional `tf.train.CheckpointOptions` object.
 
     Returns:
       The full path to the checkpoint (i.e. `file_prefix`).
     """
-    return self._write(file_prefix, session)
+    return self._write(file_prefix, session, options=options)
 
-  def _write(self, file_prefix, session=None, write_done_callback=None):
+  def _write(self, file_prefix, session=None, options=None):
     """Writes a training checkpoint.
 
     The checkpoint includes variables created by this object and any
@@ -1768,15 +1811,14 @@ class CheckpointV1(autotrackable.AutoTrackable):
       session: The session to evaluate variables in. Ignored when executing
         eagerly. If not provided when graph building, the default session is
         used.
-      write_done_callback: Optional callback function to be executed once
-        the underlying checkpoint saving is finished. Example usage includes
-        updating the checkpoint internal state.
+      options: Optional `tf.train.CheckpointOptions` object.
 
     Returns:
       The full path to the checkpoint (i.e. `file_prefix`).
     """
     start_time = time.time()
-    output = self._saver.save(file_prefix=file_prefix, session=session)
+    output = self._saver.save(file_prefix=file_prefix, session=session,
+                              options=options)
     end_time = time.time()
 
     metrics.AddCheckpointWriteDuration(
@@ -1805,8 +1847,10 @@ class CheckpointV1(autotrackable.AutoTrackable):
       # Graph + Session, so we already session.ran it.
       output = compat.as_str(output)
 
-    if write_done_callback:
-      write_done_callback(output)
+    # Execute callbacks
+    if (options is not None and
+        options.experimental_write_callbacks is not None):
+      _execute_callbacks(options.experimental_write_callbacks, output)
 
     metrics.RecordCheckpointSize(
         api_label=_CHECKPOINT_V1, filesize=_get_checkpoint_size(output))
@@ -1824,7 +1868,7 @@ class CheckpointV1(autotrackable.AutoTrackable):
     self._maybe_create_save_counter()
     return self._save_counter
 
-  def save(self, file_prefix, session=None):
+  def save(self, file_prefix, session=None, options=None):
     """Saves a training checkpoint and provides basic checkpoint management.
 
     The saved checkpoint includes variables created by this object and any
@@ -1845,6 +1889,7 @@ class CheckpointV1(autotrackable.AutoTrackable):
       session: The session to evaluate variables in. Ignored when executing
         eagerly. If not provided when graph building, the default session is
         used.
+      options: Optional `tf.train.CheckpointOptions` object.
 
     Returns:
       The full path to the checkpoint.
@@ -1876,7 +1921,10 @@ class CheckpointV1(autotrackable.AutoTrackable):
     else:
       checkpoint_number = assign_op.numpy()
     file_path = self.write(
-        "%s-%d" % (file_prefix, checkpoint_number), session=session)
+        "%s-%d" % (file_prefix, checkpoint_number),
+        session=session,
+        options=options
+    )
     checkpoint_management.update_checkpoint_state_internal(
         save_dir=os.path.dirname(file_prefix),
         model_checkpoint_path=file_path,
@@ -2281,16 +2329,13 @@ class Checkpoint(autotrackable.AutoTrackable):
 
     return self._async_checkpointer_impl
 
-  def _write(self, file_prefix, options=None, write_done_callback=None):
+  def _write(self, file_prefix, options=None):
     """Internal method that implements Checkpoint.write().
 
     Args:
       file_prefix: A prefix to use for the checkpoint filenames
         (/path/to/directory/and_a_prefix).
       options: Optional `tf.train.CheckpointOptions` object.
-      write_done_callback: Optional callback function to be executed once
-        the underlying checkpoint saving is finished. Example usage includes
-        updating the checkpoint internal state.
 
     Returns:
       The full path to the checkpoint (i.e. `file_prefix`).
@@ -2313,7 +2358,7 @@ class Checkpoint(autotrackable.AutoTrackable):
         )
       elif context.executing_eagerly():
         return self._async_checkpointer()._write(  # pylint: disable=protected-access
-            file_prefix, options, write_done_callback)
+            file_prefix, options)
       else:
         logging.warning(
             "Saving async checkpoint in graph mode is currently not supported;"
@@ -2324,8 +2369,10 @@ class Checkpoint(autotrackable.AutoTrackable):
     output = self._saver.save(file_prefix=file_prefix, options=options)
     output = _convert_file_name_tensor_to_string(output)
 
-    if write_done_callback:
-      write_done_callback(output)
+    # Execute callbacks (the only place they are executed; i.e. all entry points
+    # for callbacks will ultimately be directed to here for execution)
+    if options.experimental_write_callbacks:
+      _execute_callbacks(options.experimental_write_callbacks, output)
 
     # Ensure save operations have completed when running in eager runtime.
     if context.executing_eagerly():
@@ -2445,7 +2492,9 @@ class Checkpoint(autotrackable.AutoTrackable):
     if isinstance(file_prefix, os.PathLike):
       file_prefix = os.fspath(file_prefix)
     # pylint:enable=line-too-long
-    options = options or checkpoint_options.CheckpointOptions()
+    # We create a copy so that user's `options` instance would not be mutated
+    # by internal mechanisms.
+    options = copy.copy(options) or checkpoint_options.CheckpointOptions()
     graph_building = not context.executing_eagerly()
     if graph_building:
       if ops.inside_function():
@@ -2474,10 +2523,16 @@ class Checkpoint(autotrackable.AutoTrackable):
     else:
       checkpoint_number = assign_op.numpy()
 
+    if options.experimental_write_callbacks is None:
+      options.experimental_write_callbacks = [_update_checkpoint_state_internal]
+    else:
+      options.experimental_write_callbacks.append(
+          _update_checkpoint_state_internal
+      )
+
     return self._write(
         "%s-%d" % (file_prefix, checkpoint_number),
-        options=options,
-        write_done_callback=_update_checkpoint_state_internal)
+        options=options)
 
   def read(self, save_path, options=None):
     """Reads a training checkpoint written with `write`.

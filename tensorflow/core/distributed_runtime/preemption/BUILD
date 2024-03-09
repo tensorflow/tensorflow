@@ -13,7 +13,7 @@ cc_library(
     name = "preemption_sync_manager",
     hdrs = ["preemption_sync_manager.h"],
     deps = [
-        "//tensorflow/tsl/distributed_runtime/preemption:preemption_sync_manager",
+        "@local_tsl//tsl/distributed_runtime/preemption:preemption_sync_manager",
     ],
 )
 
@@ -31,8 +31,8 @@ tf_kernel_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core/distributed_runtime:error_payloads",
-        "//tensorflow/tsl/distributed_runtime/coordination:coordination_service_agent",
         "@com_google_absl//absl/strings",
+        "@local_tsl//tsl/distributed_runtime/coordination:coordination_service_agent",
     ],
     alwayslink = 1,
 )

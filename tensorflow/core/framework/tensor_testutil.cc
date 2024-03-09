@@ -243,6 +243,10 @@ void ExpectEqual(const Tensor& x, const Tensor& y, Tolerance t) {
       return ExpectEqual<float8_e5m2>(x, y, t);
     case DT_FLOAT8_E4M3FN:
       return ExpectEqual<float8_e4m3fn>(x, y, t);
+    case DT_INT4:
+      return ExpectEqual<int4>(x, y, t);
+    case DT_UINT4:
+      return ExpectEqual<uint4>(x, y, t);
     default:
       EXPECT_TRUE(false) << "Unsupported type : " << DataTypeString(x.dtype());
   }

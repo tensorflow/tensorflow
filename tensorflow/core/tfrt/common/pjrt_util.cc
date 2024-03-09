@@ -18,7 +18,7 @@ limitations under the License.
 #include <optional>
 #include <set>
 
-#include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
+#include "xla/pjrt/pjrt_client.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/tfrt/common/global_state.h"
@@ -44,7 +44,7 @@ Status SetPjRtClientInTFGlobalResourceManager(
   return OkStatus();
 }
 
-StatusOr<xla::PjRtClient*> GetPjRtClient(const DeviceType& device_type) {
+absl::StatusOr<xla::PjRtClient*> GetPjRtClient(const DeviceType& device_type) {
   ResourceMgr* rmgr = tfrt_global::GetTFGlobalResourceMgr();
   PjRtState* pjrt_state;
   TF_RETURN_IF_ERROR(rmgr->LookupOrCreate<PjRtState>(

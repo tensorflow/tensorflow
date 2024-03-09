@@ -1,3 +1,4 @@
+_TFLGpuDelegateOptionsDefault
 _TFLGpuDelegateCreate
 _TFLGpuDelegateDelete
 _TFLGpuDelegateBindMetalBufferToTensor

@@ -81,7 +81,6 @@ from tensorflow.python.ops import control_flow_util
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import tensor_array_ops
 from tensorflow.python.ops import while_loop
-from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.types import distribute
 from tensorflow.python.util import nest
 from tensorflow.python.util import variable_utils
@@ -436,20 +435,16 @@ def for_stmt(iter_, extra_test, body, get_state, set_state, symbol_names, opts):
   except LookupError:
     for_fn = _py_for_stmt
 
-  # TODO(bwieder): Refactor isinstance(iter_, ragged_tensor.RaggedTensor) to use
-  # the registry once python/autograph/utils does not depend on dataset_ops.
-  if tensor_util.is_tf_type(iter_):
-    if tensors.is_range_tensor(iter_):
-      for_fn = _tf_range_for_stmt
-    elif isinstance(iter_, ragged_tensor.RaggedTensor):
-      for_fn = _tf_ragged_for_stmt
-    else:
-      for_fn = _known_len_tf_for_stmt
-  elif isinstance(iter_, distribute.Iterator):
-    for_fn = _tf_iterator_for_stmt
-  elif isinstance(iter_, distribute.Iterable):
-    # TODO(b/162250181): Use _tf_iterator_for_stmt(iter(iter_)...
-    for_fn = _tf_distributed_iterable_for_stmt
+    if tensor_util.is_tf_type(iter_):
+      if tensors.is_range_tensor(iter_):
+        for_fn = _tf_range_for_stmt
+      else:
+        for_fn = _known_len_tf_for_stmt
+    elif isinstance(iter_, distribute.Iterator):
+      for_fn = _tf_iterator_for_stmt
+    elif isinstance(iter_, distribute.Iterable):
+      # TODO(b/162250181): Use _tf_iterator_for_stmt(iter(iter_)...
+      for_fn = _tf_distributed_iterable_for_stmt
 
   for_fn(iter_, extra_test, body, get_state, set_state, symbol_names, opts)
 
@@ -556,53 +551,6 @@ def _known_len_tf_for_stmt(
       ('<internal iterate>',) + symbol_names,
       opts,
   )
-
-
-def _tf_ragged_for_stmt(
-    iter_, extra_test, body, get_state, set_state, symbol_names, opts):
-  """Overload of for_stmt that iterates over TF ragged tensors."""
-  init_vars = get_state()
-  verify_loop_init_vars(init_vars, symbol_names)
-
-  # TODO(mdan): Move this into len()? Requires eager support.
-  if iter_.shape and iter_.shape[0] is not None:
-    n = iter_.shape[0]
-  else:
-    n = iter_.row_lengths()[0]
-
-  iterate_index = 0
-
-  def aug_get_state():
-    return (iterate_index,) + get_state()
-
-  def aug_set_state(aug_loop_vars):
-    nonlocal iterate_index
-    # TODO(b/171479293): Drop the lint override.
-    iterate_index, *loop_vars = aug_loop_vars  # pylint:disable=unused-variable
-    # The iteration index is not "output" by the for loop. If the iteration index
-    # is used outside the loop, it will appear in the loop vars separately.
-    set_state(loop_vars)
-
-  def aug_body():
-    nonlocal iterate_index
-    body(iter_[iterate_index])
-    iterate_index += 1
-
-  def aug_test():
-    main_test = iterate_index < n
-    if extra_test is not None:
-      return tf_cond.cond(main_test, extra_test, lambda: False)
-    return main_test
-
-  _add_max_iterations_hint(opts, n)
-
-  _tf_while_stmt(
-      aug_test,
-      aug_body,
-      aug_get_state,
-      aug_set_state,
-      ('<internal iterate>',) + symbol_names,
-      opts)
 
 
 def _tf_range_for_stmt(

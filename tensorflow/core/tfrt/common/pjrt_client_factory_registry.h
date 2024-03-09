@@ -19,18 +19,19 @@ limitations under the License.
 #include <memory>
 #include <string>
 
-#include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
-#include "tensorflow/compiler/xla/statusor.h"
+#include "xla/pjrt/pjrt_client.h"
+#include "xla/statusor.h"
 #include "tensorflow/core/framework/registration/registration.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/tfrt/common/pjrt_client_factory_options.h"
-#include "tensorflow/tsl/framework/device_type.h"
-#include "tensorflow/tsl/platform/thread_annotations.h"
+#include "tsl/framework/device_type.h"
+#include "tsl/platform/thread_annotations.h"
 
 namespace xla {
 
-using PjrtClientFactory = std::function<StatusOr<std::unique_ptr<PjRtClient>>(
-    const PjrtClientFactoryOptions&)>;
+using PjrtClientFactory =
+    std::function<absl::StatusOr<std::unique_ptr<PjRtClient>>(
+        const PjrtClientFactoryOptions&)>;
 
 // The Pjrt client factory registry holds all the registered client factories.
 class PjrtClientFactoryRegistry {
@@ -44,7 +45,7 @@ class PjrtClientFactoryRegistry {
 
   // Given the device type, finds related PjrtClientFactory function which takes
   // factory option and returns PjrtClient if succeeds.
-  StatusOr<std::unique_ptr<PjRtClient>> GetPjrtClient(
+  absl::StatusOr<std::unique_ptr<PjRtClient>> GetPjrtClient(
       const tsl::DeviceType& device_type,
       const PjrtClientFactoryOptions& options);
 

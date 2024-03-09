@@ -33,7 +33,7 @@ limitations under the License.
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/notification.h"
 #include "tensorflow/core/util/env_var.h"
-#include "tensorflow/tsl/distributed_runtime/rpc/grpc_state.h"
+#include "tsl/distributed_runtime/rpc/grpc_state.h"
 
 namespace tensorflow {
 // NOLINTBEGIN(misc-unused-using-decls)
@@ -332,7 +332,7 @@ class StreamingRPCState : public UntypedStreamingRPCState {
     e = &exchanges_.GetFront();
     mu_.unlock();
 
-    e->Complete(OkStatus());
+    e->Complete(absl::OkStatus());
 
     {
       mutex_lock l(mu_);

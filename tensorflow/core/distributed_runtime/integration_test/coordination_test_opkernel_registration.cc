@@ -16,8 +16,8 @@ limitations under the License.
 #include "tensorflow/core/framework/common_shape_fns.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
-#include "tensorflow/tsl/distributed_runtime/coordination/coordination_service_agent.h"
-#include "tensorflow/tsl/distributed_runtime/coordination/coordination_service_error_util.h"
+#include "tsl/distributed_runtime/coordination/coordination_service_agent.h"
+#include "tsl/distributed_runtime/coordination/coordination_service_error_util.h"
 
 namespace tensorflow {
 namespace {

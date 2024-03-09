@@ -247,7 +247,7 @@ class OptimizationTest(test_base.DatasetTestBase, parameterized.TestCase):
     options.experimental_optimization.apply_default_optimizations = False
     options.experimental_optimization.noop_elimination = True
     options.experimental_optimization.map_and_batch_fusion = True
-    options.experimental_optimization.warm_start = False
+    options.experimental_warm_start = False
     optimized_dataset = unoptimized_dataset.with_options(options)
     optimized_it = dataset_ops.make_initializable_iterator(optimized_dataset)
 
@@ -286,9 +286,9 @@ class OptimizationTest(test_base.DatasetTestBase, parameterized.TestCase):
     options = options_lib.Options()
     options.experimental_optimization.apply_default_optimizations = False
     if warm_start:
-      options.experimental_optimization.warm_start = True
+      options.experimental_warm_start = True
     else:
-      options.experimental_optimization.warm_start = False
+      options.experimental_warm_start = False
     dataset = dataset.with_options(options)
     dataset = dataset.map(update_counter).prefetch(10)
     unused_iter = iter(dataset)

@@ -53,12 +53,20 @@ tf_module {
     mtype: "<class \'tensorflow.python.framework.dtypes.DType\'>"
   }
   member {
+    name: "int4"
+    mtype: "<class \'tensorflow.python.framework.dtypes.DType\'>"
+  }
+  member {
     name: "numpy"
     mtype: "<type \'module\'>"
   }
   member {
     name: "tensorrt"
     mtype: "<type \'module\'>"
+  }
+  member {
+    name: "uint4"
+    mtype: "<class \'tensorflow.python.framework.dtypes.DType\'>"
   }
   member_method {
     name: "async_clear_error"

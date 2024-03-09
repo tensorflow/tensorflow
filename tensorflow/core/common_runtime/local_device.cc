@@ -17,7 +17,7 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/local_device.h"
 
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tensorflow/core/common_runtime/process_state.h"
 #include "tensorflow/core/common_runtime/process_util.h"
 #include "tensorflow/core/lib/core/threadpool.h"

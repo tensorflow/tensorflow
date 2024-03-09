@@ -36,12 +36,10 @@ limitations under the License.
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/quantization/ir/FakeQuantSupport.h"
 #include "tensorflow/compiler/mlir/lite/quantization/ir/QuantOps.h"
-#include "tensorflow/compiler/mlir/lite/quantization/quantization_config.h"
-#include "tensorflow/compiler/mlir/lite/quantization/quantization_traits.h"
-#include "tensorflow/compiler/mlir/lite/quantization/quantization_utils.h"
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h"
+#include "tensorflow/compiler/mlir/quantization/common/quantization_lib/quantization_config.h"
+#include "tensorflow/compiler/mlir/quantization/common/quantization_lib/quantization_driver.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/ops/tf_op_quant_spec.h"
-#include "tensorflow/compiler/mlir/quantization/tensorflow/passes/utils.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_dialect.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 
@@ -53,8 +51,7 @@ namespace quant {
 
 namespace {
 
-using QuantMethod =
-    tensorflow::quantization::QuantizationMethod::ExperimentalMethod;
+using QuantMethod = tensorflow::quantization::QuantizationMethod::PresetMethod;
 
 // Applies prepare quantization on the model in TF dialect. This pass runs
 // before the quantization pass and propagate the quantization parameters
@@ -84,8 +81,8 @@ class PrepareQuantizePass
     quant_specs_.inference_type = tensorflow::DT_QINT8;
     enable_per_channel_quantization_ = !quant_specs_.disable_per_channel;
     enable_post_training_quantize_ =
-        (quantization_method ==
-         tensorflow::quantization::QuantizationMethod::STATIC_RANGE);
+        (quantization_method == tensorflow::quantization::QuantizationMethod::
+                                    METHOD_STATIC_RANGE_INT8);
   }
 
   PrepareQuantizePass(const PrepareQuantizePass& other) {
@@ -416,7 +413,7 @@ void PrepareQuantizePass::runOnOperation() {
   ApplyQuantizationParamsPropagation(
       func, is_signed, /*bit_width=*/8, !enable_per_channel_quantization_,
       GetTFOpQuantSpec, GetTfQuantScaleSpec, infer_tensor_range,
-      quant_specs_.legacy_float_scale);
+      quant_specs_.legacy_float_scale, /*is_qdq_conversion=*/false);
 
   RewritePatternSet patterns2(ctx);
   patterns2.add<MergeConsecutiveQuantizeCast>(ctx);

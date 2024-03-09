@@ -15,11 +15,13 @@
 """Tests for util.py."""
 
 import os
+
 from absl.testing import parameterized
 import numpy as np
 import tensorflow as tf
 
 from tensorflow.lite.python import util
+from tensorflow.lite.tools.flatbuffer_utils import read_model as _read_model
 from tensorflow.python.client import session
 from tensorflow.python.framework import convert_to_constants
 from tensorflow.python.framework import dtypes
@@ -424,6 +426,91 @@ class UtilModifyIntegerQuantizedModelIOTypeSignatureDefTest(
       assert tensor_id in input_ids
     for _, tensor_id in signature["serving_default"]["outputs"].items():
       assert tensor_id in output_ids
+
+
+class UtilModifyIntegerQuantizedConcatResidualModelIOTypeTest(
+    test_util.TensorFlowTestCase, parameterized.TestCase
+):
+
+  def _generate_int8_f32io_concat_residual_tflite(self, number_of_inputs=3):
+    dtype = float
+
+    class ConcatNResidual(tf.keras.layers.Layer):
+      """A simple concat and residual Keras Model."""
+
+      def __init__(self, number_of_inputs=3, **kwargs):
+        super().__init__(**kwargs)
+        self.number_of_inputs = number_of_inputs
+        self.conv = tf.keras.layers.Conv2D(2, (2, 2), padding="same")
+        self.mins = [-0.01 * (i + 1) for i in range(self.number_of_inputs)]
+        self.maxs = [0.01 * (i + 1) for i in range(self.number_of_inputs)]
+
+      def call(self, inputs):
+        xs = [
+            tf.quantization.fake_quant_with_min_max_args(
+                inputs[i], self.mins[i], self.maxs[i]
+            )
+            for i in range(self.number_of_inputs)
+        ]
+        x = tf.keras.backend.concatenate(xs, 1)
+        x = x[:, : inputs[-1].shape[1]]
+        x = x + xs[-1]
+        x = tf.quantization.fake_quant_with_min_max_args(x, -2.242, 2.242)
+        return x
+
+    inputs = [
+        tf.keras.layers.Input(shape=(2, 2, 2), batch_size=1, dtype=dtype)
+        for _ in range(number_of_inputs)
+    ]
+    outputs = ConcatNResidual(number_of_inputs)(inputs)
+    model = tf.keras.Model(inputs, outputs)
+
+    converter = tf.lite.TFLiteConverter.from_keras_model(model)
+    converter.optimizations = [tf.lite.Optimize.DEFAULT]
+    tflite_model = converter.convert()
+    return tflite_model
+
+  def _verify_tensor_connections(self, flatbuffer_model):
+    """Verify that all the tensors have input and output ops except the tensors have buffer data."""
+    tflite_subgraph = flatbuffer_model.subgraphs[0]
+    tensors = tflite_subgraph.tensors
+    buffers = flatbuffer_model.buffers
+    tensors_used_as_inputs = set()
+    tensors_used_as_outputs = set()
+    for op in tflite_subgraph.operators:
+      tensors_used_as_inputs.update(
+          idx for idx in op.inputs if buffers[tensors[idx].buffer].data is None
+      )
+      tensors_used_as_outputs.update(idx for idx in op.outputs)
+
+    tensors_used_as_inputs.update(idx for idx in tflite_subgraph.outputs)
+    tensors_used_as_outputs.update(idx for idx in tflite_subgraph.inputs)
+
+    self.assertEqual(tensors_used_as_inputs, tensors_used_as_outputs)
+
+  @parameterized.named_parameters([
+      ("_IntOnly_Float32InputOutput", tf.float32),
+      ("_IntOnly_INT8InputOutput", tf.int8),
+      ("_IntOnly_UINT8InputOutput", tf.uint8),
+  ])
+  def test(self, inference_input_output_type):
+    """Make sure modifying IO types removes tensors correctly."""
+    srqed_int8_f32io_model = self._generate_int8_f32io_concat_residual_tflite()
+
+    if inference_input_output_type != tf.float32:
+      target_model = util.modify_model_io_type(
+          srqed_int8_f32io_model,
+          inference_input_output_type,
+          inference_input_output_type,
+      )
+    else:
+      target_model = srqed_int8_f32io_model
+
+    tflite_path = os.path.join(self.get_temp_dir(), "concat_residual.tflite")
+    with tf.io.gfile.GFile(tflite_path, "wb") as writer:
+      writer.write(target_model)
+    flatbuffer_model = _read_model(tflite_path)
+    self._verify_tensor_connections(flatbuffer_model)
 
 
 if __name__ == "__main__":

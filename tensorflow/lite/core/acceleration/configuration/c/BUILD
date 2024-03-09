@@ -16,19 +16,20 @@
 # C API for delegate plugins.
 
 load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")
+load(
+    "//tensorflow/core/platform:build_config_root.bzl",
+    "tf_gpu_tests_tags",
+)
 load("//tensorflow/lite:build_def.bzl", "tflite_cc_library_with_c_headers_test", "tflite_copts", "tflite_copts_warnings")
-load("//tensorflow/lite/delegates/gpu:build_defs.bzl", "gpu_delegate_linkopts")
-load("//tensorflow/lite/core/c:special_rules.bzl", "experimental_acceleration_api_allowlist")
 load(
     "//tensorflow/lite/core/acceleration/configuration/c:special_rules.bzl",
     "delegate_plugin_visibility_allowlist",
     "gpu_plugin_visibility_allowlist",
     "xnnpack_plugin_visibility_allowlist",
 )
-load(
-    "//tensorflow/core/platform:build_config_root.bzl",
-    "tf_gpu_tests_tags",
-)
+load("//tensorflow/lite/core/c:special_rules.bzl", "experimental_acceleration_api_allowlist")
+load("//tensorflow/lite/core/shims:build_defs.bzl", "build_test")
+load("//tensorflow/lite/delegates/gpu:build_defs.bzl", "gpu_delegate_linkopts")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -36,6 +37,16 @@ package(
         "//tensorflow/lite:__subpackages__",
     ] + experimental_acceleration_api_allowlist(),
     licenses = ["notice"],
+)
+
+filegroup(
+    name = "tflite_internal_cc_3p_api_deps_src",
+    srcs = [
+        "stable_delegate.h",
+    ],
+    visibility = [
+        "//tensorflow/lite:__pkg__",
+    ],
 )
 
 # LINT.IfChange(tflite_acceleration_exported_headers)
@@ -149,6 +160,7 @@ tflite_cc_library_with_c_headers_test(
     name = "xnnpack_plugin",
     srcs = ["xnnpack_plugin.cc"],
     hdrs = ["xnnpack_plugin.h"],
+    compatible_with = get_compatible_with_portable(),
     visibility = [
         "//tensorflow/lite:__subpackages__",
     ] + xnnpack_plugin_visibility_allowlist(),
@@ -181,3 +193,49 @@ tflite_cc_library_with_c_headers_test(
         "//tensorflow/lite/core/acceleration/configuration/c:delegate_plugin",
     ],
 )
+
+# Commented out under the (b/279852433) because caused an error in the OSS
+# TODO(zhurakovskyi): Uncomment when fixed.
+#
+# copybara:uncomment_begin
+# # This rule invokes the "flatcc" FlatBuffer C API compiler to generate the sources
+# # use by the ":configuration_c_fbs" C library rule below.
+# genrule(
+#     name = "configuration_c_fbs_gen",
+#     srcs = ["//tensorflow/lite/acceleration/configuration:configuration.fbs"],
+#     outs = [
+#         "configuration_builder.h",
+#         "configuration_reader.h",
+#     ],
+#     cmd = "$(location //third_party/flatcc:flatcc) -o$(RULEDIR) --builder --reader $(SRCS)",
+#     tools = ["//third_party/flatcc"],
+#     # Currently this only enables the API for _building_ configuration flatbuffer objects,
+#     # not the APIs for reading them, verifying them, or converting them to/from JSON.
+#     # [If you need to enable those, replace the two lines above with the following
+#     #   outs = ["configuration_builder.h", "configuration_reader.h", "configuration_verifier.h",
+#     #           "configuration_json_parser.h", "configuration_json_printer.h"],
+#     #   cmd = "$(location //third_party/flatcc:flatcc) -o$(RULEDIR) " +
+#     #         "--builder --reader --verifier --json $(SRCS)",
+#     # and then in the rule below -- or preferably in a separate target --
+#     # add the additional header files in "hdrs" and fix the dependencies.]
+# )
+#
+# # This rule defines a C library containing the Flatbuffer-generated C API for constructing objects
+# # using the FlatBuffer schema generated from tensorflow/lite/acceleration/configuration/configuration.proto,
+# # which defines the 'TFLiteSettings' FlatBuffer table and related types.
+# tflite_cc_library_with_c_headers_test(
+#     name = "configuration_c_fbs",
+#     hdrs = [
+#         "configuration_builder.h",
+#         "configuration_reader.h",
+#     ],
+#     deps = ["//third_party/flatcc:runtime"],
+# )
+#
+# build_test(
+#     name = "configuration_c_fbs_build_test",
+#     targets = [
+#         ":configuration_c_fbs",
+#     ],
+# )
+# copybara:uncomment_end

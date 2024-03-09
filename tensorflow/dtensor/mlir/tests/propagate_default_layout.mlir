@@ -12,12 +12,12 @@ func.func @main(
   %arg1: tensor<i32>{ tf._layout = "sharding_specs:scalar mesh:|x=2,y=2|0,1,2,3|0,1,2,3|/job:localhost/task:0/device:CPU:0,/job:localhost/task:0/device:CPU:1,/job:localhost/task:0/device:CPU:2,/job:localhost/task:0/device:CPU:3"},
   %arg2: tensor<i32>{ tf._layout = "sharding_specs:scalar mesh:|x=2,y=2|0,1,2,3|0,1,2,3|/job:localhost/task:0/device:CPU:0,/job:localhost/task:0/device:CPU:1,/job:localhost/task:0/device:CPU:2,/job:localhost/task:0/device:CPU:3"}) -> (tensor<i32>) {
   // CHECK:      %[[ARG1_OUT:[a-z0-9]*]] = "tf.DTensorLayout"(%arg[[ARG_1]])
-  // CHECK-SAME: dtensor.from_arg_index = [[ARG_1]]
   // CHECK-SAME: layout = #dtensor.layout<sharding_specs: mesh:|x=2,y=2|0,1,2,3|0,1,2,3|/job:localhost/task:0/device:CPU:0,/job:localhost/task:0/device:CPU:1,/job:localhost/task:0/device:CPU:2,/job:localhost/task:0/device:CPU:3>
+  // CHECK-SAME: dtensor.from_arg_index = [[ARG_1]]
   // CHECK-SAME: (tensor<i32>) -> tensor<i32>
   // CHECK-NEXT: %[[ARG0_OUT:[a-z0-9]*]] = "tf.DTensorLayout"(%arg[[ARG_0]])
-  // CHECK-SAME: dtensor.from_arg_index = [[ARG_0]]
   // CHECK-SAME: layout = #dtensor.layout<sharding_specs: mesh:|x=2,y=2|0,1,2,3|0,1,2,3|/job:localhost/task:0/device:CPU:0,/job:localhost/task:0/device:CPU:1,/job:localhost/task:0/device:CPU:2,/job:localhost/task:0/device:CPU:3>
+  // CHECK-SAME: dtensor.from_arg_index = [[ARG_0]]
   // CHECK-SAME: (tensor<i32>) -> tensor<i32>
   // CHECK-NEXT: "tf.A"(%[[ARG0_OUT]], %[[ARG1_OUT]])
   // CHECK-NEXT: "tf.B"(%[[ARG1_OUT]])

@@ -1,8 +1,8 @@
 load("@bazel_skylib//lib:selects.bzl", "selects")
 load("//tensorflow:tensorflow.bzl", "transitive_hdrs")
+load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")
 load("//tensorflow/lite:build_def.bzl", "tflite_copts")
 load("//tensorflow/lite:special_rules.bzl", "tflite_extra_arm_config_settings", "tflite_portable_test_suite_combined")
-load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")
 load("//tensorflow/lite/core/shims:cc_library_with_tflite.bzl", "cc_library_with_tflite")
 
 package(
@@ -39,6 +39,14 @@ NEON_FLAGS_IF_APPLICABLE = select({
         "-O3",
     ],
 })
+
+filegroup(
+    name = "tflite_internal_cc_3p_api_deps_src",
+    srcs = ["compatibility.h"],
+    visibility = [
+        "//tensorflow/lite:__pkg__",
+    ],
+)
 
 cc_library(
     name = "compatibility",
@@ -347,7 +355,7 @@ cc_library(
         "//tensorflow/lite/kernels:cpu_backend_gemm",
         "//tensorflow/lite/kernels:cpu_backend_threadpool",
         "//tensorflow/lite/kernels:kernel_util",
-        "//third_party/eigen3",
+        "@eigen_archive//:eigen3",
         "@gemmlowp//:fixedpoint",
         "@ruy//ruy/profiler:instrumentation",
     ],
@@ -385,7 +393,7 @@ cc_library(
         "//tensorflow/lite/kernels:cpu_backend_context",
         "//tensorflow/lite/kernels:cpu_backend_gemm",
         "//tensorflow/lite/kernels:cpu_backend_threadpool",
-        "//third_party/eigen3",
+        "@eigen_archive//:eigen3",
         "@gemmlowp",
         "@ruy//ruy/profiler:instrumentation",
     ],
@@ -404,8 +412,8 @@ cc_library(
         ":optimized_base",
         ":types",
         "//tensorflow/lite/core/c:common",
-        "//tensorflow/tsl/framework/convolution:eigen_spatial_convolutions-inl",
-        "//third_party/eigen3",
+        "@eigen_archive//:eigen3",
+        "@local_tsl//tsl/framework/convolution:eigen_spatial_convolutions-inl",
     ],
 )
 
@@ -763,7 +771,7 @@ cc_library(
         "//tensorflow/lite/kernels:kernel_util",
         "//tensorflow/lite/kernels:op_macros",
         "//tensorflow/lite/kernels/internal/utils:sparsity_format_converter",
-        "//third_party/eigen3",
+        "@eigen_archive//:eigen3",
         "@gemmlowp//:fixedpoint",
         "@ruy//ruy/profiler:instrumentation",
     ],
@@ -858,7 +866,7 @@ cc_library(
         "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/kernels:op_macros",
         "//tensorflow/lite/kernels/internal/utils:sparsity_format_converter",
-        "//third_party/eigen3",
+        "@eigen_archive//:eigen3",
         "@gemmlowp",
         "@ruy//ruy/profiler:instrumentation",
     ],
@@ -884,6 +892,7 @@ cc_library_with_tflite(
     copts = tflite_copts(),
     tflite_deps = [
         "//tensorflow/lite/c:c_api_experimental_without_op_resolver",
+        "//tensorflow/lite:namespace",
     ],
     deps = [
         ":types",
@@ -1109,7 +1118,7 @@ cc_library(
         ":cpu_check",
         ":tensor_utils_no_eigen",
         "//tensorflow/lite/core/c:common",
-        "//third_party/eigen3",
+        "@eigen_archive//:eigen3",
     ] + selects.with_or({
         (
             ":arm_any",
@@ -1497,7 +1506,9 @@ filegroup(
     srcs = glob([
         "optimized/*.h",
     ]),
-    visibility = ["//tensorflow/lite:__subpackages__"],
+    visibility = [
+        "//visibility:private",  # Only private by automation, not intent. Owner may accept CLs adding visibility. See go/scheuklappen#explicit-private.
+    ],
 )
 
 filegroup(
@@ -1505,7 +1516,9 @@ filegroup(
     srcs = glob([
         "reference/*.h",
     ]),
-    visibility = ["//tensorflow/lite:__subpackages__"],
+    visibility = [
+        "//visibility:private",  # Only private by automation, not intent. Owner may accept CLs adding visibility. See go/scheuklappen#explicit-private.
+    ],
 )
 
 filegroup(
@@ -1513,14 +1526,16 @@ filegroup(
     srcs = glob([
         "*.h",
     ]),
-    visibility = ["//tensorflow/lite:__subpackages__"],
+    visibility = [
+        "//visibility:private",  # Only private by automation, not intent. Owner may accept CLs adding visibility. See go/scheuklappen#explicit-private.
+    ],
 )
 
 transitive_hdrs(
     name = "nnapi_external_headers",
     visibility = ["//tensorflow/lite:__subpackages__"],
     deps = [
-        "//third_party/eigen3",
+        "@eigen_archive//:eigen3",
         "@gemmlowp",
     ],
 )

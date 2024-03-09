@@ -1,0 +1,26 @@
+// RUN: hlo-opt %s --platform=gpu --stage=llvm-before-optimizations --xla_gpu_target_config_filename=%S/../../../tools/hlo_opt/gpu_specs/%{GPU}.txtpb | FileCheck --check-prefixes=CHECK,CHECK-%{PTX} %s
+
+// Arguments are passed separately.
+// Even constant arguments are passed as arguments.
+// Repeated arguments are only passed once.
+// CHECK-LABEL: target triple
+// CHECK: @buffer_for_dynamic
+// CHECK: @buffer_for_static
+// CHECK-PTX: define void @custom_call(ptr noalias align 16 dereferenceable(32) %arg0, ptr noalias align 128 dereferenceable(4) %arg1, ptr noalias align 128 dereferenceable(4) %arg2, ptr noalias align 128 dereferenceable(44) %arg3)
+// CHECK-GCN: define amdgpu_kernel void @custom_call(ptr noalias align 16 dereferenceable(32) %arg0, ptr noalias align 128 dereferenceable(4) %arg1, ptr noalias align 128 dereferenceable(4) %arg2, ptr noalias align 128 dereferenceable(44) %arg3)
+// CHECK-NOT: @buffer_for_dynamic
+// CHECK-NOT: @buffer_for_static
+
+HloModule SliceToDynamic, is_scheduled=true
+
+ENTRY main {
+  %param = s32[2,2,2]{2,0,1} parameter(0)
+  %dynamic = s32[] constant(1)
+  %static = s32[] constant(2)
+  ROOT %custom-call = s32[2,<=2, 2]{2,0,1} custom-call(s32[2,2,2]{2,0,1} %param,
+                                                  s32[] %static,
+                                                  s32[] %dynamic,
+                                                  s32[] %static),
+                                      custom_call_target="SliceToDynamic",
+                                      backend_config=""
+}

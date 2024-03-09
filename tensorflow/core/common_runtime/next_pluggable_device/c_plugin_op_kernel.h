@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_COMMON_RUNTIME_NEXT_PLUGGABLE_DEVICE_C_PLUGIN_OP_KERNEL_H_
 #define TENSORFLOW_CORE_COMMON_RUNTIME_NEXT_PLUGGABLE_DEVICE_C_PLUGIN_OP_KERNEL_H_
 
+#include <cstdint>
 #include <memory>
 #include <string>
 #include <string_view>
@@ -23,12 +24,12 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/c/kernels.h"
-#include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
+#include "xla/pjrt/pjrt_client.h"
 #include "tensorflow/core/common_runtime/next_pluggable_device/plugin_coordination_service_agent.h"
 #include "tensorflow/core/common_runtime/next_pluggable_device/plugin_op_kernel.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/protobuf/config.pb.h"
-#include "tensorflow/tsl/platform/thread_annotations.h"
+#include "tsl/platform/thread_annotations.h"
 
 namespace tensorflow {
 
@@ -101,6 +102,8 @@ class CPluginOpKernelContext : public PluginOpKernelContext {
   int64_t GetStepId() const override { return TF_GetStepId(ctx_); }
 
   int GetDeviceId() const override { return TF_GetDeviceId(ctx_); }
+
+  std::string_view GetDeviceName() const override;
 
   std::string GetSessionName() const override {
     // TODO(haoyuzhang): Implement with ctx_->session_metadata() if needed.

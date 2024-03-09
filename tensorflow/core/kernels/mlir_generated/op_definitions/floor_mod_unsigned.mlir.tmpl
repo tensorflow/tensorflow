@@ -1,0 +1,129 @@
+func.func @FloorMod_platform_elem_type_output_type(%arg0: tensor<*xelem_type>, %arg1: tensor<*xelem_type>) -> tensor<*xoutput_type> attributes {llvm.emit_c_interface, tf_entry} {
+  %0 = shape.const_shape [1, 1, 1, 1, 1] : tensor<5xindex>
+  %c5 = arith.constant 5 : index
+  %1 = shape.const_shape [1, 1, 1, 1] : tensor<4xindex>
+  %c4 = arith.constant 4 : index
+  %2 = shape.const_shape [1, 1, 1] : tensor<3xindex>
+  %c3 = arith.constant 3 : index
+  %3 = shape.const_shape [1, 1] : tensor<2xindex>
+  %c2 = arith.constant 2 : index
+  %4 = shape.const_shape [1] : tensor<1xindex>
+  %c1 = arith.constant 1 : index
+  %5 = shape.shape_of %arg0 : tensor<*xelem_type> -> tensor<?xindex>
+  %6 = shape.shape_of %arg1 : tensor<*xelem_type> -> tensor<?xindex>
+  %7 = shape.num_elements %5 : tensor<?xindex> -> index
+  %8 = arith.cmpi eq, %7, %c1 : index
+  %9 = scf.if %8 -> (tensor<*xelem_type>) {
+    %14 = shape.num_elements %6 : tensor<?xindex> -> index
+    %from_elements = tensor.from_elements %14 : tensor<1xindex>
+    %15 = mhlo.reshape %arg0 : (tensor<*xelem_type>) -> tensor<elem_type>
+    %16 = mhlo.dynamic_reshape %arg1, %from_elements : (tensor<*xelem_type>, tensor<1xindex>) -> tensor<?xelem_type>
+    %17 = chlo.broadcast_remainder %15, %16 : (tensor<elem_type>, tensor<?xelem_type>) -> tensor<?xelem_type>
+    %cast = tensor.cast %17 : tensor<?xelem_type> to tensor<*xelem_type>
+    scf.yield %cast : tensor<*xelem_type>
+  } else {
+    %14 = shape.num_elements %6 : tensor<?xindex> -> index
+    %15 = arith.cmpi eq, %14, %c1 : index
+    %16 = scf.if %15 -> (tensor<*xelem_type>) {
+      %17 = shape.num_elements %5 : tensor<?xindex> -> index
+      %from_elements = tensor.from_elements %17 : tensor<1xindex>
+      %18 = mhlo.dynamic_reshape %arg0, %from_elements : (tensor<*xelem_type>, tensor<1xindex>) -> tensor<?xelem_type>
+      %19 = mhlo.reshape %arg1 : (tensor<*xelem_type>) -> tensor<elem_type>
+      %20 = chlo.broadcast_remainder %18, %19 : (tensor<?xelem_type>, tensor<elem_type>) -> tensor<?xelem_type>
+      %cast = tensor.cast %20 : tensor<?xelem_type> to tensor<*xelem_type>
+      scf.yield %cast : tensor<*xelem_type>
+    } else {
+      %17 = shape.shape_eq %5, %6 : tensor<?xindex>, tensor<?xindex>
+      %18 = scf.if %17 -> (tensor<*xelem_type>) {
+        %19 = shape.any %5, %6 : tensor<?xindex>, tensor<?xindex> -> tensor<?xindex>
+        %20 = shape.num_elements %19 : tensor<?xindex> -> index
+        %from_elements = tensor.from_elements %20 : tensor<1xindex>
+        %21 = mhlo.dynamic_reshape %arg0, %from_elements : (tensor<*xelem_type>, tensor<1xindex>) -> tensor<?xelem_type>
+        %22 = mhlo.dynamic_reshape %arg1, %from_elements : (tensor<*xelem_type>, tensor<1xindex>) -> tensor<?xelem_type>
+        %23 = chlo.broadcast_remainder %21, %22 : (tensor<?xelem_type>, tensor<?xelem_type>) -> tensor<?xelem_type>
+        %cast = tensor.cast %23 : tensor<?xelem_type> to tensor<*xelem_type>
+        scf.yield %cast : tensor<*xelem_type>
+      } else {
+        %19:2 = chlo.minimum_broadcast_shapes %5, %6 : tensor<?xindex>, tensor<?xindex> -> tensor<?xindex>, tensor<?xindex>
+        %20 = shape.rank %19#0 : tensor<?xindex> -> index
+        %21 = shape.rank %19#1 : tensor<?xindex> -> index
+        %22 = arith.cmpi sgt, %20, %21 : index
+        %23 = arith.select %22, %20, %21 : index
+        %24 = arith.cmpi ule, %23, %c1 : index
+        %25 = scf.if %24 -> (tensor<*xelem_type>) {
+          %26 = shape.broadcast %19#0, %4 : tensor<?xindex>, tensor<1xindex> -> tensor<?xindex>
+          %cast = tensor.cast %26 : tensor<?xindex> to tensor<1xindex>
+          %27 = mhlo.dynamic_reshape %arg0, %cast : (tensor<*xelem_type>, tensor<1xindex>) -> tensor<?xelem_type>
+          %28 = shape.broadcast %19#1, %4 : tensor<?xindex>, tensor<1xindex> -> tensor<?xindex>
+          %cast_0 = tensor.cast %28 : tensor<?xindex> to tensor<1xindex>
+          %29 = mhlo.dynamic_reshape %arg1, %cast_0 : (tensor<*xelem_type>, tensor<1xindex>) -> tensor<?xelem_type>
+          %30 = chlo.broadcast_remainder %27, %29 : (tensor<?xelem_type>, tensor<?xelem_type>) -> tensor<?xelem_type>
+          %cast_1 = tensor.cast %30 : tensor<?xelem_type> to tensor<*xelem_type>
+          scf.yield %cast_1 : tensor<*xelem_type>
+        } else {
+          %26 = arith.cmpi ule, %23, %c2 : index
+          %27 = scf.if %26 -> (tensor<*xelem_type>) {
+            %28 = shape.broadcast %19#0, %3 : tensor<?xindex>, tensor<2xindex> -> tensor<?xindex>
+            %cast = tensor.cast %28 : tensor<?xindex> to tensor<2xindex>
+            %29 = mhlo.dynamic_reshape %arg0, %cast : (tensor<*xelem_type>, tensor<2xindex>) -> tensor<?x?xelem_type>
+            %30 = shape.broadcast %19#1, %3 : tensor<?xindex>, tensor<2xindex> -> tensor<?xindex>
+            %cast_0 = tensor.cast %30 : tensor<?xindex> to tensor<2xindex>
+            %31 = mhlo.dynamic_reshape %arg1, %cast_0 : (tensor<*xelem_type>, tensor<2xindex>) -> tensor<?x?xelem_type>
+            %32 = chlo.broadcast_remainder %29, %31 : (tensor<?x?xelem_type>, tensor<?x?xelem_type>) -> tensor<?x?xelem_type>
+            %cast_1 = tensor.cast %32 : tensor<?x?xelem_type> to tensor<*xelem_type>
+            scf.yield %cast_1 : tensor<*xelem_type>
+          } else {
+            %28 = arith.cmpi ule, %23, %c3 : index
+            %29 = scf.if %28 -> (tensor<*xelem_type>) {
+              %30 = shape.broadcast %19#0, %2 : tensor<?xindex>, tensor<3xindex> -> tensor<?xindex>
+              %cast = tensor.cast %30 : tensor<?xindex> to tensor<3xindex>
+              %31 = mhlo.dynamic_reshape %arg0, %cast : (tensor<*xelem_type>, tensor<3xindex>) -> tensor<?x?x?xelem_type>
+              %32 = shape.broadcast %19#1, %2 : tensor<?xindex>, tensor<3xindex> -> tensor<?xindex>
+              %cast_0 = tensor.cast %32 : tensor<?xindex> to tensor<3xindex>
+              %33 = mhlo.dynamic_reshape %arg1, %cast_0 : (tensor<*xelem_type>, tensor<3xindex>) -> tensor<?x?x?xelem_type>
+              %34 = chlo.broadcast_remainder %31, %33 : (tensor<?x?x?xelem_type>, tensor<?x?x?xelem_type>) -> tensor<?x?x?xelem_type>
+              %cast_1 = tensor.cast %34 : tensor<?x?x?xelem_type> to tensor<*xelem_type>
+              scf.yield %cast_1 : tensor<*xelem_type>
+            } else {
+              %30 = arith.cmpi ule, %23, %c4 : index
+              %31 = scf.if %30 -> (tensor<*xelem_type>) {
+                %32 = shape.broadcast %19#0, %1 : tensor<?xindex>, tensor<4xindex> -> tensor<?xindex>
+                %cast = tensor.cast %32 : tensor<?xindex> to tensor<4xindex>
+                %33 = mhlo.dynamic_reshape %arg0, %cast : (tensor<*xelem_type>, tensor<4xindex>) -> tensor<?x?x?x?xelem_type>
+                %34 = shape.broadcast %19#1, %1 : tensor<?xindex>, tensor<4xindex> -> tensor<?xindex>
+                %cast_0 = tensor.cast %34 : tensor<?xindex> to tensor<4xindex>
+                %35 = mhlo.dynamic_reshape %arg1, %cast_0 : (tensor<*xelem_type>, tensor<4xindex>) -> tensor<?x?x?x?xelem_type>
+                %36 = chlo.broadcast_remainder %33, %35 : (tensor<?x?x?x?xelem_type>, tensor<?x?x?x?xelem_type>) -> tensor<?x?x?x?xelem_type>
+                %cast_1 = tensor.cast %36 : tensor<?x?x?x?xelem_type> to tensor<*xelem_type>
+                scf.yield %cast_1 : tensor<*xelem_type>
+              } else {
+                %32 = arith.cmpi ule, %23, %c5 : index
+                cf.assert %32, "Input for dynamic binary or n-ary op lowering was of a rank greater than 5"
+                %33 = shape.broadcast %19#0, %0 : tensor<?xindex>, tensor<5xindex> -> tensor<?xindex>
+                %cast = tensor.cast %33 : tensor<?xindex> to tensor<5xindex>
+                %34 = mhlo.dynamic_reshape %arg0, %cast : (tensor<*xelem_type>, tensor<5xindex>) -> tensor<?x?x?x?x?xelem_type>
+                %35 = shape.broadcast %19#1, %0 : tensor<?xindex>, tensor<5xindex> -> tensor<?xindex>
+                %cast_0 = tensor.cast %35 : tensor<?xindex> to tensor<5xindex>
+                %36 = mhlo.dynamic_reshape %arg1, %cast_0 : (tensor<*xelem_type>, tensor<5xindex>) -> tensor<?x?x?x?x?xelem_type>
+                %37 = chlo.broadcast_remainder %34, %36 : (tensor<?x?x?x?x?xelem_type>, tensor<?x?x?x?x?xelem_type>) -> tensor<?x?x?x?x?xelem_type>
+                %cast_1 = tensor.cast %37 : tensor<?x?x?x?x?xelem_type> to tensor<*xelem_type>
+                scf.yield %cast_1 : tensor<*xelem_type>
+              }
+              scf.yield %31 : tensor<*xelem_type>
+            }
+            scf.yield %29 : tensor<*xelem_type>
+          }
+          scf.yield %27 : tensor<*xelem_type>
+        }
+        scf.yield %25 : tensor<*xelem_type>
+      }
+      scf.yield %18 : tensor<*xelem_type>
+    }
+    scf.yield %16 : tensor<*xelem_type>
+  }
+  %10 = shape.shape_of %arg0 : tensor<*xelem_type> -> tensor<?xindex>
+  %11 = shape.shape_of %arg1 : tensor<*xelem_type> -> tensor<?xindex>
+  %12 = shape.broadcast %10, %11 : tensor<?xindex>, tensor<?xindex> -> tensor<?xindex>
+  %13 = mhlo.dynamic_reshape %9, %12 : (tensor<*xelem_type>, tensor<?xindex>) -> tensor<*xelem_type>
+  return %13 : tensor<*xelem_type>
+}

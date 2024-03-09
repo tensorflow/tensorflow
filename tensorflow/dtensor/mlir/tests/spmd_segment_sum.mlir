@@ -11,8 +11,8 @@ func.func @main(%arg0: tensor<1xi32>,
   // CHECK:      %[[LOCAL_RESULT:.*]] = "tf.UnsortedSegmentSum"(%arg1, %arg2, %[[NUM_SEGMENTS]])
   // CHECK-SAME: (tensor<4x2xf32>, tensor<4xi32>, tensor<i32>) -> tensor<8x2xf32>
   // CHECK:      %[[RESULT:.*]] = "tf.DTensorAllReduce"(%[[LOCAL_RESULT]]
-  // CHECK-SAME: _layout = ["sharding_specs:unsharded,unsharded, mesh:TPU|x=4|0,1,2,3|0,1,2,3|/job:localhost/task:0/device:TPU:0,/job:localhost/task:0/device:TPU:1,/job:localhost/task:0/device:TPU:2,/job:localhost/task:0/device:TPU:3"]
   // CHECK-SAME: reduce_op = "Add"
+  // CHECK-SAME: _layout = ["sharding_specs:unsharded,unsharded, mesh:TPU|x=4|0,1,2,3|0,1,2,3|/job:localhost/task:0/device:TPU:0,/job:localhost/task:0/device:TPU:1,/job:localhost/task:0/device:TPU:2,/job:localhost/task:0/device:TPU:3"]
   // CHECK:      %[[FINAL_RESULT:.*]] = "tf.DTensorAllScatter"(%[[RESULT]]
   // CHECK-NEXT: tf_device.return
   // CHECK-SAME: %[[FINAL_RESULT]]

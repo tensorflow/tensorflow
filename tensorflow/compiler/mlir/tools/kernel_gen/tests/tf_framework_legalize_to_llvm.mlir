@@ -19,7 +19,7 @@ func.func @alloc(%ctx: !tf_framework.op_kernel_context,
 // CHECK: [[NUM_ELEMS:%.*]] = llvm.mul [[NUM_ELEM_0]], [[SIZE_2]] : i64
 
 // Compute the size of an individual element.
-// CHECK: [[NULL:%.*]] = llvm.mlir.null : !llvm.ptr
+// CHECK: [[NULL:%.*]] = llvm.mlir.zero : !llvm.ptr
 // CHECK: [[GEP:%.*]] = llvm.getelementptr [[NULL]]{{\[}}1]
 // CHECK-SAME:            (!llvm.ptr) -> !llvm.ptr, f32
 // CHECK: [[SIZE_OF_FLOAT:%.*]] = llvm.ptrtoint [[GEP]]
@@ -28,7 +28,7 @@ func.func @alloc(%ctx: !tf_framework.op_kernel_context,
 // Compute output index (-1) and candidate indices (0, NULL).
 // CHECK: [[OUTPUT_INDEX:%.*]] = llvm.mlir.constant(-1 : i32) : i32
 // CHECK-NEXT: [[NUM_CANDIDATES:%.*]] = llvm.mlir.constant(0 : i32) : i32
-// CHECK-NEXT: [[CANDIDATES_PTR:%.*]] = llvm.mlir.null : !llvm.ptr
+// CHECK-NEXT: [[CANDIDATES_PTR:%.*]] = llvm.mlir.zero : !llvm.ptr
 
 // Allocate memory.
 // CHECK: [[BYTES_PTR:%.*]] = llvm.call @{{.*}}([[TF_CTX]], [[NUM_ELEMS]],
@@ -115,8 +115,8 @@ func.func @ranked_null_memref() {
 // CHECK-NEXT: %[[C2:.*]] = llvm.mlir.constant(2 : index) : i64
 // CHECK-NEXT: %[[C1_:.*]] = llvm.mlir.constant(1 : index) : i64
 
-// CHECK: llvm.mlir.null
-// CHECK: %[[NULL:.*]] = llvm.mlir.null : !llvm.ptr
+// CHECK: llvm.mlir.zero
+// CHECK: %[[NULL:.*]] = llvm.mlir.zero : !llvm.ptr
 // CHECK-NEXT: %[[DESC_0:.*]] = llvm.mlir.undef :
 // CHECK-SAME:   !llvm.struct<(ptr, ptr, i64, array<2 x i64>, array<2 x i64>)>
 // CHECK-NEXT: %[[DESC_1:.*]] = llvm.insertvalue %[[NULL]], %[[DESC_0]][0]
@@ -143,7 +143,7 @@ func.func @is_valid_memref(%buf: memref<?xf32>) -> i1 {
 // CHECK-NEXT: %[[IS_EMPTY_:.*]] =  llvm.or %[[IS_EMPTY]], %[[IS_ZERO]] : i1
 
 // CHECK-NEXT: %[[PTR_F32:.*]] = llvm.extractvalue %[[MEMREF]][0]
-// CHECK-NEXT: %[[NULL_PTR:.*]] = llvm.mlir.null : !llvm.ptr
+// CHECK-NEXT: %[[NULL_PTR:.*]] = llvm.mlir.zero : !llvm.ptr
 // CHECK-NEXT: %[[NOT_NULL:.*]] = llvm.icmp "ne" %[[PTR_F32]], %[[NULL_PTR]]
 
 // CHECK-NEXT: %[[PRED:.*]] = llvm.or %[[NOT_NULL]], %[[IS_EMPTY_]]  : i1
@@ -151,7 +151,7 @@ func.func @is_valid_memref(%buf: memref<?xf32>) -> i1 {
 
 // -----
 
-// CHECK-LABEL: llvm.func @_mlir_ciface_tf_jit_compile(!llvm.ptr, !llvm.ptr, i64, !llvm.ptr, i64, !llvm.ptr, i64, i1, i1, i1) -> !llvm.ptr
+// CHECK-LABEL: llvm.func @_mlir_ciface_tf_jit_compile(!llvm.ptr, !llvm.ptr, i64, !llvm.ptr, i64, !llvm.ptr, i1, i1, i1) -> !llvm.ptr
 // CHECK: llvm.mlir.global internal constant @[[CODE:jit_module_code_[0-9]+]]("placeholder\00")
 
 // CHECK: @jit_compile_from_str(%[[CTX:.*]]: !llvm.ptr)
@@ -184,17 +184,16 @@ func.func @jit_compile_from_str(%ctx: !tf_framework.op_kernel_context)
   // CHECK: %[[C4:.*]] = llvm.mlir.constant(4 : i64)
   // CHECK: llvm.store %[[C4]], %[[PTR]]
 
-  // CHECK-DAG: %[[MAX_RANK:.*]] = llvm.mlir.constant(3 : i64)
   // CHECK-DAG: %[[ENABLE_FTZ:.*]] = llvm.mlir.constant(false)
   // CHECK-DAG: %[[CPU_CODEGEN:.*]] = llvm.mlir.constant(false)
   // CHECK: %[[RES:.*]] = llvm.call @_mlir_ciface_tf_jit_compile
   // CHECK-SAME: %[[CTX]], %[[CODE_PTR]],
   // CHECK-SAME: %[[NUM_TILE_SIZES]], %[[TILE_SIZES]],
   // CHECK-SAME: %[[NUM_UNROLL_FACTORS]], %[[UNROLL_FACTORS]],
-  // CHECK-SAME: %[[MAX_RANK]], %[[ENABLE_FTZ]], %[[CPU_CODEGEN]]
+  // CHECK-SAME: %[[ENABLE_FTZ]], %[[CPU_CODEGEN]]
   // CHECK: llvm.return %[[RES]]
   %0 = tf_framework.jit_compile_from_str %ctx, "placeholder" {
-      tileSizes = [1, 2, 3], unrollFactors = [4], maxSupportedRank = 3 : i64,
+      tileSizes = [1, 2, 3], unrollFactors = [4],
       enableFtz = false, index64Bit = false, cpuCodegen = false }
   func.return %0 : !tf_framework.jit_callable
 }

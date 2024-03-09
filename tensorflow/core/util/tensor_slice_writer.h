@@ -96,7 +96,8 @@ class TensorSliceWriter {
   std::map<string, string> data_;
   // Total number of slices written
   int slices_;
-  TF_DISALLOW_COPY_AND_ASSIGN(TensorSliceWriter);
+  TensorSliceWriter(const TensorSliceWriter&) = delete;
+  void operator=(const TensorSliceWriter&) = delete;
 };
 
 template <typename T>
@@ -161,7 +162,7 @@ Status TensorSliceWriter::Add(const string& name, const TensorShape& shape,
     data_.insert(key_value);
   }
   ++slices_;
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 template <typename T>
@@ -184,7 +185,7 @@ Status TensorSliceWriter::SaveData(const T* data, int64_t num_elements,
   Fill(data, num_elements, ss->mutable_data());
   DCHECK_GE(ss->ByteSize(), 0);
   DCHECK_LE(ss->ByteSize(), size_bound);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 template <>

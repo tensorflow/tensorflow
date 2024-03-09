@@ -18,7 +18,7 @@ limitations under the License.
 #include <string>
 #include <utility>
 
-#include "tensorflow/tsl/platform/statusor.h"
+#include "tsl/platform/statusor.h"
 
 namespace xla {
 PjrtClientFactoryRegistry& PjrtClientFactoryRegistry::Get() {
@@ -39,7 +39,8 @@ PjrtClientFactoryRegistry::RegisterPjrtClientFactory(
   return {};
 }
 
-StatusOr<std::unique_ptr<PjRtClient>> PjrtClientFactoryRegistry::GetPjrtClient(
+absl::StatusOr<std::unique_ptr<PjRtClient>>
+PjrtClientFactoryRegistry::GetPjrtClient(
     const tsl::DeviceType& device_type,
     const PjrtClientFactoryOptions& options) {
   tensorflow::tf_shared_lock l(mu_);

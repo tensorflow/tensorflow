@@ -528,9 +528,9 @@ LogicalResult ConvertTFRealDivOp::matchAndRewrite(
   auto reciprocal_op = CreateOpAndInfer<tosa::ReciprocalOp>(
       rewriter, op->getLoc(), tf_div_op.getY().getType(), tf_div_op.getY());
 
-  auto mul_op = CreateOpAndInfer<tosa::MulOp>(rewriter, op->getLoc(),
-                                              output_type, tf_div_op.getX(),
-                                              reciprocal_op.getResult(), 0);
+  auto mul_op = CreateOpAndInfer<tosa::MulOp>(
+      rewriter, op->getLoc(), output_type, tf_div_op.getX(),
+      reciprocal_op.getResult(), rewriter.getI8IntegerAttr(0));
   rewriter.replaceOp(op, {mul_op.getResult()});
 
   return success();
@@ -560,7 +560,7 @@ LogicalResult ConvertTFArgMaxOp::matchAndRewrite(
     return rewriter.notifyMatchFailure(op, "invalid axis value");
   }
 
-  IntegerAttr axis_attr = rewriter.getI64IntegerAttr(axis);
+  IntegerAttr axis_attr = rewriter.getI32IntegerAttr(axis);
 
   CreateReplaceOpAndInfer<tosa::ArgMaxOp>(rewriter, op, output_type,
                                           tf_argmax_op.getInput(), axis_attr);
@@ -1420,11 +1420,13 @@ LogicalResult ConvertTFFusedBatchNormOp::matchAndRewrite(
 
   auto op4_mul_op1_op3 = CreateOpAndInfer<tosa::MulOp>(
       rewriter, op->getLoc(), tf_batchnorm_op.getResult(0).getType(),
-      op1_sub_input_mean.getResult(), op3_rsqrt_op2.getResult(), 0);
+      op1_sub_input_mean.getResult(), op3_rsqrt_op2.getResult(),
+      rewriter.getI8IntegerAttr(0));
 
   auto op5_mul_op4_scale = CreateOpAndInfer<tosa::MulOp>(
       rewriter, op->getLoc(), tf_batchnorm_op.getResult(0).getType(),
-      op4_mul_op1_op3.getResult(), tf_batchnorm_op.getScale(), 0);
+      op4_mul_op1_op3.getResult(), tf_batchnorm_op.getScale(),
+      rewriter.getI8IntegerAttr(0));
 
   auto op6_add_op5_offset = CreateOpAndInfer<tosa::AddOp>(
       rewriter, op->getLoc(), tf_batchnorm_op.getResult(0).getType(),
@@ -1490,11 +1492,13 @@ LogicalResult ConvertTFFusedBatchNormV3Op::matchAndRewrite(
 
   auto op4_mul_op1_op3 = CreateOpAndInfer<tosa::MulOp>(
       rewriter, op->getLoc(), tf_batchnorm_op.getResult(0).getType(),
-      op1_sub_input_mean.getResult(), op3_rsqrt_op2.getResult(), 0);
+      op1_sub_input_mean.getResult(), op3_rsqrt_op2.getResult(),
+      rewriter.getI8IntegerAttr(0));
 
   auto op5_mul_op4_scale = CreateOpAndInfer<tosa::MulOp>(
       rewriter, op->getLoc(), tf_batchnorm_op.getResult(0).getType(),
-      op4_mul_op1_op3.getResult(), tf_batchnorm_op.getScale(), 0);
+      op4_mul_op1_op3.getResult(), tf_batchnorm_op.getScale(),
+      rewriter.getI8IntegerAttr(0));
 
   auto op6_add_op5_offset = CreateOpAndInfer<tosa::AddOp>(
       rewriter, op->getLoc(), tf_batchnorm_op.getResult(0).getType(),
@@ -1619,7 +1623,7 @@ LogicalResult ConvertTFPackOp::matchAndRewrite(
   assert(inputs.size() >= 2);
 
   IntegerAttr axis_attr = tf_pack_op.getAxisAttr();
-  if (!axis_attr) axis_attr = rewriter.getI64IntegerAttr(0);
+  if (!axis_attr) axis_attr = rewriter.getI32IntegerAttr(0);
 
   int32_t axis_i32 = axis_attr.getInt();
 
@@ -1640,7 +1644,7 @@ LogicalResult ConvertTFUnpackOp::matchAndRewrite(
   IntegerAttr axis_attr;
   {
     auto tmpAttr = tf_unpack_op.getAxisAttr();
-    if (!tmpAttr) tmpAttr = rewriter.getI64IntegerAttr(0);
+    if (!tmpAttr) tmpAttr = rewriter.getI32IntegerAttr(0);
     axis_attr = tmpAttr;
   }
   int32_t axis_i32 = axis_attr.getInt();
@@ -2209,7 +2213,7 @@ LogicalResult ConvertTFReverseV2Op::matchAndRewrite(
     for (int i = 0; i < axis_elems.getNumElements(); i++) {
       int64_t axis_val = axis_elems.getValues<IntegerAttr>()[i].getInt();
       if (axis_val < 0) axis_val += input_rank;
-      auto axis_attr = rewriter.getI64IntegerAttr(axis_val);
+      auto axis_attr = rewriter.getI32IntegerAttr(axis_val);
       auto reverse_op = CreateOpAndInfer<tosa::ReverseOp>(
           rewriter, op->getLoc(), output_type, val, axis_attr);
 

@@ -60,13 +60,6 @@ Status GraphToFunctionDef(const Graph& graph, const string& name,
                           const std::vector<std::string>& output_names,
                           FunctionDef* fdef);
 
-Status GetGraphAndArgRets(
-    const string& function_name, AttrSlice attrs, const FunctionDef* fdef,
-    const FunctionLibraryDefinition* lib_def, std::unique_ptr<Graph>* graph,
-    std::vector<Node*>* arg_nodes, std::vector<Node*>* ret_nodes,
-    std::vector<string>* ret_node_names, DataTypeVector* ret_types,
-    std::vector<string>* control_ret_node_names);
-
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_CORE_FRAMEWORK_GRAPH_TO_FUNCTIONDEF_H_
