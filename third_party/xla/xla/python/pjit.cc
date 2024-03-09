@@ -41,6 +41,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "third_party/nanobind/include/nanobind/nanobind.h"
 #include "third_party/nanobind/include/nanobind/stl/shared_ptr.h"  // IWYU pragma: keep
+#include "third_party/nanobind/include/nanobind/stl/vector.h"  // IWYU pragma: keep
 #include "pybind11/pytypes.h"  // from @pybind11
 #include "xla/pjrt/exceptions.h"
 #include "xla/pjrt/lru_cache.h"
@@ -248,7 +249,7 @@ class PjitFunction {
   const py::function& shard_arg_fallback() const { return shard_arg_fallback_; }
 
   const std::vector<int>& static_argnums() const { return static_argnums_; }
-  const std::vector<py::str>& static_argnames() const {
+  const std::vector<nb::str>& static_argnames() const {
     return static_argnames_;
   }
   const std::vector<int>& donate_argnums() const { return donate_argnums_; }
@@ -279,7 +280,7 @@ class PjitFunction {
   std::optional<py::function> fun_;
   py::function cache_miss_;
   std::vector<int> static_argnums_;
-  std::vector<py::str> static_argnames_;
+  std::vector<nb::str> static_argnames_;
   std::vector<int> donate_argnums_;
 
   std::shared_ptr<xla::PyTreeRegistry> pytree_registry_;
@@ -321,14 +322,16 @@ PjitFunction::PjitFunction(
       fun_(std::move(fun)),
       cache_miss_(std::move(cache_miss)),
       static_argnums_(std::move(static_argnums)),
-      static_argnames_(std::move(static_argnames)),
       donate_argnums_(donate_argnums),
       pytree_registry_(std::move(pytree_registry)),
       shard_arg_fallback_(std::move(shard_arg_fallback)),
       cache_(std::move(cache)) {
   std::sort(static_argnums_.begin(), static_argnums_.end());
-  for (py::str& s : static_argnames_) {
-    PyUnicode_InternInPlace(&s.ptr());
+  static_argnames.reserve(static_argnames.size());
+  for (py::str& name : static_argnames) {
+    PyObject* s = name.inc_ref().ptr();
+    PyUnicode_InternInPlace(&s);
+    static_argnames_.push_back(nb::steal<nb::str>(s));
   }
   if (!fun_.has_value()) {
     executables_ = cache_->DefaultCache();
@@ -349,7 +352,9 @@ void CallShardArgFallback(
   auto py_array_or_bufs = fallback(arg, sharding);
   auto py_array = py::cast<xla::PyArray>(py_array_or_bufs);
   num_args_arrays.push_back(tsl::FormRef(py_array.ifrt_array()));
-  arguments.keep_alive_objects.push_back(std::move(py_array_or_bufs));
+  // TODO(phawkins): use std::move after nanobind transition is complete
+  arguments.keep_alive_objects.push_back(
+      nb::steal(py_array_or_bufs.release().ptr()));
 }
 
 // Prepares the input PjRtBuffers from the python arguments. This is equivalent
@@ -397,8 +402,9 @@ PrepareIfrtInputs(const xla::PyLoadedExecutable& executable,
 
         num_args_arrays.push_back(std::move(on_device.ifrt_array));
         if (on_device.owning_pybuffer) {
+          // TODO(phawkins): use std::move after nanobind transition is complete
           arguments.keep_alive_objects.push_back(
-              std::move(on_device.owning_pybuffer));
+              nb::steal(on_device.owning_pybuffer.release().ptr()));
         }
         continue;
       } else {
@@ -454,8 +460,7 @@ PrepareIfrtInputs(const xla::PyLoadedExecutable& executable,
       num_args_arrays.push_back(tsl::FormRef(ifrt_array));
     }
 
-    arguments.keep_alive_objects.push_back(
-        py::reinterpret_borrow<py::object>(arg.ptr()));
+    arguments.keep_alive_objects.push_back(arg);
   }
 
   return num_args_arrays;
@@ -650,6 +655,7 @@ absl::StatusOr<py::object> PjitFunction::Call(py::handle callable,
         traceback, std::move(output_arrays[i]),
         /*committed=*/cache_entry->out_committed.at(i), /*skip_checks=*/true);
 
+    // TODO(phawkins): use std::move after nanobind transition is complete
     outputs.push_back(nb::steal(py_array.release().ptr()));
   }
 
@@ -657,20 +663,23 @@ absl::StatusOr<py::object> PjitFunction::Call(py::handle callable,
       cache_entry->out_pytree_def.Unflatten(outputs).release().ptr());
 
   // If there is a post-hook function, call it with the inputs and the outputs.
-  std::optional<py::object> post_hook = GetPostHook();
+  std::optional<nb::object> post_hook = GetPostHook();
   if (post_hook) {
-    py::tuple args_tuple(num_positional_args);
+    nb::tuple args_tuple =
+        nb::steal<nb::tuple>(PyTuple_New(num_positional_args));
     for (size_t i = 0; i < num_positional_args; ++i) {
-      args_tuple[i] = args[i];
+      Py_INCREF(args[i]);
+      PyTuple_SET_ITEM(args_tuple.ptr(), i, args[i]);
     }
-    py::dict kwargs;
+    nb::dict kwargs;
     if (kwnames) {
       for (size_t i = 0; i < num_keyword_args; ++i) {
-        kwargs[py::handle(PyTuple_GET_ITEM(kwnames, i))] =
-            args[num_positional_args + i];
+        kwargs[nb::handle(PyTuple_GET_ITEM(kwnames, i))] =
+            nb::borrow(args[num_positional_args + i]);
       }
     }
-    (*post_hook)(callable, args_tuple, kwargs, out);
+    (*post_hook)(nb::handle(callable.ptr()), args_tuple, kwargs,
+                 nb::handle(out.ptr()));
   }
 
   return out;
@@ -704,10 +713,12 @@ absl::Status PjitFunction::UpdateArgsSignature(
     if (arg.type().ptr() == xla::PyArray::type().ptr()) {
       auto py_array = py::reinterpret_borrow<xla::PyArray>(arg.ptr());
 
-      arguments.signature.dynamic_arg_shardings.push_back(py_array.sharding());
+      // TODO(phawkins): remove nanobind translation
+      arguments.signature.dynamic_arg_shardings.push_back(
+          nb::borrow(py_array.sharding().ptr()));
       arguments.signature.committed_args.push_back(py_array.committed());
     } else {
-      arguments.signature.dynamic_arg_shardings.push_back(py::none());
+      arguments.signature.dynamic_arg_shardings.push_back(nb::none());
       arguments.signature.committed_args.push_back(false);
     }
   }
@@ -1084,7 +1095,8 @@ void BuildPjitSubmodule(py::module& m) {
         }
         pickle["cache_miss"] = fn->cache_miss();
         pickle["static_argnums"] = fn->static_argnums();
-        pickle["static_argnames"] = fn->static_argnames();
+        pickle["static_argnames"] = py::reinterpret_borrow<py::object>(
+            nb::cast(fn->static_argnames()).ptr());
         pickle["donate_argnums"] = fn->donate_argnums();
         pickle["pytree_registry"] = py::reinterpret_borrow<py::object>(
             nb::cast(fn->pytree_registry()).ptr());

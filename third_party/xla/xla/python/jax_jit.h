@@ -31,9 +31,9 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/types/span.h"
 #include "third_party/nanobind/include/nanobind/nanobind.h"
-#include "pybind11/pybind11.h"  // from @pybind11
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/python/ifrt/array.h"
+#include "xla/python/nb_helpers.h"
 #include "xla/python/py_values.h"
 #include "xla/python/python_ref_manager.h"
 #include "xla/python/pytree.h"
@@ -53,7 +53,7 @@ struct JitState {
     if (extra_jit_context) {
       // We likely do not hold the GIL if this JitState is thread-local, so we
       // hand the Python object to the global reference manager to destroy.
-      pybind11::object o = std::move(*extra_jit_context);
+      nanobind::object o = std::move(*extra_jit_context);
       xla::GlobalPyRefManager()->AddGarbage(absl::MakeSpan(&o, 1));
       extra_jit_context = std::nullopt;
     }
@@ -67,15 +67,15 @@ struct JitState {
   // in global state, indicating there is no manual override.
   // TODO(skyewm): make this a C++ type when all JAX backends support a single
   // C++ device interface
-  std::optional<pybind11::object> default_device;
+  std::optional<nanobind::object> default_device;
 
   // Extra context that should be included in the JIT cache key. Must be
   // hashable and have an equality defined.
-  std::optional<pybind11::object> extra_jit_context;
+  std::optional<nanobind::object> extra_jit_context;
 
   // A callback that, if present, is called when a JITted function is executed
   // from cache. May be unset even in global state.
-  std::optional<pybind11::function> post_hook;
+  std::optional<nanobind::callable> post_hook;
 };
 
 JitState& GlobalJitState();
@@ -90,8 +90,8 @@ bool GetEnableX64();
 
 // TODO(skyewm): return a C++ type when all JAX backends support a single C++
 // device interface
-std::optional<pybind11::object> GetDefaultDevice();
-std::optional<pybind11::function> GetPostHook();
+std::optional<nanobind::object> GetDefaultDevice();
+std::optional<nanobind::callable> GetPostHook();
 
 // The signature of Python jitted function call, partitioned into:
 // - dynamic positional arguments (i.e. positional args which are not static)
@@ -112,21 +112,21 @@ struct CallSignature {
   absl::InlinedVector<xla::PyTreeDef, 2> dynamic_arg_treedefs;
   // Dynamic keyword argument names. Interned, and sorted by the keyword
   // name.
-  std::vector<pybind11::object> dynamic_arg_names;
+  std::vector<nanobind::object> dynamic_arg_names;
   // Shape and dtype for both the dynamic positional arguments and the keyword
   // arguments (sorted by keyword name).
   absl::InlinedVector<xla::PyArgSignature, 2> dynamic_arg_signatures;
 
   // The sharding of the jax.Array arguments. This is only used by pjit with
   // jax.Array enabled.
-  std::vector<pybind11::object> dynamic_arg_shardings;
+  std::vector<nanobind::object> dynamic_arg_shardings;
 
   // Static arguments. Contains the positional arguments sorted in argument
   // order, followed by static keyword arguments in the order given by
   // `static_arg_names`.
-  std::vector<pybind11::object> static_args;
+  std::vector<nanobind::object> static_args;
   // Static keyword argument names. Interned, and sorted by keyword name.
-  std::vector<pybind11::object> static_arg_names;
+  std::vector<nanobind::object> static_arg_names;
 
   absl::InlinedVector<bool, 2> committed_args;
 
@@ -139,11 +139,11 @@ struct CallSignature {
 
   // For JIT on PJIT, we need to fallback to python whenever default_device
   // changes.
-  std::optional<pybind11::object> default_device;
+  std::optional<nanobind::object> default_device;
 
   // Opaque additional context that should be included as part of the cache key.
-  std::optional<pybind11::object> global_extra_jit_context;
-  std::optional<pybind11::object> thread_local_extra_jit_context;
+  std::optional<nanobind::object> global_extra_jit_context;
+  std::optional<nanobind::object> thread_local_extra_jit_context;
 
   bool operator==(const CallSignature& other) const;
   bool operator!=(const CallSignature& other) const {
@@ -179,16 +179,15 @@ H AbslHashValue(H h, const CallSignature& s) {
   for (const auto& static_arg : s.static_args) {
     ssize_t hash;
     try {
-      hash = pybind11::hash(static_arg);
-    } catch (const pybind11::error_already_set& e) {
+      hash = xla::nb_hash(static_arg);
+    } catch (const nanobind::python_error& e) {
       if (!e.matches(PyExc_TypeError)) throw;
       throw std::invalid_argument(absl::StrCat(
           "Non-hashable static arguments are not supported. An error occurred "
           "during a call to '",
           s.function_name, "' while trying to hash an object of type ",
-          pybind11::cast<std::string>(
-              pybind11::str(pybind11::type::of(static_arg))),
-          ", ", pybind11::cast<std::string>(pybind11::str(static_arg)),
+          nanobind::cast<std::string_view>(nanobind::str(static_arg.type())),
+          ", ", nanobind::cast<std::string_view>(nanobind::str(static_arg)),
           ". The error was:\n", e.what(), "\n"));
     }
     h = H::combine(std::move(h), hash);
@@ -216,7 +215,7 @@ struct ParsedArgumentsAsBuffers {
   // The concatenation of the dynamic positional arguments and the sorted
   // keyword arguments.
   absl::InlinedVector<nanobind::object, 2> flat_dynamic_args;
-  std::vector<pybind11::object> keep_alive_objects;
+  std::vector<nanobind::object> keep_alive_objects;
 
   xla::ifrt::Client* ifrt_client;
   // The following is only valid if the parsing succeeds.
@@ -227,14 +226,14 @@ struct ParsedArgumentsAsBuffers {
 // dynamic positional and keyword arguments), filling `arguments` in place.
 absl::Status ParseArguments(absl::Span<PyObject* const> positional_args,
                             absl::Span<PyObject* const> keyword_args,
-                            pybind11::handle kwnames,
+                            nanobind::handle kwnames,
                             absl::Span<int const> static_argnums,
-                            absl::Span<pybind11::str const> static_argnames,
+                            absl::Span<nanobind::str const> static_argnames,
                             xla::PyTreeRegistry* pytree_registry,
                             ParsedArgumentsAsBuffers& arguments);
 
 // The function to call in `xla.cc` to add the bindings for this module.
-void BuildJaxjitSubmodule(pybind11::module& m);
+void BuildJaxjitSubmodule(nanobind::module_& m);
 
 }  // namespace jax
 

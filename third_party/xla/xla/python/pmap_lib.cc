@@ -110,7 +110,7 @@ struct ShardArgResult {
   // ifrt_array->sharding().num_shards() == `num_devices`.
   tsl::RCReference<xla::ifrt::Array> ifrt_array;
   // The Python argument will be always be copied to `owning_sda`.
-  py::object owning_sda;
+  nb::object owning_sda;
 };
 
 // Shars a single argument over devices.
@@ -147,7 +147,7 @@ absl::StatusOr<ShardArgResult> ShardArg(
         if (pmap_sharding->sharding_spec() ==
             cached_pmap_sharding->sharding_spec()) {
           ShardArgResult result;
-          result.owning_sda = py::reinterpret_borrow<py::object>(arg);
+          result.owning_sda = nb::borrow<nb::object>(arg.ptr());
           result.ifrt_array = tsl::FormRef(py_array.ifrt_array());
           if (result.ifrt_array == nullptr) {
             return xla::InvalidArgument("Array has been deleted.");
@@ -196,7 +196,7 @@ absl::StatusOr<ShardArgResult> ShardArg(
     std::vector<xla::ifrt::Shape> shapes;
     shapes.reserve(n_devices);
 
-    py::list owning_pylist(n_devices);
+    nb::list owning_pylist;
     ShardArgResult result;
     result.owning_sda = owning_pylist;
     const bool jax_enable_x64 = GetEnableX64();
@@ -247,7 +247,7 @@ absl::StatusOr<ShardArgResult> ShardArg(
 
   auto py_array = py::cast<xla::PyArray>(py_array_or_bufs);
   ShardArgResult result;
-  result.owning_sda = py_array_or_bufs;
+  result.owning_sda = nb::borrow(py_array_or_bufs.ptr());
   result.ifrt_array = tsl::FormRef(py_array.ifrt_array());
   return result;
 }
@@ -383,21 +383,9 @@ class PmapFunction {
       arguments.signature.dynamic_arg_signatures.push_back(
           std::move(signature_or_error).value());
     }
-    try {
-      py::object pxla_module = py::module::import("jax").attr("config");
-      py::object sda = py::getattr(pxla_module, "_trace_context", py::none());
-      if (!sda.is_none()) {
-        arguments.signature.thread_local_extra_jit_context = sda();
-      }
-    } catch (const py::error_already_set& e) {
-      // Ignore; jax may not be present.
-    }
-    if (!arguments.signature.thread_local_extra_jit_context.has_value()) {
-      arguments.signature.thread_local_extra_jit_context =
-          tls.extra_jit_context;
-      arguments.signature.global_extra_jit_context =
-          global_state.extra_jit_context;
-    }
+    arguments.signature.thread_local_extra_jit_context = tls.extra_jit_context;
+    arguments.signature.global_extra_jit_context =
+        global_state.extra_jit_context;
     return absl::Status();
   }
 
@@ -693,21 +681,24 @@ absl::StatusOr<py::object> PmapFunction::Call(py::handle callable,
           .ptr());
 
   // If there is a post-hook function, call it with the inputs and the outputs.
-  std::optional<py::object> post_hook = GetPostHook();
+  std::optional<nb::object> post_hook = GetPostHook();
   if (post_hook) {
-    py::tuple args_tuple(num_positional_args);
+    nb::tuple args_tuple =
+        nb::steal<nb::tuple>(PyTuple_New(num_positional_args));
     for (size_t i = 0; i < num_positional_args; ++i) {
-      args_tuple[i] = args[i];
+      Py_INCREF(args[i]);
+      PyTuple_SET_ITEM(args_tuple.ptr(), i, args[i]);
     }
-    py::dict kwargs;
+    nb::dict kwargs;
     if (kwnames) {
       for (size_t i = 0; i < num_keyword_args; ++i) {
-        kwargs[py::handle(PyTuple_GET_ITEM(kwnames, i))] =
-            args[num_positional_args + i];
+        kwargs[nb::handle(PyTuple_GET_ITEM(kwnames, i))] =
+            nb::borrow(args[num_positional_args + i]);
       }
     }
 
-    (*post_hook)(callable, args_tuple, kwargs, out);
+    (*post_hook)(nb::handle(callable.ptr()), args_tuple, kwargs,
+                 nb::handle(out.ptr()));
   }
 
   return out;

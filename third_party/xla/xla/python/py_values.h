@@ -31,6 +31,7 @@ limitations under the License.
 #include "xla/python/ifrt/array.h"
 #include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt/memory.h"
+#include "xla/python/nb_numpy.h"
 #include "tsl/concurrency/ref_count.h"
 
 namespace xla {
@@ -70,7 +71,7 @@ absl::StatusOr<DevicePutResult> DevicePut(pybind11::handle arg,
                                           ifrt::MemoryKind to_memory_kind);
 
 // Returns `true` if `arg` is a JAX float0 array.
-bool IsFloat0(pybind11::array arg);
+bool IsFloat0(xla::nb_numpy_ndarray arg);
 
 // Describes the abstract shape and dtype of an argument.
 struct PyArgSignature {

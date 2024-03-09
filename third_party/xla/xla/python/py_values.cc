@@ -38,6 +38,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "absl/types/span.h"
+#include "third_party/nanobind/include/nanobind/nanobind.h"
 #include "pybind11/pybind11.h"  // from @pybind11
 #include "pybind11/pytypes.h"  // from @pybind11
 #include "xla/primitive_util.h"
@@ -46,6 +47,7 @@ limitations under the License.
 #include "xla/python/ifrt/dtype.h"
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/sharding.h"
+#include "xla/python/nb_numpy.h"
 #include "xla/python/pjrt_ifrt/pjrt_array.h"
 #include "xla/python/py_array.h"
 #include "xla/python/python_ref_manager.h"
@@ -60,6 +62,7 @@ limitations under the License.
 #include "tsl/platform/statusor.h"
 #include "tsl/profiler/lib/traceme.h"
 
+namespace nb = nanobind;
 namespace py = pybind11;
 
 namespace xla {
@@ -407,11 +410,11 @@ absl::StatusOr<DevicePutResult> DevicePut(py::handle arg, ifrt::Client* client,
   return res->second(arg, client, to_device, options, to_memory_kind);
 }
 
-bool IsFloat0(py::array arg) {
+bool IsFloat0(xla::nb_numpy_ndarray arg) {
   static const auto* dtypes_module =
-      new py::module(py::module::import("jax.dtypes"));
+      new nb::module_(nb::module_::import_("jax.dtypes"));
   static const auto* float0_dtype =
-      new py::handle(dtypes_module->attr("float0"));
+      new nb::handle(dtypes_module->attr("float0"));
   return float0_dtype->is(arg.attr("dtype"));
 }
 
