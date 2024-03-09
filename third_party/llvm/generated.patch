@@ -1,11 +1,15 @@
 Auto generated patch. Do not edit or delete it, even if empty.
-diff -ruN --strip-trailing-cr a/utils/bazel/llvm-project-overlay/libc/test/UnitTest/BUILD.bazel b/utils/bazel/llvm-project-overlay/libc/test/UnitTest/BUILD.bazel
---- a/utils/bazel/llvm-project-overlay/libc/test/UnitTest/BUILD.bazel
-+++ b/utils/bazel/llvm-project-overlay/libc/test/UnitTest/BUILD.bazel
-@@ -126,5 +126,6 @@
-     deps = [
-         "//libc:__support_cpp_string",
-         "//libc:__support_cpp_type_traits",
-+        "//libc:__support_uint",
-     ],
- )
+diff -ruN --strip-trailing-cr a/clang/unittests/AST/MatchVerifier.h b/clang/unittests/AST/MatchVerifier.h
+--- a/clang/unittests/AST/MatchVerifier.h
++++ b/clang/unittests/AST/MatchVerifier.h
+@@ -116,6 +116,10 @@
+     Args.push_back("-std=c++20");
+     FileName = "input.cc";
+     break;
++  case Lang_CXX23:
++    Args.push_back("-std=c++23");
++    FileName = "input.cc";
++    break;
+   case Lang_OpenCL:
+     Args.push_back("-cl-no-stdinc");
+     FileName = "input.cl";
