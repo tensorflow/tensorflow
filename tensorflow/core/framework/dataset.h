@@ -15,6 +15,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_FRAMEWORK_DATASET_H_
 #define TENSORFLOW_CORE_FRAMEWORK_DATASET_H_
 
+#include <cstdlib>
 #include <deque>
 #include <iterator>
 #include <memory>
@@ -88,7 +89,7 @@ using TraceMeMetadata = std::vector<std::pair<StringPiece, string>>;
 
 // Maps the index of dataset elements to a globally shuffled index. See the
 // comment for IteratorContext::Params::index_mapper for more details.
-using IndexMapperFn = std::function<int64_t(int64_t)>;
+using IndexMapperFn = std::function<size_t(size_t)>;
 
 constexpr char kTFDataFunction[] = "_tf_data_function";
 
@@ -798,7 +799,7 @@ class IteratorContext {
     // Records the number of elements that have been produced prior to a
     // checkpoint. This is set by globally shuffled iterators so that upstream
     // iterators can restore the element counts in the random access mode.
-    std::optional<int64_t> restored_element_count = std::nullopt;
+    std::optional<size_t> restored_element_count = std::nullopt;
   };
 
   explicit IteratorContext(IteratorContext* ctx)

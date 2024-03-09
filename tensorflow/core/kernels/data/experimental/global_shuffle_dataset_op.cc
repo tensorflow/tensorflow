@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include <atomic>
 #include <cstdint>
+#include <cstdlib>
 #include <functional>
 #include <memory>
 #include <optional>
@@ -235,7 +236,7 @@ class GlobalShuffleDatasetOp::Dataset::Iterator
     uint64_t max_index =
         cardinality_ > 0 ? static_cast<uint64_t>(cardinality_ - 1) : 0;
     return [parent_index_mapper, seed, seed2, seed3,
-            max_index](int64_t element_position) -> int64_t {
+            max_index](size_t element_position) -> size_t {
       if (parent_index_mapper != nullptr) {
         element_position = parent_index_mapper(element_position);
       }
