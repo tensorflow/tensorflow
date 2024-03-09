@@ -21,6 +21,7 @@ from xla.python import xla_extension
 Client = xla_extension.Client
 Device = xla_extension.Device
 
+CompiledFunction = xla_extension.CompiledFunction
 
 class JitState:
   disable_jit: Optional[bool]

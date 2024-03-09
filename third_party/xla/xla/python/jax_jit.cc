@@ -371,6 +371,10 @@ void BuildJaxjitSubmodule(nb::module_& m) {
   jitlib.def("set_thread_local_state_initialization_callback",
              [](nb::object f) { initialize_local_state = f; });
 
+  // TODO(yashkatariya, phawkins): Remove any references and delete.
+  struct CompiledFunction {};
+  nb::class_<CompiledFunction> compiled_function(m, "CompiledFunction");
+
   nb::class_<xla::PyArgSignature> arg_signature(jitlib, "PyArgSignature");
   arg_signature
       .def_prop_ro(
