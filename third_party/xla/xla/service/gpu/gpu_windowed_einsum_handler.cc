@@ -85,6 +85,7 @@ absl::StatusOr<bool> HandleRsWindowedEinsumLoop(HloComputation* comp,
                            m::GetTupleElement(m::Parameter(), 1)))) {
       // Dispatch the dot to additional compute stream.
       TF_RETURN_IF_ERROR(UpdateDotAndConsumerConfig(matched_dot, stream_id));
+      ++stream_id;
       changed = true;
     }
   }
@@ -108,6 +109,7 @@ absl::StatusOr<bool> HandleAgWindowedEinsumLoop(HloComputation* comp,
                            m::GetTupleElement(m::Parameter(), 1)))) {
       // Dispatch the dot to additional compute stream.
       TF_RETURN_IF_ERROR(UpdateDotAndConsumerConfig(matched_dot, stream_id));
+      ++stream_id;
       changed = true;
     }
   }

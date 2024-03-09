@@ -17,9 +17,11 @@ limitations under the License.
 #include <sstream>
 #include <string>
 
+#include "Eigen/Core"  // from @eigen_archive
 #include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tensorflow/c/kernels.h"
 #include "tensorflow/c/kernels/tensor_shape_utils.h"
+#include "tensorflow/c/tf_datatype.h"
 #include "tensorflow/c/tf_status.h"
 #include "tensorflow/c/tf_tensor.h"
 #include "tensorflow/core/framework/registration/registration.h"
@@ -28,10 +30,10 @@ limitations under the License.
 #include "tensorflow/core/platform/bfloat16.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/macros.h"
-#include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/strcat.h"
 #include "tensorflow/core/platform/tstring.h"
 #include "tensorflow/core/platform/types.h"
+#include "tsl/platform/protobuf.h"
 
 namespace {
 
