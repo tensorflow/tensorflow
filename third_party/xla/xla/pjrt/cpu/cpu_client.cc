@@ -667,7 +667,7 @@ static absl::StatusOr<std::unique_ptr<xla::Executable>> JitCompile(
   DumpHloModuleIfEnabled(*hlo_module, kBeforeOptimizationsDumpName);
 
   // Run Hlo Passes
-  cpu::CpuCompiler compiler(/*allow_sparse_shapes=*/false);
+  cpu::CpuCompiler compiler;
   TF_ASSIGN_OR_RETURN(hlo_module, compiler.RunHloPasses(std::move(hlo_module),
                                                         /*stream_exec=*/nullptr,
                                                         compile_options));
