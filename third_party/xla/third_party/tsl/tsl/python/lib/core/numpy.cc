@@ -15,6 +15,7 @@ limitations under the License.
 
 // We define the PY_ARRAY_UNIQUE_SYMBOL in this .cc file and provide an
 // ImportNumpy function to populate it.
+#include "third_party/py/numpy/core/include/numpy/arrayobject.h"
 #define XLA_IMPORT_NUMPY
 
 #include "tsl/python/lib/core/numpy.h"
