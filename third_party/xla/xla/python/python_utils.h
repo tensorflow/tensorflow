@@ -48,13 +48,6 @@ pybind11::object property(GetFunc&& get, SetFunc&& set) {
                   pybind11::none(), "");
 }
 
-template <typename Constructor>
-pybind11::object def_static(Constructor&& constructor) {
-  pybind11::handle property(reinterpret_cast<PyObject*>(&PyProperty_Type));
-  return pybind11::staticmethod(
-      pybind11::cpp_function(std::forward<Constructor>(constructor)));
-}
-
 }  // namespace jax
 
 #endif  // XLA_PYTHON_PYTHON_UTILS_H_

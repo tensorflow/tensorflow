@@ -673,9 +673,10 @@ cc_library(
     visibility = ["//visibility:private"],
     deps = [
         ":jax_jit",
+        ":nb_helpers",
+        ":nb_numpy",
         ":py_client",
         ":python_ref_manager",
-        ":python_utils",
         ":pytree",
         ":traceback",
         ":transfer_guard_lib",

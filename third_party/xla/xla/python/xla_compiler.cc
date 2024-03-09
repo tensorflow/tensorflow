@@ -947,12 +947,13 @@ void BuildXlaCompilerSubmodule(nb::module_& m) {
         nb::dict targets;
         for (const auto& [name, target] :
              CustomCallTargetRegistry::Global()->registered_symbols(platform)) {
-          targets[nb::cast(name)] = target;
+          targets[nb::str(name.data(), name.size())] = nb::capsule(target);
         }
 
         for (const auto& [name, target] :
              ffi::StaticRegisteredHandlers(platform)) {
-          targets[nb::cast(name)] = reinterpret_cast<void*>(target);
+          targets[nb::str(name.data(), name.size())] =
+              nb::capsule(reinterpret_cast<void*>(target));
         }
         return targets;
       },

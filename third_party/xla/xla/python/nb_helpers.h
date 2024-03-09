@@ -35,6 +35,21 @@ ssize_t nb_hash(nanobind::handle o);
   explicit operator Value&&() { return (Value&&)value; } \
   Value value;
 
+template <typename Func>
+nanobind::object nb_property_readonly(Func&& get) {
+  nanobind::handle property(reinterpret_cast<PyObject*>(&PyProperty_Type));
+  return property(nanobind::cpp_function(std::forward<Func>(get)),
+                  nanobind::none(), nanobind::none(), "");
+}
+
+template <typename GetFunc, typename SetFunc>
+nanobind::object nb_property(GetFunc&& get, SetFunc&& set) {
+  nanobind::handle property(reinterpret_cast<PyObject*>(&PyProperty_Type));
+  return property(nanobind::cpp_function(std::forward<GetFunc>(get)),
+                  nanobind::cpp_function(std::forward<SetFunc>(set)),
+                  nanobind::none(), "");
+}
+
 }  // namespace xla
 
 #endif  // XLA_PYTHON_NB_HELPERS_H_
