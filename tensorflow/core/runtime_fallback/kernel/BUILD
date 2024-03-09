@@ -218,6 +218,8 @@ cc_library(
     deps = [
         ":kernel_fallback_tensor",
         ":tensor_util",
+        "//tensorflow/core:portable_gif_internal",
+        "//tensorflow/core/framework:types_proto_cc",
         "//tensorflow/core/runtime_fallback/util:tensor_util",
         "//tensorflow/core/runtime_fallback/util:type_util",
         "@tf_runtime//:dtype",
