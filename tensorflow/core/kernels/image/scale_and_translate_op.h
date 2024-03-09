@@ -21,6 +21,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/kernels/image/sampling_kernels.h"
+#include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
 namespace functor {

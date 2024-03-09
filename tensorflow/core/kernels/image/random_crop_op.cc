@@ -16,10 +16,14 @@ limitations under the License.
 // See docs in ../ops/image_ops.cc.
 
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/op_requires.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/tensor_shape.h"
+#include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/lib/random/simple_philox.h"
+#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/util/guarded_philox_random.h"
 
 namespace tensorflow {

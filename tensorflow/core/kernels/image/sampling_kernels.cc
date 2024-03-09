@@ -17,8 +17,9 @@ limitations under the License.
 
 #include <string>
 
+#include "absl/strings/ascii.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
-#include "tensorflow/core/lib/strings/str_util.h"
+#include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
 namespace functor {
