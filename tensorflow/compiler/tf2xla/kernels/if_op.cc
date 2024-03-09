@@ -24,8 +24,8 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_context.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
-#include "tensorflow/compiler/xla/client/lib/dynamic_shaped_ops.h"
-#include "tensorflow/compiler/xla/client/xla_builder.h"
+#include "xla/client/lib/dynamic_shaped_ops.h"
+#include "xla/client/xla_builder.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 
 namespace tensorflow {
@@ -181,7 +181,7 @@ static Status ValidateShapes(XlaOpKernelContext* ctx,
           "Mismatch in resource of then and else branch for resource ", i);
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // TODO(b/35949885): There is duplication here with the handling of the

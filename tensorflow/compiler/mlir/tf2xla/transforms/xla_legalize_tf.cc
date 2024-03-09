@@ -43,8 +43,8 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tf2xla/transforms/legalization_op_config.h"
 #include "tensorflow/compiler/mlir/tf2xla/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tf2xla/transforms/xla_legalize_targets.h"
-#include "tensorflow/compiler/xla/mlir_hlo/mhlo/IR/hlo_ops.h"
-#include "tensorflow/compiler/xla/mlir_hlo/mhlo/transforms/rewriters.h"
+#include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
+#include "xla/mlir_hlo/mhlo/transforms/rewriters.h"
 #include "tensorflow/core/lib/monitoring/counter.h"
 
 namespace mlir {
@@ -55,11 +55,11 @@ namespace {
 #include "tensorflow/compiler/mlir/tf2xla/transforms/xla_legalize_tf_passes.h.inc"
 
 auto *mlir_legalization_count = tensorflow::monitoring::Counter<1>::New(
-    "/tensorflow/core/tf2xla/v0/mlir_failed_xla_legalize_tf_count",
+    "/tensorflow/core/tf2xla/v1/mlir_failed_xla_legalize_tf_count",
     "Counts the attempts of legalization of ops", "op_name");
 
 auto *mlir_failed_legalization_count = tensorflow::monitoring::Counter<2>::New(
-    "/tensorflow/core/tf2xla/v0/mlir_failed_xla_legalize_tf_pass_count",
+    "/tensorflow/core/tf2xla/v1/mlir_failed_xla_legalize_tf_pass_count",
     "Counts the failure of legalization of ops", "op_name", "legality");
 
 class LegalizeTF : public impl::LegalizeTFBase<LegalizeTF> {
@@ -138,8 +138,9 @@ mlir::LogicalResult ApplyPatterns(Operation *op, RewritePatternSet &patterns,
       GetDefaultLegalConversionTargets(*op->getContext(), legalize_chlo);
 
   DenseSet<Operation *> unconverted_ops;
-  auto result =
-      applyPartialConversion(op, target, std::move(patterns), &unconverted_ops);
+  ConversionConfig config;
+  config.unlegalizedOps = &unconverted_ops;
+  auto result = applyPartialConversion(op, target, std::move(patterns), config);
   if (failed(result)) {
     IncrementFailedLegalizationCount(op, target);
   }

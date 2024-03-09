@@ -54,7 +54,8 @@ TfLiteStatus QuantizeModel(
     bool whole_model_verify = false, bool legacy_float_scale = true,
     const absl::flat_hash_set<std::string>& denylisted_ops = {},
     const absl::flat_hash_set<std::string>& denylisted_nodes = {},
-    bool enable_variable_quantization = false);
+    bool enable_variable_quantization = false,
+    bool disable_per_channel_for_dense_layers = false);
 
 }  // namespace lite
 }  // namespace mlir

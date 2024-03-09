@@ -21,7 +21,7 @@ limitations under the License.
 #include "tensorflow/cc/ops/standard_ops.h"
 #include "tensorflow/compiler/jit/encapsulate_util.h"
 #include "tensorflow/compiler/tf2xla/rearrange_function_argument.h"
-#include "tensorflow/compiler/xla/test.h"
+#include "xla/test.h"
 #include "tensorflow/core/common_runtime/device_factory.h"
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/framework/common_shape_fns.h"
@@ -118,7 +118,7 @@ TEST(RearrangeFunctionArgumentForFunctionTest, Basic) {
                                                    &fld, &new_fbody));
         *fbody = new_fbody.get();
         fbodies.push_back(std::move(new_fbody));
-        return OkStatus();
+        return absl::OkStatus();
       },
       g.get(), &fld));
 
@@ -229,7 +229,7 @@ TEST(RearrangeFunctionArgumentForFunctionTest,
                                                    &fld, &new_fbody));
         *fbody = new_fbody.get();
         fbodies.push_back(std::move(new_fbody));
-        return OkStatus();
+        return absl::OkStatus();
       },
       g.get(), &fld);
   EXPECT_EQ(status.code(), error::UNIMPLEMENTED);

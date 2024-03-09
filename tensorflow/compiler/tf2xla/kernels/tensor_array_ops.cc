@@ -25,8 +25,8 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "tensorflow/compiler/tf2xla/xla_resource.h"
-#include "tensorflow/compiler/xla/client/xla_builder.h"
-#include "tensorflow/compiler/xla/literal.h"
+#include "xla/client/xla_builder.h"
+#include "xla/literal.h"
 #include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/partial_tensor_shape.h"
@@ -84,7 +84,7 @@ Status MaybeInitializeTensorArray(xla::XlaBuilder* builder,
           shape.DebugString());
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Checks that the TensorArray 'resource' has been initialized, and has type
@@ -106,14 +106,14 @@ Status CheckTensorArrayIsInitialized(const string& op_name,
         " but op has dtype ", DataTypeString(dtype), ".");
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status GetTensorArrayShape(const XlaResource* resource,
                            xla::XlaBuilder* builder, TensorShape* shape) {
   *shape = resource->shape();
   shape->InsertDim(0, resource->max_array_size());
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Like XlaBuilder::DynamicUpdateSlice, but adds 'update' to the
@@ -181,7 +181,8 @@ class TensorArrayOp : public XlaOpKernel {
   DataType dtype_;
   string tensor_array_name_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(TensorArrayOp);
+  TensorArrayOp(const TensorArrayOp&) = delete;
+  void operator=(const TensorArrayOp&) = delete;
 };
 
 REGISTER_XLA_OP(Name("TensorArrayV3").CompileTimeConstantInput("size"),
@@ -236,7 +237,8 @@ class TensorArrayWriteOp : public XlaOpKernel {
  private:
   DataType dtype_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(TensorArrayWriteOp);
+  TensorArrayWriteOp(const TensorArrayWriteOp&) = delete;
+  void operator=(const TensorArrayWriteOp&) = delete;
 };
 
 REGISTER_XLA_OP(Name("TensorArrayWriteV3"), TensorArrayWriteOp);
@@ -280,7 +282,8 @@ class TensorArrayReadOp : public XlaOpKernel {
  private:
   DataType dtype_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(TensorArrayReadOp);
+  TensorArrayReadOp(const TensorArrayReadOp&) = delete;
+  void operator=(const TensorArrayReadOp&) = delete;
 };
 
 REGISTER_XLA_OP(Name("TensorArrayReadV3"), TensorArrayReadOp);
@@ -347,7 +350,8 @@ class TensorArrayGatherOp : public XlaOpKernel {
  private:
   DataType dtype_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(TensorArrayGatherOp);
+  TensorArrayGatherOp(const TensorArrayGatherOp&) = delete;
+  void operator=(const TensorArrayGatherOp&) = delete;
 };
 
 REGISTER_XLA_OP(Name("TensorArrayGatherV3"), TensorArrayGatherOp);
@@ -434,7 +438,8 @@ class TensorArrayScatterOp : public XlaOpKernel {
  private:
   DataType dtype_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(TensorArrayScatterOp);
+  TensorArrayScatterOp(const TensorArrayScatterOp&) = delete;
+  void operator=(const TensorArrayScatterOp&) = delete;
 };
 
 REGISTER_XLA_OP(Name("TensorArrayScatterV3"), TensorArrayScatterOp);
@@ -474,7 +479,8 @@ class TensorArrayConcatOp : public XlaOpKernel {
  private:
   DataType dtype_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(TensorArrayConcatOp);
+  TensorArrayConcatOp(const TensorArrayConcatOp&) = delete;
+  void operator=(const TensorArrayConcatOp&) = delete;
 };
 
 REGISTER_XLA_OP(Name("TensorArrayConcatV3"), TensorArrayConcatOp);
@@ -544,7 +550,8 @@ class TensorArraySplitOp : public XlaOpKernel {
  private:
   DataType dtype_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(TensorArraySplitOp);
+  TensorArraySplitOp(const TensorArraySplitOp&) = delete;
+  void operator=(const TensorArraySplitOp&) = delete;
 };
 
 REGISTER_XLA_OP(Name("TensorArraySplitV3").CompileTimeConstantInput("lengths"),
@@ -563,7 +570,8 @@ class TensorArraySizeOp : public XlaOpKernel {
   }
 
  private:
-  TF_DISALLOW_COPY_AND_ASSIGN(TensorArraySizeOp);
+  TensorArraySizeOp(const TensorArraySizeOp&) = delete;
+  void operator=(const TensorArraySizeOp&) = delete;
 };
 
 REGISTER_XLA_OP(Name("TensorArraySizeV3"), TensorArraySizeOp);
@@ -598,7 +606,8 @@ class TensorArrayGradOp : public XlaOpKernel {
  private:
   string source_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(TensorArrayGradOp);
+  TensorArrayGradOp(const TensorArrayGradOp&) = delete;
+  void operator=(const TensorArrayGradOp&) = delete;
 };
 
 REGISTER_XLA_OP(Name("TensorArrayGradV3"), TensorArrayGradOp);
@@ -612,7 +621,8 @@ class TensorArrayCloseOp : public XlaOpKernel {
   }
 
  private:
-  TF_DISALLOW_COPY_AND_ASSIGN(TensorArrayCloseOp);
+  TensorArrayCloseOp(const TensorArrayCloseOp&) = delete;
+  void operator=(const TensorArrayCloseOp&) = delete;
 };
 
 REGISTER_XLA_OP(Name("TensorArrayCloseV3"), TensorArrayCloseOp);

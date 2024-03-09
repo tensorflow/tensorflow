@@ -1,0 +1,11 @@
+op 	 {
+  name: "DatasetFingerprint"
+  input_arg {
+    name: "input_dataset"
+    type: DT_VARIANT
+  }
+  output_arg {
+    name: "fingerprint"
+    type: DT_UINT64
+  }
+}

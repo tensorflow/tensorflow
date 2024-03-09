@@ -17,7 +17,7 @@ limitations under the License.
 
 #define EIGEN_USE_THREADS
 
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/tensor.pb.h"
@@ -56,7 +56,7 @@ class SingleThreadedCpuDevice : public Device {
 
   ~SingleThreadedCpuDevice() override { eigen_device_.reset(); }
 
-  Status Sync() override { return OkStatus(); }
+  Status Sync() override { return absl::OkStatus(); }
 
   Status MakeTensorFromProto(const TensorProto& tensor_proto,
                              const AllocatorAttributes alloc_attrs,
@@ -66,7 +66,7 @@ class SingleThreadedCpuDevice : public Device {
       return errors::InvalidArgument("Cannot parse tensor from tensor_proto.");
     }
     *tensor = parsed;
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   void CopyTensorInSameDevice(const Tensor* input_tensor, Tensor* output_tensor,
@@ -79,7 +79,7 @@ class SingleThreadedCpuDevice : public Device {
       return;
     }
     tensor::DeepCopy(*input_tensor, output_tensor);
-    done(OkStatus());
+    done(absl::OkStatus());
   }
 
   Allocator* GetAllocator(AllocatorAttributes attr) override {

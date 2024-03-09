@@ -18,13 +18,13 @@ limitations under the License.
 #include <cstdint>
 #include <string>
 
-#include "tensorflow/compiler/xla/status_macros.h"
+#include "xla/status_macros.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/function.pb.h"
 #include "tensorflow/core/lib/strings/proto_serialization.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/tpu/tpu_compile_interface.h"
-#include "tensorflow/tsl/platform/logging.h"  // IWYU pragma: keep
+#include "tsl/platform/logging.h"  // IWYU pragma: keep
 
 namespace tensorflow {
 
@@ -41,7 +41,7 @@ Status FingerprintFunctionLibrary(const FunctionLibraryDefinition& library,
   }
   TF_RET_CHECK(SerializeToStringDeterministic(library_proto, &serialized));
   fingerprint = TpuCompileInterface::Get()->FingerprintString(serialized);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace tensorflow

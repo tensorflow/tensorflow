@@ -17,7 +17,7 @@ limitations under the License.
 #include "tensorflow/core/data/dataset_test_base.h"
 #include "tensorflow/core/data/dataset_utils.h"
 #include "tensorflow/core/data/serialization_utils.h"
-#include "tensorflow/tsl/lib/core/status_test_util.h"
+#include "tsl/lib/core/status_test_util.h"
 
 namespace tensorflow {
 namespace data {
@@ -59,7 +59,7 @@ class WindowDatasetParams : public DatasetParams {
     input_names->emplace_back(WindowDatasetOp::kShift);
     input_names->emplace_back(WindowDatasetOp::kStride);
     input_names->emplace_back(WindowDatasetOp::kDropRemainder);
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   Status GetAttributes(AttributeVector* attr_vector) const override {
@@ -67,7 +67,7 @@ class WindowDatasetParams : public DatasetParams {
     attr_vector->emplace_back("output_types", output_dtypes_);
     attr_vector->emplace_back("output_shapes", output_shapes_);
     attr_vector->emplace_back("metadata", "");
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   string dataset_type() const override { return WindowDatasetOp::kDatasetType; }

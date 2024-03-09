@@ -51,6 +51,8 @@ py_strict_test(
         ":custom_nest_trace_type",
         ":default_types",
         ":trace_type",
+        #internal proto upb dep
+        "//third_party/py/numpy",
         "//tensorflow/python/compat:v2_compat",
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/data/ops:iterator_ops",
@@ -66,7 +68,6 @@ py_strict_test(
         "//tensorflow/python/ops:variables",
         "//tensorflow/python/ops/ragged:ragged_tensor",
         "//tensorflow/python/platform:client_testlib",
-        "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
     ],
 )
@@ -94,6 +95,7 @@ py_strict_test(
     deps = [
         ":default_types",
         ":serialization",
+        #internal proto upb dep
         "//tensorflow/python/platform:client_testlib",
         "//tensorflow/python/types:trace",
         "@absl_py//absl/testing:parameterized",
@@ -121,6 +123,7 @@ py_strict_test(
     deps = [
         ":custom_nest_trace_type",
         ":default_types",
+        #internal proto upb dep
         "//tensorflow/python/platform:client_testlib",
         "//tensorflow/python/types:trace",
         "@absl_py//absl/testing:parameterized",
@@ -143,6 +146,7 @@ py_strict_test(
     python_version = "PY3",
     deps = [
         ":serialization",
+        #internal proto upb dep
         "//tensorflow/core/function/trace_type:serialization_test_proto_py",
         "//tensorflow/python/platform:client_testlib",
     ],

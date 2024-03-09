@@ -39,7 +39,7 @@ class RemoteDevice : public Device {
       : Device(env, da),
         local_dev_name_(DeviceNameUtils::LocalName(da.name())) {}
 
-  Status Sync() override { return OkStatus(); }
+  Status Sync() override { return absl::OkStatus(); }
   Allocator* GetAllocator(AllocatorAttributes attr) override { return nullptr; }
 
   ResourceMgr* resource_manager() override {
@@ -55,7 +55,8 @@ class RemoteDevice : public Device {
  private:
   const string local_dev_name_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(RemoteDevice);
+  RemoteDevice(const RemoteDevice&) = delete;
+  void operator=(const RemoteDevice&) = delete;
 };
 
 void AsRemoteDevices(

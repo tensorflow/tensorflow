@@ -8,7 +8,7 @@ package(
 
 py_strict_library(
     name = "distributions",
-    srcs = ["distributions.py"],
+    srcs = ["__init__.py"],
     deprecation = ("TensorFlow Distributions has migrated to " +
                    "TensorFlow Probability " +
                    "(https://github.com/tensorflow/probability). " +
@@ -16,6 +16,15 @@ py_strict_library(
                    "will not receive new features, and will be removed by " +
                    "early 2019. You should update all usage of " +
                    "`tf.distributions` to `tfp.distributions`."),
+    srcs_version = "PY3",
+    deps = [
+        ":distributions_py",
+    ],
+)
+
+py_strict_library(
+    name = "distributions_py",
+    srcs = ["distributions.py"],
     srcs_version = "PY3",
     deps = [
         ":bernoulli",
@@ -52,7 +61,7 @@ py_strict_library(
         "//tensorflow/python/ops:linalg_ops",
         "//tensorflow/python/ops:math_ops",
         "//tensorflow/python/ops:nn",
-        "//tensorflow/python/util:tf_decorator",
+        "//tensorflow/python/util:tf_inspect",
         "//third_party/py/numpy",
     ],
 )
@@ -66,8 +75,8 @@ py_strict_library(
         "//tensorflow/python/ops:control_flow_assert",
         "//tensorflow/python/ops:math_ops",
         "//tensorflow/python/util:deprecation",
-        "//tensorflow/python/util:tf_decorator",
         "//tensorflow/python/util:tf_export",
+        "//tensorflow/python/util:tf_inspect",
     ],
 )
 
@@ -240,8 +249,8 @@ py_strict_library(
         "//tensorflow/python/ops:array_ops",
         "//tensorflow/python/ops:math_ops",
         "//tensorflow/python/util:deprecation",
-        "//tensorflow/python/util:tf_decorator",
         "//tensorflow/python/util:tf_export",
+        "//tensorflow/python/util:tf_inspect",
         "//third_party/py/numpy",
     ],
 )

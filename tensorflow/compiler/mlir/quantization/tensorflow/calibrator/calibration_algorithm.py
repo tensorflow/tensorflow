@@ -14,6 +14,8 @@
 # ==============================================================================
 """Defines CalibrationAlgorithm for calculating min and max values calculated by calibration method."""
 import abc
+import itertools
+import logging
 
 import numpy as np
 
@@ -75,6 +77,7 @@ class _HistogramCalibrationAlgorithmBase(_CalibrationAlgorithmBase):
     self._lower_bound = hist_stats.lower_bound
     self._hist_freq = np.array(hist_stats.hist_freq)
     self._num_bins = len(self._hist_freq)
+    self._num_bits = 8
     # i-th bin has a range [bins[i], bins[i + 1]).
     # bins[i] = lower_bound + i * bin_width
     # bins[i + 1] = lower_bound + (i + 1) * bin_width
@@ -82,6 +85,109 @@ class _HistogramCalibrationAlgorithmBase(_CalibrationAlgorithmBase):
     first_mid = self._lower_bound + self._bin_width / 2
     last_mid = first_mid + (self._num_bins - 1) * self._bin_width
     self._hist_mids = np.linspace(first_mid, last_mid, self._num_bins)
+
+  def _get_dequantized_hist_mids_after_quantize(
+      self, quant_min: float, quant_max: float
+  ) -> np.ndarray:
+    """Quantizes and dequantizes hist_mids using quant_min and quant_max.
+
+    Quantization converts the range of numbers from [quant_min, quant_max] to
+    [0, 2^num_bits - 1]. Values less than quant_min are converted to 0, and
+    values greater than quant_max are converted to 2^num_bits - 1.
+
+    The histogram represents the distribution of the data, and our goal is to
+    find the quant_min and quant_max that best describe this distribution. To do
+    this, we quantize hist_mids using quant_min and quant_max and dequantize
+    them again. Then the difference between hist_mids and dequantized hist_mids
+    equates to quantization error when using quant_min and quant_max.
+
+
+    Args:
+      quant_min: The minimum real value that can be represented by a quantized
+        value.
+      quant_max: The maximum real value that can be represented by a quantized
+        value.
+
+    Returns:
+      dequantized hist_mids after quantizing by quant_min and quant_max
+    """
+    maxbound = 2**self._num_bits - 1
+    minbound = 0
+    scale = (quant_max - quant_min) / maxbound
+    zero_point = -quant_min / scale
+
+    # Limit the range of zero_point and scale in case (quant_max - quant_min)
+    # is unusually small.
+    if abs(zero_point) > 9e9:
+      zero_point = 9e9
+    if abs(scale) < 1e-9:
+      scale = 1e-9
+
+    zero_point = round(zero_point)
+    quantized_hist_mids = np.clip(
+        np.round(self._hist_mids / scale) + zero_point, minbound, maxbound
+    )
+    dequantized_hist_mids = scale * (quantized_hist_mids - zero_point)
+    return dequantized_hist_mids
+
+  def _get_weighted_mean_squared_error(
+      self, quant_min, quant_max
+  ) -> tuple[float, float, float]:
+    """Gets mean squared error between hist_mids and dequantized hist_mids.
+
+    Quantization converts the range of numbers from [quant_min, quant_max] to
+    [0, 2^num_bits - 1]. Values less than quant_min are converted to 0, and
+    values greater than quant_max are converted to 2^num_bits - 1.
+
+    Args:
+      quant_min: The minimum real value that can be represented by a quantized
+        value.
+      quant_max: The maximum real value that can be represented by a quantized
+        value.
+
+    Returns:
+      (error, quant_min, quant_max): Tuple of weighted mean squared error.
+      error = (hist_mids - dequantized_hist_mids)**2 * hist_freq
+    """
+    dequantized_hist_mids = self._get_dequantized_hist_mids_after_quantize(
+        quant_min, quant_max
+    )
+    squared_error = (self._hist_mids - dequantized_hist_mids) ** 2
+    weighted_error = np.sum(squared_error * self._hist_freq)
+    return (weighted_error, quant_min, quant_max)
+
+  def _get_min_max_value_by_expanding_range(
+      self, start_idx: int
+  ) -> tuple[float, float]:
+    """Starting from start_idx, expand left and right alternately to find the min value of mse loss.
+
+    Args:
+      start_idx: Index to start quantization.
+
+    Returns:
+      (min_value, max_value): Min and max calculated.
+    """
+    # Tuple of (mse_error, quant_min, quant_max).
+    mse_min = (float('inf'), float('inf'), float('inf'))
+    left, right = start_idx, start_idx
+
+    # If this value is true, it moves left, otherwise it moves right.
+    move_left = True
+    while not (left == 0 and right == self._num_bins - 1):
+      # Decrease left if right can't be moved or move_left is true.
+      if (move_left and left > 0) or (right == self._num_bins - 1):
+        left = max(left - 1, 0)
+      # Else increase right.
+      else:
+        right = min(right + 1, self._num_bins - 1)
+      # Toogle the move_left.
+      move_left = not move_left
+      quant_min, quant_max = self._hist_mids[left], self._hist_mids[right]
+      mse_tuple = self._get_weighted_mean_squared_error(quant_min, quant_max)
+      mse_min = min(mse_tuple, mse_min)
+    # Extract (quant_min, quant_max) from (mse_error, quant_min, quant_max).
+    min_value, max_value = mse_min[1], mse_min[2]
+    return min_value, max_value
 
 
 @_implements(_CalibrationMethod.CALIBRATION_METHOD_MIN_MAX)
@@ -188,6 +294,79 @@ class _HistogramPercentile(_HistogramCalibrationAlgorithmBase):
     )
 
     return min_value, max_value
+
+
+@_implements(_CalibrationMethod.CALIBRATION_METHOD_HISTOGRAM_MSE_BRUTEFORCE)
+class _HistogramMseBruteforce(_HistogramCalibrationAlgorithmBase):
+  """HistogramMseBruteforce for calculating min and max values of calibration result."""
+
+  def get_min_max_value(self) -> tuple[float, float]:
+    """Finds the optimal quant_min and quant_max by testing all possible cases.
+
+    It guarantees optimal quant_min and quant_max for the representative
+    dataset, but not for the test dataset.
+
+    Returns:
+      (min_value, max_value): Min and max calculated using
+      HistogramMseBruteforce.
+    """
+    if self._num_bins > 512:
+      logging.warning(
+          'num_bins=%d is too large. The HISTOGRAM_MSE_BRUTEFORCE method tests'
+          ' all histogram mid value pairs, so it may take a long time.',
+          self._num_bins,
+      )
+    # Tuple of (mse_error, quant_min, quant_max).
+    mse_min = (float('inf'), float('inf'), float('inf'))
+
+    # Calculate the error for all hist_mid pairs.
+    for left, right in itertools.combinations(range(self._num_bins), 2):
+      quant_min, quant_max = self._hist_mids[left], self._hist_mids[right]
+      mse_tuple = self._get_weighted_mean_squared_error(quant_min, quant_max)
+      mse_min = min(mse_tuple, mse_min)
+    min_value, max_value = mse_min[1], mse_min[2]
+
+    return min_value, max_value
+
+
+@_implements(_CalibrationMethod.CALIBRATION_METHOD_HISTOGRAM_MSE_MAX_FREQUENCY)
+class _HistogramMseMaxFrequency(_HistogramCalibrationAlgorithmBase):
+  """HistogramMseMaxFrequency for calculating min and max values of calibration result."""
+
+  def get_min_max_value(self) -> tuple[float, float]:
+    """Finds min and max starting from the index of the max frequency.
+
+     The HistogramMseMaxFrequency method starts from the bin with the highest
+     frequency and expands the range to both sides. This performs well when data
+     is well spread on both sides of the max frequency.
+
+    Returns:
+      (min_value, max_value): Min and max calculated using method to expand the
+      range based on max frequency.
+    """
+    # Find the index of max frequency.
+    freq_max_idx = np.argmax(self._hist_freq)
+    return self._get_min_max_value_by_expanding_range(freq_max_idx)
+
+
+@_implements(_CalibrationMethod.CALIBRATION_METHOD_HISTOGRAM_MSE_SYMMETRIC)
+class _HistogramMseSymmetric(_HistogramCalibrationAlgorithmBase):
+  """HistogramMseSymmetric for calculating min and max values of calibration result."""
+
+  def get_min_max_value(self) -> tuple[float, float]:
+    """Finds min and max starting from the center index.
+
+    The HistogramMseSymmetric method starts from the center bin and expands the
+    range to both sides. This works better when the data is well-centered.
+
+    Returns:
+      (min_value, max_value): Min and max calculated using the method starting
+      from center and expanding.
+    """
+
+    # This function is currently only called in this method, but will be used in
+    # other methods in the future.
+    return self._get_min_max_value_by_expanding_range(self._num_bins // 2)
 
 
 def get_min_max_value(

@@ -21,6 +21,7 @@ limitations under the License.
 #include <GLES3/gl31.h>
 
 #include "absl/status/status.h"
+#include "tensorflow/lite/delegates/gpu/android_hardware_buffer.h"
 #include "tensorflow/lite/delegates/gpu/gl/gl_errors.h"
 
 namespace {
@@ -74,9 +75,9 @@ absl::Status AsyncBuffer::AllocateOpenGlBuffer() {
     if (!status.ok()) {
       // If we can't map to SSBO, clear AHWB & SSBO
       if (ahwb_ != nullptr) {
-#if (__ANDROID__)
-        AHardwareBuffer_release(ahwb_);
-#endif
+        if (OptionalAndroidHardwareBuffer::Instance().Supported()) {
+          OptionalAndroidHardwareBuffer::Instance().Release(ahwb_);
+        }
         ahwb_ = nullptr;
       }
       glBufferData(GL_SHADER_STORAGE_BUFFER, bytes_, nullptr, GL_STREAM_COPY);
@@ -88,7 +89,7 @@ absl::Status AsyncBuffer::AllocateOpenGlBuffer() {
 
 // Public function which will map the AHWB (from class constructor) to a SSBO
 // and return the associated the id by reference
-absl::Status AsyncBuffer::GetOpenGlBufferReadView(GLuint& buffer_ref) {
+absl::Status AsyncBuffer::GetOpenGlBuffer(GLuint& buffer_ref) {
   if (!valid_) {
     absl::Status status = AllocateOpenGlBuffer();
     if (!status.ok()) {

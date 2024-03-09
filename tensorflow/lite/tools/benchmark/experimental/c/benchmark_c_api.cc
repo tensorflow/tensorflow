@@ -18,7 +18,7 @@ limitations under the License.
 #include <utility>
 
 #include "tensorflow/lite/tools/benchmark/benchmark_tflite_model.h"
-#include "tensorflow/tsl/util/stats_calculator.h"
+#include "tsl/util/stats_calculator.h"
 
 extern "C" {
 

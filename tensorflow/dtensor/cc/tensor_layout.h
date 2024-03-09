@@ -158,6 +158,7 @@ class Mesh {
 
   bool is_cpu_mesh() const { return device_type() == "CPU"; }
   bool is_epu_mesh() const { return device_type() == "EPU"; }
+  bool is_gpu_mesh() const { return device_type() == "GPU"; }
   bool is_tpu_mesh() const { return device_type() == "TPU"; }
   // Returns whether the mesh is a remote mesh.
   bool is_remote() const {

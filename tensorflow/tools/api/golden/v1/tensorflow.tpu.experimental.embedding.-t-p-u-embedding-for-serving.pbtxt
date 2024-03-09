@@ -11,7 +11,7 @@ tf_class {
   }
   member_method {
     name: "__init__"
-    argspec: "args=[\'self\', \'feature_config\', \'optimizer\'], varargs=None, keywords=None, defaults=None"
+    argspec: "args=[\'self\', \'feature_config\', \'optimizer\', \'experimental_sparsecore_restore_info\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
     name: "build"

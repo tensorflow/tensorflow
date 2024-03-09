@@ -23,7 +23,7 @@ limitations under the License.
 #include "tensorflow/core/profiler/lib/context_types.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/core/profiler/lib/traceme_encode.h"
-#include "tensorflow/tsl/profiler/lib/connected_traceme.h"
+#include "tsl/profiler/lib/connected_traceme.h"
 
 namespace tensorflow {
 namespace profiler {

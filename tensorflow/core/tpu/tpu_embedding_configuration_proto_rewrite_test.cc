@@ -25,9 +25,9 @@ limitations under the License.
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/status_matchers.h"
 #include "tensorflow/core/protobuf/tpu/tpu_embedding_configuration.pb.h"
-#include "tensorflow/tsl/lib/core/status_test_util.h"
-#include "tensorflow/tsl/platform/protobuf.h"  // IWYU pragma: keep
-#include "tensorflow/tsl/platform/test.h"
+#include "tsl/lib/core/status_test_util.h"
+#include "tsl/platform/protobuf.h"  // IWYU pragma: keep
+#include "tsl/platform/test.h"
 
 namespace tensorflow {
 namespace {
@@ -39,7 +39,7 @@ Status ParseTextProto(absl::string_view text_proto,
   tsl::protobuf::io::ArrayInputStream input_stream(text_proto.data(),
                                                    text_proto.size());
   if (parser.Parse(&input_stream, parsed_proto)) {
-    return OkStatus();
+    return absl::OkStatus();
   }
   parsed_proto->Clear();
   return errors::InvalidArgument("Could not parse text proto: ", text_proto);

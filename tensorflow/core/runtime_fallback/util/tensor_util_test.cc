@@ -19,7 +19,7 @@ limitations under the License.
 #include <memory>
 
 #include <gmock/gmock.h>
-#include "third_party/eigen3/Eigen/Core"  // IWYU pragma: keep
+#include "Eigen/Core"  // from @eigen_archive  // IWYU pragma: keep
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/framework/tensor_shape.h"

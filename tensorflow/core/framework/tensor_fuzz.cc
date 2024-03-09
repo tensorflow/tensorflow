@@ -19,7 +19,7 @@ limitations under the License.
 #include "tensorflow/security/fuzzing/cc/core/framework/datatype_domains.h"
 #include "tensorflow/security/fuzzing/cc/core/framework/tensor_domains.h"
 #include "tensorflow/security/fuzzing/cc/core/framework/tensor_shape_domains.h"
-#include "tensorflow/tsl/lib/core/status_test_util.h"
+#include "tsl/lib/core/status_test_util.h"
 
 namespace tensorflow::fuzzing {
 namespace {

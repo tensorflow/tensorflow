@@ -24,10 +24,10 @@ limitations under the License.
 
 #include "absl/strings/string_view.h"
 #include "tensorflow/core/platform/types.h"
-#include "tensorflow/tsl/profiler/lib/scoped_annotation.h"
+#include "tsl/profiler/lib/scoped_annotation.h"
 
 #if !defined(IS_MOBILE_PLATFORM)
-#include "tensorflow/core/profiler/backends/cpu/annotation_stack.h"
+#include "tsl/profiler/backends/cpu/annotation_stack.h"
 #endif
 
 namespace tensorflow {

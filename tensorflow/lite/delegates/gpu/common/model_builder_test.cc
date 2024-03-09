@@ -3283,6 +3283,15 @@ TEST(SelectV2OperationParserTest, TestIsSupported) {
           .ok());
 
   TfLiteIntArrayFree(context->tensor(2)->dims);
+  context->tensor(2)->dims = TfLiteIntArrayCreate(2);
+  context->tensor(2)->dims->data[0] = 2;
+  context->tensor(2)->dims->data[1] = 2;
+  EXPECT_FALSE(
+      parser
+          ->IsSupported(context.get(), context->node(), context->registration())
+          .ok());
+
+  TfLiteIntArrayFree(context->tensor(2)->dims);
   context->tensor(2)->dims = TfLiteIntArrayCreate(1);
   context->tensor(2)->dims->data[0] = 1;
   EXPECT_FALSE(
@@ -3290,6 +3299,17 @@ TEST(SelectV2OperationParserTest, TestIsSupported) {
           ->IsSupported(context.get(), context->node(), context->registration())
           .ok());
 
+  TfLiteIntArrayFree(context->tensor(3)->dims);
+  context->tensor(3)->dims = TfLiteIntArrayCreate(2);
+  context->tensor(3)->dims->data[0] = 2;
+  context->tensor(3)->dims->data[1] = 2;
+  EXPECT_FALSE(
+      parser
+          ->IsSupported(context.get(), context->node(), context->registration())
+          .ok());
+
+  TfLiteIntArrayFree(context->tensor(3)->dims);
+  context->tensor(3)->dims = TfLiteIntArrayCreate(4);
   for (int i = 0; i < context->tensor(4)->dims->size; ++i) {
     context->tensor(3)->dims->data[i] = context->tensor(4)->dims->data[i];
   }

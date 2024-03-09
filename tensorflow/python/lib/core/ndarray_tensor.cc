@@ -14,7 +14,8 @@ limitations under the License.
 ==============================================================================*/
 // Must be included first
 // clang-format off
-#include "tensorflow/tsl/python/lib/core/numpy.h" //NOLINT
+#include "tensorflow/c/tf_datatype.h"
+#include "tsl/python/lib/core/numpy.h" //NOLINT
 // clang-format on
 
 #include "tensorflow/python/lib/core/ndarray_tensor.h"
@@ -31,7 +32,7 @@ limitations under the License.
 #include "tensorflow/core/util/port.h"
 #include "tensorflow/python/lib/core/ndarray_tensor_bridge.h"
 #include "tensorflow/python/lib/core/safe_pyobject_ptr.h"
-#include "tensorflow/tsl/python/lib/core/ml_dtypes.h"
+#include "tsl/python/lib/core/ml_dtypes.h"
 
 namespace tensorflow {
 namespace {
@@ -123,6 +124,8 @@ Status PyArrayDescr_to_TF_DataType(PyArray_Descr* descr,
 
 Status PyArray_TYPE_to_TF_DataType(PyArrayObject* array,
                                    TF_DataType* out_tf_datatype) {
+  const tsl::ml_dtypes::NumpyDtypes& custom_dtypes =
+      tsl::ml_dtypes::GetNumpyDtypes();
   int pyarray_type = PyArray_TYPE(array);
   PyArray_Descr* descr = PyArray_DESCR(array);
   switch (pyarray_type) {
@@ -181,7 +184,7 @@ Status PyArray_TYPE_to_TF_DataType(PyArrayObject* array,
       // custom struct type.
       return PyArrayDescr_to_TF_DataType(descr, out_tf_datatype);
     default:
-      if (pyarray_type == tsl::ml_dtypes::GetBfloat16TypeNum()) {
+      if (pyarray_type == custom_dtypes.bfloat16) {
         *out_tf_datatype = TF_BFLOAT16;
         break;
       } else if (pyarray_type == NPY_ULONGLONG) {
@@ -204,13 +207,20 @@ Status PyArray_TYPE_to_TF_DataType(PyArrayObject* array,
         // be different on certain platforms.
         *out_tf_datatype = TF_UINT32;
         break;
-      } else if (pyarray_type == tsl::ml_dtypes::GetFloat8E5m2TypeNum()) {
+      } else if (pyarray_type == custom_dtypes.float8_e5m2) {
         *out_tf_datatype = TF_FLOAT8_E5M2;
         break;
-      } else if (pyarray_type == tsl::ml_dtypes::GetFloat8E4m3fnTypeNum()) {
+      } else if (pyarray_type == custom_dtypes.float8_e4m3fn) {
         *out_tf_datatype = TF_FLOAT8_E4M3FN;
         break;
+      } else if (pyarray_type == custom_dtypes.int4) {
+        *out_tf_datatype = TF_INT4;
+        break;
+      } else if (pyarray_type == custom_dtypes.uint4) {
+        *out_tf_datatype = TF_UINT4;
+        break;
       }
+
       return errors::Internal("Unsupported numpy type: ",
                               numpy_type_name(pyarray_type));
   }

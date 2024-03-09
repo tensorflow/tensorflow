@@ -16,7 +16,7 @@ limitations under the License.
 // This transformation pass convert dense tensor to sparse format.
 
 #include "absl/memory/memory.h"
-#include "third_party/eigen3/Eigen/Core"
+#include "Eigen/Core"  // from @eigen_archive
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
@@ -407,7 +407,7 @@ void DenseToSparsePass::runOnOperation() {
       }
 
       if (result.needs_densify) {
-        const auto value = op->getOperand(operand);
+        auto value = op->getOperand(operand);
         auto densify =
             builder.create<DensifyOp>(op->getLoc(), value.getType(), value);
         value.replaceAllUsesWith(densify);

@@ -26,7 +26,7 @@ limitations under the License.
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/init_main.h"
 #include "tensorflow/core/platform/types.h"
-#include "tensorflow/tsl/platform/status.h"
+#include "tsl/platform/status.h"
 
 namespace tensorflow {
 namespace cc_op {
@@ -36,7 +36,7 @@ void PrintAllCCOps(const std::string& dot_h, const std::string& dot_cc,
                    bool include_internal,
                    const std::vector<string>& api_def_dirs) {
   OpList ops;
-  StatusOr<ApiDefMap> api_def_map =
+  absl::StatusOr<ApiDefMap> api_def_map =
       LoadOpsAndApiDefs(ops, include_internal, api_def_dirs);
   TF_CHECK_OK(api_def_map.status());
   api_def_map->UpdateDocs();

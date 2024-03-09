@@ -48,7 +48,7 @@ Status QuantizeMultiplier(double double_multiplier,
     q_fixed = (1LL << 31) - 1;
   }
   quantized_multiplier = static_cast<int32_t>(q_fixed);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace tensorflow

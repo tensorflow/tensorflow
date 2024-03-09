@@ -22,7 +22,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
+#include "xla/pjrt/pjrt_client.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/platform/status.h"
@@ -130,6 +130,8 @@ class PluginOpKernelContext {
   virtual int64_t GetStepId() const = 0;
 
   virtual int GetDeviceId() const = 0;
+
+  virtual std::string_view GetDeviceName() const = 0;
 
   virtual std::string GetSessionName() const = 0;
 

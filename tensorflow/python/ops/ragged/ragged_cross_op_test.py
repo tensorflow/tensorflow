@@ -475,7 +475,7 @@ class RaggedCrossOpTest(test_util.TensorFlowTestCase, parameterized.TestCase):
   def testRaggedCrossInvalidRaggedSplits(self, ragged_splits):
     # Test case in GitHub isseu 59114.
     with self.assertRaisesRegex(
-        (ValueError, errors.InvalidArgumentError), 'Invalid RaggedTensor'
+        (ValueError, errors.InvalidArgumentError), 'Invalid ragged splits'
     ):
       ragged_values_0_tensor = ops.convert_to_tensor(np.ones([3], dtype=str))
       ragged_values_0 = array_ops.identity(ragged_values_0_tensor)

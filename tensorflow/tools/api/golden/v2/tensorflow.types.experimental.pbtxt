@@ -21,6 +21,10 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
+    name: "PolymorphicFunction"
+    mtype: "<type \'type\'>"
+  }
+  member {
     name: "SupportsTracingProtocol"
     mtype: "<class \'typing._ProtocolMeta\'>"
   }

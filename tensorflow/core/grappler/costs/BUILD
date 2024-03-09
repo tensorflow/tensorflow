@@ -183,10 +183,10 @@ tf_cuda_library(
         "//tensorflow/core/grappler:utils",
         "//tensorflow/core/grappler/clusters:utils",
         "//tensorflow/core/util:overflow",
-        "//third_party/eigen3",
         "@com_google_absl//absl/container:node_hash_map",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
+        "@eigen_archive//:eigen3",
     ] + tf_protos_grappler(),
 )
 
@@ -347,13 +347,13 @@ cc_library(
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/grappler/clusters:utils",
         "//tensorflow/core/util:overflow",
-        "//tensorflow/tsl/platform:statusor",
-        "//third_party/eigen3",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
+        "@eigen_archive//:eigen3",
+        "@local_tsl//tsl/platform:statusor",
     ] + tf_protos_grappler(),
 )
 

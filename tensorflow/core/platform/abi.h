@@ -16,7 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_PLATFORM_ABI_H_
 #define TENSORFLOW_CORE_PLATFORM_ABI_H_
 
-#include "tensorflow/tsl/platform/abi.h"
+#include "tsl/platform/abi.h"
 
 namespace tensorflow {
 namespace port {

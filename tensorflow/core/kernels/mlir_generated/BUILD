@@ -157,7 +157,7 @@ tf_kernel_library(
         ":gpu_sign_kernels",
         ":gpu_sqrt_kernels",
         ":gpu_square_kernels",
-        "//third_party/eigen3",
+        "@eigen_archive//:eigen3",
         ":gpu_abs_kernels",
         ":gpu_atanh_kernels",
         ":gpu_acos_kernels",
@@ -239,7 +239,7 @@ tf_kernel_library(
         ":gpu_xlog1py_kernels",
         ":gpu_xlogy_kernels",
         ":gpu_zeta_kernels",
-        "//third_party/eigen3",
+        "@eigen_archive//:eigen3",
         ":gpu_add_v2_kernels",
         ":gpu_sub_kernels",
         ":gpu_div_kernels",
@@ -278,7 +278,7 @@ tf_kernel_library(
     deps = if_mlir_generated_gpu_kernels_enabled([
         ":base_gpu_op",
         ":gpu_cast_kernels",
-        "//third_party/eigen3",
+        "@eigen_archive//:eigen3",
     ]),
 )
 
@@ -305,7 +305,7 @@ tf_kernel_library(
         ":base_gpu_op",
         ":gpu_ones_like_kernels",
         ":gpu_zeros_like_kernels",
-        "//third_party/eigen3",
+        "@eigen_archive//:eigen3",
     ]),
 )
 
@@ -352,7 +352,7 @@ tf_kernel_library(
         ":gpu_elu_kernels",
         ":gpu_relu_kernels",
         ":gpu_selu_kernels",
-        "//third_party/eigen3",
+        "@eigen_archive//:eigen3",
     ]),
 )
 
@@ -374,7 +374,7 @@ tf_kernel_library(
     deps = if_mlir_generated_gpu_kernels_enabled([
         ":base_gpu_op",
         ":gpu_softplus_kernels",
-        "//third_party/eigen3",
+        "@eigen_archive//:eigen3",
     ]),
 )
 
@@ -396,7 +396,7 @@ tf_kernel_library(
     deps = if_mlir_generated_gpu_kernels_enabled([
         ":base_gpu_op",
         ":gpu_softsign_kernels",
-        "//third_party/eigen3",
+        "@eigen_archive//:eigen3",
     ]),
 )
 
@@ -527,7 +527,6 @@ tf_cuda_cc_test(
     shard_count = 20,
     tags = tf_cuda_tests_tags() + [
         "no_cuda_asan",  # b/173033461
-        "no_rocm",  # failed since 7de9cf4
     ],
     deps = [
         ":base_binary_ops_test",
@@ -1943,7 +1942,6 @@ gpu_kernel_library(
         "c64",
         "c128",
     ],
-    max_supported_rank = 8,
     op = "select_v2",
     tile_size = "256",
     types = [],

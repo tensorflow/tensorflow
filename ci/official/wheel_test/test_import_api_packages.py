@@ -76,6 +76,7 @@ class ImportApiPackagesTest(unittest.TestCase):
         try:
           __import__(short_package_name)
         except ImportError:
+          logging.exception("error importing %s", short_package_name)
           failed_packages.append(package_name)
 
     if failed_packages:

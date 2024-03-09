@@ -109,8 +109,8 @@ class ExtensionTypeFieldTest(test_util.TensorFlowTestCase,
       ("ExtensionTypeField(name='i', value_type=<class 'int'>, "
        'default=ExtensionTypeField.NO_DEFAULT)', 'i', int),
       ("ExtensionTypeField(name='x', value_type=typing.Tuple"
-       '[typing.Union[str, int], ...], default=ExtensionTypeField.NO_DEFAULT)',
-       'x', typing.Tuple[typing.Union[str, int], ...]),
+       '[typing.Union[int, str], ...], default=ExtensionTypeField.NO_DEFAULT)',
+       'x', typing.Tuple[typing.Union[int, str], ...]),
       ("ExtensionTypeField(name='j', value_type=<class 'int'>, default=3)", 'j',
        int, 3),
   ])

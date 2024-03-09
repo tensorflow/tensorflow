@@ -40,11 +40,11 @@ limitations under the License.
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
-#include "tensorflow/compiler/mlir/lite/quantization/quantization_config.h"
-#include "tensorflow/compiler/mlir/lite/quantization/quantization_traits.h"
-#include "tensorflow/compiler/mlir/lite/quantization/quantization_utils.h"
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h"
 #include "tensorflow/compiler/mlir/lite/utils/validators.h"
+#include "tensorflow/compiler/mlir/quantization/common/quantization_lib/quantization_config.h"
+#include "tensorflow/compiler/mlir/quantization/common/quantization_lib/quantization_traits.h"
+#include "tensorflow/compiler/mlir/quantization/common/quantization_lib/quantization_utils.h"
 
 namespace mlir {
 namespace TFL {
@@ -257,7 +257,9 @@ void QuantizePass::runOnOperation() {
 
   populateWithGenerated(patterns);
 
-  if (quant_specs.weight_quantization || quant_specs.use_fake_quant_num_bits) {
+  if (quant_specs.weight_quantization || quant_specs.use_fake_quant_num_bits ||
+      quant_specs.qdq_conversion_mode ==
+          quant::QDQConversionMode::kQDQDynamic) {
     patterns.add<TFLDynamicRangeQuantization>(ctx, quant_params);
   } else {
     patterns.add<TFLFullQuantization, TFLFullQuantizationReverse>(ctx,

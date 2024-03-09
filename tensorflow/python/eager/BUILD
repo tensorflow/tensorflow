@@ -1,15 +1,16 @@
-load("//tensorflow/compiler/tests:build_defs.bzl", "tf_xla_py_strict_test")
 load("//tensorflow:strict.default.bzl", "py_strict_binary", "py_strict_library", "py_strict_test")
+load("//tensorflow/compiler/tests:build_defs.bzl", "tf_xla_py_strict_test")
 load("//tensorflow:tensorflow.bzl", "check_deps")
 load("//tensorflow:tensorflow.default.bzl", "cuda_py_strict_test", "tf_py_strict_test", "tf_python_pybind_extension")
-load("//tensorflow/python/tpu:tpu.bzl", "tpu_py_strict_test")
-load(
-    "//tensorflow/tools/test:performance.bzl",
-    "tf_py_logged_benchmark",
-)
 load(
     "//tensorflow/core/platform:build_config.bzl",
     "tf_additional_rpc_deps",
+)
+load("//tensorflow/python/tpu:tpu.bzl", "tpu_py_strict_test")
+load(
+    "//tensorflow/tools/test:performance.bzl",
+    "cuda_py_benchmark_test",
+    "tf_py_logged_benchmark",
 )
 
 package(
@@ -67,9 +68,6 @@ cc_library(
         "//tensorflow/python/lib/core:safe_pyobject_ptr",
         "//tensorflow/python/util:cpp_python_util",
         "//tensorflow/python/util:stack_trace",
-        "//tensorflow/tsl/platform:status",
-        "//tensorflow/tsl/profiler/lib:traceme",
-        "//tensorflow/tsl/python/lib/core:numpy",
         "//third_party/py/numpy:headers",
         "//third_party/python_runtime:headers",
         "@com_google_absl//absl/container:flat_hash_map",
@@ -80,6 +78,9 @@ cc_library(
         "@com_google_absl//absl/types:optional",
         "@com_google_absl//absl/types:span",
         "@com_google_absl//absl/types:variant",
+        "@local_tsl//tsl/platform:status",
+        "@local_tsl//tsl/profiler/lib:traceme",
+        "@local_tsl//tsl/python/lib/core:numpy",
         "@pybind11",
     ],
 )
@@ -113,6 +114,8 @@ cuda_py_strict_test(
     deps = [
         ":pywrap_tensor_test_util",
         ":test",
+        "//tensorflow/python/framework:constant_op",
+        "//tensorflow/python/framework:test_lib",
         "//third_party/py/numpy",
     ],
 )
@@ -223,7 +226,7 @@ py_strict_library(
         "//tensorflow/python/util:deprecation",
         "//tensorflow/python/util:function_utils",
         "//tensorflow/python/util:is_in_graph_mode",
-        "//tensorflow/python/util:tf_decorator",
+        "//tensorflow/python/util:tf_contextlib",
         "//tensorflow/python/util:tf_export",
         "//third_party/py/numpy",
         "@absl_py//absl/logging",
@@ -287,12 +290,66 @@ cuda_py_strict_test(
     deps = [
         ":context",
         ":def_function",
-        "//tensorflow/compiler/xla/service:hlo_proto_py",
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:errors",
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/framework:test_lib",
         "//tensorflow/python/ops:array_ops",
+        "//tensorflow/python/platform:client_testlib",
+        "@absl_py//absl/testing:parameterized",
+        "@local_xla//xla/service:hlo_proto_py",
+    ],
+)
+
+tpu_py_strict_test(
+    name = "context_tpu_platform_test",
+    size = "small",
+    srcs = ["context_tpu_platform_test.py"],
+    python_version = "PY3",
+    tags = [
+        "no_oss",
+    ],
+    deps = [
+        ":def_function",
+        "//tensorflow/python/framework:constant_op",
+        "//tensorflow/python/framework:ops",
+        "//tensorflow/python/ops:variables",
+        "//tensorflow/python/platform:client_testlib",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+cuda_py_strict_test(
+    name = "context_cross_platform_gpu_test",
+    size = "small",
+    srcs = ["context_cross_platform_gpu_test.py"],
+    python_version = "PY3",
+    tags = [
+        "no_oss",
+    ],
+    tpu_ops_enabled = True,
+    xla_enabled = True,
+    deps = [
+        ":def_function",
+        "//tensorflow/python/framework:ops",
+        "//tensorflow/python/ops:array_ops",
+        "//tensorflow/python/platform:client_testlib",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+tpu_py_strict_test(
+    name = "context_cross_platform_tpu_test",
+    size = "small",
+    srcs = ["context_cross_platform_tpu_test.py"],
+    python_version = "PY3",
+    tags = [
+        "no_oss",
+    ],
+    deps = [
+        ":def_function",
+        "//tensorflow/python/framework:constant_op",
+        "//tensorflow/python/framework:ops",
         "//tensorflow/python/platform:client_testlib",
         "@absl_py//absl/testing:parameterized",
     ],
@@ -358,7 +415,7 @@ cuda_py_strict_test(
         "//tensorflow/python/framework:test_lib",
         "//tensorflow/python/platform:gfile",
         "//tensorflow/python/profiler:trace",
-        "//tensorflow/tsl/profiler/protobuf:trace_events_proto_py",
+        "@local_tsl//tsl/profiler/protobuf:trace_events_proto_py",
     ],
 )
 
@@ -504,7 +561,6 @@ cuda_py_strict_test(
         "//tensorflow/python/framework:tensor_shape",
         "//tensorflow/python/framework:tensor_util",
         "//tensorflow/python/framework:test_lib",
-        "//tensorflow/python/layers",
         "//tensorflow/python/ops:array_ops",
         "//tensorflow/python/ops:array_ops_stack",
         "//tensorflow/python/ops:cond",
@@ -708,6 +764,7 @@ py_strict_library(
         "//tensorflow/python/ops:check_ops",
         "//tensorflow/python/ops:control_flow_util",
         "//tensorflow/python/ops:default_gradient",
+        "//tensorflow/python/ops:gradients_impl",
         "//tensorflow/python/ops:math_ops_gen",
         "//tensorflow/python/ops:resource_variable_ops",
         "//tensorflow/python/ops:unconnected_gradients",
@@ -715,8 +772,9 @@ py_strict_library(
         "//tensorflow/python/platform:tf_logging",
         "//tensorflow/python/util:_pywrap_utils",
         "//tensorflow/python/util:nest",
-        "//tensorflow/python/util:tf_decorator",
+        "//tensorflow/python/util:tf_contextlib",
         "//tensorflow/python/util:tf_export",
+        "//tensorflow/python/util:tf_inspect",
         "//tensorflow/python/util:variable_utils",
     ],
 )
@@ -785,7 +843,7 @@ py_strict_library(
     ],
 )
 
-cuda_py_strict_test(
+cuda_py_benchmark_test(
     name = "benchmarks_test",
     srcs = ["benchmarks_test.py"],
     python_version = "PY3",
@@ -798,9 +856,11 @@ cuda_py_strict_test(
         ":forwardprop",
         ":test",
         "//tensorflow/python:pywrap_tfe",
+        "//tensorflow/python/compat",
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:ops",
+        "//tensorflow/python/framework:sparse_tensor",
         "//tensorflow/python/framework:tensor_shape",
         "//tensorflow/python/framework:tensor_spec",
         "//tensorflow/python/framework:test_lib",
@@ -809,6 +869,7 @@ cuda_py_strict_test(
         "//tensorflow/python/ops:cond",
         "//tensorflow/python/ops:embedding_ops",
         "//tensorflow/python/ops:functional_ops",
+        "//tensorflow/python/ops:gradients",
         "//tensorflow/python/ops:math_ops",
         "//tensorflow/python/ops:math_ops_gen",
         "//tensorflow/python/ops:nn_ops",
@@ -816,7 +877,7 @@ cuda_py_strict_test(
         "//tensorflow/python/ops:resource_variable_ops",
         "//tensorflow/python/ops/ragged:ragged_tensor",
         "//tensorflow/python/util:nest",
-        "//tensorflow/python/util:tf_decorator",
+        "//tensorflow/python/util:tf_inspect",
         "//third_party/py/numpy",
     ],
 )
@@ -845,7 +906,7 @@ cuda_py_strict_test(
         "//tensorflow/python/ops/ragged:ragged_factory_ops",
         "//tensorflow/python/ops/ragged:ragged_map_ops",
         "//tensorflow/python/ops/ragged:ragged_tensor",
-        "//tensorflow/python/util:tf_decorator",
+        "//tensorflow/python/util:tf_inspect",
     ],
 )
 
@@ -873,7 +934,7 @@ tf_xla_py_strict_test(
     ],
 )
 
-cuda_py_strict_test(
+cuda_py_benchmark_test(
     name = "remote_benchmarks_test",
     srcs = ["remote_benchmarks_test.py"],
     python_version = "PY3",
@@ -933,7 +994,6 @@ cuda_py_strict_test(
         "//tensorflow/python/framework:tensor",
         "//tensorflow/python/framework:tensor_shape",
         "//tensorflow/python/framework:test_lib",
-        "//tensorflow/python/layers",
         "//tensorflow/python/ops:array_ops",
         "//tensorflow/python/ops:array_ops_stack",
         "//tensorflow/python/ops:control_flow_ops",
@@ -1051,9 +1111,9 @@ py_strict_library(
         "//tensorflow/core:protos_all_py",
         "//tensorflow/core/function/polymorphism:function_type",
         "//tensorflow/python/eager/polymorphic_function:atomic_function",
-        "//tensorflow/python/framework",
         "//tensorflow/python/framework:composite_tensor",
         "//tensorflow/python/framework:func_graph",
+        "//tensorflow/python/framework:importer",
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/framework:sparse_tensor",
         "//tensorflow/python/framework:tensor",
@@ -1079,9 +1139,9 @@ tf_py_strict_test(
         ":wrap_function",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python/data/ops:dataset_ops",
-        "//tensorflow/python/framework",
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:dtypes",
+        "//tensorflow/python/framework:importer",
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/framework:tensor_spec",
         "//tensorflow/python/framework:test_lib",
@@ -1108,10 +1168,10 @@ cuda_py_strict_test(
         ":def_function",
         ":wrap_function",
         "//tensorflow/python/data/ops:dataset_ops",
-        "//tensorflow/python/framework",
         "//tensorflow/python/framework:config",
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:dtypes",
+        "//tensorflow/python/framework:importer",
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/platform:client_testlib",
         "@absl_py//absl/testing:parameterized",
@@ -1318,7 +1378,7 @@ py_strict_library(
         "//tensorflow/python/autograph/pyct/static_analysis:reaching_fndefs",
         "//tensorflow/python/framework:op_def_registry",
         "//tensorflow/python/framework:ops",
-        "@gast_archive//:gast",
+        "@pypi_gast//:pkg",
     ],
 )
 
@@ -1346,7 +1406,7 @@ py_strict_test(
     ],
     deps = [
         ":gradient_input_output_exclusions",
-        "//tensorflow/python/lib/io:lib",
+        "//tensorflow/python/lib/io:file_io",
         "//tensorflow/python/platform:client_testlib",
         "//tensorflow/python/platform:resource_loader",
     ],

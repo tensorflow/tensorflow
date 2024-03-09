@@ -38,7 +38,7 @@ limitations under the License.
 #include "tensorflow/core/profiler/utils/xplane_schema.h"
 #include "tensorflow/core/profiler/utils/xplane_utils.h"
 #include "tensorflow/core/profiler/utils/xplane_visitor.h"
-#include "tensorflow/tsl/profiler/utils/tf_xplane_visitor.h"
+#include "tsl/profiler/utils/tf_xplane_visitor.h"
 
 namespace tensorflow {
 namespace profiler {
@@ -540,7 +540,7 @@ Status ConvertProtoToJson(const Proto& proto_output, std::string* json_output) {
         "Could not convert proto to JSON string: ",
         absl::string_view(error_msg.data(), error_msg.length()));
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace
@@ -562,7 +562,7 @@ Status ConvertXSpaceToMemoryProfileJson(const XSpace& xspace,
     MemoryProfile memory_profile = ConvertXPlaneToMemoryProfile(*host_plane);
     TF_RETURN_IF_ERROR(ConvertProtoToJson(memory_profile, json_output));
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace profiler

@@ -1,6 +1,6 @@
 path: "tensorflow.types.experimental.GenericFunction"
 tf_class {
-  is_instance: "<class \'tensorflow.python.types.core.GenericFunction\'>"
+  is_instance: "<class \'tensorflow.python.types.core.PolymorphicFunction\'>"
   is_instance: "<class \'tensorflow.python.types.core.Callable\'>"
   is_instance: "<type \'object\'>"
   member {

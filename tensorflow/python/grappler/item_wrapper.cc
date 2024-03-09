@@ -122,8 +122,8 @@ class ColocationGroups {
 PYBIND11_MAKE_OPAQUE(tensorflow::grappler::GrapplerItem);
 
 PYBIND11_MODULE(_pywrap_tf_item, m) {
-  py::class_<tensorflow::grappler::GrapplerItem> grappler_item(
-      m, "tensorflow::grappler::GrapplerItem");
+  py::class_<tensorflow::grappler::GrapplerItem> grappler_item(m,
+                                                               "GrapplerItem");
 
   m.def("TF_NewItem",
         [](const py::bytes& serialized_metagraph, bool ignore_colocation,

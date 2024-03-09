@@ -17,7 +17,7 @@ limitations under the License.
 
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_set.h"
-#include "tensorflow/compiler/xla/status_macros.h"
+#include "xla/status_macros.h"
 
 namespace tensorflow {
 namespace jit {
@@ -93,7 +93,7 @@ Status DeviceNameToDeviceType(const string& device, DeviceType* device_type) {
     return errors::Internal("Malformed assigned device '", device, "'");
   }
   *device_type = DeviceType(parsed.type);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 StatusOr<std::optional<jit::DeviceId>> PickDeviceForXlaImpl(

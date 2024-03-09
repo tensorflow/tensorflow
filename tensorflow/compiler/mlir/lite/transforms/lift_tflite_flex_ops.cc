@@ -12,12 +12,14 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-
 #include "tensorflow/compiler/mlir/lite/transforms/lift_tflite_flex_ops.h"
 
+#include <cstddef>
+#include <cstdint>
 #include <string>
 #include <utility>
 
+#include "absl/strings/match.h"
 #include "flatbuffers/flexbuffers.h"  // from @flatbuffers
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
@@ -70,7 +72,7 @@ class LiftFlexCustomOp : public OpRewritePattern<TFL::CustomOp> {
 
   LogicalResult matchAndRewrite(TFL::CustomOp op,
                                 PatternRewriter& rewriter) const override {
-    if (!op.getCustomCode().startswith(kFlexOpNamePrefix)) {
+    if (!op.getCustomCode().starts_with(kFlexOpNamePrefix)) {
       return failure();
     }
 
@@ -109,20 +111,6 @@ class LiftFlexCustomOp : public OpRewritePattern<TFL::CustomOp> {
 
     Operation* tf_op = rewriter.create(op_state);
     rewriter.replaceOp(op, tf_op->getResults());
-
-    if (isa<TF::MapDatasetOp, TF::ReduceDatasetOp>(tf_op)) {
-      constexpr StringRef kFuncAttrName = "f";
-      tf_op->setAttr(
-          kFuncAttrName,
-          tf_op->getAttr(kFuncAttrName).cast<TF::FuncAttr>().getName());
-    }
-
-    if (isa<TF::TakeWhileDatasetOp>(tf_op)) {
-      constexpr StringRef kFuncAttrName = "predicate";
-      tf_op->setAttr(
-          kFuncAttrName,
-          tf_op->getAttr(kFuncAttrName).cast<TF::FuncAttr>().getName());
-    }
 
     // Special type fixes for TF Resource Tensors that are casted to
     // Int32 tensor during MLIR->TFLite flatbuffer conversion.
@@ -210,11 +198,15 @@ class LiftFlexCustomOp : public OpRewritePattern<TFL::CustomOp> {
       tensorflow::NodeDef& node_def) {
     // The flexbuffer contains a vector where the first elements is the
     // op name and the second is a serialized NodeDef.
+    const uint8_t* const opt_data =
+        reinterpret_cast<const uint8_t*>(custom_options.data());
+    const size_t opt_size = custom_options.size();
+    if (!flexbuffers::VerifyBuffer(opt_data, opt_size)) {
+      return emitError(loc, "invalid custom options");
+    }
+
     const flexbuffers::Vector& v =
-        flexbuffers::GetRoot(
-            reinterpret_cast<const uint8_t*>(custom_options.data()),
-            custom_options.size())
-            .AsVector();
+        flexbuffers::GetRoot(opt_data, opt_size).AsVector();
 
     op_name = v[0].AsString().str();
 
@@ -231,6 +223,10 @@ class LiftFlexCustomOp : public OpRewritePattern<TFL::CustomOp> {
           tensorflow::ConvertAttributeValue(attr_value, &builder);
       if (!mlir_attr.ok()) {
         return emitError(loc, mlir_attr.status().message());
+      }
+      if (absl::StrContains(op_name, "Dataset") &&
+          mlir_attr->isa<TF::FuncAttr>()) {
+        mlir_attr = mlir_attr->cast<TF::FuncAttr>().getName();
       }
       attributes.push_back(builder.getNamedAttr(attr_name, *mlir_attr));
     }

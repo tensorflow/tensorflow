@@ -23,8 +23,8 @@ limitations under the License.
 #include "mlir/Parser/Parser.h"  // from @llvm-project
 #include "tensorflow/core/tfrt/mlrt/bytecode/executable.h"
 #include "tensorflow/core/tfrt/mlrt/interpreter/attribute_span.h"
-#include "tensorflow/tsl/platform/resource_loader.h"
-#include "tensorflow/tsl/platform/status_matchers.h"
+#include "tsl/platform/resource_loader.h"
+#include "tsl/platform/status_matchers.h"
 
 namespace mlrt {
 namespace {

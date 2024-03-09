@@ -35,8 +35,8 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/statusor.h"
-#include "tensorflow/tsl/framework/allocator.h"
-#include "tensorflow/tsl/platform/status.h"
+#include "tsl/framework/allocator.h"
+#include "tsl/platform/status.h"
 
 #define CONCAT_HELPER(a, b) a##b
 #define CONCAT(a, b) CONCAT_HELPER(a, b)
@@ -113,7 +113,7 @@ DoneCallbackParamDeleter MakeDoneCallbackParamDeleter() {
   };
 }
 
-StatusOr<DoneCallbackParamPtr> DoneCallbackParamsToC(
+absl::StatusOr<DoneCallbackParamPtr> DoneCallbackParamsToC(
     const Status& status, const RendezvousInterface::Args& sender_args,
     const RendezvousInterface::Args& recver_args, const Tensor& tensor,
     const bool is_dead) {

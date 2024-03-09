@@ -58,6 +58,21 @@ TEST(CApiSimple, Version) {
   EXPECT_STREQ(TfLiteVersion(), version);
 }
 
+TEST(CApiSimple, ExtensionApisVersion) {
+  const char* version = TfLiteExtensionApisVersion();
+  ASSERT_NE(version, nullptr);
+  EXPECT_STRNE(version, "");
+  int major = -1, minor = -1, patch = -1;
+  int ret = sscanf(version, "%d.%d.%d", &major, &minor, &patch);
+  // The version number should contain all three components.
+  EXPECT_GE(ret, 3);
+  EXPECT_GE(major, 0);
+  EXPECT_GE(minor, 0);
+  EXPECT_GE(patch, 0);
+  // Calling the function again should give the same result.
+  EXPECT_STREQ(TfLiteExtensionApisVersion(), version);
+}
+
 TEST(CApiSimple, SchemaVersion) {
   // The following checks will need updating if we change the schema version.
   EXPECT_EQ(TfLiteSchemaVersion(), 3);
@@ -276,6 +291,7 @@ TEST(CApiSimple, TfLiteInterpreterGetTensor) {
   TfLiteInterpreterDelete(interpreter);
 }
 
+#if !TFLITE_USE_OPAQUE_DELEGATE
 TEST(CApiSimple, Delegate) {
   TfLiteModel* model =
       TfLiteModelCreateFromFile("tensorflow/lite/testdata/add.bin");
@@ -301,6 +317,7 @@ TEST(CApiSimple, Delegate) {
   EXPECT_EQ(TfLiteInterpreterInvoke(interpreter), kTfLiteOk);
   TfLiteInterpreterDelete(interpreter);
 }
+#endif
 
 TEST(CApiSimple, DelegateExternal_GetExecutionPlan) {
   TfLiteModel* model =
@@ -394,6 +411,7 @@ TEST(CApiSimple, DelegateExternal_MarkSubgraphAsDelegationSkippable) {
   TfLiteOpaqueDelegateDelete(opaque_delegate);
 }
 
+#if !TFLITE_USE_OPAQUE_DELEGATE
 TEST(CApiSimple, DelegateFails) {
   TfLiteModel* model =
       TfLiteModelCreateFromFile("tensorflow/lite/testdata/add.bin");
@@ -413,6 +431,7 @@ TEST(CApiSimple, DelegateFails) {
   TfLiteInterpreterOptionsDelete(options);
   TfLiteModelDelete(model);
 }
+#endif
 
 struct DelegateState {
   bool delegate_prepared;
@@ -1657,6 +1676,14 @@ TEST(CApiSimple, OpaqueApiAccessors) {
             EXPECT_EQ(
                 new_quantization_params.zero_point,
                 TfLiteOpaqueTensorGetQuantizationParams(new_tensor).zero_point);
+            EXPECT_EQ(kTfLiteArenaRw,
+                      TfLiteOpaqueTensorGetAllocationType(new_tensor));
+
+            // Now switch the tensor's allocation type to dynamic after it has
+            // been created.
+            TfLiteOpaqueTensorSetAllocationTypeToDynamic(new_tensor);
+            EXPECT_EQ(kTfLiteDynamic,
+                      TfLiteOpaqueTensorGetAllocationType(new_tensor));
           }
           //
           // Create and configure a 'kTfLiteVariantObject' tensor, which will

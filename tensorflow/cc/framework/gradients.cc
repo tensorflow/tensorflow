@@ -138,7 +138,8 @@ class SymbolicGradientBuilder {
   // multiple incoming gradients, but we only store the combined Output here).
   std::map<WhileContext*, std::map<Node*, Output>> while_backprops_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(SymbolicGradientBuilder);
+  SymbolicGradientBuilder(const SymbolicGradientBuilder&) = delete;
+  void operator=(const SymbolicGradientBuilder&) = delete;
 };
 
 SymbolicGradientBuilder::SymbolicGradientBuilder(

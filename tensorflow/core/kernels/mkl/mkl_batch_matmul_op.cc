@@ -25,7 +25,7 @@ limitations under the License.
 
 #if defined(INTEL_MKL)
 
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
@@ -364,6 +364,9 @@ TF_CALL_float(REGISTER_FUSED_BATCH_MATMUL_MKL);
 TF_CALL_bfloat16(REGISTER_BATCH_MATMUL_MKL);
 TF_CALL_bfloat16(REGISTER_BATCH_MATMUL_MKL_V2);
 TF_CALL_bfloat16(REGISTER_FUSED_BATCH_MATMUL_MKL);
+TF_CALL_half(REGISTER_BATCH_MATMUL_MKL);
+TF_CALL_half(REGISTER_BATCH_MATMUL_MKL_V2);
+TF_CALL_half(REGISTER_FUSED_BATCH_MATMUL_MKL);
 
 #ifdef DNNL_AARCH64_USE_ACL
 TF_CALL_float(REGISTER_MATMUL_MKL);

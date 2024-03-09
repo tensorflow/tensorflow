@@ -1,6 +1,7 @@
+load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 load(
-    "//tensorflow:tensorflow.bzl",
-    "tf_cc_test",
+    "//tensorflow:tensorflow.default.bzl",
+    "get_compatible_with_portable",
 )
 
 package(
@@ -16,6 +17,24 @@ package_group(
 )
 
 cc_library(
+    name = "ifrt_program_ops",
+    srcs = ["ifrt_program_ops.cc"],
+    hdrs = ["ifrt_program_ops.h"],
+    deps = [
+        "//tensorflow/core:framework",
+        "//tensorflow/core/tfrt/ifrt:ifrt_executable_registry",
+        "//tensorflow/core/tfrt/ifrt:ifrt_serving_executable",
+        "@com_google_absl//absl/base",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
+    ],
+    alwayslink = 1,
+)
+
+cc_library(
     name = "stream_ops",
     srcs = ["stream_ops.cc"],
     hdrs = ["stream_ops.h"],
@@ -24,13 +43,13 @@ cc_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/tfrt/runtime:stream",
-        "//tensorflow/tsl/profiler/lib:traceme",
         "@com_google_absl//absl/cleanup",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/time",
         "@com_google_absl//absl/types:span",
+        "@local_tsl//tsl/profiler/lib:traceme",
     ],
     alwayslink = 1,
 )
@@ -38,6 +57,7 @@ cc_library(
 cc_library(
     name = "stream_ops_util_constants",
     hdrs = ["stream_ops_util_constants.h"],
+    compatible_with = get_compatible_with_portable(),
     visibility = [
         "//visibility:public",
     ],
@@ -67,6 +87,7 @@ tf_cc_test(
     tags = ["no_oss"],
     deps = [
         ":stream_ops_util",
+        ":stream_ops_util_constants",
         "//tensorflow/core:framework",
         "//tensorflow/core/framework:tensor_matcher",
         "//tensorflow/core/framework:tensor_testutil",

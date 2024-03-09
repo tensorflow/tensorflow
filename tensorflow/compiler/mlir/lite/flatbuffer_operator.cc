@@ -39,7 +39,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/utils/convert_type.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/dynamic_shape_utils.h"
-#include "tensorflow/compiler/xla/statusor.h"
+#include "xla/statusor.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/lite/kernels/internal/kernel_utils.h"
 #include "tensorflow/lite/schema/mutable/schema_generated.h"
@@ -73,20 +73,14 @@ StatusOr<mlir::StringAttr> GetPaddingAttr(TfLitePadding pad_params,
 bool mlir::IsStablehloOp(const tflite::OperatorCodeT& op_code) {
   llvm::StringRef op_name(
       tflite::EnumNameBuiltinOperator(tflite::GetBuiltinCode(&op_code)));
-  return op_name.startswith("STABLEHLO_");
+  return op_name.starts_with("STABLEHLO_");
 }
 
 std::string mlir::GetMlirOpNameFromOpCode(
     const tflite::OperatorCodeT& op_code) {
   auto builtin_code = tflite::GetBuiltinCode(&op_code);
-  if (builtin_code == tflite::BuiltinOperator_CUSTOM) {
-    return std::string("tfl.custom");
-  }
   if (builtin_code == tflite::BuiltinOperator_IF) {
     return std::string("tf.If");
-  }
-  if (builtin_code == tflite::BuiltinOperator_WHILE) {
-    return std::string("tfl.while");
   }
 
   llvm::StringRef op_name(tflite::EnumNameBuiltinOperator(builtin_code));
@@ -386,7 +380,7 @@ Status mlir::CustomOptionsToAttributes(
 
 // TODO(zichuanwei@): Populate Builtin_options_2 manual for now, should automate
 // these in the future
-void mlir::BuiltinOptions2ToAttributes(
+void BuiltinOptions2ToAttributesManual(
     tflite::BuiltinOptions2Union op_union, mlir::Builder builder,
     llvm::SmallVectorImpl<mlir::NamedAttribute>& attributes) {
   if (const auto* op = op_union.AsStablehloConcatenateOptions()) {
@@ -397,31 +391,22 @@ void mlir::BuiltinOptions2ToAttributes(
   if (const auto* op = op_union.AsStablehloBroadcastInDimOptions()) {
     attributes.emplace_back(builder.getNamedAttr(
         "broadcast_dimensions",
-        BuildRankedTensorAttr(
-            {static_cast<int64_t>(op->broadcast_dimensions.size())},
-            op->broadcast_dimensions, builder)));
+        builder.getDenseI64ArrayAttr(op->broadcast_dimensions)));
     return;
   }
   if (const auto* op = op_union.AsStablehloSliceOptions()) {
-    std::vector<int64_t> shape = {
-        static_cast<int64_t>(op->start_indices.size())};
     attributes.emplace_back(builder.getNamedAttr(
-        "start_indices",
-        BuildRankedTensorAttr(shape, op->start_indices, builder)));
+        "start_indices", builder.getDenseI64ArrayAttr(op->start_indices)));
     attributes.emplace_back(builder.getNamedAttr(
-        "limit_indices",
-        BuildRankedTensorAttr(shape, op->limit_indices, builder)));
+        "limit_indices", builder.getDenseI64ArrayAttr(op->limit_indices)));
     attributes.emplace_back(builder.getNamedAttr(
-        "strides", BuildRankedTensorAttr(shape, op->strides, builder)));
+        "strides", builder.getDenseI64ArrayAttr(op->strides)));
     return;
   }
   if (const auto* op = op_union.AsStablehloConvolutionOptions()) {
     if (!(op->window_strides.empty())) {
-      std::vector<int64_t> shape;
-      shape.push_back(static_cast<int64_t>(op->window_strides.size()));
       attributes.emplace_back(builder.getNamedAttr(
-          "window_strides",
-          BuildRankedTensorAttr(shape, op->window_strides, builder)));
+          "window_strides", builder.getDenseI64ArrayAttr(op->window_strides)));
     }
     if (!(op->padding.empty())) {
       std::vector<int64_t> shape;
@@ -431,25 +416,19 @@ void mlir::BuiltinOptions2ToAttributes(
           "padding", BuildRankedTensorAttr(shape, op->padding, builder)));
     }
     if (!(op->lhs_dilation.empty())) {
-      std::vector<int64_t> shape;
-      shape.push_back(static_cast<int64_t>(op->lhs_dilation.size()));
       attributes.emplace_back(builder.getNamedAttr(
-          "lhs_dilation",
-          BuildRankedTensorAttr(shape, op->lhs_dilation, builder)));
+          "lhs_dilation", builder.getDenseI64ArrayAttr(op->lhs_dilation)));
     }
     if (!(op->rhs_dilation.empty())) {
-      std::vector<int64_t> shape;
-      shape.push_back(static_cast<int64_t>(op->rhs_dilation.size()));
       attributes.emplace_back(builder.getNamedAttr(
-          "rhs_dilation",
-          BuildRankedTensorAttr(shape, op->rhs_dilation, builder)));
+          "rhs_dilation", builder.getDenseI64ArrayAttr(op->rhs_dilation)));
     }
-    if (!(op->window_reversal.empty()))
+    if (!(op->window_reversal.empty())) {
+      llvm::SmallVector<bool> window_reversal;
+      for (bool b : op->window_reversal) window_reversal.push_back(b);
       attributes.emplace_back(builder.getNamedAttr(
-          "window_reversal",
-          BuildRankedTensorAttr(
-              {static_cast<int64_t>(op->window_reversal.size())},
-              op->window_reversal, builder)));
+          "window_reversal", builder.getDenseBoolArrayAttr(window_reversal)));
+    }
     attributes.emplace_back(builder.getNamedAttr(
         "dimension_numbers",
         mlir::stablehlo::ConvDimensionNumbersAttr::get(
@@ -502,20 +481,18 @@ void mlir::BuiltinOptions2ToAttributes(
         static_cast<int64_t>(op->edge_padding_low.size())};
     attributes.emplace_back(builder.getNamedAttr(
         "edge_padding_low",
-        BuildRankedTensorAttr(shape, op->edge_padding_low, builder)));
+        builder.getDenseI64ArrayAttr(op->edge_padding_low)));
     attributes.emplace_back(builder.getNamedAttr(
         "edge_padding_high",
-        BuildRankedTensorAttr(shape, op->edge_padding_high, builder)));
+        builder.getDenseI64ArrayAttr(op->edge_padding_high)));
     attributes.emplace_back(builder.getNamedAttr(
         "interior_padding",
-        BuildRankedTensorAttr(shape, op->interior_padding, builder)));
+        builder.getDenseI64ArrayAttr(op->interior_padding)));
     return;
   }
   if (const auto* op = op_union.AsStablehloDynamicSliceOptions()) {
     attributes.emplace_back(builder.getNamedAttr(
-        "slice_sizes",
-        BuildRankedTensorAttr({static_cast<int64_t>(op->slice_sizes.size())},
-                              op->slice_sizes, builder)));
+        "slice_sizes", builder.getDenseI64ArrayAttr(op->slice_sizes)));
     return;
   }
   if (const auto* op = op_union.AsStablehloCompareOptions()) {
@@ -540,39 +517,27 @@ void mlir::BuiltinOptions2ToAttributes(
   }
   if (const auto* op = op_union.AsStablehloReduceOptions()) {
     attributes.emplace_back(builder.getNamedAttr(
-        "dimensions",
-        BuildRankedTensorAttr({static_cast<int64_t>(op->dimensions.size())},
-                              op->dimensions, builder)));
+        "dimensions", builder.getDenseI64ArrayAttr(op->dimensions)));
     return;
   }
   if (const auto* op = op_union.AsStablehloReduceWindowOptions()) {
     if (!op->window_dimensions.empty()) {
       attributes.emplace_back(builder.getNamedAttr(
           "window_dimensions",
-          BuildRankedTensorAttr(
-              {static_cast<int64_t>(op->window_dimensions.size())},
-              op->window_dimensions, builder)));
+          builder.getDenseI64ArrayAttr(op->window_dimensions)));
     }
     if (!op->window_strides.empty()) {
       attributes.emplace_back(builder.getNamedAttr(
-          "window_strides",
-          BuildRankedTensorAttr(
-              {static_cast<int64_t>(op->window_strides.size())},
-              op->window_strides, builder)));
+          "window_strides", builder.getDenseI64ArrayAttr(op->window_strides)));
     }
     if (!op->base_dilations.empty()) {
       attributes.emplace_back(builder.getNamedAttr(
-          "base_dilations",
-          BuildRankedTensorAttr(
-              {static_cast<int64_t>(op->base_dilations.size())},
-              op->base_dilations, builder)));
+          "base_dilations", builder.getDenseI64ArrayAttr(op->base_dilations)));
     }
     if (!op->window_dilations.empty()) {
       attributes.emplace_back(builder.getNamedAttr(
           "window_dilations",
-          BuildRankedTensorAttr(
-              {static_cast<int64_t>(op->window_dilations.size())},
-              op->window_dilations, builder)));
+          builder.getDenseI64ArrayAttr(op->window_dilations)));
     }
     if (!op->padding.empty()) {
       attributes.emplace_back(builder.getNamedAttr(
@@ -617,9 +582,7 @@ void mlir::BuiltinOptions2ToAttributes(
         builder.getNamedAttr("dimension_numbers", gather_dim));
     if (!op->slice_sizes.empty()) {
       attributes.emplace_back(builder.getNamedAttr(
-          "slice_sizes",
-          BuildRankedTensorAttr({static_cast<int64_t>(op->slice_sizes.size())},
-                                op->slice_sizes, builder)));
+          "slice_sizes", builder.getDenseI64ArrayAttr(op->slice_sizes)));
     }
     attributes.emplace_back(builder.getNamedAttr(
         "indices_are_sorted", BuildBoolAttr(op->indices_are_sorted, builder)));
@@ -628,11 +591,26 @@ void mlir::BuiltinOptions2ToAttributes(
   if (const auto* op = op_union.AsStablehloTransposeOptions()) {
     if (!op->permutation.empty()) {
       attributes.emplace_back(builder.getNamedAttr(
-          "permutation",
-          BuildRankedTensorAttr({static_cast<int64_t>(op->permutation.size())},
-                                op->permutation, builder)));
+          "permutation", builder.getDenseI64ArrayAttr(op->permutation)));
     }
 
+    return;
+  }
+  if (const auto* op = op_union.AsStablehloRngBitGeneratorOptions()) {
+    mlir::stablehlo::RngAlgorithm algorithm;
+    switch (op->algorithm) {
+      case tflite::RngAlgorithm_THREEFRY:
+        algorithm = mlir::stablehlo::RngAlgorithm::THREE_FRY;
+        break;
+      case tflite::RngAlgorithm_PHILOX:
+        algorithm = mlir::stablehlo::RngAlgorithm::PHILOX;
+        break;
+      case tflite::RngAlgorithm_DEFAULT:
+        algorithm = mlir::stablehlo::RngAlgorithm::DEFAULT;
+    }
+    auto attr =
+        mlir::stablehlo::RngAlgorithmAttr::get(builder.getContext(), algorithm);
+    attributes.emplace_back(builder.getNamedAttr("rng_algorithm", attr));
     return;
   }
 }

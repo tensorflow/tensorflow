@@ -2,18 +2,17 @@
 # This includes the C API, Java API, and protocol buffer files.
 
 load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
-load("@rules_pkg//pkg:tar.bzl", "pkg_tar")
+load("@rules_pkg//:pkg.bzl", "pkg_tar", "pkg_zip")
 load("//tensorflow:tensorflow.bzl", "VERSION", "VERSION_MAJOR", "if_macos")
 load("//tensorflow/core/platform:build_config_root.bzl", "tf_additional_license_deps")
 load("//third_party/mkl:build_defs.bzl", "if_enable_mkl", "if_mkl")
 
 package(default_visibility = ["//visibility:private"])
 
-genrule(
+pkg_zip(
     name = "libtensorflow_proto",
     srcs = ["//tensorflow/core:protos_all_proto_srcs"],
-    outs = ["libtensorflow_proto.zip"],
-    cmd = "zip $@ $(SRCS)",
+    strip_prefix = "/external/local_tsl",
 )
 
 pkg_tar(
@@ -73,7 +72,7 @@ pkg_tar(
         "//tensorflow/c:headers",
     ],
     package_dir = "include/",
-    strip_prefix = "/",
+    strip_prefix = "/external/local_tsl",
     # Mark as "manual" till
     # https://github.com/bazelbuild/bazel/issues/2352
     # and https://github.com/bazelbuild/bazel/issues/1580
@@ -149,6 +148,8 @@ genrule(
         "@snappy//:COPYING",
         "@stablehlo//:LICENSE",
         "@tf_runtime//:LICENSE",
+        "@local_tsl//:LICENSE",
+        "@local_xla//:LICENSE",
     ] + select({
         "//tensorflow:android": [],
         "//tensorflow:ios": [],
@@ -159,7 +160,7 @@ genrule(
             "@com_github_googlecloudplatform_google_cloud_cpp//:LICENSE",
         ],
     }) + select({
-        "//tensorflow/tsl:with_numa_support": [
+        "@local_tsl//tsl:with_numa_support": [
             "@hwloc//:COPYING",
         ],
         "//conditions:default": [],
@@ -190,6 +191,8 @@ genrule(
         "@snappy//:COPYING",
         "@stablehlo//:LICENSE",
         "@tf_runtime//:LICENSE",
+        "@local_tsl//:LICENSE",
+        "@local_xla//:LICENSE",
     ] + select({
         "//tensorflow:android": [],
         "//tensorflow:ios": [],
@@ -200,7 +203,7 @@ genrule(
             "@com_github_googlecloudplatform_google_cloud_cpp//:LICENSE",
         ],
     }) + select({
-        "//tensorflow/tsl:with_numa_support": [
+        "@local_tsl//tsl:with_numa_support": [
             "@hwloc//:COPYING",
         ],
         "//conditions:default": [],

@@ -14,6 +14,7 @@
 # ==============================================================================
 """Tests for array_grad."""
 
+from tensorflow.python.eager import backprop
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import test_util
@@ -102,6 +103,17 @@ class ArrayGradTest(test.TestCase):
           batch_dims=1)
 
     self._testGrad(f, x)
+
+  def test_gather_v2_zero_bsize_grad_has_matching_shapes(self):
+    params = array_ops.zeros(shape=[0, 1, 8, 16], dtype=dtypes.float64)
+    indices = array_ops.zeros(shape=[0, 1, 3], dtype=dtypes.int32)
+
+    def f(params):
+      return array_ops.gather_v2(params, indices, axis=2, batch_dims=2)
+
+    grads = backprop.gradients_function(f)(params)
+    self.assertLen(grads, 1)
+    self.assertAllEqual(params.shape, grads[0].shape)
 
   def test_broadcast_to(self):
     x = constant_op.constant([1., 2., 3.], dtype=dtypes.float64)

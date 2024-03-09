@@ -50,7 +50,7 @@ limitations under the License.
 #include "tensorflow/core/platform/path.h"
 #include "tensorflow/core/platform/stringpiece.h"
 #include "tensorflow/core/util/env_var.h"
-#include "tensorflow/tsl/platform/statusor.h"
+#include "tsl/platform/statusor.h"
 
 namespace tensorflow {
 namespace tfr {
@@ -186,7 +186,7 @@ Status TFRDecomposeContext::DecomposeGraph(mlir::ModuleOp user_module) {
   if (failed(pm_.run(user_module))) {
     return errors::Internal("Failed to run the decompose passes.");
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Constructor of the decompose context.

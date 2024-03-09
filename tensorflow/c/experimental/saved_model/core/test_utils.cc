@@ -94,13 +94,15 @@ void FillNumericTensorBuffer(DataType dtype, size_t num_elements, void* buffer,
   case DataTypeToEnum<type>::value: {                \
     type* typed_buffer = static_cast<type*>(buffer); \
     for (size_t i = 0; i < num_elements; ++i) {      \
-      typed_buffer[i] = value;                       \
+      typed_buffer[i] = static_cast<type>(value);    \
     }                                                \
     break;                                           \
   }
     TF_CALL_INTEGRAL_TYPES(CASE);
     TF_CALL_double(CASE);
     TF_CALL_float(CASE);
+    TF_CALL_int4(CASE);
+    TF_CALL_uint4(CASE);
 #undef CASE
     default:
       CHECK(false) << "Unsupported data type: " << DataTypeString(dtype);
@@ -114,22 +116,25 @@ void FillNumericTensorBuffer(DataType dtype, size_t num_elements, void* buffer,
 void CheckBufferDataIsEqual(DataType dtype, int64_t num_elements, void* a,
                             void* b) {
   switch (dtype) {
-#define CASE(type)                               \
-  case DataTypeToEnum<type>::value: {            \
-    type* typed_a = static_cast<type*>(a);       \
-    type* typed_b = static_cast<type*>(b);       \
-    for (int64_t i = 0; i < num_elements; ++i) { \
-      if (DataTypeIsFloating(dtype)) {           \
-        EXPECT_FLOAT_EQ(typed_a[i], typed_b[i]); \
-      } else {                                   \
-        EXPECT_EQ(typed_a[i], typed_b[i]);       \
-      }                                          \
-    }                                            \
-    break;                                       \
+#define CASE(type)                                       \
+  case DataTypeToEnum<type>::value: {                    \
+    type* typed_a = static_cast<type*>(a);               \
+    type* typed_b = static_cast<type*>(b);               \
+    for (int64_t i = 0; i < num_elements; ++i) {         \
+      if (DataTypeIsFloating(dtype)) {                   \
+        EXPECT_FLOAT_EQ(static_cast<float>(typed_a[i]),  \
+                        static_cast<float>(typed_b[i])); \
+      } else {                                           \
+        EXPECT_EQ(typed_a[i], typed_b[i]);               \
+      }                                                  \
+    }                                                    \
+    break;                                               \
   }
     TF_CALL_INTEGRAL_TYPES(CASE);
     TF_CALL_double(CASE);
     TF_CALL_float(CASE);
+    TF_CALL_int4(CASE);
+    TF_CALL_uint4(CASE);
 #undef CASE
     default:
       CHECK(false) << "Unsupported data type: " << DataTypeString(dtype);

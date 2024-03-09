@@ -3,10 +3,7 @@ load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
-    default_visibility = [
-        "//tensorflow/core/runtime_fallback:internal",
-        "//tensorflow/core/tfrt/saved_model:__pkg__",
-    ],
+    default_visibility = ["//tensorflow/core/tfrt/saved_model:__pkg__"],
     licenses = ["notice"],
 )
 
@@ -49,9 +46,7 @@ cc_library(
         "//tensorflow/compiler/jit:xla_device_no_jit_rewrite_registration",
         "//tensorflow/compiler/jit:xla_launch_util",
         "//tensorflow/compiler/tf2xla:xla_compiler",
-        "//tensorflow/compiler/xla/pjrt:pjrt_client",
         "//tensorflow/core:framework",
-        "//tensorflow/core/common_runtime:serving_device_selector",
         "//tensorflow/core/platform:notification",
         "//tensorflow/core/platform:status",
         "//tensorflow/core/platform:statusor",
@@ -59,10 +54,6 @@ cc_library(
         "//tensorflow/core/tfrt/common:global_state",
         "//tensorflow/core/tfrt/utils:fallback_tensor",
         "//tensorflow/core/tfrt/utils:gpu_variables_table",
-        "//tensorflow/tsl/framework:device_id",
-        "//tensorflow/tsl/platform:errors",
-        "//tensorflow/tsl/platform:fingerprint",
-        "//tensorflow/tsl/platform:statusor",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/log",
@@ -71,6 +62,12 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
         "@llvm-project//llvm:Support",
+        "@local_tsl//tsl/framework:device_id",
+        "@local_tsl//tsl/framework:serving_device_selector",
+        "@local_tsl//tsl/platform:errors",
+        "@local_tsl//tsl/platform:fingerprint",
+        "@local_tsl//tsl/platform:statusor",
+        "@local_xla//xla/pjrt:pjrt_client",
         "@tf_runtime//:hostcontext",
         "@tf_runtime//:support",
         "@tf_runtime//:tensor_alwayslink",
@@ -93,7 +90,6 @@ tf_cuda_cc_test(
         "//tensorflow/compiler/jit:xla_gpu_jit",
         "//tensorflow/core:framework",
         "//tensorflow/core:test",
-        "//tensorflow/core/common_runtime:serving_device_selector_policies",
         "//tensorflow/core/common_runtime/gpu:gpu_serving_device_selector",
         "//tensorflow/core/framework:tensor_testutil",
         "//tensorflow/core/kernels:ops_testutil",
@@ -117,10 +113,10 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":gpu_runner",
-        "//tensorflow/core/common_runtime:serving_device_selector_policies",
         "//tensorflow/core/common_runtime/gpu:gpu_serving_device_selector",
         "//tensorflow/core/platform:status",
         "//tensorflow/core/tfrt/runtime",
+        "@local_tsl//tsl/framework:serving_device_selector_policies",
         "@tf_runtime//:hostcontext",
     ],
 )

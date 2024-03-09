@@ -74,8 +74,8 @@ cc_library(
         "//tensorflow/core/lib/core:errors",
         "//tensorflow/core/lib/core:status",
         "//tensorflow/core/platform:errors",
-        "//third_party/eigen3",
         "@com_google_absl//absl/base:core_headers",
+        "@eigen_archive//:eigen3",
     ],
 )
 
@@ -92,7 +92,7 @@ tf_cc_test(
         "//tensorflow/core:lib",
         "//tensorflow/core:test",
         "//tensorflow/core/platform:statusor",
-        "//third_party/eigen3",
         "@com_google_googletest//:gtest_main",
+        "@eigen_archive//:eigen3",
     ],
 )

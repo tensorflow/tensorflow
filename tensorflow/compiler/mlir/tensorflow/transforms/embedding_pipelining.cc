@@ -375,6 +375,42 @@ struct Inliner : public InlinerInterface {
     return LogicalResult::success();
   }
 
+  LogicalResult PatchCollectiveGatherInstanceKey(func::FuncOp func) {
+    // We're expecting the original model to have a single CollectiveGatherV2Op
+    // that gets split into 3 copies in the start_step_0, start_step_1 and
+    // new_while_body functions. We use global iter id to set the instance key.
+    // Therefore, we add an offset to the output of the global_iter_id_op to
+    // make sure the instance keys are unique among them we replace the original
+    // instance key as:
+    //   global_iter_id = c + original_global_iter_id
+    // where c = -2, -1 or 0 depending on which function it's being replaced in.
+    static int64_t offset_value = -2;
+    for (auto global_iter_id_op :
+         func.getRegion().getOps<TF::GlobalIterIdOp>()) {
+      auto loc = global_iter_id_op->getLoc();
+      builder.setInsertionPointAfter(global_iter_id_op);
+      auto offset = builder.create<TF::ConstOp>(
+          loc, builder.getI64IntegerAttr(offset_value));
+      auto new_global_iter_id = builder.create<TF::AddV2Op>(
+          loc, global_iter_id_op->getResultTypes(),
+          global_iter_id_op->getResult(0), offset->getResult(0));
+      global_iter_id_op->getResult(0).replaceAllUsesExcept(
+          new_global_iter_id->getResult(0), new_global_iter_id);
+      std::vector<std::string> attr_names = {
+          TF::kReplicationInfoAttr.str(), "_xla_compile_device_type",
+          kEmbeddingPipelining, "_xla_outside_compilation", "device"};
+      for (const auto& attr_name : attr_names) {
+        if (!global_iter_id_op->hasAttr(attr_name)) continue;
+        offset->setAttr(attr_name, global_iter_id_op->getAttr(attr_name));
+        new_global_iter_id->setAttr(attr_name,
+                                    global_iter_id_op->getAttr(attr_name));
+      }
+      // Make the next function to get inlined use a different offset.
+      ++offset_value;
+    }
+    return LogicalResult::success();
+  }
+
   // Find any StatefulPartitionedCalls and inline their contents in this func.
   LogicalResult InlineCallsInFunc(func::FuncOp func,
                                   bool inline_all_funcs = false) {
@@ -407,7 +443,10 @@ struct Inliner : public InlinerInterface {
     }
     for (auto op : ops_to_erase) op->erase();
 
-    auto result = UnifyReplicationInfo(func);
+    auto result = PatchCollectiveGatherInstanceKey(func);
+    if (failed(result)) return result;
+
+    result = UnifyReplicationInfo(func);
     if (failed(result)) return result;
 
     result = RemoveOutputInputPairs(func);
@@ -877,11 +916,11 @@ LogicalResult FindForwardPassOps(OpBuilder& builder,
     TF::TPUReplicatedInputOp private_input = input.clone();
     builder.insert(private_input);
     forward_pass_ops.insert(private_input);
-    for (OpOperand& next_use : input.getOutput().getUses()) {
-      if (!forward_pass_ops.contains(next_use.getOwner())) continue;
-      next_use.getOwner()->setOperand(next_use.getOperandNumber(),
-                                      private_input.getOutput());
-    }
+
+    input.getOutput().replaceUsesWithIf(
+        private_input.getOutput(), [&](OpOperand& use) {
+          return forward_pass_ops.contains(use.getOwner());
+        });
   }
 
   VLOG(3) << "Cloned " << cloned_inputs << " TPUReplicatedInputOps";
@@ -992,11 +1031,10 @@ LogicalResult FindBackwardPassOps(
     TF::TPUReplicatedInputOp private_input = input.clone();
     builder.insert(private_input);
     backward_pass_ops.insert(private_input);
-    for (OpOperand& next_use : input.getOutput().getUses()) {
-      if (!backward_pass_ops.contains(next_use.getOwner())) continue;
-      next_use.getOwner()->setOperand(next_use.getOperandNumber(),
-                                      private_input.getOutput());
-    }
+    input.getOutput().replaceUsesWithIf(
+        private_input.getOutput(), [&](OpOperand& use) {
+          return backward_pass_ops.contains(use.getOwner());
+        });
   }
 
   VLOG(2) << " cloned " << to_clone.size() << " and inserted "
@@ -1033,9 +1071,9 @@ LogicalResult FindBackwardPassOps(
     TF::TPUReplicatedInputOp input = builder.create<TF::TPUReplicatedInputOp>(
         loc, value.getType(), output.getResults());
     input->setAttr(kDevice, builder.getStringAttr(""));
-    for (OpOperand& use : value.getUses())
-      if (backward_pass_ops.contains(use.getOwner()))
-        use.getOwner()->setOperand(use.getOperandNumber(), input.getOutput());
+    value.replaceUsesWithIf(input.getOutput(), [&](OpOperand& use) {
+      return backward_pass_ops.contains(use.getOwner());
+    });
     backward_pass_ops.insert(input);
   }
 

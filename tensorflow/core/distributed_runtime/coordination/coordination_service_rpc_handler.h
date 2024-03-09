@@ -16,7 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_COORDINATION_COORDINATION_SERVICE_RPC_HANDLER_H_
 #define TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_COORDINATION_COORDINATION_SERVICE_RPC_HANDLER_H_
 
-#include "tensorflow/tsl/distributed_runtime/coordination/coordination_service_rpc_handler.h"
+#include "tsl/distributed_runtime/coordination/coordination_service_rpc_handler.h"
 
 namespace tensorflow {
 // NOLINTBEGIN(misc-unused-using-decls)

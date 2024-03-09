@@ -4,7 +4,7 @@ package(
 
 licenses(["notice"])  # MIT
 
-load("@org_tensorflow//tensorflow/tsl/platform/default:build_config.bzl", "py_proto_library")
+load("@local_tsl//tsl/platform/default:build_config.bzl", "py_proto_library")
 
 exports_files(["pprof/LICENSE"])
 

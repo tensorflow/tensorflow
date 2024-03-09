@@ -88,7 +88,7 @@ class TakeWhileDatasetOp : public UnaryDatasetOpKernel {
     Status InputDatasets(
         std::vector<const DatasetBase*>* inputs) const override {
       inputs->push_back(input_);
-      return OkStatus();
+      return absl::OkStatus();
     }
 
     Status CheckExternalState() const override {
@@ -119,7 +119,7 @@ class TakeWhileDatasetOp : public UnaryDatasetOpKernel {
           {std::make_pair("predicate", f_attr),
            std::make_pair("Targuments", other_arguments_types_attr)},
           output));
-      return OkStatus();
+      return absl::OkStatus();
     }
 
    private:
@@ -144,7 +144,7 @@ class TakeWhileDatasetOp : public UnaryDatasetOpKernel {
           tf_shared_lock l(mu_);
           if (!input_impl_) {
             *end_of_sequence = true;
-            return OkStatus();
+            return absl::OkStatus();
           }
           TF_RETURN_IF_ERROR(
               input_impl_->GetNext(ctx, out_tensors, end_of_sequence));
@@ -152,7 +152,7 @@ class TakeWhileDatasetOp : public UnaryDatasetOpKernel {
         if (*end_of_sequence) {
           mutex_lock l(mu_);
           input_impl_.reset();
-          return OkStatus();
+          return absl::OkStatus();
         }
         std::vector<Tensor> result;
         TF_RETURN_IF_ERROR(instantiated_captured_func_->RunWithBorrowedArgs(
@@ -169,7 +169,7 @@ class TakeWhileDatasetOp : public UnaryDatasetOpKernel {
           input_impl_.reset();
           out_tensors->clear();
         }
-        return OkStatus();
+        return absl::OkStatus();
       }
 
      protected:
@@ -189,7 +189,7 @@ class TakeWhileDatasetOp : public UnaryDatasetOpKernel {
         if (input_impl_) {
           TF_RETURN_IF_ERROR(SaveInput(ctx, writer, input_impl_));
         }
-        return OkStatus();
+        return absl::OkStatus();
       }
 
       Status RestoreInternal(IteratorContext* ctx,
@@ -203,7 +203,7 @@ class TakeWhileDatasetOp : public UnaryDatasetOpKernel {
         } else {
           TF_RETURN_IF_ERROR(RestoreInput(ctx, reader, input_impl_));
         }
-        return OkStatus();
+        return absl::OkStatus();
       }
 
      private:

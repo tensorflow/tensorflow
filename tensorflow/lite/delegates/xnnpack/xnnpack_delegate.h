@@ -39,6 +39,12 @@ extern "C" {
 // operators. Indirection buffer initialization will take place on every
 // inference run, instead of only once during initialization of the operators.
 #define TFLITE_XNNPACK_DELEGATE_FLAG_TRANSIENT_INDIRECTION_BUFFER 0x00000020
+// Enable the latest XNNPACK operators and features in the delegate which have
+// not yet been enabled by default.
+#define TFLITE_XNNPACK_DELEGATE_FLAG_ENABLE_LATEST_OPERATORS 0x00000040
+// Enable XNNPack subgraph reshaping. This means that models with dynamic
+// tensors are supported and that inputs may be efficiently resized.
+#define TFLITE_XNNPACK_DELEGATE_FLAG_ENABLE_SUBGRAPH_RESHAPING 0x00000080
 
 struct TfLiteXNNPackDelegateWeightsCache;
 
@@ -53,6 +59,8 @@ typedef struct {
   // - TFLITE_XNNPACK_DELEGATE_FLAG_DYNAMIC_FULLY_CONNECTED
   // - TFLITE_XNNPACK_DELEGATE_FLAG_VARIABLE_OPERATORS
   // - TFLITE_XNNPACK_DELEGATE_FLAG_TRANSIENT_INDIRECTION_BUFFER
+  // - TFLITE_XNNPACK_DELEGATE_FLAG_ENABLE_LATEST_OPERATORS
+  // - TFLITE_XNNPACK_DELEGATE_FLAG_ENABLE_SUBGRAPH_RESHAPING
   uint32_t flags;
   // Cache for packed weights, can be shared between multiple instances of
   // delegates.
@@ -60,6 +68,8 @@ typedef struct {
   // Deprecated. Use the flags bitfield with the
   // TFLITE_XNNPACK_DELEGATE_FLAG_VARIABLE_OPERATORS mask.
   bool handle_variable_ops;
+  // Enable adaptive optimization for AVX CPUs.
+  bool experimental_adaptive_avx_optimization;
 } TfLiteXNNPackDelegateOptions;
 
 // Returns a structure with the default XNNPack delegate options.

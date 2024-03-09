@@ -29,9 +29,9 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_compiler.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
-#include "tensorflow/compiler/xla/client/client_library.h"
-#include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
-#include "tensorflow/compiler/xla/xla_data.pb.h"
+#include "xla/client/client_library.h"
+#include "xla/pjrt/pjrt_client.h"
+#include "xla/xla_data.pb.h"
 #include "tensorflow/core/framework/device.h"
 #include "tensorflow/core/framework/device_base.h"
 #include "tensorflow/core/framework/tensor_shape.h"
@@ -119,7 +119,8 @@ TEST_F(XlaCompilerOptionsTest, PjRtOptionsXlaDevice) {
       /*pjrt_device_metadata=*/nullptr, custom_allocator);
 
   XlaCompiler::Options options = GenerateCompilerOptionsForPjRt(
-      *device_setup_.flr(), device, platform_info);
+      *device_setup_.flr(), device, platform_info,
+      /*pjrt_device_compiler=*/nullptr);
 
   EXPECT_EQ(options.device_type, compilation_device_type);
   EXPECT_EQ(options.device_ordinal, 0);
@@ -154,7 +155,8 @@ TEST_F(XlaCompilerOptionsTest, PjRtOptionsPjRtBaseDevice) {
       /*device_allocator=*/nullptr);
 
   XlaCompiler::Options options = GenerateCompilerOptionsForPjRt(
-      *device_setup_.flr(), device, platform_info);
+      *device_setup_.flr(), device, platform_info,
+      /*pjrt_device_compiler=*/nullptr);
 
   EXPECT_EQ(options.device_type, compilation_device_type);
   EXPECT_EQ(options.device_ordinal, 0);

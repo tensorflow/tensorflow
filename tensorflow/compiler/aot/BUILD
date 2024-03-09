@@ -1,7 +1,14 @@
-load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
-load("//tensorflow/compiler/aot:tfcompile.bzl", "tf_library")
 load("//tensorflow:tensorflow.bzl", "if_google", "if_oss", "tf_cc_binary", "tf_cc_test")
-load("//tensorflow/core/platform:build_config.bzl", "if_llvm_aarch64_available", "if_llvm_system_z_available")
+load("//tensorflow/compiler/aot:tfcompile.bzl", "tf_library")
+load(
+    "//tensorflow/core/platform:build_config_root.bzl",
+    "if_llvm_aarch32_available",
+    "if_llvm_aarch64_available",
+    "if_llvm_powerpc_available",
+    "if_llvm_system_z_available",
+    "if_llvm_x86_available",
+)
+load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -18,7 +25,7 @@ cc_library(
     deps = if_oss([
         "//tensorflow/core:test_main",
     ]) + if_google([
-        "//tensorflow/tsl/platform/default/build_config:test_main",
+        "//tensorflow/core/platform/default/build_config:test_main",
     ]),
 )
 
@@ -42,8 +49,14 @@ cc_library(
         "quantize.h",
     ],
     compatible_with = [],
-    defines = if_llvm_aarch64_available(["TF_LLVM_AARCH64_AVAILABLE=1"]) + if_llvm_system_z_available([
+    defines = if_llvm_aarch32_available(["TF_LLVM_AARCH32_AVAILABLE=1"]) + if_llvm_aarch64_available([
+        "TF_LLVM_AARCH64_AVAILABLE=1",
+    ]) + if_llvm_powerpc_available([
+        "TF_LLVM_POWERPC_AVAILABLE=1",
+    ]) + if_llvm_system_z_available([
         "TF_LLVM_S390X_AVAILABLE=1",
+    ]) + if_llvm_x86_available([
+        "TF_LLVM_X86_AVAILABLE=1",
     ]),
     visibility = [
         "//tensorflow:__pkg__",
@@ -60,17 +73,6 @@ cc_library(
         "//tensorflow/compiler/tf2xla:xla_compiler",
         "//tensorflow/compiler/tf2xla/kernels:xla_dummy_ops",
         "//tensorflow/compiler/tf2xla/kernels:xla_ops",
-        "//tensorflow/compiler/xla:cpu_function_runtime",
-        "//tensorflow/compiler/xla:shape_util",
-        "//tensorflow/compiler/xla:statusor",
-        "//tensorflow/compiler/xla:util",
-        "//tensorflow/compiler/xla:xla_data_proto_cc",
-        "//tensorflow/compiler/xla/client:client_library",
-        "//tensorflow/compiler/xla/client:compile_only_client",
-        "//tensorflow/compiler/xla/client:xla_computation",
-        "//tensorflow/compiler/xla/service:compiler",
-        "//tensorflow/compiler/xla/service/cpu:buffer_info_util",
-        "//tensorflow/compiler/xla/service/cpu:cpu_compiler",
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
@@ -84,6 +86,18 @@ cc_library(
         "@com_google_absl//absl/types:span",
         "@llvm-project//llvm:Support",
         "@llvm-project//llvm:Target",
+        "@local_xla//xla:cpu_function_runtime",
+        "@local_xla//xla:shape_util",
+        "@local_xla//xla:statusor",
+        "@local_xla//xla:util",
+        "@local_xla//xla:xla_data_proto_cc",
+        "@local_xla//xla/client:client_library",
+        "@local_xla//xla/client:compile_only_client",
+        "@local_xla//xla/client:xla_computation",
+        "@local_xla//xla/service:compiler",
+        "@local_xla//xla/service/cpu:buffer_info_util",
+        "@local_xla//xla/service/cpu:cpu_compiler",
+        "@local_xla//xla/stream_executor:platform_manager",
     ],
 )
 
@@ -94,10 +108,9 @@ tf_cc_test(
         "codegen_test_h.golden",
         "codegen_test_o.golden",
     ],
+    defines = if_llvm_x86_available(["TF_LLVM_X86_AVAILABLE=1"]),
     deps = [
         ":tfcompile_lib",
-        "//tensorflow/compiler/xla:cpu_function_runtime",
-        "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
@@ -105,8 +118,11 @@ tf_cc_test(
         "//tensorflow/core/platform:resource_loader",
         "@com_google_absl//absl/strings",
         "@llvm-project//llvm:Support",  # fixdeps: keep
+        "@local_xla//xla:cpu_function_runtime",
+        "@local_xla//xla:shape_util",
+    ] + if_llvm_x86_available([
         "@llvm-project//llvm:X86CodeGen",  # fixdeps: keep
-    ],
+    ]),
 )
 
 tf_cc_binary(
@@ -119,18 +135,21 @@ cc_library(
     name = "llvm_targets",
     visibility = ["//tensorflow/python:__pkg__"],
     deps = [
+    ] + if_llvm_aarch32_available([
         "@llvm-project//llvm:ARMAsmParser",  # fixdeps: keep
         "@llvm-project//llvm:ARMCodeGen",  # fixdeps: keep
-        "@llvm-project//llvm:PowerPCAsmParser",  # fixdeps: keep
-        "@llvm-project//llvm:PowerPCCodeGen",  # fixdeps: keep
-        "@llvm-project//llvm:X86AsmParser",  # fixdeps: keep
-        "@llvm-project//llvm:X86CodeGen",  # fixdeps: keep
-    ] + if_llvm_system_z_available([
-        "@llvm-project//llvm:SystemZAsmParser",  # fixdeps: keep
-        "@llvm-project//llvm:SystemZCodeGen",  # fixdeps: keep
     ]) + if_llvm_aarch64_available([
         "@llvm-project//llvm:AArch64AsmParser",  # fixdeps: keep
         "@llvm-project//llvm:AArch64CodeGen",  # fixdeps: keep
+    ]) + if_llvm_powerpc_available([
+        "@llvm-project//llvm:PowerPCAsmParser",  # fixdeps: keep
+        "@llvm-project//llvm:PowerPCCodeGen",  # fixdeps: keep
+    ]) + if_llvm_system_z_available([
+        "@llvm-project//llvm:SystemZAsmParser",  # fixdeps: keep
+        "@llvm-project//llvm:SystemZCodeGen",  # fixdeps: keep
+    ]) + if_llvm_x86_available([
+        "@llvm-project//llvm:X86AsmParser",  # fixdeps: keep
+        "@llvm-project//llvm:X86CodeGen",  # fixdeps: keep
     ]),
 )
 
@@ -143,8 +162,6 @@ cc_library(
         ":tfcompile_lib",
         "//tensorflow/compiler/tf2xla:tf2xla_proto_cc",
         "//tensorflow/compiler/tf2xla:tf2xla_util",
-        "//tensorflow/compiler/xla:debug_options_flags",
-        "//tensorflow/compiler/xla/service:compiler",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework",
@@ -153,6 +170,8 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "@com_google_absl//absl/strings",
+        "@local_xla//xla:debug_options_flags",
+        "@local_xla//xla/service:compiler",
     ],
 )
 
@@ -296,9 +315,6 @@ cc_library(
     srcs = ["embedded_protocol_buffers.cc"],
     hdrs = ["embedded_protocol_buffers.h"],
     deps = [
-        "//tensorflow/compiler/xla:statusor",
-        "//tensorflow/compiler/xla:util",
-        "//tensorflow/compiler/xla/service/llvm_ir:llvm_type_conversion_util",
         "//tensorflow/core:lib",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
@@ -307,6 +323,9 @@ cc_library(
         "@llvm-project//llvm:MC",
         "@llvm-project//llvm:Target",
         "@llvm-project//llvm:TargetParser",
+        "@local_xla//xla:statusor",
+        "@local_xla//xla:util",
+        "@local_xla//xla/service/llvm_ir:llvm_type_conversion_util",
     ],
 )
 

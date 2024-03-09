@@ -18,7 +18,7 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
-#include "tensorflow/compiler/xla/client/xla_builder.h"
+#include "xla/client/xla_builder.h"
 
 namespace tensorflow {
 namespace {
@@ -83,7 +83,8 @@ class CrossOp : public XlaOpKernel {
   }
 
  private:
-  TF_DISALLOW_COPY_AND_ASSIGN(CrossOp);
+  CrossOp(const CrossOp&) = delete;
+  void operator=(const CrossOp&) = delete;
 };
 
 REGISTER_XLA_OP(Name("Cross"), CrossOp);

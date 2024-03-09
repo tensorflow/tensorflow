@@ -48,7 +48,7 @@ tensorflow::Status ExecuteFunction(
   // expose the internals of how functions are to be executed here.
   std::string fname;
   {
-    tensorflow::FunctionDef* fdef = nullptr;
+    const tensorflow::FunctionDef* fdef = nullptr;
     TF_RETURN_IF_ERROR(trace->GetFunctionDef(&fdef));
     fname = fdef->signature().name();
   }

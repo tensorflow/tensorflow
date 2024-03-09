@@ -16,8 +16,8 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
-#include "tensorflow/compiler/xla/client/lib/constants.h"
-#include "tensorflow/compiler/xla/client/lib/slicing.h"
+#include "xla/client/lib/constants.h"
+#include "xla/client/lib/slicing.h"
 #include "tensorflow/core/lib/core/errors.h"
 
 namespace tensorflow {
@@ -92,7 +92,8 @@ class RollOp : public XlaOpKernel {
   }
 
  private:
-  TF_DISALLOW_COPY_AND_ASSIGN(RollOp);
+  RollOp(const RollOp&) = delete;
+  void operator=(const RollOp&) = delete;
 };
 
 REGISTER_XLA_OP(Name("Roll").CompileTimeConstantInput("axis"), RollOp);

@@ -29,9 +29,10 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/types.pb.h"
-#include "tensorflow/tsl/platform/errors.h"
-#include "tensorflow/tsl/platform/logging.h"
-#include "tensorflow/tsl/platform/mutex.h"
+#include "tsl/platform/errors.h"
+#include "tsl/platform/logging.h"
+#include "tsl/platform/mutex.h"
+#include "tsl/platform/types.h"
 
 namespace tensorflow {
 namespace data {
@@ -76,6 +77,15 @@ absl::Status IndexSplitProvider::Restore(
     IteratorStateReader* reader) {
   tsl::mutex_lock l(mu_);
   return reader->ReadScalar(full_name(kIndex), &i_);
+}
+
+int64_t IndexSplitProvider::Cardinality() const {
+  // RandomDataset uses kint64max to simulate infinite splits.
+  // See RandomDatasetOp::Dataset::MakeSplitProviders.
+  if (n_ == tsl::kint64max) {
+    return kInfiniteCardinality;
+  }
+  return n_;
 }
 
 ShardingSplitProvider::ShardingSplitProvider(

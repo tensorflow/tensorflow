@@ -200,6 +200,20 @@ class MklMatMulOp : public OpKernel {
     dnnl_gemm<bfloat16>(ftrans[index_transa], ftrans[index_transb], m, n, k,
                         alpha, a, lda, b, ldb, beta, c, ldc, ctx);
   }
+
+  void MklBlasGemm(OpKernelContext* ctx, bool transa, bool transb, const int m,
+                   const int n, const int k, const Eigen::half* a,
+                   const int lda, const Eigen::half* b, const int ldb,
+                   Eigen::half* c, const int ldc) {
+    const float alpha = 1.0f;
+    const float beta = 0.0f;
+    const int index_transa = transa ? 1 : 0;
+    const int index_transb = transb ? 1 : 0;
+
+    const char ftrans[] = {'N', 'T', 'C'};
+    dnnl_gemm<Eigen::half>(ftrans[index_transa], ftrans[index_transb], m, n, k,
+                           alpha, a, lda, b, ldb, beta, c, ldc, ctx);
+  }
 };
 
 // We do not want to use this kernel for aarch64 because the
@@ -218,6 +232,7 @@ class MklMatMulOp : public OpKernel {
 // additional types
 TF_CALL_float(REGISTER_CPU);
 TF_CALL_bfloat16(REGISTER_CPU);
+TF_CALL_half(REGISTER_CPU);
 #endif  // !DNNL_AARCH64_USE_ACL
 
 }  // namespace tensorflow

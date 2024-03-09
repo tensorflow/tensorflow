@@ -27,7 +27,7 @@ StatusOr<mlir::TF::SparseToDenseOp> GetSparseToDenseOp(mlir::Value value) {
   // to be connected by a series of DTensor ops like DTensorLayout or
   // various DTensorRelayout ops, so skip past the tf.DTensor ops.
   auto op = value.getDefiningOp();
-  while (op && op->getName().getStringRef().startswith("tf.DTensor")) {
+  while (op && op->getName().getStringRef().starts_with("tf.DTensor")) {
     op = op->getOperand(0).getDefiningOp();
   }
 

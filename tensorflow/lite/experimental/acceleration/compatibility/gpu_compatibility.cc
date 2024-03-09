@@ -34,7 +34,7 @@ namespace {
 
 void CanonicalizeValues(std::map<std::string, std::string>* variable_values) {
   for (auto& i : *variable_values) {
-    i.second = CanonicalizeValue(i.second);
+    i.second = CanonicalizeValueWithKey(i.first, i.second);
   }
 }
 

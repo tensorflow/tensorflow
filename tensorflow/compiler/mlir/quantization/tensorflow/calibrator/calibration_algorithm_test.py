@@ -53,15 +53,38 @@ class CalibrationAlgorithmTest(test.TestCase, parameterized.TestCase):
     )
     self.assertAllEqual((min_value, max_value), (1.0, 10.0))
 
-  @parameterized.named_parameters({
-      "testcase_name": "with_histogram_percentile",
-      "calibration_options": quant_opts_pb2.CalibrationOptions(
-          calibration_method=_CalibrationMethod.CALIBRATION_METHOD_HISTOGRAM_PERCENTILE,
-          calibration_parameters=quant_opts_pb2.CalibrationOptions.CalibrationParameters(
-              min_percentile=0.001, max_percentile=99.999
+  @parameterized.named_parameters(
+      {
+          "testcase_name": "with_histogram_percentile",
+          "calibration_options": quant_opts_pb2.CalibrationOptions(
+              calibration_method=_CalibrationMethod.CALIBRATION_METHOD_HISTOGRAM_PERCENTILE,
+              calibration_parameters=quant_opts_pb2.CalibrationOptions.CalibrationParameters(
+                  min_percentile=0.001, max_percentile=99.999
+              ),
           ),
-      ),
-  })
+      },
+      {
+          "testcase_name": "with_histogram_mse_bruteforce",
+          "calibration_options": quant_opts_pb2.CalibrationOptions(
+              calibration_method=_CalibrationMethod.CALIBRATION_METHOD_HISTOGRAM_MSE_BRUTEFORCE,
+              calibration_parameters=quant_opts_pb2.CalibrationOptions.CalibrationParameters(),
+          ),
+      },
+      {
+          "testcase_name": "with_histogram_mse_max_frequency",
+          "calibration_options": quant_opts_pb2.CalibrationOptions(
+              calibration_method=_CalibrationMethod.CALIBRATION_METHOD_HISTOGRAM_MSE_MAX_FREQUENCY,
+              calibration_parameters=quant_opts_pb2.CalibrationOptions.CalibrationParameters(),
+          ),
+      },
+      {
+          "testcase_name": "with_histogram_mse_symmetric",
+          "calibration_options": quant_opts_pb2.CalibrationOptions(
+              calibration_method=_CalibrationMethod.CALIBRATION_METHOD_HISTOGRAM_MSE_SYMMETRIC,
+              calibration_parameters=quant_opts_pb2.CalibrationOptions.CalibrationParameters(),
+          ),
+      },
+  )
   def test_histogram_calibration_methods(self, calibration_options):
     statistics = calib_stats_pb2.CalibrationStatistics()
     statistics.histogram_statistics.lower_bound = 0.0

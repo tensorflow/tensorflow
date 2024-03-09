@@ -1,7 +1,7 @@
 path: "tensorflow.optimizers.experimental.Optimizer"
 tf_class {
-  is_instance: "<class \'keras.optimizers.optimizer.Optimizer\'>"
-  is_instance: "<class \'keras.optimizers.optimizer._BaseOptimizer\'>"
+  is_instance: "<class \'tf_keras.optimizers.optimizer.Optimizer\'>"
+  is_instance: "<class \'tf_keras.optimizers.optimizer._BaseOptimizer\'>"
   is_instance: "<class \'tensorflow.python.trackable.autotrackable.AutoTrackable\'>"
   is_instance: "<class \'tensorflow.python.trackable.base.Trackable\'>"
   is_instance: "<type \'object\'>"

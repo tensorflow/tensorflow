@@ -40,7 +40,7 @@ defined in the interface.
 #### Sample usage
 
 Here is an example using the C++
-[`BertQuestionAnswerer`](https://github.com/tensorflow/tflite-support/blob/master/tensorflow_lite_support/cc/task/text/qa/bert_question_answerer.h)
+[`BertQuestionAnswerer`](https://github.com/tensorflow/tflite-support/blob/master/tensorflow_lite_support/cc/task/text/bert_question_answerer.h)
 for
 [MobileBert](https://tfhub.dev/tensorflow/lite-model/mobilebert/1/default/1).
 
@@ -103,7 +103,7 @@ To build an API object,you must provide the following information by extending
     from the TFLite `FlatBuffer`. The subclass is responsible for assigning
     values from the API I/O to I/O tensors. See the complete implementation
     example in
-    [`BertQuestionAnswerer`](https://github.com/tensorflow/tflite-support/blob/master/tensorflow_lite_support/cc/task/text/qa/bert_question_answerer.cc).
+    [`BertQuestionAnswerer`](https://github.com/tensorflow/tflite-support/blob/master/tensorflow_lite_support/cc/task/text/bert_question_answerer.cc).
 
     ```cpp
     class BertQuestionAnswerer : public BaseTaskApi<

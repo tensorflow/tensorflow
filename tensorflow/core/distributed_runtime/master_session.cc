@@ -64,7 +64,7 @@ limitations under the License.
 #include "tensorflow/core/protobuf/config.pb.h"
 #include "tensorflow/core/public/session_options.h"
 #include "tensorflow/core/util/device_name_utils.h"
-#include "tensorflow/tsl/protobuf/coordination_config.pb.h"
+#include "tsl/protobuf/coordination_config.pb.h"
 
 namespace tensorflow {
 
@@ -336,7 +336,8 @@ class MasterSession::ReffedClientGraph : public core::RefCounted {
   // destructor and does not wait for the rpc completion.
   void DeregisterPartitions();
 
-  TF_DISALLOW_COPY_AND_ASSIGN(ReffedClientGraph);
+  ReffedClientGraph(const ReffedClientGraph&) = delete;
+  void operator=(const ReffedClientGraph&) = delete;
 };
 
 Status MasterSession::ReffedClientGraph::RegisterPartitions(
@@ -610,7 +611,8 @@ class RunManyGraphs {
     status_group_.Update(s);
   }
 
-  TF_DISALLOW_COPY_AND_ASSIGN(RunManyGraphs);
+  RunManyGraphs(const RunManyGraphs&) = delete;
+  void operator=(const RunManyGraphs&) = delete;
 };
 
 Status AddSendFromClientRequest(const RunStepRequestWrapper& client_req,
@@ -868,7 +870,7 @@ Status MasterSession::ReffedClientGraph::RunPartitions(
     }
     fetch_proto->Swap(&iter->second);
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 namespace {
@@ -919,7 +921,8 @@ class CleanupBroadcastHelper {
   // Callback to be called when all operations complete.
   StatusCallback done_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(CleanupBroadcastHelper);
+  CleanupBroadcastHelper(const CleanupBroadcastHelper&) = delete;
+  void operator=(const CleanupBroadcastHelper&) = delete;
 };
 
 }  // namespace
@@ -964,7 +967,7 @@ void MasterSession::ReffedClientGraph::ProcessStats(int64_t step_id,
     }
     ph->StepDone(pss->start_micros, pss->end_micros,
                  Microseconds(0) /*cleanup_time*/, 0 /*total_runops*/,
-                 OkStatus());
+                 absl::OkStatus());
   }
   // Assemble all stats for this timeline into a merged StepStats.
   if (pss->collect_timeline) {
@@ -1088,7 +1091,7 @@ Status MasterSession::ReffedClientGraph::CheckFetches(
       }
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Asynchronously deregisters subgraphs on the workers, without waiting for the
@@ -1301,7 +1304,7 @@ Status MasterSession::CreateWorkerSessions(const ClusterDef& cluster_def) {
     // Request and responses used for a given worker.
     CreateWorkerSessionRequest request;
     CreateWorkerSessionResponse response;
-    Status status = OkStatus();
+    Status status = absl::OkStatus();
   };
   BlockingCounter done(worker_names.size());
   std::vector<WorkerGroup> workers(worker_names.size());
@@ -1322,7 +1325,7 @@ Status MasterSession::CreateWorkerSessions(const ClusterDef& cluster_def) {
   const int64_t client_device_incarnation =
       devices_->client_device()->attributes().incarnation();
 
-  Status status = OkStatus();
+  Status status = absl::OkStatus();
   // Create all the workers & kick off the computations.
   for (size_t i = 0; i < worker_names.size(); ++i) {
     workers[i].name = &worker_names[i];
@@ -1436,7 +1439,7 @@ Status MasterSession::DeleteWorkerSessions() {
     // Request and responses used for a given worker.
     DeleteWorkerSessionRequest request;
     DeleteWorkerSessionResponse response;
-    Status status = OkStatus();
+    Status status = absl::OkStatus();
   };
   BlockingCounter done(worker_names.size());
   std::vector<WorkerGroup> workers(worker_names.size());
@@ -1450,7 +1453,7 @@ Status MasterSession::DeleteWorkerSessions() {
     }
   });
 
-  Status status = OkStatus();
+  Status status = absl::OkStatus();
   // Create all the workers & kick off the computations.
   for (size_t i = 0; i < worker_names.size(); ++i) {
     workers[i].name = &worker_names[i];
@@ -1498,7 +1501,7 @@ Status MasterSession::ListDevices(ListDevicesResponse* resp) const {
       *(resp->add_local_device()) = dev->attributes();
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status MasterSession::Extend(const ExtendSessionRequest* req,
@@ -1527,7 +1530,7 @@ Status MasterSession::Extend(const ExtendSessionRequest* req,
     ++graph_version_;
     resp->set_new_graph_version(graph_version_);
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 WorkerCacheInterface* MasterSession::get_worker_cache() const {
@@ -1568,7 +1571,7 @@ Status MasterSession::StartStep(const BuildGraphOptions& opts, bool is_partial,
     (*out_rcg)->Ref();
     *out_count = (*out_rcg)->get_and_increment_execution_count();
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 void MasterSession::ClearRunsTable(std::vector<ReffedClientGraph*>* to_unref,
@@ -1651,7 +1654,7 @@ Status MasterSession::PartialRunSetup(const PartialRunSetupRequest* req,
   TF_RETURN_IF_ERROR(BuildAndRegisterPartitions(rcg));
 
   resp->set_partial_run_handle(handle);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status MasterSession::Run(CallOptions* opts, const RunStepRequestWrapper& req,
@@ -1724,7 +1727,7 @@ Status MasterSession::BuildAndRegisterPartitions(ReffedClientGraph* rcg) {
 
   TF_RETURN_IF_ERROR(rcg->RegisterPartitions(std::move(popts)));
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status MasterSession::DoPartialRun(CallOptions* opts,
@@ -1885,7 +1888,7 @@ Status MasterSession::CreateDebuggerState(
       debug_options.global_step(), rcg_execution_count, rcg_execution_count,
       input_names, output_names, target_names));
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 void MasterSession::FillPerStepState(MasterSession::ReffedClientGraph* rcg,
@@ -2046,7 +2049,7 @@ Status MasterSession::MakeCallable(const MakeCallableRequest& req,
   }
 
   resp->set_handle(handle);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status MasterSession::DoRunCallable(CallOptions* opts, ReffedClientGraph* rcg,
@@ -2120,7 +2123,7 @@ Status MasterSession::ReleaseCallable(const ReleaseCallableRequest& req,
   if (to_unref != nullptr) {
     to_unref->Unref();
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status MasterSession::Close() {
@@ -2146,7 +2149,7 @@ Status MasterSession::Close() {
       LOG(WARNING) << s;
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 void MasterSession::GarbageCollect() {

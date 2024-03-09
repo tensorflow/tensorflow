@@ -29,7 +29,7 @@ namespace tensorflow::graph_regularization {
 
 namespace {
 
-StatusOr<SavedModel> ReadSavedModel(absl::string_view file_dir) {
+absl::StatusOr<SavedModel> ReadSavedModel(absl::string_view file_dir) {
   std::string file_path = io::JoinPath(file_dir, "saved_model.pb");
   std::string serialized_saved_model;
   auto status =

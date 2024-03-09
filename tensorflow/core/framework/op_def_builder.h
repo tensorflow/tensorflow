@@ -40,8 +40,8 @@ typedef std::vector<std::reference_wrapper<const FullTypeDef>> TypeRefVector;
 // A callback into the type inference process, allowing type inference functions
 // to request inferring the type of some function (assumed to exist in the
 // runtime). The function is specified by name.
-typedef std::function<StatusOr<FullTypeDef>(const string&,
-                                            const TypeRefVector&)>
+typedef std::function<absl::StatusOr<FullTypeDef>(const string&,
+                                                  const TypeRefVector&)>
     FunctionTypeInferrer;
 
 // A type inference function, called for each node during type inference
@@ -52,8 +52,8 @@ typedef std::function<StatusOr<FullTypeDef>(const string&,
 // in the node's corresponding op definition.
 //
 // TODO(mdan): Consider a vector-in, vector-out contract.
-typedef std::function<StatusOr<FullTypeDef>(const TypeRefVector&,
-                                            const FunctionTypeInferrer&)>
+typedef std::function<absl::StatusOr<FullTypeDef>(const TypeRefVector&,
+                                                  const FunctionTypeInferrer&)>
     TypeInferenceFn;
 
 class FunctionDefHelper;

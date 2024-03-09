@@ -41,9 +41,6 @@ def bincount(arr: ragged_tensor.RaggedTensor,
 
   If `minlength` and `maxlength` are not given, returns a vector with length
   `tf.reduce_max(arr) + 1` if `arr` is non-empty, and length 0 otherwise.
-  If `weights` are non-None, then index `i` of the output stores the sum of the
-  value in `weights` at each index where the corresponding value in `arr` is
-  `i`.
 
   >>> data = tf.ragged.constant([[1, 1], [2, 3, 2, 4, 4, 5]])
   >>> tf.math.bincount(data)
@@ -56,14 +53,32 @@ def bincount(arr: ragged_tensor.RaggedTensor,
   index. Here, index 1 in output has a value 2. This indicates value 1 occurs
   two times in `values`.
 
+  **Bin-counting with weights**
+
   >>> data = tf.ragged.constant([[1, 1], [2, 3, 2, 4, 4, 5]])
   >>> weights = tf.ragged.constant([[1, 5], [0, 1, 0, 5, 4, 5]])
   >>> tf.math.bincount(data, weights=weights)
   <tf.Tensor: ... numpy=array([0, 6, 0, 1, 9, 5], dtype=int32)>
 
-  Bin will be incremented by the corresponding weight instead of 1.
-  Here, index 1 in output has a value 6. This is the summation of weights
-  corresponding to the value in `values`.
+  When `weights` is specified, bins will be incremented by the corresponding
+  weight instead of 1. Here, index 1 in output has a value 6. This is the
+  summation of `weights` corresponding to the value in `arr` (i.e. for index
+  1, the first two values `arr` are 1 so the first two weights, 1 and 5, are
+  summed).
+
+  There is an equivilance between bin-counting with weights and
+  `unsorted_segement_sum` where `data` is the weights and `segment_ids` are the
+  values.
+
+  >>> data = tf.ragged.constant([[1, 1], [2, 3, 2, 4, 4, 5]])
+  >>> weights = tf.ragged.constant([[1, 5], [0, 1, 0, 5, 4, 5]])
+  >>> tf.math.unsorted_segment_sum(weights, data, num_segments=6).numpy()
+  array([0, 6, 0, 1, 9, 5], dtype=int32)
+
+  On GPU, `bincount` with weights is only supported when XLA is enabled
+  (typically when a function decorated with `@tf.function(jit_compile=True)`).
+  `unsorted_segment_sum` can be used as a workaround for the non-XLA case on
+  GPU.
 
   **Bin-counting matrix rows independently**
 

@@ -34,8 +34,7 @@ limitations under the License.
 namespace mlir::quant {
 namespace {
 
-using QuantMethod =
-    tensorflow::quantization::QuantizationMethod::ExperimentalMethod;
+using QuantMethod = tensorflow::quantization::QuantizationMethod::PresetMethod;
 
 class EmptyPatternRewriter : public mlir::PatternRewriter {
  public:
@@ -104,7 +103,7 @@ TEST_F(TfToUniformAttributeUtilsTest, UniformQuantizedAddOpAttributes) {
 
   llvm::StringMap<Attribute> identifier_to_attr;
   QuantMethod quantization_method =
-      tensorflow::quantization::QuantizationMethod::STATIC_RANGE;
+      tensorflow::quantization::QuantizationMethod::METHOD_STATIC_RANGE_INT8;
   auto res = FillAttributesForUniformQuantizedAddOp(
       test_peer.rewriter_, op, identifier_to_attr, quantization_method,
       /*enable_per_channel_quantization=*/false);
@@ -139,7 +138,7 @@ TEST_F(TfToUniformAttributeUtilsTest, UniformQuantizedRequantizeOpAttributes) {
 
   llvm::StringMap<Attribute> identifier_to_attr;
   QuantMethod quantization_method =
-      tensorflow::quantization::QuantizationMethod::STATIC_RANGE;
+      tensorflow::quantization::QuantizationMethod::METHOD_STATIC_RANGE_INT8;
   auto res = FillAttributesForUniformRequantizeOp(
       test_peer.rewriter_, op, identifier_to_attr, quantization_method,
       /*enable_per_channel_quantization=*/true);
@@ -172,7 +171,7 @@ TEST_F(TfToUniformAttributeUtilsTest,
 
   llvm::StringMap<Attribute> identifier_to_attr;
   QuantMethod quantization_method =
-      tensorflow::quantization::QuantizationMethod::STATIC_RANGE;
+      tensorflow::quantization::QuantizationMethod::METHOD_STATIC_RANGE_INT8;
   auto res = FillAttributesForUniformRequantizeOp(
       test_peer.rewriter_, op, identifier_to_attr, quantization_method,
       /*enable_per_channel_quantization=*/true);
@@ -205,7 +204,7 @@ TEST_F(TfToUniformAttributeUtilsTest,
 
   llvm::StringMap<Attribute> identifier_to_attr;
   QuantMethod quantization_method =
-      tensorflow::quantization::QuantizationMethod::STATIC_RANGE;
+      tensorflow::quantization::QuantizationMethod::METHOD_STATIC_RANGE_INT8;
   auto res = FillAttributesForUniformRequantizeOp(
       test_peer.rewriter_, op, identifier_to_attr, quantization_method,
       /*enable_per_channel_quantization=*/false);

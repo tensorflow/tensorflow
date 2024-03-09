@@ -29,7 +29,7 @@ limitations under the License.
 #include "mlir/Transforms/Passes.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
-#include "tensorflow/compiler/xla/xla_data.pb.h"
+#include "xla/xla_data.pb.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/str_util.h"
 #include "tensorflow/core/protobuf/tpu/compile_metadata.pb.h"
@@ -179,7 +179,7 @@ Status UpdateMetadataProtoXlaSpmd(const Mesh& mesh_config,
     }
     *proto.mutable_device_assignment() = device_assignment;
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status UpdateMetadataProtoDtensorSpmd(const Mesh& mesh_config,
@@ -238,7 +238,7 @@ Status UpdateMetadataProtoDtensorSpmd(const Mesh& mesh_config,
     }
     *proto.mutable_device_assignment() = device_assignment;
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 mlir::LogicalResult UpdateTPUCompileMetadata(const Mesh& mesh_config,

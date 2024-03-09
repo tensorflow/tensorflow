@@ -433,7 +433,8 @@ class RandomBinomialOp : public OpKernel {
   }
 
  private:
-  TF_DISALLOW_COPY_AND_ASSIGN(RandomBinomialOp);
+  RandomBinomialOp(const RandomBinomialOp&) = delete;
+  void operator=(const RandomBinomialOp&) = delete;
 };
 
 // Samples from a binomial distribution, using the given parameters.
@@ -523,7 +524,8 @@ class StatelessRandomBinomialOp : public OpKernel {
   }
 
  private:
-  TF_DISALLOW_COPY_AND_ASSIGN(StatelessRandomBinomialOp);
+  StatelessRandomBinomialOp(const StatelessRandomBinomialOp&) = delete;
+  void operator=(const StatelessRandomBinomialOp&) = delete;
 };
 
 }  // namespace

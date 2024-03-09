@@ -23,8 +23,8 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "tensorflow/cc/framework/ops.h"
 #include "tensorflow/compiler/tf2xla/xla_compiler.h"
-#include "tensorflow/compiler/xla/client/compile_only_client.h"
-#include "tensorflow/compiler/xla/statusor.h"
+#include "xla/client/compile_only_client.h"
+#include "xla/statusor.h"
 #include "tensorflow/core/protobuf/config.pb.h"
 #include "tensorflow/core/tpu/kernels/tpu_compilation_cache_key.h"
 

@@ -335,5 +335,7 @@ class MklEinsum : public OpKernel {
                           MklEinsum<CPUDevice, TYPE>)
 TF_CALL_float(REGISTER_EINSUM_MKL);
 TF_CALL_bfloat16(REGISTER_EINSUM_MKL);
+TF_CALL_half(REGISTER_EINSUM_MKL);
+
 }  // namespace tensorflow
 #endif  // INTEL_MKL

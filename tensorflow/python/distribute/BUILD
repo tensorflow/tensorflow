@@ -8,7 +8,6 @@ package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [
         "//tensorflow:internal",
-        "//third_party/py/keras:__subpackages__",  # TODO(scottzhu): remove this once keras is relying on tf.__internal__.
     ],
     licenses = ["notice"],
 )
@@ -176,7 +175,7 @@ py_strict_library(
         "//tensorflow/python/types:distribute",
         "//tensorflow/python/util:deprecation",
         "//tensorflow/python/util:nest",
-        "//tensorflow/python/util:tf_decorator",
+        "//tensorflow/python/util:tf_contextlib",
         "//tensorflow/python/util:tf_export",
         "//tensorflow/tools/docs:doc_controls",
         "@six_archive//:six",
@@ -524,7 +523,7 @@ cuda_py_strict_test(
         "//tensorflow/python/ops:variable_scope",
         "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
-        "@dill_archive//:dill",  # build_cleaner: keep
+        "@pypi_dill//:pkg",  # build_cleaner: keep
     ],
 )
 
@@ -631,7 +630,7 @@ cuda_py_strict_test(
         "//tensorflow/python/eager:context",
         "//tensorflow/python/framework:errors",
         "//tensorflow/python/framework:test_lib",
-        "//tensorflow/python/lib/io:lib",
+        "//tensorflow/python/lib/io:python_io",
         "//tensorflow/python/ops:dataset_ops_gen",
         "//tensorflow/python/ops:math_ops",
         "//tensorflow/python/platform:client_testlib",
@@ -701,8 +700,8 @@ py_strict_library(
         "//tensorflow/python/tpu/ops",
         "//tensorflow/python/util:deprecation",
         "//tensorflow/python/util:nest",
-        "//tensorflow/python/util:tf_decorator",
         "//tensorflow/python/util:tf_export",
+        "//tensorflow/python/util:tf_inspect",
         "//third_party/py/numpy",
         "@absl_py//absl/logging",
     ],
@@ -762,6 +761,7 @@ tpu_py_strict_test(
     tags = ["no_oss"],
     deps = [
         ":distribute_lib",
+        ":packed_distributed_variable",
         ":reduce_util",
         ":strategy_test_lib",
         ":tpu_strategy",
@@ -799,10 +799,13 @@ tpu_py_strict_test(
         "//tensorflow/python/ops/ragged:ragged_tensor",
         "//tensorflow/python/platform:flags",
         "//tensorflow/python/platform:tf_logging",
+        "//tensorflow/python/saved_model:load",
+        "//tensorflow/python/saved_model:save",
         "//tensorflow/python/tpu:device_assignment",
         "//tensorflow/python/tpu:tpu_hardware_feature",
         "//tensorflow/python/tpu:tpu_replication",
         "//tensorflow/python/tpu:tpu_strategy_util",
+        "//tensorflow/python/trackable:autotrackable",
         "//tensorflow/python/training:server_lib",
         "//tensorflow/python/util:nest",
         "@absl_py//absl/logging",
@@ -825,23 +828,6 @@ tpu_py_strict_test(
         "//tensorflow/python/eager:test",
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/platform:flags",
-    ],
-)
-
-# Used only by estimator.
-py_strict_library(
-    name = "estimator_training",
-    srcs = [
-        "estimator_training.py",
-    ],
-    srcs_version = "PY3",
-    deps = [
-        ":distribute_coordinator",
-        ":distribute_coordinator_context",
-        ":multi_worker_util",
-        "//tensorflow/python/platform:tf_logging",
-        "//tensorflow/python/training:server_lib",
-        "@six_archive//:six",
     ],
 )
 
@@ -944,7 +930,6 @@ py_strict_library(
         "//tensorflow/python/ops:array_ops",
         "//tensorflow/python/ops:control_flow_ops",
         "//tensorflow/python/ops:math_ops",
-        "//tensorflow/python/ops:resource_variable_ops",
         "//tensorflow/python/ops:variable_scope",
         "//tensorflow/python/ops:variables",
         "//tensorflow/python/saved_model:nested_structure_coder",
@@ -953,6 +938,7 @@ py_strict_library(
         "//tensorflow/python/types:core",
         "//tensorflow/python/types:distribute",
         "//tensorflow/python/types:trace",
+        "@absl_py//absl/logging",
     ],
 )
 
@@ -1107,7 +1093,6 @@ py_strict_library(
     visibility = [
         "//tensorflow:internal",
         "//tensorflow_models:__subpackages__",
-        "//third_party/py/keras:__subpackages__",
     ],
     deps = [
         ":collective_all_reduce_strategy",
@@ -1124,8 +1109,9 @@ py_strict_library(
         "//tensorflow/python/framework:test_lib",
         "//tensorflow/python/platform:flags",
         "//tensorflow/python/platform:tf_logging",
-        "//tensorflow/python/util:tf_decorator",
+        "//tensorflow/python/util:tf_decorator_py",
         "//tensorflow/python/util:tf_export",
+        "//tensorflow/python/util:tf_inspect",
         "@absl_py//absl:app",
         "@six_archive//:six",
     ],
@@ -1154,7 +1140,6 @@ py_strict_library(
     visibility = [
         "//tensorflow:internal",
         "//tensorflow_models:__subpackages__",
-        "//third_party/py/keras:__subpackages__",
     ],
     deps = [
         ":central_storage_strategy",
@@ -1443,7 +1428,7 @@ cuda_py_strict_test(
         "//tensorflow/python/ops:math_ops",
         "//tensorflow/python/util:nest",
         "@absl_py//absl/testing:parameterized",
-        "@dill_archive//:dill",  # build_cleaner: keep
+        "@pypi_dill//:pkg",  # build_cleaner: keep
     ],
 )
 
@@ -1566,7 +1551,7 @@ py_strict_library(
         "//tensorflow/python/framework:errors",
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/framework:test_lib",
-        "//tensorflow/python/lib/io:lib",
+        "//tensorflow/python/lib/io:tf_record",
         "//tensorflow/python/ops:array_ops",
         "//tensorflow/python/ops:gradients_impl",
         "//tensorflow/python/ops:init_ops",
@@ -1580,7 +1565,7 @@ py_strict_library(
         "//tensorflow/python/training:optimizer",
         "//tensorflow/python/training:training_util",
         "//tensorflow/python/util:nest",
-        "//tensorflow/python/util:tf_decorator",
+        "//tensorflow/python/util:tf_inspect",
         "//third_party/py/numpy",
     ],
 )
@@ -1758,16 +1743,11 @@ distribute_py_strict_test(
         ":distribute_utils",
         ":strategy_combinations",
         ":values",
-        "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:test",
-        "//tensorflow/python/framework:constant_op",
-        "//tensorflow/python/framework:ops",
-        "//tensorflow/python/ops:array_ops",
         "//tensorflow/python/ops:variable_scope",
         "//tensorflow/python/ops:variable_v1",
-        "//tensorflow/python/saved_model/model_utils:mode_keys",
         "@absl_py//absl/testing:parameterized",
-        "@wrapt",
+        "@pypi_wrapt//:pkg",
     ],
 )
 
@@ -1780,6 +1760,7 @@ distribute_py_strict_test(
     tags = [
         "multi_and_single_gpu",
         "no_cuda_asan",  # times out
+        "no_oss",  # TODO(b/292104274): Sometimes times out
     ],
     deps = [
         ":collective_all_reduce_strategy",
@@ -2180,13 +2161,6 @@ cuda_py_strict_test(
 tpu_py_strict_test(
     name = "collective_all_reduce_strategy_test_tpu",
     srcs = ["collective_all_reduce_strategy_test.py"],
-    # copybara:uncomment_begin
-    # args = [
-    # "--tpu_use_tfrt=false",  #TODO(b/227404010): Remove once the bug is fixed.
-    # ],
-    # copybara:uncomment_end
-    # FIXME(b/227404010): On TFRT TPU, eager CollectiveReduceV2 is broken.
-    disable_tfrt = True,
     main = "collective_all_reduce_strategy_test.py",
     python_version = "PY3",
     deps = [
@@ -2260,7 +2234,6 @@ cuda_py_strict_test(
         "//tensorflow/python/distribute/v1:input_lib",
         "//tensorflow/python/eager:backprop",
         "//tensorflow/python/eager:context",
-        "//tensorflow/python/estimator:run_config",
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:device",
         "//tensorflow/python/framework:dtypes",
@@ -2298,9 +2271,9 @@ py_strict_library(
         "//tensorflow/python/framework:test_lib",
         "//tensorflow/python/util:tf_export",
         "@absl_py//absl/logging",
-        "@dill_archive//:dill",  # build_cleaner: keep
+        "@pypi_dill//:pkg",  # build_cleaner: keep
+        "@pypi_tblib//:pkg",  # build_cleaner: keep
         "@six_archive//:six",
-        "@tblib_archive//:tblib",  # build_cleaner: keep
     ],
 )
 
@@ -2332,6 +2305,10 @@ py_strict_test(
         "//tensorflow/python/ops:math_ops",
         "//tensorflow/python/ops:resource_variable_ops",
         "//tensorflow/python/platform:client_testlib",
+        "//tensorflow/python/saved_model:load",
+        "//tensorflow/python/saved_model:save",
+        "//tensorflow/python/trackable:autotrackable",
+        "@absl_py//absl/logging",
     ],
 )
 
@@ -2339,7 +2316,7 @@ cuda_py_strict_test(
     name = "multi_process_runner_test",
     srcs = ["multi_process_runner_test.py"],
     python_version = "PY3",
-    shard_count = 12,
+    shard_count = 35,
     tags = [
         "multi_gpu",
         "no_pip",  # TODO(b/266520226)
@@ -2410,8 +2387,9 @@ distribute_py_strict_test(
     tags = [
         "multi_and_single_gpu",
         "no_cuda_asan",  # times out
-        "no_oss",  # TODO(b/283016506)
+        "no_oss",  # TODO(b/283033375)
         "notsan",  # TODO(b/160006974)
+        "nozapfhahn",  # TODO(b/317228015)
     ],
     xla_enable_strict_auto_jit = True,
     deps = [
@@ -2521,6 +2499,7 @@ pytype_strict_library(
         ":distribute_lib",
         ":input_lib",
         ":input_util",
+        ":load_context",
         ":mirrored_run",
         ":multi_worker_util",
         ":parameter_server_strategy",
@@ -2542,10 +2521,9 @@ pytype_strict_library(
         "//tensorflow/python/platform:tf_logging",
         "//tensorflow/python/trackable:base",
         "//tensorflow/python/training:server_lib",
-        "//tensorflow/python/util:keras_deps",
         "//tensorflow/python/util:nest",
-        "//tensorflow/python/util:tf_decorator",
         "//tensorflow/python/util:tf_export",
+        "//tensorflow/python/util:tf_inspect",
     ],
 )
 
@@ -2615,7 +2593,6 @@ distribute_py_strict_test(
         ":multi_worker_test_base",
         ":parameter_server_strategy_v2",
         ":ps_values",
-        "//tensorflow:tensorflow_py",
         "//tensorflow/python:extra_py_tests_deps",
         "//tensorflow/python/compat:v2_compat",
         "//tensorflow/python/data/ops:dataset_ops",
@@ -2688,6 +2665,12 @@ pytype_strict_library(
         "//tensorflow/python:tf2",
         "//tensorflow/python/distribute/v1:input_lib",
     ],
+)
+
+pytype_strict_library(
+    name = "load_context",
+    srcs = ["load_context.py"],
+    deps = ["//tensorflow/python/util:tf_export"],
 )
 
 py_strict_library(

@@ -25,7 +25,7 @@ limitations under the License.
 
 #include <optional>
 
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tensorflow/core/lib/core/threadpool_interface.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/context.h"

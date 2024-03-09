@@ -37,6 +37,10 @@ _TEST_DTYPES = (
     dtypes.float8_e4m3fn,
 )
 
+if not test_util.is_xla_enabled():
+  # TODO(b/183567451): Support int4 in XLA
+  _TEST_DTYPES += (dtypes.int4,)
+
 
 class SplitOpTest(test.TestCase):
 

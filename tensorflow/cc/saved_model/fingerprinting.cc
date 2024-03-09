@@ -43,8 +43,8 @@ limitations under the License.
 #include "tensorflow/cc/saved_model/fingerprinting_utils.h"
 #include "tensorflow/tools/proto_splitter/cc/util.h"
 #endif
-#include "tensorflow/tsl/platform/errors.h"
-#include "tensorflow/tsl/platform/statusor.h"
+#include "tsl/platform/errors.h"
+#include "tsl/platform/statusor.h"
 // IWYU pragma: no_include "third_party/protobuf/io/coded_stream.h"
 // IWYU pragma: no_include "third_party/protobuf/io/zero_copy_stream_impl_lite.h"
 

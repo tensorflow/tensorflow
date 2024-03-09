@@ -19,7 +19,7 @@ limitations under the License.
 #include <optional>
 #include <set>
 
-#include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
+#include "xla/pjrt/pjrt_client.h"
 #include "tensorflow/core/framework/types.h"
 
 namespace tensorflow {
@@ -36,7 +36,7 @@ namespace tensorflow {
 // create a client, or creating a class similar to `LocalClientOptions`.
 // TODO(b/280111106): make PjrtClientFactoryOptions an input of
 // GetOrCreatePjRtClient.
-StatusOr<xla::PjRtClient*> GetOrCreatePjRtClient(
+absl::StatusOr<xla::PjRtClient*> GetOrCreatePjRtClient(
     const DeviceType& device_type,
     std::optional<std::set<int>> allowed_devices = std::nullopt);
 

@@ -43,6 +43,7 @@ limitations under the License.
 #include "mlir/IR/Matchers.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
 #include "mlir/IR/Region.h"  // from @llvm-project
+#include "mlir/IR/TypeUtilities.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/IR/ValueRange.h"  // from @llvm-project
@@ -274,16 +275,18 @@ LogicalResult ConvertTFLGeluOp::matchAndRewrite(
 
   Value cst_004 = rewriter.create<tosa::ConstOp>(
       loc, fp_scalar_ty, DenseElementsAttr::get(fp_scalar_ty, {4.471500e-02f}));
-  auto op1_mul_op0_004 = CreateOpAndInfer<tosa::MulOp>(
-      rewriter, loc, output_type, op0_pow_3, cst_004, 0);
+  auto op1_mul_op0_004 =
+      CreateOpAndInfer<tosa::MulOp>(rewriter, loc, output_type, op0_pow_3,
+                                    cst_004, rewriter.getI8IntegerAttr(0));
 
   auto op2_add_x_op1 = CreateOpAndInfer<tosa::AddOp>(rewriter, loc, output_type,
                                                      input, op1_mul_op0_004);
 
   Value cst_sqrt2pi = rewriter.create<tosa::ConstOp>(
       loc, fp_scalar_ty, DenseElementsAttr::get(fp_scalar_ty, {0.797884583f}));
-  auto op3_mul_op2_sqrt2pi = CreateOpAndInfer<tosa::MulOp>(
-      rewriter, loc, output_type, op2_add_x_op1, cst_sqrt2pi, 0);
+  auto op3_mul_op2_sqrt2pi =
+      CreateOpAndInfer<tosa::MulOp>(rewriter, loc, output_type, op2_add_x_op1,
+                                    cst_sqrt2pi, rewriter.getI8IntegerAttr(0));
 
   auto op4_tanh_op3 = CreateOpAndInfer<tosa::TanhOp>(rewriter, loc, output_type,
                                                      op3_mul_op2_sqrt2pi);
@@ -295,11 +298,12 @@ LogicalResult ConvertTFLGeluOp::matchAndRewrite(
 
   Value cst_05 = rewriter.create<tosa::ConstOp>(
       loc, fp_scalar_ty, DenseElementsAttr::get(fp_scalar_ty, {0.5f}));
-  auto op6_mul_x_05 = CreateOpAndInfer<tosa::MulOp>(rewriter, loc, output_type,
-                                                    input, cst_05, 0);
+  auto op6_mul_x_05 = CreateOpAndInfer<tosa::MulOp>(
+      rewriter, loc, output_type, input, cst_05, rewriter.getI8IntegerAttr(0));
 
   auto op7_mul_op6_op5 = CreateOpAndInfer<tosa::MulOp>(
-      rewriter, loc, output_type, op6_mul_x_05, op5_add_op4_1, 0);
+      rewriter, loc, output_type, op6_mul_x_05, op5_add_op4_1,
+      rewriter.getI8IntegerAttr(0));
 
   rewriter.replaceOp(op, {op7_mul_op6_op5.getResult()});
 
@@ -967,9 +971,9 @@ LogicalResult ConvertTFLDivOp::matchAndRewrite(
     auto reciprocal_op = CreateOpAndInfer<tosa::ReciprocalOp>(
         rewriter, op->getLoc(), tfl_div_op.getRhs().getType(),
         tfl_div_op.getRhs());
-    div_op = CreateOpAndInfer<tosa::MulOp>(rewriter, op->getLoc(), output_type,
-                                           tfl_div_op.getLhs(),
-                                           reciprocal_op.getResult(), 0)
+    div_op = CreateOpAndInfer<tosa::MulOp>(
+                 rewriter, op->getLoc(), output_type, tfl_div_op.getLhs(),
+                 reciprocal_op.getResult(), rewriter.getI8IntegerAttr(0))
                  .getResult();
   }
 
@@ -1493,8 +1497,16 @@ LogicalResult ConvertTFLConv2DOp::matchAndRewrite(
   Value unquantized_bias = tfl_conv2d_op.getBias();
   Type bias_ety =
       output_is_qtype ? rewriter.getI32Type() : output_type.getElementType();
-  if (unquantized_bias)
-    bias_ety = unquantized_bias.getType().cast<ShapedType>().getElementType();
+  if (unquantized_bias) {
+    Type new_bias_ety = getElementTypeOrSelf(unquantized_bias.getType());
+    if (auto qtype = new_bias_ety.dyn_cast<mlir::quant::QuantizedType>()) {
+      new_bias_ety = qtype.getStorageType();
+    }
+    if (new_bias_ety.getIntOrFloatBitWidth() >
+        bias_ety.getIntOrFloatBitWidth()) {
+      bias_ety = new_bias_ety;
+    }
+  }
 
   auto a1_conv2d_op = CreateOpAndInfer<tosa::Conv2DOp>(
       rewriter, op->getLoc(), output_type.clone(bias_ety),
@@ -1845,11 +1857,20 @@ LogicalResult ConvertTFLDepthwiseConv2DOp::matchAndRewrite(
       a1_filter_transpose_op.getResult(),
       rewriter.getDenseI64ArrayAttr(a2_reshape_dims));
 
-  Value unquantized_bias = tfl_conv2d_op.getBias();
   Type bias_ety =
       output_is_qtype ? rewriter.getI32Type() : output_type.getElementType();
-  if (unquantized_bias)
-    bias_ety = unquantized_bias.getType().cast<ShapedType>().getElementType();
+
+  Value unquantized_bias = tfl_conv2d_op.getBias();
+  if (unquantized_bias) {
+    Type new_bias_ety = getElementTypeOrSelf(unquantized_bias.getType());
+    if (auto qtype = new_bias_ety.dyn_cast<mlir::quant::QuantizedType>()) {
+      new_bias_ety = qtype.getStorageType();
+    }
+    if (new_bias_ety.getIntOrFloatBitWidth() >
+        bias_ety.getIntOrFloatBitWidth()) {
+      bias_ety = new_bias_ety;
+    }
+  }
 
   auto a3_depthwise_conv2d_op = CreateOpAndInfer<tosa::DepthwiseConv2DOp>(
       rewriter, op->getLoc(), output_type.clone(bias_ety),
@@ -1908,7 +1929,7 @@ LogicalResult ConvertTFLBatchMatMulOp::matchAndRewrite(
   }
 
   auto batch_dims = lhs_ty.getShape().drop_back(2);
-  if (batch_dims.size() > 1) {
+  if (batch_dims.size() != 1) {
     int64_t N = 1;
     for (auto d : batch_dims) {
       N = N < 0 || d < 0 ? -1 : N * d;
@@ -1987,7 +2008,7 @@ LogicalResult ConvertTFLBatchMatMulOp::matchAndRewrite(
 
   // Conditionally reshape rank back to expected rank.
   auto matmul_ty = matmul.getType().cast<RankedTensorType>();
-  if (batch_dims.size() > 1) {
+  if (batch_dims.size() != 1) {
     llvm::SmallVector<int64_t> new_shape{};
     for (auto d : batch_dims) {
       new_shape.push_back(d);
@@ -2576,13 +2597,6 @@ LogicalResult ConvertTFLRsqrtOp::matchAndRewrite(
 
   // Quantization case
   if (input_qtype && output_qtype) {
-    auto rsqrt_func = [](double x) -> double {
-      // Negative numbers are undefined for rsqrt
-      // 0 should return the max value of the storage data type for rsqrt
-      if (x <= 0.0) return DBL_MAX;
-      return 1.0 / std::sqrt(x);
-    };
-
     // 16-bit is pending review for TFL
     // https://github.com/tensorflow/tensorflow/pull/58406
     if (input_qtype.getStorageTypeIntegralWidth() != 8) {
@@ -2591,9 +2605,9 @@ LogicalResult ConvertTFLRsqrtOp::matchAndRewrite(
     }
 
     // Implement with 8-bit table lookup.
-    Value table_const = getTosaConst8bitTable(
+    Value table_const = getTosaConstRsqrt8bitTable(
         rewriter, op, input_qtype.getScale(), input_qtype.getZeroPoint(),
-        output_qtype.getScale(), output_qtype.getZeroPoint(), rsqrt_func);
+        output_qtype.getScale(), output_qtype.getZeroPoint());
 
     CreateReplaceOpAndInfer<tosa::TableOp>(rewriter, op, output_type,
                                            tfl_rsqrt_op.getX(), table_const);
@@ -2628,7 +2642,7 @@ LogicalResult ConvertTFLL2NormalizationOp::matchAndRewrite(
   if (!input_ty.hasRank()) return failure();
 
   if (input_ty.getElementType().isF32()) {
-    auto shift = rewriter.getIntegerAttr(rewriter.getI32Type(), 0);
+    auto shift = rewriter.getIntegerAttr(rewriter.getI8Type(), 0);
     auto result_ty = UnrankedTensorType::get(input_ty.getElementType());
     auto mul = CreateOpAndInfer<tosa::MulOp>(rewriter, loc, result_ty, input,
                                              input, shift);
@@ -3340,15 +3354,14 @@ LogicalResult ConvertTFLAtan2Op::matchAndRewrite(
   auto recip =
       CreateOpAndInfer<tosa::ReciprocalOp>(rewriter, loc, input_y_ty, max_xy);
   auto atan_input = CreateOpAndInfer<tosa::MulOp>(
-      rewriter, loc, input_y_ty, recip, min_xy, rewriter.getI32IntegerAttr(0));
+      rewriter, loc, input_y_ty, recip, min_xy, rewriter.getI8IntegerAttr(0));
 
   // 2. Scale and translate the normalized domain to the table domain. This
   // includes a translating and scaling to [-int16_max, int16_max] and casting
   // to an i16 as it is the highest precision the table operation supports.
   auto fp_scalar_ty = RankedTensorType::get({}, rewriter.getF32Type());
-  auto scale_up =
-      CreateOpAndInfer<tosa::MulOp>(rewriter, loc, input_y_ty, atan_input, two,
-                                    rewriter.getI32IntegerAttr(0));
+  auto scale_up = CreateOpAndInfer<tosa::MulOp>(
+      rewriter, loc, input_y_ty, atan_input, two, rewriter.getI8IntegerAttr(0));
   auto translate =
       CreateOpAndInfer<tosa::SubOp>(rewriter, loc, input_y_ty, scale_up, one);
   Value int_limit = rewriter.create<tosa::ConstOp>(
@@ -3358,7 +3371,7 @@ LogicalResult ConvertTFLAtan2Op::matchAndRewrite(
           {static_cast<float>(std::numeric_limits<int16_t>::max())}));
   auto int_scaled =
       CreateOpAndInfer<tosa::MulOp>(rewriter, loc, input_y_ty, translate,
-                                    int_limit, rewriter.getI32IntegerAttr(0));
+                                    int_limit, rewriter.getI8IntegerAttr(0));
 
   auto int16_ty = input_y_ty.clone(rewriter.getIntegerType(16));
   auto casted =
@@ -3382,9 +3395,9 @@ LogicalResult ConvertTFLAtan2Op::matchAndRewrite(
       DenseElementsAttr::get(
           fp_scalar_ty,
           {static_cast<float>(1.0 / static_cast<float>(1 << 22))}));
-  auto table_output = CreateOpAndInfer<tosa::MulOp>(
-      rewriter, loc, output_ty, table_result_fp, output_scale,
-      rewriter.getI32IntegerAttr(0));
+  auto table_output =
+      CreateOpAndInfer<tosa::MulOp>(rewriter, loc, output_ty, table_result_fp,
+                                    output_scale, rewriter.getI8IntegerAttr(0));
 
   auto bool_ty = output_ty.clone(rewriter.getIntegerType(1));
 

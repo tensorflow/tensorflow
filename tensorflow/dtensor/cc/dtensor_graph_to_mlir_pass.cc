@@ -36,8 +36,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_type.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/device_util.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
-#include "tensorflow/compiler/mlir/tf2xla/api/v0/compile_mlir_util.h"
-#include "tensorflow/compiler/xla/status_macros.h"
+#include "xla/status_macros.h"
 #include "tensorflow/core/common_runtime/optimization_registry.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/tensor.pb.h"
@@ -49,8 +48,8 @@ limitations under the License.
 #include "tensorflow/dtensor/mlir/dtensor_dialect/ir/dialect.h"
 #include "tensorflow/dtensor/mlir/dtensor_mlir_passes.h"
 #include "tensorflow/dtensor/mlir/ir/tf_dtensor.h"
-#include "tensorflow/tsl/platform/status.h"
-#include "tensorflow/tsl/platform/statusor.h"
+#include "tsl/platform/status.h"
+#include "tsl/platform/statusor.h"
 
 namespace tensorflow {
 
@@ -76,7 +75,7 @@ DTensorMlirPassRunner::DTensorMlirPassRunner()
   dtensor::CreateDTensorMLIRPass(pipeline_options, &pass_manager_);
 }
 
-StatusOr<mlir::OwningOpRef<mlir::ModuleOp>>
+absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>>
 DTensorMlirPassRunner::ImportGraphToMlir(
     const DeviceSet& device_set, absl::string_view name, bool is_func,
     const dtensor::Mesh& default_mesh,
@@ -97,7 +96,7 @@ DTensorMlirPassRunner::ImportGraphToMlir(
   import_config.control_outputs = {"eager_operation"};
 
   // Imports GraphDef to TF MLIR.
-  StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> module_ref =
+  absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> module_ref =
       ConvertGraphToMlir(graph, debug_info, flib_def, import_config, &context_);
 
   // Adds DTensor attributes to ModuleOp.
@@ -153,7 +152,7 @@ Status DTensorMlirPassRunner::Run(mlir::ModuleOp module) {
   TF_RETURN_IF_ERROR(diag_handler.ConsumeStatus());
 
   if (logging_enabled_) pass_manager_.getContext()->enableMultithreading();
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace tensorflow

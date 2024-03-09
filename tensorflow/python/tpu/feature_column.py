@@ -688,38 +688,3 @@ def get_sequence_length_feature_key_name_from_feature_key_name(feature_name):
     A string which is the feature key for the associated feature length column.
   """
   return feature_name + _SEQUENCE_FEATURE_LENGTH_POSTFIX
-
-
-def split_sequence_columns(feature_columns):
-  """Split a list of _TPUEmbeddingColumn into sequence and non-sequence columns.
-
-  For use in a TPUEstimator model_fn function. E.g.
-
-  def model_fn(features):
-    sequence_columns, feature_columns = (
-        tf.tpu.feature_column.split_sequence_columns(feature_columns))
-    input = tf.feature_column.input_layer(
-        features=features, feature_columns=feature_columns)
-    sequence_features, sequence_lengths = (
-        tf.contrib.feature_column.sequence_input_layer(
-            features=features, feature_columns=sequence_columns))
-
-  Args:
-    feature_columns: A list of _TPUEmbeddingColumns to split.
-
-  Returns:
-    Two lists of _TPUEmbeddingColumns, the first is the sequence columns and the
-    second is the non-sequence columns.
-  """
-  sequence_columns = []
-  non_sequence_columns = []
-  for column in feature_columns:
-    if not isinstance(column, (_TPUEmbeddingColumn, _TPUSharedEmbeddingColumn)):
-      raise TypeError(
-          'column must be a _TPUEmbeddingColumn or  _TPUSharedEmbeddingColumn '
-          f'but got {type(column)} instead.')
-    if column.is_sequence_column():
-      sequence_columns.append(column)
-    else:
-      non_sequence_columns.append(column)
-  return sequence_columns, non_sequence_columns

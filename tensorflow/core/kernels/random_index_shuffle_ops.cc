@@ -60,7 +60,7 @@ Status GetSeed(const Tensor& seed_t, const int row,
     return errors::InvalidArgument("Invalid seed type: ",
                                    DataTypeString(seed_t.dtype()));
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 template <typename IntType>
@@ -134,7 +134,8 @@ class RandomIndexShuffleOp : public OpKernel {
  private:
   int32_t rounds_;  // Number of rounds for the block cipher.
 
-  TF_DISALLOW_COPY_AND_ASSIGN(RandomIndexShuffleOp);
+  RandomIndexShuffleOp(const RandomIndexShuffleOp&) = delete;
+  void operator=(const RandomIndexShuffleOp&) = delete;
 };
 
 #define REGISTER(TYPE)                                        \

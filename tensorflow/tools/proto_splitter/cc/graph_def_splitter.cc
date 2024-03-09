@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/tools/proto_splitter/cc/graph_def_splitter.h"
 
+#include <cstddef>
 #include <cstdint>
 #include <memory>
 #include <string>
@@ -36,9 +37,9 @@ limitations under the License.
 #include "tensorflow/tools/proto_splitter/cc/size_splitter.h"
 #include "tensorflow/tools/proto_splitter/cc/split.h"
 #include "tensorflow/tools/proto_splitter/cc/util.h"
-#include "tensorflow/tsl/platform/errors.h"
-#include "tensorflow/tsl/platform/protobuf.h"
-#include "tensorflow/tsl/platform/statusor.h"
+#include "tsl/platform/errors.h"
+#include "tsl/platform/protobuf.h"
+#include "tsl/platform/statusor.h"
 
 namespace tensorflow {
 namespace tools::proto_splitter {
@@ -197,7 +198,7 @@ absl::Status GraphDefSplitter::BuildChunks() {
           &fn_factories);
   if (!library_splitter_ret.ok()) return library_splitter_ret.status();
   auto library_splitter = library_splitter_ret.value();
-  int library_size = g->library().GetCachedSize();
+  size_t library_size = g->library().ByteSizeLong();
   library_splitter.SetInitialSize(library_size);
 
   size_t approx_node_size = graph_size - library_size;

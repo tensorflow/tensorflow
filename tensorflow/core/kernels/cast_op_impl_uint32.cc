@@ -13,7 +13,12 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#define EIGEN_USE_THREADS
+
+#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
+#include "tensorflow/core/kernels/cast_op.h"
 #include "tensorflow/core/kernels/cast_op_impl.h"
+#include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
 
@@ -22,6 +27,8 @@ typedef Eigen::GpuDevice GPUDevice;
 
 CastFunctorType GetCpuCastFromUint32(DataType dst_dtype) {
   CURRY_TYPES3(CAST_CASE, CPUDevice, uint32);
+  CAST_CASE(CPUDevice, uint32, int4);
+  CAST_CASE(CPUDevice, uint32, uint4);
   return nullptr;
 }
 
@@ -33,6 +40,8 @@ CastFunctorType GetGpuCastFromUint32(DataType dst_dtype) {
 #else
   CURRY_TYPES3(CAST_CASE, GPUDevice, uint32);
 #endif
+  CAST_CASE(GPUDevice, uint32, int4);
+  CAST_CASE(GPUDevice, uint32, uint4);
   return nullptr;
 }
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM

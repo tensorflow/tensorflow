@@ -24,17 +24,17 @@ limitations under the License.
 #include "tensorflow/c/tf_status.h"
 #include "tensorflow/c/tf_status_helper.h"
 #include "tensorflow/compiler/tf2xla/shape_util.h"
-#include "tensorflow/compiler/xla/stream_executor/tpu/c_api_conversions.h"
+#include "xla/stream_executor/tpu/c_api_conversions.h"
 #include "tensorflow/core/common_runtime/next_pluggable_device/next_pluggable_device.h"
 #include "tensorflow/core/common_runtime/next_pluggable_device/next_pluggable_device_api.h"
-#include "tensorflow/core/common_runtime/next_pluggable_device/pjrt_compile_on_demand_op.h"
 #include "tensorflow/core/common_runtime/next_pluggable_device/utils.h"
-#include "tensorflow/tsl/framework/device_id_utils.h"
-#include "tensorflow/tsl/platform/errors.h"
+#include "tensorflow/core/public/session_options.h"
+#include "tsl/framework/device_id_utils.h"
+#include "tsl/platform/errors.h"
 
 namespace tensorflow {
 namespace {
-StatusOr<xla::Shape> DeviceShapeRepresentation(
+absl::StatusOr<xla::Shape> DeviceShapeRepresentation(
     const TensorShape& shape, DataType type, bool use_fast_memory,
     XlaLayoutPreference layout_preference) {
   xla::Shape xla_shape;
@@ -67,7 +67,7 @@ Status NextPluggableDeviceFactory::ListPhysicalDevices(
     devices->push_back(device_name);
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status NextPluggableDeviceFactory::CreateDevices(
@@ -84,7 +84,7 @@ Status NextPluggableDeviceFactory::CreateDevices(
   TF_DeleteStatus(c_status);
 
   if (visible_device_count <= 0) {
-    return OkStatus();
+    return absl::OkStatus();
   }
   const absl::flat_hash_map<std::string, int64_t> device_count_map(
       session_options.config.device_count().begin(),
@@ -118,7 +118,7 @@ Status NextPluggableDeviceFactory::CreateDevices(
   LOG(INFO) << "Created " << num_tf_devices
             << " TensorFlow NextPluggableDevices. "
             << "Physical device type: " << device_type_;
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace tensorflow

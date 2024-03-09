@@ -49,7 +49,7 @@ limitations under the License.
 #include "tensorflow/core/util/transform_output_iterator.h"
 
 #if GOOGLE_CUDA
-#include "tensorflow/compiler/xla/stream_executor/cuda/cuda_activation.h"
+#include "xla/stream_executor/cuda/cuda_activation.h"
 using stream_executor::cuda::ScopedActivateExecutorContext;
 #elif TENSORFLOW_USE_ROCM
 #include "tensorflow/core/platform/rocm.h"
@@ -284,14 +284,11 @@ class DynamicPartitionOpGPU : public AsyncOpKernel {
         done);
     se::DeviceMemoryBase wrapped(partition_count.flat<int32>().data(),
                                  num_partitions_ * sizeof(int32));
-    const bool status =
-        stream
-            ->ThenMemcpy(cpu_tensor.flat<int32>().data(), wrapped,
-                         num_partitions_ * sizeof(int32))
-            .ok();
-    OP_REQUIRES_ASYNC(
-        c, status,
-        errors::Internal("Failed to launch copy from device to host."), done);
+    OP_REQUIRES_OK_ASYNC(
+        c,
+        stream->Memcpy(cpu_tensor.flat<int32>().data(), wrapped,
+                       num_partitions_ * sizeof(int32)),
+        done);
 
     // Keep a reference to partition_count so that the buffer
     // is not deallocated at the end of the function, before
@@ -299,19 +296,25 @@ class DynamicPartitionOpGPU : public AsyncOpKernel {
     TensorReference partition_ref(partition_count);
     auto wrapped_callback = [this, c, &data, &partitions, indices_out,
                              partition_ref, cpu_tensor, done]() {
-      auto stream = c->op_device_context()->stream();
-      ScopedActivateExecutorContext scoped_activation{stream->parent()};
+      {
+        auto stream = c->op_device_context()->stream();
+        ScopedActivateExecutorContext scoped_activation{stream->parent()};
 
-      OpOutputList outputs;
-      this->AllocateOutputs(c, &data, &partitions, &cpu_tensor, &outputs, done);
-      if (!c->status().ok()) {
+        OpOutputList outputs;
+        this->AllocateOutputs(c, &data, &partitions, &cpu_tensor, &outputs,
+                              done);
+        if (!c->status().ok()) {
+          partition_ref.Unref();
+          return;
+        }
+        int32 N = partitions.NumElements();
+        int64 slice_size = data.NumElements() / N;
+        this->GatherSlices(c, &data, &indices_out, N, slice_size, outputs);
         partition_ref.Unref();
-        return;
-      }
-      int32 N = partitions.NumElements();
-      int64 slice_size = data.NumElements() / N;
-      this->GatherSlices(c, &data, &indices_out, N, slice_size, outputs);
-      partition_ref.Unref();
+      }  // Release ScopedActivateExecutorContext to prevent deadlock when done
+         // inlines another Op kernel, which may assume the original cuda
+         // Context.
+
       done();
     };
 

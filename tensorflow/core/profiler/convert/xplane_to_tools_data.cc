@@ -56,10 +56,10 @@ limitations under the License.
 #include "tensorflow/core/profiler/utils/hardware_type_utils.h"
 #include "tensorflow/core/profiler/utils/xplane_schema.h"
 #include "tensorflow/core/profiler/utils/xplane_utils.h"
-#include "tensorflow/tsl/platform/errors.h"
-#include "tensorflow/tsl/platform/statusor.h"
-#include "tensorflow/tsl/profiler/convert/xplane_to_trace_events.h"
-#include "tensorflow/tsl/profiler/protobuf/xplane.pb.h"
+#include "tsl/platform/errors.h"
+#include "tsl/platform/statusor.h"
+#include "tsl/profiler/convert/xplane_to_trace_events.h"
+#include "tsl/profiler/protobuf/xplane.pb.h"
 
 namespace tensorflow {
 namespace profiler {
@@ -326,7 +326,7 @@ StatusOr<std::string> ConvertMultiXSpacesToToolData(
     return ConvertMultiXSpacesToOverviewPage(session_snapshot);
   } else if (tool_name == "input_pipeline_analyzer") {
     return ConvertMultiXSpacesToInputPipeline(session_snapshot);
-  } else if (tool_name == "tensorflow_stats") {
+  } else if (tool_name == "framework_op_stats") {
     return ConvertMultiXSpacesToTfStats(session_snapshot);
   } else if (tool_name == "kernel_stats") {
     return ConvertMultiXSpacesToKernelStats(session_snapshot);

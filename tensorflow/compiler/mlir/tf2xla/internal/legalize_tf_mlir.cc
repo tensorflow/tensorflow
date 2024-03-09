@@ -30,13 +30,13 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/dialect_registration.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/set_tpu_infeed_layout.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/serialize_mlir_module_utils.h"
-#include "tensorflow/compiler/mlir/tf2xla/api/v0/compile_mlir_util.h"
+#include "tensorflow/compiler/mlir/tf2xla/api/v1/compile_mlir_util.h"
 #include "tensorflow/compiler/mlir/tf2xla/internal/compilation_timer.h"
 #include "tensorflow/compiler/tf2xla/layout_util.h"
 #include "tensorflow/compiler/tf2xla/xla_compiler.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
-#include "tensorflow/compiler/xla/mlir_hlo/mhlo/IR/register.h"
-#include "tensorflow/compiler/xla/shape.h"
+#include "xla/mlir_hlo/mhlo/IR/register.h"
+#include "xla/shape.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/profile_utils/cpu_utils.h"
@@ -44,20 +44,13 @@ limitations under the License.
 #include "tensorflow/core/protobuf/tpu/compile_metadata.pb.h"
 #include "tensorflow/core/tpu/kernels/tpu_compile_op_support.h"
 #include "tensorflow/core/tpu/tpu_compile.h"
-#include "tensorflow/tsl/lib/monitoring/sampler.h"
-#include "tensorflow/tsl/platform/error_logging.h"
-#include "tensorflow/tsl/platform/errors.h"
-#include "tensorflow/tsl/platform/statusor.h"
+#include "tsl/platform/error_logging.h"
+#include "tsl/platform/errors.h"
+#include "tsl/platform/statusor.h"
 
 namespace tensorflow {
 namespace tf2xla {
 namespace internal {
-auto* phase2_bridge_compilation_time = tsl::monitoring::Sampler<1>::New(
-    {"/tensorflow/core/tf2xla/api/v1/phase2_compilation_time",
-     "The wall-clock time spent on executing graphs in milliseconds.",
-     "configuration"},
-    // Power of 1.5 with bucket count 45 (> 23 hours)
-    {tsl::monitoring::Buckets::Exponential(1, 1.5, 45)});
 
 // Name of component for error logging. This name is fixed and required to
 // enable logging.
@@ -126,20 +119,11 @@ tsl::StatusOr<XlaCompilationResult> LegalizeWithMlirBridge(
   // Enabling op fallback also enables whole graph fallback if op by op
   // fallback failed.
 
-  tsl::StatusOr<std::string> mlir_bridge_status;
-  {
-    CompilationTimer timer;
-    const std::string kMlirBridgeFallback = "mlir_bridge_op_fallback_enabled";
-
-    mlir_bridge_status = CompileFromMlirToXlaHlo(
-        /*lower_to_xla_hlo=*/true, computation, metadata, device_type,
-        shape_determination_fns, use_tuple_args, compilation_result,
-        custom_legalization_passes, arg_shapes, arg_core_mapping,
-        per_core_arg_shapes);
-
-    phase2_bridge_compilation_time->GetCell(kMlirBridgeFallback)
-        ->Add(timer.ElapsedCyclesInMilliseconds());
-  }
+  tsl::StatusOr<std::string> mlir_bridge_status = CompileFromMlirToXlaHlo(
+      /*lower_to_xla_hlo=*/true, computation, metadata, device_type,
+      shape_determination_fns, use_tuple_args, compilation_result,
+      custom_legalization_passes, arg_shapes, arg_core_mapping,
+      per_core_arg_shapes);
 
   if (mlir_bridge_status.ok()) {
     VLOG(1) << "Successfully compiled MLIR computation to XLA HLO using MLIR "
@@ -148,7 +132,7 @@ tsl::StatusOr<XlaCompilationResult> LegalizeWithMlirBridge(
   }
 
   tsl::error_logging::Log(kBridgeComponent,
-                          "TFXLA_API_V1_BRIDGE_WITH_FALLBACK_FAIL",
+                          "TFXLA_API_V2_BRIDGE_WITH_FALLBACK_FAIL",
                           mlir_bridge_status.status().ToString())
       .IgnoreError();
 

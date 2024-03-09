@@ -16,8 +16,13 @@ limitations under the License.
 
 #include <utility>
 
+#include "absl/log/check.h"
 #include "absl/log/log.h"
-#include "tensorflow/tsl/profiler/lib/traceme.h"
+#include "tensorflow/core/tfrt/mlrt/bytecode/kernel.h"
+#include "tensorflow/core/tfrt/mlrt/interpreter/context.h"
+#include "tensorflow/core/tfrt/mlrt/interpreter/register_span.h"
+#include "tensorflow/core/tfrt/mlrt/interpreter/value.h"
+#include "tsl/profiler/lib/traceme.h"
 
 namespace mlrt {
 namespace {

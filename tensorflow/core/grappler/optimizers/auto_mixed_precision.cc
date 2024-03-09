@@ -298,7 +298,7 @@ class NodeTypeAttrMap {
     for (const NodeDef& node : graph.node()) {
       TF_RETURN_IF_ERROR(AddNode(node));
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   bool is_initialized() const { return graph_ != nullptr; }
@@ -412,7 +412,7 @@ class NodeTypeAttrMap {
         }
       }
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   // WARN: `graph_` must outlive this object (node pointers must remain valid).
@@ -628,7 +628,7 @@ Status GraphTypeTopologyView::InitializeFromGraph(
     SortAndRemoveDuplicates(&fanouts_[node_type_idx]);
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status GraphTypeTopologyView::AddEphemeralEdges(
@@ -678,7 +678,7 @@ Status GraphTypeTopologyView::AddEphemeralEdges(
     SortAndRemoveDuplicates(&fanouts_[node_type_idx]);
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 bool GraphTypeTopologyView::HasNode(absl::string_view node_name,
@@ -931,7 +931,7 @@ Status ValidateLists(const gtl::FlatSet<string>& allow_list,
   if (duplicates) {
     return errors::InvalidArgument("Op lists have conflicting entries");
   } else {
-    return OkStatus();
+    return absl::OkStatus();
   }
 }
 
@@ -1116,11 +1116,11 @@ class AutoMixedPrecisionImpl {
       absl::flat_hash_set<int>* allow_set) const;
   NodeDef BuildCastNode(const MutableGraphView::OutputPort& src, bool to_f16,
                         const string& device) const;
-  StatusOr<NodeDef*> InsertCastNodeAtFanout(
+  absl::StatusOr<NodeDef*> InsertCastNodeAtFanout(
       const absl::flat_hash_set<int>& allow_set, const bool src_is_allow,
       const CastType& cast_type, MutableGraphView::OutputPort& src);
 
-  StatusOr<DataType> GetCastToType(const NodeDef* node) const;
+  absl::StatusOr<DataType> GetCastToType(const NodeDef* node) const;
   void CollectOutputPorts(
       const TypeAttrId& type_attr, NodeDef* node,
       std::vector<MutableGraphView::OutputPort>& output_ports) const;
@@ -1195,7 +1195,7 @@ Status AutoMixedPrecisionImpl::PrintDebugLogs(bool preop, size_t timestamp) {
   string prepend_path;
   TF_RETURN_IF_ERROR(ReadStringFromEnvVar(
       "TF_AUTO_MIXED_PRECISION_GRAPH_REWRITE_LOG_PATH", "", &prepend_path));
-  if (prepend_path.empty()) return OkStatus();
+  if (prepend_path.empty()) return absl::OkStatus();
 
   string suffix =
       strings::StrCat("_", preop ? "preop" : kSuffix, "_", id_, "_", timestamp);
@@ -1242,7 +1242,7 @@ Status AutoMixedPrecisionImpl::PrintDebugLogs(bool preop, size_t timestamp) {
     f.close();
     LOG(INFO) << "Saved paint bucket info to " << fname;
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 void AutoMixedPrecisionImpl::LogSkippedNode(const NodeDef& node,
@@ -1500,7 +1500,7 @@ Status AutoMixedPrecisionImpl::Optimize() {
 
   if (allow_set.empty()) {
     LOG(INFO) << "No allowlist ops found, nothing to do";
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   VLOG(2) << "Beginning pass 2 to propagate deny forwards from denylist ops "
@@ -1552,7 +1552,7 @@ Status AutoMixedPrecisionImpl::Optimize() {
 
   TF_RETURN_IF_ERROR(PrintDebugLogs(/* preop = */ false, timestamp));
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // If node is a Tensor List op with a float32 data type attribute then this
@@ -1968,7 +1968,7 @@ Status AutoMixedPrecisionImpl::ForceColorMatchOnRecurrentEdges(
       }
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Forces all of the given Tensor List nodes into the same color set.
@@ -2078,7 +2078,7 @@ void AutoMixedPrecisionImpl::MakeCastsAllowIfAllOutputsAllow(
 //   FP16: cast to float16
 //   FP32: cast to float32
 //   AUTO: cast to a data type that matches the fanout data type
-StatusOr<NodeDef*> AutoMixedPrecisionImpl::InsertCastNodeAtFanout(
+absl::StatusOr<NodeDef*> AutoMixedPrecisionImpl::InsertCastNodeAtFanout(
     const absl::flat_hash_set<int>& allow_set, const bool src_is_allow,
     const CastType& cast_type, MutableGraphView::OutputPort& src) {
   NodeDef* added_cast_node = nullptr;
@@ -2139,7 +2139,7 @@ StatusOr<NodeDef*> AutoMixedPrecisionImpl::InsertCastNodeAtFanout(
 
 // Get the destination data type of a cast op. Return error if the node is not
 // a Cast op.
-StatusOr<DataType> AutoMixedPrecisionImpl::GetCastToType(
+absl::StatusOr<DataType> AutoMixedPrecisionImpl::GetCastToType(
     const NodeDef* node) const {
   CHECK_EQ(node->op(), "Cast")  // Crash OK
       << "Node " << node->name() << " is not a Cast op";
@@ -2255,7 +2255,7 @@ Status AutoMixedPrecisionImpl::ChangeTypeAttrsAndAddCasts(
             << " nodes to " << type_str << " precision using "
             << num_nonvar_casts_to_f16_ << " cast(s) to " << type_str
             << " (excluding Const and Variable casts)";
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 int GetNumGPUs(const Cluster& cluster) {
@@ -2302,7 +2302,7 @@ Status AutoMixedPrecision::Optimize(Cluster* cluster, const GrapplerItem& item,
     // AutoMixedPrecision is currently only tuned for GPU.
     LOG(WARNING) << "No (suitable) GPUs detected, skipping " << name()
                  << " graph optimizer";
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   if (num_gpus >= 1 && mode_ == AutoMixedPrecisionMode::BF16) {

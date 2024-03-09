@@ -265,6 +265,9 @@ class CollectiveExecutorMgrInterface : public StepSequenceInterface {
   // table.
   virtual void Cleanup(int64_t step_id) = 0;
 
+  // Cleanup the entire table, removing all entries for step_ids.
+  virtual void CleanupAll() = 0;
+
   virtual ParamResolverInterface* GetParamResolver() const = 0;
 
   virtual DeviceResolverInterface* GetDeviceResolver() const = 0;
@@ -389,7 +392,8 @@ class CollectiveExecutor : public core::RefCounted {
   static OpKernelContext::Params* CtxParams(OpKernelContext* ctx);
   CollectiveExecutorMgrInterface* cem_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(CollectiveExecutor);
+  CollectiveExecutor(const CollectiveExecutor&) = delete;
+  void operator=(const CollectiveExecutor&) = delete;
 };
 
 struct CollectiveContext {

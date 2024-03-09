@@ -45,10 +45,10 @@ limitations under the License.
 #include "tensorflow/core/protobuf/meta_graph.pb.h"
 #include "tensorflow/core/tfrt/saved_model/saved_model.h"
 #include "tensorflow/core/tfrt/saved_model/saved_model_testutil.h"
-#include "tensorflow/tsl/lib/core/status_test_util.h"
-#include "tensorflow/tsl/platform/path.h"
-#include "tensorflow/tsl/platform/statusor.h"
-#include "tensorflow/tsl/platform/test.h"
+#include "tsl/lib/core/status_test_util.h"
+#include "tsl/platform/path.h"
+#include "tsl/platform/statusor.h"
+#include "tsl/platform/test.h"
 
 namespace tensorflow {
 namespace tfrt_stub {
@@ -150,7 +150,7 @@ TEST(NodeIoDumpRewriterTest, OnGraph) {
 TEST(NodeIoDumpRewriterTest, OnSavedModelV1) {
   // Read meta_graph_def.
   std::string saved_model_dir = GetDataDependencyFilepath(
-      "tensorflow/core/tfrt/saved_model/tests/toy_v1");
+      "tensorflow/core/tfrt/saved_model/tests/toy_v1/1");
   MetaGraphDef meta_graph_def;
   TF_ASSERT_OK(ReadMetaGraphDefFromSavedModel(saved_model_dir, {"serve"},
                                               &meta_graph_def));

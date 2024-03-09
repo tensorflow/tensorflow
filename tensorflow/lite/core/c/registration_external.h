@@ -16,9 +16,17 @@ limitations under the License.
 /// but should instead include "third_party/tensorflow/lite/c/c_api.h".
 /// Only the TensorFlow Lite implementation itself should include this
 /// file directly.
+///
+/// The types and functions declared in registration_external.h are
+/// part of the TensorFlow Lite Extension APIs.
+/// We reserve the right to make changes to this API in future releases,
+/// potentially including non-backwards-compatible changes, on a different
+/// schedule than for the other TensorFlow Lite APIs. See
+/// https://www.tensorflow.org/guide/versions#separate_version_number_for_tensorflow_lite_extension_apis.
 #ifndef TENSORFLOW_LITE_CORE_C_REGISTRATION_EXTERNAL_H_
 #define TENSORFLOW_LITE_CORE_C_REGISTRATION_EXTERNAL_H_
 
+#include <stdint.h>
 #include <stdlib.h>
 
 #include "tensorflow/lite/builtin_ops.h"
@@ -29,17 +37,41 @@ limitations under the License.
 extern "C" {
 #endif  // __cplusplus
 
-// TfLiteRegistrationExternal is an external version of TfLiteRegistration to
-// use custom op registration API.
+// TfLiteRegistrationExternal is an opaque version of TfLiteRegistration,
+// and is used for registering custom ops.  It represents a definition of a
+// custom op or a builtin op.
 //
 // \warning This is an experimental type and subject to change.
 typedef struct TfLiteRegistrationExternal TfLiteRegistrationExternal;
 
 // Returns a new TfLiteRegistrationExternal instance.
 //
+// The returned TfLiteRegistrationExternal instance represents a definition
+// of an operator with the identity (builtin_code/custom_name and
+// version) specified by the parameters, but with all callbacks initially unset.
+//
+// Evaluation of any operation using this operator will be done using
+// the "prepare" and "invoke" callbacks, which can be set using
+// `TfLiteRegistrationExternalSetPrepare` and
+// `TfLiteRegistrationExternalSetInvoke`, or for async execution
+// the "prepare", "eval", and "wait" callbacks of the `TfLiteAsyncKernel`,
+// which can be set using `TfLiteRegistrationExternalSetAsyncKernel`.
+// If the relevant callbacks are not set, then such evaluation will result
+// in an error status.  So normally any use of this function should be followed
+// by appropriate calls to set those callbacks.
+//
 // \note The caller retains ownership and should ensure that
 // the lifetime of the `TfLiteRegistrationExternal` must be at least as long as
-// the lifetime of the `TfLiteInterpreter`.
+// the lifetime of any `TfLiteInterpreter` or `tflite::Interpreter` that it is
+// used in.
+//
+// \param builtin_code Enumeration code specifying which builtin operator this
+//                     defines, or `TfLiteBuiltinCustom` to define a custom op.
+// \param custom_name  Name of the custom op, or `nullptr` for a builtin op.
+//                     If `custom_name` is non-null, then `builtin_code` should
+//                     be `TfLiteBuiltinCustom`.
+// \param version      Version of the op.  See
+//                     https://www.tensorflow.org/lite/guide/ops_version
 //
 // \warning This is an experimental API and subject to change.
 TFL_CAPI_EXPORT extern TfLiteRegistrationExternal*

@@ -16,10 +16,11 @@ limitations under the License.
 #include <stdio.h>
 
 #include "tensorflow/core/framework/op_gen_lib.h"
-#include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/init_main.h"
+#include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/util/command_line_flags.h"
 
 namespace tensorflow {

@@ -4,8 +4,8 @@ load(
     "if_not_mobile",
     "tf_cc_test",
     "tf_features_nolayering_check_if_ios",
-    "tf_opts_nortti_if_android",
     "tf_opts_nortti_if_lite_protos",
+    "tf_opts_nortti_if_mobile",
 )
 load("//tensorflow/lite:build_def.bzl", "tflite_copts")
 load("//tensorflow/lite:special_rules.bzl", "internal_visibility_allowlist")
@@ -157,7 +157,7 @@ cc_library(
         "delegate.h",
     ],
     compatible_with = get_compatible_with_portable(),
-    copts = tflite_copts() + tf_opts_nortti_if_android(),
+    copts = tflite_copts() + tf_opts_nortti_if_mobile(),
     features = tf_features_nolayering_check_if_ios(),
     visibility = ["//visibility:public"],
     deps = [
@@ -210,7 +210,7 @@ cc_library(
     srcs = ["delegate_data.cc"],
     hdrs = ["delegate_data.h"],
     compatible_with = get_compatible_with_portable(),
-    copts = tf_opts_nortti_if_android(),
+    copts = tf_opts_nortti_if_mobile(),
     features = tf_features_nolayering_check_if_ios(),
     visibility = ["//visibility:public"],
     deps = [
@@ -405,7 +405,7 @@ cc_library(
     name = "tflite_subgraph_execute",
     srcs = ["tflite_subgraph_execute.cc"],
     compatible_with = get_compatible_with_portable(),
-    copts = tf_opts_nortti_if_android(),
+    copts = tf_opts_nortti_if_mobile(),
     features = tf_features_nolayering_check_if_ios(),
     deps = [
         ":buffer_map_util",

@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/compiler/mlir/quantization/tensorflow/calibrator/calibrator_singleton.h"
 
+#include <cstdint>
 #include <memory>
 #include <optional>
 #include <string>
@@ -107,6 +108,11 @@ std::optional<CalibrationStatistics> CalibratorSingleton::GetStatistics(
   return instance.id_to_collector_[id_str]->GetStatistics();
 }
 
+int64_t CalibratorSingleton::IssueNewId() {
+  CalibratorSingleton& instance = GetInstance();
+  return instance.next_id_++;
+}
+
 void CalibratorSingleton::AssignIfNotExists(
     std::string id_str, const CalibrationOptions& calib_opts) {
   CalibratorSingleton& instance = GetInstance();
@@ -121,6 +127,9 @@ void CalibratorSingleton::AssignIfNotExists(
             std::make_unique<CalibrationStatisticsCollectorAverageMinMax>();
         break;
       case CalibrationOptions::CALIBRATION_METHOD_HISTOGRAM_PERCENTILE:
+      case CalibrationOptions::CALIBRATION_METHOD_HISTOGRAM_MSE_BRUTEFORCE:
+      case CalibrationOptions::CALIBRATION_METHOD_HISTOGRAM_MSE_SYMMETRIC:
+      case CalibrationOptions::CALIBRATION_METHOD_HISTOGRAM_MSE_MAX_FREQUENCY:
         instance.id_to_collector_[id_str] =
             std::make_unique<CalibrationStatisticsCollectorHistogram>(
                 calib_opts);

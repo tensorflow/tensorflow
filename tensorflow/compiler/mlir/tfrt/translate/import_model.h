@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_MLIR_TFRT_TRANSLATE_IMPORT_MODEL_H_
 
 #include <memory>
+#include <string>
 #include <vector>
 
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
@@ -50,11 +51,14 @@ Status ConvertFunctionToBef(
 // Converts an MLIR `module` in TF dialect to TFRT's Binary Executable Format.
 // If `fallback_state` is not null, the MLIR functions for XLA clusters in
 // the form of XlaLaunch will be exported and added to the function library when
-// needed. The nested functions will also be exported.
-Status ConvertTfMlirToBef(const TfrtCompileOptions& options,
-                          mlir::ModuleOp module, tfrt::BefBuffer* bef_buffer,
-                          tfrt_stub::ModelRuntimeContext& model_context,
-                          tfrt_stub::FallbackState* fallback_state = nullptr);
+// needed. The nested functions will also be exported. If
+// `added_xla_function_names` is not null, it will be populated with the names
+// of the added XLA functions.
+Status ConvertTfMlirToBef(
+    const TfrtCompileOptions& options, mlir::ModuleOp module,
+    tfrt::BefBuffer* bef_buffer, tfrt_stub::ModelRuntimeContext& model_context,
+    tfrt_stub::FallbackState* fallback_state = nullptr,
+    std::vector<std::string>* added_xla_function_names = nullptr);
 
 Status ConvertTfMlirToRuntimeExecutable(
     const TfrtCompileOptions& options, mlir::ModuleOp module,
@@ -62,14 +66,16 @@ Status ConvertTfMlirToRuntimeExecutable(
                              const tensorflow::TfrtPipelineOptions& options)>
         emit_executable,
     tfrt_stub::ModelRuntimeContext& model_context,
-    tfrt_stub::FallbackState* fallback_state = nullptr);
+    tfrt_stub::FallbackState* fallback_state = nullptr,
+    std::vector<std::string>* added_xla_function_names = nullptr);
 
 std::unique_ptr<tensorflow::TfrtPipelineOptions> GetTfrtPipelineOptions(
     const TfrtCompileOptions& options);
 
 // Adds MLIR functions for XLA clusters to the function library.
-tensorflow::Status AddXlaFunctions(tfrt_stub::FallbackState* fallback_state,
-                                   mlir::ModuleOp mlir_module);
+tensorflow::Status AddXlaFunctions(
+    tfrt_stub::FallbackState* fallback_state, mlir::ModuleOp mlir_module,
+    std::vector<std::string>* added_xla_function_names = nullptr);
 
 }  // namespace tensorflow
 

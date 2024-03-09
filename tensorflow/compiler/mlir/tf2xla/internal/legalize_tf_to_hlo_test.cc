@@ -22,21 +22,20 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "mlir/Pass/Pass.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/tf2xla/api/v0/compile_mlir_util.h"
 #include "tensorflow/compiler/mlir/tf2xla/internal/test_matchers.h"
 #include "tensorflow/compiler/tf2xla/xla_compiler.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
-#include "tensorflow/compiler/xla/client/client_library.h"
-#include "tensorflow/compiler/xla/shape.h"
-#include "tensorflow/compiler/xla/stream_executor/multi_platform_manager.h"
-#include "tensorflow/compiler/xla/stream_executor/platform.h"
+#include "xla/client/client_library.h"
+#include "xla/shape.h"
+#include "xla/stream_executor/platform.h"
+#include "xla/stream_executor/platform_manager.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/lib/monitoring/cell_reader.h"
 #include "tensorflow/core/protobuf/config.pb.h"
 #include "tensorflow/core/protobuf/tpu/compile_metadata.pb.h"
 #include "tensorflow/core/tpu/kernels/tpu_compile_op_support.h"
-#include "tensorflow/tsl/platform/statusor.h"
+#include "tsl/platform/statusor.h"
 
 namespace tensorflow {
 namespace tf2xla {
@@ -48,11 +47,11 @@ using tpu::ShardingAndIndex;
 using tpu::TPUCompileMetadataProto;
 
 static constexpr char kMlirLegalizeCount[] =
-    "/tensorflow/core/tf2xla/v0/mlir_failed_xla_legalize_tf_count";
+    "/tensorflow/core/tf2xla/v1/mlir_failed_xla_legalize_tf_count";
 static constexpr char kMlirLegalizeErrors[] =
-    "/tensorflow/core/tf2xla/v0/mlir_failed_xla_legalize_tf_pass_count";
+    "/tensorflow/core/tf2xla/v1/mlir_failed_xla_legalize_tf_pass_count";
 static constexpr char kBridgeStatusCounter[] =
-    "/tensorflow/core/tf2xla/api/v1/phase2_compilation_status";
+    "/tensorflow/core/tf2xla/api/v2/phase2_compilation_status";
 constexpr char kMlirCombinedMlirSuccess[] = "kMlirCombinedMlirSuccess";
 constexpr char kMlirCombinedOldSuccess[] = "kMlirCombinedOldSuccess";
 constexpr char kMlirCombinedOldFailure[] = "kMlirCombinedOldFailure";
@@ -81,7 +80,7 @@ tsl::StatusOr<XlaCompiler::CompilationResult> CompileMlirModule(
   mlir_to_hlo_args.mlir_module = module_str;
 
   se::Platform* platform =
-      se::MultiPlatformManager::PlatformWithName("Host").value();
+      se::PlatformManager::PlatformWithName("Host").value();
   auto client =
       xla::ClientLibrary::GetOrCreateCompileOnlyClient(platform).value();
 
@@ -133,6 +132,19 @@ TEST(LegalizeWithCombinedBridge,
               IncrementedOrFiltered(counts.Delta(kMlirCombinedMlirSuccess), 1));
   EXPECT_THAT(result,
               IncrementedOrFiltered(counts.Delta(kMlirCombinedOldFailure), 1));
+}
+
+TEST(LegalizeWithCombinedBridge, RecordsDynamicOps) {
+  static constexpr char kDynamismFunctionCounterStreamzName[] =
+      "/tensorflow/core/tf2xla/api/v2/dynamism_function_counter";
+  constexpr char kNotDynamicFunctionName[] = "kNotDynamicFunction";
+  CellReader<int64_t> dynamic_function_op_count(
+      kDynamismFunctionCounterStreamzName);
+
+  auto result = CompileMlirModule(kMlirModuleStr);
+
+  ASSERT_TRUE(result.ok());
+  EXPECT_EQ(dynamic_function_op_count.Delta(kNotDynamicFunctionName), 1);
 }
 
 };  // namespace internal

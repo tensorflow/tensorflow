@@ -15,7 +15,9 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_FRAMEWORK_METRICS_H_
 #define TENSORFLOW_CORE_FRAMEWORK_METRICS_H_
 
+#include <cstddef>
 #include <cstdint>
+#include <string>
 
 #include "tensorflow/core/framework/dataset_options.pb.h"
 #include "tensorflow/core/lib/monitoring/counter.h"
@@ -79,8 +81,17 @@ monitoring::GaugeCell<std::function<std::string()>>* GetTFDataModelGauge(
 // Records the number of bytes fetched from tf.data.Dataset iterator.
 void RecordTFDataBytesFetched(int64_t num_bytes);
 
-// Records the number of times tf.data experiment is applied to input pipelines.
+// Records the number of times a tf.data experiment was applied.
 void RecordTFDataExperiment(const string& name);
+
+// Records the number of times a tf.data experiment could have been applied.
+void RecordTFDataExperimentLive(const string& name);
+
+// Records the number of times a tf.data experiment was opted into.
+void RecordTFDataExperimentOptIn(const string& experiment_name);
+
+// Records the number of times a tf.data experiment was opted out of.
+void RecordTFDataExperimentOptOut(const string& experiment_name);
 
 // Records the time (in microseconds) spent generating an element and
 // transferring it over the network for the given protocol.
@@ -171,8 +182,12 @@ void RecordTFDataServiceCrossTrainerCacheQuery(bool cache_hit);
 // Records tf.data service cross-trainer cache memory usage in bytes.
 void RecordTFDataServiceCrossTrainerCacheSizeBytes(size_t bytes);
 
-// Records distributed tf.data snapshot bytes committed.
+// Records tf.data distributed snapshot bytes committed.
 void RecordTFDataServiceSnapshotBytesCommitted(int64_t bytes);
+
+// Records tf.data distributed snapshot save/load ops.
+void RecordTFDataServiceSnapshotOp(const std::string& path,
+                                   const std::string& op);
 
 // Records the current estimated optimal number of tf.data service workers.
 void RecordTFDataServiceOptimalNumberOfWorkers(int64_t number_of_workers);
@@ -181,6 +196,19 @@ void RecordTFDataServiceOptimalNumberOfWorkers(int64_t number_of_workers);
 //
 // The `name` argument identifies the Dataset type (e.g. "TFRecordDataset").
 void RecordTFDataFilename(const string& name, const string& filename);
+
+// Records the total attempts made by file logger.
+void RecordTFDataFileLoggerAttempts();
+
+// Records the total errors encountered by file logger with this error code.
+void RecordTFDataFileLoggerErrors(error::Code code);
+
+// Records the total number of files attempted to be logged by file logger.
+void RecordTFDataFileLoggerAttemptedNumFiles(size_t num_files);
+
+// Records the total number of files that encountered errors during logging by
+// file logger with this error code.
+void RecordTFDataFileLoggerErrorsNumFiles(size_t num_files, error::Code code);
 
 // Records statistics of tf.data auto sharding.
 //
@@ -203,9 +231,20 @@ void RecordTFDataAutoShardRewriteBatchSize(
 // criterion is met.
 void RecordTFDataAutotuneStoppingCriteria(const string& name);
 
+// Records the number of times this event occured, for debugging.
+void RecordTFDataDebug(const string& event);
+
 // Records the number of times an error of this type occurred with this status
 // code.
 void RecordTFDataError(const string& error_type, const string& error_code);
+
+// Records the framework type used to build the tf.data.Dataset.
+void RecordTFDataFrameworkType(const std::string& framework_type);
+
+// Records the number of times tf.data file logger encountered an error of this
+// type occurred with this status code.
+void RecordTFDataFileLoggerError(const string& error_type,
+                                 const string& error_code);
 
 // Records parsing of dense tensor features.
 void RecordParseDenseFeature(int64_t num_features);
@@ -228,6 +267,16 @@ void UpdateGraphPendingQueueLength(uint64 len);
 
 // Records that one output of an op of type `op_name` was unused.
 void RecordUnusedOutput(const string& op_name);
+
+// Records the pipeline processing time in microseconds
+void RecordPipelineProcessingTime(const string& id,
+                                  double pipeline_processing_time_usec);
+
+// Increments the count of binaries loaded from the persistent cache.
+void UpdatePersistentCacheLoadCount();
+
+// Increments the count of BEF and MLIR deserialized.
+void UpdateAotBefMlirLoadCount();
 
 // Updates the metrics stored about time spent building graphs.
 //

@@ -22,6 +22,11 @@ PYBIND11_MODULE(_pywrap_util_port, m) {
   m.def("IsBuiltWithROCm", tensorflow::IsBuiltWithROCm);
   m.def("IsBuiltWithXLA", tensorflow::IsBuiltWithXLA);
   m.def("IsBuiltWithNvcc", tensorflow::IsBuiltWithNvcc);
+  m.def("IsAArch32Available", tensorflow::IsAArch32Available);
+  m.def("IsAArch64Available", tensorflow::IsAArch64Available);
+  m.def("IsPowerPCAvailable", tensorflow::IsPowerPCAvailable);
+  m.def("IsSystemZAvailable", tensorflow::IsSystemZAvailable);
+  m.def("IsX86Available", tensorflow::IsX86Available);
   m.def("GpuSupportsHalfMatMulAndConv",
         tensorflow::GpuSupportsHalfMatMulAndConv);
   m.def("IsMklEnabled", tensorflow::IsMklEnabled);

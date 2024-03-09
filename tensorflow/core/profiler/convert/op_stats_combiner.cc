@@ -104,7 +104,9 @@ void CombineRunEnvironment(const RunEnvironment& src, RunEnvironment* dst) {
   dst->mutable_hostnames()->insert(src.hostnames().begin(),
                                    src.hostnames().end());
   dst->set_host_count(dst->hostnames_size());
-  if (src.device_type() != "CPU") {
+  // Ignore CPU and Unknown Device type for device type selection if the
+  // destination does not have a device type already.
+  if (src.device_type() != "CPU" && src.device_type() != "Device") {
     dst->set_device_type(src.device_type());
     dst->set_device_core_count(src.device_core_count() +
                                dst->device_core_count());
@@ -117,7 +119,12 @@ void CombineRunEnvironment(const RunEnvironment& src, RunEnvironment* dst) {
     dst->set_device_type(src.device_type());
   }
   dst->set_task_count(src.task_count() + dst->task_count());
-  (*dst->mutable_host_independent_job_info()) = src.host_independent_job_info();
+  // Only overwrite the dst if profile_duration_ms in dst is not defined or
+  // is zero and profile_duration_ms in src is greater than zero.
+  if (src.host_independent_job_info().profile_duration_ms() > 0) {
+    (*dst->mutable_host_independent_job_info()) =
+        src.host_independent_job_info();
+  }
   for (const auto& job_info : src.host_dependent_job_info()) {
     *(dst->add_host_dependent_job_info()) = job_info;
   }
@@ -129,12 +136,10 @@ void CombineRunEnvironment(const RunEnvironment& src, RunEnvironment* dst) {
 // Combines the src PerfEnv into the dst PerfEnv.
 void CombinePerfEnv(const PerfEnv& src, PerfEnv* dst) {
   dst->set_peak_tera_flops_per_second(src.peak_tera_flops_per_second());
-  if (src.peak_bws_giga_bytes_per_second_size() > 0) {
-    for (int i = MemBwType::MEM_BW_TYPE_FIRST; i <= MemBwType::MEM_BW_TYPE_MAX;
-         ++i) {
-      dst->add_peak_bws_giga_bytes_per_second(
-          src.peak_bws_giga_bytes_per_second(i));
-    }
+  if (src.peak_bws_giga_bytes_per_second_size() > 0 &&
+      dst->peak_bws_giga_bytes_per_second_size() == 0) {
+    *dst->mutable_peak_bws_giga_bytes_per_second() =
+        src.peak_bws_giga_bytes_per_second();
   }
   dst->set_ridge_point(src.ridge_point());
 }

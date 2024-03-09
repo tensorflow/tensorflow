@@ -22,10 +22,12 @@ limitations under the License.
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
+#include "tensorflow/core/kernels/ragged_utils.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/fingerprint.h"
 #include "tensorflow/core/util/util.h"
 #include "tensorflow/core/util/work_sharder.h"
+#include "tsl/platform/errors.h"
 
 namespace tensorflow {
 
@@ -392,28 +394,10 @@ class RaggedCrossOp : public OpKernel {
         return absl::InvalidArgumentError(
             "tf.ragged.cross only supports inputs with rank=2.");
       }
-      if (ragged_splits_list[i].NumElements() == 0) {
-        return absl::InvalidArgumentError(
-            "Invalid RaggedTensor: Ragged splits must be non-empty.");
-      }
-      auto flat_row_splits = ragged_splits_list[i].flat<SplitsType>();
-      if (flat_row_splits(0) != 0) {
-        return absl::InvalidArgumentError(
-            "Invalid RaggedTensor: Ragged splits must start from 0.");
-      }
+
       int64_t num_values = ragged_values_list[i].NumElements();
-      if (flat_row_splits(flat_row_splits.size() - 1) != num_values) {
-        return absl::InvalidArgumentError(
-            "Invalid RaggedTensor: "
-            "Ragged splits must end with the number of values.");
-      }
-      for (int i = 1; i < flat_row_splits.size(); ++i) {
-        if (flat_row_splits(i - 1) > flat_row_splits(i)) {
-          return absl::InvalidArgumentError(
-              "Invalid RaggedTensor: "
-              "Ragged splits must be sorted in ascending order.");
-        }
-      }
+      TF_RETURN_IF_ERROR(RaggedTensorVerifySplits<SplitsType>(
+          ragged_splits_list[i], true, num_values));
     }
     for (int i = 0; i < num_sparse; ++i) {
       if (!TensorShapeUtils::IsMatrix(sparse_indices_list[i].shape()) ||
@@ -455,7 +439,7 @@ class RaggedCrossOp : public OpKernel {
       }
     }
 
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   // Calculate the batch size from any input tensor.  (We check that all input
@@ -534,7 +518,7 @@ class RaggedCrossOp : public OpKernel {
       }
     }
 
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   // Builds a RaggedReatureReader
@@ -568,7 +552,7 @@ class RaggedCrossOp : public OpKernel {
             new RaggedFeatureReader<tstring, int32>(values, splits));
       }
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   // Builds a DenseFaggedReatureReader.
@@ -583,7 +567,7 @@ class RaggedCrossOp : public OpKernel {
                                      (features->size() + 1), ": ",
                                      values.dtype());
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   // Builds a SparseFaggedReatureReader.
@@ -602,7 +586,7 @@ class RaggedCrossOp : public OpKernel {
                                      (features->size() + 1), ": ",
                                      values.dtype());
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   // Allocates output tensors with proper size, and populates row_splits_out.
@@ -628,7 +612,7 @@ class RaggedCrossOp : public OpKernel {
     TF_RETURN_IF_ERROR(context->allocate_output(
         0, TensorShape({cross_count_total}), values_out));
 
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   // Returns number of crosses for a given batch_index

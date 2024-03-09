@@ -44,9 +44,9 @@ limitations under the License.
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/stringpiece.h"
 #include "tensorflow/core/platform/types.h"
-#include "tensorflow/tsl/framework/allocator.h"
-#include "tensorflow/tsl/lib/core/status_test_util.h"
-#include "tensorflow/tsl/platform/status.h"
+#include "tsl/framework/allocator.h"
+#include "tsl/lib/core/status_test_util.h"
+#include "tsl/platform/status.h"
 
 namespace tensorflow {
 
@@ -74,7 +74,7 @@ class FakeAllocator : public Allocator {
 class FakeDevice : public Device {
  public:
   explicit FakeDevice(const DeviceAttributes& attr) : Device(nullptr, attr) {}
-  Status Sync() override { return OkStatus(); }
+  Status Sync() override { return absl::OkStatus(); }
   Allocator* GetAllocator(AllocatorAttributes) override {
     return allocator_.get();
   }

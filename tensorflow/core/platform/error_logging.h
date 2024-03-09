@@ -16,7 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_PLATFORM_ERROR_LOGGING_H_
 #define TENSORFLOW_CORE_PLATFORM_ERROR_LOGGING_H_
 
-#include "tensorflow/tsl/platform/error_logging.h"
+#include "tsl/platform/error_logging.h"
 
 namespace tensorflow {
 using tsl::error_logging::Log;

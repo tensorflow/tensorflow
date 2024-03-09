@@ -19,7 +19,7 @@ limitations under the License.
 #include <string>
 
 #include "tensorflow/core/common_runtime/next_pluggable_device/c/plugin_c_api.h"
-#include "tensorflow/tsl/platform/statusor.h"
+#include "tsl/platform/statusor.h"
 
 namespace tensorflow {
 
@@ -28,7 +28,7 @@ const TFNPD_Api* TfnpdApi();
 void SetTfnpdApi(const TFNPD_Api* api);
 
 typedef const TFNPD_Api* (*TFNPDInitPluginFn)(TFNPD_PluginParams*, TF_Status*);
-tsl::StatusOr<TFNPD_PluginParams> InitNextPluggableDevicePlugin(
+absl::StatusOr<TFNPD_PluginParams> InitNextPluggableDevicePlugin(
     TFNPDInitPluginFn init_fn);
 
 }  // namespace tensorflow

@@ -28,7 +28,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "tensorflow/compiler/tf2xla/functionalize_control_flow_util.h"
 #include "tensorflow/compiler/tf2xla/tf2xla_util.h"
-#include "tensorflow/compiler/xla/status_macros.h"
+#include "xla/status_macros.h"
 #include "tensorflow/core/common_runtime/function_body.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/node_def.pb.h"
@@ -45,10 +45,10 @@ limitations under the License.
 #include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/core/protobuf/tpu/compile_metadata.pb.h"
 #include "tensorflow/core/tpu/graph_rewrite/distributed_tpu_rewrite_pass_internal.h"
-#include "tensorflow/tsl/platform/errors.h"
-#include "tensorflow/tsl/platform/logging.h"  // IWYU pragma: keep
-#include "tensorflow/tsl/platform/statusor.h"
-#include "tensorflow/tsl/platform/tstring.h"
+#include "tsl/platform/errors.h"
+#include "tsl/platform/logging.h"  // IWYU pragma: keep
+#include "tsl/platform/statusor.h"
+#include "tsl/platform/tstring.h"
 
 namespace tensorflow {
 namespace tpu {
@@ -97,7 +97,7 @@ bool IsExecuteNodeOrIdentityToExecuteNode(
 // by searching/traversing nodes in below pattern of nodes:
 // Enter ----> (identity) --->  While body input
 // Returns nullptr if the Enter node is not found.
-StatusOr<Node*> FindEnterNodeFromTPUExecuteNodeInput(Node* input_node) {
+absl::StatusOr<Node*> FindEnterNodeFromTPUExecuteNodeInput(Node* input_node) {
   Node* node = input_node;
   while (node->IsIdentity()) {
     TF_RETURN_IF_ERROR(node->input_node(0, &node));
@@ -109,7 +109,7 @@ StatusOr<Node*> FindEnterNodeFromTPUExecuteNodeInput(Node* input_node) {
   return nullptr;
 }
 
-StatusOr<bool> ResourceOnlyUsedForTPUExecuteInLoop(
+absl::StatusOr<bool> ResourceOnlyUsedForTPUExecuteInLoop(
     const Graph& graph, const std::unordered_set<Node*>& loop_nodes,  // NOLINT
     const Node* enter_node, const absl::flat_hash_set<Node*> execute_nodes) {
   for (const Edge* output_edge : enter_node->out_edges()) {

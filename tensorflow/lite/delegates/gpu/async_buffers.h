@@ -44,12 +44,12 @@ class AsyncBuffer {
   absl::Status AllocateOpenGlBuffer();
 
  public:
-  explicit AsyncBuffer(TensorObjectDef tie, AHardwareBuffer* ahwb) {
-    bytes_ = NumElements(tie) * SizeOf(tie.object_def.data_type);
+  explicit AsyncBuffer(TensorObjectDef tensor_def, AHardwareBuffer* ahwb) {
+    bytes_ = NumElements(tensor_def) * SizeOf(tensor_def.object_def.data_type);
     ahwb_ = ahwb;
   }
   // Map the AHWB (from class constructor) to an SSBO id
-  absl::Status GetOpenGlBufferReadView(GLuint& buffer_ref);
+  absl::Status GetOpenGlBuffer(GLuint& buffer_ref);
 };
 
 }  // namespace gpu

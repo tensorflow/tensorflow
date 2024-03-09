@@ -18,20 +18,31 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_TF2XLA_XLA_HELPERS_H_
 #define TENSORFLOW_COMPILER_TF2XLA_XLA_HELPERS_H_
 
+#include <string>
+
 #include "absl/types/optional.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/tf2xla/host_compute_metadata.pb.h"
-#include "tensorflow/compiler/xla/client/xla_builder.h"
-#include "tensorflow/compiler/xla/executable_run_options.h"
-#include "tensorflow/compiler/xla/hlo/ir/hlo_sharding.h"
-#include "tensorflow/compiler/xla/service/computation_placer.h"
-#include "tensorflow/compiler/xla/translate/mhlo_to_hlo/layout_util.h"
+#include "xla/client/xla_builder.h"
+#include "xla/executable_run_options.h"
+#include "xla/hlo/ir/hlo_sharding.h"
+#include "xla/service/computation_placer.h"
+#include "xla/translate/mhlo_to_hlo/layout_util.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor.h"
 
 namespace tensorflow {
 
 using XlaLayoutPreference = mlir::XlaLayoutPreference;
+
+inline std::string GetDeviceToHostChannelName(absl::string_view channel_key,
+                                              int index) {
+  return absl::StrCat(channel_key, "_dtoh_", index);
+}
+inline std::string GetHostToDeviceChannelName(absl::string_view channel_key,
+                                              int index) {
+  return absl::StrCat(channel_key, "_htod_", index);
+}
 
 // Helper methods for building XLA computations.
 class XlaHelpers {
@@ -81,8 +92,8 @@ class XlaHelpers {
   static xla::XlaOp ConvertElementType(xla::XlaOp operand,
                                        const DataType new_element_type);
 
-  typedef std::function<StatusOr<xla::Shape>(const TensorShape&, DataType, bool,
-                                             XlaLayoutPreference)>
+  typedef std::function<absl::StatusOr<xla::Shape>(const TensorShape&, DataType,
+                                                   bool, XlaLayoutPreference)>
       ShapeRepresentationFn;
 };
 

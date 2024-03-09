@@ -33,6 +33,9 @@ extern "C" {
 // number of dimensions.
 #define TFLITE_RESHAPE_PARAMS_MAX_DIMENSION_COUNT 8
 #define TFLITE_STABLEHLO_SCATTER_PARAMS_MAX_DIMENSION_COUNT 8
+#define TFLITE_STABLEHLO_GATHER_PARAMS_MAX_DIMENSION_COUNT 8
+#define TFLITE_STABLEHLO_REDUCE_WINDOW_PARAMS_MAX_DIMENSION_COUNT 8
+#define TFLITE_STABLEHLO_PAD_PARAMS_MAX_DIMENSION_COUNT 8
 
 // TODO(aselle): Consider using "if this then that" for testing.
 
@@ -91,6 +94,10 @@ typedef struct {
   // Note: Version 2 supports dilation values not equal to 1.
   int dilation_width_factor;
   int dilation_height_factor;
+
+  // Parameters for CONV_2D version 7 or above.
+  // Used to determine the default value for the quantized bias.
+  TfLiteType quantized_bias_type;
 } TfLiteConvParams;
 
 typedef struct {
@@ -194,6 +201,10 @@ typedef struct {
   // If set to true and the weights are quantized, then non constant inputs
   // are quantized at evaluation time with asymmetric quantization.
   bool asymmetric_quantize_inputs;
+
+  // Parameters for FullyConnected version 10 or above.
+  // Used to determine the default value for the quantized bias.
+  TfLiteType quantized_bias_type;
 } TfLiteFullyConnectedParams;
 
 typedef enum {
@@ -431,6 +442,10 @@ typedef struct {
 
   // Parameters supported by version 4:
   TfLiteFusedActivation activation;
+
+  // Parameters for TransposeConv version 5 or above.
+  // Used to determine the default value for the quantized bias.
+  TfLiteType quantized_bias_type;
 } TfLiteTransposeConvParams;
 
 typedef struct {
@@ -557,6 +572,78 @@ typedef struct {
   bool unique_indices;
   int update_computation_subgraph_index;
 } TfLiteStablehloScatterParams;
+
+typedef enum {
+  kTfLiteRngAlgorithmUnknown = 0,
+  // An algorithm auto-selected by the system according to device type.
+  kTfLiteRngAlgorithmDefault,
+  // The Philox algorithm, as described in paper
+  // ['Parallel Random Numbers: As Easy as 1, 2, 3']
+  // (https://www.thesalmons.org/john/random123/papers/random123sc11.pdf)
+  kTfLiteRngAlgorithmPhilox,
+  // The ThreeFry algorithm, as described in paper
+  // ['Parallel Random Numbers: As Easy as 1, 2, 3']
+  // (https://www.thesalmons.org/john/random123/papers/random123sc11.pdf)
+  kTfLiteRngAlgorithmThreefry,
+} TfLiteRngAlgorithm;
+
+typedef struct {
+  TfLiteRngAlgorithm algorithm;
+} TfLiteStablehloRngBitGeneratorParams;
+
+typedef struct {
+  // See the stablehlo spec for the explanation of the attributes:
+  // https://github.com/openxla/stablehlo/blob/main/docs/spec.md#gather
+  int64_t offset_dims[TFLITE_STABLEHLO_GATHER_PARAMS_MAX_DIMENSION_COUNT];
+  int num_offset_dims;
+  int64_t
+      collapsed_slice_dims[TFLITE_STABLEHLO_GATHER_PARAMS_MAX_DIMENSION_COUNT];
+  int num_collapsed_slice_dims;
+  int64_t start_index_map[TFLITE_STABLEHLO_GATHER_PARAMS_MAX_DIMENSION_COUNT];
+  int num_start_index_map;
+  int64_t index_vector_dim;
+  int64_t slice_sizes[TFLITE_STABLEHLO_GATHER_PARAMS_MAX_DIMENSION_COUNT];
+  int num_slice_sizes;
+  bool indices_are_sorted;
+} TfLiteStablehloGatherParams;
+
+typedef struct {
+  // See the stablehlo spec for the explanation of the attributes:
+  // https://github.com/openxla/stablehlo/blob/main/docs/spec.md#reduce_window
+  int64_t window_dimensions
+      [TFLITE_STABLEHLO_REDUCE_WINDOW_PARAMS_MAX_DIMENSION_COUNT];
+  int64_t
+      window_strides[TFLITE_STABLEHLO_REDUCE_WINDOW_PARAMS_MAX_DIMENSION_COUNT];
+  int64_t
+      base_dilations[TFLITE_STABLEHLO_REDUCE_WINDOW_PARAMS_MAX_DIMENSION_COUNT];
+  int64_t window_dilations
+      [TFLITE_STABLEHLO_REDUCE_WINDOW_PARAMS_MAX_DIMENSION_COUNT];
+  int64_t
+      padding[2 * TFLITE_STABLEHLO_REDUCE_WINDOW_PARAMS_MAX_DIMENSION_COUNT];
+  int body_subgraph_index;
+} TfLiteStablehloReduceWindowParams;
+
+enum TfLiteReduceWindowFunction {
+  TfLiteReduceWindowFunctionUnsupported,
+  TfLiteReduceWindowFunctionAdd,
+  TfLiteReduceWindowFunctionMul,
+  TfLiteReduceWindowFunctionMin,
+  TfLiteReduceWindowFunctionMax,
+  TfLiteReduceWindowFunctionAll,
+  TfLiteReduceWindowFunctionAny
+};
+
+typedef struct {
+  enum TfLiteReduceWindowFunction reduce_function;
+} TfLiteReduceWindowParams;
+
+typedef struct {
+  // See the stablehlo spec for the explanation of the attributes:
+  // https://github.com/openxla/stablehlo/blob/main/docs/spec.md#pad
+  int64_t edge_padding_low[TFLITE_STABLEHLO_PAD_PARAMS_MAX_DIMENSION_COUNT];
+  int64_t edge_padding_high[TFLITE_STABLEHLO_PAD_PARAMS_MAX_DIMENSION_COUNT];
+  int64_t interior_padding[TFLITE_STABLEHLO_PAD_PARAMS_MAX_DIMENSION_COUNT];
+} TfLiteStablehloPadParams;
 
 #ifdef __cplusplus
 }  // extern "C"

@@ -19,10 +19,10 @@ limitations under the License.
 #define EIGEN_USE_CUSTOM_THREAD_POOL
 
 #include "absl/strings/str_split.h"
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
-#include "tensorflow/compiler/xla/service/hlo_profile_printer.h"
-#include "tensorflow/compiler/xla/shape_util.h"
-#include "tensorflow/compiler/xla/test.h"
+#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
+#include "xla/service/hlo_profile_printer.h"
+#include "xla/shape_util.h"
+#include "xla/test.h"
 #include "tensorflow/core/platform/regexp.h"
 #include "tensorflow/core/platform/test.h"
 

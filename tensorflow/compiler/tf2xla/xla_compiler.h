@@ -27,10 +27,10 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_expression.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
-#include "tensorflow/compiler/xla/client/local_client.h"
-#include "tensorflow/compiler/xla/client/xla_builder.h"
-#include "tensorflow/compiler/xla/client/xla_computation.h"
-#include "tensorflow/compiler/xla/status_macros.h"
+#include "xla/client/local_client.h"
+#include "xla/client/xla_builder.h"
+#include "xla/client/xla_computation.h"
+#include "xla/status_macros.h"
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/common_runtime/function.h"
@@ -310,7 +310,7 @@ class XlaCompiler {
   void PushNodeTokenMapping();
   Status PopNodeTokenMapping();
   Status SetNodeToken(const string& node_name, xla::XlaOp op);
-  StatusOr<xla::XlaOp> GetNodeToken(const string& node_name);
+  absl::StatusOr<xla::XlaOp> GetNodeToken(const string& node_name);
 
   // Sets the function body `fbody` to the one registered as `function`.
   Status FindFunctionBody(const NameAttrList& function,
@@ -387,7 +387,8 @@ class XlaCompiler {
   // stack, and pop the mapping before returning.
   std::stack<std::map<string, xla::XlaOp>> node_token_mapping_stack_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(XlaCompiler);
+  XlaCompiler(const XlaCompiler&) = delete;
+  void operator=(const XlaCompiler&) = delete;
 };
 
 

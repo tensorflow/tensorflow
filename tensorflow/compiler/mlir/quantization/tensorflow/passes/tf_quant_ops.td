@@ -77,7 +77,9 @@ def TF_DumpTensorOp : TF_Op<"DumpTensor", []> {
 
     StrAttr:$log_dir_path,
     StrAttr:$file_name,
-    BoolAttr:$enabled
+    BoolAttr:$enabled,
+    StrAttr:$func_name,
+    StrAttr:$node_name
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;

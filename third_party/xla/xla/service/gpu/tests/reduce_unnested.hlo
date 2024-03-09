@@ -1,0 +1,82 @@
+// RUN: hlo-opt %s --platform=gpu --stage=llvm-before-optimizations --xla_gpu_target_config_filename=%S/../../../tools/hlo_opt/gpu_specs/%{GPU}.txtpb --split-input-file | FileCheck %s
+
+// CHECK: define void @fusion_row_reduction_too_small(
+// CHECK-COUNT-1: {{^x_in_tile-true}}
+// CHECK-NOT: {{^x_in_tile-true}}
+
+HloModule RowReductionNotVectorized, is_scheduled=true
+
+Sum {
+    x.1 = f32[] parameter(0)
+    y.1 = f32[] parameter(1)
+    ROOT add.1 = f32[] add(x.1, y.1)
+}
+
+fusion_vectorized {
+    a = f32[131072,512] parameter(0)
+    init = f32[] constant(0)
+    ROOT reduce = f32[131072] reduce(a, init), dimensions={1}, to_apply=Sum
+}
+
+ENTRY reduce.1 {
+    parameter0 = f32[131072,512] parameter(0)
+    ROOT fusion_row_reduction_too_small = f32[131072] fusion(
+        f32[131072,512] parameter0
+    ), kind=kLoop, calls=fusion_vectorized
+}
+
+// -----
+
+// CHECK: define void @fusion_row_reduction_odd_dimx(
+// CHECK-COUNT-1: {{^x_in_tile-true}}
+// CHECK-NOT: {{^x_in_tile-true}}
+
+HloModule RowReductionNotVectorized, is_scheduled=true
+
+Sum {
+    x.1 = f32[] parameter(0)
+    y.1 = f32[] parameter(1)
+    ROOT add.1 = f32[] add(x.1, y.1)
+}
+
+fusion_vectorized {
+    a = f32[131072,1025] parameter(0)
+    init = f32[] constant(0)
+    ROOT reduce = f32[131072] reduce(a, init), dimensions={1}, to_apply=Sum
+}
+
+ENTRY reduce.1 {
+    parameter0 = f32[131072,1025] parameter(0)
+    ROOT fusion_row_reduction_odd_dimx = f32[131072] fusion(
+        f32[131072,1025] parameter0
+    ), kind=kLoop, calls=fusion_vectorized
+}
+
+
+// -----
+
+// CHECK: define void @fusion_row_reduction_sin_prevents_vectorization(
+// CHECK-COUNT-1: {{^x_in_tile-true}}
+// CHECK-NOT: {{^x_in_tile-true}}
+
+HloModule RowReductionNotVectorized, is_scheduled=true
+
+Sum {
+    x.1 = f32[] parameter(0)
+    y.1 = f32[] parameter(1)
+    ROOT add.1 = f32[] add(x.1, y.1)
+}
+
+fusion_not_vectorized {
+    a = f32[131072,1024] parameter(0)
+    c0 = f32[] constant(0)
+    init = f32[] sine(c0)
+    ROOT reduce = f32[131072] reduce(a, init), dimensions={1}, to_apply=Sum
+}
+
+ENTRY reduce.1 {
+    parameter0 = f32[131072,1024] parameter(0)
+    ROOT fusion_row_reduction_sin_prevents_vectorization = f32[131072] fusion(
+        f32[131072,1024] parameter0
+    ), kind=kLoop, calls=fusion_not_vectorized
+}

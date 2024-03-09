@@ -17,7 +17,7 @@ limitations under the License.
 #define TENSORFLOW_CORE_PLATFORM_THREADPOOL_OPTIONS_H_
 
 #include "tensorflow/core/platform/threadpool_interface.h"
-#include "tensorflow/tsl/platform/threadpool_options.h"
+#include "tsl/platform/threadpool_options.h"
 
 namespace tensorflow {
 namespace thread {

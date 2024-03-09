@@ -141,8 +141,8 @@ class Literal(trace.TraceType, serialization.Serializable):
   def __hash__(self) -> int:
     return self._value_hash
 
-  def __repr__(self):
-    return f"{self.__class__.__name__}(value={self.value!r})"
+  def __repr__(self) -> str:
+    return f"{self.__class__.__name__}[{self.value!r}]"
 
 
 class Weakref(trace.TraceType):
@@ -196,8 +196,8 @@ class Weakref(trace.TraceType):
   def __hash__(self):
     return self._ref_hash
 
-  def __repr__(self):
-    return f"{self.__class__.__name__}(ref={self._ref!r})"
+  def __repr__(self) -> str:
+    return f"{self.__class__.__name__}[{self._ref!r}])"
 
 
 class Tuple(trace.TraceType, serialization.Serializable):
@@ -295,8 +295,8 @@ class Tuple(trace.TraceType, serialization.Serializable):
   def __hash__(self) -> int:
     return hash(self.components)
 
-  def __repr__(self):
-    return f"Tuple(components={self.components!r})"
+  def __repr__(self) -> str:
+    return f"Tuple[{', '.join(map(repr, self.components))}]"
 
 
 class List(trace.TraceType, serialization.Serializable):
@@ -381,8 +381,8 @@ class List(trace.TraceType, serialization.Serializable):
   def __hash__(self) -> int:
     return hash(self.components_tuple)
 
-  def __repr__(self):
-    return f"List(components={self.components_tuple.components!r})"
+  def __repr__(self) -> str:
+    return f"List[{', '.join(map(repr, self.components_tuple.components))}]"
 
 
 class NamedTuple(trace.TraceType, serialization.Serializable):
@@ -520,10 +520,12 @@ class NamedTuple(trace.TraceType, serialization.Serializable):
             self.attribute_names == other.attribute_names and
             self.attributes == other.attributes)
 
-  def __repr__(self):
-    return (f"NamedTuple(type_name={self.type_name}, "
-            f"attribute_names={self.attribute_names}, "
-            f"attributes={self.attributes.components})")
+  def __repr__(self) -> str:
+    paired = [
+        f"[{n!r}, {c!r}]"
+        for n, c in zip(self.attribute_names, self.attributes.components)
+    ]
+    return f"{self.type_name}[{', '.join(paired)}]"
 
 
 class Attrs(trace.TraceType):
@@ -657,10 +659,13 @@ class Attrs(trace.TraceType):
 
     return self.named_attributes == other.named_attributes
 
-  def __repr__(self):
-    return (f"Attrs(type_name={self.named_attributes.type_name}, "
-            f"attribute_names={self.named_attributes.attribute_names}, "
-            f"attributes={self.named_attributes.attributes.components})")
+  def __repr__(self) -> str:
+    name_component_zip = zip(
+        self.named_attributes.attribute_names,
+        self.named_attributes.attributes.components,
+    )
+    paired = [f"[{n!r}, {c!r}]" for n, c in name_component_zip]
+    return f"{self.named_attributes.type_name}[{', '.join(paired)}]"
 
 
 class Dict(trace.TraceType, serialization.Serializable):
@@ -808,8 +813,9 @@ class Dict(trace.TraceType, serialization.Serializable):
   def __hash__(self) -> int:
     return hash(frozenset(self.mapping.keys()))
 
-  def __repr__(self):
-    return f"{self.__class__.__name__}(mapping={self.mapping!r})"
+  def __repr__(self) -> str:
+    paired = [f"[{n!r}, {t!r}]" for n, t in self.mapping.items()]
+    return f"{self.__class__.__name__}[{', '.join(paired)}]"
 
 
 serialization.register_serializable(Literal)

@@ -25,8 +25,8 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/tensor.h"
-#include "tensorflow/tsl/platform/mutex.h"
-#include "tensorflow/tsl/platform/thread_annotations.h"
+#include "tsl/platform/mutex.h"
+#include "tsl/platform/thread_annotations.h"
 
 namespace tensorflow {
 namespace data {
@@ -42,6 +42,7 @@ class IndexSplitProvider : public SplitProvider {
                     IteratorStateWriter* writer) override;
   absl::Status Restore(std::function<std::string(std::string)> full_name,
                        IteratorStateReader* reader) override;
+  int64_t Cardinality() const override;
 
  private:
   tsl::mutex mu_;

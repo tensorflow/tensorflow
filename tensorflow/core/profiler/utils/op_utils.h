@@ -21,7 +21,7 @@ limitations under the License.
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/protobuf/op_metrics.pb.h"
 #include "tensorflow/core/profiler/utils/op_metrics_db_utils.h"
-#include "tensorflow/tsl/profiler/utils/timespan.h"
+#include "tsl/profiler/utils/timespan.h"
 
 namespace tensorflow {
 namespace profiler {
@@ -76,7 +76,8 @@ class DeviceOpMetricsDbBuilder : public OpMetricsDbBuilder {
                bool is_eager, uint64 occurrences, uint64 time_ps,
                uint64 children_time_ps, int64_t flops, int64_t bytes_accessed,
                const protobuf::RepeatedPtrField<OpMetrics::MemoryAccessed>&
-                   memory_accessed_breakdown = {});
+                   memory_accessed_breakdown = {},
+               int64_t model_flops = 0);
 };
 
 }  // namespace profiler

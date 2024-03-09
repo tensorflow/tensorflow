@@ -28,8 +28,8 @@ limitations under the License.
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #include "absl/container/flat_hash_map.h"
-#include "third_party/eigen3/Eigen/Core"
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "Eigen/Core"  // from @eigen_archive
+#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/framework/numeric_op.h"
 #include "tensorflow/core/framework/op_kernel.h"
@@ -49,7 +49,7 @@ limitations under the License.
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #if GOOGLE_CUDA
-#include "tensorflow/compiler/xla/stream_executor/cuda/cuda_activation.h"
+#include "xla/stream_executor/cuda/cuda_activation.h"
 #include "tensorflow/core/util/gpu_solvers.h"
 
 using stream_executor::cuda::ScopedActivateExecutorContext;
@@ -265,15 +265,10 @@ class SegmentReductionGPUOp : public AsyncOpKernel {
     ScratchSpace<Index> output_rows_host(context, 1, /* on_host */ true);
 
     auto stream = context->op_device_context()->stream();
-    OP_REQUIRES_ASYNC(
-        context,
-        stream
-            ->ThenMemcpy(output_rows_host.mutable_data(), output_rows_device,
-                         sizeof(Index))
-            .ok(),
-        errors::Internal(type_string() +
-                         ": failed to copy output_rows from device"),
-        done);
+    OP_REQUIRES_OK_ASYNC(context,
+                         stream->Memcpy(output_rows_host.mutable_data(),
+                                        output_rows_device, sizeof(Index)),
+                         done);
 
     SegmentReductionFunctor functor_;
     auto create_and_check_output = [context, output_rows_host, &input,
@@ -359,7 +354,11 @@ struct UnsortedSegmentFunctor<CPUDevice, T, Index, InitialValueF, ReductionF> {
     const int64_t N = segment_ids.dimension(0);
     const int64_t num_segments = output.dimension(0);
     const int64_t inner_dim = data.dimension(1);
+    const T* data_ptr = data.data();
+    T* out_ptr = output.data();
     ReductionF reduction;
+
+    const bool is_inner_dim_1d = inner_dim == 1;
 
     // `num_real_segment` counts the rows actually reduced from input,
     // the rows with negative segment index will be excluded.
@@ -411,7 +410,15 @@ struct UnsortedSegmentFunctor<CPUDevice, T, Index, InitialValueF, ReductionF> {
         }
       }
     };
-
+    auto reductionWorker1D = [&](int64_t begin, int64_t end) -> void {
+      for (int64_t i = 0; i < N; i++) {
+        Index j = internal::SubtleMustCopy(segment_ids(i));
+        // If `j` is in work scope of this worker, do the reduction.
+        if (j >= begin && j < end) {
+          reduction(data_ptr[i], out_ptr[j]);
+        }
+      }
+    };
     // Reduction functors includes Sum, Max, Min, etc. Simply consider it
     // will cost 5 cycles per operation.
     const int64_t kAverTaskSize = num_real_segment / num_segments;
@@ -419,7 +426,11 @@ struct UnsortedSegmentFunctor<CPUDevice, T, Index, InitialValueF, ReductionF> {
     const int64_t input_bytes = sizeof(T) * inner_dim * kAverTaskSize;
     const int64_t output_bytes = sizeof(T) * inner_dim * kAverTaskSize;
     const Eigen::TensorOpCost cost(input_bytes, output_bytes, compute_cycles);
-    cpu_device.parallelFor(num_segments, cost, reductionWorker);
+    if (is_inner_dim_1d) {
+      cpu_device.parallelFor(num_segments, cost, reductionWorker1D);
+    } else {
+      cpu_device.parallelFor(num_segments, cost, reductionWorker);
+    }
   }
 };
 
@@ -436,6 +447,7 @@ struct SumOp {
   void operator()(const constMatrixChip<T> data, MatrixChip<T> output) {
     output += data;
   }
+  void operator()(const T& data, T& output) { output += data; }
 };
 
 template <typename T>
@@ -443,6 +455,7 @@ struct MaxOp {
   void operator()(const constMatrixChip<T> data, MatrixChip<T> output) {
     output = data.cwiseMax(output);
   }
+  void operator()(const T& data, T& output) { output = std::max(data, output); }
 };
 
 template <typename T>
@@ -450,6 +463,7 @@ struct MinOp {
   void operator()(const constMatrixChip<T> data, MatrixChip<T> output) {
     output = data.cwiseMin(output);
   }
+  void operator()(const T& data, T& output) { output = std::min(data, output); }
 };
 
 template <typename T>
@@ -457,6 +471,7 @@ struct ProdOp {
   void operator()(const constMatrixChip<T> data, MatrixChip<T> output) {
     output *= data;
   }
+  void operator()(const T& data, T& output) { output *= data; }
 };
 }  // namespace functor
 
@@ -944,14 +959,10 @@ class SparseSegmentReductionOpBase<GPUDevice, T, Index, SegmentId>
           const_cast<Tensor&>(segment_ids).template flat<SegmentId>().data() +
           (num_indices - 1));
       auto stream = context->op_device_context()->stream();
-      OP_REQUIRES_ASYNC(
+      OP_REQUIRES_OK_ASYNC(
           context,
-          stream
-              ->ThenMemcpy(last_segment_id_host.mutable_data(),
-                           last_segment_id_device, sizeof(SegmentId))
-              .ok(),
-          errors::Internal(type_string() +
-                           ": failed to copy last_segment_id from device"),
+          stream->Memcpy(last_segment_id_host.mutable_data(),
+                         last_segment_id_device, sizeof(SegmentId)),
           done);
       context->device()
           ->tensorflow_accelerator_device_info()
@@ -1335,7 +1346,7 @@ class SparseSegmentGradV2OpCommon {
       Tensor* sorted_unique_indices = nullptr;
       TF_RETURN_IF_ERROR(context->allocate_output(1, TensorShape({0}),
                                                   &sorted_unique_indices));
-      return OkStatus();
+      return absl::OkStatus();
     }
 
     auto input_flat = input.flat_outer_dims<T>();
@@ -1346,7 +1357,7 @@ class SparseSegmentGradV2OpCommon {
         context, operation, input_flat, indices_vec, segment_vec,
         dense_output_shape, done);
 
-    return OkStatus();
+    return absl::OkStatus();
   }
 };
 

@@ -304,8 +304,6 @@ void ReadTocoFlagsFromCommandLineFlags(const ParsedTocoFlags& parsed_toco_flags,
 
   if (parsed_toco_flags.force_select_tf_ops.value() &&
       !parsed_toco_flags.enable_select_tf_ops.value()) {
-    // TODO(ycling): Consider to enforce `enable_select_tf_ops` when
-    // `force_select_tf_ops` is true.
     LOG(WARNING) << "--force_select_tf_ops should always be used with "
                     "--enable_select_tf_ops.";
   }

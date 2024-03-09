@@ -216,10 +216,10 @@ cuda_py_strict_test(
     deps = [
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python/eager:def_function",
-        "//tensorflow/python/framework",
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:errors",
+        "//tensorflow/python/framework:importer",
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/framework:tensor",
         "//tensorflow/python/framework:tensor_shape",
@@ -258,7 +258,7 @@ cuda_py_strict_test(
         "no_cuda_asan",  # times out
     ],
     deps = [
-        "//tensorflow/python/client",
+        "//tensorflow/python/client:device_lib",
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:errors",
         "//tensorflow/python/framework:for_generated_wrappers",
@@ -415,17 +415,12 @@ cuda_py_strict_test(
     size = "medium",
     srcs = ["init_ops_test.py"],
     shard_count = 4,
-    tags = [
-        "noasan",
-        "notap",
-    ],
     deps = [
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:errors",
         "//tensorflow/python/framework:for_generated_wrappers",
         "//tensorflow/python/framework:random_seed",
         "//tensorflow/python/framework:test_lib",
-        "//tensorflow/python/layers",
         "//tensorflow/python/ops:array_ops",
         "//tensorflow/python/ops:init_ops",
         "//tensorflow/python/ops:linalg_ops",
@@ -469,9 +464,11 @@ cuda_py_strict_test(
 
 cuda_py_strict_test(
     name = "manip_ops_test",
-    size = "small",
+    size = "medium",
     srcs = ["manip_ops_test.py"],
-    tags = ["no_windows_gpu"],
+    tags = [
+        "no_windows_gpu",
+    ],
     deps = [
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:errors",
@@ -657,10 +654,10 @@ cuda_py_strict_test(
     srcs = ["shape_ops_test.py"],
     deps = [
         "//tensorflow/core:protos_all_py",
-        "//tensorflow/python/framework",
         "//tensorflow/python/framework:constant_op",
+        "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:errors",
-        "//tensorflow/python/framework:for_generated_wrappers",
+        "//tensorflow/python/framework:importer",
         "//tensorflow/python/framework:sparse_tensor",
         "//tensorflow/python/framework:test_lib",
         "//tensorflow/python/ops:array_ops",

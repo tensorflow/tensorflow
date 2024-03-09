@@ -21,16 +21,16 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/tf2xla.h"
 #include "tensorflow/compiler/tf2xla/tf2xla.pb.h"
 #include "tensorflow/compiler/tf2xla/xla_compiled_cpu_function.h"
-#include "tensorflow/compiler/xla/client/client_library.h"
-#include "tensorflow/compiler/xla/client/local_client.h"
-#include "tensorflow/compiler/xla/client/xla_computation.h"
-#include "tensorflow/compiler/xla/cpu_function_runtime.h"
-#include "tensorflow/compiler/xla/service/cpu/buffer_info_util.h"
-#include "tensorflow/compiler/xla/service/cpu/cpu_executable.h"
-#include "tensorflow/compiler/xla/service/platform_util.h"
-#include "tensorflow/compiler/xla/shape_util.h"
-#include "tensorflow/compiler/xla/stream_executor/platform.h"
-#include "tensorflow/compiler/xla/xla_data.pb.h"
+#include "xla/client/client_library.h"
+#include "xla/client/local_client.h"
+#include "xla/client/xla_computation.h"
+#include "xla/cpu_function_runtime.h"
+#include "xla/service/cpu/buffer_info_util.h"
+#include "xla/service/cpu/cpu_executable.h"
+#include "xla/service/platform_util.h"
+#include "xla/shape_util.h"
+#include "xla/stream_executor/platform.h"
+#include "xla/xla_data.pb.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/errors.h"
@@ -43,7 +43,7 @@ namespace {
 constexpr char kHostPlatform[] = "Host";
 
 // Returns the index of the result in the temp buffers.
-StatusOr<size_t> ComputeResultIndex(
+absl::StatusOr<size_t> ComputeResultIndex(
     const xla::BufferAssignment& buffer_assignment) {
   TF_ASSIGN_OR_RETURN(const xla::BufferAllocation::Slice result_slice,
                       buffer_assignment.GetUniqueTopLevelOutputSlice());
@@ -90,7 +90,7 @@ bool RunXlaRuntime(const xla::cpu::CpuExecutable* cpu_executable,
 
 }  // namespace
 
-/*static*/ StatusOr<std::unique_ptr<XlaJitCompiledCpuFunction>>
+/*static*/ absl::StatusOr<std::unique_ptr<XlaJitCompiledCpuFunction>>
 XlaJitCompiledCpuFunction::Compile(
     const GraphDef& graph_def, const tf2xla::Config& config,
     const xla::ExecutableBuildOptions& build_options) {

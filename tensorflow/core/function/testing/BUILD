@@ -30,6 +30,10 @@ tf_python_pybind_extension(
     name = "test_pass_pybind",
     testonly = 1,
     srcs = ["test_pass_pybind.cc"],
+    enable_stub_generation = True,
+    pytype_srcs = [
+        "test_pass_pybind.pyi",
+    ],
     deps = [
         ":test_pass_cc",
         "@pybind11",

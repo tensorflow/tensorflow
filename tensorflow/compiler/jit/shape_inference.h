@@ -19,7 +19,7 @@ limitations under the License.
 #include <map>
 #include <vector>
 
-#include "tensorflow/compiler/xla/statusor.h"
+#include "xla/statusor.h"
 #include "tensorflow/core/common_runtime/optimization_registry.h"
 #include "tensorflow/core/common_runtime/shape_refiner.h"
 #include "tensorflow/core/lib/core/status.h"
@@ -46,8 +46,8 @@ Status InferShapes(Graph* graph, const std::map<int, InferredShape>& arg_shapes,
 
 // Merges two InferredShapes. Return an error if the two shapes cannot be
 // merged.
-StatusOr<InferredShape> MergeInferredShapes(const InferredShape& a,
-                                            const InferredShape& b);
+absl::StatusOr<InferredShape> MergeInferredShapes(const InferredShape& a,
+                                                  const InferredShape& b);
 
 }  // namespace tensorflow
 

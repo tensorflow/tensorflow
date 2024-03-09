@@ -27,7 +27,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/variable.pb.h"
 #include "tensorflow/core/protobuf/queue_runner.pb.h"
-#include "tensorflow/tsl/platform/cpu_info.h"
+#include "tsl/platform/cpu_info.h"
 
 namespace tensorflow {
 namespace grappler {

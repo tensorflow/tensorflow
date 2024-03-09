@@ -55,6 +55,9 @@ struct GraphExecutionOptions {
   // The number of virtual GPUs to create on a physical GPU.
   int tfrt_gpu_parallelism = 1;
 
+  // if not zero, override the reserved memory space for gpu system.
+  int gpu_system_memory_size_in_mb = 0;
+
   // Whether to use gpurt.compile_and_execute for GPU.
   // TODO(b/294895431): Remove the flag and default to the fused op.
   bool tfrt_use_fused_gpu_op = false;

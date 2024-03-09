@@ -14,9 +14,9 @@
 # ==============================================================================
 """tf.function tracing types.
 
-See `core.GenericFunction` and `core.ConcreteFunction`.
+See `core.PolymorphicFunction` and `core.ConcreteFunction`.
 
-`GenericFunction` assigns types to call arguments, forming a signature.
+`PolymorphicFunction` assigns types to call arguments, forming a signature.
 Function signatures are used to match arguments to `ConcreteFunction`s.
 For example, when a new `ConcreteFunction` is traced, it is assigned a
 the signature of the arguments it was traced with. Subsequent call arguments

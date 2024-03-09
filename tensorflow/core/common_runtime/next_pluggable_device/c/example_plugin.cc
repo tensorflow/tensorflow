@@ -18,7 +18,7 @@ limitations under the License.
 #include <string>
 
 #include "tensorflow/core/platform/logging.h"
-#include "tensorflow/tsl/platform/env.h"
+#include "tsl/platform/env.h"
 #include "tfrt/host_context/async_dispatch.h"  // from @tf_runtime
 #include "tfrt/host_context/async_value.h"  // from @tf_runtime
 #include "tfrt/host_context/async_value_ref.h"  // from @tf_runtime

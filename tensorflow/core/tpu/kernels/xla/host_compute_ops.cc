@@ -18,19 +18,19 @@ limitations under the License.
 #include <string>
 #include <vector>
 
-#include "absl/strings/str_cat.h"
+#include "tensorflow/compiler/tf2xla/mlir_xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/shape_util.h"
 #include "tensorflow/compiler/tf2xla/side_effect_util.h"
 #include "tensorflow/compiler/tf2xla/xla_context.h"
+#include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
-#include "tensorflow/compiler/xla/client/sharding_builder.h"
-#include "tensorflow/compiler/xla/client/xla_builder.h"
-#include "tensorflow/compiler/xla/primitive_util.h"
-#include "tensorflow/compiler/xla/shape.h"
-#include "tensorflow/compiler/xla/shape_util.h"
-#include "tensorflow/compiler/xla/side_effect_util.h"
-#include "tensorflow/compiler/xla/xla_data.pb.h"
+#include "xla/client/sharding_builder.h"
+#include "xla/client/xla_builder.h"
+#include "xla/shape.h"
+#include "xla/shape_util.h"
+#include "xla/side_effect_util.h"
+#include "xla/xla_data.pb.h"
 #include "tensorflow/core/common_runtime/function_def_utils.h"
 #include "tensorflow/core/common_runtime/function_utils.h"
 #include "tensorflow/core/common_runtime/graph_constructor.h"
@@ -54,9 +54,8 @@ limitations under the License.
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/types.h"
-#include "tensorflow/tsl/platform/errors.h"
-#include "tensorflow/tsl/platform/logging.h"  // IWYU pragma: keep
-#include "tensorflow/tsl/platform/macros.h"
+#include "tsl/platform/errors.h"
+#include "tsl/platform/logging.h"  // IWYU pragma: keep
 
 namespace tensorflow {
 
@@ -85,7 +84,7 @@ Status MakeXlaShapes(gtl::ArraySlice<TensorShape> shapes,
   // Remove the dummy output from the vector that will be used to copy real
   // outputs from host to device.
   xla_shapes->pop_back();
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // This TensorFlow pseudo-op is used to record host-side computation.
@@ -180,7 +179,7 @@ class HostComputeOp : public XlaOpKernel {
     // Send values to the host.
     std::vector<xla::XlaOp> send_to_host_tokens;
     for (int i = 0; i < input_handles.size(); ++i) {
-      const string channel_name = absl::StrCat(send_key_, "_dtoh_", i);
+      const string channel_name = GetDeviceToHostChannelName(send_key_, i);
       xla::Shape xla_shape;
       OP_REQUIRES_OK(ctx, TensorShapeToXLAShape(input_dtypes_[i],
                                                 input_shapes[i], &xla_shape));
@@ -242,7 +241,7 @@ class HostComputeOp : public XlaOpKernel {
     // Copy results to the device.
     std::vector<xla::XlaOp> recv_from_host_tokens;
     for (int i = 0; i < output_shapes->size(); ++i) {
-      const string channel_name = absl::StrCat(recv_key_, "_htod_", i);
+      const string channel_name = GetHostToDeviceChannelName(recv_key_, i);
       // Specify frontend attributes.
       xla::FrontendAttributes attrs;
       (*attrs.mutable_map())[xla::kXlaHostTransferRendezvousNameAttr] =
@@ -311,7 +310,7 @@ class HostComputeOp : public XlaOpKernel {
       }
     } while (modified);
 
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   Status InferOutputShapes(XlaOpKernelContext* ctx,
@@ -389,7 +388,7 @@ class HostComputeOp : public XlaOpKernel {
           TensorShapeProto shape_proto;
           shape_ctx->ShapeHandleToProto(handle, &shape_proto);
           (*output_shapes)[i] = TensorShape(shape_proto);
-          VLOG(2) << "Inferred shape " << shape_proto.DebugString();
+          VLOG(2) << "Inferred shape " << shape_proto;
         }
       }
     }
@@ -398,7 +397,7 @@ class HostComputeOp : public XlaOpKernel {
           "Shape inference for HostCompute ", ctx->op_kernel().name(),
           " failed: inference graph has no send from host node");
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   DataTypeVector input_dtypes_;
@@ -419,7 +418,8 @@ class HostComputeOp : public XlaOpKernel {
   int64_t tpu_core_;
   std::vector<string> token_input_nodes_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(HostComputeOp);
+  HostComputeOp(const HostComputeOp&) = delete;
+  void operator=(const HostComputeOp&) = delete;
 };
 
 class SendToHostOp : public XlaOpKernel {
@@ -472,7 +472,8 @@ class SendToHostOp : public XlaOpKernel {
   string key_;
   std::vector<string> token_input_nodes_;
   string original_node_name_;
-  TF_DISALLOW_COPY_AND_ASSIGN(SendToHostOp);
+  SendToHostOp(const SendToHostOp&) = delete;
+  void operator=(const SendToHostOp&) = delete;
 };
 
 class RecvFromHostOp : public XlaOpKernel {
@@ -529,12 +530,14 @@ class RecvFromHostOp : public XlaOpKernel {
   string key_;
   std::vector<string> token_input_nodes_;
   string original_node_name_;
-  TF_DISALLOW_COPY_AND_ASSIGN(RecvFromHostOp);
+  RecvFromHostOp(const RecvFromHostOp&) = delete;
+  void operator=(const RecvFromHostOp&) = delete;
 };
 
 REGISTER_XLA_OP(Name("XlaHostCompute"), HostComputeOp);
 REGISTER_XLA_OP(Name("XlaSendToHost"), SendToHostOp);
 REGISTER_XLA_OP(Name("XlaRecvFromHost"), RecvFromHostOp);
+REGISTER_XLA_OP(Name("_XlaHostComputeMlir"), MlirXlaOpKernel);
 
 }  // anonymous namespace
 }  // namespace tensorflow

@@ -367,6 +367,17 @@ from tf.python.framework.tensor import Tensor # line: 1
         module_prefix='',
     )
 
+    paths_expected = [
+        root_file_name if root_file_name else '__init__.py',
+        'experimental/__init__.py',
+        'experimental/numpy/__init__.py',
+    ]
+    paths_expected = set(
+        [
+            os.path.normpath(os.path.join(output_dir, path))
+            for path in paths_expected
+        ]
+    )
     if root_file_name is None:
       generator._gen_init_files(
           output_dir,
@@ -379,6 +390,7 @@ from tf.python.framework.tensor import Tensor # line: 1
           file_prefixes_to_strip,
           False,
           '',
+          paths_expected,
       )
     else:
       generator._gen_init_files(
@@ -392,6 +404,7 @@ from tf.python.framework.tensor import Tensor # line: 1
           file_prefixes_to_strip,
           False,
           '',
+          paths_expected,
           root_file_name=root_file_name,
       )
     expected_init_path = os.path.join(
@@ -429,6 +442,38 @@ import sys as _sys
 
 from tf.python.framework.tensor import Tensor as ndarray # line: 1
 """,
+      )
+
+  def testRaisesOnNotExpectedFile(self):
+    output_dir = self.create_tempdir()
+    mapping_dir = self.create_tempdir()
+    write_test_data(mapping_dir.full_path)
+
+    file_prefixes_to_strip = [mapping_dir.full_path]
+
+    public_api = generator.get_public_api(
+        [os.path.normpath(os.path.join(mapping_dir, f)) for f in test_data],
+        file_prefixes_to_strip=file_prefixes_to_strip,
+        packages_to_ignore=['tf.python.framework.test_ops'],
+        output_package='tf',
+        module_prefix='',
+    )
+
+    with self.assertRaisesRegex(
+        AssertionError, 'Exported api attempted to write to'
+    ):
+      generator._gen_init_files(
+          output_dir,
+          'tf',
+          2,
+          public_api.v2_entrypoints_by_module,
+          public_api.v2_generated_imports_by_module,
+          public_api.docs_by_module,
+          '',
+          file_prefixes_to_strip,
+          False,
+          '',
+          [],
       )
 
 

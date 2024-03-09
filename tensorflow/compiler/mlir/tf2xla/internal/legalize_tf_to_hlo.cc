@@ -16,35 +16,29 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tf2xla/internal/legalize_tf_to_hlo.h"
 
 #include <memory>
+#include <string>
 #include <vector>
 
+#include "absl/log/log.h"
 #include "llvm/ADT/StringRef.h"
 #include "mlir/Pass/Pass.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/tf2xla/api/v0/compile_tf_graph.h"
+#include "tensorflow/compiler/mlir/tf2xla/api/v1/compile_tf_graph.h"
 #include "tensorflow/compiler/mlir/tf2xla/internal/compilation_timer.h"
 #include "tensorflow/compiler/mlir/tf2xla/internal/legalize_tf_mlir.h"
 #include "tensorflow/compiler/tf2xla/layout_util.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
-#include "tensorflow/compiler/xla/client/compile_only_client.h"
-#include "tensorflow/compiler/xla/shape.h"
+#include "xla/client/compile_only_client.h"
+#include "xla/shape.h"
 #include "tensorflow/core/framework/metrics.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/protobuf/tpu/compile_metadata.pb.h"
 #include "tensorflow/core/tpu/kernels/tpu_compile_op_support.h"
-#include "tensorflow/tsl/lib/monitoring/sampler.h"
-#include "tensorflow/tsl/platform/statusor.h"
+#include "tsl/platform/statusor.h"
 
 namespace tensorflow {
 namespace tf2xla {
 namespace internal {
-auto* phase2_combined_bridge_compilation_time =
-    tsl::monitoring::Sampler<1>::New(
-        {"/tensorflow/core/tf2xla/api/v1/phase2_combined_compilation_time",
-         "The wall-clock time spent on combined graphs in milliseconds.",
-         "configuration"},
-        // Power of 1.5 with bucket count 45 (> 23 hours)
-        {tsl::monitoring::Buckets::Exponential(1, 1.5, 45)});
 
 using metrics::IncrementTfMlirBridgeSecondPhaseCounter;
 using metrics::MlirBridgeSecondPhaseMetric;
@@ -60,14 +54,15 @@ tsl::StatusOr<XlaCompilationResult> LegalizeTfToHlo(
     std::vector<std::vector<xla::Shape>>* per_core_arg_shapes,
     std::vector<std::unique_ptr<mlir::Pass>>& custom_legalization_passes,
     xla::CompileOnlyClient* client, XlaCompilationResult* compilation_result) {
-  CompilationTimer timer;
-  constexpr char kCombinedBridgeTimer[] = "combined_bridge";
+  LOG_FIRST_N(INFO, 1) << "Compiling MLIR computation to XLA HLO using the "
+                          "Combined MLIR Tf2Xla Bridge.";
 
-  auto mlir_compilation = internal::CompileFromMlirToXlaHlo(
-      /*lower_to_xla_hlo=*/false, computation, metadata, device_type,
-      shape_determination_fns, use_tuple_args, compilation_result,
-      custom_legalization_passes, arg_shapes, arg_core_mapping,
-      per_core_arg_shapes);
+  tsl::StatusOr<std::string> mlir_compilation
+      = internal::CompileFromMlirToXlaHlo(
+          /*lower_to_xla_hlo=*/false, computation, metadata, device_type,
+          shape_determination_fns, use_tuple_args, compilation_result,
+          custom_legalization_passes, arg_shapes, arg_core_mapping,
+          per_core_arg_shapes);
 
   if (!mlir_compilation.ok()) {
     IncrementTfMlirBridgeSecondPhaseCounter(
@@ -78,7 +73,7 @@ tsl::StatusOr<XlaCompilationResult> LegalizeTfToHlo(
   IncrementTfMlirBridgeSecondPhaseCounter(
       MlirBridgeSecondPhaseMetric::kMlirCombinedMlirSuccess);
 
-  Status old_bridge_status = v0::CompileTensorflowGraphToHlo(
+  Status old_bridge_status = v1::CompileTensorflowGraphToHlo(
       MlirToHloArgs{mlir_compilation.value()}, metadata, use_tuple_args,
       shape_determination_fns, arg_shapes, arg_core_mapping,
       per_core_arg_shapes, client, compilation_result);
@@ -91,8 +86,6 @@ tsl::StatusOr<XlaCompilationResult> LegalizeTfToHlo(
   IncrementTfMlirBridgeSecondPhaseCounter(
       MlirBridgeSecondPhaseMetric::kMlirCombinedOldSuccess);
 
-  phase2_combined_bridge_compilation_time->GetCell(kCombinedBridgeTimer)
-      ->Add(timer.ElapsedCyclesInMilliseconds());
   return *compilation_result;
 }
 

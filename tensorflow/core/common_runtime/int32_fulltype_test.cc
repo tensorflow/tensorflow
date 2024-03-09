@@ -30,7 +30,7 @@ limitations under the License.
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/protobuf/config.pb.h"
 #include "tensorflow/core/protobuf/rewriter_config.pb.h"
-#include "tensorflow/tsl/lib/core/status_test_util.h"
+#include "tsl/lib/core/status_test_util.h"
 
 namespace tensorflow {
 
@@ -69,7 +69,7 @@ class Int32FulltypeTest : public ::testing::Test {
   Status BuildGraph(const GraphDefBuilder& builder, Graph* out_graph) {
     TF_RETURN_IF_ERROR(GraphDefBuilderToGraph(builder, out_graph));
     RebuildNodeNameMap(*out_graph);
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   void AddTensorFT(FullTypeDef& t, tensorflow::FullTypeId out_t_id,

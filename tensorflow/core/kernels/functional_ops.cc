@@ -16,10 +16,10 @@ limitations under the License.
 #include <utility>
 
 #include "tensorflow/core/framework/types.h"
-#include "tensorflow/tsl/platform/refcount.h"
+#include "tsl/platform/refcount.h"
 #define EIGEN_USE_THREADS
 
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/framework/device_base.h"
 #include "tensorflow/core/framework/function.h"
@@ -90,7 +90,7 @@ Status ToBool(gtl::ArraySlice<Tensor> t, bool* v) {
   } else {
     *v = t[0].NumElements() > 0;
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Sets "rets" to be the output of "ctx". Validates rets' types based
@@ -109,7 +109,7 @@ Status SetOutputs(const OpKernel* kernel, OpKernelContext* ctx,
     }
     ctx->set_output(i, rets[i]);
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 void SetRunOptions(OpKernelContext* ctx, FunctionLibraryRuntime::Options* opts,
@@ -263,7 +263,7 @@ class IfOp : public AsyncOpKernel {
                            tsl::core::WeakPtr<FunctionLibraryRuntime>(lib));
       }
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 };
 
@@ -349,7 +349,7 @@ class CaseOp : public AsyncOpKernel {
       }
     }
     branch_handles.assign(handles.begin(), handles.end());
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   class State {
@@ -556,7 +556,7 @@ class WhileOp : public AsyncOpKernel {
     Status GetArg(int index, const Tensor** val) override {
       if (index < args_->size()) {
         *val = &(*args_)[index];
-        return OkStatus();
+        return absl::OkStatus();
       } else {
         return errors::InvalidArgument("Argument ", index, " is out of range.");
       }
@@ -586,7 +586,7 @@ class WhileOp : public AsyncOpKernel {
                                        DataTypeString(val.dtype()), ".");
       }
       (*retvals_)[index] = val;
-      return OkStatus();
+      return absl::OkStatus();
     }
 
    private:
@@ -594,7 +594,8 @@ class WhileOp : public AsyncOpKernel {
     std::vector<Tensor>* const retvals_;  // Not owned.
     DataTypeSlice ret_types_;
 
-    TF_DISALLOW_COPY_AND_ASSIGN(BodyFuncCallFrame);
+    BodyFuncCallFrame(const BodyFuncCallFrame&) = delete;
+    void operator=(const BodyFuncCallFrame&) = delete;
   };
 
   class State {
@@ -664,7 +665,7 @@ class WhileOp : public AsyncOpKernel {
       }
 
       if (!cond) {
-        return Finish(OkStatus());
+        return Finish(absl::OkStatus());
       }
       rets_.clear();
       rets_.resize(args_.size());
@@ -789,7 +790,7 @@ class WhileOp : public AsyncOpKernel {
                            tsl::core::WeakPtr<FunctionLibraryRuntime>(lib));
       }
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 };
 // TODO(drpng): remove these.
@@ -824,7 +825,7 @@ Status GetScalar(OpKernelContext* ctx, int index, int32* value,
                                    t.shape().DebugString());
   }
   *value = t.scalar<int32>()();
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 class ForOp : public AsyncOpKernel {
@@ -894,7 +895,7 @@ class ForOp : public AsyncOpKernel {
             *body_handle, tsl::core::WeakPtr<FunctionLibraryRuntime>(lib));
       }
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   class State {
@@ -952,7 +953,7 @@ class ForOp : public AsyncOpKernel {
           (delta_ < 0 && *iter_ >= limit_) ||
           (delta_ == 0 && *iter_ == limit_)) {
         RunNext();
-        return OkStatus();
+        return absl::OkStatus();
       } else {
         return errors::InvalidArgument("Invalid start/limit/delta: ", *iter_,
                                        " ", limit_, " ", delta_);
@@ -967,7 +968,7 @@ class ForOp : public AsyncOpKernel {
         done_loop = *iter_ <= limit_;
       }
       if (done_loop) {
-        Finish(OkStatus());
+        Finish(absl::OkStatus());
         return;
       }
 

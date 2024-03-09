@@ -602,6 +602,7 @@ class Loader(object):
     """Rewrite func names in the debug info by using the concrete func names."""
     output_debug_info = graph_debug_info_pb2.GraphDebugInfo()
     output_debug_info.files[:] = debug_info.files
+    # TODO: b/292007261 - Read name_to_trace_id as well as traces
     for key in debug_info.traces:
       node, func = key.split("@")
       new_func = ""
@@ -679,14 +680,26 @@ class Loader(object):
       # to be able to load the "optimizer" object (OptimizerV2), which has
       # special logic around adding slot variables with `add_slot` in this file.
       try:
-        import keras.optimizers.legacy as _  # pylint: disable=g-import-not-at-top
+        import tf_keras  # pylint: disable=g-import-not-at-top,unused-import
+        try:
+          import tf_keras.optimizers.legacy as _  # pylint: disable=g-import-not-at-top
+        except ImportError:
+          try:
+            import tf_keras.optimizers.optimizer_v2 as _  # pylint: disable=g-import-not-at-top
+          except ImportError as e:
+            raise ImportError(
+                "Error when importing Keras. Unable to load SavedModel that "
+                "contains an optimizer without the Keras module.") from e
       except ImportError:
         try:
-          import keras.optimizers.optimizer_v2 as _  # pylint: disable=g-import-not-at-top
-        except ImportError as e:
-          raise ImportError(
-              "Error when importing Keras. Unable to load SavedModel that "
-              "contains an optimizer without the Keras module.") from e
+          import keras.optimizers.legacy as _  # pylint: disable=g-import-not-at-top
+        except ImportError:
+          try:
+            import keras.optimizers.optimizer_v2 as _  # pylint: disable=g-import-not-at-top
+          except ImportError as e:
+            raise ImportError(
+                "Error when importing Keras. Unable to load SavedModel that "
+                "contains an optimizer without the Keras module.") from e
     looked_up = revived_types.deserialize(proto)
     if looked_up is None:
       return self._recreate_base_user_object(proto, node_id)
@@ -848,9 +861,8 @@ def load(export_dir, tags=None, options=None):
 
   _Importing SavedModels from TensorFlow 1.x_
 
-  SavedModels from `tf.estimator.Estimator` or 1.x SavedModel APIs have a flat
-  graph instead of `tf.function` objects. These SavedModels will be loaded with
-  the following attributes:
+  1.x SavedModels APIs have a flat graph instead of `tf.function` objects.
+  These SavedModels will be loaded with the following attributes:
 
   * `.signatures`: A dictionary mapping signature names to functions.
   * `.prune(feeds, fetches) `: A method which allows you to extract
@@ -911,8 +923,7 @@ def load_partial(export_dir, filters, tags=None, options=None):
   `tf.saved_model.load(export_dir)` are equivalent.
 
   Note: This only works for SavedModels saved with TensorFlow V2 from
-  `tf.saved_model.save` or Keras. This will not load SavedModels save from
-  the Estimator API.
+  `tf.saved_model.save` or Keras.
 
   In Tensorflow V2, SavedModel stores the **object graph** of the saved object.
   The graph contains nodes (`tf.Module`, `tf.Variable`, `tf.function`, Keras
@@ -1053,8 +1064,8 @@ def load_partial(export_dir, filters, tags=None, options=None):
       root.function_aliases = loader.function_aliases
   else:
     if filters:
-      raise ValueError("SavedModels saved from Tensorflow 1.x or Estimator (any"
-                       " version) cannot be loaded with node filters.")
+      raise ValueError("SavedModels saved from Tensorflow 1.x) cannot be "
+                       "loaded with node filters.")
     with ops.init_scope():
       root = load_v1_in_v2.load(
           export_dir, tags, options.experimental_skip_checkpoint
@@ -1068,19 +1079,28 @@ def load_partial(export_dir, filters, tags=None, options=None):
   try:
     fingerprint = fingerprinting.read_fingerprint(export_dir)
   except FileNotFoundError:
+    metrics.SetFoundFingerprintOnLoad(found_status=metrics.kFingerprintNotFound)
     logging.info(
         "Fingerprint not found. Saved model loading will continue.")
     singleprint = ""
   except RuntimeError:
+    metrics.SetFoundFingerprintOnLoad(found_status=metrics.kFingerprintError)
     logging.exception(
-        "Fingerprint was found, but there was an error when reading the proto.")
+        "Fingerprint was found, but there was an error when reading the proto. "
+        "Saved model loading will continue.")
     singleprint = ""
   else:
+    metrics.SetFoundFingerprintOnLoad(found_status=metrics.kFingerprintFound)
     metrics.SetReadFingerprint(
         fingerprint=fingerprinting_utils.to_proto(
             fingerprint).SerializeToString())
     singleprint = fingerprint.singleprint()
-  metrics.SetReadPathAndSingleprint(path=export_dir, singleprint=singleprint)
+
+  try:
+    metrics.SetReadPathAndSingleprint(path=export_dir, singleprint=singleprint)
+  except metrics.MetricException:
+    logging.info("path_and_singleprint metric could not be logged. "
+                 "Saved model loading will continue.")
 
   if filters and loader is not None:
     return {node_id: loader.get(node_id) for node_id in filters}

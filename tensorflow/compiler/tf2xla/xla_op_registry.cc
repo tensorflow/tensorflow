@@ -23,7 +23,7 @@ limitations under the License.
 #include "tensorflow/compiler/jit/xla_cluster_util.h"
 #include "tensorflow/compiler/tf2xla/type_util.h"
 #include "tensorflow/compiler/tf2xla/xla_context.h"
-#include "tensorflow/compiler/xla/client/client_library.h"
+#include "xla/client/client_library.h"
 #include "tensorflow/core/common_runtime/device_factory.h"
 #include "tensorflow/core/common_runtime/local_device.h"
 #include "tensorflow/core/common_runtime/next_pluggable_device/next_pluggable_device_factory.h"
@@ -53,7 +53,7 @@ static Status LaunchOpHasKernelForDevice(const DeviceType& device_type) {
                                    &kernel_class_name));
   VLOG(1) << "LaunchOpHasKernelForDevice"
           << " kernel_class_name: " << kernel_class_name;
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 XlaOpRegistry::XlaOpRegistry() = default;
@@ -437,7 +437,7 @@ XlaOpRegistry::CompileTimeConstantInputArgNames(const string& op) {
     compile_time_constant_inputs =
         CompileTimeConstantInputArgNames(node_def.op());
     if (compile_time_constant_inputs->empty()) {
-      return OkStatus();
+      return absl::OkStatus();
     }
   }
 
@@ -470,7 +470,7 @@ XlaOpRegistry::CompileTimeConstantInputArgNames(const string& op) {
   }
 
   absl::c_sort(*result);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 /*static*/ bool XlaOpRegistry::IsMetadataOp(const string& op) {

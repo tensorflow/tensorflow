@@ -12,7 +12,6 @@ package_group(
         "//tensorflow_models/google/...",
         "//third_party/aimee/clara2_labs/...",
         "//third_party/py/jax_tpu_embedding/...",
-        "//third_party/py/keras/dtensor/...",
         "//third_party/py/tf_keras/dtensor/...",
     ],
 )

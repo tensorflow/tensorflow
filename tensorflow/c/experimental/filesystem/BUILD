@@ -42,7 +42,7 @@ cc_library(
         "//tensorflow/core/platform:env",
         "//tensorflow/core/platform:errors",
         "//tensorflow/core/platform:status",
-        "//tensorflow/tsl/platform:errors",
+        "@local_tsl//tsl/platform:errors",
     ],
 )
 

@@ -18,7 +18,7 @@ limitations under the License.
 
 #include <string.h>
 
-#include "tensorflow/tsl/platform/raw_coding.h"
+#include "tsl/platform/raw_coding.h"
 
 namespace tensorflow {
 namespace core {

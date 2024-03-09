@@ -45,7 +45,9 @@ class PluggableDeviceSimpleAllocator : public Allocator {
   }
 
  private:
-  TF_DISALLOW_COPY_AND_ASSIGN(PluggableDeviceSimpleAllocator);
+  PluggableDeviceSimpleAllocator(const PluggableDeviceSimpleAllocator&) =
+      delete;
+  void operator=(const PluggableDeviceSimpleAllocator&) = delete;
   std::unique_ptr<SubAllocator> sub_allocator_;
 };
 

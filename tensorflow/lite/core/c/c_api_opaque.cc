@@ -15,9 +15,10 @@ limitations under the License.
 
 #include "tensorflow/lite/core/c/c_api_opaque.h"
 
+#include <stdarg.h>
+#include <stdint.h>
+
 #include <cstdio>
-#include <iostream>
-#include <unordered_map>
 #include <vector>
 
 #include "tensorflow/lite/c/c_api_opaque_internal.h"
@@ -43,6 +44,13 @@ TfLiteTensor* Convert(TfLiteOpaqueTensor* opaque_tensor) {
   // TF Lite runtime implementation.  Apps using TF Lite should not rely on
   // TfLiteOpaqueTensor and TfLiteTensor being equivalent.
   return reinterpret_cast<TfLiteTensor*>(opaque_tensor);
+}
+
+TfLiteNode* Convert(TfLiteOpaqueNode* opaque_node) {
+  // The following cast is safe only because this code is part of the
+  // TF Lite runtime implementation.  Apps using TF Lite should not rely on
+  // TfLiteOpaqueNode and TfLiteNode being equivalent.
+  return reinterpret_cast<TfLiteNode*>(opaque_node);
 }
 
 const TfLiteNode* Convert(const TfLiteOpaqueNode* opaque_node) {
@@ -147,12 +155,38 @@ size_t TfLiteOpaqueTensorByteSize(const TfLiteOpaqueTensor* opaque_tensor) {
 }
 
 void* TfLiteOpaqueTensorData(const TfLiteOpaqueTensor* opaque_tensor) {
-  return TfLiteTensorData(reinterpret_cast<const TfLiteTensor*>(opaque_tensor));
+  return opaque_tensor != nullptr
+             ? TfLiteTensorData(
+                   reinterpret_cast<const TfLiteTensor*>(opaque_tensor))
+             : nullptr;
 }
 
 TfLiteAllocationType TfLiteOpaqueTensorGetAllocationType(
     const TfLiteOpaqueTensor* opaque_tensor) {
   return Convert(opaque_tensor)->allocation_type;
+}
+
+TfLiteAllocationStrategy TfLiteOpaqueTensorGetAllocationStrategy(
+    const TfLiteOpaqueTensor* t) {
+  return TfLiteTensorGetAllocationStrategy(Convert(t));
+}
+
+TfLiteRunStability TfLiteOpaqueTensorGetBufferAddressStability(
+    const TfLiteOpaqueTensor* t) {
+  return TfLiteTensorGetBufferAddressStability(Convert(t));
+}
+
+TfLiteRunStability TfLiteOpaqueTensorGetDataStability(
+    const TfLiteOpaqueTensor* t) {
+  return TfLiteTensorGetDataStability(Convert(t));
+}
+
+TfLiteRunStep TfLiteOpaqueTensorGetDataKnownStep(const TfLiteOpaqueTensor* t) {
+  return TfLiteTensorGetDataKnownStep(Convert(t));
+}
+
+TfLiteRunStep TfLiteOpaqueTensorGetShapeKnownStep(const TfLiteOpaqueTensor* t) {
+  return TfLiteTensorGetShapeKnownStep(Convert(t));
 }
 
 const char* TfLiteOpaqueTensorName(const TfLiteOpaqueTensor* opaque_tensor) {
@@ -254,6 +288,10 @@ TfLiteOpaqueTensorBuilder* TfLiteOpaqueTensorBuilderSetQuantization(
   return builder;
 }
 
+void TfLiteOpaqueTensorSetAllocationTypeToDynamic(TfLiteOpaqueTensor* tensor) {
+  tflite::SetTensorToDynamic(Convert(tensor));
+}
+
 const TfLiteOpaqueTensor* TfLiteOpaqueNodeGetInput(
     const TfLiteOpaqueContext* opaque_context,
     const TfLiteOpaqueNode* opaque_node, int index) {
@@ -317,6 +355,21 @@ TfLiteStatus TfLiteOpaqueNodeTemporaries(const TfLiteOpaqueNode* opaque_node,
   const TfLiteNode* node = Convert(opaque_node);
   *temporaries = node->temporaries->data;
   *num_temporaries = node->temporaries->size;
+  return kTfLiteOk;
+}
+
+TfLiteStatus TfLiteOpaqueNodeSetTemporaries(TfLiteOpaqueNode* opaque_node,
+                                            const int* temporaries,
+                                            int num_temporaries) {
+  if (num_temporaries < 0) {
+    return kTfLiteError;
+  }
+  TfLiteNode* node = Convert(opaque_node);
+  TfLiteIntArrayFree(node->temporaries);
+  node->temporaries = TfLiteIntArrayCreate(num_temporaries);
+  for (int i = 0; i < num_temporaries; ++i) {
+    node->temporaries->data[i] = temporaries[i];
+  }
   return kTfLiteOk;
 }
 
@@ -605,4 +658,40 @@ void TfLiteOpaqueContextReportErrorVa(
   auto* context = reinterpret_cast<TfLiteContext*>(opaque_context);
   TF_LITE_KERNEL_LOG(context, "%s", buffer);
   delete[] buffer;
+}
+
+#ifndef TF_LITE_STATIC_MEMORY
+TfLiteOpaqueDelegate* TfLiteOpaqueDelegateCreate(
+    const TfLiteOpaqueDelegateBuilder* opaque_delegate_builder) {
+  if (!opaque_delegate_builder) return nullptr;
+
+  TfLiteDelegate* result = new TfLiteDelegate{};
+  result->opaque_delegate_builder = new TfLiteOpaqueDelegateBuilder{};
+  *(result->opaque_delegate_builder) = *opaque_delegate_builder;
+
+  return reinterpret_cast<TfLiteOpaqueDelegate*>(result);
+}
+
+void TfLiteOpaqueDelegateDelete(TfLiteOpaqueDelegate* opaque_delegate) {
+  if (!opaque_delegate) return;
+
+  const TfLiteDelegate* tflite_delegate =
+      reinterpret_cast<const TfLiteDelegate*>(opaque_delegate);
+  delete tflite_delegate->opaque_delegate_builder;
+  delete tflite_delegate;
+}
+#endif  // TF_LITE_STATIC_MEMORY
+
+void* TfLiteOpaqueDelegateGetData(const TfLiteOpaqueDelegate* delegate) {
+  if (!delegate) return nullptr;
+
+  // The following cast is safe only because this code is part of the
+  // TF Lite runtime implementation.  Apps using TF Lite should not rely on
+  // 'TfLiteOpaqueDelegate' and 'TfLiteDelegate' being equivalent.
+  const auto* tflite_delegate =
+      reinterpret_cast<const TfLiteDelegate*>(delegate);
+
+  if (!tflite_delegate->opaque_delegate_builder) return tflite_delegate->data_;
+
+  return tflite_delegate->opaque_delegate_builder->data;
 }

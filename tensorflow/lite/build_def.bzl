@@ -1,12 +1,13 @@
 """Build macros for TF Lite."""
 
+load("//tensorflow:strict.default.bzl", "py_strict_test")
 load("//tensorflow:tensorflow.bzl", "clean_dep", "if_oss", "tf_binary_additional_srcs", "tf_cc_shared_object")
 load("//tensorflow/lite:special_rules.bzl", "tflite_copts_extra")
 load("//tensorflow/lite/java:aar_with_jni.bzl", "aar_with_jni")
 load("@build_bazel_rules_android//android:rules.bzl", "android_library")
 load("@bazel_skylib//rules:build_test.bzl", "build_test")
-load("//tensorflow:strict.default.bzl", "py_strict_test")
 
+# buildifier: disable=out-of-order-load
 def register_extension_info(**kwargs):
     pass
 
@@ -170,6 +171,7 @@ def tflite_linkopts_no_undefined():
             # that will be defined in the main executable) are normal and
             # expected in those cases.
             "//tools/cpp:asan_build": [],
+            "//tools/cpp:hwasan_build": [],
             "//tools/cpp:msan_build": [],
             "//tools/cpp:tsan_build": [],
             "//tensorflow:ios": [
@@ -688,15 +690,21 @@ def tflite_custom_c_library(
             "//tensorflow/lite/c:c_api_experimental.h",
             "//tensorflow/lite/c:c_api_opaque.h",
         ]
-        experimental_deps = [
+        deps = [
             "//tensorflow/lite/c:c_api_experimental_without_op_resolver_without_alwayslink",
             "//tensorflow/lite/core/c:private_c_api_experimental_without_op_resolver_without_alwayslink",
+            "//tensorflow/lite/c:c_api_opaque_without_op_resolver_without_alwayslink",
+            "//tensorflow/lite/core/c:private_c_api_opaque_without_op_resolver_without_alwayslink",
         ]
     else:
         hdrs = [
             "//tensorflow/lite/c:c_api.h",
+            "//tensorflow/lite/c:c_api_opaque.h",
         ]
-        experimental_deps = []
+        deps = [
+            "//tensorflow/lite/c:c_api_opaque_without_op_resolver_without_alwayslink",
+            "//tensorflow/lite/core/c:private_c_api_opaque_without_op_resolver_without_alwayslink",
+        ]
     native.cc_library(
         name = name,
         hdrs = hdrs,
@@ -710,7 +718,7 @@ def tflite_custom_c_library(
             "//tensorflow/lite/core/c:private_c_api_without_op_resolver_without_alwayslink",
             "//tensorflow/lite/core/c:private_common",
             "//tensorflow/lite/delegates/nnapi:nnapi_delegate",
-        ] + experimental_deps,
+        ] + deps,
         **kwargs
     )
 

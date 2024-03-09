@@ -25,6 +25,7 @@ from tensorflow.python.framework import composite_tensor
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import override_binary_operator
 from tensorflow.python.framework import tensor
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_spec
@@ -32,10 +33,10 @@ from tensorflow.python.framework import tensor_util
 from tensorflow.python.framework import type_spec
 from tensorflow.python.framework import type_spec_registry
 from tensorflow.python.ops import array_ops_stack
+from tensorflow.python.ops import gen_math_ops
 from tensorflow.python.ops import gen_sparse_ops
 from tensorflow.python.saved_model import nested_structure_coder
 from tensorflow.python.types import internal
-from tensorflow.python.util import _pywrap_utils
 from tensorflow.python.util.tf_export import tf_export
 
 # pylint: disable=protected-access
@@ -371,7 +372,6 @@ class SparseTensor(internal.NativeObject, composite_tensor.CompositeTensor):
 SparseTensorValue = collections.namedtuple("SparseTensorValue",
                                            ["indices", "values", "dense_shape"])
 tf_export(v1=["SparseTensorValue"])(SparseTensorValue)
-_pywrap_utils.RegisterType("SparseTensorValue", SparseTensorValue)
 
 
 @tf_export("SparseTensorSpec")
@@ -574,3 +574,68 @@ def is_sparse(x):
     `tf.compat.v1.SparseTensorValue`.
   """
   return isinstance(x, (SparseTensor, SparseTensorValue))
+
+
+# Conversion table for __truediv__.  None entries mean no conversion required.
+_TRUEDIV_TABLE = {
+    dtypes.uint8: dtypes.float32,
+    dtypes.int8: dtypes.float32,
+    dtypes.uint16: dtypes.float32,
+    dtypes.int16: dtypes.float32,
+    dtypes.uint32: dtypes.float64,
+    dtypes.int32: dtypes.float64,
+    dtypes.uint64: dtypes.float64,
+    dtypes.int64: dtypes.float64,
+    dtypes.bfloat16: None,
+    dtypes.float16: None,
+    dtypes.float32: None,
+    dtypes.float64: None,
+    dtypes.complex64: None,
+    dtypes.complex128: None,
+}
+
+
+# NOTE: the support of "sparse (true)div dense" is currently not baked in into
+# "tf.(true_)div()".  Until such an API decision is made, the supported usage is
+# to explicitly use the "/" operator to invoke either truediv or div.
+def _sparse_dense_truediv(sp_indices, sp_values, sp_shape, y, name=None):
+  """Internal helper function for 'sp_t / dense_t'."""
+  with ops.name_scope(
+      name, "truediv", [sp_indices, sp_values, sp_shape, y]
+  ) as name:
+    sp_values = ops.convert_to_tensor(sp_values, name="sp_values")
+    y = ops.convert_to_tensor(y, name="y")
+    x_dtype = sp_values.dtype.base_dtype
+    y_dtype = y.dtype.base_dtype
+    if x_dtype != y_dtype:
+      raise TypeError(
+          "`x` and `y` must have the same dtype, "
+          f"got {x_dtype!r} != {y_dtype!r}."
+      )
+    try:
+      dtype = _TRUEDIV_TABLE[x_dtype]
+    except KeyError as exc:
+      raise TypeError(
+          f"Invalid dtype {x_dtype!r} in __truediv__. Expected one "
+          f"of {{{', '.join([repr(x) for x in _TRUEDIV_TABLE.keys()])}}}."
+      ) from exc
+    if dtype is not None:
+      sp_values = gen_math_ops.cast(sp_values, dtype)
+      y = gen_math_ops.cast(y, dtype)
+    return gen_sparse_ops.sparse_dense_cwise_div(
+        sp_indices, sp_values, sp_shape, y, name=name
+    )
+
+
+# NOTE(aselle): When integer division is added for sparse_dense_cwise,
+# div, truediv, and floordiv should be delegated appropriately for
+# Python semantics, analogous to dense cwise tensor operations.
+override_binary_operator.override_binary_operator_helper(
+    gen_sparse_ops.sparse_dense_cwise_div, "div", SparseTensor
+)  # pylint: disable=protected-access
+override_binary_operator.override_binary_operator_helper(
+    _sparse_dense_truediv, "truediv", SparseTensor
+)  # pylint: disable=protected-access
+override_binary_operator.override_binary_operator_helper(
+    gen_sparse_ops.sparse_dense_cwise_mul, "mul", SparseTensor
+)  # pylint: disable=protected-access

@@ -34,7 +34,7 @@ limitations under the License.
 #include "tensorflow/core/lib/io/zlib_outputbuffer.h"
 #include "tensorflow/core/platform/regexp.h"
 #include "tensorflow/core/profiler/internal/tfprof_constants.h"
-#include "tensorflow/tsl/profiler/protobuf/profile.pb.h"
+#include "tsl/profiler/protobuf/profile.pb.h"
 
 namespace tensorflow {
 namespace tfprof {

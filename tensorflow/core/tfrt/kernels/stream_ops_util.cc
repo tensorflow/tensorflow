@@ -42,9 +42,9 @@ UnbatchStreamResults(const tensorflow::Tensor& step_ids,
     // Use the "batched" step ids to unbatch examples before streaming them back
     // to the controller.
 
-    if (step_ids.dtype() != tensorflow::DT_INT32 || step_ids.dims() != 1) {
+    if (step_ids.dtype() != tensorflow::DT_INT64 || step_ids.dims() != 1) {
       return absl::InvalidArgumentError(absl::StrCat(
-          "Expected a 1-D int32 tensor for batched step ids but got dtype=",
+          "Expected a 1-D int64 tensor for batched step ids but got dtype=",
           tensorflow::DataTypeString(step_ids.dtype()),
           " shape=", step_ids.shape().DebugString()));
     }
@@ -71,8 +71,9 @@ UnbatchStreamResults(const tensorflow::Tensor& step_ids,
     std::vector<int> sizes;
     absl::flat_hash_set<int64_t> unique_step_ids;
     for (int i = 0; i < step_ids.NumElements(); ++i) {
-      const int64_t request_id = step_ids.flat<int32_t>()(i);
-      const int64_t step_id = request_id >> (32 - kStepIdBitSize);
+      const int64_t request_id = step_ids.flat<int64_t>()(i);
+      const int64_t step_id =
+          static_cast<uint64_t>(request_id) >> (64 - kStepIdBitSize);
 
       VLOG(1) << "PwStreamResults op is unbatching request_id=" << request_id
               << ", step_id=" << step_id;
@@ -84,7 +85,7 @@ UnbatchStreamResults(const tensorflow::Tensor& step_ids,
                          "was called from an unsupported nested context"));
       }
 
-      if (i != 0 && request_id == step_ids.flat<int32_t>()(0)) {
+      if (i != 0 && request_id == step_ids.flat<int64_t>()(0)) {
         // Since each request id is unique and tf.batch_function uses the first
         // example in the batch as padding, a recurring request id that is the
         // same as the first example's request id indicates padding.
@@ -119,7 +120,7 @@ UnbatchStreamResults(const tensorflow::Tensor& step_ids,
       offset = limit;
     }
   } else {
-    const int32_t step_id = step_ids.flat<int32_t>()(0);
+    const int64_t step_id = step_ids.flat<int64_t>()(0);
 
     // The current implementation always uses a positive step id (see
     // `TfContextExecutable`), so we check that property to provide a better

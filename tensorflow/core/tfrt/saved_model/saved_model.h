@@ -38,7 +38,7 @@ limitations under the License.
 #include "tensorflow/core/tfrt/graph_executor/graph_executor.h"
 #include "tensorflow/core/tfrt/runtime/runtime.h"
 #include "tensorflow/core/tfrt/saved_model/saved_model_util.h"
-#include "tensorflow/tsl/platform/protobuf.h"
+#include "tsl/platform/protobuf.h"
 #include "tfrt/host_context/function.h"  // from @tf_runtime
 #include "tfrt/host_context/request_deadline_tracker.h"  // from @tf_runtime
 #include "tfrt/host_context/resource_context.h"  // from @tf_runtime
@@ -107,6 +107,9 @@ class SavedModel {
     // TODO(b/216379787): Remove this option once b/279197040 is unblocked.
     bool lazy_loading_use_graph_executor = false;
 
+    // True if and only if SavedModel is being loaded to generate AOT results.
+    bool aot_generation = false;
+
     GraphExecutionOptions graph_execution_options;
   };
 
@@ -116,7 +119,10 @@ class SavedModel {
   explicit SavedModel(const Runtime* runtime) : options_(runtime) {
     DCHECK(runtime);
   }
-  explicit SavedModel(Options&& options) : options_(std::move(options)) {}
+  explicit SavedModel(Options options,
+                      std::unique_ptr<GraphExecutor> graph_executor)
+      : options_(std::move(options)),
+        graph_executor_(std::move(graph_executor)) {}
   virtual ~SavedModel();
 
   const SessionMetadata& model_metadata() const {
@@ -128,6 +134,8 @@ class SavedModel {
     return *options_.graph_execution_options.runtime;
   }
   tfrt::HostContext* GetHostContext() const;
+
+  GraphExecutor& graph_executor() const { return *graph_executor_; }
 
   // Returns meta graph def. Note that the graph_def field in the MetaGraphDef
   // has already been removed.
@@ -176,7 +184,13 @@ class SavedModel {
       std::vector<tensorflow::Tensor>* outputs) = 0;
 
  protected:
+  const FallbackState& fallback_state() const {
+    return graph_executor_->fallback_state();
+  }
+  FallbackState& fallback_state() { return graph_executor_->fallback_state(); }
+
   const Options options_;
+  std::unique_ptr<GraphExecutor> graph_executor_;
 };
 
 using SignatureMap = absl::flat_hash_map<std::string, internal::Signature>;
@@ -210,7 +224,6 @@ class SavedModelImpl final : public SavedModel {
       tfrt::RCReference<tfrt::BEFFile> bef_file, mlrt::bc::Buffer bytecode,
       std::optional<mlrt::LoadedExecutable> loaded_executable,
       absl::flat_hash_map<std::string, internal::Signature> signatures,
-      std::unique_ptr<FallbackState> fallback_state,
       std::unique_ptr<OpKernelRunnerTable> runner_table,
       std::unique_ptr<tfd::FallbackResourceArray> resource_array,
       std::unique_ptr<GraphExecutor> graph_executor);
@@ -259,6 +272,13 @@ class SavedModelImpl final : public SavedModel {
 
     std::unique_ptr<OpKernelRunnerTable> runner_table;
     std::unique_ptr<tfd::FallbackResourceArray> resource_array;
+
+    // There are some resources that need re-creating when the executable is
+    // re-created, so a resource context is stored along with the executable.
+    // This resource context is meant to be passed to the op kernels for their
+    // references. See the comment above `GraphExecutor::resource_context_`
+    // about the todo to merge that resource context with this one.
+    std::unique_ptr<tfrt::ResourceContext> resource_context;
   };
 
   // Imports a subgraph as an MLIR module with the specified `input_nodes`,
@@ -298,7 +318,6 @@ class SavedModelImpl final : public SavedModel {
 
   tfrt::RequestDeadlineTracker req_deadline_tracker_;
   absl::flat_hash_map<std::string, internal::Signature> signatures_;
-  std::unique_ptr<FallbackState> fallback_state_;
   std::unique_ptr<OpKernelRunnerTable> runner_table_;
   std::unique_ptr<tfd::FallbackResourceArray> resource_array_;
   tensorflow::mutex loading_result_cache_mu_;
@@ -307,7 +326,6 @@ class SavedModelImpl final : public SavedModel {
   absl::flat_hash_map<std::string /*joined_name*/,
                       std::unique_ptr<LoadingResult>>
       loading_result_cache_ TF_GUARDED_BY(loading_result_cache_mu_);
-  std::unique_ptr<GraphExecutor> graph_executor_;
 };
 
 class SavedModelMiraImpl;

@@ -40,23 +40,24 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/tf2xla_util.h"
 #include "tensorflow/compiler/tf2xla/xla_compiler.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
-#include "tensorflow/compiler/xla/client/local_client.h"
-#include "tensorflow/compiler/xla/executable_run_options.h"
-#include "tensorflow/compiler/xla/hlo/ir/hlo_input_output_alias_config.h"
-#include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
-#include "tensorflow/compiler/xla/pjrt/tf_pjrt_client.h"
-#include "tensorflow/compiler/xla/service/executable.h"
-#include "tensorflow/compiler/xla/service/gpu/gpu_executable_run_options.h"
+#include "xla/client/local_client.h"
+#include "xla/executable_run_options.h"
+#include "xla/hlo/ir/hlo_input_output_alias_config.h"
+#include "xla/pjrt/pjrt_client.h"
+#include "xla/pjrt/tf_pjrt_client.h"
+#include "xla/service/executable.h"
+#include "xla/service/gpu/gpu_executable_run_options.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/op_requires.h"
 #include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/refcount.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/core/tfrt/common/pjrt_util.h"
-#include "tensorflow/tsl/platform/errors.h"
+#include "tsl/platform/errors.h"
 
 namespace tensorflow {
 namespace {
@@ -98,7 +99,7 @@ Status GetAndLockVariablesAndBuildXlaCompilerArguments(
                       XlaComputationLaunchContext::BuildXlaCompilerArguments(
                           constant_indices, inputs, *variables,
                           static_cast<Device*>(ctx.device())));
-  return OkStatus();
+  return absl::OkStatus();
 }
 }  // namespace
 
@@ -130,7 +131,7 @@ Status XlaCompileOnDemandOp::Run(const ResourceVarsSnapshot& variable_args,
 
   const xla::HloInputOutputAliasConfig& input_output_alias =
       executable->executable()->module().input_output_alias_config();
-  StatusOr<std::vector<xla::ExecutionInput>> execution_inputs =
+  absl::StatusOr<std::vector<xla::ExecutionInput>> execution_inputs =
       launch_context.PopulateInputs(ctx, result, snapshot_ptrs,
                                     /*missing_ctx_input_prefix=*/0,
                                     input_output_alias);
@@ -151,11 +152,11 @@ Status XlaCompileOnDemandOp::Run(const ResourceVarsSnapshot& variable_args,
   run_options.set_intra_op_thread_pool(&ctx->eigen_cpu_device());
   run_options.set_rng_seed(GetXLARandomSeed());
 
-  StatusOr<xla::ExecutionOutput> run_result =
+  absl::StatusOr<xla::ExecutionOutput> run_result =
       executable->Run(std::move(execution_inputs).value(), run_options);
   TF_RETURN_IF_ERROR(run_result.status());
   xla::ExecutionOutput execution_output = std::move(run_result).value();
-  StatusOr<std::vector<VariableInfo>> variable_infos =
+  absl::StatusOr<std::vector<VariableInfo>> variable_infos =
       GatherVariableInfo(ctx, *result, 0);
   TF_RETURN_IF_ERROR(variable_infos.status());
   TF_RETURN_IF_ERROR(LockVariables(absl::MakeSpan(*variable_infos)));
@@ -163,7 +164,7 @@ Status XlaCompileOnDemandOp::Run(const ResourceVarsSnapshot& variable_args,
       ctx, result, execution_output.ConsumeResult(),
       /*missing_ctx_input_prefix=*/0, absl::MakeSpan(*variable_infos),
       input_output_alias, snapshot_ptrs));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status XlaCompileOnDemandOp::Compile(
@@ -199,18 +200,22 @@ Status XlaCompileOnDemandOp::Compile(
   ResourceMgr* rm = ctx->resource_manager();
   CHECK(rm);
 
+  TF_ASSIGN_OR_RETURN(DeviceType compilation_device_type,
+                      GetCompilationDeviceType(platform_info_.device_type()));
+
   TF_RETURN_IF_ERROR(rm->LookupOrCreate<XlaDeviceCompiler>(
       rm->default_container(), "xla_device_compiler", xla_device_compiler,
       [&](XlaDeviceCompiler** xla_device_compiler) {
         return BuildXlaDeviceCompiler(ctx->device(), ctx->function_library(),
-                                      platform_info_, xla_device_compiler);
+                                      platform_info_, compilation_device_type,
+                                      xla_device_compiler);
       }));
 
   TF_RETURN_IF_ERROR(rm->LookupOrCreate<DeviceCompilationProfiler>(
       rm->default_container(), "device_compilation_profiler", profiler,
       [](DeviceCompilationProfiler** profiler) {
         *profiler = new DeviceCompilationProfiler();
-        return OkStatus();
+        return absl::OkStatus();
       }));
 
   XlaCompiler::Options options = GenerateCompilerOptions(

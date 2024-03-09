@@ -17,7 +17,6 @@
 import os
 
 from absl import app
-from keras.optimizers.legacy import adam
 
 from tensorflow.python.client import session as session_lib
 from tensorflow.python.compat import v2_compat
@@ -100,18 +99,6 @@ class StaticHashTableModule(module.Module):
     return self.table.lookup(word)
 
 
-class OptimizerSlotVariableModule(module.Module):
-  """A module with an optimizer with a slot variable."""
-
-  def __init__(self):
-    self.v = variables.Variable(5.0)
-    loss = lambda: 3 * self.v
-    self.opt = adam.Adam()  # Should be tf.keras.optimizers.legacy.Adam. The
-                            # new Keras optimizers do not have slot variables.
-
-    self.opt.minimize(loss, var_list=[self.v])
-
-
 def get_simple_session():
   ops.disable_eager_execution()
   sess = session_lib.Session()
@@ -126,7 +113,6 @@ MODULE_CTORS = {
     "AssetModule": (AssetModule, 2),
     "StaticHashTableModule": (StaticHashTableModule, 2),
     "SimpleV1Model": (get_simple_session, 1),
-    "OptimizerSlotVariableModule": (OptimizerSlotVariableModule, 2)
 }
 
 

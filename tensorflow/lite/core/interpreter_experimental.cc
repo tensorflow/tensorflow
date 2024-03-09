@@ -84,6 +84,12 @@ TfLiteStatus Interpreter::ModifyGraphWithDelegate(TfLiteDelegate* delegate) {
   return ModifyGraphWithDelegateImpl(delegate);
 }
 
+TfLiteStatus Interpreter::ModifyGraphWithDelegate(
+    TfLiteOpaqueDelegateStruct* delegate) {
+  return ModifyGraphWithDelegateImpl(
+      reinterpret_cast<TfLiteDelegate*>(delegate));
+}
+
 bool Interpreter::HasDelegates() { return primary_subgraph().HasDelegates(); }
 
 TfLiteStatus Interpreter::SetBufferHandle(int tensor_index,
@@ -150,31 +156,6 @@ Profiler* Interpreter::GetProfiler() {
 
 TfLiteStatus Interpreter::ApplyOptions(InterpreterOptions* options) {
   return ApplyOptionsImpl(options);
-}
-
-impl::SignatureRunner* Interpreter::GetSignatureRunner(
-    const char* signature_key) {
-  auto iter = signature_runner_map_.find(signature_key);
-  if (iter != signature_runner_map_.end()) {
-    return &(iter->second);
-  }
-
-  // Default delegates are applied once for all subgraphs. Only returns error
-  // when the status is kTfLiteError. For other statuses, it will fall back to
-  // the default implementation.
-  if (ApplyLazyDelegateProviders() == kTfLiteError) {
-    return nullptr;
-  }
-
-  for (const auto& signature : signature_defs_) {
-    if (signature.signature_key == signature_key) {
-      auto status = signature_runner_map_.insert(
-          {signature_key,
-           SignatureRunner(&signature, subgraph(signature.subgraph_index))});
-      return &(status.first->second);
-    }
-  }
-  return nullptr;
 }
 
 async::AsyncSignatureRunner* Interpreter::GetAsyncSignatureRunner(

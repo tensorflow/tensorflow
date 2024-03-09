@@ -17,6 +17,9 @@ name: Trusted Partner PR
 on:
   pull_request_target:
 
+permissions:
+  contents: read
+
 jobs:
   assign-partner-tags:
     runs-on: ubuntu-latest

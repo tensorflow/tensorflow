@@ -1,0 +1,26 @@
+// RUN: hlo-opt %s --platform=gpu --stage=llvm-before-optimizations --xla_gpu_target_config_filename=%S/../../../tools/hlo_opt/gpu_specs/%{GPU}.txtpb | FileCheck %s
+
+// CHECK: define void @fusion({{.*}}%[[ARG0:.*]], {{.*}}%[[ARG1:.*]],
+// CHECK:   %[[A:.*]] = load {{.*}} ptr %[[ARG0]]
+// CHECK:   %[[B:.*]] = load {{.*}} ptr %[[ARG1]]
+// CHECK:   or {{.*}} %[[A]], %[[B]]
+
+HloModule xla_computation_f.8, is_scheduled=true
+
+// Since the conversion to MLIR goes through completely different code paths
+// depending on whether an op is fused or not, this separately tests pred
+// "addition" in fused context.
+
+%fused_computation (param_0.1: pred[], param_1: pred[]) -> pred[] {
+  %param_0.1 = pred[] parameter(0)
+  %param_1 = pred[] parameter(1)
+  %add.1 = pred[] add(pred[] %param_0.1, pred[] %param_1)
+  ROOT %not.1 = pred[] not(pred[] %add.1)
+}
+
+ENTRY %xla_computation_f.8 (parameter.0: pred[], parameter.1: pred[]) -> (pred[]) {
+  %parameter.0 = pred[] parameter(0)
+  %parameter.1 = pred[] parameter(1)
+  %fusion = pred[] fusion(pred[] %parameter.0, pred[] %parameter.1), kind=kLoop, calls=%fused_computation
+  ROOT %tuple.7 = (pred[]) tuple(pred[] %fusion)
+}

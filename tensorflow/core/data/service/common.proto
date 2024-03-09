@@ -5,7 +5,7 @@ package tensorflow.data;
 import "tensorflow/core/framework/graph.proto";
 import "tensorflow/core/protobuf/data_service.proto";
 import "tensorflow/core/protobuf/snapshot.proto";
-import "tensorflow/tsl/protobuf/status.proto";
+import "tsl/protobuf/status.proto";
 
 // Next tag: 2
 message DatasetDef {

@@ -118,7 +118,7 @@ class AutoTrackable(base.Trackable):
     # (e.g. captured variables). Make sure we return those too.
     children = {}
     for name, child in self._checkpoint_dependencies:
-      if isinstance(child, (core_types.GenericFunction,
+      if isinstance(child, (core_types.PolymorphicFunction,
                             core_types.ConcreteFunction)):
         # Skip "tracked" functions for now since there may be objects that
         # automatically track functions that should not be saved.

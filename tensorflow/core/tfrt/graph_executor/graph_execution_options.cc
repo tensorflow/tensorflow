@@ -17,6 +17,7 @@ limitations under the License.
 #include <ostream>
 
 #include "absl/log/log.h"
+#include "absl/strings/str_cat.h"
 #include "tensorflow/compiler/mlir/tfrt/translate/tfrt_compile_options.h"
 #include "tensorflow/core/protobuf/rewriter_config.pb.h"
 // TODO(b/200579737): using FunctionRegistry is simpler than the OSS trick.
@@ -69,7 +70,12 @@ tensorflow::SessionOptions CreateDefaultSessionOptions(
         ->mutable_experimental()
         ->set_num_virtual_devices_per_gpu(options.tfrt_gpu_parallelism);
   }
-
+  if (options.gpu_system_memory_size_in_mb > 0) {
+    config.mutable_gpu_options()
+        ->mutable_experimental()
+        ->set_gpu_system_memory_size_in_mb(
+            options.gpu_system_memory_size_in_mb);
+  }
   return session_options;
 }
 
@@ -118,8 +124,12 @@ std::ostream& operator<<(std::ostream& os,
             << ", enable_grappler_function_optimizer = "
             << options.enable_grappler_function_optimizer
             << ", enable_tfrt_gpu = " << options.enable_tfrt_gpu
-            << ", runtime = " << options.runtime
-            << ", model_metadata = " << options.model_metadata.DebugString()
+            << ", runtime = "
+            << options.runtime
+            // clang-tidy off
+            << ", model_metadata = "
+            << options.model_metadata.DebugString()
+            // clang-tidy on
             << ", compile_options = " << options.compile_options << "}";
 }
 

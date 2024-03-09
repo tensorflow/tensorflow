@@ -9,7 +9,7 @@ import "tensorflow/core/protobuf/cluster.proto";
 import "tensorflow/core/protobuf/debug.proto";
 import "tensorflow/core/protobuf/rewriter_config.proto";
 import "tensorflow/core/protobuf/rpc_options.proto";
-import "tensorflow/tsl/protobuf/coordination_config.proto";
+import "tsl/protobuf/coordination_config.proto";
 
 option cc_enable_arenas = true;
 option java_outer_classname = "ConfigProtos";
@@ -258,6 +258,13 @@ message GPUOptions {
     // gpu_host_mem_limit_in_mb, because the default GPU host memory limit is
     // quite high.
     bool gpu_host_mem_disallow_growth = 14;
+
+    // Memory limit for gpu system. This can also be set by
+    // TF_DEVICE_MIN_SYS_MEMORY_IN_MB, which takes precedence over
+    // gpu_system_memory_size_in_mb. With this, user can configure the gpu
+    // system memory size for better resource estimation of multi-tenancy(one
+    // gpu with multiple model) use case.
+    int32 gpu_system_memory_size_in_mb = 16;
   }
 
   // Everything inside experimental is subject to change and is not subject
@@ -666,6 +673,25 @@ message ConfigProto {
     // Whether runtime execution uses TFRT.
     bool use_tfrt = 18;
 
+    // If true, use Pathways with TFRT API for multi host support.
+    bool enable_multi_host = 27;
+
+    // Port for the Pathways server. Ignored if enable_multi_host=false.
+    int32 backend_server_port = 28;
+
+    // If true, TFRT will use TPU specific compiler passes and perform TPU
+    // specific initialization.
+    bool target_tpu = 29;
+
+    // If true, TFRT will use GPU specific compiler passes and perform GPU
+    // specific initialization.
+    bool target_gpu = 30;
+
+    // The threshold to merge small streams in TFRT. The stream with cost
+    // smaller than the threshold will be merged. Setting it to value 1
+    // disables all merges.
+    int32 stream_merge_threshold = 31;
+
     // The field "coordination_service was previously specified as a string;
     // this has been replaced with a message below.
     reserved 19;
@@ -704,7 +730,7 @@ message ConfigProto {
 
     reserved 25;
 
-    // Next: 27
+    // Next: 32
   }
 
   Experimental experimental = 16;

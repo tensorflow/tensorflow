@@ -22,6 +22,7 @@ tf_python_pybind_extension(
         "//third_party/python_runtime:headers",
         "@com_google_absl//absl/strings",
         "@pybind11",
+        "@pybind11_protobuf//pybind11_protobuf:native_proto_caster",
     ],
 )
 

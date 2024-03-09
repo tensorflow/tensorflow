@@ -40,7 +40,7 @@ limitations under the License.
 #include "tensorflow/core/data/service/worker_client.h"
 #include "tensorflow/core/data/service/worker_impl.h"
 #include "tensorflow/core/data/utils.h"
-#include "tensorflow/core/distributed_runtime/rpc/grpc_util.h"
+#include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/metrics.h"
 #include "tensorflow/core/framework/model.h"
@@ -52,8 +52,9 @@ limitations under the License.
 #include "tensorflow/core/platform/thread_annotations.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/core/profiler/lib/traceme_encode.h"
-#include "tensorflow/tsl/platform/host_info.h"
-#include "tensorflow/tsl/protobuf/error_codes.pb.h"
+#include "tsl/platform/host_info.h"
+#include "tsl/platform/retrying_utils.h"
+#include "tsl/protobuf/error_codes.pb.h"
 
 namespace tensorflow {
 namespace data {
@@ -101,7 +102,8 @@ DataServiceClient::~DataServiceClient() {
           << iteration_client_id_;
 }
 
-Status DataServiceClient::Initialize() {
+Status DataServiceClient::Initialize(Allocator* allocator) {
+  allocator_ = allocator;
   TF_RETURN_IF_ERROR(ValidateDataServiceParams(params_));
   VLOG(3) << "Connecting to " << params_.address
           << " in tf.data service client.";
@@ -133,7 +135,7 @@ Status DataServiceClient::Initialize() {
                       params_.address),
       deadline_micros));
   initialized_ = true;
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 StatusOr<GetNextResult> DataServiceClient::GetNext(
@@ -332,7 +334,8 @@ DataServiceClient::CreateWorkerClient(const std::string& protocol,
                                       const TaskInfo& task_info) {
   TF_ASSIGN_OR_RETURN(DataTransferServerInfo transfer_server,
                       GetTransferServer(protocol, task_info));
-  return CreateDataServiceWorkerClient(params_.protocol, transfer_server);
+  return CreateDataServiceWorkerClient(params_.protocol, transfer_server,
+                                       allocator_);
 }
 
 StatusOr<std::unique_ptr<DataServiceWorkerClient>>
@@ -344,17 +347,18 @@ StatusOr<std::unique_ptr<DataServiceWorkerClient>>
 DataServiceClient::CreateAlternativeWorkerClientWithGrpcFallback(
     const DataTransferServerInfo& transfer_server, const TaskInfo& task_info) {
   StatusOr<std::unique_ptr<DataServiceWorkerClient>> worker =
-      CreateDataServiceWorkerClient(params_.protocol, transfer_server);
+      CreateDataServiceWorkerClient(params_.protocol, transfer_server,
+                                    allocator_);
   if (worker.ok()) {
     LOG(INFO) << "Successfully started client for data transfer protocol '"
               << transfer_server.protocol() << "' for worker '"
               << task_info.worker_address() << "'.";
     return worker;
   }
-  LOG(WARNING) << "Failed to start client for data transfer protocol '"
-               << transfer_server.protocol() << "' for worker '"
-               << task_info.worker_address() << "'; falling back to grpc. "
-               << "Original error: " << worker.status();
+  LOG(INFO) << "Failed to start client for data transfer protocol '"
+            << transfer_server.protocol() << "' for worker '"
+            << task_info.worker_address() << "'; falling back to grpc. "
+            << "Original error: " << worker.status();
   metrics::RecordTFDataServiceDataTransferProtocolFallback(
       transfer_server.protocol(),
       static_cast<error::Code>(worker.status().raw_code()),
@@ -371,7 +375,7 @@ DataServiceClient::CreateWorkerClient(const TaskInfo& task_info) {
     DataTransferServerInfo info;
     info.set_protocol(kLocalTransferProtocol);
     info.set_address(task_info.worker_address());
-    return CreateDataServiceWorkerClient(params_.protocol, info);
+    return CreateDataServiceWorkerClient(params_.protocol, info, allocator_);
   }
   if (!params_.data_transfer_protocol.empty()) {
     TF_ASSIGN_OR_RETURN(
@@ -388,11 +392,12 @@ DataServiceClient::CreateWorkerClient(const TaskInfo& task_info) {
       return CreateAlternativeWorkerClientWithGrpcFallback(*transfer_server,
                                                            task_info);
     }
-    LOG(INFO)
-        << "Failed to find transfer server for default data transfer protocol '"
-        << default_protocol << "' for worker '" << task_info.worker_address()
-        << "'; falling back to grpc. Original error: "
-        << transfer_server.status();
+    LOG(INFO) << "Failed to find transfer server for default data transfer "
+                 "protocol '"
+              << default_protocol << "' for worker '"
+              << task_info.worker_address()
+              << "'; falling back to grpc. Original error: "
+              << transfer_server.status();
     metrics::RecordTFDataServiceDataTransferProtocolFallback(
         default_protocol, error::Code::NOT_FOUND,
         "Failed to find transfer server for default protocol");
@@ -424,7 +429,7 @@ Status DataServiceClient::AddTask(const TaskInfo& task_info)
     std::mt19937 rng;
     std::shuffle(tasks_.begin(), tasks_.end(), rng);
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 void DataServiceClient::Heartbeat() TF_LOCKS_EXCLUDED(mu_) {
@@ -560,10 +565,14 @@ void DataServiceClient::UpdateBufferSize() TF_LOCKS_EXCLUDED(mu_) {
     // `tasks_` includes the local tasks, so we subtract one from the
     // configured local task buffer size.
     mutex_lock l(mu_);
-    int64_t max_outstanding_requests = tasks_.size();
+    int64_t max_outstanding_requests = ctx_->UpdateMaxOutstandingRequests(
+        max_outstanding_requests_, tasks_.size());
     if (max_outstanding_requests > max_outstanding_requests_) {
       worker_thread_cv_.notify_all();
     }
+    VLOG(3) << "Updated `max_outstanding_requests` from "
+            << max_outstanding_requests_ << " to " << max_outstanding_requests
+            << " with " << tasks_.size() << " tasks.";
     max_outstanding_requests_ = max_outstanding_requests;
   }
 }
@@ -803,10 +812,10 @@ Status DataServiceClient::MaybeRemoveTask(Task& task, int64_t deadline_micros,
     result.ready = true;
     result.skip = true;
     get_next_cv_.notify_all();
-    return OkStatus();
+    return absl::OkStatus();
   }
   VLOG(1) << "Failed to remove task for worker " << task.info.worker_address();
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status DataServiceClient::GetElement(Task* task, int64_t deadline_micros,
@@ -852,12 +861,13 @@ Status DataServiceClient::GetElement(Task* task, int64_t deadline_micros,
       TF_RETURN_IF_ERROR(MaybeRemoveTask(*task, deadline_micros, *result));
       mutex_lock l(mu_);
       if (result->skip) {
-        return OkStatus();
+        return absl::OkStatus();
       }
     }
-    int64_t backoff_until =
-        std::min(deadline_micros,
-                 now_micros + ComputeBackoffMicroseconds(task->num_retries++));
+    int64_t backoff_until = std::min(
+        deadline_micros,
+        now_micros + absl::ToInt64Microseconds(
+                         tsl::ComputeRetryBackoff(task->num_retries++)));
     VLOG(1) << "Failed to get an element from worker "
             << task->info.worker_address() << ": " << s << ". Will retry in "
             << (backoff_until - now_micros) << " microseconds";
@@ -868,11 +878,11 @@ Status DataServiceClient::GetElement(Task* task, int64_t deadline_micros,
       // task before returning to this one.
       result->ready = true;
       result->skip = true;
-      return OkStatus();
+      return absl::OkStatus();
     }
   }
   ProcessGetElementResponse(enqueue_result, get_element_result, result, *task);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 bool DataServiceClient::ResultReady() const TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {

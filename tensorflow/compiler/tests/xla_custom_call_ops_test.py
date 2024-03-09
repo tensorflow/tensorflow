@@ -18,6 +18,7 @@ from tensorflow.compiler.tests import xla_test
 from tensorflow.compiler.tf2xla.python import xla
 from tensorflow.python.eager import def_function
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.ops import random_ops
@@ -45,6 +46,22 @@ class XlaCustomCallOpTest(xla_test.XLATestCase):
       self.assertIn('s32[3,4,5]{2,1,0} custom-call(f32[1,2,3]{2,1,0}', hlo)
       self.assertIn('custom_call_target="my_call"', hlo)
       self.assertIn('backend_config="my_backend_config"', hlo)
+
+  def testXlaCustomCallOpDoesntExist(self):
+    with ops.device('device:{}:0'.format(self.device)):
+
+      def f():
+        return xla.custom_call(
+            args=(1, 2),
+            target_name='my_non_existing_call_target',
+            dtype=dtypes.int32,
+            shape=(),
+            backend_config='my_backend_config',
+        )
+
+      with self.assertRaises(errors_impl.InvalidArgumentError):
+        compiled_f = def_function.function(f, jit_compile=True)
+        compiled_f()
 
   def testXlaCustomCallV2Op(self):
     with ops.device('device:{}:0'.format(self.device)):

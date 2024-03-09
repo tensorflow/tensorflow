@@ -34,11 +34,13 @@ limitations under the License.
 #include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/quantization/stablehlo/utils/tf_type_utils.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
-#include "tensorflow/compiler/xla/mlir_hlo/mhlo/IR/hlo_ops.h"
+#include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 
-namespace mlir {
-namespace stablehlo {
+namespace mlir::quant::stablehlo {
 namespace {
+
+using quant::tensorflow::IsTFQintType;
+using quant::tensorflow::IsTFUniformQuantizedOp;
 
 #define GEN_PASS_DEF_VERIFYQUANTLEGALIZATION
 #include "tensorflow/compiler/mlir/quantization/stablehlo/passes/bridge/passes.h.inc"
@@ -55,7 +57,7 @@ bool IsQuantType(Type type) {
          IsTFQintType(element_type);
 }
 
-bool IsMhloUniformQuantizedOp(Operation* op) {
+bool IsMhloUniformQuantizedOp(Operation& op) {
   return llvm::isa<mhlo::UniformQuantizeOp, mhlo::UniformDequantizeOp>(op);
 }
 
@@ -66,7 +68,7 @@ void VerifyQuantLegalization::runOnOperation() {
     // Verify all uq and qint types are lowered.
     if (llvm::any_of(op->getOperandTypes(), IsQuantType) ||
         llvm::any_of(op->getResultTypes(), IsQuantType) ||
-        IsTFUniformQuantizedOp(op) || IsMhloUniformQuantizedOp(op)) {
+        IsTFUniformQuantizedOp(op) || IsMhloUniformQuantizedOp(*op)) {
       op->emitOpError("is illegal as it is a UQ op or contains uq/qint types");
       LOG(ERROR) << "Found illegal op containing uq/qint type: "
                  << op->getName().getStringRef().str();
@@ -87,5 +89,4 @@ CreateVerifyQuantLegalizationPass() {
   return std::make_unique<VerifyQuantLegalization>();
 }
 
-}  // namespace stablehlo
-}  // namespace mlir
+}  // namespace mlir::quant::stablehlo

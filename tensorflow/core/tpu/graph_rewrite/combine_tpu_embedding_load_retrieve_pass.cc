@@ -26,7 +26,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
-#include "tensorflow/compiler/xla/status_macros.h"
+#include "xla/status_macros.h"
 #include "tensorflow/core/common_runtime/optimization_registry.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/node_def_util.h"
@@ -43,8 +43,8 @@ limitations under the License.
 #include "tensorflow/core/tpu/graph_rewrite/tpu_embedding_rewrite_pass_utils.h"
 #include "tensorflow/core/tpu/ops/tpu_embedding_ops.h"
 #include "tensorflow/core/tpu/tpu_embedding_optimization_parameters_utils.h"
-#include "tensorflow/tsl/platform/errors.h"
-#include "tensorflow/tsl/platform/logging.h"  // IWYU pragma: keep
+#include "tsl/platform/errors.h"
+#include "tsl/platform/logging.h"  // IWYU pragma: keep
 
 namespace tensorflow {
 
@@ -104,7 +104,7 @@ Status GetTPUEmbeddingConfiguration(
   if (!have_config) {
     return errors::InvalidArgument("No TPU embedding config provided");
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Validates that all of the table names are distinct and non-empty.
@@ -127,7 +127,7 @@ Status ValidateEmbeddingTableNames(
                           table_name_map[name], table_id, name.c_str()));
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Gets single-table load-TPUEmbedding-parameter nodes in the graph.
@@ -265,7 +265,7 @@ Status GetLoadOrRetrieveNodesByTable(
           tpu_embedding_config.table_descriptor(table_id).name(), table_id));
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Pair of a node and an input or output number used to record edge endpoints.
@@ -349,7 +349,7 @@ Status CombinePerTableParametersForLoad(
       }
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Removes edges between individual load/retrieve nodes that are added by
@@ -743,7 +743,7 @@ Status CombineTPUEmbeddingLoadRetrievePass::Run(
   VLOG(2) << "Generated " << num_combined_nodes_added
           << " combined load or retrieve nodes.";
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace tensorflow

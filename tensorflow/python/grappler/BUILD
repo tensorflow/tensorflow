@@ -1,7 +1,7 @@
 load("//tensorflow:strict.default.bzl", "py_strict_binary", "py_strict_library")
+load("//tensorflow:tensorflow.bzl", "if_not_windows")
 load("//tensorflow:tensorflow.default.bzl", "cuda_py_strict_test", "get_compatible_with_portable", "tf_py_strict_test", "tf_pybind_cc_library_wrapper", "tf_python_pybind_extension")
 load("//tensorflow/core/platform:build_config.bzl", "tf_protos_grappler")
-load("//tensorflow:tensorflow.bzl", "if_not_windows")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -146,10 +146,10 @@ tf_py_strict_test(
     ],
     deps = [
         ":tf_item",
-        "//tensorflow/python/framework",
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:errors",
+        "//tensorflow/python/framework:meta_graph",
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/framework:tensor_shape",
         "//tensorflow/python/framework:test_lib",
@@ -174,12 +174,13 @@ tf_py_strict_test(
         ":tf_item",
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/data/ops:iterator_ops",
-        "//tensorflow/python/framework",
         "//tensorflow/python/framework:dtypes",
+        "//tensorflow/python/framework:meta_graph",
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/framework:tensor_shape",
         "//tensorflow/python/ops:array_ops",
         "//tensorflow/python/platform:client_testlib",
+        "//third_party/py/numpy",
     ],
 )
 
@@ -226,7 +227,7 @@ cuda_py_strict_test(
     size = "small",
     srcs = ["cluster_test.py"],
     python_version = "PY3",
-    shard_count = 10,
+    shard_count = 5,
     tags = [
         "grappler",
         "no_pip",  # tf_optimizer is not available in pip.
@@ -239,7 +240,7 @@ cuda_py_strict_test(
         ":tf_cluster",
         ":tf_item",
         "//tensorflow/core:protos_all_py",
-        "//tensorflow/python/framework",
+        "//tensorflow/python/framework:meta_graph",
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/ops:array_ops",
         "//tensorflow/python/ops:math_ops",
@@ -257,6 +258,7 @@ py_strict_library(
         ":_pywrap_tf_optimizer",
         ":tf_cluster",
         "//tensorflow/core:protos_all_py",
+        "@absl_py//absl/logging",
     ],
 )
 
@@ -290,6 +292,7 @@ tf_python_pybind_extension(
         "//tensorflow/core/common_runtime/gpu:gpu_id",
         "//tensorflow/python/lib/core:pybind11_status",
         "@pybind11",
+        "@pybind11_protobuf//pybind11_protobuf:native_proto_caster",
     ],
 )
 
@@ -306,9 +309,9 @@ tf_py_strict_test(
         ":tf_item",
         ":tf_optimizer",
         "//tensorflow/core:protos_all_py",
-        "//tensorflow/python/framework",
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:dtypes",
+        "//tensorflow/python/framework:meta_graph",
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/framework:tensor_shape",
         "//tensorflow/python/framework:test_lib",
@@ -332,7 +335,7 @@ tf_py_strict_test(
         ":tf_optimizer",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python/client:session",
-        "//tensorflow/python/framework",
+        "//tensorflow/python/framework:meta_graph",
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/framework:random_seed",
         "//tensorflow/python/framework:test_lib",
@@ -443,7 +446,7 @@ py_strict_binary(
         ":cost_analyzer",
         ":tf_optimizer",
         "//tensorflow/core:protos_all_py",
-        "//tensorflow/python/framework",
+        "//tensorflow/python/framework:importer",
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/platform:gfile",
         "//tensorflow/python/training:saver",
@@ -465,9 +468,9 @@ tf_py_strict_test(
     ],
     deps = [
         ":cost_analyzer",
-        "//tensorflow/python/framework",
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:dtypes",
+        "//tensorflow/python/framework:meta_graph",
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/framework:test_lib",
         "//tensorflow/python/ops:array_ops",
@@ -500,8 +503,8 @@ tf_py_strict_test(
     ],
     deps = [
         ":model_analyzer",
-        "//tensorflow/python/framework",
         "//tensorflow/python/framework:constant_op",
+        "//tensorflow/python/framework:meta_graph",
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/framework:test_lib",
         "//tensorflow/python/ops:math_ops",
@@ -562,9 +565,9 @@ cuda_py_strict_test(
         ":tf_optimizer",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python/client:session",
-        "//tensorflow/python/framework",
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:dtypes",
+        "//tensorflow/python/framework:meta_graph",
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/framework:test_lib",
         "//tensorflow/python/ops:array_ops",
@@ -584,6 +587,10 @@ cuda_py_strict_test(
 tf_python_pybind_extension(
     name = "_pywrap_graph_analyzer",
     srcs = ["graph_analyzer_tool_wrapper.cc"],
+    enable_stub_generation = True,
+    pytype_srcs = [
+        "_pywrap_graph_analyzer.pyi",
+    ],
     deps = [
         "//tensorflow/core/grappler/graph_analyzer:graph_analyzer_tool",
         "@pybind11",

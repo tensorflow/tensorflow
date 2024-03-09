@@ -45,14 +45,14 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/translate/mlir_roundtrip_flags.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/tf_mlir_translate_cl.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/serialize_mlir_module_utils.h"
-#include "tensorflow/compiler/mlir/tf2xla/api/v0/compile_mlir_util.h"
+#include "tensorflow/compiler/mlir/tf2xla/api/v1/compile_mlir_util.h"
 #include "tensorflow/compiler/mlir/utils/string_container_utils.h"
 #include "tensorflow/compiler/tf2xla/xla_argument.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
-#include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
-#include "tensorflow/compiler/xla/service/hlo.pb.h"
-#include "tensorflow/compiler/xla/service/hlo_module_config.h"
-#include "tensorflow/compiler/xla/translate/mhlo_to_hlo/type_to_shape.h"
+#include "xla/hlo/ir/hlo_module.h"
+#include "xla/service/hlo.pb.h"
+#include "xla/service/hlo_module_config.h"
+#include "xla/translate/mhlo_to_hlo/type_to_shape.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/framework/types.pb.h"
@@ -151,7 +151,7 @@ Status ParseArgumentShapes(
         *shape.value(), &arg_shapes[shape.index()].shape));
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status ParseDataTypes(absl::string_view data_types_str,
@@ -174,14 +174,14 @@ Status ParseDataTypes(absl::string_view data_types_str,
                                      data_type.value());
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status ParseArgumentKinds(
     absl::string_view input_types_str,
     llvm::SmallVectorImpl<XlaArgument::Kind>& argument_kinds) {
   argument_kinds.clear();
-  if (input_types_str.empty()) return OkStatus();
+  if (input_types_str.empty()) return absl::OkStatus();
 
   std::vector<absl::string_view> argument_kind_strs =
       absl::StrSplit(input_types_str, ',');
@@ -199,7 +199,7 @@ Status ParseArgumentKinds(
     }
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status ParseXlaArguments(absl::string_view input_shapes_str,
@@ -248,7 +248,7 @@ Status ParseXlaArguments(absl::string_view input_shapes_str,
     arg.kind = std::get<3>(arg_components);
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // anonymous namespace

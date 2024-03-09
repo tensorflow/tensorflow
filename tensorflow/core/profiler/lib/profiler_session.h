@@ -15,7 +15,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_PROFILER_LIB_PROFILER_SESSION_H_
 #define TENSORFLOW_CORE_PROFILER_LIB_PROFILER_SESSION_H_
 
-#include "tensorflow/tsl/profiler/lib/profiler_session.h"
+#include "tsl/profiler/lib/profiler_session.h"
 
 namespace tensorflow {
 

@@ -183,7 +183,7 @@ Status GetGraphDevice(const GraphDef& g_def, std::set<std::string>* devices) {
     }
     devices->insert(parsed_name.type);
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace
@@ -279,7 +279,7 @@ Status MetaOptimizer::InitializeOptimizers(
     const std::set<string>& device_types,
     std::vector<std::unique_ptr<GraphOptimizer>>* optimizers) const {
   if (cfg_.disable_meta_optimizer()) {
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   ConfigList plugin_configs = PluginGraphOptimizerRegistry::GetPluginConfigs(
@@ -574,13 +574,14 @@ Status MetaOptimizer::InitializeCustomGraphOptimizers(
 Status MetaOptimizer::InitializePluginGraphOptimizers(
     const std::set<string>& device_types,
     std::vector<std::unique_ptr<GraphOptimizer>>* optimizers) const {
-  if (cfg_.use_plugin_optimizers() == RewriterConfig::OFF) return OkStatus();
+  if (cfg_.use_plugin_optimizers() == RewriterConfig::OFF)
+    return absl::OkStatus();
   auto plugin_optimizers =
       PluginGraphOptimizerRegistry::CreateOptimizers(device_types);
   for (auto& plugin_optimizer : plugin_optimizers) {
     optimizers->push_back(std::move(plugin_optimizer));
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 const RewriterConfig::CustomGraphOptimizer*
@@ -758,7 +759,7 @@ Status MetaOptimizer::OptimizeGraph(
     VLOG(3) << "Skipping optimization, graph has less than " << min_graph_nodes
             << " nodes.";
     *optimized_graph = item.graph;
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   tensorflow::metrics::ScopedCounter<2> timings(
@@ -789,7 +790,7 @@ Status MetaOptimizer::OptimizeGraph(
   if (optimizers.empty()) {
     VLOG(3) << "Skipping graph optimization, no optimizers registered";
     *optimized_graph = item.graph;
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   // Invariant: optimized_graph contains the most recently optimized version of
@@ -892,7 +893,7 @@ Status MetaOptimizer::OptimizeGraph(
     DCHECK_EQ(optimized_graph->versions().producer(), original_producer);
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status MetaOptimizer::OptimizeGraph(Cluster* cluster, GrapplerItem&& item,
@@ -950,7 +951,7 @@ Status MetaOptimizer::RunOptimizer(
       message = strings::StrCat(optimizer->name(),
                                 " did nothing. time = ", duration_ms, "ms.");
       // Swallow the non-critical error.
-      status = OkStatus();
+      status = absl::OkStatus();
     } else if (absl::IsDeadlineExceeded(status)) {
       message =
           strings::StrCat(status.ToString(), ", time = ", duration_ms, "ms.");
@@ -983,7 +984,7 @@ Status MetaOptimizer::RunOptimizer(
     if (absl::StartsWith(optimizer->name(), "tfg_optimizer")) return status;
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Propagates `_tf_data_function` attributes from functions to their callees.
@@ -1311,7 +1312,7 @@ Status MetaOptimizer::OptimizeConsumeItem(Cluster* cluster, GrapplerItem&& item,
         *optimized_graph);
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 string MetaOptimizer::GetResultString() const {
@@ -1379,7 +1380,7 @@ Status OptimizeGraph(
     const GrapplerItem::OptimizationOptions& optimization_options,
     std::unique_ptr<tensorflow::Graph>* g) {
   if (!tensorflow::grappler::MetaOptimizerEnabled(config_proto)) {
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   tensorflow::grappler::GrapplerItem item;
@@ -1459,7 +1460,7 @@ Status OptimizeGraph(
   }
 
   *g = std::move(optimized_graph);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace grappler

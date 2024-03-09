@@ -28,9 +28,9 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/ir/importexport/convert_tensor.h"
 #include "tensorflow/core/util/tensor_bundle/tensor_bundle.h"
-#include "tensorflow/tsl/platform/env.h"
-#include "tensorflow/tsl/platform/logging.h"
-#include "tensorflow/tsl/platform/status.h"
+#include "tsl/platform/env.h"
+#include "tsl/platform/logging.h"
+#include "tsl/platform/status.h"
 
 namespace tensorflow {
 namespace quantization {
@@ -67,7 +67,7 @@ absl::StatusOr<std::string> AddTensorToBundleWriter(
   }
 
   Tensor const_tensor{};
-  if (const tsl::Status status = mlir::tfg::ConvertToTensor(
+  if (const absl::Status status = mlir::tfg::ConvertToTensor(
           /*attr=*/const_op.getValue(), /*output_tensor=*/&const_tensor);
       !status.ok()) {
     return status;

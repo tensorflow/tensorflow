@@ -19,7 +19,7 @@ limitations under the License.
 #include <optional>
 #include <set>
 
-#include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
+#include "xla/pjrt/pjrt_client.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/platform/status.h"
 
@@ -34,7 +34,7 @@ Status SetPjRtClientInTFGlobalResourceManager(
 
 // Gets (the most recent) PJRT client for device_type from
 // TFGlobalResourceManager.
-StatusOr<xla::PjRtClient*> GetPjRtClient(const DeviceType& device_type);
+absl::StatusOr<xla::PjRtClient*> GetPjRtClient(const DeviceType& device_type);
 
 }  // namespace tensorflow
 

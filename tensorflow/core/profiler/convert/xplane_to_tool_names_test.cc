@@ -30,7 +30,7 @@ limitations under the License.
 #include "tensorflow/core/profiler/convert/repository.h"
 #include "tensorflow/core/profiler/utils/xplane_schema.h"
 #include "tensorflow/core/profiler/utils/xplane_utils.h"
-#include "tensorflow/tsl/profiler/protobuf/xplane.pb.h"
+#include "tsl/profiler/protobuf/xplane.pb.h"
 
 namespace tensorflow {
 namespace profiler {
@@ -115,7 +115,7 @@ TEST_P(XPlaneToToolsTest, ToolsList) {
   std::vector<std::string> expected_tools = {"trace_viewer",
                                              "overview_page",
                                              "input_pipeline_analyzer",
-                                             "tensorflow_stats",
+                                             "framework_op_stats",
                                              "memory_profile",
                                              "pod_viewer",
                                              "tf_data_bottleneck_analysis",

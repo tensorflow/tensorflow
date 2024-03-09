@@ -50,10 +50,10 @@ limitations under the License.
 #include "tensorflow/c/tf_tensor_internal.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/export_graphdef.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/mlir_roundtrip_flags.h"
-#include "tensorflow/compiler/xla/status_macros.h"
-#include "tensorflow/compiler/xla/stream_executor/tpu/c_api_decl.h"
-#include "tensorflow/compiler/xla/stream_executor/tpu/tpu_platform_interface.h"
-#include "tensorflow/compiler/xla/stream_executor/tpu/tpu_topology.h"
+#include "xla/status_macros.h"
+#include "xla/stream_executor/tpu/c_api_decl.h"
+#include "xla/stream_executor/tpu/tpu_platform_interface.h"
+#include "xla/stream_executor/tpu/tpu_topology.h"
 #include "tensorflow/core/common_runtime/device_set.h"
 #include "tensorflow/core/common_runtime/eager/context.h"
 #include "tensorflow/core/common_runtime/eager/eager_operation.h"
@@ -91,9 +91,9 @@ limitations under the License.
 #include "tensorflow/dtensor/mlir/op_utils.h"
 #include "tensorflow/dtensor/mlir/spmd_expander.h"
 #include "tensorflow/dtensor/proto/layout.pb.h"
-#include "tensorflow/tsl/platform/status.h"
-#include "tensorflow/tsl/platform/statusor.h"
-#include "tensorflow/tsl/util/env_var.h"
+#include "tsl/platform/status.h"
+#include "tsl/platform/statusor.h"
+#include "tsl/util/env_var.h"
 
 using tensorflow::EagerExecutor;
 
@@ -249,7 +249,7 @@ class DTensorDevice {
     }
     Mesh::tpu_core_ids()[mesh_name].assign(tpu_core_ids.begin(),
                                            tpu_core_ids.end());
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   void ClearTPUCoreIDs() { Mesh::tpu_core_ids().clear(); }
@@ -1582,7 +1582,7 @@ Status AddExecutionFunctionDefsToFunctionDefLibrary(
             to_run, stack_traces));
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 StatusOr<DTensorDevice::DTensorOperationLoweringContext>
@@ -2384,6 +2384,9 @@ void DTensorDevice::Execute(const TFE_Op* original_op, int* num_outputs,
   absl::flat_hash_set<Mesh> input_meshes;
   std::vector<int> single_device_input_indices;
 
+  VLOG(4) << "DTensorOperation: " << dtensor_operation.name
+          << " num_inputs are " << num_inputs;
+
   typed_inputs.resize(num_inputs);
   for (int j = 0; j < num_inputs; ++j) {
     TFE_TensorHandle* input = inputs[j];
@@ -2392,6 +2395,8 @@ void DTensorDevice::Execute(const TFE_Op* original_op, int* num_outputs,
     if (name_ != input_device) {
       single_device_input_indices.push_back(j);
       typed_inputs[j] = nullptr;
+      VLOG(5) << "Input " << j << ": "
+              << tensorflow::unwrap(input)->DebugString();
       continue;
     }
     // Handle input which is on DTensor device already.
@@ -2404,9 +2409,14 @@ void DTensorDevice::Execute(const TFE_Op* original_op, int* num_outputs,
       input_meshes.insert(t->layout().mesh());
     }
     typed_inputs[j] = t;
+    VLOG(5) << "Input " << j << ": " << typed_inputs[j]->DebugString();
   }
 
   const std::optional<Mesh> mesh = ChooseBroadcastingMesh(input_meshes, dtypes);
+
+  VLOG(4) << "Execution DTensorOperation: " << dtensor_operation.name
+          << " with broadcast mesh "
+          << (mesh.has_value() ? mesh->ToString() : "no broadcast mesh");
 
   // TODO(feyu): This short circuit only allows running unsupported op
   // via DTensorDevice in eager mode. for tf.function and its graph, we will

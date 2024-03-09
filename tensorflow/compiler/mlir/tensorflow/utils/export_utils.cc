@@ -32,7 +32,6 @@ limitations under the License.
 #include "llvm/Support/Casting.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
-#include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Location.h"  // from @llvm-project
@@ -44,14 +43,11 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_executor.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
-#include "tensorflow/compiler/mlir/tensorflow/utils/attribute_utils.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_tensor.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_type.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/location_utils.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/mangling_util.h"
-#include "tensorflow/compiler/mlir/tensorflow/utils/xla_sharding_util.h"
-#include "tensorflow/compiler/xla/status_macros.h"
-#include "tensorflow/compiler/xla/xla_data.pb.h"
+#include "xla/status_macros.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/graph_to_functiondef.h"
@@ -79,11 +75,6 @@ std::set<std::string>* GlobalOpPrefixes() {
   return global_op_prefixes;
 }
 
-bool HasShardingAttribute(const std::string& name_strref) {
-  return (!mlir::TF::kXlaShardingAttrName.compare(name_strref) ||
-          !mlir::TF::kShardingAttrName.compare(name_strref) ||
-          !mlir::TF::kManualShardingAttrName.compare(name_strref));
-}
 // Converts a location to the debug information for the node def.
 Status ConvertLocation(mlir::Location inst_loc, llvm::StringRef node_name,
                        NodeDef::ExperimentalDebugInfo* debug_info) {
@@ -303,7 +294,7 @@ static bool IsRefTypeControlOp(mlir::Operation* op) {
 
 }  // anonymous namespace
 
-StatusOr<llvm::StringRef> GetTensorFlowOpName(llvm::StringRef op_name) {
+absl::StatusOr<llvm::StringRef> GetTensorFlowOpName(llvm::StringRef op_name) {
   // When being converted to MLIR, some prefixes and suffixes are added to the
   // operation types, and we have to remove them when converting the
   // operations back to a graph:
@@ -324,8 +315,8 @@ StatusOr<llvm::StringRef> GetTensorFlowOpName(llvm::StringRef op_name) {
   return op_name;
 }
 
-StatusOr<std::unique_ptr<NodeDef>> GetOperationNodeDef(mlir::Operation* inst,
-                                                       llvm::StringRef name) {
+absl::StatusOr<std::unique_ptr<NodeDef>> GetOperationNodeDef(
+    mlir::Operation* inst, llvm::StringRef name) {
   auto node_def = std::make_unique<NodeDef>();
   // Note: we do not use NodeBuilder or NodeDefBuilder as that would require
   // mapping back from the inputs to the input arguments.
@@ -417,16 +408,6 @@ Status ConvertAttributes(
       return errors::Unimplemented("AffineMap attribute (needed for '",
                                    name_strref, "') unimplemented");
     }
-
-    if (HasShardingAttribute(name_strref)) {
-      xla::OpSharding sharding;
-      if (tensorflow::DecodeShardingAttribute(attr, sharding, false)
-              .succeeded()) {
-        attr = mlir::StringAttr::get(attr.getContext(),
-                                     sharding.SerializeAsString());
-      }
-    }
-
     TF_RETURN_IF_ERROR(
         llvm::TypeSwitch<mlir::Attribute, Status>(attr)
             .Case<mlir::BoolAttr, mlir::IntegerAttr, mlir::FloatAttr,

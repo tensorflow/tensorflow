@@ -47,15 +47,28 @@ CreateComposeUniformQuantizedTypePass();
 // quantized typed tensors and converts them to equivalent ops in the TFLite
 // dialect.
 std::unique_ptr<OperationPass<func::FuncOp>>
-CreateUniformQuantizedStablehloToTflPass();
+CreateUniformQuantizedStableHloToTflPass();
 
 // Create a pass that legalizes MHLO to TF dialect.
 std::unique_ptr<OperationPass<ModuleOp>> CreateLegalizeHloToTfPass();
+
+// Creates a pass which replaces a splat constant tensor with a BroadcastInDim
+// op.
+std::unique_ptr<OperationPass<ModuleOp>> CreateUnfoldSplatConstantPass();
+
+// Create a pass that legalizes MHLO to TFLite dialect.
+std::unique_ptr<OperationPass<ModuleOp>> CreateLegalizeHloToTfLitePass();
 
 // Adds the HLO to TF rewrite patterns to the specified pattern list.
 void PopulateLegalizeHloToTfPatterns(RewritePatternSet* patterns,
                                      MLIRContext* context);
 
+// Adds the HLO to TFLite rewrite patterns to the specified pattern list.
+void PopulateLegalizeHloToTFLitePatterns(RewritePatternSet* patterns,
+                                         MLIRContext* context);
+
+#define GEN_PASS_DECL_LEGALIZESTABLEHLOTOVHLOPASS
+#define GEN_PASS_DECL_LEGALIZEVHLOTOSTABLEHLOPASS
 #define GEN_PASS_REGISTRATION
 #include "tensorflow/compiler/mlir/lite/stablehlo/transforms/passes.h.inc"
 

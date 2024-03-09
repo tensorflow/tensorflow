@@ -39,6 +39,7 @@ using mlir::tf_type::FuncAttr;             // NOLINT
 using mlir::tf_type::HalfRefType;          // NOLINT
 using mlir::tf_type::Int16RefType;         // NOLINT
 using mlir::tf_type::Int32RefType;         // NOLINT
+using mlir::tf_type::Int4RefType;          // NOLINT
 using mlir::tf_type::Int64RefType;         // NOLINT
 using mlir::tf_type::Int8RefType;          // NOLINT
 using mlir::tf_type::OpaqueTensorType;     // NOLINT
@@ -60,6 +61,7 @@ using mlir::tf_type::StringRefType;        // NOLINT
 using mlir::tf_type::StringType;           // NOLINT
 using mlir::tf_type::Uint16RefType;        // NOLINT
 using mlir::tf_type::Uint32RefType;        // NOLINT
+using mlir::tf_type::Uint4RefType;         // NOLINT
 using mlir::tf_type::Uint64RefType;        // NOLINT
 using mlir::tf_type::Uint8RefType;         // NOLINT
 using mlir::tf_type::VariantRefType;       // NOLINT

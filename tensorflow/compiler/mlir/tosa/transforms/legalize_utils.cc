@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <algorithm>
 #include <cmath>
+#include <cstdint>
 #include <functional>
 #include <optional>
 
@@ -33,6 +34,9 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/dynamic_shape_utils.h"
 #include "tensorflow/compiler/mlir/tosa/transforms/legalize_common.h"
+#include "tensorflow/lite/kernels/internal/common.h"
+#include "tensorflow/lite/kernels/internal/quantization_util.h"
+#include "tsl/framework/fixedpoint/FixedPoint.h"
 
 // Implements legalization and post-legalization optimization helper functions
 
@@ -78,8 +82,7 @@ std::optional<Value> buildReshapeWithDynamicDims(PatternRewriter& rewriter,
   llvm::SmallVector<int64_t> static_dims;
 
   if (output_type.hasRank()) {
-    static_dims.append(output_type.getShape().begin(),
-                       output_type.getShape().end());
+    static_dims = tensorflow::ConvertMlirShapeToTF(output_type.getShape());
   } else {
     static_dims.resize(dims.size(), tensorflow::kTFDynamicSize);
   }
@@ -137,7 +140,7 @@ Value buildRescale(PatternRewriter& rewriter, Operation* op,
       rewriter.getI32IntegerAttr(static_cast<int32_t>(input_zp)),
       rewriter.getI32IntegerAttr(static_cast<int32_t>(output_zp)),
       rewriter.getDenseI32ArrayAttr({scale_multiplier}),
-      rewriter.getDenseI32ArrayAttr({scale_shit}),
+      rewriter.getDenseI8ArrayAttr({static_cast<int8_t>(scale_shit)}),
       rewriter.getBoolAttr(scale32), rewriter.getBoolAttr(double_round),
       rewriter.getBoolAttr(false));
 
@@ -247,8 +250,9 @@ Value buildRescaleOpConvOutput(PatternRewriter& rewriter, Operation* op,
         rewriter, op->getLoc(), output_type, conv_val,
         rewriter.getI32IntegerAttr(0), rewriter.getI32IntegerAttr(output_zp),
         rewriter.getDenseI32ArrayAttr({multiplier}),
-        rewriter.getDenseI32ArrayAttr({shift}), rewriter.getBoolAttr(scale32),
-        rewriter.getBoolAttr(double_round), rewriter.getBoolAttr(false));
+        rewriter.getDenseI8ArrayAttr({static_cast<int8_t>(shift)}),
+        rewriter.getBoolAttr(scale32), rewriter.getBoolAttr(double_round),
+        rewriter.getBoolAttr(false));
 
     return rescale_op.getResult();
 
@@ -257,7 +261,7 @@ Value buildRescaleOpConvOutput(PatternRewriter& rewriter, Operation* op,
                      weight_type.getElementType())) {
     // Per-channel quantization
     SmallVector<int32_t> multiplier_arr;
-    SmallVector<int32_t> shift_arr;
+    SmallVector<int8_t> shift_arr;
 
     SmallVector<double> weight_scale_arr(
         weight_per_channel_qtype.getScales().begin(),
@@ -276,14 +280,14 @@ Value buildRescaleOpConvOutput(PatternRewriter& rewriter, Operation* op,
                                 scale_width);
 
       multiplier_arr.push_back(multiplier);
-      shift_arr.push_back(shift);
+      shift_arr.push_back(static_cast<int8_t>(shift));
     }
 
     auto rescale_op = CreateOpAndInfer<tosa::RescaleOp>(
         rewriter, op->getLoc(), output_type, conv_val,
         rewriter.getI32IntegerAttr(0), rewriter.getI32IntegerAttr(output_zp),
         rewriter.getDenseI32ArrayAttr(multiplier_arr),
-        rewriter.getDenseI32ArrayAttr(shift_arr), rewriter.getBoolAttr(scale32),
+        rewriter.getDenseI8ArrayAttr(shift_arr), rewriter.getBoolAttr(scale32),
         rewriter.getBoolAttr(double_round), rewriter.getBoolAttr(true));
 
     return rescale_op.getResult();
@@ -292,6 +296,59 @@ Value buildRescaleOpConvOutput(PatternRewriter& rewriter, Operation* op,
     op->emitOpError("buildConvRescaleOp: unknown weight quantized type");
     return nullptr;
   }
+}
+
+Value getTosaConstRsqrt8bitTable(PatternRewriter& rewriter, Operation* op,
+                                 float input_scale, int32_t input_zp,
+                                 float output_scale, int32_t output_zp) {
+  // See RsqrtEvalQuantized (elementwise.cc)
+  const int kMin = std::numeric_limits<int8_t>::min();
+  const int kMax = std::numeric_limits<int8_t>::max();
+  SmallVector<int8_t, 256> table;
+
+  int32_t output_scale_multiplier;
+  int32_t output_scale_shift;
+
+  const double scale = 1. / (std::sqrt(input_scale) * output_scale);
+  tflite::QuantizeMultiplier(scale, &output_scale_multiplier,
+                             &output_scale_shift);
+
+  std::function<int8_t(int8_t)> quantRsqrtFunc = [&](int8_t i) {
+    const int32_t value = (i - input_zp);
+    const int32_t kShift = 20;  // Shift to keep value integer.
+    if (value <= 0) {
+      // Assume that any value close to 0 (or negtive values) represents the max
+      // output value.
+      return static_cast<int8_t>(kMax);
+    }
+    int32_t inv_sqrt_multiplier;
+    int inv_sqrt_shift;
+    tflite::GetInvSqrtQuantizedMultiplierExp(
+        value, tflite::kReverseShift, &inv_sqrt_multiplier, &inv_sqrt_shift);
+    const int32_t data = tflite::MultiplyByQuantizedMultiplier(
+        1, inv_sqrt_multiplier, inv_sqrt_shift + kShift);
+    const int32_t output =
+        tflite::MultiplyByQuantizedMultiplier(data, output_scale_multiplier,
+                                              output_scale_shift - kShift) +
+        output_zp;
+    return static_cast<int8_t>(std::min(std::max(output, kMin), kMax));
+  };
+
+  for (int32_t i = -128; i < 128; i++) {
+    table.push_back(quantRsqrtFunc(i));
+  }
+
+  auto element_qtype =
+      UniformQuantizedType::get(true, rewriter.getIntegerType(8),
+                                rewriter.getF32Type(), 1.0f, 0, -128, 127);
+  auto const_type = tensorflow::GetTypeFromTFTensorShape({256}, element_qtype);
+  auto storage_type = tensorflow::GetTypeFromTFTensorShape(
+      {256}, element_qtype.getStorageType());
+  auto const_attr = DenseElementsAttr::get(storage_type, llvm::ArrayRef(table));
+
+  auto const_op =
+      rewriter.create<tosa::ConstOp>(op->getLoc(), const_type, const_attr);
+  return const_op.getResult();
 }
 
 // Create a 8-bit TOSA TABLE constant tensor with int8[256] array.
@@ -369,35 +426,42 @@ Value getTosaConst16bitTable(PatternRewriter& rewriter, Operation* op,
   return const_op.getResult();
 }
 
-// Create a 32-bit TOSA TABLE constant tensor with int16[513] array.
-// Output is restricted to [-1.0, 1.0] as s0.31 format.
-void getTosaConst32bitTable(PatternRewriter& rewriter, Operation* op,
-                            double input_scale, int32_t input_zp,
-                            std::function<double(double)> func,
-                            Value& first_const, Value& second_const,
-                            Value& third_const, Value& fourth_const) {
+// Create a 32-bit TOSA TABLE for Softmax Exp
+void getTosaConst32bitSoftmaxExpTable(PatternRewriter& rewriter, Operation* op,
+                                      double beta, double input_scale,
+                                      Value& first_const, Value& second_const,
+                                      Value& third_const, Value& fourth_const) {
+  const int kScaledDiffIntegerBits = 5;
+  using FixedPointScaledDiff =
+      gemmlowp::FixedPoint<int32_t, kScaledDiffIntegerBits>;
+
+  int32_t input_beta_multiplier;
+  int input_beta_left_shift;
+  tflite::PreprocessSoftmaxScaling(beta, input_scale, kScaledDiffIntegerBits,
+                                   &input_beta_multiplier,
+                                   &input_beta_left_shift);
+
+  int diff_min = -tflite::CalculateInputRadius(kScaledDiffIntegerBits,
+                                               input_beta_left_shift);
+
   SmallVector<int16_t, 513> first_table, second_table, third_table,
       fourth_table;
-
-  double output_inv_scale = static_cast<double>(1L << 31);
-
-  for (int32_t i = -256; i <= 256; i++) {
-    double dequantized = input_scale * (i - input_zp);
-    double transformed = func(dequantized);
-    double truncated = std::min(std::max(transformed, -1.0), 1.0);
-    int64_t rescaled =
-        static_cast<int64_t>(std::round(truncated * output_inv_scale));
-
-    // 2^31 is not representable in int32_t, so store as 2^31 - 1 instead
-    if (rescaled == static_cast<int64_t>(1L << 31)) {
-      rescaled = static_cast<int64_t>(1L << 31) - 1;
+  for (int32_t input_diff = -256; input_diff <= 256; input_diff++) {
+    int32_t output = 0;
+    if (input_diff >= diff_min) {
+      const int32_t input_diff_rescaled =
+          tflite::MultiplyByQuantizedMultiplierGreaterThanOne(
+              input_diff, input_beta_multiplier, input_beta_left_shift);
+      const FixedPointScaledDiff input_diff_fixed_point =
+          FixedPointScaledDiff::FromRaw(input_diff_rescaled);
+      output = gemmlowp::exp_on_negative_values(input_diff_fixed_point).raw();
     }
 
     // Only copy the 8-bit groups
-    int32_t first = (rescaled >> 24) & 0xFF;
-    int32_t second = (rescaled >> 16) & 0xFF;
-    int32_t third = (rescaled >> 8) & 0xFF;
-    int32_t fourth = (rescaled) & 0xFF;
+    int32_t first = (output >> 24) & 0xFF;
+    int32_t second = (output >> 16) & 0xFF;
+    int32_t third = (output >> 8) & 0xFF;
+    int32_t fourth = (output) & 0xFF;
 
     first_table.push_back(first);
     second_table.push_back(second);

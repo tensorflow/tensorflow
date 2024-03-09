@@ -51,7 +51,8 @@ py_strict_library(
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/ops:control_flow_ops_gen",
         "//tensorflow/python/training/saving:saveable_object",
-        "//tensorflow/python/util:tf_decorator",
+        "//tensorflow/python/util:tf_contextlib",
+        "//tensorflow/python/util:tf_decorator_py",
         "//tensorflow/python/util:tf_export",
     ],
 )
@@ -140,7 +141,7 @@ py_strict_library(
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/framework:tensor_conversion_registry",
-        "//tensorflow/python/lib/io:lib",
+        "//tensorflow/python/lib/io:file_io",
         "//tensorflow/python/ops:array_ops",
         "//tensorflow/python/ops:resource_variable_ops",
         "//tensorflow/python/saved_model:path_helpers",
@@ -188,7 +189,7 @@ py_strict_library(
         "//tensorflow/python/eager:def_function",
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/framework:tensor",
-        "//tensorflow/python/util:tf_decorator",
+        "//tensorflow/python/util:tf_contextlib",
         "//tensorflow/python/util:tf_export",
     ],
 )
@@ -225,7 +226,7 @@ py_strict_library(
         "//tensorflow/python/ops:variables",
         "//tensorflow/python/util:compat",
         "//tensorflow/python/util:tf_export",
-        "@wrapt",
+        "@pypi_wrapt//:pkg",
     ],
 )
 
@@ -233,6 +234,7 @@ tf_py_strict_test(
     name = "data_structures_test",
     srcs = ["data_structures_test.py"],
     tags = [
+        "no_oss",  # Keras is not available in OSS test
         "no_windows",
         "nomac",
     ],
@@ -246,7 +248,6 @@ tf_py_strict_test(
         "//tensorflow/python/eager:test",
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:tensor_shape",
-        "//tensorflow/python/layers",
         "//tensorflow/python/module",
         "//tensorflow/python/ops:array_ops",
         "//tensorflow/python/ops:resource_variable_ops",

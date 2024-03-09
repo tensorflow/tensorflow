@@ -16,7 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_UTIL_DEVICE_NAME_UTILS_H_
 #define TENSORFLOW_CORE_UTIL_DEVICE_NAME_UTILS_H_
 
-#include "tensorflow/tsl/util/device_name_utils.h"
+#include "tsl/util/device_name_utils.h"
 
 namespace tensorflow {
 // NOLINTBEGIN(misc-unused-using-decls)

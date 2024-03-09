@@ -14,8 +14,10 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/data/utils.h"
 
+#include <memory>
 #include <optional>
 #include <string>
+#include <vector>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/status/statusor.h"
@@ -39,17 +41,12 @@ std::string DefaultDataTransferProtocol() { return "grpc"; }
 
 std::string LocalityOptimizedPath(const std::string& path) { return path; }
 
-absl::StatusOr<std::optional<std::string>> TrainerCompressionInfo(
-    const std::string& data_transfer_protocol, DeploymentMode deployment_mode) {
-  return std::nullopt;
-}
-
 absl::StatusOr<bool> DisableCompressionAtRuntime(
-    const std::string& trainer_compression_info,
-    const absl::flat_hash_map<std::string, std::string>&
-        worker_compression_info_by_protocol) {
+    const std::string& data_transfer_protocol, DeploymentMode deployment_mode) {
   return false;
 }
+
+void LogFilenames(const std::vector<std::string>& files) {}
 
 }  // namespace data
 }  // namespace tensorflow

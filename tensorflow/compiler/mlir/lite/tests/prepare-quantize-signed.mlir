@@ -166,20 +166,20 @@ func.func @prepareDepthwiseConv2D(%arg0: tensor<1x224x224x3xf32>) -> tensor<1x11
 
 // CHECK-LABEL: QuantizeFullyConnected
 // PerTensor-LABEL: QuantizeFullyConnected
-func.func @QuantizeFullyConnected(%arg0: tensor<1x224x224x3xf32>) -> tensor<1x112x112x32xf32> {
-  %w = arith.constant dense<127.0> : tensor<32x12xf32>
-  %b = arith.constant dense<0.0> : tensor<32xf32>
-  %fc = "tfl.fully_connected"(%arg0, %w, %b) {fused_activation_function = "NONE", keep_num_dims = false, weights_format = "DEFAULT"} : (tensor<1x224x224x3xf32>, tensor<32x12xf32>, tensor<32xf32>) -> tensor<1x112x112x32xf32>
-  func.return %fc : tensor<1x112x112x32xf32>
+func.func @QuantizeFullyConnected(%arg0: tensor<1x224x224x3xf32>) -> tensor<1x112x112x4xf32> {
+  %w = arith.constant dense<127.0> : tensor<4x12xf32>
+  %b = arith.constant dense<0.0> : tensor<4xf32>
+  %fc = "tfl.fully_connected"(%arg0, %w, %b) {fused_activation_function = "NONE", keep_num_dims = false, weights_format = "DEFAULT"} : (tensor<1x224x224x3xf32>, tensor<4x12xf32>, tensor<4xf32>) -> tensor<1x112x112x4xf32>
+  func.return %fc : tensor<1x112x112x4xf32>
 
-// CHECK: %[[cst:.*]] = arith.constant dense<1.270000e+02> : tensor<32x12xf32>
-// CHECK: %[[q:.*]] = "tfl.quantize"(%cst) {qtype = tensor<32x12x!quant.uniform<i8<-127:127>:f32, 1.000000e+00>>, volatile}
-// CHECK: %[[dq:.*]] = "tfl.dequantize"(%0) : (tensor<32x12x!quant.uniform<i8<-127:127>:f32, 1.000000e+00>>) -> tensor<32x12xf32>
+// CHECK: %[[cst:.*]] = arith.constant dense<1.270000e+02> : tensor<4x12xf32>
+// CHECK: %[[q:.*]] = "tfl.quantize"(%cst) {qtype = tensor<4x12x!quant.uniform<i8<-127:127>:f32:0, {1.000000e+00,1.000000e+00,1.000000e+00,1.000000e+00}>>, volatile}
+// CHECK: %[[dq:.*]] = "tfl.dequantize"(%0) : (tensor<4x12x!quant.uniform<i8<-127:127>:f32:0, {1.000000e+00,1.000000e+00,1.000000e+00,1.000000e+00}>>) -> tensor<4x12xf32>
 // CHECK: "tfl.fully_connected"(%arg0, %[[dq]]
 
-// PerTensor: %[[cst:.*]] = arith.constant dense<1.270000e+02> : tensor<32x12xf32>
-// PerTensor: %[[q:.*]] = "tfl.quantize"(%cst) {qtype = tensor<32x12x!quant.uniform<i8<-127:127>:f32, 1.000000e+00>>, volatile}
-// PerTensor: %[[dq:.*]] = "tfl.dequantize"(%0) : (tensor<32x12x!quant.uniform<i8<-127:127>:f32, 1.000000e+00>>) -> tensor<32x12xf32>
+// PerTensor: %[[cst:.*]] = arith.constant dense<1.270000e+02> : tensor<4x12xf32>
+// PerTensor: %[[q:.*]] = "tfl.quantize"(%cst) {qtype = tensor<4x12x!quant.uniform<i8<-127:127>:f32, 1.000000e+00>>, volatile}
+// PerTensor: %[[dq:.*]] = "tfl.dequantize"(%0) : (tensor<4x12x!quant.uniform<i8<-127:127>:f32, 1.000000e+00>>) -> tensor<4x12xf32>
 // PerTensor: "tfl.fully_connected"(%arg0, %[[dq]]
 }
 
@@ -215,8 +215,8 @@ func.func @bias_adjust_pertensor(%arg0: tensor<1x2xf32>) -> (tensor<1x2xf32>) {
   func.return %fc : tensor<1x2xf32>
 // CHECK-DAG: %[[weight:.*]] = arith.constant dense<{{\[\[}}0.000000e+00, 1.000000e+00]
 // CHECK-DAG: %[[bias:.*]] = arith.constant dense<[0.000000e+00, 2147364.75]>
-// CHECK-DAG: %[[b_q:.*]] = "tfl.quantize"(%[[bias]]){{.*}}quant.uniform<i32:f32, 0.0019998892694710656>>
-// CHECK-DAG: %[[w_q:.*]] = "tfl.quantize"(%[[weight]]){{.*}}quant.uniform<i8<-127:127>:f32, 19998.892343977564>>
+// CHECK-DAG: %[[b_q:.*]] = "tfl.quantize"(%[[bias]]){{.*}}quant.uniform<i32:f32:0, {7.8740158861230386E-10,0.0019998892694710656}>>
+// CHECK-DAG: %[[w_q:.*]] = "tfl.quantize"(%[[weight]]){{.*}}quant.uniform<i8<-127:127>:f32:0, {0.0078740157480314959,19998.892343977564}>>
 // CHECK-DAG: %[[b_dq:.*]] = "tfl.dequantize"(%[[b_q]])
 // CHECK-DAG: %[[w_dq:.*]] = "tfl.dequantize"(%[[w_q]])
 // CHECK: %[[fc:.*]] = "tfl.fully_connected"(%[[input:.*]], %[[w_dq]], %[[b_dq]])

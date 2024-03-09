@@ -21,7 +21,7 @@ limitations under the License.
 #include <string>
 #include <vector>
 
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "unicode/appendable.h"  // from @icu
 #include "unicode/schriter.h"  // from @icu
 #include "unicode/uchar.h"  // from @icu
@@ -237,7 +237,7 @@ Status GetErrorOptions(OpKernelConstruction* ctx, ErrorOptions* out) {
                                     &(out->replace_control_chars)));
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 inline bool ShouldHandleFormatError(const ErrorOptions& error_options,

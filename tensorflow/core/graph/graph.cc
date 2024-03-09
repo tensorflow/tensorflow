@@ -535,7 +535,7 @@ void Graph::Copy(const Graph& src) {
   }
 }
 
-StatusOr<Node*> Graph::AddNode(NodeDef node_def) {
+absl::StatusOr<Node*> Graph::AddNode(NodeDef node_def) {
   Status s;
   Node* out = AddNode(std::move(node_def), &s);
   TF_RETURN_IF_ERROR(s);
@@ -1056,7 +1056,7 @@ void Graph::NodeType(StringPiece name, const FullTypeDef** result) {
 
 GraphDebugInfo Graph::BuildDebugInfo() const {
   // Gather stack traces for all nodes associated with function definitions.
-  // Give these a map key in `traces` of <node_name> '@' <function_name>.
+  // Give these a key of <node_name> '@' <function_name>.
   GraphDebugInfoBuilder builder;
   for (const std::string& function_name : flib_def().ListFunctionNames()) {
     if (core::RefCountPtr<FunctionRecord> function_record =

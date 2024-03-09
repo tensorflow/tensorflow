@@ -124,7 +124,8 @@ class BCastList {
     std::reverse(shape->begin(), shape->end());
   }
 
-  TF_DISALLOW_COPY_AND_ASSIGN(BCastList);
+  BCastList(const BCastList&) = delete;
+  void operator=(const BCastList&) = delete;
 };
 
 template <int N>
@@ -417,7 +418,8 @@ class BCast : public BCastList<2> {
   static TensorShape ToShape(const Vec& vec);
 
  private:
-  TF_DISALLOW_COPY_AND_ASSIGN(BCast);
+  BCast(const BCast&) = delete;
+  void operator=(const BCast&) = delete;
 };
 
 }  // end namespace tensorflow

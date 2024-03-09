@@ -24,6 +24,7 @@ limitations under the License.
 #include "absl/base/optimization.h"
 #include "absl/strings/string_view.h"
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/kernels/batching_util/batch_scheduler.h"
 #include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/core/runtime_fallback/runtime/fallback_batch_kernel.h"
@@ -309,10 +310,8 @@ void MlrtBatchResource::ProcessFuncBatchImpl(
   const auto& caller_fallback_request_state =
       caller_tf_context.fallback_request_state();
 
-  // Using the same logic as in the c'tor of FunctionLibraryRuntime::Options,
-  // to avoid clash with any Session-generated step ID. DirectSession and
-  // MasterSession generates non-negative step IDs.
-  int64_t step_id = -std::abs(static_cast<int64_t>(random::New64()));
+  // Connect to the batch step id propagated from batch task.
+  int64_t step_id = caller_fallback_request_state.step_id();
 
   // Copy per-request states to create a new KernelFallbackCompatRequestState.
   //
@@ -383,6 +382,13 @@ void MlrtBatchResource::ProcessFuncBatchImpl(
 
 REGISTER_KERNEL_BUILDER(
     Name(kMlrtBatchFunctionName).Device(DEVICE_CPU),
+    tfrt_stub::BatchFunctionFallbackKernel<MlrtBatchResource>);
+
+// TFRT does not depend on the device annotation.
+// MLRT Batch function will not actually execute on GPU, but rather on CPU.
+// This kernel is registered on accelerator to get through the check.
+REGISTER_KERNEL_BUILDER(
+    Name(kMlrtBatchFunctionName).Device(DEVICE_GPU),
     tfrt_stub::BatchFunctionFallbackKernel<MlrtBatchResource>);
 
 // Identical to BatchFunction except it has 2 extra TFRT attributes and it does
