@@ -15,7 +15,9 @@ package(
 cc_library(
     name = "grappler_hdrs",
     hdrs = ["grappler.h"],
-    visibility = ["//tensorflow:internal"],
+    visibility = [
+        "//visibility:private",  # Only private by automation, not intent. Owner may accept CLs adding visibility. See go/scheuklappen#explicit-private.
+    ],
     deps = [
         "//tensorflow/c:c_api",
         "//tensorflow/c:c_api_macros",
