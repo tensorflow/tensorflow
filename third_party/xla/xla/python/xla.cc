@@ -994,7 +994,7 @@ static void Init(py::module_& m) {
   BuildOutfeedReceiverSubmodule(m_nb);
   BuildPytreeSubmodule(m_nb);
   jax::BuildJaxjitSubmodule(m_nb);
-  jax::BuildPmapSubmodule(m);
+  jax::BuildPmapSubmodule(m_nb);
   jax::BuildPjitSubmodule(m_nb);
   jax::BuildTransferGuardSubmodule(m_nb);
   BuildTracebackSubmodule(m_nb);

@@ -719,6 +719,7 @@ cc_library(
     visibility = ["//visibility:private"],
     deps = [
         ":jax_jit",
+        ":nb_helpers",
         ":py_client",
         ":python_ref_manager",
         ":python_utils",
@@ -734,7 +735,6 @@ cc_library(
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/types:span",
-        "@com_google_absl//absl/types:variant",
         "//third_party/nanobind",
         "@local_config_python//:python_headers",  # buildcleaner: keep
         "//xla:status_macros",
@@ -749,7 +749,6 @@ cc_library(
         "@local_tsl//tsl/platform:statusor",
         "@local_tsl//tsl/profiler/lib:traceme",
         "@pybind11",
-        "@pybind11_abseil//pybind11_abseil:absl_casters",
     ],
 )
 

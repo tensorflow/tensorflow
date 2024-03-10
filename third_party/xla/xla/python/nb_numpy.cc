@@ -75,8 +75,8 @@ nb_numpy_ndarray::nb_numpy_ndarray(nb_dtype dtype,
       /*max_depth=*/0,
       /*requirements=*/NPY_ARRAY_ENSUREARRAY | extra_requirements,
       /*context=*/nullptr);
-  if (!out.ptr()) {
-    throw nb::python_error();
+  if (!out) {
+    PyErr_Clear();
   }
   return nb::steal<nb_numpy_ndarray>(out);
 }

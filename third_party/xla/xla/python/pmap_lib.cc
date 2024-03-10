@@ -43,10 +43,7 @@ limitations under the License.
 #include "third_party/nanobind/include/nanobind/stl/string.h"  // IWYU pragma: keep
 #include "third_party/nanobind/include/nanobind/stl/variant.h"  // IWYU pragma: keep
 #include "third_party/nanobind/include/nanobind/stl/vector.h"  // IWYU pragma: keep
-#include "pybind11/cast.h"  // from @pybind11
 #include "pybind11/pybind11.h"  // from @pybind11
-#include "pybind11/pytypes.h"  // from @pybind11
-#include "pybind11_abseil/absl_casters.h"  // from @pybind11_abseil
 #include "xla/pjrt/exceptions.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/status_casters.h"
@@ -56,6 +53,7 @@ limitations under the License.
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/sharding.h"
 #include "xla/python/jax_jit.h"
+#include "xla/python/nb_helpers.h"
 #include "xla/python/py_array.h"
 #include "xla/python/py_client.h"
 #include "xla/python/py_executable.h"
@@ -86,21 +84,21 @@ namespace {
 // from `sharding_specs` and the argument shape, we cache derived computations
 // for performance.
 struct InputSpec {
-  InputSpec(py::object indices, py::object array_sharding)
+  InputSpec(nb::object indices, nb::object array_sharding)
       : indices(std::move(indices)),
         array_sharding(std::move(array_sharding)) {}
-  py::object indices;
-  py::object array_sharding;
+  nb::object indices;
+  nb::object array_sharding;
 };
 
 // An object containing the arguments to create Array from the
 // output buffers.
 struct ResultSpec {
  public:
-  explicit ResultSpec(py::object aval)
+  explicit ResultSpec(nb::object aval)
       : out_aval(std::move(aval)),
-        weak_type(py::cast<bool>(out_aval.attr("weak_type"))) {}
-  py::object out_aval;
+        weak_type(nb::cast<bool>(out_aval.attr("weak_type"))) {}
+  nb::object out_aval;
   bool weak_type;
 };
 
@@ -131,14 +129,14 @@ struct ShardArgResult {
 //
 // Both `devices` and `sharding_spec` has the same length.
 absl::StatusOr<ShardArgResult> ShardArg(
-    py::handle arg, absl::Span<xla::PjRtDevice* const> devices,
-    const InputSpec& input_spec, py::handle py_devices,
-    const py::function& python_fallback) {
-  if (arg.get_type() == xla::PyArray::type()) {
-    auto py_array = py::reinterpret_borrow<xla::PyArray>(arg);
+    nb::handle arg, absl::Span<xla::PjRtDevice* const> devices,
+    const InputSpec& input_spec, nb::handle py_devices,
+    const nb::callable& python_fallback) {
+  if (arg.type().ptr() == xla::PyArray::type().ptr()) {
+    auto py_array = py::reinterpret_borrow<xla::PyArray>(arg.ptr());
     if (py_array.fastpath_enabled()) {
-      if (py_array.sharding().get_type() ==
-          input_spec.array_sharding.get_type()) {
+      if (py_array.sharding().get_type().ptr() ==
+          input_spec.array_sharding.type().ptr()) {
         auto* pmap_sharding =
             nb::cast<jax::PmapSharding*>(nb::handle(py_array.sharding().ptr()));
         auto* cached_pmap_sharding = nb::cast<jax::PmapSharding*>(
@@ -174,13 +172,12 @@ absl::StatusOr<ShardArgResult> ShardArg(
     }
   }
 
-  static auto ndarray_type = py::module::import("numpy").attr("ndarray").ptr();
-  auto ndarray = py::array::ensure(arg);
-  if (ndarray && py::type::of(arg) == ndarray_type &&
+  auto ndarray = xla::nb_numpy_ndarray::ensure(arg);
+  if (ndarray && PyArray_CheckExact(arg.ptr()) &&
       xla::DtypeToPrimitiveType(ndarray.dtype()).status().ok()) {
     tsl::profiler::TraceMe traceme("ndarray pmap ShardArg");
-    py::list indices = input_spec.indices;
-    py::list py_devices_list = py::cast<py::list>(py_devices);
+    nb::list indices = nb::list(input_spec.indices);
+    nb::list py_devices_list = nb::cast<nb::list>(py_devices);
     auto n_devices = py_devices_list.size();
     if (indices.size() != n_devices) {
       return xla::InvalidArgument("indices vs devices mismatch: %d vs %d",
@@ -205,16 +202,17 @@ absl::StatusOr<ShardArgResult> ShardArg(
     options.squash_64bit_types = !jax_enable_x64;
     options.allow_zero_copy = true;
     for (size_t i = 0; i < n_devices; ++i) {
-      auto to_device =
-          py::cast<xla::ClientAndPtr<xla::PjRtDevice>>(py_devices_list[i]);
+      auto to_device = py::cast<xla::ClientAndPtr<xla::PjRtDevice>>(
+          py::handle(py_devices_list[i].ptr()));
       if (to_device.get_client() == nullptr) {
         return xla::InvalidArgument("Cannot copy to unattached devices.");
       }
 
       TF_ASSIGN_OR_RETURN(
           xla::DevicePutResult on_device,
-          DevicePut(arg[indices[i]], to_device.get_client()->ifrt_client(),
-                    to_device.get(), options, xla::ifrt::MemoryKind()));
+          DevicePut(arg[indices[i]].ptr(),
+                    to_device.get_client()->ifrt_client(), to_device.get(),
+                    options, xla::ifrt::MemoryKind()));
 
       per_device_arrays.push_back(std::move(on_device.ifrt_array));
       devices.push_back(per_device_arrays.back()->sharding().devices().front());
@@ -245,7 +243,7 @@ absl::StatusOr<ShardArgResult> ShardArg(
   tsl::profiler::TraceMe traceme("pmap_lib_shard_arg_python_fallback");
   auto py_array_or_bufs = python_fallback(arg, input_spec.array_sharding);
 
-  auto py_array = py::cast<xla::PyArray>(py_array_or_bufs);
+  auto py_array = py::cast<xla::PyArray>(py::handle(py_array_or_bufs.ptr()));
   ShardArgResult result;
   result.owning_sda = nb::borrow(py_array_or_bufs.ptr());
   result.ifrt_array = tsl::FormRef(py_array.ifrt_array());
@@ -257,15 +255,15 @@ struct PmapCacheEntry {
       : out_pytree_def(registry) {}
   std::shared_ptr<xla::PyLoadedExecutable> executable;
   // The value `backend.local_devices()`.
-  py::object py_devices;  // To pass back to Python.
+  nb::object py_devices;  // To pass back to Python.
   std::vector<xla::PjRtDevice*> devices;
   std::vector<InputSpec> input_specs;
   xla::PyTreeDef out_pytree_def;
   // Objects necessary to build the out Array objects.
   std::vector<ResultSpec> out_result_specs;
 
-  std::vector<py::object> out_array_shardings;
-  std::vector<py::dtype> out_dtypes;
+  std::vector<nb::object> out_array_shardings;
+  std::vector<xla::nb_dtype> out_dtypes;
   std::vector<std::vector<int64_t>> out_shapes;
   std::vector<bool> out_committed;
 
@@ -286,9 +284,9 @@ struct PmapCacheEntry {
 // the correct underlying `PyLoadedExecutable`. This class is thread-safe.
 class PmapFunction {
  public:
-  PmapFunction(py::function fun, py::function cache_miss,
+  PmapFunction(nb::callable fun, nb::callable cache_miss,
                std::vector<int> static_argnums,
-               py::function python_shard_arg_fallback,
+               nb::callable python_shard_arg_fallback,
                std::shared_ptr<xla::PyTreeRegistry> pytree_registry)
       : fun_(std::move(fun)),
         cache_miss_(std::move(cache_miss)),
@@ -297,7 +295,8 @@ class PmapFunction {
         python_shard_arg_fallback_(std::move(python_shard_arg_fallback)) {
     std::sort(static_argnums_.begin(), static_argnums_.end());
 
-    function_name_ = py::str(py::getattr(fun_, "__name__", fun_));
+    function_name_ =
+        nb::cast<std::string>(nb::str(nb::getattr(fun_, "__name__", fun_)));
   }
   PmapFunction(const PmapFunction&) = delete;
   PmapFunction& operator=(const PmapFunction& other) = delete;
@@ -310,32 +309,33 @@ class PmapFunction {
   // (c) call the executable
   // (d) construct `Array` objects from the outputs
   // (e) reconstruct the `PyTree`.
-  absl::StatusOr<py::object> Call(py::handle callable, PyObject* const* args,
+  absl::StatusOr<nb::object> Call(nb::handle callable, PyObject* const* args,
                                   size_t nargs, PyObject* kwnames);
 
-  py::object PythonSignature() {
-    static const auto* inspect = new py::module(py::module::import("inspect"));
+  nb::object PythonSignature() {
+    static const auto* inspect =
+        new nb::module_(nb::module_::import_("inspect"));
     return inspect->attr("signature")(fun_);
   }
 
   int cache_size() const { return executables_.size(); }
   void cache_clear() { return executables_.clear(); }
-  const py::function& fun() const { return fun_; }
-  const py::function& cache_miss() const { return cache_miss_; }
+  const nb::callable& fun() const { return fun_; }
+  const nb::callable& cache_miss() const { return cache_miss_; }
   const std::string& function_name() const { return function_name_; }
   const std::shared_ptr<xla::PyTreeRegistry>& pytree_registry() const {
     return pytree_registry_;
   }
-  const py::function& python_shard_arg_fallback() const {
+  const nb::callable& python_shard_arg_fallback() const {
     return python_shard_arg_fallback_;
   }
   const std::vector<int>& static_argnums() const { return static_argnums_; }
 
-  // pybind11::object typed subclass for PmapFunction objects.
-  class pyobject : public py::object {
+  // nanobind::object typed subclass for PmapFunction objects.
+  class pyobject : public nb::object {
    public:
-    PYBIND11_OBJECT(pyobject,  // NOLINT
-                    py::object, PmapFunction::IsPmapFunction);
+    NB_OBJECT(pyobject, nb::object, "PmapFunction",
+              PmapFunction::IsPmapFunction);
     pyobject() = default;
     PmapFunction* func() const {
       return PmapFunction::AsPmapFunctionUnchecked(*this);
@@ -346,13 +346,13 @@ class PmapFunction {
   using object = pyobject;
 
   // Returns true if `h` is a PmapFunction.
-  static bool IsPmapFunction(py::handle handle);
+  static bool IsPmapFunction(nb::handle handle);
   // Converts `handle` to a PmapFunction*. Does not do any checking.
-  static PmapFunction* AsPmapFunctionUnchecked(py::handle handle);
+  static PmapFunction* AsPmapFunctionUnchecked(nb::handle handle);
 
   // Helper function used by the tp_clear GC method.
   void ClearPythonReferences() {
-    py::function fun, cache_miss, python_shard_arg_fallback;
+    nb::callable fun, cache_miss, python_shard_arg_fallback;
     // Swap values for nulls before they are destroyed. See the Python
     // Py_CLEAR() documentation for a discussion of this topic.
     std::swap(fun_, fun);
@@ -374,7 +374,7 @@ class PmapFunction {
     arguments.signature.jax_enable_x64 = jax_enable_x64;
     for (nb::handle arg : arguments.flat_dynamic_args) {
       auto signature_or_error =
-          xla::PyArgSignatureOfValue(py::handle(arg.ptr()), jax_enable_x64);
+          xla::PyArgSignatureOfValue(arg.ptr(), jax_enable_x64);
       if (!signature_or_error.ok()) {
         VLOG(2) << "PyArgSignatureOfValue failed: "
                 << signature_or_error.status();
@@ -407,14 +407,14 @@ class PmapFunction {
   // Mutates `cache_entry` in place.
   void PopulateCacheEntry(PmapCacheEntry& cache_entry,
                           const CallSignature& signature,
-                          const py::tuple& out_and_fastpath_data);
+                          const nb::tuple& out_and_fastpath_data);
 
   bool always_fallback_to_python_ = false;
 
-  py::function fun_;  // The Python function to pmap.
+  nb::callable fun_;  // The Python function to pmap.
   std::string function_name_;
   // See JAX _cpp_pmap in api.py for documentation.
-  py::function cache_miss_;
+  nb::callable cache_miss_;
 
   // We need to know the static arguments to remove them from the arguments
   // passed to the underlying PyLoadedExecutable. In sorted order.
@@ -426,35 +426,36 @@ class PmapFunction {
 
   // The fallback function to use with `ShardArgs`.
   // TODO(jblespiau): Add support for more types from C++.
-  py::function python_shard_arg_fallback_;
+  nb::callable python_shard_arg_fallback_;
 };
 
 void PmapFunction::PopulateCacheEntry(PmapCacheEntry& cache_entry,
                                       const CallSignature& signature,
-                                      const py::tuple& out_and_fastpath_data) {
+                                      const nb::tuple& out_and_fastpath_data) {
   CHECK_EQ(out_and_fastpath_data.size(), 2);
   if (out_and_fastpath_data[1].is_none()) {
     cache_entry.fall_back_to_python = true;
     return;
   }
 
-  py::tuple pmap_data = py::cast<py::tuple>(out_and_fastpath_data[1]);
-  if (py::cast<int>(pmap_data.attr("version")) != 1) {
+  nb::tuple pmap_data = nb::cast<nb::tuple>(out_and_fastpath_data[1]);
+  if (nb::cast<int>(pmap_data.attr("version")) != 1) {
     throw xla::XlaRuntimeError(absl::StrCat(
         "The versions of jaxlib and Jax are incompatible (pmap cpp version 1 "
         "expected, but got ",
-        py::cast<int>(pmap_data.attr("version")),
+        nb::cast<int>(pmap_data.attr("version")),
         "Upgrade jaxlib and jax. Provided data was:",
-        py::cast<std::string>(py::str(py::repr(pmap_data)))));
+        nb::cast<std::string>(nb::str(nb::repr(pmap_data)))));
   }
-  // See api.py::_PmapFastpathData in the JAX code base for the expected
+  // See api.nb::_PmapFastpathData in the JAX code base for the expected
   // namedtuple.
   std::shared_ptr<xla::PyLoadedExecutable> executable;
   try {
     executable = py::cast<std::shared_ptr<xla::PyLoadedExecutable>>(
-        pmap_data.attr("xla_executable"));
-  } catch (const py::cast_error& e) {
+        py::handle(pmap_data.attr("xla_executable").ptr()));
+  } catch (const nb::cast_error& e) {
     // Backends that don't implement the C++ PjRt APIs
+    cache_entry.fall_back_to_python = true;
     always_fallback_to_python_ = true;
     return;
   }
@@ -467,13 +468,13 @@ void PmapFunction::PopulateCacheEntry(PmapCacheEntry& cache_entry,
   }
 
   // Inputs shard args details.
-  py::list input_indices = pmap_data.attr("input_indices");
+  nb::list input_indices = pmap_data.attr("input_indices");
 
   cache_entry.py_devices = pmap_data.attr("input_devices");
-  auto input_devices =
-      py::cast<std::vector<xla::PjRtDevice*>>(pmap_data.attr("input_devices"));
+  auto input_devices = py::cast<std::vector<xla::PjRtDevice*>>(
+      py::handle(pmap_data.attr("input_devices").ptr()));
 
-  py::list input_array_shardings = pmap_data.attr("input_array_shardings");
+  nb::list input_array_shardings = pmap_data.attr("input_array_shardings");
 
   cache_entry.input_specs.reserve(input_array_shardings.size());
 
@@ -486,7 +487,7 @@ void PmapFunction::PopulateCacheEntry(PmapCacheEntry& cache_entry,
   auto out_tree = nb::cast<xla::PyTreeDef>(
       nb::handle(pmap_data.attr("out_pytree_def").ptr()));
   cache_entry.out_pytree_def = std::move(out_tree);
-  py::list out_avals = pmap_data.attr("out_avals");
+  nb::list out_avals = pmap_data.attr("out_avals");
 
   cache_entry.out_result_specs.reserve(out_avals.size());
   cache_entry.out_dtypes.reserve(out_avals.size());
@@ -495,40 +496,40 @@ void PmapFunction::PopulateCacheEntry(PmapCacheEntry& cache_entry,
   for (int i = 0; i < out_avals.size(); ++i) {
     cache_entry.out_dtypes.push_back(out_avals[i].attr("dtype"));
     cache_entry.out_shapes.push_back(
-        py::cast<std::vector<int64_t>>(out_avals[i].attr("shape")));
+        nb::cast<std::vector<int64_t>>(out_avals[i].attr("shape")));
     cache_entry.out_result_specs.emplace_back(out_avals[i]);
   }
 
-  py::list out_array_shardings = pmap_data.attr("out_array_shardings");
+  nb::list out_array_shardings = pmap_data.attr("out_array_shardings");
 
-  DCHECK(out_array_shardings.empty() ||
+  DCHECK(out_array_shardings.size() == 0 ||
          out_avals.size() == out_array_shardings.size());
 
   cache_entry.out_array_shardings.reserve(out_array_shardings.size());
-  for (py::handle out_array_sharding : out_array_shardings) {
+  for (nb::handle out_array_sharding : out_array_shardings) {
     cache_entry.out_array_shardings.push_back(
-        py::reinterpret_borrow<py::object>(out_array_sharding));
+        nb::borrow<nb::object>(out_array_sharding));
   }
 
-  py::list out_committed = pmap_data.attr("out_committed");
+  nb::list out_committed = pmap_data.attr("out_committed");
 
-  DCHECK(out_committed.empty() || out_avals.size() == out_committed.size());
+  DCHECK(out_committed.size() == 0 || out_avals.size() == out_committed.size());
 
   cache_entry.out_committed.reserve(out_committed.size());
-  for (py::handle c : out_committed) {
-    cache_entry.out_committed.push_back(py::cast<bool>(c));
+  for (nb::handle c : out_committed) {
+    cache_entry.out_committed.push_back(nb::cast<bool>(c));
   }
 }
 
-absl::StatusOr<py::object> PmapFunction::Call(py::handle callable,
+absl::StatusOr<nb::object> PmapFunction::Call(nb::handle callable,
                                               PyObject* const* args,
                                               size_t nargs, PyObject* kwnames) {
   xla::GlobalPyRefManager()->MaybeCollectGarbage();
 
   // Calls the cache_miss_ function. This just calls the Python function; it may
   // return nullptr value if a Python exception is thrown.
-  auto cache_miss = [&]() -> py::tuple {
-    return py::reinterpret_steal<py::tuple>(
+  auto cache_miss = [&]() -> nb::tuple {
+    return nb::steal<nb::tuple>(
         PyObject_Vectorcall(cache_miss_.ptr(), args, nargs, kwnames));
   };
 
@@ -536,11 +537,11 @@ absl::StatusOr<py::object> PmapFunction::Call(py::handle callable,
   // the fastpath data. If the cache miss returns a Python error, returns
   // nullptr and leaves the Python error set.
   auto fallback_to_cache_miss = [&]() {
-    py::tuple cache_miss_output = cache_miss();
+    nb::tuple cache_miss_output = cache_miss();
     if (!cache_miss_output.ptr()) {
-      return py::object();
+      return nb::object();
     }
-    return py::object(cache_miss_output[0]);
+    return nb::object(cache_miss_output[0]);
   };
 
   if (always_fallback_to_python_) {
@@ -581,17 +582,18 @@ absl::StatusOr<py::object> PmapFunction::Call(py::handle callable,
     // In case of several threads attempting to compile the executable, only
     // the one that inserted the item will perform the compilation.
     if (inserted) {
-      py::object out_and_fastpath_data;
-      py::tuple out_tuple;
+      nb::object out_and_fastpath_data;
+      nb::tuple out_tuple;
       VLOG(2) << "Cache miss for " << arguments.signature.DebugString();
       try {
         // Calls Python and may release the GIL. May also throw if
         // compilation/tracing fails.
         out_and_fastpath_data = cache_miss();
         if (!out_and_fastpath_data.ptr()) {
-          throw py::error_already_set();
+          throw nb::python_error();
         }
-        out_tuple = py::cast<py::tuple>(out_and_fastpath_data);
+        out_tuple = nb::cast<nb::tuple>(out_and_fastpath_data);
+
         PopulateCacheEntry(cache_entry, arguments.signature, out_tuple);
       } catch (const std::exception& e) {
         cache_entry.fall_back_to_python = true;
@@ -603,11 +605,11 @@ absl::StatusOr<py::object> PmapFunction::Call(py::handle callable,
       // We have already computed the result in the miss path so we can return
       // it. We are even *required* to do so if there are donated arguments,
       // because any donated buffers will now be invalid.
-      return py::object(out_tuple[0]);
+      return nb::object(out_tuple[0]);
     } else {
       // Release the GIL while we wait, making sure the compile thread can
       // lock it.
-      py::gil_scoped_release release;
+      nb::gil_scoped_release release;
       cache_entry.compilation_complete.WaitForNotification();
     }
   }
@@ -638,7 +640,7 @@ absl::StatusOr<py::object> PmapFunction::Call(py::handle callable,
   // A vector of [num_outputs].
   std::vector<tsl::RCReference<xla::ifrt::Array>> output_arrays;
   {
-    py::gil_scoped_release gil_release;
+    nb::gil_scoped_release gil_release;
     auto ifrt_executable = cache_entry.executable->ifrt_executable();
     TF_ASSIGN_OR_RETURN(
         auto result, ifrt_executable->Execute(absl::MakeSpan(num_args_arrays),
@@ -667,18 +669,21 @@ absl::StatusOr<py::object> PmapFunction::Call(py::handle callable,
   for (int i = 0; i < num_outputs; ++i) {
     const ResultSpec& result_spec = output_specs[i];
     xla::PyArray py_array(
-        result_spec.out_aval, result_spec.weak_type, cache_entry.out_dtypes[i],
-        cache_entry.out_shapes[i], cache_entry.out_array_shardings[i], client,
-        traceback, std::move(output_arrays[i]), cache_entry.out_committed[i],
+        py::reinterpret_borrow<py::object>(result_spec.out_aval.ptr()),
+        result_spec.weak_type,
+        py::reinterpret_borrow<py::object>(cache_entry.out_dtypes[i].ptr()),
+        cache_entry.out_shapes[i],
+        py::reinterpret_borrow<py::object>(
+            cache_entry.out_array_shardings[i].ptr()),
+        client, traceback, std::move(output_arrays[i]),
+        cache_entry.out_committed[i],
         /*skip_checks=*/true);
 
     flat_sharded_device_arrays.push_back(nb::steal(py_array.release().ptr()));
   }
 
-  py::object out = py::reinterpret_steal<py::object>(
-      cache_entry.out_pytree_def.Unflatten(flat_sharded_device_arrays)
-          .release()
-          .ptr());
+  nb::object out =
+      cache_entry.out_pytree_def.Unflatten(flat_sharded_device_arrays);
 
   // If there is a post-hook function, call it with the inputs and the outputs.
   std::optional<nb::object> post_hook = GetPostHook();
@@ -714,15 +719,15 @@ struct JaxPmapFunctionObject {
 
 PyObject* JaxPmapFunction_Type = nullptr;
 
-bool PmapFunction::IsPmapFunction(py::handle handle) {
-  return handle.get_type() == JaxPmapFunction_Type;
+bool PmapFunction::IsPmapFunction(nb::handle handle) {
+  return handle.type().ptr() == JaxPmapFunction_Type;
 }
 
-PmapFunction* PmapFunction::AsPmapFunctionUnchecked(py::handle handle) {
+PmapFunction* PmapFunction::AsPmapFunctionUnchecked(nb::handle handle) {
   return &(reinterpret_cast<JaxPmapFunctionObject*>(handle.ptr())->fun);
 }
 
-absl::StatusOr<PmapFunction*> AsPmapFunction(py::handle handle) {
+absl::StatusOr<PmapFunction*> AsPmapFunction(nb::handle handle) {
   if (!PmapFunction::IsPmapFunction(handle)) {
     return xla::InvalidArgument("Expected a PmapFunction");
   }
@@ -741,7 +746,7 @@ PyObject* JaxPmapFunction_tp_vectorcall(PyObject* callable,
     return absl::StrCat("JaxPmapFunction(", o->fun.function_name(), ")");
   });
   try {
-    absl::StatusOr<py::object> out =
+    absl::StatusOr<nb::object> out =
         o->fun.Call(callable, args, nargs, kwnames);
     if (!out.ok()) {
       PyErr_SetString(PyExc_ValueError, out.status().ToString().c_str());
@@ -854,11 +859,11 @@ static PyGetSetDef JaxPmapFunction_tp_getset[] = {
 
 }  // extern "C"
 
-py::object MakePmapFunction(
-    py::function fun, py::function cache_miss, std::vector<int> static_argnums,
-    py::function python_shard_arg_fallback,
+nb::object MakePmapFunction(
+    nb::callable fun, nb::callable cache_miss, std::vector<int> static_argnums,
+    nb::callable python_shard_arg_fallback,
     std::shared_ptr<xla::PyTreeRegistry> pytree_registry) {
-  py::object obj = py::reinterpret_steal<py::object>(JaxPmapFunction_tp_new(
+  nb::object obj = nb::steal<nb::object>(JaxPmapFunction_tp_new(
       reinterpret_cast<PyTypeObject*>(JaxPmapFunction_Type), nullptr, nullptr));
   JaxPmapFunctionObject* buf =
       reinterpret_cast<JaxPmapFunctionObject*>(obj.ptr());
@@ -874,8 +879,8 @@ const int kPmapFunctionPickleVersion = 1;
 
 }  // namespace
 
-void BuildPmapSubmodule(py::module& m) {
-  py::module pmap_lib = m.def_submodule("pmap_lib", "Jax C++ pmap library");
+void BuildPmapSubmodule(nb::module_& m) {
+  nb::module_ pmap_lib = m.def_submodule("pmap_lib", "Jax C++ pmap library");
   nb::module_ pmap_lib_nb = nb::cast<nb::module_>(nb::borrow(pmap_lib.ptr()));
 
   nb::class_<NoSharding> no_sharding(pmap_lib_nb, "NoSharding");
@@ -1007,10 +1012,10 @@ void BuildPmapSubmodule(py::module& m) {
 
   // We need to use heap-allocated type objects because we want to add
   // additional methods dynamically.
-  py::object cfun;
+  nb::object cfun;
   {
-    py::str name = py::str("PmapFunction");
-    py::str qualname = py::str("PmapFunction");
+    nb::str name = nb::str("PmapFunction");
+    nb::str qualname = nb::str("PmapFunction");
     PyHeapTypeObject* heap_type = reinterpret_cast<PyHeapTypeObject*>(
         PyType_Type.tp_alloc(&PyType_Type, 0));
     // Caution: we must not call any functions that might invoke the GC until
@@ -1036,42 +1041,40 @@ void BuildPmapSubmodule(py::module& m) {
     type->tp_vectorcall_offset = offsetof(JaxPmapFunctionObject, vectorcall);
     CHECK_EQ(PyType_Ready(type), 0);
     JaxPmapFunction_Type = reinterpret_cast<PyObject*>(type);
-    cfun = py::reinterpret_borrow<py::object>(JaxPmapFunction_Type);
+    cfun = nb::borrow<nb::object>(JaxPmapFunction_Type);
   }
-  py::object cfun_type =
-      py::reinterpret_borrow<py::object>(JaxPmapFunction_Type);
+  nb::object cfun_type = nb::borrow<nb::object>(JaxPmapFunction_Type);
 
   // Add PmapFunction to the xla_extension module so it can be pickled.
   m.attr("PmapFunction") = cfun_type;
 
   cfun.attr("__signature__") =
-      property_readonly([](py::handle self) -> py::object {
+      xla::nb_property_readonly([](nb::handle self) -> nb::object {
         PmapFunction* fun = xla::ValueOrThrow(AsPmapFunction(self));
         return fun->PythonSignature();
       });
   // Required by `post_hook`.
   cfun.attr("_cache_miss") =
-      property_readonly([](py::handle self) -> py::object {
+      xla::nb_property_readonly([](nb::handle self) -> nb::object {
         PmapFunction* fun = xla::ValueOrThrow(AsPmapFunction(self));
         return fun->cache_miss();
       });
-  cfun.attr("__getstate__") = py::cpp_function(
+  cfun.attr("__getstate__") = nb::cpp_function(
       [](const PmapFunction::object& self) {
         PmapFunction* fn = self.func();
-        py::dict pickle;
+        nb::dict pickle;
         pickle["version"] = kPmapFunctionPickleVersion;
         pickle["fun"] = fn->fun();
         pickle["cache_miss"] = fn->cache_miss();
         pickle["static_argnums"] = fn->static_argnums();
         pickle["python_shard_arg_fallback"] = fn->python_shard_arg_fallback();
-        pickle["pytree_registry"] = py::reinterpret_borrow<py::object>(
-            nb::cast(fn->pytree_registry()).ptr());
+        pickle["pytree_registry"] = nb::cast(fn->pytree_registry());
         return pickle;
       },
-      py::is_method(cfun_type));
-  cfun.attr("__setstate__") = py::cpp_function(
-      [](PmapFunction::object& self, const py::dict& pickle) {
-        int version = py::cast<int>(pickle["version"]);
+      nb::is_method());
+  cfun.attr("__setstate__") = nb::cpp_function(
+      [](PmapFunction::object& self, const nb::dict& pickle) {
+        int version = nb::cast<int>(pickle["version"]);
         if (version != kPmapFunctionPickleVersion) {
           throw std::invalid_argument(absl::StrFormat(
               "Invalid PmapFunction pickle version, got %d, expected %d. "
@@ -1079,12 +1082,12 @@ void BuildPmapSubmodule(py::module& m) {
               "versions is not supported.",
               version, kPmapFunctionPickleVersion));
         }
-        py::function fun = py::cast<py::function>(pickle["fun"]);
-        py::function cache_miss = py::cast<py::function>(pickle["cache_miss"]);
+        nb::callable fun = nb::cast<nb::callable>(pickle["fun"]);
+        nb::callable cache_miss = nb::cast<nb::callable>(pickle["cache_miss"]);
         std::vector<int> static_argnums =
-            py::cast<std::vector<int>>(pickle["static_argnums"]);
-        py::function python_shard_arg_fallback =
-            py::cast<py::function>(pickle["python_shard_arg_fallback"]);
+            nb::cast<std::vector<int>>(pickle["static_argnums"]);
+        nb::callable python_shard_arg_fallback =
+            nb::cast<nb::callable>(pickle["python_shard_arg_fallback"]);
         std::shared_ptr<xla::PyTreeRegistry> pytree_registry =
             nb::cast<std::shared_ptr<xla::PyTreeRegistry>>(
                 nb::handle(pickle["pytree_registry"].ptr()));
@@ -1094,34 +1097,34 @@ void BuildPmapSubmodule(py::module& m) {
                          std::move(python_shard_arg_fallback),
                          std::move(pytree_registry));
       },
-      py::is_method(cfun_type));
+      nb::is_method());
 
   // This is only for testing/debugging purposes.
   cfun.attr("_cache_size") =
-      property_readonly([](py::handle self) -> py::object {
+      xla::nb_property_readonly([](nb::handle self) -> nb::object {
         PmapFunction* fun = xla::ValueOrThrow(AsPmapFunction(self));
-        return py::cast<int>(fun->cache_size());
+        return nb::cast<int>(fun->cache_size());
       });
 
-  cfun.attr("_cache_clear") = py::cpp_function(
-      [](py::handle self) {
+  cfun.attr("_cache_clear") = nb::cpp_function(
+      [](nb::handle self) {
         PmapFunction* fun = xla::ValueOrThrow(AsPmapFunction(self));
         fun->cache_clear();
       },
-      py::is_method(cfun));
+      nb::is_method());
 
-  cfun.attr("_debug_cache_keys") = py::cpp_function(
-      [](py::handle self) -> std::string {
+  cfun.attr("_debug_cache_keys") = nb::cpp_function(
+      [](nb::handle self) -> std::string {
         PmapFunction* fun = xla::ValueOrThrow(AsPmapFunction(self));
         return fun->DebugCacheKeys();
       },
-      py::is_method(cfun_type));
+      nb::is_method());
 
   pmap_lib.def(
       "pmap",
-      [](py::function fun, py::function cache_miss,
-         std::vector<int> static_argnums, py::function shard_arg_fallback,
-         py::object pytree_registry) -> py::object {
+      [](nb::callable fun, nb::callable cache_miss,
+         std::vector<int> static_argnums, nb::callable shard_arg_fallback,
+         nb::object pytree_registry) -> nb::object {
         std::shared_ptr<xla::PyTreeRegistry> registry =
             nb::cast<std::shared_ptr<xla::PyTreeRegistry>>(
                 nb::handle(pytree_registry.ptr()));
@@ -1129,8 +1132,8 @@ void BuildPmapSubmodule(py::module& m) {
             std::move(fun), std::move(cache_miss), std::move(static_argnums),
             std::move(shard_arg_fallback), std::move(registry));
       },
-      py::arg("fun"), py::arg("cache_miss"), py::arg("static_argnums"),
-      py::arg("shard_arg_fallback"), py::arg("pytree_registry"));
+      nb::arg("fun"), nb::arg("cache_miss"), nb::arg("static_argnums"),
+      nb::arg("shard_arg_fallback"), nb::arg("pytree_registry"));
 }
 
 }  // namespace jax

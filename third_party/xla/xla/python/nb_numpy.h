@@ -74,6 +74,7 @@ class nb_numpy_ndarray : public nanobind::object {
 
   // Ensures that the given handle is a numpy array. If provided,
   // extra_requirements flags (NPY_ARRAY_...) are passed to PyArray_FromAny.
+  // In case of an error, nullptr is returned and the Python error is cleared.
   static nb_numpy_ndarray ensure(nanobind::handle h,
                                  int extra_requirements = 0);
 
