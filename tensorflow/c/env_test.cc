@@ -15,9 +15,10 @@ limitations under the License.
 
 #include "tensorflow/c/env.h"
 
-#include "tensorflow/c/c_api.h"
-#include "tensorflow/core/lib/io/path.h"
+#include "tensorflow/c/tf_file_statistics.h"
+#include "tensorflow/c/tf_status.h"
 #include "tensorflow/core/platform/mutex.h"
+#include "tensorflow/core/platform/path.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/types.h"
 
