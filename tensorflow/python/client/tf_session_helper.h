@@ -18,6 +18,11 @@ limitations under the License.
 
 // Must be included first
 // clang-format off
+#include "tensorflow/c/tf_buffer.h"
+#include "tensorflow/c/tf_datatype.h"
+#include "tensorflow/c/tf_status.h"
+#include "tensorflow/c/tf_tensor.h"
+#include "tensorflow/core/platform/types.h"
 #include "tsl/python/lib/core/numpy.h" //NOLINT
 // clang-format on
 

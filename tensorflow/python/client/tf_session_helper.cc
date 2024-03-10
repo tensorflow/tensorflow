@@ -20,8 +20,11 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
+#include "third_party/py/numpy/core/include/numpy/arrayobject.h"
+#include "third_party/py/numpy/core/include/numpy/ndarraytypes.h"
 #include "tensorflow/c/c_api.h"
 #include "tensorflow/c/c_api_internal.h"
 #include "tensorflow/c/safe_ptr.h"
@@ -35,6 +38,7 @@ limitations under the License.
 #include "tensorflow/core/framework/attr_value_util.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/graph/tensor_id.h"
+#include "tensorflow/core/lib/gtl/inlined_vector.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/stringprintf.h"
 #include "tensorflow/core/platform/types.h"
