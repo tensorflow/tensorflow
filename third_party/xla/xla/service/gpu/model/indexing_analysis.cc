@@ -19,6 +19,7 @@ limitations under the License.
 #include <cassert>
 #include <cstddef>
 #include <cstdint>
+#include <functional>
 #include <iterator>
 #include <optional>
 #include <ostream>
@@ -1186,6 +1187,23 @@ HloInstructionIndexing ComputeInputToOutputIndexing(const HloInstruction* instr,
   int64_t num_results =
       instr->shape().IsTuple() ? instr->shape().tuple_shapes_size() : 1;
   return CreateUnknownIndexing(num_results);
+}
+
+IndexingMap ComputeEpilogueInputToOutputIndexing(
+    const HloInstruction* epilogue_root, mlir::MLIRContext* ctx,
+    std::function<bool(const HloInstruction*)> is_root) {
+  auto* instr = epilogue_root;
+  auto root_indexing = CreateIdentityMap(instr->shape(), ctx);
+  while (!is_root(instr)) {
+    // There can be multiple users, but they must have compatible indexing maps.
+    auto* user = instr->users().front();
+    auto user_indexing =
+        ComputeInputToOutputIndexing(user, user->operand_index(instr), ctx);
+    root_indexing = root_indexing * *user_indexing.indexing_maps[0].begin();
+    root_indexing.Simplify();
+    instr = user;
+  }
+  return root_indexing;
 }
 
 }  // namespace gpu

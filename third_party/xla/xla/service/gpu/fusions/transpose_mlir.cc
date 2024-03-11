@@ -85,31 +85,6 @@ using mlir_converter::ApplyAffineMap;
 using mlir_converter::CallTargetProvider;
 using mlir_converter::PartitionedComputation;
 
-// Traverses use-def chain from hero to root and composes indexing maps.
-IndexingMap GetThreadIdIndexingForRoot(
-    const IndexingMap& hero_output_indexing, const HloInstruction* hero,
-    const SmallPtrSet<const HloInstruction*, 16>& roots,
-    MLIRContext* mlir_context) {
-  if (roots.contains(hero)) {
-    return hero_output_indexing;
-  }
-
-  IndexingMap root_indexing = hero_output_indexing;
-  const HloInstruction* op = hero;
-  while (!roots.contains(op)) {
-    // There could be multiple roots, but they all should have compatible
-    // indexing maps.
-    auto* user = op->users().front();
-    HloInstructionIndexing user_indexing = ComputeInputToOutputIndexing(
-        user, user->operand_index(op), mlir_context);
-
-    root_indexing = root_indexing * *user_indexing.indexing_maps[0].begin();
-    root_indexing.Simplify();
-    op = user;
-  }
-  return root_indexing;
-}
-
 Tiling ComputeTransposeTiling(const TransposeDescription& tiled_transpose) {
   constexpr int kNumRows = 4;
   static_assert(WarpSize() % kNumRows == 0);
@@ -359,9 +334,13 @@ absl::Status MlirTransposeFusion::EmitReadFromShMemMlir(
     TF_RET_CHECK(output_indexing) << "Indexing is never nullopt";
 
     if (!root_to_hero_indexing.contains(transpose)) {
+      auto epilogue_indexing = ComputeEpilogueInputToOutputIndexing(
+          transpose, mlir_context,
+          /*is_root=*/[&](const HloInstruction* instr) {
+            return hero_roots.contains(instr);
+          });
       root_to_hero_indexing.emplace(
-          transpose, GetThreadIdIndexingForRoot(*output_indexing, transpose,
-                                                hero_roots, mlir_context));
+          transpose, ComposeIndexingMaps(*output_indexing, epilogue_indexing));
     }
 
     const IndexingMap& root_indexing = root_to_hero_indexing.at(transpose);
