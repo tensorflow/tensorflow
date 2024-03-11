@@ -197,7 +197,7 @@ class QueueBase:
       A `QueueBase` object.
 
     Raises:
-      TypeError: When `queues` is not a list of `QueueBase` objects,
+      TypeError: When `queues` are not a list of `QueueBase` objects,
         or when the data types of `queues` are not all the same.
     """
     if ((not queues) or (not isinstance(queues, list)) or
@@ -550,7 +550,7 @@ class QueueBase:
     the given queue. Subsequent `enqueue` and `enqueue_many`
     operations will fail. Subsequent `dequeue` and `dequeue_many`
     operations will continue to succeed if sufficient elements remain
-    in the queue. Subsequently dequeue and dequeue_many operations
+    in the queue. Subsequently, dequeue and dequeue_many operations
     that would otherwise block waiting for more elements (if close
     hadn't been called) will now fail immediately.
 
@@ -779,7 +779,7 @@ class GPUCompatibleFIFOQueue(QueueBase):
   will be colocated with the queue resource. GPUCompatibleFIFOQueue only
   supports enqueue and dequeue at the moment, not enqueue_many or dequeue_many.
 
-  See `tf.queue.QueueBase` for a description of the methods on this class.
+  See `tf.queue.QueueBase` for a description of the methods in this class.
   """
 
   def __init__(self,
@@ -811,7 +811,7 @@ class GPUCompatibleFIFOQueue(QueueBase):
         the number of tensors in each queue element.
       shapes: (Optional.) A list of fully-defined `TensorShape` objects
         with the same length as `dtypes`, or `None`.
-      names: (Optional.) A list of string naming the components in the queue
+      names: (Optional.) A list of strings naming the components in the queue
         with the same length as `dtypes`, or `None`.  If specified the dequeue
         methods return a dictionary with the names as keys.
       shared_name: (Optional.) If non-empty, this queue will be shared under
