@@ -131,12 +131,16 @@ absl::StatusOr<std::unique_ptr<FusionInterface>> GetFusionEmitter(
   const auto& analysis = fusion_info.analysis();
   const FusionBackendConfig& backend_config = analysis.fusion_backend_config();
 
-  bool enable_mlir_emitters = analysis.fusion_roots()
-                                  .front()
-                                  ->GetModule()
-                                  ->config()
-                                  .debug_options()
-                                  .xla_gpu_enable_mlir_emitters();
+  bool enable_mlir_emitters =
+      analysis.fusion_roots()
+          .front()
+          ->GetModule()
+          ->config()
+          .debug_options()
+          .xla_gpu_enable_mlir_emitters() &&
+      mlir_converter::IsHloConversionSupported(
+          analysis.fusion(),
+          fusion_info.analysis().device_info().gpu_compute_capability());
 
   switch (analysis.GetEmitterFusionKind()) {
     case HloFusionAnalysis::EmitterFusionKind::kCustomFusion: {
@@ -147,10 +151,7 @@ absl::StatusOr<std::unique_ptr<FusionInterface>> GetFusionEmitter(
       return std::make_unique<CustomFusion>();
     }
     case HloFusionAnalysis::EmitterFusionKind::kInputSlices:
-      if (enable_mlir_emitters &&
-          mlir_converter::IsHloConversionSupported(
-              analysis.fusion(),
-              analysis.device_info().gpu_compute_capability())) {
+      if (enable_mlir_emitters) {
         return std::make_unique<MlirInputSlicesFusion>(analysis);
       }
       return std::make_unique<InputSlicesFusion>(analysis);
@@ -164,19 +165,13 @@ absl::StatusOr<std::unique_ptr<FusionInterface>> GetFusionEmitter(
         return *std::move(copy_fusion);
       }
 
-      if (enable_mlir_emitters &&
-          mlir_converter::IsHloConversionSupported(
-              analysis.fusion(),
-              analysis.device_info().gpu_compute_capability())) {
+      if (enable_mlir_emitters) {
         return std::make_unique<MlirLoopFusion>(analysis);
       }
       return std::make_unique<LoopFusion>(analysis);
     }
     case HloFusionAnalysis::EmitterFusionKind::kReduction:
-      if (enable_mlir_emitters && MlirReductionFusion::IsSupported(analysis) &&
-          mlir_converter::IsHloConversionSupported(
-              analysis.fusion(),
-              fusion_info.analysis().device_info().gpu_compute_capability())) {
+      if (enable_mlir_emitters && MlirReductionFusion::IsSupported(analysis)) {
         return std::make_unique<MlirReductionFusion>(analysis);
       }
       return std::make_unique<ReductionFusion>(analysis);
