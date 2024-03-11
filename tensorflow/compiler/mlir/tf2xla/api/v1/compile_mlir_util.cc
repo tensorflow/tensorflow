@@ -1004,6 +1004,10 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> GraphToModule(
   // the shape inference pass is run early in the pass pipeline, shape inference
   // during import is not necessary.
   config.enable_shape_inference = false;
+  // This forces the conversion to use the attribute `_output_shapes` (if
+  // present) to set a node's output tensor shape. There where a few models
+  // that set this incorrectly which should now be fixed.
+  config.unconditionally_use_set_output_shapes = true;
   return ConvertGraphToMlir(graph, debug_info, flib_def, config, context);
 }
 
