@@ -1176,9 +1176,9 @@ Value materializeZeta(ConversionPatternRewriter &rewriter, Location loc,
   // Using Horner's rule allows to avoid some NaN's and Infs from happening,
   // resulting in more numerically stable code.
   for (int i = 0; i < 11; ++i) {
-    Value factorLhs = rewriter.create<mhlo::SubtractOp>(
+    Value factorLhs = rewriter.create<mhlo::AddOp>(
         loc, x, chlo::getConstantLike(rewriter, loc, 22 - 2 * i, x));
-    Value factorRhs = rewriter.create<mhlo::SubtractOp>(
+    Value factorRhs = rewriter.create<mhlo::AddOp>(
         loc, x, chlo::getConstantLike(rewriter, loc, 21 - 2 * i, x));
     factor = rewriter.create<mhlo::MulOp>(loc, factorLhs, factorRhs);
     hornerSum = rewriter.create<mhlo::MulOp>(
