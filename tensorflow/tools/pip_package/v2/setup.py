@@ -48,7 +48,7 @@ from setuptools.dist import Distribution
 # result for pip.
 # Also update tensorflow/tensorflow.bzl and
 # tensorflow/core/public/version.h
-_VERSION = '2.16.0'
+_VERSION = '2.16.1'
 
 
 # We use the same setup.py for all tensorflow_* packages and for the nightly
@@ -114,8 +114,8 @@ REQUIRED_PACKAGES = [
     # dependencies on the release branch is updated to the stable releases (RC
     # or final). For example, 'keras-nightly ~= 2.14.0.dev' will be replaced by
     # 'keras >= 2.14.0rc0, < 2.15' on the release branch after the branch cut.
-    'tb-nightly ~= 2.16.0.a',
-    'keras-nightly ~= 3.0.0.dev',
+    'tensorboard >= 2.16, < 2.17',
+    'keras >= 3.0.0'
 ]
 REQUIRED_PACKAGES = [p for p in REQUIRED_PACKAGES if p is not None]
 
@@ -317,19 +317,22 @@ for path in so_lib_paths:
 #  https://storage.googleapis.com/libtpu-releases/index.html
 # libtpu is built and uploaded to this link every night (PST).
 if '_tpu' in project_name:
-  # For tensorflow-tpu releases, use a set libtpu-nightly version;
+  # For tensorflow-tpu releases, use a set libtpu version;
   # For tf-nightly-tpu, use the most recent libtpu-nightly. Because of the
   # timing of these tests, the UTC date from eight hours ago is expected to be a
   # valid version.
   _libtpu_version = standard_or_nightly(
-      '0.1.dev20231018',
+      '2.16.0rc0',
       '0.1.dev'
       + (
           datetime.datetime.now(tz=datetime.timezone.utc)
           - datetime.timedelta(hours=8)
       ).strftime('%Y%m%d'),
   )
-  REQUIRED_PACKAGES.append([f'libtpu-nightly=={_libtpu_version}'])
+  if _libtpu_version.startswith('0.1'):
+    REQUIRED_PACKAGES.append([f'libtpu-nightly=={_libtpu_version}'])
+  else:
+    REQUIRED_PACKAGES.append([f'libtpu=={_libtpu_version}'])
   CONSOLE_SCRIPTS.extend([
       'start_grpc_tpu_worker = tensorflow.python.tools.grpc_tpu_worker:run',
       ('start_grpc_tpu_service = '
