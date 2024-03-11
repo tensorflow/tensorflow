@@ -18,6 +18,7 @@ limitations under the License.
 #include <cstdint>
 #include <optional>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "absl/status/status.h"
@@ -43,7 +44,19 @@ NcclRecvThunk::NcclRecvThunk(ThunkInfo thunk_info, NcclApi* nccl_api,
       config_(GetNcclP2PConfigForSendRecv(instr, instr->shape().tuple_shapes(0),
                                           replica_count, partition_count)),
       buffer_(buffer),
-      stream_kind_(GetStreamKindForSendRecv(instr)) {}
+      stream_kind_(GetStreamKindForSendRecv(instr)),
+      execution_counters_(config_.validation_kind ==
+                                  NcclP2PConfig::ValidationKind::kConditional
+                              ? new ExecutionCounters()
+                              : nullptr) {}
+
+absl::Status NcclRecvThunk::Initialize(const InitializeParams& params) {
+  TF_RETURN_IF_ERROR(NcclCollectiveThunk::Initialize(params));
+  if (execution_counters_) {
+    TF_RETURN_IF_ERROR(execution_counters_->Initialize(params.executor));
+  }
+  return absl::OkStatus();
+}
 
 absl::Status NcclRecvThunk::RunNcclCollective(const ExecuteParams& params,
                                               se::Stream& stream,
@@ -67,19 +80,11 @@ absl::Status NcclRecvThunk::RunNcclCollective(const ExecuteParams& params,
 
   const NcclP2PConfig::SourceTargetMapEntry source_target =
       NcclP2PConfig::GetSourceTarget(config_.id_to_source_target, current_id);
+  DeviceBufferPair& buffer = device_buffers[0];
 
-  return ::xla::gpu::RunRecv(nccl_api(), source_target, device_buffers[0],
-                             stream, comm, device_string, current_id);
-}
-
-absl::Status RunRecv(NcclApi* nccl_api,
-                     NcclP2PConfig::SourceTargetMapEntry source_target,
-                     DeviceBufferPair& buffer, se::Stream& stream,
-                     NcclApi::NcclCommHandle comm,
-                     absl::string_view device_string, int64_t current_id) {
   // Determine the source IDs for this instance. The source ID is the ID for
-  // the peer that will copy its data to this instance. If there is no source,
-  // just memzero() the destination buffer.
+  // the peer that will copy its data to this instance. If there is no
+  // source, just memzero() the destination buffer.
   int device_ordinal = stream.parent()->device_ordinal();
   VLOG(3) << "Performing Recv from device ordinal: " << device_ordinal
           << "current_id " << current_id;
@@ -92,9 +97,31 @@ absl::Status RunRecv(NcclApi* nccl_api,
 
   // Receive data from the source peer to the destination buffer.
   if (source_id) {
-    TF_RETURN_IF_ERROR(nccl_api->Recv(dest_addr, buffer.element_type,
-                                      buffer.element_count, *source_id, comm,
-                                      &stream));
+    bool should_run =
+        config_.validation_kind == NcclP2PConfig::ValidationKind::kInvalid
+            ? false
+            : true;
+    if (config_.validation_kind ==
+        NcclP2PConfig::ValidationKind::kConditional) {
+      se::StreamExecutor* executor = params.stream->parent();
+      TF_ASSIGN_OR_RETURN(int64_t * counter,
+                          execution_counters_->GetCounter(executor));
+      auto it = config_.source_target_to_bounds.find(
+          std::make_pair(*source_target.source, current_id));
+      if (it == config_.source_target_to_bounds.end()) {
+        return absl::InternalError("Missing bounds for conditional Recv");
+      }
+      if (*counter < it->second.first || *counter > it->second.second) {
+        should_run = false;
+      }
+      VLOG(3) << "RunNcclCollective counter " << *counter << " " << should_run;
+      ++(*counter);
+    }
+    if (should_run) {
+      TF_RETURN_IF_ERROR(nccl_api()->Recv(dest_addr, buffer.element_type,
+                                          buffer.element_count, *source_id,
+                                          comm, &stream));
+    }
 
   } else {
     // If there is no source peer, i.e. no sender to this instance, zero out

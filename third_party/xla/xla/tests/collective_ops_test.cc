@@ -2020,5 +2020,159 @@ XLA_TEST_F(CollectiveOpsTest, DISABLED_ON_CPU(SendRecv_TwoConcurrentChains)) {
                                      results[1]));
 }
 
+XLA_TEST_F(CollectiveOpsTest, DISABLED_ON_CPU(SendRecv_ValidationAttr1)) {
+  const char* const kModuleStr = R"(
+  HloModule test, is_scheduled=true
+
+  ENTRY test_computation {
+    c0 = u32[] constant(0)
+    c1 = u32[] constant(1)
+    replica = u32[] replica-id()
+    a = u32[] add(c1, replica)
+    send-data = u32[2] broadcast(a), dimensions={}
+
+    after-all.0 = token[] after-all()
+    recv.0 = (u32[2], u32[], token[]) recv(after-all.0), channel_id=0,
+    frontend_attributes={
+        _xla_send_recv_source_target_pairs="{{1,0}}",
+        _xla_send_recv_validation="invalid"
+      }
+    send.0 = (u32[2], u32[], token[]) send(send-data, after-all.0),
+      channel_id=0, frontend_attributes={
+        _xla_send_recv_source_target_pairs="{{1,0}}",
+        _xla_send_recv_validation="invalid"
+      }
+    recv-done.0 = (u32[2], token[]) recv-done(recv.0), channel_id=0
+    recv-data.0 = u32[2] get-tuple-element(recv-done.0), index=0
+    send-done.0 = token[] send-done(send.0), channel_id=0
+
+    after-all.1 = token[] after-all()
+    recv.1 = (u32[2], u32[], token[]) recv(after-all.1), channel_id=0,
+    frontend_attributes={
+        _xla_send_recv_source_target_pairs="{{0,1}}"
+      }
+    send.1 = (u32[2], u32[], token[]) send(send-data, after-all.1),
+      channel_id=0, frontend_attributes={
+        _xla_send_recv_source_target_pairs="{{0,1}}"
+      }
+    recv-done.1 = (u32[2], token[]) recv-done(recv.1), channel_id=0
+    recv-data.1 = u32[2] get-tuple-element(recv-done.1), index=0
+
+    compare0 = pred[] compare(replica, c0), direction=EQ
+    compare = pred[2] broadcast(compare0), dimensions={}
+    recv-data = u32[2] select(compare, recv-data.0, recv-data.1)
+    send-done.1 = token[] send-done(send.1), channel_id=0
+
+    c1b = u32[2] broadcast(c1), dimensions={}
+    ROOT result = u32[2] add(c1b, recv-data)
+  })";
+
+  const int64_t kNumReplicas = 2;
+  SKIP_TEST_IF_NUM_DEVICES_LESS_THAN(kNumReplicas)
+
+  HloModuleConfig config =
+      GetModuleConfigForTest(/*replica_count=*/kNumReplicas);
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(kModuleStr, config));
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::vector<Literal> results,
+      ExecuteReplicated(std::move(module), {}, kNumReplicas,
+                        /*use_threads=*/true, /*run_hlo_passes=*/false));
+  ASSERT_EQ(results.size(), kNumReplicas);
+  // Skip checking the result for device 0 as it has garabage value as the
+  // Recv operation is marked for skipping at runtime.
+  EXPECT_TRUE(LiteralTestUtil::Equal(LiteralUtil::CreateR1<uint32_t>({2, 2}),
+                                     results[1]));
+}
+
+XLA_TEST_F(CollectiveOpsTest, DISABLED_ON_CPU(SendRecv_ValidationAttr2)) {
+  const char* const kModuleStr = R"(
+  HloModule test, is_scheduled=true
+cond {
+    param = (u32[], u32[2]) parameter(0)
+    count = get-tuple-element(%param), index=0
+    ub = u32[] constant(2)
+    ROOT result = pred[] compare(count, ub), direction=LT
+ }
+
+body {
+    param = (u32[], u32[2]) parameter(0)
+    count = get-tuple-element(%param), index=0
+    send-data = get-tuple-element(%param), index=1
+
+    after-all.0 = token[] after-all()
+    recv.0 = (u32[2], u32[], token[]) recv(after-all.0), channel_id=0,
+      frontend_attributes={
+        _xla_send_recv_source_target_pairs="{{1,0}}",
+        _xla_send_recv_validation="{{0,1}}"
+      }
+    send.0 = (u32[2], u32[], token[]) send(send-data, after-all.0),
+      channel_id=0,
+      frontend_attributes={
+        _xla_send_recv_source_target_pairs="{{1,0}}",
+        _xla_send_recv_validation="{{0,1}}"
+      }
+    recv-done.0 = (u32[2], token[]) recv-done(recv.0), channel_id=0
+    recv-data.0 = u32[2] get-tuple-element(recv-done.0), index=0
+    send-done.0 = token[] send-done(send.0), channel_id=0
+
+    after-all.1 = token[] after-all()
+    recv.1 = (u32[2], u32[], token[]) recv(after-all.1), channel_id=0,
+      frontend_attributes={
+        _xla_send_recv_source_target_pairs="{{0,1}}"
+      }
+    send.1 = (u32[2], u32[], token[]) send(send-data, after-all.1),
+      channel_id=0,
+      frontend_attributes={
+        _xla_send_recv_source_target_pairs="{{0,1}}"
+      }
+    recv-done.1 = (u32[2], token[]) recv-done(recv.1), channel_id=0
+    recv-data.1 = u32[2] get-tuple-element(recv-done.1), index=0
+
+    replica = u32[] replica-id()
+    constant0 = u32[] constant(0)
+    compare0 = pred[] compare(replica, constant0), direction=EQ
+    compare = pred[2] broadcast(compare0), dimensions={}
+    recv-data = u32[2] select(compare, recv-data.0, recv-data.1)
+
+    c1 = u32[] constant(1)
+    new_count = u32[] add(count, c1)
+
+    r = u32[2] broadcast(c1), dimensions={}
+    s = u32[2] add(r, recv-data)
+
+    send-done.1 = token[] send-done(send.1), channel_id=0
+    ROOT result = (u32[], u32[2]) tuple(new_count, s)
+  }
+
+  ENTRY test_computation {
+    c0 = u32[] constant(0)
+    r = u32[] replica-id()
+    init = u32[2] broadcast(r), dimensions={}
+    while_init = (u32[], u32[2]) tuple(c0, init)
+    while_result = (u32[], u32[2]) while(while_init), body=body, condition=cond
+    ROOT result = u32[2] get-tuple-element(while_result), index=1
+  })";
+
+  const int64_t kNumReplicas = 2;
+  SKIP_TEST_IF_NUM_DEVICES_LESS_THAN(kNumReplicas)
+
+  HloModuleConfig config =
+      GetModuleConfigForTest(/*replica_count=*/kNumReplicas);
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(kModuleStr, config));
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::vector<Literal> results,
+      ExecuteReplicated(std::move(module), {}, kNumReplicas,
+                        /*use_threads=*/true, /*run_hlo_passes=*/false));
+  ASSERT_EQ(results.size(), kNumReplicas);
+  EXPECT_TRUE(LiteralTestUtil::Equal(LiteralUtil::CreateR1<uint32_t>({2, 2}),
+                                     results[0]));
+  EXPECT_TRUE(LiteralTestUtil::Equal(LiteralUtil::CreateR1<uint32_t>({3, 3}),
+                                     results[1]));
+}
+
 }  // namespace
 }  // namespace xla

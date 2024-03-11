@@ -398,6 +398,27 @@ constexpr char kSendRecvSourceTargetPairsAttr[] =
 // Send or Recv. For all other cases, asynchronous stream kP2P0 is used.
 constexpr char kSendRecvPipelineAttr[] = "_xla_send_recv_pipeline";
 
+// This frontend attribute conveys the following information:
+// (1) _xla_send_recv_validation="invalid": the runtime should skip sending or
+// receiving data when the instruction is executed.
+// (2) the absent of the attribute: the runtime should faithfully perform the
+// Send or Recv operation when the instruction is executed.
+// (3) _xla_send_recv_validation={list-of-bounds}: the list-of-bounds
+// corresponds to the value of _xla_send_recv_source_target_pairs, and specifies
+// the execution instances for which the runtime should faithfully perform the
+// Send or Recv operation. Here is an example:
+//   _xla_send_recv_source_target_pairs={{0,1}, {1,2}}
+//   _xla_send_recv_validation={{2,3}, {5,7}}
+// The Send or Recv instruction with the above two attributes have the
+// following semantics:
+// The communication between device 0 and 1 will only send or receive data
+// for execution instances 2 and 3 of the instruction on devices 0 and 1.
+// For execution instances 0, 1, and beyond 3, the runtime should skip sending
+// or receiving any data.
+// Similarly, the communication between device 1 and 2 will only send or
+// receive data on execution instances 5 and 7.
+constexpr char kSendRecvValidationAttr[] = "_xla_send_recv_validation";
+
 }  // end namespace xla
 
 #endif  // XLA_SERVICE_COLLECTIVE_OPS_UTILS_H_
