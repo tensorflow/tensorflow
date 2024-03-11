@@ -31,24 +31,29 @@ from tensorflow.python.platform import test
 
 class DeterminantOpTest(test.TestCase):
 
-  def _compareDeterminantBase(self, matrix_x, tf_ans):
+  def _compareDeterminantBase(self, matrix_x, tf_ans, expected=None):
     out = self.evaluate(tf_ans)
     shape = matrix_x.shape
     if shape[-1] == 0 and shape[-2] == 0:
       np_ans = np.ones(shape[:-2]).astype(matrix_x.dtype)
-    else:
+    elif expected is None:
       np_ans = np.array(np.linalg.det(matrix_x)).astype(matrix_x.dtype)
+    else:
+      np_ans = expected
     self.assertShapeEqual(np_ans, tf_ans)
     self.assertAllClose(np_ans, out, atol=5e-5)
 
-  def _compareLogDeterminantBase(self, matrix_x, tf_ans):
+  def _compareLogDeterminantBase(self, matrix_x, tf_ans, expected=None):
     sign_tf, abs_log_det_tf = tf_ans
     shape = matrix_x.shape
     if shape[-1] == 0 or shape[-2] == 0:
       np_sign, np_ans = (1.0, np.zeros(shape[:-2]).astype(matrix_x.dtype))
-    else:
+    elif expected is None:
       np_sign, np_ans = np.linalg.slogdet(matrix_x)
       np_ans = np_ans.astype(matrix_x.dtype)
+    else:
+      np_ans = np.log(np.abs(expected))
+      np_sign = np.sign(expected)
 
     self.assertShapeEqual(np_ans, abs_log_det_tf)
     sign_tf_val = self.evaluate(sign_tf)
@@ -58,12 +63,14 @@ class DeterminantOpTest(test.TestCase):
         np_sign * np.exp(np_ans),
         atol=5e-5)
 
-  def _compareDeterminant(self, matrix_x):
+  def _compareDeterminant(self, matrix_x, expected=None):
     with test_util.use_gpu():
-      self._compareDeterminantBase(matrix_x,
-                                   linalg_ops.matrix_determinant(matrix_x))
+      self._compareDeterminantBase(
+          matrix_x, linalg_ops.matrix_determinant(matrix_x), expected
+      )
       self._compareLogDeterminantBase(
-          matrix_x, gen_linalg_ops.log_matrix_determinant(matrix_x))
+          matrix_x, gen_linalg_ops.log_matrix_determinant(matrix_x), expected
+      )
 
   def testBasic(self):
     # 2x2 matrices
@@ -160,14 +167,21 @@ class DeterminantOpTest(test.TestCase):
 
   def testInfAndNans(self):
     # 2x2 matrices
-    self._compareDeterminant(np.array([[np.inf, 1], [1, 1]]).astype(np.float32))
+    np_inf = np.float64(np.inf)
+    np_nan = np.float64(np.nan)
     self._compareDeterminant(
-        np.array([[np.inf, np.inf], [1, 1]]).astype(np.float32)
+        np.array([[np.inf, 1], [1, 1]]).astype(np.float32), expected=np_inf
     )
     self._compareDeterminant(
-        np.array([[np.inf, -np.inf], [1, 1]]).astype(np.float32)
+        np.array([[np.inf, np.inf], [1, 1]]).astype(np.float32), expected=np_nan
     )
-    self._compareDeterminant(np.array([[np.nan, 1], [1, 1]]).astype(np.float32))
+    self._compareDeterminant(
+        np.array([[np.inf, -np.inf], [1, 1]]).astype(np.float32),
+        expected=np_nan,
+    )
+    self._compareDeterminant(
+        np.array([[np.nan, 1], [1, 1]]).astype(np.float32), expected=np_nan
+    )
 
     # 5x5 matrices (Eigen forces LU decomposition)
     self._compareDeterminant(
@@ -177,7 +191,8 @@ class DeterminantOpTest(test.TestCase):
             [2.0, 5.0, 8.0, 3.0, 8.0],
             [1.0, 6.0, 7.0, 4.0, 7.0],
             [2.0, 3.0, 4.0, 5.0, 6.0],
-        ]).astype(np.float32)
+        ]).astype(np.float32),
+        expected=-np_inf,
     )
     self._compareDeterminant(
         np.array([
@@ -186,7 +201,8 @@ class DeterminantOpTest(test.TestCase):
             [2.0, 5.0, 8.0, 3.0, 8.0],
             [1.0, 6.0, 7.0, 4.0, 7.0],
             [2.0, 3.0, 4.0, 5.0, 6.0],
-        ]).astype(np.float32)
+        ]).astype(np.float32),
+        expected=np_nan,
     )
 
 
