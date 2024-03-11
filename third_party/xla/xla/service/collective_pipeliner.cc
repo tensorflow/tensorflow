@@ -605,7 +605,11 @@ void UpdateInstructionChannelId(HloInstruction* cloned_instr,
   }
 }
 
-// Clones a chain of instructions from a move_info for backward movement.
+// Clones a chain of instructions from a move_info for backward movement, and
+// returns the cloned of the last instruction in the chain. The last instruction
+// in the chain is the collective instruction being pipelined and shouldn't be
+// shared by multiple chains. As such, the last_cloned being returned shouldn't
+// be nullptr.
 template <typename Comp>
 absl::StatusOr<HloInstruction*> CloneBackwardChain(
     Comp& target_computation, const WhileMoveInfo& move_info,
@@ -616,7 +620,9 @@ absl::StatusOr<HloInstruction*> CloneBackwardChain(
   to_clone.push_back(move_info.collective_to_move);
   HloInstruction* last_cloned = nullptr;
   for (auto* chain_op : to_clone) {
-    if (IsLoopIterator(chain_op, loop_iter_idx)) {
+    // Do not clone a loop iterator or an op that is already cloned.
+    if (IsLoopIterator(chain_op, loop_iter_idx) ||
+        clone_map.contains(chain_op)) {
       continue;
     }
     auto new_operands = MapNewOperands(chain_op->operands(), clone_map);
