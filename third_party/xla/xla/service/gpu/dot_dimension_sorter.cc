@@ -24,13 +24,14 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/layout_util.h"
 #include "xla/permutation_util.h"
 #include "xla/status.h"
-#include "xla/statusor.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/errors.h"
@@ -42,7 +43,7 @@ namespace gpu {
 namespace {
 
 // Sort contracting dimensions of a dot() instruction preserving lhs-rhs pairs.
-absl::Status SortDotDimensions(HloInstruction* dot) {
+absl::Status SortDotDimensions(HloDotInstruction* dot) {
   const DotDimensionNumbers& dims = dot->dot_dimension_numbers();
   DotDimensionNumbers new_dims(dims);
   new_dims.clear_lhs_contracting_dimensions();
@@ -68,7 +69,8 @@ absl::Status SortDotDimensions(HloInstruction* dot) {
                                                     sorted_rhs.end()};
   std::unique_ptr<HloInstruction> new_dot = HloInstruction::CreateDot(
       dot->shape(), dot->mutable_operand(0), dot->mutable_operand(1), new_dims,
-      dot->precision_config());
+      dot->precision_config(), {dot->sparsity().begin(), dot->sparsity().end()},
+      absl::MakeSpan(dot->operands()).subspan(HloDotInstruction::kOperands));
   dot->SetupDerivedInstruction(new_dot.get());
 
   VLOG(3) << "Sorted dot() dimensions:\n"
@@ -125,7 +127,7 @@ absl::StatusOr<bool> DotDimensionSorter::Run(
     return false;
   }
   for (HloInstruction* dot : dots_to_process) {
-    TF_RETURN_IF_ERROR(SortDotDimensions(dot));
+    TF_RETURN_IF_ERROR(SortDotDimensions(Cast<HloDotInstruction>(dot)));
   }
   return true;
 }
