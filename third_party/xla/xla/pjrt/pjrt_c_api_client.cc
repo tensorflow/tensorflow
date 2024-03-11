@@ -1788,6 +1788,15 @@ StatusOr<std::vector<int64_t>> PjRtCApiBuffer::logical_dimensions() {
                               args.unpadded_dims + args.num_dims);
 }
 
+PjRtFuture<absl::Status> PjRtCApiBuffer::LazyToLiteral(
+    absl::AnyInvocable<absl::StatusOr<MutableLiteralBase*>() &&> generator) {
+  auto buffer = std::move(generator)();
+  if (!buffer.ok()) {
+    return PjRtFuture<Status>(buffer.status());
+  }
+  return ToLiteral(buffer.value());
+}
+
 PjRtFuture<Status> PjRtCApiBuffer::ToLiteral(MutableLiteralBase* literal) {
   PJRT_Buffer_ToHostBuffer_Args args;
   args.struct_size = PJRT_Buffer_ToHostBuffer_Args_STRUCT_SIZE;

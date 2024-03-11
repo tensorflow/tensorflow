@@ -28,6 +28,7 @@ limitations under the License.
 #include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/inlined_vector.h"
+#include "absl/functional/any_invocable.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
@@ -464,6 +465,9 @@ class TfrtCpuBuffer final : public AbstractTfrtCpuBuffer {
 
   using PjRtBuffer::ToLiteralSync;
   PjRtFuture<Status> ToLiteral(MutableLiteralBase* literal) override;
+  PjRtFuture<Status> LazyToLiteral(
+      absl::AnyInvocable<absl::StatusOr<MutableLiteralBase*>() &&> generator)
+      override;
 
   absl::StatusOr<std::unique_ptr<PjRtBuffer>> CopyToDevice(
       PjRtDevice* dst_device) override;

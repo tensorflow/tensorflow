@@ -926,8 +926,17 @@ static std::vector<tsl::RCReference<tsl::AsyncValue>> CopyAsyncValues(
   return avs;
 }
 
-PjRtFuture<Status> TfrtCpuBuffer::ToLiteral(MutableLiteralBase* literal) {
+PjRtFuture<absl::Status> TfrtCpuBuffer::ToLiteral(MutableLiteralBase* literal) {
   return ToLiteralHelper(literal, client()->async_work_runner());
+}
+
+PjRtFuture<absl::Status> TfrtCpuBuffer::LazyToLiteral(
+    absl::AnyInvocable<absl::StatusOr<MutableLiteralBase*>() &&> generator) {
+  auto buffer = std::move(generator)();
+  if (!buffer.ok()) {
+    return PjRtFuture<Status>(buffer.status());
+  }
+  return ToLiteralHelper(buffer.value(), client()->async_work_runner());
 }
 
 // TODO(zhangqiaorjc): Consider disallowing multiple CPU devices and assign
