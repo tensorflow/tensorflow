@@ -116,3 +116,23 @@ func.func @Batchmatmul2FullyconnectedQDQ(%arg0: tensor<4x128x2xf32>, %arg1: tens
   // CHECK-SAME: {fused_activation_function = "NONE", keep_num_dims = true, weights_format = "DEFAULT"} : (tensor<4x128x2xf32>, tensor<1x2xf32>, none) -> tensor<4x128x1xf32>
   // CHECK-NEXT: return %[[FC_RES]]
 }
+
+// CHECK-LABEL: BatchmatmulToReduceSumI32
+// CHECK-NOT: "tfl.batch_matmul"
+func.func @BatchmatmulToReduceSumI32(%arg0: tensor<1x16384x257xi32>) -> (tensor<1x1x257xi32>) {
+  %0 = arith.constant dense<1> : tensor<1x1x16384xi32>
+  %1 = "tfl.batch_matmul"(%0, %arg0) {adj_x = false, adj_y = false} : (tensor<1x1x16384xi32>, tensor<1x16384x257xi32>) -> tensor<1x1x257xi32>
+  func.return %1 : tensor<1x1x257xi32>
+  // CHECK: %[[CONST_DIM:.*]] = "tfl.pseudo_const"() {value = dense<1> : tensor<1xi32>} : () -> tensor<1xi32>
+  // CHECK: %[[RED:.*]] = "tfl.sum"(%arg0, %[[CONST_DIM]]) {keep_dims = true} : (tensor<1x16384x257xi32>, tensor<1xi32>) -> tensor<1x1x257xi32>
+}
+
+// CHECK-LABEL: BatchmatmulToReduceSumF32
+// CHECK-NOT: "tfl.batch_matmul"
+func.func @BatchmatmulToReduceSumF32(%arg0: tensor<1x16384x257xf32>) -> (tensor<1x1x257xf32>) {
+  %0 = arith.constant dense<1.0> : tensor<1x1x16384xf32>
+  %1 = "tfl.batch_matmul"(%0, %arg0) {adj_x = false, adj_y = false} : (tensor<1x1x16384xf32>, tensor<1x16384x257xf32>) -> tensor<1x1x257xf32>
+  func.return %1 : tensor<1x1x257xf32>
+  // CHECK: %[[CONST_DIM:.*]] = "tfl.pseudo_const"() {value = dense<1> : tensor<1xi32>} : () -> tensor<1xi32>
+  // CHECK: %[[RED:.*]] = "tfl.sum"(%arg0, %[[CONST_DIM]]) {keep_dims = true} : (tensor<1x16384x257xf32>, tensor<1xi32>) -> tensor<1x1x257xf32>
+}
