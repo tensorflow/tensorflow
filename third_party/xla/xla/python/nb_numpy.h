@@ -30,6 +30,10 @@ limitations under the License.
 #include "third_party/nanobind/include/nanobind/nanobind.h"
 #include "tsl/python/lib/core/numpy.h"  // NOLINT
 
+#if NPY_ABI_VERSION < 0x02000000
+#define PyDataType_ELSIZE(descr) ((descr)->elsize)
+#endif
+
 namespace xla {
 
 // Caution: to use this type you must call tsl::ImportNumpy() in your module
@@ -52,7 +56,7 @@ class nb_dtype : public nanobind::object {
 
   int itemsize() const {
     auto* descr = reinterpret_cast<PyArray_Descr*>(ptr());
-    return descr->elsize;
+    return PyDataType_ELSIZE(descr);
   }
 
   /// Single-character code for dtype's kind.
