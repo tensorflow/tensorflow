@@ -2218,7 +2218,8 @@ Status LayoutAssignment::AssignLayouts(LayoutConstraints& constraints) {
                                   computation->root_instruction()));
       computation->set_root_instruction(new_root);
     } else {
-      // Copy the tiling info specified in result layout.
+      // Copy the tiling info/tail_padding_alignment_in_elements specified in
+      // result layout.
       auto copy_tiling = [&constraints](xla::Shape* subshape,
                                         const xla::ShapeIndex& index) {
         if (subshape->IsArray()) {
@@ -2231,6 +2232,8 @@ Status LayoutAssignment::AssignLayouts(LayoutConstraints& constraints) {
           }
           subshape->mutable_layout()->set_element_size_in_bits(
               result_shape.layout().element_size_in_bits());
+          subshape->mutable_layout()->set_tail_padding_alignment_in_elements(
+              result_shape.layout().tail_padding_alignment_in_elements());
         }
       };
       xla::ShapeUtil::ForEachMutableSubshape(
@@ -2727,6 +2730,7 @@ bool LayoutAssignment::InstructionCanChangeLayout(
     case HloOpcode::kDivide:
     case HloOpcode::kDynamicSlice:
     case HloOpcode::kDynamicUpdateSlice:
+    case HloOpcode::kErf:
     case HloOpcode::kExp:
     case HloOpcode::kExpm1:
     case HloOpcode::kFft:

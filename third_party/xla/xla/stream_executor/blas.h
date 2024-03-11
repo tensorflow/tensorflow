@@ -17,24 +17,6 @@ limitations under the License.
 // use in conjunction with the StreamExecutor abstraction.
 //
 // Note that this interface is optionally supported by platforms.
-//
-// This abstraction makes it simple to entrain BLAS operations on GPU data into
-// a Stream -- users typically will not use this API directly, but will use the
-// Stream builder methods to entrain these operations "under the hood". For
-// example:
-//
-//  DeviceMemory<float> x = stream_exec->AllocateArray<float>(1024);
-//  DeviceMemory<float> y = stream_exec->AllocateArray<float>(1024);
-//  // ... populate x and y ...
-//  Stream stream{stream_exec};
-//  stream
-//    .Init()
-//    .ThenBlasAxpy(1024, 5.5, x, 1, &y, 1);
-//  TF_CHECK_OK(stream.BlockHostUntilDone());
-//
-// By using stream operations in this manner the user can easily intermix custom
-// kernel launches (via StreamExecutor::ThenLaunch()) with these pre-canned BLAS
-// routines.
 
 #ifndef XLA_STREAM_EXECUTOR_BLAS_H_
 #define XLA_STREAM_EXECUTOR_BLAS_H_
@@ -61,7 +43,9 @@ namespace stream_executor {
 
 namespace gpu {
 struct BlasLt;
-}
+struct MatrixDescriptor;
+struct OutputMatrixDescriptor;
+}  // namespace gpu
 
 class Stream;
 class ScratchAllocator;
@@ -311,7 +295,10 @@ class BlasSupport {
 
   // Gets a list of supported algorithms for DoBlasGemmWithAlgorithm.
   virtual bool GetBlasGemmAlgorithms(
-      Stream *stream, std::vector<AlgorithmType> *out_algorithms) = 0;
+      Stream *stream, const gpu::MatrixDescriptor &a,
+      const gpu::MatrixDescriptor &b, gpu::OutputMatrixDescriptor *c,
+      const void *alpha, const void *beta,
+      std::vector<blas::AlgorithmType> *out_algorithms) = 0;
 
   // Like DoBlasGemm, but accepts an algorithm and an compute type.
   //
@@ -563,9 +550,11 @@ class BlasSupport {
       const void *beta, DeviceMemoryBase *c, int ldc,                          \
       const NumericOptions &numeric_options, blas::CallContext context)        \
       override;                                                                \
-  bool GetBlasGemmAlgorithms(Stream *stream,                                   \
-                             std::vector<blas::AlgorithmType> *out_algorithms) \
-      override;                                                                \
+  bool GetBlasGemmAlgorithms(                                                  \
+      Stream *stream, const gpu::MatrixDescriptor &a,                          \
+      const gpu::MatrixDescriptor &b, gpu::OutputMatrixDescriptor *c,          \
+      const void *alpha, const void *beta,                                     \
+      std::vector<blas::AlgorithmType> *out_algorithms) override;              \
   absl::Status DoBlasGemmWithAlgorithm(                                        \
       Stream *stream, blas::Transpose transa, blas::Transpose transb,          \
       uint64_t m, uint64 n, uint64 k, const void *alpha,                       \

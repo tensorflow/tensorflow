@@ -86,6 +86,7 @@ cc_library(
     deps = [
         ":auto_sharding_proto_cc",
         ":auto_sharding_strategy",
+        "@com_google_absl//absl/log:check",
         "@com_google_ortools//ortools/linear_solver",
     ],
 )
@@ -144,6 +145,7 @@ cc_library(
         "//xla:shape_util",
         "//xla/hlo/ir:hlo",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
@@ -193,6 +195,7 @@ cc_library(
         "//xla/hlo/utils:hlo_live_range",
         "//xla/service:hlo_cost_analysis",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/strings:string_view",
     ],
 )
 

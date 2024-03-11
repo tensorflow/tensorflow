@@ -9,7 +9,7 @@ func.func @main(%arg0: tensor<1x128x256xf32>, %arg1: tensor<30x1x2xi32>) -> tens
       start_index_map = [0, 1],
       index_vector_dim = 2>,
     indices_are_sorted = false,
-    slice_sizes = dense<[1, 1, 256]> : tensor<3xi64>} :
+    slice_sizes = array<i64: 1, 1, 256>} :
        (tensor<1x128x256xf32>, tensor<30x1x2xi32>) -> tensor<30x1x256xf32>
   func.return %0 : tensor<30x1x256xf32>
 }

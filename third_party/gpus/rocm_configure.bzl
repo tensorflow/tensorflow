@@ -10,6 +10,7 @@
 
 load(
     ":cuda_configure.bzl",
+    "enable_cuda",
     "make_copy_dir_rule",
     "make_copy_files_rule",
     "to_list_of_strings",
@@ -458,6 +459,7 @@ def _create_dummy_repository(repository_ctx):
         "rocm:build_defs.bzl",
         {
             "%{rocm_is_configured}": "False",
+            "%{gpu_is_configured}": "if_true" if enable_cuda(repository_ctx) else "if_false",
             "%{rocm_extra_copts}": "[]",
             "%{rocm_gpu_architectures}": "[]",
             "%{rocm_version_number}": "0",
@@ -643,6 +645,7 @@ def _create_local_rocm_repository(repository_ctx):
         tpl_paths["rocm:build_defs.bzl"],
         {
             "%{rocm_is_configured}": "True",
+            "%{gpu_is_configured}": "if_true",
             "%{rocm_extra_copts}": _compute_rocm_extra_copts(
                 repository_ctx,
                 rocm_config.amdgpu_targets,
@@ -776,6 +779,7 @@ def _create_remote_rocm_repository(repository_ctx, remote_config_repo):
         "rocm:build_defs.bzl",
         {
             "%{rocm_is_configured}": "True",
+            "%{gpu_is_configured}": "if_true",
             "%{rocm_extra_copts}": _compute_rocm_extra_copts(
                 repository_ctx,
                 [],  #_compute_capabilities(repository_ctx)

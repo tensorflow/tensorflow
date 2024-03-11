@@ -16,6 +16,9 @@ limitations under the License.
 // This file implements logic for lowering TensorFlow dialect's communication
 // ops (TF/XLA) to the HLO dialect.
 
+#include <atomic>
+#include <cstddef>
+#include <cstdint>
 #include <memory>
 #include <optional>
 #include <string>
@@ -31,6 +34,7 @@ limitations under the License.
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
+#include "mlir/IR/Location.h"  // from @llvm-project
 #include "mlir/IR/TypeUtilities.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/IR/Visitors.h"  // from @llvm-project
@@ -68,6 +72,28 @@ class LegalizeTFCommunication
     : public impl::LegalizeTFCommunicationPassBase<LegalizeTFCommunication> {
   void runOnOperation() override;
 };
+
+// A generator to serve out unique channel ids.
+class ChannelIdGenerator {
+ public:
+  ChannelIdGenerator() = default;
+  ChannelIdGenerator(const ChannelIdGenerator&) = delete;
+  ChannelIdGenerator& operator=(const ChannelIdGenerator&) = delete;
+  ChannelIdGenerator(ChannelIdGenerator&&) = delete;
+  ChannelIdGenerator& operator=(ChannelIdGenerator&&) = delete;
+  int64_t operator++(int) { return next(); }
+  int64_t next() { return channel_id_.fetch_add(1, std::memory_order_relaxed); }
+
+ private:
+  // All usage code expects positive int64_t values so we can't use uint64_t
+  // and will just have to limit ourselves to half the number space.
+  std::atomic<int64_t> channel_id_ = 1;
+};
+
+int64_t GetNextChannelId() {
+  static ChannelIdGenerator* channel_id = new ChannelIdGenerator();
+  return channel_id->next();
+}
 
 // Checks if an op is a TF/XLA communication op.
 bool IsCommunicationOp(Operation* op) {
@@ -253,12 +279,12 @@ void SetFrontendAttributes(Operation* op, int32_t index, StringRef key,
 }
 
 // Creates a `mhlo.send` op for sending value `operand`.
-Value CreateSendOp(OpBuilder& builder, int64_t& channel_id, Location loc,
-                   Value operand, StringRef key, size_t index, Value token,
+Value CreateSendOp(OpBuilder& builder, Location loc, Value operand,
+                   StringRef key, size_t index, Value token,
                    StringRef host_handler_name, bool manual_sharding) {
   // type 2 == DEVICE_TO_HOST
   auto channel_handle = ChannelHandleAttr::get(builder.getContext(),
-                                               /*handle=*/channel_id++,
+                                               /*handle=*/GetNextChannelId(),
                                                /*type=*/2);
   auto send = builder.create<SendOp>(
       loc, token.getType(), operand, token, channel_handle,
@@ -273,12 +299,12 @@ Value CreateSendOp(OpBuilder& builder, int64_t& channel_id, Location loc,
 }
 
 // Creates a `mhlo.recv` op for receiving a value.
-Value CreateRecvOp(OpBuilder& builder, int64_t& channel_id, Location loc,
-                   Value result, StringRef key, size_t index, Value token,
+Value CreateRecvOp(OpBuilder& builder, Location loc, Value result,
+                   StringRef key, size_t index, Value token,
                    StringRef host_handler_name, bool manual_sharding) {
   // type 3 == HOST_TO_DEVICE
   auto channel_handle = ChannelHandleAttr::get(builder.getContext(),
-                                               /*handle=*/channel_id++,
+                                               /*handle=*/GetNextChannelId(),
                                                /*type=*/3);
   auto result_type = result.getType();
   SmallVector<Type, 2> recv_result_type = {result_type, token.getType()};
@@ -315,7 +341,7 @@ Value CreateSinkToken(OpBuilder& builder, Location loc, ArrayRef<Value> tokens,
 // ops per operand and result. Unique Channel IDs are assigned per transfer.
 // Sink tokens are created across all `mhlo.send` ops first and then by
 // all `mhlo.recv` ops.
-Value RewriteHostComputeOp(OpBuilder& builder, int64_t& channel_id,
+Value RewriteHostComputeOp(OpBuilder& builder,
                            TF::_XlaHostComputeMlirOp host_compute,
                            Value token) {
   builder.setInsertionPoint(host_compute);
@@ -325,7 +351,7 @@ Value RewriteHostComputeOp(OpBuilder& builder, int64_t& channel_id,
   SmallVector<Value, 4> send_tokens;
   for (auto operand : llvm::enumerate(host_compute.getInputs())) {
     auto send_token = CreateSendOp(
-        builder, channel_id, loc, operand.value(), host_compute.getSendKey(),
+        builder, loc, operand.value(), host_compute.getSendKey(),
         operand.index(), token, xla::kXlaHostTransferTfRendezvousHandlerName,
         manual_sharding);
     send_tokens.push_back(send_token);
@@ -335,9 +361,8 @@ Value RewriteHostComputeOp(OpBuilder& builder, int64_t& channel_id,
   SmallVector<Value, 4> recv_tokens;
   for (auto result : llvm::enumerate(host_compute.getOutputs())) {
     auto recv_token = CreateRecvOp(
-        builder, channel_id, loc, result.value(), host_compute.getRecvKey(),
-        result.index(), token, xla::kXlaHostTransferTfRendezvousHandlerName,
-        manual_sharding);
+        builder, loc, result.value(), host_compute.getRecvKey(), result.index(),
+        token, xla::kXlaHostTransferTfRendezvousHandlerName, manual_sharding);
     recv_tokens.push_back(recv_token);
   }
   token = CreateSinkToken(builder, loc, recv_tokens, token);
@@ -347,11 +372,11 @@ Value RewriteHostComputeOp(OpBuilder& builder, int64_t& channel_id,
 }
 
 // Replaces `tf.XlaSendToHost` with a `mhlo.send`.
-Value RewriteSendToHostOp(OpBuilder& builder, int64_t& channel_id,
-                          TF::XlaSendToHostOp send_to_host, Value token) {
+Value RewriteSendToHostOp(OpBuilder& builder, TF::XlaSendToHostOp send_to_host,
+                          Value token) {
   builder.setInsertionPoint(send_to_host);
-  token = CreateSendOp(builder, channel_id, send_to_host.getLoc(),
-                       send_to_host.getInput(), send_to_host.getKey(),
+  token = CreateSendOp(builder, send_to_host.getLoc(), send_to_host.getInput(),
+                       send_to_host.getKey(),
                        /*index=*/0, token,
                        xla::kXlaHostTransferTfRendezvousHandlerName,
                        /*manual_sharding=*/false);
@@ -361,10 +386,10 @@ Value RewriteSendToHostOp(OpBuilder& builder, int64_t& channel_id,
 }
 
 // Replaces `tf.XlaRecvFromHost` with a `mhlo.recv`.
-Value RewriteRecvFromHostOp(OpBuilder& builder, int64_t& channel_id,
+Value RewriteRecvFromHostOp(OpBuilder& builder,
                             TF::XlaRecvFromHostOp recv_from_host, Value token) {
   builder.setInsertionPoint(recv_from_host);
-  token = CreateRecvOp(builder, channel_id, recv_from_host.getLoc(),
+  token = CreateRecvOp(builder, recv_from_host.getLoc(),
                        recv_from_host.getOutput(), recv_from_host.getKey(),
                        /*index=*/0, token,
                        xla::kXlaHostTransferTfRendezvousHandlerName,
@@ -795,7 +820,7 @@ void RewriteFunctionTerminator(OpBuilder& builder,
 // rewritten to create a token or take in and return a token, depending on its
 // visibility and if there are any callers.
 LogicalResult RewriteFunction(
-    OpBuilder& builder, int64_t& channel_id, ModuleOp module, FuncOp func,
+    OpBuilder& builder, ModuleOp module, FuncOp func,
     const llvm::SmallDenseMap<StringRef, FuncToRewrite>& funcs,
     const llvm::SmallPtrSetImpl<Operation*>& control_flow_ops,
     const llvm::SmallPtrSetImpl<Block*>& control_flow_blocks, bool is_clone) {
@@ -832,11 +857,11 @@ LogicalResult RewriteFunction(
     Operation* next_op = curr_op->getNextNode();
 
     if (auto host_compute = dyn_cast<TF::_XlaHostComputeMlirOp>(curr_op)) {
-      token = RewriteHostComputeOp(builder, channel_id, host_compute, token);
+      token = RewriteHostComputeOp(builder, host_compute, token);
     } else if (auto send_to_host = dyn_cast<TF::XlaSendToHostOp>(curr_op)) {
-      token = RewriteSendToHostOp(builder, channel_id, send_to_host, token);
+      token = RewriteSendToHostOp(builder, send_to_host, token);
     } else if (auto recv_from_host = dyn_cast<TF::XlaRecvFromHostOp>(curr_op)) {
-      token = RewriteRecvFromHostOp(builder, channel_id, recv_from_host, token);
+      token = RewriteRecvFromHostOp(builder, recv_from_host, token);
     } else if (auto call = dyn_cast<mlir::func::CallOp>(curr_op)) {
       // Only `mlir::func::CallOp` is supported as this requires knowing how to
       // rewrite arguments and results to a function.
@@ -929,14 +954,11 @@ void LegalizeTFCommunication::runOnOperation() {
   if (failed(GetFunctionsToRewrite(module, funcs_to_rewrite)))
     return signalPassFailure();
 
-  // Module level counter to make sure Channel IDs are unique.
-  int64_t channel_id = 1;
   OpBuilder builder(&getContext());
   for (const auto& func_and_name : funcs_to_rewrite) {
     const auto& func_to_rewrite = func_and_name.getSecond();
     func::FuncOp func = func_to_rewrite.original;
-    if (failed(RewriteFunction(builder, channel_id, module, func,
-                               funcs_to_rewrite,
+    if (failed(RewriteFunction(builder, module, func, funcs_to_rewrite,
                                func_to_rewrite.control_flow_ops,
                                func_to_rewrite.control_flow_blocks,
                                /*is_clone=*/false)))
@@ -949,8 +971,8 @@ void LegalizeTFCommunication::runOnOperation() {
     GetCommunicationControlFlowOps(clone, funcs_to_rewrite,
                                    clone_control_flow_ops,
                                    clone_control_flow_blocks);
-    if (failed(RewriteFunction(builder, channel_id, module, clone,
-                               funcs_to_rewrite, clone_control_flow_ops,
+    if (failed(RewriteFunction(builder, module, clone, funcs_to_rewrite,
+                               clone_control_flow_ops,
                                clone_control_flow_blocks,
                                /*is_clone=*/true)))
       llvm_unreachable(

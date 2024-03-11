@@ -23,6 +23,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/inlined_vector.h"
+#include "absl/status/status.h"
 #include "absl/strings/str_format.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
@@ -215,9 +216,9 @@ absl::Status CustomKernelThunk::Initialize(const InitializeParams& params) {
 
   auto it = kernel_cache_.find(params.executor);
   if (kernel_cache_.end() == it) {
-    auto kernel = std::make_unique<se::Kernel>(params.executor);
-    TF_RETURN_IF_ERROR(
-        params.executor->GetKernel(custom_kernel_.kernel_spec(), kernel.get()));
+    TF_ASSIGN_OR_RETURN(
+        std::unique_ptr<se::Kernel> kernel,
+        se::Kernel::Create(params.executor, custom_kernel_.kernel_spec()));
     kernel_cache_.emplace(params.executor, std::move(kernel));
   }
 

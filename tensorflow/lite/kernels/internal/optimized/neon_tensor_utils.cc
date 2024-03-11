@@ -1966,7 +1966,8 @@ void NeonSparseMatrixBatchVectorMultiplyAccumulate1x16(
     const int32_t* __restrict__ indices, int m_rows, int m_cols,
     const int8_t* __restrict__ vector, const int32_t* __restrict__ bias_vector,
     int n_batch, const int32_t input_offset, const int32_t output_multiplier,
-    const int32_t output_shift, const int32_t output_offset,
+    const int32_t output_shift, const int32_t* per_channel_scale,
+    const int32_t* per_channel_shift, const int32_t output_offset,
     const int32_t output_activation_min, const int32_t output_activation_max,
     int8_t* __restrict__ result) {
   constexpr int kBlockSize = kInt8ValuesPerNeonVector;
@@ -2028,7 +2029,9 @@ void NeonSparseMatrixBatchVectorMultiplyAccumulate1x16(
 #endif
       const int32_t bias_value = bias_vector != nullptr ? bias_vector[row] : 0;
       acc = acc + bias_value + input_offset * matrix_row_sum;
-      acc = MultiplyByQuantizedMultiplier(acc, output_multiplier, output_shift);
+      acc = MultiplyByQuantizedMultiplier(
+          acc, per_channel_scale ? per_channel_scale[row] : output_multiplier,
+          per_channel_shift ? per_channel_shift[row] : output_shift);
       acc += output_offset;
       result[batch * m_rows + row] =
           static_cast<int8_t>(ActivationFunctionWithMinMax(

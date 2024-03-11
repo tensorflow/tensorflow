@@ -587,6 +587,67 @@ TEST_F(FloatNormalizationNoComputeSupportTest,
 }
 
 TEST_F(FloatNormalizationNoComputeSupportTest,
+       NormalizationClonesSharedApplyAllReduceAndReduce) {
+  auto module = CreateNewVerifiedModule();
+  HloComputation::Builder sum_builder("sum");
+  auto x = sum_builder.AddInstruction(HloInstruction::CreateParameter(
+      /*parameter_number=*/0, ShapeUtil::MakeShape(BF16, {}), "x"));
+  auto y = sum_builder.AddInstruction(HloInstruction::CreateParameter(
+      /*parameter_number=*/1, ShapeUtil::MakeShape(BF16, {}), "y"));
+  sum_builder.AddInstruction(HloInstruction::CreateBinary(
+      ShapeUtil::MakeShape(BF16, {}), HloOpcode::kAdd, x, y));
+  HloComputation* reduction =
+      module->AddEmbeddedComputation(sum_builder.Build());
+
+  auto builder = HloComputation::Builder(TestName());
+
+  Shape bf16_shape_a = ShapeUtil::MakeShape(BF16, {2, 4});
+  HloInstruction* a = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, bf16_shape_a, "a"));
+
+  Shape bf16_shape_b = ShapeUtil::MakeShape(BF16, {2, 4, 2});
+  HloInstruction* b = builder.AddInstruction(
+      HloInstruction::CreateParameter(1, bf16_shape_b, "b"));
+
+  Shape bf16_scalar_shape = ShapeUtil::MakeShape(BF16, {});
+  HloInstruction* init = builder.AddInstruction(
+      HloInstruction::CreateParameter(2, bf16_scalar_shape, "init"));
+
+  HloInstruction* all_reduce = builder.AddInstruction(
+      HloInstruction::CreateAllReduce(bf16_shape_a, {a}, reduction,
+                                      /*replica_groups=*/{},
+                                      /*constrain_layout=*/false,
+                                      /*channel_id=*/std::nullopt,
+                                      /*use_global_device_ids=*/false));
+
+  HloInstruction* reduce = builder.AddInstruction(
+      HloInstruction::CreateReduce(bf16_shape_a, b, init, {2}, reduction));
+  builder.AddInstruction(HloInstruction::CreateBinary(
+      bf16_shape_a, HloOpcode::kAdd, all_reduce, reduce));
+
+  auto computation = module->AddEntryComputation(builder.Build());
+  // Verify that the shared computation was cloned, the all-reduce instruction
+  // got the unchanged bf16 add, while the reduction was promoted to f32
+  // together with its called computation.
+  EXPECT_TRUE(Normalize(module.get()));
+  EXPECT_EQ(computation->root_instruction()->shape().element_type(), BF16);
+  EXPECT_EQ(all_reduce->operand(0)->shape().element_type(), BF16);
+  EXPECT_EQ(all_reduce->to_apply()->root_instruction()->opcode(),
+            HloOpcode::kAdd);
+  EXPECT_EQ(all_reduce->to_apply()->root_instruction()->shape().element_type(),
+            BF16);
+  EXPECT_EQ(reduce->called_computations().size(), 1);
+  EXPECT_EQ(reduce->called_computations()[0]
+                ->root_instruction()
+                ->shape()
+                .element_type(),
+            F32);
+  EXPECT_EQ(reduce->called_computations()[0]->root_instruction()->opcode(),
+            HloOpcode::kConvert);
+  EXPECT_EQ(reduce->shape().element_type(), F32);
+}
+
+TEST_F(FloatNormalizationNoComputeSupportTest,
        NoNormalizationForToApplyAllReduce) {
   auto module = CreateNewVerifiedModule();
   HloComputation::Builder sum_builder("sum");

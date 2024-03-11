@@ -106,6 +106,12 @@ and the following optional parameters:
     Whether to optimize memory usage for large tensors with sacrificing latency.
     When the feature is enabled, `release_dynamic_tensors` is also enabled.
 
+*   `enable_builtin_cast_constant_cache`: `bool` (default=false) \
+    Configure the builtin TFLite CAST operation to cache its output if its input
+    is a constant tensor.
+
+    WARNING: This is an experimental option that may be removed at any time.
+
 This list of parameters is not exhaustive. See
 [here](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/tools/benchmark/benchmark_model.cc)
 and

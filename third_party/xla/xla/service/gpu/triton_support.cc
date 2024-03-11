@@ -90,7 +90,7 @@ std::vector<HloOpcode> TritonSupportedUnaryElementwise(
                                         HloOpcode::kLog1p, HloOpcode::kRsqrt,
                                         HloOpcode::kSin, HloOpcode::kSqrt,
                                         HloOpcode::kCbrt, HloOpcode::kTan,
-                                        HloOpcode::kTanh},
+                                        HloOpcode::kTanh, HloOpcode::kErf},
                  std::back_inserter(ret));
   }
   return ret;

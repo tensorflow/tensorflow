@@ -669,8 +669,9 @@ class DecodeProtoOp : public OpKernel {
           // allow conversions here, but tf.cast already exists so we don't
           // duplicate the functionality.
           errors::InvalidArgument("Unexpected output type for ",
-                                  fd->full_name(), ": ", fd->cpp_type(), " to ",
-                                  output_types[field_index]));
+                                  fd->full_name(), ": ", fd->cpp_type_name(),
+                                  " to ",
+                                  DataType_Name(output_types[field_index])));
 
       field_index++;
       field_descs.push_back(fd);

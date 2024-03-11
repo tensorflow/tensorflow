@@ -90,8 +90,7 @@ absl::StatusOr<AutotuneResult> GetBestAlgorithm(
                        output_buffer);
     }
 
-    TF_ASSIGN_OR_RETURN(se::blas::ProfileResult profile_result,
-                        run_benchmark(algorithm));
+    TF_ASSIGN_OR_RETURN(auto profile_result, run_benchmark(algorithm));
 
     results.emplace_back();
     AutotuneResult& result = results.back();
@@ -225,12 +224,12 @@ absl::StatusOr<AutotuneResult> DoGemmAutotuneNoCache(
   TF_ASSIGN_OR_RETURN(se::Stream* const stream, autotune_config.GetStream());
   GpuBackendConfig gpu_config =
       gemm->backend_config<GpuBackendConfig>().value();
-  const GemmBackendConfig& gemm_config = gpu_config.gemm_backend_config();
+  const GemmBackendConfig& backend_config = gpu_config.gemm_backend_config();
   const DebugOptions& debug_options =
       gemm->GetModule()->config().debug_options();
   const bool deterministic_ops = debug_options.xla_gpu_deterministic_ops();
 
-  TF_ASSIGN_OR_RETURN(GemmConfig config, GemmConfig::For(gemm));
+  TF_ASSIGN_OR_RETURN(GemmConfig gemm_config, GemmConfig::For(gemm));
   // Don't run autotuning concurrently on the same GPU.
   absl::MutexLock gpu_lock(&GetGpuMutex(stream->parent()));
 
@@ -276,18 +275,18 @@ absl::StatusOr<AutotuneResult> DoGemmAutotuneNoCache(
   HloModuleConfig& hlo_module_config = gemm->GetModule()->mutable_config();
   AutotuneResult best_algorithm;
   if (IsCublasLtMatmul(*gemm)) {
-    bool has_matrix_bias = config.beta != 0.;
+    bool has_matrix_bias = gemm_config.beta != 0.;
 
     TF_ASSIGN_OR_RETURN(
         bool has_vector_bias,
-        gpublas_lt::EpilogueAddsVectorBias(gemm_config.epilogue()));
+        gpublas_lt::EpilogueAddsVectorBias(backend_config.epilogue()));
 
     TF_ASSIGN_OR_RETURN(
         bool has_aux_output,
-        gpublas_lt::EpilogueHasAuxiliaryOutput(gemm_config.epilogue()));
+        gpublas_lt::EpilogueHasAuxiliaryOutput(backend_config.epilogue()));
 
     TF_ASSIGN_OR_RETURN(auto epilogue,
-                        AsBlasLtEpilogue(gemm_config.epilogue()));
+                        AsBlasLtEpilogue(backend_config.epilogue()));
 
     se::DeviceMemoryBase bias_buffer;
     if (has_vector_bias) {
@@ -309,7 +308,7 @@ absl::StatusOr<AutotuneResult> DoGemmAutotuneNoCache(
     }
 
     TF_ASSIGN_OR_RETURN(auto plan,
-                        BlasLt::GetMatmulPlan(stream, config, epilogue));
+                        BlasLt::GetMatmulPlan(stream, gemm_config, epilogue));
 
     TF_ASSIGN_OR_RETURN(auto algorithms, plan->GetAlgorithms());
 
@@ -318,7 +317,7 @@ absl::StatusOr<AutotuneResult> DoGemmAutotuneNoCache(
         GetBestAlgorithm<BlasLt::MatmulAlgorithm>(
             stream, buffer_allocator, gemm->ToString(), autotune_config,
             lhs_buffer, rhs_buffer, output_buffer, algorithms, output_shape,
-            hlo_module_config, gemm_config.beta(),
+            hlo_module_config, backend_config.beta(),
             [&](const BlasLt::MatmulAlgorithm& algorithm)
                 -> absl::StatusOr<se::blas::ProfileResult> {
               se::OwningScratchAllocator<> scratch_allocator(
@@ -333,11 +332,21 @@ absl::StatusOr<AutotuneResult> DoGemmAutotuneNoCache(
             }));
   } else {
     std::vector<se::blas::AlgorithmType> algorithms;
-    TF_RET_CHECK(stream->parent()->GetBlasGemmAlgorithms(stream, &algorithms));
+    TF_ASSIGN_OR_RETURN(GemmConfig::DescriptorsTuple desc,
+                        gemm_config.GetMatrixDescriptors(lhs_buffer, rhs_buffer,
+                                                         output_buffer));
 
-#if TENSORFLOW_USE_ROCM        // Blas gemm algorithms are not yet supported
+    auto blas = stream->parent()->AsBlas();
+    if (blas == nullptr) {
+      return absl::InternalError("No BLAS support for stream");
+    }
+    blas->GetBlasGemmAlgorithms(stream, desc.lhs, desc.rhs, &desc.output,
+                                &gemm_config.alpha, &gemm_config.beta,
+                                &algorithms);
+
+#if TENSORFLOW_USE_ROCM        // Blas gemm algorithms can be empty for ROCM
     if (algorithms.empty()) {  // nothing to autotune
-      VLOG(1) << "Skipping autotuning for ROCm..";
+      LOG(WARNING) << "No solutions found: skipping autotuning for ROCM..";
       best_algorithm.mutable_gemm()->set_algorithm(se::blas::kDefaultAlgorithm);
       return best_algorithm;
     }
@@ -348,7 +357,7 @@ absl::StatusOr<AutotuneResult> DoGemmAutotuneNoCache(
         GetBestBlasAlgorithm(
             stream, buffer_allocator, gemm->ToString(), autotune_config,
             lhs_buffer, rhs_buffer, output_buffer, algorithms, output_shape,
-            hlo_module_config, gemm_config.beta(),
+            hlo_module_config, backend_config.beta(),
             [&](const se::blas::AlgorithmType& algorithm)
                 -> absl::StatusOr<se::blas::ProfileResult> {
               se::blas::ProfileResult profile_result;
@@ -359,7 +368,7 @@ absl::StatusOr<AutotuneResult> DoGemmAutotuneNoCache(
               // should always return true, and the actual
               // success-ness is returned in
               // ProfileResult::is_valid.
-              TF_RETURN_IF_ERROR(RunGemm(config, lhs_buffer, rhs_buffer,
+              TF_RETURN_IF_ERROR(RunGemm(gemm_config, lhs_buffer, rhs_buffer,
                                          output_buffer, workspace_buffer,
                                          deterministic_ops, stream, algorithm,
                                          &profile_result));
@@ -383,11 +392,11 @@ absl::StatusOr<bool> RunOnInstruction(HloInstruction* gemm,
 
   GpuBackendConfig gpu_config =
       gemm->backend_config<GpuBackendConfig>().value();
-  GemmBackendConfig gemm_config = gpu_config.gemm_backend_config();
+  GemmBackendConfig backend_config = gpu_config.gemm_backend_config();
 
   // Degenerate gemms replaced with memzero operation, no need to auto tune it.
-  if (gemm_config.alpha_real() == 0.0 && gemm_config.alpha_imag() == 0.0 &&
-      gemm_config.beta() == 0.0) {
+  if (backend_config.alpha_real() == 0.0 &&
+      backend_config.alpha_imag() == 0.0 && backend_config.beta() == 0.0) {
     VLOG(3) << "Skip degenerate gemm instruction auto tuning";
     return false;
   }
@@ -399,7 +408,7 @@ absl::StatusOr<bool> RunOnInstruction(HloInstruction* gemm,
                         return DoGemmAutotuneNoCache(gemm, key, config);
                       }));
 
-  GemmBackendConfig updated_config = gemm_config;
+  GemmBackendConfig updated_config = backend_config;
 
   bool update_algorithm = std::visit(
       VariantVisitor{[](const se::CudaComputeCapability& cc) {
@@ -423,7 +432,8 @@ absl::StatusOr<bool> RunOnInstruction(HloInstruction* gemm,
   }
   *gpu_config.mutable_gemm_backend_config() = updated_config;
   TF_RETURN_IF_ERROR(gemm->set_backend_config(gpu_config));
-  return updated_config.SerializeAsString() != gemm_config.SerializeAsString();
+  return updated_config.SerializeAsString() !=
+         backend_config.SerializeAsString();
 }
 
 absl::StatusOr<bool> RunOnComputation(HloComputation* computation,

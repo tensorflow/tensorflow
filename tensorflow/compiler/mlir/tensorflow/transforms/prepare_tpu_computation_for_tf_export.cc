@@ -47,8 +47,8 @@ bool IsCommunicationOp(Operation* op) {
 // subcomputation in the TF/XLA bridge.
 bool SupportsCommunicationComputation(Operation* op) {
   return isa<TF::IfRegionOp, TF::WhileRegionOp, TF::CaseRegionOp,
-             TF::StatefulPartitionedCallOp, TF::PartitionedCallOp,
-             TF::LegacyCallOp>(op);
+             TF::XlaCallModuleOp, TF::StatefulPartitionedCallOp,
+             TF::PartitionedCallOp, TF::LegacyCallOp>(op);
 }
 
 #define GEN_PASS_DEF_PREPARETPUCOMPUTATIONFORTFEXPORTPASS

@@ -17,18 +17,18 @@ limitations under the License.
 
 #include "xla/hlo/experimental/auto_sharding/auto_sharding.pb.h"
 #include "xla/hlo/experimental/auto_sharding/auto_sharding_solver.h"
+#include "xla/hlo/experimental/auto_sharding/auto_sharding_strategy.h"
 #include "ortools/linear_solver/linear_solver.h"
 
 namespace xla {
 namespace spmd {
 
-using ::operations_research::MPConstraint;
 using ::operations_research::MPSolver;
 using ::operations_research::MPVariable;
 
 MPVariable* CreateMakespanVar(const AutoShardingSolverRequest& request,
                               const std::vector<std::vector<MPVariable*>>& e,
-                              MPSolver& solver, MPConstraint& cost_constraint) {
+                              MPSolver& solver) {
   return nullptr;  // TODO(moffitt): Implement this.
 }
 
@@ -36,6 +36,13 @@ double EvaluateMakespan(const AutoShardingSolverRequest& request,
                         const AutoShardingSolverResult& result,
                         AutoShardingEvaluation& evaluation) {
   return 0.0;  // TODO(moffitt): Implement this.
+}
+
+StrategyShaver::StrategyShaver(const AutoShardingSolverRequest& request)
+    : request_(request) {}
+
+NodeStrategies StrategyShaver::FindShavedStrategies() const {
+  return {};  // TODO(moffitt): Implement this.
 }
 
 }  // namespace spmd

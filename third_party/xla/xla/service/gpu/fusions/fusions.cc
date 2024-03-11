@@ -171,16 +171,16 @@ absl::StatusOr<std::unique_ptr<FusionInterface>> GetFusionEmitter(
     case HloFusionAnalysis::EmitterFusionKind::kCustomFusion: {
       const auto& config = backend_config.custom_fusion_config();
       if (config.name() == "address_computation") {
-        return std::make_unique<AddressComputationFusionEmitter>(analysis);
+        return std::make_unique<AddressComputationFusion>(analysis);
       }
-      return std::make_unique<CustomFusionEmitter>();
+      return std::make_unique<CustomFusion>();
     }
     case HloFusionAnalysis::EmitterFusionKind::kInputSlices:
       return std::make_unique<InputSlicesFusion>(analysis);
     case HloFusionAnalysis::EmitterFusionKind::kLoop: {
       if (IsDynamicUpdateSliceFusion(analysis) &&
           fusion_info.CanEmitDynamicUpdateSliceInPlace()) {
-        return std::make_unique<InPlaceDynamicUpdateSliceEmitter>(analysis);
+        return std::make_unique<InPlaceDynamicUpdateSliceFusion>(analysis);
       }
 
       if (auto copy_fusion = fusion_info.GetCopyFusion()) {

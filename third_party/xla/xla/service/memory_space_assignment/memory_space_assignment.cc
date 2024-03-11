@@ -77,6 +77,7 @@ limitations under the License.
 #include "xla/status_macros.h"
 #include "xla/statusor.h"
 #include "xla/util.h"
+#include "xla/xla_data.pb.h"
 #include "tsl/platform/casts.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/logging.h"
@@ -233,6 +234,17 @@ std::vector<HloUse> FindCrossProgramPrefetchUses(
 bool IsCrossProgramPrefetchCandidate(const HloValue& value,
                                      const HloAliasAnalysis& alias_analysis,
                                      const Options& options) {
+  // Filter out values that alias with the entry computation root.
+  const HloBuffer& buffer = alias_analysis.GetBufferContainingValue(value);
+  const HloInstruction* root = alias_analysis.dataflow_analysis()
+                                   .module()
+                                   .entry_computation()
+                                   ->root_instruction();
+  for (const HloPosition& position : buffer.ComputePositions()) {
+    if (position.instruction == root) {
+      return false;
+    }
+  }
   std::vector<HloUse> uses =
       FindCrossProgramPrefetchUses(value.GetUses(), alias_analysis);
   return value.defining_instruction()->parent() ==
@@ -472,6 +484,54 @@ StatusOr<std::optional<int64_t>> GetOverriddenPreferredPrefetchTime(
     }
   }
   return static_cast<StatusOr<std::optional<int64_t>>>(std::nullopt);
+}
+
+bool DoesResultMatchFilter(const HloPositionMatcher& filter,
+                           const ShapeIndex& index,
+                           HloInstruction* instruction) {
+  if (filter.has_instruction_regex() &&
+      !RE2::FullMatch(instruction->ToString(), filter.instruction_regex())) {
+    return false;
+  }
+  if (filter.has_instruction_name_regex() &&
+      !RE2::FullMatch(instruction->name(), filter.instruction_name_regex())) {
+    return false;
+  }
+  if (filter.has_tuple_index() &&
+      index != ShapeIndex(filter.tuple_index().index().begin(),
+                          filter.tuple_index().index().end())) {
+    return false;
+  }
+  return true;
+}
+
+// Returns an integer representing the priority of a BufferInterval during
+// assignment, a smaller number indicates a higher priority.
+int64_t GetBufferIntervalOverridePriority(
+    const MsaSortOrderOverrides& msa_sort_order_overrides,
+    const BufferInterval& buffer_interval) {
+  if (msa_sort_order_overrides.overrides_size() == 0) {
+    return 0;
+  }
+  for (int64_t i = 0; i < msa_sort_order_overrides.overrides_size(); ++i) {
+    const auto& override = msa_sort_order_overrides.overrides(i);
+    if (!DoesResultMatchFilter(override.hlo_position_matcher(),
+                               buffer_interval.buffer->index(),
+                               buffer_interval.buffer->instruction())) {
+      continue;
+    }
+    LOG(INFO) << "Override Sort Order Config " << i << " matches "
+              << buffer_interval.buffer->instruction()->ToString();
+    switch (override.override_options().options_case()) {
+      case MsaSortOrderOverrideOptions::kAssignFirst:
+        return std::numeric_limits<int64_t>::lowest() + i;
+      case MsaSortOrderOverrideOptions::kAssignLast:
+        return std::numeric_limits<int64_t>::max() - i;
+      case MsaSortOrderOverrideOptions::OPTIONS_NOT_SET:
+        continue;
+    }
+  }
+  return 0;
 }
 
 std::tuple<int64_t, bool, int64_t> GetAllocationSortTuple(
@@ -762,6 +822,8 @@ float MemorySpaceAssignmentCostAnalysis::GetAlternateMemoryBenefit(
     return (elapsed_time_due_to_memory - elapsed_time_due_to_alternate_mem) *
            while_nest_multiplier;
   } else {
+    // TODO(b/317935037): Multiply with while nest multiplier and test for
+    // speedup.
     // Compute bound, return how far off are we to memory boundedness.
     return elapsed_time_due_to_memory - elapsed_time_due_to_compute;
   }
@@ -1621,10 +1683,14 @@ AlternateMemoryBestFitHeap::AlternateMemoryBestFitHeap(
     MemorySpaceAssignment::AllocationSequence* allocations,
     const Options& options, const HloAliasAnalysis& alias_analysis,
     const HloLiveRange& hlo_live_range)
-    : GlobalDecreasingSizeBestFitHeap(options.alignment_in_bytes,
-                                      /*type=*/kSpatial,
-                                      /*buffer_interval_compare=*/nullptr,
-                                      SliceTimePermutationIterator::Ty::kAll),
+    : GlobalDecreasingSizeBestFitHeap(
+          options.alignment_in_bytes,
+          /*type=*/kSpatial, /*buffer_interval_compare=*/nullptr,
+          (options.sliced_prefetch_options.max_slices() >
+                   options.sliced_prefetch_options
+                       .all_slice_time_permutations_threshold()
+               ? SliceTimePermutationIterator::Ty::kPreferred
+               : SliceTimePermutationIterator::Ty::kAll)),
       allocations_(allocations),
       options_(options),
       alias_analysis_(alias_analysis),
@@ -4360,7 +4426,14 @@ AlternateMemoryBestFitHeap::AllocateAllocationValues(
           VLOG(3) << "Found optimized allocation for " << use.hlo_use.ToString()
                   << " (loop idx: " << loop_optimized_allocation_info.use_index
                   << "): " << allocation->ToString();
-          if (allocation->is_copy_allocation()) {
+          if (require_no_copy_alternate_mem_allocation) {
+            if (allocation->is_copy_allocation() ||
+                allocation->memory_space() == MemorySpace::kDefault) {
+              LOG(WARNING) << "Optimized allocation could not be applied "
+                              "because the tensor is pre-colored, allocation: "
+                           << allocation->ToString();
+            }
+          } else if (allocation->is_copy_allocation()) {
             allow_no_copy_alternate_mem_allocation = true;
             const MemorySpaceAssignment::CopyAllocation* copy_allocation =
                 static_cast<const MemorySpaceAssignment::CopyAllocation*>(
@@ -6182,7 +6255,8 @@ void AlternateMemoryBestFitHeap::AddAsyncSlicesForPrefetch(
       std::make_unique<MemorySpaceAssignment::SlicedCopyAllocation>(
           prev_allocation, MemorySpaceAssignment::MemorySpace::kAlternate,
           slice_decisions_sorted_by_start_time, prefetch_end_time,
-          allocation_end_time));
+          allocation_end_time, options_.sliced_prefetch_options,
+          options_.get_equivalent_s8_shape_fn));
 
   // Register the additional async copy with the interval tree to keep track of
   // the limit at any given time.
@@ -7836,7 +7910,9 @@ int64_t GetSlicedCopyAllocationExclusiveStartTime(
 MemorySpaceAssignment::SlicedCopyAllocation::SlicedCopyAllocation(
     const Allocation& prev_allocation, MemorySpace memory_space,
     std::vector<SliceDecision> slice_decisions_sorted_by_exclusive_start_time,
-    int64_t copy_done_schedule_before_time, int64_t end_time)
+    int64_t copy_done_schedule_before_time, int64_t end_time,
+    const SlicedPrefetchOptions& sliced_prefetch_options,
+    absl::FunctionRef<Shape(const Shape&)> get_equivalent_s8_shape_fn)
     : Allocation(
           /*defining_position=*/{nullptr, {}}, memory_space,
           GetSlicedCopyAllocationChunk(
@@ -7848,7 +7924,9 @@ MemorySpaceAssignment::SlicedCopyAllocation::SlicedCopyAllocation(
           end_time,
           /*is_scoped_allocation=*/false),
       original_shape_to_slice_(prev_allocation.defining_position().shape()),
-      prev_allocation_(prev_allocation) {
+      prev_allocation_(prev_allocation),
+      sliced_prefetch_options_(sliced_prefetch_options),
+      get_equivalent_s8_shape_fn_(get_equivalent_s8_shape_fn) {
   CHECK_GE(slice_decisions_sorted_by_exclusive_start_time.size(), 2);
   slice_details_sorted_by_start_time_.reserve(
       slice_decisions_sorted_by_exclusive_start_time.size());
@@ -7935,16 +8013,34 @@ Status MemorySpaceAssignment::SlicedCopyAllocation::Process() {
   std::vector<HloInstruction*> slice_dones;
   slice_dones.reserve(slice_details_sorted_by_start_time_.size());
 
+  // If we are trying to make all slices a uniform size, we bitcast the
+  // producing instruction to an array of bytes, so it is easy to slice into any
+  // size.
+  Shape slice_shape = shape;
+  if (IsUniformSliceSizingEnabled(sliced_prefetch_options_)) {
+    slice_shape = get_equivalent_s8_shape_fn_(shape);
+    producing_instruction = producing_instruction->parent()->AddInstruction(
+        HloInstruction::CreateBitcast(slice_shape, producing_instruction));
+  }
+
   // Sliced copy allocations need to insert asynchronous copy nodes.
   for (SliceDetail& slice_detail : slice_details_sorted_by_start_time_) {
     TF_RETURN_IF_ERROR(slice_detail.CreateAsyncSlice(
-        shape, *producing_instruction, *computation));
+        slice_shape, *producing_instruction, *computation));
     VLOG(4) << "Created " << slice_detail.copy_start->name()
             << " for sliced copy allocation: " << ToString();
     slice_dones.push_back(slice_detail.copy_done);
   }
 
   TF_RETURN_IF_ERROR(CreateBitcastConcat(shape, slice_dones));
+
+  // If we bitcast to an array of bytes above, the result of the concatenated
+  // slices will also be an array of bytes. Thus, we need to cast the
+  // concatentation back to the original shape.
+  if (IsUniformSliceSizingEnabled(sliced_prefetch_options_)) {
+    concat_ = concat_->parent()->AddInstruction(
+        HloInstruction::CreateBitcast(shape, concat_));
+  }
 
   return ProcessCopyLikeAllocationUses(defining_position_, uses_, computation,
                                        concat_);
@@ -9069,8 +9165,8 @@ MemoryBoundednessBufferIntervalComparator::
 
 std::string
 MemoryBoundednessBufferIntervalComparator::DescribeComparisonCriteria() const {
-  return "[ -memory boundedness, -size, -buffer duration, latest use time, "
-         "(inclusive) start time, instruction id ]";
+  return "[override priority, -memory boundedness, -size, -buffer duration, "
+         "latest use time, (inclusive) start time, instruction id ]";
 }
 
 std::string MemoryBoundednessBufferIntervalComparator::CriteriaToString(
@@ -9084,8 +9180,7 @@ bool MemoryBoundednessBufferIntervalComparator::LessThan(
   return GetTuple(lhs) < GetTuple(rhs);
 }
 
-MemoryBoundednessBufferIntervalComparator::ComparisonTuple
-MemoryBoundednessBufferIntervalComparator::GetTuple(
+int64_t MemoryBoundednessBufferIntervalComparator::GetLatestUseTime(
     const BufferInterval& buffer_interval) {
   auto latest_use_it = buffer_to_latest_use_.find(buffer_interval.buffer);
   if (latest_use_it == buffer_to_latest_use_.end()) {
@@ -9102,13 +9197,29 @@ MemoryBoundednessBufferIntervalComparator::GetTuple(
             .insert(std::make_pair(buffer_interval.buffer, latest_use_time))
             .first;
   }
+  return latest_use_it->second;
+}
 
-  return std::make_tuple(-1.0 * cost_analysis_.GetMemoryBoundedness(
-                                    buffer_interval, cost_analysis_cache_),
-                         -1 * buffer_interval.size,
-                         buffer_interval.start - buffer_interval.end,
-                         latest_use_it->second, buffer_interval.start,
-                         buffer_interval.buffer->id());
+MemoryBoundednessBufferIntervalComparator::ComparisonTuple
+MemoryBoundednessBufferIntervalComparator::GetTuple(
+    const BufferInterval& buffer_interval) {
+  int64_t priority = GetBufferIntervalOverridePriority(
+      cost_analysis_.options().msa_sort_order_overrides, buffer_interval);
+  float inverse_memory_boundedness =
+      -1.0 * cost_analysis_.GetMemoryBoundedness(buffer_interval,
+                                                 cost_analysis_cache_);
+  int64_t inverse_buffer_size = -1 * buffer_interval.size;
+  int64_t inverse_buffer_duration = buffer_interval.start - buffer_interval.end;
+  int64_t latest_use_time = GetLatestUseTime(buffer_interval);
+  int64_t buffer_start_time = buffer_interval.start;
+  auto buffer_id = buffer_interval.buffer->id();
+  return std::make_tuple(priority, inverse_memory_boundedness,
+                         inverse_buffer_size, inverse_buffer_duration,
+                         latest_use_time, buffer_start_time, buffer_id);
+}
+
+bool IsUniformSliceSizingEnabled(const SlicedPrefetchOptions& options) {
+  return options.max_slices() > 0 && options.preferred_slice_size() > 0;
 }
 
 }  // namespace memory_space_assignment

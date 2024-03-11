@@ -99,49 +99,43 @@ absl::Status RunTriangularSolve(
   const int lda = side == se::blas::Side::kLeft ? m : n;
   const int ldb = m;
 
+  auto blas = stream->parent()->AsBlas();
+  if (blas == nullptr) {
+    return absl::InternalError("No BLAS support in stream.");
+  }
   bool launch_ok;
   if (batch_size == 1) {
     switch (type) {
       case F32: {
         se::DeviceMemory<float> b_data_typed(b_data);
-        launch_ok =
-            stream
-                ->ThenBlasTrsm(side, uplo, transpose_a, unit_diagonal, m, n,
-                               /*alpha=*/1.0f, se::DeviceMemory<float>(a_data),
-                               lda, &b_data_typed, ldb)
-                .ok();
+        launch_ok = blas->DoBlasTrsm(
+            stream, side, uplo, transpose_a, unit_diagonal, m, n,
+            /*alpha=*/1.0f, se::DeviceMemory<float>(a_data), lda, &b_data_typed,
+            ldb);
         break;
       }
       case F64: {
         se::DeviceMemory<double> b_data_typed(b_data);
-        launch_ok =
-            stream
-                ->ThenBlasTrsm(side, uplo, transpose_a, unit_diagonal, m, n,
-                               /*alpha=*/1.0, se::DeviceMemory<double>(a_data),
-                               lda, &b_data_typed, ldb)
-                .ok();
+        launch_ok = blas->DoBlasTrsm(
+            stream, side, uplo, transpose_a, unit_diagonal, m, n,
+            /*alpha=*/1.0, se::DeviceMemory<double>(a_data), lda, &b_data_typed,
+            ldb);
         break;
       }
       case C64: {
         se::DeviceMemory<std::complex<float>> b_data_typed(b_data);
-        launch_ok =
-            stream
-                ->ThenBlasTrsm(side, uplo, transpose_a, unit_diagonal, m, n,
-                               /*alpha=*/1.0f,
-                               se::DeviceMemory<std::complex<float>>(a_data),
-                               lda, &b_data_typed, ldb)
-                .ok();
+        launch_ok = blas->DoBlasTrsm(
+            stream, side, uplo, transpose_a, unit_diagonal, m, n,
+            /*alpha=*/1.0f, se::DeviceMemory<std::complex<float>>(a_data), lda,
+            &b_data_typed, ldb);
         break;
       }
       case C128: {
         se::DeviceMemory<std::complex<double>> b_data_typed(b_data);
-        launch_ok =
-            stream
-                ->ThenBlasTrsm(side, uplo, transpose_a, unit_diagonal, m, n,
-                               /*alpha=*/1.0,
-                               se::DeviceMemory<std::complex<double>>(a_data),
-                               lda, &b_data_typed, ldb)
-                .ok();
+        launch_ok = blas->DoBlasTrsm(
+            stream, side, uplo, transpose_a, unit_diagonal, m, n,
+            /*alpha=*/1.0, se::DeviceMemory<std::complex<double>>(a_data), lda,
+            &b_data_typed, ldb);
         break;
       }
       default:
@@ -167,46 +161,34 @@ absl::Status RunTriangularSolve(
     switch (type) {
       case F32: {
         se::DeviceMemory<float*> typed_b_pointers(b_pointers);
-        launch_ok =
-            stream
-                ->ThenBlasTrsmBatched(side, uplo, transpose_a, unit_diagonal, m,
-                                      n, /*alpha=*/1.0f,
-                                      se::DeviceMemory<float*>(a_pointers), lda,
-                                      &typed_b_pointers, ldb, batch_size)
-                .ok();
+        launch_ok = blas->DoBlasTrsmBatched(
+            stream, side, uplo, transpose_a, unit_diagonal, m, n,
+            /*alpha=*/1.0f, se::DeviceMemory<float*>(a_pointers), lda,
+            &typed_b_pointers, ldb, batch_size);
         break;
       }
       case F64: {
         se::DeviceMemory<double*> typed_b_pointers(b_pointers);
-        launch_ok =
-            stream
-                ->ThenBlasTrsmBatched(side, uplo, transpose_a, unit_diagonal, m,
-                                      n, /*alpha=*/1.0f,
-                                      se::DeviceMemory<double*>(a_pointers),
-                                      lda, &typed_b_pointers, ldb, batch_size)
-                .ok();
+        launch_ok = blas->DoBlasTrsmBatched(
+            stream, side, uplo, transpose_a, unit_diagonal, m, n,
+            /*alpha=*/1.0f, se::DeviceMemory<double*>(a_pointers), lda,
+            &typed_b_pointers, ldb, batch_size);
         break;
       }
       case C64: {
         se::DeviceMemory<std::complex<float>*> typed_b_pointers(b_pointers);
-        launch_ok = stream
-                        ->ThenBlasTrsmBatched(
-                            side, uplo, transpose_a, unit_diagonal, m, n,
-                            /*alpha=*/1.0f,
-                            se::DeviceMemory<std::complex<float>*>(a_pointers),
-                            lda, &typed_b_pointers, ldb, batch_size)
-                        .ok();
+        launch_ok = blas->DoBlasTrsmBatched(
+            stream, side, uplo, transpose_a, unit_diagonal, m, n,
+            /*alpha=*/1.0f, se::DeviceMemory<std::complex<float>*>(a_pointers),
+            lda, &typed_b_pointers, ldb, batch_size);
         break;
       }
       case C128: {
         se::DeviceMemory<std::complex<double>*> typed_b_pointers(b_pointers);
-        launch_ok = stream
-                        ->ThenBlasTrsmBatched(
-                            side, uplo, transpose_a, unit_diagonal, m, n,
-                            /*alpha=*/1.0f,
-                            se::DeviceMemory<std::complex<double>*>(a_pointers),
-                            lda, &typed_b_pointers, ldb, batch_size)
-                        .ok();
+        launch_ok = blas->DoBlasTrsmBatched(
+            stream, side, uplo, transpose_a, unit_diagonal, m, n,
+            /*alpha=*/1.0f, se::DeviceMemory<std::complex<double>*>(a_pointers),
+            lda, &typed_b_pointers, ldb, batch_size);
         break;
       }
       default:

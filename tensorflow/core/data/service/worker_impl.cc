@@ -519,7 +519,7 @@ void DataServiceWorkerImpl::TaskCompletionThread() TF_LOCKS_EXCLUDED(mu_) {
       while (!cancelled_ && pending_completed_tasks_.empty()) {
         task_completion_cv_.wait(l);
       }
-      if (cancelled_) {
+      if (cancelled_ && pending_completed_tasks_.empty()) {
         VLOG(3) << "Task completion thread shutting down";
         return;
       }
@@ -528,7 +528,10 @@ void DataServiceWorkerImpl::TaskCompletionThread() TF_LOCKS_EXCLUDED(mu_) {
     if (!s.ok()) {
       LOG(WARNING) << "Failed to send task updates to dispatcher: " << s;
       mutex_lock l(mu_);
-      if (!cancelled_) {
+      if (cancelled_) {
+        VLOG(3) << "Task completion thread shutting down";
+        return;
+      } else {
         task_completion_cv_.wait_for(
             l, absl::ToChronoMicroseconds(kRetryInterval));
       }

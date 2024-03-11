@@ -27,7 +27,7 @@ namespace tensorflow {
 
 CPluginVariable::~CPluginVariable() { TF_DeleteVariableInfo(var_info_); }
 
-tsl::Status CPluginVariable::GetTensorInternal() {
+absl::Status CPluginVariable::GetTensorInternal() {
   // Note: we assume once a variable is initialized, it's underlying tensor
   // won't change during it's lifecycle.
   if (tensor_obtained_) {
@@ -45,13 +45,13 @@ tsl::Status CPluginVariable::GetTensorInternal() {
   return tsl::OkStatus();
 }
 
-tsl::Status CPluginVariable::GetTensor(const Tensor** result_tensor) {
+absl::Status CPluginVariable::GetTensor(const Tensor** result_tensor) {
   TF_RETURN_IF_ERROR(GetTensorInternal());
   *result_tensor = &tensor_;
   return tsl::OkStatus();
 }
 
-tsl::Status CPluginVariable::GetMutableTensor(Tensor** result_tensor) {
+absl::Status CPluginVariable::GetMutableTensor(Tensor** result_tensor) {
   // Note: we assume once a variable is initialized, it's underlying tensor
   // won't change during it's lifecycle.
   TF_RETURN_IF_ERROR(GetTensorInternal());

@@ -35,6 +35,11 @@ def TestPostCalibrationComponentPass : Pass<"stablehlo-test-post-calibration-com
   let description = [{
     Runs the post-calibration passes for post-training quantization.
   }];
+  let options = [
+    Option<"unpack_quantized_types_", "unpack-quantized-types", "bool",
+      /*default=*/"true", "Unpacks ops with uniform quantized types into "
+      "operations without uniform quantized types (mostly i8 or i32).">
+  ];
   let dependentDialects = [
     "mlir::stablehlo::StablehloDialect", "mlir::TF::TensorFlowDialect",
     "mlir::func::FuncDialect", "mlir::mhlo::MhloDialect",

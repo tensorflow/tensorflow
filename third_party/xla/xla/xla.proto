@@ -446,6 +446,9 @@ message DebugOptions {
   // if `xla_gpu_enable_custom_fusion` set to true.
   string xla_gpu_enable_custom_fusions_re = 264;
 
+  // If true, use XLA runtime for XLA:GPU backend.
+  bool xla_gpu_enable_address_computation_fusion = 105;
+
   reserved 233;  // was xla_gpu_enable_gpu2_runtime
   reserved 234;  // was xla_gpu_enable_gpu2_hal
 
@@ -675,7 +678,9 @@ message DebugOptions {
   // If enabled, uses the libnvptxcompiler library to compile PTX to cuBIN.
   bool xla_gpu_enable_libnvptxcompiler = 269;
 
-  // Next id: 270
+  bool xla_gpu_enable_dot_strength_reduction = 270;
+
+  // Next id: 271
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.

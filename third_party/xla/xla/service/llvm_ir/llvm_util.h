@@ -157,6 +157,33 @@ llvm::GlobalVariable* AllocateSharedMemoryTile(llvm::Module* module,
                                                llvm::Type* tile_type,
                                                absl::string_view name);
 
+// Utility class for working with shared memory.
+class SharedMemoryTile {
+ public:
+  SharedMemoryTile() = default;
+  explicit SharedMemoryTile(llvm::GlobalVariable* base_ptr,
+                            llvm::Type* element_type)
+      : base_ptr_(base_ptr), element_type_(element_type) {}
+
+  llvm::Value* Address(absl::Span<llvm::Value* const> index,
+                       llvm::IRBuilder<>* b) const;
+  llvm::Value* Load(absl::Span<llvm::Value* const> index,
+                    llvm::IRBuilder<>* b) const;
+  llvm::StoreInst* Store(llvm::Value* value,
+                         absl::Span<llvm::Value* const> index,
+                         llvm::IRBuilder<>* b) const;
+  llvm::Type* GetElementType() const { return element_type_; }
+
+ private:
+  llvm::GlobalVariable* base_ptr_;
+  llvm::Type* element_type_;
+};
+
+SharedMemoryTile AllocateSharedMemoryTile(
+    llvm::Module* module, llvm::Type* element_type,
+    absl::Span<int64_t const> dimensions_major_to_minor,
+    absl::string_view buffer_name);
+
 // Inserts an allocate of the requested type at the entry point of the
 // function that the builder is currently building. The insert point
 // of the builder is set to the same place after calling this function

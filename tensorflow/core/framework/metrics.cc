@@ -31,6 +31,15 @@ namespace tensorflow {
 namespace metrics {
 namespace {
 
+auto* persistent_cache_load_count = tsl::monitoring::Counter<0>::New(
+    "/tensorflow/core/persistent_cache_load_count",
+    "The number of times a binary is loaded from the persistent cache.");
+
+auto* aot_bef_mlir_load_count = tsl::monitoring::Counter<0>::New(
+    "/tensorflow/core/aot_bef_mlir_load_count",
+    "The number of times BEF and MLIR are deserialized instead of generated "
+    "and used.");
+
 auto* graph_runs = tsl::monitoring::Counter<0>::New(
     "/tensorflow/core/graph_runs",
     "The number of graph executions used to collect "
@@ -296,6 +305,10 @@ auto* tf_data_autotune_stopping_criteria_counter =
         "The number of times each tf.data autotune "
         "algorithm stopping criterion is met.",
         "name");
+
+auto* tf_data_debug = tsl::monitoring::Counter<1>::New(
+    "/tensorflow/data/debug",
+    "The number of times this event occured, for debugging.", "event");
 
 auto* tf_data_error = tsl::monitoring::Counter<2>::New(
     "/tensorflow/data/error",
@@ -666,6 +679,10 @@ void RecordTFDataAutotuneStoppingCriteria(const string& name) {
   tf_data_autotune_stopping_criteria_counter->GetCell(name)->IncrementBy(1);
 }
 
+void RecordTFDataDebug(const string& event) {
+  tf_data_debug->GetCell(event)->IncrementBy(1);
+}
+
 void RecordTFDataError(const string& error_type, const string& status_code) {
   tf_data_error->GetCell(error_type, status_code)->IncrementBy(1);
 }
@@ -703,6 +720,18 @@ void RecordGraphOutputTensors(const size_t size) {
 void RecordTPUXlaSpmdCoresPerReplica(int64_t cores_per_replica) {
   xla_tpu_spmd_cores_per_replica->GetCell(absl::StrCat(cores_per_replica))
       ->IncrementBy(1);
+}
+
+void UpdatePersistentCacheLoadCount() {
+  static auto* persistent_cache_load_count_cell =
+      persistent_cache_load_count->GetCell();
+  persistent_cache_load_count_cell->IncrementBy(1);
+}
+
+void UpdateAotBefMlirLoadCount() {
+  static auto* aot_bef_mlir_load_count_cell =
+      aot_bef_mlir_load_count->GetCell();
+  aot_bef_mlir_load_count_cell->IncrementBy(1);
 }
 
 void UpdateGraphExecTime(const uint64 running_time_usecs) {

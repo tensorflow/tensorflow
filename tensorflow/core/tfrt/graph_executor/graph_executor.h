@@ -33,6 +33,7 @@ limitations under the License.
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/OwningOpRef.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/translate/mlir_roundtrip_flags.h"
+#include "tensorflow/compiler/mlir/tfrt/backend_compiler.h"
 #include "tensorflow/core/common_runtime/process_function_library_runtime.h"
 #include "tensorflow/core/framework/cancellation.h"
 #include "tensorflow/core/framework/function.h"
@@ -376,7 +377,8 @@ class GraphExecutor {
   int num_recompilations_ TF_GUARDED_BY(num_recompilations_mu_) = 0;
 };
 
-void RegisterMlirDialect(mlir::DialectRegistry& registry);
+void RegisterMlirDialect(mlir::DialectRegistry& registry,
+                         tensorflow::BackendCompiler* backend_compiler);
 
 }  // namespace tfrt_stub
 }  // namespace tensorflow

@@ -294,7 +294,7 @@ absl::Status ConvertOperations(const GpuInfo& gpu_info,
     auto op_type = OperationTypeFromString(node.operation.type);
     if (op_type == OperationType::CONSTANT) {
       auto attr =
-          absl::any_cast<ConstTensorAttributes>(node.operation.attributes);
+          std::any_cast<ConstTensorAttributes>(node.operation.attributes);
       auto outputs = graph.FindOutputs(node.id);
       gpu_model->const_tensors[outputs[0]->id] =
           tensor_reserver->Get(outputs[0]->id);

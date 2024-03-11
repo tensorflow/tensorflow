@@ -25,6 +25,7 @@ limitations under the License.
 #include "stablehlo/dialect/VhloOps.h"  // from @stablehlo  // IWYU pragma: keep
 #include "tensorflow/compiler/mlir/lite/quantization/ir/QuantOps.h"  // IWYU pragma: keep
 #include "tensorflow/compiler/mlir/quantization/stablehlo/cc/post_calibration.h"
+#include "tensorflow/compiler/mlir/quantization/stablehlo/passes/testing/passes.h"  // IWYU pragma: keep
 #include "tensorflow/compiler/mlir/quantization/stablehlo/quantization_config.pb.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_dialect.h"  // IWYU pragma: keep
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_executor.h"  // IWYU pragma: keep
@@ -38,10 +39,16 @@ namespace mlir::quant::stablehlo::testing {
 
 namespace {
 
+using ::stablehlo::quantization::PipelineConfig;
+using ::stablehlo::quantization::StaticRangePtqPreset;
+
 class TestPostCalibrationComponentPass
     : public impl::TestPostCalibrationComponentPassBase<
           TestPostCalibrationComponentPass> {
  public:
+  using impl::TestPostCalibrationComponentPassBase<
+      TestPostCalibrationComponentPass>::TestPostCalibrationComponentPassBase;
+
   MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(TestPostCalibrationComponentPass)
 
  private:
@@ -54,8 +61,12 @@ void TestPostCalibrationComponentPass::runOnOperation() {
 
   OpPassManager pm(ModuleOp::getOperationName());
 
+  StaticRangePtqPreset static_range_ptq_preset;
+  PipelineConfig pipeline_config;
+  pipeline_config.set_unpack_quantized_types(unpack_quantized_types_);
+
   PostCalibrationComponent component(&ctx);
-  component.AddPasses(pm);
+  component.AddPasses(pm, static_range_ptq_preset, pipeline_config);
 
   // Adds a XlaCallModuleOp deserialization pass for easier testing by
   // inspecting the contents of serialized StableHLO function.

@@ -203,6 +203,12 @@ void populateChloBroadcastingPatterns(MLIRContext *context,
 void populateDecomposeChloPatterns(MLIRContext *context,
                                    RewritePatternSet *patterns);
 
+// Adds pattern to decompose specific CHLO ops like ErfOp and TopKOp to their
+// basis set of operations. These ops have 1:1 corresponding MHLO ops, but for
+// certain backends, they need to be expanded.
+void populateChloLegalizeToHloBasisOpsPatterns(MLIRContext *context,
+                                               RewritePatternSet *patterns);
+
 }  // namespace chlo
 
 namespace stablehlo {

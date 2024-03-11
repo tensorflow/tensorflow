@@ -26,6 +26,7 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "absl/log/check.h"
 #include "absl/status/status.h"
+#include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
@@ -130,7 +131,7 @@ HloFusionAnalysis::HloFusionAnalysis(
       input_output_info_(std::move(input_output_info)) {}
 
 // static
-absl::StatusOr<HloFusionAnalysis> HloFusionAnalysis::Create(
+HloFusionAnalysis HloFusionAnalysis::Create(
     FusionBackendConfig backend_config,
     std::unique_ptr<HloFusionAdaptor> fusion,
     const se::DeviceDescription* device_info) {
@@ -165,13 +166,14 @@ absl::StatusOr<HloFusionAnalysis> HloFusionAnalysis::Create(
 }
 
 // static
-absl::StatusOr<HloFusionAnalysis> HloFusionAnalysis::Create(
+HloFusionAnalysis HloFusionAnalysis::Create(
     const HloFusionInstruction* fusion,
     const se::DeviceDescription* device_info) {
   CHECK(device_info != nullptr);
-  TF_ASSIGN_OR_RETURN(auto gpu_config,
-                      fusion->backend_config<GpuBackendConfig>());
-  FusionBackendConfig backend_config = gpu_config.fusion_backend_config();
+  FusionBackendConfig backend_config =
+      fusion->has_backend_config()
+          ? fusion->backend_config<GpuBackendConfig>()->fusion_backend_config()
+          : FusionBackendConfig::default_instance();
   return Create(std::move(backend_config),
                 HloFusionAdaptor::ForInstruction(fusion), device_info);
 }
@@ -211,14 +213,46 @@ HloFusionAnalysis::EmitterFusionKind HloFusionAnalysis::GetEmitterFusionKind()
 
   if (input_output_info_.has_4_bit_input ||
       input_output_info_.has_4_bit_output) {
-    // Only loop fusions currently can handle int4 inputs/outputs, due to the
-    // special handling with IrArray needed to deal with two values occupying a
-    // single byte.
+    // Only loop and input slice fusions currently can handle int4
+    // inputs/outputs, due to the special handling with IrArray needed to deal
+    // with two values occupying a single byte.
+    if (fusion_roots_.size() > 1 &&
+        IsInputFusibleNonStridedSlices(fusion_roots_) &&
+        AllSliceInputsAreCompatible(fusion_roots_)) {
+      return EmitterFusionKind::kInputSlices;
+    }
     return EmitterFusionKind::kLoop;
   }
 
+  const HloInstruction* first_reduce_hero = nullptr;
   for (auto [root, hero] : llvm::zip(fusion_roots_, fusion_heroes_)) {
     if (IsRealReductionHero(*root, *hero)) {
+      first_reduce_hero = hero;
+      break;
+    }
+  }
+  if (first_reduce_hero != nullptr) {
+    bool valid_shapes = true;
+    Shape hero_operand_shape = first_reduce_hero->operand(0)->shape();
+    for (auto [root, hero] : llvm::zip(fusion_roots_, fusion_heroes_)) {
+      if (root == first_reduce_hero) {
+        continue;
+      }
+      if (!IsRealReductionHero(*root, *hero)) {
+        // Needs to have a compatible shape to the reduce operand (compatible
+        // meaning same number of elements).
+        if (ShapeUtil::ElementsIn(root->shape()) !=
+            ShapeUtil::ElementsIn(hero_operand_shape)) {
+          valid_shapes = false;
+          break;
+        }
+      } else if (!AreReductionsMultiOutputFusionCompatible(hero,
+                                                           first_reduce_hero)) {
+        valid_shapes = false;
+        break;
+      }
+    }
+    if (valid_shapes) {
       return EmitterFusionKind::kReduction;
     }
   }
@@ -265,10 +299,10 @@ const HloInstruction* HloFusionAnalysis::FindHeroReduction() const {
   LOG(FATAL) << "Did not find a hero reduction";
 }
 
-std::optional<HloFusionAnalysis> AnalyzeProducerConsumerFusion(
+HloFusionAnalysis AnalyzeProducerConsumerFusion(
     const HloInstruction& producer, const HloInstruction& consumer,
     const se::DeviceDescription& device_info) {
-  auto ret = HloFusionAnalysis::Create(
+  return HloFusionAnalysis::Create(
       consumer.has_backend_config()
           ? consumer.backend_config<GpuBackendConfig>()->fusion_backend_config()
           : producer.backend_config<GpuBackendConfig>()
@@ -277,17 +311,13 @@ std::optional<HloFusionAnalysis> AnalyzeProducerConsumerFusion(
           HloFusionAdaptor::ForInstruction(&producer),
           HloFusionAdaptor::ForInstruction(&consumer)),
       &device_info);
-  if (!ret.ok()) return std::nullopt;
-  return {std::move(*ret)};
 }
 
-std::optional<HloFusionAnalysis> AnalyzeFusion(
-    const HloInstruction& consumer, const se::DeviceDescription& device_info) {
-  auto ret = HloFusionAnalysis::Create(
+HloFusionAnalysis AnalyzeFusion(const HloInstruction& consumer,
+                                const se::DeviceDescription& device_info) {
+  return HloFusionAnalysis::Create(
       consumer.backend_config<GpuBackendConfig>()->fusion_backend_config(),
       HloFusionAdaptor::ForInstruction(&consumer), &device_info);
-  if (!ret.ok()) return std::nullopt;
-  return {std::move(*ret)};
 }
 
 }  // namespace gpu

@@ -1495,10 +1495,19 @@ Status AlgebraicSimplifierVisitor::HandleCopy(HloInstruction* copy) {
     return OkStatus();
   }
 
-  if (HloInstruction* bitcast_operand =
-          BitcastingOperandOfReshapeOrCopyChain(copy, options_)) {
-    ReplaceWithBitcast(copy, bitcast_operand);
-    return OkStatus();
+  const bool copy_is_to_different_memory_space =
+      options_.is_layout_sensitive() && copy->shape().has_layout() &&
+      copy->operand(0)->shape().has_layout() &&
+      copy->shape().layout().memory_space() !=
+          copy->operand(0)->shape().layout().memory_space();
+  if (!copy_is_to_different_memory_space) {
+    // Do not replace a copy between different memory spaces with a bitcast.
+    HloInstruction* bitcast_operand =
+        BitcastingOperandOfReshapeOrCopyChain(copy, options_);
+    if (bitcast_operand != nullptr) {
+      ReplaceWithBitcast(copy, bitcast_operand);
+      return OkStatus();
+    }
   }
 
   // Replace Copy(Reshape()) with Reshape() if the Reshape is a logical bitcast.
@@ -1868,12 +1877,14 @@ AlgebraicSimplifierVisitor::TryRemoveUpcastAndDowncastSurroundingBinaryOp(
   const PrimitiveType bin_op_type = bin_op_instr->shape().element_type();
   if (!primitive_util::IsIntegralType(final_type) ||
       !primitive_util::IsIntegralType(bin_op_type) ||
+      primitive_util::Is4BitType(final_type) ||
+      primitive_util::Is4BitType(bin_op_type) ||
       (primitive_util::IsSignedIntegralType(final_type) !=
        primitive_util::IsSignedIntegralType(bin_op_type)) ||
       (primitive_util::IsUnsignedIntegralType(final_type) !=
        primitive_util::IsUnsignedIntegralType(bin_op_type))) {
     // So far, only the safety of this transformation with same signedness
-    // integer types has been verified.
+    // non-4-bit integer types has been verified.
     // TODO(b/277095299): Add support for floating point types.
     return OkStatus();
   }
@@ -5121,9 +5132,8 @@ AlgebraicSimplifierVisitor::TryToSinkBroadcastAfterOpWithUniqueNonScalarOperand(
         new_operands.push_back(operand);
       }
     }
-    VLOG(4) << "Sinking broadcast after user:"
-            << "\n  old broadcast: " << broadcast->ToString()
-            << "\n  old user: " << user->ToString();
+    VLOG(4) << "Sinking broadcast after user:" << "\n  old broadcast: "
+            << broadcast->ToString() << "\n  old user: " << user->ToString();
     changed_shape = ShapeUtil::ChangeElementType(operand->shape(),
                                                  user->shape().element_type());
     simplifier_->UpdateLayout(&changed_shape);
@@ -5978,22 +5988,18 @@ Status AlgebraicSimplifierVisitor::HandleSlice(HloInstruction* slice) {
     // Here we build up the slice dimensions for lhs
     DimensionVector lhs_start_indices, lhs_limit_indices, lhs_strides;
     for (int64_t lhs_index = 0; lhs_index < lhs->shape().rank(); ++lhs_index) {
-      int64_t start = 0;
-      int64_t limit = lhs->shape().dimensions(lhs_index);
-      int64_t stride = 1;
-      if (map_lhs_dot[lhs_index] != -1) {
-        // If it is not a contracting dimension, we slice it according to the
-        // slicing of the corresponding dimension in dot
-        int64_t dot_index = map_lhs_dot[lhs_index];
-        start = slice->slice_starts(dot_index);
-        limit = slice->slice_limits(dot_index);
-        stride = slice->slice_strides(dot_index);
-      }
+      int64_t size = lhs->shape().dimensions(lhs_index);
+      // If it is not a contracting dimension, we slice it according to the
+      // slicing of the corresponding dimension in dot
+      int64_t i = map_lhs_dot[lhs_index];
+      int64_t start = i >= 0 ? slice->slice_starts(i) : 0;
+      int64_t limit = i >= 0 ? slice->slice_limits(i) : size;
+      int64_t stride = i >= 0 ? slice->slice_strides(i) : 1;
       lhs_start_indices.push_back(start);
       lhs_limit_indices.push_back(limit);
       lhs_strides.push_back(stride);
       // Record if any slicing occurs here
-      if (start != 0 || limit < lhs->shape().dimensions(lhs_index)) {
+      if (start != 0 || limit < size || stride != 1) {
         slice_lhs = true;
       }
     }
@@ -6001,22 +6007,18 @@ Status AlgebraicSimplifierVisitor::HandleSlice(HloInstruction* slice) {
     // Here we do the same for rhs
     DimensionVector rhs_start_indices, rhs_limit_indices, rhs_strides;
     for (int64_t rhs_index = 0; rhs_index < rhs->shape().rank(); ++rhs_index) {
-      int64_t start = 0;
-      int64_t limit = rhs->shape().dimensions(rhs_index);
-      int64_t stride = 1;
-      if (map_rhs_dot[rhs_index] != -1) {
-        // If it is not a contracting dimension, we slice it according to the
-        // slicing of the corresponding dimension in dot
-        int64_t dot_index = map_rhs_dot[rhs_index];
-        start = slice->slice_starts(dot_index);
-        limit = slice->slice_limits(dot_index);
-        stride = slice->slice_strides(dot_index);
-      }
+      int64_t size = rhs->shape().dimensions(rhs_index);
+      // If it is not a contracting dimension, we slice it according to the
+      // slicing of the corresponding dimension in dot
+      int64_t i = map_rhs_dot[rhs_index];
+      int64_t start = i >= 0 ? slice->slice_starts(i) : 0;
+      int64_t limit = i >= 0 ? slice->slice_limits(i) : size;
+      int64_t stride = i >= 0 ? slice->slice_strides(i) : 1;
       rhs_start_indices.push_back(start);
       rhs_limit_indices.push_back(limit);
       rhs_strides.push_back(stride);
       // Record if any slicing occurs here
-      if (start != 0 || limit < rhs->shape().dimensions(rhs_index)) {
+      if (start != 0 || limit < size || stride != 1) {
         slice_rhs = true;
       }
     }
@@ -6773,6 +6775,20 @@ Status AlgebraicSimplifierVisitor::HandleReduce(HloInstruction* hlo) {
     return OkStatus();
   }
 
+  HloInstruction* negate_arg;
+  if (ShapeUtil::ElementIsFloating(reduce->shape()) &&
+      Match(arg, m::Negate(m::Op(&negate_arg))) &&
+      IsScalarConstantZero(init_value) &&
+      Match(reduce->to_apply()->root_instruction(),
+            m::AddAnyOrder(m::Parameter(0), m::Parameter(1)))) {
+    TF_RETURN_IF_ERROR(reduce->ReplaceOperandWith(0, negate_arg));
+    auto users = reduce->users();
+    auto* negated_reduce = arg->AddInstruction(HloInstruction::CreateUnary(
+        reduce->shape(), HloOpcode::kNegate, reduce));
+    MarkAsChanged();
+    return reduce->ReplaceUsesWith(users, negated_reduce);
+  }
+
   // Try to reorder reduce(dot(A, B)) to dot(A, reduce(B))
   if (options_.use_associative_reordering()) {
     HloInstruction *a, *b;
@@ -7185,6 +7201,25 @@ Status AlgebraicSimplifierVisitor::HandleReduce(HloInstruction* hlo) {
                       reduce->AddInstruction(
                           MakeScalarInstruction(reduce, result_value)),
                       {}));
+    }
+  }
+
+  // Replace Reduce(Broadcast(x), a, Max()) or Reduce(Broadcast(x), a, Min())
+  // with Max(x, a) or Min(x, a) when x is a scalar and the broadcast is
+  // reduced to a scalar.
+  if (HloInstruction * broadcast_arg;
+      Match(arg, m::Broadcast(m::Op(&broadcast_arg))) &&
+      (Match(function->root_instruction(),
+             m::MaximumAnyOrder(m::Parameter(0), m::Parameter(1))) ||
+       Match(function->root_instruction(),
+             m::MinimumAnyOrder(m::Parameter(0), m::Parameter(1))))) {
+    if (broadcast_arg->shape().rank() == 0 &&
+        reduce->dimensions().size() == arg->shape().rank()) {
+      return ReplaceWithNewInstruction(
+          reduce,
+          HloInstruction::CreateBinary(
+              reduce_result_shape, function->root_instruction()->opcode(),
+              broadcast_arg, reduce->mutable_operand(1)));
     }
   }
 

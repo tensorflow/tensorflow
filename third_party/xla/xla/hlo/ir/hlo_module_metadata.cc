@@ -18,7 +18,10 @@ limitations under the License.
 #include <algorithm>
 
 #include "absl/container/flat_hash_set.h"
+#include "absl/log/log.h"
+#include "xla/util.h"
 #include "tsl/platform/env.h"
+#include "tsl/platform/protobuf.h"
 
 namespace xla {
 
@@ -82,6 +85,18 @@ void HloModuleMetadata::set_prepartitioning_metadata(
       *prepartitioning_metadata_->add_pass_metadata() = pass_metadata;
     }
   }
+}
+
+Status HloModuleMetadata::set_custom_metadata(
+    const ::tsl::protobuf::Message& message) {
+  TF_ASSIGN_OR_RETURN(HloPassMetadata * pass_metadata,
+                      GetCurrentHloPassMetadata());
+  if (!pass_metadata->mutable_custom_metadata()->PackFrom(message)) {
+    LOG(WARNING) << "failed to pack custom metadata for "
+                 << pass_metadata->pass_id();
+    return Internal("failed to pack custom metadata");
+  };
+  return OkStatus();
 }
 
 }  // namespace xla

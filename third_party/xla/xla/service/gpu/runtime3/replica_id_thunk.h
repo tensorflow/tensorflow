@@ -24,7 +24,10 @@ namespace gpu {
 
 // Thunk that implements the ReplicaId(Idx == 0) or PartitionId(Idx == 1).
 class ReplicaOrPartitionIdThunk : public Thunk {
+ public:
   absl::Status ExecuteOnStream(const ExecuteParams& params) override;
+
+  BufferAllocation::Slice dest() const { return dest_; }
 
  protected:
   ReplicaOrPartitionIdThunk(Kind kind, ThunkInfo thunk_info,

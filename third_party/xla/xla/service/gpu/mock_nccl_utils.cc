@@ -655,7 +655,7 @@ absl::StatusOr<std::shared_ptr<NcclClique::Lock>> AcquireNcclClique(
                                   .xla_gpu_nccl_termination_timeout_seconds();
 
   return RendezvousSingle<absl::StatusOr<NcclClique::Lock>>(
-      rendezvous_key, num_local_participants,
+      "acquire mock NCCL clique", rendezvous_key, num_local_participants,
       [&]() -> absl::StatusOr<NcclClique::Lock> {
         const NcclCliqueKey& clique_key = std::get<2>(rendezvous_key);
         NcclClique::Lock clique = cliques[clique_key].Acquire();

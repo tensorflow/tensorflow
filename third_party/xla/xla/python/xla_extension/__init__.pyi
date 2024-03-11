@@ -305,8 +305,11 @@ class DebugOptions:
   xla_gpu_enable_async_collective_permute: bool
   xla_gpu_enable_async_all_to_all: bool
   xla_gpu_enable_async_reduce_scatter: bool
+  xla_gpu_cuda_data_dir: str
   xla_detailed_logging: bool
   xla_enable_dumping: bool
+  xla_gpu_dump_autotune_results_to: str
+  xla_gpu_load_autotune_results_from: str
 
 class CompiledMemoryStats:
   generated_code_size_in_bytes: int
@@ -561,7 +564,7 @@ def get_default_c_api_topology(
     options: Dict[str, Union[str, int, List[int], float]],
 ) -> DeviceTopology: ...
 def get_topology_for_devices(devices: List[Device]) -> DeviceTopology: ...
-def load_pjrt_plugin(platform_name: str, library_path: str) -> _Status: ...
+def load_pjrt_plugin(platform_name: str, library_path: Optional[str], c_api: Optional[Any]) -> _Status: ...
 def pjrt_plugin_loaded(plugin_name: str) -> bool: ...
 def pjrt_plugin_initialized(plugin_name: str) -> bool: ...
 def initialize_pjrt_plugin(platform_name: str) -> _Status: ...
@@ -688,6 +691,16 @@ def dlpack_managed_tensor_to_buffer(
     tensor: Any, device: Device, stream: int | None
 ) -> ArrayImpl: ...
 
+def cuda_array_interface_to_buffer(
+    cai: Dict[str, Union[
+      str, int, None,
+      Tuple[int, ...], Tuple[int, bool],
+      List[Tuple[str, str]],
+      List[Tuple[str, str, Tuple[int, ...]]]]
+    ],
+    gpu_backend: Optional[Client] = ...,
+) -> ArrayImpl: ...
+
 # Legacy overload
 def dlpack_managed_tensor_to_buffer(
     tensor: Any,
@@ -736,6 +749,7 @@ class DistributedRuntimeClient:
   def key_value_dir_get(self, key: str) -> _Status: ...
   def key_value_dir_get_bytes(self, key: str) -> _Status: ...
   def key_value_set(self, key: str, value: str) -> _Status: ...
+  def key_value_set_bytes(self, key: str, value: bytes) -> _Status: ...
   def key_value_delete(self, key: str) -> _Status: ...
   def wait_at_barrier(self, barrier_id: str, timeout_in_ms: int) -> _Status: ...
 
@@ -845,6 +859,7 @@ class GSPMDSharding(XLACompatibleSharding):
       op_sharding: Union[OpSharding, HloSharding],
       *,
       memory_kind: Optional[str] = None,
+      _device_list: Optional[DeviceList] = None,
   ): ...
   _devices: Tuple[Device, ...]
   _hlo_sharding: HloSharding

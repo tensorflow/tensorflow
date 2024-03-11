@@ -1494,6 +1494,7 @@ class XlaBuilder {
   friend XlaOp Abs(XlaOp operand);
   friend XlaOp Atan2(XlaOp y, XlaOp x,
                      absl::Span<const int64_t> broadcast_dimensions);
+  friend XlaOp Erf(XlaOp operand);
   friend XlaOp Exp(XlaOp operand);
   friend XlaOp Expm1(XlaOp operand);
   friend XlaOp Floor(XlaOp operand);
@@ -2544,6 +2545,9 @@ XlaOp Abs(XlaOp operand);
 // Enqueues a atan2 instruction onto the computation.
 XlaOp Atan2(XlaOp y, XlaOp x,
             absl::Span<const int64_t> broadcast_dimensions = {});
+
+// Enqueues an erf instruction onto the computation.
+XlaOp Erf(XlaOp operand);
 
 // Enqueues an exp instruction onto the computation.
 XlaOp Exp(XlaOp operand);

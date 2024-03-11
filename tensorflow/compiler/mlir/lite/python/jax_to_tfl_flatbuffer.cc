@@ -20,27 +20,23 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/log/log.h"
+#include "absl/status/status.h"
 #include "absl/strings/str_join.h"
-#include "absl/types/span.h"
 #include "llvm/ADT/SmallVector.h"
-#include "llvm/ADT/StringSet.h"
-#include "llvm/Support/ToolOutputFile.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
-#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
+#include "mlir/IR/OwningOpRef.h"  // from @llvm-project
 #include "mlir/IR/TypeUtilities.h"  // from @llvm-project
-#include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Support/FileUtilities.h"  // from @llvm-project
-#include "mlir/Transforms/ViewOpGraph.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/common/tfl_pass_config.h"
 #include "tensorflow/compiler/mlir/lite/python/tf_tfl_flatbuffer_helpers.h"
-#include "tensorflow/compiler/mlir/lite/tf_tfl_passes.h"
-#include "tensorflow/compiler/mlir/lite/tf_to_tfl_flatbuffer.h"
+#include "tensorflow/compiler/mlir/lite/quantization/quantization_config.h"
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h"
-#include "tensorflow/compiler/mlir/tensorflow/translate/mlir_roundtrip_flags.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/service/hlo_parser.h"
 #include "xla/translate/hlo_to_mhlo/hlo_to_mlir_hlo.h"
@@ -49,23 +45,24 @@ limitations under the License.
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/platform/errors.h"
-#include "tensorflow/core/platform/status.h"
 #include "tensorflow/lite/toco/model_flags.pb.h"
 #include "tensorflow/lite/toco/toco_flags.pb.h"
 #include "tensorflow/lite/toco/types.pb.h"
-#include "tsl/platform/statusor.h"
+#include "tsl/platform/errors.h"
+#include "tsl/platform/protobuf.h"  // IWYU pragma: keep
 
 namespace tensorflow {
 namespace {
 
 // Error collector that simply ignores errors reported.
-class NoOpErrorCollector : public tensorflow::protobuf::io::ErrorCollector {
+class NoOpErrorCollector : public protobuf::io::ErrorCollector {
  public:
-  void AddError(int line, int column, const string& message) override {}
+  void AddError(int line, int column, const std::string& message) override {}
 };
 
 bool LoadHloProto(const std::string& contents, xla::HloProto* hlo_proto) {
-  tensorflow::protobuf::TextFormat::Parser parser;
+  // NOLINTNEXTLINE: Use tsl::protobuf to be compatible with OSS.
+  tsl::protobuf::TextFormat::Parser parser;
   NoOpErrorCollector collector;
   parser.RecordErrorsTo(&collector);
   return hlo_proto->ParseFromString(contents) ||
@@ -75,10 +72,10 @@ bool LoadHloProto(const std::string& contents, xla::HloProto* hlo_proto) {
 }
 
 mlir::OwningOpRef<mlir::ModuleOp> HloToMlirHloTranslateFunction(
-    llvm::StringRef input, mlir::MLIRContext* context,
+    mlir::StringRef input, mlir::MLIRContext* context,
     bool import_all_computations) {
   xla::HloProto hlo_proto;
-  string content(input.data(), input.size());
+  std::string content(input.data(), input.size());
   if (!LoadHloProto(content, &hlo_proto)) {
     LOG(ERROR) << "Failed to load proto";
     return nullptr;
@@ -100,7 +97,7 @@ mlir::OwningOpRef<mlir::ModuleOp> HloTextToMlirHloTranslateFunction(
     llvm::StringRef input, mlir::MLIRContext* context,
     bool import_all_computations) {
   xla::HloProto hlo_proto;
-  string content(input.data(), input.size());
+  std::string content(input.data(), input.size());
 
   auto hlo_module_error = xla::ParseAndReturnUnverifiedModule(content);
   if (!hlo_module_error.ok()) {
@@ -122,16 +119,16 @@ mlir::OwningOpRef<mlir::ModuleOp> HloTextToMlirHloTranslateFunction(
 }
 
 }  // namespace
-Status ConvertJaxToTFLiteFlatBuffer(const std::string& input,
-                                    const toco::ModelFlags& model_flags,
-                                    const toco::TocoFlags& toco_flags,
-                                    string* result) {
+absl::Status ConvertJaxToTFLiteFlatBuffer(const std::string& input,
+                                          const toco::ModelFlags& model_flags,
+                                          const toco::TocoFlags& toco_flags,
+                                          std::string* result) {
   mlir::MLIRContext context;
   mlir::quant::QuantizationSpecs quant_specs;
 
   // Parse input arrays.
-  std::vector<string> node_names;
-  std::vector<string> node_dtypes;
+  std::vector<std::string> node_names;
+  std::vector<std::string> node_dtypes;
   std::vector<std::optional<std::vector<int>>> node_shapes;
   std::vector<std::optional<double>> node_mins;
   std::vector<std::optional<double>> node_maxs;
@@ -191,10 +188,12 @@ Status ConvertJaxToTFLiteFlatBuffer(const std::string& input,
   // phase.
   main_func->setAttr("tf.entry_function", builder.getDictionaryAttr(attrs));
 
+  // StableHLO Quantizer is not supported for JAX input models, so
+  // quantization_py_function_lib is set to nullptr.
   auto status = internal::ConvertMLIRToTFLiteFlatBuffer(
       model_flags, toco_flags, std::move(module), pass_config,
-      /*saved_model_tags=*/{}, result,
-      /*session=*/std::nullopt);
+      /*saved_model_tags=*/{}, result, /*saved_model_bundle=*/nullptr,
+      /*quantization_py_function_lib=*/nullptr);
   return status;
 }
 

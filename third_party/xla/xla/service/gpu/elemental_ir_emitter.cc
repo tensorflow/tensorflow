@@ -49,18 +49,6 @@ namespace gpu {
 
 using absl::StrAppend;
 
-namespace {
-// Returns whether operand is a floating-point literal with the given value.
-bool IsFPLiteralWithValue(const HloInstruction* operand, float value) {
-  if (operand->opcode() == HloOpcode::kConstant &&
-      operand->literal().IsAllFloat(value)) {
-    return true;
-  }
-  return operand->opcode() == HloOpcode::kBroadcast &&
-         IsFPLiteralWithValue(operand->operand(0), value);
-}
-}  // namespace
-
 GpuElementalIrEmitter::GpuElementalIrEmitter(
     IrEmitterContext& ir_emitter_context, llvm::IRBuilder<>* b)
     : ElementalIrEmitter(ir_emitter_context.llvm_module(), b),
@@ -328,6 +316,22 @@ absl::StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitTanh(
                                                     {one, input}, {type}, b());
   return FPCast(Select(FCmpULT(abs_value, max_value), fast_tanh, one_with_sign),
                 value->getType(), "tanh");
+}
+
+StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitErf(PrimitiveType prim_type,
+                                                      llvm::Value* value) {
+  if (prim_type == F64) {
+    return EmitDeviceMathCall(TargetDeviceFunctionID::kErf, {value},
+                              {prim_type}, prim_type);
+  }
+  // Upcast F16 to F32 if necessary.
+  llvm::Type* type = prim_type == F16 ? b()->getFloatTy() : value->getType();
+  if (type == b()->getFloatTy()) {
+    llvm::Value* x = FPCast(value, type);
+    auto* result = llvm_ir::EmitErfF32(b(), x);
+    return FPCast(result, value->getType());
+  }
+  return Unimplemented("erf");
 }
 
 absl::StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitComplexAbs(

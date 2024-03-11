@@ -331,9 +331,7 @@ std::vector<TritonGemmConfig> GetExhaustiveMatmulAutotuneConfigs(
           continue;
         }
         for (int block_n : BLOCK_SIZES) {
-          // Exclude configs not supported by MMA layout v2.
-          if (block_n > limit.block_n ||
-              (mma_layout_v2 && (block_m * block_n / 256) % num_warps != 0)) {
+          if (block_n > limit.block_n) {
             continue;
           }
           for (int block_k : BLOCK_SIZES) {
@@ -398,14 +396,13 @@ std::vector<TritonGemmConfig> GetFixedMatmulAutotuneConfigs(
         std::back_inserter(configs));
   }
   if (compute_capability.IsAtLeast(se::CudaComputeCapability::HOPPER)) {
-    configs.erase(
-        std::remove_if(configs.begin(), configs.end(),
-                       [](const Config& config) {
-                         return (config.block_m * config.block_n / 256) %
-                                    config.num_warps !=
-                                0;
-                       }),
-        configs.end());
+    absl::c_copy(
+        std::vector<Config>{
+            Config(16, 32, 32, 8, 1, 2),
+            Config(16, 64, 128, 8, 1, 4),
+            Config(16, 64, 128, 16, 3, 4),
+        },
+        std::back_inserter(configs));
   }
   configs.erase(std::remove_if(configs.begin(), configs.end(),
                                [&](const Config& config) {
@@ -484,7 +481,7 @@ absl::StatusOr<std::unique_ptr<HloModule>> TritonGemmAutotuneExtractor(
     if (root->opcode() == HloOpcode::kReduce) {
       HloInstruction* fusion_instruction =
           entry_computation->AddInstruction(HloInstruction::CreateFusion(
-              root->shape(), ChooseFusionKind(*root, *root), root));
+              root->shape(), ChooseFusionKind(*root), root));
       HloInstruction* init_value = root->mutable_operand(1);
       TF_CHECK_OK(
           entry_computation->ReplaceInstruction(root, fusion_instruction));

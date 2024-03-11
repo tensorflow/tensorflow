@@ -17,10 +17,10 @@ limitations under the License.
 
 #include <string>
 #include <string_view>
-#include <utility>
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
 
 namespace xla {
 namespace runtime {

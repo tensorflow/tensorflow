@@ -2317,7 +2317,7 @@ cuda_py_strict_test(
     name = "multi_process_runner_test",
     srcs = ["multi_process_runner_test.py"],
     python_version = "PY3",
-    shard_count = 12,
+    shard_count = 35,
     tags = [
         "multi_gpu",
         "no_pip",  # TODO(b/266520226)

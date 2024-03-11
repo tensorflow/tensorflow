@@ -20,12 +20,12 @@ limitations under the License.
 #include <vector>
 
 #include "absl/log/check.h"
+#include "absl/status/status.h"
 #include "xla/ffi/call_frame.h"
 #include "xla/ffi/ffi_api.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/lib/core/status_test_util.h"
-#include "tsl/platform/errors.h"
 #include "tsl/platform/status_matchers.h"
 #include "tsl/platform/test.h"
 #include "tsl/platform/test_benchmark.h"
@@ -108,13 +108,13 @@ TEST(FfiTest, MissingBufferArgument) {
       [](auto) { return Error::Success(); });
   auto status = Call(*handler, call_frame);
 
-  EXPECT_THAT(status, StatusIs(tsl::error::INVALID_ARGUMENT,
+  EXPECT_THAT(status, StatusIs(absl::StatusCode::kInvalidArgument,
                                HasSubstr("Wrong number of arguments")));
 }
 
 TEST(FfiTest, WrongRankBufferArgument) {
-  std::vector<std::int32_t> storage(4, 0.0);
-  se::DeviceMemoryBase memory(storage.data(), 4 * sizeof(std::int32_t));
+  std::vector<int32_t> storage(4, 0.0);
+  se::DeviceMemoryBase memory(storage.data(), 4 * sizeof(int32_t));
 
   CallFrameBuilder builder;
   builder.AddBufferArg(memory, PrimitiveType::F32, /*dims=*/{2, 2});
@@ -125,13 +125,13 @@ TEST(FfiTest, WrongRankBufferArgument) {
   auto status = Call(*handler, call_frame);
 
   EXPECT_THAT(status,
-              StatusIs(tsl::error::INVALID_ARGUMENT,
+              StatusIs(absl::StatusCode::kInvalidArgument,
                        HasSubstr("Wrong buffer rank: expected 1 but got 2")));
 }
 
 TEST(FfiTest, WrongTypeBufferArgument) {
-  std::vector<std::int32_t> storage(4, 0.0);
-  se::DeviceMemoryBase memory(storage.data(), 4 * sizeof(std::int32_t));
+  std::vector<int32_t> storage(4, 0.0);
+  se::DeviceMemoryBase memory(storage.data(), 4 * sizeof(int32_t));
 
   CallFrameBuilder builder;
   builder.AddBufferArg(memory, PrimitiveType::S32, /*dims=*/{2, 2});
@@ -143,8 +143,8 @@ TEST(FfiTest, WrongTypeBufferArgument) {
 
   EXPECT_THAT(
       status,
-      StatusIs(tsl::error::INVALID_ARGUMENT,
-               HasSubstr("Wrong buffer dtype: expected F64 but got S64")));
+      StatusIs(absl::StatusCode::kInvalidArgument,
+               HasSubstr("Wrong buffer dtype: expected F32 but got S32")));
 }
 
 //===----------------------------------------------------------------------===//

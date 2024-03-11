@@ -72,6 +72,8 @@ Status TestCluster::Initialize() {
       config_.job_gc_check_interval_ms);
   dispatcher_config.set_job_gc_timeout_ms(config_.job_gc_timeout_ms);
   dispatcher_config.set_client_timeout_ms(config_.client_timeout_ms);
+  dispatcher_config.set_worker_max_concurrent_snapshots(
+      config_.worker_max_concurrent_snapshots);
   TF_RETURN_IF_ERROR(NewDispatchServer(dispatcher_config, dispatcher_));
   TF_RETURN_IF_ERROR(dispatcher_->Start());
   dispatcher_address_ = absl::StrCat("localhost:", dispatcher_->BoundPort());

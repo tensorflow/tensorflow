@@ -432,7 +432,7 @@ ENTRY twomatmul {
                           ParseAndReturnVerifiedModule(hlo_string));
   AutoShardingOption option;
   option.enable = true;
-  option.allow_replicated_strategy_for_dot_and_conv = false;
+  option.allow_recompute_heavy_op = false;
   option.device_mesh_shape = {2, 2};
   option.device_mesh_ids = {0, 1, 2, 3};
   option.device_mesh_alpha = {1.0, 1.0};
@@ -463,7 +463,7 @@ ENTRY twomatmul {
   // Test with replicated strategies on for dot
   TF_ASSERT_OK_AND_ASSIGN(module, ParseAndReturnVerifiedModule(hlo_string));
   option.enable = true;
-  option.allow_replicated_strategy_for_dot_and_conv = true;
+  option.allow_recompute_heavy_op = true;
   option.device_mesh_shape = {2, 2};
   option.device_mesh_ids = {0, 1, 2, 3};
   option.device_mesh_alpha = {1.0, 1.0};
@@ -1059,13 +1059,8 @@ ENTRY %entry {
   auto* conv = FindInstruction(module.get(), "convolution");
   ASSERT_NE(gather, nullptr);
   ASSERT_NE(conv, nullptr);
-  EXPECT_THAT(std::make_tuple(gather, conv),
-              AnyOf(FieldsAre(op::Sharding("{devices=[4,1,1]0,1,2,3}"),
-                              op::Sharding("{devices=[4,1,1]0,1,2,3}")),
-                    FieldsAre(op::Sharding("{replicated}"),
-                              op::Sharding("{devices=[1,1,4]0,1,2,3}")),
-                    FieldsAre(op::Sharding("{replicated}"),
-                              op::Sharding("{devices=[4,1,1]0,1,2,3}"))));
+  EXPECT_THAT(gather, op::Sharding("{devices=[1,4,1]0,1,2,3}"));
+  EXPECT_THAT(conv, op::Sharding("{devices=[1,4,1]0,1,2,3}"));
   auto gather_sharding = gather->sharding();
   TF_EXPECT_OK(gather_sharding.Validate(gather->shape(), 4));
   auto conv_sharding = conv->sharding();

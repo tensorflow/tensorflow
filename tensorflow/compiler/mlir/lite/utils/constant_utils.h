@@ -31,6 +31,10 @@ namespace TFL {
 tsl::StatusOr<arith::ConstantOp> CreateConstOpWithSingleValue(
     PatternRewriter* rewriter, Location loc, ShapedType shaped_type, int value);
 
+// Returns a Constant op with a splat vector value.
+tsl::StatusOr<arith::ConstantOp> CreateConstOpWithVectorValue(
+    PatternRewriter* rewriter, Location loc, ShapedType shaped_type, int value);
+
 }  // namespace TFL
 }  // namespace mlir
 #endif  // TENSORFLOW_COMPILER_MLIR_LITE_UTILS_CONSTANT_UTILS_H_

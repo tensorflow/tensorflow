@@ -123,26 +123,26 @@ ENTRY main {
 )");
 }
 
-TEST_F(TransposeFusionTest, ReshapeAfterCopyFused) {
+TEST_F(TransposeFusionTest, ReshapeAfterTransposeFused) {
   const char* hlo = R"(
 HloModule module
 
 ENTRY main {
   p = f32[16,32]{1,0} parameter(0)
   s = sqrt(p)
-  c = f32[16,32]{0,1} copy(s)
-  ROOT r = f32[16,32,1]{0,1,2} reshape(c)
+  t = f32[32,16]{1,0} transpose(s), dimensions={1,0}
+  ROOT r = f32[32,16,1]{2,1,0} reshape(t)
 }
   )";
 
   CheckGpuFusion(hlo, R"(
-// CHECK: %fused_computation (param_0.2: f32[16,32]) -> f32[16,32,1] {
+// CHECK: %fused_computation (param_0.2: f32[16,32]) -> f32[32,16,1] {
 // CHECK-NEXT:   [[param_0_2_0:%[^ ]+]] = f32[16,32]{1,0} parameter(0)
 // CHECK-NEXT:   [[s_1_1:%[^ ]+]] = f32[16,32]{1,0} sqrt([[param_0_2_0]])
-// CHECK-NEXT:   [[c_1_2:%[^ ]+]] = f32[16,32]{0,1} copy([[s_1_1]])
-// CHECK-NEXT:   ROOT [[r_1_3:%[^ ]+]] = f32[16,32,1]{0,1,2} reshape([[c_1_2]])
+// CHECK-NEXT:   [[t_1_2:%[^ ]+]] = f32[32,16]{1,0} transpose([[s_1_1]])
+// CHECK-NEXT:   ROOT [[r_1_3:%[^ ]+]] = f32[32,16,1]{2,1,0} reshape([[t_1_2]])
 // CHECK-NEXT: }
-// CHECK:   ROOT [[fusion_1:%[^ ]+]] = f32[16,32,1]{0,1,2} fusion
+// CHECK:   ROOT [[fusion_1:%[^ ]+]] = f32[32,16,1]{2,1,0} fusion
 )");
 }
 

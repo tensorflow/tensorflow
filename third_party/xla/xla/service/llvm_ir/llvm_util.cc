@@ -361,6 +361,49 @@ llvm::GlobalVariable* AllocateSharedMemoryTile(llvm::Module* module,
       llvm::GlobalValue::NotThreadLocal, kGPUSharedMemoryAddrSpace);
 }
 
+SharedMemoryTile AllocateSharedMemoryTile(
+    llvm::Module* module, llvm::Type* element_type,
+    absl::Span<int64_t const> dimensions_major_to_minor,
+    absl::string_view buffer_name) {
+  llvm::Type* ty = element_type;
+  for (auto dim : llvm::reverse(dimensions_major_to_minor)) {
+    ty = llvm::ArrayType::get(ty, dim);
+  }
+  return SharedMemoryTile{
+      llvm_ir::AllocateSharedMemoryTile(module, ty, buffer_name), element_type};
+}
+
+static std::vector<llvm::Value*> IndexWith0(
+    absl::Span<llvm::Value* const> index, llvm::IRBuilder<>* b) {
+  std::vector<llvm::Value*> index_with_0{
+      llvm::ConstantInt::get(index.front()->getType(), 0)};
+  absl::c_copy(index, std::back_inserter(index_with_0));
+  return index_with_0;
+}
+
+llvm::Value* SharedMemoryTile::Address(absl::Span<llvm::Value* const> index,
+                                       llvm::IRBuilder<>* b) const {
+  llvm::Value* gep = b->CreateInBoundsGEP(base_ptr_->getValueType(), base_ptr_,
+                                          IndexWith0(index, b));
+  // __shared__ memory uses a different address space, so we cast it
+  // to global address space before writing or reading.
+  return b->CreateAddrSpaceCast(gep,
+                                llvm::PointerType::get(b->getContext(), 0));
+};
+
+llvm::Value* SharedMemoryTile::Load(absl::Span<llvm::Value* const> index,
+                                    llvm::IRBuilder<>* b) const {
+  auto* load_type = llvm::GetElementPtrInst::getIndexedType(
+      base_ptr_->getValueType(), IndexWith0(index, b));
+  return b->CreateLoad(load_type, Address(index, b));
+}
+
+llvm::StoreInst* SharedMemoryTile::Store(llvm::Value* value,
+                                         absl::Span<llvm::Value* const> index,
+                                         llvm::IRBuilder<>* b) const {
+  return b->CreateStore(value, Address(index, b));
+}
+
 llvm::AllocaInst* EmitAllocaAtFunctionEntry(llvm::Type* type,
                                             absl::string_view name,
                                             llvm::IRBuilder<>* b,

@@ -368,7 +368,7 @@ func.func @uniform_quantized_add(%arg0: tensor<3x2x!tf_type.qint32>) -> tensor<3
 
   // CHECK-DAG: %[[LHS:.*]] = mhlo.convert %arg0 : (tensor<3x2xi32>) -> tensor<3x2x!quant.uniform<i32:f32, 2.000000e+00:4>>
   // CHECK-DAG: %[[RHS:.*]] = mhlo.constant() {value = dense<127> : tensor<2xi32>} : () -> tensor<2x!quant.uniform<i32:f32, 2.000000e+00:4>>
-  // CHECK: %[[RES:.*]] = chlo.broadcast_add %[[LHS]], %[[RHS]] {broadcast_dimensions = dense<1> : tensor<1xi64>} :
+  // CHECK: %[[RES:.*]] = chlo.broadcast_add %[[LHS]], %[[RHS]] {broadcast_dimensions = array<i64: 1>} :
   // CHECK-SAME: (tensor<3x2x!quant.uniform<i32:f32, 2.000000e+00:4>>, tensor<2x!quant.uniform<i32:f32, 2.000000e+00:4>>)
   // CHECK-SAME: -> tensor<3x2x!quant.uniform<i32:f32, 2.000000e+00:4>>
   // CHECK: %[[RES_INT:.*]] = mhlo.convert %[[RES]] : (tensor<3x2x!quant.uniform<i32:f32, 2.000000e+00:4>>) -> tensor<3x2xi32>
@@ -418,10 +418,10 @@ func.func @uniform_quantized_clip_by_value(%input: tensor<3x2xf32>) -> tensor<3x
 
   // CHECK-DAG: %[[CONVERT_1:.*]] = mhlo.convert %[[OPERAND]] : (tensor<3x2x!quant.uniform<i32:f32:1, {2.000000e+00:4,2.000000e+00:4}>>) -> tensor<3x2xi32>
   // CHECK-DAG: %[[CONVERT_2:.*]] = mhlo.convert %[[CONVERT_1]] : (tensor<3x2xi32>) -> tensor<3x2x!quant.uniform<i32:f32:1, {2.000000e+00:4,2.000000e+00:4}>>
-  // CHECK: %[[MIN_CLIPPED:.*]] = chlo.broadcast_maximum %[[CONVERT_2]], %[[MIN_MAX]] {broadcast_dimensions = dense<1> : tensor<1xi64>} :
+  // CHECK: %[[MIN_CLIPPED:.*]] = chlo.broadcast_maximum %[[CONVERT_2]], %[[MIN_MAX]] {broadcast_dimensions = array<i64: 1>} :
   // CHECK-SAME: (tensor<3x2x!quant.uniform<i32:f32:1, {2.000000e+00:4,2.000000e+00:4}>>, tensor<2x!quant.uniform<i32:f32:1, {2.000000e+00:4,2.000000e+00:4}>>)
   // CHECK-SAME: -> tensor<3x2x!quant.uniform<i32:f32:1, {2.000000e+00:4,2.000000e+00:4}>>
-  // CHECK: chlo.broadcast_minimum %[[MIN_CLIPPED]], %[[MIN_MAX]] {broadcast_dimensions = dense<1> : tensor<1xi64>} :
+  // CHECK: chlo.broadcast_minimum %[[MIN_CLIPPED]], %[[MIN_MAX]] {broadcast_dimensions = array<i64: 1>} :
   // CHECK-SAME: (tensor<3x2x!quant.uniform<i32:f32:1, {2.000000e+00:4,2.000000e+00:4}>>, tensor<2x!quant.uniform<i32:f32:1, {2.000000e+00:4,2.000000e+00:4}>>)
   // CHECK-SAME: -> tensor<3x2x!quant.uniform<i32:f32:1, {2.000000e+00:4,2.000000e+00:4}>>
   %1 = "tf.UniformQuantizedClipByValue"(%0, %min, %max, %scales, %zps) {

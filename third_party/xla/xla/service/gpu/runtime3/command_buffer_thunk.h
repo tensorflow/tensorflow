@@ -24,11 +24,11 @@ limitations under the License.
 #include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/synchronization/mutex.h"
 #include "xla/service/gpu/runtime3/command_buffer_allocations.h"
 #include "xla/service/gpu/runtime3/command_buffer_cmd.h"
 #include "xla/service/gpu/thunk.h"
-#include "xla/statusor.h"
 #include "xla/stream_executor/command_buffer.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/stream_executor.h"
@@ -40,6 +40,8 @@ class CommandBufferThunk : public Thunk {
   CommandBufferThunk(CommandBufferCmdSequence commands, ThunkInfo thunk_info,
                      std::optional<ThunkSequence> thunks = std::nullopt);
 
+  absl::Status Prepare(const PrepareParams& params,
+                       ResourceRequests& resource_requests) override;
   absl::Status Initialize(const InitializeParams& params) override;
   absl::Status ExecuteOnStream(const ExecuteParams& params) override;
 
@@ -53,18 +55,23 @@ class CommandBufferThunk : public Thunk {
   // Command buffer instantiated on a `se::StreamExecutor` instance, and
   // auxiliary state required for efficient command buffer updates.
   struct ExecutorCommandBuffer {
-    explicit ExecutorCommandBuffer(se::CommandBuffer command_buffer);
+    explicit ExecutorCommandBuffer(
+        std::unique_ptr<se::CommandBuffer> command_buffer);
 
     // Returns true if `commands` cmd sequence has to be recorded into
     // `command_buffer` to update it (see `recorded_allocs` below).
     bool ShouldUpdateCommandBuffer(const CommandBufferCmdSequence& commands,
-                                   const CommandBufferCmd::RecordParams& params)
+                                   const Thunk::ExecuteParams& params)
         ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex);
 
     // se::CommandBuffer is not thread safe, and we guard it with a mutex to
     // guarantee that we do not mutate it concurrently.
     absl::Mutex mutex;
-    se::CommandBuffer command_buffer ABSL_GUARDED_BY(mutex);
+    std::unique_ptr<se::CommandBuffer> command_buffer ABSL_GUARDED_BY(mutex);
+
+    // A manager for an external state attached by commands in a command
+    // sequence to a command buffer.
+    CommandBufferCmd::StateManager state ABSL_GUARDED_BY(mutex);
 
     // TODO(ezhulenev): We need to move command buffer allocations all the way
     // up to the GpuExecutable as we can have Allocate and Free commands in

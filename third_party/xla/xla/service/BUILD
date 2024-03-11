@@ -120,6 +120,7 @@ cc_library(
         ":hlo_pass",
         ":shape_inference",
         "//xla:frontend_attributes",
+        "//xla:util",
         "//xla/hlo/ir:hlo",
         "@com_google_absl//absl/container:flat_hash_map",
         "@local_tsl//tsl/platform:errors",
@@ -312,6 +313,7 @@ cc_library(
     hdrs = ["float_normalization.h"],
     visibility = ["//visibility:public"],
     deps = [
+        ":call_graph",
         ":float_support",
         ":hlo_dce",
         ":hlo_pass",
@@ -873,6 +875,7 @@ xla_cc_test(
 xla_cc_test(
     name = "hlo_instruction_test",
     srcs = ["hlo_instruction_test.cc"],
+    tags = ["no_aarch64"],
     deps = [
         "//xla:literal",
         "//xla:protobuf_util",
@@ -3282,8 +3285,10 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":pattern_matcher",
+        "//xla:comparison_util",
         "//xla:literal",
         "//xla:literal_util",
+        "//xla:shape_util",
         "//xla/hlo/evaluator:hlo_evaluator",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/ir:hlo_reachability",
@@ -3296,14 +3301,19 @@ xla_cc_test(
     name = "while_loop_analysis_test",
     srcs = ["while_loop_analysis_test.cc"],
     deps = [
-        ":hlo_parser",
         ":while_loop_analysis",
+        "//xla:comparison_util",
+        "//xla:statusor",
         "//xla:test",
+        "//xla:util",
         "//xla/hlo/ir:hlo",
         "//xla/tests:hlo_test_base",
         "//xla/tests:xla_internal_test_main",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest",
-        "@local_tsl//tsl/lib/core:status_test_util",
+        "@local_tsl//tsl/platform:statusor",
     ],
 )
 
@@ -4277,6 +4287,7 @@ cc_library(
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/functional:function_ref",
+        "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
@@ -5362,6 +5373,7 @@ cc_library(
         "//xla/service/llvm_ir:llvm_loop",
         "//xla/service/llvm_ir:llvm_util",
         "//xla/service/llvm_ir:loop_emitter",
+        "//xla/service/llvm_ir:math_ops",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/strings",
@@ -5841,6 +5853,48 @@ xla_cc_test(
 )
 
 cc_library(
+    name = "host_memory_offload_annotations_hdr",
+    hdrs = ["host_memory_offload_annotations.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "@com_google_absl//absl/strings:string_view",
+    ],
+)
+
+cc_library(
+    name = "convert_memory_placement_to_internal_annotations",
+    srcs = ["convert_memory_placement_to_internal_annotations.cc"],
+    hdrs = ["convert_memory_placement_to_internal_annotations.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":host_memory_offload_annotations_hdr",
+        "//xla:side_effect_util",
+        "//xla:statusor",
+        "//xla:util",
+        "//xla:xla_data_proto_cc",
+        "//xla/hlo/ir:hlo",
+        "//xla/service:hlo_pass",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/strings:string_view",
+        "@local_tsl//tsl/platform:errors",
+    ],
+)
+
+xla_cc_test(
+    name = "convert_memory_placement_to_internal_annotations_test",
+    srcs = ["convert_memory_placement_to_internal_annotations_test.cc"],
+    deps = [
+        ":convert_memory_placement_to_internal_annotations",
+        "//xla:statusor",
+        "//xla:xla_data_proto_cc",
+        "//xla/tests:hlo_test_base",
+        "//xla/tests:xla_internal_test_main",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_library(
     name = "host_memory_transfer_asyncifier",
     srcs = ["host_memory_transfer_asyncifier.cc"],
     hdrs = ["host_memory_transfer_asyncifier.h"],
@@ -5872,6 +5926,7 @@ xla_cc_test(
         "//xla/hlo/ir:hlo",
         "//xla/tests:hlo_test_base",
         "//xla/tests:xla_internal_test_main",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_googletest//:gtest",
         "@local_tsl//tsl/lib/core:status_test_util",
@@ -5889,6 +5944,8 @@ cc_library(
         ":hlo_buffer",
         ":hlo_pass",
         ":hlo_value",
+        ":host_memory_offload_annotations_hdr",
+        ":pattern_matcher",
         "//xla:literal_util",
         "//xla:shape_util",
         "//xla:status",
@@ -5910,6 +5967,7 @@ xla_cc_test(
     name = "host_offloader_test",
     srcs = ["host_offloader_test.cc"],
     deps = [
+        ":host_memory_offload_annotations_hdr",
         ":host_offloader",
         ":pattern_matcher",
         ":pattern_matcher_gmock",
@@ -5920,6 +5978,7 @@ xla_cc_test(
         "//xla/tests:hlo_test_base",
         "//xla/tests:xla_internal_test_main",
         "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/status",
         "@com_google_googletest//:gtest",
         "@local_tsl//tsl/lib/core:status_test_util",
         "@local_tsl//tsl/platform:statusor",
@@ -7058,6 +7117,7 @@ xla_cc_test(
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/synchronization",
+        "@com_google_absl//absl/time",
         "@com_google_absl//absl/types:span",
         "@local_tsl//tsl/platform:env",
         "@local_tsl//tsl/platform:test",
@@ -7547,9 +7607,6 @@ xla_cc_test(
         ":xla_aot_compile_test_gpu_executable_convolution",
         ":xla_aot_compile_test_gpu_executable_convolution_runtime_autotuning",
     ]),
-    env = {
-        "XLA_FLAGS": "--xla_gpu_enable_xla_runtime_executable",
-    },
     tags = [
         "gpu",
         "no_oss",
@@ -7602,6 +7659,7 @@ cc_library(
     deps = [
         ":compilation_environments",
         "//xla:parse_flags_from_env",
+        "//xla:status",
         "//xla:statusor",
         "//xla:util",
         "//xla:xla_proto_cc",

@@ -442,13 +442,13 @@ cc_library(
         "//xla:debug_options_flags",
         "//xla:statusor",
         "//xla/hlo/ir:hlo",
+        "//xla/service:hlo_module_config",
         "//xla/service:hlo_parser",
         "@com_google_absl//absl/strings",
         "@local_tsl//tsl/platform:env",
         "@local_tsl//tsl/platform:logging",
         "@local_tsl//tsl/platform:path",
         "@local_tsl//tsl/platform:protobuf",
-        "@local_tsl//tsl/platform:regexp",
     ],
 )
 

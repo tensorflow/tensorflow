@@ -34,7 +34,7 @@ namespace xla {
 // TODO(b/78906445) Delete this class when TuplePointsToAnalysis is unused.
 //
 // XLA arrays are trivially a single BufferValue. Tuples are made up of more
-// than one BufferValue: an BufferValue for the pointer vector, and an
+// than one BufferValue: a BufferValue for the pointer vector, and a
 // BufferValue for each child element.
 //
 // Every BufferValue is defined by a particular instruction and most

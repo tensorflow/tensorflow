@@ -38,6 +38,7 @@ tf_proto_library(
     make_default_target_header_only = True,
     protodeps = [
         "//tensorflow/compiler/mlir/quantization/stablehlo:quantization_options_proto",
+        "//tensorflow/compiler/mlir/quantization/stablehlo:quantization_config_proto",
         "//tensorflow/compiler/mlir/lite/debug:debug_options_proto",
         ":types_proto",
     ],

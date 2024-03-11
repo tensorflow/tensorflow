@@ -53,7 +53,7 @@ namespace tensorflow {
 namespace data {
 namespace {
 
-constexpr int64_t kTFRecordReaderOutputBufferSize = 512 << 20;  // 512MB
+constexpr ByteSize kTFRecordReaderOutputBufferSize = ByteSize::GB(1);
 constexpr int64_t kUnknownNumElements = -1;
 
 constexpr const char kFileShardDelimiter[] = "_CHUNK_SHARDS_";
@@ -192,15 +192,16 @@ absl::Status SnapshotStreamWriter::WriteChunks() {
 }
 
 bool SnapshotStreamWriter::ShouldWriteRecord() const {
-  {
-    mutex_lock l(mu_);
-    if (!completed_.ok()) {
-      return false;
-    }
+  mutex_lock l(mu_);
+  if (!completed_.ok() || end_of_sequence_) {
+    return false;
   }
   const absl::Time now = absl::FromUnixMicros(params_.env->NowMicros());
-  return !end_of_sequence_ &&
-         now < last_commit_time_ + params_.checkpoint_interval;
+  // Adjusts the checkpoint interval to speed up initial commits during startup.
+  // It will grow gradually from 5 min to the configured checkpoint interval.
+  const absl::Duration adjusted_checkpoint_interval = std::min(
+      params_.checkpoint_interval, absl::Minutes(0.5 * chunk_index_ + 5));
+  return now < last_commit_time_ + adjusted_checkpoint_interval;
 }
 
 absl::Status SnapshotStreamWriter::WriteRecord(ParallelTFRecordWriter& writer) {
@@ -358,9 +359,9 @@ absl::Status SnapshotStreamWriter::Restore() {
                                     kUnknownNumElements);
   }
   TF_RETURN_IF_ERROR(checkpoint_name.status());
-  snapshot_util::TFRecordReaderImpl reader(CheckpointPath(*checkpoint_name),
-                                           params_.compression,
-                                           kTFRecordReaderOutputBufferSize);
+  snapshot_util::TFRecordReaderImpl reader(
+      CheckpointPath(*checkpoint_name), params_.compression,
+      kTFRecordReaderOutputBufferSize.ToUnsignedBytes());
   TF_RETURN_IF_ERROR(reader.Initialize(params_.env));
   TF_ASSIGN_OR_RETURN(std::vector<Tensor> serialized_tensors,
                       reader.GetTensors());

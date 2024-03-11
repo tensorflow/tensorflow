@@ -294,17 +294,17 @@ class ResourceHandleWithLayout
   tensorflow::Fprint128 CacheKey() const override;
 
   // Updates the layout for the tensors.
-  tsl::Status UpdateLayout(const Layout& new_layout);
+  absl::Status UpdateLayout(const Layout& new_layout);
 
   // Updates the element layouts for the tensors.
-  tsl::Status UpdateElementLayouts(const std::vector<Layout>& layouts) {
+  absl::Status UpdateElementLayouts(const std::vector<Layout>& layouts) {
     dereferenced_element_layouts_.emplace(layouts);
     return tsl::OkStatus();
   }
 
   // Updates the local shape and dtype of the tensors.
-  tsl::Status UpdateShapeAndDType(const TensorShapeProto& shape,
-                                  const DataType& dtype) {
+  absl::Status UpdateShapeAndDType(const TensorShapeProto& shape,
+                                   const DataType& dtype) {
     set_dereferenced_shape(shape);
     set_dereferenced_dtype(dtype);
     return tsl::OkStatus();

@@ -26,9 +26,9 @@ absl::Status ReplicaOrPartitionIdThunk::ExecuteOnStream(
     const ExecuteParams& params) {
   auto dest_addr = params.buffer_allocations->GetDeviceAddress(dest_);
 
-  GlobalDeviceId global_device_id = params.collective_params.global_device_id;
+  GlobalDeviceId global_device_id = params.collective_params->global_device_id;
   TF_ASSIGN_OR_RETURN(const DeviceAssignment::LogicalID logical_id,
-                      params.collective_params.device_assn->LogicalIdForDevice(
+                      params.collective_params->device_assn->LogicalIdForDevice(
                           global_device_id));
   int id = kind() == Kind::kReplicaId ? logical_id.replica_id
                                       : logical_id.computation_id;

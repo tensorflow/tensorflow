@@ -101,6 +101,17 @@ class IrArray {
       return with_offset;
     }
 
+    Index AddOffset(absl::Span<llvm::Value* const> offsets,
+                    llvm::IRBuilder<>* b) const {
+      CHECK_EQ(multidim_.size(), offsets.size());
+      Index with_offset = *this;
+      with_offset.linear_ = nullptr;
+      for (auto&& [dim, offset] : llvm::zip(with_offset.multidim_, offsets)) {
+        dim = b->CreateAdd(dim, offset);
+      }
+      return with_offset;
+    }
+
     const std::vector<llvm::Value*>& multidim() const { return multidim_; }
     const std::vector<int64_t>& dims() const { return dims_; }
     llvm::Value* linear() const { return linear_; }
@@ -153,6 +164,9 @@ class IrArray {
     // Given that "this" is the target index of a bitcast from `operand_shape`
     // to `shape`, returns the source index.
     Index SourceIndexOfBitcast(const Shape& shape, const Shape& operand_shape,
+                               llvm::IRBuilder<>* builder) const;
+    // Same as above, but for bitcasts from `operand_shape` to `this->dims`.
+    Index SourceIndexOfBitcast(const Shape& operand_shape,
                                llvm::IRBuilder<>* builder) const;
 
     // Given that "this" is the target index of a broadcast from `operand_shape`

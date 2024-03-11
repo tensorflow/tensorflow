@@ -29,7 +29,7 @@
 #       ./any.sh
 #
 # 3. DO THE SAME WITH A LOCAL CACHE OR RBE:
-#       export TF_ANY_EXTRA_ENV=ci/official/envs/local_multicache
+#       export TF_ANY_EXTRA_ENV=ci/official/envs/public_cache,ci/official/envs/disk_cache
 #       ...
 #       ./any.sh
 #     or
@@ -39,8 +39,8 @@
 set -euxo pipefail
 cd "$(dirname "$0")/../../"  # tensorflow/
 # Any request that includes "nightly_upload" should just use the
-# local multi-cache instead.
-export TFCI="$(echo $TFCI | sed 's/,nightly_upload/,multicache/')"
+# local multi-cache (public read-only cache + disk cache) instead.
+export TFCI="$(echo $TFCI | sed 's/,nightly_upload/,public_cache,disk_cache/')"
 if [[ -n "${TF_ANY_EXTRA_ENV:-}" ]]; then
   export TFCI="$TFCI,$TF_ANY_EXTRA_ENV"
 fi

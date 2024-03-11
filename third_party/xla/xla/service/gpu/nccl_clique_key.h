@@ -1,4 +1,4 @@
-/* Copyright 2024 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2024 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -19,6 +19,7 @@ limitations under the License.
 #include <array>
 #include <cstdint>
 #include <functional>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -76,6 +77,9 @@ class NcclCliqueKey {
                          int64_t stream_id = 0);
 
   absl::Span<const GlobalDeviceId> devices() const;
+
+  // Returns the rank of the global device in the clique.
+  std::optional<int64_t> rank(GlobalDeviceId id) const;
 
   std::string ToString() const;
 

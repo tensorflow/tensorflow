@@ -15,11 +15,11 @@ limitations under the License.
 #ifndef XLA_BACKENDS_PROFILER_GPU_CUPTI_PROFILER_H_
 #define XLA_BACKENDS_PROFILER_GPU_CUPTI_PROFILER_H_
 
-#include "absl/types/optional.h"
+#include <optional>
+#include <string>
+
 #include "third_party/gpus/cuda/extras/CUPTI/include/cupti.h"
 #include "xla/backends/profiler/gpu/cupti_interface.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/status.h"
 #include "tsl/platform/types.h"
 
 namespace xla {

@@ -25,4 +25,5 @@ message StreamExecutorExecutableProto {
   int32 num_replicas = 3;
   int32 num_partitions = 4;
   string name = 5;
+  string fingerprint = 6;
 }

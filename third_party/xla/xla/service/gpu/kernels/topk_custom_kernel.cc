@@ -22,22 +22,22 @@ limitations under the License.
 #include <string>
 #include <utility>
 
-#if defined(GOOGLE_CUDA) || defined(TENSORFLOW_USE_ROCM)
 #include "absl/numeric/bits.h"
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
-#include "Eigen/Core"  // from @eigen_archive
-#include "xla/service/gpu/runtime/gpu_kernel_helper.h"
-#include "xla/service/gpu/runtime/topk_kernel_common.h"
-#include "xla/statusor.h"
+#include "xla/service/gpu/kernels/custom_kernel.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/kernel.h"
 #include "xla/stream_executor/kernel_spec.h"
-#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-
-#include "xla/service/gpu/kernels/custom_kernel.h"
+#include "xla/stream_executor/launch_dim.h"
+#include "xla/types.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/statusor.h"
+
+#if defined(GOOGLE_CUDA) || defined(TENSORFLOW_USE_ROCM)
+#include "xla/service/gpu/kernels/topk_kernel_common.h"
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 namespace xla::gpu::kernel::topk {
 
@@ -97,9 +97,8 @@ template <typename T>
 absl::StatusOr<CustomKernel> GetTypedTopK(std::string name, size_t num_elements,
                                           size_t k, size_t batch_size) {
   constexpr size_t kMaxKVSize = sizeof(uint64_t);
-  constexpr size_t kWavefrontSize = WAVEFRONT_SIZE;
   // Allocate shmem assuming we have a full reduction.
-  int shmem_size = absl::bit_ceil(k) * kMaxKVSize * kWavefrontSize;
+  int shmem_size = absl::bit_ceil(k) * kMaxKVSize * GetTopKWaveFrontSize<T>();
   int num_threads = EstimateOptimalNumThreads(num_elements, k, batch_size);
   if (num_threads == 0) {
     return absl::FailedPreconditionError(
@@ -128,8 +127,8 @@ absl::StatusOr<CustomKernel> GetTopKKernel(std::string name,
     case PrimitiveType::F32:
       return GetTypedTopK<float>(std::move(name), num_elements, k, batch_size);
     case PrimitiveType::BF16:
-      return GetTypedTopK<Eigen::bfloat16>(std::move(name), num_elements, k,
-                                           batch_size);
+      return GetTypedTopK<bfloat16>(std::move(name), num_elements, k,
+                                    batch_size);
     default:
       return absl::InvalidArgumentError(
           absl::StrCat("Unsupported GpuTopK data type: ", dtype));

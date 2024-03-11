@@ -479,7 +479,7 @@ func.func @op_broadcast_in_dim(%arg0: tensor<16xf32>) -> tensor<16x16xf32> {
   // CHECK-SAME:   broadcast_dimensions = dense<1> : tensor<1xi64>
   // CHECK-SAME: } : (tensor<16xf32>) -> tensor<16x16xf32>
   %0 = "stablehlo.broadcast_in_dim"(%arg0) {
-    broadcast_dimensions = dense<1> : tensor<1xi64>
+    broadcast_dimensions = array<i64: 1>
   } : (tensor<16xf32>) -> tensor<16x16xf32>
   func.return %0 : tensor<16x16xf32>
 }
@@ -641,11 +641,11 @@ func.func @op_convolution(%arg0: tensor<1x8x8x207xf32>, %arg1: tensor<3x3x207x16
   // CHECK-SAME:   window_strides = dense<1> : tensor<2xi64>
   // CHECK-SAME: } : (tensor<1x8x8x207xf32>, tensor<3x3x207x16xf32>) -> tensor<1x8x8x16xf32>
   %0 = "stablehlo.convolution"(%arg0, %arg1) {
-    window_strides = dense<1> : tensor<2xi64>,
+    window_strides = array<i64: 1, 1>,
     padding = dense<1> : tensor<2x2xi64>,
-    lhs_dilation = dense<1> : tensor<2xi64>,
-    rhs_dilation = dense<1> : tensor<2xi64>,
-    window_reversal = dense<false> : tensor<2xi1>,
+    lhs_dilation = array<i64: 1, 1>,
+    rhs_dilation = array<i64: 1, 1>,
+    window_reversal = array<i1: false, false>,
     dimension_numbers = #stablehlo.conv<[b, 0, 1, f]x[0, 1, i, o]->[b, 0, 1, f]>,
     feature_group_count = 1 : i64,
     batch_group_count = 1 : i64,
@@ -796,9 +796,9 @@ func.func @op_dynamic_broadcast_in_dim(%arg0: tensor<?xf32>, %arg1: tensor<2xind
   // CHECK-SAME:   known_nonexpanding_dimensions = dense<0> : tensor<1xi64>
   // CHECK-SAME: } : (tensor<?xf32>, tensor<2xindex>) -> tensor<?x?xf32>
   %0 = "stablehlo.dynamic_broadcast_in_dim"(%arg0, %arg1) {
-    broadcast_dimensions = dense<1> : tensor<1xi64>,
-    known_expanding_dimensions = dense<[]> : tensor<0xi64>,
-    known_nonexpanding_dimensions = dense<0> : tensor<1xi64>
+    broadcast_dimensions = array<i64: 1>,
+    known_expanding_dimensions = array<i64>,
+    known_nonexpanding_dimensions = array<i64: 0>
   } : (tensor<?xf32>, tensor<2xindex>) -> tensor<?x?xf32>
   func.return %0 : tensor<?x?xf32>
 }
@@ -817,11 +817,11 @@ func.func @op_dynamic_conv(%arg0: tensor<1x8x8x207xf32>, %arg1: tensor<3x3x207x1
   // CHECK-SAME:   window_strides = dense<1> : tensor<2xi64>
   // CHECK-SAME: } : (tensor<1x8x8x207xf32>, tensor<3x3x207x16xf32>, tensor<4xi32>) -> tensor<1x?x?x16xf32>
   %0 = "stablehlo.dynamic_conv"(%arg0, %arg1, %arg2) {
-    window_strides = dense<1> : tensor<2xi64>,
+    window_strides = array<i64: 1, 1>,
     padding = dense<1> : tensor<2x2xi64>,
-    lhs_dilation = dense<1> : tensor<2xi64>,
-    rhs_dilation = dense<1> : tensor<2xi64>,
-    window_reversal = dense<false> : tensor<2xi1>,
+    lhs_dilation = array<i64: 1, 1>,
+    rhs_dilation = array<i64: 1, 1>,
+    window_reversal = array<i1: false, false>,
     dimension_numbers = #stablehlo.conv<[b, 0, 1, f]x[0, 1, i, o]->[b, 0, 1, f]>,
     feature_group_count = 1 : i64,
     batch_group_count = 1 : i64,
@@ -960,7 +960,7 @@ func.func @op_gather(%arg0 : tensor<2x4x9xf32>, %arg1 : tensor<1x5x2xi32>) -> te
       start_index_map = [0, 1],
       index_vector_dim = 2
     >,
-    slice_sizes = dense<1> : tensor<3xi64>,
+    slice_sizes = array<i64: 1, 1, 1>,
     indices_are_sorted = false
   } : (tensor<2x4x9xf32>, tensor<1x5x2xi32>) -> tensor<1x5x1xf32>
   func.return %0 : tensor<1x5x1xf32>
@@ -1076,7 +1076,7 @@ func.func @op_map(%arg0: tensor<16xf32>) -> tensor<16xf32> {
       %1 = "stablehlo.abs"(%arg1) : (tensor<f32>) -> tensor<f32>
       "stablehlo.return"(%1) : (tensor<f32>) -> ()
   }) {
-    dimensions = dense<0> : tensor<1xi64>
+    dimensions = array<i64: 0>
   } : (tensor<16xf32>) -> tensor<16xf32>
   func.return %0 : tensor<16xf32>
 }
@@ -1211,7 +1211,7 @@ func.func @op_reduce(%arg0: tensor<16xf32>, %arg1: tensor<f32>) -> tensor<f32> {
       %1 = "stablehlo.add"(%arg2, %arg3) : (tensor<f32>, tensor<f32>) -> tensor<f32>
       "stablehlo.return"(%1) : (tensor<f32>) -> ()
   }) {
-    dimensions = dense<0> : tensor<1xi64>
+    dimensions = array<i64: 0>
   } : (tensor<16xf32>, tensor<f32>) -> tensor<f32>
   func.return %0 : tensor<f32>
 }
@@ -1270,10 +1270,10 @@ func.func @op_reduce_window(%arg0: tensor<2x17x31x7xf32>, %arg1: tensor<f32>) ->
       %1 = "stablehlo.maximum"(%arg2, %arg3) : (tensor<f32>, tensor<f32>) -> tensor<f32>
       "stablehlo.return"(%1) : (tensor<f32>) -> ()
   }) {
-    window_dimensions = dense<[1, 2, 2, 1]> : tensor<4xi64>,
-    window_strides = dense<[1, 4, 4, 1]> : tensor<4xi64>,
-    base_dilations = dense<[1, 1, 1, 1]> : tensor<4xi64>,
-    window_dilations = dense<[1, 2, 2, 1]> : tensor<4xi64>,
+    window_dimensions = array<i64: 1, 2, 2, 1>,
+    window_strides = array<i64: 1, 4, 4, 1>,
+    base_dilations = array<i64: 1, 1, 1, 1>,
+    window_dilations = array<i64: 1, 2, 2, 1>,
     padding = dense<[[0, 0], [2, 0], [0, 2], [0, 0]]> : tensor<4x2xi64>
   } : (tensor<2x17x31x7xf32>, tensor<f32>) -> tensor<2x5x8x7xf32>
   func.return %0 : tensor<2x5x8x7xf32>
@@ -1422,8 +1422,8 @@ func.func @op_select_and_scatter(%arg0: tensor<10x24x24x64xf32>, %arg1: tensor<1
       %1 = "stablehlo.add"(%arg3, %arg4) : (tensor<f32>, tensor<f32>) -> tensor<f32>
       "stablehlo.return"(%1) : (tensor<f32>) -> ()
   }) {
-    window_dimensions = dense<[1, 2, 2, 1]> : tensor<4xi64>,
-    window_strides = dense<[1, 2, 2, 1]> : tensor<4xi64>,
+    window_dimensions = array<i64: 1, 2, 2, 1>,
+    window_strides = array<i64: 1, 2, 2, 1>,
     padding = dense<0> : tensor<4x2xi64>
   } : (tensor<10x24x24x64xf32>, tensor<10x12x12x64xf32>, tensor<f32>) -> tensor<10x24x24x64xf32>
   func.return %0 : tensor<10x24x24x64xf32>

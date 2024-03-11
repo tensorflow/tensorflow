@@ -18,7 +18,9 @@ limitations under the License.
 #include <memory>
 #include <optional>
 
+#include "absl/container/inlined_vector.h"
 #include "absl/status/status.h"
+#include "xla/service/buffer_assignment.h"
 #include "xla/service/gpu/gpu_conv_runner.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/util.h"
@@ -83,12 +85,12 @@ absl::Status ConvolutionThunk::ExecuteOnStream(const ExecuteParams& params) {
 
 ConvolutionReorderThunk::ConvolutionReorderThunk(
     ThunkInfo thunk_info, absl::Span<int64_t> filter_nchw,
-    std::vector<BufferAllocation::Slice> operand_slices,
-    std::vector<BufferAllocation::Slice> result_slices)
+    absl::InlinedVector<BufferAllocation::Slice, 2> operand_slices,
+    absl::InlinedVector<BufferAllocation::Slice, 2> result_slices)
     : Thunk(Kind::kConvolutionReorder, thunk_info),
       filter_descriptor_(CreateFilterDescriptor(filter_nchw)),
-      operand_buffers_(std::move(operand_slices)),
-      result_buffers_(std::move(result_slices)) {}
+      operand_buffers_(operand_slices),
+      result_buffers_(result_slices) {}
 
 absl::Status ConvolutionReorderThunk::ExecuteOnStream(
     const ExecuteParams& params) {
@@ -110,14 +112,13 @@ absl::Status ConvolutionReorderThunk::ExecuteOnStream(
                      buffer_allocations.GetDeviceAddress(result_buffers_[1])))
                : std::nullopt;
 
-  TF_RETURN_IF_ERROR(params.stream->CudnnReorderConvolutionFilterAndBias(
-      filter_descriptor_, filter_input, &filter_output, std::move(bias_input),
-      std::move(bias_output)));
-
-  if (!params.stream->ok()) {
-    return Internal("ConvolutionReorderThunk::ExecuteOnStream failed.");
+  auto dnn = params.stream->parent()->AsDnn();
+  if (dnn == nullptr) {
+    return absl::InternalError("No DNN for stream.");
   }
-  return absl::OkStatus();
+  return dnn->CudnnReorderConvolutionFilterAndBias(
+      params.stream, filter_descriptor_, filter_input, &filter_output,
+      std::move(bias_input), std::move(bias_output));
 }
 
 se::dnn::FilterDescriptor ConvolutionReorderThunk::CreateFilterDescriptor(

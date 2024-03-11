@@ -223,10 +223,13 @@ TEST(ExecuteTest, CompiledFunction) {
 
   monitoring::testing::CellReader<int64_t> counter_reader(
       "/tensorflow/core/tf_function_compile");
+  monitoring::testing::CellReader<int64_t> top_level_counter(
+      "/tensorflow/core/tf_top_level_jit_compilation");
   std::vector<TensorHandle*> retvals(1);
   int num_retvals = retvals.size();
   TF_ASSERT_OK(EagerExecute(op.get(), retvals.data(), &num_retvals));
   EXPECT_EQ(counter_reader.Delta("CPU", "enabled"), 1);
+  EXPECT_EQ(top_level_counter.Delta("CPU"), 1);
 
   retvals[0]->Unref();
   retvals[0] = nullptr;
@@ -299,11 +302,14 @@ TEST(ExecuteTest, NestedCompiledFunction) {
 
   monitoring::testing::CellReader<int64_t> counter_reader(
       "/tensorflow/core/tf_function_compile");
+  monitoring::testing::CellReader<int64_t> top_level_counter(
+      "/tensorflow/core/tf_top_level_jit_compilation");
   std::vector<TensorHandle*> retvals(1);
   int num_retvals = retvals.size();
   TF_ASSERT_OK(EagerExecute(op.get(), retvals.data(), &num_retvals));
   EXPECT_EQ(counter_reader.Delta("CPU", "enabled"), 1);
   EXPECT_EQ(counter_reader.Delta("CPU", "disabled"), 0);
+  EXPECT_EQ(top_level_counter.Delta("CPU"), 0);
 
   retvals[0]->Unref();
   retvals[0] = nullptr;
@@ -399,11 +405,14 @@ TEST(ExecuteTest, MultipleNestedCompiledFunction) {
 
   monitoring::testing::CellReader<int64_t> counter_reader(
       "/tensorflow/core/tf_function_compile");
+  monitoring::testing::CellReader<int64_t> top_level_counter(
+      "/tensorflow/core/tf_top_level_jit_compilation");
   std::vector<TensorHandle*> retvals(1);
   int num_retvals = retvals.size();
   TF_ASSERT_OK(EagerExecute(op.get(), retvals.data(), &num_retvals));
   EXPECT_EQ(counter_reader.Delta("CPU", "enabled"), 1);
   EXPECT_EQ(counter_reader.Delta("CPU", "disabled"), 0);
+  EXPECT_EQ(top_level_counter.Delta("CPU"), 0);
 
   retvals[0]->Unref();
   retvals[0] = nullptr;

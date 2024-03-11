@@ -23,16 +23,18 @@ limitations under the License.
 #include "absl/container/inlined_vector.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
-#include "xla/service/gpu/gemm_thunk.h"
-#include "xla/service/gpu/nccl_all_gather_thunk.h"
-#include "xla/service/gpu/nccl_all_reduce_thunk.h"
 #include "xla/service/gpu/runtime3/command_buffer_cmd.h"
 #include "xla/service/gpu/runtime3/conditional_thunk.h"
 #include "xla/service/gpu/runtime3/copy_thunk.h"
 #include "xla/service/gpu/runtime3/custom_call_thunk.h"
+#include "xla/service/gpu/runtime3/gemm_thunk.h"
 #include "xla/service/gpu/runtime3/kernel_thunk.h"
 #include "xla/service/gpu/runtime3/memset_thunk.h"
+#include "xla/service/gpu/runtime3/nccl_all_gather_thunk.h"
+#include "xla/service/gpu/runtime3/nccl_all_reduce_thunk.h"
+#include "xla/service/gpu/runtime3/replica_id_thunk.h"
 #include "xla/service/gpu/runtime3/sequential_thunk.h"
+#include "xla/service/gpu/runtime3/wait_for_streams_thunk.h"
 #include "xla/service/gpu/runtime3/while_thunk.h"
 #include "xla/service/gpu/thunk.h"
 #include "xla/util.h"
@@ -145,26 +147,19 @@ static absl::StatusOr<Command> Convert(const NcclAllGatherStartThunk& thunk) {
                                         thunk.buffers());
 }
 
-static StatusOr<Command> Convert(const CustomCallThunk& thunk) {
-  auto convert_slices =
-      [](const std::vector<std::optional<CustomCallThunk::Slice>>& slices) {
-        std::vector<std::optional<CustomCallCmd::Slice>> converted;
-        converted.reserve(slices.size());
-        for (const std::optional<CustomCallThunk::Slice>& slice : slices) {
-          if (slice.has_value()) {
-            CustomCallCmd::Slice converted_slice = {slice.value().slice,
-                                                    slice.value().shape};
-            converted.push_back(converted_slice);
-          } else {
-            converted.push_back(std::nullopt);
-          }
-        }
-        return converted;
-      };
+static absl::StatusOr<Command> Convert(const PartitionIdThunk& thunk) {
+  return std::make_unique<ComputationIdCmd>(thunk.dest(),
+                                            ComputationIdCmd::Kind::kPartition);
+}
 
-  return std::make_unique<CustomCallCmd>(
-      thunk.call_target(), convert_slices(thunk.operands()),
-      convert_slices(thunk.results()), thunk.opaque());
+static absl::StatusOr<Command> Convert(const ReplicaIdThunk& thunk) {
+  return std::make_unique<ComputationIdCmd>(thunk.dest(),
+                                            ComputationIdCmd::Kind::kReplica);
+}
+
+static absl::StatusOr<Command> Convert(const CustomCallThunk& thunk) {
+  return std::make_unique<CustomCallCmd>(thunk.call_target(), thunk.operands(),
+                                         thunk.results(), thunk.opaque());
 }
 
 //===----------------------------------------------------------------------===//
@@ -213,6 +208,10 @@ static absl::Status AppendCommands(CommandBufferCmdSequence& cmd_sequence,
       return append(Convert<NcclAllReduceStartThunk>(thunk));
     case Thunk::Kind::kNcclReduceScatterStart:
       return append(Convert<NcclReduceScatterStartThunk>(thunk));
+    case Thunk::Kind::kPartitionId:
+      return append(Convert<PartitionIdThunk>(thunk));
+    case Thunk::Kind::kReplicaId:
+      return append(Convert<ReplicaIdThunk>(thunk));
     case Thunk::Kind::kWhile:
       return append(Convert<WhileThunk>(thunk, force_barriers));
 
@@ -228,7 +227,8 @@ static absl::Status AppendCommands(CommandBufferCmdSequence& cmd_sequence,
     case Thunk::Kind::kNcclAllGatherDone:
     case Thunk::Kind::kNcclAllReduceDone:
     case Thunk::Kind::kNcclReduceScatterDone:
-      return OkStatus();
+    case Thunk::Kind::kWaitForStreams:
+      return absl::OkStatus();
 
     default:
       return Internal("Unsupported thunk kind: %s",

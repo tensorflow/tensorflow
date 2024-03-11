@@ -32,6 +32,7 @@ namespace ifrt_serving {
 struct Tf2HloResult {
   mlir::OwningOpRef<mlir::ModuleOp> mlir_hlo_module;
   tensorflow::tpu::TPUCompileMetadataProto compile_metadata;
+  tf2xla::HostComputeMetadata host_compute_metadata;
 };
 
 // A class that convert tf module to hlo

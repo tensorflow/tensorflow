@@ -11,6 +11,7 @@ package(
     default_visibility = [
         "//tensorflow/compiler/mlir/quantization/stablehlo:__subpackages__",
         "//tensorflow/compiler/mlir/quantization/tensorflow:internal_visibility_allowlist_package",
+        "//tensorflow/lite:__subpackages__",
         "//tensorflow/python:__subpackages__",
         "//tensorflow/tools/pip_package/v2:__subpackages__",
     ],

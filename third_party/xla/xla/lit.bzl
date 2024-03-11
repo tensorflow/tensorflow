@@ -183,6 +183,7 @@ def lit_test(
         name = name,
         src = "@llvm-project//llvm:lit",
         args = [
+            "-a",
             "--path",
             bin_dir,
             "$(location {})".format(test_file),

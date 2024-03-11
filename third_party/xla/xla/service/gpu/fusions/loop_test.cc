@@ -35,20 +35,14 @@ namespace xla {
 namespace gpu {
 namespace {
 
-using ::testing::ElementsAre;
-using ::testing::HasSubstr;
-using ::testing::IsEmpty;
-
 class LoopTest : public HloTestBase {
  public:
   void SetUp() override {
     HloTestBase::SetUp();
-    printer_.SetDimensionName(0, "th_x");
-    printer_.SetDimensionName(1, "th_y");
-    printer_.SetDimensionName(2, "th_z");
-    printer_.SetDimensionName(3, "bl_x");
-    printer_.SetDimensionName(4, "bl_y");
-    printer_.SetDimensionName(5, "bl_z");
+
+    printer_ =
+        AffineMapPrinter({"th_x", "th_y", "th_z", "bl_x", "bl_y", "bl_z"},
+                         {"chunk_id", "unroll_id"});
   }
 
  protected:
@@ -59,11 +53,9 @@ class LoopTest : public HloTestBase {
 };
 
 absl::StatusOr<std::unique_ptr<LoopFusion>> GetLoopFusion(
-    const std::optional<HloFusionAnalysis>& analysis) {
-  TF_RET_CHECK(analysis != std::nullopt);
-
+    const HloFusionAnalysis& analysis) {
   TF_ASSIGN_OR_RETURN(
-      auto emitter, GetFusionEmitter(PreBufferAssignmentFusionInfo{*analysis}));
+      auto emitter, GetFusionEmitter(PreBufferAssignmentFusionInfo{analysis}));
   auto fusion = dynamic_cast<LoopFusion*>(emitter.get());
   TF_RET_CHECK(fusion != nullptr);
 
@@ -92,16 +84,24 @@ TEST_F(LoopTest, ThreadIndexingUnrolled) {
   TF_ASSERT_OK_AND_ASSIGN(auto loop_fusion, GetLoopFusion(analysis));
   auto thread_id_to_output_indexing =
       loop_fusion->ComputeThreadIdToOutputIndexing(0, &mlir_context_);
-  EXPECT_THAT(printer_.ToString(thread_id_to_output_indexing->affine_map),
-              HasSubstr("(th_x, th_y, th_z, bl_x, bl_y, bl_z)[s0] -> ("
-                        "(th_x * 4 + bl_x * 512 + s0) floordiv 60000, "
-                        "((th_x * 4 + bl_x * 512 + s0) floordiv 300) mod 200, "
-                        "(th_x * 4 + bl_x * 512 + s0) mod 300)"));
-  EXPECT_THAT(thread_id_to_output_indexing->domain,
-              MatchDomain(ElementsAre(MatchRange(0, 127), MatchRange(0, 0),
-                                      MatchRange(0, 0), MatchRange(0, 1007),
-                                      MatchRange(0, 0), MatchRange(0, 0)),
-                          ElementsAre(MatchRange(0, 3))));
+
+  EXPECT_THAT(thread_id_to_output_indexing->ToString(printer_),
+              MatchIndexingString(R"(
+  (th_x, th_y, th_z, bl_x, bl_y, bl_z)[chunk_id, unroll_id] -> (
+   ((th_x * 4 + bl_x * 512 + chunk_id * 516096 + unroll_id) floordiv 60000) mod 100,
+   ((th_x * 4 + bl_x * 512 + chunk_id * 516096 + unroll_id) floordiv 300) mod 200,
+   (th_x * 4 + bl_x * 512 + chunk_id * 516096 + unroll_id) mod 300)
+  domain:
+  th_x in [0, 127]
+  th_y in [0, 0]
+  th_z in [0, 0]
+  bl_x in [0, 1007]
+  bl_y in [0, 0]
+  bl_z in [0, 0]
+  chunk_id in [0, 11]
+  unroll_id in [0, 3]
+  (th_x + bl_x * 128) * 4 + chunk_id * 516096 in [0, 5999996]
+)"));
 }
 
 TEST_F(LoopTest, ThreadIndexingNotUnrolled) {
@@ -125,13 +125,19 @@ TEST_F(LoopTest, ThreadIndexingNotUnrolled) {
   TF_ASSERT_OK_AND_ASSIGN(auto loop_fusion, GetLoopFusion(analysis));
   auto thread_id_to_output_indexing =
       loop_fusion->ComputeThreadIdToOutputIndexing(0, &mlir_context_);
-  EXPECT_THAT(printer_.ToString(thread_id_to_output_indexing->affine_map),
-              HasSubstr("(th_x, th_y, th_z, bl_x, bl_y, bl_z) -> (th_x)"));
-  EXPECT_THAT(thread_id_to_output_indexing->domain,
-              MatchDomain(ElementsAre(MatchRange(0, 19), MatchRange(0, 0),
-                                      MatchRange(0, 0), MatchRange(0, 0),
-                                      MatchRange(0, 0), MatchRange(0, 0)),
-                          IsEmpty()));
+  EXPECT_THAT(thread_id_to_output_indexing->ToString(printer_),
+              MatchIndexingString(R"(
+              (th_x, th_y, th_z, bl_x, bl_y, bl_z)[chunk_id, unroll_id] -> (th_x)
+              domain:
+              th_x in [0, 19]
+              th_y in [0, 0]
+              th_z in [0, 0]
+              bl_x in [0, 0]
+              bl_y in [0, 0]
+              bl_z in [0, 0]
+              chunk_id in [0, 0]
+              unroll_id in [0, 0]
+            )"));
 }
 
 }  // namespace

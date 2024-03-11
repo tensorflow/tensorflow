@@ -1790,6 +1790,15 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
           'enable_per_channel_quantization': True,
           'dilations': [1, 2, 2, 1],
       },
+      {
+          'testcase_name': 'with_bias_and_relu6_to_stablehlo_per_channel',
+          'activation_fn': nn_ops.relu6,
+          'has_bias': True,
+          'has_batch_norm': False,
+          'target_opset': quant_opts_pb2.STABLEHLO,
+          'input_shape_dynamic': False,
+          'enable_per_channel_quantization': True,
+      },
   )
   @test_util.run_in_graph_and_eager_modes
   def test_conv_ptq_model(
@@ -1950,6 +1959,10 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
           ),
       )
       self.assertFalse(self._contains_op(output_graphdef, 'Conv2D'))
+    elif target_opset == quant_opts_pb2.STABLEHLO:
+      # This is to verify the invocation of StableHLO quantizer works. More
+      # thorough functional tests are in StableHLO quantizer directory.
+      self.assertTrue(self._contains_op(output_graphdef, 'XlaCallModule'))
     else:
       self.assertTrue(self._contains_quantized_function_call(output_graphdef))
     self.assertFalse(self._contains_op(output_graphdef, 'FusedBatchNormV3'))

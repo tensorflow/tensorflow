@@ -18,6 +18,7 @@
 #include <cstdint>
 
 #include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "xla/executable_run_options.h"
 
 namespace xla {

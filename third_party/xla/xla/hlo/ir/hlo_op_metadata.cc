@@ -24,8 +24,16 @@ limitations under the License.
 
 namespace xla {
 
-std::string OpMetadataToString(const OpMetadata& metadata) {
+std::string OpMetadataToString(const OpMetadata& metadata, bool only_op_name) {
   std::vector<std::string> result;
+  if (only_op_name) {
+    if (!metadata.op_name().empty()) {
+      return absl::StrCat("op_name=\"", absl::CEscape(metadata.op_name()),
+                          "\"");
+    } else {
+      return "";
+    }
+  }
   if (!metadata.op_type().empty()) {
     result.push_back(
         absl::StrCat("op_type=\"", absl::CEscape(metadata.op_type()), "\""));

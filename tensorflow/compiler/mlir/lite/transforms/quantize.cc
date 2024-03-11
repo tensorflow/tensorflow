@@ -257,7 +257,9 @@ void QuantizePass::runOnOperation() {
 
   populateWithGenerated(patterns);
 
-  if (quant_specs.weight_quantization || quant_specs.use_fake_quant_num_bits) {
+  if (quant_specs.weight_quantization || quant_specs.use_fake_quant_num_bits ||
+      quant_specs.qdq_conversion_mode ==
+          quant::QDQConversionMode::kQDQDynamic) {
     patterns.add<TFLDynamicRangeQuantization>(ctx, quant_params);
   } else {
     patterns.add<TFLFullQuantization, TFLFullQuantizationReverse>(ctx,

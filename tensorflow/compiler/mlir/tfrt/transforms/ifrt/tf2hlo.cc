@@ -72,36 +72,27 @@ absl::StatusOr<tensorflow::tpu::TPUCompileMetadataProto> GetCompileMetadata(
     const xla::ifrt::Client& ifrt_client) {
   tensorflow::tpu::TPUCompileMetadataProto metadata;
 
-  auto metadata_attr = op->getAttrOfType<mlir::StringAttr>(kMetadataAttrName);
   auto metadata_text_attr =
       op->getAttrOfType<mlir::StringAttr>(kMetadataTextAttrName);
 
-  if (metadata_attr && !metadata_attr.getValue().empty()) {
-    // tpu_compile_metadata takes priority if exists.
-    VLOG(1) << "Parsing from attribute " << kMetadataAttrName << " : "
-            << metadata_attr.getValue().str();
-    if (!metadata.ParseFromString(metadata_attr.getValue())) {
-      return absl::InternalError(
-          absl::StrCat("Failed to parse tpu_compile_metadata attribute:",
-                       metadata_attr.getValue().str()));
-    }
-  } else if (metadata_text_attr && !metadata_text_attr.getValue().empty()) {
+  if (metadata_text_attr && !metadata_text_attr.getValue().empty()) {
     // Try __tpu_compile_metadata_text attribute. This only for debugging
     // purpose.
     VLOG(1) << "Parsing from attribute " << kMetadataTextAttrName
             << metadata_text_attr.getValue().str();
     if (!tsl::protobuf::TextFormat::ParseFromString(
-            metadata_text_attr.getValue(), &metadata)) {
+            metadata_text_attr.getValue().str(), &metadata)) {
       return absl::InvalidArgumentError(absl::StrCat(
           "Attribute ", kMetadataTextAttrName, ":",
           metadata_text_attr.getValue().str(), " cannot be parsed"));
     }
   } else {
-    return absl::InvalidArgumentError(absl::StrCat(
-        "Missing ", kMetadataAttrName, " and ", kMetadataTextAttrName));
+    return absl::InvalidArgumentError(
+        absl::StrCat("Missing ", kMetadataTextAttrName));
   }
 
-  VLOG(3) << "TpuCompileMetadata before shape is populated " << metadata;
+  VLOG(3) << "TpuCompileMetadata before shape is populated "
+          << metadata.DebugString();
   if (metadata.num_replicas() < 1 || metadata.num_cores_per_replica() < 1) {
     return absl::InternalError(
         absl::StrCat("Number of replicas ", metadata.num_replicas(),
@@ -188,7 +179,7 @@ absl::StatusOr<Tf2HloResult> CompileTfToHlo(
   TF_ASSIGN_OR_RETURN(tensorflow::tpu::TPUCompileMetadataProto compile_metadata,
                       GetCompileMetadata(entry_fn, inputs, ifrt_client));
 
-  VLOG(1) << "Compilation metadata: " << compile_metadata;
+  VLOG(1) << "Compilation metadata: " << compile_metadata.DebugString();
 
   std::vector<TensorShape> arg_shapes;
   for (const auto& input : inputs) {
@@ -222,6 +213,7 @@ absl::StatusOr<Tf2HloResult> CompileTfToHlo(
   Tf2HloResult result;
   result.mlir_hlo_module = xla::llvm_ir::CreateMlirModuleOp(module->getLoc());
   result.compile_metadata = std::move(compile_metadata);
+  result.host_compute_metadata = compilation_result.host_compute_metadata;
 
   TF_RETURN_IF_ERROR(xla::ConvertHloToMlirHlo(
       *result.mlir_hlo_module, &compilation_result.computation->proto()));

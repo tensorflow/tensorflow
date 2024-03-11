@@ -149,14 +149,17 @@ class OptionsTest(test_base.DatasetTestBase, parameterized.TestCase):
     options.experimental_optimization.noop_elimination = True
     options.experimental_optimization.parallel_batch = True
     options.experimental_optimization.shuffle_and_repeat_fusion = True
+    options.experimental_optimization.seq_interleave_prefetch = True
     options.experimental_warm_start = True
     options.experimental_slack = True
     options.dataset_name = "test_name"
+    options.framework_type = ["TFDS", "TfGrain"]
     options.threading.max_intra_op_parallelism = 30
     options.threading.private_threadpool_size = 40
     pb = options._to_proto()
     result = options_lib.Options()
     result._from_proto(pb)
+    self.assertEqual(options.framework_type, result.framework_type)
     self.assertEqual(options, result)
 
   @combinations.generate(test_base.default_test_combinations())

@@ -52,6 +52,8 @@ class StreamExecutor;
 
 namespace gpu {
 
+class GpuCommandBuffer;
+
 // CUDA-platform implementation of the platform-agnostic
 // StreamExecutorInterface.
 class GpuExecutor : public internal::StreamExecutorInterface {
@@ -270,15 +272,14 @@ class GpuExecutor : public internal::StreamExecutorInterface {
 
   std::unique_ptr<internal::StreamInterface> GetStreamImplementation() override;
 
-  absl::StatusOr<std::unique_ptr<internal::CommandBufferInterface>>
-  GetCommandBufferImplementation(CommandBuffer::Mode mode) override;
+  absl::StatusOr<std::unique_ptr<CommandBuffer>> CreateCommandBuffer(
+      CommandBuffer::Mode mode) override;
 
   // Wraps existing Gpu graph handle into an instance of Gpu command buffer.
   // This is required for wrapping nested graphs constructed for conditional
   // nodes and owned by a parent graph executable.
-  std::unique_ptr<internal::CommandBufferInterface>
-  GetCommandBufferImplementation(CommandBuffer::Mode mode, GpuGraphHandle graph,
-                                 bool is_owned_graph);
+  std::unique_ptr<GpuCommandBuffer> CreateCommandBuffer(
+      CommandBuffer::Mode mode, GpuGraphHandle graph, bool is_owned_graph);
 
   void* platform_specific_context() override;
 

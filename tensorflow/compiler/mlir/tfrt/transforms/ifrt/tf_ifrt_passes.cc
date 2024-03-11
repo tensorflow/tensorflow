@@ -111,9 +111,7 @@ absl::Status RunClusterToIfrtRuntimeOpsPassPipeline(
 }
 
 // Register all IfrtPass
-void RegisterTfIfrtPasses() {
-  mlir::registerPass([]() { return CreateRewriteClusterToIfrtCallPass(); });
-}
+void RegisterTfIfrtPasses() { registerTfrtIfrtServingPasses(); }
 
 }  // namespace ifrt_serving
 }  // namespace tensorflow

@@ -61,6 +61,20 @@ XLA_TEST_F(HloTestBase, Slice) {
   EXPECT_TRUE(RunAndCompare(hlo_text, std::nullopt));
 }
 
+XLA_TEST_F(HloTestBase, Add) {
+  const std::string hlo_text = R"(
+  HloModule HorizontalLoopFusion
+
+  ENTRY main {
+    x = s4[5,5] parameter(0)
+    x8 = s8[5,5] convert(x)
+    y8 = add(x8, x8)
+    ROOT y = s4[5,5] convert(y8)
+  }
+)";
+  EXPECT_TRUE(RunAndCompare(hlo_text, std::nullopt));
+}
+
 XLA_TEST_F(HloTestBase, NonMajorToMinorLayout) {
   // Tests transposing a matrix with a non-major-to-minor layout.
   const std::string hlo_text = R"(
@@ -116,6 +130,28 @@ XLA_TEST_F(HloTestBase, Scalar) {
     x = s4[] parameter(0)
     y = s8[] convert(x)
     ROOT z = s8[3, 3] broadcast(y), dimensions={}
+  }
+)";
+  EXPECT_TRUE(RunAndCompare(hlo_text, std::nullopt));
+}
+
+XLA_TEST_F(HloTestBase, HorizontalLoopFusion) {
+  // Tests an HLO module where horizontal loop fusion can be done on GPUs
+  const std::string hlo_text = R"(
+  HloModule HorizontalLoopFusion
+
+  ENTRY main {
+    x4 = s4[10] parameter(0)
+    x8 = s8[10] convert(x4)
+    y8 = s8[10] add(x8, x8)
+    y4 = s4[10] convert(y8)
+
+    x4_b = s4[13] parameter(1)
+    x8_b = s8[13] convert(x4_b)
+    y8_b = s8[13] add(x8_b, x8_b)
+    y4_b = s4[13] convert(y8_b)
+
+    ROOT t = (s4[10], s4[13]) tuple(y4, y4_b)
   }
 )";
   EXPECT_TRUE(RunAndCompare(hlo_text, std::nullopt));

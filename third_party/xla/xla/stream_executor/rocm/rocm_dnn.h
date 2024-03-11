@@ -22,9 +22,9 @@ limitations under the License.
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "rocm/include/miopen/miopen.h"
+#include "xla/stream_executor/device_memory_allocator.h"
 #include "xla/stream_executor/dnn.h"
 #include "xla/stream_executor/plugin_registry.h"
-#include "xla/stream_executor/temporary_device_memory.h"
 
 namespace stream_executor {
 namespace gpu {
@@ -41,7 +41,7 @@ struct PoolingWorkspaceDescriptor {
   dnn::PoolingDescriptor op;
   int dtype;
   uint64_t timestamp;
-  std::unique_ptr<TemporaryDeviceMemory<uint8>> workspace;
+  ScopedDeviceMemory<uint8> workspace;
   size_t workspace_size;
   bool IsSame(const dnn::BatchDescriptor& input_dimensions,
               const dnn::BatchDescriptor& output_dimensions,
@@ -61,8 +61,8 @@ struct PoolingWorkspaceCache {
   void insert(const void* p, const dnn::BatchDescriptor& input_dimensions,
               const dnn::BatchDescriptor& output_dimensions,
               const dnn::PoolingDescriptor& pooling_dimensions, int _type,
-              std::unique_ptr<TemporaryDeviceMemory<uint8>>& workspace,
-              size_t wsp_size, hipStream_t hip_stream);
+              ScopedDeviceMemory<uint8>& workspace, size_t wsp_size,
+              hipStream_t hip_stream);
 
  private:
   void trim(hipStream_t hip_stream);
@@ -77,7 +77,7 @@ class MIOpenSupport : public dnn::DnnSupport {
   absl::Status Init() override;
   absl::StatusOr<stream_executor::dnn::VersionInfo> GetVersion() override;
 
-  absl::StatusOr<std::unique_ptr<dnn::RnnDescriptor>> createRnnDescriptor(
+  absl::StatusOr<std::unique_ptr<dnn::RnnDescriptor>> CreateRnnDescriptor(
       int num_layers, int hidden_size, int input_size, int cell_size,
       int batch_size, dnn::RnnInputMode input_mode,
       dnn::RnnDirectionMode direction_mode, dnn::RnnMode rnn_mode,
@@ -86,12 +86,12 @@ class MIOpenSupport : public dnn::DnnSupport {
       ScratchAllocator* state_allocator, bool use_padded_io) override;
 
   absl::StatusOr<std::unique_ptr<dnn::RnnSequenceTensorDescriptor>>
-  createRnnSequenceTensorDescriptor(int seq_length, int batch_size,
+  CreateRnnSequenceTensorDescriptor(int seq_length, int batch_size,
                                     int data_size,
                                     dnn::DataType data_type) override;
 
   absl::StatusOr<std::unique_ptr<dnn::RnnStateTensorDescriptor>>
-  createRnnStateTensorDescriptor(int num_layer, int batch_size, int data_size,
+  CreateRnnStateTensorDescriptor(int num_layer, int batch_size, int data_size,
                                  dnn::DataType data_type) override;
 
   bool DoRnnForward(Stream* stream, const dnn::RnnDescriptor& rnn_desc,
@@ -421,11 +421,6 @@ class MIOpenSupport : public dnn::DnnSupport {
       const DeviceMemory<float>& normalized_variable_gradient,
       DeviceMemory<float>* raw_variable_gradient,
       ScratchAllocator* workspace_allocator = nullptr) override;
-
-  bool DoDepthConcatenate(
-      Stream* stream, absl::Span<const dnn::BatchDescriptor> input_dimensions,
-      absl::Span<const DeviceMemory<float>* const> input_data,
-      DeviceMemory<float>* output_data) override;
 
   // Derives an output batch descriptor from an input batch and convolution
   // descriptors.

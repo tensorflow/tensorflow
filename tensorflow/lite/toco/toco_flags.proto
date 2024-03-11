@@ -16,6 +16,7 @@ syntax = "proto2";
 package toco;
 
 import "tensorflow/compiler/mlir/lite/debug/debug_options.proto";
+import "tensorflow/compiler/mlir/quantization/stablehlo/quantization_config.proto";
 import "tensorflow/compiler/mlir/quantization/stablehlo/quantization_options.proto";
 import "tensorflow/lite/toco/types.proto";
 
@@ -40,7 +41,7 @@ enum FileFormat {
 // of as properties of models, instead describing how models are to be
 // processed in the context of the present tooling job.
 //
-// Next ID to use: 61.
+// Next ID to use: 62.
 message TocoFlags {
   // Input file format
   optional FileFormat input_format = 1;
@@ -313,8 +314,9 @@ message TocoFlags {
 
   // Indicates the quantization specs. Quantization spec can be set to either
   // a preset method or a custom method.
-  // Note: This is an experimental feature
-  optional stablehlo.quantization.QuantizationOptions quantization_options = 54;
+  // Note: This is deprecated; use `quantization_config` instead.
+  optional stablehlo.quantization.QuantizationOptions quantization_options = 54
+      [deprecated = true];
 
   // Flag to enable hlo to tf conversion.
   // This is useful to exercise StableHLO -> HLO -> TF -> TFLite path.
@@ -343,4 +345,9 @@ message TocoFlags {
   // ops and to convert kernels to quantized kernels wherever appropriate.
   // WARNING: Experimental interface, subject to change.
   optional string qdq_conversion_mode = 60 [default = "NONE"];
+
+  // Configures quantization behavior. This config is fed to the StableHLO
+  // Quantizer integrated in the converter.
+  // WARNING: Experimental interface, subject to change.
+  optional stablehlo.quantization.QuantizationConfig quantization_config = 61;
 }

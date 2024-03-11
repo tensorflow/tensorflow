@@ -2632,8 +2632,7 @@ Translator::CreateMetadataVector() {
       } else {
         module_.emitError(
             "all values in tfl.metadata's dictionary key-value pairs should "
-            "be "
-            "string attributes");
+            "be string attributes");
         return std::nullopt;
       }
     }

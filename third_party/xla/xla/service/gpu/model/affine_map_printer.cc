@@ -1,4 +1,4 @@
-/* Copyright 2024 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2024 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -18,8 +18,10 @@ limitations under the License.
 #include <cstdint>
 #include <ostream>
 #include <string>
+#include <string_view>
 
 #include "absl/strings/str_cat.h"
+#include "absl/types/span.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/IR/AffineExpr.h"  // from @llvm-project
@@ -39,6 +41,19 @@ using mlir::AffineMap;
 using mlir::AffineSymbolExpr;
 
 }  // namespace
+
+AffineMapPrinter::AffineMapPrinter(
+    absl::Span<const std::string_view> dim_names,
+    absl::Span<const std::string_view> symbol_names) {
+  dim_id_to_name_.reserve(dim_names.size());
+  for (const auto& [index, name] : llvm::enumerate(dim_names)) {
+    dim_id_to_name_[index] = name;
+  }
+  symbol_id_to_name_.reserve(symbol_names.size());
+  for (const auto& [index, name] : llvm::enumerate(symbol_names)) {
+    symbol_id_to_name_[index] = name;
+  }
+}
 
 void AffineMapPrinter::Print(std::ostream& out, AffineMap affine_map) const {
   out << ToString(affine_map);
@@ -80,6 +95,18 @@ std::string AffineMapPrinter::ToString(AffineMap affine_map) const {
     PrintExprImpl(expr, /*add_parentheses=*/false, ss);
   });
   ss << ')';
+  return s;
+}
+
+void AffineMapPrinter::Print(std::ostream& out,
+                             mlir::AffineExpr affine_expr) const {
+  out << ToString(affine_expr);
+}
+
+std::string AffineMapPrinter::ToString(mlir::AffineExpr affine_expr) const {
+  std::string s;
+  llvm::raw_string_ostream ss(s);
+  PrintExprImpl(affine_expr, /*add_parentheses=*/false, ss);
   return s;
 }
 

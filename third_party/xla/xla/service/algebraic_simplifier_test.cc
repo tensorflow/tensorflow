@@ -928,6 +928,54 @@ TEST_F(AlgebraicSimplifierTest,
   ASSERT_FALSE(AlgebraicSimplifier(options).Run(m.get()).value());
 }
 
+TEST_F(AlgebraicSimplifierTest, ReduceOfNegate) {
+  const char* kModuleStr = R"(
+    HloModule m
+    add_f32 {
+      p0 = f32[] parameter(0)
+      p1 = f32[] parameter(1)
+      ROOT r = f32[] add(p0, p1)
+    }
+
+    ENTRY test {
+      p = f32[15,7] parameter(0)
+      n = negate(p)
+      ROOT reduce = f32[15] reduce(n, f32[] constant(0)), dimensions={1}, to_apply=add_f32
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  AlgebraicSimplifierOptions options = default_options_;
+  options.set_unconditionally_simplify_reduce_of_transpose_or_reshape(true);
+  ASSERT_TRUE(AlgebraicSimplifier(options).Run(m.get()).value());
+  EXPECT_THAT(
+      m->entry_computation()->root_instruction(),
+      GmockMatch(m::Negate(m::Reduce(m::Parameter(0), m::ConstantScalar(0)))));
+}
+
+TEST_F(AlgebraicSimplifierTest, ReduceBroadcastOfScalar) {
+  const char* kModuleStr = R"(
+    HloModule m
+    max_f32 {
+      p0 = f32[] parameter(0)
+      p1 = f32[] parameter(1)
+      ROOT r = f32[] maximum(p0, p1)
+    }
+
+    ENTRY test {
+      p = f32[] parameter(0)
+      b = f32[1000,1000] broadcast(p), dimensions={}
+      ROOT reduce = f32[] reduce(b, f32[] constant(0)), dimensions={0,1}, to_apply=max_f32
+    }
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  AlgebraicSimplifierOptions options = default_options_;
+  ASSERT_TRUE(AlgebraicSimplifier(options).Run(m.get()).value());
+  EXPECT_THAT(
+      m->entry_computation()->root_instruction(),
+      GmockMatch(m::MaximumAnyOrder(m::Parameter(0), m::ConstantScalar(0))));
+}
+
 // Test that Const + A is canonicalized to A + Const.
 TEST_F(AlgebraicSimplifierTest, AddConstOnLHS) {
   auto m = CreateNewVerifiedModule();
@@ -3438,6 +3486,37 @@ TEST_F(AlgebraicSimplifierTest, CopyWithSameLayout) {
 
   // Copy has been removed.
   EXPECT_THAT(computation->root_instruction(), param0);
+}
+
+// Test that a simplification which changes copy to a bitcast is not performed
+// if layout sensitive is true.
+TEST_F(AlgebraicSimplifierTest, CopyWithDifferentMemorySpaces) {
+  auto m = CreateNewVerifiedModule();
+  HloComputation::Builder builder(TestName());
+  HloInstruction* param0 =
+      builder.AddInstruction(HloInstruction::CreateParameter(
+          0, ShapeUtil::MakeShape(F32, {2, 2}), "param0"));
+  HloInstruction* copy = builder.AddInstruction(
+      HloInstruction::CreateUnary(param0->shape(), HloOpcode::kCopy, param0));
+
+  // Set to different memory spaces.
+  param0->mutable_shape()->mutable_layout()->set_memory_space(0);
+  copy->mutable_shape()->mutable_layout()->set_memory_space(123);
+
+  HloComputation* computation =
+      m->AddEntryComputationWithLayouts(builder.Build());
+
+  EXPECT_THAT(computation->root_instruction(),
+              GmockMatch(m::Copy(m::Parameter(0))));
+
+  AlgebraicSimplifierOptions options;
+  options.set_is_layout_sensitive(true);
+  AlgebraicSimplifier simplifier(options);
+  EXPECT_FALSE(simplifier.Run(m.get()).value());
+
+  // Copy has not been removed.
+  EXPECT_THAT(computation->root_instruction(),
+              GmockMatch(m::Copy(m::Parameter(0))));
 }
 
 // Test that a reshape which could be replaced with a bitcast is not if
@@ -6218,6 +6297,30 @@ TEST_F(AlgebraicSimplifierTest, SliceDotReorder) {
   EXPECT_TRUE(simplifier.Run(module.get()).value());
   ASSERT_THAT(module->entry_computation()->root_instruction(),
               GmockMatch(m::Dot(m::Slice(m::Parameter(0)), m::Parameter(1))));
+}
+
+TEST_F(AlgebraicSimplifierTest, SliceDotReorderWithStrides) {
+  const char* hlo_string = R"(
+    HloModule module
+
+    ENTRY test {
+        a = f32[2048,2] parameter(0)
+        b = f32[2,2048] parameter(1)
+        dot = f32[2048,2048] dot(a,b),
+              lhs_contracting_dims={1},
+              rhs_contracting_dims={0}
+        ROOT slice = f32[16,256] slice(dot), slice={[0:128:8],[0:2048:8]}
+      }
+    )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  AlgebraicSimplifierOptions options;
+  options.set_use_associative_reordering(true);
+  EXPECT_TRUE(AlgebraicSimplifier(options).Run(module.get()).value());
+  ASSERT_THAT(
+      module->entry_computation()->root_instruction(),
+      GmockMatch(m::Dot(m::Slice(m::Parameter(0)), m::Slice(m::Parameter(1)))));
 }
 
 TEST_F(AlgebraicSimplifierTest, TransposeOfBatchDot) {
@@ -10069,13 +10172,12 @@ TEST_F(AlgebraicSimplifierTest, TransposeOfBroadcast) {
   EXPECT_TRUE(
       RunHloPass(AlgebraicSimplifier(default_options_), m.get()).value());
   SCOPED_TRACE(m->ToString());
-  EXPECT_THAT(
-      m->entry_computation()->root_instruction(),
-      GmockMatch(
-          m::Broadcast(m::Parameter(0))
-              .WithPredicate([](const HloInstruction* instr) {
-                return instr->dimensions() == std::vector<int64_t>({0, 3});
-              })));
+  EXPECT_THAT(m->entry_computation()->root_instruction(),
+              GmockMatch(m::Broadcast(m::Parameter(0))
+                             .WithPredicate([](const HloInstruction* instr) {
+                               return instr->dimensions() ==
+                                      std::vector<int64_t>({0, 3});
+                             })));
 }
 
 TEST_F(AlgebraicSimplifierTest, TransposeBitcastOfBroadcast) {
@@ -10091,13 +10193,12 @@ TEST_F(AlgebraicSimplifierTest, TransposeBitcastOfBroadcast) {
   options.set_is_layout_sensitive(true);
   EXPECT_TRUE(RunHloPass(AlgebraicSimplifier(options), m.get()).value());
   SCOPED_TRACE(m->ToString());
-  EXPECT_THAT(
-      m->entry_computation()->root_instruction(),
-      GmockMatch(
-          m::Broadcast(m::Parameter(0))
-              .WithPredicate([](const HloInstruction* instr) {
-                return instr->dimensions() == std::vector<int64_t>({0, 3});
-              })));
+  EXPECT_THAT(m->entry_computation()->root_instruction(),
+              GmockMatch(m::Broadcast(m::Parameter(0))
+                             .WithPredicate([](const HloInstruction* instr) {
+                               return instr->dimensions() ==
+                                      std::vector<int64_t>({0, 3});
+                             })));
 }
 
 TEST_F(AlgebraicSimplifierTest, TransposeOfBroadcastWithLayoutCheckSkipped) {

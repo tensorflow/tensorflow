@@ -28,6 +28,10 @@ namespace llvm_ir {
 llvm::Value* EmitFastTanh(llvm::IRBuilder<>* b, llvm::Value* input,
                           bool with_fma = false);
 
+// Emits an approximation of erf. The implementation uses the same rational
+// interpolant as implemented in Eigen3.
+llvm::Value* EmitErfF32(llvm::IRBuilder<>* b, llvm::Value* x);
+
 }  // namespace llvm_ir
 }  // namespace xla
 

@@ -20,6 +20,7 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/status/status.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
@@ -48,7 +49,7 @@ class HostMemoryTransferAsyncifierTest : public HloTestBase {
   StatusOr<bool> RunAsyncifier(HloModule* module) {
     TF_EXPECT_OK(verifier().Run(module).status());
     if (module->has_schedule()) {
-      return InternalError("Expected a non-scheduled module");
+      return absl::InternalError("Expected a non-scheduled module");
     }
 
     HostMemoryTransferAsyncifier asyncifier(kHostMemorySpaceColor);

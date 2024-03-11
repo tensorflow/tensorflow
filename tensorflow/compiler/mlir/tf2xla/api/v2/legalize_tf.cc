@@ -25,9 +25,11 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/types/variant.h"
+#include "llvm/ADT/ScopeExit.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/dump_mlir_util.h"
 #include "tensorflow/compiler/mlir/tf2xla/api/v1/compile_mlir_util.h"
 #include "tensorflow/compiler/mlir/tf2xla/api/v1/compile_tf_graph.h"
+#include "tensorflow/compiler/mlir/tf2xla/internal/compilation_timer.h"
 #include "tensorflow/compiler/mlir/tf2xla/internal/legalize_tf_mlir.h"
 #include "tensorflow/compiler/mlir/tf2xla/internal/legalize_tf_to_hlo.h"
 #include "tensorflow/compiler/tf2xla/layout_util.h"
@@ -38,7 +40,9 @@ limitations under the License.
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/tpu/kernels/tpu_compile_op_support.h"
+#include "tensorflow/core/util/debug_data_dumper.h"
 #include "tensorflow/core/util/dump_graph.h"
+#include "tsl/lib/monitoring/sampler.h"
 #include "tsl/platform/error_logging.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/statusor.h"
@@ -53,9 +57,17 @@ using tpu::FunctionToHloArgs;
 using tpu::MlirToHloArgs;
 using tpu::ShardingAndIndex;
 
+auto* phase2_bridge_compilation_time = tsl::monitoring::Sampler<1>::New(
+    {"/tensorflow/core/tf2xla/api/v2/phase2_compilation_time",
+     "The wall-clock time spent on executing graphs in milliseconds.",
+     "configuration"},
+    // Power of 1.5 with bucket count 45 (> 23 hours)
+    {tsl::monitoring::Buckets::Exponential(1, 1.5, 45)});
+
 // Name of component for error logging. This name is fixed and required to
 // enable logging.
 constexpr char kBridgeComponent[] = "TFXLABridge";
+constexpr char kFullBridge[] = "full_bridge";
 
 namespace {
 
@@ -73,6 +85,7 @@ void DumpComputationInput(
   if (!VLOG_IS_ON(2)) {
     return;
   }
+
   switch (computation.index()) {
     case 0:
       VLOG(2) << "LegalizeMlirToHlo with MLIR computation input: "
@@ -95,24 +108,27 @@ void DumpComputationInput(
 
 Status DumpHloCompilationResult(std::string_view name,
                                 XlaCompilationResult* compilation_result) {
-  if (VLOG_IS_ON(2)) {
-    TF_ASSIGN_OR_RETURN(
-        auto hlo_module_config,
-        xla::HloModule::CreateModuleConfigFromProto(
-            compilation_result->computation->proto(), xla::DebugOptions()));
-
-    TF_ASSIGN_OR_RETURN(
-        std::unique_ptr<xla::HloModule> hlo_module,
-        xla::HloModule::CreateFromProto(
-            compilation_result->computation->proto(), hlo_module_config));
-
-    std::string all_computations;
-    for (auto computation : hlo_module->computations()) {
-      all_computations += computation->ToString() + "\n\n";
-    }
-
-    tensorflow::DumpRawStringToFile(name, all_computations);
+  if (!VLOG_IS_ON(2) &&
+      !DEBUG_DATA_DUMPER()->ShouldDump(std::string(name), kDebugGroupMain)) {
+    return OkStatus();
   }
+
+  TF_ASSIGN_OR_RETURN(
+      auto hlo_module_config,
+      xla::HloModule::CreateModuleConfigFromProto(
+          compilation_result->computation->proto(), xla::DebugOptions()));
+
+  TF_ASSIGN_OR_RETURN(
+      std::unique_ptr<xla::HloModule> hlo_module,
+      xla::HloModule::CreateFromProto(compilation_result->computation->proto(),
+                                      hlo_module_config));
+
+  std::string all_computations;
+  for (auto computation : hlo_module->computations()) {
+    all_computations += computation->ToString() + "\n\n";
+  }
+
+  tensorflow::DumpRawStringToFile(name, all_computations);
 
   return OkStatus();
 }
@@ -129,6 +145,12 @@ tsl::StatusOr<tensorflow::XlaCompilationResult> LegalizeMlirToHlo(
     std::vector<tpu::ShardingAndIndex>* arg_core_mapping,
     std::vector<std::vector<xla::Shape>>* per_core_arg_shapes,
     xla::CompileOnlyClient* client) {
+  CompilationTimer timer;
+  auto record_time = llvm::make_scope_exit([&timer] {
+    phase2_bridge_compilation_time->GetCell(kFullBridge)
+        ->Add(timer.ElapsedCyclesInMilliseconds());
+  });
+
   auto compilation_result = std::make_unique<XlaCompilationResult>();
 
   DumpComputationInput(computation);
@@ -140,7 +162,8 @@ tsl::StatusOr<tensorflow::XlaCompilationResult> LegalizeMlirToHlo(
         arg_shapes, arg_core_mapping, per_core_arg_shapes, client,
         compilation_result.get()));
 
-    DumpHloCompilationResult("legalize_tf_fallback", compilation_result.get())
+    DumpHloCompilationResult("legalize_tf_fallback.hlo",
+                             compilation_result.get())
         .IgnoreError();
     return *compilation_result;
   }
@@ -155,15 +178,15 @@ tsl::StatusOr<tensorflow::XlaCompilationResult> LegalizeMlirToHlo(
     VLOG(1) << "Successfully compiled MLIR computation to XLA HLO using "
                "Combined MLIR and XlaBuilder Bridge.";
 
-    DumpHloCompilationResult("legalize_tf_combined_bridge",
+    DumpHloCompilationResult("legalize_tf_combined_bridge.hlo",
                              compilation_result.get())
         .IgnoreError();
     return *compilation_result;
   }
 
-  VLOG(1)
-      << "Failed to compile MLIR computation to XLA HLO using "
-         "Combined MLIR and XlaBuilder Bridge. Falling back to Graph Bridge.";
+  VLOG(1) << "Failed to compile MLIR computation to XLA HLO using Combined "
+             "MLIR and XlaBuilder Bridge. Falling back to MLIR tf2xla Bridge. "
+          << combined_bridge_status.status();
   tsl::error_logging::Log(kBridgeComponent, "TFXLA_API_V2_COMBINED_BRIDGE",
                           combined_bridge_status.status().ToString())
       .IgnoreError();
@@ -176,21 +199,22 @@ tsl::StatusOr<tensorflow::XlaCompilationResult> LegalizeMlirToHlo(
 
   if (mlir_bridge_status.ok()) {
     VLOG(1) << "Successfully compiled MLIR computation to XLA HLO using MLIR "
-               "tf2xla bridge";
+               "tf2xla Bridge";
     IncrementTfMlirBridgeSecondPhaseCounter(
         MlirBridgeSecondPhaseMetric::kMlirWithFallbackModeSuccess);
 
-    DumpHloCompilationResult("legalize_tf_mlir_bridge",
+    DumpHloCompilationResult("legalize_tf_mlir_bridge.hlo",
                              compilation_result.get())
         .IgnoreError();
     return *compilation_result;
   } else if (mlir_bridge_status.status() ==
              CompileToHloGraphAnalysisFailedError()) {
     VLOG(1) << "Filtered out MLIR computation to XLA HLO using MLIR tf2xla "
-               "bridge. Falling back to Combined Bridge.";
+               "Bridge. Could not generate HLO.";
   } else {
-    VLOG(1) << "Failed to compile MLIR computation to XLA HLO using "
-               "MLIR Bridge. Falling back to Combined Bridge.";
+    VLOG(1) << "Failed to compile MLIR computation to XLA HLO using MLIR "
+               "tf2xla Bridge. Could not generate HLO. "
+            << mlir_bridge_status.status();
     tsl::error_logging::Log(kBridgeComponent, "TFXLA_API_V2_PHASE2_MLIR_BRIDGE",
                             mlir_bridge_status.status().ToString())
         .IgnoreError();

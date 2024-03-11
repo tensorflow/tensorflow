@@ -15,6 +15,7 @@ limitations under the License.
 
 // This file implements logic for some optimizations to reduce size on export.
 
+#include <cassert>
 #include <complex>
 #include <cstdint>
 #include <memory>
@@ -23,6 +24,7 @@ limitations under the License.
 #include "mhlo/IR/hlo_ops.h"
 #include "mhlo/transforms/passes.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
+#include "mlir/IR/Block.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/BuiltinOps.h"
@@ -30,7 +32,9 @@ limitations under the License.
 #include "mlir/IR/ImplicitLocOpBuilder.h"
 #include "mlir/IR/Matchers.h"
 #include "mlir/IR/Operation.h"
+#include "mlir/IR/Region.h"
 #include "mlir/IR/Types.h"
+#include "mlir/IR/Value.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Support/LLVM.h"
 #include "mlir/Transforms/RegionUtils.h"
@@ -153,6 +157,36 @@ void prepareBroadcastInDim(BroadcastInDimOp bcast) {
       DenseIntElementsAttr::get(dims.getType(), transposedDim));
 }
 
+// Make implicitly captured constant explicit before exporting
+void prepareExplicitCapturedConstants(Operation *op) {
+  for (Region &region : op->getRegions()) {
+    assert(region.getBlocks().size() == 1 &&
+           "Only OPs with single block regions are allowed");
+    llvm::SetVector<Value> implicitInputs;
+    // Get implicit inputs, i.e. those are used in the region
+    // but defined outside
+    getUsedValuesDefinedAbove(region, implicitInputs);
+    Block &block = region.getBlocks().front();
+    OpBuilder builder(&block.front());
+    for (Value input : implicitInputs) {
+      // If the captured value is defined by a constant OP,
+      // Create a clone constant OP within a block to make
+      // it explicit and replace uses within the block
+      Operation *definingOp = input.getDefiningOp();
+      mlir::DenseElementsAttr attr;
+      if (matchPattern(input, m_Constant(&attr))) {
+        Operation *clonedOp = builder.clone(*definingOp);
+        // Find which uses belong to the block and replace
+        // with the cloned/explicit one
+        input.replaceUsesWithIf(
+            clonedOp->getResult(0), [&block](OpOperand &use) {
+              return block.getParentOp()->isProperAncestor(use.getOwner());
+            });
+      }
+    }
+  }
+}
+
 void PrepareForExportPass::runOnOperation() {
   getOperation().walk([&](Operation *op) {
     mlir::SplatElementsAttr attr;
@@ -161,6 +195,11 @@ void PrepareForExportPass::runOnOperation() {
     if (auto whileOp = dyn_cast<WhileOp>(op)) return prepareWhileOp(whileOp);
     if (auto bcastOp = dyn_cast<BroadcastInDimOp>(op))
       return prepareBroadcastInDim(bcastOp);
+    // IfOp, CaseOp, WhileOp are already being handled during
+    // mhlo --> hlo translation. MapOp soon be deprecated.
+    if (mlir::isa<ReduceOp, AllReduceOp, ReduceScatterOp, ReduceWindowOp,
+                  ScatterOp, SelectAndScatterOp, SortOp>(op))
+      return prepareExplicitCapturedConstants(op);
   });
 }
 

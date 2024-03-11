@@ -1228,6 +1228,7 @@ gpu_kernel_library(
         "i64",
         "ui8",
     ],
+    max_supported_rank = -1,
     op = "minimum",
     tile_size = "1024",
     types = [],

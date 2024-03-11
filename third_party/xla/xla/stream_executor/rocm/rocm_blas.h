@@ -24,6 +24,8 @@ limitations under the License.
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "rocm/rocm_config.h"
+
+#define ROCBLAS_BETA_FEATURES_API
 #if TF_ROCM_VERSION >= 50600
 #include "rocm/include/rocblas/rocblas.h"
 #else
@@ -32,7 +34,6 @@ limitations under the License.
 #include "xla/stream_executor/blas.h"
 #include "xla/stream_executor/platform/port.h"
 #include "xla/stream_executor/plugin_registry.h"
-#include "xla/stream_executor/temporary_device_memory.h"
 #if TF_HIPBLASLT
 #include "xla/stream_executor/rocm/hip_blas_lt.h"
 #endif
@@ -43,32 +44,34 @@ class Stream;
 
 namespace gpu {
 
+template <bool ErrorIfMissing, class Target, class A, class B, class... T>
+struct ChooseType {
+  using type = std::conditional_t<
+      std::is_same_v<Target, A>, B,
+      typename ChooseType<ErrorIfMissing, Target, T...>::type>;
+};
+
+template <class Target, class A, class B>
+struct ChooseType<false, Target, A, B> {
+  // default case: return the same type Target if there is no recursive match
+  using type = std::conditional_t<std::is_same_v<Target, A>, B, Target>;
+};
+
+template <class Target, class A, class B>
+struct ChooseType<true, Target, A, B> {
+  // default case: return compile error if type is not found
+  static_assert(std::is_same_v<Target, A>,
+                "ChooseType: the target type is not found!");
+  using type = B;
+};
+
 // Type conversion helper that helps to map non-rocblas types to rocblas types
-// Right now, it only converts the Eigen::half type to rocblas_half type
 template <typename T>
-struct RocBlasTypeConversionHelper {
-  using mapped_type = T;
-};
-
-template <>
-struct RocBlasTypeConversionHelper<Eigen::half> {
-  using mapped_type = rocblas_half;
-};
-
-template <>
-struct RocBlasTypeConversionHelper<Eigen::bfloat16> {
-  using mapped_type = rocblas_bfloat16;
-};
-
-template <>
-struct RocBlasTypeConversionHelper<std::complex<float>> {
-  using mapped_type = rocblas_float_complex;
-};
-
-template <>
-struct RocBlasTypeConversionHelper<std::complex<double>> {
-  using mapped_type = rocblas_double_complex;
-};
+using RocBlasType_t =
+    typename ChooseType<false, T, Eigen::half, rocblas_half, Eigen::bfloat16,
+                        rocblas_bfloat16, std::complex<float>,
+                        rocblas_float_complex, std::complex<double>,
+                        rocblas_double_complex>::type;
 
 class GpuExecutor;
 
@@ -124,48 +127,38 @@ class ROCMBlas : public blas::BlasSupport {
   // err_on_failure:     Whether to print an error if the rocBLAS function
   // fails. args:               Arguments of rocBLAS function.
   template <typename FuncT, typename... Args>
-  bool DoBlasInternalImpl(FuncT rocblas_func, Stream *stream,
-                          bool pointer_mode_host, bool err_on_failure,
-                          Args... args);
+  absl::Status DoBlasInternalImpl(FuncT rocblas_func, Stream *stream,
+                                  bool pointer_mode_host, bool err_on_failure,
+                                  Args &&...args);
 
   // Convenience functions that call DoBlasInternalImpl with different values
   // for err_on_failure.
   template <typename FuncT, typename... Args>
   bool DoBlasInternal(FuncT rocblas_func, Stream *stream,
-                      bool pointer_mode_host, Args... args) {
-    return DoBlasInternalImpl(rocblas_func, stream, pointer_mode_host,
-                              /*err_on_failure=*/true, args...);
+                      bool pointer_mode_host, Args &&...args) {
+    auto ret = DoBlasInternalImpl(rocblas_func, stream, pointer_mode_host,
+                                  /*err_on_failure=*/true,
+                                  std::forward<Args>(args)...);
+    return ret.ok();
   }
 
   // Same as above, but returns absl::Status.
-  template <typename... Args>
-  absl::Status DoBlasInternalStatus(Args... args) {
-    if (!DoBlasInternal(args...)) {
-      return absl::InternalError("Failed calling rocBLAS");
-    }
-    return absl::OkStatus();
+  template <typename FuncT, typename... Args>
+  absl::Status DoBlasInternalStatus(FuncT rocblas_func, Stream *stream,
+                                    bool pointer_mode_host, Args &&...args) {
+    return DoBlasInternalImpl(rocblas_func, stream, pointer_mode_host,
+                              /*err_on_failure=*/true,
+                              std::forward<Args>(args)...);
   }
 
   template <typename FuncT, typename... Args>
   bool DoBlasInternalFailureOK(FuncT rocblas_func, Stream *stream,
-                               bool pointer_mode_host, Args... args) {
-    return DoBlasInternalImpl(rocblas_func, stream, pointer_mode_host,
-                              /*err_on_failure=*/false, args...);
+                               bool pointer_mode_host, Args &&...args) {
+    auto ret = DoBlasInternalImpl(rocblas_func, stream, pointer_mode_host,
+                                  /*err_on_failure=*/false,
+                                  std::forward<Args>(args)...);
+    return ret.ok();
   }
-
-  // A helper allocation function to convert raw pointers memory layout to
-  // strided flavor
-  template <typename T>
-  absl::Status AllocateStridedBuffer(
-      const std::vector<typename RocBlasTypeConversionHelper<T>::mapped_type *>
-          &raw_ptrs,
-      int batch_count, uint64_t batch_stride,
-      ScratchAllocator *scratch_allocator, Stream *stream,
-      std::unique_ptr<TemporaryDeviceMemory<
-          typename RocBlasTypeConversionHelper<T>::mapped_type>> *temp_memory,
-      DeviceMemory<typename RocBlasTypeConversionHelper<T>::mapped_type>
-          *device_memory,
-      bool copy_data, bool &reallocated);
 
   // A helper function to implement DoBlasGemmBatched interfaces for generic
   // types.
@@ -186,7 +179,7 @@ class ROCMBlas : public blas::BlasSupport {
   template <typename T, typename FuncT>
   absl::Status DoBlasGemmBatchedInternal(
       FuncT rocblas_func, Stream *stream, blas::Transpose transa,
-      blas::Transpose transb, uint64_t m, uint64 n, uint64 k, T alpha,
+      blas::Transpose transb, uint64_t m, uint64_t n, uint64_t k, T alpha,
       DeviceMemorySlice<T> a_ptrs_to_wrappers, int lda,
       DeviceMemorySlice<T> b_ptrs_to_wrappers, int ldb, T beta,
       DeviceMemorySlice<T> c_ptrs_to_wrappers, int ldc, int batch_count,
@@ -201,6 +194,9 @@ class ROCMBlas : public blas::BlasSupport {
 
   // rocBLAS library handle on the device.
   rocblas_handle blas_ ABSL_GUARDED_BY(mu_);
+
+  // container holding solutions vector (to avoid reallocating it each time)
+  std::vector<rocblas_int> solutions_;
 
 #if TF_HIPBLASLT
   rocm::BlasLt blas_lt_;

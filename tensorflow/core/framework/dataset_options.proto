@@ -82,7 +82,7 @@ message DistributeOptions {
   }
 }
 
-// next: 21
+// next: 22
 message OptimizationOptions {
   // Whether to apply default graph optimizations. If False, only graph
   // optimizations that have been explicitly enabled will be applied.
@@ -151,6 +151,12 @@ message OptimizationOptions {
   }
   // NOTE: field id 20 was removed in August 2023.
   reserved 20;
+  // Whether to replace parallel interleave with interleave and prefetch. Only
+  // takes effect if the parallel interleave is deterministic; otherwise does
+  // nothing.
+  oneof optional_seq_interleave_prefetch {
+    bool seq_interleave_prefetch = 21;
+  }
 }
 
 // next: 3
@@ -175,13 +181,14 @@ enum ExternalStatePolicy {
 // Message stored with Dataset objects to control how datasets are processed and
 // optimized.
 //
-// next: 11
+// next: 12
 message Options {
   // Optional name for the dataset.
   oneof optional_dataset_name {
     string dataset_name = 10;
   }
-
+  // List of frameworks used to generate this dataset.
+  repeated string framework_type = 11;
   // Whether the outputs need to be produced in deterministic order.
   oneof optional_deterministic {
     bool deterministic = 1;

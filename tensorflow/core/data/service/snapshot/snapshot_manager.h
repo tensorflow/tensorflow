@@ -22,6 +22,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/container/btree_map.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/status/status.h"
@@ -59,6 +60,16 @@ class SnapshotAssignmentManager {
   void RemoveAssignment(absl::string_view snapshot_path,
                         absl::string_view worker_address, int64_t stream_index);
 
+  // Adds a new snapshot.
+  void AddSnapshot(absl::string_view snapshot_path);
+
+  // Load balances snapshots by the number of assigned streams. Given a worker,
+  // returns snapshots in the following order:
+  // - Snapshots already assigned to this worker.
+  // - Snapshots with the fewest assignments.
+  std::vector<std::string> LoadBalanceSnapshots(
+      absl::string_view worker_address);
+
   // Returns the maximum concurrent snapshots processed by each worker.
   int64_t worker_max_concurrent_snapshots() const {
     return worker_max_concurrent_snapshots_;
@@ -88,6 +99,10 @@ class SnapshotAssignmentManager {
 
   // A mapping of worker address to ongoing assignments.
   absl::flat_hash_map<std::string, absl::flat_hash_set<Assignment>> assignments_
+      TF_GUARDED_BY(mu_);
+
+  // A mapping from snapshot to the number of assigned workers.
+  absl::flat_hash_map<std::string, int64_t> snapshot_assignment_counts_
       TF_GUARDED_BY(mu_);
 
   // The maximum number of snapshots that a worker can concurrently process at a
@@ -175,7 +190,11 @@ class SnapshotManager {
 
   // Helpers for `WorkerHeartbeat` above. These may update the in-memory and
   // on-disk states.
-  absl::StatusOr<std::optional<int64_t>> MaybeGetOrCreateStreamAssignment(
+  // Gets or creates a new stream. Returns the stream index and a bool value
+  // indicating whether a new stream has been created. Returns `std::nullopt`
+  // if there are no more streams to write or there is an error.
+  absl::StatusOr<std::optional<std::pair<int64_t, bool>>>
+  MaybeGetOrCreateStreamAssignment(
       absl::string_view worker_address,
       const SnapshotTaskProgress* snapshot_progress);
   absl::Status HandleStreamCompletion(int64_t stream_index,
@@ -190,6 +209,10 @@ class SnapshotManager {
                                  const StatusProto& status_proto);
 
   mutable tsl::mutex mu_;
+  // Uses a separate mutex for `GetSnapshotSplit` RPCs. `GetSnapshotSplit` uses
+  // file IO and may be slow, which may slow down `WorkerHeartbeat` RPCs if they
+  // share one mutex.
+  mutable tsl::mutex get_split_mu_;
 
   // The filepath of the on-disk state.
   const std::string path_;
@@ -252,8 +275,7 @@ class SnapshotManager {
           path_(path),
           stream_index_(stream_index),
           num_sources_(num_sources),
-          assignment_manager_(assignment_manager),
-          repetition_indices_(num_sources) {}
+          assignment_manager_(assignment_manager) {}
 
     // Reads snapshot stream from the files and collects data for restoration.
     absl::Status ReadOnDiskStream();
@@ -263,9 +285,6 @@ class SnapshotManager {
     const std::optional<Stream>& GetStream() const { return restored_stream_; }
     int64_t StreamIndex() const { return stream_index_; }
     const std::string& WorkerAddress() const { return worker_address_; }
-    const std::vector<int64_t>& RepetitionIndices() const {
-      return repetition_indices_;
-    }
     const absl::flat_hash_set<int64_t>& GlobalSplitIndices() const {
       return global_split_indices_;
     }
@@ -286,7 +305,6 @@ class SnapshotManager {
 
     std::string worker_address_;
     std::optional<Stream> restored_stream_;
-    std::vector<int64_t> repetition_indices_;
     absl::flat_hash_set<int64_t> global_split_indices_;
   };
 
@@ -298,6 +316,13 @@ class SnapshotManager {
       std::vector<std::unique_ptr<SplitProvider>>& split_providers,
       std::vector<int64_t>& repetition_indices,
       absl::flat_hash_set<int64_t>& global_split_indices);
+
+  // Gets the snapshot stream.
+  Stream& GetStream(int64_t stream_index);
+  // Initializes the stream directory.
+  absl::Status InitStreamDirectory(
+      int64_t stream_index, const std::string& worker_address,
+      const std::vector<int64_t>& repetitions_per_source);
 
   std::vector<Source> sources_ TF_GUARDED_BY(mu_);
   // Creates sources for the specified dataset.
@@ -312,7 +337,7 @@ class SnapshotManager {
   }
 
   // All streams for this snapshot.
-  std::vector<Stream> streams_ TF_GUARDED_BY(mu_);
+  absl::btree_map<int64_t, Stream> streams_ TF_GUARDED_BY(mu_);
   // A counter of completed streams for this snapshot.
   int64_t num_completed_streams_ TF_GUARDED_BY(mu_) = 0;
 

@@ -37,6 +37,7 @@ limitations under the License.
 #include "mlir/Dialect/Arith/Transforms/Passes.h"  // from @llvm-project
 #include "mlir/Dialect/Bufferization/Transforms/Passes.h"  // from @llvm-project
 #include "mlir/Dialect/Complex/IR/Complex.h"  // from @llvm-project
+#include "mlir/Dialect/ControlFlow/IR/ControlFlow.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/GPU/IR/GPUDialect.h"  // from @llvm-project
 #include "mlir/Dialect/GPU/Transforms/Passes.h"  // from @llvm-project
@@ -45,6 +46,7 @@ limitations under the License.
 #include "mlir/Dialect/Linalg/Transforms/Transforms.h"  // from @llvm-project
 #include "mlir/Dialect/MemRef/Transforms/Passes.h"  // from @llvm-project
 #include "mlir/Dialect/SCF/Transforms/Passes.h"  // from @llvm-project
+#include "mlir/Dialect/Shape/IR/Shape.h"  // from @llvm-project
 #include "mlir/Parser/Parser.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
@@ -157,9 +159,13 @@ Status LowerHlotoLoops(mlir::ModuleOp module,
             /*cpu_codegen=*/false,
             /*jit_i64_indexed_for_large_tensors=*/true));
   }
-  pm.addNestedPass<FuncOp>(mlir::mhlo::createRankSpecializationClusterPass());
-  pm.addNestedPass<FuncOp>(
-      mlir::mhlo::createRankSpecializationToSCFPass(max_supported_rank));
+
+  if (max_supported_rank >= 0) {
+    pm.addNestedPass<FuncOp>(mlir::mhlo::createRankSpecializationClusterPass());
+    pm.addNestedPass<FuncOp>(
+        mlir::mhlo::createRankSpecializationToSCFPass(max_supported_rank));
+  }
+
   pm.addNestedPass<FuncOp>(mlir::mhlo::createChloLegalizeToHloPass());
 
   pm.addNestedPass<FuncOp>(mlir::createCanonicalizerPass());
@@ -409,6 +415,8 @@ StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> SetupContextAndParseModule(
     mlir::MLIRContext& context, llvm::StringRef tf_code) {
   mlir::DialectRegistry registry;
   registry.insert<mlir::chlo::ChloDialect, mlir::mhlo::MhloDialect>();
+  registry.insert<mlir::shape::ShapeDialect, mlir::scf::SCFDialect,
+                  mlir::cf::ControlFlowDialect>();
   registry.insert<mlir::complex::ComplexDialect, mlir::func::FuncDialect>();
   mlir::registerBuiltinDialectTranslation(registry);
   mlir::registerGPUDialectTranslation(registry);
@@ -418,9 +426,10 @@ StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> SetupContextAndParseModule(
   context.appendDialectRegistry(registry);
   mlir::OwningOpRef<mlir::ModuleOp> module =
       mlir::parseSourceString<mlir::ModuleOp>(tf_code, &context);
-  if (!module)
+  if (!module) {
     return tensorflow::Status(absl::StatusCode::kInvalidArgument,
                               "invalid kernel IR");
+  }
   return module;
 }
 

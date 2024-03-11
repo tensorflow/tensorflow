@@ -18,9 +18,7 @@ limitations under the License.
 
 #include <cstddef>
 #include <cstdint>
-#include <optional>
 #include <ostream>
-#include <sstream>
 #include <string>
 #include <vector>
 
@@ -31,12 +29,16 @@ limitations under the License.
 #include "mlir/IR/AffineMap.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/service/gpu/fusions/tiling_util.h"
 #include "xla/service/gpu/hlo_traversal.h"
 #include "xla/service/gpu/model/affine_map_printer.h"
 #include "xla/service/gpu/model/indexing_map.h"
+#include "xla/shape.h"
 
 namespace xla {
 namespace gpu {
+
+using IndexingMapSet = absl::flat_hash_set<IndexingMap>;
 
 // Contains indexing maps for all N-dimensional tensor input operands that
 // correspond to a particular output.
@@ -55,7 +57,7 @@ struct HloInstructionIndexing {
       absl::Span<const IndexingMap> indexing_maps);
 
   // Maps input operand index to the indexing map for one particular output.
-  std::vector<absl::flat_hash_set<std::optional<IndexingMap>>> indexing_maps;
+  std::vector<IndexingMapSet> indexing_maps;
 };
 std::ostream& operator<<(std::ostream& out,
                          const HloInstructionIndexing& instr_indexing);
@@ -74,17 +76,55 @@ HloInstructionIndexing ComputeInputToOutputIndexing(const HloInstruction* instr,
                                                     int input_id,
                                                     mlir::MLIRContext* ctx);
 
-// Groups indexing maps by instructions.
-using IndexingMapSet = absl::flat_hash_set<std::optional<IndexingMap>>;
 using GroupedByOpIndexingMap =
     absl::flat_hash_map<const HloInstruction*, IndexingMapSet>;
-std::optional<GroupedByOpIndexingMap> ComputeGroupedOutputToInputIndexing(
+
+// Computes indexing for every instruction within a fusion cluster.
+GroupedByOpIndexingMap ComputeGroupedOutputToInputIndexing(
     const HloFusionAdaptor& fusion_adaptor, int output_id,
     mlir::MLIRContext* ctx);
 
-// Computes a transpose indexing map.
-mlir::AffineMap ComputeTransposeIndexingMap(
-    absl::Span<const int64_t> permutation, mlir::MLIRContext* mlir_context);
+// Groups indexing maps by instructions.
+absl::flat_hash_map<const HloInstruction*, IndexingMapSet>
+GroupIndexingMapsByProducers(const HloInstructionIndexing& indexing,
+                             const HloInstruction* instr);
+
+// Creates an indexing map for bitcasting from `input_shape` to `output_shape`.
+// Equivalent to linearizing the input_shape index and then delinearizing it
+// to output_shape.
+IndexingMap GetBitcastMap(const Shape& input_shape, const Shape& output_shape,
+                          mlir::MLIRContext* ctx);
+
+// Creates an indexing map from the physical layout of the tensor to its logical
+// layout.
+IndexingMap GetIndexingMapFromPhysicalLayoutToLogical(const Shape& shape,
+                                                      mlir::MLIRContext* ctx);
+
+// Creates an indexing map from the logical layout of the tensor to its physical
+// layout.
+IndexingMap GetIndexingMapFromLogicalToPhysicalLayout(const Shape& shape,
+                                                      mlir::MLIRContext* ctx);
+
+// Creates an indexing map from thread and block IDs to elements of the tiled
+// shape. Uses the same convention as KernelFusionInterface: dimensions 0 to 2
+// are thread indices (currently only 0 is used), dimensions 3 to 5 are block
+// indices (currently only 3 is used).
+mlir::AffineMap GetBlockOffsetsForTiling(const Tiling& tiling,
+                                         mlir::MLIRContext* ctx);
+mlir::AffineMap GetThreadOffsetsForTiling(const Tiling& tiling,
+                                          mlir::MLIRContext* ctx);
+
+// Convenience functions for the two functions above
+// (`GetBlockOffsestsForTiling` + `GetThreadOffsetsForTiling`). Also sets up
+// the ranges of dimensions and symbols.
+IndexingMap GetIndexingMapForTiling(const Tiling& tiling,
+                                    mlir::MLIRContext* ctx);
+IndexingMap GetIndexingMapForTiling(mlir::AffineMap block_offsets,
+                                    mlir::AffineMap thread_offsets,
+                                    const Tiling& tiling);
+
+// Returns the shape of the output of the instruction.
+const Shape& GetOutputShape(const HloInstruction* instr, int64_t output_id);
 
 }  // namespace gpu
 }  // namespace xla
