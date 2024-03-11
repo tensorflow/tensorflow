@@ -140,10 +140,15 @@ HloSharding Tile(const Shape& shape, absl::Span<const int64_t> tensor_dims,
                  absl::Span<const int64_t> mesh_dims,
                  const Array<int64_t>& device_mesh);
 
-std::vector<double> ReshardingCostVector(const StrategyGroup* strategy_group,
-                                         const Shape& shape,
-                                         const HloSharding& required_sharding,
-                                         const ClusterEnvironment& cluster_env);
+std::vector<double> CommunicationReshardingCostVector(
+    const StrategyGroup* strategy_group, const Shape& shape,
+    const HloSharding& required_sharding,
+    const ClusterEnvironment& cluster_env);
+
+std::vector<double> MemoryReshardingCostVector(
+    const StrategyGroup* strategy_group, const Shape& operand_shape,
+    const HloSharding& required_sharding,
+    const ClusterEnvironment& cluster_env);
 
 std::vector<double> FollowInsCostVector(int64_t source_len, int64_t index);
 
@@ -330,7 +335,7 @@ void GenerateOutfeedStrategy(const HloInstruction* ins, const Shape& shape,
                              std::unique_ptr<StrategyGroup>& strategy_group,
                              double replicated_penalty);
 
-std::vector<std::vector<double>>
+std::pair<ReshardingCosts, ReshardingCosts>
 GenerateReshardingCostsAndMissingShardingsForAllOperands(
     const HloInstruction* ins, const HloSharding& output_sharding,
     const StrategyMap& strategy_map, const ClusterEnvironment& cluster_env,
