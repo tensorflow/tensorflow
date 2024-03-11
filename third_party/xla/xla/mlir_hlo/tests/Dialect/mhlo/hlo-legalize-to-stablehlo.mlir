@@ -605,6 +605,22 @@ func.func @op_complex(%arg0: tensor<f32>, %arg1: tensor<f32>) -> tensor<complex<
   func.return %0 : tensor<complex<f32>>
 }
 
+// CHECK-LABEL: "op_composite"
+func.func @op_composite(%arg0 : tensor<i64>) -> tensor<i64> {
+  // CHECK: "stablehlo.composite"(%arg0) {composite_attributes = {n = 2 : i64}, decomposition = @add_n.impl, name = "mhlo.add_n"} : (tensor<i64>) -> tensor<i64>
+  %0 = mhlo.composite "mhlo.add_n" %arg0 {
+    composite_attributes = { n = 2 : i64 },
+    decomposition = @add_n.impl
+  } : (tensor<i64>) -> tensor<i64>
+  func.return %0 : tensor<i64>
+}
+
+func.func @add_n.impl(%arg0: tensor<i64>) -> tensor<i64> {
+  %0 = mhlo.constant dense<2> : tensor<i64>
+  %1 = mhlo.add %arg0, %0 : tensor<i64>
+  func.return %1 : tensor<i64>
+}
+
 // CHECK-LABEL: "op_compute_reshape_shape"
 func.func @op_compute_reshape_shape(%arg0: index, %arg1: tensor<1xindex>) -> tensor<1xindex> {
   // CHECK: "stablehlo.compute_reshape_shape"(%arg0, %arg1) : (index, tensor<1xindex>) -> tensor<1xindex>
@@ -1843,10 +1859,10 @@ func.func @type_dynamism_ranked(%arg0: tensor<?xf32>) -> tensor<?xf32> {
 }
 
 // CHECK-LABEL: "type_quantization"
-func.func @type_quantization(%arg0: tensor<!quant.uniform<i8:f32, 34.0:16>>, %arg1: tensor<f32>) -> tensor<f32> {
-  // CHECK: "stablehlo.add"(%arg0, %arg1) : (tensor<!quant.uniform<i8:f32, 3.400000e+01:16>>, tensor<f32>) -> tensor<f32>
-  %0 = "mhlo.add"(%arg0, %arg1) : (tensor<!quant.uniform<i8:f32, 34.0:16>>, tensor<f32>) -> tensor<f32>
-  func.return %0 : tensor<f32>
+func.func @type_quantization(%arg0: tensor<!quant.uniform<i8:f32, 34.0:16>>) -> tensor<!quant.uniform<i8:f32, 34.0:16>> {
+  // CHECK: "stablehlo.add"(%arg0, %arg0) : (tensor<!quant.uniform<i8:f32, 3.400000e+01:16>>, tensor<!quant.uniform<i8:f32, 3.400000e+01:16>>) -> tensor<!quant.uniform<i8:f32, 3.400000e+01:16>>
+  %0 = "mhlo.add"(%arg0, %arg0) : (tensor<!quant.uniform<i8:f32, 34.0:16>>, tensor<!quant.uniform<i8:f32, 34.0:16>>) -> tensor<!quant.uniform<i8:f32, 34.0:16>>
+  func.return %0 : tensor<!quant.uniform<i8:f32, 34.0:16>>
 }
 
 // -----

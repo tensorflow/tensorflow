@@ -5783,16 +5783,10 @@ func.func @is_compatible_dynamism_dim_mismatch(%arg0: tensor<1x?xf32>) {
 
 // -----
 
-// TODO(b/230263270): For mhlo.add, the plan is to only allow fp+fp=fp, q+q=q and q+q=fp.
 func.func @is_compatible_quant_mix_non_quant(%arg0: tensor<1xf32>, %arg1: tensor<1x!quant.uniform<i8:f32, 1.0:17>>) {
   %0 = "mhlo.add"(%arg0, %arg0) : (tensor<1xf32>, tensor<1xf32>) -> tensor<1xf32>
-  %1 = "mhlo.add"(%arg0, %arg0) : (tensor<1xf32>, tensor<1xf32>) -> tensor<1x!quant.uniform<i8:f32, 1.0:17>>
-  %2 = "mhlo.add"(%arg0, %arg1) : (tensor<1xf32>, tensor<1x!quant.uniform<i8:f32, 1.0:17>>) -> tensor<1x!quant.uniform<i8:f32, 1.0:17>>
-  %3 = "mhlo.add"(%arg0, %arg1) : (tensor<1xf32>, tensor<1x!quant.uniform<i8:f32, 1.0:17>>) -> tensor<1x!quant.uniform<i8:f32, 1.0:17>>
-  %4 = "mhlo.add"(%arg1, %arg0) : (tensor<1x!quant.uniform<i8:f32, 1.0:17>>, tensor<1xf32>) -> tensor<1xf32>
-  %5 = "mhlo.add"(%arg1, %arg0) : (tensor<1x!quant.uniform<i8:f32, 1.0:17>>, tensor<1xf32>) -> tensor<1xf32>
-  %6 = "mhlo.add"(%arg1, %arg1) : (tensor<1x!quant.uniform<i8:f32, 1.0:17>>, tensor<1x!quant.uniform<i8:f32, 1.0:17>>) -> tensor<1x!quant.uniform<i8:f32, 1.0:17>>
-  %7 = "mhlo.add"(%arg1, %arg1) : (tensor<1x!quant.uniform<i8:f32, 1.0:17>>, tensor<1x!quant.uniform<i8:f32, 1.0:17>>) -> tensor<1x!quant.uniform<i8:f32, 1.0:17>>
+  %1 = "mhlo.add"(%arg1, %arg1) : (tensor<1x!quant.uniform<i8:f32, 1.0:17>>, tensor<1x!quant.uniform<i8:f32, 1.0:17>>) -> tensor<1x!quant.uniform<i8:f32, 1.0:17>>
+  %2 = "mhlo.add"(%arg1, %arg1) : (tensor<1x!quant.uniform<i8:f32, 1.0:17>>, tensor<1x!quant.uniform<i8:f32, 1.0:17>>) -> tensor<1x!quant.uniform<i8:f32, 1.0:17>>
   func.return
 }
 
@@ -6364,4 +6358,163 @@ func.func @topk_last_dimension_at_least_k(%arg0 : tensor<4xf32>) {
   // expected-error@+1 {{operand's last dimension must be at least 8}}
   %0:2 = mhlo.topk(%arg0, k=8, largest=true) : tensor<4xf32> -> (tensor<8xf32>, tensor<8xi32>)
   return
+}
+
+// -----
+
+func.func @first(%arg0: tensor<f32>, %arg1: tensor<f32>) -> tensor<f32> {
+  func.return %arg0 : tensor<f32>
+}
+
+func.func @composite_generic(%arg0: tensor<f32>, %arg1: tensor<f32>) {
+  %0 = "mhlo.composite"(%arg0, %arg1) {
+    name = "mhlo.first",
+    decomposition = @first,
+    version = 1 : i32,
+    composite_attributes = {
+      an_attribute = "foo"
+    }
+  } : (tensor<f32>, tensor<f32>) -> tensor<f32>
+  func.return
+}
+
+// -----
+
+func.func @foo() { func.return }
+func.func @composite_c1() {
+  // @expected-error@+1 {{name must be a valid namespaced op name}}
+  mhlo.composite "foo" { decomposition = @foo } : () -> ()
+  func.return
+}
+
+// -----
+
+func.func @foo() { func.return }
+func.func @composite_c1() {
+  // @expected-error@+1 {{name must be a valid namespaced op name}}
+  mhlo.composite "." { decomposition = @foo } : () -> ()
+  func.return
+}
+
+// -----
+
+func.func @foo() { func.return }
+func.func @composite_c1() {
+  // @expected-error@+1 {{name must be a valid namespaced op name}}
+  mhlo.composite "foo." { decomposition = @foo } : () -> ()
+  func.return
+}
+
+// -----
+
+func.func @foo() { func.return }
+func.func @composite_c1() {
+  // @expected-error@+1 {{name must be a valid namespaced op name}}
+  mhlo.composite ".foo" { decomposition = @foo } : () -> ()
+  func.return
+}
+
+// -----
+
+func.func @foo() { func.return }
+func.func @composite_c1() {
+  // @expected-error@+1 {{name must be a valid namespaced op name}}
+  mhlo.composite "0.foo" { decomposition = @foo } : () -> ()
+  func.return
+}
+
+// -----
+
+func.func @foo() { func.return }
+func.func @composite_c1() {
+  // @expected-error@+1 {{name must be a valid namespaced op name}}
+  mhlo.composite "foo.%" { decomposition = @foo } : () -> ()
+  func.return
+}
+
+// -----
+
+func.func @foo() { func.return }
+func.func @composite_c1() {
+  // @expected-error@+1 {{name must be a valid namespaced op name}}
+  mhlo.composite "foo.foo.%" { decomposition = @foo } : () -> ()
+  func.return
+}
+
+// -----
+
+func.func @foo() { func.return }
+func.func @composite_c1() {
+  // valid name
+  mhlo.composite "f00._.$" { decomposition = @foo } : () -> ()
+  func.return
+}
+
+// -----
+
+func.func @composite_c2(%arg0: tensor<f32>) {
+  // @expected-error@+1 {{'nonexistent' does not reference a valid function}}
+  %0 = mhlo.composite "mhlo.nonexistent" %arg0 {
+    decomposition = @nonexistent
+  } : (tensor<f32>) -> tensor<f32>
+  func.return
+}
+
+// -----
+
+func.func @foo() -> !mhlo.token {
+  %0 = mhlo.create_token : !mhlo.token
+  func.return %0 : !mhlo.token
+}
+
+func.func @composite_c3(%arg0: tensor<f32>) {
+  // @expected-error@+1 {{has 1 operand(s), but decomposition has 0}}
+  %0 = mhlo.composite "mhlo.identity" %arg0 {
+    decomposition = @foo
+  } : (tensor<f32>) -> !mhlo.token
+  func.return
+}
+
+// -----
+
+func.func @foo(%arg0: tensor<f64>) -> !mhlo.token {
+  %0 = mhlo.create_token : !mhlo.token
+  func.return %0 : !mhlo.token
+}
+
+func.func @composite_c3(%arg0: tensor<f32>) {
+  // @expected-error@+1 {{operand at index 0 has type 'tensor<f32>', but decomposition has type 'tensor<f64>'}}
+  %0 = mhlo.composite "mhlo.identity" %arg0 {
+    decomposition = @foo
+  } : (tensor<f32>) -> !mhlo.token
+  func.return
+}
+
+// -----
+
+func.func @foo(%arg0: !mhlo.token) {
+  func.return
+}
+
+func.func @composite_c4(%arg0: !mhlo.token) {
+  // @expected-error@+1 {{has 1 result(s), but decomposition has 0}}
+  %0 = mhlo.composite "mhlo.identity" %arg0 {
+    decomposition = @foo
+  } : (!mhlo.token) -> tensor<f32>
+  func.return
+}
+
+// -----
+
+func.func @foo(%arg0: !mhlo.token) -> tensor<f64> {
+  %0 = mhlo.constant dense<0.> : tensor<f64>
+  func.return %0 : tensor<f64>
+}
+
+func.func @composite_c4(%arg0: !mhlo.token) {
+  // @expected-error@+1 {{result at index 0 has type 'tensor<f32>', but decomposition has type 'tensor<f64>'}}
+  %0 = mhlo.composite "mhlo.identity" %arg0 {
+    decomposition = @foo
+  } : (!mhlo.token) -> tensor<f32>
+  func.return
 }

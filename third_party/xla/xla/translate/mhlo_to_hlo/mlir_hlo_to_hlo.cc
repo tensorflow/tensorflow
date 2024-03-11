@@ -847,6 +847,11 @@ LogicalResult ExportXlaOp(CollectiveBroadcastOp op, OpLoweringContext ctx) {
   return success();
 }
 
+LogicalResult ExportXlaOp(CompositeOp, OpLoweringContext) {
+  // TODO: b/328526226 - Implement MHLO export for CompositeOp.
+  return failure();
+}
+
 LogicalResult ExportXlaOp(ComputeReshapeShapeOp, OpLoweringContext) {
   // This op should've been removed during PrepareForExport.
   return failure();
