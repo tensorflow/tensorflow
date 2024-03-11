@@ -3353,14 +3353,18 @@ cc_library(
     hdrs = ["dot_decomposer.h"],
     deps = [
         ":hlo_pass",
-        "//xla:permutation_util",
+        ":shape_inference",
         "//xla:shape_util",
-        "//xla:status_macros",
-        "//xla:types",
+        "//xla:status",
         "//xla/hlo/ir:hlo",
         "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
+        "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:logging",
+        "@local_tsl//tsl/platform:statusor",
     ],
 )
 
@@ -3369,11 +3373,15 @@ xla_cc_test(
     srcs = ["dot_decomposer_test.cc"],
     deps = [
         ":dot_decomposer",
-        ":hlo_parser",
+        ":pattern_matcher",
+        ":pattern_matcher_gmock",
+        "//xla/hlo/ir:hlo",
         "//xla/hlo/utils:hlo_matchers",
         "//xla/tests:hlo_test_base",
-        "//xla/tests:test_utils",
         "//xla/tests:xla_internal_test_main",  # fixdeps: keep
+        "@com_google_absl//absl/strings:string_view",
+        "@local_tsl//tsl/platform:statusor",
+        "@local_tsl//tsl/platform:test",
     ],
 )
 
