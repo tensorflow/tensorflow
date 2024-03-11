@@ -1001,6 +1001,14 @@ void IncrementPhase2XlaCompilerCounter(Phase2XlaCompilerMetric metric) {
            "kCompileSingleOpMlirSuccess"},
           {Phase2XlaCompilerMetric::kCompileSingleOpMlirFailure,
            "kCompileSingleOpMlirFailure"},
+          {Phase2XlaCompilerMetric::kCompileFunctionXlaBuilderSuccess,
+           "kCompileFunctionXlaBuilderSuccess"},
+          {Phase2XlaCompilerMetric::kCompileFunctionXlaBuilderFailure,
+           "kCompileFunctionXlaBuilderFailure"},
+          {Phase2XlaCompilerMetric::kCompileFunctionMlirSuccess,
+           "kCompileFunctionMlirSuccess"},
+          {Phase2XlaCompilerMetric::kCompileFunctionMlirFailure,
+           "kCompileFunctionMlirFailure"},
       };
 
   phase_2_xla_compiler_count->GetCell(std::string(metric_names->at(metric)))

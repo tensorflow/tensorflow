@@ -923,8 +923,14 @@ Status XlaCompiler::CompileFunction(
         options.use_tuple_arg, /*analyse_graph=*/false, *options_.flib_def,
         debug_info, options_.shape_determination_fns, result);
     if (mlir_result.ok()) {
+      tensorflow::metrics::IncrementPhase2XlaCompilerCounter(
+          tensorflow::metrics::Phase2XlaCompilerMetric::
+              kCompileFunctionMlirSuccess);
       VLOG(1) << "MLIR bridge was successfull";
     } else {
+      tensorflow::metrics::IncrementPhase2XlaCompilerCounter(
+          tensorflow::metrics::Phase2XlaCompilerMetric::
+              kCompileFunctionMlirFailure);
       VLOG(1) << "MLIR failed, no fallback";
       return mlir_result;
     }
@@ -933,6 +939,9 @@ Status XlaCompiler::CompileFunction(
     auto status =
         CompileGraph(options, function_id, std::move(graph), args, result);
     if (!status.ok()) {
+      tensorflow::metrics::IncrementPhase2XlaCompilerCounter(
+          tensorflow::metrics::Phase2XlaCompilerMetric::
+              kCompileFunctionXlaBuilderFailure);
       ::tsl::errors::AppendToMessage(
           &status, "tf2xla conversion failed while converting ", function_id,
           ". Run with TF_DUMP_GRAPH_PREFIX=/path/to/dump/dir and "
@@ -941,8 +950,10 @@ Status XlaCompiler::CompileFunction(
       return status;
     }
   }
+  tensorflow::metrics::IncrementPhase2XlaCompilerCounter(
+      tensorflow::metrics::Phase2XlaCompilerMetric::
+          kCompileFunctionXlaBuilderSuccess);
   VLOG(1) << "====================================================";
-
   cache_[{function_id, arg_vector}] = *result;
   return absl::OkStatus();
 }

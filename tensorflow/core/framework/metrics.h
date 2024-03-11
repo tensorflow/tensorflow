@@ -355,6 +355,14 @@ enum class Phase2XlaCompilerMetric {
   kCompileSingleOpMlirSuccess,
   // Bridge phase 2 CompileSingleOp MLIR version failed
   kCompileSingleOpMlirFailure,
+  // Bridge phase 2 CompileFunction Xla Builder (old version) was successful
+  kCompileFunctionXlaBuilderSuccess,
+  // Bridge phase 2 CompileFunction Xla Builder (old version) failed
+  kCompileFunctionXlaBuilderFailure,
+  // Bridge phase 2 CompileFunction MLIR version was successful
+  kCompileFunctionMlirSuccess,
+  // Bridge phase 2 CompileFunction MLIR version failed
+  kCompileFunctionMlirFailure,
 };
 
 // Records the activity of the XlaCompiler entry points.
