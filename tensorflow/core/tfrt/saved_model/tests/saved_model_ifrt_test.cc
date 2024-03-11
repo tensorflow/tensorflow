@@ -19,12 +19,9 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-// Enable definition of Eigen::ThreadPoolDevice instead of just declaration.
-#define EIGEN_USE_THREADS
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
-#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tensorflow/compiler/mlir/tfrt/transforms/ifrt/ifrt_backend_compiler.h"
 #include "tensorflow/compiler/mlir/tfrt/translate/tfrt_compile_options.h"
 #include "xla/python/ifrt/client.h"
@@ -43,13 +40,13 @@ limitations under the License.
 namespace tensorflow {
 namespace tfrt_stub {
 namespace {
-Eigen::ThreadPoolDevice GetThreadPoolDevice() {
+
+tsl::thread::ThreadPool& GetThreadPool() {
   constexpr int kMaxParallelism = 16;
   static tsl::thread::ThreadPool* thread_pool =
       new tsl::thread::ThreadPool(tsl::Env::Default(), tsl::ThreadOptions(),
                                   "IfrtSharding", kMaxParallelism);
-  return Eigen::ThreadPoolDevice(thread_pool->AsEigenThreadPool(),
-                                 kMaxParallelism);
+  return *thread_pool;
 }
 
 TEST(SavedModelIfrt, Basic) {
@@ -62,14 +59,13 @@ TEST(SavedModelIfrt, Basic) {
   // Create contexts required for the compiler execution.
   TF_ASSERT_OK_AND_ASSIGN(std::shared_ptr<xla::ifrt::Client> client,
                           xla::ifrt::test_util::GetClient());
-  Eigen::ThreadPoolDevice thread_pool_device = GetThreadPoolDevice();
 
   // Use IFRT compiler
   runtime->AddCreateRuntimeResourceFn(
       [&](tensorflow::tfrt_stub::ModelRuntimeContext& model_context) {
         model_context.resource_context()
             .CreateResource<tensorflow::ifrt_serving::IfrtModelContext>(
-                "IfrtModelContext", client, &thread_pool_device);
+                "IfrtModelContext", client, &GetThreadPool());
         return absl::OkStatus();
       });
   tensorflow::ifrt_serving::IfrtBackendCompiler ifrt_compiler;

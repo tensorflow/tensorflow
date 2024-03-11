@@ -21,9 +21,6 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-// Enable definition of Eigen::ThreadPoolDevice instead of just declaration.
-#define EIGEN_USE_THREADS
-
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/log/check.h"
@@ -31,7 +28,6 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/notification.h"
 #include "absl/types/span.h"
-#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "xla/python/ifrt/client.h"
 #include "xla/python/ifrt/test_util.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -71,15 +67,12 @@ using tensorflow::test::ExpectEqual;
 
 static absl::string_view kVariableName = "test_variable";
 
-Eigen::ThreadPoolDevice GetThreadPoolDevice() {
+tsl::thread::ThreadPool& GetThreadPool() {
   constexpr int kMaxParallelism = 16;
-  static tsl::thread::ThreadPool* thread_pool = []() {
-    return new tsl::thread::ThreadPool(tsl::Env::Default(),
-                                       tsl::ThreadOptions(), "IfrtSharding",
-                                       kMaxParallelism);
-  }();
-  return Eigen::ThreadPoolDevice(thread_pool->AsEigenThreadPool(),
-                                 kMaxParallelism);
+  static tsl::thread::ThreadPool* thread_pool =
+      new tsl::thread::ThreadPool(tsl::Env::Default(), tsl::ThreadOptions(),
+                                  "IfrtSharding", kMaxParallelism);
+  return *thread_pool;
 }
 
 mlrt::bc::Buffer CreateExecutableForIfrtLoadVariableOp(
@@ -284,9 +277,8 @@ TEST(KernelTest, IfrtLoadVariableOp) {
 
   TF_ASSERT_OK_AND_ASSIGN(std::shared_ptr<xla::ifrt::Client> client,
                           xla::ifrt::test_util::GetClient());
-  Eigen::ThreadPoolDevice thread_pool_device = GetThreadPoolDevice();
   resource_context.CreateResource<tensorflow::ifrt_serving::IfrtModelContext>(
-      "IfrtModelContext", client, &thread_pool_device);
+      "IfrtModelContext", client, &GetThreadPool());
 
   auto tf_context =
       std::make_unique<Context>(&fallback_request_state, &resource_context);
@@ -373,9 +365,8 @@ TEST(KernelTest, DuplicateIfrtLoadVariableOpShallSucceed) {
 
   TF_ASSERT_OK_AND_ASSIGN(std::shared_ptr<xla::ifrt::Client> client,
                           xla::ifrt::test_util::GetClient());
-  Eigen::ThreadPoolDevice thread_pool_device = GetThreadPoolDevice();
   resource_context.CreateResource<tensorflow::ifrt_serving::IfrtModelContext>(
-      "IfrtModelContext", client, &thread_pool_device);
+      "IfrtModelContext", client, &GetThreadPool());
 
   auto tf_context =
       std::make_unique<Context>(&fallback_request_state, &resource_context);

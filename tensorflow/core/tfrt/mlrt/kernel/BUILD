@@ -73,6 +73,7 @@ cc_library(
         "@local_xla//xla/hlo/ir:hlo",
         "@local_xla//xla/python/ifrt",
     ],
+    alwayslink = 1,
 )
 
 cc_library(

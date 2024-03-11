@@ -20,13 +20,10 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#define EIGEN_USE_THREADS
-
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/types/span.h"
-#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/python/ifrt/array.h"
 #include "xla/python/ifrt/client.h"
@@ -89,11 +86,8 @@ xla::HloSharding Maximal(int64_t device_index = 0) {
 
 TEST_P(ReshardToTensorTest, MakeHostTensorFromDeviceArrays) {
   constexpr int kMaxParallelism = 16;
-  auto thread_pool = std::make_unique<tsl::thread::ThreadPool>(
-      tsl::Env::Default(), tsl::ThreadOptions(), "Resharding", kMaxParallelism);
-
-  Eigen::ThreadPoolDevice device(thread_pool->AsEigenThreadPool(),
-                                 kMaxParallelism);
+  tsl::thread::ThreadPool thread_pool(tsl::Env::Default(), tsl::ThreadOptions(),
+                                      "Resharding", kMaxParallelism);
 
   // Create contexts required for the compiler execution.
   TF_ASSERT_OK_AND_ASSIGN(std::shared_ptr<xla::ifrt::Client> client,
@@ -132,7 +126,7 @@ TEST_P(ReshardToTensorTest, MakeHostTensorFromDeviceArrays) {
   TF_ASSERT_OK_AND_ASSIGN(
       auto output_tensor,
       MakeTensorFromArray(*client, *assembled_array, GetParam().sharding,
-                          device_list, device));
+                          device_list, thread_pool));
 
   EXPECT_THAT(GetParam().expected_out_tensor, TensorEq(output_tensor));
 }
@@ -307,11 +301,8 @@ INSTANTIATE_TEST_SUITE_P(
 
 TEST_P(TensorToArrayTest, MakeArrayFromTensor) {
   constexpr int kMaxParallelism = 16;
-  auto thread_pool = std::make_unique<tsl::thread::ThreadPool>(
-      tsl::Env::Default(), tsl::ThreadOptions(), "Resharding", kMaxParallelism);
-
-  Eigen::ThreadPoolDevice device(thread_pool->AsEigenThreadPool(),
-                                 kMaxParallelism);
+  tsl::thread::ThreadPool thread_pool(tsl::Env::Default(), tsl::ThreadOptions(),
+                                      "Resharding", kMaxParallelism);
 
   auto input_tensor = GetParam().in_tensor;
 
@@ -323,7 +314,7 @@ TEST_P(TensorToArrayTest, MakeArrayFromTensor) {
       auto assembled_array,
       MakeArrayFromTensor(*client, input_tensor,
                           absl::MakeSpan(GetParam().device_ids),
-                          GetParam().sharding, device));
+                          GetParam().sharding, thread_pool));
 
   TF_ASSERT_OK_AND_ASSIGN(auto disassembled_arrays,
                           assembled_array->DisassembleIntoSingleDeviceArrays(
@@ -543,11 +534,8 @@ INSTANTIATE_TEST_SUITE_P(
 
 TEST(ShardingUtilsTest, MismatchRank) {
   constexpr int kMaxParallelism = 16;
-  auto thread_pool = std::make_unique<tsl::thread::ThreadPool>(
-      tsl::Env::Default(), tsl::ThreadOptions(), "Resharding", kMaxParallelism);
-
-  Eigen::ThreadPoolDevice device(thread_pool->AsEigenThreadPool(),
-                                 kMaxParallelism);
+  tsl::thread::ThreadPool thread_pool(tsl::Env::Default(), tsl::ThreadOptions(),
+                                      "Resharding", kMaxParallelism);
 
   auto input_tensor =
       test::AsTensor<int32_t>({1, 2, 3, 4}, TensorShape({2, 1, 2}));
@@ -561,7 +549,7 @@ TEST(ShardingUtilsTest, MismatchRank) {
   xla::HloSharding sharding = Tile({2, 1});
 
   EXPECT_THAT(MakeArrayFromTensor(*client, input_tensor, device_list,
-                                  std::move(sharding), device),
+                                  std::move(sharding), thread_pool),
               StatusIs(absl::StatusCode::kInvalidArgument,
                        "shape must have 2 dimensions, but has 3 dimensions: "
                        "shape=[2,1,2], sharding={devices=[2,1]<=[2]}"));
