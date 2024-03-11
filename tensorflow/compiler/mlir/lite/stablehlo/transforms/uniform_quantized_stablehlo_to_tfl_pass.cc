@@ -17,6 +17,7 @@ limitations under the License.
 #include <iterator>
 #include <memory>
 #include <optional>
+#include <tuple>
 #include <utility>
 
 #include "absl/algorithm/container.h"
@@ -33,6 +34,7 @@ limitations under the License.
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypeInterfaces.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
+#include "mlir/IR/Location.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
@@ -260,6 +262,18 @@ TFL::QConstOp CreateTflConstOpForDummyBias(
 
   return rewriter.create<TFL::QConstOp>(
       loc, /*output=*/TypeAttr::get(bias_type), /*value=*/bias_value);
+}
+
+// Casts the given op shapes from i64 to i32 to fit TFLite spec requirement.
+arith::ConstantOp CreateI32ShapeConstantOp(const TensorType op_type,
+                                           const Location loc,
+                                           PatternRewriter& rewriter) {
+  const SmallVector<int32_t> shape_i32 =
+      CastI64ArrayToI32(op_type.getShape()).value();
+  const TensorType shape_type = op_type.cloneWith(
+      ArrayRef<int64_t>(shape_i32.size()), rewriter.getI32Type());
+  const auto shape_attr = DenseIntElementsAttr::get(shape_type, shape_i32);
+  return rewriter.create<arith::ConstantOp>(loc, shape_attr);
 }
 
 // stablehlo.uniform_quantize -> tfl.quantize
@@ -922,66 +936,17 @@ class RewriteQuantizedConvolutionOp
         op.getResult().getType().cast<TensorType>().getElementType());
     stablehlo::ConvDimensionNumbersAttr dimension_numbers =
         op.getDimensionNumbers();
+
     const bool is_depthwise = IsDepthwiseConvolution(op, dimension_numbers);
-    Value filter_value = op.getOperand(1);
-    Operation* filter_op = filter_value.getDefiningOp();
-    auto filter_uniform_quantized_type =
-        filter_value.getType()
-            .cast<TensorType>()
-            .getElementType()
-            .cast<UniformQuantizedPerAxisType>();
-
-    // Create a new quantized tensor type for the filter. This is required
-    // because the quantized dimension is changed from 3 -> 0. `TFL::Conv2DOp`
-    // requires the quantized dimension to be 0 because it accepts a filter
-    // tensor of format OHWI
-    // (https://github.com/tensorflow/tensorflow/blob/5430e5e238f868ce977df96ba89c9c1d31fbe8fa/tensorflow/compiler/mlir/lite/ir/tfl_ops.td#L933).
-    // The quantized dimension should correspond to the output feature
-    // dimension.
-    auto new_filter_quantized_type = CreateI8F32UniformQuantizedPerAxisType(
-        filter_op->getLoc(), *op.getContext(),
-        filter_uniform_quantized_type.getScales(),
-        filter_uniform_quantized_type.getZeroPoints(), is_depthwise ? 3 : 0,
-        /*narrow_range=*/true);
-
-    auto filter_constant_value_attr = cast<DenseIntElementsAttr>(
-        cast<stablehlo::ConstantOp>(filter_value.getDefiningOp()).getValue());
-
-    // Using TransposeOp doesn't work because the quantized dimension
-    // changes which violates the constraint for the TransposeOp that the
-    // input's and output's element type should be the same.
-    const DenseIntElementsAttr new_filter_value_attr =
-        TransposeFilterValue(filter_op->getLoc(), rewriter,
-                             filter_constant_value_attr, is_depthwise);
-
-    auto new_filter_result_type = RankedTensorType::getChecked(
-        filter_op->getLoc(),
-        /*shape=*/new_filter_value_attr.getShapedType().getShape(),
-        /*type=*/new_filter_quantized_type);
-
-    auto new_filter_constant_op = rewriter.create<TFL::QConstOp>(
-        filter_op->getLoc(), /*output=*/TypeAttr::get(new_filter_result_type),
-        new_filter_value_attr);
-
-    Operation* uniform_quantize_op;
+    const bool is_transpose_conv = IsTransposeConv(op, dimension_numbers);
     const bool fuse_bias_constant =
         FindUserOfType<stablehlo::AddOp>(op) && has_i32_output;
-    if (has_i32_output) {
-      if (fuse_bias_constant) {
-        Operation* add_op = FindUserOfType<stablehlo::AddOp>(op);
-        uniform_quantize_op = FindUserOfType<TFL::QuantizeOp>(add_op);
-      } else {
-        uniform_quantize_op = FindUserOfType<TFL::QuantizeOp>(op);
-      }
-    }
-
-    const int64_t num_output_features =
-        new_filter_result_type.getShape()[is_depthwise ? 3 : 0];
-    const SmallVector<int64_t, 1> bias_shape = {num_output_features};
-
-    TFL::QConstOp bias = GetBiasOp(op, rewriter, new_filter_result_type,
-                                   new_filter_quantized_type, bias_shape,
-                                   has_i32_output, fuse_bias_constant);
+    TFL::QConstOp new_filter_constant_op;
+    TFL::QConstOp bias = GetBiasOpAndUpdateQuantizedFilterConstant(
+        /*op=*/op, /*new_filter_constant_op=*/new_filter_constant_op,
+        /*rewriter=*/rewriter, /*is_depthwise=*/is_depthwise,
+        /*has_i32_output=*/has_i32_output,
+        /*fuse_bias_constant=*/fuse_bias_constant);
 
     // Determine the attributes for the TFL::Conv2DOp.
     Value input_value = op.getOperand(0);
@@ -995,31 +960,10 @@ class RewriteQuantizedConvolutionOp
       input_value = pad_op.getResult();
     }
 
+    const Type output_type =
+        GetOutputType(op, rewriter, has_i32_output, fuse_bias_constant);
     const auto [stride_h, stride_w] = GetStrides(op);
     const auto [dilation_h_factor, dilation_w_factor] = GetDilationFactors(op);
-
-    Type output_type;
-    if (has_i32_output) {
-      // StableHLO Quantizer outputs an i32 type. Rewrite to i8 type result
-      // to meet TFLite op requirement.
-      auto result_quantized_type = uniform_quantize_op->getResult(0)
-                                       .getType()
-                                       .cast<TensorType>()
-                                       .getElementType()
-                                       .cast<UniformQuantizedType>();
-      auto new_result_quantized_type = CreateI8F32UniformQuantizedType(
-          uniform_quantize_op->getLoc(), *rewriter.getContext(),
-          result_quantized_type.getScale(),
-          result_quantized_type.getZeroPoint());
-      output_type = op.getResult().getType().cast<TensorType>().clone(
-          new_result_quantized_type);
-      // Omit any bias and requantize ops as `tfl.fully_connected` outputs a
-      // fused `qi8` type.
-      FindUserOfType<>(uniform_quantize_op)->setOperand(0, op->getResult(0));
-    } else {
-      output_type = op.getResult().getType();
-    }
-
     if (is_depthwise) {
       // The total number of depthwise convolution output channels will be
       // equal to input channel * `depth_multiplier`.
@@ -1041,6 +985,25 @@ class RewriteQuantizedConvolutionOp
           /*stride_h=*/rewriter.getI32IntegerAttr(stride_h),
           /*stride_w=*/rewriter.getI32IntegerAttr(stride_w),
           /*depthwise_multiplier=*/rewriter.getI32IntegerAttr(multiplier));
+    } else if (is_transpose_conv) {
+      // TODO: b/326332748 - For forward convolution in transpose_conv,
+      // IsSamePadding calculation may need to be updated.
+      // Reference: https://arxiv.org/pdf/1603.07285.pdf
+      // Section 4.6 > Relationship 13 states `stride_dim = dilation + 1`.
+      rewriter.replaceOpWithNewOp<TFL::TransposeConvOp>(
+          // op result should be recasted to desired quantized type.
+          op, output_type, /*output_shape=*/
+          CreateI32ShapeConstantOp(op.getResult().getType(), op->getLoc(),
+                                   rewriter),
+          /*filter=*/new_filter_constant_op, /*input=*/input_value,
+          /*bias=*/bias.getResult(),
+          /*padding=*/
+          rewriter.getStringAttr(IsSamePadding(op, dimension_numbers)
+                                     ? kPaddingSame
+                                     : kPaddingValid),
+          /*stride_h=*/rewriter.getI32IntegerAttr(dilation_h_factor + 1),
+          /*stride_w=*/rewriter.getI32IntegerAttr(dilation_w_factor + 1),
+          /*fused_activation_function=*/rewriter.getStringAttr("NONE"));
     } else {
       rewriter.replaceOpWithNewOp<TFL::Conv2DOp>(
           // op result should be recasted to desired quantized type.
@@ -1173,17 +1136,17 @@ class RewriteQuantizedConvolutionOp
   }
 
   // Infers the output tensor's shape after padding `tfl_pad_values` to the
-  // `tensor_shape`. `tfl_pad_values` should be formatted as `[[l_0, r_0], [l_1,
-  // r_1], ..., [l_n, r_n]]`, where `l_x` and `r_x` are the left and paddings
-  // for the x-th dimension, respectively.
+  // `tensor_shape`. `tfl_pad_values` should be formatted as `[[low_0, high_0],
+  // [low_1, high_1], ..., [low_n, high_n]]`, where `low_x` and `high_x` are the
+  // low and high paddings for the x-th dimension, respectively.
   SmallVector<int64_t> InferPaddedTensorShape(
       const ArrayRef<int64_t> tensor_shape,
       const ArrayRef<int32_t> tfl_pad_values) const {
     SmallVector<int64_t> padded_shape(tensor_shape.begin(), tensor_shape.end());
     for (int i = 0; i < padded_shape.size(); ++i) {
       // Left padding + right padding.
-      const int32_t padded = tfl_pad_values[i * 2] + tfl_pad_values[i * 2 + 1];
-      padded_shape[i] += padded;
+      int32_t padding = tfl_pad_values[i * 2] + tfl_pad_values[i * 2 + 1];
+      padded_shape[i] += padding;
     }
 
     return padded_shape;
@@ -1196,6 +1159,9 @@ class RewriteQuantizedConvolutionOp
   //   * Permutates given filter to `[i, 0, 1, o]` format.
   // General convolution (`feature_group_count` = 1)
   //   * Permutates given filter to `[o, 0, 1, i]` format.
+  // Using TransposeOp doesn't work because the quantized dimension
+  // changes which violates the constraint for the TransposeOp that the
+  // input's and output's element type should be the same.
   DenseIntElementsAttr TransposeFilterValue(
       Location loc, PatternRewriter& rewriter,
       const DenseIntElementsAttr& filter_value_attr,
@@ -1256,28 +1222,39 @@ class RewriteQuantizedConvolutionOp
     return new_filter_constant_value_attr;
   }
 
+  std::pair<int64_t, int64_t> GetDimSize(
+      const ArrayRef<int64_t> shape, const ArrayRef<int64_t> indexes) const {
+    return {shape[indexes[0]], shape[indexes[1]]};
+  }
+
+  bool IsTransposeConv(
+      stablehlo::ConvolutionOp op,
+      stablehlo::ConvDimensionNumbersAttr dimension_numbers) const {
+    const auto [input_height, input_width, output_height, output_width] =
+        GetInOutDimensions(op, dimension_numbers);
+    const auto [stride_height, stride_width] = GetStrides(op);
+
+    // Reference: https://arxiv.org/pdf/1603.07285.pdf
+    // Section 4.6 > Relationship 13 states an associated transposed
+    // convolution should have `s = 1`.
+    // For `VALID` padding, the condition below will always hold true.
+    // For `SAME` padding, express via regular convolution.
+    return output_height > input_height && output_width > input_width &&
+           stride_height == 1 && stride_width == 1;
+  }
+
   bool IsSamePadding(
       stablehlo::ConvolutionOp op,
       stablehlo::ConvDimensionNumbersAttr dimension_numbers) const {
-    auto get_dim_size =
-        [](ArrayRef<int64_t> shape,
-           ArrayRef<int64_t> indexes) -> std::pair<int64_t, int64_t> {
-      return {shape[indexes[0]], shape[indexes[1]]};
-    };
-    const auto [input_height, input_width] =
-        get_dim_size(op->getOperand(0).getType().cast<ShapedType>().getShape(),
-                     dimension_numbers.getInputSpatialDimensions());
-    const auto [output_height, output_width] =
-        get_dim_size(op->getResult(0).getType().cast<ShapedType>().getShape(),
-                     dimension_numbers.getOutputSpatialDimensions());
-
+    const auto [input_height, input_width, output_height, output_width] =
+        GetInOutDimensions(op, dimension_numbers);
     const auto [stride_height, stride_width] = GetStrides(op);
 
-    // Below convolution arithmetic for `SAME` padding calculation is referenced
-    // from https://www.tensorflow.org/api_docs/python/tf/nn/convolution.
-    // The following condition must hold true for padding to be `SAME`:
+    // Below convolution arithmetic for `SAME` padding calculation is
+    // referenced from
+    // https://www.tensorflow.org/api_docs/python/tf/nn/convolution. The
+    // following condition must hold true for padding to be `SAME`:
     // output_spatial_shape[i] = ceil(input_spatial_shape[i] / strides[i])
-
     auto get_output_dim_for_same_padding = [](int64_t input_dim,
                                               int64_t stride_dim) -> int64_t {
       return std::ceil(input_dim / stride_dim);
@@ -1288,16 +1265,42 @@ class RewriteQuantizedConvolutionOp
                get_output_dim_for_same_padding(input_width, stride_width);
   }
 
-  // Determines if the padding attribute corresponds to "VALID" or "SAME".
+  bool IsValidPadding(
+      stablehlo::ConvolutionOp op,
+      stablehlo::ConvDimensionNumbersAttr dimension_numbers) const {
+    const auto [input_height, input_width, output_height, output_width] =
+        GetInOutDimensions(op, dimension_numbers);
+    const auto [dilation_height, dilation_width] = GetDilationFactors(op);
+    const auto [stride_height, stride_width] = GetStrides(op);
+
+    // Below convolution arithmetic for `VALID` padding calculation is
+    // referenced from
+    // https://www.tensorflow.org/api_docs/python/tf/nn/convolution. The
+    // following condition must hold true for padding to be `VALID`:
+    // output_spatial_shape[i] = ceil((input_spatial_shape[i] -
+    // (spatial_filter_shape[i]-1) * dilation_rate[i]) / strides[i])
+    auto get_output_dim_for_valid_padding =
+        [](int64_t input_dim, int64_t dilation_dim, int64_t kernel_dim,
+           int64_t stride_dim) -> int64_t {
+      return std::ceil((input_dim - (kernel_dim - 1) * dilation_dim) /
+                       stride_dim);
+    };
+    return output_height ==
+               get_output_dim_for_valid_padding(input_height, dilation_height,
+                                                input_width, stride_height) &&
+           output_width ==
+               get_output_dim_for_valid_padding(input_width, dilation_width,
+                                                input_height, stride_width);
+  }
+
+  // Determines if the padding attribute is "VALID", "SAME", or unset.
   // If not, the input's shape should be adjusted with explicit `tfl.pad` op.
   // (https://www.tensorflow.org/api_docs/python/tf/nn).
   bool HasProperPadding(stablehlo::ConvolutionOp op,
                         stablehlo::ConvDimensionNumbersAttr dimension_numbers,
                         const DenseIntElementsAttr padding_attr) const {
-    // If padding_attr is empty, it defaults to splat 0s.
-    return IsSamePadding(op, dimension_numbers) ||
-           (!padding_attr || (padding_attr.isSplat() &&
-                              padding_attr.getSplatValue<int64_t>() == 0));
+    return !padding_attr || IsSamePadding(op, dimension_numbers) ||
+           IsValidPadding(op, dimension_numbers);
   }
 
   // Returns the padding amount for the height and width, respectively.
@@ -1312,6 +1315,19 @@ class RewriteQuantizedConvolutionOp
     // https://github.com/openxla/stablehlo/blob/main/docs/spec.md#convolution.
     return {padding_values[0], padding_values[1], padding_values[2],
             padding_values[3]};
+  }
+
+  // Returns the input and output dimensions, respectively.
+  std::tuple<int64_t, int64_t, int64_t, int64_t> GetInOutDimensions(
+      stablehlo::ConvolutionOp op,
+      stablehlo::ConvDimensionNumbersAttr dimension_numbers) const {
+    const auto [input_height, input_width] =
+        GetDimSize(op->getOperand(0).getType().cast<ShapedType>().getShape(),
+                   dimension_numbers.getInputSpatialDimensions());
+    const auto [output_height, output_width] =
+        GetDimSize(op->getResult(0).getType().cast<ShapedType>().getShape(),
+                   dimension_numbers.getOutputSpatialDimensions());
+    return {input_height, input_width, output_height, output_width};
   }
 
   // Returns the stride amount for the height and width, respectively.
@@ -1339,6 +1355,49 @@ class RewriteQuantizedConvolutionOp
     // It is guaranteed from the spec that it has two values:
     // https://github.com/openxla/stablehlo/blob/main/docs/spec.md#convolution.
     return {lhs_dilation_attr_value[0], lhs_dilation_attr_value[1]};
+  }
+
+  TFL::QConstOp GetBiasOpAndUpdateQuantizedFilterConstant(
+      stablehlo::ConvolutionOp op, TFL::QConstOp& new_filter_constant_op,
+      PatternRewriter& rewriter, const bool is_depthwise,
+      const bool has_i32_output, const bool fuse_bias_constant) const {
+    Value filter_value = op.getOperand(1);
+    Operation* filter_op = filter_value.getDefiningOp();
+    auto filter_uniform_quantized_type =
+        filter_value.getType()
+            .cast<TensorType>()
+            .getElementType()
+            .cast<UniformQuantizedPerAxisType>();
+    auto filter_constant_value_attr = cast<DenseIntElementsAttr>(
+        cast<stablehlo::ConstantOp>(filter_value.getDefiningOp()).getValue());
+    const DenseIntElementsAttr new_filter_value_attr =
+        TransposeFilterValue(filter_op->getLoc(), rewriter,
+                             filter_constant_value_attr, is_depthwise);
+    // Create a new quantized tensor type for the filter. This is required
+    // because the quantized dimension is changed from 3 -> 0. `TFL::Conv2DOp`
+    // requires the quantized dimension to be 0 because it accepts a filter
+    // tensor of format OHWI
+    // (https://github.com/tensorflow/tensorflow/blob/5430e5e238f868ce977df96ba89c9c1d31fbe8fa/tensorflow/compiler/mlir/lite/ir/tfl_ops.td#L933).
+    // The quantized dimension should correspond to the output feature
+    // dimension.
+    auto new_filter_quantized_type = CreateI8F32UniformQuantizedPerAxisType(
+        filter_op->getLoc(), *op.getContext(),
+        filter_uniform_quantized_type.getScales(),
+        filter_uniform_quantized_type.getZeroPoints(), is_depthwise ? 3 : 0,
+        /*narrow_range=*/true);
+    const auto new_filter_result_type = RankedTensorType::getChecked(
+        filter_op->getLoc(),
+        /*shape=*/new_filter_value_attr.getShapedType().getShape(),
+        /*type=*/new_filter_quantized_type);
+    const int64_t num_output_features =
+        new_filter_result_type.getShape()[is_depthwise ? 3 : 0];
+    new_filter_constant_op = rewriter.create<TFL::QConstOp>(
+        filter_op->getLoc(), /*output=*/TypeAttr::get(new_filter_result_type),
+        new_filter_value_attr);
+    return GetBiasOp(op, rewriter, new_filter_result_type,
+                     new_filter_quantized_type,
+                     /*bias_shape=*/{num_output_features}, has_i32_output,
+                     fuse_bias_constant);
   }
 
   TFL::QConstOp GetBiasOp(
@@ -1390,11 +1449,43 @@ class RewriteQuantizedConvolutionOp
     return bias;
   }
 
+  Type GetOutputType(stablehlo::ConvolutionOp op, PatternRewriter& rewriter,
+                     const bool has_i32_output,
+                     const bool fuse_bias_constant) const {
+    Operation* uniform_quantize_op;
+    if (has_i32_output) {
+      if (fuse_bias_constant) {
+        Operation* add_op = FindUserOfType<stablehlo::AddOp>(op);
+        uniform_quantize_op = FindUserOfType<TFL::QuantizeOp>(add_op);
+      } else {
+        uniform_quantize_op = FindUserOfType<TFL::QuantizeOp>(op);
+      }
+      // StableHLO Quantizer outputs an i32 type. Rewrite to i8 type result
+      // to meet TFLite op requirement.
+      auto result_quantized_type = uniform_quantize_op->getResult(0)
+                                       .getType()
+                                       .cast<TensorType>()
+                                       .getElementType()
+                                       .cast<UniformQuantizedType>();
+      auto new_result_quantized_type = CreateI8F32UniformQuantizedType(
+          uniform_quantize_op->getLoc(), *rewriter.getContext(),
+          result_quantized_type.getScale(),
+          result_quantized_type.getZeroPoint());
+      // Omit any bias and requantize ops as `tfl.fully_connected` outputs a
+      // fused `qi8` type.
+      FindUserOfType<>(uniform_quantize_op)->setOperand(0, op->getResult(0));
+      return op.getResult().getType().cast<TensorType>().clone(
+          new_result_quantized_type);
+    }
+    return op.getResult().getType();
+  }
+
   bool IsDepthwiseConvolution(
       stablehlo::ConvolutionOp op,
       const stablehlo::ConvDimensionNumbersAttr dimension_numbers) const {
-    // `feature_group_count` controls how the input channel dimension is split.
-    //  A value bigger than one signals depthwise convolution behavior.
+    // `feature_group_count` controls how the input channel dimension is
+    // split.
+    // A value bigger than one signals depthwise convolution behavior.
     return op.getFeatureGroupCount() > 1;
   }
 };
@@ -1441,19 +1532,10 @@ class RewriteQuantizedReshapeOp
 
   void rewrite(stablehlo::ReshapeOp op,
                PatternRewriter& rewriter) const override {
-    auto result_type = op->getResult(0).getType().cast<TensorType>();
-    // Cast result shapes from i64 to i32 as they are required to be i32 in
-    // TFLite.
-    SmallVector<int32_t> shape_i32 =
-        CastI64ArrayToI32(result_type.getShape()).value();
-
-    const int64_t shape_length = shape_i32.size();
-    ArrayRef<int64_t> shape(shape_length);
-    TensorType shape_type = result_type.cloneWith(shape, rewriter.getI32Type());
-    auto shape_attr = DenseIntElementsAttr::get(shape_type, shape_i32);
-    auto new_shape =
-        rewriter.create<arith::ConstantOp>(op.getLoc(), shape_attr);
-    rewriter.replaceOpWithNewOp<TFL::ReshapeOp>(op, op.getOperand(), new_shape);
+    rewriter.replaceOpWithNewOp<TFL::ReshapeOp>(
+        op, op.getOperand(),
+        CreateI32ShapeConstantOp(op.getResult().getType(), op->getLoc(),
+                                 rewriter));
   }
 };
 
