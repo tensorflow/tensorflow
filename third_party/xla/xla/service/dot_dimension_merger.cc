@@ -21,13 +21,21 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/container/flat_hash_set.h"
+#include "absl/strings/string_view.h"
+#include "absl/types/span.h"
 #include "xla/hlo/ir/dfs_hlo_visitor_with_default.h"
+#include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/layout_util.h"
 #include "xla/service/hlo_creation_utils.h"
+#include "xla/shape.h"
 #include "xla/status.h"
 #include "xla/util.h"
+#include "xla/xla_data.pb.h"
+#include "tsl/platform/statusor.h"
 
 namespace xla {
 
@@ -119,6 +127,20 @@ class BatchDimensionMerger : public DfsHloRewriteVisitor {
           shifted_contracting_dimensions.end());
     }
 
+    // Update sparsity descriptors, if present.
+    std::vector<SparsityDescriptor> sparsity;
+    auto sparse_meta =
+        absl::MakeSpan(dot->operands()).subspan(HloDotInstruction::kOperands);
+    for (SparsityDescriptor descriptor :
+         Cast<HloDotInstruction>(dot)->sparsity()) {
+      int64_t sparse_batch_dim =
+          descriptor.index() == 0 ? lhs_batch_dimension : rhs_batch_dimension;
+      if (descriptor.dimension() > sparse_batch_dim)
+        descriptor.set_dimension(descriptor.dimension() -
+                                 (batch_dimension_count - 1));
+      sparsity.push_back(descriptor);
+    }
+
     TF_ASSIGN_OR_RETURN(HloInstruction * reshaped_lhs,
                         MakeReshapeHlo(new_lhs_shape, dot->mutable_operand(0)));
 
@@ -129,7 +151,8 @@ class BatchDimensionMerger : public DfsHloRewriteVisitor {
     HloInstruction* new_dot = dot->parent()->AddInstruction(
         HloInstruction::CreateDot(new_dot_shape, reshaped_lhs, reshaped_rhs,
                                   new_dot_dimension_numbers,
-                                  dot->precision_config()),
+                                  dot->precision_config(), sparsity,
+                                  sparse_meta),
         &dot->metadata());
     dot->SetupDerivedInstruction(new_dot);
 
