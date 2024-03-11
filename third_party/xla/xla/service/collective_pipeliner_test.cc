@@ -20,6 +20,7 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/log/check.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -59,10 +60,10 @@ absl::StatusOr<bool> RunOptimizer(
     CollectivePipeliner::PipeliningDirection direction =
         CollectivePipeliner::PipeliningDirection::kForward,
     HloPredicate should_process = HloPredicateIsOp<HloOpcode::kAllReduce>,
-    HloPredicate acceptable_formatting =
-        [](const HloInstruction*) { return true; },
-    HloPredicate reuse_pipelined_op_buffer =
-        [](const HloInstruction* i) { return true; }) {
+    HloPredicate acceptable_formatting = HloPredicateTrue,
+    HloPredicate reuse_pipelined_op_buffer = HloPredicateTrue,
+    HloPredicate should_allow_loop_variant_parameter_in_chain =
+        HloPredicateFalse) {
   CollectivePipeliner::Config config = {
       /*level_to_operate_on=*/level_to_operate_on,
       /*max_pipelining_per_loop=*/INT64_MAX,
@@ -74,6 +75,7 @@ absl::StatusOr<bool> RunOptimizer(
       /*should_process=*/should_process,
       /*acceptable_formatting=*/acceptable_formatting,
       /*reuse_pipelined_op_buffer=*/reuse_pipelined_op_buffer,
+      should_allow_loop_variant_parameter_in_chain,
   };
   HloPassPipeline pass("optimizer");
   pass.AddPass<HloVerifier>(/*layout_sensitive=*/false,
@@ -1793,6 +1795,105 @@ TEST_F(CollectivePipelinerTest, TransformRecvSendBackwards) {
                            should_pipeline)
                   .value());
   XLA_VLOG_LINES(10, module->ToString());
+  auto recv1 =
+      DynCast<HloRecvInstruction>(FindInstruction(module.get(), "recv.1"));
+  EXPECT_NE(recv1, nullptr);
+  auto recv2 =
+      DynCast<HloRecvInstruction>(FindInstruction(module.get(), "recv.2"));
+  EXPECT_NE(recv2, nullptr);
+  EXPECT_EQ(recv1->channel_id(), recv2->channel_id());
+
+  auto send1 =
+      DynCast<HloSendInstruction>(FindInstruction(module.get(), "send.1"));
+  EXPECT_NE(send1, nullptr);
+  auto send2 =
+      DynCast<HloSendInstruction>(FindInstruction(module.get(), "send.2"));
+  EXPECT_NE(send2, nullptr);
+  EXPECT_EQ(send1->channel_id(), send2->channel_id());
+
+  EXPECT_EQ(recv1->channel_id(), send1->channel_id());
+}
+
+TEST_F(CollectivePipelinerTest,
+       TransformRecvSendBackwardsWithLoopVariantParameter) {
+  constexpr absl::string_view hlo_string = R"(
+  HloModule module
+  cond {
+    param = (u32[], u32[2]) parameter(0)
+    count = get-tuple-element(param), index=0
+    ub = u32[] constant(2)
+    ROOT result = pred[] compare(count, ub), direction=LT
+  }
+
+  body {
+    param = (u32[], u32[2]) parameter(0)
+    count = get-tuple-element(param), index=0
+    send-data = get-tuple-element(param), index=1
+
+    after-all.0 = token[] after-all()
+    recv.0 = (u32[2], u32[], token[]) recv(after-all.0), channel_id=1,
+      frontend_attributes={
+        _xla_send_recv_source_target_pairs="{{3,0}}"
+      }
+    after-all.0.s = token[] after-all()
+    send.0 = (u32[2], u32[], token[]) send(send-data, after-all.0.s),
+      channel_id=1, frontend_attributes={
+        _xla_send_recv_source_target_pairs="{{3,0}}"
+      }
+    recv-done.0 = (u32[2], token[]) recv-done(recv.0), channel_id=1
+    recv-data = u32[2] get-tuple-element(recv-done.0), index=0
+
+    c1 = u32[] constant(1)
+    new_count = u32[] add(count, c1)
+
+    r = u32[2] broadcast(c1), dimensions={}
+    s = u32[2] add(r, recv-data)
+
+    send-done.0 = token[] send-done(send.0), channel_id=1
+    ROOT result = (u32[], u32[2]) tuple(new_count, s)
+  }
+
+  ENTRY test_computation {
+    c0 = u32[] constant(0)
+    c1 = u32[] constant(1)
+    r = u32[] replica-id()
+    a = u32[] add(c1, r)
+    init = u32[2] broadcast(a), dimensions={}
+    while_init = (u32[], u32[2]) tuple(c0, init)
+    while_result = (u32[], u32[2]) while(while_init), body=body, condition=cond
+    ROOT result = u32[2] get-tuple-element(while_result), index=1
+  })";
+
+  auto should_pipeline = [](const HloInstruction* instr) {
+    if (!HloPredicateIsOp<HloOpcode::kRecv>(instr) &&
+        !HloPredicateIsOp<HloOpcode::kSend>(instr))
+      return false;
+    const HloSendRecvInstruction* send_recv =
+        dynamic_cast<const HloSendRecvInstruction*>(instr);
+    // Check that the Send or Recv is used for non-trivial computation, which
+    // also help avoid repeatedly pipelining a loop.
+    return (send_recv->user_count() == 1 && send_recv->parent() != nullptr &&
+            send_recv->users()[0] != send_recv->parent()->root_instruction());
+  };
+  auto should_allow_loop_variant_parameter = [](const HloInstruction* instr) {
+    CHECK(instr->opcode() == HloOpcode::kGetTupleElement &&
+          instr->operand(0)->opcode() == HloOpcode::kParameter);
+    return true;
+  };
+  auto module = ParseAndReturnUnverifiedModule(hlo_string, config_).value();
+  EXPECT_TRUE(RunOptimizer(module.get(), /*last_run=*/true, 0,
+                           /*pipeline_use_tree=*/false,
+                           /*process_different_sized_ops=*/false,
+                           CollectivePipeliner::PipeliningDirection::kBackward,
+                           should_pipeline,
+                           /*acceptable_formatting=*/HloPredicateTrue,
+                           /*reuse_pipelined_op_buffer=*/HloPredicateTrue,
+                           should_allow_loop_variant_parameter)
+                  .value());
+  XLA_VLOG_LINES(10, module->ToString());
+  auto while_op = FindInstruction(module.get(), "while");
+  EXPECT_EQ(while_op->opcode(), HloOpcode::kWhile);
+  EXPECT_EQ(while_op->shape().tuple_shapes().size(), 5);
   auto recv1 =
       DynCast<HloRecvInstruction>(FindInstruction(module.get(), "recv.1"));
   EXPECT_NE(recv1, nullptr);

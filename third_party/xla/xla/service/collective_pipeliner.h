@@ -82,6 +82,11 @@ class CollectivePipeliner : public HloModulePass {
     // buffer we are storing the value in in the output loop for forward
     // pipelining. This function allows to not do it for certain ops.
     HloPredicate reuse_pipelined_op_buffer;
+    // Determine whether a loop variant parameter should be allowed in
+    // pipelining chains. This is currently only used to support kBackward
+    // pipelinining.
+    HloPredicate should_allow_loop_variant_parameter_in_chain =
+        HloPredicateFalse;
   };
   static const char* const kInsertedByPreviousStep;
   static const char* const kSunkByPreviousStep;
