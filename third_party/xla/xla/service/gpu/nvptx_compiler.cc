@@ -226,8 +226,6 @@ absl::Status NVPTXCompiler::OptimizeHloPostLayoutAssignment(
     HloModule* hlo_module, se::StreamExecutor* stream_exec,
     const CompileOptions& options, const TargetConfig& gpu_target_config,
     tsl::thread::ThreadPool* thread_pool) {
-  HloPassPipeline pre_pipeline("nvptx post-layout_assignment part 1");
-
   // This needs to run before GemmRewriter, which is part of
   // OptimizeHloPostLayoutAssignment().
   auto cuda_compute_capability = std::get<se::CudaComputeCapability>(
@@ -236,7 +234,6 @@ absl::Status NVPTXCompiler::OptimizeHloPostLayoutAssignment(
   if (hlo_module->config().debug_options().xla_gpu_enable_cudnn_fmha()) {
     HloPassPipeline mha_fusion_pipeline(
         "nvptx cudnn multi-headed attention fusion");
-    const DebugOptions& debug_options = hlo_module->config().debug_options();
     // The LayoutAssignment pass may leave behind kCopy instructions which are
     // duplicate or NOPs, so remove them with algebraic simplification and CSE.
     AlgebraicSimplifierOptions alg_sim_options =
@@ -249,11 +246,6 @@ absl::Status NVPTXCompiler::OptimizeHloPostLayoutAssignment(
         !hlo_module->config().debug_options().xla_gpu_enable_fast_min_max());
     alg_sim_options.set_enable_unconditional_reduce_of_concat_replacement(
         false);
-    if (debug_options.xla_gpu_normalize_layouts()) {
-      mha_fusion_pipeline.AddPass<ReshapeDecomposer>();
-      mha_fusion_pipeline.AddPass<HloPassFix<MoveCopyToUsers>>();
-      mha_fusion_pipeline.AddPass<LayoutNormalization>();
-    }
 
     mha_fusion_pipeline.AddPass<HloCSE>(/*is_layout_sensitive=*/true);
     mha_fusion_pipeline.AddPass<HloPassFix<AlgebraicSimplifier>>(
@@ -274,6 +266,7 @@ absl::Status NVPTXCompiler::OptimizeHloPostLayoutAssignment(
     TF_RETURN_IF_ERROR(mha_fusion_pipeline.Run(hlo_module).status());
   }
 
+  HloPassPipeline pre_pipeline("nvptx post-layout_assignment part 1");
   // Rewrite normalization patterns into cuDNN Custom Calls.
   pre_pipeline.AddPass<CudnnNormRewriter>(cuda_compute_capability);
 

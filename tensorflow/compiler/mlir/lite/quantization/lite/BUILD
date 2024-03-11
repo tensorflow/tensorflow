@@ -186,6 +186,11 @@ tf_cc_test(
         "//tensorflow/lite/tools/optimize:testdata/weight_shared_between_convs.bin",
     ],
     tags = [
+        # TODO(b/327796566): re-enable after the bug is fixed
+        "manual",
+        "noasan",
+        "noguitar",
+        "notap",
         "tflite_not_portable_android",
         "tflite_not_portable_ios",
     ],

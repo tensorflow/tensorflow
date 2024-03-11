@@ -16,34 +16,45 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/flatbuffer_operator.h"
 
 #include <cstddef>
+#include <cstdint>
 #include <optional>
 #include <string>
 #include <vector>
 
 #include "absl/strings/str_cat.h"
+#include "flatbuffers/buffer.h"  // from @flatbuffers
+#include "flatbuffers/flatbuffer_builder.h"  // from @flatbuffers
 #include "flatbuffers/flatbuffers.h"  // from @flatbuffers
 #include "flatbuffers/flexbuffers.h"  // from @flatbuffers
+#include "flatbuffers/string.h"  // from @flatbuffers
+#include "flatbuffers/vector.h"  // from @flatbuffers
+#include "llvm/ADT/APFloat.h"
 #include "llvm/ADT/APInt.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/ADT/StringSwitch.h"
 #include "llvm/ADT/Twine.h"
+#include "llvm/Support/ErrorHandling.h"
 #include "mlir/IR/AttrTypeSubElements.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "stablehlo/dialect/StablehloOps.h"  // from @stablehlo
+#include "stablehlo/dialect/VhloOps.h"  // from @stablehlo
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
 #include "tensorflow/compiler/mlir/lite/utils/convert_type.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/dynamic_shape_utils.h"
 #include "xla/statusor.h"
 #include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/platform/status.h"
+#include "tensorflow/lite/core/c/builtin_op_data.h"
 #include "tensorflow/lite/kernels/internal/kernel_utils.h"
 #include "tensorflow/lite/schema/mutable/schema_generated.h"
 #include "tensorflow/lite/schema/schema_utils.h"
+#include "tsl/platform/status.h"
 
 namespace {
 
@@ -87,7 +98,10 @@ std::string mlir::GetMlirOpNameFromOpCode(
 
   // If the Op name contains stablehlo
   if (IsStablehloOp(op_code)) {
-    return llvm::Twine("stablehlo.", op_name.drop_front(10).lower()).str();
+    return llvm::Twine(
+               llvm::Twine("vhlo.", op_name.drop_front(10).lower()).str(),
+               "_v1")
+        .str();
   }
   return llvm::Twine("tfl.", op_name.lower()).str();
 }
@@ -263,14 +277,38 @@ static mlir::Attribute BuildI64ArrayAttr(std::vector<int32_t> value,
   return builder.getI64ArrayAttr(typecast);
 }
 
+static mlir::Attribute BuildVhloBooleanV1Attr(bool value,
+                                              mlir::Builder builder) {
+  return mlir::vhlo::BooleanV1Attr::get(builder.getContext(), value);
+}
+
+static mlir::Attribute BuildVhloIntV1Attr(int64_t value,
+                                          mlir::Builder builder) {
+  mlir::StablehloVhloTypeConverter type_converter;
+  auto vhlo_type =
+      type_converter.convertType(builder.getI64IntegerAttr(value).getType());
+  return mlir::vhlo::IntegerV1Attr::get(builder.getContext(), vhlo_type,
+                                        llvm::APInt(64, value));
+}
+
+static mlir::Attribute BuildVhloStringV1Attr(llvm::StringRef str,
+                                             mlir::Builder builder) {
+  return mlir::vhlo::StringV1Attr::get(builder.getContext(), str);
+}
+
+static mlir::Attribute BuildVhloArrayV1Attr(std::vector<mlir::Attribute> value,
+                                            mlir::Builder builder) {
+  return mlir::vhlo::ArrayV1Attr::get(builder.getContext(), value);
+}
+
 static mlir::Attribute BuildRankedTensorAttr(std::vector<int64_t> shape,
                                              std::vector<bool> value,
                                              mlir::Builder builder) {
   // The implementation of getBoolVectorAttr is flawed, so we bypass it here
-  std::vector<int8_t> extendVec;
-  extendVec.reserve(value.size());
+  std::vector<llvm::APInt> extendVec;
+  extendVec.resize(value.size());
   for (size_t i = 0; i < value.size(); ++i) {
-    extendVec[i] = static_cast<int8_t>(value[i]);
+    extendVec[i] = llvm::APInt(1, value[i]);
   }
   mlir::RankedTensorType ty =
       tensorflow::GetTypeFromTFTensorShape(shape, builder.getIntegerType(1));
@@ -283,6 +321,41 @@ static mlir::Attribute BuildRankedTensorAttr(std::vector<int64_t> shape,
   mlir::RankedTensorType ty =
       tensorflow::GetTypeFromTFTensorShape(shape, builder.getIntegerType(64));
   return mlir::DenseIntElementsAttr::get(ty, value);
+}
+
+static mlir::Attribute BuildVhloTensorV1Attr(std::vector<int64_t> shape,
+                                             std::vector<int64_t> value,
+                                             mlir::Builder builder) {
+  mlir::StablehloVhloTypeConverter type_converter;
+  auto builtin_attr = BuildRankedTensorAttr(shape, value, builder)
+                          .dyn_cast<mlir::DenseIntElementsAttr>();
+  auto vhlo_type = type_converter.convertType(builtin_attr.getType());
+  return mlir::vhlo::TensorV1Attr::get(builder.getContext(), vhlo_type,
+                                       builtin_attr.getRawData());
+}
+
+static mlir::Attribute BuildVhloTensorV1Attr(std::vector<int64_t> shape,
+                                             std::vector<bool> value,
+                                             mlir::Builder builder) {
+  mlir::StablehloVhloTypeConverter type_converter;
+  auto builtin_attr = BuildRankedTensorAttr(shape, value, builder)
+                          .dyn_cast<mlir::DenseIntElementsAttr>();
+  auto vhlo_type = type_converter.convertType(builtin_attr.getType());
+  return mlir::vhlo::TensorV1Attr::get(builder.getContext(), vhlo_type,
+                                       builtin_attr.getRawData());
+}
+
+static mlir::Attribute BuildVhloPrecisionConfigV1Attr(
+    std::vector<tflite::StablehloPrecisionConfig> value,
+    mlir::Builder builder) {
+  llvm::SmallVector<mlir::Attribute> precision_attrs;
+  for (size_t i = 0; i < value.size(); ++i) {
+    precision_attrs.push_back(mlir::vhlo::PrecisionV1Attr::get(
+        builder.getContext(),
+        mlir::vhlo::symbolizePrecisionV1(static_cast<uint32_t>(value[i]))
+            .value()));
+  }
+  return mlir::vhlo::ArrayV1Attr::get(builder.getContext(), precision_attrs);
 }
 
 static mlir::Attribute BuildF32ArrayAttr(std::vector<float> value,
@@ -378,81 +451,166 @@ Status mlir::CustomOptionsToAttributes(
   return ::tensorflow::OkStatus();
 }
 
-// TODO(zichuanwei@): Populate Builtin_options_2 manual for now, should automate
-// these in the future
+// TODO(zichuanwei@): Populate Builtin_options_2 manual for now, should
+// automate these in the future
 void BuiltinOptions2ToAttributesManual(
     tflite::BuiltinOptions2Union op_union, mlir::Builder builder,
     llvm::SmallVectorImpl<mlir::NamedAttribute>& attributes) {
   if (const auto* op = op_union.AsStablehloConcatenateOptions()) {
     attributes.emplace_back(builder.getNamedAttr(
-        "dimension", BuildI64Attr(op->dimension, builder)));
+        "dimension", BuildVhloIntV1Attr(op->dimension, builder)));
     return;
   }
   if (const auto* op = op_union.AsStablehloBroadcastInDimOptions()) {
     attributes.emplace_back(builder.getNamedAttr(
         "broadcast_dimensions",
-        builder.getDenseI64ArrayAttr(op->broadcast_dimensions)));
+        BuildVhloTensorV1Attr(
+            {static_cast<int64_t>(op->broadcast_dimensions.size())},
+            op->broadcast_dimensions, builder)));
     return;
   }
   if (const auto* op = op_union.AsStablehloSliceOptions()) {
+    std::vector<int64_t> shape = {
+        static_cast<int64_t>(op->start_indices.size())};
     attributes.emplace_back(builder.getNamedAttr(
-        "start_indices", builder.getDenseI64ArrayAttr(op->start_indices)));
+        "start_indices",
+        BuildVhloTensorV1Attr(shape, op->start_indices, builder)));
     attributes.emplace_back(builder.getNamedAttr(
-        "limit_indices", builder.getDenseI64ArrayAttr(op->limit_indices)));
+        "limit_indices",
+        BuildVhloTensorV1Attr(shape, op->limit_indices, builder)));
     attributes.emplace_back(builder.getNamedAttr(
-        "strides", builder.getDenseI64ArrayAttr(op->strides)));
+        "strides", BuildVhloTensorV1Attr(shape, op->strides, builder)));
     return;
   }
   if (const auto* op = op_union.AsStablehloConvolutionOptions()) {
     if (!(op->window_strides.empty())) {
+      std::vector<int64_t> shape;
+      shape.push_back(static_cast<int64_t>(op->window_strides.size()));
       attributes.emplace_back(builder.getNamedAttr(
-          "window_strides", builder.getDenseI64ArrayAttr(op->window_strides)));
+          "window_strides",
+          BuildVhloTensorV1Attr(shape, op->window_strides, builder)));
+    } else {
+      std::vector<int64_t> data(op->input_spatial_dimensions.size(), 1);
+      std::vector<int64_t> shape;
+      shape.push_back(static_cast<int64_t>(data.size()));
+      attributes.emplace_back(builder.getNamedAttr(
+          "window_strides", BuildVhloTensorV1Attr(shape, data, builder)));
     }
     if (!(op->padding.empty())) {
       std::vector<int64_t> shape;
       shape.push_back(static_cast<int64_t>(op->padding.size()) / 2);
       shape.push_back(2);
       attributes.emplace_back(builder.getNamedAttr(
-          "padding", BuildRankedTensorAttr(shape, op->padding, builder)));
+          "padding", BuildVhloTensorV1Attr(shape, op->padding, builder)));
+    } else {
+      std::vector<int64_t> data(op->input_spatial_dimensions.size() * 2, 0);
+      std::vector<int64_t> shape;
+      shape.push_back(static_cast<int64_t>(data.size()) / 2);
+      shape.push_back(2);
+      attributes.emplace_back(builder.getNamedAttr(
+          "padding", BuildVhloTensorV1Attr(shape, data, builder)));
     }
     if (!(op->lhs_dilation.empty())) {
+      std::vector<int64_t> shape;
+      shape.push_back(static_cast<int64_t>(op->lhs_dilation.size()));
       attributes.emplace_back(builder.getNamedAttr(
-          "lhs_dilation", builder.getDenseI64ArrayAttr(op->lhs_dilation)));
+          "lhs_dilation",
+          BuildVhloTensorV1Attr(shape, op->lhs_dilation, builder)));
+    } else {
+      std::vector<int64_t> data(op->input_spatial_dimensions.size(), 1);
+      std::vector<int64_t> shape;
+      shape.push_back(static_cast<int64_t>(data.size()));
+      attributes.emplace_back(builder.getNamedAttr(
+          "lhs_dilation", BuildVhloTensorV1Attr(shape, data, builder)));
     }
     if (!(op->rhs_dilation.empty())) {
+      std::vector<int64_t> shape;
+      shape.push_back(static_cast<int64_t>(op->rhs_dilation.size()));
       attributes.emplace_back(builder.getNamedAttr(
-          "rhs_dilation", builder.getDenseI64ArrayAttr(op->rhs_dilation)));
-    }
-    if (!(op->window_reversal.empty())) {
-      llvm::SmallVector<bool> window_reversal;
-      for (bool b : op->window_reversal) window_reversal.push_back(b);
+          "rhs_dilation",
+          BuildVhloTensorV1Attr(shape, op->rhs_dilation, builder)));
+    } else {
+      std::vector<int64_t> data(op->input_spatial_dimensions.size(), 1);
+      std::vector<int64_t> shape;
+      shape.push_back(static_cast<int64_t>(data.size()));
       attributes.emplace_back(builder.getNamedAttr(
-          "window_reversal", builder.getDenseBoolArrayAttr(window_reversal)));
+          "rhs_dilation", BuildVhloTensorV1Attr(shape, data, builder)));
     }
     attributes.emplace_back(builder.getNamedAttr(
-        "dimension_numbers",
-        mlir::stablehlo::ConvDimensionNumbersAttr::get(
-            builder.getContext(), op->input_batch_dimension,
-            op->input_feature_dimension, op->input_spatial_dimensions,
-            op->kernel_input_feature_dimension,
-            op->kernel_output_feature_dimension, op->kernel_spatial_dimensions,
-            op->output_batch_dimension, op->output_feature_dimension,
-            op->output_spatial_dimensions)));
+        "window_reversal",
+        BuildVhloTensorV1Attr(
+            {static_cast<int64_t>(op->window_reversal.size())},
+            op->window_reversal, builder)));
     attributes.emplace_back(builder.getNamedAttr(
-        "feature_group_count", BuildI64Attr(op->feature_group_count, builder)));
+        "input_batch_dimension",
+        BuildVhloIntV1Attr(op->input_batch_dimension, builder)));
     attributes.emplace_back(builder.getNamedAttr(
-        "batch_group_count", BuildI64Attr(op->batch_group_count, builder)));
+        "input_feature_dimension",
+        BuildVhloIntV1Attr(op->input_feature_dimension, builder)));
+    attributes.emplace_back(builder.getNamedAttr(
+        "kernel_input_feature_dimension",
+        BuildVhloIntV1Attr(op->kernel_input_feature_dimension, builder)));
+    attributes.emplace_back(builder.getNamedAttr(
+        "kernel_output_feature_dimension",
+        BuildVhloIntV1Attr(op->kernel_output_feature_dimension, builder)));
+    attributes.emplace_back(builder.getNamedAttr(
+        "output_batch_dimension",
+        BuildVhloIntV1Attr(op->output_batch_dimension, builder)));
+    attributes.emplace_back(builder.getNamedAttr(
+        "output_feature_dimension",
+        BuildVhloIntV1Attr(op->output_feature_dimension, builder)));
+    attributes.emplace_back(builder.getNamedAttr(
+        "input_spatial_dimensions",
+        BuildVhloTensorV1Attr(
+            {static_cast<int64_t>(op->input_spatial_dimensions.size())},
+            op->input_spatial_dimensions, builder)));
+    attributes.emplace_back(builder.getNamedAttr(
+        "kernel_spatial_dimensions",
+        BuildVhloTensorV1Attr(
+            {static_cast<int64_t>(op->kernel_spatial_dimensions.size())},
+            op->kernel_spatial_dimensions, builder)));
+    attributes.emplace_back(builder.getNamedAttr(
+        "output_spatial_dimensions",
+        BuildVhloTensorV1Attr(
+            {static_cast<int64_t>(op->output_spatial_dimensions.size())},
+            op->output_spatial_dimensions, builder)));
+    attributes.emplace_back(builder.getNamedAttr(
+        "feature_group_count",
+        BuildVhloIntV1Attr(op->feature_group_count, builder)));
+    attributes.emplace_back(builder.getNamedAttr(
+        "batch_group_count",
+        BuildVhloIntV1Attr(op->batch_group_count, builder)));
     attributes.emplace_back(builder.getNamedAttr(
         "precision_config",
-        BuildStablehlo_PrecisionConfigAttr(op->precision_config, builder)));
+        BuildVhloPrecisionConfigV1Attr(op->precision_config, builder)));
 
     return;
   }
   if (const auto* op = op_union.AsStablehloCustomCallOptions()) {
+    // hard coding api version for now, we should rework this by updating the
+    // STABLEHLO_CUSTOM_CALL definition
     attributes.emplace_back(builder.getNamedAttr(
-        "call_target_name", BuildStrAttr(op->call_target_name, builder)));
+        "api_version",
+        mlir::vhlo::CustomCallApiVersionV1Attr::get(
+            builder.getContext(),
+            mlir::vhlo::symbolizeCustomCallApiVersionV1(op->api_version)
+                .value())));
     attributes.emplace_back(builder.getNamedAttr(
-        "backend_config", BuildStrAttr(op->backend_config, builder)));
+        "call_target_name",
+        BuildVhloStringV1Attr(op->call_target_name, builder)));
+    attributes.emplace_back(builder.getNamedAttr(
+        "backend_config", BuildVhloStringV1Attr(op->backend_config, builder)));
+    attributes.emplace_back(builder.getNamedAttr(
+        "called_computations", BuildVhloArrayV1Attr({}, builder)));
+    attributes.emplace_back(builder.getNamedAttr(
+        "operand_layouts", BuildVhloArrayV1Attr({}, builder)));
+    attributes.emplace_back(builder.getNamedAttr(
+        "output_operand_aliases", BuildVhloArrayV1Attr({}, builder)));
+    attributes.emplace_back(builder.getNamedAttr(
+        "result_layouts", BuildVhloArrayV1Attr({}, builder)));
+
+    std::string has_side_effect_key = "has_side_effect";
+    bool has_side_effect_set = false;
     const flexbuffers::Map& computation_map =
         flexbuffers::GetRoot(op->custom_attributes).AsMap();
     std::vector<mlir::Attribute> symbol_vec;
@@ -461,19 +619,23 @@ void BuiltinOptions2ToAttributesManual(
     for (size_t i = 0; i < keys.size(); ++i) {
       const auto key = keys[i].AsKey();
       const auto& value = computation_map[key];
+      if (has_side_effect_key == key) has_side_effect_set = true;
       if (value.IsBool()) {
         auto attr = value.AsBool();
         auto named_attr =
-            builder.getNamedAttr(key, BuildBoolAttr(attr, builder));
+            builder.getNamedAttr(key, BuildVhloBooleanV1Attr(attr, builder));
         attributes.emplace_back(named_attr);
       }
       if (value.IsString()) {
         auto attr = value.AsString();
-        auto named_attr =
-            builder.getNamedAttr(key, BuildStrAttr(attr.str(), builder));
+        auto named_attr = builder.getNamedAttr(
+            key, BuildVhloStringV1Attr(attr.str(), builder));
         attributes.emplace_back(named_attr);
       }
     }
+    if (!has_side_effect_set)
+      attributes.emplace_back(builder.getNamedAttr(
+          "has_side_effect", BuildVhloBooleanV1Attr(false, builder)));
     return;
   }
   if (const auto* op = op_union.AsStablehloPadOptions()) {
@@ -481,67 +643,80 @@ void BuiltinOptions2ToAttributesManual(
         static_cast<int64_t>(op->edge_padding_low.size())};
     attributes.emplace_back(builder.getNamedAttr(
         "edge_padding_low",
-        builder.getDenseI64ArrayAttr(op->edge_padding_low)));
+        BuildVhloTensorV1Attr(shape, op->edge_padding_low, builder)));
     attributes.emplace_back(builder.getNamedAttr(
         "edge_padding_high",
-        builder.getDenseI64ArrayAttr(op->edge_padding_high)));
+        BuildVhloTensorV1Attr(shape, op->edge_padding_high, builder)));
     attributes.emplace_back(builder.getNamedAttr(
         "interior_padding",
-        builder.getDenseI64ArrayAttr(op->interior_padding)));
+        BuildVhloTensorV1Attr(shape, op->interior_padding, builder)));
     return;
   }
   if (const auto* op = op_union.AsStablehloDynamicSliceOptions()) {
     attributes.emplace_back(builder.getNamedAttr(
-        "slice_sizes", builder.getDenseI64ArrayAttr(op->slice_sizes)));
+        "slice_sizes",
+        BuildVhloTensorV1Attr({static_cast<int64_t>(op->slice_sizes.size())},
+                              op->slice_sizes, builder)));
     return;
   }
   if (const auto* op = op_union.AsStablehloCompareOptions()) {
     attributes.emplace_back(builder.getNamedAttr(
         "comparison_direction",
-        mlir::stablehlo::ComparisonDirectionAttr::get(
-            builder.getContext(), mlir::stablehlo::symbolizeComparisonDirection(
-                                      op->comparison_direction)
-                                      .value())));
+        mlir::vhlo::ComparisonDirectionV1Attr::get(
+            builder.getContext(),
+            mlir::vhlo::symbolizeComparisonDirectionV1(op->comparison_direction)
+                .value())));
     attributes.emplace_back(builder.getNamedAttr(
         "compare_type",
-        mlir::stablehlo::ComparisonTypeAttr::get(
+        mlir::vhlo::ComparisonTypeV1Attr::get(
             builder.getContext(),
-            mlir::stablehlo::symbolizeComparisonType(op->compare_type)
-                .value())));
+            mlir::vhlo::symbolizeComparisonTypeV1(op->compare_type).value())));
     return;
   }
   if (const auto* op = op_union.AsStablehloIotaOptions()) {
     attributes.emplace_back(builder.getNamedAttr(
-        "iota_dimension", BuildI64Attr(op->iota_dimension, builder)));
+        "iota_dimension", BuildVhloIntV1Attr(op->iota_dimension, builder)));
     return;
   }
   if (const auto* op = op_union.AsStablehloReduceOptions()) {
     attributes.emplace_back(builder.getNamedAttr(
-        "dimensions", builder.getDenseI64ArrayAttr(op->dimensions)));
+        "dimensions",
+        BuildVhloTensorV1Attr({static_cast<int64_t>(op->dimensions.size())},
+                              op->dimensions, builder)));
     return;
   }
   if (const auto* op = op_union.AsStablehloReduceWindowOptions()) {
     if (!op->window_dimensions.empty()) {
       attributes.emplace_back(builder.getNamedAttr(
           "window_dimensions",
-          builder.getDenseI64ArrayAttr(op->window_dimensions)));
+          BuildVhloTensorV1Attr(
+              {static_cast<int64_t>(op->window_dimensions.size())},
+              op->window_dimensions, builder)));
     }
     if (!op->window_strides.empty()) {
       attributes.emplace_back(builder.getNamedAttr(
-          "window_strides", builder.getDenseI64ArrayAttr(op->window_strides)));
+          "window_strides",
+          BuildVhloTensorV1Attr(
+              {static_cast<int64_t>(op->window_strides.size())},
+              op->window_strides, builder)));
     }
     if (!op->base_dilations.empty()) {
       attributes.emplace_back(builder.getNamedAttr(
-          "base_dilations", builder.getDenseI64ArrayAttr(op->base_dilations)));
+          "base_dilations",
+          BuildVhloTensorV1Attr(
+              {static_cast<int64_t>(op->base_dilations.size())},
+              op->base_dilations, builder)));
     }
     if (!op->window_dilations.empty()) {
       attributes.emplace_back(builder.getNamedAttr(
           "window_dilations",
-          builder.getDenseI64ArrayAttr(op->window_dilations)));
+          BuildVhloTensorV1Attr(
+              {static_cast<int64_t>(op->window_dilations.size())},
+              op->window_dilations, builder)));
     }
     if (!op->padding.empty()) {
       attributes.emplace_back(builder.getNamedAttr(
-          "padding", BuildRankedTensorAttr(
+          "padding", BuildVhloTensorV1Attr(
                          {static_cast<int64_t>(op->padding.size()) / 2, 2},
                          op->padding, builder)));
     }
@@ -549,67 +724,115 @@ void BuiltinOptions2ToAttributesManual(
   }
   if (const auto* op = op_union.AsStablehloDotGeneralOptions()) {
     attributes.emplace_back(builder.getNamedAttr(
-        "dot_dimension_numbers",
-        mlir::stablehlo::DotDimensionNumbersAttr::get(
-            builder.getContext(), op->lhs_batching_dimensions,
-            op->rhs_batching_dimensions, op->lhs_contracting_dimensions,
-            op->rhs_contracting_dimensions)));
+        "lhs_batching_dimensions",
+        BuildVhloTensorV1Attr(
+            {static_cast<int64_t>(op->lhs_batching_dimensions.size())},
+            op->lhs_batching_dimensions, builder)));
+    attributes.emplace_back(builder.getNamedAttr(
+        "rhs_batching_dimensions",
+        BuildVhloTensorV1Attr(
+            {static_cast<int64_t>(op->rhs_batching_dimensions.size())},
+            op->rhs_batching_dimensions, builder)));
+    attributes.emplace_back(builder.getNamedAttr(
+        "lhs_contracting_dimensions",
+        BuildVhloTensorV1Attr(
+            {static_cast<int64_t>(op->lhs_contracting_dimensions.size())},
+            op->lhs_contracting_dimensions, builder)));
+    attributes.emplace_back(builder.getNamedAttr(
+        "rhs_contracting_dimensions",
+        BuildVhloTensorV1Attr(
+            {static_cast<int64_t>(op->rhs_contracting_dimensions.size())},
+            op->rhs_contracting_dimensions, builder)));
     attributes.emplace_back(builder.getNamedAttr(
         "precision_config",
-        BuildStablehlo_PrecisionConfigAttr(op->precision_config, builder)));
+        BuildVhloPrecisionConfigV1Attr(op->precision_config, builder)));
     return;
   }
   if (const auto* op = op_union.AsStablehloSortOptions()) {
     attributes.emplace_back(builder.getNamedAttr(
-        "dimension", BuildI64Attr(op->dimension, builder)));
+        "dimension", BuildVhloIntV1Attr(op->dimension, builder)));
     attributes.emplace_back(builder.getNamedAttr(
-        "is_stable", BuildBoolAttr(op->is_stable, builder)));
+        "is_stable",
+        mlir::vhlo::BooleanV1Attr::get(builder.getContext(), op->is_stable)));
     return;
   }
   if (const auto* op = op_union.AsStablehloScatterOptions()) {
-    auto attr = mlir::stablehlo::ScatterDimensionNumbersAttr::get(
-        builder.getContext(), op->update_window_dims, op->inserted_window_dims,
-        op->scatter_dims_to_operand_dims, op->index_vector_dim);
-    attributes.emplace_back(
-        builder.getNamedAttr("scatter_dimension_numbers", attr));
+    attributes.emplace_back(builder.getNamedAttr(
+        "update_window_dims",
+        BuildVhloTensorV1Attr(
+            {static_cast<int64_t>(op->update_window_dims.size())},
+            op->update_window_dims, builder)));
+    attributes.emplace_back(builder.getNamedAttr(
+        "inserted_window_dims",
+        BuildVhloTensorV1Attr(
+            {static_cast<int64_t>(op->inserted_window_dims.size())},
+            op->inserted_window_dims, builder)));
+    attributes.emplace_back(builder.getNamedAttr(
+        "scatter_dims_to_operand_dims",
+        BuildVhloTensorV1Attr(
+            {static_cast<int64_t>(op->scatter_dims_to_operand_dims.size())},
+            op->scatter_dims_to_operand_dims, builder)));
+    attributes.emplace_back(builder.getNamedAttr(
+        "unique_indices", mlir::vhlo::BooleanV1Attr::get(builder.getContext(),
+                                                         op->unique_indices)));
+    attributes.emplace_back(builder.getNamedAttr(
+        "indices_are_sorted",
+        mlir::vhlo::BooleanV1Attr::get(builder.getContext(),
+                                       op->indices_are_sorted)));
+    attributes.emplace_back(builder.getNamedAttr(
+        "index_vector_dim", BuildVhloIntV1Attr(op->index_vector_dim, builder)));
     return;
   }
   if (const auto* op = op_union.AsStablehloGatherOptions()) {
-    auto gather_dim = mlir::stablehlo::GatherDimensionNumbersAttr::get(
-        builder.getContext(), op->offset_dims, op->collapsed_slice_dims,
-        op->start_index_map, op->index_vector_dim);
-    attributes.emplace_back(
-        builder.getNamedAttr("dimension_numbers", gather_dim));
-    if (!op->slice_sizes.empty()) {
-      attributes.emplace_back(builder.getNamedAttr(
-          "slice_sizes", builder.getDenseI64ArrayAttr(op->slice_sizes)));
-    }
     attributes.emplace_back(builder.getNamedAttr(
-        "indices_are_sorted", BuildBoolAttr(op->indices_are_sorted, builder)));
+        "slice_sizes",
+        BuildVhloTensorV1Attr({static_cast<int64_t>(op->slice_sizes.size())},
+                              op->slice_sizes, builder)));
+    attributes.emplace_back(builder.getNamedAttr(
+        "collapsed_slice_dims",
+        BuildVhloTensorV1Attr(
+            {static_cast<int64_t>(op->collapsed_slice_dims.size())},
+            op->collapsed_slice_dims, builder)));
+    attributes.emplace_back(builder.getNamedAttr(
+        "start_index_map",
+        BuildVhloTensorV1Attr(
+            {static_cast<int64_t>(op->start_index_map.size())},
+            op->start_index_map, builder)));
+    attributes.emplace_back(builder.getNamedAttr(
+        "index_vector_dim", BuildVhloIntV1Attr(op->index_vector_dim, builder)));
+    attributes.emplace_back(builder.getNamedAttr(
+        "offset_dims",
+        BuildVhloTensorV1Attr({static_cast<int64_t>(op->offset_dims.size())},
+                              op->offset_dims, builder)));
+    attributes.emplace_back(builder.getNamedAttr(
+        "indices_are_sorted",
+        mlir::vhlo::BooleanV1Attr::get(builder.getContext(),
+                                       op->indices_are_sorted)));
     return;
   }
   if (const auto* op = op_union.AsStablehloTransposeOptions()) {
     if (!op->permutation.empty()) {
       attributes.emplace_back(builder.getNamedAttr(
-          "permutation", builder.getDenseI64ArrayAttr(op->permutation)));
+          "permutation",
+          BuildVhloTensorV1Attr({static_cast<int64_t>(op->permutation.size())},
+                                op->permutation, builder)));
     }
-
     return;
   }
   if (const auto* op = op_union.AsStablehloRngBitGeneratorOptions()) {
-    mlir::stablehlo::RngAlgorithm algorithm;
+    mlir::vhlo::RngAlgorithmV1 algorithm;
     switch (op->algorithm) {
       case tflite::RngAlgorithm_THREEFRY:
-        algorithm = mlir::stablehlo::RngAlgorithm::THREE_FRY;
+        algorithm = mlir::vhlo::RngAlgorithmV1::THREE_FRY;
         break;
       case tflite::RngAlgorithm_PHILOX:
-        algorithm = mlir::stablehlo::RngAlgorithm::PHILOX;
+        algorithm = mlir::vhlo::RngAlgorithmV1::PHILOX;
         break;
       case tflite::RngAlgorithm_DEFAULT:
-        algorithm = mlir::stablehlo::RngAlgorithm::DEFAULT;
+        algorithm = mlir::vhlo::RngAlgorithmV1::DEFAULT;
     }
     auto attr =
-        mlir::stablehlo::RngAlgorithmAttr::get(builder.getContext(), algorithm);
+        mlir::vhlo::RngAlgorithmV1Attr::get(builder.getContext(), algorithm);
     attributes.emplace_back(builder.getNamedAttr("rng_algorithm", attr));
     return;
   }

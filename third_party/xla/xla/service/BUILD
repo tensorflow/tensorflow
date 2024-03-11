@@ -3173,6 +3173,7 @@ cc_library(
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:statusor",
@@ -5024,6 +5025,7 @@ cc_library(
         "//xla:shape_util",
         "//xla/hlo/ir:hlo",
         "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/status:statusor",
         "@local_tsl//tsl/platform:errors",
     ],
 )
@@ -5045,6 +5047,7 @@ xla_cc_test(
         "//xla/tests:hlo_test_base",
         "//xla/tests:literal_test_util",
         "//xla/tests:xla_internal_test_main",
+        "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/strings",
     ],
 )
@@ -6176,7 +6179,9 @@ cc_library(
     hdrs = ["while_loop_constant_sinking.h"],
     deps = [
         ":hlo_pass",
+        ":pattern_matcher",
         ":while_util",
+        "//xla:shape_util",
         "//xla:statusor",
         "//xla:util",
         "//xla/hlo/ir:hlo",
