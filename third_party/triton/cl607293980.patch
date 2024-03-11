@@ -3,7 +3,7 @@ diff --git a/include/triton/Tools/Sys/GetEnv.hpp b/include/triton/Tools/Sys/GetE
 index 31bc03fe1..a19a432df 100644
 --- a/include/triton/Tools/Sys/GetEnv.hpp
 +++ b/include/triton/Tools/Sys/GetEnv.hpp
-@@ -34,9 +34,10 @@ inline const std::set<std::string> ENV_VARS = {
+@@ -34,7 +34,7 @@ inline const std::set<std::string> ENV_VARS = {
      "AMDGCN_ENABLE_DUMP",
      "DISABLE_FAST_REDUCTION",
      "DISABLE_LLVM_OPT",
@@ -11,7 +11,4 @@ index 31bc03fe1..a19a432df 100644
 +    "ENABLE_MMA_V3",
      "DISABLE_PTXAS_OPT",
      "LLVM_IR_ENABLE_DUMP",
-+    "MLIR_ENABLE_DIAGNOSTICS",
      "MLIR_ENABLE_DUMP",
-     "TRITON_DISABLE_LINE_INFO",
-     "TRITON_DISABLE_RESHAPE_ENCODING_INFERENCE",
