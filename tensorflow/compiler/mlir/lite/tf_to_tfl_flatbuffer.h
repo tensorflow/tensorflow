@@ -83,8 +83,8 @@ Status ConvertTFExecutorToStablehloFlatbuffer(
 // variables. If the `saved_model_dir` directory path is provided, then the
 // `tf_saved_model.asset` ops will be freezed.
 Status ConvertTFExecutorToTFLOrFlatbuffer(
-    mlir::ModuleOp module, bool export_to_mlir,
-    const toco::TocoFlags& toco_flags, const mlir::TFL::PassConfig& pass_config,
+    mlir::ModuleOp module, bool export_to_mlir, toco::TocoFlags& toco_flags,
+    const mlir::TFL::PassConfig& pass_config,
     const std::unordered_set<std::string>& saved_model_tags,
     llvm::StringRef saved_model_dir, SavedModelBundle* saved_model_bundle,
     std::string* result, bool serialize_stablehlo_ops = false,

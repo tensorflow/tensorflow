@@ -25,7 +25,7 @@ namespace mlir::quant::stablehlo {
 // required to collect tensor statistics.
 void AddPreCalibrationPasses(
     OpPassManager& pm,
-    const ::tensorflow::quantization::CalibrationOptions& calibration_options,
+    const ::stablehlo::quantization::CalibrationOptions& calibration_options,
     const ::stablehlo::quantization::QuantizationSpecs& specs,
     const ::stablehlo::quantization::DebuggerConfig& debugger_config);
 
