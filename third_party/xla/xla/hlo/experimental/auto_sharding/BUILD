@@ -319,6 +319,7 @@ xla_cc_test(
         ":auto_sharding_option",
         ":auto_sharding_util",
         "//xla:statusor",
+        "//xla:test_helpers",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/utils:hlo_matchers",
         "//xla/service:hlo_parser",

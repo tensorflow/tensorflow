@@ -3681,6 +3681,18 @@ bool IsModuleManuallySharded(const HloModule* module) {
   return false;
 }
 
+bool ShardedOnTooManyMeshAxes(const HloModule& module) {
+  for (const auto* computation : module.computations()) {
+    for (const auto* instruction : computation->instructions()) {
+      if (instruction->has_sharding() && instruction->sharding().IsTiled() &&
+          spmd::NumTileDimensions(instruction->sharding()) >= 3) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
 std::unique_ptr<HloModule> CloneModule(const HloModule* module) {
   auto module_clone = module->Clone("");
   module_clone->set_layout_canonicalization_callback(
@@ -3700,6 +3712,13 @@ absl::StatusOr<bool> AutoSharding::Run(
     LOG(FATAL)
         << "Auto-sharding on partially manually sharded modules is not yet "
            "supported. Please fall back on the sharding propagation pass.";
+    return false;
+  }
+
+  if (ShardedOnTooManyMeshAxes(*module)) {
+    LOG(FATAL) << "The input module contains sharding annotations over a mesh "
+                  "with too many axes (>2). This case is currently not well "
+                  "supported.";
     return false;
   }
 
