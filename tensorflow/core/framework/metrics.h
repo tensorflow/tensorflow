@@ -346,6 +346,20 @@ void UpdateTfMlirBridgeFirstPhaseCounter(const std::string& device_type,
                                          bool fallback_enabled,
                                          const std::string& result);
 
+enum class Phase2XlaCompilerMetric {
+  // Bridge phase 2 CompileSingleOp Xla Builder (old version) was successful
+  kCompileSingleOpXlaBuilderSuccess,
+  // Bridge phase 2 CompileSingleOp Xla Builder (old version) failed
+  kCompileSingleOpXlaBuilderFailure,
+  // Bridge phase 2 CompileSingleOp MLIR version was successful
+  kCompileSingleOpMlirSuccess,
+  // Bridge phase 2 CompileSingleOp MLIR version failed
+  kCompileSingleOpMlirFailure,
+};
+
+// Records the activity of the XlaCompiler entry points.
+void IncrementPhase2XlaCompilerCounter(Phase2XlaCompilerMetric metric);
+
 enum class MlirBridgeSecondPhaseMetric {
   // MLIR bridge phase 2 was executed and the graph was processed successfully
   // (fallback enabled).

@@ -456,6 +456,13 @@ auto* mlir_second_phase_count = tensorflow::monitoring::Counter<1>::New(
     "the MLIR or the old bridge will be used" /* metric description */,
     "status" /* metric label */);
 
+auto* phase_2_xla_compiler_count = tensorflow::monitoring::Counter<1>::New(
+    "/tensorflow/compiler/tf2xla/xla_compiler/"
+    "compilation_status" /*metric_name*/,
+    "Counts the number of times the xla builder vs mlir was "
+    "used for XlaCompiler entry points." /* metric description*/,
+    "status" /* metric label */);
+
 auto* tf1_features_by_graph_count = tsl::monitoring::Counter<5>::New(
     "/tensorflow/core/tf1_features_by_graph_count",
     "Marks which tf1 feature (if any) a graph contains.", "device", "context",
@@ -980,6 +987,23 @@ void IncrementTfMlirBridgeSecondPhaseCounter(
 
   mlir_second_phase_count
       ->GetCell(std::string(mlir_bridge_second_phase_metric_names->at(metric)))
+      ->IncrementBy(1);
+}
+
+void IncrementPhase2XlaCompilerCounter(Phase2XlaCompilerMetric metric) {
+  static auto* metric_names =
+      new absl::flat_hash_map<Phase2XlaCompilerMetric, absl::string_view>{
+          {Phase2XlaCompilerMetric::kCompileSingleOpXlaBuilderSuccess,
+           "kCompileSingleOpXlaBuilderSuccess"},
+          {Phase2XlaCompilerMetric::kCompileSingleOpXlaBuilderFailure,
+           "kCompileSingleOpXlaBuilderFailure"},
+          {Phase2XlaCompilerMetric::kCompileSingleOpMlirSuccess,
+           "kCompileSingleOpMlirSuccess"},
+          {Phase2XlaCompilerMetric::kCompileSingleOpMlirFailure,
+           "kCompileSingleOpMlirFailure"},
+      };
+
+  phase_2_xla_compiler_count->GetCell(std::string(metric_names->at(metric)))
       ->IncrementBy(1);
 }
 
