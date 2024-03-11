@@ -450,6 +450,20 @@ TEST_F(ElementalHloToMlirTest, ConvertToUnsigned) {
   )"));
 }
 
+TEST_F(ElementalHloToMlirTest, PopulationCountUnsigned) {
+  TF_EXPECT_OK(Run(R"(
+     ENTRY main{
+       p0 = u32[10,1,4]{2,1,0} parameter(0)
+       ROOT popcnt = u32[10,1,4]{2,1,0} popcnt(p0)
+     })",
+                   R"(
+    // CHECK:      @main_popcnt(
+    // CHECK:        builtin.unrealized_conversion_cast %{{.*}} : ui32 to i32
+    // CHECK:        math.ctpop %{{.*}} : i32
+    // CHECK:        builtin.unrealized_conversion_cast %{{.*}} : i32 to ui32
+  )"));
+}
+
 TEST_F(ElementalHloToMlirTest, InjectedParameter) {
   TF_EXPECT_OK(Run(
       R"(

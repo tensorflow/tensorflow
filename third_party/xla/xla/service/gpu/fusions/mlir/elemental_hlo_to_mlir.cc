@@ -737,7 +737,7 @@ absl::StatusOr<SmallVector<Value>> HloToMlir(
     case HloOpcode::kOr:
       return MapElementwiseOp<mhlo::OrOp>(arg_types, operands, builder);
     case HloOpcode::kPopulationCount:
-      return MapHloOp<mhlo::PopulationCountOp>(element_mlir_type, arg_types,
+      return MapHloOp<mhlo::PopulationCountOp>(result_element_type, arg_types,
                                                operands, builder);
     case HloOpcode::kPower:
       return MapElementwiseOp<mhlo::PowOp>(arg_types, operands, builder);
