@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/kernels/data/repeat_dataset_op.h"
 
+#include <cstdint>
 #include <cstdlib>
 #include <functional>
 #include <memory>
@@ -373,8 +374,7 @@ class RepeatDatasetOp::Dataset : public DatasetBase {
       return ctx_with_index_mapper;
     }
 
-    std::function<int64_t(int64_t)> GetIndexMapper(
-        std::function<int64_t(int64_t)> parent_index_mapper) const
+    IndexMapperFn GetIndexMapper(IndexMapperFn parent_index_mapper) const
         TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
       int64_t input_cardinality = dataset()->input_->Cardinality();
       int64_t repeat_count = i_;
