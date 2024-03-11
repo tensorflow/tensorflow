@@ -64,3 +64,25 @@ cc_test(
         "@com_google_benchmark//:benchmark",
     ],
 )
+
+cc_library(
+    name = "util",
+    srcs = ["util.cc"],
+    hdrs = ["util.h"],
+    deps = [
+        "//tensorflow/lite/experimental/shlo:shape",
+        "@com_google_absl//absl/status",
+    ],
+)
+
+cc_test(
+    name = "util_test",
+    srcs = ["util_test.cc"],
+    deps = [
+        ":util",
+        "//tensorflow/lite/experimental/shlo:shape",
+        "//tensorflow/lite/experimental/shlo:status_matcher",
+        "@com_google_absl//absl/status",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
