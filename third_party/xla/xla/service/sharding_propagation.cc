@@ -131,7 +131,7 @@ std::optional<HloSharding> ReturnImprovedShardingImpl(
   if (!IsSpatiallyPartitioned(from)) {
     return std::nullopt;
   }
-  // Any sharding is better then no sharding.
+  // Any sharding is better than no sharding.
   if (to_improved == nullptr) {
     return from;
   }
@@ -243,7 +243,7 @@ bool MaybeImproveInstructionSubSharding(
 }
 
 // We consider a convolution kernel to be small iff it is smaller along all
-// spatial dimensions then the output of the convolution. The rational is that
+// spatial dimensions than the output of the convolution. The rational is that
 // we can either shard the kernel or the output and we want to shard the larger
 // one for better efficiency.
 bool IsConvolutionKernelSmall(const HloInstruction* instruction) {
@@ -1435,11 +1435,12 @@ bool InferConvolutionShardingFromOperands(HloInstruction* instruction,
                                            instruction,
                                            may_combine_partial_sharding);
   }
-  // If the kernel is large (e.g backward convolution) then we only support
-  // replicated output.
+  // If the kernel is large (e.g., backward convolution) then we only support
+  // replicated output. We intend to keep the sharding along the batch dimension
+  // between lhs and output.
   return MaybeImproveInstructionSharding(
-      hlo_sharding_util::ReplicateAllDataDims(lhs->sharding(),
-                                              instruction->shape().rank()),
+      hlo_sharding_util::PartiallyReplicateTiledShardingOnAllDimsExcept(
+          lhs->sharding(), {dnums.input_batch_dimension()}),
       instruction, may_combine_partial_sharding);
 }
 
@@ -3186,8 +3187,8 @@ absl::StatusOr<bool> ShardingPropagation::Run(
             }
           }
         };
-        // Firstly, iterate the shard groups to take shardings from instructions
-        // of the same group.
+        // 1. Iterate the shard groups to take shardings from instructions of
+        // the same group.
         for (HloInstruction* instruction : instructions) {
           if (already_inferred_from_shard_group.contains(instruction)) {
             continue;
@@ -3220,7 +3221,7 @@ absl::StatusOr<bool> ShardingPropagation::Run(
             changed_last_iter = true;
           }
         }
-        // Secondly, iterate the HLO graph in post order taking shardings from
+        // 2. Iterate the HLO graph in post order taking shardings from
         // operands.
         for (HloInstruction* instruction : instructions) {
           if (already_inferred_from_operands.contains(instruction)) {
@@ -3261,8 +3262,8 @@ absl::StatusOr<bool> ShardingPropagation::Run(
             changed_last_iter = true;
           }
         }
-        // Then iterate the HLO graph in reverse post order taking shardings
-        // from users.
+        // 3. Iterate the HLO graph in reverse post order taking shardings from
+        // users.
         for (auto it = instructions.rbegin(); it != instructions.rend(); ++it) {
           if ((*it)->IsCustomCall("SPMDFullToShardShape") ||
               (*it)->IsCustomCall("SPMDShardToFullShape")) {

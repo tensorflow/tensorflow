@@ -19,17 +19,28 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
+#include "absl/strings/string_view.h"
+#include "absl/types/span.h"
+#include "xla/hlo/ir/hlo_computation.h"
+#include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_op_metadata.h"
+#include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/hlo/transforms/hlo_constant_splitter.h"
 #include "xla/hlo/utils/hlo_matchers.h"
 #include "xla/protobuf_util.h"
 #include "xla/service/hlo_dce.h"
 #include "xla/service/hlo_parser.h"
 #include "xla/tests/hlo_test_base.h"
+#include "xla/util.h"
 #include "xla/xla_data.pb.h"
+#include "tsl/platform/statusor.h"
 
 namespace op = xla::testing::opcode_matchers;
 
@@ -3103,6 +3114,41 @@ ENTRY entry {
   if (GetParam().propagate_metadata && !GetParam().clear_metadata) {
     EXPECT_THAT(instruction->sharding(),
                 ShardingMetadata({CreateMetadata("b")}));
+  } else {
+    EXPECT_THAT(instruction->sharding(), ShardingMetadata({}));
+  }
+}
+
+TEST_P(ParameterizedMetadataTest, ConvolutionDataParallelism) {
+  const char* const hlo_string = R"(
+HloModule module
+
+ENTRY entry {
+  p0 = f32[256,512,16,32] parameter(0), sharding={devices=[2,2,2,2]<=[16] metadata={op_name="lhs_sharding"}}
+  p1 = f32[512,1,12,28] parameter(1), sharding={replicated metadata={op_name="rhs_sharding"}}
+  conv = f32[256,512,5,5] convolution(p0, p1), window={size=12x28}, dim_labels=bf01_oi01->bf01, feature_group_count=512
+  ROOT copy = f32[256,512,5,5] copy(conv)
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  if (GetParam().clear_metadata) {
+    ClearMetadata(module.get());
+  }
+  TF_ASSERT_OK_AND_ASSIGN(
+      bool changed,
+      ShardingPropagation(/*is_spmd=*/true, GetParam().propagate_metadata)
+          .Run(module.get()));
+  XLA_VLOG_LINES(1, module->ToString());
+  EXPECT_TRUE(changed);
+  auto* instruction = FindInstruction(module.get(), "conv");
+  ASSERT_NE(instruction, nullptr);
+  EXPECT_THAT(
+      instruction,
+      op::Sharding("{devices=[2,1,1,1,8]<=[16] last_tile_dim_replicate}"));
+  if (GetParam().propagate_metadata && !GetParam().clear_metadata) {
+    EXPECT_THAT(instruction->sharding(),
+                ShardingMetadata({CreateMetadata("lhs_sharding")}));
   } else {
     EXPECT_THAT(instruction->sharding(), ShardingMetadata({}));
   }
