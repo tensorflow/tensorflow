@@ -52,8 +52,6 @@ class HostExecutor : public internal::StreamExecutorInterface {
  public:
   HostExecutor() = default;
 
-  // The stack size used for host streams can be set via
-  // device_options.non_portable_tags["host_stack_size"].
   absl::Status Init(int device_ordinal, DeviceOptions device_options) override;
 
   absl::Status GetKernel(const MultiKernelLoaderSpec& spec,
@@ -145,10 +143,6 @@ class HostExecutor : public internal::StreamExecutorInterface {
       override;
 
   std::unique_ptr<internal::StreamInterface> GetStreamImplementation() override;
-
- private:
-  // Size of thread stacks for streams in bytes. '0' means "the default size".
-  size_t thread_stack_size_in_bytes_ = 0;
 };
 
 }  // namespace host
