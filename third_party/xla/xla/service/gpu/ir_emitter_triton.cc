@@ -123,6 +123,7 @@ limitations under the License.
 #include "tsl/platform/status.h"
 #include "tsl/platform/statusor.h"
 #include "tsl/platform/tensor_float_32_utils.h"
+#include "triton/Conversion/TritonGPUToLLVM/Passes.h"
 #include "triton/Conversion/TritonToTritonGPU/TritonToTritonGPUPass.h"
 #include "triton/Dialect/Triton/IR/Dialect.h"
 #include "triton/Dialect/Triton/IR/Types.h"
@@ -746,7 +747,7 @@ absl::StatusOr<Value> EmitScope(
 absl::Status CreateTritonPipeline(
     mlir::OpPassManager& pm, const se::CudaComputeCapability& cc,
     const TritonGemmConfig& config,
-    mlir::triton::nvidia_gpu::ClusterInfo& out_cluster_info) {
+    mt::nvidia_gpu::ClusterInfo& out_cluster_info) {
   const int ccAsInt = cc.major * 10 + cc.minor;
   const int threadsPerWarp = 32;
 
@@ -795,13 +796,11 @@ absl::Status CreateTritonPipeline(
 
   // Based on make_llir() in
   // @triton//:third_party/nvidia/backend/compiler.py
-  pm.addPass(mlir::triton::gpu::createDecomposeUnsupportedConversionsPass());
+  pm.addPass(mt::gpu::createDecomposeUnsupportedConversionsPass());
   pm.addPass(mlir::createConvertSCFToCFPass());
   pm.addPass(mlir::createConvertIndexToLLVMPass());
-  pm.addPass(mlir::triton::gpu::createAllocateSharedMemoryPass());
-  pm.addPass(
-      mt::createConvertTritonGPUToLLVMPass(ccAsInt,
-                                           /*target=*/mlir::triton::NVVM));
+  pm.addPass(mt::gpu::createAllocateSharedMemoryPass());
+  pm.addPass(mt::createConvertTritonGPUToLLVMPass(ccAsInt));
   pm.addPass(mt::createConvertNVGPUToLLVMPass());
   pm.addPass(mlir::createArithToLLVMConversionPass());
   pm.addPass(mlir::createCanonicalizerPass());
