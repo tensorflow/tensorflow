@@ -2816,6 +2816,7 @@ std::string StatisticsVizToString(const StatisticsViz& statistics_viz);
 std::string RandomAlgorithmToString(const RandomAlgorithm& algorithm);
 std::string RandomDistributionToString(const RandomDistribution& distribution);
 std::string PrecisionToString(const PrecisionConfig::Precision& precision);
+std::string AlgorithmToString(const PrecisionConfig::Algorithm& algorithm);
 std::string DotDimensionNumbersToString(const DotDimensionNumbers& dnums);
 std::string ConvolutionDimensionNumbersToString(
     const ConvolutionDimensionNumbers& dnums);
@@ -2826,6 +2827,8 @@ StatusOr<RandomAlgorithm> StringToRandomAlgorithm(const std::string& name);
 StatusOr<RandomDistribution> StringToRandomDistribution(
     const std::string& name);
 StatusOr<PrecisionConfig::Precision> StringToPrecision(const std::string& name);
+absl::StatusOr<PrecisionConfig::Algorithm> StringToAlgorithm(
+    const std::string& name);
 StatusOr<CustomCallSchedule> StringToCustomCallSchedule(absl::string_view name);
 StatusOr<CustomCallApiVersion> StringToCustomCallApiVersion(
     absl::string_view name);

@@ -947,9 +947,65 @@ message PrecisionConfig {
 
     // Next: 4
   }
+
+  // The algorithm used to evaluate the instruction.
+  //
+  // The naming convention for the dot instruction is
+  // ALG_DOT_{A_TYPE}_{B_TYPE}_{ACCUM_TYPE}[_X{NUM_OPS}] where A_TYPE, B_TYPE
+  // and ACCUM_TYPE correspond to the types in the "primitive dot operations"
+  // (such as TensorCore operations) and NUM_OPS is the number of such
+  // operations used per "primitive tile". When the NUM_OPS
+  // field is skipped, it is assumed to be 1. The types mentioned in the name
+  // are independent of the storage types.
+  //
+  // In general ATYPE and BTYPE are the precisions that the LHS and RHS of the
+  // operation are rounded to and ACCUMTYPE is the accumulation type. If a
+  // backend does not support the given algorithm, an error is raised. The
+  // Algorithm enum is intended to eventually replace the Precision enum.
+  //
+  enum Algorithm {
+    // If the algorithm is `ALG_UNSET`, we will decide the algorithm based on
+    // the operand_precision values (for now).
+    ALG_UNSET = 0;
+    // The storage type can be any 8-bit floating point type.
+    ALG_DOT_ANY_F8_ANY_F8_F32 = 1;
+    // The storage type can be any 8-bit floating point type. Intermediate
+    // results will not periodically be promoted to a higher precision. This
+    // corresponds to CUBLASLT_MATMUL_DESC_FAST_ACCUM. Triton's
+    // maxNumImpreciseAcc=32 setting may be similar.
+    ALG_DOT_ANY_F8_ANY_F8_F32_FAST_ACCUM = 2;
+    ALG_DOT_F16_F16_F16 = 3;
+    ALG_DOT_F16_F16_F32 = 4;
+    ALG_DOT_BF16_BF16_BF16 = 5;
+    ALG_DOT_BF16_BF16_F32 = 6;
+    // An algorithm which uses 3 BF16_BF16_F32 matmuls to achieve better
+    // precision.
+    ALG_DOT_BF16_BF16_F32_X3 = 7;
+    // An algorithm which uses 6 BF16_BF16_F32 matmuls to achieve better
+    // precision (similar to F32).
+    ALG_DOT_BF16_BF16_F32_X6 = 8;
+    ALG_DOT_TF32_TF32_F32 = 9;
+    // An algorithm which uses 3 TF32_TF32_F32 matmuls to achieve better
+    // precision (similar to F32).
+    ALG_DOT_TF32_TF32_F32_X3 = 10;
+    ALG_DOT_F32_F32_F32 = 11;
+    ALG_DOT_F64_F64_F64 = 12;
+
+    // Next: 13
+  }
+
   repeated Precision operand_precision = 1;
 
-  // Next: 2
+  // Currently doesn't do anything, but we plan to support it for dot and
+  // possibly more instructions.
+  //
+  // TODO(b/316147294): Support this on GPU and add this to StableHLO as well.
+  //
+  // If this is set, then `operand_precision` should be set to DEFAULT and it
+  // will be ignored.
+  Algorithm algorithm = 2;
+
+  // Next: 3
 }
 
 // Describes whether all data-parallelism replicas will receive the same

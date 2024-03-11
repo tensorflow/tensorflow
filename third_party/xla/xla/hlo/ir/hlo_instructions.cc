@@ -85,25 +85,30 @@ bool IsInstructionElementwiseOnOperand(const HloInstruction* instruction,
 
 void PrintPrecisionConfig(HloInstruction::AttributePrinter& printer,
                           const PrecisionConfig& precision_config) {
-  if (absl::c_all_of(
+  if (absl::c_any_of(
           precision_config.operand_precision(), [](int32_t precision) {
-            return static_cast<PrecisionConfig::Precision>(precision) ==
+            return static_cast<PrecisionConfig::Precision>(precision) !=
                    PrecisionConfig::DEFAULT;
           })) {
-    return;
+    printer.Next([&precision_config](Printer* printer) {
+      printer->Append("operand_precision={");
+      AppendJoin(printer, precision_config.operand_precision(), ",",
+                 [](Printer* printer, int32_t precision) {
+                   CHECK(PrecisionConfig::Precision_IsValid(precision))
+                       << precision;
+                   printer->Append(PrecisionToString(
+                       static_cast<PrecisionConfig::Precision>(precision)));
+                 });
+      printer->Append("}");
+    });
   }
 
-  printer.Next([&precision_config](Printer* printer) {
-    printer->Append("operand_precision={");
-    AppendJoin(printer, precision_config.operand_precision(), ",",
-               [](Printer* printer, int32_t precision) {
-                 CHECK(PrecisionConfig::Precision_IsValid(precision))
-                     << precision;
-                 printer->Append(PrecisionToString(
-                     static_cast<PrecisionConfig::Precision>(precision)));
-               });
-    printer->Append("}");
-  });
+  if (precision_config.algorithm() != PrecisionConfig::ALG_UNSET) {
+    printer.Next([&precision_config](Printer* printer) {
+      printer->Append("algorithm=");
+      printer->Append(AlgorithmToString(precision_config.algorithm()));
+    });
+  }
 }
 
 void PrintSparsityDescriptor(HloInstruction::AttributePrinter& printer,
