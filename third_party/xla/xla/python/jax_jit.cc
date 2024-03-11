@@ -388,13 +388,7 @@ void BuildJaxjitSubmodule(nb::module_& m) {
                    })
       .def_ro("weak_type", &xla::PyArgSignature::weak_type);
   jitlib.def("_ArgSignatureOfValue",
-             // TODO(phawkins): revert to the following when nanobind transition
-             // is over.
-             // xla::ValueOrThrowWrapper(xla::PyArgSignatureOfValue));
-             [](nb::handle arg, bool jax_enable_x64) {
-               return ValueOrThrow(
-                   xla::PyArgSignatureOfValue(arg.ptr(), jax_enable_x64));
-             });
+             xla::ValueOrThrowWrapper(xla::PyArgSignatureOfValue));
 
   jitlib.def("_is_float0", &xla::IsFloat0);
 }

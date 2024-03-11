@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <Python.h>
 
+#include <cstddef>
 #include <cstdint>
 #include <cstdlib>
 #include <cstring>
@@ -1061,7 +1062,7 @@ StatusOr<PyArray> PyArray::BatchedDevicePut(
       (!force_copy &&
        (host_buffer_semantics == ifrt::Client::HostBufferSemantics::kZeroCopy));
 
-  py::list owning_pylist(dst_devices.size());
+  py::list owning_pylist;
   std::vector<tsl::RCReference<ifrt::Array>> ifrt_arrays;
 
   xla::ifrt::DeviceList::Devices devices;
@@ -1080,18 +1081,24 @@ StatusOr<PyArray> PyArray::BatchedDevicePut(
       TF_RETURN_IF_ERROR(
           jax::ApplyTransferGuardToHostToDevice(transfer_guard_formatter));
     }
+    // TODO(phawkins): remove .ptr() after nanobind transition is complete.
     TF_ASSIGN_OR_RETURN(
         DevicePutResult on_device,
-        DevicePut(x, dst_devices[i].get_client()->ifrt_client(),
+        DevicePut(x.ptr(), dst_devices[i].get_client()->ifrt_client(),
                   dst_devices[i].get(), options, dst_memory_kind));
     ifrt_arrays.push_back(std::move(on_device.ifrt_array));
     devices.push_back(ifrt_arrays.back()->sharding().devices().front());
     shapes.push_back(ifrt_arrays.back()->shape());
+    // TODO(phawkins): remove nanobind translation
     if (on_device.owning_pybuffer) {
-      owning_pylist.append(on_device.owning_pybuffer);
+      owning_pylist.append(py::reinterpret_steal<py::object>(
+          on_device.owning_pybuffer.release().ptr()));
     }
     ++i;
   }
+
+  // TODO(phawkins): it's highly suspicious to me that owning_pylist isn't
+  // consumed here. Look into this.
 
   auto weak_type = pybind11::cast<bool>(aval.attr("weak_type"));
   auto dtype = aval.attr("dtype");

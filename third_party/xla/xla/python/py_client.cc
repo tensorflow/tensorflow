@@ -48,7 +48,8 @@ limitations under the License.
 #include "xla/python/traceback.h"
 #include "xla/python/transfer_guard_lib.h"
 #include "xla/service/custom_call_target_registry.h"
-#include "xla/service/platform_util.h"
+#include "xla/service/platform_util.h"  // IWYU pragma: keep
+#include "tsl/platform/logging.h"
 #include "tsl/platform/statusor.h"
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
@@ -247,9 +248,10 @@ StatusOr<py::object> PyClient::BufferFromPyval(
   options.allow_zero_copy =
       (!force_copy &&
        (host_buffer_semantics == ifrt::Client::HostBufferSemantics::kZeroCopy));
+  // TODO(phawkins): remove .ptr() after nanobind transition is complete.
   TF_ASSIGN_OR_RETURN(DevicePutResult put,
-                      DevicePut(argument, ifrt_client_.get(), device, options,
-                                ifrt::MemoryKind()));
+                      DevicePut(argument.ptr(), ifrt_client_.get(), device,
+                                options, ifrt::MemoryKind()));
 
   if (put.ifrt_array) {
     auto traceback = Traceback::Get();
@@ -258,7 +260,8 @@ StatusOr<py::object> PyClient::BufferFromPyval(
         /*weak_type=*/false,
         /*committed=*/false);
   } else {
-    return py::reinterpret_borrow<py::object>(put.owning_pybuffer);
+    // TODO(phawkins): remove .ptr() after nanobind transition is complete.
+    return py::reinterpret_borrow<py::object>(put.owning_pybuffer.ptr());
   }
 }
 

@@ -54,12 +54,12 @@ limitations under the License.
 #include "xla/python/ifrt/sharding.h"
 #include "xla/python/jax_jit.h"
 #include "xla/python/nb_helpers.h"
+#include "xla/python/nb_numpy.h"
 #include "xla/python/py_array.h"
 #include "xla/python/py_client.h"
 #include "xla/python/py_executable.h"
 #include "xla/python/py_values.h"
 #include "xla/python/python_ref_manager.h"
-#include "xla/python/python_utils.h"
 #include "xla/python/pytree.h"
 #include "xla/python/sharded_device_array.h"
 #include "xla/python/sharding.h"
@@ -72,6 +72,7 @@ limitations under the License.
 #include "tsl/platform/logging.h"
 #include "tsl/platform/statusor.h"
 #include "tsl/profiler/lib/traceme.h"
+#include "tsl/python/lib/core/numpy.h"
 
 namespace jax {
 
@@ -210,9 +211,8 @@ absl::StatusOr<ShardArgResult> ShardArg(
 
       TF_ASSIGN_OR_RETURN(
           xla::DevicePutResult on_device,
-          DevicePut(arg[indices[i]].ptr(),
-                    to_device.get_client()->ifrt_client(), to_device.get(),
-                    options, xla::ifrt::MemoryKind()));
+          DevicePut(arg[indices[i]], to_device.get_client()->ifrt_client(),
+                    to_device.get(), options, xla::ifrt::MemoryKind()));
 
       per_device_arrays.push_back(std::move(on_device.ifrt_array));
       devices.push_back(per_device_arrays.back()->sharding().devices().front());
@@ -373,8 +373,7 @@ class PmapFunction {
     const bool jax_enable_x64 = GetEnableX64();
     arguments.signature.jax_enable_x64 = jax_enable_x64;
     for (nb::handle arg : arguments.flat_dynamic_args) {
-      auto signature_or_error =
-          xla::PyArgSignatureOfValue(arg.ptr(), jax_enable_x64);
+      auto signature_or_error = xla::PyArgSignatureOfValue(arg, jax_enable_x64);
       if (!signature_or_error.ok()) {
         VLOG(2) << "PyArgSignatureOfValue failed: "
                 << signature_or_error.status();

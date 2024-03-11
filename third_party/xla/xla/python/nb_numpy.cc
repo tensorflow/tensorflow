@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "xla/python/nb_numpy.h"
 
+#include <Python.h>
+
 #include <stdexcept>
 
 #include "absl/types/span.h"
@@ -107,6 +109,14 @@ ssize_t nb_numpy_ndarray::shape(ssize_t dim) const {
 const ssize_t* nb_numpy_ndarray::strides() const {
   PyArrayObject* self = reinterpret_cast<PyArrayObject*>(ptr());
   return PyArray_STRIDES(self);
+}
+
+ssize_t nb_numpy_ndarray::strides(ssize_t dim) const {
+  PyArrayObject* self = reinterpret_cast<PyArrayObject*>(ptr());
+  if (dim < 0 || dim >= PyArray_NDIM(self)) {
+    throw std::invalid_argument("Invalid dimension.");
+  }
+  return PyArray_STRIDES(self)[dim];
 }
 
 ssize_t nb_numpy_ndarray::itemsize() const {

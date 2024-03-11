@@ -402,8 +402,7 @@ PrepareIfrtInputs(const xla::PyLoadedExecutable& executable,
             jax::ApplyTransferGuardToHostToDevice(transfer_guard_formatter));
         TF_ASSIGN_OR_RETURN(
             xla::DevicePutResult on_device,
-            DevicePut(py::handle(arg.ptr()),
-                      executable.ifrt_loaded_executable()->client(),
+            DevicePut(arg, executable.ifrt_loaded_executable()->client(),
                       data_device, options, xla::ifrt::MemoryKind()));
 
         num_args_arrays.push_back(std::move(on_device.ifrt_array));
@@ -716,7 +715,7 @@ absl::Status PjitFunction::UpdateArgsSignature(
 
   for (nb::handle arg : arguments.flat_dynamic_args) {
     TF_ASSIGN_OR_RETURN(auto signature,
-                        xla::PyArgSignatureOfValue(arg.ptr(), jax_enable_x64));
+                        xla::PyArgSignatureOfValue(arg, jax_enable_x64));
     arguments.signature.dynamic_arg_signatures.push_back(std::move(signature));
 
     // It should be already checked previously in the entry point of

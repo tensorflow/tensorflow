@@ -720,9 +720,9 @@ cc_library(
     deps = [
         ":jax_jit",
         ":nb_helpers",
+        ":nb_numpy",
         ":py_client",
         ":python_ref_manager",
-        ":python_utils",
         ":pytree",
         ":traceback",
         ":types",
@@ -748,6 +748,7 @@ cc_library(
         "@local_tsl//tsl/platform:logging",
         "@local_tsl//tsl/platform:statusor",
         "@local_tsl//tsl/profiler/lib:traceme",
+        "@local_tsl//tsl/python/lib/core:numpy",
         "@pybind11",
     ],
 )
