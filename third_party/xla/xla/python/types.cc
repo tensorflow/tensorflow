@@ -230,7 +230,7 @@ absl::StatusOr<nb_dtype> IfrtDtypeToNbDtype(ifrt::DType dtype) {
     case ifrt::DType::kPred:
       return to_nb_dtype(NPY_BOOL);
     case ifrt::DType::kS4:
-      return to_nb_dtype(NPY_INT8);
+      return custom_dtypes.int4;
     case ifrt::DType::kS8:
       return to_nb_dtype(NPY_INT8);
     case ifrt::DType::kS16:
@@ -240,7 +240,7 @@ absl::StatusOr<nb_dtype> IfrtDtypeToNbDtype(ifrt::DType dtype) {
     case ifrt::DType::kS64:
       return to_nb_dtype(NPY_INT64);
     case ifrt::DType::kU4:
-      return to_nb_dtype(NPY_UINT8);
+      return custom_dtypes.uint4;
     case ifrt::DType::kU8:
       return to_nb_dtype(NPY_UINT8);
     case ifrt::DType::kU16:
