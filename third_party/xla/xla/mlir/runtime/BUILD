@@ -14,6 +14,7 @@ package_group(
         # TODO(ezhulenev): All targets depending on mlir must be under xla/mlir folder
         "//xla/service/cpu/...",
         "//xla/service/gpu/...",
+        "//third_party/py/enzyme_ad/...",
     ],
 )
 
