@@ -260,6 +260,7 @@ xla_test(
         ":command_buffer_thunk",
         "//xla:shape_util",
         "//xla:types",
+        "//xla:xla_data_proto_cc",
         "//xla/service:buffer_assignment",
         "//xla/service:executable",
         "//xla/service:platform_util",

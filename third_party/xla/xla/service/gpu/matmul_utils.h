@@ -104,6 +104,7 @@ struct GemmConfig : public se::gpu::GemmConfig {
       absl::Span<const int64_t> rhs_batch_dims,
       absl::Span<const int64_t> rhs_contracting_dims, const Shape& output_shape,
       double alpha_real, double alpha_imag, double beta,
+      PrecisionConfig::Algorithm precision_algorithm,
       std::optional<int64_t> algorithm, int64_t compute_precision, bool grad_x,
       bool grad_y);
 
@@ -115,8 +116,10 @@ struct GemmConfig : public se::gpu::GemmConfig {
       absl::Span<const int64_t> rhs_batch_dims,
       absl::Span<const int64_t> rhs_contracting_dims, const Shape& c_shape,
       const Shape* bias_shape_ptr, const Shape& output_shape, double alpha_real,
-      double alpha_imag, double beta, std::optional<int64_t> algorithm,
-      int64_t compute_precision, bool grad_x, bool grad_y);
+      double alpha_imag, double beta,
+      PrecisionConfig::Algorithm precision_algorithm,
+      std::optional<int64_t> algorithm, int64_t compute_precision, bool grad_x,
+      bool grad_y);
 
   struct DescriptorsTuple {
     se::gpu::MatrixDescriptor lhs;

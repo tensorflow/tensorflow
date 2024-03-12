@@ -50,6 +50,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/utils/hlo_query.h"
+#include "xla/service/algorithm_util.h"
 #include "xla/service/dump.h"
 #include "xla/service/executable.h"
 #include "xla/service/float_normalization.h"
@@ -506,6 +507,19 @@ absl::StatusOr<std::unique_ptr<HloModule>> CublasGemmAutotuneExtractor(
       ExtractComputationIntoNewModule(*fusion_computation);
   new_module->mutable_config().set_debug_options(debug_opts);
 
+  auto* dot = hlo_query::GetFirstInstructionWithOpcode(
+      *new_module->entry_computation(), HloOpcode::kDot);
+  // Substitute algorithms, which are not supported by cuBLAS for the check, but
+  // don't use cuBlas in the end. This assumes that the substituting algorithm
+  // has result which are close enough for the check in this file.
+  if (dot->precision_config().algorithm() ==
+          PrecisionConfig::ALG_DOT_BF16_BF16_F32_X3 ||
+      dot->precision_config().algorithm() ==
+          PrecisionConfig::ALG_DOT_BF16_BF16_F32_X6) {
+    dot->mutable_precision_config()->set_algorithm(
+        PrecisionConfig::ALG_DOT_F32_F32_F32);
+  }
+
   GemmRewriter rewriter(config.GetGpuComputeCapability());
   GpuInstructionFusion fusion_pass(
       /*may_duplicate=*/false, config.GetExecutor()->GetDeviceDescription());
@@ -572,6 +586,25 @@ bool IsCuDnnEnabled(const AutotuneConfig& config,
          debug_opts.xla_gpu_cudnn_gemm_fusion();
 }
 
+bool HasAlgorithmSupportedByCublasOrCublasLt(
+    const HloFusionInstruction& fusion) {
+  const PrecisionConfig::Algorithm algorithm =
+      hlo_query::GetFirstInstructionWithOpcode(*fusion.called_computation(),
+                                               HloOpcode::kDot)
+          ->precision_config()
+          .algorithm();
+  return algorithm_util::IsSupportedByCublasOrCublasLt(algorithm);
+}
+
+bool HasAlgorithmSupportedByCudnn(const HloFusionInstruction& fusion) {
+  const PrecisionConfig::Algorithm algorithm =
+      hlo_query::GetFirstInstructionWithOpcode(*fusion.called_computation(),
+                                               HloOpcode::kDot)
+          ->precision_config()
+          .algorithm();
+  return algorithm_util::IsSupportedByCudnn(algorithm);
+}
+
 absl::StatusOr<absl::flat_hash_map<const HloFusionInstruction*, ExecutableSet>>
 CompileMany(const AutotuneConfig& config, AutotunerCompileUtil& util,
             tsl::thread::ThreadPool* thread_pool,
@@ -597,7 +630,8 @@ CompileMany(const AutotuneConfig& config, AutotunerCompileUtil& util,
 
     if (IsFusionKind(hlo, kTritonGemmFusionKind)) {
       config_count += gemm_config_set.configs.size();
-      if (IsCuDnnEnabled(config, debug_opts)) {
+      if (IsCuDnnEnabled(config, debug_opts) &&
+          HasAlgorithmSupportedByCudnn(hlo)) {
         config_count += GetCuDnnPlanCount(hlo, config);
       }
     } else if (IsFusionKind(hlo, kCuDnnFusionKind)) {
@@ -730,7 +764,8 @@ CompileMany(const AutotuneConfig& config, AutotunerCompileUtil& util,
 
       if (IsFusionKind(*fusion, kCuDnnFusionKind) ||
           (IsFusionKind(*fusion, kTritonGemmFusionKind) &&
-           IsCuDnnEnabled(config, debug_opts))) {
+           IsCuDnnEnabled(config, debug_opts) &&
+           HasAlgorithmSupportedByCudnn(*fusion))) {
         const int plan_count = GetCuDnnPlanCount(*fusion, config);
         for (int plan_id = 0; plan_id < plan_count; ++plan_id) {
           thread_pool->Schedule([&, fusion, plan_id] {
@@ -772,7 +807,8 @@ CompileMany(const AutotuneConfig& config, AutotunerCompileUtil& util,
 
       if (IsFusionKind(*fusion, kCuDnnFusionKind) ||
           (IsFusionKind(*fusion, kTritonGemmFusionKind) &&
-           IsCuDnnEnabled(config, debug_opts))) {
+           IsCuDnnEnabled(config, debug_opts) &&
+           HasAlgorithmSupportedByCudnn(*fusion))) {
         const int plan_count = GetCuDnnPlanCount(*fusion, config);
         for (int plan_id = 0; plan_id < plan_count; ++plan_id) {
           log(compile_cudnn_executable(fusion, plan_id));
@@ -948,7 +984,8 @@ absl::StatusOr<AutotuneResult> Execute(const AutotuneConfig& config,
   }
 
   if (debug_opts.xla_gpu_cublas_fallback() &&
-      !debug_opts.xla_gpu_deterministic_ops()) {
+      !debug_opts.xla_gpu_deterministic_ops() &&
+      HasAlgorithmSupportedByCublasOrCublasLt(*fusion)) {
     if (cublas_duration <
         tsl::proto_utils::FromDurationProto(best.run_time())) {
       VLOG(2) << "Falling back to cuBLAS for " << fusion->name();

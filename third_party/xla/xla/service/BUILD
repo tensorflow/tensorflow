@@ -5251,6 +5251,7 @@ cc_library(
     srcs = ["elemental_ir_emitter.cc"],
     hdrs = ["elemental_ir_emitter.h"],
     deps = [
+        ":algorithm_util",
         ":float8_fnuz_ir_emitter",
         "//xla:permutation_util",
         "//xla:shape_util",
@@ -5269,7 +5270,9 @@ cc_library(
         "//xla/service/llvm_ir:math_ops",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/types:span",
         "@llvm-project//llvm:Core",
         "@llvm-project//llvm:Support",
@@ -7600,6 +7603,21 @@ tf_proto_library(
         "@local_tsl//tsl/protobuf:status_proto",
     ],
     visibility = ["//visibility:public"],
+)
+
+cc_library(
+    name = "algorithm_util",
+    srcs = ["algorithm_util.cc"],
+    hdrs = ["algorithm_util.h"],
+    deps = [
+        "//xla:shape_util",
+        "//xla:xla_data_proto_cc",
+        "//xla/stream_executor",
+        "//xla/stream_executor:blas",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:str_format",
+    ],
 )
 
 exports_files(["xla_aot_compile_test_gpu_target_config.prototxt"])

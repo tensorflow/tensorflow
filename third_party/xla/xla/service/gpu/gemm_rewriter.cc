@@ -39,6 +39,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/primitive_util.h"
+#include "xla/service/algorithm_util.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/cublas_cudnn.h"
 #include "xla/service/gpu/ir_emission_utils.h"
@@ -1639,9 +1640,11 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
     if (!absl::c_linear_search(supported_type, output_type)) return false;
     TF_ASSIGN_OR_RETURN(const se::blas::DataType output_dtype,
                         se::gpu::AsBlasDataType(output_type));
+    // TODO(tdanyluk): Investigate why don't we use the actual precision (and
+    // algorithm) here? Why do we use the default?
     TF_ASSIGN_OR_RETURN(const se::blas::ComputationType compute_type,
                         se::gpu::GetBlasComputationType(
-                            a_dtype, output_type,
+                            PrecisionConfig::ALG_UNSET, a_dtype, output_type,
                             stream_executor::blas::kDefaultComputePrecision));
     se::blas::DataType scale_type =
         se::gpu::GetScaleType(output_dtype, compute_type);
@@ -1727,12 +1730,16 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
     // Figure out the computeType and scaleType.
     TF_ASSIGN_OR_RETURN(const se::blas::DataType output_dtype,
                         se::gpu::AsBlasDataType(output_type));
-    int max_precision = *absl::c_max_element(
+    const int max_precision = *absl::c_max_element(
         backend_config.precision_config().operand_precision());
+    const PrecisionConfig::Algorithm algorithm =
+        backend_config.precision_config().algorithm();
+    if (!algorithm_util::IsSupportedByCublasOrCublasLt(algorithm)) return false;
+
     TF_ASSIGN_OR_RETURN(
         const se::blas::ComputationType compute_type,
-        se::gpu::GetBlasComputationType(a_dtype, instr.shape().element_type(),
-                                        max_precision));
+        se::gpu::GetBlasComputationType(
+            algorithm, a_dtype, instr.shape().element_type(), max_precision));
     se::blas::DataType scale_type =
         se::gpu::GetScaleType(output_dtype, compute_type);
 
@@ -1845,6 +1852,9 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
 
     const DotDimensionNumbers &dot_dims =
         gemm_backend_config.dot_dimension_numbers();
+    // We use ALG_UNSET and kDefaultComputePrecision because we don't care about
+    // the precision, just the layout, since we're just checking if the matrix
+    // is column-major.
     TF_ASSIGN_OR_RETURN(
         GemmConfig gemm_config,
         GemmConfig::For(
@@ -1854,6 +1864,7 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
             dot_dims.rhs_contracting_dimensions(),
             /*output_shape=*/instr.shape(), gemm_backend_config.alpha_real(),
             gemm_backend_config.alpha_imag(), gemm_backend_config.beta(),
+            /*precision_algorithm=*/PrecisionConfig::ALG_UNSET,
             /*algorithm*/ std::nullopt, se::blas::kDefaultComputePrecision,
             gemm_backend_config.grad_x(), gemm_backend_config.grad_y()));
 

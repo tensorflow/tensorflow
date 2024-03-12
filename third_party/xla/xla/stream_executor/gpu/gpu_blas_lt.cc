@@ -15,15 +15,19 @@ limitations under the License.
 
 #include "xla/stream_executor/gpu/gpu_blas_lt.h"
 
+#include <algorithm>
 #include <cstdint>
 #include <optional>
 #include <utility>
 
 #include "absl/status/statusor.h"
+#include "absl/strings/str_format.h"
 #include "xla/primitive_util.h"
+#include "xla/service/algorithm_util.h"
 #include "xla/stream_executor/blas.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/util.h"
+#include "xla/xla_data.pb.h"
 #include "tsl/protobuf/dnn.pb.h"
 #if GOOGLE_CUDA
 #include "tsl/platform/tensor_float_32_utils.h"
@@ -123,34 +127,38 @@ void MatrixLayout::Transpose() {
 }
 
 absl::StatusOr<ComputationType> GetBlasComputationType(
-    PrimitiveType lhs_dtype, PrimitiveType output_dtype,
-    int64_t compute_precision) {
-  switch (output_dtype) {
-    case PrimitiveType::F8E5M2:    // fall-through
-    case PrimitiveType::F8E4M3FN:  // fall-through
-    case PrimitiveType::F16:       // fall-through
-    case PrimitiveType::BF16:
-      // Accumulate in f32 precision.
-      return ComputationType::kF32;
-    case PrimitiveType::F32:  // fall-through
-    case PrimitiveType::C64:
+    xla::PrecisionConfig::Algorithm algorithm, xla::PrimitiveType lhs_dtype,
+    xla::PrimitiveType output_dtype, int64_t compute_precision) {
+  if (algorithm == xla::PrecisionConfig::ALG_UNSET) {
+    switch (output_dtype) {
+      case PrimitiveType::F8E5M2:    // fall-through
+      case PrimitiveType::F8E4M3FN:  // fall-through
+      case PrimitiveType::F16:       // fall-through
+      case PrimitiveType::BF16:
+        // Accumulate in f32 precision.
+        return ComputationType::kF32;
+      case PrimitiveType::F32:  // fall-through
+      case PrimitiveType::C64:
 #if GOOGLE_CUDA
-      if (tsl::tensor_float_32_execution_enabled() && compute_precision <= 1 &&
-          lhs_dtype == output_dtype) {
-        // CublasLt requires compute type to be F32 for F8 matmul.
-        // TF32 should only be chosen for FP32 or C64 gemm
-        return ComputationType::kTF32AsF32;
-      }
+        if (tsl::tensor_float_32_execution_enabled() &&
+            compute_precision <= 1 && lhs_dtype == output_dtype) {
+          // CublasLt requires compute type to be F32 for F8 matmul.
+          // TF32 should only be chosen for FP32 or C64 gemm
+          return ComputationType::kTF32AsF32;
+        }
 #endif
-      return ComputationType::kF32;
-    case PrimitiveType::F64:  // fall-through
-    case PrimitiveType::C128:
-      return ComputationType::kF64;
-    case PrimitiveType::S32:
-      return ComputationType::kI32;
-    default:
-      return xla::Internal("GetBlasComputationType: unsupported type");
+        return ComputationType::kF32;
+      case PrimitiveType::F64:  // fall-through
+      case PrimitiveType::C128:
+        return ComputationType::kF64;
+      case PrimitiveType::S32:
+        return ComputationType::kI32;
+      default:
+        return xla::Internal("GetBlasComputationType: unsupported type");
+    }
   }
+
+  return xla::algorithm_util::GetBlasComputationType(algorithm);
 }
 
 // BLAS GeMM's output is column-major. If we require row-major, use identity:
