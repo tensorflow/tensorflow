@@ -20,6 +20,11 @@ limitations under the License.
 
 namespace shlo_ref {
 
+#define SHLO_REF_RETURN_ON_ERROR(EXPR)    \
+  if (absl::Status s = (EXPR); !s.ok()) { \
+    return s;                             \
+  }
+
 // Propages the input shape to the output shape.
 //
 // If the output shape is already populated, checks that is it compatible with
