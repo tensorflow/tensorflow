@@ -372,7 +372,7 @@ HloSharding HloSharding::SingleTuple(const Shape& tuple_shape,
   int64_t leaf_count = RequiredLeaves(tuple_shape);
   std::vector<HloSharding> flattened_list;
   flattened_list.resize(leaf_count, sharding);
-  return HloSharding(flattened_list);
+  return HloSharding(std::move(flattened_list));
 }
 
 HloSharding HloSharding::Single(const Shape& shape,
