@@ -76,21 +76,21 @@ PjRtClient::attributes() const {
   return attributes;
 }
 
-StatusOr<tsl::RCReference<PjRtCompatibleArray>> PjRtClient::CreatePjRtArray(
-    std::shared_ptr<PjRtBuffer> pjrt_buffer) {
+absl::StatusOr<tsl::RCReference<PjRtCompatibleArray>>
+PjRtClient::CreatePjRtArray(std::shared_ptr<PjRtBuffer> pjrt_buffer) {
   TF_ASSIGN_OR_RETURN(auto array,
                       PjRtArray::Create(this, std::move(pjrt_buffer)));
   return tsl::RCReference<PjRtCompatibleArray>(std::move(array));
 }
 
-StatusOr<tsl::RCReference<PjRtCompatibleArray>> PjRtClient::CreatePjRtArray(
-    Shape shape, PjRtBuffers pjrt_buffers) {
+absl::StatusOr<tsl::RCReference<PjRtCompatibleArray>>
+PjRtClient::CreatePjRtArray(Shape shape, PjRtBuffers pjrt_buffers) {
   TF_ASSIGN_OR_RETURN(auto array, PjRtArray::Create(this, std::move(shape),
                                                     std::move(pjrt_buffers)));
   return tsl::RCReference<PjRtCompatibleArray>(std::move(array));
 }
 
-StatusOr<tsl::RCReference<Array>> PjRtClient::MakeArrayFromHostBuffer(
+absl::StatusOr<tsl::RCReference<Array>> PjRtClient::MakeArrayFromHostBuffer(
     const void* data, DType dtype, Shape shape,
     std::optional<absl::Span<const int64_t>> byte_strides,
     std::shared_ptr<const Sharding> sharding,
@@ -146,7 +146,7 @@ StatusOr<tsl::RCReference<Array>> PjRtClient::MakeArrayFromHostBuffer(
       PjRtArray::PjRtBuffers({std::shared_ptr<PjRtBuffer>(buffer.release())}));
 }
 
-StatusOr<tsl::RCReference<Array>>
+absl::StatusOr<tsl::RCReference<Array>>
 PjRtClient::AssembleArrayFromSingleDeviceArrays(
     Shape shape, std::shared_ptr<const Sharding> sharding,
     absl::Span<tsl::RCReference<Array>> arrays, ArrayCopySemantics semantics) {
@@ -215,12 +215,12 @@ PjRtClient::AssembleArrayFromSingleDeviceArrays(
                            std::move(buffers));
 }
 
-StatusOr<tsl::RCReference<Tuple>> PjRtClient::MakeTuple(
+absl::StatusOr<tsl::RCReference<Tuple>> PjRtClient::MakeTuple(
     absl::Span<tsl::RCReference<Value>> values) {
   return PjRtTuple::Create(this, values);
 }
 
-StatusOr<std::shared_ptr<const xla::PjRtTopologyDescription>>
+absl::StatusOr<std::shared_ptr<const xla::PjRtTopologyDescription>>
 PjRtClient::GetTopologyForDevices(absl::Span<Device* const> devices) const {
   // TODO(parkers): Consider constructing a sub-slice topology based on the
   // provided devices.
