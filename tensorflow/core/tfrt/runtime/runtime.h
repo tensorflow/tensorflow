@@ -54,10 +54,6 @@ class ModelRuntimeContext {
     DCHECK(resource_context_);
   }
 
-  const SessionMetadata& metadata() const {
-    return graph_execution_options_->model_metadata;
-  }
-
   absl::string_view name() const {
     return graph_execution_options_->model_metadata.name();
   }
