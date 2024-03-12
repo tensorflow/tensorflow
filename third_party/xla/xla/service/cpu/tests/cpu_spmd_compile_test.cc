@@ -1,4 +1,4 @@
-/* Copyright 2022 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2022 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -50,7 +50,7 @@ ENTRY entry {
   auto hlo_module = ParseAndReturnVerifiedModule(hlo_string, config).value();
 
   // Verify that compilation succeeded.
-  StatusOr<std::unique_ptr<Executable>> executable =
+  absl::StatusOr<std::unique_ptr<Executable>> executable =
       CompileToExecutable(std::move(hlo_module));
   TF_EXPECT_OK(executable.status());
 }

@@ -1,4 +1,4 @@
-/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -34,8 +34,8 @@ bool HasDivisibleSuffixAllowingSplit(absl::Span<int64_t const> span,
 // Apply split K configuration from the tiling config to the fusion instruction:
 // in addition to MakeDotComputationSplitKBatch on its computation add the
 // necessary reduction after it.
-Status MakeDotSplitKBatch(HloInstruction* dot_fusion,
-                          const TritonGemmConfig& config);
+absl::Status MakeDotSplitKBatch(HloInstruction* dot_fusion,
+                                const TritonGemmConfig& config);
 
 }  // namespace gpu
 }  // namespace xla

@@ -191,15 +191,13 @@ struct SparseSliceFunctor<GPUDevice, T> {
 
     // Copy the number of selected non-zeros to the host.
     ScratchSpace<int64_t> output_nnz_host(context, 1, /*on_host=*/true);
-    OP_REQUIRES_ASYNC(
+    OP_REQUIRES_OK_ASYNC(
         context,
-        stream
-            ->ThenMemcpy(output_nnz_host.mutable_data(),
-                         se::DeviceMemoryBase(output_nnz_ptr,
-                                              sizeof(*output_nnz_host.data())),
-                         sizeof(*output_nnz_host.data()))
-            .ok(),
-        errors::Internal("Failed to copy output_nnz to host"), done);
+        stream->Memcpy(output_nnz_host.mutable_data(),
+                       se::DeviceMemoryBase(output_nnz_ptr,
+                                            sizeof(*output_nnz_host.data())),
+                       sizeof(*output_nnz_host.data())),
+        done);
 
     // Asynchronously wait for the copy to complete before finishing.
     auto async_finish_computation =

@@ -250,42 +250,42 @@ TEST_F(MlirGraphOptimizationPassTest, OptimizationPassFailsDisabledFallback) {
       function_optimization_pass_.Run(
           "test_func", device_set_, config_proto_, function_options_, &graph_,
           flib_.get(), &control_ret_node_names_, &control_rets_updated_),
-      OkStatus());
+      absl::OkStatus());
   verifyGraph(original_graph_def);
   verifyCounters();
 }
 
 TEST_F(MlirGraphOptimizationPassTest, OptimizationPassDoesNotFailFallback) {
-  Init(OkStatus(), {MlirOptimizationPassState::FallbackEnabled});
+  Init(absl::OkStatus(), {MlirOptimizationPassState::FallbackEnabled});
 
   GraphDef original_graph_def;
   graph_->ToGraphDef(&original_graph_def);
 
   AddModuleModificationPass(MlirOptimizationPassState::FallbackEnabled,
-                            OkStatus());
+                            absl::OkStatus());
   EXPECT_EQ(
       function_optimization_pass_.Run(
           "test_func", device_set_, config_proto_, function_options_, &graph_,
           flib_.get(), &control_ret_node_names_, &control_rets_updated_),
-      OkStatus());
+      absl::OkStatus());
 
   verifyGraph(original_graph_def, true);
   verifyCounters();
 }
 
 TEST_F(MlirGraphOptimizationPassTest, GraphDoesntConvertUpdatesCounter) {
-  Init(OkStatus(), {MlirOptimizationPassState::FallbackEnabled});
+  Init(absl::OkStatus(), {MlirOptimizationPassState::FallbackEnabled});
 
   graph_ = std::make_unique<Graph>(OpRegistry::Global());
   control_ret_node_names_.push_back("foo");
 
   AddModuleModificationPass(MlirOptimizationPassState::FallbackEnabled,
-                            OkStatus());
+                            absl::OkStatus());
   EXPECT_EQ(
       function_optimization_pass_.Run(
           "test_func", device_set_, config_proto_, function_options_, &graph_,
           flib_.get(), &control_ret_node_names_, &control_rets_updated_),
-      OkStatus());
+      absl::OkStatus());
 
   EXPECT_EQ(mlir_function_pass_graph_conversion_count_.Read(kOk), 0);
   EXPECT_EQ(mlir_function_pass_graph_conversion_count_.Read(kInvalidArgument),
@@ -398,13 +398,13 @@ class MlirGraphOptimizationV1PassTest : public Test {
 };
 
 TEST_F(MlirGraphOptimizationV1PassTest, OptimizationPassDoesNotFailFallback) {
-  Init(OkStatus(), {MlirOptimizationPassState::FallbackEnabled});
+  Init(absl::OkStatus(), {MlirOptimizationPassState::FallbackEnabled});
 
   GraphDef original_graph_def;
   graph_->ToGraphDef(&original_graph_def);
 
   EXPECT_EQ(function_optimization_pass_.Run(graph_optimization_pass_options_),
-            OkStatus());
+            absl::OkStatus());
 
   verifyGraph(original_graph_def, /*changed=*/false);
   verifyCounters();

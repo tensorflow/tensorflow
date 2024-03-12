@@ -1,4 +1,4 @@
-/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2019 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -40,7 +40,7 @@ namespace xla {
 SelfAdjointEigResult SelfAdjointEig(XlaOp a, bool lower, int64_t max_iter,
                                     float tol, bool sort_eigenvalues) {
   XlaBuilder* builder = a.builder();
-  XlaOp result = builder->ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
+  XlaOp result = builder->ReportErrorOrReturn([&]() -> absl::StatusOr<XlaOp> {
     TF_ASSIGN_OR_RETURN(Shape a_shape, builder->GetShape(a));
     const int64_t num_dims = a_shape.rank();
     if (num_dims < 2) {

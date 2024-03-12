@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -39,7 +39,7 @@ class CompilationCache {
 
   // Lookup the Executable for the specified handle in the cache. Return a
   // shared_ptr to the Executable if it exists in the cache.
-  StatusOr<std::shared_ptr<Executable>> LookUp(
+  absl::StatusOr<std::shared_ptr<Executable>> LookUp(
       const ExecutionHandle& handle) const;
 
  protected:

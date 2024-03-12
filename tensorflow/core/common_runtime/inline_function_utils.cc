@@ -278,7 +278,7 @@ Status ValidateNoInline(const FunctionBody* fbody) {
     return errors::InvalidArgument(
         "Can't inline function marked with '_noinline'");
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 using OutputControlSrc = InlineFunctionBodyOptions::OutputControlSource;
@@ -394,7 +394,7 @@ Status ValidateInlining(const Node* node, const FunctionBody* fbody,
     TF_RETURN_IF_ERROR(ValidateNoInline(fbody));
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Function inlining must preserve function execution semantics with regards to
@@ -857,7 +857,7 @@ Status InlineFunctionBody(const FunctionLibraryDefinition& flib_def, Graph* g,
 
   VLOG(4) << "Final graph: " << g->ToGraphDefDebug().DebugString();
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 bool ExpandInlineFunctions(FunctionLibraryRuntime* lib, Graph* graph,

@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -148,15 +148,13 @@ CallGraph::CallGraph(
 
 const CallGraphNode& CallGraph::GetNode(
     const HloComputation* computation) const {
-  auto it = node_indices_.find(computation);
-  CHECK(it != node_indices_.end());
-  return nodes_[it->second];
+  DCHECK(node_indices_.contains(computation));
+  return nodes_[node_indices_.find(computation)->second];
 }
 
 CallGraphNode& CallGraph::GetNode(const HloComputation* computation) {
-  auto it = node_indices_.find(computation);
-  CHECK(it != node_indices_.end());
-  return nodes_[it->second];
+  DCHECK(node_indices_.contains(computation));
+  return nodes_[node_indices_.find(computation)->second];
 }
 
 bool CallGraph::DominatesHelper(

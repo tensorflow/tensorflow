@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -46,24 +46,25 @@ class GpuLayoutAssignment : public LayoutAssignment {
   ~GpuLayoutAssignment() override = default;
 
  protected:
-  Status AddBackendConstraints(LayoutConstraints* constraints) override;
+  absl::Status AddBackendConstraints(LayoutConstraints* constraints) override;
 
  private:
-  Status AddBackendConstraintsToDnnConvCustomCall(
+  absl::Status AddBackendConstraintsToDnnConvCustomCall(
       HloCustomCallInstruction* instr, LayoutConstraints* constraints);
 
   // dim_groups are ordered from major to minor dimensions.
-  Status SetOperandMajorToMinorLayout(
+  absl::Status SetOperandMajorToMinorLayout(
       const HloInstruction* instruction, int64_t operand,
       std::initializer_list<absl::Span<const int64_t>> dim_groups);
 
-  Status SetDotOperandLayout(const HloInstruction* instruction, int64_t operand,
-                             absl::Span<const int64_t> batch_dims,
-                             absl::Span<const int64_t> row_dims,
-                             absl::Span<const int64_t> col_dims);
+  absl::Status SetDotOperandLayout(const HloInstruction* instruction,
+                                   int64_t operand,
+                                   absl::Span<const int64_t> batch_dims,
+                                   absl::Span<const int64_t> row_dims,
+                                   absl::Span<const int64_t> col_dims);
 
-  Status SetDotLayout(const HloInstruction* instruction,
-                      LayoutConstraints* constraints);
+  absl::Status SetDotLayout(const HloInstruction* instruction,
+                            LayoutConstraints* constraints);
 
   bool PropagateReductionLayoutToOperand(const HloInstruction* user) override;
 

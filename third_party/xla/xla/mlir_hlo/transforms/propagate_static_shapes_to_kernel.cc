@@ -1,4 +1,4 @@
-/* Copyright 2022 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2022 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -198,7 +198,7 @@ LogicalResult PropagateStaticShapesPattern::matchAndRewrite(
   if (argsToDrop.none()) {
     return rewriter.notifyMatchFailure(funcOp, "no static shapes");
   }
-  rewriter.updateRootInPlace(funcOp, [&] {
+  rewriter.modifyOpInPlace(funcOp, [&] {
     SmallVector<Type> argTypes;
     for (unsigned idx = 0; idx < argsToDrop.size(); ++idx)
       if (!argsToDrop[idx])

@@ -45,8 +45,8 @@ std::vector<int32_t> BatchMatrixMultiplyTester::OutputShape() const {
   std::vector<int32_t> output_shape = Input1Shape();
   const size_t output_dimensions = output_shape.size();
   output_shape[output_dimensions - 1] =
-      AdjY() ? Input2Shape()[output_dimensions - 2]
-             : Input2Shape()[output_dimensions - 1];
+      AdjY() ? Input2Shape()[Input2Shape().size() - 2]
+             : Input2Shape()[Input2Shape().size() - 1];
   return output_shape;
 }
 

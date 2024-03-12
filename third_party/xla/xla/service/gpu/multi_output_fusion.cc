@@ -1,4 +1,4 @@
-/* Copyright 2018 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2018 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -208,10 +208,7 @@ FusionDecision ProducerCandidateIsFusible(
 
   GpuPerformanceModel::RunTimes t = GpuPerformanceModel::EstimateRunTimes(
       &producer, cost_analysis, GpuPerformanceModelOptions::Default(),
-
-      // `EstimateRunTimes`'s interface violates const correctness, so we
-      // need the const cast here.
-      {const_cast<HloInstruction*>(&consumer)},
+      /*fused_consumers=*/{&consumer},
       /*multi_output=*/true);
   if (t.time_fused > t.time_unfused) {
     return "will execute slower if fused";
@@ -404,7 +401,7 @@ bool GpuMultiOutputFusion::FuseSiblings(HloInstruction* parent,
   return changed;
 }
 
-StatusOr<bool> GpuMultiOutputFusion::DoMultiOutputFusion() {
+absl::StatusOr<bool> GpuMultiOutputFusion::DoMultiOutputFusion() {
   bool changed = false;
   RecomputeReachability();
   GpuHloCostAnalysis cost_analysis({shape_size_function_,
@@ -462,7 +459,8 @@ StatusOr<bool> GpuMultiOutputFusion::DoMultiOutputFusion() {
               << consumer_for_fusion->name();
     } else {
       input_fusion = computation_->AddInstruction(HloInstruction::CreateFusion(
-          consumer_for_fusion->shape(), ChooseFusionKind(*consumer_for_fusion),
+          consumer_for_fusion->shape(),
+          ChooseFusionKind(*producer, *consumer_for_fusion),
           consumer_for_fusion));
       VLOG(2) << "Fuse producer " << producer->name() << " and its consumer "
               << consumer_for_fusion->name() << " into "
@@ -505,7 +503,7 @@ void GpuMultiOutputFusion::DumpFusionState(const HloInstruction& consumer,
   }
 }
 
-StatusOr<bool> GpuMultiOutputFusion::Run(
+absl::StatusOr<bool> GpuMultiOutputFusion::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   bool changed = false;

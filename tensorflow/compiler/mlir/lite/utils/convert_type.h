@@ -39,7 +39,7 @@ mlir::Type ConvertElementType(tflite::TensorType type, mlir::Builder builder);
 tensorflow::DataType TflTypeToTfType(tflite::TensorType type);
 
 // Convert the Tensorflow scalar type to the corresponding TFLite type
-xla::StatusOr<tflite::TensorType> TfTypeToTflType(tensorflow::DataType type);
+absl::StatusOr<tflite::TensorType> TfTypeToTflType(tensorflow::DataType type);
 
 // Returns element type from attribute Type 'type_attr'.
 mlir::Type GetShapeStrippedType(mlir::TypeAttr type_attr);

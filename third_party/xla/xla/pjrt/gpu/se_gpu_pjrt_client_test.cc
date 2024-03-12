@@ -1,4 +1,4 @@
-/* Copyright 2022 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2022 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -55,7 +55,7 @@ using ::testing::ElementsAre;
 using ::testing::HasSubstr;
 using ::tsl::testing::StatusIs;
 
-StatusOr<std::unique_ptr<xla::PjRtLoadedExecutable>> CompileExecutable(
+absl::StatusOr<std::unique_ptr<xla::PjRtLoadedExecutable>> CompileExecutable(
     absl::string_view program, xla::PjRtClient& client,
     xla::CompileOptions compile_options = xla::CompileOptions()) {
   TF_ASSIGN_OR_RETURN(auto hlo_module,
@@ -67,8 +67,8 @@ StatusOr<std::unique_ptr<xla::PjRtLoadedExecutable>> CompileExecutable(
 
 // Given the result of a PjrtExecutable::Execute call (TF-status of vectors of
 // vectors), extract the zeroth result from the zeroth device.
-StatusOr<std::shared_ptr<xla::Literal>> ExtractSingleResult(
-    xla::StatusOr<std::vector<std::vector<std::unique_ptr<xla::PjRtBuffer>>>>&
+absl::StatusOr<std::shared_ptr<xla::Literal>> ExtractSingleResult(
+    absl::StatusOr<std::vector<std::vector<std::unique_ptr<xla::PjRtBuffer>>>>&
         result) {
   TF_RETURN_IF_ERROR(result.status());
   TF_RET_CHECK(result->size() == 1);
@@ -170,7 +170,7 @@ TEST(StreamExecutorGpuClientTest, SendErrorNoDeadLock) {
   SendCallback send_callback = {
       /*channel_id=*/1,
       [&](const PjRtTransferMetadata&, PjRtChunk, int64_t, bool) {
-        return InternalError("Uh-oh, can send chunk to host");
+        return Internal("Uh-oh, can send chunk to host");
       }};
 
   // No-op Recv handler.
@@ -328,11 +328,6 @@ TEST(StreamExecutorGpuClientTest, FromHostAsync) {
     buffers.emplace_back(transfer_manager->RetrieveBuffer(i));
   }
 
-  absl::Mutex mu;
-  std::vector<std::shared_ptr<Literal>> literals;
-  int got_literal_count = 0;
-  int got_callback_count = 0;
-
   for (int i = 0; i < src_shapes.size(); ++i) {
     TF_ASSERT_OK(transfer_manager->TransferRawDataToBuffer(
         i,
@@ -340,6 +335,11 @@ TEST(StreamExecutorGpuClientTest, FromHostAsync) {
                           src_literals[i].size_bytes()),
         [&]() {}));
   }
+
+  absl::Mutex mu;
+  std::vector<std::shared_ptr<Literal>> literals;
+  int got_literal_count = 0;
+  int got_callback_count = 0;
 
   for (auto& buffer : buffers) {
     literals.push_back(std::make_shared<Literal>(
@@ -493,7 +493,7 @@ TEST(StreamExecutorGpuClientTest, CreateMixOfErrorBuffers) {
         ++got_callback_count;
       });
     } else {
-      absl::Status error = InternalError("error %d", i);
+      absl::Status error = Internal("error %d", i);
       transfer_manager->SetBufferError(i, error);
       buffer->GetReadyFuture().OnReady(
           [error, &mu, &got_callback_count](absl::Status s) {

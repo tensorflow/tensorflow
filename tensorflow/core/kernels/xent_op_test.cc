@@ -45,7 +45,9 @@ static Graph* Xent(int batch_size, int num_classes, DataType type) {
     state.SetItemsProcessed(tot);                                 \
     state.SetBytesProcessed(tot * sizeof(C_TYPE));                \
   }                                                               \
-  BENCHMARK(BM_Xent##_##BATCH##_##CLASS##_##DEVICE##_##C_TYPE);
+  BENCHMARK(BM_Xent##_##BATCH##_##CLASS##_##DEVICE##_##C_TYPE)->UseRealTime()
+
+#ifdef GOOGLE_CUDA
 
 /// The representative tests for ptb_word on GPU
 BM_XentDev(16, 10000, gpu, float, DT_FLOAT);
@@ -60,11 +62,21 @@ BM_XentDev(64, 10000, gpu, float, DT_FLOAT);
 BM_XentDev(64, 30000, gpu, float, DT_FLOAT);
 BM_XentDev(64, 100000, gpu, float, DT_FLOAT);
 
+#endif  // GOOGLE_CUDA
+
 /// Only the smaller tests for CPU. Otherwise, it's too slow
-#define BM_XentDev_CPU(C_TYPE, TF_TYPE)        \
-  BM_XentDev(16, 10000, cpu, C_TYPE, TF_TYPE); \
-  BM_XentDev(32, 10000, cpu, C_TYPE, TF_TYPE); \
-  BM_XentDev(64, 10000, cpu, C_TYPE, TF_TYPE);
+#define BM_XentDev_CPU(C_TYPE, TF_TYPE)         \
+  BM_XentDev(1, 10000, cpu, C_TYPE, TF_TYPE);   \
+  BM_XentDev(2, 10000, cpu, C_TYPE, TF_TYPE);   \
+  BM_XentDev(4, 10000, cpu, C_TYPE, TF_TYPE);   \
+  BM_XentDev(8, 10000, cpu, C_TYPE, TF_TYPE);   \
+  BM_XentDev(16, 10000, cpu, C_TYPE, TF_TYPE);  \
+  BM_XentDev(32, 10000, cpu, C_TYPE, TF_TYPE);  \
+  BM_XentDev(64, 10000, cpu, C_TYPE, TF_TYPE);  \
+  BM_XentDev(128, 10000, cpu, C_TYPE, TF_TYPE); \
+  BM_XentDev(256, 10000, cpu, C_TYPE, TF_TYPE); \
+  BM_XentDev(512, 10000, cpu, C_TYPE, TF_TYPE); \
+  BM_XentDev(1024, 10000, cpu, C_TYPE, TF_TYPE)
 
 BM_XentDev_CPU(float, DT_FLOAT);
 BM_XentDev_CPU(bfloat16, DT_BFLOAT16);

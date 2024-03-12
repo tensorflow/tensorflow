@@ -15,12 +15,11 @@
 """StableHLO Quantizer."""
 from typing import Mapping
 
+from tensorflow.compiler.mlir.quantization.stablehlo import quantization_config_pb2 as qc
 from tensorflow.compiler.mlir.quantization.stablehlo.python import pywrap_quantization
-from tensorflow.compiler.mlir.quantization.tensorflow import quantization_options_pb2 as quant_opts_pb2
 from tensorflow.compiler.mlir.quantization.tensorflow.python import py_function_lib
 from tensorflow.compiler.mlir.quantization.tensorflow.python import save_model
 from tensorflow.core.protobuf import meta_graph_pb2
-from tensorflow.python.saved_model import loader_impl
 
 # Mapping of signature def key -> SignatureDef.
 _SignatureDefMap = Mapping[str, meta_graph_pb2.SignatureDef]
@@ -44,11 +43,30 @@ def _serialize_signature_def_map(
   return signature_def_map_serialized
 
 
+def _populate_default_quantization_config(
+    config: qc.QuantizationConfig,
+) -> qc.QuantizationConfig:
+  """Populates `QuantizationConfig` with default values.
+
+  Args:
+    config: User-provided quantization config.
+
+  Returns:
+    Updated `QuantizationConfig` after populating default values to fields that
+    the user did not explicitly specify.
+  """
+  pipeline_config = config.pipeline_config
+  if not pipeline_config.HasField('unpack_quantized_types'):
+    pipeline_config.unpack_quantized_types = True
+
+  return config
+
+
 # TODO: b/310594193 - Export API to pip package.
 def quantize_saved_model(
     src_saved_model_path: str,
     dst_saved_model_path: str,
-    config: quant_opts_pb2.QuantizationOptions,
+    config: qc.QuantizationConfig,
 ) -> None:
   """Quantizes a saved model.
 
@@ -62,42 +80,30 @@ def quantize_saved_model(
     single representative dataset.
   """
   if not (
-      config.quantization_method.preset_method
-      == quant_opts_pb2.QuantizationMethod.PresetMethod.METHOD_STATIC_RANGE_INT8
-      and len(config.representative_datasets) == 1
+      config.HasField('static_range_ptq_preset')
+      and len(config.static_range_ptq_preset.representative_datasets) == 1
   ):
     raise ValueError(
         '`quantize_saved_model` currently only supports static-range PTQ with a'
         ' single signature.'
     )
 
-  signature_def_map = save_model.get_signatures_from_saved_model(
-      src_saved_model_path,
-      list(config.signature_keys),
-      set(config.tags),
+  config = qc.QuantizationConfig.FromString(
+      pywrap_quantization.populate_default_configs(config.SerializeToString())
   )
 
-  loader = loader_impl.SavedModelLoader(src_saved_model_path)
-  function_aliases = loader.get_meta_graph_def_from_tags(
-      config.tags
-  ).meta_info_def.function_aliases
-
-  # Create a signature key -> `RepresentativeDatasetFile` mapping.
-  # `RepresentativeDatsetFile` should be serialized for `static_range_ptq` due
-  # to pywrap protobuf compatibility requirements.
-  dataset_file_map = {
-      signature_key: dataset_file.SerializeToString()
-      for signature_key, dataset_file in config.representative_datasets.items()
-  }
+  signature_def_map = save_model.get_signatures_from_saved_model(
+      src_saved_model_path,
+      signature_keys=None,
+      tags=set(config.tf_saved_model.tags),
+  )
 
   signature_def_map_serialized = _serialize_signature_def_map(signature_def_map)
   pywrap_quantization.static_range_ptq(
       src_saved_model_path,
       dst_saved_model_path,
-      quantization_options_serialized=config.SerializeToString(),
-      signature_keys=list(config.signature_keys),
+      quantization_config_serialized=config.SerializeToString(),
+      signature_keys=list(signature_def_map.keys()),
       signature_def_map_serialized=signature_def_map_serialized,
-      function_aliases=dict(function_aliases),
       py_function_library=py_function_lib.PyFunctionLibrary(),
-      representative_dataset_file_map_serialized=dataset_file_map,
   )

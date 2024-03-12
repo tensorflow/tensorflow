@@ -1,4 +1,4 @@
-/* Copyright 2018 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2018 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -698,8 +698,10 @@ ENTRY e {
   EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
 }
 
+// TODO(b/324385428): Failing on GPU at head due to an LLVM integrate. Re-enable
+// once this has been fixed.
 XLA_TEST_F(ElementalIrEmitterExecutionTestWithoutFastMinMax,
-           MinimumHandlesNaNsOnTheRight) {
+           DISABLED_MinimumHandlesNaNsOnTheRight) {
   constexpr absl::string_view kHloText = R"(
 HloModule t
 

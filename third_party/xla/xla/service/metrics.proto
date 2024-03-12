@@ -2,6 +2,7 @@ syntax = "proto3";
 
 package xla;
 
+import "google/protobuf/any.proto";
 import "google/protobuf/duration.proto";
 import "google/protobuf/timestamp.proto";
 
@@ -13,6 +14,10 @@ message PassMetrics {
   string pass_name = 2;
   // Duration of the pass.
   google.protobuf.Duration pass_duration = 3;
+  // Custom pass metrics. This is kept opaque, via `google.protobuf.Any`, in
+  // order to decouple pass agnostic compilation logs from possibly proprietary
+  // compiler passes.
+  google.protobuf.Any custom_metrics = 4;
 }
 
 // Defines XLA compilation metrics.

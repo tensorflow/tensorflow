@@ -1,4 +1,4 @@
-/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2019 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -33,7 +33,7 @@ namespace xla {
 // deoptimization pipeline (or calls 'module_modifier_hook' if provided). This
 // is meant to produce a reference module that is comparable to our custom test
 // platforms.
-StatusOr<std::unique_ptr<HloModule>> PrepareReferenceModule(
+absl::StatusOr<std::unique_ptr<HloModule>> PrepareReferenceModule(
     const HloModule& test_module, HloRunnerInterface* test_runner,
     const std::function<void(HloModuleConfig*)>& config_modifier_hook = {},
     const std::function<Status(const HloModule&, HloRunnerInterface*,

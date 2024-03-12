@@ -24,7 +24,10 @@ limitations under the License.
 #include <setjmp.h>
 #include <stddef.h>
 
+#include "jpeglib.h"  // from @libjpeg_turbo
+#include "tensorflow/core/platform/jpeg.h"
 #include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/platform/tstring.h"
 
 namespace tensorflow {
 namespace jpeg {

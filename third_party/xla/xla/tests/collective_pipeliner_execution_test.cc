@@ -1,4 +1,4 @@
-/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -34,7 +34,7 @@ namespace {
 
 using CollectivePipelinerExecutionTest = HloTestBase;
 
-StatusOr<bool> RunOptimizer(
+absl::StatusOr<bool> RunOptimizer(
     HloModule* module, bool last_run, int64_t level_to_operate_on = 0,
     HloPredicate should_process = HloPredicateIsOp<HloOpcode::kNegate>,
     CollectivePipeliner::PipeliningDirection pipelining_direction =

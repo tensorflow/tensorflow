@@ -15,10 +15,7 @@ cc_toolchain_suite(
     },
 )
 
-filegroup(
-    name = "empty",
-    visibility = ["//visibility:public"],
-)
+filegroup(name = "empty")
 
 # We define a wraper ("cc_wrapper.sh") around the compiler to replace all paths
 # in the binary (bazel-out/.../path/to/original/library.so) by the paths
@@ -27,7 +24,6 @@ filegroup(
 filegroup(
     name = "cc_wrapper_and_macos_sysroot",
     srcs = ["cc_wrapper.sh"] + glob(["MacOSX.sdk/**"]),
-    visibility = ["//visibility:public"],
 )
 
 cc_toolchain(
@@ -218,7 +214,7 @@ cc_toolchain_config(
     name = "macos_x86_toolchain_config",
     abi_libc_version = "darwin_x86_64",
     abi_version = "darwin_x86_64",
-    builtin_sysroot = "tensorflow/tools/toolchains/cross_compile/cc/MacOSX.sdk",
+    builtin_sysroot = "tools/toolchains/cross_compile/cc/MacOSX.sdk",
     compile_flags = [
         "--target=x86_64-apple-darwin",
         "-fstack-protector",

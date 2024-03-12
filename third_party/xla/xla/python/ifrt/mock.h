@@ -1,4 +1,4 @@
-/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -172,9 +172,12 @@ class MockDevice final : public Device {
   MOCK_METHOD(bool, IsAddressable, (), (const, final));
   MOCK_METHOD(const xla::PjRtDeviceDescription&, description, (),
               (const, final));
-  MOCK_METHOD(int, id, (), (const, final));
+  MOCK_METHOD(xla::PjRtGlobalDeviceId, global_device_id, (), (const, final));
   MOCK_METHOD(int, process_index, (), (const, final));
   MOCK_METHOD(int, local_hardware_id, (), (const, final));
+  MOCK_METHOD(xla::PjRtLocalDeviceId, local_device_id, (), (const, final));
+  MOCK_METHOD(xla::PjRtLocalHardwareId, local_hardware_id_typed, (),
+              (const, final));
   MOCK_METHOD(absl::string_view, device_kind, (), (const, final));
   MOCK_METHOD(absl::string_view, DebugString, (), (const, final));
   MOCK_METHOD(absl::string_view, ToString, (), (const, final));
@@ -250,6 +253,7 @@ class MockLoadedExecutable final
   MOCK_METHOD(StatusOr<std::optional<std::string>>, Fingerprint, (),
               (const, final));
   MOCK_METHOD(StatusOr<std::string>, Serialize, (), (const, final));
+  MOCK_METHOD(Future<absl::Status>, GetReadyFuture, (), (const, override));
   MOCK_METHOD(int, num_devices, (), (const, final));
   MOCK_METHOD(int64_t, SizeOfGeneratedCodeInBytes, (), (const, final));
   MOCK_METHOD(StatusOr<CompiledMemoryStats>, GetCompiledMemoryStats, (),

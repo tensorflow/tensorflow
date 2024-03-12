@@ -1,4 +1,4 @@
-/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2020 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -17,7 +17,6 @@ limitations under the License.
 
 #include <utility>
 
-#include "xla/mlir_hlo/lhlo_gpu/IR/lhlo_gpu_ops.h"
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 #include "xla/service/hlo_parser.h"
 #include "xla/shape_util.h"
@@ -57,32 +56,6 @@ ConvolutionDimensionNumbers ConvertConvDimensionNumbers(
   return output;
 }
 
-StatusOr<stream_executor::dnn::ActivationMode> ConvertConvActivationMode(
-    mlir::lmhlo_gpu::Activation activation) {
-  switch (activation) {
-    case mlir::lmhlo_gpu::Activation::None:
-      return stream_executor::dnn::kNone;
-    case mlir::lmhlo_gpu::Activation::Sigmoid:
-      return stream_executor::dnn::kSigmoid;
-    case mlir::lmhlo_gpu::Activation::Tanh:
-      return stream_executor::dnn::kTanh;
-    case mlir::lmhlo_gpu::Activation::Relu:
-      return stream_executor::dnn::kRelu;
-    case mlir::lmhlo_gpu::Activation::Relu6:
-      return stream_executor::dnn::kRelu6;
-    case mlir::lmhlo_gpu::Activation::ReluX:
-      return stream_executor::dnn::kReluX;
-    case mlir::lmhlo_gpu::Activation::BandPass:
-      return stream_executor::dnn::kBandPass;
-    case mlir::lmhlo_gpu::Activation::Elu:
-      return stream_executor::dnn::kElu;
-    case mlir::lmhlo_gpu::Activation::LeakyRelu:
-      return stream_executor::dnn::kLeakyRelu;
-    default:
-      return InternalError("Unexpected activation");
-  }
-}
-
 // Convert replica group from MLIR encoding to HLO.
 // See HloFunctionImporter::ConvertReplicaGroups for the MLIR encoding.
 StatusOr<std::vector<ReplicaGroup>> ConvertReplicaGroups(
@@ -91,7 +64,7 @@ StatusOr<std::vector<ReplicaGroup>> ConvertReplicaGroups(
       input.getType().dyn_cast<mlir::RankedTensorType>();
   if (!type || type.getRank() != 2 ||
       !type.getElementType().isInteger(/*width=*/64)) {
-    return InternalError("Execpted replica group to be a rank 2 tensor of i64");
+    return Internal("Execpted replica group to be a rank 2 tensor of i64");
   }
   // rank 0 is num_groups, rank 1 is group size.
   auto replica_group_values_it = input.getValues<uint64_t>().begin();
@@ -119,7 +92,7 @@ StatusOr<std::vector<std::pair<int64_t, int64_t>>> ConvertNx2Attribute(
   mlir::DenseIntElementsAttr attr = *optional_attr;
   auto type = attr.getType().dyn_cast<mlir::RankedTensorType>();
   if (!type || type.getRank() != 2 || type.getShape()[1] != 2)
-    return InternalError("expected Nx2 attribute to be a tensor of shape Nx2");
+    return Internal("expected Nx2 attribute to be a tensor of shape Nx2");
   auto it = attr.getValues<int64_t>().begin();
   std::vector<std::pair<int64_t, int64_t>> out(attr.getNumElements() / 2);
   for (auto& item : out) {
@@ -282,7 +255,7 @@ StatusOr<std::vector<int64_t>> ConvertMlirArrayAttrToInt64Array(
   for (int i = 0; i < rank; i++) {
     mlir::IntegerAttr attr = array[i].dyn_cast<mlir::IntegerAttr>();
     if (!attr) {
-      return InternalError("Type Error: Expected layout integer attribute");
+      return Internal("Type Error: Expected layout integer attribute");
     }
     converted_array[i] = attr.getInt();
   }

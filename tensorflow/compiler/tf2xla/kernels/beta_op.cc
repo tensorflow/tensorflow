@@ -62,7 +62,7 @@ class BetaincOp : public XlaOpKernel {
 
     auto builder = ctx->builder();
     auto result =
-        builder->ReportErrorOrReturn([&]() -> StatusOr<xla::XlaOp> {
+        builder->ReportErrorOrReturn([&]() -> absl::StatusOr<xla::XlaOp> {
           TF_ASSIGN_OR_RETURN(
               auto a, BroadcastTo(ctx->Input(0), merged_shape.dim_sizes()));
           TF_ASSIGN_OR_RETURN(

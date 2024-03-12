@@ -118,7 +118,7 @@ xla::RngOutput StatefulRngUniformFullInt(xla::RandomAlgorithm alg,
   }
 }
 
-using SamplerReturnType = StatusOr<xla::RngOutput>;
+using SamplerReturnType = absl::StatusOr<xla::RngOutput>;
 
 int64_t GetMinStateSize(xla::RandomAlgorithm alg) {
   switch (alg) {
@@ -142,10 +142,10 @@ Status CheckStateShape(xla::RandomAlgorithm alg, const TensorShape& shape) {
     return errors::InvalidArgument("The size of the state must be at least ",
                                    min_state_size, "; got ", state_size);
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-StatusOr<xla::RandomAlgorithm> ResolveAlg(int alg_id) {
+absl::StatusOr<xla::RandomAlgorithm> ResolveAlg(int alg_id) {
   switch (alg_id) {
     case RNG_ALG_PHILOX:
       return xla::RandomAlgorithm::RNG_PHILOX;
@@ -159,8 +159,8 @@ StatusOr<xla::RandomAlgorithm> ResolveAlg(int alg_id) {
   }
 }
 
-StatusOr<xla::RandomAlgorithm> GetAlg(XlaOpKernelContext* ctx,
-                                      int alg_input_idx) {
+absl::StatusOr<xla::RandomAlgorithm> GetAlg(XlaOpKernelContext* ctx,
+                                            int alg_input_idx) {
   TF_ASSIGN_OR_RETURN(auto alg_id, GetAlgId(ctx, alg_input_idx));
   return ResolveAlg(alg_id);
 }
@@ -227,7 +227,7 @@ Status CompileImpl(
   var = BitcastConvertType(var, state_element_type);
   TF_RETURN_IF_ERROR(
       ctx->AssignVariable(state_input_idx, STATE_ELEMENT_DTYPE, var));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 class StatefulUniformOp : public XlaOpKernel {

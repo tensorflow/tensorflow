@@ -138,7 +138,7 @@ Status CopyVariable(int output_idx, OpKernelContext* ctx, const Tensor* t) {
         return errors::Internal("Unsupported dtype", t->dtype());
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace
@@ -432,7 +432,7 @@ class AssignVariableOp : public OpKernel {
                                   *ptr = new Var(dtype_);
                                   *(*ptr)->tensor() = value;
                                   (*ptr)->is_initialized = true;
-                                  return OkStatus();
+                                  return absl::OkStatus();
                                 }));
     mutex_lock ml(*variable->mu());
     // (variable->tensor()->dtype() == DT_INVALID && !variable->is_initialized)
@@ -994,8 +994,8 @@ Status CopyTensorToHost(OpKernelContext* c, const Tensor& device_tensor,
   se::DeviceMemoryBase device_ptr(
       const_cast<Tensor&>(device_tensor).flat<T>().data(),
       device_tensor.flat<T>().size() * sizeof(T));
-  stream->ThenMemcpy(host_tensor->flat<T>().data(), device_ptr,
-                     device_tensor.NumElements() * sizeof(T));
+  TF_RETURN_IF_ERROR(stream->Memcpy(host_tensor->flat<T>().data(), device_ptr,
+                                    device_tensor.NumElements() * sizeof(T)));
   if (!stream) {
     return errors::Internal("Failed to copy indices to host");
   }
@@ -1030,8 +1030,8 @@ Status DoScatterOnCpu(OpKernelContext* c, Tensor* params, const Tensor& indices,
   // Copy 'host_params' to device.
   se::DeviceMemoryBase params_ptr(params->flat<T>().data(),
                                   params->flat<T>().size() * sizeof(T));
-  stream->ThenMemcpy(&params_ptr, host_params.flat<T>().data(),
-                     host_params.NumElements() * sizeof(T));
+  TF_RETURN_IF_ERROR(stream->Memcpy(&params_ptr, host_params.flat<T>().data(),
+                                    host_params.NumElements() * sizeof(T)));
   if (!stream) {
     return errors::Internal("Failed to copy params to device");
   }
@@ -1096,7 +1096,7 @@ Status DoScatter(OpKernelContext* c, Tensor* params, const Tensor& indices,
       }
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace

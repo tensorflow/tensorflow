@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -210,7 +210,7 @@ bool ParseFlagsFromEnvAndIgnoreUnknown(
     }
   }
 
-  return tsl::Flags::Parse(&env_argv->argc, &env_argv->argv[0], flag_list);
+  return tsl::Flags::Parse(&env_argv->argc, env_argv->argv.data(), flag_list);
 }
 
 bool DieIfEnvHasUnknownFlagsLeft(absl::string_view envvar) {

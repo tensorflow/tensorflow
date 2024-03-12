@@ -171,6 +171,8 @@ class BatchResourceBase : public ResourceBase {
                               AsyncOpKernel::DoneCallback done);
   // Ingests data from one invocation of the batch op. The data is enqueued to
   // be combined with others into a batch, asynchronously.
+  // `CreateBatchTaskFn` should be used to instantiate fields added to a
+  // child class of `BatchTask` by the caller.
   Status RegisterInput(int64_t guid, OpKernelContext* context,
                        const string& batcher_queue_name,
                        const CreateBatchTaskFn& create_batch_task_fn,

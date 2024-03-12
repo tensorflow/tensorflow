@@ -33,11 +33,21 @@ limitations under the License.
 #include "tensorflow/core/tfrt/saved_model/saved_model.h"
 #include "tensorflow/core/tfrt/saved_model/saved_model_testutil.h"
 #include "tsl/lib/core/status_test_util.h"
+#include "tsl/platform/env.h"
 #include "tsl/platform/statusor.h"
+#include "tsl/platform/threadpool.h"
 
 namespace tensorflow {
 namespace tfrt_stub {
 namespace {
+
+tsl::thread::ThreadPool& GetThreadPool() {
+  constexpr int kMaxParallelism = 16;
+  static tsl::thread::ThreadPool* thread_pool =
+      new tsl::thread::ThreadPool(tsl::Env::Default(), tsl::ThreadOptions(),
+                                  "IfrtSharding", kMaxParallelism);
+  return *thread_pool;
+}
 
 TEST(SavedModelIfrt, Basic) {
   std::string saved_model_dir = tensorflow::GetDataDependencyFilepath(
@@ -53,11 +63,9 @@ TEST(SavedModelIfrt, Basic) {
   // Use IFRT compiler
   runtime->AddCreateRuntimeResourceFn(
       [&](tensorflow::tfrt_stub::ModelRuntimeContext& model_context) {
-        tensorflow::ifrt_serving::IfrtModelContext ifrt_model_context(client);
-
         model_context.resource_context()
             .CreateResource<tensorflow::ifrt_serving::IfrtModelContext>(
-                "IfrtModelContext", std::move(ifrt_model_context));
+                "IfrtModelContext", client, &GetThreadPool());
         return absl::OkStatus();
       });
   tensorflow::ifrt_serving::IfrtBackendCompiler ifrt_compiler;

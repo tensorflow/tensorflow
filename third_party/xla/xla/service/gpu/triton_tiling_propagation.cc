@@ -1,4 +1,4 @@
-/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -875,6 +875,10 @@ DimOrderMapOrError GetPropagatedDimOrders(const HloInstruction& hlo,
     return GetPropagatedDimOrdersForBitcast(hlo, direction, src_dim_order,
                                             properties);
   } else if (hlo.opcode() == HloOpcode::kSlice) {
+    // TODO(b/316637896) Add support for slices in softmax.
+    if (std::holds_alternative<SoftmaxProperties>(properties)) {
+      return "Slices are not supported in Softmax fusions yet.";
+    }
     if (direction != TransformDirection::kOutputToInput) {
       return "Unsupported slice direction.";
     }

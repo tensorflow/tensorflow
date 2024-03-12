@@ -2,7 +2,7 @@
 # This example shows how a Python wrapper can choose either to use "dispach
 # for custom object types" to choose an old C++ Op (that supports only dense
 # tensors) for backwards compatibility or a new C++ for new functionality
-# (that supprots sparse tensors).
+# (that supports sparse tensors).
 
 load("//tensorflow:strict.default.bzl", "py_strict_library")
 load("//tensorflow:tensorflow.bzl", "tf_custom_op_library")

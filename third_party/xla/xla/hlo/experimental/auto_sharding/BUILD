@@ -2,10 +2,12 @@
 
 load("@bazel_skylib//rules:build_test.bzl", "build_test")
 load("//xla:xla.bzl", "auto_sharding_deps", "auto_sharding_solver_deps", "xla_cc_binary", "xla_cc_test")
+load("@local_tsl//tsl:tsl.default.bzl", "get_compatible_with_libtpu_portable")
 load("@local_tsl//tsl/platform:build_config.bzl", "tf_proto_library")
 
 package(
-    default_visibility = ["//visibility:public"],
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
+    default_visibility = [":friends"],
 )
 
 package_group(
@@ -27,7 +29,7 @@ cc_library(
     hdrs = [
         "auto_sharding.h",
     ],
-    visibility = ["//visibility:public"],
+    compatible_with = get_compatible_with_libtpu_portable(),
     deps = [
         ":auto_sharding_cost_graph",
         ":auto_sharding_option",
@@ -82,10 +84,11 @@ cc_library(
 cc_library(
     name = "auto_sharding_solver_impl",
     srcs = ["auto_sharding_solver_impl.cc"],
-    visibility = ["//visibility:public"],
+    compatible_with = get_compatible_with_libtpu_portable(),
     deps = [
         ":auto_sharding_proto_cc",
         ":auto_sharding_strategy",
+        "@com_google_absl//absl/log:check",
         "@com_google_ortools//ortools/linear_solver",
     ],
 )
@@ -93,12 +96,15 @@ cc_library(
 cc_library(
     name = "auto_sharding_solver",
     srcs = ["auto_sharding_solver.cc"],
-    visibility = ["//visibility:public"],
+    compatible_with = get_compatible_with_libtpu_portable(),
     deps = [
         ":auto_sharding_proto_cc",
         ":auto_sharding_strategy",
+        "//xla:status",
+        "//xla:status_macros",
         "//xla:statusor",
         "//xla:util",
+        "@com_google_absl//absl/container:btree",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/log",
@@ -120,15 +126,16 @@ cc_library(
         "auto_sharding_solver.h",
         "auto_sharding_strategy.h",
     ],
-    visibility = ["//visibility:public"],
+    compatible_with = get_compatible_with_libtpu_portable(),
     deps = [
         ":auto_sharding_proto_cc",
         "//xla:shape_util",
-        "//xla:statusor",
+        "//xla:status",
         "//xla/hlo/ir:hlo",
         "//xla/service:hlo_value",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_ortools//ortools/linear_solver",
     ],
@@ -137,13 +144,14 @@ cc_library(
 cc_library(
     name = "auto_sharding_cost_graph",
     hdrs = ["auto_sharding_cost_graph.h"],
-    visibility = ["//visibility:public"],
+    compatible_with = get_compatible_with_libtpu_portable(),
     deps = [
         ":auto_sharding_strategy",
         ":matrix",
         "//xla:shape_util",
         "//xla/hlo/ir:hlo",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
@@ -154,7 +162,7 @@ cc_library(
     name = "auto_sharding_option",
     srcs = ["auto_sharding_option.cc"],
     hdrs = ["auto_sharding_option.h"],
-    visibility = ["//visibility:public"],
+    compatible_with = get_compatible_with_libtpu_portable(),
     deps = [
         ":auto_sharding_util",
         "@com_google_absl//absl/algorithm:container",
@@ -167,7 +175,7 @@ cc_library(
 cc_library(
     name = "auto_sharding_wrapper",
     hdrs = ["auto_sharding_wrapper.h"],
-    visibility = ["//visibility:public"],
+    compatible_with = get_compatible_with_libtpu_portable(),
     deps = [
         ":auto_sharding_cost_graph",
         ":auto_sharding_option",
@@ -183,7 +191,7 @@ cc_library(
 cc_library(
     name = "auto_sharding_impl",
     srcs = ["auto_sharding_impl.cc"],
-    visibility = ["//visibility:public"],
+    compatible_with = get_compatible_with_libtpu_portable(),
     deps = [
         ":auto_sharding_cost_graph",
         ":auto_sharding_option",
@@ -193,13 +201,14 @@ cc_library(
         "//xla/hlo/utils:hlo_live_range",
         "//xla/service:hlo_cost_analysis",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/strings:string_view",
     ],
 )
 
 cc_library(
     name = "matrix",
     hdrs = ["matrix.h"],
-    visibility = ["//visibility:public"],
+    compatible_with = get_compatible_with_libtpu_portable(),
     deps = [
         "@com_google_absl//absl/strings",
         "@local_tsl//tsl/platform:logging",
@@ -210,21 +219,23 @@ cc_library(
     name = "cluster_environment",
     srcs = ["cluster_environment.cc"],
     hdrs = ["cluster_environment.h"],
-    visibility = ["//visibility:public"],
+    compatible_with = get_compatible_with_libtpu_portable(),
     deps = [
         ":auto_sharding_option",
         ":auto_sharding_strategy",
         ":auto_sharding_util",
         ":profiling_result",
+        "//xla:shape_util",
         "//xla/hlo/ir:hlo",
         "//xla/service/spmd:spmd_partitioner",
+        "@com_google_absl//absl/types:span",
     ],
 )
 
 cc_library(
     name = "profiling_result",
     hdrs = ["profiling_result.h"],
-    visibility = ["//visibility:public"],
+    compatible_with = get_compatible_with_libtpu_portable(),
     deps = [":auto_sharding_strategy"],
 )
 
@@ -232,7 +243,7 @@ cc_library(
     name = "auto_sharding_util",
     srcs = ["auto_sharding_util.cc"],
     hdrs = ["auto_sharding_util.h"],
-    visibility = ["//visibility:public"],
+    compatible_with = get_compatible_with_libtpu_portable(),
     deps = [
         ":auto_sharding_strategy",
         "//xla:array",
@@ -242,9 +253,11 @@ cc_library(
         "//xla:statusor",
         "//xla:xla_data_proto_cc",
         "//xla/hlo/ir:hlo",
+        "//xla/hlo/ir:ptrvec",
         "//xla/hlo/utils:hlo_sharding_util",
         "//xla/service:call_graph",
         "//xla/service:sharding_propagation",
+        "//xla/service:while_loop_analysis",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:btree",
         "@com_google_absl//absl/container:flat_hash_map",
@@ -263,13 +276,14 @@ cc_library(
     name = "metrics",
     srcs = ["metrics.cc"],
     hdrs = ["metrics.h"],
-    visibility = ["//visibility:public"],
+    compatible_with = get_compatible_with_libtpu_portable(),
     deps = ["@local_tsl//tsl/lib/monitoring:counter"],
 )
 
 xla_cc_binary(
     name = "auto_sharding_runner",
     srcs = ["auto_sharding_runner.cc"],
+    compatible_with = get_compatible_with_libtpu_portable(),
     deps = [
         ":auto_sharding",
         "//xla:status",
@@ -283,7 +297,6 @@ xla_cc_binary(
 tf_proto_library(
     name = "auto_sharding_proto",
     srcs = ["auto_sharding.proto"],
-    visibility = ["//visibility:public"],
 )
 
 build_test(
@@ -305,12 +318,17 @@ xla_cc_test(
         ":auto_sharding",
         ":auto_sharding_option",
         ":auto_sharding_util",
+        "//xla:statusor",
+        "//xla:test_helpers",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/utils:hlo_matchers",
         "//xla/service:hlo_parser",
         "//xla/tests:hlo_test_base",
         "//xla/tests:xla_internal_test_main",
+        "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/strings:string_view",
         "@com_google_googletest//:gtest",
         "@local_tsl//tsl/lib/core:status_test_util",
         "@local_tsl//tsl/platform:statusor",
@@ -330,6 +348,7 @@ xla_cc_test(
         ":auto_sharding_solver",  # build_cleaner: keep
         ":auto_sharding_strategy",
         "//xla/tests:xla_internal_test_main",
+        "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
         "@com_google_googletest//:gtest",
     ],

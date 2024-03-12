@@ -1299,7 +1299,7 @@ class PyVSpace : public tensorflow::eager::VSpace<PyObject, PyBackwardFunction,
     if (graph_shape_fn_ == nullptr) {
       return absl::InvalidArgumentError("invalid vspace");
     }
-    return ::tensorflow::OkStatus();
+    return absl::OkStatus();
   }
 
   ~PyVSpace() override {
@@ -1376,7 +1376,7 @@ class PyVSpace : public tensorflow::eager::VSpace<PyObject, PyBackwardFunction,
   Status BuildOnesLike(const PyTapeTensor& t,
                        PyObject** result) const override {
     *result = t.OnesLike();
-    return ::tensorflow::OkStatus();
+    return absl::OkStatus();
   }
 
   PyObject* Zeros(PyObject* shape, PyObject* dtype) const {
@@ -1449,7 +1449,7 @@ class PyVSpace : public tensorflow::eager::VSpace<PyObject, PyBackwardFunction,
     }
     Py_DECREF(seq);
     Py_DECREF(py_result);
-    return ::tensorflow::OkStatus();
+    return absl::OkStatus();
   }
 
   void DeleteGradient(PyObject* tensor) const final { Py_XDECREF(tensor); }
@@ -2524,7 +2524,7 @@ tensorflow::Status ParseTangentOutputs(
     PyObject* user_output, std::vector<PyObject*>* output_tangents) {
   if (user_output == Py_None) {
     // No connected gradients.
-    return ::tensorflow::OkStatus();
+    return absl::OkStatus();
   }
   tensorflow::Safe_PyObjectPtr fast_result(
       PySequence_Fast(user_output, "expected a sequence of forward gradients"));
@@ -2544,7 +2544,7 @@ tensorflow::Status ParseTangentOutputs(
       output_tangents->push_back(item);
     }
   }
-  return ::tensorflow::OkStatus();
+  return absl::OkStatus();
 }
 
 // Calls the registered forward_gradient_function, computing `output_tangents`
@@ -2903,7 +2903,7 @@ PyObject* TFE_Py_TapeGradient(PyObject* tape, PyObject* target,
     if (PyErr_Occurred()) {
       // Do not propagate the erroneous status as that would swallow the
       // exception which caused the problem.
-      tsl::Set_TF_Status_from_Status(status, ::tensorflow::OkStatus());
+      tsl::Set_TF_Status_from_Status(status, absl::OkStatus());
     }
     return nullptr;
   }

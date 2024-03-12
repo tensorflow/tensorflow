@@ -1,4 +1,4 @@
-/* Copyright 2022 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2022 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -104,9 +104,12 @@ struct AutoShardingOption {
   // 2d mesh case.
   bool batch_matmul_always_split_batch = false;
 
-  // If true, allow strategies that recompute heavy operators (e.g., dot)
-  // to reduce communication.
-  bool allow_recompute_heavy_op = false;
+  // If true, allow strategies that recompute heavy operators (e.g., dot) to
+  // reduce communication. This will generate generate replicated or partially
+  // replicated strategies for dot/conv ops. Generating these seems to be
+  // beneficial for LLM serving models, but can increase the search space, so
+  // this feature is exposed as an option.
+  bool allow_recompute_heavy_op = true;
 
   // If true, allow adding 1d strategies in 2d logical mesh.
   bool allow_mixed_mesh_shape = false;
@@ -143,11 +146,6 @@ struct AutoShardingOption {
   // space more scalable. Therefore leaving it as an option.
   bool nd_sharding_iteratively_strict_search_space = false;
 
-  // Whether or not to generate replicated strategies for dot/conv
-  // ops. Generating these seems to be beneficial for LLM serving models, but
-  // can increase the search space, so this feature is exposed as an option.
-  bool allow_replicated_strategy_for_dot_and_conv = true;
-
   // Device mesh shape.
   std::vector<int64_t> device_mesh_shape;
   // Device IDs in the mesh.
@@ -168,7 +166,10 @@ struct AutoShardingOption {
   // sharding_propagation.cc.
   int64_t solver_timeout_in_seconds = 3600;
 
-  // Static estimate for iteration count of a while loop, used in the cost model
+  // Static estimate for iteration count of a while loop, used in the cost
+  // model. This estimate is used when we cannot infer an upper bound on the
+  // number of iterations in the loop (as implemented in
+  // third_party/tensorflow/compiler/xla/service/while_loop_analysis.h)
   int64_t loop_iteration_count_estimate = 100;
 
   // Allows the conversion of aliases to followers if their pairwise strategy

@@ -325,8 +325,8 @@ class BaseGPUDevice::StreamGroupFactory {
               << "] = " << group->nccl;
 
       // Force underlying resource creation now.
-      group->compute->ThenWaitFor(group->nccl);
-      group->nccl->ThenWaitFor(group->compute);
+      group->compute->WaitFor(group->nccl).IgnoreError();
+      group->nccl->WaitFor(group->compute).IgnoreError();
 #endif
 
       group->host_to_device = GetInitializedStream(executor, priority);
@@ -424,15 +424,20 @@ class BaseGPUDevice::StreamGroupFactory {
  private:
   // Returns a Stream with the underlying GPUStream with the given priority.
   se::Stream* GetInitializedStream(se::StreamExecutor* executor, int priority) {
-    auto stream = new se::Stream(executor);
-    stream->implementation()->SetPriority(priority);
-    stream->Init();
-    return stream;
+    auto stream_or_status = executor->CreateStream(priority);
+    if (!stream_or_status.ok()) {
+      LOG(ERROR) << "Failed to create stream: " << stream_or_status.status();
+      return nullptr;
+    }
+    auto stream_ptr = stream_or_status->get();
+    allocated_streams_.emplace_back(std::move(stream_or_status.value()));
+    return stream_ptr;
   }
 
   mutex lock_;
   using key_type = std::tuple<int, int>;
   std::map<key_type, StreamGroup> streams_;
+  std::vector<std::unique_ptr<se::Stream>> allocated_streams_;
 
   // StreamGroupFactory cannot be created directly; Call
   // StreamGroupFactory::Global() to get the global instance.
@@ -699,13 +704,14 @@ bool ShouldLogInputsAndOutputs(OpKernel* op_kernel) {
 
 Tensor BaseGPUDevice::CopyGpuTensorToHostDebugOnly(const Tensor& gpu_tensor) {
   Tensor host_tensor(gpu_tensor.dtype(), gpu_tensor.shape());
-  CHECK(device_context_->stream()
-            ->ThenMemcpy(host_tensor.data(),
-                         se::DeviceMemoryBase(gpu_tensor.data(),
-                                              gpu_tensor.TotalBytes()),
-                         gpu_tensor.TotalBytes())
-            .BlockHostUntilDone()
+  auto stream = device_context_->stream();
+  CHECK(stream  // Crash OK
+            ->Memcpy(host_tensor.data(),
+                     se::DeviceMemoryBase(gpu_tensor.data(),
+                                          gpu_tensor.TotalBytes()),
+                     gpu_tensor.TotalBytes())
             .ok());
+  CHECK(stream->BlockHostUntilDone().ok());  // Crash OK
   return host_tensor;
 }
 
@@ -1672,8 +1678,7 @@ Status BaseGPUDeviceFactory::CreateDevices(
 #ifdef TF_GPU_USE_PJRT
   // After the GPU device creation loop, allocator_id_stream_tuples will be
   // populated.
-  std::vector<se::MultiDeviceAdapter::AllocatorWithLogicalIdAndStream>
-      allocator_id_stream_tuples;
+  std::vector<se::MultiDeviceAdapter::AllocatorInfo> allocator_id_stream_tuples;
   allocator_id_stream_tuples.reserve(tf_device_specs.size());
   // We build a map of xla::LocalDeviceState in the GPU device creation loop.
   // Each xla::LocalDeviceState maps to each logical GPU device. The map key is
@@ -1804,8 +1809,8 @@ Status BaseGPUDeviceFactory::CreateDevices(
     if (should_create_new_pjrt_client) {
       auto gpu_allocator_ptr = std::unique_ptr<Allocator>(gpu_allocator);
       allocator_id_stream_tuples.emplace_back(
-          std::move(gpu_allocator_ptr), tf_device_id.value(),
-          local_device_state->compute_stream());
+          std::move(gpu_allocator_ptr), local_device_state->compute_stream(), 0,
+          tf_device_id.value());
     }
   }
 

@@ -13,10 +13,12 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <cassert>
 #include <cstdint>
 #include <functional>
 #include <memory>
 #include <random>
+#include <string>
 
 #include <gtest/gtest.h>
 #include "tensorflow/lite/c/c_api_types.h"
@@ -26,7 +28,11 @@ limitations under the License.
 namespace tflite {
 namespace xnnpack {
 
-TEST(DynamicallyQuantizedFullyConnected, 1D) {
+// Dummy class to use with parameterized test.
+class DynamicallyQuantizedFullyConnectedTest
+    : public testing::TestWithParam<WeightsType> {};
+
+TEST_P(DynamicallyQuantizedFullyConnectedTest, 1D) {
   TfLiteXNNPackDelegateOptions delegate_options =
       TfLiteXNNPackDelegateOptionsDefault();
   delegate_options.flags |=
@@ -47,10 +53,11 @@ TEST(DynamicallyQuantizedFullyConnected, 1D) {
       .InputChannels(input_channels)
       .OutputChannels(output_channels)
       .KeepDims(true)
+      .WeightsType(GetParam())
       .Test(xnnpack_delegate.get());
 }
 
-TEST(DynamicallyQuantizedFullyConnected, 2D) {
+TEST_P(DynamicallyQuantizedFullyConnectedTest, 2D) {
   TfLiteXNNPackDelegateOptions delegate_options =
       TfLiteXNNPackDelegateOptionsDefault();
   delegate_options.flags |=
@@ -73,10 +80,11 @@ TEST(DynamicallyQuantizedFullyConnected, 2D) {
       .InputShape({batch, input_channels})
       .InputChannels(input_channels)
       .OutputChannels(output_channels)
+      .WeightsType(GetParam())
       .Test(xnnpack_delegate.get());
 }
 
-TEST(DynamicallyQuantizedFullyConnected, 2DKeepDims) {
+TEST_P(DynamicallyQuantizedFullyConnectedTest, 2DKeepDims) {
   TfLiteXNNPackDelegateOptions delegate_options =
       TfLiteXNNPackDelegateOptionsDefault();
   delegate_options.flags |=
@@ -100,10 +108,11 @@ TEST(DynamicallyQuantizedFullyConnected, 2DKeepDims) {
       .InputChannels(input_channels)
       .OutputChannels(output_channels)
       .KeepDims(true)
+      .WeightsType(GetParam())
       .Test(xnnpack_delegate.get());
 }
 
-TEST(DynamicallyQuantizedFullyConnected, 3D) {
+TEST_P(DynamicallyQuantizedFullyConnectedTest, 3D) {
   TfLiteXNNPackDelegateOptions delegate_options =
       TfLiteXNNPackDelegateOptionsDefault();
   delegate_options.flags |=
@@ -126,10 +135,11 @@ TEST(DynamicallyQuantizedFullyConnected, 3D) {
       .InputShape({batch, width, input_channels})
       .InputChannels(input_channels)
       .OutputChannels(output_channels)
+      .WeightsType(GetParam())
       .Test(xnnpack_delegate.get());
 }
 
-TEST(DynamicallyQuantizedFullyConnected, 3DReshape) {
+TEST_P(DynamicallyQuantizedFullyConnectedTest, 3DReshape) {
   TfLiteXNNPackDelegateOptions delegate_options =
       TfLiteXNNPackDelegateOptionsDefault();
   delegate_options.flags |=
@@ -153,10 +163,11 @@ TEST(DynamicallyQuantizedFullyConnected, 3DReshape) {
       .InputShape({batch, width, input_channels})
       .InputChannels(width * input_channels)
       .OutputChannels(output_channels)
+      .WeightsType(GetParam())
       .Test(xnnpack_delegate.get());
 }
 
-TEST(DynamicallyQuantizedFullyConnected, 3DKeepDims) {
+TEST_P(DynamicallyQuantizedFullyConnectedTest, 3DKeepDims) {
   TfLiteXNNPackDelegateOptions delegate_options =
       TfLiteXNNPackDelegateOptionsDefault();
   delegate_options.flags |=
@@ -181,10 +192,11 @@ TEST(DynamicallyQuantizedFullyConnected, 3DKeepDims) {
       .InputChannels(input_channels)
       .OutputChannels(output_channels)
       .KeepDims(true)
+      .WeightsType(GetParam())
       .Test(xnnpack_delegate.get());
 }
 
-TEST(DynamicallyQuantizedFullyConnected, 4D) {
+TEST_P(DynamicallyQuantizedFullyConnectedTest, 4D) {
   TfLiteXNNPackDelegateOptions delegate_options =
       TfLiteXNNPackDelegateOptionsDefault();
   delegate_options.flags |=
@@ -209,10 +221,11 @@ TEST(DynamicallyQuantizedFullyConnected, 4D) {
       .InputShape({batch, height, width, input_channels})
       .InputChannels(input_channels)
       .OutputChannels(output_channels)
+      .WeightsType(GetParam())
       .Test(xnnpack_delegate.get());
 }
 
-TEST(DynamicallyQuantizedFullyConnected, 4DKeepDims) {
+TEST_P(DynamicallyQuantizedFullyConnectedTest, 4DKeepDims) {
   TfLiteXNNPackDelegateOptions delegate_options =
       TfLiteXNNPackDelegateOptionsDefault();
   delegate_options.flags |=
@@ -238,10 +251,11 @@ TEST(DynamicallyQuantizedFullyConnected, 4DKeepDims) {
       .InputChannels(input_channels)
       .OutputChannels(output_channels)
       .KeepDims(true)
+      .WeightsType(GetParam())
       .Test(xnnpack_delegate.get());
 }
 
-TEST(DynamicallyQuantizedFullyConnected, NoBias) {
+TEST_P(DynamicallyQuantizedFullyConnectedTest, NoBias) {
   TfLiteXNNPackDelegateOptions delegate_options =
       TfLiteXNNPackDelegateOptionsDefault();
   delegate_options.flags |=
@@ -265,10 +279,11 @@ TEST(DynamicallyQuantizedFullyConnected, NoBias) {
       .InputChannels(input_channels)
       .OutputChannels(output_channels)
       .NoBias()
+      .WeightsType(GetParam())
       .Test(xnnpack_delegate.get());
 }
 
-TEST(DynamicallyQuantizedFullyConnected, ReluActivation) {
+TEST_P(DynamicallyQuantizedFullyConnectedTest, ReluActivation) {
   TfLiteXNNPackDelegateOptions delegate_options =
       TfLiteXNNPackDelegateOptionsDefault();
   delegate_options.flags |=
@@ -292,10 +307,11 @@ TEST(DynamicallyQuantizedFullyConnected, ReluActivation) {
       .InputChannels(input_channels)
       .OutputChannels(output_channels)
       .ReluActivation()
+      .WeightsType(GetParam())
       .Test(xnnpack_delegate.get());
 }
 
-TEST(DynamicallyQuantizedFullyConnected, Relu6Activation) {
+TEST_P(DynamicallyQuantizedFullyConnectedTest, Relu6Activation) {
   TfLiteXNNPackDelegateOptions delegate_options =
       TfLiteXNNPackDelegateOptionsDefault();
   delegate_options.flags |=
@@ -319,10 +335,11 @@ TEST(DynamicallyQuantizedFullyConnected, Relu6Activation) {
       .InputChannels(input_channels)
       .OutputChannels(output_channels)
       .Relu6Activation()
+      .WeightsType(GetParam())
       .Test(xnnpack_delegate.get());
 }
 
-TEST(DynamicallyQuantizedFullyConnected, ReluMinus1To1Activation) {
+TEST_P(DynamicallyQuantizedFullyConnectedTest, ReluMinus1To1Activation) {
   TfLiteXNNPackDelegateOptions delegate_options =
       TfLiteXNNPackDelegateOptionsDefault();
   delegate_options.flags |=
@@ -346,10 +363,11 @@ TEST(DynamicallyQuantizedFullyConnected, ReluMinus1To1Activation) {
       .InputChannels(input_channels)
       .OutputChannels(output_channels)
       .ReluMinus1To1Activation()
+      .WeightsType(GetParam())
       .Test(xnnpack_delegate.get());
 }
 
-TEST(DynamicallyQuantizedFullyConnected, MultiThreading) {
+TEST_P(DynamicallyQuantizedFullyConnectedTest, MultiThreading) {
   TfLiteXNNPackDelegateOptions delegate_options =
       TfLiteXNNPackDelegateOptionsDefault();
   delegate_options.flags |=
@@ -373,10 +391,11 @@ TEST(DynamicallyQuantizedFullyConnected, MultiThreading) {
       .InputShape({batch, input_channels})
       .InputChannels(input_channels)
       .OutputChannels(output_channels)
+      .WeightsType(GetParam())
       .Test(xnnpack_delegate.get());
 }
 
-TEST(DynamicallyQuantizedFullyConnected, WeightsCache) {
+TEST_P(DynamicallyQuantizedFullyConnectedTest, WeightsCache) {
   TfLiteXNNPackDelegateOptions delegate_options =
       TfLiteXNNPackDelegateOptionsDefault();
   delegate_options.flags |=
@@ -404,8 +423,29 @@ TEST(DynamicallyQuantizedFullyConnected, WeightsCache) {
       .InputChannels(input_channels)
       .OutputChannels(output_channels)
       .WeightsCache(weights_cache.get())
+      .WeightsType(GetParam())
       .Test(xnnpack_delegate.get());
 }
+
+// Returns a human readable string representation of the test parameter.
+std::string TestParamToString(testing::TestParamInfo<WeightsType> param) {
+  switch (param.param) {
+    case WeightsType::kChannelWiseQuantizedInt8:
+      return "ChannelWiseQuantizedInt8";
+    case WeightsType::kTensorWiseQuantizedInt8:
+      return "TensorWiseQuantizedInt8";
+    default:
+      assert(false);
+      return "???";
+  }
+}
+
+INSTANTIATE_TEST_SUITE_P(
+    DynamicallyQuantizedFullyConnectedTest,
+    DynamicallyQuantizedFullyConnectedTest,
+    testing::Values(WeightsType::kTensorWiseQuantizedInt8,
+                    WeightsType::kChannelWiseQuantizedInt8),
+    TestParamToString);
 
 }  // namespace xnnpack
 }  // namespace tflite

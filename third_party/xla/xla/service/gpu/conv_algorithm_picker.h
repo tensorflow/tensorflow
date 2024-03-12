@@ -1,4 +1,4 @@
-/* Copyright 2018 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2018 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -18,18 +18,28 @@ limitations under the License.
 
 #include <optional>
 #include <string>
-#include <string_view>
 #include <vector>
 
+#include "absl/container/flat_hash_set.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
+#include "absl/types/span.h"
 #include "xla/autotune_results.pb.h"
 #include "xla/autotuning.pb.h"
+#include "xla/hlo/ir/hlo_computation.h"
+#include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/gpu/autotuner_util.h"
+#include "xla/service/gpu/cublas_cudnn.h"
 #include "xla/service/gpu/gpu_conv_runner.h"
+#include "xla/service/hlo_module_config.h"
 #include "xla/service/hlo_pass_interface.h"
 #include "xla/service/service_executable_run_options.h"
+#include "xla/shape.h"
+#include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/device_memory_allocator.h"
+#include "xla/stream_executor/dnn.h"
 #include "xla/stream_executor/stream_executor.h"
 
 #if (defined(GOOGLE_CUDA) && GOOGLE_CUDA)
@@ -90,12 +100,12 @@ class GpuConvAlgorithmPicker : public HloModulePass {
   }
 
   using HloPassInterface::Run;
-  StatusOr<bool> Run(
+  absl::StatusOr<bool> Run(
       HloModule* module,
       const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 
   // Run autotuning on allocated buffers and pick the best algorithm.
-  StatusOr<AutotuneResult> PickBestAlgorithmWithAllocatedBuffer(
+  absl::StatusOr<AutotuneResult> PickBestAlgorithmWithAllocatedBuffer(
       const AutotuneConfig& config, GpuConvConfig conv_config,
       const ServiceExecutableRunOptions* run_options,
       const DebugOptions& debug_options,
@@ -103,12 +113,12 @@ class GpuConvAlgorithmPicker : public HloModulePass {
       std::vector<se::DeviceMemoryBase> result_buffers);
 
  private:
-  StatusOr<bool> RunOnComputation(HloComputation* computation);
-  StatusOr<bool> RunOnInstruction(HloInstruction* instr);
+  absl::StatusOr<bool> RunOnComputation(HloComputation* computation);
+  absl::StatusOr<bool> RunOnInstruction(HloInstruction* instr);
 
-  StatusOr<AutotuneResult> PickBestAlgorithm(
+  absl::StatusOr<AutotuneResult> PickBestAlgorithm(
       const HloCustomCallInstruction* instr);
-  StatusOr<AutotuneResult> PickBestAlgorithmNoCache(
+  absl::StatusOr<AutotuneResult> PickBestAlgorithmNoCache(
       const HloCustomCallInstruction* instr);
 
 #if (defined(GOOGLE_CUDA) && GOOGLE_CUDA)
@@ -131,13 +141,13 @@ class GpuConvAlgorithmPicker : public HloModulePass {
     const GpuConvConfig gpu_conv_config;
     std::optional<std::string> canonical_hlo;
 
-    static StatusOr<AutotuneRuntimeArguments> FromInstruction(
+    static absl::StatusOr<AutotuneRuntimeArguments> FromInstruction(
         const HloCustomCallInstruction* instr,
         se::DeviceMemoryAllocator* allocator, se::StreamExecutor* stream,
         se::RedzoneAllocator* input_output_allocator);
   };
 
-  StatusOr<AutotuneResult> AutotuneOneConvRunner(
+  absl::StatusOr<AutotuneResult> AutotuneOneConvRunner(
       se::Stream* stream, GenericConvRunner* runner,
       std::optional<ReferenceResult>* reference_result,
       absl::Span<const stream_executor::dnn::AlgorithmDesc> disabled_algos,
@@ -145,13 +155,13 @@ class GpuConvAlgorithmPicker : public HloModulePass {
       const AutotuneRuntimeArguments& runtime_arguments);
 
   // Pick the best algorithm for CUDA platform.
-  StatusOr<AutotuneResult> PickBestAlgorithmNoCacheCuda(
+  absl::StatusOr<AutotuneResult> PickBestAlgorithmNoCacheCuda(
       const HloCustomCallInstruction* instr, se::Stream* stream,
       std::optional<AutotuneCacheKey> instruction_info,
       const AutotuneRuntimeArguments& runtime_arguments);
 #endif
 
-  StatusOr<AutotuneResult> PickBestAlgorithmNoCacheRocm(
+  absl::StatusOr<AutotuneResult> PickBestAlgorithmNoCacheRocm(
       const HloCustomCallInstruction* instr,
       se::DeviceMemoryAllocator* allocator, se::Stream* stream);
 

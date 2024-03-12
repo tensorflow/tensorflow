@@ -150,7 +150,7 @@ std::string Sanitize(absl::string_view string) {
 }
 
 // Pass instrumentation that dumps MLIR based on the criteria specified by
-// `mlir_dump_*` debug options.
+// `ir_dump_*` debug options.
 //
 // While `mlir::PassManager::enableIRPrinting` provides a similar functionality,
 // it is cumbersome to manually copy printed IRs and run them with `tf-opt`.
@@ -282,11 +282,11 @@ std::function<bool(mlir::Pass*, mlir::Operation*)> CreatePrintIRFun(
 void InitPassManager(mlir::PassManager& pm,
                      const converter::DebugOptions& options,
                      llvm::raw_ostream& out) {
-  std::string dump_dir = options.mlir_dump_dir();
+  std::string dump_dir = options.ir_dump_dir();
 
   bool dump_to_dir = !dump_dir.empty();
-  bool print_to_stdout = !options.mlir_print_ir_before().empty() ||
-                         !options.mlir_print_ir_after().empty();
+  bool print_to_stdout =
+      !options.print_ir_before().empty() || !options.print_ir_after().empty();
 
   if (dump_to_dir || print_to_stdout) {
     // Necessary for maintaining sequence of passes when dumping MLIR to files
@@ -313,27 +313,25 @@ void InitPassManager(mlir::PassManager& pm,
     }
 
     pm.addInstrumentation(std::make_unique<DumpInstrumentation>(
-        dump_dir, options.mlir_dump_pass_regex(),
-        options.mlir_dump_func_regex()));
+        dump_dir, options.ir_dump_pass_regex(), options.ir_dump_func_regex()));
   }
 
   if (print_to_stdout) {
     std::function<bool(mlir::Pass*, mlir::Operation*)>
         should_print_ir_before_pass(
-            CreatePrintIRFun(options.mlir_print_ir_before()));
+            CreatePrintIRFun(options.print_ir_before()));
     std::function<bool(mlir::Pass*, mlir::Operation*)>
-        should_print_ir_after_pass(
-            CreatePrintIRFun(options.mlir_print_ir_after()));
+        should_print_ir_after_pass(CreatePrintIRFun(options.print_ir_after()));
 
     mlir::OpPrintingFlags opPrintingFlags = mlir::OpPrintingFlags();
 
-    if (options.has_mlir_elide_elementsattrs_if_larger()) {
+    if (options.has_elide_elementsattrs_if_larger()) {
       opPrintingFlags.elideLargeElementsAttrs(
-          options.mlir_elide_elementsattrs_if_larger());
+          options.elide_elementsattrs_if_larger());
     }
 
     pm.enableIRPrinting(should_print_ir_before_pass, should_print_ir_after_pass,
-                        options.mlir_print_ir_module_scope(),
+                        options.print_ir_module_scope(),
                         /*printAfterOnlyOnChange=*/true,
                         /*printAfterOnlyOnFailure=*/false, out,
                         opPrintingFlags);
@@ -341,7 +339,7 @@ void InitPassManager(mlir::PassManager& pm,
 
   // Enable pass timing. Note: MLIR expects `mlir::PassManager::enableTiming` to
   // be called after all instrumentations are added.
-  if (options.mlir_enable_timing()) {
+  if (options.enable_timing()) {
     pm.enableTiming();
   }
 }

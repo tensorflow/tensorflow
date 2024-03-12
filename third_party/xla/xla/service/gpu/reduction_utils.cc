@@ -1,4 +1,4 @@
-/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -217,6 +217,24 @@ ReductionDimensions GetReductionKindAndContiguousComponents(
             {1, shape_partition[0], shape_partition[1]}};
   }
   return {/*is_row_reduction=*/false, shape_partition};
+}
+
+bool IsRealReductionHero(const HloInstruction& root,
+                         const HloInstruction& hero) {
+  if (!IsReductionFromOrToContiguousDimensions(hero)) {
+    return false;
+  }
+  return &root == &hero ||
+         ReductionIsRaceFree(hero.GetModule()->config(),
+                             GetReductionKindAndContiguousComponents(hero));
+}
+
+bool AreReductionsMultiOutputFusionCompatible(
+    const HloInstruction* reduce_hero, const HloInstruction* first_reduce) {
+  // The reduction kind must be the same for all reduce heroes inside of a
+  // multioutput fusion.
+  return GetReductionKindAndContiguousComponents(*reduce_hero) ==
+         GetReductionKindAndContiguousComponents(*first_reduce);
 }
 
 }  // namespace gpu

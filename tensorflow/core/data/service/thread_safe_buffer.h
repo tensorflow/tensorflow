@@ -54,7 +54,7 @@ class ThreadSafeBuffer final {
   condition_variable ready_to_pop_;
   condition_variable ready_to_push_;
   std::deque<StatusOr<T>> results_ TF_GUARDED_BY(mu_);
-  Status status_ TF_GUARDED_BY(mu_) = OkStatus();
+  Status status_ TF_GUARDED_BY(mu_) = absl::OkStatus();
 
   ThreadSafeBuffer(const ThreadSafeBuffer&) = delete;
   void operator=(const ThreadSafeBuffer&) = delete;
@@ -94,7 +94,7 @@ Status ThreadSafeBuffer<T>::Push(StatusOr<T> value) {
   }
   results_.push_back(std::move(value));
   ready_to_pop_.notify_one();
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 template <class T>

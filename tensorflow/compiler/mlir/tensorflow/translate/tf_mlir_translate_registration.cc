@@ -31,7 +31,7 @@ limitations under the License.
 #include "xla/client/client_library.h"
 #include "xla/client/compile_only_client.h"
 #include "xla/stream_executor/host/host_platform_id.h"
-#include "xla/stream_executor/multi_platform_manager.h"
+#include "xla/stream_executor/platform_manager.h"
 #include "tensorflow/core/common_runtime/graph_constructor.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/graph.pb.h"
@@ -136,7 +136,7 @@ static LogicalResult MlirToGraphTranslateFunction(ModuleOp module,
   }
 
   // Use Host platform, which should always exist, to make sure graphs compile.
-  auto platform = stream_executor::MultiPlatformManager::PlatformWithId(
+  auto platform = stream_executor::PlatformManager::PlatformWithId(
       stream_executor::host::kHostPlatformId);
   auto client =
       xla::ClientLibrary::GetOrCreateCompileOnlyClient(platform.value());

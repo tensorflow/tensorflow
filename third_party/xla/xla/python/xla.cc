@@ -1,4 +1,4 @@
-/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2019 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "xla/python/xla.h"
 
+#include <Python.h>
+
 #include <cstdint>
 #include <exception>
 #include <functional>
@@ -22,17 +24,19 @@ limitations under the License.
 #include <optional>
 #include <set>
 #include <string>
-#include <string_view>
 #include <utility>
 #include <variant>
 #include <vector>
 
 #include "absl/base/casts.h"
+#include "third_party/nanobind/include/nanobind/nanobind.h"
+#include "third_party/nanobind/include/nanobind/nb_defs.h"
+#include "third_party/nanobind/include/nanobind/stl/optional.h"  // IWYU pragma: keep
+#include "third_party/nanobind/include/nanobind/stl/shared_ptr.h"  // IWYU pragma: keep
+#include "third_party/nanobind/include/nanobind/stl/vector.h"  // IWYU pragma: keep
 // clang-format off
 // Must be included first
 #include "absl/strings/str_cat.h"
-#include "absl/strings/str_join.h"
-#include "absl/synchronization/mutex.h"
 #include "xla/pjrt/c/pjrt_c_api.h"
 #include "xla/pjrt/distributed/protocol.pb.h"
 #include "xla/python/py_client.h"
@@ -40,7 +44,6 @@ limitations under the License.
 #include "tsl/python/lib/core/numpy.h"  //NOLINT
 // clang-format on
 
-#include "absl/strings/ascii.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "absl/time/time.h"
@@ -51,12 +54,14 @@ limitations under the License.
 #include "pybind11/numpy.h"  // from @pybind11
 #include "pybind11/pybind11.h"  // from @pybind11
 #include "pybind11/pytypes.h"  // from @pybind11
+#include "pybind11/stl.h"  // from @pybind11
 #include "pybind11/stl_bind.h"  // from @pybind11
+#include "pybind11_abseil/absl_casters.h"  // from @pybind11_abseil
+#include "xla/ffi/ffi_api.h"
 #include "xla/layout_util.h"
 #include "xla/pjrt/distributed/client.h"
 #include "xla/pjrt/distributed/distributed.h"
 #include "xla/pjrt/distributed/service.h"
-#include "xla/pjrt/mlir_to_hlo.h"
 #include "xla/pjrt/pjrt_compiler.h"
 #ifdef XLA_PYTHON_ENABLE_GPU
 #include "xla/pjrt/gpu/se_gpu_pjrt_client.h"
@@ -71,9 +76,11 @@ limitations under the License.
 
 #include "xla/pjrt/cpu/cpu_client.h"
 #include "xla/pjrt/distributed/key_value_store_interface.h"
+#include "xla/pjrt/exceptions.h"
 #include "xla/pjrt/pjrt_api.h"
 #include "xla/pjrt/pjrt_c_api_client.h"
 #include "xla/pjrt/pjrt_client.h"
+#include "xla/pjrt/pjrt_layout.h"
 #include "xla/pjrt/status_casters.h"
 #include "xla/python/custom_call_sharding.h"
 #include "xla/python/dlpack.h"
@@ -88,7 +95,6 @@ limitations under the License.
 #include "xla/python/pprof_profile_builder.h"
 #include "xla/python/profiler.h"
 #include "xla/python/py_array.h"
-#include "xla/python/py_buffer.h"
 #include "xla/python/py_compile_only_client.h"
 #include "xla/python/py_device_list.h"
 #include "xla/python/py_executable.h"
@@ -104,7 +110,6 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/statusor.h"
-#include "xla/util.h"
 #include "tsl/distributed_runtime/preemption/preemption_sync_manager.h"
 #include "tsl/platform/platform.h"
 
@@ -113,6 +118,7 @@ limitations under the License.
 namespace xla {
 namespace {
 
+namespace nb = nanobind;
 namespace py = pybind11;
 
 bool IsOptimizedBuild() {
@@ -159,14 +165,37 @@ static void Init(py::module_& m) {
   InitializeAbslLogging();
 #endif  // PLATFORM_GOOGLE
 
+  // Normally this would happen at the start of NB_MODULE, but since this is a
+  // pybind11 module we have to do this ourselves.
+  nb::detail::init(NB_DOMAIN_STR);
+
+  // We seem to get a fair number of leak warnings from nanobind. It's unclear
+  // whether these are false positives or not.
+  nb::set_leak_warnings(false);
+
   tsl::ImportNumpy();
+
+  nb::module_ m_nb = nb::cast<nb::module_>(nb::borrow(m.ptr()));
 
   // Exceptions
   py::register_exception<XlaRuntimeError>(m, "XlaRuntimeError",
                                           PyExc_RuntimeError);
 
+  // TODO(phawkins): use nb::exception<> once we have migrated all the pybind11
+  // code to nanobind. We use nb::register_exception_translator because we don't
+  // want to define the exception twice.
+  nb::register_exception_translator(
+      [](const std::exception_ptr& p, void* payload) {
+        try {
+          std::rethrow_exception(p);
+        } catch (const XlaRuntimeError& e) {
+          PyErr_SetString(reinterpret_cast<PyObject*>(payload), e.what());
+        }
+      },
+      nb::getattr(m_nb, "XlaRuntimeError").ptr());
+
   // Types
-  py::enum_<PrimitiveType>(m, "PrimitiveType")
+  nb::enum_<PrimitiveType>(m_nb, "PrimitiveType")
       .value("PRIMITIVE_TYPE_INVALID", PRIMITIVE_TYPE_INVALID)
       .value("PRED", PRED)
       .value("S4", S4)
@@ -195,7 +224,7 @@ static void Init(py::module_& m) {
       .value("TOKEN", TOKEN);
 
   // Must be before PyClient.compile.
-  BuildXlaCompilerSubmodule(m);
+  BuildXlaCompilerSubmodule(m_nb);
 
   py::class_<PjRtDevice, ClientAndPtr<PjRtDevice>> device(
       m, "Device",
@@ -250,28 +279,39 @@ static void Init(py::module_& m) {
       .def("__str__", &PjRtDevice::DebugString)
       .def("__repr__", &PjRtDevice::ToString)
       .def("transfer_to_infeed",
-           [](PjRtDevice& device, const LiteralSlice& literal) {
+           [](PjRtDevice& device, py::handle literal_py) {
+             // TODO(phawkins): just accept a Shape argument after nanobind
+             // transition is complete.
+             // We use a type caster directly because we need the value to
+             // alive until the transfer completes.
+             nb::detail::type_caster<LiteralSlice> literal_caster;
+             if (!literal_caster.from_python(literal_py.ptr(), 0, nullptr)) {
+               throw py::cast_error();
+             }
              GlobalPyRefManager()->CollectGarbage();
              py::gil_scoped_release gil_release;
-             xla::ThrowIfError(device.TransferToInfeed(literal));
+             xla::ThrowIfError(device.TransferToInfeed(literal_caster.value));
            })
       .def("transfer_from_outfeed",
-           [](PjRtDevice& device, const Shape& shape) -> py::object {
+           [](PjRtDevice& device, py::handle shape_py) -> py::object {
+             // TODO(phawkins): just accept a Shape argument after nanobind
+             // transition is complete.
+             Shape shape = nb::cast<Shape>(nb::borrow(shape_py.ptr()));
              GlobalPyRefManager()->CollectGarbage();
              std::shared_ptr<Literal> literal;
              {
                py::gil_scoped_release gil_release;
-               Shape shape_with_layout = shape;
                ShapeUtil::ForEachMutableSubshape(
-                   &shape_with_layout, [](Shape* subshape, const ShapeIndex&) {
+                   &shape, [](Shape* subshape, const ShapeIndex&) {
                      if (!subshape->has_layout()) {
                        LayoutUtil::SetToDefaultLayout(subshape);
                      }
                    });
-               literal = std::make_shared<Literal>(shape_with_layout);
+               literal = std::make_shared<Literal>(shape);
                xla::ThrowIfError(device.TransferFromOutfeed(literal.get()));
              }
-             return ValueOrThrow(LiteralToPython(std::move(literal)));
+             nb::object out = ValueOrThrow(LiteralToPython(std::move(literal)));
+             return py::reinterpret_steal<py::object>(out.release().ptr());
            })
       .def(
           "memory",
@@ -425,6 +465,30 @@ static void Init(py::module_& m) {
              return devices;
            });
 
+  py::class_<PjRtLayout>(m, "PjRtLayout")
+      .def("__str__", &PjRtLayout::ToString)
+      .def("__eq__", [](const PjRtLayout& layout,
+                        const PjRtLayout& other) { return layout == other; })
+      .def("__hash__",
+           [](const PjRtLayout& layout) { return absl::HashOf(layout); })
+      .def(py::pickle(
+          [](const PjRtLayout& layout) -> py::tuple {
+            StatusOr<std::string> serialized = layout.Serialize();
+            ThrowIfError(serialized.status());
+            return py::make_tuple(py::bytes(*serialized));
+          },
+          [](py::tuple t) {
+            // TODO(b/328671718): don't assume PjRtXlaLayout. We probably want a
+            // generic method on PjRtCompiler instead, although we'll have
+            // somehow have to attach a compiler to this PjRtLayout (something
+            // like ClientAndPtr).
+            StatusOr<PjRtXlaLayout> layout =
+                PjRtXlaLayout::Deserialize(t[0].cast<std::string>());
+            ThrowIfError(layout.status());
+            return std::unique_ptr<PjRtLayout>(
+                new PjRtXlaLayout(std::move(*layout)));
+          }));
+
   // Local XLA client methods.
 
   py::enum_<PjRtClient::HostBufferSemantics>(m, "HostBufferSemantics")
@@ -434,7 +498,7 @@ static void Init(py::module_& m) {
              PjRtClient::HostBufferSemantics::kImmutableUntilTransferCompletes)
       .value("ZERO_COPY", PjRtClient::HostBufferSemantics::kZeroCopy);
 
-  jax::BuildWeakrefLRUCacheAPI(m);
+  jax::BuildWeakrefLRUCacheAPI(m_nb);
 
   py::class_<PyClient, std::shared_ptr<PyClient>> py_local_client(m, "Client");
   py_local_client.def_property_readonly("platform", &PyClient::platform_name)
@@ -471,16 +535,50 @@ static void Init(py::module_& m) {
       .def("make_cross_host_receive_buffers",
            xla::ValueOrThrowWrapper(&PyClient::MakeCrossHostReceiveBuffers),
            py::arg("shapes"), py::arg("device"))
-      .def("compile", xla::ValueOrThrowWrapper(&PyClient::Compile),
-           py::arg("computation"),
-           py::arg("compile_options") = CompileOptions(),
-           py::arg("host_callbacks") = std::vector<py::capsule>())
+      .def(
+          "compile",
+          [](PyClient& self, std::string mlir_module, py::object options_py,
+             std::vector<pybind11::capsule> host_callbacks) {
+            // TODO(phawkins): just wrap PyClient::Compile directly when the
+            // nanobind transition is complete.
+            CompileOptions options;
+            if (!options_py.is_none()) {
+              try {
+                options =
+                    nb::cast<CompileOptions>(nb::handle(options_py.ptr()));
+              } catch (std::exception& e) {
+                throw py::type_error(e.what());
+              }
+            }
+            return ValueOrThrow(
+                self.Compile(mlir_module, options, host_callbacks));
+          },
+          py::arg("computation"), py::arg("compile_options") = py::none(),
+          py::arg("host_callbacks") = std::vector<py::capsule>())
       .def("serialize_executable",
            xla::ValueOrThrowWrapper(&PyClient::SerializeExecutable))
-      .def("deserialize_executable",
-           xla::ValueOrThrowWrapper(&PyClient::DeserializeExecutable),
-           py::arg("serialized"), py::arg("compile_options") = std::nullopt,
-           py::arg("host_callbacks") = std::vector<py::capsule>())
+      .def(
+          "deserialize_executable",
+          // TODO(phawkins): revert to the following after nanobind transition
+          // is complete
+          // xla::ValueOrThrowWrapper(&PyClient::DeserializeExecutable),
+          [](PyClient& self, const std::string& serialized,
+             py::object options_py,
+             std::vector<pybind11::capsule> host_callbacks) {
+            std::optional<CompileOptions> options;
+            if (!options_py.is_none()) {
+              try {
+                options =
+                    nb::cast<CompileOptions>(nb::handle(options_py.ptr()));
+              } catch (std::exception& e) {
+                throw py::type_error(e.what());
+              }
+            }
+            return xla::ValueOrThrow(self.DeserializeExecutable(
+                serialized, options, host_callbacks));
+          },
+          py::arg("serialized"), py::arg("compile_options") = py::none(),
+          py::arg("host_callbacks") = std::vector<py::capsule>())
       .def("heap_profile", xla::ValueOrThrowWrapper(&PyClient::HeapProfile))
       // TODO(zhangqiaorjc): Experimental.
       .def("defragment",
@@ -488,13 +586,28 @@ static void Init(py::module_& m) {
       .def("get_emit_python_callback_descriptor",
            xla::ValueOrThrowWrapper(&PyClient::GetEmitPythonCallbackDescriptor),
            py::arg("callable"), py::arg("operand_shapes"),
-           py::arg("result_shapes") = std::nullopt)
-      .def("make_python_callback_from_host_send_and_recv",
-           xla::ValueOrThrowWrapper(
-               &PyClient::MakePythonCallbackUsingHostSendAndRecv),
-           py::arg("callable"), py::arg("operand_shapes"),
-           py::arg("result_shapes"), py::arg("send_channel_ids"),
-           py::arg("recv_channel_ids"), py::arg("serializer") = py::none())
+           py::arg("result_shapes") = py::none())
+      .def(
+          "make_python_callback_from_host_send_and_recv",
+          // TODO(phawkins): revert to
+          //  xla::ValueOrThrowWrapper(
+          //      &PyClient::MakePythonCallbackUsingHostSendAndRecv),
+          // when the nanobind transition is done.
+          [](PyClient& self, py::function callable, py::object operand_shapes,
+             py::object result_shapes,
+             absl::Span<uint16_t const> send_channel_ids,
+             absl::Span<uint16_t const> recv_channel_ids,
+             py::function serializer) {
+            return ValueOrThrow(self.MakePythonCallbackUsingHostSendAndRecv(
+                callable,
+                nb::cast<std::vector<Shape>>(nb::handle(operand_shapes.ptr())),
+                nb::cast<std::vector<Shape>>(nb::handle(result_shapes.ptr())),
+                send_channel_ids, recv_channel_ids, serializer));
+          },
+
+          py::arg("callable"), py::arg("operand_shapes"),
+          py::arg("result_shapes"), py::arg("send_channel_ids"),
+          py::arg("recv_channel_ids"), py::arg("serializer") = py::none())
       .def("__getattr__", [](PyClient& client, std::string name) -> py::object {
         const auto& attrs = client.attributes();
         auto it = attrs.find(name);
@@ -572,12 +685,26 @@ static void Init(py::module_& m) {
     xla::StatusOr<const PJRT_Api*> pjrt_api = pjrt::PjrtApi(platform_name);
     return pjrt_api.ok();
   });
-  m.def("load_pjrt_plugin",
-        [](std::string platform_name, std::string library_path) -> py::capsule {
+  m.def(
+      "load_pjrt_plugin",
+      [](std::string platform_name, std::optional<std::string> library_path,
+         std::optional<py::capsule> c_api) -> py::capsule {
+        if (library_path.has_value()) {
           const PJRT_Api* api = xla::ValueOrThrow(
-              pjrt::LoadPjrtPlugin(platform_name, library_path));
+              pjrt::LoadPjrtPlugin(platform_name, *library_path));
           return py::capsule(absl::bit_cast<void*>(api), "pjrt_c_api");
-        });
+        }
+        if (absl::string_view(c_api->name()) != "pjrt_c_api") {
+          throw py::value_error(
+              "c_api argument to load_pjrt_plugin is not a pjrt_c_api "
+              "capsule.");
+        }
+        xla::ThrowIfError(pjrt::SetPjrtApi(
+            platform_name, static_cast<const PJRT_Api*>(*c_api)));
+        return *c_api;
+      },
+      py::arg("platform_name"), py::arg("library_path") = std::nullopt,
+      py::arg("c_api") = std::nullopt);
   m.def("pjrt_plugin_initialized", [](std::string platform_name) -> bool {
     return xla::ValueOrThrow(pjrt::IsPjrtPluginInitialized(platform_name));
   });
@@ -590,7 +717,9 @@ static void Init(py::module_& m) {
   alloc_config.def(py::init<>())
       .def_readwrite("kind", &GpuAllocatorConfig::kind)
       .def_readwrite("memory_fraction", &GpuAllocatorConfig::memory_fraction)
-      .def_readwrite("preallocate", &GpuAllocatorConfig::preallocate);
+      .def_readwrite("preallocate", &GpuAllocatorConfig::preallocate)
+      .def_readwrite("collective_memory_size",
+                     &GpuAllocatorConfig::collective_memory_size);
   py::enum_<GpuAllocatorConfig::Kind>(alloc_config, "Kind")
       .value("DEFAULT", GpuAllocatorConfig::Kind::kDefault)
       .value("PLATFORM", GpuAllocatorConfig::Kind::kPlatform)
@@ -652,12 +781,25 @@ static void Init(py::module_& m) {
       py::arg("platform_name"),
       py::arg("options") = absl::flat_hash_map<std::string, PjRtValueType>(),
       py::arg("distributed_client") = nullptr);
+  // TODO(b/322357665): Delete this method after TPU plugin changes to use the
+  // standard registration.
   m.def("get_default_c_api_topology",
         [](std::string platform_name, std::string topology_name,
            const absl::flat_hash_map<std::string, PjRtValueType>& options)
             -> std::shared_ptr<PjRtTopologyDescription> {
           return xla::ValueOrThrow(
               GetCApiTopology(platform_name, topology_name, options));
+        });
+  m.def("get_c_api_topology",
+        [](py::capsule c_api, std::string topology_name,
+           const absl::flat_hash_map<std::string, PjRtValueType>& options)
+            -> std::shared_ptr<PjRtTopologyDescription> {
+          if (absl::string_view(c_api.name()) != "pjrt_c_api") {
+            throw py::value_error(
+                "Argument to get_c_api_topology was not a pjrt_c_api capsule.");
+          }
+          return xla::ValueOrThrow(GetCApiTopology(
+              static_cast<const PJRT_Api*>(c_api), topology_name, options));
         });
   m.def("get_topology_for_devices",
         [](std::vector<ClientAndPtr<PjRtDevice>> devices_and_clients) {
@@ -681,8 +823,8 @@ static void Init(py::module_& m) {
         });
 
   TF_CHECK_OK(PyArray::RegisterTypes(m));
-  jax::RegisterDeviceList(m);
-  jax::RegisterSharding(m);
+  jax::RegisterDeviceList(m_nb);
+  jax::RegisterSharding(m_nb);
 
   py::class_<CompiledMemoryStats>(m, "CompiledMemoryStats")
       .def_readwrite("generated_code_size_in_bytes",
@@ -695,6 +837,16 @@ static void Init(py::module_& m) {
                      &CompiledMemoryStats::alias_size_in_bytes)
       .def_readwrite("temp_size_in_bytes",
                      &CompiledMemoryStats::temp_size_in_bytes)
+      .def_readwrite("host_generated_code_size_in_bytes",
+                     &CompiledMemoryStats::host_generated_code_size_in_bytes)
+      .def_readwrite("host_argument_size_in_bytes",
+                     &CompiledMemoryStats::host_argument_size_in_bytes)
+      .def_readwrite("host_output_size_in_bytes",
+                     &CompiledMemoryStats::host_output_size_in_bytes)
+      .def_readwrite("host_alias_size_in_bytes",
+                     &CompiledMemoryStats::host_alias_size_in_bytes)
+      .def_readwrite("host_temp_size_in_bytes",
+                     &CompiledMemoryStats::host_temp_size_in_bytes)
       .def_property_readonly("serialized_hlo_proto",
                              [](const CompiledMemoryStats& cms) -> py::bytes {
                                return py::bytes(cms.serialized_hlo_proto);
@@ -754,24 +906,70 @@ static void Init(py::module_& m) {
            xla::ValueOrThrowWrapper(&PyLoadedExecutable::ExecuteSharded),
            py::arg("arguments"), py::arg("with_tokens") = false)
       .def("hlo_modules",
-           xla::ValueOrThrowWrapper(&PyLoadedExecutable::HloModules))
+           [](const PyLoadedExecutable& self) {
+             // TODO(phawkins): revert to a direct wrapping of
+             // PyLoadedExecutable::GetParameterLayouts when nanobind transition
+             // is complete.
+             return py::reinterpret_steal<py::object>(
+                 nb::cast(ValueOrThrow(self.HloModules())).release().ptr());
+           })
       .def("get_output_memory_kinds",
            xla::ValueOrThrowWrapper(&PyLoadedExecutable::GetOutputMemoryKinds))
-      .def("get_output_shardings", &PyLoadedExecutable::GetOutputShardings)
+      .def("get_output_shardings",
+           [](const PyLoadedExecutable& self) {
+             return py::reinterpret_steal<py::object>(
+                 nb::cast(self.GetOutputShardings()).release().ptr());
+           })
       .def("get_parameter_layouts",
-           xla::ValueOrThrowWrapper(&PyLoadedExecutable::GetParameterLayouts))
+           [](const PyLoadedExecutable& self) {
+             // TODO(phawkins): revert to a direct wrapping of
+             // PyLoadedExecutable::GetParameterLayouts when nanobind transition
+             // is complete.
+             return py::reinterpret_steal<py::object>(
+                 nb::cast(ValueOrThrow(self.GetParameterLayouts()))
+                     .release()
+                     .ptr());
+           })
       .def("get_output_layouts",
-           xla::ValueOrThrowWrapper(&PyLoadedExecutable::GetOutputLayouts))
+           [](const PyLoadedExecutable& self) {
+             // TODO(phawkins): revert to a direct wrapping of
+             // PyLoadedExecutable::GetParameterLayouts when nanobind transition
+             // is complete.
+             return py::reinterpret_steal<py::object>(
+                 nb::cast(ValueOrThrow(self.GetOutputLayouts()))
+                     .release()
+                     .ptr());
+           })
       .def("get_parameter_shardings",
-           &PyLoadedExecutable::GetParameterShardings)
+           [](const PyLoadedExecutable& self) {
+             return py::reinterpret_steal<py::object>(
+                 nb::cast(self.GetParameterShardings()).release().ptr());
+           })
       .def("keep_alive", &PyLoadedExecutable::KeepAlive)
       .def("compile_options",
+           // TODO(phawkins): revert to the following when nanobind transition
+           // complete
+           // xla::ValueOrThrowWrapper(&PyLoadedExecutable::GetCompileOptions))
            [](const PyLoadedExecutable& self) {
-             return ValueOrThrow(self.pjrt_executable()->GetCompileOptions());
+             return py::reinterpret_steal<py::object>(
+                 nb::cast(
+                     ValueOrThrow(self.pjrt_executable()->GetCompileOptions()))
+                     .release()
+                     .ptr());
            })
       .def("cost_analysis",
            xla::ValueOrThrowWrapper(&PyLoadedExecutable::GetCostAnalysis))
-      .def_property_readonly("traceback", &PyLoadedExecutable::traceback)
+      .def_property_readonly(
+          "traceback",
+          // TODO(phawkins): just use &PyLoadedExecutable::traceback when
+          // nanobind port is complete.
+          [](PyLoadedExecutable* e) -> py::object {
+            if (e->traceback()) {
+              return py::reinterpret_borrow<py::object>(e->traceback()->ptr());
+            } else {
+              return py::none();
+            }
+          })
       .def_property_readonly("fingerprint",
                              [](PyLoadedExecutable* exec) -> py::object {
                                if (exec->fingerprint().has_value()) {
@@ -808,18 +1006,22 @@ static void Init(py::module_& m) {
       },
       py::arg("dlpack"), py::arg("cpu_backend") = nullptr,
       py::arg("gpu_backend") = nullptr);
-
-  BuildProfilerSubmodule(&m);
-  BuildOpsSubmodule(&m);
-  BuildOutfeedReceiverSubmodule(&m);
-  BuildPytreeSubmodule(m);
-  jax::BuildJaxjitSubmodule(m);
-  jax::BuildPmapSubmodule(m);
-  jax::BuildPjitSubmodule(m);
-  jax::BuildTransferGuardSubmodule(m);
-  BuildTracebackSubmodule(m);
-  BuildMlirSubmodule(m);
-  BuildCustomCallShardingPybindAPI(m);
+  m.def("cuda_array_interface_to_buffer",
+        [](const pybind11::dict& cai, std::shared_ptr<PyClient> cuda_client) {
+          return xla::ValueOrThrow(
+              CudaArrayInterfaceToBuffer(cai, std::move(cuda_client)));
+        });
+  BuildProfilerSubmodule(m_nb);
+  BuildOpsSubmodule(m_nb);
+  BuildOutfeedReceiverSubmodule(m_nb);
+  BuildPytreeSubmodule(m_nb);
+  jax::BuildJaxjitSubmodule(m_nb);
+  jax::BuildPmapSubmodule(m_nb);
+  jax::BuildPjitSubmodule(m_nb);
+  jax::BuildTransferGuardSubmodule(m_nb);
+  BuildTracebackSubmodule(m_nb);
+  BuildMlirSubmodule(m_nb);
+  BuildCustomCallShardingPybindAPI(m_nb);
 
   py::class_<tsl::PreemptionSyncManager,
              std::unique_ptr<tsl::PreemptionSyncManager>>
@@ -904,6 +1106,16 @@ static void Init(py::module_& m) {
           "key_value_set",
           [](DistributedRuntimeClient& client, std::string key,
              std::string value) {
+            py::gil_scoped_release gil_release;
+            xla::ThrowIfError(client.KeyValueSet(key, value));
+          },
+          py::arg("key"), py::arg("value"))
+      // The key must be a string, but the value must a Python bytes object.
+      // Use `key_value_set_bytes()` and `blocking_key_value_get_bytes()`.
+      .def(
+          "key_value_set_bytes",
+          [](DistributedRuntimeClient& client, std::string key,
+             py::bytes value) {
             py::gil_scoped_release gil_release;
             xla::ThrowIfError(client.KeyValueSet(key, value));
           },
@@ -1067,22 +1279,65 @@ static void Init(py::module_& m) {
 
   py::class_<PjRtExecutable, std::shared_ptr<PjRtExecutable>>(m, "Executable")
       .def("hlo_modules",
-           xla::ValueOrThrowWrapper(&PjRtExecutable::GetHloModules))
+           [](const PjRtExecutable& self) {
+             // TODO(phawkins): revert to a direct wrapping of
+             // PyLoadedExecutable::GetParameterLayouts when nanobind transition
+             // is complete.
+             return py::reinterpret_steal<py::object>(
+                 nb::cast(ValueOrThrow(self.GetHloModules())).release().ptr());
+           })
       .def("get_output_memory_kinds",
            xla::ValueOrThrowWrapper(&PjRtExecutable::GetOutputMemoryKinds))
-      .def("get_output_shardings", &PjRtExecutable::GetOutputShardings)
+      .def("get_output_shardings",
+           [](const PjRtExecutable& self) {
+             return py::reinterpret_borrow<py::object>(
+                 nb::cast(self.GetOutputShardings()).release().ptr());
+           })
       .def("get_parameter_layouts",
-           xla::ValueOrThrowWrapper(&PjRtExecutable::GetParameterLayouts))
+           [](const PjRtExecutable& self) {
+             // TODO(phawkins): revert to a direct wrapping of
+             // PjRtExecutable::GetParameterLayouts when nanobind transition
+             // is complete.
+             // xla::ValueOrThrowWrapper(&PjRtExecutable::GetParameterLayouts)
+             return py::reinterpret_steal<py::object>(
+                 nb::cast(ValueOrThrow(self.GetParameterLayouts()))
+                     .release()
+                     .ptr());
+           })
       .def("get_output_layouts",
-           xla::ValueOrThrowWrapper(&PjRtExecutable::GetOutputLayouts))
-      .def("get_parameter_shardings", &PjRtExecutable::GetParameterShardings)
+           [](const PjRtExecutable& self) {
+             // TODO(phawkins): revert to a direct wrapping of
+             // PjRtExecutable::GetOutputLayouts when nanobind transition
+             // is complete.
+             // xla::ValueOrThrowWrapper(&PjRtExecutable::GetOutputLayouts)
+             return py::reinterpret_steal<py::object>(
+                 nb::cast(ValueOrThrow(self.GetOutputLayouts()))
+                     .release()
+                     .ptr());
+           })
+      .def("get_parameter_shardings",
+           [](const PjRtExecutable& self) {
+             return py::reinterpret_borrow<py::object>(
+                 nb::cast(self.GetParameterShardings()).release().ptr());
+           })
       .def("get_compiled_memory_stats",
            xla::ValueOrThrowWrapper(&PjRtExecutable::GetCompiledMemoryStats))
       .def("compile_options",
-           xla::ValueOrThrowWrapper(&PjRtExecutable::GetCompileOptions))
-      .def("serialize", [](const PjRtExecutable& exec) -> py::bytes {
-        return ValueOrThrow(exec.SerializeExecutable());
-      });
+           // TODO(phawkins): revert to the following when nanobind transition
+           // complete
+           // xla::ValueOrThrowWrapper(&PjRtExecutable::GetCompileOptions))
+           [](const PjRtExecutable& self) {
+             return py::reinterpret_steal<py::object>(
+                 nb::cast(ValueOrThrow(self.GetCompileOptions()))
+                     .release()
+                     .ptr());
+           })
+      .def("serialize",
+           [](const PjRtExecutable& exec) -> py::bytes {
+             return ValueOrThrow(exec.SerializeExecutable());
+           })
+      .def("cost_analysis",
+           xla::ValueOrThrowWrapper(&PjRtExecutable::GetCostAnalysis));
 
   m.def("is_asan", IsAsan);
   m.def("is_msan", IsMsan);
@@ -1104,11 +1359,9 @@ static void Init(py::module_& m) {
       py::arg("committed") = true, py::arg("force_copy") = false,
       py::arg("host_buffer_semantics") =
           PjRtClient::HostBufferSemantics::kZeroCopy);
-  m.def(
-      "check_and_canonicalize_memory_kind",
-      [](py::object memory_kind, jax::PyDeviceList* device_list) -> py::object {
-        return jax::CheckAndCanonicalizeMemoryKind(memory_kind, device_list);
-      });
+  m_nb.def("check_and_canonicalize_memory_kind",
+           &jax::CheckAndCanonicalizeMemoryKind, nb::arg("memory_kind").none(),
+           nb::arg("device_list"));
 }  // NOLINT(readability/fn_size)
 
 // This code in essence is a copy of PYBIND11_MODULE(). We can't just call

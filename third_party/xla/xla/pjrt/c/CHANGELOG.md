@@ -1,5 +1,28 @@
 # PJRT C API changelog
 
+## 0.46
+* Update outdated struct sizes from previous changes to
+  ``PJRT_Device_AddressableMemories_Args`` and ``PJRT_ExecuteOptions``.
+
+## 0.45
+* Breaking changes
+  * Added struct_size field to beginning of PJRT_Extension_Base. This is so
+    forwards and backwards compatibility logic can be implemented with extension
+    structs.
+
+## 0.44
+* Changed all ``void*`` extension fields to have type ``PJRT_Extension_Base*``
+
+## 0.43
+* Added some new fields to PJRT_Executable_GetCompiledMemoryStats
+
+## 0.42
+* Renamed all ``priv`` fields to ``extension_start``
+
+## 0.41
+* Renamed PJRT_Structure_Base to PJRT_Extension_Base
+* Renamed PJRT_Structure_Type to PJRT_Extension_Type (and similarly for enum fields)
+
 ## 0.40 (Nov 27, 2023)
 * Added PJRT_Executable_GetCompiledMemoryStats.
 
@@ -21,7 +44,7 @@ PJRT_ExecuteOptions.
 * Deprecated PJRT_LoadedExecutable_Fingerprint
 
 ## 0.34 (Oct 9, 2023)
-* Added PJRT_Structure_Type::PJRT_Structure_Type_Profiler.
+* Added PJRT_Extension_Type::PJRT_Extension_Type_Profiler.
 
 ## 0.33 (Oct 3, 2023)
 * Added PJRT_Client_CreateViewOfDeviceBuffer.
@@ -30,9 +53,9 @@ PJRT_ExecuteOptions.
 * Added PJRT_Buffer_CopyToMemory.
 
 ## 0.31 (Sep 22, 2023)
-* Added PJRT_Structure_Base.
-* Added PJRT_Structure_Type.
-* Renamed PJRT_Api.priv to PJRT_Api.extension_start.
+* Added PJRT_Extension_Base.
+* Added PJRT_Extension_Type.
+* Renamed PJRT_Api.extension_start to PJRT_Api.extension_start.
 
 ## 0.30 (Sep 14, 2023)
 * Added PJRT_NamedValue_Type::PJRT_NamedValue_kBool.

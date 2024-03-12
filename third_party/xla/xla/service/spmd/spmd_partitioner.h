@@ -1,4 +1,4 @@
-/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2020 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -228,17 +228,17 @@ class SpmdPartitioner : public HloModulePass {
         collective_ops_creator_(std::move(collective_ops_creator)) {}
   absl::string_view name() const override { return "spmd-partitioning"; }
   using HloPassInterface::Run;
-  StatusOr<bool> Run(
+  absl::StatusOr<bool> Run(
       HloModule* module,
       const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 
   // Transforms the given computation with SPMD instructions, replacing it with
   // a new computation.
-  StatusOr<bool> PartitionComputation(HloComputation* computation,
-                                      const HloSharding& root_sharding,
-                                      int64_t* next_channel_id,
-                                      SpmdLogger* logger,
-                                      const CallGraph& call_graph);
+  absl::StatusOr<bool> PartitionComputation(HloComputation* computation,
+                                            const HloSharding& root_sharding,
+                                            int64_t* next_channel_id,
+                                            SpmdLogger* logger,
+                                            const CallGraph& call_graph);
 
   // Creates all-gather(s) based on HloSharding. Can be overridden to customize.
   // The default uses a single all-gather even if there are multiple sharded
@@ -397,7 +397,7 @@ class PartitionedHlo {
   // specified pad value used during resharding. Could only modify the reshard
   // cache.
   PartitionedHlo Reshard(const HloSharding& target,
-                         std::optional<Literal> pad_value = std::nullopt);
+                         std::optional<Literal> pad_value = std::nullopt) const;
 
   // Pads the garbage area of the output with the provided value. Normally,
   // unevenly partitioned dimensions are padded on the right, but this function
@@ -442,10 +442,10 @@ class PartitionedHlo {
 
   // Helper function to replicate the data on all devices. Could only modify
   // the reshard cache.
-  PartitionedHlo Replicate();
+  PartitionedHlo Replicate() const;
 
   // Helper function to replicate the data for partitions along the given dims.
-  HloInstruction* ReplicatePartial(absl::Span<const int64_t> dims);
+  HloInstruction* ReplicatePartial(absl::Span<const int64_t> dims) const;
 
   // Set state of the partitoned HLO.
   void set_state(PartitioningState state) { state_ = std::move(state); }
@@ -455,7 +455,7 @@ class PartitionedHlo {
   // cache, although it would indirectly modify by calling Replicate().
   PartitionedHlo ReshardNoCache(const HloSharding& target,
                                 std::optional<Literal> pad_value = std::nullopt,
-                                bool allow_full_replication = true);
+                                bool allow_full_replication = true) const;
 
   // Helper function to broadcast data from a single device to all devices.
   PartitionedHlo Broadcast() const;
@@ -463,7 +463,7 @@ class PartitionedHlo {
   // Try to perform complicated reshard handling by splitting a big reshard into
   // multiple reshards using that can be handled directly.
   std::optional<PartitionedHlo> TryComplexReshardHandling(
-      const HloSharding& target);
+      const HloSharding& target) const;
 
   // Helper function to reshard the tensor using AllToAll (instead of the
   // default of Replicate followed by Slice).
@@ -476,15 +476,15 @@ class PartitionedHlo {
 
   // Helper function to reshard to partial replicate using AllGather.
   std::optional<PartitionedHlo> ReshardToPartialReplicateWithAllGather(
-      const HloSharding& target);
+      const HloSharding& target) const;
 
   // Helper function to reshard from partial replicate using DynamicSlice.
   std::optional<PartitionedHlo> ReshardFromPartialReplicateWithDynamicSlice(
-      const HloSharding& target);
+      const HloSharding& target) const;
 
   // Helper function to reshard from partial replicate using AllToAll.
   std::optional<PartitionedHlo> ReshardPartialReplicateWithAllToAll(
-      const HloSharding& target);
+      const HloSharding& target) const;
 
   // SPMD instruction.
   HloInstruction* hlo_;
@@ -562,7 +562,7 @@ class SpmdPartitioningVisitor : public DfsHloVisitorWithDefault {
   // Implementation of dot partitioning given DotGeneralDimsMapping.
   Status HandleDotHelper(HloInstruction* hlo,
                          const DotConvDimsMapping& dims_mapping,
-                         absl::FunctionRef<StatusOr<HloInstruction*>(
+                         absl::FunctionRef<absl::StatusOr<HloInstruction*>(
                              HloInstruction*, HloInstruction*, SpmdBuilder*,
                              const Window& conv_window)>
                              create_sharded_dot);
@@ -611,9 +611,9 @@ class SpmdPartitioningVisitor : public DfsHloVisitorWithDefault {
 
   SpmdBuilder* builder() { return &b_; }
 
-  virtual StatusOr<bool> DoPartition(HloComputation* computation,
-                                     const HloSharding& root_sharding,
-                                     const SpmdPartitionerOptions& options);
+  virtual absl::StatusOr<bool> DoPartition(
+      HloComputation* computation, const HloSharding& root_sharding,
+      const SpmdPartitionerOptions& options);
 
   virtual double GetComputationTimeInMilliSec(HloInstruction* hlo) {
     return 0.0;

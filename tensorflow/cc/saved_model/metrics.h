@@ -127,6 +127,20 @@ monitoring::CounterCell& TrainingTimeSaved(absl::string_view api_label);
 monitoring::CounterCell& CheckpointSize(absl::string_view api_label,
                                         int64_t filesize);
 
+// Returns "/tensorflow/core/checkpoint/sharding/callback_duration" cell which
+// describes how long it took to execute the checkpoint sharding callback in
+// microseconds.
+monitoring::CounterCell& ShardingCallbackDuration();
+
+// Returns "/tensorflow/core/checkpoint/sharding/num_checkpoint_shards_written"
+// cell which describes how many checkpoint shard files were written during
+// saving.
+monitoring::CounterCell& NumCheckpointShardsWritten();
+
+// Returns "/tensorflow/core/checkpoint/sharding/callback_description" cell
+// which describes the callback used to shard the checkpoint during saving.
+monitoring::GaugeCell<std::string>& ShardingCallbackDescription();
+
 }  // namespace metrics
 }  // namespace tensorflow
 

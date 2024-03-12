@@ -39,13 +39,13 @@ class DeviceCompilerClient {
 
   // Serializes an available `executable` to string using `ClientType` and
   // returns it.
-  virtual StatusOr<std::string> SerializeExecutable(
+  virtual absl::StatusOr<std::string> SerializeExecutable(
       const ExecutableType& executable) = 0;
 
   // Compiles `result` (HLO) to a serializable executable (eg.
   // xla::AotCompilationResult) using `ClientType`, serializes it to string and
   // returns it.
-  virtual StatusOr<std::string> BuildSerializedExecutable(
+  virtual absl::StatusOr<std::string> BuildSerializedExecutable(
       const XlaCompiler::Options& options,
       const XlaCompiler::CompilationResult& result) = 0;
 

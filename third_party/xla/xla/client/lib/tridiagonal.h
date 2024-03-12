@@ -1,4 +1,4 @@
-/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2019 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -24,15 +24,17 @@ namespace tridiagonal {
 
 enum SolverAlgorithm { kThomas };
 
-StatusOr<XlaOp> TridiagonalSolver(SolverAlgorithm algo, XlaOp lower_diagonal,
-                                  XlaOp main_diagonal, XlaOp upper_diagonal,
-                                  XlaOp rhs);
+absl::StatusOr<XlaOp> TridiagonalSolver(SolverAlgorithm algo,
+                                        XlaOp lower_diagonal,
+                                        XlaOp main_diagonal,
+                                        XlaOp upper_diagonal, XlaOp rhs);
 
-StatusOr<XlaOp> TridiagonalSolver(SolverAlgorithm algo, XlaOp diagonals,
-                                  XlaOp rhs);
+absl::StatusOr<XlaOp> TridiagonalSolver(SolverAlgorithm algo, XlaOp diagonals,
+                                        XlaOp rhs);
 
-StatusOr<XlaOp> TridiagonalMatMul(XlaOp upper_diagonal, XlaOp main_diagonal,
-                                  XlaOp lower_diagonal, XlaOp rhs);
+absl::StatusOr<XlaOp> TridiagonalMatMul(XlaOp upper_diagonal,
+                                        XlaOp main_diagonal,
+                                        XlaOp lower_diagonal, XlaOp rhs);
 
 }  // namespace tridiagonal
 }  // namespace xla

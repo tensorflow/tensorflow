@@ -142,6 +142,24 @@ NodeDef MakeParallelInterleaveV4Node(StringPiece name,
       });
 }
 
+NodeDef MakeInterleaveNode(StringPiece name, StringPiece input_node_name,
+                           StringPiece cycle_length_node_name,
+                           StringPiece block_length_node_name,
+                           StringPiece function_name,
+                           StringPiece deterministic) {
+  return test::function::NDef(
+      name, "InterleaveDataset",
+      {string(input_node_name), string(cycle_length_node_name),
+       string(block_length_node_name)},
+      {
+          {"f", FunctionDefHelper::FunctionRef(string(function_name))},
+          {"Targuments", {}},
+          {"output_shapes", gtl::ArraySlice<TensorShape>{}},
+          {"output_types", gtl::ArraySlice<DataType>{}},
+          {"deterministic", string(deterministic)},
+      });
+}
+
 NodeDef MakeParallelMapNode(StringPiece name, StringPiece input_node_name,
                             StringPiece num_parallel_calls_node_name,
                             StringPiece function_name, bool sloppy) {

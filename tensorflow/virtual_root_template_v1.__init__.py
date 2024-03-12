@@ -19,13 +19,15 @@ import sys as _sys
 import importlib as _importlib
 import types as _types
 
+from tensorflow.python.util import module_wrapper
+
 
 # Since TensorFlow Python code now resides in tensorflow_core but TensorFlow
-# ecosystem code (e.g. estimator, but also even tensorflow) imports tensorflow
-# we need to do forwarding between the two. To do so, we use a lazy loader to
-# load and forward the top level modules. We cannot use the LazyLoader defined
-# by tensorflow at tensorflow/python/util/lazy_loader.py as to use that we would
-# already need to import tensorflow. Hence, we define it inline.
+# ecosystem code  imports tensorflow, we need to do forwarding between the two.
+# To do so, we use a lazy loader to load and forward the top level modules. We
+# cannot use the LazyLoader defined by tensorflow at
+# tensorflow/python/util/lazy_loader.py as to use that we would already need to
+# import tensorflow. Hence, we define it inline.
 class _LazyLoader(_types.ModuleType):
   """Lazily import a module so that we can forward it."""
 
@@ -78,16 +80,6 @@ _top_level_modules = [
     "tensorflow.summary",  # tensorboard
     "tensorflow.examples",
 ]
-# Estimator needs to be handled separatedly so we can still allow both
-# import tensorflow_estimator and import tensorflow.estimator work
-# Only in the second case do we actually need to do forwarding, the first case
-# already defines most of the hierarchy and eagerly forwarding would result in
-# an import loop.
-if "tensorflow_estimator" not in _sys.modules:
-  _root_estimator = False
-  _top_level_modules.append("tensorflow.estimator")
-else:
-  _root_estimator = True
 
 # Lazy load all of the _top_level_modules, we don't need their names anymore
 for _m in _top_level_modules:
@@ -99,9 +91,8 @@ from tensorflow_core import *
 _major_api_version = 1
 
 # In V1 API we need to print deprecation messages
-from tensorflow.python.util import deprecation_wrapper as _deprecation
-if not isinstance(_sys.modules[__name__], _deprecation.DeprecationWrapper):
-  _sys.modules[__name__] = _deprecation.DeprecationWrapper(
+if not isinstance(_sys.modules[__name__], module_wrapper.TFModuleWrapper):
+  _sys.modules[__name__] = module_wrapper.TFModuleWrapper(
       _sys.modules[__name__], "")
 
 # These should not be visible in the main tf module.

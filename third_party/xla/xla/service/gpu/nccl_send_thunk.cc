@@ -1,4 +1,4 @@
-/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -15,93 +15,75 @@ limitations under the License.
 
 #include "xla/service/gpu/nccl_send_thunk.h"
 
+#include <cstdint>
 #include <optional>
 #include <string>
 #include <utility>
 #include <vector>
 
-#include "xla/mlir_hlo/lhlo/IR/lhlo_ops.h"
+#include "absl/status/status.h"
+#include "absl/strings/string_view.h"
+#include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/service/collective_ops_utils.h"
-
-#if XLA_ENABLE_XCCL
-#include "xla/stream_executor/gpu/gpu_stream.h"
-#endif
+#include "xla/service/global_device_id.h"
+#include "xla/service/gpu/nccl_api.h"
+#include "xla/service/gpu/nccl_collective_thunk.h"
+#include "xla/service/gpu/nccl_p2p_thunk_common.h"
+#include "xla/stream_executor/stream.h"
+#include "tsl/platform/errors.h"
 
 namespace xla {
 namespace gpu {
 
-using mlir::lmhlo::SendOp;
-
-namespace impl {
-
-NcclP2PConfig GetNcclP2PConfig(SendOp op, int64_t replica_count,
-                               int64_t partition_count) {
-  return GetNcclP2PConfigForSendRecv(op, replica_count, partition_count);
-}
-
-Status CheckImplementable(SendOp op) {
-  TF_RETURN_IF_ERROR(NcclCollectiveThunk::CheckImplementable());
-  return IsValidOperand(op.getInputs()[0], Thunk::kNcclSend);
-}
-
-}  // namespace impl
-
-NcclSendThunk::NcclSendThunk(ThunkInfo thunk_info, SendOp op,
+NcclSendThunk::NcclSendThunk(ThunkInfo thunk_info, NcclApi* nccl_api,
+                             const HloSendInstruction* instr,
                              int64_t replica_count, int64_t partition_count,
                              const Buffer& buffer)
-    : NcclCollectiveThunk(Thunk::kNcclSend, thunk_info, /*is_sync=*/false),
-      config_(GetNcclP2PConfig(op, replica_count, partition_count)),
-      buffer_(buffer) {}
+    : NcclCollectiveThunk(Thunk::kNcclSend, thunk_info, nccl_api,
+                          /*is_sync=*/false),
+      config_(GetNcclP2PConfigForSendRecv(instr, instr->operand(0)->shape(),
+                                          replica_count, partition_count)),
+      buffer_(buffer),
+      stream_kind_(GetStreamKindForSendRecv(instr)),
+      execution_counters_(config_.validation_kind ==
+                                  NcclP2PConfig::ValidationKind::kConditional
+                              ? new ExecutionCounters()
+                              : nullptr) {}
 
-/*static*/ NcclP2PConfig NcclSendThunk::GetNcclP2PConfig(
-    SendOp op, int64_t replica_count, int64_t partition_count) {
-  return impl::GetNcclP2PConfig(op, replica_count, partition_count);
+absl::Status NcclSendThunk::Initialize(const InitializeParams& params) {
+  TF_RETURN_IF_ERROR(NcclCollectiveThunk::Initialize(params));
+  if (execution_counters_) {
+    TF_RETURN_IF_ERROR(execution_counters_->Initialize(params.executor));
+  }
+  return absl::OkStatus();
 }
 
-/*static*/ Status NcclSendThunk::CheckImplementable(mlir::lmhlo::SendOp op,
-                                                    int64_t replica_count,
-                                                    int64_t partition_count) {
-  return AddOpDescription<NcclSendThunk>(impl::CheckImplementable(op), op,
-                                         replica_count, partition_count);
-}
-
-/*static*/ CollectiveOpGroupMode NcclSendThunk::GetGroupMode(SendOp op) {
-  return GetGroupModeForSendRecv(op);
-}
-
-Status NcclSendThunk::RunNcclCollective(const ExecuteParams& params,
-                                        se::Stream& stream, ncclComm_t comm) {
+absl::Status NcclSendThunk::RunNcclCollective(const ExecuteParams& params,
+                                              se::Stream& stream,
+                                              NcclApi::NcclCommHandle comm) {
   TF_ASSIGN_OR_RETURN(
       std::vector<DeviceBufferPair> device_buffers,
       ConvertToDeviceBuffers(params, {buffer_},
                              config_.config.operand_element_type));
   TF_RET_CHECK(device_buffers.size() == 1) << "Expected one buffer pair.";
 
-  TF_ASSIGN_OR_RETURN(const GlobalDeviceId global_device_id,
-                      params.nccl_params.GetGlobalDeviceId());
-  TF_ASSIGN_OR_RETURN(
-      const DeviceAssignment::LogicalID current_logical_id,
-      params.nccl_params.device_assn->LogicalIdForDevice(global_device_id));
+  GlobalDeviceId global_device_id = params.collective_params->global_device_id;
+
+  TF_ASSIGN_OR_RETURN(const DeviceAssignment::LogicalID current_logical_id,
+                      params.collective_params->device_assn->LogicalIdForDevice(
+                          global_device_id));
   const int64_t current_id =
       config_.config.group_mode == CollectiveOpGroupMode::kCrossReplica
           ? current_logical_id.replica_id
           : current_logical_id.computation_id;
-  std::string device_string = GetDeviceString(params.nccl_params);
+  std::string device_string = GetDeviceString(*params.collective_params);
 
   const NcclP2PConfig::SourceTargetMapEntry source_target =
       NcclP2PConfig::GetSourceTarget(config_.id_to_source_target, current_id);
+  DeviceBufferPair& buffer = device_buffers[0];
 
-  return ::xla::gpu::RunSend(source_target, device_buffers[0], stream, comm,
-                             device_string, current_id);
-}
-
-Status RunSend(NcclP2PConfig::SourceTargetMapEntry source_target,
-               DeviceBufferPair& buffer, se::Stream& stream, ncclComm_t comm,
-               absl::string_view device_string, int64_t current_id) {
-#if XLA_ENABLE_XCCL
   // Determine the target IDs for this instance. The target ID is the ID
   // to which this instance will copy its data.
-
   int device_ordinal = stream.parent()->device_ordinal();
   VLOG(3) << "Performing collective permute from device ordinal: "
           << device_ordinal << "current_id " << current_id;
@@ -112,30 +94,37 @@ Status RunSend(NcclP2PConfig::SourceTargetMapEntry source_target,
   VLOG(3) << absl::StreamFormat("%s : id = %d, target_id = %d", device_string,
                                 current_id, target_id.value_or(-1));
 
-  TF_ASSIGN_OR_RETURN(auto dtype_and_multiplier,
-                      ToNcclDataTypeAndCountMultiplier(
-                          buffer.element_type, Thunk::kNcclCollectivePermute));
-  ncclDataType_t dtype = dtype_and_multiplier.first;
-  int64_t element_count = buffer.element_count * dtype_and_multiplier.second;
-
-  se::gpu::GpuStreamHandle gpu_stream = se::gpu::AsGpuStreamValue(&stream);
-
   // Send source buffer to target peer if needed.
   if (target_id) {
-    VLOG(3) << absl::StreamFormat(
-        "%s : Calling ncclSend(sendbuff=%p, count=%d, peer=%d "
-        "comm=%p, stream=%p)",
-        device_string, src_addr.opaque(), element_count, *target_id,
-        static_cast<const void*>(comm), gpu_stream);
-    XLA_CUDA_RETURN_IF_ERROR(ncclSend(src_addr.opaque(), element_count, dtype,
-                                      *target_id, comm, gpu_stream));
+    bool should_run =
+        config_.validation_kind == NcclP2PConfig::ValidationKind::kInvalid
+            ? false
+            : true;
+    if (config_.validation_kind ==
+        NcclP2PConfig::ValidationKind::kConditional) {
+      se::StreamExecutor* executor = params.stream->parent();
+      TF_ASSIGN_OR_RETURN(int64_t * counter,
+                          execution_counters_->GetCounter(executor));
+      auto it = config_.source_target_to_bounds.find(
+          std::make_pair(current_id, *source_target.target));
+      if (it == config_.source_target_to_bounds.end()) {
+        return absl::InternalError("Missing bounds for conditional Send");
+      }
+      if (*counter < it->second.first || *counter > it->second.second) {
+        should_run = false;
+      }
+      VLOG(3) << "RunNcclCollective counter " << *counter << " " << should_run;
+      ++(*counter);
+    }
+
+    if (should_run) {
+      TF_RETURN_IF_ERROR(nccl_api()->Send(src_addr, buffer.element_type,
+                                          buffer.element_count, *target_id,
+                                          comm, &stream));
+    }
   }
-  return OkStatus();
-#else   // XLA_ENABLE_XCCL
-  return Unimplemented(
-      "NCCL support is not available: this binary was not built with a CUDA "
-      "compiler, which is necessary to build the NCCL source library.");
-#endif  // XLA_ENABLE_XCCL
+
+  return absl::OkStatus();
 }
 
 }  // namespace gpu

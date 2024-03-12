@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -164,7 +164,7 @@ void IrEmitter::EmitThreadLocalFunctionEpilogue(HloComputation* computation) {
   }
 }
 
-StatusOr<llvm::Function*> IrEmitter::EmitComputation(
+absl::StatusOr<llvm::Function*> IrEmitter::EmitComputation(
     HloComputation* computation, absl::string_view function_name_prefix,
     bool is_top_level_computation,
     absl::Span<HloInstruction* const> instruction_order,
@@ -1726,7 +1726,7 @@ IrEmitter::ShardedVectorType IrEmitter::CreateShardedVectorType(
   return sharded_vector_type;
 }
 
-StatusOr<IrEmitter::ShardedVector>
+absl::StatusOr<IrEmitter::ShardedVector>
 IrEmitter::EmitInnerLoopForVectorizedReduction(
     const ReductionGenerator& reduction_generator,
     const llvm_ir::IrArray::Index& output_index,
@@ -1826,7 +1826,7 @@ void IrEmitter::EmitShardedVectorStore(
   }
 }
 
-StatusOr<bool> IrEmitter::EmitVectorizedReduce(
+absl::StatusOr<bool> IrEmitter::EmitVectorizedReduce(
     HloInstruction* reduce, HloInstruction* arg, HloInstruction* init_value,
     absl::Span<const int64_t> dimensions, HloComputation* function,
     std::string* failure_reason) {
@@ -2216,7 +2216,7 @@ Status IrEmitter::HandlePad(HloInstruction* pad) {
   for (auto& padding_dimension : pad->padding_config().dimensions()) {
     if (padding_dimension.edge_padding_low() < 0 ||
         padding_dimension.edge_padding_high() < 0) {
-      return InternalErrorStrCat(
+      return InternalStrCat(
           "Encountered negative padding in IrEmitter on CPU. "
           "This should have been eliminated at the HLO level. ",
           pad->ToString());
@@ -2517,7 +2517,8 @@ Status IrEmitter::HandleTopK(HloInstruction* hlo) {
 }
 
 #if defined(INTEL_MKL) && defined(ENABLE_ONEDNN_V3)
-Status IrEmitter::HandleOneDnnMatMul(HloInstruction* custom_call) {
+Status IrEmitter::HandleOneDnnMatMulCalls(HloInstruction* custom_call,
+                                          std::string runtime_symbol_name) {
   // We would like to emit LLVM IR for the following function call
   //      custom_call_target(void* result, void** args)
   // args can be thought of an array of pointers allocated on the stack,
@@ -2548,9 +2549,8 @@ Status IrEmitter::HandleOneDnnMatMul(HloInstruction* custom_call) {
   llvm::Value* nargs_val = b_.getInt64(nargs);
   llvm::Value* nargs_ptr =
       llvm_ir::EmitAllocaAtFunctionEntry(i64_type, "nargs", &b_);
-  llvm::Value* nargs_life_start =
-      b_.CreateLifetimeStart(nargs_ptr, b_.getInt64(-1));
-  llvm::Value* nargs_store = b_.CreateStore(nargs_val, nargs_ptr);
+  b_.CreateLifetimeStart(nargs_ptr, b_.getInt64(-1));
+  b_.CreateStore(nargs_val, nargs_ptr);
   args_val = b_.CreateInsertValue(args_val, nargs_ptr, arg_indx++);
 
   // Insert ExecutableRunOptions.
@@ -2586,15 +2586,14 @@ Status IrEmitter::HandleOneDnnMatMul(HloInstruction* custom_call) {
 
   llvm::Value* args_ptr =
       llvm_ir::EmitAllocaAtFunctionEntry(ptr_array_type, "matmul.args", &b_);
-  llvm::Value* args_life_start =
-      b_.CreateLifetimeStart(args_ptr, b_.getInt64(-1));
-  llvm::Value* args_store = b_.CreateStore(args_val, args_ptr);
+  b_.CreateLifetimeStart(args_ptr, b_.getInt64(-1));
+  b_.CreateStore(args_val, args_ptr);
 
   TF_RETURN_IF_ERROR(EmitTargetAddressForOp(custom_call));
   llvm_ir::IrArray result_array = GetIrArrayFor(custom_call);
   auto result_stack_alloca = GetAllocaAndEmitMemrefInfo(b_, result_array);
 
-  EmitCallToFunc(runtime::kOneDnnMatMulSymbolName,
+  EmitCallToFunc(std::move(runtime_symbol_name),
                  {result_stack_alloca.value, args_ptr}, b_.getVoidTy());
 
   // Lifetime ends for all stack allocations.
@@ -2630,9 +2629,8 @@ Status IrEmitter::HandleOneDnnLayerNorm(HloInstruction* custom_call) {
   llvm::Value* nargs_val = b_.getInt64(nargs);
   llvm::Value* nargs_ptr =
       llvm_ir::EmitAllocaAtFunctionEntry(i64_type, "nargs", &b_);
-  llvm::Value* nargs_life_start =
-      b_.CreateLifetimeStart(nargs_ptr, b_.getInt64(-1));
-  llvm::Value* nargs_store = b_.CreateStore(nargs_val, nargs_ptr);
+  b_.CreateLifetimeStart(nargs_ptr, b_.getInt64(-1));
+  b_.CreateStore(nargs_val, nargs_ptr);
   args_val = b_.CreateInsertValue(args_val, nargs_ptr, arg_indx++);
 
   // Insert ExecutableRunOptions.
@@ -2665,9 +2663,8 @@ Status IrEmitter::HandleOneDnnLayerNorm(HloInstruction* custom_call) {
 
   llvm::Value* args_ptr =
       llvm_ir::EmitAllocaAtFunctionEntry(ptr_array_type, "layernorm.args", &b_);
-  llvm::Value* args_life_start =
-      b_.CreateLifetimeStart(args_ptr, b_.getInt64(-1));
-  llvm::Value* args_store = b_.CreateStore(args_val, args_ptr);
+  b_.CreateLifetimeStart(args_ptr, b_.getInt64(-1));
+  b_.CreateStore(args_val, args_ptr);
 
   TF_RETURN_IF_ERROR(EmitTargetAddressForOp(custom_call));
   llvm_ir::IrArray result_array = GetIrArrayFor(custom_call);
@@ -2696,7 +2693,6 @@ Status IrEmitter::HandleOneDnnSoftmax(HloInstruction* custom_call) {
   llvm_ir::IrArray result_array = GetIrArrayFor(custom_call);
   auto result_stack_alloca = GetAllocaAndEmitMemrefInfo(b_, result_array);
 
-  auto typed_custom_call = Cast<HloCustomCallInstruction>(custom_call);
   EmitCallToFunc(runtime::kOneDnnSoftmaxSymbolName,
                  {
                      GetExecutableRunOptionsArgument(),
@@ -2710,7 +2706,6 @@ Status IrEmitter::HandleOneDnnSoftmax(HloInstruction* custom_call) {
 
   return OkStatus();
 }
-
 #endif  // INTEL_MKL && ENABLE_ONEDNN_V3
 
 Status IrEmitter::HandleCustomCall(HloInstruction* custom_call) {
@@ -2725,13 +2720,18 @@ Status IrEmitter::HandleCustomCall(HloInstruction* custom_call) {
   }
 #if defined(INTEL_MKL) && defined(ENABLE_ONEDNN_V3)
   if (custom_call->custom_call_target() == "__onednn$matmul") {
-    return HandleOneDnnMatMul(custom_call);
+    return HandleOneDnnMatMulCalls(custom_call,
+                                   runtime::kOneDnnMatMulSymbolName);
   }
   if (custom_call->custom_call_target() == "__onednn$softmax") {
     return HandleOneDnnSoftmax(custom_call);
   }
   if (custom_call->custom_call_target() == "__onednn$layernorm") {
     return HandleOneDnnLayerNorm(custom_call);
+  }
+  if (custom_call->custom_call_target() == "__onednn$matmul_reorder") {
+    return HandleOneDnnMatMulCalls(custom_call,
+                                   runtime::kOneDnnMatMulReorderSymbolName);
   }
 #endif  // INTEL_MKL && ENABLE_ONEDNN_V3
   absl::Span<HloInstruction* const> operands(custom_call->operands());
@@ -2799,7 +2799,7 @@ Status IrEmitter::HandleCustomCall(HloInstruction* custom_call) {
       break;
     }
     default:
-      return InternalError(
+      return Internal(
           "Unknown custom-call API version enum value: %d (%s)",
           typed_custom_call->api_version(),
           CustomCallApiVersion_Name(typed_custom_call->api_version()));
@@ -2827,7 +2827,7 @@ Status IrEmitter::HandleWhile(HloInstruction* xla_while) {
           const BufferAllocation::Slice slice_b =
               assignment_.GetUniqueSlice(b, index).value();
           if (slice_a != slice_b) {
-            return InternalError(
+            return Internal(
                 "instruction %s %s does not share slice with "
                 "instruction %s %s",
                 a->ToString(), slice_a.ToString(), b->ToString(),
@@ -2899,7 +2899,7 @@ Status IrEmitter::HandleWhile(HloInstruction* xla_while) {
   return OkStatus();
 }
 
-StatusOr<bool> IrEmitter::EmitFastConcatenate(
+absl::StatusOr<bool> IrEmitter::EmitFastConcatenate(
     HloInstruction* concatenate, absl::Span<HloInstruction* const> operands,
     std::string* failure_reason) {
   if (ShouldEmitParallelLoopFor(*concatenate)) {

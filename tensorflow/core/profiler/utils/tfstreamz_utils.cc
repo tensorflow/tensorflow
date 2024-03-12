@@ -125,7 +125,7 @@ Status SerializeToXPlane(const std::vector<TfStreamzSnapshot>& snapshots,
       }
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace profiler

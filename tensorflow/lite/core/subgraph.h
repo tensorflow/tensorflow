@@ -430,7 +430,17 @@ class Subgraph {
 
   // WARNING: This is an experimental API and subject to change.
   // Set the given `InterpreterOptions` object.
-  void SetOptions(InterpreterOptions* options) { options_ = options; }
+  void SetOptions(InterpreterOptions* options) {
+    options_ = options;
+    if (options && options->GetDynamicAllocationForLargeTensors() > 0) {
+      // Note: this operation cannot be reversed.
+      OptimizeMemoryForLargeTensors(
+          options->GetDynamicAllocationForLargeTensors());
+    }
+  }
+
+  // WARNING: This is an experimental API and subject to change.
+  const InterpreterOptions* GetOptions() const { return options_; }
 
   // WARNING: This is an experimental API and subject to change.
   // True if all intermediates tensors should be preserved for debugging.

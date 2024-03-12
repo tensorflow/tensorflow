@@ -1,4 +1,4 @@
-/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -37,7 +37,7 @@ bool ShouldClearInstruction(HloInstruction* inst) {
          !inst->HasSideEffectNoRecurse();
 }
 
-StatusOr<bool> RunOnComputation(HloComputation* computation) {
+absl::StatusOr<bool> RunOnComputation(HloComputation* computation) {
   bool changed = false;
   for (HloInstruction* inst : computation->instructions()) {
     if (ShouldClearInstruction(inst)) {
@@ -59,7 +59,7 @@ StatusOr<bool> RunOnComputation(HloComputation* computation) {
 
 }  // namespace
 
-StatusOr<bool> WholeGraphManualPass::Run(
+absl::StatusOr<bool> WholeGraphManualPass::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   bool changed = false;

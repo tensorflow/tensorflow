@@ -19,6 +19,7 @@ import enum
 import functools
 import itertools
 import os
+from typing_extensions import Self
 
 from tensorflow.core.framework import variable_pb2
 from tensorflow.python import pywrap_tensorflow  # pylint: disable=unused-import
@@ -1299,6 +1300,74 @@ class Variable(trackable.Trackable, metaclass=VariableMetaclass):
       sl_spec = ":".join(
           "%d,%d" % (o, s) for o, s in zip(self.var_offset, self.var_shape))
       return full_shape_str + sl_spec
+
+    @classmethod
+    def from_spec(cls, spec: str) -> Self:
+      """Parses a SaveSliceInfo spec string and returns a SaveSliceInfo object.
+
+      Args:
+        spec: The tensor slice spec string according to the SaveSliceInfo.spec
+          property. The spec contains the space-separated shape of the full
+          variable, followed by colon-separated pairs of the variable's offset
+          and shape, where each pair is comma-separated. For example, consider a
+          variable whose full shape is [4 3 5], offset is [0 1 3], and shape is
+          [4 1 2]. This variable's SaveSliceInfo.spec would be
+          "4 3 5 0,4:1,1:3,2".
+
+      Returns:
+        A SaveSliceInfo object containing the extracted information.
+
+      Raises:
+        ValueError: If the input string is not in the expected format.
+      """
+      if not spec:
+        return cls()
+
+      try:
+        full_shape_str, slice_str = spec.rsplit(" ", 1)
+      except ValueError as e:
+        raise ValueError(
+            "Spec string must contain space-separated full_shape info.") from e
+
+      # Parse the full shape.
+      full_shape = []
+      for dim in full_shape_str.split():
+        try:
+          full_shape.append(int(dim))
+        except ValueError as e:
+          raise ValueError(
+              "Spec string full_shape must be a sequence of integers. "
+              f"Found '{dim}', which is not an integer.") from e
+
+      # Parse the slice specification.
+      var_offset = []
+      var_shape = []
+      for dim_spec in slice_str.split(":"):
+        try:
+          offset, shape = dim_spec.split(",")
+        except ValueError as e:
+          raise ValueError(
+              "Spec string must contain comma-separated pairs of offsets and "
+              "shapes.") from e
+
+        try:
+          var_offset.append(int(offset))
+        except ValueError as e:
+          raise ValueError(
+              "Spec string var_offset must be an integer. "
+              f"Found '{offset}', which is not an integer.") from e
+        try:
+          var_shape.append(int(shape))
+        except ValueError as e:
+          raise ValueError(
+              "Spec string var_shape must be an integer. "
+              f"Found '{shape}', which is not an integer.") from e
+
+      return cls(
+          full_shape=full_shape,
+          var_offset=var_offset,
+          var_shape=var_shape
+      )
 
     def to_proto(self, export_scope=None):
       """Returns a SaveSliceInfoDef() proto.

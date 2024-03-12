@@ -1,4 +1,4 @@
-/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2019 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -61,16 +61,6 @@ class ProtoStringMatcher {
 inline ::testing::PolymorphicMatcher<ProtoStringMatcher> EqualsProto(
     const tsl::protobuf::Message& x) {
   return ::testing::MakePolymorphicMatcher(ProtoStringMatcher(x));
-}
-
-TEST(TypeToShapeTest, ConvertPrimitiveTypes) {
-  MLIRContext context;
-  Builder b(&context);
-
-  EXPECT_EQ(TypeToPrimitiveType(b.getF32Type()), PrimitiveType::F32);
-  EXPECT_EQ(TypeToPrimitiveType(b.getIntegerType(1)), PrimitiveType::PRED);
-  EXPECT_EQ(TypeToPrimitiveType(b.getIntegerType(17)),
-            PrimitiveType::PRIMITIVE_TYPE_INVALID);
 }
 
 TEST(TypeToShapeTest, ConvertBasicTypesToTypes) {

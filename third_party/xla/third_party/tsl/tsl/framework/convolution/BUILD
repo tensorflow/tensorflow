@@ -6,6 +6,7 @@ load(
 )
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = ["//visibility:public"],
     features = [
         # Required since headers are not self-contained.
@@ -19,7 +20,6 @@ cc_library(
         "eigen_spatial_convolutions-inl.h",
     ],
     compatible_with = get_compatible_with_portable(),
-    visibility = ["//visibility:public"],
     deps = [
         "//tsl/framework/convolution:eigen_convolution_helpers",
     ],
@@ -34,7 +34,6 @@ cc_library(
     defines = [
         "EIGEN_ALTIVEC_USE_CUSTOM_PACK=0",
     ],
-    visibility = ["//visibility:public"],
 )
 
 # Tensorflow also has an eigen_helpers that is closely related, so maintain the same name.
@@ -45,7 +44,6 @@ cc_library(
     ],
     compatible_with = get_compatible_with_portable(),
     defines = ["EIGEN_NEON_GEBP_NR=4"],
-    visibility = ["//visibility:public"],
     deps = [
         "//tsl/framework/contraction:eigen_contraction_kernel",
         "//tsl/framework/convolution:eigen_convolution_helpers",
@@ -63,7 +61,6 @@ filegroup(
         "eigen_spatial_convolutions.h",
         "eigen_spatial_convolutions-inl.h",
     ],
-    visibility = ["//visibility:public"],
     # Somehow the following code works with fixedpoint, but not here.
     # visibility = [
     #     "//tensorflow:__subpackages__",
@@ -92,7 +89,6 @@ exports_files(
         "eigen_spatial_convolutions.h",
         "eigen_spatial_convolutions-inl.h",
     ],
-    visibility = ["//visibility:public"],
 )
 
 tsl_cc_test(
@@ -101,7 +97,6 @@ tsl_cc_test(
     srcs = [
         "eigen_spatial_convolutions_test.cc",
     ],
-    visibility = ["//visibility:public"],
     deps = [
         ":eigen_helpers",
         "//tsl/platform:test",

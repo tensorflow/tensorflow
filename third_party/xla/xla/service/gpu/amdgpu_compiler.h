@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -16,14 +16,20 @@ limitations under the License.
 #ifndef XLA_SERVICE_GPU_AMDGPU_COMPILER_H_
 #define XLA_SERVICE_GPU_AMDGPU_COMPILER_H_
 
-#include <memory>
-#include <string>
-#include <vector>
-
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
+#include "llvm/IR/Module.h"
 #include "xla/hlo/ir/hlo_module.h"
+#include "xla/service/gpu/autotuner_util.h"
 #include "xla/service/gpu/gpu_compiler.h"
-#include "xla/statusor.h"
+#include "xla/service/hlo_module_config.h"
+#include "xla/service/hlo_pass_pipeline.h"
+#include "xla/stream_executor/device_description.h"
+#include "xla/stream_executor/device_memory_allocator.h"
+#include "xla/stream_executor/dnn.h"
+#include "xla/stream_executor/stream_executor_pimpl.h"
 #include "xla/xla.pb.h"
+#include "tsl/platform/threadpool.h"
 
 namespace xla {
 namespace gpu {
@@ -33,12 +39,12 @@ class AMDGPUCompiler : public GpuCompiler {
  public:
   AMDGPUCompiler();
 
-  Status OptimizeHloConvolutionCanonicalization(
+  absl::Status OptimizeHloConvolutionCanonicalization(
       HloModule* hlo_module, se::GpuComputeCapability gpu_version,
       se::dnn::VersionInfo dnn_version,
       se::DeviceMemoryAllocator* device_allocator) override;
 
-  Status OptimizeHloPostLayoutAssignment(
+  absl::Status OptimizeHloPostLayoutAssignment(
       HloModule* hlo_module, se::StreamExecutor* stream_exec,
       const CompileOptions& options, const TargetConfig& gpu_target_config,
       tsl::thread::ThreadPool* thread_pool) override;
@@ -46,20 +52,20 @@ class AMDGPUCompiler : public GpuCompiler {
   bool RequiresCollectiveScheduleLinearizer(
       const HloModule* module, se::StreamExecutor* stream_exec) override;
 
-  Status AddConvAndGemmAutotuningPasses(
+  absl::Status AddConvAndGemmAutotuningPasses(
       HloPassPipeline* pipeline, HloModule* hlo_module,
       AutotuneConfig& autotune_config,
       tsl::thread::ThreadPool* thread_pool) override;
 
-  StatusOr<BackendCompileResult> CompileTargetBinary(
+  absl::Status AddCustomKernelReplacementPasses(
+      HloPassPipeline* pipeline, const DebugOptions& debug_options) override;
+
+  absl::StatusOr<BackendCompileResult> CompileTargetBinary(
       const HloModuleConfig& module_config, llvm::Module* llvm_module,
       se::GpuComputeCapability gpu_version, bool relocatable,
       const HloModule* debug_module, const CompileOptions& options) override;
 
  private:
-  // The parent directory of ROCm-Device-Libs IR libraries.
-  std::string rocdl_dir_;
-
   AMDGPUCompiler(const AMDGPUCompiler&) = delete;
   AMDGPUCompiler& operator=(const AMDGPUCompiler&) = delete;
 };

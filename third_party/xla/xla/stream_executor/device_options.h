@@ -1,4 +1,4 @@
-/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2015 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -66,34 +66,12 @@ struct DeviceOptions {
   unsigned flags() const { return flags_; }
 
   bool operator==(const DeviceOptions& other) const {
-    return flags_ == other.flags_ &&
-           non_portable_tags == other.non_portable_tags;
+    return flags_ == other.flags_;
   }
 
   bool operator!=(const DeviceOptions& other) const {
     return !(*this == other);
   }
-
-  std::string ToString() const {
-    std::vector<std::string> flags_on;
-    if (flags_ & kDoNotReclaimStackAllocation) {
-      flags_on.push_back("kDoNotReclaimStackAllocation");
-    }
-    if (flags_ & kScheduleSpin) {
-      flags_on.push_back("kScheduleSpin");
-    }
-    if (flags_ & kScheduleYield) {
-      flags_on.push_back("kScheduleYield");
-    }
-    if (flags_ & kScheduleBlockingSync) {
-      flags_on.push_back("kScheduleBlockingSync");
-    }
-    return flags_on.empty() ? "none" : absl::StrJoin(flags_on, "|");
-  }
-
-  // Platform-specific device options. Expressed as key-value pairs to avoid
-  // DeviceOptions subclass proliferation.
-  std::map<std::string, std::string> non_portable_tags;
 
  private:
   unsigned flags_;

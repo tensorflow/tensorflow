@@ -1,4 +1,4 @@
-/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2019 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -28,7 +28,7 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
-StatusOr<bool> AliasPassthroughParams::Run(
+absl::StatusOr<bool> AliasPassthroughParams::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   const HloInstruction* root = module->entry_computation()->root_instruction();

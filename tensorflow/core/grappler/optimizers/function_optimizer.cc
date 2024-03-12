@@ -116,7 +116,7 @@ class FakeDevice : public Device {
  public:
   FakeDevice(Env* env, const string& device) : Device(env, attr(device)) {}
   explicit FakeDevice(const string& device) : FakeDevice(nullptr, device) {}
-  Status Sync() override { return OkStatus(); }
+  Status Sync() override { return absl::OkStatus(); }
 
  private:
   static DeviceAttributes attr(const string& device) {
@@ -495,7 +495,7 @@ Status PushDownConstInputs(const NodeDef& func_node,
     }
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Remove inputs that were pushed into the function body, and attach their
@@ -600,7 +600,7 @@ Status UpdateSpecializedFunctionCallSite(const FunctionDef& func,
     return absl::InvalidArgumentError("Unknown function call site");
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Update a graph node created from the original function caller node, to the
@@ -640,7 +640,7 @@ Status UpdateSpecializedFunctionNode(
   // 5. Remove custom gradient annotation.
   specialized_func_node->mutable_attr()->erase("_gradient_op_type");
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status InitializeFunctionSpecializationSignature(
@@ -667,7 +667,7 @@ Status InitializeFunctionSpecializationSignature(
     }
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Create a name for the function specialization. The name of the function, name
@@ -713,7 +713,7 @@ Status SpecializeFunction(const NodeDef& func_node, const FunctionDef& func,
 
     ctx->AddTensorMapping(specialized_func_node->name(), *already_specialized);
 
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   // Add a new specialized function definition to the library.
@@ -780,7 +780,7 @@ Status SpecializeFunction(const NodeDef& func_node, const FunctionDef& func,
   ctx->AddSpecializedFunction(signature, func_specialization);
   ctx->AddTensorMapping(specialized_func_node->name(), func_specialization);
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // -------------------------------------------------------------------------- //
@@ -943,7 +943,7 @@ Status ValidateSideEffectsExecution(
     }
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Validates that no dead tensor can reach function output.
@@ -1008,7 +1008,7 @@ Status ValidateNoDeadOutputs(const FunctionLibraryDefinition& flib_def,
     }
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Makes an instance of FunctionBody for inlining from a Node.
@@ -1026,7 +1026,7 @@ Status MakeFunctionBodyForInlining(const Node& node,
           "Was not able to find a function definition (name=", name,
           ") for a function call: ", SummarizeNode(node)));
     }
-    return OkStatus();
+    return absl::OkStatus();
   };
 
   // SymbolicGradient is a special "function call" op, which has been
@@ -1086,7 +1086,7 @@ Status MakeFunctionBodyForInlining(const Node& node,
                                                &flib_def, fbody));
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Adds a control edges from each data input to the 'caller' to enforce strict
@@ -1347,7 +1347,7 @@ Status InlineFunctionCalls(const GrapplerItem& item,
       if (!can_inline_function_call.ok() &&
           (is_aggressive || force_inline_as_multi_device)) {
         VLOG(2) << "Ignore error: " << can_inline_function_call.message();
-        can_inline_function_call = OkStatus();
+        can_inline_function_call = absl::OkStatus();
       }
     }
     if (can_inline_function_call.ok()) {
@@ -1414,7 +1414,7 @@ Status InlineFunctionCalls(const GrapplerItem& item,
   }
 
   graph->ToGraphDef(output_graph);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Restores tensor mapping after function specialization: all inputs must be
@@ -1520,7 +1520,7 @@ Status FunctionOptimizer::RunFunctionOptimizerPass(
   *optimized_graph->mutable_library() =
       PruneFunctionLibrary(ctx.function_library(), *optimized_graph);
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status FunctionOptimizer::Optimize(Cluster*, const GrapplerItem& item,
@@ -1532,7 +1532,7 @@ Status FunctionOptimizer::Optimize(Cluster*, const GrapplerItem& item,
 
   TF_RETURN_IF_ERROR(RunFunctionOptimizerPass(item, optimized_graph));
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // end namespace grappler

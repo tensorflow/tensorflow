@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -40,7 +40,7 @@ limitations under the License.
 #include "xla/hlo/utils/hlo_live_range.h"
 #include "xla/map_util.h"
 #include "xla/service/buffer_value_containers.h"
-#include "xla/service/heap_simulator.h"
+#include "xla/service/heap_simulator/heap_simulator.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/service/hlo_alias_analysis.h"
 #include "xla/service/hlo_buffer.h"
@@ -74,7 +74,7 @@ absl::flat_hash_map<int64_t, const HloInstruction*> BuildIdToHloInstructionMap(
   return id_to_hlo_instruction;
 }
 
-StatusOr<absl::flat_hash_map<int64_t, const HloValue*>>
+absl::StatusOr<absl::flat_hash_map<int64_t, const HloValue*>>
 BuildIdToLogicalBufferMap(
     const BufferAssignmentProto& proto,
     const absl::flat_hash_map<int64_t, const HloInstruction*>&
@@ -205,7 +205,7 @@ Status GatherComputationsByAllocationType(
                                               true));  // Thread local.
             break;
           default:
-            return InternalError("Unexpected calling opcode: %s",
+            return Internal("Unexpected calling opcode: %s",
                                  HloOpcodeString(instruction->opcode()));
         }
       }
@@ -470,7 +470,7 @@ bool BufferAssignment::HasTopLevelAllocation(
   return HasAllocationAt(instruction, /*index=*/{});
 }
 
-StatusOr<BufferAllocation::Slice> BufferAssignment::GetUniqueSlice(
+absl::StatusOr<BufferAllocation::Slice> BufferAssignment::GetUniqueSlice(
     const HloInstruction* instruction, const ShapeIndex& index) const {
   VLOG(3) << "Trying to find unique slice for " << instruction->name() << " ["
           << index << "]";
@@ -502,7 +502,8 @@ StatusOr<BufferAllocation::Slice> BufferAssignment::GetUniqueSlice(
   return result;
 }
 
-StatusOr<BufferAllocation::Slice> BufferAssignment::GetUniqueTopLevelSlice(
+absl::StatusOr<BufferAllocation::Slice>
+BufferAssignment::GetUniqueTopLevelSlice(
     const HloInstruction* instruction) const {
   return GetUniqueSlice(instruction, /*index=*/{});
 }
@@ -548,7 +549,7 @@ bool BufferAssignment::HaveDisjointSlices(const HloInstruction* hlo_a,
          });
 }
 
-StatusOr<BufferAllocation::Slice>
+absl::StatusOr<BufferAllocation::Slice>
 BufferAssignment::GetUniqueTopLevelOutputSlice() const {
   return GetUniqueTopLevelSlice(
       module_->entry_computation()->root_instruction());
@@ -995,7 +996,7 @@ BufferAssignmentProto BufferAssignment::ToProto() const {
 }
 
 /* static */
-StatusOr<std::unique_ptr<BufferAssignment>> BufferAssignment::FromProto(
+absl::StatusOr<std::unique_ptr<BufferAssignment>> BufferAssignment::FromProto(
     const BufferAssignmentProto& proto, const HloModule* module,
     BufferValue::SizeFunction buffer_size,
     HloDataflowAnalysis::CanShareBuffer can_share_buffer) {
@@ -1072,7 +1073,7 @@ StatusOr<std::unique_ptr<BufferAssignment>> BufferAssignment::FromProto(
 }
 
 /* static */
-StatusOr<std::unique_ptr<BufferAssignment>> BufferAssigner::Run(
+absl::StatusOr<std::unique_ptr<BufferAssignment>> BufferAssigner::Run(
     const HloModule* module, std::unique_ptr<HloOrdering> hlo_ordering,
     BufferValue::SizeFunction buffer_size,
     LogicalBuffer::AlignmentFunction color_alignment,
@@ -1983,7 +1984,8 @@ void BufferAssigner::AssignBuffersFromHeapSimulator(
   }
 }
 
-StatusOr<std::unique_ptr<BufferAssignment>> BufferAssigner::CreateAssignment(
+absl::StatusOr<std::unique_ptr<BufferAssignment>>
+BufferAssigner::CreateAssignment(
     const HloModule* module, std::unique_ptr<HloOrdering> hlo_ordering,
     BufferValue::SizeFunction buffer_size,
     LogicalBuffer::AlignmentFunction color_alignment,

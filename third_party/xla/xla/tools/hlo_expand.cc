@@ -1,4 +1,4 @@
-/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -61,7 +61,8 @@ void AddPassesToPipeline(HloExpandConfig& config, HloPassPipeline& pipeline,
   if (config.spmd_expander) {
     pipeline.AddPass<ShardingPropagation>(
         /*is_spmd=*/true, /*propagate_metadata=*/false,
-        hlo_module_config.allow_spmd_sharding_propagation_to_output());
+        hlo_module_config.allow_spmd_sharding_propagation_to_output(),
+        hlo_module_config.allow_spmd_sharding_propagation_to_parameters());
     pipeline.AddPass<spmd::StatefulRngSpmdPartitioner>(
         hlo_module_config.num_partitions(), hlo_module_config.replica_count(),
         hlo_module_config.debug_options()

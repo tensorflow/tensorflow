@@ -1,4 +1,4 @@
-/* Copyright 2022 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2022 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -16,10 +16,10 @@ limitations under the License.
 #include "xla/service/simplify_fp_conversions.h"
 
 #include <cstddef>
-#include <string>
 
 #include "absl/container/flat_hash_set.h"
 #include "absl/strings/str_format.h"
+#include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
@@ -27,29 +27,27 @@ limitations under the License.
 #include "xla/statusor.h"
 #include "xla/util.h"
 #include "tsl/platform/errors.h"
+#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace {
 
 // Simplifies floating-point conversions `A -> B -> C -> D` as `A -> D`.
-StatusOr<bool> RunOnComputation(HloComputation& computation,
-                                SimplifyFPConversions::Scope scope) {
-  const int minimum_logical_creation_pass_id =
-      (scope == SimplifyFPConversions::Scope::kSimplifyAllConversions) ? -1 : 0;
+absl::StatusOr<bool> RunOnComputation(HloComputation& computation) {
   bool changed = false;
   for (HloInstruction* instruction : computation.MakeInstructionPostOrder()) {
     HloInstruction* input = instruction;
     size_t convert_chain_length = 0;
 
-    while ((input->opcode() == HloOpcode::kConvert) &&
-           (input->metadata().logical_creation_pass_id() >=
-            minimum_logical_creation_pass_id) &&
+    while (input->opcode() == HloOpcode::kConvert &&
            primitive_util::IsFloatingPointType(input->shape().element_type())) {
       input = input->mutable_operand(0);
       ++convert_chain_length;
     }
 
-    if (convert_chain_length < 2) continue;
+    if (convert_chain_length < 2) {
+      continue;
+    }
 
     if (instruction->shape().element_type() == input->shape().element_type()) {
       TF_RETURN_IF_ERROR(
@@ -64,36 +62,23 @@ StatusOr<bool> RunOnComputation(HloComputation& computation,
   return changed;
 }
 
-std::string ToString(SimplifyFPConversions::Scope scope) {
-  using Scope = SimplifyFPConversions::Scope;
-  switch (scope) {
-    case Scope::kSimplifyAllConversions:
-      return "SimplifyAllConversions";
-    case Scope::kOnlySimplifyCompilerGeneratedConversions:
-      return "OnlySimplifyCompilerGeneratedConversions";
-  }
-}
-
 }  // namespace
 
-StatusOr<bool> SimplifyFPConversions::Run(
+absl::StatusOr<bool> SimplifyFPConversions::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   XLA_VLOG_LINES(
-      2,
-      absl::StrFormat("SimplifyFPConversions::Run() with scope=%s, before:\n%s",
-                      ToString(scope_), module->ToString()));
+      2, absl::StrFormat("SimplifyFPConversions::Run() with before:\n%s",
+                         module->ToString()));
   bool changed = false;
   for (HloComputation* computation :
        module->MakeComputationPostOrder(execution_threads)) {
-    TF_ASSIGN_OR_RETURN(bool comp_changed,
-                        RunOnComputation(*computation, scope_));
+    TF_ASSIGN_OR_RETURN(bool comp_changed, RunOnComputation(*computation));
     changed |= comp_changed;
   }
-  XLA_VLOG_LINES(
-      2,
-      absl::StrFormat("SimplifyFPConversions::Run() with scope=%s, after:\n%s",
-                      ToString(scope_), module->ToString()));
+  XLA_VLOG_LINES(2,
+                 absl::StrFormat("SimplifyFPConversions::Run() with after:\n%s",
+                                 module->ToString()));
   return changed;
 }
 

@@ -1,4 +1,4 @@
-/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2020 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -97,7 +97,7 @@ bool ConvertOperandFolding::InstructionMatchesPattern(
   return false;
 }
 
-StatusOr<HloInstruction*> ConvertOperandFolding::ExpandInstruction(
+absl::StatusOr<HloInstruction*> ConvertOperandFolding::ExpandInstruction(
     HloInstruction* instruction) {
   for (int i = 0; i < instruction->operand_count(); ++i) {
     auto* operand = instruction->mutable_operand(i);

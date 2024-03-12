@@ -1,4 +1,4 @@
-/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -17,57 +17,60 @@ limitations under the License.
 #include <cstdint>
 #include <vector>
 
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "xla/executable_run_options.h"
 #include "xla/service/collective_ops_utils.h"
 #include "xla/service/global_device_id.h"
 #include "xla/service/gpu/gpu_executable_run_options.h"
 #include "xla/service/gpu/mock_nccl_utils.h"
+#include "xla/service/gpu/nccl_api.h"
+#include "xla/service/gpu/nccl_clique.h"
+#include "xla/service/gpu/nccl_clique_key.h"
 #include "xla/service/gpu/nccl_collective_thunk.h"
 #include "xla/service/gpu/nccl_p2p_thunk_common.h"
-#include "xla/service/gpu/nccl_utils.h"
 #include "xla/service/gpu/thunk.h"
-#include "xla/status.h"
-#include "xla/statusor.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/util.h"
 
 namespace xla {
 namespace gpu {
 
-StatusOr<NcclComm::Lock> AcquireMockNcclComm(
-    ncclComm_t local_comm, RunId run_id, OpId op_id,
-    std::vector<GlobalDeviceId> participants,
+absl::StatusOr<NcclComm::Lock> AcquireMockNcclComm(
+    RunId run_id, OpId op_id, std::vector<GlobalDeviceId> participants,
     std::vector<GlobalDeviceId> local_devices, size_t num_local_participants,
-    const NcclUniqueIdCallback& unique_id_callback, int rank, int64_t stream_id,
-    bool enable_clique_optimization) {
+    const NcclCliqueIdCallback& clique_id_callback, int rank, int64_t stream_id,
+    bool enable_clique_optimization,
+    GpuExecutableRunOptions::MockNcclTopoModel topo_model) {
   return Unimplemented("AcquireMockNcclComm is not implemented.");
 }
 
-StatusOr<NcclComm::Lock> LockMockNcclComm(
-    const NcclExecuteParams& params,
+absl::StatusOr<NcclComm::Lock> LockMockNcclComm(
+    const Thunk::CollectiveExecuteParams& params,
     const std::vector<ReplicaGroup>& replica_groups,
     CollectiveOpGroupMode group_mode, int64_t op_id, int64_t stream_id,
-    bool enable_clique_optimization) {
+    bool enable_clique_optimization,
+    GpuExecutableRunOptions::MockNcclTopoModel topo_model) {
   return Unimplemented("LockMockNcclComm is not implemented.");
 }
 
-Status RunMockNcclCollectives(std::vector<DeviceBufferPair>& buffers,
-                              se::Stream& stream, ncclComm_t mock_comm,
-                              Thunk::Kind reduce_op) {
+absl::Status RunMockNcclCollectives(NcclApi*, std::vector<DeviceBufferPair>&,
+                                    se::Stream&, NcclApi::NcclCommHandle,
+                                    Thunk::Kind) {
   return Unimplemented("Mock nccl collectives is not implemented.");
 }
 
-Status RunMockNcclAllToAll(bool has_split_dimension,
-                           std::vector<DeviceBufferPair>& buffers,
-                           se::Stream& stream, ncclComm_t mock_comm) {
+absl::Status RunMockNcclAllToAll(NcclApi*, bool, std::vector<DeviceBufferPair>&,
+                                 se::Stream&, NcclApi::NcclCommHandle) {
   return Unimplemented("Mock nccl AllToAll is not implemented.");
 }
 
-Status RunMockCollectivePermute(
-    NcclP2PConfig::SourceTargetMapEntry source_target, DeviceBufferPair& buffer,
-    se::Stream& stream, ncclComm_t mock_comm, absl::string_view device_string,
-    int64_t current_id) {
+absl::Status RunMockCollectivePermute(NcclApi*,
+                                      NcclP2PConfig::SourceTargetMapEntry,
+                                      DeviceBufferPair&, se::Stream&,
+                                      NcclApi::NcclCommHandle,
+                                      absl::string_view, int64_t) {
   return Unimplemented("Mock collective permute is not implemented.");
 }
 

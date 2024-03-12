@@ -104,6 +104,14 @@ class TestCollectiveExecutorMgr : public CollectiveExecutorMgrInterface {
     }
   }
 
+  void CleanupAll() override {
+    mutex_lock l(mu_);
+    for (auto& iter : table_) {
+      iter.second->Unref();
+    }
+    table_.clear();
+  }
+
   ParamResolverInterface* GetParamResolver() const override {
     return param_resolver_;
   }

@@ -1,4 +1,4 @@
-/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -32,13 +32,12 @@ limitations under the License.
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/ir_emitter_context.h"
 #include "xla/service/gpu/launch_dimensions.h"
+#include "xla/service/gpu/model/indexing_analysis.h"
 #include "xla/service/gpu/parallel_loop_emitter.h"
 #include "xla/service/llvm_ir/fused_ir_emitter.h"
 #include "xla/service/llvm_ir/ir_array.h"
 #include "xla/shape.h"
 #include "xla/status.h"
-#include "xla/statusor.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace gpu {
@@ -96,27 +95,27 @@ std::pair<bool /*enabled*/, int> RowVectorizationEnabled(
       roots, fusion,
       [&](auto node) -> TraversalResult {
         if (!row_vectorized) {
-          return TraversalResult::kAbortTraversal;
+          return TraversalResult::kInterrupt;
         }
 
         if (node.instruction().IsElementwise()) {
-          return TraversalResult::kVisitOperands;
+          return TraversalResult::kAdvance;
         }
 
         switch (node.opcode()) {
           case HloOpcode::kConstant:
-            return TraversalResult::kDoNotVisitOperands;
+            return TraversalResult::kSkip;
           case HloOpcode::kParameter:
-            return TraversalResult::kVisitOperands;
+            return TraversalResult::kAdvance;
           case HloOpcode::kBroadcast: {
             auto dims = node.instruction().dimensions();
             if (dims.empty()) {
-              return TraversalResult::kVisitOperands;
+              return TraversalResult::kAdvance;
             }
 
             if (dims.size() == 1 && dims.front() == node.shape().rank() - 1) {
               some_row_broadcasting = true;
-              return TraversalResult::kVisitOperands;
+              return TraversalResult::kAdvance;
             }
             TF_FALLTHROUGH_INTENDED;
           }
@@ -124,7 +123,7 @@ std::pair<bool /*enabled*/, int> RowVectorizationEnabled(
             VLOG(2) << "Row vectorization not enabled due to: "
                     << node.ToString();
             row_vectorized = false;
-            return TraversalResult::kAbortTraversal;
+            return TraversalResult::kInterrupt;
         }
       },
       [&](auto argument) {
@@ -139,6 +138,8 @@ std::pair<bool /*enabled*/, int> RowVectorizationEnabled(
   return std::make_pair(row_vectorized && some_row_broadcasting,
                         num_big_inputs);
 }
+
+}  // namespace
 
 LaunchDimensionsConfig ComputeLoopFusionConfig(
     const HloFusionAnalysis& analysis) {
@@ -210,17 +211,44 @@ LaunchDimensionsConfig ComputeLoopFusionConfig(
   return launch_config;
 }
 
-}  // namespace
-
 LoopFusion::LoopFusion(const HloFusionAnalysis& analysis)
     : analysis_(analysis), config_(ComputeLoopFusionConfig(analysis)) {}
 
-Status LoopFusion::EmitKernel(IrEmitterContext& ir_emitter_context,
-                              const HloFusionInstruction& fusion,
-                              const LaunchDimensions& launch_dims,
-                              std::vector<llvm_ir::IrArray> inputs,
-                              std::vector<llvm_ir::IrArray> outputs,
-                              llvm::IRBuilder<>* builder) const {
+std::optional<IndexingMap> LoopFusion::ComputeThreadIdToOutputIndexing(
+    int64_t root_index, mlir::MLIRContext* ctx) const {
+  auto launch_dims = launch_dimensions();
+  return GetDefaultThreadIdToOutputIndexingMap(
+      launch_dims, config_.unroll_factor, GetElementShape(analysis_), ctx);
+}
+
+std::optional<IndexingMap> LoopFusion::ComputeThreadIdToInputIndexing(
+    int64_t root_index, int64_t hero_operand_index,
+    mlir::MLIRContext* ctx) const {
+  std::optional<IndexingMap> thread_id_to_output_indexing =
+      ComputeThreadIdToOutputIndexing(root_index, ctx);
+  if (!thread_id_to_output_indexing.has_value()) {
+    return std::nullopt;
+  }
+  const HloInstruction* fusion_root = analysis_.fusion_roots()[root_index];
+  auto output_to_input_indexing =
+      ComputeOutputToInputIndexing(fusion_root, /*output_id=*/0, ctx);
+  IndexingMapSet output_to_input_indexing_set =
+      output_to_input_indexing.indexing_maps[hero_operand_index];
+  // Since we are computing the indexing for a non-fusion op, there is only one
+  // indexing map per operand.
+  CHECK_EQ(output_to_input_indexing_set.size(), 1);
+  IndexingMap thread_id_to_input_indexing_map = ComposeIndexingMaps(
+      *thread_id_to_output_indexing, *output_to_input_indexing_set.begin());
+  thread_id_to_input_indexing_map.Simplify();
+  return thread_id_to_input_indexing_map;
+}
+
+absl::Status LoopFusion::EmitKernel(IrEmitterContext& ir_emitter_context,
+                                    const HloFusionInstruction& fusion,
+                                    const LaunchDimensions& launch_dims,
+                                    std::vector<llvm_ir::IrArray> inputs,
+                                    std::vector<llvm_ir::IrArray> outputs,
+                                    llvm::IRBuilder<>* builder) const {
   GpuElementalIrEmitter elemental_emitter(ir_emitter_context, builder);
   FusedIrEmitter fused_emitter(elemental_emitter);
   for (int i = 0; i < fusion.fused_parameters().size(); i++) {

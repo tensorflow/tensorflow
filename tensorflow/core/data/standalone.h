@@ -21,6 +21,7 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/core/common_runtime/device_mgr.h"
+#include "tensorflow/core/data/tfdataz_metrics.h"
 #include "tensorflow/core/data/unbounded_thread_pool.h"
 #include "tensorflow/core/framework/cancellation.h"
 #include "tensorflow/core/framework/dataset.h"
@@ -79,13 +80,15 @@ class Dataset;
 // its elements.
 class Iterator {
  public:
+  virtual ~Iterator();
+
   // Returns the next element of the input pipeline (if there is one) and an
   // indication of whether the end of the input pipeline has been reached.
   Status GetNext(std::vector<Tensor>* outputs, bool* end_of_input);
 
   // Saves a checkpoint of the iterator. Returns Tensors that can be called with
   // `Restore()`.
-  StatusOr<std::vector<Tensor>> Save();
+  absl::StatusOr<std::vector<Tensor>> Save();
 
   // Restores the iterator from a checkpoint. `saved_iterator` is the serialized
   // iterator saved by calling `Save()`.
@@ -103,6 +106,7 @@ class Iterator {
   std::unique_ptr<IteratorBase> iterator_;
   std::unique_ptr<IteratorContext> ctx_;
   std::unique_ptr<SerializationContext> serialization_ctx_;
+  std::shared_ptr<TfDatazMetricsCollector> tf_dataz_metrics_collector_;
 };
 
 // Represents an input pipeline as a collection of data sources and a logical

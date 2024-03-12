@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -51,7 +51,7 @@ ExecutionHandle CompilationCache::Insert(
   return handle;
 }
 
-StatusOr<std::shared_ptr<Executable>> CompilationCache::LookUp(
+absl::StatusOr<std::shared_ptr<Executable>> CompilationCache::LookUp(
     const ExecutionHandle& handle) const {
   absl::MutexLock lock(&mutex_);
 

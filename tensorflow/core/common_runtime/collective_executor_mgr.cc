@@ -81,6 +81,17 @@ void CollectiveExecutorMgr::Cleanup(int64_t step_id) {
   if (ce) ce->Unref();
 }
 
+void CollectiveExecutorMgr::CleanupAll() {
+  gtl::FlatMap<int64_t, CollectiveExecutor*> executor_table;
+  {
+    mutex_lock l(exec_mu_);
+    std::swap(executor_table, executor_table_);
+  }
+  for (auto iter : executor_table) {
+    iter.second->Unref();
+  }
+}
+
 void CollectiveExecutorMgr::GetStepSequenceAsync(
     const GetStepSequenceRequest* request, GetStepSequenceResponse* response,
     const StatusCallback& done) {

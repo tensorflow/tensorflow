@@ -1,4 +1,4 @@
-/* Copyright 2018 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2018 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -16,12 +16,15 @@ limitations under the License.
 #ifndef XLA_SERVICE_GPU_GPU_FUSIBLE_H_
 #define XLA_SERVICE_GPU_GPU_FUSIBLE_H_
 
+#include <cstddef>
+#include <cstdint>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
+#include "absl/container/inlined_vector.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/service/gpu/hlo_traversal.h"
-#include "xla/service/gpu/reduction_utils.h"
 #include "xla/service/instruction_fusion.h"
 #include "xla/stream_executor/device_description.h"
 
@@ -63,11 +66,6 @@ struct FusionInfoCache {
 // Returns projected shared memory usage of a given instruction in bytes.
 int64_t SharedMemoryUsage(const HloInstruction& instr,
                           FusionInfoCache* cache = nullptr);
-
-// Returns projected shared memory usage of a reduction fusion.
-int64_t ReductionProjectedShmemUsageBytes(
-    const ReductionDimensions& reduction_dimensions,
-    const std::vector<std::vector<const HloInstruction*>>& instr_index_groups);
 
 inline constexpr int64_t MaxOperandsAndOutputsPerFusion() { return 64; }
 
@@ -170,7 +168,8 @@ FusionDecision IsProducerMultiOutputFusible(const HloInstruction& producer);
 bool IsFusibleAsMultiOutputFusionRoot(const HloInstruction& instr);
 
 // Determines the fusion kind to be used when fusing into `consumer`.
-HloInstruction::FusionKind ChooseFusionKind(const HloInstruction& consumer);
+HloInstruction::FusionKind ChooseFusionKind(const HloInstruction& producer,
+                                            const HloInstruction& consumer);
 
 // Returns whether `consumer` is the only non-root user of `instr`.
 bool IsConsumerTheOnlyNonRootUser(const HloInstruction& instr,
@@ -206,10 +205,6 @@ size_t GetOutputSizeOfFusible(const HloInstruction& instr);
 // Expected output: [R1]
 std::vector<const HloInstruction*> GetFusionRoots(
     const HloComputation& computation);
-
-// Whether the instruction is a reduction hero for the given root.
-bool IsRealReductionHero(const HloInstruction& root,
-                         const HloInstruction& hero);
 
 // Whether the instruction is a Triton Softmax fusion.
 bool IsTritonSoftmaxFusion(const HloInstruction& instr);

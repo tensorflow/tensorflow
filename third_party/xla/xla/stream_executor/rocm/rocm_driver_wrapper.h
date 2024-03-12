@@ -1,4 +1,4 @@
-/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2019 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -53,7 +53,7 @@ namespace wrap {
     static FuncPtrT loaded = []() -> FuncPtrT {                            \
       static const char *kName = TO_STR(hipSymbolName);                    \
       void *f;                                                             \
-      auto s = tsl::Env::Default() -> GetSymbolFromLibrary(                \
+      auto s = tsl::Env::Default()->GetSymbolFromLibrary(                  \
           stream_executor::internal::CachedDsoLoader::GetHipDsoHandle()    \
               .value(),                                                    \
           kName, &f);                                                      \
@@ -106,17 +106,17 @@ namespace wrap {
   __macro(hipGraphAddKernelNode)                    \
   __macro(hipGraphAddChildGraphNode)                \
   __macro(hipGraphAddMemAllocNode)                  \
-  __macro(hipGraphAddMemcpyNode)                    \
   __macro(hipGraphAddMemcpyNode1D)                  \
   __macro(hipGraphAddMemsetNode)                    \
   __macro(hipGraphAddMemFreeNode)                   \
   __macro(hipGraphCreate)                           \
   __macro(hipGraphDebugDotPrint)                    \
   __macro(hipGraphDestroy)                          \
+  __macro(hipGraphGetNodes)                         \
   __macro(hipGraphExecChildGraphNodeSetParams)      \
   __macro(hipGraphExecDestroy)                      \
   __macro(hipGraphExecKernelNodeSetParams)          \
-  __macro(hipGraphExecMemcpyNodeSetParams)          \
+  __macro(hipGraphExecMemcpyNodeSetParams1D)        \
   __macro(hipGraphExecMemsetNodeSetParams)          \
   __macro(hipGraphExecUpdate)                       \
   __macro(hipGraphInstantiate)                      \
@@ -154,6 +154,8 @@ namespace wrap {
   __macro(hipModuleLaunchKernel)                    \
   __macro(hipModuleLoadData)                        \
   __macro(hipModuleUnload)                          \
+  __macro(hipModuleOccupancyMaxActiveBlocksPerMultiprocessor) \
+  __macro(hipModuleOccupancyMaxPotentialBlockSize)  \
   __macro(hipPointerGetAttribute)                   \
   __macro(hipPointerGetAttributes)                  \
   __macro(hipRuntimeGetVersion)                     \

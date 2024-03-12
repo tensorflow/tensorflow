@@ -1,4 +1,4 @@
-/* Copyright 2022 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2022 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -106,9 +106,6 @@ std::string AutoShardingOption::ToString() const {
 
   lines.push_back(absl::StrCat("nd_sharding_iteratively_strict_search_space: ",
                                nd_sharding_iteratively_strict_search_space));
-
-  lines.push_back(absl::StrCat("allow_replicated_strategy_for_dot_and_conv: ",
-                               allow_replicated_strategy_for_dot_and_conv));
 
   lines.push_back(absl::StrCat("device_mesh_shape: [",
                                absl::StrJoin(device_mesh_shape, ","), "]"));

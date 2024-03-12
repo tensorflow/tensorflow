@@ -1,4 +1,4 @@
-/* Copyright 2021 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2021 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -38,7 +38,7 @@ const uint64_t kTpuChunkTiling = 1024;
 namespace xla {
 
 namespace {
-StatusOr<std::vector<PrimitiveType>> GetOperandTypes(
+absl::StatusOr<std::vector<PrimitiveType>> GetOperandTypes(
     XlaBuilder* builder, absl::Span<const XlaOp> operands,
     absl::Span<const XlaOp> init_values) {
   std::vector<PrimitiveType> op_types;

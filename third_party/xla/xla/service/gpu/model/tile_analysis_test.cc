@@ -1,4 +1,4 @@
-/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -15,88 +15,61 @@ limitations under the License.
 
 #include "xla/service/gpu/model/tile_analysis.h"
 
-#include <cstdint>
 #include <optional>
-#include <vector>
+#include <sstream>
+#include <string>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
-#include "xla/hlo/ir/hlo_instruction.h"
-#include "xla/hlo/ir/hlo_opcode.h"
-#include "xla/status_macros.h"
-#include "xla/statusor.h"
+#include "xla/service/gpu/model/affine_map_printer.h"
+#include "xla/service/gpu/model/indexing_analysis.h"
+#include "xla/service/gpu/model/indexing_test_utils.h"
 #include "xla/tests/hlo_test_base.h"
-#include "tsl/platform/statusor.h"
 #include "tsl/platform/test.h"
 
 namespace xla {
 namespace gpu {
 namespace {
 
-using ::testing::AllOf;
-using ::testing::DescribeMatcher;
-using ::testing::Each;
-using ::testing::ElementsAre;
-using ::testing::ElementsAreArray;
 using ::testing::ExplainMatchResult;
+using ::testing::HasSubstr;
 using ::testing::Optional;
-using ::testing::SizeIs;
 using ::testing::StrEq;
 
-MATCHER_P4(
-    MatchSymbolicTile, affine_map_string, sizes, max_sizes,
-    max_strides_and_offsets,
-    absl::StrCat(
-        negation ? "equals " : "doesn't equal ", "symbolic tile ",
-        affine_map_string, " where sizes_ ",
-        DescribeMatcher<std::vector<std::optional<int64_t>>>(sizes),
-        ", max_sizes_ ", DescribeMatcher<std::vector<int64_t>>(max_sizes),
-        " and ", "max_strides_and_offsets_ ",
-        DescribeMatcher<std::vector<int64_t>>(max_strides_and_offsets))) {
-  return ExplainMatchResult(StrEq(affine_map_string),
-                            ToString(arg.affine_map()), result_listener) &&
-         ExplainMatchResult(sizes, arg.sizes(), result_listener) &&
-         ExplainMatchResult(max_sizes, arg.max_sizes(), result_listener) &&
-         ExplainMatchResult(max_strides_and_offsets,
-                            arg.max_strides_and_offsets(), result_listener);
+MATCHER_P3(MatchSymbolicTile, offset_map_string, size_map_string,
+           stride_map_string,
+           absl::StrCat(negation
+                            ? "equals "
+                            : "doesn't equal symbolic tile with offset_map_ ",
+                        offset_map_string, " and size_map_ ", size_map_string,
+                        " and stride_map_ ", stride_map_string)) {
+  AffineMapPrinter printer;
+  return ExplainMatchResult(StrEq(offset_map_string),
+                            printer.ToString(arg.offset_map()),
+                            result_listener) &&
+         ExplainMatchResult(StrEq(size_map_string),
+                            printer.ToString(arg.size_map()),
+                            result_listener) &&
+         ExplainMatchResult(StrEq(stride_map_string),
+                            printer.ToString(arg.stride_map()),
+                            result_listener);
 }
 
 class SymbolicTileTest : public HloTestBase {
  public:
-  StatusOr<HloInstructionIndexing> GetOutputToInputIndexingForEntryComputation(
+  HloInstructionIndexing GetOutputToInputIndexingForEntryComputation(
       absl::string_view hlo_string, int output_id = 0) {
-    TF_ASSIGN_OR_RETURN(auto module, ParseAndReturnVerifiedModule(hlo_string));
-    HloInstruction* root = module->entry_computation()->root_instruction();
-
-    for (auto* operand : root->operands()) {
-      TF_RET_CHECK(operand->opcode() == HloOpcode::kParameter ||
-                   operand->opcode() == HloOpcode::kConstant)
-          << "If there are multiple instructions, they need to be wrapped in a "
-             "fusion.";
-    }
-    return ComputeOutputToInputIndexing(root, output_id, &mlir_context_);
+    return ComputeOutputToInputIndexingForEntryComputation(
+        static_cast<HloTestBase*>(this), &mlir_context_, hlo_string, output_id);
   }
   mlir::MLIRContext mlir_context_;
 };
 
-TEST_F(SymbolicTileTest, SymbolicTileConstructionIsCorrect) {
-  std::vector<int64_t> shape = {182, 17, 2};
-  SymbolicTile tile(shape, &mlir_context_);
-
-  EXPECT_THAT(ToString(tile.affine_map()),
-              StrEq("(d0, d1, d2, d3, d4, d5)[s0, s1, s2] -> "
-                    "(d0 * s0 + d1, d2 * s1 + d3, d4 * s2 + d5)"));
-  EXPECT_THAT(tile.sizes(), AllOf(Each(std::nullopt), SizeIs(shape.size())));
-  EXPECT_THAT(tile.max_sizes(), ElementsAreArray(shape));
-}
-
-TEST_F(SymbolicTileTest,
-       CanPropagateTileFromDotOutputToInputsWithoutSpecializedTileSizes) {
-  TF_ASSERT_OK_AND_ASSIGN(auto input_indexing,
-                          GetOutputToInputIndexingForEntryComputation(R"(
+TEST_F(SymbolicTileTest, CanPropagateTileFromDotOutputToInputs) {
+  auto input_indexing = GetOutputToInputIndexingForEntryComputation(R"(
     HloModule m
     ENTRY e {
       p0 = f32[11, 17, 19] parameter(0)
@@ -105,127 +78,92 @@ TEST_F(SymbolicTileTest,
         lhs_batch_dims={0}, rhs_batch_dims={0},
         lhs_contracting_dims={2}, rhs_contracting_dims={1}
     }
-  )"));
-
-  SymbolicTile output_tile(/*target_shape=*/{11, 17, 23}, &mlir_context_);
+  )");
 
   EXPECT_THAT(
-      output_tile.TryPropagateTileThroughIndexingMap(
-          *input_indexing.indexing_maps[0].begin()),
+      SymbolicTile::FromIndexingMap(*input_indexing.indexing_maps[0].begin()),
       Optional(MatchSymbolicTile(
-          "(d0, d1, d2, d3, d4, d5)[s0, s1, s2, s3] -> "
-          "(d0 * s1 + d1, d2 * s2 + d3, s0)",
-          ElementsAre(19, std::nullopt, std::nullopt, std::nullopt),
-          ElementsAre(19, 11, 17, 23), ElementsAre(11, 11, 17, 17, 23, 23))));
+          "()[s0, s1, s2, s3, s4, s5, s6, s7, s8] -> (s0, s3, 0)",
+          "()[s0, s1, s2, s3, s4, s5, s6, s7, s8] -> (s1, s4, 19)",
+          "()[s0, s1, s2, s3, s4, s5, s6, s7, s8] -> (s2, s5, 1)")));
 
   EXPECT_THAT(
-      output_tile.TryPropagateTileThroughIndexingMap(
-          *input_indexing.indexing_maps[1].begin()),
+      SymbolicTile::FromIndexingMap(*input_indexing.indexing_maps[1].begin()),
       Optional(MatchSymbolicTile(
-          "(d0, d1, d2, d3, d4, d5)[s0, s1, s2, s3] -> "
-          "(d0 * s1 + d1, s0, d4 * s3 + d5)",
-          ElementsAre(19, std::nullopt, std::nullopt, std::nullopt),
-          ElementsAre(19, 11, 17, 23), ElementsAre(11, 11, 17, 17, 23, 23))));
+          "()[s0, s1, s2, s3, s4, s5, s6, s7, s8] -> (s0, 0, s6)",
+          "()[s0, s1, s2, s3, s4, s5, s6, s7, s8] -> (s1, 19, s7)",
+          "()[s0, s1, s2, s3, s4, s5, s6, s7, s8] -> (s2, 1, s8)")));
 }
 
 TEST_F(SymbolicTileTest, CanPropagateTileThroughTrivialReshape) {
-  TF_ASSERT_OK_AND_ASSIGN(auto input_indexing,
-                          GetOutputToInputIndexingForEntryComputation(R"(
+  auto input_indexing = GetOutputToInputIndexingForEntryComputation(R"(
     HloModule m
     ENTRY e {
       p0 = f32[11, 17, 19] parameter(0)
       ROOT reshape = f32[1, 11, 17, 19] reshape(p0)
     }
-  )"));
+  )");
 
-  std::vector<int64_t> target_shape({1, 11, 17, 19});
-  SymbolicTile output_tile(target_shape, &mlir_context_);
-
-  std::optional<SymbolicTile> operand_tile =
-      output_tile.TryPropagateTileThroughIndexingMap(
-          *input_indexing.indexing_maps[0].begin());
-
-  std::optional<int64_t> undef = std::nullopt;
-
-  // Note: the affine map here could be simplified further since s0 can take on
-  // a single value (0). The fact that it is not is a current limitation of
-  // 'IndexingMapSimplifier`. When that simplification logic becomes more
-  // advanced, this test may thus require editing.
-  EXPECT_THAT(operand_tile,
-              Optional(MatchSymbolicTile(
-                  "(d0, d1, d2, d3, d4, d5, d6, d7)[s0, s1, s2, s3] -> "
-                  "((d0 * s0 + d1) * 11 + d2 * s1 + d3, d4 * s2 + d5, d6 * s3 "
-                  "+ d7)",  // NOLINT
-                  AllOf(Each(undef), SizeIs(target_shape.size())),
-                  ElementsAreArray(target_shape),
-                  ElementsAre(1, 1, 11, 11, 17, 17, 19, 19))));
+  EXPECT_THAT(
+      SymbolicTile::FromIndexingMap(*input_indexing.indexing_maps[0].begin()),
+      Optional(MatchSymbolicTile(
+          "()[s0, s1, s2, s3, s4, s5, s6, s7, s8, s9, s10, s11] "
+          "-> (s3, s6, s9)",
+          "()[s0, s1, s2, s3, s4, s5, s6, s7, s8, s9, s10, s11] "
+          "-> (s4, s7, s10)",
+          "()[s0, s1, s2, s3, s4, s5, s6, s7, s8, s9, s10, s11] "
+          "-> (s5, s8, s11)")));
 }
 
-TEST_F(SymbolicTileTest,
-       FailsToPropagateTileThroughReshapeWithoutSpecializedTileSizes) {
-  TF_ASSERT_OK_AND_ASSIGN(auto input_indexing,
-                          GetOutputToInputIndexingForEntryComputation(R"(
+TEST_F(SymbolicTileTest, FailsToPropagateTileThroughReshape) {
+  auto input_indexing = GetOutputToInputIndexingForEntryComputation(R"(
     HloModule m
     ENTRY e {
       p0 = f32[12, 4, 19] parameter(0)
       ROOT reshape = f32[4, 12, 19] reshape(p0)
     }
-  )"));
+  )");
 
-  std::vector<int64_t> target_shape({4, 12, 19});
-  SymbolicTile output_tile(target_shape, &mlir_context_);
-
-  EXPECT_EQ(output_tile.TryPropagateTileThroughIndexingMap(
-                *input_indexing.indexing_maps[0].begin()),
-            std::nullopt);
+  EXPECT_EQ(
+      SymbolicTile::FromIndexingMap(*input_indexing.indexing_maps[0].begin()),
+      std::nullopt);
 }
 
-TEST_F(SymbolicTileTest,
-       CanPropagateTileThroughElementwiseOpWithoutSpecializedTileSizes) {
-  TF_ASSERT_OK_AND_ASSIGN(auto input_indexing,
-                          GetOutputToInputIndexingForEntryComputation(R"(
+TEST_F(SymbolicTileTest, CanPropagateTileThroughElementwiseOp) {
+  auto input_indexing = GetOutputToInputIndexingForEntryComputation(R"(
     HloModule m
     ENTRY e {
       p0 = f32[150] parameter(0)
       p1 = f32[150] parameter(1)
       ROOT add = f32[150] add(p0, p1)
     }
-  )"));
+  )");
 
-  SymbolicTile output_tile(/*target_shape=*/{150}, &mlir_context_);
-
-  EXPECT_THAT(output_tile.TryPropagateTileThroughIndexingMap(
-                  *input_indexing.indexing_maps[0].begin()),
-              Optional(MatchSymbolicTile(
-                  "(d0, d1)[s0] -> (d0 * s0 + d1)", ElementsAre(std::nullopt),
-                  ElementsAre(150), ElementsAre(150, 150))));
+  EXPECT_THAT(
+      SymbolicTile::FromIndexingMap(*input_indexing.indexing_maps[0].begin()),
+      Optional(MatchSymbolicTile("()[s0, s1, s2] -> (s0)",
+                                 "()[s0, s1, s2] -> (s1)",
+                                 "()[s0, s1, s2] -> (s2)")));
 }
 
-TEST_F(SymbolicTileTest,
-       CanPropagateTileFromBroadcastOutputToInputWithoutSpecializedTileSizes) {
-  TF_ASSERT_OK_AND_ASSIGN(auto input_indexing,
-                          GetOutputToInputIndexingForEntryComputation(R"(
+TEST_F(SymbolicTileTest, CanPropagateTileFromBroadcastOutputToInput) {
+  auto input_indexing = GetOutputToInputIndexingForEntryComputation(R"(
     HloModule m
     ENTRY e {
       p0 = f32[150] parameter(0)
       ROOT broadcast = f32[157,150] broadcast(p0), dimensions={1}
     }
-  )"));
+  )");
 
-  SymbolicTile output_tile(/*target_shape=*/{157, 150}, &mlir_context_);
-
-  EXPECT_THAT(output_tile.TryPropagateTileThroughIndexingMap(
-                  *input_indexing.indexing_maps[0].begin()),
-              Optional(MatchSymbolicTile(
-                  "(d0, d1, d2, d3)[s0, s1] -> (d2 * s1 + d3)",
-                  ElementsAre(std::nullopt, std::nullopt),
-                  ElementsAre(157, 150), ElementsAre(157, 157, 150, 150))));
+  EXPECT_THAT(
+      SymbolicTile::FromIndexingMap(*input_indexing.indexing_maps[0].begin()),
+      Optional(MatchSymbolicTile("()[s0, s1, s2, s3, s4, s5] -> (s3)",
+                                 "()[s0, s1, s2, s3, s4, s5] -> (s4)",
+                                 "()[s0, s1, s2, s3, s4, s5] -> (s5)")));
 }
 
-TEST_F(SymbolicTileTest,
-       CanPropagateTileFromReduceOutputToInputWithoutSpecializedTileSizes) {
-  TF_ASSERT_OK_AND_ASSIGN(auto input_indexing,
-                          GetOutputToInputIndexingForEntryComputation(R"(
+TEST_F(SymbolicTileTest, CanPropagateTileFromReduceOutputToInput) {
+  auto input_indexing = GetOutputToInputIndexingForEntryComputation(R"(
     HloModule m
     max {
       p0 = f32[] parameter(0)
@@ -238,80 +176,157 @@ TEST_F(SymbolicTileTest,
       c0 = f32[] constant(-inf)
       ROOT reduce = f32[150] reduce(p0, c0), dimensions={0}, to_apply=max
     }
-  )"));
+  )");
 
-  SymbolicTile output_tile(/*target_shape=*/{150}, &mlir_context_);
-
-  EXPECT_THAT(output_tile.TryPropagateTileThroughIndexingMap(
-                  *input_indexing.indexing_maps[0].begin()),
-              Optional(MatchSymbolicTile(
-                  "(d0, d1)[s0, s1] -> (s0, d0 * s1 + d1)",
-                  ElementsAre(125, std::nullopt), ElementsAre(125, 150),
-                  ElementsAre(150, 150))));
+  EXPECT_THAT(
+      SymbolicTile::FromIndexingMap(*input_indexing.indexing_maps[0].begin()),
+      Optional(MatchSymbolicTile("()[s0, s1, s2] -> (0, s0)",
+                                 "()[s0, s1, s2] -> (125, s1)",
+                                 "()[s0, s1, s2] -> (1, s2)")));
 }
 
-TEST_F(SymbolicTileTest,
-       CanPropagateTileThroughReverseWithoutSpecializedTileSizes) {
-  TF_ASSERT_OK_AND_ASSIGN(auto input_indexing,
-                          GetOutputToInputIndexingForEntryComputation(R"(
+TEST_F(SymbolicTileTest, CanPropagateTileThroughReverse) {
+  auto input_indexing = GetOutputToInputIndexingForEntryComputation(R"(
     HloModule m
     ENTRY e {
       p0 = f32[179] parameter(0)
       ROOT reverse = f32[179] reverse(p0), dimensions={0}
     }
-  )"));
-
-  SymbolicTile output_tile(/*target_shape=*/{179}, &mlir_context_);
+  )");
 
   EXPECT_THAT(
-      output_tile.TryPropagateTileThroughIndexingMap(
-          *input_indexing.indexing_maps[0].begin()),
-      Optional(MatchSymbolicTile("(d0, d1)[s0] -> (-(d0 * s0 + d1) + 178)",
-                                 ElementsAre(std::nullopt), ElementsAre(179),
-                                 ElementsAre(179, 179))));
+      SymbolicTile::FromIndexingMap(*input_indexing.indexing_maps[0].begin()),
+      Optional(MatchSymbolicTile("()[s0, s1, s2] -> (-s0 + 178)",
+                                 "()[s0, s1, s2] -> (s1)",
+                                 "()[s0, s1, s2] -> (-s2)")));
 }
 
-TEST_F(SymbolicTileTest,
-       CanPropagateTileFromSliceOutputToInputWithoutSpecializedTileSizes) {
-  TF_ASSERT_OK_AND_ASSIGN(auto input_indexing,
-                          GetOutputToInputIndexingForEntryComputation(R"(
+TEST_F(SymbolicTileTest, CanPropagateTileFromSliceOutputToInput) {
+  auto input_indexing = GetOutputToInputIndexingForEntryComputation(R"(
     HloModule m
     ENTRY e {
       p0 = f32[120,142] parameter(0)
       ROOT slice = f32[10,21] slice(p0), slice={[40:60:2], [20:104:4]}
     }
-  )"));
+  )");
 
-  SymbolicTile output_tile(/*target_shape=*/{10, 21}, &mlir_context_);
-
-  EXPECT_THAT(output_tile.TryPropagateTileThroughIndexingMap(
-                  *input_indexing.indexing_maps[0].begin()),
-              Optional(MatchSymbolicTile(
-                  "(d0, d1, d2, d3)[s0, s1] -> "
-                  "((d0 * s0 + d1) * 2 + 40, (d2 * s1 + d3) * 4 + 20)",
-                  ElementsAre(std::nullopt, std::nullopt), ElementsAre(10, 21),
-                  ElementsAre(10, 10, 21, 21))));
+  EXPECT_THAT(
+      SymbolicTile::FromIndexingMap(*input_indexing.indexing_maps[0].begin()),
+      Optional(MatchSymbolicTile(
+          "()[s0, s1, s2, s3, s4, s5] -> (s0 * 2 + 40, s3 * 4 + 20)",
+          "()[s0, s1, s2, s3, s4, s5] -> (s1, s4)",
+          "()[s0, s1, s2, s3, s4, s5] -> (s2 * 2, s5 * 4)")));
 }
 
-TEST_F(SymbolicTileTest,
-       CanPropagateTileThroughTransposeWithoutSpecializedTileSizes) {
-  TF_ASSERT_OK_AND_ASSIGN(auto input_indexing,
-                          GetOutputToInputIndexingForEntryComputation(R"(
+TEST_F(SymbolicTileTest, CanPropagateTileThroughTranspose) {
+  auto input_indexing = GetOutputToInputIndexingForEntryComputation(R"(
     HloModule m
     ENTRY e {
       p0 = f32[21,10] parameter(0)
       ROOT transpose = f32[10,21] transpose(p0), dimensions={1,0}
     }
-  )"));
+  )");
 
-  SymbolicTile output_tile(/*target_shape=*/{10, 21}, &mlir_context_);
+  EXPECT_THAT(
+      SymbolicTile::FromIndexingMap(*input_indexing.indexing_maps[0].begin()),
+      Optional(MatchSymbolicTile("()[s0, s1, s2, s3, s4, s5] -> (s3, s0)",
+                                 "()[s0, s1, s2, s3, s4, s5] -> (s4, s1)",
+                                 "()[s0, s1, s2, s3, s4, s5] -> (s5, s2)")));
+}
 
-  EXPECT_THAT(output_tile.TryPropagateTileThroughIndexingMap(
-                  *input_indexing.indexing_maps[0].begin()),
-              Optional(MatchSymbolicTile(
-                  "(d0, d1, d2, d3)[s0, s1] -> (d2 * s1 + d3, d0 * s0 + d1)",
-                  ElementsAre(std::nullopt, std::nullopt), ElementsAre(10, 21),
-                  ElementsAre(10, 10, 21, 21))));
+TEST_F(SymbolicTileTest, CanPropagateTileThroughConcatenate) {
+  // TODO(325488844): Add additional concat test cases with constraints.
+  auto input_indexing = GetOutputToInputIndexingForEntryComputation(R"(
+    HloModule m
+    ENTRY e {
+      p0 = f32[2,5,7] parameter(0)
+      p1 = f32[2,11,7] parameter(1)
+      p2 = f32[2,17,7] parameter(2)
+      ROOT concat = f32[2,33,7] concatenate(p0, p1, p2), dimensions={1}
+    }
+  )");
+
+  EXPECT_THAT(
+      SymbolicTile::FromIndexingMap(*input_indexing.indexing_maps[0].begin()),
+      Optional(MatchSymbolicTile(
+          "()[s0, s1, s2, s3, s4, s5, s6, s7, s8] -> (s0, s3, s6)",
+          "()[s0, s1, s2, s3, s4, s5, s6, s7, s8] -> (s1, s4, s7)",
+          "()[s0, s1, s2, s3, s4, s5, s6, s7, s8] -> (s2, s5, s8)")));
+  EXPECT_THAT(
+      SymbolicTile::FromIndexingMap(*input_indexing.indexing_maps[1].begin()),
+      Optional(MatchSymbolicTile(
+          "()[s0, s1, s2, s3, s4, s5, s6, s7, s8] -> (s0, s3 - 5, s6)",
+          "()[s0, s1, s2, s3, s4, s5, s6, s7, s8] -> (s1, s4, s7)",
+          "()[s0, s1, s2, s3, s4, s5, s6, s7, s8] -> (s2, s5, s8)")));
+  EXPECT_THAT(
+      SymbolicTile::FromIndexingMap(*input_indexing.indexing_maps[2].begin()),
+      Optional(MatchSymbolicTile(
+          "()[s0, s1, s2, s3, s4, s5, s6, s7, s8] -> (s0, s3 - 16, s6)",
+          "()[s0, s1, s2, s3, s4, s5, s6, s7, s8] -> (s1, s4, s7)",
+          "()[s0, s1, s2, s3, s4, s5, s6, s7, s8] -> (s2, s5, s8)")));
+}
+
+TEST_F(SymbolicTileTest, CanPropagateTileThroughPadOpWithoutInteriorPadding) {
+  // TODO(325488844): Add pad tests with defined constraints on tile input.
+  auto input_indexing = GetOutputToInputIndexingForEntryComputation(R"(
+    HloModule m
+    ENTRY e {
+      p0 = f32[4, 4] parameter(0)
+      p1 = f32[] parameter(1)
+      ROOT pad = f32[8,8] pad(p0, p1), padding=2_2_0x1_3_0
+    }
+  )");
+
+  EXPECT_THAT(
+      SymbolicTile::FromIndexingMap(*input_indexing.indexing_maps[0].begin()),
+      Optional(
+          MatchSymbolicTile("()[s0, s1, s2, s3, s4, s5] -> (s0 - 2, s3 - 1)",
+                            "()[s0, s1, s2, s3, s4, s5] -> (s1, s4)",
+                            "()[s0, s1, s2, s3, s4, s5] -> (s2, s5)")));
+}
+
+TEST_F(SymbolicTileTest, CanPrintSymbolicTileWithNamedTriplets) {
+  auto input_indexing = GetOutputToInputIndexingForEntryComputation(R"(
+    HloModule m
+    ENTRY e {
+      p0 = f32[17, 19] parameter(0)
+      p1 = f32[19, 23] parameter(1)
+      ROOT dot = f32[17, 23] dot(p0, p1),
+        lhs_contracting_dims={1}, rhs_contracting_dims={0}
+    }
+  )");
+
+  std::string s;
+  std::stringstream ss(s);
+
+  SymbolicTile first_operand_tile =
+      SymbolicTile::FromIndexingMap(*input_indexing.indexing_maps[0].begin())
+          .value();
+  SymbolicTile second_operand_tile =
+      SymbolicTile::FromIndexingMap(*input_indexing.indexing_maps[1].begin())
+          .value();
+
+  ss << first_operand_tile;
+  EXPECT_THAT(
+      ss.str(),
+      AllOf(HasSubstr("()[offset0, size0, stride0, offset1, size1, stride1] "
+                      "-> (offset0, 0)"),
+            HasSubstr("()[offset0, size0, stride0, offset1, size1, stride1] "
+                      "-> (size0, 19)"),
+            HasSubstr("()[offset0, size0, stride0, offset1, size1, stride1] "
+                      "-> (stride0, 1)")));
+
+  // Clear the stream and load the second map.
+  ss.str("");
+  ss << second_operand_tile;
+  EXPECT_THAT(
+      ss.str(),
+      AllOf(HasSubstr("()[offset0, size0, stride0, offset1, size1, stride1] "
+                      "-> (0, offset1)"),
+            HasSubstr("()[offset0, size0, stride0, offset1, size1, stride1] "
+                      "-> (19, size1)"),
+            HasSubstr("()[offset0, size0, stride0, offset1, size1, stride1] "
+                      "-> (1, stride1)")));
 }
 
 }  // namespace

@@ -24,6 +24,8 @@ sudo install -o ${CI_BUILD_USER} -g ${CI_BUILD_GROUP} -d /tmpfs
 # Update bazel
 install_bazelisk
 
+export PYTHON_BIN_PATH=$(which python3)
+
 # Env vars used to avoid interactive elements of the build.
 export HOST_C_COMPILER=(which gcc)
 export HOST_CXX_COMPILER=(which g++)
@@ -76,8 +78,13 @@ sudo sed -i '/^build --profile/d' /usertools/aarch64_clang.bazelrc
 sudo sed -i '\@^build.*=\"/usr/local/bin/python3\"$@d' /usertools/aarch64_clang.bazelrc
 sed -i '$ aimport /usertools/aarch64_clang.bazelrc' .bazelrc
 
+# configure may have chosen the wrong setting for PYTHON_LIB_PATH so
+# determine here the correct setting
+PY_SITE_PACAKGES=$(${PYTHON_BIN_PATH} -c "import site ; print(site.getsitepackages()[0])")
+
 bazel test ${TF_TEST_FLAGS} \
-    --repo_env=PYTHON_BIN_PATH="$(which python)" \
+    --action_env=PYTHON_BIN_PATH=${PYTHON_BIN_PATH} \
+    --action_env=PYTHON_LIB_PATH=${PY_SITE_PACKAGES} \
     --build_tag_filters=${TF_FILTER_TAGS} \
     --test_tag_filters=${TF_FILTER_TAGS} \
     --local_test_jobs=$(grep -c ^processor /proc/cpuinfo) \

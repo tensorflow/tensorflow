@@ -27,9 +27,9 @@ limitations under the License.
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
 #include "tensorflow/compiler/mlir/lite/quantization/lite/tfl_to_std.h"
-#include "tensorflow/compiler/mlir/lite/quantization/quantization_config.h"
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h"
 #include "tensorflow/compiler/mlir/lite/transforms/prepare_quantize_helper.h"
+#include "tensorflow/compiler/mlir/quantization/common/quantization_lib/quantization_config.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/platform/types.h"
 
@@ -72,6 +72,8 @@ class PrepareDynamicRangeQuantizePass
       : quant_specs_(quant_specs) {
     enable_dynamic_range_per_channel_quantization_ =
         !quant_specs_.disable_per_channel;
+    enable_dynamic_range_per_channel_quantization_for_dense_layers_ =
+        !quant_specs_.disable_per_channel_for_dense_layers;
     min_elements_for_weights_ = quant_specs_.minimum_elements_for_weights;
   }
 
@@ -275,6 +277,10 @@ class PrepareDynamicRangeQuantizableOp
       op_with_per_axis_support = op_with_narrow_range &&
                                  affine_user.GetQuantizationDimIndex() != -1 &&
                                  !quant_specs_.disable_per_channel;
+      if (dyn_cast<FullyConnectedOp>(quantize_op)) {
+        op_with_per_axis_support &=
+            !quant_specs_.disable_per_channel_for_dense_layers;
+      }
     }
 
     QuantizedType quant_type = nullptr;
@@ -473,6 +479,8 @@ void PrepareDynamicRangeQuantizePass::runOnOperation() {
 
   quant_specs_.disable_per_channel =
       !enable_dynamic_range_per_channel_quantization_;
+  quant_specs_.disable_per_channel_for_dense_layers =
+      !enable_dynamic_range_per_channel_quantization_for_dense_layers_;
   quant_specs_.minimum_elements_for_weights = min_elements_for_weights_;
 
   if (!enable_custom_op_quantization_.empty()) {

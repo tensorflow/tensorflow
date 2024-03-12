@@ -30,8 +30,21 @@ namespace TFTPU {
 std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>> CreateTPURewritePass(
     llvm::StringRef module_name = llvm::StringRef());
 
+// Creates a pass that adds ops which perform formatting on variables at
+// run-time according to compilation result.
+std::unique_ptr<OperationPass<ModuleOp>>
+CreateTPUVariableRuntimeReformattingPass();
+
+// Creates a pass that merges device variable reads/updates into the surrounded
+// TPUExecute node. This allows the execute node to perform in-place variable
+// updates.
+std::unique_ptr<OperationPass<ModuleOp>>
+CreateTPUMergeVariablesWithExecutePass();
+
 #define GEN_PASS_REGISTRATION
+#define GEN_PASS_DECL_TPUMERGEVARIABLESWITHEXECUTEPASS
 #define GEN_PASS_DECL_TPUREWRITEPASS
+#define GEN_PASS_DECL_TPUVARIABLERUNTIMEREFORMATTINGPASS
 #include "tensorflow/compiler/mlir/tensorflow/transforms/host_runtime/runtime_passes.h.inc"
 
 }  // namespace TFTPU

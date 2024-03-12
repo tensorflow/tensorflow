@@ -20,10 +20,59 @@ limitations under the License.
 #include "mlir/Transforms/Passes.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/quantization/stablehlo/passes/bridge/passes.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/passes/passes.h"
+#include "tensorflow/compiler/mlir/quantization/stablehlo/quantization_config.pb.h"
+#include "tensorflow/compiler/mlir/quantization/tensorflow/passes/passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
 #include "xla/mlir_hlo/mhlo/transforms/passes.h"
 
 namespace mlir::quant::stablehlo {
+
+using ::stablehlo::quantization::CalibrationOptions;
+using ::stablehlo::quantization::DebuggerConfig;
+using ::stablehlo::quantization::PipelineConfig;
+using ::stablehlo::quantization::QuantizationSpecs;
+using ::stablehlo::quantization::StaticRangePtqPreset;
+
+void AddPreCalibrationPasses(OpPassManager& pm,
+                             const CalibrationOptions& calibration_options,
+                             const QuantizationSpecs& quantization_specs,
+                             const DebuggerConfig& debugger_config) {
+  // For models with NCHW convolution format. This pass is required because
+  // downstream pipeline handles NHWC convolution better for most cases.
+  pm.addNestedPass<func::FuncOp>(createNchwConvolutionToNhwcPass());
+
+  // Folds `stablehlo.constant`->`stablehlo.transpose` patterns, which is often
+  // generated as by-products after optimizing dimension numbers (e.g.
+  // NCHW->NHWC convolution conversion).
+  pm.addNestedPass<func::FuncOp>(createFoldConstantTransposePass());
+  pm.addPass(CreateLiftQuantizableSpotsAsFunctionsPass(quantization_specs));
+  if (debugger_config.debugger_type() !=
+      DebuggerConfig::DEBUGGER_TYPE_UNSPECIFIED) {
+    pm.addPass(CreateAddDumpTensorOpPass(debugger_config.debugger_type(),
+                                         debugger_config.log_dir_path()));
+  }
+  pm.addNestedPass<func::FuncOp>(
+      CreateInsertCustomAggregationOpsPass(calibration_options));
+  pm.addPass(CreateIssueIDsOfCustomAggregationOpsPass());
+}
+
+void AddPostCalibrationPasses(
+    OpPassManager& pm, const PipelineConfig& pipeline_config,
+    const StaticRangePtqPreset& static_range_ptq_preset) {
+  QuantizeCompositeFunctionsPassOptions options;
+  options.enable_per_channel_quantized_weight_ =
+      static_range_ptq_preset.enable_per_channel_quantized_weight();
+  // For debugging purposes.
+  options.mlir_dump_file_name_ = "quantize_composite_functions";
+  pm.addNestedPass<func::FuncOp>(
+      CreateConvertCustomAggregationOpToQuantStatsPass());
+  pm.addPass(createQuantizeCompositeFunctionsPass(options));
+  // Add an inliner pass to inline quantized StableHLO functions.
+  pm.addPass(createInlinerPass());
+  if (pipeline_config.unpack_quantized_types()) {
+    AddStablehloQuantToIntPasses(pm);
+  }
+}
 
 void AddXlaCallModuleOpDeserializationPasses(OpPassManager& pm) {
   pm.addPass(TF::CreateXlaCallModuleDeserializationPass());
@@ -45,13 +94,15 @@ void AddShapeLegalizationPasses(OpPassManager& pm) {
 }
 
 void AddStablehloQuantToIntPasses(OpPassManager& pm) {
-  pm.addPass(createInlinerPass());
   // StableHLO -> MHLO legalization.
   pm.addPass(mhlo::createStablehloLegalizeToHloPass());
-  pm.addNestedPass<func::FuncOp>(createConvertMHLOQuantToIntPass(
-      /*legalize_chlo=*/true));
+  pm.addNestedPass<func::FuncOp>(mhlo::createMhloQuantLegalizeToIntPass());
   pm.addNestedPass<func::FuncOp>(createCanonicalizerPass());
+  // Integer graph optimization relies on chlo broadcast ops for easier handling
+  // of dynamic shapes. Therefore we lower chlo ops after optimization.
   pm.addNestedPass<func::FuncOp>(CreateOptimizeIntGraphPass());
+  pm.addNestedPass<func::FuncOp>(mhlo::createChloLegalizeToHloPass());
+  pm.addNestedPass<func::FuncOp>(createCanonicalizerPass());
   pm.addPass(createSymbolDCEPass());
   // MHLO -> StableHLO legalization.
   pm.addPass(mhlo::createHloLegalizeToStablehloPass());

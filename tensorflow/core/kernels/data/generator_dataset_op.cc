@@ -76,7 +76,7 @@ class GeneratorDatasetOp::Dataset : public DatasetBase {
   }
 
   Status InputDatasets(std::vector<const DatasetBase*>* inputs) const override {
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   Status CheckExternalState() const override {
@@ -119,7 +119,7 @@ class GeneratorDatasetOp::Dataset : public DatasetBase {
           dataset()->next_func_->Instantiate(ctx, &instantiated_next_func_));
       TF_RETURN_IF_ERROR(dataset()->finalize_func_->Instantiate(
           ctx, &instantiated_finalize_func_));
-      return OkStatus();
+      return absl::OkStatus();
     }
 
     Status GetNextInternal(IteratorContext* ctx,
@@ -135,7 +135,7 @@ class GeneratorDatasetOp::Dataset : public DatasetBase {
 
       if (finalized_) {
         *end_of_sequence = true;
-        return OkStatus();
+        return absl::OkStatus();
       }
 
       Status s = instantiated_next_func_->RunWithBorrowedArgs(
@@ -145,7 +145,7 @@ class GeneratorDatasetOp::Dataset : public DatasetBase {
       } else if (errors::IsOutOfRange(s)) {
         // `next_func` may deliberately raise `errors::OutOfRange`
         // to indicate that we should terminate the iteration.
-        s = OkStatus();
+        s = absl::OkStatus();
         *end_of_sequence = true;
 
         // NOTE(mrry): We ignore any tensors returned by the finalize function.

@@ -19,15 +19,17 @@ limitations under the License.
 #include <string>
 #include <vector>
 
-#include "absl/status/status.h"
 #include "tensorflow/cc/framework/cc_op_gen_util.h"
 #include "tensorflow/cc/framework/fuzzing/cc_op_fuzz_gen.h"
+#include "tensorflow/core/framework/api_def.pb.h"
 #include "tensorflow/core/framework/op_def.pb.h"
 #include "tensorflow/core/framework/op_gen_lib.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
-#include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/platform/env.h"
+#include "tensorflow/core/platform/file_system.h"
 #include "tensorflow/core/platform/init_main.h"
+#include "tensorflow/core/platform/statusor.h"
+#include "tensorflow/core/platform/str_util.h"
 #include "tensorflow/core/platform/types.h"
 #include "tsl/platform/status.h"
 

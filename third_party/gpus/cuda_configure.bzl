@@ -348,7 +348,7 @@ def _get_cxx_inc_directories_impl(repository_ctx, cc, lang_is_cpp, tf_sysroot):
 
     # We now have the compiler installation prefix, e.g. /symlink/gcc
     # And the resolved installation prefix, e.g. /opt/gcc
-    cc_topdir_resolved = str(cc_topdir.realpath).strip()
+    cc_topdir_resolved = str(realpath(repository_ctx, cc_topdir)).strip()
     cc_topdir = str(cc_topdir).strip()
 
     # If there is (any!) symlink involved we add paths where the unresolved installation prefix is kept.
@@ -827,6 +827,7 @@ def _create_dummy_repository(repository_ctx):
             "%{cuda_is_configured}": "False",
             "%{cuda_extra_copts}": "[]",
             "%{cuda_gpu_architectures}": "[]",
+            "%{cuda_version}": "0.0",
         },
     )
     _tpl(
@@ -1214,6 +1215,7 @@ def _create_local_cuda_repository(repository_ctx):
                 cuda_config.compute_capabilities,
             ),
             "%{cuda_gpu_architectures}": str(cuda_config.compute_capabilities),
+            "%{cuda_version}": cuda_config.cuda_version,
         },
     )
 
@@ -1427,6 +1429,7 @@ def _create_remote_cuda_repository(repository_ctx, remote_config_repo):
                 repository_ctx,
                 compute_capabilities(repository_ctx),
             ),
+            "%{cuda_version}": get_host_environ(repository_ctx, _TF_CUDA_VERSION),
         },
     )
     repository_ctx.template(

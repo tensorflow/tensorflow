@@ -1,4 +1,4 @@
-/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2015 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -16,15 +16,14 @@ limitations under the License.
 #ifndef XLA_STREAM_EXECUTOR_SCRATCH_ALLOCATOR_H_
 #define XLA_STREAM_EXECUTOR_SCRATCH_ALLOCATOR_H_
 
+#include <cstddef>
 #include <cstdint>
-#include <memory>
 #include <utility>
 
 #include "absl/container/inlined_vector.h"
+#include "absl/status/statusor.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/device_memory_allocator.h"
-#include "xla/stream_executor/platform/port.h"
-#include "xla/stream_executor/temporary_device_memory.h"
 #include "tsl/platform/statusor.h"
 
 namespace stream_executor {
@@ -51,7 +50,7 @@ class ScratchAllocator {
   //
   // This is a temporary allocation, and the caller is responsible for
   // deallocating at some known-safe point. See the class comment above.
-  virtual tsl::StatusOr<DeviceMemory<uint8_t>> AllocateBytes(
+  virtual absl::StatusOr<DeviceMemory<uint8_t>> AllocateBytes(
       int64_t byte_size) = 0;
 };
 
@@ -68,7 +67,7 @@ class OwningScratchAllocator : public ScratchAllocator {
 
   int64_t GetMemoryLimitInBytes() override { return -1; }
 
-  tsl::StatusOr<DeviceMemory<uint8_t>> AllocateBytes(
+  absl::StatusOr<DeviceMemory<uint8_t>> AllocateBytes(
       int64_t byte_size) override {
     TF_ASSIGN_OR_RETURN(OwningDeviceMemory buffer,
                         allocator_->Allocate(device_ordinal_, byte_size,

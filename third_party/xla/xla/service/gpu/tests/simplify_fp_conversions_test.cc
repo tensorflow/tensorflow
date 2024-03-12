@@ -1,4 +1,4 @@
-/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -15,7 +15,6 @@ limitations under the License.
 
 #include <string_view>
 
-#include <gtest/gtest.h>
 #include "xla/tests/hlo_test_base.h"
 #include "xla/xla.pb.h"
 
@@ -27,7 +26,7 @@ class SimplifyFPConversionsTest : public HloTestBase {
  public:
   DebugOptions GetDebugOptionsForTest() override {
     DebugOptions debug_options = HloTestBase::GetDebugOptionsForTest();
-    debug_options.set_xla_gpu_simplify_all_fp_conversions(
+    debug_options.set_xla_allow_excess_precision(
         enable_simplify_all_fp_conversions_);
     return debug_options;
   }

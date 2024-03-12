@@ -1,4 +1,4 @@
-/* Copyright 2022 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2022 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -76,7 +76,7 @@ XLA_TEST_F(MultithreadedCompilation, EightModuleCompilation) {
     absl::MutexLock lock(&mu);
     executables.push_back(std::move(executable));
     VLOG(2) << "Adding executable obtained from thread: " << iteration;
-    return tsl::OkStatus();
+    return absl::OkStatus();
   };
 
   {

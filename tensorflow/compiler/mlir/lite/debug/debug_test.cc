@@ -53,11 +53,7 @@ limitations under the License.
 #include "tsl/platform/status.h"
 
 namespace tensorflow {
-namespace {
-
-using ::testing::HasSubstr;
-using ::testing::IsEmpty;
-using ::testing::Not;
+namespace debug_test {
 
 class NopPass : public mlir::PassWrapper<NopPass, mlir::OperationPass<>> {
  public:
@@ -83,6 +79,15 @@ class AlwaysFailPass
 
   void runOnOperation() override { signalPassFailure(); }
 };
+
+}  // namespace debug_test
+
+namespace {
+
+using ::testing::HasSubstr;
+using ::testing::IsEmpty;
+using ::testing::Not;
+using namespace tensorflow::debug_test;
 
 class InitPassManagerTest : public testing::Test {
  protected:
@@ -145,7 +150,7 @@ class InitPassManagerTest : public testing::Test {
 
 TEST_F(InitPassManagerTest, CrashReproducer) {
   converter::DebugOptions debug_options;
-  *debug_options.mutable_mlir_dump_dir() = path_;
+  *debug_options.mutable_ir_dump_dir() = path_;
 
   mlir::PassManager pm(&context_);
   InitPassManager(pm, debug_options);
@@ -164,8 +169,8 @@ TEST_F(InitPassManagerTest, CrashReproducer) {
 
 TEST_F(InitPassManagerTest, DumpToDir) {
   converter::DebugOptions debug_options;
-  *debug_options.mutable_mlir_dump_dir() = path_;
-  *debug_options.mutable_mlir_dump_pass_regex() = R"(.*NopPass)";
+  *debug_options.mutable_ir_dump_dir() = path_;
+  *debug_options.mutable_ir_dump_pass_regex() = R"(.*NopPass)";
 
   mlir::PassManager pm(&context_);
   InitPassManager(pm, debug_options);
@@ -179,8 +184,7 @@ TEST_F(InitPassManagerTest, DumpToDir) {
     TF_ASSERT_OK(tsl::ReadFileToString(
         tsl::Env::Default(),
         tsl::io::JoinPath(
-            dump_dir,
-            "00000000.main.tensorflow_anonymous_namespace_NopPass_after.mlir"),
+            dump_dir, "00000000.main.tensorflow_debug_test_NopPass_after.mlir"),
         &mlir_dump));
     EXPECT_THAT(mlir_dump, Not(IsEmpty()));
   }
@@ -190,7 +194,7 @@ TEST_F(InitPassManagerTest, DumpToDir) {
         tsl::Env::Default(),
         tsl::io::JoinPath(
             dump_dir,
-            "00000000.main.tensorflow_anonymous_namespace_NopPass_before.mlir"),
+            "00000000.main.tensorflow_debug_test_NopPass_before.mlir"),
         &mlir_dump));
     EXPECT_THAT(mlir_dump, Not(IsEmpty()));
   }
@@ -198,7 +202,7 @@ TEST_F(InitPassManagerTest, DumpToDir) {
 
 TEST_F(InitPassManagerTest, PrintIRBeforeEverything) {
   converter::DebugOptions debug_options;
-  *debug_options.mutable_mlir_print_ir_before() = R"(.*)";
+  *debug_options.mutable_print_ir_before() = R"(.*)";
   std::string captured_out;
   llvm::raw_string_ostream out(captured_out);
 
@@ -207,17 +211,15 @@ TEST_F(InitPassManagerTest, PrintIRBeforeEverything) {
   pm.addPass(std::make_unique<NopPass>());
   ASSERT_TRUE(mlir::succeeded(pm.run(*module_)));
 
-  EXPECT_THAT(
-      captured_out,
-      HasSubstr("IR Dump Before tensorflow::(anonymous namespace)::NopPass"));
   EXPECT_THAT(captured_out,
-              Not(HasSubstr(
-                  "IR Dump After tensorflow::(anonymous namespace)::NopPass")));
+              HasSubstr("IR Dump Before tensorflow::debug_test::NopPass"));
+  EXPECT_THAT(captured_out,
+              Not(HasSubstr("IR Dump After tensorflow::debug_test::NopPass")));
 }
 
 TEST_F(InitPassManagerTest, PrintIRAfterEverything) {
   converter::DebugOptions debug_options;
-  *debug_options.mutable_mlir_print_ir_after() = R"(.*)";
+  *debug_options.mutable_print_ir_after() = R"(.*)";
   std::string captured_out;
   llvm::raw_string_ostream out(captured_out);
 
@@ -226,19 +228,17 @@ TEST_F(InitPassManagerTest, PrintIRAfterEverything) {
   pm.addPass(std::make_unique<MutatePass>());
   ASSERT_TRUE(mlir::succeeded(pm.run(*module_)));
 
+  EXPECT_THAT(captured_out,
+              HasSubstr("IR Dump After tensorflow::debug_test::MutatePass"));
   EXPECT_THAT(
       captured_out,
-      HasSubstr("IR Dump After tensorflow::(anonymous namespace)::MutatePass"));
-  EXPECT_THAT(
-      captured_out,
-      Not(HasSubstr(
-          "IR Dump Before tensorflow::(anonymous namespace)::MutatePass")));
+      Not(HasSubstr("IR Dump Before tensorflow::debug_test::MutatePass")));
 }
 
 TEST_F(InitPassManagerTest, PrintIRBeforeAndAfterEverything) {
   converter::DebugOptions debug_options;
-  *debug_options.mutable_mlir_print_ir_before() = R"(.*)";
-  *debug_options.mutable_mlir_print_ir_after() = R"(.*)";
+  *debug_options.mutable_print_ir_before() = R"(.*)";
+  *debug_options.mutable_print_ir_after() = R"(.*)";
   std::string captured_out;
   llvm::raw_string_ostream out(captured_out);
 
@@ -247,19 +247,16 @@ TEST_F(InitPassManagerTest, PrintIRBeforeAndAfterEverything) {
   pm.addPass(std::make_unique<MutatePass>());
   ASSERT_TRUE(mlir::succeeded(pm.run(*module_)));
 
-  EXPECT_THAT(
-      captured_out,
-      HasSubstr("IR Dump After tensorflow::(anonymous namespace)::MutatePass"));
-  EXPECT_THAT(
-      captured_out,
-      HasSubstr(
-          "IR Dump Before tensorflow::(anonymous namespace)::MutatePass"));
+  EXPECT_THAT(captured_out,
+              HasSubstr("IR Dump After tensorflow::debug_test::MutatePass"));
+  EXPECT_THAT(captured_out,
+              HasSubstr("IR Dump Before tensorflow::debug_test::MutatePass"));
 }
 
 TEST_F(InitPassManagerTest, ElideLargeElementAttrs) {
   converter::DebugOptions debug_options;
-  *debug_options.mutable_mlir_print_ir_before() = R"(.*)";
-  debug_options.set_mlir_elide_elementsattrs_if_larger(5);
+  *debug_options.mutable_print_ir_before() = R"(.*)";
+  debug_options.set_elide_elementsattrs_if_larger(5);
   std::string captured_out;
   llvm::raw_string_ostream out(captured_out);
 
@@ -273,8 +270,8 @@ TEST_F(InitPassManagerTest, ElideLargeElementAttrs) {
 
 TEST_F(InitPassManagerTest, DontElideSmallerElementAttrs) {
   converter::DebugOptions debug_options;
-  *debug_options.mutable_mlir_print_ir_before() = R"(.*)";
-  debug_options.set_mlir_elide_elementsattrs_if_larger(11);
+  *debug_options.mutable_print_ir_before() = R"(.*)";
+  debug_options.set_elide_elementsattrs_if_larger(11);
   std::string captured_out;
   llvm::raw_string_ostream out(captured_out);
 

@@ -384,7 +384,7 @@ cc_library(
     name = "gif",
     hdrs = ["gif.h"],
     deps = [
-        "@local_tsl//tsl/platform:gif",
+        "@gif",
     ],
 )
 
@@ -412,7 +412,7 @@ cc_library(
     name = "jpeg",
     hdrs = ["jpeg.h"],
     deps = [
-        "@local_tsl//tsl/platform:jpeg",
+        "@libjpeg_turbo//:jpeg",
     ],
 )
 
@@ -580,7 +580,7 @@ cc_library(
     hdrs = ["png.h"],
     deps = [
         ":platform",
-        "@local_tsl//tsl/platform:png",
+        "@png",
     ],
 )
 
@@ -1088,7 +1088,7 @@ tf_cuda_library(
         "@local_tsl//tsl/platform",
         "@local_xla//xla/stream_executor",
         "@local_xla//xla/stream_executor:dnn",
-        "@local_xla//xla/stream_executor:multi_platform_manager",
+        "@local_xla//xla/stream_executor:platform_manager",
         "@local_xla//xla/stream_executor/cuda:cuda_activation_header",
         "@local_xla//xla/stream_executor/cuda:cuda_platform_id",
         "@local_xla//xla/stream_executor/host:host_platform_id",
@@ -1111,7 +1111,7 @@ cc_library(
     deps = [
         "@local_xla//xla/stream_executor",
         "@local_xla//xla/stream_executor:dnn",
-        "@local_xla//xla/stream_executor:multi_platform_manager",
+        "@local_xla//xla/stream_executor:platform_manager",
         "@local_xla//xla/stream_executor/cuda:cuda_platform_id",
         "@local_xla//xla/stream_executor/host:host_platform",
         "@local_xla//xla/stream_executor/host:host_platform_id",

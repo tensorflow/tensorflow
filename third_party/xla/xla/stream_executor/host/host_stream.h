@@ -1,4 +1,4 @@
-/* Copyright 2016 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2016 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -18,46 +18,47 @@ limitations under the License.
 #ifndef XLA_STREAM_EXECUTOR_HOST_HOST_STREAM_H_
 #define XLA_STREAM_EXECUTOR_HOST_HOST_STREAM_H_
 
-#include <functional>
+#include <cstddef>
 #include <memory>
 #include <queue>
 
+#include "absl/base/thread_annotations.h"
 #include "absl/functional/any_invocable.h"
+#include "absl/status/status.h"
 #include "absl/synchronization/mutex.h"
 #include "xla/stream_executor/stream_executor_internal.h"
 #include "tsl/platform/env.h"
+#include "tsl/platform/thread_annotations.h"
 
 namespace stream_executor {
 namespace host {
 
 class HostStream : public internal::StreamInterface {
  public:
-  // stack_size_in_bytes may be '0', meaning "use the default thread stack
-  // size".
-  explicit HostStream(size_t stack_size_in_bytes);
+  HostStream();
   ~HostStream() override;
 
   // Enqueue a task that reports a status when finished. Tasks that fail do not
   // stop the stream or block any other tasks from executing; rather, the stream
   // will remember the first error encountered and return it from
   // 'BlockUntilDone'.
-  bool EnqueueTaskWithStatus(absl::AnyInvocable<tsl::Status() &&> task);
+  bool EnqueueTaskWithStatus(absl::AnyInvocable<absl::Status() &&> task);
   // Enqueue a task that doesn't report any status.
   bool EnqueueTask(absl::AnyInvocable<void() &&> task);
 
   // Blocks until all tasks are done, returns the first error reported by a task
   // (if any) and clears the error status.
-  tsl::Status BlockUntilDone();
+  absl::Status BlockUntilDone();
 
  private:
   bool WorkAvailable() TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
   void WorkLoop();
 
   absl::Mutex mu_;
-  std::queue<absl::AnyInvocable<tsl::Status() &&>> work_queue_
+  std::queue<absl::AnyInvocable<absl::Status() &&>> work_queue_
       ABSL_GUARDED_BY(mu_);
   std::unique_ptr<tsl::Thread> thread_;
-  tsl::Status status_;
+  absl::Status status_;
 };
 
 }  // namespace host

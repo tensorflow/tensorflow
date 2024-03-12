@@ -91,7 +91,7 @@ Status ValidateInputs(const Tensor *a_indices, const Tensor *a_values,
     }
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace

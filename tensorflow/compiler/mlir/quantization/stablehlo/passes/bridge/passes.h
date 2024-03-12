@@ -24,11 +24,6 @@ limitations under the License.
 
 namespace mlir::quant::stablehlo {
 
-// Legalizes from MHLO quantized ops with MHLO quant types to MHLO primitive ops
-// like int ops.
-std::unique_ptr<OperationPass<func::FuncOp>> createConvertMHLOQuantToIntPass(
-    bool legalize_chlo = true);
-
 // Creates an instance of the ConvertTFQuantOpsToMHLOPass pass, which will
 // convert TF uniform quantized ops to the corresponding quantized MHLO ops.
 std::unique_ptr<OperationPass<func::FuncOp>>
@@ -57,7 +52,6 @@ void AddQuantizationLoweringPasses(mlir::OpPassManager &pm);
 std::unique_ptr<OperationPass<func::FuncOp>> CreateOptimizeIntGraphPass();
 
 #define GEN_PASS_REGISTRATION
-#define GEN_PASS_DECL_CONVERTMHLOQUANTTOINT
 #define GEN_PASS_DECL_CONVERTTFQUANTOPSTOMHLO
 #define GEN_PASS_DECL_CONVERTTFQUANTTYPES
 #define GEN_PASS_DECL_VERIFYQUANTLEGALIZATION

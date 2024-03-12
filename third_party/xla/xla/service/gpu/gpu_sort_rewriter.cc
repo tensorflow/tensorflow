@@ -1,4 +1,4 @@
-/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -31,8 +31,8 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
-#include "xla/service/gpu/cub_sort_thunk.h"
 #include "xla/service/gpu/cublas_cudnn.h"
+#include "xla/service/gpu/runtime/cub_sort_thunk.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/statusor.h"
@@ -87,7 +87,7 @@ std::optional<SortComputationAnalysis> AnalyzeSortComputation(
 }
 
 // Create runner for CUB sort operation.
-StatusOr<std::unique_ptr<CubSortRunnerInterface>> CreateRunner(
+absl::StatusOr<std::unique_ptr<CubSortRunnerInterface>> CreateRunner(
     HloSortInstruction* sort_op, const SortComputationAnalysis& sort_config) {
   int value_index = 1 - sort_config.key_operand;
   return CubSortRunnerInterface::Create(
@@ -145,7 +145,8 @@ HloInstruction* UnpackResultPair(HloSortInstruction* sort_op,
 }  // namespace
 
 // Rewrites a single sort instruction with a custom call.
-StatusOr<bool> GpuSortRewriter::RunOnInstruction(HloSortInstruction* sort_op) {
+absl::StatusOr<bool> GpuSortRewriter::RunOnInstruction(
+    HloSortInstruction* sort_op) {
   // Get the sort tensor index and direction.
   SortComputationAnalysis sort_config =
       AnalyzeSortComputation(sort_op->called_computations().front()).value();
@@ -203,7 +204,8 @@ StatusOr<bool> GpuSortRewriter::RunOnInstruction(HloSortInstruction* sort_op) {
 }
 
 // Rewrites the sorts in the given computation into calls to CUB.
-StatusOr<bool> GpuSortRewriter::RunOnComputation(HloComputation* computation) {
+absl::StatusOr<bool> GpuSortRewriter::RunOnComputation(
+    HloComputation* computation) {
   std::vector<HloSortInstruction*> sort_ops;
   for (auto* inst : computation->instructions()) {
     HloSortInstruction* sort = DynCast<HloSortInstruction>(inst);
@@ -220,7 +222,7 @@ StatusOr<bool> GpuSortRewriter::RunOnComputation(HloComputation* computation) {
 }
 
 // Replace compatible sort operations with custom calls.
-StatusOr<bool> GpuSortRewriter::Run(
+absl::StatusOr<bool> GpuSortRewriter::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   XLA_VLOG_LINES(2, "GpuSortRewriter::Run(), before:\n" + module->ToString());

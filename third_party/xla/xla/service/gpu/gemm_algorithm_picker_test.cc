@@ -1,4 +1,4 @@
-/* Copyright 2022 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2022 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -135,8 +135,9 @@ ENTRY main {
                 GmockMatch(m::GetTupleElement(m::CustomCall(&dot), 0)));
   }
 
-  TF_ASSERT_OK_AND_ASSIGN(GemmBackendConfig config,
-                          dot->backend_config<GemmBackendConfig>());
+  TF_ASSERT_OK_AND_ASSIGN(GpuBackendConfig gpu_config,
+                          dot->backend_config<GpuBackendConfig>());
+  const GemmBackendConfig& config = gpu_config.gemm_backend_config();
   EXPECT_EQ(config.selected_algorithm(), new_algo_id);
 }
 
@@ -223,8 +224,10 @@ ENTRY main {
                 GmockMatch(m::GetTupleElement(m::CustomCall(&dot), 0)));
   }
 
-  TF_ASSERT_OK_AND_ASSIGN(GemmBackendConfig config,
-                          dot->backend_config<GemmBackendConfig>());
+  TF_ASSERT_OK_AND_ASSIGN(GpuBackendConfig gpu_config,
+                          dot->backend_config<GpuBackendConfig>());
+  const GemmBackendConfig& config = gpu_config.gemm_backend_config();
+
   EXPECT_EQ(config.selected_algorithm(), new_algo_id);
 }
 

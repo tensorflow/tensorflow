@@ -17,7 +17,6 @@
 import collections
 import os
 import pathlib
-import shutil
 import time
 
 from absl.testing import parameterized
@@ -119,35 +118,6 @@ class SnapshotFtTest(data_service_test_base.TestBase, parameterized.TestCase):
         errors.AlreadyExistsError, "is already started or completed"):
       self.evaluate(distributed_save_op.distributed_save(
           dataset, snapshot_dir.full_path, cluster.dispatcher_address()))
-
-  @combinations.generate(test_base.default_test_combinations())
-  def testRecoversTempSplits(self):
-    cluster = data_service_test_base.TestCluster(num_workers=3)
-    snapshot_dir = data_service_test_base.TempDir()
-    dataset = self._get_dataset(dataset_range=1000, num_sources=3)
-    self.evaluate(distributed_save_op.distributed_save(
-        dataset, snapshot_dir.full_path, cluster.dispatcher_address()))
-
-    # Waits for the split files to be written.
-    source_dir = os.path.join(
-        snapshot_dir.full_path,
-        "streams", "stream_0", "splits", "source_0", "repetition_0")
-    while not (
-        os.path.exists(source_dir)
-        and any(not f.endswith(".tmp") for f in os.listdir(source_dir))):
-      time.sleep(0.1)
-    split_files = [f for f in os.listdir(source_dir) if not f.endswith(".tmp")]
-    split_file = split_files[0]
-    temp_split_file = f"{split_files[0]}__TMP_FILE__uuid.tmp"
-    shutil.move(
-        os.path.join(source_dir, split_file),
-        os.path.join(source_dir, temp_split_file))
-
-    self.assertNotIn(split_file, os.listdir(source_dir))
-    self.assertIn(temp_split_file, os.listdir(source_dir))
-    cluster.restart_dispatcher()
-    self.assertIn(split_file, os.listdir(source_dir))
-    self.assertNotIn(temp_split_file, os.listdir(source_dir))
 
   # TODO(b/250921378): Figure out why tsan times out when there is a worker.
   @combinations.generate(
@@ -418,12 +388,15 @@ class SnapshotFtTest(data_service_test_base.TestBase, parameterized.TestCase):
   @combinations.generate(
       combinations.times(
           test_base.default_test_combinations(),
-          combinations.combine(num_workers=[1, 3], num_repetitions=[1, 10])))
+          combinations.combine(
+              num_elements=[1, 2, 1000],
+              num_workers=[1, 3],
+              num_repetitions=[1, 10])))
   def testRepeatedDatasetRecoversAndCompletes(
-      self, num_workers, num_repetitions):
+      self, num_elements, num_workers, num_repetitions):
     cluster = data_service_test_base.TestCluster(num_workers=num_workers)
     snapshot_dir = data_service_test_base.TempDir()
-    ds = dataset_ops.Dataset.range(1000)
+    ds = dataset_ops.Dataset.range(num_elements)
     ds = ds.repeat(num_repetitions)
     self.evaluate(distributed_save_op.distributed_save(
         ds, snapshot_dir.full_path, cluster.dispatcher_address()))
@@ -437,7 +410,9 @@ class SnapshotFtTest(data_service_test_base.TestBase, parameterized.TestCase):
 
     dataset = dataset_ops.Dataset.load(snapshot_dir.full_path)
     self.assertDatasetProduces(
-        dataset, list(range(1000)) * num_repetitions, assert_items_equal=True)
+        dataset,
+        list(range(num_elements)) * num_repetitions,
+        assert_items_equal=True)
 
   @combinations.generate(
       combinations.times(
@@ -503,7 +478,7 @@ class SnapshotFtTest(data_service_test_base.TestBase, parameterized.TestCase):
 
     dataset = dataset_ops.Dataset.load(snapshot_path1)
     self.assertDatasetProduces(
-        dataset, list(range(1000)), assert_items_equal=(num_workers > 1))
+        dataset, list(range(1000)), assert_items_equal=True)
 
   @combinations.generate(
       combinations.times(

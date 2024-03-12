@@ -31,16 +31,18 @@ cc_binary(
     deps = [
         ":bitmap_helpers",
         "//tensorflow/lite:framework",
-        "//tensorflow/lite:string_util",
+        "//tensorflow/lite:string",
+        "//tensorflow/lite/c:c_api_types",
         "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core:cc_api_stable",
         "//tensorflow/lite/kernels:builtin_ops",
+        "//tensorflow/lite/profiling:profile_buffer",
         "//tensorflow/lite/profiling:profiler",
+        "//tensorflow/lite/schema:schema_fbs",
         "//tensorflow/lite/tools:command_line_flags",
         "//tensorflow/lite/tools:tool_params",
         "//tensorflow/lite/tools/delegates:delegate_provider_hdr",
         "//tensorflow/lite/tools/delegates:tflite_execution_providers",
-        "@com_google_absl//absl/memory",
-        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -59,8 +61,10 @@ cc_library(
         "//tensorflow/lite:framework",
         "//tensorflow/lite:string",
         "//tensorflow/lite:string_util",
+        "//tensorflow/lite/c:c_api_types",
         "//tensorflow/lite/kernels:builtin_ops",
         "//tensorflow/lite/schema:schema_fbs",
+        "@local_tsl//tsl/platform:tstring",
     ] + select({
         "//tensorflow:android": [
             "//tensorflow/lite/delegates/gpu:delegate",
@@ -86,6 +90,7 @@ cc_test(
     ],
     deps = [
         ":bitmap_helpers",
+        "//tensorflow/lite/c:c_api_types",
         "//tensorflow/lite/c:common",
         "@com_google_googletest//:gtest_main",
     ],

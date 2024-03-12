@@ -1,4 +1,4 @@
-/* Copyright 2018 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2018 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -299,10 +299,10 @@ void SetScalarAtIndexImpl(MutableLiteralBase& literal,
   return CreateScalar<MaxProvider>(primitive_type);
 }
 
-/* static */ StatusOr<Literal> LiteralUtil::NanValue(
+/* static */ absl::StatusOr<Literal> LiteralUtil::NanValue(
     PrimitiveType primitive_type) {
   return primitive_util::PrimitiveTypeSwitch<StatusOr<Literal>>(
-      [&](auto primitive_type_constant) -> StatusOr<Literal> {
+      [&](auto primitive_type_constant) -> absl::StatusOr<Literal> {
         if constexpr (primitive_util::IsFloatingPointType(
                           primitive_type_constant)) {
           using NativeT = typename primitive_util::PrimitiveTypeToNative<

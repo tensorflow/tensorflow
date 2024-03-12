@@ -1,4 +1,4 @@
-/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The OpenXLA Authors.
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 You may obtain a copy of the License at
@@ -122,10 +122,11 @@ TryMergeFusionConsumerIntoTritonSoftmaxProducer(
   CHECK_EQ(original_softmax_instr->user_count(), 1);
   CHECK_EQ(original_softmax_instr->users().front(), consumer);
   CHECK(consumer->shape().IsArray());
-  CHECK_OK(original_softmax_instr->backend_config<FusionBackendConfig>());
-  CHECK_EQ(
-      original_softmax_instr->backend_config<FusionBackendConfig>()->kind(),
-      kTritonSoftmaxFusionKind);
+  CHECK_OK(original_softmax_instr->backend_config<GpuBackendConfig>());
+  CHECK_EQ(original_softmax_instr->backend_config<GpuBackendConfig>()
+               ->fusion_backend_config()
+               .kind(),
+           kTritonSoftmaxFusionKind);
   HloComputation* parent_computation = consumer->parent();
   HloModule* parent_module = parent_computation->parent();
 
@@ -190,9 +191,13 @@ TryMergeFusionConsumerIntoTritonSoftmaxProducer(
 
 bool TryMergeProducerAndConsumerFusionsIntoTritonSoftmax(
     HloFusionInstruction* softmax_fusion) {
-  // The softmax_fusion should come directly from the matcher, and have a single
-  // operand.
-  CHECK_EQ(softmax_fusion->operand_count(), 1);
+  // The softmax_fusion should come directly from the matcher. They might have
+  // more than a single operand, in this case attempt to fuse into the first
+  // operand only.
+  if (softmax_fusion->operand_count() > 1) {
+    LOG(INFO) << "More than one parameter detected. Will attempt to merge "
+                 "fusions only for operand 0 (diamond producer).";
+  }
 
   // TODO(b/313026024): Add support for multiple users
   bool should_try_merging_producer =
@@ -248,7 +253,7 @@ bool TryMergeProducerAndConsumerFusionsIntoTritonSoftmax(
 
 }  // anonymous namespace
 
-StatusOr<bool> FusionMergerTriton::Run(
+absl::StatusOr<bool> FusionMergerTriton::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   int fused_comps = 0;

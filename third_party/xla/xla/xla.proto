@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -172,7 +172,12 @@ message DebugOptions {
   // useful when accelerating structured sparsity.
   int32 xla_cpu_sparse_cuda_threads = 207;
 
-  // Allows xla to increase the output precision of floating point operations.
+  // Allows xla to increase the output precision of floating point operations
+  // and all floating-point conversions to be simplified, including those
+  // that affect the numerics. The `FloatNormalization` pass inserts many
+  // `f32 -> bf16 -> f32` conversion pairs. These are not removed by the
+  // `AlgebraicSimplifier`, as that will only simplify conversions that are
+  // no-ops, e.g. `bf16 -> f32 -> bf16`. Removing these improves accuracy.
   bool xla_allow_excess_precision = 122;
 
   // Crashes the program when any kind of verification fails, instead of just
@@ -362,6 +367,7 @@ message DebugOptions {
   // Overrides normal multi-threaded compilation setting to use this many
   // threads. Setting to 0 (the default value) means no enforcement.
   int32 xla_gpu_force_compilation_parallelism = 147;
+  bool xla_gpu_enable_llvm_module_compilation_parallelism = 268;
 
   // Guarantees run-to-run determinism. At present, the HLO ops Scatter and
   // SelectAndScatter do not have deterministic XLA:GPU implementations.
@@ -374,6 +380,7 @@ message DebugOptions {
   // Convert synchronous collective ops into asynchronous.
   bool xla_gpu_enable_async_collectives = 238;
   bool xla_gpu_enable_async_all_reduce = 152;
+  bool xla_gpu_enable_async_collective_broadcast = 278;
   bool xla_gpu_enable_async_collective_permute = 183;
   bool xla_gpu_enable_async_all_gather = 199;
   bool xla_gpu_enable_async_reduce_scatter = 200;
@@ -445,6 +452,9 @@ message DebugOptions {
   // if `xla_gpu_enable_custom_fusion` set to true.
   string xla_gpu_enable_custom_fusions_re = 264;
 
+  // If true, use XLA runtime for XLA:GPU backend.
+  bool xla_gpu_enable_address_computation_fusion = 105;
+
   reserved 233;  // was xla_gpu_enable_gpu2_runtime
   reserved 234;  // was xla_gpu_enable_gpu2_hal
 
@@ -459,15 +469,18 @@ message DebugOptions {
   // Whether to use cuBLASLt for GEMMs on GPUs.
   bool xla_gpu_enable_cublaslt = 166;
 
-  // Commands are categorized into four types: FUSION represents regular fusion
-  // kernels. CUBLAS, CUDNN, and NCCL represent library calls.
+  // Commands are categorized into 5 types:
+  // FUSION represents regular fusion kernels.
+  // CUBLAS, CUDNN, and COLLECTIVES represent library calls.
+  // CONDITIONALS represents control flow.
   enum CommandBufferCmdType {
     INVALID = 0;
     FUSION = 1;
     CUBLAS = 2;
     CUDNN = 3;
-    NCCL = 4;
-    WHILE = 5;
+    COLLECTIVES = 4;
+    CONDITIONALS = 5;
+    CUSTOM_CALL = 6;
   }
 
   // Determine the types of commands that are recorded into command buffers.
@@ -504,12 +517,8 @@ message DebugOptions {
   // scratch), so this can be multiplied by quite a lot.
   int64 xla_gpu_redzone_padding_bytes = 228;
 
-  // Allows all floating-point conversions to be simplified, including those
-  // that affect the numerics. The `FloatNormalization` pass inserts many
-  // `f32 -> bf16 -> f32` conversion pairs. These are not removed by the
-  // `AlgebraicSimplifier`, as that will only simplify conversions that are
-  // no-ops, e.g. `bf16 -> f32 -> bf16`. Removing these improves accuracy.
-  bool xla_gpu_simplify_all_fp_conversions = 168;
+  // Deprecated. Use xla_allow_excess_precision instead.
+  bool xla_gpu_simplify_all_fp_conversions = 168 [deprecated = true];
 
   // An experimental option to force all layouts present in the
   // after-optimizations HLO to be descending, e.g.
@@ -665,7 +674,42 @@ message DebugOptions {
   // Enables currently disabled features within Triton for Hopper.
   bool xla_gpu_enable_triton_hopper = 266;
 
-  // Next id: 267
+  // Enable NCCL user buffers.
+  bool xla_gpu_enable_nccl_user_buffers = 267;
+
+  // Enable NCCL communicator splitting.
+  bool xla_gpu_enable_nccl_comm_splitting = 272;
+
+  // Enable NCCL per stream communicators.
+  bool xla_gpu_enable_nccl_per_stream_comms = 276;
+
+  // If enabled, uses the libnvptxcompiler library to compile PTX to cuBIN.
+  bool xla_gpu_enable_libnvptxcompiler = 269;
+
+  bool xla_gpu_enable_dot_strength_reduction = 270;
+  // Whether to use multiple compute streams to run windowed einsum.
+  bool xla_gpu_multi_streamed_windowed_einsum = 280;
+
+  // If enabled, uses bf16_6way gemm to compute F32 gemm.
+  bool xla_gpu_enable_bf16_6way_gemm = 271;
+
+  // If enabled, uses bf16_3way gemm to compute F32 gemm.
+  bool xla_gpu_enable_bf16_3way_gemm = 279;
+
+  // Specify the maximum number of channels(SMs) NCCL
+  // will use for collective operations.
+  int64 xla_gpu_nccl_collective_max_nchannels = 273;
+
+  // Specify the maximum number of channels(SMs) NCCL
+  // will use for p2p operations.
+  int64 xla_gpu_nccl_p2p_max_nchannels = 274;
+
+  bool xla_gpu_enable_mlir_emitters = 275;
+
+  // Let GEMM fusion autotuning probe cuDNN as a backend.
+  bool xla_gpu_cudnn_gemm_fusion = 277;
+
+  // Next id: 281
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.
@@ -703,7 +747,7 @@ message ShardableValueUpdatePairProto {
 // will have an effect on every platform.
 //
 // When adding new fields, keep in mind that boolean fields default to false.
-// Next id: 23.
+// Next id: 24.
 message ExecutionOptions {
   // This optional field's layout is used as a hint when storing the output of
   // this computation.  Subsequent transfers of this output array to the client
@@ -765,6 +809,18 @@ message ExecutionOptions {
 
   reserved 13;  // Was broadcast_replicated_parameters_via_collectives
 
+  // Allows sharding propagation to propagate to the parameters. This changes
+  // the input shape of the computation (which is undesirable), but it can be
+  // used to allow to run partial compilation to determine what would be the
+  // input sharding of a computation if XLA would be allowed to propagate the
+  // sharding which can be used by higher level framework as a way to query
+  // intermediate sharding of operations when multiple computation would be
+  // chained and merged together.
+  // This is a vector of bool, because the user can control which parameters can
+  // have the sharding substituted. If only one boolean value is passed in the
+  // vector that is interpreted as the value to be applied for every parameter.
+  repeated bool allow_spmd_sharding_propagation_to_parameters = 23;
+
   // Allows sharding propagation to propagate to the outputs. This changes the
   // output shape of the computation (which is undesirable), but it can be used
   // to allow to run partial compilation to determine what would be the output
@@ -803,7 +859,7 @@ message ExecutionOptions {
 // Serialization of HloModuleConfig. See the C++ class definition for
 // descriptions of each field.
 // There are no guarantees of backwards or forwards compatibility.
-// Next id: 33.
+// Next id: 34.
 message HloModuleConfigProto {
   enum FusionConfigCollection {
     OFF = 0;       // Do not collect configuration.
@@ -851,6 +907,7 @@ message HloModuleConfigProto {
   repeated BoolList phase_ordering_config = 24;
   int32 phase_index = 25;
   reserved 26;  // Was flag_config
+  repeated bool allow_spmd_sharding_propagation_to_parameters = 33;
   repeated bool allow_spmd_sharding_propagation_to_output = 27;
   map<string, int64> analysis_allowance_map = 28;
   xla.PrecisionConfig.Precision matrix_unit_operand_precision = 29;

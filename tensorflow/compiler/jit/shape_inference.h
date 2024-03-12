@@ -46,8 +46,8 @@ Status InferShapes(Graph* graph, const std::map<int, InferredShape>& arg_shapes,
 
 // Merges two InferredShapes. Return an error if the two shapes cannot be
 // merged.
-StatusOr<InferredShape> MergeInferredShapes(const InferredShape& a,
-                                            const InferredShape& b);
+absl::StatusOr<InferredShape> MergeInferredShapes(const InferredShape& a,
+                                                  const InferredShape& b);
 
 }  // namespace tensorflow
 

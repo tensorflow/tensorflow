@@ -73,11 +73,12 @@ class PreemptionSyncManagerImpl : public PreemptionSyncManager {
   ~PreemptionSyncManagerImpl() override {
     shutdown_.Notify();
   }
-  Status Initialize(CoordinationServiceAgent* agent) override;
-  Status Initialize(CoordinationServiceAgent* agent,
-                    const std::string& preemption_notifier_type) override;
-  Status Initialize(CoordinationServiceAgent* agent,
-                    std::unique_ptr<PreemptionNotifier> notifier) override;
+  absl::Status Initialize(CoordinationServiceAgent* agent) override;
+  absl::Status Initialize(CoordinationServiceAgent* agent,
+                          const std::string& preemption_notifier_type) override;
+  absl::Status Initialize(
+      CoordinationServiceAgent* agent,
+      std::unique_ptr<PreemptionNotifier> notifier) override;
   bool ReachedSyncPoint(int step_counter) override;
 
  private:
@@ -103,11 +104,12 @@ class PreemptionSyncManagerImpl : public PreemptionSyncManager {
   std::shared_ptr<CallOptions> call_opts_;
 };
 
-Status PreemptionSyncManagerImpl::Initialize(CoordinationServiceAgent* agent) {
+absl::Status PreemptionSyncManagerImpl::Initialize(
+    CoordinationServiceAgent* agent) {
   return Initialize(agent, "sigterm");
 }
 
-Status PreemptionSyncManagerImpl::Initialize(
+absl::Status PreemptionSyncManagerImpl::Initialize(
     CoordinationServiceAgent* agent,
     const std::string& preemption_notifier_type) {
   TF_ASSIGN_OR_RETURN(Env * env, agent->GetEnv());
@@ -115,7 +117,7 @@ Status PreemptionSyncManagerImpl::Initialize(
                                preemption_notifier_type, env));
 }
 
-Status PreemptionSyncManagerImpl::Initialize(
+absl::Status PreemptionSyncManagerImpl::Initialize(
     CoordinationServiceAgent* agent,
     std::unique_ptr<PreemptionNotifier> notifier) {
   TF_ASSIGN_OR_RETURN(Env * env, agent->GetEnv());
@@ -131,7 +133,7 @@ Status PreemptionSyncManagerImpl::Initialize(
    * service when death time is within kProtocolDuration.
    */
   preemption_notifier_->WillBePreemptedAtAsync(
-      [agent = agent_, task_name](StatusOr<absl::Time> death_time) {
+      [agent = agent_, task_name](absl::StatusOr<absl::Time> death_time) {
         if (!death_time.ok()) {
           // The preemption notifier invokes callback with Cancelled error when
           // its being destructed.
@@ -147,8 +149,8 @@ Status PreemptionSyncManagerImpl::Initialize(
         }
         notified_metric->GetCell()->Set(true);
         // Notify coordination service about preemption notice.
-        const Status s = agent->InsertKeyValue(kPreemptionNoticeKey,
-                                               absl::FormatTime(*death_time));
+        const absl::Status s = agent->InsertKeyValue(
+            kPreemptionNoticeKey, absl::FormatTime(*death_time));
         LOG(INFO) << "Notified coordination service that this task will "
                      "be preempted at "
                   << *death_time << ". Status: " << s;
@@ -159,7 +161,7 @@ Status PreemptionSyncManagerImpl::Initialize(
    */
   call_opts_ = agent_->GetKeyValueAsync(
       kPreemptionNoticeKey,
-      [this, agent = agent_](StatusOr<std::string> status_or_death_time) {
+      [this, agent = agent_](absl::StatusOr<std::string> status_or_death_time) {
         if (errors::IsCancelled(status_or_death_time.status())) {
           // The agent cancels pending GetKeyValue RPCs because of shutdown,
           // so simply log and return.
@@ -177,7 +179,7 @@ Status PreemptionSyncManagerImpl::Initialize(
           // CancelPreemptionBarrier() cannot be used because this may be
           // triggered after preemption sync manager has been destroyed.
           agent->CancelBarrierAsync(
-              kPreemptionBarrier, [](const Status& status) {
+              kPreemptionBarrier, [](const absl::Status& status) {
                 if (!status.ok()) {
                   LOG(ERROR)
                       << "Failed to cancel preemption barrier: " << status;
@@ -205,7 +207,7 @@ Status PreemptionSyncManagerImpl::Initialize(
                       death_time)));
       });
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 void PreemptionSyncManagerImpl::ComputeSyncCallCounter(absl::Time death_time) {
@@ -231,7 +233,7 @@ void PreemptionSyncManagerImpl::ComputeSyncCallCounter(absl::Time death_time) {
   // `preemption_sync_counter_` or the protocol failed. This ensures correctness
   // of the preemption sync protocol.
   mutex_lock l(mu_);
-  const Status notified_status = agent_->InsertKeyValue(
+  const absl::Status notified_status = agent_->InsertKeyValue(
       current_call_counter_key_, std::to_string(call_counter_));
   if (!notified_status.ok()) {
     LOG(ERROR) << "Preemption sync failed - could not inform service of "
@@ -243,7 +245,7 @@ void PreemptionSyncManagerImpl::ComputeSyncCallCounter(absl::Time death_time) {
 
   // 3. Impose a barrier to wait until everybody sends their current call
   // counter.
-  const Status barrier_status =
+  const absl::Status barrier_status =
       agent_->WaitAtBarrier(kPreemptionBarrier, kPreemptionBarrierTimeout, {});
   if (!barrier_status.ok()) {
     LOG(ERROR) << "Preemption sync barrier failed: " << barrier_status;
@@ -251,7 +253,7 @@ void PreemptionSyncManagerImpl::ComputeSyncCallCounter(absl::Time death_time) {
   }
 
   // 4. Retrieve every task's current call counter.
-  StatusOr<std::vector<KeyValueEntry>> all_counters =
+  absl::StatusOr<std::vector<KeyValueEntry>> all_counters =
       agent_->GetKeyValueDir(kPreemptionCounterDirKey);
   if (!all_counters.ok()) {
     LOG(ERROR) << "Preemption sync failed - unable to retrieve call counters: "
@@ -287,11 +289,12 @@ void PreemptionSyncManagerImpl::ComputeSyncCallCounter(absl::Time death_time) {
 }
 
 void PreemptionSyncManagerImpl::CancelPreemptionBarrier() {
-  agent_->CancelBarrierAsync(kPreemptionBarrier, [](const Status& status) {
-    if (!status.ok()) {
-      LOG(ERROR) << "Failed to cancel preemption barrier: " << status;
-    }
-  });
+  agent_->CancelBarrierAsync(
+      kPreemptionBarrier, [](const absl::Status& status) {
+        if (!status.ok()) {
+          LOG(ERROR) << "Failed to cancel preemption barrier: " << status;
+        }
+      });
 }
 
 bool PreemptionSyncManagerImpl::ReachedSyncPoint(int step_counter) {

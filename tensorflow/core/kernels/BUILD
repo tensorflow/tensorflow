@@ -1601,9 +1601,9 @@ tf_kernel_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
-        "//tensorflow/core/framework:bounds_check",
         "//tensorflow/core/platform:stream_executor",
         "//tensorflow/core/profiler/lib:scoped_annotation",
+        "@com_google_absl//absl/strings",
         "@eigen_archive//:eigen3",
     ],
 )
@@ -1647,6 +1647,24 @@ tf_cc_test(
     name = "batch_kernels_test",
     size = "small",
     srcs = ["batch_kernels_test.cc"],
+    features = ["-layering_check"],
+    deps = [
+        ":batch_kernel_test_util",
+        ":batch_kernels",
+        ":function_ops",
+        ":shape_ops",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+        "//tensorflow/core/kernels/batching_util:warmup",
+        "@local_tsl//tsl/platform:blocking_counter",
+    ],
+)
+
+tf_cc_test(
+    name = "batch_kernels_auto_warmup_test",
+    size = "small",
+    srcs = ["batch_kernels_auto_warmup_test.cc"],
     features = ["-layering_check"],
     deps = [
         ":batch_kernel_test_util",
@@ -3585,6 +3603,7 @@ cc_library(
     deps = if_cuda_or_rocm([
         "@com_google_absl//absl/container:flat_hash_map",
         "@local_xla//xla:status_macros",
+        "@local_xla//xla:xla_data_proto_cc",
         "@local_xla//xla/stream_executor/cuda:cublas_plugin",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
@@ -3877,7 +3896,7 @@ tf_cuda_cc_test(
     name = "matmul_op_test",
     srcs = ["matmul_op_test.cc"],
     tags = [
-        "no_arm64",  # b/282068262
+        "no_aarch64",  # b/282068262
     ],
     deps = [
         ":matmul_op",
@@ -7879,10 +7898,8 @@ tf_kernel_library(
 
 # Library to link with when compiling the cwise_op kernels directly,
 # e.g. for selective registration.
-# should not be linked by projects that also link the cwise_op library.
 cc_library(
     name = "cwise_lib",
-    srcs = ["cwise_ops_common.cc"],
     hdrs = [
         "cwise_ops.h",
         "cwise_ops_common.h",

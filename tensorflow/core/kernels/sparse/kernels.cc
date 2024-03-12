@@ -140,7 +140,7 @@ Status SparseTensorToCSRSparseMatrixCPUFunctor::operator()(
     std::partial_sum(row_ptr_batch, row_ptr_batch + num_rows + 1,
                      row_ptr_batch);
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace functor

@@ -1,4 +1,4 @@
-/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -77,8 +77,8 @@ bool ShouldDecompose(const HloCollectivePermuteInstruction& collective_permute,
   }
 
   auto backend_config =
-      collective_permute.backend_config<xla::gpu::CollectiveBackendConfig>()
-          .value();
+      collective_permute.backend_config<xla::gpu::GpuBackendConfig>()
+          ->collective_backend_config();
   if (backend_config.is_sync()) {
     return false;
   }
@@ -157,7 +157,7 @@ Status DecomposeCollectivePermute(
 }
 }  // namespace
 
-StatusOr<bool> CollectivePermuteDecomposer::Run(
+absl::StatusOr<bool> CollectivePermuteDecomposer::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   bool changed = false;

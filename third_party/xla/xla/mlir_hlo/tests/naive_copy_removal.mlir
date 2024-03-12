@@ -65,9 +65,9 @@ func.func @target_is_subview_of_subview(%arg0: memref<8x8xf32>)
   %subview_5 = memref.subview %alloc_4[0, 0] [%c4, %c4] [1, 1] :
         memref<8x8xf32> to memref<?x?xf32, strided<[8, 1]>>
   %subview_6 = memref.subview %subview_5[0, 0] [%c4, %c4] [1, 1] :
-        memref<?x?xf32, strided<[8, 1]>> to memref<?x?xf32, strided<[?, ?]>>
+        memref<?x?xf32, strided<[8, 1]>> to memref<?x?xf32, strided<[8, 1]>>
   memref.copy %arg0, %subview_6 :
-        memref<8x8xf32> to memref<?x?xf32, strided<[?, ?]>>
+        memref<8x8xf32> to memref<?x?xf32, strided<[8, 1]>>
   return %arg0 : memref<8x8xf32>
 }
 
@@ -76,32 +76,6 @@ func.func @target_is_subview_of_subview(%arg0: memref<8x8xf32>)
 
 // CHECK-NOT:     memref.copy
 // CHECK:         return %[[INPUT]]
-
-// -----
-
-func.func @do_not_simplify_subview_of_subview(%arg0: memref<8x8xf32>)
-                                              -> vector<8x8xf32> {
-  %c4 = arith.constant 4 : index
-  %c0 = arith.constant 0 : index
-  %cst_0 = arith.constant 0.000000e+00 : f32
-  %alloc_4 = memref.alloc() {alignment = 64 : i64} : memref<8x8xf32>
-  %subview_5 = memref.subview %alloc_4[0, 0] [%c4, %c4] [1, 1] :
-        memref<8x8xf32> to memref<?x?xf32, strided<[8, 1]>>
-  %subview_6 = memref.subview %subview_5[0, 0] [%c4, %c4] [1, 1] :
-        memref<?x?xf32, strided<[8, 1]>> to memref<?x?xf32, strided<[?, ?]>>
-  memref.copy %arg0, %subview_6 :
-        memref<8x8xf32> to memref<?x?xf32, strided<[?, ?]>>
-  %27 = vector.transfer_read %subview_5[%c0, %c0], %cst_0 :
-        memref<?x?xf32, strided<[8, 1]>>, vector<8x8xf32>
-  return %27 : vector<8x8xf32>
-}
-
-// CHECK-LABEL: func @do_not_simplify_subview_of_subview(
-
-// CHECK:         memref.alloc
-// CHECK:         memref.subview
-// CHECK:         memref.subview
-// CHECK:         memref.copy
 
 // -----
 

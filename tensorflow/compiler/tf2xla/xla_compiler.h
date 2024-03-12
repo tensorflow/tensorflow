@@ -310,7 +310,7 @@ class XlaCompiler {
   void PushNodeTokenMapping();
   Status PopNodeTokenMapping();
   Status SetNodeToken(const string& node_name, xla::XlaOp op);
-  StatusOr<xla::XlaOp> GetNodeToken(const string& node_name);
+  absl::StatusOr<xla::XlaOp> GetNodeToken(const string& node_name);
 
   // Sets the function body `fbody` to the one registered as `function`.
   Status FindFunctionBody(const NameAttrList& function,

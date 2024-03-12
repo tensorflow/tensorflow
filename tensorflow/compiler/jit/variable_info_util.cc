@@ -73,7 +73,7 @@ Status GetVariableInfosFromInputs(ResourceMgr* rm, DeviceBase* dev,
         handle.container(), handle.name(), &variable, [](Var** ptr) {
           // This var is uninitialized for now.
           *ptr = new Var(DT_INVALID);
-          return OkStatus();
+          return absl::OkStatus();
         }));
     VariableInfo& variable_info = result->emplace_back(
         var_idx, handle.name(), variable, handle.definition_stack_trace());
@@ -82,7 +82,7 @@ Status GetVariableInfosFromInputs(ResourceMgr* rm, DeviceBase* dev,
       variable_info.set_read_only();
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status LockVariables(absl::Span<VariableInfo*> variables) {
@@ -134,7 +134,7 @@ Status LockVariables(absl::Span<VariableInfo*> variables) {
     prev = mu;
   }
   VLOG(4) << "Finished acquiring variable locks.";
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status LockVariables(absl::Span<VariableInfo> variables) {
@@ -155,7 +155,7 @@ Status SnapshotResourceVariables(OpKernelContext* ctx,
     (*result)[variable_indices[i]] =
         var ? std::make_optional(*var->tensor()) : std::nullopt;
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 std::vector<int> GetResourceVariableIndicesFromContext(OpKernelContext* ctx) {
@@ -179,7 +179,7 @@ Status CreateVariableInfoLookup(
     }
     variable_info_lookup.emplace(info.index(), &info);
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace tensorflow

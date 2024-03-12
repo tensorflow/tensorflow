@@ -1,4 +1,4 @@
-/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -16,19 +16,16 @@ limitations under the License.
 #ifndef XLA_SERVICE_GPU_HLO_FUSION_ANALYSIS_H_
 #define XLA_SERVICE_GPU_HLO_FUSION_ANALYSIS_H_
 
+#include <memory>
 #include <optional>
+#include <vector>
 
-#include "absl/base/attributes.h"
 #include "absl/log/check.h"
-#include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/hlo_traversal.h"
 #include "xla/service/gpu/ir_emission_utils.h"
-#include "xla/service/gpu/kernel_mapping_scheme.h"
-#include "xla/service/gpu/launch_dimensions.h"
-#include "xla/statusor.h"
 #include "xla/stream_executor/device_description.h"
 
 namespace xla {
@@ -43,8 +40,10 @@ class HloFusionAnalysis {
     kTriton,
     kReduction,
     kTranspose,
+    kConcatenate,
     kInputSlices,
     kScatter,
+    kCuDnn,
   };
 
   // Precomputed information about inputs (arguments) and outputs (roots) of the
@@ -55,13 +54,11 @@ class HloFusionAnalysis {
     int smallest_input_dtype_bits;
   };
 
-  static StatusOr<HloFusionAnalysis> Create(
-      FusionBackendConfig backend_config,
-      std::unique_ptr<HloFusionAdaptor> fusion,
-      const se::DeviceDescription* device_info);
-  static StatusOr<HloFusionAnalysis> Create(
-      const HloFusionInstruction* fusion,
-      const se::DeviceDescription* device_info);
+  static HloFusionAnalysis Create(FusionBackendConfig backend_config,
+                                  std::unique_ptr<HloFusionAdaptor> fusion,
+                                  const se::DeviceDescription* device_info);
+  static HloFusionAnalysis Create(const HloFusionInstruction* fusion,
+                                  const se::DeviceDescription* device_info);
 
   const std::vector<const HloInstruction*>& fusion_roots() const {
     return fusion_roots_;
@@ -116,14 +113,14 @@ class HloFusionAnalysis {
 
 // Creates a HloFusionAnalysis that analyzes a hypothetical fusion of producer
 // into consumer.
-std::optional<HloFusionAnalysis> AnalyzeProducerConsumerFusion(
+HloFusionAnalysis AnalyzeProducerConsumerFusion(
     const HloInstruction& producer, const HloInstruction& consumer,
     const se::DeviceDescription& device_info);
 
 // Creates a HloFusionAnalysis that analyzes just consumer as a standalone
 // fusion.
-std::optional<HloFusionAnalysis> AnalyzeFusion(
-    const HloInstruction& consumer, const se::DeviceDescription& device_info);
+HloFusionAnalysis AnalyzeFusion(const HloInstruction& consumer,
+                                const se::DeviceDescription& device_info);
 
 }  // namespace gpu
 }  // namespace xla

@@ -25,7 +25,7 @@ limitations under the License.
 #include "tensorflow/core/tfrt/common/pjrt_client_factory_registry.h"
 namespace xla {
 
-StatusOr<std::unique_ptr<xla::PjRtClient>> GetGpuClient(
+absl::StatusOr<std::unique_ptr<xla::PjRtClient>> GetGpuClient(
     const PjrtClientFactoryOptions& option) {
   xla::GpuClientOptions gpu_client_options;
   gpu_client_options.node_id = option.gpu_options.node_id;

@@ -1,4 +1,4 @@
-/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -31,7 +31,7 @@ class CpuOptProvider : public OptProvider {
 }  // namespace
 }  // namespace xla
 
-REGISTER_MODULE_INITIALIZER(cpu_opt_provider, {
+STREAM_EXECUTOR_REGISTER_MODULE_INITIALIZER(cpu_opt_provider, {
   xla::OptProvider::RegisterForPlatform(
       "cpu", std::make_unique<xla::CpuOptProvider>());
 });

@@ -37,7 +37,7 @@ xla::XlaOp GetCounter(xla::RandomAlgorithm const& alg, xla::XlaOp state) {
                     {RNG_KEY_SIZE + xla::GetCounterSize(alg)}, {1});
 }
 
-StatusOr<xla::RandomAlgorithm> ResolveAlg(
+absl::StatusOr<xla::RandomAlgorithm> ResolveAlg(
     int alg_id, absl::string_view device_type_string) {
   switch (alg_id) {
     case RNG_ALG_PHILOX:
@@ -109,7 +109,7 @@ xla::XlaOp GetU64FromS32Seeds(xla::XlaOp seed0, xla::XlaOp seed1) {
          (u64_seed1 << ConstantR0WithType(seed0.builder(), xla::U64, 32));
 }
 
-StatusOr<int> GetAlgId(XlaOpKernelContext* ctx, int alg_input_idx) {
+absl::StatusOr<int> GetAlgId(XlaOpKernelContext* ctx, int alg_input_idx) {
   TF_ASSIGN_OR_RETURN(auto alg_shape, ctx->InputXlaShape(alg_input_idx));
   if (alg_shape.rank() != 0) {
     return absl::InvalidArgumentError(
@@ -131,7 +131,7 @@ StatusOr<int> GetAlgId(XlaOpKernelContext* ctx, int alg_input_idx) {
   }
 }
 
-StatusOr<xla::RandomAlgorithm> AlgorithmFromInput(
+absl::StatusOr<xla::RandomAlgorithm> AlgorithmFromInput(
     XlaOpKernelContext* ctx, int alg_input_idx,
     absl::string_view device_type_string) {
   TF_ASSIGN_OR_RETURN(auto alg_id, GetAlgId(ctx, alg_input_idx));
@@ -158,7 +158,7 @@ DataType MaybeConvertBF16ToF32(DataType const& dtype) {
   return dtype;
 }
 
-StatusOr<xla::XlaOp> BuildUniformRandoms(
+absl::StatusOr<xla::XlaOp> BuildUniformRandoms(
     XlaOpKernelContext* ctx, DataType dtype, string device_type_string,
     TensorShape shape,
     std::function<xla::XlaOp(xla::XlaBuilder*, xla::PrimitiveType)> lo_fn,
@@ -175,11 +175,11 @@ StatusOr<xla::XlaOp> BuildUniformRandoms(
   return BuildUniformRandoms(ctx, dtype, device_type_string, xla_shape, lo, hi);
 }
 
-StatusOr<xla::XlaOp> BuildUniformRandoms(XlaOpKernelContext* ctx,
-                                         DataType dtype,
-                                         string device_type_string,
-                                         xla::Shape xla_shape, xla::XlaOp lo,
-                                         xla::XlaOp hi) {
+absl::StatusOr<xla::XlaOp> BuildUniformRandoms(XlaOpKernelContext* ctx,
+                                               DataType dtype,
+                                               string device_type_string,
+                                               xla::Shape xla_shape,
+                                               xla::XlaOp lo, xla::XlaOp hi) {
   xla::XlaOp key = ctx->Input(kRandomKeyInputIdx);
   xla::XlaOp counter = ctx->Input(kRandomCounterInputIdx);
 

@@ -154,10 +154,12 @@ static std::unique_ptr<SubAllocator> CreateSubAllocator(
         .release();
   }
 #else
+  bool use_unified_memory = (options.per_process_gpu_memory_fraction() > 1.0 ||
+                             options.experimental().use_unified_memory());
   return absl::WrapUnique(new se::DeviceMemAllocator(
       executor, platform_device_id,
-      (options.per_process_gpu_memory_fraction() > 1.0 ||
-       options.experimental().use_unified_memory()),
+      use_unified_memory ? stream_executor::MemoryType::kUnified
+                         : stream_executor::MemoryType::kDevice,
       alloc_visitors, {}));
 #endif
 }

@@ -1,4 +1,4 @@
-/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -37,7 +37,7 @@ namespace stream_executor::gpu::internal {
 //
 // Easiest way to get PTX from C++ is to use https://godbolt.org.
 inline constexpr std::string_view kAddI32Kernel = R"(
-.version 8.0
+.version 4.0
 .target sm_50
 .address_size 64
 

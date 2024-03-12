@@ -1,4 +1,4 @@
-/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -57,8 +57,13 @@ class TfPjRtBuffer : public PjRtBuffer {
       override {
     return wrapped_->AcquireExternalReference();
   }
-  PjRtFuture<Status> ToLiteral(MutableLiteralBase* literal) override {
+  PjRtFuture<absl::Status> ToLiteral(MutableLiteralBase* literal) override {
     return wrapped_->ToLiteral(literal);
+  }
+  PjRtFuture<absl::Status> LazyToLiteral(
+      absl::AnyInvocable<absl::StatusOr<MutableLiteralBase*>() &&> generator)
+      override {
+    return wrapped_->LazyToLiteral(std::move(generator));
   }
   StatusOr<size_t> GetOnDeviceSizeInBytes() const override {
     return wrapped_->GetOnDeviceSizeInBytes();
@@ -339,6 +344,10 @@ class TfPjRtClient : public PjRtClient {
   }
   StatusOr<ChannelHandle> CreateHostToDeviceChannelHandle() override {
     return wrapped_->CreateHostToDeviceChannelHandle();
+  }
+  StatusOr<const PjRtTopologyDescription*> GetTopologyDescription()
+      const override {
+    return wrapped_->GetTopologyDescription();
   }
   Status Defragment() override { return wrapped_->Defragment(); }
 

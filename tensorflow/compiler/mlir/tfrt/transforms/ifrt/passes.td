@@ -26,11 +26,52 @@ def RewriteClusterToIfrtCallPass: Pass<"rewrite-cluster-to-ifrt-call", "mlir::Mo
   let dependentDialects = ["mlir::tf_device::TensorFlowDeviceDialect"];
 
   let constructor = "CreateRewriteClusterToIfrtCallPass()";
+ }
 
-  let options = [
-    Option<"tpu_compile_metadata_debug_", "tpu-compile-metadata-debug", "bool", "false",
-          "if enabled, output compile metadata as readable string in "
-         "an extra __tpu_compile_metadata_debug attribute for debug">,
-  ];
+def SinkVariableAsNamedArrayPass: Pass<"sink-variable-as-named-array", "mlir::ModuleOp"> {
+  let summary = "Sink variable tensor for tpu device as named IFRT array for tf.IfrtCall";
 
+  let description = [{
+    This pass sinks variable tensor argument to `tf.IfrtCall` as variable_arg_indices
+    and variable_names attributes and also lowers `tf.ReadVariableOp` to
+    `tf.IfrtLoadVariableOp`.
+
+    The runtime ensures that `tf.IfrtCall` kernel can bind the IFRT array by
+    its name as input to the TPU program.
+
+ }];
+
+  let constructor = "CreateSinkVariableAsNamedArrayPass()";
+}
+
+def TfRestoreSplittingPass
+    : Pass<"tf-restore-splitting", "mlir::func::FuncOp"> {
+  let summary = "Splits `tf.RestoreV2` ops";
+
+  let description = [{
+    This pass splits each `tf.RestoreV2` op so that one restore op handles one
+    variable only. This pass can split restore ops only if the tensor names and
+    the shape/slices arguments are constants, which is usually the case.
+
+    Splitting monolithic restore ops into per-tensor restore ops makes it easier
+    to shard SavedModel initialization across multiple clusters.
+  }];
+
+  let constructor = "CreateTfRestoreSplittingPass()";
+}
+
+def TfRestoreMergingPass : Pass<"tf-restore-merging", "mlir::func::FuncOp"> {
+  let summary = "Merges `tf.RestoreV2` ops";
+
+  let description = [{
+    This pass merges multiple `tf.RestoreV2` ops into one `tf.RestoreV2` op
+    using variadic results. The current implementation merges restore ops only
+    if they have the same `prefix` and have constant tensor names and
+    shape/slice arguments.
+
+    This pass is run in order to undo `tf-restore-splitting` after cluster
+    formation and reduce the op dispatch overhead.
+  }];
+
+  let constructor = "CreateTfRestoreMergingPass()";
 }

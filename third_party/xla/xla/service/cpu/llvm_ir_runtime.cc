@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -156,7 +156,7 @@ void RewriteCalls(
 
 llvm::Value* GenerateVF32Tanh(llvm::IRBuilder<>* b, llvm::Value* input,
                               int32_t /*vector_width*/) {
-  return llvm_ir::EmitFastTanh(b, input);
+  return llvm_ir::EmitFastTanh(b, input, /*with_fma=*/true);
 }
 
 llvm::Value* GenerateVF32Exp(llvm::IRBuilder<>* b, llvm::Value* input,

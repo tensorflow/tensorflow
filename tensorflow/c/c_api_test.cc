@@ -26,6 +26,7 @@ limitations under the License.
 #include "tensorflow/c/tf_buffer.h"
 #include "tensorflow/c/tf_buffer_internal.h"
 #include "tensorflow/c/tf_status.h"
+#include "tensorflow/c/tf_tensor.h"
 #include "tensorflow/cc/saved_model/signature_constants.h"
 #include "tensorflow/cc/saved_model/tag_constants.h"
 #include "tensorflow/core/example/example.pb.h"
@@ -135,7 +136,7 @@ TEST(CAPI, Tensor) {
   const int num_bytes = 6 * sizeof(float);
   float* values =
       reinterpret_cast<float*>(tensorflow::cpu_allocator()->AllocateRaw(
-          EIGEN_MAX_ALIGN_BYTES, num_bytes));
+          TF_TensorDefaultAlignment(), num_bytes));
   int64_t dims[] = {2, 3};
   bool deallocator_called = false;
   TF_Tensor* t = TF_NewTensor(TF_FLOAT, dims, 2, values, num_bytes,
@@ -179,7 +180,7 @@ TEST(CAPI, MaybeMove) {
   const int num_bytes = 6 * sizeof(float);
   float* values =
       reinterpret_cast<float*>(tensorflow::cpu_allocator()->AllocateRaw(
-          EIGEN_MAX_ALIGN_BYTES, num_bytes));
+          TF_TensorDefaultAlignment(), num_bytes));
   int64_t dims[] = {2, 3};
   bool deallocator_called = false;
   TF_Tensor* t = TF_NewTensor(TF_FLOAT, dims, 2, values, num_bytes,
@@ -1572,7 +1573,7 @@ TEST(CAPI, TestFromProto) {
   const int num_bytes = 6 * sizeof(float);
   float* values =
       reinterpret_cast<float*>(tensorflow::cpu_allocator()->AllocateRaw(
-          EIGEN_MAX_ALIGN_BYTES, num_bytes));
+          TF_TensorDefaultAlignment(), num_bytes));
   int64_t dims[] = {2, 3};
   bool deallocator_called = false;
   TF_Tensor* t_c = TF_NewTensor(TF_FLOAT, dims, 2, values, num_bytes,
@@ -2620,7 +2621,7 @@ TEST(CAPI, TestTensorAligned) {
   for (int i = 0; i < dim; ++i) {
     data[i] = 0;
   }
-  if (EIGEN_MAX_ALIGN_BYTES > 0) {
+  if (TF_TensorDefaultAlignment() > 0) {
     EXPECT_TRUE(TF_TensorIsAligned(a));
   }
   TF_DeleteTensor(a);
@@ -2635,7 +2636,7 @@ TEST(CAPI, TestTensorIsNotAligned) {
   Tensor y = x.Slice(1, 13);
   Status status;
   TF_Tensor* a = TF_TensorFromTensor(y, &status);
-  if (EIGEN_MAX_ALIGN_BYTES > 0) {
+  if (TF_TensorDefaultAlignment() > 0) {
     EXPECT_FALSE(TF_TensorIsAligned(a));
   }
   TF_DeleteTensor(a);

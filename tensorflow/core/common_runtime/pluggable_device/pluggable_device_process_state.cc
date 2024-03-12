@@ -21,6 +21,7 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/c/experimental/stream_executor/stream_executor_internal.h"
+#include "xla/stream_executor/integrations/device_mem_allocator.h"
 #include "tensorflow/core/common_runtime/device/device_host_allocator.h"
 #include "tensorflow/core/common_runtime/device/device_id.h"
 #include "tensorflow/core/common_runtime/device/device_id_manager.h"
@@ -115,7 +116,9 @@ Allocator* PluggableDeviceProcessState::GetPluggableDeviceAllocator(
                               options.experimental().use_unified_memory();
     DeviceMemAllocator* sub_allocator = new DeviceMemAllocator(
         platform->ExecutorForDevice(platform_device_id.value()).value(),
-        platform_device_id, use_unified_memory,
+        platform_device_id,
+        use_unified_memory ? stream_executor::MemoryType::kUnified
+                           : stream_executor::MemoryType::kDevice,
         pluggable_device_visitors_[bus_id], {});
 
     Allocator* device_allocator = nullptr;

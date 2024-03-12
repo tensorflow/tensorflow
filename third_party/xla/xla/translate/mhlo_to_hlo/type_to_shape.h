@@ -1,4 +1,4 @@
-/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2019 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -25,10 +25,6 @@ namespace xla {
 
 // Returns a XLA Shape equivalent of a MLIR Type, else returns empty shape.
 Shape TypeToShape(mlir::Type type);
-
-// Returns a XLA PrimitiveType equivalent of a MLIR Type that represents a
-// primitive type (e.g., i8, f32), else returns PRIMITIVE_TYPE_INVALID.
-PrimitiveType TypeToPrimitiveType(mlir::Type type);
 
 }  // namespace xla
 

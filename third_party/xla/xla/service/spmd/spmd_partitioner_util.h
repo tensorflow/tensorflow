@@ -1,4 +1,4 @@
-/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2020 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -490,7 +490,7 @@ std::optional<HloInstruction*> PadFromPartialReplicateShape(
 // {devices=[1,2,2]0,1,2,3 last_tile_dim_replicate}
 // Target sharding is {devices=[2,2]0,1,2,3}, the returned compatible sharding
 // will be sharding={devices=[2,2]0,2,1,3}.
-// If patial replicate sharding is not partial replicate or can't reshard to
+// If partial_sharding is not partial replicate or can't reshard to
 // target_tile_dims by dynamic slice, return std::nullopt.
 // If target_sharding is already compatible, returns it.
 std::optional<HloSharding> PartialReplicateReshardCompatibleSharding(
@@ -824,26 +824,28 @@ std::decay_t<Arg> ArgModifier(Arg&& arg, HloModule* module,
 
 // Finds SpmdPartitioningVisitor* object in an arg list.
 template <typename Arg, IsSpmdPartitioningVisitorPointer<Arg> = 0>
-StatusOr<SpmdPartitioningVisitor*> FindSpmdPartitioningVisitor(Arg&& arg) {
+absl::StatusOr<SpmdPartitioningVisitor*> FindSpmdPartitioningVisitor(
+    Arg&& arg) {
   return arg;
 }
 
 template <typename Arg, IsNotSpmdPartitioningVisitorPointer<Arg> = 0>
-StatusOr<SpmdPartitioningVisitor*> FindSpmdPartitioningVisitor(Arg&& arg) {
+absl::StatusOr<SpmdPartitioningVisitor*> FindSpmdPartitioningVisitor(
+    Arg&& arg) {
   return absl::InvalidArgumentError("No SpmdPartitioningVisitor found.");
 }
 
 template <typename Arg, typename... Args,
           IsSpmdPartitioningVisitorPointer<Arg> = 0>
-StatusOr<SpmdPartitioningVisitor*> FindSpmdPartitioningVisitor(Arg&& arg,
-                                                               Args&&... args) {
+absl::StatusOr<SpmdPartitioningVisitor*> FindSpmdPartitioningVisitor(
+    Arg&& arg, Args&&... args) {
   return arg;
 }
 
 template <typename Arg, typename... Args,
           IsNotSpmdPartitioningVisitorPointer<Arg> = 0>
-StatusOr<SpmdPartitioningVisitor*> FindSpmdPartitioningVisitor(Arg&& arg,
-                                                               Args&&... args) {
+absl::StatusOr<SpmdPartitioningVisitor*> FindSpmdPartitioningVisitor(
+    Arg&& arg, Args&&... args) {
   return FindSpmdPartitioningVisitor(std::forward<Args>(args)...);
 }
 
@@ -852,7 +854,7 @@ StatusOr<SpmdPartitioningVisitor*> FindSpmdPartitioningVisitor(Arg&& arg,
 // Evaluate the memory and communication cost for any arbitrary partitioning
 // methods.
 template <typename F, typename... Args>
-StatusOr<std::pair<int64_t, int64_t>> EvaluatePartitionCost(
+absl::StatusOr<std::pair<int64_t, int64_t>> EvaluatePartitionCost(
     const HloInstruction* original_hlo, F partition_method,
     Args&&... partition_method_args) {
   HloModule* module = original_hlo->GetModule();

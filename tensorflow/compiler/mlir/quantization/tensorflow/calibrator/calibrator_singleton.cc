@@ -25,6 +25,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
+#include "tensorflow/compiler/mlir/quantization/stablehlo/quantization_config.pb.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/calibrator/calibration_statistics.pb.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/calibrator/calibration_statistics_collector_average_min_max.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/calibrator/calibration_statistics_collector_histogram.h"
@@ -33,6 +34,8 @@ limitations under the License.
 
 namespace tensorflow {
 namespace calibrator {
+
+using ::stablehlo::quantization::CalibrationOptions;
 
 ABSL_CONST_INIT absl::Mutex CalibratorSingleton::lock_(absl::kConstInit);
 

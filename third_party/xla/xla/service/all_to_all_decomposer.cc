@@ -1,4 +1,4 @@
-/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2020 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -45,7 +45,7 @@ bool AllToAllDecomposer::InstructionMatchesPattern(
   }
   return all_to_all->shape().rank() < min_array_rank_;
 }
-StatusOr<HloInstruction*> AllToAllDecomposer::ExpandInstruction(
+absl::StatusOr<HloInstruction*> AllToAllDecomposer::ExpandInstruction(
     HloInstruction* instruction) {
   auto* all_to_all = Cast<HloAllToAllInstruction>(instruction);
   int64_t split_dim = *all_to_all->split_dimension();

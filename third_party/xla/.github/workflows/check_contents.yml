@@ -20,7 +20,7 @@
 # TODO(ddunleavy): Update this after METADATA files are consolidated.
 name: Check Contents
 on:
-  pull_request_target:
+  pull_request:
 
 env:
   # A bit tricky here: this lets us invoke python files outside of `bazel run`

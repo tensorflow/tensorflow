@@ -28,7 +28,11 @@ namespace mlir {
 namespace TFL {
 
 // Returns a Constant op with a single value.
-tsl::StatusOr<arith::ConstantOp> CreateConstOpWithSingleValue(
+absl::StatusOr<arith::ConstantOp> CreateConstOpWithSingleValue(
+    PatternRewriter* rewriter, Location loc, ShapedType shaped_type, int value);
+
+// Returns a Constant op with a splat vector value.
+absl::StatusOr<arith::ConstantOp> CreateConstOpWithVectorValue(
     PatternRewriter* rewriter, Location loc, ShapedType shaped_type, int value);
 
 }  // namespace TFL

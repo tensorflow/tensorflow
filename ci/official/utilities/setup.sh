@@ -61,13 +61,16 @@ else
   # Source the default ci values
   source ./ci/official/envs/ci_default
 
-  # Sourcing TFCI twice, the first time with "-u" unset, means that variable
-  # order does not matter. i.e. "TFCI_BAR=$TFCI_FOO; TFCI_FOO=true" will work.
-  # TFCI_FOO is only valid the second time through.
+  # TODO(angerson) write this documentation
+  # Sources every env, in order, from the comma-separated list "TFCI"
+  # Assumes variables will resolve themselves correctly.
   set +u
-  source "$TFCI"
+  for env_file in ${TFCI//,/ }; do
+    source "./ci/official/envs/$env_file"
+  done
   set -u
-  source "$TFCI"
+  echo '==TFCI==: Evaluated the following TFCI variables from $TFCI:'
+  export -p | grep TFCI
 
   # Load those stored pre-existing TFCI_ vars, if any
   if [[ -s "$FROM_ENV" ]]; then
@@ -83,16 +86,6 @@ fi
 # Mac builds have some specific setup needs. See setup_macos.sh for details
 if [[ "${OSTYPE}" =~ darwin* ]]; then
   source ./ci/official/utilities/setup_macos.sh
-fi
-
-# Force-disable uploads if the job initiator is not Kokoro
-# This is temporary: it's currently standard practice for employees to
-# run nightly jobs for testing purposes. We're aiming to move away from
-# this with more convenient methods, but as long as it's possible to do,
-# we want to make sure those extra jobs don't upload anything.
-# TODO(angerson) Remove this once it's no longer relevant
-if [[ "${KOKORO_BUILD_INITIATOR:-}" != "kokoro" ]]; then
-  source ./ci/official/envs/disable_all_uploads
 fi
 
 # Create and expand to the full path of TFCI_OUTPUT_DIR
