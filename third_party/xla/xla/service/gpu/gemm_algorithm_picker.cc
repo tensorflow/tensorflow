@@ -126,8 +126,9 @@ class GemmAutotuner {
     TF_ASSIGN_OR_RETURN(rhs_buffer_, CreateBuffer(gemm->operand(1)->shape()));
     TF_ASSIGN_OR_RETURN(output_buffer_, CreateBuffer(GetOutputShape(gemm)));
 
-    return IsCublasLtMatmul(*gemm) ? TuneGpuBlasLt(gemm, gemm_config)
-                                   : TuneGpuBlas(gemm, gemm_config);
+    return IsCublasLtMatmul(*gemm) || IsCublasLtMatmulF8(*gemm)
+               ? TuneGpuBlasLt(gemm, gemm_config)
+               : TuneGpuBlas(gemm, gemm_config);
   }
 
  private:
@@ -392,17 +393,19 @@ absl::StatusOr<bool> RunOnInstruction(HloInstruction* gemm,
                           gemm, config, [&] { return autotuner(gemm, key); }));
 
   auto old_algorithm = backend_config.selected_algorithm();
-  bool update_algorithm = std::visit(
-      VariantVisitor{[](const se::CudaComputeCapability& cc) {
-                       // We only set the 'algorithm' field on
-                       // non-Ampere architectures, as for Ampere
-                       // it's ignored in any case.
-                       return !cc.IsAtLeast(se::CudaComputeCapability::AMPERE);
-                     },
-                     [](const se::RocmComputeCapability&) {
-                       return true;  // TODO: not decided yet
-                     }},
-      config.GetGpuComputeCapability());
+  bool update_algorithm =
+      IsCublasLtMatmulF8(*gemm) ||
+      std::visit(VariantVisitor{[](const se::CudaComputeCapability& cc) {
+                                  // We only set the 'algorithm' field on
+                                  // non-Ampere architectures, as for Ampere
+                                  // it's ignored in any case.
+                                  return !cc.IsAtLeast(
+                                      se::CudaComputeCapability::AMPERE);
+                                },
+                                [](const se::RocmComputeCapability&) {
+                                  return true;  // TODO: not decided yet
+                                }},
+                 config.GetGpuComputeCapability());
 
   if (update_algorithm) {
     if (algorithm.has_gemm()) {
@@ -420,7 +423,7 @@ absl::StatusOr<bool> RunOnComputation(HloComputation* computation,
                                       AutotuneConfig config) {
   bool changed = false;
   for (HloInstruction* instr : computation->instructions()) {
-    if (IsCublasGemm(*instr)) {
+    if (IsCublasGemm(*instr) || IsCublasLtMatmulF8(*instr)) {
       TF_ASSIGN_OR_RETURN(bool result, RunOnInstruction(instr, config));
       changed |= result;
     }
