@@ -8,7 +8,10 @@ cc_library(
         "src/*.cpp",
     ]),
     copts = ["-fexceptions"],
-    defines = ["NB_SHARED=1"],
+    defines = [
+        "NB_BUILD=1",
+        "NB_SHARED=1",
+    ],
     includes = ["include"],
     textual_hdrs = glob(
         [
