@@ -33,6 +33,7 @@ limitations under the License.
 #include "third_party/nanobind/include/nanobind/nb_defs.h"
 #include "third_party/nanobind/include/nanobind/stl/optional.h"  // IWYU pragma: keep
 #include "third_party/nanobind/include/nanobind/stl/shared_ptr.h"  // IWYU pragma: keep
+#include "third_party/nanobind/include/nanobind/stl/string.h"  // IWYU pragma: keep
 #include "third_party/nanobind/include/nanobind/stl/vector.h"  // IWYU pragma: keep
 // clang-format off
 // Must be included first
@@ -1238,12 +1239,14 @@ static void Init(py::module_& m) {
 
   m.def("is_optimized_build", &IsOptimizedBuild);
 
-  m.def("json_to_pprof_profile", xla::ValueOrThrowWrapper(JsonToPprofProfile),
-        "Encodes the JSON representation of a pprof Profile into its binary "
-        "protocol buffer encoding.");
-  m.def("pprof_profile_to_json", xla::ValueOrThrowWrapper(PprofProfileToJson),
-        "Decodes an uncompressed pprof Profile protocol buffer into a JSON "
-        "representation");
+  m_nb.def("json_to_pprof_profile",
+           xla::ValueOrThrowWrapper(JsonToPprofProfile),
+           "Encodes the JSON representation of a pprof Profile into its binary "
+           "protocol buffer encoding.");
+  m_nb.def("pprof_profile_to_json",
+           xla::ValueOrThrowWrapper(PprofProfileToJson),
+           "Decodes an uncompressed pprof Profile protocol buffer into a JSON "
+           "representation");
 
   RegisterCompileOnlyClient(m);
   py::class_<PjRtTopologyDescription, std::shared_ptr<PjRtTopologyDescription>>(
