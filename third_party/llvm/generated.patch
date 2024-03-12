@@ -1,1 +1,11 @@
 Auto generated patch. Do not edit or delete it, even if empty.
+diff -ruN --strip-trailing-cr a/lldb/test/API/functionalities/data-formatter/builtin-formats/TestBuiltinFormats.py b/lldb/test/API/functionalities/data-formatter/builtin-formats/TestBuiltinFormats.py
+--- a/lldb/test/API/functionalities/data-formatter/builtin-formats/TestBuiltinFormats.py
++++ b/lldb/test/API/functionalities/data-formatter/builtin-formats/TestBuiltinFormats.py
+@@ -308,5 +308,5 @@
+     @no_debug_info_test
+     def test_instruction(self):
+         self.assertIn(
+-            "  addq   0xa(%rdi), %r8\n", self.getFormatted("instruction", "0x0a47034c")
++            "= addq   0xa(%rdi), %r8\n", self.getFormatted("instruction", "0x0a47034c")
+         )
