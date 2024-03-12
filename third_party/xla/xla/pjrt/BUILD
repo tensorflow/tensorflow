@@ -372,6 +372,7 @@ cc_library(
         "//xla:shape_util",
         "//xla:statusor",
         "//xla/service:hlo_parser",
+        "@com_google_absl//absl/hash",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/strings",
         "@local_tsl//tsl/platform:casts",

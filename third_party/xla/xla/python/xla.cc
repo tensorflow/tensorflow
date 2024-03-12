@@ -465,7 +465,29 @@ static void Init(py::module_& m) {
              return devices;
            });
 
-  py::class_<PjRtLayout>(m, "PjRtLayout").def("__str__", &PjRtLayout::ToString);
+  py::class_<PjRtLayout>(m, "PjRtLayout")
+      .def("__str__", &PjRtLayout::ToString)
+      .def("__eq__", [](const PjRtLayout& layout,
+                        const PjRtLayout& other) { return layout == other; })
+      .def("__hash__",
+           [](const PjRtLayout& layout) { return absl::HashOf(layout); })
+      .def(py::pickle(
+          [](const PjRtLayout& layout) -> py::tuple {
+            StatusOr<std::string> serialized = layout.Serialize();
+            ThrowIfError(serialized.status());
+            return py::make_tuple(py::bytes(*serialized));
+          },
+          [](py::tuple t) {
+            // TODO(b/328671718): don't assume PjRtXlaLayout. We probably want a
+            // generic method on PjRtCompiler instead, although we'll have
+            // somehow have to attach a compiler to this PjRtLayout (something
+            // like ClientAndPtr).
+            StatusOr<PjRtXlaLayout> layout =
+                PjRtXlaLayout::Deserialize(t[0].cast<std::string>());
+            ThrowIfError(layout.status());
+            return std::unique_ptr<PjRtLayout>(
+                new PjRtXlaLayout(std::move(*layout)));
+          }));
 
   // Local XLA client methods.
 
