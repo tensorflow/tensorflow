@@ -1,0 +1,13 @@
+{
+    "artifacts": [
+        {
+            "group": "ch.qos.logback",
+            "artifact": "logback-core",
+            "version": "1.0.13",
+            "sha1": "dc6e6ce937347bd4d990fc89f4ceb469db53e45e"
+        }
+    ],
+    "repositories": [
+        "https://repo1.maven.org/maven2"
+    ]
+}
