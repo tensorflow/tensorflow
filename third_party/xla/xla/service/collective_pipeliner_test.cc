@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/service/collective_pipeliner.h"
 
 #include <memory>
+#include <optional>
 #include <string>
 
 #include <gmock/gmock.h>
@@ -30,6 +31,7 @@ limitations under the License.
 #include "xla/hlo/utils/hlo_matchers.h"
 #include "xla/service/hlo_parser.h"
 #include "xla/service/hlo_pass_pipeline.h"
+#include "xla/status.h"
 #include "xla/statusor.h"
 #include "xla/tests/hlo_test_base.h"
 #include "xla/util.h"
@@ -63,7 +65,11 @@ absl::StatusOr<bool> RunOptimizer(
     HloPredicate acceptable_formatting = HloPredicateTrue,
     HloPredicate reuse_pipelined_op_buffer = HloPredicateTrue,
     HloPredicate should_allow_loop_variant_parameter_in_chain =
-        HloPredicateFalse) {
+        HloPredicateFalse,
+    CollectivePipeliner::HloPostprocessor postprocess_backward_peeled =
+        std::nullopt,
+    CollectivePipeliner::HloPostprocessor postprocess_backward_rotated =
+        std::nullopt) {
   CollectivePipeliner::Config config = {
       /*level_to_operate_on=*/level_to_operate_on,
       /*max_pipelining_per_loop=*/INT64_MAX,
@@ -75,8 +81,8 @@ absl::StatusOr<bool> RunOptimizer(
       /*should_process=*/should_process,
       /*acceptable_formatting=*/acceptable_formatting,
       /*reuse_pipelined_op_buffer=*/reuse_pipelined_op_buffer,
-      should_allow_loop_variant_parameter_in_chain,
-  };
+      should_allow_loop_variant_parameter_in_chain, postprocess_backward_peeled,
+      postprocess_backward_rotated};
   HloPassPipeline pass("optimizer");
   pass.AddPass<HloVerifier>(/*layout_sensitive=*/false,
                             /*allow_mixed_precision=*/false);
@@ -1833,12 +1839,14 @@ TEST_F(CollectivePipelinerTest,
     after-all.0 = token[] after-all()
     recv.0 = (u32[2], u32[], token[]) recv(after-all.0), channel_id=1,
       frontend_attributes={
-        _xla_send_recv_source_target_pairs="{{3,0}}"
+        _xla_send_recv_source_target_pairs="{{3,0}}",
+        _xla_other_attr="0"
       }
     after-all.0.s = token[] after-all()
     send.0 = (u32[2], u32[], token[]) send(send-data, after-all.0.s),
       channel_id=1, frontend_attributes={
-        _xla_send_recv_source_target_pairs="{{3,0}}"
+        _xla_send_recv_source_target_pairs="{{3,0}}",
+        _xla_other_attr="0"
       }
     recv-done.0 = (u32[2], token[]) recv-done(recv.0), channel_id=1
     recv-data = u32[2] get-tuple-element(recv-done.0), index=0
@@ -1880,6 +1888,20 @@ TEST_F(CollectivePipelinerTest,
           instr->operand(0)->opcode() == HloOpcode::kParameter);
     return true;
   };
+  const char* kAttr = "_xla_other_attr";
+  // Mutate an existing attribute.
+  auto postprocess_peeled = [&](HloInstruction* instr) {
+    xla::FrontendAttributes attributes = instr->frontend_attributes();
+    (*attributes.mutable_map())[kAttr] = "1";
+    instr->set_frontend_attributes(attributes);
+    return OkStatus();
+  };
+  auto postprocess_rotated = [&](HloInstruction* instr) {
+    xla::FrontendAttributes attributes = instr->frontend_attributes();
+    (*attributes.mutable_map())[kAttr] = "2";
+    instr->set_frontend_attributes(attributes);
+    return OkStatus();
+  };
   auto module = ParseAndReturnUnverifiedModule(hlo_string, config_).value();
   EXPECT_TRUE(RunOptimizer(module.get(), /*last_run=*/true, 0,
                            /*pipeline_use_tree=*/false,
@@ -1888,7 +1910,8 @@ TEST_F(CollectivePipelinerTest,
                            should_pipeline,
                            /*acceptable_formatting=*/HloPredicateTrue,
                            /*reuse_pipelined_op_buffer=*/HloPredicateTrue,
-                           should_allow_loop_variant_parameter)
+                           should_allow_loop_variant_parameter,
+                           postprocess_peeled, postprocess_rotated)
                   .value());
   XLA_VLOG_LINES(10, module->ToString());
   auto while_op = FindInstruction(module.get(), "while");
@@ -1911,6 +1934,18 @@ TEST_F(CollectivePipelinerTest,
   EXPECT_EQ(send1->channel_id(), send2->channel_id());
 
   EXPECT_EQ(recv1->channel_id(), send1->channel_id());
+
+  const char* kSourceTarget = "_xla_send_recv_source_target_pairs=\"{{3,0}}\"";
+  const char* kPeeledAttr = "_xla_other_attr=\"1\"";
+  const char* kRotatedAttr = "_xla_other_attr=\"2\"";
+  EXPECT_THAT(send1->ToString(), ::testing::HasSubstr(kSourceTarget));
+  EXPECT_THAT(recv1->ToString(), ::testing::HasSubstr(kSourceTarget));
+  EXPECT_THAT(send2->ToString(), ::testing::HasSubstr(kSourceTarget));
+  EXPECT_THAT(recv2->ToString(), ::testing::HasSubstr(kSourceTarget));
+  EXPECT_THAT(send1->ToString(), ::testing::HasSubstr(kPeeledAttr));
+  EXPECT_THAT(recv1->ToString(), ::testing::HasSubstr(kPeeledAttr));
+  EXPECT_THAT(send2->ToString(), ::testing::HasSubstr(kRotatedAttr));
+  EXPECT_THAT(recv2->ToString(), ::testing::HasSubstr(kRotatedAttr));
 }
 
 TEST_F(CollectivePipelinerTest, MultiUsesElementwiseMerge) {

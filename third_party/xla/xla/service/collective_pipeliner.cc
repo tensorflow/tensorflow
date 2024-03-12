@@ -2075,13 +2075,13 @@ Status TransformLoopForwardSink(const WhileLoopAnalysis& loop_analysis,
 //   x_ag = p0_ag_next
 // }
 // x_last = computation(p0_ag_next)
-static Status TransformLoopBackward(const WhileLoopAnalysis& loop_analysis,
-                                    bool insert_non_alias_custom_call,
-                                    int64_t level_to_operate_on,
-                                    bool process_different_sized_ops,
-                                    HloPredicate should_process,
-                                    HloPredicate acceptable_formatting,
-                                    int64_t& next_channel_id) {
+static Status TransformLoopBackward(
+    const WhileLoopAnalysis& loop_analysis, bool insert_non_alias_custom_call,
+    int64_t level_to_operate_on, bool process_different_sized_ops,
+    HloPredicate should_process, HloPredicate acceptable_formatting,
+    CollectivePipeliner::HloPostprocessor postprocess_peeled,
+    CollectivePipeliner::HloPostprocessor postprocess_rotated,
+    int64_t& next_channel_id) {
   // Defining some maps/sets to keep track of instructions duplicated.
   absl::flat_hash_map<HloInstruction*, HloInstruction*> while_body_to_peeled;
   absl::flat_hash_map<HloInstruction*, int64_t> collective_to_move_map;
@@ -2177,6 +2177,10 @@ static Status TransformLoopBackward(const WhileLoopAnalysis& loop_analysis,
                            loop_analysis.GetMoveInfos()[i], chain_clone_map,
                            *loop_analysis.GetLoopIterationIdx(),
                            next_channel_id));
+
+    if (postprocess_peeled.has_value()) {
+      TF_RETURN_IF_ERROR(postprocess_peeled.value()(new_init_operands[idx]));
+    }
   }
   ConstantValue next_loop_iteration =
       loop_analysis.GetLoopStart()->add(*loop_analysis.GetLoopIncrement());
@@ -2224,6 +2228,10 @@ static Status TransformLoopBackward(const WhileLoopAnalysis& loop_analysis,
                              collective_to_move_clone_map,
                              *loop_analysis.GetLoopIterationIdx(),
                              next_channel_id, &loop_variant_parameter_info));
+
+      if (postprocess_rotated.has_value()) {
+        TF_RETURN_IF_ERROR(postprocess_rotated.value()(cloned_instr));
+      }
     } else {
       auto new_operands =
           MapNewOperands(instr->operands(), while_body_replacement_map);
@@ -2439,7 +2447,8 @@ absl::StatusOr<bool> CollectivePipeliner::Run(
       TF_RETURN_IF_ERROR(TransformLoopBackward(
           loop_analysis, !config_.last_run, config_.level_to_operate_on,
           config_.process_different_sized_ops, config_.should_process,
-          config_.acceptable_formatting, next_channel_id));
+          config_.acceptable_formatting, config_.postprocess_backward_peeled_op,
+          config_.postprocess_backward_rorated_op, next_channel_id));
     }
     ++transformed_loops;
     changed = true;

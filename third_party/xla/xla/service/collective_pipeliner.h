@@ -61,6 +61,12 @@ class CollectivePipeliner : public HloModulePass {
     kForward,
     kForwardSink,
   };
+
+  // Postprocessing cloned collective instructions, such as for modifying loop
+  // iteration related frontend attributes to reflect loop pipelining.
+  using HloPostprocessor =
+      std::optional<std::function<Status(HloInstruction* instr)>>;
+
   struct Config {
     int64_t level_to_operate_on = 0;
     // Maximum number of HLOs to pipeline per loop. (Meant to help controlling
@@ -87,6 +93,8 @@ class CollectivePipeliner : public HloModulePass {
     // pipelinining.
     HloPredicate should_allow_loop_variant_parameter_in_chain =
         HloPredicateFalse;
+    HloPostprocessor postprocess_backward_peeled_op = std::nullopt;
+    HloPostprocessor postprocess_backward_rorated_op = std::nullopt;
   };
   static const char* const kInsertedByPreviousStep;
   static const char* const kSunkByPreviousStep;
