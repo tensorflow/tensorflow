@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_LITE_EXPERIMENTAL_SHLO_OPS_TEST_UTIL_H_
 
 #include <random>
+#include <string>
 #include <type_traits>
 
 #include <gtest/gtest.h>
@@ -80,6 +81,64 @@ struct TestParam {
   using StorageT = StorageType<storage_type>;
   using ExpressedT = StorageType<expressed_type>;
 };
+
+constexpr const char* ToString(DataType t) {
+  switch (t) {
+    case DataType::kI1:
+      return "I1";
+      break;
+    case DataType::kSI4:
+      return "SI4";
+      break;
+    case DataType::kSI8:
+      return "SI8";
+      break;
+    case DataType::kSI16:
+      return "SI16";
+      break;
+    case DataType::kSI32:
+      return "SI32";
+      break;
+    case DataType::kBF16:
+      return "BF16";
+      break;
+    case DataType::kF16:
+      return "F16";
+      break;
+    case DataType::kF32:
+      return "F32";
+      break;
+  }
+  return "Unknown data type";
+}
+
+template <class T>
+struct ParamName;
+
+template <DataType S, DataType E>
+struct ParamName<TestParam<S, E>> {
+  static std::string Get() {
+    return std::string("TypeParam<") + ToString(S) + ", " + ToString(E) + ">";
+  }
+};
+
+class TestParamNames {
+ public:
+  template <class T>
+  static std::string GetName(int) {
+    return ParamName<T>::Get();
+  }
+};
+
+// Use this with TYPED_TEST_SUITE for non quantized integer testing.
+using NonQuantizedIntTestTypes =
+    testing::Types<TestParam<DataType::kSI4>, TestParam<DataType::kSI8>,
+                   TestParam<DataType::kSI16>, TestParam<DataType::kSI32>>;
+
+// Use this with TYPED_TEST_SUITE for non quantized floating point testing.
+using NonQuantizedFloatTestTypes =
+    testing::Types<TestParam<DataType::kBF16>, TestParam<DataType::kF16>,
+                   TestParam<DataType::kF32>>;
 
 // Use this with TYPED_TEST_SUITE for non quantized testing.
 using NonQuantizedTestTypes =
