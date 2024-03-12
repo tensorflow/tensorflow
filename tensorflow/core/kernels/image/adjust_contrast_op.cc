@@ -201,8 +201,8 @@ class AdjustContrastOpV2Base : public OpKernel {
 template <typename Device, typename T>
 class AdjustContrastOpv2;
 
-template <>
-class AdjustContrastOpv2<CPUDevice, float> : public AdjustContrastOpV2Base {
+template <typename T>
+class AdjustContrastOpv2<CPUDevice, T> : public AdjustContrastOpV2Base {
  public:
   explicit AdjustContrastOpv2(OpKernelConstruction* context)
       : AdjustContrastOpV2Base(context) {}
@@ -219,12 +219,12 @@ class AdjustContrastOpv2<CPUDevice, float> : public AdjustContrastOpV2Base {
     Tensor* output = options.output;
     Tensor mean_values;
     OP_REQUIRES_OK(context, context->allocate_temp(
-                                DataTypeToEnum<float>::value,
+                                DataTypeToEnum<T>::value,
                                 TensorShape({batch, channels}), &mean_values));
     // TODO(zhengxq): for multiple batches, shard them into different batches.
-    auto input_data = input->shaped<float, 3>({batch, image_size, channels});
-    auto mean_data = mean_values.tensor<float, 2>();
-    auto output_data = output->shaped<float, 3>({batch, image_size, channels});
+    auto input_data = input->shaped<T, 3>({batch, image_size, channels});
+    auto mean_data = mean_values.tensor<T, 2>();
+    auto output_data = output->shaped<T, 3>({batch, image_size, channels});
 
     // Calculate the mean of the inputs.
     ReduceMeanAcrossImage(input_data, mean_data, output_data);
@@ -238,15 +238,15 @@ class AdjustContrastOpv2<CPUDevice, float> : public AdjustContrastOpV2Base {
  private:
   // Reduce the mean of the inputs along the image dimension, i.e. dim_1, in a
   // 3D tensor. Effectively means(i, k) = inputs(i, :, k).mean().
-  void ReduceMeanAcrossImage(typename TTypes<float, 3>::ConstTensor input,
-                             typename TTypes<float, 2>::Tensor mean,
-                             typename TTypes<float, 3>::Tensor scratch) {
+  void ReduceMeanAcrossImage(typename TTypes<T, 3>::ConstTensor input,
+                             typename TTypes<T, 2>::Tensor mean,
+                             typename TTypes<T, 3>::Tensor scratch) {
     const int64_t batch = input.dimension(0);
     const int64_t image_size = input.dimension(1);
     const int64_t channels = input.dimension(2);
-    TTypes<float, 1>::ConstTensor input_flat(&input(0, 0, 0), input.size());
-    TTypes<float, 1>::Tensor mean_flat(&mean(0, 0), mean.size());
-    TTypes<float, 1>::Tensor summation_scratch(&scratch(0, 0, 0),
+    TTypes<T, 1>::ConstTensor input_flat(&input(0, 0, 0), input.size());
+    TTypes<T, 1>::Tensor mean_flat(&mean(0, 0), mean.size());
+    TTypes<T, 1>::Tensor summation_scratch(&scratch(0, 0, 0),
                                                scratch.size());
     typedef Eigen::array<Eigen::DenseIndex, 1> Index;
     const int64_t plane_size = image_size * channels;
@@ -324,8 +324,8 @@ class AdjustContrastOpv2<CPUDevice, float> : public AdjustContrastOpV2Base {
 
   // Broadcast a 2D inputs into a 3D outputs across the image dimension, i.e.,
   // dim-1.
-  void BroadcastAcrossImage(typename TTypes<float, 2>::Tensor inputs,
-                            typename TTypes<float, 3>::Tensor outputs) {
+  void BroadcastAcrossImage(typename TTypes<T, 2>::Tensor inputs,
+                            typename TTypes<T, 3>::Tensor outputs) {
     int64_t batch = outputs.dimension(0);
     int64_t image_size = outputs.dimension(1);
     int64_t channels = outputs.dimension(2);
@@ -375,9 +375,9 @@ class AdjustContrastOpv2<CPUDevice, float> : public AdjustContrastOpV2Base {
 
   // Increment the outputs with the scaled difference between inputs and
   // outputs. Effectively: outputs += factor * (inputs - outputs).
-  void IncrementWithScaling(typename TTypes<float, 3>::ConstTensor input,
+  void IncrementWithScaling(typename TTypes<T, 3>::ConstTensor input,
                             typename TTypes<float>::ConstScalar factor,
-                            typename TTypes<float, 3>::Tensor output) {
+                            typename TTypes<T, 3>::Tensor output) {
     const float factor_value = factor();
     float* p = output.data();
     const float* q = input.data();
