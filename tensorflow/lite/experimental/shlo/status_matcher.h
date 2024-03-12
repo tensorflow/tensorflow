@@ -13,11 +13,13 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_LITE_EXPERIMENTAL_SHLO_TEST_MACROS_H_
-#define TENSORFLOW_LITE_EXPERIMENTAL_SHLO_TEST_MACROS_H_
+#ifndef TENSORFLOW_LITE_EXPERIMENTAL_SHLO_STATUS_MATCHER_H_
+#define TENSORFLOW_LITE_EXPERIMENTAL_SHLO_STATUS_MATCHER_H_
 
 #include <gmock/gmock.h>
-#include "absl/status/status.h"
+#include "absl/status/status.h"  // IWYU pragma: keep
+
+// IWYU pragma: always_keep
 
 namespace shlo_ref {
 namespace testing {
@@ -37,4 +39,4 @@ MATCHER_P(StatusIs, status_code, "") { return arg.code() == status_code; }
 }  // namespace testing
 }  // namespace shlo_ref
 
-#endif  // TENSORFLOW_LITE_EXPERIMENTAL_SHLO_TEST_MACROS_H_
+#endif  // TENSORFLOW_LITE_EXPERIMENTAL_SHLO_STATUS_MATCHER_H_
