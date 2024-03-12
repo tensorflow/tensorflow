@@ -1171,7 +1171,6 @@ TEST_F(IndexingAnalysisTest, FusionOpWithReshape_ChainedGenericReshapes) {
       ROOT fusion = f32[10, 10, 10] fusion(p0), kind=kLoop, calls=f
     }
   )");
-  // TODO(jreiffers): Remove the redundant constraint.
   EXPECT_THAT(input_indexing.indexing_maps,
               ElementsAre(ElementsAre(MatchIndexingMap(R"(
                             (d0, d1, d2) -> (d0, d1, d2)
@@ -1179,7 +1178,6 @@ TEST_F(IndexingAnalysisTest, FusionOpWithReshape_ChainedGenericReshapes) {
                             d0 in [0, 9]
                             d1 in [0, 9]
                             d2 in [0, 9]
-                            d2 + (d1 * 10) mod 20 in [0, 19]
                           )"))));
 }
 
@@ -1419,7 +1417,7 @@ TEST_F(IndexingAnalysisTest, ReshapeOpExpandSubshapeOnly) {
               )"))));
 }
 
-TEST_F(IndexingAnalysisTest, ReshapeOpGenericReshape2DTO3D) {
+TEST_F(IndexingAnalysisTest, ReshapeOpGenericReshape2DTo3D) {
   auto input_indexing = GetOutputToInputIndexingForEntryComputation(R"(
     HloModule m
     ENTRY e {
@@ -1430,7 +1428,7 @@ TEST_F(IndexingAnalysisTest, ReshapeOpGenericReshape2DTO3D) {
   EXPECT_THAT(input_indexing.indexing_maps,
               ElementsAre(ElementsAre(MatchIndexingMap(R"(
                 (d0, d1, d2) -> (d0 * 2 + d1 floordiv 2,
-                                d2 + (d1 * 4) mod 8)
+                                d2 + (d1 mod 2) * 4)
                 domain:
                 d0 in [0, 1]
                 d1 in [0, 3]
@@ -1438,7 +1436,7 @@ TEST_F(IndexingAnalysisTest, ReshapeOpGenericReshape2DTO3D) {
               )"))));
 }
 
-TEST_F(IndexingAnalysisTest, ReshapeOpGenericReshape3DTO2D) {
+TEST_F(IndexingAnalysisTest, ReshapeOpGenericReshape3DTo2D) {
   auto input_indexing = GetOutputToInputIndexingForEntryComputation(R"(
     HloModule m
     ENTRY e {
@@ -1449,7 +1447,7 @@ TEST_F(IndexingAnalysisTest, ReshapeOpGenericReshape3DTO2D) {
   EXPECT_THAT(input_indexing.indexing_maps,
               ElementsAre(ElementsAre(MatchIndexingMap(R"(
                             (d0, d1) -> (d0 floordiv 2,
-                                        d1 floordiv 4 + (d0 * 2) mod 4,
+                                        d1 floordiv 4 + (d0 mod 2) * 2,
                                         d1 mod 4)
                             domain:
                             d0 in [0, 3]

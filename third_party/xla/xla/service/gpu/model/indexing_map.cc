@@ -137,6 +137,19 @@ AffineExpr AffineExprSimplifier::RewriteMod(AffineBinaryOpExpr mod) {
     return lhs_simplified;
   }
 
+  // Rewrite `(c * a) % ab` to `(c % b) * a`.
+  //   (c * a) % ab
+  // = c * a - (c * a) // ab * ab
+  // = c * a - c // b * ab
+  // = (c - c // b * b) * a
+  // = (c % b) * a
+  if (auto mul = GetConstantRhs(lhs_simplified, AffineExprKind::Mul);
+      mul && (m % *mul == 0)) {
+    return (mlir::cast<AffineBinaryOpExpr>(lhs_simplified).getLHS() %
+            (m / *mul)) *
+           *mul;
+  }
+
   Range no_multiplier_range{0, 0};
   int64_t multiplier_gcd = -1;
 
