@@ -135,10 +135,11 @@ bazel build \
     --action_env=PYTHON_BIN_PATH=${PYTHON_BIN_PATH} \
     --action_env=PYTHON_LIB_PATH=${PY_SITE_PACKAGES} \
     ${TF_BUILD_FLAGS} \
-    //tensorflow/tools/pip_package:build_pip_package \
-    || die "Error: Bazel build failed for target: //tensorflow/tools/pip_package:build_pip_package"
+    --repo_env=WHEEL_NAME=${PROJECT_NAME} \
+    //tensorflow/tools/pip_package:wheel \
+    || die "Error: Bazel build failed for target: //tensorflow/tools/pip_package:wheel"
 
-PYTHONWARNINGS=ignore:::setuptools.command.build_py ./bazel-bin/tensorflow/tools/pip_package/build_pip_package ${WHL_DIR} ${NIGHTLY_FLAG} "--project_name" ${PROJECT_NAME} || die "build_pip_package FAILED"
+find ./bazel-bin/tensorflow/tools/pip_package -iname "*.whl" -exec cp {} $WHL_DIR \;
 
 PY_DOTLESS_MAJOR_MINOR_VER=$(echo $PY_MAJOR_MINOR_VER | tr -d '.')
 if [[ $PY_DOTLESS_MAJOR_MINOR_VER == "2" ]]; then
