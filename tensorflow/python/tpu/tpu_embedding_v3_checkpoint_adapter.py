@@ -261,6 +261,10 @@ class TpuEmbeddingV3CheckpointAdapter(
   def get_reshard_callback(
       self, name: str
   ) -> Optional[checkpoint_adapter.ReshardCallback]:
-    if name not in self._checkpoint_to_reshard_callback:
-      return None
-    return self._checkpoint_to_reshard_callback[name]
+    if name in self._checkpoint_to_reshard_callback:
+      return self._checkpoint_to_reshard_callback[name]
+    # Check if this is slot variable
+    var_name = name.split("/")[0]
+    if var_name in self._checkpoint_to_reshard_callback:
+      return self._checkpoint_to_reshard_callback[var_name]
+    return None
