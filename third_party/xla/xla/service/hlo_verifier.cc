@@ -2776,6 +2776,12 @@ class InstructionVerifier : public DfsHloVisitorWithDefault {
           if (instruction->opcode() == HloOpcode::kConvert) {
             // Convert instructions can change element_size_in_bits
             equal_predicate.IgnoreElementSize();
+          } else if (instruction->opcode() == HloOpcode::kDynamicSlice ||
+                     instruction->opcode() == HloOpcode::kDynamicUpdateSlice ||
+                     instruction->opcode() == HloOpcode::kCopy) {
+            // We allow dynamic-slice, dynamic-update-slice and copy to change
+            // the memory space between S(0) and S(5).
+            equal_predicate.IgnoreMemorySpace();
           }
           TF_RET_CHECK(equal_predicate(result_layout, operand_layout))
               << "Instruction shouldn't change layouts "
