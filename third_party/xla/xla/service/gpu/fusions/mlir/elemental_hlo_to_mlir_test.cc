@@ -148,6 +148,46 @@ TEST_F(ElementalHloToMlirTest, Reduce) {
   )"));
 }
 
+TEST_F(ElementalHloToMlirTest, ReduceUnsigned) {
+  TF_EXPECT_OK(Run(R"(
+    add {
+      p0 = u32[] parameter(0)
+      p1 = u32[] parameter(1)
+      ROOT sum = u32[] add(p0, p1)
+    }
+
+    ENTRY main {
+      p0 = u32[10,20,30,40] parameter(0)
+      p1 = u32[] parameter(1)
+      ROOT r = u32[10,30] reduce(p0, p1), dimensions={1,3},
+                                          to_apply=add
+    })",
+                   R"(
+    // CHECK:      @main_r(
+    // CHECK-SAME:   %[[ARG0:.*]]: tensor<10x20x30x40xui32>
+    // CHECK-SAME:   %[[ARG1:.*]]: tensor<ui32>
+    // CHECK-SAME:   %[[X:.*]]: index {{.*}}, %[[Y:.*]]: index {{.*}} -> ui32
+    // CHECK-DAG:  %[[C0:.*]] = arith.constant 0
+    // CHECK-DAG:  %[[C1:.*]] = arith.constant 1
+    // CHECK-DAG:  %[[C20:.*]] = arith.constant 20
+    // CHECK-DAG:  %[[C40:.*]] = arith.constant 40
+    // CHECK:      %[[INIT:.*]] = tensor.extract %[[ARG1]][]
+    // CHECK:      %[[RET:.*]] = scf.for %[[I:.*]] = %[[C0]] to %[[C20]]
+    // CHECK-SAME:   step %[[C1]] iter_args(%[[ACC:.*]] = %[[INIT]])
+    // CHECK:        %[[RET_INNER:.*]] = scf.for %[[J:.*]] = %[[C0]] to %[[C40]]
+    // CHECK-SAME:     iter_args(%[[ACC_INNER:.*]] = %[[ACC]])
+    // CHECK:          %[[VAL:.*]] = tensor.extract %[[ARG0]]
+    // CHECK-SAME:        [%[[X]], %[[I]], %[[Y]], %[[J]]]
+    // CHECK:          %[[UPD:.*]] = func.call @add_sum(%[[ACC_INNER]],
+    // CHECK-SAME:                                      %[[VAL]])
+    // CHECK:          scf.yield %[[UPD]]
+    // CHECK:        }
+    // CHECK:        scf.yield %[[RET_INNER]]
+    // CHECK:      }
+    // CHECK:      return %[[RET]]
+  )"));
+}
+
 TEST_F(ElementalHloToMlirTest, Concatenate) {
   TF_EXPECT_OK(Run(R"(
     ENTRY main {
