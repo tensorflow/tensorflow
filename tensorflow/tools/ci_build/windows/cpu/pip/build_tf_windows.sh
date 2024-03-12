@@ -146,7 +146,8 @@ bazel build \
   --experimental_cc_shared_library \
   --config=release_cpu_windows ${EXTRA_BUILD_FLAGS} \
   --output_filter=^$ \
-  tensorflow/tools/pip_package:build_pip_package || exit $?
+  --repo_env=WHEEL_NAME=tensorflow_cpu \
+  tensorflow/tools/pip_package:wheel || exit $?
 
 if [[ "$SKIP_TEST" == 1 ]]; then
   exit 0
