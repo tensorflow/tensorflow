@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "xla/stream_executor/allocator_stats.h"
 
+#include <string>
+
 #include "absl/strings/str_format.h"
 
 namespace stream_executor {

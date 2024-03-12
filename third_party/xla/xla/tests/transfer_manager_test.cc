@@ -328,7 +328,7 @@ XLA_TEST_F(TransferManagerTest, MultiStreamRoundTripSoak) {
   auto device_buffer2 = AllocateDeviceBuffer(literal2.shape());
 
   auto stream1 = stream_;
-  auto stream2 = stream_->GetOrCreateSubStream();
+  auto stream2 = stream_->GetOrCreateSubStream().value();
 
   Literal result1, result2;
 

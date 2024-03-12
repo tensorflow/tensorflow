@@ -27,6 +27,7 @@ limitations under the License.
 #include "xla/statusor.h"
 #include "xla/stream_executor/cuda/cuda_platform_id.h"
 #include "xla/stream_executor/host/host_platform_id.h"
+#include "xla/stream_executor/platform_manager.h"
 #include "xla/stream_executor/rocm/rocm_platform_id.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/types.h"
@@ -63,8 +64,8 @@ std::string CanonicalPlatformName(const std::string& platform_name) {
   return lowercase_platform_name;
 }
 
-StatusOr<std::vector<se::Platform*>> GetSupportedPlatforms() {
-  return se::MultiPlatformManager::PlatformsWithFilter(
+absl::StatusOr<std::vector<se::Platform*>> GetSupportedPlatforms() {
+  return se::PlatformManager::PlatformsWithFilter(
       [](const se::Platform* platform) {
         auto compiler_status = Compiler::GetForPlatform(platform);
         bool supported = compiler_status.ok();
@@ -79,18 +80,18 @@ StatusOr<std::vector<se::Platform*>> GetSupportedPlatforms() {
 
 }  // namespace
 
-/*static */ StatusOr<std::string> PlatformUtil::CanonicalPlatformName(
+/*static */ absl::StatusOr<std::string> PlatformUtil::CanonicalPlatformName(
     const std::string& platform_name) {
   return xla::CanonicalPlatformName(platform_name);
 }
 
-/* static */ StatusOr<std::vector<se::Platform*>>
+/* static */ absl::StatusOr<std::vector<se::Platform*>>
 PlatformUtil::GetSupportedPlatforms() {
   // Gather all platforms which have an XLA compiler.
   return xla::GetSupportedPlatforms();
 }
 
-/* static */ StatusOr<se::Platform*> PlatformUtil::GetDefaultPlatform() {
+/* static */ absl::StatusOr<se::Platform*> PlatformUtil::GetDefaultPlatform() {
   TF_ASSIGN_OR_RETURN(auto platforms, GetSupportedPlatforms());
 
   se::Platform* platform = nullptr;
@@ -121,10 +122,10 @@ PlatformUtil::GetSupportedPlatforms() {
       platforms_string);
 }
 
-/*static*/ StatusOr<se::Platform*> PlatformUtil::GetPlatform(
+/*static*/ absl::StatusOr<se::Platform*> PlatformUtil::GetPlatform(
     const std::string& platform_name) {
   TF_ASSIGN_OR_RETURN(se::Platform * platform,
-                      se::MultiPlatformManager::PlatformWithName(
+                      se::PlatformManager::PlatformWithName(
                           xla::CanonicalPlatformName(platform_name)));
   TF_RETURN_IF_ERROR(Compiler::GetForPlatform(platform).status());
   return platform;
@@ -161,7 +162,7 @@ static bool IsDeviceSupported(se::StreamExecutor* executor) {
   return true;
 }
 
-/* static */ StatusOr<std::vector<se::StreamExecutor*>>
+/* static */ absl::StatusOr<std::vector<se::StreamExecutor*>>
 PlatformUtil::GetStreamExecutors(
     se::Platform* platform,
     const std::optional<std::set<int>>& allowed_devices) {

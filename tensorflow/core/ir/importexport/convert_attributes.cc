@@ -198,7 +198,7 @@ Status ConvertAttribute(const ArrayAttr& attr, bool remove_ref_type,
 }
 }  // namespace
 
-StatusOr<AttrValue> ConvertAttribute(Attribute attr) {
+absl::StatusOr<AttrValue> ConvertAttribute(Attribute attr) {
   AttrValue value;
   if (auto symbol_ref = attr.dyn_cast<SymbolRefAttr>()) {
     TF_RETURN_IF_ERROR(
@@ -305,8 +305,8 @@ Status SetShapeAttribute(absl::string_view name, ShapedType shaped_type,
 // Converts non func AttrValue proto into an MLIR attribute. Func attribute is
 // exclused in this function because the function might be renamed when the
 // function definition is imported.
-StatusOr<Attribute> ConvertNonFuncAttributeValue(const AttrValue& value,
-                                                 Builder& builder) {
+absl::StatusOr<Attribute> ConvertNonFuncAttributeValue(const AttrValue& value,
+                                                       Builder& builder) {
   switch (value.value_case()) {
     case AttrValue::kI:
       return builder.getI64IntegerAttr(value.i());
@@ -373,8 +373,8 @@ StatusOr<Attribute> ConvertNonFuncAttributeValue(const AttrValue& value,
   }
 }
 
-StatusOr<Attribute> ConvertAttributeValue(const AttrValue& value,
-                                          Builder& builder) {
+absl::StatusOr<Attribute> ConvertAttributeValue(const AttrValue& value,
+                                                Builder& builder) {
   switch (value.value_case()) {
     case AttrValue::kFunc: {
       NamedAttrList attrs;
@@ -393,7 +393,7 @@ StatusOr<Attribute> ConvertAttributeValue(const AttrValue& value,
   }
 }
 
-StatusOr<tf_type::FullTypeAttr> ConvertAttribute(
+absl::StatusOr<tf_type::FullTypeAttr> ConvertAttribute(
     const tensorflow::FullTypeDef& full_type, Builder& builder) {
   using FullTypeAttr = ::mlir::tf_type::FullTypeAttr;
 
@@ -421,7 +421,7 @@ StatusOr<tf_type::FullTypeAttr> ConvertAttribute(
                            attr);
 }
 
-StatusOr<tensorflow::FullTypeDef> ConvertAttribute(
+absl::StatusOr<tensorflow::FullTypeDef> ConvertAttribute(
     tf_type::FullTypeAttr full_type) {
   using FullTypeDef = tensorflow::FullTypeDef;
 
@@ -451,7 +451,7 @@ StatusOr<tensorflow::FullTypeDef> ConvertAttribute(
   return ret;
 }
 
-StatusOr<ArrayAttr> ConvertHandleData(
+absl::StatusOr<ArrayAttr> ConvertHandleData(
     Builder builder,
     const tensorflow::protobuf::RepeatedPtrField<
         tensorflow::ResourceHandleProto_DtypeAndShape>& handle_data) {

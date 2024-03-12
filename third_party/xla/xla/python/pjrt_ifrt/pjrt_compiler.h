@@ -38,11 +38,11 @@ class PjRtCompiler final : public llvm::RTTIExtends<PjRtCompiler, Compiler> {
 
   ~PjRtCompiler() override = default;
 
-  StatusOr<std::unique_ptr<LoadedExecutable>> Compile(
+  absl::StatusOr<std::unique_ptr<LoadedExecutable>> Compile(
       std::unique_ptr<Program> program,
       std::unique_ptr<CompileOptions> options) override;
 
-  StatusOr<std::unique_ptr<LoadedExecutable>> DeserializeLoadedExecutable(
+  absl::StatusOr<std::unique_ptr<LoadedExecutable>> DeserializeLoadedExecutable(
       absl::string_view serialized,
       std::unique_ptr<DeserializeExecutableOptions> options) override;
 

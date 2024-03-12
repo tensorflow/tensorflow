@@ -20,7 +20,6 @@ from tensorflow.compiler.mlir.quantization.stablehlo.python import pywrap_quanti
 from tensorflow.compiler.mlir.quantization.tensorflow.python import py_function_lib
 from tensorflow.compiler.mlir.quantization.tensorflow.python import save_model
 from tensorflow.core.protobuf import meta_graph_pb2
-from tensorflow.python.saved_model import loader_impl
 
 # Mapping of signature def key -> SignatureDef.
 _SignatureDefMap = Mapping[str, meta_graph_pb2.SignatureDef]
@@ -89,18 +88,15 @@ def quantize_saved_model(
         ' single signature.'
     )
 
-  config = _populate_default_quantization_config(config)
+  config = qc.QuantizationConfig.FromString(
+      pywrap_quantization.populate_default_configs(config.SerializeToString())
+  )
 
   signature_def_map = save_model.get_signatures_from_saved_model(
       src_saved_model_path,
       signature_keys=None,
       tags=set(config.tf_saved_model.tags),
   )
-
-  loader = loader_impl.SavedModelLoader(src_saved_model_path)
-  function_aliases = loader.get_meta_graph_def_from_tags(
-      config.tf_saved_model.tags
-  ).meta_info_def.function_aliases
 
   signature_def_map_serialized = _serialize_signature_def_map(signature_def_map)
   pywrap_quantization.static_range_ptq(
@@ -109,6 +105,5 @@ def quantize_saved_model(
       quantization_config_serialized=config.SerializeToString(),
       signature_keys=list(signature_def_map.keys()),
       signature_def_map_serialized=signature_def_map_serialized,
-      function_aliases=dict(function_aliases),
       py_function_library=py_function_lib.PyFunctionLibrary(),
   )

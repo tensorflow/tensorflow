@@ -24,6 +24,7 @@ limitations under the License.
 #include <stddef.h>
 
 #include <complex>
+#include <cstdint>
 
 #include "xla/stream_executor/gpu/gpu_types.h"
 #include "tsl/platform/logging.h"

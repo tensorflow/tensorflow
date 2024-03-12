@@ -130,6 +130,8 @@ TF_Tensor* TF_NewTensor(TF_DataType dtype, const int64_t* dims, int num_dims,
   return CreateTensor(buf, dtype, dims, num_dims, len);
 }
 
+size_t TF_TensorDefaultAlignment() { return EIGEN_MAX_ALIGN_BYTES; }
+
 TF_Tensor* TF_TensorMaybeMove(TF_Tensor* t) {
   return t->tensor->CanMove() ? t : nullptr;
 }

@@ -15,10 +15,13 @@ limitations under the License.
 
 #include "xla/service/dot_dimension_merger.h"
 
+#include <memory>
 #include <string>
 
+#include <gtest/gtest.h>
 #include "xla/service/hlo_parser.h"
 #include "xla/tests/hlo_test_base.h"
+#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace {
@@ -133,6 +136,33 @@ ENTRY e {
   TF_ASSERT_OK_AND_ASSIGN(bool modified,
                           DotDimensionMerger().Run(module.get()));
   EXPECT_FALSE(modified);
+}
+
+TEST_F(DotDimensionMergerTest, SparseDotUpdatesDescriptor) {
+  const std::string kHloText = R"(
+HloModule m
+
+ENTRY e {
+ p0 = bf16[3,4,5,6,16] parameter(0)
+ p1 = bf16[3,4,5,32,6] parameter(1)
+ meta = u16[3,6,2] parameter(2)
+ ROOT d = bf16[4,5,6,6] dot(p0, p1, meta), sparsity=L.4@2:4,
+  lhs_batch_dims={1,2}, lhs_contracting_dims={0,4},
+  rhs_batch_dims={1,2}, rhs_contracting_dims={0,3}
+})";
+
+  RunAndFilecheckHloRewrite(kHloText, DotDimensionMerger(), R"(
+; CHECK: %[[R0:.*]] = bf16[3,20,6,16]{3,2,1,0} reshape(%p0)
+; CHECK: %[[R1:.*]] = bf16[3,20,32,6]{3,2,1,0} reshape(%p1)
+; CHECK: %[[R2:.*]] = u16[3,6,2]{2,1,0} parameter(2)
+; CHECK: %[[DOT:.*]] = bf16[20,6,6]{2,1,0} dot(%[[R0]], %[[R1]], %[[R2]])
+; CHECK-SAME: lhs_batch_dims={1}
+; CHECK-SAME: lhs_contracting_dims={0,3}
+; CHECK-SAME: rhs_batch_dims={1}
+; CHECK-SAME: rhs_contracting_dims={0,2}
+; CHECK-SAME: sparsity=L.3@2:4
+; CHECK-NEXT: ROOT {{.+}} = bf16[4,5,6,6]{3,2,1,0} reshape(%[[DOT]])
+  )");
 }
 
 }  // namespace

@@ -3,9 +3,11 @@ load(
     "@local_config_rocm//rocm:build_defs.bzl",
     "if_rocm_is_configured",
 )
+load("@local_tsl//tsl:tsl.bzl", "internal_visibility")
 
 package(
-    default_visibility = ["//visibility:public"],
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
+    default_visibility = internal_visibility([":friends"]),
     licenses = ["notice"],
 )
 
@@ -26,7 +28,6 @@ cc_library(
         "gpu_backend_lib.h",
         "utils.h",
     ],
-    visibility = ["//visibility:public"],
     deps = [
         "//xla:status_macros",
         "//xla:statusor",
@@ -40,6 +41,7 @@ cc_library(
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
         "@llvm-project//llvm:Analysis",

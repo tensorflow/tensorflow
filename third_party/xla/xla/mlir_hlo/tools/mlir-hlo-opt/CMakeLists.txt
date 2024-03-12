@@ -25,14 +25,10 @@ set(LIBS
         AllMhloPasses
         DeallocationPasses
         LmhloDialect
-        LmhloGPUDialect
         LmhloPasses
         MLIRBufferTransforms
-        MLIRHLOAnalysis
         MLIRHLOGPUTransforms
-        MLIRHLOTestAnalysis
         MhloRegisterDialects
-        MhloTestAnalysis
         )
 add_llvm_executable(mlir-hlo-opt mlir-hlo-opt.cc
   DEPENDS

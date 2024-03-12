@@ -41,7 +41,7 @@ limitations under the License.
 namespace mlir {
 namespace TFL {
 
-tsl::StatusOr<TypedAttr> CreateTypedAttr(ShapedType shaped_type, int value) {
+absl::StatusOr<TypedAttr> CreateTypedAttr(ShapedType shaped_type, int value) {
   Type element_type = shaped_type.getElementType();
   if (element_type.isF16()) {
     auto floatType = mlir::FloatType::getF16(element_type.getContext());
@@ -130,7 +130,7 @@ tsl::StatusOr<TypedAttr> CreateTypedAttr(ShapedType shaped_type, int value) {
 }
 
 // Returns a Constant op with a splat vector value.
-tsl::StatusOr<arith::ConstantOp> CreateConstOpWithVectorValue(
+absl::StatusOr<arith::ConstantOp> CreateConstOpWithVectorValue(
     PatternRewriter* rewriter, Location loc, ShapedType shaped_type,
     int value) {
   ShapedType dense_type = RankedTensorType::get(shaped_type.getShape(),
@@ -141,7 +141,7 @@ tsl::StatusOr<arith::ConstantOp> CreateConstOpWithVectorValue(
                                              cast<TypedAttr>(*attr));
 }
 
-tsl::StatusOr<arith::ConstantOp> CreateConstOpWithSingleValue(
+absl::StatusOr<arith::ConstantOp> CreateConstOpWithSingleValue(
     PatternRewriter* rewriter, Location loc, ShapedType shaped_type,
     int value) {
   ShapedType scalar_type =

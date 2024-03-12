@@ -39,7 +39,7 @@ Status ParseTextProto(absl::string_view text_proto,
   tsl::protobuf::io::ArrayInputStream input_stream(text_proto.data(),
                                                    text_proto.size());
   if (parser.Parse(&input_stream, parsed_proto)) {
-    return OkStatus();
+    return absl::OkStatus();
   }
   parsed_proto->Clear();
   return errors::InvalidArgument("Could not parse text proto: ", text_proto);

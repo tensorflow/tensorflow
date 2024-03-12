@@ -358,14 +358,23 @@ class CTCLossOpGPU : public OpKernel {
     DnnScratchAllocator workspace_allocator(1LL << 32, ctx);
 
     Stream* stream = ctx->op_device_context()->stream();
+    auto dnn = stream->parent()->AsDnn();
+    OP_REQUIRES(ctx, dnn != nullptr,
+                absl::InternalError("stream->parent() has no DNN support"));
+    stream_executor::DeviceMemory<uint8_t> scratch_memory;
+    int ctc_loss_algo_id;
     bool cudnn_launch_status =
-        stream
-            ->ThenCtcLoss(*probs_desc, probs_data, labels_data,
-                          labels_lengths_data, input_lengths_data,
-                          GetNumericOptions(), &costs_data, *grads_desc,
-                          &grads_data, &workspace_allocator)
+        dnn->PrepareForCtcLoss(
+               stream, *probs_desc, probs_data, *grads_desc, labels_data,
+               labels_lengths_data, input_lengths_data, GetNumericOptions(),
+               &workspace_allocator, &scratch_memory, &ctc_loss_algo_id)
             .ok();
-
+    if (cudnn_launch_status) {
+      cudnn_launch_status = dnn->DoCtcLoss<float>(
+          stream, *probs_desc, probs_data, labels_data, labels_lengths_data,
+          input_lengths_data, &costs_data, *grads_desc, &grads_data,
+          &scratch_memory, ctc_loss_algo_id);
+    }
     if (!cudnn_launch_status) {
       ctx->SetStatus(errors::Internal("cuDNN CTCLoss launch failure"));
     }

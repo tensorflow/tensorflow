@@ -24,12 +24,11 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
-#include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_schedule.h"
 #include "xla/service/hlo_pass_interface.h"
 #include "xla/status.h"
-#include "xla/statusor.h"
+#include "xla/stream_executor/device_description.h"
 
 namespace xla::gpu {
 
@@ -70,12 +69,14 @@ namespace xla::gpu {
 // custom call to a first class operation later.
 class CommandBufferScheduling : public HloModulePass {
  public:
-  // DebugOptions control which commands are enabled. Long term we want to
-  // remove that flag and enable all supported commands by default.
-  using CommandBufferConfig =
-      absl::flat_hash_set<DebugOptions::CommandBufferCmdType>;
+  struct CommandBufferConfig {
+    // DebugOptions control which commands are enabled. Long term we want to
+    // remove that flag and enable all supported commands by default.
+    absl::flat_hash_set<DebugOptions::CommandBufferCmdType> enabled_commands;
+    const se::DeviceDescription& device_description;
+  };
 
-  CommandBufferScheduling(const se::GpuComputeCapability& gpu_compute_comp,
+  CommandBufferScheduling(const se::DeviceDescription& device_description,
                           int32_t gpu_toolkit_version,
                           int32_t gpu_driver_version);
 
@@ -127,7 +128,7 @@ class CommandBufferScheduling : public HloModulePass {
       CommandBuffer command_buffer);
 
  private:
-  se::GpuComputeCapability gpu_compute_comp_;
+  se::DeviceDescription device_description_;
   // For NVIDIA gpus XLA can be compiled with a CUDA version that is larger than
   // the version supported by the driver, e.g. we can compile for CUDA 12.3 but
   // have 12.1 driver installed. When deciding what command buffer features we

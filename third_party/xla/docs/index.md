@@ -37,18 +37,6 @@ Alibaba, Amazon Web Services, AMD, Apple, Arm, Google, Intel, Meta, and NVIDIA.
 
 ## Documentation
 
-To learn more about XLA, check out the guides below. If you're a new XLA
+To learn more about XLA, check out the links on the left. If you're a new XLA
 developer, you might want to start with [XLA architecture](architecture.md) and
 then read [Code reviews](code_reviews.md).
-
--   [Aliasing in XLA](aliasing.md)
--   [XLA architecture](architecture.md)
--   [Broadcasting](broadcasting.md)
--   [Code reviews](code_reviews.md)
--   [XLA custom calls](custom_call.md)
--   [Developing a new backend for XLA](developing_new_backend.md)
--   [Indexing Analysis](indexing.md)
--   [Operation semantics](operation_semantics.md)
--   [Shapes and layout](shapes.md)
--   [Tiled layout](tiled_layout.md)
--   [Setting up LSP with clangd](lsp.md)

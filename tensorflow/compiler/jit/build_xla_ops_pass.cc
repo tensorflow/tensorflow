@@ -260,7 +260,7 @@ Status GetXlaClusterInfo(Node* n, XlaClusterInfo* result) {
 
   result->function.set_name(n->type_string());
   *result->function.mutable_attr() = n->def().attr();
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status CopyIncomingControlEdges(Graph* g, Node* from, Node* to) {
@@ -270,7 +270,7 @@ Status CopyIncomingControlEdges(Graph* g, Node* from, Node* to) {
     }
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 void RemoveAllIncomingControlEdges(Graph* g, Node* n) {
@@ -289,11 +289,11 @@ Status DeviceRequiresCompilation(const jit::DeviceInfoCache& device_info_cache,
       device_info_cache.GetCompilationDevice(device);
   *result = registration->autoclustering_policy ==
             XlaOpRegistry::AutoclusteringPolicy::kAlways;
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Replaces `n` with a `PartitionedCall` op that calls the same function.
-StatusOr<Node*> ReplaceFunctionCallWithPartitionedCall(
+absl::StatusOr<Node*> ReplaceFunctionCallWithPartitionedCall(
     const GraphOptimizationPassOptions& options,
     const FunctionLibraryDefinition& flib_def, Node* n, Graph* g,
     const NameAttrList& func, const Scope& root) {
@@ -343,7 +343,7 @@ StatusOr<Node*> ReplaceFunctionCallWithPartitionedCall(
   return call.operation.node();
 }
 
-StatusOr<jit::DeviceId> InferDeviceForCluster(
+absl::StatusOr<jit::DeviceId> InferDeviceForCluster(
     jit::DeviceInfoCache* device_info_cache, Node* n,
     const string& function_name, const FunctionLibraryDefinition& flib_def) {
   const FunctionDef* func_def = flib_def.Find(function_name);
@@ -401,7 +401,8 @@ std::vector<Output> GetXlaRunArgs(const Scope& s,
   return xla_run_args;
 }
 
-StatusOr<MemoryTypeVector> GetOutputMemoryTypes(const Scope& root, Node* n) {
+absl::StatusOr<MemoryTypeVector> GetOutputMemoryTypes(const Scope& root,
+                                                      Node* n) {
   MemoryTypeVector input_mtypes, output_mtypes;
   DeviceType device_type("");
   TF_RETURN_IF_ERROR(
@@ -442,7 +443,7 @@ Status PredicateInt32Inputs(const Scope& root, Node* n,
   }
 
   if (int32_inputs.empty()) {
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   // Create a single IdentityN that is dead if and only if
@@ -460,7 +461,7 @@ Status PredicateInt32Inputs(const Scope& root, Node* n,
                                                 int32_inputs_input_idxs[i]));
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status ReplaceNodeWithXlaCompileAndXlaRun(
@@ -564,7 +565,7 @@ Status ReplaceNodeWithXlaCompileAndXlaRun(
         PredicateInt32Inputs(root, pco, inverse_predicate_as_control));
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 }  // namespace
 
@@ -614,6 +615,6 @@ Status BuildXlaOpsPass::Run(const GraphOptimizationPassOptions& options) {
     DumpGraphToFile("build_xla_ops", *graph, options.flib_def);
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 }  // namespace tensorflow

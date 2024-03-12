@@ -17,18 +17,20 @@ limitations under the License.
 #define XLA_STREAM_EXECUTOR_GPU_GPU_BLAS_LT_H_
 
 #include <any>
+#include <cstddef>
 #include <cstdint>
+#include <memory>
 #include <optional>
 #include <utility>
 #include <vector>
 
-#include "xla/shape.h"
 #include "xla/status.h"
-#include "xla/statusor.h"
 #include "xla/stream_executor/blas.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/host_or_device_scalar.h"
 #include "xla/types.h"
+#include "xla/xla_data.pb.h"
+#include "tsl/platform/errors.h"
 
 namespace stream_executor::gpu {
 

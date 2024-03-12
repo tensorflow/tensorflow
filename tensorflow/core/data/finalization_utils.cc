@@ -22,10 +22,10 @@ limitations under the License.
 namespace tensorflow {
 namespace data {
 
-StatusOr<DatasetBase*> GetFinalizedDataset(OpKernelContext* ctx,
-                                           const DatasetBase* dataset) {
+absl::StatusOr<DatasetBase*> GetFinalizedDataset(OpKernelContext* ctx,
+                                                 const DatasetBase* dataset) {
   return dataset->Finalize(
-      ctx, [ctx, dataset]() -> StatusOr<core::RefCountPtr<DatasetBase>> {
+      ctx, [ctx, dataset]() -> absl::StatusOr<core::RefCountPtr<DatasetBase>> {
         core::RefCountPtr<DatasetBase> dataset_ref_ptr;
         DatasetBase* raw_ptr;
         TF_RETURN_IF_ERROR(data::FinalizeDataset(ctx, dataset, &raw_ptr));

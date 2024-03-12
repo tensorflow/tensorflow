@@ -26,12 +26,13 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
-#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "xla/python/ifrt/array.h"
 #include "xla/python/ifrt/client.h"
 #include "tensorflow/core/tfrt/ifrt/ifrt_executable_registry.h"
+#include "tensorflow/core/tfrt/ifrt/ifrt_loaded_variable_registry.h"
 #include "tsl/concurrency/ref_count.h"
+#include "tsl/platform/threadpool.h"
 
 namespace tensorflow {
 namespace ifrt_serving {
@@ -51,14 +52,14 @@ struct DeviceConfig {
 class IfrtModelContext {
  public:
   explicit IfrtModelContext(std::shared_ptr<xla::ifrt::Client> client,
-                            const Eigen::ThreadPoolDevice* thread_pool_device)
-      : client_(std::move(client)), thread_pool_device_(*thread_pool_device) {}
+                            const tsl::thread::ThreadPool* thread_pool)
+      : client_(std::move(client)), thread_pool_(*thread_pool) {}
   IfrtModelContext(
       std::shared_ptr<xla::ifrt::Client> client,
-      const Eigen::ThreadPoolDevice* thread_pool_device,
+      const tsl::thread::ThreadPool* thread_pool,
       tensorflow::XlaHelpers::ShapeRepresentationFn shape_representation_fn)
       : client_(std::move(client)),
-        thread_pool_device_(*thread_pool_device),
+        thread_pool_(*thread_pool),
         shape_representation_fn_(shape_representation_fn) {}
 
   void RegisterHandle(ServingExecutableRegistry::Handle handle) {
@@ -72,27 +73,24 @@ class IfrtModelContext {
     return shape_representation_fn_;
   }
 
-  const Eigen::ThreadPoolDevice& GetThreadPoolDevice() const;
+  const tsl::thread::ThreadPool& GetThreadPool() const;
 
-  absl::Status RegisterLoadedVariable(
-      absl::string_view name,
-      tsl::RCReference<xla::ifrt::Array> loaded_variable)
-      ABSL_LOCKS_EXCLUDED(mutex_);
-
-  absl::StatusOr<tsl::RCReference<xla::ifrt::Array>> GetLoadedVariable(
-      absl::string_view name) const ABSL_LOCKS_EXCLUDED(mutex_);
+  const IfrtLoadedVariableRegistry& GetLoadedVariableRegistry() const {
+    return loaded_variable_registry_;
+  }
+  IfrtLoadedVariableRegistry& GetLoadedVariableRegistry() {
+    return loaded_variable_registry_;
+  }
 
  private:
   std::shared_ptr<xla::ifrt::Client> client_;
-  const Eigen::ThreadPoolDevice& thread_pool_device_;
+  const tsl::thread::ThreadPool& thread_pool_;
   tensorflow::XlaHelpers::ShapeRepresentationFn shape_representation_fn_ =
       tensorflow::IdentityShapeRepresentationFn();
 
   std::vector<ServingExecutableRegistry::Handle> handles_;
 
-  mutable absl::Mutex mutex_;
-  absl::flat_hash_map<std::string, tsl::RCReference<xla::ifrt::Array>>
-      loaded_variable_map_ ABSL_GUARDED_BY(mutex_);
+  IfrtLoadedVariableRegistry loaded_variable_registry_;
 };
 
 }  // namespace ifrt_serving

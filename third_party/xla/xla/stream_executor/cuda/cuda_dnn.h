@@ -19,17 +19,26 @@ limitations under the License.
 #ifndef XLA_STREAM_EXECUTOR_CUDA_CUDA_DNN_H_
 #define XLA_STREAM_EXECUTOR_CUDA_CUDA_DNN_H_
 
+#include <Eigen/Core>
 #include <cstdint>
+#include <memory>
 #include <optional>
 #include <string>
 #include <vector>
 
-#include "absl/base/thread_annotations.h"
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/types/span.h"
-#include "xla/stream_executor/cuda/cuda_activation.h"
+#include "third_party/gpus/cudnn/cudnn_version.h"
+#include "xla/stream_executor/device_description.h"
+#include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/dnn.h"
-#include "xla/stream_executor/plugin_registry.h"
+#include "xla/stream_executor/numeric_options.h"
+#include "tsl/protobuf/dnn.pb.h"
+
+#if CUDNN_VERSION >= 8100
+#include "third_party/cudnn_frontend/include/cudnn_frontend.h"
+#endif  // CUDNN_VERSION >= 8100
 
 namespace stream_executor {
 namespace gpu {
@@ -44,6 +53,24 @@ using BatchDescriptorSlice = absl::Span<const dnn::BatchDescriptor>;
 
 template <typename T>
 using DeviceMemorySlice = absl::Span<const DeviceMemory<T>* const>;
+
+#if CUDNN_VERSION >= 8100
+class CudnnGraph : public dnn::DnnGraph {
+ public:
+  explicit CudnnGraph(cudnn_frontend::graph::Graph&& graph)
+      : graph_(std::move(graph)) {}
+  // Prepares a graph and checks whether it is generally supported.
+  absl::StatusOr<bool> Prepare() override;
+  // Builds single plan of the graph with given ID.
+  absl::Status Build(int64_t plan_id) override;
+  absl::Status Execute(Stream& stream,
+                       absl::Span<DeviceMemoryBase> operands) const override;
+  const cudnn_frontend::graph::Graph& Graph() { return graph_; }
+
+ private:
+  cudnn_frontend::graph::Graph graph_;
+};
+#endif  // CUDNN_VERSION >= 8100
 
 // cudnn-library based DNN support. For details on overridden interface
 // functions, see dnn.h.
@@ -295,13 +322,17 @@ class CudnnSupport : public dnn::DnnSupport {
       dnn::ActivationMode activation_mode) override;
 
   absl::StatusOr<std::unique_ptr<const dnn::NormRunner>> NormRunnerFromDesc(
-      Stream* stream, const dnn::AlgorithmDesc& algorithm_desc, double epsilon,
-      const dnn::TensorDescriptor& input_descriptor,
+      Stream* stream, const dnn::AlgorithmDesc& algorithm_desc,
+      dnn::NormKind kind, double epsilon,
+      const dnn::TensorDescriptor& x_descriptor,
       const dnn::TensorDescriptor& scale_descriptor,
-      const dnn::TensorDescriptor& bias_descriptor,
-      const dnn::TensorDescriptor& output_descriptor,
+      const dnn::TensorDescriptor& y_or_dx_descriptor,
+      std::optional<dnn::TensorDescriptor> bias_descriptor,
+      std::optional<dnn::TensorDescriptor> dy_descriptor,
       std::optional<dnn::TensorDescriptor> expectation_descriptor,
-      std::optional<dnn::TensorDescriptor> norm_factor_descriptor) override;
+      std::optional<dnn::TensorDescriptor> norm_factor_descriptor,
+      std::optional<dnn::TensorDescriptor> dscale_descriptor,
+      std::optional<dnn::TensorDescriptor> dbias_descriptor) override;
 
   absl::StatusOr<std::unique_ptr<const dnn::FusedMHARunner>>
   FusedMHARunnerFromDesc(
@@ -514,10 +545,6 @@ class CudnnSupport : public dnn::DnnSupport {
       DeviceMemory<float>* raw_variable_gradient,
       ScratchAllocator* workspace_allocator) override;
 
-  bool DoDepthConcatenate(Stream* stream, BatchDescriptorSlice input_dimensions,
-                          DeviceMemorySlice<float> input_data,
-                          DeviceMemory<float>* output_data) override;
-
   // Derives an output batch descriptor from an input batch and convolution
   // descriptors.
   bool DeriveOutputBatchDescriptor(
@@ -547,7 +574,16 @@ class CudnnSupport : public dnn::DnnSupport {
 
   void NotifyStreamDestroyed(Stream* stream) override;
 
+#if CUDNN_VERSION >= 8100
+  // Loads complete graph from its serialized representation.
+  absl::StatusOr<std::unique_ptr<dnn::DnnGraph>> DeserializeGraph(
+      absl::string_view serialized_data) const override;
+#endif  // CUDNN_VERSION >= 8100
+
  private:
+  // Uses cuDNN handle for execution.
+  friend class CudnnGraph;
+
   GpuExecutor* parent_;  // Parent executor object. Not owned.
 
   // Provides access to the cuDNN handle.

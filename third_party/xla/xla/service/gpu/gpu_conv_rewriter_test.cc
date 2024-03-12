@@ -686,6 +686,52 @@ TEST_F(GpuConvRewriterTest, TestBackwardFilterPatternNoMatch) {
                   0)));
 }
 
+TEST_F(GpuConvRewriterTest, TestConv1dBackwardFilterPatternMatch) {
+  // There exist one kernel dimension equal to output dimension, regard
+  // it as backward filter if conv is 1d.
+  const std::string module_str = absl::StrFormat(R"(
+    HloModule Test
+
+    ENTRY Test {
+      input = f32[8,256,128] parameter(0)
+      filter = f32[8,254,128] parameter(1)
+      reshape.1 = f32[8,1,256,128] reshape(input)
+      reshape.2 = f32[8,1,254,128] reshape(filter)
+      ROOT conv = f32[1,3,128,128] convolution(reshape.1, reshape.2), window={size=1x254}, dim_labels=f01b_i01o->01bf
+    })");
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(module_str));
+
+  EXPECT_TRUE(RunPass(m.get()));
+  EXPECT_THAT(m->entry_computation()->root_instruction(),
+              GmockMatch(m::GetTupleElement(
+                  m::CustomCall({kCudnnConvBackwardFilterCallTarget},
+                                m::Reshape(), m::Reshape()),
+                  0)));
+}
+
+TEST_F(GpuConvRewriterTest, TestConv1dBackwardInputPatternMatch) {
+  // For conv1d backward input, filter may reverse first and then reshape.
+  const std::string module_str = absl::StrFormat(R"(
+    HloModule Test
+
+    ENTRY Test {
+      input = f32[8,254,128] parameter(0)
+      filter = f32[3,128,128] parameter(1)
+      reverse = f32[3,128,128] reverse(filter), dimensions={0}
+      reshape.1 = f32[8,1,254,128] reshape(input)
+      reshape.2 = f32[1,3,128,128] reshape(reverse)
+      ROOT conv = f32[8,1,256,128] convolution(reshape.1, reshape.2), window={size=1x3 pad=0_0x2_2}, dim_labels=b01f_01oi->b01f
+    })");
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(module_str));
+
+  EXPECT_TRUE(RunPass(m.get()));
+  EXPECT_THAT(m->entry_computation()->root_instruction(),
+              GmockMatch(m::GetTupleElement(
+                  m::CustomCall({kCudnnConvBackwardInputCallTarget},
+                                m::Reshape(), m::Reshape()),
+                  0)));
+}
+
 }  // anonymous namespace
 }  // namespace gpu
 }  // namespace xla

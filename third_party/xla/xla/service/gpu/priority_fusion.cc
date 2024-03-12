@@ -31,10 +31,12 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/meta/type_traits.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/time/time.h"
 #include "llvm/ADT/STLExtras.h"
+#include "xla/debug_options_flags.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
@@ -47,12 +49,15 @@ limitations under the License.
 #include "xla/service/gpu/model/fusion_analysis_cache.h"
 #include "xla/service/gpu/model/gpu_hlo_cost_analysis.h"
 #include "xla/service/gpu/model/gpu_performance_model.h"
+#include "xla/service/gpu/model/gpu_performance_model_base.h"
+#include "xla/service/hlo_graph_dumper.h"
 #include "xla/service/instruction_fusion.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/blocking_counter.h"
+#include "tsl/platform/errors.h"
 #include "tsl/platform/logging.h"
 #include "tsl/platform/status.h"
 #include "tsl/platform/threadpool.h"
@@ -112,7 +117,7 @@ bool IsFusible(const HloInstruction& instr) {
 // performance when fusing it to all of its fusible users. We greedily pick the
 // max-benefit producer to fuse, and update the estimated benefits of the fused
 // nodes and their operands.
-class GpuPriorityFusionQueue : public FusionQueue {
+class GpuPriorityFusionQueue {
   using Priority = int64_t;
   using CanFuseCallback = std::function<FusionDecision(
       HloInstruction* /*producer*/, int64_t /*consumer operand_index*/)>;
@@ -132,6 +137,11 @@ class GpuPriorityFusionQueue : public FusionQueue {
         fusion_analysis_cache_(fusion_analysis_cache) {
     VLOG(2) << "Running full HLO cost analysis for " << computation_->name();
     TF_CHECK_OK(computation_->Accept(&cost_analysis_));
+
+    dump_fusion_visualization_ = computation->parent()
+                                     ->config()
+                                     .debug_options()
+                                     .xla_dump_fusion_visualization();
 
     // Initializes the priority queue.
     std::vector<HloInstruction*> instructions;
@@ -176,18 +186,14 @@ class GpuPriorityFusionQueue : public FusionQueue {
     return priorities;
   }
 
-  std::pair<HloInstruction*, std::vector<int64_t>>
-  DequeueNextInstructionAndOperandsToFuseInOrder() override {
-    // When current_consumers_ is empty, we need to dequeue a new producer.
-    // Update the priorities that changed during the last fusion.
-    if (current_consumers_.empty()) {
-      UpdatePriorities();
-    }
+  // Gets the next pair of (producer, consumers) from the queue for fusion.
+  // Returns true if there is the next producer to fuse, otherwise false. Stores
+  // the producer and consumers in `current_producer_` and `current_consumers_`.
+  bool DequeueNextProducer() {
+    current_producer_ = nullptr;
+    current_consumers_.clear();
 
-    while (current_consumers_.empty()) {
-      if (producer_priority_queue_.empty()) {
-        return {};
-      }
+    while (!producer_priority_queue_.empty() && current_consumers_.empty()) {
       auto next_it = std::prev(producer_priority_queue_.end());
       auto priority = next_it->first.first;
 
@@ -200,6 +206,7 @@ class GpuPriorityFusionQueue : public FusionQueue {
       if (priority < 0) {
         continue;
       }
+
       current_consumers_ = current_producer_->users();
 
       if (current_producer_->opcode() == HloOpcode::kBitcast) {
@@ -211,14 +218,7 @@ class GpuPriorityFusionQueue : public FusionQueue {
       }
     }
 
-    auto next_consumer = current_consumers_.back();
-    int64_t producer_operand_index =
-        next_consumer->operand_index(current_producer_);
-    current_consumers_.pop_back();
-    VLOG(5) << "next: " << next_consumer->name() << "(" << next_consumer
-            << ") + " << current_producer_->name() << "(" << current_producer_
-            << ")";
-    return {next_consumer, {producer_operand_index}};
+    return !current_consumers_.empty();
   }
 
   // Update priorities of all affected ops.
@@ -258,7 +258,15 @@ class GpuPriorityFusionQueue : public FusionQueue {
 
   // Prepares producer and consumer instruction to be fused. Invalidates caches
   // and writes logs.
-  void PreFusion(HloInstruction* producer, HloInstruction* consumer) override {
+  void PreFusion(HloInstruction* producer, HloInstruction* consumer) {
+    if (dump_fusion_visualization_) {
+      RegisterFusionState(
+          *computation_,
+          absl::StrCat("About to fuse |", producer->name(), "| into |",
+                       consumer->name(), "| inside PriorityFusion"),
+          *consumer, producer);
+    }
+
     InvalidateCaches(producer);
     InvalidateCaches(consumer);
   }
@@ -283,7 +291,7 @@ class GpuPriorityFusionQueue : public FusionQueue {
   // Updates data for the new fusion instruction and its users and operands.
   void OnFusingInstruction(HloInstruction* fusion,
                            HloInstruction* original_producer,
-                           HloInstruction* original_consumer) override {
+                           HloInstruction* original_consumer) {
     if (fusion_process_dump_) {
       auto* fusion_step =
           fusion_process_dump_->add_fusion_steps()->mutable_fusion();
@@ -292,6 +300,14 @@ class GpuPriorityFusionQueue : public FusionQueue {
       fusion_step->set_fusion_name(std::string(fusion->name()));
       fusion_step->set_producer_name(std::string(original_producer->name()));
       fusion_step->set_consumer_name(std::string(original_consumer->name()));
+    }
+
+    if (dump_fusion_visualization_) {
+      RegisterFusionState(
+          *computation_,
+          absl::StrCat("Fused |", original_producer->name(), "| into |",
+                       fusion->name(), "| inside PriorityFusion"),
+          *fusion);
     }
 
     // The original consumer was replaced with the fusion, but it's pointer can
@@ -313,8 +329,6 @@ class GpuPriorityFusionQueue : public FusionQueue {
     // Collect the instructions whose priorities need to be updated.
     for (HloInstruction* operand : fusion->operands()) {
       if (operand == original_producer ||
-          original_producer->opcode() == HloOpcode::kBroadcast ||
-          operand->opcode() == HloOpcode::kBroadcast ||
           operand->opcode() == HloOpcode::kConstant ||
           operand->opcode() == HloOpcode::kGetTupleElement) {
         continue;
@@ -331,7 +345,7 @@ class GpuPriorityFusionQueue : public FusionQueue {
   }
 
   // Removes data for the instruction.
-  void RemoveInstruction(HloInstruction* instruction) override {
+  void RemoveInstruction(HloInstruction* instruction) {
     to_update_priority_.erase(instruction);
     fusion_analysis_cache_.Invalidate(*instruction);
 
@@ -343,7 +357,11 @@ class GpuPriorityFusionQueue : public FusionQueue {
     reverse_map_.erase(reverse_it);
   }
 
-  const std::vector<bool>* FusionConfiguration() override { return nullptr; }
+  HloInstruction* current_producer() { return current_producer_; }
+
+  const std::vector<HloInstruction*>& current_consumers() {
+    return current_consumers_;
+  }
 
  private:
   // Returns the priority of the producer based on its current operands and
@@ -361,7 +379,7 @@ class GpuPriorityFusionQueue : public FusionQueue {
     }
 
     // Don't fuse if we can't fuse in all users.
-    if (auto fusion_decision = CanFuseWithAllUsers(producer);
+    if (auto fusion_decision = CanFuseWithAllNonBitcastUsers(producer);
         !fusion_decision) {
       if (fusion_process_dump_) {
         absl::MutexLock lock(&fusion_process_dump_mutex_);
@@ -404,6 +422,10 @@ class GpuPriorityFusionQueue : public FusionQueue {
       return "the consumer is not fusible";
     }
 
+    if (consumer->opcode() == HloOpcode::kBitcast) {
+      return "not fusing into a single bitcast as consumer";
+    }
+
     // Scatter is special as it has no elemental version but is still input
     // fusible. Block attempts to create scatter fusions we can't codegen.
     if (auto can_fuse = CanEmitInputFusedScatter(*producer, *consumer);
@@ -417,7 +439,9 @@ class GpuPriorityFusionQueue : public FusionQueue {
     auto contains_significant_reduce = [&](const HloInstruction* instr) {
       auto fusion = HloFusionAdaptor::ForInstruction(instr);
       return HloAnyOf(fusion->GetRoots(), *fusion, [](auto node) {
-        if (node.opcode() != HloOpcode::kReduce) return false;
+        if (!(node.opcode() == HloOpcode::kReduce && node.shape().IsArray())) {
+          return false;
+        }
 
         int64_t reduction_size =
             ShapeUtil::ElementsIn(node.instruction().operand(0)->shape()) /
@@ -505,19 +529,27 @@ class GpuPriorityFusionQueue : public FusionQueue {
     return fusion_decision;
   }
 
-  FusionDecision CanFuseWithAllUsers(HloInstruction* producer) {
+  FusionDecision CanFuseWithAllNonBitcastUsers(HloInstruction* producer) {
     if (producer->users().empty()) {
       return "No users to fuse";
     }
 
     FusionDecision result;
+    bool has_non_bitcast_user = false;
     for (const auto& user : producer->users()) {
+      if (user->opcode() == HloOpcode::kBitcast) {
+        continue;
+      }
+      has_non_bitcast_user = true;
       if (auto fusion_decision = CanFuseCached(producer, user);
           !fusion_decision) {
         VLOG(10) << "Cannot fuse " << producer->name() << " with "
                  << user->name() << ", because: " << fusion_decision.Explain();
         return fusion_decision;
       }
+    }
+    if (!has_non_bitcast_user) {
+      return "not fusing because there are only bitcast users";
     }
     return {};
   }
@@ -568,6 +600,8 @@ class GpuPriorityFusionQueue : public FusionQueue {
   absl::Mutex can_fuse_cache_mutex_;
 
   GpuPerformanceModelCache gpu_performance_model_cache_;
+
+  bool dump_fusion_visualization_;
 };
 
 }  // namespace
@@ -606,6 +640,14 @@ bool IsSmallConstant(const HloInstruction* instr) {
          ShapeUtil::ElementsIn(instr->shape()) <= 1;
 }
 
+bool GpuPriorityFusion::ConsumeFuel(HloInstruction* producer,
+                                    HloInstruction* consumer) {
+  return xla::ConsumeFuel(name(), /*ran_out_of_fuel_msg=*/[&] {
+    return absl::StrFormat("Not fusing producer %s with consumer %s",
+                           producer->name(), consumer->name());
+  });
+};
+
 absl::StatusOr<bool> GpuPriorityFusion::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
@@ -639,33 +681,67 @@ absl::StatusOr<bool> GpuPriorityFusion::Run(
         module->ToString(HloPrintOptions::ShortParsable()));
   }
 
-  auto result = InstructionFusion::Run(module, execution_threads);
+  int changed = false;
+  // Note: `GetFusionComputations` doesn't return the fusion computations, but
+  // the computations to be fused.
+  for (auto* computation : GetFusionComputations(module, execution_threads)) {
+    CHECK(!computation->IsFusionComputation());
 
-  // Fuse all constants.
-  if (result.ok()) {
-    // Note: `GetFusionComputations` doesn't return the fusion computations, but
-    // the computations to be fused.
-    for (auto* computation : GetFusionComputations(module, execution_threads)) {
-      std::vector<HloInstruction*> constants;
-      for (auto* instruction : computation->instructions()) {
-        // Small constants should be fused, because they can be folded and
-        // codegened efficiently.
-        // Fusing large constants doesn't give much benefits, because they're
-        // treated like parameters and read from global memory anyway. Fusion
-        // and duplication of large constants can, however, cause problems if we
-        // want to dump hlo and parse back, because in that case duplicated
-        // constants will be filled with different data.
-        if (IsSmallConstant(instruction)) {
-          constants.push_back(instruction);
+    auto fusion_queue = std::make_unique<GpuPriorityFusionQueue>(
+        computation, cost_analysis_options_, &device_info_,
+        fusion_process_dump_.get(), thread_pool_, fusion_analysis_cache_);
+
+    while (fusion_queue->DequeueNextProducer()) {
+      auto producer = fusion_queue->current_producer();
+
+      for (auto* consumer : fusion_queue->current_consumers()) {
+        // Don't fuse into single bitcasts. We ignore them in the check
+        // CanFuseWithAllNonBitcastUsers(), so we need to check it here.
+        if (consumer->opcode() == HloOpcode::kBitcast) {
+          continue;
         }
+        if (!ConsumeFuel(producer, consumer)) continue;
+
+        VLOG(5) << "next: " << consumer->name() << "(" << consumer << ") + "
+                << producer->name() << "(" << producer << ")";
+
+        fusion_queue->PreFusion(producer, consumer);
+        auto fusion_instruction = Fuse(producer, consumer, computation);
+        fusion_queue->OnFusingInstruction(fusion_instruction, producer,
+                                          consumer);
+
+        changed = true;
       }
-      for (auto* constant : constants) {
-        auto users = constant->users();
-        for (auto* user : users) {
-          if (IsFusible(*user) && CanEmitInputFusedScatter(*constant, *user)) {
-            InstructionFusion::Fuse(constant, user, computation);
-            result = true;
-          }
+
+      if (producer->user_count() == 0) {
+        fusion_queue->RemoveInstruction(producer);
+        // Remove from computation.
+        TF_RETURN_IF_ERROR(computation->RemoveInstruction(producer));
+      }
+
+      fusion_queue->UpdatePriorities();
+    }
+
+    // Fuse all constants.
+    std::vector<HloInstruction*> constants;
+    for (auto* instruction : computation->instructions()) {
+      // Small constants should be fused, because they can be folded and
+      // codegened efficiently.
+      // Fusing large constants doesn't give much benefits, because they're
+      // treated like parameters and read from global memory anyway. Fusion
+      // and duplication of large constants can, however, cause problems if we
+      // want to dump hlo and parse back, because in that case duplicated
+      // constants will be filled with different data.
+      if (IsSmallConstant(instruction)) {
+        constants.push_back(instruction);
+      }
+    }
+    for (auto* constant : constants) {
+      auto users = constant->users();
+      for (auto* user : users) {
+        if (IsFusible(*user) && CanEmitInputFusedScatter(*constant, *user)) {
+          Fuse(constant, user, computation);
+          changed = true;
         }
       }
     }
@@ -682,7 +758,7 @@ absl::StatusOr<bool> GpuPriorityFusion::Run(
                                 "priority_fusion_dump");
   }
 
-  return result;
+  return changed;
 }
 
 FusionDecision GpuPriorityFusion::ShouldFuse(HloInstruction* consumer,
@@ -705,6 +781,7 @@ HloInstruction::FusionKind GpuPriorityFusion::ChooseKind(
       return HloInstruction::FusionKind::kLoop;
     case HloFusionAnalysis::EmitterFusionKind::kTriton:
     case HloFusionAnalysis::EmitterFusionKind::kCustomFusion:
+    case HloFusionAnalysis::EmitterFusionKind::kCuDnn:
       return HloInstruction::FusionKind::kCustom;
     case HloFusionAnalysis::EmitterFusionKind::kConcatenate:
     case HloFusionAnalysis::EmitterFusionKind::kReduction:
@@ -728,9 +805,7 @@ HloInstruction* GpuPriorityFusion::FuseInstruction(
 
 std::unique_ptr<FusionQueue> GpuPriorityFusion::GetFusionQueue(
     HloComputation* computation) {
-  return std::unique_ptr<FusionQueue>(new GpuPriorityFusionQueue(
-      computation, cost_analysis_options_, &device_info_,
-      fusion_process_dump_.get(), thread_pool_, fusion_analysis_cache_));
+  return nullptr;
 }
 
 }  // namespace gpu

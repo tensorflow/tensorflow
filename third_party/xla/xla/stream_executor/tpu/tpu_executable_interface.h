@@ -44,7 +44,7 @@ class TpuExecutableInterface : public Executable {
       : Executable(std::move(hlo_module)) {}
   ~TpuExecutableInterface() override = default;
 
-  StatusOr<ExecutionOutput> ExecuteAsyncOnStream(
+  absl::StatusOr<ExecutionOutput> ExecuteAsyncOnStream(
       const ServiceExecutableRunOptions* run_options,
       std::vector<ExecutionInput> arguments,
       HloExecutionProfile* hlo_execution_profile) override;
@@ -63,7 +63,7 @@ class TpuExecutableInterface : public Executable {
   //
   // The optional 'transfer_stream' parameter enables transfers (for tuple
   // tables) to be performed on a separate stream to 'stream'.
-  StatusOr<ExecutionOutput> AllocateOutputMemoryWithInputReuse(
+  absl::StatusOr<ExecutionOutput> AllocateOutputMemoryWithInputReuse(
       const Shape& shape, const HloInputOutputAliasConfig& alias_config,
       se::DeviceMemoryAllocator* allocator,
       std::vector<ExecutionInput>* arguments, se::Stream* stream,

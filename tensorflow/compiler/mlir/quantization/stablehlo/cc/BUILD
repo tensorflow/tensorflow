@@ -34,6 +34,16 @@ cc_library(
 )
 
 cc_library(
+    name = "config",
+    srcs = ["config.cc"],
+    hdrs = ["config.h"],
+    compatible_with = get_compatible_with_portable(),
+    deps = [
+        "//tensorflow/compiler/mlir/quantization/stablehlo:quantization_config_proto_cc",
+    ],
+)
+
+cc_library(
     name = "io",
     srcs = ["io.cc"],
     hdrs = ["io.h"],
@@ -90,7 +100,8 @@ cc_library(
     hdrs = ["debugger.h"],
     compatible_with = get_compatible_with_portable(),
     deps = [
-        "//tensorflow/compiler/mlir/quantization/stablehlo/cc:graph_def",
+        ":graph_def",
+        "//tensorflow/compiler/mlir/quantization/stablehlo:quantization_config_proto_cc",
         "//tensorflow/compiler/mlir/quantization/tensorflow:exported_model_proto_cc",
         "//tensorflow/compiler/mlir/quantization/tensorflow:quantization_options_proto_cc",
         "//tensorflow/compiler/mlir/quantization/tensorflow/python:py_function_lib",
@@ -106,7 +117,8 @@ cc_library(
     hdrs = ["saved_model_export.h"],
     compatible_with = get_compatible_with_portable(),
     deps = [
-        ":saved_model_import",
+        ":pass_pipeline",
+        ":types",
         "//tensorflow/compiler/mlir/quantization/tensorflow:exported_model_proto_cc",
         "//tensorflow/compiler/mlir/quantization/tensorflow:passes",
         "//tensorflow/compiler/mlir/tensorflow",
@@ -162,9 +174,15 @@ cc_library(
     compatible_with = get_compatible_with_portable(),
     deps = [
         ":types",
+        "//tensorflow/cc/saved_model:reader",
+        "//tensorflow/core/protobuf:for_core_protos_cc",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:string_view",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
+        "@local_tsl//tsl/platform:errors",
     ],
 )
 
@@ -173,6 +191,7 @@ tf_cc_test(
     srcs = ["saved_model_import_test.cc"],
     deps = [
         ":saved_model_import",
+        ":types",
         "//tensorflow/compiler/mlir/quantization/common:test_base",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_googletest//:gtest_main",
@@ -188,6 +207,9 @@ cc_library(
     deps = [
         "//tensorflow/compiler/mlir/quantization/stablehlo:bridge_passes",
         "//tensorflow/compiler/mlir/quantization/stablehlo:passes",
+        "//tensorflow/compiler/mlir/quantization/stablehlo:quantization_config_proto_cc",
+        "//tensorflow/compiler/mlir/quantization/tensorflow:passes",
+        "//tensorflow/compiler/mlir/quantization/tensorflow:quantization_options_proto_cc",
         "//tensorflow/compiler/mlir/tensorflow/transforms:tensorflow_passes",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:Pass",
@@ -211,7 +233,6 @@ cc_library(
     deps = [
         ":component",
         ":pass_pipeline",
-        "//tensorflow/compiler/mlir/quantization/stablehlo:passes",
         "//tensorflow/compiler/mlir/quantization/stablehlo:quantization_config_proto_cc",
         "//tensorflow/compiler/mlir/quantization/tensorflow:passes",
         "//tensorflow/compiler/mlir/quantization/tensorflow:quantization_options_proto_cc",
@@ -220,7 +241,6 @@ cc_library(
         "@com_google_absl//absl/log:die_if_null",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:string_view",
-        "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
         "@local_tsl//tsl/platform:errors",
@@ -265,7 +285,6 @@ cc_library(
     deps = [
         ":component",
         ":pass_pipeline",
-        "//tensorflow/compiler/mlir/quantization/stablehlo:passes",
         "//tensorflow/compiler/mlir/quantization/stablehlo:quantization_config_proto_cc",
         "//tensorflow/compiler/mlir/quantization/tensorflow:passes",
         "//tensorflow/compiler/mlir/quantization/tensorflow/cc:run_passes",
@@ -273,7 +292,6 @@ cc_library(
         "@com_google_absl//absl/log:die_if_null",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:string_view",
-        "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
         "@local_tsl//tsl/platform:errors",
@@ -281,44 +299,11 @@ cc_library(
     ],
 )
 
-# OSS: This is a header-only target. Do NOT directly depend on `static_range_ptq_impl` unless it is
-# necessary (e.g. undefined symbol error), to avoid ODR violation.
 cc_library(
     name = "static_range_ptq",
-    hdrs = ["static_range_ptq.h"],
-    compatible_with = get_compatible_with_portable(),
-    # Must be header-only or unique (i.e. the same target is not a dependency of
-    # tensorflow_framework, tensorflow_cc, or pywrap_tensorflow_internal) dependencies.
-    deps = [
-        ":component",
-        ":types",
-        "//tensorflow/compiler/mlir/quantization/stablehlo:quantization_config_proto_cc",
-        "//tensorflow/compiler/mlir/quantization/tensorflow:exported_model_proto_cc",
-        "//tensorflow/compiler/mlir/quantization/tensorflow/python:py_function_lib",
-        "//tensorflow/core:protos_all_cc",
-        "@com_google_absl//absl/base:nullability",
-        "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/status",
-        "@com_google_absl//absl/status:statusor",
-        "@com_google_absl//absl/strings:string_view",
-        "@llvm-project//mlir:IR",
-    ],
-)
-
-cc_library(
-    name = "static_range_ptq_impl",
     srcs = ["static_range_ptq.cc"],
     hdrs = ["static_range_ptq.h"],
     compatible_with = get_compatible_with_portable(),
-    visibility = [
-        "//tensorflow:__pkg__",
-        "//tensorflow/compiler/mlir/lite:__pkg__",  # For tf_tfl_translate binary.
-        # For odml_to_stablehlo binary.
-        "//tensorflow/compiler/mlir/lite/stablehlo:__pkg__",
-        # For StableHLO Quantizer adapter functionalities within TFLite. Testonly.
-        "//tensorflow/compiler/mlir/lite/quantization/stablehlo:__pkg__",
-        "//tensorflow/python:__pkg__",
-    ],
     deps = [
         ":component",
         ":context",

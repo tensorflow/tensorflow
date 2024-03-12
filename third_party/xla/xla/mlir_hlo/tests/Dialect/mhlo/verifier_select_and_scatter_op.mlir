@@ -80,37 +80,6 @@ func.func @select_and_scatter_with_promotable_quantized_types(
   func.return %1 : tensor<10x24x24x64x!quant.uniform<i32:f32, 2.000000e+00:15>>
 }
 
-// CHECK: func @select_and_scatter_with_unranked_dims
-func.func @select_and_scatter_with_unranked_dims(
-  %arg0: tensor<4x5x1x1xbf16>,
-  %arg1: tensor<2x2x1x1xbf16>,
-  %arg2: tensor<bf16>) -> tensor<?x?x?x?xbf16> {
-  %0 = mhlo.constant dense<0> : tensor<4x2xi32>
-  %1 = mhlo.constant dense<[2, 2, 1, 1]> : tensor<4xi32>
-  %2 = mhlo.constant dense<[2, 3, 1, 1]> : tensor<4xi32>
-
-  %3 = "mhlo.select_and_scatter"(%arg0, %arg1, %arg2) ({
-  ^bb0(%arg3: tensor<*xbf16>, %arg4: tensor<*xbf16>):
-    %4 = "mhlo.compare"(%arg3, %arg4) {
-      compare_type = #mhlo<comparison_type TOTALORDER>,
-      comparison_direction = #mhlo<comparison_direction GE>}
-      : (tensor<*xbf16>, tensor<*xbf16>) -> tensor<*xi1>
-    "mhlo.return"(%4) : (tensor<*xi1>) -> ()
-  }, {
-  ^bb0(%arg3: tensor<*xbf16>, %arg4: tensor<*xbf16>):
-    %4 = "mhlo.add"(%arg3, %arg4) : (tensor<*xbf16>, tensor<*xbf16>) ->
-      tensor<*xbf16>
-    "mhlo.return"(%4) : (tensor<*xbf16>) -> ()
-  }) {
-    padding = dense<0> : tensor<4x2xi64>,
-    window_dimensions = dense<[2, 3, 1, 1]> : tensor<4xi64>,
-    window_strides = dense<[2, 2, 1, 1]> : tensor<4xi64>}
-  : (tensor<4x5x1x1xbf16>, tensor<2x2x1x1xbf16>, tensor<bf16>) ->
-      tensor<?x?x?x?xbf16>
-
-  func.return %3 : tensor<?x?x?x?xbf16>
-}
-
 // -----
 
 func.func @select_and_scatter_invalid_select_computation(

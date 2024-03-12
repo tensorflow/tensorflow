@@ -16,15 +16,14 @@ limitations under the License.
 #ifndef XLA_STREAM_EXECUTOR_SCRATCH_ALLOCATOR_H_
 #define XLA_STREAM_EXECUTOR_SCRATCH_ALLOCATOR_H_
 
+#include <cstddef>
 #include <cstdint>
-#include <memory>
 #include <utility>
 
 #include "absl/container/inlined_vector.h"
 #include "absl/status/statusor.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/device_memory_allocator.h"
-#include "xla/stream_executor/platform/port.h"
 #include "tsl/platform/statusor.h"
 
 namespace stream_executor {

@@ -674,7 +674,7 @@ Status ConvolutionVisitor::HandleConvolution(HloInstruction* convolution) {
 
 }  // namespace
 
-StatusOr<bool> ConvolutionGroupConverter::Run(
+absl::StatusOr<bool> ConvolutionGroupConverter::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   XLA_VLOG_LINES(

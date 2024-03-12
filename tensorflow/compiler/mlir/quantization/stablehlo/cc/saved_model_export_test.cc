@@ -173,7 +173,8 @@ TEST(CreateSaverDefTest, ReturnsErrorStatusIfSaverDefNodesPartiallyExist) {
 
 // Testing ConvertMlirModuleToExportedModel requires parsing MLIR string to
 // ModuleOp.
-class ConvertMlirModuleToExportedModelTest : public QuantizationTestBase {};
+using ConvertMlirModuleToExportedModelTest =
+    ::mlir::quant::QuantizationTestBase;
 
 TEST_F(ConvertMlirModuleToExportedModelTest, SimpleGraphDefSet) {
   // Define a module a no-op main function.

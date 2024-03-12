@@ -68,6 +68,7 @@ absl::StatusOr<bool> FusionWrapper::Run(
       case HloOpcode::kDot:
       case HloOpcode::kDynamicSlice:
       case HloOpcode::kDynamicUpdateSlice:
+      case HloOpcode::kErf:
       case HloOpcode::kExp:
       case HloOpcode::kExpm1:
       case HloOpcode::kFloor:
@@ -115,8 +116,8 @@ absl::StatusOr<bool> FusionWrapper::Run(
         auto* computation = instruction->parent();
         auto* fusion_instruction =
             computation->AddInstruction(HloInstruction::CreateFusion(
-                instruction->shape(), ChooseFusionKind(*instruction),
-                instruction));
+                instruction->shape(),
+                ChooseFusionKind(*instruction, *instruction), instruction));
         const absl::string_view wrapped_opcode =
             HloOpcodeString(instruction->opcode());
         module->SetAndUniquifyInstrName(

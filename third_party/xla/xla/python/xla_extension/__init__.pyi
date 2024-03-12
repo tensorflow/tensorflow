@@ -258,7 +258,7 @@ class CompileOptions:
   env_option_overrides: List[Tuple[str, str]]
 
 def register_custom_call_target(
-    fn_name: str, capsule: Any, platform: str
+    fn_name: str, capsule: Any, platform: str, api_version: int = ...,
 ) -> _Status: ...
 def register_custom_call_partitioner(
     name: str,
@@ -302,12 +302,15 @@ class DebugOptions:
   xla_dump_hlo_pipeline_re: str
   xla_gpu_enable_async_all_reduce: bool
   xla_gpu_enable_async_all_gather: bool
+  xla_gpu_enable_async_collective_broadcast: bool
   xla_gpu_enable_async_collective_permute: bool
   xla_gpu_enable_async_all_to_all: bool
   xla_gpu_enable_async_reduce_scatter: bool
   xla_gpu_cuda_data_dir: str
   xla_detailed_logging: bool
   xla_enable_dumping: bool
+  xla_gpu_dump_autotune_results_to: str
+  xla_gpu_load_autotune_results_from: str
 
 class CompiledMemoryStats:
   generated_code_size_in_bytes: int
@@ -315,6 +318,11 @@ class CompiledMemoryStats:
   output_size_in_bytes: int
   alias_size_in_bytes: int
   temp_size_in_bytes: int
+  host_generated_code_size_in_bytes: int
+  host_argument_size_in_bytes: int
+  host_output_size_in_bytes: int
+  host_alias_size_in_bytes: int
+  host_temp_size_in_bytes: int
   serialized_hlo_proto: bytes
   def __str__(self) -> str: ...
 
@@ -441,6 +449,13 @@ class Memory:
   def __repr__(self) -> str: ...
   def __str__(self) -> str: ...
   def addressable_by_devices(self) -> List[Device]: ...
+
+class PjRtLayout:
+  def __str__(self) -> str: ...
+  def __eq__(self, other: PjRtLayout) -> bool: ...
+  def __hash__(self) -> int: ...
+  def __getstate__(self) -> Any: ...
+  def __setstate__(self, Any): ...
 
 class GpuAllocatorConfig:
   class Kind(enum.IntEnum):
@@ -781,7 +796,9 @@ def is_optimized_build() -> bool: ...
 def json_to_pprof_profile(json: str) -> bytes: ...
 def pprof_profile_to_json(proto: bytes) -> str: ...
 
+
 CompiledFunction = Any
+
 
 class PmapFunction:
   def __call__(self, *args, **kwargs) -> Any: ...

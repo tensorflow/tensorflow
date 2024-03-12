@@ -96,6 +96,26 @@ cc_library(
 )
 
 cc_library(
+    name = "hlo_matchers",
+    srcs = [
+        "transforms/hlo_matchers.cc",
+    ],
+    hdrs = [
+        "transforms/hlo_matchers.h",
+    ],
+    copts = [
+        "-Ithird_party",
+    ],
+    deps = [
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Support",
+        "@llvm-project//mlir:Transforms",
+        "@local_xla//xla/mlir_hlo",
+    ],
+)
+
+cc_library(
     name = "smuggle_disallowed_ops",
     srcs = [
         "transforms/smuggle_disallowed_ops.cc",
@@ -243,14 +263,16 @@ cc_library(
     deps = [
         ":stablehlo_util",
         "//tensorflow/compiler/mlir/lite:tensorflow_lite",
-        "//tensorflow/compiler/mlir/lite/quantization:quantization_lib",
+        "//tensorflow/compiler/mlir/quantization/common/quantization_lib",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/log",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:QuantOps",
+        "@llvm-project//mlir:Support",
         "@llvm-project//mlir:Transforms",
     ],
 )
@@ -338,6 +360,7 @@ cc_library(
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:Support",
         "@llvm-project//mlir:Transforms",
         "@local_xla//xla/mlir_hlo",
     ],
@@ -358,11 +381,14 @@ cc_library(
     deps = [
         ":passes_inc_gen",
         "//tensorflow/compiler/mlir/lite:validators",
+        "//tensorflow/compiler/mlir/quantization/common:attrs_and_constraints",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:Dialect",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:ShapeDialect",
+        "@llvm-project//mlir:Support",
         "@llvm-project//mlir:Transforms",
         "@local_xla//xla/mlir_hlo",
     ],
@@ -419,6 +445,47 @@ cc_library(
         "@stablehlo//:stablehlo_ops",
         "@stablehlo//:stablehlo_serialization",
         "@stablehlo//:vhlo_ops",
+    ],
+    alwayslink = 1,
+)
+
+cc_library(
+    name = "legalize_stablehlo_to_vhlo_pass",
+    srcs = [
+        "transforms/legalize_stablehlo_to_vhlo.cc",
+    ],
+    hdrs = [
+        "transforms/passes.h",
+        "transforms/passes.h.inc",
+    ],
+    copts = [
+        "-Ithird_party",
+    ],
+    deps = [
+        "//tensorflow/compiler/mlir/lite:tensorflow_lite",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:ArithDialect",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:InferTypeOpInterface",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:QuantOps",
+        "@llvm-project//mlir:ReconcileUnrealizedCasts",
+        "@llvm-project//mlir:ShapeDialect",
+        "@llvm-project//mlir:Support",
+        "@llvm-project//mlir:TensorDialect",
+        "@llvm-project//mlir:TransformUtils",
+        "@llvm-project//mlir:Transforms",
+        "@stablehlo//:base",
+        "@stablehlo//:stablehlo_ops",
+        "@stablehlo//:stablehlo_ops_inc_gen",
+        "@stablehlo//:stablehlo_pass_inc_gen",
+        "@stablehlo//:stablehlo_passes",
+        "@stablehlo//:stablehlo_portable_api",
+        "@stablehlo//:stablehlo_type_inference",
+        "@stablehlo//:version",
+        "@stablehlo//:vhlo_ops",
+        "@stablehlo//:vhlo_types",
     ],
     alwayslink = 1,
 )
@@ -530,6 +597,7 @@ cc_library(
         "//tensorflow/compiler/mlir/lite:tensorflow_lite",
         "//tensorflow/compiler/mlir/lite/stablehlo/transforms/legalize_hlo_conversions:custom_call",
         "//tensorflow/compiler/mlir/lite/stablehlo/transforms/legalize_hlo_conversions:dot_general",
+        "//tensorflow/compiler/mlir/lite/stablehlo/transforms/legalize_hlo_conversions:reduce",
         "//tensorflow/compiler/mlir/lite/stablehlo/transforms/legalize_hlo_conversions:util",
         "//tensorflow/compiler/mlir/tensorflow",
         "@llvm-project//mlir:ArithDialect",
@@ -558,8 +626,10 @@ cc_library(
     ],
     deps = [
         ":hlo_legalize_tf_inc_gen",
+        ":hlo_matchers",
         ":passes_inc_gen",
         "//tensorflow/compiler/mlir/lite:tensorflow_lite",
+        "//tensorflow/compiler/mlir/lite/stablehlo/transforms/legalize_hlo_conversions:reduce",
         "//tensorflow/compiler/mlir/lite/stablehlo/transforms/legalize_hlo_conversions:util",
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow:dynamic_shape_utils",
@@ -574,6 +644,7 @@ cc_library(
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:QuantOps",
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:Transforms",
         "@local_xla//xla/mlir_hlo",
@@ -603,9 +674,9 @@ tf_cc_binary(
         "//tensorflow/compiler/mlir/lite:flatbuffer_export",
         "//tensorflow/compiler/mlir/lite:tf_to_tfl_flatbuffer",
         "//tensorflow/compiler/mlir/lite/stablehlo/serializer:flatbuffer_export",
-        "//tensorflow/compiler/mlir/quantization/stablehlo/cc:static_range_ptq_impl",
         "//tensorflow/compiler/mlir/quantization/tensorflow:quantize_preprocess",
         "//tensorflow/compiler/mlir/quantization/tensorflow:tf_quant_ops",
+        "//tensorflow/compiler/mlir/quantization/tensorflow/calibrator:calibrator_singleton_impl",
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow/transforms:tensorflow_passes",
         "//tensorflow/compiler/mlir/tensorflow/transforms:tf_graph_optimization_pass",
@@ -636,6 +707,7 @@ tf_cc_binary(
         ":compose_uniform_quantized_type_pass",
         ":fold_broadcast_pass",
         ":fuse_convolution_pass",
+        ":legalize_stablehlo_to_vhlo_pass",
         ":legalize_tf_xla_call_module_to_stablehlo_pass",
         ":optimize",
         ":passes_inc_gen",

@@ -25,7 +25,7 @@ limitations under the License.
 #include "mlir/Support/TypeID.h"  // from @llvm-project
 #include "stablehlo/dialect/StablehloOps.h"  // from @stablehlo  // IWYU pragma: keep
 #include "tensorflow/compiler/mlir/lite/quantization/ir/QuantOps.h"  // IWYU pragma: keep
-#include "tensorflow/compiler/mlir/lite/quantization/quantization_config.h"
+#include "tensorflow/compiler/mlir/quantization/common/quantization_lib/quantization_config.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/passes/passes.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/quantization_config.pb.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/cc/run_passes.h"
@@ -54,7 +54,7 @@ class QuantizeCompositeFunctionsPass
       QuantizeCompositeFunctionsPass>::QuantizeCompositeFunctionsPassBase;
 
   explicit QuantizeCompositeFunctionsPass(
-      bool enable_per_channel_quantized_weight) {
+      const bool enable_per_channel_quantized_weight) {
     enable_per_channel_quantized_weight_ = enable_per_channel_quantized_weight;
   }
 
@@ -73,11 +73,13 @@ void QuantizeCompositeFunctionsPass::runOnOperation() {
   // (XlaCallModuleOps) with quantized input and output types, which are not
   // allowed in the TF dialect.
   pm.enableVerifier(false);
+
   PrepareQuantizePassOptions options;
   options.enable_per_channel_quantized_weight_ =
       enable_per_channel_quantized_weight_;
   // Change this to user-given bit width once we have custom configuration.
   options.bit_width_ = 8;
+
   pm.addNestedPass<func::FuncOp>(createPrepareQuantizePass(options));
   // QuantizePass modifies FuncOps referenced outside of its given scope
   // and therefore requires a module-level context.
@@ -96,7 +98,7 @@ void QuantizeCompositeFunctionsPass::runOnOperation() {
 
 // Creates an instance of the TensorFlow dialect QuantizeCompositeFunctionsPass.
 std::unique_ptr<OperationPass<ModuleOp>> CreateQuantizeCompositeFunctionsPass(
-    bool enable_per_channel_quantized_weight) {
+    const bool enable_per_channel_quantized_weight) {
   return std::make_unique<QuantizeCompositeFunctionsPass>(
       enable_per_channel_quantized_weight);
 }

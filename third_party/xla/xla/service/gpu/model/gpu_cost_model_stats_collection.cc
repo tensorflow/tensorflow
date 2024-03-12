@@ -16,13 +16,14 @@ limitations under the License.
 #include "xla/service/gpu/model/gpu_cost_model_stats_collection.h"
 
 #include "absl/container/flat_hash_set.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/service/gpu/model/gpu_performance_model.h"
-#include "xla/statusor.h"
+#include "xla/service/gpu/model/gpu_performance_model_base.h"
 #include "tsl/platform/status.h"
 
 namespace xla {

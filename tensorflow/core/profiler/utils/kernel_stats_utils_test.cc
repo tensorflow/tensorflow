@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/profiler/utils/kernel_stats_utils.h"
 
+#include <gmock/gmock.h>
 #include "xla/backends/profiler/gpu/cupti_collector.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/profiler/protobuf/kernel_stats.pb.h"
@@ -22,6 +23,8 @@ limitations under the License.
 namespace tensorflow {
 namespace profiler {
 namespace {
+
+using ::testing::FieldsAre;
 
 TEST(KernelStatsUtilsTest, TestGroupKernelReportsByOpName) {
   KernelStatsDb kernel_stats_db;
@@ -126,6 +129,42 @@ TEST(KernelStatsUtilsTest, KernelDetailsTokenizer) {
   ParseKernelLaunchParams(kernel_details_3, &kernel);
   EXPECT_EQ(kernel.static_shmem_bytes(), 7);
   EXPECT_EQ(kernel.dynamic_shmem_bytes(), 8);
+}
+
+TEST(KernelStatsUtilsTest, TestInsertOrUpdateKernelReport) {
+  KernelReport kr;
+  kr.set_name("op1_kernel1");
+  kr.set_op_name("op1");
+  // Must provide dummy dims since KernelReportMap's comparator assumes array of
+  // size 3; values here were suggested by autocomplete
+  kr.add_block_dim(32);
+  kr.add_block_dim(8);
+  kr.add_block_dim(4);
+  kr.add_grid_dim(3);
+  kr.add_grid_dim(2);
+  kr.add_grid_dim(1);
+
+  KernelReportValue krv1;
+  krv1.total_duration_ns = 1700;
+  krv1.min_duration_ns = 500;
+  krv1.max_duration_ns = 1200;
+  krv1.occurrences = 2;
+
+  KernelReportValue krv2;
+  krv2.total_duration_ns = 900;
+  krv2.min_duration_ns = 900;
+  krv2.max_duration_ns = 900;
+  krv2.occurrences = 1;
+
+  KernelReportMap dst1;
+  InsertOrUpdateKernelReport(kr, krv1, &dst1);
+  InsertOrUpdateKernelReport(kr, krv2, &dst1);
+  EXPECT_THAT(dst1[kr], FieldsAre(2600, 500, 1200, 3));
+
+  KernelReportMap dst2;
+  InsertOrUpdateKernelReport(kr, krv2, &dst2);
+  InsertOrUpdateKernelReport(kr, krv1, &dst2);
+  EXPECT_THAT(dst2[kr], FieldsAre(2600, 500, 1200, 3));
 }
 
 }  // namespace

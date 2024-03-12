@@ -732,7 +732,7 @@ def tf_lib_proto_parsing_deps():
     return [
         ":protos_all_cc",
         clean_dep("@eigen_archive//:eigen3"),
-        clean_dep("//tsl/platform/default/build_config:proto_parsing"),
+        clean_dep("//tsl/protobuf:protos_all_cc"),
     ]
 
 def tf_py_clif_cc(name, visibility = None, **kwargs):
@@ -830,6 +830,9 @@ def tf_logging_deps():
 def tf_error_logging_deps():
     return [clean_dep("//tsl/platform/default:error_logging")]
 
+def tsl_grpc_credentials_deps():
+    return [clean_dep("//tsl/platform/default:grpc_credentials")]
+
 def tf_resource_deps():
     return [clean_dep("//tsl/platform/default:resource")]
 
@@ -847,15 +850,6 @@ def tf_google_mobile_srcs_no_runtime():
 
 def tf_google_mobile_srcs_only_runtime():
     return []
-
-def if_llvm_aarch64_available(then, otherwise = []):
-    return then
-
-def if_llvm_system_z_available(then, otherwise = []):
-    return select({
-        clean_dep("//tsl:linux_s390x"): then,
-        "//conditions:default": otherwise,
-    })
 
 def tf_cuda_libdevice_path_deps():
     return tf_platform_deps("cuda_libdevice_path")

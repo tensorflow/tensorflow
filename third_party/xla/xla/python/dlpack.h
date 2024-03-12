@@ -17,9 +17,9 @@ limitations under the License.
 #define XLA_PYTHON_DLPACK_H_
 
 #include <memory>
+#include <optional>
 
 #include "pybind11/pybind11.h"  // from @pybind11
-#include "xla/python/py_buffer.h"
 #include "xla/python/py_client.h"
 
 namespace xla {
@@ -31,14 +31,14 @@ namespace xla {
 // stream, if set, is a GPU stream, e.g. cudaStream_t for CUDA GPUs, that should
 // be synchronized to the buffer as per
 // https://dmlc.github.io/dlpack/latest/python_spec.html#python-specification-for-dlpack.
-StatusOr<pybind11::capsule> BufferToDLPackManagedTensor(
+absl::StatusOr<pybind11::capsule> BufferToDLPackManagedTensor(
     pybind11::handle buffer, std::optional<std::intptr_t> stream);
 
-StatusOr<pybind11::object> DLPackManagedTensorToBuffer(
+absl::StatusOr<pybind11::object> DLPackManagedTensorToBuffer(
     const pybind11::capsule& tensor, std::shared_ptr<PyClient> cpu_client,
     std::shared_ptr<PyClient> gpu_client);
 
-StatusOr<pybind11::object> DLPackManagedTensorToBuffer(
+absl::StatusOr<pybind11::object> DLPackManagedTensorToBuffer(
     const pybind11::capsule& tensor, PjRtDevice* device,
     std::shared_ptr<PyClient> client, std::optional<std::intptr_t> stream);
 

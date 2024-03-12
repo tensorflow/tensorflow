@@ -24,7 +24,6 @@ add_public_tablegen_target(LMHLOGPUTransformsPassIncGen)
 
 add_mlir_library(MLIRBufferTransforms
   alloc_to_arg_pass.cc
-  buffer_packing.cc
   bufferize.cc
   bufferize_pass.cc
   collapse_parallel_loops_to_1d_pass.cc
@@ -49,7 +48,6 @@ add_mlir_library(MLIRBufferTransforms
   LINK_LIBS PUBLIC
   ChloOps
   MLIRGPUDialect
-  MLIRHLOAnalysis
   MLIRIR
   MLIRMathTransforms
   MLIRPass
@@ -75,7 +73,6 @@ add_mlir_library(MLIRHLOGPUTransforms
   LINK_LIBS PUBLIC
   MLIRArithTransforms
   MLIRGPUDialect
-  MLIRHLOAnalysis
   MLIRIR
   MLIRMemRefTransforms
   MLIRPass

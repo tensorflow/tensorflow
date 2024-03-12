@@ -28,6 +28,8 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
+const Shape& GetLargestConcatOperandShape(const HloFusionAnalysis& analysis);
+
 // Emits a kernel for the given hlo instruction where each thread produces
 // one element of each concat operand.
 class ConcatenateFusion : public KernelFusionEmitterBase {

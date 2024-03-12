@@ -40,7 +40,8 @@ class PackedLiteralReader {
   //
   // Layout is optional. If it is not provided, no layout is set on the literal
   // that is produced.
-  StatusOr<Literal> Read(const Shape& shape, const Layout* layout = nullptr);
+  absl::StatusOr<Literal> Read(const Shape& shape,
+                               const Layout* layout = nullptr);
 
   // Returns whether the input file has been fully exhausted; i.e. all available
   // packed literals have been read and we're at the end of the file.

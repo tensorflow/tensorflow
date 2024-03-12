@@ -217,7 +217,7 @@ class DataServiceDispatcherImpl {
       TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
   // Finds the dataset ID with the requested dataset ID.
   // Returns nullptr if no such dataset exists.
-  StatusOr<std::optional<std::string>> FindDataset(
+  absl::StatusOr<std::optional<std::string>> FindDataset(
       const GetOrRegisterDatasetRequest& request);
   // Gets a worker's stub from `worker_stubs_`, or if none exists, creates a
   // stub and stores it in `worker_stubs_`. A borrowed pointer to the stub is

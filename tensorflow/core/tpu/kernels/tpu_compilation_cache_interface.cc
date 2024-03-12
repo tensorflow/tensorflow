@@ -112,7 +112,7 @@ Status CompilationCacheEntryRef::ToSubEntryRef(
   // Otherwise, since the refcount is always on the main entry, we don't
   // need ref/unref.
   entry_ = target;
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 TpuCompilationCacheInterface::TpuCompilationCacheInterface(
@@ -157,7 +157,7 @@ Status TpuCompilationCacheInterface::MarkEntryForEviction(
     auto iter = entries_by_uid_.find(subgraph_uid);
     if (iter == entries_by_uid_.end()) {
       // If already evicted, return ok.
-      return OkStatus();
+      return absl::OkStatus();
     }
 
     // Mark entry for eviction.
@@ -191,7 +191,7 @@ Status TpuCompilationCacheInterface::MarkEntryForEviction(
 
   // Unload from device cache if entry is evicted from host cache.
   UnloadAndDestroy(deleted_entry);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status TpuCompilationCacheInterface::Release(int64_t subgraph_uid) {
@@ -220,7 +220,7 @@ Status TpuCompilationCacheInterface::Release(int64_t subgraph_uid) {
             << marked_for_eviction_size_ << " bytes).";
   }
   UnloadAndDestroy(deleted_entry);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 void TpuCompilationCacheInterface::UnloadAndDestroy(CompiledSubgraph* entry) {
@@ -559,7 +559,7 @@ Status TpuCompilationCacheInterface::GetKeysFromUid(
     return errors::NotFound("No subgraph found for uid ", uid);
   }
   *keys = iter->second->proto_key;
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status TpuCompilationCacheInterface::Lookup(
@@ -584,7 +584,7 @@ Status TpuCompilationCacheInterface::Lookup(
   }
   *entry = std::make_unique<CompilationCacheEntryRef>(this, cache_entry,
                                                       proto_index);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status TpuCompilationCacheInterface::Lookup(
@@ -604,7 +604,7 @@ Status TpuCompilationCacheInterface::Lookup(
   int proto_index = iter->second.second;
   *entry = std::make_unique<CompilationCacheEntryRef>(this, cache_entry,
                                                       proto_index);
-  return OkStatus();
+  return absl::OkStatus();
 }
 }  // namespace tpu
 }  // namespace tensorflow

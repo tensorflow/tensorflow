@@ -131,7 +131,7 @@ Status RemoteTensorHandleData::Shape(TensorShape* shape) const {
   tf_shared_lock l(mu_);
   *shape = shape_;
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status RemoteTensorHandleData::NumDims(int* num_dims) const {
@@ -140,7 +140,7 @@ Status RemoteTensorHandleData::NumDims(int* num_dims) const {
   tf_shared_lock l(mu_);
   *num_dims = shape_.dims();
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status RemoteTensorHandleData::Dim(int dim_index, int64_t* dim) const {
@@ -149,7 +149,7 @@ Status RemoteTensorHandleData::Dim(int dim_index, int64_t* dim) const {
   tf_shared_lock l(mu_);
   *dim = shape_.dim_size(dim_index);
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status RemoteTensorHandleData::NumElements(int64_t* num_elements) const {
@@ -158,7 +158,7 @@ Status RemoteTensorHandleData::NumElements(int64_t* num_elements) const {
   tf_shared_lock l(mu_);
   *num_elements = shape_.num_elements();
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 bool RemoteTensorHandleData::IsReady() const {
@@ -203,17 +203,17 @@ Status RemoteTensorHandleData::SetShapeAndRemoteTask(
                        " from existing shape of ", shape_.DebugString()));
     }
     LOG(WARNING) << "SetShape can only be called on non-ready handles.";
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   shape_ = shape;
   if (!remote_task.empty()) {
     remote_task_ = remote_task;
   }
-  is_poisoned_ = OkStatus();
+  is_poisoned_ = absl::OkStatus();
   is_ready_ = true;
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 string RemoteTensorHandleData::DebugString() const {
@@ -229,7 +229,7 @@ Status RemoteTensorHandleData::OpIdAndOutputNum(const bool wait_until_ready,
   }
   *op_id = op_id_;
   *output_num = output_num_;
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status RemoteTensorHandleData::WaitReady(const char* caller) const {

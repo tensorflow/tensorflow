@@ -15,14 +15,23 @@ limitations under the License.
 
 #include "xla/stream_executor/host/host_platform.h"
 
-#include <thread>
+#include <memory>
+#include <string>
+#include <thread>  // NOLINT
+#include <utility>
 
-#include "absl/memory/memory.h"
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
+#include "xla/stream_executor/device_description.h"
+#include "xla/stream_executor/device_options.h"
 #include "xla/stream_executor/host/host_gpu_executor.h"
 #include "xla/stream_executor/host/host_platform_id.h"
+#include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/platform/initialize.h"
-#include "tsl/platform/errors.h"
+#include "xla/stream_executor/platform_manager.h"
+#include "xla/stream_executor/stream_executor_pimpl.h"
+#include "tsl/platform/status.h"
 
 namespace stream_executor {
 namespace host {
@@ -73,11 +82,11 @@ HostPlatform::GetUncachedExecutor(const StreamExecutorConfig& config) {
 
 static void InitializeHostPlatform() {
   std::unique_ptr<Platform> platform(new host::HostPlatform);
-  TF_CHECK_OK(MultiPlatformManager::RegisterPlatform(std::move(platform)));
+  TF_CHECK_OK(PlatformManager::RegisterPlatform(std::move(platform)));
 }
 
 }  // namespace host
 }  // namespace stream_executor
 
-REGISTER_MODULE_INITIALIZER(host_platform,
-                            stream_executor::host::InitializeHostPlatform());
+STREAM_EXECUTOR_REGISTER_MODULE_INITIALIZER(
+    host_platform, stream_executor::host::InitializeHostPlatform());

@@ -27,6 +27,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/Hashing.h"
+#include "llvm/ADT/SmallVector.h"
 #include "mlir/IR/AffineExpr.h"  // from @llvm-project
 #include "mlir/IR/AffineMap.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
@@ -42,9 +43,65 @@ struct Range {
 
   bool IsPoint() const { return lower_bound == upper_bound; }
 
+  bool Contains(int64_t value) const {
+    return value >= lower_bound && value <= upper_bound;
+  }
+
+  // The result of a range comparison. We wrap std::optional in a struct to
+  // avoid accidental implicit conversion to bool:
+  // if (range < 42) {
+  //   Executed if the result of the comparison is known to be false!
+  // }
+  struct ComparisonResult {
+    // true or false if the result is known, nullopt otherwise.
+    std::optional<bool> result;
+
+    ComparisonResult operator!() const {
+      if (result) return {!*result};
+      return {result};
+    }
+    bool operator==(const ComparisonResult& other) const {
+      return result == other.result;
+    }
+    bool operator==(bool other) const { return result && *result == other; }
+    bool operator==(std::nullopt_t) const { return !result; }
+    bool operator!=(std::nullopt_t) const { return result.has_value(); }
+    bool operator*() const { return *result; }
+  };
+
+  // All comparison operators here return true or false if the result is known,
+  // or nullopt if it may be either true or false.
+  ComparisonResult operator>(int64_t value) const {
+    if (lower_bound > value) {
+      return {true};
+    }
+    if (upper_bound <= value) {
+      return {false};
+    }
+    return {std::nullopt};
+  }
+  ComparisonResult operator<(int64_t value) const {
+    if (upper_bound < value) {
+      return {true};
+    }
+    if (lower_bound >= value) {
+      return {false};
+    }
+    return {std::nullopt};
+  }
+  ComparisonResult operator>=(int64_t value) const { return !(*this < value); }
+  ComparisonResult operator<=(int64_t value) const { return !(*this > value); }
+  ComparisonResult operator==(int64_t value) const {
+    if (IsPoint()) return {lower_bound == value};
+    if (!Contains(value)) return {false};
+    return {std::nullopt};
+  }
+  ComparisonResult operator!=(int64_t value) const { return !(*this == value); }
+
   int64_t lower_bound = 0;
   int64_t upper_bound = 0;
 };
+
 std::ostream& operator<<(std::ostream& out, const Range& range);
 bool operator==(const Range& lhs, const Range& rhs);
 
@@ -78,6 +135,8 @@ class RangeEvaluator {
   llvm::DenseMap<mlir::AffineExpr, Range> expression_ranges_cache_;
 };
 
+std::vector<Range> RangesFromTensorSizes(
+    absl::Span<const int64_t> tensor_sizes);
 
 // Contains an affine map with N dimension expressions and M symbols:
 //   (d0, ..., d_{N - 1})[s_0, ..., s_{M - 1}] -> f(d_i, s_j)
@@ -116,6 +175,14 @@ class IndexingMap {
       AddConstraint(expr, range);
     }
   }
+
+  IndexingMap(mlir::AffineMap affine_map, std::vector<Range> dim_ranges,
+              std::vector<Range> symbol_ranges,
+              const llvm::DenseMap<mlir::AffineExpr, Range>& constraints)
+      : affine_map_(affine_map),
+        dim_ranges_(std::move(dim_ranges)),
+        symbol_ranges_(std::move(symbol_ranges)),
+        constraints_(constraints) {}
 
   static IndexingMap GetUndefined() { return IndexingMap(); }
 
@@ -158,6 +225,17 @@ class IndexingMap {
   // ranges.
   void AddConstraint(mlir::AffineExpr expr, Range range);
 
+  // Evaluates the constraints at a given point and returns `true` if all
+  // constraints are satisfied.
+  bool ConstraintsSatisfied(
+      llvm::ArrayRef<mlir::AffineExpr> dim_const_exprs,
+      llvm::ArrayRef<mlir::AffineExpr> symbol_const_exprs) const;
+
+  // Evaluates indexing map results at a given point.
+  llvm::SmallVector<int64_t, 4> Evaluate(
+      llvm::ArrayRef<mlir::AffineExpr> dim_const_exprs,
+      llvm::ArrayRef<mlir::AffineExpr> symbol_const_exprs) const;
+
   // Returns true if the domain is empty. Right now it scans through all
   // constraints to find the one where lower_bound > upper_bound. If it returns
   // true, that does not mean that the domain is not effectively empty.
@@ -192,6 +270,7 @@ class IndexingMap {
 };
 std::ostream& operator<<(std::ostream& out, const IndexingMap& indexing_map);
 bool operator==(const IndexingMap& lhs, const IndexingMap& rhs);
+IndexingMap operator*(const IndexingMap& lhs, const IndexingMap& rhs);
 
 // Composes affine maps, i.e. first ∘ second.
 IndexingMap ComposeIndexingMaps(const IndexingMap& first,

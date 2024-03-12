@@ -14,8 +14,11 @@
 # ==============================================================================
 """Iterator ops."""
 
+from tensorflow.core.framework import model_pb2
 from tensorflow.python.data.ops import iterator_ops
 from tensorflow.python.data.ops import options as options_lib
+from tensorflow.python.eager import context
+from tensorflow.python.ops import gen_experimental_dataset_ops as ged_ops
 from tensorflow.python.util import deprecation
 from tensorflow.python.util.tf_export import tf_export
 
@@ -95,3 +98,35 @@ def make_saveable_from_iterator(iterator, external_state_policy=None):
       iterator._iterator_resource,  # pylint: disable=protected-access
       iterator._iterator_resource.name,  # pylint: disable=protected-access
       external_state_policy=policy_enum)
+
+
+@tf_export("data.experimental.get_model_proto")
+def get_model_proto(iterator) -> model_pb2.ModelProto:
+  """Gets the model inside of `iterator` as `model_pb2.ModelProto`.
+
+  Args:
+    iterator: An `OwnedIterator`.
+
+  Returns:
+    The model inside of this iterator as a model proto.
+
+  Raises:
+    NotFoundError: If this iterator's autotune is not enabled.
+  """
+
+  if isinstance(iterator, iterator_ops.OwnedIterator):
+    iterator_resource = iterator._iterator_resource  # pylint: disable=protected-access
+  else:
+    raise ValueError("Only supports `tf.data.Iterator`-typed `iterator`.")
+
+  if not context.executing_eagerly():
+    raise ValueError(
+        f"{get_model_proto.__name__} is not supported in graph mode."
+    )
+
+  model_proto_string_tensor = ged_ops.iterator_get_model_proto(
+      iterator_resource
+  )
+  model_proto_bytes = model_proto_string_tensor.numpy()
+
+  return model_pb2.ModelProto.FromString(model_proto_bytes)

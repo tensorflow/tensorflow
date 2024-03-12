@@ -151,7 +151,7 @@ AbstractTfrtCpuBuffer::~AbstractTfrtCpuBuffer() {
   AbstractTfrtCpuBuffer::Delete();
 }
 
-StatusOr<Shape> AbstractTfrtCpuBuffer::logical_on_device_shape() {
+absl::StatusOr<Shape> AbstractTfrtCpuBuffer::logical_on_device_shape() {
   if (on_device_shape_.is_static()) {
     return on_device_shape_;
   }
@@ -180,11 +180,11 @@ StatusOr<Shape> AbstractTfrtCpuBuffer::logical_on_device_shape() {
   return ret_shape;
 }
 
-StatusOr<size_t> AbstractTfrtCpuBuffer::GetOnDeviceSizeInBytes() const {
+absl::StatusOr<size_t> AbstractTfrtCpuBuffer::GetOnDeviceSizeInBytes() const {
   return ShapeUtil::ByteSizeOf(on_device_shape_);
 }
 
-StatusOr<std::unique_ptr<PjRtBuffer::ExternalReference>>
+absl::StatusOr<std::unique_ptr<PjRtBuffer::ExternalReference>>
 AbstractTfrtCpuBuffer::AcquireExternalReference() {
   class ScopedExternalReference : public PjRtBuffer::ExternalReference {
    public:
@@ -239,7 +239,7 @@ class TrackedCpuDeviceBufferExternalReference
   std::unique_ptr<TrackedTfrtCpuDeviceBuffer> tracked_device_buffer_;
 };
 
-StatusOr<std::unique_ptr<PjRtBuffer::ExternalReference>>
+absl::StatusOr<std::unique_ptr<PjRtBuffer::ExternalReference>>
 AbstractTfrtCpuBuffer::ReleaseDeviceMemoryOwnership(
     bool wait_for_operations_to_complete) {
   if (on_device_shape_.IsTuple()) {
@@ -324,7 +324,7 @@ AbstractTfrtCpuBuffer::ReleaseBufferLocked() {
   return std::move(tracked_device_buffer_);
 }
 
-StatusOr<std::unique_ptr<TrackedTfrtCpuDeviceBuffer>>
+absl::StatusOr<std::unique_ptr<TrackedTfrtCpuDeviceBuffer>>
 AbstractTfrtCpuBuffer::Release(bool wait_for_operations_to_complete) {
   std::unique_ptr<TrackedTfrtCpuDeviceBuffer> device_buffer;
   {
@@ -367,7 +367,7 @@ TrackedTfrtCpuDeviceBuffer* AbstractTfrtCpuBuffer::AcquireUsage(
   return tracked_device_buffer_.get();
 }
 
-StatusOr<AbstractTfrtCpuBuffer::DonationTransaction>
+absl::StatusOr<AbstractTfrtCpuBuffer::DonationTransaction>
 AbstractTfrtCpuBuffer::AcquireDonation() {
   absl::MutexLock lock(&mu_);
 
@@ -412,7 +412,7 @@ PjRtFuture<Status> AbstractTfrtCpuBuffer::ToLiteralHelper(
 
   bool should_sync_copy = device_buffer_wait_avs.empty() &&
                           literal->size_bytes() < kSmallDataTransferByteSize;
-  StatusOr<Shape> device_shape = logical_on_device_shape();
+  absl::StatusOr<Shape> device_shape = logical_on_device_shape();
   if (!device_shape.ok()) {
     return PjRtFuture<Status>(device_shape.status());
   }
@@ -462,7 +462,7 @@ PjRtFuture<Status> AbstractTfrtCpuBuffer::ToLiteralHelper(
   }
 }
 
-StatusOr<std::unique_ptr<PjRtBuffer>>
+absl::StatusOr<std::unique_ptr<PjRtBuffer>>
 AbstractTfrtCpuBuffer::CopyToDeviceAcrossClients(PjRtDevice* dst_device) {
   TF_ASSIGN_OR_RETURN(std::shared_ptr<Literal> literal, ToLiteralSync());
   // Avoid use-after-free on `literal` due to unsequenced move and use.
@@ -478,7 +478,7 @@ AbstractTfrtCpuBuffer::CopyToDeviceAcrossClients(PjRtDevice* dst_device) {
       [literal{std::move(literal)}]() { /* frees literal */ }, dst_device);
 }
 
-StatusOr<std::unique_ptr<TrackedTfrtCpuDeviceBuffer>>
+absl::StatusOr<std::unique_ptr<TrackedTfrtCpuDeviceBuffer>>
 AbstractTfrtCpuBuffer::CopyToDeviceHelper(AsyncWorkRunner* async_work_runner) {
   // Copy each leaf buffer to a destination buffer.
   auto usage_event = tsl::MakeConstructedAsyncValueRef<CpuEvent>();
@@ -637,7 +637,7 @@ void AbstractTfrtCpuBuffer::CopyFromLiteral(
   }
 }
 
-/*static*/ StatusOr<std::unique_ptr<TrackedTfrtCpuDeviceBuffer>>
+/*static*/ absl::StatusOr<std::unique_ptr<TrackedTfrtCpuDeviceBuffer>>
 AbstractTfrtCpuBuffer::AllocateTrackedDeviceBuffer(
     const Shape& on_device_shape,
     absl::InlinedVector<tsl::AsyncValueRef<CpuEvent>, 4> definition_events) {
@@ -677,7 +677,7 @@ AbstractTfrtCpuBuffer::AllocateTrackedDeviceBuffer(
   }
 }
 
-/*static*/ StatusOr<std::unique_ptr<TrackedTfrtCpuDeviceBuffer>>
+/*static*/ absl::StatusOr<std::unique_ptr<TrackedTfrtCpuDeviceBuffer>>
 AbstractTfrtCpuBuffer::BufferFromHostBufferHelper(
     const void* data, PrimitiveType type, absl::Span<int64_t const> dims,
     std::optional<absl::Span<int64_t const>> byte_strides,

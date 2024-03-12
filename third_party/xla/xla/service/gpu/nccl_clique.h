@@ -18,22 +18,21 @@ limitations under the License.
 
 #include <cstddef>
 #include <cstdint>
+#include <functional>
 #include <memory>
 #include <optional>
 #include <string>
 #include <utility>
-#include <vector>
 
-#include "absl/container/node_hash_map.h"
+#include "absl/container/btree_map.h"
 #include "absl/functional/function_ref.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
 #include "xla/executable_run_options.h"
-#include "xla/service/global_device_id.h"
 #include "xla/service/gpu/nccl_api.h"
 #include "xla/service/gpu/nccl_clique_key.h"
 #include "xla/service/lockable.h"
-#include "tsl/lib/gtl/int_type.h"
+#include "xla/stream_executor/stream_executor.h"
 
 namespace xla::gpu {
 
@@ -55,9 +54,6 @@ namespace xla::gpu {
 //
 // https://docs.nvidia.com/deeplearning/nccl/user-guide/docs/usage/communicators.html#using-multiple-nccl-communicators-concurrently
 
-// Forward declare.
-class NcclCliqueCommunicators;
-
 //===----------------------------------------------------------------------===//
 // NcclUniqueId
 //===----------------------------------------------------------------------===//
@@ -72,35 +68,6 @@ absl::StatusOr<const NcclCliqueIdCallback*> GetNcclCliqueIdCallback(
     bool is_local);
 
 //===----------------------------------------------------------------------===//
-// NcclComm
-//===----------------------------------------------------------------------===//
-
-// TODO(b/319655685): Lockable NcclComm should be deleted and NcclClique should
-// become the owner of all communicators making up a clique and responsible for
-// synchronizing access to communicators.
-
-TSL_LIB_GTL_DEFINE_INT_TYPE(OpId, int64_t);
-
-struct NcclCommName {
-  static std::string ToString(NcclApi::NcclCommHandle comm) {
-    return absl::StrFormat("lockable comm %p", comm);
-  }
-};
-
-struct NcclComm : public Lockable<NcclApi::NcclCommHandle, NcclCommName> {
-  friend class NcclCliqueCommunicators;
-
-  explicit NcclComm(NcclApi::NcclCommHandle comm) : Lockable(comm) {}
-};
-
-// Acquires an exclusive access to NCCL communicator owned by a NCCL clique.
-absl::StatusOr<NcclComm::Lock> AcquireNcclComm(
-    RunId run_id, OpId op_id, std::vector<GlobalDeviceId> participants,
-    size_t num_local_participants,
-    const NcclCliqueIdCallback& clique_id_callback, int32_t rank,
-    int64_t stream_id, bool enable_clique_optimization);
-
-//===----------------------------------------------------------------------===//
 // NcclClique
 //===----------------------------------------------------------------------===//
 
@@ -110,27 +77,33 @@ absl::StatusOr<NcclComm::Lock> AcquireNcclComm(
 // operations that does not lead to deadlocks.
 class NcclCliqueCommunicators {
  public:
-  NcclCliqueCommunicators(NcclCliqueKey clique_key, NcclCliqueId,
-                          absl::node_hash_map<int32_t, NcclComm> communicators);
+  NcclCliqueCommunicators(
+      NcclCliqueKey clique_key, std::optional<NcclCliqueId> clique_id,
+      absl::btree_map<int32_t, NcclApi::OwnedNcclComm> communicators);
 
   // Returns a NCCL communicator for a given rank if it's in a clique.
-  std::optional<NcclComm*> comm(int32_t rank);
+  std::optional<NcclApi::NcclCommHandle> comm(int32_t rank);
+
+  // Return true if clique is local: all communicators belong to current
+  // process. Non-local cliques spans multiple processes (typically hosts).
+  bool IsLocal() const;
 
   // Calls `fn` for each communicator in the clique.
-  void ForEachComm(absl::FunctionRef<void(int32_t, NcclComm&)> fn);
+  void ForEachComm(
+      absl::FunctionRef<void(int32_t, NcclApi::NcclCommHandle)> fn);
 
   const NcclCliqueKey& clique_key() const { return clique_key_; }
-  const NcclCliqueId& clique_id() const { return clique_id_; }
-  size_t size() const { return communicators_.size(); }
+  const std::optional<NcclCliqueId>& clique_id() const { return clique_id_; }
+  size_t num_communicators() const { return communicators_.size(); }
 
   std::string DebugString() const;
 
  private:
   NcclCliqueKey clique_key_;
-  NcclCliqueId clique_id_;
+  std::optional<NcclCliqueId> clique_id_;
 
   // TODO(ezhulenev): Switch this map to GlobalDeviceId key.
-  absl::node_hash_map<int32_t, NcclComm> communicators_;
+  absl::btree_map<int32_t, NcclApi::OwnedNcclComm> communicators_;
 };
 
 struct NcclCliqueName {
@@ -140,10 +113,15 @@ struct NcclCliqueName {
 };
 
 struct NcclClique : public Lockable<NcclCliqueCommunicators, NcclCliqueName> {
-  NcclClique(NcclCliqueKey clique_key, NcclCliqueId clique_id,
-             absl::node_hash_map<int32_t, NcclComm> communicators)
-      : Lockable(NcclCliqueCommunicators{std::move(clique_key), clique_id,
-                                         std::move(communicators)}) {}
+  // We keep acquired cliques in a sorted container to guarantee that all
+  // participants iterate over cliques in the same order.
+  using AcquiredCliquesMap =
+      absl::btree_map<NcclCliqueKey, std::shared_ptr<NcclClique::Lock>,
+                      std::greater<NcclCliqueKey>>;
+
+  NcclClique(NcclCliqueKey clique_key, std::optional<NcclCliqueId> clique_id,
+             absl::btree_map<int32_t, NcclApi::OwnedNcclComm> communicators)
+      : Lockable(std::move(clique_key), clique_id, std::move(communicators)) {}
 
   std::string DebugString() const;
 };
@@ -151,10 +129,16 @@ struct NcclClique : public Lockable<NcclCliqueCommunicators, NcclCliqueName> {
 // Acquires an shared access to a NCCL clique (NcclClique::Lock collectively
 // owned by `num_local_participants` threads). XLA uses this lock to serialize
 // execution of all collective operations sharing a `clique_id`.
+//
+// If clique for a given key does not exist it will be initialized from newly
+// created communicators or maybe created by splitting of the already acquired
+// cliques.
 absl::StatusOr<std::shared_ptr<NcclClique::Lock>> AcquireNcclClique(
-    RunId run_id, OpId op_id, NcclCliqueKey clique_key,
+    se::StreamExecutor* device, RunId run_id, NcclCliqueKey clique_key,
     const NcclCliqueIdCallback& clique_id_callback, int32_t rank,
-    size_t num_local_participants, bool may_skip_rendezvous);
+    size_t num_local_participants,
+    const NcclClique::AcquiredCliquesMap& acquired_cliques,
+    int64_t max_nchannels = 0);
 
 }  // namespace xla::gpu
 

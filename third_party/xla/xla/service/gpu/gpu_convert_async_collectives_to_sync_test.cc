@@ -31,7 +31,7 @@ using ::testing::IsFalse;
 using ::testing::IsTrue;
 
 // Note: The pass only processes modules that are already scheduled. If the test
-// does not work as epxected, make sure to check if "is_scheduled=true" is added
+// does not work as expected, make sure to check if "is_scheduled=true" is added
 // to the HLO module string.
 class GpuConvertAsyncCollectivesToSyncTest : public HloTestBase {
  public:
@@ -103,6 +103,26 @@ TEST_F(GpuConvertAsyncCollectivesToSyncTest, SimpleAllReduceWithNop) {
                           ParseAndReturnVerifiedModule(hlo_string));
   TF_ASSERT_OK(RunPass(module.get(), /*expect_change=*/true, is_nop_simple_));
   EXPECT_THAT(IsSync(module.get(), "start"), IsTrue());
+}
+TEST_F(GpuConvertAsyncCollectivesToSyncTest, SimpleCollectiveBroadcast) {
+  const absl::string_view hlo_string = R"(
+  HloModule test, is_scheduled=true
+
+  collective_broadcast {
+    p0 = u32[8] parameter(0)
+    ROOT result = u32[8] collective-broadcast(p0), replica_groups={{0,1}, {2,3}}
+  }
+
+  ENTRY main {
+    data = u32[8] parameter(0)
+    cb-start = ((u32[8]{0}), u32[8]{0}) async-start(u32[8]{0} %data), calls=collective_broadcast
+    ROOT %ars = u32[8]{0} async-done(((u32[8]{0}), u32[8]{0}) %cb-start), calls=collective_broadcast
+  }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  TF_ASSERT_OK(RunPass(module.get(), /*expect_change=*/true));
+  EXPECT_THAT(IsSync(module.get(), "cb-start"), IsTrue());
 }
 
 TEST_F(GpuConvertAsyncCollectivesToSyncTest, SimpleAllReduceWithNonNop) {

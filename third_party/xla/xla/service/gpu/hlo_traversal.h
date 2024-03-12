@@ -24,6 +24,7 @@ limitations under the License.
 
 #include "absl/algorithm/container.h"
 #include "absl/container/inlined_vector.h"
+#include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -74,6 +75,7 @@ class HloFusionAdaptor {
   virtual absl::InlinedVector<HloInstructionAdaptor, 2> GetRoots() const = 0;
   virtual absl::InlinedVector<HloInstructionAdaptor, 2>
   MakeInstructionPostOrder() const = 0;
+  virtual std::string ToString() const = 0;
 
   static std::unique_ptr<HloFusionAdaptor> ForInstruction(
       const HloInstruction* instruction);
@@ -112,6 +114,15 @@ class ProducerConsumerFusion : public HloFusionAdaptor {
     absl::c_move(consumer_post_order, std::back_inserter(producer_post_order));
 
     return producer_post_order;
+  }
+
+  std::string ToString() const override {
+    // TODO: Add a parameter to indent output on nested adaptor for better
+    // visual representation. Nested producer-consumers fusion are not used in
+    // practice yet.
+    return absl::StrJoin({std::string("producer-consumer fusion:"),
+                          producer_->ToString(), consumer_->ToString()},
+                         "\n");
   }
 
  private:

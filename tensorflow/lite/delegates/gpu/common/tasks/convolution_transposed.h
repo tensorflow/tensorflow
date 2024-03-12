@@ -108,7 +108,7 @@ void ConvolutionTransposed::UploadWeights(
   if (weights_are_buffer) {
     BufferDescriptor desc;
     desc.element_type = weights_desc.type;
-    desc.element_size = 16;
+    desc.element_size = 4;
     desc.size = weights_data.size();
     desc.data = std::move(weights_data);
     args_.AddObject("weights",
@@ -139,7 +139,7 @@ void ConvolutionTransposed::UploadWeights(
   if (weights_are_buffer) {
     BufferDescriptor desc;
     desc.element_type = weights_desc.type;
-    desc.element_size = 16;
+    desc.element_size = 4;
     desc.size = weights_data.size();
     desc.data = std::move(weights_data);
     args_.AddObject("weights",

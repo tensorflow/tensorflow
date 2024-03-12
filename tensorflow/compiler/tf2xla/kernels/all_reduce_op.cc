@@ -51,7 +51,7 @@ class CollectiveReduceV2Op : public XlaOpKernel {
 
     // Store all traversed collective configurations, and generate channel_id
     // for the collective.
-    StatusOr<int64_t> channel_id =
+    absl::StatusOr<int64_t> channel_id =
         ctx->xla_context()->RecordCollectiveInfo(group_key, group_size);
     OP_REQUIRES_OK(ctx, channel_id.status());
 
@@ -96,7 +96,6 @@ class CollectiveReduceV2Op : public XlaOpKernel {
   void operator=(const CollectiveReduceV2Op&) = delete;
 };
 
-
 REGISTER_XLA_OP(Name("CollectiveReduceV2")
                     .CompileTimeConstantInput("group_key")
                     .CompileTimeConstantInput("group_size"),
@@ -105,5 +104,14 @@ REGISTER_XLA_OP(Name("CollectiveReduceV2")
 REGISTER_XLA_OP(Name("CollectiveAssignGroupV2")
                     .CompileTimeConstantInput("group_assignment"),
                 MlirXlaOpKernel);
+
+REGISTER_XLA_OP(Name("XlaReduceScatter")
+                    .CompileTimeConstantInput("group_assignment")
+                    .CompileTimeConstantInput("scatter_dimension"),
+                MlirXlaOpKernel);
+
+REGISTER_XLA_OP(
+    Name("XlaAllReduce").CompileTimeConstantInput("group_assignment"),
+    MlirXlaOpKernel);
 
 }  // namespace tensorflow

@@ -48,6 +48,7 @@ limitations under the License.
 #include "Eigen/Core"  // from @eigen_archive
 #include "xla/status.h"
 #include "xla/status_macros.h"
+#include "xla/types.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/lib/math/math_util.h"
 #include "tsl/platform/bfloat16.h"
@@ -573,9 +574,7 @@ auto SignAndMagnitude(T x) {
   BitType x_abs_bits = Eigen::numext::bit_cast<BitType>(Eigen::numext::abs(x));
   const BitType x_bits = Eigen::numext::bit_cast<BitType>(x);
   const BitType x_sign = x_bits ^ x_abs_bits;
-  if constexpr (std::is_same_v<T, tsl::float8_e4m3b11> ||
-                std::is_same_v<T, tsl::float8_e4m3fnuz> ||
-                std::is_same_v<T, tsl::float8_e5m2fnuz>) {
+  if constexpr (!has_negative_zero_v<T>) {
     //  f8e4m3b11, f8e4m3fnuz, and f8e5m2fnuz don't support -0, adjust negative
     //  numbers to fill in the gap.
     if (x_sign) {

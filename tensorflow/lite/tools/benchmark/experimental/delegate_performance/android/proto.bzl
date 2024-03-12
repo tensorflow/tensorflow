@@ -65,7 +65,6 @@ _TOOL = "@com_google_protobuf//:protoc"
 #        output file is name + ".binarypb" extension.
 proto_data = rule(
     implementation = _proto_data_impl,
-    output_to_genfiles = True,
     attrs = {
         "src": attr.label(
             allow_single_file = True,

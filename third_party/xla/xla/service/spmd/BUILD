@@ -4,7 +4,8 @@ load("//xla:xla.bzl", "xla_cc_test")
 load("@local_tsl//tsl/platform:rules_cc.bzl", "cc_library")
 
 package(
-    default_visibility = ["//visibility:public"],
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
+    default_visibility = [":friends"],
     licenses = ["notice"],
 )
 
@@ -32,7 +33,6 @@ cc_library(
         "spmd_partitioner.h",
         "spmd_partitioner_util.h",
     ],
-    visibility = ["//visibility:public"],
     deps = [
         "//xla:array",
         "//xla:comparison_util",
@@ -48,6 +48,7 @@ cc_library(
         "//xla:window_util",
         "//xla:xla_data_proto_cc",
         "//xla/client:xla_builder",
+        "//xla/client:xla_computation",
         "//xla/client/lib:comparators",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/ir:hlo_reachability",
@@ -78,6 +79,7 @@ cc_library(
         "@com_google_absl//absl/functional:function_ref",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
         "@com_google_absl//absl/utility",
@@ -129,7 +131,6 @@ cc_library(
     name = "canonicalize_all_gather_for_cse",
     srcs = ["canonicalize_all_gather_for_cse.cc"],
     hdrs = ["canonicalize_all_gather_for_cse.h"],
-    visibility = ["//visibility:public"],
     deps = [
         "//xla/hlo/ir:hlo",
         "//xla/hlo/utils:hlo_query",
@@ -159,7 +160,6 @@ cc_library(
     name = "schedule_aware_collective_ops_cse",
     srcs = ["schedule_aware_collective_ops_cse.cc"],
     hdrs = ["schedule_aware_collective_ops_cse.h"],
-    visibility = ["//visibility:public"],
     deps = [
         "//xla/hlo/ir:hlo",
         "//xla/service:hlo_pass",
@@ -189,7 +189,6 @@ cc_library(
     name = "spmd_prepare",
     srcs = ["spmd_prepare.cc"],
     hdrs = ["spmd_prepare.h"],
-    visibility = ["//visibility:public"],
     deps = [
         "//xla/hlo/ir:hlo",
         "//xla/hlo/utils:hlo_sharding_util",
@@ -203,7 +202,6 @@ cc_library(
     name = "stateful_rng_spmd_partitioner",
     srcs = ["stateful_rng_spmd_partitioner.cc"],
     hdrs = ["stateful_rng_spmd_partitioner.h"],
-    visibility = ["//visibility:public"],
     deps = [
         ":spmd_partitioner",
         "//xla/hlo/ir:hlo",
@@ -235,7 +233,6 @@ cc_library(
     name = "collective_permute_motion",
     srcs = ["collective_permute_motion.cc"],
     hdrs = ["collective_permute_motion.h"],
-    visibility = ["//visibility:public"],
     deps = [
         "//xla:comparison_util",
         "//xla:shape_util",
@@ -268,7 +265,6 @@ cc_library(
     hdrs = [
         "partition_assignment.h",
     ],
-    visibility = ["//visibility:public"],
     deps = [
         "//xla/hlo/ir:hlo",
         "//xla/service:hlo_pass",
@@ -294,7 +290,6 @@ cc_library(
     hdrs = [
         "whole_graph_manual_pass.h",
     ],
-    visibility = ["//visibility:public"],
     deps = [
         "//xla:statusor",
         "//xla/hlo/ir:hlo",

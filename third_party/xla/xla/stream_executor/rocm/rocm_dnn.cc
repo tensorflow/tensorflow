@@ -241,31 +241,31 @@ namespace wrap {
 
 #else
 
-#define STREAM_EXECUTOR_MIOPEN_WRAP(__name)                        \
-  struct DynLoadShim__##__name {                                   \
-    static const char* kName;                                      \
-    using FuncPtrT = std::add_pointer<decltype(::__name)>::type;   \
-    static void* GetDsoHandle() {                                  \
-      auto s = internal::CachedDsoLoader::GetMiopenDsoHandle();    \
-      return s.value();                                            \
-    }                                                              \
-    static FuncPtrT LoadOrDie() {                                  \
-      void* f;                                                     \
-      auto s = tsl::Env::Default()                                 \
-          -> GetSymbolFromLibrary(GetDsoHandle(), kName, &f);      \
-      CHECK(s.ok()) << "could not find " << kName                  \
-                    << " in miopen DSO; dlerror: " << s.message(); \
-      return reinterpret_cast<FuncPtrT>(f);                        \
-    }                                                              \
-    static FuncPtrT DynLoad() {                                    \
-      static FuncPtrT f = LoadOrDie();                             \
-      return f;                                                    \
-    }                                                              \
-    template <typename... Args>                                    \
-    miopenStatus_t operator()(Args... args) {                      \
-      return DynLoad()(args...);                                   \
-    }                                                              \
-  } __name;                                                        \
+#define STREAM_EXECUTOR_MIOPEN_WRAP(__name)                              \
+  struct DynLoadShim__##__name {                                         \
+    static const char* kName;                                            \
+    using FuncPtrT = std::add_pointer<decltype(::__name)>::type;         \
+    static void* GetDsoHandle() {                                        \
+      auto s = internal::CachedDsoLoader::GetMiopenDsoHandle();          \
+      return s.value();                                                  \
+    }                                                                    \
+    static FuncPtrT LoadOrDie() {                                        \
+      void* f;                                                           \
+      auto s = tsl::Env::Default()->GetSymbolFromLibrary(GetDsoHandle(), \
+                                                         kName, &f);     \
+      CHECK(s.ok()) << "could not find " << kName                        \
+                    << " in miopen DSO; dlerror: " << s.message();       \
+      return reinterpret_cast<FuncPtrT>(f);                              \
+    }                                                                    \
+    static FuncPtrT DynLoad() {                                          \
+      static FuncPtrT f = LoadOrDie();                                   \
+      return f;                                                          \
+    }                                                                    \
+    template <typename... Args>                                          \
+    miopenStatus_t operator()(Args... args) {                            \
+      return DynLoad()(args...);                                         \
+    }                                                                    \
+  } __name;                                                              \
   const char* DynLoadShim__##__name::kName = #__name;
 
 #endif
@@ -2292,7 +2292,9 @@ bool CreateRnnWorkspace(Stream* stream, miopenHandle_t miopen_handle,
 
       return false;
     }
-    stream->ThenMemZero(workspace, workspace_size_in_bytes);
+    if (!stream->MemZero(workspace, workspace_size_in_bytes).ok()) {
+      return false;
+    }
   } else {
     *workspace = DeviceMemory<uint8>();
   }
@@ -2370,15 +2372,15 @@ absl::Status MIOpenSupport::DoRnnForwardImpl(
         LOG(ERROR) << "Fail to allocate RNN reserve space";
         return absl::InternalError("AllocateBytes for RNN failed");
       }
-      stream->ThenMemZero(&reserve_space, reserve_space_size_in_bytes);
+      TF_RETURN_IF_ERROR(
+          stream->MemZero(&reserve_space, reserve_space_size_in_bytes));
     }
   }
 
   const bool is_profiling = output_profile_result != nullptr;
 
-  TF_ASSIGN_OR_RETURN(
-      std::optional<GpuTimer> timer,
-      GpuTimer::CreateIfNeeded(AsGpuStream(stream), is_profiling));
+  TF_ASSIGN_OR_RETURN(std::optional<GpuTimer> timer,
+                      GpuTimer::CreateIfNeeded(stream, is_profiling));
 
   // make the forward call
   if (!is_training) {
@@ -2488,23 +2490,25 @@ absl::Status MIOpenSupport::DoRnnBackwardImpl(
   auto size_data = input_desc.seq_length() * input_desc.batch_size() *
                    input_desc.data_size();
   if ((size_data > 0) && (input_backprop_data->opaque() != nullptr))
-    stream->ThenMemZero(input_backprop_data, size_data * type_size);
+    TF_RETURN_IF_ERROR(
+        stream->MemZero(input_backprop_data, size_data * type_size));
 
   size_data = input_h_desc.num_layers() * input_h_desc.batch_size() *
               input_h_desc.data_size();
   if ((size_data > 0) && (input_h_backprop_data->opaque() != nullptr))
-    stream->ThenMemZero(input_h_backprop_data, size_data * type_size);
+    TF_RETURN_IF_ERROR(
+        stream->MemZero(input_h_backprop_data, size_data * type_size));
 
   size_data = input_c_desc.num_layers() * input_c_desc.batch_size() *
               input_c_desc.data_size();
   if ((size_data > 0) && (input_c_backprop_data->opaque() != nullptr))
-    stream->ThenMemZero(input_c_backprop_data, size_data * type_size);
+    TF_RETURN_IF_ERROR(
+        stream->MemZero(input_c_backprop_data, size_data * type_size));
 
   const bool is_profiling = output_profile_result != nullptr;
 
-  TF_ASSIGN_OR_RETURN(
-      std::optional<GpuTimer> timer,
-      GpuTimer::CreateIfNeeded(AsGpuStream(stream), is_profiling));
+  TF_ASSIGN_OR_RETURN(std::optional<GpuTimer> timer,
+                      GpuTimer::CreateIfNeeded(stream, is_profiling));
 
   // make the backward data call
   auto status = wrap::miopenRNNBackwardData(
@@ -2533,7 +2537,8 @@ absl::Status MIOpenSupport::DoRnnBackwardImpl(
 
   if (params_backprop_data != nullptr) {
     // Clear the dw to zeros.
-    stream->ThenMemZero(params_backprop_data, params_backprop_data->size());
+    TF_RETURN_IF_ERROR(
+        stream->MemZero(params_backprop_data, params_backprop_data->size()));
     // make the backward weight call
     status = wrap::miopenRNNBackwardWeights(
         miopen.handle() /*handle*/, rnn_desc.handle() /*rnnDesc*/,
@@ -3195,9 +3200,8 @@ class RocmConvRunner : public dnn::ConvRunner {
     float beta = 0.0;
 
     const bool is_profiling = profile_result != nullptr;
-    TF_ASSIGN_OR_RETURN(
-        std::optional<GpuTimer> timer,
-        GpuTimer::CreateIfNeeded(AsGpuStream(stream), is_profiling));
+    TF_ASSIGN_OR_RETURN(std::optional<GpuTimer> timer,
+                        GpuTimer::CreateIfNeeded(stream, is_profiling));
 
     miopenStatus_t status = miopenStatusSuccess;
     switch (kind_) {
@@ -4099,11 +4103,15 @@ absl::Status ROCmFusedMatmulRunner::gemm(Stream* stream,
   blas::Transpose tb =
       _trans_b ? blas::Transpose::kTranspose : blas::Transpose::kNoTranspose;
 
-  return stream->ThenBlasGemm<T, T>(
-      tb, ta, _n, _m, _k, static_cast<DeviceMemory<T>>(b_data), _ldb,
-      static_cast<DeviceMemory<T>>(a_data), _lda,
-      static_cast<DeviceMemory<T>*>(&c_data), _ldc, NumericOptions{},
-      blas::CallContext::kNone);
+  auto* blas = stream->parent()->AsBlas();
+  if (blas == nullptr) {
+    return absl::InternalError("No Blas support for stream");
+  }
+  return blas->BlasGemm<T, T>(stream, tb, ta, _n, _m, _k,
+                              static_cast<DeviceMemory<T>>(b_data), _ldb,
+                              static_cast<DeviceMemory<T>>(a_data), _lda,
+                              static_cast<DeviceMemory<T>*>(&c_data), _ldc,
+                              NumericOptions{}, blas::CallContext::kNone);
 }
 
 template <typename T>
@@ -4264,10 +4272,10 @@ absl::Status MIOpenSupport::DoPoolForward(
                                miopenFloat, pdesc);
       if (cache_hit) {
         // reusing the same buffer
-        workspace = reinterpret_cast<uint8*>(pdesc->workspace->ptr()->opaque());
+        workspace = reinterpret_cast<uint8*>(pdesc->workspace.ptr()->opaque());
       } else {
-        wsp_mem = stream->AllocateOwnedArray<uint8>(workspace_size).value();
-        workspace = reinterpret_cast<uint8*>(wsp_mem->ptr()->opaque());
+        wsp_mem = stream->parent()->AllocateOwnedArray<uint8>(workspace_size);
+        workspace = reinterpret_cast<uint8*>(wsp_mem.ptr()->opaque());
         m_pooling_cache.insert(input_data.opaque(), input_dimensions,
                                output_dimensions, pooling_dimensions,
                                miopenFloat, wsp_mem, workspace_size,
@@ -4422,7 +4430,7 @@ absl::Status MIOpenSupport::DoPoolBackward(
     if (cache_hit) {
       assert(pdesc != 0);
       workspace_ptr =
-          reinterpret_cast<uint8*>(pdesc->workspace->ptr()->opaque());
+          reinterpret_cast<uint8*>(pdesc->workspace.ptr()->opaque());
       VLOG(1) << "Pooling cache hit";
     } else {
       VLOG(1) << "Pooling cache miss";
@@ -4621,64 +4629,6 @@ bool MIOpenSupport::DoNormalizeBackwardWithDimensions(
   return true;
 }
 
-bool MIOpenSupport::DoDepthConcatenate(
-    Stream* stream, absl::Span<const dnn::BatchDescriptor> input_dimensions,
-    absl::Span<const DeviceMemory<float>* const> input_data,
-    DeviceMemory<float>* output_data) {
-  CHECK_EQ(input_dimensions.size(), input_data.size());
-
-  for (const auto& dimensions : input_dimensions) {
-    if (dimensions.layout() != dnn::DataLayout::kBatchDepthYX) {
-      LOG(ERROR) << "MIOpenSupport::DoDepthConcatenate currently only "
-                    "supports the kBatchDepthYX layout.";
-      return false;
-    }
-  }
-
-  if (input_dimensions.empty()) {
-    return true;  // Nothing to do.
-  }
-
-  dnn::BatchDescriptor output_dimensions =
-      dnn::BatchDescriptor::DepthConcatenateOutputDescriptor(input_dimensions);
-
-  const int64_t area = output_dimensions.width() * output_dimensions.height();
-  const auto index = [area](int64_t batch, int64_t depth, int64_t yx,
-                            int64_t max_depth) {
-    return (batch * max_depth + depth) * area + yx;
-  };
-
-  std::vector<float> output_host(output_dimensions.ElementCount());
-  std::vector<float> tmp;
-  int64_t depth_sum = 0;
-  for (size_t i = 0; i < input_data.size(); ++i) {
-    const auto& dimensions = input_dimensions[i];
-    tmp.resize(dimensions.ElementCount());
-    stream->ThenMemcpyD2H<float>(*input_data[i], absl::MakeSpan(tmp));
-    absl::Status block_status = stream->BlockHostUntilDone();
-    if (!block_status.ok()) {
-      LOG(ERROR) << "BlockHostUntilDone failed: " << block_status;
-      return false;
-    }
-
-    for (int64_t batch = 0; batch < output_dimensions.count(); ++batch) {
-      for (int64_t yx = 0; yx < area; ++yx) {
-        for (int64_t depth = 0; depth < dimensions.feature_map_count();
-             ++depth) {
-          LOG(INFO) << output_dimensions.ElementCount() << ' ' << batch << ' '
-                    << yx << ' ' << depth;
-          output_host[index(batch, depth + depth_sum, yx,
-                            output_dimensions.feature_map_count())] =
-              tmp[index(batch, depth, yx, dimensions.feature_map_count())];
-        }
-      }
-    }
-    depth_sum += dimensions.feature_map_count();
-  }
-  stream->ThenMemcpyH2D<float>(output_host, output_data);
-  return true;
-}
-
 bool MIOpenSupport::DeriveOutputBatchDescriptor(
     const BatchDescriptor& batch_descriptor,
     const FilterDescriptor& filter_descriptor,
@@ -4761,5 +4711,6 @@ void initialize_miopen() {
 
 }  // namespace stream_executor
 
-REGISTER_MODULE_INITIALIZER(register_miopen,
-                            { stream_executor::initialize_miopen(); });
+STREAM_EXECUTOR_REGISTER_MODULE_INITIALIZER(register_miopen, {
+  stream_executor::initialize_miopen();
+});

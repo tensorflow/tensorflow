@@ -33,7 +33,7 @@ class ChannelTracker {
 
   // Creates a new Channel object and returns the corresponding
   // ChannelHandle for it.
-  StatusOr<ChannelHandle> NewChannel(ChannelHandle::ChannelType type);
+  absl::StatusOr<ChannelHandle> NewChannel(ChannelHandle::ChannelType type);
 
  private:
   // Guards the channel mapping.

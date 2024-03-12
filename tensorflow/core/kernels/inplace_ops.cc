@@ -37,7 +37,7 @@ Status DoParallelConcatUpdate(const Device& d, const Tensor& value, int32_t loc,
   auto nrows = Toutput.dimension(0);
   auto r = (loc % nrows + nrows) % nrows;  // Guard index range.
   Toutput.template chip<0>(r).device(d) = Tvalue.template chip<0>(0);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 template <>

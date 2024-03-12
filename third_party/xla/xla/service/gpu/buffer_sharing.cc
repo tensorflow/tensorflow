@@ -203,7 +203,8 @@ std::optional<bool> CanShareBufferHint(const HloInstruction* user,
                                        const ShapeIndex& user_index) {
   switch (user->opcode()) {
     case HloOpcode::kAllReduce:
-      // NCCL all-reduce can be performed in-place.
+    case HloOpcode::kCollectiveBroadcast:
+      // NCCL all-reduce and collective-broadcast can be performed in-place.
       return user->operand_count() == 1 ||
              (user_index.size() == 1 &&
               user->operand(user_index[0]) == operand);

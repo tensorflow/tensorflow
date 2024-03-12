@@ -17,10 +17,13 @@ limitations under the License.
 #define XLA_STREAM_EXECUTOR_STREAM_EXECUTOR_PIMPL_H_
 
 #include <atomic>
+#include <cstddef>
 #include <cstdint>
+#include <initializer_list>
 #include <memory>
 #include <optional>
 #include <string>
+#include <variant>
 #include <vector>
 
 #include "absl/base/attributes.h"
@@ -28,7 +31,6 @@ limitations under the License.
 #include "absl/functional/any_invocable.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
-#include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "xla/stream_executor/allocator_stats.h"
@@ -40,14 +42,13 @@ limitations under the License.
 #include "xla/stream_executor/dnn.h"
 #include "xla/stream_executor/event.h"
 #include "xla/stream_executor/fft.h"
+#include "xla/stream_executor/host_memory_allocation.h"
 #include "xla/stream_executor/kernel_spec.h"
 #include "xla/stream_executor/launch_dim.h"
 #include "xla/stream_executor/module_spec.h"
-#include "xla/stream_executor/numeric_options.h"
 #include "xla/stream_executor/platform.h"
-#include "xla/stream_executor/platform/port.h"
-#include "tsl/platform/threadpool.h"
-#include "tsl/protobuf/dnn.pb.h"
+#include "tsl/platform/logging.h"
+#include "tsl/platform/status.h"
 
 namespace stream_executor {
 
@@ -56,11 +57,6 @@ class Stream;
 namespace internal {
 class StreamExecutorInterface;
 }  // namespace internal
-
-// Forward declaration of private friend class.
-template <typename BeginCallT, typename CompleteCallT, typename ReturnT,
-          typename... BeginArgsT>
-class ScopedTracer;
 
 // A StreamExecutor manages a single device, in terms of executing work (kernel
 // launches) and memory management (allocation/deallocation, memory copies to
@@ -192,10 +188,8 @@ class StreamExecutor {
   // Memory allocated in this manner (or allocated and registered with
   // HostMemoryRegister() is required for use in asynchronous memcpy operations,
   // such as Stream::ThenMemcpy.
-  void* HostMemoryAllocate(uint64_t size);
-
-  // Deallocates a region of host memory allocated by HostMemoryAllocate().
-  void HostMemoryDeallocate(void* location);
+  absl::StatusOr<std::unique_ptr<HostMemoryAllocation>> HostMemoryAllocate(
+      uint64_t size);
 
   // Synchronizes all activity occurring in the StreamExecutor's context (most
   // likely a whole device).
@@ -286,22 +280,6 @@ class StreamExecutor {
   // Returns a borrowed pointer to the underlying StreamExecutor implementation.
   internal::StreamExecutorInterface* implementation();
 
-  // Creates a kernel which can be launched with `stream.ThenLaunch(...)` from a
-  // PTX (and optional CUBIN), such that the types of the arguments provided for
-  // launch would have to match types of the arguments provided at creation
-  // time. The canonical storage for both ptx and cubin_data should outlive the
-  // lifetime of the kernel.
-  template <typename... Args>
-  absl::StatusOr<std::unique_ptr<TypedKernel<Args...>>> CreateTypedKernel(
-      absl::string_view kernel_name, absl::string_view ptx,
-      absl::Span<const uint8_t> cubin_data);
-
-  // Creates a kernel which can be launched with `stream.ThenLaunch(...)` from
-  // an in-process symbol pointer.
-  template <typename... Args>
-  absl::StatusOr<std::unique_ptr<TypedKernel<Args...>>> CreateTypedKernel(
-      absl::string_view kernel_name, void* symbol);
-
   // Warning: use Stream::ThenLaunch instead, this method is not for general
   // consumption. However, this is the only way to launch a kernel for which
   // the type signature is only known at runtime; say, if an application
@@ -373,16 +351,16 @@ class StreamExecutor {
   // Performs linear search over alive GPU streams.
   Stream* FindAllocatedStream(void* gpu_stream);
 
+  // Creates and initializes a Stream.
+  absl::StatusOr<std::unique_ptr<Stream>> CreateStream(
+      std::optional<std::variant<StreamPriority, int>> priority = std::nullopt);
+  // Deallocates a region of host memory allocated by HostMemoryAllocate().
+  void HostMemoryDeallocate(void* data, uint64_t size);
+
  private:
-  template <typename BeginCallT, typename CompleteCallT, typename ReturnT,
-            typename... BeginArgsT>
-  friend class ScopedTracer;
   friend class Event;
   friend class Stream;
-  template <typename... Params>
-  friend class TypedKernel;
-  template <typename... Args>
-  friend struct ThenBlasImpl;
+  friend class HostMemoryAllocation;
 
   // Synchronously allocates size bytes on the underlying platform and returns
   // a DeviceMemoryBase representing that allocation. In the case of failure,
@@ -460,13 +438,6 @@ class StreamExecutor {
   // ownership transfer to caller.
   std::unique_ptr<DeviceDescription> CreateDeviceDescription() const;
 
-  // Adds a task to the tsl::thread::ThreadPool work queue. These tasks must be
-  // fire-and-forget and have no external data or timing dependencies; their
-  // execution order and completion time have no guarantees.
-  // For an example of an appropriate task, see HostBlas::DoBlasGemmInternal;
-  // there, temporary internal buffers are freed using this method.
-  void EnqueueOnBackgroundThread(std::function<void()> task);
-
   // Reader/writer lock for mutable data structures on this StreamExecutor.
   //
   // Mutable so that caching functions (like DeviceDescription, AsBlas, etc.)
@@ -502,16 +473,6 @@ class StreamExecutor {
   //
   // Immutable post-initialization.
   int device_ordinal_;
-
-  // Executor for handling host callback work that cannot be performed
-  // by a host callback thread - for example, cleanup after a host BLAS routine
-  // (which may make device API calls). This work cannot block the host
-  // callback thread, will be completed asynchronously, and should be treated
-  // as fire-and-forget. Assume no ordering guarantees WRT the tasks enqueued
-  // here.
-  //
-  // Immutable post-initialization. Object is thread-safe.
-  std::unique_ptr<tsl::thread::ThreadPool> background_threads_;
 
   // Counter for the current number of live streams. This is used to check
   // for accidentally-outstanding streams at StreamExecutor teardown time, as
@@ -573,35 +534,6 @@ class ScopedModuleHandle {
 ////////////
 // Inlines
 
-template <typename... Args>
-inline absl::StatusOr<std::unique_ptr<TypedKernel<Args...>>>
-StreamExecutor::CreateTypedKernel(absl::string_view kernel_name,
-                                  absl::string_view ptx,
-                                  absl::Span<const uint8_t> cubin_data) {
-  auto kernel_base = std::make_unique<TypedKernel<Args...>>(this);
-  MultiKernelLoaderSpec loader_spec(kernel_base->kNumberOfParameters);
-  loader_spec.AddCudaPtxInMemory(ptx, kernel_name);
-
-  if (!cubin_data.empty()) {
-    loader_spec.AddCudaCubinInMemory(
-        reinterpret_cast<const char*>(cubin_data.data()), kernel_name);
-  }
-
-  TF_RETURN_IF_ERROR(GetKernel(loader_spec, kernel_base.get()));
-  return std::move(kernel_base);
-}
-
-template <typename... Args>
-inline absl::StatusOr<std::unique_ptr<TypedKernel<Args...>>>
-StreamExecutor::CreateTypedKernel(absl::string_view kernel_name, void* symbol) {
-  auto kernel_base = std::make_unique<TypedKernel<Args...>>(this);
-  MultiKernelLoaderSpec loader_spec(kernel_base->kNumberOfParameters);
-  loader_spec.AddInProcessSymbol(symbol, kernel_name);
-
-  TF_RETURN_IF_ERROR(GetKernel(loader_spec, kernel_base.get()));
-  return std::move(kernel_base);
-}
-
 template <typename T>
 inline DeviceMemory<T> StreamExecutor::AllocateArray(uint64_t element_count,
                                                      int64_t memory_space) {
@@ -622,8 +554,7 @@ ScopedDeviceMemory<ElemT>::ScopedDeviceMemory(
     : ScopedDeviceMemory(parent, parent->AllocateArray<ElemT>(values.size())) {
   if (ptr() != nullptr) {
     std::vector<ElemT> local(values);
-    if (!parent->SynchronousMemcpy(ptr(), const_cast<const ElemT*>(&local[0]),
-                                   ptr()->size())) {
+    if (!parent->SynchronousMemcpy(ptr(), local.data(), ptr()->size())) {
       TF_CHECK_OK(Free());
     }
   }

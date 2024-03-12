@@ -25,6 +25,8 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
 #include "absl/strings/cord.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
 #include "riegeli/bytes/cord_reader.h"  // from @riegeli
 #include "riegeli/bytes/fd_reader.h"  // from @riegeli
 #include "riegeli/bytes/string_reader.h"  // from @riegeli
@@ -35,6 +37,7 @@ limitations under the License.
 #include "tensorflow/core/platform/path.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/tools/proto_splitter/cc/test_util.h"
+#include "tensorflow/tools/proto_splitter/cc/util.h"
 #include "tensorflow/tools/proto_splitter/chunk.pb.h"
 #include "tensorflow/tools/proto_splitter/testdata/test_message.pb.h"
 #include "tsl/lib/core/status_test_util.h"
@@ -48,10 +51,10 @@ namespace tensorflow {
 namespace tools::proto_splitter {
 namespace {
 
-using ::proto_splitter::ChunkedMessage;
-using ::proto_splitter::ChunkMetadata;
-using ::proto_splitter_testdata::RepeatedRepeatedString;
-using ::proto_splitter_testdata::RepeatedString;
+using ::tensorflow::proto_splitter::ChunkedMessage;
+using ::tensorflow::proto_splitter::ChunkMetadata;
+using ::tensorflow::proto_splitter_testdata::RepeatedRepeatedString;
+using ::tensorflow::proto_splitter_testdata::RepeatedString;
 using ::testing::HasSubstr;
 using ::testing::SizeIs;
 using tsl::testing::StatusIs;
@@ -95,13 +98,14 @@ TEST(RepeatedStringSplitterTest, TestSplitChunks) {
   auto message = SetUpRepeatedString(strings);
   RepeatedStringSplitter splitter = RepeatedStringSplitter(&message);
   TF_ASSERT_OK_AND_ASSIGN(auto ret, splitter.Split());
-  auto chunks = ret.first;
-  auto chunked_message = ret.second;
+  std::vector<MessageBytes>* chunks = ret.chunks;
+  ASSERT_NE(chunks, nullptr);
+  ChunkedMessage* chunked_message = ret.chunked_message;
+  ASSERT_NE(chunked_message, nullptr);
 
   for (int i = 0; i < chunks->size(); i++) {
-    auto chunk = chunks->at(i);
-    EXPECT_TRUE(std::holds_alternative<std::string>(chunk));
-    EXPECT_EQ(strings[i], std::get<std::string>(chunk));
+    MessageBytes chunk = (*chunks)[i];
+    EXPECT_THAT(chunk, ::testing::VariantWith<std::string>(strings[i]));
   }
   EXPECT_THAT(*chunked_message, EqualsProto(R"pb(chunked_fields {
                                                    field_tag { field: 1 }
@@ -121,8 +125,8 @@ TEST(RepeatedStringSplitterTest, TestSplitChunks) {
 
   // Calling split again should return the same chunks/ChunkedMessage.
   TF_ASSERT_OK_AND_ASSIGN(auto ret2, splitter.Split());
-  auto chunks2 = ret2.first;
-  auto chunked_message2 = ret2.second;
+  std::vector<MessageBytes>* chunks2 = ret2.chunks;
+  ChunkedMessage* chunked_message2 = ret2.chunked_message;
   EXPECT_EQ(chunks2, chunks);
   EXPECT_EQ(chunked_message2, chunked_message);
 }
@@ -135,7 +139,7 @@ static void CheckChunks(riegeli::RecordReader<T>& reader,
   reader.SeekBack();
   reader.ReadRecord(chunk_metadata);
 
-  auto chunk_info = chunk_metadata.chunks();
+  auto& chunk_info = chunk_metadata.chunks();
   EXPECT_EQ(chunk_info.size(), strings.size());
   for (int i = 0; i < chunk_info.size(); i++) {
     reader.Seek(chunk_info[i].offset());
@@ -220,11 +224,13 @@ TEST(RepeatedStringSplitterTest, TestNoSplit) {
   RepeatedString message;  // No strings
   RepeatedStringSplitter splitter = RepeatedStringSplitter(&message);
   TF_ASSERT_OK_AND_ASSIGN(auto ret, splitter.Split());
-  auto chunks = ret.first;
-  auto chunked_message = ret.second;
+  std::vector<MessageBytes>* chunks = ret.chunks;
+  ASSERT_NE(chunks, nullptr);
+  ChunkedMessage* chunked_message = ret.chunked_message;
+  ASSERT_NE(chunked_message, nullptr);
 
   EXPECT_THAT(*chunks, SizeIs(1));
-  EXPECT_THAT(*std::get<tsl::protobuf::Message*>(chunks->at(0)),
+  EXPECT_THAT(*std::get<tsl::protobuf::Message*>((*chunks)[0]),
               EqualsProto(""));
   EXPECT_THAT(*chunked_message, EqualsProto(R"pb(chunk_index: 0)pb"));
 }
@@ -266,8 +272,10 @@ TEST(ComposableTest, RepeatedRepeatedStringTest) {
   RepeatedRepeatedStringSplitter splitter =
       RepeatedRepeatedStringSplitter(&message);
   TF_ASSERT_OK_AND_ASSIGN(auto ret, splitter.Split());
-  auto chunks = ret.first;
-  auto chunked_message = ret.second;
+  std::vector<MessageBytes>* chunks = ret.chunks;
+  ASSERT_NE(chunks, nullptr);
+  ChunkedMessage* chunked_message = ret.chunked_message;
+  ASSERT_NE(chunked_message, nullptr);
 
   std::vector<string> expected_chunks = {"piece-1",       "piece-2", "piece-3",
                                          "new-strings-1", "foo-1",   "foo-2"};
@@ -275,13 +283,13 @@ TEST(ComposableTest, RepeatedRepeatedStringTest) {
   // RepeatedRepeatedStringSplitter sets the first chunk as the user-provided
   // message, so the expected size is 7.
   EXPECT_THAT(*chunks, SizeIs(7));
-  EXPECT_THAT(*std::get<tsl::protobuf::Message*>(chunks->at(0)),
+  EXPECT_THAT(*std::get<tsl::protobuf::Message*>((*chunks)[0]),
               EqualsProto(message));
 
   for (int i = 1; i < chunks->size(); i++) {
-    auto chunk = chunks->at(i);
-    EXPECT_TRUE(std::holds_alternative<std::string>(chunk));
-    EXPECT_EQ(expected_chunks[i - 1], std::get<std::string>(chunk));
+    MessageBytes chunk = (*chunks)[i];
+    EXPECT_THAT(chunk,
+                ::testing::VariantWith<std::string>(expected_chunks[i - 1]));
   }
 
   // message.rs[2].strings[0] (value = "foo-1") should be the chunk at index 5.
@@ -305,7 +313,8 @@ TEST(ComposableTest, ChildSplitterTest) {
 
   TF_EXPECT_OK(child.BuildChunks());
   TF_ASSERT_OK_AND_ASSIGN(auto ret, splitter.Split());
-  auto chunks = ret.first;
+  std::vector<MessageBytes>* chunks = ret.chunks;
+  ASSERT_NE(chunks, nullptr);
   EXPECT_THAT(*chunks, SizeIs(5));  // Total 5 chunks should be generated.
 }
 

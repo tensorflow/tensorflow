@@ -16,15 +16,18 @@ limitations under the License.
 #include "xla/hlo/experimental/auto_sharding/cluster_environment.h"
 
 #include <algorithm>
+#include <cstddef>
 #include <cstdint>
 #include <optional>
 #include <string>
 #include <utility>
 #include <vector>
 
+#include "absl/types/span.h"
 #include "xla/hlo/experimental/auto_sharding/auto_sharding_strategy.h"
 #include "xla/hlo/experimental/auto_sharding/auto_sharding_util.h"
 #include "xla/service/spmd/spmd_partitioner_util.h"
+#include "xla/shape.h"
 
 namespace xla {
 namespace spmd {
@@ -99,6 +102,17 @@ double ClusterEnvironment::ReduceScatterCost(double num_bytes,
           0.001);
 }
 
+double ClusterEnvironment::AllToAllCostUtil(double num_bytes, int mesh_dim,
+                                            int64_t num_devices) const {
+  // A penalty factor to make the theoretical cost match the
+  // empirical cost on v100 + nvlink.
+  double penalty_factor = static_cast<double>(num_devices) / 2.0;
+  return (round(mesh_alpha_[mesh_dim] +
+                mesh_beta_[mesh_dim] * (num_devices - 1) / num_devices /
+                    num_devices * num_bytes * penalty_factor) +
+          0.001);
+}
+
 double ClusterEnvironment::AllToAllCost(double num_bytes, int mesh_dim) const {
   if (auto_sharding_option_.force_override_all_to_all_cost) {
     return auto_sharding_option_.all_to_all_cost;
@@ -116,26 +130,43 @@ double ClusterEnvironment::AllToAllCost(double num_bytes, int mesh_dim) const {
   }
 
   int64_t num_devices = device_mesh_.dim(mesh_dim);
-  return AllToAllCostUtil(num_bytes, mesh_dim, num_devices, mesh_alpha_,
-                          mesh_beta_);
+  return AllToAllCostUtil(num_bytes, mesh_dim, num_devices);
 }
 
-double ClusterEnvironment::DotCost(const Shape& lhs_shape,
-                                   const Shape& rhs_shape) const {
-  if (!auto_sharding_option_.allow_recompute_heavy_op) {
-    return kInfinityCost;
+// Do not consider device id changes yet.
+double ClusterEnvironment::ReshardingCostMixedMeshShape(
+    const Shape& shape, absl::Span<const int64_t> src_tensor_dim_to_mesh_dim,
+    absl::Span<const int64_t> dst_tensor_dim_to_mesh_dim) const {
+  int64_t num_devices = device_mesh_.num_elements();
+  double resharding_costs = 0.0;
+  for (size_t i = 0; i < shape.rank(); ++i) {
+    // Only consider sharded dimensions, do not consider replicate_on_last_dim.
+    if (src_tensor_dim_to_mesh_dim[i] == dst_tensor_dim_to_mesh_dim[i]) {
+      continue;
+    }
+    if (dst_tensor_dim_to_mesh_dim[i] == -1 ||
+        src_tensor_dim_to_mesh_dim[i] == -1) {
+      // AllToAll cost
+      int64_t communication_dim;
+      if (dst_tensor_dim_to_mesh_dim[i] != -1) {
+        communication_dim = dst_tensor_dim_to_mesh_dim[i];
+      } else {
+        communication_dim = src_tensor_dim_to_mesh_dim[i];
+      }
+      int64_t communication_bytes = GetBytes(shape);
+      resharding_costs +=
+          AllToAllCostUtil(communication_bytes, communication_dim, num_devices);
+    } else {
+      // Do not support this sharding, assuming it is gonna be very expensive.
+      return kInfinityCost;
+    }
   }
-
-  // TODO(zhuohan): When profiling data is not available, it is not easy to
-  // align the scale of compute cost and communication cost. Here we just use
-  // a simple heuristic to compute the compute cost with communication cost.
-  double num_bytes = GetBytes(lhs_shape) + GetBytes(rhs_shape);
-  return AllReduceCost(num_bytes, 0) + AllReduceCost(num_bytes, 1);
+  return resharding_costs;
 }
 
 double ClusterEnvironment::CollectivePermuteCost(
     double num_bytes,
-    const std::vector<std::pair<int64_t, int64_t>>& src_dst_pairs) const {
+    absl::Span<const std::pair<int64_t, int64_t>> src_dst_pairs) const {
   absl::flat_hash_map<int64_t, std::vector<int64_t>> device_to_index_map;
   device_mesh_.Each([&](absl::Span<const int64_t> indices, int64_t device) {
     std::vector<int64_t> indices_vector;
@@ -294,9 +325,8 @@ double ClusterEnvironment::ReshardingCost(const Shape& shape,
       dst_tensor_dim_to_mesh_dim_or.value();
 
   if (src_n_dim != dst_n_dim && src_n_dim != -1 && dst_n_dim != -1) {
-    return ReshardingCostMixedMeshShape(
-        shape, src_tensor_dim_to_mesh_dim, dst_tensor_dim_to_mesh_dim,
-        device_mesh_.num_elements(), mesh_alpha_, mesh_beta_);
+    return ReshardingCostMixedMeshShape(shape, src_tensor_dim_to_mesh_dim,
+                                        dst_tensor_dim_to_mesh_dim);
   }
 
   AdjustTensorMeshDimMapping(src_tensor_dim_to_mesh_dim, src_n_dim);

@@ -35,10 +35,6 @@ tf_proto_library(
     create_java_proto = False,
     create_kotlin_proto = False,
     protodeps = tf_additional_all_protos(),
-    visibility = [
-        ":data_transfer_visibility",
-        "//tensorflow:internal",
-    ],
 )
 
 tf_proto_library(
@@ -299,6 +295,7 @@ cc_library(
         ":worker_proto_cc",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/framework:dataset_proto_cc",
         "//tensorflow/core/framework:types_proto_cc",
         "//tensorflow/core/platform:errors",
@@ -413,6 +410,7 @@ tf_cc_test(
         "//tensorflow/core/platform:status_matchers",
         "//tensorflow/core/platform:statusor",
         "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/status",
         "@local_tsl//tsl/platform:env",
         "@local_tsl//tsl/platform:path",
         "@local_tsl//tsl/protobuf:protos_all_cc",

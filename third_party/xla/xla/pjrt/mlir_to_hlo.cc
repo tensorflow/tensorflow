@@ -181,18 +181,10 @@ void UpgradeStablehlo(mlir::ModuleOp module) {
 
 Status MlirToXlaComputation(mlir::ModuleOp module,
                             XlaComputation& xla_computation,
-                            bool use_tuple_args, bool return_tuple,
-                            bool legalize_sparse_ops) {
+                            bool use_tuple_args, bool return_tuple) {
   mlir::BaseScopedDiagnosticHandler diagnostic_handler(module->getContext());
   {
     mlir::PassManager pm(module->getContext());
-    if (legalize_sparse_ops) {
-      // Convert sparse operations to custom_calls in order to translate sparse
-      // operations into XLA HLO.
-      pm.addNestedPass<mlir::func::FuncOp>(
-          mlir::mhlo::createLegalizeSparseOperationsPass(
-              /*legalizeToCustomCalls=*/true));
-    }
     pm.addPass(mlir::mhlo::createStablehloLegalizeToHloPass());
     pm.addNestedPass<mlir::func::FuncOp>(
         mlir::mhlo::createChloLegalizeToHloPass(
@@ -215,9 +207,8 @@ Status MlirToXlaComputation(mlir::ModuleOp module,
   }
 
   HloProto proto;
-  mlir::MlirToHloConversionOptions options;
-  TF_RETURN_IF_ERROR(ConvertMlirHloToHlo(module, &proto, use_tuple_args,
-                                         return_tuple, options));
+  TF_RETURN_IF_ERROR(
+      ConvertMlirHloToHlo(module, &proto, use_tuple_args, return_tuple));
 
   xla_computation = XlaComputation(std::move(*proto.mutable_hlo_module()));
   return OkStatus();

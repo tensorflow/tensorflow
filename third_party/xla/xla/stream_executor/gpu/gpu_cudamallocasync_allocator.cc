@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "xla/stream_executor/gpu/gpu_cudamallocasync_allocator.h"
 
+#include <atomic>
+#include <cstddef>
 #include <map>
 #include <memory>
 #include <optional>
@@ -28,13 +30,13 @@ limitations under the License.
 
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
-#include "xla/stream_executor/gpu/gpu_init.h"
-#include "xla/stream_executor/stream_executor.h"
+#include "xla/stream_executor/gpu/gpu_init.h"  // IWYU pragma: keep
+#include "xla/stream_executor/stream_executor.h"  // IWYU pragma: keep
 #include "tsl/framework/allocator.h"
 #include "tsl/framework/device_id.h"
 #include "tsl/platform/logging.h"
 #include "tsl/platform/mutex.h"
-#include "tsl/util/env_var.h"
+#include "tsl/util/env_var.h"  // IWYU pragma: keep
 
 namespace stream_executor {
 
@@ -441,8 +443,7 @@ void GpuCudaMallocAsyncAllocator::SetStreamAndPreallocateMemory(void* stream) {
     void* ptr = AllocateRaw(0, prealloc_size);
     DeallocateRaw(ptr);
     VLOG(2) << Name() << " GpuCudaMallocAsyncAllocator reserved the pool for "
-            << prealloc_size << " bytes"
-            << ". First ptr: " << ptr;
+            << prealloc_size << " bytes" << ". First ptr: " << ptr;
     ClearStats();
   }
 #endif

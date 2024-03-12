@@ -19,36 +19,47 @@ limitations under the License.
 
 #include "xla/stream_executor/stream_executor_pimpl.h"
 
+#include <atomic>
+#include <cstddef>
 #include <cstdint>
 #include <memory>
+#include <optional>
+#include <string>
+#include <tuple>
+#include <utility>
+#include <variant>
 
-#include "absl/base/const_init.h"
 #include "absl/functional/any_invocable.h"
+#include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
-#include "absl/strings/ascii.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
-#include "absl/synchronization/notification.h"
+#include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
+#include "xla/stream_executor/allocator_stats.h"
 #include "xla/stream_executor/blas.h"
 #include "xla/stream_executor/command_buffer.h"
+#include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/device_memory_allocator.h"
 #include "xla/stream_executor/device_options.h"
 #include "xla/stream_executor/dnn.h"
 #include "xla/stream_executor/event.h"
 #include "xla/stream_executor/fft.h"
+#include "xla/stream_executor/host_memory_allocation.h"
 #include "xla/stream_executor/kernel.h"
 #include "xla/stream_executor/kernel_spec.h"
 #include "xla/stream_executor/launch_dim.h"
 #include "xla/stream_executor/module_spec.h"
-#include "xla/stream_executor/platform/port.h"
+#include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor_internal.h"
 #include "tsl/platform/errors.h"
+#include "tsl/platform/numbers.h"
 #include "tsl/platform/stacktrace.h"
+#include "tsl/platform/status.h"
 #include "tsl/platform/statusor.h"
-#include "tsl/platform/threadpool.h"
 #include "tsl/util/env_var.h"
 
 namespace stream_executor {
@@ -60,14 +71,6 @@ std::string StackTraceIfVLOG10() {
   } else {
     return "";
   }
-}
-
-// Make sure the executor is done with its work; we know (because this isn't
-// publicly visible) that all enqueued work is quick.
-void BlockOnThreadExecutor(tsl::thread::ThreadPool* executor) {
-  absl::Notification n;
-  executor->Schedule([&n]() { n.Notify(); });
-  n.WaitForNotification();
 }
 
 }  // namespace
@@ -88,15 +91,11 @@ StreamExecutor::StreamExecutor(
     : platform_(platform),
       implementation_(std::move(implementation)),
       device_ordinal_(device_ordinal),
-      background_threads_(new tsl::thread::ThreadPool(
-          tsl::Env::Default(), "stream_executor", kNumBackgroundThreads)),
       live_stream_count_(0),
       memory_limit_bytes_(GetMemoryLimitBytes()),
       allocator_(this) {}
 
 StreamExecutor::~StreamExecutor() {
-  BlockOnThreadExecutor(background_threads_.get());
-
   if (live_stream_count_.load() != 0) {
     LOG(WARNING) << "Not all streams were deallocated at executor destruction "
                  << "time. This may lead to unexpected/bad behavior - "
@@ -304,28 +303,29 @@ absl::Status StreamExecutor::CollectiveMemoryDeallocate(void* location) {
   return implementation_->CollectiveMemoryDeallocate(location);
 }
 
-void* StreamExecutor::HostMemoryAllocate(uint64_t size) {
+absl::StatusOr<std::unique_ptr<HostMemoryAllocation>>
+StreamExecutor::HostMemoryAllocate(uint64_t size) {
   void* buffer = implementation_->HostMemoryAllocate(size);
   VLOG(1) << "Called StreamExecutor::HostMemoryAllocate(size=" << size
           << ") returns " << buffer << StackTraceIfVLOG10();
-  return buffer;
+  if (buffer == nullptr && size > 0) {
+    return absl::InternalError(
+        absl::StrFormat("Failed to allocate HostMemory of size %d", size));
+  }
+  return std::make_unique<HostMemoryAllocation>(buffer, size, implementation());
 }
 
-void StreamExecutor::HostMemoryDeallocate(void* location) {
-  VLOG(1) << "Called StreamExecutor::HostMemoryDeallocate(location=" << location
-          << ")" << StackTraceIfVLOG10();
+void StreamExecutor::HostMemoryDeallocate(void* data, uint64_t size) {
+  VLOG(1) << "Called StreamExecutor::HostMemoryDeallocate(data=" << data << ")"
+          << StackTraceIfVLOG10();
 
-  return implementation_->HostMemoryDeallocate(location);
+  return implementation_->HostMemoryDeallocate(data);
 }
 
 bool StreamExecutor::SynchronizeAllActivity() {
   VLOG(1) << "Called StreamExecutor::SynchronizeAllActivity()"
           << StackTraceIfVLOG10();
   bool ok = implementation_->SynchronizeAllActivity();
-
-  // This should all be quick and infallible work, so we can perform the
-  // synchronization even in the case of failure.
-  BlockOnThreadExecutor(background_threads_.get());
 
   return ok;
 }
@@ -391,12 +391,12 @@ absl::Status StreamExecutor::SynchronousMemcpyH2D(
 
 bool StreamExecutor::Memcpy(Stream* stream, void* host_dst,
                             const DeviceMemoryBase& device_src, uint64_t size) {
-  return implementation_->Memcpy(stream, host_dst, device_src, size);
+  return implementation_->Memcpy(stream, host_dst, device_src, size).ok();
 }
 
 bool StreamExecutor::Memcpy(Stream* stream, DeviceMemoryBase* device_dst,
                             const void* host_src, uint64_t size) {
-  return implementation_->Memcpy(stream, device_dst, host_src, size);
+  return implementation_->Memcpy(stream, device_dst, host_src, size).ok();
 }
 
 bool StreamExecutor::MemcpyDeviceToDevice(Stream* stream,
@@ -450,6 +450,20 @@ Event::Status StreamExecutor::PollForEventStatus(Event* event) {
   return implementation_->PollForEventStatus(event);
 }
 
+absl::StatusOr<std::unique_ptr<Stream>> StreamExecutor::CreateStream(
+    std::optional<std::variant<StreamPriority, int>> priority) {
+  auto stream = std::make_unique<Stream>(this);
+  if (priority.has_value()) {
+    if (std::holds_alternative<StreamPriority>(*priority)) {
+      stream->SetPriority(std::get<StreamPriority>(*priority));
+    } else {
+      stream->SetPriority(std::get<int>(*priority));
+    }
+  }
+  TF_RETURN_IF_ERROR(stream->Initialize());
+  return std::move(stream);
+}
+
 bool StreamExecutor::AllocateStream(Stream* stream) {
   live_stream_count_.fetch_add(1, std::memory_order_relaxed);
   if (!implementation_->AllocateStream(stream)) {
@@ -487,10 +501,6 @@ std::unique_ptr<DeviceDescription> StreamExecutor::CreateDeviceDescription()
 
 bool StreamExecutor::DeviceMemoryUsage(int64_t* free, int64_t* total) const {
   return implementation_->DeviceMemoryUsage(free, total);
-}
-
-void StreamExecutor::EnqueueOnBackgroundThread(std::function<void()> task) {
-  background_threads_->Schedule(std::move(task));
 }
 
 std::optional<AllocatorStats> StreamExecutor::GetAllocatorStats() {
@@ -577,18 +587,15 @@ absl::StatusOr<Stream*> StreamExecutorMemoryAllocator::GetStream(
       << "The logic below only works for synchronous allocators";
   TF_ASSIGN_OR_RETURN(StreamExecutor * executor,
                       GetStreamExecutor(device_ordinal));
-  Stream* out = [&] {
-    absl::MutexLock lock(&mutex_);
-    if (!streams_.count(device_ordinal)) {
-      auto p = streams_.emplace(std::piecewise_construct,
-                                std::forward_as_tuple(device_ordinal),
-                                std::forward_as_tuple(executor));
-      p.first->second.Init();
-      return &p.first->second;
-    }
-    return &streams_.at(device_ordinal);
-  }();
-  return out;
+  absl::MutexLock lock(&mutex_);
+  if (!streams_.count(device_ordinal)) {
+    auto p = streams_.emplace(std::piecewise_construct,
+                              std::forward_as_tuple(device_ordinal),
+                              std::forward_as_tuple(executor));
+    TF_RETURN_IF_ERROR(p.first->second.Initialize());
+    return &p.first->second;
+  }
+  return &streams_.at(device_ordinal);
 }
 
 }  // namespace stream_executor

@@ -347,6 +347,13 @@ TokKind HloLexer::LexIdentifier() {
       token_state_.str_val.assign(token_state_.token_start, current_ptr_);
       return TokKind::kDimLabels;
     }
+    static LazyRE2 sparsity_desc_pattern = {
+        R"(([LR]\.[0-9]+@[0-9]+:[0-9]+_?)+)"};
+    if (RE2::Consume(&consumable, *sparsity_desc_pattern)) {
+      current_ptr_ = consumable.data();
+      token_state_.str_val.assign(token_state_.token_start, current_ptr_);
+      return TokKind::kSparsityDesc;
+    }
   }
 
   token_state_.str_val = std::string(identifier);
@@ -638,6 +645,8 @@ std::string TokKindToString(TokKind kind) {
       return "kDxD";
     case TokKind::kPad:
       return "kPad";
+    case TokKind::kSparsityDesc:
+      return "kSparsityDesc";
     case TokKind::kIdent:
       return "kIdent";
     case TokKind::kString:

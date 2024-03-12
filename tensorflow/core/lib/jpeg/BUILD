@@ -26,7 +26,6 @@ cc_library(
         "jpeg_handle.cc",
         "jpeg_mem.cc",
         "//tensorflow/core/platform:jpeg_hdrs",
-        "@local_tsl//tsl/platform:jpeg_hdrs",
     ],
     hdrs = [
         "jpeg_handle.h",
@@ -52,7 +51,6 @@ cc_library(
         "jpeg_handle.cc",
         "jpeg_mem.cc",
         "//tensorflow/core/platform:jpeg_hdrs",
-        "@local_tsl//tsl/platform:jpeg_hdrs",
     ]),
     hdrs = [
         "jpeg_handle.h",
@@ -96,6 +94,8 @@ tf_cc_test(
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
+        "//tensorflow/core/platform:jpeg",
         "@com_google_absl//absl/base",
+        "@libjpeg_turbo//:jpeg",
     ],
 )

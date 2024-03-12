@@ -71,7 +71,7 @@ std::unique_ptr<tsl::protobuf::Message> Compiler::ComputeDefaultBackendConfig(
 }
 
 // Define a default version where metadata is not used.
-StatusOr<std::vector<std::unique_ptr<AotCompilationResult>>>
+absl::StatusOr<std::vector<std::unique_ptr<AotCompilationResult>>>
 Compiler::CompileAheadOfTime(
     std::unique_ptr<HloModuleGroup> module_group,
     const AotCompilationOptions& options,
@@ -108,7 +108,7 @@ Compiler::GetPlatformCompilers() {
   (*factories)[platform_id] = std::move(compiler_factory);
 }
 
-/* static */ StatusOr<Compiler*> Compiler::GetForPlatform(
+/* static */ absl::StatusOr<Compiler*> Compiler::GetForPlatform(
     const se::Platform* platform) {
   absl::MutexLock lock(&platform_compiler_mutex_);
 

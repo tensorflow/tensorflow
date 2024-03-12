@@ -41,7 +41,7 @@ Status VerifyHandleData(
                                    " but got list with element dtype ",
                                    DataTypeString(list_shape_type.dtype));
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 bool IsValidTensorListHandleData(
@@ -74,7 +74,7 @@ REGISTER_OP("EmptyTensorList")
       c->set_output_handle_shapes_and_types(
           0, std::vector<shape_inference::ShapeAndType>{
                  {element_shape, element_dtype, ret_types.args(0)}});
-      return OkStatus();
+      return absl::OkStatus();
     });
 
 REGISTER_OP("TensorListPushBack")
@@ -114,7 +114,7 @@ REGISTER_OP("TensorListPushBack")
       c->set_output_handle_shapes_and_types(
           0, std::vector<shape_inference::ShapeAndType>{
                  {element_shape, element_dtype, ret_types.args(0)}});
-      return OkStatus();
+      return absl::OkStatus();
     });
 
 REGISTER_OP("TensorListPushBackBatch")
@@ -165,7 +165,7 @@ REGISTER_OP("TensorListPushBackBatch")
       c->set_output_handle_shapes_and_types(
           0, std::vector<shape_inference::ShapeAndType>{
                  {element_shape, element_dtype, ret_types.args(0)}});
-      return OkStatus();
+      return absl::OkStatus();
     });
 
 REGISTER_OP("TensorListLength")
@@ -210,7 +210,7 @@ REGISTER_OP("TensorListPopBack")
       }
       c->set_output(1, tensor_shape);
       c->set_output(0, c->Scalar());
-      return OkStatus();
+      return absl::OkStatus();
     });
 
 REGISTER_OP("TensorListStack")
@@ -259,7 +259,7 @@ REGISTER_OP("TensorListStack")
       shape_inference::ShapeHandle result;
       TF_RETURN_IF_ERROR(c->Concatenate(num_elements, element_shape, &result));
       c->set_output(0, result);
-      return OkStatus();
+      return absl::OkStatus();
     });
 
 Status TensorListConcatShapeInference(
@@ -295,7 +295,7 @@ Status TensorListConcatShapeInference(
     c->set_output(0, c->UnknownShape());
   }
   c->set_output(1, c->MakeShape({c->UnknownDim()}));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 REGISTER_OP("TensorListConcat")
@@ -363,7 +363,7 @@ REGISTER_OP("TensorListSplit")
       c->set_output_handle_shapes_and_types(
           0, std::vector<shape_inference::ShapeAndType>{
                  {element_shape, element_dtype, ret_types.args(0)}});
-      return OkStatus();
+      return absl::OkStatus();
     });
 
 REGISTER_OP("TensorListFromTensor")
@@ -392,7 +392,7 @@ REGISTER_OP("TensorListFromTensor")
       c->set_output_handle_shapes_and_types(
           0, std::vector<shape_inference::ShapeAndType>{
                  {element_shape, element_dtype, ret_types.args(0)}});
-      return OkStatus();
+      return absl::OkStatus();
     });
 
 REGISTER_OP("TensorListElementShape")
@@ -406,14 +406,14 @@ REGISTER_OP("TensorListElementShape")
       // unknown dims).
       if (!IsValidTensorListHandleData(handle_data)) {
         c->set_output(0, c->UnknownShape());
-        return OkStatus();
+        return absl::OkStatus();
       }
       if (c->RankKnown((*handle_data)[0].shape)) {
         c->set_output(0, c->Vector(c->Rank((*handle_data)[0].shape)));
       } else {
         c->set_output(0, c->UnknownShape());
       }
-      return OkStatus();
+      return absl::OkStatus();
     });
 
 REGISTER_OP("TensorListReserve")
@@ -435,7 +435,7 @@ REGISTER_OP("TensorListReserve")
       c->set_output_handle_shapes_and_types(
           0, std::vector<shape_inference::ShapeAndType>{
                  {element_shape, element_dtype, ret_types.args(0)}});
-      return OkStatus();
+      return absl::OkStatus();
     });
 
 REGISTER_OP("TensorListGetItem")
@@ -466,7 +466,7 @@ REGISTER_OP("TensorListGetItem")
       TF_RETURN_IF_ERROR(
           c->Merge(element_shape, element_shape_input, &element_shape));
       c->set_output(0, element_shape);
-      return OkStatus();
+      return absl::OkStatus();
     });
 
 REGISTER_OP("TensorListResize")
@@ -483,7 +483,7 @@ REGISTER_OP("TensorListResize")
       if (IsValidTensorListHandleData(handle_data)) {
         c->set_output_handle_shapes_and_types(0, *handle_data);
       }
-      return OkStatus();
+      return absl::OkStatus();
     });
 
 REGISTER_OP("TensorListSetItem")
@@ -517,7 +517,7 @@ REGISTER_OP("TensorListSetItem")
             0, std::vector<shape_inference::ShapeAndType>{
                    {c->UnknownShape(), element_dtype, ret_types.args(0)}});
       }
-      return OkStatus();
+      return absl::OkStatus();
     });
 
 REGISTER_OP("TensorListGather")
@@ -550,7 +550,7 @@ REGISTER_OP("TensorListGather")
       shape_inference::ShapeHandle out;
       TF_RETURN_IF_ERROR(c->Concatenate(c->input(1), element_shape, &out));
       c->set_output(0, out);
-      return OkStatus();
+      return absl::OkStatus();
     });
 
 REGISTER_OP("TensorListScatter")
@@ -573,7 +573,7 @@ REGISTER_OP("TensorListScatter")
           0, std::vector<shape_inference::ShapeAndType>{
                  {element_shape, element_dtype, ret_types.args(0)}});
       c->set_output(0, c->Scalar());
-      return OkStatus();
+      return absl::OkStatus();
     });
 
 REGISTER_OP("TensorListScatterV2")
@@ -597,7 +597,7 @@ REGISTER_OP("TensorListScatterV2")
           0, std::vector<shape_inference::ShapeAndType>{
                  {element_shape, element_dtype, ret_types.args(0)}});
       c->set_output(0, c->Scalar());
-      return OkStatus();
+      return absl::OkStatus();
     });
 
 REGISTER_OP("TensorListScatterIntoExistingList")
@@ -629,7 +629,7 @@ REGISTER_OP("TensorListScatterIntoExistingList")
           0, std::vector<shape_inference::ShapeAndType>{
                  {element_shape, element_dtype, ret_types.args(0)}});
       c->set_output(0, c->Scalar());
-      return OkStatus();
+      return absl::OkStatus();
     });
 
 REGISTER_OP("TensorListConcatLists")
@@ -656,7 +656,7 @@ REGISTER_OP("TensorListConcatLists")
         const FullTypeDef& ret_types = c->ret_types();
         c->set_output_handle_shapes_and_types(
             0, {{c->UnknownShape(), element_dtype, ret_types.args(0)}});
-        return OkStatus();
+        return absl::OkStatus();
       }
       shape_inference::ShapeAndType list_shape_type_a =
           handle_data_a_nonempty ? handle_data_a->at(0) : handle_data_b->at(0);
@@ -676,7 +676,7 @@ REGISTER_OP("TensorListConcatLists")
                                   list_shape_type_b.shape,
                                   &list_shape_type_a.shape));
       c->set_output_handle_shapes_and_types(0, {list_shape_type_a});
-      return OkStatus();
+      return absl::OkStatus();
     });
 
 }  // namespace

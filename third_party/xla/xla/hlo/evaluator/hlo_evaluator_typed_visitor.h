@@ -245,6 +245,18 @@ class HloEvaluatorTypedVisitor : public ConstDfsHloVisitorWithDefault {
     return UnsupportedTypeError(ceil);
   }
 
+  Status HandleErf(const HloInstruction* erf) override {
+    if constexpr (!is_complex_v<ReturnT>) {
+      TF_ASSIGN_OR_RETURN(
+          parent_->evaluated_[erf],
+          ElementWiseUnaryOp(erf, [](ElementwiseT elem_operand) {
+            return std::erf(elem_operand);
+          }));
+      return OkStatus();
+    }
+    return UnsupportedTypeError(erf);
+  }
+
   Status HandleExp(const HloInstruction* exp) override {
     TF_ASSIGN_OR_RETURN(parent_->evaluated_[exp],
                         ElementWiseUnaryOp(exp, [](ElementwiseT elem_operand) {
@@ -1593,7 +1605,7 @@ class HloEvaluatorTypedVisitor : public ConstDfsHloVisitorWithDefault {
   }
 
  private:
-  StatusOr<Literal> ElementWiseUnaryOp(
+  absl::StatusOr<Literal> ElementWiseUnaryOp(
       const HloInstruction* instruction,
       const std::function<ElementwiseT(ElementwiseT)>& unary_op) {
     const Literal& operand_literal =
@@ -1606,7 +1618,7 @@ class HloEvaluatorTypedVisitor : public ConstDfsHloVisitorWithDefault {
     return std::move(result_literal);
   }
 
-  StatusOr<Literal> ElementWiseBinaryOp(
+  absl::StatusOr<Literal> ElementWiseBinaryOp(
       const HloInstruction* instruction,
       const std::function<ElementwiseT(ElementwiseT, ElementwiseT)>&
           binary_op) {
@@ -1631,7 +1643,7 @@ class HloEvaluatorTypedVisitor : public ConstDfsHloVisitorWithDefault {
   }
 
   template <typename LhsType, typename RhsType, typename EhsType>
-  StatusOr<Literal> ElementwiseTernaryOp(
+  absl::StatusOr<Literal> ElementwiseTernaryOp(
       const HloInstruction* instruction,
       const std::function<ReturnT(LhsType, RhsType, EhsType)>& ternary_op) {
     const auto& shape = instruction->shape();

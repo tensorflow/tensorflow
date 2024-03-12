@@ -133,7 +133,8 @@ GetAllGatherTransformations(HloInstruction* all_gather) {
 }
 }  // namespace
 
-StatusOr<bool> CollectiveTransformationReorder::ReorderAllGatherTransformations(
+absl::StatusOr<bool>
+CollectiveTransformationReorder::ReorderAllGatherTransformations(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   // First, find all all-gathers and reshapes that are eligible for this
@@ -211,7 +212,7 @@ StatusOr<bool> CollectiveTransformationReorder::ReorderAllGatherTransformations(
   return true;
 }
 
-StatusOr<bool> CollectiveTransformationReorder::Run(
+absl::StatusOr<bool> CollectiveTransformationReorder::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   return ReorderAllGatherTransformations(module, execution_threads);

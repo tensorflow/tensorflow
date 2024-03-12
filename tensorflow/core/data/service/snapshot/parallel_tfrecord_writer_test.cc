@@ -171,7 +171,7 @@ class ParallelTFRecordWriterParamTest
   int64_t NumClients() const { return std::get<1>(GetParam()); }
   ByteSize MaxFileSize() const { return std::get<2>(GetParam()); }
   int64_t NumWriteThreads() const { return std::get<3>(GetParam()); }
-  int64_t BufferSizePerThread() const { return std::get<4>(GetParam()); }
+  int64_t BufferSize() const { return std::get<4>(GetParam()); }
   std::string Compression() const { return std::get<5>(GetParam()); }
 
   void VerifyFileStats(
@@ -214,7 +214,7 @@ TEST_P(ParallelTFRecordWriterParamTest, WriteRecords) {
   TF_ASSERT_OK_AND_ASSIGN(std::string test_dir, TestDir());
   ParallelTFRecordWriter parallel_tfrecord_writer(
       test_dir, Compression(), tsl::Env::Default(), MaxFileSize(),
-      NumWriteThreads(), BufferSizePerThread());
+      NumWriteThreads(), BufferSize());
 
   RangeIterator range_iterator(NumElements());
   TF_ASSERT_OK_AND_ASSIGN(
@@ -231,7 +231,7 @@ TEST_P(ParallelTFRecordWriterParamTest, ConcurrentWrites) {
   TF_ASSERT_OK_AND_ASSIGN(std::string test_dir, TestDir());
   ParallelTFRecordWriter parallel_tfrecord_writer(
       test_dir, Compression(), tsl::Env::Default(), MaxFileSize(),
-      NumWriteThreads(), BufferSizePerThread());
+      NumWriteThreads(), BufferSize());
 
   std::vector<std::unique_ptr<tsl::Thread>> client_threads;
   for (int i = 0; i < NumClients(); ++i) {
@@ -255,20 +255,21 @@ TEST_P(ParallelTFRecordWriterParamTest, ConcurrentWrites) {
   VerifyFileStats(stats, NumElements() * NumClients());
 }
 
-INSTANTIATE_TEST_SUITE_P(
-    ParallelTFRecordWriterParams, ParallelTFRecordWriterParamTest,
-    ::testing::Combine(
-        /*NumElements*/ ::testing::Values(0, 1, 100),
-        /*NumClients*/ ::testing::Values(1, 5),
-        /*MaxFileSize*/
-        ::testing::Values(ByteSize::Bytes(1), ByteSize::Bytes(100),
-                          ByteSize::GB(1)),
-        /*NumWriteThreads*/ ::testing::Values(1, 5),
-        /*BufferSizePerThread*/ ::testing::Values(1, 10000),
-        /*Compression*/
-        ::testing::Values(tsl::io::compression::kNone,
-                          tsl::io::compression::kSnappy,
-                          tsl::io::compression::kZlib)));
+INSTANTIATE_TEST_SUITE_P(ParallelTFRecordWriterParams,
+                         ParallelTFRecordWriterParamTest,
+                         ::testing::Combine(
+                             /*NumElements*/ ::testing::Values(0, 1, 100),
+                             /*NumClients*/ ::testing::Values(1, 5),
+                             /*MaxFileSize*/
+                             ::testing::Values(ByteSize::Bytes(1),
+                                               ByteSize::Bytes(100),
+                                               ByteSize::GB(1)),
+                             /*NumWriteThreads*/ ::testing::Values(1, 5),
+                             /*BufferSize*/ ::testing::Values(1, 10000),
+                             /*Compression*/
+                             ::testing::Values(tsl::io::compression::kNone,
+                                               tsl::io::compression::kSnappy,
+                                               tsl::io::compression::kZlib)));
 
 TEST(ParallelTFRecordWriterTest, WriteNoRecord) {
   TF_ASSERT_OK_AND_ASSIGN(std::string test_dir, TestDir());

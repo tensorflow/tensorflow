@@ -20,13 +20,16 @@ limitations under the License.
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/MathExtras.h"
 #include "mlir/IR/Builders.h"  // from @llvm-project
+#include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypeInterfaces.h"  // from @llvm-project
+#include "mlir/IR/IRMapping.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/lite/quantization/quantization_utils.h"  // IWYU pragma: keep
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
+#include "tensorflow/compiler/mlir/tensorflow/utils/xla_call_module_attrs.h"
 
 namespace mlir::quant {
 
@@ -37,7 +40,7 @@ bool HasStaticShape(Value value) {
   return shaped_type.hasStaticShape();
 }
 
-bool HasStaticShapeAtDims(Value value, ArrayRef<int> dims) {
+bool HasStaticShapeAtDims(Value value, const ArrayRef<int> dims) {
   auto shaped_type = value.getType().dyn_cast<ShapedType>();
   if (!shaped_type || !shaped_type.hasRank()) return false;
 
@@ -54,7 +57,7 @@ Type CloneTypeWithNewElementType(Type old_type, Type element_type) {
 }
 
 SmallVector<Value> CloneOpWithReplacedOperands(
-    OpBuilder& builder, Operation* op, const SmallVector<Value>& new_operands) {
+    OpBuilder& builder, Operation* op, const ArrayRef<Value> new_operands) {
   IRMapping mapping;
   for (const auto& arg : enumerate(new_operands)) {
     mapping.map(op->getOperand(arg.index()), arg.value());
@@ -86,6 +89,16 @@ FailureOr<SmallVector<int32_t>> CastI64ArrayToI32(
     int32_array.push_back(*cast_i32);
   }
   return int32_array;
+}
+
+StringRef GetEntryFunctionName(TF::XlaCallModuleOp op) {
+  if (!op->hasAttrOfType<FlatSymbolRefAttr>(
+          TF::kStablehloEntryFunctionAttrName)) {
+    return StringRef();
+  }
+  return op
+      ->getAttrOfType<FlatSymbolRefAttr>(TF::kStablehloEntryFunctionAttrName)
+      .getValue();
 }
 
 }  // namespace mlir::quant

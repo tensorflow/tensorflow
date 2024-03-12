@@ -23,7 +23,6 @@ limitations under the License.
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
-#include "llvm/Support/Casting.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/Quant/QuantTypes.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
@@ -32,7 +31,6 @@ limitations under the License.
 #include "mlir/IR/IRMapping.h"  // from @llvm-project
 #include "mlir/IR/Location.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
-#include "mlir/IR/Matchers.h"  // from @llvm-project
 #include "mlir/IR/OpDefinition.h"  // from @llvm-project
 #include "mlir/IR/OperationSupport.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
@@ -42,15 +40,11 @@ limitations under the License.
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "stablehlo/dialect/StablehloOps.h"  // from @stablehlo
-#include "tensorflow/compiler/mlir/lite/quantization/quantization_utils.h"
+#include "tensorflow/compiler/mlir/quantization/common/quantization_lib/quantization_utils.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/ops/stablehlo_op_quant_spec.h"
 #include "tensorflow/core/framework/types.pb.h"
 
 namespace mlir::quant::stablehlo {
-
-// Checks if an op is quantizable in StableHLO quantizer. Argument op is not
-// necessarily a StableHLO op.
-bool IsOpQuantizableStableHlo(Operation* op);
 
 // Checks whether an op is connected with a quantized composite function. If
 // not, the same-scale op will not be quantized. This decision is based on the
@@ -79,89 +73,100 @@ bool IsConnectedWithQuantizedCompsiteFunction(Operation* same_scale_op);
 // results. Dynamic range quantization allows "DynamicRangeQuantized" operands
 // and results.
 //
-// Implementation of this pattern is mostly copied from QuantizationPattern in
-// third_party/tensorflow/compiler/mlir/lite/quantization/quantization_utils.h.
+// This is a templatized `OpRewritePattern<RootOpT>`.
+//
+// Template constraints are imposed as follows:
+// * `QuantizeOpT` should have only one operand.
+// * `DequantizeOpT` should have only one result.
 template <typename ConcreteT, typename QuantizeOpT, typename DequantizeOpT,
-          typename VerifierT, typename RootOpT = DequantizeOpT>
-class StableHloQuantizationPattern : public RewritePattern {
+          typename VerifierT, typename RootOpT = DequantizeOpT,
+          typename = std::enable_if_t<
+              QuantizeOpT::template hasTrait<OpTrait::OneOperand>() &&
+              DequantizeOpT::template hasTrait<OpTrait::OneResult>()>>
+class StableHloQuantizationPattern : public OpRewritePattern<RootOpT> {
  public:
-  using BaseType =
-      StableHloQuantizationPattern<ConcreteT, QuantizeOpT, DequantizeOpT,
-                                   VerifierT, RootOpT>;
-
-  explicit StableHloQuantizationPattern(
-      MLIRContext* context, const mlir::quant::QuantPassSpec& quant_params)
-      // Set the score to a large number so it is always preferred.
-      : RewritePattern(RootOpT::getOperationName(), 300, context),
-        quant_params_(quant_params) {}
+  StableHloQuantizationPattern(MLIRContext* context, QuantPassSpec quant_params)
+      // Set the benefit to a large number so that it is always preferred.
+      : OpRewritePattern<RootOpT>(context, /*benefit=*/300),
+        quant_params_(std::move(quant_params)) {}
 
  private:
-  LogicalResult matchAndRewrite(Operation* op,
-                                PatternRewriter& rewriter) const override {
-    SmallVector<Operation*, 4> quantizing_ops;
+  // Collects all candidate ops for quantization, which are the
+  // `dequantize_op`'s users.
+  FailureOr<SmallVector<Operation*>> CollectCandidateOps(
+      DequantizeOpT dequantize_op) const {
+    auto users = dequantize_op->getResult(0).getUsers();
+    return SmallVector<Operation*>(users.begin(), users.end());
+  }
 
-    // Collect all the ops to quantize, as the user / producer of the root op.
-    if constexpr (std::is_same_v<RootOpT, DequantizeOpT>) {
-      if (op->getNumResults() != 1) {
-        op->emitError("Dequantize op should have exactly one result.");
-        return failure();
-      }
-      auto users = op->getResult(0).getUsers();
-      quantizing_ops.append(users.begin(), users.end());
-    } else if constexpr (std::is_same_v<RootOpT, QuantizeOpT>) {
-      if (op->getNumOperands() != 1) {
-        op->emitError("Quantize op should have exactly one operand.");
-        return failure();
-      }
-      Value quantize_operand = op->getOperand(0);
-      if (QuantizedType::getQuantizedElementType(quantize_operand.getType())) {
-        // The input of the quantize op has already been quantized, i.e.
-        // rescale.
-        return failure();
-      }
-      DenseFPElementsAttr attr;
-      if (matchPattern(quantize_operand, m_Constant(&attr))) {
-        // Const-> QuantizeOp pattern will be handled separately.
-        return failure();
-      }
-      if (Operation* quantizing_op = quantize_operand.getDefiningOp()) {
-        quantizing_ops.push_back(quantizing_op);
-      }
+  // Collects all candidate ops for quantization, which is the operand of
+  // `quantize_op`. If successful, this always returns one element which is the
+  // operand of `quantize_op`.
+  FailureOr<SmallVector<Operation*>> CollectCandidateOps(
+      QuantizeOpT quantize_op) const {
+    Value operand = quantize_op->getOperand(0);
+    if (QuantizedType::getQuantizedElementType(operand.getType())) {
+      // The input of the quantize op has already been quantized, i.e.
+      // rescale.
+      return failure();
     }
 
-    absl::flat_hash_set<std::string> ops_blocklist =
+    Operation* operand_op = operand.getDefiningOp();
+    if (operand_op == nullptr) {
+      // When `QuantizeOpT`'s operand does not have a defining op, it means it
+      // is a `BlockArgument`. The pattern does not match if there is no op to
+      // quantize.
+      return failure();
+    }
+
+    if (operand_op->hasTrait<OpTrait::ConstantLike>()) {
+      // Const-> QuantizeOp pattern will be handled separately.
+      return failure();
+    }
+
+    return SmallVector<Operation*>{operand_op};
+  }
+
+  LogicalResult matchAndRewrite(RootOpT op,
+                                PatternRewriter& rewriter) const override {
+    // Collect all the candidate ops for quantization.
+    FailureOr<SmallVector<Operation*>> candidate_ops = CollectCandidateOps(op);
+    // Safeguard check to ensure that there is at least one quantizable op.
+    if (failed(candidate_ops) || candidate_ops->empty()) return failure();
+
+    const absl::flat_hash_set<std::string>& ops_blocklist =
         quant_params_.quant_spec.ops_blocklist;
-    absl::flat_hash_set<std::string> nodes_blocklist =
+    const absl::flat_hash_set<std::string>& nodes_blocklist =
         quant_params_.quant_spec.nodes_blocklist;
-    CustomMap custom_map = quant_params_.quant_spec.custom_map;
+    const CustomMap& custom_map = quant_params_.quant_spec.custom_map;
 
     // Rewrite the floating-point ops to the quantized version, by fusing
     // preceding dequantize ops and succeding quantize ops.
-    for (Operation* quantizing_op : quantizing_ops) {
+    for (Operation* candidate_op : *candidate_ops) {
       // If it is requantize op, we shouldn't rewrite this op.
-      if (llvm::isa<QuantizeOpT, DequantizeOpT>(quantizing_op)) {
+      if (isa<QuantizeOpT, DequantizeOpT>(candidate_op)) {
         return failure();
       }
 
       // If the op is terminator, we shouldn't rewrite.
-      if (quantizing_op->hasTrait<OpTrait::IsTerminator>()) {
+      if (candidate_op->hasTrait<OpTrait::IsTerminator>()) {
         return failure();
       }
 
-      if (!IsOpQuantizableStableHlo(quantizing_op) &&
+      if (!IsOpQuantizableStableHlo(candidate_op) &&
           !static_cast<const ConcreteT*>(this)->IsQuantizableCustomOp(
-              *quantizing_op, custom_map)) {
+              *candidate_op, custom_map)) {
         return failure();
       }
 
-      if (GetStableHloQuantScaleSpec(quantizing_op)
+      if (GetStableHloQuantScaleSpec(candidate_op)
               ->has_same_scale_requirement &&
-          !IsConnectedWithQuantizedCompsiteFunction(quantizing_op)) {
+          !IsConnectedWithQuantizedCompsiteFunction(candidate_op)) {
         return failure();
       }
 
       // Ops with regions will be quantized in a separate pattern.
-      if (llvm::isa<mlir::stablehlo::ReduceWindowOp>(quantizing_op)) {
+      if (isa<mlir::stablehlo::ReduceWindowOp>(candidate_op)) {
         return failure();
       }
 
@@ -169,12 +174,12 @@ class StableHloQuantizationPattern : public RewritePattern {
       // case.
       if (!quant_params_.quant_spec.weight_quantization &&
           (ops_blocklist.contains(
-              quantizing_op->getName().getStringRef().str()))) {
+              candidate_op->getName().getStringRef().str()))) {
         return failure();
       }
 
       if (!nodes_blocklist.empty()) {
-        if (auto name_loc = quantizing_op->getLoc().dyn_cast<NameLoc>()) {
+        if (auto name_loc = candidate_op->getLoc().dyn_cast<NameLoc>()) {
           std::string sloc = name_loc.getName().str();
           if (!sloc.empty() &&
               (nodes_blocklist.find(sloc) != nodes_blocklist.end())) {
@@ -186,8 +191,8 @@ class StableHloQuantizationPattern : public RewritePattern {
       // Collect all the quantized inputs and "clone" the matched op by these
       // inputs.
       SmallVector<Value, 4> inputs;
-      inputs.reserve(quantizing_op->getNumOperands());
-      for (auto operand : quantizing_op->getOperands()) {
+      inputs.reserve(candidate_op->getNumOperands());
+      for (auto operand : candidate_op->getOperands()) {
         Type operand_type = operand.getType();
         if (operand_type.isa<NoneType>()) {
           inputs.push_back(operand);
@@ -211,9 +216,9 @@ class StableHloQuantizationPattern : public RewritePattern {
       // the new quantized op.
       llvm::SmallDenseMap<Value, int> outputs_replaced;
       SmallVector<Type, 4> output_types;
-      output_types.reserve(quantizing_op->getNumResults());
+      output_types.reserve(candidate_op->getNumResults());
       for (const auto& enumerated_result :
-           llvm::enumerate(quantizing_op->getResults())) {
+           llvm::enumerate(candidate_op->getResults())) {
         Value result = enumerated_result.value();
         Type result_type = result.getType();
         // Add this to the test coverage once we create test ops with none type
@@ -226,9 +231,8 @@ class StableHloQuantizationPattern : public RewritePattern {
         Type result_ele_type =
             result.getType().cast<TensorType>().getElementType();
         // If the user is the QuantizeOp, it must be the only user.
-        if (result.hasOneUse() &&
-            llvm::isa<QuantizeOpT>(*result.user_begin())) {
-          auto user = llvm::cast<QuantizeOpT>(*result.user_begin());
+        if (result.hasOneUse() && isa<QuantizeOpT>(*result.user_begin())) {
+          auto user = cast<QuantizeOpT>(*result.user_begin());
           outputs_replaced.insert(
               {user.getResult(), enumerated_result.index()});
           output_types.push_back(user.getType());
@@ -238,7 +242,7 @@ class StableHloQuantizationPattern : public RewritePattern {
           outputs_replaced.insert({result, enumerated_result.index()});
           output_types.push_back(result.getType());
         } else if (static_cast<const ConcreteT*>(this)
-                       ->AllowDynamicRangeQuantizedResult(*quantizing_op,
+                       ->AllowDynamicRangeQuantizedResult(*candidate_op,
                                                           custom_map)) {
           outputs_replaced.insert({result, enumerated_result.index()});
           output_types.push_back(result.getType());
@@ -247,17 +251,17 @@ class StableHloQuantizationPattern : public RewritePattern {
         }
       }
 
-      rewriter.setInsertionPointAfter(quantizing_op);
-      OperationState new_state(quantizing_op->getLoc(),
-                               quantizing_op->getName().getStringRef(), inputs,
-                               output_types, quantizing_op->getAttrs());
-      for (int i = 0; i < quantizing_op->getNumRegions(); ++i) {
+      rewriter.setInsertionPointAfter(candidate_op);
+      OperationState new_state(candidate_op->getLoc(),
+                               candidate_op->getName().getStringRef(), inputs,
+                               output_types, candidate_op->getAttrs());
+      for (int i = 0; i < candidate_op->getNumRegions(); ++i) {
         new_state.addRegion();
       }
       Operation* quantized_op = rewriter.create(new_state);
-      if (quantizing_op->getNumRegions() != 0) {
+      if (candidate_op->getNumRegions() != 0) {
         for (const auto& indexed_regions :
-             llvm::enumerate(quantizing_op->getRegions())) {
+             llvm::enumerate(candidate_op->getRegions())) {
           Region& target_region =
               quantized_op->getRegion(indexed_regions.index());
           IRMapping mapping;
@@ -276,7 +280,6 @@ class StableHloQuantizationPattern : public RewritePattern {
 };
 
 // Gemm Style Op: glossary/gemm.
-// Populates conversion patterns to unfuse batch normalization operations.
 void PopulateFusedGemmStylePatterns(MLIRContext& ctx,
                                     RewritePatternSet& patterns,
                                     bool enable_per_channel_quantized_weight);
@@ -285,6 +288,10 @@ void PopulateFusedGemmStylePatterns(MLIRContext& ctx,
 // stablehlo.reduce_window op.
 void PopulateQuantizeOpWithRegionPattern(MLIRContext& ctx,
                                          RewritePatternSet& patterns);
+
+// Populates conversion patterns for unary data movement ops.
+void PopulateQuantizeSingularOpPatterns(MLIRContext& ctx,
+                                        RewritePatternSet& patterns);
 
 }  // namespace mlir::quant::stablehlo
 

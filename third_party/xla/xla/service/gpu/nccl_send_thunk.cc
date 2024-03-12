@@ -18,12 +18,12 @@ limitations under the License.
 #include <cstdint>
 #include <optional>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "absl/status/status.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_instructions.h"
-#include "xla/mlir_hlo/lhlo/IR/lhlo_ops.h"
 #include "xla/service/collective_ops_utils.h"
 #include "xla/service/global_device_id.h"
 #include "xla/service/gpu/nccl_api.h"
@@ -35,29 +35,6 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
-using mlir::lmhlo::SendOp;
-
-namespace impl {
-
-NcclP2PConfig GetNcclP2PConfig(SendOp op, int64_t replica_count,
-                               int64_t partition_count) {
-  return GetNcclP2PConfigForSendRecv(op, replica_count, partition_count);
-}
-
-absl::Status CheckImplementable(SendOp op) {
-  return IsValidOperand(op.getInputs()[0], Thunk::kNcclSend);
-}
-
-}  // namespace impl
-
-NcclSendThunk::NcclSendThunk(ThunkInfo thunk_info, NcclApi* nccl_api, SendOp op,
-                             int64_t replica_count, int64_t partition_count,
-                             const Buffer& buffer)
-    : NcclCollectiveThunk(Thunk::kNcclSend, thunk_info, nccl_api,
-                          /*is_sync=*/false),
-      config_(GetNcclP2PConfig(op, replica_count, partition_count)),
-      buffer_(buffer) {}
-
 NcclSendThunk::NcclSendThunk(ThunkInfo thunk_info, NcclApi* nccl_api,
                              const HloSendInstruction* instr,
                              int64_t replica_count, int64_t partition_count,
@@ -66,21 +43,19 @@ NcclSendThunk::NcclSendThunk(ThunkInfo thunk_info, NcclApi* nccl_api,
                           /*is_sync=*/false),
       config_(GetNcclP2PConfigForSendRecv(instr, instr->operand(0)->shape(),
                                           replica_count, partition_count)),
-      buffer_(buffer) {}
+      buffer_(buffer),
+      stream_kind_(GetStreamKindForSendRecv(instr)),
+      execution_counters_(config_.validation_kind ==
+                                  NcclP2PConfig::ValidationKind::kConditional
+                              ? new ExecutionCounters()
+                              : nullptr) {}
 
-/*static*/ NcclP2PConfig NcclSendThunk::GetNcclP2PConfig(
-    SendOp op, int64_t replica_count, int64_t partition_count) {
-  return impl::GetNcclP2PConfig(op, replica_count, partition_count);
-}
-
-/*static*/ absl::Status NcclSendThunk::CheckImplementable(
-    mlir::lmhlo::SendOp op, int64_t replica_count, int64_t partition_count) {
-  return AddOpDescription<NcclSendThunk>(impl::CheckImplementable(op), op,
-                                         replica_count, partition_count);
-}
-
-/*static*/ CollectiveOpGroupMode NcclSendThunk::GetGroupMode(SendOp op) {
-  return GetGroupModeForSendRecv(op);
+absl::Status NcclSendThunk::Initialize(const InitializeParams& params) {
+  TF_RETURN_IF_ERROR(NcclCollectiveThunk::Initialize(params));
+  if (execution_counters_) {
+    TF_RETURN_IF_ERROR(execution_counters_->Initialize(params.executor));
+  }
+  return absl::OkStatus();
 }
 
 absl::Status NcclSendThunk::RunNcclCollective(const ExecuteParams& params,
@@ -105,16 +80,8 @@ absl::Status NcclSendThunk::RunNcclCollective(const ExecuteParams& params,
 
   const NcclP2PConfig::SourceTargetMapEntry source_target =
       NcclP2PConfig::GetSourceTarget(config_.id_to_source_target, current_id);
+  DeviceBufferPair& buffer = device_buffers[0];
 
-  return ::xla::gpu::RunSend(nccl_api(), source_target, device_buffers[0],
-                             stream, comm, device_string, current_id);
-}
-
-absl::Status RunSend(NcclApi* nccl_api,
-                     NcclP2PConfig::SourceTargetMapEntry source_target,
-                     DeviceBufferPair& buffer, se::Stream& stream,
-                     NcclApi::NcclCommHandle comm,
-                     absl::string_view device_string, int64_t current_id) {
   // Determine the target IDs for this instance. The target ID is the ID
   // to which this instance will copy its data.
   int device_ordinal = stream.parent()->device_ordinal();
@@ -129,9 +96,32 @@ absl::Status RunSend(NcclApi* nccl_api,
 
   // Send source buffer to target peer if needed.
   if (target_id) {
-    TF_RETURN_IF_ERROR(nccl_api->Send(src_addr, buffer.element_type,
-                                      buffer.element_count, *target_id, comm,
-                                      &stream));
+    bool should_run =
+        config_.validation_kind == NcclP2PConfig::ValidationKind::kInvalid
+            ? false
+            : true;
+    if (config_.validation_kind ==
+        NcclP2PConfig::ValidationKind::kConditional) {
+      se::StreamExecutor* executor = params.stream->parent();
+      TF_ASSIGN_OR_RETURN(int64_t * counter,
+                          execution_counters_->GetCounter(executor));
+      auto it = config_.source_target_to_bounds.find(
+          std::make_pair(current_id, *source_target.target));
+      if (it == config_.source_target_to_bounds.end()) {
+        return absl::InternalError("Missing bounds for conditional Send");
+      }
+      if (*counter < it->second.first || *counter > it->second.second) {
+        should_run = false;
+      }
+      VLOG(3) << "RunNcclCollective counter " << *counter << " " << should_run;
+      ++(*counter);
+    }
+
+    if (should_run) {
+      TF_RETURN_IF_ERROR(nccl_api()->Send(src_addr, buffer.element_type,
+                                          buffer.element_count, *target_id,
+                                          comm, &stream));
+    }
   }
 
   return absl::OkStatus();

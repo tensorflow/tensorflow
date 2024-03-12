@@ -18,21 +18,24 @@ limitations under the License.
 
 #include <array>
 #include <cstdint>
-#include <tuple>
+#include <string>
+#include <string_view>
 #include <vector>
 
 #include "absl/base/const_init.h"
 #include "absl/base/thread_annotations.h"
-#include "absl/container/flat_hash_map.h"
+#include "absl/container/node_hash_map.h"
+#include "absl/log/check.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "xla/stream_executor/gpu/gpu_asm_opts.h"
 #include "xla/stream_executor/kernel.h"
-#include "xla/stream_executor/platform/port.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "tsl/platform/statusor.h"
 #if GOOGLE_CUDA
+#include "third_party/gpus/cuda/include/cuda.h"
 #include "xla/stream_executor/cuda/cuda_driver.h"
 #endif  // GOOGLE_CUDA
 
@@ -61,7 +64,7 @@ absl::StatusOr<std::vector<uint8_t>> CompileGpuAsm(
     int cc_major, int cc_minor, const char* ptx_contents, GpuAsmOpts options,
     bool cancel_if_reg_spill = false);
 
-absl::StatusOr<std::vector<uint8_t>> CompileGpuAsmUsingLibNvPtxCompiler(
+absl::StatusOr<std::vector<uint8_t>> CompileGpuAsmUsingPtxAs(
     int cc_major, int cc_minor, const char* ptx_contents, GpuAsmOpts options,
     bool cancel_if_reg_spill = false);
 
@@ -89,7 +92,7 @@ struct HsacoImage {
 
 // Bundles the GPU machine code (HSA Code Object) and returns the resulting
 // binary (i.e. a fatbin) as a byte array.
-tsl::StatusOr<std::vector<uint8_t>> BundleGpuAsm(
+absl::StatusOr<std::vector<uint8_t>> BundleGpuAsm(
     std::vector<HsacoImage> images, const std::string rocm_root_dir);
 
 // Links multiple relocatable GPU images (e.g. results of ptxas -c) into a
@@ -101,21 +104,21 @@ absl::StatusOr<std::vector<uint8_t>> LinkUsingNvlink(
     absl::string_view preferred_cuda_dir, gpu::GpuContext* context,
     std::vector<CubinOrPTXImage> images);
 
-std::string FindCudaExecutable(const std::string& binary_name,
-                               const std::string& preferred_cuda_dir);
+absl::StatusOr<std::string> FindCudaExecutable(
+    std::string_view binary_name, std::string_view preferred_cuda_dir);
 
 // Runs tool --version and parses its version string.
-absl::StatusOr<std::array<int64_t, 3>> GetToolVersion(
-    absl::string_view tool_path);
+using ToolVersion = std::array<int64_t, 3>;
+absl::StatusOr<ToolVersion> GetToolVersion(std::string_view tool_path);
 
 // On NVIDIA GPUs, returns the CUDA toolkit version supported by the driver,
-absl::StatusOr<std::array<int64_t, 3>> GetAsmCompilerVersion(
+absl::StatusOr<ToolVersion> GetAsmCompilerVersion(
     const std::string& preferred_cuda_dir);
 
 #if GOOGLE_CUDA
 // Maintains a cache of pointers to loaded kernels
 template <typename... Args>
-absl::StatusOr<std::shared_ptr<TypedKernel<Args...>>> LoadKernelOrGetPtr(
+absl::StatusOr<TypedKernel<Args...>*> LoadKernelOrGetPtr(
     StreamExecutor* executor, absl::string_view kernel_name,
     absl::string_view ptx, absl::Span<const uint8_t> cubin_data) {
   using KernelPtrCacheKey =
@@ -123,8 +126,7 @@ absl::StatusOr<std::shared_ptr<TypedKernel<Args...>>> LoadKernelOrGetPtr(
 
   static absl::Mutex kernel_ptr_cache_mutex(absl::kConstInit);
   static auto& kernel_ptr_cache ABSL_GUARDED_BY(kernel_ptr_cache_mutex) =
-      *new absl::flat_hash_map<KernelPtrCacheKey,
-                               std::shared_ptr<TypedKernel<Args...>>>();
+      *new absl::node_hash_map<KernelPtrCacheKey, TypedKernel<Args...>>();
   CUcontext current_context = cuda::CurrentContextOrDie();
   KernelPtrCacheKey kernel_ptr_cache_key{current_context, kernel_name, ptx};
   absl::MutexLock lock(&kernel_ptr_cache_mutex);
@@ -132,14 +134,14 @@ absl::StatusOr<std::shared_ptr<TypedKernel<Args...>>> LoadKernelOrGetPtr(
   auto it = kernel_ptr_cache.find(kernel_ptr_cache_key);
   if (it == kernel_ptr_cache.end()) {
     TF_ASSIGN_OR_RETURN(
-        std::shared_ptr<TypedKernel<Args...>> loaded,
-        executor->CreateTypedKernel<Args...>(kernel_name, ptx, cubin_data));
+        TypedKernel<Args...> loaded,
+        (TypedKernel<Args...>::Create(executor, kernel_name, ptx, cubin_data)));
     it =
         kernel_ptr_cache.emplace(kernel_ptr_cache_key, std::move(loaded)).first;
   }
 
   CHECK(it != kernel_ptr_cache.end());
-  return it->second;
+  return &it->second;
 }
 #endif  // GOOGLE_CUDA
 

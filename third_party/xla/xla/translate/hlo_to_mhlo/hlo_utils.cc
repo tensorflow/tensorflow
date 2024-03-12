@@ -27,6 +27,7 @@ limitations under the License.
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/TypeUtilities.h"  // from @llvm-project
 #include "xla/literal.h"
+#include "xla/mlir/utils/type_util.h"
 #include "xla/mlir_hlo/lhlo/IR/lhlo_ops.h"
 #include "xla/primitive_util.h"
 #include "xla/service/llvm_ir/llvm_util.h"
@@ -65,8 +66,8 @@ template <typename CppType>
   }
 }
 
-StatusOr<AffineMap> GetPermutationIfAvailable(const Shape& shape,
-                                              mlir::Builder builder) {
+absl::StatusOr<AffineMap> GetPermutationIfAvailable(const Shape& shape,
+                                                    mlir::Builder builder) {
   // N.B. IsMonotonicWithDim0Major ignores tiling, and I can't change it because
   // some XLA code relies on it treating tiled layouts as equivalent to untiled
   // layouts, so the check to rule out tiling has to come /before/ the
@@ -95,10 +96,10 @@ StatusOr<AffineMap> GetPermutationIfAvailable(const Shape& shape,
 }
 }  // namespace
 
-StatusOr<mlir::MemRefType> ConvertTensorShapeToMemRefType(
+absl::StatusOr<mlir::MemRefType> ConvertTensorShapeToMemRefType(
     const Shape& shape, mlir::Builder builder) {
   auto element_type_or =
-      ConvertPrimitiveTypeToMLIRType(shape.element_type(), builder);
+      ConvertPrimitiveTypeToMlirType(shape.element_type(), builder);
   if (!element_type_or.ok()) return element_type_or.status();
 
   using mlir::MemRefType;
@@ -110,7 +111,7 @@ StatusOr<mlir::MemRefType> ConvertTensorShapeToMemRefType(
                          permutation_or.value());
 }
 
-StatusOr<mlir::DenseElementsAttr> CreateDenseElementsAttrFromLiteral(
+absl::StatusOr<mlir::DenseElementsAttr> CreateDenseElementsAttrFromLiteral(
     const LiteralBase& literal, Builder builder) {
   TF_ASSIGN_OR_RETURN(auto type,
                       ConvertTensorShapeToType<mlir::RankedTensorType>(
@@ -119,7 +120,8 @@ StatusOr<mlir::DenseElementsAttr> CreateDenseElementsAttrFromLiteral(
   // TODO(hinsu): Support remaining XLA primitive types.
   auto element_type = literal.shape().element_type();
   return primitive_util::PrimitiveTypeSwitch<StatusOr<mlir::DenseElementsAttr>>(
-      [&](auto primitive_type_constant) -> StatusOr<mlir::DenseElementsAttr> {
+      [&](auto primitive_type_constant)
+          -> absl::StatusOr<mlir::DenseElementsAttr> {
         if constexpr (primitive_util::IsArrayType(primitive_type_constant)) {
           return CreateDenseAttrFromLiteral<
               primitive_util::NativeTypeOf<primitive_type_constant>>(type,
@@ -131,7 +133,7 @@ StatusOr<mlir::DenseElementsAttr> CreateDenseElementsAttrFromLiteral(
       element_type);
 }
 
-StatusOr<int> GetElementTypeBytes(mlir::Type type) {
+absl::StatusOr<int> GetElementTypeBytes(mlir::Type type) {
   if (type.isInteger(1)) {
     return 1;
   }
@@ -154,51 +156,6 @@ mlir::DenseIntElementsAttr CreateDenseIntElementsAttrFromVector(
       vector);
 }
 
-StatusOr<mlir::Type> ConvertPrimitiveTypeToMLIRType(PrimitiveType element_type,
-                                                    mlir::Builder builder) {
-  switch (element_type) {
-    case PrimitiveType::PRED:
-      return builder.getI1Type();
-    case PrimitiveType::F8E5M2:
-      return builder.getFloat8E5M2Type();
-    case PrimitiveType::F8E4M3FN:
-      return builder.getFloat8E4M3FNType();
-    case PrimitiveType::F8E4M3B11FNUZ:
-      return builder.getFloat8E4M3B11FNUZType();
-    case PrimitiveType::F8E5M2FNUZ:
-      return builder.getFloat8E5M2FNUZType();
-    case PrimitiveType::F8E4M3FNUZ:
-      return builder.getFloat8E4M3FNUZType();
-    case PrimitiveType::F16:
-      return builder.getF16Type();
-    case PrimitiveType::BF16:
-      return builder.getBF16Type();
-    case PrimitiveType::F32:
-      return builder.getF32Type();
-    case PrimitiveType::F64:
-      return builder.getF64Type();
-    // TODO(b/130356985): Support unsigned primitive types.
-    default:
-      if (primitive_util::IsIntegralType(element_type)) {
-        return mlir::IntegerType::get(
-            builder.getContext(),
-            /*width=*/primitive_util::BitWidth(element_type),
-            /*signed=*/
-            primitive_util::IsUnsignedIntegralType(element_type)
-                ? mlir::IntegerType::Unsigned
-                : mlir::IntegerType::Signless);
-      }
-      if (primitive_util::IsComplexType(element_type)) {
-        TF_ASSIGN_OR_RETURN(
-            mlir::Type component_type,
-            ConvertPrimitiveTypeToMLIRType(
-                primitive_util::ComplexComponentType(element_type), builder));
-        return mlir::ComplexType::get(component_type);
-      }
-      return Internal("Unsupported type: %s", PrimitiveType_Name(element_type));
-  }
-}
-
 mlir::mhlo::GatherDimensionNumbersAttr CreateGatherDimensionNumbers(
     const GatherDimensionNumbers& input, mlir::Builder builder) {
   auto get_i64_array = [](absl::Span<const int64_t> container) {
@@ -210,7 +167,7 @@ mlir::mhlo::GatherDimensionNumbersAttr CreateGatherDimensionNumbers(
       get_i64_array(input.start_index_map()), input.index_vector_dim());
 }
 
-StatusOr<::xla::HloOpcode> MhloToHloOpcode(mlir::Operation* op) {
+absl::StatusOr<::xla::HloOpcode> MhloToHloOpcode(mlir::Operation* op) {
   using mlir::isa;
 
   if (isa<mlir::mhlo::ConstantOp, mlir::lmhlo::ConstantOp>(op)) {
@@ -309,6 +266,8 @@ StatusOr<::xla::HloOpcode> MhloToHloOpcode(mlir::Operation* op) {
     return xla::HloOpcode::kClz;
   } else if (isa<mlir::mhlo::CosineOp, mlir::lmhlo::CosineOp>(op)) {
     return xla::HloOpcode::kCos;
+  } else if (isa<mlir::mhlo::ErfOp>(op)) {
+    return xla::HloOpcode::kErf;
   } else if (isa<mlir::mhlo::ExpOp, mlir::lmhlo::ExpOp>(op)) {
     return xla::HloOpcode::kExp;
   } else if (isa<mlir::mhlo::Expm1Op, mlir::lmhlo::Expm1Op>(op)) {

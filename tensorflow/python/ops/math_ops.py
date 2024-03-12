@@ -70,6 +70,7 @@ API docstring: tensorflow.math
 import builtins
 import numpy as np
 
+from tensorflow.python.compat import compat as forward_compat
 from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -1076,7 +1077,11 @@ def saturate_cast(value, dtype, name=None):
 
     # TODO: b/288437118 - unconditionally apply `clip_by_value` to fix `inf`
     #                     behavior.
-    if in_dtype.min < out_real_dtype.min or in_dtype.max > out_real_dtype.max:
+    if (
+        forward_compat.forward_compatible(2024, 11, 1)
+        or in_dtype.min < out_real_dtype.min
+        or in_dtype.max > out_real_dtype.max
+    ):
       # The output min/max may not actually be representable in the
       # in_dtype (e.g. casting float32 to uint32).  This can lead to undefined
       # behavior when trying to cast a value outside the valid range of the
@@ -4992,6 +4997,38 @@ def tensordot(a, b, axes, name=None):
 
   In general, `order(c) = order(a) + order(b) - 2*len(axes[0])`.
 
+  For example:
+  
+   ```python
+   import numpy as np
+   import tensorflow as tf
+
+   a = np.arange(60).reshape(3,4,5)
+   b = np.arange(24).reshape(4,3,2)
+   c = tf.tensordot(a,b, axes=([1,0],[0,1]))
+   c
+   
+   <tf.Tensor: shape=(5, 2), dtype=int64, numpy=
+   array([[4400, 4730],
+       [4532, 4874],
+       [4664, 5018],
+       [4796, 5162],
+       [4928, 5306]])>
+  
+  # Another example
+  d = tf.random.uniform((3,4,5))
+  e = tf.random.uniform((5,3,2))
+  f = tf.tensordot(d,e, axes=([2,0],[0,1]))
+  f
+  
+  <tf.Tensor: shape=(4, 2), dtype=float32, numpy=
+  array([[4.8271146, 4.493    ],
+       [5.8537536, 5.492961 ],
+       [5.2579894, 5.2020206],
+       [3.5817177, 4.2104754]], dtype=float32)>
+       
+    ```
+    
   Args:
     a: `Tensor` of type `float32` or `float64`.
     b: `Tensor` with the same type as `a`.

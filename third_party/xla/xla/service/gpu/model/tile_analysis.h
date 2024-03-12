@@ -31,8 +31,8 @@ namespace gpu {
 // array, where the set of indices captured along each dimension can be
 // expressed as a strided expression
 //     offset + stride * iota(size)
-// with offset, stride, and size three non-negative integers, and iota the usual
-// range function.
+// with offset, stride, and size three integers, and iota the usual range
+// function. The size and offsets may never be negative.
 //
 // A N-dimensional symbolic tile is a function from offsets, strides, and sizes
 // to a N-dimensional tile. It can be represented as three affine maps with
@@ -43,7 +43,8 @@ namespace gpu {
 //     (size0', ..., size'{N-1})         (size_map())
 //     (stride0', ..., stride'{N-1})     (stride_map())
 // where maps respectively encode the offset, size, and stride component of
-// each strided expression in the tile.
+// each strided expression in the tile. The parameters to the maps above are all
+// assumed to be non-negative, but results of stride_map() may be negative.
 //
 // A symbolic tile with 3*M symbols and N results is constructed using an
 // `IndexingMap` with M input dimensions and N results. The construction of the
@@ -73,6 +74,8 @@ class SymbolicTile {
       : offset_map_(offset_map), size_map_(size_map), stride_map_(stride_map) {}
 };
 
+// Prints symbolic_tile with triplet labels for each symbol.
+// i.e. a symbol si which corresponds to an offset will be labeled offseti.
 std::ostream& operator<<(std::ostream& out, const SymbolicTile& symbolic_tile);
 
 }  // namespace gpu

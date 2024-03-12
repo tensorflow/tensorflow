@@ -18,6 +18,7 @@ limitations under the License.
 #include <utility>
 
 #include "xla/literal.h"
+#include "xla/service/cpu/onednn_util.h"
 #include "xla/shape_util.h"
 #include "xla/test.h"
 #include "xla/test_helpers.h"
@@ -76,9 +77,7 @@ TEST_F(MatmulTest, SimpleTestF32) {
 TEST_F(MatmulTest, SimpleTestBF16) {
   // TODO(penporn): Refactor IsBF16SupportedByOneDNNOnThisCPU() from
   // tensorflow/core/graph/mkl_graph_util.h and call the function instead.
-  using tsl::port::TestCPUFeature;
-  if (!TestCPUFeature(tsl::port::CPUFeature::AVX512_BF16) &&
-      !TestCPUFeature(tsl::port::CPUFeature::AMX_BF16)) {
+  if (!IsSupportedType(PrimitiveType::BF16)) {
     GTEST_SKIP() << "CPU does not support BF16.";
   }
 
@@ -479,6 +478,45 @@ TEST_F(MatmulTest, DivisionByConstantWithEltwiseLinearF32) {
   ; CHECK-DAG:       "fused_ops":["LINEAR"]
   ; CHECK-DAG:   }
   ; CHECK:     }
+  )");
+}
+
+TEST_F(MatmulTest, TestF32NonConstantWeights) {
+  const char* matmul_module_str = R"(
+  HloModule matmul.test.f32, entry_computation_layout={(f32[64,256,16]{2,1,0},f32[16,32]{1,0})->f32[64,256,32]{2,1,0}}
+
+  ENTRY matmul.test.f32 {
+    arg.0 = f32[64,256,16]{2,1,0} parameter(0), parameter_replication={false}
+    arg.1 = f32[16,32]{1,0} parameter(1), parameter_replication={false}
+    ROOT onednn.matmul.0 = f32[64,256,32]{2,1,0} dot(arg.0, arg.1), lhs_contracting_dims={2}, rhs_contracting_dims={0}
+  })";
+
+  EXPECT_TRUE(RunAndCompare(matmul_module_str, ErrorSpec{1e-4, 1e-4}));
+  MatchOptimizedHlo(matmul_module_str,
+                    R"(
+  ; CHECK:     %matmul.test.f32
+  ; CHECK-NOT: custom_call_target="__onednn$matmul_reorder",
+  ; CHECK:     custom-call(%{{[a-z,A-Z,0-9,\.]*}}, %arg.1), custom_call_target="__onednn$matmul",
+  )");
+}
+
+TEST_F(MatmulTest, TestF32ConstantWeights) {
+  const char* matmul_module_str = R"(
+  HloModule matmul.test.f32, entry_computation_layout={(f32[64,256,16]{2,1,0})->f32[64,256,32]{2,1,0}}
+
+  ENTRY matmul.test.f32 {
+    arg.0 = f32[64,256,16]{2,1,0} parameter(0), parameter_replication={false}
+    constant = f32[] constant(1)
+    arg.1 = f32[16,32]{1,0} broadcast(constant), dimensions={}
+    ROOT onednn.matmul.0 = f32[64,256,32]{2,1,0} dot(arg.0, arg.1), lhs_contracting_dims={2}, rhs_contracting_dims={0}
+  })";
+
+  EXPECT_TRUE(RunAndCompare(matmul_module_str, ErrorSpec{1e-4, 1e-4}));
+  MatchOptimizedHlo(matmul_module_str,
+                    R"(
+  ; CHECK:     %matmul.test.f32
+  ; CHECK-NOT: custom_call_target="__onednn$matmul_reorder",
+  ; CHECK:     custom-call(%{{[a-z,A-Z,0-9,\.]*}}, %constant{{[a-z,A-Z,0-9,\.]*}}), custom_call_target="__onednn$matmul",
   )");
 }
 

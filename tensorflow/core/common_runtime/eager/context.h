@@ -89,6 +89,11 @@ namespace eager {
 class RemoteMgr;
 }  // namespace eager
 
+// Check the value of the environment variable,
+// `TF_REMOTE_HANDLE_SKIP_WAIT_FOR_READY` from its cached copy in memory and if
+// not cached, reads from the environment variable.
+bool SkipRemoteHandleWaitReady();
+
 class EagerContext : public ImmediateExecutionContext, public core::RefCounted {
  public:
   static constexpr uint64 kInvalidContextId = 0;
@@ -251,6 +256,14 @@ class EagerContext : public ImmediateExecutionContext, public core::RefCounted {
                         bool add_to_local_only = false,
                         const StackTracesMap& stack_traces = {});
 
+  // `library` contains all FunctionDefs and GradientDefs to expand `fdef`. Add
+  // it to the local FunctionLibraryDefinition as well, but no need to add it
+  // to the KernelAndDevice cache since they won't be executed as
+  // KernelAndDevices.
+  Status AddFunctionRecord(core::RefCountPtr<FunctionRecord> func_record,
+                           const FunctionDefLibrary& library,
+                           bool add_to_local_only = false);
+
   // Adds a component function (i.e. containing a subgraph of a multi-process
   // function) implemented as `fdef`.
   //
@@ -342,7 +355,7 @@ class EagerContext : public ImmediateExecutionContext, public core::RefCounted {
                                         tsl::core::RefCountPtr<Rendezvous>* r) {
         mutex_lock l(global_rendezvous_mu_);
         *r = global_rendezvous_for_functions_.GetNewRef();
-        return OkStatus();
+        return absl::OkStatus();
       }};
     } else {
       return CreateRendezvousFactory();
@@ -625,7 +638,7 @@ class EagerContext : public ImmediateExecutionContext, public core::RefCounted {
                                         tsl::core::RefCountPtr<Rendezvous>* r) {
         VLOG(6) << "Creating rendezvous using the rendezvous_creator_.";
         *r = rendezvous_creator_(step_id);
-        return OkStatus();
+        return absl::OkStatus();
       }};
     }
 
@@ -639,7 +652,7 @@ class EagerContext : public ImmediateExecutionContext, public core::RefCounted {
         auto remote_r = worker_env_->rendezvous_mgr->Find(step_id);
         remote_r->Initialize(worker_session_.get()).IgnoreError();
         *r = std::move(remote_r);
-        return OkStatus();
+        return absl::OkStatus();
       }};
     }
 #endif
@@ -650,7 +663,7 @@ class EagerContext : public ImmediateExecutionContext, public core::RefCounted {
                                         tsl::core::RefCountPtr<Rendezvous>* r) {
         VLOG(6) << "Creating rendezvous using local_device_mgr.";
         *r = local_rendezvous_cache_.FindOrCreate(step_id, local_device_mgr());
-        return OkStatus();
+        return absl::OkStatus();
       }};
     }
 
@@ -896,6 +909,32 @@ class EagerContext : public ImmediateExecutionContext, public core::RefCounted {
   std::function<void()> resource_deallocator_ = nullptr;
   bool run_eager_op_as_function_;
   bool jit_compile_rewrite_;
+
+  // Controls the behavior of
+  // `EagerContext::RegisterFunction(AbstractFunction*)` in distributed
+  // settings.
+  //
+  // By default, each abstract function will be registered on all workers in
+  // a cluster. If the environment variable
+  // `TF_EAGER_REGISTER_ABSTRACT_FUNCTIONS_LOCAL_ONLY=1` is set, each abstract
+  // function will be registered on the local worker only.
+  //
+  // In the common case that all functions are initially dispatched to
+  // a local device, the `ProcessFunctionLibraryRuntime`
+  // will ensure that the precise dependencies of that function are shipped to
+  // the remote device. Since PFLR instantiation often involves optimization,
+  // passes such as lowering control flow and inlining function calls, this will
+  // result in (1) sending a substantially smaller set of functions to each
+  // worker, and (2) the unoptimized functions never being called.
+  //
+  // Therefore setting `TF_EAGER_REGISTER_ABSTRACT_FUNCTIONS_LOCAL_ONLY=1` can
+  // significantly reduce both the startup time and the memory footprint on
+  // remote workers by avoiding the shipping of unneeded functions.
+  //
+  // TODO(b/326251557): Infer automatically when it is necessary to register a
+  // function or its dependencies on remote hosts; then remove the environment
+  // variable.
+  bool register_abstract_functions_local_only_;
 };
 
 inline EagerContext* ContextFromInterface(ImmediateExecutionContext* context) {

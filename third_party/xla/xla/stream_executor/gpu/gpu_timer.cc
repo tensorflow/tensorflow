@@ -15,12 +15,15 @@ limitations under the License.
 
 #include "xla/stream_executor/gpu/gpu_timer.h"
 
+#include <cmath>
 #include <optional>
 #include <random>
 #include <utility>
 
 #include "absl/base/const_init.h"
 #include "absl/base/thread_annotations.h"
+#include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/synchronization/mutex.h"
@@ -29,6 +32,8 @@ limitations under the License.
 #include "xla/stream_executor/gpu/gpu_driver.h"
 #include "xla/stream_executor/gpu/gpu_executor.h"
 #include "xla/stream_executor/gpu/gpu_stream.h"
+#include "xla/stream_executor/gpu/gpu_types.h"
+#include "tsl/platform/errors.h"
 #include "tsl/platform/statusor.h"
 
 namespace stream_executor {
@@ -48,7 +53,8 @@ absl::Duration RandomDuration() {
 
 }  // namespace
 
-/*static*/ absl::StatusOr<GpuTimer> GpuTimer::Create(GpuStream* stream) {
+/*deprecated*/ /*static*/ absl::StatusOr<GpuTimer> GpuTimer::Create(
+    GpuStream* stream) {
   GpuExecutor* parent = stream->parent();
   GpuContext* context = parent->gpu_context();
   GpuEventHandle start_event;
@@ -64,13 +70,25 @@ absl::Duration RandomDuration() {
                                   stop_event, stream};
 }
 
-/*static*/ absl::StatusOr<std::optional<GpuTimer>> GpuTimer::CreateIfNeeded(
-    GpuStream* stream, bool is_needed) {
+/*deprecated*/ /*static*/ absl::StatusOr<std::optional<GpuTimer>>
+GpuTimer::CreateIfNeeded(GpuStream* stream, bool is_needed) {
   if (is_needed) {
     TF_ASSIGN_OR_RETURN(GpuTimer t, GpuTimer::Create(stream));
     return {std::make_optional(std::move(t))};
   }
   return std::nullopt;
+}
+
+[[deprecated("So it can quietly call a deprecated method")]] /*static*/ absl::
+    StatusOr<GpuTimer>
+    GpuTimer::Create(Stream* stream) {
+  return GpuTimer::Create(AsGpuStream(stream));
+}
+
+[[deprecated("So it can quietly call a deprecated method")]] /*static*/ absl::
+    StatusOr<std::optional<GpuTimer>>
+    GpuTimer::CreateIfNeeded(Stream* stream, bool is_needed) {
+  return GpuTimer::CreateIfNeeded(AsGpuStream(stream), is_needed);
 }
 
 /*static*/ void GpuTimer::ReturnRandomDurationsForTesting() {

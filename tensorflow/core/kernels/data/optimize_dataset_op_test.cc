@@ -47,7 +47,7 @@ class OptimizeDatasetParams : public DatasetParams {
   Status GetInputNames(std::vector<string>* input_names) const override {
     *input_names = {OptimizeDatasetOp::kInputDataset,
                     OptimizeDatasetOp::kOptimizations};
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   Status GetAttributes(AttributeVector* attr_vector) const override {
@@ -55,7 +55,7 @@ class OptimizeDatasetParams : public DatasetParams {
         {OptimizeDatasetOp::kOutputShapes, output_shapes_},
         {OptimizeDatasetOp::kOutputTypes, output_dtypes_},
         {OptimizeDatasetOp::kOptimizationConfigs, optimization_configs_}};
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   string dataset_type() const override {

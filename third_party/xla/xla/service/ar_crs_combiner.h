@@ -77,7 +77,7 @@ class ArCrsCombiner : public HloModulePass {
         spmd_partition_(spmd_partition) {}
   absl::string_view name() const override { return "ar-crs-combiner"; }
   using HloPassInterface::Run;
-  StatusOr<bool> Run(
+  absl::StatusOr<bool> Run(
       HloModule* module,
       const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 
@@ -161,7 +161,7 @@ class ArCrsCombiner : public HloModulePass {
 
   // Performs the graph rewrite that eliminates the early AllReduce and turns
   // the later CRS into an AllReduce.
-  StatusOr<bool> RewriteGraph();
+  absl::StatusOr<bool> RewriteGraph();
 
   int num_spatial_partitions_;
 

@@ -209,6 +209,10 @@ HloFusionAnalysis::EmitterFusionKind HloFusionAnalysis::GetEmitterFusionKind()
       fusion_backend_config_.kind() == kTritonSoftmaxFusionKind) {
     return EmitterFusionKind::kTriton;
   }
+
+  if (fusion_backend_config_.kind() == kCuDnnFusionKind) {
+    return EmitterFusionKind::kCuDnn;
+  }
 #endif
 
   if (input_output_info_.has_4_bit_input ||
@@ -239,10 +243,10 @@ HloFusionAnalysis::EmitterFusionKind HloFusionAnalysis::GetEmitterFusionKind()
         continue;
       }
       if (!IsRealReductionHero(*root, *hero)) {
-        // Needs to have a compatible shape to the reduce operand.
-        if (!ShapeUtil::IsReshapeOrTransposeBitcast(
-                root->shape(), hero_operand_shape,
-                /*ignore_element_type=*/true)) {
+        // Needs to have a compatible shape to the reduce operand (compatible
+        // meaning same number of elements).
+        if (ShapeUtil::ElementsIn(root->shape()) !=
+            ShapeUtil::ElementsIn(hero_operand_shape)) {
           valid_shapes = false;
           break;
         }

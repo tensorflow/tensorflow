@@ -64,7 +64,7 @@ static absl::StatusOr<bool> DeviceCompare(se::Stream* stream,
   se::ScopedDeviceMemory<uint64_t> out_param =
       executor->AllocateOwnedScalar<uint64_t>();
 
-  stream->ThenMemZero(out_param.ptr(), sizeof(uint64_t));
+  TF_RETURN_IF_ERROR(stream->MemZero(out_param.ptr(), sizeof(uint64_t)));
   if (current.size() != expected.size()) {
     return Internal("Mismatched buffer size: %d bytes vs. %d bytes",
                     current.size(), expected.size());
@@ -75,11 +75,12 @@ static absl::StatusOr<bool> DeviceCompare(se::Stream* stream,
   uint64_t buffer_size = current_typed.ElementCount();
 
   TF_ASSIGN_OR_RETURN(
-      std::unique_ptr<ComparisonKernelT<ElementT>> comparison_kernel,
-      (executor->CreateTypedKernel<se::DeviceMemory<ElementT>,
-                                   se::DeviceMemory<ElementT>, float, uint64_t,
-                                   se::DeviceMemory<uint64_t>>(kernel_name,
-                                                               kernel_symbol)));
+      ComparisonKernelT<ElementT> comparison_kernel,
+      (se::TypedKernel<se::DeviceMemory<ElementT>, se::DeviceMemory<ElementT>,
+                       float, uint64_t,
+                       se::DeviceMemory<uint64_t>>::Create(executor,
+                                                           kernel_name,
+                                                           kernel_symbol)));
 
   const se::DeviceDescription& gpu_device_info =
       executor->GetDeviceDescription();
@@ -88,13 +89,13 @@ static absl::StatusOr<bool> DeviceCompare(se::Stream* stream,
       CalculateLaunchDimensions(buffer_shape, gpu_device_info);
 
   TF_RETURN_IF_ERROR(stream->ThenLaunch(
-      dim.thread_counts_per_block(), dim.block_counts(), *comparison_kernel,
+      dim.thread_counts_per_block(), dim.block_counts(), comparison_kernel,
       current_typed, expected_typed, static_cast<float>(kTolerance),
       buffer_size, out_param.cref()));
 
   uint64_t result = -1;
   CHECK_EQ(out_param->size(), sizeof(result));
-  stream->ThenMemcpy(&result, *out_param, sizeof(result));
+  TF_RETURN_IF_ERROR(stream->Memcpy(&result, *out_param, sizeof(result)));
   TF_RETURN_IF_ERROR(stream->BlockHostUntilDone());
   return result == 0;
 }
@@ -109,8 +110,10 @@ absl::StatusOr<bool> HostCompare(se::Stream* stream,
                                  se::DeviceMemoryBase expected) {
   int64_t n = current.size() / sizeof(ElementType);
   std::vector<ElementType> host_current(n), host_expected(n);
-  stream->ThenMemcpy(host_current.data(), current, current.size());
-  stream->ThenMemcpy(host_expected.data(), expected, expected.size());
+  TF_RETURN_IF_ERROR(
+      stream->Memcpy(host_current.data(), current, current.size()));
+  TF_RETURN_IF_ERROR(
+      stream->Memcpy(host_expected.data(), expected, expected.size()));
   TF_RETURN_IF_ERROR(stream->BlockHostUntilDone());
 
   const auto canonicalize = [](ComparisonType a) -> ComparisonType {

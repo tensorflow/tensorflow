@@ -25,6 +25,7 @@ limitations under the License.
 #include "llvm/IR/Function.h"
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/Instructions.h"
+#include "llvm/TargetParser/Triple.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
@@ -361,8 +362,12 @@ bool MaybeEmitDirectAtomicOperation(llvm::IRBuilder<>* builder,
       bool f64_atomic_add_supported =
           ir_emitter_context.cuda_compute_capability().IsAtLeast(
               se::CudaComputeCapability::PASCAL_);
+      bool f16_atomic_add_supported =
+          ir_emitter_context.cuda_compute_capability().IsAtLeast(
+              se::CudaComputeCapability::VOLTA);
       bool atomic_add_supported =
           element_type == F32 ||
+          (f16_atomic_add_supported && element_type == F16) ||
           (f64_atomic_add_supported && element_type == F64);
       if (atomic_add_supported) {
         builder->CreateAtomicRMW(llvm::AtomicRMWInst::FAdd, output_address,

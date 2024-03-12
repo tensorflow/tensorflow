@@ -30,6 +30,7 @@ limitations under the License.
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/Passes.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/stablehlo/transforms/legalize_tf_xla_call_module_to_stablehlo_pass.h"
+#include "tensorflow/compiler/mlir/lite/stablehlo/transforms/passes.h"
 #include "tensorflow/compiler/mlir/lite/stablehlo/transforms/rename_entrypoint_to_main.h"
 #include "tensorflow/compiler/mlir/lite/stablehlo/transforms/tf_stablehlo_pass.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/cc/pass_pipeline.h"
@@ -56,8 +57,12 @@ void AddUnfuseMhloOpsPasses(mlir::PassManager& pm) {
       mlir::mhlo::createLegalizeEinsumToDotGeneralPass());
   pm.addNestedPass<mlir::func::FuncOp>(
       mlir::mhlo::createLegalizeDotToDotGeneralPass());
-  pm.addNestedPass<mlir::func::FuncOp>(
-      mlir::quant::stablehlo::createUnfuseMhloBatchNormPass());
+  // Unfuse mhlo BatchNorm to primitive ops.
+  pm.addNestedPass<mlir::func::FuncOp>(mlir::odml::createUnfuseBatchNormPass());
+  // Fuse Conv + Mul to Conv.
+  pm.addNestedPass<mlir::func::FuncOp>(mlir::odml::createFuseConvolutionPass());
+  // Fold broadcast_in_dim + Mul.
+  pm.addNestedPass<mlir::func::FuncOp>(mlir::odml::createFoldBroadcastPass());
   pm.addNestedPass<mlir::func::FuncOp>(
       mlir::mhlo::createLegalizeTorchIndexSelectToGatherPass());
 }
@@ -94,7 +99,6 @@ void AddTFToStablehloPasses(mlir::PassManager& pm) {
   // Propagates shapes on the TensorFlow graph.
   pm.addPass(mlir::TF::CreateTFShapeInferencePass());
   pm.addPass(mlir::createCanonicalizerPass());
-  pm.addPass(mlir::TF::CreateTensorListOpsDecompositionPass());
   pm.addNestedPass<mlir::func::FuncOp>(
       mlir::TFDevice::CreateDecomposeResourceOpsPass());
 

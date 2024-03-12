@@ -29,12 +29,12 @@ class ConditionalSimplifier : public HloModulePass {
  public:
   absl::string_view name() const override { return "simplify-conditional"; }
   using HloPassInterface::Run;
-  StatusOr<bool> Run(
+  absl::StatusOr<bool> Run(
       HloModule* module,
       const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 
  private:
-  StatusOr<bool> TryRemoveConditional(HloInstruction* conditional);
+  absl::StatusOr<bool> TryRemoveConditional(HloInstruction* conditional);
 };
 
 }  // namespace xla

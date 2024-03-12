@@ -14,11 +14,13 @@ limitations under the License.
 ==============================================================================*/
 #include "xla/service/gpu/address_computation_fusion_rewriter.h"
 
-#include <algorithm>
+#include <cstddef>
 #include <cstdint>
 #include <functional>
 #include <optional>
+#include <string>
 #include <utility>
+#include <vector>
 
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
@@ -28,15 +30,21 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/ffi/api/c_api.h"
+#include "xla/ffi/ffi_api.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_schedule.h"
+#include "xla/service/custom_call_target_registry.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/cublas_cudnn.h"
+#include "xla/service/gpu/gpu_constants.h"
 #include "xla/service/gpu/hlo_traversal.h"
 #include "xla/service/gpu/ir_emission_utils.h"
-#include "xla/status_macros.h"
+#include "xla/shape.h"
+#include "xla/shape_util.h"
 #include "xla/util.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/statusor.h"
@@ -49,6 +57,62 @@ namespace {
 bool IsNoOp(const HloInstruction* hlo) {
   return HloPredicateIsOp<HloOpcode::kBitcast, HloOpcode::kTuple,
                           HloOpcode::kGetTupleElement>(hlo);
+}
+
+bool IsCustomCall(const HloInstruction* hlo, absl::string_view platform_name) {
+  auto* custom_call = DynCast<HloCustomCallInstruction>(hlo);
+  if (custom_call == nullptr) return false;
+
+  // TODO(vuson): properly handle token by following
+  // `LhloDialectEmitter::EmitCustomCallOp`'s `CreateOperands` logic for
+  // `LhloDialectEmitter::EmitFusionOp`'s `RewriteFusionOperand`
+  if (custom_call->shape().IsTuple() &&
+      absl::c_any_of(
+          custom_call->shape().tuple_shapes(),
+          [&](const Shape& sub_shape) { return sub_shape.IsToken(); }))
+    return false;
+
+  const std::string call_target_name = custom_call->custom_call_target();
+
+  bool is_ffi_custom_call =
+      custom_call->api_version() == CustomCallApiVersion::API_VERSION_TYPED_FFI;
+
+  void* call_target = CustomCallTargetRegistry::Global()->Lookup(
+      call_target_name, std::string(platform_name));
+
+  absl::StatusOr<XLA_FFI_Handler*> handler =
+      ffi::FindHandler(call_target_name, platform_name);
+
+  // At least one implementation should be available at run time.
+  bool found_custom_call = !is_ffi_custom_call && call_target != nullptr;
+  bool found_ffi_handler = is_ffi_custom_call && handler.ok();
+
+  return found_custom_call || found_ffi_handler;
+}
+
+// Returns true if the slice is 128-byte-aligned. The slice starting
+// address is determined by the product of all non-sliced dimensions and an
+// offset defined by `slice_starts` of the slice op.
+bool IsAlignedSlice(const HloInstruction& instr) {
+  if (!IsContiguousSlice(instr)) return false;
+
+  auto slice = Cast<HloSliceInstruction>(&instr);
+  const Shape& src_shape = instr.operand(0)->shape();
+  const Shape& dst_shape = instr.shape();
+
+  auto strides = ShapeUtil::ByteStrides(dst_shape);
+  if (!strides.has_value()) return false;
+
+  for (auto dim : dst_shape.layout().minor_to_major()) {
+    if ((strides.value()[dim] % kXlaAllocatedBufferAlignBytes) == 0)
+      return true;
+    if (dst_shape.dimensions(dim) < src_shape.dimensions(dim)) {
+      return ((strides.value()[dim] * slice->slice_starts(dim)) %
+                  kXlaAllocatedBufferAlignBytes ==
+              0);
+    }
+  }
+  return true;
 }
 
 absl::InlinedVector<HloInstruction*, 8> GetSlicedOperandChains(
@@ -82,12 +146,11 @@ absl::InlinedVector<HloInstruction*, 8> GetSlicedOperandChains(
           // if other uses are also custom calls though.
           // TODO(vuson): lift the second restriction by considering fusing the
           // non-noop instructions to the computation if possible.
-          return cur->user_count() > 1 || !IsNoOp(cur) ||
-                 IsContiguousSlice(*cur);
+          return cur->user_count() > 1 || !IsNoOp(cur) || IsAlignedSlice(*cur);
         });
     if (maybe_slice_adaptor == std::nullopt) continue;
     const auto& maybe_slice_instr = maybe_slice_adaptor->instruction();
-    if (IsContiguousSlice(maybe_slice_instr) ||
+    if (IsAlignedSlice(maybe_slice_instr) ||
         processed_sliced_chain_set.contains(&maybe_slice_instr)) {
       sliced_operand_chains.insert(sliced_operand_chains.end(),
                                    maybe_sliced_operand_chain.begin(),
@@ -116,6 +179,48 @@ absl::InlinedVector<HloInstruction*, 4> GetPatternCaptures(
   }
 
   return captures;
+}
+
+absl::InlinedVector<HloInstruction*, 8> GetSortedMatched(
+    absl::Span<HloInstruction* const> matched) {
+  absl::InlinedVector<HloInstruction*, 8> sorted_matched;
+  absl::flat_hash_set<HloInstruction*> instructions_set(matched.begin(),
+                                                        matched.end());
+  absl::flat_hash_set<HloInstruction*> processed_set;
+  // Topologically sort `matched`
+  for (auto it = matched.rbegin(); it != matched.rend(); ++it) {
+    if (processed_set.contains(*it)) continue;
+    for (auto* operand : (*it)->operands()) {
+      if (!instructions_set.contains(operand)) {
+        continue;
+      }
+      if (!processed_set.contains(operand)) {
+        sorted_matched.emplace_back(operand);
+        processed_set.insert(operand);
+      }
+    }
+    sorted_matched.emplace_back(*it);
+    processed_set.insert(*it);
+  }
+
+  return sorted_matched;
+}
+
+void CreateRootTuple(HloInstruction* root, HloComputation::Builder& builder) {
+  std::vector<HloInstruction*> elements;
+  elements.reserve(root->shape().tuple_shapes_size());
+  for (size_t i = 0; i < root->shape().tuple_shapes_size(); ++i) {
+    if (root->shape().tuple_shapes(i).IsTuple()) {
+      HloInstruction* gte = builder.AddInstruction(
+          HloInstruction::CreateGetTupleElement(root, i));
+      CreateRootTuple(gte, builder);
+      elements.push_back(builder.last_added_instruction());
+    } else {
+      elements.push_back(builder.AddInstruction(
+          HloInstruction::CreateGetTupleElement(root, i)));
+    }
+  }
+  builder.AddInstruction(HloInstruction::CreateTuple(elements));
 }
 
 absl::StatusOr<HloComputation*> CreateFusionBody(
@@ -151,16 +256,10 @@ absl::StatusOr<HloComputation*> CreateFusionBody(
   }
 
   HloInstruction* root = builder.last_added_instruction();
-
-  // If the custom call requires a workspace we wrap the produced values with a
-  // root tuple of "real" result and a workspace.
-  if (root->shape().IsTuple()) {
-    TF_RET_CHECK(root->shape().tuple_shapes_size() == 2);
-    HloInstruction* result =
-        builder.AddInstruction(HloInstruction::CreateGetTupleElement(root, 0));
-    HloInstruction* workspace =
-        builder.AddInstruction(HloInstruction::CreateGetTupleElement(root, 1));
-    builder.AddInstruction(HloInstruction::CreateTuple({result, workspace}));
+  // Create a root tuple if the root is a tuple to make sure there's a buffer
+  // assigned for each of the elements. Make sure the tuple is not nil first.
+  if (root->shape().IsTuple() && root->shape().tuple_shapes_size() > 0) {
+    CreateRootTuple(root, builder);
   }
 
   return module->AddComputationAndUnifyNamesAndIds(builder.Build(), false);
@@ -208,7 +307,7 @@ absl::StatusOr<bool> AddressComputationFusionRewriter::Run(
   for (HloComputation* computation : module->computations()) {
     if (computation->IsFusionComputation()) continue;
     for (HloInstruction* instr : computation->instructions()) {
-      if (IsLegacyCublasMatmul(*instr)) {
+      if (IsLegacyCublasMatmul(*instr) || IsCustomCall(instr, platform_name_)) {
         auto sliced_operand_chains = GetSlicedOperandChains(instr);
         if (!(sliced_operand_chains.size() == 1 &&
               sliced_operand_chains.front() == instr)) {
@@ -221,10 +320,10 @@ absl::StatusOr<bool> AddressComputationFusionRewriter::Run(
   HloSchedule& schedule = module->schedule();
   for (auto& kv : matches) {
     auto captures = GetPatternCaptures(kv.second);
-    std::reverse(kv.second.begin(), kv.second.end());
+    auto sorted = GetSortedMatched(kv.second);
 
     TF_ASSIGN_OR_RETURN(HloComputation * fusion_body,
-                        CreateFusionBody(module, kv.second, captures));
+                        CreateFusionBody(module, sorted, captures));
     TF_ASSIGN_OR_RETURN(
         HloInstruction * fusion,
         CreateFusionInstruction(module, kv.first, captures, fusion_body));

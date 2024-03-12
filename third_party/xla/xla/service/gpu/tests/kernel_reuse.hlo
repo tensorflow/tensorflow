@@ -3,9 +3,9 @@
 // All fusions must reuse the same kernel:
 // CHECK-LABEL: target triple
 // CHECK-PTX: define void
-// CHECK-GCN: define amdgpu_kernelvoid
+// CHECK-GCN: define amdgpu_kernel void
 // CHECK-PTX-NOT: define void
-// CHECK-GCN-NOT: define amdgpu_kernelvoid
+// CHECK-GCN-NOT: define amdgpu_kernel void
 
 HloModule KernelReuse, is_scheduled=true
 
@@ -47,11 +47,11 @@ ENTRY main {
 // All (Triton) fusions must reuse the same kernel:
 // CHECK-LABEL: target triple
 // CHECK-PTX-NOT: define void
-// CHECK-GCN-NOT: define amdgpu_kernelvoid
+// CHECK-GCN-NOT: define amdgpu_kernel void
 // CHECK-PTX: define void @triton_gemm_dot1(
-// CHECK-GCN: define amdgpu_kernelvoid @triton_gemm_dot1(
+// CHECK-GCN: define amdgpu_kernel void @triton_gemm_dot1(
 // CHECK-PTX-NOT: define void
-// CHECK-GCN-NOT: define amdgpu_kernelvoid
+// CHECK-GCN-NOT: define amdgpu_kernel void
 
 HloModule t, is_scheduled=true
 
@@ -74,8 +74,8 @@ ENTRY e {
   p2 = f16[15,19]{1,0} parameter(2)
   p1 = s8[19,17]{1,0} parameter(1)
   p0 = f16[15,19]{1,0} parameter(0)
-  triton_gemm_dot1 = f16[15,17]{1,0} fusion(p3, p2), kind=kCustom, calls=triton_gemm_dot1, backend_config="{ \"fusion_backend_config\": {kind: \"__triton_gemm\", triton_gemm_config: {\"block_m\":\"64\",\"block_n\":\"32\",\"block_k\":\"64\",\"split_k\":\"1\",\"num_stages\":\"4\",\"num_warps\":\"4\"}}}"
-  triton_gemm_dot0 = f16[15,17]{1,0} fusion(p1, p0), kind=kCustom, calls=triton_gemm_dot0, backend_config="{ \"fusion_backend_config\": {kind: \"__triton_gemm\", triton_gemm_config: {\"block_m\":\"64\",\"block_n\":\"32\",\"block_k\":\"64\",\"split_k\":\"1\",\"num_stages\":\"4\",\"num_warps\":\"4\"}}}"
+  triton_gemm_dot1 = f16[15,17]{1,0} fusion(p3, p2), kind=kCustom, calls=triton_gemm_dot1, backend_config="{ \"fusion_backend_config\": {kind: \"__triton_gemm\", triton_gemm_config: {\"block_m\":\"64\",\"block_n\":\"32\",\"block_k\":\"64\",\"split_k\":\"1\",\"num_stages\":\"4\",\"num_warps\":\"4\",\"num_ctas\":\"1\"}}}"
+  triton_gemm_dot0 = f16[15,17]{1,0} fusion(p1, p0), kind=kCustom, calls=triton_gemm_dot0, backend_config="{ \"fusion_backend_config\": {kind: \"__triton_gemm\", triton_gemm_config: {\"block_m\":\"64\",\"block_n\":\"32\",\"block_k\":\"64\",\"split_k\":\"1\",\"num_stages\":\"4\",\"num_warps\":\"4\",\"num_ctas\":\"1\"}}}"
   ROOT tuple = (f16[15,17]{1,0}, f16[15,17]{1,0}) tuple(triton_gemm_dot0, triton_gemm_dot1)
 }
 
@@ -85,12 +85,12 @@ ENTRY e {
 // - @fusion_2's %arg0 must have align 16, because we are passing a module input
 // - @fusion_1's %arg0 must have align 128, because we are passing an internal buffer
 // CHECK-LABEL: target triple
-// CHECK-PTX: define void @fusion_2(ptr noalias align 16 dereferenceable(100) %arg0, ptr noalias align 128 dereferenceable(100) %arg1)
-// CHECK-GCN: define amdgpu_kernelvoid @fusion_2(ptr noalias align 16 dereferenceable(100) %arg0, ptr noalias align 128 dereferenceable(100) %arg1)
-// CHECK-PTX: define void @fusion_1(ptr noalias align 128 dereferenceable(100) %arg0, ptr noalias align 128 dereferenceable(100) %arg1)
-// CHECK-GCN: define amdgpu_kernelvoid @fusion_1(ptr noalias align 128 dereferenceable(100) %arg0, ptr noalias align 128 dereferenceable(100) %arg1)
+// CHECK-PTX-DAG: define void @fusion_2(ptr noalias align 16 dereferenceable(100) %{{.*}}, ptr noalias align 128 dereferenceable(100) %{{.*}})
+// CHECK-GCN-DAG: define amdgpu_kernel void @fusion_2(ptr noalias align 16 dereferenceable(100) %{{.*}}, ptr noalias align 128 dereferenceable(100) %{{.*}})
+// CHECK-PTX-DAG: define void @fusion_1(ptr noalias align 128 dereferenceable(100) %{{.*}}, ptr noalias align 128 dereferenceable(100) %{{.*}})
+// CHECK-GCN-DAG: define amdgpu_kernel void @fusion_1(ptr noalias align 128 dereferenceable(100) %{{.*}}, ptr noalias align 128 dereferenceable(100) %{{.*}})
 // CHECK-PTX-NOT: define void
-// CHECK-GCN-NOT: define amdgpu_kernelvoid
+// CHECK-GCN-NOT: define amdgpu_kernel void
 
 HloModule KernelReuse, is_scheduled=true
 
@@ -132,10 +132,10 @@ ENTRY main {
 // The first has just 2 parameters (1 input, 1 output) and the second has 3 (2 input, 1 output).
 // All the parameters are noalias, because we are not passing the same argument twice to the kernel.
 // CHECK-LABEL: target triple
-// CHECK-PTX: define void @fusion_2(ptr noalias align 128 dereferenceable(100) %arg0, ptr noalias align 128 dereferenceable(100) %arg1)
-// CHECK-GCN: define amdgpu_kernelvoid @fusion_2(ptr noalias align 128 dereferenceable(100) %arg0, ptr noalias align 128 dereferenceable(100) %arg1)
-// CHECK-PTX: define void @fusion_1(ptr noalias align 128 dereferenceable(100) %arg0, ptr noalias align 128 dereferenceable(100) %arg1, ptr noalias align 128 dereferenceable(100) %arg2)
-// CHECK-GCN: define amdgpu_kernelvoid @fusion_1(ptr noalias align 128 dereferenceable(100) %arg0, ptr noalias align 128 dereferenceable(100) %arg1, ptr noalias align 128 dereferenceable(100) %arg2)
+// CHECK-PTX-DAG: define void @fusion_2(ptr noalias align 128 dereferenceable(100) %{{.*}}, ptr noalias align 128 dereferenceable(100) %{{.*}})
+// CHECK-GCN-DAG: define amdgpu_kernel void @fusion_2(ptr noalias align 128 dereferenceable(100) %{{.*}}, ptr noalias align 128 dereferenceable(100) %{{.*}})
+// CHECK-PTX-DAG: define void @fusion_1(ptr noalias align 128 dereferenceable(100) %{{.*}}, ptr noalias align 128 dereferenceable(100) %{{.*}}, ptr noalias align 128 dereferenceable(100) %{{.*}})
+// CHECK-GCN-DAG: define amdgpu_kernel void @fusion_1(ptr noalias align 128 dereferenceable(100) %{{.*}}, ptr noalias align 128 dereferenceable(100) %{{.*}}, ptr noalias align 128 dereferenceable(100) %{{.*}})
 // CHECK-NOT: define void
 
 HloModule KernelReuse, is_scheduled=true
@@ -178,16 +178,16 @@ ENTRY main {
 // "!invariant.load" (thanks to ir_array.MarkInvariantOverWholeProgram).
 //
 // CHECK-LABEL: target triple
-// CHECK-PTX: define void @fusion_2(ptr noalias align 128 dereferenceable(100) %arg0)
-// CHECK-GCN: define amdgpu_kernelvoid @fusion_2(ptr noalias align 128 dereferenceable(100) %arg0)
+// CHECK-PTX: define void @fusion_2(ptr noalias align 128 dereferenceable(100) %{{.*}})
+// CHECK-GCN: define amdgpu_kernel void @fusion_2(ptr noalias align 128 dereferenceable(100) %{{.*}})
 // CHECK-NOT: !invariant.load
-// CHECK-PTX: define void @fusion(ptr noalias align 128 dereferenceable(100) %arg0, ptr noalias align 128 dereferenceable(100) %arg1)
-// CHECK-GCN: define amdgpu_kernelvoid @fusion(ptr noalias align 128 dereferenceable(100) %arg0, ptr noalias align 128 dereferenceable(100) %arg1)
+// CHECK-PTX: define void @fusion(ptr noalias align 128 dereferenceable(100) %{{.*}}, ptr noalias align 128 dereferenceable(100) %{{.*}})
+// CHECK-GCN: define amdgpu_kernel void @fusion(ptr noalias align 128 dereferenceable(100) %{{.*}}, ptr noalias align 128 dereferenceable(100) %{{.*}})
 // CHECK-PTX-NOT: define void
-// CHECK-GCN-NOT: define amdgpu_kernelvoid
+// CHECK-GCN-NOT: define amdgpu_kernel void
 // CHECK: !invariant.load
 // CHECK-PTX-NOT: define void
-// CHECK-GCN-NOT: define amdgpu_kernelvoid
+// CHECK-GCN-NOT: define amdgpu_kernel void
 
 HloModule KernelReuse, is_scheduled=true
 

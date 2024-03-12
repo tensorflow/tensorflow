@@ -54,7 +54,7 @@ class MaybeOwningCpuMemory {
   MaybeOwningCpuMemory& operator=(const MaybeOwningCpuMemory&) = delete;
 
   // Owning.
-  static StatusOr<std::shared_ptr<MaybeOwningCpuMemory>> AllocateShared(
+  static absl::StatusOr<std::shared_ptr<MaybeOwningCpuMemory>> AllocateShared(
       size_t size) {
     uint8_t* data = static_cast<uint8_t*>(
         tsl::port::AlignedMalloc(size, cpu_function_runtime::MinAlign()));

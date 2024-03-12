@@ -36,7 +36,7 @@ namespace ifrt {
 
 class PjRtTuple final : public llvm::RTTIExtends<PjRtTuple, Tuple> {
  public:
-  static StatusOr<tsl::RCReference<PjRtTuple>> Create(
+  static absl::StatusOr<tsl::RCReference<PjRtTuple>> Create(
       PjRtCompatibleClient* client, absl::Span<tsl::RCReference<Value>> values);
 
   ~PjRtTuple() override = default;

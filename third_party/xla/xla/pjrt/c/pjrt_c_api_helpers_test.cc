@@ -54,38 +54,13 @@ TEST(PjRtCApiHelperTest, ConvertValidPjRtValueType) {
       {"int64_list", int64_list},
       {"float", static_cast<float>(1.0)}};
 
-  TF_ASSERT_OK_AND_ASSIGN(
-      std::vector<PJRT_NamedValue> c_map,
-      ConvertToPjRtNamedValueList(original_cpp_map, /*api_minor_version=*/30));
+  TF_ASSERT_OK_AND_ASSIGN(std::vector<PJRT_NamedValue> c_map,
+                          ConvertToPjRtNamedValueList(original_cpp_map));
   auto converted_back_cpp_map =
       ConvertFromPjRtNamedValueList(c_map.data(), c_map.size());
 
   EXPECT_THAT(converted_back_cpp_map,
               testing::UnorderedElementsAreArray(original_cpp_map));
-}
-
-TEST(PjRtCApiHelperTest, ConvertValidPjRtValueTypeWithUnsupportedApiVersion) {
-  std::vector<int64_t> int64_list = {static_cast<int64_t>(1),
-                                     static_cast<int64_t>(2)};
-  absl::flat_hash_map<std::string, xla::PjRtValueType> original_cpp_map = {
-      {"string", static_cast<std::string>("v1")},
-      {"int64", static_cast<int64_t>(1)},
-      {"int64_list", int64_list},
-      {"float", static_cast<float>(1.0)},
-      {"float", static_cast<float>(1.0)},
-      {"bool", static_cast<bool>(true)}};
-  int api_minor_version = 29;
-  absl::StatusOr<std::vector<PJRT_NamedValue>> c_map =
-      ConvertToPjRtNamedValueList(original_cpp_map, api_minor_version);
-  EXPECT_THAT(
-      c_map.status(),
-      ::tsl::testing::StatusIs(
-          absl::StatusCode::kInvalidArgument,
-          absl::StrCat(
-              "Client cannot provide this option for API versions less "
-              "than 0.30. The framework PJRT API version is ",
-              PJRT_API_MAJOR, ".", PJRT_API_MINOR,
-              "and the plugin minor version is ", api_minor_version, ".")));
 }
 
 TEST(PjRtCApiHelperTest, ValidOptionNameAndPjRtValueTypeIndex) {
@@ -110,7 +85,7 @@ TEST(PjRtCApiHelperTest, InvalidOptionName) {
 
   auto status = ValidateCreateOptions(invalid_map, expected);
 
-  EXPECT_NE(status, tsl::OkStatus());
+  EXPECT_NE(status, absl::OkStatus());
   EXPECT_THAT(status.message(),
               HasSubstr("Unexpected option name passed to PJRT_Client_Create"));
 }
@@ -125,7 +100,7 @@ TEST(PjRtCApiHelperTest, InvalidOptionTypeIndex) {
 
   auto status = ValidateCreateOptions(invalid_map, expected);
 
-  EXPECT_NE(status, tsl::OkStatus());
+  EXPECT_NE(status, absl::OkStatus());
   EXPECT_THAT(status.message(),
               HasSubstr("Option passed to PJRT_Client_Create with name string "
                         "has type index 2 but expected type index is 0"));
@@ -149,7 +124,7 @@ TEST(PjRtCApiHelperTest, Callback) {
 
 TEST(PjRtCApiHelperTest, ConvertToCLayoutFromStrides) {
   std::vector<int64_t> strides = {4, 8};
-  xla::StatusOr<BufferMemoryLayoutData> layout_data =
+  absl::StatusOr<BufferMemoryLayoutData> layout_data =
       ConvertToBufferMemoryLayoutData(strides);
 
   EXPECT_TRUE(layout_data.ok());

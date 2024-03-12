@@ -46,7 +46,7 @@ Status ValidateInput(const Tensor& parent, const Tensor& element,
         element.shape().DebugString(),
         ", [parent slice]: ", chip_shape.DebugString());
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 template <typename T>
@@ -55,7 +55,7 @@ Status HandleElementToSlice(const Tensor& /* element */, T* src, T* dest,
   static_assert(tsl::is_simple_type<T>::value,
                 "Memcpy requires a simple type.");
   memcpy(dest, src, num_values * sizeof(T));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 template <>
@@ -270,7 +270,7 @@ Status MaybeMoveContiguousSlices(Tensor& src, int64_t src_offset,
         ", dst shape: ", dst->shape().DebugString()));
   }
   if (src_chip_size == 0 && dst_chip_size == 0) {
-    return OkStatus();
+    return absl::OkStatus();
   }
   if (src_offset < 0 || src_offset + num_slices > src_dim0 || dst_offset < 0 ||
       dst_offset + num_slices > dst_dim0) {
@@ -341,7 +341,7 @@ Status CopyContiguousSlices(const Tensor& src, int64_t src_offset,
   }
 
   if (src_chip_size == 0 && dst_chip_size == 0) {
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   if (src_offset < 0 || src_offset + num_slices > src_dim0 || dst_offset < 0 ||
@@ -411,7 +411,7 @@ Status ValidateElementToLargerSlice(const Tensor& element, Tensor* parent) {
         "Shapes are: [element]: ", element.shape().DebugString(),
         ", [parent slice]: ", chip_shape.DebugString());
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 template <typename T, int NDIMS>
@@ -419,7 +419,7 @@ Status HandleElementToLargerSlice(const Tensor& element, Tensor* parent,
                                   int index) {
   TF_RETURN_IF_ERROR(ValidateElementToLargerSlice(element, parent));
   if (element.NumElements() == 0) {
-    return OkStatus();
+    return absl::OkStatus();
   }
   auto element_t = element.tensor<T, NDIMS>();
   auto parent_t = parent->tensor<T, NDIMS + 1>();
@@ -431,7 +431,7 @@ Status HandleElementToLargerSlice(const Tensor& element, Tensor* parent,
     slice_size[i] = element_t.dimension(i - 1);
   }
   parent_t.slice(slice_indices, slice_size) = element_t.reshape(slice_size);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 template <int NDIMS>

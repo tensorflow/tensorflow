@@ -16,8 +16,8 @@ limitations under the License.
 #include "xla/stream_executor/tpu/tpu_platform_interface.h"
 
 #include "absl/synchronization/mutex.h"
-#include "xla/stream_executor/multi_platform_manager.h"
 #include "xla/stream_executor/platform.h"
+#include "xla/stream_executor/platform_manager.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/logging.h"  // IWYU pragma: keep
 #include "tsl/protobuf/error_codes.pb.h"
@@ -32,8 +32,8 @@ TpuPlatformInterface* GetRegisteredPlatformStatic(bool initialize_platform,
   DCHECK_GT(tries_left, 0);
   // Prefer TpuPlatform if it's registered.
   auto status_or_tpu_platform =
-      stream_executor::MultiPlatformManager::PlatformWithName(
-          "TPU", initialize_platform);
+      stream_executor::PlatformManager::PlatformWithName("TPU",
+                                                         initialize_platform);
   if (status_or_tpu_platform.ok()) {
     return static_cast<TpuPlatformInterface*>(status_or_tpu_platform.value());
   }
@@ -45,7 +45,7 @@ TpuPlatformInterface* GetRegisteredPlatformStatic(bool initialize_platform,
 
   // Use any other registered TPU platform.
   auto status_or_other_tpu_platforms =
-      stream_executor::MultiPlatformManager::PlatformsWithFilter(
+      stream_executor::PlatformManager::PlatformsWithFilter(
           [](const stream_executor::Platform* platform) {
             return dynamic_cast<const TpuPlatformInterface*>(platform) !=
                    nullptr;

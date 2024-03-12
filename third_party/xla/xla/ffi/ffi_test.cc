@@ -32,7 +32,10 @@ limitations under the License.
 
 namespace xla::ffi {
 
+using ::testing::_;
 using ::testing::HasSubstr;
+using ::testing::Pair;
+using ::testing::UnorderedElementsAre;
 using ::tsl::testing::StatusIs;
 
 TEST(FfiTest, StaticRegistration) {
@@ -43,6 +46,8 @@ TEST(FfiTest, StaticRegistration) {
 
   auto handler = FindHandler("no-op", "Host");
   TF_ASSERT_OK(handler.status());
+  EXPECT_THAT(StaticRegisteredHandlers("Host"),
+              UnorderedElementsAre(Pair("no-op", _)));
 }
 
 TEST(FfiTest, ForwardError) {

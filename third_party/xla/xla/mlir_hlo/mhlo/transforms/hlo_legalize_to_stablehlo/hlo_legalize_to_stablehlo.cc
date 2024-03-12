@@ -147,6 +147,12 @@ std::optional<int64_t> getPublicFeaturesNotInStablehlo(HloOpTy hloOp) {
     // Version 1: Initial version for TopK.
     return 1;
   }
+  // StableHLO doesn't support TopK yet.
+  // Proposal: https://github.com/openxla/stablehlo/pull/1593
+  if constexpr (std::is_same<HloOpTy, mhlo::ErfOp>::value) {
+    // Version 1: Initial version for ErfOp.
+    return 1;
+  }
   return std::nullopt;
 }
 
@@ -588,12 +594,12 @@ class HloToStablehloOpConverter : public OpConversionPattern<HloOpTy> {
     // for the generic builder.
     HloToStablehloOp<HloOpTy> stablehloOp;
     if constexpr (std::is_same<HloOpTy, mhlo::CaseOp>::value) {
-      stablehloOp = rewriter.replaceOpWithNewOp<stablehlo::CaseOp>(
-          hloOp, stablehloTypes, stablehloOperands, stablehloAttrs,
+      stablehloOp = rewriter.create<stablehlo::CaseOp>(
+          hloOp.getLoc(), stablehloTypes, stablehloOperands, stablehloAttrs,
           hloOp.getBranches().size());
     } else {
-      stablehloOp = rewriter.replaceOpWithNewOp<HloToStablehloOp<HloOpTy>>(
-          hloOp, stablehloTypes, stablehloOperands, stablehloAttrs);
+      stablehloOp = rewriter.create<HloToStablehloOp<HloOpTy>>(
+          hloOp.getLoc(), stablehloTypes, stablehloOperands, stablehloAttrs);
     }
 
     // Finally, populate the regions while converting argument types
@@ -607,6 +613,8 @@ class HloToStablehloOpConverter : public OpConversionPattern<HloOpTy> {
                                              /*entryConversion=*/nullptr)))
         return failure();
     }
+
+    rewriter.replaceOp(hloOp, stablehloOp);
     return success();
   }
 
@@ -649,7 +657,8 @@ void populateHloToStablehloPatterns(RewritePatternSet* patterns,
 #include "stablehlo/dialect/StablehloOps.cpp.inc"
       >(patterns, converter, context, allowExperimentalFeatures);
 
-  populateHloToStablehloCustomCallPatterns<mhlo::TanOp, mhlo::TopKOp>(
+  populateHloToStablehloCustomCallPatterns<mhlo::TanOp, mhlo::TopKOp,
+                                           mhlo::ErfOp>(
       patterns, converter, context, allowExperimentalFeatures);
 }
 

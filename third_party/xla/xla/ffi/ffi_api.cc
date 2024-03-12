@@ -108,13 +108,25 @@ static Status RegisterHandler(std::string_view name, std::string_view platform,
   return OkStatus();
 }
 
-StatusOr<XLA_FFI_Handler*> FindHandler(std::string_view name,
-                                       std::string_view platform) {
+absl::StatusOr<XLA_FFI_Handler*> FindHandler(std::string_view name,
+                                             std::string_view platform) {
   auto it = GetHandlerRegistry().find(MakeHandlerKey(name, platform));
   if (it == GetHandlerRegistry().end())
     return absl::NotFoundError(absl::StrCat("No FFI handler registered for ",
                                             name, " on a platform ", platform));
   return it->second;
+}
+
+absl::flat_hash_map<std::string, XLA_FFI_Handler*> StaticRegisteredHandlers(
+    std::string_view platform) {
+  absl::flat_hash_map<std::string, XLA_FFI_Handler*> calls;
+  for (const auto& [metadata, handler] : GetHandlerRegistry()) {
+    if (absl::AsciiStrToLower(platform) == metadata.second) {
+      calls[metadata.first] = handler;
+    }
+  }
+
+  return calls;
 }
 
 //===----------------------------------------------------------------------===//

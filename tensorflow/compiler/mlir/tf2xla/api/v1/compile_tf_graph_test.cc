@@ -21,21 +21,13 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
-#include "absl/status/status.h"
-#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
-#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
-#include "mlir/IR/DialectRegistry.h"  // from @llvm-project
-#include "mlir/IR/MLIRContext.h"  // from @llvm-project
-#include "mlir/IR/OwningOpRef.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/tensorflow/dialect_registration.h"
-#include "tensorflow/compiler/mlir/tensorflow/utils/convert_type.h"
-#include "tensorflow/compiler/mlir/tensorflow/utils/serialize_mlir_module_utils.h"
 #include "tensorflow/compiler/mlir/tf2xla/internal/test_matchers.h"
+#include "tensorflow/compiler/mlir/tf2xla/internal/utils/test_metadata_config.h"
 #include "tensorflow/compiler/tf2xla/layout_util.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
-#include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "xla/client/client_library.h"
 #include "xla/shape.h"
+#include "xla/stream_executor/platform_manager.h"
 #include "xla/translate/mhlo_to_hlo/type_to_shape.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/lib/monitoring/cell_reader.h"
@@ -83,64 +75,14 @@ MlirToHloArgs CreateTestMlirToHloArgs(const char* module_str = kMlirModuleStr) {
 }
 
 class CompileTFGraphTest : public ::testing::Test {
- private:
-  absl::Status SetupArguments(mlir::ModuleOp module,
-                              std::vector<TensorShape>& arg_shapes,
-                              tpu::TPUCompileMetadataProto& metadata_proto) {
-    auto main_fn = module.lookupSymbol<mlir::func::FuncOp>(kEntryFuncName);
-    if (!main_fn) {
-      return absl::InternalError(
-          "Could not find main function in MLIR Module.");
-    }
-
-    mlir::FunctionType func_type = main_fn.getFunctionType();
-    for (auto input_type : func_type.getInputs()) {
-      tensorflow::TensorShape tensor_shape;
-      xla::Shape xla_shape = xla::TypeToShape(input_type);
-      TF_RETURN_IF_ERROR(tensorflow::TensorShape::BuildTensorShape(
-          xla_shape.dimensions(), &tensor_shape));
-      arg_shapes.emplace_back(tensor_shape);
-
-      DataType dtype;
-      TF_RETURN_IF_ERROR(ConvertToDataType(input_type, &dtype));
-
-      auto metadata_arg = metadata_proto.add_args();
-      metadata_arg->set_kind(tpu::TPUCompileMetadataProto::Arg::PARAMETER);
-      metadata_arg->set_dtype(dtype);
-    }
-
-    return absl::OkStatus();
-  }
-
-  absl::Status SetupReturnValues(mlir::ModuleOp module,
-                                 tpu::TPUCompileMetadataProto& metadata_proto) {
-    auto main_fn = module.lookupSymbol<mlir::func::FuncOp>(kEntryFuncName);
-    if (!main_fn) {
-      return absl::InternalError(
-          "Could not find main function in MLIR Module.");
-    }
-
-    int func_results = main_fn.getFunctionType().getNumResults();
-    for (int i = 0; i < func_results; i++) {
-      metadata_proto.add_retvals();
-    }
-
-    return absl::OkStatus();
-  }
-
  public:
   tsl::StatusOr<XlaCompilationResult> CompileWithComputation(
       const std::variant<tpu::MlirToHloArgs, tpu::FunctionToHloArgs>
           computation) {
-    mlir::DialectRegistry registry;
-    mlir::RegisterAllTensorFlowDialects(registry);
-    mlir::MLIRContext context(registry);
-    mlir::OwningOpRef<mlir::ModuleOp> mlir_module;
-
     XlaCompilationResult compilation_result;
 
     se::Platform* platform =
-        se::MultiPlatformManager::PlatformWithName(kPlatformName).value();
+        se::PlatformManager::PlatformWithName(kPlatformName).value();
     auto client =
         xla::ClientLibrary::GetOrCreateCompileOnlyClient(platform).value();
 
@@ -151,11 +93,8 @@ class CompileTFGraphTest : public ::testing::Test {
     tpu::TPUCompileMetadataProto metadata_proto;
     std::vector<TensorShape> arg_shapes;
     if (computation.index() == 0) {
-      TF_RETURN_IF_ERROR(DeserializeMlirModule(
-          std::get<0>(computation).mlir_module, &context, &mlir_module));
-      TF_RETURN_IF_ERROR(SetupReturnValues(*mlir_module, metadata_proto));
-      TF_RETURN_IF_ERROR(
-          SetupArguments(*mlir_module, arg_shapes, metadata_proto));
+      TF_RETURN_IF_ERROR(tensorflow::tf2xla::internal::ConfigureMetadata(
+          std::get<0>(computation).mlir_module, arg_shapes, metadata_proto));
     }
 
     XlaShapeLayoutHelpers::ShapeDeterminationFns shape_determination_fns;
@@ -214,9 +153,9 @@ TEST_F(CompileTFGraphTest, RecordsStreamzForFunctionToHlo) {
   EXPECT_EQ(compilation_status.Delta("kOldBridgeNoMlirSuccess"), 1);
 }
 
-TEST_F(CompileTFGraphTest, CatchesErrorMissedByPassManagerRun) {
+TEST_F(CompileTFGraphTest, SuccessfullyCompilesWithManualSharding) {
   // MLIR module from failing test.
-  constexpr char kUnsupportedManualSharding[] = R"(
+  constexpr char kSupportedManualSharding[] = R"(
     module @module___inference_tpu_function_41 attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, producer = 1617 : i32}} {
       func.func @main(%arg0: tensor<2x2xf32>) -> (tensor<2x2xf32> {mhlo.sharding = "\08\03\1A\02\02\01\22\02\00\01"}) {
         %0 = tf_executor.graph {
@@ -224,7 +163,7 @@ TEST_F(CompileTFGraphTest, CatchesErrorMissedByPassManagerRun) {
           %outputs_0, %control_1 = tf_executor.island wraps "tf.XlaSharding"(%outputs) {_XlaSharding = "\08\03\1A\02\02\01\22\02\00\01", sharding = "\08\03\1A\02\02\01\22\02\00\01", unspecified_dims = []} : (tensor<2x2xf32>) -> tensor<2x2xf32>
           %outputs_2, %control_3 = tf_executor.island wraps "tf.XlaSpmdFullToShardShape"(%outputs_0) {dim = -1 : i64, manual_sharding = "\08\03\1A\02\02\01\22\02\00\01", unspecified_dims = []} : (tensor<2x2xf32>) -> tensor<1x2xf32>
           %control_4 = tf_executor.island wraps "tf._XlaHostComputeMlir"(%outputs_2) {host_mlir_module = "", manual_sharding = true, recv_key = "host_compute_channel_0_retvals", send_key = "host_compute_channel_0_args"} : (tensor<1x2xf32>) -> ()
-          %outputs_5, %control_6 = tf_executor.island(%control_4) wraps "tf._XlaHostComputeMlir"() {host_mlir_module = "", manual_sharding = true, recv_key = "host_compute_channel_1_retvals", send_key = "host_compute_channel_1_args"} : () -> tensor<1x2xf32>
+          %outputs_5, %control_6 = tf_executor.island(%control_4) wraps "tf._XlaHostComputeMlir"() {host_mlir_module = "module {\0A func.func @host_func() -> tensor<1x2xf32> {\0A %0 = \22tf.Const\22() {value = dense<0.1> : tensor<1x2xf32>} : () -> tensor<1x2xf32> \0A return %0 : tensor<1x2xf32>}}", manual_sharding = true, recv_key = "host_compute_channel_1_retvals", send_key = "host_compute_channel_1_args"} : () -> tensor<1x2xf32>
           %outputs_7, %control_8 = tf_executor.island wraps "tf.XlaSpmdShardToFullShape"(%outputs_5) {dim = -1 : i64, full_shape = #tf_type.shape<2x2>, manual_sharding = "\08\03\1A\02\02\01\22\02\00\01", unspecified_dims = []} : (tensor<1x2xf32>) -> tensor<2x2xf32>
           %outputs_9, %control_10 = tf_executor.island wraps "tf.XlaSharding"(%outputs_7) {_XlaSharding = "\08\03\1A\02\02\01\22\02\00\01", sharding = "\08\03\1A\02\02\01\22\02\00\01", unspecified_dims = []} : (tensor<2x2xf32>) -> tensor<2x2xf32>
           tf_executor.fetch %outputs_9 : tensor<2x2xf32>
@@ -233,13 +172,11 @@ TEST_F(CompileTFGraphTest, CatchesErrorMissedByPassManagerRun) {
       }
     }
   )";
-  auto mlir_to_hlo_args = CreateTestMlirToHloArgs(kUnsupportedManualSharding);
+  auto mlir_to_hlo_args = CreateTestMlirToHloArgs(kSupportedManualSharding);
 
   auto result = CompileWithComputation(mlir_to_hlo_args);
 
-  ASSERT_THAT(result.ok(), false);
-  EXPECT_THAT(result.status().message(),
-              testing::ContainsRegex("op manual_sharding"));
+  EXPECT_TRUE(result.ok());
 }
 
 TEST_F(CompileTFGraphTest, DoesNotInlineStatelessRandomOps) {

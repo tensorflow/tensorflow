@@ -105,13 +105,24 @@ StreamExecutorGpuCompiler::Compile(CompileOptions options,
 
   CompileOptions input_options = options;
   if (!options.target_config) {
-    if (!client) {
+    if (client != nullptr) {
+      TF_RETURN_IF_ERROR(IsValidTopologyAndClientForCompile(topology, client));
+      return client->Compile(computation, options);
+    }
+    auto attr = topology.Attributes();
+    if (auto it = attr.find("target_config"); it != attr.end()) {
+      auto target_config_str = std::get<std::string>(it->second);
+      stream_executor::GpuTargetConfigProto gpu_target_config_proto;
+      if (!gpu_target_config_proto.ParseFromString(target_config_str)) {
+        return FailedPrecondition("Failed to parse GpuTargetConfigProto");
+      }
+      options.target_config.emplace(
+          Compiler::TargetConfig(gpu_target_config_proto));
+    } else {
       return absl::UnimplementedError(
           "Compilation without client and without target_config specified is "
           "not implemented");
     }
-    TF_RETURN_IF_ERROR(IsValidTopologyAndClientForCompile(topology, client));
-    return client->Compile(computation, options);
   }
   TF_RETURN_IF_ERROR(options.ApplyAllOptionOverrides());
   std::vector<const Shape*> argument_layout_pointers;
@@ -136,14 +147,10 @@ StreamExecutorGpuCompiler::Compile(CompileOptions options,
   Compiler::CompileOptions opts;
   opts.target_config = options.target_config;
 
-  if (!options.executable_build_options.run_backend_only()) {
-    TF_ASSIGN_OR_RETURN(
-        hlo_module, gpu_compiler.RunHloPasses(std::move(hlo_module),
-                                              /*stream_exec=*/nullptr, opts));
-  }
-
   AotCompilationOptions aot_options(gpu_compiler.PlatformId());
   aot_options.set_target_config(*options.target_config);
+  aot_options.set_run_backend_only(
+      options.executable_build_options.run_backend_only());
 
   const int num_replicas = hlo_module->config().replica_count();
   const int num_partitions = hlo_module->config().num_partitions();
@@ -185,7 +192,7 @@ StreamExecutorGpuCompiler::Compile(CompileOptions options,
 #endif
 }
 
-REGISTER_MODULE_INITIALIZER(pjrt_register_se_gpu_compiler, {
+STREAM_EXECUTOR_REGISTER_MODULE_INITIALIZER(pjrt_register_se_gpu_compiler, {
   PjRtRegisterCompiler(CudaName(),
                        std::make_unique<StreamExecutorGpuCompiler>());
 });

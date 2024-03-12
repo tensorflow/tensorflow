@@ -272,20 +272,20 @@ func.func @attr_rng_algorithm_philox(%arg0: tensor<f32>) -> (tensor<f32>, tensor
 }
 
 // CHECK-LABEL: "attr_rng_distribution_uniform"
-func.func @attr_rng_distribution_uniform(%arg0: tensor<f32>, %arg1: tensor<f32>, %arg2: tensor<?xindex>) -> tensor<f32> {
+func.func @attr_rng_distribution_uniform(%arg0: tensor<f32>, %arg1: tensor<f32>, %arg2: tensor<0xindex>) -> tensor<f32> {
   %0 = "mhlo.rng"(%arg0, %arg1, %arg2) {
     // CHECK: rng_distribution = #stablehlo<rng_distribution UNIFORM>
     rng_distribution = #mhlo.rng_distribution<UNIFORM>
-  } : (tensor<f32>, tensor<f32>, tensor<?xindex>) -> tensor<f32>
+  } : (tensor<f32>, tensor<f32>, tensor<0xindex>) -> tensor<f32>
   func.return %0 : tensor<f32>
 }
 
 // CHECK-LABEL: "attr_rng_distribution_normal"
-func.func @attr_rng_distribution_normal(%arg0: tensor<f32>, %arg1: tensor<f32>, %arg2: tensor<?xindex>) -> tensor<f32> {
+func.func @attr_rng_distribution_normal(%arg0: tensor<f32>, %arg1: tensor<f32>, %arg2: tensor<0xindex>) -> tensor<f32> {
   %0 = "mhlo.rng"(%arg0, %arg1, %arg2) {
     // CHECK: rng_distribution = #stablehlo<rng_distribution NORMAL>
     rng_distribution = #mhlo.rng_distribution<NORMAL>
-  } : (tensor<f32>, tensor<f32>, tensor<?xindex>) -> tensor<f32>
+  } : (tensor<f32>, tensor<f32>, tensor<0xindex>) -> tensor<f32>
   func.return %0 : tensor<f32>
 }
 
@@ -605,6 +605,22 @@ func.func @op_complex(%arg0: tensor<f32>, %arg1: tensor<f32>) -> tensor<complex<
   func.return %0 : tensor<complex<f32>>
 }
 
+// CHECK-LABEL: "op_composite"
+func.func @op_composite(%arg0 : tensor<i64>) -> tensor<i64> {
+  // CHECK: "stablehlo.composite"(%arg0) {composite_attributes = {n = 2 : i64}, decomposition = @add_n.impl, name = "mhlo.add_n"} : (tensor<i64>) -> tensor<i64>
+  %0 = mhlo.composite "mhlo.add_n" %arg0 {
+    composite_attributes = { n = 2 : i64 },
+    decomposition = @add_n.impl
+  } : (tensor<i64>) -> tensor<i64>
+  func.return %0 : tensor<i64>
+}
+
+func.func @add_n.impl(%arg0: tensor<i64>) -> tensor<i64> {
+  %0 = mhlo.constant dense<2> : tensor<i64>
+  %1 = mhlo.add %arg0, %0 : tensor<i64>
+  func.return %1 : tensor<i64>
+}
+
 // CHECK-LABEL: "op_compute_reshape_shape"
 func.func @op_compute_reshape_shape(%arg0: index, %arg1: tensor<1xindex>) -> tensor<1xindex> {
   // CHECK: "stablehlo.compute_reshape_shape"(%arg0, %arg1) : (index, tensor<1xindex>) -> tensor<1xindex>
@@ -863,9 +879,9 @@ func.func @op_dynamic_pad(%arg0: tensor<?xf32>, %arg1: tensor<f32>, %arg2: tenso
 }
 
 // CHECK-LABEL: "op_dynamic_reshape"
-func.func @op_dynamic_reshape(%arg0: tensor<16xf32>, %arg1: tensor<?xindex>) -> tensor<?x?xf32> {
-  // CHECK: "stablehlo.dynamic_reshape"(%arg0, %arg1) : (tensor<16xf32>, tensor<?xindex>) -> tensor<?x?xf32>
-  %0 = "mhlo.dynamic_reshape"(%arg0, %arg1) : (tensor<16xf32>, tensor<?xindex>) -> tensor<?x?xf32>
+func.func @op_dynamic_reshape(%arg0: tensor<16xf32>, %arg1: tensor<2xindex>) -> tensor<?x?xf32> {
+  // CHECK: "stablehlo.dynamic_reshape"(%arg0, %arg1) : (tensor<16xf32>, tensor<2xindex>) -> tensor<?x?xf32>
+  %0 = "mhlo.dynamic_reshape"(%arg0, %arg1) : (tensor<16xf32>, tensor<2xindex>) -> tensor<?x?xf32>
   func.return %0 : tensor<?x?xf32>
 }
 
@@ -1327,13 +1343,13 @@ func.func @op_rng_bit_generator(%arg0: tensor<f32>) -> (tensor<f32>, tensor<f32>
 }
 
 // CHECK-LABEL: "op_rng"
-func.func @op_rng(%arg0: tensor<f32>, %arg1: tensor<f32>, %arg2: tensor<?xindex>) -> tensor<f32> {
+func.func @op_rng(%arg0: tensor<f32>, %arg1: tensor<f32>, %arg2: tensor<0xindex>) -> tensor<f32> {
   //      CHECK: "stablehlo.rng"(%arg0, %arg1, %arg2) {
   // CHECK-SAME:   rng_distribution = #stablehlo<rng_distribution NORMAL>
-  // CHECK-SAME: } : (tensor<f32>, tensor<f32>, tensor<?xindex>) -> tensor<f32>
+  // CHECK-SAME: } : (tensor<f32>, tensor<f32>, tensor<0xindex>) -> tensor<f32>
   %0 = "mhlo.rng"(%arg0, %arg1, %arg2) {
     rng_distribution = #mhlo.rng_distribution<NORMAL>
-  } : (tensor<f32>, tensor<f32>, tensor<?xindex>) -> tensor<f32>
+  } : (tensor<f32>, tensor<f32>, tensor<0xindex>) -> tensor<f32>
   func.return %0 : tensor<f32>
 }
 
@@ -1842,18 +1858,11 @@ func.func @type_dynamism_ranked(%arg0: tensor<?xf32>) -> tensor<?xf32> {
   func.return %0 : tensor<?xf32>
 }
 
-// CHECK-LABEL: "type_dynamism_unranked"
-func.func @type_dynamism_unranked(%arg0: tensor<*xf32>) -> tensor<*xf32> {
-  // CHECK: "stablehlo.abs"(%arg0) : (tensor<*xf32>) -> tensor<*xf32>
-  %0 = "mhlo.abs"(%arg0) : (tensor<*xf32>) -> tensor<*xf32>
-  func.return %0 : tensor<*xf32>
-}
-
 // CHECK-LABEL: "type_quantization"
-func.func @type_quantization(%arg0: tensor<!quant.uniform<i8:f32, 34.0:16>>, %arg1: tensor<f32>) -> tensor<f32> {
-  // CHECK: "stablehlo.add"(%arg0, %arg1) : (tensor<!quant.uniform<i8:f32, 3.400000e+01:16>>, tensor<f32>) -> tensor<f32>
-  %0 = "mhlo.add"(%arg0, %arg1) : (tensor<!quant.uniform<i8:f32, 34.0:16>>, tensor<f32>) -> tensor<f32>
-  func.return %0 : tensor<f32>
+func.func @type_quantization(%arg0: tensor<!quant.uniform<i8:f32, 34.0:16>>) -> tensor<!quant.uniform<i8:f32, 34.0:16>> {
+  // CHECK: "stablehlo.add"(%arg0, %arg0) : (tensor<!quant.uniform<i8:f32, 3.400000e+01:16>>, tensor<!quant.uniform<i8:f32, 3.400000e+01:16>>) -> tensor<!quant.uniform<i8:f32, 3.400000e+01:16>>
+  %0 = "mhlo.add"(%arg0, %arg0) : (tensor<!quant.uniform<i8:f32, 34.0:16>>, tensor<!quant.uniform<i8:f32, 34.0:16>>) -> tensor<!quant.uniform<i8:f32, 34.0:16>>
+  func.return %0 : tensor<!quant.uniform<i8:f32, 34.0:16>>
 }
 
 // -----

@@ -97,7 +97,7 @@ enum class CollectiveOpGroupMode {
 // An empty `groups` indicates that all [0, total_participant_count) IDs
 // are participating. Note that for CollectiveOpGroupMode::kFlattenedID,
 // groups cannot be empty, so `total_participant_count` is an optional.
-StatusOr<std::vector<int>> GetParticipatingIDs(
+absl::StatusOr<std::vector<int>> GetParticipatingIDs(
     CollectiveOpGroupMode group_mode, int current_id,
     std::optional<int> total_participant_count,
     absl::Span<const ReplicaGroup> groups);
@@ -107,7 +107,7 @@ absl::string_view CollectiveOpGroupModeToString(
 
 // Returns the group formation mode implied by (a) whether the operation has
 // channel_id and (b) if it has use_global_device_ids and if yes, its value.
-StatusOr<CollectiveOpGroupMode> GetCollectiveOpGroupMode(
+absl::StatusOr<CollectiveOpGroupMode> GetCollectiveOpGroupMode(
     bool has_channel_id, std::optional<bool> use_global_device_ids);
 
 // Figures out subgroups of participating devices from given replica_groups and
@@ -123,32 +123,32 @@ StatusOr<CollectiveOpGroupMode> GetCollectiveOpGroupMode(
 //
 //   This functions returns {{33, 34}, {44, 45, 55, 56}}
 //   There are 2 subgroups of participating devices {33, 34}, {44, 45, 55, 56}.
-StatusOr<std::vector<std::vector<GlobalDeviceId>>>
+absl::StatusOr<std::vector<std::vector<GlobalDeviceId>>>
 GetParticipatingDevicesGroups(const DeviceAssignment& device_assignment,
                               absl::Span<const ReplicaGroup> replica_groups,
                               CollectiveOpGroupMode group_mode);
 
 // Same as above, except that it returns the flattened id in the replica groups
 // instead of device id.
-StatusOr<std::vector<ReplicaGroup>> GetParticipatingFlattenedIdGroups(
+absl::StatusOr<std::vector<ReplicaGroup>> GetParticipatingFlattenedIdGroups(
     const DeviceAssignment& device_assignment,
     absl::Span<const ReplicaGroup> replica_groups,
     CollectiveOpGroupMode group_mode);
 
 // Same as above, but take replica/partition count instead of device assignment.
-StatusOr<std::vector<ReplicaGroup>> GetParticipatingFlattenedIdGroups(
+absl::StatusOr<std::vector<ReplicaGroup>> GetParticipatingFlattenedIdGroups(
     absl::Span<const ReplicaGroup> replica_groups,
     CollectiveOpGroupMode replica_group_mode, int replica_count,
     int partition_count);
 
 // Figures out which devices are participating in the collective subgroup.
-StatusOr<std::vector<GlobalDeviceId>> GetParticipatingDevices(
+absl::StatusOr<std::vector<GlobalDeviceId>> GetParticipatingDevices(
     GlobalDeviceId device_id, const DeviceAssignment& device_assignment,
     absl::Span<const ReplicaGroup> replica_groups,
     CollectiveOpGroupMode group_mode);
 
 // Figures out how many ranks are participating in each collective subgroup.
-StatusOr<std::vector<int64_t>> GetPariticipantCountsForReplicaGroups(
+absl::StatusOr<std::vector<int64_t>> GetPariticipantCountsForReplicaGroups(
     int64_t num_replicas, int64_t num_partitions,
     absl::Span<const ReplicaGroup> replica_groups,
     CollectiveOpGroupMode group_mode);
@@ -171,6 +171,10 @@ inline constexpr absl::string_view kNopReturnTokenCustomCallTarget =
 
 // Returns true if instruction is a collective op or a collective fusion.
 bool IsCollective(const HloInstruction* instruction);
+
+// Returns true if instruction is a collective op (or a collective fusion) with
+// channel_id.
+bool IsCollectiveWithChannelId(const HloInstruction* instruction);
 
 // Returns true if instruction is a synchronous collective op.
 bool IsSyncCollective(const HloInstruction* instr);
@@ -379,8 +383,41 @@ class Rendezvous {
       std::make_shared<tsl::BlockingCounter>(key_.num_local_participants)};
 };
 
+// We only pipeline Send-Recv chains with channel_id > 0, where each chain
+// has a unique channel_id, and allows multiple Send-Recv chains using
+// channel_id 0.
+inline bool MayPipelineSendRecvChannel(int64_t channel_id) {
+  return channel_id > 0;
+}
+
 constexpr char kSendRecvSourceTargetPairsAttr[] =
     "_xla_send_recv_source_target_pairs";
+
+// When a Send or Recv is annotated with frontend attribute
+// _xla_send_recv_pipeline="1", asynchronous stream kP2P1 is used to execute the
+// Send or Recv. For all other cases, asynchronous stream kP2P0 is used.
+constexpr char kSendRecvPipelineAttr[] = "_xla_send_recv_pipeline";
+
+// This frontend attribute conveys the following information:
+// (1) _xla_send_recv_validation="invalid": the runtime should skip sending or
+// receiving data when the instruction is executed.
+// (2) the absent of the attribute: the runtime should faithfully perform the
+// Send or Recv operation when the instruction is executed.
+// (3) _xla_send_recv_validation={list-of-bounds}: the list-of-bounds
+// corresponds to the value of _xla_send_recv_source_target_pairs, and specifies
+// the execution instances for which the runtime should faithfully perform the
+// Send or Recv operation. Here is an example:
+//   _xla_send_recv_source_target_pairs={{0,1}, {1,2}}
+//   _xla_send_recv_validation={{2,3}, {5,7}}
+// The Send or Recv instruction with the above two attributes have the
+// following semantics:
+// The communication between device 0 and 1 will only send or receive data
+// for execution instances 2 and 3 of the instruction on devices 0 and 1.
+// For execution instances 0, 1, and beyond 3, the runtime should skip sending
+// or receiving any data.
+// Similarly, the communication between device 1 and 2 will only send or
+// receive data on execution instances 5 and 7.
+constexpr char kSendRecvValidationAttr[] = "_xla_send_recv_validation";
 
 }  // end namespace xla
 

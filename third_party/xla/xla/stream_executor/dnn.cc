@@ -15,20 +15,34 @@ limitations under the License.
 
 #include "xla/stream_executor/dnn.h"
 
+#include <Eigen/Core>
 #include <algorithm>
+#include <complex>
+#include <cstddef>
 #include <cstdint>
 #include <iterator>
+#include <memory>
+#include <optional>
+#include <ostream>
+#include <string>
+#include <utility>
+#include <vector>
 
 #include "absl/algorithm/container.h"
 #include "absl/container/btree_map.h"
+#include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
 #include "absl/types/span.h"
+#include "xla/stream_executor/data_type.h"
+#include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/numeric_options.h"
 #include "tsl/lib/strings/proto_serialization.h"
+#include "tsl/platform/ml_dtypes.h"
 #include "tsl/protobuf/dnn.pb.h"
 
 namespace stream_executor {
@@ -221,13 +235,17 @@ DnnSupport::FusedConvolveRunnerFromDesc(
 
 absl::StatusOr<std::unique_ptr<const dnn::NormRunner>>
 DnnSupport::NormRunnerFromDesc(
-    Stream* stream, const dnn::AlgorithmDesc& algorithm_desc, double epsilon,
-    const dnn::TensorDescriptor& input_descriptor,
+    Stream* stream, const dnn::AlgorithmDesc& algorithm_desc,
+    dnn::NormKind kind, double epsilon,
+    const dnn::TensorDescriptor& x_descriptor,
     const dnn::TensorDescriptor& scale_descriptor,
-    const dnn::TensorDescriptor& bias_descriptor,
-    const dnn::TensorDescriptor& output_descriptor,
+    const dnn::TensorDescriptor& y_or_dx_descriptor,
+    std::optional<dnn::TensorDescriptor> bias_descriptor,
+    std::optional<dnn::TensorDescriptor> dy_descriptor,
     std::optional<dnn::TensorDescriptor> expectation_descriptor,
-    std::optional<dnn::TensorDescriptor> norm_factor_descriptor) {
+    std::optional<dnn::TensorDescriptor> norm_factor_descriptor,
+    std::optional<dnn::TensorDescriptor> dscale_descriptor,
+    std::optional<dnn::TensorDescriptor> dbias_descriptor) {
   return absl::UnimplementedError("NormRunnerFromDesc not implemented.");
 }
 

@@ -73,11 +73,11 @@ Status ParseActivationMode(OpKernelConstruction* context,
 
   if (activation_mode_str == "Identity") {
     *activation_mode = FusedBatchNormActivationMode::kIdentity;
-    return OkStatus();
+    return absl::OkStatus();
   }
   if (activation_mode_str == "Relu") {
     *activation_mode = FusedBatchNormActivationMode::kRelu;
-    return OkStatus();
+    return absl::OkStatus();
   }
   return errors::InvalidArgument("Unsupported activation mode: ",
                                  activation_mode_str);
@@ -967,25 +967,16 @@ struct FusedBatchNormImplGPU {
     }
     if (!batch_mean->SharesBufferWith(estimated_mean) &&
         exponential_avg_factor != 1.0f) {
-      OP_REQUIRES(
-          context,
-          stream
-              ->ThenMemcpyD2D(&batch_mean_ptr, estimated_mean_ptr,
-                              estimated_mean.NumElements() * sizeof(U))
-              .ok(),
-          errors::Internal("MatrixTriangularSolveOp: failed to copy rhs "
-                           "from device"));
+      OP_REQUIRES_OK(
+          context, stream->MemcpyD2D(&batch_mean_ptr, estimated_mean_ptr,
+                                     estimated_mean.NumElements() * sizeof(U)));
     }
     if (!batch_var->SharesBufferWith(estimated_variance) &&
         exponential_avg_factor != 1.0f) {
-      OP_REQUIRES(
+      OP_REQUIRES_OK(
           context,
-          stream
-              ->ThenMemcpyD2D(&batch_var_ptr, estimated_variance_ptr,
-                              estimated_variance.NumElements() * sizeof(U))
-              .ok(),
-          errors::Internal("MatrixTriangularSolveOp: failed to copy rhs "
-                           "from device"));
+          stream->MemcpyD2D(&batch_var_ptr, estimated_variance_ptr,
+                            estimated_variance.NumElements() * sizeof(U)));
     }
     auto dnn = stream->parent()->AsDnn();
     if (dnn == nullptr) {

@@ -84,7 +84,7 @@ class CoordinationServiceImpl {
 
 class DistributedRuntimeService {
  public:
-  static xla::StatusOr<std::unique_ptr<DistributedRuntimeService>> Get(
+  static absl::StatusOr<std::unique_ptr<DistributedRuntimeService>> Get(
       const std::string& address,
       std::shared_ptr<::grpc::ServerCredentials> credentials,
       const CoordinationServiceImpl::Options& options);

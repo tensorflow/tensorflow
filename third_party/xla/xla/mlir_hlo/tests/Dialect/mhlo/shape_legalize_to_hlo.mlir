@@ -279,6 +279,16 @@ func.func @index_cast_scalar_index_to_i64(%arg0: index) -> i64 {
 
 // -----
 
+func.func @index_cast_scalar_i32_to_index(%arg0: i32) -> index {
+  //      CHECK: %[[CAST_I32:.*]] = builtin.unrealized_conversion_cast %arg0 : i32 to tensor<i32>
+  // CHECK-NEXT: %[[CAST_INDEX:.*]] = builtin.unrealized_conversion_cast %[[CAST_I32]] : tensor<i32> to index
+  // CHECK-NEXT: return %[[CAST_INDEX]] : index
+  %0 = arith.index_cast %arg0 : i32 to index
+  return %0 : index
+}
+
+// -----
+
 func.func @index_cast_index_to_i8(%arg0: tensor<2xindex>) -> tensor<2xi8> {
   // expected-error@+1 {{failed to legalize operation 'arith.index_cast' that was explicitly marked illegal}}
   %0 = arith.index_cast %arg0 : tensor<2xindex> to tensor<2xi8>
@@ -293,13 +303,6 @@ func.func @index_cast_i8_to_index(%arg0: tensor<2xi8>) -> tensor<2xindex> {
   return %0 : tensor<2xindex>
 }
 
-// -----
-
-func.func @index_cast_scalar_i32_to_index(%arg0: i32) -> index {
-  // expected-error@+1 {{failed to legalize operation 'arith.index_cast' that was explicitly marked illegal}}
-  %0 = arith.index_cast %arg0 : i32 to index
-  return %0 : index
-}
 
 // -----
 
@@ -335,4 +338,61 @@ func.func @muli_i32(%arg0: i32, %arg1: i32) -> i32 {
   // expected-error@+1 {{failed to legalize operation 'arith.muli' that was explicitly marked illegal}}
   %0 = arith.muli %arg0, %arg1 : i32
   return %0 : i32
+}
+
+// -----
+
+// CHECK-LABEL: func @tensor_extract
+func.func @tensor_extract(%arg0: tensor<3x3xindex>) -> index {
+  %c1 = arith.constant 0 : index
+  %c2 = arith.constant 1 : index
+  %0 = tensor.extract %arg0[%c1, %c2] : tensor<3x3xindex>
+  return %0 : index
+  //      CHECK: %[[CAST:.*]] = builtin.unrealized_conversion_cast %arg0 : tensor<3x3xindex> to tensor<3x3xi32>
+  // CHECK-NEXT: %[[SLICE:.*]] = "mhlo.slice"(%[[CAST]])
+  // CHECK-SAME: limit_indices = dense<[1, 2]> : tensor<2xi64>
+  // CHECK-SAME: start_indices = dense<[0, 1]> : tensor<2xi64>
+  // CHECK-SAME: strides = dense<1> : tensor<2xi64>
+  // CHECK-SAME: (tensor<3x3xi32>) -> tensor<1x1xi32>
+  // CHECK-NEXT: %[[RESHAPE:.*]] = mhlo.reshape %[[SLICE]] : (tensor<1x1xi32>) -> tensor<i32>
+  // CHECK-NEXT: %[[RES_INDEX:.*]] = builtin.unrealized_conversion_cast %[[RESHAPE]] : tensor<i32> to index
+  // CHECK-NEXT: return %[[RES_INDEX]] : index
+}
+
+// -----
+
+// CHECK-LABEL: func @tensor_extract_i32
+func.func @tensor_extract_i32(%arg0: tensor<3x3xi32>) -> i32 {
+  %c1 = arith.constant 0 : index
+  %c2 = arith.constant 1 : index
+  %0 = tensor.extract %arg0[%c1, %c2] : tensor<3x3xi32>
+  return %0 : i32
+  //      CHECK: %[[SLICE:.*]] = "mhlo.slice"(%arg0)
+  // CHECK-SAME: limit_indices = dense<[1, 2]> : tensor<2xi64>
+  // CHECK-SAME: start_indices = dense<[0, 1]> : tensor<2xi64>
+  // CHECK-SAME: strides = dense<1> : tensor<2xi64>
+  // CHECK-SAME: (tensor<3x3xi32>) -> tensor<1x1xi32>
+  // CHECK-NEXT: %[[RESHAPE:.*]] = mhlo.reshape %[[SLICE]] : (tensor<1x1xi32>) -> tensor<i32>
+  // CHECK-NEXT: %[[RES_I32:.*]] = builtin.unrealized_conversion_cast %[[RESHAPE]] : tensor<i32> to i32
+  // CHECK-NEXT: return %[[RES_I32]] : i32
+}
+
+// -----
+
+func.func @tensor_extract_out_of_range(%arg0: tensor<3x3xindex>) -> index {
+  %c1 = arith.constant 4 : index
+  %c2 = arith.constant 4 : index
+  // expected-error@+1 {{failed to legalize operation 'tensor.extract' that was explicitly marked illegal}}
+  %0 = tensor.extract %arg0[%c1, %c2] : tensor<3x3xindex>
+  return %0 : index
+}
+
+// -----
+
+func.func @tensor_extract_dynamic(%arg0: tensor<?x3xindex>) -> index {
+  %c1 = arith.constant 0 : index
+  %c2 = arith.constant 2 : index
+  // expected-error@+1 {{failed to legalize operation 'tensor.extract' that was explicitly marked illegal}}
+  %0 = tensor.extract %arg0[%c1, %c2] : tensor<?x3xindex>
+  return %0 : index
 }

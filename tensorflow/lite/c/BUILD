@@ -97,6 +97,7 @@ cc_library_with_tflite_with_c_headers_test(
 cc_library_with_tflite_with_c_headers_test(
     name = "c_api_without_op_resolver_without_alwayslink",
     hdrs = ["c_api.h"],
+    compatible_with = get_compatible_with_portable(),
     copts = tflite_copts(),
     tags = ["allow_undefined_symbols"],  # For tflite::CreateOpResolver().
     deps = ["//tensorflow/lite/core/c:c_api_without_op_resolver_without_alwayslink"],
@@ -178,6 +179,7 @@ cc_library_with_tflite_with_c_headers_test(
     hdrs = [
         "c_api_opaque.h",
     ],
+    compatible_with = get_compatible_with_portable(),
     copts = tflite_copts() + tflite_copts_warnings(),
     generate_opaque_delegate_target = True,
     tflite_deps = [":c_api"],
@@ -189,6 +191,7 @@ cc_library_with_tflite_with_c_headers_test(
     hdrs = [
         "c_api_opaque.h",
     ],
+    compatible_with = get_compatible_with_portable(),
     copts = tflite_copts() + tflite_copts_warnings(),
     tags = ["allow_undefined_symbols"],  # For tflite::CreateOpResolver().
     tflite_deps = [":c_api_without_op_resolver"],
@@ -200,6 +203,7 @@ cc_library_with_tflite_with_c_headers_test(
     hdrs = [
         "c_api_opaque.h",
     ],
+    compatible_with = get_compatible_with_portable(),
     copts = tflite_copts() + tflite_copts_warnings(),
     tags = ["allow_undefined_symbols"],  # For tflite::CreateOpResolver().
     tflite_deps = [
@@ -378,6 +382,7 @@ cc_library(
     name = "c_api_opaque_internal_without_alwayslink",
     srcs = ["c_api_opaque_internal.cc"],
     hdrs = ["c_api_opaque_internal.h"],
+    compatible_with = get_compatible_with_portable(),
     tags = ["allow_undefined_symbols"],  # For tflite::CreateOpResolver().
     visibility = [
         "//tensorflow/lite:__subpackages__",

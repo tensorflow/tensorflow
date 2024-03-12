@@ -47,6 +47,7 @@ limitations under the License.
 #include "xla/pjrt/pjrt_device_description.h"
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/pjrt/pjrt_future.h"
+#include "xla/pjrt/pjrt_layout.h"
 #include "xla/service/computation_placer.h"
 #include "xla/service/hlo_cost_analysis.h"
 #include "xla/shape.h"
@@ -453,7 +454,7 @@ class PjRtCApiBuffer : public PjRtBuffer {
 
   absl::Span<const int64_t> dimensions() const override;
 
-  const Layout& layout() const override;
+  std::unique_ptr<PjRtLayout> layout() const override;
 
   // PJRT C API doesn't support tuple buffers.
   bool IsTuple() const override { return false; }
@@ -482,7 +483,10 @@ class PjRtCApiBuffer : public PjRtBuffer {
   StatusOr<std::unique_ptr<ExternalReference>> AcquireExternalReference()
       override;
 
-  PjRtFuture<Status> ToLiteral(MutableLiteralBase* literal) override;
+  PjRtFuture<absl::Status> ToLiteral(MutableLiteralBase* literal) override;
+  PjRtFuture<absl::Status> LazyToLiteral(
+      absl::AnyInvocable<absl::StatusOr<MutableLiteralBase*>() &&> generator)
+      override;
 
   StatusOr<size_t> GetOnDeviceSizeInBytes() const override;
 
@@ -547,7 +551,7 @@ class PjRtCApiBuffer : public PjRtBuffer {
   // we set on `readiness_event` modifies `readiness_promise_`.
   std::shared_ptr<PjRtFuture<Status>::Promise> readiness_promise_;
   // Set and cached the first time layout() is called.
-  mutable std::optional<xla::Layout> layout_;
+  mutable std::optional<PjRtXlaLayout> layout_;
   // Set and cached the first time is_dynamic_dimension() is called.
   mutable std::optional<absl::InlinedVector<bool, InlineRank()>>
       is_dynamic_dimension_;
@@ -783,6 +787,14 @@ StatusOr<std::unique_ptr<PjRtClient>> GetCApiClient(
     const absl::flat_hash_map<std::string, PjRtValueType>& create_options = {},
     std::shared_ptr<KeyValueStoreInterface> kv_store = nullptr);
 
+absl::StatusOr<std::unique_ptr<PjRtTopologyDescription>> GetCApiTopology(
+    const PJRT_Api* c_api, absl::string_view topology_name,
+    const absl::flat_hash_map<std::string, PjRtValueType>& create_options);
+
+// A variant that takes `device_type` as an input, used for plugins that are not
+// registered with standard way (xla_bridge.register_plugin).
+// TODO(b/322357665): Delete this method after TPU plugin changes to use the
+// standard registration.
 StatusOr<std::unique_ptr<PjRtTopologyDescription>> GetCApiTopology(
     absl::string_view device_type, absl::string_view topology_name,
     const absl::flat_hash_map<std::string, PjRtValueType>& create_options = {});

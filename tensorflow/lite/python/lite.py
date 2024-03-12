@@ -61,6 +61,7 @@ from tensorflow.lite.python.util import convert_debug_info_func as _convert_debu
 from tensorflow.lite.python.util import freeze_graph as _freeze_graph
 from tensorflow.lite.python.util import get_debug_info as _get_debug_info
 from tensorflow.lite.python.util import get_grappler_config as _get_grappler_config
+from tensorflow.lite.python.util import get_model_hash as _get_model_hash
 from tensorflow.lite.python.util import get_sparsity_modes as _get_sparsity_modes
 from tensorflow.lite.python.util import get_tensor_name as _get_tensor_name
 from tensorflow.lite.python.util import get_tensors_from_tensor_names as _get_tensors_from_tensor_names
@@ -663,6 +664,7 @@ class TFLiteConverterBase:
     self._experimental_use_buffer_offset = False
     self._experimental_reduce_type_precision = False
     self._experimental_qdq_conversion_mode = None
+    self._experimental_disable_per_channel_quantization_for_dense_layers = False
 
     # Debug parameters
     self.ir_dump_dir = None
@@ -748,6 +750,7 @@ class TFLiteConverterBase:
           input_data_type=input_type,
           output_data_type=output_type,
           enable_variable_quantization=enable_variable_quantization,
+          disable_per_channel_for_dense_layers=self._experimental_disable_per_channel_quantization_for_dense_layers,
       )
     else:
       return calibrate_quantize.calibrate_and_quantize(
@@ -813,6 +816,9 @@ class TFLiteConverterBase:
         "reduce_type_precision": self._experimental_reduce_type_precision,
         "use_stablehlo_quantizer": self.experimental_use_stablehlo_quantizer,
         "qdq_conversion_mode": self._experimental_qdq_conversion_mode,
+        "disable_per_channel_quantization_for_dense_layers": (
+            self._experimental_disable_per_channel_quantization_for_dense_layers
+        ),
     }
 
     if self.saved_model_dir:
@@ -856,7 +862,8 @@ class TFLiteConverterBase:
                     qc.RepresentativeDatasetConfig(
                         tf_record=qc.TfRecordFile(path=tfrecord_file_path)
                     )
-                ]
+                ],
+                enable_per_channel_quantized_weight=True,
             )
         )
 
@@ -1142,7 +1149,9 @@ class TFLiteConverterBase:
     # Populates the conversion metadata.
     # TODO(b/202090541): Collects sparsity block size information.
     sparsity_modes = _get_sparsity_modes(model_object)
+    model_hash = _get_model_hash(model_object)
     self._metadata.options.modelOptimizationModes.extend(sparsity_modes)
+    self._metadata.environment.modelHash = model_hash
     model_object = _populate_conversion_metadata(model_object, self._metadata)
     return flatbuffer_utils.convert_object_to_bytearray(model_object)
 

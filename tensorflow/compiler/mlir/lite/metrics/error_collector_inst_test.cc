@@ -91,8 +91,8 @@ class MockFailurePass
   };
 };
 
-StatusOr<OwningOpRef<mlir::ModuleOp>> LoadModule(MLIRContext* context,
-                                                 const std::string& file_name) {
+absl::StatusOr<OwningOpRef<mlir::ModuleOp>> LoadModule(
+    MLIRContext* context, const std::string& file_name) {
   std::string error_message;
   auto file = openInputFile(file_name, &error_message);
   if (!file) {

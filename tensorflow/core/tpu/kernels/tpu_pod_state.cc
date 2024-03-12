@@ -58,10 +58,10 @@ Status DeleteIfExists(ResourceMgr* resource_manager,
   return status;
 }
 
-xla::StatusOr<std::unique_ptr<TpuCompilationCacheService>>
+absl::StatusOr<std::unique_ptr<TpuCompilationCacheService>>
 ConstructCacheService(ResourceMgr* rmgr, int serving_port,
                       tpu::TpuCompilationCacheInterface* compilation_cache) {
-  xla::StatusOr<std::unique_ptr<::grpc::ServerBuilder>> server_builder;
+  absl::StatusOr<std::unique_ptr<::grpc::ServerBuilder>> server_builder;
 #if defined(LIBTPU_ON_GCE)
   server_builder = tpu::CreateServerBuilder(serving_port);
 #else

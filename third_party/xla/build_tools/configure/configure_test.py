@@ -29,12 +29,12 @@ _PYTHON_BIN_PATH = "/usr/bin/python3"
 _CLANG_PATH = "/usr/lib/llvm-17/bin/clang"
 _GCC_PATH = "/usr/bin/gcc"
 _COMPILER_OPTIONS = ("-Wno-sign-compare",)
-_CUDA_COMPUTE_CAPABILITIES = ["7.5"] * 4
 
 # CUDA specific paths and versions
 _CUDA_SPECIFIC_PATHS_AND_VERSIONS = {
     "cublas_version": "12.3",
     "cuda_toolkit_path": "/usr/local/cuda-12.2",
+    "cuda_compute_capabilities": ["7.5"],
     "cudnn_version": "8",
     "ld_library_path": "/usr/local/nvidia/lib:/usr/local/nvidia/lib64",
     "nccl_version": "2",
@@ -74,7 +74,6 @@ class ConfigureTest(absltest.TestCase):
         host_compiler=HostCompiler.CLANG,
         compiler_options=list(_COMPILER_OPTIONS),
         cuda_compiler=CudaCompiler.NVCC,
-        cuda_compute_capabilities=[],
         using_nccl=False,
         using_tensorrt=False,
     )
@@ -97,7 +96,6 @@ class ConfigureTest(absltest.TestCase):
         host_compiler=HostCompiler.GCC,
         compiler_options=list(_COMPILER_OPTIONS),
         cuda_compiler=CudaCompiler.NVCC,
-        cuda_compute_capabilities=[],
         using_nccl=False,
         using_tensorrt=False,
     )
@@ -119,7 +117,6 @@ class ConfigureTest(absltest.TestCase):
         host_compiler=HostCompiler.CLANG,
         compiler_options=list(_COMPILER_OPTIONS),
         cuda_compiler=CudaCompiler.CLANG,
-        cuda_compute_capabilities=_CUDA_COMPUTE_CAPABILITIES,
         using_nccl=False,
         using_tensorrt=False,
     )
@@ -142,7 +139,6 @@ class ConfigureTest(absltest.TestCase):
         host_compiler=HostCompiler.CLANG,
         compiler_options=list(_COMPILER_OPTIONS),
         cuda_compiler=CudaCompiler.NVCC,
-        cuda_compute_capabilities=_CUDA_COMPUTE_CAPABILITIES,
         using_nccl=False,
         using_tensorrt=False,
     )
@@ -165,7 +161,6 @@ class ConfigureTest(absltest.TestCase):
         host_compiler=HostCompiler.GCC,
         compiler_options=list(_COMPILER_OPTIONS),
         cuda_compiler=CudaCompiler.NVCC,
-        cuda_compute_capabilities=_CUDA_COMPUTE_CAPABILITIES,
         using_nccl=False,
         using_tensorrt=False,
     )

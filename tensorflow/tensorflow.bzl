@@ -1,9 +1,32 @@
+"""Provides build configuration for TensorFlow."""
+
+load(
+    "//tensorflow:py.default.bzl",
+    _plain_py_binary = "py_binary",
+    _plain_py_library = "py_library",
+    _plain_py_test = "py_test",
+)
+load("@bazel_skylib//lib:new_sets.bzl", "sets")
+load("@bazel_skylib//rules:common_settings.bzl", "BuildSettingInfo")
+load(
+    "@local_config_cuda//cuda:build_defs.bzl",
+    "cuda_library",
+    "if_cuda",
+    "if_cuda_exec",
+)
+
 #
 # Returns the options to use for a C++ library or binary build.
 # Uses the ":optmode" config_setting to pick the options.
+# buildifier: disable=module-docstring
 load(
     "//tensorflow/core/platform:build_config_root.bzl",
     "if_dynamic_kernels",
+    "if_llvm_aarch32_available",
+    "if_llvm_aarch64_available",
+    "if_llvm_powerpc_available",
+    "if_llvm_system_z_available",
+    "if_llvm_x86_available",
     "if_static",
     "tf_additional_grpc_deps_py",
     "tf_additional_tpu_ops_deps",
@@ -19,28 +42,12 @@ load(
     "cc_test",
 )
 load(
-    "@local_tsl//tsl:tsl.bzl",
-    "tsl_gpu_library",
-    _cc_header_only_library = "cc_header_only_library",
-    _if_cuda_or_rocm = "if_cuda_or_rocm",
-    _if_nccl = "if_nccl",
-    _transitive_hdrs = "transitive_hdrs",
+    "//third_party/compute_library:build_defs.bzl",
+    "if_enable_acl",
 )
 load(
-    "@local_config_tensorrt//:build_defs.bzl",
-    "if_tensorrt",
-    "if_tensorrt_exec",
-)
-load(
-    "@local_config_cuda//cuda:build_defs.bzl",
-    "cuda_library",
-    "if_cuda",
-    "if_cuda_exec",
-)
-load(
-    "@local_config_rocm//rocm:build_defs.bzl",
-    "if_rocm",
-    "rocm_copts",
+    "//third_party/llvm_openmp:openmp.bzl",
+    "windows_llvm_openmp_linkopts",
 )
 load(
     "//third_party/mkl:build_defs.bzl",
@@ -55,26 +62,29 @@ load(
     "if_mkldnn_openmp",
 )
 load(
+    "@local_config_rocm//rocm:build_defs.bzl",
+    "if_rocm",
+    "rocm_copts",
+)
+load(
+    "@local_tsl//tsl:tsl.bzl",
+    "tsl_gpu_library",
+    _cc_header_only_library = "cc_header_only_library",
+    _if_cuda_or_rocm = "if_cuda_or_rocm",
+    _if_nccl = "if_nccl",
+    _transitive_hdrs = "transitive_hdrs",
+)
+load(
     "@local_tsl//tsl/mkl:build_defs.bzl",
     "onednn_v3_define",
 )
 load(
-    "//third_party/compute_library:build_defs.bzl",
-    "if_enable_acl",
+    "@local_config_tensorrt//:build_defs.bzl",
+    "if_tensorrt",
+    "if_tensorrt_exec",
 )
-load(
-    "//third_party/llvm_openmp:openmp.bzl",
-    "windows_llvm_openmp_linkopts",
-)
-load(
-    "//tensorflow:py.default.bzl",
-    _plain_py_binary = "py_binary",
-    _plain_py_library = "py_library",
-    _plain_py_test = "py_test",
-)
-load("@bazel_skylib//lib:new_sets.bzl", "sets")
-load("@bazel_skylib//rules:common_settings.bzl", "BuildSettingInfo")
 
+# buildifier: disable=out-of-order-load
 def register_extension_info(**kwargs):
     pass
 
@@ -82,7 +92,7 @@ def register_extension_info(**kwargs):
 # not contain rc or alpha, only numbers.
 # Also update tensorflow/core/public/version.h
 # and tensorflow/tools/pip_package/setup.py
-VERSION = "2.16.0"
+VERSION = "2.17.0"
 VERSION_MAJOR = VERSION.split(".")[0]
 two_gpu_tags = ["requires-gpu-nvidia:2", "manual", "no_pip"]
 
@@ -467,6 +477,11 @@ def tf_copts(
         if_mkldnn_aarch64_acl_openmp(["-DENABLE_ONEDNN_OPENMP"]) +
         if_zendnn(["-DAMD_ZENDNN"]) +
         if_enable_acl(["-DXLA_CPU_USE_ACL=1", "-fexceptions"]) +
+        if_llvm_aarch32_available(["-DTF_LLVM_AARCH32_AVAILABLE=1"]) +
+        if_llvm_aarch64_available(["-DTF_LLVM_AARCH64_AVAILABLE=1"]) +
+        if_llvm_powerpc_available(["-DTF_LLVM_POWERPC_AVAILABLE=1"]) +
+        if_llvm_system_z_available(["-DTF_LLVM_S390X_AVAILABLE=1"]) +
+        if_llvm_x86_available(["-DTF_LLVM_X86_AVAILABLE=1"]) +
         if_android_arm(["-mfpu=neon", "-fomit-frame-pointer"]) +
         if_linux_x86_64(["-msse3"]) +
         if_ios_x86_64(["-msse4.1"]) +
@@ -1922,7 +1937,7 @@ def tf_gpu_kernel_library(
         hdrs = hdrs,
         copts = copts,
         deps = deps + if_cuda([
-            clean_dep("@local_tsl//tsl/cuda:cudart"),
+            clean_dep("@local_xla//xla/tsl/cuda:cudart"),
         ]) + if_cuda_or_rocm([
             clean_dep("//tensorflow/core:gpu_lib"),
         ]),

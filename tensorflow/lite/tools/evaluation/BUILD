@@ -91,6 +91,7 @@ cc_library(
     copts = tflite_copts(),
     deps = [
         ":utils",
+        "//tensorflow/lite/c:c_api_types",
         "//tensorflow/lite/tools:command_line_flags",
         "//tensorflow/lite/tools:logging",
         "//tensorflow/lite/tools:tool_params",

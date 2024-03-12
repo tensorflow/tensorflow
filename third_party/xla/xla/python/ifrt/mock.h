@@ -253,6 +253,7 @@ class MockLoadedExecutable final
   MOCK_METHOD(StatusOr<std::optional<std::string>>, Fingerprint, (),
               (const, final));
   MOCK_METHOD(StatusOr<std::string>, Serialize, (), (const, final));
+  MOCK_METHOD(Future<absl::Status>, GetReadyFuture, (), (const, override));
   MOCK_METHOD(int, num_devices, (), (const, final));
   MOCK_METHOD(int64_t, SizeOfGeneratedCodeInBytes, (), (const, final));
   MOCK_METHOD(StatusOr<CompiledMemoryStats>, GetCompiledMemoryStats, (),

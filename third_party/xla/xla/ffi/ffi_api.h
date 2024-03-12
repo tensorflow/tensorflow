@@ -16,8 +16,10 @@ limitations under the License.
 #ifndef XLA_FFI_FFI_API_H_
 #define XLA_FFI_FFI_API_H_
 
+#include <string>
 #include <string_view>
 
+#include "absl/container/flat_hash_map.h"
 #include "xla/ffi/api/api.h"
 #include "xla/ffi/api/c_api.h"
 #include "xla/ffi/api/c_api_internal.h"  // IWYU pragma: keep
@@ -62,8 +64,11 @@ Status Call(XLA_FFI_Handler* handler, CallFrame& call_frame,
 
 // Returns registered FFI handler for a given name and platform, or an error if
 // it's not found in the static registry.
-StatusOr<XLA_FFI_Handler*> FindHandler(std::string_view name,
-                                       std::string_view platform);
+absl::StatusOr<XLA_FFI_Handler*> FindHandler(std::string_view name,
+                                             std::string_view platform);
+// Returns all registered calls in the static registry for a given platform.
+absl::flat_hash_map<std::string, XLA_FFI_Handler*> StaticRegisteredHandlers(
+    std::string_view platform);
 
 //===----------------------------------------------------------------------===//
 // XLA FFI Api Implementation

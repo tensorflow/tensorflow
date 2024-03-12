@@ -146,7 +146,8 @@ class ArchiveEnvironment : public ::testing::Environment {
   }
 
   // Unarchive `archive` file into a new temporary directory  `out_dir`.
-  tsl::Status UnArchive(const string& zip, const string& tar, string* out_dir) {
+  absl::Status UnArchive(const string& zip, const string& tar,
+                         string* out_dir) {
     string dir;
     TF_CHECK_OK(MakeTemporaryDirectory(&dir));
     tsl::SubProcess proc;
@@ -167,30 +168,30 @@ class ArchiveEnvironment : public ::testing::Environment {
     proc.SetChannelAction(tsl::CHAN_STDOUT, tsl::ACTION_PIPE);
     proc.SetChannelAction(tsl::CHAN_STDERR, tsl::ACTION_PIPE);
     if (!proc.Start())
-      return tsl::Status(absl::StatusCode::kUnknown, "unzip couldn't start");
+      return absl::Status(absl::StatusCode::kUnknown, "unzip couldn't start");
     string out, err;
     int status = proc.Communicate(nullptr, &out, &err);
     if (WEXITSTATUS(status) == 0) {
       *out_dir = dir;
-      return ::tsl::OkStatus();
+      return absl::OkStatus();
     } else {
-      return tsl::Status(absl::StatusCode::kUnknown,
-                         "unzip failed. "
-                         "stdout:\n" +
-                             out + "\nstderr:\n" + err);
+      return absl::Status(absl::StatusCode::kUnknown,
+                          "unzip failed. "
+                          "stdout:\n" +
+                              out + "\nstderr:\n" + err);
     }
   }
 
  private:
   // Make a temporary directory and return its name in `temporary`.
-  tsl::Status MakeTemporaryDirectory(string* temporary) {
+  absl::Status MakeTemporaryDirectory(string* temporary) {
     if (env->LocalTempFilename(temporary)) {
       TF_CHECK_OK(env->CreateDir(*temporary));
       temporary_directories_.push_back(*temporary);
-      return ::tsl::OkStatus();
+      return absl::OkStatus();
     }
-    return tsl::Status(absl::StatusCode::kUnknown,
-                       "make temporary directory failed");
+    return absl::Status(absl::StatusCode::kUnknown,
+                        "make temporary directory failed");
   }
 
   std::vector<string> temporary_directories_;
@@ -207,8 +208,8 @@ ArchiveEnvironment* archive_environment() {
 // the temporary directory where the archive file has been unarchived and
 // `test_paths` is the list of test prefixes that were in the manifest.
 // Note, it is an error for a manifest to contain no tests.
-tsl::Status ReadManifest(const string& original_file, const string& dir,
-                         std::vector<string>* test_paths) {
+absl::Status ReadManifest(const string& original_file, const string& dir,
+                          std::vector<string>* test_paths) {
   // Read the newline delimited list of entries in the manifest.
   std::ifstream manifest_fp(dir + "/manifest.txt");
   string manifest((std::istreambuf_iterator<char>(manifest_fp)),
@@ -225,17 +226,17 @@ tsl::Status ReadManifest(const string& original_file, const string& dir,
   }
   if (!added) {
     string message = "Test had no examples: " + original_file;
-    return tsl::Status(absl::StatusCode::kUnknown, message);
+    return absl::Status(absl::StatusCode::kUnknown, message);
   }
-  return ::tsl::OkStatus();
+  return absl::OkStatus();
 }
 
 // Get a list of tests from either zip or tar file
 std::vector<string> UnarchiveAndFindTestNames(const string& zip_file,
                                               const string& tar_file) {
   if (zip_file.empty() && tar_file.empty()) {
-    TF_CHECK_OK(tsl::Status(absl::StatusCode::kUnknown,
-                            "Neither zip_file nor tar_file was given"));
+    TF_CHECK_OK(absl::Status(absl::StatusCode::kUnknown,
+                             "Neither zip_file nor tar_file was given"));
   }
   string decompress_tmp_dir;
   TF_CHECK_OK(archive_environment()->UnArchive(zip_file, tar_file,

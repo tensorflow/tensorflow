@@ -127,13 +127,14 @@ class TestLatencyEstimator : public LatencyEstimator {
   static constexpr TimeCost kHighCost = 5000.0;
 };
 
-StatusOr<bool> RunScheduler(
+absl::StatusOr<bool> RunScheduler(
     HloModule* module, SchedulerConfig sched_config = GetDefaultSchedConfig(),
     std::unique_ptr<LatencyEstimator> latency_estimator =
         std::make_unique<ApproximateLatencyEstimator>()) {
   AsyncCollectiveCreator::CollectiveCreatorConfig config{
       /*convert_all_reduce=*/HloPredicateTrue,
       /*convert_all_gather=*/HloPredicateTrue,
+      /*convert_collective_broadcast=*/HloPredicateTrue,
       /*convert_collective_permute=*/HloPredicateTrue};
   TF_ASSIGN_OR_RETURN(bool value,
                       AsyncCollectiveCreator(std::move(config)).Run(module));
@@ -165,12 +166,12 @@ StatusOr<bool> RunScheduler(
 
 class LatencyHidingSchedulerTest : public HloTestBase {
  public:
-  StatusOr<std::unique_ptr<HloModule>> ParseHloText(
+  absl::StatusOr<std::unique_ptr<HloModule>> ParseHloText(
       absl::string_view hlo_string) {
     TF_ASSIGN_OR_RETURN(
         auto hlo_module,
         ParseAndReturnVerifiedModule(hlo_string, GetModuleConfigForTest()));
-    return StatusOr<std::unique_ptr<HloModule>>(std::move(hlo_module));
+    return absl::StatusOr<std::unique_ptr<HloModule>>(std::move(hlo_module));
   }
 };
 
@@ -2974,4 +2975,79 @@ ENTRY main {
   // not create a failure of scheduling by the async done checks.
   EXPECT_TRUE(RunScheduler(hlo_module.get(), sched_config).ok());
 }
+
+TEST_F(LatencyHidingSchedulerTest, CopyScheduling) {
+  absl::string_view hlo_string = R"(
+HloModule EinsumTest, is_scheduled=true
+ENTRY AddR2 {
+  y_host = bf16[12800,12800]{1,0:T(8,128)(2,1)} parameter(1)
+  z = bf16[12800,12800]{1,0:T(8,128)(2,1)} parameter(2)
+  x = bf16[12800,12800]{1,0:T(8,128)(2,1)} parameter(0)
+  convolution = bf16[12800,12800]{1,0:T(8,128)(2,1)} convolution(x, z), dim_labels=bf_io->bf
+  copy-start = (bf16[12800,12800]{1,0:T(8,128)(2,1)}, bf16[12800,12800]{1,0:T(8,128)(2,1)}, u32[]{:S(2)}) copy-start(y_host)
+  copy-done = bf16[12800,12800]{1,0:T(8,128)(2,1)} copy-done(copy-start)
+  ROOT convolution.1 = bf16[12800,12800]{1,0:T(8,128)(2,1)} convolution(convolution, copy-done), dim_labels=bf_io->bf
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto hlo_module, ParseHloText(hlo_string));
+  HloSchedule& module_schedule = hlo_module->schedule();
+  EXPECT_TRUE(hlo_module->has_entry_computation());
+  HloComputation* entry_computation = hlo_module->entry_computation();
+  std::vector<HloInstruction*> original_instruction_sequence =
+      module_schedule.sequence(entry_computation).instructions();
+  auto sched_config = GetDefaultSchedConfig();
+  EXPECT_TRUE(RunScheduler(hlo_module.get(), sched_config).ok());
+  const HloInstruction* conv = FindInstruction(hlo_module.get(), "convolution");
+  const HloInstruction* cps = FindInstruction(hlo_module.get(), "copy-start");
+  const HloInstruction* cpd = FindInstruction(hlo_module.get(), "copy-done");
+  std::vector<HloInstruction*> new_instruction_sequence =
+      module_schedule.sequence(entry_computation).instructions();
+  EXPECT_LT(PositionInVector(new_instruction_sequence, cps),
+            PositionInVector(new_instruction_sequence, conv));
+  EXPECT_LT(PositionInVector(new_instruction_sequence, conv),
+            PositionInVector(new_instruction_sequence, cpd));
+  XLA_VLOG_LINES(1, hlo_module->ToString());
+}
+
+TEST_F(LatencyHidingSchedulerTest, MaxCopyScheduling) {
+  absl::string_view hlo_string = R"(
+HloModule EinsumTest, is_scheduled=true
+ENTRY AddR2 {
+  y_host = bf16[12800,12800]{1,0:T(8,128)(2,1)} parameter(1)
+  q_host = bf16[12800,12800]{1,0:T(8,128)(2,1)} parameter(3)
+  z = bf16[12800,12800]{1,0:T(8,128)(2,1)} parameter(2)
+  x = bf16[12800,12800]{1,0:T(8,128)(2,1)} parameter(0)
+  convolution = bf16[12800,12800]{1,0:T(8,128)(2,1)} convolution(x, z), dim_labels=bf_io->bf
+  copy-start = (bf16[12800,12800]{1,0:T(8,128)(2,1)}, bf16[12800,12800]{1,0:T(8,128)(2,1)}, u32[]{:S(2)}) copy-start(y_host)
+  copy-done = bf16[12800,12800]{1,0:T(8,128)(2,1)} copy-done(copy-start)
+  copy-start2 = (bf16[12800,12800]{1,0:T(8,128)(2,1)}, bf16[12800,12800]{1,0:T(8,128)(2,1)}, u32[]{:S(2)}) copy-start(q_host)
+  copy-done2 = bf16[12800,12800]{1,0:T(8,128)(2,1)} copy-done(copy-start2)
+  ROOT t = (bf16[12800,12800]{1,0:T(8,128)(2,1)}, bf16[12800,12800]{1,0:T(8,128)(2,1)})  tuple(copy-done2, copy-done)
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto hlo_module, ParseHloText(hlo_string));
+  HloSchedule& module_schedule = hlo_module->schedule();
+  EXPECT_TRUE(hlo_module->has_entry_computation());
+  HloComputation* entry_computation = hlo_module->entry_computation();
+  std::vector<HloInstruction*> original_instruction_sequence =
+      module_schedule.sequence(entry_computation).instructions();
+  auto sched_config = GetDefaultSchedConfig();
+  EXPECT_TRUE(RunScheduler(hlo_module.get(), sched_config).ok());
+  const HloInstruction* conv = FindInstruction(hlo_module.get(), "convolution");
+  const HloInstruction* cps = FindInstruction(hlo_module.get(), "copy-start");
+  const HloInstruction* cps2 = FindInstruction(hlo_module.get(), "copy-start2");
+  const HloInstruction* cpd2 = FindInstruction(hlo_module.get(), "copy-done2");
+  std::vector<HloInstruction*> new_instruction_sequence =
+      module_schedule.sequence(entry_computation).instructions();
+  EXPECT_LT(PositionInVector(new_instruction_sequence, cps2),
+            PositionInVector(new_instruction_sequence, conv));
+  EXPECT_LT(PositionInVector(new_instruction_sequence, conv),
+            PositionInVector(new_instruction_sequence, cpd2));
+  EXPECT_LT(PositionInVector(new_instruction_sequence, cps),
+            PositionInVector(new_instruction_sequence, cpd2));
+  XLA_VLOG_LINES(1, hlo_module->ToString());
+}
+
 }  // namespace xla

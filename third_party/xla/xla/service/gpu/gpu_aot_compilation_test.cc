@@ -26,8 +26,8 @@ limitations under the License.
 #include "xla/service/compiler.h"
 #include "xla/service/executable.h"
 #include "xla/service/platform_util.h"
-#include "xla/stream_executor/multi_platform_manager.h"
 #include "xla/stream_executor/platform.h"
+#include "xla/stream_executor/platform_manager.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/tests/hlo_test_base.h"
 #include "tsl/platform/statusor.h"
@@ -53,7 +53,7 @@ ENTRY main {
   auto name =
       absl::AsciiStrToUpper(PlatformUtil::CanonicalPlatformName("gpu").value());
   TF_ASSERT_OK_AND_ASSIGN(se::Platform * platform,
-                          se::MultiPlatformManager::PlatformWithName(name));
+                          se::PlatformManager::PlatformWithName(name));
   TF_ASSERT_OK_AND_ASSIGN(se::StreamExecutor * stream_exec,
                           platform->ExecutorForDevice(0));
 
@@ -94,7 +94,7 @@ ENTRY main {
   auto name =
       absl::AsciiStrToUpper(PlatformUtil::CanonicalPlatformName("gpu").value());
   TF_ASSERT_OK_AND_ASSIGN(se::Platform * platform,
-                          se::MultiPlatformManager::PlatformWithName(name));
+                          se::PlatformManager::PlatformWithName(name));
   TF_ASSERT_OK_AND_ASSIGN(se::StreamExecutor * stream_exec,
                           platform->ExecutorForDevice(0));
 

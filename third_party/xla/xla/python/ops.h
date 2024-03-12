@@ -17,11 +17,11 @@ limitations under the License.
 #define XLA_PYTHON_OPS_H_
 
 // placeholder for index annotation headers
-#include "pybind11/pybind11.h"  // from @pybind11
+#include "third_party/nanobind/include/nanobind/nanobind.h"
 
 namespace xla {
 
-void BuildOpsSubmodule(pybind11::module* m);
+void BuildOpsSubmodule(nanobind::module_& m);
 
 }  // namespace xla
 

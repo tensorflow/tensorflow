@@ -34,13 +34,14 @@ namespace op = xla::testing::opcode_matchers;
 
 class AllGatherCanonicalizeTest : public HloTestBase {
  public:
-  StatusOr<std::unique_ptr<HloModule>> RunPass(absl::string_view hlo_module) {
+  absl::StatusOr<std::unique_ptr<HloModule>> RunPass(
+      absl::string_view hlo_module) {
     TF_ASSIGN_OR_RETURN(auto module, ParseAndReturnVerifiedModule(
                                          hlo_module, GetModuleConfigForTest()));
     HloPassPipeline pipeline("all-gather-cse");
     pipeline.AddPass<CanonicalizeAllGatherForCSE>();
     TF_RETURN_IF_ERROR(pipeline.Run(module.get()).status());
-    return StatusOr<std::unique_ptr<HloModule>>(std::move(module));
+    return absl::StatusOr<std::unique_ptr<HloModule>>(std::move(module));
   }
   Status RunPassOnModule(HloModule* module, int64_t distance_threshold = 100) {
     HloPassPipeline pipeline("all-gather-cse");

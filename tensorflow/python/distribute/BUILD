@@ -761,6 +761,7 @@ tpu_py_strict_test(
     tags = ["no_oss"],
     deps = [
         ":distribute_lib",
+        ":packed_distributed_variable",
         ":reduce_util",
         ":strategy_test_lib",
         ":tpu_strategy",
@@ -798,10 +799,13 @@ tpu_py_strict_test(
         "//tensorflow/python/ops/ragged:ragged_tensor",
         "//tensorflow/python/platform:flags",
         "//tensorflow/python/platform:tf_logging",
+        "//tensorflow/python/saved_model:load",
+        "//tensorflow/python/saved_model:save",
         "//tensorflow/python/tpu:device_assignment",
         "//tensorflow/python/tpu:tpu_hardware_feature",
         "//tensorflow/python/tpu:tpu_replication",
         "//tensorflow/python/tpu:tpu_strategy_util",
+        "//tensorflow/python/trackable:autotrackable",
         "//tensorflow/python/training:server_lib",
         "//tensorflow/python/util:nest",
         "@absl_py//absl/logging",
@@ -926,7 +930,6 @@ py_strict_library(
         "//tensorflow/python/ops:array_ops",
         "//tensorflow/python/ops:control_flow_ops",
         "//tensorflow/python/ops:math_ops",
-        "//tensorflow/python/ops:resource_variable_ops",
         "//tensorflow/python/ops:variable_scope",
         "//tensorflow/python/ops:variables",
         "//tensorflow/python/saved_model:nested_structure_coder",
@@ -935,6 +938,7 @@ py_strict_library(
         "//tensorflow/python/types:core",
         "//tensorflow/python/types:distribute",
         "//tensorflow/python/types:trace",
+        "@absl_py//absl/logging",
     ],
 )
 
@@ -1756,6 +1760,7 @@ distribute_py_strict_test(
     tags = [
         "multi_and_single_gpu",
         "no_cuda_asan",  # times out
+        "no_oss",  # TODO(b/292104274): Sometimes times out
     ],
     deps = [
         ":collective_all_reduce_strategy",
@@ -2156,13 +2161,6 @@ cuda_py_strict_test(
 tpu_py_strict_test(
     name = "collective_all_reduce_strategy_test_tpu",
     srcs = ["collective_all_reduce_strategy_test.py"],
-    # copybara:uncomment_begin
-    # args = [
-    # "--tpu_use_tfrt=false",  #TODO(b/227404010): Remove once the bug is fixed.
-    # ],
-    # copybara:uncomment_end
-    # FIXME(b/227404010): On TFRT TPU, eager CollectiveReduceV2 is broken.
-    disable_tfrt = True,
     main = "collective_all_reduce_strategy_test.py",
     python_version = "PY3",
     deps = [
@@ -2307,6 +2305,10 @@ py_strict_test(
         "//tensorflow/python/ops:math_ops",
         "//tensorflow/python/ops:resource_variable_ops",
         "//tensorflow/python/platform:client_testlib",
+        "//tensorflow/python/saved_model:load",
+        "//tensorflow/python/saved_model:save",
+        "//tensorflow/python/trackable:autotrackable",
+        "@absl_py//absl/logging",
     ],
 )
 

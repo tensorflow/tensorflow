@@ -17,3 +17,4 @@
 # tests can compile." Used in some CI jobs (macOS and Linux Arm64) where test
 # execution is too expensive.
 TFCI_PYCPP_SWAP_TO_BUILD_ENABLE=1
+TFCI_BAZEL_COMMON_ARGS="$TFCI_BAZEL_COMMON_ARGS --build_tests_only"

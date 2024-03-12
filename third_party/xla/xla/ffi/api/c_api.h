@@ -20,12 +20,16 @@ limitations under the License.
 #include <stdint.h>
 
 // XLA FFI C API follows PJRT API style for consistency. See `pjrt_c_api.h`.
+// More details on versioning strategy and example version checks:
+// https://github.com/tensorflow/community/blob/master/rfcs/20200612-stream-executor-c-api/C_API_versioning_strategy.md
 
 // Every struct passed across the C API boundary has its size as a member, and
 // we use it as a sanity check for API compatibility.
 #define XLA_FFI_STRUCT_SIZE(struct_type, last_field) \
   (offsetof(struct_type, last_field) + sizeof(((struct_type*)0)->last_field))
 
+// Must update XLA_FFI_DEFINE_STRUCT_TRAITS with the new `last_field` after
+// adding a new member to a struct.
 #define XLA_FFI_DEFINE_STRUCT_TRAITS(sname, last_field) \
   typedef struct sname sname;                           \
   enum { sname##_STRUCT_SIZE = XLA_FFI_STRUCT_SIZE(sname, last_field) }
@@ -316,7 +320,7 @@ struct XLA_FFI_Api {
 
 #undef _XLA_FFI_API_STRUCT_FIELD
 
-XLA_FFI_DEFINE_STRUCT_TRAITS(XLA_FFI_Api, XLA_FFI_Handler_Register);
+XLA_FFI_DEFINE_STRUCT_TRAITS(XLA_FFI_Api, XLA_FFI_Stream_Get);
 
 #ifdef __cplusplus
 }

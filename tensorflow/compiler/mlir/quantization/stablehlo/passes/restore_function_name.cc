@@ -58,9 +58,9 @@ void RestoreFunctionNameFromXlaCallModuleOp(TF::XlaCallModuleOp& call_op,
     return;
   }
 
-  auto original_function_name = call_op->getAttrOfType<StringAttr>(
+  const auto original_function_name = call_op->getAttrOfType<StringAttr>(
       kOriginalStablehloEntryFunctionAttrName);
-  auto current_function_name = call_op->getAttrOfType<FlatSymbolRefAttr>(
+  const auto current_function_name = call_op->getAttrOfType<FlatSymbolRefAttr>(
       TF::kStablehloEntryFunctionAttrName);
 
   if (!original_function_name || !current_function_name) {

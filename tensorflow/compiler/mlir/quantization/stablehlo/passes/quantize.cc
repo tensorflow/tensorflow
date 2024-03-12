@@ -32,8 +32,8 @@ limitations under the License.
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
 #include "stablehlo/dialect/StablehloOps.h"  // from @stablehlo  // IWYU pragma: keep
 #include "tensorflow/compiler/mlir/lite/quantization/ir/QuantOps.h"
-#include "tensorflow/compiler/mlir/lite/quantization/quantization_config.h"
-#include "tensorflow/compiler/mlir/lite/quantization/quantization_utils.h"
+#include "tensorflow/compiler/mlir/quantization/common/quantization_lib/quantization_config.h"
+#include "tensorflow/compiler/mlir/quantization/common/quantization_lib/quantization_utils.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/passes/quantization_patterns.h"
 
 namespace mlir::quant::stablehlo {
@@ -44,7 +44,7 @@ namespace mlir::quant::stablehlo {
 namespace {
 
 // Base struct for quantization.
-template <typename ConcreteT, typename RootOpT = quant::DequantizeCastOp>
+template <typename ConcreteT, typename RootOpT = quantfork::DequantizeCastOp>
 struct StableHloQuantizationBase
     : public StableHloQuantizationPattern<ConcreteT, quantfork::QuantizeCastOp,
                                           quantfork::DequantizeCastOp,
@@ -140,13 +140,12 @@ void QuantizePass::runOnOperation() {
   PopulateQuantizeOpWithRegionPattern(ctx, patterns);
   PopulateFusedGemmStylePatterns(ctx, patterns,
                                  enable_per_channel_quantized_weight_);
+  PopulateQuantizeSingularOpPatterns(ctx, patterns);
 
   if (failed(applyPatternsAndFoldGreedily(module_op, std::move(patterns)))) {
     // There are cases where no rewrites happen even if a pattern matches,
     // causing this to result in a convergence failure. Consider this as a
     // best-effort.
-    // TODO: b/305469508 - Make QuantizationPattern converge if there are no
-    // patterns that are rewritable.
     module_op.emitWarning("Failed to converge pattern at QuantizePass.");
   }
 }

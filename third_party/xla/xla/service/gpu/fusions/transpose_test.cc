@@ -42,7 +42,7 @@ class TransposeTest : public HloTestBase {
       TestGpuDeviceInfo::RTXA6000DeviceInfo();
 };
 
-StatusOr<std::unique_ptr<TransposeFusion>> GetTransposeFusion(
+absl::StatusOr<std::unique_ptr<TransposeFusion>> GetTransposeFusion(
     const HloFusionAnalysis& analysis) {
   TF_ASSIGN_OR_RETURN(
       auto emitter, GetFusionEmitter(PreBufferAssignmentFusionInfo{analysis}));

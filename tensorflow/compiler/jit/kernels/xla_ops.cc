@@ -212,7 +212,7 @@ Status GetTaskName(const std::string_view device_name, std::string* task_name) {
                                    device_name);
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Provide SendDeviceMemoryFunction for XLA host callbacks.  This callback
@@ -400,7 +400,7 @@ Status CompileToLocalExecutable(
       rm->default_container(), "device_compilation_profiler", &profiler,
       [](DeviceCompilationProfiler** profiler) {
         *profiler = new DeviceCompilationProfiler();
-        return OkStatus();
+        return absl::OkStatus();
       }));
   // Hold the reference to the XLA device compiler and profiler during
   // evaluation. (We could probably free them sooner because the ResourceMgr
@@ -899,7 +899,7 @@ void XlaRunOp::Compute(OpKernelContext* ctx) {
                                  closure.client(), closure.executable(), ctx));
     }
 
-    OP_REQUIRES_OK(ctx, OkStatus());
+    OP_REQUIRES_OK(ctx, absl::OkStatus());
     return;
   }
 

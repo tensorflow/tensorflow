@@ -53,7 +53,6 @@ class PyTreeDef:
   def children(self) -> List[PyTreeDef]: ...
   @staticmethod
   def make_from_node_data_and_children(
-      self,
       registry: PyTreeRegistry,
       node_data: Optional[Tuple[Type, Any]],
       children: Iterable[PyTreeDef],
@@ -71,7 +70,7 @@ class PyTreeDef:
   def serialize_using_proto(self) -> bytes: ...
   @staticmethod
   def deserialize_using_proto(
-      self, registry: PyTreeRegistry, data: bytes
+      registry: PyTreeRegistry, data: bytes
   ) -> PyTreeDef:
     ...
 

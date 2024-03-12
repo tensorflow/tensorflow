@@ -341,6 +341,9 @@ namespace tf_executor {
 // Creates a pass to chain control outputs of while loop body.
 std::unique_ptr<OperationPass<ModuleOp>>
 CreateTFExecutorConvertControlToDataOutputsPass();
+std::unique_ptr<OperationPass<ModuleOp>>
+CreateTFExecutorConvertControlToDataOutputsPass(
+    bool composite_tpuexecute_side_effects);
 
 std::unique_ptr<OperationPass<ModuleOp>>
 CreateTFExecutorCheckControlDependenciesPass();

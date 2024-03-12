@@ -13,10 +13,12 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#if GOOGLE_CUDA
+#include "absl/log/log.h"
+#include "third_party/gpus/cuda/include/cuda.h"
+#include "third_party/gpus/cuda/include/driver_types.h"
+#include "xla/stream_executor/gpu/gpu_driver.h"
 #include "xla/stream_executor/cuda/cuda_driver.h"
 
-#include "absl/memory/memory.h"
 #include "third_party/gpus/cuda/include/cuda_runtime_api.h"
 #include "tsl/platform/test.h"
 
@@ -72,5 +74,3 @@ TEST(CudaDriverTest, ScopedActivateContextTest) {
 
 }  // namespace gpu
 }  // namespace stream_executor
-
-#endif  // GOOGLE_CUDA

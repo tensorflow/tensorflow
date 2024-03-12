@@ -459,8 +459,9 @@ void OpenUrl(const Options& opts, absl::string_view url) {
 // URL format doesn't work out of the box; it requires you to register a plugin.
 void RenderAndDisplayGraph(
     const Options& opts,
-    const std::function<StatusOr<std::string>(RenderedGraphFormat)>& renderer) {
-  StatusOr<std::string> url_result = renderer(RenderedGraphFormat::kUrl);
+    const std::function<absl::StatusOr<std::string>(RenderedGraphFormat)>&
+        renderer) {
+  absl::StatusOr<std::string> url_result = renderer(RenderedGraphFormat::kUrl);
   if (url_result.ok()) {
     std::string url = url_result.value();
     OpenUrl(opts, url);
@@ -476,7 +477,8 @@ void RenderAndDisplayGraph(
   }
 
   auto* env = tsl::Env::Default();
-  StatusOr<std::string> html_result = renderer(RenderedGraphFormat::kHtml);
+  absl::StatusOr<std::string> html_result =
+      renderer(RenderedGraphFormat::kHtml);
   if (!html_result.ok()) {
     std::cerr << "Failed to render graph as HTML: " << html_result.status()
               << std::endl;

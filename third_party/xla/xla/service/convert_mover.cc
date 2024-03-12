@@ -30,11 +30,11 @@ static bool IsLosslesslyConvertibleTo(const Literal& literal,
 
   // The only reason Convert() should fail is if we don't support converting
   // from x to y, which indeed means it's not losslessly-convertible.
-  StatusOr<Literal> converted1 = literal.Convert(dst_ty);
+  absl::StatusOr<Literal> converted1 = literal.Convert(dst_ty);
   if (!converted1.ok()) {
     return false;
   }
-  StatusOr<Literal> converted2 = converted1->Convert(orig_ty);
+  absl::StatusOr<Literal> converted2 = converted1->Convert(orig_ty);
   if (!converted2.ok()) {
     return false;
   }
@@ -64,7 +64,7 @@ bool OpCommutesWithConvert(HloOpcode opcode) {
   }
 }
 
-StatusOr<bool> MoveConvertPrecisionOps(HloComputation* comp) {
+absl::StatusOr<bool> MoveConvertPrecisionOps(HloComputation* comp) {
   bool changed = false;
 
   // Move increase_precision "down" the graph:
@@ -196,7 +196,7 @@ StatusOr<bool> MoveConvertPrecisionOps(HloComputation* comp) {
 
 }  // anonymous namespace
 
-StatusOr<bool> ConvertMover::Run(
+absl::StatusOr<bool> ConvertMover::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   bool changed = false;

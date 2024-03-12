@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "xla/service/gpu/thunk.h"
 
+#include <algorithm>
+#include <cstddef>
 #include <cstdint>
 #include <functional>
 #include <memory>
@@ -30,11 +32,14 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "mlir/IR/Operation.h"  // from @llvm-project
 #include "xla/executable_run_options.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/service/global_device_id.h"
+#include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/buffer_allocations.h"
 #include "xla/service/gpu/gpu_executable_run_options.h"
+#include "xla/service/gpu/nccl_api.h"
 #include "xla/service/gpu/nccl_clique.h"
 #include "xla/service/gpu/nccl_clique_key.h"
 #include "xla/service/service_executable_run_options.h"
@@ -49,10 +54,11 @@ namespace gpu {
 // Thunk::CollectiveCliques
 //===----------------------------------------------------------------------===//
 
-Thunk::CollectiveCliques::CollectiveCliques(CliquesMap cliques_map)
+Thunk::CollectiveCliques::CollectiveCliques(
+    NcclClique::AcquiredCliquesMap cliques_map)
     : cliques_map_(std::move(cliques_map)) {}
 
-absl::StatusOr<NcclComm::Lock> Thunk::CollectiveCliques::GetComm(
+absl::StatusOr<NcclApi::NcclCommHandle> Thunk::CollectiveCliques::GetComm(
     const NcclCliqueKey& clique_key, int32_t rank) const {
   // Check that we locked access to a clique for `clique_key`.
   auto clique = cliques_map_.find(clique_key);
@@ -69,7 +75,19 @@ absl::StatusOr<NcclComm::Lock> Thunk::CollectiveCliques::GetComm(
                                             clique_key.ToString()));
   }
 
-  return (*communicator)->Acquire();
+  return *communicator;
+}
+
+absl::StatusOr<size_t> Thunk::CollectiveCliques::num_communicators(
+    const NcclCliqueKey& clique_key) const {
+  // Check that we locked access to a clique for `clique_key`.
+  auto clique = cliques_map_.find(clique_key);
+  if (clique == cliques_map_.end()) {
+    return absl::NotFoundError(absl::StrCat("No clique found for clique key: ",
+                                            clique_key.ToString()));
+  }
+
+  return (*clique->second)->num_communicators();
 }
 
 //===----------------------------------------------------------------------===//
@@ -98,7 +116,8 @@ static absl::StatusOr<GlobalDeviceId> GetGlobalDeviceId(
 absl::StatusOr<Thunk::CollectiveExecuteParams>
 Thunk::CollectiveExecuteParams::Create(
     const ServiceExecutableRunOptions& run_options,
-    int64_t local_device_ordinal) {
+    int64_t local_device_ordinal, int64_t collective_max_nchannels,
+    int64_t p2p_max_nchannels) {
   const GpuExecutableRunOptions* gpu_options =
       run_options.run_options().gpu_executable_run_options();
 
@@ -113,23 +132,28 @@ Thunk::CollectiveExecuteParams::Create(
   TF_ASSIGN_OR_RETURN(GlobalDeviceId global_device_id,
                       GetGlobalDeviceId(device_id_map, local_device_ordinal));
 
-  return CollectiveExecuteParams(run_options.run_options().run_id(),
-                                 local_device_ordinal, global_device_id,
-                                 run_options.run_options().device_assignment(),
-                                 device_id_map, nccl_callback);
+  return CollectiveExecuteParams(
+      run_options.stream()->parent(), run_options.run_options().run_id(),
+      local_device_ordinal, global_device_id,
+      run_options.run_options().device_assignment(), device_id_map,
+      nccl_callback, collective_max_nchannels, p2p_max_nchannels);
 }
 
 Thunk::CollectiveExecuteParams::CollectiveExecuteParams(
-    RunId run_id, int64_t local_device_ordinal, GlobalDeviceId global_device_id,
-    const DeviceAssignment* device_assn,
+    se::StreamExecutor* executor, RunId run_id, int64_t local_device_ordinal,
+    GlobalDeviceId global_device_id, const DeviceAssignment* device_assn,
     const GlobalDeviceIdMap* global_device_id_map,
-    const NcclCliqueIdCallback* nccl_clique_id_callback)
-    : run_id(run_id),
+    const NcclCliqueIdCallback* nccl_clique_id_callback,
+    int64_t collective_max_nchannels, int64_t p2p_max_nchannels)
+    : executor(executor),
+      run_id(run_id),
       local_device_ordinal(local_device_ordinal),
       global_device_id(global_device_id),
       device_assn(device_assn),
       global_device_id_map(global_device_id_map),
-      nccl_clique_id_callback(nccl_clique_id_callback) {}
+      nccl_clique_id_callback(nccl_clique_id_callback),
+      collective_max_nchannels(collective_max_nchannels),
+      p2p_max_nchannels(p2p_max_nchannels) {}
 
 //===----------------------------------------------------------------------===//
 // Thunk::ExecuteParams
@@ -141,14 +165,16 @@ Thunk::ExecuteParams Thunk::ExecuteParams::Create(
     se::Stream* command_buffer_trace_stream,
     absl::Span<se::Stream* const> async_streams,
     CollectiveExecuteParams* collective_params,
-    CollectiveCliques* collective_cliques) {
+    CollectiveCliques* collective_cliques,
+    ExecutionStreamIdMap additional_compute_streams) {
   return ExecuteParams(&buffer_allocations, stream, command_buffer_trace_stream,
                        {async_streams.begin(), async_streams.end()},
                        collective_params, collective_cliques,
                        run_options.run_options().device_to_host_stream(),
                        run_options.run_options().host_to_device_stream(),
                        run_options.run_options().send_device_memory_function(),
-                       run_options.run_options().recv_device_memory_function());
+                       run_options.run_options().recv_device_memory_function(),
+                       additional_compute_streams);
 }
 
 Thunk::ExecuteParams::ExecuteParams(
@@ -159,7 +185,8 @@ Thunk::ExecuteParams::ExecuteParams(
     CollectiveCliques* collective_cliques, se::Stream* device_to_host_stream,
     se::Stream* host_to_device_stream,
     SendDeviceMemoryFunction* send_device_memory_function,
-    RecvDeviceMemoryFunction* recv_device_memory_function)
+    RecvDeviceMemoryFunction* recv_device_memory_function,
+    ExecutionStreamIdMap additional_compute_streams)
     : buffer_allocations(buffer_allocations),
       stream(stream),
       command_buffer_trace_stream(command_buffer_trace_stream),
@@ -169,7 +196,8 @@ Thunk::ExecuteParams::ExecuteParams(
       device_to_host_stream(device_to_host_stream),
       host_to_device_stream(host_to_device_stream),
       send_device_memory_function(send_device_memory_function),
-      recv_device_memory_function(recv_device_memory_function) {}
+      recv_device_memory_function(recv_device_memory_function),
+      additional_compute_streams(additional_compute_streams) {}
 
 //===----------------------------------------------------------------------===//
 
@@ -194,6 +222,9 @@ Thunk::ExecuteParams::ExecuteParams(
     CASE(kNcclAllReduce);
     CASE(kNcclAllReduceStart);
     CASE(kNcclAllReduceDone);
+    CASE(kNcclCollectiveBroadcast);
+    CASE(kNcclCollectiveBroadcastStart);
+    CASE(kNcclCollectiveBroadcastDone);
     CASE(kNcclCollectivePermute);
     CASE(kNcclCollectivePermuteStart);
     CASE(kNcclCollectivePermuteDone);
@@ -225,7 +256,22 @@ Thunk::ExecuteParams::ExecuteParams(
     CASE(kTriangularSolve);
     CASE(kWhile);
     CASE(kFusedMHA);
+    CASE(kWaitForStreams);
+    CASE(kCuDnn);
   }
+}
+
+/*static*/
+absl::StatusOr<se::Stream*> Thunk::GetStreamForExecution(
+    ExecutionStreamId stream_id, const ExecuteParams& params) {
+  if (stream_id == kDefaultExecutionStreamId) {
+    return params.stream;
+  }
+  auto iter = params.additional_compute_streams.find(stream_id);
+  if (iter == params.additional_compute_streams.end()) {
+    return absl::InvalidArgumentError("Invalid execution stream id.");
+  }
+  return iter->second;
 }
 
 std::ostream& operator<<(std::ostream& os, Thunk::Kind kind) {
@@ -270,16 +316,21 @@ bool IsReductionCollective(Thunk::Kind kind) {
 
 Thunk::ThunkInfo Thunk::ThunkInfo::WithProfileAnnotation(mlir::Operation* op) {
   ThunkInfo thunk_info(op);
-  thunk_info.profile_annotation = absl::StrFormat(
-      "Thunk:#hlo_op=%s#", mlir::mhlo::GetDebugNameFromLocation(op->getLoc()));
+  thunk_info.profile_annotation =
+      mlir::mhlo::GetDebugNameFromLocation(op->getLoc());
   return thunk_info;
 }
 
 Thunk::ThunkInfo Thunk::ThunkInfo::WithProfileAnnotation(
     const HloInstruction* instr) {
   ThunkInfo thunk_info(nullptr);
-  thunk_info.profile_annotation =
-      absl::StrFormat("Thunk:#hlo_op=%s#", instr->name());
+  thunk_info.profile_annotation = instr->name();
+  auto gpu_backend_config = instr->backend_config<GpuBackendConfig>();
+  if (gpu_backend_config.ok()) {
+    thunk_info.execution_stream_id =
+        std::max(kDefaultExecutionStreamId.value(),
+                 gpu_backend_config->operation_queue_id());
+  }
   return thunk_info;
 }
 

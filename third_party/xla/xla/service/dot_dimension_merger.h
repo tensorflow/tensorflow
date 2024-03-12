@@ -16,6 +16,9 @@ limitations under the License.
 #ifndef XLA_SERVICE_DOT_DIMENSION_MERGER_H_
 #define XLA_SERVICE_DOT_DIMENSION_MERGER_H_
 
+#include "absl/container/flat_hash_set.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/hlo_pass_interface.h"
 
@@ -29,7 +32,7 @@ class DotDimensionMerger : public HloModulePass {
   // Run the pass on computations in 'module'.
   // Return whether the 'module' was changed.
   using HloPassInterface::Run;
-  StatusOr<bool> Run(
+  absl::StatusOr<bool> Run(
       HloModule* module,
       const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 };

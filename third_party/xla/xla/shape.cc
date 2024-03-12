@@ -38,6 +38,7 @@ Shape::~Shape() = default;
 Shape::Shape(const Shape&) = default;
 Shape::Shape(Shape&&) = default;
 Shape& Shape::operator=(const Shape&) = default;
+Shape& Shape::operator=(Shape&&) = default;
 
 Shape::Shape(const ShapeProto& shape_proto) {
   set_element_type(shape_proto.element_type());
@@ -116,23 +117,17 @@ std::string Shape::ToString(bool print_layout) const {
 }
 
 bool Shape::IsInteger() const {
-  if (primitive_util::IsIntegralType(element_type())) {
-    return true;
-  }
   if (IsTuple()) {
-    return absl::c_any_of(tuple_shapes_,
+    return absl::c_all_of(tuple_shapes_,
                           [](const Shape& s) { return s.IsInteger(); });
   }
-  return false;
+  return primitive_util::IsIntegralType(element_type());
 }
 
 bool Shape::is_static() const {
   if (IsTuple()) {
-    for (const Shape& subshape : tuple_shapes_) {
-      if (!subshape.is_static()) {
-        return false;
-      }
-    }
+    return absl::c_all_of(tuple_shapes_,
+                          [](const Shape& s) { return s.is_static(); });
   }
   return !absl::c_any_of(dynamic_dimensions_, [](bool b) { return b; });
 }
@@ -266,6 +261,7 @@ ProgramShape::~ProgramShape() = default;
 ProgramShape::ProgramShape(const ProgramShape&) = default;
 ProgramShape::ProgramShape(ProgramShape&&) = default;
 ProgramShape& ProgramShape::operator=(const ProgramShape&) = default;
+ProgramShape& ProgramShape::operator=(ProgramShape&&) = default;
 
 ProgramShape::ProgramShape(const ProgramShapeProto& program_shape_proto) {
   for (const ShapeProto& shape_proto : program_shape_proto.parameters()) {

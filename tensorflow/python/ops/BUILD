@@ -2074,6 +2074,7 @@ py_strict_library(
         ":math_ops_gen",
         ":nn_ops_gen",
         ":sparse_ops_gen",
+        "//tensorflow/python/compat",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:dtypes",
@@ -3153,6 +3154,8 @@ py_strict_library(
         "//tensorflow/python/util:tf_should_use",
         "//tensorflow/python/util:traceback_utils",
         "//third_party/py/numpy",
+        "@absl_py//absl/logging",
+        "@pypi_typing_extensions//:pkg",
     ],
 )
 

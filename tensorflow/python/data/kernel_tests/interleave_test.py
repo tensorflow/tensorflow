@@ -386,6 +386,23 @@ class InterleaveTest(test_base.DatasetTestBase, parameterized.TestCase):
       dataset_ops.Dataset.from_tensors(42).interleave(
           map_fn, num_parallel_calls=num_parallel_calls)
 
+  @combinations.generate(
+      combinations.times(test_base.default_test_combinations(),
+                         combinations.combine(num_parallel_calls=[None, 1])))
+  def testMapFuncFailWithErrorContext(self, num_parallel_calls):
+
+    def fn(x):
+      return dataset_ops.Dataset.from_tensors(x // 0)
+
+    dataset = dataset_ops.Dataset.from_tensors(42).interleave(
+        fn, num_parallel_calls=num_parallel_calls, name="interleave")
+    get_next = self.getNext(dataset)
+    with self.assertRaisesRegex(
+        errors.InvalidArgumentError,
+        r".*Error in user-defined function passed to .* transformation with "
+        r"iterator: Iterator::Root::.*"):
+      self.evaluate(get_next())
+
   @combinations.generate(test_base.v2_eager_only_combinations())
   def testSymbolicCheckpointSize(self):
     if sys.platform == "darwin":

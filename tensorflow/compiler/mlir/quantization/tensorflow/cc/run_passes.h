@@ -23,6 +23,7 @@ limitations under the License.
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/quantization/tensorflow/debugging/mlir_dump.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
+#include "tsl/platform/errors.h"
 #include "tsl/platform/statusor.h"
 
 namespace tensorflow {
@@ -47,8 +48,7 @@ absl::Status RunPasses(const absl::string_view name, FuncT add_passes_func,
   add_passes_func(pm);
 
   mlir::StatusScopedDiagnosticHandler diagnostic_handler{&ctx};
-  TF_ASSIGN_OR_RETURN(const std::unique_ptr<llvm::raw_ostream> out_dump_file,
-                      MaybeEnableIrPrinting(pm, name));
+  TF_RETURN_IF_ERROR(MaybeEnableIrPrinting(pm, name));
 
   if (failed(pm.run(module_op))) {
     return absl::InternalError(

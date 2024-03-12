@@ -43,7 +43,7 @@ REGISTER_OP("EncodeProto")
       }
 
       c->set_output(0, output);
-      return OkStatus();
+      return absl::OkStatus();
     });
 
 }  // namespace tensorflow

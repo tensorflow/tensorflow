@@ -89,7 +89,7 @@ void DumpToFileInDirOrStdout(const HloModule& module,
 void DumpProtobufToFile(const tsl::protobuf::Message& proto,
                         const DebugOptions& debug_options,
                         absl::string_view filename,
-                        absl::AnyInvocable<StatusOr<std::string>(
+                        absl::AnyInvocable<absl::StatusOr<std::string>(
                             tsl::Env*, const tsl::protobuf::Message&)>
                             text_formatter = nullptr);
 
@@ -100,12 +100,13 @@ std::string RenderGraph(absl::string_view label, const HloModule& module,
 
 // Similar to above, but the filename depends on module's information and the
 // given name. Also allows for the optional serialization function.
-void DumpPerModuleProtobufToFile(
-    const HloModule& module, const tsl::protobuf::Message& proto,
-    const DebugOptions& debug_options, absl::string_view name,
-    absl::AnyInvocable<StatusOr<std::string>(tsl::Env*,
-                                             const tsl::protobuf::Message&)>
-        text_formatter = nullptr);
+void DumpPerModuleProtobufToFile(const HloModule& module,
+                                 const tsl::protobuf::Message& proto,
+                                 const DebugOptions& debug_options,
+                                 absl::string_view name,
+                                 absl::AnyInvocable<absl::StatusOr<std::string>(
+                                     tsl::Env*, const tsl::protobuf::Message&)>
+                                     text_formatter = nullptr);
 
 // Dumps the given HLO module if dumping is enabled for the module. Exactly
 // where and in what formats it's dumped is determined by the module's config.

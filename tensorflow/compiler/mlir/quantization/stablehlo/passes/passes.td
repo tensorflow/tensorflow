@@ -34,6 +34,7 @@ def LiftQuantizableSpotsAsFunctionsPass : Pass<"stablehlo-lift-quantizable-spots
     that disperse values. (ex: convolution, dot_general)
   }];
   let dependentDialects = [
+      "mlir::func::FuncDialect",
       "mlir::stablehlo::StablehloDialect",
       "TF::TensorFlowDialect",
   ];
@@ -127,12 +128,45 @@ def ConvertXlaCallModuleOpToBfloat16Pass : Pass<"stablehlo-convert-xla-call-modu
   ];
 }
 
-def PopulateShapePass : Pass<"populate-shape", "ModuleOp"> {
-  let summary = "Populate output shape with known information for CustomAggregatorOp and XlaCallModuleOp.";
-  let dependentDialects = ["TF::TensorFlowDialect"];
-}
-
 def OptimizeGraphPass : Pass<"optimize-graph", "ModuleOp"> {
   let summary = "Optimize the sub-optimal patterns after quantization.";
   let dependentDialects = ["mlir::stablehlo::StablehloDialect",];
+}
+
+def NchwConvolutionToNhwcPass : Pass<"stablehlo-nchw-convolution-to-nhwc", "mlir::func::FuncOp"> {
+  let summary = "Converts stablehlo.convolution op of NCHW format to -> NHWC.";
+  let description = [{
+    Matches `ConvolutionOp`s with NCHW format and converts it to NHWC
+    format by inserting `TransposeOp`s to input, filter, and output tensors.
+    In terms of dimension numbers, this matches
+    `[b, f, 0, 1]x[o, i, 0, 1]->[b, f, 0, 1]` format and converts it to
+    `[b, 0, 1, f]x[0, 1, i, o]->[b, 0, 1, f]` format.
+
+    This pass is useful to convert models that conventionally use the NCHW
+    format to target hardwares that are more NHWC-friendly.
+  }];
+  let dependentDialects = ["mlir::stablehlo::StablehloDialect"];
+}
+
+def PrepareQuantizeHybridPass : Pass<"stablehlo-prepare-quantize-hybrid", "mlir::func::FuncOp"> {
+  let summary = "Prepare hybrid quantization for weight-only quantization and dynamic range quantization.";
+  let dependentDialects = [
+      "mlir::stablehlo::StablehloDialect",
+      "TF::TensorFlowDialect",
+      "mlir::quant::QuantizationDialect",
+      "mlir::quantfork::QuantizationForkDialect",
+  ];
+}
+
+def FoldConstantTransposePass : Pass<"stablehlo-fold-constant-transpose", "mlir::func::FuncOp"> {
+  let summary = "Folds stablehlo.constant -> stablehlo.transpose patterns.";
+  let description = [{
+    Finds patterns where a `stablehlo.constant` is directly followed by a
+    `stablehlo.transpose` and folds them into a single `stablehlo.constant`.
+    This is considered an aggressive optimization, but it is useful to eliminate
+    `stablehlo.constant`->`stablehlo.transpose` patterns which are often
+    by-products of other shape conversion optimizations, such as NCHW->NHWC
+    convolution conversion.
+  }];
+  let dependentDialects = ["mlir::stablehlo::StablehloDialect"];
 }

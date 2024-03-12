@@ -19,7 +19,6 @@ load("//xla:pytype.default.bzl", "pytype_strict_library")
 load("@local_config_cuda//cuda:build_defs.bzl", "cuda_library")
 
 package(
-    default_visibility = ["//visibility:public"],
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     licenses = ["notice"],
 )
@@ -52,14 +51,12 @@ cc_library(
     name = "assert_clang",
     srcs = ["assert_clang.cc"],
     tags = ["manual"],
-    visibility = ["//visibility:public"],
 )
 
 cc_library(
     name = "assert_gcc",
     srcs = ["assert_gcc.cc"],
     tags = ["manual"],
-    visibility = ["//visibility:public"],
 )
 
 cuda_library(
@@ -69,7 +66,6 @@ cuda_library(
         "gpu",
         "manual",
     ],
-    visibility = ["//visibility:public"],
     deps = ["@local_config_cuda//cuda:cuda_headers"],
 )
 
@@ -80,7 +76,6 @@ cuda_library(
         "gpu",
         "manual",
     ],
-    visibility = ["//visibility:public"],
     # Notably, this builds fine in OSS without this dependency. Apparently,
     # NVCC can give targets access to CUDA headers without letting Bazel know,
     # while CUDA clang cannot.

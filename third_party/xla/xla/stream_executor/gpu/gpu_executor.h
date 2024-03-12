@@ -22,35 +22,50 @@ limitations under the License.
 #ifndef XLA_STREAM_EXECUTOR_GPU_GPU_EXECUTOR_H_
 #define XLA_STREAM_EXECUTOR_GPU_GPU_EXECUTOR_H_
 
+#include <cstddef>
 #include <cstdint>
+#include <map>
 #include <memory>
 #include <optional>
 #include <set>
 #include <string>
 #include <unordered_map>
+#include <utility>
 
 #include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/functional/any_invocable.h"
+#include "absl/numeric/int128.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "xla/stream_executor/command_buffer.h"
+#include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/device_options.h"
+#include "xla/stream_executor/dnn.h"
 #include "xla/stream_executor/event.h"
+#include "xla/stream_executor/fft.h"
 #include "xla/stream_executor/gpu/gpu_collectives.h"
-#include "xla/stream_executor/gpu/gpu_kernel.h"
+#include "xla/stream_executor/gpu/gpu_driver.h"
 #include "xla/stream_executor/gpu/gpu_types.h"
+#include "xla/stream_executor/kernel.h"
+#include "xla/stream_executor/kernel_spec.h"
+#include "xla/stream_executor/launch_dim.h"
 #include "xla/stream_executor/module_spec.h"
 #include "xla/stream_executor/platform.h"
-#include "xla/stream_executor/platform/port.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/stream_executor/stream_executor_internal.h"
+#include "tsl/platform/thread_annotations.h"
 
 namespace stream_executor {
 
 class StreamExecutor;
 
 namespace gpu {
+
+class GpuKernel;
+class GpuCommandBuffer;
 
 // CUDA-platform implementation of the platform-agnostic
 // StreamExecutorInterface.
@@ -202,11 +217,11 @@ class GpuExecutor : public internal::StreamExecutorInterface {
   absl::Status Memset32(Stream* stream, DeviceMemoryBase* location,
                         uint32_t pattern, uint64_t size) override;
 
-  bool Memcpy(Stream* stream, void* host_dst, const DeviceMemoryBase& gpu_src,
-              uint64_t size) override;
+  absl::Status Memcpy(Stream* stream, void* host_dst,
+                      const DeviceMemoryBase& gpu_src, uint64_t size) override;
 
-  bool Memcpy(Stream* stream, DeviceMemoryBase* gpu_dst, const void* host_src,
-              uint64_t size) override;
+  absl::Status Memcpy(Stream* stream, DeviceMemoryBase* gpu_dst,
+                      const void* host_src, uint64_t size) override;
 
   bool MemcpyDeviceToDevice(Stream* stream, DeviceMemoryBase* gpu_dst,
                             const DeviceMemoryBase& gpu_src,
@@ -265,20 +280,18 @@ class GpuExecutor : public internal::StreamExecutorInterface {
   std::unique_ptr<internal::EventInterface> CreateEventImplementation()
       override;
 
-  std::unique_ptr<internal::KernelInterface> CreateKernelImplementation()
-      override;
-
   std::unique_ptr<internal::StreamInterface> GetStreamImplementation() override;
 
-  absl::StatusOr<std::unique_ptr<internal::CommandBufferInterface>>
-  GetCommandBufferImplementation(CommandBuffer::Mode mode) override;
+  absl::StatusOr<std::unique_ptr<Kernel>> CreateKernel() override;
+
+  absl::StatusOr<std::unique_ptr<CommandBuffer>> CreateCommandBuffer(
+      CommandBuffer::Mode mode) override;
 
   // Wraps existing Gpu graph handle into an instance of Gpu command buffer.
   // This is required for wrapping nested graphs constructed for conditional
   // nodes and owned by a parent graph executable.
-  std::unique_ptr<internal::CommandBufferInterface>
-  GetCommandBufferImplementation(CommandBuffer::Mode mode, GpuGraphHandle graph,
-                                 bool is_owned_graph);
+  std::unique_ptr<GpuCommandBuffer> CreateCommandBuffer(
+      CommandBuffer::Mode mode, GpuGraphHandle graph, bool is_owned_graph);
 
   void* platform_specific_context() override;
 
@@ -324,7 +337,8 @@ class GpuExecutor : public internal::StreamExecutorInterface {
 
   // Prints to VLOG(2) information about the kernel's occupancy and how it might
   // be improved.
-  void VlogOccupancyInfo(const Kernel& kernel, const ThreadDim& thread_dims,
+  void VlogOccupancyInfo(const DeviceDescription& device_description,
+                         const Kernel& kernel, const ThreadDim& thread_dims,
                          const BlockDim& block_dims);
 
   // (supported on CUDA only)

@@ -52,8 +52,6 @@ add_mlir_library(MhloPasses
   legalize_einsum_to_dot_general/legalize_einsum_to_dot_general.cc
   legalize_gather_to_torch_index_select/legalize_gather_to_torch_index_select.cc
   legalize_shape_computations/legalize_shape_computations.cc
-  legalize_sparse_ops/legalize_sparse_ops.cc
-  legalize_sparse_ops/sparse_ops_to_custom_calls.cc
   legalize_torch_index_select_to_gather/legalize_torch_index_select_to_gather.cc
   legalize_trigonometric_to_approximation/legalize_trigonometric_to_approximation.cc
   lower_complex/lower_complex.cc
@@ -70,13 +68,11 @@ add_mlir_library(MhloPasses
   prepare_for_export/prepare_for_export.cc
   optimize_mhlo/optimize_mhlo.cc
   optimize_mhlo/optimize_mhlo_pass.cc
-  rank_specialization/rank_specialization.cc
   restrict_max_rank/restrict_max_rank.cc
   shape_legalize_to_hlo/shape_legalize_to_hlo.cc
   shape_reification/shape_reification_pass.cc
   shape_simplification/shape_simplification.cc
   sink_constants_to_control_flow/sink_constants_to_control_flow.cc
-  sparse_rewriting/sparse_rewriting.cc
   symbolic_shape_optimization/symbolic_shape_optimization.cc
   test_infer_shaped_type/test_infer_shaped_type_pass.cc
   unfuse_batch_norm/unfuse_batch_norm.cc
@@ -107,6 +103,26 @@ add_mlir_library(MhloPasses
   StablehloBroadcastUtils
 )
 
+add_mlir_library(MhloQuantToIntConversion
+  mhlo_quant_legalize_to_int/mhlo_quant_legalize_to_int.cc
+
+  DEPENDS
+  MLIRhlo_opsIncGen
+  MLIRMhloPassIncGen
+
+  LINK_COMPONENTS
+  Core
+
+  LINK_LIBS PUBLIC
+  LmhloDialect
+  MhloDialect
+  MhloTypeConversion
+  MLIRIR
+  MLIRPass
+  MLIRMathDialect
+  MLIRTransforms
+  MLIRTransformUtils
+)
 
 add_mlir_library(MhloToMemrefConversion
   hlo_legalize_to_memref/hlo_legalize_to_memref.cc
@@ -291,6 +307,7 @@ add_library(AllMhloPasses INTERFACE)
 target_link_libraries(AllMhloPasses INTERFACE
   ChloPasses
   MhloPasses
+  MhloQuantToIntConversion
   MhloToArithmeticConversion
   MhloToMemrefConversion
   MhloToStandard

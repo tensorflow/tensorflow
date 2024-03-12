@@ -1,17 +1,20 @@
 # Description:
 # Cloud file system implementation.
 
-load("@local_tsl//tsl/platform:rules_cc.bzl", "cc_library")
 load(
     "//tsl:tsl.bzl",
     "if_windows",
-    "set_external_visibility",
+    "internal_visibility",
     "tsl_copts",
 )
 load("//tsl/platform:build_config.bzl", "tsl_cc_test")
+load("@local_tsl//tsl/platform:rules_cc.bzl", "cc_library")
 
 package(
-    default_visibility = ["//visibility:public"],
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
+    default_visibility = internal_visibility([
+        ":dependency_allowlist",
+    ]),
     licenses = ["notice"],
 )
 
@@ -29,7 +32,6 @@ cc_library(
     name = "expiring_lru_cache",
     hdrs = ["expiring_lru_cache.h"],
     copts = tsl_copts(),
-    visibility = ["//visibility:public"],
     deps = [
         "//tsl/platform:env",
         "//tsl/platform:mutex",
@@ -42,7 +44,6 @@ cc_library(
     name = "file_block_cache",
     hdrs = ["file_block_cache.h"],
     copts = tsl_copts(),
-    visibility = ["//visibility:public"],
     deps = [
         "//tsl/platform:env",
         "//tsl/platform:mutex",
@@ -78,7 +79,6 @@ cc_library(
     srcs = ["gcs_dns_cache.cc"],
     hdrs = ["gcs_dns_cache.h"],
     copts = tsl_copts(),
-    visibility = ["//visibility:public"],
     deps = [
         ":http_request",
         "//tsl/platform:env",
@@ -95,7 +95,6 @@ cc_library(
     srcs = ["gcs_throttle.cc"],
     hdrs = ["gcs_throttle.h"],
     copts = tsl_copts(),
-    visibility = ["//visibility:public"],
     deps = [
         "//tsl/platform:env",
     ],
@@ -190,7 +189,6 @@ cc_library(
     name = "http_request",
     hdrs = ["http_request.h"],
     copts = tsl_copts(),
-    visibility = ["//visibility:public"],
     deps = [
         "//tsl/platform:env",
         "//tsl/platform:errors",
@@ -207,7 +205,6 @@ cc_library(
     srcs = ["curl_http_request.cc"],
     hdrs = ["curl_http_request.h"],
     copts = tsl_copts(),
-    visibility = ["//visibility:public"],
     deps = [
         ":http_request",
         "//tsl/lib/gtl:map_util",
@@ -232,7 +229,6 @@ cc_library(
         "http_request_fake.h",
     ],
     copts = tsl_copts(),
-    visibility = ["//visibility:public"],
     deps = [
         ":curl_http_request",
         "//tsl/lib/core:status_test_util",
@@ -255,7 +251,6 @@ cc_library(
         "google_auth_provider.h",
     ],
     copts = tsl_copts(),
-    visibility = ["//visibility:public"],
     deps = [
         ":compute_engine_metadata_client",
         ":oauth_client",
@@ -281,7 +276,6 @@ cc_library(
         "compute_engine_metadata_client.h",
     ],
     copts = tsl_copts(),
-    visibility = ["//visibility:public"],
     deps = [
         ":curl_http_request",
         ":http_request",
@@ -302,7 +296,6 @@ cc_library(
         "zone_provider.h",
     ],
     copts = tsl_copts(),
-    visibility = ["//visibility:public"],
     deps = [
         ":compute_engine_metadata_client",
         "//tsl/platform:errors",
@@ -316,7 +309,6 @@ cc_library(
     testonly = 1,
     hdrs = ["now_seconds_env.h"],
     copts = tsl_copts(),
-    visibility = ["//visibility:public"],
     deps = [
         "//tsl/platform:env",
         "//tsl/platform:mutex",
@@ -333,7 +325,6 @@ cc_library(
         "oauth_client.h",
     ],
     copts = tsl_copts(),
-    visibility = ["//visibility:public"],
     deps = [
         ":curl_http_request",
         ":http_request",
@@ -355,7 +346,6 @@ cc_library(
         "time_util.h",
     ],
     copts = tsl_copts(),
-    visibility = ["//visibility:public"],
     deps = [
         "//tsl/platform:errors",
         "//tsl/platform:status",
@@ -366,7 +356,6 @@ tsl_cc_test(
     name = "expiring_lru_cache_test",
     size = "small",
     srcs = ["expiring_lru_cache_test.cc"],
-    visibility = ["//visibility:public"],
     deps = [
         ":expiring_lru_cache",
         ":now_seconds_env",
@@ -381,7 +370,6 @@ tsl_cc_test(
     name = "ram_file_block_cache_test",
     size = "small",
     srcs = ["ram_file_block_cache_test.cc"],
-    visibility = ["//visibility:public"],
     deps = [
         ":now_seconds_env",
         ":ram_file_block_cache",
@@ -399,7 +387,6 @@ tsl_cc_test(
     name = "gcs_file_system_test",
     size = "small",
     srcs = ["gcs_file_system_test.cc"],
-    visibility = ["//visibility:public"],
     deps = [
         ":gcs_file_system",
         ":http_request_fake",
@@ -420,7 +407,6 @@ tsl_cc_test(
     size = "small",
     srcs = ["gcs_dns_cache_test.cc"],
     linkopts = if_windows(["-DEFAULTLIB:ws2_32.lib"]),
-    visibility = ["//visibility:public"],
     deps = [
         ":gcs_dns_cache",
         "//tsl/platform:env_impl",
@@ -435,7 +421,6 @@ tsl_cc_test(
     size = "small",
     srcs = ["gcs_throttle_test.cc"],
     linkopts = if_windows(["-DEFAULTLIB:ws2_32.lib"]),
-    visibility = ["//visibility:public"],
     deps = [
         ":gcs_throttle",
         "//tsl/lib/core:status_test_util",
@@ -450,7 +435,6 @@ tsl_cc_test(
     name = "curl_http_request_test",
     size = "small",
     srcs = ["curl_http_request_test.cc"],
-    visibility = ["//visibility:public"],
     deps = [
         ":curl_http_request",
         "//tsl/lib/core:status_test_util",
@@ -471,7 +455,6 @@ tsl_cc_test(
         "//tsl/platform/cloud/testdata:service_account_credentials",
         "//tsl/platform/cloud/testdata:service_account_public_key",
     ],
-    visibility = ["//visibility:public"],
     deps = [
         ":http_request_fake",
         ":oauth_client",
@@ -495,7 +478,6 @@ tsl_cc_test(
         "//tsl/platform/cloud/testdata:application_default_credentials",
         "//tsl/platform/cloud/testdata:service_account_credentials",
     ],
-    visibility = ["//visibility:public"],
     deps = [
         ":google_auth_provider",
         ":http_request_fake",
@@ -512,7 +494,6 @@ tsl_cc_test(
     name = "compute_engine_metadata_client_test",
     size = "small",
     srcs = ["compute_engine_metadata_client_test.cc"],
-    visibility = ["//visibility:public"],
     deps = [
         ":compute_engine_metadata_client",
         ":http_request_fake",
@@ -527,7 +508,6 @@ tsl_cc_test(
     name = "compute_engine_zone_provider_test",
     size = "small",
     srcs = ["compute_engine_zone_provider_test.cc"],
-    visibility = ["//visibility:public"],
     deps = [
         ":compute_engine_zone_provider",
         ":http_request_fake",
@@ -541,7 +521,6 @@ tsl_cc_test(
     name = "time_util_test",
     size = "small",
     srcs = ["time_util_test.cc"],
-    visibility = ["//visibility:public"],
     deps = [
         ":time_util",
         "//tsl/lib/core:status_test_util",

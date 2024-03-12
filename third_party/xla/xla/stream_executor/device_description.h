@@ -28,12 +28,12 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/str_split.h"
 #include "absl/strings/string_view.h"
 #include "xla/stream_executor/device_description.pb.h"
 #include "xla/stream_executor/launch_dim.h"
-#include "xla/stream_executor/platform/port.h"
 
 namespace stream_executor {
 namespace internal {
@@ -53,8 +53,8 @@ struct CudaComputeCapability {
     HOPPER = 9
   };
 
-  CudaComputeCapability() = default;
-  CudaComputeCapability(int major, int minor) {
+  constexpr CudaComputeCapability() = default;
+  constexpr CudaComputeCapability(int major, int minor) {
     this->major = major;
     this->minor = minor;
   }

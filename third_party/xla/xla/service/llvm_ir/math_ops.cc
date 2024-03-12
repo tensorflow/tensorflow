@@ -78,5 +78,76 @@ llvm::Value* EmitFastTanh(llvm::IRBuilder<>* b, llvm::Value* input,
                          b->CreateFDiv(numerator, denominator));
 }
 
+llvm::Value* EmitErfF32(llvm::IRBuilder<>* b, llvm::Value* x) {
+  auto type = x->getType();
+  constexpr float kErfInvOneMinusHalfULP = 3.832506856900711f;
+  auto call_fabs = [b](llvm::Value* operand_value) {
+    return llvm_ir::EmitCallToIntrinsic(llvm::Intrinsic::fabs, {operand_value},
+                                        {operand_value->getType()}, b);
+  };
+  auto fcmp_le = [b](llvm::Value* lhs_value, llvm::Value* rhs_value) {
+    return b->CreateFCmpOLE(lhs_value, rhs_value);
+  };
+  llvm::Value* const clamp = fcmp_le(
+      llvm::ConstantFP::get(type, kErfInvOneMinusHalfULP), call_fabs(x));
+  // The monomial coefficients of the numerator polynomial (odd).
+  llvm::Value* const alpha_1 = llvm::ConstantFP::get(type, 1.128379143519084f);
+  llvm::Value* const alpha_3 =
+      llvm::ConstantFP::get(type, 0.18520832239976145f);
+  llvm::Value* const alpha_5 =
+      llvm::ConstantFP::get(type, 0.050955695062380861f);
+  llvm::Value* const alpha_7 =
+      llvm::ConstantFP::get(type, 0.0034082910107109506f);
+  llvm::Value* const alpha_9 =
+      llvm::ConstantFP::get(type, 0.00022905065861350646f);
+
+  // The monomial coefficients of the denominator polynomial (even).
+  llvm::Value* const beta_0 = llvm::ConstantFP::get(type, 1.0f);
+  llvm::Value* const beta_2 = llvm::ConstantFP::get(type, 0.49746925110067538f);
+  llvm::Value* const beta_4 = llvm::ConstantFP::get(type, 0.11098505178285362f);
+  llvm::Value* const beta_6 =
+      llvm::ConstantFP::get(type, 0.014070470171167667f);
+  llvm::Value* const beta_8 =
+      llvm::ConstantFP::get(type, 0.0010179625278914885f);
+  llvm::Value* const beta_10 =
+      llvm::ConstantFP::get(type, 0.000023547966471313185f);
+  llvm::Value* const beta_12 =
+      llvm::ConstantFP::get(type, -1.1791602954361697e-7f);
+
+  // Since the polynomials are odd/even, we need x^2.
+  llvm::Value* const x2 = b->CreateFMul(x, x);
+
+  // Evaluate the numerator polynomial p.
+  auto call_fma = [b](llvm::Value* multiplier, llvm::Value* multiplicand,
+                      llvm::Value* addend) {
+    return llvm_ir::EmitCallToIntrinsic(llvm::Intrinsic::fma,
+                                        {multiplier, multiplicand, addend},
+                                        {multiplier->getType()}, b);
+  };
+  llvm::Value* p = call_fma(x2, alpha_9, alpha_7);
+  p = call_fma(x2, p, alpha_5);
+  p = call_fma(x2, p, alpha_3);
+  p = call_fma(x2, p, alpha_1);
+  p = b->CreateFMul(x, p);
+
+  // Evaluate the denominator polynomial p.
+  llvm::Value* q = call_fma(x2, beta_12, beta_10);
+  q = call_fma(x2, q, beta_8);
+  q = call_fma(x2, q, beta_6);
+  q = call_fma(x2, q, beta_4);
+  q = call_fma(x2, q, beta_2);
+  q = call_fma(x2, q, beta_0);
+
+  // Divide the numerator by the denominator.
+  auto call_copysign = [b](llvm::Value* mag, llvm::Value* sign) {
+    return llvm_ir::EmitCallToIntrinsic(llvm::Intrinsic::copysign, {mag, sign},
+                                        {mag->getType()}, b);
+  };
+  auto* result =
+      b->CreateSelect(clamp, call_copysign(llvm::ConstantFP::get(type, 1.0), x),
+                      b->CreateFDiv(p, q));
+  return result;
+}
+
 }  // namespace llvm_ir
 }  // namespace xla

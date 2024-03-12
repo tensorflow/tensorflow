@@ -76,8 +76,8 @@ static string CreateCPPShimExpression(
       });
 }
 
-static StatusOr<string> CodegenModule(llvm::TargetMachine* target_machine,
-                                      std::unique_ptr<llvm::Module> module) {
+static absl::StatusOr<string> CodegenModule(
+    llvm::TargetMachine* target_machine, std::unique_ptr<llvm::Module> module) {
   llvm::SmallVector<char, 0> stream_buffer;
   llvm::raw_svector_ostream ostream(stream_buffer);
   llvm::legacy::PassManager codegen_passes;
@@ -93,7 +93,7 @@ static StatusOr<string> CodegenModule(llvm::TargetMachine* target_machine,
   return string(stream_buffer.begin(), stream_buffer.end());
 }
 
-static StatusOr<std::unique_ptr<llvm::TargetMachine>>
+static absl::StatusOr<std::unique_ptr<llvm::TargetMachine>>
 GetTargetMachineFromTriple(absl::string_view target_triple) {
   std::string error;
   std::string normalized_triple =
@@ -110,7 +110,7 @@ GetTargetMachineFromTriple(absl::string_view target_triple) {
       /*Features=*/"", llvm::TargetOptions(), std::nullopt));
 }
 
-StatusOr<EmbeddedProtocolBuffers> CreateEmbeddedProtocolBuffers(
+absl::StatusOr<EmbeddedProtocolBuffers> CreateEmbeddedProtocolBuffers(
     absl::string_view target_triple,
     absl::Span<const ProtobufToEmbed> protobufs_to_embed) {
   TF_ASSIGN_OR_RETURN(std::unique_ptr<llvm::TargetMachine> target_machine,

@@ -76,6 +76,21 @@ bool TfLiteAttributeMapSetStringBufferAttr(TfLiteAttributeMap* attrs,
   return false;
 }
 
+bool TfLiteAttributeMapGetBoolBufferAttr(const TfLiteAttributeMap* attrs,
+                                         TfLiteBufferAttrKey key, bool* val) {
+  return attrs && attrs->impl.IsBufferAttributeMap() &&
+         attrs->impl.GetAttr(key, val);
+}
+
+bool TfLiteAttributeMapSetBoolBufferAttr(TfLiteAttributeMap* attrs,
+                                         TfLiteBufferAttrKey key, bool val) {
+  if (attrs && attrs->impl.IsBufferAttributeMap()) {
+    attrs->impl.SetAttr(key, val);
+    return true;
+  }
+  return false;
+}
+
 bool TfLiteAttributeMapGetStringSyncAttr(const TfLiteAttributeMap* attrs,
                                          TfLiteSynchronizationAttrKey key,
                                          const char** val) {
@@ -121,6 +136,7 @@ bool TfLiteAttributeMapSetStringSyncAttr(TfLiteAttributeMap* attrs,
 DEFINE_ATTR_MAP_ACCESSOR(int, Int);
 DEFINE_ATTR_MAP_ACCESSOR(size_t, SizeT);
 DEFINE_ATTR_MAP_ACCESSOR(const char*, String);
+DEFINE_ATTR_MAP_ACCESSOR(bool, Bool);
 
 #undef DEFINE_ATTR_MAP_ACCESSOR
 

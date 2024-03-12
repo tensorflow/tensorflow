@@ -68,10 +68,6 @@ void TestPostCalibrationComponentPass::runOnOperation() {
   PostCalibrationComponent component(&ctx);
   component.AddPasses(pm, static_range_ptq_preset, pipeline_config);
 
-  // Adds a XlaCallModuleOp deserialization pass for easier testing by
-  // inspecting the contents of serialized StableHLO function.
-  pm.addPass(TF::CreateXlaCallModuleDeserializationPass());
-
   if (failed(runPipeline(pm, module_op))) {
     signalPassFailure();
   }

@@ -28,6 +28,30 @@ alias(
     actual = if_google("//learning/brain/public:disable_tf2", ":empty"),
 )
 
+filegroup(
+    name = "testdata",
+    srcs = glob([
+        "testdata/**",
+    ]) + [
+        ":saved_model_gen_control_flow_v1",
+        ":saved_model_gen_data",
+        ":saved_model_gen_dtype_coverage_v1",
+        ":saved_model_gen_error_v1",
+        ":saved_model_gen_hash_table_asset_v1",
+        ":saved_model_gen_if_v1",
+        ":saved_model_gen_matmul_gpu",
+        ":saved_model_gen_pow",
+        ":saved_model_gen_pow_v2",
+        ":saved_model_gen_ref_type_tensor_input",
+        ":saved_model_gen_resource_gather_v1",
+        ":saved_model_gen_sparse_tensor_input",
+        ":saved_model_gen_toy_v1",
+        ":saved_model_gen_toy_v2",
+        ":saved_model_gen_variable_on_tpu",
+        ":saved_model_gen_while_v1",
+    ],
+)
+
 pytype_strict_binary(
     name = "gen_resource_gather_v1",
     srcs = ["gen_resource_gather_v1.py"],
@@ -433,6 +457,7 @@ gen_saved_model(
 gen_saved_model(
     model_name = "toy_v1",
     script = "gen_saved_model_v1",
+    version = "1",
 )
 
 gen_saved_model(
@@ -569,36 +594,7 @@ cc_library(
     testonly = 1,
     srcs = ["saved_model_test.cc"],
     data = [
-        "control_flow_v1/saved_model.pb",
-        "data/saved_model.pb",
-        "dtype_coverage_v1/saved_model.pb",
-        "dtype_coverage_v1/variables/variables.data-00000-of-00001",
-        "dtype_coverage_v1/variables/variables.index",
-        "error_v1/saved_model.pb",
-        "hash_table_asset_v1/assets/tokens.txt",
-        "hash_table_asset_v1/saved_model.pb",
-        "if_v1/saved_model.pb",
-        "if_v1/variables/variables.data-00000-of-00001",
-        "if_v1/variables/variables.index",
-        "pow/saved_model.pb",
-        "pow_v2/saved_model.pb",
-        "ref_type_tensor_input/saved_model.pb",
-        "ref_type_tensor_input/variables/variables.data-00000-of-00001",
-        "ref_type_tensor_input/variables/variables.index",
-        "resource_gather_v1/saved_model.pb",
-        "resource_gather_v1/variables/variables.data-00000-of-00001",
-        "resource_gather_v1/variables/variables.index",
-        "sparse_tensor_input/saved_model.pb",
-        "toy_v1/saved_model.pb",
-        "toy_v1/variables/variables.data-00000-of-00001",
-        "toy_v1/variables/variables.index",
-        "toy_v2/saved_model.pb",
-        "toy_v2/variables/variables.data-00000-of-00001",
-        "toy_v2/variables/variables.index",
-        "variable_on_tpu/saved_model.pb",
-        "variable_on_tpu/variables/variables.data-00000-of-00001",
-        "variable_on_tpu/variables/variables.index",
-        "while_v1/saved_model.pb",
+        ":testdata",
     ],
     tags = ["no_oss"],
     deps = [
@@ -624,9 +620,7 @@ cc_library(
     testonly = 1,
     srcs = ["saved_model_ifrt_test.cc"],
     data = [
-        "toy_v2/saved_model.pb",
-        "toy_v2/variables/variables.data-00000-of-00001",
-        "toy_v2/variables/variables.index",
+        ":testdata",
     ],
     tags = ["no_oss"],
     deps = [
@@ -704,9 +698,7 @@ tf_cuda_cc_test(
     name = "saved_model_gpu_test",
     srcs = ["saved_model_gpu_test.cc"],
     data = [
-        "matmul_gpu/saved_model.pb",
-        "matmul_gpu/variables/variables.data-00000-of-00001",
-        "matmul_gpu/variables/variables.index",
+        ":testdata",
     ],
     tags = ["no_oss"],
     deps = [

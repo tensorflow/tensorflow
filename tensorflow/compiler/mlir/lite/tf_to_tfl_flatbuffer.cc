@@ -49,7 +49,6 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/flatbuffer_export.h"
 #include "tensorflow/compiler/mlir/lite/metrics/error_collector.h"
 #include "tensorflow/compiler/mlir/lite/metrics/error_collector_inst.h"
-#include "tensorflow/compiler/mlir/lite/quantization/quantization_config.h"
 #include "tensorflow/compiler/mlir/lite/quantization/stablehlo/quantization.h"
 #include "tensorflow/compiler/mlir/lite/stablehlo/transforms/op_stat_pass.h"
 #include "tensorflow/compiler/mlir/lite/stablehlo/transforms/stablehlo_util.h"
@@ -57,6 +56,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/tf_tfl_passes.h"
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h"
 #include "tensorflow/compiler/mlir/op_or_arg_name_mapper.h"
+#include "tensorflow/compiler/mlir/quantization/common/quantization_lib/quantization_config.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/quantization_config.pb.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/quantize_passes.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/python/py_function_lib.h"
@@ -176,7 +176,7 @@ mlir::LogicalResult RunHloToTfConversion(
     const mlir::TFL::PassConfig& pass_config,
     const absl::string_view saved_model_dir,
     const std::unordered_set<std::string>& saved_model_tags,
-    const QuantizationConfig& quantization_config,
+    QuantizationConfig* quantization_config,
     const PyFunctionLibrary* quantization_py_function_lib,
     const SavedModelBundle* saved_model_bundle, mlir::PassManager& pass_manager,
     mlir::StatusScopedDiagnosticHandler& status_handler, ModuleOp& module) {
@@ -192,7 +192,7 @@ mlir::LogicalResult RunHloToTfConversion(
   if (pass_config.enable_stablehlo_quantizer) {
     const absl::StatusOr<mlir::ModuleOp> quantized_module_op = RunQuantization(
         saved_model_bundle, saved_model_dir, saved_model_tags,
-        quantization_config, quantization_py_function_lib, module);
+        *quantization_config, quantization_py_function_lib, module);
     if (!quantized_module_op.ok()) {
       LOG(ERROR) << "Failed to run quantization: "
                  << quantized_module_op.status();
@@ -377,8 +377,8 @@ absl::Status ConvertTFExecutorToStablehloFlatbuffer(
 }
 
 absl::Status ConvertTFExecutorToTFLOrFlatbuffer(
-    mlir::ModuleOp module, bool export_to_mlir,
-    const toco::TocoFlags& toco_flags, const mlir::TFL::PassConfig& pass_config,
+    mlir::ModuleOp module, bool export_to_mlir, toco::TocoFlags& toco_flags,
+    const mlir::TFL::PassConfig& pass_config,
     const std::unordered_set<std::string>& saved_model_tags,
     llvm::StringRef saved_model_dir, SavedModelBundle* saved_model_bundle,
     std::string* result, bool serialize_stablehlo_ops,
@@ -426,8 +426,9 @@ absl::Status ConvertTFExecutorToTFLOrFlatbuffer(
   if (pass_config.enable_hlo_to_tf_conversion) {
     if (failed(RunHloToTfConversion(
             pass_config, saved_model_dir, saved_model_tags,
-            toco_flags.quantization_config(), quantization_py_function_lib,
-            saved_model_bundle, pass_manager, status_handler, module))) {
+            toco_flags.mutable_quantization_config(),
+            quantization_py_function_lib, saved_model_bundle, pass_manager,
+            status_handler, module))) {
       return status_handler.ConsumeStatus();
     }
   }

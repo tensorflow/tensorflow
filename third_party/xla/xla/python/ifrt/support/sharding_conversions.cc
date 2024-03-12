@@ -19,6 +19,7 @@ limitations under the License.
 #include <utility>
 
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/types/span.h"
@@ -26,16 +27,28 @@ limitations under the License.
 #include "llvm/ADT/SmallVector.h"
 #include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/python/ifrt/ir/sharding_param.h"
-#include "xla/statusor.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
 namespace ifrt {
 namespace support {
 
-StatusOr<OpSharding> ToOpSharding(const ShardingParam& sharding_param,
-                                  absl::Span<const int> device_mapping) {
+absl::StatusOr<OpSharding> ToOpSharding(const ShardingParam& sharding_param,
+                                        absl::Span<const int> device_mapping) {
   OpSharding op_sharding;
+  {
+    bool all_dim_replicated = true;
+    for (const int64_t dim_shard : sharding_param.dim_shards()) {
+      if (dim_shard != 1) {
+        all_dim_replicated = false;
+        break;
+      }
+    }
+    if (all_dim_replicated) {
+      op_sharding.set_type(OpSharding::REPLICATED);
+      return op_sharding;
+    }
+  }
   op_sharding.set_type(OpSharding::OTHER);
 
   // Populate tile_assignment_dimensions.
@@ -62,7 +75,10 @@ StatusOr<OpSharding> ToOpSharding(const ShardingParam& sharding_param,
   tile_assignment_devices->Reserve(devices.size());
   for (const int device : devices) {
     if (device < 0 || device >= device_mapping.size()) {
-      return absl::OutOfRangeError(absl::StrCat("Can't map device ", device));
+      return absl::OutOfRangeError(
+          absl::StrCat("Can't map device with logical id ", device,
+                       ". The logical device id should be within [0, ",
+                       device_mapping.size(), ")."));
     }
     tile_assignment_devices->Add(device_mapping[device]);
   }
@@ -70,7 +86,7 @@ StatusOr<OpSharding> ToOpSharding(const ShardingParam& sharding_param,
   return op_sharding;
 }
 
-StatusOr<HloSharding> ToHloSharding(const ShardingParam& sharding_param) {
+absl::StatusOr<HloSharding> ToHloSharding(const ShardingParam& sharding_param) {
   auto axis_sizes = sharding_param.minor_to_major().axis_sizes;
   llvm::SmallVector<int64_t> reshape_dims;
   reshape_dims.reserve(axis_sizes.size());
@@ -81,7 +97,7 @@ StatusOr<HloSharding> ToHloSharding(const ShardingParam& sharding_param) {
   }
   if (device_count == 1) {
     // Generate single-device sharding as TileMaximal.
-    return HloSharding::AssignDevice(0);
+    return HloSharding::Replicate();
   }
   int64_t cum_size = 1;
   llvm::SmallVector<int64_t> dims;
@@ -101,8 +117,8 @@ StatusOr<HloSharding> ToHloSharding(const ShardingParam& sharding_param) {
   }
 }
 
-StatusOr<ShardingParam> ToShardingParam(const HloSharding& hlo_sharding,
-                                        int rank, int num_devices) {
+absl::StatusOr<ShardingParam> ToShardingParam(const HloSharding& hlo_sharding,
+                                              int rank, int num_devices) {
   // `dim_shards` has size equal to the rank of the array, with each entry
   // representing the number of shards for the corresponding dimension.
   // `minor_to_major.permutation` and `minor_to_major.axis_sizes` must be

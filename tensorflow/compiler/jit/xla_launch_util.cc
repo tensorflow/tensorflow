@@ -41,6 +41,7 @@ limitations under the License.
 #include "xla/pjrt/tracked_device_buffer.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
+#include "xla/stream_executor/platform_manager.h"
 #include "tensorflow/core/common_runtime/dma_helper.h"
 #include "tensorflow/core/common_runtime/gpu_device_context.h"
 #include "tensorflow/core/framework/allocator.h"
@@ -96,7 +97,7 @@ std::vector<const Tensor*> InputsFromContext(OpKernelContext* ctx) {
   return inputs;
 }
 
-StatusOr<std::vector<int>> GetConstantInputIndicesFromContext(
+absl::StatusOr<std::vector<int>> GetConstantInputIndicesFromContext(
     OpKernelContext* ctx) {
   std::vector<int> constant_input_indices;
   TF_RETURN_IF_ERROR(GetCompileTimeConstInputs(
@@ -143,7 +144,7 @@ static void PopulateExecutionInputBuffer(xla::ExecutionInput& execution_input,
   }
 }
 
-StatusOr<std::vector<xla::ExecutionInput>>
+absl::StatusOr<std::vector<xla::ExecutionInput>>
 XlaComputationLaunchContext::PopulateInputs(
     OpKernelContext* ctx,
     const XlaCompiler::CompilationResult* compilation_result,
@@ -217,7 +218,7 @@ static Tensor MakeTensor(DataType dtype, const TensorShape& shape,
 // Get aliased tensor from output, or make a new one for the corresponding
 // output operation. Transfers ownership of the buffer from output to the
 // returned tensor.
-static StatusOr<Tensor> GetOrCreateTensorForOutput(
+static absl::StatusOr<Tensor> GetOrCreateTensorForOutput(
     xla::ScopedShapedBuffer& output, int output_num, OpKernelContext* ctx,
     int missing_ctx_input_prefix,
     const xla::HloInputOutputAliasConfig& input_output_alias,
@@ -307,30 +308,30 @@ Status SetOutputForConstant(
       // stream now otherwise we will create a race condition.
       auto* gpu_device_context =
           static_cast<GPUDeviceContext*>(ctx->op_device_context());
-      gpu_device_context->stream()->ThenWaitFor(
-          gpu_device_context->host_to_device_stream());
+      TF_RETURN_IF_ERROR(gpu_device_context->stream()->WaitFor(
+          gpu_device_context->host_to_device_stream()));
     }
   } else {
     // No copy required.
     ctx->set_output(output_num, const_tensor);
     output_tensor = ctx->mutable_output(output_num);
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-static StatusOr<Var*> GetOrCreateResourceVar(
+static absl::StatusOr<Var*> GetOrCreateResourceVar(
     OpKernelContext* ctx, const ResourceHandle& handle,
     const XlaCompiler::ResourceUpdate& write) {
   Var* variable = nullptr;
   TF_RETURN_IF_ERROR(
       LookupOrCreateResource<Var>(ctx, handle, &variable, [&write](Var** ptr) {
         *ptr = new Var(write.type);
-        return OkStatus();
+        return absl::OkStatus();
       }));
   return variable;
 }
 
-StatusOr<std::vector<VariableInfo>> GatherVariableInfo(
+absl::StatusOr<std::vector<VariableInfo>> GatherVariableInfo(
     OpKernelContext* ctx,
     const XlaCompiler::CompilationResult& compilation_result,
     int missing_ctx_input_prefix) {
@@ -391,7 +392,7 @@ Status XlaComputationLaunchContext::PopulateOutputs(
     if (!definition_event->Init()) {
       return errors::Internal("Failed to initialize tensor definition event.");
     }
-    stream->ThenRecordEvent(definition_event.get());
+    TF_RETURN_IF_ERROR(stream->RecordEvent(definition_event.get()));
   }
 
   for (const XlaOutputDescription& descr : compilation_result->outputs) {
@@ -411,7 +412,7 @@ Status XlaComputationLaunchContext::PopulateOutputs(
     } else {
       // Stream is not set for the host platform.
       TF_ASSIGN_OR_RETURN(platform,
-                          se::MultiPlatformManager::PlatformWithId(
+                          se::PlatformManager::PlatformWithId(
                               XlaPlatformInfoFromDevice(ctx->device())));
     }
     TF_ASSIGN_OR_RETURN(auto transfer_manager,
@@ -505,10 +506,10 @@ Status XlaComputationLaunchContext::PopulateOutputs(
     *var->tensor() = output_tensor;
     ++output_num;
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-StatusOr<std::vector<XlaCompiler::Argument>>
+absl::StatusOr<std::vector<XlaCompiler::Argument>>
 XlaComputationLaunchContext::BuildXlaCompilerArguments(
     absl::Span<int const> must_be_constant_idxs,
     absl::Span<const Tensor* const> inputs,
@@ -683,7 +684,7 @@ Status PreparePjRtExecutableArguments(
       non_donatable_input_indices->insert(args->size() - 1);
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // TODO(b/289002708) Create a unit test to cover use_pjrt_tensor_buffer=true.
@@ -793,7 +794,7 @@ Status PopulateCtxOutputsFromPjRtExecutableOutputs(
     var->is_initialized |= write.modified;
     ++output_num;
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 xla::ExecuteOptions GetPjRtExecuteOptions(
@@ -872,10 +873,10 @@ Status RunPjRtExecutable(
   TF_RETURN_IF_ERROR(PopulateCtxOutputsFromPjRtExecutableOutputs(
       num_missing_prefix_ctx_inputs, inputs, updated_variables,
       compilation_result, use_pjrt_tensor_buffer, execute_outputs, ctx));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-StatusOr<std::vector<std::unique_ptr<xla::PjRtBuffer>>> RunPjRtExecutable(
+absl::StatusOr<std::vector<std::unique_ptr<xla::PjRtBuffer>>> RunPjRtExecutable(
     int num_missing_prefix_ctx_inputs, const std::vector<const Tensor*>& inputs,
     const absl::flat_hash_map<int, const Tensor*>& variable_snapshots,
     const std::vector<VariableInfo>& updated_variables,

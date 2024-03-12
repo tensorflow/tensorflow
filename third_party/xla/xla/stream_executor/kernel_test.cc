@@ -22,6 +22,9 @@ limitations under the License.
 #include <vector>
 
 #include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/kernel_spec.h"
+#include "xla/stream_executor/platform.h"
+#include "xla/stream_executor/platform_manager.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "tsl/platform/test.h"
 #include "tsl/platform/test_benchmark.h"
@@ -63,7 +66,7 @@ static_assert(
                    std::tuple<const void*, const void*>>);
 
 static std::unique_ptr<StreamExecutor> NewStreamExecutor() {
-  Platform* platform = MultiPlatformManager::PlatformWithName("Host").value();
+  Platform* platform = PlatformManager::PlatformWithName("Host").value();
   StreamExecutorConfig config(/*ordinal=*/0);
   return platform->GetUncachedExecutor(config).value();
 }
@@ -103,11 +106,8 @@ TEST(KernelTest, PackPodArguments) {
   ASSERT_EQ(f64, 3.0);
 }
 
-TEST(KernelTest, PackTypedKernelArguments) {
-  auto executor = NewStreamExecutor();
-  TypedKernel<int32_t, float, double> kernel(executor.get());
-
-  auto args = PackKernelArgs(kernel, 1, 2.0f, 3.0);
+TEST(KernelTest, PackTupleArguments) {
+  auto args = PackKernelArgs(/*shmem_bytes=*/0, 1, 2.0f, 3.0);
   ASSERT_EQ(args->number_of_arguments(), 3);
 
   auto packed = args->argument_addresses();
@@ -118,6 +118,14 @@ TEST(KernelTest, PackTypedKernelArguments) {
   ASSERT_EQ(i32, 1);
   ASSERT_EQ(f32, 2.0f);
   ASSERT_EQ(f64, 3.0);
+}
+
+TEST(KernelTest, FailToCreateTypedKernelFromEmptySpec) {
+  MultiKernelLoaderSpec empty_spec(/*arity=*/0);
+
+  auto executor = NewStreamExecutor();
+  auto kernel = TypedKernel<>::Create(executor.get(), empty_spec);
+  EXPECT_FALSE(kernel.ok());
 }
 
 //===----------------------------------------------------------------------===//

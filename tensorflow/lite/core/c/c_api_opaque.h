@@ -345,6 +345,15 @@ TFL_CAPI_EXPORT TfLiteStatus TfLiteOpaqueNodeInputs(
 TFL_CAPI_EXPORT TfLiteStatus TfLiteOpaqueNodeOutputs(
     const TfLiteOpaqueNode* opaque_node, const int** outputs, int* num_outputs);
 
+/// Set tensor indices of temporary tensors used during the computations.
+/// These temporary tensors should be allocated using AddTensors().
+/// By default nodes don't have any temporary tensors, tensors, but ops are
+/// allowed to change that if they need scratch space of any sort.
+/// This will make a copy of the contents of the array pointed to by
+/// `temporaries`.
+TFL_CAPI_EXPORT TfLiteStatus TfLiteOpaqueNodeSetTemporaries(
+    TfLiteOpaqueNode* opaque_node, const int* temporaries, int num_temporaries);
+
 /// Loads into the provided '*temporaries' pointer the starting address of an
 /// array of indices representing the temporary tensors associated with the
 /// provided 'opaque_node'. The length of the array is loaded into the provided

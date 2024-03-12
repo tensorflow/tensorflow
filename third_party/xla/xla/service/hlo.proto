@@ -30,6 +30,7 @@ syntax = "proto3";
 
 package xla;
 
+import "google/protobuf/any.proto";
 import "xla/xla_data.proto";
 
 option cc_enable_arenas = true;
@@ -111,7 +112,7 @@ enum CustomCallApiVersion {
 }
 
 // Serialization of HloInstruction.
-// Next ID: 86
+// Next ID: 87
 message HloInstructionProto {
   reserved 10;
   reserved "parameter_name";
@@ -373,6 +374,9 @@ message HloInstructionProto {
   reserved 83;
   // Used to be wait_on_operation_queues.
   reserved 84;
+
+  // Sparsity descriptor for dot operation.
+  repeated xla.SparsityDescriptor dot_sparsity = 86;
 }
 
 // Serialization of HloComputation.
@@ -790,6 +794,9 @@ message HloPassMetadata {
   // Timestamp before and after the pass is run. Note they may be equal.
   int64 start_timestamp_usec = 8;
   int64 end_timestamp_usec = 9;
+
+  // Custom metadata for the pass.
+  google.protobuf.Any custom_metadata = 10;
 }
 
 // Encodes the underlying Xla runtime executable compiled from the XLA module.

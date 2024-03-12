@@ -84,7 +84,7 @@ class FakeDevice : public Device {
  public:
   explicit FakeDevice(const DeviceAttributes& attr, bool is_local)
       : Device(nullptr, attr), is_local_(is_local) {}
-  Status Sync() override { return OkStatus(); }
+  Status Sync() override { return absl::OkStatus(); }
   Allocator* GetAllocator(AllocatorAttributes) override { return nullptr; }
   bool IsLocal() const override { return is_local_; }
 

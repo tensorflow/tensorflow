@@ -16,9 +16,11 @@ limitations under the License.
 #ifndef XLA_SERVICE_GPU_LAUNCH_DIMENSIONS_H_
 #define XLA_SERVICE_GPU_LAUNCH_DIMENSIONS_H_
 
+#include <cstdint>
 #include <ostream>
 #include <string>
 
+#include "absl/strings/str_cat.h"
 #include "xla/shape.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/launch_dim.h"

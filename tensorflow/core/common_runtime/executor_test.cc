@@ -584,7 +584,7 @@ Status ReplaceEdgeWithSendRecv(Graph* g, const Edge* edge, const string& tensor,
   g->AddControlEdge(edge->src(), recv);
 
   g->RemoveEdge(edge);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Defines a graph to perform the following computation:

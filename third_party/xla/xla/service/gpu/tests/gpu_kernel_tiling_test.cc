@@ -17,10 +17,12 @@ limitations under the License.
 #include <string>
 #include <utility>
 
-#include "absl/strings/str_replace.h"
+#include "absl/status/status.h"
+#include "xla/error_spec.h"
 #include "xla/service/gpu/tests/gpu_codegen_test.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/tests/hlo_test_base.h"
+#include "xla/tests/verified_hlo_module.h"
 #include "tsl/platform/test.h"
 
 namespace xla {
@@ -342,7 +344,7 @@ TEST_F(GpuKernelTilingTest, ColumnReductionWithLayoutChangeTiled) {
                      /*match_optimized_ir=*/true);
 
   // Check that the kernel runs correctly.
-  EXPECT_TRUE(RunAndCompareNoHloPasses(kHloString, ErrorSpec{0.001}));
+  EXPECT_TRUE(RunAndCompare(kHloString, ErrorSpec{0.001}));
 }
 
 TEST_F(GpuKernelTilingTest, RowReductionWithLayoutChangeTiled) {
@@ -375,7 +377,7 @@ TEST_F(GpuKernelTilingTest, RowReductionWithLayoutChangeTiled) {
                      /*match_optimized_ir=*/true);
 
   // Check that the kernel runs correctly.
-  EXPECT_TRUE(RunAndCompareNoHloPasses(kHloString, ErrorSpec{0.001}));
+  EXPECT_TRUE(RunAndCompare(kHloString, ErrorSpec{0.001}));
 }
 
 TEST_F(GpuKernelTilingTest, RowReductionTwoRowsPerWarp) {
@@ -634,7 +636,8 @@ TEST_F(GpuKernelTilingTest, RowReductionCorrectShmemUsage) {
   )";
   auto hlo_module = ParseAndReturnVerifiedModule(kHloString).value();
   auto expected_ir = is_built_with_rocm_ ? R"(
-; CHECK: initial_value_addr = internal unnamed_addr addrspace({{[0-9]*}}) global [1024 x float] poison, align 4
+; CHECK: %llvm.amdgcn.kernel.input_reduce_fusion.lds.t = type { [4 x [2 x float]] }
+; CHECK: @llvm.amdgcn.kernel.input_reduce_fusion.lds = internal addrspace(3) global %llvm.amdgcn.kernel.input_reduce_fusion.lds.t poison
   )"
                                          : R"(
 ; CHECK: shared_cache = private unnamed_addr addrspace({{[0-9]*}}) global [4 x [2 x float]]

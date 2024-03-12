@@ -26,15 +26,16 @@ limitations under the License.
 #include "absl/random/random.h"
 #include "absl/strings/ascii.h"
 #include "absl/strings/substitute.h"
-#include "Eigen/Core"  // from @eigen_archive
 #include "xla/service/platform_util.h"
 #include "xla/stream_executor/kernel.h"
-#include "xla/stream_executor/multi_platform_manager.h"
 #include "xla/stream_executor/platform.h"
+#include "xla/stream_executor/platform_manager.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
+#include "xla/types.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/lib/core/status_test_util.h"
+#include "tsl/platform/statusor.h"
 #include "tsl/platform/test.h"
 
 namespace xla::gpu::kernel::topk {
@@ -67,7 +68,7 @@ std::vector<T> RandomVecNegative(int num_elements) {
 
 PrimitiveType Get(float) { return PrimitiveType::F32; }
 
-PrimitiveType Get(Eigen::bfloat16) { return PrimitiveType::BF16; }
+PrimitiveType Get(bfloat16) { return PrimitiveType::BF16; }
 
 // Params:
 //  - n_kb: number of elements in kilobytes.
@@ -84,13 +85,10 @@ TEST_P(TopKKernelTest, TopKFloat) {
 
   auto name =
       absl::AsciiStrToUpper(PlatformUtil::CanonicalPlatformName("gpu").value());
-  se::Platform* platform =
-      se::MultiPlatformManager::PlatformWithName(name).value();
+  se::Platform* platform = se::PlatformManager::PlatformWithName(name).value();
   se::StreamExecutor* executor = platform->ExecutorForDevice(0).value();
 
-  se::Stream stream(executor);
-  stream.Init();
-  ASSERT_TRUE(stream.ok());
+  auto stream = executor->CreateStream().value();
 
   const auto [n_kb, k, batch_size, offset] = GetParam();
   const size_t n = n_kb * 1024 + offset;
@@ -103,28 +101,31 @@ TEST_P(TopKKernelTest, TopKFloat) {
       executor->AllocateArray<uint32_t>(k * batch_size, 0);
 
   auto source = RandomVec<T>(n * batch_size);
-  stream.ThenMemcpy(&input_buffer, source.data(), n * batch_size * sizeof(T));
-  stream.ThenMemZero(&output_values, k * batch_size * sizeof(T));
-  stream.ThenMemZero(&output_indices, k * batch_size * sizeof(uint32_t));
+  TF_ASSERT_OK(
+      stream->Memcpy(&input_buffer, source.data(), n * batch_size * sizeof(T)));
+  TF_ASSERT_OK(stream->MemZero(&output_values, k * batch_size * sizeof(T)));
+  TF_ASSERT_OK(
+      stream->MemZero(&output_indices, k * batch_size * sizeof(uint32_t)));
 
-  se::Kernel kernel(executor);
   auto custom_kernel =
       GetTopKKernel("topk", PrimitiveType::F32, n, k, batch_size);
-  TF_ASSERT_OK(executor->GetKernel(custom_kernel->kernel_spec(), &kernel));
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto kernel, se::Kernel::Create(executor, custom_kernel->kernel_spec()));
 
   // Launch topk kernel with device memory arguments.
   se::KernelArgsDeviceMemoryArray arr(
       std::vector<se::DeviceMemoryBase>(
           {input_buffer, output_values, output_indices}),
       custom_kernel->shared_memory_bytes());
-  TF_ASSERT_OK(executor->Launch(&stream, custom_kernel->thread_dims(),
-                                custom_kernel->block_dims(), kernel, arr));
+  TF_ASSERT_OK(executor->Launch(stream.get(), custom_kernel->thread_dims(),
+                                custom_kernel->block_dims(), *kernel, arr));
 
   std::vector<T> got(k);
-  ASSERT_TRUE(stream.BlockHostUntilDone().ok());
+  ASSERT_TRUE(stream->BlockHostUntilDone().ok());
   for (int i = 0; i < batch_size; i++) {
-    stream.ThenMemcpy(got.data(), output_values.GetSlice(k * i, k),
-                      k * sizeof(T));
+    TF_ASSERT_OK(stream->Memcpy(got.data(), output_values.GetSlice(k * i, k),
+                                k * sizeof(T)));
     std::vector<T> slice(source.data() + n * i, source.data() + n * (i + 1));
     std::sort(slice.begin(), slice.end(), std::greater<T>());
     slice.resize(k);
@@ -138,13 +139,10 @@ TEST_P(TopKKernelTest, TopKPackedNegative) {
 
   auto name =
       absl::AsciiStrToUpper(PlatformUtil::CanonicalPlatformName("gpu").value());
-  se::Platform* platform =
-      se::MultiPlatformManager::PlatformWithName(name).value();
+  se::Platform* platform = se::PlatformManager::PlatformWithName(name).value();
   se::StreamExecutor* executor = platform->ExecutorForDevice(0).value();
 
-  se::Stream stream(executor);
-  stream.Init();
-  ASSERT_TRUE(stream.ok());
+  auto stream = executor->CreateStream().value();
 
   const auto [n_kb, k, batch_size, offset] = GetParam();
   const size_t n = n_kb * 1024 + offset;
@@ -157,28 +155,31 @@ TEST_P(TopKKernelTest, TopKPackedNegative) {
       executor->AllocateArray<uint32_t>(k * batch_size, 0);
 
   auto source = RandomVecNegative<T>(n * batch_size);
-  stream.ThenMemcpy(&input_buffer, source.data(), n * batch_size * sizeof(T));
-  stream.ThenMemZero(&output_values, k * batch_size * sizeof(T));
-  stream.ThenMemZero(&output_indices, k * batch_size * sizeof(uint32_t));
+  TF_ASSERT_OK(
+      stream->Memcpy(&input_buffer, source.data(), n * batch_size * sizeof(T)));
+  TF_ASSERT_OK(stream->MemZero(&output_values, k * batch_size * sizeof(T)));
+  TF_ASSERT_OK(
+      stream->MemZero(&output_indices, k * batch_size * sizeof(uint32_t)));
 
-  se::Kernel kernel(executor);
   auto custom_kernel =
       GetTopKKernel("topk", PrimitiveType::F32, n, k, batch_size);
-  TF_ASSERT_OK(executor->GetKernel(custom_kernel->kernel_spec(), &kernel));
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto kernel, se::Kernel::Create(executor, custom_kernel->kernel_spec()));
 
   // Launch topk kernel with device memory arguments.
   se::KernelArgsDeviceMemoryArray arr(
       std::vector<se::DeviceMemoryBase>(
           {input_buffer, output_values, output_indices}),
       custom_kernel->shared_memory_bytes());
-  TF_ASSERT_OK(executor->Launch(&stream, custom_kernel->thread_dims(),
-                                custom_kernel->block_dims(), kernel, arr));
+  TF_ASSERT_OK(executor->Launch(stream.get(), custom_kernel->thread_dims(),
+                                custom_kernel->block_dims(), *kernel, arr));
 
   std::vector<T> got(k);
-  ASSERT_TRUE(stream.BlockHostUntilDone().ok());
+  ASSERT_TRUE(stream->BlockHostUntilDone().ok());
   for (int i = 0; i < batch_size; i++) {
-    stream.ThenMemcpy(got.data(), output_values.GetSlice(k * i, k),
-                      k * sizeof(T));
+    TF_ASSERT_OK(stream->Memcpy(got.data(), output_values.GetSlice(k * i, k),
+                                k * sizeof(T)));
     std::vector<T> slice(source.data() + n * i, source.data() + n * (i + 1));
     std::sort(slice.begin(), slice.end(), std::greater<T>());
     slice.resize(k);

@@ -58,11 +58,13 @@ TEST(HloOpcodeTest, OpcodeProperties) {
       case HloOpcode::kAllReduceStart:
       case HloOpcode::kAllToAll:
       case HloOpcode::kCall:
+      case HloOpcode::kCollectiveBroadcast:
       case HloOpcode::kCollectivePermute:
       case HloOpcode::kCollectivePermuteStart:
       case HloOpcode::kConcatenate:
       case HloOpcode::kConditional:
       case HloOpcode::kCustomCall:
+      case HloOpcode::kDot:  // Sparse dot has an extra meta argument.
       case HloOpcode::kDynamicSlice:
       case HloOpcode::kDynamicUpdateSlice:
       case HloOpcode::kDynamicReshape:

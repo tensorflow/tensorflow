@@ -421,16 +421,16 @@ class BufferAssignment {
   // Convenience function which returns the unique slice containing the buffer
   // at the given index of the given instruction. If a slice is not assigned or
   // the slice cannot be determined at compile time then an error is returned.
-  StatusOr<BufferAllocation::Slice> GetUniqueSlice(
+  absl::StatusOr<BufferAllocation::Slice> GetUniqueSlice(
       const HloInstruction* instruction, const ShapeIndex& index) const;
   // Like GetUniqueSlice but fixes the index to the top-level of the shape
   // (index = {}).
-  StatusOr<BufferAllocation::Slice> GetUniqueTopLevelSlice(
+  absl::StatusOr<BufferAllocation::Slice> GetUniqueTopLevelSlice(
       const HloInstruction* instruction) const;
   // Like GetUniqueTopLevelSlice but returns the slice for the output of the
   // entry computation of the HLO module (ie, the result of the XLA
   // computation).
-  StatusOr<BufferAllocation::Slice> GetUniqueTopLevelOutputSlice() const;
+  absl::StatusOr<BufferAllocation::Slice> GetUniqueTopLevelOutputSlice() const;
 
   // Returns the set BufferValues which may be the source of the value at the
   // given index and instruction.
@@ -480,7 +480,7 @@ class BufferAssignment {
 
   // Convert BufferAssignment to or from a proto.
   BufferAssignmentProto ToProto() const;
-  static StatusOr<std::unique_ptr<BufferAssignment>> FromProto(
+  static absl::StatusOr<std::unique_ptr<BufferAssignment>> FromProto(
       const BufferAssignmentProto& proto, const HloModule* module,
       BufferValue::SizeFunction buffer_size,
       HloDataflowAnalysis::CanShareBuffer can_share_buffer);
@@ -637,7 +637,7 @@ class BufferAssigner {
   // LogicalBuffer. If preset_assignments is provided, those pre-set assignment
   // offsets will be used. The caller guarantees that those assignments are
   // valid and they do not overwrite each other.
-  static StatusOr<std::unique_ptr<BufferAssignment>> Run(
+  static absl::StatusOr<std::unique_ptr<BufferAssignment>> Run(
       const HloModule* module, std::unique_ptr<HloOrdering> hlo_ordering,
       BufferValue::SizeFunction buffer_size,
       LogicalBuffer::AlignmentFunction color_alignment,
@@ -665,7 +665,7 @@ class BufferAssigner {
   virtual ~BufferAssigner() = default;
 
   // Create a buffer assignment.
-  StatusOr<std::unique_ptr<BufferAssignment>> CreateAssignment(
+  absl::StatusOr<std::unique_ptr<BufferAssignment>> CreateAssignment(
       const HloModule* module, std::unique_ptr<HloOrdering> hlo_ordering,
       BufferValue::SizeFunction buffer_size,
       LogicalBuffer::AlignmentFunction color_alignment,

@@ -16,6 +16,7 @@
 from absl.testing import parameterized
 
 from tensorflow.python.data.experimental.ops import cardinality
+from tensorflow.python.data.experimental.ops import global_shuffle_op
 from tensorflow.python.data.kernel_tests import checkpoint_test_base
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
@@ -80,6 +81,44 @@ class AssertCardinalityTest(test_base.DatasetTestBase, parameterized.TestCase):
     with self.assertRaisesRegex(errors.FailedPreconditionError, expected_error):
       while True:
         self.evaluate(get_next())
+
+  @combinations.generate(
+      combinations.times(
+          test_base.default_test_combinations(),
+          combinations.combine(
+              num_elements=10,
+              asserted_cardinality=1,
+              expected_error=errors.FailedPreconditionError,
+              expected_error_message=(
+                  "Input dataset was expected to contain 1 element but "
+                  "contained at least 2 elements.")) +
+          combinations.combine(
+              num_elements=10,
+              asserted_cardinality=100,
+              expected_error=errors.FailedPreconditionError,
+              expected_error_message=(
+                  "Input dataset was expected to contain 100 elements but "
+                  "contained only 10 elements.")) +
+          combinations.combine(
+              num_elements=10,
+              asserted_cardinality=cardinality.INFINITE,
+              expected_error=errors.InvalidArgumentError,
+              expected_error_message=(
+                  "`global_shuffle` requires the input dataset to have a "
+                  "non-empty finite cardinality."))))
+  def testIncorrectCardinalityForGlobalShuffle(
+      self,
+      num_elements: int,
+      asserted_cardinality: int,
+      expected_error: Exception,
+      expected_error_message: str):
+    dataset = dataset_ops.Dataset.range(num_elements)
+    dataset = dataset.apply(
+        cardinality.assert_cardinality(asserted_cardinality))
+    with self.assertRaisesRegex(
+        expected_error, expected_error_message):
+      dataset = global_shuffle_op._global_shuffle(dataset)
+      self.getDatasetOutput(dataset, requires_initialization=True)
 
 
 class AssertCardinalityCheckpointTest(checkpoint_test_base.CheckpointTestBase,

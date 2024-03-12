@@ -15,6 +15,7 @@ limitations under the License.
 
 #include <string>
 
+#include "xla/error_spec.h"
 #include "xla/service/gpu/tests/gpu_codegen_test.h"
 #include "tsl/platform/test.h"
 

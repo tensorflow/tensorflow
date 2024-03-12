@@ -36,6 +36,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
+#include "xla/hlo/ir/hlo_input_output_alias_config.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
@@ -1113,7 +1114,7 @@ Status CheckBroadcastLayout(HloInstruction* broadcast) {
 
 }  // namespace
 
-StatusOr<HloInstruction*> LayoutAssignment::CreateCopyWithNewLayout(
+absl::StatusOr<HloInstruction*> LayoutAssignment::CreateCopyWithNewLayout(
     const Shape& shape_with_layout, HloInstruction* instruction) {
   TF_RET_CHECK(LayoutUtil::HasLayout(shape_with_layout));
   DCHECK(ShapeUtil::Compatible(shape_with_layout, instruction->shape()))
@@ -2030,7 +2031,7 @@ Status LayoutAssignment::PropagateResultConstraint(
 // output using points-to analysis. Precondition: The given instruction must
 // not produce this array value (that is, the array is forwarded from the
 // instruction's operands).
-StatusOr<Layout> LayoutAssignment::InferArrayLayout(
+absl::StatusOr<Layout> LayoutAssignment::InferArrayLayout(
     const HloInstruction* instruction, const ShapeIndex& index) {
   const auto& source_buffers =
       points_to_analysis_->GetPointsToSet(instruction).element(index);
@@ -2046,7 +2047,7 @@ StatusOr<Layout> LayoutAssignment::InferArrayLayout(
       // This should not happen because we've assigned layouts to all
       // instructions preceding this one.
       return Internal("LogicalBuffer %s does not have a layout",
-                           source_buffer->ToString());
+                      source_buffer->ToString());
     }
 
     if (first_buffer_layout == nullptr) {
@@ -2319,7 +2320,8 @@ Status LayoutAssignment::CalculateComputationLayout(
             SetCalleeLayout(
                 instruction, instruction->operands(),
                 mutable_computation_constraints(instruction->to_apply()),
-                current_priority_ + 1) == OkStatus()) {
+                current_priority_ + 1)
+                .ok()) {
           VLOG(2) << "Successfully propagated to callee layout\n";
         }
         break;
@@ -2544,7 +2546,7 @@ Status LayoutAssignment::PropagateComputationLayouts(
   return OkStatus();
 }
 
-StatusOr<bool> LayoutAssignment::Run(
+absl::StatusOr<bool> LayoutAssignment::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   VLOG(2) << "Running layout assignment on module " << module->name();
@@ -2676,6 +2678,62 @@ StatusOr<bool> LayoutAssignment::Run(
                                 ? LayoutConstraint::kGivenPriority
                                 : LayoutConstraint::kDefaultPriority));
   for (int64_t i = 0; i < kNumberOfPropagationRounds; ++i) {
+    if (i > 0) {
+      LayoutConstraints* constraints =
+          mutable_computation_constraints(module->entry_computation());
+
+      bool changed = false;
+      module->input_output_alias_config().ForEachAlias(
+          [&](const ShapeIndex& output_index,
+              const HloInputOutputAliasConfig::Alias& alias) {
+            const auto param = alias.parameter_number;
+            const auto& index = alias.parameter_index;
+            bool param_is_forced =
+                ShapeUtil::GetSubshape(
+                    saved_entry_computation_layout_.parameter_shape(param),
+                    index)
+                    .has_layout();
+            bool result_is_forced =
+                ShapeUtil::GetSubshape(
+                    saved_entry_computation_layout_.result_shape(),
+                    output_index)
+                    .has_layout();
+            Shape* param_shape =
+                ShapeUtil::GetMutableSubshape(module->entry_computation()
+                                                  ->parameter_instruction(param)
+                                                  ->mutable_shape(),
+                                              index);
+            Shape* result_shape =
+                ShapeUtil::GetMutableSubshape(module->entry_computation()
+                                                  ->root_instruction()
+                                                  ->mutable_shape(),
+                                              output_index);
+            if (param_is_forced && result_is_forced) {
+              return;
+            }
+
+            if (param_shape->layout().minor_to_major() ==
+                result_shape->layout().minor_to_major()) {
+              return;
+            }
+            changed = true;
+            if (!param_is_forced) {
+              *param_shape = *result_shape;
+              return;
+            }
+            *result_shape = *param_shape;
+          });
+      if (changed) {
+        auto computed_program_shape =
+            module->entry_computation()->ComputeProgramShape();
+        constraints->mutable_computation_constraint()->ResetComputationLayout(
+            ComputationLayout{
+                module->entry_computation()->ComputeProgramShape(), false},
+            LayoutConstraint::kGivenPriority, true, true);
+        *entry_computation_layout_ =
+            constraints->computation_constraint().computation_layout();
+      }
+    }
     VLOG(1) << "Running " << (i == 0 ? "un" : "") << "constrained pass";
     TF_RETURN_IF_ERROR(ClearPreviousPassSideEffects(module, execution_threads));
     for (auto* computation : computations_to_work) {
@@ -2726,10 +2784,12 @@ bool LayoutAssignment::InstructionCanChangeLayout(
     case HloOpcode::kAllGatherStart:
     case HloOpcode::kAllGatherDone:
     case HloOpcode::kAllToAll:
+    case HloOpcode::kCollectiveBroadcast:
     case HloOpcode::kCollectivePermute:
     case HloOpcode::kDivide:
     case HloOpcode::kDynamicSlice:
     case HloOpcode::kDynamicUpdateSlice:
+    case HloOpcode::kErf:
     case HloOpcode::kExp:
     case HloOpcode::kExpm1:
     case HloOpcode::kFft:
@@ -2852,7 +2912,6 @@ bool LayoutAssignment::IsAtMostRank1(const Shape& shape) {
 Status LayoutAssignment::Init(HloModule* module) {
   computation_layouts_.clear();
   conditional_mismatch_.clear();
-  *entry_computation_layout_ = saved_entry_computation_layout_;
   current_priority_ = LayoutConstraint::kBeginningPriority;
   // Clear all the copies which have been added, and all the related
   // instructions (like GTE and tuples).

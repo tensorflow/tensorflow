@@ -1955,14 +1955,12 @@ void populateDecomposeChloPatterns(MLIRContext *context,
   patterns->add<ConvertBesselI1eOp,
                    ConvertCoshOp,
                    ConvertDigammaOp,
-                   BasisConvertErfOp,  // TODO: Remove once ErfOp ready
                    ConvertErfcOp,
                    ConvertErfInvOp,
                    ConvertLgammaOp,
                    ConvertNextAfterOp,
                    ConvertPolygammaOp,
                    ConvertSinhOp,
-                   BasisConvertTopKOp,  // TODO: Remove once TopKOp ready
                    ConvertZetaOp>(context);
   // clang-format on
 }

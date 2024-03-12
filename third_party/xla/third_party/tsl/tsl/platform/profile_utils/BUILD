@@ -1,7 +1,7 @@
 # Description:
 # profile_utils targets.
 
-load("//tsl:tsl.bzl", "set_external_visibility")
+load("//tsl:tsl.bzl", "internal_visibility")
 load("//tsl:tsl.default.bzl", "filegroup")
 load(
     "@local_tsl//tsl/platform:rules_cc.bzl",
@@ -13,22 +13,25 @@ load(
 )
 
 package(
-    default_visibility = ["//visibility:public"],
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
+    default_visibility = internal_visibility([
+        "@local_xla//xla/stream_executor:__subpackages__",
+        "//tensorflow/core/platform:__subpackages__",
+        "//tsl:__pkg__",
+        "//tsl/platform/default:__pkg__",
+    ]),
     licenses = ["notice"],
 )
 
-exports_files(
-    srcs = [
-        "android_armv7a_cpu_utils_helper.cc",
-        "android_armv7a_cpu_utils_helper.h",
-        "clock_cycle_profiler.h",
-        "cpu_utils.cc",
-        "cpu_utils.h",
-        "cpu_utils_test.cc",
-        "i_cpu_utils_helper.h",
-    ],
-    visibility = ["//visibility:public"],
-)
+exports_files(srcs = [
+    "android_armv7a_cpu_utils_helper.cc",
+    "android_armv7a_cpu_utils_helper.h",
+    "clock_cycle_profiler.h",
+    "cpu_utils.cc",
+    "cpu_utils.h",
+    "cpu_utils_test.cc",
+    "i_cpu_utils_helper.h",
+])
 
 filegroup(
     name = "legacy_lib_internal_srcs",
@@ -36,7 +39,10 @@ filegroup(
         "android_armv7a_cpu_utils_helper.cc",
         "clock_cycle_profiler.cc",
     ],
-    visibility = ["//visibility:public"],
+    visibility = internal_visibility([
+        "//tensorflow/core/platform:__subpackages__",
+        "//tsl/platform:__pkg__",
+    ]),
 )
 
 cc_library(
@@ -50,7 +56,6 @@ cc_library(
         "i_cpu_utils_helper.h",
     ],
     copts = tsl_copts(),
-    visibility = ["//visibility:public"],
     deps = [
         "//tsl/platform:logging",
         "//tsl/platform:macros",

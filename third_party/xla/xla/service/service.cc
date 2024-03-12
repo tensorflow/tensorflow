@@ -204,7 +204,7 @@ Status Service::ValidateResultShape(const Shape& client_shape,
   return OkStatus();
 }
 
-StatusOr<std::vector<std::vector<const ShapedBuffer*>>>
+absl::StatusOr<std::vector<std::vector<const ShapedBuffer*>>>
 Service::ResolveAndValidateArguments(
     absl::Span<const GlobalDataHandle* const> arguments,
     absl::Span<se::StreamExecutor* const> stream_executors) const {
@@ -229,7 +229,7 @@ Service::ResolveAndValidateArguments(
   return replicated_arguments;
 }
 
-StatusOr<std::unique_ptr<HloModuleConfig>> Service::CreateModuleConfig(
+absl::StatusOr<std::unique_ptr<HloModuleConfig>> Service::CreateModuleConfig(
     const ProgramShape& program_shape,
     absl::Span<const Shape* const> argument_shapes,
     const ExecutionOptions* execution_options,
@@ -246,7 +246,7 @@ StatusOr<std::unique_ptr<HloModuleConfig>> Service::CreateModuleConfig(
                                  num_threads, aot_options);
 }
 
-StatusOr<std::unique_ptr<HloModuleConfig>> Service::CreateModuleConfig(
+absl::StatusOr<std::unique_ptr<HloModuleConfig>> Service::CreateModuleConfig(
     const ProgramShape& program_shape,
     absl::Span<const ShapedBuffer* const> arguments,
     const ExecutionOptions& execution_options,
@@ -259,7 +259,8 @@ StatusOr<std::unique_ptr<HloModuleConfig>> Service::CreateModuleConfig(
                             aot_options);
 }
 
-StatusOr<std::vector<std::unique_ptr<Executable>>> Service::BuildExecutables(
+absl::StatusOr<std::vector<std::unique_ptr<Executable>>>
+Service::BuildExecutables(
     const std::vector<const HloModuleProto*>& module_protos,
     std::vector<std::unique_ptr<HloModuleConfig>> module_configs,
     Backend* backend, std::vector<std::vector<se::StreamExecutor*>> executors,
@@ -306,7 +307,7 @@ StatusOr<std::vector<std::unique_ptr<Executable>>> Service::BuildExecutables(
   return std::move(executables);
 }
 
-StatusOr<std::vector<std::unique_ptr<AotCompilationResult>>>
+absl::StatusOr<std::vector<std::unique_ptr<AotCompilationResult>>>
 Service::BuildAotResults(
     const std::vector<const HloModuleProto*>& module_protos,
     std::vector<std::unique_ptr<HloModuleConfig>> module_configs,
@@ -328,14 +329,7 @@ Service::BuildAotResults(
     TF_ASSIGN_OR_RETURN(
         auto module, CreateModuleFromProto(*proto, config, run_backend_only));
     DumpHloModuleIfEnabled(*module, kBeforeOptimizationsDumpName);
-    if (run_backend_only) {
-      module_group->push_back(std::move(module));
-    } else {
-      TF_ASSIGN_OR_RETURN(auto module_after_opt,
-                          backend->compiler()->RunHloPasses(
-                              std::move(module), executors[0][0], options));
-      module_group->push_back(std::move(module_after_opt));
-    }
+    module_group->push_back(std::move(module));
   }
 
   AotCompilationOptions aot_options(backend->compiler()->PlatformId());
@@ -350,7 +344,7 @@ Service::BuildAotResults(
   return std::move(aot_results);
 }
 
-StatusOr<std::vector<GlobalDataHandle>>
+absl::StatusOr<std::vector<GlobalDataHandle>>
 Service::ExecuteParallelAndRegisterResult(
     absl::Span<Executable* const> executables,
     absl::Span<const std::vector<std::vector<const ShapedBuffer*>>> arguments,
@@ -430,14 +424,14 @@ Service::ExecuteParallelAndRegisterResult(
     Status block_status = streams[i]->BlockHostUntilDone();
     if (!block_status.ok()) {
       return Internal("failed to complete execution for stream %d: %s", i,
-                           block_status.message());
+                      block_status.message());
     }
   }
 
   return result_handles;
 }
 
-StatusOr<GlobalDataHandle> Service::ExecuteAndRegisterResult(
+absl::StatusOr<GlobalDataHandle> Service::ExecuteAndRegisterResult(
     Executable* executable,
     absl::Span<const std::vector<const ShapedBuffer*>> arguments,
     Backend* backend, const DeviceHandle& device_handle,
@@ -476,7 +470,7 @@ StatusOr<GlobalDataHandle> Service::ExecuteAndRegisterResult(
 
   if (options_.number_of_replicas() == 1) {
     TF_ASSIGN_OR_RETURN(auto result, executable->ExecuteOnStreamWrapper(
-                                         &run_options[0], arguments[0]));
+                                         run_options.data(), arguments[0]));
     return allocation_tracker_.Register(std::move(result), result_tag);
   }
 
@@ -494,7 +488,7 @@ StatusOr<GlobalDataHandle> Service::ExecuteAndRegisterResult(
                                                        result_tag);
 }
 
-StatusOr<std::vector<se::StreamExecutor*>> Service::GetExecutors(
+absl::StatusOr<std::vector<se::StreamExecutor*>> Service::GetExecutors(
     const ExecutionOptions& execution_options, int64_t requests_size,
     int64_t request_index) const {
   if (execution_options.device_handles().empty()) {
@@ -519,7 +513,8 @@ StatusOr<std::vector<se::StreamExecutor*>> Service::GetExecutors(
   return executors;
 }
 
-StatusOr<std::vector<std::vector<const ShapedBuffer*>>> Service::GetArguments(
+absl::StatusOr<std::vector<std::vector<const ShapedBuffer*>>>
+Service::GetArguments(
     const ExecutionOptions& execution_options,
     absl::Span<const GlobalDataHandle* const> arguments) const {
   // Resolve the allocations for the arguments of the computation, and create
@@ -663,16 +658,17 @@ Status Service::ExecuteGraphParallel(const ExecuteGraphParallelRequest* arg,
   Status execution_status = OkStatus();
 
   if (executable_ptrs.size() == 1) {
-    StatusOr<GlobalDataHandle> output_or_status = ExecuteAndRegisterResult(
-        executable_ptrs[0], all_arguments[0], execute_backend_.get(),
-        device_handles[0], computation_names[0], &profile);
+    absl::StatusOr<GlobalDataHandle> output_or_status =
+        ExecuteAndRegisterResult(executable_ptrs[0], all_arguments[0],
+                                 execute_backend_.get(), device_handles[0],
+                                 computation_names[0], &profile);
     if (output_or_status.ok()) {
       outputs.push_back(std::move(output_or_status).value());
     } else {
       execution_status = output_or_status.status();
     }
   } else {
-    StatusOr<std::vector<GlobalDataHandle>> outputs_or_status =
+    absl::StatusOr<std::vector<GlobalDataHandle>> outputs_or_status =
         ExecuteParallelAndRegisterResult(executable_ptrs, all_arguments,
                                          execute_backend_.get(), device_handles,
                                          computation_names, &profile);
@@ -742,7 +738,7 @@ Status Service::GetDeviceHandles(const GetDeviceHandlesRequest* arg,
   return OkStatus();
 }
 
-StatusOr<std::unique_ptr<Executable>> Service::BuildExecutable(
+absl::StatusOr<std::unique_ptr<Executable>> Service::BuildExecutable(
     const HloModuleProto& module_proto,
     std::unique_ptr<HloModuleConfig> module_config, Backend* backend,
     se::StreamExecutor* executor, const Compiler::CompileOptions& options,
@@ -1097,7 +1093,7 @@ Status Service::ComputeConstantGraph(const ComputeConstantGraphRequest* arg,
   evaluator.set_dynamic_dimension_inference(&dynamic_dimension_inference);
   evaluator.set_custom_call_handler(
       [](const HloInstruction* custom_call,
-         absl::Span<const Literal*> operands) -> StatusOr<Literal> {
+         absl::Span<const Literal*> operands) -> absl::StatusOr<Literal> {
         if (custom_call->custom_call_target() == "SliceToDynamic") {
           auto result = operands[0]->Clone();
           for (int64_t i = 0; i < result.shape().rank(); ++i) {
@@ -1169,7 +1165,7 @@ DeviceHandle Service::SingleComputationDeviceHandle() const {
   return device_handle;
 }
 
-StatusOr<std::vector<se::StreamExecutor*>> Service::Replicas(
+absl::StatusOr<std::vector<se::StreamExecutor*>> Service::Replicas(
     const Backend& backend, const DeviceHandle& device_handle) const {
   std::vector<se::StreamExecutor*> replicas;
   for (int replica = 0; replica < options_.number_of_replicas(); ++replica) {

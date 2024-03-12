@@ -19,9 +19,13 @@
 #include <vector>
 
 #include "absl/status/status.h"
+#include "absl/types/span.h"
+#include "Eigen/Core"  // from @eigen_archive
 #include "xla/executable_run_options.h"
+#include "xla/runtime/memref_view.h"
 #include "xla/service/cpu/runtime_conv2d.h"
 #include "xla/service/cpu/runtime_conv3d.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla {
 namespace cpu {

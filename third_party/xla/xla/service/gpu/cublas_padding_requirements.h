@@ -17,7 +17,6 @@ limitations under the License.
 #define XLA_SERVICE_GPU_CUBLAS_PADDING_REQUIREMENTS_H_
 
 #include <array>
-#include <vector>
 
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/stream_executor/device_description.h"

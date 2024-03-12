@@ -35,7 +35,14 @@ namespace xla {
 // The XLA:CPU ahead-of-time (AOT) compiler links using a standard offline
 // linker; so when compiling in CPU AOT mode, you *also* need to make sure the
 // name of the callee (presumably implemented in C++) matches up with the
-// symbolic name used in the CustomCall.
+// symbolic name used in the CustomCall. Be careful with the name of the symbol
+// you register with the macros: C++ namespaces are not included, including
+// anonymous namespaces,so if two libraries attempt to register functions with
+// the same name in separate namespaces the registrations will collide. Either
+// call the registration macro from the global namespace so that you have to
+// refer to the function in a fully-qualified manner (which also requires you to
+// emit HLO-based calls to it by the fully-qualified name *and* complicates
+// future refactoring!) or use C-style namespacing directly in the symbol name.
 //
 // We maintain the registry in both the JIT and the AOT cases for simplicity,
 // but we only use it when running in JIT mode.
@@ -46,6 +53,9 @@ class CustomCallTargetRegistry {
   void Register(const std::string& symbol, void* address,
                 const std::string& platform);
   void* Lookup(const std::string& symbol, const std::string& platform) const;
+
+  std::unordered_map<std::string, void*> registered_symbols(
+      const std::string& platform) const;
 
  private:
   // hash<pair<T,T>> is surprisingly not provided by default in stl.  It would

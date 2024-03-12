@@ -16,11 +16,14 @@ limitations under the License.
 #ifndef XLA_STREAM_EXECUTOR_DEVICE_MEMORY_ALLOCATOR_H_
 #define XLA_STREAM_EXECUTOR_DEVICE_MEMORY_ALLOCATOR_H_
 
+#include <cstddef>
 #include <cstdint>
+#include <initializer_list>
 #include <map>
 #include <vector>
 
 #include "absl/base/thread_annotations.h"
+#include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/synchronization/mutex.h"
@@ -28,6 +31,7 @@ limitations under the License.
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/platform.h"
 #include "tsl/platform/errors.h"
+#include "tsl/platform/status.h"
 
 namespace stream_executor {
 

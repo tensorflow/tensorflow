@@ -18,9 +18,11 @@ limitations under the License.
 
 #include <vector>
 
+#include "absl/status/status.h"
 #include "llvm/IR/Function.h"
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/Value.h"
+#include "llvm/Support/AtomicOrdering.h"
 #include "xla/hlo/ir/dfs_hlo_visitor_with_default.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/service/gpu/hlo_to_ir_bindings.h"
@@ -29,6 +31,7 @@ limitations under the License.
 #include "xla/service/llvm_ir/ir_array.h"
 #include "xla/service/llvm_ir/ir_builder_mixin.h"
 #include "xla/service/llvm_ir/loop_emitter.h"
+#include "xla/shape_util.h"
 
 namespace xla {
 namespace gpu {
@@ -141,13 +144,6 @@ class IrEmitter : public DfsHloVisitorWithDefault,
                                const char* sync_scope_id);
 
  private:
-  // A helper method for HandleSort(). It adds the inner comparison loop where
-  // we compare elements pointed to by 'keys_index' and 'compare_keys_index'.
-  void EmitCompareLoop(int64_t dimension_to_sort,
-                       const llvm_ir::IrArray::Index& keys_index,
-                       const llvm_ir::IrArray::Index& compare_keys_index,
-                       const llvm_ir::IrArray& keys_array);
-
   // A convenience method to determine whether or not IR is emitted for AMDGPU.
   bool IsEmittingForAMDGPU() const;
 };

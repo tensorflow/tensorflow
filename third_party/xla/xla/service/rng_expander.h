@@ -27,7 +27,8 @@ class RngExpander : public OpExpanderPass {
  protected:
   bool InstructionMatchesPattern(HloInstruction* instruction) override;
 
-  StatusOr<HloInstruction*> ExpandInstruction(HloInstruction* rng) override;
+  absl::StatusOr<HloInstruction*> ExpandInstruction(
+      HloInstruction* rng) override;
 
  private:
   // Cache RNG computations based on the distribution, output shape and shapes

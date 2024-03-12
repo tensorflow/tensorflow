@@ -86,7 +86,7 @@ class StatsAggregatorImpl : public StatsAggregator {
   // in V1.
   Status SetSummaryWriter(
       SummaryWriterInterface* summary_writer_interface) override {
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   void IncrementCounter(const string& name, const string& label,
@@ -124,7 +124,7 @@ class StatsAggregatorHandleOp
   Status CreateResource(StatsAggregatorResource** ret) override
       TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
     *ret = new StatsAggregatorResource(std::make_unique<StatsAggregatorImpl>());
-    return OkStatus();
+    return absl::OkStatus();
   }
 };
 
@@ -159,7 +159,7 @@ class StatsAggregatorImplV2 : public StatsAggregator {
     mutex_lock l(mu_);
     if (summary_writer_interface_)
       TF_RETURN_IF_ERROR(summary_writer_interface_->Flush());
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   void IncrementCounter(const string& name, const string& label,
@@ -194,7 +194,7 @@ class StatsAggregatorImplV2 : public StatsAggregator {
     }
     summary_writer_interface_ = summary_writer_interface;
     summary_writer_interface_->Ref();
-    return OkStatus();
+    return absl::OkStatus();
   }
 
  private:
@@ -250,7 +250,7 @@ class StatsAggregatorHandleOpV2
       TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
     *ret =
         new StatsAggregatorResource(std::make_unique<StatsAggregatorImplV2>());
-    return OkStatus();
+    return absl::OkStatus();
   }
 };
 

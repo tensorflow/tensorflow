@@ -125,6 +125,7 @@ StatusOr<Shape> MakeShapeWithLayoutInternal(
     absl::Span<const Tile> tiles, int64_t tail_padding_alignment_in_elements,
     PrimitiveType index_primitive_type, PrimitiveType pointer_primitive_type,
     int64_t element_size_in_bits, int64_t memory_space,
+    absl::Span<const SplitConfig> split_configs,
     std::optional<Shape> physical_shape) {
   if (dimensions.size() != minor_to_major.size()) {
     return InvalidArgument("Dimensions size is %ld, but layout size is %ld.",
@@ -145,7 +146,7 @@ StatusOr<Shape> MakeShapeWithLayoutInternal(
   *shape.mutable_layout() = LayoutUtil::MakeLayout(
       minor_to_major, dim_level_types, dim_unique, dim_ordered, tiles,
       tail_padding_alignment_in_elements, index_primitive_type,
-      pointer_primitive_type, element_size_in_bits, memory_space,
+      pointer_primitive_type, element_size_in_bits, memory_space, split_configs,
       std::move(physical_shape));
   TF_RETURN_IF_ERROR(ShapeUtil::ValidateShape(shape));
   return std::move(shape);
@@ -344,14 +345,14 @@ Shape MakeTupleShapeImpl(absl::Span<ShapePtrOrRef> shapes) {
     PrimitiveType element_type, absl::Span<const int64_t> dimensions,
     absl::Span<const int64_t> minor_to_major, absl::Span<const Tile> tiles,
     int64_t tail_padding_alignment_in_elements, int64_t element_size_in_bits,
-    int64_t memory_space) {
+    int64_t memory_space, absl::Span<const SplitConfig> split_configs) {
   auto ret = MakeShapeWithLayoutInternal(
       element_type, dimensions, minor_to_major, /*dim_level_types=*/{},
       /*dim_unique=*/{}, /*dim_ordered=*/{}, tiles,
       tail_padding_alignment_in_elements,
       /*index_primitive_type=*/PRIMITIVE_TYPE_INVALID,
       /*pointer_primitive_type=*/PRIMITIVE_TYPE_INVALID, element_size_in_bits,
-      memory_space,
+      memory_space, split_configs,
       /*physical_shape=*/std::nullopt);
   TF_CHECK_OK(ret.status());
   return *ret;
@@ -369,7 +370,7 @@ Shape MakeTupleShapeImpl(absl::Span<ShapePtrOrRef> shapes) {
       element_type, dimensions, minor_to_major, dim_level_types, dim_unique,
       dim_ordered, /*tiles=*/{}, tail_padding_alignment_in_elements,
       index_primitive_type, pointer_primitive_type, element_size_in_bits,
-      memory_space, std::move(physical_shape));
+      memory_space, /*split_configs=*/{}, std::move(physical_shape));
   TF_CHECK_OK(ret.status());
   return *ret;
 }
@@ -911,6 +912,46 @@ Shape ShapeUtil::PrependMajorDimension(int64_t bound, Shape shape) {
          ByteSizeOfPrimitiveType(shape.element_type());
 }
 
+/* static */ absl::StatusOr<int64_t> ShapeUtil::SerializedSize(
+    const Shape& shape) {
+  return SerializedSizeWithProto(shape, shape.ToProto());
+}
+
+/* static */ absl::StatusOr<int64_t> ShapeUtil::SerializedSizeWithProto(
+    const Shape& shape, const ShapeProto& proto) {
+  // The size computed here must be kept in sync with the serialized format as
+  // described in the comments for LiteralBase::SerializeWithShapeProto in
+  // literal.h.
+  TF_RETURN_IF_ERROR(ValidateShapeWithOptionalLayout(shape));
+  int64_t size = sizeof(int64_t) + proto.ByteSizeLong();
+
+  TF_RETURN_IF_ERROR(ShapeUtil::ForEachSubshapeWithStatus(
+      shape, [&](const Shape& subshape, const ShapeIndex& index) {
+        if (subshape.IsTuple()) {
+          return OkStatus();
+        }
+        if (!subshape.IsArray()) {
+          return InvalidArgument("Shape cannot be serialiized: %s",
+                                 shape.ToString());
+        }
+        if (subshape.is_dynamic()) {
+          size += sizeof(DynamicSizeType) * subshape.rank();
+        }
+        if (subshape.element_type() == PRED) {
+          // PRED is packed 8 elements per byte.
+          size += CeilOfRatio<int64_t>(ElementsIn(subshape), 8);
+        } else if (primitive_util::Is4BitType(subshape.element_type())) {
+          // 4-bit types are packed 2 elements per byte.
+          size += CeilOfRatio<int64_t>(ElementsIn(subshape), 2);
+        } else {
+          size += ByteSizeOfElements(subshape);
+        }
+        return OkStatus();
+      }));
+
+  return size;
+}
+
 /* static */ Status ShapeUtil::ValidateShapeWithOptionalLayoutInternal(
     const Shape& shape) {
   if (shape.element_type() == PRIMITIVE_TYPE_INVALID ||
@@ -1050,6 +1091,15 @@ Shape ShapeUtil::PrependMajorDimension(int64_t bound, Shape shape) {
   return *return_shape;
 }
 
+/* static */ const Shape& ShapeUtil::GetSubshapeOneIndex(const Shape& shape,
+                                                         int64_t index) {
+  const Shape* return_shape = &shape;
+  CHECK(return_shape->IsTuple())
+      << "Invalid index " << index << " for shape " << shape;
+  return_shape = &return_shape->tuple_shapes(index);
+  return *return_shape;
+}
+
 /* static */ StatusOr<const Shape*> ShapeUtil::TryGetSubshape(
     const Shape& shape, ShapeIndexView index) {
   const Shape* return_shape = &shape;
@@ -1080,15 +1130,24 @@ bool ShapeUtil::IsLeafIndex(const Shape& shape, const ShapeIndex& index) {
   return !GetSubshape(shape, index).IsTuple();
 }
 
+/* static */ int64_t ShapeUtil::GetLeafCountTuple(const Shape& shape) {
+  DCHECK(shape.IsTuple());
+  int64_t count = 0;
+  for (const Shape& subshape : shape.tuple_shapes()) {
+    if (subshape.IsTuple()) {
+      count += GetLeafCount(subshape);
+    } else {
+      ++count;
+    }
+  }
+  return count;
+}
+
 /* static */ int64_t ShapeUtil::GetLeafCount(const Shape& shape) {
   if (!shape.IsTuple()) {
     return 1;
   }
-  int64_t count = 0;
-  for (const Shape& subshape : shape.tuple_shapes()) {
-    count += GetLeafCount(subshape);
-  }
-  return count;
+  return GetLeafCountTuple(shape);
 }
 
 /* static */ std::vector<ShapeUtil::IndexedShape> ShapeUtil::GetLeafShapes(
@@ -2102,9 +2161,8 @@ std::optional<absl::InlinedVector<int64_t, 4>> ShapeUtil::ByteStrides(
   }
 
   auto tile_dimensions = shape.layout().tiles(0).dimensions();
-  auto shape_dimensions = shape.dimensions();
   auto minor_to_major = shape.layout().minor_to_major();
-  int64_t shape_dim_size = shape_dimensions.size();
+  int64_t shape_dim_size = shape.dimensions().size();
   int64_t tile_dim_size = tile_dimensions.size();
 
   // Use the top-level tile for shape size calculation. We assume the
@@ -2112,13 +2170,14 @@ std::optional<absl::InlinedVector<int64_t, 4>> ShapeUtil::ByteStrides(
   int64_t num_of_elements = 1;
   int64_t dim = 0;
   for (dim = 0; dim < tile_dim_size; dim++) {
-    int64_t dim_size =
-        dim < shape_dim_size ? shape_dimensions[minor_to_major[dim]] : 1;
+    int64_t dim_size = dim < shape_dim_size ? LayoutUtil::MaxSplitSize(
+                                                  shape, minor_to_major[dim])
+                                            : 1;
     num_of_elements *=
         RoundUpTo(dim_size, tile_dimensions[tile_dim_size - dim - 1]);
   }
   for (; dim < shape_dim_size; dim++) {
-    int64_t dim_size = shape_dimensions[minor_to_major[dim]];
+    int64_t dim_size = LayoutUtil::MaxSplitSize(shape, minor_to_major[dim]);
     num_of_elements *= dim_size;
   }
 

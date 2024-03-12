@@ -28,8 +28,8 @@ limitations under the License.
 
 namespace xla {
 
-StatusOr<bool> RunFileCheck(const std::string& input,
-                            absl::string_view pattern) {
+absl::StatusOr<bool> RunFileCheck(const std::string& input,
+                                  absl::string_view pattern) {
   // Generate an input file for the FileCheck pattern.
   std::string pattern_path;
   auto env = tsl::Env::Default();
@@ -41,8 +41,8 @@ StatusOr<bool> RunFileCheck(const std::string& input,
   return RunFileCheckWithPatternFile(input, pattern_path);
 }
 
-StatusOr<bool> RunFileCheckWithPatternFile(const std::string& input,
-                                           const std::string& pattern_file) {
+absl::StatusOr<bool> RunFileCheckWithPatternFile(
+    const std::string& input, const std::string& pattern_file) {
   // Invoke FileCheck to check whether input matches `pattern`.
   std::string file_check_path = tsl::GetDataDependencyFilepath(
       tsl::testing::kIsOpenSource

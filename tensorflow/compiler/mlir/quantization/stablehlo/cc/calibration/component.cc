@@ -39,7 +39,6 @@ limitations under the License.
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "tensorflow/cc/saved_model/loader.h"
-#include "tensorflow/compiler/mlir/quantization/stablehlo/cc/calibration/assign_ids.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/cc/calibration/representative_dataset.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/cc/calibration/statistics.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/cc/io.h"
@@ -64,7 +63,6 @@ namespace mlir::quant::stablehlo {
 namespace {
 
 using ::stablehlo::quantization::AddCalibrationStatistics;
-using ::stablehlo::quantization::AssignIdsToCustomAggregatorOps;
 using ::stablehlo::quantization::CreateRepresentativeDatasetFileMap;
 using ::stablehlo::quantization::QuantizationConfig;
 using ::stablehlo::quantization::RepresentativeDatasetConfig;
@@ -75,7 +73,6 @@ using ::tensorflow::MLIRImportOptions;
 using ::tensorflow::SavedModelBundle;
 using ::tensorflow::SavedModelSignatureDefsToMlirImport;
 using ::tensorflow::SignatureDef;
-using ::tensorflow::quantization::CalibrationOptions;
 using ::tensorflow::quantization::ExportedModel;
 using ::tensorflow::quantization::PreprocessAndFreezeGraph;
 using ::tensorflow::quantization::PyFunctionLibrary;
@@ -161,16 +158,14 @@ CalibrationComponent::CalibrationComponent(
     absl::flat_hash_map<FunctionName, FunctionAlias> function_aliases,
     std::unordered_set<std::string> tags,
     absl::flat_hash_map<std::string, SignatureDef> signature_def_map,
-    std::vector<std::string> signature_keys,
-    const CalibrationOptions& calibration_options)
+    std::vector<std::string> signature_keys)
     : ctx_(ABSL_DIE_IF_NULL(ctx)),                          // Crash OK
       py_function_lib_(ABSL_DIE_IF_NULL(py_function_lib)),  // Crash OK
       src_saved_model_path_(src_saved_model_path),
       function_aliases_(std::move(function_aliases)),
       tags_(std::move(tags)),
       signature_def_map_(std::move(signature_def_map)),
-      signature_keys_(std::move(signature_keys)),
-      calibration_options_(calibration_options) {}
+      signature_keys_(std::move(signature_keys)) {}
 
 absl::StatusOr<ExportedModel> CalibrationComponent::ExportToSavedModel(
     ModuleOp module_op, const absl::string_view dst_saved_model_path) {
@@ -186,16 +181,10 @@ absl::StatusOr<ExportedModel> CalibrationComponent::ExportToSavedModel(
   TF_ASSIGN_OR_RETURN(const SmallVector<AssetFileDef> asset_file_defs,
                       RunExportPasses(export_opts, *ctx_, module_op));
 
-  const absl::flat_hash_map<FunctionName, FunctionAlias>
-      updated_function_aliases =
-          UpdateFunctionAliases(function_aliases_, module_op);
-
   TF_ASSIGN_OR_RETURN(ExportedModel exported_model,
                       ConvertMlirModuleToExportedModel(
-                          module_op, checkpoint_dir, updated_function_aliases,
+                          module_op, checkpoint_dir, function_aliases_,
                           {asset_file_defs.begin(), asset_file_defs.end()}));
-
-  AssignIdsToCustomAggregatorOps(*exported_model.mutable_graph_def());
 
   py_function_lib_->SaveExportedModel(dst_saved_model_path, exported_model,
                                       src_saved_model_path_, tags_,
@@ -212,17 +201,14 @@ absl::StatusOr<ModuleOp> CalibrationComponent::ImportCalibratedSavedModel(
                                                tags_, signature_keys_, *ctx_));
   ModuleOp module_op = imported_module.first;
 
-  const absl::flat_hash_map<FunctionName, FunctionAlias>
-      updated_function_aliases_post_calibration =
-          UpdateFunctionAliases(function_aliases_, module_op);
+  UpdateFunctionAliases(function_aliases_, module_op);
 
   // Collect the names of the functions that have aliases so that they may not
   // be inlined.
   absl::flat_hash_set<std::string> aliased_function_names;
-  absl::c_for_each(updated_function_aliases_post_calibration,
-                   [&](const auto& aliases) {
-                     return aliased_function_names.insert(aliases.first);
-                   });
+  absl::c_for_each(function_aliases_, [&](const auto& aliases) {
+    return aliased_function_names.insert(aliases.first);
+  });
 
   // Freezing is required again since variables might have been produced
   // during the pre-calibration step. `is_inliner_run = false` to prevent the
@@ -259,14 +245,14 @@ absl::StatusOr<ModuleOp> CalibrationComponent::Run(
   // Runs calibration on the exported model. The statistics will be stored in a
   // separate singleton object `CalibratorSingleton` and are directly added to
   // `exported_model` without re-importing it.
-  py_function_lib_->RunCalibration(precalibrated_saved_model_dir,
-                                   signature_keys_, tags_, calibration_options_,
-                                   /*force_graph_mode_calibration=*/true,
-                                   representative_dataset_file_map);
+  py_function_lib_->RunCalibration(
+      precalibrated_saved_model_dir, signature_keys_, tags_,
+      config.calibration_options(),
+      /*force_graph_mode_calibration=*/true, representative_dataset_file_map);
 
-  if (absl::Status status =
-          AddCalibrationStatistics(*exported_model.mutable_graph_def(),
-                                   calibration_options_, *py_function_lib_);
+  if (absl::Status status = AddCalibrationStatistics(
+          *exported_model.mutable_graph_def(), config.calibration_options(),
+          *py_function_lib_);
       !status.ok()) {
     LOG(WARNING) << "Some CustomAggregator ops do not have min or max "
                     "values. Parts of the graph are not quantized. "

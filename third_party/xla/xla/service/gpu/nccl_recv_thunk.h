@@ -18,9 +18,14 @@ limitations under the License.
 
 #include <cstdint>
 
-#include "xla/service/collective_ops_utils.h"
+#include "absl/status/status.h"
+#include "absl/strings/string_view.h"
+#include "xla/hlo/ir/hlo_instructions.h"
+#include "xla/service/gpu/nccl_api.h"
+#include "xla/service/gpu/nccl_clique_key.h"
 #include "xla/service/gpu/nccl_collective_thunk.h"
 #include "xla/service/gpu/nccl_p2p_thunk_common.h"
+#include "xla/stream_executor/stream.h"
 
 namespace xla {
 namespace gpu {
@@ -28,37 +33,24 @@ namespace gpu {
 // Thunk that performs a NCCL-recv.
 class NcclRecvThunk : public NcclCollectiveThunk {
  public:
-  static NcclP2PConfig GetNcclP2PConfig(mlir::lmhlo::RecvOp,
-                                        int64_t replica_count,
-                                        int64_t partition_count);
-
-  static absl::Status CheckImplementable(mlir::lmhlo::RecvOp op,
-                                         int64_t replica_count,
-                                         int64_t partition_count);
-
-  static CollectiveOpGroupMode GetGroupMode(mlir::lmhlo::RecvOp op);
-  static const char* GetHloOpName() { return "recv"; }
-
-  NcclRecvThunk(ThunkInfo thunk_info, NcclApi* nccl_api, mlir::lmhlo::RecvOp op,
-                int64_t replica_count, int64_t partition_count,
-                const Buffer& buffer);
-
   NcclRecvThunk(ThunkInfo thunk_info, NcclApi* nccl_api,
                 const HloRecvInstruction* instr, int64_t replica_count,
                 int64_t partition_count, const Buffer& buffer);
+  absl::Status Initialize(const InitializeParams& params) override;
 
  protected:
   const NcclCollectiveConfig& config() const override { return config_.config; }
   absl::Status RunNcclCollective(const ExecuteParams& params,
                                  se::Stream& stream,
                                  NcclApi::NcclCommHandle comm) override;
-  AsyncStreamKind GetAsyncStreamKind() const override {
-    return AsyncStreamKind::kP2P;
-  }
+  AsyncStreamKind GetAsyncStreamKind() const override { return stream_kind_; }
+  bool NeedFirstCallRendzevous() const override { return false; }
 
  private:
   const NcclP2PConfig config_;
   const Buffer buffer_;
+  const AsyncStreamKind stream_kind_;
+  std::shared_ptr<ExecutionCounters> execution_counters_;
 };
 
 absl::Status RunRecv(NcclApi* nccl_api,

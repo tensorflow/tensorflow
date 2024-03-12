@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/stream_executor/gpu/gpu_blas_lt.h"
 
 #include <cstdint>
+#include <optional>
 #include <utility>
 
 #include "absl/status/statusor.h"
@@ -23,6 +24,7 @@ limitations under the License.
 #include "xla/stream_executor/blas.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/util.h"
+#include "tsl/protobuf/dnn.pb.h"
 #if GOOGLE_CUDA
 #include "tsl/platform/tensor_float_32_utils.h"
 #endif

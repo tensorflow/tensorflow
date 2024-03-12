@@ -40,6 +40,7 @@ limitations under the License.
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/cublas_cudnn.h"
 #include "xla/service/gpu/matmul_utils.h"
+#include "xla/service/gpu/stream_executor_util.h"
 #include "xla/service/pattern_matcher.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
@@ -289,37 +290,23 @@ double GetDropoutRateFromHlo(HloInstruction* dropout) {
   return (1.0 - (1.0 / *dropout_rate_inv));
 }
 
-se::dnn::VersionInfo GetRealCuDNNVersion(
-    stream_executor::dnn::VersionInfo cudnn_version,
-    stream_executor::StreamExecutor* stream_exec) {
-  se::dnn::VersionInfo real_cudnn_version;
-  if (stream_exec) {
-    stream_executor::dnn::DnnSupport* dnn = stream_exec->AsDnn();
-    absl::StatusOr<se::dnn::VersionInfo> se_cudnn_version = dnn->GetVersion();
-    if (se_cudnn_version.ok()) {
-      real_cudnn_version = (*se_cudnn_version);
-    }
-  } else {
-    real_cudnn_version = cudnn_version;
-  }
-  return real_cudnn_version;
-}
-
 bool IsComputeCapabilityAndCudnnSupported(
     stream_executor::CudaComputeCapability cc,
     stream_executor::dnn::VersionInfo cudnn_version,
     stream_executor::dnn::VersionInfo supported_cudnn_version) {
-  if (!((cc.IsAtLeast(se::CudaComputeCapability::AMPERE) && cc.minor == 0) &&
-        (cudnn_version >= supported_cudnn_version))) {
-    VLOG(2) << absl::StrFormat(
-        "CudnnFusedMHARewriter did not run. Unsupported compute "
-        "capability(==8.0) or cudnn version(>=%d.%d.%d)",
-        supported_cudnn_version.major_version(),
-        supported_cudnn_version.minor_version(),
-        supported_cudnn_version.patch());
-    return false;
+  // Enforce capability minor == 0 because hardware with a non-zero minor
+  // number typically has insufficient shared memory for cuDNN FMHA.
+  if (cc.IsAtLeastAmpere() && cc.minor == 0 &&
+      cudnn_version >= supported_cudnn_version) {
+    return true;
   }
-  return true;
+  VLOG(2) << absl::StrFormat(
+      "CudnnFusedMHARewriter did not run. Unsupported compute "
+      "capability(%s; major should be >= 8, minor should be 0) or cudnn version"
+      "(%s; should be >= %s)",
+      cc.ToString(), cudnn_version.ToString(),
+      supported_cudnn_version.ToString());
+  return false;
 }
 
 bool IsSupportedPrimitiveType(const HloInstruction* bmm) {
@@ -440,7 +427,7 @@ absl::StatusOr<bool> IsSupportedBMM2(const HloInstruction* bmm_2,
   return true;
 }
 
-StatusOr<bool> IsFlashAttention(
+absl::StatusOr<bool> IsFlashAttention(
     HloInstruction* bmm_1, bool is_causal_mask,
     absl::string_view custom_call_name,
     stream_executor::CudaComputeCapability cc,
@@ -670,6 +657,7 @@ MatchFwdResult MatchBmm1UnfusedBiasSoftmaxBmm2(MatchFwdResult previous_result,
                 first_bmm_pattern, unfused_scaled_bmm_subpattern))))) {
     // bmm1 - (scale) - softmax
     match_result.matched_bmm_1 = bmm_1;
+    match_result.matched_scale = scale;
     match_result.matched_custom_call_name =
         has_dropout ? kCudnnfMHASoftmaxDropoutCallTarget
                     : kCudnnfMHASoftmaxCallTarget;
@@ -1855,9 +1843,12 @@ absl::StatusOr<bool> CudnnFusedMHARewriter::Run(
        module->MakeNonfusionComputations(execution_threads)) {
     const DebugOptions& debug_options =
         comp->parent()->config().debug_options();
-    const auto cudnn_version =
-        GetRealCuDNNVersion(cudnn_version_, stream_executor_);
-#if CUDA_VERSION < 12000
+    const se::dnn::VersionInfo cudnn_version =
+        GetDnnVersionInfo(stream_executor_, cudnn_version_);
+#if !defined(GOOGLE_CUDA) || CUDA_VERSION < 12000
+    // CUDA needs to be >= 12.0 for cuDNN to work with all supported hardware.
+    // Some cuDNN versions work with CUDA 11, but it is impractical for us to
+    // test those combinations so just disable them.
     return false;
 #endif
     if (!debug_options.xla_gpu_enable_cudnn_fmha() ||

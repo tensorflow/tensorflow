@@ -32,7 +32,8 @@ class SelectAndScatterExpander : public OpExpanderPass {
  protected:
   bool InstructionMatchesPattern(HloInstruction* inst) override;
 
-  StatusOr<HloInstruction*> ExpandInstruction(HloInstruction* inst) override;
+  absl::StatusOr<HloInstruction*> ExpandInstruction(
+      HloInstruction* inst) override;
 };
 
 }  // namespace xla

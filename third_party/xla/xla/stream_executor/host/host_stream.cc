@@ -17,11 +17,15 @@ limitations under the License.
 // the HostExecutor implementation.
 #include "xla/stream_executor/host/host_stream.h"
 
+#include <cfenv>  // NOLINT
+#include <cstddef>
 #include <queue>
 #include <utility>
 
 #include "absl/functional/any_invocable.h"
+#include "absl/log/check.h"
 #include "absl/status/status.h"
+#include "absl/synchronization/mutex.h"
 #include "absl/synchronization/notification.h"
 #include "tsl/platform/denormal.h"
 #include "tsl/platform/env.h"
@@ -30,20 +34,9 @@ limitations under the License.
 namespace stream_executor {
 namespace host {
 
-namespace {
-
-tsl::ThreadOptions GetThreadOptions(size_t stack_size_in_bytes) {
-  tsl::ThreadOptions options;
-  options.stack_size = stack_size_in_bytes;
-  return options;
-}
-
-}  // namespace
-
-HostStream::HostStream(size_t stack_size_in_bytes)
-    : thread_(tsl::Env::Default()->StartThread(
-          GetThreadOptions(stack_size_in_bytes), "host_executor",
-          [this]() { WorkLoop(); })) {}
+HostStream::HostStream()
+    : thread_(tsl::Env::Default()->StartThread({}, "host_executor",
+                                               [this]() { WorkLoop(); })) {}
 
 HostStream::~HostStream() {
   {

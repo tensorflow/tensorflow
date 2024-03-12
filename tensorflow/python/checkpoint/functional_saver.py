@@ -57,7 +57,7 @@ MappedCapturesCallable = Callable[
 
 def _single_shard_save(
     file_prefix: tensor_lib.Tensor,
-    shard: sharding_util.TensorSliceDict,
+    shard: sharding_util.Shard,
     task: device_lib.DeviceSpec,
     options: "checkpoint_options.CheckpointOptions | None" = None,
 ) -> ops.Operation:
@@ -97,7 +97,7 @@ def _single_shard_save(
         tensors.append(tensor)
         slice_specs.append(spec)
 
-  save_device = options.experimental_io_device or (len(tensors) and task)
+  save_device = options.experimental_io_device or (tensors and task)
   with ops.device(save_device or "CPU:0"):
     return io_ops.save_v2(file_prefix, tensor_names, slice_specs, tensors)
 
@@ -106,7 +106,7 @@ def _single_shard_restore(
     file_prefix: tensor_lib.Tensor,
     shardable_tensors: Sequence[sharding_util.ShardableTensor],
     options: "checkpoint_options.CheckpointOptions | None" = None
-) -> sharding_util.TensorSliceDict:
+) -> sharding_util.Shard:
   """Restore the saveable objects from a checkpoint with `file_prefix`.
 
   Args:
@@ -221,6 +221,9 @@ def _get_mapped_registered_restore_fn(
 
 _restore_noop = lambda *args, **kwargs: None
 
+TensorKeyAndSliceSpec = tuple[str, str]
+RestoreFn = Callable[[Mapping[str, tensor_lib.Tensor]], ops.Operation]
+
 
 class MultiDeviceSaver:
   """Saves checkpoints directly from multiple devices.
@@ -232,8 +235,7 @@ class MultiDeviceSaver:
 
   def __init__(
       self,
-      serialized_tensors: Mapping[
-          base.Trackable, sharding_util.TensorSliceDict],
+      serialized_tensors: Mapping[base.Trackable, sharding_util.Shard],
       registered_savers: "RegisteredSaversDict | None" = None,
       call_with_mapped_captures: "MappedCapturesCallable | None" = None):
     """Specify a list of `SaveableObject`s to save and restore.
@@ -255,11 +257,9 @@ class MultiDeviceSaver:
     # Keep these two data structures so that we can map restored tensors to
     # the Trackable restore functions.
     self._keys_to_restore_fn: MutableMapping[
-        sharding_util.TensorSlice,
-        Callable[Mapping[str, tensor_lib.Tensor]]] = {}
+        TensorKeyAndSliceSpec, RestoreFn] = {}
     self._restore_fn_to_keys: MutableMapping[
-        Callable[Mapping[str, tensor_lib.Tensor]],
-        MutableSequence[sharding_util.TensorSlice]] = {}
+        RestoreFn, MutableSequence[TensorKeyAndSliceSpec]] = {}
 
     unique_tasks = set()
     for obj, tensor_dict in serialized_tensors.items():
@@ -377,7 +377,7 @@ class MultiDeviceSaver:
   def _get_shards_by_task(
       self,
       sharding_callback: sharding_util.ShardingCallback
-  ) -> Sequence[sharding_util.TensorSliceDict]:
+  ) -> Sequence[tuple[str, Sequence[sharding_util.Shard]]]:
     """Calls the sharding callback with shardable_tensors.
 
     Args:
@@ -385,7 +385,7 @@ class MultiDeviceSaver:
         splits shardable_tensors into shards.
 
     Returns:
-      A list of shards.
+      A list of (task, shards) tuples.
     """
     def wrap_tensor(shardable_tensor):
       tensor_val = shardable_tensor.tensor
@@ -428,11 +428,13 @@ class MultiDeviceSaver:
     metrics.SetShardingCallbackDescription(
         description=sharding_callback.description)
 
-    start_time = time.time() * 1e6
-    shards_by_task = [
-        (task, sharding_callback(shardable_tensors))
-        for task, shardable_tensors in shardable_tensors_by_task.items()]
-    callback_duration = math.ceil(time.time() * 1e6 - start_time)
+    callback_start_time = time.time() * 1e6
+    shards_by_task = []
+    for task, shardable_tensors in shardable_tensors_by_task.items():
+      shards_by_task.append((task, sharding_callback(shardable_tensors)))
+    callback_end_time = time.time() * 1e6
+
+    callback_duration = math.ceil(callback_end_time - callback_start_time)
     metrics.AddShardingCallbackDuration(
         callback_duration=max(1, callback_duration))  # in microseconds
     logging.info("Sharding callback duration: %s", callback_duration)

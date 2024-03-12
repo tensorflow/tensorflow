@@ -23,11 +23,13 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
+#include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "tensorflow/cc/saved_model/constants.h"
 #include "tensorflow/cc/saved_model/loader.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/cc/static_range_ptq.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/quantization_config.pb.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/python/py_function_lib.h"
+#include "tensorflow/compiler/mlir/tensorflow/transforms/tf_saved_model_freeze_variables.h"
 #include "tensorflow/core/protobuf/meta_graph.pb.h"
 
 namespace tensorflow {
@@ -72,7 +74,7 @@ absl::StatusOr<mlir::ModuleOp> RunQuantization(
     const SavedModelBundle* saved_model_bundle,
     const absl::string_view saved_model_dir,
     const std::unordered_set<std::string>& saved_model_tags,
-    const QuantizationConfig& quantization_config,
+    QuantizationConfig& quantization_config,
     const PyFunctionLibrary* quantization_py_function_lib,
     mlir::ModuleOp module_op) {
   if (saved_model_bundle == nullptr) {
@@ -87,12 +89,22 @@ absl::StatusOr<mlir::ModuleOp> RunQuantization(
         "be nullptr.");
   }
 
+  if (!quantization_config.has_calibration_options()) {
+    *quantization_config.mutable_calibration_options() =
+        mlir::quant::stablehlo::GetDefaultCalibrationOptions();
+  }
+
   const absl::flat_hash_map<std::string, SignatureDef> signature_def_map =
       GetSignatureDefMapFromBundle(*saved_model_bundle);
 
   std::vector<std::string> exported_names;
   for (const auto& [key, value_unused] : signature_def_map) {
     exported_names.push_back(key);
+  }
+
+  if (failed(mlir::tf_saved_model::FreezeVariables(
+          module_op, saved_model_bundle->GetSession()))) {
+    return absl::InternalError("Failed to freeze variables.");
   }
 
   StaticRangePtqComponent static_range_ptq_component(

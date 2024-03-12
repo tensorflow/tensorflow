@@ -18,48 +18,17 @@ limitations under the License.
 
 #include <utility>
 
-#include "absl/container/flat_hash_map.h"
 #include "absl/status/status.h"
-#include "absl/status/statusor.h"
-#include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
-#include "absl/synchronization/mutex.h"
-
-// Enable Eigen::ThreadPoolDevice structure definition, rather than just
-// declaration.
-#define EIGEN_USE_THREADS
-#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "xla/python/ifrt/array.h"
 #include "tsl/concurrency/ref_count.h"
+#include "tsl/platform/threadpool.h"
 
 namespace tensorflow {
 namespace ifrt_serving {
 
-const Eigen::ThreadPoolDevice& IfrtModelContext::GetThreadPoolDevice() const {
-  return thread_pool_device_;
-}
-absl::Status IfrtModelContext::RegisterLoadedVariable(
-    absl::string_view name,
-    tsl::RCReference<xla::ifrt::Array> loaded_variable) {
-  absl::MutexLock lock(&mutex_);
-  auto& variable = loaded_variable_map_[name];
-  if (variable != nullptr) {
-    return absl::AlreadyExistsError(
-        absl::StrCat("Variable '", name, "' already exists."));
-  }
-  variable = std::move(loaded_variable);
-  return absl::OkStatus();
-}
-
-absl::StatusOr<tsl::RCReference<xla::ifrt::Array>>
-IfrtModelContext::GetLoadedVariable(absl::string_view name) const {
-  absl::MutexLock lock(&mutex_);
-  auto it = loaded_variable_map_.find(name);
-  if (it == loaded_variable_map_.end()) {
-    return absl::NotFoundError(
-        absl::StrCat("Variable '", name, "' not found."));
-  }
-  return it->second;
+const tsl::thread::ThreadPool& IfrtModelContext::GetThreadPool() const {
+  return thread_pool_;
 }
 
 }  // namespace ifrt_serving

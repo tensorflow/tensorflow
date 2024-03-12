@@ -66,7 +66,8 @@ ParallelLoopEmitter::EmitLinearBaseAndThreadIdx(llvm::Type* index_type,
   llvm::Value* block_id =
       EmitCallToTargetIntrinsic(TargetIntrinsicID::kBlockIdx, {}, {}, b_);
   llvm_ir::AddRangeMetadata(0, launch_dimensions_.block_counts().x,
-                            static_cast<llvm::Instruction*>(block_id));
+                            static_cast<llvm::Instruction*>(block_id),
+                            b_->GetInsertBlock()->getModule());
   block_id = b_->CreateZExtOrTrunc(block_id, index_type, "block_id");
 
   // Per the PTX documentation:
@@ -74,7 +75,8 @@ ParallelLoopEmitter::EmitLinearBaseAndThreadIdx(llvm::Type* index_type,
   llvm::Value* thread_id_x =
       EmitCallToTargetIntrinsic(TargetIntrinsicID::kThreadIdx, {}, {}, b_);
   llvm_ir::AddRangeMetadata(0, launch_dimensions_.thread_counts_per_block().x,
-                            static_cast<llvm::Instruction*>(thread_id_x));
+                            static_cast<llvm::Instruction*>(thread_id_x),
+                            b_->GetInsertBlock()->getModule());
   thread_id_x = b_->CreateZExtOrTrunc(thread_id_x, index_type, "thread_id_x");
 
   llvm::Value* linear_index_base =
@@ -88,7 +90,8 @@ ParallelLoopEmitter::EmitLinearBaseAndThreadIdx(llvm::Type* index_type,
     llvm::Value* thread_id_y =
         EmitCallToTargetIntrinsic(TargetIntrinsicID::kThreadIdy, {}, {}, b_);
     llvm_ir::AddRangeMetadata(0, launch_dimensions_.thread_counts_per_block().y,
-                              static_cast<llvm::Instruction*>(thread_id_y));
+                              static_cast<llvm::Instruction*>(thread_id_y),
+                              b_->GetInsertBlock()->getModule());
     thread_id_y = b_->CreateZExtOrTrunc(thread_id_y, index_type, "thread_id_y");
     linear_index_base = b_->CreateAdd(
         linear_index_base,

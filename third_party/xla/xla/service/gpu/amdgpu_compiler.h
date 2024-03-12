@@ -16,14 +16,20 @@ limitations under the License.
 #ifndef XLA_SERVICE_GPU_AMDGPU_COMPILER_H_
 #define XLA_SERVICE_GPU_AMDGPU_COMPILER_H_
 
-#include <memory>
-#include <string>
-#include <vector>
-
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
+#include "llvm/IR/Module.h"
 #include "xla/hlo/ir/hlo_module.h"
+#include "xla/service/gpu/autotuner_util.h"
 #include "xla/service/gpu/gpu_compiler.h"
-#include "xla/statusor.h"
+#include "xla/service/hlo_module_config.h"
+#include "xla/service/hlo_pass_pipeline.h"
+#include "xla/stream_executor/device_description.h"
+#include "xla/stream_executor/device_memory_allocator.h"
+#include "xla/stream_executor/dnn.h"
+#include "xla/stream_executor/stream_executor_pimpl.h"
 #include "xla/xla.pb.h"
+#include "tsl/platform/threadpool.h"
 
 namespace xla {
 namespace gpu {

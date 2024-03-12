@@ -72,11 +72,11 @@ limitations under the License.
 
 #if (defined(GOOGLE_CUDA) && GOOGLE_CUDA)
 #include "third_party/gpus/cudnn/cudnn.h"  // IWYU pragma: keep
-#if CUDNN_VERSION >= 9000
+#if CUDNN_VERSION >= 90000
 #include "third_party/gpus/cudnn/cudnn_ops.h"
 #else
 #include "third_party/gpus/cudnn/cudnn_ops_infer.h"
-#endif  // CUDNN_VERSION >= 9000
+#endif  // CUDNN_VERSION >= 90000
 #include "xla/service/gpu/buffer_comparator.h"
 #include "xla/stream_executor/gpu/redzone_allocator.h"
 #endif
@@ -416,7 +416,7 @@ absl::StatusOr<AutotuneResult> GpuConvAlgorithmPicker::PickBestAlgorithmNoCache(
   se::DeviceMemoryAllocator* allocator = config_.GetAllocator();
 
   TF_ASSIGN_OR_RETURN(se::Stream* const stream, config_.GetStream());
-  StatusOr<AutotuneResult> result_or(Internal("Unknown platform."));
+  absl::StatusOr<AutotuneResult> result_or(Internal("Unknown platform."));
   // Check StreamExecutor on which platform it is. ROCm and Cuda implementation
   // have diverged. Specifically, we need to make sure redzone allocator related
   // utilities are not used in ROCm routine
@@ -766,8 +766,9 @@ absl::StatusOr<AutotuneResult> GpuConvAlgorithmPicker::AutotuneOneConvRunner(
           reference_result_buffers[i],
           runtime_arguments.input_output_allocator->AllocateBytes(
               result_buffers[i].size()));
-      stream->ThenMemcpy(&reference_result_buffers[i], result_buffers[i],
-                         result_buffers[i].size());
+      TF_RETURN_IF_ERROR(stream->Memcpy(&reference_result_buffers[i],
+                                        result_buffers[i],
+                                        result_buffers[i].size()));
     }
     (*reference_result) = {alg, reference_result_buffers};
   }
@@ -965,7 +966,7 @@ GpuConvAlgorithmPicker::PickBestAlgorithmNoCacheRocm(
     // before autotuning.  It's conceivable that using uninitialized memory as
     // the inputs might affect performance if e.g. the inputs contain
     // denormals, and this is easy enough.
-    stream->ThenMemZero(&buffer, buffer.size());
+    return stream->MemZero(&buffer, buffer.size());
   };
 
   // Allocate space for the input, filter, and output of the convolution.  We
@@ -975,7 +976,7 @@ GpuConvAlgorithmPicker::PickBestAlgorithmNoCacheRocm(
     TF_ASSIGN_OR_RETURN(auto buffer,
                         input_output_allocator.AllocateBytes(
                             ShapeUtil::ByteSizeOf(operand->shape())));
-    initialize_buffer(buffer);
+    TF_RETURN_IF_ERROR(initialize_buffer(buffer));
     operand_buffers.push_back(buffer);
   }
 
@@ -987,14 +988,14 @@ GpuConvAlgorithmPicker::PickBestAlgorithmNoCacheRocm(
           result_buffers[i],
           input_output_allocator.AllocateBytes(
               ShapeUtil::ByteSizeOf(instr->shape().tuple_shapes(i))));
-      initialize_buffer(result_buffers[i]);
+      TF_RETURN_IF_ERROR(initialize_buffer(result_buffers[i]));
     }
   } else {
     TF_ASSIGN_OR_RETURN(
         result_buffers[0],
         input_output_allocator.AllocateBytes(
             ShapeUtil::ByteSizeOf(instr->shape().tuple_shapes(0))));
-    initialize_buffer(result_buffers[0]);
+    TF_RETURN_IF_ERROR(initialize_buffer(result_buffers[0]));
   }
 
   ScratchAllocator scratch_allocator(device_ordinal, allocator);

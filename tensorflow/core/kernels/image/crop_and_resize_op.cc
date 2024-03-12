@@ -61,7 +61,7 @@ static inline Status ParseAndCheckBoxSizes(const Tensor& boxes,
                                            int* num_boxes) {
   if (boxes.NumElements() == 0 && box_index.NumElements() == 0) {
     *num_boxes = 0;
-    return OkStatus();
+    return absl::OkStatus();
   }
   // The shape of 'boxes' is [num_boxes, 4].
   if (boxes.dims() != 2) {
@@ -80,7 +80,7 @@ static inline Status ParseAndCheckBoxSizes(const Tensor& boxes,
   if (box_index.dim_size(0) != *num_boxes) {
     return errors::InvalidArgument("box_index has incompatible shape");
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Conditionally calls the compute callback if all values in box_index are in
@@ -868,9 +868,8 @@ inline void RunIfBoxIndexIsValid<GPUDevice>(
   se::DeviceMemoryBase wrapped(isvalid_dev.data(), sizeof(bool));
   const bool status =
       stream
-          ->ThenMemcpy(
-              isvalid_host_tensor.scalar<bool>().data() /* destination */,
-              wrapped /* source */, sizeof(bool))
+          ->Memcpy(isvalid_host_tensor.scalar<bool>().data() /* destination */,
+                   wrapped /* source */, sizeof(bool))
           .ok();
   OP_REQUIRES_ASYNC(
       context, status,

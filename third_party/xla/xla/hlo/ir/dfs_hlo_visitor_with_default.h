@@ -20,6 +20,7 @@ limitations under the License.
 #include <utility>
 
 #include "absl/base/optimization.h"
+#include "absl/log/log.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/dfs_hlo_visitor.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -117,6 +118,9 @@ class DfsHloVisitorWithDefaultBase
     return DefaultAction(hlo);
   }
   Status HandleAllToAll(HloInstructionPtr hlo) override {
+    return DefaultAction(hlo);
+  }
+  Status HandleCollectiveBroadcast(HloInstructionPtr hlo) override {
     return DefaultAction(hlo);
   }
   Status HandleCollectivePermute(HloInstructionPtr hlo) override {
@@ -323,8 +327,8 @@ class DfsHloRewriteVisitor : public DfsHloVisitorWithDefault {
   Status ReplaceWithNewInstruction(
       HloInstruction* old_instruction,
       std::unique_ptr<HloInstruction> new_instruction) {
-    VLOG(3) << "Replacing instruction:"
-            << "\n  old: " << old_instruction->ToString()
+    VLOG(3) << "Replacing instruction:" << "\n  old: "
+            << old_instruction->ToString()
             << "\n  new: " << new_instruction->ToString();
     Status status = old_instruction->parent()->ReplaceWithNewInstruction(
         old_instruction, std::move(new_instruction));
@@ -340,8 +344,8 @@ class DfsHloRewriteVisitor : public DfsHloVisitorWithDefault {
   StatusOr<bool> ReplaceInstruction(HloInstruction* old_instruction,
                                     HloInstruction* new_instruction,
                                     bool preserve_sharding) {
-    VLOG(3) << "Replacing instruction:"
-            << "\n  old: " << old_instruction->ToString()
+    VLOG(3) << "Replacing instruction:" << "\n  old: "
+            << old_instruction->ToString()
             << "\n  new: " << new_instruction->ToString();
     StatusOr<bool> changed_or = old_instruction->parent()->ReplaceInstruction(
         old_instruction, new_instruction, preserve_sharding);

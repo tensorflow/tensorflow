@@ -1,15 +1,14 @@
 # Description:
 # C API for TensorFlow, for use by client language bindings.
 
+load("//tsl:tsl.bzl", "internal_visibility", "tsl_copts", "tsl_gpu_library")
 load("//tsl/platform:build_config.bzl", "tsl_cc_test")
 load("@local_tsl//tsl/platform:rules_cc.bzl", "cc_library")
-load("//tsl:tsl.bzl", "tsl_copts", "tsl_gpu_library")
 
 # buildifier: disable=same-origin-load
 load("//tsl:tsl.default.bzl", "filegroup")
 
 package(
-    default_visibility = ["//visibility:public"],
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     licenses = ["notice"],
 )
@@ -22,7 +21,7 @@ filegroup(
     srcs = [
         "tsl_status.h",
     ],
-    visibility = ["//visibility:public"],
+    visibility = internal_visibility(["//tensorflow:__subpackages__"]),
 )
 
 filegroup(
@@ -36,7 +35,9 @@ filegroup(
             "*test*",
         ],
     ),
-    visibility = ["//visibility:public"],
+    visibility = internal_visibility([
+        "//tensorflow/c:__subpackages__",
+    ]),
 )
 
 tsl_gpu_library(
@@ -78,7 +79,6 @@ cc_library(
 tsl_cc_test(
     name = "tsl_status_test",
     srcs = ["tsl_status_test.cc"],
-    visibility = ["//visibility:public"],
     deps = [
         ":tsl_status",
         ":tsl_status_internal",
@@ -111,5 +111,7 @@ tsl_gpu_library(
 filegroup(
     name = "tsl_status_internal_headers",
     srcs = ["tsl_status_internal.h"],
-    visibility = ["//visibility:public"],
+    visibility = internal_visibility([
+        "//tensorflow/c:__subpackages__",
+    ]),
 )

@@ -67,7 +67,7 @@ class BFloat16PropagationTest : public HloTestBase {
   bool PropagatePrecision(HloModule* module) {
     TestBFloat16Support bfloat16_support;
     BFloat16Propagation propagation(&bfloat16_support);
-    StatusOr<bool> result = propagation.Run(module);
+    absl::StatusOr<bool> result = propagation.Run(module);
     EXPECT_IS_OK(result.status());
     return result.value();
   }

@@ -60,13 +60,15 @@ absl::Status MakeBatchPointers(se::Stream* stream,
 #else
 
   TF_ASSIGN_OR_RETURN(
-      auto kernel, (executor->CreateTypedKernel<se::DeviceMemoryBase, size_t,
-                                                size_t, se::DeviceMemoryBase>(
-                       "make_batch_pointers", make_batch_pointers::kernel())));
+      auto kernel,
+      (se::TypedKernel<
+          se::DeviceMemoryBase, size_t, size_t,
+          se::DeviceMemoryBase>::Create(executor, "make_batch_pointers",
+                                        make_batch_pointers::kernel())));
 
   TF_RETURN_IF_ERROR(
       stream->ThenLaunch(se::ThreadDim(kThreads, 1, 1),
-                         se::BlockDim(CeilOfRatio(n, kThreads), 1, 1), *kernel,
+                         se::BlockDim(CeilOfRatio(n, kThreads), 1, 1), kernel,
                          base_ptr, stride_bytes, n, ptrs_out));
 #endif
   return absl::OkStatus();

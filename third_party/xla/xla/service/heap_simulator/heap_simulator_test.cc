@@ -263,7 +263,7 @@ class HeapCallRecorder : public HeapAlgorithm<HloValue> {
   void Free(const HloValue* buffer, int64_t size) override {
     calls_->emplace_back(kFree, buffer);
   }
-  StatusOr<Result> Finish() override {
+  absl::StatusOr<Result> Finish() override {
     calls_->emplace_back(kFinish, nullptr);
     HeapSimulator::Result<HloValue> result;
     result.heap_size = result_.heap_size;

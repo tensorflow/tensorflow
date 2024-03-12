@@ -89,6 +89,7 @@ int RunProfiler(int argc, char** argv) {
       // Unary
       HloOpcode::kCbrt,
       HloOpcode::kCos,
+      HloOpcode::kErf,
       HloOpcode::kExp,
       HloOpcode::kExpm1,
       HloOpcode::kLog,

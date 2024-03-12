@@ -1,8 +1,8 @@
 # Description:
 # Platform-specific build configurations.
 
-load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load("//tensorflow:tensorflow.bzl", "tf_copts")
+load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 
 package(default_visibility = ["//tensorflow:internal"])
 
@@ -19,8 +19,20 @@ cc_library(
         "@farmhash_archive//:farmhash",
         "@fft2d",
         "@highwayhash//:sip_hash",
-        "@local_tsl//tsl/platform/default/build_config:gif",
-        "@local_tsl//tsl/platform/default/build_config:jpeg",
         "@zlib",
     ],
+)
+
+cc_library(
+    name = "tensorflow_platform_specific",
+    copts = tf_copts(),
+    linkstatic = 1,
+    deps = [],
+)
+
+cc_library(
+    name = "test_main",
+    testonly = 1,
+    linkstatic = 1,
+    deps = [],
 )

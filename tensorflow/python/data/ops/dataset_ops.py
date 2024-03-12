@@ -1479,12 +1479,12 @@ class DatasetV2(
     ```
 
     Args:
-      buffer_size: A `tf.int64` scalar `tf.Tensor`, representing the number of
-        elements from this dataset from which the new dataset will sample. To
-        uniformly shuffle the entire dataset, use
+      buffer_size: An int or `tf.int64` scalar `tf.Tensor`, representing the
+        number of elements from this dataset from which the new dataset will
+        sample. To uniformly shuffle the entire dataset, use
         `buffer_size=dataset.cardinality()`.
-      seed: (Optional.) A `tf.int64` scalar `tf.Tensor`, representing the random
-        seed that will be used to create the distribution. See
+      seed: (Optional.) An int or `tf.int64` scalar `tf.Tensor`, representing
+        the random seed that will be used to create the distribution. See
         `tf.random.set_seed` for behavior.
       reshuffle_each_iteration: (Optional.) A boolean, which if true indicates
         that the dataset should be pseudorandomly reshuffled each time it is
@@ -2277,9 +2277,11 @@ name=None))
       map_func: A function mapping a dataset element to another dataset element.
       num_parallel_calls: (Optional.) A `tf.int64` scalar `tf.Tensor`,
         representing the number elements to process asynchronously in parallel.
-        If not specified, elements will be processed sequentially. If the value
-        `tf.data.AUTOTUNE` is used, then the number of parallel
-        calls is set dynamically based on available CPU.
+        If the value `tf.data.AUTOTUNE` is used, then the number of parallel
+        calls is set dynamically based on available CPU. If not specified, the
+        `tf.data.Options.experimental_optimization.map_parallelization` option
+        (`True` by default) controls whether the map will run as with
+        `tf.data.AUTOTUNE` or run sequentially.
       deterministic: (Optional.) When `num_parallel_calls` is specified, if this
         boolean is specified (`True` or `False`), it controls the order in which
         the transformation produces elements. If set to `False`, the

@@ -72,6 +72,7 @@ limitations under the License.
 #include "xla/literal.h"
 #include "xla/literal_util.h"
 #include "xla/mlir/utils/error_util.h"
+#include "xla/mlir/utils/type_util.h"
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 #include "xla/mlir_hlo/mhlo/transforms/passes.h"
 #include "xla/primitive_util.h"
@@ -834,9 +835,20 @@ bool SimplyReturnedOp(mlir::Operation* op) {
 namespace mlir {
 namespace mhlo {
 namespace {
+LogicalResult ExportXlaOp(CollectiveBroadcastOp op, OpLoweringContext ctx) {
+  auto& value_map = *ctx.values;
+  xla::XlaOp operand;
+  if (failed(GetXlaOp(op.getOperand(), value_map, &operand, op)))
+    return failure();
+  value_map[op->getResult(0)] = xla::CollectiveBroadcast(
+      operand, Convert_replica_groups(op.getReplicaGroups()),
+      Convert_channel_handle(op.getChannelHandle()));
 
-LogicalResult ExportXlaOp(CollectiveBroadcastOp, OpLoweringContext) {
-  // TODO: b/314330871 - Implement MHLO export for CollectiveBroadcastOp.
+  return success();
+}
+
+LogicalResult ExportXlaOp(CompositeOp, OpLoweringContext) {
+  // TODO: b/328526226 - Implement MHLO export for CompositeOp.
   return failure();
 }
 
@@ -1384,7 +1396,8 @@ LogicalResult ExportXlaOp(BitcastConvertOp op, OpLoweringContext ctx) {
     return failure();
 
   value_map[op] = xla::BitcastConvertType(
-      operand, xla::TypeToPrimitiveType(getElementTypeOrSelf(op.getType())));
+      operand,
+      xla::ConvertMlirTypeToPrimitiveType(getElementTypeOrSelf(op.getType())));
   return success();
 }
 
@@ -1412,7 +1425,7 @@ LogicalResult ExportXlaOp(StochasticConvertOp op, OpLoweringContext ctx) {
 
   value_map[op] = xla::StochasticConvertType(
       operand, random,
-      xla::TypeToPrimitiveType(getElementTypeOrSelf(op.getType())));
+      xla::ConvertMlirTypeToPrimitiveType(getElementTypeOrSelf(op.getType())));
   return success();
 }
 
@@ -1446,7 +1459,7 @@ LogicalResult ExportXlaOp(DotOp op, OpLoweringContext ctx) {
   if (failed(GetXlaOp(op.getRhs(), value_map, &rhs, op)))
     return mlir::failure();
   xla::PrimitiveType preferred_element_type =
-      xla::TypeToPrimitiveType(getElementTypeOrSelf(op.getType()));
+      xla::ConvertMlirTypeToPrimitiveType(getElementTypeOrSelf(op.getType()));
   value_map[op] = xla::Dot(
       lhs, rhs, Unwrap(Convert_precision_config(op.getPrecisionConfig())),
       preferred_element_type);
@@ -1461,7 +1474,7 @@ LogicalResult ExportXlaOp(DotGeneralOp op, OpLoweringContext ctx) {
   if (failed(GetXlaOp(op.getRhs(), value_map, &rhs, op)))
     return mlir::failure();
   xla::PrimitiveType preferred_element_type =
-      xla::TypeToPrimitiveType(getElementTypeOrSelf(op.getType()));
+      xla::ConvertMlirTypeToPrimitiveType(getElementTypeOrSelf(op.getType()));
   value_map[op] = xla::DotGeneral(
       lhs, rhs, Convert_dot_dimension_numbers(op.getDotDimensionNumbers()),
       Unwrap(Convert_precision_config(op.getPrecisionConfig())),
@@ -1657,7 +1670,7 @@ LogicalResult ExportXlaOp(mlir::mhlo::ConvolutionOp op, OpLoweringContext ctx) {
   if (failed(GetXlaOp(op.getRhs(), value_map, &rhs, op)))
     return mlir::failure();
   xla::PrimitiveType preferred_element_type =
-      xla::TypeToPrimitiveType(getElementTypeOrSelf(op.getType()));
+      xla::ConvertMlirTypeToPrimitiveType(getElementTypeOrSelf(op.getType()));
   xla::XlaOp xla_result = xla::ConvGeneralDilated(
       lhs, rhs, Convert_window_strides(op.getWindowStrides()),
       Convert_padding(op.getPadding()),
@@ -1679,7 +1692,8 @@ LogicalResult ExportXlaOp(ConvertOp op, OpLoweringContext ctx) {
     return failure();
 
   value_map[op] = xla::ConvertElementType(
-      operand, xla::TypeToPrimitiveType(getElementTypeOrSelf(op.getType())));
+      operand,
+      xla::ConvertMlirTypeToPrimitiveType(getElementTypeOrSelf(op.getType())));
   return success();
 }
 
@@ -3526,7 +3540,7 @@ xla::Status PrepareForExport(mlir::ModuleOp module) {
   }
   if (failed(pm.run(module)))
     return tsl::errors::Internal("Unable to prepare for XLA export");
-  return ::tsl::OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace
@@ -3603,7 +3617,7 @@ xla::Status ConvertMlirHloToHlo(mlir::ModuleOp module, xla::HloProto* hlo_proto,
       converter.BuildStackFramesIndexProto();
   hlo_module.mutable_stack_frame_index()->Swap(&stack_frame_index);
   hlo_proto->mutable_hlo_module()->Swap(&hlo_module);
-  return ::tsl::OkStatus();
+  return absl::OkStatus();
 }
 
 xla::Status BuildHloFromMlirHlo(mlir::Block& block, xla::XlaBuilder& builder,
@@ -3648,7 +3662,7 @@ xla::Status BuildHloFromMlirHlo(mlir::Block& block, xla::XlaBuilder& builder,
     }
   }
 
-  return ::tsl::OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace mlir

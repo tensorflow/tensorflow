@@ -50,7 +50,7 @@ ENTRY entry {
   auto hlo_module = ParseAndReturnVerifiedModule(hlo_string, config).value();
 
   // Verify that compilation succeeded.
-  StatusOr<std::unique_ptr<Executable>> executable =
+  absl::StatusOr<std::unique_ptr<Executable>> executable =
       CompileToExecutable(std::move(hlo_module));
   TF_EXPECT_OK(executable.status());
 }

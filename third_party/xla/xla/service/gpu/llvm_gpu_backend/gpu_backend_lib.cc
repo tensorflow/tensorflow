@@ -214,7 +214,7 @@ void FeedLLVMWithFlags(const std::vector<std::string>& cl_opts) {
   for (const std::string& cl_opt : cl_opts) {
     fake_argv.push_back(cl_opt.c_str());
   }
-  llvm::cl::ParseCommandLineOptions(fake_argv.size(), &fake_argv[0]);
+  llvm::cl::ParseCommandLineOptions(fake_argv.size(), fake_argv.data());
 }
 
 // Returns whether the module could use any device bitcode library functions.
@@ -292,14 +292,10 @@ absl::Status NVPTXTargetModuleLinker(llvm::Module* module,
 std::unique_ptr<llvm::TargetMachine> NVPTXGetTargetMachine(
     llvm::Triple target_triple, se::CudaComputeCapability compute_capability,
     const DebugOptions& debug_options) {
-  // TODO(b/266678775): Make it always PTX 7.1 as soon as TF driver requirements
-  // are updated.
-  const std::string ptx_ver =
-      debug_options.xla_gpu_enable_triton_gemm() ? "+ptx71" : "+ptx60";
   // Figure out the exact name of the processor as known to the NVPTX backend
   // from the gpu_architecture flag.
   return GetTargetMachine(target_triple, GetSmName(compute_capability),
-                          debug_options, ptx_ver);
+                          debug_options, /*feature_str=*/"+ptx74");
 }
 
 using TargetModuleLinker =
@@ -798,7 +794,7 @@ absl::StatusOr<std::vector<uint8_t>> EmitModuleToHsaco(
 
   std::vector<uint8_t> hsaco(hsaco_file_size);
   hsaco_file.seekg(0, std::ios::beg);
-  hsaco_file.read(reinterpret_cast<char*>(&hsaco[0]), hsaco_file_size);
+  hsaco_file.read(reinterpret_cast<char*>(hsaco.data()), hsaco_file_size);
   hsaco_file.close();
   if (!keep_tempfiles) {
     remove(ir_path.c_str());

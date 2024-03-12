@@ -46,7 +46,7 @@ class CheckpointCallbackManagerTest : public ::testing::Test {
 
 TEST_F(CheckpointCallbackManagerTest,
        GetCheckpointIdAndPathFromPrefixWithTempDir) {
-  StatusOr<std::pair<std::string, std::string>> pair =
+  absl::StatusOr<std::pair<std::string, std::string>> pair =
       CheckpointCallbackManager::GetCheckpointIdAndPathFromPrefix(
           "/foo/bar/model.ckpt-5_temp/part-00000-of-00001");
   TF_ASSERT_OK(pair.status());
@@ -56,7 +56,7 @@ TEST_F(CheckpointCallbackManagerTest,
 
 TEST_F(CheckpointCallbackManagerTest,
        GetCheckpointIdAndPathFromPrefixWithPartFile) {
-  StatusOr<std::pair<std::string, std::string>> pair =
+  absl::StatusOr<std::pair<std::string, std::string>> pair =
       CheckpointCallbackManager::GetCheckpointIdAndPathFromPrefix(
           "/foo/bar/model.ckpt-5/part-00000-of-00001");
   TF_ASSERT_OK(pair.status());
@@ -66,7 +66,7 @@ TEST_F(CheckpointCallbackManagerTest,
 
 TEST_F(CheckpointCallbackManagerTest,
        GetCheckpointIdAndPathFromPrefixWithoutPartFile) {
-  StatusOr<std::pair<std::string, std::string>> pair =
+  absl::StatusOr<std::pair<std::string, std::string>> pair =
       CheckpointCallbackManager::GetCheckpointIdAndPathFromPrefix(
           "/foo/bar/model.ckpt-5");
   TF_ASSERT_OK(pair.status());
@@ -76,7 +76,7 @@ TEST_F(CheckpointCallbackManagerTest,
 
 TEST_F(CheckpointCallbackManagerTest,
        GetCheckpointIdAndPathFromPrefixForLongerPartName) {
-  StatusOr<std::pair<std::string, std::string>> pair =
+  absl::StatusOr<std::pair<std::string, std::string>> pair =
       CheckpointCallbackManager::GetCheckpointIdAndPathFromPrefix(
           "/foo/bar/ckpt-tensor-1_temp/part-00000-of-00002_dev-0-of-2");
   TF_ASSERT_OK(pair.status());
@@ -111,11 +111,11 @@ TEST_F(CheckpointCallbackManagerTest, RegisterSaveCallbackTwice) {
 TEST_F(CheckpointCallbackManagerTest, RegisterRestoreCallbackTwice) {
   RestoreCallback first_callback = [](absl::string_view checkpoint_id,
                                       absl::string_view str) {
-    return OkStatus();
+    return absl::OkStatus();
   };
   RestoreCallback second_callback = [](absl::string_view checkpoint_id,
                                        absl::string_view str) {
-    return OkStatus();
+    return absl::OkStatus();
   };
 
   TF_ASSERT_OK(checkpoint_callback_manager_->RegisterRestoreCallback(
@@ -150,11 +150,11 @@ TEST_F(CheckpointCallbackManagerTest, DoesSaveCallbackExist) {
 TEST_F(CheckpointCallbackManagerTest, DoesRestoreCallbackExist) {
   RestoreCallback first_callback = [](absl::string_view checkpoint_id,
                                       absl::string_view str) {
-    return OkStatus();
+    return absl::OkStatus();
   };
   RestoreCallback second_callback = [](absl::string_view checkpoint_id,
                                        absl::string_view str) {
-    return OkStatus();
+    return absl::OkStatus();
   };
 
   TF_ASSERT_OK(checkpoint_callback_manager_->RegisterRestoreCallback(
@@ -235,7 +235,7 @@ TEST_F(CheckpointCallbackManagerTest, Restore) {
     EXPECT_EQ(checkpoint_id, "model.ckpt-100");
     EXPECT_EQ(str, "Apple");
     ++callback_call_count;
-    return OkStatus();
+    return absl::OkStatus();
   };
 
   TF_ASSERT_OK(checkpoint_callback_manager_->RegisterRestoreCallback(
@@ -271,7 +271,7 @@ TEST_F(CheckpointCallbackManagerTest, SaveAndRestore) {
     EXPECT_EQ(checkpoint_id, "model.ckpt-500");
     EXPECT_EQ(str, "Apple");
     ++restore_callback_count;
-    return OkStatus();
+    return absl::OkStatus();
   };
 
   TF_ASSERT_OK(checkpoint_callback_manager_->RegisterRestoreCallback(
@@ -312,7 +312,7 @@ TEST_F(CheckpointCallbackManagerTest, RestoreLazyCallback) {
     EXPECT_EQ(checkpoint_id, "model.ckpt-100");
     EXPECT_EQ(str, "Apple");
     ++callback_call_count;
-    return OkStatus();
+    return absl::OkStatus();
   };
 
   TF_EXPECT_OK(WriteStringToFile(

@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef XLA_SERVICE_GPU_MATMUL_UTILS_H_
 #define XLA_SERVICE_GPU_MATMUL_UTILS_H_
 
+#include <cstddef>
 #include <cstdint>
 #include <optional>
 #include <string>
@@ -23,17 +24,16 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/types/span.h"
 #include "xla/autotuning.pb.h"
 #include "xla/hlo/ir/hlo_instruction.h"
-#include "xla/mlir_hlo/lhlo_gpu/IR/lhlo_gpu_ops.h"
 #include "xla/service/gpu/backend_configs.pb.h"
-#include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/shape.h"
-#include "xla/statusor.h"
 #include "xla/stream_executor/blas.h"
+#include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/gpu/gpu_blas_lt.h"
-#include "xla/types.h"
 #include "xla/xla_data.pb.h"
 
 #if TENSORFLOW_USE_ROCM
@@ -97,7 +97,6 @@ struct GemmConfig : public se::gpu::GemmConfig {
   static constexpr int64_t kDefaultWorkspace = 4 * 1024 * 1024;  // 4 MiB
 
   static absl::StatusOr<GemmConfig> For(const HloInstruction* gemm);
-  static absl::StatusOr<GemmConfig> For(mlir::lmhlo_gpu::GEMMOp op);
 
   static absl::StatusOr<GemmConfig> For(
       const Shape& lhs_shape, absl::Span<const int64_t> lhs_batch_dims,
@@ -118,43 +117,6 @@ struct GemmConfig : public se::gpu::GemmConfig {
       const Shape* bias_shape_ptr, const Shape& output_shape, double alpha_real,
       double alpha_imag, double beta, std::optional<int64_t> algorithm,
       int64_t compute_precision, bool grad_x, bool grad_y);
-
-  template <typename CublasLtMatmulMaybeF8Op,
-            typename = std::enable_if<
-                std::is_same<CublasLtMatmulMaybeF8Op,
-                             mlir::lmhlo_gpu::CublasLtMatmulOp>::value ||
-                std::is_same<CublasLtMatmulMaybeF8Op,
-                             mlir::lmhlo_gpu::CublasLtMatmulF8Op>::value>>
-  static absl::StatusOr<GemmConfig> For(CublasLtMatmulMaybeF8Op op) {
-    mlir::mhlo::DotDimensionNumbersAttr dot_dims = op.getDotDimensionNumbers();
-
-    int64_t compute_precision = 0;  // Default
-    if (op.getPrecisionConfig().has_value()) {
-      auto precision_config = op.getPrecisionConfig();
-      for (auto attr : precision_config.value()) {
-        int64_t value = static_cast<int64_t>(
-            attr.template cast<mlir::mhlo::PrecisionAttr>().getValue());
-        if (value > compute_precision) {
-          compute_precision = value;
-        }
-      }
-    }
-
-    Shape bias_shape;
-    if (op.getBias() != nullptr) {
-      bias_shape = GetShape(op.getBias());
-    }
-    return GemmConfig::For(
-        GetShape(op.getA()), dot_dims.getLhsBatchingDimensions(),
-        dot_dims.getLhsContractingDimensions(), GetShape(op.getB()),
-        dot_dims.getRhsBatchingDimensions(),
-        dot_dims.getRhsContractingDimensions(), GetShape(op.getC()),
-        op.getBias() == nullptr ? nullptr : &bias_shape, GetShape(op.getD()),
-        op.getAlphaReal().convertToDouble(),
-        op.getAlphaImag().convertToDouble(), op.getBeta().convertToDouble(),
-        op.getAlgorithm(), compute_precision, /*grad_x=*/false,
-        /*grad_y=*/false);
-  }
 
   struct DescriptorsTuple {
     se::gpu::MatrixDescriptor lhs;
@@ -187,8 +149,6 @@ absl::StatusOr<bool> EpilogueHasAuxiliaryOutput(
     GemmBackendConfig_Epilogue epilogue);
 
 absl::StatusOr<se::gpu::BlasLt::Epilogue> AsBlasLtEpilogue(
-    mlir::lmhlo_gpu::CublasLtMatmulEpilogue epilogue);
-absl::StatusOr<se::gpu::BlasLt::Epilogue> AsBlasLtEpilogue(
     GemmBackendConfig_Epilogue epilogue);
 
 }  // namespace gpublas_lt
@@ -196,47 +156,43 @@ absl::StatusOr<se::gpu::BlasLt::Epilogue> AsBlasLtEpilogue(
 // We should use this in code instead of AutotuneResult::TritonGemmKey.
 // This has some advantages, for example it can be used in hashmaps.
 struct TritonGemmConfig {
-  struct ClusterDims {
-    constexpr ClusterDims() = default;
-    constexpr ClusterDims(int x, int y, int z) : x(x), y(y), z(z) {}
-    int x = 1;
-    int y = 1;
-    int z = 1;
-  };
-
   constexpr TritonGemmConfig() = default;
   constexpr TritonGemmConfig(int block_m, int block_n, int block_k, int split_k,
-                             int num_stages, int num_warps, int num_ctas = 1,
-                             ClusterDims cluster_dims = ClusterDims(1, 1, 1),
-                             bool enable_warp_specialization = false)
+                             int num_stages, int num_warps, int num_ctas = 1)
       : block_m(block_m),
         block_n(block_n),
         block_k(block_k),
         split_k(split_k),
         num_stages(num_stages),
         num_warps(num_warps),
-        num_ctas(num_ctas),
-        cluster_dims(cluster_dims),
-        enable_warp_specialization(enable_warp_specialization) {}
+        num_ctas(num_ctas) {}
   int block_m = 0;
   int block_n = 0;
   int block_k = 0;
   int split_k = 0;
   int num_stages = 0;
   int num_warps = 0;
-  int num_ctas = 1;
-  ClusterDims cluster_dims;
-  bool enable_warp_specialization = false;
+  // Number of blocks in a block cluster.
+  int num_ctas = 0;
+
+  // When adding new members, please update all methods, such as ToTuple,
+  // FromProto, ToProto, ToString, etc. Updating ToTuple is not enough.
+  // Please also add new members to AutotuneResult::TritonGemmKey in
+  // autotuning.proto. Also kVersion has to be incremented in autotuner_util.cc
+  // and all the autotuning results stored in tests, repos, etc. will have to
+  // be updated.
 
  private:
   auto ToTuple() const {
     return std::make_tuple(block_m, block_n, block_k, split_k, num_stages,
-                           num_warps, num_ctas, cluster_dims.x, cluster_dims.y,
-                           cluster_dims.z, enable_warp_specialization);
+                           num_warps, num_ctas);
   }
 
  public:
-  static TritonGemmConfig FromProto(const AutotuneResult::TritonGemmKey& proto);
+  // Creates a TritonGemmConfig from the supplied proto, doing a simple sanity
+  // check.
+  static absl::StatusOr<TritonGemmConfig> FromProto(
+      const AutotuneResult::TritonGemmKey& proto);
   AutotuneResult::TritonGemmKey ToProto() const;
 
   std::string ToString() const;

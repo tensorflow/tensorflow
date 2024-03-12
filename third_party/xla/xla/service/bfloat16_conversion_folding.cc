@@ -252,7 +252,7 @@ Status BFloat16ConversionFoldingVisitor::HandleAllReduce(HloInstruction* crs) {
   return OkStatus();
 }
 
-StatusOr<bool> BFloat16ConversionFolding::Run(
+absl::StatusOr<bool> BFloat16ConversionFolding::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   XLA_VLOG_LINES(

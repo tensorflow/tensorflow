@@ -35,8 +35,9 @@ class ServiceExecutableRunOptions {
   // with the first argument being the device ordinal, the second
   // argument being the number of streams to borrow, and the third
   // argument being the priority of the streams.
-  using StreamBorrower = std::function<StatusOr<std::vector<StreamPool::Ptr>>(
-      int, int, se::StreamPriority)>;
+  using StreamBorrower =
+      std::function<absl::StatusOr<std::vector<StreamPool::Ptr>>(
+          int, int, se::StreamPriority)>;
 
   ServiceExecutableRunOptions()
       : ServiceExecutableRunOptions(ExecutableRunOptions()) {}
@@ -59,7 +60,7 @@ class ServiceExecutableRunOptions {
 
   // Borrows a stream and returns a smart pointer which returns the stream on
   // destruction.
-  StatusOr<StreamPool::Ptr> BorrowStream(
+  absl::StatusOr<StreamPool::Ptr> BorrowStream(
       int device_ordinal,
       se::StreamPriority priority = se::StreamPriority::Default) const {
     if (!stream_borrower_) {
@@ -73,7 +74,7 @@ class ServiceExecutableRunOptions {
     return stream;
   }
 
-  StatusOr<std::vector<StreamPool::Ptr>> BorrowStreams(
+  absl::StatusOr<std::vector<StreamPool::Ptr>> BorrowStreams(
       int device_ordinal, int num_streams,
       se::StreamPriority priority = se::StreamPriority::Default) const {
     return stream_borrower_

@@ -19,9 +19,9 @@ limitations under the License.
 #include <cstdint>
 #include <string>
 
+#include "absl/status/statusor.h"
 #include "xla/service/gpu/kernels/custom_kernel.h"
 #include "xla/service/gpu/kernels/cutlass_gemm.h"
-#include "xla/statusor.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/xla_data.pb.h"
 

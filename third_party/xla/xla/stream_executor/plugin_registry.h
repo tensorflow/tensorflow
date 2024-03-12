@@ -17,6 +17,8 @@ limitations under the License.
 #define XLA_STREAM_EXECUTOR_PLUGIN_REGISTRY_H_
 
 #include <map>
+#include <optional>
+#include <string>
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"

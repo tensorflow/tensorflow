@@ -110,6 +110,14 @@ static absl::StatusOr<hipblasLtEpilogue_t> AsHipblasLtEpilogue(
       return HIPBLASLT_EPILOGUE_RELU_BIAS;
     case gpu::BlasLt::Epilogue::kGELU:
       return HIPBLASLT_EPILOGUE_GELU;
+#if TF_ROCM_VERSION >= 60000
+    case gpu::BlasLt::Epilogue::kGELUWithAux:
+      return HIPBLASLT_EPILOGUE_GELU_AUX;
+    case gpu::BlasLt::Epilogue::kBiasThenGELU:
+      return HIPBLASLT_EPILOGUE_GELU_BIAS;
+    case gpu::BlasLt::Epilogue::kBiasThenGELUWithAux:
+      return HIPBLASLT_EPILOGUE_GELU_AUX_BIAS;
+#endif
     default:
       return absl::InternalError("Unsupported epilogue: " +
                                  std::to_string((int)epilogue));
@@ -357,9 +365,8 @@ absl::Status BlasLt::MatmulPlan::DoMatmul(
     DeviceMemoryBase b_scale, DeviceMemoryBase c_scale,
     DeviceMemoryBase d_scale, DeviceMemoryBase d_amax,
     blas::ProfileResult* profile_result) const {
-  TF_ASSIGN_OR_RETURN(
-      std::optional<gpu::GpuTimer> timer,
-      gpu::GpuTimer::CreateIfNeeded(gpu::AsGpuStream(stream), profile_result));
+  TF_ASSIGN_OR_RETURN(std::optional<gpu::GpuTimer> timer,
+                      gpu::GpuTimer::CreateIfNeeded(stream, profile_result));
 
   void* workspace = nullptr;
   if (algorithm.workspace_size > 0) {

@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/core/kernels/batching_util/batch_resource_base.h"
 
 #include <algorithm>
+#include <cstddef>
 #include <cstdint>
 #include <functional>
 #include <iterator>
@@ -26,10 +27,13 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/container/fixed_array.h"
 #include "absl/container/flat_hash_map.h"
+#include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/blocking_counter.h"
+#include "absl/synchronization/mutex.h"
 #include "absl/time/time.h"
 #include "absl/types/optional.h"
 #include "tensorflow/core/common_runtime/cost_constants.h"
@@ -39,10 +43,16 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/request_cost.h"
 #include "tensorflow/core/common_runtime/request_cost_accessor.h"
 #include "tensorflow/core/common_runtime/request_cost_accessor_registry.h"
+#include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/op_requires.h"
 #include "tensorflow/core/framework/ops_util.h"
+#include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_util.h"
 #include "tensorflow/core/kernels/batching_util/concat_split_util.h"
+#include "tensorflow/core/kernels/batching_util/input_split_metadata.h"
+#include "tensorflow/core/kernels/batching_util/threadsafe_status.h"
 #include "tensorflow/core/kernels/batching_util/warmup.h"
 #include "tensorflow/core/lib/gtl/cleanup.h"
 #include "tensorflow/core/lib/monitoring/counter.h"
@@ -50,6 +60,10 @@ limitations under the License.
 #include "tensorflow/core/lib/monitoring/percentile_sampler.h"
 #include "tensorflow/core/lib/monitoring/sampler.h"
 #include "tensorflow/core/lib/monitoring/types.h"
+#include "tensorflow/core/platform/context.h"
+#include "tensorflow/core/platform/env_time.h"
+#include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
@@ -277,6 +291,7 @@ BatchResourceBase::BatchTask::CreateSplitTask(
   task->is_partial = true;
   task->start_time = this->start_time;
   task->request_cost = this->request_cost;
+  task->forced_warmup_batch_size = this->forced_warmup_batch_size;
 
   return task;
 }
@@ -300,12 +315,22 @@ Status BatchResourceBase::RegisterWarmupInputs(
     int64_t guid, OpKernelContext* context, const string& batcher_queue_name,
     const CreateBatchTaskFn& create_batch_task_fn,
     AsyncOpKernel::DoneCallback done) {
+  auto shared_status = std::make_shared<ThreadSafeStatus>();
+  auto create_batch_task_fn_share_status = [&create_batch_task_fn,
+                                            &shared_status]() {
+    auto batch_task = create_batch_task_fn();
+    if (!batch_task.ok()) {
+      return batch_task;
+    }
+    (*batch_task)->status = shared_status;
+    return batch_task;
+  };
   auto warmup_counter =
       std::make_shared<absl::BlockingCounter>(allowed_batch_sizes_.size());
   // Enqueue warmup batches.
   for (int i = 0; i < allowed_batch_sizes_.size(); ++i) {
     Status status = RegisterInput(
-        guid, context, batcher_queue_name, create_batch_task_fn,
+        guid, context, batcher_queue_name, create_batch_task_fn_share_status,
         [warmup_counter = warmup_counter.get()]() {
           warmup_counter->DecrementCount();
         },
@@ -313,11 +338,13 @@ Status BatchResourceBase::RegisterWarmupInputs(
     if (!status.ok()) return status;
   }
   // Enqueue real batch if the other batches were enqueued successfully.
-  return RegisterInput(guid, context, batcher_queue_name, create_batch_task_fn,
-                       [warmup_counter, done = done]() {
-                         warmup_counter->Wait();
-                         done();
-                       });
+  return RegisterInput(
+      guid, context, batcher_queue_name, create_batch_task_fn_share_status,
+      [warmup_counter, context, shared_status, done = std::move(done)]() {
+        warmup_counter->Wait();
+        context->SetStatus(shared_status->status());
+        done();
+      });
 }
 
 Status BatchResourceBase::RegisterInput(
@@ -394,7 +421,7 @@ Status BatchResourceBase::RegisterInput(
                                                   &empty_output, cpu_alloc));
     }
     done_callback();
-    return OkStatus();
+    return absl::OkStatus();
   }
   OpInputList captured_tensors;
   const auto captured_status =
@@ -406,10 +433,24 @@ Status BatchResourceBase::RegisterInput(
     }
   }
   batch_components->context = context;
-  batch_components->done_callback = std::move(done_callback);
   batch_components->split_index = 0;
   batch_components->output = std::make_shared<TensorMatrix>();
-  batch_components->status = std::make_shared<ThreadSafeStatus>();
+  if (!batch_components->status) {
+    // A shared status has already been injected if `RegisterWarmupInputs`
+    // was called. If not, create the `ThreadSafeStatus` and tie the setting
+    // of the kernel context's status to this shared status.
+    batch_components->status = std::make_shared<ThreadSafeStatus>();
+    batch_components->done_callback = [done_callback = std::move(done_callback),
+                                       shared_status = batch_components->status,
+                                       context = context]() {
+      context->SetStatus(shared_status->status());
+      done_callback();
+    };
+  } else {
+    // Otherwise `RegisterWarmupInputs` was called and already setup the
+    // `done_callback` and `status` correctly for this `BatchTask`.
+    batch_components->done_callback = std::move(done_callback);
+  }
   batch_components->forced_warmup_batch_size = forced_warmup_batch_size;
 
   std::unique_ptr<RequestCostAccessor> request_cost_accessor =
@@ -558,7 +599,7 @@ BatchResourceBase::GetAdaptiveBatcherQueueOptions(
     }
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Returns the smallest entry in 'allowed_batch_sizes_' that is greater than
@@ -656,7 +697,7 @@ Status BatchResourceBase::ConcatInputTensors(
     TF_RETURN_IF_ERROR(concat_status);
     concatenated_tensors->push_back(concatenated_tensor);
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 /*static*/ Status BatchResourceBase::SplitInputTask(
@@ -673,7 +714,9 @@ Status BatchResourceBase::ConcatInputTensors(
   // complete.
   std::function<void()> split_task_done_callback =
       [done_callback = input_task.done_callback, output = input_task.output,
-       op_kernel_context = input_task.context, status = shared_status]() {
+       forced_warmup_batch_size = input_task.forced_warmup_batch_size,
+       op_kernel_context = input_task.context,
+       status = shared_status]() mutable {
         const int num_output = op_kernel_context->num_outputs();
         for (int i = 0; i < num_output; ++i) {
           Tensor output_tensor;
@@ -692,10 +735,10 @@ Status BatchResourceBase::ConcatInputTensors(
           if (!concat_status.ok()) {
             status->Update(concat_status);
           }
-
-          op_kernel_context->set_output(i, std::move(output_tensor));
+          if (forced_warmup_batch_size == 0) {
+            op_kernel_context->set_output(i, std::move(output_tensor));
+          }
         }
-        op_kernel_context->SetStatus(status->status());
         done_callback();
       };
   IncrementalBarrier barrier(split_task_done_callback);
@@ -751,7 +794,7 @@ Status BatchResourceBase::ConcatInputTensors(
                 std::back_inserter(output_task.inputs));
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status BatchResourceBase::SplitOutputTensors(
@@ -824,7 +867,7 @@ Status BatchResourceBase::SplitOutputTensors(
     }
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 void BatchResourceBase::ProcessFuncBatch(std::unique_ptr<BatchT> batch) const {
@@ -864,10 +907,15 @@ void BatchResourceBase::ProcessFuncBatch(std::unique_ptr<BatchT> batch) const {
     batch_cost_measurements.clear();
     for (int i = 0; i < batch->num_tasks(); ++i) {
       WithContext wc(batch->task(i).propagated_context);
-      if (batch->task(i).is_partial) {
-        batch->mutable_task(i)->status->Update(status);
-      } else {
-        batch->mutable_task(i)->context->SetStatus(status);
+      if (!status.ok()) {
+        if (!absl::StrContains(
+                status.message(),
+                "Function was cancelled before it was started")) {
+          batch->mutable_task(i)->status->Update(status);
+        } else {
+          // Do not propagate this error; Prefer a more helpful error message.
+          LOG(ERROR) << "ERROR!!!! " << status.message();
+        }
       }
       batch->mutable_task(i)->done_callback();
     }
@@ -1034,7 +1082,7 @@ void BatchResourceBase::ProcessBatch(std::unique_ptr<BatchT> batch) const {
     index_flat(task_idx, 2) = offset + task.size();
     offset += task.size();
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Looks up the batcher queue for 'queue_name'. If it didn't previously exist,
@@ -1046,7 +1094,7 @@ Status BatchResourceBase::LookupOrCreateBatcherQueue(const string& queue_name,
   auto it = batcher_queues_.find(queue_name);
   if (it != batcher_queues_.end()) {
     *queue = it->second.get();
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   std::unique_ptr<BatcherQueueT> new_queue;
@@ -1072,7 +1120,7 @@ Status BatchResourceBase::LookupOrCreateBatcherQueue(const string& queue_name,
   }
   *queue = new_queue.get();
   batcher_queues_[queue_name] = std::move(new_queue);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 void BatchResourceBase::SplitBatchCostsAndRecordMetrics(

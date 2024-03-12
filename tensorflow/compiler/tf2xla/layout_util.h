@@ -20,12 +20,16 @@ limitations under the License.
 
 #include <vector>
 
+#include "absl/status/statusor.h"
 #include "tensorflow/compiler/tf2xla/xla_argument.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
+#include "xla/client/xla_builder.h"
+#include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/shape.h"
 #include "xla/xla_data.pb.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/types.pb.h"
+#include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/statusor.h"
 
 namespace tensorflow {
@@ -67,7 +71,7 @@ Status RewriteLayoutWithShardedShape(
 
 // Adds reshapes to fix the layout of an output, if a shape_representation_fn or
 // sharding is present.
-StatusOr<xla::XlaOp> ReshapeWithCorrectRepresentationAndSharding(
+absl::StatusOr<xla::XlaOp> ReshapeWithCorrectRepresentationAndSharding(
     xla::XlaBuilder* builder, xla::XlaOp original, xla::Shape original_shape,
     XlaShapeLayoutHelpers::ShapeDeterminationFns shape_determination_fns,
     std::optional<xla::OpSharding> sharding, bool fast_mem);

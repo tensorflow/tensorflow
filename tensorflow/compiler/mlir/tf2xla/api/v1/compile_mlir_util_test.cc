@@ -15,7 +15,9 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/tf2xla/api/v1/compile_mlir_util.h"
 
+#include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include <gmock/gmock.h>
@@ -25,11 +27,22 @@ limitations under the License.
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/IR/DialectRegistry.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
+#include "tensorflow/compiler/jit/xla_compile_util.h"
 #include "tensorflow/compiler/mlir/tensorflow/dialect_registration.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/serialize_mlir_module_utils.h"
+#include "tensorflow/compiler/mlir/utils/array_container_utils.h"
+#include "tensorflow/compiler/tf2xla/xla_compiler.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
+#include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
+#include "tensorflow/core/framework/function.h"
+#include "tensorflow/core/framework/node_def.pb.h"
+#include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/tensor_shape.h"
+#include "tensorflow/core/framework/tensor_shape.pb.h"
+#include "tensorflow/core/graph/node_builder.h"
 #include "tensorflow/core/lib/monitoring/cell_reader.h"
+#include "tsl/lib/core/status_test_util.h"
+#include "tsl/platform/statusor.h"
 
 namespace tensorflow {
 namespace {
@@ -162,7 +175,7 @@ TEST(CompileMlirUtil, CanonicalizationIsExplicitDuringInlining) {
   EXPECT_THAT(pass_description, HasSubstr(kInlinePass));
 }
 
-TEST(LegalizeMlirTest, LegalizesModuleWithDynamicShape) {
+TEST(CompileMlirUtil, LegalizesModuleWithDynamicShape) {
   constexpr char legalization[] = R"(
   module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, producer = 268 : i32}} {
     func.func @main(%arg0: tensor<?xi32, #mhlo.type_extensions<bounds = [1]>>) -> tensor<?xi32, #mhlo.type_extensions<bounds = [1]>> {
@@ -179,6 +192,66 @@ TEST(LegalizeMlirTest, LegalizesModuleWithDynamicShape) {
       /*shape_determination_fns=*/{}, &compilation_result);
 
   EXPECT_TRUE(status.ok());
+}
+
+absl::StatusOr<std::unique_ptr<Graph>> BuildDummyOpGraph(
+    std::optional<AttrValue> output_shapes) {
+  DataType data_type = DT_INT32;
+  std::initializer_list<int64_t> dims = {2, 3, 4, 5};
+  Tensor tensor(data_type, TensorShape(dims));
+  for (int i = 0; i < 2 * 3 * 4 * 5; ++i) {
+    tensor.flat<int32>()(i) = i;
+  }
+
+  NodeDef node;
+  auto builder = NodeDefBuilder("some_node", "Const")
+                     .Attr("dtype", data_type)
+                     .Attr("value", tensor);
+
+  if (output_shapes.has_value()) {
+    builder.Attr("_output_shapes", output_shapes.value());
+  }
+  TF_RETURN_IF_ERROR(builder.Finalize(&node));
+
+  return CreateSingleOpGraph(node, {}, {DataType::DT_INT32});
+}
+
+absl::Status BuildHloFromGraph(Graph& graph) {
+  xla::XlaBuilder builder(
+      ::testing::UnitTest::GetInstance()->current_test_info()->name());
+  mlir::MLIRContext mlir_ctx;
+  llvm::SmallVector<xla::XlaOp, 4> xla_params;
+  std::vector<xla::XlaOp> returns(1);
+  std::vector<std::string> control_rets;
+  FunctionLibraryDefinition function_library_definition(OpRegistry::Global());
+  GraphDebugInfo debug_info;
+  return BuildHloFromGraph(graph, builder, mlir_ctx, xla_params, returns,
+                           mlir::SpanToArrayRef<XlaCompiler::Argument>({}),
+                           control_rets, DEVICE_TPU,
+                           function_library_definition, debug_info, {});
+}
+
+TEST(CompileMlirUtil, UsesCorrectOriginalShapeWithoutOutputShapes) {
+  TF_ASSERT_OK_AND_ASSIGN(auto graph, BuildDummyOpGraph(std::nullopt));
+
+  auto build_result = BuildHloFromGraph(*graph);
+  TF_ASSERT_OK(build_result);
+}
+
+TEST(CompileMlirUtil, UsesIncorrectOutputShapesWhenPresent) {
+  // Change the shape of the output without changing the value attribute which
+  // will result in a failure
+  AttrValue shape_attr;
+  TensorShapeProto* shape_proto = shape_attr.mutable_list()->add_shape();
+  shape_proto->add_dim()->set_size(1);
+
+  TF_ASSERT_OK_AND_ASSIGN(auto graph, BuildDummyOpGraph(shape_attr));
+
+  auto build_result = BuildHloFromGraph(*graph);
+  ASSERT_FALSE(build_result.ok());
+  EXPECT_THAT(build_result.message(),
+              HasSubstr("op operand type 'tensor<2x3x4x5xi32>' and result type "
+                        "'tensor<1xi32>' are cast incompatible"));
 }
 
 }  // namespace

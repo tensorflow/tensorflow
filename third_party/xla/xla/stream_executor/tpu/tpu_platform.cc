@@ -26,8 +26,8 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/synchronization/mutex.h"
-#include "xla/stream_executor/multi_platform_manager.h"
 #include "xla/stream_executor/platform.h"
+#include "xla/stream_executor/platform_manager.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/stream_executor/stream_executor_internal.h"
 #include "xla/stream_executor/tpu/c_api_decl.h"
@@ -211,7 +211,7 @@ bool RegisterTpuPlatform() {
     tpu_registered_platform = new TpuPlatform();
     std::unique_ptr<stream_executor::Platform> platform(
         tpu_registered_platform);
-    TF_CHECK_OK(stream_executor::MultiPlatformManager::RegisterPlatform(
+    TF_CHECK_OK(stream_executor::PlatformManager::RegisterPlatform(
         std::move(platform)));
     tpu_platform_registered = true;
   }

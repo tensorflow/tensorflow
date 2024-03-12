@@ -183,7 +183,7 @@ class P2PSchedulePreparation : public HloModulePass {
   using HloPassInterface::Run;
   // Runs P2PSchedulePreparation pass on computations in 'module'.
   // Returns whether the 'module' was changed.
-  StatusOr<bool> Run(
+  absl::StatusOr<bool> Run(
       HloModule* module,
       const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 };

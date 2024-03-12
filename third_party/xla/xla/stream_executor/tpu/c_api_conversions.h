@@ -128,7 +128,7 @@ SE_MaybeOwningDeviceMemory ToC(xla::MaybeOwningDeviceMemory& mem, bool aliased);
 
 // HloModule
 XLA_HloModule ToC(const xla::HloModule& module);
-xla::StatusOr<std::unique_ptr<xla::HloModule>> FromC(
+absl::StatusOr<std::unique_ptr<xla::HloModule>> FromC(
     const XLA_HloModule& c_module);
 void Destroy(XLA_HloModule* c_module);
 

@@ -21,7 +21,7 @@ limitations under the License.
 namespace tensorflow {
 namespace {
 
-StatusOr<xla::XlaOp> Contract(xla::XlaOp input, int64_t dim) {
+absl::StatusOr<xla::XlaOp> Contract(xla::XlaOp input, int64_t dim) {
   xla::XlaBuilder* builder = input.builder();
   TF_ASSIGN_OR_RETURN(xla::Shape input_shape, builder->GetShape(input));
 
@@ -49,7 +49,7 @@ StatusOr<xla::XlaOp> Contract(xla::XlaOp input, int64_t dim) {
   return xla::Reshape(xla::Transpose(input, permutation), contracted_shape);
 }
 
-StatusOr<xla::XlaOp> Expand(xla::XlaOp input, int64_t dim) {
+absl::StatusOr<xla::XlaOp> Expand(xla::XlaOp input, int64_t dim) {
   xla::XlaBuilder* builder = input.builder();
   TF_ASSIGN_OR_RETURN(xla::Shape input_shape, builder->GetShape(input));
 
@@ -83,11 +83,11 @@ StatusOr<xla::XlaOp> Expand(xla::XlaOp input, int64_t dim) {
 
 }  // namespace
 
-StatusOr<xla::XlaOp> NCHW_VECT_CToNCHW(xla::XlaOp input) {
+absl::StatusOr<xla::XlaOp> NCHW_VECT_CToNCHW(xla::XlaOp input) {
   return Contract(input, 1);
 }
 
-StatusOr<xla::XlaOp> NCHWToNCHW_VECT_C(xla::XlaOp input) {
+absl::StatusOr<xla::XlaOp> NCHWToNCHW_VECT_C(xla::XlaOp input) {
   return Expand(input, 1);
 }
 

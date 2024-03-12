@@ -78,9 +78,9 @@ tf_cc_shared_test(
     size = "small",
     srcs = ["tfrt_session_test.cc"],
     data = [
-        "//tensorflow/core/tfrt/saved_model/tests:toy_v1/saved_model.pb",
-        "//tensorflow/core/tfrt/saved_model/tests:toy_v1/variables/variables.data-00000-of-00001",
-        "//tensorflow/core/tfrt/saved_model/tests:toy_v1/variables/variables.index",
+        "//tensorflow/core/tfrt/saved_model/tests:toy_v1/1/saved_model.pb",
+        "//tensorflow/core/tfrt/saved_model/tests:toy_v1/1/variables/variables.data-00000-of-00001",
+        "//tensorflow/core/tfrt/saved_model/tests:toy_v1/1/variables/variables.index",
     ],
     tags = ["no_oss"],
     deps = [
@@ -108,8 +108,10 @@ tf_cc_shared_test(
         "//tensorflow/core/tfrt/saved_model:saved_model_testutil",
         "//tensorflow/core/tfrt/utils:thread_pool",
         "//tensorflow/python/framework:test_ops_kernels",
+        "@com_google_absl//absl/memory",
         "@com_google_absl//absl/time",
         "@com_google_googletest//:gtest",
+        "@local_tsl//tsl/platform:protobuf",
     ],
 )
 

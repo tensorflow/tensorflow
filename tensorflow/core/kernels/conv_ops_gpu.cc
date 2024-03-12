@@ -385,9 +385,9 @@ StatusOr<AutotuneEntry<se::dnn::ConvOp>> AutotuneUnfusedConv(
       for (auto miopen_algorithm : algorithms) {
         auto profile_algorithm = miopen_algorithm.algorithm();
         se::dnn::ProfileResult profile_result;
-        auto miopen_launch_status = stream->ConvolveWithAlgorithm(
-            kind, input_desc, input_ptr, filter_desc, filter_ptr, output_desc,
-            output_ptr, conv_desc, &scratch_allocator,
+        auto miopen_launch_status = dnn->ConvolveWithAlgorithm(
+            stream, kind, input_desc, input_ptr, filter_desc, filter_ptr,
+            output_desc, output_ptr, conv_desc, &scratch_allocator,
             se::dnn::AlgorithmConfig(profile_algorithm,
                                      miopen_algorithm.scratch_size()),
             &profile_result);

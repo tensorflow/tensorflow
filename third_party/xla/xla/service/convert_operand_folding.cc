@@ -97,7 +97,7 @@ bool ConvertOperandFolding::InstructionMatchesPattern(
   return false;
 }
 
-StatusOr<HloInstruction*> ConvertOperandFolding::ExpandInstruction(
+absl::StatusOr<HloInstruction*> ConvertOperandFolding::ExpandInstruction(
     HloInstruction* instruction) {
   for (int i = 0; i < instruction->operand_count(); ++i) {
     auto* operand = instruction->mutable_operand(i);

@@ -90,7 +90,7 @@ class TpuCompileOpImplFactory : public CompileOpImplFactory {
 };
 
 #if defined(LIBTPU_ON_GCE)
-REGISTER_MODULE_INITIALIZER(tpu_compile_op_impl_factory, {
+STREAM_EXECUTOR_REGISTER_MODULE_INITIALIZER(tpu_compile_op_impl_factory, {
   VLOG(1) << "register TpuCompileOpImplFactory()";
   CompileOpImplFactory::Register(new TpuCompileOpImplFactory());
 });

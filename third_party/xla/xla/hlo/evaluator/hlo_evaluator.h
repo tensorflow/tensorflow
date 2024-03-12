@@ -107,13 +107,13 @@ class HloEvaluator : public ConstDfsHloVisitorWithDefault {
   //
   // (Dummy template arg is to reduce the overloading priority of one overload
   // so that Evaluate(module, {}) resolves unambiguously.)
-  StatusOr<Literal> Evaluate(const HloModule& module,
-                             absl::Span<const Literal* const> arg_literals) {
+  absl::StatusOr<Literal> Evaluate(
+      const HloModule& module, absl::Span<const Literal* const> arg_literals) {
     return Evaluate(*module.entry_computation(), arg_literals);
   }
   template <typename Dummy = void>
-  StatusOr<Literal> Evaluate(const HloModule& module,
-                             absl::Span<const Literal> arg_literals) {
+  absl::StatusOr<Literal> Evaluate(const HloModule& module,
+                                   absl::Span<const Literal> arg_literals) {
     return Evaluate(*module.entry_computation(), arg_literals);
   }
 
@@ -136,11 +136,12 @@ class HloEvaluator : public ConstDfsHloVisitorWithDefault {
   //
   // (Dummy template arg is to reduce the overloading priority of one overload
   // so that Evaluate(module, {}) resolves unambiguously.)
-  StatusOr<Literal> Evaluate(const HloComputation& computation,
-                             absl::Span<const Literal* const> arg_literals);
+  absl::StatusOr<Literal> Evaluate(
+      const HloComputation& computation,
+      absl::Span<const Literal* const> arg_literals);
   template <typename Dummy = void>
-  StatusOr<Literal> Evaluate(const HloComputation& computation,
-                             absl::Span<const Literal> arg_literals) {
+  absl::StatusOr<Literal> Evaluate(const HloComputation& computation,
+                                   absl::Span<const Literal> arg_literals) {
     std::vector<const Literal*> arg_literal_ptrs;
     for (const auto& l : arg_literals) {
       arg_literal_ptrs.push_back(&l);
@@ -154,7 +155,7 @@ class HloEvaluator : public ConstDfsHloVisitorWithDefault {
   // within its parent computation until it encounters something that cannot be
   // evaluated, such as an Infeed or a Parameter instruction.
   // It makes best effort to partially evaluate a dependency if possible.
-  StatusOr<Literal> Evaluate(
+  absl::StatusOr<Literal> Evaluate(
       const HloInstruction* instruction,
       bool recursively_evaluate_nonconstant_operands = false);
 
@@ -168,30 +169,29 @@ class HloEvaluator : public ConstDfsHloVisitorWithDefault {
   //
   // For example, given instruction = op(A, B, C) and the map
   // {A = x, C = y}, this evaluates op(x, B, y).
-  StatusOr<Literal> EvaluateWithSubstitutions(
+  absl::StatusOr<Literal> EvaluateWithSubstitutions(
       const HloInstruction* instruction,
       const absl::flat_hash_map<const HloInstruction*, const Literal*>&
           substitutions);
 
-  StatusOr<Literal> EvaluateElementwiseBinaryOp(HloOpcode opcode,
-                                                const Literal& lhs,
-                                                const Literal& rhs);
+  absl::StatusOr<Literal> EvaluateElementwiseBinaryOp(HloOpcode opcode,
+                                                      const Literal& lhs,
+                                                      const Literal& rhs);
 
-  StatusOr<Literal> EvaluateElementwiseUnaryOp(HloOpcode opcode,
-                                               const Literal& operand);
+  absl::StatusOr<Literal> EvaluateElementwiseUnaryOp(HloOpcode opcode,
+                                                     const Literal& operand);
 
-  StatusOr<Literal> EvaluateElementwiseTernaryOp(HloOpcode opcode,
-                                                 const Literal& lhs,
-                                                 const Literal& rhs,
-                                                 const Literal& ehs);
+  absl::StatusOr<Literal> EvaluateElementwiseTernaryOp(HloOpcode opcode,
+                                                       const Literal& lhs,
+                                                       const Literal& rhs,
+                                                       const Literal& ehs);
 
-  StatusOr<Literal> EvaluateElementwiseCompareOp(ComparisonDirection direction,
-                                                 const Literal& lhs,
-                                                 const Literal& rhs);
+  absl::StatusOr<Literal> EvaluateElementwiseCompareOp(
+      ComparisonDirection direction, const Literal& lhs, const Literal& rhs);
 
-  StatusOr<Literal> EvaluateDotOp(const DotDimensionNumbers& dim_numbers,
-                                  const PrecisionConfig& precision_config,
-                                  const Literal& lhs, const Literal& rhs);
+  absl::StatusOr<Literal> EvaluateDotOp(const DotDimensionNumbers& dim_numbers,
+                                        const PrecisionConfig& precision_config,
+                                        const Literal& lhs, const Literal& rhs);
 
   void set_dynamic_dimension_inference(
       DynamicDimensionInference* dynamic_dimension_inference) {
@@ -208,7 +208,7 @@ class HloEvaluator : public ConstDfsHloVisitorWithDefault {
   // Handles evaluation of a custom-call op.
   // Operand literals are provided in |operands| and implementations must
   // populate |output| before returning.
-  using CustomCallHandler = std::function<StatusOr<Literal>(
+  using CustomCallHandler = std::function<absl::StatusOr<Literal>(
       const HloInstruction* custom_call, absl::Span<const Literal*> operands)>;
 
   // Sets a handler that is called during evaluation for custom-call ops.
@@ -436,7 +436,7 @@ class HloEvaluator : public ConstDfsHloVisitorWithDefault {
 
  private:
   template <typename ReturnT, typename NativeT>
-  static StatusOr<Literal> ElementWiseUnaryOpImpl(
+  static absl::StatusOr<Literal> ElementWiseUnaryOpImpl(
       const HloInstruction* instruction,
       const std::function<ReturnT(NativeT)>& unary_op,
       const Literal& operand_literal) {

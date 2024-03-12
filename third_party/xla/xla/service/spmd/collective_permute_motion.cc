@@ -148,8 +148,8 @@ absl::flat_hash_set<int64_t> FindIndicesUnusedAfterLoop(HloInstruction* loop) {
   return indices;
 }
 
-StatusOr<bool> MoveCollectivePermutes(HloComputation* computation,
-                                      HloInstruction* loop) {
+absl::StatusOr<bool> MoveCollectivePermutes(HloComputation* computation,
+                                            HloInstruction* loop) {
   HloComputation* body = loop->while_body();
   HloInstruction* root = body->root_instruction();
   if (root->opcode() != HloOpcode::kTuple ||
@@ -295,7 +295,7 @@ StatusOr<bool> MoveCollectivePermutes(HloComputation* computation,
   return changed;
 }
 
-StatusOr<bool> CollectivePermuteMotion::Run(
+absl::StatusOr<bool> CollectivePermuteMotion::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   bool changed = false;

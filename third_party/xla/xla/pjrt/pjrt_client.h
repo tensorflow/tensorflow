@@ -47,6 +47,7 @@ limitations under the License.
 #include "xla/pjrt/pjrt_device_description.h"
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/pjrt/pjrt_future.h"
+#include "xla/pjrt/pjrt_layout.h"
 #include "xla/service/computation_placer.h"
 #include "xla/service/hlo_cost_analysis.h"
 #include "xla/shape.h"
@@ -1006,9 +1007,12 @@ class PjRtBuffer {
     return on_device_shape().dimensions();
   }
 
-  virtual const Layout& layout() const {
+  // The on-device memory layout of this buffer. Returned via unique_ptr to make
+  // memory management easier -- PjRtLayout is an abstract base class, so cannot
+  // be easily copied.
+  virtual std::unique_ptr<PjRtLayout> layout() const {
     CHECK(on_device_shape().has_layout());
-    return on_device_shape().layout();
+    return std::make_unique<PjRtXlaLayout>(on_device_shape().layout());
   }
 
   // PjRtBuffers can either represent a single array buffer or a tuple of array
@@ -1092,6 +1096,14 @@ class PjRtBuffer {
   // completed. The transfer respects the layout of `literal`; to specify a
   // particular layout, set the layout before calling `ToLiteral`.
   virtual PjRtFuture<Status> ToLiteral(MutableLiteralBase* literal) = 0;
+  // This version of ToLiteral allows the implementation to defer the
+  // construction of the literal (e.g. until the underlying buffer is ready).
+  // The specific timing of calling `generator` is implementation defined, and
+  // might be done eagerly, but it is guaranteed to be earlier than when the
+  // returned future becomes ready.
+  virtual PjRtFuture<Status> LazyToLiteral(
+      absl::AnyInvocable<absl::StatusOr<MutableLiteralBase*>() &&>
+          generator) = 0;
 
   // Synchronous overload of ToLiteral, as a convenience.
   Status ToLiteralSync(MutableLiteralBase* literal) {
@@ -1105,9 +1117,7 @@ class PjRtBuffer {
     return status;
   }
 
-  // Convenience synchronous overload that allocates a literal with a default
-  // layout.
-  StatusOr<std::shared_ptr<Literal>> ToLiteralSync() {
+  absl::StatusOr<Shape> HostShape() {
     Shape device_shape;
     if (!IsTuple()) {
       absl::Span<const int64_t> literal_dims;
@@ -1121,7 +1131,8 @@ class PjRtBuffer {
         literal_dims = dimensions();
       }
       device_shape = ShapeUtil::MakeShape(element_type(), literal_dims);
-      *device_shape.mutable_layout() = layout();
+      // TODO(b/327524065): use PjRtLayout directly instead of xla::Layout
+      *device_shape.mutable_layout() = GetXlaLayoutUnsafe(layout());
     } else {
       // TODO(skyewm): does anything need to create tuple literals? The PJRT C
       // API doesn't support tuples or {logical_}on_device_shape(), so we prefer
@@ -1131,8 +1142,14 @@ class PjRtBuffer {
         TF_ASSIGN_OR_RETURN(device_shape, logical_on_device_shape());
       }
     }
-    auto literal = std::make_shared<Literal>(
-        ShapeUtil::DeviceShapeToHostShape(device_shape));
+    return ShapeUtil::DeviceShapeToHostShape(device_shape);
+  }
+
+  // Convenience synchronous overload that allocates a literal with a default
+  // layout.
+  absl::StatusOr<std::shared_ptr<Literal>> ToLiteralSync() {
+    TF_ASSIGN_OR_RETURN(Shape host_shape, HostShape());
+    auto literal = std::make_shared<Literal>(host_shape);
     TF_RETURN_IF_ERROR(ToLiteralSync(literal.get()));
     return literal;
   }
