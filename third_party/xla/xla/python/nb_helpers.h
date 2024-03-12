@@ -24,7 +24,7 @@ namespace xla {
 
 // Calls Python hash() on an object.
 // TODO(phawkins): consider upstreaming this to nanobind.
-ssize_t nb_hash(nanobind::handle o);
+Py_hash_t nb_hash(nanobind::handle o);
 
 // Calls Python isinstance(inst, cls).
 // TODO(phawkins): consider upstreaming this to nanobind.

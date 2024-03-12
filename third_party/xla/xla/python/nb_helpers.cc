@@ -23,7 +23,7 @@ namespace nb = nanobind;
 
 namespace xla {
 
-ssize_t nb_hash(nb::handle o) {
+Py_hash_t nb_hash(nb::handle o) {
   Py_hash_t h = PyObject_Hash(o.ptr());
   if (h == -1) {
     throw nb::python_error();
