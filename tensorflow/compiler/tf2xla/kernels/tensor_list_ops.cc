@@ -49,7 +49,7 @@ namespace {
 // may carry and returns them in a 2D vector: XlaOp[ElementSize][DimSize]. If a
 // dimension is static, a constant dimension is returned. If a dim is dynamic, a
 // dynamic XlaOp representing the dynamic size is returned.
-StatusOr<std::vector<std::vector<xla::XlaOp>>> GetTensorListDynamicDims(
+absl::StatusOr<std::vector<std::vector<xla::XlaOp>>> GetTensorListDynamicDims(
     XlaOpKernelContext* ctx, const xla::Shape& element_shape,
     const xla::Shape& list_shape, int64_t num_elements) {
   std::vector<int64_t> dynamic_sizes;

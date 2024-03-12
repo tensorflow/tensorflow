@@ -38,7 +38,7 @@ bool IsTokenType(mlir::Type type);
 
 class XlaCallModuleLoader {
  public:
-  static tsl::StatusOr<std::unique_ptr<XlaCallModuleLoader>> Create(
+  static absl::StatusOr<std::unique_ptr<XlaCallModuleLoader>> Create(
       mlir::MLIRContext* context, int version, std::string module_str,
       std::vector<std::string> disabled_checks,
       std::vector<std::string> platforms, int num_invocation_args,
@@ -87,7 +87,7 @@ class XlaCallModuleLoader {
   // Lowers the MHLO module to XlaComputation and returns it.
   //
   // REQUIRES: `LowerModuleToMhlo()` is called beforehand.
-  tsl::StatusOr<xla::XlaComputation> ToXlaComputation();
+  absl::StatusOr<xla::XlaComputation> ToXlaComputation();
 
   // Returns the deserialized stablehlo module.
   mlir::ModuleOp module() & { return *module_; }

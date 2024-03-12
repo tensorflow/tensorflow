@@ -319,7 +319,8 @@ class SqueezeOp : public XlaOpKernel {
   }
 
   void Compile(XlaOpKernelContext* ctx) override {
-    StatusOr<xla::Shape> input_shape = ctx->builder()->GetShape(ctx->Input(0));
+    absl::StatusOr<xla::Shape> input_shape =
+        ctx->builder()->GetShape(ctx->Input(0));
     OP_REQUIRES_OK(ctx, input_shape.status());
     xla::Shape shape = input_shape.value();
     int64_t rank = shape.rank();

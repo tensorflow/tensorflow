@@ -110,7 +110,7 @@ class PoolingOp : public XlaOpKernel {
   int num_dims() const { return num_spatial_dims_ + 2; }
 
  protected:
-  StatusOr<std::vector<int64_t>> GetKernelSize(XlaOpKernelContext* ctx) {
+  absl::StatusOr<std::vector<int64_t>> GetKernelSize(XlaOpKernelContext* ctx) {
     std::vector<int64_t> ksize;
     if (ctx->num_inputs() == 1) {
       ksize = ksize_;
@@ -136,7 +136,7 @@ class PoolingOp : public XlaOpKernel {
     return ksize;
   }
 
-  StatusOr<std::vector<int64_t>> GetStride(XlaOpKernelContext* ctx) {
+  absl::StatusOr<std::vector<int64_t>> GetStride(XlaOpKernelContext* ctx) {
     std::vector<int64_t> stride;
     if (ctx->num_inputs() == 1) {
       stride = stride_;
@@ -216,7 +216,7 @@ class MaxPoolOp : public PoolingOp {
 
     xla::XlaOp input = ctx->Input(0);
 
-    StatusOr<xla::Shape> input_shape = ctx->builder()->GetShape(input);
+    absl::StatusOr<xla::Shape> input_shape = ctx->builder()->GetShape(input);
     OP_REQUIRES_OK(ctx, input_shape.status());
 
     // For VECT_C max-pool ops, transpose to plain NCHW, do the max-pool, and
@@ -242,7 +242,8 @@ class MaxPoolOp : public PoolingOp {
             input_shape->dimensions_size() - 2));
 
     if (data_format_ == FORMAT_NCHW_VECT_C) {
-      StatusOr<xla::Shape> result_shape = ctx->builder()->GetShape(pooling);
+      absl::StatusOr<xla::Shape> result_shape =
+          ctx->builder()->GetShape(pooling);
       OP_REQUIRES_OK(ctx, result_shape.status());
 
       int64 num_channels = result_shape->dimensions(1);
