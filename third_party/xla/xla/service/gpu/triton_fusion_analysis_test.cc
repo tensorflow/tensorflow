@@ -273,6 +273,57 @@ ENTRY e {
                                     /*subfragments=*/ElementsAre(3))));
 }
 
+TEST_F(TritonDotAnalysisTest, NoNonContractingDim) {
+  const std::string hlo_text = R"(
+HloModule t
+
+triton_dot {
+  param_0.1 = s8[48,4]{1,0} parameter(0)
+  bitcast.18 = s8[1,48,4]{2,1,0} bitcast(param_0.1)
+  bitcast.19 = s8[48,4]{1,0} bitcast(bitcast.18)
+  convert.4 = bf16[48,4]{1,0} convert(bitcast.19)
+  param_1.1 = bf16[4]{0} parameter(1)
+  ROOT dot = bf16[48]{0} dot(convert.4, param_1.1),
+    lhs_contracting_dims={1}, rhs_contracting_dims={0}
+}
+
+ENTRY e {
+  p0 = s8[48,4]{1,0} parameter(0)
+  p1 = bf16[4]{0} parameter(1)
+  custom-call = bf16[48]{0} custom-call(p0, p1),
+    custom_call_target="__triton",
+    called_computations={triton_dot}
+  ROOT bitcast.2 = bf16[1,8,6]{2,1,0} bitcast(custom-call)
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_text));
+  const HloComputation* dot_computation = module->entry_computation()
+                                              ->root_instruction()
+                                              ->operand(0)
+                                              ->called_computations()[0];
+  const HloInstruction* p0 = dot_computation->parameter_instruction(0);
+  const HloInstruction* p1 = dot_computation->parameter_instruction(1);
+  TF_ASSERT_OK_AND_ASSIGN(const auto analysis,
+                          TritonFusionAnalysis::Execute(*dot_computation));
+  EXPECT_EQ(*analysis.ScopeParameters(TritonFusionAnalysis::Scope::LHS).begin(),
+            p0);
+  EXPECT_EQ(*analysis.ScopeParameters(TritonFusionAnalysis::Scope::RHS).begin(),
+            p1);
+  EXPECT_THAT(*analysis.IterSpec(TritonFusionAnalysis::Scope::LHS, p0, 0),
+              ElementsAre(FieldsAre(/*stride=*/4, /*count=*/8 * 6,
+                                    /*slice_start=*/0, /*slice_limit=*/8 * 6,
+                                    /*subfragments=*/ElementsAre(48))));
+  EXPECT_THAT(*analysis.IterSpec(TritonFusionAnalysis::Scope::LHS, p0, 1),
+              ElementsAre(FieldsAre(/*stride=*/1, /*count=*/4,
+                                    /*slice_start=*/0, /*slice_limit=*/4,
+                                    /*subfragments=*/ElementsAre(4))));
+  EXPECT_THAT(*analysis.IterSpec(TritonFusionAnalysis::Scope::RHS, p1, 0),
+              ElementsAre(FieldsAre(/*stride=*/1, /*count=*/4,
+                                    /*slice_start=*/0, /*slice_limit=*/4,
+                                    /*subfragments=*/ElementsAre(4))));
+}
+
 TEST_F(TritonDotAnalysisTest, CopyMerge) {
   const std::string hlo_text = R"(
 HloModule t

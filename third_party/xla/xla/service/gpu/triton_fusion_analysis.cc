@@ -20,6 +20,7 @@ limitations under the License.
 #include <string>
 #include <utility>
 #include <variant>
+#include <vector>
 
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
@@ -38,6 +39,7 @@ limitations under the License.
 #include "xla/status.h"
 #include "xla/status_macros.h"
 #include "tsl/platform/errors.h"
+#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace gpu {
@@ -56,7 +58,7 @@ using triton_fusion::TransformDirection;
 
 namespace triton_fusion {
 
-/*static*/ FusionContext FusionContext::FromDotOperand(
+/*static*/ absl::StatusOr<FusionContext> FusionContext::FromDotOperand(
     const HloInstruction& dot, const int operand_number, const int split_k) {
   // There can be either none or one split-K batch dimension.
   const int num_split_k_batch_dims = split_k > 1;
@@ -65,20 +67,30 @@ namespace triton_fusion {
     split_k_dimension_index =
         ContractingDimensionIndex(dot, operand_number) - 1;
   }
+
+  TF_ASSIGN_OR_RETURN(
+      std::vector<int64_t> non_contracting_dims,
+      GetNonContractingDims(dot.operand(operand_number)->shape(),
+                            BatchDimensionsForOperand(dot, operand_number),
+                            {ContractingDimensionIndex(dot, operand_number)}));
+
   int splittable_dimension_index = kNoDimensionIndex;
   // LHS non-contracting dimension can be split if non-splitK batch is absent.
-  if (operand_number == 0 &&
+  if (operand_number == 0 && !non_contracting_dims.empty() &&
       dot.dot_dimension_numbers().lhs_batch_dimensions_size() -
               num_split_k_batch_dims ==
           0) {
     splittable_dimension_index =
         NonContractingDimensionIndex(dot, operand_number);
   }
-  FusionContext context(
-      DotProperties{
-          static_cast<int>(NonContractingDimensionIndex(dot, operand_number)),
-          splittable_dimension_index},
-      DotRequirements(kNoSplitRequirement));
+
+  int non_contracting_dimension_index =
+      non_contracting_dims.empty()
+          ? kNoDimensionIndex
+          : NonContractingDimensionIndex(dot, operand_number);
+  FusionContext context(DotProperties{non_contracting_dimension_index,
+                                      splittable_dimension_index},
+                        DotRequirements(kNoSplitRequirement));
   context.dim_orders_[dot.operand(operand_number)] =
       DimensionOrder::FromDotOperandOrOutput(*dot.operand(operand_number),
                                              split_k_dimension_index);
@@ -225,7 +237,8 @@ absl::Status TritonFusionAnalysis::ExecuteForDotFusion(
   DotRequirements lhs_requirements(kNoSplitRequirement);
   for (const Scope scope : {Scope::LHS, Scope::RHS}) {
     const int operand_number = static_cast<int>(scope);
-    auto context = FusionContext::FromDotOperand(dot, operand_number, split_k);
+    TF_ASSIGN_OR_RETURN(auto context, FusionContext::FromDotOperand(
+                                          dot, operand_number, split_k));
     TF_RETURN_IF_ERROR(context.PropagateDimensionOrdersToParameters(
         *dot.operand(operand_number), parameters_[scope], iter_specs_[scope]));
     if (scope == Scope::LHS) {
