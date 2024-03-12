@@ -36,7 +36,6 @@ cc_library(
         "//xla/service:hlo_cost_analysis",
         "//xla/service:latency_hiding_scheduler",
         "//xla/stream_executor:device_description",
-        "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/time",
         "@local_tsl//tsl/platform:status",
@@ -55,7 +54,6 @@ xla_test(
     deps = [
         ":analytical_latency_estimator",
         "//xla:shape_util",
-        "//xla:statusor",
         "//xla/hlo/ir:hlo",
         "//xla/service:hlo_cost_analysis",
         "//xla/service:latency_hiding_scheduler",
@@ -109,7 +107,6 @@ cc_library(
         ":gpu_hlo_cost_analysis",
         ":gpu_performance_model",
         ":gpu_performance_model_base",
-        "//xla:statusor",
         "//xla/hlo/ir:hlo",
         "//xla/service:hlo_cost_analysis",
         "//xla/service:hlo_graph_dumper",
@@ -331,7 +328,6 @@ xla_cc_test(
     name = "gpu_collective_performance_model_test",
     srcs = ["gpu_collective_performance_model_test.cc"],
     deps = [
-        ":gpu_collective_performance_model",
         "//xla/service/gpu:backend_configs_cc",
         "//xla/tests:hlo_test_base",
         "//xla/tests:xla_internal_test_main",
@@ -458,6 +454,7 @@ cc_library(
         "//xla/tests:verified_hlo_module",
         "//xla/tests:xla_internal_test_main",
         "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_googletest//:gtest",
@@ -525,7 +522,6 @@ cc_library(
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Support",
-        "@local_tsl//tsl/platform:status",
     ],
 )
 
@@ -537,7 +533,6 @@ xla_cc_test(
         ":indexing_analysis",
         ":indexing_test_utils",
         ":tile_analysis",
-        "//xla/hlo/ir:hlo",
         "//xla/tests:hlo_test_base",
         "//xla/tests:xla_internal_test_main",
         "@com_google_absl//absl/strings",
