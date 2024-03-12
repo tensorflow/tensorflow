@@ -22,6 +22,14 @@ maven_jar(
     sha1 = "dc6e6ce937347bd4d990fc89f4ceb469db53e45e",
 )
 
+load("@rules_jvm_external//:defs.bzl", "maven_jar")
+
+maven_jar(
+    name = "logback-core",
+    artifact = "ch.qos.logback:logback-core:1.0.13",
+    sha1 = "dc6e6ce937347bd4d990fc89f4ceb469db53e45e",
+)
+
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = ["//visibility:private"],
