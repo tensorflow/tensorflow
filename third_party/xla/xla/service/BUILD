@@ -5850,6 +5850,7 @@ cc_library(
 xla_cc_test(
     name = "host_offload_legalize_test",
     srcs = ["host_offload_legalize_test.cc"],
+    shard_count = 12,
     deps = [
         ":host_memory_offload_annotations_hdr",
         ":host_offload_legalize",
