@@ -136,6 +136,7 @@ cc_library(
     ],
     compatible_with = get_compatible_with_portable(),
     deps = [
+        ":uniform_quantized_types",
         "//tensorflow/compiler/mlir/quantization/common/quantization_lib",
         "//tensorflow/compiler/mlir/quantization/tensorflow:quantization_options_proto_cc",
         "//tensorflow/compiler/mlir/tensorflow",

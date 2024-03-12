@@ -199,6 +199,10 @@ inline bool HasQuantizableTrait(Operation* op) {
              QuantTraitValues[QuantizationTrait::FullyQuantizable];
 }
 
+// Returns true if `op` has two operands and one result and only second operand
+// is quantized.
+bool IsHybridQuantizedOp(Operation* op);
+
 }  // namespace mlir::quant
 
 #endif  // TENSORFLOW_COMPILER_MLIR_QUANTIZATION_COMMON_ATTRS_AND_CONSTRAINTS_H_

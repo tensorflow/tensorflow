@@ -54,8 +54,10 @@ class QuantizeCompositeFunctionsPass
       QuantizeCompositeFunctionsPass>::QuantizeCompositeFunctionsPassBase;
 
   explicit QuantizeCompositeFunctionsPass(
-      const bool enable_per_channel_quantized_weight) {
+      const bool enable_per_channel_quantized_weight,
+      const bool enable_weight_only) {
     enable_per_channel_quantized_weight_ = enable_per_channel_quantized_weight;
+    enable_weight_only_ = enable_weight_only;
   }
 
  private:
@@ -80,11 +82,19 @@ void QuantizeCompositeFunctionsPass::runOnOperation() {
   // Change this to user-given bit width once we have custom configuration.
   options.bit_width_ = 8;
 
+  if (enable_weight_only_) {
+    pm.addNestedPass<func::FuncOp>(createPrepareQuantizeHybridPass());
+  }
   pm.addNestedPass<func::FuncOp>(createPrepareQuantizePass(options));
+
+  QuantizePassOptions quantize_options;
+  quantize_options.enable_per_channel_quantized_weight_ =
+      enable_per_channel_quantized_weight_;
+  quantize_options.enable_weight_only_ = enable_weight_only_;
+  quantize_options.quant_specs_ = quant_specs;
   // QuantizePass modifies FuncOps referenced outside of its given scope
   // and therefore requires a module-level context.
-  pm.addPass(
-      CreateQuantizePass(quant_specs, enable_per_channel_quantized_weight_));
+  pm.addPass(createQuantizePass(quantize_options));
   pm.addNestedPass<func::FuncOp>(createPostQuantizePass());
 
   ModuleOp module_op = getOperation();
@@ -95,12 +105,5 @@ void QuantizeCompositeFunctionsPass::runOnOperation() {
   }
 }
 }  // namespace
-
-// Creates an instance of the TensorFlow dialect QuantizeCompositeFunctionsPass.
-std::unique_ptr<OperationPass<ModuleOp>> CreateQuantizeCompositeFunctionsPass(
-    const bool enable_per_channel_quantized_weight) {
-  return std::make_unique<QuantizeCompositeFunctionsPass>(
-      enable_per_channel_quantized_weight);
-}
 
 }  // namespace mlir::quant::stablehlo

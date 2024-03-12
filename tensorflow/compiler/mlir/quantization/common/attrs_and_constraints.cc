@@ -28,6 +28,7 @@ limitations under the License.
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/quantization/common/uniform_quantized_types.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/xla_call_module_attrs.h"
 
@@ -99,6 +100,18 @@ StringRef GetEntryFunctionName(TF::XlaCallModuleOp op) {
   return op
       ->getAttrOfType<FlatSymbolRefAttr>(TF::kStablehloEntryFunctionAttrName)
       .getValue();
+}
+
+bool IsHybridQuantizedOp(Operation* op) {
+  if ((op->getNumOperands() != 2 && op->getNumOperands() != 3) ||
+      op->getResultTypes().size() != 1) {
+    return false;
+  }
+  Type lhs_type = op->getOperand(0).getType();
+  Type rhs_type = op->getOperand(1).getType();
+  Type result_type = op->getResult(0).getType();
+  return !IsQuantizedTensorType(lhs_type) && IsQuantizedTensorType(rhs_type) &&
+         !IsQuantizedTensorType(result_type);
 }
 
 }  // namespace mlir::quant
