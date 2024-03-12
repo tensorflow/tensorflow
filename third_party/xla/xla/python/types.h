@@ -57,14 +57,14 @@ absl::StatusOr<nb_dtype> PrimitiveTypeToNbDtype(PrimitiveType type);
 absl::StatusOr<pybind11::dtype> IfrtDtypeToDtype(ifrt::DType dtype);
 absl::StatusOr<nb_dtype> IfrtDtypeToNbDtype(ifrt::DType dtype);
 
-StatusOr<ifrt::DType> DtypeToIfRtDType(pybind11::dtype dtype);
+StatusOr<ifrt::DType> DtypeToIfRtDType(nb_dtype dtype);
 
 // Returns a Python buffer protocol (PEP 3118) format descriptor string for
 // `type`. Return nullptr if there is no suitable choice of format string.
 const char* PEP3118FormatDescriptorForPrimitiveType(PrimitiveType type);
 
 // Returns a numpy-style typestr for `type`, as returned by np.dtype(...).str
-absl::StatusOr<pybind11::str> TypeDescriptorForPrimitiveType(
+absl::StatusOr<nanobind::str> TypeDescriptorForPrimitiveType(
     PrimitiveType type);
 
 struct NumpyScalarTypes {

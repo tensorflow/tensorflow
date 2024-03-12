@@ -24,6 +24,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
+#include "third_party/nanobind/include/nanobind/nanobind.h"
 #include "pybind11/pybind11.h"  // from @pybind11
 #include "xla/client/xla_builder.h"
 #include "xla/pjrt/exceptions.h"
@@ -179,7 +180,6 @@ class PyClient : public std::enable_shared_from_this<PyClient> {
   // Returns a vector of live PyArray objects. PyArray objects may share
   // PjRtBuffers, so there may be duplicates of the same underlying device
   // buffer.
-  std::vector<pybind11::object> LiveBuffers();
   std::vector<pybind11::object> LiveBuffersOnDevice(PjRtDevice* device);
 
   // Returns a vector of live PyLoadedExecutable objects.
@@ -262,7 +262,7 @@ class PyClient : public std::enable_shared_from_this<PyClient> {
       absl::Span<uint16_t const> recv_channel_ids,
       pybind11::function serializer);
 
-  std::vector<pybind11::object> LiveArrays();
+  std::vector<nanobind::object> LiveArrays() const;
 
  private:
   friend class PyLoadedExecutable;

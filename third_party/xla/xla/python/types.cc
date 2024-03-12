@@ -290,7 +290,7 @@ absl::StatusOr<pybind11::dtype> IfrtDtypeToDtype(ifrt::DType dtype) {
   return py::reinterpret_steal<py::dtype>(np_type.release().ptr());
 }
 
-absl::StatusOr<ifrt::DType> DtypeToIfRtDType(py::dtype dtype) {
+absl::StatusOr<ifrt::DType> DtypeToIfRtDType(nb_dtype dtype) {
   TF_ASSIGN_OR_RETURN(auto primitive_type, DtypeToPrimitiveType(dtype));
   return ifrt::ToDType(primitive_type);
 }
@@ -368,7 +368,7 @@ const char* PEP3118FormatDescriptorForPrimitiveType(PrimitiveType type) {
   }
 }
 
-absl::StatusOr<py::str> TypeDescriptorForPrimitiveType(PrimitiveType type) {
+absl::StatusOr<nb::str> TypeDescriptorForPrimitiveType(PrimitiveType type) {
 #if __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__
 #define ENDIAN_PREFIX "<"
 #else
@@ -376,35 +376,35 @@ absl::StatusOr<py::str> TypeDescriptorForPrimitiveType(PrimitiveType type) {
 #endif
   switch (type) {
     case PRED:
-      return py::str("|b1");
+      return nb::str("|b1");
     case S8:
-      return py::str("|i1");
+      return nb::str("|i1");
     case S16:
-      return py::str(ENDIAN_PREFIX "i2");
+      return nb::str(ENDIAN_PREFIX "i2");
     case S32:
-      return py::str(ENDIAN_PREFIX "i4");
+      return nb::str(ENDIAN_PREFIX "i4");
     case S64:
-      return py::str(ENDIAN_PREFIX "i8");
+      return nb::str(ENDIAN_PREFIX "i8");
     case U8:
-      return py::str("|u1");
+      return nb::str("|u1");
     case U16:
-      return py::str(ENDIAN_PREFIX "u2");
+      return nb::str(ENDIAN_PREFIX "u2");
     case U32:
-      return py::str(ENDIAN_PREFIX "u4");
+      return nb::str(ENDIAN_PREFIX "u4");
     case U64:
-      return py::str(ENDIAN_PREFIX "u8");
+      return nb::str(ENDIAN_PREFIX "u8");
     case BF16:
-      return py::str(ENDIAN_PREFIX "V2");
+      return nb::str(ENDIAN_PREFIX "V2");
     case F16:
-      return py::str(ENDIAN_PREFIX "f2");
+      return nb::str(ENDIAN_PREFIX "f2");
     case F32:
-      return py::str(ENDIAN_PREFIX "f4");
+      return nb::str(ENDIAN_PREFIX "f4");
     case F64:
-      return py::str(ENDIAN_PREFIX "f8");
+      return nb::str(ENDIAN_PREFIX "f8");
     case C64:
-      return py::str(ENDIAN_PREFIX "c8");
+      return nb::str(ENDIAN_PREFIX "c8");
     case C128:
-      return py::str(ENDIAN_PREFIX "c16");
+      return nb::str(ENDIAN_PREFIX "c16");
     default:
       return Unimplemented("Unimplemented primitive type %s",
                            PrimitiveType_Name(type));

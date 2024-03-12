@@ -20,6 +20,7 @@ limitations under the License.
 #include <cstdint>
 #include <exception>
 #include <functional>
+#include <map>
 #include <memory>
 #include <optional>
 #include <set>
@@ -29,25 +30,22 @@ limitations under the License.
 #include <vector>
 
 #include "absl/base/casts.h"
-#include "third_party/nanobind/include/nanobind/nanobind.h"
-#include "third_party/nanobind/include/nanobind/nb_defs.h"
-#include "third_party/nanobind/include/nanobind/stl/optional.h"  // IWYU pragma: keep
-#include "third_party/nanobind/include/nanobind/stl/shared_ptr.h"  // IWYU pragma: keep
-#include "third_party/nanobind/include/nanobind/stl/vector.h"  // IWYU pragma: keep
-// clang-format off
-// Must be included first
+#include "absl/container/flat_hash_map.h"
+#include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
-#include "xla/pjrt/c/pjrt_c_api.h"
-#include "xla/pjrt/distributed/protocol.pb.h"
-#include "xla/python/py_client.h"
-#include "xla/service/cpu/collectives_interface.h"
-#include "tsl/python/lib/core/numpy.h"  //NOLINT
-// clang-format on
-
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "absl/time/time.h"
 #include "absl/types/span.h"
+#include "third_party/nanobind/include/nanobind/nanobind.h"
+#include "third_party/nanobind/include/nanobind/nb_defs.h"
+#include "third_party/nanobind/include/nanobind/stl/optional.h"  // IWYU pragma: keep
+#include "third_party/nanobind/include/nanobind/stl/pair.h"  // IWYU pragma: keep
+#include "third_party/nanobind/include/nanobind/stl/shared_ptr.h"  // IWYU pragma: keep
+#include "third_party/nanobind/include/nanobind/stl/string.h"  // IWYU pragma: keep
+#include "third_party/nanobind/include/nanobind/stl/string_view.h"  // IWYU pragma: keep
+#include "third_party/nanobind/include/nanobind/stl/variant.h"  // IWYU pragma: keep
+#include "third_party/nanobind/include/nanobind/stl/vector.h"  // IWYU pragma: keep
 #include "pybind11/attr.h"  // from @pybind11
 #include "pybind11/cast.h"  // from @pybind11
 #include "pybind11/detail/common.h"  // from @pybind11
@@ -59,10 +57,15 @@ limitations under the License.
 #include "pybind11_abseil/absl_casters.h"  // from @pybind11_abseil
 #include "xla/ffi/ffi_api.h"
 #include "xla/layout_util.h"
+#include "xla/pjrt/c/pjrt_c_api.h"
 #include "xla/pjrt/distributed/client.h"
 #include "xla/pjrt/distributed/distributed.h"
+#include "xla/pjrt/distributed/protocol.pb.h"
 #include "xla/pjrt/distributed/service.h"
 #include "xla/pjrt/pjrt_compiler.h"
+#include "xla/python/py_client.h"
+#include "xla/service/cpu/collectives_interface.h"
+#include "tsl/python/lib/core/numpy.h"  //NOLINT
 #ifdef XLA_PYTHON_ENABLE_GPU
 #include "xla/pjrt/gpu/se_gpu_pjrt_client.h"
 #endif  // XLA_PYTHON_ENABLE_GPU
@@ -74,12 +77,14 @@ limitations under the License.
 #include "xla/pjrt/cpu/gloo_kv_store.h"
 #endif  // __linux__
 
+#include "xla/literal.h"
 #include "xla/pjrt/cpu/cpu_client.h"
 #include "xla/pjrt/distributed/key_value_store_interface.h"
 #include "xla/pjrt/exceptions.h"
 #include "xla/pjrt/pjrt_api.h"
 #include "xla/pjrt/pjrt_c_api_client.h"
 #include "xla/pjrt/pjrt_client.h"
+#include "xla/pjrt/pjrt_executable.h"
 #include "xla/pjrt/pjrt_layout.h"
 #include "xla/pjrt/status_casters.h"
 #include "xla/python/custom_call_sharding.h"
@@ -87,6 +92,8 @@ limitations under the License.
 #include "xla/python/jax_jit.h"
 #include "xla/python/logging.h"
 #include "xla/python/mlir.h"
+#include "xla/python/nb_absl_flat_hash_map.h"  // IWYU pragma: keep
+#include "xla/python/nb_absl_span.h"  // IWYU pragma: keep
 #include "xla/python/ops.h"
 #include "xla/python/outfeed_receiver_py.h"
 #include "xla/python/pjit.h"
@@ -510,9 +517,26 @@ static void Init(py::module_& m) {
       .def("local_devices", &PyClient::LocalDevices)
       .def("device_from_local_hardware_id",
            xla::ValueOrThrowWrapper(&PyClient::DeviceFromLocalHardwareId))
-      .def("live_buffers", &PyClient::LiveBuffers)
-      .def("live_executables", &PyClient::LiveExecutables)
-      .def("live_arrays", &PyClient::LiveArrays)
+      // TODO(phawkins): revert to the following after nanobind transition is
+      // complete
+      // .def("live_executables", &PyClient::LiveExecutables)
+      // .def("live_arrays", &PyClient::LiveArrays)
+      // .def("live_buffers", &PyClient::LiveArrays)
+      .def("live_executables",
+           [](PyClient& client) {
+             return py::reinterpret_steal<py::object>(
+                 nb::cast(client.LiveExecutables()).release().ptr());
+           })
+      .def("live_arrays",
+           [](const PyClient& client) {
+             return py::reinterpret_steal<py::object>(
+                 nb::cast(client.LiveArrays()).release().ptr());
+           })
+      .def("live_buffers",
+           [](const PyClient& client) {
+             return py::reinterpret_steal<py::object>(
+                 nb::cast(client.LiveArrays()).release().ptr());
+           })
       .def("process_index", &PyClient::process_index)
       .def("host_id", &PyClient::process_index)
       .def("task_id", &PyClient::process_index)
@@ -550,13 +574,23 @@ static void Init(py::module_& m) {
                 throw py::type_error(e.what());
               }
             }
-            return ValueOrThrow(
-                self.Compile(mlir_module, options, host_callbacks));
+            return py::reinterpret_steal<py::object>(
+                nb::cast(ValueOrThrow(self.Compile(mlir_module, options,
+                                                   host_callbacks)))
+                    .release()
+                    .ptr());
           },
           py::arg("computation"), py::arg("compile_options") = py::none(),
           py::arg("host_callbacks") = std::vector<py::capsule>())
       .def("serialize_executable",
-           xla::ValueOrThrowWrapper(&PyClient::SerializeExecutable))
+           // TODO(phawkins): revert to the following after nanobind transition
+           // xla::ValueOrThrowWrapper(&PyClient::SerializeExecutable))
+           [](const PyClient& self, py::object executable_py) {
+             const PyLoadedExecutable* executable =
+                 nb::cast<const PyLoadedExecutable*>(
+                     nb::handle(executable_py.ptr()));
+             return xla::ValueOrThrow(self.SerializeExecutable(*executable));
+           })
       .def(
           "deserialize_executable",
           // TODO(phawkins): revert to the following after nanobind transition
@@ -574,8 +608,9 @@ static void Init(py::module_& m) {
                 throw py::type_error(e.what());
               }
             }
-            return xla::ValueOrThrow(self.DeserializeExecutable(
-                serialized, options, host_callbacks));
+            auto out = nb::cast(xla::ValueOrThrow(self.DeserializeExecutable(
+                serialized, options, host_callbacks)));
+            return py::reinterpret_steal<py::object>(out.release().ptr());
           },
           py::arg("serialized"), py::arg("compile_options") = py::none(),
           py::arg("host_callbacks") = std::vector<py::capsule>())
@@ -822,59 +857,52 @@ static void Init(py::module_& m) {
               absl::MakeSpan(devices)));
         });
 
-  TF_CHECK_OK(PyArray::RegisterTypes(m));
+  TF_CHECK_OK(PyArray::RegisterTypes(m_nb));
   jax::RegisterDeviceList(m_nb);
   jax::RegisterSharding(m_nb);
 
-  py::class_<CompiledMemoryStats>(m, "CompiledMemoryStats")
-      .def_readwrite("generated_code_size_in_bytes",
-                     &CompiledMemoryStats::generated_code_size_in_bytes)
-      .def_readwrite("argument_size_in_bytes",
-                     &CompiledMemoryStats::argument_size_in_bytes)
-      .def_readwrite("output_size_in_bytes",
-                     &CompiledMemoryStats::output_size_in_bytes)
-      .def_readwrite("alias_size_in_bytes",
-                     &CompiledMemoryStats::alias_size_in_bytes)
-      .def_readwrite("temp_size_in_bytes",
-                     &CompiledMemoryStats::temp_size_in_bytes)
-      .def_readwrite("host_generated_code_size_in_bytes",
-                     &CompiledMemoryStats::host_generated_code_size_in_bytes)
-      .def_readwrite("host_argument_size_in_bytes",
-                     &CompiledMemoryStats::host_argument_size_in_bytes)
-      .def_readwrite("host_output_size_in_bytes",
-                     &CompiledMemoryStats::host_output_size_in_bytes)
-      .def_readwrite("host_alias_size_in_bytes",
-                     &CompiledMemoryStats::host_alias_size_in_bytes)
-      .def_readwrite("host_temp_size_in_bytes",
-                     &CompiledMemoryStats::host_temp_size_in_bytes)
-      .def_property_readonly("serialized_hlo_proto",
-                             [](const CompiledMemoryStats& cms) -> py::bytes {
-                               return py::bytes(cms.serialized_hlo_proto);
-                             })
+  nb::class_<CompiledMemoryStats>(m_nb, "CompiledMemoryStats")
+      .def_rw("generated_code_size_in_bytes",
+              &CompiledMemoryStats::generated_code_size_in_bytes)
+      .def_rw("argument_size_in_bytes",
+              &CompiledMemoryStats::argument_size_in_bytes)
+      .def_rw("output_size_in_bytes",
+              &CompiledMemoryStats::output_size_in_bytes)
+      .def_rw("alias_size_in_bytes", &CompiledMemoryStats::alias_size_in_bytes)
+      .def_rw("temp_size_in_bytes", &CompiledMemoryStats::temp_size_in_bytes)
+      .def_rw("host_generated_code_size_in_bytes",
+              &CompiledMemoryStats::host_generated_code_size_in_bytes)
+      .def_rw("host_argument_size_in_bytes",
+              &CompiledMemoryStats::host_argument_size_in_bytes)
+      .def_rw("host_output_size_in_bytes",
+              &CompiledMemoryStats::host_output_size_in_bytes)
+      .def_rw("host_alias_size_in_bytes",
+              &CompiledMemoryStats::host_alias_size_in_bytes)
+      .def_rw("host_temp_size_in_bytes",
+              &CompiledMemoryStats::host_temp_size_in_bytes)
+      .def_prop_ro("serialized_hlo_proto",
+                   [](const CompiledMemoryStats& cms) -> nb::bytes {
+                     return nb::bytes(cms.serialized_hlo_proto.data(),
+                                      cms.serialized_hlo_proto.size());
+                   })
       .def("__str__", &CompiledMemoryStats::DebugString);
 
-  py::class_<PyExecuteResults>(m, "ExecuteResults")
+  nb::class_<PyExecuteResults>(m_nb, "ExecuteResults")
       .def("__len__", [](PyExecuteResults& results) { return results.Size(); })
       .def("disassemble_into_single_device_arrays",
-           [](PyExecuteResults& results) {
-             return results.DisassembleIntoSingleDeviceArrays();
-           })
+           &PyExecuteResults::DisassembleIntoSingleDeviceArrays)
       .def("disassemble_prefix_into_single_device_arrays",
-           [](PyExecuteResults& results, size_t n) {
-             return results.DisassemblePrefixIntoSingleDeviceArrays(n);
-           })
-      .def("consume_with_handlers",
-           [](PyExecuteResults& results,
-              std::vector<std::variant<const PyArrayResultHandler*, py::object>>
-                  out_handlers) {
-             return results.ConsumeWithHandlers(std::move(out_handlers));
-           })
-      .def("consume_token",
-           [](PyExecuteResults& results) { return results.ConsumeToken(); });
+           &PyExecuteResults::DisassemblePrefixIntoSingleDeviceArrays)
+      .def("consume_with_handlers", &PyExecuteResults::ConsumeWithHandlers)
+      .def("consume_token", &PyExecuteResults::ConsumeToken);
 
-  py::class_<PyLoadedExecutable, std::shared_ptr<PyLoadedExecutable>>
-      loaded_executable(m, "LoadedExecutable");
-  loaded_executable.def_property_readonly("client", &PyLoadedExecutable::client)
+  nb::class_<PyLoadedExecutable>(m_nb, "LoadedExecutable")
+      .def_prop_ro(
+          "client",
+          // TODO(phawkins): directly wrap method after nanobind transition.
+          [](const PyLoadedExecutable& self) -> nb::object {
+            return nb::borrow(py::cast(self.client()).ptr());
+          })
       .def("local_logical_device_ids",
            [](PyLoadedExecutable* exec) {
              auto span = exec->addressable_device_logical_ids();
@@ -886,7 +914,12 @@ static void Init(py::module_& m) {
                    logical_device_id.replica, logical_device_id.partition));
              }
            })
-      .def("local_devices", &PyLoadedExecutable::AddressableDevices)
+      // TODO(phawkins): directly wrap after nanobind transition
+      // .def("local_devices", &PyLoadedExecutable::AddressableDevices)
+      .def("local_devices",
+           [](const PyLoadedExecutable& self) {
+             return nb::borrow(py::cast(self.AddressableDevices()).ptr());
+           })
       .def("size_of_generated_code_in_bytes",
            &PyLoadedExecutable::SizeOfGeneratedCodeInBytes)
       .def(
@@ -896,92 +929,47 @@ static void Init(py::module_& m) {
       .def("execute_sharded_on_local_devices",
            xla::ValueOrThrowWrapper(
                &PyLoadedExecutable::ExecuteShardedOnLocalDevices),
-           py::arg("arguments"))
+           nb::arg("arguments"))
       .def("execute_sharded_on_local_devices_with_tokens",
            xla::ValueOrThrowWrapper(
                &PyLoadedExecutable::ExecuteShardedOnLocalDevicesWithTokens),
-           py::arg("arguments"))
+           nb::arg("arguments"))
       // TODO(parkers): Switch execute_sharded_on_local_devices* to this.
       .def("execute_sharded",
            xla::ValueOrThrowWrapper(&PyLoadedExecutable::ExecuteSharded),
-           py::arg("arguments"), py::arg("with_tokens") = false)
-      .def("hlo_modules",
-           [](const PyLoadedExecutable& self) {
-             // TODO(phawkins): revert to a direct wrapping of
-             // PyLoadedExecutable::GetParameterLayouts when nanobind transition
-             // is complete.
-             return py::reinterpret_steal<py::object>(
-                 nb::cast(ValueOrThrow(self.HloModules())).release().ptr());
-           })
+           nb::arg("arguments"), nb::arg("with_tokens") = false)
+      .def("hlo_modules", ValueOrThrowWrapper(&PyLoadedExecutable::HloModules))
       .def("get_output_memory_kinds",
            xla::ValueOrThrowWrapper(&PyLoadedExecutable::GetOutputMemoryKinds))
-      .def("get_output_shardings",
-           [](const PyLoadedExecutable& self) {
-             return py::reinterpret_steal<py::object>(
-                 nb::cast(self.GetOutputShardings()).release().ptr());
-           })
+      .def("get_output_shardings", &PyLoadedExecutable::GetOutputShardings)
       .def("get_parameter_layouts",
-           [](const PyLoadedExecutable& self) {
-             // TODO(phawkins): revert to a direct wrapping of
-             // PyLoadedExecutable::GetParameterLayouts when nanobind transition
-             // is complete.
-             return py::reinterpret_steal<py::object>(
-                 nb::cast(ValueOrThrow(self.GetParameterLayouts()))
-                     .release()
-                     .ptr());
-           })
+           xla::ValueOrThrowWrapper(&PyLoadedExecutable::GetParameterLayouts))
       .def("get_output_layouts",
-           [](const PyLoadedExecutable& self) {
-             // TODO(phawkins): revert to a direct wrapping of
-             // PyLoadedExecutable::GetParameterLayouts when nanobind transition
-             // is complete.
-             return py::reinterpret_steal<py::object>(
-                 nb::cast(ValueOrThrow(self.GetOutputLayouts()))
-                     .release()
-                     .ptr());
-           })
+           xla::ValueOrThrowWrapper(&PyLoadedExecutable::GetOutputLayouts))
       .def("get_parameter_shardings",
-           [](const PyLoadedExecutable& self) {
-             return py::reinterpret_steal<py::object>(
-                 nb::cast(self.GetParameterShardings()).release().ptr());
-           })
+           &PyLoadedExecutable::GetParameterShardings)
       .def("keep_alive", &PyLoadedExecutable::KeepAlive)
       .def("compile_options",
-           // TODO(phawkins): revert to the following when nanobind transition
-           // complete
-           // xla::ValueOrThrowWrapper(&PyLoadedExecutable::GetCompileOptions))
            [](const PyLoadedExecutable& self) {
-             return py::reinterpret_steal<py::object>(
-                 nb::cast(
-                     ValueOrThrow(self.pjrt_executable()->GetCompileOptions()))
-                     .release()
-                     .ptr());
+             return xla::ValueOrThrow(
+                 self.pjrt_executable()->GetCompileOptions());
            })
       .def("cost_analysis",
            xla::ValueOrThrowWrapper(&PyLoadedExecutable::GetCostAnalysis))
-      .def_property_readonly(
-          "traceback",
-          // TODO(phawkins): just use &PyLoadedExecutable::traceback when
-          // nanobind port is complete.
-          [](PyLoadedExecutable* e) -> py::object {
-            if (e->traceback()) {
-              return py::reinterpret_borrow<py::object>(e->traceback()->ptr());
-            } else {
-              return py::none();
-            }
-          })
-      .def_property_readonly("fingerprint",
-                             [](PyLoadedExecutable* exec) -> py::object {
-                               if (exec->fingerprint().has_value()) {
-                                 return py::bytes(*exec->fingerprint());
-                               } else {
-                                 return py::none();
-                               }
-                             });
-  py::class_<PyToken> token(m, "Token");
+      .def_prop_ro("traceback", &PyLoadedExecutable::traceback)
+      .def_prop_ro("fingerprint", [](PyLoadedExecutable* exec) -> nb::object {
+        if (exec->fingerprint().has_value()) {
+          return nb::bytes(exec->fingerprint()->data(),
+                           exec->fingerprint()->size());
+        } else {
+          return nb::none();
+        }
+      });
+  nb::class_<PyToken> token(m_nb, "Token");
   token.def("block_until_ready",
             [](PyToken& self) { xla::ThrowIfError(self.Await()); });
-  py::class_<PyShardedToken> sharded_token(m, "ShardedToken");
+
+  nb::class_<PyShardedToken> sharded_token(m_nb, "ShardedToken");
   sharded_token.def("block_until_ready", [](PyShardedToken& self) {
     xla::ThrowIfError(self.Await());
   });
@@ -1007,9 +995,12 @@ static void Init(py::module_& m) {
       py::arg("dlpack"), py::arg("cpu_backend") = nullptr,
       py::arg("gpu_backend") = nullptr);
   m.def("cuda_array_interface_to_buffer",
-        [](const pybind11::dict& cai, std::shared_ptr<PyClient> cuda_client) {
-          return xla::ValueOrThrow(
+        [](py::handle cai_py, std::shared_ptr<PyClient> cuda_client) {
+          // TODO(phawkins): simplify after nanobind transition is complete.
+          nb::dict cai = nb::cast<nb::dict>(nb::handle(cai_py.ptr()));
+          auto out = xla::ValueOrThrow(
               CudaArrayInterfaceToBuffer(cai, std::move(cuda_client)));
+          return py::reinterpret_steal<py::object>(out.release().ptr());
         });
   BuildProfilerSubmodule(m_nb);
   BuildOpsSubmodule(m_nb);
@@ -1346,14 +1337,20 @@ static void Init(py::module_& m) {
 
   m.def(
       "batched_device_put",
-      [](py::object aval, py::object sharding, std::vector<py::object> xs,
+      [](py::object aval, py::object sharding, py::object xs_py,
          std::vector<ClientAndPtr<PjRtDevice>> dst_devices, bool committed,
          bool force_copy,
-         PjRtClient::HostBufferSemantics host_buffer_semantics) -> PyArray {
-        return ValueOrThrow(PyArray::BatchedDevicePut(
-            std::move(aval), std::move(sharding), std::move(xs),
-            std::move(dst_devices), committed, force_copy,
-            host_buffer_semantics, jax::GetEnableX64()));
+         PjRtClient::HostBufferSemantics host_buffer_semantics) -> py::object {
+        // TODO(phawkins): simplify after nanobind transition is complete.
+        auto xs = nb::cast<std::vector<nb::object>>(nb::handle(xs_py.ptr()));
+        return py::reinterpret_steal<py::object>(
+            ValueOrThrow(PyArray::BatchedDevicePut(
+                             nb::borrow(aval.ptr()), nb::borrow(sharding.ptr()),
+                             std::move(xs), std::move(dst_devices), committed,
+                             force_copy, host_buffer_semantics,
+                             jax::GetEnableX64()))
+                .release()
+                .ptr());
       },
       py::arg("aval"), py::arg("sharding"), py::arg("xs"), py::arg("devices"),
       py::arg("committed") = true, py::arg("force_copy") = false,

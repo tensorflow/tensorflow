@@ -45,7 +45,6 @@ limitations under the License.
 #include "third_party/nanobind/include/nanobind/stl/string.h"  // IWYU pragma: keep
 #include "third_party/nanobind/include/nanobind/stl/string_view.h"  // IWYU pragma: keep
 #include "third_party/nanobind/include/nanobind/stl/vector.h"  // IWYU pragma: keep
-#include "pybind11/pytypes.h"  // from @pybind11
 #include "xla/pjrt/exceptions.h"
 #include "xla/pjrt/lru_cache.h"
 #include "xla/pjrt/pjrt_client.h"
@@ -75,7 +74,6 @@ namespace jax {
 namespace {
 
 namespace nb = nanobind;
-namespace py = pybind11;
 
 struct PjitCacheEntry {
   explicit PjitCacheEntry(xla::PyTreeRegistry* registry)
@@ -357,8 +355,7 @@ void CallShardArgFallback(
     ParsedArgumentsAsBuffers& arguments) {
   tsl::profiler::TraceMe traceme("cpp_pjit_shard_arg_fallback");
   auto py_array_or_bufs = fallback(arg, sharding);
-  // TODO(phawkins): simplify after nanobind transition is complete
-  auto py_array = py::cast<xla::PyArray>(py::handle(py_array_or_bufs.ptr()));
+  auto py_array = nb::cast<xla::PyArray>(py_array_or_bufs);
   num_args_arrays.push_back(tsl::FormRef(py_array.ifrt_array()));
   arguments.keep_alive_objects.push_back(std::move(py_array_or_bufs));
 }
@@ -407,9 +404,8 @@ PrepareIfrtInputs(const xla::PyLoadedExecutable& executable,
 
         num_args_arrays.push_back(std::move(on_device.ifrt_array));
         if (on_device.owning_pybuffer) {
-          // TODO(phawkins): use std::move after nanobind transition is complete
           arguments.keep_alive_objects.push_back(
-              nb::steal(on_device.owning_pybuffer.release().ptr()));
+              std::move(on_device.owning_pybuffer));
         }
         continue;
       } else {
@@ -419,10 +415,9 @@ PrepareIfrtInputs(const xla::PyLoadedExecutable& executable,
       }
     }
 
-    xla::PyArray py_array(py::reinterpret_borrow<py::object>(arg.ptr()));
+    xla::PyArray py_array = nb::borrow<xla::PyArray>(arg);
     const auto& sharding = py_array.sharding();
-    // TODO(phawkins): remove .ptr() after nanobind transition is complete.
-    int sharding_num_devices = jax::Sharding::SafeNumDevices(sharding.ptr());
+    int sharding_num_devices = jax::Sharding::SafeNumDevices(sharding);
 
     // Currently only committed PyArray inputs or uncommitted PyArray on a
     // single device inputs are allowed. This is checked previously in the entry
@@ -430,8 +425,7 @@ PrepareIfrtInputs(const xla::PyLoadedExecutable& executable,
     DCHECK(py_array.committed() ||
            (!py_array.committed() && sharding_num_devices == 1));
 
-    // TODO(phawkins): remove .ptr() after nanobind transition is complete.
-    if (sharding.get_type().ptr() == jax::PmapSharding::type().ptr()) {
+    if (sharding.type().ptr() == jax::PmapSharding::type().ptr()) {
       CallShardArgFallback(arg.ptr(), in_shardings[dce_index],
                            shard_arg_fallback, num_args_arrays, arguments);
       continue;
@@ -538,7 +532,7 @@ absl::StatusOr<nb::object> PjitFunction::Call(nb::handle callable,
       continue;
     }
 
-    xla::PyArray py_array(py::reinterpret_borrow<py::object>(arg.ptr()));
+    xla::PyArray py_array = nb::borrow<xla::PyArray>(arg);
     if (!py_array.fastpath_enabled()) {
       return fallback_to_cache_miss();
     }
@@ -549,9 +543,8 @@ absl::StatusOr<nb::object> PjitFunction::Call(nb::handle callable,
     //
     // TODO(chky): Consider support uncommitted PyArray in cpp when the python
     // side stablizes.
-    // TODO(phawkins): remove .ptr() after nanobind transition is complete.
     if (!py_array.committed() &&
-        jax::Sharding::SafeNumDevices(py_array.sharding().ptr()) > 1) {
+        jax::Sharding::SafeNumDevices(py_array.sharding()) > 1) {
       VLOG(2) << "PyArray argument is not committed and number of global "
                  "devices is more than 1; fallback to python.";
       return fallback_to_cache_miss();
@@ -655,18 +648,13 @@ absl::StatusOr<nb::object> PjitFunction::Call(nb::handle callable,
     // like `aval` and `sharding` are retrieved from the cache for this
     // function, which are produced by the python path in `cache_miss`.
     xla::PyArray py_array(
-        // TODO(phawkins): remove nanobind translation
-        py::reinterpret_borrow<py::object>(cache_entry->out_avals[i].ptr()),
-        cache_entry->out_weak_types[i],
-        py::reinterpret_borrow<py::object>(cache_entry->out_dtypes[i].ptr()),
-        cache_entry->out_shapes[i],
-        py::reinterpret_borrow<py::object>(cache_entry->out_shardings[i].ptr()),
-        cache_entry->executable->client(), traceback,
-        std::move(output_arrays[i]),
+        cache_entry->out_avals[i], cache_entry->out_weak_types[i],
+        cache_entry->out_dtypes[i], cache_entry->out_shapes[i],
+        cache_entry->out_shardings[i], cache_entry->executable->client(),
+        traceback, std::move(output_arrays[i]),
         /*committed=*/cache_entry->out_committed.at(i), /*skip_checks=*/true);
 
-    // TODO(phawkins): use std::move after nanobind transition is complete
-    outputs.push_back(nb::steal(py_array.release().ptr()));
+    outputs.push_back(std::move(py_array));
   }
 
   nb::object out = nb::steal<nb::object>(
@@ -721,11 +709,8 @@ absl::Status PjitFunction::UpdateArgsSignature(
     // It should be already checked previously in the entry point of
     // PjitFunction::Call().
     if (arg.type().ptr() == xla::PyArray::type().ptr()) {
-      auto py_array = py::reinterpret_borrow<xla::PyArray>(arg.ptr());
-
-      // TODO(phawkins): remove nanobind translation
-      arguments.signature.dynamic_arg_shardings.push_back(
-          nb::borrow(py_array.sharding().ptr()));
+      auto py_array = nb::borrow<xla::PyArray>(arg);
+      arguments.signature.dynamic_arg_shardings.push_back(py_array.sharding());
       arguments.signature.committed_args.push_back(py_array.committed());
     } else {
       arguments.signature.dynamic_arg_shardings.push_back(nb::none());
@@ -752,9 +737,8 @@ void PjitFunction::PopulateCacheEntry(PjitCacheEntry& cache_entry,
 
   nb::tuple fastpath_data = nb::cast<nb::tuple>(out_and_fastpath_data[1]);
 
-  // TODO(phawkins): remove nanobind translation
-  cache_entry.executable = py::cast<std::shared_ptr<xla::PyLoadedExecutable>>(
-      py::handle(fastpath_data.attr("xla_executable").ptr()));
+  cache_entry.executable = nb::cast<std::shared_ptr<xla::PyLoadedExecutable>>(
+      fastpath_data.attr("xla_executable"));
 
   nb::list in_shardings = fastpath_data.attr("in_shardings");
   cache_entry.in_shardings.reserve(in_shardings.size());
@@ -854,12 +838,6 @@ PyObject* PjitFunction_tp_vectorcall(PyObject* callable, PyObject* const* args,
       return nullptr;
     }
     return out.value().release().ptr();
-  } catch (py::error_already_set& e) {
-    e.restore();
-    return nullptr;
-  } catch (py::cast_error& e) {
-    PyErr_SetString(PyExc_ValueError, e.what());
-    return nullptr;
   } catch (nb::python_error& e) {
     e.restore();
     return nullptr;

@@ -18,6 +18,7 @@ limitations under the License.
 #include <Python.h>
 
 #include <cstdint>
+#include <optional>
 #include <stdexcept>
 
 #include "absl/types/span.h"
@@ -36,12 +37,16 @@ namespace xla {
   return nb::steal<nb_dtype>(reinterpret_cast<PyObject*>(descr));
 }
 
-nb_numpy_ndarray::nb_numpy_ndarray(nb_dtype dtype,
-                                   absl::Span<int64_t const> shape,
-                                   absl::Span<int64_t const> strides,
-                                   const void* ptr, nb::handle base) {
-  if (shape.size() != strides.size()) {
-    throw std::invalid_argument("shape and strides must have the same size.");
+nb_numpy_ndarray::nb_numpy_ndarray(
+    nb_dtype dtype, absl::Span<int64_t const> shape,
+    std::optional<absl::Span<int64_t const>> strides, const void* ptr,
+    nb::handle base) {
+  const int64_t* strides_ptr = nullptr;
+  if (strides) {
+    if (shape.size() != strides->size()) {
+      throw std::invalid_argument("shape and strides must have the same size.");
+    }
+    strides_ptr = strides->data();
   }
   int flags = 0;
   if (base && ptr) {
@@ -58,7 +63,7 @@ nb_numpy_ndarray::nb_numpy_ndarray(nb_dtype dtype,
   nb::object array = nb::steal<nb::object>(PyArray_NewFromDescr(
       &PyArray_Type, reinterpret_cast<PyArray_Descr*>(dtype.release().ptr()),
       shape.size(), reinterpret_cast<const ssize_t*>(shape.data()),
-      reinterpret_cast<const ssize_t*>(strides.data()), const_cast<void*>(ptr),
+      reinterpret_cast<const ssize_t*>(strides_ptr), const_cast<void*>(ptr),
       flags,
       /*obj=*/nullptr));
   if (!array) {
@@ -136,6 +141,11 @@ ssize_t nb_numpy_ndarray::size() const {
 }
 
 const void* nb_numpy_ndarray::data() const {
+  PyArrayObject* self = reinterpret_cast<PyArrayObject*>(ptr());
+  return PyArray_DATA(self);
+}
+
+void* nb_numpy_ndarray::mutable_data() {
   PyArrayObject* self = reinterpret_cast<PyArrayObject*>(ptr());
   return PyArray_DATA(self);
 }

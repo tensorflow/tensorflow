@@ -134,9 +134,9 @@ absl::StatusOr<ShardArgResult> ShardArg(
     const InputSpec& input_spec, nb::handle py_devices,
     const nb::callable& python_fallback) {
   if (arg.type().ptr() == xla::PyArray::type().ptr()) {
-    auto py_array = py::reinterpret_borrow<xla::PyArray>(arg.ptr());
+    auto py_array = nb::borrow<xla::PyArray>(arg);
     if (py_array.fastpath_enabled()) {
-      if (py_array.sharding().get_type().ptr() ==
+      if (py_array.sharding().type().ptr() ==
           input_spec.array_sharding.type().ptr()) {
         auto* pmap_sharding =
             nb::cast<jax::PmapSharding*>(nb::handle(py_array.sharding().ptr()));
@@ -243,7 +243,7 @@ absl::StatusOr<ShardArgResult> ShardArg(
   tsl::profiler::TraceMe traceme("pmap_lib_shard_arg_python_fallback");
   auto py_array_or_bufs = python_fallback(arg, input_spec.array_sharding);
 
-  auto py_array = py::cast<xla::PyArray>(py::handle(py_array_or_bufs.ptr()));
+  auto py_array = nb::cast<xla::PyArray>(py_array_or_bufs);
   ShardArgResult result;
   result.owning_sda = nb::borrow(py_array_or_bufs.ptr());
   result.ifrt_array = tsl::FormRef(py_array.ifrt_array());
@@ -450,8 +450,8 @@ void PmapFunction::PopulateCacheEntry(PmapCacheEntry& cache_entry,
   // namedtuple.
   std::shared_ptr<xla::PyLoadedExecutable> executable;
   try {
-    executable = py::cast<std::shared_ptr<xla::PyLoadedExecutable>>(
-        py::handle(pmap_data.attr("xla_executable").ptr()));
+    executable = nb::cast<std::shared_ptr<xla::PyLoadedExecutable>>(
+        pmap_data.attr("xla_executable"));
   } catch (const nb::cast_error& e) {
     // Backends that don't implement the C++ PjRt APIs
     cache_entry.fall_back_to_python = true;
@@ -668,17 +668,12 @@ absl::StatusOr<nb::object> PmapFunction::Call(nb::handle callable,
   for (int i = 0; i < num_outputs; ++i) {
     const ResultSpec& result_spec = output_specs[i];
     xla::PyArray py_array(
-        py::reinterpret_borrow<py::object>(result_spec.out_aval.ptr()),
-        result_spec.weak_type,
-        py::reinterpret_borrow<py::object>(cache_entry.out_dtypes[i].ptr()),
-        cache_entry.out_shapes[i],
-        py::reinterpret_borrow<py::object>(
-            cache_entry.out_array_shardings[i].ptr()),
-        client, traceback, std::move(output_arrays[i]),
-        cache_entry.out_committed[i],
+        result_spec.out_aval, result_spec.weak_type, cache_entry.out_dtypes[i],
+        cache_entry.out_shapes[i], cache_entry.out_array_shardings[i], client,
+        traceback, std::move(output_arrays[i]), cache_entry.out_committed[i],
         /*skip_checks=*/true);
 
-    flat_sharded_device_arrays.push_back(nb::steal(py_array.release().ptr()));
+    flat_sharded_device_arrays.push_back(std::move(py_array));
   }
 
   nb::object out =

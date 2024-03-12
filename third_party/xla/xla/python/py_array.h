@@ -16,6 +16,9 @@ limitations under the License.
 #ifndef XLA_PYTHON_PY_ARRAY_H_
 #define XLA_PYTHON_PY_ARRAY_H_
 
+#include <Python.h>
+
+#include <cstddef>
 #include <cstdint>
 #include <memory>
 #include <optional>
@@ -24,19 +27,27 @@ limitations under the License.
 #include <vector>
 
 // placeholder for index annotation headers
+#include "absl/types/span.h"
 #include "llvm/Support/Casting.h"
+#include "third_party/nanobind/include/nanobind/nanobind.h"
 #include "pybind11/numpy.h"  // from @pybind11
 #include "pybind11/pybind11.h"  // from @pybind11
 #include "pybind11/pytypes.h"  // from @pybind11
 #include "pybind11/stl.h"  // from @pybind11
+#include "xla/pjrt/exceptions.h"
+#include "xla/pjrt/pjrt_client.h"
 #include "xla/python/ifrt/array.h"
+#include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt/future.h"
+#include "xla/python/nb_numpy.h"
 #include "xla/python/pjrt_ifrt/pjrt_array.h"
 #include "xla/python/py_client.h"
 #include "xla/python/traceback.h"
 #include "xla/shape.h"
 #include "xla/status.h"
 #include "xla/statusor.h"
+#include "xla/util.h"
+#include "tsl/concurrency/ref_count.h"
 
 namespace xla {
 
@@ -55,18 +66,18 @@ class PyHostValue {
   Status CopyToHostAsync(std::optional<Shape>& dynamic_shape_holder,
                          ifrt::Array* ifrt_array);
 
-  StatusOr<pybind11::object> AsNumPyArray(
+  StatusOr<nanobind::object> AsNumPyArray(
       std::optional<Shape>& dynamic_shape_holder, ifrt::Array* ifrt_array);
 
  private:
   ifrt::Future<Status> ready_;
-  pybind11::array value_;
+  nb_numpy_ndarray value_;
 };
 
 // Private to PyArray, but you cannot forward declare member classes.
 struct PyArray_Storage {
-  PyArray_Storage(pybind11::object aval, bool weak_type, pybind11::dtype dtype,
-                  std::vector<int64_t> shape, pybind11::object sharding,
+  PyArray_Storage(nanobind::object aval, bool weak_type, nb_dtype dtype,
+                  std::vector<int64_t> shape, nanobind::object sharding,
                   bool committed, std::shared_ptr<PyClient> py_client,
                   std::optional<nb_traceback> traceback,
                   tsl::RCReference<ifrt::Array> ifrt_array);
@@ -76,18 +87,18 @@ struct PyArray_Storage {
   explicit PyArray_Storage(DisableFastpath);
 
   ~PyArray_Storage();
-  pybind11::handle AsHandle();
+  nanobind::handle AsHandle();
 
   // TODO(yashkatariya): remove this once the transition completes.
   bool fastpath_enabled;
 
-  pybind11::object aval;
+  nanobind::object aval;
   bool weak_type = false;
-  pybind11::dtype dtype;
+  nb_dtype dtype;
   std::vector<int64_t> shape;
 
-  pybind11::object sharding;
-  pybind11::object npy_value = pybind11::none();
+  nanobind::object sharding;
+  nanobind::object npy_value = nanobind::none();
   bool committed = false;
 
   std::shared_ptr<PyClient> py_client;
@@ -109,27 +120,27 @@ struct PyArray_Storage {
 // The C++ implementation of jax.Array. A few key methods and data members are
 // implemented in C++ for performance, while most of the functionalities are
 // still implemented in python.
-class PyArray : public pybind11::object {
+class PyArray : public nanobind::object {
  public:
-  PYBIND11_OBJECT(PyArray, pybind11::object, PyArray::IsPyArray);
+  NB_OBJECT(PyArray, nanobind::object, "Array", PyArray::IsPyArray);
   PyArray() = default;
 
   // "__init__" methods. Only used in python
-  static void PyInit(pybind11::object self, pybind11::object aval,
-                     pybind11::object sharding,
+  static void PyInit(PyArray self, nanobind::object aval,
+                     nanobind::object sharding,
                      absl::Span<const PyArray> py_arrays, bool committed,
                      bool skip_checks);
 
   // TODO(yashkatariya): remove this once the transition completes.
   struct DisableFastpath {};
-  static void PyInit(pybind11::object self, DisableFastpath);
+  static void PyInit(nanobind::object self, DisableFastpath);
 
   // Only used in C++. `skip_checks` should only be set for Arrays created by
   // jax that cannot possibly have consistency issues (e.g. `sharding` devices
   // different than `ifrt_array` devices). Arrays created by users should be
   // checked.
-  PyArray(pybind11::object aval, bool weak_type, pybind11::dtype dtype,
-          std::vector<int64_t> shape, pybind11::object sharding,
+  PyArray(nanobind::object aval, bool weak_type, nb_dtype dtype,
+          std::vector<int64_t> shape, nanobind::object sharding,
           std::shared_ptr<PyClient> py_client,
           std::optional<nb_traceback> traceback,
           tsl::RCReference<ifrt::Array> ifrt_array, bool committed,
@@ -143,27 +154,27 @@ class PyArray : public pybind11::object {
   static PyArray MakeFromIfrtArrayAndSharding(
       std::shared_ptr<PyClient> py_client,
       std::optional<nb_traceback> traceback,
-      tsl::RCReference<ifrt::Array> ifrt_array, pybind11::object sharding,
+      tsl::RCReference<ifrt::Array> ifrt_array, nanobind::object sharding,
       bool weak_type, bool committed, bool skip_checks);
 
-  static Status RegisterTypes(pybind11::module& m);
+  static Status RegisterTypes(nanobind::module_& m);
 
   using Storage = PyArray_Storage;
 
-  const pybind11::object& aval() const { return GetStorage().aval; }
-  void set_aval(pybind11::object aval) { GetStorage().aval = std::move(aval); }
+  const nanobind::object& aval() const { return GetStorage().aval; }
+  void set_aval(nanobind::object aval) { GetStorage().aval = std::move(aval); }
 
   bool weak_type() const { return GetStorage().weak_type; }
 
-  const pybind11::dtype& dtype() const { return GetStorage().dtype; }
+  const nb_dtype& dtype() const { return GetStorage().dtype; }
   absl::Span<const int64_t> shape() const { return GetStorage().shape; }
 
-  const pybind11::object& sharding() const { return GetStorage().sharding; }
+  const nanobind::object& sharding() const { return GetStorage().sharding; }
 
   bool committed() const { return GetStorage().committed; }
 
-  const pybind11::object& npy_value() const { return GetStorage().npy_value; }
-  void set_npy_value(pybind11::object v) {
+  const nanobind::object& npy_value() const { return GetStorage().npy_value; }
+  void set_npy_value(nanobind::object v) {
     GetStorage().npy_value = std::move(v);
   }
 
@@ -223,8 +234,8 @@ class PyArray : public pybind11::object {
   }
   const std::vector<PyArray>& py_arrays_cached();
 
-  pybind11::object arrays();
-  Status set_arrays(pybind11::object obj);
+  nanobind::object arrays();
+  Status set_arrays(nanobind::object obj);
   StatusOr<PyArray> FullyReplicatedShard();
 
   int num_shards() const {
@@ -238,21 +249,21 @@ class PyArray : public pybind11::object {
   // TODO(yashkatariya): remove this once the transition completes.
   bool fastpath_enabled() const { return GetStorage().fastpath_enabled; }
 
-  static pybind11::handle type() {
+  static nanobind::handle type() {
     DCHECK(type_);
-    return pybind11::handle(type_);
+    return nanobind::handle(type_);
   }
 
-  static bool IsPyArray(pybind11::handle arg) {
-    return arg.get_type().is(PyArray::type());
+  static bool IsPyArray(nanobind::handle arg) {
+    return arg.type().is(PyArray::type());
   }
 
   Status BlockUntilReady() const;
 
   StatusOr<size_t> GetOnDeviceSizeInBytes();
-  StatusOr<pybind11::object> SingleDeviceArrayToNumpyArray();
+  StatusOr<nanobind::object> SingleDeviceArrayToNumpyArray();
   Status CopySingleDeviceArrayToHostAsync();
-  pybind11::dict CudaArrayInterface();
+  nanobind::dict CudaArrayInterface();
   StatusOr<std::uintptr_t> UnsafeBufferPointer();
 
   Status Delete();
@@ -262,11 +273,11 @@ class PyArray : public pybind11::object {
   PyArray Clone() const;
 
   StatusOr<PyArray> CopyToDeviceWithSharding(ifrt::DeviceList devices,
-                                             pybind11::object dst_sharding);
+                                             nanobind::object dst_sharding);
 
   static StatusOr<PyArray> BatchedDevicePut(
-      pybind11::object aval, pybind11::object sharding,
-      std::vector<pybind11::object> xs,
+      nanobind::object aval, nanobind::object sharding,
+      std::vector<nanobind::object> xs,
       std::vector<ClientAndPtr<PjRtDevice>> dst_devices, bool committed,
       bool force_copy, PjRtClient::HostBufferSemantics host_buffer_semantics,
       bool jax_enable_x64);
@@ -289,7 +300,7 @@ class PyArray : public pybind11::object {
 
 class PyArrayResultHandler {
  public:
-  PyArrayResultHandler(pybind11::object aval, pybind11::object sharding,
+  PyArrayResultHandler(nanobind::object aval, nanobind::object sharding,
                        bool committed, bool skip_checks);
 
   PyArray Call(absl::Span<const PyArray> py_arrays) const;
@@ -299,18 +310,18 @@ class PyArrayResultHandler {
                tsl::RCReference<ifrt::Array> ifrt_array) const;
 
  private:
-  pybind11::object aval_;
-  pybind11::object sharding_;
+  nanobind::object aval_;
+  nanobind::object sharding_;
   bool weak_type_;
   bool committed_;
   bool skip_checks_;
 
-  pybind11::object dtype_;
+  nb_dtype dtype_;
   std::vector<int64_t> shape_;
 };
 
-StatusOr<pybind11::object> CudaArrayInterfaceToBuffer(
-    const pybind11::dict& cai, std::shared_ptr<PyClient> cuda_client);
+StatusOr<nanobind::object> CudaArrayInterfaceToBuffer(
+    const nanobind::dict& cai, std::shared_ptr<PyClient> cuda_client);
 
 }  // namespace xla
 

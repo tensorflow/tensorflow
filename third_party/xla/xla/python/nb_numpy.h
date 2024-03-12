@@ -25,6 +25,7 @@ limitations under the License.
 #include <Python.h>
 
 #include <cstdint>
+#include <optional>
 #include <string_view>
 
 #include "absl/types/span.h"
@@ -74,7 +75,8 @@ class nb_numpy_ndarray : public nanobind::object {
                     PyArray_Check);  // NOLINT
 
   nb_numpy_ndarray(nb_dtype dtype, absl::Span<int64_t const> shape,
-                   absl::Span<int64_t const> strides, const void* ptr = nullptr,
+                   std::optional<absl::Span<int64_t const>> strides,
+                   const void* ptr = nullptr,
                    nanobind::handle base = nanobind::handle());
 
   // Ensures that the given handle is a numpy array. If provided,
@@ -92,6 +94,7 @@ class nb_numpy_ndarray : public nanobind::object {
   ssize_t itemsize() const;
   ssize_t size() const;
   const void* data() const;
+  void* mutable_data();
   int flags() const;
 };
 

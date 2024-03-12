@@ -35,7 +35,6 @@ limitations under the License.
 #include "third_party/nanobind/include/nanobind/nanobind.h"
 #include "third_party/nanobind/include/nanobind/stl/complex.h"  // IWYU pragma: keep
 #include "third_party/nanobind/include/nanobind/stl/string_view.h"  // IWYU pragma: keep
-#include "pybind11/pybind11.h"  // from @pybind11
 #include "xla/primitive_util.h"
 #include "xla/python/ifrt/array.h"
 #include "xla/python/ifrt/device.h"
@@ -61,7 +60,6 @@ limitations under the License.
 #include "tsl/python/lib/core/numpy.h"
 
 namespace nb = nanobind;
-namespace py = pybind11;
 
 namespace xla {
 
@@ -279,7 +277,7 @@ absl::StatusOr<DevicePutResult> HandlePyArray(nb::handle obj,
                                               ifrt::Device* to_device,
                                               const DevicePutOptions& options,
                                               ifrt::MemoryKind to_memory_kind) {
-  auto py_array = py::reinterpret_borrow<PyArray>(obj.ptr());
+  auto py_array = nb::borrow<PyArray>(obj);
 
   // We only allow single device case for PyArray in device put.
   if (py_array.num_shards() != 1) {
@@ -295,7 +293,7 @@ absl::StatusOr<DevicePutResult> HandlePyArray(nb::handle obj,
   }
 
   // Fallback to python for non-matching clients or pmap sharding.
-  if (py_array.sharding().get_type().ptr() == jax::PmapSharding::type().ptr() ||
+  if (py_array.sharding().type().ptr() == jax::PmapSharding::type().ptr() ||
       ifrt_array->sharding().devices().front()->client() !=
           to_device->client()) {
     return HandleNumpyArray(obj.attr("_value"), client, to_device, options,
@@ -383,7 +381,7 @@ absl::StatusOr<DevicePutResult> DevicePut(nb::handle arg, ifrt::Client* client,
       }();
 
   if (arg.type().ptr() == PyArray::type().ptr()) {
-    auto array = py::reinterpret_borrow<PyArray>(arg.ptr());
+    auto array = nb::borrow<PyArray>(arg);
     if (array.fastpath_enabled()) {
       return HandlePyArray(arg, client, to_device, options, to_memory_kind);
     }
@@ -565,7 +563,7 @@ absl::StatusOr<PyArgSignature> PyArgSignatureOfValue(nb::handle arg,
       }();
 
   if (arg.type().ptr() == PyArray::type().ptr()) {
-    auto array = py::reinterpret_borrow<PyArray>(arg.ptr());
+    auto array = nb::borrow<PyArray>(arg);
     if (array.fastpath_enabled()) {
       ifrt::Array* ifrt_array = array.ifrt_array();
       if (ifrt_array == nullptr) {

@@ -15,36 +15,57 @@ limitations under the License.
 
 #include "xla/python/py_executable.h"
 
+#include <Python.h>
+
+#include <cstddef>
 #include <memory>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <utility>
 #include <variant>
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
+#include "absl/types/span.h"
+#include "third_party/nanobind/include/nanobind/nanobind.h"
+#include "xla/hlo/ir/hlo_module.h"
 #include "xla/layout.h"
 #include "xla/pjrt/pjrt_client.h"
+#include "xla/pjrt/pjrt_executable.h"
+#include "xla/pjrt/pjrt_future.h"
 #include "xla/python/ifrt/array.h"
 #include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt/executable.h"
 #include "xla/python/ifrt/future.h"
+#include "xla/python/ifrt/memory.h"
+#include "xla/python/ifrt/sharding.h"
+#include "xla/python/py_array.h"
+#include "xla/python/py_client.h"
+#include "xla/python/traceback.h"
+#include "tsl/concurrency/ref_count.h"
 #include "tsl/platform/fingerprint.h"
+#include "tsl/platform/logging.h"
+#include "tsl/platform/status.h"
+#include "tsl/platform/statusor.h"
 #include "tsl/profiler/lib/traceme.h"
 
 namespace xla {
 
-namespace py = pybind11;
+namespace nb = nanobind;
 
-Status PyToken::Await() {
+absl::Status PyToken::Await() {
   CHECK(future_.IsValid());
-  py::gil_scoped_release gil_release;
+  nb::gil_scoped_release gil_release;
   return future_.Await();
 }
 
-Status PyShardedToken::Await() {
-  py::gil_scoped_release gil_release;
-  Status status = OkStatus();
+absl::Status PyShardedToken::Await() {
+  nb::gil_scoped_release gil_release;
+  absl::Status status = absl::OkStatus();
   for (auto& future : futures_) {
     auto s = future.Await();
     if (!s.ok()) status = std::move(s);
@@ -175,15 +196,15 @@ void PopulateExecuteShardedResults(
 }
 
 template <typename ArgT, typename ArgAdapter = ShardedBufferAdapter<ArgT>>
-StatusOr<PyExecuteResults> ExecuteShardedOnLocalDevicesInternal(
+absl::StatusOr<PyExecuteResults> ExecuteShardedOnLocalDevicesInternal(
     const ExecuteOptions& options, const std::shared_ptr<PyClient>& client,
     ifrt::LoadedExecutable* ifrt_loaded_executable, absl::Span<const ArgT> args,
-    std::optional<std::vector<PjRtFuture<Status>>>& returned_futures) {
+    std::optional<std::vector<PjRtFuture<absl::Status>>>& returned_futures) {
   std::vector<tsl::RCReference<ifrt::Array>> output_arrays;
-  std::unique_ptr<ifrt::Future<Status>> returned_future;
+  std::unique_ptr<ifrt::Future<absl::Status>> returned_future;
   int num_computations = ifrt_loaded_executable->addressable_devices().size();
   {
-    py::gil_scoped_release gil_release;
+    nb::gil_scoped_release gil_release;
     for (const auto& arg : args) {
       if (ArgAdapter::num_devices(arg) != num_computations) {
         return xla::InvalidArgument(
@@ -233,7 +254,7 @@ PyExecuteResults::PyExecuteResults(
 
 void PyExecuteResults::CheckNotDisassembled() const {
   if (is_exploded_) {
-    throw py::value_error("ExecuteResults already exploded.");
+    throw nb::value_error("ExecuteResults already exploded.");
   }
 }
 
@@ -245,7 +266,7 @@ std::vector<tsl::RCReference<ifrt::Array>> PyExecuteResults::Consume() {
 
 PyShardedToken PyExecuteResults::ConsumeToken() {
   if (token_consumed_) {
-    throw py::value_error("ExecuteResults token already consumed.");
+    throw nb::value_error("ExecuteResults token already consumed.");
   }
   token_consumed_ = true;
   return std::move(token_);
@@ -262,9 +283,10 @@ std::vector<std::vector<PyArray>>
 PyExecuteResults::DisassemblePrefixIntoSingleDeviceArrays(size_t n) {
   CheckNotDisassembled();
   if (n > ifrt_arrays_.size()) {
-    throw py::value_error(
+    throw nb::value_error(
         absl::StrCat("In DisassemblePrefixIntoSingleDeviceArrays: ", n, " > ",
-                     ifrt_arrays_.size()));
+                     ifrt_arrays_.size())
+            .c_str());
   }
   std::vector<tsl::RCReference<ifrt::Array>> ifrt_arrays;
   ifrt_arrays.reserve(ifrt_arrays_.size() - n);
@@ -279,19 +301,20 @@ PyExecuteResults::DisassemblePrefixIntoSingleDeviceArrays(size_t n) {
   return outputs;
 }
 
-std::vector<py::object> PyExecuteResults::ConsumeWithHandlers(
-    std::vector<std::variant<const PyArrayResultHandler*, py::object>>
+std::vector<nb::object> PyExecuteResults::ConsumeWithHandlers(
+    std::vector<std::variant<const PyArrayResultHandler*, nb::object>>
         out_handlers) {
-  std::vector<py::object> outputs;
+  std::vector<nb::object> outputs;
   auto ifrt_arrays = Consume();
   auto traceback = Traceback::Get();
   DCHECK_GT(num_computations_, 0);
   int num_output_buffers = ifrt_arrays.size();
   outputs.reserve(num_output_buffers);
   if (out_handlers.size() != num_output_buffers) {
-    throw py::value_error(absl::StrCat(
-        "Mismatch between out_handlers and num_results: ", out_handlers.size(),
-        " vs ", num_output_buffers));
+    throw nb::value_error(
+        absl::StrCat("Mismatch between out_handlers and num_results: ",
+                     out_handlers.size(), " vs ", num_output_buffers)
+            .c_str());
   }
   for (int buffer_id = 0; buffer_id < num_output_buffers; ++buffer_id) {
     auto& handler = out_handlers[buffer_id];
@@ -300,26 +323,29 @@ std::vector<py::object> PyExecuteResults::ConsumeWithHandlers(
           client_, std::move(ifrt_arrays[buffer_id])));
     } else {
       tsl::profiler::TraceMe traceme("ConsumeWithHandlers fallback.");
-      std::vector<PyArray> bufs;
-      bufs.reserve(num_computations_);
       auto disassembled_arrays =
           ifrt_arrays[buffer_id]->DisassembleIntoSingleDeviceArrays(
               ifrt::ArrayCopySemantics::kReuseInput);
       TF_CHECK_OK(disassembled_arrays.status());
+      nb::list bufs =
+          nb::steal<nb::list>(PyList_New(disassembled_arrays->size()));
+      int i = 0;
       for (auto& disassembled_array : *disassembled_arrays) {
-        bufs.push_back(PyArray::MakeFromSingleDeviceArray(
-            client_, traceback, std::move(disassembled_array), false, true));
+        nb::object array = PyArray::MakeFromSingleDeviceArray(
+            client_, traceback, std::move(disassembled_array), false, true);
+        PyList_SET_ITEM(bufs.ptr(), i, array.release().ptr());
+        ++i;
       }
-      outputs.push_back(std::get<py::object>(handler)(std::move(bufs)));
+      outputs.push_back(std::get<nb::object>(handler)(std::move(bufs)));
     }
   }
   return outputs;
 }
 
-StatusOr<std::vector<std::vector<PyArray>>>
+absl::StatusOr<std::vector<std::vector<PyArray>>>
 PyLoadedExecutable::ExecuteShardedOnLocalDevices(
     absl::Span<const ExecuteShardedArg> args) {
-  std::optional<std::vector<PjRtFuture<Status>>> returned_futures;
+  std::optional<std::vector<PjRtFuture<absl::Status>>> returned_futures;
   TF_ASSIGN_OR_RETURN(auto outputs_and_tokens,
                       ExecuteShardedOnLocalDevicesInternal(
                           options_, client_, ifrt_loaded_executable_.get(),
@@ -327,10 +353,10 @@ PyLoadedExecutable::ExecuteShardedOnLocalDevices(
   return outputs_and_tokens.DisassembleIntoSingleDeviceArrays();
 }
 
-StatusOr<std::pair<std::vector<std::vector<PyArray>>, PyShardedToken>>
+absl::StatusOr<std::pair<std::vector<std::vector<PyArray>>, PyShardedToken>>
 PyLoadedExecutable::ExecuteShardedOnLocalDevicesWithTokens(
     absl::Span<const ExecuteShardedArg> args) {
-  std::optional<std::vector<PjRtFuture<Status>>> returned_futures;
+  std::optional<std::vector<PjRtFuture<absl::Status>>> returned_futures;
   returned_futures.emplace();
   TF_ASSIGN_OR_RETURN(auto outputs_and_tokens,
                       ExecuteShardedOnLocalDevicesInternal(
@@ -340,9 +366,9 @@ PyLoadedExecutable::ExecuteShardedOnLocalDevicesWithTokens(
                         outputs_and_tokens.ConsumeToken());
 }
 
-StatusOr<PyExecuteResults> PyLoadedExecutable::ExecuteSharded(
+absl::StatusOr<PyExecuteResults> PyLoadedExecutable::ExecuteSharded(
     std::vector<ExecuteShardedArg> args, bool with_tokens) {
-  std::optional<std::vector<PjRtFuture<Status>>> returned_futures;
+  std::optional<std::vector<PjRtFuture<absl::Status>>> returned_futures;
   if (with_tokens) {
     returned_futures.emplace();
   }
@@ -352,41 +378,43 @@ StatusOr<PyExecuteResults> PyLoadedExecutable::ExecuteSharded(
                                               span_args, returned_futures);
 }
 
-StatusOr<std::vector<std::shared_ptr<HloModule>>>
+absl::StatusOr<std::vector<std::shared_ptr<HloModule>>>
 PyLoadedExecutable::HloModules() const {
-  py::gil_scoped_release gil_release;
+  nb::gil_scoped_release gil_release;
   return ifrt_loaded_executable_->GetHloModules();
 }
 
-StatusOr<std::vector<std::vector<absl::string_view>>>
+absl::StatusOr<std::vector<std::vector<std::string_view>>>
 PyLoadedExecutable::GetOutputMemoryKinds() const {
-  py::gil_scoped_release gil_release;
+  nb::gil_scoped_release gil_release;
   return ifrt_loaded_executable_->GetOutputMemoryKinds();
 }
 
-StatusOr<std::vector<Layout>> PyLoadedExecutable::GetParameterLayouts() const {
-  py::gil_scoped_release gil_release;
+absl::StatusOr<std::vector<Layout>> PyLoadedExecutable::GetParameterLayouts()
+    const {
+  nb::gil_scoped_release gil_release;
   return ifrt_loaded_executable_->GetParameterLayouts();
 }
 
-StatusOr<std::vector<Layout>> PyLoadedExecutable::GetOutputLayouts() const {
-  py::gil_scoped_release gil_release;
+absl::StatusOr<std::vector<Layout>> PyLoadedExecutable::GetOutputLayouts()
+    const {
+  nb::gil_scoped_release gil_release;
   return ifrt_loaded_executable_->GetOutputLayouts();
 }
 
 std::optional<std::vector<OpSharding>>
 PyLoadedExecutable::GetParameterShardings() const {
-  py::gil_scoped_release gil_release;
+  nb::gil_scoped_release gil_release;
   return ifrt_loaded_executable_->GetParameterShardings();
 }
 
 std::optional<std::vector<OpSharding>> PyLoadedExecutable::GetOutputShardings()
     const {
-  py::gil_scoped_release gil_release;
+  nb::gil_scoped_release gil_release;
   return ifrt_loaded_executable_->GetOutputShardings();
 }
 
-void PyLoadedExecutable::KeepAlive(py::object obj) {
+void PyLoadedExecutable::KeepAlive(nb::object obj) {
   keepalives_.push_back(std::move(obj));
 }
 
