@@ -163,5 +163,50 @@ TEST_F(IsOpQuantizableStableHloTest, QuantizeDequantizeOpNotQuantizable) {
   EXPECT_FALSE(IsOpQuantizableStableHlo(dequantize_op));
 }
 
+TEST_F(IsOpQuantizableStableHloTest,
+       XlaCallModuleOpQuantizableWhenNotDenylisted) {
+  // A `TF::XlaCallModuleOp` with `_quantization_method = ""`.
+  constexpr absl::string_view
+      kModuleXlaCallModuleOpWithDefaultQuantizationMethod = R"mlir(
+    func.func @xla_call_module_default_quantization_method(%arg0: tensor<1x1x3xf32>, %arg1: tensor<3x4xf32>) -> tensor<1x1x4xf32> {
+      %0 = "tf.XlaCallModule"(%arg0, %arg1) <{Sout = [#tf_type.shape<1x1x4>], dim_args_spec = [], disabled_checks = [], function_list = [], has_token_input_output = false, module = "", platforms = ["CPU"], version = 9 : i64}> {_entry_function = @composite_dot_general_fn_1, _original_entry_function = "composite_dot_general_fn_1", _quantization_method = "", _stablehlo_module_attrs = {jax.uses_shape_polymorphism = true}, _tfl_quant_trait = "fully_quantizable"} : (tensor<1x1x3xf32>, tensor<3x4xf32>) -> tensor<1x1x4xf32>
+      return %0 : tensor<1x1x4xf32>
+    }
+  )mlir";
+
+  OwningOpRef<ModuleOp> module_op =
+      ParseModuleOpString(kModuleXlaCallModuleOpWithDefaultQuantizationMethod);
+  ASSERT_TRUE(module_op);
+
+  auto test_func = module_op->lookupSymbol<func::FuncOp>(
+      "xla_call_module_default_quantization_method");
+  ASSERT_THAT(test_func, NotNull());
+
+  auto xla_call_module_op = FindOperationOfType<TF::XlaCallModuleOp>(test_func);
+  EXPECT_TRUE(IsOpQuantizableStableHlo(xla_call_module_op));
+}
+
+TEST_F(IsOpQuantizableStableHloTest, DenylistedXlaCallModuleOpNotQuantizable) {
+  // A `TF::XlaCallModuleOp` with `_quantization_method = "no_quantization {}"`,
+  // indicating it has been explicitly denylisted by the user.
+  constexpr absl::string_view kModuleDenylistedXlaCallModuleOp = R"mlir(
+    func.func @xla_call_module_denylisted(%arg0: tensor<1x1x3xf32>, %arg1: tensor<3x4xf32>) -> tensor<1x1x4xf32> {
+      %0 = "tf.XlaCallModule"(%arg0, %arg1) <{Sout = [#tf_type.shape<1x1x4>], dim_args_spec = [], disabled_checks = [], function_list = [], has_token_input_output = false, module = "", platforms = ["CPU"], version = 9 : i64}> {_entry_function = @composite_dot_general_fn_1, _original_entry_function = "composite_dot_general_fn_1", _quantization_method = "no_quantization {}", _stablehlo_module_attrs = {jax.uses_shape_polymorphism = true}, _tfl_quant_trait = "fully_quantizable"} : (tensor<1x1x3xf32>, tensor<3x4xf32>) -> tensor<1x1x4xf32>
+      return %0 : tensor<1x1x4xf32>
+    }
+  )mlir";
+
+  OwningOpRef<ModuleOp> module_op =
+      ParseModuleOpString(kModuleDenylistedXlaCallModuleOp);
+  ASSERT_TRUE(module_op);
+
+  auto test_func =
+      module_op->lookupSymbol<func::FuncOp>("xla_call_module_denylisted");
+  ASSERT_THAT(test_func, NotNull());
+
+  auto xla_call_module_op = FindOperationOfType<TF::XlaCallModuleOp>(test_func);
+  EXPECT_FALSE(IsOpQuantizableStableHlo(xla_call_module_op));
+}
+
 }  // namespace
 }  // namespace mlir::quant::stablehlo

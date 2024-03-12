@@ -18,8 +18,6 @@ limitations under the License.
 
 #include "absl/strings/str_replace.h"
 #include "llvm/ADT/STLExtras.h"
-#include "llvm/Support/Debug.h"
-#include "llvm/Support/raw_ostream.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
@@ -189,22 +187,6 @@ LogicalResult ApplyQuantizationSpec(const QuantizationSpec& spec,
         kQuantizationMethodAttr,
         StringAttr::get(module_op.getContext(),
                         std::move(*quantization_method_txtpb)));
-
-    // Disable quantization when matched.
-    const std::string lifted_func_name =
-        xla_call_module_op->getAttrOfType<FlatSymbolRefAttr>("_entry_function")
-            .getValue()
-            .str();
-    auto lifted_func = module_op.lookupSymbol<func::FuncOp>(lifted_func_name);
-
-    // Remove relevant attributes that enable quantization. This essentially
-    // disables quantization for the matched `xla_call_module_op`.
-    xla_call_module_op->removeAttr("_original_entry_function");
-    xla_call_module_op->removeAttr("_tfl_quant_trait");
-    lifted_func->removeAttr("tf_quant.composite_function");
-
-    LLVM_DEBUG(llvm::dbgs() << "Disabled quantization for quantizable unit: "
-                            << lifted_func_name << "\n");
   }
   return success();
 }

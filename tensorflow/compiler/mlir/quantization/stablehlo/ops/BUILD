@@ -18,13 +18,17 @@ cc_library(
     compatible_with = get_compatible_with_portable(),
     deps = [
         "//tensorflow/compiler/mlir/lite/quantization/ir:QuantOps",
+        "//tensorflow/compiler/mlir/quantization/common:lift_as_function_call",
         "//tensorflow/compiler/mlir/quantization/common/quantization_lib",
+        "//tensorflow/compiler/mlir/quantization/stablehlo:quantization_config_proto_cc",
         "//tensorflow/compiler/mlir/quantization/tensorflow:quantization_options_proto_cc",
         "//tensorflow/compiler/mlir/tensorflow",
+        "@com_google_absl//absl/status:statusor",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Support",
+        "@local_tsl//tsl/platform:protobuf",
         "@stablehlo//:stablehlo_ops",
     ],
 )
