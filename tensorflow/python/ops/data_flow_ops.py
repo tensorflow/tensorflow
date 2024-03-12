@@ -197,7 +197,7 @@ class QueueBase:
       A `QueueBase` object.
 
     Raises:
-      TypeError: When `queues` are not a list of `QueueBase` objects,
+      TypeError: When `queues` is not a list of `QueueBase` objects,
         or when the data types of `queues` are not all the same.
     """
     if ((not queues) or (not isinstance(queues, list)) or
