@@ -5850,6 +5850,9 @@ cc_library(
 xla_cc_test(
     name = "host_offload_legalize_test",
     srcs = ["host_offload_legalize_test.cc"],
+    tags = [
+        "notap",
+    ],
     deps = [
         ":host_memory_offload_annotations_hdr",
         ":host_offload_legalize",
