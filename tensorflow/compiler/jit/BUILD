@@ -1672,9 +1672,9 @@ cc_library(
         "//tensorflow/core/tfrt/common:async_value_tensor",
         "//tensorflow/core/tfrt/common:create_pjrt_client_util",
         "@com_google_absl//absl/status",
-        "@local_tsl//tsl/c:tsl_status_internal",
         "@local_tsl//tsl/framework:device_id_utils",
         "@local_xla//xla/pjrt:pjrt_client",
+        "@local_xla//xla/tsl/c:tsl_status_internal",
     ],
 )
 

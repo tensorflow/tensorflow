@@ -1027,6 +1027,7 @@ cc_library(
         "//tensorflow/core:mobile_additional_lib_deps",
         "//tensorflow/core/platform:resource",
         "//tensorflow/core/util:stats_calculator_portable",
+        "@local_xla//xla:bazel_issue_21519",
     ] + tf_portable_proto_lib() + tf_portable_deps_no_runtime(),
     alwayslink = 1,
 )

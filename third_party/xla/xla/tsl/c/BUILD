@@ -1,12 +1,12 @@
 # Description:
 # C API for TensorFlow, for use by client language bindings.
 
-load("//tsl:tsl.bzl", "internal_visibility", "tsl_copts", "tsl_gpu_library")
-load("//tsl/platform:build_config.bzl", "tsl_cc_test")
-load("@local_tsl//tsl/platform:rules_cc.bzl", "cc_library")
+load("@local_tsl//tsl:tsl.bzl", "internal_visibility", "tsl_copts", "tsl_gpu_library")
 
 # buildifier: disable=same-origin-load
-load("//tsl:tsl.default.bzl", "filegroup")
+load("@local_tsl//tsl:tsl.default.bzl", "filegroup")
+load("@local_tsl//tsl/platform:build_config.bzl", "tsl_cc_test")
+load("@local_tsl//tsl/platform:rules_cc.bzl", "cc_library")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -60,7 +60,7 @@ tsl_gpu_library(
     ],
     visibility = ["//visibility:public"],
     deps = [
-        "//tsl/platform:status",
+        "@local_tsl//tsl/platform:status",
     ],
 )
 
@@ -71,8 +71,8 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":tsl_status_internal",
-        "//tsl/platform:errors",
-        "//tsl/platform:status",
+        "@local_tsl//tsl/platform:errors",
+        "@local_tsl//tsl/platform:status",
     ],
 )
 
@@ -82,10 +82,10 @@ tsl_cc_test(
     deps = [
         ":tsl_status",
         ":tsl_status_internal",
-        "//tsl/platform:errors",
-        "//tsl/platform:status",
-        "//tsl/platform:test",
-        "//tsl/platform:test_main",
+        "@local_tsl//tsl/platform:errors",
+        "@local_tsl//tsl/platform:status",
+        "@local_tsl//tsl/platform:test",
+        "@local_tsl//tsl/platform:test_main",
     ],
 )
 
@@ -103,8 +103,8 @@ tsl_gpu_library(
     deps = [
         ":tsl_status",
         ":tsl_status_internal",
-        "//tsl/platform:errors",
-        "//tsl/platform:status",
+        "@local_tsl//tsl/platform:errors",
+        "@local_tsl//tsl/platform:status",
     ],
 )
 

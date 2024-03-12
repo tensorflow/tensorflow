@@ -13,11 +13,11 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tsl/c/tsl_status.h"
+#include "xla/tsl/c/tsl_status.h"
 
 #include <string>
 
-#include "tsl/c/tsl_status_internal.h"
+#include "xla/tsl/c/tsl_status_internal.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/status.h"
 

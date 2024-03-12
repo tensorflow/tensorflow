@@ -1,4 +1,4 @@
-/* Copyright 2016 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,20 +13,16 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_TSL_C_TSL_STATUS_HELPER_H_
-#define TENSORFLOW_TSL_C_TSL_STATUS_HELPER_H_
+#ifndef XLA_TSL_C_TSL_STATUS_INTERNAL_H_
+#define XLA_TSL_C_TSL_STATUS_INTERNAL_H_
 
-#include <memory>
-
-#include "tsl/c/tsl_status.h"
 #include "tsl/platform/status.h"
 
-namespace tsl {
+// Internal structures used by the status C API. These are likely to change
+// and should not be depended on.
 
-TSL_Code TSLCodeFromStatusCode(absl::StatusCode code);
+struct TSL_Status {
+  tsl::Status status;
+};
 
-absl::StatusCode StatusCodeFromTSLCode(TSL_Code code);
-
-}  // namespace tsl
-
-#endif  // TENSORFLOW_TSL_C_TSL_STATUS_HELPER_H_
+#endif  // XLA_TSL_C_TSL_STATUS_INTERNAL_H_

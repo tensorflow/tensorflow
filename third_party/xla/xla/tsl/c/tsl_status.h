@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_TSL_C_TSL_STATUS_H_
-#define TENSORFLOW_TSL_C_TSL_STATUS_H_
+#ifndef XLA_TSL_C_TSL_STATUS_H_
+#define XLA_TSL_C_TSL_STATUS_H_
 
 #ifdef __cplusplus
 extern "C" {
@@ -89,4 +89,4 @@ extern const char* TSL_Message(const TSL_Status* s);
 } /* end extern "C" */
 #endif
 
-#endif  // TENSORFLOW_TSL_C_TSL_STATUS_H_
+#endif  // XLA_TSL_C_TSL_STATUS_H_
