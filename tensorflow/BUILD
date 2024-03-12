@@ -1068,6 +1068,7 @@ package_group(
         "//third_party/py/tf_keras/...",
         "//third_party/yggdrasil_decision_forests/...",
         "//waymo/ml/cn/...",
+        "//waymo/ml/models/...",
     ],
 )
 
