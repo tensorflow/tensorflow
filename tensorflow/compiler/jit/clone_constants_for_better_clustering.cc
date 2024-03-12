@@ -39,8 +39,8 @@ class CloneConstantsForBetterClusteringPassImpl {
                                   Node* n);
   string GenerateUniqueName(const absl::flat_hash_set<string>& name_set,
                             absl::string_view prefix);
-  tsl::StatusOr<Node*> CloneNode(const absl::flat_hash_set<string>& name_set,
-                                 Node* n);
+  absl::StatusOr<Node*> CloneNode(const absl::flat_hash_set<string>& name_set,
+                                  Node* n);
 
   Graph* graph_;
   int unique_name_counter_;
@@ -55,7 +55,7 @@ string CloneConstantsForBetterClusteringPassImpl::GenerateUniqueName(
   return candidate;
 }
 
-StatusOr<Node*> CloneConstantsForBetterClusteringPassImpl::CloneNode(
+absl::StatusOr<Node*> CloneConstantsForBetterClusteringPassImpl::CloneNode(
     const absl::flat_hash_set<string>& name_set, Node* n) {
   NodeDef new_in_def = n->def();
   new_in_def.clear_input();
@@ -75,7 +75,7 @@ StatusOr<Node*> CloneConstantsForBetterClusteringPassImpl::CloneNode(
 }
 
 namespace {
-StatusOr<bool> IsConstantSmall(Node* n) {
+absl::StatusOr<bool> IsConstantSmall(Node* n) {
   const TensorProto* proto = nullptr;
   TF_RETURN_IF_ERROR(GetNodeAttr(n->def(), "value", &proto));
 
@@ -96,7 +96,7 @@ StatusOr<bool> IsConstantSmall(Node* n) {
 
 // We only clone small constants since we want to avoid increasing memory
 // pressure on GPUs.
-StatusOr<bool> IsSmallConstant(Node* n) {
+absl::StatusOr<bool> IsSmallConstant(Node* n) {
   if (!n->IsConstant()) {
     return false;
   }

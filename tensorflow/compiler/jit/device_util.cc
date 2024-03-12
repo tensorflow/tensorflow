@@ -47,7 +47,7 @@ bool DeviceSet::IsEmpty() const {
   return absl::c_all_of(storage_, [&](uint64 val) { return val == 0; });
 }
 
-StatusOr<DeviceId> DeviceInfoCache::GetIdFor(absl::string_view name) {
+absl::StatusOr<DeviceId> DeviceInfoCache::GetIdFor(absl::string_view name) {
   TF_RET_CHECK(!name.empty());
 
   auto it = name_to_id_.find(name);
@@ -96,7 +96,7 @@ Status DeviceNameToDeviceType(const string& device, DeviceType* device_type) {
   return absl::OkStatus();
 }
 
-StatusOr<std::optional<jit::DeviceId>> PickDeviceForXlaImpl(
+absl::StatusOr<std::optional<jit::DeviceId>> PickDeviceForXlaImpl(
     const jit::DeviceInfoCache& device_info_cache,
     const jit::DeviceSet& devices, bool allow_mixing_unknown_and_cpu,
     bool failure_to_pick_is_error) {
@@ -214,7 +214,7 @@ StatusOr<std::optional<jit::DeviceId>> PickDeviceForXlaImpl(
 #undef FAILED_TO_PICK_DEVICE
 }
 
-StatusOr<jit::DeviceId> PickDeviceForXla(
+absl::StatusOr<jit::DeviceId> PickDeviceForXla(
     const jit::DeviceInfoCache& device_info_cache,
     const jit::DeviceSet& devices, bool allow_mixing_unknown_and_cpu) {
   TF_ASSIGN_OR_RETURN(std::optional<jit::DeviceId> device_id,
@@ -224,7 +224,7 @@ StatusOr<jit::DeviceId> PickDeviceForXla(
   return *device_id;
 }
 
-StatusOr<std::optional<jit::DeviceId>> MaybePickDeviceForXla(
+absl::StatusOr<std::optional<jit::DeviceId>> MaybePickDeviceForXla(
     const jit::DeviceInfoCache& device_info_cache,
     const jit::DeviceSet& devices, bool allow_mixing_unknown_and_cpu) {
   return PickDeviceForXlaImpl(device_info_cache, devices,

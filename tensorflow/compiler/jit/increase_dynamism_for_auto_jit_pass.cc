@@ -315,7 +315,7 @@ Status RewriteSlice(Graph* g, Node* slice, const SliceInputs& slice_inputs,
 
 // Return true if `n` is a slice we should rewrite to have a static shape
 // (i.e. have the output shape only depend on the "size" input).
-StatusOr<bool> ShouldRewriteSlice(Node* n) {
+absl::StatusOr<bool> ShouldRewriteSlice(Node* n) {
   if (n->type_string() != "Slice") {
     return false;
   }

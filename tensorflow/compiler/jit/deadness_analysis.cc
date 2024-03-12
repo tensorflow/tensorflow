@@ -827,7 +827,7 @@ class DeadnessAnalysisImpl : public DeadnessAnalysis {
   Status Populate(bool enable_optimistic);
   Status PopulateFrame(absl::Span<Node* const> topo, bool use_optimistic_mode,
                        bool* success);
-  StatusOr<DeadnessAnalysis::DeadnessPredicate> GetPredicateFor(
+  absl::StatusOr<DeadnessAnalysis::DeadnessPredicate> GetPredicateFor(
       Node* n, int oidx) const override;
   void Print() const override;
   absl::flat_hash_map<TensorId, string, TensorId::Hasher> PredicateMapAsString()
@@ -1538,7 +1538,7 @@ Status DeadnessAnalysisImpl::PopulateFrame(absl::Span<Node* const> topo,
   return absl::OkStatus();
 }
 
-StatusOr<DeadnessAnalysis::DeadnessPredicate>
+absl::StatusOr<DeadnessAnalysis::DeadnessPredicate>
 DeadnessAnalysisImpl::GetPredicateFor(Node* n, int oidx) const {
   auto it = predicate_map_.find(TensorId(n->name(), oidx));
   TF_RET_CHECK(it != predicate_map_.end())
