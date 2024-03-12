@@ -4303,10 +4303,12 @@ cc_library(
     srcs = ["gpu_p2p_pipeliner.cc"],
     hdrs = ["gpu_p2p_pipeliner.h"],
     deps = [
+        "//xla:status",
         "//xla:util",
         "//xla/hlo/ir:hlo",
         "//xla/service:collective_ops_utils",
         "//xla/service:collective_pipeliner",
+        "//xla/service:hlo_parser",
         "//xla/service:hlo_pass_pipeline",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/strings",
