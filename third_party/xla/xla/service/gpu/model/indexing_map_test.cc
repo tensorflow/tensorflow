@@ -495,9 +495,6 @@ TEST(RangeComparisionTest, Comparisons) {
   EXPECT_EQ(point != 16, true);
 }
 
-// TODO(b/313840171): Simplify `((d0 * 8 + d1) mod 16) floordiv 4` to
-// `((d0 * 8 + d1) floordiv 4) mod 4` to `(d0 * 2 + d1 floordiv 4) mod 4`.
-
 }  // namespace
 }  // namespace gpu
 }  // namespace xla

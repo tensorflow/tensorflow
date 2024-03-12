@@ -613,9 +613,6 @@ void IndexingMap::AddConstraint(mlir::AffineExpr expr, Range range) {
     current_range = Intersect(current_range, range);
     return;
   }
-  // TODO(b/322131639): Add a proper Constraints simplifier that will apply
-  // simplification rules until it converges. For example, it should have a rule
-  // for `symbol_or_dim floorDiv divisor`.
   if (SimplifyConstraintRange(&expr, &range)) {
     AddConstraint(expr, range);
     return;
