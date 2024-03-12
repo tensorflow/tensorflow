@@ -56,10 +56,13 @@ class Reduction(Enum):
   * `SUM_OVER_BATCH_SIZE`: Scalar sum of weighted values divided by
         number of elements.
   * `WEIGHTED_MEAN`: Scalar sum of weighted values divided by sum of weights.
+  * `WEIGHTED_VARIANCE`: Scalar weighted sum of squared values divided by sum 
+        of weights, minus square of weighted mean.
   """
   SUM = 'sum'
   SUM_OVER_BATCH_SIZE = 'sum_over_batch_size'
   WEIGHTED_MEAN = 'weighted_mean'
+  WEIGHTED_VARIANCE = 'weighted_variance'
 
 
 def update_state_wrapper(update_state_fn):

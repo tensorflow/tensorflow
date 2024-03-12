@@ -366,9 +366,13 @@ class Reduce(Metric):
     self.total = self.add_weight(
         'total', initializer=init_ops.zeros_initializer)
     if reduction in [metrics_utils.Reduction.SUM_OVER_BATCH_SIZE,
-                     metrics_utils.Reduction.WEIGHTED_MEAN]:
+                     metrics_utils.Reduction.WEIGHTED_MEAN,
+                     metrics_utils.Reduction.WEIGHTED_VARIANCE]:
       self.count = self.add_weight(
           'count', initializer=init_ops.zeros_initializer)
+    if reduction == metrics_utils.Reduction.WEIGHTED_VARIANCE:
+      self.sum_of_squares = self.add_weight(
+          'sum_of_squares', initializer=init_ops.zeros_initializer)
 
   def update_state(self, values, sample_weight=None):
     """Accumulates statistics for computing the metric.
@@ -411,11 +415,21 @@ class Reduce(Metric):
         else:
           values = math_ops.reduce_mean(
               values, axis=list(range(weight_ndim, ndim)))
+      
+      if self.reduction == metrics_utils.Reduction.WEIGHTED_VARIANCE:
+        values_sq = math_ops.multiply(values**2, sample_weight)
       values = math_ops.multiply(values, sample_weight)
+    elif self.reduction == metrics_utils.Reduction.WEIGHTED_VARIANCE:
+      values_sq = values**2
 
     value_sum = math_ops.reduce_sum(values)
     with ops.control_dependencies([value_sum]):
       update_total_op = self.total.assign_add(value_sum)
+
+    if self.reduction == metrics_utils.Reduction.WEIGHTED_VARIANCE:
+      sum_of_squares = math_ops.reduce_sum(values_sq)
+      with ops.control_dependencies([sum_of_squares]):
+        update_sum_of_squares_op = self.sum_of_squares.assign_add(sum_of_squares)
 
     # Exit early if the reduction doesn't have a denominator.
     if self.reduction == metrics_utils.Reduction.SUM:
@@ -424,7 +438,8 @@ class Reduce(Metric):
     # Update `count` for reductions that require a denominator.
     if self.reduction == metrics_utils.Reduction.SUM_OVER_BATCH_SIZE:
       num_values = math_ops.cast(array_ops.size(values), self._dtype)
-    elif self.reduction == metrics_utils.Reduction.WEIGHTED_MEAN:
+    elif self.reduction in [metrics_utils.Reduction.WEIGHTED_MEAN,
+                            metrics_utils.Reduction.WEIGHTED_VARIANCE]:
       if sample_weight is None:
         num_values = math_ops.cast(array_ops.size(values), self._dtype)
       else:
@@ -433,6 +448,9 @@ class Reduce(Metric):
       raise NotImplementedError(
           'reduction [%s] not implemented' % self.reduction)
 
+    if self.reduction == metrics_utils.Reduction.WEIGHTED_VARIANCE:
+      with ops.control_dependencies([update_total_op, update_sum_of_squares_op]):
+        return self.count.assign_add(num_values)
     with ops.control_dependencies([update_total_op]):
       return self.count.assign_add(num_values)
 
@@ -444,6 +462,11 @@ class Reduce(Metric):
         metrics_utils.Reduction.SUM_OVER_BATCH_SIZE
     ]:
       return math_ops.div_no_nan(self.total, self.count)
+    elif self.reduction == metrics_utils.Reduction.WEIGHTED_VARIANCE:
+      mean = math_ops.div_no_nan(self.total, self.count)
+      variance = math_ops.div_no_nan(
+          self.sum_of_squares, self.count) - mean**2
+      return variance
     else:
       raise NotImplementedError(
           'reduction [%s] not implemented' % self.reduction)
@@ -524,6 +547,48 @@ class Mean(Reduce):
   def __init__(self, name='mean', dtype=None):
     super(Mean, self).__init__(
         reduction=metrics_utils.Reduction.WEIGHTED_MEAN, name=name, dtype=dtype)
+
+
+class Variance(Reduce):
+  """Computes the (weighted) variance of the given values.
+
+  For example, if values is [1, 3, 5, 7] then the variance is 5.
+  If the weights were specified as [1, 1, 0, 0] then the variance would be 2.
+
+  This metric creates three variables, `total`, `count`, and `sum_of_squares`
+  that are used to compute the variance of `values`. This variance is ultimately
+  returned as `variance` which is an idempotent operation that simply subtracts
+  the squared `mean` from the mean of the squared `values`.
+
+  If `sample_weight` is `None`, weights default to 1.
+  Use `sample_weight` of 0 to mask values.
+
+  Args:
+    name: (Optional) string name of the metric instance.
+    dtype: (Optional) data type of the metric result.
+
+  Standalone usage:
+
+  >>> m = tf.keras.metrics.Mean()
+  >>> m.update_state([1, 3, 5, 7])
+  >>> m.result().numpy()
+  4.0
+  >>> m.reset_state()
+  >>> m.update_state([1, 3, 5, 7], sample_weight=[1, 1, 0, 0])
+  >>> m.result().numpy()
+  2.0
+
+  Usage with `compile()` API:
+
+  ```python
+  model.add_metric(tf.keras.metrics.Mean(name='mean_1')(outputs))
+  model.compile(optimizer='sgd', loss='mse')
+  ```
+  """
+
+  def __init__(self, name='variance', dtype=None):
+    super(Variance, self).__init__(
+        reduction=metrics_utils.Reduction.WEIGHTED_VARIANCE, name=name, dtype=dtype)
 
 
 class MeanRelativeError(Mean):

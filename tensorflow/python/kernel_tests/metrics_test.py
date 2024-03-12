@@ -346,6 +346,186 @@ class MeanTest(test.TestCase):
           update_op.eval(feed_dict={values_placeholder: values})
 
 
+class VarianceTest(test.TestCase):
+
+  def setUp(self):
+    ops.reset_default_graph()
+
+  @test_util.run_deprecated_v1
+  def testVars(self):
+    metrics.variance(array_ops.ones([4, 3]))
+    _assert_metric_variables(self, ('variance/count:0', 'variance/total:0', 'variance/sum_of_squares:0'))
+
+  @test_util.run_deprecated_v1
+  def testMetricsCollection(self):
+    my_collection_name = '__metrics__'
+    variance, _ = metrics.variance(
+        array_ops.ones([4, 3]), metrics_collections=[my_collection_name])
+    self.assertListEqual(ops.get_collection(my_collection_name), [variance])
+
+  @test_util.run_deprecated_v1
+  def testUpdatesCollection(self):
+    my_collection_name = '__updates__'
+    _, update_op = metrics.variance(
+        array_ops.ones([4, 3]), updates_collections=[my_collection_name])
+    self.assertListEqual(ops.get_collection(my_collection_name), [update_op])
+
+  @test_util.run_deprecated_v1
+  def testBasic(self):
+    with self.cached_session() as sess:
+      values_queue = data_flow_ops.FIFOQueue(
+          4, dtypes=dtypes_lib.float32, shapes=(1, 2))
+      _enqueue_vector(sess, values_queue, [0, 1])
+      _enqueue_vector(sess, values_queue, [-4.2, 9.1])
+      _enqueue_vector(sess, values_queue, [6.5, 0])
+      _enqueue_vector(sess, values_queue, [-3.2, 4.0])
+      values = values_queue.dequeue()
+
+      variance, update_op = metrics.variance(values)
+
+      self.evaluate(variables.local_variables_initializer())
+      for _ in range(4):
+        self.evaluate(update_op)
+      self.assertAlmostEqual(1.65, self.evaluate(variance), 5)
+
+  @test_util.run_deprecated_v1
+  def testUpdateOpsReturnsCurrentValue(self):
+    with self.cached_session() as sess:
+      values_queue = data_flow_ops.FIFOQueue(
+          4, dtypes=dtypes_lib.float32, shapes=(1, 2))
+      _enqueue_vector(sess, values_queue, [0, 1])
+      _enqueue_vector(sess, values_queue, [-4.2, 9.1])
+      _enqueue_vector(sess, values_queue, [6.5, 0])
+      _enqueue_vector(sess, values_queue, [-3.2, 4.0])
+      values = values_queue.dequeue()
+
+      variance, update_op = metrics.variance(values)
+
+      self.evaluate(variables.local_variables_initializer())
+
+      self.assertAlmostEqual(0.5, self.evaluate(update_op), 5)
+      self.assertAlmostEqual(1.475, self.evaluate(update_op), 5)
+      self.assertAlmostEqual(12.4 / 6.0, self.evaluate(update_op), 5)
+      self.assertAlmostEqual(1.65, self.evaluate(update_op), 5)
+
+      self.assertAlmostEqual(1.65, self.evaluate(variance), 5)
+
+  @test_util.run_deprecated_v1
+  def testUnweighted(self):
+    values = _test_values((3, 2, 4, 1))
+    variance_results = (
+        metrics.variance(values),
+        metrics.variance(values, weights=1.0),
+        metrics.variance(values, weights=np.ones((1, 1, 1))),
+        metrics.variance(values, weights=np.ones((1, 1, 1, 1))),
+        metrics.variance(values, weights=np.ones((1, 1, 1, 1, 1))),
+        metrics.variance(values, weights=np.ones((1, 1, 4))),
+        metrics.variance(values, weights=np.ones((1, 1, 4, 1))),
+        metrics.variance(values, weights=np.ones((1, 2, 1))),
+        metrics.variance(values, weights=np.ones((1, 2, 1, 1))),
+        metrics.variance(values, weights=np.ones((1, 2, 4))),
+        metrics.variance(values, weights=np.ones((1, 2, 4, 1))),
+        metrics.variance(values, weights=np.ones((3, 1, 1))),
+        metrics.variance(values, weights=np.ones((3, 1, 1, 1))),
+        metrics.variance(values, weights=np.ones((3, 1, 4))),
+        metrics.variance(values, weights=np.ones((3, 1, 4, 1))),
+        metrics.variance(values, weights=np.ones((3, 2, 1))),
+        metrics.variance(values, weights=np.ones((3, 2, 1, 1))),
+        metrics.variance(values, weights=np.ones((3, 2, 4))),
+        metrics.variance(values, weights=np.ones((3, 2, 4, 1))),
+        metrics.variance(values, weights=np.ones((3, 2, 4, 1, 1))),)
+    expected = np.var(values)
+    with self.cached_session():
+      variables.local_variables_initializer().run()
+      for variance_result in variance_results:
+        variance, update_op = variance_result
+        self.assertAlmostEqual(expected, self.evaluate(update_op))
+        self.assertAlmostEqual(expected, self.evaluate(variance))
+
+  def _test_3d_weighted(self, values, weights):
+    expected = (
+        np.sum(np.multiply(weights, values)) /
+        np.sum(np.multiply(weights, np.ones_like(values)))
+    )
+    variance, update_op = metrics.variance(values, weights=weights)
+    with self.cached_session():
+      variables.local_variables_initializer().run()
+      self.assertAlmostEqual(expected, self.evaluate(update_op), places=5)
+      self.assertAlmostEqual(expected, self.evaluate(variance), places=5)
+
+  @test_util.run_deprecated_v1
+  def test1x1x1Weighted(self):
+    self._test_3d_weighted(
+        _test_values((3, 2, 4)),
+        weights=np.asarray((5,)).reshape((1, 1, 1)))
+
+  @test_util.run_deprecated_v1
+  def test1x1xNWeighted(self):
+    self._test_3d_weighted(
+        _test_values((3, 2, 4)),
+        weights=np.asarray((5, 7, 11, 3)).reshape((1, 1, 4)))
+
+  @test_util.run_deprecated_v1
+  def test1xNx1Weighted(self):
+    self._test_3d_weighted(
+        _test_values((3, 2, 4)),
+        weights=np.asarray((5, 11)).reshape((1, 2, 1)))
+
+  @test_util.run_deprecated_v1
+  def test1xNxNWeighted(self):
+    self._test_3d_weighted(
+        _test_values((3, 2, 4)),
+        weights=np.asarray((5, 7, 11, 3, 2, 13, 7, 5)).reshape((1, 2, 4)))
+
+  @test_util.run_deprecated_v1
+  def testNx1x1Weighted(self):
+    self._test_3d_weighted(
+        _test_values((3, 2, 4)),
+        weights=np.asarray((5, 7, 11)).reshape((3, 1, 1)))
+
+  @test_util.run_deprecated_v1
+  def testNx1xNWeighted(self):
+    self._test_3d_weighted(
+        _test_values((3, 2, 4)),
+        weights=np.asarray((
+            5, 7, 11, 3, 2, 12, 7, 5, 2, 17, 11, 3)).reshape((3, 1, 4)))
+
+  @test_util.run_deprecated_v1
+  def testNxNxNWeighted(self):
+    self._test_3d_weighted(
+        _test_values((3, 2, 4)),
+        weights=np.asarray((
+            5, 7, 11, 3, 2, 12, 7, 5, 2, 17, 11, 3,
+            2, 17, 11, 3, 5, 7, 11, 3, 2, 12, 7, 5)).reshape((3, 2, 4)))
+
+  @test_util.run_deprecated_v1
+  def testInvalidWeights(self):
+    values_placeholder = array_ops.placeholder(dtype=dtypes_lib.float32)
+    values = _test_values((3, 2, 4, 1))
+    invalid_weights = (
+        (1,),
+        (1, 1),
+        (3, 2),
+        (2, 4, 1),
+        (4, 2, 4, 1),
+        (3, 3, 4, 1),
+        (3, 2, 5, 1),
+        (3, 2, 4, 2),
+        (1, 1, 1, 1, 1))
+    expected_error_msg = 'weights can not be broadcast to values'
+    for invalid_weight in invalid_weights:
+      # Static shapes.
+      with self.assertRaisesRegex(ValueError, expected_error_msg):
+        metrics.variance(values, invalid_weight)
+
+      # Dynamic shapes.
+      with self.assertRaisesRegex(errors_impl.OpError, expected_error_msg):
+        with self.cached_session():
+          _, update_op = metrics.variance(values_placeholder, invalid_weight)
+          variables.local_variables_initializer().run()
+          update_op.eval(feed_dict={values_placeholder: values})
+
+
 class MeanTensorTest(test.TestCase):
 
   def setUp(self):
