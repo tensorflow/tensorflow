@@ -42,6 +42,8 @@ if [ -f /usertools/cpu.bazelrc ]; then
           --config=sigbuild_local_cache \
           --config=pycpp \
           --action_env=TF_PYTHON_VERSION=$PYTHON_VERSION \
+          --action_env=OPENBLAS_CORETYPE=Haswell \
+          --action_env=TF_ENABLE_ONEDNN_OPTS=0 \
           --local_test_jobs=${N_BUILD_JOBS} \
           --jobs=${N_BUILD_JOBS}
 else
