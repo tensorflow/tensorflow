@@ -440,6 +440,22 @@ absl::StatusOr<bool> CanFoldTransposeOperandIntoDot(const HloInstruction& dot,
   const Shape& output_shape =
       gemm->shape().IsTuple() ? gemm->shape().tuple_shapes(0) : gemm->shape();
 
+  bool has_matrix_bias = config.beta() != 0.;
+  Shape c_shape = has_matrix_bias ? gemm->operand(2)->shape() : output_shape;
+
+  std::optional<Shape> vector_bias_shape;
+  TF_ASSIGN_OR_RETURN(
+      bool has_vector_bias,
+      xla::gpu::gpublas_lt::EpilogueAddsVectorBias(config.epilogue()));
+  if (has_vector_bias) {
+    int vector_bias_index = has_matrix_bias ? 3 : 2;
+    if (primitive_util::IsF8Type(lhs_shape.element_type())) {
+      // FP8 gemms have 4 scales as inputs which come before the vector bias.
+      vector_bias_index += 4;
+    }
+    vector_bias_shape = gemm->operand(vector_bias_index)->shape();
+  }
+
   auto attributes = gemm->frontend_attributes().map();
   bool grad_x = (attributes["grad_x"] == "true");
   bool grad_y = (attributes["grad_y"] == "true");
@@ -449,12 +465,15 @@ absl::StatusOr<bool> CanFoldTransposeOperandIntoDot(const HloInstruction& dot,
     precision = std::max(precision, static_cast<int64_t>(operand_precision));
   }
 
-  return GemmConfig::For(lhs_shape, dot_dims.lhs_batch_dimensions(),
-                         dot_dims.lhs_contracting_dimensions(), rhs_shape,
-                         dot_dims.rhs_batch_dimensions(),
-                         dot_dims.rhs_contracting_dimensions(), output_shape,
-                         config.alpha_real(), config.alpha_imag(),
-                         config.beta(), algorithm, precision, grad_x, grad_y);
+  return GemmConfig::For(
+      lhs_shape, dot_dims.lhs_batch_dimensions(),
+      dot_dims.lhs_contracting_dimensions(), rhs_shape,
+      dot_dims.rhs_batch_dimensions(), dot_dims.rhs_contracting_dimensions(),
+      /*c_shape=*/c_shape,
+      /*bias_shape_ptr=*/
+      vector_bias_shape ? &vector_bias_shape.value() : nullptr, output_shape,
+      config.alpha_real(), config.alpha_imag(), config.beta(), algorithm,
+      precision, grad_x, grad_y);
 }
 
 absl::StatusOr<GemmConfig::DescriptorsTuple> GemmConfig::GetMatrixDescriptors(
