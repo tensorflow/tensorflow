@@ -33,6 +33,9 @@ constexpr TensorElementType BaselineType(TensorElementType type) {
   return type;
 }
 
+std::variant<TensorElementType, QuantizedTensorElementType> BaselineType(
+    const std::variant<TensorElementType, QuantizedTensorElementType>& type);
+
 struct TensorType {
   Shape shape;
   TensorElementType element_type;
