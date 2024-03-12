@@ -329,8 +329,8 @@ using PrimitiveTypeConstant =
 
 // Returns true if values of the given primitive type are held in array shapes.
 inline constexpr bool IsArrayType(PrimitiveType primitive_type) {
-  return primitive_type > PRIMITIVE_TYPE_INVALID && primitive_type != TUPLE &&
-         primitive_type != OPAQUE_TYPE && primitive_type != TOKEN &&
+  return primitive_type != TUPLE && primitive_type != OPAQUE_TYPE &&
+         primitive_type != TOKEN && primitive_type > PRIMITIVE_TYPE_INVALID &&
          primitive_type < PrimitiveType_ARRAYSIZE;
 }
 
