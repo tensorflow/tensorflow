@@ -27,23 +27,23 @@ limitations under the License.
 // TensorFlow code should use the ::tensorflow::protobuf namespace to
 // refer to all protobuf APIs.
 
-#include "google/protobuf/descriptor.pb.h"         // IWYU pragma:export
-#include "google/protobuf/arena.h"                // IWYU pragma:export
-#include "google/protobuf/descriptor.h"           // IWYU pragma:export
-#include "google/protobuf/dynamic_message.h"      // IWYU pragma:export
-#include "google/protobuf/io/coded_stream.h"      // IWYU pragma:export
-#include "google/protobuf/io/tokenizer.h"         // IWYU pragma:export
-#include "google/protobuf/io/zero_copy_stream.h"  // IWYU pragma:export
-#include "google/protobuf/io/zero_copy_stream_impl_lite.h"  // IWYU pragma:export
-#include "google/protobuf/map.h"                    // IWYU pragma:export
-#include "google/protobuf/message.h"                // IWYU pragma:export
-#include "google/protobuf/repeated_field.h"         // IWYU pragma:export
-#include "google/protobuf/repeated_ptr_field.h"     // IWYU pragma:export
-#include "google/protobuf/text_format.h"            // IWYU pragma:export
-#include "google/protobuf/util/field_comparator.h"  // IWYU pragma:export
-#include "google/protobuf/util/json_util.h"         // IWYU pragma:export
-#include "google/protobuf/util/message_differencer.h"  // IWYU pragma:export
-#include "google/protobuf/util/type_resolver_util.h"  // IWYU pragma:export
+#include "google/protobuf/descriptor.pb.h"         // IWYU pragma: export
+#include "google/protobuf/arena.h"                // IWYU pragma: export
+#include "google/protobuf/descriptor.h"           // IWYU pragma: export
+#include "google/protobuf/dynamic_message.h"      // IWYU pragma: export
+#include "google/protobuf/io/coded_stream.h"      // IWYU pragma: export
+#include "google/protobuf/io/tokenizer.h"         // IWYU pragma: export
+#include "google/protobuf/io/zero_copy_stream.h"  // IWYU pragma: export
+#include "google/protobuf/io/zero_copy_stream_impl_lite.h"  // IWYU pragma: export
+#include "google/protobuf/map.h"                    // IWYU pragma: export
+#include "google/protobuf/message.h"                // IWYU pragma: export
+#include "google/protobuf/repeated_field.h"         // IWYU pragma: export
+#include "google/protobuf/repeated_ptr_field.h"     // IWYU pragma: export
+#include "google/protobuf/text_format.h"            // IWYU pragma: export
+#include "google/protobuf/util/field_comparator.h"  // IWYU pragma: export
+#include "google/protobuf/util/json_util.h"         // IWYU pragma: export
+#include "google/protobuf/util/message_differencer.h"  // IWYU pragma: export
+#include "google/protobuf/util/type_resolver_util.h"  // IWYU pragma: export
 
 #if !TSL_IS_IN_OSS
 #define TENSORFLOW_PROTOBUF_USES_CORD 1
