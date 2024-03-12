@@ -16,6 +16,7 @@ package_group(
         "//learning/brain/experimental/mlir/tflite/tfmrt/...",
         "//learning/brain/mlir/...",
         "//third_party/iree/...",
+        "//third_party/odml/infra/...",
         "//tensorflow/compiler/mlir/...",
         "//tensorflow/lite/python/...",
         "//waymo/ml/compiler/mlir/...",
