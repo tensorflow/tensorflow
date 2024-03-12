@@ -84,7 +84,7 @@ class DataServiceClient {
 
   // Reads the next element from tf.data workers. Blocks if the next element is
   // not ready.
-  virtual StatusOr<GetNextResult> GetNext(
+  virtual absl::StatusOr<GetNextResult> GetNext(
       DataServiceContextFactory context_factory);
 
   // Cancels the client.
@@ -151,13 +151,13 @@ class DataServiceClient {
   void TryBlockRound(int64_t round) TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
   void UpdateIterationFinished(bool iteration_finished);
   Status AddTask(const TaskInfo& task_info);
-  StatusOr<std::unique_ptr<DataServiceWorkerClient>> CreateWorkerClient(
+  absl::StatusOr<std::unique_ptr<DataServiceWorkerClient>> CreateWorkerClient(
       const TaskInfo& task_info);
-  StatusOr<std::unique_ptr<DataServiceWorkerClient>> CreateWorkerClient(
+  absl::StatusOr<std::unique_ptr<DataServiceWorkerClient>> CreateWorkerClient(
       const std::string& protocol, const TaskInfo& task_info);
-  StatusOr<std::unique_ptr<DataServiceWorkerClient>> CreateGrpcWorkerClient(
-      const TaskInfo& task_info);
-  StatusOr<std::unique_ptr<DataServiceWorkerClient>>
+  absl::StatusOr<std::unique_ptr<DataServiceWorkerClient>>
+  CreateGrpcWorkerClient(const TaskInfo& task_info);
+  absl::StatusOr<std::unique_ptr<DataServiceWorkerClient>>
   CreateAlternativeWorkerClientWithGrpcFallback(
       const DataTransferServerInfo& transfer_server, const TaskInfo& task_info);
   void Heartbeat();
