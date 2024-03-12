@@ -3571,12 +3571,12 @@ def tf_disable_ptxas_warning_flags():
 # Use this to replace the `non_portable_tf_deps` (i.e., tensorflow/core/...) with
 # tensorflow/core:portable_tensorflow_lib_lite when building portably.
 def replace_with_portable_tf_lib_when_required(non_portable_tf_deps, use_lib_with_runtime = False):
-    portable_tf_lib = "//tensorflow/core:portable_tensorflow_lib_lite"
+    portable_tf_lib = clean_dep("//tensorflow/core:portable_tensorflow_lib_lite")
 
     return select({
-        "//tensorflow:android": [portable_tf_lib],
-        "//tensorflow:ios": [portable_tf_lib],
-        "//conditions:default": non_portable_tf_deps,
+        clean_dep("//tensorflow:android"): [portable_tf_lib],
+        clean_dep("//tensorflow:ios"): [portable_tf_lib],
+        clean_dep("//conditions:default"): non_portable_tf_deps,
     })
 
 def tf_python_framework_friends():
