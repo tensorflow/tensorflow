@@ -221,12 +221,6 @@ void AddPostQuantizationStableHloToTfPasses(
     const mlir::TFL::PassConfig& pass_config,
     mlir::OpPassManager& pass_manager) {
   if (pass_config.enable_stablehlo_quantizer) {
-    // StableHLO Quantizer emits quantized StableHLO module serialized within a
-    // XlaCallModule op. Add this pass to extract StableHLO module from the
-    // XlaCallModuleOp.
-    pass_manager.addPass(
-        mlir::odml::CreateLegalizeTFXlaCallModuleToStablehloPass());
-
     // Convert StableHLO -> TFLite for fused quantization patterns early so that
     // quantized types do not go through the TF dialect which doesn't support
     // quantized types.

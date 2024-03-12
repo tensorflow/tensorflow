@@ -117,7 +117,8 @@ cc_library(
     hdrs = ["saved_model_export.h"],
     compatible_with = get_compatible_with_portable(),
     deps = [
-        ":saved_model_import",
+        ":pass_pipeline",
+        ":types",
         "//tensorflow/compiler/mlir/quantization/tensorflow:exported_model_proto_cc",
         "//tensorflow/compiler/mlir/quantization/tensorflow:passes",
         "//tensorflow/compiler/mlir/tensorflow",

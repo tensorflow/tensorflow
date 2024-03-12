@@ -32,7 +32,8 @@ limitations under the License.
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/quantization/stablehlo/cc/saved_model_import.h"
+#include "tensorflow/compiler/mlir/quantization/stablehlo/cc/pass_pipeline.h"
+#include "tensorflow/compiler/mlir/quantization/stablehlo/cc/types.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/exported_model.pb.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/passes/constants.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/passes/passes.h"
@@ -140,6 +141,7 @@ ExportedModel CreateExportedModel(
 
 void AddExportPasses(mlir::PassManager& pm,
                      const bool duplicate_shape_determining_constants) {
+  AddCallModuleSerializationPasses(pm);
   if (duplicate_shape_determining_constants) {
     pm.addNestedPass<mlir::func::FuncOp>(
         mlir::quant::CreateDuplicateShapeDeterminingConstantsPass());

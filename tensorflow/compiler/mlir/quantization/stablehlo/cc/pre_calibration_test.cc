@@ -61,6 +61,21 @@ MATCHER_P2(HasStringAttr, name, value_matcher,
              result_listener);
 }
 
+// Matches an operation that has a FlatSymbolRefAttr whose name is `name` and
+// value matches `value_matcher`.
+MATCHER_P2(HasSymNameAttr, name, value_matcher,
+           absl::StrCat(negation ? "doesn't have" : "has",
+                        "string attribute: ", name, ", with desirable value")) {
+  auto non_const_arg = const_cast<std::remove_const_t<decltype(arg)>>(arg);
+  return non_const_arg->template hasAttrOfType<FlatSymbolRefAttr>(name) &&
+         ExplainMatchResult(
+             value_matcher,
+             non_const_arg->template getAttrOfType<FlatSymbolRefAttr>(name)
+                 .getValue()
+                 .str(),
+             result_listener);
+}
+
 using PreCalibrationComponentTest = ::mlir::quant::QuantizationTestBase;
 
 TEST_F(PreCalibrationComponentTest,
@@ -86,22 +101,26 @@ TEST_F(PreCalibrationComponentTest,
   for (auto func_op : pre_calibration_result->getOps<func::FuncOp>()) {
     func_ops.push_back(func_op);
   }
-  ASSERT_THAT(func_ops, SizeIs(1));
+  ASSERT_THAT(func_ops, SizeIs(2));
   EXPECT_THAT(func_ops, Contains(HasSymName("main")));
+  EXPECT_THAT(func_ops, Contains(HasSymName("composite_dot_general_fn_1")));
 
-  // Tests that there is a XlaCallModuleOp that is a serialized quantizable
+  // Tests that there is a XlaCallModuleOp that calls the composite quantizable
   // function.
   SmallVector<TF::XlaCallModuleOp> xla_call_module_ops;
   for (auto xla_call_module_op : func_ops[0].getOps<TF::XlaCallModuleOp>()) {
     xla_call_module_ops.push_back(xla_call_module_op);
   }
-  ASSERT_THAT(xla_call_module_ops, SizeIs(2));
-  EXPECT_THAT(
-      xla_call_module_ops,
-      Contains(HasStringAttr("_tfl_quant_trait", StrEq("fully_quantizable"))));
-  EXPECT_THAT(xla_call_module_ops,
-              Contains(HasStringAttr("_original_entry_function",
-                                     StartsWith("composite_dot_general_fn"))));
+  ASSERT_THAT(xla_call_module_ops, SizeIs(1));
+  auto xla_call_module_op = xla_call_module_ops[0];
+  EXPECT_THAT(xla_call_module_op,
+              HasStringAttr("_tfl_quant_trait", StrEq("fully_quantizable")));
+  EXPECT_THAT(xla_call_module_op,
+              HasSymNameAttr("_entry_function",
+                             StartsWith("composite_dot_general_fn")));
+  EXPECT_THAT(xla_call_module_op,
+              HasStringAttr("_original_entry_function",
+                            StartsWith("composite_dot_general_fn")));
 
   // Tests that there are CustomAggregatorOps inserted.
   SmallVector<TF::CustomAggregatorOp> custom_aggregator_ops;

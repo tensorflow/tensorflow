@@ -49,9 +49,6 @@ void AddPreCalibrationPasses(OpPassManager& pm,
   pm.addNestedPass<func::FuncOp>(
       CreateInsertCustomAggregationOpsPass(calibration_options));
   pm.addPass(CreateIssueIDsOfCustomAggregationOpsPass());
-  // StableHLO Quantizer currently uses TF's calibration passes. Serialize
-  // the StableHLO module as tf.XlaCallModule to run calibration.
-  AddCallModuleSerializationPasses(pm);
 }
 
 void AddPostCalibrationPasses(
@@ -65,10 +62,11 @@ void AddPostCalibrationPasses(
   pm.addNestedPass<func::FuncOp>(
       CreateConvertCustomAggregationOpToQuantStatsPass());
   pm.addPass(createQuantizeCompositeFunctionsPass(options));
+  // Add an inliner pass to inline quantized StableHLO functions.
+  pm.addPass(createInlinerPass());
   if (pipeline_config.unpack_quantized_types()) {
     AddStablehloQuantToIntPasses(pm);
   }
-  AddCallModuleSerializationPasses(pm);
 }
 
 void AddXlaCallModuleOpDeserializationPasses(OpPassManager& pm) {
@@ -91,7 +89,6 @@ void AddShapeLegalizationPasses(OpPassManager& pm) {
 }
 
 void AddStablehloQuantToIntPasses(OpPassManager& pm) {
-  pm.addPass(createInlinerPass());
   // StableHLO -> MHLO legalization.
   pm.addPass(mhlo::createStablehloLegalizeToHloPass());
   pm.addNestedPass<func::FuncOp>(mhlo::createMhloQuantLegalizeToIntPass());
@@ -109,10 +106,6 @@ void AddStablehloQuantToIntPasses(OpPassManager& pm) {
 // NOMUTANTS -- Add tests for individual passes with migration below.
 void AddCallModuleSerializationPasses(OpPassManager& pm) {
   AddShapeLegalizationPasses(pm);
-  // Add an inliner pass to inline quantized StableHLO functions (and others) so
-  // that StableHLO ops are properly grouped and converted into XlaCallModule
-  // ops by the ReplaceStablehloOpsInMainFunctionWithXlaCallModuleOpsPass.
-  pm.addPass(createInlinerPass());
   pm.addPass(createReplaceStablehloOpsInMainFunctionWithXlaCallModuleOpsPass());
   // ReplaceStablehloOpsInMainFunctionWithXlaCallModuleOpsPass may create
   // duplicate constants. Add canonicalizer to deduplicate.
