@@ -670,7 +670,7 @@ absl::Status IsProfileApplicable(
 
 int64_t GetSizeOfShape(const Shape& shape, int pointer_size) {
   int64_t size = ShapeUtil::ByteSizeOf(shape, pointer_size);
-  if (shape.is_static() || shape.IsTuple()) {
+  if (shape.IsTuple() || shape.is_static()) {
     return size;
   }
   // Each dynamic dimension size is represented as a S32.
