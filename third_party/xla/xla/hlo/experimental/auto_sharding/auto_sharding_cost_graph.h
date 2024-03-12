@@ -33,11 +33,12 @@ limitations under the License.
 #include "xla/hlo/experimental/auto_sharding/matrix.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/shape_util.h"
+
 namespace xla {
 namespace spmd {
 
-// A graph data structrue to simplify the edge cost graph.
-// It merges nodes and does path compression.
+// A graph data structure to simplify the edge cost graph. It merges nodes and
+// performs path compression.
 class CostGraph {
  public:
   CostGraph(const StrategyGroups& strategy_groups,
@@ -46,7 +47,7 @@ class CostGraph {
     extra_node_costs_.reserve(strategy_groups.size());
     adjacency_.assign(strategy_groups.size(), StableHashSet<int>());
 
-    // Build the cost graph
+    // Build the cost graph.
     for (StrategyGroup* strategy_group : strategy_groups) {
       node_lens_.push_back(strategy_group->strategies.size());
       extra_node_costs_.push_back(
@@ -64,8 +65,8 @@ class CostGraph {
           AddEdgeCost(src_idx, dst_idx, edge_communication_cost,
                       edge_memory_cost);
         } else if (in_nodes[i]->is_tuple && in_nodes.size() > 1) {
-          for (size_t l = 0; l < in_nodes[i]->childs.size(); l++) {
-            NodeIdx src_idx = in_nodes[i]->childs.at(l)->node_idx;
+          for (size_t l = 0; l < in_nodes[i]->childs.size(); ++l) {
+            NodeIdx src_idx = in_nodes[i]->childs[l]->node_idx;
             NodeIdx dst_idx = strategy_group->node_idx;
             Matrix edge_communication_cost = CreateEdgeCommunicationCost(
                 src_idx, dst_idx, i, strategy_group, true);
@@ -79,8 +80,8 @@ class CostGraph {
               << "Do not support instructions with more than one tuple "
                  "operand. If this CHECK fails, we will need to fix "
                  "b/233412625.";
-          for (size_t l = 0; l < in_nodes[i]->childs.size(); l++) {
-            NodeIdx src_idx = in_nodes[i]->childs.at(l)->node_idx;
+          for (size_t l = 0; l < in_nodes[i]->childs.size(); ++l) {
+            NodeIdx src_idx = in_nodes[i]->childs[l]->node_idx;
             NodeIdx dst_idx = strategy_group->node_idx;
             // TODO(b/233412625) Support more general case, e.g., multiple tuple
             // operands. If there is only one operand and it's a tuple, the
@@ -111,7 +112,7 @@ class CostGraph {
     }
 
     // Adjust the edge costs for dot pairs that can be optimized by
-    // AllReduceReassociate
+    // AllReduceReassociate.
     for (const auto& pair : associative_dot_pairs) {
       NodeIdx src_idx = pair.first->node_idx;
       NodeIdx dst_idx = pair.second->node_idx;
@@ -171,7 +172,6 @@ class CostGraph {
                       : strategy.communication_resharding_costs[in_node_idx][j];
       }
     }
-
     return edge_communication_cost;
   }
 
@@ -197,7 +197,6 @@ class CostGraph {
             zero_cost ? 0 : strategy.memory_resharding_costs[in_node_idx][j];
       }
     }
-
     return edge_communication_cost;
   }
 
@@ -277,12 +276,11 @@ class CostGraph {
     CHECK_NE(src, dst);
 
     Matrix edge_communication_cost = GetEdgeCommunicationCost(dst, src);
-    Matrix edge_memory_cost = GetEdgeMemoryCost(dst, src);
 
     std::vector<NodeStrategyIdx> reindexing(node_lens_[dst]);
     if (node_lens_[dst] == node_lens_[src]) {
       // Assume the orders of strategies in src and dst match
-      // (i.e. i-th strategy in src follows i-th strategy in dst).
+      // (i.e., i-th strategy in src follows i-th strategy in dst).
       // This is true in most cases because of how we create the
       // following strategies.
       std::iota(reindexing.begin(), reindexing.end(), 0);
@@ -309,17 +307,16 @@ class CostGraph {
                  (keys[l].first == keys[r].first &&
                   keys[l].second < keys[r].second);
         });
-
         reindexing[i] = arange.front();
       }
     }
     merged_to_[src] = dst;
     reindexing_vector_[src] = reindexing;
 
-    // Merge edge cost matrix
+    // Merge edge-cost matrix.
     std::vector<NodeIdx> adj_list(adjacency_[src].begin(),
                                   adjacency_[src].end());
-    for (NodeIdx adj : adj_list) {
+    for (const NodeIdx adj : adj_list) {
       if (adj == dst) {
         for (NodeStrategyIdx i = 0; i < node_lens_[dst]; ++i) {
           extra_node_costs_[dst][i] +=
@@ -340,14 +337,12 @@ class CostGraph {
                 edge_memory_cost_src_adj(reindexing[i], k);
           }
         }
-
         AddEdgeCost(dst, adj, added_edge_communication_cost,
                     added_edge_memory_cost);
       }
     }
-
     // Remove edges
-    for (NodeIdx adj : adj_list) {
+    for (const NodeIdx adj : adj_list) {
       RemoveEdge(src, adj);
     }
   }
@@ -357,7 +352,7 @@ class CostGraph {
       NodeIdx old_dst = merged_to_[node_idx];
       NodeIdx new_dst = QueryDestination(old_dst);
       if (old_dst != new_dst) {
-        // Compresss path
+        // Compress path.
         absl::Span<const NodeStrategyIdx> old_reindexing_vector =
             reindexing_vector_[node_idx];
         std::vector<NodeStrategyIdx> new_reindexing_vector;
@@ -375,17 +370,13 @@ class CostGraph {
   }
 
   void Simplify(bool enable) {
-    // Merge nodes
-    for (const auto& pair : to_merge_pairs_) {
-      NodeIdx src = pair.first;
-      NodeIdx dst = pair.second;
-      dst = QueryDestination(dst);
-      if (enable) {
-        MergeNode(src, dst);
+    // Merge nodes.
+    if (enable) {
+      for (const auto& [src, dst] : to_merge_pairs_) {
+        MergeNode(src, QueryDestination(dst));
       }
     }
-
-    // Build follow map
+    // Build follow map.
     follow_idx_.reserve(node_lens_.size());
     for (NodeIdx i = 0; i < node_lens_.size(); ++i) {
       if (merged_to_.contains(i)) {
@@ -445,7 +436,7 @@ class CostGraph {
   std::vector<std::pair<NodeIdx, NodeIdx>> to_merge_pairs_;
 };
 
-// Get the final sharding strategy according to the ilp solution.
+// Get the final sharding strategy according to the ILP solution.
 inline const ShardingStrategy& GetShardingStrategy(
     const HloInstruction* inst, const StrategyMap& strategy_map,
     const CostGraph& cost_graph, absl::Span<const NodeStrategyIdx> s_val) {
@@ -456,7 +447,7 @@ inline const ShardingStrategy& GetShardingStrategy(
   return strategy_group->strategies[stra_idx];
 }
 
-// Get the final sharding strategy according to the ilp solution.
+// Get the final sharding strategy according to the ILP solution.
 inline const ShardingStrategy& GetShardingStrategyForTuple(
     const HloInstruction* inst, ShapeIndex index,
     const StrategyMap& strategy_map, const CostGraph& cost_graph,
@@ -475,4 +466,5 @@ inline const ShardingStrategy& GetShardingStrategyForTuple(
 
 }  // namespace spmd
 }  // namespace xla
+
 #endif  // XLA_HLO_EXPERIMENTAL_AUTO_SHARDING_AUTO_SHARDING_COST_GRAPH_H_
