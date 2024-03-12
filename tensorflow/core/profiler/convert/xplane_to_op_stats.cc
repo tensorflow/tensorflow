@@ -243,6 +243,8 @@ Status ConvertMultiXSpacesToCombinedOpStats(
   if (session_snapshot.XSpaceSize() == 1) {
     TF_ASSIGN_OR_RETURN(std::unique_ptr<XSpace> xspace,
                         session_snapshot.GetXSpace(0));
+    PreprocessSingleHostXSpace(xspace.get(), /*step_grouping=*/true,
+                               /*derived_timeline=*/false);
     *combined_op_stats = ConvertXSpaceToOpStats(*xspace, options);
     return OkStatus();
   }
