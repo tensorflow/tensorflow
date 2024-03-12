@@ -23,7 +23,6 @@ limitations under the License.
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
-#include "llvm/Support/Casting.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/Quant/QuantTypes.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
@@ -32,7 +31,6 @@ limitations under the License.
 #include "mlir/IR/IRMapping.h"  // from @llvm-project
 #include "mlir/IR/Location.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
-#include "mlir/IR/Matchers.h"  // from @llvm-project
 #include "mlir/IR/OpDefinition.h"  // from @llvm-project
 #include "mlir/IR/OperationSupport.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
@@ -75,6 +73,8 @@ bool IsConnectedWithQuantizedCompsiteFunction(Operation* same_scale_op);
 // results. Dynamic range quantization allows "DynamicRangeQuantized" operands
 // and results.
 //
+// This is a templatized `OpRewritePattern<RootOpT>`.
+//
 // Template constraints are imposed as follows:
 // * `QuantizeOpT` should have only one operand.
 // * `DequantizeOpT` should have only one result.
@@ -83,17 +83,12 @@ template <typename ConcreteT, typename QuantizeOpT, typename DequantizeOpT,
           typename = std::enable_if_t<
               QuantizeOpT::template hasTrait<OpTrait::OneOperand>() &&
               DequantizeOpT::template hasTrait<OpTrait::OneResult>()>>
-class StableHloQuantizationPattern : public RewritePattern {
+class StableHloQuantizationPattern : public OpRewritePattern<RootOpT> {
  public:
-  using BaseType =
-      StableHloQuantizationPattern<ConcreteT, QuantizeOpT, DequantizeOpT,
-                                   VerifierT, RootOpT>;
-
-  explicit StableHloQuantizationPattern(MLIRContext* context,
-                                        const QuantPassSpec& quant_params)
-      // Set the score to a large number so it is always preferred.
-      : RewritePattern(RootOpT::getOperationName(), /*benefit=*/300, context),
-        quant_params_(quant_params) {}
+  StableHloQuantizationPattern(MLIRContext* context, QuantPassSpec quant_params)
+      // Set the benefit to a large number so that it is always preferred.
+      : OpRewritePattern<RootOpT>(context, /*benefit=*/300),
+        quant_params_(std::move(quant_params)) {}
 
  private:
   // Collects all candidate ops for quantization, which are the
@@ -132,11 +127,10 @@ class StableHloQuantizationPattern : public RewritePattern {
     return SmallVector<Operation*>{operand_op};
   }
 
-  LogicalResult matchAndRewrite(Operation* op,
+  LogicalResult matchAndRewrite(RootOpT op,
                                 PatternRewriter& rewriter) const override {
     // Collect all the candidate ops for quantization.
-    FailureOr<SmallVector<Operation*>> candidate_ops =
-        CollectCandidateOps(cast<RootOpT>(op));
+    FailureOr<SmallVector<Operation*>> candidate_ops = CollectCandidateOps(op);
     // Safeguard check to ensure that there is at least one quantizable op.
     if (failed(candidate_ops) || candidate_ops->empty()) return failure();
 
@@ -150,7 +144,7 @@ class StableHloQuantizationPattern : public RewritePattern {
     // preceding dequantize ops and succeding quantize ops.
     for (Operation* candidate_op : *candidate_ops) {
       // If it is requantize op, we shouldn't rewrite this op.
-      if (llvm::isa<QuantizeOpT, DequantizeOpT>(candidate_op)) {
+      if (isa<QuantizeOpT, DequantizeOpT>(candidate_op)) {
         return failure();
       }
 
@@ -172,7 +166,7 @@ class StableHloQuantizationPattern : public RewritePattern {
       }
 
       // Ops with regions will be quantized in a separate pattern.
-      if (llvm::isa<mlir::stablehlo::ReduceWindowOp>(candidate_op)) {
+      if (isa<mlir::stablehlo::ReduceWindowOp>(candidate_op)) {
         return failure();
       }
 
@@ -237,9 +231,8 @@ class StableHloQuantizationPattern : public RewritePattern {
         Type result_ele_type =
             result.getType().cast<TensorType>().getElementType();
         // If the user is the QuantizeOp, it must be the only user.
-        if (result.hasOneUse() &&
-            llvm::isa<QuantizeOpT>(*result.user_begin())) {
-          auto user = llvm::cast<QuantizeOpT>(*result.user_begin());
+        if (result.hasOneUse() && isa<QuantizeOpT>(*result.user_begin())) {
+          auto user = cast<QuantizeOpT>(*result.user_begin());
           outputs_replaced.insert(
               {user.getResult(), enumerated_result.index()});
           output_types.push_back(user.getType());
