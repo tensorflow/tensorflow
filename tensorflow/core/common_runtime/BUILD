@@ -35,7 +35,7 @@ load(
     "tf_cc_fuzz_test",
 )
 load(
-    "//third_party/mkl:build_defs.bzl",
+    "@local_tsl//tsl/mkl:build_defs.bzl",
     "if_mkl",
     "if_mkl_ml",
 )
@@ -1932,7 +1932,7 @@ cc_library(
         "//tensorflow/core:protos_all_cc",
         "@com_google_absl//absl/base",
     ] + if_mkl([":mkl_cpu_allocator"]) + if_mkl_ml([
-        "//third_party/mkl:intel_binary_blob",
+        "@local_tsl//tsl/mkl:intel_binary_blob",
     ]),
 )
 

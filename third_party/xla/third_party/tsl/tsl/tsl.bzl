@@ -312,14 +312,12 @@ def tsl_copts(
 
 def tf_openmp_copts():
     # We assume when compiling on Linux gcc/clang will be used and MSVC on Windows
-    # TODO(zacmustin): Update OSS to use TSL's MKL.
     return select({
+        clean_dep("//tsl/mkl:build_with_mkl_lnx_openmp"): ["-fopenmp"],
         # copybara:uncomment_begin
-        # "//tsl/mkl:build_with_mkl_lnx_openmp": ["-fopenmp"],
         # "//tsl/mkl:build_with_mkl_windows_openmp": ["/openmp"],
         # copybara:uncomment_end_and_comment_begin
-        "@local_tsl//third_party/mkl:build_with_mkl_lnx_openmp": ["-fopenmp"],
-        "@local_tsl//third_party/mkl:build_with_mkl_windows_openmp": ["/openmp:llvm"],
+        clean_dep("//tsl/mkl:build_with_mkl_windows_openmp"): ["/openmp:llvm"],
         # copybara:comment_end
         "//conditions:default": [],
     })
