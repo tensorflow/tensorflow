@@ -4293,6 +4293,41 @@ xla_cc_test(
     ],
 )
 
+cc_library(
+    name = "gpu_p2p_pipeliner",
+    srcs = ["gpu_p2p_pipeliner.cc"],
+    hdrs = ["gpu_p2p_pipeliner.h"],
+    deps = [
+        "//xla:util",
+        "//xla/hlo/ir:hlo",
+        "//xla/service:collective_ops_utils",
+        "//xla/service:collective_pipeliner",
+        "//xla/service:hlo_pass_pipeline",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+xla_cc_test(
+    name = "gpu_p2p_pipeliner_test",
+    srcs = [
+        "gpu_p2p_pipeliner_test.cc",
+    ],
+    deps = [
+        ":gpu_p2p_pipeliner",
+        "//xla:statusor",
+        "//xla:util",
+        "//xla/hlo/ir:hlo",
+        "//xla/service:hlo_parser",
+        "//xla/service:hlo_pass_pipeline",
+        "//xla/service:hlo_verifier",
+        "//xla/tests:hlo_test_base",
+        "//xla/tests:xla_internal_test_main",
+        "@com_google_absl//absl/log:check",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
 xla_cc_test(
     name = "while_transformer_test",
     srcs = ["while_transformer_test.cc"],
