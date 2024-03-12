@@ -157,3 +157,16 @@ def PrepareQuantizeHybridPass : Pass<"stablehlo-prepare-quantize-hybrid", "mlir:
       "mlir::quantfork::QuantizationForkDialect",
   ];
 }
+
+def FoldConstantTransposePass : Pass<"stablehlo-fold-constant-transpose", "mlir::func::FuncOp"> {
+  let summary = "Folds stablehlo.constant -> stablehlo.transpose patterns.";
+  let description = [{
+    Finds patterns where a `stablehlo.constant` is directly followed by a
+    `stablehlo.transpose` and folds them into a single `stablehlo.constant`.
+    This is considered an aggressive optimization, but it is useful to eliminate
+    `stablehlo.constant`->`stablehlo.transpose` patterns which are often
+    by-products of other shape conversion optimizations, such as NCHW->NHWC
+    convolution conversion.
+  }];
+  let dependentDialects = ["mlir::stablehlo::StablehloDialect"];
+}

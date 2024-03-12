@@ -40,6 +40,11 @@ void AddPreCalibrationPasses(OpPassManager& pm,
   // For models with NCHW convolution format. This pass is required because
   // downstream pipeline handles NHWC convolution better for most cases.
   pm.addNestedPass<func::FuncOp>(createNchwConvolutionToNhwcPass());
+
+  // Folds `stablehlo.constant`->`stablehlo.transpose` patterns, which is often
+  // generated as by-products after optimizing dimension numbers (e.g.
+  // NCHW->NHWC convolution conversion).
+  pm.addNestedPass<func::FuncOp>(createFoldConstantTransposePass());
   pm.addPass(CreateLiftQuantizableSpotsAsFunctionsPass(quantization_specs));
   if (debugger_config.debugger_type() !=
       DebuggerConfig::DEBUGGER_TYPE_UNSPECIFIED) {

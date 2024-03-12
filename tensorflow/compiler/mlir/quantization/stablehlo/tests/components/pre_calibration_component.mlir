@@ -47,16 +47,16 @@ func.func @main(%arg0: tensor<1x8x4x4xf32>) -> tensor<1x8x4x4xf32> {
 }
 // CHECK: @main(%[[ARG:.+]]: tensor<1x8x4x4xf32>) -> tensor<1x8x4x4xf32>
 
-// CHECK-DAG: %[[CST:.+]] = stablehlo.constant dense<3.000000e+00> : tensor<8x8x3x3xf32>
+// Contains the `stablehlo.transpose` op of the arg (e.g. [b, f, 0, 1] to
+// [b, 0, 1, f]). The weight constant is folded into [0, 1, i, o] format.
+// CHECK-DAG: %[[CST:.+]] = stablehlo.constant dense<3.000000e+00> : tensor<3x3x8x8xf32>
 // CHECK: %[[TRANSPOSE_1:.+]] = stablehlo.transpose %arg0, dims = [0, 2, 3, 1] : (tensor<1x8x4x4xf32>) -> tensor<1x4x4x8xf32>
 // CHECK: %[[CUSTOM_AGGREGATOR_0:.+]] = "tf.CustomAggregator"(%[[TRANSPOSE_1]]) {{.*}} : (tensor<1x4x4x8xf32>) -> tensor<1x4x4x8xf32>
-// CHECK: %[[TRANSPOSE_2:.+]] = stablehlo.transpose %[[CST]], dims = [2, 3, 1, 0] : (tensor<8x8x3x3xf32>) -> tensor<3x3x8x8xf32> 
-// CHECK: %[[CUSTOM_AGGREGATOR_1:.+]] = "tf.CustomAggregator"(%[[TRANSPOSE_2]]) {{.*}} : (tensor<3x3x8x8xf32>) -> tensor<3x3x8x8xf32>
 
 // Corresponds to the converted `stablehlo.convolution`. Note that the shapes
 // correspond to the dimension numbers of: [b, 0, 1, f]x[0, 1, i, o]->[b, 0, 1, f]
-// CHECK: %[[XLA_CALL_MODULE:.+]] = "tf.XlaCallModule"(%[[CUSTOM_AGGREGATOR_0]], %[[CUSTOM_AGGREGATOR_1]]) {{.*}} : (tensor<1x4x4x8xf32>, tensor<3x3x8x8xf32>) -> tensor<1x4x4x8xf32>
-// CHECK: %[[CUSTOM_AGGREGATOR_2:.+]] = "tf.CustomAggregator"(%[[XLA_CALL_MODULE]]) {{.*}} : (tensor<1x4x4x8xf32>) -> tensor<1x4x4x8xf32>
+// CHECK: %[[XLA_CALL_MODULE:.+]] = "tf.XlaCallModule"(%[[CUSTOM_AGGREGATOR_0]], %[[CST]]) {{.*}} : (tensor<1x4x4x8xf32>, tensor<3x3x8x8xf32>) -> tensor<1x4x4x8xf32>
+// CHECK: %[[CUSTOM_AGGREGATOR_1:.+]] = "tf.CustomAggregator"(%[[XLA_CALL_MODULE]]) {{.*}} : (tensor<1x4x4x8xf32>) -> tensor<1x4x4x8xf32>
 
-// CHECK: %[[TRANSPOSE_3:.+]] = stablehlo.transpose %[[CUSTOM_AGGREGATOR_2]], dims = [0, 3, 1, 2] : (tensor<1x4x4x8xf32>) -> tensor<1x8x4x4xf32>
-// CHECK: return %[[TRANSPOSE_3]] : tensor<1x8x4x4xf32>
+// CHECK: %[[TRANSPOSE_2:.+]] = stablehlo.transpose %[[CUSTOM_AGGREGATOR_1]], dims = [0, 3, 1, 2] : (tensor<1x4x4x8xf32>) -> tensor<1x8x4x4xf32>
+// CHECK: return %[[TRANSPOSE_2]] : tensor<1x8x4x4xf32>
