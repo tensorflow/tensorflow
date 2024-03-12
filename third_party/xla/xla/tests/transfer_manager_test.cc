@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -328,7 +328,7 @@ XLA_TEST_F(TransferManagerTest, MultiStreamRoundTripSoak) {
   auto device_buffer2 = AllocateDeviceBuffer(literal2.shape());
 
   auto stream1 = stream_;
-  auto stream2 = stream_->GetOrCreateSubStream();
+  auto stream2 = stream_->GetOrCreateSubStream().value();
 
   Literal result1, result2;
 

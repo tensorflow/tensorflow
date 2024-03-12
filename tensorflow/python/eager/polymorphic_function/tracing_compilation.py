@@ -178,7 +178,6 @@ def trace_function(args=None, kwargs=None, tracing_options=None):
     concrete_function = _maybe_define_function(
         args, kwargs, tracing_options
     )
-    _set_arg_keywords(concrete_function)
 
   if not tracing_options.bind_graph_to_function:
     concrete_function._garbage_collector.release()  # pylint: disable=protected-access
@@ -348,7 +347,7 @@ def _create_concrete_function(
       # ConcreteFunction.
       shared_func_graph=False,
   )
-
+  _set_arg_keywords(concrete_function)
   transform.call_concrete_function_callbacks(concrete_function)
 
   return concrete_function

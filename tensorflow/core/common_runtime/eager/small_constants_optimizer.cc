@@ -244,14 +244,14 @@ void GenerateTrueAndFalseFunctions(const FunctionDef& fdef,
   // Add f_true(s).
   auto true_fdefs =
       FoldBoolInputTensor(fdef, input_name_to_fold, /*input_value=*/true,
-                          /*delete_input=*/true, flib, folded_functions);
+                          /*delete_input=*/false, flib, folded_functions);
   for (FunctionDef& fdef : true_fdefs) DisableBoolInputFolding(fdef);
   result.insert(result.end(), std::make_move_iterator(true_fdefs.begin()),
                 std::make_move_iterator(true_fdefs.end()));
   // Add f_false(s).
   auto false_fdefs =
       FoldBoolInputTensor(fdef, input_name_to_fold, /*input_value=*/false,
-                          /*delete_input=*/true, flib, folded_functions);
+                          /*delete_input=*/false, flib, folded_functions);
   for (FunctionDef& fdef : false_fdefs) DisableBoolInputFolding(fdef);
   result.insert(result.end(), std::make_move_iterator(false_fdefs.begin()),
                 std::make_move_iterator(false_fdefs.end()));

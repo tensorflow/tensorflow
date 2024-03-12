@@ -72,7 +72,7 @@ Status AttrTypeMapForOp(const char* op_name, const AttrTypeMap** out,
     tf_shared_lock l(g_op_name_to_attr_type_map_lock);
     *is_function = false;
     *out = gtl::FindPtrOrNull(*OpNameToAttrTypeMap(), op_name);
-    if (*out != nullptr) return OkStatus();
+    if (*out != nullptr) return absl::OkStatus();
   }
 
   mutex_lock l(g_op_name_to_attr_type_map_lock);
@@ -81,7 +81,7 @@ Status AttrTypeMapForOp(const char* op_name, const AttrTypeMap** out,
   // may insert this map after the tf_shared_lock is released but before the
   // mutex_lock is acquired.
   *out = gtl::FindPtrOrNull(*OpNameToAttrTypeMap(), op_name);
-  if (*out != nullptr) return OkStatus();
+  if (*out != nullptr) return absl::OkStatus();
 
   const OpDef* op_def = nullptr;
   Status s = OpDefForOp(op_name, &op_def);
@@ -94,7 +94,7 @@ Status AttrTypeMapForOp(const char* op_name, const AttrTypeMap** out,
     // function def to retrieve their types.
     *out = GetDefaultFunctionAttrTypeMap();
     *is_function = true;
-    return OkStatus();
+    return absl::OkStatus();
   } else if (!s.ok()) {
     return s;
   }
@@ -135,7 +135,7 @@ Status AttrTypeMapForOp(const char* op_name, const AttrTypeMap** out,
   auto r = OpNameToAttrTypeMap()->emplace(op_name, m.release());
   DCHECK(r.second) << "AttrTypeMap already exists for " << op_name;
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 #define DEFINE_GET_ATTR(TYPE, FIELD, ATTR_TYPE)                         \
@@ -273,7 +273,7 @@ Status AttrTypeByName(const AttrTypeMap& m, const string& attr_name,
   } else {
     *is_list = 0;
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 namespace {

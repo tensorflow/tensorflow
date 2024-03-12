@@ -1,4 +1,4 @@
-/* Copyright 2021 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2021 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "xla/stream_executor/gpu/gpu_cudamallocasync_allocator.h"
 
+#include <atomic>
+#include <cstddef>
 #include <map>
 #include <memory>
 #include <optional>
@@ -28,14 +30,13 @@ limitations under the License.
 
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
-#include "xla/stream_executor/device_id_utils.h"
-#include "xla/stream_executor/gpu/gpu_init.h"
-#include "xla/stream_executor/stream_executor.h"
+#include "xla/stream_executor/gpu/gpu_init.h"  // IWYU pragma: keep
+#include "xla/stream_executor/stream_executor.h"  // IWYU pragma: keep
 #include "tsl/framework/allocator.h"
 #include "tsl/framework/device_id.h"
 #include "tsl/platform/logging.h"
 #include "tsl/platform/mutex.h"
-#include "tsl/util/env_var.h"
+#include "tsl/util/env_var.h"  // IWYU pragma: keep
 
 namespace stream_executor {
 
@@ -102,11 +103,6 @@ void GpuCudaMallocAsyncAllocator::PrintAllocatorStatisticsNoLock() {
 #endif
 }
 
-void GpuCudaMallocAsyncAllocator::PrintAllocatorStatistics() {
-  tsl::mutex_lock lock(lock_);
-  PrintAllocatorStatisticsNoLock();
-}
-
 std::atomic<int> GpuCudaMallocAsyncAllocator::number_instantiated_(0);
 
 GpuCudaMallocAsyncAllocator::GpuCudaMallocAsyncAllocator(
@@ -121,8 +117,8 @@ GpuCudaMallocAsyncAllocator::GpuCudaMallocAsyncAllocator(
   (void)reserve_memory_;
 
 #if TF_CUDA_MALLOC_ASYNC_SUPPORTED
-  stream_exec_ = DeviceIdUtil::ExecutorForPlatformDeviceId(
-                     GPUMachineManager(), platform_device_id)
+  stream_exec_ = GPUMachineManager()
+                     ->ExecutorForDevice(platform_device_id.value())
                      .value();
   // Initialized here as it only exist if compiled with a recent
   // enough CUDA.
@@ -298,9 +294,17 @@ void* GpuCudaMallocAsyncAllocator::AllocateRaw(size_t alignment,
   }
   cuda::ScopedActivateExecutorContext scoped_activation{stream_exec_};
   void* ptr = nullptr;
-  if (auto result =
-          cuMemAllocFromPoolAsync(reinterpret_cast<CUdeviceptr*>(&ptr),
-                                  num_bytes, pool_, cuda_stream_)) {
+  auto result = cuMemAllocFromPoolAsync(reinterpret_cast<CUdeviceptr*>(&ptr),
+                                        num_bytes, pool_, cuda_stream_);
+  if (result == CUDA_ERROR_OUT_OF_MEMORY) {
+    // Doing a stream synchronization give the driver more flexibility
+    // for blocks coalescing and doing memory remapping. So it can
+    // solve some OOM cases when memory is tight.
+    cuStreamSynchronize(cuda_stream_);
+    result = cuMemAllocFromPoolAsync(reinterpret_cast<CUdeviceptr*>(&ptr),
+                                     num_bytes, pool_, cuda_stream_);
+  }
+  if (result) {
     size_t free, total;
     cuMemGetInfo(&free, &total);
     LOG(ERROR) << Name() << " cuMemAllocAsync failed to allocate " << num_bytes
@@ -410,7 +414,7 @@ bool GpuCudaMallocAsyncAllocator::ClearStats() {
 
 void GpuCudaMallocAsyncAllocator::SetStreamAndPreallocateMemory(void* stream) {
 #if TF_CUDA_MALLOC_ASYNC_SUPPORTED
-  CUstream new_cuda_stream = *(static_cast<CUstream*>(stream));
+  auto new_cuda_stream = static_cast<CUstream>(stream);
   // We don't need to re-set the CUDA stream if this is the same stream
   if (cuda_stream_ != nullptr && new_cuda_stream != cuda_stream_) {
     LOG(FATAL) <<  // Crash OK.
@@ -439,8 +443,7 @@ void GpuCudaMallocAsyncAllocator::SetStreamAndPreallocateMemory(void* stream) {
     void* ptr = AllocateRaw(0, prealloc_size);
     DeallocateRaw(ptr);
     VLOG(2) << Name() << " GpuCudaMallocAsyncAllocator reserved the pool for "
-            << prealloc_size << " bytes"
-            << ". First ptr: " << ptr;
+            << prealloc_size << " bytes" << ". First ptr: " << ptr;
     ClearStats();
   }
 #endif

@@ -160,7 +160,7 @@ tensorflow::DataType TflTypeToTfType(tflite::TensorType type) {
   }
 }
 
-StatusOr<tflite::TensorType> TfTypeToTflType(tensorflow::DataType type) {
+absl::StatusOr<tflite::TensorType> TfTypeToTflType(tensorflow::DataType type) {
   switch (type) {
     case tensorflow::DT_BOOL:
       return tflite::TensorType_BOOL;

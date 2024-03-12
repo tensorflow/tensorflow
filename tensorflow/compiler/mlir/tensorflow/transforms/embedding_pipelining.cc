@@ -375,106 +375,52 @@ struct Inliner : public InlinerInterface {
     return LogicalResult::success();
   }
 
-  bool HasCollectiveGathers(func::FuncOp func) {
-    return !func.getRegion().getOps<TF::CollectiveGatherV2Op>().empty();
-  }
-
   LogicalResult PatchCollectiveGatherInstanceKey(func::FuncOp func) {
     // We're expecting the original model to have a single CollectiveGatherV2Op
-    // with the instance_key set to the global_iter_id (see GlobalIterIdOp).
-    // That collective gets split into 3 copies in the start_step_0,
-    // start_step_1 and new_while_body functions. At this point, however, we're
-    // expecting one gather per device and we want them all to have the same
-    // instance key. To make sure the instance keys are unique among the three
-    // functions them we replace the original instance key (global_iter_id) as:
-    //   new_instance_key = global_iter_id + c
-    // where c = 0, 1, or 2 depending on which function it's being replaced in.
-    // Note, also, that the following code assumes this inlining pass is call
-    // for start_step_0 and start_step_1 before new_while_body.
-    //
-    // Verify our assumption that we have just 3 collectives (per device).
-    const int32_t max_collectives = 3;
-    static int32_t offset_value = -2;
-    bool has_gathers = false;
-    for (auto gather_op : func.getRegion().getOps<TF::CollectiveGatherV2Op>()) {
-      if (offset_value >= max_collectives) {
-        gather_op->emitError()
-            << "Expected to find only " << max_collectives
-            << " CollectiveGatherV2 ops but found " << offset_value;
-        return LogicalResult::failure();
-      }
-      has_gathers = true;
-      Value orig_instance_key = gather_op->getOperand(3);
-      auto loc = gather_op->getLoc();
-      builder.setInsertionPoint(gather_op);
+    // that gets split into 3 copies in the start_step_0, start_step_1 and
+    // new_while_body functions. We use global iter id to set the instance key.
+    // Therefore, we add an offset to the output of the global_iter_id_op to
+    // make sure the instance keys are unique among them we replace the original
+    // instance key as:
+    //   global_iter_id = c + original_global_iter_id
+    // where c = -2, -1 or 0 depending on which function it's being replaced in.
+    static int64_t offset_value = -2;
+    for (auto global_iter_id_op :
+         func.getRegion().getOps<TF::GlobalIterIdOp>()) {
+      auto loc = global_iter_id_op->getLoc();
+      builder.setInsertionPointAfter(global_iter_id_op);
       auto offset = builder.create<TF::ConstOp>(
-          loc, builder.getI32IntegerAttr(offset_value));
-      auto new_instance_key = builder.create<TF::AddV2Op>(
-          loc, orig_instance_key, offset->getResult(0));
-      gather_op->setOperand(3, new_instance_key->getResult(0));
+          loc, builder.getI64IntegerAttr(offset_value));
+      auto new_global_iter_id = builder.create<TF::AddV2Op>(
+          loc, global_iter_id_op->getResultTypes(),
+          global_iter_id_op->getResult(0), offset->getResult(0));
+      global_iter_id_op->getResult(0).replaceAllUsesExcept(
+          new_global_iter_id->getResult(0), new_global_iter_id);
       std::vector<std::string> attr_names = {
           TF::kReplicationInfoAttr.str(), "_xla_compile_device_type",
           kEmbeddingPipelining, "_xla_outside_compilation", "device"};
       for (const auto& attr_name : attr_names) {
-        if (!gather_op->hasAttr(attr_name)) continue;
-        offset->setAttr(attr_name, gather_op->getAttr(attr_name));
-        new_instance_key->setAttr(attr_name, gather_op->getAttr(attr_name));
+        if (!global_iter_id_op->hasAttr(attr_name)) continue;
+        offset->setAttr(attr_name, global_iter_id_op->getAttr(attr_name));
+        new_global_iter_id->setAttr(attr_name,
+                                    global_iter_id_op->getAttr(attr_name));
       }
+      // Make the next function to get inlined use a different offset.
+      ++offset_value;
     }
-    // Make the next function to get inlined use a different offset.
-    if (has_gathers) ++offset_value;
-    return LogicalResult::success();
-  }
-
-  LogicalResult PatchCollectiveGatherOps(func::FuncOp func) {
-    // We currently expect the gathers to be in nested functions. Check the
-    // functions called from this function to see if they have gather ops. If
-    // so, then inline that function so we can locally modify the instance keys
-    // for the gathers.
-    llvm::SetVector<Operation*> ops_to_erase;
-    for (auto caller :
-         func.getRegion().getOps<TF::StatefulPartitionedCallOp>()) {
-      auto callee_op = symbol_table.lookup(caller.getF());
-      if (callee_op == nullptr) {
-        func.emitError() << "Symbol not found in SymbolTable: "
-                         << caller.getF();
-        return LogicalResult::failure();
-      }
-      func::FuncOp callee = llvm::dyn_cast<func::FuncOp>(callee_op);
-      // If the function called here doesn't have gathers then ignore it.
-      if (!HasCollectiveGathers(callee)) continue;
-
-      // Do the inlining.
-      VLOG(1) << "Nested inlining " << caller.getF().str();
-      auto& src_region = callee.getRegion();
-      auto result = inlineCall(*this, caller, callee, &src_region, true);
-      if (failed(result)) {
-        func.emitError("CollectiveGather Inlining failed");
-        return result;
-      }
-      ops_to_erase.insert(caller);
-    }
-    // If we didn't find nested gathers, we're done.
-    if (ops_to_erase.empty()) return LogicalResult::success();
-
-    for (auto op : ops_to_erase) op->erase();
-
-    // Ok, now we need to update the instance keys. We're expecting one gather
-    // per device and we should give them all the same instance key.
-    return PatchCollectiveGatherInstanceKey(func);
     return LogicalResult::success();
   }
 
   // Find any StatefulPartitionedCalls and inline their contents in this func.
   LogicalResult InlineCallsInFunc(func::FuncOp func,
-                                  bool patch_gathers = false) {
+                                  bool inline_all_funcs = false) {
     llvm::SetVector<Operation*> ops_to_erase;
     for (auto caller :
          func.getRegion().getOps<TF::StatefulPartitionedCallOp>()) {
-      if (!caller->hasAttr(kEmbeddingPipeliningInlineAttr)) {
+      if (!inline_all_funcs &&
+          !caller->hasAttr(kEmbeddingPipeliningInlineAttr)) {
         continue;
       }
-      VLOG(1) << "Inlining " << caller.getF().str();
       Operation* symbol = symbol_table.lookup(caller.getF());
       if (symbol == nullptr) {
         func.emitError() << "Symbol not found in SymbolTable: "
@@ -497,12 +443,10 @@ struct Inliner : public InlinerInterface {
     }
     for (auto op : ops_to_erase) op->erase();
 
-    if (patch_gathers) {
-      auto result = PatchCollectiveGatherOps(func);
-      if (failed(result)) return result;
-    }
+    auto result = PatchCollectiveGatherInstanceKey(func);
+    if (failed(result)) return result;
 
-    auto result = UnifyReplicationInfo(func);
+    result = UnifyReplicationInfo(func);
     if (failed(result)) return result;
 
     result = RemoveOutputInputPairs(func);
@@ -633,7 +577,7 @@ void GatherOpsForExtraction(mlir::SetVector<Operation*>* operations,
   // Walk the input and output dependencies of the Ops in `operations` to form
   // the closer of Ops needed to evaluate 'operations'. Input dependencies are
   // walked if 'predecessors' is true and output dependencies are walked if
-  // 'successors' is true. In either case, if a discovered Op is in the
+  // 'successors' is true. In either case, if a discoverd Op is in the
   // 'ops_to_avoid' set, then the dependency walking is terminated.
   llvm::SetVector<Operation*> ops_to_process(*operations);
   llvm::SetVector<Operation*> new_ops;
@@ -1258,7 +1202,7 @@ LogicalResult ExtractOpsAsFunc(
       if (!ops.contains(defining_op)) inputs.insert(operand);
     }
   }
-  // Find the output edges to form the set of results of the new function call.
+  // Find the output edges to form the set of resutls of the new function call.
   llvm::SetVector<OpResult> results;
   for (Operation* op : ops) {
     for (auto result : op->getResults()) {
@@ -1316,7 +1260,7 @@ int FindReturnIndex(Value val) {
 }
 
 // Skip the assertions because they currently create problematic dependencies.
-constexpr bool kDoAssertions = false;
+constexpr bool kDoAssertions = true;
 
 void AddAssertion(OpBuilder& builder, Location& loc, Value cond,
                   const std::string& message) {
@@ -1404,8 +1348,7 @@ LogicalResult StartStep0(OpBuilder& builder, Location& loc,
   func_builder.create<func::ReturnOp>(loc, results);
 
   // Inline any StatefulPartitionCall Ops.
-  auto result = Inliner(builder, symbol_table)
-                    .InlineCallsInFunc(then_func, /*patch_gathers=*/true);
+  auto result = Inliner(builder, symbol_table).InlineCallsInFunc(then_func);
   if (failed(result)) return result;
 
   builder.restoreInsertionPoint(insertion_point);
@@ -1463,8 +1406,7 @@ LogicalResult StartStep1(OpBuilder& builder, Location& loc,
   func_builder.create<func::ReturnOp>(loc, new_forward->getResults());
 
   // Inline any StatefulPartitionCall Ops.
-  auto result = Inliner(builder, symbol_table)
-                    .InlineCallsInFunc(then_func, /*patch_gathers=*/true);
+  auto result = Inliner(builder, symbol_table).InlineCallsInFunc(then_func);
   if (failed(result)) return result;
 
   builder.restoreInsertionPoint(insertion_point);
@@ -2159,8 +2101,8 @@ void EmbeddingPipeliningPass::runOnOperation() {
   //
   // Finish step i-1
   //
-  // Second, add all the inputs to core_tpu(). These all come from the while
-  // loop operands, sc_forward() or non_tpu() and need to be pulled from the
+  // Second, add all the inputs to core_tpu(). Thesse all come from the while
+  // loop opernads, sc_forward() or non_tpu() and need to be pulled from the
   // "i-1" (or "1") version of the inputs.
   std::vector<Value> t_operands;
   result = MakeCoreTPUOperands(core_tpu_caller, non_tpu_caller, forward_caller,
@@ -2299,7 +2241,7 @@ void EmbeddingPipeliningPass::runOnOperation() {
                                *orig_while_op->getParentRegion());
 
   // Inline the new while body.
-  result = Inliner(builder, symbol_table).InlineCallsInFunc(body);
+  result = Inliner(builder, symbol_table).InlineCallsInFunc(body, false);
   if (failed(result)) return signalPassFailure();
 
   // Erase original while op and temporary functions. Note, we use the non_tpu

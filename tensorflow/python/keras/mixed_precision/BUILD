@@ -25,6 +25,7 @@ package(
         "//tensorflow/python/distribute:__pkg__",  # For collective_all_reduce_strategy_test
         "//tensorflow/python/keras:__subpackages__",
         "//tensorflow/tools/pip_package:__pkg__",
+        "//tensorflow/tools/pip_package:__subpackages__",
     ],
     licenses = ["notice"],
 )
@@ -54,7 +55,8 @@ py_library(
     srcs_version = "PY3",
     deps = [
         ":device_compatibility_check",
-        "//tensorflow/python/framework",
+        "//tensorflow/python/framework:dtypes",
+        "//tensorflow/python/platform:tf_logging",
         "//tensorflow/python/training/experimental:mixed_precision_global_state",
     ],
 )
@@ -134,7 +136,8 @@ py_library(
     srcs = ["test_util.py"],
     srcs_version = "PY3",
     deps = [
-        "//tensorflow/python/framework",
+        "//tensorflow/python/framework:dtypes",
+        "//tensorflow/python/framework:ops",
         "//tensorflow/python/framework:tensor_conversion",
         "//tensorflow/python/keras",
         "//tensorflow/python/ops:cond",

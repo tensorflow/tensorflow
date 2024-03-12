@@ -151,6 +151,16 @@ class OneDnnThreadPool : public threadpool_iface {
 
   ~OneDnnThreadPool() {}
 
+  static void set_onednn_max_threads(int num_threads) {
+#if DNNL_VERSION_MAJOR >= 3 || \
+    (DNNL_VERSION_MAJOR == 2 && DNNL_VERSION_MINOR >= 7)
+#ifndef DNNL_AARCH64_USE_ACL
+    dnnl_threadpool_interop_set_max_concurrency(num_threads);
+#endif  // DNNL_AARCH64_USE_ACL
+#endif  // DNNL_VERSION_MAJOR >= 3 ||
+        // (DNNL_VERSION_MAJOR == 2 && DNNL_VERSION_MINOR >= 7)
+  }
+
  private:
   Eigen::ThreadPoolInterface* eigen_interface_ = nullptr;
   int num_threads_ = 1;                 // Execute in caller thread.
@@ -159,13 +169,7 @@ class OneDnnThreadPool : public threadpool_iface {
   inline void set_num_and_max_threads(int num_threads) {
     num_threads_ =
         num_threads == -1 ? eigen_interface_->NumThreads() : num_threads;
-#if DNNL_VERSION_MAJOR >= 3 || \
-    (DNNL_VERSION_MAJOR == 2 && DNNL_VERSION_MINOR >= 7)
-#ifndef DNNL_AARCH64_USE_ACL
-    dnnl_threadpool_interop_set_max_concurrency(num_threads_);
-#endif  // DNNL_AARCH64_USE_ACL
-#endif  // DNNL_VERSION_MAJOR >= 3 ||
-        // (DNNL_VERSION_MAJOR == 2 && DNNL_VERSION_MINOR >= 7)
+    set_onednn_max_threads(num_threads_);
   }
 };
 
@@ -178,6 +182,7 @@ class OneDnnThreadPool {
   OneDnnThreadPool(Eigen::ThreadPoolInterface* eigen_interface) {}
   OneDnnThreadPool(Eigen::ThreadPoolInterface* eigen_interface,
                    bool can_use_caller_thread, int num_threads = -1) {}
+  static void set_onednn_max_threads(int num_threads) {}
 };
 
 #endif  // !ENABLE_ONEDNN_OPENMP

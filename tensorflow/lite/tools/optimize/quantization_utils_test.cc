@@ -123,7 +123,7 @@ TEST_F(QuantizationUtilsTest,
 
 TEST_F(QuantizationUtilsTest,
        AsymmetricQuantizationParamsWithAllNegativeRange) {
-  // The min should get nudged to include 0, so the effective range is [-6, 0].
+  // The max should get nudged to include 0, so the effective range is [-6, 0].
   const float float_min = -6.0;
   const float float_max = -1.0;
   const int quant_min = -128;

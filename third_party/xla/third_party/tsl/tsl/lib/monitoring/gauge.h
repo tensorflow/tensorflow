@@ -47,7 +47,8 @@ class GaugeCell {
   T value() const { return T(); }
 
  private:
-  TF_DISALLOW_COPY_AND_ASSIGN(GaugeCell);
+  GaugeCell(const GaugeCell&) = delete;
+  void operator=(const GaugeCell&) = delete;
 };
 
 // Gauge which has a null implementation.
@@ -64,8 +65,10 @@ class Gauge {
             std::is_same<ValueType, bool>::value ||
             std::is_same<ValueType, std::function<int64()> >::value ||
             std::is_same<ValueType, std::function<std::string()> >::value ||
-            std::is_same<ValueType, std::function<bool()> >::value,
-        "Gauge only allows bool, int64, and string types.");
+            std::is_same<ValueType, std::function<bool()> >::value ||
+            std::is_same<ValueType, std::function<double()> >::value ||
+            std::is_same<ValueType, double>::value,
+        "Gauge only allows bool, int64, double and string types.");
     return new Gauge();
   }
 
@@ -81,7 +84,8 @@ class Gauge {
 
   GaugeCell<ValueType> default_gauge_cell_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(Gauge);
+  Gauge(const Gauge&) = delete;
+  void operator=(const Gauge&) = delete;
 };
 
 }  // namespace monitoring
@@ -131,7 +135,8 @@ class GaugeCell {
   T value_ TF_GUARDED_BY(mu_);
   mutable mutex mu_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(GaugeCell);
+  GaugeCell(const GaugeCell&) = delete;
+  void operator=(const GaugeCell&) = delete;
 };
 
 // Explicit specialization of GaugeCell<int64_t>. Compared to the primary
@@ -152,7 +157,8 @@ class GaugeCell<int64_t> {
  private:
   std::atomic<int64_t> value_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(GaugeCell);
+  GaugeCell(const GaugeCell&) = delete;
+  void operator=(const GaugeCell&) = delete;
 };
 
 // Explicit specialization of GaugeCell<bool>. Compared to the primary
@@ -173,7 +179,8 @@ class GaugeCell<bool> {
  private:
   std::atomic<bool> value_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(GaugeCell);
+  GaugeCell(const GaugeCell&) = delete;
+  void operator=(const GaugeCell&) = delete;
 };
 
 // A stateful class for updating a gauge-like metric. Allowed ValueType are
@@ -254,7 +261,8 @@ class Gauge {
 
   std::unique_ptr<CollectionRegistry::RegistrationHandle> registration_handle_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(Gauge);
+  Gauge(const Gauge&) = delete;
+  void operator=(const Gauge&) = delete;
 };
 
 ////
@@ -290,8 +298,10 @@ Gauge<ValueType, NumLabels>* Gauge<ValueType, NumLabels>::New(
           std::is_same<ValueType, bool>::value ||
           std::is_same<ValueType, std::function<int64_t()> >::value ||
           std::is_same<ValueType, std::function<std::string()> >::value ||
-          std::is_same<ValueType, std::function<bool()> >::value,
-      "Gauge only allows bool, int64, and string types.");
+          std::is_same<ValueType, std::function<bool()> >::value ||
+          std::is_same<ValueType, std::function<double()> >::value ||
+          std::is_same<ValueType, double>::value,
+      "Gauge only allows bool, int64, double, and string types.");
   return new Gauge<ValueType, NumLabels>(
       MetricDef<MetricKind::kGauge, ValueType, NumLabels>(
           std::forward<MetricDefArgs>(metric_def_args)...));

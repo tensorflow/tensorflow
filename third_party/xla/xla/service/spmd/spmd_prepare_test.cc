@@ -1,4 +1,4 @@
-/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -35,14 +35,14 @@ namespace op = xla::testing::opcode_matchers;
 
 class SpmdPrepareTest : public HloTestBase {
  public:
-  StatusOr<std::unique_ptr<HloModule>> RunPass(
+  absl::StatusOr<std::unique_ptr<HloModule>> RunPass(
       absl::string_view hlo_module, int64_t distance_threshold = 100) {
     TF_ASSIGN_OR_RETURN(auto module, ParseAndReturnVerifiedModule(
                                          hlo_module, GetModuleConfigForTest()));
     HloPassPipeline pipeline("spmd-prepare");
     pipeline.AddPass<SpmdPrepare>();
     TF_RETURN_IF_ERROR(pipeline.Run(module.get()).status());
-    return StatusOr<std::unique_ptr<HloModule>>(std::move(module));
+    return absl::StatusOr<std::unique_ptr<HloModule>>(std::move(module));
   }
 };
 

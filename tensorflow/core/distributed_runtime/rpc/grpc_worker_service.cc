@@ -361,7 +361,8 @@ class GrpcWorkerServiceThread {
 
   mutex shutdown_mu_;
   bool is_shutdown_ TF_GUARDED_BY(shutdown_mu_);
-  TF_DISALLOW_COPY_AND_ASSIGN(GrpcWorkerServiceThread);
+  GrpcWorkerServiceThread(const GrpcWorkerServiceThread&) = delete;
+  void operator=(const GrpcWorkerServiceThread&) = delete;
 };
 
 class GrpcWorkerService : public tsl::AsyncServiceInterface {
@@ -411,7 +412,8 @@ class GrpcWorkerService : public tsl::AsyncServiceInterface {
   mutex service_shutdown_mu_;
   bool is_shutdown_ TF_GUARDED_BY(service_shutdown_mu_);
 
-  TF_DISALLOW_COPY_AND_ASSIGN(GrpcWorkerService);
+  GrpcWorkerService(const GrpcWorkerService&) = delete;
+  void operator=(const GrpcWorkerService&) = delete;
 };
 
 }  // namespace
@@ -723,7 +725,7 @@ void GrpcWorker::LoggingAsync(const LoggingRequest* request,
       }
     }
   }
-  done(OkStatus());
+  done(absl::OkStatus());
 }
 
 void GrpcWorker::CleanupGraphAsync(const CleanupGraphRequest* request,

@@ -1,4 +1,4 @@
-/* Copyright 2022 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2022 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -24,12 +24,12 @@ limitations under the License.
 #include "llvm/Support/ExtensibleRTTI.h"
 #include "xla/python/ifrt/array.h"
 #include "xla/python/ifrt/client.h"
-#include "tfrt/concurrency/ref_count.h"  // from @tf_runtime
+#include "tsl/concurrency/ref_count.h"
 
 namespace xla {
 namespace ifrt {
 
-/*static*/ StatusOr<tsl::RCReference<PjRtTuple>> PjRtTuple::Create(
+/*static*/ absl::StatusOr<tsl::RCReference<PjRtTuple>> PjRtTuple::Create(
     PjRtCompatibleClient* client, absl::Span<tsl::RCReference<Value>> values) {
   return tsl::MakeRef<PjRtTuple>(client, values);
 }

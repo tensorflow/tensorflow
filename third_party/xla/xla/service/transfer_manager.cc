@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -15,23 +15,31 @@ limitations under the License.
 
 #include "xla/service/transfer_manager.h"
 
+#include <cstdint>
 #include <functional>
 #include <memory>
-#include <string>
 #include <utility>
+#include <vector>
 
+#include "absl/base/const_init.h"
 #include "absl/cleanup/cleanup.h"
-#include "absl/strings/str_cat.h"
+#include "absl/container/flat_hash_map.h"
+#include "absl/synchronization/mutex.h"
+#include "xla/literal.h"
 #include "xla/service/compiler.h"
 #include "xla/service/maybe_owning_device_memory.h"
+#include "xla/service/shaped_buffer.h"
+#include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/status.h"
 #include "xla/status_macros.h"
-#include "xla/types.h"
+#include "xla/stream_executor/platform.h"
+#include "xla/stream_executor/stream.h"
 #include "xla/util.h"
+#include "tsl/platform/errors.h"
 #include "tsl/platform/logging.h"
 #include "tsl/platform/notification.h"
-
-using absl::StrCat;
+#include "tsl/platform/statusor.h"
 
 namespace xla {
 
@@ -58,8 +66,8 @@ Status TransferManager::TransferLiteralFromDevice(
     se::Stream* stream, const ShapedBuffer& device_buffer,
     const MutableBorrowingLiteral& literal,
     const TransferMetadata* transfer_metadata) {
-  se::Stream* substream = stream->GetOrCreateSubStream();
-  substream->ThenWaitFor(stream);
+  TF_ASSIGN_OR_RETURN(se::Stream * substream, stream->GetOrCreateSubStream());
+  TF_RETURN_IF_ERROR(substream->WaitFor(stream));
   absl::Cleanup cleanup = [&]() { stream->ReturnSubStream(substream); };
 
   Status ret;
@@ -82,8 +90,8 @@ Status TransferManager::TransferLiteralToDevice(
   // Implement the synchronous version by waiting on the asynchronous version.
   // Use a substream so that if we are called from a HostCallback we don't
   // deadlock.
-  se::Stream* substream = stream->GetOrCreateSubStream();
-  substream->ThenWaitFor(stream);
+  TF_ASSIGN_OR_RETURN(se::Stream * substream, stream->GetOrCreateSubStream());
+  TF_RETURN_IF_ERROR(substream->WaitFor(stream));
   absl::Cleanup cleanup = [&]() { stream->ReturnSubStream(substream); };
   TF_RETURN_IF_ERROR(TransferLiteralToDeviceAsync(
       substream, literal, device_buffer, transfer_metadata));
@@ -111,8 +119,8 @@ Status TransferManager::TransferArrayToDevice(
   // Implement the synchronous version by waiting on the asynchronous version.
   // Use a substream so that if we are called from a HostCallback we don't
   // deadlock.
-  se::Stream* substream = stream->GetOrCreateSubStream();
-  substream->ThenWaitFor(stream);
+  TF_ASSIGN_OR_RETURN(se::Stream * substream, stream->GetOrCreateSubStream());
+  TF_RETURN_IF_ERROR(substream->WaitFor(stream));
   absl::Cleanup cleanup = [&]() { stream->ReturnSubStream(substream); };
   TF_RETURN_IF_ERROR(
       TransferArrayToDeviceAsync(substream, literal, dest, transfer_metadata));
@@ -163,8 +171,7 @@ Status TransferManager::ReadDynamicShapes(se::Stream* stream,
           return InvalidArgument("Dynamic shape metadata size should not be 0");
         }
         auto buffer_8 = se::DeviceMemory<uint8_t>(buffer);
-        auto metadata_buffer =
-            stream->parent()->GetSubBuffer(&buffer_8, offset, metadata_size);
+        auto metadata_buffer = buffer_8.GetSlice(offset, metadata_size);
         TF_ASSIGN_OR_RETURN(
             auto metadata,
             TransferArrayFromDevice(
@@ -287,32 +294,6 @@ Status TransferManager::WriteRootTupleIndexTable(
   }
   return WriteSingleTupleIndexTable(stream, elements, buffer_tree.shape(),
                                     &device_memory);
-}
-
-Status TransferManager::TransferBufferFromDevice(
-    se::Stream* stream, const se::DeviceMemoryBase& source, int64_t size,
-    void* destination) {
-  if (source.size() < size) {
-    return FailedPrecondition(
-        "Source allocation on device not large enough for data transfer: "
-        "%d < %d",
-        source.size(), size);
-  }
-  stream->ThenMemcpy(destination, source, size);
-  return OkStatus();
-}
-
-Status TransferManager::TransferBufferToDevice(
-    se::Stream* stream, int64_t size, const void* source,
-    se::DeviceMemoryBase* destination) {
-  if (destination->size() < size) {
-    return FailedPrecondition(
-        "Destination allocation on device not large enough for data transfer: "
-        "%d < %d",
-        destination->size(), size);
-  }
-  stream->ThenMemcpy(destination, source, size);
-  return OkStatus();
 }
 
 StatusOr<ScopedShapedBuffer> TransferManager::AllocateScopedShapedBuffer(

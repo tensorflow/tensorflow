@@ -58,6 +58,10 @@ tf_class {
     argspec: "args=[\'self\', \'predicate\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
+    name: "fingerprint"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
     name: "flat_map"
     argspec: "args=[\'self\', \'map_func\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }

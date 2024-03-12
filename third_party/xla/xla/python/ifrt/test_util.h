@@ -1,5 +1,5 @@
 #include "tsl/lib/core/status_test_util.h"
-/* Copyright 2022 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2022 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -29,9 +29,9 @@ limitations under the License.
 #include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt/dtype.h"
 #include "xla/python/ifrt/shape.h"
+#include "tsl/concurrency/ref_count.h"
 #include "tsl/platform/statusor.h"
 #include "tsl/platform/test.h"
-#include "tfrt/concurrency/ref_count.h"  // from @tf_runtime
 
 namespace xla {
 namespace ifrt {
@@ -39,13 +39,13 @@ namespace test_util {
 
 // Registers an IFRT client factory function. Must be called only once.
 void RegisterClientFactory(
-    std::function<StatusOr<std::shared_ptr<Client>>()> factory);
+    std::function<absl::StatusOr<std::shared_ptr<Client>>()> factory);
 
 // Returns true iff an IFRT client factory function has been registered.
 bool IsClientFactoryRegistered();
 
 // Gets a new IFRT client using the registered client factory.
-StatusOr<std::shared_ptr<Client>> GetClient();
+absl::StatusOr<std::shared_ptr<Client>> GetClient();
 
 // Set a default test filter if user doesn't provide one using --gtest_filter.
 void SetTestFilterIfNotUserSpecified(absl::string_view custom_filter);

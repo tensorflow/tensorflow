@@ -1,4 +1,4 @@
-/* Copyright 2018 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2018 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <memory>
 
+#include "absl/status/status.h"
 #include "xla/map_util.h"
 #include "xla/shape_util.h"
 #include "tsl/platform/logging.h"
@@ -41,7 +42,7 @@ OutfeedManager *GetOrCreateOutfeedManager(se::StreamExecutor *executor) {
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 }
 
-Status OutfeedManager::TransferLiteralFromOutfeed(
+absl::Status OutfeedManager::TransferLiteralFromOutfeed(
     se::StreamExecutor* executor, MutableBorrowingLiteral literal) {
   ShapeTree<std::unique_ptr<gpu::OutfeedBuffer>> outfeed_buffers(
       &literal.shape());
@@ -68,7 +69,7 @@ Status OutfeedManager::TransferLiteralFromOutfeed(
     leaf.second->WaitUntilAvailable();
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace gpu

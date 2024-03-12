@@ -1,7 +1,8 @@
 # Tensorflow protobuf utility package
 
-# Placeholder: load py_proto_library
 load("//tensorflow:strict.default.bzl", "py_strict_library")
+
+# Placeholder: load py_proto_library
 load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable", "tf_py_strict_test")
 load("//tensorflow/core/platform:build_config.bzl", "tf_proto_library")  # @unused
 
@@ -21,7 +22,6 @@ visibility = [
     "//third_party/py/tf_agents:__subpackages__",  # For benchmarks.
     "//third_party/py/tf_slim:__subpackages__",
     "//third_party/py/tensorflow_docs:__subpackages__",
-    "//third_party/py/keras:__subpackages__",
 ]
 
 package(
@@ -48,7 +48,6 @@ tf_py_strict_test(
         ":compare_test_proto_py",
         ":protobuf",
         "//tensorflow/python/platform:test",
-        "@six_archive//:six",
     ],
 )
 
@@ -78,6 +77,7 @@ py_strict_library(
     visibility = visibility + [
         "//tensorflow:__pkg__",
         "//third_party/py/tensorflow_core:__subpackages__",
+        "//third_party/py/tensorflow_data_validation:__subpackages__",
         "//third_party/py/tf_agents:__subpackages__",
         "//third_party/py/tfx:__subpackages__",
     ],
@@ -87,7 +87,6 @@ py_strict_library(
         # py_test because not all tensorflow tests use tensorflow.bzl's py_test.
         "//tensorflow/python:global_test_configuration",
         "@com_google_protobuf//:protobuf_python",
-        "@six_archive//:six",
         "//tensorflow/python/util:compat",
     ],
 )

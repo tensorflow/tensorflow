@@ -1,11 +1,12 @@
 # Description:
 #   Implementation of XLA’s HLO transformations.
 
-load("@local_tsl//tsl/platform:rules_cc.bzl", "cc_library")
 load("//xla:xla.bzl", "xla_cc_test")
+load("@local_tsl//tsl/platform:rules_cc.bzl", "cc_library")
 
 package(
-    default_visibility = ["//visibility:public"],
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
+    default_visibility = [":friends"],
     licenses = ["notice"],
 )
 
@@ -20,8 +21,10 @@ cc_library(
     name = "hlo_constant_splitter",
     srcs = ["hlo_constant_splitter.cc"],
     hdrs = ["hlo_constant_splitter.h"],
-    visibility = ["//visibility:public"],
-    deps = ["//xla/service:hlo_pass"],
+    deps = [
+        "//xla/hlo/ir:hlo",
+        "//xla/service:hlo_pass",
+    ],
 )
 
 xla_cc_test(
@@ -30,6 +33,8 @@ xla_cc_test(
     deps = [
         ":hlo_constant_splitter",
         "//xla:test",
+        "//xla/hlo/ir:hlo",
+        "//xla/service:hlo_dce",
         "//xla/service:hlo_parser",
         "//xla/tests:hlo_test_base",
         "//xla/tests:xla_internal_test_main",

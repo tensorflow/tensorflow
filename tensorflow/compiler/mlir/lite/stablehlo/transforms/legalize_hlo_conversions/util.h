@@ -16,21 +16,21 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_MLIR_LITE_STABLEHLO_TRANSFORMS_LEGALIZE_HLO_CONVERSIONS_UTIL_H_
 #define TENSORFLOW_COMPILER_MLIR_LITE_STABLEHLO_TRANSFORMS_LEGALIZE_HLO_CONVERSIONS_UTIL_H_
 
-#include <stdint.h>
-
-#include <cassert>
+#include <cstdint>
 
 #include "llvm/ADT/SmallVector.h"
+#include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
 #include "mlir/IR/Block.h"  // from @llvm-project
+#include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypeInterfaces.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/ImplicitLocOpBuilder.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
+#include "mlir/IR/PatternMatch.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 
 namespace mlir {
@@ -77,6 +77,32 @@ PermutationAndShape GetInversePermutationAndShape(
     llvm::ArrayRef<int64_t> permutation_array, ShapedType input_type,
     ConversionPatternRewriter& rewriter);
 
+// Returns true if the op needs reformat.
+bool NeedsReformatTypeAndPermutation(int batch_dim, int feature_dim,
+                                     int spatial_dim_start,
+                                     int default_batch_dim,
+                                     int default_feature_dim,
+                                     int default_spatial_dim_start);
+
+// Gets reformat type and permutation attribute. Call this function only if
+// NeedsReformatTypeAndPermutation returns true. If
+// NeedsReformatTypeAndPermutation returns false, this function returns the pair
+// of input type and no-op permutation.
+
+std::pair<RankedTensorType, DenseIntElementsAttr> GetReformatTypeAndPermutation(
+    int batch_dim, int feature_dim, int spatial_dim_start,
+    int default_batch_dim, int default_feature_dim,
+    int default_spatial_dim_start, int num_spatial_dims, RankedTensorType type,
+    ConversionPatternRewriter& rewriter);
+
+// Insert transpose so the input value is converted to the format specified by
+// the default dims
+Value InsertTranspose(Value value, int batch_dim, int feature_dim,
+                      ArrayRef<int64_t> spatial_dimensions,
+                      int default_batch_dim, int default_feature_dim,
+                      int default_spatial_dim_start, int num_spatial_dims,
+                      ConversionPatternRewriter& rewriter);
+
 // If index_vector_dim == indices.rank() then insert the implicit extra
 // dimension into indices to normalize everything to index_vector_dim ==
 // indices.rank() - 1.
@@ -112,6 +138,9 @@ LogicalResult MatchBinaryReduceFunction(mlir::Region& function) {
 // scatter like ops.
 template <>
 LogicalResult MatchBinaryReduceFunction<void>(mlir::Region& function);
+
+// Util that casts 'val' to Int32 by adding a tfl cast Op.
+Value CreateCastToInt32(Value val, Location loc, PatternRewriter& rewriter);
 }  // namespace odml
 }  // namespace mlir
 

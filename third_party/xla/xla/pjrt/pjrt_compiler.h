@@ -1,4 +1,4 @@
-/* Copyright 2022 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2022 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -36,9 +36,13 @@ inline const char* CpuName() {
   static constexpr char kCpuName[] = "cpu";
   return kCpuName;
 }
-inline const char* GpuName() {
-  static constexpr char kGpuName[] = "gpu";
-  return kGpuName;
+inline const char* CudaName() {
+  static constexpr char kCudaName[] = "cuda";
+  return kCudaName;
+}
+inline const char* RocmName() {
+  static constexpr char kRocmName[] = "rocm";
+  return kRocmName;
 }
 inline const char* TpuName() {
   static constexpr char kTpuName[] = "tpu";
@@ -48,9 +52,13 @@ inline PjRtPlatformId CpuId() {
   static const PjRtPlatformId kCpuId = tsl::Fingerprint64(CpuName());
   return kCpuId;
 }
-inline PjRtPlatformId GpuId() {
-  static const PjRtPlatformId kGpuId = tsl::Fingerprint64(GpuName());
-  return kGpuId;
+inline PjRtPlatformId CudaId() {
+  static const PjRtPlatformId kCudaId = tsl::Fingerprint64(CudaName());
+  return kCudaId;
+}
+inline PjRtPlatformId RocmId() {
+  static const PjRtPlatformId kRocmId = tsl::Fingerprint64(RocmName());
+  return kRocmId;
 }
 inline PjRtPlatformId TpuId() {
   static const PjRtPlatformId kTpuId = tsl::Fingerprint64(TpuName());

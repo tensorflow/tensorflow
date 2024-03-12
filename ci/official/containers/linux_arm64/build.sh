@@ -14,16 +14,21 @@
 # limitations under the License.
 # ==============================================================================
 
-set -e
+# Builds the following Docker images for Linux ARM64. See the accompanying
+# Dockerfile for more details:
+# - gcr.io/tensorflow-sigs/build-arm64:jax-latest-multi-python
+# - gcr.io/tensorflow-sigs/build-arm64:tf-latest-multi-python
 
-is_continuous_or_release() {
-  [[ "$KOKORO_JOB_TYPE" == "CONTINUOUS_INTEGRATION" ]] || [[ "${KOKORO_JOB_TYPE}" == "RELEASE" ]]
+set -exo pipefail
+
+function is_continuous_or_release() {
+  [[ "$KOKORO_JOB_TYPE" == "CONTINUOUS_INTEGRATION" ]] || [[ "$KOKORO_JOB_TYPE" == "RELEASE" ]]
 }
 
 # Move into the directory of the script
 cd "$(dirname "$0")"
 
-if is_continuous_or_release; then
+if is_continuous_or_release || [[ -z "$KOKORO_BUILD_ID" ]]; then
   # A continuous job is the only one to publish to latest
   TAG="latest-multi-python"
 else
@@ -35,18 +40,31 @@ else
   fi
 fi
 
-# IMAGE="gcr.io/tensorflow-sigs/build-arm64:$TAG-$PYVER"
-IMAGE="gcr.io/tensorflow-sigs/build-arm64:$TAG"
-docker pull "$IMAGE" || true
+# Build for both JAX and TF usage.  We do these in one place because they share
+# almost all of the same cache layers
+export DOCKER_BUILDKIT=1
+for target in jax tf; do
+  IMAGE="gcr.io/tensorflow-sigs/build-arm64:$target-$TAG"
+  docker pull "$IMAGE" || true
+  # Due to some flakiness of resources pulled in the build, allow the docker
+  # command to reattempt build a few times in the case of failure (b/302558736)
+  set +e
+  for i in $(seq 1 5)
+  do
+    docker build \
+    --build-arg REQUIREMENTS_FILE=jax.requirements.txt \
+    --target=$target \
+    --cache-from "$IMAGE" \
+    -t "$IMAGE"  . && break
+  done
+  final=$?
+  if [ $final -ne 0 ]; then
+    exit $final
+  fi
+  set -e
 
-gcloud auth configure-docker
-
-# TODO(michaelhudgins): align with sig build and make it so not every python is
-# being included in a single image
-# --build-arg "PYTHON_VERSION=$PYVER" \
-DOCKER_BUILDKIT=1 docker build \
-  --cache-from "$IMAGE" \
-  --target=devel \
-  -t "$IMAGE"  .
-
-docker push "$IMAGE"
+  if [[ -n "$KOKORO_BUILD_ID" ]]; then
+    gcloud auth configure-docker
+    docker push "$IMAGE"
+  fi
+done

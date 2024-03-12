@@ -528,9 +528,9 @@ LogicalResult ConvertTFRealDivOp::matchAndRewrite(
   auto reciprocal_op = CreateOpAndInfer<tosa::ReciprocalOp>(
       rewriter, op->getLoc(), tf_div_op.getY().getType(), tf_div_op.getY());
 
-  auto mul_op = CreateOpAndInfer<tosa::MulOp>(rewriter, op->getLoc(),
-                                              output_type, tf_div_op.getX(),
-                                              reciprocal_op.getResult(), 0);
+  auto mul_op = CreateOpAndInfer<tosa::MulOp>(
+      rewriter, op->getLoc(), output_type, tf_div_op.getX(),
+      reciprocal_op.getResult(), rewriter.getI8IntegerAttr(0));
   rewriter.replaceOp(op, {mul_op.getResult()});
 
   return success();
@@ -1420,11 +1420,13 @@ LogicalResult ConvertTFFusedBatchNormOp::matchAndRewrite(
 
   auto op4_mul_op1_op3 = CreateOpAndInfer<tosa::MulOp>(
       rewriter, op->getLoc(), tf_batchnorm_op.getResult(0).getType(),
-      op1_sub_input_mean.getResult(), op3_rsqrt_op2.getResult(), 0);
+      op1_sub_input_mean.getResult(), op3_rsqrt_op2.getResult(),
+      rewriter.getI8IntegerAttr(0));
 
   auto op5_mul_op4_scale = CreateOpAndInfer<tosa::MulOp>(
       rewriter, op->getLoc(), tf_batchnorm_op.getResult(0).getType(),
-      op4_mul_op1_op3.getResult(), tf_batchnorm_op.getScale(), 0);
+      op4_mul_op1_op3.getResult(), tf_batchnorm_op.getScale(),
+      rewriter.getI8IntegerAttr(0));
 
   auto op6_add_op5_offset = CreateOpAndInfer<tosa::AddOp>(
       rewriter, op->getLoc(), tf_batchnorm_op.getResult(0).getType(),
@@ -1490,11 +1492,13 @@ LogicalResult ConvertTFFusedBatchNormV3Op::matchAndRewrite(
 
   auto op4_mul_op1_op3 = CreateOpAndInfer<tosa::MulOp>(
       rewriter, op->getLoc(), tf_batchnorm_op.getResult(0).getType(),
-      op1_sub_input_mean.getResult(), op3_rsqrt_op2.getResult(), 0);
+      op1_sub_input_mean.getResult(), op3_rsqrt_op2.getResult(),
+      rewriter.getI8IntegerAttr(0));
 
   auto op5_mul_op4_scale = CreateOpAndInfer<tosa::MulOp>(
       rewriter, op->getLoc(), tf_batchnorm_op.getResult(0).getType(),
-      op4_mul_op1_op3.getResult(), tf_batchnorm_op.getScale(), 0);
+      op4_mul_op1_op3.getResult(), tf_batchnorm_op.getScale(),
+      rewriter.getI8IntegerAttr(0));
 
   auto op6_add_op5_offset = CreateOpAndInfer<tosa::AddOp>(
       rewriter, op->getLoc(), tf_batchnorm_op.getResult(0).getType(),

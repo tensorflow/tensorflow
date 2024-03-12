@@ -211,7 +211,7 @@ class GrpcMasterService : public tsl::AsyncServiceInterface {
                 static_cast<error::Code>(status.code()));
             call->response.set_status_error_message(
                 std::string(status.message()));
-            call->SendResponse(ToGrpcStatus(OkStatus()));
+            call->SendResponse(ToGrpcStatus(absl::OkStatus()));
           } else {
             call->SendResponse(ToGrpcStatus(status));
           }
@@ -303,7 +303,8 @@ class GrpcMasterService : public tsl::AsyncServiceInterface {
                                  profiler::TraceMeLevel::kInfo);
   }
 
-  TF_DISALLOW_COPY_AND_ASSIGN(GrpcMasterService);
+  GrpcMasterService(const GrpcMasterService&) = delete;
+  void operator=(const GrpcMasterService&) = delete;
 };
 
 tsl::AsyncServiceInterface* NewGrpcMasterService(

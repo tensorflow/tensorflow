@@ -1,4 +1,4 @@
-/* Copyright 2018 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2018 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -75,7 +75,7 @@ static XlaOp DoWithUpcastToF32(XlaOp operand,
                                absl::Span<const PrimitiveType> upcast_types,
                                const std::function<XlaOp(XlaOp)>& operation) {
   auto& b = *operand.builder();
-  return b.ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
+  return b.ReportErrorOrReturn([&]() -> absl::StatusOr<XlaOp> {
     TF_ASSIGN_OR_RETURN(auto shape, b.GetShape(operand));
     PrimitiveType elem_ty = shape.element_type();
     bool needs_upcast = absl::c_linear_search(upcast_types, elem_ty);
@@ -107,7 +107,7 @@ static Status EnsureOperandIsRealFp(absl::string_view op_name, XlaOp operand) {
 
 XlaOp IsPosInf(XlaOp operand) {
   auto& b = *operand.builder();
-  return b.ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
+  return b.ReportErrorOrReturn([&]() -> absl::StatusOr<XlaOp> {
     TF_RETURN_IF_ERROR(EnsureOperandIsRealFp("IsPosInf", operand));
     TF_ASSIGN_OR_RETURN(auto shape, b.GetShape(operand));
     // Note that this is only correct for floating-point types.  If we wanted it
@@ -118,7 +118,7 @@ XlaOp IsPosInf(XlaOp operand) {
 
 XlaOp IsNegInf(XlaOp operand) {
   auto& b = *operand.builder();
-  return b.ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
+  return b.ReportErrorOrReturn([&]() -> absl::StatusOr<XlaOp> {
     TF_RETURN_IF_ERROR(EnsureOperandIsRealFp("IsNegInf", operand));
     TF_ASSIGN_OR_RETURN(auto shape, b.GetShape(operand));
     // Note that this is only correct for floating-point types.  If we wanted it
@@ -129,7 +129,7 @@ XlaOp IsNegInf(XlaOp operand) {
 
 XlaOp IsInf(XlaOp operand) {
   auto& b = *operand.builder();
-  return b.ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
+  return b.ReportErrorOrReturn([&]() -> absl::StatusOr<XlaOp> {
     TF_RETURN_IF_ERROR(EnsureOperandIsRealFp("IsInf", operand));
     return IsPosInf(Abs(operand));
   });
@@ -137,7 +137,7 @@ XlaOp IsInf(XlaOp operand) {
 
 XlaOp IsNan(XlaOp operand) {
   auto& b = *operand.builder();
-  return b.ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
+  return b.ReportErrorOrReturn([&]() -> absl::StatusOr<XlaOp> {
     TF_RETURN_IF_ERROR(EnsureOperandIsRealFp("IsNan", operand));
     return Ne(operand, operand);
   });
@@ -145,7 +145,7 @@ XlaOp IsNan(XlaOp operand) {
 
 XlaOp IsNegZero(XlaOp operand) {
   auto& b = *operand.builder();
-  return b.ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
+  return b.ReportErrorOrReturn([&]() -> absl::StatusOr<XlaOp> {
     TF_RETURN_IF_ERROR(EnsureOperandIsRealFp("IsNegZero", operand));
     TF_ASSIGN_OR_RETURN(auto shape, b.GetShape(operand));
 
@@ -291,7 +291,7 @@ static XlaOp ErfImpl64(XlaOp x) {
 
 XlaOp Erfc(XlaOp x) {
   auto& b = *x.builder();
-  return b.ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
+  return b.ReportErrorOrReturn([&]() -> absl::StatusOr<XlaOp> {
     TF_RETURN_IF_ERROR(EnsureOperandIsRealFp("Erfc", x));
     TF_ASSIGN_OR_RETURN(auto shape, b.GetShape(x));
     // erfc(x) =
@@ -334,26 +334,6 @@ static XlaOp ErfImpl32(XlaOp x) {
   auto x2 = x * x;
   return (x * EvaluatePolynomial<float>(x2, kAlpha)) /
          EvaluatePolynomial<float>(x2, kBeta);
-}
-
-XlaOp Erf(XlaOp x) {
-  auto& b = *x.builder();
-  return b.ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
-    TF_RETURN_IF_ERROR(EnsureOperandIsRealFp("Erf", x));
-    TF_ASSIGN_OR_RETURN(auto shape, b.GetShape(x));
-    // erf(x) =
-    //   erf_impl(x)            if x < 1
-    //   1 - erfc_impl(x)       otherwise
-    if (shape.element_type() == F64) {
-      return Select(Lt(Abs(x), ScalarLike(x, 1)), ErfImpl64(x),
-                    ScalarLike(x, 1) - ErfcImpl64(x));
-    }
-    // Erf(c)Impl don't have enough precision when run with bf16 intermediates
-    // (not surprising!), so upcast to f32 in this case.
-    return DoWithUpcastToF32(
-        x, {BF16, F16, F8E5M2, F8E4M3FN, F8E4M3B11FNUZ, F8E5M2FNUZ, F8E4M3FNUZ},
-        [](XlaOp x) { return ErfImpl32(x); });
-  });
 }
 
 namespace {
@@ -403,7 +383,7 @@ XlaOp ErfInv32(XlaOp x) {
   // Handle edge cases, namely erfinv(+/-1) = +/-inf.  (The above computation is
   // indeterminate, and can give nan or -/+inf.)
   auto& b = *x.builder();
-  return b.ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
+  return b.ReportErrorOrReturn([&]() -> absl::StatusOr<XlaOp> {
     TF_ASSIGN_OR_RETURN(Shape shape, b.GetShape(x));
     return Select(Eq(Abs(x), ScalarLike(x, 1)),
                   x * MaxValue(&b, shape.element_type()), result);
@@ -483,7 +463,7 @@ XlaOp ErfInv64(XlaOp x) {
   // Handle edge cases, namely erfinv(+/-1) = +/-inf.  (The above computation is
   // indeterminate, and can give nan or -/+inf.)
   auto& b = *x.builder();
-  return b.ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
+  return b.ReportErrorOrReturn([&]() -> absl::StatusOr<XlaOp> {
     TF_ASSIGN_OR_RETURN(Shape shape, b.GetShape(x));
     return Select(Eq(Abs(x), ScalarLike(x, 1)),
                   x * MaxValue(&b, shape.element_type()), result);
@@ -494,7 +474,7 @@ XlaOp ErfInv64(XlaOp x) {
 
 XlaOp ErfInv(XlaOp x) {
   auto& b = *x.builder();
-  return b.ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
+  return b.ReportErrorOrReturn([&]() -> absl::StatusOr<XlaOp> {
     TF_RETURN_IF_ERROR(EnsureOperandIsRealFp("ErfInv", x));
     TF_ASSIGN_OR_RETURN(auto shape, b.GetShape(x));
     if (shape.element_type() == F64) {
@@ -625,7 +605,7 @@ XlaOp Lgamma(XlaOp input) {
   };
 
   auto& b = *input.builder();
-  return b.ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
+  return b.ReportErrorOrReturn([&]() -> absl::StatusOr<XlaOp> {
     TF_RETURN_IF_ERROR(EnsureOperandIsRealFp("Lgamma", input));
     // F16 and BF16 don't provide sufficient precision for intermediate results
     // here (although it's better than you might expect!), so do the
@@ -726,7 +706,7 @@ XlaOp Digamma(XlaOp input) {
   };
 
   auto& b = *input.builder();
-  return b.ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
+  return b.ReportErrorOrReturn([&]() -> absl::StatusOr<XlaOp> {
     TF_RETURN_IF_ERROR(EnsureOperandIsRealFp("Digamma", input));
     return DoWithUpcastToF32(
         input,
@@ -753,12 +733,12 @@ XlaOp IgammaSeries(XlaOp ax, XlaOp x, XlaOp a, XlaOp enabled,
   // size, and then run independent loops for each warp's worth of
   // data.
   auto cond = [&](absl::Span<const XlaOp> vals,
-                  XlaBuilder* builder) -> StatusOr<XlaOp> {
+                  XlaBuilder* builder) -> absl::StatusOr<XlaOp> {
     XlaOp enabled = vals[0];
     return Any(enabled);
   };
   auto body = [&](absl::Span<const XlaOp> vals,
-                  XlaBuilder* builder) -> StatusOr<std::vector<XlaOp>> {
+                  XlaBuilder* builder) -> absl::StatusOr<std::vector<XlaOp>> {
     XlaOp enabled = vals[0];
     XlaOp r = vals[1];
     XlaOp c = vals[2];
@@ -791,7 +771,7 @@ XlaOp IgammaSeries(XlaOp ax, XlaOp x, XlaOp a, XlaOp enabled,
     };
   };
   auto& b = *ax.builder();
-  return b.ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
+  return b.ReportErrorOrReturn([&]() -> absl::StatusOr<XlaOp> {
     std::vector<XlaOp> vals = {
         enabled,        a, FullLike(a, 1), FullLike(a, 1), x, FullLike(a, 0),
         FullLike(a, 0),
@@ -822,13 +802,13 @@ XlaOp IgammacContinuedFraction(XlaOp ax, XlaOp x, XlaOp a, XlaOp enabled,
                                xla::PrimitiveType type) {
   // vals: enabled, ans, t, y, z, c, pkm1, qkm1, pkm2, qkm2
   auto cond = [&](absl::Span<const XlaOp> vals,
-                  XlaBuilder* builder) -> StatusOr<XlaOp> {
+                  XlaBuilder* builder) -> absl::StatusOr<XlaOp> {
     XlaOp enabled = vals[0];
     XlaOp c = vals[5];
     return And(Lt(c, ScalarLike(c, 2000)), Any(enabled));
   };
   auto body = [&](absl::Span<const XlaOp> vals,
-                  XlaBuilder* builder) -> StatusOr<std::vector<XlaOp>> {
+                  XlaBuilder* builder) -> absl::StatusOr<std::vector<XlaOp>> {
     XlaOp enabled = vals[0];
     XlaOp ans = vals[1];
     XlaOp t = vals[2];
@@ -911,7 +891,7 @@ XlaOp IgammacContinuedFraction(XlaOp ax, XlaOp x, XlaOp a, XlaOp enabled,
   };
 
   auto& b = *ax.builder();
-  return b.ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
+  return b.ReportErrorOrReturn([&]() -> absl::StatusOr<XlaOp> {
     XlaOp y = ScalarLike(a, 1) - a;
     XlaOp z = x + y + ScalarLike(x, 1);
     XlaOp c = ScalarLike(x, 0);
@@ -975,7 +955,7 @@ XlaOp Igamma(XlaOp a, XlaOp x) {
     output = Select(Or(domain_error, is_nan), FullLike(a, nan), output);
     return output;
   };
-  return b.ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
+  return b.ReportErrorOrReturn([&]() -> absl::StatusOr<XlaOp> {
     TF_ASSIGN_OR_RETURN(auto a_shape, b.GetShape(a));
     TF_ASSIGN_OR_RETURN(auto x_shape, b.GetShape(x));
     if (a_shape != x_shape) {
@@ -1028,7 +1008,7 @@ XlaOp IgammaGradA(XlaOp a, XlaOp x) {
     output = Select(Or(domain_error, is_nan), FullLike(a, nan), output);
     return output;
   };
-  return b.ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
+  return b.ReportErrorOrReturn([&]() -> absl::StatusOr<XlaOp> {
     TF_ASSIGN_OR_RETURN(auto a_shape, b.GetShape(a));
     TF_ASSIGN_OR_RETURN(auto x_shape, b.GetShape(x));
     if (a_shape != x_shape) {
@@ -1081,7 +1061,7 @@ XlaOp RandomGammaGrad(XlaOp a, XlaOp x) {
     output = Select(Or(domain_error, is_nan), FullLike(a, nan), output);
     return output;
   };
-  return b.ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
+  return b.ReportErrorOrReturn([&]() -> absl::StatusOr<XlaOp> {
     TF_ASSIGN_OR_RETURN(auto a_shape, b.GetShape(a));
     TF_ASSIGN_OR_RETURN(auto x_shape, b.GetShape(x));
     if (a_shape != x_shape) {
@@ -1126,7 +1106,7 @@ XlaOp Igammac(XlaOp a, XlaOp x) {
     result = Select(x_is_infinity, ZerosLike(result), result);
     return Select(out_of_range, FullLike(a, 1), result);
   };
-  return b.ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
+  return b.ReportErrorOrReturn([&]() -> absl::StatusOr<XlaOp> {
     TF_ASSIGN_OR_RETURN(auto a_shape, b.GetShape(a));
     TF_ASSIGN_OR_RETURN(auto x_shape, b.GetShape(x));
     if (a_shape != x_shape) {
@@ -1157,7 +1137,7 @@ XlaOp Igammac(XlaOp a, XlaOp x) {
 // integers are rounded towards even.
 XlaOp RoundToEven(XlaOp x) {
   auto& b = *x.builder();
-  return b.ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
+  return b.ReportErrorOrReturn([&]() -> absl::StatusOr<XlaOp> {
     // Reject non-real non-fp inputs (What does it even mean to round a complex
     // number?  Do you round each component equally?  In that case, you should
     // just ask for that explicitly.)
@@ -1175,7 +1155,7 @@ XlaOp RoundToEven(XlaOp x) {
 // acos(x) = -(i * log(x + i * sqrt((1 + x) * (1 - x))))
 XlaOp Acos(XlaOp x) {
   XlaBuilder* b = x.builder();
-  return b->ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
+  return b->ReportErrorOrReturn([&]() -> absl::StatusOr<XlaOp> {
     TF_ASSIGN_OR_RETURN(auto shape, b->GetShape(x));
 
     if (primitive_util::IsComplexType(shape.element_type())) {
@@ -1214,7 +1194,7 @@ XlaOp Atan(XlaOp x) { return Atan2(x, ScalarLike(x, 1.0)); }
 // overflows; x < -1 simply yields nan.  This is quite different than asinh!)
 XlaOp Acosh(XlaOp x) {
   XlaBuilder* b = x.builder();
-  return b->ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
+  return b->ReportErrorOrReturn([&]() -> absl::StatusOr<XlaOp> {
     TF_ASSIGN_OR_RETURN(auto shape, b->GetShape(x));
 
     auto one = ScalarLike(x, 1);
@@ -1252,7 +1232,7 @@ XlaOp Acosh(XlaOp x) {
 // -asinh(x).
 XlaOp Asinh(XlaOp x) {
   XlaBuilder* b = x.builder();
-  auto do_it = [&](XlaOp x) -> StatusOr<XlaOp> {
+  auto do_it = [&](XlaOp x) -> absl::StatusOr<XlaOp> {
     TF_ASSIGN_OR_RETURN(auto shape, b->GetShape(x));
     auto one = ScalarLike(x, 1);
 
@@ -1300,7 +1280,7 @@ XlaOp Asinh(XlaOp x) {
 // atanh(x) = nan                          otherwise
 XlaOp Atanh(XlaOp x) {
   XlaBuilder* b = x.builder();
-  auto do_it = [&](XlaOp x) -> StatusOr<XlaOp> {
+  auto do_it = [&](XlaOp x) -> absl::StatusOr<XlaOp> {
     TF_ASSIGN_OR_RETURN(auto shape, b->GetShape(x));
     auto naive_result = (Log1p(x) - Log1p(-x)) * ScalarLike(x, 0.5);
 
@@ -1347,7 +1327,7 @@ XlaOp Cosh(XlaOp x) {
 // we deem this acceptable.
 XlaOp Sinh(XlaOp x) {
   XlaBuilder* b = x.builder();
-  auto do_it = [&](XlaOp x) -> StatusOr<XlaOp> {
+  auto do_it = [&](XlaOp x) -> absl::StatusOr<XlaOp> {
     TF_ASSIGN_OR_RETURN(auto shape, b->GetShape(x));
     auto one_half = ScalarLike(x, 0.5);
     auto log_one_half = Log(ScalarLike(x, 0.5));
@@ -1380,7 +1360,7 @@ XlaOp Sinh(XlaOp x) {
 
 XlaOp MaybeConjugate(XlaOp x, bool conjugate) {
   XlaBuilder* builder = x.builder();
-  return builder->ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
+  return builder->ReportErrorOrReturn([&]() -> absl::StatusOr<XlaOp> {
     TF_ASSIGN_OR_RETURN(Shape shape, builder->GetShape(x));
     auto perform_conj =
         primitive_util::IsComplexType(shape.element_type()) && conjugate;
@@ -1390,7 +1370,7 @@ XlaOp MaybeConjugate(XlaOp x, bool conjugate) {
 
 XlaOp NextAfter(XlaOp from, XlaOp to) {
   auto builder = from.builder();
-  return builder->ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
+  return builder->ReportErrorOrReturn([&]() -> absl::StatusOr<XlaOp> {
     TF_ASSIGN_OR_RETURN(auto shape, builder->GetShape(from));
     int bitwidth = primitive_util::BitWidth(shape.element_type());
     auto int_type = primitive_util::UnsignedIntegralTypeForBitWidth(bitwidth);
@@ -1547,7 +1527,7 @@ static XlaOp I0eImpl64(XlaOp x) {
 
 XlaOp BesselI0e(XlaOp x) {
   auto& b = *x.builder();
-  return b.ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
+  return b.ReportErrorOrReturn([&]() -> absl::StatusOr<XlaOp> {
     TF_RETURN_IF_ERROR(EnsureOperandIsRealFp("BesselI0e", x));
     TF_ASSIGN_OR_RETURN(auto shape, b.GetShape(x));
     if (shape.element_type() == F64) {
@@ -1643,7 +1623,7 @@ static XlaOp I1eImpl64(XlaOp x) {
 
 XlaOp BesselI1e(XlaOp x) {
   auto& b = *x.builder();
-  return b.ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
+  return b.ReportErrorOrReturn([&]() -> absl::StatusOr<XlaOp> {
     TF_RETURN_IF_ERROR(EnsureOperandIsRealFp("BesselI1e", x));
     TF_ASSIGN_OR_RETURN(auto shape, b.GetShape(x));
     if (shape.element_type() == F64) {
@@ -1665,7 +1645,7 @@ static XlaOp LentzThompsonBarnettAlgorithm(
     const ForEachIndexBodyFunction& nth_partial_denominator,
     absl::Span<const XlaOp> inputs, absl::string_view name) {
   auto& b = *inputs.front().builder();
-  return b.ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
+  return b.ReportErrorOrReturn([&]() -> absl::StatusOr<XlaOp> {
     TF_RET_CHECK(num_iterations < INT32_MAX);
 
     enum {
@@ -1684,9 +1664,9 @@ static XlaOp LentzThompsonBarnettAlgorithm(
       // Inputs follow all of the other state.
       kFirstInputIdx,
     };
-    auto while_cond_fn = [num_iterations](
-                             absl::Span<const XlaOp> values,
-                             XlaBuilder* cond_builder) -> StatusOr<XlaOp> {
+    auto while_cond_fn =
+        [num_iterations](absl::Span<const XlaOp> values,
+                         XlaBuilder* cond_builder) -> absl::StatusOr<XlaOp> {
       auto iteration = values[kIterationIdx];
       auto iterations_remain_cond =
           Lt(iteration, ScalarLike(iteration, num_iterations));
@@ -1697,7 +1677,7 @@ static XlaOp LentzThompsonBarnettAlgorithm(
     auto while_body_fn =
         [small, threshold, &nth_partial_numerator, &nth_partial_denominator](
             absl::Span<const XlaOp> values,
-            XlaBuilder* body_builder) -> StatusOr<std::vector<XlaOp>> {
+            XlaBuilder* body_builder) -> absl::StatusOr<std::vector<XlaOp>> {
       XlaOp iteration = values[kIterationIdx];
 
       TF_ASSIGN_OR_RETURN(
@@ -1763,7 +1743,7 @@ static XlaOp LentzThompsonBarnettAlgorithm(
 
 XlaOp RegularizedIncompleteBeta(XlaOp a, XlaOp b, XlaOp x) {
   auto& builder = *x.builder();
-  return builder.ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
+  return builder.ReportErrorOrReturn([&]() -> absl::StatusOr<XlaOp> {
     TF_ASSIGN_OR_RETURN(Shape shape, builder.GetShape(a));
     TF_ASSIGN_OR_RETURN(Shape b_shape, builder.GetShape(b));
     TF_ASSIGN_OR_RETURN(Shape x_shape, builder.GetShape(x));
@@ -1793,7 +1773,7 @@ XlaOp RegularizedIncompleteBeta(XlaOp a, XlaOp b, XlaOp x) {
     // case: the partial numerator for the first iteration is one.
     auto NthPartialBetaincNumerator =
         [&](XlaOp iteration, absl::Span<const XlaOp> inputs,
-            XlaBuilder* builder) -> StatusOr<std::vector<XlaOp>> {
+            XlaBuilder* builder) -> absl::StatusOr<std::vector<XlaOp>> {
       auto a = inputs[0];
       auto b = inputs[1];
       auto x = inputs[2];
@@ -1820,7 +1800,7 @@ XlaOp RegularizedIncompleteBeta(XlaOp a, XlaOp b, XlaOp x) {
 
     auto NthPartialBetaincDenominator =
         [&shape](XlaOp iteration, absl::Span<const XlaOp> inputs,
-                 XlaBuilder* builder) -> StatusOr<std::vector<XlaOp>> {
+                 XlaBuilder* builder) -> absl::StatusOr<std::vector<XlaOp>> {
       auto x = inputs[2];
       auto iteration_bcast = Broadcast(iteration, shape.dimensions());
       return std::vector<XlaOp>{
@@ -1904,7 +1884,7 @@ XlaOp Polygamma(XlaOp n, XlaOp x) {
                     ScalarLike(n, nan), output);
     return output;
   };
-  return builder.ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
+  return builder.ReportErrorOrReturn([&]() -> absl::StatusOr<XlaOp> {
     TF_ASSIGN_OR_RETURN(auto n_shape, builder.GetShape(n));
     TF_ASSIGN_OR_RETURN(auto x_shape, builder.GetShape(x));
     if (n_shape != x_shape) {
@@ -1929,12 +1909,19 @@ XlaOp Polygamma(XlaOp n, XlaOp x) {
   });
 }
 
+// Reference: Johansson, Fredrik.
+// "Rigorous high-precision computation of the Hurwitz zeta function and its
+// derivatives." Numerical Algorithms 69.2 (2015): 253-270.
+// https://arxiv.org/abs/1309.2877 - formula (5)
+// Notation is more or less kept as a reference to the whitepaper.
 XlaOp Zeta(XlaOp x, XlaOp q) {
   auto& builder = *x.builder();
   auto doit = [&builder](XlaOp x, XlaOp q, PrimitiveType type) -> XlaOp {
     // (2k) ! / B_{2k}, where B_{2k} are the Bernoulli numbers.
-    // These are ordered in reverse.
-    static const std::array<double, 12> kZetaCoeffs{
+    // These are ordered in reverse, for convenience in evaluating the formula
+    // by Horner's rule.
+    static constexpr int M = 12, N = 9;
+    static const std::array<double, M> kZetaCoeffs{
         -7.1661652561756670113e18,
         1.8152105401943546773e17,
         -4.5979787224074726105e15,
@@ -1949,44 +1936,51 @@ XlaOp Zeta(XlaOp x, XlaOp q) {
         12.0,
     };
 
-    // For speed we'll always use 9 iterations for the initial series estimate,
-    // and a 12 term expansion for the Euler-Maclaurin formula.
-
-    XlaOp a = q;
-    XlaOp neg_power = ScalarLike(a, 0.);
-    XlaOp initial_sum = Pow(q, Neg(x));
-    for (int i = 0; i < 9; ++i) {
-      a = a + ScalarLike(a, 1.);
-      neg_power = Pow(a, Neg(x));
-      initial_sum = initial_sum + neg_power;
+    // For speed we'll always use `N` iterations for the initial series
+    // estimate, and a `M` term expansion for the Euler-Maclaurin formula.
+    // Calculating `S` part.
+    XlaOp acc = q, neg_power = ScalarLike(q, 0.);
+    XlaOp S = Pow(q, Neg(x));
+    for (int i = 0; i < N; ++i) {
+      acc = acc + ScalarLike(acc, 1.);
+      neg_power = Pow(acc, Neg(x));
+      S = S + neg_power;
     }
-    a = a + ScalarLike(a, 1.);
-    neg_power = Pow(a, Neg(x));
-    XlaOp s = initial_sum + neg_power * a / (x - ScalarLike(a, 1.));
-    XlaOp a_inverse_square = Reciprocal(Square(a));
-    XlaOp horner_sum = ScalarLike(a, 0.);
-    XlaOp factor = ScalarLike(a, 1.);
+    acc = acc + ScalarLike(acc, 1.);
+    neg_power = Pow(acc, Neg(x));
+
+    // Calculating `I`.
+    XlaOp I = neg_power * acc / (x - ScalarLike(acc, 1.));
+
+    // Calculating the rest of the formula – `T`.
     // Use Horner's rule for this.
     // Note this differs from Cephes which does a 'naive' polynomial evaluation.
     // Using Horner's rule allows to avoid some NaN's and Infs from happening,
     // resulting in more numerically stable code.
-    for (int i = 0; i < 11; ++i) {
-      factor =
-          (x - ScalarLike(x, 22 - 2 * i)) * (x - ScalarLike(x, 21 - 2 * i));
+    XlaOp a_inverse_square = Reciprocal(Square(acc));
+    XlaOp horner_sum = ScalarLike(acc, 0.);
+    XlaOp factor = ScalarLike(acc, 1.);
+
+    // Model 2k - 1 for readability. It's a part of `T` term from the formula.
+    static constexpr int kTwoKMinusOne = 2 * M - 1;
+    for (int i = 0; i < M - 1; ++i) {
+      factor = (x + ScalarLike(x, kTwoKMinusOne - 1 - 2 * i)) *
+               (x + ScalarLike(x, kTwoKMinusOne - 2 - 2 * i));
       horner_sum = factor * a_inverse_square *
-                   (horner_sum + ScalarLike(a, 1. / kZetaCoeffs[i]));
+                   (horner_sum + ScalarLike(acc, 1. / kZetaCoeffs[i]));
     }
-    s = s + neg_power *
-                (ScalarLike(neg_power, 0.5) +
-                 x / a * (ScalarLike(a, 1. / kZetaCoeffs[11]) + horner_sum));
+    XlaOp T =
+        neg_power *
+        (ScalarLike(neg_power, 0.5) +
+         x / acc * (ScalarLike(acc, 1. / kZetaCoeffs[M - 1]) + horner_sum));
+    XlaOp accurate_result = S + I + T;
 
     const double nan = std::numeric_limits<double>::quiet_NaN();
     const double inf = std::numeric_limits<double>::infinity();
     // Use the initial zeta sum without the correction term coming
     // from Euler-Maclaurin if it is accurate enough.
-    XlaOp output =
-        Select(Lt(Abs(neg_power), Abs(initial_sum) * Epsilon(&builder, type)),
-               initial_sum, s);
+    XlaOp output = Select(Lt(Abs(neg_power), Abs(S) * Epsilon(&builder, type)),
+                          S, accurate_result);
 
     // This is the harmonic series.
     output = Select(Eq(x, ScalarLike(x, 1.)), ScalarLike(x, inf), output);
@@ -2009,7 +2003,7 @@ XlaOp Zeta(XlaOp x, XlaOp q) {
 
     return output;
   };
-  return builder.ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
+  return builder.ReportErrorOrReturn([&]() -> absl::StatusOr<XlaOp> {
     TF_ASSIGN_OR_RETURN(auto x_shape, builder.GetShape(x));
     TF_ASSIGN_OR_RETURN(auto q_shape, builder.GetShape(q));
     if (x_shape != q_shape) {

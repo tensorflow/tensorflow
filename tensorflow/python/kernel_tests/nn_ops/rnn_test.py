@@ -240,7 +240,7 @@ class RNNTest(test.TestCase):
     self.assertAllEqual([[[1, 1], [2, 2], [3, 3], [4, 4]]], outputs[1])
     self.assertAllEqual(4, state)
 
-  @test_util.assert_no_new_pyobjects_executing_eagerly
+  @test_util.assert_no_new_pyobjects_executing_eagerly()
   def testEagerMemory(self):
     with context.eager_mode():
       cell = TensorArrayStateRNNCell()

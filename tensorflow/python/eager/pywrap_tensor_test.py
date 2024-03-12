@@ -17,6 +17,18 @@
 import numpy as np
 from tensorflow.python.eager import pywrap_tensor_test_util as util
 from tensorflow.python.eager import test
+from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import test_util
+
+
+class MyPythonObject:
+  pass
+
+
+def my_layer(x):
+  y = x**2
+  y.my_dynamic_attribute = MyPythonObject()
+  return y
 
 
 class PywrapTensorTest(test.TestCase):
@@ -25,6 +37,14 @@ class PywrapTensorTest(test.TestCase):
     result = util.get_scalar_one()
     self.assertIsInstance(result, np.ndarray)
     self.assertAllEqual(result, 1.0)
+
+  @test_util.assert_no_new_pyobjects_executing_eagerly()
+  def test_no_leak(self):
+    x = constant_op.constant([1, 2, 3])
+    layer = my_layer(x)
+    for _ in range(int(1e2)):
+      layer = my_layer(x)
+    self.assertIsNotNone(layer)
 
 
 if __name__ == "__main__":

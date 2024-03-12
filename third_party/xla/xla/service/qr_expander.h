@@ -1,4 +1,4 @@
-/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2020 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -30,21 +30,21 @@ class QrExpander : public OpExpanderPass {
  protected:
   bool InstructionMatchesPattern(HloInstruction* instruction) override;
 
-  StatusOr<HloInstruction*> ExpandInstruction(
+  absl::StatusOr<HloInstruction*> ExpandInstruction(
       HloInstruction* instruction) override;
 
-  virtual StatusOr<QrDecomposition> QrBlock(
+  virtual absl::StatusOr<QrDecomposition> QrBlock(
       XlaOp a, PrecisionConfig::Precision precision);
 
-  virtual StatusOr<XlaOp> CompactWYRepresentation(
+  virtual absl::StatusOr<XlaOp> CompactWYRepresentation(
       PrimitiveType type, absl::Span<const int64_t> batch_dims, XlaOp vs,
       XlaOp taus, int64_t m, int64_t n, PrecisionConfig::Precision precision);
 
  private:
-  StatusOr<XlaOp> BuildQrDecomposition(XlaOp a, int64_t block_size,
-                                       PrecisionConfig::Precision precision);
+  absl::StatusOr<XlaOp> BuildQrDecomposition(
+      XlaOp a, int64_t block_size, PrecisionConfig::Precision precision);
 
-  StatusOr<XlaOp> ProductOfElementaryHouseholderReflectors(
+  absl::StatusOr<XlaOp> ProductOfElementaryHouseholderReflectors(
       XlaOp a, XlaOp taus, int64_t block_size,
       PrecisionConfig::Precision precision);
 

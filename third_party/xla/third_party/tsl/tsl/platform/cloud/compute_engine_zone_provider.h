@@ -32,7 +32,8 @@ class ComputeEngineZoneProvider : public ZoneProvider {
  private:
   std::shared_ptr<ComputeEngineMetadataClient> google_metadata_client_;
   string cached_zone;
-  TF_DISALLOW_COPY_AND_ASSIGN(ComputeEngineZoneProvider);
+  ComputeEngineZoneProvider(const ComputeEngineZoneProvider&) = delete;
+  void operator=(const ComputeEngineZoneProvider&) = delete;
 };
 
 }  // namespace tsl

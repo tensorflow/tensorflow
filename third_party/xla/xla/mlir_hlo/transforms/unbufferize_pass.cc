@@ -1,4 +1,4 @@
-/* Copyright 2022 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2022 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -69,11 +69,11 @@ void UnbufferizePass::runOnOperation() {
   });
   SmallVector<Value> results;
   SmallVector<DictionaryAttr> resultAttrs;
-  funcOp->walk([&](memref::TensorStoreOp op) {
-    auto arg = op.getMemref().dyn_cast<BlockArgument>();
+  funcOp->walk([&](bufferization::MaterializeInDestinationOp op) {
+    auto arg = op.getDest().dyn_cast<BlockArgument>();
     if (!arg) return;
     argsToErase.set(arg.getArgNumber());
-    results.push_back(op.getTensor());
+    results.push_back(op.getSource());
     resultAttrs.push_back(funcOp.getArgAttrDict(arg.getArgNumber()));
     rewriter.eraseOp(op);
   });

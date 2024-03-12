@@ -1,9 +1,10 @@
-load("@local_tsl//tsl/platform:rules_cc.bzl", "cc_library")
-load("@local_tsl//tsl:tsl.default.bzl", "get_compatible_with_portable")
 load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library")
+load("@local_tsl//tsl:tsl.default.bzl", "get_compatible_with_portable")
+load("@local_tsl//tsl/platform:rules_cc.bzl", "cc_library")
 
 package(
-    default_visibility = ["//visibility:public"],
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
+    default_visibility = ["//xla:friends"],
     licenses = ["notice"],
 )
 
@@ -31,14 +32,12 @@ cc_library(
         "legalize_i1_vector_transfers.cc",
         "legalize_library_ops.cc",
         "remove_copies_to_out_params.cc",
-        "sparse_rewrite_passes.cc",
         "xla_abi_legalization.cc",
         "xla_cpu_memref_element_cast_to_llvm.cc",
         "xla_cpu_to_cpu_runtime.cc",
         "xla_rewrite_realloc_to_alloc.cc",
     ],
     hdrs = ["passes.h"],
-    visibility = ["//visibility:public"],
     deps = [
         ":passes_inc_gen",
         "//xla/mlir/runtime/transforms:type_converter",

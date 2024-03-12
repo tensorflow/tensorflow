@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -31,23 +31,32 @@ namespace hlo_query {
 bool IsCollectiveCommunicationOp(HloOpcode op) {
   return op == HloOpcode::kAllReduce || op == HloOpcode::kAllGather ||
          op == HloOpcode::kAllToAll || op == HloOpcode::kCollectivePermute ||
+         op == HloOpcode::kCollectiveBroadcast ||
          op == HloOpcode::kReduceScatter || op == HloOpcode::kAllReduceStart ||
          op == HloOpcode::kAllGatherStart ||
          op == HloOpcode::kCollectivePermuteStart;
 }
 
-bool IsAsyncCollectiveStartOp(HloOpcode op, bool include_send_recv) {
+bool IsAsyncCollectiveStartOp(const HloInstruction* instruction,
+                              bool include_send_recv) {
+  HloOpcode op = instruction->opcode();
+  if (op == HloOpcode::kAsyncStart) {
+    return IsCollectiveCommunicationOp(instruction->async_wrapped_opcode());
+  }
   return op == HloOpcode::kAllReduceStart || op == HloOpcode::kAllGatherStart ||
          op == HloOpcode::kCollectivePermuteStart ||
-         op == HloOpcode::kAsyncStart ||
          (include_send_recv &&
           (op == HloOpcode::kSend || op == HloOpcode::kRecv));
 }
 
-bool IsAsyncCollectiveDoneOp(HloOpcode op, bool include_send_recv) {
+bool IsAsyncCollectiveDoneOp(const HloInstruction* instruction,
+                             bool include_send_recv) {
+  HloOpcode op = instruction->opcode();
+  if (op == HloOpcode::kAsyncDone) {
+    return IsCollectiveCommunicationOp(instruction->async_wrapped_opcode());
+  }
   return op == HloOpcode::kAllReduceDone || op == HloOpcode::kAllGatherDone ||
          op == HloOpcode::kCollectivePermuteDone ||
-         op == HloOpcode::kAsyncDone ||
          (include_send_recv &&
           (op == HloOpcode::kSendDone || op == HloOpcode::kRecvDone));
 }
@@ -157,6 +166,11 @@ bool IsBroadcastedConstantOrScalar(const HloInstruction& instr) {
 bool IsBroadcastOfScalarConstant(const HloInstruction& instr) {
   return instr.opcode() == HloOpcode::kBroadcast &&
          IsScalarConstant(instr.operand(0));
+}
+
+bool IsBroadcastOfParameter(const HloInstruction& instr) {
+  return instr.opcode() == HloOpcode::kBroadcast &&
+         instr.operand(0)->opcode() == HloOpcode::kParameter;
 }
 
 HloInstruction* GetFirstInstructionWithOpcode(const HloComputation& computation,

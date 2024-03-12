@@ -115,6 +115,9 @@ inline void Softmax(const SoftmaxParams& params,
     FixedPoint0 shifted_scale = FixedPoint0::FromRaw(GetReciprocal(
         sum_of_exps.raw(), kAccumulationIntegerBits, &num_bits_over_unit));
 
+    const int exponent = num_bits_over_unit + 31 - (sizeof(OutputT) * 8);
+    TFLITE_CHECK(0 <= exponent && exponent <= 31);
+
     for (int c = 0; c < depth; ++c) {
       int32_t input_diff =
           static_cast<int32_t>(input_data[i * depth + c]) - max_in_row;
@@ -127,8 +130,7 @@ inline void Softmax(const SoftmaxParams& params,
 
         FixedPoint0 exp_in_0 = exp_on_negative_values(scaled_diff_f8);
         int32_t unsat_output = gemmlowp::RoundingDivideByPOT(
-            (shifted_scale * exp_in_0).raw(),
-            num_bits_over_unit + 31 - (sizeof(OutputT) * 8));
+            (shifted_scale * exp_in_0).raw(), exponent);
 
         const int32_t shifted_output =
             unsat_output +

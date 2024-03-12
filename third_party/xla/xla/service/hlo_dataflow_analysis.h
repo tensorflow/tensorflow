@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -20,23 +20,27 @@ limitations under the License.
 #ifndef XLA_SERVICE_HLO_DATAFLOW_ANALYSIS_H_
 #define XLA_SERVICE_HLO_DATAFLOW_ANALYSIS_H_
 
+#include <cstdint>
 #include <functional>
-#include <iterator>
 #include <memory>
+#include <optional>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
+#include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/service/call_graph.h"
 #include "xla/service/hlo_phi_graph.h"
+#include "xla/service/hlo_value.h"
 #include "xla/shape_util.h"
 #include "xla/status.h"
 #include "xla/statusor.h"
-#include "xla/types.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
@@ -110,7 +114,8 @@ class HloDataflowAnalysis {
       const HloModule& module, bool ssa_form = false,
       bool bitcast_defines_value = false,
       const CanShareBuffer& can_share_buffer = nullptr,
-      const ForwardsValue& forwards_value = nullptr);
+      const ForwardsValue& forwards_value = nullptr,
+      absl::flat_hash_set<absl::string_view> execution_threads = {});
 
   // Returns true if 'instruction' defines an HLO value at the given shape index
   // of its output.
@@ -227,9 +232,10 @@ class HloDataflowAnalysis {
   static bool AreTransitiveUsesElementwiseOrTuple(const HloInstruction* inst);
 
   HloDataflowAnalysis(const HloModule& module, bool ssa_form,
-                      bool bitcast_defines_value = false,
-                      const CanShareBuffer& can_share_buffer = nullptr,
-                      const ForwardsValue& forwards_value = nullptr);
+                      bool bitcast_defines_value,
+                      const CanShareBuffer& can_share_buffer,
+                      const ForwardsValue& forwards_value,
+                      absl::flat_hash_set<absl::string_view> execution_threads);
 
   // 1. During value propagation (Propagate function), always create phi
   // values once it see multiple inputs merging at the same point. It then
@@ -293,7 +299,6 @@ class HloDataflowAnalysis {
   bool UpdateOptimizationBarrierValueSet(HloInstruction* barrier);
   bool UpdateRecvDoneValueSet(HloInstruction* recv_done);
   bool UpdateSendValueSet(HloInstruction* send);
-  bool UpdateSetDimensionSizeValueSet(HloInstruction* set_dimension_size);
   bool UpdateTupleValueSet(HloInstruction* tuple);
   bool UpdateWhileValueSet(HloInstruction* xla_while);
   bool UpdateAddDependencyValueSet(HloInstruction* add_dependency);
@@ -327,6 +332,7 @@ class HloDataflowAnalysis {
       const InstructionValueSet* prev_value_set = nullptr);
 
   const HloModule& module_;
+  const absl::flat_hash_set<absl::string_view> execution_threads_;
   const bool ssa_form_;
   const bool bitcast_defines_value_;
 

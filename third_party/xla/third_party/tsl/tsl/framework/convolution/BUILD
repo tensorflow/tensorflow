@@ -1,4 +1,4 @@
-load("//tsl/platform:rules_cc.bzl", "cc_library")
+load("@local_tsl//tsl/platform:rules_cc.bzl", "cc_library")
 load("//tsl:tsl.default.bzl", "get_compatible_with_portable")
 load(
     "//tsl/platform:build_config.bzl",
@@ -6,6 +6,7 @@ load(
 )
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = ["//visibility:public"],
     features = [
         # Required since headers are not self-contained.
@@ -19,12 +20,6 @@ cc_library(
         "eigen_spatial_convolutions-inl.h",
     ],
     compatible_with = get_compatible_with_portable(),
-    # Hack to disable breaking AVX512 special GemmKernel. There is a conflicting
-    # specialization there causing build breakages.  This must be added here
-    # as "defines" so that the header is excluded in all dependent targets.
-    # TODO(b/238649163): remove this once no longer necessary.
-    defines = ["EIGEN_USE_AVX512_GEMM_KERNELS=0"],
-    visibility = ["//visibility:public"],
     deps = [
         "//tsl/framework/convolution:eigen_convolution_helpers",
     ],
@@ -39,7 +34,6 @@ cc_library(
     defines = [
         "EIGEN_ALTIVEC_USE_CUSTOM_PACK=0",
     ],
-    visibility = ["//visibility:public"],
 )
 
 # Tensorflow also has an eigen_helpers that is closely related, so maintain the same name.
@@ -50,7 +44,6 @@ cc_library(
     ],
     compatible_with = get_compatible_with_portable(),
     defines = ["EIGEN_NEON_GEBP_NR=4"],
-    visibility = ["//visibility:public"],
     deps = [
         "//tsl/framework/contraction:eigen_contraction_kernel",
         "//tsl/framework/convolution:eigen_convolution_helpers",
@@ -68,7 +61,6 @@ filegroup(
         "eigen_spatial_convolutions.h",
         "eigen_spatial_convolutions-inl.h",
     ],
-    visibility = ["//visibility:public"],
     # Somehow the following code works with fixedpoint, but not here.
     # visibility = [
     #     "//tensorflow:__subpackages__",
@@ -97,7 +89,6 @@ exports_files(
         "eigen_spatial_convolutions.h",
         "eigen_spatial_convolutions-inl.h",
     ],
-    visibility = ["//visibility:public"],
 )
 
 tsl_cc_test(
@@ -106,7 +97,6 @@ tsl_cc_test(
     srcs = [
         "eigen_spatial_convolutions_test.cc",
     ],
-    visibility = ["//visibility:public"],
     deps = [
         ":eigen_helpers",
         "//tsl/platform:test",

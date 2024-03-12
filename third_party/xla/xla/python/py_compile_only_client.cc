@@ -1,4 +1,4 @@
-/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -22,12 +22,18 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "nanobind/nanobind.h"
+#include "absl/container/flat_hash_map.h"
 #include "absl/types/span.h"
 #include "pybind11/stl.h"  // from @pybind11
 #include "xla/pjrt/mlir_to_hlo.h"
+#include "xla/pjrt/pjrt_common.h"
+#include "xla/pjrt/status_casters.h"
 #include "xla/python/ifrt/device.h"
-#include "xla/python/status_casters.h"
 #include "tsl/python/lib/core/numpy.h"  //NOLINT
+
+namespace nb = nanobind;
+namespace py = pybind11;
 
 namespace xla {
 
@@ -44,7 +50,18 @@ class PjRtCompileOnlyDevice : public PjRtDevice {
 
   PjRtClient* client() const override { return nullptr; }
   bool IsAddressable() const override { return false; }
-  int local_hardware_id() const override { return -1; }
+  int local_hardware_id() const override {
+    return local_hardware_id_typed().value();
+  }
+
+  PjRtLocalDeviceId local_device_id() const override {
+    return PjRtLocalDeviceId(local_hardware_id_typed().value());
+  }
+
+  PjRtLocalHardwareId local_hardware_id_typed() const override {
+    return PjRtLocalHardwareId(-1);
+  }
+
   std::unique_ptr<ScopedAsyncTrackingEvent> CreateAsyncTrackingEvent(
       absl::string_view description) const override {
     return nullptr;
@@ -136,6 +153,10 @@ class CompileOnlyIfRtClient final
   ifrt::PlatformId platform_id() const override {
     return topology_->platform_id();
   }
+  absl::flat_hash_map<std::string, ClientAttribute> attributes()
+      const override {
+    return {};
+  }
 
   int device_count() const override { return devices().size(); }
   int addressable_device_count() const override { return 0; }
@@ -219,11 +240,28 @@ void RegisterCompileOnlyClient(pybind11::module& m) {
   pybind11::class_<CompileOnlyPyClient, PyClient,
                    std::shared_ptr<CompileOnlyPyClient>>(m,
                                                          "CompileOnlyPyClient")
-      .def("compile",
-           xla::ValueOrThrowWrapper(&CompileOnlyPyClient::CompileUnloaded),
-           pybind11::arg("computation"),
-           pybind11::arg("compile_options") = CompileOptions(),
-           pybind11::arg("host_callbacks") = std::vector<pybind11::capsule>());
+      .def(
+          "compile",
+          [](CompileOnlyPyClient& self, std::string mlir_module,
+             py::object options_py,
+             std::vector<pybind11::capsule> host_callbacks) {
+            // TODO(phawkins): just wrap CompileOnlyPyClient::CompileUnloaded
+            // directly when the nanobind transition is complete.
+            CompileOptions options;
+            if (!options_py.is_none()) {
+              try {
+                options =
+                    nb::cast<CompileOptions>(nb::handle(options_py.ptr()));
+              } catch (std::exception& e) {
+                throw py::type_error(e.what());
+              }
+            }
+            return ValueOrThrow(
+                self.CompileUnloaded(mlir_module, options, host_callbacks));
+          },
+          pybind11::arg("computation"),
+          pybind11::arg("compile_options") = py::none(),
+          pybind11::arg("host_callbacks") = std::vector<pybind11::capsule>());
 }
 
 }  // namespace xla

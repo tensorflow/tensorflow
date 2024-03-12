@@ -4,16 +4,20 @@
 #   The libraries in this package are not allowed to have ANY dependencies
 #   to other TF components outside of TSL.
 
-load("//tsl:tsl.bzl", "set_external_visibility")
+load("//tsl:tsl.bzl", "internal_visibility")
 load("//tsl:tsl.default.bzl", "get_compatible_with_portable")
+load("//tsl/platform:build_config.bzl", "tsl_cc_test")
 load(
-    "//tsl/platform:rules_cc.bzl",
+    "@local_tsl//tsl/platform:rules_cc.bzl",
     "cc_library",
 )
 
 # TODO(rdzhabarov): Tighten visibility after migration is complete.
 package(
-    default_visibility = ["//visibility:public"],
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
+    default_visibility = [
+        "//visibility:public",
+    ],
     licenses = ["notice"],
 )
 
@@ -24,7 +28,7 @@ filegroup(
         "bits.h",
     ],
     compatible_with = get_compatible_with_portable(),
-    visibility = ["//visibility:public"],
+    visibility = internal_visibility(["//tensorflow/core:__pkg__"]),
 )
 
 filegroup(
@@ -35,7 +39,10 @@ filegroup(
         "status_test_util.h",
     ],
     compatible_with = get_compatible_with_portable(),
-    visibility = ["//visibility:public"],
+    visibility = internal_visibility([
+        "//tensorflow/core:__pkg__",
+        "//tensorflow/core/lib/core:__pkg__",
+    ]),
 )
 
 filegroup(
@@ -44,7 +51,7 @@ filegroup(
         "bitmap_test.cc",
     ],
     compatible_with = get_compatible_with_portable(),
-    visibility = ["//visibility:public"],
+    visibility = internal_visibility(["//tensorflow/core:__pkg__"]),
 )
 
 filegroup(
@@ -54,7 +61,7 @@ filegroup(
         "bits.h",
     ],
     compatible_with = get_compatible_with_portable(),
-    visibility = ["//visibility:public"],
+    visibility = internal_visibility(["//tensorflow/core:__pkg__"]),
 )
 
 filegroup(
@@ -63,7 +70,10 @@ filegroup(
         "status_test_util.h",
     ],
     compatible_with = get_compatible_with_portable(),
-    visibility = ["//visibility:public"],
+    visibility = internal_visibility([
+        "//tensorflow/core:__pkg__",
+        "//tensorflow/core/lib/core:__pkg__",
+    ]),
 )
 
 cc_library(
@@ -71,7 +81,6 @@ cc_library(
     srcs = ["bitmap.cc"],
     hdrs = ["bitmap.h"],
     compatible_with = get_compatible_with_portable(),
-    visibility = ["//visibility:public"],
     deps = [
         "//tsl/platform:logging",
     ],
@@ -82,7 +91,6 @@ cc_library(
     name = "status_test_util",
     testonly = 1,
     hdrs = ["status_test_util.h"],
-    visibility = ["//visibility:public"],
     deps = [
         "//tsl/platform:status",
         "//tsl/platform:test",
@@ -92,9 +100,20 @@ cc_library(
 cc_library(
     name = "bits",
     hdrs = ["bits.h"],
-    visibility = ["//visibility:public"],
     deps = [
         "//tsl/platform:logging",
         "//tsl/platform:types",
+        "@com_google_absl//absl/numeric:bits",
+    ],
+)
+
+tsl_cc_test(
+    name = "bits_test",
+    size = "small",
+    srcs = ["bits_test.cc"],
+    deps = [
+        ":bits",
+        "//tsl/platform:test",
+        "//tsl/platform:test_main",
     ],
 )

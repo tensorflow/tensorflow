@@ -22,7 +22,8 @@ enum ModelType : int32 {
   TF_CONCRETE_FUNCTIONS = 3,
   TF_GRAPH_DEF = 4,
   TF_SESSION = 5,
-  JAX = 6
+  JAX = 6,
+  PYTORCH = 7
 }
 
 // The environment during conversion.
@@ -35,6 +36,10 @@ table Environment {
 
   // Original model format.
   model_type:ModelType;
+
+  // Model identification hash.
+  model_hash:int64;
+
 }
 
 // The model optimization modes.

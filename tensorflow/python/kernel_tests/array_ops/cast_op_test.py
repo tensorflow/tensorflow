@@ -325,5 +325,26 @@ class SaturateCastTest(test.TestCase):
                 np.minimum(out_type.real_dtype.max, np.imag(x)))
         self.assertAllEqual(correct, y)
 
+  @test_util.with_forward_compatibility_horizons([2024, 11, 2])
+  def testSaturateHandlesInfs(self):
+    for in_type in [
+        dtypes.float64,
+        dtypes.float32,
+        dtypes.float16,
+        dtypes.bfloat16,
+    ]:
+      for out_type in [
+          dtypes.float64,
+          dtypes.float32,
+          dtypes.float16,
+          dtypes.bfloat16,
+      ]:
+        inf = float("inf")
+        nan = float("nan")
+        x = constant_op.constant([inf, -inf, nan, -nan], dtype=in_type)
+        y = math_ops.saturate_cast(x, dtype=out_type)
+        self.assertAllEqual(math_ops.is_finite(y), [True, True, False, False])
+
+
 if __name__ == "__main__":
   test.main()

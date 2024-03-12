@@ -92,7 +92,8 @@ class RollOp : public XlaOpKernel {
   }
 
  private:
-  TF_DISALLOW_COPY_AND_ASSIGN(RollOp);
+  RollOp(const RollOp&) = delete;
+  void operator=(const RollOp&) = delete;
 };
 
 REGISTER_XLA_OP(Name("Roll").CompileTimeConstantInput("axis"), RollOp);

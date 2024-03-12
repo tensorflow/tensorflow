@@ -1,4 +1,4 @@
-/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2020 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -24,7 +24,9 @@ limitations under the License.
 #include <vector>
 
 #include "absl/types/span.h"
+#include "pybind11/gil.h"  // from @pybind11
 #include "xla/pjrt/pjrt_client.h"
+#include "xla/pjrt/pjrt_common.h"
 #include "xla/python/pjrt_ifrt/pjrt_executable.h"
 #include "xla/python/py_array.h"
 #include "xla/python/py_client.h"
@@ -113,7 +115,7 @@ class PyLoadedExecutable
   PyLoadedExecutable(
       std::shared_ptr<PyClient> client,
       std::unique_ptr<ifrt::LoadedExecutable> ifrt_loaded_executable,
-      std::shared_ptr<Traceback> traceback,
+      std::optional<nb_traceback> traceback,
       std::optional<std::string> fingerprint);
   ~PyLoadedExecutable();
 
@@ -134,13 +136,12 @@ class PyLoadedExecutable
   }
 
   StatusOr<CompiledMemoryStats> GetCompiledMemoryStats() const {
+    pybind11::gil_scoped_release scope;
     return ifrt_loaded_executable_->GetCompiledMemoryStats();
   }
 
-  StatusOr<absl::flat_hash_map<
-      std::string,
-      std::variant<std::string, int64_t, std::vector<int64_t>, float, bool>>>
-  GetCostAnalysis() const {
+  StatusOr<absl::flat_hash_map<std::string, PjRtValueType>> GetCostAnalysis()
+      const {
     return ifrt_loaded_executable_->GetCostAnalysis();
   }
 
@@ -170,11 +171,15 @@ class PyLoadedExecutable
   StatusOr<std::vector<std::vector<absl::string_view>>> GetOutputMemoryKinds()
       const;
 
+  StatusOr<std::vector<Layout>> GetParameterLayouts() const;
+
+  StatusOr<std::vector<Layout>> GetOutputLayouts() const;
+
   std::optional<std::vector<OpSharding>> GetParameterShardings() const;
 
   std::optional<std::vector<OpSharding>> GetOutputShardings() const;
 
-  Traceback* traceback() { return traceback_.get(); }
+  const std::optional<nb_traceback>& traceback() { return traceback_; }
 
   ifrt::LoadedExecutable* ifrt_executable() const {
     return ifrt_loaded_executable_.get();
@@ -212,7 +217,7 @@ class PyLoadedExecutable
 
   std::shared_ptr<PyClient> client_;
   std::unique_ptr<ifrt::LoadedExecutable> ifrt_loaded_executable_;
-  std::shared_ptr<Traceback> traceback_;
+  std::optional<nb_traceback> traceback_;
 
   // Identical executables (i.e. representing the same program) will have the
   // same fingerprint. nullopt on platforms or executables where fingerprints

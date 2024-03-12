@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/python/saved_model/pywrap_saved_model_metrics.h"
 
+#include <cstdint>
 #include <exception>
 #include <string>
 #include <utility>
@@ -261,6 +262,34 @@ void DefineMetricsModule(py::module main_module) {
           "Get tuple of `path` and `singleprint` values of "
           "'/tensorflow/core/saved_model/write/path_and_singleprint' gauge."));
 
+  m.attr("kFingerprintFound") = metrics::kFingerprintFound;
+  m.attr("kFingerprintNotFound") = metrics::kFingerprintNotFound;
+  m.attr("kFingerprintError") = metrics::kFingerprintError;
+
+  m.def(
+      "GetFoundFingerprintOnLoad",
+      []() { return metrics::SavedModelFoundFingerprintOnLoad().value(); },
+      py::doc(
+          "Get value of "
+          "'/tensorflow/core/saved_model/found_fingerprint_on_load' gauge."));
+
+  m.def(
+      "SetFoundFingerprintOnLoad",
+      [](std::string found_status) {
+        if (found_status == metrics::kFingerprintFound ||
+            found_status == metrics::kFingerprintNotFound ||
+            found_status == metrics::kFingerprintError) {
+          metrics::SavedModelFoundFingerprintOnLoad().Set(found_status);
+        } else {
+          metrics::SavedModelFoundFingerprintOnLoad().Set("");
+        }
+      },
+      py::kw_only(), py::arg("found_status"),
+      py::doc("Set value of "
+              "'/tensorflow/core/saved_model/found_fingerprint_on_load' gauge "
+              "with 'found_status' if status is one of { \"FOUND\", "
+              "\"NOT_FOUND\", \"ERROR\" }."));
+
   m.def(
       "AddCheckpointReadDuration",
       [](const char* api_label, double microseconds) {
@@ -384,6 +413,53 @@ void DefineMetricsModule(py::module main_module) {
       py::kw_only(), py::arg("api_label"), py::arg("filesize"),
       py::doc("Get cell (api_label, filesize) for "
               "'/tensorflow/core/checkpoint/write/checkpoint_size'."));
+
+  m.def(
+      "GetShardingCallbackDuration",
+      []() { return metrics::ShardingCallbackDuration().value(); },
+      py::doc("Get value of "
+              "'/tensorflow/core/checkpoint/sharding/callback_duration'."));
+
+  m.def(
+      "AddShardingCallbackDuration",
+      [](int64_t callback_duration) {
+        metrics::ShardingCallbackDuration().IncrementBy(callback_duration);
+      },
+      py::kw_only(), py::arg("callback_duration"),
+      py::doc("Set value of "
+              "'/tensorflow/core/checkpoint/sharding/callback_duration'."));
+
+  m.def(
+      "GetNumCheckpointShardsWritten",
+      []() { return metrics::NumCheckpointShardsWritten().value(); },
+      py::doc("Get value of "
+              "'/tensorflow/core/checkpoint/sharding/"
+              "num_checkpoint_shards_written'."));
+
+  m.def(
+      "AddNumCheckpointShardsWritten",
+      [](int64_t num_shards) {
+        metrics::NumCheckpointShardsWritten().IncrementBy(num_shards);
+      },
+      py::kw_only(), py::arg("num_shards"),
+      py::doc("Set value of "
+              "'/tensorflow/core/checkpoint/sharding/"
+              "num_checkpoint_shards_written'."));
+
+  m.def(
+      "GetShardingCallbackDescription",
+      []() { return metrics::ShardingCallbackDescription().value(); },
+      py::doc("Get value of "
+              "'/tensorflow/core/checkpoint/sharding/callback_description'."));
+
+  m.def(
+      "SetShardingCallbackDescription",
+      [](std::string description) {
+        metrics::ShardingCallbackDescription().Set(description);
+      },
+      py::kw_only(), py::arg("description"),
+      py::doc("Set value of "
+              "'/tensorflow/core/checkpoint/sharding/callback_description'."));
 }
 
 }  // namespace python

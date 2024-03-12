@@ -114,7 +114,8 @@ class WeightedPicker {
   // Rebuild the tree weights using the leaf weights
   void RebuildTreeWeights();
 
-  TF_DISALLOW_COPY_AND_ASSIGN(WeightedPicker);
+  WeightedPicker(const WeightedPicker&) = delete;
+  void operator=(const WeightedPicker&) = delete;
 };
 
 inline int32 WeightedPicker::get_weight(int index) const {

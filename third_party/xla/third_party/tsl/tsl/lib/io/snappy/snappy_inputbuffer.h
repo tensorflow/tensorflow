@@ -124,7 +124,8 @@ class SnappyInputBuffer : public InputStreamInterface {
   // Number of *uncompressed* bytes that have been read from this stream.
   int64_t bytes_read_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(SnappyInputBuffer);
+  SnappyInputBuffer(const SnappyInputBuffer&) = delete;
+  void operator=(const SnappyInputBuffer&) = delete;
 };
 
 }  // namespace io

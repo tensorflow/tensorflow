@@ -107,6 +107,18 @@ auto* saved_model_read_path_and_singleprint =
         "graph_def_program_hash, signature_def_hash, saved_object_graph_hash, "
         "and checkpoint_hash) of the loaded SavedModel.");
 
+// Gauge that marks whether or not the fingerprint.pb file was found when
+// loading the SavedModel.
+// Can hold one of the following string values:
+//  - "FOUND"
+//  - "NOT_FOUND"
+//  - "ERROR"
+auto* saved_model_found_fingerprint_on_load =
+    monitoring::Gauge<std::string, 0>::New(
+        "/tensorflow/core/saved_model/found_fingerprint_on_load",
+        "Whether or not the fingerprint.pb file was found when loading the "
+        "SavedModel.");
+
 // Distribution of checkpoint write durations.
 auto* checkpoint_write_durations = monitoring::Sampler<1>::New(
     {
@@ -160,6 +172,24 @@ auto* checkpoint_size = monitoring::Counter<2>::New(
     "api_label", "filesize");
 
 }  // namespace
+
+// Counter that records how long it took to execute the checkpoint sharding
+// callback in microseconds.
+auto* sharding_callback_duration = monitoring::Counter<0>::New(
+    "/tensorflow/core/checkpoint/sharding/callback_duration",
+    "Sharding callback execution duration in microseconds.");
+
+// Counter that records how many checkpoint shard files were written during
+// saving.
+auto* num_checkpoint_shards_written = monitoring::Counter<0>::New(
+    "/tensorflow/core/checkpoint/sharding/num_checkpoint_shards_written",
+    "Number of checkpoint shard files written during saving.");
+
+// String gauge which describes the callback used to shard the checkpoint during
+// saving.
+auto* sharding_callback_description = monitoring::Gauge<std::string, 0>::New(
+    "/tensorflow/core/checkpoint/sharding/callback_description",
+    "Describes the callback used to shard the checkpoint during saving.");
 
 monitoring::CounterCell& SavedModelWriteCount(absl::string_view write_version) {
   return *saved_model_write_counter->GetCell(std::string(write_version));
@@ -251,6 +281,10 @@ ParseSavedModelPathAndSingleprint(std::string path_and_singleprint) {
   return std::pair<std::string, std::string>(path, singleprint);
 }
 
+monitoring::GaugeCell<std::string>& SavedModelFoundFingerprintOnLoad() {
+  return *saved_model_found_fingerprint_on_load->GetCell();
+}
+
 monitoring::SamplerCell& CheckpointReadDuration(absl::string_view api_label) {
   return *checkpoint_read_durations->GetCell(std::string(api_label));
 }
@@ -272,6 +306,18 @@ monitoring::CounterCell& CheckpointSize(absl::string_view api_label,
                                         int64_t filesize) {
   return *checkpoint_size->GetCell(std::string(api_label),
                                    std::to_string(filesize));
+}
+
+monitoring::CounterCell& ShardingCallbackDuration() {
+  return *sharding_callback_duration->GetCell();
+}
+
+monitoring::CounterCell& NumCheckpointShardsWritten() {
+  return *num_checkpoint_shards_written->GetCell();
+}
+
+monitoring::GaugeCell<std::string>& ShardingCallbackDescription() {
+  return *sharding_callback_description->GetCell();
 }
 
 }  // namespace metrics

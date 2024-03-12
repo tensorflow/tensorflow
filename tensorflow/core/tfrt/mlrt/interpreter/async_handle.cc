@@ -17,6 +17,10 @@ limitations under the License.
 #include <memory>
 #include <utility>
 
+#include "tensorflow/core/tfrt/mlrt/interpreter/context.h"
+#include "tsl/concurrency/async_value_ref.h"
+#include "tsl/concurrency/chain.h"
+
 namespace mlrt {
 
 std::pair<AsyncHandle::Promise, AsyncHandle> AsyncHandle::Allocate(

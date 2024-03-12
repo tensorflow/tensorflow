@@ -35,6 +35,10 @@ limitations under the License.
 namespace tensorflow {
 namespace metrics {
 
+const char kFingerprintFound[] = "FOUND";
+const char kFingerprintNotFound[] = "NOT_FOUND";
+const char kFingerprintError[] = "ERROR";
+
 // Returns "/tensorflow/core/saved_model/write/count" cell. This metric
 // has 1 field "write_version", which is equal to the
 // `tensorflow::libexport::GetWriteVersion` of the protobuf and should be
@@ -46,6 +50,16 @@ monitoring::CounterCell& SavedModelWriteCount(absl::string_view write_version);
 // `tensorflow::libexport::GetWriteVersion` of the protobuf, and should be
 // incremented when a SavedModel has been successfully read.
 monitoring::CounterCell& SavedModelReadCount(absl::string_view write_version);
+
+// Returns "/tensorflow/core/saved_model/write/api" cell. This metric has 1
+// field "api_label" which corresponds to a SavedModel write API. The cell for
+// `foo` should be incremented when the write API `foo` is called.
+monitoring::CounterCell& SavedModelWriteApi(absl::string_view api_label);
+
+// Returns "/tensorflow/core/saved_model/read/api" cell. This metric has 1
+// field "api_label" which corresponds to a SavedModel read API. The cell for
+// `foo` should be incremented when the read API `foo` is called.
+monitoring::CounterCell& SavedModelReadApi(absl::string_view api_label);
 
 // Returns "/tensorflow/core/saved_model/write/fingerprint" cell, which contains
 // the saved_model_checksum of the SM's fingerprint when it is exported.
@@ -87,15 +101,9 @@ absl::StatusOr<std::string> MakeSavedModelPathAndSingleprint(
 absl::StatusOr<std::pair<std::string, std::string>>
 ParseSavedModelPathAndSingleprint(std::string path_and_singleprint);
 
-// Returns "/tensorflow/core/saved_model/write/api" cell. This metric has 1
-// field "api_label" which corresponds to a SavedModel write API. The cell for
-// `foo` should be incremented when the write API `foo` is called.
-monitoring::CounterCell& SavedModelWriteApi(absl::string_view api_label);
-
-// Returns "/tensorflow/core/saved_model/read/api" cell. This metric has 1
-// field "api_label" which corresponds to a SavedModel read API. The cell for
-// `foo` should be incremented when the read API `foo` is called.
-monitoring::CounterCell& SavedModelReadApi(absl::string_view api_label);
+// Returns string status indicating whether or not the fingerprint.pb file was
+// found when loading the SavedModel.
+monitoring::GaugeCell<std::string>& SavedModelFoundFingerprintOnLoad();
 
 // Returns "/tensorflow/core/checkpoint/read/read_durations" cell belonging to
 // field `api_label`.
@@ -118,6 +126,20 @@ monitoring::CounterCell& TrainingTimeSaved(absl::string_view api_label);
 // belonging to field (`api_label`, `filesize`).
 monitoring::CounterCell& CheckpointSize(absl::string_view api_label,
                                         int64_t filesize);
+
+// Returns "/tensorflow/core/checkpoint/sharding/callback_duration" cell which
+// describes how long it took to execute the checkpoint sharding callback in
+// microseconds.
+monitoring::CounterCell& ShardingCallbackDuration();
+
+// Returns "/tensorflow/core/checkpoint/sharding/num_checkpoint_shards_written"
+// cell which describes how many checkpoint shard files were written during
+// saving.
+monitoring::CounterCell& NumCheckpointShardsWritten();
+
+// Returns "/tensorflow/core/checkpoint/sharding/callback_description" cell
+// which describes the callback used to shard the checkpoint during saving.
+monitoring::GaugeCell<std::string>& ShardingCallbackDescription();
 
 }  // namespace metrics
 }  // namespace tensorflow

@@ -100,7 +100,8 @@ class Histogram {
 
   double Remap(double x, double x0, double x1, double y0, double y1) const;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(Histogram);
+  Histogram(const Histogram&) = delete;
+  void operator=(const Histogram&) = delete;
 };
 
 // Wrapper around a Histogram object that is thread safe.

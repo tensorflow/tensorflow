@@ -75,7 +75,7 @@ Status GetHandle(OpKernelContext* ctx, string* container, string* ta_handle) {
     *container = h(0);
     *ta_handle = h(1);
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status GetTensorArray(OpKernelContext* ctx, TensorArray** tensor_array) {
@@ -88,7 +88,7 @@ Status GetTensorArray(OpKernelContext* ctx, TensorArray** tensor_array) {
     ScopedStepContainer* sc = ctx->step_container();
     if (sc == nullptr) return errors::Internal("No step container.");
     TF_RETURN_IF_ERROR(sc->Lookup(rm, container + ta_handle, tensor_array));
-    return OkStatus();
+    return absl::OkStatus();
   } else {
     return LookupResource(ctx, HandleFromInput(ctx, 0), tensor_array);
   }
@@ -100,7 +100,7 @@ Status SetupFlowControlInputs(OpKernelContext* ctx, bool set_output) {
   if (set_output) {
     TF_RETURN_IF_ERROR(ctx->set_output("flow_out", *flow_control));
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // CREATION *******************************************************************
@@ -220,7 +220,7 @@ class TensorArrayOp : public TensorArrayCreationOp {
 
     *output_tensor_array = tensor_array;
 
-    return OkStatus();
+    return absl::OkStatus();
   }
 
  private:
@@ -231,7 +231,8 @@ class TensorArrayOp : public TensorArrayCreationOp {
   bool clear_after_read_;
   string tensor_array_name_;  // The name used to create the TensorArray.
 
-  TF_DISALLOW_COPY_AND_ASSIGN(TensorArrayOp);
+  TensorArrayOp(const TensorArrayOp&) = delete;
+  void operator=(const TensorArrayOp&) = delete;
 };
 
 REGISTER_KERNEL_BUILDER(Name("TensorArray").Device(DEVICE_CPU), TensorArrayOp);
@@ -407,7 +408,8 @@ class TensorArrayGradOp : public TensorArrayCreationOp {
   // call.  Typical values look like "gradients", "gradients_1", ...
   string source_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(TensorArrayGradOp);
+  TensorArrayGradOp(const TensorArrayGradOp&) = delete;
+  void operator=(const TensorArrayGradOp&) = delete;
 };
 
 REGISTER_KERNEL_BUILDER(Name("TensorArrayGrad").Device(DEVICE_CPU),

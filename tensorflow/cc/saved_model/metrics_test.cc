@@ -175,5 +175,34 @@ TEST(MetricsTest, TestMakeFingerprintJson) {
   EXPECT_EQ(fingerprint_json["checkpoint_hash"].asUInt64(), 5);
 }
 
+TEST(MetricsTest, TestFoundFingerprintOnLoad) {
+  EXPECT_EQ(SavedModelFoundFingerprintOnLoad().value(), "");
+
+  SavedModelFoundFingerprintOnLoad().Set(kFingerprintFound);
+  EXPECT_EQ(SavedModelFoundFingerprintOnLoad().value(), "FOUND");
+  SavedModelFoundFingerprintOnLoad().Set(kFingerprintNotFound);
+  EXPECT_EQ(SavedModelFoundFingerprintOnLoad().value(), "NOT_FOUND");
+  SavedModelFoundFingerprintOnLoad().Set(kFingerprintError);
+  EXPECT_EQ(SavedModelFoundFingerprintOnLoad().value(), "ERROR");
+}
+
+TEST(MetricsTest, TestShardingCallbackDuration) {
+  EXPECT_EQ(ShardingCallbackDuration().value(), 0);
+  ShardingCallbackDuration().IncrementBy(100);
+  EXPECT_EQ(ShardingCallbackDuration().value(), 100);
+}
+
+TEST(MetricsTest, TestNumCheckpointShardsWritten) {
+  EXPECT_EQ(NumCheckpointShardsWritten().value(), 0);
+  NumCheckpointShardsWritten().IncrementBy(10);
+  EXPECT_EQ(NumCheckpointShardsWritten().value(), 10);
+}
+
+TEST(MetricsTest, TestShardingCallbackDescription) {
+  EXPECT_EQ(ShardingCallbackDescription().value(), "");
+  ShardingCallbackDescription().Set("foo");
+  EXPECT_EQ(ShardingCallbackDescription().value(), "foo");
+}
+
 }  // namespace metrics
 }  // namespace tensorflow

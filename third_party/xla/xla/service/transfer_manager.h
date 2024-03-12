@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -16,19 +16,24 @@ limitations under the License.
 #ifndef XLA_SERVICE_TRANSFER_MANAGER_H_
 #define XLA_SERVICE_TRANSFER_MANAGER_H_
 
-#include <map>
-#include <set>
-#include <vector>
+#include <cstdint>
+#include <functional>
+#include <memory>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "xla/literal.h"
-#include "xla/service/executable.h"
+#include "xla/service/maybe_owning_device_memory.h"
 #include "xla/service/shaped_buffer.h"
+#include "xla/shape.h"
+#include "xla/shape_tree.h"
+#include "xla/shape_util.h"
+#include "xla/status.h"
 #include "xla/statusor.h"
 #include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/stream_executor.h"
-#include "xla/types.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
@@ -292,23 +297,6 @@ class TransferManager {
   virtual Status WriteSingleTupleIndexTable(
       se::Stream* stream, absl::Span<const se::DeviceMemoryBase> elements,
       const Shape& shape, se::DeviceMemoryBase* region) = 0;
-
- protected:
-  // Transfer a memory block of the given size from the device source into the
-  // 'destination' buffer.
-  //
-  // size is the size to transfer to destination in bytes.
-  virtual Status TransferBufferFromDevice(se::Stream* stream,
-                                          const se::DeviceMemoryBase& source,
-                                          int64_t size, void* destination);
-
-  // Transfer a memory block of the given size from 'source' buffer to the given
-  // destination of the device.
-  //
-  // size is the size to transfer from source in bytes.
-  virtual Status TransferBufferToDevice(se::Stream* stream, int64_t size,
-                                        const void* source,
-                                        se::DeviceMemoryBase* destination);
 
  private:
   // The mutex that guards the platform-to-transfer manager map.

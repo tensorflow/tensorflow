@@ -71,6 +71,13 @@ TF_CAPI_EXPORT extern TF_Tensor* TF_NewTensor(
     void (*deallocator)(void* data, size_t len, void* arg),
     void* deallocator_arg);
 
+// Returns the alignment, in bytes, required for allocating aligned tensors.
+//
+// This can be used in combination with TF_NewTensor to manually manage
+// memory while ensuring the resulting tensors satisfy TensorFlow's
+// memory alignment preferences.
+TF_CAPI_EXPORT extern size_t TF_TensorDefaultAlignment();
+
 // Allocate and return a new Tensor.
 //
 // This function is an alternative to TF_NewTensor and should be used when

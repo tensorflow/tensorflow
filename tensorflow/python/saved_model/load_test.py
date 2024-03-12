@@ -2970,16 +2970,13 @@ class SingleCycleTests(test.TestCase, parameterized.TestCase):
   # TODO(allenl, kkb): Use the new memory checker here once it's fast enough (3
   # iterations took hundreds of seconds). It would be really nice to check
   # allocations at a lower level.
-  @test_util.assert_no_new_pyobjects_executing_eagerly
+  @test_util.assert_no_new_pyobjects_executing_eagerly()
   def test_functions_cleaned(self, use_cpp_bindings):
     # TODO(b/264869753) Fix SingleCycleTest
     if use_cpp_bindings:
       self.skipTest("Not implemented for cpp.")
     if sys.version_info.major < 3:
       self.skipTest("Not working in Python 2")
-    if sys.version_info.major == 3 and sys.version_info.minor == 11:
-      # TODO(b/264948173)
-      self.skipTest("Not working in Python 3.11")
     root = module.Module()
     root.v = variables.Variable(1.0)
     root.f = def_function.function(

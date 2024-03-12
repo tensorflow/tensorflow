@@ -1,4 +1,4 @@
-/* Copyright 2018 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2018 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -21,12 +21,12 @@ limitations under the License.
 #include "xla/backends/profiler/cpu/metadata_utils.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/service/xla_debug_info_manager.h"
-#include "tsl/platform/macros.h"
-#include "tsl/platform/status.h"
+#include "xla/status.h"
 #include "tsl/profiler/lib/profiler_factory.h"
 #include "tsl/profiler/lib/profiler_interface.h"
 #include "tsl/profiler/protobuf/profiler_options.pb.h"
 #include "tsl/profiler/protobuf/xplane.pb.h"
+#include "tsl/profiler/utils/xplane_builder.h"
 #include "tsl/profiler/utils/xplane_schema.h"
 #include "tsl/profiler/utils/xplane_utils.h"
 
@@ -77,7 +77,8 @@ class MetadataCollector : public tsl::profiler::ProfilerInterface {
   std::vector<std::unique_ptr<xla::HloProto>> debug_info_;
   bool trace_active_ = false;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(MetadataCollector);
+  MetadataCollector(const MetadataCollector&) = delete;
+  void operator=(const MetadataCollector&) = delete;
 };
 
 std::unique_ptr<tsl::profiler::ProfilerInterface> CreatMetadataCollector(

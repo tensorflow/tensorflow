@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -128,6 +128,7 @@ class DfsHloVisitorBase {
   virtual Status HandleAllReduceDone(HloInstructionPtr hlo) = 0;
   virtual Status HandleAllReduceStart(HloInstructionPtr hlo) = 0;
   virtual Status HandleAllToAll(HloInstructionPtr hlo) = 0;
+  virtual Status HandleCollectiveBroadcast(HloInstructionPtr hlo) = 0;
   virtual Status HandleCollectivePermute(HloInstructionPtr hlo) = 0;
   virtual Status HandleCollectivePermuteDone(HloInstructionPtr hlo) = 0;
   virtual Status HandleCollectivePermuteStart(HloInstructionPtr hlo) = 0;
@@ -173,6 +174,9 @@ class DfsHloVisitorBase {
     return HandleElementwiseUnary(hlo);
   }
   virtual Status HandleRoundNearestEven(HloInstructionPtr hlo) {
+    return HandleElementwiseUnary(hlo);
+  }
+  virtual Status HandleErf(HloInstructionPtr hlo) {
     return HandleElementwiseUnary(hlo);
   }
   virtual Status HandleLogistic(HloInstructionPtr hlo) {

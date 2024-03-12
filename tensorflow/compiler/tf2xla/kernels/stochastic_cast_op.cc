@@ -42,7 +42,7 @@ class StochasticCastToInt : public XlaOpKernel {
   void Compile(XlaOpKernelContext* ctx) override {
     TensorShape shape;
     shape = ctx->InputShape(kInputIndex);
-    StatusOr<xla::XlaOp> randoms_or = BuildUniformRandoms(
+    absl::StatusOr<xla::XlaOp> randoms_or = BuildUniformRandoms(
         ctx, from_type_, device_type_string_, shape, xla::Zero, xla::One);
     OP_REQUIRES_OK(ctx, randoms_or.status());
     xla::XlaOp input = ctx->Input(kInputIndex);

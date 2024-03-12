@@ -19,10 +19,10 @@ func.func @all_reduce_only() {
 
 // CHECK-LABEL: func @all_reduce_scatter_2d_major_dim
 func.func @all_reduce_scatter_2d_major_dim() {
-    // CHECK:               %[[INPUT:.*]] = "tf.Const"() {value = dense<0.0
-    // CHECK:               %[[GROUP:.*]] = "tf.Const"() {value =
+    // CHECK:               %[[INPUT:.*]] = "tf.Const"() <{value = dense<0.0
+    // CHECK:               %[[GROUP:.*]] = "tf.Const"() <{value =
     // CHECK-SAME{LITERAL}: dense<[[0, 2], [1, 3]]>
-    // CHECK:               %[[SCATTER_DIM:.*]] = "tf.Const"() {value = dense<0>
+    // CHECK:               %[[SCATTER_DIM:.*]] = "tf.Const"() <{value = dense<0>
     // CHECK:               "tf.DTensorReduceScatter"(%[[INPUT]], %[[GROUP]], %[[SCATTER_DIM]])
     // CHECK-SAME:          reduce_op = "Add"
     // CHECK-NOT:           "tf.DTensorAllReduce"
@@ -41,10 +41,10 @@ func.func @all_reduce_scatter_2d_major_dim() {
 
 // CHECK-LABEL: func @all_reduce_scatter_2d_minor_dim
 func.func @all_reduce_scatter_2d_minor_dim() {
-    // CHECK:               %[[INPUT:.*]] = "tf.Const"() {value = dense<0.0
-    // CHECK:               %[[GROUP:.*]] = "tf.Const"() {value =
+    // CHECK:               %[[INPUT:.*]] = "tf.Const"() <{value = dense<0.0
+    // CHECK:               %[[GROUP:.*]] = "tf.Const"() <{value =
     // CHECK-SAME{LITERAL}: dense<[[0, 2], [1, 3]]>
-    // CHECK:               %[[SCATTER_DIM:.*]] = "tf.Const"() {value = dense<1>
+    // CHECK:               %[[SCATTER_DIM:.*]] = "tf.Const"() <{value = dense<1>
     // CHECK:               "tf.DTensorReduceScatter"(%[[INPUT]], %[[GROUP]], %[[SCATTER_DIM]])
     // CHECK-SAME:          reduce_op = "Add"
     // CHECK-NOT:           "tf.DTensorAllReduce"

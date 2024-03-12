@@ -1,4 +1,4 @@
-/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -17,16 +17,22 @@ limitations under the License.
 #define XLA_PJRT_GPU_SE_GPU_PJRT_COMPILER_H_
 
 #include <memory>
+#include <optional>
 
+#include "absl/status/status.h"
 #include "xla/pjrt/pjrt_compiler.h"
 #include "xla/pjrt/pjrt_executable.h"
+#include "xla/service/compiler.h"
 
 namespace xla {
 // Implements the interfaces that are needed for the registered compiler.
-// TODO(b/285385306): current implementation purely relies on the `client`
-// Compile() functions and ignores the `topology` parameter.
 class StreamExecutorGpuCompiler : public PjRtCompiler {
  public:
+  explicit StreamExecutorGpuCompiler() = default;
+
+  // Setting CompileOptions.TargetConfig field will trigger deviceless
+  // compilation, which will not query the GPU attached to the machine.
+  // In this case, the `client` argument could be left as `nullptr`.
   absl::StatusOr<std::unique_ptr<PjRtExecutable>> Compile(
       CompileOptions options, const XlaComputation& computation,
       const PjRtTopologyDescription& topology, PjRtClient* client) override;

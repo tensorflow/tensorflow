@@ -1,13 +1,14 @@
-load("@local_tsl//tsl/platform:rules_cc.bzl", "cc_library")
 load("//xla/tests:build_defs.bzl", "xla_test")
-load("@local_tsl//tsl:tsl.bzl", "if_cuda_or_rocm")
-load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
-load("@local_config_rocm//rocm:build_defs.bzl", "if_rocm")
-load("//xla:xla.bzl", "xla_cc_binary")
 load("@bazel_skylib//rules:build_test.bzl", "build_test")
+load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
+load("//xla:xla.bzl", "xla_cc_binary")
+load("@local_config_rocm//rocm:build_defs.bzl", "if_rocm")
+load("@local_tsl//tsl:tsl.bzl", "if_cuda_or_rocm")
+load("@local_tsl//tsl/platform:rules_cc.bzl", "cc_library")
 
 package(
-    default_visibility = ["//visibility:public"],
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
+    default_visibility = ["//xla:internal"],
     licenses = ["notice"],
 )
 
@@ -35,6 +36,9 @@ xla_cc_binary(
         ":hlo_runner_flags",
         "//xla:debug_options_flags",
         "//xla:status",
+        "//xla:statusor",
+        "//xla/pjrt:pjrt_client",
+        "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/strings",
         "@local_tsl//tsl/platform:logging",
         "@local_tsl//tsl/platform:platform_port",
@@ -54,23 +58,29 @@ cc_library(
     name = "functional_hlo_runner",
     srcs = ["functional_hlo_runner.cc"],
     hdrs = ["functional_hlo_runner.h"],
-    visibility = ["//visibility:public"],
     deps = [
         "//xla:literal",
         "//xla:shape_util",
         "//xla:status",
+        "//xla:status_macros",
+        "//xla:statusor",
         "//xla:xla_proto_cc",
         "//xla/hlo/ir:hlo",
         "//xla/pjrt:pjrt_client",
         "//xla/pjrt:pjrt_compiler",
         "//xla/pjrt:pjrt_executable",
+        "//xla/pjrt:pjrt_future",
+        "//xla/pjrt/distributed:client",
         "//xla/pjrt/gpu:se_gpu_pjrt_client",
         "//xla/service:hlo_parser",
         "//xla/service:hlo_pass_pipeline",
         "//xla/tests:test_utils",
         "//xla/tools:hlo_control_flow_flattening",
         "@com_google_absl//absl/container:btree",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/time",
         "@com_google_absl//absl/types:span",
         "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:logging",
@@ -82,7 +92,6 @@ cc_library(
     name = "hlo_runner_flags",
     srcs = ["hlo_runner_flags.cc"],
     hdrs = ["hlo_runner_flags.h"],
-    visibility = ["//visibility:public"],
     deps = [
         ":functional_hlo_runner",
         "//xla/pjrt:pjrt_executable",

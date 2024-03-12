@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -33,6 +33,7 @@ limitations under the License.
 #include "xla/service/hlo_execution_profile.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/hlo_module_util.h"
+#include "xla/service/local_service_utils.h"
 #include "xla/service/platform_util.h"
 #include "xla/shape_layout.h"
 #include "xla/shape_util.h"
@@ -41,11 +42,12 @@ limitations under the License.
 #include "xla/types.h"
 #include "xla/util.h"
 #include "tsl/platform/logging.h"
+#include "tsl/platform/statusor.h"
 
 namespace xla {
 
-/* static */ StatusOr<std::unique_ptr<LocalService>> LocalService::NewService(
-    const ServiceOptions& options) {
+/* static */ absl::StatusOr<std::unique_ptr<LocalService>>
+LocalService::NewService(const ServiceOptions& options) {
   se::Platform* platform = options.platform();
   if (platform == nullptr) {
     TF_ASSIGN_OR_RETURN(platform, PlatformUtil::GetDefaultPlatform());
@@ -68,94 +70,15 @@ LocalService::LocalService(const ServiceOptions& options,
                            std::unique_ptr<Backend> execute_backend)
     : Service(options, std::move(execute_backend)) {}
 
-namespace {
-
-// Retrieves the parameter metadata for the given computation and parameter
-// number.
-//
-// If the parameter number is invalid for this computation, nullopt is
-// returned. When the return value has_value(), nullptr will never be
-// the held value.
-std::optional<const OpMetadata*> ParameterMetadata(
-    const XlaComputation& computation, int parameter_number) {
-  for (const HloComputationProto& comp : computation.proto().computations()) {
-    if (comp.id() == computation.proto().entry_computation_id()) {
-      for (const HloInstructionProto& instr : comp.instructions()) {
-        if (instr.opcode() == HloOpcodeString(HloOpcode::kParameter) &&
-            instr.parameter_number() == parameter_number) {
-          if (!instr.has_metadata()) {
-            return std::nullopt;
-          }
-          return &instr.metadata();
-        }
-      }
-    }
-  }
-  return std::nullopt;
-}
-
-}  // namespace
-
-StatusOr<std::unique_ptr<HloModuleConfig>> LocalService::GetHloModuleConfig(
-    const XlaComputation& computation,
-    const absl::Span<const Shape* const> argument_layouts,
-    const ExecutableBuildOptions& build_options) {
-  const HloModuleProto& proto = computation.proto();
-  TF_RET_CHECK(proto.has_host_program_shape());
-  ProgramShape program_shape(proto.host_program_shape());
-
-  // Validate incoming layouts.
-  if (argument_layouts.size() != program_shape.parameters_size()) {
-    return InvalidArgument(
-        "Invalid number of arguments for computation: expected %d, got %u.",
-        program_shape.parameters_size(), argument_layouts.size());
-  }
-
-  for (int i = 0; i < argument_layouts.size(); ++i) {
-    const Shape& argument_shape = *argument_layouts[i];
-    TF_RETURN_IF_ERROR(
-        ShapeUtil::ValidateShapeWithOptionalLayout(argument_shape));
-    if (!ShapeUtil::Compatible(argument_shape, program_shape.parameters(i))) {
-      std::optional<const OpMetadata*> metadata =
-          ParameterMetadata(computation, /*parameter_number=*/i);
-      auto metadata_string = [&metadata]() -> std::string {
-        if (!metadata.has_value()) {
-          return "";
-        }
-        CHECK(metadata.value() != nullptr);
-        const OpMetadata& m = *metadata.value();
-        if (!m.source_file().empty()) {
-          return absl::StrFormat(" (%s:%d)", m.source_file(), m.source_line());
-        }
-        return "";
-      };
-      return InvalidArgument(
-          "Invalid argument shape for argument %d%s, expected %s, got %s.", i,
-          metadata_string(),
-          ShapeUtil::HumanString(program_shape.parameters(i)),
-          ShapeUtil::HumanString(argument_shape));
-    }
-  }
-  if (build_options.result_layout() != nullptr) {
-    TF_RETURN_IF_ERROR(ValidateResultShape(*build_options.result_layout(),
-                                           program_shape.result()));
-  }
-
-  ExecutionOptions execution_options =
-      CreateExecutionOptions(build_options, &program_shape);
-
-  return CreateModuleConfig(program_shape, argument_layouts,
-                            &execution_options);
-}
-
-StatusOr<std::vector<std::unique_ptr<Executable>>>
+absl::StatusOr<std::vector<std::unique_ptr<Executable>>>
 LocalService::CompileExecutables(
     const XlaComputation& computation,
     const absl::Span<const Shape* const> argument_layouts,
     const ExecutableBuildOptions& build_options) {
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<HloModuleConfig> module_config,
-      GetHloModuleConfig(computation, argument_layouts, build_options));
+      GetHloModuleConfig(computation, argument_layouts, build_options,
+                         &options_, execute_backend_.get()));
 
   VLOG(3) << "Computation Layout: "
           << module_config->entry_computation_layout().ToString();
@@ -198,14 +121,15 @@ LocalService::CompileExecutables(
   }
 }
 
-StatusOr<std::vector<std::unique_ptr<AotCompilationResult>>>
+absl::StatusOr<std::vector<std::unique_ptr<AotCompilationResult>>>
 LocalService::CompileAotResults(
     const XlaComputation& computation,
     const absl::Span<const Shape* const> argument_layouts,
     const ExecutableBuildOptions& build_options) {
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<HloModuleConfig> module_config,
-      GetHloModuleConfig(computation, argument_layouts, build_options));
+      GetHloModuleConfig(computation, argument_layouts, build_options,
+                         &options_, execute_backend_.get()));
 
   TF_ASSIGN_OR_RETURN(
       se::StreamExecutor * executor,
@@ -226,13 +150,14 @@ LocalService::CompileAotResults(
       build_options.run_backend_only());
 }
 
-StatusOr<int> LocalService::ReplicaNumberToDeviceOrdinal(int replica_number) {
+absl::StatusOr<int> LocalService::ReplicaNumberToDeviceOrdinal(
+    int replica_number) {
   return backend().computation_placer()->DeviceId(
       replica_number, /*computation=*/0, options_.number_of_replicas(),
       /*computation_count=*/1);
 }
 
-StatusOr<const ShapedBuffer*> LocalService::GlobalDataToShapedBuffer(
+absl::StatusOr<const ShapedBuffer*> LocalService::GlobalDataToShapedBuffer(
     const GlobalDataHandle& data, int replica_number) {
   TF_ASSIGN_OR_RETURN(auto buffers, allocation_tracker_.Resolve(data));
   if (replica_number >= buffers.size()) {
@@ -243,7 +168,7 @@ StatusOr<const ShapedBuffer*> LocalService::GlobalDataToShapedBuffer(
   return buffers[replica_number];
 }
 
-StatusOr<GlobalDataHandle> LocalService::RegisterReplicatedBuffers(
+absl::StatusOr<GlobalDataHandle> LocalService::RegisterReplicatedBuffers(
     std::vector<ScopedShapedBuffer> replicated_buffers,
     const std::string& tag) {
   return allocation_tracker_.RegisterReplicatedBuffers(

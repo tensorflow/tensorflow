@@ -589,7 +589,8 @@ class GpuSolver {
 
   std::vector<TensorReference> scratch_tensor_refs_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(GpuSolver);
+  GpuSolver(const GpuSolver&) = delete;
+  void operator=(const GpuSolver&) = delete;
 };
 
 // Helper class to allocate scratch memory and keep track of debug info.
@@ -675,8 +676,7 @@ class DeviceLapackInfo : public ScratchSpace<int> {
     se::DeviceMemoryBase wrapped_src(
         static_cast<void*>(const_cast<int*>(this->data())));
     *success =
-        stream->ThenMemcpy(copy.mutable_data(), wrapped_src, this->bytes())
-            .ok();
+        stream->Memcpy(copy.mutable_data(), wrapped_src, this->bytes()).ok();
     return copy;
   }
 };

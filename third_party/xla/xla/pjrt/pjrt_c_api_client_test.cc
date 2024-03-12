@@ -1,4 +1,4 @@
-/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -18,11 +18,14 @@ limitations under the License.
 #include <memory>
 #include <optional>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/status/status.h"
 #include "xla/client/xla_builder.h"
+#include "xla/literal_util.h"
 #include "xla/pjrt/c/pjrt_c_api_cpu_internal.h"
 #include "xla/pjrt/pjrt_api.h"
 #include "xla/pjrt/pjrt_client.h"
@@ -30,6 +33,7 @@ limitations under the License.
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/tests/literal_test_util.h"
 #include "tsl/lib/core/status_test_util.h"
 #include "tsl/platform/statusor.h"
 #include "tsl/platform/test.h"
@@ -78,8 +82,10 @@ TEST(PjRtCApiClientTest, IsDynamicDimension) {
   auto computation = builder.Build(reshaped).value();
   std::unique_ptr<PjRtLoadedExecutable> executable =
       client->Compile(computation, CompileOptions()).value();
+  ExecuteOptions execute_options;
+  execute_options.non_donatable_input_indices = {0};
   std::vector<std::vector<std::unique_ptr<PjRtBuffer>>> results =
-      executable->Execute({{param0.get(), param1.get()}}, ExecuteOptions())
+      executable->Execute({{param0.get(), param1.get()}}, execute_options)
           .value();
   ASSERT_EQ(results[0].size(), 1);
   auto* result_buffer = results[0][0].get();
@@ -113,10 +119,43 @@ TEST(PjRtCApiClientTest, EmptyExecutableFingerprint) {
   std::unique_ptr<PjRtLoadedExecutable> executable =
       client->Compile(computation, CompileOptions()).value();
 
-  TF_ASSERT_OK_AND_ASSIGN(std::optional<std::string> fingerprint,
-                          client->ExecutableFingerprint(*executable));
+  PjRtCApiClient* c_client = dynamic_cast<PjRtCApiClient*>(client.get());
+  ASSERT_NE(c_client, nullptr);
+  if (c_client->pjrt_c_api()->pjrt_api_version.minor_version >= 35) {
+    // Empty executable should return an error status.
+    EXPECT_FALSE(executable->FingerprintExecutable().ok());
+  } else {
+    // TODO(yeounoh): To be removed after 01/20/2024.
+    EXPECT_EQ(executable->FingerprintExecutable().status().code(),
+              absl::StatusCode::kUnimplemented);
+  }
+}
 
-  EXPECT_FALSE(fingerprint.has_value());
+TEST(PjRtClientTest, CreateViewAndCopyToDeviceAsyncExternalCpuOnly) {
+  SetUpCpuPjRtApi();
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtClient> client,
+                          GetCApiClient("cpu"));
+  ASSERT_GT(client->addressable_devices().size(), 1);
+  std::vector<int32_t> data(4, 0);
+  auto* data_ptr = data.data();
+  Shape shape = ShapeUtil::MakeShape(S32, {4});
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto buffer,
+      client->CreateViewOfDeviceBuffer(
+          data_ptr, shape, client->addressable_devices()[0],
+          /*on_delete_callback=*/[data = std::move(data)]() mutable {}));
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<PjRtBuffer> result,
+      buffer->CopyToDevice(client->addressable_devices()[1]));
+  buffer.reset();
+  ASSERT_TRUE(result);
+  TF_ASSERT_OK_AND_ASSIGN(auto literal, result->ToLiteralSync());
+
+  std::vector<int32_t> expected(4, 0);
+  EXPECT_TRUE(LiteralTestUtil::Equal(LiteralUtil::CreateR1<int32_t>(expected),
+                                     *literal));
 }
 
 }  // namespace

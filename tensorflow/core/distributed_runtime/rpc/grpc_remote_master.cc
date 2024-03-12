@@ -30,6 +30,7 @@ limitations under the License.
 #include "tensorflow/core/platform/tracing.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/core/protobuf/master.pb.h"
+#include "tsl/platform/retrying_utils.h"
 
 namespace tensorflow {
 
@@ -163,7 +164,7 @@ class GrpcRemoteMaster : public MasterInterface {
       }
       absl::Time now = absl::FromUnixMicros(Env::Default()->NowMicros());
       const absl::Time deadline_with_backoff =
-          now + absl::Microseconds(ComputeBackoffMicroseconds(num_retries));
+          now + tsl::ComputeRetryBackoff(num_retries);
       // Wait for a short period of time before retrying the RPC.  If our
       // backoff would put us past the RPC deadline, we truncate it to ensure
       // our RPC starts before the deadline.

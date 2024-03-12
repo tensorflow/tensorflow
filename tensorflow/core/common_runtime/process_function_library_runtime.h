@@ -16,23 +16,23 @@ limitations under the License.
 #define TENSORFLOW_CORE_COMMON_RUNTIME_PROCESS_FUNCTION_LIBRARY_RUNTIME_H_
 
 #include <functional>
+#include <memory>
 #include <optional>
 #include <string>
 #include <unordered_map>
+#include <vector>
 
-#include "absl/types/variant.h"
 #include "tensorflow/core/common_runtime/composite_device.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/common_runtime/device_set.h"
-#include "tensorflow/core/common_runtime/optimized_function_graph_info.h"
 #include "tensorflow/core/common_runtime/stats_publisher_interface.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/lib/core/status.h"
-#include "tensorflow/core/platform/platform.h"
+#include "tensorflow/core/platform/refcount.h"
+#include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/protobuf/config.pb.h"
-#include "tsl/platform/notification.h"
 #include "tsl/platform/thread_annotations.h"
 
 #if !defined(IS_MOBILE_PLATFORM)
@@ -84,11 +84,6 @@ class ProcessFunctionLibraryRuntime {
     // since the flr_map_ may have already been deleted. Explicitly releasing
     // flr_map_ here and checking flr_map_ in ReleaseHandle to avoid this.
     flr_map_.reset();
-    // Graph and stats publishers might have pending work in async threads that
-    // requires access to PFLR instance. Wait for completion before destructing.
-    for (const auto& n : stats_publisher_completed_) {
-      n->WaitForNotification();
-    }
   }
 
   // Sends `tensors_to_send` from `source_device` to `target_device` using
@@ -270,6 +265,8 @@ class ProcessFunctionLibraryRuntime {
   struct ComponentFunctionData {
     // The handle for the instantiated component function.
     FunctionLibraryRuntime::Handle handle;
+    // The name for the component function.
+    string name;
     // arg_indices.size() is the number of arguments to the component function.
     // The i-th argument of the component function comes from the
     // `arg_indices[i]`-th argument of the multi-device function.
@@ -295,12 +292,10 @@ class ProcessFunctionLibraryRuntime {
   struct MultiDeviceFunctionData {
     MultiDeviceFunctionData(const string& function_name,
                             const string& function_key, int num_outputs,
-                            FunctionLibraryDefinition&& lib_def,
                             DataTypeVector ret_types)
         : function_name_(function_name),
           function_key_(function_key),
           instantiation_counter_(1),
-          lib_def_(std::move(lib_def)),
           num_outputs_(num_outputs),
           ret_types_(std::move(ret_types)),
           is_cross_process_(false),
@@ -309,9 +304,6 @@ class ProcessFunctionLibraryRuntime {
     const string function_name_;
     const string function_key_;
     uint64 instantiation_counter_;
-    // A library that contains definitions of component functions and their
-    // transitive dependencies.
-    FunctionLibraryDefinition lib_def_;
     // Stored here to resize the output tensor vector when function is run.
     const int num_outputs_;
     DataTypeVector ret_types_;
@@ -452,8 +444,7 @@ class ProcessFunctionLibraryRuntime {
 
   void PublishSubgraphs(
       const std::string& function_name,
-      std::unique_ptr<std::unordered_map<string, std::unique_ptr<Graph>>>
-          subgraphs);
+      std::vector<core::RefCountPtr<FunctionRecord>>&& function_records);
 
   // Data structure holding information for a single instantiated remote
   // (to be executed on `target_device`) function.
@@ -544,8 +535,6 @@ class ProcessFunctionLibraryRuntime {
   // Holds all stats publishers, one for publishing subgraphs of each
   // instantiated function.
   std::vector<std::unique_ptr<StatsPublisherInterface>> stats_publishers_
-      TF_GUARDED_BY(mu_);
-  std::vector<std::unique_ptr<tsl::Notification>> stats_publisher_completed_
       TF_GUARDED_BY(mu_);
 };
 

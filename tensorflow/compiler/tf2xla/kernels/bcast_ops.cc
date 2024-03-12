@@ -72,7 +72,8 @@ class BCastArgsOp : public XlaOpKernel {
   }
 
  private:
-  TF_DISALLOW_COPY_AND_ASSIGN(BCastArgsOp);
+  BCastArgsOp(const BCastArgsOp&) = delete;
+  void operator=(const BCastArgsOp&) = delete;
 };
 REGISTER_XLA_OP(Name("BroadcastArgs")
                     .CompileTimeConstantInput("s0")
@@ -133,7 +134,8 @@ class BCastGradArgsOp : public XlaOpKernel {
     ctx->SetConstantOutput(idx, constant);
   }
 
-  TF_DISALLOW_COPY_AND_ASSIGN(BCastGradArgsOp);
+  BCastGradArgsOp(const BCastGradArgsOp&) = delete;
+  void operator=(const BCastGradArgsOp&) = delete;
 };
 
 REGISTER_XLA_OP(Name("BroadcastGradientArgs")

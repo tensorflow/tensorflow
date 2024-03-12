@@ -42,7 +42,8 @@ Status UsePrivateThreadPool::OptimizeAndCollectStats(Cluster* cluster,
   MutableGraphView graph(output);
 
   // If the GrapplerItem is derived from a FunctionDef, we don't optimize it.
-  if (graph_utils::IsItemDerivedFromFunctionDef(item, graph)) return OkStatus();
+  if (graph_utils::IsItemDerivedFromFunctionDef(item, graph))
+    return absl::OkStatus();
 
   if (item.fetch.size() != 1) {
     return errors::InvalidArgument(
@@ -54,7 +55,7 @@ Status UsePrivateThreadPool::OptimizeAndCollectStats(Cluster* cluster,
     if (node.op() == kPrivateThreadPoolDataset) {
       // If private thread pool is set by the user, we keep the user setting
       // instead of rewriting it.
-      return OkStatus();
+      return absl::OkStatus();
     }
   }
 
@@ -89,14 +90,14 @@ Status UsePrivateThreadPool::OptimizeAndCollectStats(Cluster* cluster,
   // attrs from the input node. If we fail to set the attributes, we abort the
   // rewrite.
   if (!graph_utils::CopyShapesAndTypesAttrs(*last_node, &insert_node))
-    return OkStatus();
+    return absl::OkStatus();
 
   auto* added_node = graph.AddNode(std::move(insert_node));
   TF_RETURN_IF_ERROR(
       graph.UpdateFanouts(last_node->name(), added_node->name()));
 
   stats->num_changes++;
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 REGISTER_GRAPH_OPTIMIZER_AS(UsePrivateThreadPool, "use_private_thread_pool");

@@ -25,7 +25,7 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 12 : i32, p
 // CHECK: %[[pad:.*]] = "tf.PadV2"(%[[quant]]
 // CHECK: %[[xlaconv:.*]] = "tf.XlaConvV2"(%[[pad]]
 // CHECK: %[[sub:.*]] = "tf.Sub"(%[[xlaconv]]
-// CHECK: %[[cast:.*]] = "tf.Cast"(%[[sub]]) {Truncate = false} : (tensor<1x3x2x2xi32>) -> tensor<1x3x2x2xf32>
+// CHECK: %[[cast:.*]] = "tf.Cast"(%[[sub]]) <{Truncate = false}> : (tensor<1x3x2x2xi32>) -> tensor<1x3x2x2xf32>
 // CHECK: %[[dequant1:.*]] = "tf.Mul"(%[[cast]]
 // CHECK: %[[relu:.*]] = "tf.Relu"(%[[dequant1]]
 // CHECK: %[[clamped:.*]] = "tf.Minimum"(%[[relu]]
@@ -35,12 +35,12 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 12 : i32, p
 // CHECK: %[[maximum2:.*]] = "tf.Maximum"(%[[add2]]
 // CHECK: %[[minimum2:.*]] = "tf.Minimum"(%[[maximum2]]
 // CHECK: %[[round2:.*]] = "tf.Round"(%[[minimum2]]
-// CHECK: %[[quant2:.*]] = "tf.Cast"(%[[round2]]) {Truncate = false} : (tensor<1x3x2x2xf32>) -> tensor<1x3x2x2xi8>
+// CHECK: %[[quant2:.*]] = "tf.Cast"(%[[round2]]) <{Truncate = false}> : (tensor<1x3x2x2xf32>) -> tensor<1x3x2x2xi8>
 
 // CHECK: %[[pad2:.*]] = "tf.PadV2"(%[[quant2]]
 // CHECK: %[[xlaconv2:.*]] = "tf.XlaConvV2"(%[[pad2]]
 // CHECK: %[[sub2:.*]] = "tf.Sub"(%[[xlaconv2]]
-// CHECK: %[[cast2:.*]] = "tf.Cast"(%[[sub2]]) {Truncate = false} : (tensor<1x3x2x2xi32>) -> tensor<1x3x2x2xf32>
+// CHECK: %[[cast2:.*]] = "tf.Cast"(%[[sub2]]) <{Truncate = false}> : (tensor<1x3x2x2xi32>) -> tensor<1x3x2x2xf32>
 // CHECK: %[[rescale2:.*]] = "tf.Mul"(%[[cast2]]
 // CHECK: %[[rescale2_maxclamped:.*]] = "tf.Maximum"(%[[rescale2]]
 // CHECK: %[[rescale2_minclamped:.*]] = "tf.Minimum"(%[[rescale2_maxclamped]]

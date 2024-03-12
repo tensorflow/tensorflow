@@ -43,7 +43,7 @@ Status WaitForNotification(CallOptions* call_options,
   } else {
     n->WaitForNotification();
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 }  // namespace
 

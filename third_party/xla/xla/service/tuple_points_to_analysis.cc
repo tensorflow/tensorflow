@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -326,7 +326,7 @@ Status TuplePointsToAnalysis::HandleAsyncStart(HloInstruction* async_start) {
       [&](const ShapeIndex& target_index, PointsToSet::BufferList* buffers) {
         if (target_index.size() >= 2 && target_index.front() == 0) {
           const PointsToSet& operand_points_to_set =
-              GetPointsToSet(async_start->operand(target_index.at(1)));
+              GetPointsToSet(async_start->operand(target_index[1]));
           ShapeIndex source_index(target_index.begin() + 2, target_index.end());
           *buffers = operand_points_to_set.element(source_index);
           for (HloInstruction* tuple :
@@ -645,7 +645,7 @@ StatusOr<const LogicalBuffer*> TuplePointsToAnalysis::GetBufferDefinedAt(
 
 const TuplePointsToAnalysis::BufferAliasVector&
 TuplePointsToAnalysis::GetBufferAliases(const LogicalBuffer& buffer) const {
-  return logical_buffer_aliases_.at(buffer.id());
+  return logical_buffer_aliases_[buffer.id()];
 }
 
 const TuplePointsToAnalysis::BufferDefinitionVector&
@@ -719,7 +719,7 @@ std::string TuplePointsToAnalysis::ToString() const {
   absl::StrAppend(&output, "LogicalBuffers:\n");
   for (const auto& b : logical_buffer_analysis_->logical_buffers()) {
     absl::StrAppend(&output, "  buffer ", b->ToString(), ":\n");
-    for (const BufferAlias& alias : logical_buffer_aliases_.at(b->id())) {
+    for (const BufferAlias& alias : logical_buffer_aliases_[b->id()]) {
       absl::StrAppend(&output, "    alias ", alias.ToString(), "\n");
     }
   }

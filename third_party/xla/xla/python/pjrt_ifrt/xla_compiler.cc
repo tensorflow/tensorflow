@@ -1,4 +1,4 @@
-/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -86,7 +86,7 @@ char XlaProgram::ID = 0;
 char XlaCompileOptions::ID = 0;
 char XlaDeserializeExecutableOptions::ID = 0;
 
-StatusOr<std::unique_ptr<XlaCompileOptions>> GetXlaCompileOptions(
+absl::StatusOr<std::unique_ptr<XlaCompileOptions>> GetXlaCompileOptions(
     std::unique_ptr<CompileOptions> options) {
   if (!llvm::isa<XlaCompileOptions>(options.get())) {
     return xla::InvalidArgument("options must be XlaCompileOptions");
@@ -95,7 +95,7 @@ StatusOr<std::unique_ptr<XlaCompileOptions>> GetXlaCompileOptions(
       static_cast<XlaCompileOptions*>(options.release()));
 }
 
-StatusOr<std::unique_ptr<XlaDeserializeExecutableOptions>>
+absl::StatusOr<std::unique_ptr<XlaDeserializeExecutableOptions>>
 GetXlaDeserializeExecutableOptions(
     std::unique_ptr<DeserializeExecutableOptions> options) {
   if (!llvm::isa<XlaDeserializeExecutableOptions>(options.get())) {

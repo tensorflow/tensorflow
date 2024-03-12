@@ -1,4 +1,4 @@
-/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2019 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -24,18 +24,38 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/container/node_hash_map.h"
 #include "absl/types/span.h"
 #include "xla/hlo/ir/dfs_hlo_visitor.h"
 #include "xla/hlo/ir/dfs_hlo_visitor_with_default.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/hlo_value.h"
+#include "xla/shape.h"
 #include "xla/shape_tree.h"
 #include "xla/shape_util.h"
 #include "xla/status.h"
 #include "xla/statusor.h"
 
 namespace xla {
+
+struct SendRecvGroup {
+  HloInstruction* send;
+  HloInstruction* recv;
+};
+
+class SendRecvGroupMap {
+ public:
+  explicit SendRecvGroupMap(const HloModule& hlo_module);
+  SendRecvGroupMap(SendRecvGroupMap&& other) = default;
+  SendRecvGroupMap(const SendRecvGroupMap& other) = default;
+  virtual ~SendRecvGroupMap() = default;
+  virtual absl::StatusOr<HloInstruction*> GetMatchingSendOrRecv(
+      HloInstruction* send_or_recv) const;
+
+ private:
+  absl::flat_hash_map<std::string, SendRecvGroup> host_transfer_rendezvous_map_;
+};
 
 class HloPreOrderDFS {
  public:
@@ -51,7 +71,7 @@ class HloPreOrderDFS {
 };
 
 using EinsumDepthMap =
-    absl::flat_hash_map<const HloInstruction*, ShapeTree<int>>;
+    absl::node_hash_map<const HloInstruction*, ShapeTree<int>>;
 
 // The einsum depth is the length of the einsum dependency chain. And we
 // distinguish instructions that are used by root and that are not used by
@@ -69,8 +89,9 @@ using EinsumDepthMap =
 
 class EinsumDepthAnalysis : public DfsHloVisitorWithDefault {
  public:
-  static StatusOr<std::unique_ptr<EinsumDepthAnalysis>> Run(
-      const HloComputation& computation);
+  static absl::StatusOr<std::unique_ptr<EinsumDepthAnalysis>> Run(
+      const HloComputation& computation,
+      const SendRecvGroupMap& send_recv_group_map);
   ~EinsumDepthAnalysis() override = default;
   Status DefaultAction(HloInstruction* instruction) override;
   Status HandleTuple(HloInstruction* tuple) override;
@@ -79,24 +100,89 @@ class EinsumDepthAnalysis : public DfsHloVisitorWithDefault {
   Status HandleConvolution(HloInstruction* convolution) override;
   Status HandleCall(HloInstruction* call) override;
   Status HandleFusion(HloInstruction* fusion) override;
-  Status HandleCustomCall(HloInstruction* custom_call) override;
   Status HandleWhile(HloInstruction* xla_while) override;
   Status HandleConditional(HloInstruction* conditional) override;
   Status HandleAfterAll(HloInstruction* after_all) override;
-  Status HandleOutfeed(HloInstruction* outfeed) override;
+  Status HandleSend(HloInstruction* send) override;
+  Status HandleRecv(HloInstruction* recv) override;
+  Status HandleSendDone(HloInstruction* send_done) override;
+  Status HandleRecvDone(HloInstruction* recv_done) override;
+  Status HandleAllReduce(HloInstruction* all_reduce) override;
   const EinsumDepthMap& GetEinsumDepthMap() const { return einsum_depth_map_; }
 
  private:
-  EinsumDepthAnalysis() = default;
+  explicit EinsumDepthAnalysis(const SendRecvGroupMap& send_recv_group_map)
+      : send_recv_group_map_(&send_recv_group_map) {}
   Status RunInternal(const HloComputation& computation,
                      const std::optional<ShapeTree<int>>& root_depth);
-  EinsumDepthMap::iterator GetOrCreateDepthTree(HloInstruction* instruction);
-  Status SetInstructionDepth(HloInstruction* instruction, int depth);
+  EinsumDepthMap::iterator GetOrCreateDepthTree(
+      const HloInstruction* instruction);
+  EinsumDepthMap::iterator GetDepthTreeOrDie(const HloInstruction* instruction);
+  Status SetInstructionDepth(const HloInstruction* instruction, int depth);
+  Status SetInstructionDepth(const HloInstruction* instruction,
+                             const ShapeTree<int>& depth);
+  Status SetInstructionDepthFromTupleDepth(
+      const HloInstruction* instruction, const ShapeTree<int>& tuple_depth_tree,
+      int tuple_index);
   Status HandleDepthIncrementInstruction(HloInstruction* instruction);
   Status HandleCalledComputation(const HloComputation& called_computation,
                                  const ShapeTree<int>& root_depth,
                                  absl::Span<HloInstruction* const> operands);
+  Status HandleTupleLike(HloInstruction* tuple_like);
   EinsumDepthMap einsum_depth_map_;
+  const SendRecvGroupMap* const send_recv_group_map_;
+};
+
+using EinsumHeightMap =
+    absl::node_hash_map<const HloInstruction*, ShapeTree<int>>;
+
+// Einsum height is the maximum number of einsums between this instruction and
+// any leaf.
+
+class EinsumHeightAnalysis : public DfsHloVisitorWithDefault {
+ public:
+  static absl::StatusOr<std::unique_ptr<EinsumHeightAnalysis>> Run(
+      const HloComputation& computation,
+      const SendRecvGroupMap& send_recv_group_map);
+  ~EinsumHeightAnalysis() override = default;
+  Status DefaultAction(HloInstruction* instruction) override;
+  Status HandleTuple(HloInstruction* tuple) override;
+  Status HandleGetTupleElement(HloInstruction* get_tuple_element) override;
+  Status HandleDot(HloInstruction* dot) override;
+  Status HandleConvolution(HloInstruction* convolution) override;
+  Status HandleCall(HloInstruction* call) override;
+  Status HandleFusion(HloInstruction* fusion) override;
+  Status HandleWhile(HloInstruction* xla_while) override;
+  Status HandleConditional(HloInstruction* conditional) override;
+  Status HandleSend(HloInstruction* send) override;
+  Status HandleRecv(HloInstruction* recv) override;
+  Status HandleSendDone(HloInstruction* send_done) override;
+  Status HandleRecvDone(HloInstruction* recv_done) override;
+  Status HandleAllReduce(HloInstruction* all_reduce) override;
+  const EinsumHeightMap& GetEinsumHeightMap() const {
+    return einsum_height_map_;
+  }
+
+ private:
+  explicit EinsumHeightAnalysis(const SendRecvGroupMap& send_recv_group_map)
+      : send_recv_group_map_(&send_recv_group_map) {}
+  Status RunInternal(const HloComputation& computation,
+                     absl::Span<HloInstruction* const> operands);
+  EinsumHeightMap::iterator GetOrCreateHeightTree(
+      const HloInstruction* instruction);
+  EinsumHeightMap::iterator GetHeightTreeOrDie(
+      const HloInstruction* instruction);
+  bool HasHeightFor(const HloInstruction* instruction) const;
+  Status SetInstructionHeight(const HloInstruction* instruction, int height);
+  Status SetInstructionHeight(const HloInstruction* instruction,
+                              const ShapeTree<int>& height);
+  Status HandleHeightIncrementInstruction(HloInstruction* instruction);
+  Status HandleCalledComputation(const HloComputation& computation,
+                                 absl::Span<HloInstruction* const> operands);
+  Status HandleTupleLike(HloInstruction* tuple_like);
+
+  EinsumHeightMap einsum_height_map_;
+  const SendRecvGroupMap* const send_recv_group_map_;
 };
 
 // The comment below explains where the labels could originate from. Once
@@ -142,16 +228,20 @@ class HloValueSemantics {
   const HloPosition origin_;
 };
 
+std::string HloValueSemanticsTreeToString(
+    const ShapeTree<const HloValueSemantics*>& tree);
+
 using HloValueSemanticsMap =
-    absl::flat_hash_map<const HloInstruction*,
+    absl::node_hash_map<const HloInstruction*,
                         ShapeTree<const HloValueSemantics*>>;
 class HloValueSemanticsPropagation;
 
 class HloValueSemanticsAnalysis {
  public:
-  static StatusOr<std::unique_ptr<HloValueSemanticsAnalysis>> Run(
+  static absl::StatusOr<std::unique_ptr<HloValueSemanticsAnalysis>> Run(
       const HloModule& module);
   virtual ~HloValueSemanticsAnalysis() = default;
+  bool HasSemanticsFor(const HloInstruction* instruction) const;
   const HloValueSemantics* GetSemantics(const HloInstruction* instruction,
                                         const ShapeIndex& index = {}) const;
 
@@ -160,11 +250,28 @@ class HloValueSemanticsAnalysis {
   }
 
   const EinsumDepthMap& GetEinsumDepthMap() const { return einsum_depth_map_; }
+  const EinsumHeightMap& GetEinsumHeightMap() const {
+    return einsum_height_map_;
+  }
+  int GetDepth(const HloInstruction* instruction,
+               const ShapeIndex& index = {}) const;
+  int GetHeight(const HloInstruction* instruction,
+                const ShapeIndex& index = {}) const;
+
+  const SendRecvGroupMap& GetSendRecvGroupMap() const {
+    return *send_recv_group_map_;
+  }
+
+  absl::StatusOr<HloInstruction*> GetMatchingSendOrRecv(
+      HloInstruction* send_or_recv) const;
 
  protected:
   friend class HloValueSemanticsPropagation;
   explicit HloValueSemanticsAnalysis(const HloModule& module);
-  Status InitializeEinsumDepth();
+  virtual Status InitializeEinsumDepth();
+  virtual Status InitializeEinsumHeight();
+  // We match send and recv HLOs to propagate semantics from send to recv.
+  virtual void InitializeSendRecvGroups();
   void AnnotateWeights();
 
   // Infer semantics for all instructions in the computation. Computation
@@ -199,6 +306,8 @@ class HloValueSemanticsAnalysis {
       value_semantics_map_;
   HloValueSemantics::Id next_id_;
   EinsumDepthMap einsum_depth_map_;
+  EinsumHeightMap einsum_height_map_;
+  std::unique_ptr<SendRecvGroupMap> send_recv_group_map_;
 };
 
 class HloValueSemanticsPropagation : public DfsHloVisitorWithDefault {
@@ -227,6 +336,8 @@ class HloValueSemanticsPropagation : public DfsHloVisitorWithDefault {
       HloInstruction* dynamic_update_slice) override;
   Status HandleCopyStart(HloInstruction* copy_start) override;
   Status HandleCopyDone(HloInstruction* copy_done) override;
+  Status HandleAllGatherStart(HloInstruction* all_gather_start) override;
+  Status HandleAllGatherDone(HloInstruction* all_gather_done) override;
   Status HandleCollectivePermuteStart(
       HloInstruction* collective_permute_start) override;
   Status HandleCollectivePermuteDone(
@@ -234,10 +345,18 @@ class HloValueSemanticsPropagation : public DfsHloVisitorWithDefault {
   Status HandleGather(HloInstruction* gather) override;
   Status HandleScatter(HloInstruction* scatter) override;
   Status HandleAfterAll(HloInstruction* after_all) override;
+  Status HandleAllReduce(HloInstruction* all_reduce) override;
   Status HandleAsyncStart(HloInstruction* async_start) override;
   Status HandleAsyncDone(HloInstruction* async_done) override;
   Status HandleInfeed(HloInstruction* infeed) override;
+  Status HandleOutfeed(HloInstruction* outfeed) override;
   Status HandleDomain(HloInstruction* domain) override;
+  Status HandleOptimizationBarrier(HloInstruction* opt_barrier) override;
+  Status HandleRngBitGenerator(HloInstruction* rng_bit_generator) override;
+  Status HandleSend(HloInstruction* send) override;
+  Status HandleRecv(HloInstruction* recv) override;
+  Status HandleSendDone(HloInstruction* send_done) override;
+  Status HandleRecvDone(HloInstruction* recv_done) override;
 
  protected:
   HloValueSemantics CopySemantics(const HloValueSemantics& semantics) const;
@@ -265,35 +384,43 @@ class HloValueSemanticsPropagation : public DfsHloVisitorWithDefault {
   bool OriginDependsOn(const HloValueSemantics& semantics,
                        const HloPosition& origin_dependence,
                        bool recursive = false) const;
-  StatusOr<HloValueSemantics> CreateGradientSemantics(
-      HloInstruction* gradient_candidate) const;
-  StatusOr<HloValueSemantics> ComputeSemanticsFromStaticAndOther(
+  absl::StatusOr<HloValueSemantics> MaybeCreateGradientSemantics(
+      HloInstruction* gradient_candidate,
+      HloValueSemanticLabel fallback_label) const;
+  absl::StatusOr<HloValueSemantics> ComputeSemanticsFromStaticAndOther(
       const HloValueSemantics& static_semantics,
       const HloValueSemantics& other_semantics,
       HloInstruction* instruction) const;
-  StatusOr<HloValueSemantics> ComputeSemanticsFromRandomAndOther(
+  absl::StatusOr<HloValueSemantics> ComputeSemanticsFromRandomAndOther(
       const HloValueSemantics& random_semantics,
       const HloValueSemantics& other_semantics,
       HloInstruction* instruction) const;
-  StatusOr<HloValueSemantics> ComputeSemanticsFromWeightAndOther(
+  absl::StatusOr<HloValueSemantics> ComputeSemanticsFromWeightAndOther(
       const HloValueSemantics& weight_semantics,
       const HloValueSemantics& other_semantics,
       HloInstruction* instruction) const;
-  StatusOr<HloValueSemantics> ComputeSemanticsFromActivationAndOther(
+  absl::StatusOr<HloValueSemantics> ComputeSemanticsFromActivationAndOther(
       const HloValueSemantics& activation_semantics,
       const HloValueSemantics& other_semantics,
       HloInstruction* instruction) const;
-  StatusOr<HloValueSemantics> ComputeSemanticsFromActivationGradientAndOther(
+  absl::StatusOr<HloValueSemantics>
+  ComputeSemanticsFromActivationGradientAndOther(
       const HloValueSemantics& activation_gradient_semantics,
       const HloValueSemantics& other_semantics,
       HloInstruction* instruction) const;
-  StatusOr<HloValueSemantics> ComputeSemanticsFromWeightGradientAndOther(
+  absl::StatusOr<HloValueSemantics> ComputeSemanticsFromWeightGradientAndOther(
       const HloValueSemantics& weight_gradient_semantics,
       const HloValueSemantics& other_semantics,
       HloInstruction* instruction) const;
-  StatusOr<HloValueSemantics> ComputeSemanticsFromOperands(
+  absl::StatusOr<HloValueSemantics> MergeSemanticsForAnInstruction(
+      HloInstruction* instruction,
+      std::vector<HloValueSemantics>& semantics_vec) const;
+  absl::StatusOr<HloValueSemantics> ComputeSemanticsFromOperands(
       HloInstruction* instruction, absl::Span<const int64_t> operand_indices,
       absl::Span<const ShapeIndex> operand_shape_indices = {}) const;
+  Status HandleTupleLike(HloInstruction* tuple_like);
+  Status HandleCollectiveStart(HloInstruction* collective_start);
+  Status HandleCollectiveDone(HloInstruction* collective_done);
   HloValueSemanticsAnalysis* analysis_;
 };
 

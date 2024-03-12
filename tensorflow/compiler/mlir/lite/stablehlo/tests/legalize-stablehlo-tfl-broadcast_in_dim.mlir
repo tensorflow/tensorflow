@@ -2,7 +2,7 @@
 
 module {
 func.func @main(%arg0: tensor<1x2xi32>) -> tensor<1x2x2xi32> {
-  %0= "stablehlo.broadcast_in_dim"(%arg0) {broadcast_dimensions = dense<[1, 2]> : tensor<2xi64>} : (tensor<1x2xi32>) -> tensor<1x2x2xi32>
+  %0= "stablehlo.broadcast_in_dim"(%arg0) {broadcast_dimensions = array<i64: 1, 2>} : (tensor<1x2xi32>) -> tensor<1x2x2xi32>
   func.return %0 : tensor<1x2x2xi32>
 }
 }

@@ -1,4 +1,4 @@
-/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2015 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -16,10 +16,10 @@ limitations under the License.
 #ifndef XLA_STREAM_EXECUTOR_EVENT_H_
 #define XLA_STREAM_EXECUTOR_EVENT_H_
 
+#include <cstdint>
 #include <memory>
 
-#include "xla/stream_executor/platform/port.h"
-#include "tsl/platform/status.h"
+#include "absl/status/status.h"
 
 namespace stream_executor {
 
@@ -32,7 +32,7 @@ class StreamExecutor;
 
 // The Event class, when supported by a platform, enables low-overhead status
 // reporting for a Stream. An Event is inserted at a location in a stream via
-// the Stream::ThenRecordEvent() API. From then on, the Event's status can be
+// the Stream::RecordEvent() API. From then on, the Event's status can be
 // monitored via the nonblocking Event::PollForStatus() call.
 class Event {
  public:
@@ -61,13 +61,13 @@ class Event {
 
   // Blocks `stream` on this event. `stream` is a raw platform-specific
   // stream (e.g. GpuStreamHandle).
-  tsl::Status WaitForEventOnExternalStream(std::intptr_t stream);
+  absl::Status WaitForEventOnExternalStream(std::intptr_t stream);
 
   // Returns a pointer to the underlying platform-specific implementation.
   internal::EventInterface* implementation() { return implementation_.get(); }
 
-  Event(Event&&) = default;
-  Event& operator=(Event&&) = default;
+  Event(Event&&);
+  Event& operator=(Event&&);
 
  private:
   friend class Stream;
@@ -80,7 +80,8 @@ class Event {
   // the object. Owned.
   std::unique_ptr<internal::EventInterface> implementation_;
 
-  SE_DISALLOW_COPY_AND_ASSIGN(Event);
+  Event(const Event&) = delete;
+  void operator=(const Event&) = delete;
 };
 
 }  // namespace stream_executor

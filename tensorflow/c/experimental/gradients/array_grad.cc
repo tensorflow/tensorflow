@@ -33,7 +33,7 @@ class IdentityNGradientFunction : public GradientFunction {
       }
       grad_inputs[i] = grad_input;
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
   ~IdentityNGradientFunction() override {}
 };

@@ -1,4 +1,4 @@
-/* Copyright 2018 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2018 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -15,13 +15,13 @@ limitations under the License.
 
 #include "xla/service/gpu/cudnn_pad_for_convolutions.h"
 
+#include <gmock/gmock.h>
+#include <gtest/gtest.h>
 #include "xla/service/gpu/cublas_cudnn.h"
 #include "xla/service/hlo_parser.h"
 #include "xla/service/pattern_matcher.h"
 #include "xla/service/pattern_matcher_gmock.h"
-#include "xla/status_macros.h"
 #include "xla/tests/hlo_test_base.h"
-#include "xla/util.h"
 
 namespace xla {
 namespace gpu {
@@ -30,6 +30,24 @@ namespace {
 namespace m = xla::match;
 
 class CudnnPadForConvolutionsTest : public HloTestBase {};
+
+TEST_F(CudnnPadForConvolutionsTest, DoNotPadF16ForwardConvWhenGrouped) {
+  auto module = ParseAndReturnVerifiedModule(R"(
+  HloModule TestModule
+
+  ENTRY TestComputation {
+    input = f16[704,48,1,49]{3,2,1,0} parameter(0)
+    filter = f16[44,768,1,50]{3,2,1,0} parameter(1)
+    ROOT result = (f16[1,128,48,768]{3,2,1,0}, u8[0]{0})
+      custom-call(input, filter)
+      , window={size=1x50 pad=0_0x64_64}
+      , dim_labels=fb01_io01->01bf
+      , feature_group_count=16
+      , custom_call_target="__cudnn$convForward"
+  })")
+                    .value();
+  EXPECT_FALSE(CudnnPadForConvolutions({7, 5}).Run(module.get()).value());
+}
 
 TEST_F(CudnnPadForConvolutionsTest, PadF16ForwardConvInputChannels) {
   auto module = ParseAndReturnVerifiedModule(R"(

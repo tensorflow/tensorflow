@@ -16,18 +16,22 @@
 
 import tensorflow as tf
 
+from tensorflow.python.eager import test
 
-# This test is used for OSS since the Keras package import is different
-# between internal g3 and external OSS. We need to make sure when TensorFlow
-# is imported, Keras should be loaded as well (not just lazy load). Some of the
-# Keras code load should be triggered so that it will inject proper
+
+# Some of the Keras code load should be triggered so that it will inject proper
 # functionality like registering the optimizer class for SavedModel.
 class KerasInjectionTest(tf.test.TestCase):
 
   def test_keras_optimizer_injected(self):
+    save_path = test.test_src_dir_path(
+        'cc/saved_model/testdata/OptimizerSlotVariableModule')
+    _ = tf.saved_model.load(save_path)
     # Make sure keras optimizers are registed without accessing keras code
-    self.assertIn('optimizer',
-                  tf.__internal__.saved_model.load.registered_identifiers())
+    # when loading a model with optimizers
+    self.assertIn(
+        'optimizer', tf.__internal__.saved_model.load.registered_identifiers()
+    )
 
 
 if __name__ == '__main__':

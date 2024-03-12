@@ -57,7 +57,7 @@ Status DecodeWavShapeFn(InferenceContext* c) {
   }
   c->set_output(0, c->MakeShape({samples_dim, channels_dim}));
   c->set_output(1, c->Scalar());
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status EncodeWavShapeFn(InferenceContext* c) {
@@ -65,7 +65,7 @@ Status EncodeWavShapeFn(InferenceContext* c) {
   TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 2, &unused));
   TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 0, &unused));
   c->set_output(0, c->Scalar());
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status SpectrogramShapeFn(InferenceContext* c) {
@@ -107,7 +107,7 @@ Status SpectrogramShapeFn(InferenceContext* c) {
       c->MakeDim(1 + NextPowerOfTwo(window_size) / 2);
   c->set_output(0,
                 c->MakeShape({input_channels, output_length, output_channels}));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status MfccShapeFn(InferenceContext* c) {
@@ -127,7 +127,7 @@ Status MfccShapeFn(InferenceContext* c) {
 
   c->set_output(0, c->MakeShape({spectrogram_channels, spectrogram_length,
                                  output_channels}));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace

@@ -59,7 +59,7 @@ class WindowDatasetParams : public DatasetParams {
     input_names->emplace_back(WindowDatasetOp::kShift);
     input_names->emplace_back(WindowDatasetOp::kStride);
     input_names->emplace_back(WindowDatasetOp::kDropRemainder);
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   Status GetAttributes(AttributeVector* attr_vector) const override {
@@ -67,7 +67,7 @@ class WindowDatasetParams : public DatasetParams {
     attr_vector->emplace_back("output_types", output_dtypes_);
     attr_vector->emplace_back("output_shapes", output_shapes_);
     attr_vector->emplace_back("metadata", "");
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   string dataset_type() const override { return WindowDatasetOp::kDatasetType; }

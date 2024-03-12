@@ -14,18 +14,19 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/delegates/utils/simple_opaque_delegate.h"
 
-#include <limits>
+#include <stddef.h>
+#include <stdint.h>
+
 #include <memory>
-#include <string>
 #include <vector>
 
+#include "tensorflow/lite/array.h"
 #include "tensorflow/lite/builtin_ops.h"
 #include "tensorflow/lite/c/c_api.h"
 #include "tensorflow/lite/c/c_api_opaque.h"
 #include "tensorflow/lite/c/c_api_types.h"
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/kernels/internal/compatibility.h"
-#include "tensorflow/lite/util.h"
 
 namespace tflite {
 namespace {
@@ -130,6 +131,31 @@ TfLiteOpaqueDelegate* TfLiteOpaqueDelegateFactory::CreateSimpleDelegate(
   opaque_delegate_builder.Prepare = &DelegatePrepare;
   opaque_delegate_builder.flags = flags;
   opaque_delegate_builder.data = simple_delegate.release();
+  opaque_delegate_builder.CopyFromBufferHandle =
+      [](TfLiteOpaqueContext* context, TfLiteOpaqueDelegate* delegate,
+         void* data, TfLiteBufferHandle buffer_handle,
+         TfLiteOpaqueTensor* tensor) {
+        auto* simple_delegate =
+            reinterpret_cast<SimpleOpaqueDelegateInterface*>(data);
+        return simple_delegate->CopyFromBufferHandle(context, buffer_handle,
+                                                     tensor);
+      };
+  opaque_delegate_builder.CopyToBufferHandle =
+      [](TfLiteOpaqueContext* context, TfLiteOpaqueDelegate* delegate,
+         void* data, TfLiteBufferHandle buffer_handle,
+         TfLiteOpaqueTensor* tensor) {
+        auto* simple_delegate =
+            reinterpret_cast<SimpleOpaqueDelegateInterface*>(data);
+        return simple_delegate->CopyToBufferHandle(context, buffer_handle,
+                                                   tensor);
+      };
+  opaque_delegate_builder.FreeBufferHandle =
+      [](TfLiteOpaqueContext* context, TfLiteOpaqueDelegate* delegate,
+         void* data, TfLiteBufferHandle* buffer_handle) {
+        auto* simple_delegate =
+            reinterpret_cast<SimpleOpaqueDelegateInterface*>(data);
+        simple_delegate->FreeBufferHandle(context, buffer_handle);
+      };
 
   return TfLiteOpaqueDelegateCreate(&opaque_delegate_builder);
 }

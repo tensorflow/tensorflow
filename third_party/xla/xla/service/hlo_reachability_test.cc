@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -200,11 +200,11 @@ TEST_F(HloReachabilityTest, ChannelReachability) {
   auto recv_done = builder.AddInstruction(HloInstruction::CreateRecvDone(recv));
 
   auto module = CreateNewVerifiedModule();
-  module->config().set_use_spmd_partitioning(false);
-  module->config().set_static_device_assignment(DeviceAssignment(1, 2));
+  module->mutable_config().set_use_spmd_partitioning(false);
+  module->mutable_config().set_static_device_assignment(DeviceAssignment(1, 2));
   auto computation = module->AddEntryComputation(builder.Build(recv_done));
   auto reachability = HloReachabilityMap::Build(computation);
-  EXPECT_TRUE(reachability->IsReachable(param, recv_done));
+  EXPECT_FALSE(reachability->IsReachable(param, recv_done));
   EXPECT_FALSE(reachability->IsReachable(send, recv));
   EXPECT_FALSE(reachability->IsReachable(send_done, recv));
 }

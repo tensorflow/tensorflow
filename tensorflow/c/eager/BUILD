@@ -1,6 +1,5 @@
 # Experimental extensions to the C API for eager execution of kernels.
 
-load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load(
     "//tensorflow:tensorflow.bzl",
     "tf_cc_test",
@@ -13,6 +12,7 @@ load(
     "//tensorflow/core/platform:build_config_root.bzl",
     "tf_cuda_tests_tags",
 )
+load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -460,6 +460,7 @@ cc_library(
         "//tensorflow/core/platform:intrusive_ptr",
         "//tensorflow/core/platform:refcount",
         "//tensorflow/core/platform:status",
+        "@com_google_absl//absl/status:statusor",
     ],
 )
 
@@ -816,8 +817,9 @@ cc_library(
     ],
     deps = [
         ":abstract_function",
-        "//tensorflow/core/lib/llvm_rtti",
-        "//tensorflow/core/platform:errors",
+        "//tensorflow/core:framework",
+        "//tensorflow/core/platform:refcount",
+        "//tensorflow/core/platform:status",
     ],
 )
 

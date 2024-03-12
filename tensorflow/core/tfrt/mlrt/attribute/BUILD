@@ -10,7 +10,6 @@ package(
         # copybara:uncomment "//smartass/brain/ops/tfrt_kernels:__subpackages__",
         "//tensorflow/compiler/mlir/tfrt/transforms/mlrt:__subpackages__",
         "//tensorflow/compiler/mlir/tfrt/translate/mlrt:__subpackages__",
-        "//tensorflow/core/tfrt:__subpackages__",
     ],
 )
 

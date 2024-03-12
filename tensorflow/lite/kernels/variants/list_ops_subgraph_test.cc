@@ -287,5 +287,39 @@ TEST_F(WhileIncrementListOpsTest,
   }
 }
 
+class ListReserveLengthSubgraphTest
+    : public ListOpsSubgraphTest,
+      public ::testing::WithParamInterface<int> {};
+
+TEST_P(ListReserveLengthSubgraphTest, InterpreterOutputsListLength) {
+  const int length = GetParam();
+
+  builder_.BuildReserveLengthSubgraph(&interpreter_.primary_subgraph());
+
+  ASSERT_EQ(interpreter_.ResizeInputTensor(0, {1}), kTfLiteOk);
+  ASSERT_EQ(interpreter_.ResizeInputTensor(1, {}), kTfLiteOk);
+  ASSERT_EQ(interpreter_.AllocateTensors(), kTfLiteOk);
+
+  TfLiteTensor* element_shape = interpreter_.input_tensor(0);
+  element_shape->data.i32[0] = 2;
+
+  TfLiteTensor* num_elements = interpreter_.input_tensor(1);
+  num_elements->data.i32[0] = length;
+
+  ASSERT_EQ(interpreter_.Invoke(), kTfLiteOk);
+
+  TfLiteTensor* output = interpreter_.output_tensor(0);
+  ASSERT_EQ(output->type, kTfLiteInt32);
+  ASSERT_EQ(output->allocation_type, kTfLiteArenaRw);
+  ASSERT_THAT(output, DimsAre({}));
+  ASSERT_TRUE(output->data.data != nullptr);
+
+  ASSERT_EQ(output->data.i32[0], length);
+}
+
+INSTANTIATE_TEST_SUITE_P(ListOpsSubgraphParamTests,
+                         ListReserveLengthSubgraphTest,
+                         testing::Values(0, 1, 2, 5, 10));
+
 }  // namespace
 }  // namespace tflite

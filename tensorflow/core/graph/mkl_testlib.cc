@@ -1,4 +1,4 @@
-/* Copyright 2021 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2024 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -27,6 +27,17 @@ Node* oneDNNSoftmax(Graph* g, Node* input) {
   Node* ret = nullptr;
   TF_CHECK_OK(NodeBuilder(g->NewName("n"), "_MklSoftmax")
                   .Input(input)
+                  .Attr("_kernel", mkl_op_registry::kMklNameChangeOpLabel)
+                  .Finalize(g, &ret));
+  return ret;
+}
+
+Node* oneDNNSparseCSRMatmul(Graph* g, Node* csr_matrix_t, Node* b) {
+  Node* ret = nullptr;
+  TF_CHECK_OK(NodeBuilder(g->NewName("n"), "_MklNativeSparseMatrixMatMul")
+                  .Input(csr_matrix_t)
+                  .Input(b)
+                  .Attr("T", DT_FLOAT)
                   .Attr("_kernel", mkl_op_registry::kMklNameChangeOpLabel)
                   .Finalize(g, &ret));
   return ret;

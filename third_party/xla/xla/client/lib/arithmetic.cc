@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/client/lib/arithmetic.h"
 
+#include <cstdint>
 #include <memory>
 #include <numeric>
 #include <string>
@@ -24,9 +25,10 @@ limitations under the License.
 #include "xla/client/lib/constants.h"
 #include "xla/client/xla_builder.h"
 #include "xla/client/xla_computation.h"
+#include "xla/primitive_util.h"
+#include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/status_macros.h"
-#include "xla/types.h"
+#include "xla/statusor.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
@@ -102,7 +104,7 @@ XlaComputation CreateScalarIdentityWithZeroComputation(PrimitiveType type,
 
 XlaOp Any(XlaOp predicates) {
   XlaBuilder* builder = predicates.builder();
-  return builder->ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
+  return builder->ReportErrorOrReturn([&]() -> absl::StatusOr<XlaOp> {
     auto f = ConstantR0<bool>(builder, false);
     XlaComputation logical_or = CreateScalarOrComputation(PRED, builder);
     TF_ASSIGN_OR_RETURN(const Shape& predicates_shape,
@@ -140,7 +142,7 @@ static XlaComputation CreateMinMaxComputation(XlaBuilder* outer_builder,
 
 XlaOp ArgMinMax(XlaOp input, PrimitiveType output_type, int axis, bool is_min) {
   XlaBuilder* builder = input.builder();
-  return builder->ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
+  return builder->ReportErrorOrReturn([&]() -> absl::StatusOr<XlaOp> {
     TF_ASSIGN_OR_RETURN(Shape input_shape, builder->GetShape(input));
     XlaOp value_init_value;
     if (is_min) {
@@ -151,8 +153,8 @@ XlaOp ArgMinMax(XlaOp input, PrimitiveType output_type, int axis, bool is_min) {
     int64_t dimension_size = input_shape.dimensions(axis);
     auto index_type = dimension_size <= INT32_MAX ? S32 : output_type;
     XlaOp index_init_value = Zero(builder, index_type);
-    auto iota_shape = input_shape;
-    iota_shape.set_element_type(index_type);
+    auto iota_shape =
+        ShapeUtil::MakeShape(index_type, input_shape.dimensions());
     XlaOp iota = Iota(builder, iota_shape, axis);
 
     XlaComputation reducer = CreateMinMaxComputation(

@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -93,7 +93,7 @@ int main(int argc, char** argv) {
       xla::cpu::CpuAotCompilationOptions::RelocationModel::Static);
 
   auto results = client->CompileAheadOfTime({instance}, options).value();
-  auto result = xla::unique_ptr_static_cast<xla::cpu::CpuAotCompilationResult>(
+  auto result = xla::unique_ptr_down_cast<xla::cpu::CpuAotCompilationResult>(
       std::move(results.front()));
   // It's lame to hard-code the buffer assignments, but we need
   // local_client_aot_test.cc to be able to easily invoke the function.

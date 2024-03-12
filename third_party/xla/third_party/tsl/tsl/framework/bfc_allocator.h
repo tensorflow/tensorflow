@@ -352,7 +352,8 @@ class BFCAllocator : public Allocator {
     // for the memory allocation represented by "p"
     std::vector<ChunkHandle> handles_;
 
-    TF_DISALLOW_COPY_AND_ASSIGN(AllocationRegion);
+    AllocationRegion(const AllocationRegion&) = delete;
+    void operator=(const AllocationRegion&) = delete;
   };
 
   // RegionManager aggregates one or more "AllocationRegions" and provides
@@ -578,10 +579,6 @@ class BFCAllocator : public Allocator {
   // The size of the current region allocation.
   size_t curr_region_allocation_bytes_;
 
-  // An indicator that expansion of a region has hit the limits
-  // of the available memory.
-  bool started_backpedal_ = false;
-
   // Whether the allocator will coalesce adjacent sub allocator provided
   // AllocationRegions. This may be disabled if discrete sub allocator
   // regions can't be treated as contiguous (e.g. if the allocation refers to
@@ -619,7 +616,8 @@ class BFCAllocator : public Allocator {
 
   friend class GPUBFCAllocatorPrivateMethodsTest;
   friend class GPUBFCAllocatorPrivateMethodsTest_SubAllocatorSpecific;
-  TF_DISALLOW_COPY_AND_ASSIGN(BFCAllocator);
+  BFCAllocator(const BFCAllocator&) = delete;
+  void operator=(const BFCAllocator&) = delete;
 };
 
 }  // namespace tsl

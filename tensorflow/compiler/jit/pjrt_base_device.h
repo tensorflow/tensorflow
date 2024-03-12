@@ -58,7 +58,8 @@ class PjRtBaseDevice : public LocalDevice {
     std::vector<XlaShapeLayoutHelpers::ShapeDeterminationFns>
         shape_determination_fns_;
 
-    TF_DISALLOW_COPY_AND_ASSIGN(Metadata);
+    Metadata(const Metadata&) = delete;
+    void operator=(const Metadata&) = delete;
   };
 
   struct Options {
@@ -98,7 +99,7 @@ class PjRtBaseDevice : public LocalDevice {
   // Creates a new PJRT base device.
   PjRtBaseDevice(const SessionOptions& session_options, const Options& options);
 
-  static StatusOr<const PjRtBaseDevice::Metadata*> GetMetadataFromDevice(
+  static absl::StatusOr<const PjRtBaseDevice::Metadata*> GetMetadataFromDevice(
       DeviceBase* device);
 
  private:

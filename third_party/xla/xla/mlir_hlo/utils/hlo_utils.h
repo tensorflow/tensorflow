@@ -1,4 +1,4 @@
-/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2019 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -36,10 +36,9 @@ namespace hlo {
 // between two ranked tensors.
 // If `allow_empty` is true, then null can be returned to mean that the
 // broadcast is an "identity".
-mlir::DenseIntElementsAttr getBroadcastDimensionsAttr(mlir::Builder* b,
-                                                      mlir::Value x,
-                                                      mlir::Value y,
-                                                      bool allowEmpty = true);
+mlir::DenseI64ArrayAttr getBroadcastDimensionsAttr(mlir::Builder* b,
+                                                   mlir::Value x, mlir::Value y,
+                                                   bool allowEmpty = true);
 
 // Get a constant splat for the given value of type. Requires value to be of
 // type static shaped RankedTensorType.

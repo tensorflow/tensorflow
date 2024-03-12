@@ -16,10 +16,25 @@ limitations under the License.
 #ifndef TENSORFLOW_TSL_PLATFORM_HOST_INFO_H_
 #define TENSORFLOW_TSL_PLATFORM_HOST_INFO_H_
 
+#include <cstdint>
+
 #include "tsl/platform/types.h"
 
 namespace tsl {
 namespace port {
+
+// Statistical data of IO operations performed by the job.
+struct IOStatistics {
+  struct Distribution {
+    uint64_t count = 0;
+    double mean = 0.0;
+    double std_dev = 0.0;
+  };
+  // Distribution of round trip IO latency in microseconds.
+  Distribution roundtrip_latency_usec;
+  // Distribution of data received by IO reads in bytes.
+  Distribution response_bytes;
+};
 
 // Return the hostname of the machine on which this process is running.
 string Hostname();
@@ -33,6 +48,9 @@ int64_t JobUid();
 
 // Returns the Borg task ID as an int64_t if it exists. Otherwise return -1.
 int64_t TaskId();
+
+// Retrieves the host file read statistics.
+IOStatistics GetIOStatistics();
 
 }  // namespace port
 }  // namespace tsl

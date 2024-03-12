@@ -37,7 +37,8 @@ limitations under the License.
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
 #include "stablehlo/dialect/StablehloOps.h"  // from @stablehlo
 #include "tensorflow/compiler/mlir/lite/stablehlo/transforms/passes.h"
-#include "tensorflow/compiler/mlir/quantization/stablehlo/uniform_quantized_types.h"
+#include "tensorflow/compiler/mlir/quantization/common/attrs_and_constraints.h"
+#include "tensorflow/compiler/mlir/quantization/common/uniform_quantized_types.h"
 
 #define DEBUG_TYPE "stablehlo-compose-uniform-quantized-type"
 
@@ -47,6 +48,7 @@ namespace {
 
 using ::mlir::quant::CreateI8F32UniformQuantizedPerAxisType;
 using ::mlir::quant::CreateI8F32UniformQuantizedType;
+using ::mlir::quant::TryCast;
 using ::mlir::quant::UniformQuantizedPerAxisType;
 using ::mlir::quant::UniformQuantizedType;
 
@@ -58,21 +60,6 @@ using ::mlir::quant::UniformQuantizedType;
 constexpr StringRef kUniformQuantizeFunctionNameSubstring = "uniform_quantize";
 constexpr StringRef kUniformDequantizeFunctionNameSubstring =
     "uniform_dequantize";
-
-// Tries casting `op` with a concrete op type `T`. If the cast fails or `op` is
-// a `nullptr`, returns `failure` and prints a debugging message identifying
-// the cast attempt as `name`.
-template <typename T>
-FailureOr<T> TryCast(Operation* op, const StringRef name) {
-  auto cast_op = dyn_cast_or_null<T>(op);
-  if (cast_op) {
-    return cast_op;
-  } else {
-    LLVM_DEBUG(llvm::dbgs() << "Failed to match " << name << " ("
-                            << T::getOperationName() << ").\n");
-    return failure();
-  }
-}
 
 class ComposeUniformQuantizedTypePass
     : public impl::ComposeUniformQuantizedTypePassBase<
@@ -731,17 +718,18 @@ class ComposeUniformQuantizedConvolutionOp
     auto combined_scale_constant_op = cast<stablehlo::ConstantOp>(
         scale_combined_broadcast_in_dim_op.getOperand().getDefiningOp());
 
-    SmallVector<float> filter_scale_values;
+    SmallVector<double> filter_scale_values;
     for (const auto combined_scale_value : combined_scale_constant_op.getValue()
                                                .cast<DenseFPElementsAttr>()
                                                .getValues<float>()) {
-      const float filter_scale_value =
-          combined_scale_value * input_inverse_scales_value;
+      // UniformQuantizedPerAxisType requires scales to have double dtype.
+      const double filter_scale_value = static_cast<double>(
+          combined_scale_value * input_inverse_scales_value);
       filter_scale_values.emplace_back(filter_scale_value);
     }
 
     // Assumes it is symmetric.
-    SmallVector<int8_t> filter_zero_point_values(
+    SmallVector<int64_t> filter_zero_point_values(
         /*Size=*/filter_scale_values.size(), /*Value=*/0);
 
     // Use quantization dimension = 3 that corresponds to the output channel
@@ -1083,15 +1071,17 @@ class ComposeUniformQuantizedDotGeneralOp
     // s1 * s2
     auto merged_scale_constant_op =
         cast<stablehlo::ConstantOp>(multiply_op_second_operand.getDefiningOp());
-    SmallVector<float> filter_scale_values;
+    SmallVector<double> filter_scale_values;
     for (const auto merged_scale : merged_scale_constant_op.getValue()
                                        .cast<DenseFPElementsAttr>()
                                        .getValues<float>()) {
       // (s1 * s2) * (1 / s1) = s2
-      filter_scale_values.push_back(merged_scale * input_inverse_scale_value);
+      // UniformQuantizedPerAxisType requires scales to have double dtype.
+      filter_scale_values.push_back(
+          static_cast<double>(merged_scale * input_inverse_scale_value));
     }
 
-    SmallVector<int8_t> filter_zero_point_values(
+    SmallVector<int64_t> filter_zero_point_values(
         /*Size=*/filter_scale_values.size(), /*Value=*/0);
 
     const int quantization_dimension = GetFilterQuantizationDimension(

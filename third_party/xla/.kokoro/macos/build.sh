@@ -81,6 +81,7 @@ bazel test \
     --output_filter="" \
     --macos_minimum_os=10.15 \
     --keep_going \
+    --test_output=errors \
     --config=nonccl \
     --build_tag_filters=$TAGS_FILTER  --test_tag_filters=$TAGS_FILTER \
     --test_size_filters=small,medium \

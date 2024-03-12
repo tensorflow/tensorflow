@@ -1,4 +1,4 @@
-/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -24,11 +24,88 @@ namespace xla {
 // P2PSchedulePreparation is a pass to linearize point-to-point operation chain
 // to prepare for any HLO scheduler. In particular, this pass currently does the
 // following:
+// (1) For an unpipelined P2P Send-Recv chain, add control dependence to
+//     express this ordering:
+//       recv => send => recv-done => send-done
 //
-// Adds control prececessors/successors to ensure that a P2P Send-Recv sequence
-// on a non-host device will be scheduled before other operations that use the
-// Recv result and may also invoke P2P operations indirectly. Here is an example
-// to illustrate the problem we address:
+// (2) For a pipelined P2P Send-Recv chain, add control dependence to the
+//     while-body to express this ordering:
+//       send => recv
+//     In the computation with such a while-loop, the data dependence already
+//     expresses this ordering:
+//       recv => recv-done => while-loop => send => send-done
+//
+// (3) For a pipelined P2P Send-Recv chain, if the while-body has other
+// collective ops, we add control dependence to ensure that the pipelined
+// Send-done is ordered before other P2P chains while the pipelined
+// Recv is ordered after other P2P chains. For example, if the other collective
+// op is another Send-Recv chain, we make the pipelined Send-done the control
+// predecessor of the other Recv and the pipelined Recv the control successor of
+// the other other Send. Here is an example to illustrate the problem we
+// address:
+//
+// Assume a while-body with the following HLO collective-permute operations:
+//    collective-permute-start-1 = (u32[2], u32[2])
+//      collective-permute-start(data), channel_id=1...
+//    collective-permute-done-1 = u32[2], channel_id=1
+//    use of collective-permute-done-1 result
+//    collective-permute-start-2 = (u32[2], u32[2])
+//      collective-permute-start(data), channel_id=2...
+//    collective-permute-done-2 = u32[2], channel_id=2
+//    use of collective-permute-done-2 result
+//
+// Now assume we transform the collective-permute operations into two P2P
+// Send-Recv chains, the block of code will become something like this:
+//    after-all-1 = token[] after-all()
+//    recv-1 = (u32[2], token[]) recv(after-all-1), channel_id=1 ...
+//    send-1 = (u32[2], token[]) send(data, after-all-1), channel_id=1 ...
+//    recv-done-1 = (u32[2], token[]) recv-done(recv-1), channel_id=1 ...
+//    send-done-1 = token[] send-done(send-1), channel_id=1 ...
+//    use of recv-done-1 result
+//    after-all-2 = token[] after-all()
+//    recv-2 = (u32[2], token[]) recv(after-all-2), channel_id=2 ...
+//    send-2 = (u32[2], token[]) send(data, after-all-2), channel_id=2 ...
+//    recv-done-2 = (u32[2], token[]) recv-done(recv-2), channel_id=2 ...
+//    send-done-2 = token[] send-done(send-2), channel_id=2 ...
+//    use of recv-done-2 result
+//
+// If the while-loop is not pipelined, this pass adds control dependence to
+// make sure the first Send-Recv chain finish before the second Send-Recv
+// starts.
+//
+// If the while-loop is pipelined for the first Send-Recv chain, then the
+// first Recv and the last Send of the chain are moved to the computation
+// that calls the while-loop, and the block of code in the while-body will
+// become something like this:
+
+//    after-all-1 = token[] after-all()
+//    send-1 = (u32[2], token[]) send(data, after-all-1), channel_id=1 ...
+//    send-done-1 = token[] send-done(send-1), channel_id=1 ...
+//    use of recv-done-1 result from the previous iteration or the computation
+//      that calls the while-loop (for the first iteration)
+//
+//    after-all-2 = token[] after-all()
+//    recv-2 = (u32[2], token[]) recv(after-all-2), channel_id=2 ...
+//    send-2 = (u32[2], token[]) send(data, after-all-2), channel_id=2 ...
+//    recv-done-2 = (u32[2], token[]) recv-done(recv-2), channel_id=2 ...
+//    send-done-2 = token[] send-done(send-2), channel_id=2 ...
+//    use of recv-done-2 result
+//
+//    recv-1 = (u32[2], token[]) recv(after-all-1), channel_id=1 ...
+//    recv-done-1 = (u32[2], token[]) recv-done(recv-1), channel_id=1 ...
+//
+// In this case, we make send-done-1 the control predecessor of recv-2 and
+// send-done-2 the control predecessor of recv-1 to ensure that the second
+// Send-Recv chain is executed after the Send for the first chain finishes and
+// before the Recv for the first chain starts.
+//
+// (4) For an unpipelined P2P chain or a pipelined P2P chain in the computation
+// containing the pipelined while-loop, adds control dependence to ensure
+// other instructions that may invoke collective operations do not interference
+// with the P2P chain.
+//
+// Here is an example to illustrate a potential scheduler deadlock we want to
+// avoid:
 //
 // Assume a computation with the following HLO instructions, where while-body
 // invokes collective-permute operations:
@@ -65,15 +142,38 @@ namespace xla {
 // while-result can't be scheduled when the Send-Recv chain is holding the
 // resources for P2P operations and recv-done cannot be scheduled as well
 // because while-result depends on while-init which depends on recv-done. To
-// avoid this deadlock, we make send-done a control predecessor of recv-data
-// in this pass.
+// avoid this deadlock, we make send-done a control predecessor of the
+// while-loop with nested collective ops, regardless whether the P2P chain is
+// pipelined or not.
 //
-// Note that instead of making send-done a control predecessor of recv-data, we
-// may make send-done a control predecessor of the instruction that contains
-// the nested P2P operations, which is while-result in this example. This allows
-// recv-data and while-init to be scheduled before send-done. However, doing so
-// would complicate the implementation. We leave this to future improvement if
-// we will find out it can actually help performance in real practice.
+// Here is an example to illustrate a potential runtime deadlock we want to
+// avoid:
+//
+// Assume a computation with the following HLO instructions:
+//    collective-permute-start = (u32[2], u32[2])
+//      collective-permute-start(data) ...
+//    collective-permute-done = u32[2]
+//      collective-permute-done(collective-permute-start)
+//    an-independent-all-gather = ... all-gather(...)
+//
+// If we transform the collective-permute operations into a sequence of P2P
+// Send-Recv sequence and schedule All-Gather operation between the Send
+// and Recv, a runtime deadlock will happen as the devices that would have
+// bypassed Recv to perform Send are not blocked by All-Gather.
+//
+//    after-all = token[] after-all()
+//    recv = (u32[2], token[]) recv(after-all) ...
+//    an-independent-all-gather = ... all-gather(...)
+//    send = (u32[2], token[]) send(data, after-all),
+//      control-predecessors={recv} ...
+//    recv-done = (u32[2], token[]) recv-done(recv),
+//      control-predecessors={send} ...
+//    send-done = token[] send-done(send),
+//      control-predecessors={recv-done} ...
+//
+// To avoid this deadlock, we either make All-Gather a control predecessor of
+// Send or make Send-Done a control predecessor of All-Gather.
+//
 class P2PSchedulePreparation : public HloModulePass {
  public:
   absl::string_view name() const override {
@@ -83,7 +183,7 @@ class P2PSchedulePreparation : public HloModulePass {
   using HloPassInterface::Run;
   // Runs P2PSchedulePreparation pass on computations in 'module'.
   // Returns whether the 'module' was changed.
-  StatusOr<bool> Run(
+  absl::StatusOr<bool> Run(
       HloModule* module,
       const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 };

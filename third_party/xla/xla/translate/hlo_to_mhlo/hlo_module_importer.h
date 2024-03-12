@@ -1,4 +1,4 @@
-/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2019 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -48,6 +48,9 @@ class HloModuleImporter {
   Status Import(const xla::HloModuleProto& module);
 
  private:
+  void ImportFrontendAttributes(const xla::HloModule& hlo_module,
+                                mlir::ModuleOp module);
+
   bool import_all_computation_;
   mlir::SymbolTable symbol_table_;
   mlir::Builder builder_;

@@ -1,4 +1,4 @@
-/* Copyright 2021 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2021 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -45,9 +45,13 @@ class StatefulRngSpmdPartitioningVisitor
 
 class StatefulRngSpmdPartitioner : public spmd::SpmdPartitioner {
  public:
-  StatefulRngSpmdPartitioner(int64_t num_partitions, int64_t num_replicas)
-      : spmd::SpmdPartitioner(num_partitions, num_replicas,
-                              GetSpmdPartitionerOptions()) {}
+  StatefulRngSpmdPartitioner(int64_t num_partitions, int64_t num_replicas,
+                             int64_t threshold_for_windowed_einsum_mib = 100000,
+                             bool windowed_einsum_use_multiple_streams = false)
+      : spmd::SpmdPartitioner(
+            num_partitions, num_replicas,
+            GetSpmdPartitionerOptions(threshold_for_windowed_einsum_mib,
+                                      windowed_einsum_use_multiple_streams)) {}
 
  protected:
   std::unique_ptr<spmd::SpmdPartitioningVisitor> CreateVisitor(
@@ -64,12 +68,14 @@ class StatefulRngSpmdPartitioner : public spmd::SpmdPartitioner {
       const HloInstruction* hlo) override;
 
  private:
-  static spmd::SpmdPartitionerOptions GetSpmdPartitionerOptions() {
+  static spmd::SpmdPartitionerOptions GetSpmdPartitionerOptions(
+      int64_t threshold_for_windowed_einsum_mib,
+      bool windowed_einsum_use_multiple_streams = false) {
     spmd::SpmdPartitionerOptions options;
     options.allow_module_signature_change = true;
-    // Setting windowed einsum threshold to be large to disable it for GPU by
-    // default.
-    options.threshold_for_windowed_einsum_mib = 100000;
+    options.threshold_for_windowed_einsum_mib =
+        threshold_for_windowed_einsum_mib;
+    options.unroll_windowed_einsum = windowed_einsum_use_multiple_streams;
     return options;
   }
 };

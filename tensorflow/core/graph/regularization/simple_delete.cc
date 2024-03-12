@@ -40,7 +40,7 @@ void RegularizeNodes(GraphDef* graph_def) {
       // and StatefulPartitionedCall ops, by stripping the suffix UID if it
       // has one.
       std::string function_name = node.attr().find("f")->second.func().name();
-      StatusOr<int64_t> uid = GetSuffixUID(function_name);
+      absl::StatusOr<int64_t> uid = GetSuffixUID(function_name);
       if (uid.ok()) {
         node.mutable_attr()->find("f")->second.mutable_func()->set_name(
             std::string(

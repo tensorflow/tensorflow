@@ -176,7 +176,8 @@ class ActivityScope {
 
  private:
   ActivityId activity_id_;
-  TF_DISALLOW_COPY_AND_ASSIGN(ActivityScope);
+  ActivityScope(const ActivityScope&) = delete;
+  void operator=(const ActivityScope&) = delete;
 };
 
 }  // namespace activity_watcher

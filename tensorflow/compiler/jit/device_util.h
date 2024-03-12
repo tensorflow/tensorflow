@@ -118,7 +118,7 @@ class DeviceInfoCache {
     return names_[device.id()];
   }
 
-  StatusOr<DeviceId> GetIdFor(absl::string_view name);
+  absl::StatusOr<DeviceId> GetIdFor(absl::string_view name);
 
   using DeviceRegistration = const XlaOpRegistry::DeviceRegistration;
 
@@ -126,7 +126,8 @@ class DeviceInfoCache {
     return id_to_compilation_device_[device.id()];
   }
 
-  StatusOr<DeviceRegistration*> GetCompilationDevice(absl::string_view name) {
+  absl::StatusOr<DeviceRegistration*> GetCompilationDevice(
+      absl::string_view name) {
     TF_ASSIGN_OR_RETURN(DeviceId device_id, GetIdFor(name));
     return GetCompilationDevice(device_id);
   }
@@ -137,7 +138,8 @@ class DeviceInfoCache {
 
   using DeviceTypeConstRef = std::reference_wrapper<const DeviceType>;
 
-  StatusOr<DeviceTypeConstRef> GetDeviceTypeFor(absl::string_view device_name) {
+  absl::StatusOr<DeviceTypeConstRef> GetDeviceTypeFor(
+      absl::string_view device_name) {
     TF_ASSIGN_OR_RETURN(DeviceId device_id, GetIdFor(device_name));
     return std::cref(*id_to_device_type_[device_id.id()]);
   }
@@ -196,7 +198,7 @@ Status DeviceNameToDeviceType(const string& device, DeviceType* device_type);
 //   case it is the responsibility of the optimization pass that injected the
 //   CPU nodes into the cluster to ensure that these nodes can be compiled by
 //   the unknown XLA backend.
-StatusOr<jit::DeviceId> PickDeviceForXla(
+absl::StatusOr<jit::DeviceId> PickDeviceForXla(
     const jit::DeviceInfoCache& device_info_cache,
     const jit::DeviceSet& devices, bool allow_mixing_unknown_and_cpu);
 
@@ -205,7 +207,7 @@ StatusOr<jit::DeviceId> PickDeviceForXla(
 //
 // We return a failing Status for errors unrelated to the device choice
 // algorithm itself.
-StatusOr<std::optional<jit::DeviceId>> MaybePickDeviceForXla(
+absl::StatusOr<std::optional<jit::DeviceId>> MaybePickDeviceForXla(
     const jit::DeviceInfoCache& device_info_cache,
     const jit::DeviceSet& devices, bool allow_mixing_unknown_and_cpu);
 }  // namespace tensorflow

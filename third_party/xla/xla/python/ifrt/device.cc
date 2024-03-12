@@ -1,4 +1,4 @@
-/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -24,11 +24,16 @@ limitations under the License.
 namespace xla {
 namespace ifrt {
 
-DeviceList::DeviceList(Devices devices)
-    : state_(std::shared_ptr<State>(new State{std::move(devices)})) {}
+DeviceList::DeviceList(Devices devices) {
+  if (devices.size() <= kInlineDeviceSize) {
+    state_ = State{std::move(devices)};
+  } else {
+    state_ = std::make_shared<State>(State{std::move(devices)});
+  }
+}
 
-StatusOr<DeviceList> DeviceList::FromProto(LookupDeviceFunc lookup_device,
-                                           const DeviceListProto& proto) {
+absl::StatusOr<DeviceList> DeviceList::FromProto(LookupDeviceFunc lookup_device,
+                                                 const DeviceListProto& proto) {
   DeviceList::Devices devices;
   devices.reserve(proto.device_ids_size());
   for (int device_id : proto.device_ids()) {

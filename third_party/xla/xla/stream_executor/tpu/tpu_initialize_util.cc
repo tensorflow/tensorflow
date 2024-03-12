@@ -1,4 +1,4 @@
-/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -98,7 +98,7 @@ bool IsTpuUsed(int64_t pid) {
     int64_t fd;
     if (!absl::SimpleAtoi(ent->d_name, &fd)) continue;
     path = absl::StrCat("/proc/", pid, "/fd/", fd);
-    if (!readlink(path.c_str(), &line[0], line.size())) continue;
+    if (!readlink(path.c_str(), line.data(), line.size())) continue;
     if (line != tpu_dev_path) continue;
     return true;
   }

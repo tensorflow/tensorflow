@@ -131,6 +131,8 @@ class PluginOpKernelContext {
 
   virtual int GetDeviceId() const = 0;
 
+  virtual std::string_view GetDeviceName() const = 0;
+
   virtual std::string GetSessionName() const = 0;
 
   virtual Status GetConfigProto(const ConfigProto** config_proto) const = 0;

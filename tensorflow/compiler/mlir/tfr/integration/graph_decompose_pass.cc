@@ -47,7 +47,7 @@ Status GraphDecomposePass::Run(
                    function_library) == MlirOptimizationPassState::Disabled) {
     LOG_FIRST_N(INFO, 1) << "Skipping Graph Decomposition Pass, decomposition"
                             " library was not found";
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   tf_core_op_expansion_graph_counter->GetCell()->IncrementBy(1);
@@ -58,7 +58,7 @@ Status GraphDecomposePass::Run(
 
   LOG_FIRST_N(INFO, 1) << "Finish Graph Decomposition Passes";
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 namespace {

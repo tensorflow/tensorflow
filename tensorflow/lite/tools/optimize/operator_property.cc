@@ -248,6 +248,8 @@ OperatorProperty GetOperatorProperty(OpVariant op_variant, int number_of_bits) {
     }
     case BuiltinOperator_FULLY_CONNECTED: {
       TensorProperty tensor_property;
+      tensor_property.per_axis = true;
+      tensor_property.per_axis_index = 0;
       tensor_property.symmetric = true;
       property.inputs = {{0, tensor_property_default}, {1, tensor_property}};
       property.outputs = {{0, tensor_property_default}};

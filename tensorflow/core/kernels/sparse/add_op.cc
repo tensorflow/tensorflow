@@ -175,7 +175,7 @@ class CSRSparseMatrixAddFunctor {
       TF_RETURN_IF_ERROR(csr_geam.Compute(a_comp, b_comp, &c_comp, workspace));
     }
 
-    return OkStatus();
+    return absl::OkStatus();
   }
 
  private:
@@ -381,7 +381,8 @@ struct CSRSparseMatrixAdd<GPUDevice, T>
   const T beta_;
   bool initialized_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(CSRSparseMatrixAdd);
+  CSRSparseMatrixAdd(const CSRSparseMatrixAdd&) = delete;
+  void operator=(const CSRSparseMatrixAdd&) = delete;
 };
 
 }  // namespace functor

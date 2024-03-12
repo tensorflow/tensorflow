@@ -17,11 +17,9 @@ limitations under the License.
 
 #include <memory>
 
-#include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "tensorflow/core/framework/function.pb.h"
 #include "tensorflow/core/framework/op.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/status_matchers.h"
 
 namespace tensorflow {
 namespace dtensor {

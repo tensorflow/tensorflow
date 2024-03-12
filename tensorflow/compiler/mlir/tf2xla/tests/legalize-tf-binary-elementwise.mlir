@@ -266,28 +266,28 @@ func.func @equal_broadcast(%arg0: tensor<1xi32>, %arg1: tensor<1x2xi32>) -> tens
 
 // CHECK-LABEL: func @equal_broadcast_no_incompatible_shapes_error
 func.func @equal_broadcast_no_incompatible_shapes_error(%arg0: tensor<2xi32>, %arg1: tensor<1x2xi32>) -> tensor<1x2xi1> {
-  // CHECK-NEXT: "tf.Equal"(%arg0, %arg1) {incompatible_shape_error = true}
+  // CHECK-NEXT: "tf.Equal"(%arg0, %arg1) <{incompatible_shape_error = true}>
   %0 = "tf.Equal"(%arg0, %arg1) { incompatible_shape_error = false } : (tensor<2xi32>, tensor<1x2xi32>) -> tensor<1x2xi1>
   func.return %0: tensor<1x2xi1>
 }
 
 // CHECK-LABEL: func @equal_incompatible_shape_broadcastable
 func.func @equal_incompatible_shape_broadcastable(%arg0: tensor<?xi32>, %arg1: tensor<1xi32>) -> tensor<?xi1> {
-  // CHECK-NEXT: "tf.Equal"(%arg0, %arg1) {incompatible_shape_error = true}
+  // CHECK-NEXT: "tf.Equal"(%arg0, %arg1) <{incompatible_shape_error = true}>
   %0 = "tf.Equal"(%arg0, %arg1) { incompatible_shape_error = false } : (tensor<?xi32>, tensor<1xi32>) -> tensor<?xi1>
   func.return %0: tensor<?xi1>
 }
 
 // CHECK-LABEL: func @equal_incompatible_shape_dynamic
 func.func @equal_incompatible_shape_dynamic(%arg0: tensor<2xi32>, %arg1: tensor<?xi32>) -> tensor<*xi1> {
-  // CHECK-NEXT: "tf.Equal"(%arg0, %arg1) {incompatible_shape_error = false}
+  // CHECK-NEXT: "tf.Equal"(%arg0, %arg1) <{incompatible_shape_error = false}>
   %0 = "tf.Equal"(%arg0, %arg1) { incompatible_shape_error = false } : (tensor<2xi32>, tensor<?xi32>) -> tensor<*xi1>
   func.return %0: tensor<*xi1>
 }
 
 // CHECK-LABEL: func @equal_incompatible_shape_both_dynamic
 func.func @equal_incompatible_shape_both_dynamic(%arg0: tensor<?xi32>, %arg1: tensor<?xi32>) -> tensor<*xi1> {
-  // CHECK-NEXT: "tf.Equal"(%arg0, %arg1) {incompatible_shape_error = false}
+  // CHECK-NEXT: "tf.Equal"(%arg0, %arg1) <{incompatible_shape_error = false}>
   %0 = "tf.Equal"(%arg0, %arg1) { incompatible_shape_error = false } : (tensor<?xi32>, tensor<?xi32>) -> tensor<*xi1>
   func.return %0: tensor<*xi1>
 }

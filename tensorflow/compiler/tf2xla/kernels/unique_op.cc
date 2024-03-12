@@ -146,7 +146,7 @@ class UniqueOpBase : public XlaOpKernel {
 
   void CompileWithAxis(XlaOpKernelContext* ctx, int64_t axis) {
     xla::XlaOp input = ctx->Input(0);
-    StatusOr<xla::Shape> input_shape_or = ctx->builder()->GetShape(input);
+    absl::StatusOr<xla::Shape> input_shape_or = ctx->builder()->GetShape(input);
     OP_REQUIRES_OK(ctx, input_shape_or.status());
     auto input_shape = input_shape_or.value();
     axis = axis < 0 ? axis + input_shape.rank() : axis;

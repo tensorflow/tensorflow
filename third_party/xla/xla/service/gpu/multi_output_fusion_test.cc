@@ -1,4 +1,4 @@
-/* Copyright 2018 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2018 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -1968,35 +1968,35 @@ ENTRY main {
 )");
 }
 
-TEST_F(TransposeMultiOutputFusionTest, CopyAndInputEpilogueFusion) {
+TEST_F(TransposeMultiOutputFusionTest, TransposeAndInputEpilogueFusion) {
   const char* hlo = R"(
 HloModule module
 
 fused_computation {
   param_0.1 = f32[16,32]{1,0} parameter(0)
   s.1 = f32[16,32]{1,0} sqrt(param_0.1)
-  c.1 = f32[16,32]{0,1} copy(s.1)
-  ROOT out = f32[16,32,1]{0,1,2} bitcast(c.1)
+  t.1 = f32[32,16]{1,0} transpose(s.1), dimensions={1,0}
+  ROOT out = f32[32,16,1]{2,1,0} bitcast(t.1)
 }
 
 ENTRY main {
   p = f32[16,32]{1,0} parameter(0)
-  fusion = f32[16,32,1]{0,1,2} fusion(p), kind=kInput, calls=fused_computation
+  fusion = f32[32,16,1]{2,1,0} fusion(p), kind=kInput, calls=fused_computation
   c1 = exponential(p)
   ROOT t = tuple(fusion, c1)
 }
   )";
 
   CheckGpuMultiOutputFusion(hlo, R"(
-// CHECK: %fused_computation (param_0.1: f32[16,32]) -> (f32[16,32,1], f32[16,32]) {
+// CHECK: %fused_computation
 // CHECK-NEXT:   [[param_0_1_0:%[^ ]+]] = f32[16,32]{1,0} parameter(0)
 // CHECK-NEXT:   [[s_1_1:%[^ ]+]] = f32[16,32]{1,0} sqrt([[param_0_1_0]])
-// CHECK-NEXT:   [[c_1_2:%[^ ]+]] = f32[16,32]{0,1} copy([[s_1_1]])
-// CHECK-NEXT:   [[out_3:%[^ ]+]] = f32[16,32,1]{0,1,2} bitcast([[c_1_2]])
+// CHECK-NEXT:   [[c_1_2:%[^ ]+]] = f32[32,16]{1,0} transpose([[s_1_1]])
+// CHECK-NEXT:   [[out_3:%[^ ]+]] = f32[32,16,1]{2,1,0} bitcast([[c_1_2]])
 // CHECK-NEXT:   [[c1_1_4:%[^ ]+]] = f32[16,32]{1,0} exponential([[param_0_1_0]])
-// CHECK-NEXT:   ROOT [[tuple_5:%[^ ]+]] = (f32[16,32,1]{0,1,2}, f32[16,32]{1,0}) tuple([[out_3]], [[c1_1_4]])
+// CHECK-NEXT:   ROOT [[tuple_5:%[^ ]+]] = (f32[32,16,1]{2,1,0}, f32[16,32]{1,0}) tuple([[out_3]], [[c1_1_4]])
 // CHECK-NEXT: }
-// CHECK: [[fusion_0:%[^ ]+]] = (f32[16,32,1]{0,1,2}, f32[16,32]{1,0}) fusion([[p_1:%[^ ]+]]), kind=kInput, calls=[[fused_computation_2:%[^ ]+]]
+// CHECK: [[fusion_0:%[^ ]+]] = (f32[32,16,1]{2,1,0}, f32[16,32]{1,0}) fusion([[p_1:%[^ ]+]]), kind=kInput, calls=[[fused_computation_2:%[^ ]+]]
 )");
 }
 

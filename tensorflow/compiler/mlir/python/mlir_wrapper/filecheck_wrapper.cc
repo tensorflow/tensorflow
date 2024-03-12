@@ -29,8 +29,7 @@ PYBIND11_MODULE(filecheck_wrapper, m) {
                           llvm::SMLoc());
     SM.AddNewSourceBuffer(llvm::MemoryBuffer::getMemBuffer(check),
                           llvm::SMLoc());
-    llvm::Regex regex = fc.buildCheckPrefixRegex();
-    fc.readCheckFile(SM, llvm::StringRef(check), regex);
+    fc.readCheckFile(SM, llvm::StringRef(check));
     return fc.checkInput(SM, llvm::StringRef(input));
   });
 }

@@ -2,8 +2,7 @@
 // RUN: xla-translate -split-input-file -mlir-hlo-to-hlo-text  -with-layouts -print-layouts --via-builder=true %s | FileCheck %s
 
 #CSR = #sparse_tensor.encoding<{
-  lvlTypes = ["dense", "compressed"],
-  dimToLvl = affine_map<(i, j) -> (i, j)>,
+  map = (d0, d1) -> (d0 : dense, d1 : compressed),
   posWidth = 32,
   crdWidth = 32
 }>
@@ -17,8 +16,7 @@ func.func @main(%arg: tensor<3x4xf32, #CSR>) -> tensor<3x4xf32, #CSR> {
 // -----
 
 #COO = #sparse_tensor.encoding<{
-  lvlTypes = ["compressed_nu", "singleton"],
-  dimToLvl = affine_map<(i, j) -> (i, j)>,
+  map = (d0, d1) -> (d0 : compressed(nonunique), d1 : singleton),
   posWidth = 32,
   crdWidth = 32
 }>
@@ -32,7 +30,7 @@ func.func @main(%arg: tensor<3x4xf32, #COO>) -> tensor<3x4xf32, #COO> {
 // -----
 
 #CSR = #sparse_tensor.encoding<{
-  lvlTypes = ["dense", "compressed"],
+  map = (d0, d1) -> (d0 : dense, d1 : compressed),
   posWidth = 32,
   crdWidth = 32
 }>
@@ -46,7 +44,7 @@ func.func @main(%arg: tensor<3x4xf32, #CSR>) -> tensor<3x4xf32, #CSR> {
 // -----
 
 #UnorderedCOOTensor = #sparse_tensor.encoding<{
-  lvlTypes = ["compressed_nu", "singleton_nu_no", "singleton_no"],
+  map = (d0, d1, d2) -> (d0 : compressed(nonunique), d1 : singleton(nonunique, nonordered), d2 : singleton(nonordered)),
   posWidth = 32,
   crdWidth = 32
 }>

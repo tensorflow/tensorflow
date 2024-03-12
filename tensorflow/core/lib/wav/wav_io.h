@@ -95,7 +95,7 @@ Status ReadValue(const std::string& data, T* value, int* offset) {
     }
   }
   *offset = new_offset;
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace wav

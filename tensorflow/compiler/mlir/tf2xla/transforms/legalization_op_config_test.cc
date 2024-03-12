@@ -20,21 +20,21 @@ limitations under the License.
 #include <string>
 #include <vector>
 
-#include <gmock/gmock.h>
 #include <gtest/gtest.h>
-#include "absl/status/status.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
+#include "mlir/IR/DialectRegistry.h"  // from @llvm-project
+#include "mlir/IR/OperationSupport.h"  // from @llvm-project
+#include "mlir/IR/OwningOpRef.h"  // from @llvm-project
+#include "mlir/IR/PatternMatch.h"  // from @llvm-project
+#include "mlir/Support/TypeID.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/register_common_dialects.h"
-#include "tensorflow/compiler/mlir/tensorflow/dialect_registration.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_dialect.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tf2xla/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tf2xla/transforms/test_utils.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
-#include "tensorflow/core/tpu/tpu_defs.h"
 #include "tsl/lib/core/status_test_util.h"
-#include "tsl/platform/errors.h"
 #include "tsl/platform/status.h"
 #include "tsl/platform/statusor.h"
 
@@ -43,7 +43,6 @@ namespace mhlo {
 
 using func::FuncOp;
 using mlir::ModuleOp;
-using tsl::Status;
 
 static constexpr char kMlirModuleStr[] = R"(
 module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, producer = 1442 : i32}} {
@@ -55,7 +54,7 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
 
 class LegalizationOpConfigTest : public ::testing::Test {
  public:
-  Status CreateMlirModule(std::string module_string = kMlirModuleStr) {
+  tsl::Status CreateMlirModule(std::string module_string = kMlirModuleStr) {
     TF_ASSIGN_OR_RETURN(
         module_, test::GetMlirModuleFromString(module_string, &context_));
 
@@ -63,7 +62,7 @@ class LegalizationOpConfigTest : public ::testing::Test {
     return tsl::OkStatus();
   }
 
-  tsl::StatusOr<FuncOp> GetMain() {
+  absl::StatusOr<FuncOp> GetMain() {
     func::FuncOp main = module_->lookupSymbol<mlir::func::FuncOp>("main");
     if (!main) {
       return absl::NotFoundError("Could not find main function");
@@ -101,6 +100,12 @@ TEST_F(LegalizationOpConfigTest, ExpectsTrueForTF2XLATypeID) {
   EXPECT_FALSE(IsTypeLegalizedWithMlir(TypeID::get<TF::AllOp>()));
 }
 
+TEST_F(LegalizationOpConfigTest, ChecksDynamicPadderOps) {
+  EXPECT_TRUE(
+      IsDynamicPadderOp(TypeID::get<TF::XlaSetDynamicDimensionSizeOp>()));
+  EXPECT_FALSE(IsDynamicPadderOp(TypeID::get<TF::ConstOp>()));
+}
+
 // This test is kind of odd. We go through all the Tensorflow types and check
 // whether they are legalized with MLIR, TF2XLA, or both. Ideally the sets are
 // disjoint, but until that happens, this tests ensures that the set doesn't
@@ -129,9 +134,9 @@ TEST_F(LegalizationOpConfigTest, CountLoweringsSet) {
   // If an op moves from one lowering implementation to a different one (e.g.
   // from MLIR to TF2XLA), these numbers should change. Or if TF Dialect adds
   // a new op, we should expect these to change too.
-  EXPECT_EQ(mlir_lowering_count, 68);
-  EXPECT_EQ(tf2xla_fallback_count, 300);
-  EXPECT_EQ(non_categorized_count, 419);
+  EXPECT_EQ(mlir_lowering_count, 67);
+  EXPECT_EQ(tf2xla_fallback_count, 316);
+  EXPECT_EQ(non_categorized_count, 423);
 }
 
 // Just a counter test to see which ops have duplicate lowerings. This isn't a
@@ -154,7 +159,7 @@ TEST_F(LegalizationOpConfigTest, CountTypesWhichHaveBothMlirAndTf2xlaFallback) {
   }
 
   // TODO(b/288876609): This should get to zero.
-  EXPECT_EQ(double_lowering_count, 2);
+  EXPECT_EQ(double_lowering_count, 1);
 }
 
 // Counts which ops have MLIR only lowerings. This isn't a
@@ -223,7 +228,7 @@ TEST_F(LegalizationOpConfigTest, MlirLoweringWithoutXlaKernel) {
     }
   }
 
-  EXPECT_EQ(mlir_without_xla_count, 14);
+  EXPECT_EQ(mlir_without_xla_count, 13);
 }
 
 }  // namespace mhlo

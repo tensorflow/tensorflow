@@ -44,6 +44,9 @@ class RecordInputOp : public OpKernel {
     OP_REQUIRES(ctx, file_parallelism >= 0,
                 errors::InvalidArgument("file_parallelism should >= 0, got ",
                                         file_parallelism));
+    OP_REQUIRES(ctx, batch_size >= 0,
+                errors::InvalidArgument(
+                    "batch_size must be non-negative but got ", batch_size));
 
     RecordYielder::Options yopts;
     yopts.file_pattern = file_pattern;

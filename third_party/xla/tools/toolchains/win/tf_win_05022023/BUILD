@@ -22,31 +22,26 @@ package(default_visibility = ["//visibility:public"])
 
 cc_library(
     name = "malloc",
-    visibility = ["//visibility:public"],
 )
 
 filegroup(
     name = "empty",
     srcs = [],
-    visibility = ["//visibility:public"],
 )
 
 filegroup(
     name = "mingw_compiler_files",
     srcs = [":builtin_include_directory_paths_mingw"],
-    visibility = ["//visibility:public"],
 )
 
 filegroup(
     name = "clangcl_compiler_files",
     srcs = [":builtin_include_directory_paths_clangcl"],
-    visibility = ["//visibility:public"],
 )
 
 filegroup(
     name = "msvc_compiler_files",
     srcs = [":builtin_include_directory_paths_msvc"],
-    visibility = ["//visibility:public"],
 )
 
 # Hardcoded toolchain, legacy behaviour.

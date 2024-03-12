@@ -51,7 +51,7 @@ def MetadataHasXlaRunOp(run_metadata):
 class AsyncCompilationTest(test.TestCase):
 
   # Asynchrobnous compilation uses the existing fallback path and existing
-  # compiler. This test only tests that asynchronus compilation is performed.
+  # compiler. This test only tests that asynchronous compilation is performed.
   @unittest.skip("b/263146341 - flaky Kokoro build.")
   def testAsyncCompilationJit(self):
 
@@ -72,7 +72,7 @@ class AsyncCompilationTest(test.TestCase):
               trace_level=config_pb2.RunOptions.FULL_TRACE))
       # For The first iteration, the fall back path is chosen.
       hasXlaRunOp = MetadataHasXlaRunOp(run_metadata)
-      self.assert_(not hasXlaRunOp)
+      self.assertFalse(hasXlaRunOp)
 
       # Execute the session until after asynchronous compilation is finished
       # and the compiled cluster has been executed once.

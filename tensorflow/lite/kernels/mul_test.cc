@@ -541,6 +541,64 @@ TEST_P(MulOpTest, Int32VariousInputShapes) {
   }
 }
 
+// Neon intrinsics are only dispatched when tensor has at least 16 elements.
+TEST_P(MulOpTest, Int32LargeInputShapeNoActivation) {
+  bool constant_tensors = GetParam();
+  if (SingleOpModel::GetForceUseNnapi() && constant_tensors) {
+    // NNAPI does not support graphs with all constant inputs.
+    return;
+  }
+  const std::vector<int> test_shape = {4, 4, 4, 4};
+  constexpr int kFlatSize = 4 * 4 * 4 * 4;
+
+  std::vector<int> lhs_data(kFlatSize);
+  std::iota(lhs_data.begin(), lhs_data.end(), 0);
+
+  std::vector<int> rhs_data(kFlatSize);
+  std::iota(rhs_data.begin(), rhs_data.end(), 0);
+
+  IntegerMulOpModel<int32_t> m(
+      {TensorType_INT32, test_shape}, {TensorType_INT32, test_shape},
+      {TensorType_INT32, {}}, ActivationFunctionType_NONE, lhs_data, rhs_data,
+      constant_tensors);
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+
+  const std::vector<int> output = m.GetOutput();
+  ASSERT_EQ(output.size(), kFlatSize);
+  for (int i = 0; i < kFlatSize; ++i) {
+    EXPECT_EQ(output[i], i * i);
+  }
+}
+
+// Neon intrinsics are only dispatched when tensor has at least 16 elements.
+TEST_P(MulOpTest, Int32LargeInputShapeRELU6) {
+  bool constant_tensors = GetParam();
+  if (SingleOpModel::GetForceUseNnapi() && constant_tensors) {
+    // NNAPI does not support graphs with all constant inputs.
+    return;
+  }
+  const std::vector<int> test_shape = {4, 4, 4, 4};
+  constexpr int kFlatSize = 4 * 4 * 4 * 4;
+
+  std::vector<int> lhs_data(kFlatSize);
+  std::iota(lhs_data.begin(), lhs_data.end(), 0);
+
+  std::vector<int> rhs_data(kFlatSize);
+  std::iota(rhs_data.begin(), rhs_data.end(), 0);
+
+  IntegerMulOpModel<int32_t> m(
+      {TensorType_INT32, test_shape}, {TensorType_INT32, test_shape},
+      {TensorType_INT32, {}}, ActivationFunctionType_RELU6, lhs_data, rhs_data,
+      constant_tensors);
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+
+  const std::vector<int> output = m.GetOutput();
+  ASSERT_EQ(output.size(), kFlatSize);
+  for (int i = 0; i < kFlatSize; ++i) {
+    EXPECT_EQ(output[i], std::min(i * i, 6));
+  }
+}
+
 TEST_P(MulOpTest, Int32WithBroadcast) {
   bool constant_tensors = GetParam();
   if (SingleOpModel::GetForceUseNnapi() && constant_tensors) {
@@ -808,8 +866,8 @@ constexpr int kDim6 = 7;
 
 constexpr int kMaxMulBroadcastDim = 6;
 
-void TestBroadcast(std::vector<int> input1_shape,
-                   std::vector<int> input2_shape) {
+void TestFloatBroadcast(std::vector<int> input1_shape,
+                        std::vector<int> input2_shape) {
   std::array<int, kMaxMulBroadcastDim> input1_dims;
   std::array<int, kMaxMulBroadcastDim> input2_dims;
   std::array<int, kMaxMulBroadcastDim> output_dims;
@@ -974,11 +1032,23 @@ void TestIntegerBroadcast(std::vector<int> input1_shape,
   EXPECT_THAT(m.GetOutput(), testing::ContainerEq(output_ref));
 }
 
-TEST(FloatMulOpModel, Float32MultiDimBroadcast) {
+// To improve automatic test sharding (via shard_count in the BUILD file),
+// we need to ensure that each individual test case runs in a reasonable time,
+// otherwise we end up being limited by the performance of the longest shard.
+// Since TestFloat32MultiDimBroadcast has 2^12 iterations, it takes a
+// long time (over 30 seconds) to execute all iterations -- too long for a
+// single shard.  So we split it into a few "subshards" and have a separate
+// TYPED_TEST macro invocation for each subshard.
+
+void TestFloat32MultiDimBroadcast(int selected_subshard, int subshard_count) {
+  int iteration = 0;
   for (uint32_t bm1 = 0;
        bm1 < (static_cast<uint32_t>(1) << kMaxMulBroadcastDim); bm1++) {
     for (uint32_t bm2 = 0;
          bm2 < (static_cast<uint32_t>(1) << kMaxMulBroadcastDim); bm2++) {
+      if (iteration++ % subshard_count != selected_subshard) {
+        continue;  // This iteration of the loop is not part of this subshard.
+      }
       const bool input1_broadcast_dim1 = bm1 & (static_cast<uint32_t>(1) << 0);
       const bool input1_broadcast_dim2 = bm1 & (static_cast<uint32_t>(1) << 1);
       const bool input1_broadcast_dim3 = bm1 & (static_cast<uint32_t>(1) << 2);
@@ -1016,11 +1086,49 @@ TEST(FloatMulOpModel, Float32MultiDimBroadcast) {
                     input1_full_shape.end(), input1_shape.data());
           std::copy(input2_full_shape.end() - input2_dims,
                     input2_full_shape.end(), input2_shape.data());
-          TestBroadcast(input1_shape, input2_shape);
+          TestFloatBroadcast(input1_shape, input2_shape);
         }
       }
     }
   }
+}
+
+// Should match the number of TEST or TYPED_TEST invoations for each of
+// Float32MultiDimBroadcastSubshard*,
+// IntegerMultiDimBroadcastSubshard*,
+// Int8QuantizedMultiDimBroadcastSubshard*, and
+// Uint8QuantizedMultiDimBroadcastSubshard* below.
+constexpr int kMultiDimBroadcastSubshardCount = 10;
+
+TEST(FloatMulOpModel, Float32MultiDimBroadcastSubshard0) {
+  TestFloat32MultiDimBroadcast(0, kMultiDimBroadcastSubshardCount);
+}
+TEST(FloatMulOpModel, Float32MultiDimBroadcastSubshard1) {
+  TestFloat32MultiDimBroadcast(1, kMultiDimBroadcastSubshardCount);
+}
+TEST(FloatMulOpModel, Float32MultiDimBroadcastSubshard2) {
+  TestFloat32MultiDimBroadcast(2, kMultiDimBroadcastSubshardCount);
+}
+TEST(FloatMulOpModel, Float32MultiDimBroadcastSubshard3) {
+  TestFloat32MultiDimBroadcast(3, kMultiDimBroadcastSubshardCount);
+}
+TEST(FloatMulOpModel, Float32MultiDimBroadcastSubshard4) {
+  TestFloat32MultiDimBroadcast(4, kMultiDimBroadcastSubshardCount);
+}
+TEST(FloatMulOpModel, Float32MultiDimBroadcastSubshard5) {
+  TestFloat32MultiDimBroadcast(5, kMultiDimBroadcastSubshardCount);
+}
+TEST(FloatMulOpModel, Float32MultiDimBroadcastSubshard6) {
+  TestFloat32MultiDimBroadcast(6, kMultiDimBroadcastSubshardCount);
+}
+TEST(FloatMulOpModel, Float32MultiDimBroadcastSubshard7) {
+  TestFloat32MultiDimBroadcast(7, kMultiDimBroadcastSubshardCount);
+}
+TEST(FloatMulOpModel, Float32MultiDimBroadcastSubshard8) {
+  TestFloat32MultiDimBroadcast(8, kMultiDimBroadcastSubshardCount);
+}
+TEST(FloatMulOpModel, Float32MultiDimBroadcastSubshard9) {
+  TestFloat32MultiDimBroadcast(9, kMultiDimBroadcastSubshardCount);
 }
 
 template <typename T>
@@ -1029,11 +1137,25 @@ class IntegerMulOpTest : public ::testing::Test {};
 using Int16OrInt32Or64Types = ::testing::Types<int16_t, int32_t, int64_t>;
 TYPED_TEST_SUITE(IntegerMulOpTest, Int16OrInt32Or64Types);
 
-TYPED_TEST(IntegerMulOpTest, IntegerMultiDimBroadcast) {
+// To improve automatic test sharding (via shard_count in the BUILD file),
+// we need to ensure that each individual test case runs in a reasonable time,
+// otherwise we end up being limited by the performance of the longest shard.
+// Since TestIntegerMultiDimBroadcast has 2^12 iterations, it takes a
+// long time (over 30 seconds) to execute all iterations -- too long for a
+// single shard.  So we split it into a few "subshards" and have a separate
+// TYPED_TEST macro invocation for each subshard.
+
+template <class TypeParam>
+void TestIntegerMultiDimBroadcast(int selected_subshard, int subshard_count) {
+  ASSERT_LT(selected_subshard, subshard_count);
+  int iteration = 0;
   for (uint32_t bm1 = 0;
        bm1 < (static_cast<uint32_t>(1) << kMaxMulBroadcastDim); bm1++) {
     for (uint32_t bm2 = 0;
          bm2 < (static_cast<uint32_t>(1) << kMaxMulBroadcastDim); bm2++) {
+      if (iteration++ % subshard_count != selected_subshard) {
+        continue;  // This iteration of the loop is not part of this subshard.
+      }
       const bool input1_broadcast_dim1 = bm1 & (static_cast<uint32_t>(1) << 0);
       const bool input1_broadcast_dim2 = bm1 & (static_cast<uint32_t>(1) << 1);
       const bool input1_broadcast_dim3 = bm1 & (static_cast<uint32_t>(1) << 2);
@@ -1076,6 +1198,37 @@ TYPED_TEST(IntegerMulOpTest, IntegerMultiDimBroadcast) {
       }
     }
   }
+}
+
+TYPED_TEST(IntegerMulOpTest, IntegerMultiDimBroadcastSubshard0) {
+  TestIntegerMultiDimBroadcast<TypeParam>(0, kMultiDimBroadcastSubshardCount);
+}
+TYPED_TEST(IntegerMulOpTest, IntegerMultiDimBroadcastSubshard1) {
+  TestIntegerMultiDimBroadcast<TypeParam>(1, kMultiDimBroadcastSubshardCount);
+}
+TYPED_TEST(IntegerMulOpTest, IntegerMultiDimBroadcastSubshard2) {
+  TestIntegerMultiDimBroadcast<TypeParam>(2, kMultiDimBroadcastSubshardCount);
+}
+TYPED_TEST(IntegerMulOpTest, IntegerMultiDimBroadcastSubshard3) {
+  TestIntegerMultiDimBroadcast<TypeParam>(3, kMultiDimBroadcastSubshardCount);
+}
+TYPED_TEST(IntegerMulOpTest, IntegerMultiDimBroadcastSubshard4) {
+  TestIntegerMultiDimBroadcast<TypeParam>(4, kMultiDimBroadcastSubshardCount);
+}
+TYPED_TEST(IntegerMulOpTest, IntegerMultiDimBroadcastSubshard5) {
+  TestIntegerMultiDimBroadcast<TypeParam>(5, kMultiDimBroadcastSubshardCount);
+}
+TYPED_TEST(IntegerMulOpTest, IntegerMultiDimBroadcastSubshard6) {
+  TestIntegerMultiDimBroadcast<TypeParam>(6, kMultiDimBroadcastSubshardCount);
+}
+TYPED_TEST(IntegerMulOpTest, IntegerMultiDimBroadcastSubshard7) {
+  TestIntegerMultiDimBroadcast<TypeParam>(7, kMultiDimBroadcastSubshardCount);
+}
+TYPED_TEST(IntegerMulOpTest, IntegerMultiDimBroadcastSubshard8) {
+  TestIntegerMultiDimBroadcast<TypeParam>(8, kMultiDimBroadcastSubshardCount);
+}
+TYPED_TEST(IntegerMulOpTest, IntegerMultiDimBroadcastSubshard9) {
+  TestIntegerMultiDimBroadcast<TypeParam>(9, kMultiDimBroadcastSubshardCount);
 }
 
 template <typename QuantizedType>
@@ -1185,11 +1338,25 @@ void TestQuantizedBroadcast(std::vector<int> input1_shape,
   }
 }
 
-TEST(QuantizedMulOpModel, Int8QuantizedMultiDimBroadcast) {
+// To improve automatic test sharding (via shard_count in the BUILD file),
+// we need to ensure that each individual test case runs in a reasonable time,
+// otherwise we end up being limited by the performance of the longest shard.
+// Since TestQuantizedMultiDimBroadcast has 2^12 iterations, it takes a
+// long time (over 30 seconds) to execute all iterations -- too long for a
+// single shard.  So we split it into a few "subshards" and have a separate
+// TEST macro invocation for each subshard.
+
+template <class T>
+void TestQuantizedMultiDimBroadcast(int selected_subshard, int subshard_count) {
+  ASSERT_LT(selected_subshard, subshard_count);
+  int iteration = 0;
   for (uint32_t bm1 = 0;
        bm1 < (static_cast<uint32_t>(1) << kMaxMulBroadcastDim); bm1++) {
     for (uint32_t bm2 = 0;
          bm2 < (static_cast<int32_t>(1) << kMaxMulBroadcastDim); bm2++) {
+      if (iteration++ % subshard_count != selected_subshard) {
+        continue;  // This iteration of the loop is not part of this subshard.
+      }
       const bool input1_broadcast_dim1 = bm1 & (static_cast<uint32_t>(1) << 0);
       const bool input1_broadcast_dim2 = bm1 & (static_cast<uint32_t>(1) << 1);
       const bool input1_broadcast_dim3 = bm1 & (static_cast<uint32_t>(1) << 2);
@@ -1227,60 +1394,73 @@ TEST(QuantizedMulOpModel, Int8QuantizedMultiDimBroadcast) {
                     input1_full_shape.end(), input1_shape.data());
           std::copy(input2_full_shape.end() - input2_dims,
                     input2_full_shape.end(), input2_shape.data());
-          TestQuantizedBroadcast<int8_t>(input1_shape, input2_shape);
+          TestQuantizedBroadcast<T>(input1_shape, input2_shape);
         }
       }
     }
   }
 }
 
-TEST(QuantizedMulOpModel, Uint8QuantizedMultiDimBroadcast) {
-  for (uint32_t bm1 = 0;
-       bm1 < (static_cast<uint32_t>(1) << kMaxMulBroadcastDim); bm1++) {
-    for (uint32_t bm2 = 0;
-         bm2 < (static_cast<uint32_t>(1) << kMaxMulBroadcastDim); bm2++) {
-      const bool input1_broadcast_dim1 = bm1 & (static_cast<uint32_t>(1) << 0);
-      const bool input1_broadcast_dim2 = bm1 & (static_cast<uint32_t>(1) << 1);
-      const bool input1_broadcast_dim3 = bm1 & (static_cast<uint32_t>(1) << 2);
-      const bool input1_broadcast_dim4 = bm1 & (static_cast<uint32_t>(1) << 3);
-      const bool input1_broadcast_dim5 = bm1 & (static_cast<uint32_t>(1) << 4);
-      const bool input1_broadcast_dim6 = bm1 & (static_cast<uint32_t>(1) << 5);
-      const bool input2_broadcast_dim1 = bm2 & (static_cast<uint32_t>(1) << 0);
-      const bool input2_broadcast_dim2 = bm2 & (static_cast<uint32_t>(1) << 1);
-      const bool input2_broadcast_dim3 = bm2 & (static_cast<uint32_t>(1) << 2);
-      const bool input2_broadcast_dim4 = bm2 & (static_cast<uint32_t>(1) << 3);
-      const bool input2_broadcast_dim5 = bm2 & (static_cast<uint32_t>(1) << 4);
-      const bool input2_broadcast_dim6 = bm2 & (static_cast<uint32_t>(1) << 5);
-      const int input1_dim1 = input1_broadcast_dim1 ? 1 : kDim1;
-      const int input1_dim2 = input1_broadcast_dim2 ? 1 : kDim2;
-      const int input1_dim3 = input1_broadcast_dim3 ? 1 : kDim3;
-      const int input1_dim4 = input1_broadcast_dim4 ? 1 : kDim4;
-      const int input1_dim5 = input1_broadcast_dim5 ? 1 : kDim5;
-      const int input1_dim6 = input1_broadcast_dim6 ? 1 : kDim6;
-      const int input2_dim1 = input2_broadcast_dim1 ? 1 : kDim1;
-      const int input2_dim2 = input2_broadcast_dim2 ? 1 : kDim2;
-      const int input2_dim3 = input2_broadcast_dim3 ? 1 : kDim3;
-      const int input2_dim4 = input2_broadcast_dim4 ? 1 : kDim4;
-      const int input2_dim5 = input2_broadcast_dim5 ? 1 : kDim5;
-      const int input2_dim6 = input2_broadcast_dim6 ? 1 : kDim6;
-      std::vector<int> input1_full_shape{input1_dim1, input1_dim2, input1_dim3,
-                                         input1_dim4, input1_dim5, input1_dim6};
-      std::vector<int> input2_full_shape{input2_dim1, input2_dim2, input2_dim3,
-                                         input2_dim4, input2_dim5, input2_dim6};
-      for (int input1_dims = 1; input1_dims <= kMaxMulBroadcastDim;
-           ++input1_dims) {
-        for (int input2_dims = 1; input2_dims <= kMaxMulBroadcastDim;
-             ++input2_dims) {
-          std::vector<int> input1_shape(input1_dims), input2_shape(input2_dims);
-          std::copy(input1_full_shape.end() - input1_dims,
-                    input1_full_shape.end(), input1_shape.data());
-          std::copy(input2_full_shape.end() - input2_dims,
-                    input2_full_shape.end(), input2_shape.data());
-          TestQuantizedBroadcast<uint8_t>(input1_shape, input2_shape);
-        }
-      }
-    }
-  }
+TEST(QuantizedMulOpModel, Int8QuantizedMultiDimBroadcastSubshard0) {
+  TestQuantizedMultiDimBroadcast<int8_t>(0, kMultiDimBroadcastSubshardCount);
+}
+TEST(QuantizedMulOpModel, Int8QuantizedMultiDimBroadcastSubshard1) {
+  TestQuantizedMultiDimBroadcast<int8_t>(1, kMultiDimBroadcastSubshardCount);
+}
+TEST(QuantizedMulOpModel, Int8QuantizedMultiDimBroadcastSubshard2) {
+  TestQuantizedMultiDimBroadcast<int8_t>(2, kMultiDimBroadcastSubshardCount);
+}
+TEST(QuantizedMulOpModel, Int8QuantizedMultiDimBroadcastSubshard3) {
+  TestQuantizedMultiDimBroadcast<int8_t>(3, kMultiDimBroadcastSubshardCount);
+}
+TEST(QuantizedMulOpModel, Int8QuantizedMultiDimBroadcastSubshard4) {
+  TestQuantizedMultiDimBroadcast<int8_t>(4, kMultiDimBroadcastSubshardCount);
+}
+TEST(QuantizedMulOpModel, Int8QuantizedMultiDimBroadcastSubshard5) {
+  TestQuantizedMultiDimBroadcast<int8_t>(5, kMultiDimBroadcastSubshardCount);
+}
+TEST(QuantizedMulOpModel, Int8QuantizedMultiDimBroadcastSubshard6) {
+  TestQuantizedMultiDimBroadcast<int8_t>(6, kMultiDimBroadcastSubshardCount);
+}
+TEST(QuantizedMulOpModel, Int8QuantizedMultiDimBroadcastSubshard7) {
+  TestQuantizedMultiDimBroadcast<int8_t>(7, kMultiDimBroadcastSubshardCount);
+}
+TEST(QuantizedMulOpModel, Int8QuantizedMultiDimBroadcastSubshard8) {
+  TestQuantizedMultiDimBroadcast<int8_t>(8, kMultiDimBroadcastSubshardCount);
+}
+TEST(QuantizedMulOpModel, Int8QuantizedMultiDimBroadcastSubshard9) {
+  TestQuantizedMultiDimBroadcast<int8_t>(9, kMultiDimBroadcastSubshardCount);
+}
+
+TEST(QuantizedMulOpModel, Uint8QuantizedMultiDimBroadcastSubshard0) {
+  TestQuantizedMultiDimBroadcast<uint8_t>(0, kMultiDimBroadcastSubshardCount);
+}
+TEST(QuantizedMulOpModel, Uint8QuantizedMultiDimBroadcastSubshard1) {
+  TestQuantizedMultiDimBroadcast<uint8_t>(1, kMultiDimBroadcastSubshardCount);
+}
+TEST(QuantizedMulOpModel, Uint8QuantizedMultiDimBroadcastSubshard2) {
+  TestQuantizedMultiDimBroadcast<uint8_t>(2, kMultiDimBroadcastSubshardCount);
+}
+TEST(QuantizedMulOpModel, Uint8QuantizedMultiDimBroadcastSubshard3) {
+  TestQuantizedMultiDimBroadcast<uint8_t>(3, kMultiDimBroadcastSubshardCount);
+}
+TEST(QuantizedMulOpModel, Uint8QuantizedMultiDimBroadcastSubshard4) {
+  TestQuantizedMultiDimBroadcast<uint8_t>(4, kMultiDimBroadcastSubshardCount);
+}
+TEST(QuantizedMulOpModel, Uint8QuantizedMultiDimBroadcastSubshard5) {
+  TestQuantizedMultiDimBroadcast<uint8_t>(5, kMultiDimBroadcastSubshardCount);
+}
+TEST(QuantizedMulOpModel, Uint8QuantizedMultiDimBroadcastSubshard6) {
+  TestQuantizedMultiDimBroadcast<uint8_t>(6, kMultiDimBroadcastSubshardCount);
+}
+TEST(QuantizedMulOpModel, Uint8QuantizedMultiDimBroadcastSubshard7) {
+  TestQuantizedMultiDimBroadcast<uint8_t>(7, kMultiDimBroadcastSubshardCount);
+}
+TEST(QuantizedMulOpModel, Uint8QuantizedMultiDimBroadcastSubshard8) {
+  TestQuantizedMultiDimBroadcast<uint8_t>(8, kMultiDimBroadcastSubshardCount);
+}
+TEST(QuantizedMulOpModel, Uint8QuantizedMultiDimBroadcastSubshard9) {
+  TestQuantizedMultiDimBroadcast<uint8_t>(9, kMultiDimBroadcastSubshardCount);
 }
 
 }  // namespace

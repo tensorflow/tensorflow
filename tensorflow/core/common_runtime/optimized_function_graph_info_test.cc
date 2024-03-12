@@ -22,6 +22,7 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/strings/substitute.h"
 #include "third_party/protobuf/text_format.h"
+#include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/function_testlib.h"
 #include "tensorflow/core/framework/optimized_function_graph.pb.h"
 #include "tensorflow/core/graph/node_builder.h"
@@ -94,7 +95,7 @@ StatusOr<OptimizedFunctionGraphInfo> CreateSimpleOptimizedFunctionGraphInfo() {
   TF_RETURN_IF_ERROR(status);
 
   // Create a simple library with one function.
-  FunctionLibraryDefinition lib_def(OpRegistry::Global(), {});
+  FunctionLibraryDefinition lib_def(OpRegistry::Global(), FunctionDefLibrary());
   TF_RETURN_IF_ERROR(lib_def.AddFunctionDef(test::function::NonZero()));
 
   // Construct an OptimizedFunctionGraphInfo.
@@ -135,7 +136,7 @@ TEST(OptimizedFunctionGraphUtilsTest,
       )pb",
       &proto);
 
-  EXPECT_THAT(OptimizedFunctionGraphInfo::FromProto(proto),
+  EXPECT_THAT(OptimizedFunctionGraphInfo::FromProto(std::move(proto)),
               StatusIs(tsl::error::INVALID_ARGUMENT,
                        "Node 'B' is missing a device specification"));
 }
@@ -161,7 +162,7 @@ TEST(OptimizedFunctionGraphUtilsTest, FromProtoProducesCorrectResult) {
       &proto);
 
   const StatusOr<OptimizedFunctionGraphInfo> test_result =
-      OptimizedFunctionGraphInfo::FromProto(proto);
+      OptimizedFunctionGraphInfo::FromProto(std::move(proto));
   TF_EXPECT_OK(test_result.status());
   // Compare graph.
   GraphDef test_result_graph_def;

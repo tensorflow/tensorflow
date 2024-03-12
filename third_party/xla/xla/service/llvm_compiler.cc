@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -22,7 +22,7 @@ limitations under the License.
 #endif
 
 namespace xla {
-StatusOr<std::vector<std::unique_ptr<Executable>>> LLVMCompiler::Compile(
+absl::StatusOr<std::vector<std::unique_ptr<Executable>>> LLVMCompiler::Compile(
     std::unique_ptr<HloModuleGroup> module_group,
     std::vector<std::vector<se::StreamExecutor*>> stream_execs,
     const CompileOptions& options) {
@@ -42,12 +42,11 @@ StatusOr<std::vector<std::unique_ptr<Executable>>> LLVMCompiler::Compile(
   std::vector<std::unique_ptr<HloModule>> modules =
       module_group->ConsumeModules();
   for (size_t i = 0; i < modules.size(); i++) {
-    TF_ASSIGN_OR_RETURN(modules[i],
-                        RunHloPasses(std::move(modules[i]), stream_execs[i][0],
-                                     options.device_allocator));
-    TF_ASSIGN_OR_RETURN(std::unique_ptr<Executable> executable,
-                        RunBackend(std::move(modules[i]), stream_execs[i][0],
-                                   options.device_allocator));
+    TF_ASSIGN_OR_RETURN(modules[i], RunHloPasses(std::move(modules[i]),
+                                                 stream_execs[i][0], options));
+    TF_ASSIGN_OR_RETURN(
+        std::unique_ptr<Executable> executable,
+        RunBackend(std::move(modules[i]), stream_execs[i][0], options));
     result.push_back(std::move(executable));
   }
 

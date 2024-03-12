@@ -26,6 +26,7 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/log/log.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
@@ -62,6 +63,7 @@ constexpr int kServiceToClientTimeoutMs = 10 * 1000;   // 10 seconds
 constexpr size_t kOngoingBarriersSoftLimit = 20;
 constexpr char kHealthCheckThread[] = "CoordinationServiceHealthCheck";
 constexpr int kPendingTaskLogLimit = 20;
+constexpr int kPendingStragglerLogLimit = 3;
 
 std::string GetTaskName(absl::string_view job_name, int task_id) {
   return strings::StrCat("/job:", job_name, "/replica:", 0, "/task:", task_id);
@@ -104,6 +106,9 @@ class CoordinationServiceStandaloneImpl : public CoordinationServiceInterface {
   void SetDeviceAggregationFunction(
       std::function<DeviceInfo(const DeviceInfo& devices)>
           post_aggregate_device_fn) override;
+
+  void LogConnectStatusLocked() const TF_EXCLUSIVE_LOCKS_REQUIRED(state_mu_);
+
   Status RegisterTask(const CoordinatedTask& task,
                       uint64_t incarnation) override;
   void WaitForAllTasks(const CoordinatedTask& task, const DeviceInfo& devices,
@@ -120,7 +125,7 @@ class CoordinationServiceStandaloneImpl : public CoordinationServiceInterface {
                         const std::string& value) override;
   void GetKeyValueAsync(const std::string& key,
                         StatusOrValueCallback done) override;
-  StatusOr<std::string> TryGetKeyValue(const std::string& key) override;
+  absl::StatusOr<std::string> TryGetKeyValue(const std::string& key) override;
   std::vector<KeyValueEntry> GetKeyValueDir(
       absl::string_view directory_key) override;
   Status DeleteKeyValue(const std::string& key) override;
@@ -269,7 +274,9 @@ class CoordinationServiceStandaloneImpl : public CoordinationServiceInterface {
 
   absl::flat_hash_set<std::string> recoverable_jobs_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(CoordinationServiceStandaloneImpl);
+  CoordinationServiceStandaloneImpl(const CoordinationServiceStandaloneImpl&) =
+      delete;
+  void operator=(const CoordinationServiceStandaloneImpl&) = delete;
 };
 
 void CoordinationServiceStandaloneImpl::TaskState::SetConnected(
@@ -355,6 +362,7 @@ CoordinationServiceStandaloneImpl::CoordinationServiceStandaloneImpl(
           absl::Milliseconds(config.shutdown_barrier_timeout_in_ms())),
       allow_new_incarnation_to_reconnect_(
           config.allow_new_incarnation_to_reconnect()) {
+  LOG(INFO) << "Initializing CoordinationService";
   recoverable_jobs_ = absl::flat_hash_set<std::string>(
       config.recoverable_jobs().cbegin(), config.recoverable_jobs().cend());
   for (const auto& job : config.coordinated_job_list()) {
@@ -517,6 +525,26 @@ void CoordinationServiceStandaloneImpl::Stop(bool shut_staleness_thread) {
   }
 }
 
+// Helper to log progress to having waited for all tasks.
+void CoordinationServiceStandaloneImpl::LogConnectStatusLocked() const {
+  const int num_tasks = cluster_state_.size();
+  int pending_tasks = 0;
+  std::vector<std::string> task_names;
+  for (const auto& [task_name, task_state] : cluster_state_) {
+    if (task_state->GetState() != CoordinatedTaskState::TASKSTATE_CONNECTED) {
+      pending_tasks++;
+      if (task_names.size() < kPendingStragglerLogLimit) {
+        task_names.push_back(task_name);
+      }
+    }
+  }
+  LOG(INFO) << "Waiting for " << pending_tasks << "/" << num_tasks
+            << " tasks to connect.";
+  if (!task_names.empty()) {
+    LOG(INFO) << "Example stragglers:\n" << absl::StrJoin(task_names, "\n");
+  }
+}
+
 Status CoordinationServiceStandaloneImpl::RegisterTask(
     const CoordinatedTask& task, uint64_t incarnation) {
   const std::string& task_name = GetTaskName(task);
@@ -551,6 +579,7 @@ Status CoordinationServiceStandaloneImpl::RegisterTask(
       LOG(INFO) << task_name
                 << " has connected to coordination service. Incarnation: "
                 << incarnation;
+      LogConnectStatusLocked();
       return OkStatus();
     } else if (task_state == CoordinatedTaskState::TASKSTATE_CONNECTED) {
       // This may happen if the service processes the initial RegisterTask(),
@@ -563,6 +592,7 @@ Status CoordinationServiceStandaloneImpl::RegisterTask(
         LOG(INFO) << task_name
                   << " has connected to coordination service with the same "
                   << "incarnation again: " << incarnation;
+        LogConnectStatusLocked();
         return OkStatus();
       } else {
         error_message =
@@ -914,7 +944,7 @@ void CoordinationServiceStandaloneImpl::GetKeyValueAsync(
   cb_iter->second.emplace_back(std::move(done));
 }
 
-StatusOr<std::string> CoordinationServiceStandaloneImpl::TryGetKeyValue(
+absl::StatusOr<std::string> CoordinationServiceStandaloneImpl::TryGetKeyValue(
     const std::string& key) {
   VLOG(3) << "TryGetKeyValue(): " << key;
   const std::string& norm_key = NormalizeKey(key);

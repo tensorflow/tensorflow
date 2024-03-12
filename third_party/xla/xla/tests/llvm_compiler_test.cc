@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -26,6 +26,11 @@ limitations under the License.
 #include "xla/service/cpu/cpu_compiler.h"
 #include "xla/service/gpu/gpu_compiler.h"
 #include "xla/service/platform_util.h"
+#if GOOGLE_CUDA
+#include "xla/stream_executor/cuda/cuda_platform_id.h"
+#elif TENSORFLOW_USE_ROCM
+#include "xla/stream_executor/rocm/rocm_platform_id.h"
+#endif
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/test_helpers.h"
@@ -36,18 +41,22 @@ namespace xla {
 namespace gpu {
 
 // Creating dummy data structure needed to initialize a GpuDummyCompiler
-PLATFORM_DEFINE_ID(kDummyTestId);
 constexpr char kDummyTriple[] = "dummy-triple";
 constexpr char kDummyLayout[] = "e";
-
+const se::Platform::Id kGpuPlatformId =
+#if GOOGLE_CUDA
+    se::cuda::kCudaPlatformId;
+#elif TENSORFLOW_USE_ROCM
+    se::rocm::kROCmPlatformId;
+#endif
 // This class is a dummy implementation of GpuCompiler and is targeted for unit
 // test only
 class GpuDummyCompiler : public GpuCompiler {
  public:
-  GpuDummyCompiler() : GpuCompiler(kDummyTestId, kDummyTriple, kDummyLayout) {}
-
+  GpuDummyCompiler()
+      : GpuCompiler(kGpuPlatformId, kDummyTriple, kDummyLayout) {}
   Status OptimizeHloConvolutionCanonicalization(
-      HloModule* hlo_module, GpuVersion gpu_version,
+      HloModule* hlo_module, se::GpuComputeCapability gpu_version,
       se::dnn::VersionInfo dnn_version,
       se::DeviceMemoryAllocator* device_allocator) {
     return OkStatus();
@@ -55,23 +64,16 @@ class GpuDummyCompiler : public GpuCompiler {
 
   Status OptimizeHloPostLayoutAssignment(
       HloModule* hlo_module, se::StreamExecutor* stream_executor,
-      const CompileOptions& options, const GpuTargetConfig& gpu_target_config,
-      const AutotuneResults* autotune_results,
+      const CompileOptions& options, const TargetConfig& gpu_target_config,
       tsl::thread::ThreadPool* thread_pool) override {
     return OkStatus();
   }
 
-  GpuVersion GetGpuVersion(se::StreamExecutor*) override {
-    return se::CudaComputeCapability{0, 0};
-  }
-
-  StatusOr<std::pair<std::string, std::vector<uint8_t>>> CompileTargetBinary(
+  absl::StatusOr<GpuCompiler::BackendCompileResult> CompileTargetBinary(
       const HloModuleConfig& module_config, llvm::Module* llvm_module,
-      GpuVersion gpu_version, bool relocatable, const HloModule* debug_module,
-      const CompileOptions& options) override {
-    std::vector<uint8_t> compiled_results;
-    return std::pair<std::string, std::vector<uint8_t>>(
-        "", std::move(compiled_results));
+      se::GpuComputeCapability gpu_version, bool relocatable,
+      const HloModule* debug_module, const CompileOptions& options) override {
+    return BackendCompileResult{};
   }
 };
 }  // namespace gpu
@@ -86,7 +88,7 @@ class LLVMCompilerTest : public ::testing::Test {
 
     BackendOptions backend_options;
     backend_options.set_platform(platform);
-    StatusOr<std::unique_ptr<Backend>> backend_or_status =
+    absl::StatusOr<std::unique_ptr<Backend>> backend_or_status =
         Backend::CreateBackend(backend_options);
     ASSERT_IS_OK(backend_or_status.status());
     backend_ = std::move(backend_or_status).value();

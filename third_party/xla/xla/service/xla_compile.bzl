@@ -45,7 +45,7 @@ def xla_aot_compile_gpu(
         module,
         gpu_target_config,
         autotune_results):
-    """Runs xla_compile to compile an MHLO or StableHLO module into an AotCompilationResult for GPU
+    """Runs xla_compile to compile an MHLO, StableHLO or HLO module into an AotCompilationResult for GPU
 
     Args:
         name: The name of the build rule.

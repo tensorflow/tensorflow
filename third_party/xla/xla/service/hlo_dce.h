@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -17,10 +17,13 @@ limitations under the License.
 #define XLA_SERVICE_HLO_DCE_H_
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
+#include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/hlo_pass_interface.h"
+#include "xla/status.h"
 #include "xla/statusor.h"
 
 namespace xla {
@@ -57,9 +60,7 @@ class HloDCE : public HloModulePass {
  private:
   // Finds all computations that are not called by any instruction and removes
   // them from the module. Returns whether any dead code was removed.
-  StatusOr<bool> RecursivelyRemoveDeadComputations(
-      HloModule* module,
-      const absl::flat_hash_set<absl::string_view>& execution_threads);
+  StatusOr<bool> RecursivelyRemoveDeadComputations(HloModule* module);
 
   // Given a dead computation, decrements the ref count of all its called
   // computations and checks if any of the subcomputations become dead after the

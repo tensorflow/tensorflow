@@ -1,11 +1,25 @@
 # Description: StreamExecutor Interface for TPUs
 
-load("@local_tsl//tsl:tsl.bzl", "set_external_visibility")
-load("@local_tsl//tsl/platform:rules_cc.bzl", "cc_library")
 load("//xla:xla.bzl", "xla_cc_test")
+load("@local_tsl//tsl:tsl.bzl", "internal_visibility")
+load("@local_tsl//tsl/platform:rules_cc.bzl", "cc_library")
 
 package(
-    default_visibility = ["//visibility:public"],
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
+    default_visibility = internal_visibility([
+        "//learning/brain/experimental/dtensor:__subpackages__",
+        "//learning/brain/google/xla/kernels:__subpackages__",
+        "//learning/brain/research/pjrt:__subpackages__",
+        "//learning/brain/tfrc/executor:__subpackages__",
+        "//learning/brain/tfrt/tpu_plugin:__subpackages__",
+        "//tensorflow/compiler/jit:__subpackages__",
+        "//tensorflow/compiler/mlir:__subpackages__",
+        "//xla:__subpackages__",
+        "//xla/backends/profiler/tpu:__subpackages__",
+        "//tensorflow/core/common_runtime/next_pluggable_device:__subpackages__",
+        "//tensorflow/core/tpu:__subpackages__",
+        "//tensorflow/dtensor:__subpackages__",
+    ]),
     licenses = ["notice"],
 )
 
@@ -18,7 +32,7 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":libtftpu_header",
-        "//xla/stream_executor:stream_executor_headers",
+        "//xla/stream_executor",
     ],
 )
 
@@ -36,7 +50,6 @@ cc_library(
     name = "c_api_conversions",
     srcs = ["c_api_conversions.cc"],
     hdrs = ["c_api_conversions.h"],
-    visibility = ["//visibility:public"],
     deps = [
         ":c_api_decl",
         ":proto_helper",
@@ -83,12 +96,12 @@ xla_cc_test(
         "//xla/service:hlo_module_config",
         "//xla/service:hlo_parser",
         "//xla/service:hlo_proto_cc",
+        "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest_main",
         "@local_tsl//tsl/platform:protobuf",
-        "@local_tsl//tsl/platform:statusor",
     ],
 )
 
@@ -114,7 +127,6 @@ cc_library(
 cc_library(
     name = "status_helper",
     hdrs = ["status_helper.h"],
-    visibility = ["//visibility:public"],
     deps = [
         ":c_api_decl",
         ":tpu_executor_api",
@@ -127,7 +139,6 @@ cc_library(
 cc_library(
     name = "tsl_status_helper",
     hdrs = ["tsl_status_helper.h"],
-    visibility = ["//visibility:public"],
     deps = [
         ":c_api_decl",
         "@com_google_absl//absl/status",
@@ -141,7 +152,6 @@ cc_library(
     name = "proto_helper",
     srcs = ["proto_helper.cc"],
     hdrs = ["proto_helper.h"],
-    visibility = ["//visibility:public"],
     deps = [
         ":c_api_decl",
         "@local_tsl//tsl/platform:logging",
@@ -191,16 +201,17 @@ cc_library(
         ":tpu_stream_interface",
         ":tpu_topology_external",
         "//xla/stream_executor",
-        "//xla/stream_executor:allocator_stats",
+        "//xla/stream_executor:stream_executor_internal",
         "//xla/stream_executor/platform",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/functional:any_invocable",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/types:span",
         "@local_tsl//tsl/platform:casts",
         "@local_tsl//tsl/platform:logging",
-        "@local_tsl//tsl/platform:status",
-        "@local_tsl//tsl/platform:statusor",
         "@local_tsl//tsl/platform:types",
     ],
     alwayslink = True,
@@ -215,18 +226,19 @@ cc_library(
 cc_library(
     name = "tpu_platform_hdr",
     hdrs = ["tpu_platform.h"],
-    visibility = ["//visibility:public"],
     deps = [
         ":c_api_decl",
         ":tpu_executor_c_api_hdrs",
         ":tpu_platform_interface",
         ":tpu_topology_external",
-        "//xla/stream_executor:stream_executor_headers",
+        "//xla/stream_executor",
+        "//xla/stream_executor:stream_executor_internal",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/synchronization",
         "@local_tsl//tsl/platform:logging",
-        "@local_tsl//tsl/platform:status",
-        "@local_tsl//tsl/platform:statusor",
     ],
 )
 
@@ -240,7 +252,6 @@ cc_library(
         "tpu_stream.h",
         "tpu_stream_interface.h",
     ],
-    visibility = ["//visibility:public"],
     deps = [
         ":c_api_conversions",
         ":c_api_decl",
@@ -248,16 +259,17 @@ cc_library(
         ":tpu_executor_api",
         ":tpu_executor_c_api_hdrs",
         ":tpu_topology_external",
-        "//xla/stream_executor:allocator_stats",
-        "//xla/stream_executor:stream_executor_headers",
+        "//xla/stream_executor",
+        "//xla/stream_executor:stream_executor_internal",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/functional:any_invocable",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/types:span",
         "@local_tsl//tsl/platform:casts",
         "@local_tsl//tsl/platform:logging",
-        "@local_tsl//tsl/platform:status",
-        "@local_tsl//tsl/platform:statusor",
         "@local_tsl//tsl/platform:types",
     ],
 )
@@ -266,7 +278,6 @@ cc_library(
     name = "tpu_platform_id",
     srcs = ["tpu_platform_id.cc"],
     hdrs = ["tpu_platform_id.h"],
-    visibility = ["//visibility:public"],
     deps = ["//xla/stream_executor:platform"],
 )
 
@@ -282,7 +293,6 @@ cc_library(
         "tpu_platform.h",
         "tpu_stream.h",
     ],
-    visibility = ["//visibility:public"],
     deps = [
         ":c_api_conversions",
         ":c_api_decl",
@@ -297,18 +307,19 @@ cc_library(
         ":tpu_topology_external",
         "//xla:status",
         "//xla/stream_executor",
-        "//xla/stream_executor:allocator_stats",
+        "//xla/stream_executor:stream_executor_internal",
         "@com_google_absl//absl/cleanup",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/functional:any_invocable",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/types:span",
         "@local_tsl//tsl/c:tsl_status_internal",
         "@local_tsl//tsl/platform:casts",
         "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:logging",
-        "@local_tsl//tsl/platform:status",
-        "@local_tsl//tsl/platform:statusor",
         "@local_tsl//tsl/platform:types",
     ],
 )
@@ -337,7 +348,6 @@ cc_library(
     name = "tpu_node_context",
     srcs = ["tpu_node_context.cc"],
     hdrs = ["tpu_node_context.h"],
-    visibility = ["//visibility:public"],
     deps = [
         ":status_helper",
         ":tpu_api",
@@ -347,9 +357,9 @@ cc_library(
         "//xla/service:backend",
         "//xla/service:stream_pool",
         "//xla/stream_executor:device_memory_allocator",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
         "@local_tsl//tsl/platform:macros",
-        "@local_tsl//tsl/platform:status",
-        "@local_tsl//tsl/platform:statusor",
     ],
 )
 
@@ -376,7 +386,7 @@ cc_library(
         ":tpu_platform_interface",
         "//xla:status",
         "//xla/service:transfer_manager",
-        "//xla/stream_executor:stream_executor_headers",
+        "//xla/stream_executor",
     ],
 )
 
@@ -397,7 +407,6 @@ cc_library(
     name = "tpu_transfer_manager_base",
     srcs = ["tpu_transfer_manager.cc"],
     hdrs = ["tpu_transfer_manager.h"],
-    visibility = ["//visibility:public"],
     deps = [
         ":c_api_conversions",
         ":c_api_decl",
@@ -416,11 +425,11 @@ cc_library(
         "//xla/service:transfer_manager",
         "//xla/stream_executor",
         "@com_google_absl//absl/cleanup",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/types:span",
         "@local_tsl//tsl/platform:casts",
         "@local_tsl//tsl/platform:logging",
-        "@local_tsl//tsl/platform:status",
-        "@local_tsl//tsl/platform:statusor",
     ],
 )
 
@@ -428,7 +437,6 @@ cc_library(
     name = "tpu_op_executable",
     srcs = ["tpu_op_executable.cc"],
     hdrs = ["tpu_op_executable.h"],
-    visibility = ["//visibility:public"],
     deps = [
         ":c_api_conversions",
         ":c_api_decl",
@@ -461,10 +469,11 @@ cc_library(
         ":c_api_decl",
         ":tpu_topology_external",
         "//xla/stream_executor",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/synchronization",
         "@local_tsl//tsl/platform:env",
         "@local_tsl//tsl/platform:logging",
-        "@local_tsl//tsl/platform:status",
         "@local_tsl//tsl/protobuf:error_codes_proto_impl_cc",
     ],
 )
@@ -476,9 +485,10 @@ cc_library(
     deps = [
         ":tpu_platform_interface",
         ":tpu_topology_external",
-        "//xla/stream_executor:stream_executor_headers",
-        "@local_tsl//tsl/platform:status",
-        "@local_tsl//tsl/platform:statusor",
+        "//xla/stream_executor",
+        "//xla/stream_executor:stream_executor_internal",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
     ],
 )
 
@@ -521,7 +531,7 @@ cc_library(
         "//xla/service:executable",
         "//xla/service:hlo_cost_analysis",
         "//xla/service:hlo_proto_cc",
-        "//xla/stream_executor:stream_executor_headers",
+        "//xla/stream_executor",
         "@com_google_absl//absl/cleanup",
     ],
     alwayslink = True,
@@ -532,8 +542,9 @@ cc_library(
     hdrs = ["tpu_stream_interface.h"],
     visibility = ["//visibility:public"],
     deps = [
-        "//xla/stream_executor:stream_executor_headers",
-        "@local_tsl//tsl/platform:status",
+        "//xla/stream_executor",
+        "//xla/stream_executor:stream_executor_internal",
+        "@com_google_absl//absl/status",
     ],
 )
 
@@ -555,8 +566,9 @@ cc_library(
         "//xla/service:maybe_owning_device_memory",
         "//xla/service:shaped_buffer",
         "//xla/service:transfer_manager",
-        "//xla/stream_executor:stream_executor_headers",
+        "//xla/stream_executor",
         "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
         "@local_tsl//tsl/platform:errors",
@@ -585,8 +597,8 @@ cc_library(
         "//xla/service:executable",
         "//xla/service:hlo_execution_profile",
         "//xla/service:shaped_buffer",
+        "//xla/stream_executor",
         "//xla/stream_executor:device_memory",
-        "//xla/stream_executor:stream_executor_headers",
         "@com_google_absl//absl/cleanup",
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/strings",
@@ -599,7 +611,6 @@ cc_library(
     name = "tpu_executor_api",
     srcs = ["tpu_executor_api.cc"],
     hdrs = ["tpu_executor_api.h"],
-    visibility = ["//visibility:public"],
     deps = [
         ":libtftpu_header",
         ":tpu_executor_c_api_hdrs",
@@ -609,7 +620,6 @@ cc_library(
 cc_library(
     name = "tpu_profiler_c_api_hdrs",
     hdrs = ["tpu_profiler_c_api.h"],
-    visibility = ["//visibility:public"],
     deps = [
         ":c_api_decl",
         ":libtftpu_header",

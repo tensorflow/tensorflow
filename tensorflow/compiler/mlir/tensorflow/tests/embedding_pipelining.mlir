@@ -17,7 +17,7 @@ module {
     // CHECK: {{.*StatefulPartitionedCall.* f = @non_tpu.*}}
     // CHECK: {{.*StatefulPartitionedCall.* f = @start_step_1.*}}
     // CHECK: {{.*StatefulPartitionedCall.* f = @while_cond.*}}
-    // CHECK: {{.*tf.While.* body = @new_while_body.* cond = @new_while_cond.*}}
+    // CHECK: {{.*tf.While.* <{body = @new_while_body.* cond = @new_while_cond.*}}
     // CHECK: {{.*StatefulPartitionedCall.* f = @finish_step_nm2.*}}
     // CHECK: {{.*StatefulPartitionedCall.* f = @finish_step_nm1.*}}
     // CHECK: return
@@ -73,7 +73,7 @@ module {
     // CHECK: {{.*StatefulPartitionedCall.* f = @non_tpu.*}}
     // CHECK: {{.*StatefulPartitionedCall.* f = @start_step_1.*}}
     // CHECK: {{.*StatefulPartitionedCall.* f = @while_cond.*}}
-    // CHECK: {{.*tf.While.* body = @new_while_body.* cond = @new_while_cond.*}}
+    // CHECK: {{.*tf.While.* <{body = @new_while_body.* cond = @new_while_cond.*}}
     // CHECK: {{.*StatefulPartitionedCall.* f = @finish_step_nm2.*}}
     // CHECK: {{.*StatefulPartitionedCall.* f = @finish_step_nm1.*}}
     // CHECK: return
@@ -112,7 +112,7 @@ module {
   func.func private @while_body(%arg0: tensor<i32>) -> (tensor<i32>) {
     // The pipelining control flow and supporting functions stay the same as the training version above.
     // The order of these functions is also significant.
-    // CHECK: {{.*tf.While.* body = @new_while_body.* cond = @new_while_cond.* parallel_iterations = 3}}
+    // CHECK: {{.*tf.While.* <{body = @new_while_body.* cond = @new_while_cond.* parallel_iterations = 3}}
     // CHECK: return
     // metadata ops
     "tf.TPUReplicateMetadata"() {_has_manual_control_dependencies = true, _replication_info = "repl_info", num_replicas = 1 : i64} : () -> ()
@@ -553,95 +553,6 @@ module {
     %0 = "tf.Less"(%arg0, %arg0) : (tensor<i32>, tensor<i32>) -> tensor<i1>
     return %0 : tensor<i1>
   }
-}
-
-// -----
-// This test verifies the handling of CollectiveGatherV2 ops.
-module {
-  func.func @main() {
-    %cst_main = "tf.Const"() {value = dense<1> : tensor<i32>} : () -> tensor<i32>
-    %0 = "tf.While"(%cst_main) {body = @while_body, cond = @while_cond, is_stateless = false} : (tensor<i32>) -> (tensor<i32>)
-    return
-  }
-  func.func private @while_body(%arg0: tensor<i32>) -> (tensor<i32>) {
-    // Verify the overall pipelining control flow and supporting functions.
-    // The order of these functions is also significant.
-    // CHECK: {{.*StatefulPartitionedCall.* f = @while_cond.*}}
-    // CHECK: {{.*StatefulPartitionedCall.* f = @non_tpu.*}}
-    // CHECK: {{.*StatefulPartitionedCall.* f = @start_step_0.*}}
-    // CHECK: {{.*StatefulPartitionedCall.* f = @while_cond.*}}
-    // CHECK: {{.*StatefulPartitionedCall.* f = @non_tpu.*}}
-    // CHECK: {{.*StatefulPartitionedCall.* f = @start_step_1.*}}
-    // CHECK: {{.*StatefulPartitionedCall.* f = @while_cond.*}}
-    // CHECK: {{.*tf.While.* body = @new_while_body.* cond = @new_while_cond.*}}
-    // CHECK: {{.*StatefulPartitionedCall.* f = @finish_step_nm2.*}}
-    // CHECK: {{.*StatefulPartitionedCall.* f = @finish_step_nm1.*}}
-    // CHECK: return
-    // metadata ops
-    "tf.TPUReplicateMetadata"() {_has_manual_control_dependencies = true, _replication_info = "repl_info", num_replicas = 2 : i64} : () -> ()
-    %comp_res = "tf.TPUCompilationResult"() {_tpu_compilation_status = "repl_info"} : () -> tensor<!tf_type.string>
-
-    // forward_ops
-    %v_0 = "tf.StatefulPartitionedCall"(){_collective_manager_ids = [], _read_only_resource_inputs = [], config = "", config_proto = "blah", device = "/job:tpu_host_worker/replica:0/task:0/device:CPU:0", executor_type = "", f = @helper_task0}:() -> (tensor<?xi64>)
-    %v_1 = "tf.StatefulPartitionedCall"(){_collective_manager_ids = [], _read_only_resource_inputs = [], config = "", config_proto = "blah", device = "/job:tpu_host_worker/replica:0/task:2/device:CPU:0", executor_type = "", f = @helper_task1}:() -> (tensor<?xi64>)
-    %a_0 = "tf.Identity"(%v_0) {_embedding_pipelining = "forward", _replication_info = "repl_info"}: (tensor<?xi64>) -> tensor<?xi64>
-    %a_1 = "tf.Identity"(%v_1) {_embedding_pipelining = "forward", _replication_info = "repl_info"}: (tensor<?xi64>) -> tensor<?xi64>
-    %res_f = "tf.Const"() {_embedding_pipelining = "forward", _replication_info = "repl_info", value = dense<2> : tensor<i32>} : () -> tensor<i32>
-
-    // core_tpu ops:
-    %res_t = "tf.Identity"(%res_f) {_replication_info = "repl_info"} : (tensor<i32>) -> tensor<i32>
-
-    // backward_ops
-    %res_b = "tf.Identity"(%res_t) {_embedding_pipelining = "backward", _replication_info = "repl_info"} : (tensor<i32>) -> tensor<i32>
-
-    // non_tpu_ops
-    %res_n = "tf.Identity"(%arg0) : (tensor<i32>) -> tensor<i32>
-
-    return %res_n : tensor<i32>
-  }
-  func.func private @helper_task0() -> tensor<?xi64> {
-    %grpsz_0 = "tf.Const"() {device = "/job:tpu_host_worker/replica:0/task:0/device:CPU:0", value = dense<2> : tensor<i32>} : () -> tensor<i32>
-    %grpky_0 = "tf.Const"() {device = "/job:tpu_host_worker/replica:0/task:0/device:CPU:0", value = dense<0> : tensor<i32>} : () -> tensor<i32>
-    %cgi_0 = "tf.Const"() {device = "/job:tpu_host_worker/replica:0/task:0/device:CPU:0", value = dense<2> : tensor<i32>} : () -> tensor<i32>
-    %gid64_0 = "tf.GlobalIterId"() {device = "/job:tpu_host_worker/replica:0/task:0/device:CPU:0"} : () -> tensor<*xi64>
-    %gid_0 = "tf.Cast"(%gid64_0) {Truncate = false, device = "/job:tpu_host_worker/replica:0/task:0/device:CPU:0"} : (tensor<*xi64>) -> tensor<*xi32>
-    %cg_0 = "tf.CollectiveGatherV2"(%cgi_0, %grpsz_0, %grpky_0, %gid_0) {communication_hint = "auto", device = "/job:tpu_host_worker/replica:0/task:0/device:CPU:0", is_stateless = true, timeout_seconds = 0.000000e+00 : f32} : (tensor<i32>, tensor<i32>, tensor<i32>, tensor<*xi32>) -> tensor<?xi64>
-    return %cg_0 : tensor<?xi64>
-  }
-  func.func private @helper_task1() -> tensor<?xi64> {
-    %grpsz_1 = "tf.Const"() {device = "/job:tpu_host_worker/replica:0/task:1/device:CPU:0", value = dense<2> : tensor<i32>} : () -> tensor<i32>
-    %grpky_1 = "tf.Const"() {device = "/job:tpu_host_worker/replica:0/task:1/device:CPU:0", value = dense<0> : tensor<i32>} : () -> tensor<i32>
-    %cgi_1 = "tf.Const"() {device = "/job:tpu_host_worker/replica:0/task:1/device:CPU:0", value = dense<2> : tensor<i32>} : () -> tensor<i32>
-    %gid64_1 = "tf.GlobalIterId"() {device = "/job:tpu_host_worker/replica:0/task:1/device:CPU:0"} : () -> tensor<*xi64>
-    %gid_1 = "tf.Cast"(%gid64_1) {Truncate = false, device = "/job:tpu_host_worker/replica:0/task:1/device:CPU:0"} : (tensor<*xi64>) -> tensor<*xi32>
-    %cg_1 = "tf.CollectiveGatherV2"(%cgi_1, %grpsz_1, %grpky_1, %gid_1) {communication_hint = "auto", device = "/job:tpu_host_worker/replica:0/task:1/device:CPU:0", is_stateless = true, timeout_seconds = 0.000000e+00 : f32} : (tensor<i32>, tensor<i32>, tensor<i32>, tensor<*xi32>) -> tensor<?xi64>
-    return %cg_1 : tensor<?xi64>
-  }
-  func.func private @while_cond(%arg0: tensor<i32>) -> tensor<i1> {
-    %0 = "tf.Less"(%arg0, %arg0) : (tensor<i32>, tensor<i32>) -> tensor<i1>
-    return %0 : tensor<i1>
-  }
-  // Generated functions for control flow ops (if, while, switch)
-
-  //
-  // CHECK: func.func private @start_step_0
-  // CHECK: tf.GlobalIterId
-  // CHECK: tf.AddV2
-  // CHECK: tf.CollectiveGatherV2
-  // CHECK: return
-
-  //
-  // CHECK: func.func private @start_step_1
-  // CHECK: tf.GlobalIterId
-  // CHECK: tf.AddV2
-  // CHECK: tf.CollectiveGatherV2
-  // CHECK: return
-
-  //
-  // CHECK: func.func private @new_while_body
-  // CHECK: {{.*StatefulPartitionedCall.* f = @helper_task0.*}}
-  // CHECK: {{.*StatefulPartitionedCall.* f = @helper_task1.*}}
-  // CHECK: return
 }
 
 // -----

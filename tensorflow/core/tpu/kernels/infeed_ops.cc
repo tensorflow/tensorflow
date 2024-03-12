@@ -85,9 +85,9 @@ xla::Shape GetTPUInfeedLayout(const xla::Shape& shape) {
 // to obtain a XLA literal for the host tensor laid out as the given layout. The
 // returned tensor is normalized to the dim0major layout -- F32[10,20,30]{2,0,1}
 // is returned as F32[20,10,30]{2,1,0}.
-tsl::StatusOr<Tensor> TransposeTensor(OpKernelContext* ctx,
-                                      const Tensor& input_tensor,
-                                      const xla::Shape& xla_shape) {
+absl::StatusOr<Tensor> TransposeTensor(OpKernelContext* ctx,
+                                       const Tensor& input_tensor,
+                                       const xla::Shape& xla_shape) {
   profiler::TraceMe trace_me("TransposeTensor", /*level=*/2);
   const int64_t rank = xla_shape.rank();
   std::vector<int32_t> permutation(rank);
@@ -124,9 +124,9 @@ tsl::StatusOr<Tensor> TransposeTensor(OpKernelContext* ctx,
   return transposed_tensor;
 }
 
-tsl::StatusOr<bool> GetLayoutOverride(OpKernelConstruction* ctx,
-                                      const char* attrn_name,
-                                      std::vector<int64_t>* minor_to_major) {
+absl::StatusOr<bool> GetLayoutOverride(OpKernelConstruction* ctx,
+                                       const char* attrn_name,
+                                       std::vector<int64_t>* minor_to_major) {
   if (!ctx->HasAttr(attrn_name)) {
     return false;
   }

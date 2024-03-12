@@ -16,17 +16,16 @@ limitations under the License.
 
 #include <algorithm>
 #include <atomic>
+#include <cstdint>
 #include <functional>
 #include <limits>
 #include <memory>
 #include <optional>
-#include <queue>
 #include <string>
 #include <utility>
 #include <vector>
 
-#include "absl/container/flat_hash_map.h"
-#include "absl/container/flat_hash_set.h"
+#include "absl/log/log.h"
 #include "absl/strings/numbers.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
@@ -50,6 +49,7 @@ limitations under the License.
 #include "tensorflow/core/framework/op_requires.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
+#include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/kernels/data/parallel_map_dataset_op.h"
 #include "tensorflow/core/lib/core/errors.h"
@@ -60,7 +60,6 @@ limitations under the License.
 #include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/core/platform/tstring.h"
 #include "tensorflow/core/platform/types.h"
-#include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/core/protobuf/data_service.pb.h"
 #include "tensorflow/core/protobuf/error_codes.pb.h"
 
@@ -102,6 +101,10 @@ constexpr const char kDistributedEpoch[] = "distributed_epoch";
 
 // Default interval between task list refreshes.
 constexpr absl::Duration kDefaultTaskRefreshInterval = absl::Seconds(1);
+
+// Default starting `max_outstanding_requests` when it is autotuned.
+constexpr int64_t kStartingMaxOutstandingRequests = 16;
+
 }  // namespace
 
 // Dataset for reading data from the tf.data service.
@@ -194,7 +197,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
 
   Status InputDatasets(std::vector<const DatasetBase*>* inputs) const override {
     inputs->clear();
-    return OkStatus();
+    return absl::OkStatus();
   }
 
  protected:
@@ -337,7 +340,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
       TF_RETURN_IF_ERROR(RegisterCancellationCallback(
           ctx->cancellation_manager(),
           [this]() { data_service_client_.Cancel(); }, &deregister_fn_));
-      return data_service_client_.Initialize();
+      return data_service_client_.Initialize(ctx->allocator(/*attrs=*/{}));
     }
 
     Status GetNextInternal(IteratorContext* ctx,
@@ -351,7 +354,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
                           data_service_client_.GetNext(ctx_factory));
       *out_tensors = std::move(result.tensors);
       *end_of_sequence = result.end_of_sequence;
-      return OkStatus();
+      return absl::OkStatus();
     }
 
    protected:
@@ -436,12 +439,19 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
         }
         if (element_size_cache_ == 0.0) {
           element_size_cache_ = node_->AverageBufferedElementSize();
+          VLOG(3) << "Average DataService element size is "
+                  << element_size_cache_;
           if (element_size_cache_ == 0) {
-            VLOG(3) << "The average element size of `DataService` is 0. "
-                       "Request to change `max_outstanding_requests` from "
-                    << max_outstanding_requests << " to "
-                    << requested_outstanding_requests << " is granted.";
-            return requested_outstanding_requests;
+            int64_t new_outstanding_requests = std::max(
+                max_outstanding_requests, kStartingMaxOutstandingRequests);
+            VLOG(3) << "The average element size of `DataService` is 0. The "
+                       "`max_outstanding_requests` value "
+                    << max_outstanding_requests
+                    << (max_outstanding_requests == new_outstanding_requests
+                            ? " is kept at "
+                            : " is changed to the default value of ")
+                    << new_outstanding_requests << ".";
+            return new_outstanding_requests;
           }
         }
         const int64_t delta_outstanding_requests =
@@ -659,7 +669,7 @@ void DataServiceDatasetOp::MakeDataset(OpKernelContext* ctx,
                        container, name, &iteration_counter,
                        [](IterationCounter** counter) {
                          *counter = new IterationCounter();
-                         return OkStatus();
+                         return absl::OkStatus();
                        }));
     iteration_counter_handle =
         MakeResourceHandle<IterationCounter>(ctx, container, name);
@@ -758,6 +768,22 @@ REGISTER_KERNEL_BUILDER(Name(kDataServiceDatasetV3).Device(DEVICE_CPU),
 REGISTER_KERNEL_BUILDER(Name(kDataServiceDatasetV4).Device(DEVICE_CPU),
                         DataServiceDatasetOp);
 REGISTER_KERNEL_BUILDER(Name("DummyIterationCounter").Device(DEVICE_CPU),
+                        DummyResourceOp<IterationCounter>);
+
+REGISTER_KERNEL_BUILDER(Name(kDataServiceDatasetV4)
+                            .Device(DEVICE_GPU)
+                            .HostMemory("dataset_id")
+                            .HostMemory("processing_mode")
+                            .HostMemory("address")
+                            .HostMemory("protocol")
+                            .HostMemory("job_name")
+                            .HostMemory("consumer_index")
+                            .HostMemory("num_consumers")
+                            .HostMemory("max_outstanding_requests")
+                            .HostMemory("iteration_counter")
+                            .HostMemory("handle"),
+                        DataServiceDatasetOp);
+REGISTER_KERNEL_BUILDER(Name("DummyIterationCounter").Device(DEVICE_GPU),
                         DummyResourceOp<IterationCounter>);
 
 }  // namespace data

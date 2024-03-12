@@ -20,6 +20,7 @@ limitations under the License.
 #include <functional>
 #include <map>
 #include <memory>
+#include <string>
 #include <utility>
 #include <vector>
 
@@ -170,6 +171,8 @@ class BatchResourceBase : public ResourceBase {
                               AsyncOpKernel::DoneCallback done);
   // Ingests data from one invocation of the batch op. The data is enqueued to
   // be combined with others into a batch, asynchronously.
+  // `CreateBatchTaskFn` should be used to instantiate fields added to a
+  // child class of `BatchTask` by the caller.
   Status RegisterInput(int64_t guid, OpKernelContext* context,
                        const string& batcher_queue_name,
                        const CreateBatchTaskFn& create_batch_task_fn,
@@ -238,7 +241,9 @@ class BatchResourceBase : public ResourceBase {
   //   2) the input size from this task;
   //   3) the padding amount.
   static void SplitBatchCostsAndRecordMetrics(
-      std::vector<std::unique_ptr<CostMeasurement>>& batch_cost_measurements,
+      const std::string& model_name,
+      const std::vector<std::unique_ptr<CostMeasurement>>&
+          batch_cost_measurements,
       int64_t processed_size, BatchT& batch);
 
  private:

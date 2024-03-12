@@ -1,4 +1,4 @@
-/* Copyright 2022 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2022 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -17,6 +17,7 @@ limitations under the License.
 #define XLA_SERVICE_LATENCY_HIDING_SCHEDULER_H_
 
 #include <cstddef>
+#include <cstdint>
 #include <functional>
 #include <limits>
 #include <memory>
@@ -37,8 +38,8 @@ namespace xla {
 
 struct CanonicalAsyncOp {
   HloOpcode outer;  // kAsyncStart or kAsyncDone
-  HloOpcode inner;  // kAllReduce, kAllGather, kAllToAll, kCollectivePermute,
-                    // or kReduceScatter
+  HloOpcode inner;  // kAllReduce, kAllGather, kAllToAll, kCollectiveBroadcast,
+                    // kCollectivePermute, or kReduceScatter
 };
 
 CanonicalAsyncOp DefaultGetCanonicalAsyncOp(const HloInstruction& hlo);
@@ -55,11 +56,13 @@ enum class ResourceType {
   kAllGather = 2,
   kAllReduce = 3,
   kCollectivePermute = 4,
-  kReduceScatter = 5,
-  kSendRecv = 6,
-  kSendHost = 7,
-  kRecvHost = 8,
-  kNumResources = 9,
+  kCopy = 5,
+  kReduceScatter = 6,
+  kSendRecv = 7,
+  kSendHost = 8,
+  kRecvHost = 9,
+  kCollectiveBroadcast = 10,
+  kNumResources = 11,
   kTargetDefinedResourcesBound = 10000,
 };
 
@@ -91,6 +94,7 @@ class HloGraphNode;
 class HloScheduleGraph;
 
 struct SchedulerConfig {
+  int64_t collective_broadcast_overlap_limit = 1;
   int64_t collective_permute_overlap_limit = 1;
   int64_t all_to_all_overlap_limit = 1;
   int64_t all_gather_overlap_limit = 1;
@@ -98,6 +102,7 @@ struct SchedulerConfig {
   int64_t reduce_scatter_overlap_limit = 1;
   int64_t send_recv_overlap_limit = 1;
   int64_t send_recv_host_overlap_limit = 1;
+  int64_t copy_overlap_limit = 1;
   uint64_t memory_limit = UINT64_MAX;
   bool schedule_send_recvs = false;
   // Consider send recv as the same resource. Some platforms do not take well
@@ -107,7 +112,9 @@ struct SchedulerConfig {
   bool aggressive_scheduling_policies = false;
   bool enable_release_start_policy = false;
   bool resource_sharing = false;
+  bool resource_serializing = false;
   bool depth_based_memory_pressure_reduction = false;
+  int64_t rerun = 0;
 };
 
 // Class used estimate latency between instructions and cost of HLOs.
@@ -179,6 +186,10 @@ class AsyncTracker {
   virtual bool IsSupportedAsyncStart(const HloInstruction& hlo) const;
 
   // Returns resources used (i.e., occupied or released) by this instruction
+  virtual ResourcesVector GetResourcesFromInstructionImpl(
+      const HloInstruction& hlo) const;
+
+  // Returns resources used (i.e., occupied or released) by this instruction
   virtual ResourcesVector GetResourcesFromInstruction(
       const HloInstruction& hlo) const;
 
@@ -235,6 +246,11 @@ class AsyncTracker {
   GetOccupiedShareableResourcesFromVector(
       const ResourcesVector& resources) const;
 
+  // Returns the list of the occupied serial resources filtered from the given
+  // resources vector.
+  virtual absl::InlinedVector<int64_t, 1> GetOccupiedSerialResourcesFromVector(
+      const ResourcesVector& resources) const;
+
   inline CanonicalAsyncOp GetCanonicalAsyncOp(const HloInstruction& hlo) const {
     return get_canonical_async_op_(hlo);
   }
@@ -250,15 +266,23 @@ class AsyncTracker {
                               absl::flat_hash_map<int64_t, int64_t>>
       async_in_computation_cache_;
   GetCanonicalAsyncOpFunc get_canonical_async_op_;
+
+ protected:
+  mutable absl::flat_hash_map<const HloInstruction*, ResourcesVector>
+      resources_cache_;
 };
 
 // Base class for the core scheduling algorithm.
 class SchedulerCore {
  public:
   virtual Status InitializeScheduler(const HloModule* module) = 0;
-  virtual StatusOr<std::vector<HloInstruction*>> ScheduleComputation(
+  virtual absl::StatusOr<std::vector<HloInstruction*>> ScheduleComputation(
       const HloComputation* computation) = 0;
   virtual ~SchedulerCore() = default;
+  virtual int64_t GetMemoryPeak() = 0;
+  virtual void SetMemoryLimit(uint64_t new_limit) = 0;
+  virtual uint64_t GetMemoryLimit() = 0;
+  virtual int64_t GetRerunTimes() = 0;
 };
 
 // Represents an edge between two nodes in the schedule graph.
@@ -493,6 +517,10 @@ class HloScheduleGraph {
   // List containing the original order (before scheduling) of the
   // instructions).
   std::vector<const HloInstruction*> original_order_;
+  // Searches through node's predecessors to see if
+  // possible_predecessor can be found.
+  bool IsPredecessorTransitively(const HloGraphNode* node,
+                                 const HloGraphNode* possible_predecessor);
 };
 
 // Tracks data about HloBuffers like where the first definition is in the
@@ -659,6 +687,7 @@ class ModulePressureState {
       const HloComputation* comp,
       MemoryPressureTracker::MemoryPressureState state) {
     memory_pressure_states_[comp] = state;
+    memory_peak_ = std::max(memory_peak_, state.memory_peak);
   }
   // Returns the underlying pressure state cache object
   const PressureStateMap& pressure_state_cache() const {
@@ -666,6 +695,8 @@ class ModulePressureState {
   }
   // Returns the buffer tracker object.
   const BufferInfoTracker& buffer_tracker() const { return buffer_tracker_; }
+  int64_t GetMemoryPeak() { return memory_peak_; }
+  void SetMemoryPeak(int64_t peak) { memory_peak_ = peak; }
 
  private:
   const HloModule* module_;
@@ -674,6 +705,7 @@ class ModulePressureState {
                       MemoryPressureTracker::MemoryPressureState>
       memory_pressure_states_;
   BufferInfoTracker buffer_tracker_;
+  int64_t memory_peak_ = 0;
 };
 
 // Implementation of the default scheduling algorithm.
@@ -797,7 +829,7 @@ class DefaultSchedulerCore : public SchedulerCore {
         early_target_scheduling_rule_(early_target_scheduling_rule),
         post_processing_fn_(post_processing_fn) {}
   Status InitializeScheduler(const HloModule* module) override;
-  StatusOr<std::vector<HloInstruction*>> ScheduleComputation(
+  absl::StatusOr<std::vector<HloInstruction*>> ScheduleComputation(
       const HloComputation* computation) override;
   static bool AddOccupierToResource(
       HloGraphNode::TimeCost current_time, HloEdge& new_edge,
@@ -805,11 +837,19 @@ class DefaultSchedulerCore : public SchedulerCore {
   static bool DeleteOccupierFromResource(
       HloGraphNode::TimeCost current_time, HloEdge& edge,
       std::vector<std::pair<HloEdge*, HloGraphNode::TimeCost>>& occupiers);
+  int64_t GetMemoryPeak() override {
+    return module_pressure_state_->GetMemoryPeak();
+  }
+  uint64_t GetMemoryLimit() override { return config_.memory_limit; }
+  void SetMemoryLimit(uint64_t new_limit) override {
+    this->config_.memory_limit = new_limit;
+  }
+  int64_t GetRerunTimes() override { return config_.rerun; }
 
  protected:
   virtual void LogInstruction(const HloInstruction* instr) const;
   // Update node that has been scheduled.
-  virtual StatusOr<HloGraphNode::TimeCost> ScheduleNode(
+  virtual absl::StatusOr<HloGraphNode::TimeCost> ScheduleNode(
       HloGraphNode* n, SchedulingState* sched_state) const;
   // Perform the scheduling of one or more instructions. Called every time the
   // ready set is not empty.
@@ -842,6 +882,7 @@ class LatencyHidingScheduler : public HloModulePass {
     const HloComputation* computation = nullptr;
     double all_gather_wasted_cycles = 0;
     double all_reduce_wasted_cycles = 0;
+    double collective_broadcast_wasted_cycles = 0;
     double collective_permute_wasted_cycles = 0;
     double all_to_all_wasted_cycles = 0;
     double reduce_scatter_wasted_cycles = 0;
@@ -874,14 +915,13 @@ class LatencyHidingScheduler : public HloModulePass {
   static std::string SchedulerStatisticsString(
       const SchedulerStatistics& sched_stats);
   using HloPassInterface::Run;
-  StatusOr<bool> Run(
+  absl::StatusOr<bool> Run(
       HloModule* module,
       const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 
   virtual void LogScheduleStatistics(const HloComputation* computation);
 
  private:
-  SchedulerConfig config_;
   std::unique_ptr<LatencyEstimator> latency_estimator_;
   std::unique_ptr<AsyncTracker> async_tracker_;
   std::unique_ptr<SchedulerCore> scheduler_core_;

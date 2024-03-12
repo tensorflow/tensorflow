@@ -1,4 +1,4 @@
-/* Copyright 2018 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2018 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -16,13 +16,19 @@ limitations under the License.
 #include "xla/client/lib/slicing.h"
 
 #include <algorithm>
+#include <cstdint>
 #include <functional>
 #include <limits>
 #include <vector>
 
+#include "absl/types/span.h"
 #include "xla/client/lib/arithmetic.h"
 #include "xla/client/lib/constants.h"
 #include "xla/client/xla_builder.h"
+#include "xla/shape.h"
+#include "xla/shape_util.h"
+#include "xla/status_macros.h"
+#include "xla/statusor.h"
 #include "xla/util.h"
 
 namespace xla {
@@ -43,7 +49,7 @@ XlaOp DynamicStridedSlice(XlaOp input, absl::Span<const XlaOp> base_indices,
 XlaOp SliceInMinorDims(XlaOp x, absl::Span<const int64_t> start,
                        absl::Span<const int64_t> end) {
   XlaBuilder* builder = x.builder();
-  return builder->ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
+  return builder->ReportErrorOrReturn([&]() -> absl::StatusOr<XlaOp> {
     TF_RET_CHECK(start.size() == end.size());
     int64_t n_minor_dims = start.size();
 
@@ -72,7 +78,7 @@ XlaOp SliceInMinorDims(XlaOp x, absl::Span<const int64_t> start,
 
 XlaOp UpdateSlice(XlaOp x, XlaOp update, absl::Span<const int64_t> start) {
   XlaBuilder* builder = x.builder();
-  return builder->ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
+  return builder->ReportErrorOrReturn([&]() -> absl::StatusOr<XlaOp> {
     TF_ASSIGN_OR_RETURN(Shape shape, builder->GetShape(x));
     const int64_t n_dims = shape.rank();
     const int64_t start_size = start.size();
@@ -92,7 +98,7 @@ XlaOp UpdateSlice(XlaOp x, XlaOp update, absl::Span<const int64_t> start) {
 XlaOp UpdateSliceInMinorDims(XlaOp x, XlaOp update,
                              absl::Span<const int64_t> start) {
   XlaBuilder* builder = x.builder();
-  return builder->ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
+  return builder->ReportErrorOrReturn([&]() -> absl::StatusOr<XlaOp> {
     TF_ASSIGN_OR_RETURN(Shape shape, builder->GetShape(x));
     const int64_t n_dims = shape.rank();
     const int64_t n_minor_dims = start.size();
@@ -114,7 +120,7 @@ std::vector<int64_t> ConcatVectors(absl::Span<const int64_t> xs,
   return output;
 }
 
-StatusOr<std::vector<XlaOp>> PrependZerosInMajorDims(
+absl::StatusOr<std::vector<XlaOp>> PrependZerosInMajorDims(
     XlaOp x, absl::Span<const XlaOp> starts) {
   XlaBuilder* builder = x.builder();
   TF_ASSIGN_OR_RETURN(Shape shape, builder->GetShape(x));
@@ -132,7 +138,7 @@ StatusOr<std::vector<XlaOp>> PrependZerosInMajorDims(
 XlaOp DynamicSliceInMinorDims(XlaOp x, absl::Span<const XlaOp> starts,
                               absl::Span<const int64_t> sizes) {
   XlaBuilder* builder = x.builder();
-  return builder->ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
+  return builder->ReportErrorOrReturn([&]() -> absl::StatusOr<XlaOp> {
     TF_ASSIGN_OR_RETURN(Shape shape, builder->GetShape(x));
     const int64_t n_dims = shape.rank();
     int64_t n_minor_dims = starts.size();
@@ -150,7 +156,7 @@ XlaOp DynamicSliceInMinorDims(XlaOp x, absl::Span<const XlaOp> starts,
 XlaOp DynamicUpdateSliceInMinorDims(XlaOp x, XlaOp update,
                                     absl::Span<const XlaOp> starts) {
   XlaBuilder* builder = x.builder();
-  return builder->ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
+  return builder->ReportErrorOrReturn([&]() -> absl::StatusOr<XlaOp> {
     TF_ASSIGN_OR_RETURN(auto padded_starts, PrependZerosInMajorDims(x, starts));
     return DynamicUpdateSlice(x, update, padded_starts);
   });
@@ -158,7 +164,7 @@ XlaOp DynamicUpdateSliceInMinorDims(XlaOp x, XlaOp update,
 
 XlaOp TorchGather(XlaOp input, XlaOp index, int64_t dim, bool sparse) {
   XlaBuilder* builder = input.builder();
-  return builder->ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
+  return builder->ReportErrorOrReturn([&]() -> absl::StatusOr<XlaOp> {
     TF_ASSIGN_OR_RETURN(Shape index_shape, builder->GetShape(index));
     TF_ASSIGN_OR_RETURN(Shape input_shape, builder->GetShape(input));
     if (ShapeUtil::ElementHasBitWidth(index_shape, 64) &&
@@ -228,7 +234,7 @@ XlaOp TorchGather(XlaOp input, XlaOp index, int64_t dim, bool sparse) {
 XlaOp TorchScatterDense(XlaOp input, XlaOp index, XlaOp src, int64_t dim,
                         const std::function<XlaOp(XlaOp, XlaOp)>& combiner) {
   XlaBuilder* builder = input.builder();
-  return builder->ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
+  return builder->ReportErrorOrReturn([&]() -> absl::StatusOr<XlaOp> {
     TF_ASSIGN_OR_RETURN(Shape index_shape, builder->GetShape(index));
     TF_ASSIGN_OR_RETURN(Shape input_shape, builder->GetShape(input));
     std::vector<int64_t> index_broadcast_dims;
@@ -267,7 +273,7 @@ XlaOp TorchScatterDense(XlaOp input, XlaOp index, XlaOp src, int64_t dim,
 XlaOp TorchIndexSelect(XlaOp input, XlaOp index, int64_t dim,
                        int64_t batch_dims) {
   XlaBuilder* builder = input.builder();
-  return builder->ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
+  return builder->ReportErrorOrReturn([&]() -> absl::StatusOr<XlaOp> {
     TF_ASSIGN_OR_RETURN(Shape input_shape, builder->GetShape(input));
     TF_ASSIGN_OR_RETURN(Shape index_shape, builder->GetShape(index));
     if (dim < batch_dims) {
@@ -287,8 +293,9 @@ XlaOp TorchIndexSelect(XlaOp input, XlaOp index, int64_t dim,
       ShapeUtil::AppendMajorDimension(1, &index_shape);
       std::vector<XlaOp> to_concat;
       to_concat.reserve(batch_dims + 1);
+      xla::Shape iota_shape = xla::ShapeUtil::MakeStaticShape(index_shape);
       for (int64_t batch_dim = 0; batch_dim < batch_dims; ++batch_dim) {
-        to_concat.push_back(Iota(builder, index_shape, batch_dim));
+        to_concat.push_back(Iota(builder, iota_shape, batch_dim));
       }
       to_concat.push_back(Reshape(index, index_shape.dimensions()));
       index = ConcatInDim(builder, to_concat, gather_dnums.index_vector_dim());

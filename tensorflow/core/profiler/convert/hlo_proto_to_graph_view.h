@@ -54,9 +54,36 @@ tensorflow::StatusOr<std::string> ConvertHloProtoToGraph(
     int graph_width, const xla::HloRenderOptions& render_options,
     const xla::RenderedGraphFormat& format);
 
+// Render graph with the provided render options.
+StatusOr<std::string> RenderGraphView(
+    const xla::HloComputation& computation, absl::string_view label,
+    const xla::DebugOptions& debug_options, xla::RenderedGraphFormat format,
+    xla::HloRenderOptions hlo_render_options = {});
+
+// Render graph with centered node and depth
+StatusOr<std::string> RenderGraphNeighborhoodAround(
+    const xla::HloInstruction& node, int radius,
+    xla::RenderedGraphFormat format,
+    xla::HloRenderOptions hlo_render_options = {},
+    const absl::flat_hash_set<const xla::HloInstruction*>& boundary = {});
+
 // Convert `hlo_proto` to StringView.
 tensorflow::StatusOr<std::string> ConvertHloProtoToStringView(
     const xla::HloProto& hlo_proto, bool verbose, bool metadata);
+
+// Convert dot into certain format
+StatusOr<std::string> WrapDotInFormat(std::string dot,
+                                      xla::RenderedGraphFormat format);
+
+// Convert dot into visual graph in html
+std::string WrapDotInHtml(std::string dot);
+
+// Registers a function which implements RenderedGraphFormat::kUrl.
+// The input to the function is dot, and the output should be a URL or an error.
+// There can only be one active renderer, and the last call to this function
+// wins.
+void RegisterGraphvizURLRenderer(
+    std::function<StatusOr<std::string>(absl::string_view dot)> renderer);
 
 }  // namespace profiler
 }  // namespace tensorflow

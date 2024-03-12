@@ -14,16 +14,20 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/compiler/mlir/quantization/tensorflow/calibrator/calibrator_singleton.h"
 
+#include <cstdint>
 #include <optional>
 #include <vector>
 
 #include <gtest/gtest.h>
+#include "tensorflow/compiler/mlir/quantization/stablehlo/quantization_config.pb.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/calibrator/calibration_statistics.pb.h"
 #include "tensorflow/core/platform/test.h"
 
 namespace tensorflow {
 namespace calibrator {
 namespace {
+
+using ::stablehlo::quantization::CalibrationOptions;
 
 TEST(CalibratorSingletonTest, SimpleMinMax) {
   std::vector<std::vector<float>> report_vec;
@@ -199,6 +203,12 @@ TEST(CalibratorSingletonTest, SimpleAverageMinMax) {
   EXPECT_EQ(statistics.value().average_min_max_statistics().min_sum(), -60.0f);
   EXPECT_EQ(statistics.value().average_min_max_statistics().max_sum(), 180.0f);
   EXPECT_EQ(statistics.value().average_min_max_statistics().num_samples(), 3);
+}
+
+TEST(CalibratorSingletonTest, IssueNewIdGeneratesNewId) {
+  const int64_t id = CalibratorSingleton::IssueNewId();
+  const int64_t next_id = CalibratorSingleton::IssueNewId();
+  EXPECT_NE(id, next_id);
 }
 
 }  // namespace

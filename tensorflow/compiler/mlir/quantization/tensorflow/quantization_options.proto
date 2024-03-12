@@ -2,6 +2,7 @@ syntax = "proto3";
 
 package tensorflow.quantization;
 
+import "tensorflow/compiler/mlir/quantization/stablehlo/quantization_config.proto";
 import "tensorflow/core/framework/tensor.proto";
 
 option cc_enable_arenas = true;
@@ -131,6 +132,8 @@ enum OpSet {
 
 // Defines various calibration options.
 // NEXT ID: 3
+// TODO(b/326751656): remove after all the dependencies moved to
+// stableho.quantization.CalibrationOptions.
 message CalibrationOptions {
   // Configurations for calibration methods.
   // NEXT ID: 7
@@ -203,23 +206,7 @@ message RepresentativeDatasetFile {
 message DebuggerOptions {
   // Type of quantization debugger. Depending on the type, inputs and outputs
   // are wired differently.
-  // NEXT ID: 3
-  enum DebuggerType {
-    DEBUGGER_TYPE_UNSPECIFIED = 0;
-    // DEBUGGER_TYPE_WHOLE_MODEL creates two tf.Savedmodel - unquantized and
-    // quantized model with DumpTensor added to outputs of quantizable layers.
-    // The DumpTensor dumps entire value of its input to a specified file. When
-    // DEBUGGER_TYPE_WHOLE_MODEL is used unquantized_dump_model_path has to be
-    // specified.
-    DEBUGGER_TYPE_WHOLE_MODEL = 1;
-    // DEBUGGER_TYPE_PER_LAYER creates a model with both quantized and original
-    // unquantized layer. Unquantized layer's input comes from previous
-    // quantized layer. DumpTensor is used save to entire value of outputs from
-    // both quantized and unquantized layer.
-    DEBUGGER_TYPE_PER_LAYER = 2;
-  }
-
-  DebuggerType debugger_type = 1;
+  stablehlo.quantization.DebuggerConfig.DebuggerType debugger_type = 1;
 
   // Path to save unquantized model with dump tensor ops attached.
   // Used when debugger_type is WHOLE_MODEL.
@@ -289,10 +276,11 @@ message QuantizationOptions {
   // If not set, it defaults to `true`.
   optional bool freeze_all_variables = 9;
 
-  // Enables chnanel-wise quantizaiton. By default, channel-wise quantization is
+  // Enables channel-wise quantization. By default, channel-wise quantization is
   // not applied regardless of the op support. Currently, it is supported for
-  // Uniform Quantized opset only.
-  bool enable_per_channel_quantization = 10;
+  // XLA opset for SRQ on weight tensors (not activation),
+  // and Uniform Quantized opset .
+  optional bool enable_per_channel_quantization = 10;
 
   // Enables two inputs of an operation to be both tensors.
   // Currently supports MatMul and BatchMatMul ops for XLA.
@@ -305,17 +293,18 @@ message QuantizationOptions {
   bool experimental_enable_tpu_model_support = 12;
 
   // Produces legacy weight-only graph where the qconst op(containing quantized
-  // values) is followed by a dequantization op.
+  // values) is followed by a dequantization op. This flag will be deprecated.
   bool enable_legacy_weight_only = 13;
 
   // If set to true, it forces calibration in graph model instead of eager mode
-  // when the context is in eager mode.
+  // when the context is in eager mode. This will be forcibly set to true when
+  // using DebuggerOptions.
   bool force_graph_mode_calibration = 14;
 
   // Defines calibration options for quantization. This option is only used for
   // activation of static range quantization (SRQ). Quantization calibration
   // method is set to MIN_MAX by default.
-  CalibrationOptions calibration_options = 15;
+  stablehlo.quantization.CalibrationOptions calibration_options = 15;
 
   // Configuration related to quantization debugger.
   DebuggerOptions debugger_options = 16;

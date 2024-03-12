@@ -1,4 +1,4 @@
-/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2020 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -61,7 +61,8 @@ class TpuOpExecutable : public xla::TpuExecutableInterface {
 
   SE_OutsideCompilationParams* outside_compilation_params_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(TpuOpExecutable);
+  TpuOpExecutable(const TpuOpExecutable&) = delete;
+  void operator=(const TpuOpExecutable&) = delete;
 };
 
 }  // namespace tensorflow

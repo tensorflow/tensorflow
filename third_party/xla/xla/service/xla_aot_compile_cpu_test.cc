@@ -1,4 +1,4 @@
-/* Copyright 2022 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2022 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -69,7 +69,9 @@ TEST(XlaCompileTest, LoadCpuExecutable) {
   executable_run_options.set_allocator(client->backend().memory_allocator());
   TF_ASSERT_OK_AND_ASSIGN(
       ScopedShapedBuffer result,
-      local_executable->Run({&array1, &array2}, executable_run_options));
+      local_executable->Run(
+          absl::Span<const ShapedBuffer* const>{&array1, &array2},
+          executable_run_options));
 
   TF_ASSERT_OK_AND_ASSIGN(Literal output,
                           client->ShapedBufferToLiteral(result));

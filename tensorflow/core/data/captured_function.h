@@ -45,7 +45,7 @@ class InstantiatedCapturedFunction;
 // Creates an iterator for a dataset which is created by applying the given
 // function to the given input element.
 Status MakeIteratorFromInputElement(
-    IteratorContext* ctx, const IteratorBase* parent,
+    IteratorContext* ctx, const DatasetBaseIterator* parent,
     const std::vector<Tensor>& input_element, int64_t thread_index,
     const InstantiatedCapturedFunction& inst_captured_func, StringPiece prefix,
     std::unique_ptr<IteratorBase>* out_iterator);
@@ -54,7 +54,7 @@ Status MakeIteratorFromInputElement(
 // function to the given input element. Pass non-null `node` to record
 // processing time for modeling Iterator's GetNext() resource usage.
 Status MakeIteratorFromInputElement(
-    IteratorContext* ctx, const IteratorBase* parent,
+    IteratorContext* ctx, const DatasetBaseIterator* parent,
     const std::vector<Tensor>& input_element, int64_t thread_index,
     const InstantiatedCapturedFunction& inst_captured_func, StringPiece prefix,
     std::unique_ptr<IteratorBase>* out_iterator,
@@ -217,7 +217,8 @@ class CapturedFunction {
   const std::shared_ptr<const FunctionMetadata> metadata_;
   const std::vector<Tensor> captured_inputs_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(CapturedFunction);
+  CapturedFunction(const CapturedFunction&) = delete;
+  void operator=(const CapturedFunction&) = delete;
 };
 
 // `InstantiatedCapturedFunction` encapsulates all the runtime support needed
@@ -289,6 +290,8 @@ class InstantiatedCapturedFunction {
                 FunctionLibraryRuntime::DoneCallback done,
                 const std::shared_ptr<model::Node>& node) const;
 
+  std::string func_name() const { return captured_func_->func().name(); }
+
  private:
   friend class CapturedFunction;
 
@@ -311,7 +314,8 @@ class InstantiatedCapturedFunction {
   CapturedFunction* const captured_func_;  // Not owned.
   const bool is_multi_device_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(InstantiatedCapturedFunction);
+  InstantiatedCapturedFunction(const InstantiatedCapturedFunction&) = delete;
+  void operator=(const InstantiatedCapturedFunction&) = delete;
 };
 
 }  // namespace data

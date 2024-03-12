@@ -35,7 +35,6 @@ const llvm::DenseSet<mlir::TypeID>& MlirAlwaysOps() {
       TypeID::get<TF::FusedBatchNormGradV3Op>(),
       TypeID::get<TF::XlaReduceScatterOp>(),
       TypeID::get<TF::ModOp>(),
-      TypeID::get<TF::ConcatV2Op>(),
 
       // MatrixDiagPartV3 should use the MLIR implementation due to performance.
       TypeID::get<TF::MatrixDiagPartV3Op>(),
@@ -174,6 +173,7 @@ bool IsOpTypeAllowedTf2XlaFallback(const TypeID& type_id) {
             TypeID::get<TF::CollectiveReduceV2Op>(),
             TypeID::get<TF::ComplexAbsOp>(),
             TypeID::get<TF::ConjugateTransposeOp>(),
+            TypeID::get<TF::ConcatV2Op>(),
             TypeID::get<TF::ConvOp>(),
             TypeID::get<TF::CoshOp>(),
             TypeID::get<TF::CrossOp>(),
@@ -205,6 +205,8 @@ bool IsOpTypeAllowedTf2XlaFallback(const TypeID& type_id) {
             TypeID::get<TF::FakeQuantWithMinMaxVarsPerChannelGradientOp>(),
             TypeID::get<TF::FloorDivOp>(),
             TypeID::get<TF::FloorModOp>(),
+            TypeID::get<TF::GetMinibatchesInCsrWithPhysicalReplicaOp>(),
+            TypeID::get<TF::GetMinibatchSplitsWithPhysicalReplicaOp>(),
             TypeID::get<TF::GreaterOp>(),
             TypeID::get<TF::HSVToRGBOp>(),
             TypeID::get<TF::IFFT2DOp>(),
@@ -314,6 +316,7 @@ bool IsOpTypeAllowedTf2XlaFallback(const TypeID& type_id) {
             TypeID::get<TF::StatelessRandomUniformIntV2Op>(),
             TypeID::get<TF::StatelessTruncatedNormalOp>(),
             TypeID::get<TF::StatelessTruncatedNormalV2Op>(),
+            TypeID::get<TF::StoreMinibatchStatisticsInFdoOp>(),
             TypeID::get<TF::StridedSliceOp>(),
             TypeID::get<TF::SubOp>(),
             TypeID::get<TF::SvdOp>(),
@@ -333,6 +336,7 @@ bool IsOpTypeAllowedTf2XlaFallback(const TypeID& type_id) {
             TypeID::get<TF::UnpackOp>(),
             TypeID::get<TF::UpperBoundOp>(),
             TypeID::get<TF::WhereOp>(),
+            TypeID::get<TF::XlaSendTPUEmbeddingGradientsOp>(),
             TypeID::get<TF::XlaBroadcastHelperOp>(),
             TypeID::get<TF::XlaCallModuleOp>(),
             TypeID::get<TF::XlaCustomCallV2Op>(),
@@ -341,6 +345,18 @@ bool IsOpTypeAllowedTf2XlaFallback(const TypeID& type_id) {
             TypeID::get<TF::XlaPadOp>(),
             TypeID::get<TF::XlaSetBoundOp>(),
             TypeID::get<TF::XlaSetDynamicDimensionSizeOp>(),
+            TypeID::get<TF::XlaSparseCoreAdagradMomentumOp>(),
+            TypeID::get<TF::XlaSparseCoreAdagradOp>(),
+            TypeID::get<TF::XlaSparseCoreAdamOp>(),
+            TypeID::get<TF::XlaSparseCoreFtrlOp>(),
+            TypeID::get<TF::XlaSparseCoreSgdOp>(),
+            TypeID::get<TF::XlaSparseDenseMatmulGradWithAdagradAndCsrInputOp>(),
+            TypeID::get<
+                TF::XlaSparseDenseMatmulGradWithAdagradMomentumAndCsrInputOp>(),
+            TypeID::get<TF::XlaSparseDenseMatmulGradWithAdamAndCsrInputOp>(),
+            TypeID::get<TF::XlaSparseDenseMatmulGradWithFtrlAndCsrInputOp>(),
+            TypeID::get<TF::XlaSparseDenseMatmulGradWithSgdAndCsrInputOp>(),
+            TypeID::get<TF::XlaSparseDenseMatmulWithCsrInputOp>(),
             TypeID::get<TF::XlaSpmdFullToShardShapeOp>(),
             TypeID::get<TF::XlaSpmdShardToFullShapeOp>(),
             TypeID::get<TF::XlaSvdOp>(),
@@ -466,6 +482,7 @@ bool IsOpTypeAllowedTf2XlaPreferred(const TypeID& type_id) {
     TypeID::get<TF::UnsortedSegmentProdOp>(),
     TypeID::get<TF::UnsortedSegmentSumOp>(),
     TypeID::get<TF::XdivyOp>(),
+    TypeID::get<TF::XlaSendTPUEmbeddingGradientsOp>(),
     TypeID::get<TF::XlaAllReduceOp>(),
     TypeID::get<TF::XlaGatherOp>(),
     TypeID::get<TF::Xlog1pyOp>(),
@@ -476,6 +493,19 @@ bool IsOpTypeAllowedTf2XlaPreferred(const TypeID& type_id) {
   // clang-format on
 
   return ops->contains(type_id);
+}
+
+const llvm::DenseSet<mlir::TypeID>& DynamicTensorflowOps() {
+  // The static variable is a pointer in order to avoid destruction upon thread
+  // termination.
+  static const llvm::DenseSet<mlir::TypeID>* ops =
+      new llvm::DenseSet<mlir::TypeID>{
+          TypeID::get<mlir::TF::DynamicPartitionOp>(),
+          TypeID::get<mlir::TF::UniqueOp>(),
+          TypeID::get<mlir::TF::WhereOp>(),
+          TypeID::get<mlir::TF::XlaSetDynamicDimensionSizeOp>(),
+      };
+  return *ops;
 }
 
 }  // namespace
@@ -501,6 +531,10 @@ bool IsOpAllowedTf2xlaFallback(const TypeID& type_id) {
 
 bool IsOpAllowedTf2xlaPreferred(const TypeID& type_id) {
   return IsOpTypeAllowedTf2XlaPreferred(type_id);
+}
+
+bool IsDynamicPadderOp(const TypeID& type_id) {
+  return DynamicTensorflowOps().contains(type_id);
 }
 
 }  // namespace mhlo

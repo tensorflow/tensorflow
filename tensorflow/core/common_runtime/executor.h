@@ -101,6 +101,7 @@ class Executor {
     StepStatsCollectorInterface* stats_collector = nullptr;
     CallFrameInterface* call_frame = nullptr;
     CancellationManager* cancellation_manager = nullptr;
+    const ConfigProto* session_config = nullptr;
     SessionState* session_state = nullptr;
     // Unique session identifier. Can be empty.
     string session_handle;
@@ -242,7 +243,8 @@ class ExecutorBarrier {
     }
   }
 
-  TF_DISALLOW_COPY_AND_ASSIGN(ExecutorBarrier);
+  ExecutorBarrier(const ExecutorBarrier&) = delete;
+  void operator=(const ExecutorBarrier&) = delete;
 };
 
 // A few helpers to facilitate create/delete kernels.

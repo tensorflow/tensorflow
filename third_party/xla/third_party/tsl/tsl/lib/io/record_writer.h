@@ -124,7 +124,8 @@ class RecordWriter {
   }
 #endif
 
-  TF_DISALLOW_COPY_AND_ASSIGN(RecordWriter);
+  RecordWriter(const RecordWriter&) = delete;
+  void operator=(const RecordWriter&) = delete;
 };
 
 void RecordWriter::PopulateHeader(char* header, const char* data, size_t n) {

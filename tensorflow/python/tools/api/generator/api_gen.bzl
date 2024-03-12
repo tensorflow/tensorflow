@@ -1,9 +1,9 @@
 """Targets for generating TensorFlow Python API __init__.py files."""
 
+load("//tensorflow:py.default.bzl", "py_binary")
 load("//tensorflow:tensorflow.bzl", "if_oss")
 load("//tensorflow:tensorflow.default.bzl", "if_indexing_source_code")
 load("//tensorflow/python/tools/api/generator:api_init_files.bzl", "TENSORFLOW_API_INIT_FILES")
-load("//tensorflow:py.default.bzl", "py_binary")
 
 TENSORFLOW_API_GEN_PACKAGES = [
     "tensorflow.python",
@@ -98,7 +98,7 @@ def gen_api_init_files(
       srcs: genrule sources. If passing root_init_template, the template file
         must be included in sources.
       api_name: Name of the project that you want to generate API files for
-        (e.g. "tensorflow" or "estimator").
+        (e.g. "tensorflow").
       api_version: TensorFlow API version to generate. Must be either 1 or 2.
       compat_api_versions: Older TensorFlow API versions to generate under
         compat/ directory.
@@ -133,7 +133,7 @@ def gen_api_init_files(
         srcs_version = "PY3",
         visibility = ["//visibility:public"],
         deps = package_deps + [
-            "//tensorflow/python/util:tf_decorator",
+            "//tensorflow/python/util:tf_decorator_py",
             "//tensorflow/python/util:tf_export",
             "//tensorflow/python/util:module_wrapper",
             "//tensorflow/python/tools/api/generator:doc_srcs",
@@ -262,7 +262,6 @@ def _make_cmd(api_gen_binary_target, flags, loading, output_paths):
 # To not break internal cross-platform builds, we only set `cfg` to `target` for the OSS build.
 api_gen_rule = rule(
     implementation = _api_gen_rule_impl,
-    output_to_genfiles = True,
     attrs = {
         "outs": attr.output_list(mandatory = True),
         "srcs": attr.label_list(allow_files = True),

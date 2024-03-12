@@ -428,7 +428,7 @@ Status OpKernelContext::input_ref_mutex(StringPiece name, mutex** out_mutex) {
   return OkStatus();
 }
 
-StatusOr<const Tensor*> OpKernelContext::get_input(int index) const {
+absl::StatusOr<const Tensor*> OpKernelContext::get_input(int index) const {
   if (index < 0 || index >= num_inputs() || input_is_ref(index)) {
     return absl::InvalidArgumentError(
         absl::StrCat("Given index was ", index,

@@ -35,7 +35,7 @@ limitations under the License.
 #include "tsl/platform/windows/windows_file_system.h"
 #include "tsl/protobuf/error_codes.pb.h"
 
-#pragma comment(lib, "Shlwapi.lib")
+#pragma comment(lib, "shlwapi.lib")
 
 namespace tsl {
 

@@ -405,10 +405,10 @@ func.func @constant_like_constant(%arg0: tensor<3x4xi32>) -> tensor<3x4xf32> {
 }
 
 // CHECK-LABEL: constant_like_constant_dynamic
-func.func @constant_like_constant_dynamic(%arg0: tensor<*xi32>) -> tensor<*xf32> {
+func.func @constant_like_constant_dynamic(%arg0: tensor<?x?xi32>) -> tensor<?x?xf32> {
   // CHECK: chlo.constant_like
-  %0 = "chlo.constant_like"(%arg0) { value = 3.2 : f32 } : (tensor<*xi32>) -> tensor<*xf32>
-  func.return %0 : tensor<*xf32>
+  %0 = "chlo.constant_like"(%arg0) { value = 3.2 : f32 } : (tensor<?x?xi32>) -> tensor<?x?xf32>
+  func.return %0 : tensor<?x?xf32>
 }
 
 // CHECK-LABEL: dynamic_update_slice_fold_length_0
@@ -566,10 +566,10 @@ func.func @slice_zero_elements() -> tensor<0xi64> {
 }
 
 // CHECK-LABEL: slice_unknown_shape
-func.func @slice_unknown_shape(%arg0: tensor<*xf32>) -> tensor<*xf32> {
-  // CHECK: "mhlo.slice"(%arg0) {limit_indices = dense<[1, 4]> : tensor<2xi64>, start_indices = dense<0> : tensor<2xi64>, strides = dense<1> : tensor<2xi64>} : (tensor<*xf32>) -> tensor<*xf32>
-  %0 = "mhlo.slice"(%arg0) {limit_indices = dense<[1, 4]> : tensor<2xi64>, start_indices = dense<0> : tensor<2xi64>, strides = dense<1> : tensor<2xi64>} : (tensor<*xf32>) -> tensor<*xf32>
-  func.return %0 : tensor<*xf32>
+func.func @slice_unknown_shape(%arg0: tensor<?x?xf32>) -> tensor<?x?xf32> {
+  // CHECK: "mhlo.slice"(%arg0) {limit_indices = dense<[1, 4]> : tensor<2xi64>, start_indices = dense<0> : tensor<2xi64>, strides = dense<1> : tensor<2xi64>} : (tensor<?x?xf32>) -> tensor<?x?xf32>
+  %0 = "mhlo.slice"(%arg0) {limit_indices = dense<[1, 4]> : tensor<2xi64>, start_indices = dense<0> : tensor<2xi64>, strides = dense<1> : tensor<2xi64>} : (tensor<?x?xf32>) -> tensor<?x?xf32>
+  func.return %0 : tensor<?x?xf32>
 }
 
 // CHECK-LABEL: slice_concat_fold_first
@@ -810,38 +810,35 @@ func.func @dynamic_broadcast_in_dim_to_same_shape_2(%arg0: tensor<?xf32>) -> ten
 }
 
 // CHECK-LABEL: func @dynamic_broadcast_in_dim_to_same_shape_3
-func.func @dynamic_broadcast_in_dim_to_same_shape_3(%arg0: tensor<*xf32>) -> tensor<?xf32> {
-  // CHECK-SAME: %[[ARG:.*]]: tensor<*xf32>
-  %0 = shape.shape_of %arg0 : tensor<*xf32> -> tensor<?xindex>
+func.func @dynamic_broadcast_in_dim_to_same_shape_3(%arg0: tensor<?xf32>) -> tensor<?xf32> {
+  // CHECK-SAME: %[[ARG:.*]]: tensor<?xf32>
+  %0 = shape.shape_of %arg0 : tensor<?xf32> -> tensor<?xindex>
   %1 = tensor.cast %0 : tensor<?xindex> to tensor<1xindex>
-  %2 = "mhlo.dynamic_broadcast_in_dim"(%arg0, %1) { broadcast_dimensions = dense<0> : tensor<1xi64> } : (tensor<*xf32>, tensor<1xindex>) -> tensor<?xf32>
-  // CHECK: %[[RES:.*]] = tensor.cast %[[ARG]] : tensor<*xf32> to tensor<?xf32>
-  // CHECK: return %[[RES]] : tensor<?xf32>
+  %2 = "mhlo.dynamic_broadcast_in_dim"(%arg0, %1) { broadcast_dimensions = dense<0> : tensor<1xi64> } : (tensor<?xf32>, tensor<1xindex>) -> tensor<?xf32>
+  // CHECK: return %[[ARG]] : tensor<?xf32>
   func.return %2 : tensor<?xf32>
 }
 
 // CHECK-LABEL: func @dynamic_broadcast_in_dim_to_same_shape_4
-func.func @dynamic_broadcast_in_dim_to_same_shape_4(%arg0: tensor<*xf32>) -> tensor<?xf32> {
-  // CHECK-SAME: %[[ARG:.*]]: tensor<*xf32>
-  %0 = shape.shape_of %arg0 : tensor<*xf32> -> !shape.shape
+func.func @dynamic_broadcast_in_dim_to_same_shape_4(%arg0: tensor<?xf32>) -> tensor<?xf32> {
+  // CHECK-SAME: %[[ARG:.*]]: tensor<?xf32>
+  %0 = shape.shape_of %arg0 : tensor<?xf32> -> !shape.shape
   %1 = shape.to_extent_tensor %0 : !shape.shape -> tensor<?xindex>
   %2 = tensor.cast %1 : tensor<?xindex> to tensor<1xindex>
-  %3 = "mhlo.dynamic_broadcast_in_dim"(%arg0, %2) { broadcast_dimensions = dense<0> : tensor<1xi64> } : (tensor<*xf32>, tensor<1xindex>) -> tensor<?xf32>
-  // CHECK: %[[RES:.*]] = tensor.cast %[[ARG]] : tensor<*xf32> to tensor<?xf32>
-  // CHECK: return %[[RES]] : tensor<?xf32>
+  %3 = "mhlo.dynamic_broadcast_in_dim"(%arg0, %2) { broadcast_dimensions = dense<0> : tensor<1xi64> } : (tensor<?xf32>, tensor<1xindex>) -> tensor<?xf32>
+  // CHECK: return %[[ARG]] : tensor<?xf32>
   func.return %3 : tensor<?xf32>
 }
 
 // CHECK-LABEL: func @dynamic_broadcast_in_dim_all_dims_non_expanding
-func.func @dynamic_broadcast_in_dim_all_dims_non_expanding(%arg0: tensor<*xf32>, %arg1: tensor<1xindex>) -> tensor<?xf32> {
-  // CHECK-SAME: %[[ARG:.*]]: tensor<*xf32>
+func.func @dynamic_broadcast_in_dim_all_dims_non_expanding(%arg0: tensor<?xf32>, %arg1: tensor<1xindex>) -> tensor<?xf32> {
+  // CHECK-SAME: %[[ARG:.*]]: tensor<?xf32>
   %1 = "mhlo.dynamic_broadcast_in_dim"(%arg0, %arg1) {
     broadcast_dimensions = dense<0> : tensor<1xi64>,
     known_expanding_dimensions = dense<> : tensor<0xi64>,
     known_nonexpanding_dimensions = dense<0> : tensor<1xi64>
-  } : (tensor<*xf32>, tensor<1xindex>) -> tensor<?xf32>
-  // CHECK: %[[RES:.*]] = tensor.cast %[[ARG]] : tensor<*xf32> to tensor<?xf32>
-  // CHECK: return %[[RES]] : tensor<?xf32>
+  } : (tensor<?xf32>, tensor<1xindex>) -> tensor<?xf32>
+  // CHECK: return %[[ARG]] : tensor<?xf32>
   func.return %1 : tensor<?xf32>
 }
 
@@ -1002,9 +999,9 @@ func.func @dynamic_reshape_not_actually_dynamic(%arg0: tensor<4xf32>, %shape: te
 // CHECK-LABEL: func @shape_of_dynamic_reshape
 // CHECK-SAME: [[ARG0:%[a-zA-Z0-9]+]]
 // CHECK-SAME: [[ARG1:%[a-zA-Z0-9]+]]
-func.func @shape_of_dynamic_reshape(%arg0: tensor<*xf32>, %shape: tensor<2xindex>) -> tensor<2xindex> {
+func.func @shape_of_dynamic_reshape(%arg0: tensor<?xf32>, %shape: tensor<2xindex>) -> tensor<2xindex> {
   // CHECK: return [[ARG1]]
-  %0 = "mhlo.dynamic_reshape"(%arg0, %shape) : (tensor<*xf32>, tensor<2xindex>) -> tensor<?x?xf32>
+  %0 = "mhlo.dynamic_reshape"(%arg0, %shape) : (tensor<?xf32>, tensor<2xindex>) -> tensor<?x?xf32>
   %1 = shape.shape_of %0 : tensor<?x?xf32> -> tensor<2xindex>
   func.return %1 : tensor<2xindex>
 }
@@ -1029,11 +1026,11 @@ func.func @dynamic_reshape_rank_1_to_rank_1(%arg0: tensor<?xcomplex<f32>>,
 // CHECK-SAME: [[ARG1:%[a-zA-Z0-9]+]]
 func.func @dynamic_reshape_of_dynamic_reshape(%arg0: tensor<?xf16>, %shape: tensor<?xindex>) -> tensor<?xf16> {
   // CHECK: return [[ARG0]]
-  %0 = "mhlo.dynamic_reshape"(%arg0, %shape) : (tensor<?xf16>, tensor<?xindex>) -> tensor<*xf16>
-  %1 = shape.shape_of %0 : tensor<*xf16> -> tensor<?xindex>
+  %0 = "mhlo.dynamic_reshape"(%arg0, %shape) : (tensor<?xf16>, tensor<?xindex>) -> tensor<?xf16>
+  %1 = shape.shape_of %0 : tensor<?xf16> -> tensor<?xindex>
   %2 = shape.num_elements %1 : tensor<?xindex> -> index
   %3 = tensor.from_elements %2 : tensor<1xindex>
-  %4 = "mhlo.dynamic_reshape"(%0, %3) : (tensor<*xf16>, tensor<1xindex>) -> tensor<?xf16>
+  %4 = "mhlo.dynamic_reshape"(%0, %3) : (tensor<?xf16>, tensor<1xindex>) -> tensor<?xf16>
   func.return %4 : tensor<?xf16>
 }
 
@@ -2446,11 +2443,11 @@ func.func @dynamic_pad_identity_fold(%arg0: tensor<5x7xf32>) -> tensor<11x15xf32
 func.func @dynamic_pad_length_dyn(
   %arg0: tensor<?x0xf32>, %arg1: tensor<2xi32>, %arg2: tensor<2xi32>,
   %arg3: tensor<2xi32>) -> tensor<?x?xf32> {
-  // CHECK: %[[C0:.+]] = arith.constant 0 : i32
-  // CHECK: %[[C1:.+]] = arith.constant 1 : i32
-  // CHECK: %[[CI0:.+]] = arith.constant 0 : index
-  // CHECK: %[[CI1:.+]] = arith.constant 1 : index
-  // CHECK: %[[CST:.+]] = arith.constant dense<0.000000e+00> : tensor<f32>
+  // CHECK-DAG: %[[C0:.+]] = arith.constant 0 : i32
+  // CHECK-DAG: %[[C1:.+]] = arith.constant 1 : i32
+  // CHECK-DAG: %[[CI0:.+]] = arith.constant 0 : index
+  // CHECK-DAG: %[[CI1:.+]] = arith.constant 1 : index
+  // CHECK-DAG: %[[CST:.+]] = arith.constant dense<0.000000e+00> : tensor<f32>
   // CHECK: %[[DIM0:.+]] = tensor.dim %arg0, %[[CI0]]
   // CHECK: %[[CAST:.+]] = arith.index_cast %[[DIM0]] : index to i32
   // CHECK: %[[EX0:.+]] = tensor.extract %arg1[%[[CI0]]]
@@ -2571,6 +2568,20 @@ func.func @fold_sitosi() -> tensor<i32> {
   // CHECK: mhlo.constant dense<-1> : tensor<i32>
   %1 = "mhlo.convert"(%0) : (tensor<i16>) -> tensor<i32>
   func.return %1 : tensor<i32>
+}
+
+func.func @fold_predtosi() -> tensor<i8> {
+  %0 = mhlo.constant dense<false> : tensor<i1>
+  // CHECK: mhlo.constant dense<0> : tensor<i8>
+  %1 = "mhlo.convert"(%0) : (tensor<i1>) -> tensor<i8>
+  func.return %1 : tensor<i8>
+}
+
+func.func @not_fold_itouq() -> tensor<!quant.uniform<i8:f32, 1.000000e+00:3>> {
+  // CHECK: mhlo.constant dense<1> : tensor<i8>
+  %0 = mhlo.constant dense<1> : tensor<i8>
+  %1 = "mhlo.convert"(%0) : (tensor<i8>) -> tensor<!quant.uniform<i8:f32, 1.000000e+00:3>>
+  func.return %1 : tensor<!quant.uniform<i8:f32, 1.000000e+00:3>>
 }
 
 // CHECK-LABEL: @eliminate_redundant_reshape

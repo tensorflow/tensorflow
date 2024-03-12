@@ -128,7 +128,7 @@ class tstring {
   tstring& operator=(const view& tsv);
 
   // Move Assignment
-  tstring& operator=(tstring&& str);
+  tstring& operator=(tstring&& str) noexcept;
 
   // Comparison
   int compare(const char* str, size_t len) const;
@@ -206,7 +206,7 @@ class tstring {
 
   tstring& insert(size_t pos, const tstring& str, size_t subpos, size_t sublen);
   tstring& insert(size_t pos, size_t n, char c);
-  void swap(tstring& str);
+  void swap(tstring& str) noexcept;
   void push_back(char ch);
 
   // Friends
@@ -327,7 +327,7 @@ inline tstring& tstring::operator=(const tstring::view& tsv) {
 
 // Move Assignment
 
-inline tstring& tstring::operator=(tstring&& str) {
+inline tstring& tstring::operator=(tstring&& str) noexcept {
   TF_TString_Move(&tstr_, &str.tstr_);
 
   return *this;
@@ -553,7 +553,7 @@ inline tstring& tstring::insert(size_t pos, size_t n, char c) {
   return *this;
 }
 
-inline void tstring::swap(tstring& str) {
+inline void tstring::swap(tstring& str) noexcept {
   // TODO(dero): Invalid for OFFSET (unimplemented).
   std::swap(tstr_, str.tstr_);
 }

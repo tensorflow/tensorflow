@@ -1,4 +1,4 @@
-/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -17,23 +17,21 @@ limitations under the License.
 #define XLA_SERVICE_CPU_ONEDNN_MATMUL_H_
 #if defined(INTEL_MKL) && defined(ENABLE_ONEDNN_V3)
 
+#include "xla/service/cpu/backend_config.pb.h"
+#include "xla/shape.h"
+
 namespace xla {
 namespace cpu {
 
+Shape OneDnnMatMulOptWeightsShape(const Shape& input_shape,
+                                  const Shape& weights_shape,
+                                  const Shape& bias_shape,
+                                  const Shape& output_shape,
+                                  const OneDnnMatMulConfig* matmul_config);
+
 extern "C" {
-// TODO(intel-tf): Change the function signature as
-//    void onednn_matmul(void* result, void** args)
-// where
-//        args[0]: num_args (>=3, including itself)
-//        args[1]: ExecutableRunOption
-//        args[2]: OneDnnMatMulConfig
-//        args[3...]: Actual Operands
-// so that it can take variable number of arguments.
-//
-// For now, we are using a fixed number of arguments.
-extern void __xla_cpu_runtime_OneDnnMatMul(const void* run_options_ptr,
-                                           void* lhs, void* rhs, void* result,
-                                           void* config);
+extern void __xla_cpu_runtime_OneDnnMatMul(void* result, void** args);
+extern void __xla_cpu_runtime_OneDnnMatMulReorder(void* result, void** args);
 }  // extern "C"
 
 }  // namespace cpu

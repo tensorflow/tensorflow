@@ -56,13 +56,13 @@ TEST(MergeTest, TestReadRiegeliTreeDepthFirst) {
   const std::string cpb_path =
       io::JoinPath(testing::TensorFlowSrcRoot(),
                    "tools/proto_splitter/testdata", "df-split-tree");
-  ::proto_splitter_testdata::StringNode merged_tree;
+  ::tensorflow::proto_splitter_testdata::StringNode merged_tree;
   TF_ASSERT_OK(Merger::Read(cpb_path, &merged_tree));
 
   const std::string pbtxt_path =
       io::JoinPath(testing::TensorFlowSrcRoot(),
                    "tools/proto_splitter/testdata", "split-tree");
-  ::proto_splitter_testdata::StringNode test_proto;
+  ::tensorflow::proto_splitter_testdata::StringNode test_proto;
   TF_ASSERT_OK(tsl::ReadTextProto(
       tsl::Env::Default(), absl::StrCat(pbtxt_path, ".pbtxt"), &test_proto));
 
@@ -73,14 +73,14 @@ TEST(MergeTest, TestReadRiegeliTreeBreadthFirst) {
   const std::string cpb_path =
       io::JoinPath(testing::TensorFlowSrcRoot(),
                    "tools/proto_splitter/testdata", "bf-split-tree");
-  ::proto_splitter_testdata::StringNode merged_tree;
+  ::tensorflow::proto_splitter_testdata::StringNode merged_tree;
   TF_ASSERT_OK(Merger::Read(cpb_path, &merged_tree));
 
   const std::string pbtxt_path =
       io::JoinPath(testing::TensorFlowSrcRoot(),
                    "tools/proto_splitter/testdata", "split-tree");
 
-  ::proto_splitter_testdata::StringNode test_proto;
+  ::tensorflow::proto_splitter_testdata::StringNode test_proto;
   TF_ASSERT_OK(tsl::ReadTextProto(
       tsl::Env::Default(), absl::StrCat(pbtxt_path, ".pbtxt"), &test_proto));
 
@@ -93,28 +93,29 @@ TEST(MergeTest, TestMergeTreeChunksDepthFirst) {
                    "tools/proto_splitter/testdata", "df-split-tree");
   std::vector<std::unique_ptr<::tsl::protobuf::Message>> chunks;
   for (const auto& chunk : kDFSplitTreeChunks) {
-    ::proto_splitter_testdata::StringNode string_node;
+    ::tensorflow::proto_splitter_testdata::StringNode string_node;
     ::tsl::protobuf::TextFormat::ParseFromString(chunk, &string_node);
     std::unique_ptr<::tsl::protobuf::Message> node =
-        std::make_unique<::proto_splitter_testdata::StringNode>(string_node);
+        std::make_unique<::tensorflow::proto_splitter_testdata::StringNode>(
+            string_node);
     chunks.push_back(std::move(node));
   }
 
   std::string split_tree_metadata;
   TF_ASSERT_OK(tsl::ReadFileToString(
       tsl::Env::Default(), absl::StrCat(path, ".pbtxt"), &split_tree_metadata));
-  ::proto_splitter::ChunkedMessage chunked_message;
+  ::tensorflow::proto_splitter::ChunkedMessage chunked_message;
   ::tsl::protobuf::TextFormat::ParseFromString(split_tree_metadata,
                                                &chunked_message);
 
-  ::proto_splitter_testdata::StringNode merged_tree;
+  ::tensorflow::proto_splitter_testdata::StringNode merged_tree;
   TF_ASSERT_OK(Merger::Merge(chunks, chunked_message, &merged_tree));
 
   const std::string pbtxt_path =
       io::JoinPath(testing::TensorFlowSrcRoot(),
                    "tools/proto_splitter/testdata", "split-tree");
 
-  ::proto_splitter_testdata::StringNode test_proto;
+  ::tensorflow::proto_splitter_testdata::StringNode test_proto;
   TF_ASSERT_OK(tsl::ReadTextProto(
       tsl::Env::Default(), absl::StrCat(pbtxt_path, ".pbtxt"), &test_proto));
 
@@ -127,28 +128,29 @@ TEST(MergeTest, TestMergeTreeChunksBreadthFirst) {
                    "tools/proto_splitter/testdata", "bf-split-tree");
   std::vector<std::unique_ptr<::tsl::protobuf::Message>> chunks;
   for (const auto& chunk : kBFSplitTreeChunks) {
-    ::proto_splitter_testdata::StringNode string_node;
+    ::tensorflow::proto_splitter_testdata::StringNode string_node;
     ::tsl::protobuf::TextFormat::ParseFromString(chunk, &string_node);
     std::unique_ptr<::tsl::protobuf::Message> node =
-        std::make_unique<::proto_splitter_testdata::StringNode>(string_node);
+        std::make_unique<::tensorflow::proto_splitter_testdata::StringNode>(
+            string_node);
     chunks.push_back(std::move(node));
   }
 
   std::string split_tree_metadata;
   TF_ASSERT_OK(tsl::ReadFileToString(
       tsl::Env::Default(), absl::StrCat(path, ".pbtxt"), &split_tree_metadata));
-  ::proto_splitter::ChunkedMessage chunked_message;
+  ::tensorflow::proto_splitter::ChunkedMessage chunked_message;
   ::tsl::protobuf::TextFormat::ParseFromString(split_tree_metadata,
                                                &chunked_message);
 
-  ::proto_splitter_testdata::StringNode merged_tree;
+  ::tensorflow::proto_splitter_testdata::StringNode merged_tree;
   TF_ASSERT_OK(Merger::Merge(chunks, chunked_message, &merged_tree));
 
   const std::string pbtxt_path =
       io::JoinPath(testing::TensorFlowSrcRoot(),
                    "tools/proto_splitter/testdata", "split-tree");
 
-  ::proto_splitter_testdata::StringNode test_proto;
+  ::tensorflow::proto_splitter_testdata::StringNode test_proto;
   TF_ASSERT_OK(tsl::ReadTextProto(
       tsl::Env::Default(), absl::StrCat(pbtxt_path, ".pbtxt"), &test_proto));
 
@@ -201,10 +203,10 @@ TEST(MergeTest, TestReadManyField) {
   const std::string path =
       io::JoinPath(testing::TensorFlowSrcRoot(),
                    "tools/proto_splitter/testdata", "many-field");
-  ::proto_splitter_testdata::ManyFields merged_many_field;
+  ::tensorflow::proto_splitter_testdata::ManyFields merged_many_field;
   TF_ASSERT_OK(Merger::Read(path, &merged_many_field));
 
-  ::proto_splitter_testdata::ManyFields test_many_field;
+  ::tensorflow::proto_splitter_testdata::ManyFields test_many_field;
   TF_ASSERT_OK(tsl::ReadTextProto(
       tsl::Env::Default(), absl::StrCat(path, ".pbtxt"), &test_many_field));
 
@@ -251,8 +253,9 @@ TEST(MergeTest, TestReadPartial) {
     reader.Close();
     TF_ASSERT_OK(read_metadata.status());
   }
-  ::proto_splitter::ChunkMetadata chunk_metadata = read_metadata.value();
-  ::proto_splitter::ChunkMetadata partial_chunk_metadata;
+  ::tensorflow::proto_splitter::ChunkMetadata chunk_metadata =
+      read_metadata.value();
+  ::tensorflow::proto_splitter::ChunkMetadata partial_chunk_metadata;
   partial_chunk_metadata.mutable_chunks()->CopyFrom(chunk_metadata.chunks());
   partial_chunk_metadata.mutable_message()->set_chunk_index(
       chunk_metadata.message().chunk_index());

@@ -156,6 +156,12 @@ class LogMessageNull : public std::basic_ostringstream<char> {
 
 #define _TF_LOG_QFATAL _TF_LOG_FATAL
 
+#ifdef NDEBUG
+#define _TF_LOG_DFATAL _TF_LOG_ERROR
+#else
+#define _TF_LOG_DFATAL _TF_LOG_FATAL
+#endif
+
 #define LOG(severity) _TF_LOG_##severity
 
 #ifdef IS_MOBILE_PLATFORM
@@ -582,6 +588,10 @@ class TFLogEntry {
   int Line() const { return line_; }
   std::string ToString() const { return message_; }
   absl::string_view text_message() const { return message_; }
+
+  // Returning similar result as `text_message` as there is no prefix in this
+  // implementation.
+  absl::string_view text_message_with_prefix() const { return message_; }
 
  private:
   const absl::LogSeverity severity_;

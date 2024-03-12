@@ -35,6 +35,9 @@ on:
         required: true
         type: string
 
+permissions:
+  contents: read
+
 jobs:
   cherrypick:
     name: Cherrypick to ${{ github.event.inputs.release_branch}} - ${{ github.event.inputs.git_commit }}

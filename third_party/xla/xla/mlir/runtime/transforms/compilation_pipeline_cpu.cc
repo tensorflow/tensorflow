@@ -1,4 +1,4 @@
-/* Copyright 2022 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2022 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -20,14 +20,9 @@ limitations under the License.
 #include "mlir/Conversion/AffineToStandard/AffineToStandard.h"  // from @llvm-project
 #include "mlir/Conversion/AsyncToLLVM/AsyncToLLVM.h"  // from @llvm-project
 #include "mlir/Conversion/ComplexToLLVM/ComplexToLLVM.h"  // from @llvm-project
-#include "mlir/Conversion/FuncToLLVM/ConvertFuncToLLVMPass.h"  // from @llvm-project
-#include "mlir/Conversion/GPUCommon/GPUCommonPass.h"  // from @llvm-project
 #include "mlir/Conversion/MathToLLVM/MathToLLVM.h"  // from @llvm-project
-#include "mlir/Conversion/MathToLibm/MathToLibm.h"  // from @llvm-project
 #include "mlir/Conversion/MemRefToLLVM/MemRefToLLVM.h"  // from @llvm-project
 #include "mlir/Conversion/ReconcileUnrealizedCasts/ReconcileUnrealizedCasts.h"  // from @llvm-project
-#include "mlir/Conversion/SCFToControlFlow/SCFToControlFlow.h"  // from @llvm-project
-#include "mlir/Conversion/VectorToLLVM/ConvertVectorToLLVM.h"  // from @llvm-project
 #include "mlir/Dialect/Affine/IR/AffineOps.h"  // from @llvm-project
 #include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
 #include "mlir/Dialect/Arith/Transforms/Passes.h"  // from @llvm-project
@@ -36,28 +31,43 @@ limitations under the License.
 #include "mlir/Dialect/ControlFlow/IR/ControlFlow.h"  // from @llvm-project
 #include "mlir/Dialect/Func/Extensions/AllExtensions.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
-#include "mlir/Dialect/GPU/Transforms/Passes.h"  // from @llvm-project
+#include "mlir/Dialect/Linalg/IR/Linalg.h"  // from @llvm-project
 #include "mlir/Dialect/Linalg/Passes.h"  // from @llvm-project
 #include "mlir/Dialect/Math/IR/Math.h"  // from @llvm-project
 #include "mlir/Dialect/MemRef/IR/MemRef.h"  // from @llvm-project
 #include "mlir/Dialect/MemRef/Transforms/Passes.h"  // from @llvm-project
 #include "mlir/Dialect/SCF/IR/SCF.h"  // from @llvm-project
 #include "mlir/Dialect/SparseTensor/IR/SparseTensor.h"  // from @llvm-project
-#include "mlir/Pass/Pass.h"  // from @llvm-project
+#include "mlir/Pass/PassManager.h"  // from @llvm-project
+#include "mlir/Pass/PassRegistry.h"  // from @llvm-project
+#ifdef TF_LLVM_X86_AVAILABLE
 #include "mlir/Target/LLVMIR/Dialect/AMX/AMXToLLVMIRTranslation.h"  // from @llvm-project
+#endif
+#if defined(TF_LLVM_AARCH64_AVAILABLE) || defined(TF_LLVM_AARCH32_AVAILABLE)
 #include "mlir/Target/LLVMIR/Dialect/ArmNeon/ArmNeonToLLVMIRTranslation.h"  // from @llvm-project
+#ifdef TF_LLVM_AARCH64_AVAILABLE
 #include "mlir/Target/LLVMIR/Dialect/ArmSVE/ArmSVEToLLVMIRTranslation.h"  // from @llvm-project
+#endif
+#endif
 #include "mlir/Target/LLVMIR/Dialect/Builtin/BuiltinToLLVMIRTranslation.h"  // from @llvm-project
 #include "mlir/Target/LLVMIR/Dialect/LLVMIR/LLVMToLLVMIRTranslation.h"  // from @llvm-project
+#ifdef TF_LLVM_X86_AVAILABLE
 #include "mlir/Target/LLVMIR/Dialect/X86Vector/X86VectorToLLVMIRTranslation.h"  // from @llvm-project
+#endif
 #include "mlir/Transforms/Passes.h"  // from @llvm-project
 #include "xla/mlir/backends/cpu/transforms/passes.h"
-#include "xla/mlir/math/transforms/passes.h"
 #include "xla/mlir/memref/transforms/passes.h"
+#include "xla/mlir/runtime/ir/rt_dialect.h"
+#include "xla/mlir/runtime/transforms/compilation_pipeline_options.h"
 #include "xla/mlir/runtime/transforms/compiler.h"
-#include "xla/mlir/runtime/transforms/custom_call_encoding.h"
 #include "xla/mlir/runtime/transforms/passes.h"
 #include "xla/mlir_hlo/transforms/passes.h"
+#include "tsl/platform/logging.h"
+
+#ifdef EXPERIMENTAL_MLIR_GPU
+#include "mlir/Conversion/GPUCommon/GPUCommonPass.h"  // from @llvm-project
+#include "mlir/Dialect/GPU/Transforms/Passes.h"  // from @llvm-project
+#endif  // EXPERIMENTAL_MLIR_GPU
 
 namespace xla {
 namespace runtime {
@@ -76,12 +86,18 @@ void RegisterDefaultXlaCpuRuntimeDialects(DialectRegistry& dialects) {
   mlir::func::registerAllExtensions(*dialects);
 
   // Register MLIR dialects that can be translated to LLVM IR.
-  mlir::registerArmNeonDialectTranslation(*dialects);
-  mlir::registerAMXDialectTranslation(*dialects);
+#ifdef TF_LLVM_AARCH64_AVAILABLE
   mlir::registerArmSVEDialectTranslation(*dialects);
+#endif
+#if defined(TF_LLVM_AARCH64_AVAILABLE) || defined(TF_LLVM_AARCH32_AVAILABLE)
+  mlir::registerArmNeonDialectTranslation(*dialects);
+#endif
+#ifdef TF_LLVM_X86_AVAILABLE
+  mlir::registerAMXDialectTranslation(*dialects);
+  mlir::registerX86VectorDialectTranslation(*dialects);
+#endif
   mlir::registerBuiltinDialectTranslation(*dialects);
   mlir::registerLLVMDialectTranslation(*dialects);
-  mlir::registerX86VectorDialectTranslation(*dialects);
 }
 
 static void CreateXlaCpuCompilationPipeline(mlir::OpPassManager& pm,
@@ -98,10 +114,6 @@ static void CreateXlaCpuCompilationPipeline(mlir::OpPassManager& pm,
   pm.addPass(mlir::createCanonicalizerPass());
   pm.addPass(mlir::createCSEPass());
 
-  // Enable math approximations to match XLA's FP accuracy spec.
-  pm.addNestedPass<mlir::func::FuncOp>(
-      xla::CreateMathApproximationPass({"all"}));
-
   // Convert all linalg operations to parallel loops.
   pm.addNestedPass<mlir::func::FuncOp>(
       mlir::createConvertLinalgToParallelLoopsPass());
@@ -112,6 +124,9 @@ static void CreateXlaCpuCompilationPipeline(mlir::OpPassManager& pm,
 
   // Lower from high level async operations to async runtime.
   pm.addPass(mlir::createAsyncToAsyncRuntimePass());
+
+  // Move all memref.alloca to entry block for all functions.
+  pm.addPass(CreateMoveAllocasToEntryBlockPass());
 
   // Add async.runtime reference counting operations.
   pm.addPass(mlir::createAsyncRuntimePolicyBasedRefCountingPass());
@@ -144,6 +159,7 @@ static void CreateXlaCpuCompilationPipeline(mlir::OpPassManager& pm,
   llvm_options.enableAvx2 = opts.math_avx2;
   pm.addPass(mlir::hlo::createGenericHostToLLVMPass(llvm_options));
   const bool gpuCodegen = opts.xla_cpu_sparse_cuda_threads > 0;
+#ifdef EXPERIMENTAL_MLIR_GPU
   if (gpuCodegen) {
 #ifdef MLIR_GPU_TO_CUBIN_PASS_ENABLE
     pm.addNestedPass<mlir::gpu::GPUModuleOp>(
@@ -152,6 +168,10 @@ static void CreateXlaCpuCompilationPipeline(mlir::OpPassManager& pm,
 #endif
     pm.addPass(mlir::createGpuToLLVMConversionPass());
   }
+#else   // EXPERIMENTAL_MLIR_GPU
+  CHECK(!gpuCodegen)
+      << "Experimental MLIR GPU code generation was not enabled at build time";
+#endif  // EXPERIMENTAL_MLIR_GPU
   pm.addPass(mlir::createReconcileUnrealizedCastsPass());
 
   // Prepare module for translation to LLVM.

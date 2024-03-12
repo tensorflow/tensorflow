@@ -30,10 +30,9 @@ cc_library_with_tflite(
         "interpreter_test_jni.cc",
         "nnapi_delegate_test_jni.cc",
         "supported_features_jni.cc",
-        "test_init_jni.cc",
     ],
     tflite_deps = [
-        "//tensorflow/lite/c:test_util",
+        ":test_init_jni",
         "//tensorflow/lite/delegates/nnapi/java/src/main/native",
         "//tensorflow/lite/java/src/main/native",
         "//tensorflow/lite/java/src/main/native:jni_utils",
@@ -47,6 +46,22 @@ cc_library_with_tflite(
         "//tensorflow/lite/kernels:kernel_util",
         "//tensorflow/lite/nnapi:nnapi_lib",
         "//tensorflow/lite/nnapi/sl:nnapi_support_library_headers",
+    ],
+    alwayslink = 1,
+)
+
+cc_library_with_tflite(
+    name = "test_init_jni",
+    testonly = 1,
+    srcs = [
+        "test_init_jni.cc",
+    ],
+    tflite_deps = [
+        "//tensorflow/lite/java/src/main/native:jni_utils",
+        "//tensorflow/lite/c:test_util",
+    ],
+    deps = [
+        "//tensorflow/lite/java/jni",
     ],
     alwayslink = 1,
 )

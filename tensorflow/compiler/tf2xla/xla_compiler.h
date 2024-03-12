@@ -310,7 +310,7 @@ class XlaCompiler {
   void PushNodeTokenMapping();
   Status PopNodeTokenMapping();
   Status SetNodeToken(const string& node_name, xla::XlaOp op);
-  StatusOr<xla::XlaOp> GetNodeToken(const string& node_name);
+  absl::StatusOr<xla::XlaOp> GetNodeToken(const string& node_name);
 
   // Sets the function body `fbody` to the one registered as `function`.
   Status FindFunctionBody(const NameAttrList& function,
@@ -387,7 +387,8 @@ class XlaCompiler {
   // stack, and pop the mapping before returning.
   std::stack<std::map<string, xla::XlaOp>> node_token_mapping_stack_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(XlaCompiler);
+  XlaCompiler(const XlaCompiler&) = delete;
+  void operator=(const XlaCompiler&) = delete;
 };
 
 

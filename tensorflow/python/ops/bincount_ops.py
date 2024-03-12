@@ -40,14 +40,11 @@ def bincount(arr,
 
   If `minlength` and `maxlength` are not given, returns a vector with length
   `tf.reduce_max(arr) + 1` if `arr` is non-empty, and length 0 otherwise.
-  If `weights` are non-None, then index `i` of the output stores the sum of the
-  value in `weights` at each index where the corresponding value in `arr` is
-  `i`.
 
-  ```python
-  values = tf.constant([1,1,2,3,2,4,4,5])
-  tf.math.bincount(values) #[0 2 2 1 2 1]
-  ```
+  >>> values = tf.constant([1,1,2,3,2,4,4,5])
+  >>> tf.math.bincount(values)
+  <tf.Tensor: ... numpy=array([0, 2, 2, 1, 2, 1], dtype=int32)>
+
   Vector length = Maximum element in vector `values` is 5. Adding 1, which is 6
                   will be the vector length.
 
@@ -55,14 +52,32 @@ def bincount(arr,
   index. Here, index 1 in output has a value 2. This indicates value 1 occurs
   two times in `values`.
 
-  ```python
-  values = tf.constant([1,1,2,3,2,4,4,5])
-  weights = tf.constant([1,5,0,1,0,5,4,5])
-  tf.math.bincount(values, weights=weights) #[0 6 0 1 9 5]
-  ```
-  Bin will be incremented by the corresponding weight instead of 1.
-  Here, index 1 in output has a value 6. This is the summation of weights
-  corresponding to the value in `values`.
+  **Bin-counting with weights**
+
+  >>> values = tf.constant([1,1,2,3,2,4,4,5])
+  >>> weights = tf.constant([1,5,0,1,0,5,4,5])
+  >>> tf.math.bincount(values, weights=weights)
+  <tf.Tensor: ... numpy=array([0, 6, 0, 1, 9, 5], dtype=int32)>
+
+  When `weights` is specified, bins will be incremented by the corresponding
+  weight instead of 1. Here, index 1 in output has a value 6. This is the
+  summation of `weights` corresponding to the value in `values` (i.e. for index
+  1, the first two values are 1 so the first two weights, 1 and 5, are
+  summed).
+
+  There is an equivilance between bin-counting with weights and
+  `unsorted_segement_sum` where `data` is the weights and `segment_ids` are the
+  values.
+
+  >>> values = tf.constant([1,1,2,3,2,4,4,5])
+  >>> weights = tf.constant([1,5,0,1,0,5,4,5])
+  >>> tf.math.unsorted_segment_sum(weights, values, num_segments=6).numpy()
+  array([0, 6, 0, 1, 9, 5], dtype=int32)
+
+  On GPU, `bincount` with weights is only supported when XLA is enabled
+  (typically when a function decorated with `@tf.function(jit_compile=True)`).
+  `unsorted_segment_sum` can be used as a workaround for the non-XLA case on
+  GPU.
 
   **Bin-counting matrix rows independently**
 
@@ -75,7 +90,6 @@ def bincount(arr,
   <tf.Tensor: shape=(2, 4), dtype=int32, numpy=
     array([[1, 1, 1, 1],
            [2, 1, 1, 0]], dtype=int32)>
-
 
   **Bin-counting with binary_output**
 

@@ -1,4 +1,4 @@
-/* Copyright 2018 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2018 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -22,7 +22,7 @@ limitations under the License.
 #include "xla/primitive_util.h"
 #include "xla/types.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/float8.h"
+#include "tsl/platform/ml_dtypes.h"
 
 namespace xla {
 
@@ -66,7 +66,7 @@ XlaOp ConstantR0WithType(XlaBuilder* builder, PrimitiveType type, T value) {
 template <typename T>
 XlaOp ScalarLike(XlaOp prototype, T value) {
   XlaBuilder* builder = prototype.builder();
-  return builder->ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
+  return builder->ReportErrorOrReturn([&]() -> absl::StatusOr<XlaOp> {
     TF_ASSIGN_OR_RETURN(Shape shape, builder->GetShape(prototype));
     return ConstantR0WithType(builder, shape.element_type(), value);
   });
@@ -80,7 +80,7 @@ XlaOp ScalarLike(XlaOp prototype, T value) {
 template <typename T>
 XlaOp FullLike(XlaOp prototype, T value) {
   XlaBuilder* builder = prototype.builder();
-  return builder->ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
+  return builder->ReportErrorOrReturn([&]() -> absl::StatusOr<XlaOp> {
     TF_ASSIGN_OR_RETURN(Shape shape, builder->GetShape(prototype));
     if (ShapeUtil::IsScalar(shape) || shape.IsArray()) {
       return Broadcast(ScalarLike(prototype, value), shape.dimensions());

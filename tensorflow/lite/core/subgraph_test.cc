@@ -20,14 +20,14 @@ limitations under the License.
 #include <functional>
 #include <memory>
 #include <numeric>
-#include <string>
 #include <vector>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/log/check.h"
+#include "tensorflow/lite/c/c_api_types.h"
 #include "tensorflow/lite/core/interpreter.h"
 #include "tensorflow/lite/stderr_reporter.h"
-#include "tensorflow/lite/testing/util.h"
 #include "tensorflow/lite/util.h"
 
 namespace tflite {
@@ -241,7 +241,6 @@ TEST_F(SubgraphResizeTensorTest,
 TEST_F(SubgraphResizeTensorTest,
        ResizeDynamicTensorWithDifferentShapeReallocatesData) {
   ASSERT_EQ(context_.ResizeTensor(&context_, &tensor_, dims_), kTfLiteOk);
-  const void* const initial_data = tensor_.data.data;
 
   TfLiteIntArray* dims2 = ConvertVectorToTfLiteIntArray({5, 4, 6});
   const int dims2_bytes = BytesFor(type_, *dims2);
@@ -251,10 +250,85 @@ TEST_F(SubgraphResizeTensorTest,
 
   // Some alignment requirements may lead to more memory being allocated.
   EXPECT_GE(tensor_.bytes, dims2_bytes);
-  EXPECT_NE(tensor_.data.data, initial_data);
   EXPECT_EQ(tensor_.dims, dims2);
   // Touch memory to trigger ASAN in case of incorrect handling.
   std::fill_n(tensor_.data.raw, dims2_bytes, 0);
+  std::fill_n(tensor_.dims->data, tensor_.dims->size, 1);
+}
+
+TEST_F(SubgraphResizeTensorTest,
+       ResizeDynamicTensorWithSameShapeButDifferentBytesReallocatesData) {
+  ASSERT_EQ(context_.ResizeTensor(&context_, &tensor_, dims_), kTfLiteOk);
+  // Resize the tensor manually with more bytes than it already has.
+  TfLiteTensorResizeMaybeCopy(tensor_.bytes + 15, &tensor_,
+                              /*preserve_data=*/true);
+  ASSERT_GT(tensor_.bytes, reference_dims_bytes_);
+
+  ASSERT_EQ(context_.ResizeTensor(&context_, &tensor_, tensor_.dims),
+            kTfLiteOk);
+
+  // Some alignment requirements may lead to more memory being allocated.
+  EXPECT_GE(tensor_.bytes, reference_dims_bytes_);
+  EXPECT_EQ(tensor_.dims, dims_);
+  // Touch memory to trigger ASAN in case of incorrect handling.
+  std::fill_n(tensor_.data.raw, tensor_.bytes, 0);
+  std::fill_n(tensor_.dims->data, tensor_.dims->size, 1);
+}
+
+TEST_F(SubgraphResizeTensorTest,
+       ResizeDynamicTensorWithSameShapeButStringTypeSizeReallocatesData) {
+  constexpr size_t manual_bytes = 10;
+  // Allocate the tensor manually.
+  TfLiteTensorResizeMaybeCopy(manual_bytes, &tensor_, /*preserve_data=*/true);
+  tensor_.dims = dims_;
+  tensor_.type = kTfLiteString;
+
+  // This fill fail if the memory reuse check cannot compute the new byte size.
+  ASSERT_EQ(context_.ResizeTensor(&context_, &tensor_, tensor_.dims),
+            kTfLiteOk);
+
+  // Some alignment requirements may lead to more memory being allocated.
+  EXPECT_EQ(tensor_.dims, dims_);
+  // Touch memory to trigger ASAN in case of incorrect handling.
+  std::fill_n(tensor_.data.raw, tensor_.bytes, 0);
+  std::fill_n(tensor_.dims->data, tensor_.dims->size, 1);
+}
+
+TEST_F(SubgraphResizeTensorTest,
+       ResizeDynamicTensorWithSameShapeButRessourceTypeSizeReallocatesData) {
+  constexpr size_t manual_bytes = 10;
+  // Allocate the tensor manually.
+  TfLiteTensorResizeMaybeCopy(manual_bytes, &tensor_, /*preserve_data=*/true);
+  tensor_.dims = dims_;
+  tensor_.type = kTfLiteResource;
+
+  // This fill fail if the memory reuse check cannot compute the new byte size.
+  ASSERT_EQ(context_.ResizeTensor(&context_, &tensor_, tensor_.dims),
+            kTfLiteOk);
+
+  // Some alignment requirements may lead to more memory being allocated.
+  EXPECT_EQ(tensor_.dims, dims_);
+  // Touch memory to trigger ASAN in case of incorrect handling.
+  std::fill_n(tensor_.data.raw, tensor_.bytes, 0);
+  std::fill_n(tensor_.dims->data, tensor_.dims->size, 1);
+}
+
+TEST_F(SubgraphResizeTensorTest,
+       ResizeDynamicTensorWithSameShapeButVariantTypeSizeReallocatesData) {
+  constexpr size_t manual_bytes = 10;
+  // Allocate the tensor manually.
+  TfLiteTensorResizeMaybeCopy(manual_bytes, &tensor_, /*preserve_data=*/true);
+  tensor_.dims = dims_;
+  tensor_.type = kTfLiteVariant;
+
+  // This fill fail if the memory reuse check cannot compute the new byte size.
+  ASSERT_EQ(context_.ResizeTensor(&context_, &tensor_, tensor_.dims),
+            kTfLiteOk);
+
+  // Some alignment requirements may lead to more memory being allocated.
+  EXPECT_EQ(tensor_.dims, dims_);
+  // Touch memory to trigger ASAN in case of incorrect handling.
+  std::fill_n(tensor_.data.raw, tensor_.bytes, 0);
   std::fill_n(tensor_.dims->data, tensor_.dims->size, 1);
 }
 

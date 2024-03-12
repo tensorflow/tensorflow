@@ -182,7 +182,7 @@ Status WrapStringTensorAsEvents(const DebugNodeKey& debug_node_key,
     events->push_back(std::move(event));
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Encapsulates the tensor value inside a vector of Event protos. Large tensors
@@ -228,7 +228,7 @@ Status WrapTensorAsEvents(const DebugNodeKey& debug_node_key,
     }
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Appends an underscore and a timestamp to a file path. If the path already
@@ -283,7 +283,7 @@ Status PublishEncodedGraphDefInChunks(const string& encoded_graph_def,
           "due to: ", s.message());
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 #endif  // #ifndef PLATFORM_WINDOWS
 
@@ -323,7 +323,7 @@ Status ReadEventFromFile(const string& dump_file_path, Event* event) {
   }
 
   event->ParseFromString(content);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 const char* const DebugIO::kFileURLScheme = "file://";
@@ -479,7 +479,7 @@ Status DebugIO::PublishDebugTensor(const DebugNodeKey& debug_node_key,
   }
 
   if (num_failed_urls == 0) {
-    return OkStatus();
+    return absl::OkStatus();
   } else {
     string error_message = strings::StrCat(
         "Publishing to ", num_failed_urls, " of ", debug_urls.size(),
@@ -514,7 +514,7 @@ Status DebugIO::PublishGraph(const Graph& graph, const string& device_name,
   event.set_wall_time(static_cast<double>(now_micros));
   event.set_graph_def(buf);
 
-  Status status = OkStatus();
+  Status status = absl::OkStatus();
   for (const string& debug_url : debug_urls) {
     if (absl::StartsWith(debug_url, kFileURLScheme)) {
       const string dump_root_dir =
@@ -600,7 +600,7 @@ Status DebugIO::CloseDebugURL(const string& debug_url) {
 #endif
   } else {
     // No-op for non-gRPC URLs.
-    return OkStatus();
+    return absl::OkStatus();
   }
 }
 
@@ -678,7 +678,7 @@ Status DebugFileIO::DumpEventProtoToFile(const Event& event_proto,
   f->Append(event_str).IgnoreError();
   TF_CHECK_OK(f->Close());
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status DebugFileIO::DumpTensorToEventFile(const DebugNodeKey& debug_node_key,
@@ -695,7 +695,7 @@ Status DebugFileIO::DumpTensorToEventFile(const DebugNodeKey& debug_node_key,
 Status DebugFileIO::RecursiveCreateDir(Env* env, const string& dir) {
   if (env->FileExists(dir).ok() && env->IsDirectory(dir).ok()) {
     // The path already exists as a directory. Return OK right away.
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   string parent_dir(io::Dirname(dir));
@@ -719,7 +719,7 @@ Status DebugFileIO::RecursiveCreateDir(Env* env, const string& dir) {
   // Guard against potential race in creating directories by doing a check
   // after the CreateDir call.
   if (env->FileExists(dir).ok() && env->IsDirectory(dir).ok()) {
-    return OkStatus();
+    return absl::OkStatus();
   } else {
     return Status(absl::StatusCode::kAborted,
                   strings::StrCat("Failed to create directory  ", parent_dir));
@@ -784,7 +784,7 @@ Status DebugGrpcChannel::Connect(const int64_t timeout_micros) {
   stub_ = grpc::EventListener::NewStub(channel_);
   reader_writer_ = stub_->SendEvents(&ctx_);
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 bool DebugGrpcChannel::WriteEvent(const Event& event) {
@@ -819,7 +819,7 @@ Status DebugGrpcChannel::ReceiveServerRepliesAndClose() {
   ReceiveAndProcessEventReplies(0);
 
   if (reader_writer_->Finish().ok()) {
-    return OkStatus();
+    return absl::OkStatus();
   } else {
     return Status(absl::StatusCode::kFailedPrecondition,
                   "Failed to close debug GRPC stream.");
@@ -849,7 +849,7 @@ Status DebugGrpcIO::SendTensorThroughGrpcStream(
     const bool gated) {
   if (gated &&
       !IsReadGateOpen(grpc_stream_url, debug_node_key.debug_node_name)) {
-    return OkStatus();
+    return absl::OkStatus();
   } else {
     std::vector<Event> events;
     TF_RETURN_IF_ERROR(WrapTensorAsEvents(debug_node_key, tensor, wall_time_us,
@@ -866,7 +866,7 @@ Status DebugGrpcIO::SendTensorThroughGrpcStream(
       // TODO(cais): Support new tensor value carried in the EventReply for
       // overriding the value of the tensor being published.
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 }
 
@@ -876,7 +876,7 @@ Status DebugGrpcIO::ReceiveEventReplyProtoThroughGrpcStream(
   TF_RETURN_IF_ERROR(
       GetOrCreateDebugGrpcChannel(grpc_stream_url, &debug_grpc_channel));
   if (debug_grpc_channel->ReadEventReply(event_reply)) {
-    return OkStatus();
+    return absl::OkStatus();
   } else {
     return errors::Cancelled(strings::StrCat(
         "Reading EventReply from stream URL ", grpc_stream_url, " failed."));
@@ -904,7 +904,7 @@ Status DebugGrpcIO::GetOrCreateDebugGrpcChannel(
     }
     *debug_grpc_channel = (*stream_channels)[grpc_stream_url].get();
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status DebugGrpcIO::SendEventProtoThroughGrpcStream(
@@ -924,7 +924,7 @@ Status DebugGrpcIO::SendEventProtoThroughGrpcStream(
     debug_grpc_channel->ReceiveAndProcessEventReplies(1);
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 bool DebugGrpcIO::IsReadGateOpen(const string& grpc_debug_url,
@@ -960,7 +960,7 @@ Status DebugGrpcIO::CloseGrpcStream(const string& grpc_stream_url) {
     return s;
   } else {
     // Stream of the specified address does not exist. No action.
-    return OkStatus();
+    return absl::OkStatus();
   }
 }
 

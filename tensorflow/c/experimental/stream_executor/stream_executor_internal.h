@@ -22,6 +22,9 @@ limitations under the License.
 #include "tensorflow/c/tf_status_helper.h"
 #include "xla/stream_executor/executor_cache.h"
 #include "xla/stream_executor/platform.h"
+#include "xla/stream_executor/stream_executor.h"
+#include "xla/stream_executor/stream_executor_internal.h"
+#include "tsl/platform/statusor.h"
 
 namespace stream_executor {
 

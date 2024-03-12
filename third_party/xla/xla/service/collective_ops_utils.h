@@ -1,4 +1,4 @@
-/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2019 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -17,12 +17,15 @@ limitations under the License.
 #define XLA_SERVICE_COLLECTIVE_OPS_UTILS_H_
 
 #include <memory>
+#include <optional>
 #include <string>
+#include <type_traits>
 #include <utility>
 #include <vector>
 
 #include "absl/functional/function_ref.h"
 #include "absl/strings/string_view.h"
+#include "absl/types/span.h"
 #include "xla/executable_run_options.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
@@ -49,14 +52,6 @@ std::optional<ReductionKind> MatchReductionComputation(
 // PrimitiveType.
 std::optional<Literal> GetReductionIdentity(ReductionKind kind,
                                             PrimitiveType type);
-
-// Figures out which IDs are participating in the collective subgroup.
-// An empty `groups` indicates that all [0, total_participant_count) IDs
-// are participating. Note that for CollectiveOpGroupMode::kFlattenedID,
-// groups cannot be empty, so `total_participant_count` is an optional.
-StatusOr<std::vector<int>> GetParticipatingIDs(
-    int current_id, std::optional<int> total_participant_count,
-    absl::Span<const ReplicaGroup> groups);
 
 // There are broadly 4 modes that collective communication ops use to describe
 // which sets of devices are participating with a given device in the operation.
@@ -98,12 +93,21 @@ enum class CollectiveOpGroupMode {
   kFlattenedID,
 };
 
+// Figures out which IDs are participating in the collective subgroup.
+// An empty `groups` indicates that all [0, total_participant_count) IDs
+// are participating. Note that for CollectiveOpGroupMode::kFlattenedID,
+// groups cannot be empty, so `total_participant_count` is an optional.
+absl::StatusOr<std::vector<int>> GetParticipatingIDs(
+    CollectiveOpGroupMode group_mode, int current_id,
+    std::optional<int> total_participant_count,
+    absl::Span<const ReplicaGroup> groups);
+
 absl::string_view CollectiveOpGroupModeToString(
     CollectiveOpGroupMode group_mode);
 
 // Returns the group formation mode implied by (a) whether the operation has
 // channel_id and (b) if it has use_global_device_ids and if yes, its value.
-StatusOr<CollectiveOpGroupMode> GetCollectiveOpGroupMode(
+absl::StatusOr<CollectiveOpGroupMode> GetCollectiveOpGroupMode(
     bool has_channel_id, std::optional<bool> use_global_device_ids);
 
 // Figures out subgroups of participating devices from given replica_groups and
@@ -119,33 +123,43 @@ StatusOr<CollectiveOpGroupMode> GetCollectiveOpGroupMode(
 //
 //   This functions returns {{33, 34}, {44, 45, 55, 56}}
 //   There are 2 subgroups of participating devices {33, 34}, {44, 45, 55, 56}.
-StatusOr<std::vector<std::vector<GlobalDeviceId>>>
+absl::StatusOr<std::vector<std::vector<GlobalDeviceId>>>
 GetParticipatingDevicesGroups(const DeviceAssignment& device_assignment,
                               absl::Span<const ReplicaGroup> replica_groups,
                               CollectiveOpGroupMode group_mode);
 
 // Same as above, except that it returns the flattened id in the replica groups
 // instead of device id.
-StatusOr<std::vector<ReplicaGroup>> GetParticipatingFlattenedIdGroups(
+absl::StatusOr<std::vector<ReplicaGroup>> GetParticipatingFlattenedIdGroups(
     const DeviceAssignment& device_assignment,
     absl::Span<const ReplicaGroup> replica_groups,
     CollectiveOpGroupMode group_mode);
 
 // Same as above, but take replica/partition count instead of device assignment.
-StatusOr<std::vector<ReplicaGroup>> GetParticipatingFlattenedIdGroups(
+absl::StatusOr<std::vector<ReplicaGroup>> GetParticipatingFlattenedIdGroups(
     absl::Span<const ReplicaGroup> replica_groups,
     CollectiveOpGroupMode replica_group_mode, int replica_count,
     int partition_count);
 
 // Figures out which devices are participating in the collective subgroup.
-StatusOr<std::vector<GlobalDeviceId>> GetParticipatingDevices(
+absl::StatusOr<std::vector<GlobalDeviceId>> GetParticipatingDevices(
     GlobalDeviceId device_id, const DeviceAssignment& device_assignment,
+    absl::Span<const ReplicaGroup> replica_groups,
+    CollectiveOpGroupMode group_mode);
+
+// Figures out how many ranks are participating in each collective subgroup.
+absl::StatusOr<std::vector<int64_t>> GetPariticipantCountsForReplicaGroups(
+    int64_t num_replicas, int64_t num_partitions,
     absl::Span<const ReplicaGroup> replica_groups,
     CollectiveOpGroupMode group_mode);
 
 // Returns true if the two replica group are orthogonal.
 bool ReplicaGroupsOrthogonal(absl::Span<const ReplicaGroup> first,
                              absl::Span<const ReplicaGroup> second);
+
+// Returns true if the two replica group are Equal.
+bool ReplicaGroupsEqual(absl::Span<const ReplicaGroup> first,
+                        absl::Span<const ReplicaGroup> second);
 
 // A custom call target that can be used to create a nop that can legally
 // replace a collective op.
@@ -157,6 +171,13 @@ inline constexpr absl::string_view kNopReturnTokenCustomCallTarget =
 
 // Returns true if instruction is a collective op or a collective fusion.
 bool IsCollective(const HloInstruction* instruction);
+
+// Returns true if instruction is a collective op (or a collective fusion) with
+// channel_id.
+bool IsCollectiveWithChannelId(const HloInstruction* instruction);
+
+// Returns true if instruction is a synchronous collective op.
+bool IsSyncCollective(const HloInstruction* instr);
 
 // Key that identifies a particular Rendezvous object in our global hashtable.
 // This determines which calls to ExecuteOnStream communicate with each other.
@@ -255,57 +276,15 @@ void WaitAndLogIfStuck(tsl::BlockingCounter* counter, const DescFn& desc_fn) {
 
 // Participant data for each rendezvous.
 struct ParticipantData {
-  explicit ParticipantData(const RendezvousKey& rendezvous_key)
-      : rendezvous_key(rendezvous_key) {}
+  ParticipantData(const RendezvousKey& rendezvous_key, int local_rank)
+      : rendezvous_key(rendezvous_key), local_rank(local_rank) {}
 
   virtual ~ParticipantData() {}
 
   RendezvousKey rendezvous_key;
+  int local_rank;  // Which of the local participants is this?
 
   virtual std::string ToString() const = 0;
-};
-
-// Encapsulates parameters to Rendezvous::SubmitParticipant.
-struct AllReduceParticipantData : ParticipantData {
-  AllReduceParticipantData(const RendezvousKey& rendezvous_key_p,
-                           int64_t device_ordinal_p, se::Stream* stream_p)
-      : ParticipantData(rendezvous_key_p),
-        device_ordinal(device_ordinal_p),
-        stream(stream_p) {}
-
-  // TODO(b/125951860): We should vet that we're buffer allocating such that
-  // source_buffer == destination_buffer if that avoids a NCCL copy (will depend
-  // on how well the NCCL in-place implementation performs vs the out-of-place
-  // implementation).
-  struct Buffer {
-    int64_t element_count;
-    se::DeviceMemoryBase source_data;
-    se::DeviceMemoryBase destination_data;
-    PrimitiveType primitive_type;
-  };
-  int64_t device_ordinal;
-  se::Stream* stream;
-  std::vector<Buffer> buffers;
-
-  ReductionKind reduction_kind;
-
-  // For each local all-reduce participant a (global ID, local device ordinal)
-  // pair for the participant. Participants are in no particular order.
-  std::vector<std::pair<GlobalDeviceId, int64_t>> local_devices;
-
-  std::string ToString() const override {
-    std::vector<std::string> buffer_strs;
-    buffer_strs.reserve(buffers.size());
-    for (const Buffer& buffer : buffers) {
-      buffer_strs.push_back(
-          absl::StrFormat("{element_count=%d}", buffer.element_count));
-    }
-    return absl::StrFormat(
-        "AllReduceParticipantData{buffers=[%s], rendezvous_key=%s, "
-        "device_ordinal=%d, stream=%p}",
-        absl::StrJoin(buffer_strs, ","), rendezvous_key.ToString(),
-        device_ordinal, stream);
-  }
 };
 
 // The set of threads that want to do a collective op together all pick the same
@@ -324,7 +303,8 @@ template <typename I, typename O,
 class Rendezvous {
  public:
   virtual ~Rendezvous() {}
-  explicit Rendezvous(const RendezvousKey& k) : key_(k) {}
+  explicit Rendezvous(const RendezvousKey& k)
+      : participants_(k.num_local_participants), key_(k) {}
 
   // Submit a participant to the rendezvous. We get the rendezvous from
   // `rendezvous_getter`, which we can then use to drop the existing reference.
@@ -358,24 +338,15 @@ class Rendezvous {
   // Returns domain-specific output O and whether this replica is primary.
   virtual StatusOr<O> RunCollectiveOp(const I& participant) = 0;
 
-  // Initialize the rendezvous by the first ("primary") thread which reaches the
-  // barrier. Returns whether this thread is primary.
-  bool InitializationBarrier() {
-    absl::MutexLock lock(&mu_);
-    if (!initialized_) {
-      initialized_ = true;
-      return true;
-    }
-    return false;
-  }
-
-  absl::Mutex mu_;
-
-  bool initialized_ ABSL_GUARDED_BY(mu_) = false;
-
-  std::vector<I> participants_ ABSL_GUARDED_BY(mu_);
+  // Adding participants_ requires holding mu_.
+  // Not annotated with ABSL_GUARDED_BY(mu_) because we do not require the lock
+  // to be held during CollectiveOp(), since at that point all the data is known
+  // to be present due to the global barrier.
+  std::vector<std::optional<I>> participants_;
 
  private:
+  absl::Mutex mu_;
+
   // Runs the all-reduce on the given thread.  If successful, returns
   //  - a handle to the clique that was used, so that the caller may keep the
   //    clique alive if it chooses.
@@ -386,18 +357,8 @@ class Rendezvous {
   SubmitParticipant(const I& participant) {
     {
       absl::MutexLock lock(&mu_);
-      CHECK(!initialized_);
-
-      // Spot check for consistent replica counts among submitting threads.
-      if (!participants_.empty() &&
-          participants_.back().rendezvous_key != participant.rendezvous_key) {
-        return InvalidArgument(
-            "Mismatch among all-reduce participants. Expected same "
-            "replica-count, element-count, and rendezvous-key but were %s and "
-            "%s",
-            participants_.back().ToString(), participant.ToString());
-      }
-      participants_.push_back(participant);
+      CHECK(!participants_[participant.local_rank].has_value());
+      participants_[participant.local_rank] = participant;
     }
 
     // Wait for all participants to arrive.
@@ -422,8 +383,41 @@ class Rendezvous {
       std::make_shared<tsl::BlockingCounter>(key_.num_local_participants)};
 };
 
+// We only pipeline Send-Recv chains with channel_id > 0, where each chain
+// has a unique channel_id, and allows multiple Send-Recv chains using
+// channel_id 0.
+inline bool MayPipelineSendRecvChannel(int64_t channel_id) {
+  return channel_id > 0;
+}
+
 constexpr char kSendRecvSourceTargetPairsAttr[] =
     "_xla_send_recv_source_target_pairs";
+
+// When a Send or Recv is annotated with frontend attribute
+// _xla_send_recv_pipeline="1", asynchronous stream kP2P1 is used to execute the
+// Send or Recv. For all other cases, asynchronous stream kP2P0 is used.
+constexpr char kSendRecvPipelineAttr[] = "_xla_send_recv_pipeline";
+
+// This frontend attribute conveys the following information:
+// (1) _xla_send_recv_validation="invalid": the runtime should skip sending or
+// receiving data when the instruction is executed.
+// (2) the absent of the attribute: the runtime should faithfully perform the
+// Send or Recv operation when the instruction is executed.
+// (3) _xla_send_recv_validation={list-of-bounds}: the list-of-bounds
+// corresponds to the value of _xla_send_recv_source_target_pairs, and specifies
+// the execution instances for which the runtime should faithfully perform the
+// Send or Recv operation. Here is an example:
+//   _xla_send_recv_source_target_pairs={{0,1}, {1,2}}
+//   _xla_send_recv_validation={{2,3}, {5,7}}
+// The Send or Recv instruction with the above two attributes have the
+// following semantics:
+// The communication between device 0 and 1 will only send or receive data
+// for execution instances 2 and 3 of the instruction on devices 0 and 1.
+// For execution instances 0, 1, and beyond 3, the runtime should skip sending
+// or receiving any data.
+// Similarly, the communication between device 1 and 2 will only send or
+// receive data on execution instances 5 and 7.
+constexpr char kSendRecvValidationAttr[] = "_xla_send_recv_validation";
 
 }  // end namespace xla
 

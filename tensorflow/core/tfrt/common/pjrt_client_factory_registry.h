@@ -29,8 +29,9 @@ limitations under the License.
 
 namespace xla {
 
-using PjrtClientFactory = std::function<StatusOr<std::unique_ptr<PjRtClient>>(
-    const PjrtClientFactoryOptions&)>;
+using PjrtClientFactory =
+    std::function<absl::StatusOr<std::unique_ptr<PjRtClient>>(
+        const PjrtClientFactoryOptions&)>;
 
 // The Pjrt client factory registry holds all the registered client factories.
 class PjrtClientFactoryRegistry {
@@ -44,7 +45,7 @@ class PjrtClientFactoryRegistry {
 
   // Given the device type, finds related PjrtClientFactory function which takes
   // factory option and returns PjrtClient if succeeds.
-  StatusOr<std::unique_ptr<PjRtClient>> GetPjrtClient(
+  absl::StatusOr<std::unique_ptr<PjRtClient>> GetPjrtClient(
       const tsl::DeviceType& device_type,
       const PjrtClientFactoryOptions& options);
 

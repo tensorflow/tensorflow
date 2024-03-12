@@ -1,7 +1,7 @@
-load("tsl.bzl", "if_google", "if_oss")
 load("@bazel_skylib//lib:selects.bzl", "selects")
 load("@bazel_skylib//rules:common_settings.bzl", "bool_flag", "bool_setting")
 load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
+load("tsl.bzl", "if_google", "if_oss")
 
 # copybara:uncomment package(default_applicable_licenses = ["//tensorflow:license"])
 
@@ -108,7 +108,7 @@ config_setting(
 config_setting(
     name = "emscripten",
     constraint_values = if_google(
-        ["//third_party/bazel_platforms/cpu:wasm32"],
+        ["//third_party/bazel_platforms/os:emscripten"],
         [],
     ),
     values = if_oss(
@@ -132,7 +132,6 @@ config_setting(
         "apple_platform_type": "macos",
         "cpu": "darwin",
     },
-    visibility = ["//visibility:public"],
 )
 
 config_setting(
@@ -145,7 +144,6 @@ config_setting(
         "apple_platform_type": "macos",
         "cpu": "darwin_x86_64",
     },
-    visibility = ["//visibility:public"],
 )
 
 selects.config_setting_group(
@@ -176,6 +174,18 @@ selects.config_setting_group(
         ":macos_x86_64",
         ":macos_arm64",
     ],
+    visibility = ["//visibility:public"],
+)
+
+config_setting(
+    name = "windows_x86_64",
+    values = {"cpu": "x64_windows"},
+    visibility = ["//visibility:public"],
+)
+
+config_setting(
+    name = "windows_aarch64",
+    values = {"cpu": "arm64_windows"},
     visibility = ["//visibility:public"],
 )
 
@@ -220,6 +230,12 @@ config_setting(
 config_setting(
     name = "with_xla_support",
     define_values = {"with_xla_support": "true"},
+    visibility = ["//visibility:public"],
+)
+
+config_setting(
+    name = "with_cross_compiler_support",
+    define_values = {"with_cross_compiler_support": "true"},
     visibility = ["//visibility:public"],
 )
 
@@ -280,6 +296,67 @@ config_setting(
         ),
         cpu = "ios_x86_64",
     ),
+    visibility = ["//visibility:public"],
+)
+
+selects.config_setting_group(
+    name = "aarch32_or_cross",
+    match_any = [
+        ":linux_armhf",
+        ":with_cross_compiler_support",
+    ],
+    visibility = ["//visibility:public"],
+)
+
+selects.config_setting_group(
+    name = "aarch64_or_cross",
+    match_any = [
+        ":linux_aarch64",
+        ":macos_arm64",
+        ":windows_aarch64",
+        ":with_cross_compiler_support",
+    ],
+    visibility = ["//visibility:public"],
+)
+
+selects.config_setting_group(
+    name = "arm_or_cross",
+    match_any = [
+        ":linux_aarch64",
+        ":macos_arm64",
+        ":windows_aarch64",
+        ":linux_armhf",
+        ":with_cross_compiler_support",
+    ],
+    visibility = ["//visibility:public"],
+)
+
+selects.config_setting_group(
+    name = "ppc64le_or_cross",
+    match_any = [
+        ":linux_ppc64le",
+        ":with_cross_compiler_support",
+    ],
+    visibility = ["//visibility:public"],
+)
+
+selects.config_setting_group(
+    name = "s390x_or_cross",
+    match_any = [
+        ":linux_s390x",
+        ":with_cross_compiler_support",
+    ],
+    visibility = ["//visibility:public"],
+)
+
+selects.config_setting_group(
+    name = "x86_or_cross",
+    match_any = [
+        ":linux_x86_64",
+        ":macos_x86_64",
+        ":windows_x86_64",
+        ":with_cross_compiler_support",
+    ],
     visibility = ["//visibility:public"],
 )
 
@@ -441,7 +518,6 @@ package_group(
         "//third_party/cloud_tpu/inference_converter/...",
         "//third_party/py/cloud_ml_autoflow/...",
         "//third_party/py/envlogger/...",
-        "//third_party/py/keras/...",
         "//third_party/yggdrasil_decision_forests/...",
         "//tsl/...",
     ],
@@ -452,6 +528,7 @@ bzl_library(
     srcs = ["tsl.bzl"],
     visibility = ["//visibility:public"],
     deps = [
+        "//tsl/mkl:build_defs_bzl",
         "@bazel_skylib//lib:new_sets",
         "@local_config_cuda//cuda:build_defs_bzl",
         "@local_config_rocm//rocm:build_defs_bzl",

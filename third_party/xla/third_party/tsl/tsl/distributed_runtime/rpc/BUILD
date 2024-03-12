@@ -1,13 +1,16 @@
 # Description:
 #   RPC communication interfaces and implementations for TensorFlow.
 
-load("//tsl/platform:rules_cc.bzl", "cc_library")
-load("//tsl/platform:build_config.bzl", "tf_proto_library", "tsl_cc_test")
+load("//tsl:tsl.bzl", "internal_visibility")
 load("//tsl:tsl.default.bzl", "tsl_grpc_cc_dependencies")
-load("//tsl:tsl.bzl", "set_external_visibility")
+load("//tsl/platform:build_config.bzl", "tf_proto_library", "tsl_cc_test")
+load("@local_tsl//tsl/platform:rules_cc.bzl", "cc_library")
 
 package(
-    default_visibility = ["//visibility:public"],
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
+    default_visibility = internal_visibility([
+        "//tsl:internal",
+    ]),
     licenses = ["notice"],
 )
 
@@ -15,7 +18,6 @@ cc_library(
     name = "async_service_interface",
     srcs = [],
     hdrs = ["async_service_interface.h"],
-    visibility = ["//visibility:public"],
     deps = [],
 )
 
@@ -23,7 +25,6 @@ cc_library(
     name = "grpc_call",
     srcs = [],
     hdrs = ["grpc_call.h"],
-    visibility = ["//visibility:public"],
     deps = [
         "//tsl/platform:mutex",
         "//tsl/platform:refcount",
@@ -34,10 +35,8 @@ cc_library(
     name = "grpc_util",
     srcs = ["grpc_util.cc"],
     hdrs = ["grpc_util.h"],
-    visibility = ["//visibility:public"],
     deps = [
         "//tsl/platform:protobuf",
-        "//tsl/platform:random",
         "//tsl/platform:status",
         "//tsl/platform:stringpiece",
         "//tsl/platform:stringprintf",
@@ -54,10 +53,10 @@ tsl_cc_test(
     tags = [
         "no_mac",
     ],
-    visibility = ["//visibility:public"],
     deps = [
         ":grpc_util",
         ":test_request_proto_cc_impl",
+        "//tsl/platform:env_impl",
         "//tsl/platform:errors",
         "//tsl/platform:test",
         "//tsl/platform:test_benchmark",
@@ -69,7 +68,6 @@ tsl_cc_test(
 cc_library(
     name = "grpc_channel_common",
     hdrs = ["grpc_channel_common.h"],
-    visibility = ["//visibility:public"],
     deps = [
         ":grpc_util",
         "//tsl/platform:logging",
@@ -82,7 +80,6 @@ cc_library(
     name = "grpc_channel",
     srcs = ["grpc_channel.cc"],
     hdrs = ["grpc_channel.h"],
-    visibility = ["//visibility:public"],
     deps = [
         ":grpc_channel_common",
         ":grpc_util",
@@ -109,10 +106,10 @@ tsl_cc_test(
     srcs = [
         "grpc_channel_test.cc",
     ],
-    visibility = ["//visibility:public"],
     deps = [
         ":grpc_channel",
         "//tsl/lib/core:status_test_util",
+        "//tsl/platform:env_impl",
         "//tsl/platform:strcat",
         "//tsl/platform:test",
         "//tsl/platform:test_main",
@@ -124,7 +121,6 @@ tsl_cc_test(
 cc_library(
     name = "grpc_state",
     hdrs = ["grpc_state.h"],
-    visibility = ["//visibility:public"],
     deps = [
         ":grpc_client_cq_tag",
         ":grpc_util",
@@ -142,7 +138,6 @@ cc_library(
     name = "grpc_client_cq_tag",
     srcs = [],
     hdrs = ["grpc_client_cq_tag.h"],
-    visibility = ["//visibility:public"],
     deps = [
         "//tsl/platform:macros",
     ],
@@ -153,7 +148,6 @@ tf_proto_library(
     testonly = 1,
     srcs = ["test_request.proto"],
     create_java_proto = False,
-    visibility = ["//visibility:public"],
 )
 
 filegroup(
@@ -162,5 +156,4 @@ filegroup(
         "**/*.cc",
         "**/*.h",
     ]),
-    visibility = ["//visibility:public"],
 )

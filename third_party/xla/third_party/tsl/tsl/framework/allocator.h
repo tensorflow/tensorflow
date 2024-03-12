@@ -62,7 +62,8 @@ struct AllocationAttributes {
   // returned.
   std::function<uint64()>* freed_by_func = nullptr;  // Not owned.
 
-  TF_DISALLOW_COPY_AND_ASSIGN(AllocationAttributes);
+  AllocationAttributes(const AllocationAttributes&) = delete;
+  void operator=(const AllocationAttributes&) = delete;
 };
 
 // Runtime statistics collected by an allocator. Exactly the same as

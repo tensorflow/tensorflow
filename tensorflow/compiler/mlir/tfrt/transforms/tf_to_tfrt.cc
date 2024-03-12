@@ -842,7 +842,7 @@ class TFRTFuncOpSignatureConversion
     result_attrs.resize(converted_results.size());
 
     // Update the function signature in-place.
-    rewriter.updateRootInPlace(func_op, [&] {
+    rewriter.modifyOpInPlace(func_op, [&] {
       func_op.setType(mlir::FunctionType::get(
           func_op.getContext(), converted_signature.getConvertedTypes(),
           converted_results));
@@ -1597,7 +1597,6 @@ class TfToTfrtConversionPass
         options.use_tpu_host_allocator_for_inputs;
     tpu_allow_unpadded_batch_ = options.tpu_allow_unpadded_batch;
     cost_threshold_ = options.cost_threshold;
-    upper_cost_threshold_ = options.upper_cost_threshold;
     merge_inter_dependent_streams_ = options.merge_inter_dependent_streams;
     func_use_fallback_tensor_ = options.func_use_fallback_tensor;
     enable_while_parallel_iterations_ =
@@ -1687,8 +1686,6 @@ class TfToTfrtConversionPass
     mlir::Builder builder(module);
     module->setAttr("tfrt.cost_threshold",
                     builder.getI64IntegerAttr(cost_threshold_));
-    module->setAttr("tfrt.upper_cost_threshold",
-                    builder.getI64IntegerAttr(upper_cost_threshold_));
     module->setAttr("tfrt.merge_inter_dependent_streams",
                     builder.getBoolAttr(merge_inter_dependent_streams_));
   }
@@ -1854,12 +1851,6 @@ class TfToTfrtConversionPass
           "cheap, and then whether it can be executed inline."),
       llvm::cl::init(1)};
 
-  Option<int64_t> upper_cost_threshold_{
-      *this, "tfrt-upper-cost-threshold",
-      llvm::cl::desc(
-          "The threshold to limit the merging of dependent sequence."),
-      llvm::cl::init(-1)};
-
   Option<bool> merge_inter_dependent_streams_{
       *this, "tfrt-merge-inter-dependent-streams",
       llvm::cl::desc("If true, streams with inter data depenedencies will be "
@@ -1919,7 +1910,7 @@ Status CreateTfExecutorToTfrtPipeline(mlir::PassManager &pm,
       CreateTFExecutorToTFPreInvariantOptimizationPipeline(pm, options));
   CreateTFExecutorToTFInvariantOptimizationPipelineHelper(pm, options);
   CreateTfToTfrtPipeline(pm, options);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status CreateTFExecutorToTFPipeline(mlir::PassManager &pm,
@@ -1927,7 +1918,7 @@ Status CreateTFExecutorToTFPipeline(mlir::PassManager &pm,
   TF_RETURN_IF_ERROR(
       CreateTFExecutorToTFPreInvariantOptimizationPipeline(pm, options));
   CreateTFExecutorToTFInvariantOptimizationPipelineHelper(pm, options);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 static mlir::PassRegistration<TfToTfrtConversionPass> tf_to_tfrt_pass;

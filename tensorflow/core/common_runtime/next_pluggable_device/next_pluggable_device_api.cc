@@ -29,7 +29,7 @@ const TFNPD_Api* TfnpdApi() { return tfnpd_api; }
 
 void SetTfnpdApi(const TFNPD_Api* api) { tfnpd_api = api; }
 
-tsl::StatusOr<TFNPD_PluginParams> InitNextPluggableDevicePlugin(
+absl::StatusOr<TFNPD_PluginParams> InitNextPluggableDevicePlugin(
     TFNPDInitPluginFn init_fn) {
   TFNPD_PluginParams params{TFNPD_PLUGIN_PARAMS_STRUCT_SIZE};
   TSL_Status c_status;

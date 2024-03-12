@@ -1,4 +1,4 @@
-/* Copyright 2021 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2021 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -155,7 +155,7 @@ Status HloControlFlowFlattening::FlattenWhileLoop(
   // non-get-tuple-element users with a new tuple instruction which has the
   // first N - 1 elements.
   auto replace_non_gte_users =
-      [](HloInstruction* new_tuple) -> StatusOr<HloInstruction*> {
+      [](HloInstruction* new_tuple) -> absl::StatusOr<HloInstruction*> {
     CHECK(new_tuple->shape().IsTuple());
     HloInstruction* prefix = nullptr;
     std::vector<HloInstruction*> users(new_tuple->users());
@@ -393,17 +393,24 @@ Status HloControlFlowFlattening::RemoveCollective(HloInstruction* hlo) const {
 Status HloControlFlowFlattening::RemoveId(HloInstruction* hlo) const {
   HloComputation* computation = hlo->parent();
   HloInstruction* zero = CreateConstant(hlo->shape(), computation);
+  std::string original_op_name(hlo->name());
   TF_RETURN_IF_ERROR(computation->ReplaceInstruction(hlo, zero));
+  zero->SetAndSanitizeName(original_op_name);
   return OkStatus();
 }
 
-StatusOr<bool> HloControlFlowFlattening::Run(
+absl::StatusOr<bool> HloControlFlowFlattening::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   auto call_graph = CallGraph::Build(module);
   bool changed = false;
   absl::flat_hash_set<HloInstruction*> removed;
   for (HloComputation* computation : module->computations(execution_threads)) {
+    // Do not change computations that are wrapped by async calls. Instead we
+    // remove the async callers if needed.
+    if (computation->IsAsyncComputation()) {
+      continue;
+    }
     for (HloInstruction* instruction :
          computation->MakeInstructionPostOrder()) {
       if (removed.contains(instruction)) {
@@ -445,9 +452,28 @@ StatusOr<bool> HloControlFlowFlattening::Run(
           changed = true;
         }
       } else if (remove_comm_ && IsCollective(instruction) &&
-                 !instruction->parent()->IsFusionComputation()) {
-        VLOG(1) << "Remove " << instruction->name();
-        TF_RETURN_IF_ERROR(RemoveCollective(instruction));
+                 !instruction->parent()->IsFusionComputation() &&
+                 (instruction->opcode() != HloOpcode::kAsyncStart &&
+                  instruction->opcode() != HloOpcode::kAsyncUpdate)) {
+        // We do not remove kAsyncStart or kAsyncUpdate here since we expect
+        // them to be removed as a part of the async chain above.
+        // We should remove the async chain all together because the async
+        // wrapped computation is only associated with the AsyncStart. So we
+        // need to refer to the AsyncStart in order to determine whether
+        // the Done or the Update wraps a collective.
+        if (instruction->opcode() == HloOpcode::kAsyncDone) {
+          while (instruction->opcode() == HloOpcode::kAsyncDone ||
+                 instruction->opcode() == HloOpcode::kAsyncUpdate ||
+                 instruction->opcode() == HloOpcode::kAsyncStart) {
+            HloInstruction* operand = instruction->mutable_operand(0);
+            VLOG(1) << "Remove " << instruction->name();
+            TF_RETURN_IF_ERROR(RemoveCollective(instruction));
+            instruction = operand;
+          }
+        } else {
+          VLOG(1) << "Remove " << instruction->name();
+          TF_RETURN_IF_ERROR(RemoveCollective(instruction));
+        }
         changed = true;
       } else if (remove_comm_ &&
                  (instruction->opcode() == HloOpcode::kPartitionId ||
@@ -456,6 +482,7 @@ StatusOr<bool> HloControlFlowFlattening::Run(
                    instruction->custom_call_target() == "SliceId"))) {
         VLOG(1) << "Remove " << instruction->name();
         TF_RETURN_IF_ERROR(RemoveId(instruction));
+        changed = true;
       }
     }
   }

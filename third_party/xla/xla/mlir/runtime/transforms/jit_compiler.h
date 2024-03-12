@@ -1,4 +1,4 @@
-/* Copyright 2022 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2022 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -62,7 +62,7 @@ class JitCompiler {
     // Original input module might have an undefined calling convention (e.g.
     // XLA runtime does not support unranked tensors), and specialization can be
     // required as a precondition for compilation.
-    std::function<void(PassManager&)> create_specialization_pipeline;
+    std::function<absl::Status(PassManager&)> create_specialization_pipeline;
 
     // Create a pass pipeline that lowers compiled module from high level
     // dialects to the LLVM dialect. XLA runtime will use the LLVM ORC compiler
@@ -73,7 +73,7 @@ class JitCompiler {
     // (convert them to an ABI compatible with the calling convention advertised
     // to XLA through the `calling_convention` type conversion), and for
     // that it usually must include `xla-rt-export-functions` pass.
-    std::function<void(PassManager&)> create_compilation_pipeline;
+    std::function<absl::Status(PassManager&)> create_compilation_pipeline;
 
     // LLVM optimization level when JIT compiling a module.
     llvm::CodeGenOptLevel jit_code_opt_level = llvm::CodeGenOptLevel::Default;
@@ -104,6 +104,12 @@ class JitCompiler {
     // get the MLIR function type for the exported function(s), and then we
     // convert it to the corresponding run-time function type.
     TypeConverter type_converter;
+
+    // How much verification would you like to do?
+    int verification_level = 0;
+
+    // Whether to embed the LLVM IR generated in the executable
+    bool embed_ir_in_executable = false;
   };
 
   // Instantiates compiler from the serialized mlir source.

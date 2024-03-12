@@ -39,50 +39,35 @@ inline constexpr absl::string_view kTfQuantPtqDynamicRangeStepName =
     "tf_quant_ptq_dynamic_range";
 inline constexpr absl::string_view kTfQuantWeightOnlyStepName =
     "tf_quant_weight_only";
-inline constexpr absl::string_view kTfQuantConstantUnfreezingStepName =
-    "tf_quant_constant_unfreezing";
-inline constexpr absl::string_view kTfQuantInsertRestoreOpStepName =
-    "tf_quant_insert_restore_op";
-
-// StableHLO Quantization passes that are ran if StableHLO opset is selected.
-inline constexpr absl::string_view kTfQuantPtqPreCalibrationStepStableHloName =
-    "tf_quant_ptq_pre_calibration_stablehlo";
-inline constexpr absl::string_view kTfQuantPtqPostCalibrationStepStableHloName =
-    "tf_quant_ptq_post_calibration_stablehlo";
 
 absl::StatusOr<ExportedModel> QuantizeQatModel(
     absl::string_view saved_model_path,
     const std::vector<std::string>& signature_keys,
     const std::unordered_set<std::string>& tags,
-    const QuantizationOptions& quantization_options,
-    const absl::flat_hash_map<std::string, std::string>& function_aliases);
+    const QuantizationOptions& quantization_options);
 
 // Apply post-training dynamic range quantization to the model.
 absl::StatusOr<ExportedModel> QuantizePtqDynamicRange(
     absl::string_view saved_model_path,
     const std::vector<std::string>& signature_keys,
     const std::unordered_set<std::string>& tags,
-    const QuantizationOptions& quantization_options,
-    const absl::flat_hash_map<std::string, std::string>& function_aliases);
+    const QuantizationOptions& quantization_options);
 
 absl::StatusOr<ExportedModel> QuantizeWeightOnly(
     absl::string_view saved_model_path,
-    const QuantizationOptions& quantization_options,
-    const absl::flat_hash_map<std::string, std::string>& function_aliases);
+    const QuantizationOptions& quantization_options);
 
 absl::StatusOr<ExportedModel> QuantizePtqModelPreCalibration(
     absl::string_view saved_model_path,
     const std::vector<std::string>& signature_keys,
     const std::unordered_set<std::string>& tags,
-    const QuantizationOptions& quantization_options,
-    const absl::flat_hash_map<std::string, std::string>& function_aliases);
+    const QuantizationOptions& quantization_options);
 
 absl::StatusOr<ExportedModel> QuantizePtqModelPostCalibration(
     absl::string_view saved_model_path,
     const std::vector<std::string>& signature_keys,
     const std::unordered_set<std::string>& tags,
-    const QuantizationOptions& quantization_options,
-    const absl::flat_hash_map<std::string, std::string>& function_aliases);
+    const QuantizationOptions& quantization_options);
 
 }  // namespace quantization
 }  // namespace tensorflow

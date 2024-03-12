@@ -58,7 +58,6 @@ std::ostream& operator<<(std::ostream& os, const TfrtCompileOptions& options) {
             << ", enable_while_parallel_iterations = "
             << options.enable_while_parallel_iterations
             << ", cost_threshold = " << options.cost_threshold
-            << ", upper_cost_threshold = " << options.upper_cost_threshold
             << ", merge_inter_dependent_streams = "
             << options.merge_inter_dependent_streams
             << ", decompose_resource_ops = " << options.decompose_resource_ops

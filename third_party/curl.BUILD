@@ -14,11 +14,6 @@ CURL_WIN_COPTS = [
     "/DCURL_DISABLE_PROXY",
     "/DHAVE_LIBZ",
     "/DHAVE_ZLIB_H",
-    # Defining _USING_V110_SDK71_ is hackery to defeat curl's incorrect
-    # detection of what OS releases we can build on with VC 2012. This
-    # may not be needed (or may have to change) if the WINVER setting
-    # changes in //third_party/msvc/vc_12_0/CROSSTOOL.
-    "/D_USING_V110_SDK71_",
 ]
 
 CURL_WIN_SRCS = [
@@ -93,8 +88,6 @@ cc_library(
         "lib/curl_hmac.h",
         "lib/curl_krb5.h",
         "lib/curl_ldap.h",
-        "lib/curl_log.c",
-        "lib/curl_log.h",
         "lib/curl_md4.h",
         "lib/curl_md5.h",
         "lib/curl_memory.h",
@@ -122,6 +115,8 @@ cc_library(
         "lib/curl_sspi.h",
         "lib/curl_threads.c",
         "lib/curl_threads.h",
+        "lib/curl_trc.c",
+        "lib/curl_trc.h",
         "lib/curlx.h",
         "lib/dict.c",
         "lib/dict.h",
@@ -327,8 +322,6 @@ cc_library(
         "lib/vssh/wolfssh.c",
         "lib/vtls/bearssl.c",
         "lib/vtls/bearssl.h",
-        "lib/vtls/gskit.c",
-        "lib/vtls/gskit.h",
         "lib/vtls/gtls.c",
         "lib/vtls/gtls.h",
         "lib/vtls/hostcheck.c",
@@ -339,8 +332,6 @@ cc_library(
         "lib/vtls/mbedtls.h",
         "lib/vtls/mbedtls_threadlock.c",
         "lib/vtls/mbedtls_threadlock.h",
-        "lib/vtls/nss.c",
-        "lib/vtls/nssg.h",
         "lib/vtls/openssl.c",
         "lib/vtls/openssl.h",
         "lib/vtls/rustls.c",

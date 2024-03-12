@@ -1,3 +1,6 @@
+load("@bazel_skylib//rules:build_test.bzl", "build_test")
+load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
+
 # Description:
 #   A tool for reducing a HLO module that produces incorrect results.
 load(
@@ -5,11 +8,10 @@ load(
     "xla_cc_binary",
     "xla_cc_test",
 )
-load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
-load("@bazel_skylib//rules:build_test.bzl", "build_test")
 
 package(
-    default_visibility = ["//visibility:public"],
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
+    default_visibility = ["//xla:internal"],
 )
 
 build_test(
@@ -39,7 +41,6 @@ cc_library(
     name = "hlo_bisect_state",
     srcs = ["hlo_bisect_state.cc"],
     hdrs = ["hlo_bisect_state.h"],
-    visibility = ["//visibility:public"],
     deps = [
         "//xla:literal",
         "//xla:status",
@@ -76,7 +77,6 @@ cc_library(
     testonly = True,
     srcs = ["hlo_bisect_utils.cc"],
     hdrs = ["hlo_bisect_utils.h"],
-    visibility = ["//visibility:public"],
     deps = [
         ":hlo_bisect_state",
         "//xla:error_spec",

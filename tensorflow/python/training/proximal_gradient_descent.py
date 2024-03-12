@@ -15,11 +15,11 @@
 
 """ProximalGradientDescent for TensorFlow."""
 from tensorflow.python.framework import ops
+from tensorflow.python.ops import gen_training_ops
 # pylint: disable=unused-import
 from tensorflow.python.ops import math_ops
 # pylint: enable=unused-import
 from tensorflow.python.training import optimizer
-from tensorflow.python.training import training_ops
 from tensorflow.python.util.tf_export import tf_export
 
 
@@ -58,7 +58,7 @@ class ProximalGradientDescentOptimizer(optimizer.Optimizer):
     self._l2_regularization_strength_tensor = None
 
   def _apply_dense(self, grad, var):
-    return training_ops.apply_proximal_gradient_descent(
+    return gen_training_ops.apply_proximal_gradient_descent(
         var,
         self._learning_rate_tensor,
         self._l1_regularization_strength_tensor,
@@ -67,7 +67,7 @@ class ProximalGradientDescentOptimizer(optimizer.Optimizer):
         use_locking=self._use_locking).op
 
   def _resource_apply_dense(self, grad, var):
-    return training_ops.resource_apply_proximal_gradient_descent(
+    return gen_training_ops.resource_apply_proximal_gradient_descent(
         var.handle,
         self._learning_rate_tensor,
         self._l1_regularization_strength_tensor,
@@ -76,7 +76,7 @@ class ProximalGradientDescentOptimizer(optimizer.Optimizer):
         use_locking=self._use_locking)
 
   def _apply_sparse(self, grad, var):
-    return training_ops.sparse_apply_proximal_gradient_descent(
+    return gen_training_ops.sparse_apply_proximal_gradient_descent(
         var,
         self._learning_rate_tensor,
         self._l1_regularization_strength_tensor,
@@ -86,7 +86,7 @@ class ProximalGradientDescentOptimizer(optimizer.Optimizer):
         use_locking=self._use_locking).op
 
   def _resource_apply_sparse(self, grad, var, indices):
-    return training_ops.resource_sparse_apply_proximal_gradient_descent(
+    return gen_training_ops.resource_sparse_apply_proximal_gradient_descent(
         var.handle,
         math_ops.cast(self._learning_rate_tensor, grad.dtype),
         math_ops.cast(self._l1_regularization_strength_tensor, grad.dtype),

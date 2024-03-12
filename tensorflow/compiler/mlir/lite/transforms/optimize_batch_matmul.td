@@ -59,5 +59,7 @@ def FuseTransposeFCRhsToBatchMatmul : Pat<
     ),
   (TFL_BatchMatMulOp $lhs, $rhs, ConstBoolAttrFalse, ConstBoolAttrFalse,
                      $asymmetric_quantize_inputs),
-  [(AreLastTwoDimsTransposed $perm_value), (IsNoneType $bias),
+  [(NotConstantLike $rhs),
+   (AreLastTwoDimsTransposed $perm_value),
+   (IsNoneType $bias),
    (NotFromDequant $rhs)]>;

@@ -1,4 +1,4 @@
-/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2019 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -43,6 +43,8 @@ def MHLO_ConstantLikeNegInfValue : NativeCodeCall<
     "chlo::getConstantLikeInfValue($_builder, $_loc, $0, /*negative=*/true)">;
 
 def NullDenseIntElementsAttr : NativeCodeCall<"DenseIntElementsAttr()">;
+
+def NullDenseI64ArrayAttr : NativeCodeCall<"DenseI64ArrayAttr()">;
 
 def BinBroadcastDimensions : NativeCodeCall<
     "hlo::getBroadcastDimensionsAttr(&$_builder, $0, $1)">;

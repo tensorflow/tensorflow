@@ -1,4 +1,4 @@
-/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2019 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -18,7 +18,6 @@ limitations under the License.
 #include "xla/stream_executor/gpu/gpu_driver.h"
 #include "xla/stream_executor/gpu/gpu_executor.h"
 #include "xla/stream_executor/stream_executor.h"
-#include "xla/stream_executor/stream_executor_internal.h"
 
 namespace stream_executor {
 namespace gpu {
@@ -36,12 +35,6 @@ ScopedActivateExecutorContext::ScopedActivateExecutorContext(
 
 ScopedActivateExecutorContext::~ScopedActivateExecutorContext() {
   delete static_cast<ScopedActivateContext*>(driver_scoped_activate_context_);
-}
-
-ScopedActivateExecutorContext::ScopedActivateExecutorContext(
-    ScopedActivateExecutorContext&& other)
-    : driver_scoped_activate_context_(other.driver_scoped_activate_context_) {
-  other.driver_scoped_activate_context_ = nullptr;
 }
 
 }  // namespace gpu

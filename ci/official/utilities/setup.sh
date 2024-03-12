@@ -43,18 +43,49 @@ cd "$TFCI_GIT_DIR"
 # relevant variables in their environment. Because of 'set -o allexport' above
 # (which is equivalent to "set -a"), every variable in the file is exported
 # for other files to use.
-if [[ -n "${TFCI:-}" ]]; then
-  # Sourcing this twice, the first time with "-u" unset, means that variable
-  # order does not matter. i.e. "TFCI_BAR=$TFCI_FOO; TFCI_FOO=true" will work.
-  # TFCI_FOO is only valid the second time through.
-  set +u
-  source "$TFCI"
-  set -u
-  source "$TFCI"
-else
+#
+# Separately, if TFCI is set *and* there are also additional TFCI_ variables
+# set in the shell environment, those variables will be restored after the
+# TFCI env has been loaded. This is useful for e.g. on-demand "generic" jobs
+# where the user may wish to change just one option.
+if [[ -z "${TFCI:-}" ]]; then
   echo '==TFCI==: The $TFCI variable is not set. This is fine as long as you'
   echo 'already sourced a TFCI env file with "set -a; source <path>; set +a".'
   echo 'If you have not, you will see a lot of undefined variable errors.'
+else
+  FROM_ENV=$(mktemp)
+  # "export -p" prints a list of environment values in a safe-to-source format,
+  # e.g. `declare -x TFCI_BAZEL_COMMON_ARGS="list of args"` for bash.
+  export -p | grep TFCI > "$FROM_ENV"
+
+  # Source the default ci values
+  source ./ci/official/envs/ci_default
+
+  # TODO(angerson) write this documentation
+  # Sources every env, in order, from the comma-separated list "TFCI"
+  # Assumes variables will resolve themselves correctly.
+  set +u
+  for env_file in ${TFCI//,/ }; do
+    source "./ci/official/envs/$env_file"
+  done
+  set -u
+  echo '==TFCI==: Evaluated the following TFCI variables from $TFCI:'
+  export -p | grep TFCI
+
+  # Load those stored pre-existing TFCI_ vars, if any
+  if [[ -s "$FROM_ENV" ]]; then
+    echo '==TFCI==: NOTE: Loading the following env parameters, which were'
+    echo 'already set in the shell environment. If you want to disable this'
+    echo 'behavior, create a new shell.'
+    cat "$FROM_ENV"
+    source "$FROM_ENV"
+    rm "$FROM_ENV"
+  fi
+fi
+
+# Mac builds have some specific setup needs. See setup_macos.sh for details
+if [[ "${OSTYPE}" =~ darwin* ]]; then
+  source ./ci/official/utilities/setup_macos.sh
 fi
 
 # Create and expand to the full path of TFCI_OUTPUT_DIR
@@ -66,17 +97,18 @@ mkdir -p "$TFCI_OUTPUT_DIR"
 exec > >(tee "$TFCI_OUTPUT_DIR/script.log") 2>&1
 
 # Setup tfrun, a helper function for executing steps that can either be run
-# locally or run under Docker. docker.sh, below, redefines it as "docker exec".
-# Important: "tfrun foo | bar" is "( tfrun foo ) | bar", not tfrun (foo | bar).
-# Therefore, "tfrun" commands cannot include pipes -- which is probably for the
-# better. If a pipe is necessary for something, it is probably complex. Write a
-# well-documented script under utilities/ to encapsulate the functionality
-# instead.
+# locally or run under Docker. setup_docker.sh, below, redefines it as "docker
+# exec".
+# Important: "tfrun foo | bar" is "( tfrun foo ) | bar", not "tfrun (foo | bar)".
+# Therefore, "tfrun" commands cannot include pipes -- which is
+# probably for the better. If a pipe is necessary for something, it is probably
+# complex. Write a well-documented script under utilities/ to encapsulate the
+# functionality instead.
 tfrun() { "$@"; }
 
-# Run all "tfrun" commands under Docker. See docker.sh for details
+# Run all "tfrun" commands under Docker. See setup_docker.sh for details
 if [[ "$TFCI_DOCKER_ENABLE" == 1 ]]; then
-  source ./ci/official/utilities/docker.sh
+  source ./ci/official/utilities/setup_docker.sh
 fi
 
 # Generate an overview page describing the build

@@ -36,6 +36,9 @@ def tf_additional_grpc_deps_py():
 def tf_additional_license_deps():
     return []
 
+def tf_additional_tpu_ops_deps():
+    return []
+
 # Include specific extra dependencies when building statically, or
 # another set of dependencies otherwise. If "macos" is provided, that
 # dependency list is used when using the framework_shared_object config
@@ -56,4 +59,40 @@ def if_static_and_not_mobile(extra_deps, otherwise = []):
         str(Label("//tsl:android")): otherwise,
         str(Label("//tsl:ios")): otherwise,
         "//conditions:default": extra_deps,
+    })
+
+def if_llvm_aarch32_available(then, otherwise = []):
+    return select({
+        str(Label("//tsl:aarch32_or_cross")): then,
+        "//conditions:default": otherwise,
+    })
+
+def if_llvm_aarch64_available(then, otherwise = []):
+    return select({
+        str(Label("//tsl:aarch64_or_cross")): then,
+        "//conditions:default": otherwise,
+    })
+
+def if_llvm_arm_available(then, otherwise = []):
+    return select({
+        str(Label("//tsl:arm_or_cross")): then,
+        "//conditions:default": otherwise,
+    })
+
+def if_llvm_powerpc_available(then, otherwise = []):
+    return select({
+        str(Label("//tsl:ppc64le_or_cross")): then,
+        "//conditions:default": otherwise,
+    })
+
+def if_llvm_system_z_available(then, otherwise = []):
+    return select({
+        str(Label("//tsl:s390x_or_cross")): then,
+        "//conditions:default": otherwise,
+    })
+
+def if_llvm_x86_available(then, otherwise = []):
+    return select({
+        str(Label("//tsl:x86_or_cross")): then,
+        "//conditions:default": otherwise,
     })

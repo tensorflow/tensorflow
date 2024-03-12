@@ -1,4 +1,4 @@
-/* Copyright 2022 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2022 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -265,9 +265,6 @@ typedef struct XLA_FFI_Api {
 
 const size_t XLA_FFI_Api_STRUCT_SIZE =
     XLA_FFI_STRUCT_SIZE(XLA_FFI_Api, XLA_FFI_Get_StridedBufferArg_TypeId);
-
-// Does not pass ownership of returned XLA_FFI_Api* to caller.
-const XLA_FFI_Api* GetXlaFfiApi();
 
 #ifdef __cplusplus
 }

@@ -129,13 +129,15 @@ std::string JoinPath(const std::string& a, const std::string& b) {
 #else  // !PLATFORM_GOOGLE || __APPLE__ || __ANDROID__ || _WIN32
 
 #include <fcntl.h>
-#if defined(_WIN32)
-#include <io.h>  // for _close, _open, _read
-#endif
 #include <sys/stat.h>
 #include <sys/types.h>
-#include <unistd.h>
+
 #include <cstdio>
+#if defined(_WIN32)
+#include <io.h>  // for _close, _open, _read
+#else
+#include <unistd.h>
+#endif
 
 #if defined(PLATFORM_GOOGLE)
 #include "base/commandlineflags.h"

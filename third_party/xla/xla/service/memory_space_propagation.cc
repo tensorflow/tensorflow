@@ -1,4 +1,4 @@
-/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2020 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -15,9 +15,14 @@ limitations under the License.
 
 #include "xla/service/memory_space_propagation.h"
 
+#include <cstdint>
+
+#include "xla/shape.h"
+#include "xla/shape_util.h"
+
 namespace xla {
 
-StatusOr<bool> MemorySpacePropagation::Run(
+absl::StatusOr<bool> MemorySpacePropagation::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   bool modified = false;
@@ -37,24 +42,24 @@ StatusOr<bool> MemorySpacePropagation::Run(
         // Propagate the operand subshapes.
         for (int operand_idx = 0; operand_idx < instruction->operand_count();
              ++operand_idx) {
-          for (const ShapeUtil::IndexedShape& indexed_shape :
-               ShapeUtil::GetLeafShapes(
-                   instruction->operand(operand_idx)->shape())) {
-            int64_t memory_space = indexed_shape.shape.layout().memory_space();
-            modified |= Propagate(indexed_shape.index,
-                                  instruction->fused_parameter(operand_idx),
-                                  memory_space);
-          }
+          ShapeUtil::ForEachLeafShape(
+              instruction->operand(operand_idx)->shape(),
+              [&](const Shape& sub_shape, const ShapeIndex& index) {
+                int64_t memory_space = sub_shape.layout().memory_space();
+                modified |=
+                    Propagate(index, instruction->fused_parameter(operand_idx),
+                              memory_space);
+              });
         }
 
         // Propagate output subshapes.
-        for (const ShapeUtil::IndexedShape& indexed_shape :
-             ShapeUtil::GetLeafShapes(instruction->shape())) {
-          int64_t memory_space = indexed_shape.shape.layout().memory_space();
-          modified |=
-              Propagate(indexed_shape.index,
-                        instruction->fused_expression_root(), memory_space);
-        }
+        ShapeUtil::ForEachLeafShape(
+            instruction->shape(),
+            [&](const Shape& sub_shape, const ShapeIndex& index) {
+              int64_t memory_space = sub_shape.layout().memory_space();
+              modified |= Propagate(index, instruction->fused_expression_root(),
+                                    memory_space);
+            });
       }
     }
   }
