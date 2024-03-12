@@ -451,11 +451,11 @@ cc_library(
     srcs = ["indexing_test_utils.cc"],
     hdrs = ["indexing_test_utils.h"],
     deps = [
-        ":affine_map_printer",
         ":indexing_analysis",
         ":indexing_map",
         "//xla/hlo/ir:hlo",
         "//xla/tests:hlo_test_base",
+        "//xla/tests:verified_hlo_module",
         "//xla/tests:xla_internal_test_main",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/strings",
