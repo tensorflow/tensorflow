@@ -25,6 +25,7 @@ limitations under the License.
 #include "tensorflow/lite/experimental/shlo/ops/test_util.h"
 #include "tensorflow/lite/experimental/shlo/quantized_tensor_element_type.h"
 #include "tensorflow/lite/experimental/shlo/shape.h"
+#include "tensorflow/lite/experimental/shlo/status_matcher.h"
 #include "tensorflow/lite/experimental/shlo/tensor.h"
 
 using testing::ElementsAreArray;
@@ -48,7 +49,7 @@ struct TestParam {
 };
 
 template <class T>
-struct UnaryElementWiseTest : testing::Test {};
+struct UnaryElementWiseTest : ::testing::Test {};
 
 TYPED_TEST_SUITE(UnaryElementWiseTest, NonQuantizedTestTypes);
 
@@ -76,7 +77,7 @@ TYPED_TEST(UnaryElementWiseTest, NonQuantizedWithAbs) {
 }
 
 template <class T>
-struct QuantizedUnaryElementWiseTest : testing::Test {};
+struct QuantizedUnaryElementWiseTest : ::testing::Test {};
 
 TYPED_TEST_SUITE(QuantizedUnaryElementWiseTest, QuantizedTestTypes);
 
