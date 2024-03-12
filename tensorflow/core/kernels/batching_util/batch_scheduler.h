@@ -45,6 +45,7 @@ limitations under the License.
 #include "tensorflow/core/platform/thread_annotations.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
+#include "tsl/platform/criticality.h"
 
 namespace tensorflow {
 namespace serving {
@@ -67,6 +68,12 @@ class BatchTask {
   // Returns the size of the task, in terms of how much it contributes to the
   // size of a batch. (A batch's size is the sum of its task sizes.)
   virtual size_t size() const = 0;
+
+  // Returns the criticality of associated with the task. It defaults to
+  // kCritical.
+  virtual tsl::criticality::Criticality criticality() const {
+    return tsl::criticality::Criticality::kCritical;
+  }
 };
 
 // A thread-safe collection of BatchTasks. Tasks can be either added or removed

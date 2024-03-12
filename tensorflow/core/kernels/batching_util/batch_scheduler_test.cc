@@ -23,6 +23,7 @@ limitations under the License.
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/test.h"
+#include "tsl/platform/criticality.h"
 
 namespace tensorflow {
 namespace serving {
@@ -46,6 +47,11 @@ class FakeTask : public BatchTask {
   FakeTask(const FakeTask&) = delete;
   void operator=(const FakeTask&) = delete;
 };
+
+TEST(TaskCriticalityTest, CriticalityDefaultsToCritical) {
+  FakeTask fake_task(0);
+  EXPECT_EQ(fake_task.criticality(), tsl::criticality::Criticality::kCritical);
+}
 
 TEST(TaskQueueTest, EmptyTaskQueue) {
   TaskQueue<FakeTask> task_queue;

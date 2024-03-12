@@ -357,10 +357,6 @@ Status BatchResourceBase::RegisterInput(
   batch_components->guid = guid;
   batch_components->propagated_context = Context(ContextKind::kThread);
 
-  if (batcher_queue_options_.enable_priority_queue) {
-    batch_components->criticality = tsl::criticality::GetCriticality();
-  }
-
   OpInputList tensors;
   TF_RETURN_IF_ERROR(context->input_list("in_tensors", &tensors));
   batch_components->inputs.reserve(tensors.size());

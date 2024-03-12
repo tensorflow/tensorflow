@@ -100,6 +100,7 @@ cc_library(
         "//tensorflow/core/lib/core:status",
         "//tensorflow/core/platform:thread_annotations",
         "//tensorflow/core/profiler/lib:traceme",
+        "@local_tsl//tsl/platform:criticality",
     ],
 )
 
@@ -109,6 +110,7 @@ cc_library(
     deps = [
         "//tensorflow/core:lib",
         "//tensorflow/core/profiler/lib:traceme",
+        "@local_tsl//tsl/platform:criticality",
     ],
 )
 
@@ -389,13 +391,11 @@ cc_library(
         "//tensorflow/core/util:incremental_barrier",
         "@com_google_absl//absl/container:fixed_array",
         "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/time",
         "@com_google_absl//absl/types:optional",
         "@local_tsl//tsl/platform:criticality",
-        "@local_tsl//tsl/platform:logging",
     ],
 )
 
@@ -430,6 +430,7 @@ tf_cc_test(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/time",
         "@com_google_googletest//:gtest_main",
+        "@local_tsl//tsl/platform:criticality",
     ],
 )
 
