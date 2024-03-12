@@ -1124,6 +1124,7 @@ void BatchResourceBase::SplitBatchCostsAndRecordMetrics(
     const std::vector<std::unique_ptr<CostMeasurement>>&
         batch_cost_measurements,
     const int64_t processed_size, BatchT& batch) {
+  absl::flat_hash_map<std::string, absl::Duration> batch_costs;
   // 1. Split the batch costs to each task.
   for (const auto& batch_cost_measurement : batch_cost_measurements) {
     if (batch_cost_measurement->GetTotalCost() <= absl::ZeroDuration()) {
@@ -1142,6 +1143,7 @@ void BatchResourceBase::SplitBatchCostsAndRecordMetrics(
     }
     const absl::string_view cost_type = batch_cost_measurement->GetCostType();
     const absl::Duration total_cost = batch_cost_measurement->GetTotalCost();
+    batch_costs[cost_type] = total_cost;
 
     // Smeared batch cost: cost for processing this batch.
     RecordBatchCosts(model_name, processed_size,
@@ -1173,13 +1175,6 @@ void BatchResourceBase::SplitBatchCostsAndRecordMetrics(
 
   // 2. Records the batch metrics in each task.
   const int64_t padding_size = processed_size - batch.size();
-  absl::flat_hash_map<std::string, absl::Duration> batch_costs;
-  for (const auto& batch_cost_measurement : batch_cost_measurements) {
-    if (batch_cost_measurement->GetTotalCost() > absl::ZeroDuration()) {
-      batch_costs[batch_cost_measurement->GetCostType()] =
-          batch_cost_measurement->GetTotalCost();
-    }
-  }
   for (int i = 0; i < batch.num_tasks(); i++) {
     RequestCost* request_cost = batch.task(i).request_cost;
     // Skip recording the metrics if the request_cost is null.
