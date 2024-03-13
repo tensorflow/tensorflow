@@ -240,6 +240,15 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_gpu_skip_mlir_kernels(0);
 
   opts.set_xla_gpu_multi_streamed_windowed_einsum(false);
+
+  // Minimum combined size of matrices in matrix multiplication to
+  // be rewritten to cuBLAS or Triton kernel call.
+  // This threshold is a conservative estimate and has been measured
+  // to be always beneficial (up to generally several times faster)
+  // on V100 and H100 GPUs. See openxla/xla #9319 for details.
+  const int64_t kDefaultMinGemmRewriteSize = 100;
+  opts.set_xla_gpu_gemm_rewrite_size_threshold(kDefaultMinGemmRewriteSize);
+
   return opts;
 }
 
@@ -1624,6 +1633,13 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
           &DebugOptions::set_xla_gpu_multi_streamed_windowed_einsum),
       debug_options->xla_gpu_multi_streamed_windowed_einsum(),
       "Whether to run windowed einsum using multiple compute streams."));
+  flag_list->push_back(tsl::Flag(
+      "xla_gpu_gemm_rewrite_size_threshold",
+      int64_setter_for(&DebugOptions::set_xla_gpu_gemm_rewrite_size_threshold),
+      debug_options->xla_gpu_gemm_rewrite_size_threshold(),
+      "Threshold to rewrite matmul to cuBLAS or Triton "
+      "(minumum combined number of elements of both matrices "
+      "in non-batch dimensions to be considered for a rewrite)."));
 }  // NOLINT(readability/fn_size)
 
 // Allocates flag_values and flag_objects; this function must not be called more

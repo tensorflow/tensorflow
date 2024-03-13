@@ -88,6 +88,8 @@ class TritonGemmTest : public TritonTest {
     // Do not autotune split-k by default, since this prevents deterministically
     // matching the optimized HLO.
     debug_options.set_xla_gpu_enable_split_k_autotuning(false);
+    // Always rewrite Gemms with Triton regardless of size.
+    debug_options.set_xla_gpu_gemm_rewrite_size_threshold(0);
     return debug_options;
   }
 };

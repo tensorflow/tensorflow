@@ -56,6 +56,7 @@ class GemmRewriterTritonTest : public HloTestBase {
   DebugOptions GetDebugOptionsForTest() override {
     DebugOptions debug_options = HloTestBase::GetDebugOptionsForTest();
     debug_options.set_xla_gpu_triton_gemm_any(false);
+    debug_options.set_xla_gpu_gemm_rewrite_size_threshold(0);
     return debug_options;
   }
 
@@ -1094,6 +1095,64 @@ ENTRY e {
   EXPECT_EQ(
       module->entry_computation()->root_instruction()->metadata().op_name(),
       "foo");
+}
+
+// A test fixture class for testing the threshold for small matrices.
+class SmallDotGemmRewriterTritonTest : public GemmRewriterTritonTest {
+ public:
+  DebugOptions GetDebugOptionsForTest() override {
+    DebugOptions debug_options =
+        GemmRewriterTritonTest::GetDebugOptionsForTest();
+    debug_options.set_xla_gpu_gemm_rewrite_size_threshold(100);
+    return debug_options;
+  }
+};
+
+TEST_F(SmallDotGemmRewriterTritonTest, SkipSmallMatrixMultiplicationRewrite) {
+  auto module = ParseAndReturnVerifiedModule(R"(
+HloModule m
+
+ENTRY e {
+  p0 = f16[2,10] parameter(0)
+  p1 = f16[10,2] parameter(1)
+  ROOT d = f16[10,10] dot(p0, p1),
+    lhs_contracting_dims={0}, rhs_contracting_dims={1}
+})")
+                    .value();
+
+  EXPECT_FALSE(GemmRewriterTriton(gpu_version_).Run(module.get()).value());
+
+  MatchHloModule(*module, R"(
+; CHECK-LABEL: ENTRY %e ({{.*}}: f16[2,10], {{.*}}: f16[10,2]) -> f16[10,10] {
+; CHECK-NEXT: [[P0:%[^ ]+]] = f16[2,10]{1,0} parameter(0)
+; CHECK-NEXT: [[P1:%[^ ]+]] = f16[10,2]{1,0} parameter(1)
+; CHECK:      ROOT {{.*}} = f16[10,10]{1,0} dot(f16[2,10]{1,0} [[P0]], f16[10,2]{1,0} [[P1]])
+})");
+}
+
+TEST_F(SmallDotGemmRewriterTritonTest, LargeMatrixMultiplicationIsRewritten) {
+  auto module = ParseAndReturnVerifiedModule(R"(
+HloModule m
+
+ENTRY e {
+  p0 = f16[2,18] parameter(0)
+  p1 = f16[50,2] parameter(1)
+  ROOT d = f16[18,50] dot(p0, p1),
+    lhs_contracting_dims={0}, rhs_contracting_dims={1}
+})")
+                    .value();
+
+  EXPECT_TRUE(GemmRewriterTriton(gpu_version_).Run(module.get()).value());
+
+  MatchHloModule(*module, R"(
+; CHECK-LABEL: ENTRY %e ({{.*}}: f16[2,18], {{.*}}: f16[50,2]) -> f16[18,50] {
+; CHECK-NEXT: [[P0:%[^ ]+]] = f16[2,18]{1,0} parameter(0)
+; CHECK-NEXT: [[P1:%[^ ]+]] = f16[50,2]{1,0} parameter(1)
+; CHECK:      ROOT {{.*}} = f16[18,50]{1,0}
+; CHECK:        fusion(f16[2,18]{1,0} [[P0]], f16[50,2]{1,0} [[P1]]),
+; CHECK:        kind=kCustom
+; CHECK:        __triton_gemm
+})");
 }
 
 }  // namespace

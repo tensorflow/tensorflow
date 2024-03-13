@@ -839,5 +839,53 @@ std::string TritonGemmConfig::ToString() const {
                       ",num_ctas:", num_ctas, "}");
 }
 
+absl::StatusOr<bool> IsMatrixMultiplicationTooSmallForRewriting(
+    const HloInstruction& dot, int64_t threshold) {
+  CHECK_EQ(dot.opcode(), HloOpcode::kDot);
+
+  const Shape& lhs_shape = dot.operand(0)->shape();
+  const Shape& rhs_shape = dot.operand(1)->shape();
+  const DotDimensionNumbers& dot_dims = dot.dot_dimension_numbers();
+
+  int64_t contracting_size = 1;
+  for (int64_t dim : dot_dims.lhs_contracting_dimensions()) {
+    contracting_size *= lhs_shape.dimensions(dim);
+  }
+
+  TF_ASSIGN_OR_RETURN(
+      std::vector<int64_t> lhs_non_contracting_dims,
+      GetNonContractingDims(lhs_shape, dot_dims.lhs_batch_dimensions(),
+                            dot_dims.lhs_contracting_dimensions()));
+  int64_t lhs_non_contracting_size = 1;
+  for (int64_t dim : lhs_non_contracting_dims) {
+    lhs_non_contracting_size *= lhs_shape.dimensions(dim);
+  }
+
+  TF_ASSIGN_OR_RETURN(
+      std::vector<int64_t> rhs_non_contracting_dims,
+      GetNonContractingDims(rhs_shape, dot_dims.rhs_batch_dimensions(),
+                            dot_dims.rhs_contracting_dimensions()));
+  int64_t rhs_non_contracting_size = 1;
+  for (int64_t dim : rhs_non_contracting_dims) {
+    rhs_non_contracting_size *= rhs_shape.dimensions(dim);
+  }
+
+  return (rhs_non_contracting_size + lhs_non_contracting_size) *
+             contracting_size <
+         threshold;
+}
+
+bool IsDotSupportedByClassicalEmitters(const HloInstruction& dot) {
+  // Let us be conservative and only throw float dots at the emitters.
+  switch (dot.shape().element_type()) {
+    case F16:
+    case F32:
+    case BF16:
+      return true;
+    default:
+      return false;
+  }
+}
+
 }  // namespace gpu
 }  // namespace xla

@@ -678,6 +678,18 @@ class GemmRewriterTritonVisitor : public DfsHloRewriteVisitor {
   absl::Status HandleDot(HloInstruction* dot) override {
     CHECK_EQ(dot->opcode(), HloOpcode::kDot);
 
+    int64_t gemm_rewrite_size_threshold =
+        dot->GetModule()
+            ->config()
+            .debug_options()
+            .xla_gpu_gemm_rewrite_size_threshold();
+    TF_ASSIGN_OR_RETURN(bool is_matmul_tiny,
+                        IsMatrixMultiplicationTooSmallForRewriting(
+                            *dot, gemm_rewrite_size_threshold));
+    if (is_matmul_tiny && IsDotSupportedByClassicalEmitters(*dot)) {
+      return absl::OkStatus();
+    }
+
     std::string fusion_name = absl::StrCat("triton_gemm_", dot->name());
     HloComputation::Builder builder(absl::StrCat(fusion_name, "_computation"));
     std::vector<HloInstruction*> fusion_inputs;

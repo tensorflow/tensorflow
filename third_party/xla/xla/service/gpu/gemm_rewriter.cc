@@ -494,6 +494,17 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
         !IsMatrixVectorMultiplication(*instr)) {
       return absl::OkStatus();
     }
+    int64_t gemm_rewrite_size_threshold =
+        instr->GetModule()
+            ->config()
+            .debug_options()
+            .xla_gpu_gemm_rewrite_size_threshold();
+    TF_ASSIGN_OR_RETURN(bool is_matmul_tiny,
+                        IsMatrixMultiplicationTooSmallForRewriting(
+                            *instr, gemm_rewrite_size_threshold));
+    if (is_matmul_tiny && IsDotSupportedByClassicalEmitters(*instr)) {
+      return absl::OkStatus();
+    }
 
     CHECK(!instr->IsRank2Transpose());
     CHECK(!instr->mutable_operand(0)->IsRank2Transpose());

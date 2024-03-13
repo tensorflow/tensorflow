@@ -230,6 +230,115 @@ TEST(GetMatrixLayoutTest, BatchInMostMinorPhysicalDimension) {
   EXPECT_FALSE(MatrixLayout::For(shape).ok());
 }
 
+using GetMatrixSizeRewriteThresholdTest = HloTestBase;
+
+TEST_F(GetMatrixSizeRewriteThresholdTest, MatMulTooSmallForRewrite) {
+  const char* hlo_text = R"(
+HloModule DotFuncModule
+
+ENTRY DotFunc {
+  x = f32[100,30,3] parameter(0)
+  y = f32[100,3,3] parameter(1)
+  ROOT dot = f32[100,30,3] dot(x, y), lhs_contracting_dims={2}, rhs_contracting_dims={1}, lhs_batch_dims={0}, rhs_batch_dims={0}
+}
+
+)";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_text));
+  auto dot = module->entry_computation()->root_instruction();
+  EXPECT_THAT(IsMatrixMultiplicationTooSmallForRewriting(*dot, 100),
+              IsOkAndHolds(true));
+}
+
+TEST_F(GetMatrixSizeRewriteThresholdTest, MatMulSupportedByClassicalEmitters) {
+  const char* hlo_text = R"(
+HloModule DotFuncModule
+
+ENTRY DotFunc {
+  x = f32[100,30,3] parameter(0)
+  y = f32[100,3,3] parameter(1)
+  ROOT dot = f32[100,30,3] dot(x, y), lhs_contracting_dims={2}, rhs_contracting_dims={1}, lhs_batch_dims={0}, rhs_batch_dims={0}
+}
+
+)";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_text));
+  auto dot = module->entry_computation()->root_instruction();
+  EXPECT_TRUE(IsDotSupportedByClassicalEmitters(*dot));
+}
+
+TEST_F(GetMatrixSizeRewriteThresholdTest,
+       MatMulUnsupportedByClassicalEmitters) {
+  const char* hlo_text = R"(
+HloModule DotFuncModule
+
+ENTRY DotFunc {
+  x = s8[100,30,3] parameter(0)
+  y = s8[100,3,3] parameter(1)
+  ROOT dot = s32[100,30,3] dot(x, y), lhs_contracting_dims={2}, rhs_contracting_dims={1}, lhs_batch_dims={0}, rhs_batch_dims={0}
+}
+
+)";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_text));
+  auto dot = module->entry_computation()->root_instruction();
+  EXPECT_FALSE(IsDotSupportedByClassicalEmitters(*dot));
+}
+
+TEST_F(GetMatrixSizeRewriteThresholdTest, MatMulLeftLargeEnoughForRewrite) {
+  const char* hlo_text = R"(
+HloModule DotFuncModule
+
+ENTRY DotFunc {
+  x = f32[50,2] parameter(0)
+  y = f32[2,2] parameter(1)
+  ROOT dot = f32[50,2] dot(x, y), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+}
+
+)";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_text));
+  auto dot = module->entry_computation()->root_instruction();
+  EXPECT_THAT(IsMatrixMultiplicationTooSmallForRewriting(*dot, 100),
+              IsOkAndHolds(false));
+}
+
+TEST_F(GetMatrixSizeRewriteThresholdTest, MatMulRightLargeEnoughForRewrite) {
+  const char* hlo_text = R"(
+HloModule DotFuncModule
+
+ENTRY DotFunc {
+  x = f32[2,2] parameter(0)
+  y = f32[2,50] parameter(1)
+  ROOT dot = f32[2,50] dot(x, y), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+}
+
+)";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_text));
+  auto dot = module->entry_computation()->root_instruction();
+  EXPECT_THAT(IsMatrixMultiplicationTooSmallForRewriting(*dot, 100),
+              IsOkAndHolds(false));
+}
+
+TEST_F(GetMatrixSizeRewriteThresholdTest, MatMulTogetherLargeEnoughForRewrite) {
+  const char* hlo_text = R"(
+HloModule DotFuncModule
+
+ENTRY DotFunc {
+  x = f32[4,16] parameter(0)
+  y = f32[16,4] parameter(1)
+  ROOT dot = f32[4,4] dot(x, y), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+}
+
+)";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_text));
+  auto dot = module->entry_computation()->root_instruction();
+  EXPECT_THAT(IsMatrixMultiplicationTooSmallForRewriting(*dot, 100),
+              IsOkAndHolds(false));
+}
+
 }  // namespace
 }  // namespace gpu
 }  // namespace xla

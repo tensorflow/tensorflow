@@ -7428,19 +7428,6 @@ xla_aot_compile_gpu(
 )
 
 xla_aot_compile_gpu(
-    name = "xla_aot_compile_test_gpu_executable_gemm",
-    autotune_results = "xla_aot_compile_test_autotune_results.prototxt",
-    gpu_target_config = "xla_aot_compile_test_gpu_target_config.prototxt",
-    module = "xla_aot_compile_test_gemm.mlir",
-)
-
-xla_aot_compile_gpu_runtime_autotuning(
-    name = "xla_aot_compile_test_gpu_executable_gemm_runtime_autotuning",
-    gpu_target_config = "xla_aot_compile_test_gpu_target_config.prototxt",
-    module = "xla_aot_compile_test_gemm.mlir",
-)
-
-xla_aot_compile_gpu(
     name = "xla_aot_compile_test_gpu_executable_convolution",
     autotune_results = "xla_aot_compile_test_autotune_results.prototxt",
     gpu_target_config = "xla_aot_compile_test_gpu_target_config.prototxt",
@@ -7507,8 +7494,6 @@ xla_cc_test(
         ":xla_aot_compile_test_gpu_executable",
         ":xla_aot_compile_test_gpu_executable_hlo",
         ":xla_aot_compile_test_gpu_executable_constant",
-        ":xla_aot_compile_test_gpu_executable_gemm",
-        ":xla_aot_compile_test_gpu_executable_gemm_runtime_autotuning",
         ":xla_aot_compile_test_gpu_executable_convolution",
         ":xla_aot_compile_test_gpu_executable_convolution_runtime_autotuning",
     ]),
@@ -7534,7 +7519,13 @@ xla_cc_test(
         "@local_tsl//tsl/platform:path",
         "@local_tsl//tsl/platform:statusor",
         "@local_tsl//tsl/platform:test",
-    ]),
+    ]) + [
+        ":shaped_buffer",
+        "//xla:literal",
+        "//xla:shape_util",
+        "//xla/client:executable_build_options",
+        "@com_google_absl//absl/types:span",
+    ],
 )
 
 tf_proto_library(

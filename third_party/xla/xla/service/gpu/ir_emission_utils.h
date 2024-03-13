@@ -54,9 +54,6 @@ inline constexpr int64_t kMinDimensionToTransposeTiled2 = 8;
 inline constexpr int64_t kMinTotalDimensionsToTransposeTiled = 64 * 128;
 
 // Matrix multiplication before the rewrite.
-//
-// These functions should never return "true" on instructions after
-// GemmRewriter pass has finished.
 bool IsMatrixMultiplication(const HloInstruction& dot);
 bool IsMatrixVectorMultiplication(const HloInstruction& dot);
 
