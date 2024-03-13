@@ -170,18 +170,25 @@ std::optional<IndexingMap> MlirTransposeFusion::ComputeThreadIdToOutputIndexing(
   auto permuted_tiled_shape =
       ShapeUtil::MakeShape(U8, Permute(tiling_.GetShape(), permutation_));
 
-  return ComposeIndexingMaps(
-      GetIndexingMapForTiling(block_offset, thread_offset, tiling_),
+  auto map = ComposeIndexingMaps(
+      GetIndexingMapForTiling(
+          block_offset, thread_offset, tiling_.GetNumThreadsPerBlock(),
+          tiling_.GetNumBlocks(), tiling_.GetThreadTileSize(),
+          permuted_tiled_shape.dimensions()),
       GetBitcastMap(permuted_tiled_shape, hero.shape(), ctx));
+  map.Simplify();
+  return map;
 }
 
 std::optional<IndexingMap> MlirTransposeFusion::ComputeThreadIdToInputIndexing(
     int64_t root_index, int64_t hero_operand_index, MLIRContext* ctx) const {
   const auto& hero = *analysis_.fusion_heroes()[root_index];
 
-  return ComposeIndexingMaps(
+  auto map = ComposeIndexingMaps(
       GetIndexingMapForTiling(tiling_, ctx),
       GetBitcastMap(tiling_.GetXlaShape(), hero.operand(0)->shape(), ctx));
+  map.Simplify();
+  return map;
 }
 
 LaunchDimensions MlirTransposeFusion::launch_dimensions() const {
@@ -191,7 +198,7 @@ LaunchDimensions MlirTransposeFusion::launch_dimensions() const {
 
 // Returns an indexing map with block_x, block_y, block_z set to 0.
 IndexingMap GetSharedMemoryWriteIndexingMap(
-    const IndexingMap& thread_id_indexing) {
+    const IndexingMap& thread_id_indexing, int loop_dim) {
   auto* mlir_context = thread_id_indexing.GetMLIRContext();
 
   AffineExpr c0 = mlir::getAffineConstantExpr(0, mlir_context);
@@ -200,11 +207,11 @@ IndexingMap GetSharedMemoryWriteIndexingMap(
   mlir::bindSymbolsList(mlir_context, llvm::MutableArrayRef(tile_sizes));
 
   IndexingMap shmem_write_indexing{
-      AffineMap::get(thread_id_indexing.GetDimensionCount(),
-                     thread_id_indexing.GetSymbolCount(),
-
-                     {c0, th_x.floorDiv(32) + 4 * tile_sizes[1], th_x % 32},
-                     mlir_context),
+      AffineMap::get(
+          thread_id_indexing.GetDimensionCount(),
+          thread_id_indexing.GetSymbolCount(),
+          {c0, th_x.floorDiv(32) + 4 * tile_sizes[loop_dim], th_x % 32},
+          mlir_context),
       thread_id_indexing.GetDimensionRanges(),
       thread_id_indexing.GetSymbolRanges(),
       thread_id_indexing.GetConstraints()};
@@ -215,9 +222,9 @@ IndexingMap GetSharedMemoryWriteIndexingMap(
 // Returns an indexing map with block_x, block_y, block_z set to 0 and swapped
 // 2nd and 3rd results.
 IndexingMap GetSharedMemoryReadIndexingMap(
-    const IndexingMap& thread_id_indexing) {
+    const IndexingMap& thread_id_indexing, int loop_dim) {
   IndexingMap write_indexing =
-      GetSharedMemoryWriteIndexingMap(thread_id_indexing);
+      GetSharedMemoryWriteIndexingMap(thread_id_indexing, loop_dim);
   return IndexingMap{write_indexing.GetAffineMap().getSubMap({0, 2, 1}),
                      write_indexing.GetDimensionRanges(),
                      write_indexing.GetSymbolRanges(),
@@ -260,7 +267,7 @@ absl::StatusOr<SmallVector<Value, 4>> MlirTransposeFusion::EmitWriteToShMemMlir(
         root_index, /*hero_operand_index=*/0, builder.getContext());
     TF_RET_CHECK(input_indexing) << "Indexing is never nullopt";
     IndexingMap shmem_input_indexing =
-        GetSharedMemoryWriteIndexingMap(*input_indexing);
+        GetSharedMemoryWriteIndexingMap(*input_indexing, permutation_[2]);
 
     // Allocate shared memory.
     const HloInstruction* transpose_operand = transpose->operand(0);
@@ -346,7 +353,7 @@ absl::Status MlirTransposeFusion::EmitReadFromShMemMlir(
     const IndexingMap& root_indexing = root_to_hero_indexing.at(transpose);
 
     IndexingMap shmem_output_indexing =
-        GetSharedMemoryReadIndexingMap(*output_indexing);
+        GetSharedMemoryReadIndexingMap(*output_indexing, permutation_[2]);
     auto description =
         GetDescriptionForTiledTransposeEmitter(*root, *transpose);
 
