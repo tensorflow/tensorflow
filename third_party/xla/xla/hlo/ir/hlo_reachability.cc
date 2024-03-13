@@ -27,6 +27,7 @@ namespace xla {
 HloReachabilityMap::HloReachabilityMap(
     absl::Span<const HloInstruction* const> instructions)
     : bit_sets_(instructions.size(), BitSet(instructions.size())) {
+  indices_.reserve(instructions.size());
   for (size_t i = 0; i < instructions.size(); ++i) {
     bit_sets_[i].Set(i);  // Instructions are reachable from themselves.
     indices_[GetKey(instructions[i])] = i;
