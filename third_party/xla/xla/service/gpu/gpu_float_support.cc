@@ -15,10 +15,13 @@ limitations under the License.
 
 #include "xla/service/gpu/gpu_float_support.h"
 
+#include <variant>
+
 #include "absl/log/check.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/service/float_support.h"
+#include "xla/stream_executor/device_description.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
@@ -73,6 +76,18 @@ bool GpuFloatSupport::IsSupported(const HloInstruction& hlo) const {
     // Other special ops.
     case HloOpcode::kBitcast:
       return true;
+    // Elementwise ops.
+    case HloOpcode::kAdd:
+    case HloOpcode::kSubtract:
+    case HloOpcode::kMultiply: {
+      if (LowPrecisionType() == BF16) {
+        auto* cuda_compute_capability =
+            std::get_if<se::CudaComputeCapability>(&compute_capability_);
+        return cuda_compute_capability != nullptr &&
+               cuda_compute_capability->IsAtLeastHopper();
+      }
+      return false;
+    }
     default:
       return false;
   }

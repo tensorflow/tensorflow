@@ -475,7 +475,8 @@ absl::StatusOr<std::unique_ptr<HloModule>> TritonGemmAutotuneExtractor(
 
   if (config.split_k > 1) {
     TF_RETURN_IF_ERROR(MakeDotSplitKBatch(cloned_dot_fusion, config));
-    GpuFloatSupport bf16_support(BF16);
+    GpuFloatSupport bf16_support(gpu_device_info.cuda_compute_capability(),
+                                 BF16);
     FloatNormalization float_normalization(&bf16_support);
     TF_RETURN_IF_ERROR(float_normalization.Run(new_module.get()).status());
     GpuInstructionFusion instruction_fusion(/*may_duplicate=*/false,
