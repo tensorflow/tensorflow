@@ -21,6 +21,8 @@ limitations under the License.
 #include "absl/strings/match.h"
 #include "llvm/ADT/STLExtras.h"
 #include "mlir/AsmParser/AsmParser.h"  // from @llvm-project
+#include "mlir/Dialect/Quant/QuantTypes.h"  // from @llvm-project
+#include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/Location.h"  // from @llvm-project
@@ -93,6 +95,66 @@ absl::StatusOr<mlir::Operation*> ImportRealDynamicSliceOp(
 
 }  // namespace
 
+mlir::Type getQuantizedType(mlir::DictionaryAttr& backend_config) {
+  std::vector<double> scales;
+  std::vector<int64_t> zero_points;
+  int64_t quantization_dimension = -1, storage_max = 0, storage_min = 0;
+  mlir::Type storage_type, expressed_type;
+
+  if (const mlir::Attribute scales_attr = backend_config.get("scale");
+      scales_attr) {
+    for (auto scale_attr : scales_attr.cast<mlir::ArrayAttr>()) {
+      scales.push_back(scale_attr.cast<mlir::FloatAttr>().getValueAsDouble());
+    }
+  }
+
+  auto zero_points_attr = backend_config.get("zero_point");
+  if (zero_points_attr) {
+    for (auto zero_point_attr : zero_points_attr.cast<mlir::ArrayAttr>()) {
+      zero_points.push_back(zero_point_attr.cast<mlir::IntegerAttr>().getInt());
+    }
+  }
+
+  auto quantization_dimension_attr =
+      backend_config.get("quantization_dimension");
+  if (quantization_dimension_attr) {
+    quantization_dimension =
+        quantization_dimension_attr.cast<mlir::IntegerAttr>().getInt();
+  }
+
+  auto storage_max_attr = backend_config.get("storage_max");
+  if (storage_max_attr) {
+    storage_max = storage_max_attr.cast<mlir::IntegerAttr>().getInt();
+  }
+
+  auto storage_min_attr = backend_config.get("storage_min");
+  if (storage_min_attr) {
+    storage_min = storage_min_attr.cast<mlir::IntegerAttr>().getInt();
+  }
+
+  auto storage_type_attr = backend_config.get("storage_type");
+  if (storage_type_attr) {
+    storage_type = storage_type_attr.cast<mlir::TypeAttr>().getValue();
+  }
+
+  auto expressed_type_attr = backend_config.get("expressed_type");
+  if (expressed_type_attr) {
+    expressed_type = expressed_type_attr.cast<mlir::TypeAttr>().getValue();
+  }
+
+  auto is_signed = storage_type.cast<mlir::IntegerType>().isSignless();
+
+  if (quantization_dimension != -1) {
+    return mlir::quant::UniformQuantizedPerAxisType::get(
+        is_signed, storage_type, expressed_type, scales, zero_points,
+        quantization_dimension, storage_min, storage_max);
+  } else {
+    return mlir::quant::UniformQuantizedType::get(
+        is_signed, storage_type, expressed_type, scales[0], zero_points[0],
+        storage_min, storage_max);
+  }
+}
+
 absl::StatusOr<mlir::Operation*> ImportCustomCallAsOp(
     const HloCustomCallInstruction* instruction, mlir::Location loc,
     mlir::Type result_type, mlir::ValueRange operands,
@@ -111,6 +173,31 @@ absl::StatusOr<mlir::Operation*> ImportCustomCallAsOp(
   if (custom_call_target == "mhlo.real_dynamic_slice") {
     return ImportRealDynamicSliceOp(backend_config_str, loc, result_type,
                                     operands, builder);
+  }
+
+  auto backend_config =
+      mlir::parseAttribute(backend_config_str, builder->getContext())
+          .dyn_cast<mlir::DictionaryAttr>();
+  if (!backend_config) {
+    return Internal(
+        "Couldn't parse backend config into a dictionary attribute");
+  }
+
+  if (custom_call_target == "mhlo.uniform_quantize") {
+    return builder
+        ->create<mlir::mhlo::UniformQuantizeOp>(
+            loc,
+            mlir::RankedTensorType::get(
+                result_type.cast<mlir::RankedTensorType>().getShape(),
+                getQuantizedType(backend_config)),
+            operands)
+        .getOperation();
+  }
+
+  if (custom_call_target == "mhlo.uniform_dequantize") {
+    return builder
+        ->create<mlir::mhlo::UniformDequantizeOp>(loc, result_type, operands)
+        .getOperation();
   }
   return InvalidArgument("Unsupported MHLO op custom_call %s",
                          custom_call_target);

@@ -39,3 +39,13 @@ ENTRY %dummy_main (Arg_0.1: f32[]) -> f32[] {
   // CHECK:  mhlo.real_dynamic_slice [[ARG_0]], [[ARG_1]], [[ARG_2]], [[ARG_3]] : (tensor<?x3x224x224xf32>, tensor<4xi32>, tensor<4xi32>, tensor<4xi32>) -> tensor<?x3x224x224xf32>
   ROOT %custom-call.12 = f32[?,3,224,224] custom-call(f32[?,3,224,224] %Arg_0.1, s32[4] %Arg_1.2, s32[4] %Arg_2.3, s32[4] %Arg_3.4), custom_call_target="mhlo.real_dynamic_slice"
 }
+
+// Test HLO->MHLO converter for quantize/dequantize
+%test_custom_call_for_quant_dequant (p0:f32[1,3]) -> f32[1,3] {
+  %p0 = f32[1,3] parameter(0)
+  %custom-call.1 = s8[1,3] custom-call(f32[1,3] %p0), custom_call_target="mhlo.uniform_quantize", api_version=API_VERSION_TYPED_FFI, backend_config={scale=[1.00],zero_point=[0],storage_type=i8,expressed_type=f32,storage_min=-128,storage_max=127}
+  ROOT %custom-call.2 = f32[1,3] custom-call(s8[1,3] %custom-call.1), custom_call_target="mhlo.uniform_dequantize", api_version=API_VERSION_TYPED_FFI, backend_config={scale=[1.00],zero_point=[0],storage_type=i8,expressed_type=f32,storage_min=-128,storage_max=127}
+}
+// CHECK-LABEL:  func private @test_custom_call_for_quant_dequant
+// CHECK: mhlo.uniform_quantize {{.*}} : (tensor<1x3xf32>) ->  tensor<1x3x!quant.uniform<i8:f32, 1.000000e+00>>
+// CHECK: mhlo.uniform_dequantize {{.*}} : (tensor<1x3x!quant.uniform<i8:f32, 1.000000e+00>>) -> tensor<1x3xf32>

@@ -28,6 +28,7 @@ limitations under the License.
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
@@ -35,6 +36,8 @@ limitations under the License.
 #include "xla/status.h"
 #include "xla/translate/hlo_to_mhlo/hlo_function_importer.h"
 #include "xla/xla.pb.h"
+#include "tsl/platform/errors.h"
+#include "tsl/platform/statusor.h"
 
 namespace xla {
 
@@ -46,6 +49,7 @@ HloModuleImporter::HloModuleImporter(mlir::ModuleOp module,
   module.getContext()->loadDialect<mlir::arith::ArithDialect>();
   module.getContext()->loadDialect<mlir::func::FuncDialect>();
   module.getContext()->loadDialect<mlir::mhlo::MhloDialect>();
+  module.getContext()->loadDialect<mlir::quant::QuantizationDialect>();
   module.getContext()->loadDialect<mlir::quant::QuantizationDialect>();
 }
 
