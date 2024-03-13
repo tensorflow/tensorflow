@@ -585,7 +585,7 @@ class OpLevelCostEstimatorTest : public ::testing::Test {
     EXPECT_EQ(padding_enum, dims.padding);
   }
 
-  StatusOr<OpLevelCostEstimator::ConvolutionDimensions>
+  absl::StatusOr<OpLevelCostEstimator::ConvolutionDimensions>
   CallOpDimensionsFromInputs(const int n, const int h, const int w, const int c,
                              const int kx, const int ky, const int sx,
                              const int sy, const string& data_format,
