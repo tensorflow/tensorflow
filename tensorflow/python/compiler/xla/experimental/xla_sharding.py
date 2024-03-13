@@ -19,6 +19,8 @@ import numpy as _np  # Avoids becoming a part of public Tensorflow API.
 from tensorflow.compiler.tf2xla.python import xla as tf2xla
 from local_xla.xla import xla_data_pb2
 from tensorflow.core.framework import attr_value_pb2
+from tensorflow.python.eager import context
+from tensorflow.python.ops import resource_variable_ops
 
 
 class Sharding(object):
@@ -221,6 +223,21 @@ class Sharding(object):
     if unspecified_dims:
       assert use_sharding_op and not assign_tuple_sharding
     proto = self._proto
+
+    # If passed a tf.BaseResourceVariable instead of a tf.Tensor, simply store
+    # the sharding proto on the tf.BaseResourceVariable object. An XlaShardingOp
+    # will be created down the line whenever a ReadVariableOp is created by the
+    # tf.BaseResourceVariable.
+    if (
+        isinstance(tensor, resource_variable_ops.BaseResourceVariable)
+        and context.xla_sharding_for_resource_variables_enabled()
+    ):
+      if assign_tuple_sharding:
+        proto = self._create_tuple_proto(num_outputs=1)
+      # pylint: disable=protected-access
+      tensor._set_xla_sharding(proto)
+      return tensor
+
     if use_sharding_op:
       if assign_tuple_sharding:
         proto = self._create_tuple_proto(num_outputs=1)
@@ -291,6 +308,20 @@ def copy_sharding(from_tensor, to_tensor, use_sharding_op=False):
   """
   sharding = get_tensor_sharding(from_tensor)
   if sharding is None:
+    return to_tensor
+
+  # If passed a tf.BaseResourceVariable instead of a tf.Tensor, simply store the
+  # sharding proto on the tf.BaseResourceVariable object. An XlaShardingOp
+  # will be created down the line whenever a ReadVariableOp is created by the
+  # tf.BaseResourceVariable.
+  if (
+      isinstance(to_tensor, resource_variable_ops.BaseResourceVariable)
+      and context.xla_sharding_for_resource_variables_enabled()
+  ):
+    proto = xla_data_pb2.OpSharding()
+    proto.ParseFromString(sharding)
+    # pylint: disable=protected-access
+    to_tensor._set_xla_sharding(proto)
     return to_tensor
 
   if use_sharding_op:
@@ -416,6 +447,20 @@ def get_tensor_sharding(tensor):
   Returns:
     The attribute representing XLA sharding on tensor's op.
   """
+  # If passed a tf.BaseResourceVariable instead of a tf.Tensor, simply get the
+  # sharding proto set on the _xla_sharding field of the tf.BaseResourceVariable
+  # object.
+  if (
+      isinstance(tensor, resource_variable_ops.BaseResourceVariable)
+      and context.xla_sharding_for_resource_variables_enabled()
+  ):
+    # pylint: disable=protected-access
+    sharding = tensor._get_xla_sharding()
+    if sharding is None:
+      return None
+    else:
+      return sharding.SerializeToString()
+
   try:
     return get_op_sharding(tensor.op)
   except AttributeError:

@@ -20,11 +20,12 @@ import numpy as np
 from google.protobuf.message import DecodeError
 from local_xla.xla import xla_data_pb2
 from tensorflow.python.compiler.xla.experimental import xla_sharding
+from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
 from tensorflow.python.framework import dtypes
-from tensorflow.python.framework import tensor as tensor_lib
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import variables
 
 
 class ShardingTest(test_util.TensorFlowTestCase):
@@ -67,13 +68,25 @@ class ShardingTest(test_util.TensorFlowTestCase):
 class XlaShardingTest(test_util.TensorFlowTestCase):
   """Tests for non-member functions in the module xla_sharding.py."""
 
+  def setUp(self):
+    super().setUp()
+    context.enable_xla_sharding_for_resource_variables()
+
+  def _graph_has_xla_sharding_op(self, graph):
+    for node in graph.node:
+      if node.op == 'XlaSharding' and any(
+          'ReadVariableOp' in input for input in node.input
+      ):
+        return True
+
+    return False
+
   def test_replicate_annotates_tensor_correctly(self):
 
     @def_function.function
     def replicate_helper(tensor):
-      replicated_tensor = xla_sharding.replicate(
-          array_ops.ones([4, 5, 6], dtype=dtypes.float32))
       self.assertIsNone(xla_sharding.get_tensor_sharding(tensor))
+      replicated_tensor = xla_sharding.replicate(tensor)
       replicated_sharding = xla_sharding.get_tensor_sharding(replicated_tensor)
       self.assertIsNotNone(replicated_sharding)
       self.assertIsNone(
@@ -84,13 +97,17 @@ class XlaShardingTest(test_util.TensorFlowTestCase):
     result = replicate_helper(array_ops.ones([4, 5, 6], dtype=dtypes.float32))
     self.assertAllEqual(in_tensor, result)
 
+    var = variables.Variable(initial_value=in_tensor, name='var')
+    graph = replicate_helper.get_concrete_function(var).graph.as_graph_def()
+    self.assertTrue(self._graph_has_xla_sharding_op(graph))
+
   def test_tile_annotates_tensor_correctly(self):
 
     @def_function.function
     def tile_helper(tensor):
       self.assertIsNone(xla_sharding.get_tensor_sharding(tensor))
       tiled_tensor = xla_sharding.tile(tensor, np.array([2, 1, 6]))
-      self.assertIsInstance(tiled_tensor, tensor_lib.Tensor)
+      self.assertIsInstance(tiled_tensor, type(tensor))
       tiled_sharding = xla_sharding.get_tensor_sharding(tiled_tensor)
       tile_shape = xla_sharding.get_sharding_tile_shape(tiled_sharding)
       # This is the shape of the tile assignment [2, 1, 6]
@@ -102,13 +119,17 @@ class XlaShardingTest(test_util.TensorFlowTestCase):
     result = tile_helper(array_ops.ones([4, 5, 6], dtype=dtypes.float32))
     self.assertAllEqual(in_tensor, result)
 
+    var = variables.Variable(initial_value=in_tensor, name='var')
+    graph = tile_helper.get_concrete_function(var).graph.as_graph_def()
+    self.assertTrue(self._graph_has_xla_sharding_op(graph))
+
   def test_split_annotates_tensor_correctly(self):
 
     @def_function.function
     def split_helper(tensor):
       self.assertIsNone(xla_sharding.get_tensor_sharding(tensor))
       split_tensor = xla_sharding.split(tensor, 2, 3)
-      self.assertIsInstance(split_tensor, tensor_lib.Tensor)
+      self.assertIsInstance(split_tensor, type(tensor))
       split_sharding = xla_sharding.get_tensor_sharding(split_tensor)
       split_shape = xla_sharding.get_sharding_tile_shape(split_sharding)
       expected_shape = [1, 1, 3]
@@ -118,6 +139,10 @@ class XlaShardingTest(test_util.TensorFlowTestCase):
     in_tensor = array_ops.ones([4, 5, 6], dtype=dtypes.float32)
     result = split_helper(array_ops.ones([4, 5, 6], dtype=dtypes.float32))
     self.assertAllEqual(in_tensor, result)
+
+    var = variables.Variable(initial_value=in_tensor, name='var')
+    graph = split_helper.get_concrete_function(var).graph.as_graph_def()
+    self.assertTrue(self._graph_has_xla_sharding_op(graph))
 
   def test_split_raises_error_with_incommensurate_dimensions(self):
 
@@ -157,6 +182,10 @@ class XlaShardingTest(test_util.TensorFlowTestCase):
     in_tensor = array_ops.ones([4, 5, 6], dtype=dtypes.float32)
     result = copy_helper(array_ops.ones([4, 5, 6], dtype=dtypes.float32))
     self.assertAllEqual(in_tensor, result)
+
+    var = variables.Variable(initial_value=in_tensor, name='var')
+    graph = copy_helper.get_concrete_function(var).graph.as_graph_def()
+    self.assertTrue(self._graph_has_xla_sharding_op(graph))
 
   def test_get_sharding_tile_shape_returns_none_on_none_input(self):
     self.assertIsNone(xla_sharding.get_sharding_tile_shape(None))
