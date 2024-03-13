@@ -719,7 +719,12 @@ message DebugOptions {
   // rewrite).
   int64 xla_gpu_gemm_rewrite_size_threshold = 283;
 
-  // Next id: 284
+  // If true, will require complete AOT autotuning results; in the case of
+  // missing AOT result, the model will not be compiled or executed, a
+  // `NotFound` error will be returned.
+  bool xla_gpu_require_complete_aot_autotune_results = 284;
+
+  // Next id: 285
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.

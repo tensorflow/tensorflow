@@ -5925,7 +5925,14 @@ xla_cc_test(
         "@local_tsl//tsl/platform:logging",
         "@local_tsl//tsl/platform:protobuf",
     ]) + [
+        "//xla/hlo/ir:hlo",
+        "//xla/stream_executor:platform",
+        "//xla/stream_executor:platform_manager",
+        "//xla/stream_executor:stream_executor_headers",
+        "//xla/stream_executor/host:host_platform",
         "//xla/tests:xla_internal_test_main",  # Keep outside GPU guard
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/status",
     ],
 )
 
