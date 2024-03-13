@@ -1716,16 +1716,17 @@ absl::Status IrEmitterUnnested::EmitTritonCustomCall(
     // Move function body into kernel prototype.
     llvm::Function* prototype_func = builder.GetInsertBlock()->getParent();
     prototype_func->splice(prototype_func->begin(), impl_fn);
-    for (const auto& [kernel_arg, arg, input] :
-         llvm::zip(kernel_arguments.args(), impl_fn->args(), inputs)) {
+    for (const auto& [arg, input] : llvm::zip(impl_fn->args(), inputs)) {
+      arg.replaceAllUsesWith(input.GetBasePointer());
+    }
+    impl_fn->eraseFromParent();
+
+    for (auto& arg : prototype_func->args()) {
       // Remove the alignment and aliasing attributes to avoid recompiling the
       // kernel for each alignment/aliasing combination.
       arg.removeAttr(llvm::Attribute::Alignment);
       arg.removeAttr(llvm::Attribute::NoAlias);
-
-      arg.replaceAllUsesWith(input.GetBasePointer());
     }
-    impl_fn->eraseFromParent();
 
     return {{kernel->getName().str(), launch_dimensions, result.cluster_dim,
              result.shmem_bytes}};
