@@ -478,15 +478,15 @@ HlosAndRequirements FuseTowardOperands(
 //
 // The return value contains the HLOs corresponding to the given dot operand and
 // the requirements corresponding to the whole fusion so far.
-HlosAndRequirements FuseDotOperand(
+absl::StatusOr<HlosAndRequirements> FuseDotOperand(
     const HloInstruction& dot, int operand_index,
     const se::GpuComputeCapability& gpu_version,
     HloComputation::Builder& builder,            // append
     std::vector<HloInstruction*>& fusion_params  // append
 ) {
   // Direct dot inputs have well defined dimension orders.
-  const FusionContext context =
-      FusionContext::FromDotOperand(dot, operand_index);
+  TF_ASSIGN_OR_RETURN(const auto context,
+                      FusionContext::FromDotOperand(dot, operand_index));
   const HloInstruction& operand = *dot.operand(operand_index);
   return FuseTowardOperands(operand, context.dim_orders().at(&operand),
                             TritonFusionAnalysis::kMaxParameterPerDotOperand,
@@ -621,10 +621,12 @@ absl::StatusOr<FusionDecision> CreateDotFusion(
     return can_handle;
   }
 
-  HlosAndRequirements lhs_hlos_and_reqs = FuseDotOperand(
-      dot, /*operand_index=*/0, gpu_version, builder, fusion_inputs);
-  HlosAndRequirements rhs_hlos_and_reqs = FuseDotOperand(
-      dot, /*operand_index=*/1, gpu_version, builder, fusion_inputs);
+  TF_ASSIGN_OR_RETURN(HlosAndRequirements lhs_hlos_and_reqs,
+                      FuseDotOperand(dot, /*operand_index=*/0, gpu_version,
+                                     builder, fusion_inputs));
+  TF_ASSIGN_OR_RETURN(HlosAndRequirements rhs_hlos_and_reqs,
+                      FuseDotOperand(dot, /*operand_index=*/1, gpu_version,
+                                     builder, fusion_inputs));
   HloInstruction& fused_dot = FuseDot(dot, *lhs_hlos_and_reqs.fused_hlo,
                                       *rhs_hlos_and_reqs.fused_hlo, builder);
   // For now the RHS doesn't support splits, so it also doesn't impose any
