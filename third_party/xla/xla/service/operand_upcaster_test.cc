@@ -15,10 +15,16 @@ limitations under the License.
 
 #include "xla/service/operand_upcaster.h"
 
+#include <memory>
+#include <tuple>
+
+#include "absl/strings/string_view.h"
 #include "absl/strings/substitute.h"
+#include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/utils/hlo_matchers.h"
 #include "xla/primitive_util.h"
 #include "xla/tests/hlo_test_base.h"
+#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace {
@@ -108,6 +114,32 @@ INSTANTIATE_TEST_SUITE_P(F32, OperandUpcasterTest,
 INSTANTIATE_TEST_SUITE_P(NoUpcast, OperandUpcasterTest,
                          ::testing::Values(std::make_tuple(F32, F32, BF16),
                                            std::make_tuple(S32, S32, U32)));
+
+TEST_F(OperandUpcasterTest, SparseDot) {
+  absl::string_view kHlo = R"(
+  HloModule module
+
+  ENTRY main {
+    p0 = bf16[2,16]{1,0} parameter(0)
+    p1 = bf16[32,2]{1,0} parameter(1)
+    meta = u16[2,2]{1,0} parameter(2)
+    ROOT dot = f32[2,2]{1,0} dot(p0, p1, meta),
+        lhs_contracting_dims={1}, rhs_contracting_dims={0}, sparsity=L.1@2:4
+  })";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(kHlo));
+  TF_ASSERT_OK_AND_ASSIGN(bool upcasted, OperandUpcaster().Run(module.get()));
+  EXPECT_TRUE(upcasted);
+  auto upcasted_lhs =
+      AllOf(op::Convert(op::Parameter(0)), op::Shape("f32[2,16]{1,0}"));
+  auto upcasted_rhs =
+      AllOf(op::Convert(op::Parameter(1)), op::Shape("f32[32,2]{1,0}"));
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              AllOf(::testing::MakeMatcher(new ::xla::testing::HloMatcher(
+                        HloOpcode::kDot,
+                        {upcasted_lhs, upcasted_rhs, op::Parameter(2)})),
+                    op::Shape("f32[2,2]{1,0}")));
+}
 
 }  // namespace
 

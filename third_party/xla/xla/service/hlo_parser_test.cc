@@ -4506,6 +4506,21 @@ ENTRY InferDotShape {
       ShapeUtil::MakeShape(F32, {2}, {0})));
 }
 
+TEST_F(HloParserTest, InferSparseDotShape) {
+  constexpr char text[] = R"(HloModule InferSparseDotShapeTest
+ENTRY InferSparseDotShape {
+  a = f32[2,16]{1,0} parameter(0)
+  b = f32[32,2]{1,0} parameter(1)
+  meta = u16[2]{0} parameter(2)
+  ROOT dot = dot(a, b, meta), lhs_batch_dims={0}, lhs_contracting_dims={1}, rhs_batch_dims={1}, rhs_contracting_dims={0}, sparsity=L.1@2:4
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(text));
+  EXPECT_TRUE(ShapeUtil::Equal(
+      module->entry_computation()->ComputeProgramShape().result(),
+      ShapeUtil::MakeShape(F32, {2}, {0})));
+}
+
 TEST_F(HloParserTest, InferTupleShape) {
   constexpr char text[] = R"(HloModule InferTupleShapeTest
 ENTRY InferTupleShape () -> s32[2,3] {

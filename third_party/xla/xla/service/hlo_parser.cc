@@ -3139,7 +3139,7 @@ HloInstruction* HloParserImpl::CreateInstruction(  // NOLINT
       if (!maybe_infer_shape([&] {
             return ShapeInference::InferDotOpShape(
                 operands[0]->shape(), operands[1]->shape(), dnum,
-                /*preferred_element_type=*/std::nullopt);
+                /*preferred_element_type=*/std::nullopt, sparsity);
           })) {
         return nullptr;
       }

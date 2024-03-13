@@ -8452,6 +8452,37 @@ ENTRY entry {
   EXPECT_THAT(root, dot);
 }
 
+TEST_P(SpmdPartitioningTest, SimpleSparseDot) {
+  absl::string_view hlo_string = R"(
+HloModule module
+
+ENTRY entry {
+  %lhs = f32[2,24,128] parameter(0),
+    sharding={devices=[2,2,1]<=[4]}
+  %rhs = f32[2,32,256] parameter(1),
+    sharding={devices=[2,1,1,2]<=[4] last_tile_dim_replicate}
+  %meta = u16[24,16] parameter(2),
+    sharding={devices=[2,1,2]<=[4] last_tile_dim_replicate}
+  ROOT %dot = f32[2,24,32] dot(%lhs, %rhs, %meta),
+    lhs_batch_dims={0}, rhs_batch_dims={0},
+    lhs_contracting_dims={2}, rhs_contracting_dims={2}, sparsity=L.2@2:4,
+    sharding={devices=[2,2,1]<=[4]}
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/4));
+  VLOG(1) << module->ToString();
+
+  const auto lhs = AllOf(op::Shape("f32[1,12,128]"), op::Parameter(0));
+  const auto rhs = AllOf(op::Shape("f32[1,32,256]"), op::Parameter(1));
+  const auto meta = AllOf(op::Shape("u16[12,16]"), op::Parameter(2));
+  auto dot = AllOf(op::Shape("f32[1,12,32]"),
+                   ::testing::MakeMatcher(new ::xla::testing::HloMatcher(
+                       HloOpcode::kDot, {lhs, rhs, meta})));
+  const auto root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(root, dot);
+}
+
 TEST_P(SpmdPartitioningTest, DotPartialContracting) {
   absl::string_view hlo_string = R"(
 HloModule module

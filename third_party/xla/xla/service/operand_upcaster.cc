@@ -17,10 +17,19 @@ limitations under the License.
 
 #include <optional>
 
+#include "absl/algorithm/container.h"
+#include "absl/status/statusor.h"
+#include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_instructions.h"
+#include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/service/hlo_creation_utils.h"
 #include "xla/service/shape_inference.h"
+#include "xla/shape.h"
+#include "xla/shape_util.h"
 #include "xla/xla_data.pb.h"
+#include "tsl/platform/errors.h"
+#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace {
@@ -32,7 +41,8 @@ absl::StatusOr<std::optional<Shape>> MaybeInferShape(
       return ShapeInference::InferDotOpShape(
           instruction->operand(0)->shape(), instruction->operand(1)->shape(),
           instruction->dot_dimension_numbers(),
-          /*preferred_element_type=*/std::nullopt);
+          /*preferred_element_type=*/std::nullopt,
+          Cast<HloDotInstruction>(instruction)->sparsity());
     case HloOpcode::kConvolution:
       return ShapeInference::InferConvolveShape(
           instruction->operand(0)->shape(), instruction->operand(1)->shape(),
@@ -59,16 +69,14 @@ bool OperandUpcaster::InstructionMatchesPattern(HloInstruction* instruction) {
     return true;
   }
 
-  const Shape& inferred_shape = status_or_inferred_shape.value().value();
-  if (inferred_shape.element_type() == instruction->shape().element_type() &&
-      absl::c_all_of(instruction->operands(),
-                     [&](const HloInstruction* operand) {
-                       return operand->shape().element_type() ==
-                              inferred_shape.element_type();
-                     })) {
+  PrimitiveType inferred_type = (*status_or_inferred_shape)->element_type();
+  if (instruction->shape().element_type() == inferred_type &&
+      instruction->operand(0)->shape().element_type() == inferred_type &&
+      instruction->operand(1)->shape().element_type() == inferred_type) {
     return false;
   }
-  return ShapeUtil::ElementCanUpcast(inferred_shape, instruction->shape());
+  return ShapeUtil::ElementCanUpcast(**status_or_inferred_shape,
+                                     instruction->shape());
 }
 
 absl::StatusOr<HloInstruction*> OperandUpcaster::ExpandInstruction(
@@ -123,7 +131,7 @@ absl::StatusOr<HloInstruction*> OperandUpcaster::ExpandInstruction(
     return MakeBinaryHlo(HloOpcode::kAdd, linear_n0, linear_n1);
   }
 
-  for (int i = 0; i < instruction->operand_count(); ++i) {
+  for (int i = 0; i < HloDotInstruction::kOperands; ++i) {
     auto* operand = instruction->mutable_operand(i);
     if (operand->shape().element_type() == type) {
       continue;
