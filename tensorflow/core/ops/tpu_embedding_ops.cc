@@ -61,6 +61,8 @@ REGISTER_OP("RecvTPUEmbeddingActivations")
     .Output("outputs: num_outputs * float32")
     .Attr("num_outputs: int >= 1")
     .Attr("config: string")
+    .Attr("embedding_partitions: string")
+    .Attr("hbm_buffers_config: string")
     .SetIsStateful()
     .SetShapeFn([](shape_inference::InferenceContext* c) -> Status {
       std::string config_string;
