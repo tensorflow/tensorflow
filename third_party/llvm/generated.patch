@@ -1,4 +1,15 @@
 Auto generated patch. Do not edit or delete it, even if empty.
+diff -ruN --strip-trailing-cr a/clang/include/clang/InstallAPI/FrontendRecords.h b/clang/include/clang/InstallAPI/FrontendRecords.h
+--- a/clang/include/clang/InstallAPI/FrontendRecords.h
++++ b/clang/include/clang/InstallAPI/FrontendRecords.h
+@@ -11,6 +11,7 @@
+ 
+ #include "clang/AST/Availability.h"
+ #include "clang/AST/DeclObjC.h"
++#include "clang/InstallAPI/HeaderFile.h"
+ #include "clang/InstallAPI/MachO.h"
+ 
+ namespace clang {
 diff -ruN --strip-trailing-cr a/utils/bazel/llvm-project-overlay/libc/BUILD.bazel b/utils/bazel/llvm-project-overlay/libc/BUILD.bazel
 --- a/utils/bazel/llvm-project-overlay/libc/BUILD.bazel
 +++ b/utils/bazel/llvm-project-overlay/libc/BUILD.bazel
