@@ -84,6 +84,9 @@ class BufferAllocations {
   se::DeviceMemoryAllocator* memory_allocator() const {
     return memory_allocator_;
   }
+  ExternalAllocations* external_allocations() const {
+    return external_allocations_;
+  }
   int device_ordinal() const { return device_ordinal_; }
 
   // Returns the device address of buffer `buffer_index`. `buffer_index` must be
