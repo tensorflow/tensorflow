@@ -177,7 +177,6 @@ AffineExpr AffineExprSimplifier::RewriteMod(AffineBinaryOpExpr mod) {
     no_multiplier_range.upper_bound += range.upper_bound;
     return true;
   });
-  if (!new_lhs) new_lhs = getAffineConstantExpr(0, mod.getContext());
   new_lhs = new_lhs + (extracted_constant % m);
 
   mlir::AffineExpr extracted = getAffineConstantExpr(0, mod.getContext());
@@ -192,7 +191,6 @@ AffineExpr AffineExprSimplifier::RewriteMod(AffineBinaryOpExpr mod) {
       return false;
     });
   }
-  if (!new_lhs) new_lhs = getAffineConstantExpr(0, mod.getContext());
   return new_lhs % mod.getRHS() + extracted;
 }
 
@@ -248,7 +246,8 @@ AffineExpr AffineExprSimplifier::RewriteFloorDiv(AffineBinaryOpExpr div) {
   int64_t multiplier_gcd = -1;
   // The maximum GCD of any remaining multiplier inside the div and the divisor.
   int64_t max_remaining_multiplier_gcd = -1;
-  AffineExpr extracted = getAffineConstantExpr(0, mlir_context);
+  AffineExpr zero = getAffineConstantExpr(0, mlir_context);
+  AffineExpr extracted = zero;
   auto new_dividend = RewriteSumIf(lhs_simplified, [&](AffineExpr expr) {
     if (auto multiplier = GetConstantRhs(expr, AffineExprKind::Mul)) {
       // (x * 7 + ...) / 3 -> can't extract. We could extract x * 2 and keep
@@ -277,7 +276,7 @@ AffineExpr AffineExprSimplifier::RewriteFloorDiv(AffineBinaryOpExpr div) {
   });
 
   // If we removed everything, skip the div.
-  if (!new_dividend) {
+  if (new_dividend == zero) {
     return extracted;
   }
 
@@ -308,9 +307,6 @@ AffineExpr AffineExprSimplifier::RewriteFloorDiv(AffineBinaryOpExpr div) {
       }
       return true;
     });
-    if (!new_dividend) {
-      new_dividend = getAffineConstantExpr(0, mlir_context);
-    }
     return extracted + (partially_extracted +
                         new_dividend.floorDiv(max_remaining_multiplier_gcd))
                            .floorDiv(d / max_remaining_multiplier_gcd);
@@ -356,12 +352,9 @@ AffineExpr AffineExprSimplifier::RewriteSumIf(
     if (lhs == add.getLHS() && rhs == add.getRHS()) {
       return add;
     }
-    if (lhs && rhs) {
-      return lhs + rhs;
-    }
-    return lhs ? lhs : (rhs ? rhs : nullptr);
+    return lhs + rhs;
   }
-  return pred(expr) ? expr : nullptr;
+  return pred(expr) ? expr : mlir::getAffineConstantExpr(0, expr.getContext());
 }
 
 AffineExpr AffineExprSimplifier::SimplifyOnce(AffineExpr expr) {
