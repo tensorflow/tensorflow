@@ -262,8 +262,11 @@ absl::Status TritonFusionAnalysis::ExecuteForProducerConsumer(
 absl::Status TritonFusionAnalysis::ExecuteForDotFusion(
     const HloInstruction& dot, const int split_k) {
   DotRequirements lhs_requirements(kNoSplitRequirement);
-  for (const Scope scope : {Scope::LHS, Scope::RHS}) {
+  for (const Scope scope : {Scope::LHS, Scope::RHS, Scope::META}) {
     const int operand_number = static_cast<int>(scope);
+    if (dot.operand_count() < operand_number + 1) {
+      continue;  // Meta scope is optional.
+    }
     auto context = FusionContext::FromDotOperand(dot, operand_number, split_k);
     TF_RETURN_IF_ERROR(context.PropagateDimensionOrdersToParameters(
         *dot.operand(operand_number), parameters_[scope], iter_specs_[scope]));
@@ -333,6 +336,8 @@ std::string ScopeToString(TritonFusionAnalysis::Scope s) {
       return "LHS";
     case TritonFusionAnalysis::Scope::RHS:
       return "RHS";
+    case TritonFusionAnalysis::Scope::META:
+      return "META";
     case TritonFusionAnalysis::Scope::OUTPUT:
       return "OUTPUT";
   }

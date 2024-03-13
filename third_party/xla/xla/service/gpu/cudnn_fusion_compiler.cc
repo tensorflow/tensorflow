@@ -20,6 +20,7 @@ limitations under the License.
 #include <optional>
 
 #include "absl/container/flat_hash_set.h"
+#include "absl/log/log.h"
 #include "absl/strings/escaping.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/dfs_hlo_visitor_with_default.h"
@@ -151,6 +152,8 @@ class GemmDimensionAdapter {
         dim_indices = {dims.lhs_batch_dimensions().empty() ? -1 : 0,
                        dot_.shape().rank() - 2, dot_.shape().rank() - 1};
         break;
+      case TritonFusionAnalysis::Scope::META:
+        LOG(FATAL) << "Unsupported scope.";
     }
     dimensions.reserve(dim_indices.size());
     strides.reserve(dim_indices.size());

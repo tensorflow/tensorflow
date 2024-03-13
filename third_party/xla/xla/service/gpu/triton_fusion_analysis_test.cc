@@ -624,6 +624,35 @@ ENTRY e {
   (void)analysis;
 }
 
+TEST_F(TritonDotAnalysisTest, SparseDot) {
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(R"(
+triton_gemm {
+  lhs = bf16[5,16] parameter(0)
+  rhs = bf16[32,10] parameter(1)
+  meta = u16[5,2] parameter(2)
+  ROOT dot = f32[5,10] dot(lhs, rhs, meta),
+      lhs_contracting_dims={1}, rhs_contracting_dims={0}, sparsity=L.1@2:4
+}
+
+ENTRY main {
+  lhs = bf16[5,16] parameter(0)
+  rhs = bf16[32,10] parameter(1)
+  meta = u16[5,2] parameter(2)
+  ROOT out = f32[5,10] fusion(lhs, rhs, meta),
+      kind=kCustom, calls=triton_gemm, backend_config={kind:"__triton_gemm"}
+}
+)"));
+
+  const HloComputation* dot_computation =
+      module->entry_computation()->root_instruction()->called_computations()[0];
+  TF_ASSERT_OK_AND_ASSIGN(const auto analysis,
+                          TritonFusionAnalysis::Execute(*dot_computation));
+  EXPECT_THAT(*analysis.IterSpec(TritonFusionAnalysis::Scope::META,
+                                 dot_computation->parameter_instruction(2), 0),
+              ::testing::SizeIs(1));
+}
+
 using TritonSoftmaxAnalysisTest = HloTestBase;
 
 TEST_F(TritonSoftmaxAnalysisTest, DegenerateBatchDimensionIsSupported) {
