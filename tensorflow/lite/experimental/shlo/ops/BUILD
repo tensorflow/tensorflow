@@ -239,6 +239,7 @@ cc_library(
     name = "cosine",
     srcs = ["cosine.cc"],
     hdrs = ["cosine.h"],
+    linkopts = shlo_ref_linkopts(),
     deps = [
         ":unary_elementwise",
         ":util",
@@ -262,6 +263,7 @@ cc_test(
         "//tensorflow/lite/experimental/shlo:quantize",
         "//tensorflow/lite/experimental/shlo:quantized_tensor_element_type",
         "//tensorflow/lite/experimental/shlo:shape",
+        "//tensorflow/lite/experimental/shlo:status_matcher",
         "//tensorflow/lite/experimental/shlo:tensor",
         "@com_google_absl//absl/status",
         "@com_google_googletest//:gtest_main",
