@@ -22,6 +22,7 @@ limitations under the License.
 
 #include "absl/status/status.h"
 #include "tensorflow/core/data/dataset_utils.h"
+#include "tensorflow/core/data/global_shuffle_utils.h"
 #include "tensorflow/core/data/name_utils.h"
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/op_kernel.h"
@@ -207,23 +208,19 @@ class BatchDatasetOp::Dataset : public DatasetBase {
         }
         batch_elements.reserve(dataset()->reserve_size_);
         *end_of_sequence = false;
-        std::optional<IteratorContext> ctx_with_index_mapper =
-            GetIteratorContextWithIndexMapper(ctx);
+        IteratorContextWithIndexMapper ctx_with_index_mapper(ctx, this);
         for (int i = 0; i < dataset()->batch_size_ && !*end_of_sequence; ++i) {
           std::vector<Tensor> batch_element_tuple;
-          TF_RETURN_IF_ERROR(input_impl_->GetNext(
-              ctx_with_index_mapper.has_value() ? &ctx_with_index_mapper.value()
-                                                : ctx,
-              &batch_element_tuple, end_of_sequence));
+          TF_RETURN_IF_ERROR(input_impl_->GetNext(ctx_with_index_mapper.Get(),
+                                                  &batch_element_tuple,
+                                                  end_of_sequence));
           if (!*end_of_sequence) {
             batch_elements.emplace_back(std::move(batch_element_tuple));
           } else {
             input_impl_.reset();
           }
         }
-        if (ctx_with_index_mapper.has_value()) {
-          ctx->MergeCheckpoint(ctx_with_index_mapper->checkpoint());
-        }
+        ctx_with_index_mapper.MergeCheckpoint();
       }
 
       if (batch_elements.empty()) {
@@ -251,6 +248,19 @@ class BatchDatasetOp::Dataset : public DatasetBase {
 
       *end_of_sequence = false;
       return absl::OkStatus();
+    }
+
+    IndexMapperFn GetIndexMapper(
+        IndexMapperFn parent_index_mapper) const override {
+      int64_t batch_size = dataset()->batch_size_;
+      return [parent_index_mapper,
+              batch_size](size_t element_position) -> size_t {
+        size_t batch_element_position = element_position / batch_size;
+        size_t input_element_offset = element_position % batch_size;
+        size_t shuffled_element_position =
+            parent_index_mapper(batch_element_position);
+        return shuffled_element_position * batch_size + input_element_offset;
+      };
     }
 
    protected:
@@ -297,31 +307,6 @@ class BatchDatasetOp::Dataset : public DatasetBase {
     }
 
    private:
-    // If the dataset is globally shuffled, returns an `IteratorContext` with
-    // the updated index_mapper.
-    std::optional<IteratorContext> GetIteratorContextWithIndexMapper(
-        IteratorContext* ctx) const {
-      std::optional<IteratorContext> ctx_with_index_mapper;
-      if (ctx->index_mapper()) {
-        IteratorContext::Params params(ctx);
-        params.index_mapper = GetIndexMapper(ctx->index_mapper());
-        ctx_with_index_mapper.emplace(params);
-      }
-      return ctx_with_index_mapper;
-    }
-
-    IndexMapperFn GetIndexMapper(IndexMapperFn parent_index_mapper) const {
-      int64_t batch_size = dataset()->batch_size_;
-      return [parent_index_mapper,
-              batch_size](size_t element_position) -> size_t {
-        size_t batch_element_position = element_position / batch_size;
-        size_t input_element_offset = element_position % batch_size;
-        size_t shuffled_element_position =
-            parent_index_mapper(batch_element_position);
-        return shuffled_element_position * batch_size + input_element_offset;
-      };
-    }
-
     mutex mu_;
     std::unique_ptr<IteratorBase> input_impl_ TF_GUARDED_BY(mu_);
   };

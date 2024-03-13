@@ -1025,6 +1025,13 @@ class IteratorBase : public Checkpointable {
     return GetNext(&ctx, out_tensors, end_of_sequence);
   }
 
+  // If a dataset needs to provide its own index mapper behavior to support
+  // global shuffling, implement this method.
+  virtual IndexMapperFn GetIndexMapper(
+      IndexMapperFn parent_index_mapper) const {
+    return parent_index_mapper;
+  }
+
   // Skips the next `num_to_skip` outputs from the range that this iterator
   // is traversing.
   //

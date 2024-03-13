@@ -23,7 +23,9 @@ limitations under the License.
 
 #include "absl/status/status.h"
 #include "tensorflow/core/data/dataset_utils.h"
+#include "tensorflow/core/data/global_shuffle_utils.h"
 #include "tensorflow/core/data/name_utils.h"
+#include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/lib/core/errors.h"
@@ -170,18 +172,10 @@ class ShardDatasetOp::Dataset : public DatasetBase {
         return absl::OkStatus();
       }
 
-      IteratorContext* input_ctx = ctx;
-      std::optional<IteratorContext> ctx_with_index_mapper =
-          GetIteratorContextWithIndexMapper(ctx);
-      if (ctx_with_index_mapper.has_value()) {
-        ctx = &ctx_with_index_mapper.value();
-      }
-      auto merge_checkpoint =
-          gtl::MakeCleanup([input_ctx, &ctx_with_index_mapper] {
-            if (ctx_with_index_mapper.has_value()) {
-              input_ctx->MergeCheckpoint(ctx_with_index_mapper->checkpoint());
-            }
-          });
+      IteratorContextWithIndexMapper ctx_with_index_mapper(ctx, this);
+      auto merge_checkpoint = gtl::MakeCleanup([&ctx_with_index_mapper] {
+        ctx_with_index_mapper.MergeCheckpoint();
+      });
 
       int num_to_skip =
           (dataset()->index_ - next_index_) % dataset()->num_shards_;
@@ -189,8 +183,9 @@ class ShardDatasetOp::Dataset : public DatasetBase {
         num_to_skip += dataset()->num_shards_;
       }
       int num_skipped;
-      TF_RETURN_IF_ERROR(
-          input_impl_->Skip(ctx, num_to_skip, end_of_sequence, &num_skipped));
+      TF_RETURN_IF_ERROR(input_impl_->Skip(ctx_with_index_mapper.Get(),
+                                           num_to_skip, end_of_sequence,
+                                           &num_skipped));
       next_index_ += num_skipped;
       if (*end_of_sequence) {
         input_impl_.reset();
@@ -198,7 +193,8 @@ class ShardDatasetOp::Dataset : public DatasetBase {
       }
 
       std::vector<Tensor> result;
-      TF_RETURN_IF_ERROR(input_impl_->GetNext(ctx, &result, end_of_sequence));
+      TF_RETURN_IF_ERROR(input_impl_->GetNext(ctx_with_index_mapper.Get(),
+                                              &result, end_of_sequence));
       if (*end_of_sequence) {
         input_impl_.reset();
         return absl::OkStatus();
@@ -208,7 +204,8 @@ class ShardDatasetOp::Dataset : public DatasetBase {
       if (dataset()->require_non_empty_ &&
           next_index_ < dataset()->num_shards_) {
         int num_skipped;
-        Status s = input_impl_->Skip(ctx, dataset()->num_shards_ - next_index_,
+        Status s = input_impl_->Skip(ctx_with_index_mapper.Get(),
+                                     dataset()->num_shards_ - next_index_,
                                      end_of_sequence, &num_skipped);
         if (*end_of_sequence || errors::IsOutOfRange(s)) {
           // `dataset()->require_non_empty_` implies that this transformation
@@ -234,6 +231,19 @@ class ShardDatasetOp::Dataset : public DatasetBase {
 
       *out_tensors = std::move(result);
       return absl::OkStatus();
+    }
+
+    IndexMapperFn GetIndexMapper(IndexMapperFn parent_index_mapper)
+        const override TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+      int64_t num_shards = dataset()->num_shards_;
+      return [parent_index_mapper,
+              num_shards](size_t element_position) -> size_t {
+        size_t sharded_element_position = element_position / num_shards;
+        size_t input_element_offset = element_position % num_shards;
+        size_t shuffled_element_position =
+            parent_index_mapper(sharded_element_position);
+        return shuffled_element_position * num_shards + input_element_offset;
+      };
     }
 
    protected:
@@ -287,32 +297,6 @@ class ShardDatasetOp::Dataset : public DatasetBase {
     }
 
    private:
-    // If the dataset is globally shuffled, returns an `IteratorContext` with
-    // the updated index_mapper.
-    std::optional<IteratorContext> GetIteratorContextWithIndexMapper(
-        IteratorContext* ctx) const TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
-      std::optional<IteratorContext> ctx_with_index_mapper;
-      if (ctx->index_mapper()) {
-        IteratorContext::Params params(ctx);
-        params.index_mapper = GetIndexMapper(ctx->index_mapper());
-        ctx_with_index_mapper.emplace(params);
-      }
-      return ctx_with_index_mapper;
-    }
-
-    IndexMapperFn GetIndexMapper(IndexMapperFn parent_index_mapper) const
-        TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
-      int64_t num_shards = dataset()->num_shards_;
-      return [parent_index_mapper,
-              num_shards](size_t element_position) -> size_t {
-        size_t sharded_element_position = element_position / num_shards;
-        size_t input_element_offset = element_position % num_shards;
-        size_t shuffled_element_position =
-            parent_index_mapper(sharded_element_position);
-        return shuffled_element_position * num_shards + input_element_offset;
-      };
-    }
-
     mutex mu_;
     std::unique_ptr<IteratorBase> input_impl_ TF_GUARDED_BY(mu_);
     int64_t next_index_ TF_GUARDED_BY(mu_);
