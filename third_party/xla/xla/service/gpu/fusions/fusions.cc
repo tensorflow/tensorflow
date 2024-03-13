@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "xla/service/gpu/fusions/fusions.h"
 
+#include <functional>
 #include <memory>
 #include <optional>
 #include <utility>
@@ -131,16 +132,45 @@ absl::StatusOr<std::unique_ptr<FusionInterface>> GetFusionEmitter(
   const auto& analysis = fusion_info.analysis();
   const FusionBackendConfig& backend_config = analysis.fusion_backend_config();
 
-  bool enable_mlir_emitters =
-      analysis.fusion_roots()
-          .front()
-          ->GetModule()
-          ->config()
-          .debug_options()
-          .xla_gpu_enable_mlir_emitters() &&
-      mlir_converter::IsHloConversionSupported(
-          analysis.fusion(),
-          fusion_info.analysis().device_info().gpu_compute_capability());
+  const auto& opts =
+      analysis.fusion_roots().front()->GetModule()->config().debug_options();
+  auto check_mlir_emitters = [&](std::function<bool(const HloFusionAnalysis&)>
+                                     support_check) {
+    if (!opts.xla_gpu_enable_mlir_emitters()) {
+      return false;
+    }
+    if (!mlir_converter::IsHloConversionSupported(
+            analysis.fusion(),
+            fusion_info.analysis().device_info().gpu_compute_capability())) {
+      VLOG(5) << "Skipping MLIR emission because the fusion contains "
+                 "unsupported instructions.";
+      return false;
+    }
+    if (support_check && !support_check(analysis)) {
+      VLOG(5) << "Skipping MLIR emission because the fusion emitter does not "
+                 "support "
+                 "the fusion.";
+      return false;
+    }
+
+    static int num_mlir_emitters = 0;
+    // This kernel can be emitted with MLIR, but we need to check if there are
+    // limits to how many kernels can be emitted.
+    ++num_mlir_emitters;
+    if (num_mlir_emitters <= opts.xla_gpu_skip_mlir_kernels()) {
+      VLOG(5) << "Skipping MLIR emission because initial skips were requested.";
+      return false;
+    }
+
+    int n_emitted = num_mlir_emitters - opts.xla_gpu_skip_mlir_kernels();
+    if (opts.xla_gpu_max_mlir_kernels() > 0 &&
+        n_emitted > opts.xla_gpu_max_mlir_kernels()) {
+      VLOG(5) << "Skipping MLIR emission because max_mlir_emitters was set.";
+      return false;
+    }
+    VLOG(5) << "Emitting with MLIR.";
+    return true;
+  };
 
   switch (analysis.GetEmitterFusionKind()) {
     case HloFusionAnalysis::EmitterFusionKind::kCustomFusion: {
@@ -151,7 +181,7 @@ absl::StatusOr<std::unique_ptr<FusionInterface>> GetFusionEmitter(
       return std::make_unique<CustomFusion>();
     }
     case HloFusionAnalysis::EmitterFusionKind::kInputSlices:
-      if (enable_mlir_emitters) {
+      if (check_mlir_emitters(nullptr)) {
         return std::make_unique<MlirInputSlicesFusion>(analysis);
       }
       return std::make_unique<InputSlicesFusion>(analysis);
@@ -165,31 +195,30 @@ absl::StatusOr<std::unique_ptr<FusionInterface>> GetFusionEmitter(
         return *std::move(copy_fusion);
       }
 
-      if (enable_mlir_emitters) {
+      if (check_mlir_emitters(nullptr)) {
         return std::make_unique<MlirLoopFusion>(analysis);
       }
       return std::make_unique<LoopFusion>(analysis);
     }
     case HloFusionAnalysis::EmitterFusionKind::kReduction:
-      if (enable_mlir_emitters && MlirReductionFusion::IsSupported(analysis)) {
+      if (check_mlir_emitters(MlirReductionFusion::IsSupported)) {
         return std::make_unique<MlirReductionFusion>(analysis);
       }
       return std::make_unique<ReductionFusion>(analysis);
     case HloFusionAnalysis::EmitterFusionKind::kScatter: {
-      if (enable_mlir_emitters && MlirScatterFusion::IsSupported(analysis)) {
+      if (check_mlir_emitters(MlirScatterFusion::IsSupported)) {
         return std::make_unique<MlirScatterFusion>(analysis);
       }
       return std::make_unique<ScatterFusion>(analysis);
     }
     case HloFusionAnalysis::EmitterFusionKind::kTranspose: {
-      if (enable_mlir_emitters && MlirTransposeFusion::IsSupported(analysis)) {
+      if (check_mlir_emitters(MlirTransposeFusion::IsSupported)) {
         return std::make_unique<MlirTransposeFusion>(analysis);
       }
       return std::make_unique<TransposeFusion>(analysis);
     }
     case HloFusionAnalysis::EmitterFusionKind::kConcatenate: {
-      if (enable_mlir_emitters &&
-          MlirConcatenateFusion::IsSupported(analysis)) {
+      if (check_mlir_emitters(MlirConcatenateFusion::IsSupported)) {
         return std::make_unique<MlirConcatenateFusion>(analysis);
       }
       return std::make_unique<ConcatenateFusion>(analysis);

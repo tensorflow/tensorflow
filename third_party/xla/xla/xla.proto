@@ -705,11 +705,16 @@ message DebugOptions {
   int64 xla_gpu_nccl_p2p_max_nchannels = 274;
 
   bool xla_gpu_enable_mlir_emitters = 275;
+  // The maximum number of kernels to emit with MLIR. Unlimited if 0.
+  int64 xla_gpu_max_mlir_kernels = 281;
+  // The number of initial kernels to not emit with MLIR. Only supported kernels
+  // are counted.
+  int64 xla_gpu_skip_mlir_kernels = 282;
 
   // Let GEMM fusion autotuning probe cuDNN as a backend.
   bool xla_gpu_cudnn_gemm_fusion = 277;
 
-  // Next id: 281
+  // Next id: 283
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.
