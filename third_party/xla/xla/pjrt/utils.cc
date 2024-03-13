@@ -206,6 +206,53 @@ static StatusOr<std::vector<LayoutMode>> MlirAttrsToLayoutModes(
   return result;
 }
 
+// TODO(b/329428415): Make this generic enough to be used by the GPU and TPU
+// compilers.
+StatusOr<MemorySpaceColor> GetMemorySpaceColor(const std::string& memory_kind) {
+  // TODO(yashkatariya,zce): Unpinned_host is not valid for compiler. Only
+  // pinned_host matters. So should there be a different lowering for
+  // unpinned_host?
+  if (memory_kind == "unpinned_host" || memory_kind == "pinned_host") {
+    return 5;
+  } else if (memory_kind == "device") {
+    return 0;
+  } else {
+    return InvalidArgument("Unknown memory kind %s", memory_kind);
+  }
+}
+
+// Helper method that takes an ArrayAttr of DictionaryAttrs for each arg or
+// result of a function, and looks for "mhlo.layout_mode". `all_attrs` can be
+// nullptr. `num_values` is the number of arguments or results.
+static absl::StatusOr<std::vector<MemorySpaceColor>> MlirAttrsToMemoryKinds(
+    mlir::ArrayAttr all_attrs, size_t num_values) {
+  if (all_attrs == nullptr) {
+    return std::vector<MemorySpaceColor>(num_values, 0);
+  }
+  if (all_attrs.size() != num_values) {
+    return InvalidArgument(
+        "MlirAttrsToMemoryKinds got unexpected number of attributes: %d, "
+        "expected: %d",
+        all_attrs.size(), num_values);
+  }
+
+  std::vector<MemorySpaceColor> result;
+  result.reserve(all_attrs.size());
+  for (const mlir::Attribute& dict_attr : all_attrs) {
+    mlir::StringAttr attr =
+        dict_attr.cast<mlir::DictionaryAttr>().getAs<mlir::StringAttr>(
+            "mhlo.memory_kind");
+    if (attr != nullptr) {
+      TF_ASSIGN_OR_RETURN(MemorySpaceColor memory_space,
+                          GetMemorySpaceColor(attr.getValue().str()));
+      result.emplace_back(memory_space);
+    } else {
+      result.emplace_back(0);
+    }
+  }
+  return result;
+}
+
 // Helper function for getting default LayoutModes for tupled arguments or
 // outputs. Returns nullopt if the arguments/outputs are not tupled. Raises an
 // error if layout modes are requested on tupled values.
@@ -229,6 +276,33 @@ static StatusOr<std::optional<std::vector<LayoutMode>>> GetTupleLayoutModes(
   }
   // Use default layout for all outputs.
   return std::vector<LayoutMode>(types[0].cast<mlir::TupleType>().size());
+}
+
+// Helper function for getting default LayoutModes for tupled arguments or
+// outputs. Returns nullopt if the arguments/outputs are not tupled. Raises an
+// error if layout modes are requested on tupled values.
+static absl::StatusOr<std::optional<std::vector<MemorySpaceColor>>>
+GetTupleMemoryKinds(mlir::ArrayRef<mlir::Type> types,
+                    mlir::ArrayAttr all_attrs) {
+  if (types.size() != 1 || !llvm::isa<mlir::TupleType>(types[0])) {
+    return std::nullopt;
+  }
+  if (all_attrs != nullptr) {
+    if (all_attrs.size() != 1) {
+      return InvalidArgument(
+          "GetTupleMemoryKinds expected single tuple attr, got %d attrs",
+          all_attrs.size());
+    }
+    mlir::StringAttr attr =
+        all_attrs.begin()->cast<mlir::DictionaryAttr>().getAs<mlir::StringAttr>(
+            "mhlo.memory_kind");
+    if (attr != nullptr) {
+      return Unimplemented("mhlo.memory_kind not supported with tupled values");
+    }
+  }
+  // Use default layout for all outputs.
+  return std::vector<MemorySpaceColor>(types[0].cast<mlir::TupleType>().size(),
+                                       0);
 }
 
 StatusOr<std::vector<LayoutMode>> GetArgLayoutModes(mlir::ModuleOp module) {
@@ -263,11 +337,47 @@ StatusOr<std::vector<LayoutMode>> GetOutputLayoutModes(mlir::ModuleOp module) {
   return MlirAttrsToLayoutModes(main.getAllResultAttrs(), main.getNumResults());
 }
 
+absl::StatusOr<std::vector<MemorySpaceColor>> GetArgMemoryKinds(
+    mlir::ModuleOp module) {
+  mlir::func::FuncOp main = module.lookupSymbol<mlir::func::FuncOp>("main");
+  if (main == nullptr) {
+    return InvalidArgument(
+        "GetArgMemoryKinds passed module without main function");
+  }
+
+  // Special case: tupled arguments
+  TF_ASSIGN_OR_RETURN(
+      std::optional<std::vector<MemorySpaceColor>> maybe_tuple_result,
+      GetTupleMemoryKinds(main.getFunctionType().getInputs(),
+                          main.getAllArgAttrs()));
+  if (maybe_tuple_result) return *maybe_tuple_result;
+
+  return MlirAttrsToMemoryKinds(main.getAllArgAttrs(), main.getNumArguments());
+}
+
+absl::StatusOr<std::vector<MemorySpaceColor>> GetOutputMemoryKinds(
+    mlir::ModuleOp module) {
+  mlir::func::FuncOp main = module.lookupSymbol<mlir::func::FuncOp>("main");
+  if (main == nullptr) {
+    return InvalidArgument(
+        "GetOutputMemoryKinds passed module without main function");
+  }
+
+  // Special case: tupled outputs
+  TF_ASSIGN_OR_RETURN(
+      std::optional<std::vector<MemorySpaceColor>> maybe_tuple_result,
+      GetTupleMemoryKinds(main.getFunctionType().getResults(),
+                          main.getAllResultAttrs()));
+  if (maybe_tuple_result) return *maybe_tuple_result;
+
+  return MlirAttrsToMemoryKinds(main.getAllResultAttrs(), main.getNumResults());
+}
+
 // Make sure to choose delimiter that will never show up in Layout strings.
-static const char* kLayoutModeDelimiter = ";";
+static const char* kDelimiter = ";";
 
 static std::string GetFrontendAttr(absl::Span<const LayoutMode> layout_modes) {
-  return absl::StrJoin(layout_modes, kLayoutModeDelimiter,
+  return absl::StrJoin(layout_modes, kDelimiter,
                        [](std::string* out, const LayoutMode& mode) {
                          absl::StrAppend(out, mode.ToString());
                        });
@@ -290,11 +400,39 @@ Status AddLayoutModesToFrontendAttrs(mlir::ModuleOp module,
   return OkStatus();
 }
 
+static std::string GetFrontendAttrForMemorySpace(
+    const std::vector<MemorySpaceColor>& memory_spaces) {
+  return absl::StrJoin(
+      memory_spaces, kDelimiter,
+      [](std::string* out, const MemorySpaceColor memory_kind) {
+        absl::StrAppend(out, memory_kind);
+      });
+}
+
+Status AddMemoryKindsToFrontendAttrs(mlir::ModuleOp module,
+                                     XlaComputation& xla_computation) {
+  TF_ASSIGN_OR_RETURN(std::vector<MemorySpaceColor> arg_memory_spaces,
+                      GetArgMemoryKinds(module));
+  TF_ASSIGN_OR_RETURN(std::vector<MemorySpaceColor> out_memory_spaces,
+                      GetOutputMemoryKinds(module));
+
+  // Type is string->string proto map. Using auto here to deal with different
+  // build environments.
+  auto& frontend_attrs = *xla_computation.mutable_proto()
+                              ->mutable_frontend_attributes()
+                              ->mutable_map();
+  frontend_attrs["arg_memory_spaces"] =
+      GetFrontendAttrForMemorySpace(arg_memory_spaces);
+  frontend_attrs["out_memory_spaces"] =
+      GetFrontendAttrForMemorySpace(out_memory_spaces);
+  return OkStatus();
+}
+
 static StatusOr<std::vector<LayoutMode>> GetLayoutModesFromFrontendAttr(
     absl::string_view attr) {
   // SkipEmpty() needed to avoid returning the empty string when attr is empty.
   std::vector<std::string> str_modes =
-      absl::StrSplit(attr, kLayoutModeDelimiter, absl::SkipEmpty());
+      absl::StrSplit(attr, kDelimiter, absl::SkipEmpty());
   std::vector<LayoutMode> result;
   for (const std::string& str_mode : str_modes) {
     TF_ASSIGN_OR_RETURN(LayoutMode mode, LayoutMode::FromString(str_mode));
@@ -315,6 +453,34 @@ static StatusOr<std::vector<LayoutMode>> GetLayoutModes(
   return GetLayoutModesFromFrontendAttr(iter->second);
 }
 
+static StatusOr<std::vector<MemorySpaceColor>> GetMemoryKindsFromFrontendAttr(
+    absl::string_view attr) {
+  // SkipEmpty() needed to avoid returning the empty string when attr is empty.
+  std::vector<std::string> str_memory_spaces =
+      absl::StrSplit(attr, kDelimiter, absl::SkipEmpty());
+
+  std::vector<MemorySpaceColor> result;
+  result.reserve(str_memory_spaces.size());
+  for (const std::string& str_mem_space : str_memory_spaces) {
+    MemorySpaceColor memory_space;
+    CHECK(absl::SimpleAtoi(str_mem_space, &memory_space));
+    result.emplace_back(memory_space);
+  }
+  return result;
+}
+
+static StatusOr<std::vector<MemorySpaceColor>> GetMemoryKinds(
+    const XlaComputation& computation, absl::string_view frontend_attr_name,
+    size_t num_values) {
+  const auto& frontend_attrs = computation.proto().frontend_attributes().map();
+  auto iter = frontend_attrs.find(frontend_attr_name);
+  if (iter == frontend_attrs.end()) {
+    // Return all default memory space i.e. 0 if frontend attr isn't present.
+    return std::vector<MemorySpaceColor>(num_values, 0);
+  }
+  return GetMemoryKindsFromFrontendAttr(iter->second);
+}
+
 StatusOr<std::vector<LayoutMode>> GetArgLayoutModes(
     const XlaComputation& computation) {
   TF_ASSIGN_OR_RETURN(ProgramShape program_shape,
@@ -326,6 +492,17 @@ StatusOr<std::vector<LayoutMode>> GetArgLayoutModes(
   return GetLayoutModes(computation, "arg_layout_modes", num_args);
 }
 
+StatusOr<std::vector<MemorySpaceColor>> GetArgMemoryKinds(
+    const XlaComputation& computation) {
+  TF_ASSIGN_OR_RETURN(ProgramShape program_shape,
+                      computation.GetProgramShape());
+  size_t num_args = program_shape.parameters_size() == 1 &&
+                            program_shape.parameters(0).IsTuple()
+                        ? program_shape.parameters(0).tuple_shapes_size()
+                        : program_shape.parameters_size();
+  return GetMemoryKinds(computation, "arg_memory_spaces", num_args);
+}
+
 StatusOr<std::vector<LayoutMode>> GetOutputLayoutModes(
     const XlaComputation& computation) {
   TF_ASSIGN_OR_RETURN(ProgramShape program_shape,
@@ -334,6 +511,16 @@ StatusOr<std::vector<LayoutMode>> GetOutputLayoutModes(
                            ? program_shape.result().tuple_shapes_size()
                            : 1;
   return GetLayoutModes(computation, "out_layout_modes", num_outputs);
+}
+
+StatusOr<std::vector<MemorySpaceColor>> GetOutputMemoryKinds(
+    const XlaComputation& computation) {
+  TF_ASSIGN_OR_RETURN(ProgramShape program_shape,
+                      computation.GetProgramShape());
+  size_t num_outputs = program_shape.result().IsTuple()
+                           ? program_shape.result().tuple_shapes_size()
+                           : 1;
+  return GetMemoryKinds(computation, "out_memory_spaces", num_outputs);
 }
 
 static StatusOr<Shape> LayoutModeToXlaShape(
@@ -378,6 +565,8 @@ static StatusOr<Shape> LayoutModeToXlaShape(
 StatusOr<std::pair<std::vector<Shape>, Shape>> LayoutModesToXlaShapes(
     const XlaComputation& computation, std::vector<LayoutMode> arg_layout_modes,
     std::vector<LayoutMode> out_layout_modes,
+    const std::vector<MemorySpaceColor>& arg_memory_spaces,
+    const std::vector<MemorySpaceColor>& out_memory_spaces,
     std::function<StatusOr<Shape>(Shape)>
         choose_compact_layout_for_shape_function) {
   // Compute sharded argument and output shapes.
@@ -431,6 +620,10 @@ StatusOr<std::pair<std::vector<Shape>, Shape>> LayoutModesToXlaShapes(
 
   // Convert each LayoutMode to an xla::Shape with the appropriate Layout set or
   // unset.
+  if (arg_memory_spaces.size() != arg_layout_modes.size()) {
+    return InvalidArgument(
+        "The sizes of arg_memory_spaces and arg_layout_modes don't match");
+  }
   std::vector<Shape> flat_arg_layouts;
   flat_arg_layouts.reserve(arg_layout_modes.size());
   for (int i = 0; i < arg_layout_modes.size(); ++i) {
@@ -439,7 +632,16 @@ StatusOr<std::pair<std::vector<Shape>, Shape>> LayoutModesToXlaShapes(
         LayoutModeToXlaShape(arg_layout_modes[i], unsharded_arg_shapes[i],
                              sharded_arg_shapes[i],
                              choose_compact_layout_for_shape_function));
+    // When layout is AUTO, memory space can't be set since it will be partial.
+    if (layout.has_layout()) {
+      layout.mutable_layout()->set_memory_space(arg_memory_spaces[i]);
+    }
     flat_arg_layouts.emplace_back(std::move(layout));
+  }
+
+  if (out_memory_spaces.size() != out_layout_modes.size()) {
+    return InvalidArgument(
+        "The sizes of out_memory_spaces and out_layout_modes don't match");
   }
   std::vector<Shape> flat_out_layouts;
   flat_out_layouts.reserve(out_layout_modes.size());
@@ -449,6 +651,10 @@ StatusOr<std::pair<std::vector<Shape>, Shape>> LayoutModesToXlaShapes(
         LayoutModeToXlaShape(out_layout_modes[i], unsharded_out_shapes[i],
                              sharded_out_shapes[i],
                              choose_compact_layout_for_shape_function));
+    // When layout is AUTO, memory space can't be set since it will be partial.
+    if (layout.has_layout()) {
+      layout.mutable_layout()->set_memory_space(out_memory_spaces[i]);
+    }
     flat_out_layouts.emplace_back(std::move(layout));
   }
 
@@ -468,12 +674,15 @@ StatusOr<std::pair<std::vector<Shape>, std::vector<const Shape*>>>
 LayoutModesToXla(const XlaComputation& computation,
                  std::vector<LayoutMode> arg_layout_modes,
                  std::vector<LayoutMode> out_layout_modes,
+                 const std::vector<MemorySpaceColor>& arg_memory_spaces,
+                 const std::vector<MemorySpaceColor>& out_memory_spaces,
                  std::function<StatusOr<Shape>(Shape)>
                      choose_compact_layout_for_shape_function,
                  ExecutableBuildOptions& build_options) {
   TF_ASSIGN_OR_RETURN(
       auto pair,
       LayoutModesToXlaShapes(computation, arg_layout_modes, out_layout_modes,
+                             arg_memory_spaces, out_memory_spaces,
                              choose_compact_layout_for_shape_function));
   std::vector<Shape>& arg_layouts = pair.first;
   Shape& out_layout = pair.second;
