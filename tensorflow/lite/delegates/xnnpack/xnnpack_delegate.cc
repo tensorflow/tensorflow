@@ -3081,7 +3081,7 @@ class Subgraph {
       return kTfLiteError;
     }
     if (subgraph != nullptr) {
-      uint32_t flags = params->adj_y;
+      uint32_t flags = params->adj_y ? XNN_FLAG_TRANSPOSE_B : 0;
       xnn_status status = xnn_define_batch_matrix_multiply(
           subgraph, input_output_tensors.at(node->inputs->data[0]),
           input_output_tensors.at(node->inputs->data[1]),
