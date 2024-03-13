@@ -46,9 +46,12 @@ message DeviceProto {
   // NVLink on GPUs.
   int32 slice_index = 5;
 
-  // Store vendor-specific compute capability
+  // Store vendor-specific compute capability.
   string compute_capability = 6;
-}
+
+  // The number of cores (e.g. SMs on GPUs) on the device.
+  int32 core_count = 7;
+};
 
 message LocalTopologyProto {
   int32 node_id = 1;

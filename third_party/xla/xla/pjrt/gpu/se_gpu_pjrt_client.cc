@@ -933,6 +933,7 @@ Status BuildDistributedDevices(
     device_proto->set_vendor(desc->device_vendor());
     device_proto->set_compute_capability(
         MakeComputeCapabilityString(desc.get()));
+    device_proto->set_core_count(desc->core_count());
   }
 
   GlobalTopologyProto global_topology;
@@ -967,8 +968,8 @@ Status BuildDistributedDevices(
       auto device = std::make_unique<StreamExecutorGpuDevice>(
           device_proto.global_device_id(), std::move(local_device),
           device_proto.name(), device_proto.vendor(),
-          device_proto.compute_capability(), node.node_id(),
-          device_proto.slice_index());
+          device_proto.compute_capability(), device_proto.core_count(),
+          node.node_id(), device_proto.slice_index());
       devices->push_back(std::move(device));
     }
   }
@@ -1007,7 +1008,8 @@ std::string MakeComputeCapabilityString(const se::DeviceDescription* desc) {
 StreamExecutorGpuDevice::StreamExecutorGpuDevice(
     int id, std::unique_ptr<LocalDeviceState> local_device_state,
     std::string device_kind, std::string device_vendor,
-    std::string compute_capability, int node_id, int slice_index)
+    std::string compute_capability, int core_count, int node_id,
+    int slice_index)
     : PjRtStreamExecutorDevice(id, std::move(local_device_state),
                                std::move(device_kind), node_id),
       device_vendor_(std::move(device_vendor)),
@@ -1024,7 +1026,8 @@ StreamExecutorGpuDevice::StreamExecutorGpuDevice(
        {"core_on_chip", xla::PjRtDeviceAttribute(core_index)},
        {"device_vendor", device_vendor_},
        {"slice_index", static_cast<int64_t>(slice_index)},
-       {"compute_capability", xla::PjRtDeviceAttribute(compute_capability)}});
+       {"compute_capability", xla::PjRtDeviceAttribute(compute_capability)},
+       {"core_count", static_cast<int64_t>(core_count)}});
   description().SetToString(absl::StrFormat(
       "StreamExecutorGpuDevice(device_kind=%s, id=%i, process_index=%i, "
       "slice_index=%i))",
@@ -1128,12 +1131,12 @@ std::vector<std::unique_ptr<PjRtStreamExecutorDevice>> BuildLocalDevices(
     int node_id) {
   std::vector<std::unique_ptr<PjRtStreamExecutorDevice>> devices;
   for (auto& ordinal_and_device : local_device_states) {
-    const se::DeviceDescription& description =
+    const se::DeviceDescription& desc =
         ordinal_and_device.second->executor()->GetDeviceDescription();
     auto device = std::make_unique<StreamExecutorGpuDevice>(
         ordinal_and_device.first, std::move(ordinal_and_device.second),
-        description.name(), description.device_vendor(),
-        MakeComputeCapabilityString(&description), node_id);
+        desc.name(), desc.device_vendor(), MakeComputeCapabilityString(&desc),
+        desc.core_count(), node_id);
     devices.push_back(std::move(device));
   }
   return devices;

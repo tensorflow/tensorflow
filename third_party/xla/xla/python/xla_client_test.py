@@ -2533,6 +2533,12 @@ module @jit__lambda_ attributes {mhlo.num_partitions = 1 : i32,
       for device in self.backend.local_devices():
         self.assertEqual(device.platform, self.backend.platform)
 
+    def testCoreCount(self):
+      if self.backend.platform != "gpu":
+        self.skipTest("core_count is only supported on GPU")
+      for device in self.backend.local_devices():
+        self.assertGreater(device.core_count, 0)
+
     def testLocalHardwareId(self):
       for device in self.backend.devices():
         local_hardware_id = device.local_hardware_id
