@@ -29,10 +29,13 @@ limitations under the License.
 #include "absl/synchronization/notification.h"
 #include "absl/types/span.h"
 #include "xla/python/ifrt/client.h"
+#include "xla/python/ifrt/future.h"
 #include "xla/python/ifrt/test_util.h"
 #include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/tensor_matcher.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
 #include "tensorflow/core/platform/protobuf.h"  // IWYU pragma: keep
+#include "tensorflow/core/platform/resource_loader.h"
 #include "tensorflow/core/public/session_options.h"
 #include "tensorflow/core/runtime_fallback/kernel/kernel_fallback_compat_request_state.h"
 #include "tensorflow/core/tfrt/fallback/fallback_state.h"
@@ -63,7 +66,9 @@ namespace tensorflow {
 namespace tf_mlrt {
 namespace {
 using tensorflow::test::AsScalar;
+using tensorflow::test::AsTensor;
 using tensorflow::test::ExpectEqual;
+using tensorflow::test::TensorEq;
 
 static absl::string_view kVariableName = "test_variable";
 
@@ -73,6 +78,125 @@ tsl::thread::ThreadPool& GetThreadPool() {
       new tsl::thread::ThreadPool(tsl::Env::Default(), tsl::ThreadOptions(),
                                   "IfrtSharding", kMaxParallelism);
   return *thread_pool;
+}
+
+std::string EncodeRestoreDtypesInt32(int num_outputs) {
+  mlrt::bc::Buffer buffer;
+  mlrt::bc::Allocator allocator(&buffer);
+
+  auto ctor = mlrt::bc::New<mlrt::bc::Vector<tensorflow::DataType>>(
+      &allocator, num_outputs);
+
+  for (int i = 0; i < num_outputs; ++i) {
+    ctor.ConstructAt(i, tensorflow::DT_INT32);
+  }
+  return std::string(buffer.data(), buffer.size());
+}
+
+mlrt::bc::Buffer CreateExecutableForIfrtRestoreVariableOp() {
+  mlrt::bc::Buffer buffer;
+  mlrt::bc::Allocator allocator(&buffer);
+
+  auto executable_ctor = mlrt::bc::New<mlrt::bc::Executable>(&allocator);
+
+  mlrt::testing::SymbolTable kernels;
+  std::vector<std::string> kernel_names = {
+      "tf_mlrt.createop", "tf_mlrt.executeop", "tf_mlrt.ifrt_restore_variable",
+      "return"};
+
+  executable_ctor.construct_kernel_names(kernel_names.size())
+      .Assign(kernel_names);
+  kernels.Def(kernel_names);
+
+  mlrt::testing::AttributeTable attributes(
+      executable_ctor.construct_attributes(4));
+
+  std::string restore_dtypes = EncodeRestoreDtypesInt32(1);
+  attributes.Add("restore_dtypes", restore_dtypes);
+
+  attributes.Add("var_handle_op_node_def",
+                 R"pb(name: "VarHandleOp"
+                      op: "VarHandleOp"
+                      device: "/job:localhost/replica:0/task:0/device:CPU:0"
+                      attr {
+                        key: "container"
+                        value { s: "test" }
+                      }
+                      attr {
+                        key: "shared_name"
+                        value { s: "y" }
+                      }
+                      attr {
+                        key: "dtype"
+                        value { type: DT_INT32 }
+                      }
+                      attr {
+                        key: "shape"
+                        value { shape { dim { size: 1 } } }
+                      }
+                 )pb");
+
+  attributes.Add("var_handle_op_key", 0);
+
+  auto functions_ctor = executable_ctor.construct_functions(1);
+
+  {
+    auto function_ctor = functions_ctor.ConstructAt(0);
+    function_ctor.construct_name("main");
+
+    mlrt::testing::SymbolTable regs;
+
+    function_ctor.construct_input_regs(3).Assign(
+        regs.Def({"prefix_tensor", "name_tensor", "slice_tensor"}));
+
+    const int kNumKernels = 4;
+    auto kernels_ctor = function_ctor.construct_kernels(kNumKernels);
+    int kernel_index = 0;
+
+    {
+      // Create VarHandleOp
+      auto createop_ctor = kernels_ctor.ConstructAt(kernel_index);
+      createop_ctor.set_code(kernels.Use("tf_mlrt.createop"));
+      createop_ctor.construct_arguments(0);
+      createop_ctor.construct_results(0);
+      createop_ctor.construct_attributes(2).Assign(
+          {attributes.GetHandle("var_handle_op_node_def"),
+           attributes.GetHandle("var_handle_op_key")});
+      kernel_index++;
+    }
+    {
+      // Execute VarHandleOp
+      auto executeop_ctor = kernels_ctor.ConstructAt(kernel_index);
+      executeop_ctor.set_code(kernels.Use("tf_mlrt.executeop"));
+      executeop_ctor.construct_arguments(0);
+      executeop_ctor.construct_results(1).Assign({regs.Def("variable_handle")});
+      executeop_ctor.construct_attributes(2).Assign(
+          {attributes.GetHandle("var_handle_op_node_def"),
+           attributes.GetHandle("var_handle_op_key")});
+      executeop_ctor.construct_last_uses(1).Assign({0});
+      kernel_index++;
+    }
+
+    {
+      auto restore_ctor = kernels_ctor.ConstructAt(kernel_index);
+      restore_ctor.set_code(kernels.Use("tf_mlrt.ifrt_restore_variable"));
+      restore_ctor.construct_arguments(4).Assign(regs.Use(
+          {"prefix_tensor", "name_tensor", "slice_tensor", "variable_handle"}));
+      restore_ctor.construct_results(0);
+      restore_ctor.construct_attributes(1).Assign(
+          {attributes.GetHandle("restore_dtypes")});
+      kernel_index++;
+    }
+    {
+      auto return_ctor = kernels_ctor.ConstructAt(kernel_index);
+      return_ctor.set_code(kernels.Use("return"));
+      return_ctor.construct_arguments(0);
+      kernel_index++;
+    }
+    DCHECK_EQ(kernel_index, kNumKernels);
+    function_ctor.set_num_regs(regs.size());
+  }
+  return buffer;
 }
 
 mlrt::bc::Buffer CreateExecutableForIfrtLoadVariableOp(
@@ -415,6 +539,114 @@ TEST(KernelTest, DuplicateIfrtLoadVariableOpShallSucceed) {
 
   ExpectEqual(results[0].Get<tfrt_stub::FallbackTensor>().tensor(),
               AsScalar(tsl::tstring(kVariableName)));
+}
+
+TEST(KernelTest, IfrtRestoreVariableOp) {
+  // runtime name = container_name + shared_name
+  constexpr absl::string_view kVariableRuntimeName = "test__y";
+
+  std::string checkpoint_prefix =
+      tensorflow::GetDataDependencyFilepath(
+          "tensorflow/core/tfrt/mlrt/kernel/testdata/"
+          "gen_checkpoint_data/variables") +
+      "/variables";
+
+  auto buffer = CreateExecutableForIfrtRestoreVariableOp();
+
+  mlrt::bc::Executable executable(buffer.data());
+
+  mlrt::KernelRegistry registry;
+  mlrt::RegisterBuiltinKernels(registry);
+  RegisterTfMlrtKernels(registry);
+
+  mlrt::LoadedExecutable loaded_executable(executable, registry);
+
+  auto work_queue = tfrt::CreateMultiThreadedWorkQueue(
+      /*num_threads=*/4, /*num_blocking_threads=*/4);
+  mlrt::ExecutionContext execution_context(&loaded_executable);
+  execution_context.set_work_queue(work_queue.get());
+
+  tensorflow::SessionOptions session_options;
+  tensorflow::FunctionDefLibrary fdef_lib;
+  TF_ASSERT_OK_AND_ASSIGN(auto fallback_state, tfrt_stub::FallbackState::Create(
+                                                   session_options, fdef_lib));
+
+  std::function<void(std::function<void()>)> runner =
+      [](const std::function<void()>& f) { f(); };
+  tfrt_stub::OpKernelRunnerTable runner_table;
+  tfd::FallbackResourceArray resource_array;
+  tfd::KernelFallbackCompatRequestState fallback_request_state(
+      &runner, &fallback_state->device_manager(), /*step_id=*/0, &runner_table,
+      &resource_array, /*user_intra_op_threadpool=*/nullptr,
+      /*model_metadata=*/std::nullopt,
+      &fallback_state->process_function_library_runtime());
+
+  tfrt::ResourceContext resource_context;
+
+  TF_ASSERT_OK_AND_ASSIGN(std::shared_ptr<xla::ifrt::Client> client,
+                          xla::ifrt::test_util::GetClient());
+  resource_context.CreateResource<tensorflow::ifrt_serving::IfrtModelContext>(
+      "IfrtModelContext", client, &GetThreadPool());
+
+  auto tf_context =
+      std::make_unique<Context>(&fallback_request_state, &resource_context);
+  execution_context.AddUserContext(std::move(tf_context));
+
+  std::optional<tensorflow::ifrt_serving::IfrtModelContext*>
+      ifrt_model_context =
+          resource_context
+              .GetResource<tensorflow::ifrt_serving::IfrtModelContext>(
+                  "IfrtModelContext");
+
+  ASSERT_TRUE(ifrt_model_context.has_value());
+  xla::ifrt::Future<absl::StatusOr<tensorflow::Tensor>> uninitialized_entry =
+      (*ifrt_model_context)
+          ->GetRestoreTensorRegistry()
+          .Get(kVariableRuntimeName);
+  ASSERT_TRUE(uninitialized_entry.IsReady());
+  EXPECT_THAT(uninitialized_entry.Await().status(),
+              ::tsl::testing::StatusIs(absl::StatusCode::kNotFound));
+
+  auto restore_work_queue = tfrt::CreateMultiThreadedWorkQueue(
+      /*num_threads=*/4, /*num_blocking_threads=*/4);
+  (*ifrt_model_context)->set_work_queue(restore_work_queue.get());
+
+  std::vector<mlrt::Value> args;
+  args.resize(3);
+
+  tensorflow::Tensor prefix_tensor =
+      AsTensor<tsl::tstring>({tsl::tstring(checkpoint_prefix)});
+  args.at(0).Set(tfrt_stub::FallbackTensor(std::move(prefix_tensor)));
+
+  tensorflow::Tensor name_tensor =
+      AsTensor<tsl::tstring>({tsl::tstring("w/.ATTRIBUTES/VARIABLE_VALUE")});
+  args.at(1).Set(tfrt_stub::FallbackTensor(std::move(name_tensor)));
+
+  tensorflow::Tensor slice_tensor = AsTensor<tsl::tstring>({tsl::tstring("")});
+  args.at(2).Set(tfrt_stub::FallbackTensor(std::move(slice_tensor)));
+
+  std::vector<uint8_t> last_uses = {true, true, true};
+  std::vector<mlrt::Value> results;
+
+  absl::Notification notification;
+  execution_context.set_exit_handler(
+      [&notification]() { notification.Notify(); });
+
+  execution_context.Call(executable.functions()[0], last_uses,
+                         absl::MakeSpan(args), absl::MakeSpan(results));
+  mlrt::Execute(execution_context);
+
+  notification.WaitForNotification();
+
+  TF_ASSERT_OK(execution_context.status());
+
+  xla::ifrt::Future<absl::StatusOr<tensorflow::Tensor>> restored_future =
+      (*ifrt_model_context)
+          ->GetRestoreTensorRegistry()
+          .Get(kVariableRuntimeName);
+  absl::StatusOr<tensorflow::Tensor> restored_tensor = restored_future.Await();
+  TF_ASSERT_OK(restored_tensor.status());
+  EXPECT_THAT(*restored_tensor, TensorEq(AsTensor<int32_t>({1, 2, 3}, {3})));
 }
 
 }  // namespace
