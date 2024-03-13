@@ -188,3 +188,14 @@ def FoldConstantTransposePass : Pass<"stablehlo-fold-constant-transpose", "mlir:
   }];
   let dependentDialects = ["mlir::stablehlo::StablehloDialect"];
 }
+
+def RemoveShardingCustomCallPass : Pass<"stablehlo-remove-sharding-custom-call", "mlir::func::FuncOp"> {
+  let summary = "Removes `stablehlo.custom_call @Sharding`";
+  let description = [{
+    Finds `stablehlo.custom_call @Sharding` and removes all instances of them,
+    replacing the usages by its operand. This is used where sharding doesn't
+    make much sense or sharding custom calls are incompatible, e.g. on-device
+    targets.
+  }];
+  let dependentDialects = ["mlir::stablehlo::StablehloDialect"];
+}
