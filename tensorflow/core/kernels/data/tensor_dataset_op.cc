@@ -17,12 +17,15 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include "absl/status/status.h"
 #include "tensorflow/core/data/dataset_utils.h"
 #include "tensorflow/core/data/name_utils.h"
 #include "tensorflow/core/data/split_utils.h"
 #include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/graph/graph.h"
+#include "tsl/platform/mutex.h"
+#include "tsl/platform/thread_annotations.h"
 
 namespace tensorflow {
 namespace data {
@@ -84,8 +87,16 @@ class TensorDatasetOp::Dataset : public DatasetBase {
 
   Status Get(OpKernelContext* ctx, int64 index,
              std::vector<Tensor>* out_tensors) const override {
+    return Get(index, out_tensors);
+  }
+
+  Status Get(int64 index, std::vector<Tensor>* out_tensors) const {
     TF_RETURN_IF_ERROR(CheckRandomAccessCompatible(index));
     *out_tensors = tensors_;
+    return absl::OkStatus();
+  }
+
+  absl::Status RandomIndexingCompatible() const override {
     return absl::OkStatus();
   }
 
@@ -132,6 +143,10 @@ class TensorDatasetOp::Dataset : public DatasetBase {
     Status GetNextInternal(IteratorContext* ctx,
                            std::vector<Tensor>* out_tensors,
                            bool* end_of_sequence) override {
+      if (ctx->index_mapper() != nullptr) {
+        return Get(ctx, out_tensors, end_of_sequence);
+      }
+
       mutex_lock l(mu_);
       if (split_provider_) {
         bool end_of_splits;
@@ -152,6 +167,22 @@ class TensorDatasetOp::Dataset : public DatasetBase {
       }
     }
 
+    // TODO(b/325112575): Move this to the base class so that if a source
+    // dataset supports random access, then its iterator automatically supports
+    // random access.
+    absl::Status Get(IteratorContext* ctx, std::vector<Tensor>* out_tensors,
+                     bool* end_of_sequence) {
+      tsl::mutex_lock l(mu_);
+      int64_t output_index = ctx->index_mapper()(element_count_++);
+      absl::Status status = dataset()->Get(output_index, out_tensors);
+      if (absl::IsOutOfRange(status)) {
+        *end_of_sequence = true;
+        return absl::OkStatus();
+      }
+      *end_of_sequence = false;
+      return absl::OkStatus();
+    }
+
    protected:
     std::shared_ptr<model::Node> CreateNode(
         IteratorContext* ctx, model::Node::Args args) const override {
@@ -168,6 +199,12 @@ class TensorDatasetOp::Dataset : public DatasetBase {
 
     Status RestoreInternal(IteratorContext* ctx,
                            IteratorStateReader* reader) override {
+      if (ctx->restored_element_count().has_value()) {
+        tsl::mutex_lock l(mu_);
+        element_count_ = *(ctx->restored_element_count());
+        return absl::OkStatus();
+      }
+
       mutex_lock l(mu_);
       int64_t produced;
       TF_RETURN_IF_ERROR(reader->ReadScalar(prefix(), kProduced, &produced));
@@ -179,6 +216,10 @@ class TensorDatasetOp::Dataset : public DatasetBase {
     mutex mu_;
     std::shared_ptr<SplitProvider> split_provider_;
     bool produced_ TF_GUARDED_BY(mu_);
+
+    // Count of elements produced by this iterator when it runs in the random
+    // access mode.
+    int64_t element_count_ TF_GUARDED_BY(mu_) = 0;
   };
 
   const std::vector<Tensor> tensors_;
