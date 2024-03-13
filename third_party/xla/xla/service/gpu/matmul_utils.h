@@ -70,6 +70,16 @@ absl::StatusOr<Shape> GetBatchRowColumnShape(
 absl::StatusOr<bool> CanFoldTransposeOperandIntoDot(const HloInstruction& dot,
                                                     int64_t operand_idx);
 
+// Returns true if the sum of the sizes of the unbatched operand matrices
+// for the dot is smaller than the given threshold.
+absl::StatusOr<bool> IsMatrixMultiplicationTooSmallForRewriting(
+    const HloInstruction& dot, int64_t threshold);
+
+// Returns true if the backend can lower the dot. Currently the classical
+// emitters cannot handle some dots, e.g., i8[] x i8[] -> i32[] dots,
+// so we need to always use cuBLAS or Triton for those.
+bool IsDotSupportedByClassicalEmitters(const HloInstruction& dot);
+
 // extending plain MatrixLayout struct with creator functions
 struct MatrixLayout : public se::gpu::MatrixLayout {
   // Returns the matrix layout for a logical shape (batch, rows, columns).

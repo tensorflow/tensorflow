@@ -522,13 +522,15 @@ class BatchGlobalShuffleCheckpointTest(checkpoint_test_base.CheckpointTestBase,
           combinations.combine(
               dataset_range=[10],
               batch_size=[2, 3],
-              drop_remainder=[True, False])))
+              drop_remainder=[True, False],
+              symbolic_checkpoint=[True, False])))
   def testBatch(
       self,
       verify_fn: Callable[..., None],
       dataset_range: int,
       batch_size: int,
-      drop_remainder: bool):
+      drop_remainder: bool,
+      symbolic_checkpoint: bool):
 
     def _build_dataset() -> dataset_ops.Dataset:
       dataset = dataset_ops.Dataset.range(dataset_range)
@@ -536,7 +538,9 @@ class BatchGlobalShuffleCheckpointTest(checkpoint_test_base.CheckpointTestBase,
       dataset = dataset.prefetch(buffer_size=dataset_ops.AUTOTUNE)
       dataset = global_shuffle_op._global_shuffle(dataset, seed=42)
       dataset = dataset.map(lambda x: x[0])
-      return dataset
+      options = options_lib.Options()
+      options.experimental_symbolic_checkpoint = symbolic_checkpoint
+      return dataset.with_options(options)
 
     verify_fn(
         self,
@@ -556,14 +560,16 @@ class BatchGlobalShuffleCheckpointTest(checkpoint_test_base.CheckpointTestBase,
               dataset_range=[10],
               batch_size=[2, 3],
               drop_remainder=[True, False],
-              reshuffle_each_iteration=[True, False])))
+              reshuffle_each_iteration=[True, False],
+              symbolic_checkpoint=[True, False])))
   def testReshuffleEachIteration(
       self,
       verify_fn: Callable[..., None],
       dataset_range: int,
       batch_size: int,
       drop_remainder: bool,
-      reshuffle_each_iteration: bool):
+      reshuffle_each_iteration: bool,
+      symbolic_checkpoint: bool):
 
     def _build_dataset() -> dataset_ops.Dataset:
       dataset = dataset_ops.Dataset.range(dataset_range)
@@ -572,7 +578,9 @@ class BatchGlobalShuffleCheckpointTest(checkpoint_test_base.CheckpointTestBase,
       dataset = global_shuffle_op._global_shuffle(
           dataset, seed=42, reshuffle_each_iteration=reshuffle_each_iteration)
       dataset = dataset.map(lambda x: x[0])
-      return dataset
+      options = options_lib.Options()
+      options.experimental_symbolic_checkpoint = symbolic_checkpoint
+      return dataset.with_options(options)
 
     verify_fn(
         self,

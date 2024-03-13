@@ -26,6 +26,7 @@ package(
         "//tsl/framework:__subpackages__",
         "//tsl/distributed_runtime:__subpackages__",
         "//tensorflow/compiler/mlir/tf2xla:__subpackages__",
+        "//tensorflow_serving/model_servers:__subpackages__",
     ]),
     licenses = ["notice"],
 )
@@ -111,6 +112,7 @@ cc_library(
     hdrs = ["collection_registry.h"],
     visibility = internal_visibility([
         "//tensorflow/core:__subpackages__",
+        "//tensorflow_serving/model_servers:__pkg__",
     ]),
     deps = [
         ":collected_metrics",

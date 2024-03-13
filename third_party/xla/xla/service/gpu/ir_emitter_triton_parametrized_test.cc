@@ -63,6 +63,8 @@ class MixedTypeTest : public GpuCodegenTest,
     DebugOptions debug_options = GpuCodegenTest::GetDebugOptionsForTest();
     // We are testing Triton, remove cuBLAS fallback for these tests.
     debug_options.set_xla_gpu_cublas_fallback(false);
+    // Always rewrite Gemms with Triton regardless of size.
+    debug_options.set_xla_gpu_gemm_rewrite_size_threshold(0);
     return debug_options;
   }
 };
@@ -147,6 +149,8 @@ class TritonTest : public GpuCodegenTest {
     DebugOptions debug_options = GpuCodegenTest::GetDebugOptionsForTest();
     debug_options.set_xla_gpu_triton_gemm_any(true);
     debug_options.set_xla_gpu_cublas_fallback(false);
+    // Always rewrite Gemms with Triton regardless of size.
+    debug_options.set_xla_gpu_gemm_rewrite_size_threshold(0);
     return debug_options;
   }
 

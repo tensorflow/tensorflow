@@ -134,6 +134,7 @@ class GemmRewriteTest : public GpuCodegenTest {
     // These tests test the cuBLAS rewriter so we have to make sure that we use
     // cuBLAS for them.
     debug_options.set_xla_gpu_enable_triton_gemm(false);
+    debug_options.set_xla_gpu_gemm_rewrite_size_threshold(0);
     return debug_options;
   }
 
@@ -7164,6 +7165,13 @@ class GemmRewriteAllocationTest : public GpuCodegenTest {
         gpu_executable->GetAllocations();
     ASSERT_EQ(allocations.size(), expected_number_of_allocations);
   }
+
+  DebugOptions GetDebugOptionsForTest() override {
+    DebugOptions debug_options = GpuCodegenTest::GetDebugOptionsForTest();
+    // Make sure the rewriter does not skip the rewrite for being too small.
+    debug_options.set_xla_gpu_gemm_rewrite_size_threshold(0);
+    return debug_options;
+  }
 };
 
 TEST_F(GemmRewriteAllocationTest, SharedBufferAssignment) {
@@ -7183,6 +7191,56 @@ ENTRY AddDotsFunc {
   // Bias should be fused into the multiplication.
   CheckNumberOfAllocations(hlo_text, 4);
   EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-5, 1e-5}));
+}
+
+class SmallDotGemmRewriteTest : public GemmRewriteTest {
+ public:
+  DebugOptions GetDebugOptionsForTest() override {
+    DebugOptions debug_options = GemmRewriteTest::GetDebugOptionsForTest();
+    debug_options.set_xla_gpu_gemm_rewrite_size_threshold(100);
+    return debug_options;
+  }
+};
+
+TEST_F(SmallDotGemmRewriteTest, SkipSmallMatrixMultiplicationRewrite) {
+  const char* hlo_text = R"(
+HloModule SkipSmallMatrixRewrite
+
+ENTRY DotFunc {
+  x = f32[3,3] parameter(0)
+  y = f32[3,3] parameter(1)
+  ROOT out = f32[3,3] dot(x, y), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+}
+)";
+
+  MatchOptimizedHlo(hlo_text,
+                    R"(
+; CHECK-LABEL: ENTRY %DotFunc ({{.*}}: f32[3,3], {{.*}}: f32[3,3]) -> f32[3,3] {
+; CHECK-NEXT:    [[P0:%[^ ]+]] = f32[3,3]{1,0} parameter(0)
+; CHECK-NEXT:    [[P1:%[^ ]+]] = f32[3,3]{1,0} parameter(1)
+; CHECK-NEXT:    [[GEMM:%[^ ]+]] = {{.*}} dot([[P0]], [[P1]]),
+; CHECK:           lhs_contracting_dims={1}, rhs_contracting_dims={0}
+)");
+}
+
+TEST_F(SmallDotGemmRewriteTest, LargeMatrixMultiplicationIsRewritten) {
+  const char* hlo_text = R"(
+HloModule SkipSmallMatrixRewrite
+
+ENTRY DotFunc {
+  x = f32[8,8] parameter(0)
+  y = f32[8,8] parameter(1)
+  ROOT out = f32[8,8] dot(x, y), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+}
+)";
+
+  MatchOptimizedHlo(hlo_text,
+                    R"(
+; CHECK-LABEL: ENTRY %DotFunc ({{.*}}: f32[8,8], {{.*}}: f32[8,8]) -> f32[8,8] {
+; CHECK-NEXT:    [[P0:%[^ ]+]] = f32[8,8]{1,0} parameter(0)
+; CHECK-NEXT:    [[P1:%[^ ]+]] = f32[8,8]{1,0} parameter(1)
+; CHECK:         {{[^ ]+}} = {{.*}} custom-call([[P0]], [[P1]])
+)");
 }
 
 }  // namespace
