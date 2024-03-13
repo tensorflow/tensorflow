@@ -26,12 +26,13 @@ limitations under the License.
 #include "tensorflow/lite/experimental/shlo/quantize.h"
 #include "tensorflow/lite/experimental/shlo/quantized_tensor_element_type.h"
 #include "tensorflow/lite/experimental/shlo/shape.h"
+#include "tensorflow/lite/experimental/shlo/status_matcher.h"
 #include "tensorflow/lite/experimental/shlo/tensor.h"
 
+using shlo_ref::testing::StatusIs;
 using testing::ElementsAreArray;
 using testing::NanSensitiveFloatEq;
 using testing::Pointwise;
-using testing::status::StatusIs;
 
 namespace shlo_ref {
 
@@ -55,7 +56,7 @@ struct Ceil {
 } ceil_ref;
 
 template <class T>
-struct NonQuantizedIntCeilTest : testing::Test {};
+struct NonQuantizedIntCeilTest : ::testing::Test {};
 
 TYPED_TEST_SUITE(NonQuantizedIntCeilTest, NonQuantizedIntTestTypes,
                  TestParamNames);
@@ -78,7 +79,7 @@ TYPED_TEST(NonQuantizedIntCeilTest, IntTensorsRaiseAnError) {
 }
 
 template <class T>
-struct NonQuantizedCeilTest : testing::Test {};
+struct NonQuantizedCeilTest : ::testing::Test {};
 
 TYPED_TEST_SUITE(NonQuantizedCeilTest, NonQuantizedFloatTestTypes,
                  TestParamNames);
@@ -107,7 +108,7 @@ TYPED_TEST(NonQuantizedCeilTest, FloatTensorsWork) {
 }
 
 template <class T>
-struct QuantizedCeilTest : testing::Test {};
+struct QuantizedCeilTest : ::testing::Test {};
 
 TYPED_TEST_SUITE(QuantizedCeilTest, QuantizedTestTypes, TestParamNames);
 

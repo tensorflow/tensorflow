@@ -78,6 +78,7 @@ cc_library(
 cc_test(
     name = "util_test",
     srcs = ["util_test.cc"],
+    linkopts = shlo_ref_linkopts(),
     deps = [
         ":util",
         "//tensorflow/lite/experimental/shlo:shape",
@@ -107,12 +108,14 @@ cc_library(
 cc_test(
     name = "unary_elementwise_test",
     srcs = ["unary_elementwise_test.cc"],
+    linkopts = shlo_ref_linkopts(),
     deps = [
         ":test_util",
         ":unary_elementwise",
         "//tensorflow/lite/experimental/shlo:data_type",
         "//tensorflow/lite/experimental/shlo:quantized_tensor_element_type",
         "//tensorflow/lite/experimental/shlo:shape",
+        "//tensorflow/lite/experimental/shlo:status_matcher",
         "//tensorflow/lite/experimental/shlo:tensor",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:inlined_vector",
@@ -149,12 +152,14 @@ cc_library(
 cc_test(
     name = "abs_test",
     srcs = ["abs_test.cc"],
+    linkopts = shlo_ref_linkopts(),
     deps = [
         ":abs",
         ":test_util",
         "//tensorflow/lite/experimental/shlo:quantize",
         "//tensorflow/lite/experimental/shlo:quantized_tensor_element_type",
         "//tensorflow/lite/experimental/shlo:shape",
+        "//tensorflow/lite/experimental/shlo:status_matcher",
         "//tensorflow/lite/experimental/shlo:tensor",
         "@com_google_googletest//:gtest_main",
     ],
@@ -179,6 +184,7 @@ cc_library(
 cc_test(
     name = "cbrt_test",
     srcs = ["cbrt_test.cc"],
+    linkopts = shlo_ref_linkopts(),
     deps = [
         ":cbrt",
         ":test_util",
@@ -187,6 +193,7 @@ cc_test(
         "//tensorflow/lite/experimental/shlo:quantize",
         "//tensorflow/lite/experimental/shlo:quantized_tensor_element_type",
         "//tensorflow/lite/experimental/shlo:shape",
+        "//tensorflow/lite/experimental/shlo:status_matcher",
         "//tensorflow/lite/experimental/shlo:tensor",
         "@com_google_absl//absl/status",
         "@com_google_googletest//:gtest_main",
@@ -212,6 +219,7 @@ cc_library(
 cc_test(
     name = "ceil_test",
     srcs = ["ceil_test.cc"],
+    linkopts = shlo_ref_linkopts(),
     deps = [
         ":ceil",
         ":test_util",
@@ -220,6 +228,7 @@ cc_test(
         "//tensorflow/lite/experimental/shlo:quantize",
         "//tensorflow/lite/experimental/shlo:quantized_tensor_element_type",
         "//tensorflow/lite/experimental/shlo:shape",
+        "//tensorflow/lite/experimental/shlo:status_matcher",
         "//tensorflow/lite/experimental/shlo:tensor",
         "@com_google_absl//absl/status",
         "@com_google_googletest//:gtest_main",

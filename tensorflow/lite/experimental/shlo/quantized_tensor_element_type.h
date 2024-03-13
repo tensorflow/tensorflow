@@ -113,13 +113,14 @@ class QuantizedTensorElementType {
     std::visit(
         [](auto& scales) -> void {
           using Container = std::remove_reference_t<decltype(scales)>;
-          absl::c_fill(scales, static_cast<Container::value_type>(1));
+          absl::c_fill(scales, static_cast<typename Container::value_type>(1));
         },
         baseline.scales_);
     std::visit(
         [](auto& zero_points) -> void {
           using Container = std::remove_reference_t<decltype(zero_points)>;
-          absl::c_fill(zero_points, static_cast<Container::value_type>(0));
+          absl::c_fill(zero_points,
+                       static_cast<typename Container::value_type>(0));
         },
         baseline.zero_points_);
     return baseline;

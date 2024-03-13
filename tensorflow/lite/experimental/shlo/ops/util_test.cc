@@ -18,6 +18,7 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
 #include "tensorflow/lite/experimental/shlo/shape.h"
+#include "tensorflow/lite/experimental/shlo/status_matcher.h"
 
 using testing::ElementsAreArray;
 
