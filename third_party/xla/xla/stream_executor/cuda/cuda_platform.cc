@@ -30,7 +30,6 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "xla/stream_executor/cuda/cuda_platform_id.h"
 #include "xla/stream_executor/device_description.h"
-#include "xla/stream_executor/device_options.h"
 #include "xla/stream_executor/gpu/gpu_driver.h"
 #include "xla/stream_executor/gpu/gpu_executor.h"
 #include "xla/stream_executor/platform.h"
@@ -40,42 +39,6 @@ limitations under the License.
 
 namespace stream_executor {
 namespace gpu {
-namespace {
-
-// Synchronize with spinlocks.
-const char kScheduleSpinString[] = "spin";
-// Synchronize with spinlocks that also call CPU yield instructions.
-const char kScheduleYieldString[] = "yield";
-// Synchronize with a "synchronization primitive" (e.g. mutex).
-const char kScheduleBlockingSyncString[] = "blocking_sync";
-
-const DeviceOptions GetDeviceOptionsFromEnv() {
-  const char* gpu_schedule_string =
-      std::getenv("TF_CUDA_PLATFORM_GPU_DEVICE_SCHEDULE");
-
-  if (gpu_schedule_string == nullptr) {
-    return DeviceOptions::Default();
-  }
-
-  unsigned device_flags = 0;
-  if (strcmp(kScheduleSpinString, gpu_schedule_string) == 0) {
-    device_flags = DeviceOptions::kScheduleSpin;
-  } else if (strcmp(kScheduleYieldString, gpu_schedule_string) == 0) {
-    device_flags = DeviceOptions::kScheduleYield;
-  } else if (strcmp(kScheduleBlockingSyncString, gpu_schedule_string) == 0) {
-    device_flags = DeviceOptions::kScheduleBlockingSync;
-  } else {
-    LOG(QFATAL) << "Unknown option for environment variable "
-                   "TF_CUDA_PLATFORM_GPU_DEVICE_SCHEDULE "
-                << gpu_schedule_string << " should be one of {"
-                << kScheduleBlockingSyncString << ", " << kScheduleSpinString
-                << ", " << kScheduleYieldString << "}";
-  }
-
-  return DeviceOptions(device_flags);
-}
-
-}  // namespace
 
 CudaPlatform::CudaPlatform()
     : name_("CUDA"), min_numa_node_(0), limit_numa_node_(0) {}
@@ -152,7 +115,6 @@ CudaPlatform::DescriptionForDevice(int ordinal) const {
 absl::StatusOr<StreamExecutor*> CudaPlatform::ExecutorForDevice(int ordinal) {
   StreamExecutorConfig config;
   config.ordinal = ordinal;
-  config.device_options = GetDeviceOptionsFromEnv();
   return GetExecutor(config);
 }
 
@@ -172,7 +134,7 @@ absl::StatusOr<std::unique_ptr<StreamExecutor>>
 CudaPlatform::GetUncachedExecutor(const StreamExecutorConfig& config) {
   auto executor = std::make_unique<StreamExecutor>(
       this, std::make_unique<GpuExecutor>(), config.ordinal);
-  auto init_status = executor->Init(config.device_options);
+  auto init_status = executor->Init();
   if (!init_status.ok()) {
     return absl::InternalError(absl::StrFormat(
         "failed initializing StreamExecutor for CUDA device ordinal %d: %s",

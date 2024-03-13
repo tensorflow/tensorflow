@@ -71,8 +71,6 @@ absl::Status SetExecutorStructFn(
   TFTPU_SET_FN(executor_fn, TpuDeviceDescription_Free);
 
   TFTPU_SET_FN(executor_fn, TpuExecutor_CreateDeviceDescription);
-  TFTPU_SET_FN(executor_fn, TpuExecutor_NewDeviceOptions);
-  TFTPU_SET_FN(executor_fn, TpuExecutor_FreeDeviceOptions);
   TFTPU_SET_FN(executor_fn, TpuExecutor_HostCallback);
 
   TFTPU_SET_FN(executor_fn, TpuTransferManager_New);

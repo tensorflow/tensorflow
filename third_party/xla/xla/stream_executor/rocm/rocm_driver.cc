@@ -339,37 +339,12 @@ static absl::Status InternalInit() {
   return absl::OkStatus();
 }
 
-bool DeviceOptionsToContextFlags(const DeviceOptions& device_options,
-                                 int* flags) {
-  static_assert(DeviceOptions::kMask == 0xf,
-                "needs update for new device options");
-
-  if (device_options.flags() & DeviceOptions::kDoNotReclaimStackAllocation) {
-    *flags |= hipDeviceLmemResizeToMax;
-  }
-
-  if (device_options.flags() & DeviceOptions::kScheduleSpin) {
-    *flags |= hipDeviceScheduleSpin;
-  }
-  if (device_options.flags() & DeviceOptions::kScheduleYield) {
-    *flags |= hipDeviceScheduleYield;
-  }
-  if (device_options.flags() & DeviceOptions::kScheduleBlockingSync) {
-    *flags |= hipDeviceScheduleBlockingSync;
-  }
-
-  return true;
-}
-
-/* static */ absl::Status GpuDriver::CreateContext(
-    int device_ordinal, hipDevice_t device, const DeviceOptions& device_options,
-    GpuContext** context) {
+/* static */ absl::Status GpuDriver::CreateContext(int device_ordinal,
+                                                   hipDevice_t device,
+                                                   GpuContext** context) {
   *context = nullptr;
 
   int flags = 0;
-  if (!DeviceOptionsToContextFlags(device_options, &flags)) {
-    LOG(WARNING) << "could not convert all device options into context flags";
-  }
 
   hipError_t res;
   hipCtx_t former_context;

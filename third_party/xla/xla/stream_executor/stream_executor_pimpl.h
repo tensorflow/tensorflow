@@ -38,7 +38,6 @@ limitations under the License.
 #include "xla/stream_executor/command_buffer.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/device_memory_allocator.h"
-#include "xla/stream_executor/device_options.h"
 #include "xla/stream_executor/dnn.h"
 #include "xla/stream_executor/event.h"
 #include "xla/stream_executor/fft.h"
@@ -91,7 +90,6 @@ class StreamExecutor {
   PlatformSpecificHandle platform_specific_handle() const;
 
   absl::Status Init();
-  absl::Status Init(DeviceOptions device_options);
 
   // Returns a reference to the platform that created this executor.
   const Platform* platform() const { return platform_; }

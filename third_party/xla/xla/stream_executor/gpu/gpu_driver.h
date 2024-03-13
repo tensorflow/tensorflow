@@ -30,7 +30,6 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "xla/stream_executor/device_options.h"
 #include "xla/stream_executor/gpu/gpu_types.h"
 #include "xla/stream_executor/platform.h"
 
@@ -244,7 +243,6 @@ class GpuDriver {
   // userspace processes is given here:
   // http://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__CTX.html#group__CUDA__CTX_1g65dc0012348bc84810e2103a40d8e2cf
   static absl::Status CreateContext(int device_ordinal, GpuDeviceHandle device,
-                                    const DeviceOptions& device_options,
                                     GpuContext** context);
 
   // Destroys the provided context via cuCtxDestroy.

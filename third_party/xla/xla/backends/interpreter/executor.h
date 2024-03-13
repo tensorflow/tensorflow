@@ -27,7 +27,6 @@ limitations under the License.
 #include "xla/stream_executor/blas.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/device_memory.h"
-#include "xla/stream_executor/device_options.h"
 #include "xla/stream_executor/event.h"
 #include "xla/stream_executor/host/host_stream.h"
 #include "xla/stream_executor/kernel.h"
@@ -47,7 +46,7 @@ class XlaInterpreterExecutor : public internal::StreamExecutorInterface {
  public:
   XlaInterpreterExecutor() = default;
 
-  absl::Status Init(int device_ordinal, DeviceOptions device_options) override {
+  absl::Status Init(int device_ordinal) override {
     device_ordinal_ = device_ordinal;
     return absl::OkStatus();
   }

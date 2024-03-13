@@ -43,7 +43,6 @@ limitations under the License.
 #include "xla/stream_executor/command_buffer.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/device_memory_allocator.h"
-#include "xla/stream_executor/device_options.h"
 #include "xla/stream_executor/dnn.h"
 #include "xla/stream_executor/event.h"
 #include "xla/stream_executor/fft.h"
@@ -110,13 +109,10 @@ StreamExecutor::platform_specific_handle() const {
   return handle;
 }
 
-absl::Status StreamExecutor::Init(DeviceOptions device_options) {
-  TF_RETURN_IF_ERROR(
-      implementation_->Init(device_ordinal_, std::move(device_options)));
+absl::Status StreamExecutor::Init() {
+  TF_RETURN_IF_ERROR(implementation_->Init(device_ordinal_));
   return absl::OkStatus();
 }
-
-absl::Status StreamExecutor::Init() { return Init(DeviceOptions::Default()); }
 
 absl::Status StreamExecutor::GetKernel(const MultiKernelLoaderSpec& spec,
                                        Kernel* kernel) {
