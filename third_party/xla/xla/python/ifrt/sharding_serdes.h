@@ -43,7 +43,7 @@ struct DeserializeShardingOptions
 };
 
 // Casts `DeserializeOptions` into `DeserializeShardingOptions`.
-StatusOr<std::unique_ptr<DeserializeShardingOptions>>
+absl::StatusOr<std::unique_ptr<DeserializeShardingOptions>>
 GetDeserializeShardingOptions(std::unique_ptr<DeserializeOptions> options);
 
 }  // namespace ifrt

@@ -287,7 +287,7 @@ bool register_concrete_even_sharding_serdes = ([]{
 
 }  // namespace
 
-StatusOr<std::unique_ptr<DeserializeShardingOptions>>
+absl::StatusOr<std::unique_ptr<DeserializeShardingOptions>>
 GetDeserializeShardingOptions(std::unique_ptr<DeserializeOptions> options) {
   if (!llvm::isa<DeserializeShardingOptions>(options.get())) {
     return xla::InvalidArgument("options must be DeserializeShardingOptions");
