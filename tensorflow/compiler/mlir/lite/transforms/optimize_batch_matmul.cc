@@ -30,6 +30,7 @@ limitations under the License.
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Pass/PassRegistry.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Support/TypeID.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
@@ -152,6 +153,74 @@ struct ConvertBatchMatMulOp2FullyConnectedOp
   };
 };
 
+// Converts batch_matmul operation with a ones tensor to a reduce_sum.
+struct ConvertBatchMatMulOpToReduceSum
+    : public OpRewritePattern<TFL::BatchMatMulOp> {
+  using OpRewritePattern<TFL::BatchMatMulOp>::OpRewritePattern;
+  LogicalResult matchAndRewrite(TFL::BatchMatMulOp bmm_op,
+                                PatternRewriter& rewriter) const override {
+    // For simplicity, check if first operand is an identity i.e. `ones_like`.
+    // This assumes canonicalization ordered operands this way.
+    SplatElementsAttr constant;
+    if (!matchPattern(bmm_op.getX(), m_Constant(&constant))) {
+      return failure();
+    }
+
+    if (!SplatValueEquals(constant, 1.0)) {
+      return failure();
+    }
+
+    // The input tensors x and y are 2-D or higher with shape:
+    //       [..., r_x == 1, c_x] and [..., c_y, r_y].
+    // The position of r_* and c_* are determined by the polarity of
+    // the adj(X|Y) attribute, respectively.
+    // So adjX == True indicates [..., c_x, r_x == 1].
+    llvm::ArrayRef<int64_t> lhs_shape =
+        bmm_op.getX().getType().cast<RankedTensorType>().getShape();
+    int rX = lhs_shape.size() - 2;
+    int cX = lhs_shape.size() - 1;
+    if (bmm_op.getAdjX()) {
+      rX = lhs_shape.size() - 1;
+      cX = lhs_shape.size() - 2;
+    }
+
+    if (lhs_shape[rX] != 1) {
+      return failure();
+    }
+
+    llvm::ArrayRef<int64_t> rhs_shape =
+        bmm_op.getY().getType().cast<RankedTensorType>().getShape();
+    int rY = rhs_shape.size() - 1;
+    int cY = rhs_shape.size() - 2;
+    if (bmm_op.getAdjX()) {
+      rY = rhs_shape.size() - 2;
+      cY = rhs_shape.size() - 1;
+    }
+
+    auto reduce_dim_op = rewriter.create<TFL::ConstOp>(
+        bmm_op->getLoc(),
+        DenseIntElementsAttr::get(
+            RankedTensorType::get({1}, rewriter.getI32Type()), {cY}));
+    auto sum_op = rewriter.create<TFL::SumOp>(
+        bmm_op->getLoc(), bmm_op.getType(), bmm_op.getY(), reduce_dim_op,
+        /*keep_dims=*/rewriter.getBoolAttr(true));
+    rewriter.replaceOp(bmm_op, sum_op);
+    return success();
+  };
+
+ private:
+  bool SplatValueEquals(SplatElementsAttr float_or_int, double rhs) const {
+    if (float_or_int.isa<DenseFPElementsAttr>()) {
+      return float_or_int.cast<DenseFPElementsAttr>()
+          .getSplatValue<APFloat>()
+          .isExactlyValue(rhs);
+    } else if (float_or_int.cast<DenseIntElementsAttr>()) {
+      return float_or_int.getSplatValue<APInt>() == static_cast<int>(rhs);
+    }
+    return false;
+  }
+};
+
 #include "tensorflow/compiler/mlir/lite/transforms/generated_optimize_batch_matmul.inc"
 
 void OptimizeBatchMatmulPass::runOnOperation() {
@@ -159,7 +228,8 @@ void OptimizeBatchMatmulPass::runOnOperation() {
   auto* ctx = &getContext();
 
   RewritePatternSet patterns(ctx);
-  patterns.add<ConvertBatchMatMulOp2FullyConnectedOp>(ctx);
+  patterns.add<ConvertBatchMatMulOp2FullyConnectedOp,
+               ConvertBatchMatMulOpToReduceSum>(ctx);
   TFL::populateWithGenerated(patterns);
   (void)applyPatternsAndFoldGreedily(func, std::move(patterns));
 }

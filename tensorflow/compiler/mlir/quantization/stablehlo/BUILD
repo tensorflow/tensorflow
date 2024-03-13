@@ -48,6 +48,7 @@ cc_library(
     srcs = [
         "passes/convert_func_to_bfloat16.cc",
         "passes/convert_xla_call_module_op_to_bfloat16.cc",
+        "passes/fold_constant_transpose_pass.cc",
         "passes/lift_quantizable_spots_as_functions.cc",
         "passes/lift_quantizable_spots_as_functions_fusion.inc",
         "passes/lift_quantizable_spots_as_functions_simple.inc",
@@ -128,6 +129,7 @@ cc_library(
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TransformUtils",
         "@llvm-project//mlir:Transforms",
+        "@local_tsl//tsl/platform:protobuf",
         "@local_tsl//tsl/platform:regexp",
         "@local_tsl//tsl/platform:str_util",
         "@local_tsl//tsl/protobuf:protos_all_cc",

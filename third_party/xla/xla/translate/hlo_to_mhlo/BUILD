@@ -123,6 +123,7 @@ cc_library(
         "//xla:util",
         "//xla:xla_data_proto_cc",
         "//xla/hlo/ir:hlo",
+        "//xla/mlir/utils:type_util",
         "//xla/mlir_hlo",
         "//xla/mlir_hlo:convert_op_folder",
         "//xla/mlir_hlo:lhlo",

@@ -705,18 +705,18 @@ absl::StatusOr<bool> CommandBufferScheduling::Run(
   };
 
   // Check if CUDA/ROCM driver supports required features.
-  auto check_cuda = [&](const se::CudaComputeCapability& cuda_comp) {
-    return std::min(gpu_toolkit_version_, gpu_driver_version_) < 12030;
+  auto erase_cuda = [&](const se::CudaComputeCapability& cuda_comp) {
+    if (std::min(gpu_toolkit_version_, gpu_driver_version_) < 12030) {
+      erase(kRequireTracing);       // cuStreamBeginCaptureToGraph
+      erase(kRequireConditionals);  // on-device control flow
+    }
   };
-  auto check_rocm = [&](const se::RocmComputeCapability& rocm_comp) {
-    return true;  // check for ROCM support
+  auto erase_rocm = [&](const se::RocmComputeCapability& rocm_comp) {
+    erase(kRequireConditionals);  // on-device control flow
   };
 
-  if (std::visit(VariantVisitor{check_cuda, check_rocm},
-                 device_description_.gpu_compute_capability())) {
-    erase(kRequireTracing);       // cuStreamBeginCaptureToGraph
-    erase(kRequireConditionals);  // on-device control flow
-  }
+  std::visit(VariantVisitor{erase_cuda, erase_rocm},
+             device_description_.gpu_compute_capability());
 
   auto order = module->MakeComputationPostOrder();
   std::reverse(order.begin(), order.end());

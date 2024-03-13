@@ -36,14 +36,14 @@ load(
 )
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load(
-    "//third_party/mkl:build_defs.bzl",
-    "if_mkl",
-    "mkl_deps",
-)
-load(
     "@local_config_rocm//rocm:build_defs.bzl",
     "if_rocm",
     "if_rocm_hipblaslt",
+)
+load(
+    "@local_tsl//tsl/mkl:build_defs.bzl",
+    "if_mkl",
+    "mkl_deps",
 )
 
 # Description:
@@ -3603,6 +3603,7 @@ cc_library(
     deps = if_cuda_or_rocm([
         "@com_google_absl//absl/container:flat_hash_map",
         "@local_xla//xla:status_macros",
+        "@local_xla//xla:xla_data_proto_cc",
         "@local_xla//xla/stream_executor/cuda:cublas_plugin",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",

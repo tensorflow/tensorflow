@@ -437,7 +437,7 @@ TEST(XplaneUtilsTest, TestAggregateXPlanes) {
               IgnoringRepeatedFieldOrdering(EqualsProto(
                   R"pb(lines {
                          id: 1
-                         name: "TensorFlow Ops"
+                         name: "Framework Ops"
                          events {
                            metadata_id: 1
                            duration_ps: 9000

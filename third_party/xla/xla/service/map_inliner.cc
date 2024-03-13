@@ -46,7 +46,7 @@ class MapInlinerVisitor : public DfsHloVisitorWithDefault {
   Status HandleMap(HloInstruction* map) override;
 
   // Runs the visitor on a computation.
-  StatusOr<bool> Run(HloComputation* computation);
+  absl::StatusOr<bool> Run(HloComputation* computation);
 
  private:
   // Current HloComputation instance the MapInlinerVisitor is traversing.
@@ -56,7 +56,7 @@ class MapInlinerVisitor : public DfsHloVisitorWithDefault {
   bool changed_ = false;
 };
 
-StatusOr<bool> MapInlinerVisitor::Run(HloComputation* computation) {
+absl::StatusOr<bool> MapInlinerVisitor::Run(HloComputation* computation) {
   changed_ = false;
   computation_ = computation;
   TF_RETURN_IF_ERROR(computation->root_instruction()->Accept(this));
@@ -110,7 +110,7 @@ Status MapInlinerVisitor::HandleMap(HloInstruction* map) {
   return OkStatus();
 }
 
-StatusOr<bool> MapInliner::Run(
+absl::StatusOr<bool> MapInliner::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   MapInlinerVisitor visitor(/*computation=*/nullptr);

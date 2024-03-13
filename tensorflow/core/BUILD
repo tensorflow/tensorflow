@@ -108,7 +108,7 @@ load(
     "cc_library",
 )
 load(
-    "//third_party/mkl:build_defs.bzl",
+    "@local_tsl//tsl/mkl:build_defs.bzl",
     "if_mkl",
 )
 load("@local_config_tensorrt//:build_defs.bzl", "if_tensorrt")
@@ -131,7 +131,7 @@ package_group(
     packages = [
         "//learning/freud/topic_models/tensorflow/...",
         "//learning/infra/mira/...",
-        "//perftools/accelerators/xprof/api/...",
+        "//perftools/accelerators/xprof/...",
         "//quality/webanswers/brain/tokenization/custom_tf_ops/kernels/...",
         "//smartass/brain/server/...",
     ],
@@ -1027,6 +1027,7 @@ cc_library(
         "//tensorflow/core:mobile_additional_lib_deps",
         "//tensorflow/core/platform:resource",
         "//tensorflow/core/util:stats_calculator_portable",
+        "@local_xla//xla:bazel_issue_21519",
     ] + tf_portable_proto_lib() + tf_portable_deps_no_runtime(),
     alwayslink = 1,
 )
@@ -1054,13 +1055,13 @@ cc_library(
 #     ],
 #     visibility = ["//visibility:public"],
 #     deps = [
+#         ":mobile_additional_lib_deps",
 #         "@com_google_absl//absl/algorithm:container",
 #         "@com_google_absl//absl/base",
 #         "@com_google_absl//absl/meta:type_traits",
 #         "@com_google_absl//absl/status:statusor",
 #         "@com_google_absl//absl/strings",
 #         "@com_google_absl//absl/types:optional",
-#         "//tensorflow/core:mobile_additional_lib_deps",
 #         "//tensorflow/core/platform:resource",
 #         "//tensorflow/core/util:managed_stack_trace",
 #         "//tensorflow/core/util:stats_calculator_portable",
@@ -1098,7 +1099,7 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":portable_tensorflow_lib_lite",
-        "//tensorflow/core:protos_all_cc",
+        ":protos_all_cc",
         "//tensorflow/core/kernels:portable_tensorflow_kernels",
         "@com_google_protobuf//:protobuf",
         "@eigen_archive//:eigen3",
@@ -1464,7 +1465,7 @@ cc_library(
         "//tensorflow/core/profiler/protobuf:xplane_proto_cc_impl",
         "//tensorflow/core/protobuf:autotuning_proto_cc_impl",
         "//tensorflow/core/protobuf:conv_autotuning_proto_cc_impl",
-        "//tensorflow/core:protos_all_cc_impl",
+        ":protos_all_cc_impl",
         "@local_xla//xla:autotune_results_proto_cc_impl",
         "@local_xla//xla:autotuning_proto_cc_impl",
         "@local_tsl//tsl/profiler/protobuf:profiler_options_proto_cc_impl",
@@ -1908,9 +1909,9 @@ tf_cc_tests(
         "//tensorflow/core/lib/monitoring:test_utils_test.cc",
     ],
     deps = [
+        ":protos_all_cc",
         ":test",
         ":test_main",
-        "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/lib/monitoring:cell_reader",
         "//tensorflow/core/lib/monitoring:counter",
         "//tensorflow/core/lib/monitoring:gauge",

@@ -29,6 +29,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/types.pb.h"
+#include "tsl/platform/criticality.h"
 
 namespace tensorflow {
 namespace serving {
@@ -36,6 +37,58 @@ namespace {
 
 using ::testing::Pair;
 using ::testing::UnorderedElementsAre;
+
+TEST(BatchTaskCriticalityTest, CriticalityDefaultsToCritical) {
+  BatchResourceBase::BatchTask batch_task;
+  EXPECT_EQ(batch_task.criticality(), tsl::criticality::Criticality::kCritical);
+}
+
+#if defined(PLATFORM_GOOGLE)
+TEST(BatchTaskCriticalityTest, CriticalitySuccessfullyPropagated) {
+  std::vector<BatchResourceBase::BatchTask> batch_tasks;
+  // Tasks created with the scoped criticalities must have proper criticalities
+  // set.
+  {
+    tsl::criticality::ScopedCriticality scoped_criticality(
+        tsl::criticality::Criticality::kCriticalPlus);
+    ASSERT_EQ(tsl::criticality::GetCriticality(),
+              tsl::criticality::Criticality::kCriticalPlus);
+    batch_tasks.push_back(BatchResourceBase::BatchTask());
+  }
+  {
+    tsl::criticality::ScopedCriticality scoped_criticality(
+        tsl::criticality::Criticality::kCritical);
+    ASSERT_EQ(tsl::criticality::GetCriticality(),
+              tsl::criticality::Criticality::kCritical);
+    batch_tasks.push_back(BatchResourceBase::BatchTask());
+  }
+  {
+    tsl::criticality::ScopedCriticality scoped_criticality(
+        tsl::criticality::Criticality::kSheddablePlus);
+    ASSERT_EQ(tsl::criticality::GetCriticality(),
+              tsl::criticality::Criticality::kSheddablePlus);
+    batch_tasks.push_back(BatchResourceBase::BatchTask());
+  }
+  {
+    tsl::criticality::ScopedCriticality scoped_criticality(
+        tsl::criticality::Criticality::kSheddable);
+    ASSERT_EQ(tsl::criticality::GetCriticality(),
+              tsl::criticality::Criticality::kSheddable);
+    batch_tasks.push_back(BatchResourceBase::BatchTask());
+  }
+  batch_tasks.push_back(BatchResourceBase::BatchTask());
+  EXPECT_EQ(batch_tasks[0].criticality(),
+            tsl::criticality::Criticality::kCriticalPlus);
+  EXPECT_EQ(batch_tasks[1].criticality(),
+            tsl::criticality::Criticality::kCritical);
+  EXPECT_EQ(batch_tasks[2].criticality(),
+            tsl::criticality::Criticality::kSheddablePlus);
+  EXPECT_EQ(batch_tasks[3].criticality(),
+            tsl::criticality::Criticality::kSheddable);
+  EXPECT_EQ(batch_tasks[4].criticality(),
+            tsl::criticality::Criticality::kCritical);
+}
+#endif
 
 class TestTpuCostMeasurement : public CostMeasurement {
  public:

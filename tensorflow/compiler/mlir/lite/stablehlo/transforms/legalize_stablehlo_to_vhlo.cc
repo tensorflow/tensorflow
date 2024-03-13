@@ -304,8 +304,6 @@ struct LegalizeVhloToStablehloPass
     //       VHLO --> StableHLO
     //         Remove cast(tensor->vhlo) -> cast(vhlo->tensor) pattern
     if (failed(ApplyTypeConverter(module, to_vhlo_converter)) ||
-        failed(ApplyStablehloToVhloPatterns(module,
-                                            /*is_func_legal=*/false)) ||
         failed(ApplyVhloToVersionPatterns(module,
                                           stablehlo::getCurrentVersion())) ||
         failed(ApplyVhloToStablehloPatterns(module)) ||

@@ -23,6 +23,7 @@ limitations under the License.
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/test.h"
+#include "tsl/platform/criticality.h"
 
 namespace tensorflow {
 namespace serving {
@@ -46,6 +47,11 @@ class FakeTask : public BatchTask {
   FakeTask(const FakeTask&) = delete;
   void operator=(const FakeTask&) = delete;
 };
+
+TEST(TaskCriticalityTest, CriticalityDefaultsToCritical) {
+  FakeTask fake_task(0);
+  EXPECT_EQ(fake_task.criticality(), tsl::criticality::Criticality::kCritical);
+}
 
 TEST(TaskQueueTest, EmptyTaskQueue) {
   TaskQueue<FakeTask> task_queue;
@@ -172,6 +178,34 @@ TEST(TaskQueueTest, RemoveTasksFewerThanArgFromTaskQueue) {
   EXPECT_FALSE(task_queue.empty());
   EXPECT_EQ(1, task_queue.num_tasks());
   EXPECT_EQ(3, task_queue.size());
+}
+
+TEST(TaskQueueTest, RemoveAllTasksWhenArgGreaterThanTaskSize) {
+  TaskQueue<FakeTask> task_queue;
+
+  task_queue.AddTask(std::make_unique<FakeTask>(1));
+  EXPECT_FALSE(task_queue.empty());
+  EXPECT_EQ(1, task_queue.num_tasks());
+  EXPECT_EQ(1, task_queue.size());
+
+  task_queue.AddTask(std::make_unique<FakeTask>(2));
+  EXPECT_FALSE(task_queue.empty());
+  EXPECT_EQ(2, task_queue.num_tasks());
+  EXPECT_EQ(3, task_queue.size());
+
+  task_queue.AddTask(std::make_unique<FakeTask>(3));
+  EXPECT_FALSE(task_queue.empty());
+  EXPECT_EQ(3, task_queue.num_tasks());
+  EXPECT_EQ(6, task_queue.size());
+
+  // All tasks upto the size 6 shoule be remove when the size 8 is specified.
+  EXPECT_THAT(task_queue.RemoveTask(8),
+              ElementsAre(Pointee(Property(&FakeTask::size, Eq(1))),
+                          Pointee(Property(&FakeTask::size, Eq(2))),
+                          Pointee(Property(&FakeTask::size, Eq(3)))));
+  EXPECT_TRUE(task_queue.empty());
+  EXPECT_EQ(0, task_queue.num_tasks());
+  EXPECT_EQ(0, task_queue.size());
 }
 
 TEST(BatchTest, Basic) {

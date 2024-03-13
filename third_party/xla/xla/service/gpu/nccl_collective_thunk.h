@@ -160,6 +160,9 @@ class NcclCollectiveThunk : public Thunk {
 
   NcclApi* nccl_api() const { return nccl_api_; }
   std::shared_ptr<AsyncEvents> async_events() const { return async_events_; }
+  void set_async_events(std::shared_ptr<AsyncEvents> async_events) {
+    async_events_ = async_events;
+  }
 
  protected:
   virtual absl::Status RunNcclCollective(const ExecuteParams& params,

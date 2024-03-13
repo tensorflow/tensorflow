@@ -16,38 +16,54 @@ limitations under the License.
 #ifndef XLA_PYTHON_PY_EXECUTABLE_H_
 #define XLA_PYTHON_PY_EXECUTABLE_H_
 
+#include <cstddef>
+#include <cstdint>
 #include <memory>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <utility>
 #include <variant>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/types/span.h"
-#include "pybind11/gil.h"  // from @pybind11
+#include "llvm/Support/Casting.h"
+#include "third_party/nanobind/include/nanobind/nanobind.h"
+#include "xla/hlo/ir/hlo_module.h"
+#include "xla/layout.h"
+#include "xla/pjrt/exceptions.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_common.h"
+#include "xla/pjrt/pjrt_executable.h"
+#include "xla/pjrt/pjrt_future.h"
+#include "xla/python/ifrt/array.h"
+#include "xla/python/ifrt/executable.h"
 #include "xla/python/pjrt_ifrt/pjrt_executable.h"
 #include "xla/python/py_array.h"
 #include "xla/python/py_client.h"
 #include "xla/python/traceback.h"
-#include "xla/statusor.h"
+#include "tsl/concurrency/ref_count.h"
+#include "tsl/platform/status.h"
 
 namespace xla {
 
 class PyToken {
  public:
   PyToken() = default;
-  explicit PyToken(PjRtFuture<Status> future) : future_(std::move(future)) {}
+  explicit PyToken(PjRtFuture<absl::Status> future)
+      : future_(std::move(future)) {}
 
   static PyToken ReadyPyToken() {
-    return PyToken(PjRtFuture<Status>(OkStatus()));
+    return PyToken(PjRtFuture<absl::Status>(absl::OkStatus()));
   }
 
-  Status Await();
+  absl::Status Await();
 
  private:
-  PjRtFuture<Status> future_;
+  PjRtFuture<absl::Status> future_;
 };
 
 // PyShardedToken contains a PyToken for each device's execution.
@@ -55,7 +71,7 @@ class PyShardedToken {
  public:
   // Default construction creates a always-ready token.
   PyShardedToken() = default;
-  explicit PyShardedToken(std::vector<PjRtFuture<Status>> futures)
+  explicit PyShardedToken(std::vector<PjRtFuture<absl::Status>> futures)
       : futures_(std::move(futures)) {}
 
   PyToken GetPyToken(int device_id) const {
@@ -63,10 +79,10 @@ class PyShardedToken {
     return PyToken(futures_.at(device_id));
   }
 
-  Status Await();
+  absl::Status Await();
 
  private:
-  std::vector<PjRtFuture<Status>> futures_;
+  std::vector<PjRtFuture<absl::Status>> futures_;
 };
 
 class PyExecuteResults {
@@ -80,8 +96,8 @@ class PyExecuteResults {
   std::vector<std::vector<PyArray>> DisassemblePrefixIntoSingleDeviceArrays(
       size_t n);
 
-  std::vector<pybind11::object> ConsumeWithHandlers(
-      std::vector<std::variant<const PyArrayResultHandler*, pybind11::object>>
+  std::vector<nanobind::object> ConsumeWithHandlers(
+      std::vector<std::variant<const PyArrayResultHandler*, nanobind::object>>
           out_handlers);
 
   std::vector<tsl::RCReference<ifrt::Array>> Consume();
@@ -135,18 +151,18 @@ class PyLoadedExecutable
     return ifrt_loaded_executable_->SizeOfGeneratedCodeInBytes();
   }
 
-  StatusOr<CompiledMemoryStats> GetCompiledMemoryStats() const {
-    pybind11::gil_scoped_release scope;
+  absl::StatusOr<CompiledMemoryStats> GetCompiledMemoryStats() const {
+    nanobind::gil_scoped_release scope;
     return ifrt_loaded_executable_->GetCompiledMemoryStats();
   }
 
-  StatusOr<absl::flat_hash_map<std::string, PjRtValueType>> GetCostAnalysis()
-      const {
+  absl::StatusOr<absl::flat_hash_map<std::string, PjRtValueType>>
+  GetCostAnalysis() const {
     return ifrt_loaded_executable_->GetCostAnalysis();
   }
 
   void Delete() {
-    // TODO(hyeontaek): Return Status.
+    // TODO(hyeontaek): Return absl::Status.
     TF_CHECK_OK(ifrt_loaded_executable_->Delete().Await());
   }
 
@@ -156,24 +172,24 @@ class PyLoadedExecutable
   // PjRtExecutable::Execute. The result is similarly transposed back into the
   // argid,deviceid format.
   // args is [num_args x num_devices].
-  StatusOr<std::vector<std::vector<PyArray>>> ExecuteShardedOnLocalDevices(
-      absl::Span<const ExecuteShardedArg> args);
+  absl::StatusOr<std::vector<std::vector<PyArray>>>
+  ExecuteShardedOnLocalDevices(absl::Span<const ExecuteShardedArg> args);
 
-  StatusOr<std::pair<std::vector<std::vector<PyArray>>, PyShardedToken>>
+  absl::StatusOr<std::pair<std::vector<std::vector<PyArray>>, PyShardedToken>>
   ExecuteShardedOnLocalDevicesWithTokens(
       absl::Span<const ExecuteShardedArg> args);
 
-  StatusOr<PyExecuteResults> ExecuteSharded(std::vector<ExecuteShardedArg> args,
-                                            bool with_tokens);
+  absl::StatusOr<PyExecuteResults> ExecuteSharded(
+      std::vector<ExecuteShardedArg> args, bool with_tokens);
 
-  StatusOr<std::vector<std::shared_ptr<HloModule>>> HloModules() const;
+  absl::StatusOr<std::vector<std::shared_ptr<HloModule>>> HloModules() const;
 
-  StatusOr<std::vector<std::vector<absl::string_view>>> GetOutputMemoryKinds()
-      const;
+  absl::StatusOr<std::vector<std::vector<std::string_view>>>
+  GetOutputMemoryKinds() const;
 
-  StatusOr<std::vector<Layout>> GetParameterLayouts() const;
+  absl::StatusOr<std::vector<Layout>> GetParameterLayouts() const;
 
-  StatusOr<std::vector<Layout>> GetOutputLayouts() const;
+  absl::StatusOr<std::vector<Layout>> GetOutputLayouts() const;
 
   std::optional<std::vector<OpSharding>> GetParameterShardings() const;
 
@@ -210,7 +226,7 @@ class PyLoadedExecutable
   const std::optional<std::string>& fingerprint() const { return fingerprint_; }
 
   // Keep `obj` alive as long as PyLoadedExecutable.
-  void KeepAlive(pybind11::object obj);
+  void KeepAlive(nanobind::object obj);
 
  private:
   friend class PyClient;
@@ -228,7 +244,7 @@ class PyLoadedExecutable
   ExecuteOptions options_;
 
   // Python objects to keep alive as requested by user.
-  std::vector<pybind11::object> keepalives_;
+  std::vector<nanobind::object> keepalives_;
 
   // Doubly-linked list of all executables known to the client. Protected by the
   // GIL.

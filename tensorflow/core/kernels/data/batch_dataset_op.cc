@@ -15,6 +15,7 @@ limitations under the License.
 #include "tensorflow/core/kernels/data/batch_dataset_op.h"
 
 #include <algorithm>
+#include <cstdlib>
 #include <functional>
 #include <optional>
 #include <utility>
@@ -312,10 +313,10 @@ class BatchDatasetOp::Dataset : public DatasetBase {
     IndexMapperFn GetIndexMapper(IndexMapperFn parent_index_mapper) const {
       int64_t batch_size = dataset()->batch_size_;
       return [parent_index_mapper,
-              batch_size](int64_t element_position) -> int64_t {
-        int64_t batch_element_position = element_position / batch_size;
-        int64_t input_element_offset = element_position % batch_size;
-        int64_t shuffled_element_position =
+              batch_size](size_t element_position) -> size_t {
+        size_t batch_element_position = element_position / batch_size;
+        size_t input_element_offset = element_position % batch_size;
+        size_t shuffled_element_position =
             parent_index_mapper(batch_element_position);
         return shuffled_element_position * batch_size + input_element_offset;
       };

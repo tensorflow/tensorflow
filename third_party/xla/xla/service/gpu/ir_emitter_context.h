@@ -32,11 +32,23 @@ limitations under the License.
 #include "xla/service/gpu/gpu_executable.h"
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/kernel_reuse_cache.h"
+#include "xla/service/gpu/nccl_collective_thunk.h"
 #include "xla/service/name_uniquer.h"
 #include "xla/stream_executor/device_description.h"
 
 namespace xla {
 namespace gpu {
+// Maps async start ops to their async events so we can emit done thunk
+// sharing events with corresponding start thunk. Async events may be null if
+// the start op is degenerate (so not emitted). For Send and Recv, this maps
+// <isRecv, channel_id> to the asyn events, as multiple Recv and Recv-done or
+// multiple Send and Send-done may map to the same async events and a Recv-done
+// or Send-done operand may not be its corresponding Recv or Send, when a
+// Send-Recv chain inside a loop is pipelined.
+using CollectivesAsyncEvents =
+    absl::flat_hash_map<std::variant<mlir::Operation*, const HloInstruction*,
+                                     std::pair<bool, uint64_t>>,
+                        std::shared_ptr<NcclCollectiveThunk::AsyncEvents>>;
 
 // IrEmitterContext encapsulates common (mutable and immutable) data structures
 // used by both IrEmitterNested and IrEmitterUnnested, such as the buffer
@@ -99,6 +111,9 @@ class IrEmitterContext {
   }
 
   KernelReuseCache& kernel_cache() { return kernel_cache_; }
+  CollectivesAsyncEvents& collectives_async_events() {
+    return collectives_async_events_;
+  }
 
   bool emit_kernels() const { return emit_kernels_; }
 
@@ -112,6 +127,8 @@ class IrEmitterContext {
   NameUniquer name_uniquer_;
   std::vector<GpuExecutable::ConstantInfo> constants_;
   KernelReuseCache kernel_cache_;
+
+  CollectivesAsyncEvents collectives_async_events_;
 
   // We should not emit kernels when loading thunks from a compilation result.
   const bool emit_kernels_;

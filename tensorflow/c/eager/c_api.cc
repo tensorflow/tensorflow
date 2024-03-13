@@ -38,6 +38,7 @@ limitations under the License.
 #include "tensorflow/c/tf_buffer_internal.h"
 #include "tensorflow/c/tf_status.h"
 #include "tensorflow/c/tf_tensor_internal.h"
+#include "xla/tsl/c/tsl_status_internal.h"
 #include "tensorflow/core/common_runtime/copy_tensor.h"
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/device_factory.h"
@@ -64,7 +65,6 @@ limitations under the License.
 #include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/core/protobuf/error_codes.pb.h"
 #include "tensorflow/core/public/version.h"
-#include "tsl/c/tsl_status_internal.h"
 
 #if !defined(IS_MOBILE_PLATFORM)
 #include "tensorflow/core/common_runtime/eager/context_distributed_manager.h"

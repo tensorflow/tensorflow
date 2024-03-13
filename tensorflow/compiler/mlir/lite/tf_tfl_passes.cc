@@ -155,6 +155,8 @@ void AddPreQuantizationStableHloToTfPasses(
       mlir::mhlo::createChloLegalizeToHloBasisOpsPass());
   pass_manager.addNestedPass<mlir::func::FuncOp>(
       mlir::mhlo::createChloLegalizeToHloPass());
+  pass_manager.addNestedPass<mlir::func::FuncOp>(
+      mlir::mhlo::createShapeLegalizeToHloPass());
   pass_manager.addPass(mlir::mhlo::createHloLegalizeToStablehloPass());
 
   // The following two passes find specific uniform quantization patterns in
@@ -219,12 +221,6 @@ void AddPostQuantizationStableHloToTfPasses(
     const mlir::TFL::PassConfig& pass_config,
     mlir::OpPassManager& pass_manager) {
   if (pass_config.enable_stablehlo_quantizer) {
-    // StableHLO Quantizer emits quantized StableHLO module serialized within a
-    // XlaCallModule op. Add this pass to extract StableHLO module from the
-    // XlaCallModuleOp.
-    pass_manager.addPass(
-        mlir::odml::CreateLegalizeTFXlaCallModuleToStablehloPass());
-
     // Convert StableHLO -> TFLite for fused quantization patterns early so that
     // quantized types do not go through the TF dialect which doesn't support
     // quantized types.
@@ -455,6 +451,7 @@ void AddPostVariableFreezingTFToTFLConversionPasses(
       pass_manager->addNestedPass<mlir::func::FuncOp>(
           mlir::TFL::CreateOptimizeBatchMatmulPass());
     }
+    pass_manager->addPass(mlir::TFL::CreatePushTransposeThroughEwisePass());
     pass_manager->addNestedPass<mlir::func::FuncOp>(
         mlir::TFL::CreateOptimizePass(/*enable_canonicalization=*/true,
                                       toco_flags.disable_fuse_mul_and_fc()));

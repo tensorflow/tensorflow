@@ -57,6 +57,7 @@ limitations under the License.
 #include "xla/service/memory_space_assignment/allocation.h"
 #include "xla/service/memory_space_assignment/cost_analysis.h"
 #include "xla/service/memory_space_assignment/memory_space_assignment.pb.h"
+#include "xla/service/memory_space_assignment/options.h"
 #include "xla/service/memory_space_assignment/prefetch_interval_picker.h"
 #include "xla/service/memory_space_assignment/repacking.h"
 #include "xla/service/memory_space_assignment/slice.h"
@@ -103,7 +104,7 @@ int64_t SizeFunction(const BufferValue& value) {
   return ShapeSize(value.shape());
 }
 
-int64_t ReservedScopedMemoryFunction(
+int64_t ReservedScopedMemoryFn(
     const HloInstruction* instruction,
     const absl::flat_hash_set<std::pair<int, ShapeIndex>>&
         operands_in_alternate_memory,
@@ -123,24 +124,24 @@ StatusOr<MessageType> ParseTextProto(const std::string& text_proto) {
   return parsed_proto;
 }
 
-class TestBufferIntervalComparator
-    : public MemorySpaceAssignment::BufferIntervalComparator {
+class TestBufferIntervalComparator : public BufferIntervalComparator {
  public:
   explicit TestBufferIntervalComparator(
       GlobalDecreasingSizeBestFitHeap<HloValue>::BufferIntervalCompare
           compare_method)
-      : MemorySpaceAssignment::BufferIntervalComparator(),
-        compare_method_(compare_method) {}
+      : BufferIntervalComparator(), compare_method_(compare_method) {}
 
   ~TestBufferIntervalComparator() override = default;
 
   std::string DescribeComparisonCriteria() const override {
     return "internal to test";
   }
-  std::string CriteriaToString(const BufferInterval& buffer_interval) override {
+  std::string CriteriaToString(
+      const MsaBufferInterval& buffer_interval) override {
     return "internal to test";
   }
-  bool LessThan(const BufferInterval& lhs, const BufferInterval& rhs) override {
+  bool LessThan(const MsaBufferInterval& lhs,
+                const MsaBufferInterval& rhs) override {
     return compare_method_(lhs, rhs);
   }
 
@@ -243,8 +244,8 @@ class MemorySpaceAssignmentTestBase : public HloTestBase {
         *cost_analysis, &cache_, msa_sort_order_overrides);
     return AssignMemorySpace(
         module, memory_space_options,
-        [&comparator](const MemorySpaceAssignment::BufferInterval& lhs,
-                      const MemorySpaceAssignment::BufferInterval& rhs) {
+        [&comparator](const MsaBufferInterval& lhs,
+                      const MsaBufferInterval& rhs) {
           return comparator.LessThan(lhs, rhs);
         },
         &prefetch_interval_picker);
@@ -264,8 +265,7 @@ class MemorySpaceAssignmentTestBase : public HloTestBase {
 
   std::unique_ptr<PresetAssignments> AssignMemorySpace(
       HloModule* module, std::optional<Options> options_override,
-      std::optional<MemorySpaceAssignment::BufferIntervalCompare>
-          buffer_interval_compare,
+      std::optional<MsaBufferIntervalCompare> buffer_interval_compare,
       PrefetchIntervalPicker* prefetch_interval_picker) {
     auto status_or = AssignMemorySpaceAndReturnStatus(module, options_override,
                                                       buffer_interval_compare,
@@ -276,8 +276,7 @@ class MemorySpaceAssignmentTestBase : public HloTestBase {
 
   StatusOr<std::unique_ptr<PresetAssignments>> AssignMemorySpaceAndReturnStatus(
       HloModule* module, std::optional<Options> options_override,
-      std::optional<MemorySpaceAssignment::BufferIntervalCompare>
-          buffer_interval_compare,
+      std::optional<MsaBufferIntervalCompare> buffer_interval_compare,
       PrefetchIntervalPicker* prefetch_interval_picker) {
     auto size_fn = [](const BufferValue& buffer) {
       return ShapeUtil::ByteSizeOf(buffer.shape(), /*pointer_size=*/8);
@@ -2250,9 +2249,8 @@ TEST_P(MemorySpaceAssignmentTest, WhileAllocationBug) {
   }
   )";
 
-  MemorySpaceAssignment::BufferIntervalCompare buffer_interval_compare =
-      [](const MemorySpaceAssignment::BufferInterval& a,
-         const MemorySpaceAssignment::BufferInterval& b) {
+  MsaBufferIntervalCompare buffer_interval_compare =
+      [](const MsaBufferInterval& a, const MsaBufferInterval& b) {
         bool a_is_mul =
             a.buffer->defining_instruction()->opcode() == HloOpcode::kMultiply;
         bool b_is_mul =
@@ -5023,9 +5021,8 @@ TEST_P(MemorySpaceAssignmentTest, PendingChunkMemoryCorruptionBug) {
   }
   )";
 
-  MemorySpaceAssignment::BufferIntervalCompare buffer_interval_compare =
-      [](const MemorySpaceAssignment::BufferInterval& a,
-         const MemorySpaceAssignment::BufferInterval& b) {
+  MsaBufferIntervalCompare buffer_interval_compare =
+      [](const MsaBufferInterval& a, const MsaBufferInterval& b) {
         auto get_opcode_priority = [](const HloOpcode& opcode) {
           switch (opcode) {
             case HloOpcode::kSin:
@@ -5122,9 +5119,8 @@ TEST_P(MemorySpaceAssignmentTest, DisallowedUseBug) {
   }
   )";
 
-  MemorySpaceAssignment::BufferIntervalCompare buffer_interval_compare =
-      [](const MemorySpaceAssignment::BufferInterval& a,
-         const MemorySpaceAssignment::BufferInterval& b) {
+  MsaBufferIntervalCompare buffer_interval_compare =
+      [](const MsaBufferInterval& a, const MsaBufferInterval& b) {
         auto get_opcode_priority = [](const HloOpcode& opcode) {
           switch (opcode) {
             case HloOpcode::kSin:
@@ -6003,9 +5999,8 @@ TEST_P(MemorySpaceAssignmentTest, PrecoloredBuffer) {
   }
   )";
 
-  MemorySpaceAssignment::BufferIntervalCompare buffer_interval_compare =
-      [](const MemorySpaceAssignment::BufferInterval& a,
-         const MemorySpaceAssignment::BufferInterval& b) {
+  MsaBufferIntervalCompare buffer_interval_compare =
+      [](const MsaBufferInterval& a, const MsaBufferInterval& b) {
         auto get_opcode_priority = [](const HloOpcode& opcode) {
           switch (opcode) {
             case HloOpcode::kNegate:
@@ -6080,9 +6075,8 @@ TEST_P(MemorySpaceAssignmentTest, PrecoloredBufferOOM) {
   }
   )";
 
-  MemorySpaceAssignment::BufferIntervalCompare buffer_interval_compare =
-      [](const MemorySpaceAssignment::BufferInterval& a,
-         const MemorySpaceAssignment::BufferInterval& b) {
+  MsaBufferIntervalCompare buffer_interval_compare =
+      [](const MsaBufferInterval& a, const MsaBufferInterval& b) {
         auto get_opcode_priority = [](const HloOpcode& opcode) {
           switch (opcode) {
             case HloOpcode::kNegate:
@@ -6821,9 +6815,8 @@ TEST_P(MemorySpaceAssignmentTest, Repack) {
   }
   )";
 
-  MemorySpaceAssignment::BufferIntervalCompare buffer_interval_compare =
-      [](const MemorySpaceAssignment::BufferInterval& a,
-         const MemorySpaceAssignment::BufferInterval& b) {
+  MsaBufferIntervalCompare buffer_interval_compare =
+      [](const MsaBufferInterval& a, const MsaBufferInterval& b) {
         auto get_opcode_priority = [](const HloOpcode& opcode) {
           switch (opcode) {
             case HloOpcode::kSin:
@@ -6928,9 +6921,8 @@ TEST_P(MemorySpaceAssignmentTest, RepackExportsAliasedOffsets) {
   }
   )";
 
-  MemorySpaceAssignment::BufferIntervalCompare buffer_interval_compare =
-      [](const MemorySpaceAssignment::BufferInterval& a,
-         const MemorySpaceAssignment::BufferInterval& b) {
+  MsaBufferIntervalCompare buffer_interval_compare =
+      [](const MsaBufferInterval& a, const MsaBufferInterval& b) {
         auto get_opcode_priority = [](const HloOpcode& opcode) {
           switch (opcode) {
             case HloOpcode::kSin:
@@ -7663,9 +7655,8 @@ ENTRY entry {
 }
   )";
 
-  MemorySpaceAssignment::BufferIntervalCompare buffer_interval_compare =
-      [](const MemorySpaceAssignment::BufferInterval& a,
-         const MemorySpaceAssignment::BufferInterval& b) {
+  MsaBufferIntervalCompare buffer_interval_compare =
+      [](const MsaBufferInterval& a, const MsaBufferInterval& b) {
         auto get_inst_priority = [](const HloInstruction* instruction) {
           if (instruction->name() == "param2") {
             return 0;
@@ -9530,10 +9521,9 @@ ENTRY main {
           /*mem_size_bytes=*/options.max_size_in_bytes));
 
   // p0 has the highest priority, followed by p1, followed by everything else.
-  MemorySpaceAssignment::BufferIntervalCompare compare =
-      [](const MemorySpaceAssignment::BufferInterval& lhs,
-         const MemorySpaceAssignment::BufferInterval& rhs) -> bool {
-    auto lookup = [](const MemorySpaceAssignment::BufferInterval& x) {
+  MsaBufferIntervalCompare compare = [](const MsaBufferInterval& lhs,
+                                        const MsaBufferInterval& rhs) -> bool {
+    auto lookup = [](const MsaBufferInterval& x) {
       // An arbitrary value that is greater than that for p0 and p1.
       int priority = 100;
       if (x.buffer->instruction()->name() == "p0") {
@@ -9643,8 +9633,8 @@ class MemoryBoundLoopOptimizerTest : public HloTestBase {
   StatusOr<MemoryBoundLoopOptimizer*> CreateOptimizer(
       int loop_start, int loop_end, const HloModule* module,
       uint64_t alternate_memory_size = 256,
-      const MemorySpaceAssignment::ReservedScopedMemoryFunction&
-          reserved_scoped_memory_fn = ReservedScopedMemoryFunction) {
+      const ReservedScopedMemoryFunction& reserved_scoped_memory_fn =
+          ReservedScopedMemoryFn) {
     TF_RETURN_IF_ERROR(Initialize(module, alternate_memory_size));
     MemoryBoundLoopOptimizerOptions optimizer_options;
     optimizer_options.set_enabled(true);
@@ -9662,8 +9652,8 @@ class MemoryBoundLoopOptimizerTest : public HloTestBase {
   StatusOr<std::unique_ptr<HloModule>> ParseAndCreateOptimizer(
       absl::string_view hlo_loop_str, uint64_t alternate_memory_size,
       int& loop_start_idx, MemoryBoundLoopOptimizer** optimizer,
-      const MemorySpaceAssignment::ReservedScopedMemoryFunction&
-          reserved_scoped_memory_fn = ReservedScopedMemoryFunction) {
+      const ReservedScopedMemoryFunction& reserved_scoped_memory_fn =
+          ReservedScopedMemoryFn) {
     int loop_end_idx;
     TF_ASSIGN_OR_RETURN(
         std::string module_str,
@@ -12499,10 +12489,9 @@ ENTRY main {
 
   // Force MSA to prefer prefetching (in order) p1, p2, p3, p4, and then
   // anything else.
-  MemorySpaceAssignment::BufferIntervalCompare buffer_interval_compare =
-      [](const MemorySpaceAssignment::BufferInterval& lhs,
-         const MemorySpaceAssignment::BufferInterval& rhs) {
-        auto lookup = [](const MemorySpaceAssignment::BufferInterval& x) {
+  MsaBufferIntervalCompare buffer_interval_compare =
+      [](const MsaBufferInterval& lhs, const MsaBufferInterval& rhs) {
+        auto lookup = [](const MsaBufferInterval& x) {
           // An arbitrary value that is greater than that for p1, p2, p3, and
           // p4.
           int priority = 100;
@@ -12744,10 +12733,9 @@ ENTRY main {
   // Configure MSA.
   SetupProposeSlicesToExpect2SlicesOfF32x8x8();
   // Force MSA to prefer prefetching 'prefetch'.
-  MemorySpaceAssignment::BufferIntervalCompare buffer_interval_compare =
-      [](const MemorySpaceAssignment::BufferInterval& lhs,
-         const MemorySpaceAssignment::BufferInterval& rhs) {
-        auto lookup = [](const MemorySpaceAssignment::BufferInterval& x) {
+  MsaBufferIntervalCompare buffer_interval_compare =
+      [](const MsaBufferInterval& lhs, const MsaBufferInterval& rhs) {
+        auto lookup = [](const MsaBufferInterval& x) {
           // An arbitrary value that is greater than that used for 'prefetch'.
           int priority = 100;
           if (x.buffer->instruction()->name() == "prefetch") {

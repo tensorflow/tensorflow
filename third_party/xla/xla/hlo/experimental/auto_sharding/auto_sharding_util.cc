@@ -901,7 +901,8 @@ void RemoveDuplicatedStrategy(std::unique_ptr<StrategyGroup>& strategy_group) {
     absl::flat_hash_set<std::string> added;
     size_t num_skipped_due_to_infinity_costs = 0;
     for (size_t i = 0; i < strategy_group->strategies.size(); ++i) {
-      if (AllInfinityCosts(strategy_group->strategies[i].resharding_costs)) {
+      if (AllInfinityCosts(
+              strategy_group->strategies[i].communication_resharding_costs)) {
         num_skipped_due_to_infinity_costs++;
         continue;
       }

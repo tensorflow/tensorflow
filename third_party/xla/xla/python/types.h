@@ -16,6 +16,8 @@ limitations under the License.
 #ifndef XLA_PYTHON_TYPES_H_
 #define XLA_PYTHON_TYPES_H_
 
+#include <Python.h>
+
 #include <cstdint>
 #include <memory>
 #include <optional>
@@ -55,41 +57,41 @@ absl::StatusOr<nb_dtype> PrimitiveTypeToNbDtype(PrimitiveType type);
 absl::StatusOr<pybind11::dtype> IfrtDtypeToDtype(ifrt::DType dtype);
 absl::StatusOr<nb_dtype> IfrtDtypeToNbDtype(ifrt::DType dtype);
 
-StatusOr<ifrt::DType> DtypeToIfRtDType(pybind11::dtype dtype);
+StatusOr<ifrt::DType> DtypeToIfRtDType(nb_dtype dtype);
 
 // Returns a Python buffer protocol (PEP 3118) format descriptor string for
 // `type`. Return nullptr if there is no suitable choice of format string.
 const char* PEP3118FormatDescriptorForPrimitiveType(PrimitiveType type);
 
 // Returns a numpy-style typestr for `type`, as returned by np.dtype(...).str
-absl::StatusOr<pybind11::str> TypeDescriptorForPrimitiveType(
+absl::StatusOr<nanobind::str> TypeDescriptorForPrimitiveType(
     PrimitiveType type);
 
 struct NumpyScalarTypes {
-  pybind11::object np_bool;
-  pybind11::object np_int4;
-  pybind11::object np_int8;
-  pybind11::object np_int16;
-  pybind11::object np_int32;
-  pybind11::object np_int64;
-  pybind11::object np_uint4;
-  pybind11::object np_uint8;
-  pybind11::object np_uint16;
-  pybind11::object np_uint32;
-  pybind11::object np_uint64;
-  pybind11::object np_bfloat16;
-  pybind11::object np_float8_e4m3fn;
-  pybind11::object np_float8_e4m3b11fnuz;
-  pybind11::object np_float8_e4m3fnuz;
-  pybind11::object np_float8_e5m2;
-  pybind11::object np_float8_e5m2fnuz;
-  pybind11::object np_float16;
-  pybind11::object np_float32;
-  pybind11::object np_float64;
-  pybind11::object np_complex64;
-  pybind11::object np_complex128;
-  pybind11::object np_longlong;
-  pybind11::object np_intc;
+  nanobind::object np_bool;
+  nanobind::object np_int4;
+  nanobind::object np_int8;
+  nanobind::object np_int16;
+  nanobind::object np_int32;
+  nanobind::object np_int64;
+  nanobind::object np_uint4;
+  nanobind::object np_uint8;
+  nanobind::object np_uint16;
+  nanobind::object np_uint32;
+  nanobind::object np_uint64;
+  nanobind::object np_bfloat16;
+  nanobind::object np_float8_e4m3fn;
+  nanobind::object np_float8_e4m3b11fnuz;
+  nanobind::object np_float8_e4m3fnuz;
+  nanobind::object np_float8_e5m2;
+  nanobind::object np_float8_e5m2fnuz;
+  nanobind::object np_float16;
+  nanobind::object np_float32;
+  nanobind::object np_float64;
+  nanobind::object np_complex64;
+  nanobind::object np_complex128;
+  nanobind::object np_longlong;
+  nanobind::object np_intc;
 };
 const NumpyScalarTypes& GetNumpyScalarTypes();
 
@@ -138,6 +140,10 @@ nanobind::tuple SpanToNbTuple(absl::Span<T const> xs) {
   }
   return out;
 }
+
+// Converts a sequence of Python objects to a Python tuple, stealing the
+// references to the objects.
+nanobind::tuple MutableSpanToNbTuple(absl::Span<nanobind::object> xs);
 
 // Converts a Python iterable/sequence of T to std::vector<T>
 template <typename T>

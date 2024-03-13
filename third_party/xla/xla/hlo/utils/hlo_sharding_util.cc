@@ -216,7 +216,7 @@ static bool IsLeafShardingMoreSpecific(const HloSharding& lhs,
   DCHECK(!lhs.IsTuple());
   DCHECK(!rhs.IsTuple());
   // Manual sharding is more specific than tile maximal sharding.
-  if (lhs.IsManualLeaf() & rhs.IsTileMaximalLeaf()) {
+  if (lhs.IsManualLeaf() && rhs.IsTileMaximalLeaf()) {
     return true;
   }
   if (lhs.IsManualLeaf() || rhs.IsManualLeaf()) {

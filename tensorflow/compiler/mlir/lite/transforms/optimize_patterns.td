@@ -740,17 +740,24 @@ def ConvertTrasposeReshapeTransposeToReshape : Pat<
   [(IsPrefixTruncatedShapeEqualTo $first_transpose, $middle_reshape),
    (IsPrefixTruncatedShapeEqualTo $input, $second_transpose)]>;
 
+class AllUsersAreAddOpsAndCanFuseWith<string op_to_fuse_with> : Constraint<CPred<
+  "llvm::all_of($0.getUsers(), [&](Operation *user) {"
+  "  if(!llvm::isa<TFL::AddOp>(user)) return false;"
+  "  if(!user->getOperand(0).getDefiningOp<"#op_to_fuse_with#">()) return false;"
+  "  return true;"
+  "})">, "all users are AddOp and can fuse with "#op_to_fuse_with#"">;
+
 // TODO(b/294385379): This pattern only appears when we convert
 // from shlo due to differences in broadcasting behavior
 def UndoBroadcastFullyConnectedBiasAdd : Pat<
-  (TFL_AddOp $lhs, (Arith_ConstantOp:$const_op $bias), TFL_AF_None),
+  (TFL_AddOp $lhs, (Arith_ConstantOp:$const_value $bias), TFL_AF_None),
   (TFL_AddOp $lhs, (Arith_ConstantOp (FlattenTo1D $bias)), TFL_AF_None),
   [(AnyStaticShapeTensor $lhs),
    (IsLastDimEqualToNumElements $bias, $bias),
-   (HasOneUse $const_op),
    (HasRankAtMost<4> $bias),
    (HasRankAtLeast<2> $bias),
-   (IsDefinedByFullyConnectedOp $lhs)]>;
+   (IsDefinedByFullyConnectedOp $lhs),
+   (AllUsersAreAddOpsAndCanFuseWith<"TFL::FullyConnectedOp"> $const_value)]>;
 
 // TODO(b/294385379): This pattern only appears when we convert
 // from shlo due to differences in broadcasting behavior.

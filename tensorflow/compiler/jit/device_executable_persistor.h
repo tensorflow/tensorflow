@@ -121,7 +121,7 @@ class DeviceExecutablePersistor {
       bool compiled_using_pjrt) const;
 
   // Serializes the signature and its corresponding entry to a proto message.
-  StatusOr<XlaSerializedCacheEntry> SerializeEntry(
+  absl::StatusOr<XlaSerializedCacheEntry> SerializeEntry(
       uint64 signature_hash, const XlaCompiler::Options& options,
       const XlaCompiler::CompilationResult& compilation_result,
       const ExecutableType& executable,
@@ -134,8 +134,8 @@ class DeviceExecutablePersistor {
   // Tries to read a cache entry given a `key` by searching the file directory
   // supplied during the construction of this class. Returns std::nullopt if no
   // cache entry is found.
-  StatusOr<std::optional<XlaSerializedCacheEntry>> TryToReadSerializedEntry(
-      const XlaSerializedCacheKey& key) const;
+  absl::StatusOr<std::optional<XlaSerializedCacheEntry>>
+  TryToReadSerializedEntry(const XlaSerializedCacheKey& key) const;
 
   // Checks if the loaded `entry` matches the expected `key` and `hlo_module`.
   Status VerifyLoadedCacheEntry(const XlaSerializedCacheKey& key,
@@ -226,13 +226,13 @@ DeviceExecutablePersistor<xla::PjRtLoadedExecutable, xla::PjRtClient>::
 }
 
 template <typename ExecutableType, typename ClientType>
-StatusOr<std::optional<XlaSerializedCacheEntry>>
+absl::StatusOr<std::optional<XlaSerializedCacheEntry>>
 DeviceExecutablePersistor<ExecutableType, ClientType>::TryToReadSerializedEntry(
     const XlaSerializedCacheKey& key) const {
   Env* env = Env::Default();
   const std::string file_path = GetFilePath(key);
   if (!env->FileExists(file_path).ok()) {
-    return StatusOr<std::optional<XlaSerializedCacheEntry>>(std::nullopt);
+    return absl::StatusOr<std::optional<XlaSerializedCacheEntry>>(std::nullopt);
   }
 
   XlaSerializedCacheEntry entry;
@@ -310,7 +310,7 @@ DeviceExecutablePersistor<ExecutableType, ClientType>::SaveSerializedEntry(
 }
 
 template <typename ExecutableType, typename ClientType>
-StatusOr<XlaSerializedCacheEntry>
+absl::StatusOr<XlaSerializedCacheEntry>
 DeviceExecutablePersistor<ExecutableType, ClientType>::SerializeEntry(
     uint64 signature_hash, const XlaCompiler::Options& options,
     const XlaCompiler::CompilationResult& compilation_result,

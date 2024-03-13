@@ -15,15 +15,32 @@ limitations under the License.
 
 #include "xla/service/dot_merger.h"
 
-#include <functional>
+#include <cstdint>
 #include <set>
 #include <string>
 #include <utility>
 #include <vector>
 
-#include "xla/hlo/ir/dfs_hlo_visitor_with_default.h"
+#include "absl/algorithm/container.h"
+#include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
+#include "absl/container/inlined_vector.h"
+#include "absl/log/check.h"
+#include "absl/log/log.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
+#include "xla/hlo/ir/hlo_casting_utils.h"
+#include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_instructions.h"
+#include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/protobuf_util.h"
 #include "xla/service/graphcycles/graphcycles.h"
 #include "xla/service/shape_inference.h"
+#include "xla/shape.h"
+#include "xla/shape_util.h"
+#include "xla/util.h"
+#include "tsl/platform/errors.h"
+#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace {
@@ -112,6 +129,17 @@ absl::StatusOr<HloInstruction*> TryMergeSameOperand(HloInstruction* a,
     return nullptr;
   }
 
+  HloDotInstruction* dot_a = Cast<HloDotInstruction>(a);
+  HloDotInstruction* dot_b = Cast<HloDotInstruction>(b);
+  if (!absl::c_equal(dot_a->sparsity(), dot_b->sparsity(),
+                     protobuf_util::ProtobufEquals)) {
+    VLOG(3) << "Can't merge dots because they have mismatching sparsity "
+               "descriptors:\n"
+            << "\t" << a->ToString() << "\n"
+            << "\t" << b->ToString();
+    return nullptr;
+  }
+
   VLOG(2) << "Merging dots sharing an operand:\n"
           << "\t" << a->ToString() << "\n"
           << "\t" << b->ToString();
@@ -172,6 +200,37 @@ absl::StatusOr<HloInstruction*> TryMergeSameOperand(HloInstruction* a,
     ++outer_dim;
   }
 
+  std::vector<SparsityDescriptor> sparsity(dot_a->sparsity().begin(),
+                                           dot_a->sparsity().end());
+  std::vector<HloInstruction*> sparse_meta;
+  for (int i = 0; i < sparsity.size(); ++i) {
+    HloInstruction* meta = a->mutable_operand(HloDotInstruction::kOperands + i);
+    HloInstruction* other_meta =
+        b->mutable_operand(HloDotInstruction::kOperands + i);
+    if (sparsity[i].index() == (lhs_same ? 1 : 0)) {
+      int skipped_batch_dims = absl::c_count_if(
+          lhs_same ? dnums.rhs_batch_dimensions()
+                   : dnums.lhs_batch_dimensions(),
+          [&](int64_t batch_dim) { return batch_dim < outer_dim; });
+      int meta_concat_dim = outer_dim - skipped_batch_dims;
+      TF_ASSIGN_OR_RETURN(
+          Shape meta_concat_shape,
+          ShapeInference::InferConcatOpShape(
+              {&meta->shape(), &other_meta->shape()}, meta_concat_dim));
+      meta = meta->AddInstruction(HloInstruction::CreateConcatenate(
+          meta_concat_shape, {meta, other_meta}, meta_concat_dim));
+    } else {
+      if (other_meta != meta) {
+        VLOG(3)
+            << "Can't merge dots because the sparsity metadata is different:\n"
+            << "\t" << a->ToString() << "\n"
+            << "\t" << b->ToString();
+        return nullptr;
+      }
+    }
+    sparse_meta.push_back(meta);
+  }
+
   TF_ASSIGN_OR_RETURN(
       Shape concat_shape,
       ShapeInference::InferConcatOpShape(
@@ -187,10 +246,11 @@ absl::StatusOr<HloInstruction*> TryMergeSameOperand(HloInstruction* a,
       Shape new_dot_shape,
       ShapeInference::InferDotOpShape(
           dot_lhs->shape(), dot_rhs->shape(), dnums,
-          /*preferred_element_type=*/a->shape().element_type()));
+          /*preferred_element_type=*/a->shape().element_type(), sparsity));
   *new_dot_shape.mutable_layout() = a->shape().layout();
-  HloInstruction* new_dot = a->AddInstruction(HloInstruction::CreateDot(
-      new_dot_shape, dot_lhs, dot_rhs, dnums, a->precision_config()));
+  HloInstruction* new_dot = a->AddInstruction(
+      HloInstruction::CreateDot(new_dot_shape, dot_lhs, dot_rhs, dnums,
+                                a->precision_config(), sparsity, sparse_meta));
 
   // We can't keep both. But one is better then none.
   if (!a->metadata().op_name().empty()) {

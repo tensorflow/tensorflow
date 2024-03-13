@@ -3122,6 +3122,7 @@ py_strict_library(
         ":resource_variable_ops_gen",
         ":state_ops",
         ":state_ops_gen",
+        "//tensorflow/compiler/tf2xla/ops:gen_xla_ops",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/core/function/trace_type",
         "//tensorflow/python:pywrap_tensorflow",

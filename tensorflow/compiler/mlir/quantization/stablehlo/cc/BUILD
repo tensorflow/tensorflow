@@ -117,7 +117,8 @@ cc_library(
     hdrs = ["saved_model_export.h"],
     compatible_with = get_compatible_with_portable(),
     deps = [
-        ":saved_model_import",
+        ":pass_pipeline",
+        ":types",
         "//tensorflow/compiler/mlir/quantization/tensorflow:exported_model_proto_cc",
         "//tensorflow/compiler/mlir/quantization/tensorflow:passes",
         "//tensorflow/compiler/mlir/tensorflow",
@@ -173,9 +174,15 @@ cc_library(
     compatible_with = get_compatible_with_portable(),
     deps = [
         ":types",
+        "//tensorflow/cc/saved_model:reader",
+        "//tensorflow/core/protobuf:for_core_protos_cc",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:string_view",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
+        "@local_tsl//tsl/platform:errors",
     ],
 )
 

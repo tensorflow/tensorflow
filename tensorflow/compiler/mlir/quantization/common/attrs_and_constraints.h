@@ -37,9 +37,9 @@ namespace mlir::quant {
 
 constexpr char kAttrMapAttribute[] = "attr_map";
 
-// TODO(b/238829558): Populate quantization config based on the
+// TODO: b/238829558 - Populate quantization config based on the
 // QuantizationOptions proto.
-// TODO(b/263449239): Put the OpSet aliases separately within each file
+// TODO: b/263449239 - Put the OpSet aliases separately within each file
 using OpSet = tensorflow::quantization::OpSet;
 
 // Returns true if the value has static shape.
@@ -198,6 +198,10 @@ inline bool HasQuantizableTrait(Operation* op) {
          op->getAttrOfType<StringAttr>(kQuantTraitAttrName).getValue().str() ==
              QuantTraitValues[QuantizationTrait::FullyQuantizable];
 }
+
+// Returns true if `op` has two operands and one result and only second operand
+// is quantized.
+bool IsHybridQuantizedOp(Operation* op);
 
 }  // namespace mlir::quant
 

@@ -229,7 +229,11 @@ def patch_so(srcs_dir: str) -> None:
        "pywrap_calibration.so"): "$ORIGIN/../../../../../python",
   }
   for file, path in to_patch.items():
-    subprocess.run(["patchelf", "--add-rpath", path,
+    rpath = subprocess.check_output(
+        ["patchelf", "--print-rpath",
+         "{}/{}".format(srcs_dir, file)]).decode().strip()
+    new_rpath = rpath + ":" + path
+    subprocess.run(["patchelf", "--set-rpath", new_rpath,
                     "{}/{}".format(srcs_dir, file)], check=True)
     subprocess.run(["patchelf", "--shrink-rpath",
                     "{}/{}".format(srcs_dir, file)], check=True)

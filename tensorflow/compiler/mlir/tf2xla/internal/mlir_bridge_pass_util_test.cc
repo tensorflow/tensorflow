@@ -223,6 +223,47 @@ func.func @entry_func_1(%arg0: tensor<i32>) -> tensor<i32> attributes {tf.entry_
   EXPECT_TRUE(IsSupportedByReplicatedBridge(*module));
 }
 
+TEST(HasTPUPartitionedCallOpInModule, HasTPUPartitionedCallModule) {
+  const char* const code = R"mlir(
+module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, producer = 268 : i32}} {
+  func.func @main() {
+    %outputs_0 = "tf.TPUOrdinalSelector"() {device = ""} : () -> tensor<?xi32>
+    "tf.TPUPartitionedCall"(%outputs_0) {f = @reachable_func} : (tensor<?xi32>) -> ()
+    func.return
+  }
+  func.func @reachable_func() {
+    func.return
+  }
+}
+)mlir";
+  mlir::MLIRContext context;
+  context.loadDialect<mlir::func::FuncDialect, mlir::TF::TensorFlowDialect>();
+  mlir::OwningOpRef<mlir::ModuleOp> module =
+      mlir::parseSourceString<mlir::ModuleOp>(code, &context);
+  ASSERT_TRUE(module);
+  EXPECT_TRUE(HasTPUPartitionedCallOpInModule(*module));
+}
+
+TEST(HasTPUPartitionedCallOpInModule, HasNotTPUPartitionedCallModule) {
+  const char* const code = R"mlir(
+module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, producer = 268 : i32}} {
+  func.func @main() {
+    "tf.StatefulPartitionedCall"() {config = "", config_proto = "", executor_type = "", f = @reachable_func} : () -> ()
+    func.return
+  }
+  func.func @reachable_func() {
+    func.return
+  }
+}
+)mlir";
+  mlir::MLIRContext context;
+  context.loadDialect<mlir::func::FuncDialect, mlir::TF::TensorFlowDialect>();
+  mlir::OwningOpRef<mlir::ModuleOp> module =
+      mlir::parseSourceString<mlir::ModuleOp>(code, &context);
+  ASSERT_TRUE(module);
+  EXPECT_FALSE(HasTPUPartitionedCallOpInModule(*module));
+}
+
 }  // namespace
 
 }  // namespace tensorflow

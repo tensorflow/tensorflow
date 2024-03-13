@@ -388,7 +388,7 @@ absl::StatusOr<bool> TryResolvePaddedShapesForIntegerConvolution(
       case CudnnConvKind::kForward:
         CHECK_EQ(new_input_shapes.size(), 2);
         // Input feature maps
-        pad_dim(&new_input_shapes[0], dnums.input_feature_dimension(),
+        pad_dim(new_input_shapes.data(), dnums.input_feature_dimension(),
                 input_vect_size);
         // Kernel for the input feature maps
         pad_dim(&new_input_shapes[1], dnums.kernel_input_feature_dimension(),
@@ -404,7 +404,7 @@ absl::StatusOr<bool> TryResolvePaddedShapesForIntegerConvolution(
       case CudnnConvKind::kForwardActivation:
         CHECK(new_input_shapes.size() == 3 || new_input_shapes.size() == 4);
         // Input feature maps
-        pad_dim(&new_input_shapes[0], dnums.input_feature_dimension(),
+        pad_dim(new_input_shapes.data(), dnums.input_feature_dimension(),
                 input_vect_size);
         // Kernel for the input feature maps
         pad_dim(&new_input_shapes[1], dnums.kernel_input_feature_dimension(),

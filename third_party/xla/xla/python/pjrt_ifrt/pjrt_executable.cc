@@ -66,7 +66,7 @@ namespace ifrt {
 namespace {
 
 // Returns the op sharding of the root instruction in the entry computation.
-StatusOr<const xla::HloInstructionProto*> FindRootInstruction(
+absl::StatusOr<const xla::HloInstructionProto*> FindRootInstruction(
     const HloModuleProto& proto) {
   for (const auto& computation : proto.computations()) {
     if (computation.id() == proto.entry_computation_id()) {
@@ -82,7 +82,8 @@ StatusOr<const xla::HloInstructionProto*> FindRootInstruction(
 
 // Returns the output element types of the first module in a
 // `PjRtLoadedExecutable`.
-StatusOr<std::vector<xla::PrimitiveType>> GetFirstModuleOutputElementTypes(
+absl::StatusOr<std::vector<xla::PrimitiveType>>
+GetFirstModuleOutputElementTypes(
     xla::PjRtLoadedExecutable* pjrt_loaded_executable) {
   auto element_types = pjrt_loaded_executable->GetOutputElementTypes();
   TF_RETURN_IF_ERROR(element_types.status());
@@ -94,7 +95,8 @@ StatusOr<std::vector<xla::PrimitiveType>> GetFirstModuleOutputElementTypes(
 
 // Returns the output dimensions of the first module in a
 // `PjRtLoadedExecutable`.
-StatusOr<std::vector<xla::DimensionVector>> GetFirstModuleOutputDimensions(
+absl::StatusOr<std::vector<xla::DimensionVector>>
+GetFirstModuleOutputDimensions(
     xla::PjRtLoadedExecutable* pjrt_loaded_executable) {
   auto dimensions = pjrt_loaded_executable->GetOutputDimensions();
   TF_RETURN_IF_ERROR(dimensions.status());
@@ -106,7 +108,7 @@ StatusOr<std::vector<xla::DimensionVector>> GetFirstModuleOutputDimensions(
 
 // Returns the output shardings of the first module in a
 // `PjRtLoadedExecutable`.
-StatusOr<std::optional<HloSharding>> GetFirstModuleOutputSharding(
+absl::StatusOr<std::optional<HloSharding>> GetFirstModuleOutputSharding(
     xla::PjRtLoadedExecutable* pjrt_loaded_executable,
     const xla::Shape& shape) {
   auto output_shardings = pjrt_loaded_executable->GetOutputShardings();
@@ -129,7 +131,7 @@ StatusOr<std::optional<HloSharding>> GetFirstModuleOutputSharding(
 
 // Returns the flattened output memory_kinds of the first module in a
 // `UnimplementedError` will be converted into `std::nullopt`.
-StatusOr<std::optional<std::vector<absl::string_view>>>
+absl::StatusOr<std::optional<std::vector<absl::string_view>>>
 GetFirstModuleOutputMemoryKinds(
     xla::PjRtLoadedExecutable* pjrt_loaded_executable) {
   auto output_memory_kinds = pjrt_loaded_executable->GetOutputMemoryKinds();
@@ -151,7 +153,7 @@ struct ShapePartialInfo {
   std::vector<xla::DimensionVector> dimensions;
 };
 
-StatusOr<ShapePartialInfo> CreateShapePartialInfo(
+absl::StatusOr<ShapePartialInfo> CreateShapePartialInfo(
     absl::Span<const xla::Shape> shapes) {
   ShapePartialInfo partial_info;
   partial_info.element_types.reserve(shapes.size());
@@ -176,29 +178,29 @@ char PjRtCompatibleLoadedExecutable::ID = 0;
 char PjRtExecutable::ID = 0;
 char PjRtLoadedExecutable::ID = 0;
 
-StatusOr<std::unique_ptr<Executable>> PjRtExecutable::Create(
+absl::StatusOr<std::unique_ptr<Executable>> PjRtExecutable::Create(
     std::unique_ptr<xla::PjRtExecutable> pjrt_executable) {
   return std::unique_ptr<Executable>(new PjRtExecutable(
       std::shared_ptr<xla::PjRtExecutable>(pjrt_executable.release())));
 }
 
-StatusOr<std::unique_ptr<Executable>> PjRtExecutable::Create(
+absl::StatusOr<std::unique_ptr<Executable>> PjRtExecutable::Create(
     std::shared_ptr<xla::PjRtExecutable> pjrt_executable) {
   return std::unique_ptr<Executable>(
       new PjRtExecutable(std::move(pjrt_executable)));
 }
 
-StatusOr<std::optional<std::string>> PjRtExecutable::Fingerprint() const {
+absl::StatusOr<std::optional<std::string>> PjRtExecutable::Fingerprint() const {
   DCHECK(this);
   return pjrt_executable_->FingerprintExecutable();
 }
 
-StatusOr<std::string> PjRtExecutable::Serialize() const {
+absl::StatusOr<std::string> PjRtExecutable::Serialize() const {
   DCHECK(this);
   return pjrt_executable_->SerializeExecutable();
 }
 
-StatusOr<std::unique_ptr<LoadedExecutable>> PjRtLoadedExecutable::Create(
+absl::StatusOr<std::unique_ptr<LoadedExecutable>> PjRtLoadedExecutable::Create(
     PjRtCompatibleClient* client,
     std::unique_ptr<xla::PjRtLoadedExecutable> pjrt_loaded_executable,
     std::vector<tsl::RCReference<LoadedHostCallback>> loaded_host_callbacks) {
@@ -208,7 +210,7 @@ StatusOr<std::unique_ptr<LoadedExecutable>> PjRtLoadedExecutable::Create(
                 std::move(loaded_host_callbacks));
 }
 
-StatusOr<std::unique_ptr<LoadedExecutable>> PjRtLoadedExecutable::Create(
+absl::StatusOr<std::unique_ptr<LoadedExecutable>> PjRtLoadedExecutable::Create(
     PjRtCompatibleClient* client,
     std::shared_ptr<xla::PjRtLoadedExecutable> pjrt_loaded_executable,
     std::vector<tsl::RCReference<LoadedHostCallback>> loaded_host_callbacks) {
@@ -231,7 +233,7 @@ StatusOr<std::unique_ptr<LoadedExecutable>> PjRtLoadedExecutable::Create(
                         result_memory_kinds, loaded_host_callbacks);
 }
 
-static StatusOr<std::vector<xla::Shape>> ResultShapesOfModule(
+static absl::StatusOr<std::vector<xla::Shape>> ResultShapesOfModule(
     mlir::ModuleOp module) {
   auto main = module.lookupSymbol<mlir::func::FuncOp>("main");
   if (!main) {
@@ -247,7 +249,7 @@ static StatusOr<std::vector<xla::Shape>> ResultShapesOfModule(
   return result_shapes;
 }
 
-StatusOr<std::unique_ptr<LoadedExecutable>> PjRtLoadedExecutable::Create(
+absl::StatusOr<std::unique_ptr<LoadedExecutable>> PjRtLoadedExecutable::Create(
     PjRtCompatibleClient* client, mlir::ModuleOp module,
     xla::CompileOptions compile_options,
     std::vector<tsl::RCReference<LoadedHostCallback>> loaded_host_callbacks) {
@@ -318,7 +320,7 @@ StatusOr<std::unique_ptr<LoadedExecutable>> PjRtLoadedExecutable::Create(
   }
 }
 
-StatusOr<std::unique_ptr<LoadedExecutable>>
+absl::StatusOr<std::unique_ptr<LoadedExecutable>>
 PjRtLoadedExecutable::CreateInternal(
     PjRtCompatibleClient* client,
     std::shared_ptr<xla::PjRtLoadedExecutable> pjrt_loaded_executable,
@@ -471,9 +473,10 @@ PjRtLoadedExecutable::PjRtLoadedExecutable(
 
 PjRtLoadedExecutable::~PjRtLoadedExecutable() = default;
 
-StatusOr<PjRtLoadedExecutable::ExecuteResult> PjRtLoadedExecutable::Execute(
-    absl::Span<tsl::RCReference<Array>> args, const ExecuteOptions& options,
-    std::optional<DeviceList> devices) {
+absl::StatusOr<PjRtLoadedExecutable::ExecuteResult>
+PjRtLoadedExecutable::Execute(absl::Span<tsl::RCReference<Array>> args,
+                              const ExecuteOptions& options,
+                              std::optional<DeviceList> devices) {
   DCHECK(this);
   // TODO(hyeontaek): Check input sharding consistency.
 
@@ -668,9 +671,10 @@ StatusOr<PjRtLoadedExecutable::ExecuteResult> PjRtLoadedExecutable::Execute(
   return result;
 }
 
-StatusOr<std::optional<std::string>> PjRtLoadedExecutable::Fingerprint() const {
+absl::StatusOr<std::optional<std::string>> PjRtLoadedExecutable::Fingerprint()
+    const {
   DCHECK(this);
-  StatusOr<std::string> fingerprint =
+  absl::StatusOr<std::string> fingerprint =
       pjrt_loaded_executable_->FingerprintExecutable();
   if (fingerprint.ok()) {
     return {fingerprint.value()};
@@ -682,7 +686,7 @@ StatusOr<std::optional<std::string>> PjRtLoadedExecutable::Fingerprint() const {
   }
 }
 
-StatusOr<std::string> PjRtLoadedExecutable::Serialize() const {
+absl::StatusOr<std::string> PjRtLoadedExecutable::Serialize() const {
   DCHECK(this);
   return pjrt_loaded_executable_->SerializeExecutable();
 }

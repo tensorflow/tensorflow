@@ -63,16 +63,6 @@ inline ::testing::PolymorphicMatcher<ProtoStringMatcher> EqualsProto(
   return ::testing::MakePolymorphicMatcher(ProtoStringMatcher(x));
 }
 
-TEST(TypeToShapeTest, ConvertPrimitiveTypes) {
-  MLIRContext context;
-  Builder b(&context);
-
-  EXPECT_EQ(TypeToPrimitiveType(b.getF32Type()), PrimitiveType::F32);
-  EXPECT_EQ(TypeToPrimitiveType(b.getIntegerType(1)), PrimitiveType::PRED);
-  EXPECT_EQ(TypeToPrimitiveType(b.getIntegerType(17)),
-            PrimitiveType::PRIMITIVE_TYPE_INVALID);
-}
-
 TEST(TypeToShapeTest, ConvertBasicTypesToTypes) {
   MLIRContext context;
   Builder b(&context);

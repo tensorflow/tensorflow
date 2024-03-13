@@ -4284,7 +4284,7 @@ static absl::StatusOr<bool> GenerateReduceOutputElement(
         // Periodically compute partial sum to avoid linear_indices getting
         // large
         computed_result += *input_arg0->GetSumAsDouble(
-            absl::MakeConstSpan(&linear_indices[0], n_linear_indices));
+            absl::MakeConstSpan(linear_indices, n_linear_indices));
         n_linear_indices = 0;
       }
       return true;
@@ -4294,7 +4294,7 @@ static absl::StatusOr<bool> GenerateReduceOutputElement(
     if (n_linear_indices > 0) {
       // Add in sum over any final indices collected
       computed_result += *input_arg0->GetSumAsDouble(
-          absl::MakeConstSpan(&linear_indices[0], n_linear_indices));
+          absl::MakeConstSpan(linear_indices, n_linear_indices));
     }
     TF_RETURN_IF_ERROR(results[0].SetFromDouble(output_index, computed_result));
     return true;

@@ -66,6 +66,7 @@ limitations under the License.
 #include "xla/service/memory_space_assignment/allocation.h"
 #include "xla/service/memory_space_assignment/cost_analysis.h"
 #include "xla/service/memory_space_assignment/memory_space_assignment.pb.h"
+#include "xla/service/memory_space_assignment/options.h"
 #include "xla/service/memory_space_assignment/repacking.h"
 #include "xla/service/memory_space_assignment/slice.h"
 #include "xla/service/memory_space_assignment/tuning_utils.h"
@@ -273,16 +274,15 @@ struct CrossProgramPrefetchBufferSortValues {
   int64_t use_size = 0;
 };
 
-std::vector<MemorySpaceAssignment::BufferInterval>
-FindCrossProgramPrefetchCandidates(const HloAliasAnalysis& alias_analysis,
-                                   const HloLiveRange& hlo_live_range,
-                                   const Options& options) {
-  std::vector<MemorySpaceAssignment::BufferInterval> candidates;
+std::vector<MsaBufferInterval> FindCrossProgramPrefetchCandidates(
+    const HloAliasAnalysis& alias_analysis, const HloLiveRange& hlo_live_range,
+    const Options& options) {
+  std::vector<MsaBufferInterval> candidates;
   for (const HloBuffer& buffer : alias_analysis.buffers()) {
     CHECK_GE(buffer.values().size(), 1);
     const HloValue* value = buffer.values().at(0);
     if (IsCrossProgramPrefetchCandidate(*value, alias_analysis, options)) {
-      MemorySpaceAssignment::BufferInterval interval;
+      MsaBufferInterval interval;
       interval.buffer = value;
       interval.size = options.size_fn(*value);
       interval.start = 0;
@@ -295,7 +295,7 @@ FindCrossProgramPrefetchCandidates(const HloAliasAnalysis& alias_analysis,
 
   DefaultCrossProgramPrefetchBufferIntervalComparator default_comparator(
       hlo_live_range);
-  MemorySpaceAssignment::BufferIntervalComparator* comparator =
+  BufferIntervalComparator* comparator =
       (options.default_cross_program_prefetch_heuristic &&
                options.buffer_interval_comparator
            ? options.buffer_interval_comparator
@@ -1253,8 +1253,7 @@ MemoryBoundLoopOptimizer::Create(
     const HloLiveRange& hlo_live_range, const HloAliasAnalysis& alias_analysis,
     const CostAnalysis& cost_analysis,
     const BufferValue::SizeFunction& size_function,
-    const MemorySpaceAssignment::ReservedScopedMemoryFunction&
-        reserved_scoped_memory_fn) {
+    const ReservedScopedMemoryFunction& reserved_scoped_memory_fn) {
   std::unique_ptr<MemoryBoundLoopOptimizer> optimizer =
       absl::WrapUnique(new MemoryBoundLoopOptimizer(
           loop_start, loop_end, alternate_memory_size, options, hlo_live_range,
@@ -1270,8 +1269,7 @@ MemoryBoundLoopOptimizer::MemoryBoundLoopOptimizer(
     const HloLiveRange& hlo_live_range, const HloAliasAnalysis& alias_analysis,
     const CostAnalysis& cost_analysis,
     const BufferValue::SizeFunction& size_function,
-    const MemorySpaceAssignment::ReservedScopedMemoryFunction&
-        reserved_scoped_memory_fn)
+    const ReservedScopedMemoryFunction& reserved_scoped_memory_fn)
     : loop_start_(loop_start),
       loop_end_(loop_end),
       loop_size_(loop_end - loop_start),
@@ -4297,7 +4295,7 @@ void AlternateMemoryBestFitHeap::AllocateReservedScopedAllocations() {
     if (reserved_scoped_memory != 0) {
       VLOG(1) << "Allocate reserved scoped memory at " << i << " ("
               << instruction->name() << "): " << reserved_scoped_memory;
-      MemorySpaceAssignment::BufferInterval interval;
+      MsaBufferInterval interval;
       interval.buffer = nullptr;
       interval.size = reserved_scoped_memory;
       interval.start = i;
@@ -6764,7 +6762,7 @@ Status MemorySpaceAssignment::ExportAndColorBuffers() {
   VLOG(3) << "Exported alternate memory allocations:";
   for (const auto& position_and_chunk : alternate_memory_assignments_) {
     const HloPosition& defining_position = position_and_chunk.first;
-    const Chunk& chunk = position_and_chunk.second;
+    const HeapSimulator::Chunk& chunk = position_and_chunk.second;
     const HloBuffer& buffer = alias_analysis->GetUniqueBufferAt(
         defining_position.instruction, defining_position.index);
     auto seen_buffer_offset_it = seen_buffer_offsets.find(buffer.id());
@@ -6784,7 +6782,7 @@ Status MemorySpaceAssignment::ExportAndColorBuffers() {
   VLOG(3) << "Exported scoped allocations in alternate memory:";
   for (const auto& instruction_and_chunk : scoped_memory_assignments_) {
     HloInstruction* instruction = instruction_and_chunk.first;
-    const Chunk& chunk = instruction_and_chunk.second;
+    const HeapSimulator::Chunk& chunk = instruction_and_chunk.second;
     VLOG(3) << " [" << chunk.offset << ", " << chunk.size
             << "] : " << instruction->name();
     preset_assignments_->add_scoped_allocation_chunk(instruction, chunk);
@@ -7272,11 +7270,12 @@ Status MemorySpaceAssignment::VerifyAndExportHeapSimulatorTrace() {
   // are sorted first by time, then within the same time, allocations are sorted
   // earlier than frees, and finally the value id as a tie breaker.
   std::map<std::tuple<int64_t, bool, int64_t>,
-           std::tuple<const HloValue*, Chunk, HeapSimulatorTrace::Event::Kind>>
+           std::tuple<const HloValue*, HeapSimulator::Chunk,
+                      HeapSimulatorTrace::Event::Kind>>
       events;
 
   auto add_allocation_and_verify = [&](int64_t start_time, int64_t end_time,
-                                       const Chunk& chunk,
+                                       const HeapSimulator::Chunk& chunk,
                                        const HloValue* value) {
     events[std::make_tuple(start_time, /*is_free=*/false, value->id())] =
         std::make_tuple(value, chunk, HeapSimulatorTrace::Event::ALLOC);
@@ -7289,7 +7288,7 @@ Status MemorySpaceAssignment::VerifyAndExportHeapSimulatorTrace() {
     // really should check against end_time (inclusive) for cases where the
     // operand can't share buffer with user (see
     // HloDataflowAnalysis::CanShareOperandBufferWithUser).
-    for (const Chunk& overlapping_chunk :
+    for (const HeapSimulator::Chunk& overlapping_chunk :
          interval_tree.ChunksOverlappingInTime(start_time, end_time - 1)) {
       if (chunk.OverlapsWith(overlapping_chunk)) {
         return Internal(
@@ -7326,7 +7325,7 @@ Status MemorySpaceAssignment::VerifyAndExportHeapSimulatorTrace() {
 
   for (const auto& position_and_chunk : preset_assignments_->chunks()) {
     const HloPosition& position = position_and_chunk.first;
-    const Chunk& chunk = position_and_chunk.second;
+    const HeapSimulator::Chunk& chunk = position_and_chunk.second;
     const HloBuffer& buffer =
         alias_analysis->GetUniqueBufferAt(position.instruction, position.index);
     CHECK(!seen_buffers.contains(buffer.id()))
@@ -7439,7 +7438,7 @@ Status MemorySpaceAssignment::VerifyAndExportHeapSimulatorTrace() {
     int64_t buffer_id;
     std::tie(time, is_free, buffer_id) = event.first;
     const HloValue* value;
-    Chunk chunk;
+    HeapSimulator::Chunk chunk;
     HeapSimulatorTrace::Event::Kind kind;
     std::tie(value, chunk, kind) = event.second;
     HeapSimulatorTrace::Event* heap_trace_event = heap_trace->add_events();
@@ -7479,8 +7478,7 @@ Status MemorySpaceAssignment::VerifyAndExportHeapSimulatorTrace() {
 DefaultCrossProgramPrefetchBufferIntervalComparator::
     DefaultCrossProgramPrefetchBufferIntervalComparator(
         const HloLiveRange& hlo_live_range)
-    : MemorySpaceAssignment::BufferIntervalComparator(),
-      hlo_live_range_(hlo_live_range) {}
+    : BufferIntervalComparator(), hlo_live_range_(hlo_live_range) {}
 
 std::string DefaultCrossProgramPrefetchBufferIntervalComparator::
     DescribeComparisonCriteria() const {
@@ -7489,19 +7487,19 @@ std::string DefaultCrossProgramPrefetchBufferIntervalComparator::
 
 std::string
 DefaultCrossProgramPrefetchBufferIntervalComparator::CriteriaToString(
-    const BufferInterval& buffer_interval) {
+    const MsaBufferInterval& buffer_interval) {
   return absl::StrCat("[ ", absl::StrJoin(GetTuple(buffer_interval), ", "),
                       " ]");
 }
 
 bool DefaultCrossProgramPrefetchBufferIntervalComparator::LessThan(
-    const BufferInterval& lhs, const BufferInterval& rhs) {
+    const MsaBufferInterval& lhs, const MsaBufferInterval& rhs) {
   return GetTuple(lhs) < GetTuple(rhs);
 }
 
 DefaultCrossProgramPrefetchBufferIntervalComparator::ComparisonTuple
 DefaultCrossProgramPrefetchBufferIntervalComparator::GetTuple(
-    const BufferInterval& buffer_interval) {
+    const MsaBufferInterval& buffer_interval) {
   auto sort_data_it = additional_sort_data_.find(buffer_interval.buffer);
   if (sort_data_it == additional_sort_data_.end()) {
     AdditionalSortData sort_data;
@@ -7529,7 +7527,7 @@ MemoryBoundednessBufferIntervalComparator::
     MemoryBoundednessBufferIntervalComparator(
         const CostAnalysis& cost_analysis,
         CostAnalysis::Cache* cost_analysis_cache)
-    : MemorySpaceAssignment::BufferIntervalComparator(),
+    : BufferIntervalComparator(),
       cost_analysis_(cost_analysis),
       cost_analysis_cache_(cost_analysis_cache) {}
 
@@ -7538,7 +7536,7 @@ MemoryBoundednessBufferIntervalComparator::
         const CostAnalysis& cost_analysis,
         CostAnalysis::Cache* cost_analysis_cache,
         MsaSortOrderOverrides msa_sort_order_overrides)
-    : MemorySpaceAssignment::BufferIntervalComparator(),
+    : BufferIntervalComparator(),
       cost_analysis_(cost_analysis),
       cost_analysis_cache_(cost_analysis_cache),
       msa_sort_order_overrides_(msa_sort_order_overrides) {}
@@ -7550,18 +7548,18 @@ MemoryBoundednessBufferIntervalComparator::DescribeComparisonCriteria() const {
 }
 
 std::string MemoryBoundednessBufferIntervalComparator::CriteriaToString(
-    const BufferInterval& buffer_interval) {
+    const MsaBufferInterval& buffer_interval) {
   return absl::StrCat("[ ", absl::StrJoin(GetTuple(buffer_interval), ", "),
                       " ]");
 }
 
 bool MemoryBoundednessBufferIntervalComparator::LessThan(
-    const BufferInterval& lhs, const BufferInterval& rhs) {
+    const MsaBufferInterval& lhs, const MsaBufferInterval& rhs) {
   return GetTuple(lhs) < GetTuple(rhs);
 }
 
 int64_t MemoryBoundednessBufferIntervalComparator::GetLatestUseTime(
-    const BufferInterval& buffer_interval) {
+    const MsaBufferInterval& buffer_interval) {
   auto latest_use_it = buffer_to_latest_use_.find(buffer_interval.buffer);
   if (latest_use_it == buffer_to_latest_use_.end()) {
     int64_t latest_use_time = 0;
@@ -7582,7 +7580,7 @@ int64_t MemoryBoundednessBufferIntervalComparator::GetLatestUseTime(
 
 MemoryBoundednessBufferIntervalComparator::ComparisonTuple
 MemoryBoundednessBufferIntervalComparator::GetTuple(
-    const BufferInterval& buffer_interval) {
+    const MsaBufferInterval& buffer_interval) {
   int64_t priority = GetBufferIntervalOverridePriority(
       msa_sort_order_overrides_, buffer_interval);
   float inverse_memory_boundedness =

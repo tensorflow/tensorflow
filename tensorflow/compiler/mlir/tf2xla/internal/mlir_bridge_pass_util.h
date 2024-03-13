@@ -38,6 +38,10 @@ bool IsSupportedByReplicatedBridge(
 // _xla_compile_device_type=TPU.
 bool IsSupportedByReplicatedBridge(mlir::ModuleOp module);
 
+// Check if an MLIR module contains TPUPartitionedCall op. If so, we define
+// such graph as an inference graph. Otherwise, it is non inference graph.
+bool HasTPUPartitionedCallOpInModule(mlir::ModuleOp module);
+
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_COMPILER_MLIR_TF2XLA_INTERNAL_MLIR_BRIDGE_PASS_UTIL_H_

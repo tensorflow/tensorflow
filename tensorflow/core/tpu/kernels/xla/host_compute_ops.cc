@@ -520,8 +520,9 @@ class RecvFromHostOp : public XlaOpKernel {
     xla::XlaOp result = xla::RecvFromHost(token, xla_shape, channel);
     // xla::RecvFromHost returns a tuple of (received data, token).
     ctx->SetOutput(0, xla::GetTupleElement(result, 0));
-    OP_REQUIRES_OK(
-        ctx, compiler->SetNodeToken(name(), xla::GetTupleElement(result, 1)));
+    OP_REQUIRES_OK(ctx,
+                   compiler->SetNodeToken(original_node_name_,
+                                          xla::GetTupleElement(result, 1)));
   }
 
  private:

@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/python/callback.h"
 
+#include <Python.h>
 #include <sys/types.h>
 
 #include <cstdint>
@@ -69,12 +70,9 @@ absl::Status CpuCallback::PrepareAndCallInternal(void* result,
     if (args_[i].type == xla::TOKEN) {
       PyTuple_SET_ITEM(args.ptr(), i, nb::none().release().ptr());
     } else {
-      static_assert(sizeof(ssize_t) == sizeof(int64_t));
-      absl::Span<ssize_t> strides(
-          reinterpret_cast<ssize_t*>(args_[i].strides.data()),
-          args_[i].strides.size());
-      nb_numpy_ndarray array = nb_numpy_ndarray(
-          args_[i].dtype, args_[i].dims, strides, const_cast<void*>(inputs[i]));
+      nb_numpy_ndarray array =
+          nb_numpy_ndarray(args_[i].dtype, args_[i].dims, args_[i].strides,
+                           const_cast<void*>(inputs[i]));
       array.attr("flags").attr("writeable") = nb::bool_(false);
       PyTuple_SET_ITEM(args.ptr(), i, array.release().ptr());
     }

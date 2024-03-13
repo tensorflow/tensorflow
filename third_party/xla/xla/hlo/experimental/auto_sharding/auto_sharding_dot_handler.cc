@@ -254,13 +254,17 @@ void HandlerBase::AppendNewStrategy(const std::string& name,
                                     absl::Span<const HloSharding> input_specs,
                                     double compute_cost,
                                     double communication_cost) {
-  std::vector<std::vector<double>> resharding_costs;
+  ReshardingCosts communication_resharding_costs;
+  ReshardingCosts memory_resharding_costs;
 
   for (int i = 0; i < ins_->operand_count(); ++i) {
     const HloInstruction* operand = ins_->operand(i);
-    resharding_costs.push_back(
-        ReshardingCostVector(strategy_map_.at(operand).get(), operand->shape(),
-                             input_specs[i], cluster_env_));
+    communication_resharding_costs.push_back(CommunicationReshardingCostVector(
+        strategy_map_.at(operand).get(), operand->shape(), input_specs[i],
+        cluster_env_));
+    memory_resharding_costs.push_back(MemoryReshardingCostVector(
+        strategy_map_.at(operand).get(), operand->shape(), input_specs[i],
+        cluster_env_));
   }
 
   strategy_group_->strategies.push_back(ShardingStrategy({
@@ -269,7 +273,8 @@ void HandlerBase::AppendNewStrategy(const std::string& name,
       compute_cost,
       communication_cost,
       GetBytes(ins_->shape()) / output_spec.NumTiles(),
-      resharding_costs,
+      communication_resharding_costs,
+      memory_resharding_costs,
       {input_specs.begin(), input_specs.end()},
   }));
 }

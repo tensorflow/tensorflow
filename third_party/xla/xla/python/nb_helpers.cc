@@ -23,7 +23,7 @@ namespace nb = nanobind;
 
 namespace xla {
 
-ssize_t nb_hash(nb::handle o) {
+Py_hash_t nb_hash(nb::handle o) {
   Py_hash_t h = PyObject_Hash(o.ptr());
   if (h == -1) {
     throw nb::python_error();
@@ -31,4 +31,11 @@ ssize_t nb_hash(nb::handle o) {
   return h;
 }
 
+bool nb_isinstance(nanobind::handle inst, nanobind::handle cls) {
+  int ret = PyObject_IsInstance(inst.ptr(), cls.ptr());
+  if (ret == -1) {
+    throw nb::python_error();
+  }
+  return ret;
+}
 }  // namespace xla

@@ -370,15 +370,12 @@ class IrEmitterUnnested : public IrEmitter {
   absl::StatusOr<BufferAllocation::Slice> GetAllocationSliceForHlo(
       const HloInstruction* instr, const ShapeIndex& index = {}) const;
 
+  CollectivesAsyncEvents& GetCollectivesAsyncEvents() {
+    return ir_emitter_context_->collectives_async_events();
+  }
+
   // The thunk sequence this IrEmitter generates for the input computation.
   ThunkSequence thunk_sequence_;
-
-  // Maps async start ops to their async events so we can emit done thunk
-  // sharing events with corresponding start thunk. Async events may be null if
-  // the start op is degenerate (so not emitted).
-  absl::flat_hash_map<std::variant<mlir::Operation*, const HloInstruction*>,
-                      std::shared_ptr<NcclCollectiveThunk::AsyncEvents>>
-      collectives_async_events_;
 
   // Container for async send/recv events shared by send/recv thunks.
   std::shared_ptr<SendRecvAsyncEvents> send_recv_events_;

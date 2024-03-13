@@ -14,6 +14,8 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/kernels/data/repeat_dataset_op.h"
 
+#include <cstdint>
+#include <cstdlib>
 #include <functional>
 #include <memory>
 #include <optional>
@@ -372,20 +374,25 @@ class RepeatDatasetOp::Dataset : public DatasetBase {
       return ctx_with_index_mapper;
     }
 
-    std::function<int64_t(int64_t)> GetIndexMapper(
-        std::function<int64_t(int64_t)> parent_index_mapper) const
+    IndexMapperFn GetIndexMapper(IndexMapperFn parent_index_mapper) const
         TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
       int64_t input_cardinality = dataset()->input_->Cardinality();
       int64_t repeat_count = i_;
       return [parent_index_mapper, input_cardinality,
-              repeat_count](int64_t element_position) -> int64_t {
+              repeat_count](size_t element_position) -> size_t {
+        if (element_position >= input_cardinality) {
+          // The input element position is out-of-range. The caller is
+          // responsible for handle this case (e.g.: returning end_of_sequence).
+          return element_position;
+        }
+
         // First, maps the input indices from
         // [0, input_range] to [0, input_range * repetitions].
         // Then, reduces the shuffled indices to [0, input_range] by taking the
         // mod. This way, the shuffling happens across repetitions.
-        int64_t repeated_element_position =
+        size_t repeated_element_position =
             repeat_count * input_cardinality + element_position;
-        int64_t shuffled_element_position =
+        size_t shuffled_element_position =
             parent_index_mapper(repeated_element_position);
         return shuffled_element_position % input_cardinality;
       };

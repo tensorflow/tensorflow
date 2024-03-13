@@ -126,7 +126,7 @@ bool ROCMBlas::Init() {
   if (result == hipSuccess) {
     auto cap = RocmComputeCapability(props.gcnArchName);
     has_mfma_ = cap.has_mfma_instr_support();
-    use_hgemm_alt_impl_ = (cap.gfx_version() == "90a");
+    use_hgemm_alt_impl_ = (cap.gfx_version() == "gfx90a");
   }
 
   return true;

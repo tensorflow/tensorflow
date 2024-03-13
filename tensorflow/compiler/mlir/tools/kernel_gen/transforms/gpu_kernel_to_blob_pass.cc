@@ -176,8 +176,8 @@ class GpuKernelToBlobPass
       // Compile PTX code with ptxas if requested and possible and fall back to
       // a compute image, otherwise.
       if (!is_compute_profile) {
-        auto gpu_asm = tensorflow::se::CompileGpuAsm(cc_major, cc_minor,
-                                                     ptx.c_str(), gpu_asm_opts);
+        auto gpu_asm = tensorflow::se::CompileGpuAsmUsingPtxAs(
+            cc_major, cc_minor, ptx.c_str(), gpu_asm_opts);
         if (gpu_asm.ok()) {
           images.push_back(
               {absl::StrCat("sm_", arch), std::move(gpu_asm.value())});

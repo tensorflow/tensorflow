@@ -87,7 +87,7 @@ class EmbeddingReshardCallback(checkpoint_adapter.ReshardCallback):
     return self._object_local_name
 
   def update_restore_inputs(
-      self, checkpoint_key
+      self, checkpoint_key: str, shape_and_slice_spec: str
   ) -> tuple[Sequence[str], Sequence[str]]:
     keys = []
     slices = []
@@ -107,7 +107,9 @@ class EmbeddingReshardCallback(checkpoint_adapter.ReshardCallback):
       )
     return (keys, slices)
 
-  def reshard(self, checkpoint_values, shape_and_slice) -> tensor.Tensor:
+  def reshard(
+      self, checkpoint_values: tensor.Tensor, shape_and_slice: str
+  ) -> tensor.Tensor:
     def pad_value(value, variable_shape, table_shape):
       return array_ops.pad(
           value,
@@ -259,6 +261,10 @@ class TpuEmbeddingV3CheckpointAdapter(
   def get_reshard_callback(
       self, name: str
   ) -> Optional[checkpoint_adapter.ReshardCallback]:
-    if name not in self._checkpoint_to_reshard_callback:
-      return None
-    return self._checkpoint_to_reshard_callback[name]
+    if name in self._checkpoint_to_reshard_callback:
+      return self._checkpoint_to_reshard_callback[name]
+    # Check if this is slot variable
+    var_name = name.split("/")[0]
+    if var_name in self._checkpoint_to_reshard_callback:
+      return self._checkpoint_to_reshard_callback[var_name]
+    return None

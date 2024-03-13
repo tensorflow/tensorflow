@@ -81,7 +81,7 @@ void XfeedQueueManager::ReleaseCurrentBuffer(int32_t length, void* data,
 }
 
 int64_t GetByteSizeRequirement(const Shape& shape, int64_t pointer_size) {
-  if (shape.is_static() || shape.IsTuple()) {
+  if (shape.IsTuple() || shape.is_static()) {
     return ShapeUtil::ByteSizeOf(shape, pointer_size);
   }
   int64_t metadata_size = sizeof(int32_t) * shape.dimensions_size();

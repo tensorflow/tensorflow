@@ -85,25 +85,30 @@ bool IsInstructionElementwiseOnOperand(const HloInstruction* instruction,
 
 void PrintPrecisionConfig(HloInstruction::AttributePrinter& printer,
                           const PrecisionConfig& precision_config) {
-  if (absl::c_all_of(
+  if (absl::c_any_of(
           precision_config.operand_precision(), [](int32_t precision) {
-            return static_cast<PrecisionConfig::Precision>(precision) ==
+            return static_cast<PrecisionConfig::Precision>(precision) !=
                    PrecisionConfig::DEFAULT;
           })) {
-    return;
+    printer.Next([&precision_config](Printer* printer) {
+      printer->Append("operand_precision={");
+      AppendJoin(printer, precision_config.operand_precision(), ",",
+                 [](Printer* printer, int32_t precision) {
+                   CHECK(PrecisionConfig::Precision_IsValid(precision))
+                       << precision;
+                   printer->Append(PrecisionToString(
+                       static_cast<PrecisionConfig::Precision>(precision)));
+                 });
+      printer->Append("}");
+    });
   }
 
-  printer.Next([&precision_config](Printer* printer) {
-    printer->Append("operand_precision={");
-    AppendJoin(printer, precision_config.operand_precision(), ",",
-               [](Printer* printer, int32_t precision) {
-                 CHECK(PrecisionConfig::Precision_IsValid(precision))
-                     << precision;
-                 printer->Append(PrecisionToString(
-                     static_cast<PrecisionConfig::Precision>(precision)));
-               });
-    printer->Append("}");
-  });
+  if (precision_config.algorithm() != PrecisionConfig::ALG_UNSET) {
+    printer.Next([&precision_config](Printer* printer) {
+      printer->Append("algorithm=");
+      printer->Append(AlgorithmToString(precision_config.algorithm()));
+    });
+  }
 }
 
 void PrintSparsityDescriptor(HloInstruction::AttributePrinter& printer,
@@ -822,13 +827,26 @@ HloSendDoneInstruction::HloSendDoneInstruction(HloSendInstruction* operand,
   AppendOperand(operand);
 }
 
+HloSendDoneInstruction::HloSendDoneInstruction(HloInstruction* operand,
+                                               int64_t channel_id,
+                                               bool is_host_transfer)
+    : HloSendRecvInstruction(HloOpcode::kSendDone, ShapeUtil::MakeTokenShape(),
+                             channel_id, is_host_transfer) {
+  AppendOperand(operand);
+}
+
 std::unique_ptr<HloInstruction>
 HloSendDoneInstruction::CloneWithNewOperandsImpl(
     const Shape& shape, absl::Span<HloInstruction* const> new_operands,
     HloCloneContext* context) const {
   CHECK_EQ(new_operands.size(), 1);
+  HloSendInstruction* send = dynamic_cast<HloSendInstruction*>(new_operands[0]);
+  if (send != nullptr) {
+    return std::make_unique<HloSendDoneInstruction>(send, is_host_transfer());
+  }
+
   return std::make_unique<HloSendDoneInstruction>(
-      Cast<HloSendInstruction>(new_operands[0]), is_host_transfer());
+      new_operands[0], channel_id().value(), is_host_transfer());
 }
 
 // Recv instruction produces a tuple of {receive buffer, U32 context}.

@@ -203,8 +203,15 @@ bool IsBatchOrReductionDimBroadcast(const HloInstruction& hlo) {
   return !(preserve_first_dim && preserve_last_dim);
 }
 
+bool IsBroadcastOfAScalar(const HloInstruction& hlo) {
+  CHECK_EQ(hlo.opcode(), HloOpcode::kBroadcast)
+      << "Expected broadcast " << hlo.ToShortString();
+  return ShapeUtil::IsScalar(hlo.operand(0)->shape());
+}
+
 bool IsSupportedBroadcastOfParameter(const HloInstruction& hlo) {
-  return IsBroadcastOfParameter(hlo) && IsBatchOrReductionDimBroadcast(hlo);
+  return IsBroadcastOfParameter(hlo) &&
+         (IsBatchOrReductionDimBroadcast(hlo) || IsBroadcastOfAScalar(hlo));
 }
 
 // Chooses which operand to use for fusion processing. Taking in a unary or

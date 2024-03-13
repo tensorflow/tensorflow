@@ -61,8 +61,7 @@ static MultiKernelLoaderSpec GetAddI32KernelSpec() {
 #if defined(GOOGLE_CUDA)
   spec.AddCudaPtxInMemory(internal::kAddI32Kernel, "add");
 #elif defined(TENSORFLOW_USE_ROCM)
-  spec.AddCudaCubinInMemory(
-      reinterpret_cast<const char*>(&internal::kAddI32KernelModule[0]), "add");
+  spec.AddCudaCubinInMemory(internal::kAddI32KernelModule, "add");
 #endif
   return spec;
 }

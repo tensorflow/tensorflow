@@ -47,49 +47,59 @@ struct Range {
     return value >= lower_bound && value <= upper_bound;
   }
 
+  // The result of a range comparison. We wrap std::optional in a struct to
+  // avoid accidental implicit conversion to bool:
+  // if (range < 42) {
+  //   Executed if the result of the comparison is known to be false!
+  // }
+  struct ComparisonResult {
+    // true or false if the result is known, nullopt otherwise.
+    std::optional<bool> result;
+
+    ComparisonResult operator!() const {
+      if (result) return {!*result};
+      return {result};
+    }
+    bool operator==(const ComparisonResult& other) const {
+      return result == other.result;
+    }
+    bool operator==(bool other) const { return result && *result == other; }
+    bool operator==(std::nullopt_t) const { return !result; }
+    bool operator!=(std::nullopt_t) const { return result.has_value(); }
+    bool operator*() const { return *result; }
+  };
+
   // All comparison operators here return true or false if the result is known,
   // or nullopt if it may be either true or false.
-  std::optional<bool> operator>(int64_t value) const {
+  ComparisonResult operator>(int64_t value) const {
     if (lower_bound > value) {
-      return true;
+      return {true};
     }
     if (upper_bound <= value) {
-      return false;
+      return {false};
     }
-    return std::nullopt;
+    return {std::nullopt};
   }
-  std::optional<bool> operator<(int64_t value) const {
+  ComparisonResult operator<(int64_t value) const {
     if (upper_bound < value) {
-      return true;
+      return {true};
     }
     if (lower_bound >= value) {
-      return false;
+      return {false};
     }
-    return std::nullopt;
+    return {std::nullopt};
   }
-  std::optional<bool> operator>=(int64_t value) const {
-    return Not(*this < value);
+  ComparisonResult operator>=(int64_t value) const { return !(*this < value); }
+  ComparisonResult operator<=(int64_t value) const { return !(*this > value); }
+  ComparisonResult operator==(int64_t value) const {
+    if (IsPoint()) return {lower_bound == value};
+    if (!Contains(value)) return {false};
+    return {std::nullopt};
   }
-  std::optional<bool> operator<=(int64_t value) const {
-    return Not(*this > value);
-  }
-  std::optional<bool> operator==(int64_t value) const {
-    if (IsPoint()) return lower_bound == value;
-    if (!Contains(value)) return false;
-    return std::nullopt;
-  }
-  std::optional<bool> operator!=(int64_t value) const {
-    return Not(*this == value);
-  }
+  ComparisonResult operator!=(int64_t value) const { return !(*this == value); }
 
   int64_t lower_bound = 0;
   int64_t upper_bound = 0;
-
- private:
-  static std::optional<bool> Not(std::optional<bool> val) {
-    if (val) return !*val;
-    return val;
-  }
 };
 
 std::ostream& operator<<(std::ostream& out, const Range& range);

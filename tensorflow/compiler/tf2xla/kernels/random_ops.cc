@@ -189,8 +189,8 @@ REGISTER_XLA_OP(Name("TruncatedNormal")
 // the parameter is a vector of shape [num_batches], then it is broadcast along
 // dimension 0 to ([num_batches] x samples_per_batch). Otherwise it is a scalar
 // or has shape [1], in which case the single value is broadcast.
-static StatusOr<xla::XlaOp> BroadcastParameters(xla::XlaOp params,
-                                                TensorShape& output_shape) {
+static absl::StatusOr<xla::XlaOp> BroadcastParameters(
+    xla::XlaOp params, TensorShape& output_shape) {
   // broadcast to [samples1, ..., num_batches]
   int rank = output_shape.dims();
   std::vector<int64_t> bcast_shape;
@@ -240,7 +240,7 @@ class ParameterizedTruncatedNormalOp : public XlaOpKernel {
         << name();
     xla::XlaOp uniform = xla::RngUniform(min_positive, one, xla_shape);
 
-    auto result = b->ReportErrorOrReturn([&]() -> StatusOr<xla::XlaOp> {
+    auto result = b->ReportErrorOrReturn([&]() -> absl::StatusOr<xla::XlaOp> {
       TF_ASSIGN_OR_RETURN(xla::XlaOp means,
                           BroadcastParameters(ctx->Input(1), shape));
       TF_ASSIGN_OR_RETURN(xla::XlaOp stddevs,

@@ -18,8 +18,8 @@ limitations under the License.
 
 #include "absl/status/status.h"
 #include "xla/stream_executor/tpu/c_api_decl.h"
-#include "tsl/c/tsl_status.h"
-#include "tsl/c/tsl_status_helper.h"
+#include "xla/tsl/c/tsl_status.h"
+#include "xla/tsl/c/tsl_status_helper.h"
 #include "tsl/platform/status.h"
 
 class TslStatusHelper {

@@ -30,12 +30,6 @@ limitations under the License.
 
 namespace mlir::quant::stablehlo {
 
-// Creates a `QuantizePass` that quantizes ops according to surrounding qcast /
-// dcast ops.
-std::unique_ptr<OperationPass<ModuleOp>> CreateQuantizePass(
-    const quant::QuantizationSpecs& quantization_specs,
-    bool enable_per_channel_quantized_weight = true);
-
 // Creates a pass that quantizes weight component of StableHLO graph.
 std::unique_ptr<OperationPass<func::FuncOp>> CreateQuantizeWeightPass(
     const ::stablehlo::quantization::QuantizationComponentSpec&
@@ -49,6 +43,8 @@ absl::StatusOr<std::string> ConvertSerializedStableHloModuleToBfloat16(
 std::unique_ptr<OperationPass<ModuleOp>>
 CreateLiftQuantizableSpotsAsFunctionsPass(
     const ::stablehlo::quantization::QuantizationSpecs& quantization_specs);
+
+QuantizationSpecs DefaultQuantizationSpecs();
 
 // Adds generated pass default constructors or options definitions.
 #define GEN_PASS_DECL

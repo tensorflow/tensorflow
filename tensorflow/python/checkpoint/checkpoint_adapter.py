@@ -39,7 +39,7 @@ class ReshardCallback:
       self,
       checkpoint_values: List[tensor.Tensor],
       shape_and_slice_spec: List[str],
-  ) -> List[tensor.Tensor]:
+  ) -> tensor.Tensor:
     """Reshards the checkpoint values as read from the checkpoint file.
 
     Override this to reshard/modify the restored values
@@ -52,7 +52,10 @@ class ReshardCallback:
       List of restored Tensor values after being resharded.
     """
     del shape_and_slice_spec  # unused
-    return checkpoint_values
+    # Default reshard is a trivial one.
+    if len(checkpoint_values) != 1:
+      raise ValueError("Default reshard expects a single checkpoint value.")
+    return checkpoint_values[0]
 
   def update_restore_inputs(
       self, checkpoint_key, shape_and_slice_spec
@@ -85,7 +88,7 @@ class AbstractCheckpointAdapter(abc.ABC):
   @abc.abstractmethod
   def create_from_checkpoint(cls, path: str):
     """Create factory to create an Adapter from checkpoint.
-    
+
     Args:
       path: Path to checkpoint.
     """

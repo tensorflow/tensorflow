@@ -36,6 +36,7 @@ limitations under the License.
 #include "tensorflow/c/tf_status_helper.h"
 #include "tensorflow/c/tf_tensor.h"
 #include "tensorflow/c/tf_tensor_internal.h"
+#include "xla/tsl/c/tsl_status_internal.h"  // IWYU pragma: keep
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/attr_value_util.h"
@@ -51,7 +52,6 @@ limitations under the License.
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/platform/notification.h"
 #include "tensorflow/core/protobuf/config.pb.h"
-#include "tsl/c/tsl_status_internal.h"  // IWYU pragma: keep
 
 // Required for IS_MOBILE_PLATFORM definition
 #include "tsl/platform/platform.h"  // IWYU pragma: keep

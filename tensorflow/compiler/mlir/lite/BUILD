@@ -16,6 +16,7 @@ package_group(
         "//learning/brain/experimental/mlir/tflite/tfmrt/...",
         "//learning/brain/mlir/...",
         "//third_party/iree/...",
+        "//third_party/odml/infra/...",
         "//tensorflow/compiler/mlir/...",
         "//tensorflow/lite/python/...",
         "//waymo/ml/compiler/mlir/...",
@@ -808,6 +809,29 @@ cc_library(
 )
 
 cc_library(
+    name = "tensorflow_lite_push_transpose_through_ewise",
+    srcs = [
+        "transforms/push_transpose_through_ewise.cc",
+    ],
+    hdrs = [
+        "transforms/passes.h",
+    ],
+    deps = [
+        ":tensorflow_lite",
+        ":tensorflow_lite_passes_inc_gen",
+        "//tensorflow/compiler/mlir/quantization/common/quantization_lib:quantization_config",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:ArithDialect",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:Support",
+        "@llvm-project//mlir:TransformUtils",
+    ],
+)
+
+cc_library(
     name = "tensorflow_lite_quantize",
     srcs = [
         "transforms/decompose_hybrid_quantization.cc",
@@ -1335,6 +1359,7 @@ cc_library(
         ":tensorflow_lite_legalize_tf",  # buildcleaner: keep
         ":tensorflow_lite_optimize",  # buildcleaner: keep
         ":tensorflow_lite_optimize_batch_matmul",  # buildcleaner: keep
+        ":tensorflow_lite_push_transpose_through_ewise",  # buildcleaner: keep
         ":tensorflow_lite_quantize",  # buildcleaner: keep
         "//tensorflow/compiler/mlir/lite/quantization:quantization_passes",
         "//tensorflow/compiler/mlir/lite/quantization/tensorflow:tf_quantization_passes",

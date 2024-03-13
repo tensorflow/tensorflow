@@ -99,7 +99,6 @@ void AddTFToStablehloPasses(mlir::PassManager& pm) {
   // Propagates shapes on the TensorFlow graph.
   pm.addPass(mlir::TF::CreateTFShapeInferencePass());
   pm.addPass(mlir::createCanonicalizerPass());
-  pm.addPass(mlir::TF::CreateTensorListOpsDecompositionPass());
   pm.addNestedPass<mlir::func::FuncOp>(
       mlir::TFDevice::CreateDecomposeResourceOpsPass());
 

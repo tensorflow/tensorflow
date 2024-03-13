@@ -119,6 +119,15 @@ constexpr absl::string_view kModulePartitionedCall = R"mlir(
   }
 )mlir";
 
+constexpr absl::string_view kModuleHybridQuantized = R"mlir(
+  module {
+    func.func @main(%arg0: tensor<1x2xf32>, %arg1: tensor<2x3x!quant.uniform<i8:f32, 6.000000e-03:-128>> {tf_saved_model.index_path = ["input_tensor"]}) -> (tensor<1x3xf32>) {
+      %0 = stablehlo.dot_general %arg0, %arg1, contracting_dims = [1] x [0] : (tensor<1x2xf32>, tensor<2x3x!quant.uniform<i8:f32, 6.000000e-03:-128>>) -> tensor<1x3xf32>
+      return %0 : tensor<1x3xf32>
+    }
+  }
+)mlir";
+
 TEST_F(AttrsAndConstraintsTest, HasStaticShapeSucceedsWithStaticShapes) {
   OwningOpRef<ModuleOp> module_op = ParseModuleOpString(kModuleStatic);
   ASSERT_TRUE(module_op);
@@ -397,6 +406,26 @@ TEST_F(AttrsAndConstraintsTest, HasQuantizableTraitFalse) {
   ASSERT_THAT(xla_call_module_op, NotNull());
 
   EXPECT_FALSE(HasQuantizableTrait(xla_call_module_op));
+}
+
+TEST_F(AttrsAndConstraintsTest, IsHybridQuantizedOpTrue) {
+  OwningOpRef<ModuleOp> module_op_ref =
+      ParseModuleOpString(kModuleHybridQuantized);
+  func::FuncOp main_fn = FindMainFuncOp(*module_op_ref);
+  ASSERT_THAT(main_fn, NotNull());
+
+  Operation* dot_general = FindOperationOfType<DotGeneralOp>(main_fn);
+  EXPECT_TRUE(IsHybridQuantizedOp(dot_general));
+}
+
+TEST_F(AttrsAndConstraintsTest, IsHybridQuantizedOpFalse) {
+  OwningOpRef<ModuleOp> module_op_ref =
+      ParseModuleOpString(kModuleXlaCallModule);
+  func::FuncOp main_fn = FindMainFuncOp(*module_op_ref);
+  ASSERT_THAT(main_fn, NotNull());
+
+  Operation* call_op = FindOperationOfType<TF::XlaCallModuleOp>(main_fn);
+  EXPECT_FALSE(IsHybridQuantizedOp(call_op));
 }
 
 }  // namespace

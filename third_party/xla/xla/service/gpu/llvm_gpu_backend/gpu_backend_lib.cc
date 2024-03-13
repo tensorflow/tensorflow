@@ -214,7 +214,7 @@ void FeedLLVMWithFlags(const std::vector<std::string>& cl_opts) {
   for (const std::string& cl_opt : cl_opts) {
     fake_argv.push_back(cl_opt.c_str());
   }
-  llvm::cl::ParseCommandLineOptions(fake_argv.size(), &fake_argv[0]);
+  llvm::cl::ParseCommandLineOptions(fake_argv.size(), fake_argv.data());
 }
 
 // Returns whether the module could use any device bitcode library functions.
@@ -794,7 +794,7 @@ absl::StatusOr<std::vector<uint8_t>> EmitModuleToHsaco(
 
   std::vector<uint8_t> hsaco(hsaco_file_size);
   hsaco_file.seekg(0, std::ios::beg);
-  hsaco_file.read(reinterpret_cast<char*>(&hsaco[0]), hsaco_file_size);
+  hsaco_file.read(reinterpret_cast<char*>(hsaco.data()), hsaco_file_size);
   hsaco_file.close();
   if (!keep_tempfiles) {
     remove(ir_path.c_str());

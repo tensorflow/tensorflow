@@ -92,7 +92,7 @@ std::unique_ptr<HloSharding> HloSharding::Create(
       std::move(devices), memory_kind, std::move(xla_hlo_sharding)));
 }
 
-StatusOr<std::vector<std::pair<Shape, std::shared_ptr<const Sharding>>>>
+absl::StatusOr<std::vector<std::pair<Shape, std::shared_ptr<const Sharding>>>>
 HloSharding::Disassemble(const Shape& shape) const {
   TF_ASSIGN_OR_RETURN(auto index_domains, IndexDomains(shape));
   std::vector<std::pair<Shape, std::shared_ptr<const Sharding>>> result;
@@ -104,7 +104,8 @@ HloSharding::Disassemble(const Shape& shape) const {
   return result;
 }
 
-StatusOr<std::vector<std::pair<DynamicShape, std::shared_ptr<const Sharding>>>>
+absl::StatusOr<
+    std::vector<std::pair<DynamicShape, std::shared_ptr<const Sharding>>>>
 HloSharding::Disassemble(const DynamicShape& dynamic_shape) const {
   return InvalidArgument(
       "HloSharding can only disassemble static shape, but was asked "
@@ -112,7 +113,7 @@ HloSharding::Disassemble(const DynamicShape& dynamic_shape) const {
       dynamic_shape.DebugString());
 }
 
-StatusOr<std::vector<IndexDomain>> HloSharding::IndexDomains(
+absl::StatusOr<std::vector<IndexDomain>> HloSharding::IndexDomains(
     const Shape& shape) const {
   auto format_shape = [&] {
     return absl::StrCat("[", absl::StrJoin(shape.dims(), ","), "]");

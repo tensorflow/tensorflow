@@ -38,7 +38,6 @@ absl::Status PywrapQuantizeStaticRangePtq(
     const std::vector<std::string>& signature_keys,
     const absl::flat_hash_map<std::string, tensorflow::SignatureDef>&
         signature_def_map,
-    const absl::flat_hash_map<std::string, std::string>& function_aliases,
     const tensorflow::quantization::PyFunctionLibrary& py_function_library);
 
 // Function used by the pywrap_quantization module to mirror

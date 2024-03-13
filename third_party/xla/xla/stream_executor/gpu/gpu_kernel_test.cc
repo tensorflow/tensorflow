@@ -46,8 +46,7 @@ TEST(GpuKernelTest, Add) {
 #if defined(GOOGLE_CUDA)
   spec.AddCudaPtxInMemory(internal::kAddI32Kernel, "add");
 #elif defined(TENSORFLOW_USE_ROCM)
-  spec.AddCudaCubinInMemory(
-      reinterpret_cast<const char*>(&internal::kAddI32KernelModule[0]), "add");
+  spec.AddCudaCubinInMemory(internal::kAddI32KernelModule, "add");
 #endif
 
   TF_ASSERT_OK_AND_ASSIGN(auto add, AddI32Kernel::Create(executor, spec));

@@ -667,7 +667,7 @@ static absl::StatusOr<std::unique_ptr<xla::Executable>> JitCompile(
   DumpHloModuleIfEnabled(*hlo_module, kBeforeOptimizationsDumpName);
 
   // Run Hlo Passes
-  cpu::CpuCompiler compiler(/*allow_sparse_shapes=*/false);
+  cpu::CpuCompiler compiler;
   TF_ASSIGN_OR_RETURN(hlo_module, compiler.RunHloPasses(std::move(hlo_module),
                                                         /*stream_exec=*/nullptr,
                                                         compile_options));
@@ -800,7 +800,7 @@ absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>> TfrtCpuClient::Compile(
   TF_RETURN_IF_ERROR(MlirToXlaComputation(
       module, xla_computation,
       /*use_tuple_args=*/options.parameter_is_tupled_arguments,
-      /*return_tuple=*/false, /*legalize_sparse_ops=*/true));
+      /*return_tuple=*/false));
   return Compile(xla_computation, options);
 }
 
@@ -926,8 +926,17 @@ static std::vector<tsl::RCReference<tsl::AsyncValue>> CopyAsyncValues(
   return avs;
 }
 
-PjRtFuture<Status> TfrtCpuBuffer::ToLiteral(MutableLiteralBase* literal) {
+PjRtFuture<absl::Status> TfrtCpuBuffer::ToLiteral(MutableLiteralBase* literal) {
   return ToLiteralHelper(literal, client()->async_work_runner());
+}
+
+PjRtFuture<absl::Status> TfrtCpuBuffer::LazyToLiteral(
+    absl::AnyInvocable<absl::StatusOr<MutableLiteralBase*>() &&> generator) {
+  auto buffer = std::move(generator)();
+  if (!buffer.ok()) {
+    return PjRtFuture<Status>(buffer.status());
+  }
+  return ToLiteralHelper(buffer.value(), client()->async_work_runner());
 }
 
 // TODO(zhangqiaorjc): Consider disallowing multiple CPU devices and assign

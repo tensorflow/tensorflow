@@ -365,8 +365,7 @@ func.func @add_per_channel_per_tensor_mix(
     %arg0: tensor<?x3x4x2x!quant.uniform<i32:f32:3, {2.9455460163317514E-5,5.8952903030815205E-5}>>,
     %arg1: tensor<?x3x4x2x!quant.uniform<i32:f32:3, {2.9455460163317514E-5,5.8952903030815205E-5}>>
   ) -> tensor<?x3x4x2x!quant.uniform<i32:f32, 1.1:2>> {
-  // expected-error@+2 {{Per-channel quantized AddOp requires the same quantized element type for all operands and results}}
-  // expected-error@+1 {{failed to legalize operation 'mhlo.add' that was explicitly marked illegal}}
+  // expected-error@+1 {{'mhlo.add' op requires compatible types for all operands and results}}
   %11 = mhlo.add %arg0, %arg1 : (
       tensor<?x3x4x2x!quant.uniform<i32:f32:3, {2.9455460163317514E-5,5.8952903030815205E-5}>>,
       tensor<?x3x4x2x!quant.uniform<i32:f32:3, {2.9455460163317514E-5,5.8952903030815205E-5}>>

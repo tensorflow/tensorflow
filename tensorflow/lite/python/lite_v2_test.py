@@ -3009,7 +3009,11 @@ class FromSavedModelTest(lite_v2_test_util.ModelTest):
     quantized_tflite_model = converter.convert()
     self.assertIsNotNone(quantized_tflite_model)
 
-    interp = interpreter.Interpreter(model_content=quantized_tflite_model)
+    # Do not apply delegates as XNNPack converts per tensor to per channel.
+    interp = interpreter.Interpreter(
+        model_content=quantized_tflite_model,
+        experimental_op_resolver_type=interpreter.OpResolverType.BUILTIN_WITHOUT_DEFAULT_DELEGATES,
+    )
     interp.allocate_tensors()
     quantized_weight = None
     quantized_weight_with_one_postfix = None
@@ -3351,7 +3355,11 @@ class FromKerasModelTest(lite_v2_test_util.ModelTest):
     quantized_tflite_model = converter.convert()
     self.assertIsNotNone(quantized_tflite_model)
 
-    interp = interpreter.Interpreter(model_content=quantized_tflite_model)
+    # Do not apply delegates as XNNPack converts per tensor to per channel.
+    interp = interpreter.Interpreter(
+        model_content=quantized_tflite_model,
+        experimental_op_resolver_type=interpreter.OpResolverType.BUILTIN_WITHOUT_DEFAULT_DELEGATES,
+    )
     interp.allocate_tensors()
     quantized_weight = None
     quantized_weight_with_one_postfix = None
@@ -3589,7 +3597,11 @@ class FromKerasModelTest(lite_v2_test_util.ModelTest):
     quantized_tflite_model = quantized_converter.convert()
     self.assertIsNotNone(quantized_tflite_model)
 
-    interp = interpreter.Interpreter(model_content=quantized_tflite_model)
+    # Do not apply delegates as XNNPack converts per tensor to per channel.
+    interp = interpreter.Interpreter(
+        model_content=quantized_tflite_model,
+        experimental_op_resolver_type=interpreter.OpResolverType.BUILTIN_WITHOUT_DEFAULT_DELEGATES,
+    )
     interp.allocate_tensors()
     detail = next(
         (d for d in interp.get_tensor_details() if k_dense_name in d['name'])

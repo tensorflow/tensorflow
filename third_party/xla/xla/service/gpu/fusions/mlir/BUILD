@@ -65,6 +65,7 @@ cc_library(
         "//xla:shape_util",
         "//xla:status_macros",
         "//xla/hlo/ir:hlo",
+        "//xla/mlir/utils:type_util",
         "//xla/mlir_hlo",
         "//xla/mlir_hlo:map_mhlo_to_scalar_op",
         "//xla/mlir_hlo:type_conversion",
@@ -317,6 +318,7 @@ cc_library(
     hdrs = ["type_util.h"],
     deps = [
         "//xla:shape_util",
+        "//xla/mlir/utils:type_util",
         "//xla/translate/hlo_to_mhlo:hlo_utils",
         "@com_google_absl//absl/log:check",
         "@llvm-project//llvm:Support",

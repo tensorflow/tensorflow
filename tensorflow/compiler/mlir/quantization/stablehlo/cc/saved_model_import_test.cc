@@ -40,10 +40,9 @@ TEST_F(UpdateFunctionAliasesTest, NoAliasesReturnsEmptyMap) {
   )mlir");
   ASSERT_TRUE(module_op);
 
-  const absl::flat_hash_map<FunctionName, FunctionAlias>
-      updated_function_aliases =
-          UpdateFunctionAliases(/*function_aliases=*/{}, *module_op);
-  EXPECT_THAT(updated_function_aliases, IsEmpty());
+  absl::flat_hash_map<FunctionName, FunctionAlias> function_aliases;
+  UpdateFunctionAliases(function_aliases, *module_op);
+  EXPECT_THAT(function_aliases, IsEmpty());
 }
 
 TEST_F(UpdateFunctionAliasesTest, AliasUpdatedByMlirFunctionName) {
@@ -55,11 +54,11 @@ TEST_F(UpdateFunctionAliasesTest, AliasUpdatedByMlirFunctionName) {
   )mlir");
   ASSERT_TRUE(module_op);
 
-  const absl::flat_hash_map<FunctionName, FunctionAlias>
-      updated_function_aliases = UpdateFunctionAliases(
-          /*function_aliases=*/{{"main_original", "main_alias"}}, *module_op);
+  absl::flat_hash_map<FunctionName, FunctionAlias> function_aliases{
+      {"main_original", "main_alias"}};
+  UpdateFunctionAliases(function_aliases, *module_op);
 
-  EXPECT_THAT(updated_function_aliases,
+  EXPECT_THAT(function_aliases,
               UnorderedElementsAre(Pair("main", "main_alias")));
 }
 
@@ -74,11 +73,11 @@ TEST_F(UpdateFunctionAliasesTest, IgnoresUnmatchedFunctions) {
 
   // There is no alias corresponding to "main_original". The existing entry
   // without a corresponding function is ignored.
-  const absl::flat_hash_map<FunctionName, FunctionAlias>
-      updated_function_aliases = UpdateFunctionAliases(
-          /*function_aliases=*/{{"not_main", "not_main_alias"}}, *module_op);
+  absl::flat_hash_map<FunctionName, FunctionAlias> function_aliases{
+      {"not_main", "not_main_alias"}};
+  UpdateFunctionAliases(function_aliases, *module_op);
 
-  EXPECT_THAT(updated_function_aliases, IsEmpty());
+  EXPECT_THAT(function_aliases, IsEmpty());
 }
 
 TEST_F(UpdateFunctionAliasesTest,
@@ -92,11 +91,29 @@ TEST_F(UpdateFunctionAliasesTest,
   ASSERT_TRUE(module_op);
 
   // The existing entry without a corresponding function is ignored.
-  const absl::flat_hash_map<FunctionName, FunctionAlias>
-      updated_function_aliases = UpdateFunctionAliases(
-          /*function_aliases=*/{{"main_original", "main_alias"}}, *module_op);
+  absl::flat_hash_map<FunctionName, FunctionAlias> function_aliases{
+      {"main_original", "main_alias"}};
+  UpdateFunctionAliases(function_aliases, *module_op);
 
-  EXPECT_THAT(updated_function_aliases, IsEmpty());
+  EXPECT_THAT(function_aliases, IsEmpty());
+}
+
+TEST_F(UpdateFunctionAliasesTest, FunctionNameNotChanged) {
+  // @main does not have the "tf._original_func_name" attribute.
+  OwningOpRef<ModuleOp> module_op = ParseModuleOpString(R"mlir(
+    func.func private @main_original(%arg: tensor<1x2xf32>) -> (tensor<1x2xf32>) {
+      return %arg : tensor<1x2xf32>
+    }
+  )mlir");
+  ASSERT_TRUE(module_op);
+
+  // The existing entry without a corresponding function is ignored.
+  absl::flat_hash_map<FunctionName, FunctionAlias> function_aliases{
+      {"main_original", "main_alias"}};
+  UpdateFunctionAliases(function_aliases, *module_op);
+
+  EXPECT_THAT(function_aliases,
+              UnorderedElementsAre(Pair("main_original", "main_alias")));
 }
 
 }  // namespace

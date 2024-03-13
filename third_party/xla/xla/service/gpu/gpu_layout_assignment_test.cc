@@ -28,6 +28,7 @@ limitations under the License.
 #include "xla/layout.h"
 #include "xla/layout_util.h"
 #include "xla/service/computation_layout.h"
+#include "xla/service/gpu/stream_executor_util.h"
 #include "xla/service/hlo_parser.h"
 #include "xla/service/pattern_matcher.h"
 #include "xla/service/pattern_matcher_gmock.h"
@@ -65,13 +66,10 @@ class LayoutAssignmentTest : public HloTestBase {
   }
 
   se::dnn::VersionInfo GetDnnVersion() {
-    if (auto* dnn = backend().default_stream_executor()->AsDnn()) {
-      return *dnn->GetVersion();
-    }
-
     // GpuLayoutAssignment has a special case heuristic for cudnn <= 7.3, but
     // none of the tests trigger this heuristic.
-    return se::dnn::VersionInfo{8, 3, 0};
+    return GetDnnVersionInfo(backend().default_stream_executor(),
+                             se::dnn::VersionInfo{8, 3, 0});
   }
 };
 

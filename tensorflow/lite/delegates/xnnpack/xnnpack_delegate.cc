@@ -3328,7 +3328,7 @@ class Subgraph {
     const int groups = SizeOfDimension(&input_tensor, 3) / input_channels;
     // Input tensor shape is not yet known.
     if (groups == 0) {
-      TF_LITE_KERNEL_LOG(
+      TF_LITE_MAYBE_KERNEL_LOG(
           logging_context,
           "groups of zero is not supported by CONV_2D operator #%d",
           node_index);

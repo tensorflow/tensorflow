@@ -29,7 +29,7 @@ limitations under the License.
 namespace xla {
 namespace ifrt {
 
-/*static*/ StatusOr<tsl::RCReference<PjRtTuple>> PjRtTuple::Create(
+/*static*/ absl::StatusOr<tsl::RCReference<PjRtTuple>> PjRtTuple::Create(
     PjRtCompatibleClient* client, absl::Span<tsl::RCReference<Value>> values) {
   return tsl::MakeRef<PjRtTuple>(client, values);
 }

@@ -97,6 +97,7 @@ limitations under the License.
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 #include "xla/mlir_hlo/mhlo/transforms/map_mhlo_to_scalar_op.h"
 #include "xla/primitive_util.h"
+#include "xla/service/algorithm_util.h"
 #include "xla/service/dump.h"
 #include "xla/service/gpu/hlo_traversal.h"
 #include "xla/service/gpu/ir_emission_utils.h"
@@ -123,6 +124,7 @@ limitations under the License.
 #include "tsl/platform/status.h"
 #include "tsl/platform/statusor.h"
 #include "tsl/platform/tensor_float_32_utils.h"
+#include "triton/Conversion/TritonGPUToLLVM/Passes.h"
 #include "triton/Conversion/TritonToTritonGPU/TritonToTritonGPUPass.h"
 #include "triton/Dialect/Triton/IR/Dialect.h"
 #include "triton/Dialect/Triton/IR/Types.h"
@@ -746,7 +748,7 @@ absl::StatusOr<Value> EmitScope(
 absl::Status CreateTritonPipeline(
     mlir::OpPassManager& pm, const se::CudaComputeCapability& cc,
     const TritonGemmConfig& config,
-    mlir::triton::nvidia_gpu::ClusterInfo& out_cluster_info) {
+    mt::nvidia_gpu::ClusterInfo& out_cluster_info) {
   const int ccAsInt = cc.major * 10 + cc.minor;
   const int threadsPerWarp = 32;
 
@@ -795,13 +797,11 @@ absl::Status CreateTritonPipeline(
 
   // Based on make_llir() in
   // @triton//:third_party/nvidia/backend/compiler.py
-  pm.addPass(mlir::triton::gpu::createDecomposeUnsupportedConversionsPass());
+  pm.addPass(mt::gpu::createDecomposeUnsupportedConversionsPass());
   pm.addPass(mlir::createConvertSCFToCFPass());
   pm.addPass(mlir::createConvertIndexToLLVMPass());
-  pm.addPass(mlir::triton::gpu::createAllocateSharedMemoryPass());
-  pm.addPass(
-      mt::createConvertTritonGPUToLLVMPass(ccAsInt,
-                                           /*target=*/mlir::triton::NVVM));
+  pm.addPass(mt::gpu::createAllocateSharedMemoryPass());
+  pm.addPass(mt::createConvertTritonGPUToLLVMPass(ccAsInt));
   pm.addPass(mt::createConvertNVGPUToLLVMPass());
   pm.addPass(mlir::createArithToLLVMConversionPass());
   pm.addPass(mlir::createCanonicalizerPass());
@@ -1160,20 +1160,37 @@ class MatMulEmitterHelper {
   // TODO(b/266862493): Accumulator can be integer too.
   // Otherwise only f64 x f64 -> f64 uses f64 accumulator.
   mlir::FloatType GetDotAccumulatorType() {
-    Type dot_output_ty = TritonType(b_, dot_instr_->shape().element_type());
-    // Data type of dot() immediate inputs.
-    Type dot_input_ty = [&] {
-      const Type lhs_ty =
-          TritonType(b_, dot_instr_->operand(0)->shape().element_type());
-      const Type rhs_ty =
-          TritonType(b_, dot_instr_->operand(1)->shape().element_type());
-      CHECK(lhs_ty == rhs_ty);
-      return lhs_ty;
-    }();
-    // TODO(b/266862493): Accumulator can be integer too.
-    // Otherwise only f64 x f64 -> f64 uses f64 accumulator.
-    return (dot_output_ty.isF64() && dot_input_ty.isF64()) ? b_.getF64Type()
-                                                           : b_.getF32Type();
+    const PrecisionConfig::Algorithm algorithm =
+        dot_instr_->precision_config().algorithm();
+
+    if (algorithm == PrecisionConfig::ALG_UNSET) {
+      Type dot_output_ty = TritonType(b_, dot_instr_->shape().element_type());
+      // Data type of dot() immediate inputs.
+      Type dot_input_ty = [&] {
+        const Type lhs_ty =
+            TritonType(b_, dot_instr_->operand(0)->shape().element_type());
+        const Type rhs_ty =
+            TritonType(b_, dot_instr_->operand(1)->shape().element_type());
+        CHECK(lhs_ty == rhs_ty);
+        return lhs_ty;
+      }();
+      // TODO(b/266862493): Accumulator can be integer too.
+      // Otherwise only f64 x f64 -> f64 uses f64 accumulator.
+      return (dot_output_ty.isF64() && dot_input_ty.isF64()) ? b_.getF64Type()
+                                                             : b_.getF32Type();
+    }
+
+    absl::StatusOr<PrimitiveType> accum_type =
+        algorithm_util::GetDotAccumulatorType(algorithm);
+    CHECK(accum_type.ok()) << "Unexpected algorithm: "
+                           << PrecisionConfig::Algorithm_Name(algorithm);
+    Type mlir_accum_type = TritonType(b_, accum_type.value());
+    if (auto float_accum_type = mlir_accum_type.dyn_cast<mlir::FloatType>()) {
+      return float_accum_type;
+    }
+    LOG(FATAL) << "Only floating point accumulator types are supported for "
+                  "now, but we got: "
+               << llvm_ir::DumpToString(mlir_accum_type);
   }
 
   std::vector<const HloInstruction*> EpiloguePostOrderTransitiveOperands(
@@ -1559,6 +1576,16 @@ Value RoundToBF16(ImplicitLocOpBuilder& b, Value input) {
   return Cast(b, input, b.getBF16Type());
 }
 
+// Checks |input| is finite f32 (not Nan and not infinite).
+// It is used for Emit6xBfloat16MatMul and Emit3xBfloat16MatMul.
+Value CheckFiniteF32(ImplicitLocOpBuilder& b, Value input) {
+  Value positive_inf = CreateConst<float>(
+      b, b.getF32Type(), std::numeric_limits<float>::infinity(),
+      input.getType().cast<ShapedType>().getShape());
+  Value abs_input = b.create<mm::AbsFOp>(input);
+  return b.create<ma::CmpFOp>(ma::CmpFPredicate::OGT, positive_inf, abs_input);
+}
+
 // Leverages BF16 datatype for F32 matmul computation. It follows the guidance
 // from https://arxiv.org/pdf/1904.06376.pdf.
 absl::StatusOr<Value> Emit6xBfloat16MatMul(ImplicitLocOpBuilder& b, Value lhs,
@@ -1600,17 +1627,107 @@ absl::StatusOr<Value> Emit6xBfloat16MatMul(ImplicitLocOpBuilder& b, Value lhs,
   // We would get the wrong result if we sum these partial products. Instead, we
   // must override any accumulated result if the last partial product is
   // non-finite. See b/115844437.
-  Value positive_inf = CreateConst<float>(
-      b, b.getF32Type(), std::numeric_limits<float>::infinity(),
-      result.getType().cast<ShapedType>().getShape());
-  Value abs_result = b.create<mm::AbsFOp>(result);
-  Value is_finite =
-      b.create<ma::CmpFOp>(ma::CmpFPredicate::OGT, positive_inf, abs_result);
+  Value is_finite = CheckFiniteF32(b, result);
   result = b.create<ma::SelectOp>(is_finite, result, ZerosLike(b, result));
   result = bf16_dot(lhs_high, rhs_high, result);
   result = b.create<ma::AddFOp>(acc, result);
   return result;
 }
+
+// Compute F32 matmul with 3 BF16 dots. It is less accurate than
+// Emit6xBfloat16MatMul.
+absl::StatusOr<Value> Emit3xBfloat16MatMul(ImplicitLocOpBuilder& b, Value lhs,
+                                           Value rhs, Value acc) {
+  Type f32 = b.getF32Type();
+  TF_RET_CHECK(lhs.getType().cast<ShapedType>().getElementType() == f32);
+  TF_RET_CHECK(rhs.getType().cast<ShapedType>().getElementType() == f32);
+  TF_RET_CHECK(acc.getType().cast<ShapedType>().getElementType() == f32);
+
+  Value lhs_high = RoundToBF16(b, TruncateToBF16TowardsZero(b, lhs));
+  Value lhs_low = RoundToBF16(b, SoftMiddleEight(b, lhs));
+
+  Value rhs_high = RoundToBF16(b, TruncateToBF16TowardsZero(b, rhs));
+  Value rhs_low = RoundToBF16(b, SoftMiddleEight(b, rhs));
+
+  auto bf16_dot = [&](Value lhs_bf16, Value rhs_bf16,
+                      Value accumulator) -> Value {
+    return b.create<mt::DotOp>(lhs_bf16, rhs_bf16, accumulator,
+                               /*allowTF32=*/false,
+                               /*maxNumImpreciseAcc=*/0);
+  };
+
+  Value local_acc = ZerosLike(b, acc);
+  Value result = bf16_dot(lhs_low, rhs_high, local_acc);
+  result = bf16_dot(lhs_high, rhs_low, result);
+  Value is_finite = CheckFiniteF32(b, result);
+  result = b.create<ma::SelectOp>(is_finite, result, ZerosLike(b, result));
+  result = bf16_dot(lhs_high, rhs_high, result);
+  result = b.create<ma::AddFOp>(acc, result);
+  return result;
+}
+
+namespace {
+
+bool IsTf32Allowed(const HloDotInstruction* dot_instr) {
+  const PrecisionConfig::Algorithm algorithm =
+      dot_instr->precision_config().algorithm();
+
+  if (algorithm == PrecisionConfig::ALG_UNSET) {
+    return tsl::tensor_float_32_execution_enabled() &&
+           absl::c_none_of(dot_instr->precision_config().operand_precision(),
+                           [](const int precision) {
+                             return precision != PrecisionConfig::DEFAULT;
+                           });
+  }
+
+  return algorithm_util::HasTf32InputType(algorithm);
+}
+
+bool Is6xBfloat16MatMul(const HloDotInstruction* dot_instr,
+                        mlir::OpBuilder& builder, Value dot_input_lhs,
+                        Value dot_input_rhs,
+                        const se::DeviceDescription& device_info) {
+  const PrecisionConfig::Algorithm algorithm =
+      dot_instr->precision_config().algorithm();
+
+  if (algorithm == PrecisionConfig::ALG_UNSET) {
+    const HloModule* hlo_module = dot_instr->GetModule();
+    Type f32 = builder.getF32Type();
+    // BF16 datatype is not supported before Ampere.
+    return device_info.cuda_compute_capability().IsAtLeastAmpere() &&
+           hlo_module->config()
+               .debug_options()
+               .xla_gpu_enable_bf16_6way_gemm() &&
+           dot_input_lhs.getType().cast<ShapedType>().getElementType() == f32 &&
+           dot_input_rhs.getType().cast<ShapedType>().getElementType() == f32;
+  }
+
+  return algorithm == PrecisionConfig::ALG_DOT_BF16_BF16_F32_X6;
+}
+
+bool Is3xBfloat16MatMul(const HloDotInstruction* dot_instr,
+                        mlir::OpBuilder& builder, Value dot_input_lhs,
+                        Value dot_input_rhs,
+                        const se::DeviceDescription& device_info) {
+  const PrecisionConfig::Algorithm algorithm =
+      dot_instr->precision_config().algorithm();
+
+  if (algorithm == PrecisionConfig::ALG_UNSET) {
+    const HloModule* hlo_module = dot_instr->GetModule();
+    Type f32 = builder.getF32Type();
+    // BF16 datatype is not supported before Ampere.
+    return device_info.cuda_compute_capability().IsAtLeastAmpere() &&
+           hlo_module->config()
+               .debug_options()
+               .xla_gpu_enable_bf16_3way_gemm() &&
+           dot_input_lhs.getType().cast<ShapedType>().getElementType() == f32 &&
+           dot_input_rhs.getType().cast<ShapedType>().getElementType() == f32;
+  }
+
+  return algorithm == PrecisionConfig::ALG_DOT_BF16_BF16_F32_X3;
+}
+
+}  // namespace
 
 // Variable naming: lhs [m, k] x rhs [k, n] -> out [m, n].
 absl::Status EmitMatMul(mlir::OpBuilder builder,
@@ -1794,23 +1911,24 @@ absl::Status EmitMatMul(mlir::OpBuilder builder,
       dot_input_rhs = apply_mask(1, dot_input_rhs);
     }
 
-    const bool allow_tf32 =
-        tsl::tensor_float_32_execution_enabled() &&
-        absl::c_none_of(dot_instr->precision_config().operand_precision(),
-                        [](const int precision) {
-                          return precision != PrecisionConfig::DEFAULT;
-                        });
-    const HloModule* hlo_module = computation->parent();
-    Type f32 = b.getF32Type();
-    // BF16 datatype is not supported before Ampere.
-    const bool use_bf16_6x =
-        device_info.cuda_compute_capability().IsAtLeastAmpere() &&
-        hlo_module->config().debug_options().xla_gpu_enable_bf16_6way_gemm() &&
-        dot_input_lhs.getType().cast<ShapedType>().getElementType() == f32 &&
-        dot_input_rhs.getType().cast<ShapedType>().getElementType() == f32;
+    const HloModule* hlo_module = dot_instr->GetModule();
+    if (hlo_module->config().debug_options().xla_gpu_enable_bf16_3way_gemm() &&
+        hlo_module->config().debug_options().xla_gpu_enable_bf16_6way_gemm()) {
+      LOG(WARNING) << "Both BF16 6way gemm and 3way gemm are enabled."
+                   << " Fallback to BF16 6way gemm.";
+    }
+
     Value accumulator_next;
-    if (use_bf16_6x) {
+    if (Is6xBfloat16MatMul(dot_instr, b, dot_input_lhs, dot_input_rhs,
+                           device_info)) {
+      CHECK(device_info.cuda_compute_capability().IsAtLeastAmpere());
       absl::StatusOr<Value> accumulator_next_or = Emit6xBfloat16MatMul(
+          b, dot_input_lhs, dot_input_rhs, iter_args.back());
+      TF_CHECK_OK(accumulator_next_or.status());
+      accumulator_next = accumulator_next_or.value();
+    } else if (Is3xBfloat16MatMul(dot_instr, b, dot_input_lhs, dot_input_rhs,
+                                  device_info)) {
+      absl::StatusOr<Value> accumulator_next_or = Emit3xBfloat16MatMul(
           b, dot_input_lhs, dot_input_rhs, iter_args.back());
       TF_CHECK_OK(accumulator_next_or.status());
       accumulator_next = accumulator_next_or.value();
@@ -1820,9 +1938,10 @@ absl::Status EmitMatMul(mlir::OpBuilder builder,
       // maxNumImpreciseAcc flag was introduced for Hopper to accumulate in a
       // lower precision than the output type. The change was introduced here:
       // https://github.com/openai/triton/commit/31b0c521427109a8eda609b58d756c380b21599a
-      accumulator_next = b.create<mt::DotOp>(dot_input_lhs, dot_input_rhs,
-                                             iter_args.back(), allow_tf32,
-                                             /*maxNumImpreciseAcc=*/0);
+      accumulator_next =
+          b.create<mt::DotOp>(dot_input_lhs, dot_input_rhs, iter_args.back(),
+                              /*allowTF32=*/IsTf32Allowed(dot_instr),
+                              /*maxNumImpreciseAcc=*/0);
     }
     iter_args_next.push_back(accumulator_next);
 

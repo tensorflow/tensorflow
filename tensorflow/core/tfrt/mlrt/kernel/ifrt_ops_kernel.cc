@@ -71,7 +71,7 @@ absl::StatusOr<tsl::RCReference<xla::ifrt::Array>> LoadIfrtVariable(
       auto result_array,
       tensorflow::ifrt_serving::MakeArrayFromTensor(
           *ifrt_model_context.GetClient(), variable, absl::MakeSpan(device_ids),
-          hlo_sharding, ifrt_model_context.GetThreadPoolDevice()));
+          hlo_sharding, ifrt_model_context.GetThreadPool()));
 
   return result_array;
 }

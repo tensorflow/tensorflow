@@ -300,7 +300,7 @@ class RocmActivityCallbackImpl {
   RocmTraceCollector* collector_ = nullptr;
 };
 
-// The class use to enable cupti callback/activity API and forward the collected
+// The class uses roctracer callback/activity API and forward the collected
 // trace events to RocmTraceCollector. There should be only one RocmTracer
 // per process.
 class RocmTracer {

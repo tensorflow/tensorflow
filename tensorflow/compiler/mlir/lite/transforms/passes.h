@@ -233,6 +233,10 @@ std::unique_ptr<OperationPass<ModuleOp>> CreateLegalizeTensorListPass();
 // tensor are within the range of the reduced precision.
 std::unique_ptr<OperationPass<ModuleOp>> CreateReduceTypePrecisionPass();
 
+// Convervatively pushes transposes through elementwise ops to prepare
+// so redudant ones may be grouped and removed.
+std::unique_ptr<OperationPass<ModuleOp>> CreatePushTransposeThroughEwisePass();
+
 // Creates a pass that brings operations into the same order as graph_info.cc.
 std::unique_ptr<OperationPass<func::FuncOp>>
 CreatePartitionedTopologicalSortPass();

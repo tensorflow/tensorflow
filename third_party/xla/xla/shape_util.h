@@ -1130,7 +1130,7 @@ inline ShapeUtil::ForEachState::ForEachState(const Shape& s,
       minor_to_major(shape.layout().minor_to_major().data()),
       rank(LayoutUtil::MinorToMajor(shape).size()),
       indexes(b.begin(), b.end()),
-      indexes_ptr((rank == 0) ? nullptr : &indexes[0]),
+      indexes_ptr((rank == 0) ? nullptr : indexes.data()),
       indexes_span(indexes) {
   CHECK_EQ(shape.rank(), b.size());
   CHECK_EQ(i.size(), b.size());

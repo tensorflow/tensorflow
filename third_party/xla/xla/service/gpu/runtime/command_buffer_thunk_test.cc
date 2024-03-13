@@ -45,6 +45,7 @@ limitations under the License.
 #include "xla/stream_executor/platform_manager.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/types.h"  // IWYU pragma: keep
+#include "xla/xla_data.pb.h"
 #include "tsl/lib/core/status_test_util.h"
 #include "tsl/platform/statusor.h"
 #include "tsl/platform/test.h"
@@ -654,11 +655,12 @@ TEST(CommandBufferThunkTest, GemmCmd) {
   BufferAllocation::Slice slice_out(&alloc_out, 0, out_length);
   BufferAllocation::Slice slice_workspace(&alloc_workspace, 0, 1024 * 1024);
 
-  auto config = GemmConfig::For(
-      ShapeUtil::MakeShape(PrimitiveType::F32, {2, 4}), {}, {1},
-      ShapeUtil::MakeShape(PrimitiveType::F32, {4, 3}), {}, {0},
-      ShapeUtil::MakeShape(PrimitiveType::F32, {2, 3}), 1.0, 0.0, 0.0,
-      std::nullopt, se::blas::kDefaultComputePrecision, false, false);
+  auto config =
+      GemmConfig::For(ShapeUtil::MakeShape(PrimitiveType::F32, {2, 4}), {}, {1},
+                      ShapeUtil::MakeShape(PrimitiveType::F32, {4, 3}), {}, {0},
+                      ShapeUtil::MakeShape(PrimitiveType::F32, {2, 3}), 1.0,
+                      0.0, 0.0, PrecisionConfig::ALG_UNSET, std::nullopt,
+                      se::blas::kDefaultComputePrecision, false, false);
   ASSERT_TRUE(config.ok());
 
   // Prepare commands sequence for constructing command buffer.

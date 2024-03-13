@@ -242,7 +242,6 @@ bool MklEagerOpRewrite::RewriteConv2D(EagerOperation* op) {
 bool MklEagerOpRewrite::RewriteSparseMatrixMatMul(EagerOperation* op) {
   const NodeDef& ndef = op->MutableAttrs()->BuildNodeDef();
   DataType T;
-  const TensorProto* proto = nullptr;
   Tensor tensor;
   bool adjoint_a, adjoint_b, transpose_a, transpose_b, transpose_out;
 

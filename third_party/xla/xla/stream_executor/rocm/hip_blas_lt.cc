@@ -287,9 +287,10 @@ auto BlasLt::GetMatmulPlan(const gpu::GemmConfig& cfg, Epilogue epilogue) const
 
   auto compute_type = cfg.compute_type;
   if (!compute_type) {  // obtain compute_type unless provided by the user
-    TF_ASSIGN_OR_RETURN(compute_type, gpu::GetBlasComputationType(
-                                          lhs_layout.dtype, output_layout.dtype,
-                                          cfg.compute_precision));
+    TF_ASSIGN_OR_RETURN(compute_type,
+                        gpu::GetBlasComputationType(
+                            cfg.precision_algorithm, lhs_layout.dtype,
+                            output_layout.dtype, cfg.compute_precision));
   }
 
   if (lhs_layout.order == gpu::MatrixLayout::Order::kRowMajor) {

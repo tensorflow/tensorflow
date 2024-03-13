@@ -249,6 +249,7 @@ cc_library(
     hdrs = ["mlir_bridge_pass_util.h"],
     visibility = ["//tensorflow/compiler/tf2xla:__pkg__"],
     deps = [
+        "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/tf2xla:tf2xla_defs",
         "//tensorflow/core:core_cpu_base",
         "//tensorflow/core:framework",
@@ -256,6 +257,7 @@ cc_library(
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
         "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Support",
         "@local_tsl//tsl/platform:status",
@@ -268,6 +270,10 @@ tf_cc_test(
     srcs = ["mlir_bridge_pass_util_test.cc"],
     deps = [
         ":mlir_bridge_pass_util",
+        "@com_google_googletest//:gtest_main",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Parser",
         "//tensorflow/cc:function_ops",
         "//tensorflow/cc:functional_ops",
         "//tensorflow/cc:ops",
@@ -279,10 +285,7 @@ tf_cc_test(
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
         "//tensorflow/core/platform:enable_tf2_utils",
-        "@com_google_googletest//:gtest_main",
-        "@llvm-project//mlir:FuncDialect",
-        "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:Parser",
+        # "//tensorflow/core/platform:resource_loader",
         "@local_tsl//tsl/lib/core:status_test_util",
     ],
 )

@@ -152,9 +152,10 @@ absl::StatusOr<bool> LoopDoubleBufferTransformer::Run(
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   bool changed = false;
   std::vector<HloInstruction*> while_instrs;
-  absl::c_copy_if(module->entry_computation()->instructions(),
-                  std::back_inserter(while_instrs),
-                  HloPredicateIsOp<HloOpcode::kWhile>);
+  for (auto comp : module->MakeNonfusionComputations()) {
+    absl::c_copy_if(comp->instructions(), std::back_inserter(while_instrs),
+                    HloPredicateIsOp<HloOpcode::kWhile>);
+  }
   VLOG(2) << "Processing " << while_instrs.size() << " while loops.";
 
   for (HloInstruction* while_instr : while_instrs) {

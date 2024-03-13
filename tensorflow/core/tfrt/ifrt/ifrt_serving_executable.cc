@@ -153,7 +153,7 @@ IfrtServingExecutable::ConvertTensorToArray(
   TF_ASSIGN_OR_RETURN(auto hlo_sharding, xla::HloSharding::FromProto(sharding));
 
   return MakeArrayFromTensor(*ifrt_client_, tensor, device_list,
-                             std::move(hlo_sharding), thread_pool_device_);
+                             std::move(hlo_sharding), thread_pool_);
 }
 
 absl::StatusOr<IfrtServingExecutable::CachedExecutableBundle>
@@ -354,7 +354,7 @@ absl::StatusOr<std::vector<tensorflow::Tensor>> IfrtServingExecutable::Execute(
     TF_ASSIGN_OR_RETURN(
         tensorflow::Tensor tensor,
         MakeTensorFromArray(*ifrt_client_, *array_for_copy, hlo_sharding,
-                            device_list, thread_pool_device_));
+                            device_list, thread_pool_));
     outputs.push_back(std::move(tensor));
   }
 

@@ -48,9 +48,9 @@ class PjRtCompatibleClient
   // operations.
   virtual xla::PjRtClient* pjrt_client() = 0;
   virtual std::shared_ptr<xla::PjRtClient> shared_ptr_pjrt_client() = 0;
-  virtual StatusOr<tsl::RCReference<PjRtCompatibleArray>> CreatePjRtArray(
+  virtual absl::StatusOr<tsl::RCReference<PjRtCompatibleArray>> CreatePjRtArray(
       std::shared_ptr<PjRtBuffer> pjrt_buffer) = 0;
-  virtual StatusOr<tsl::RCReference<PjRtCompatibleArray>> CreatePjRtArray(
+  virtual absl::StatusOr<tsl::RCReference<PjRtCompatibleArray>> CreatePjRtArray(
       Shape shape, PjRtBuffers pjrt_buffers) = 0;
 
   static char ID;  // NOLINT
@@ -70,28 +70,28 @@ class PjRtClient final
   std::shared_ptr<xla::PjRtClient> shared_ptr_pjrt_client() override {
     return pjrt_client_;
   }
-  StatusOr<tsl::RCReference<PjRtCompatibleArray>> CreatePjRtArray(
+  absl::StatusOr<tsl::RCReference<PjRtCompatibleArray>> CreatePjRtArray(
       std::shared_ptr<PjRtBuffer> pjrt_buffer) override;
-  StatusOr<tsl::RCReference<PjRtCompatibleArray>> CreatePjRtArray(
+  absl::StatusOr<tsl::RCReference<PjRtCompatibleArray>> CreatePjRtArray(
       Shape shape, PjRtBuffers pjrt_buffers) override;
 
   // Client implementation.
 
   ~PjRtClient() override = default;
 
-  StatusOr<tsl::RCReference<Array>> MakeArrayFromHostBuffer(
+  absl::StatusOr<tsl::RCReference<Array>> MakeArrayFromHostBuffer(
       const void* data, DType dtype, Shape shape,
       std::optional<absl::Span<const int64_t>> byte_strides,
       std::shared_ptr<const Sharding> sharding,
       Client::HostBufferSemantics semantics,
       std::function<void()> on_done_with_host_buffer) override;
 
-  StatusOr<tsl::RCReference<Array>> AssembleArrayFromSingleDeviceArrays(
+  absl::StatusOr<tsl::RCReference<Array>> AssembleArrayFromSingleDeviceArrays(
       Shape shape, std::shared_ptr<const Sharding> sharding,
       absl::Span<tsl::RCReference<Array>> arrays,
       ArrayCopySemantics semantics) override;
 
-  StatusOr<tsl::RCReference<Tuple>> MakeTuple(
+  absl::StatusOr<tsl::RCReference<Tuple>> MakeTuple(
       absl::Span<tsl::RCReference<Value>> values) override;
 
   absl::string_view runtime_type() const override {
@@ -131,18 +131,18 @@ class PjRtClient final
     return pjrt_client_->addressable_devices();
   }
   int process_index() const override { return pjrt_client_->process_index(); }
-  StatusOr<DeviceAssignment> GetDefaultDeviceAssignment(
+  absl::StatusOr<DeviceAssignment> GetDefaultDeviceAssignment(
       int num_replicas, int num_partitions) const override {
     DCHECK(this);
     return pjrt_client_->GetDefaultDeviceAssignment(num_replicas,
                                                     num_partitions);
   }
-  StatusOr<Device*> LookupDevice(int device_id) const override {
+  absl::StatusOr<Device*> LookupDevice(int device_id) const override {
     DCHECK(this);
     return pjrt_client_->LookupDevice(device_id);
   }
 
-  StatusOr<Device*> LookupAddressableDevice(
+  absl::StatusOr<Device*> LookupAddressableDevice(
       int local_hardware_id) const override {
     DCHECK(this);
     return pjrt_client_->LookupAddressableDevice(local_hardware_id);
@@ -153,7 +153,7 @@ class PjRtClient final
     return &default_compiler_;
   }
 
-  StatusOr<std::shared_ptr<const xla::PjRtTopologyDescription>>
+  absl::StatusOr<std::shared_ptr<const xla::PjRtTopologyDescription>>
   GetTopologyForDevices(absl::Span<Device* const> devices) const override;
 
   static char ID;  // NOLINT

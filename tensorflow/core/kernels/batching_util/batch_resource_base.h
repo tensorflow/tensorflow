@@ -65,6 +65,8 @@ class BatchResourceBase : public ResourceBase {
   // Note input from one batch-op invocation is valid and considered a
   // specialized `slice`.
   struct BatchTask : public tensorflow::serving::BatchTask {
+    BatchTask() : criticality_val(tsl::criticality::GetCriticality()){};
+
     // A unique ID to identify this invocation of Batch.
     int64_t guid;
 
@@ -113,7 +115,10 @@ class BatchResourceBase : public ResourceBase {
     // this task's processing costs.
     RequestCost* request_cost = nullptr;
 
-    tsl::criticality::Criticality criticality;
+    // Returns the criticality associated with the task.
+    tsl::criticality::Criticality criticality() const override {
+      return criticality_val;
+    };
 
     // If nonzero, make a batch of this size entirely out of padding. This
     // batch is processed, but is not propagated to the kernel outputs.
@@ -123,6 +128,10 @@ class BatchResourceBase : public ResourceBase {
     virtual std::unique_ptr<BatchTask> CreateDerivedTask() {
       return std::make_unique<BatchTask>();
     }
+
+   private:
+    // Criticality associated with the task.
+    ::tsl::criticality::Criticality criticality_val;
   };
 
   // Appending a T suffix to make the type alias different to those in

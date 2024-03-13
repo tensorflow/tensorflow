@@ -61,11 +61,9 @@ limitations under the License.
 #include "tensorflow/core/framework/rendezvous.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/lib/gtl/cleanup.h"
-#include "tensorflow/core/lib/monitoring/sampler.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/status.h"
-#include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/core/platform/tstring.h"
 #include "tensorflow/core/profiler/lib/traceme_encode.h"
 #include "tensorflow/core/protobuf/config.pb.h"
@@ -97,6 +95,7 @@ limitations under the License.
 #include "tensorflow/core/tfrt/utils/tfrt_graph_execution_state.h"
 #include "tensorflow/core/tfrt/utils/utils.h"
 #include "tsl/concurrency/async_value_ref.h"
+#include "tsl/lib/monitoring/sampler.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/refcount.h"
 #include "tsl/platform/statusor.h"
@@ -1098,7 +1097,7 @@ GraphExecutor::LoadedClientGraph::LoadedClientGraph(
     std::shared_ptr<ExecutableContext> executable_context,
     std::optional<StreamCallbackId> stream_callback_id, bool is_restore,
     FunctionLibraryDefinition flib_def,
-    tensorflow::monitoring::SamplerCell* latency_sampler)
+    tsl::monitoring::SamplerCell* latency_sampler)
     : name_(std::move(name)),
       symbol_uids_(std::move(symbol_uids)),
       graph_executor_(graph_executor),

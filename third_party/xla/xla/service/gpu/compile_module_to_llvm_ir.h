@@ -61,12 +61,6 @@ struct CompileModuleResults {
 void ForAllThunks(const std::function<void(Thunk*)>& fn,
                   ThunkSequence* thunk_sequence);
 
-// Removes all globals from the given module that are both uninitialized and
-// have no uses within that module.
-void RemoveUnusedAndUninitializedGlobals(
-    llvm::Module* llvm_module,
-    const std::vector<GpuExecutable::ConstantInfo>& constants);
-
 absl::StatusOr<CompileModuleResults> CompileModuleToLlvmIr(
     HloModule* hlo_module, llvm::LLVMContext* llvm_context,
     const std::string& target_triple, const std::string& data_layout,

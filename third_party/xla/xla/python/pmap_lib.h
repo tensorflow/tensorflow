@@ -21,14 +21,7 @@ limitations under the License.
 #include <vector>
 
 // placeholder for index annotation headers
-#include "absl/types/variant.h"
-#include "pybind11/cast.h"  // from @pybind11
-#include "pybind11/numpy.h"  // from @pybind11
-#include "pybind11/pybind11.h"  // from @pybind11
-#include "pybind11/pytypes.h"  // from @pybind11
-#include "xla/pjrt/pjrt_client.h"
-#include "xla/python/sharded_device_array.h"
-#include "xla/python/types.h"
+#include "third_party/nanobind/include/nanobind/nanobind.h"
 
 // TODO(jblespiau): The current implementation moves the Python logic to C++,
 // as a preliminary step to executing the `pmap` execution path from C++.
@@ -37,7 +30,7 @@ limitations under the License.
 
 namespace jax {
 
-void BuildPmapSubmodule(pybind11::module& m);
+void BuildPmapSubmodule(nanobind::module_& m);
 
 }  // namespace jax
 

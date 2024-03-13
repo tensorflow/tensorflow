@@ -26,6 +26,7 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/log/log.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
@@ -361,6 +362,7 @@ CoordinationServiceStandaloneImpl::CoordinationServiceStandaloneImpl(
           absl::Milliseconds(config.shutdown_barrier_timeout_in_ms())),
       allow_new_incarnation_to_reconnect_(
           config.allow_new_incarnation_to_reconnect()) {
+  LOG(INFO) << "Initializing CoordinationService";
   recoverable_jobs_ = absl::flat_hash_set<std::string>(
       config.recoverable_jobs().cbegin(), config.recoverable_jobs().cend());
   for (const auto& job : config.coordinated_job_list()) {

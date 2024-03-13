@@ -58,18 +58,10 @@ MATCHER_P3(MatchSymbolicTile, offset_map_string, size_map_string,
                             result_listener);
 }
 
-class SymbolicTileTest : public HloTestBase {
- public:
-  HloInstructionIndexing GetOutputToInputIndexingForEntryComputation(
-      absl::string_view hlo_string, int output_id = 0) {
-    return ComputeOutputToInputIndexingForEntryComputation(
-        static_cast<HloTestBase*>(this), &mlir_context_, hlo_string, output_id);
-  }
-  mlir::MLIRContext mlir_context_;
-};
+using SymbolicTileTest = IndexingTestBase;
 
 TEST_F(SymbolicTileTest, CanPropagateTileFromDotOutputToInputs) {
-  auto input_indexing = GetOutputToInputIndexingForEntryComputation(R"(
+  auto input_indexing = GetOutputToInputIndexing(ParseAndGetRoot(R"(
     HloModule m
     ENTRY e {
       p0 = f32[11, 17, 19] parameter(0)
@@ -78,7 +70,7 @@ TEST_F(SymbolicTileTest, CanPropagateTileFromDotOutputToInputs) {
         lhs_batch_dims={0}, rhs_batch_dims={0},
         lhs_contracting_dims={2}, rhs_contracting_dims={1}
     }
-  )");
+  )"));
 
   EXPECT_THAT(
       SymbolicTile::FromIndexingMap(*input_indexing.indexing_maps[0].begin()),
@@ -96,13 +88,13 @@ TEST_F(SymbolicTileTest, CanPropagateTileFromDotOutputToInputs) {
 }
 
 TEST_F(SymbolicTileTest, CanPropagateTileThroughTrivialReshape) {
-  auto input_indexing = GetOutputToInputIndexingForEntryComputation(R"(
+  auto input_indexing = GetOutputToInputIndexing(ParseAndGetRoot(R"(
     HloModule m
     ENTRY e {
       p0 = f32[11, 17, 19] parameter(0)
       ROOT reshape = f32[1, 11, 17, 19] reshape(p0)
     }
-  )");
+  )"));
 
   EXPECT_THAT(
       SymbolicTile::FromIndexingMap(*input_indexing.indexing_maps[0].begin()),
@@ -116,13 +108,13 @@ TEST_F(SymbolicTileTest, CanPropagateTileThroughTrivialReshape) {
 }
 
 TEST_F(SymbolicTileTest, FailsToPropagateTileThroughReshape) {
-  auto input_indexing = GetOutputToInputIndexingForEntryComputation(R"(
+  auto input_indexing = GetOutputToInputIndexing(ParseAndGetRoot(R"(
     HloModule m
     ENTRY e {
       p0 = f32[12, 4, 19] parameter(0)
       ROOT reshape = f32[4, 12, 19] reshape(p0)
     }
-  )");
+  )"));
 
   EXPECT_EQ(
       SymbolicTile::FromIndexingMap(*input_indexing.indexing_maps[0].begin()),
@@ -130,14 +122,14 @@ TEST_F(SymbolicTileTest, FailsToPropagateTileThroughReshape) {
 }
 
 TEST_F(SymbolicTileTest, CanPropagateTileThroughElementwiseOp) {
-  auto input_indexing = GetOutputToInputIndexingForEntryComputation(R"(
+  auto input_indexing = GetOutputToInputIndexing(ParseAndGetRoot(R"(
     HloModule m
     ENTRY e {
       p0 = f32[150] parameter(0)
       p1 = f32[150] parameter(1)
       ROOT add = f32[150] add(p0, p1)
     }
-  )");
+  )"));
 
   EXPECT_THAT(
       SymbolicTile::FromIndexingMap(*input_indexing.indexing_maps[0].begin()),
@@ -147,13 +139,13 @@ TEST_F(SymbolicTileTest, CanPropagateTileThroughElementwiseOp) {
 }
 
 TEST_F(SymbolicTileTest, CanPropagateTileFromBroadcastOutputToInput) {
-  auto input_indexing = GetOutputToInputIndexingForEntryComputation(R"(
+  auto input_indexing = GetOutputToInputIndexing(ParseAndGetRoot(R"(
     HloModule m
     ENTRY e {
       p0 = f32[150] parameter(0)
       ROOT broadcast = f32[157,150] broadcast(p0), dimensions={1}
     }
-  )");
+  )"));
 
   EXPECT_THAT(
       SymbolicTile::FromIndexingMap(*input_indexing.indexing_maps[0].begin()),
@@ -163,7 +155,7 @@ TEST_F(SymbolicTileTest, CanPropagateTileFromBroadcastOutputToInput) {
 }
 
 TEST_F(SymbolicTileTest, CanPropagateTileFromReduceOutputToInput) {
-  auto input_indexing = GetOutputToInputIndexingForEntryComputation(R"(
+  auto input_indexing = GetOutputToInputIndexing(ParseAndGetRoot(R"(
     HloModule m
     max {
       p0 = f32[] parameter(0)
@@ -176,7 +168,7 @@ TEST_F(SymbolicTileTest, CanPropagateTileFromReduceOutputToInput) {
       c0 = f32[] constant(-inf)
       ROOT reduce = f32[150] reduce(p0, c0), dimensions={0}, to_apply=max
     }
-  )");
+  )"));
 
   EXPECT_THAT(
       SymbolicTile::FromIndexingMap(*input_indexing.indexing_maps[0].begin()),
@@ -186,13 +178,13 @@ TEST_F(SymbolicTileTest, CanPropagateTileFromReduceOutputToInput) {
 }
 
 TEST_F(SymbolicTileTest, CanPropagateTileThroughReverse) {
-  auto input_indexing = GetOutputToInputIndexingForEntryComputation(R"(
+  auto input_indexing = GetOutputToInputIndexing(ParseAndGetRoot(R"(
     HloModule m
     ENTRY e {
       p0 = f32[179] parameter(0)
       ROOT reverse = f32[179] reverse(p0), dimensions={0}
     }
-  )");
+  )"));
 
   EXPECT_THAT(
       SymbolicTile::FromIndexingMap(*input_indexing.indexing_maps[0].begin()),
@@ -202,13 +194,13 @@ TEST_F(SymbolicTileTest, CanPropagateTileThroughReverse) {
 }
 
 TEST_F(SymbolicTileTest, CanPropagateTileFromSliceOutputToInput) {
-  auto input_indexing = GetOutputToInputIndexingForEntryComputation(R"(
+  auto input_indexing = GetOutputToInputIndexing(ParseAndGetRoot(R"(
     HloModule m
     ENTRY e {
       p0 = f32[120,142] parameter(0)
       ROOT slice = f32[10,21] slice(p0), slice={[40:60:2], [20:104:4]}
     }
-  )");
+  )"));
 
   EXPECT_THAT(
       SymbolicTile::FromIndexingMap(*input_indexing.indexing_maps[0].begin()),
@@ -219,13 +211,13 @@ TEST_F(SymbolicTileTest, CanPropagateTileFromSliceOutputToInput) {
 }
 
 TEST_F(SymbolicTileTest, CanPropagateTileThroughTranspose) {
-  auto input_indexing = GetOutputToInputIndexingForEntryComputation(R"(
+  auto input_indexing = GetOutputToInputIndexing(ParseAndGetRoot(R"(
     HloModule m
     ENTRY e {
       p0 = f32[21,10] parameter(0)
       ROOT transpose = f32[10,21] transpose(p0), dimensions={1,0}
     }
-  )");
+  )"));
 
   EXPECT_THAT(
       SymbolicTile::FromIndexingMap(*input_indexing.indexing_maps[0].begin()),
@@ -236,7 +228,7 @@ TEST_F(SymbolicTileTest, CanPropagateTileThroughTranspose) {
 
 TEST_F(SymbolicTileTest, CanPropagateTileThroughConcatenate) {
   // TODO(325488844): Add additional concat test cases with constraints.
-  auto input_indexing = GetOutputToInputIndexingForEntryComputation(R"(
+  auto input_indexing = GetOutputToInputIndexing(ParseAndGetRoot(R"(
     HloModule m
     ENTRY e {
       p0 = f32[2,5,7] parameter(0)
@@ -244,7 +236,7 @@ TEST_F(SymbolicTileTest, CanPropagateTileThroughConcatenate) {
       p2 = f32[2,17,7] parameter(2)
       ROOT concat = f32[2,33,7] concatenate(p0, p1, p2), dimensions={1}
     }
-  )");
+  )"));
 
   EXPECT_THAT(
       SymbolicTile::FromIndexingMap(*input_indexing.indexing_maps[0].begin()),
@@ -268,14 +260,14 @@ TEST_F(SymbolicTileTest, CanPropagateTileThroughConcatenate) {
 
 TEST_F(SymbolicTileTest, CanPropagateTileThroughPadOpWithoutInteriorPadding) {
   // TODO(325488844): Add pad tests with defined constraints on tile input.
-  auto input_indexing = GetOutputToInputIndexingForEntryComputation(R"(
+  auto input_indexing = GetOutputToInputIndexing(ParseAndGetRoot(R"(
     HloModule m
     ENTRY e {
       p0 = f32[4, 4] parameter(0)
       p1 = f32[] parameter(1)
       ROOT pad = f32[8,8] pad(p0, p1), padding=2_2_0x1_3_0
     }
-  )");
+  )"));
 
   EXPECT_THAT(
       SymbolicTile::FromIndexingMap(*input_indexing.indexing_maps[0].begin()),
@@ -286,7 +278,7 @@ TEST_F(SymbolicTileTest, CanPropagateTileThroughPadOpWithoutInteriorPadding) {
 }
 
 TEST_F(SymbolicTileTest, CanPrintSymbolicTileWithNamedTriplets) {
-  auto input_indexing = GetOutputToInputIndexingForEntryComputation(R"(
+  auto input_indexing = GetOutputToInputIndexing(ParseAndGetRoot(R"(
     HloModule m
     ENTRY e {
       p0 = f32[17, 19] parameter(0)
@@ -294,7 +286,7 @@ TEST_F(SymbolicTileTest, CanPrintSymbolicTileWithNamedTriplets) {
       ROOT dot = f32[17, 23] dot(p0, p1),
         lhs_contracting_dims={1}, rhs_contracting_dims={0}
     }
-  )");
+  )"));
 
   std::string s;
   std::stringstream ss(s);

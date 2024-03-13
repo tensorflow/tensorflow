@@ -85,7 +85,7 @@ cp tensorflow/c/eager/c_api.h \
 cp tensorflow/core/platform/ctstring.h \
   tensorflow/core/platform/ctstring_internal.h \
   ${DIR}/include/tensorflow/core/platform
-cp third_party/xla/third_party/tsl/tsl/c/tsl_status.h \
+cp third_party/xla/third_party/tsl/compiler/xla/tsl/c/tsl_status.h \
    ${DIR}/include/tsl/c
 cp third_party/xla/third_party/tsl/tsl/platform/ctstring.h \
    third_party/xla/third_party/tsl/tsl/platform/ctstring_internal.h \
@@ -113,7 +113,7 @@ zip libtensorflow-cpu-windows-$(uname -m).zip \
   include/tensorflow/c/c_api_experimental.h \
   include/tensorflow/core/platform/ctstring.h \
   include/tensorflow/core/platform/ctstring_internal.h \
-  include/tsl/c/tsl_status.h \
+  include/compiler/xla/tsl/c/tsl_status.h \
   include/tsl/platform/ctstring.h \
   include/tsl/platform/ctstring_internal.h \
   LICENSE \

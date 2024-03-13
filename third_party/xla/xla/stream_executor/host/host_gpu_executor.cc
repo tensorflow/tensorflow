@@ -51,15 +51,6 @@ HostStream* AsHostStream(Stream* stream) {
 
 absl::Status HostExecutor::Init(int device_ordinal,
                                 DeviceOptions device_options) {
-  auto it =
-      device_options.non_portable_tags.find("host_thread_stack_size_in_bytes");
-  if (it != device_options.non_portable_tags.end()) {
-    if (!absl::SimpleAtoi(it->second, &thread_stack_size_in_bytes_)) {
-      return absl::InvalidArgumentError(absl::StrCat(
-          "Unable to parse host_thread_stack_size_in_bytes as an integer: ",
-          it->second));
-    }
-  }
   return absl::OkStatus();
 }
 
@@ -279,8 +270,7 @@ HostExecutor::CreateDeviceDescription(int device_ordinal) {
 
 std::unique_ptr<internal::StreamInterface>
 HostExecutor::GetStreamImplementation() {
-  return std::unique_ptr<internal::StreamInterface>(
-      new HostStream(thread_stack_size_in_bytes_));
+  return std::make_unique<HostStream>();
 }
 
 }  // namespace host

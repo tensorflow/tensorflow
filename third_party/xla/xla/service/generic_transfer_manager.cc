@@ -272,7 +272,7 @@ Status GenericTransferManager::TransferInt4ArrayToDevice(
 
 int64_t GenericTransferManager::GetByteSizeRequirement(
     const Shape& shape) const {
-  if (shape.is_static() || shape.IsTuple()) {
+  if (shape.IsTuple() || shape.is_static()) {
     return ShapeUtil::ByteSizeOf(shape, pointer_size_);
   }
   int64_t metadata_size = sizeof(int32_t) * shape.dimensions_size();

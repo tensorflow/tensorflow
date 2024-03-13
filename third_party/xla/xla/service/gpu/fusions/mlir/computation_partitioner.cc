@@ -331,7 +331,7 @@ mlir::func::FuncOp CreateSubgraphMlirFunction(
   llvm::SmallVector<mlir::Type> result_types;
 
   auto element_type = [&](const auto& shape) {
-    return *ConvertPrimitiveTypeToMLIRType(shape.element_type(), b);
+    return *ConvertPrimitiveTypeToMlirType(shape.element_type(), b);
   };
 
   const xla::Shape* one_root_shape = nullptr;

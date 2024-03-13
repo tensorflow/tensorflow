@@ -4,7 +4,7 @@ load(
     "tf_mkl_kernel_library",
 )
 load(
-    "//third_party/mkl:build_defs.bzl",
+    "@local_tsl//tsl/mkl:build_defs.bzl",
     "mkl_deps",
 )
 
@@ -111,9 +111,11 @@ tf_mkl_kernel_library(
         "mkl_matmul_ops_common.h",
     ],
     deps = [
+        "//tensorflow/core:graph",
         "//tensorflow/core/kernels:cwise_op",
         "//tensorflow/core/kernels:dense_update_functor",
         "//tensorflow/core/kernels/sparse:kernels",
+        "//tensorflow/core/kernels/sparse:sparse_matrix",
     ] + MKL_DEPS,
 )
 

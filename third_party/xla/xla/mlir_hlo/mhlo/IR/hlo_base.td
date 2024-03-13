@@ -69,6 +69,8 @@ defvar MHLO_QuantizedIntTensor = HLO_QuantizedIntOrPerAxisQuantizedIntTensor;
 
 defvar MHLO_PredTensor = HLO_PredTensor;
 
+// TODO: b/327490705 - Change this alias back to HLO_Tensor once MHLO_Tensor no
+// longer needs per axis quantization.
 defvar MHLO_Tensor = HLO_TensorOrPerAxisQuantizedTensor;
 
 defvar MHLO_AnyTensor = HLO_AnyTensor;

@@ -50,6 +50,7 @@ limitations under the License.
 #include "xla/stream_executor/stream.h"
 #include "xla/types.h"
 #include "xla/util.h"
+#include "xla/xla_data.pb.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/ml_dtypes.h"
 #include "tsl/platform/statusor.h"
@@ -275,6 +276,24 @@ auto BlasLt::MatmulPlan::GetAlgorithms(size_t max_algorithm_count,
   return std::move(algorithms);
 }
 
+namespace {
+
+bool IsFastAccumEnabled(const xla::PrecisionConfig::Algorithm algorithm,
+                        xla::PrimitiveType lhs_type,
+                        xla::PrimitiveType rhs_type,
+                        int64_t compute_precision) {
+  if (algorithm == xla::PrecisionConfig::ALG_UNSET) {
+    return (xla::primitive_util::IsF8Type(lhs_type) ||
+            xla::primitive_util::IsF8Type(rhs_type)) &&
+           compute_precision == 0;
+  }
+
+  return algorithm ==
+         xla::PrecisionConfig::ALG_DOT_ANY_F8_ANY_F8_F32_FAST_ACCUM;
+}
+
+}  // namespace
+
 auto BlasLt::GetMatmulPlan(const gpu::GemmConfig& cfg,
                            gpu::BlasLt::Epilogue epilogue) const
     -> absl::StatusOr<MatmulPlanPtr> {
@@ -312,17 +331,18 @@ auto BlasLt::GetMatmulPlan(const gpu::GemmConfig& cfg,
 
   auto compute_type = cfg.compute_type;
   if (!compute_type) {  // obtain compute_type unless provided by the user
-    TF_ASSIGN_OR_RETURN(compute_type, gpu::GetBlasComputationType(
-                                          lhs_layout.dtype, output_layout.dtype,
-                                          cfg.compute_precision));
+    TF_ASSIGN_OR_RETURN(compute_type,
+                        gpu::GetBlasComputationType(
+                            cfg.precision_algorithm, lhs_layout.dtype,
+                            output_layout.dtype, cfg.compute_precision));
   }
 
   // FP8 matmuls have a fast accumulation mode that is less precise than the
   // default accumulation mode. Use the fast accumulation mode if the compute
   // precision is DEFAULT.
-  bool enable_fast_accum = (xla::primitive_util::IsF8Type(lhs_layout.dtype) ||
-                            xla::primitive_util::IsF8Type(rhs_layout.dtype)) &&
-                           cfg.compute_precision == 0;
+  bool enable_fast_accum =
+      IsFastAccumEnabled(cfg.precision_algorithm, lhs_layout.dtype,
+                         rhs_layout.dtype, cfg.compute_precision);
   TF_ASSIGN_OR_RETURN(
       auto op_desc,
       MatmulDesc::Create(*compute_type,

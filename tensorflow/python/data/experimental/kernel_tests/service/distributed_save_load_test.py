@@ -327,6 +327,32 @@ class DistributedSaveLoadTest(
     self.assertDatasetProduces(
         dataset, list(range(num_elements)), assert_items_equal=True)
 
+  @combinations.generate(
+      combinations.times(
+          test_base.default_test_combinations(),
+          combinations.combine(num_elements=[10])))
+  def test_empty_dataset_spec_file(self, num_elements: int):
+    cluster = data_service_test_base.TestCluster(num_workers=1)
+    snapshot_dir = data_service_test_base.TempDir()
+    dataset = dataset_ops.Dataset.range(num_elements)
+    self.evaluate(
+        distributed_save_op.distributed_save(
+            dataset, snapshot_dir.full_path, cluster.dispatcher_address()))
+
+    dataset = load_op._load_with_retry(snapshot_dir.full_path)
+    self.assertDatasetProduces(
+        dataset, list(range(num_elements)), assert_items_equal=True)
+
+    dataset_spec_file = os.path.join(
+        snapshot_dir.full_path, dataset_ops.DATASET_SPEC_FILENAME)
+    with open(dataset_spec_file, "w") as f:
+      f.write("")
+
+    # Reads element_spec from the metadata file.
+    dataset = load_op._load_with_retry(snapshot_dir.full_path)
+    self.assertDatasetProduces(
+        dataset, list(range(num_elements)), assert_items_equal=True)
+
   @combinations.generate(test_base.default_test_combinations())
   def test_snapshot_does_not_exist(self):
     load_op._LOAD_TIMEOUT_SECONDS = 5

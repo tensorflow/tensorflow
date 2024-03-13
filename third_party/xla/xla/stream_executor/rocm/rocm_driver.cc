@@ -809,6 +809,16 @@ GpuDriver::GraphAddNode(hipGraphNode_t* node, hipGraph_t graph,
   return absl::OkStatus();
 }
 
+/* static */ absl::StatusOr<size_t> GpuDriver::GraphGetNodeCount(
+    hipGraph_t graph) {
+  VLOG(2) << "Get node count in graph " << graph;
+  size_t numNodes;
+  RETURN_IF_ROCM_ERROR(wrap::hipGraphGetNodes(graph, nullptr, &numNodes),
+                       "Failed to get HIP graph node count");
+
+  return numNodes;
+}
+
 /*static*/ absl::Status GpuDriver::GraphExecKernelNodeSetParams(
     GpuGraphExecHandle exec, GpuGraphNodeHandle node,
     absl::string_view kernel_name, GpuFunctionHandle function,

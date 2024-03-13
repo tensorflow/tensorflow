@@ -1,4 +1,6 @@
+// RUN: tf-quant-opt %s -split-input-file -quant-add-dump-tensor-op='debugger_type=whole_model' | FileCheck --check-prefix=WholeModel %s
 // RUN: tf-quant-opt %s -split-input-file -quant-add-dump-tensor-op='debugger_type=int_per_layer' | FileCheck --check-prefix=IntPerLayer %s
+// RUN: tf-quant-opt %s -split-input-file -quant-add-dump-tensor-op='debugger_type=float_per_layer' | FileCheck --check-prefix=FloatPerLayer %s
 
 module {
   func.func @matmul2(%arg0: tensor<?x2xf32> {tf_saved_model.index_path = ["input_tensor"]}) -> (tensor<?x2xf32>) {
@@ -29,6 +31,17 @@ module {
     return %6 : tensor<?x2xf32>
   }
 
+// WholeModel-LABEL: func @matmul2
+// WholeModel-DAG: %[[b0:.*]] = stablehlo.constant dense<[-0.211145893
+// WholeModel-DAG: %[[w0:.*]] = stablehlo.constant dense<{{\[\[}}-0.630731344, 0.54962182], [0.180364341, -0.764542698]]> : tensor<2x2xf32>
+// WholeModel-DAG: %[[matmul0_q:.*]] = "tf.XlaCallModule"(%arg0, %[[w0]], %[[b0]]) <{Sout = [#tf_type.shape<?x2>], module = "", version = 9 : i64}> {_entry_function = @composite_dot_general_with_bias_and_relu6_dynamic_fn_2, _original_entry_function = "composite_dot_general_with_bias_and_relu6_dynamic_fn_2", _tfl_quant_trait = "fully_quantizable"} : (tensor<?x2xf32>, tensor<2x2xf32>, tensor<2xf32>) -> tensor<?x2xf32>
+// WholeModel-DAG: "tf.DumpTensor"(%[[matmul0_q]]) <{enabled = false, file_name = "unquantized_tensor_data.pb", func_name = "composite_dot_general_with_bias_and_relu6_dynamic_fn_2", log_dir_path = "/tmp/dumps/composite_dot_general_with_bias_and_relu6_dynamic_fn_2", node_name = "_empty_node"}> : (tensor<?x2xf32>) -> ()
+// WholeModel-DAG: %[[matmul1_q:.*]] = "tf.XlaCallModule"(%[[matmul0_q]], %[[w0]], %[[b0]]) <{Sout = [#tf_type.shape<?x2>], module = "", version = 9 : i64}> {_entry_function = @composite_dot_general_with_bias_and_relu6_dynamic_fn_1, _original_entry_function = "composite_dot_general_with_bias_and_relu6_dynamic_fn_1", _tfl_quant_trait = "fully_quantizable"} : (tensor<?x2xf32>, tensor<2x2xf32>, tensor<2xf32>) -> tensor<?x2xf32>
+// WholeModel-DAG: "tf.DumpTensor"(%[[matmul1_q]]) <{enabled = false, file_name = "unquantized_tensor_data.pb", func_name = "composite_dot_general_with_bias_and_relu6_dynamic_fn_1", log_dir_path = "/tmp/dumps/composite_dot_general_with_bias_and_relu6_dynamic_fn_1", node_name = "_empty_node"}> : (tensor<?x2xf32>) -> ()
+// WholeModel-DAG: return %[[matmul1_q]] : tensor<?x2xf32>
+// WholeModel-DAG: func.func private @composite_dot_general_with_bias_and_relu6_dynamic_fn_2
+// WholeModel-DAG: func.func private @composite_dot_general_with_bias_and_relu6_dynamic_fn_1
+
 // IntPerLayer-LABEL: func @matmul2
 // IntPerLayer-DAG: %[[b0:.*]] = stablehlo.constant dense<[-0.211145893
 // IntPerLayer-DAG: %[[w0:.*]] = stablehlo.constant dense<{{\[\[}}-0.630731344
@@ -45,6 +58,23 @@ module {
 // IntPerLayer-DAG: func.func private @composite_dot_general_with_bias_and_relu6_dynamic_fn_1
 // IntPerLayer-DAG: func.func private @composite_dot_general_with_bias_and_relu6_dynamic_fn_2_0
 // IntPerLayer-DAG: func.func private @composite_dot_general_with_bias_and_relu6_dynamic_fn_1_0
+
+// FloatPerLayer-LABEL: func @matmul2
+// FloatPerLayer-DAG: %[[b0:.*]] = stablehlo.constant dense<[-0.211145893
+// FloatPerLayer-DAG: %[[w0:.*]] = stablehlo.constant dense<{{\[\[}}-0.630731344
+// FloatPerLayer-DAG: %[[matmul0_q:.*]] = "tf.XlaCallModule"(%arg0, %[[w0]], %[[b0]]) <{Sout = [#tf_type.shape<?x2>], module = "", version = 9 : i64}> {_entry_function = @composite_dot_general_with_bias_and_relu6_dynamic_fn_2, _original_entry_function = "composite_dot_general_with_bias_and_relu6_dynamic_fn_2", _tfl_quant_trait = "fully_quantizable"} : (tensor<?x2xf32>, tensor<2x2xf32>, tensor<2xf32>) -> tensor<?x2xf32>
+// FloatPerLayer-DAG: "tf.DumpTensor"(%[[matmul0_q]]) <{enabled = false, file_name = "quantized_tensor_data.pb", func_name = "composite_dot_general_with_bias_and_relu6_dynamic_fn_2", log_dir_path = "/tmp/dumps/composite_dot_general_with_bias_and_relu6_dynamic_fn_2", node_name = "_empty_node"}> : (tensor<?x2xf32>) -> ()
+// FloatPerLayer-DAG: %[[matmul0_uq:.*]] = "tf.XlaCallModule"(%arg0, %[[w0]], %[[b0]]) <{Sout = [#tf_type.shape<?x2>], module = "", version = 9 : i64}> {_entry_function = @composite_dot_general_with_bias_and_relu6_dynamic_fn_2_0, _original_entry_function = "composite_dot_general_with_bias_and_relu6_dynamic_fn_2_0"} : (tensor<?x2xf32>, tensor<2x2xf32>, tensor<2xf32>) -> tensor<?x2xf32>
+// FloatPerLayer-DAG: "tf.DumpTensor"(%[[matmul0_uq]]) <{enabled = false, file_name = "unquantized_tensor_data.pb", func_name = "composite_dot_general_with_bias_and_relu6_dynamic_fn_2", log_dir_path = "/tmp/dumps/composite_dot_general_with_bias_and_relu6_dynamic_fn_2", node_name = "_empty_node"}> : (tensor<?x2xf32>) -> ()
+// FloatPerLayer-DAG: %[[matmul1_q:.*]] = "tf.XlaCallModule"(%[[matmul0_uq]], %[[w0]], %[[b0]]) <{Sout = [#tf_type.shape<?x2>], module = "", version = 9 : i64}> {_entry_function = @composite_dot_general_with_bias_and_relu6_dynamic_fn_1, _original_entry_function = "composite_dot_general_with_bias_and_relu6_dynamic_fn_1", _tfl_quant_trait = "fully_quantizable"} : (tensor<?x2xf32>, tensor<2x2xf32>, tensor<2xf32>) -> tensor<?x2xf32>
+// FloatPerLayer-DAG: "tf.DumpTensor"(%[[matmul1_q]]) <{enabled = false, file_name = "quantized_tensor_data.pb", func_name = "composite_dot_general_with_bias_and_relu6_dynamic_fn_1", log_dir_path = "/tmp/dumps/composite_dot_general_with_bias_and_relu6_dynamic_fn_1", node_name = "_empty_node"}> : (tensor<?x2xf32>) -> ()
+// FloatPerLayer-DAG: %[[matmul1_uq:.*]] = "tf.XlaCallModule"(%[[matmul0_uq]], %[[w0]], %[[b0]]) <{Sout = [#tf_type.shape<?x2>], module = "", version = 9 : i64}> {_entry_function = @composite_dot_general_with_bias_and_relu6_dynamic_fn_1_0, _original_entry_function = "composite_dot_general_with_bias_and_relu6_dynamic_fn_1_0"} : (tensor<?x2xf32>, tensor<2x2xf32>, tensor<2xf32>) -> tensor<?x2xf32>
+// FloatPerLayer-DAG: "tf.DumpTensor"(%[[matmul1_uq]]) <{enabled = false, file_name = "unquantized_tensor_data.pb", func_name = "composite_dot_general_with_bias_and_relu6_dynamic_fn_1", log_dir_path = "/tmp/dumps/composite_dot_general_with_bias_and_relu6_dynamic_fn_1", node_name = "_empty_node"}> : (tensor<?x2xf32>) -> ()
+// FloatPerLayer-DAG: return %[[matmul1_uq]] : tensor<?x2xf32>
+// FloatPerLayer-DAG: func.func private @composite_dot_general_with_bias_and_relu6_dynamic_fn_2
+// FloatPerLayer-DAG: func.func private @composite_dot_general_with_bias_and_relu6_dynamic_fn_1
+// FloatPerLayer-DAG: func.func private @composite_dot_general_with_bias_and_relu6_dynamic_fn_1_0
+// FloatPerLayer-DAG: func.func private @composite_dot_general_with_bias_and_relu6_dynamic_fn_2_0
 }
 
 // -----
@@ -62,6 +92,15 @@ module {
     return %0 : tensor<1x3xf32>
   }
 
+// WholeModel-LABEL: func @matmul_concat
+// WholeModel-DAG: %[[w0:.*]] = stablehlo.constant dense<{{\[\[}}-0.630731344
+// WholeModel-DAG: %[[c0:.*]] = stablehlo.constant dense<1.000000e+00
+// WholeModel-DAG: %[[matmul0_q:.*]] = "tf.XlaCallModule"(%arg0, %[[w0]]) <{Sout = [#tf_type.shape<1x3>], module = "", version = 9 : i64}> {_entry_function = @composite_dot_general_fn_1, _original_entry_function = "composite_dot_general_fn_1", _stablehlo_module_attrs = {jax.uses_shape_polymorphism = true}, _tfl_quant_trait = "fully_quantizable"} : (tensor<1x2xf32>, tensor<2x3xf32>) -> tensor<1x3xf32>
+// WholeModel-DAG: "tf.DumpTensor"(%[[matmul0_q]]) <{enabled = false, file_name = "unquantized_tensor_data.pb", func_name = "composite_dot_general_fn_1", log_dir_path = "/tmp/dumps/composite_dot_general_fn_1", node_name = "_empty_node"}> : (tensor<1x3xf32>) -> ()
+// WholeModel-DAG: %[[concat:.*]] = stablehlo.concatenate %[[matmul0_q]], %[[c0]], dim = 0 : (tensor<1x3xf32>, tensor<1x3xf32>) -> tensor<2x3xf32>
+// WholeModel-DAG: return %[[concat]] : tensor<2x3xf32>
+// WholeModel-DAG: func.func private @composite_dot_general_fn_1
+
 // IntPerLayer-LABEL: func @matmul_concat
 // IntPerLayer-DAG: %[[w0:.*]] = stablehlo.constant dense<{{\[\[}}-0.630731344
 // IntPerLayer-DAG: %[[c0:.*]] = stablehlo.constant dense<1.000000e+00
@@ -73,4 +112,16 @@ module {
 // IntPerLayer-DAG: return %[[concat]] : tensor<2x3xf32>
 // IntPerLayer-DAG: func.func private @composite_dot_general_fn_1
 // IntPerLayer-DAG: func.func private @composite_dot_general_fn_1_0
+
+// FloatPerLayer-LABEL: func @matmul_concat
+// FloatPerLayer-DAG: %[[w0:.*]] = stablehlo.constant dense<{{\[\[}}-0.630731344
+// FloatPerLayer-DAG: %[[c0:.*]] = stablehlo.constant dense<1.000000e+00
+// FloatPerLayer-DAG: %[[matmul0_q:.*]] = "tf.XlaCallModule"(%arg0, %[[w0]]) <{Sout = [#tf_type.shape<1x3>], module = "", version = 9 : i64}> {_entry_function = @composite_dot_general_fn_1, _original_entry_function = "composite_dot_general_fn_1", _stablehlo_module_attrs = {jax.uses_shape_polymorphism = true}, _tfl_quant_trait = "fully_quantizable"} : (tensor<1x2xf32>, tensor<2x3xf32>) -> tensor<1x3xf32>
+// FloatPerLayer-DAG: "tf.DumpTensor"(%[[matmul0_q]]) <{enabled = false, file_name = "quantized_tensor_data.pb", func_name = "composite_dot_general_fn_1", log_dir_path = "/tmp/dumps/composite_dot_general_fn_1", node_name = "_empty_node"}> : (tensor<1x3xf32>) -> ()
+// FloatPerLayer-DAG: %[[matmul0_uq:.*]] = "tf.XlaCallModule"(%arg0, %[[w0]]) <{Sout = [#tf_type.shape<1x3>], module = "", version = 9 : i64}> {_entry_function = @composite_dot_general_fn_1_0, _original_entry_function = "composite_dot_general_fn_1_0", _stablehlo_module_attrs = {jax.uses_shape_polymorphism = true}} : (tensor<1x2xf32>, tensor<2x3xf32>) -> tensor<1x3xf32>
+// FloatPerLayer-DAG: "tf.DumpTensor"(%[[matmul0_uq]]) <{enabled = false, file_name = "unquantized_tensor_data.pb", func_name = "composite_dot_general_fn_1", log_dir_path = "/tmp/dumps/composite_dot_general_fn_1", node_name = "_empty_node"}> : (tensor<1x3xf32>) -> ()
+// FloatPerLayer-DAG: %[[concat:.*]] = stablehlo.concatenate %[[matmul0_uq]], %[[c0]], dim = 0 : (tensor<1x3xf32>, tensor<1x3xf32>) -> tensor<2x3xf32>
+// FloatPerLayer-DAG: return %[[concat]] : tensor<2x3xf32>
+// FloatPerLayer-DAG: func.func private @composite_dot_general_fn_1
+// FloatPerLayer-DAG: func.func private @composite_dot_general_fn_1_0
 }

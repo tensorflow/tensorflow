@@ -2269,10 +2269,20 @@ Status VerifyChannels(const HloModule& module) {
       switch (instruction->opcode()) {
         case HloOpcode::kSend: {
           TF_RET_CHECK(instruction->users().size() == 1);
-          const HloInstruction* send_done = instruction->users().front();
-          TF_RET_CHECK(send_done->opcode() == HloOpcode::kSendDone);
-          TF_RETURN_IF_ERROR(CheckSameChannel(instruction, send_done));
-          TF_RETURN_IF_ERROR(CheckSameIsHostTransfer(instruction, send_done));
+          const HloInstruction* send_user = instruction->users().front();
+          if (send_user->opcode() == HloOpcode::kSendDone) {
+            TF_RETURN_IF_ERROR(CheckSameChannel(instruction, send_user));
+            TF_RETURN_IF_ERROR(CheckSameIsHostTransfer(instruction, send_user));
+          } else {
+            // If a Send user is not a SendDone, it has to be a tuple that is
+            // either the root of a while-body or the init of a while-loop.
+            TF_RET_CHECK(send_user->opcode() == HloOpcode::kTuple);
+            if (send_user != send_user->parent()->root_instruction()) {
+              TF_RET_CHECK(send_user->users().size() == 1);
+              const HloInstruction* user = send_user->users().front();
+              TF_RET_CHECK(user->opcode() == HloOpcode::kWhile);
+            }
+          }
           break;
         }
         case HloOpcode::kRecv: {
@@ -2293,10 +2303,20 @@ Status VerifyChannels(const HloModule& module) {
           }
           break;
         }
-        case HloOpcode::kSendDone:
+        case HloOpcode::kSendDone: {
           TF_RET_CHECK(instruction->operands().size() == 1);
-          TF_RET_CHECK(instruction->operand(0)->opcode() == HloOpcode::kSend);
+          const HloInstruction* send_done_operand = instruction->operand(0);
+          if (send_done_operand->opcode() != HloOpcode::kSend) {
+            // If the SendDone operand is not a Send, it has to be either part
+            // of a while-loop result or a parameter of a while-body.
+            TF_RET_CHECK(send_done_operand->opcode() ==
+                         HloOpcode::kGetTupleElement);
+            HloOpcode opcode = send_done_operand->operand(0)->opcode();
+            TF_RET_CHECK(opcode == HloOpcode::kWhile ||
+                         opcode == HloOpcode::kParameter);
+          }
           break;
+        }
         case HloOpcode::kRecvDone: {
           TF_RET_CHECK(instruction->operands().size() == 1);
           const HloInstruction* recv_done_operand = instruction->operand(0);

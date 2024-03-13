@@ -27,6 +27,7 @@ limitations under the License.
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/TypeUtilities.h"  // from @llvm-project
 #include "xla/literal.h"
+#include "xla/mlir/utils/type_util.h"
 #include "xla/mlir_hlo/lhlo/IR/lhlo_ops.h"
 #include "xla/primitive_util.h"
 #include "xla/service/llvm_ir/llvm_util.h"
@@ -98,7 +99,7 @@ absl::StatusOr<AffineMap> GetPermutationIfAvailable(const Shape& shape,
 absl::StatusOr<mlir::MemRefType> ConvertTensorShapeToMemRefType(
     const Shape& shape, mlir::Builder builder) {
   auto element_type_or =
-      ConvertPrimitiveTypeToMLIRType(shape.element_type(), builder);
+      ConvertPrimitiveTypeToMlirType(shape.element_type(), builder);
   if (!element_type_or.ok()) return element_type_or.status();
 
   using mlir::MemRefType;
@@ -153,51 +154,6 @@ mlir::DenseIntElementsAttr CreateDenseIntElementsAttrFromVector(
       mlir::RankedTensorType::get(shape.empty() ? vector.size() : shape,
                                   builder.getIntegerType(64)),
       vector);
-}
-
-absl::StatusOr<mlir::Type> ConvertPrimitiveTypeToMLIRType(
-    PrimitiveType element_type, mlir::Builder builder) {
-  switch (element_type) {
-    case PrimitiveType::PRED:
-      return builder.getI1Type();
-    case PrimitiveType::F8E5M2:
-      return builder.getFloat8E5M2Type();
-    case PrimitiveType::F8E4M3FN:
-      return builder.getFloat8E4M3FNType();
-    case PrimitiveType::F8E4M3B11FNUZ:
-      return builder.getFloat8E4M3B11FNUZType();
-    case PrimitiveType::F8E5M2FNUZ:
-      return builder.getFloat8E5M2FNUZType();
-    case PrimitiveType::F8E4M3FNUZ:
-      return builder.getFloat8E4M3FNUZType();
-    case PrimitiveType::F16:
-      return builder.getF16Type();
-    case PrimitiveType::BF16:
-      return builder.getBF16Type();
-    case PrimitiveType::F32:
-      return builder.getF32Type();
-    case PrimitiveType::F64:
-      return builder.getF64Type();
-    // TODO(b/130356985): Support unsigned primitive types.
-    default:
-      if (primitive_util::IsIntegralType(element_type)) {
-        return mlir::IntegerType::get(
-            builder.getContext(),
-            /*width=*/primitive_util::BitWidth(element_type),
-            /*signed=*/
-            primitive_util::IsUnsignedIntegralType(element_type)
-                ? mlir::IntegerType::Unsigned
-                : mlir::IntegerType::Signless);
-      }
-      if (primitive_util::IsComplexType(element_type)) {
-        TF_ASSIGN_OR_RETURN(
-            mlir::Type component_type,
-            ConvertPrimitiveTypeToMLIRType(
-                primitive_util::ComplexComponentType(element_type), builder));
-        return mlir::ComplexType::get(component_type);
-      }
-      return Internal("Unsupported type: %s", PrimitiveType_Name(element_type));
-  }
 }
 
 mlir::mhlo::GatherDimensionNumbersAttr CreateGatherDimensionNumbers(

@@ -15,24 +15,29 @@ limitations under the License.
 
 #include "xla/python/pprof_profile_builder.h"
 
+#include <Python.h>  // IWYU pragma: keep
+
 #include <string>
+#include <string_view>
 #include <utility>
 
-#include "xla/python/traceback.h"
-#include "xla/statusor.h"
+#include "absl/status/statusor.h"
+#include "third_party/nanobind/include/nanobind/nanobind.h"
+#include "third_party/nanobind/include/nanobind/stl/string_view.h"  // IWYU pragma: keep
 #include "xla/util.h"
+#include "tsl/platform/logging.h"
 #include "tsl/platform/protobuf.h"
 
 namespace xla {
 
-namespace py = pybind11;
+namespace nb = nanobind;
 
 PprofProfileBuilder::PprofProfileBuilder() { CHECK_EQ(0, StringId("")); }
 
-int PprofProfileBuilder::StringId(const std::string& s) {
+int PprofProfileBuilder::StringId(std::string_view s) {
   auto ret = strings_.emplace(s, profile_.string_table_size());
   if (ret.second) {
-    profile_.add_string_table(s);
+    profile_.add_string_table(s.data(), s.size());
   }
   return ret.first->second;
 }
@@ -43,10 +48,11 @@ int PprofProfileBuilder::FunctionId(PyCodeObject* code) {
   if (ret.second) {
     auto* function = profile_.add_function();
     function->set_id(ret.first->second);
-    int name = StringId(py::str(code->co_name));
+    int name = StringId(nb::cast<std::string_view>(nb::str(code->co_name)));
     function->set_name(name);
     function->set_system_name(name);
-    function->set_filename(StringId(py::str(code->co_filename)));
+    function->set_filename(
+        StringId(nb::cast<std::string_view>(nb::str(code->co_filename))));
     function->set_start_line(code->co_firstlineno);
   }
   return ret.first->second;
@@ -66,7 +72,7 @@ int PprofProfileBuilder::LocationId(PyCodeObject* code, int instruction) {
   return ret.first->second;
 }
 
-StatusOr<pybind11::bytes> JsonToPprofProfile(std::string json) {
+absl::StatusOr<nb::bytes> JsonToPprofProfile(std::string json) {
   tensorflow::tfprof::pprof::Profile profile;
   auto status = tsl::protobuf::util::JsonStringToMessage(json, &profile);
   if (!status.ok()) {
@@ -76,12 +82,13 @@ StatusOr<pybind11::bytes> JsonToPprofProfile(std::string json) {
     return InvalidArgument("JSON parsing failed: %s",
                            std::string{status.message()});
   }
-  return py::bytes(profile.SerializeAsString());
+  std::string s = profile.SerializeAsString();
+  return nb::bytes(s.data(), s.size());
 }
 
-StatusOr<std::string> PprofProfileToJson(py::bytes binary_proto) {
+absl::StatusOr<std::string> PprofProfileToJson(nb::bytes binary_proto) {
   tensorflow::tfprof::pprof::Profile profile;
-  profile.ParseFromString(binary_proto);
+  profile.ParseFromArray(binary_proto.c_str(), binary_proto.size());
   std::string output;
   auto status = tsl::protobuf::util::MessageToJsonString(profile, &output);
   if (!status.ok()) {

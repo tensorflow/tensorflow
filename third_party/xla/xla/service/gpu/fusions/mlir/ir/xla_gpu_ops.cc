@@ -108,15 +108,48 @@ mlir::LogicalResult PureCallOp::verifySymbolUses(
   return mlir::success();
 }
 
+//===----------------------------------------------------------------------===//
+// AllocateSharedOp
+//===----------------------------------------------------------------------===//
+
 void AllocateSharedOp::getAsmResultNames(
     llvm::function_ref<void(mlir::Value, mlir::StringRef)> setNameFn) {
   setNameFn(getResult(), "shmem");
 }
 
+//===----------------------------------------------------------------------===//
+// AtomicRMWOp
+//===----------------------------------------------------------------------===//
+
 void AtomicRMWOp::getAsmResultNames(
     llvm::function_ref<void(mlir::Value, mlir::StringRef)> setNameFn) {
   setNameFn(getResult(), "atomic_rmw");
 }
+
+using mlir::OpBuilder;
+using mlir::OperationState;
+using mlir::RankedTensorType;
+using mlir::Region;
+using mlir::Type;
+using mlir::Value;
+using mlir::ValueRange;
+
+void AtomicRMWOp::build(OpBuilder &builder, OperationState &result,
+                        Value tensor, ValueRange ivs) {
+  OpBuilder::InsertionGuard g(builder);
+  result.addOperands(tensor);
+  result.addOperands(ivs);
+  result.addTypes(tensor.getType());
+
+  auto tensor_type = llvm::cast<RankedTensorType>(tensor.getType());
+  Region *body = result.addRegion();
+  builder.createBlock(body);
+  body->addArgument(tensor_type.getElementType(), tensor.getLoc());
+}
+
+//===----------------------------------------------------------------------===//
+// PureCallOp
+//===----------------------------------------------------------------------===//
 
 void PureCallOp::getAsmResultNames(
     llvm::function_ref<void(mlir::Value, mlir::StringRef)> setNameFn) {
@@ -124,6 +157,10 @@ void PureCallOp::getAsmResultNames(
     setNameFn(result, "pure_call");
   }
 }
+
+//===----------------------------------------------------------------------===//
+// SyncThreadsOp
+//===----------------------------------------------------------------------===//
 
 void SyncThreadsOp::getAsmResultNames(
     llvm::function_ref<void(mlir::Value, mlir::StringRef)> setNameFn) {

@@ -1184,7 +1184,7 @@ class TfToMlrtConversionPass
           return true;
         });
 
-    // LINT.IfChange(fallback_allow_list)
+    // LINT.IfChange
     // Order the list of added ops alphabetically.
     patterns.add<WhileOpConversion>(&context, &type_converter_, &symbol_table);
     patterns.add<AsyncOpConversion, GetResourceOpConversion,
@@ -1200,7 +1200,7 @@ class TfToMlrtConversionPass
                  TFCallOpConversion<mlir::TF::StatefulPartitionedCallOp>,
                  TFCallOpConversion<mlir::TF::LegacyCallOp>>(&context,
                                                              &type_converter_);
-    // LINT.ThenChange(util.cc:fallback_allow_list)
+    // LINT.ThenChange(util.cc)
 
     mlir::populateFunctionOpInterfaceTypeConversionPattern<mlir::func::FuncOp>(
         patterns, type_converter_);

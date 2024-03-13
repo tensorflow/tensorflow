@@ -19,7 +19,7 @@ limitations under the License.
 #include <array>
 #include <cstdint>
 #include <string>
-#include <tuple>
+#include <string_view>
 #include <vector>
 
 #include "absl/base/const_init.h"
@@ -105,14 +105,14 @@ absl::StatusOr<std::vector<uint8_t>> LinkUsingNvlink(
     std::vector<CubinOrPTXImage> images);
 
 absl::StatusOr<std::string> FindCudaExecutable(
-    const std::string& binary_name, const std::string& preferred_cuda_dir);
+    std::string_view binary_name, std::string_view preferred_cuda_dir);
 
 // Runs tool --version and parses its version string.
-absl::StatusOr<std::array<int64_t, 3>> GetToolVersion(
-    absl::string_view tool_path);
+using ToolVersion = std::array<int64_t, 3>;
+absl::StatusOr<ToolVersion> GetToolVersion(std::string_view tool_path);
 
 // On NVIDIA GPUs, returns the CUDA toolkit version supported by the driver,
-absl::StatusOr<std::array<int64_t, 3>> GetAsmCompilerVersion(
+absl::StatusOr<ToolVersion> GetAsmCompilerVersion(
     const std::string& preferred_cuda_dir);
 
 #if GOOGLE_CUDA

@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/kernels/data/shard_dataset_op.h"
 
+#include <cstdlib>
 #include <functional>
 #include <memory>
 #include <optional>
@@ -299,15 +300,14 @@ class ShardDatasetOp::Dataset : public DatasetBase {
       return ctx_with_index_mapper;
     }
 
-    std::function<int64_t(int64_t)> GetIndexMapper(
-        std::function<int64_t(int64_t)> parent_index_mapper) const
+    IndexMapperFn GetIndexMapper(IndexMapperFn parent_index_mapper) const
         TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
       int64_t num_shards = dataset()->num_shards_;
       return [parent_index_mapper,
-              num_shards](int64_t element_position) -> int64_t {
-        int64_t sharded_element_position = element_position / num_shards;
-        int64_t input_element_offset = element_position % num_shards;
-        int64_t shuffled_element_position =
+              num_shards](size_t element_position) -> size_t {
+        size_t sharded_element_position = element_position / num_shards;
+        size_t input_element_offset = element_position % num_shards;
+        size_t shuffled_element_position =
             parent_index_mapper(sharded_element_position);
         return shuffled_element_position * num_shards + input_element_offset;
       };

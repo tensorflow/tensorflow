@@ -107,12 +107,17 @@ sudo sed -i '/^build --profile/d' /usertools/aarch64_clang.bazelrc
 sudo sed -i '\@^build.*=\"/usr/local/bin/python3\"$@d' /usertools/aarch64_clang.bazelrc
 sed -i '$ aimport /usertools/aarch64_clang.bazelrc' .bazelrc
 
+# configure may have chosen the wrong setting for PYTHON_LIB_PATH so
+# determine here the correct setting
+PY_SITE_PACAKGES=$(${PYTHON_BIN_PATH} -c "import site ; print(site.getsitepackages()[0])")
+
 update_bazel_flags
 
 start-stop-daemon -b -n portserver.py -a /usr/local/bin/python3 -S -- /usr/local/bin/portserver.py
 
 bazel test ${TF_TEST_FLAGS} \
     --action_env=PYTHON_BIN_PATH=${PYTHON_BIN_PATH} \
+    --action_env=PYTHON_LIB_PATH=${PY_SITE_PACKAGES} \
     --test_env=PORTSERVER_ADDRESS=@unittest-portserver \
     --build_tag_filters=${TF_FILTER_TAGS} \
     --test_tag_filters=${TF_FILTER_TAGS} \

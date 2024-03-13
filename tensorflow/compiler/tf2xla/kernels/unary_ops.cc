@@ -95,7 +95,7 @@ REGISTER_XLA_OP(Name("Sign"), MlirXlaOpKernel);
 XLAJIT_MAKE_UNARY(Sinh, xla::Sinh(x));
 
 static xla::XlaOp Softplus(xla::XlaBuilder* b, xla::XlaOp features) {
-  return b->ReportErrorOrReturn([&]() -> StatusOr<xla::XlaOp> {
+  return b->ReportErrorOrReturn([&]() -> absl::StatusOr<xla::XlaOp> {
     TF_ASSIGN_OR_RETURN(auto shape, b->GetShape(features));
     xla::XlaOp threshold =
         Log(xla::Epsilon(b, shape.element_type())) + ScalarLike(features, 2.0);

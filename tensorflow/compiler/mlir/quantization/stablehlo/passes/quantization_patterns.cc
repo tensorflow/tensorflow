@@ -77,12 +77,6 @@ constexpr StringRef kCompositeFuncPrefix = "composite_";
 constexpr StringRef kQuantizedFuncPrefix = "quantized_";
 constexpr StringRef kEntryFuncAttrName = "_entry_function";
 
-// Returns true if `type` is a TensorType with quantized elements.
-bool IsQuantizedTensorType(const Type type) {
-  return type.isa<TensorType>() &&
-         type.cast<TensorType>().getElementType().isa<QuantizedType>();
-}
-
 // Returns broadcasted user op of an input op. Returns null if
 // the op is not broadcasted or not the intended type.
 // Supports both static broadcast and dynamic broadcast.
@@ -875,6 +869,54 @@ bool IsConnectedWithQuantizedCompsiteFunction(Operation* same_scale_op) {
   return false;
 }
 
+class QuantizeHybridDotGeneralPattern
+    : public EntryFuncBodyQuantizationPattern {
+ public:
+  explicit QuantizeHybridDotGeneralPattern() = default;
+
+  LogicalResult match(func::FuncOp entry_func_op) const override {
+    return MatchGemmStyleOp<DotGeneralOp>(entry_func_op);
+  }
+
+  void rewrite(func::FuncOp entry_func_op,
+               PatternRewriter& rewriter) const override {}
+};
+
+template <typename FuncBodyRewritePatternT,
+          typename = std::enable_if_t<std::is_base_of_v<
+              EntryFuncBodyQuantizationPattern, FuncBodyRewritePatternT>>>
+class HybridXlaCallModuleOpToCallOp
+    : public OpRewritePattern<TF::XlaCallModuleOp> {
+ public:
+  explicit HybridXlaCallModuleOpToCallOp(
+      MLIRContext& ctx, bool enable_per_channel_quantized_weight)
+      : OpRewritePattern<TF::XlaCallModuleOp>(&ctx){};
+
+  LogicalResult match(TF::XlaCallModuleOp op) const override {
+    ModuleOp module_op = op->getParentOfType<ModuleOp>();
+    SymbolTable symbol_table(module_op);
+
+    // Ignore unquantized ops.
+    if (!IsHybridQuantizedOp(op) || !IsOpQuantizableStableHlo(op)) {
+      return failure();
+    }
+
+    func::FuncOp entry_func_op = GetEntryFuncOp(op, symbol_table);
+    if (!entry_func_op) {
+      op->emitError("Failed to find a valid entry function.");
+      return failure();
+    }
+    return FuncBodyRewritePatternT().match(entry_func_op);
+  }
+
+  void rewrite(TF::XlaCallModuleOp xla_call_module_op,
+               PatternRewriter& rewriter) const override {
+    ReplaceQuantizedXlaCallModuleOpWithQuantizedCallOp(
+        *rewriter.getContext(), rewriter, xla_call_module_op,
+        FuncBodyRewritePatternT());
+  }
+};
+
 // TODO: b/307620428 - Increase fused op coverage for static range quantization.
 void PopulateFusedGemmStylePatterns(
     MLIRContext& ctx, RewritePatternSet& patterns,
@@ -888,6 +930,12 @@ void PopulateFusedGemmStylePatterns(
   // quantization of the following ops.
   patterns.add<XlaCallModuleOpToCallOp<QuantizeDotGeneralOpPattern>>(
       ctx, /*enable_per_channel_quantized_weight=*/false);
+}
+
+void PopulateQuantizeHybridPatterns(MLIRContext& ctx,
+                                    RewritePatternSet& patterns) {
+  patterns.add<HybridXlaCallModuleOpToCallOp<QuantizeHybridDotGeneralPattern>>(
+      ctx, false);
 }
 
 void PopulateQuantizeOpWithRegionPattern(MLIRContext& ctx,

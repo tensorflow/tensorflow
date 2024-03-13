@@ -483,7 +483,10 @@ class PjRtCApiBuffer : public PjRtBuffer {
   StatusOr<std::unique_ptr<ExternalReference>> AcquireExternalReference()
       override;
 
-  PjRtFuture<Status> ToLiteral(MutableLiteralBase* literal) override;
+  PjRtFuture<absl::Status> ToLiteral(MutableLiteralBase* literal) override;
+  PjRtFuture<absl::Status> LazyToLiteral(
+      absl::AnyInvocable<absl::StatusOr<MutableLiteralBase*>() &&> generator)
+      override;
 
   StatusOr<size_t> GetOnDeviceSizeInBytes() const override;
 

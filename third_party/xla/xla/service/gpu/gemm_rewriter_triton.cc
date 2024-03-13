@@ -53,6 +53,7 @@ limitations under the License.
 #include "xla/statusor.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/util.h"
+#include "xla/xla_data.pb.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/statusor.h"
 #include "tsl/platform/tensor_float_32_utils.h"
@@ -638,7 +639,11 @@ absl::StatusOr<FusionDecision> CreateDotFusion(
         const_cast<HloInstruction*>(fused_output_and_reqs.original_hlo);
   }
 
-  if (dot.GetModule()->config().debug_options().xla_gpu_triton_gemm_any()) {
+  const PrecisionConfig::Algorithm algorithm =
+      dot.precision_config().algorithm();
+  if (algorithm == PrecisionConfig::ALG_DOT_BF16_BF16_F32_X6 ||
+      algorithm == PrecisionConfig::ALG_DOT_BF16_BF16_F32_X3 ||
+      dot.GetModule()->config().debug_options().xla_gpu_triton_gemm_any()) {
     return FusionDecision{};
   }
 
@@ -736,20 +741,49 @@ absl::StatusOr<bool> RunOnComputation(
   return visitor.changed();
 }
 
+bool IsSupportedByTriton(
+    PrecisionConfig::Algorithm algorithm,
+    const se::CudaComputeCapability& cuda_compute_capability) {
+  switch (algorithm) {
+    case PrecisionConfig::ALG_DOT_BF16_BF16_F32:
+      return true;
+
+    case PrecisionConfig::ALG_DOT_TF32_TF32_F32:
+    case PrecisionConfig::ALG_DOT_BF16_BF16_F32_X3:
+    case PrecisionConfig::ALG_DOT_BF16_BF16_F32_X6:
+      return cuda_compute_capability.IsAtLeastAmpere();
+
+    // TODO(b/326579472): Fix the support of this algorithm and maybe allow it
+    // here.
+    case PrecisionConfig::ALG_DOT_F16_F16_F32:
+    // Slow to compile:
+    case PrecisionConfig::ALG_DOT_F32_F32_F32:
+    default:
+      return false;
+  }
+}
+
 }  // namespace
 
 FusionDecision CanTritonHandleGEMM(
     const HloDotInstruction& dot, const se::GpuComputeCapability& gpu_version) {
-  if (!tsl::tensor_float_32_execution_enabled() ||
-      absl::c_any_of(dot.precision_config().operand_precision(),
-                     [](int x) { return x != PrecisionConfig::DEFAULT; })) {
-    return "Non-default precision.";
-  }
-
   auto cuda_compute_capability =
       std::get_if<se::CudaComputeCapability>(&gpu_version);
 
   if (!cuda_compute_capability) return "Non CUDA device.";
+
+  if (dot.precision_config().algorithm() == PrecisionConfig::ALG_UNSET) {
+    if (!tsl::tensor_float_32_execution_enabled() ||
+        absl::c_any_of(dot.precision_config().operand_precision(),
+                       [](int x) { return x != PrecisionConfig::DEFAULT; })) {
+      return "Non-default precision.";
+    }
+  } else {
+    if (!IsSupportedByTriton(dot.precision_config().algorithm(),
+                             *cuda_compute_capability)) {
+      return "Unsupported algorithm on the current device(s).";
+    }
+  }
 
   auto supported_output_type = [&](const PrimitiveType t) {
     switch (t) {

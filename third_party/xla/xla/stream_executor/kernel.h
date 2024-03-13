@@ -742,8 +742,7 @@ inline absl::StatusOr<TypedKernel<Args...>> TypedKernel<Args...>::Create(
   loader_spec.AddCudaPtxInMemory(ptx, kernel_name);
 
   if (!cubin_data.empty()) {
-    loader_spec.AddCudaCubinInMemory(
-        reinterpret_cast<const char *>(cubin_data.data()), kernel_name);
+    loader_spec.AddCudaCubinInMemory(cubin_data, kernel_name);
   }
 
   return TypedKernel<Args...>::Create(executor, loader_spec);

@@ -941,6 +941,24 @@ void BuildXlaCompilerSubmodule(nb::module_& m) {
       nb::arg("fn_name"), nb::arg("capsule"), nb::arg("platform"),
       nb::arg("api_version") = 0);
 
+  m.def(
+      "custom_call_targets",
+      [](const std::string& platform) -> nb::dict {
+        nb::dict targets;
+        for (const auto& [name, target] :
+             CustomCallTargetRegistry::Global()->registered_symbols(platform)) {
+          targets[nb::str(name.data(), name.size())] = nb::capsule(target);
+        }
+
+        for (const auto& [name, target] :
+             ffi::StaticRegisteredHandlers(platform)) {
+          targets[nb::str(name.data(), name.size())] =
+              nb::capsule(reinterpret_cast<void*>(target));
+        }
+        return targets;
+      },
+      nb::arg("platform"));
+
   nb::class_<DebugOptions>(m, "DebugOptions")
       .def("__repr__", &DebugOptions::DebugString)
       .def_prop_rw("xla_backend_optimization_level",

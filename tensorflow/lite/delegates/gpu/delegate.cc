@@ -544,6 +544,10 @@ absl::Status DelegateKernelCore::InitializeOpenClApi(
   }
   options.usage = ToUsage(delegate_options.inference_preference);
 
+#ifdef TFLITE_GPU_ENABLE_INVOKE_LOOP
+  options.gpu_invoke_loop_times = delegate_options.gpu_invoke_loop_times;
+#endif
+
   if (!serialization) {
     // This path is faster when there is no serialization involved.
     RETURN_IF_ERROR(cl::NewInferenceEnvironment(env_options, &cl_environment_,
@@ -602,6 +606,9 @@ absl::Status DelegateKernelCore::InitializeOpenGlApi(
       options.priority1 = InferencePriority::MIN_LATENCY;
     }
   }
+#ifdef TFLITE_GPU_ENABLE_INVOKE_LOOP
+  options.gpu_invoke_loop_times = delegate_options.gpu_invoke_loop_times;
+#endif
   RETURN_IF_ERROR(gl_environment_->NewInferenceBuilder(std::move(*graph),
                                                        options, builder));
   enforce_same_thread_ = true;

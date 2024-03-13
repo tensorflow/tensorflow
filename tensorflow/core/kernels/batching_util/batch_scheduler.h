@@ -45,6 +45,7 @@ limitations under the License.
 #include "tensorflow/core/platform/thread_annotations.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
+#include "tsl/platform/criticality.h"
 
 namespace tensorflow {
 namespace serving {
@@ -67,6 +68,12 @@ class BatchTask {
   // Returns the size of the task, in terms of how much it contributes to the
   // size of a batch. (A batch's size is the sum of its task sizes.)
   virtual size_t size() const = 0;
+
+  // Returns the criticality of associated with the task. It defaults to
+  // kCritical.
+  virtual tsl::criticality::Criticality criticality() const {
+    return tsl::criticality::Criticality::kCritical;
+  }
 };
 
 // A thread-safe collection of BatchTasks. Tasks can be either added or removed
@@ -90,16 +97,16 @@ class TaskQueue {
   // Removes tasks from the front of the queue as many as possible as long as
   // the sum of sizes of the removed tasks don't exceed the 'size' given as the
   // argument.
-  std::vector<std::unique_ptr<TaskType>> RemoveTask(size_t size);
+  std::vector<std::unique_ptr<TaskType>> RemoveTask(int size);
 
   // Returns true iff the queue contains 0 tasks.
   bool empty() const;
 
   // Returns the number of tasks in the queue.
-  size_t num_tasks() const;
+  int num_tasks() const;
 
   // Returns the sum of the task sizes.
-  size_t size() const;
+  int size() const;
 
  private:
   mutable mutex mu_;
@@ -108,7 +115,7 @@ class TaskQueue {
   std::deque<std::unique_ptr<TaskType>> tasks_ TF_GUARDED_BY(mu_);
 
   // The sum of the sizes of the tasks in 'tasks_'.
-  size_t size_ TF_GUARDED_BY(mu_) = 0;
+  int size_ TF_GUARDED_BY(mu_) = 0;
 
   // Whether the queue is empty.
   std::atomic<bool> empty_ TF_GUARDED_BY(mu_){true};
@@ -147,18 +154,19 @@ std::unique_ptr<TaskType> TaskQueue<TaskType>::RemoveTask() {
 
 template <typename TaskType>
 std::vector<std::unique_ptr<TaskType>> TaskQueue<TaskType>::RemoveTask(
-    size_t size) {
+    int size) {
   {
     mutex_lock l(mu_);
     if (tasks_.empty()) {
       return {};
     }
 
-    size_t size_lower_bound = size_ - size;
+    int size_lower_bound = size_ - size;
     std::vector<std::unique_ptr<TaskType>> remove_tasks;
     while (!tasks_.empty() &&
-           size_ - tasks_.front()->size() >= size_lower_bound) {
-      size_ -= tasks_.front()->size();
+           size_ - static_cast<int>(tasks_.front()->size()) >=
+               size_lower_bound) {
+      size_ -= static_cast<int>(tasks_.front()->size());
       remove_tasks.push_back(std::move(tasks_.front()));
       tasks_.pop_front();
       if (tasks_.empty()) {
@@ -178,7 +186,7 @@ bool TaskQueue<TaskType>::empty() const {
 }
 
 template <typename TaskType>
-size_t TaskQueue<TaskType>::num_tasks() const {
+int TaskQueue<TaskType>::num_tasks() const {
   {
     mutex_lock l(mu_);
     return tasks_.size();
@@ -186,7 +194,7 @@ size_t TaskQueue<TaskType>::num_tasks() const {
 }
 
 template <typename TaskType>
-size_t TaskQueue<TaskType>::size() const {
+int TaskQueue<TaskType>::size() const {
   {
     mutex_lock l(mu_);
     return size_;

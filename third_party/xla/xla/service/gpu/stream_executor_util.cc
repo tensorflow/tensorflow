@@ -48,6 +48,19 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
+se::dnn::VersionInfo GetDnnVersionInfo(
+    stream_executor::StreamExecutor* stream_exec,
+    se::dnn::VersionInfo fallback_version) {
+  if (!stream_exec) {
+    return fallback_version;
+  }
+  stream_executor::dnn::DnnSupport* dnn = stream_exec->AsDnn();
+  if (!dnn) {
+    return fallback_version;
+  }
+  return dnn->GetVersion().value_or(fallback_version);
+}
+
 namespace {
 
 using se::dnn::DataLayout;
@@ -333,8 +346,7 @@ absl::StatusOr<std::unique_ptr<se::Kernel>> CreateKernel(
   loader_spec.AddCudaPtxInMemory(ptx, kernel_name);
 
   if (!cubin_data.empty()) {
-    loader_spec.AddCudaCubinInMemory(
-        reinterpret_cast<const char*>(cubin_data.data()), kernel_name);
+    loader_spec.AddCudaCubinInMemory(cubin_data, kernel_name);
   }
 
   TF_ASSIGN_OR_RETURN(std::unique_ptr<se::Kernel> kernel,

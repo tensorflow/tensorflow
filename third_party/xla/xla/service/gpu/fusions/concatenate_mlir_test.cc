@@ -47,8 +47,8 @@ TEST_F(MlirConcatenateFusionTest, StandAloneConcatenate) {
   TF_ASSERT_OK(EmitAndCheckIR(kHloString, R"(
     // CHECK-DAG: #[[MAP_1:.*]] = affine_map<()[s0, s1] -> (s0 + s1 * 128)>
     // CHECK-DAG: #[[MAP_2:.*]] = affine_map<()[s0, s1] -> ((s0 + s1 * 128) mod 400)>
-    // CHECK-DAG: #[[MAP_3:.*]] = affine_map<()[s0, s1] -> ((s0 + s1 * 128) mod 400 + 200)> 
-    // CHECK-DAG: #[[MAP_4:.*]] = affine_map<()[s0, s1] -> ((s0 + s1 * 128) mod 400 + 600)> 
+    // CHECK-DAG: #[[MAP_3:.*]] = affine_map<()[s0, s1] -> ((s0 + s1 * 128) mod 400 + 200)>
+    // CHECK-DAG: #[[MAP_4:.*]] = affine_map<()[s0, s1] -> ((s0 + s1 * 128) mod 400 + 600)>
 
     // CHECK-LABEL: fused_computation
     // CHECK-SAME:    %[[ARG_0:[a-zA-Z0-9]*]]: {{[^,]*}},
@@ -110,7 +110,7 @@ TEST_F(MlirConcatenateFusionTest, PrologueEpilogue) {
     // CHECK:   scf.yield %[[INSERTED_1]]
 
     // CHECK: %[[VAL_2_1:.*]] = xla_gpu.pure_call @fused_computation_exp({{.*}}, %[[THREAD_ID]])
-    // CHECK: %[[INDEX_2:.*]] = affine.apply #[[MAP]]()[%[[THREAD_ID]]] 
+    // CHECK: %[[INDEX_2:.*]] = affine.apply #[[MAP]]()[%[[THREAD_ID]]]
     // CHECK: %[[VAL_2_2:.*]] = xla_gpu.pure_call @fused_computation_neg({{.*}}, %[[INDEX_2]], %[[VAL_2_1]])
     // CHECK: %[[INSERTED_2:.*]] = tensor.insert %[[VAL_2_2:.*]] into {{.*}}[%[[INDEX_2]]]
 
@@ -159,6 +159,29 @@ TEST_F(MlirConcatenateFusionTest, MajorDimension) {
     param1 = f32[16,16] parameter(1)
     ROOT %fusion = f32[32,16] fusion(param0, param1), kind=kInput, calls=fused_computation
   }
+  )";
+  EXPECT_TRUE(RunAndCompareNoHloPasses(kHloString, ErrorSpec{1e-3}));
+}
+
+TEST_F(MlirConcatenateFusionTest, EpilogueBitcast) {
+  auto kHloString = R"(
+    HloModule Test
+
+    fused_computation {
+      p0 = pred[1] parameter(0)
+      p1 = pred[1] parameter(1)
+      p2 = pred[1] parameter(2)
+      %concatenate.3.3 = pred[3] concatenate(p0, p1, p2), dimensions={0}
+      %bitcast.57.1 = pred[1,1,3]{2,1,0} bitcast(pred[3]{0} %concatenate.3.3)
+      ROOT %convert.36.1 = u32[1,1,3] convert(pred[1,1,3]{2,1,0} %bitcast.57.1)
+    }
+
+    ENTRY main {
+      p0 = pred[1] parameter(0)
+      p1 = pred[1] parameter(1)
+      p2 = pred[1] parameter(2)
+      ROOT fusion = u32[1,1,3] fusion(p0, p1, p2), kind=kInput, calls=fused_computation
+    }
   )";
   EXPECT_TRUE(RunAndCompareNoHloPasses(kHloString, ErrorSpec{1e-3}));
 }

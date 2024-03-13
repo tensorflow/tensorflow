@@ -110,9 +110,16 @@ llvm::SmallVector<mlir::Value> EmitLoopNest(
         mlir::ValueRange iter_args, mlir::ValueRange dim_values,
         mlir::ValueRange symbol_values)>& create_body);
 
-// Clamps
+// Clamps `index` to [0, high] boundaries.
 mlir::Value ClampIndex(mlir::Value index, bool is_unsigned, int64_t high,
                        mlir::ImplicitLocOpBuilder& b);
+
+// Inlines `src_block` using `mapped_args` to initialize IRMapping from the
+// block arguments of `src_block` to `mapped_args`. Return remapped values of
+// the terminator.
+mlir::SmallVector<mlir::Value, 2> InlineBlock(mlir::OpBuilder& builder,
+                                              mlir::Block& src_block,
+                                              mlir::ValueRange mapped_args);
 
 }  // namespace mlir_converter
 }  // namespace gpu

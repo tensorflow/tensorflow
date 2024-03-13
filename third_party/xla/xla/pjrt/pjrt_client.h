@@ -1096,6 +1096,14 @@ class PjRtBuffer {
   // completed. The transfer respects the layout of `literal`; to specify a
   // particular layout, set the layout before calling `ToLiteral`.
   virtual PjRtFuture<Status> ToLiteral(MutableLiteralBase* literal) = 0;
+  // This version of ToLiteral allows the implementation to defer the
+  // construction of the literal (e.g. until the underlying buffer is ready).
+  // The specific timing of calling `generator` is implementation defined, and
+  // might be done eagerly, but it is guaranteed to be earlier than when the
+  // returned future becomes ready.
+  virtual PjRtFuture<Status> LazyToLiteral(
+      absl::AnyInvocable<absl::StatusOr<MutableLiteralBase*>() &&>
+          generator) = 0;
 
   // Synchronous overload of ToLiteral, as a convenience.
   Status ToLiteralSync(MutableLiteralBase* literal) {
@@ -1109,9 +1117,7 @@ class PjRtBuffer {
     return status;
   }
 
-  // Convenience synchronous overload that allocates a literal with a default
-  // layout.
-  StatusOr<std::shared_ptr<Literal>> ToLiteralSync() {
+  absl::StatusOr<Shape> HostShape() {
     Shape device_shape;
     if (!IsTuple()) {
       absl::Span<const int64_t> literal_dims;
@@ -1136,8 +1142,14 @@ class PjRtBuffer {
         TF_ASSIGN_OR_RETURN(device_shape, logical_on_device_shape());
       }
     }
-    auto literal = std::make_shared<Literal>(
-        ShapeUtil::DeviceShapeToHostShape(device_shape));
+    return ShapeUtil::DeviceShapeToHostShape(device_shape);
+  }
+
+  // Convenience synchronous overload that allocates a literal with a default
+  // layout.
+  absl::StatusOr<std::shared_ptr<Literal>> ToLiteralSync() {
+    TF_ASSIGN_OR_RETURN(Shape host_shape, HostShape());
+    auto literal = std::make_shared<Literal>(host_shape);
     TF_RETURN_IF_ERROR(ToLiteralSync(literal.get()));
     return literal;
   }

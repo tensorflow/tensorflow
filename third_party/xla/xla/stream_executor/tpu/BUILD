@@ -141,9 +141,9 @@ cc_library(
     hdrs = ["tsl_status_helper.h"],
     deps = [
         ":c_api_decl",
+        "//xla/tsl/c:tsl_status",
+        "//xla/tsl/c:tsl_status_helper",
         "@com_google_absl//absl/status",
-        "@local_tsl//tsl/c:tsl_status",
-        "@local_tsl//tsl/c:tsl_status_helper",
         "@local_tsl//tsl/platform:status",
     ],
 )
@@ -308,6 +308,7 @@ cc_library(
         "//xla:status",
         "//xla/stream_executor",
         "//xla/stream_executor:stream_executor_internal",
+        "//xla/tsl/c:tsl_status_internal",
         "@com_google_absl//absl/cleanup",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/functional:any_invocable",
@@ -316,7 +317,6 @@ cc_library(
         "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/types:span",
-        "@local_tsl//tsl/c:tsl_status_internal",
         "@local_tsl//tsl/platform:casts",
         "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:logging",

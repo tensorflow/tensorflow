@@ -17,21 +17,31 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_MLIR_QUANTIZATION_STABLEHLO_CC_SAVED_MODEL_IMPORT_H_
 #define TENSORFLOW_COMPILER_MLIR_QUANTIZATION_STABLEHLO_CC_SAVED_MODEL_IMPORT_H_
 
+#include <string>
+#include <unordered_set>
+
 #include "absl/container/flat_hash_map.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/quantization/stablehlo/cc/types.h"
 
 namespace mlir::quant::stablehlo {
 
-// Returns the updated function aliases. `module_op` may have different
+// Gets the function aliases from the SavedModel.
+absl::StatusOr<absl::flat_hash_map<FunctionName, FunctionAlias>>
+GetFunctionAliases(absl::string_view saved_model_path,
+                   const std::unordered_set<std::string>& tags);
+
+// Updates the function aliases. `module_op` may have different
 // function names from the original model, so it re-associates the aliases
 // with the new function names. Both the input `function_aliases` and the
 // returned value are function name -> alias mappings. `function_aliases` is
 // the function alias mapping of the original function. The original function's
 // name is retrieved by looking at the "tf._original_func_name" string attribute
 // attached to a `func::FuncOp`.
-absl::flat_hash_map<FunctionName, FunctionAlias> UpdateFunctionAliases(
-    absl::flat_hash_map<FunctionName, FunctionAlias> function_aliases,
+void UpdateFunctionAliases(
+    absl::flat_hash_map<FunctionName, FunctionAlias>& function_aliases,
     ModuleOp module_op);
 
 }  // namespace mlir::quant::stablehlo

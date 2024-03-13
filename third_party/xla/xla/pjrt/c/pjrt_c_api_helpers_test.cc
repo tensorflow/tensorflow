@@ -54,9 +54,8 @@ TEST(PjRtCApiHelperTest, ConvertValidPjRtValueType) {
       {"int64_list", int64_list},
       {"float", static_cast<float>(1.0)}};
 
-  TF_ASSERT_OK_AND_ASSIGN(
-      std::vector<PJRT_NamedValue> c_map,
-      ConvertToPjRtNamedValueList(original_cpp_map, /*api_minor_version=*/30));
+  TF_ASSERT_OK_AND_ASSIGN(std::vector<PJRT_NamedValue> c_map,
+                          ConvertToPjRtNamedValueList(original_cpp_map));
   auto converted_back_cpp_map =
       ConvertFromPjRtNamedValueList(c_map.data(), c_map.size());
 

@@ -128,7 +128,7 @@ Status HandleInputOutputArraysWithModule(
 }
 
 Status ConvertSavedModelToTFLiteFlatBuffer(
-    const toco::ModelFlags& model_flags, const toco::TocoFlags& toco_flags,
+    const toco::ModelFlags& model_flags, toco::TocoFlags& toco_flags,
     std::string* result,
     const PyFunctionLibrary* quantization_py_function_lib) {
   mlir::MLIRContext context;
