@@ -1316,7 +1316,16 @@ static void Init(py::module_& m) {
                  nb::cast(self.GetParameterShardings()).release().ptr());
            })
       .def("get_compiled_memory_stats",
-           xla::ValueOrThrowWrapper(&PjRtExecutable::GetCompiledMemoryStats))
+           [](const PjRtExecutable& self) {
+             // TODO(phawkins): revert to a direct wrapping of
+             // PjRtExecutable::GetCompiledMemoryStats when nanobind transition
+             // is complete.
+             // xla::ValueOrThrowWrapper(&PjRtExecutable::GetCompiledMemoryStats)
+             return py::reinterpret_steal<py::object>(
+                 nb::cast(ValueOrThrow(self.GetCompiledMemoryStats()))
+                     .release()
+                     .ptr());
+           })
       .def("compile_options",
            // TODO(phawkins): revert to the following when nanobind transition
            // complete
