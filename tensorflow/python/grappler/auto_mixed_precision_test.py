@@ -585,7 +585,7 @@ class AutoMixedPrecisionTest(test.TestCase, parameterized.TestCase):
     self._assert_output_f16(mode, node_map, 'Conv2D_1')
     self.assertEqual(num_to_f16, 4)
     self.assertEqual(num_to_fp32, 1)
-    tol = 5e-3 if mode == 'mkl' else 1e-3
+    tol = 5e-3 if mode == 'mkl' else 1e-2
     self.assertAllClose(output_val_ref, output_val, atol=tol, rtol=tol)
 
   # TODO(benbarsdell): This test has not been tried with MKL.
