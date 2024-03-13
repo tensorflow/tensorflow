@@ -147,8 +147,6 @@ struct QuantizationSpecs {
   // TODO: b/202075505 - make implicit weight type clearer
   // Whether run the passes and graph rewrites for dynamic range quantization.
   bool RunAndRewriteDynamicRangeQuantizationPasses() const {
-    // TODO: b/201389248 - add condition that symmetric, signed, int8 only
-    // If fail, log will appear to let user know nothing happened.
     bool dynamic_range_quantize =
         (inference_type != tensorflow::DT_FLOAT) && weight_quantization &&
         !post_training_quantization && !disable_infer_tensor_range &&
