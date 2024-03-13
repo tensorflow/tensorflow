@@ -3190,9 +3190,6 @@ class Subgraph {
       TF_LITE_ENSURE_STATUS(CheckTensorNonDynamicAllocation(
           delegate, logging_context, input_tensor, node->inputs->data[i],
           node_index));
-
-      TF_LITE_ENSURE_EQ(logging_context, NumDimensions(&input_tensor),
-                        NumDimensions(&output_tensor));
     }
 
     if (subgraph != nullptr) {
@@ -5583,9 +5580,6 @@ class Subgraph {
     TF_LITE_ENSURE_STATUS(
         CheckTensorFloat32OrQUInt8Type(delegate, logging_context, input_tensor,
                                        input_tensor_index, node_index));
-    TF_LITE_ENSURE_STATUS(CheckTensorShape(logging_context, input_tensor,
-                                           num_dims, input_tensor_index,
-                                           BuiltinOperator_SLICE, node_index));
     TF_LITE_ENSURE_STATUS(
         CheckTensorNonDynamicAllocation(delegate, logging_context, input_tensor,
                                         input_tensor_index, node_index));
@@ -5593,15 +5587,10 @@ class Subgraph {
     TF_LITE_ENSURE_STATUS(
         CheckTensorFloat32OrQUInt8Type(delegate, logging_context, output_tensor,
                                        output_tensor_index, node_index));
-    TF_LITE_ENSURE_STATUS(CheckTensorShape(logging_context, output_tensor,
-                                           num_dims, output_tensor_index,
-                                           BuiltinOperator_SLICE, node_index));
     TF_LITE_ENSURE_STATUS(CheckTensorNonDynamicAllocation(
         delegate, logging_context, output_tensor, output_tensor_index,
         node_index));
 
-    const auto input_shape = input_tensor.dims;
-    const auto output_shape = output_tensor.dims;
     std::array<int64_t, XNN_MAX_TENSOR_DIMS> begin;
     std::array<int64_t, XNN_MAX_TENSOR_DIMS> size;
     CopyTensorDataInt32OrInt64(begin.data(), begin_tensor, num_dims);
@@ -5609,51 +5598,18 @@ class Subgraph {
 
     for (size_t i = 0; i < num_dims; i++) {
       if (begin[i] < 0) {
+        // TODO(b/329228576): Add support for negative begin.
         TF_LITE_MAYBE_KERNEL_LOG(logging_context,
                                  "begin %" PRId64
                                  " must be greater than 0 in SLICE node #%d",
                                  begin[i], node_index);
       }
-      if (begin[i] >= input_shape->data[i]) {
-        TF_LITE_MAYBE_KERNEL_LOG(
-            logging_context,
-            "begin %" PRId64
-            " must be less than input dimension %d in SLICE node #%d",
-            begin[i], input_shape->data[i], node_index);
-      }
       if (size[i] <= 0) {
-        if (size[i] != -1) {
-          TF_LITE_MAYBE_KERNEL_LOG(logging_context,
-                                   "size %" PRId64
-                                   " must be positive or -1 in SLICE node #%d",
-                                   size[i], node_index);
-          return kTfLiteError;
-        }
-        size[i] = input_shape->data[i] - begin[i];
-      }
-      if (size[i] > input_shape->data[i]) {
+        // TODO(b/329228576): Add support for negative begin.
         TF_LITE_MAYBE_KERNEL_LOG(logging_context,
                                  "size %" PRId64
-                                 " must be less than or equals to input "
-                                 "dimension %d in SLICE node #%d",
-                                 size[i], input_shape->data[i], node_index);
-        return kTfLiteError;
-      }
-      if (size[i] != output_shape->data[i]) {
-        TF_LITE_MAYBE_KERNEL_LOG(logging_context,
-                                 "size %" PRId64
-                                 " does not match output shape %d at "
-                                 "dimension %zu in SLICE node #%d",
-                                 size[i], output_shape->data[i], i, node_index);
-        return kTfLiteError;
-      }
-      if (begin[i] + size[i] > input_shape->data[i]) {
-        TF_LITE_MAYBE_KERNEL_LOG(logging_context,
-                                 "begin + size (%" PRId64 " + %" PRId64
-                                 ") must not be greater than input "
-                                 "dimension %d in SLICE node #%d",
-                                 begin[i], size[i], input_shape->data[i],
-                                 node_index);
+                                 " must be positive in SLICE node #%d",
+                                 size[i], node_index);
         return kTfLiteError;
       }
     }
@@ -6097,7 +6053,6 @@ class Subgraph {
       TfLiteContext* logging_context, int node_index, TfLiteNode* node,
       const TfLiteTensor* tensors, const TfLiteStridedSliceParams* params,
       const std::unordered_map<int, uint32_t>& input_output_tensors) {
-    // return kTfLiteError;
     // Only support strided slice with no ellipsis mask, no new axis mask, and
     // no shrink_axis-mask.
     if (params->ellipsis_mask != 0 || params->new_axis_mask != 0 ||
@@ -6117,7 +6072,7 @@ class Subgraph {
     TF_LITE_ENSURE_STATUS(CheckTensorInt32Type(
         logging_context, stride_tensor, stride_tensor_index, node_index));
 
-    const int num_dims = stride_tensor.dims->size;
+    const int num_dims = stride_tensor.dims->data[0];
     if (num_dims > XNN_MAX_TENSOR_DIMS) {
       TF_LITE_MAYBE_KERNEL_LOG(logging_context,
                                "number of dimensions %d must be less than %d "
@@ -6175,9 +6130,6 @@ class Subgraph {
     TF_LITE_ENSURE_STATUS(
         CheckTensorFloat32OrQUInt8Type(delegate, logging_context, input_tensor,
                                        input_tensor_index, node_index));
-    TF_LITE_ENSURE_STATUS(CheckTensorShape(
-        logging_context, input_tensor, num_dims, input_tensor_index,
-        BuiltinOperator_STRIDED_SLICE, node_index));
     TF_LITE_ENSURE_STATUS(
         CheckTensorNonDynamicAllocation(delegate, logging_context, input_tensor,
                                         input_tensor_index, node_index));
@@ -6185,9 +6137,6 @@ class Subgraph {
     TF_LITE_ENSURE_STATUS(
         CheckTensorFloat32OrQUInt8Type(delegate, logging_context, output_tensor,
                                        output_tensor_index, node_index));
-    TF_LITE_ENSURE_STATUS(CheckTensorShape(
-        logging_context, output_tensor, num_dims, output_tensor_index,
-        BuiltinOperator_STRIDED_SLICE, node_index));
     TF_LITE_ENSURE_STATUS(CheckTensorNonDynamicAllocation(
         delegate, logging_context, output_tensor, output_tensor_index,
         node_index));
@@ -6199,17 +6148,19 @@ class Subgraph {
     std::array<size_t, XNN_MAX_TENSOR_DIMS> sizes;
     std::array<size_t, XNN_MAX_TENSOR_DIMS> ends;
     for (size_t i = 0; i < num_dims; i++) {
+      if (begin_data[i] < 0) {
+        // TODO(b/329228576): Add support for negative begin.
+        TF_LITE_MAYBE_KERNEL_LOG(
+            logging_context,
+            "begin %d must be greater than or equal to zero "
+            "in STRIDED_SLICE node #%d",
+            begin_data[i], node_index);
+        return kTfLiteError;
+      }
       begins[i] = begin_data[i] < 0 ? input_shape->data[i] + begin_data[i]
                                     : begin_data[i];
       if ((params->begin_mask & (1 << i)) != 0) {
         begins[i] = 0;
-      }
-
-      if (begins[i] >= input_shape->data[i]) {
-        TF_LITE_MAYBE_KERNEL_LOG(logging_context,
-                                 "begin %zu must be less than input dimension "
-                                 "%d in STRIDED_SLICE node #%d",
-                                 begins[i], input_shape->data[i], node_index);
       }
 
       int actual_end_data = end_data[i];
@@ -6218,20 +6169,23 @@ class Subgraph {
       }
       // If end is negative, we count from the back, -1 is the last element.
       if (actual_end_data < 0) {
-        ends[i] = actual_end_data + input_shape->data[i];
+        // TODO(b/329228576): Add support for negative begin.
+        TF_LITE_MAYBE_KERNEL_LOG(logging_context,
+                                 "end %d must be greater than or equal to zero "
+                                 "in STRIDED_SLICE node #%d",
+                                 end_data[i], node_index);
+        return kTfLiteError;
       } else {
         ends[i] = actual_end_data;
       }
 
       if ((params->end_mask & (1 << i)) != 0) {
-        ends[i] = input_shape->data[i];
-      }
-
-      if (ends[i] > input_shape->data[i]) {
+        // TODO(b/329228576): Add support for negative begin.
         TF_LITE_MAYBE_KERNEL_LOG(logging_context,
-                                 "end %zu must be less than or equals to input "
-                                 "dimension %d in STRIDED_SLICE node #%d",
-                                 ends[i], input_shape->data[i], node_index);
+                                 "non-zero end mask not supported "
+                                 "in STRIDED_SLICE node #%d",
+                                 end_data[i], node_index);
+        return kTfLiteError;
       }
 
       if (begins[i] >= ends[i]) {
