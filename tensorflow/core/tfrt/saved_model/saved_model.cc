@@ -54,6 +54,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/lib/monitoring/counter.h"
 #include "tensorflow/core/lib/monitoring/gauge.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/errors.h"
@@ -105,6 +106,10 @@ namespace tfrt_stub {
 namespace {
 
 constexpr absl::string_view kSignatureJoiningDelimiter = "+";
+
+auto* lazy_loading_count = monitoring::Counter<3>::New(
+    "/tensorflow/tfrt/lazy_loading_count", "The total number of lazy loadings.",
+    "model_name", "model_version", "use_graph_executor");
 
 auto* saved_model_import_time_seconds =
     tensorflow::monitoring::Gauge<int64_t, 1>::New(
@@ -743,28 +748,33 @@ tensorflow::Status SavedModelImpl::Run(
       << "failed to find signature " << name << " in the graph";
   const auto& signature = sig_iter->second;
   const auto& signature_def = meta_graph_def_.signature_def().at(name);
+  const tensorflow::SessionMetadata& model_metadata =
+      options_.graph_execution_options.model_metadata;
 
   if (options_.enable_lazy_loading &&
       options_.lazy_loading_use_graph_executor) {
+    lazy_loading_count
+        ->GetCell(model_metadata.name(), absl::StrCat(model_metadata.version()),
+                  "true")
+        ->IncrementBy(1);
+
     std::vector<std::pair<std::string, tensorflow::Tensor>> input_tensors;
     input_tensors.reserve(inputs.size());
 
     std::vector<std::string> output_tensor_names;
     output_tensor_names.reserve(signature.output_names.size());
 
-    TF_RETURN_IF_ERROR(
-        PreprocessSignature(options_.graph_execution_options.model_metadata,
-                            run_options, name, signature_def, signature, inputs,
-                            /*visited_feed_tensor_names=*/nullptr,
-                            input_tensors, output_tensor_names));
+    TF_RETURN_IF_ERROR(PreprocessSignature(
+        model_metadata, run_options, name, signature_def, signature, inputs,
+        /*visited_feed_tensor_names=*/nullptr, input_tensors,
+        output_tensor_names));
 
     return graph_executor_->Run(run_options, input_tensors, output_tensor_names,
                                 /*target_tensor_names=*/{}, outputs);
   }
 
   TF_RETURN_IF_ERROR(
-      CheckInputSpecs(options_.graph_execution_options.model_metadata,
-                      run_options, name, signature, inputs));
+      CheckInputSpecs(model_metadata, run_options, name, signature, inputs));
 
   const SymbolUids* symbol_uids = nullptr;
   const tfrt::Function* func = nullptr;
@@ -775,6 +785,10 @@ tensorflow::Status SavedModelImpl::Run(
   if (options_.enable_lazy_loading) {
     // TODO(b/216379787): Remove this lazy loading path once b/279197040 is
     // unblocked.
+    lazy_loading_count
+        ->GetCell(model_metadata.name(), absl::StrCat(model_metadata.version()),
+                  "false")
+        ->IncrementBy(1);
 
     // If lazy loading is enabled, no signature is loaded into `bef_file_`, so
     // we need to find the BEF from the cache or create one.
