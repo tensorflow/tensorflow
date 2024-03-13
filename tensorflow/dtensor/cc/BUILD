@@ -43,7 +43,7 @@ cc_library(
     deps = [
         "//tensorflow/core:lib",
         "@com_google_absl//absl/strings",
-        "@local_tsl//tsl/util:env_var",
+        "@local_xla//xla/tsl/util:env_var",
     ],
 )
 
@@ -373,11 +373,11 @@ cc_library(
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
         "@local_tsl//tsl/platform:status",
-        "@local_tsl//tsl/util:env_var",
         "@local_xla//xla:status_macros",
         "@local_xla//xla/stream_executor/tpu:c_api_decl",
         "@local_xla//xla/stream_executor/tpu:tpu_platform_interface",
         "@local_xla//xla/stream_executor/tpu:tpu_topology_external",
+        "@local_xla//xla/tsl/util:env_var",
     ] + tf_dtensor_tpu_dependencies(),
 )
 

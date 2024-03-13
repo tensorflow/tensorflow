@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_TSL_UTIL_REPORTER_H_
-#define TENSORFLOW_TSL_UTIL_REPORTER_H_
+#ifndef XLA_TSL_UTIL_REPORTER_H_
+#define XLA_TSL_UTIL_REPORTER_H_
 
 #include <cstdlib>
 #include <memory>
@@ -131,4 +131,4 @@ class TestReporter {
 
 }  // namespace tsl
 
-#endif  // TENSORFLOW_TSL_UTIL_REPORTER_H_
+#endif  // XLA_TSL_UTIL_REPORTER_H_

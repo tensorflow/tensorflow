@@ -23,6 +23,7 @@ limitations under the License.
 #include "absl/strings/str_join.h"
 #include "absl/types/optional.h"
 #include "xla/stream_executor/rocm/roctracer_wrapper.h"
+#include "xla/tsl/util/env_var.h"
 #include "tsl/platform/abi.h"
 #include "tsl/platform/env_time.h"
 #include "tsl/platform/errors.h"
@@ -38,7 +39,6 @@ limitations under the License.
 #include "tsl/profiler/utils/xplane_builder.h"
 #include "tsl/profiler/utils/xplane_schema.h"
 #include "tsl/profiler/utils/xplane_utils.h"
-#include "tsl/util/env_var.h"
 
 namespace xla {
 namespace profiler {

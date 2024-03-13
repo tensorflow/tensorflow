@@ -38,6 +38,7 @@ limitations under the License.
 #include <utility>
 
 #include "absl/strings/escaping.h"
+#include "xla/tsl/util/byte_swap_array.h"
 #include "tensorflow/core/framework/allocation_description.pb.h"
 #include "tensorflow/core/framework/log_memory.h"
 #include "tensorflow/core/framework/resource_handle.h"
@@ -65,7 +66,6 @@ limitations under the License.
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/tensor_coding.h"
 #include "tensorflow/core/platform/types.h"
-#include "tsl/util/byte_swap_array.h"
 
 namespace tensorflow {
 

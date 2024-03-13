@@ -36,7 +36,7 @@ limitations under the License.
 #include "xla/service/cpu/backend_config.pb.h"
 #include "xla/service/cpu/onednn_memory_util.h"
 #include "xla/service/cpu/runtime_lightweight_check.h"
-#include "tsl/util/onednn_threadpool.h"
+#include "xla/tsl/util/onednn_threadpool.h"
 #include "unsupported/Eigen/CXX11/Tensor"
 
 namespace xla {

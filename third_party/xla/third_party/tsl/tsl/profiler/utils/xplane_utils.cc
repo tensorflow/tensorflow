@@ -28,6 +28,7 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/strings/match.h"
 #include "absl/strings/string_view.h"
+#include "xla/tsl/util/stats_calculator.h"
 #include "tsl/platform/fingerprint.h"
 #include "tsl/platform/types.h"
 #include "tsl/profiler/lib/context_types.h"
@@ -38,7 +39,6 @@ limitations under the License.
 #include "tsl/profiler/utils/xplane_builder.h"
 #include "tsl/profiler/utils/xplane_schema.h"
 #include "tsl/profiler/utils/xplane_visitor.h"
-#include "tsl/util/stats_calculator.h"
 
 namespace tsl {
 namespace profiler {

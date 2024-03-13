@@ -23,6 +23,7 @@ limitations under the License.
 #include "grpcpp/generic/generic_stub.h"
 #include "grpcpp/grpcpp.h"
 #include "absl/status/status.h"
+#include "xla/tsl/util/env_var.h"
 #include "tsl/distributed_runtime/call_options.h"
 #include "tsl/distributed_runtime/rpc/grpc_client_cq_tag.h"
 #include "tsl/distributed_runtime/rpc/grpc_util.h"
@@ -30,7 +31,6 @@ limitations under the License.
 #include "tsl/platform/status.h"
 #include "tsl/platform/strcat.h"
 #include "tsl/platform/threadpool.h"
-#include "tsl/util/env_var.h"
 
 namespace tsl {
 

@@ -242,7 +242,7 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@local_tsl//tsl/profiler/utils:format_utils",
         "@local_tsl//tsl/profiler/utils:tf_op_utils",
-        "@local_tsl//tsl/util:stats_calculator_portable",
+        "@local_xla//xla/tsl/util:stats_calculator_portable",
     ],
 )
 

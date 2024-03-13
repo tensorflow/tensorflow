@@ -32,8 +32,8 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
 #include "absl/types/span.h"
+#include "xla/tsl/util/command_line_flags.h"
 #include "tsl/platform/logging.h"
-#include "tsl/util/command_line_flags.h"
 
 namespace xla {
 

@@ -21,6 +21,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/flat_hash_set.h"
+#include "xla/tsl/util/determinism_test_util.h"
 #include "tensorflow/core/data/compression_utils.h"
 #include "tensorflow/core/data/dataset_test_base.h"
 #include "tensorflow/core/data/serialization_utils.h"
@@ -39,7 +40,6 @@ limitations under the License.
 #include "tensorflow/core/protobuf/error_codes.pb.h"
 #include "tensorflow/core/util/work_sharder.h"
 #include "tsl/platform/status_matchers.h"
-#include "tsl/util/determinism_test_util.h"
 
 namespace tensorflow {
 namespace data {

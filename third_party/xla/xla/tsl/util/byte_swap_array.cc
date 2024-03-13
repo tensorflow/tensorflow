@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tsl/util/byte_swap_array.h"
+#include "xla/tsl/util/byte_swap_array.h"
 
 #include "tsl/platform/errors.h"
 

@@ -105,7 +105,7 @@ tf_proto_library(
     make_default_target_header_only = True,
     visibility = internal_visibility([
         "//tensorflow/core:__subpackages__",
-        "//tsl/util:__pkg__",
+        "@local_xla//xla/tsl/util:__pkg__",
     ]),
 )
 

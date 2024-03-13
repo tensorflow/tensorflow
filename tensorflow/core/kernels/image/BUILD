@@ -206,7 +206,7 @@ tf_kernel_library(
     prefix = "decode_image_op",
     deps = IMAGE_DEPS + [
         "@com_google_absl//absl/strings",
-        "@local_tsl//tsl/util:byte_swap_array",
+        "@local_xla//xla/tsl/util:byte_swap_array",
     ],
 )
 
@@ -455,7 +455,7 @@ cc_library(
         "//tensorflow/core/platform:byte_order",
         "//tensorflow/core/platform:errors",
         "@com_google_absl//absl/strings",
-        "@local_tsl//tsl/util:byte_swap_array",
+        "@local_xla//xla/tsl/util:byte_swap_array",
     ],
     alwayslink = 1,
 )

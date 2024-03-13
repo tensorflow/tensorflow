@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tsl/util/stats_calculator.h"
+#include "xla/tsl/util/stats_calculator.h"
 
 #include <cfloat>
 

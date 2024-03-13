@@ -1602,7 +1602,7 @@ cc_library(
     srcs = ["onednn_matmul.cc"],
     hdrs = [
         "onednn_matmul.h",
-        "@local_tsl//tsl/util:onednn_util_hdrs",
+        "//xla/tsl/util:onednn_util_hdrs",
     ],
     copts = runtime_copts() + tsl_copts(),
     visibility = ["//visibility:public"],
@@ -1627,7 +1627,7 @@ cc_library(
     srcs = ["onednn_layer_norm.cc"],
     hdrs = [
         "onednn_layer_norm.h",
-        "@local_tsl//tsl/util:onednn_util_hdrs",
+        "//xla/tsl/util:onednn_util_hdrs",
     ],
     copts = runtime_copts() + tsl_copts(),
     visibility = ["//visibility:public"],
@@ -1650,7 +1650,7 @@ cc_library(
     srcs = ["onednn_softmax.cc"],
     hdrs = [
         "onednn_softmax.h",
-        "@local_tsl//tsl/util:onednn_util_hdrs",
+        "//xla/tsl/util:onednn_util_hdrs",
     ],
     copts = runtime_copts() + tsl_copts(),
     visibility = ["//visibility:public"],
@@ -1680,7 +1680,7 @@ cc_library(
     hdrs = [
         "onednn_matmul.h",
         "onednn_matmul_rewriter.h",
-        "@local_tsl//tsl/util:onednn_util_hdrs",
+        "//xla/tsl/util:onednn_util_hdrs",
     ],
     copts = tsl_copts(),
     deps = [
