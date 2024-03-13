@@ -38,11 +38,11 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/status.h"
-#include "xla/statusor.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/util.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/logging.h"
+#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace gpu {

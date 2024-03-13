@@ -15,18 +15,26 @@ limitations under the License.
 
 #include "xla/service/gpu/gpu_conv_rewriter.h"
 
+#include <optional>
+#include <string>
+
+#include "absl/log/check.h"
+#include "absl/strings/str_format.h"
+#include "xla/array4d.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
-#include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/literal_util.h"
 #include "xla/protobuf_util.h"
 #include "xla/service/gpu/cublas_cudnn.h"
 #include "xla/service/pattern_matcher.h"
 #include "xla/service/pattern_matcher_gmock.h"
 #include "xla/service/shape_inference.h"
+#include "xla/shape_util.h"
 #include "xla/test.h"
 #include "xla/test_helpers.h"
 #include "xla/tests/hlo_test_base.h"
+#include "tsl/platform/statusor.h"
 #include "tsl/platform/test.h"
 
 namespace xla {

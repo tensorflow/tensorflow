@@ -15,7 +15,6 @@ limitations under the License.
 #include <memory>
 #include <optional>
 #include <utility>
-#include <vector>
 
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
@@ -36,6 +35,7 @@ limitations under the License.
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/logging.h"
+#include "tsl/platform/status.h"
 
 namespace xla::gpu {
 namespace {

@@ -27,7 +27,6 @@ limitations under the License.
 #include "xla/service/gpu/gpu_fusible.h"
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/reduction_utils.h"
-#include "xla/statusor.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/logging.h"
 

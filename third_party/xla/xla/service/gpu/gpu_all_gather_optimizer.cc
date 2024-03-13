@@ -27,7 +27,6 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/service/collective_ops_utils.h"
 #include "xla/shape_util.h"
-#include "xla/statusor.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/logging.h"
 

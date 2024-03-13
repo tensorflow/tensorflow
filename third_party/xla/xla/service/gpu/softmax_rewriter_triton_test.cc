@@ -20,6 +20,7 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/base/optimization.h"
 #include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "absl/strings/substitute.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"

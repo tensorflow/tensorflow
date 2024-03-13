@@ -15,22 +15,29 @@ limitations under the License.
 
 #include "xla/service/gpu/gpu_fusible.h"
 
-#include <algorithm>
-#include <iterator>
+#include <cstddef>
+#include <cstdint>
 #include <optional>
 #include <stack>
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/container/flat_hash_set.h"
+#include "absl/container/inlined_vector.h"
+#include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/service/gpu/backend_configs.pb.h"
+#include "xla/service/gpu/hlo_traversal.h"
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/reduction_utils.h"
+#include "xla/service/hlo_dataflow_analysis.h"
 #include "xla/service/instruction_fusion.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/stream_executor/device_description.h"
 #include "xla/util.h"
 
 namespace xla {

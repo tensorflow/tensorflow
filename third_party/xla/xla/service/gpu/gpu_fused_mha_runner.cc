@@ -15,18 +15,24 @@ limitations under the License.
 
 #include "xla/service/gpu/gpu_fused_mha_runner.h"
 
+#include <cstdint>
 #include <optional>
 #include <string>
 
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
-#include "absl/strings/string_view.h"
-#include "xla/layout_util.h"
+#include "absl/strings/str_format.h"
 #include "xla/service/gpu/backend_configs.pb.h"
+#include "xla/service/gpu/cublas_cudnn.h"
 #include "xla/service/gpu/stream_executor_util.h"
-#include "xla/shape_util.h"
-#include "xla/status_macros.h"
+#include "xla/shape.h"
+#include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/dnn.h"
+#include "xla/stream_executor/lazy_op_runner.h"
+#include "xla/stream_executor/stream.h"
 #include "xla/util.h"
+#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace gpu {

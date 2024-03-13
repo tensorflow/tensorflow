@@ -21,7 +21,6 @@ limitations under the License.
 #include <cstdint>
 #include <iterator>
 #include <memory>
-#include <numeric>
 #include <optional>
 #include <string>
 #include <utility>
@@ -35,6 +34,7 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/time/time.h"

@@ -14,7 +14,6 @@ limitations under the License.
 ==============================================================================*/
 #include "xla/service/gpu/hlo_fusion_analysis.h"
 
-#include <optional>
 
 #include <gtest/gtest.h>
 #include "xla/service/gpu/backend_configs.pb.h"

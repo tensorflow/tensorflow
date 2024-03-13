@@ -13,18 +13,26 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <cstddef>
+#include <cstdint>
 #include <memory>
 #include <string>
 #include <utility>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
-#include "absl/base/log_severity.h"
-#include "absl/log/scoped_mock_log.h"
+#include "absl/log/check.h"
+#include "absl/log/log.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "xla/autotune_results.pb.h"
+#include "xla/error_spec.h"
+#include "xla/hlo/ir/hlo_computation.h"
+#include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_module.h"
+#include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/service/buffer_assignment.h"
-#include "xla/service/gpu/horizontal_loop_fusion.h"
+#include "xla/service/executable.h"
 #include "xla/service/gpu/metrics.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/pattern_matcher.h"
@@ -32,6 +40,8 @@ limitations under the License.
 #include "xla/service/xla_debug_info_manager.h"
 #include "xla/tests/hlo_test_base.h"
 #include "tsl/lib/core/status_test_util.h"
+#include "tsl/platform/env.h"
+#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace gpu {

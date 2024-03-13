@@ -112,7 +112,6 @@ limitations under the License.
 #include "xla/shape_util.h"
 #include "xla/status.h"
 #include "xla/status_macros.h"
-#include "xla/statusor.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/launch_dim.h"
 #include "xla/translate/hlo_to_mhlo/hlo_function_importer.h"

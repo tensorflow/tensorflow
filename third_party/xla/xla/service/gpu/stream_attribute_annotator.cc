@@ -15,21 +15,16 @@ limitations under the License.
 
 #include "xla/service/gpu/stream_attribute_annotator.h"
 
-#include <algorithm>
 #include <cstdint>
-#include <memory>
-#include <optional>
-#include <utility>
 #include <vector>
 
+#include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/strings/string_view.h"
-#include "xla/comparison_util.h"
-#include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
-#include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
+#include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/thunk.h"
 #include "xla/statusor.h"

@@ -15,9 +15,16 @@ limitations under the License.
 
 #include "xla/service/gpu/gpu_async_collective_annotator.h"
 
+#include "absl/container/flat_hash_set.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
+#include "xla/hlo/ir/hlo_computation.h"
+#include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/utils/hlo_query.h"
 #include "xla/service/gpu/backend_configs.pb.h"
+#include "tsl/platform/errors.h"
+#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace gpu {

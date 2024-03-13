@@ -19,6 +19,7 @@ limitations under the License.
 #include <string>
 
 #include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/strings/ascii.h"
 #include "absl/strings/string_view.h"
@@ -28,7 +29,6 @@ limitations under the License.
 #include "xla/service/platform_util.h"
 #include "xla/shape_util.h"
 #include "xla/status.h"
-#include "xla/statusor.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/platform_manager.h"
 #include "xla/stream_executor/stream.h"

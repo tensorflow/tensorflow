@@ -26,7 +26,6 @@ limitations under the License.
 #include "xla/service/gpu/gpu_executable_run_options.h"
 #include "xla/service/gpu/mock_nccl_utils.h"
 #include "xla/service/gpu/nccl_api.h"
-#include "xla/service/gpu/nccl_clique.h"
 #include "xla/service/gpu/nccl_clique_key.h"
 #include "xla/service/gpu/nccl_collective_thunk.h"
 #include "xla/service/gpu/nccl_p2p_thunk_common.h"

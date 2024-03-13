@@ -16,7 +16,6 @@ limitations under the License.
 #include "xla/service/gpu/make_batch_pointers.h"
 
 #include <cstddef>
-#include <memory>
 
 #include "absl/status/status.h"
 #include "xla/status.h"

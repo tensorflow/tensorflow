@@ -18,11 +18,8 @@ limitations under the License.
 #include <algorithm>
 #include <cstdint>
 #include <limits>
-#include <memory>
 #include <string>
-#include <tuple>
 #include <utility>
-#include <vector>
 
 #include "absl/base/const_init.h"
 #include "absl/base/thread_annotations.h"
@@ -37,14 +34,12 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_clone_context.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
-#include "xla/service/compilation_environments.h"
 #include "xla/service/gpu/gpu_asm_opts_util.h"
 #include "xla/service/gpu/stream_executor_util.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/status.h"
 #include "xla/status_macros.h"
-#include "xla/statusor.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/gpu/redzone_allocator.h"
 #include "xla/stream_executor/stream.h"

@@ -19,25 +19,31 @@ limitations under the License.
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <cstddef>
 #include <cstdint>
 #include <limits>
 #include <memory>
 #include <optional>
+#include <string>
 #include <tuple>
 #include <utility>
 #include <variant>
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/container/flat_hash_set.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/strings/string_view.h"
+#include "absl/types/span.h"
 #include "xla/hlo/evaluator/hlo_evaluator.h"
 #include "xla/hlo/ir/dfs_hlo_visitor_with_default.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/literal.h"
+#include "xla/literal_util.h"
 #include "xla/primitive_util.h"
 #include "xla/service/algorithm_util.h"
 #include "xla/service/gpu/backend_configs.pb.h"
@@ -54,8 +60,11 @@ limitations under the License.
 #include "xla/stream_executor/blas.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/gpu/gpu_blas_lt.h"
+#include "xla/types.h"
+#include "xla/util.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/errors.h"
+#include "tsl/platform/ml_dtypes.h"
 #include "tsl/platform/statusor.h"
 #include "tsl/protobuf/dnn.pb.h"
 

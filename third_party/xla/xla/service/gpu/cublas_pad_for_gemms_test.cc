@@ -21,6 +21,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/pattern_matcher.h"
 #include "xla/service/pattern_matcher_gmock.h"
+#include "xla/stream_executor/device_description.h"
 #include "xla/tests/hlo_test_base.h"
 
 namespace m = ::xla::match;

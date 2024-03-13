@@ -50,7 +50,6 @@ limitations under the License.
 #include "xla/service/instruction_fusion.h"
 #include "xla/shape_util.h"
 #include "xla/status.h"
-#include "xla/statusor.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"

@@ -15,14 +15,23 @@ limitations under the License.
 
 #include "xla/service/gpu/nccl_collective_broadcast_thunk.h"
 
+#include <cstdint>
 #include <optional>
 #include <utility>
 #include <vector>
 
+#include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/service/collective_ops_utils.h"
 #include "xla/service/gpu/nccl_api.h"
 #include "xla/service/gpu/nccl_collective_thunk.h"
+#include "xla/service/gpu/thunk.h"
+#include "xla/status.h"
+#include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/stream.h"
 #include "xla/xla_data.pb.h"
+#include "tsl/platform/errors.h"
+#include "tsl/platform/statusor.h"
 
 namespace xla::gpu {
 

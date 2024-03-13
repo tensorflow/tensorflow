@@ -16,21 +16,23 @@ limitations under the License.
 #include "xla/service/gpu/matmul_utils.h"
 
 #include <algorithm>
+#include <cstddef>
 #include <cstdint>
 #include <optional>
 #include <string>
 #include <tuple>
-#include <type_traits>
 #include <utility>
 #include <vector>
 
 #include "absl/algorithm/container.h"
 #include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/types/span.h"
 #include "xla/autotuning.pb.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/primitive_util.h"
 #include "xla/service/algorithm_util.h"
 #include "xla/service/gpu/backend_configs.pb.h"
@@ -38,7 +40,6 @@ limitations under the License.
 #include "xla/shape_util.h"
 #include "xla/status.h"
 #include "xla/status_macros.h"
-#include "xla/statusor.h"
 #include "xla/stream_executor/blas.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/gpu/gpu_blas_lt.h"
@@ -47,11 +48,11 @@ limitations under the License.
 #include "xla/types.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
+#include "tsl/platform/errors.h"
 #include "tsl/platform/status.h"
 #include "tsl/platform/statusor.h"
 
 #if GOOGLE_CUDA
-#include "xla/stream_executor/host_or_device_scalar.h"
 #endif  // GOOGLE_CUDA
 
 namespace xla {

@@ -18,10 +18,10 @@ limitations under the License.
 #include <cstdlib>
 #include <string>
 
+#include "absl/strings/str_cat.h"
 #include "xla/stream_executor/dnn.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/path.h"
-#include "tsl/platform/resource_loader.h"
 #include "tsl/platform/test.h"
 
 namespace xla {

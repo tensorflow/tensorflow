@@ -15,15 +15,23 @@ limitations under the License.
 
 #include "xla/service/gpu/multi_output_fusion.h"
 
+#include <cstdint>
 #include <optional>
 #include <vector>
 
 #include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
+#include "xla/hlo/ir/hlo_computation.h"
+#include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_module.h"
+#include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
 #include "xla/service/gpu/gpu_fusible.h"
+#include "xla/service/hlo_cost_analysis.h"
 #include "xla/service/pattern_matcher.h"
 #include "xla/service/pattern_matcher_gmock.h"
-#include "xla/stream_executor/device_description.h"
+#include "xla/shape.h"
+#include "xla/shape_util.h"
 #include "xla/tests/hlo_test_base.h"
 
 namespace xla {

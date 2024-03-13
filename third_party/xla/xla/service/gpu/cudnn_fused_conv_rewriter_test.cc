@@ -28,14 +28,17 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_replace.h"
 #include "absl/strings/string_view.h"
+#include "xla/comparison_util.h"
+#include "xla/error_spec.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/stream_executor/device_description.h"
+#include "xla/tests/verified_hlo_module.h"
 #include "tsl/platform/statusor.h"
 
 #if GOOGLE_CUDA
 #include "third_party/gpus/cuda/include/cuda.h"
-#include "third_party/gpus/cudnn/cudnn.h"
 #endif
 
 #include "xla/service/algebraic_simplifier.h"

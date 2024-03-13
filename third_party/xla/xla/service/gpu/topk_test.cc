@@ -21,7 +21,6 @@ limitations under the License.
 #include <string_view>
 #include <tuple>
 #include <utility>
-#include <vector>
 
 #include <gtest/gtest.h>
 #include "absl/container/flat_hash_set.h"
@@ -40,7 +39,6 @@ limitations under the License.
 #include "xla/service/topk_rewriter.h"
 #include "xla/shape_util.h"
 #include "xla/status.h"
-#include "xla/statusor.h"
 #include "xla/tests/hlo_test_base.h"
 #include "tsl/platform/statusor.h"
 

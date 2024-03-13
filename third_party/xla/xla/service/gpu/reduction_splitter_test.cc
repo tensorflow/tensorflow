@@ -15,12 +15,15 @@ limitations under the License.
 
 #include "xla/service/gpu/reduction_splitter.h"
 
+#include <cstdint>
+#include <vector>
+
+#include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/service/hlo_parser.h"
 #include "xla/service/pattern_matcher.h"
 #include "xla/service/pattern_matcher_gmock.h"
 #include "xla/shape_util.h"
 #include "xla/test.h"
-#include "xla/test_helpers.h"
 #include "xla/tests/hlo_test_base.h"
 
 namespace xla {

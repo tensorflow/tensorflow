@@ -27,7 +27,6 @@ limitations under the License.
 #include "xla/service/gpu/gpu_autotuning.pb.h"
 #include "xla/stream_executor/dnn.h"
 #include "tsl/platform/env.h"
-#include "tsl/platform/protobuf.h"
 #include "tsl/platform/status.h"
 
 namespace xla {

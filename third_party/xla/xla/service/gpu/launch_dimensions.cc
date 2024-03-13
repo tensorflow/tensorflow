@@ -16,14 +16,15 @@ limitations under the License.
 #include "xla/service/gpu/launch_dimensions.h"
 
 #include <algorithm>
+#include <atomic>
 #include <cstdint>
 #include <ostream>
 
 #include "absl/log/check.h"
 #include "absl/log/log.h"
+#include "absl/strings/str_format.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/statusor.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/launch_dim.h"
 #include "xla/util.h"

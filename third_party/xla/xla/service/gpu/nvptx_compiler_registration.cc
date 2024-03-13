@@ -13,6 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <memory>
+
 #include "xla/service/gpu/nvptx_compiler.h"
 #include "xla/stream_executor/cuda/cuda_platform_id.h"
 

@@ -23,6 +23,7 @@ limitations under the License.
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
 #include "absl/synchronization/mutex.h"
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "xla/hlo/ir/hlo_instructions.h"
@@ -30,8 +31,10 @@ limitations under the License.
 #include "xla/service/gpu/nccl_clique_key.h"
 #include "xla/service/hlo_parser.h"
 #include "xla/shape.h"
+#include "xla/status_macros.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/xla_data.pb.h"
+#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace gpu {

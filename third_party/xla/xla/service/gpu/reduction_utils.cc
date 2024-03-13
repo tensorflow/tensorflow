@@ -22,10 +22,12 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/layout_util.h"
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/shape.h"
+#include "xla/shape_util.h"
 #include "xla/util.h"
 #include "tsl/platform/logging.h"
 

@@ -61,6 +61,7 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/status.h"
 #include "xla/stream_executor/device_description.h"
+#include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/rocm/rocm_platform_id.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"

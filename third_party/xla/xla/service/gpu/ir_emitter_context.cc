@@ -16,14 +16,23 @@ limitations under the License.
 #include "xla/service/gpu/ir_emitter_context.h"
 
 #include <algorithm>
-#include <iterator>
+#include <cstdint>
 #include <utility>
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/strings/string_view.h"
 #include "llvm/ADT/ArrayRef.h"
+#include "llvm/IR/Constant.h"
+#include "llvm/IR/Constants.h"
+#include "llvm/IR/DerivedTypes.h"
+#include "llvm/IR/GlobalValue.h"
+#include "llvm/IR/GlobalVariable.h"
+#include "llvm/IR/IRBuilder.h"
+#include "llvm/Support/Alignment.h"
 #include "llvm/TargetParser/Triple.h"
 #include "xla/service/gpu/gpu_constants.h"
+#include "xla/service/gpu/gpu_executable.h"
 #include "xla/service/gpu/ir_emission_utils.h"
 
 namespace xla {

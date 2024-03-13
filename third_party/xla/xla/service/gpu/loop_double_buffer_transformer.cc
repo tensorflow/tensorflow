@@ -17,6 +17,7 @@ limitations under the License.
 #include <cstdint>
 #include <iterator>
 #include <optional>
+#include <string>
 #include <vector>
 
 #include "absl/algorithm/container.h"
@@ -36,7 +37,6 @@ limitations under the License.
 #include "xla/service/collective_ops_utils.h"
 #include "xla/service/flatten_call_graph.h"
 #include "xla/status.h"
-#include "xla/statusor.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/errors.h"

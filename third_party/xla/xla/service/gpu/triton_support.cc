@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/service/gpu/triton_support.h"
 
 #include <iterator>
+#include <variant>
 #include <vector>
 
 #include "absl/algorithm/container.h"

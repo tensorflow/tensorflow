@@ -34,7 +34,6 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/gpu/kernels/custom_kernel_fusion_pattern.h"
 #include "xla/shape_util.h"
-#include "xla/statusor.h"
 #include "xla/stream_executor/device_description.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/logging.h"

@@ -16,7 +16,6 @@ limitations under the License.
 #include "xla/service/gpu/gemm_rewriter_triton.h"
 
 #include <memory>
-#include <string>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>

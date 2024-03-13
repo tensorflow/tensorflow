@@ -15,18 +15,31 @@ limitations under the License.
 
 #include "xla/service/gpu/gpu_conv_runner.h"
 
+#include <algorithm>
+#include <cstdint>
+#include <optional>
+#include <tuple>
+#include <type_traits>
 #include <vector>
 
+#include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "absl/status/status.h"
-#include "absl/strings/str_cat.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
-#include "xla/layout_util.h"
+#include "absl/types/span.h"
+#include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/service/gpu/backend_configs.pb.h"
+#include "xla/service/gpu/cublas_cudnn.h"
 #include "xla/service/gpu/stream_executor_util.h"
+#include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/status_macros.h"
+#include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/dnn.h"
+#include "xla/stream_executor/lazy_op_runner.h"
 #include "xla/util.h"
+#include "tsl/platform/ml_dtypes.h"
+#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace gpu {

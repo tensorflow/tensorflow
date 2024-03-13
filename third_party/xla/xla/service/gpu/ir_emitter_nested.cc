@@ -14,29 +14,55 @@ limitations under the License.
 ==============================================================================*/
 #include "xla/service/gpu/ir_emitter_nested.h"
 
+#include <cstddef>
+#include <cstdint>
+#include <iterator>
 #include <string>
 #include <vector>
 
+#include "absl/algorithm/container.h"
+#include "absl/hash/hash.h"
+#include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/types/span.h"
+#include "llvm/IR/Argument.h"
 #include "llvm/IR/BasicBlock.h"
+#include "llvm/IR/Constants.h"
+#include "llvm/IR/DerivedTypes.h"
 #include "llvm/IR/Function.h"
+#include "llvm/IR/GlobalValue.h"
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/Instructions.h"
+#include "llvm/IR/LLVMContext.h"
+#include "llvm/Support/Alignment.h"
+#include "llvm/Support/AtomicOrdering.h"
+#include "llvm/Support/Casting.h"
 #include "llvm/TargetParser/Triple.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/literal.h"
+#include "xla/primitive_util.h"
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/ir_emitter.h"
 #include "xla/service/gpu/ir_emitter_context.h"
 #include "xla/service/gpu/kernel_reuse_cache.h"
 #include "xla/service/llvm_ir/buffer_assignment_util.h"
+#include "xla/service/llvm_ir/ir_array.h"
 #include "xla/service/llvm_ir/kernel_support_library.h"
+#include "xla/service/llvm_ir/llvm_loop.h"
 #include "xla/service/llvm_ir/llvm_util.h"
+#include "xla/service/llvm_ir/loop_emitter.h"
 #include "xla/service/llvm_ir/tuple_ops.h"
+#include "xla/shape.h"
+#include "xla/shape_util.h"
+#include "xla/status_macros.h"
+#include "xla/stream_executor/device_description.h"
+#include "xla/util.h"
+#include "tsl/platform/errors.h"
+#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace gpu {

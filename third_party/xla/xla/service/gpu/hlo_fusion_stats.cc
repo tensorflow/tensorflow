@@ -15,17 +15,18 @@ limitations under the License.
 
 #include "xla/service/gpu/hlo_fusion_stats.h"
 
+#include <set>
 #include <string>
 
 #include "absl/status/status.h"
-#include "absl/strings/match.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/str_join.h"
 #include "xla/hlo/ir/dfs_hlo_visitor_with_default.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/status.h"
 #include "tsl/platform/errors.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace gpu {

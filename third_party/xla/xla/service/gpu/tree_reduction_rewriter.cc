@@ -14,7 +14,6 @@ limitations under the License.
 ==============================================================================*/
 #include "xla/service/gpu/tree_reduction_rewriter.h"
 
-#include <array>
 #include <cmath>
 #include <cstdint>
 #include <memory>

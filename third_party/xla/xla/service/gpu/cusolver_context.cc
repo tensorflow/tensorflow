@@ -30,7 +30,6 @@ limitations under the License.
 #endif
 #include "xla/primitive_util.h"
 #include "xla/status.h"
-#include "xla/statusor.h"
 #include "xla/stream_executor/blas.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/gpu/gpu_stream.h"

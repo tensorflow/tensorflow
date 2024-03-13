@@ -28,7 +28,6 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_schedule.h"
 #include "xla/hlo/utils/hlo_query.h"
 #include "xla/service/gpu/backend_configs.pb.h"
-#include "xla/statusor.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/statusor.h"
 

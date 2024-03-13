@@ -21,16 +21,22 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/service/collective_ops_utils.h"
+#include "xla/service/computation_placer.h"
 #include "xla/service/global_device_id.h"
 #include "xla/service/gpu/nccl_api.h"
 #include "xla/service/gpu/nccl_collective_thunk.h"
 #include "xla/service/gpu/nccl_p2p_thunk_common.h"
+#include "xla/service/gpu/thunk.h"
+#include "xla/status_macros.h"
 #include "xla/stream_executor/stream.h"
 #include "tsl/platform/errors.h"
+#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace gpu {

@@ -18,10 +18,8 @@ limitations under the License.
 #include <algorithm>
 #include <cstddef>
 #include <cstdint>
-#include <functional>
 #include <iterator>
 #include <memory>
-#include <tuple>
 #include <vector>
 
 #include "absl/algorithm/container.h"
@@ -40,10 +38,10 @@ limitations under the License.
 #include "xla/service/gpu/gpu_fusible.h"
 #include "xla/service/gpu/model/gpu_hlo_cost_analysis.h"
 #include "xla/service/gpu/model/gpu_performance_model.h"
+#include "xla/service/gpu/model/gpu_performance_model_base.h"
 #include "xla/service/hlo_graph_dumper.h"
 #include "xla/service/instruction_fusion.h"
 #include "xla/shape_util.h"
-#include "xla/statusor.h"
 #include "xla/stream_executor/device_description.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/status.h"

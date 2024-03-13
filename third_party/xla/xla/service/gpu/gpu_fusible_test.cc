@@ -15,10 +15,14 @@ limitations under the License.
 
 #include "xla/service/gpu/gpu_fusible.h"
 
+#include <memory>
+
 #include "absl/strings/str_cat.h"
+#include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/service/hlo_parser.h"
 #include "xla/tests/hlo_test_base.h"
+#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace gpu {

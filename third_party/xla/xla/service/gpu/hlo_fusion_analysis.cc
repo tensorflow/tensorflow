@@ -16,7 +16,6 @@ limitations under the License.
 #include "xla/service/gpu/hlo_fusion_analysis.h"
 
 #include <algorithm>
-#include <cstdint>
 #include <limits>
 #include <memory>
 #include <optional>
@@ -25,9 +24,9 @@ limitations under the License.
 
 #include "absl/algorithm/container.h"
 #include "absl/log/check.h"
-#include "absl/status/status.h"
+#include "absl/log/log.h"
 #include "absl/strings/string_view.h"
-#include "xla/hlo/ir/hlo_casting_utils.h"
+#include "llvm/ADT/STLExtras.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
@@ -35,7 +34,6 @@ limitations under the License.
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/hlo_traversal.h"
 #include "xla/service/gpu/ir_emission_utils.h"
-#include "xla/service/gpu/launch_dimensions.h"
 #include "xla/service/gpu/reduction_utils.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
