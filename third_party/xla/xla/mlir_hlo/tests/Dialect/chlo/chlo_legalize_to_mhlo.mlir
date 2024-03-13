@@ -1,4 +1,5 @@
 // RUN: mlir-hlo-opt --chlo-legalize-to-hlo --split-input-file -verify-diagnostics %s | FileCheck %s --dump-input-context=20
+// RUN: mlir-hlo-opt --chlo-legalize-to-high-level-mhlo --split-input-file -verify-diagnostics %s | FileCheck %s --check-prefix=CHECK-HIGH-LEVEL
 
 // CHECK-LABEL: func.func @asin_bf16(
 // CHECK-SAME:    %[[TMP_arg0:.*]]: tensor<bf16>
@@ -262,6 +263,7 @@ func.func @conj(%arg0: tensor<3xcomplex<f32>>) -> tensor<3xcomplex<f32>> {
 // CHECK-LABEL: @erf_f64
 // CHECK-SAME: %[[ARG:.*]]: tensor<f64>
 func.func @erf_f64(%arg : tensor<f64>) -> tensor<f64> {
+  // CHECK-HIGH-LEVEL: mhlo.erf
   // CHECK: %[[RESULT:.*]] = mhlo.erf %[[ARG]]
   // CHECK: return %[[RESULT]]
   %1 = "chlo.erf"(%arg) : (tensor<f64>) -> tensor<f64>
@@ -273,6 +275,7 @@ func.func @erf_f64(%arg : tensor<f64>) -> tensor<f64> {
 // CHECK-LABEL: @erf_f32
 // CHECK-SAME: %[[ARG:.*]]: tensor<f32>
 func.func @erf_f32(%arg : tensor<f32>) -> tensor<f32> {
+  // CHECK-HIGH-LEVEL: mhlo.erf
   // CHECK: %[[RESULT:.*]] = mhlo.erf %[[ARG]]
   // CHECK: return %[[RESULT]]
   %1 = "chlo.erf"(%arg) : (tensor<f32>) -> tensor<f32>
@@ -284,6 +287,7 @@ func.func @erf_f32(%arg : tensor<f32>) -> tensor<f32> {
 // CHECK-LABEL: @erf_f16
 // CHECK-SAME: %[[ARG:.*]]: tensor<f16>
 func.func @erf_f16(%arg : tensor<f16>) -> tensor<f16> {
+  // CHECK-HIGH-LEVEL: mhlo.erf
   // CHECK: %[[RESULT:.*]] = mhlo.erf %[[ARG]]
   // CHECK: return %[[RESULT]]
   %1 = "chlo.erf"(%arg) : (tensor<f16>) -> tensor<f16>
@@ -295,6 +299,7 @@ func.func @erf_f16(%arg : tensor<f16>) -> tensor<f16> {
 // CHECK-LABEL: @erf_bf16
 // CHECK-SAME: %[[ARG:.*]]: tensor<bf16>
 func.func @erf_bf16(%arg : tensor<bf16>) -> tensor<bf16> {
+  // CHECK-HIGH-LEVEL: mhlo.erf
   // CHECK: %[[RESULT:.*]] = mhlo.erf %[[ARG]]
   // CHECK: return %[[RESULT]]
   %1 = "chlo.erf"(%arg) : (tensor<bf16>) -> tensor<bf16>
@@ -2256,12 +2261,9 @@ func.func @next_after_f32(%x: tensor<2xf32>, %y: tensor<2xf32>) -> tensor<2xf32>
 // CHECK-LABEL: @tan_f16
 // CHECK-SAME: (%[[ARG:.*]]: tensor<f16>)
 func.func @tan_f16(%arg : tensor<f16>) -> tensor<f16> {
-  // %[[TMP_0:.*]] = mhlo.convert [[ARG]] : (tensor<f16>) -> tensor<f32>
-  // %[[TMP_1:.*]] = mhlo.sine %[[TMP_0]]
-  // %[[TMP_2:.*]] = mhlo.cosine %[[TMP_0]]
-  // %[[TMP_3:.*]] = mhlo.divide %[[TMP_1]], %[[TMP_2]]
-  // %[[TMP_4:.*]] = mhlo.convert %[[TMP_3]] : (tensor<f32>) -> tensor<f16>
-  // return %[[TMP_4]] : tensor<f16>
+  // CHECK-HIGH-LEVEL: mhlo.tan
+  // CHECK: %[[RESULT:.*]] = mhlo.tan %[[ARG]] : tensor<f16>
+  // CHECK: return %[[RESULT]]
   %1 = chlo.tan %arg : tensor<f16> -> tensor<f16>
   func.return %1 : tensor<f16>
 }
@@ -2271,10 +2273,9 @@ func.func @tan_f16(%arg : tensor<f16>) -> tensor<f16> {
 // CHECK-LABEL: @tan_f32
 // CHECK-SAME: (%[[ARG:.*]]: tensor<f32>)
 func.func @tan_f32(%arg : tensor<f32>) -> tensor<f32> {
-  // %[[TMP_0:.*]] = mhlo.sine %[[ARG]]
-  // %[[TMP_1:.*]] = mhlo.cosine %[[ARG]]
-  // %[[TMP_2:.*]] = mhlo.divide %[[TMP_0]], %[[TMP_1]]
-  // return %[[TMP_2]] : tensor<f32>
+  // CHECK-HIGH-LEVEL: mhlo.tan
+  // CHECK: %[[RESULT:.*]] = mhlo.tan %[[ARG]] : tensor<f32>
+  // CHECK: return %[[RESULT]]
   %1 = chlo.tan %arg : tensor<f32> -> tensor<f32>
   func.return %1 : tensor<f32>
 }
@@ -2284,6 +2285,7 @@ func.func @tan_f32(%arg : tensor<f32>) -> tensor<f32> {
 // CHECK-LABEL: @top_k
 // CHECK-SAME: (%[[ARG:.*]]: tensor<16x16xf32>)
 func.func @top_k(%arg : tensor<16x16xf32>) -> (tensor<16x8xf32>, tensor<16x8xi32>) {
+  // CHECK-HIGH-LEVEL: mhlo.topk
   // CHECK: %values, %indices = mhlo.topk(%arg0, k = 8, largest = true) : tensor<16x16xf32> -> (tensor<16x8xf32>, tensor<16x8xi32>)
   %1:2 = chlo.top_k(%arg, k=8) : tensor<16x16xf32> -> (tensor<16x8xf32>, tensor<16x8xi32>)
   func.return %1#0, %1#1 : tensor<16x8xf32>, tensor<16x8xi32>
@@ -2295,6 +2297,7 @@ func.func @top_k(%arg : tensor<16x16xf32>) -> (tensor<16x8xf32>, tensor<16x8xi32
 // CHECK-SAME: ([[ARG:%.*]]: tensor<?x5x?xi1>
 // CHECK-SAME: -> (tensor<?x5x2xi1>, tensor<?x5x2xi32>)
 func.func @dyn_top_k(%arg0: tensor<?x5x?xi1>) -> (tensor<?x5x2xi1>, tensor<?x5x2xi32>) {
+  // CHECK-HIGH-LEVEL: mhlo.topk
   // CHECK: %values, %indices = mhlo.topk(%arg0, k = 2, largest = true) : tensor<?x5x?xi1> -> (tensor<?x5x2xi1>, tensor<?x5x2xi32>)
   %values, %indices = chlo.top_k(%arg0, k = 2) : tensor<?x5x?xi1> -> (tensor<?x5x2xi1>, tensor<?x5x2xi32>)
   return %values, %indices : tensor<?x5x2xi1>, tensor<?x5x2xi32>
