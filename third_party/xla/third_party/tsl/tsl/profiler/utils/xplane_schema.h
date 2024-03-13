@@ -134,6 +134,7 @@ enum HostEventType {
   // Batching related.
   kBatchingSessionRun,
   kProcessBatch,
+  kBrainSessionRun,
   kConcatInputTensors,
   kMergeInputTensors,
   kScheduleWithoutSplit,
