@@ -209,9 +209,27 @@ bool IsBroadcastOfAScalar(const HloInstruction& hlo) {
   return ShapeUtil::IsScalar(hlo.operand(0)->shape());
 }
 
+bool IsSingleRowParameterBroadcast(const HloInstruction& hlo) {
+  CHECK_EQ(hlo.opcode(), HloOpcode::kBroadcast)
+      << "Expected broadcast " << hlo.ToShortString();
+  CHECK_EQ(hlo.operand(0)->opcode(), HloOpcode::kParameter)
+      << "Expected parameter " << hlo.operand(0)->ToShortString();
+
+  const HloBroadcastInstruction* broadcast =
+      Cast<HloBroadcastInstruction>(&hlo);
+  const HloParameterInstruction* parameter =
+      Cast<HloParameterInstruction>(hlo.operand(0));
+
+  if (parameter->shape().dimensions_size() != 1) {
+    return false;
+  }
+  return broadcast->dimensions()[0] == broadcast->shape().dimensions_size() - 1;
+}
+
 bool IsSupportedBroadcastOfParameter(const HloInstruction& hlo) {
   return IsBroadcastOfParameter(hlo) &&
-         (IsBatchOrReductionDimBroadcast(hlo) || IsBroadcastOfAScalar(hlo));
+         (IsBatchOrReductionDimBroadcast(hlo) || IsBroadcastOfAScalar(hlo) ||
+          IsSingleRowParameterBroadcast(hlo));
 }
 
 // Chooses which operand to use for fusion processing. Taking in a unary or
