@@ -183,6 +183,8 @@ class Allocation {
   std::optional<int64_t> cross_program_prefetch_index_;
 };
 
+using AllocationSequence = std::vector<std::unique_ptr<Allocation>>;
+
 // This class represents an allocation that pins a tensor to
 // a specific memory space.
 class PinnedAllocation final : public Allocation {
