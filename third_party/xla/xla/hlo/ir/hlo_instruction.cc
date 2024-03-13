@@ -1210,7 +1210,10 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
   TF_RET_CHECK(!proto.name().empty());
   instruction->SetAndSanitizeName(proto.name());
   *instruction->metadata_ = proto.metadata();
-  instruction->backend_config_ = proto.backend_config();
+  {
+    absl::MutexLock lock(&instruction->backend_config_mutex_);
+    instruction->backend_config_ = proto.backend_config();
+  }
 
   TF_RET_CHECK(proto.id() >= 0)
       << "Instruction with negative id: " << proto.id();
@@ -2505,7 +2508,11 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewOperands(
   // SetupDerivedInstruction will setup the precision_config_ field.
   SetupDerivedInstruction(clone.get());
   clone->set_parent(parent_);
-  clone->backend_config_ = backend_config_.Clone();
+  {
+    absl::MutexLock source_lock(&backend_config_mutex_);
+    absl::MutexLock target_lock(&clone->backend_config_mutex_);
+    clone->backend_config_ = backend_config_.Clone();
+  }
   // The new instruction's name will be uniquified when it's added to a
   // computation.
   clone->SetAndSanitizeName(name());
@@ -2744,8 +2751,12 @@ bool HloInstruction::IdenticalInternal(
     }
   }
 
-  if (backend_config_ != other.backend_config_) {
-    return false;
+  {
+    absl::MutexLock lhs_lock(&backend_config_mutex_);
+    absl::MutexLock rhs_lock(&other.backend_config_mutex_);
+    if (backend_config_ != other.backend_config_) {
+      return false;
+    }
   }
 
   if (ignore_channel_id_values) {
@@ -3537,6 +3548,7 @@ void HloInstruction::PrintWithCanonicalNameMap(
         *metadata_, options.print_metadata_only_op_name()));
     printer->Append("}");
   }
+  absl::MutexLock lock(&backend_config_mutex_);
   if (options.print_backend_config() && !backend_config_.empty()) {
     absl::string_view config = backend_config_.GetRawString();
     printer->Append(", backend_config=");
@@ -3882,7 +3894,10 @@ HloInstructionProto HloInstruction::ToProto() const {
   }
 
   *proto.mutable_metadata() = *metadata_;
-  proto.set_backend_config(backend_config_.GetRawString());
+  {
+    absl::MutexLock lock(&backend_config_mutex_);
+    proto.set_backend_config(backend_config_.GetRawString());
+  }
   if (opcode() != HloOpcode::kFusion) {
     for (const HloComputation* computation : called_computations()) {
       proto.add_called_computation_ids(computation->unique_id());
@@ -4886,10 +4901,13 @@ Status HloInstruction::GetBackendConfigInternal(
     tsl::protobuf::Message* proto) const {
   proto->Clear();
 
-  if (auto* proto_ptr = backend_config_.GetProtoPtr()) {
-    if (proto_ptr->GetDescriptor() == proto->GetDescriptor()) {
-      proto->CopyFrom(*proto_ptr);
-      return OkStatus();
+  {
+    absl::MutexLock lock(&backend_config_mutex_);
+    if (auto* proto_ptr = backend_config_.GetProtoPtr()) {
+      if (proto_ptr->GetDescriptor() == proto->GetDescriptor()) {
+        proto->CopyFrom(*proto_ptr);
+        return OkStatus();
+      }
     }
   }
 
@@ -4900,7 +4918,10 @@ Status HloInstruction::GetBackendConfigInternal(
     return OkStatus();
   }
   TF_RETURN_IF_ERROR(tsl::HumanReadableJsonToProto(raw_string, proto));
-  backend_config_.SetProto(*proto);
+  {
+    absl::MutexLock lock(&backend_config_mutex_);
+    backend_config_.SetProto(*proto);
+  }
   return OkStatus();
 }
 
