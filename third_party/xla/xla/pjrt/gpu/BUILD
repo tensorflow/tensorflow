@@ -26,10 +26,10 @@ cc_library(
         "//xla/service:platform_util",
         "//xla/stream_executor",
         "//xla/stream_executor/integrations:device_mem_allocator",
+        "//xla/tsl/util:env_var",
         "@com_google_absl//absl/types:span",
         "@local_tsl//tsl/framework:bfc_allocator",
         "@local_tsl//tsl/framework:device_id_impl",
-        "@local_tsl//tsl/util:env_var",
     ],
 )
 
@@ -86,6 +86,7 @@ cc_library(
         "//xla/stream_executor:platform",
         "//xla/stream_executor/integrations:device_mem_allocator",
         "//xla/stream_executor/integrations:tf_allocator_adapter",
+        "//xla/tsl/util:env_var",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:inlined_vector",
@@ -111,7 +112,6 @@ cc_library(
         "@local_tsl//tsl/platform:status",
         "@local_tsl//tsl/profiler/lib:connected_traceme",
         "@local_tsl//tsl/profiler/lib:traceme",
-        "@local_tsl//tsl/util:env_var",
     ] + if_cuda_or_rocm([
         ":nccl_id_store",
         "//xla/service/gpu:gpu_compiler",

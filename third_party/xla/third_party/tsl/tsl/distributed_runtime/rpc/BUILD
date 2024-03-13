@@ -95,8 +95,8 @@ cc_library(
         "//tsl/platform:thread_annotations",
         "//tsl/platform:types",
         "//tsl/protobuf:rpc_options_proto_cc",
-        "//tsl/util:device_name_utils",
         "@com_google_absl//absl/strings",
+        "@local_xla//xla/tsl/util:device_name_utils",
     ] + tsl_grpc_cc_dependencies(),
 )
 
@@ -114,7 +114,7 @@ tsl_cc_test(
         "//tsl/platform:test",
         "//tsl/platform:test_main",
         "//tsl/protobuf:rpc_options_proto_cc_impl",
-        "//tsl/util:device_name_utils",
+        "@local_xla//xla/tsl/util:device_name_utils",
     ],
 )
 
@@ -129,8 +129,8 @@ cc_library(
         "//tsl/platform:errors",
         "//tsl/platform:status",
         "//tsl/platform:strcat",
-        "//tsl/util:env_var",
         "@com_google_absl//absl/status",
+        "@local_xla//xla/tsl/util:env_var",
     ] + tsl_grpc_cc_dependencies(),
 )
 

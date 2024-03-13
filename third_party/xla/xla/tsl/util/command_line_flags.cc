@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tsl/util/command_line_flags.h"
+#include "xla/tsl/util/command_line_flags.h"
 
 #include <algorithm>
 #include <cinttypes>
