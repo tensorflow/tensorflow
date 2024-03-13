@@ -161,8 +161,16 @@ class HloReachabilityMap {
 
     // Sets this bit-set to union of this bit-set and `other`.
     void operator|=(const BitSet& other) {
-      for (size_t i = 0; i < vector_.size(); ++i) {
-        vector_[i] |= other.vector_[i];
+      if (this == &other) return;
+      DCHECK(size_ == other.size_);
+
+      // Ease the work of the auto-vectorizer.
+      const Word* a = vector_.data();
+      const Word* b = other.vector_.data();
+      Word* __restrict out = vector_.data();
+      size_t num_words = vector_.size();
+      for (size_t i = 0; i < num_words; ++i) {
+        out[i] = a[i] | b[i];
       }
     }
 
