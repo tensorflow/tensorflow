@@ -86,6 +86,9 @@ cc_binary(
 cc_binary(
     name = "performance_profiling",
     srcs = ["performance_profiling.cc"],
+    copts = [
+        "-DGOOGLE_COMMANDLINEFLAGS_FULL_API=1",
+    ],
     deps = [
         "//tensorflow/lite/core/kernels:builtin_ops",
         "//tensorflow/lite/delegates/gpu/cl:environment",
@@ -93,6 +96,7 @@ cc_binary(
         "//tensorflow/lite/delegates/gpu/common:model",
         "//tensorflow/lite/delegates/gpu/common:model_builder",
         "//tensorflow/lite/delegates/gpu/common:status",
+        "@com_google_absl//absl/flags:parse",
         "@com_google_absl//absl/time",
     ],
 )
