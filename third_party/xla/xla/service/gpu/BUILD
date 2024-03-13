@@ -4039,6 +4039,7 @@ cc_library(
         "//xla/stream_executor/gpu:asm_compiler",
         "//xla/stream_executor/gpu:gpu_asm_opts",
         "//xla/stream_executor/gpu:gpu_driver_header",
+        "//xla/stream_executor/gpu:gpu_executor_header",
         "@local_tsl//tsl/platform:cuda_libdevice_path",
         "@local_tsl//tsl/platform:env",
         "@local_tsl//tsl/platform:errors",

@@ -99,6 +99,7 @@ limitations under the License.
 #include "xla/stream_executor/gpu/asm_compiler.h"
 #include "xla/stream_executor/gpu/gpu_asm_opts.h"
 #include "xla/stream_executor/gpu/gpu_driver.h"
+#include "xla/stream_executor/gpu/gpu_executor.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/util.h"
 #include "xla/xla.pb.h"
@@ -800,8 +801,7 @@ absl::StatusOr<std::vector<uint8_t>> NVPTXCompiler::LinkModules(
   for (std::vector<uint8_t>& module : modules) {
     images.push_back({"", std::move(module)});
   }
-  auto context = static_cast<se::gpu::GpuContext*>(
-      stream_exec->platform_specific_handle().context);
+  auto context = se::gpu::ExtractGpuExecutor(stream_exec)->gpu_context();
 
   TF_ASSIGN_OR_RETURN(LinkingMethod linking_method,
                       ChooseLinkingMethod(debug_options));
