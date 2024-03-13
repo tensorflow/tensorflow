@@ -387,6 +387,31 @@ TEST_F(IndexingMapTest, AffineMapSimplification_DivsAndModsWithReverse) {
                                                )"));
 }
 
+TEST_F(IndexingMapTest, AffineMapSimplification_SimplifyReshape) {
+  auto serialized_map =
+      "()[s0] -> ((s0 * 128) mod 715 + ((s0 * 128) floordiv 715) * 715)";
+  IndexingMap indexing_map = IndexingMap::FromTensorSizes(
+      ParseAffineMap(serialized_map, &mlir_context_), {}, {128});
+  indexing_map.Simplify();
+  EXPECT_THAT(indexing_map.ToString(printer_), MatchIndexingString(R"(
+      ()[s0] -> (s0 * 128)
+      domain: s0 in [0, 127]
+  )"));
+}
+
+TEST_F(IndexingMapTest, AffineMapSimplification_SimplifyReshape_Regression) {
+  // We have s0 * 128 in the mod, but s0 * 64 in the floordiv *.
+  auto serialized_map =
+      "()[s0] -> ((s0 * 128) mod 715 + ((s0 * 64) floordiv 715) * 715)";
+  IndexingMap indexing_map = IndexingMap::FromTensorSizes(
+      ParseAffineMap(serialized_map, &mlir_context_), {}, {128});
+  indexing_map.Simplify();
+  EXPECT_THAT(indexing_map.ToString(printer_), MatchIndexingString(R"(
+      ()[s0] -> ((s0 * 128) mod 715 + ((s0 * 64) floordiv 715) * 715)
+      domain: s0 in [0, 127]
+  )"));
+}
+
 TEST_F(IndexingMapTest, AffineMapSimplification_DivsInSequence) {
   auto serialized_map =
       "()[s0] -> (s0 - ((s0 floordiv 2) floordiv 7) * 14 + (s0 floordiv 14) * "

@@ -385,7 +385,10 @@ AffineExpr AffineExprSimplifier::SimplifyOnce(AffineExpr expr) {
             auto b_lhs = mlir::cast<AffineBinaryOpExpr>(b).getLHS();
             if (auto div = GetConstantRhs(b_lhs, AffineExprKind::FloorDiv);
                 div == mul) {
-              return mlir::cast<AffineBinaryOpExpr>(b_lhs).getLHS();
+              auto x = mlir::cast<AffineBinaryOpExpr>(b_lhs).getLHS();
+              if (x == mlir::cast<AffineBinaryOpExpr>(a).getLHS()) {
+                return x;
+              }
             }
           }
         }
