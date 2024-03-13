@@ -505,7 +505,10 @@ cc_library(
         "//xla/hlo/ir:hlo",
         "//xla/service:call_graph",
         "//xla/service:compilation_environments",
+        "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/container:inlined_vector",
+        "@com_google_absl//absl/status:statusor",
         "@local_tsl//tsl/platform:statusor",
     ],
 )

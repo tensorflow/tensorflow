@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/service/gpu/triton_fusion_analysis.h"
 
 #include <cstdint>
+#include <memory>
 #include <queue>
 #include <string>
 #include <utility>
@@ -29,6 +30,7 @@ limitations under the License.
 #include "absl/strings/str_join.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/utils/hlo_query.h"
 #include "xla/service/gpu/matmul_utils.h"
@@ -37,6 +39,8 @@ limitations under the License.
 #include "xla/shape_util.h"
 #include "xla/status.h"
 #include "xla/status_macros.h"
+#include "xla/tools/hlo_decomposer.h"
+#include "xla/util.h"
 #include "tsl/platform/errors.h"
 
 namespace xla {
@@ -218,6 +222,41 @@ absl::Status TritonFusionAnalysis::ExecuteForSoftmaxFusion(
   iter_specs_[Scope::LHS] = {};
   iter_specs_[Scope::RHS] = {};
   return absl::OkStatus();
+}
+
+absl::Status TritonFusionAnalysis::ExecuteForProducerConsumer(
+    const HloInstruction& producer, const HloInstruction& consumer,
+    int split_k) {
+  // TODO(shyshkov): Use HloFusionAdaptor to avoid the need to materialize the
+  // hlo fusion.
+  std::unique_ptr<HloModule> new_module =
+      ExtractProducerConsumerIntoNewModule(producer, consumer);
+
+  auto* new_producer =
+      new_module->entry_computation()->GetInstructionWithName(producer.name());
+  auto* new_consumer =
+      new_module->entry_computation()->GetInstructionWithName(consumer.name());
+
+  std::unique_ptr<HloInstruction> fusion_instruction_holder;
+  HloInstruction* fusion_instruction;
+  if (new_consumer->opcode() == HloOpcode::kFusion) {
+    fusion_instruction = new_consumer;
+  } else {
+    fusion_instruction_holder = HloInstruction::CreateFusion(
+        new_consumer->shape(), new_producer->fusion_kind(), new_consumer);
+    fusion_instruction = fusion_instruction_holder.get();
+  }
+
+  // Try to merge the producer into candidate fusion.
+  if (new_producer->opcode() == HloOpcode::kFusion) {
+    fusion_instruction->MergeFusionInstruction(new_producer);
+  } else {
+    fusion_instruction->FuseInstruction(new_producer);
+  }
+
+  auto* fused_computation =
+      fusion_instruction->fused_instructions_computation();
+  return Execute(*fused_computation, split_k).status();
 }
 
 absl::Status TritonFusionAnalysis::ExecuteForDotFusion(

@@ -891,6 +891,46 @@ ENTRY main {
   EXPECT_FALSE(analysis.ok());
 }
 
+TEST_F(TritonSoftmaxAnalysisTest, ProducerConsumerFusion) {
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+HloModule t
+add {
+  Arg_0 = f32[] parameter(0)
+  Arg_1 = f32[] parameter(1)
+  ROOT add = f32[] add(Arg_0, Arg_1)
+}
+
+producer_computation {
+  parameter_0 = f32[125] parameter(0)
+  ROOT broadcast = f32[125,127] broadcast(parameter_0), dimensions={0}
+}
+
+triton_softmax_computation {
+  parameter_0 = f32[125,127] parameter(0)
+  multiply_0 = f32[125,127] multiply(parameter_0, parameter_0)
+  constant_0 = f32[] constant(0)
+  reduce_0 = f32[125] reduce(multiply_0, constant_0), dimensions={1}, to_apply=add
+  broadcast_4 = f32[125,127] broadcast(reduce_0), dimensions={0}
+  ROOT multiply = f32[125,127] multiply(multiply_0, broadcast_4)
+}
+
+ENTRY main {
+  param_0 = f32[125] parameter(0)
+  param_1 = f32[125,127] parameter(1)
+  producer_fusion = f32[125,127] fusion(param_0), kind=kLoop, calls=producer_computation
+  ROOT triton_softmax = f32[125,127] fusion(producer_fusion), kind=kCustom,
+      calls=triton_softmax_computation,
+      backend_config={"fusion_backend_config": {"kind":"__triton_softmax"}}
+})"));
+
+  auto consumer = module->entry_computation()->root_instruction();
+  auto producer = consumer->operand(0);
+
+  EXPECT_TRUE(
+      TritonFusionAnalysis::ExecuteForProducerConsumer(*producer, *consumer)
+          .ok());
+}
+
 }  // namespace
 }  // namespace gpu
 }  // namespace xla
