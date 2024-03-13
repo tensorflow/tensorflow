@@ -23,7 +23,7 @@ limitations under the License.
 
 #include "absl/types/span.h"
 #include "third_party/nanobind/include/nanobind/nanobind.h"
-#include "tsl/python/lib/core/numpy.h"  // NOLINT
+#include "tsl/python/lib/core/numpy.h"
 
 namespace nb = nanobind;
 
@@ -57,13 +57,13 @@ nb_numpy_ndarray::nb_numpy_ndarray(
       flags = NPY_ARRAY_WRITEABLE;
     }
   }
-  // The reinterpret_cast below assumes that ssize_t and int64_t are the same
+  // The reinterpret_cast below assumes that npy_intp and int64_t are the same
   // width. If that changes, then the code should be updated to convert instead.
-  static_assert(sizeof(int64_t) == sizeof(ssize_t));
+  static_assert(sizeof(int64_t) == sizeof(npy_intp));
   nb::object array = nb::steal<nb::object>(PyArray_NewFromDescr(
       &PyArray_Type, reinterpret_cast<PyArray_Descr*>(dtype.release().ptr()),
-      shape.size(), reinterpret_cast<const ssize_t*>(shape.data()),
-      reinterpret_cast<const ssize_t*>(strides_ptr), const_cast<void*>(ptr),
+      shape.size(), reinterpret_cast<const npy_intp*>(shape.data()),
+      reinterpret_cast<const npy_intp*>(strides_ptr), const_cast<void*>(ptr),
       flags,
       /*obj=*/nullptr));
   if (!array) {
@@ -99,17 +99,17 @@ nb_dtype nb_numpy_ndarray::dtype() const {
   return nb::borrow<nb_dtype>(reinterpret_cast<PyObject*>(PyArray_DESCR(self)));
 }
 
-ssize_t nb_numpy_ndarray::ndim() const {
+npy_intp nb_numpy_ndarray::ndim() const {
   PyArrayObject* self = reinterpret_cast<PyArrayObject*>(ptr());
   return PyArray_NDIM(self);
 }
 
-const ssize_t* nb_numpy_ndarray::shape() const {
+const npy_intp* nb_numpy_ndarray::shape() const {
   PyArrayObject* self = reinterpret_cast<PyArrayObject*>(ptr());
   return PyArray_SHAPE(self);
 }
 
-ssize_t nb_numpy_ndarray::shape(ssize_t dim) const {
+npy_intp nb_numpy_ndarray::shape(npy_intp dim) const {
   PyArrayObject* self = reinterpret_cast<PyArrayObject*>(ptr());
   if (dim < 0 || dim >= PyArray_NDIM(self)) {
     throw std::invalid_argument("Invalid dimension.");
@@ -117,12 +117,12 @@ ssize_t nb_numpy_ndarray::shape(ssize_t dim) const {
   return PyArray_SHAPE(self)[dim];
 }
 
-const ssize_t* nb_numpy_ndarray::strides() const {
+const npy_intp* nb_numpy_ndarray::strides() const {
   PyArrayObject* self = reinterpret_cast<PyArrayObject*>(ptr());
   return PyArray_STRIDES(self);
 }
 
-ssize_t nb_numpy_ndarray::strides(ssize_t dim) const {
+npy_intp nb_numpy_ndarray::strides(npy_intp dim) const {
   PyArrayObject* self = reinterpret_cast<PyArrayObject*>(ptr());
   if (dim < 0 || dim >= PyArray_NDIM(self)) {
     throw std::invalid_argument("Invalid dimension.");
@@ -130,12 +130,12 @@ ssize_t nb_numpy_ndarray::strides(ssize_t dim) const {
   return PyArray_STRIDES(self)[dim];
 }
 
-ssize_t nb_numpy_ndarray::itemsize() const {
+npy_intp nb_numpy_ndarray::itemsize() const {
   PyArrayObject* self = reinterpret_cast<PyArrayObject*>(ptr());
   return PyArray_ITEMSIZE(self);
 }
 
-ssize_t nb_numpy_ndarray::size() const {
+npy_intp nb_numpy_ndarray::size() const {
   PyArrayObject* self = reinterpret_cast<PyArrayObject*>(ptr());
   return PyArray_SIZE(self);
 }

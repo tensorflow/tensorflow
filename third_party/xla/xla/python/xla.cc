@@ -29,7 +29,9 @@ limitations under the License.
 #include <variant>
 #include <vector>
 
+// clang-format off
 #include "absl/base/casts.h"
+// Must be included first
 #include "absl/container/flat_hash_map.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
@@ -1229,12 +1231,14 @@ static void Init(py::module_& m) {
 
   m.def("is_optimized_build", &IsOptimizedBuild);
 
-  m.def("json_to_pprof_profile", xla::ValueOrThrowWrapper(JsonToPprofProfile),
-        "Encodes the JSON representation of a pprof Profile into its binary "
-        "protocol buffer encoding.");
-  m.def("pprof_profile_to_json", xla::ValueOrThrowWrapper(PprofProfileToJson),
-        "Decodes an uncompressed pprof Profile protocol buffer into a JSON "
-        "representation");
+  m_nb.def("json_to_pprof_profile",
+           xla::ValueOrThrowWrapper(JsonToPprofProfile),
+           "Encodes the JSON representation of a pprof Profile into its binary "
+           "protocol buffer encoding.");
+  m_nb.def("pprof_profile_to_json",
+           xla::ValueOrThrowWrapper(PprofProfileToJson),
+           "Decodes an uncompressed pprof Profile protocol buffer into a JSON "
+           "representation");
 
   RegisterCompileOnlyClient(m);
   py::class_<PjRtTopologyDescription, std::shared_ptr<PjRtTopologyDescription>>(
