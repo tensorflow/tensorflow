@@ -252,7 +252,16 @@ AffineExpr AffineExprSimplifier::RewriteFloorDiv(AffineBinaryOpExpr div) {
     if (auto multiplier = GetConstantRhs(expr, AffineExprKind::Mul)) {
       // (x * 7 + ...) / 3 -> can't extract. We could extract x * 2 and keep
       // one x, but we currently have no reason to do that.
-      if (*multiplier % d != 0) {
+
+      if (*multiplier % d == 0) {
+        int64_t factor = *multiplier / d;
+        extracted =
+            extracted + mlir::cast<AffineBinaryOpExpr>(expr).getLHS() * factor;
+        // Remove from dividend.
+        return false;
+      }
+
+      if (*multiplier > 0) {
         if (multiplier_gcd == -1) {
           multiplier_gcd = *multiplier;
         } else {
@@ -262,11 +271,6 @@ AffineExpr AffineExprSimplifier::RewriteFloorDiv(AffineBinaryOpExpr div) {
             std::max(max_remaining_multiplier_gcd, std::gcd(*multiplier, d));
         return true;
       }
-      int64_t factor = *multiplier / d;
-      extracted =
-          extracted + mlir::cast<AffineBinaryOpExpr>(expr).getLHS() * factor;
-      // Remove from dividend.
-      return false;
     }
     auto range = range_evaluator_->ComputeExpressionRange(expr);
     no_multiplier_range.lower_bound += range.lower_bound;
@@ -297,7 +301,8 @@ AffineExpr AffineExprSimplifier::RewriteFloorDiv(AffineBinaryOpExpr div) {
     AffineExpr partially_extracted = getAffineConstantExpr(0, mlir_context);
     new_dividend = RewriteSumIf(new_dividend, [&](AffineExpr expr) {
       if (auto multiplier = GetConstantRhs(expr, AffineExprKind::Mul);
-          multiplier && ((*multiplier % max_remaining_multiplier_gcd) == 0)) {
+          multiplier && (*multiplier > 0) &&
+          ((*multiplier % max_remaining_multiplier_gcd) == 0)) {
         auto expr_lhs = mlir::cast<AffineBinaryOpExpr>(expr).getLHS();
         partially_extracted =
             partially_extracted +

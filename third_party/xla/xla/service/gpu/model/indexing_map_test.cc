@@ -461,6 +461,24 @@ TEST_F(IndexingMapTest, AffineMapSimplification_ExtractFromMod) {
     )"));
 }
 
+TEST_F(IndexingMapTest,
+       AffineMapSimplification_ExtractFromDiv_NegativeMultiplier) {
+  auto serialized_map =
+      "()[s0, s1] -> ((s0 * 16 - (s1 floordiv 4) floordiv 2 + (s1 floordiv 8) "
+      "* 2) floordiv 4)";
+  IndexingMap indexing_map = IndexingMap::FromTensorSizes(
+      ParseAffineMap(serialized_map, &mlir_context_), {}, {2, 128});
+  indexing_map.Simplify();
+  EXPECT_THAT(indexing_map.ToString(printer_), MatchIndexingString(R"(
+      ()[s0, s1] -> (
+        s0 * 4 + s1 floordiv 32
+      )
+      domain:
+      s0 in [0, 1]
+      s1 in [0, 127]
+    )"));
+}
+
 TEST_F(IndexingMapTest, RangeEvaluatorTest) {
   RangeEvaluator range_evaluator(
       {Range{0, 9}, Range{-10, -1}, Range{-1, 2}, Range{0, 0}}, {},
