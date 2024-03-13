@@ -21,6 +21,7 @@ limitations under the License.
 #define EIGEN_USE_THREADS
 
 #define GEMMLOWP_ALLOW_SLOW_SCALAR_FALLBACK
+#include "absl/status/status.h"
 #include "public/gemmlowp.h"
 #include "tensorflow/core/framework/kernel_shape_util.h"
 #include "tensorflow/core/framework/op_kernel.h"
@@ -491,6 +492,14 @@ class QuantizedConv2DOp : public OpKernel {
     // Input tensor is of the following dimensions:
     // [ batch, in_rows, in_cols, in_depth ]
     const Tensor& input = context->input(0);
+
+    // validate for non zero dimensions of input.
+    int input_dims = input.shape().dims();
+    for (int i = 0; i < input_dims; ++i) {
+      OP_REQUIRES(context, input.shape().dim_size(i) != 0,
+                  absl::InvalidArgumentError(
+                      "Invalid input: Shapes dimension cannot be 0."));
+    }
 
     // Input filter is of the following dimensions:
     // [ filter_rows, filter_cols, in_depth, out_depth]
