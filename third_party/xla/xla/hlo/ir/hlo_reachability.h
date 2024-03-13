@@ -182,6 +182,8 @@ class HloReachabilityMap {
     std::vector<Word> vector_;
   };
 
+  friend class HloReachabilityMapBitSetBenchmark;
+
   using Key = std::pair<int, int>;  // module ID, instruction ID.
   static Key GetKey(const HloInstruction* instruction) {
     return {instruction->GetModule()->unique_id(), instruction->unique_id()};
