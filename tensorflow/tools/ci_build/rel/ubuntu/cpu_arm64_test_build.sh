@@ -123,7 +123,7 @@ WHL_DIR=$(realpath "${WHL_DIR}") # Get absolute path
 
 # configure may have chosen the wrong setting for PYTHON_LIB_PATH so
 # determine here the correct setting
-PY_SITE_PACAKGES=$(${PYTHON_BIN_PATH} -c "import site ; print(site.getsitepackages()[0])")
+PY_SITE_PACKAGES=$(${PYTHON_BIN_PATH} -c "import site ; print(site.getsitepackages()[0])")
 
 # Determine the major.minor versions of python being used (e.g., 3.7).
 # Useful for determining the directory of the local pip installation.
