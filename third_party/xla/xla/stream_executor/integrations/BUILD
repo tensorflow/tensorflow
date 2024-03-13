@@ -1,6 +1,5 @@
-load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
 load("//xla:xla.bzl", "xla_cc_test")
-load("//xla/stream_executor:build_defs.bzl", "if_gpu_is_configured", "stream_executor_friends")
+load("//xla/stream_executor:build_defs.bzl", "stream_executor_friends")
 load("@local_tsl//tsl:tsl.bzl", "if_google", "internal_visibility")
 load("@local_tsl//tsl:tsl.default.bzl", "filegroup")
 load("@local_tsl//tsl/platform:rules_cc.bzl", "cc_library")
@@ -79,25 +78,6 @@ cc_library(
     ],
 )
 
-cc_library(
-    name = "gpu_virtual_mem_allocator",
-    srcs = ["gpu_virtual_mem_allocator.cc"],
-    hdrs = ["gpu_virtual_mem_allocator.h"],
-    defines = if_cuda(["GOOGLE_CUDA=1"]),
-    deps = [
-        "//xla/stream_executor:stream_executor_headers",
-        "@com_google_absl//absl/strings:str_format",
-        "@local_tsl//tsl/framework:allocator",
-        "@local_tsl//tsl/framework:device_id_impl",
-        "@local_tsl//tsl/platform:numbers",
-        "@local_tsl//tsl/platform:statusor",
-        "@local_tsl//tsl/profiler/lib:traceme",
-    ] + if_cuda([
-        "//xla/stream_executor/gpu:gpu_driver_header",
-        "//xla/stream_executor/gpu:gpu_types_header",
-    ]),
-)
-
 xla_cc_test(
     name = "tf_allocator_adapter_test",
     srcs = ["tf_allocator_adapter_test.cc"],
@@ -115,22 +95,4 @@ xla_cc_test(
     ] + if_google([
         "@local_tsl//tsl/framework:allocator",
     ]),
-)
-
-xla_cc_test(
-    name = "gpu_virtual_mem_allocator_test",
-    srcs = if_gpu_is_configured(["gpu_virtual_mem_allocator_test.cc"]),
-    tags = [
-        "gpu",
-        "no_oss",
-        "requires-gpu-nvidia",
-    ],
-    deps = [
-        ":gpu_virtual_mem_allocator",
-        "//xla/stream_executor/gpu:gpu_init",
-        "@local_tsl//tsl/framework:device_id_impl",
-        "@local_tsl//tsl/platform:test",
-        "@local_tsl//tsl/platform:test_benchmark",
-        "@local_tsl//tsl/platform:test_main",
-    ],
 )

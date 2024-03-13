@@ -133,7 +133,6 @@ filegroup(
         "gpu_managed_allocator.h",
         "gpu_process_state.h",
         "gpu_util.h",
-        "gpu_virtual_mem_allocator.h",
         "//tensorflow/core/common_runtime:gpu_runtime_headers",
         "//tensorflow/core/common_runtime/device:device_runtime_headers",
         "@local_tsl//tsl/framework:bfc_allocator.h",
@@ -159,7 +158,6 @@ tf_cuda_library(
         "@local_config_cuda//cuda:cudnn_header",
         "@local_xla//xla/stream_executor/cuda:cuda_platform",
         "@local_xla//xla/stream_executor/gpu:gpu_stream",
-        ":gpu_virtual_mem_allocator",
     ],
     defines = if_linux_x86_64(["TF_PLATFORM_LINUX_X86_64"]),
     features = ["-layering_check"],
@@ -253,28 +251,11 @@ tf_cuda_library(
     ],
     visibility = ["//visibility:public"],
     deps = [
-        ":gpu_virtual_mem_allocator",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/common_runtime:bfc_allocator",
         "//tensorflow/core/common_runtime/device:device_mem_allocator",
-    ],
-)
-
-tf_cuda_library(
-    name = "gpu_virtual_mem_allocator",
-    hdrs = [
-        "gpu_virtual_mem_allocator.h",
-    ],
-    copts = tf_copts(),
-    features = [
-        "-layering_check",
-        "parse_headers",
-    ],
-    visibility = ["//visibility:public"],
-    deps = [
-        "@local_xla//xla/stream_executor/integrations:gpu_virtual_mem_allocator",
     ],
 )
 
@@ -318,7 +299,6 @@ tf_cuda_cc_test(
         "//tensorflow/core/common_runtime:direct_session_internal",
         "//tensorflow/core/kernels:ops_util",
         "@local_xla//xla/stream_executor/integrations:device_mem_allocator",
-        "@local_xla//xla/stream_executor/integrations:gpu_virtual_mem_allocator",
     ],
 )
 
