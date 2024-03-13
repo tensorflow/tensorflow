@@ -862,23 +862,8 @@ py_strict_library(
 
 pybind_extension(
     name = "_pywrap_tfe",
-    srcs = ["tfe_wrapper.cc",
-        "//tensorflow/c:headers",
-        "//tensorflow/c:safe_ptr_hdr",
-        "//tensorflow/c/eager:headers",
-        "//tensorflow/c/eager:pywrap_required_hdrs",
-        "//tensorflow/c/experimental/ops:pywrap_required_hdrs",
-        "//tensorflow/core/common_runtime/eager:pywrap_required_hdrs",
-        "//tensorflow/core/distributed_runtime:pywrap_required_hdrs",
-        "//tensorflow/core/distributed_runtime/coordination:pywrap_required_hdrs",
-        "//tensorflow/core/distributed_runtime/eager:pywrap_required_hdrs",
-        "//tensorflow/python/eager:pywrap_required_hdrs",
-        "//tensorflow/python/lib/core:py_exception_registry_hdr",
-        "//tensorflow/python/lib/core:safe_pyobject_ptr_required_hdrs",
-        "//tensorflow/python/util:util_hdr",
-        "@local_tsl//tsl/distributed_runtime:pywrap_required_hdrs",
-        "@local_tsl//tsl/distributed_runtime/coordination:pywrap_required_hdrs",
-        "@local_tsl//tsl/python/lib/core:numpy_hdr",
+    srcs = [
+        "tfe_wrapper.cc",
     ],
     data = [
         "_pywrap_tfe.pyi",
@@ -908,6 +893,7 @@ pybind_extension(
         "//tensorflow/python/lib/core:pybind11_lib",
         "//tensorflow/python/lib/core:pybind11_status",
         "//tensorflow/python/lib/core:safe_pyobject_ptr",
+        "//tensorflow/python/eager:pywrap_tfe_lib",
         # copybara:uncomment "@pybind11_protobuf//pybind11_protobuf:native_proto_caster",
     ] + if_static(
         extra_deps = [
@@ -1020,7 +1006,6 @@ pybind_extension(
         "//tensorflow/dtensor/cc:tensor_layout",
         "//tensorflow/python/eager:pywrap_tfe_lib",
         "//tensorflow/python/lib/core:safe_pyobject_ptr",
-        "//tensorflow/dtensor/proto:layout_proto_cc",
         "//tensorflow/python/lib/core:pybind11_lib",
         "//tensorflow/python/lib/core:pybind11_status_headers",
         "//third_party/python_runtime:headers",  # buildcleaner: keep
@@ -1028,6 +1013,9 @@ pybind_extension(
     private_deps = [
         "@pybind11_abseil//pybind11_abseil:absl_casters",
         "@pybind11_protobuf//pybind11_protobuf:native_proto_caster",
+        # Otherwise Python does not understand that layout_proto.pb2.py
+        # is the same type as in layout_proto_cc - WHY???
+        "//tensorflow/dtensor/proto:layout_proto_cc",
     ]
 )
 
@@ -1155,6 +1143,34 @@ pywrap_library(
         ],
         "//conditions:default": [],
     }),
+    py_cc_deps = [
+        "@local_tsl//tsl/python/lib/core:ml_dtypes_lib",
+        "@local_tsl//tsl/python/lib/core:numpy",
+        "@local_xla//xla/backends/profiler/cpu:python_tracer_impl",
+        "@local_xla//xla/backends/profiler/cpu:python_tracer",
+        "@local_xla//xla/python/profiler/internal:python_hooks",
+        "//tensorflow/lite/python/interpreter_wrapper:python_error_reporter",
+        "//tensorflow/lite/python/interpreter_wrapper:python_utils",
+        "//tensorflow/lite/toco/python:toco_python_api",
+        "//tensorflow/python/client:tf_session_helper",
+        "//tensorflow/python/eager:pywrap_tfe_lib",
+        "//tensorflow/python/framework:op_def_util_cc",
+        "//tensorflow/python/framework:py_context_manager",
+        "//tensorflow/python/framework:python_api_info",
+        "//tensorflow/python/framework:python_api_parameter_converter",
+        "//tensorflow/python/framework:python_tensor_converter",
+        "//tensorflow/python/framework:python_api_dispatcher",
+        "//tensorflow/python/lib/core:ndarray_tensor_bridge",
+        "//tensorflow/python/lib/core:ndarray_tensor",
+        "//tensorflow/python/lib/core:py_seq_tensor",
+        "//tensorflow/python/lib/core:py_util",
+        "//tensorflow/python/lib/core:py_exception_registry",
+        "//tensorflow/python/lib/core:py_func_lib",
+        "//tensorflow/python/util:cpp_python_util",
+        "//tensorflow/python/util:function_parameter_canonicalizer",
+        "//tensorflow/python/util:stack_trace",
+        "//tensorflow/python/util:cpp_nest",
+    ],
     visibility = ["//visibility:public"],
 )
 
@@ -1162,11 +1178,15 @@ pybind_extension(
     name = "_pywrap_tensorflow_cc_only",
     deps = [
 #        "//tensorflow/core:framework_internal",
+        "//tensorflow/dtensor/cc:tensor_layout",
+        "//tensorflow/compiler/mlir/tensorflow/c:mlir_c_api_registration",
+        "//tensorflow/distribute/experimental/rpc/kernels:rpc_ops",
         "//tensorflow/core/distributed_runtime/rpc:grpc_server_lib",
         "//tensorflow/core/distributed_runtime/rpc:grpc_session",
         "//tensorflow/core/distributed_runtime:server_lib",
         "//tensorflow/core/kernels:data_service_ops",
         "//tensorflow/core/kernels:reader_ops",
+        "@local_xla//xla/backends/profiler/cpu:python_tracer",
     ]
 )
 

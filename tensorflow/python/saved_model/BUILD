@@ -921,12 +921,14 @@ pybind_extension(
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/platform:path",
         "//tensorflow/python/lib/core:pybind11_status",
-        "@pybind11_abseil//pybind11_abseil:absl_casters",
-        "@pybind11_abseil//pybind11_abseil:status_casters",
-        "@pybind11_protobuf//pybind11_protobuf:native_proto_caster",
     ] + if_google([
         "//tensorflow/tools/proto_splitter:merge",
     ]),
+    private_deps = [
+        "@pybind11_abseil//pybind11_abseil:absl_casters",
+        "@pybind11_abseil//pybind11_abseil:status_casters",
+        "@pybind11_protobuf//pybind11_protobuf:native_proto_caster",
+    ]
 )
 
 tf_py_strict_test(

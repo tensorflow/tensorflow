@@ -1755,6 +1755,7 @@ tf_proto_library(
     srcs = ["types.proto"],
     cc_api_version = 2,
     make_default_target_header_only = True,
+    visibility = ["//visibility:public"],
 )
 
 tf_proto_library(

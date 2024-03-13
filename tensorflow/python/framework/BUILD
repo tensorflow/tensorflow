@@ -24,6 +24,7 @@ load(
     "//tensorflow/tools/test:performance.bzl",
     "cuda_py_benchmark_test",
 )
+load("//rules_pywrap:pywrap.bzl", "stripped_cc_info")
 
 visibility = tf_python_framework_friends()  # buildifier: disable=package-on-top
 
@@ -33,8 +34,8 @@ package(
     licenses = ["notice"],
 )
 
-tf_cc_shared_object(
-    name = "test_file_system.so",
+cc_library(
+    name = "test_file_system",
     srcs = ["test_file_system.cc"],
     copts = if_not_windows(["-Wno-sign-compare"]),
     linkopts = select({
@@ -49,6 +50,19 @@ tf_cc_shared_object(
         "//tensorflow/core/framework:reader_base",
         "@com_google_protobuf//:protobuf_headers",
         "@eigen_archive//:eigen3",
+    ],
+)
+
+stripped_cc_info(
+    name = "test_file_system_stripped",
+    deps = [":test_file_system"],
+)
+
+tf_cc_shared_object(
+    name = "test_file_system.so",
+    deps = [
+        "//tensorflow/python:_pywrap_tensorflow_common",
+        ":test_file_system_stripped"
     ],
 )
 
