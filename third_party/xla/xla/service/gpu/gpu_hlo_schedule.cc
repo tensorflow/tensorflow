@@ -399,6 +399,22 @@ class GpuAsyncTrackerBase : public AsyncTracker {
             !IsSyncCollective(&hlo)) ||
            IsAsyncComputeOp(hlo);
   }
+
+  void PostProcessScheduleGraph(
+      HloScheduleGraph* schedule_graph,
+      const LatencyEstimator* latency_estimator) const override {
+    for (auto inst : schedule_graph->GetOriginalInstrList()) {
+      if (inst->has_backend_config()) {
+        auto gpu_config = inst->backend_config<GpuBackendConfig>();
+        if (gpu_config.ok()) {
+          HloGraphNode& node = schedule_graph->GetNode(inst);
+          node.SetForceDelay(gpu_config->force_earliest_schedule());
+          VLOG(5) << "Setting force delay for instruction: "
+                  << inst->ToString();
+        }
+      }
+    }
+  }
 };
 
 // GPU async tracker maps all collectives onto an async stream resource.
