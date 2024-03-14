@@ -18,6 +18,7 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "absl/container/inlined_vector.h"
 #include "xla/service/while_util.h"
+#include "xla/shape_util.h"
 #include "xla/util.h"
 
 namespace xla {
@@ -92,6 +93,12 @@ StatusOr<bool> WhileLoopConstantSinking::TrySinkingConstantsIntoWhileLoop(
          invariant_value.opcode() != HloOpcode::kBroadcast ||
          invariant_value.operand(0)->opcode() != HloOpcode::kConstant)) {
       continue;
+    }
+
+    if (sink_only_scalar_constants_) {
+      if (!ShapeUtil::IsScalar(init_value.operand(index)->shape())) {
+        continue;
+      }
     }
 
     // Sink into the while_body.
