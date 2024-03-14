@@ -878,6 +878,11 @@ absl::StatusOr<bool> IsMatrixMultiplicationTooSmallForRewriting(
 }
 
 bool IsDotSupportedByClassicalEmitters(const HloInstruction& dot) {
+  if (!algorithm_util::IsSupportedByElementalIrEmitter(
+          dot.precision_config().algorithm())) {
+    return false;
+  }
+
   // Let us be conservative and only throw float dots at the emitters.
   switch (dot.shape().element_type()) {
     case F16:
