@@ -147,6 +147,42 @@ TEST(FfiTest, WrongTypeBufferArgument) {
                HasSubstr("Wrong buffer dtype: expected F32 but got S32")));
 }
 
+TEST(FfiTest, BindingTypeInference) {
+  auto handler = Ffi::BindTo(+[](BufferBase buffer, Attr<int32_t, "i32"> foo) {
+    EXPECT_EQ(*foo, 42);
+    return Error::Success();
+  });
+
+  std::vector<float> storage(4, 0.0f);
+  se::DeviceMemoryBase memory(storage.data(), 4 * sizeof(float));
+
+  CallFrameBuilder::AttributesBuilder attrs;
+  attrs.Insert("i32", 42);
+
+  CallFrameBuilder builder;
+  builder.AddBufferArg(memory, PrimitiveType::F32, /*dims=*/{2, 2});
+  builder.AddAttributes(attrs.Build());
+  auto call_frame = builder.Build();
+
+  auto status = Call(*handler, call_frame);
+  TF_ASSERT_OK(status);
+}
+
+// Use opaque struct to define a platform stream type just like platform
+// stream for GPU backend (e.g. `CUstream_st`  and `cudaStream_t`).
+struct TestStreamSt;
+using TestStream = TestStreamSt*;
+
+template <>
+struct CtxBinding<TestStream> {
+  using Ctx = PlatformStream<TestStream>;
+};
+
+TEST(FfiTest, BindingPlatformStreamInference) {
+  // We only check that it compiles.
+  (void)Ffi::BindTo(+[](TestStream stream) { return Error::Success(); });
+}
+
 //===----------------------------------------------------------------------===//
 // Performance benchmarks are below.
 //===----------------------------------------------------------------------===//

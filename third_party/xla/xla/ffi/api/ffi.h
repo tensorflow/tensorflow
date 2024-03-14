@@ -172,6 +172,20 @@ template <DataType dtype> using BufferR4 = Buffer<dtype, 4>;
 // clang-format on
 
 //===----------------------------------------------------------------------===//
+// Arguments binding
+//===----------------------------------------------------------------------===//
+
+template <>
+struct ArgBinding<BufferBase> {
+  using Arg = BufferBase;
+};
+
+template <DataType dtype, size_t rank>
+struct ArgBinding<Buffer<dtype, rank>> {
+  using Arg = Buffer<dtype, rank>;
+};
+
+//===----------------------------------------------------------------------===//
 // Arguments decoding
 //===----------------------------------------------------------------------===//
 
