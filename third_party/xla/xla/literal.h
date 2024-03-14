@@ -35,7 +35,9 @@ limitations under the License.
 #include "absl/base/attributes.h"
 #include "absl/base/casts.h"
 #include "absl/base/config.h"
+#include "absl/base/optimization.h"
 #include "absl/functional/function_ref.h"
+#include "absl/hash/hash.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/array.h"
@@ -353,6 +355,20 @@ class LiteralBase {
     return LiteralBase::Hash(std::move(state), value);
   }
 
+ private:
+  // With C++20, we can use `requires { absl::Hash<NativeT>(); }`.
+  template <typename T>
+  static constexpr bool IsAbslHashable() {
+#ifdef _MSC_VER
+    // `std::is_invocable_v<absl::Hash<T>, T>` doesn't work on MSVC.
+    // See https://godbolt.org/z/Wj9d7zrav.
+    return false;
+#else
+    return std::is_invocable_v<absl::Hash<T>, T>;
+#endif
+  }
+
+ public:
   template <typename H, bool kIsLayoutSensitive = true,
             int64_t kByteLimit = std::numeric_limits<int64_t>::max()>
   static H Hash(H state, const LiteralBase& literal) {
@@ -366,10 +382,32 @@ class LiteralBase {
           }
 
           CHECK(LayoutUtil::IsDenseArray(subshape));
-          auto data = absl::MakeConstSpan(
-              static_cast<const char*>(literal.untyped_data(index)),
-              std::min(kByteLimit, literal.size_bytes(index)));
-          state = H::combine(std::move(state), data);
+          const auto hash_func = [&](auto primitive_type_constant) {
+            using NativeT =
+                primitive_util::NativeTypeOf<primitive_type_constant>;
+            // If we can hash NativeT, then do so. Otherwise, hash raw buffer
+            // data taking care to avoid invalid parts of 4-bit type data.
+            if constexpr (IsAbslHashable<NativeT>()) {
+              state = H::combine(std::move(state),
+                                 literal.piece(index).data<NativeT>());
+            } else {
+              const int64_t num_bytes =
+                  std::min(kByteLimit, literal.size_bytes(index));
+              const char* buffer =
+                  static_cast<const char*>(literal.untyped_data(index));
+              if (primitive_util::Is4BitType(subshape.element_type())) {
+                for (int64_t i = 0; i < num_bytes; ++i) {
+                  state =
+                      H::combine(std::move(state), buffer[i] & uint8_t{0xf});
+                }
+              } else {
+                auto data = absl::MakeConstSpan(buffer, num_bytes);
+                state = H::combine(std::move(state), data);
+              }
+            }
+          };
+          primitive_util::ArrayTypeSwitch<void>(hash_func,
+                                                subshape.element_type());
         });
 
     return std::move(state);
