@@ -151,7 +151,6 @@ StatusOr<bool> HloDCE::RecursivelyRemoveDeadComputations(HloModule* module) {
   }
 
   // Find dead computations.
-  absl::flat_hash_set<HloComputation*> dead_computations;
   for (auto* computation : module->MakeComputationPostOrder()) {
     // Finds all "top-level" dead computations not called by any instructions.
     // contains(comp) = true and live_computation_call_count[comp] = 0 also

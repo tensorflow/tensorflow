@@ -864,7 +864,6 @@ void AlternateMemoryBestFitHeap::CreateAllocationValues(
                       });
 
   // Create an AllocationValue for each non-trivial position.
-  absl::flat_hash_set<const HloComputation*> computations;
   int beginning_idx = allocation_values.size();
   for (int i = 0; i < positions.size(); ++i) {
     const HloPosition& position = positions.at(i);
