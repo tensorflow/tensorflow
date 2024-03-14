@@ -147,6 +147,7 @@ bazel build \
   --experimental_cc_shared_library \
   --config=release_cpu_windows ${EXTRA_BUILD_FLAGS} \
   --config=win_clang \
+  --repo_env=WHEEL_NAME=tf_nightly \
   --output_filter=^$ \
   tensorflow/tools/pip_package:wheel || exit $?
 
