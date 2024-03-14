@@ -893,8 +893,10 @@ class ReadySetLt {
         HloGraphNode::TimeCost b_cost_diff = std::abs(
             latest_ready - sched_state_.current_time - b.node->GetCost());
         if (auto value = DefaultSchedulerCore::ChooseBestCandidate(
-                a_cost_diff < b_cost_diff, a, b_cost_diff < a_cost_diff, b,
-                "kAvoidWaste")) {
+                !a.node->DoesReleaseAnyResource() && a_cost_diff < b_cost_diff,
+                a,
+                !b.node->DoesReleaseAnyResource() && b_cost_diff < a_cost_diff,
+                b, "kAvoidWaste")) {
           return *value;
         }
       }
