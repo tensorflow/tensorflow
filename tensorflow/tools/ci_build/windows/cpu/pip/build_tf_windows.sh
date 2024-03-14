@@ -155,8 +155,8 @@ else
   --config=release_cpu_windows ${EXTRA_BUILD_FLAGS} \
   --output_filter=^$ \
   tensorflow/tools/pip_package:wheel || exit $?
+fi
   
-
 if [[ "$SKIP_TEST" == 1 ]]; then
   exit 0
 fi
