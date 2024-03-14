@@ -722,7 +722,7 @@ TEST_F(DotMergerTest, MergeSparseDotsSameMetadata) {
     lhs0 = f16[5,10,32] parameter(0)
     lhs1 = f16[5,10,32] parameter(1)
     rhs  = f16[5,10,16] parameter(2)
-    meta = u16[10,2] parameter(3)
+    meta = u16[5,10,2] parameter(3)
     dot0 = f32[5,10,10] dot(lhs0, rhs, meta), sparsity=R.2@2:4,
         lhs_batch_dims={0}, rhs_batch_dims={0},
         lhs_contracting_dims={2}, rhs_contracting_dims={2}
@@ -748,7 +748,7 @@ TEST_F(DotMergerTest, MergeSparseDotsSameMetadata) {
                                .WithShape(F32, {5, 20, 10})),
                   m::Slice(m::Op(&d1)))));
   EXPECT_EQ(d0, d1);
-  EXPECT_EQ(d0->operand(2)->shape(), ShapeUtil::MakeShape(U16, {10, 2}));
+  EXPECT_EQ(d0->operand(2)->shape(), ShapeUtil::MakeShape(U16, {5, 10, 2}));
 }
 
 TEST_F(DotMergerTest, MergeSparseDotsConcatMetadata) {
@@ -758,8 +758,8 @@ TEST_F(DotMergerTest, MergeSparseDotsConcatMetadata) {
     lhs0 = f16[5,10,16] parameter(0)
     lhs1 = f16[5,10,16] parameter(1)
     rhs  = f16[5,10,32] parameter(2)
-    meta0 = u16[10,2] parameter(3)
-    meta1 = u16[10,2] parameter(4)
+    meta0 = u16[5,10,2] parameter(3)
+    meta1 = u16[5,10,2] parameter(4)
     dot0 = f32[5,10,10] dot(lhs0, rhs, meta0), sparsity=L.2@2:4,
         lhs_batch_dims={0}, rhs_batch_dims={0},
         lhs_contracting_dims={2}, rhs_contracting_dims={2}
@@ -786,7 +786,7 @@ TEST_F(DotMergerTest, MergeSparseDotsConcatMetadata) {
                                .WithShape(F32, {5, 20, 10})),
                   m::Slice(m::Op(&d1)))));
   EXPECT_EQ(d0, d1);
-  EXPECT_EQ(d0->operand(2)->shape(), ShapeUtil::MakeShape(U16, {20, 2}));
+  EXPECT_EQ(d0->operand(2)->shape(), ShapeUtil::MakeShape(U16, {5, 20, 2}));
 }
 
 TEST_F(DotMergerTest, MergeSparseDotsDifferentMetadata) {
@@ -796,8 +796,8 @@ TEST_F(DotMergerTest, MergeSparseDotsDifferentMetadata) {
     lhs0 = f16[5,10,32] parameter(0)
     lhs1 = f16[5,10,32] parameter(1)
     rhs  = f16[5,10,16] parameter(2)
-    meta1 = u16[10,2] parameter(3)
-    meta2 = u16[10,2] parameter(4)
+    meta1 = u16[5,10,2] parameter(3)
+    meta2 = u16[5,10,2] parameter(4)
     dot0 = f32[5,10,10] dot(lhs0, rhs, meta1), sparsity=R.2@2:4,
         lhs_batch_dims={0}, rhs_batch_dims={0},
         lhs_contracting_dims={2}, rhs_contracting_dims={2}

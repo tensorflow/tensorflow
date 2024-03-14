@@ -4511,7 +4511,7 @@ TEST_F(HloParserTest, InferSparseDotShape) {
 ENTRY InferSparseDotShape {
   a = f32[2,16]{1,0} parameter(0)
   b = f32[32,2]{1,0} parameter(1)
-  meta = u16[2]{0} parameter(2)
+  meta = u16[2,2]{1,0} parameter(2)
   ROOT dot = dot(a, b, meta), lhs_batch_dims={0}, lhs_contracting_dims={1}, rhs_batch_dims={1}, rhs_contracting_dims={0}, sparsity=L.1@2:4
 }
 )";

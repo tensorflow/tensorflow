@@ -46,7 +46,6 @@ limitations under the License.
 #include "xla/shape_util.h"
 #include "xla/status.h"
 #include "xla/status_macros.h"
-#include "xla/statusor.h"
 #include "xla/util.h"
 #include "xla/window_util.h"
 #include "xla/xla_data.pb.h"
@@ -984,9 +983,6 @@ Status ValidateDotDimensionNumbers(
   // (i.e. excludes batch) of the sparse operand shape. The sparse dimension
   // must be contracting.
   bool sparse_lhs = sparsity.index() == 0;
-  auto& batch_dimensions = sparse_lhs
-                               ? dimension_numbers.lhs_batch_dimensions()
-                               : dimension_numbers.rhs_batch_dimensions();
   auto& contracting_dimensions =
       sparse_lhs ? dimension_numbers.lhs_contracting_dimensions()
                  : dimension_numbers.rhs_contracting_dimensions();
@@ -1019,12 +1015,9 @@ Status ValidateDotDimensionNumbers(
   std::vector<int64_t> dimensions;
   std::vector<bool> is_dynamic;
   for (int64_t i = 0; i < operand_shape.rank(); ++i) {
-    if (!absl::c_linear_search(batch_dimensions, i)) {
-      dimensions.push_back(i != sparsity.dimension()
-                               ? operand_shape.dimensions(i)
-                               : metadata_dimension_size);
-      is_dynamic.push_back(operand_shape.is_dynamic_dimension(i));
-    }
+    dimensions.push_back(i != sparsity.dimension() ? operand_shape.dimensions(i)
+                                                   : metadata_dimension_size);
+    is_dynamic.push_back(operand_shape.is_dynamic_dimension(i));
   }
   return ShapeUtil::MakeShape(element_type, dimensions, is_dynamic);
 }

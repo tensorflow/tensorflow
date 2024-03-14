@@ -8498,8 +8498,8 @@ ENTRY entry {
     sharding={devices=[2,2,1]<=[4]}
   %rhs = f32[2,32,256] parameter(1),
     sharding={devices=[2,1,1,2]<=[4] last_tile_dim_replicate}
-  %meta = u16[24,16] parameter(2),
-    sharding={devices=[2,1,2]<=[4] last_tile_dim_replicate}
+  %meta = u16[2,24,16] parameter(2),
+    sharding={devices=[2,2,1]<=[4]}
   ROOT %dot = f32[2,24,32] dot(%lhs, %rhs, %meta),
     lhs_batch_dims={0}, rhs_batch_dims={0},
     lhs_contracting_dims={2}, rhs_contracting_dims={2}, sparsity=L.2@2:4,
@@ -8512,7 +8512,7 @@ ENTRY entry {
 
   const auto lhs = AllOf(op::Shape("f32[1,12,128]"), op::Parameter(0));
   const auto rhs = AllOf(op::Shape("f32[1,32,256]"), op::Parameter(1));
-  const auto meta = AllOf(op::Shape("u16[12,16]"), op::Parameter(2));
+  const auto meta = AllOf(op::Shape("u16[1,12,16]"), op::Parameter(2));
   auto dot = AllOf(op::Shape("f32[1,12,32]"),
                    ::testing::MakeMatcher(new ::xla::testing::HloMatcher(
                        HloOpcode::kDot, {lhs, rhs, meta})));

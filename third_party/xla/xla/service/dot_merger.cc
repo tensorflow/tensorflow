@@ -202,23 +202,18 @@ absl::StatusOr<HloInstruction*> TryMergeSameOperand(HloInstruction* a,
 
   std::vector<SparsityDescriptor> sparsity(dot_a->sparsity().begin(),
                                            dot_a->sparsity().end());
-  std::vector<HloInstruction*> sparse_meta;
+  std::vector<HloInstruction*> sparse_meta(sparsity.size());
   for (int i = 0; i < sparsity.size(); ++i) {
     HloInstruction* meta = a->mutable_operand(HloDotInstruction::kOperands + i);
     HloInstruction* other_meta =
         b->mutable_operand(HloDotInstruction::kOperands + i);
     if (sparsity[i].index() == (lhs_same ? 1 : 0)) {
-      int skipped_batch_dims = absl::c_count_if(
-          lhs_same ? dnums.rhs_batch_dimensions()
-                   : dnums.lhs_batch_dimensions(),
-          [&](int64_t batch_dim) { return batch_dim < outer_dim; });
-      int meta_concat_dim = outer_dim - skipped_batch_dims;
       TF_ASSIGN_OR_RETURN(
           Shape meta_concat_shape,
           ShapeInference::InferConcatOpShape(
-              {&meta->shape(), &other_meta->shape()}, meta_concat_dim));
+              {&meta->shape(), &other_meta->shape()}, outer_dim));
       meta = meta->AddInstruction(HloInstruction::CreateConcatenate(
-          meta_concat_shape, {meta, other_meta}, meta_concat_dim));
+          meta_concat_shape, {meta, other_meta}, outer_dim));
     } else {
       if (other_meta != meta) {
         VLOG(3)
@@ -228,7 +223,7 @@ absl::StatusOr<HloInstruction*> TryMergeSameOperand(HloInstruction* a,
         return nullptr;
       }
     }
-    sparse_meta.push_back(meta);
+    sparse_meta[i] = meta;
   }
 
   TF_ASSIGN_OR_RETURN(

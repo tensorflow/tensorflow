@@ -147,7 +147,7 @@ TEST_F(DotDecomposerTest, CanonicalizeSparseLhs) {
   ENTRY main {
     lhs = f32[16,4,3,7] parameter(0)
     rhs = f32[32,4,5,7] parameter(1)
-    meta = u16[2,4,3] parameter(2)
+    meta = u16[2,4,3,7] parameter(2)
     ROOT dot = f32[7,3,5] dot(lhs, rhs, meta), sparsity=L.0@2:4,
         lhs_contracting_dims={0,1}, rhs_contracting_dims={0,1},
         lhs_batch_dims={3}, rhs_batch_dims={3}
@@ -176,7 +176,7 @@ TEST_F(DotDecomposerTest, CanonicalizeSparseRhs) {
   ENTRY main {
     lhs = f32[32,4,3,7] parameter(0)
     rhs = f32[16,4,5,7] parameter(1)
-    meta = u16[2,4,5] parameter(2)
+    meta = u16[2,4,5,7] parameter(2)
     ROOT dot = f32[7,3,5] dot(lhs, rhs, meta), sparsity=R.0@2:4,
         lhs_contracting_dims={0,1}, rhs_contracting_dims={0,1},
         lhs_batch_dims={3}, rhs_batch_dims={3}

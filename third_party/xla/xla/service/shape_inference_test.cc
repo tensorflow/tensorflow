@@ -2032,7 +2032,7 @@ TEST_F(ShapeInferenceTest, SparseDotMetadata) {
                               ShapeUtil::MakeShape(F32, {5, 10, 16}), dot_dnums,
                               sparsity_descriptor));
   EXPECT_TRUE(
-      ShapeUtil::Equal(inferred_shape, ShapeUtil::MakeShape(U16, {10, 2})));
+      ShapeUtil::Equal(inferred_shape, ShapeUtil::MakeShape(U16, {5, 10, 2})));
 }
 
 TEST_F(ShapeInferenceTest, BinOpBroadcastMatrixVector) {
