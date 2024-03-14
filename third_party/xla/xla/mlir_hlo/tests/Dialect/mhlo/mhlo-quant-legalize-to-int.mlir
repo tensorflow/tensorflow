@@ -363,14 +363,14 @@ func.func @add_per_channel_different_quant_types(
 
 func.func @add_per_channel_per_tensor_mix(
     %arg0: tensor<?x3x4x2x!quant.uniform<i32:f32:3, {2.9455460163317514E-5,5.8952903030815205E-5}>>,
-    %arg1: tensor<?x3x4x2x!quant.uniform<i32:f32:3, {2.9455460163317514E-5,5.8952903030815205E-5}>>
-  ) -> tensor<?x3x4x2x!quant.uniform<i32:f32, 1.1:2>> {
+    %arg1: tensor<?x3x4x2x!quant.uniform<i32:f32, 1.1:2>>
+  ) -> tensor<?x3x4x2x!quant.uniform<i32:f32:3, {2.9455460163317514E-5,5.8952903030815205E-5}>> {
   // expected-error@+1 {{'mhlo.add' op requires compatible types for all operands and results}}
   %11 = mhlo.add %arg0, %arg1 : (
       tensor<?x3x4x2x!quant.uniform<i32:f32:3, {2.9455460163317514E-5,5.8952903030815205E-5}>>,
-      tensor<?x3x4x2x!quant.uniform<i32:f32:3, {2.9455460163317514E-5,5.8952903030815205E-5}>>
-    ) -> tensor<?x3x4x2x!quant.uniform<i32:f32, 1.1:2>>
-  return %11 : tensor<?x3x4x2x!quant.uniform<i32:f32, 1.1:2>>
+      tensor<?x3x4x2x!quant.uniform<i32:f32, 1.1:2>>
+    ) -> tensor<?x3x4x2x!quant.uniform<i32:f32:3, {2.9455460163317514E-5,5.8952903030815205E-5}>>
+  return %11 : tensor<?x3x4x2x!quant.uniform<i32:f32:3, {2.9455460163317514E-5,5.8952903030815205E-5}>>
 }
 
 // -----
