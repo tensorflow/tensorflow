@@ -275,14 +275,12 @@ auto* tf_data_filename_counter = tsl::monitoring::Counter<2>::New(
 
 auto* tf_data_file_logger_attempts_counter = tsl::monitoring::Counter<0>::New(
     "/tensorflow/data/file_logger_attempts",
-    "The number of times a file logger attempted to log "
-    "filenames.");
+    "The number of times a file logger attempted to log filenames.");
 
-auto* tf_data_file_logger_errors_counter = tsl::monitoring::Counter<1>::New(
+auto* tf_data_file_logger_errors_counter = tsl::monitoring::Counter<2>::New(
     "/tensorflow/data/file_logger_errors",
-    "The number of times file logger got error of this type occurred with "
-    "this ",
-    "status_code");
+    "The number of times file logger got error of this type and message.",
+    "error_code", "error_message");
 
 auto* tf_data_file_logger_attempted_num_files_counter =
     tsl::monitoring::Counter<0>::New(
@@ -291,11 +289,11 @@ auto* tf_data_file_logger_attempted_num_files_counter =
         "logger.");
 
 auto* tf_data_file_logger_errors_num_files_counter =
-    tsl::monitoring::Counter<1>::New(
+    tsl::monitoring::Counter<2>::New(
         "/tensorflow/data/file_logger_errors_num_files",
-        "The number of files that encountered errors of this type and code "
+        "The number of files that encountered errors of this type and message "
         "during logging by the file logger.",
-        "status_code");
+        "error_code", "error_message");
 
 auto* tf_data_model_gauge =
     tsl::monitoring::Gauge<std::function<std::string()>, 1>::New(
@@ -698,8 +696,10 @@ void RecordTFDataFileLoggerAttempts() {
   tf_data_file_logger_attempts_counter->GetCell()->IncrementBy(1);
 }
 
-void RecordTFDataFileLoggerErrors(error::Code code) {
-  tf_data_file_logger_errors_counter->GetCell(error::Code_Name(code))
+void RecordTFDataFileLoggerErrors(error::Code error_code,
+                                  const string& error_message) {
+  tf_data_file_logger_errors_counter
+      ->GetCell(error::Code_Name(error_code), error_message)
       ->IncrementBy(1);
 }
 
@@ -708,8 +708,11 @@ void RecordTFDataFileLoggerAttemptedNumFiles(size_t num_files) {
       num_files);
 }
 
-void RecordTFDataFileLoggerErrorsNumFiles(size_t num_files, error::Code code) {
-  tf_data_file_logger_errors_num_files_counter->GetCell(error::Code_Name(code))
+void RecordTFDataFileLoggerErrorsNumFiles(size_t num_files,
+                                          error::Code error_code,
+                                          const string& error_message) {
+  tf_data_file_logger_errors_num_files_counter
+      ->GetCell(error::Code_Name(error_code), error_message)
       ->IncrementBy(num_files);
 }
 
