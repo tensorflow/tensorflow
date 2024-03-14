@@ -67,9 +67,6 @@ class QuantizeCompositeFunctionsPass
 void QuantizeCompositeFunctionsPass::runOnOperation() {
   MLIRContext& ctx = getContext();
 
-  QuantizationSpecs quant_specs;
-  quant_specs.inference_type = tensorflow::DT_QINT8;
-
   PassManager pm(&ctx);
   // Intermediate output from QuantizePass will have quantized ops
   // (XlaCallModuleOps) with quantized input and output types, which are not
@@ -91,7 +88,6 @@ void QuantizeCompositeFunctionsPass::runOnOperation() {
   quantize_options.enable_per_channel_quantized_weight_ =
       enable_per_channel_quantized_weight_;
   quantize_options.enable_weight_only_ = enable_weight_only_;
-  quantize_options.quant_specs_ = quant_specs;
   // QuantizePass modifies FuncOps referenced outside of its given scope
   // and therefore requires a module-level context.
   pm.addPass(createQuantizePass(quantize_options));

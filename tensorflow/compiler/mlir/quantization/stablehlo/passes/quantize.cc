@@ -52,12 +52,10 @@ struct StableHloQuantizationBase
     : public StableHloQuantizationPattern<ConcreteT, quantfork::QuantizeCastOp,
                                           quantfork::DequantizeCastOp,
                                           /*VerifierT=*/void, RootOpT> {
-  explicit StableHloQuantizationBase(MLIRContext* ctx,
-                                     const QuantPassSpec& quant_params)
+  explicit StableHloQuantizationBase(MLIRContext* ctx)
       : StableHloQuantizationPattern<ConcreteT, quantfork::QuantizeCastOp,
                                      quantfork::DequantizeCastOp,
-                                     /*VerifierT=*/void, RootOpT>(
-            ctx, quant_params) {}
+                                     /*VerifierT=*/void, RootOpT>(ctx) {}
 
   static bool AllowHybridQuantization(Operation& op) { return false; }
 };
@@ -65,9 +63,8 @@ struct StableHloQuantizationBase
 // Quantization rewrite pattern using DQ as the root op.
 struct StableHloQuantization
     : public StableHloQuantizationBase<StableHloQuantization> {
-  explicit StableHloQuantization(MLIRContext* ctx,
-                                 const QuantPassSpec& quant_params)
-      : StableHloQuantizationBase<StableHloQuantization>(ctx, quant_params) {}
+  explicit StableHloQuantization(MLIRContext* ctx)
+      : StableHloQuantizationBase<StableHloQuantization>(ctx) {}
 };
 
 // Quantization rewrite pattern using Q as the root op. This is for the
@@ -75,20 +72,16 @@ struct StableHloQuantization
 struct StableHloQuantizationReverse
     : public StableHloQuantizationBase<StableHloQuantizationReverse,
                                        quantfork::QuantizeCastOp> {
-  explicit StableHloQuantizationReverse(MLIRContext* ctx,
-                                        const QuantPassSpec& quant_params)
+  explicit StableHloQuantizationReverse(MLIRContext* ctx)
       : StableHloQuantizationBase<StableHloQuantizationReverse,
-                                  quantfork::QuantizeCastOp>(ctx,
-                                                             quant_params) {}
+                                  quantfork::QuantizeCastOp>(ctx) {}
 };
 
 // Quantization rewrite pattern using DQ as the root op.
 struct StableHloQuantizationHybrid
     : public StableHloQuantizationBase<StableHloQuantizationHybrid> {
-  explicit StableHloQuantizationHybrid(MLIRContext* ctx,
-                                       const QuantPassSpec& quant_params)
-      : StableHloQuantizationBase<StableHloQuantizationHybrid>(ctx,
-                                                               quant_params) {}
+  explicit StableHloQuantizationHybrid(MLIRContext* ctx)
+      : StableHloQuantizationBase<StableHloQuantizationHybrid>(ctx) {}
 
   static bool AllowHybridQuantization(Operation& op) {
     auto call_op = cast<TF::XlaCallModuleOp>(op);
@@ -107,31 +100,20 @@ class QuantizePass : public impl::QuantizePassBase<QuantizePass> {
                         const QuantizationSpecs& quant_specs) {
     enable_per_channel_quantized_weight_ = enable_per_channel_quantized_weight;
     enable_weight_only_ = enable_weight_only;
-    quant_specs_ = quant_specs;
   }
 
  private:
   void runOnOperation() override;
-
-  QuantizationSpecs quant_specs_;
 };
 
 void QuantizePass::runOnOperation() {
   ModuleOp module_op = getOperation();
   MLIRContext& ctx = getContext();
 
-  NumericVerifySpec numeric_verify_spec;
-  numeric_verify_spec.verify_numeric = quant_specs_.verify_numeric;
-  numeric_verify_spec.whole_model_verify = quant_specs_.whole_model_verify;
-
-  const QuantPassSpec quant_params = {std::move(numeric_verify_spec),
-                                      quant_specs_};
-
   RewritePatternSet patterns(&ctx);
-  patterns.add<StableHloQuantization, StableHloQuantizationReverse>(
-      &ctx, quant_params);
+  patterns.add<StableHloQuantization, StableHloQuantizationReverse>(&ctx);
   if (enable_weight_only_) {
-    patterns.add<StableHloQuantizationHybrid>(&ctx, quant_params);
+    patterns.add<StableHloQuantizationHybrid>(&ctx);
     PopulateQuantizeHybridPatterns(ctx, patterns);
   }
 
@@ -149,11 +131,5 @@ void QuantizePass::runOnOperation() {
 }
 
 }  // namespace
-
-QuantizationSpecs DefaultQuantizationSpecs() {
-  QuantizationSpecs quant_specs;
-  quant_specs.inference_type = tensorflow::DT_QINT8;
-  return quant_specs;
-}
 
 }  // namespace mlir::quant::stablehlo
