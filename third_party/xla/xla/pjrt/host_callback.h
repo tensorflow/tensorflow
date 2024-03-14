@@ -34,6 +34,8 @@ limitations under the License.
 
 namespace xla {
 
+bool ThisThreadIsInsideHostCallback();
+
 // A thread-safe queue for passing PjRtChunk objects for e.g. from Send ops to
 // Recv ops.
 class ThreadSafePjRtChunkQueue {

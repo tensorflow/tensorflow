@@ -21,6 +21,10 @@ limitations under the License.
 
 namespace xla {
 
+static thread_local int on_send_guard = 0;
+
+bool ThisThreadIsInsideHostCallback() { return on_send_guard > 0; }
+
 Status HostCallbackContext::OnSend(int arg_num,
                                    const PjRtTransferMetadata& metadata,
                                    PjRtChunk data) {
@@ -72,7 +76,9 @@ Status HostCallbackContext::OnSend(int arg_num,
     result_ptrs.push_back(results.back().data());
   }
 
+  ++on_send_guard;
   auto status = host_callback_.callback(result_ptrs.data(), arg_ptrs.data());
+  --on_send_guard;
   // TODO(chky): Consider populating garbage data in results upon errors.
 
   // Clear the arguments for this invocation. This won't race with next
