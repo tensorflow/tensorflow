@@ -1150,11 +1150,15 @@ absl::StatusOr<bool> GemmFusionAutotuner::Run(
 
   if (debug_options.xla_gpu_autotune_level() == 0 ||
       debug_options.xla_gpu_deterministic_ops()) {
-    // Pick the first option for each gemm instead of autotuning..
+    // Pick the first option for each gemm instead of autotuning.
     for (const auto& [fusion, tilings] : gemm_config_sets) {
       const AutotuneCacheKey key = AutotunerUtil::GetKey(fusion, config_);
       AutotuneResult res;
-      *res.mutable_triton() = kDefaultGemmTiling.ToProto();
+      if (IsFusionKind(*fusion, kCuDnnFusionKind)) {
+        res.mutable_algorithm()->set_algo_id(-1);
+      } else {
+        *res.mutable_triton() = kDefaultGemmTiling.ToProto();
+      }
       *res.mutable_run_time() =
           tsl::proto_utils::ToDurationProto(absl::ZeroDuration());
       AutotunerUtil::AddResult(key, res);

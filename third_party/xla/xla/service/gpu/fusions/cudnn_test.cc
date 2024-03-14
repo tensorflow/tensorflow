@@ -49,6 +49,28 @@ class CuDnnFusionTest : public GpuCodegenTest {
 
 using CuDnnFusionExecutionTest = CuDnnFusionTest;
 
+TEST_F(CuDnnFusionExecutionTest,
+       NoTritonConfigIsAssignedAtZeroAutotuningLevel) {
+  EXPECT_EQ(GetDebugOptionsForTest().xla_gpu_autotune_level(), 0);
+  MatchOptimizedHlo(R"(
+fusion1 {
+  p0 = f32[32,96] parameter(0)
+  p1 = f32[96,64] parameter(1)
+  ROOT r = f32[32,64] dot(p0, p1),
+    lhs_contracting_dims={1}, rhs_contracting_dims={0}
+}
+
+ENTRY e {
+  p0 = f32[32,96] parameter(0)
+  p1 = f32[96,64] parameter(1)
+  ROOT _ = f32[32,64] fusion(p0, p1), kind=kCustom, calls=fusion1,
+    backend_config={"fusion_backend_config": {kind: "__cudnn$fusion"}}
+})",
+                    R"(
+CHECK-NOT: triton_gemm_config
+  )");
+}
+
 TEST_F(CuDnnFusionExecutionTest, DotF32ExecutesCorrectly) {
   EXPECT_TRUE(RunAndCompare(R"(
 fusion1 {
