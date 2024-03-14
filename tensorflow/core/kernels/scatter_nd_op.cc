@@ -165,6 +165,11 @@ class TensorScatterOp : public OpKernel {
                                       updates.shape().num_elements()),
                 errors::InvalidArgument(
                     "Indices and updates specified for empty output shape"));
+    OP_REQUIRES(c, 
+                !(updates.shape().dims() < indices.shape().dims() - 1),
+                absl::InvalidArgumentError(
+                    "The rank of `updates` should not be lower than "
+                    "rank of `indices` -1 . "));
 
     const int64_t outer_dims = indices.shape().dims() - 1;
 
