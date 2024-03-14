@@ -142,20 +142,11 @@ bazel build ${EXTRA_BUILD_FLAGS}  \
   --output_filter=^$ \
   tensorflow/lite:framework tensorflow/lite/examples/minimal:minimal || exit $?
 
-if [[ "$TF_NIGHTLY" == 1 ]]; then
-  bazel build \
-  --experimental_cc_shared_library \
-  --config=release_cpu_windows ${EXTRA_BUILD_FLAGS} \
-  --repo_env=WHEEL_NAME=tf_nightly \
-  --output_filter=^$ \
-  tensorflow/tools/pip_package:wheel || exit $?
-else 
-  bazel build \
+bazel build \
   --experimental_cc_shared_library \
   --config=release_cpu_windows ${EXTRA_BUILD_FLAGS} \
   --output_filter=^$ \
   tensorflow/tools/pip_package:wheel || exit $?
-fi
   
 if [[ "$SKIP_TEST" == 1 ]]; then
   exit 0
