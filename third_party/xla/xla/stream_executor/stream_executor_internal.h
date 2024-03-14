@@ -305,12 +305,6 @@ class StreamExecutorInterface {
     return absl::UnimplementedError("Command buffers are not implemented");
   }
 
-  // Returns a pointer to a platform specific context associated with this
-  // object if it exists, or nullptr otherwise. This is available via
-  // StreamExecutor public API as StreamExecuto::PlatformSpecificHandle, and
-  // should not be accessed directly outside of a StreamExecutor package.
-  virtual void* platform_specific_context() { return nullptr; }
-
   // Return allocator statistics.
   virtual std::optional<AllocatorStats> GetAllocatorStats() {
     return std::nullopt;

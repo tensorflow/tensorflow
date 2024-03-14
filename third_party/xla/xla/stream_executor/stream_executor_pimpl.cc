@@ -102,13 +102,6 @@ StreamExecutor::~StreamExecutor() {
   }
 }
 
-StreamExecutor::PlatformSpecificHandle
-StreamExecutor::platform_specific_handle() const {
-  PlatformSpecificHandle handle;
-  handle.context = implementation_->platform_specific_context();
-  return handle;
-}
-
 absl::Status StreamExecutor::Init() {
   TF_RETURN_IF_ERROR(implementation_->Init(device_ordinal_));
   return absl::OkStatus();

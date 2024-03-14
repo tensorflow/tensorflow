@@ -896,8 +896,6 @@ std::unique_ptr<GpuCommandBuffer> GpuExecutor::CreateCommandBuffer(
                                             is_owned_graph);
 }
 
-void* GpuExecutor::platform_specific_context() { return context_; }
-
 GpuContext* GpuExecutor::gpu_context() { return context_; }
 
 // Attempts to read the NUMA node corresponding to the GPU device's PCI bus out

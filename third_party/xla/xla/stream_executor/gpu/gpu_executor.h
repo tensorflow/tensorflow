@@ -292,8 +292,6 @@ class GpuExecutor : public internal::StreamExecutorInterface {
   std::unique_ptr<GpuCommandBuffer> CreateCommandBuffer(
       CommandBuffer::Mode mode, GpuGraphHandle graph, bool is_owned_graph);
 
-  void* platform_specific_context() override;
-
   GpuContext* gpu_context();
 
   // Provide a type-erased way of attaching arbitrary XLA specific state to the
