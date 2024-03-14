@@ -880,7 +880,7 @@ static absl::Status Memcpy(se::Stream* stream, ffi::BufferBase src,
 
 XLA_FFI_DEFINE_HANDLER(kMemcpy, Memcpy,
                        ffi::Ffi::Bind()
-                           .Ctx<se::Stream>()
+                           .Ctx<ffi::Stream>()
                            .Arg<ffi::BufferBase>()  // src
                            .Arg<ffi::BufferBase>()  // dst
 );

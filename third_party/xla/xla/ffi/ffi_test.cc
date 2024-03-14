@@ -477,7 +477,7 @@ TEST(FfiTest, RunOptionsCtx) {
     return absl::OkStatus();
   };
 
-  auto handler = Ffi::Bind().Ctx<se::Stream>().To(fn);
+  auto handler = Ffi::Bind().Ctx<Stream>().To(fn);
   auto status = Call(*handler, call_frame, {&opts});
 
   TF_ASSERT_OK(status);
