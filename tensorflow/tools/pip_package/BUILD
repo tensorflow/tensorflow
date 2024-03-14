@@ -4,11 +4,11 @@
 load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
 load("@local_config_syslibs//:build_defs.bzl", "if_not_system_lib")
 load("//tensorflow:tensorflow.bzl", "if_with_tpu_support", "transitive_hdrs")
+load("@local_xla//xla/tsl/mkl:build_defs.bzl", "if_enable_mkl", "if_mkl", "if_mkl_ml")
 load("//tensorflow/core/platform:build_config_root.bzl", "tf_additional_license_deps")
 load("//tensorflow/tools/pip_package/utils:data_deps.bzl", "collect_data_files")
 load("//tensorflow/tools/pip_package/utils:py_deps.bzl", "transitive_py_deps")
 load("//tensorflow/tools/pip_package/utils:tf_wheel.bzl", "tf_wheel")
-load("@local_tsl//tsl/mkl:build_defs.bzl", "if_enable_mkl", "if_mkl", "if_mkl_ml")
 
 package(default_visibility = ["//visibility:public"])
 
@@ -122,7 +122,7 @@ filegroup(
         "@local_config_nccl//:LICENSE",
     ]) + if_mkl([
         "//third_party/mkl_dnn:LICENSE",
-    ]) + if_enable_mkl(["@local_tsl//tsl/mkl:LICENSE"]) + if_not_system_lib(
+    ]) + if_enable_mkl(["@local_xla//xla/tsl/mkl:LICENSE"]) + if_not_system_lib(
         "absl_py",
         [
             "@absl_py//:LICENSE",
@@ -285,7 +285,7 @@ tf_wheel(
             "//tensorflow:tensorflow_framework",
         ],
         "//tensorflow:windows": ["//tensorflow/python:pywrap_tensorflow_import_lib_file"],
-    }) + if_mkl_ml(["@local_tsl//tsl/mkl:intel_binary_blob"]),
+    }) + if_mkl_ml(["@local_xla//xla/tsl/mkl:intel_binary_blob"]),
     xla_aot_compiled = [
         "//tensorflow/compiler/tf2xla:xla_compiled_cpu_runtime_srcs",
         ":xla_cmake",

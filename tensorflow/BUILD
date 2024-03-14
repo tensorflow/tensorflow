@@ -25,6 +25,10 @@ load(
     "tf_cc_shared_library",
 )
 load(
+    "@local_xla//xla/tsl/mkl:build_defs.bzl",
+    "if_mkl_ml",
+)
+load(
     "//tensorflow/core/platform:build_config.bzl",
     "tf_additional_binary_deps",
 )
@@ -34,12 +38,9 @@ load(
     "tf_additional_plugin_deps",
     "tf_additional_profiler_deps",
 )
-load(
-    "@local_tsl//tsl/mkl:build_defs.bzl",
-    "if_mkl_ml",
-)
 load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
 
+# Do not sort: Copybara rule
 # copybara:uncomment_begin
 # # buildifier: disable=out-of-order-load
 # load("//devtools/build_cleaner/skylark:action_config_test.bzl", "action_config_test")
@@ -1095,7 +1096,7 @@ filegroup(
     name = "intel_binary_blob",
     data = if_mkl_ml(
         [
-            "@local_tsl//tsl/mkl:intel_binary_blob",
+            "@local_xla//xla/tsl/mkl:intel_binary_blob",
         ],
     ),
 )
@@ -1116,8 +1117,8 @@ bzl_library(
         "@local_config_rocm//rocm:build_defs_bzl",
         "@local_config_tensorrt//:build_defs_bzl",
         "@local_tsl//tsl:tsl_bzl",
-        "@local_tsl//tsl/mkl:build_defs_bzl",
         "@local_tsl//tsl/platform/default:cuda_build_defs_bzl",
+        "@local_xla//xla/tsl/mkl:build_defs_bzl",
     ],
 )
 
