@@ -89,7 +89,9 @@ class PyExecuteResults {
  public:
   PyExecuteResults(const std::shared_ptr<PyClient>& client,
                    std::vector<tsl::RCReference<ifrt::Array>> ifrt_arrays,
-                   int num_computations, PyShardedToken token);
+                   int num_computations, PyShardedToken token,
+                   xla::PjRtFuture<absl::Status> result_status =
+                       xla::PjRtFuture<absl::Status>());
 
   std::vector<std::vector<PyArray>> DisassembleIntoSingleDeviceArrays();
 
@@ -118,6 +120,8 @@ class PyExecuteResults {
   std::vector<tsl::RCReference<ifrt::Array>> ifrt_arrays_;
   int num_computations_;
   PyShardedToken token_;
+  // Only set if the computation has tokens.
+  xla::PjRtFuture<absl::Status> result_status_;
 };
 
 using ExecuteShardedArg = std::variant<PyArray, std::vector<PyArray>>;
