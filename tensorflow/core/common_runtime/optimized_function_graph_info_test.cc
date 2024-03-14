@@ -20,6 +20,7 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/status/statusor.h"
 #include "absl/strings/substitute.h"
 #include "third_party/protobuf/text_format.h"
 #include "tensorflow/core/framework/function.h"
@@ -172,6 +173,64 @@ TEST(OptimizedFunctionGraphUtilsTest, FromProtoProducesCorrectResult) {
                                            name: 'B'
                                            op: 'OneInputTwoOutputs'
                                            device: ':CPU'
+                                         })pb")));
+  // The lib_def in graph is already cleared.
+  EXPECT_EQ(test_result->function_graph->flib_def().Find("NonZero"), nullptr);
+  // The function should be found in result's lib_def.
+  EXPECT_NE(test_result->lib_def.Find("NonZero"), nullptr);
+  EXPECT_THAT(test_result->ret_types,
+              ElementsAre(DT_FLOAT, DT_DOUBLE, DT_BOOL));
+  EXPECT_THAT(test_result->node_name_to_control_ret,
+              UnorderedElementsAre(Pair("B", "A")));
+  EXPECT_EQ(test_result->num_return_nodes, 2);
+  EXPECT_EQ(test_result->optimization_duration_usecs, 15);
+  EXPECT_EQ(test_result->optimization_source, OptimizedFunctionGraph::AOT);
+}
+
+TEST(OptimizedFunctionGraphUtilsTest,
+     FromProtoProducesCorrectResultWithFunctionCall) {
+  OptimizedFunctionGraph proto;
+  proto2::TextFormat::ParseFromString(
+      absl::Substitute(
+          R"pb(
+            name: "test_func",
+            function_graph {
+              node {
+                name: 'B'
+                op: 'NonZero'
+                device: ':CPU'
+                attr {
+                  key: "T"
+                  value { type: DT_FLOAT }
+                }
+              } $0
+            }
+            node_name_to_control_ret { key: "B" value: "A" }
+            ret_types: DT_FLOAT
+            ret_types: DT_DOUBLE
+            ret_types: DT_BOOL
+            num_return_nodes: 2
+            optimization_time_usecs: 15
+            source: 1
+          )pb",
+          kLibraryPb),
+      &proto);
+
+  const absl::StatusOr<OptimizedFunctionGraphInfo> test_result =
+      OptimizedFunctionGraphInfo::FromProto(std::move(proto));
+  TF_EXPECT_OK(test_result.status());
+  // Compare graph.
+  GraphDef test_result_graph_def;
+  test_result->function_graph->ToGraphDef(&test_result_graph_def);
+  EXPECT_THAT(test_result_graph_def,
+              Partially(EqualsProto(R"pb(node {
+                                           name: 'B'
+                                           op: 'NonZero'
+                                           device: ':CPU'
+                                           attr {
+                                             key: "T"
+                                             value { type: DT_FLOAT }
+                                           }
                                          })pb")));
   // The lib_def in graph is already cleared.
   EXPECT_EQ(test_result->function_graph->flib_def().Find("NonZero"), nullptr);
