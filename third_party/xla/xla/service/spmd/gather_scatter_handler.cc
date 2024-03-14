@@ -73,11 +73,22 @@ PartitionedHlo PerGroupPartitionedHlo(
 std::vector<PartitionedHlo> PerGroupPartitionedHlos(
     std::vector<PartitionedHlo>& phlos, const GroupedSharding& grouped_sharding,
     SpmdBuilder* b, absl::InlinedVector<std::function<void()>, 3>& clean_ups) {
+  // Cache per-group partitioned hlos to avoid group-partitioning it more than
+  // once.
+  absl::flat_hash_map<HloInstruction*, PartitionedHlo> cached_per_group_hlos;
+  std::vector<HloInstruction*> hlos;
+  absl::c_transform(phlos, std::back_inserter(hlos),
+                    [&](PartitionedHlo phlo) { return phlo.hlo(); });
+
   std::vector<PartitionedHlo> per_group_phlos;
-  absl::c_transform(
-      phlos, std::back_inserter(per_group_phlos), [&](PartitionedHlo phlo) {
-        return PerGroupPartitionedHlo(phlo, grouped_sharding, b, clean_ups);
-      });
+  for (int i = 0; i != hlos.size(); ++i) {
+    if (!cached_per_group_hlos.contains(hlos[i])) {
+      cached_per_group_hlos.emplace(std::make_pair(
+          hlos[i],
+          PerGroupPartitionedHlo(phlos[i], grouped_sharding, b, clean_ups)));
+    }
+    per_group_phlos.push_back(cached_per_group_hlos.at(hlos[i]));
+  }
   return per_group_phlos;
 }
 
