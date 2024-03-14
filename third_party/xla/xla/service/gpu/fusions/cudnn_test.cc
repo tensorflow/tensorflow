@@ -276,7 +276,7 @@ class CuDnnFusionRewriteTest : public CuDnnFusionTest {
     // Reset autotuning level to default.
     debug_options.set_xla_gpu_autotune_level(
         GetDebugOptionsFromFlags().xla_gpu_autotune_level());
-    debug_options.set_xla_gpu_cudnn_gemm_fusion(true);
+    debug_options.set_xla_gpu_cudnn_gemm_fusion_level(1);
     return debug_options;
   }
 };

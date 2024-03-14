@@ -209,7 +209,7 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_gpu_enable_reduction_epilogue_fusion(true);
   opts.set_xla_gpu_enable_nccl_clique_optimization(false);
   opts.set_xla_gpu_cublas_fallback(true);
-  opts.set_xla_gpu_cudnn_gemm_fusion(false);
+  opts.set_xla_gpu_cudnn_gemm_fusion_level(0);
   opts.set_xla_gpu_enable_while_loop_double_buffering(false);
   opts.set_xla_gpu_ensure_minor_dot_contraction_dims(false);
   opts.set_xla_gpu_filter_kernels_spilling_registers_on_autotuning(true);
@@ -1507,11 +1507,12 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
                 debug_options->xla_gpu_cublas_fallback(),
                 "Allow Triton GEMM autotuning to fall back to cuBLAS when that "
                 "is faster."));
-  flag_list->push_back(
-      tsl::Flag("xla_gpu_cudnn_gemm_fusion",
-                bool_setter_for(&DebugOptions::set_xla_gpu_cudnn_gemm_fusion),
-                debug_options->xla_gpu_cudnn_gemm_fusion(),
-                "Allow GEMM fusion autotuning probe cuDNN as a backend."));
+  flag_list->push_back(tsl::Flag(
+      "xla_gpu_cudnn_gemm_fusion_level",
+      int32_setter_for(&DebugOptions::set_xla_gpu_cudnn_gemm_fusion_level),
+      debug_options->xla_gpu_cudnn_gemm_fusion_level(),
+      "cuDNN GEMM fusion level; higher level corresponds to more kinds of "
+      "fused operations."));
   flag_list->push_back(
       tsl::Flag("xla_gpu_mock_custom_calls",
                 bool_setter_for(&DebugOptions::set_xla_gpu_mock_custom_calls),

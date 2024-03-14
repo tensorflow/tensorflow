@@ -711,9 +711,6 @@ message DebugOptions {
   // are counted.
   int64 xla_gpu_skip_mlir_kernels = 282;
 
-  // Let GEMM fusion autotuning probe cuDNN as a backend.
-  bool xla_gpu_cudnn_gemm_fusion = 277;
-
   // Threshold to rewrite matmul to cuBLAS or Triton (minumum combined number of
   // elements of both matrices in non-batch dimensions to be considered for a
   // rewrite).
@@ -724,7 +721,13 @@ message DebugOptions {
   // `NotFound` error will be returned.
   bool xla_gpu_require_complete_aot_autotune_results = 284;
 
-  // Next id: 285
+  // Let GEMM fusion autotuning probe cuDNN as a backend.
+  // Current levels:
+  // 0: disabled.
+  // 1: fusions of GEMM, elementwise, transpose/reshape operations.
+  int32 xla_gpu_cudnn_gemm_fusion_level = 285;
+
+  // Next id: 286
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.
