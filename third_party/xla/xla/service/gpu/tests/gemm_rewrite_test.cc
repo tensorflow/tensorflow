@@ -5486,6 +5486,10 @@ TEST_P(ParameterizedFp8GemmRewriteTest,
 )";
 
   CheckFp8IfSupported(hlo_text);
+
+// Fusing gelu into FP8 cublas matmuls is disabled on CUDA versions less
+// than 12.4.
+#if (GOOGLE_CUDA && CUDA_VERSION >= 12040) || TENSORFLOW_USE_ROCM
   RunAndFilecheckHloRewrite(
       hlo_text, GemmRewriter(CudaHopperOrRocmMI300(), /*f8_rewrite=*/true),
       R"(
@@ -5519,6 +5523,7 @@ TEST_P(ParameterizedFp8GemmRewriteTest,
 ; CHECK-GCN-DAG:         "epilogue":"DEFAULT"
 ; CHECK:           }
       )");
+#endif  // (GOOGLE_CUDA && CUDA_VERSION >= 12040) || TENSORFLOW_USE_ROCM
 }
 
 TEST_P(ParameterizedFp8GemmRewriteTest,
@@ -5566,6 +5571,10 @@ TEST_P(ParameterizedFp8GemmRewriteTest,
 )";
 
   CheckFp8IfSupported(hlo_text);
+
+// Fusing gelu into FP8 cublas matmuls is disabled on CUDA versions less
+// than 12.4.
+#if (GOOGLE_CUDA && CUDA_VERSION >= 12040) || TENSORFLOW_USE_ROCM
   // Currently, hipBlasLt does not support output datatype bf16 for fp8 matmul.
   // And no fusion was done for such cases.
   RunAndFilecheckHloRewrite(
@@ -5600,6 +5609,7 @@ TEST_P(ParameterizedFp8GemmRewriteTest,
 ; CHECK-GCN-DAG:         "epilogue":"DEFAULT"
 ; CHECK:           }
       )");
+#endif  // (GOOGLE_CUDA && CUDA_VERSION >= 12040) || TENSORFLOW_USE_ROCM
 }
 
 TEST_P(ParameterizedFp8GemmRewriteTest, InvScaledABUnscaledDF8) {

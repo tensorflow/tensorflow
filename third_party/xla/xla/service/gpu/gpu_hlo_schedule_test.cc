@@ -1111,6 +1111,77 @@ ENTRY e {
 )"));
 }
 
+TEST_F(GpuHloScheduleTest, ProfileGuidedCostModelWithForceEarliestSchedule) {
+  const char* hlo_text = R"(
+  HloModule AsyncAR
+  apply_op {
+    x = f32[] parameter(0)
+    y = f32[] parameter(1)
+    ROOT apply_op = f32[] add(x, y)
+  }
+
+  ENTRY main {
+    p0 = f32[32] parameter(0)
+    p1 = f32[32, 32] parameter(1)
+    p2 = f32[32, 32] parameter(2)
+    p3 = f32[32] parameter(3)
+
+    // Independent compute
+    dot0 = f32[32,32]{1,0} custom-call(p1, p2), custom_call_target="__cublas$gemm", backend_config={"force_earliest_schedule":true}
+    dot1 = f32[32,32]{1,0} custom-call(p1, p2), custom_call_target="__cublas$gemm"
+    add0 = f32[32,32] add(dot0, dot1)
+
+    // 2 Independent collectives.
+    ar-start = f32[32] all-reduce-start(p0), to_apply=apply_op
+    ar-done = f32[32] all-reduce-done(ar-start)
+
+    ROOT t = (f32[32], f32[32,32]) tuple(ar-done, add0)
+  })";
+
+  const std::string ar_long_latency_proto_text = R"pb(
+    costs { name: "dot0" cost_us: 100.0 }
+    costs { name: "dot1" cost_us: 100.0 }
+    costs { name: "add0" cost_us: 10.0 }
+    costs { name: "ar-start" cost_us: 1000.0 }
+  )pb";
+
+  tensorflow::profiler::ProfiledInstructionsProto profile;
+  ASSERT_TRUE(tsl::protobuf::TextFormat::ParseFromString(
+      ar_long_latency_proto_text, &profile));
+  std::string ar_long_latency_proto_binary = profile.SerializeAsString();
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto module,
+      ParseAndReturnVerifiedModule(
+          hlo_text,
+          GetModuleConfig(/*enable_latency_hiding_scheduler=*/true,
+                          // Post processing should work even with
+                          // GpuAsyncTrackerBase.
+                          /*enable_gpu_async_tracker=*/false,
+                          /*fdo_profile=*/ar_long_latency_proto_binary)));
+  SequentialHloOrdering order = BuildHloOrdering(module.get());
+
+  const std::vector<HloInstruction*>& main =
+      order.SequentialOrder(*module->GetComputationWithName("main"))
+          ->instructions();
+  auto get_index =
+      [](absl::string_view hlo_name,
+         const std::vector<HloInstruction*>& instruction_sequence) {
+        return absl::c_find_if(instruction_sequence,
+                               [hlo_name](HloInstruction* instruction) {
+                                 return instruction->name() == hlo_name;
+                               }) -
+               instruction_sequence.begin();
+      };
+  // Using the profile, LHS should schedule all computes between ar pair,
+  // but since dot0 is marked as force delay, it should be scheduled
+  // before ar-start now.
+  EXPECT_LT(get_index("dot0", main), get_index("ar-start", main));
+  // Also verify that dot1 is scheduled between ar start and ar done.
+  EXPECT_GT(get_index("dot1", main), get_index("ar-start", main));
+  EXPECT_LT(get_index("dot1", main), get_index("ar-done", main));
+}
+
 class GpuHloScheduleParameterizedTest
     : public GpuHloScheduleTest,
       public ::testing::WithParamInterface<bool> {};

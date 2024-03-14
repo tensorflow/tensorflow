@@ -158,19 +158,19 @@ class CoordinationServiceAgentTest : public ::testing::Test {
  public:
   void SetUp() override {
     ON_CALL(*client_, RegisterTaskAsync(_, _, _, _))
-        .WillByDefault(InvokeArgument<3>(OkStatus()));
+        .WillByDefault(InvokeArgument<3>(absl::OkStatus()));
     ON_CALL(*client_, HeartbeatAsync(_, _, _, _))
-        .WillByDefault(InvokeArgument<3>(OkStatus()));
+        .WillByDefault(InvokeArgument<3>(absl::OkStatus()));
     ON_CALL(*client_, ShutdownTaskAsync(_, _, _, _))
-        .WillByDefault(InvokeArgument<3>(OkStatus()));
+        .WillByDefault(InvokeArgument<3>(absl::OkStatus()));
     ON_CALL(*client_, ReportErrorToServiceAsync(_, _, _))
-        .WillByDefault(InvokeArgument<2>(OkStatus()));
+        .WillByDefault(InvokeArgument<2>(absl::OkStatus()));
     ON_CALL(*client_, ResetTaskAsync(_, _, _))
-        .WillByDefault(InvokeArgument<2>(OkStatus()));
+        .WillByDefault(InvokeArgument<2>(absl::OkStatus()));
     ON_CALL(*client_, BarrierAsync(_, _, _))
-        .WillByDefault(InvokeArgument<2>(OkStatus()));
+        .WillByDefault(InvokeArgument<2>(absl::OkStatus()));
     ON_CALL(*client_, GetTaskStateAsync(_, _, _))
-        .WillByDefault(InvokeArgument<2>(OkStatus()));
+        .WillByDefault(InvokeArgument<2>(absl::OkStatus()));
   }
 
   // Should be called after mocking service responses, before testing the agent.
@@ -179,7 +179,7 @@ class CoordinationServiceAgentTest : public ::testing::Test {
     TF_ASSERT_OK(agent_->Initialize(
         Env::Default(), /*job_name=*/"test_job",
         /*task_id=*/0, config, std::move(client_),
-        /*error_fn=*/[](Status s) {
+        /*error_fn=*/[](absl::Status s) {
           LOG(ERROR) << "Coordination agent is set to error: " << s;
         }));
   }
@@ -208,7 +208,7 @@ TEST_F(CoordinationServiceAgentTest, GetKeyValue_Simple_Success) {
   kv->set_value(test_value);
   ON_CALL(*GetClient(), GetKeyValueAsync(_, _, _, _))
       .WillByDefault(DoAll(SetArgPointee<2>(mocked_response),
-                           InvokeArgument<3>(OkStatus())));
+                           InvokeArgument<3>(absl::OkStatus())));
   // Initialize coordination agent.
   InitializeAgent();
 
@@ -228,7 +228,7 @@ TEST_F(CoordinationServiceAgentTest, GetKeyValue_WithTimeout_Success) {
   kv->set_value(test_value);
   ON_CALL(*GetClient(), GetKeyValueAsync(_, _, _, _))
       .WillByDefault(DoAll(SetArgPointee<2>(mocked_response),
-                           InvokeArgument<3>(OkStatus())));
+                           InvokeArgument<3>(absl::OkStatus())));
   // Initialize coordination agent.
   InitializeAgent();
 
@@ -281,7 +281,7 @@ TEST_F(CoordinationServiceAgentTest,
   auto kv = owned_response->mutable_kv();
   kv->set_key(test_key);
   kv->set_value(test_value);
-  owned_done(OkStatus());
+  owned_done(absl::OkStatus());
   // No explicit test, but used to verify there is no stack-use-after-return
   // or other memory-related errors.
 }
@@ -313,7 +313,7 @@ TEST_F(CoordinationServiceAgentTest,
                   auto kv = owned_response->mutable_kv();
                   kv->set_key(test_key);
                   kv->set_value(test_value);
-                  owned_done(OkStatus());
+                  owned_done(absl::OkStatus());
                 }));
           }));
   InitializeAgent();
@@ -336,7 +336,7 @@ TEST_F(CoordinationServiceAgentTest, CancelGetKeyValue_Success) {
           }));
   InitializeAgent();
 
-  Status status;
+  absl::Status status;
   std::shared_ptr<CallOptions> get_kv_call_opts = agent_->GetKeyValueAsync(
       test_key, [&status](const absl::StatusOr<std::string>& result) {
         status = result.status();
@@ -359,7 +359,7 @@ TEST_F(CoordinationServiceAgentTest, TryGetKeyValue_Simple_Success) {
   kv->set_value(test_value);
   ON_CALL(*GetClient(), TryGetKeyValueAsync(_, _, _))
       .WillByDefault(DoAll(SetArgPointee<1>(mocked_response),
-                           InvokeArgument<2>(OkStatus())));
+                           InvokeArgument<2>(absl::OkStatus())));
 
   // Initialize coordination agent.
   InitializeAgent();
@@ -379,7 +379,7 @@ TEST_F(CoordinationServiceAgentTest, GetKeyValueDir_Simple_Success) {
   *mocked_response.mutable_kv() = {test_values.begin(), test_values.end()};
   ON_CALL(*GetClient(), GetKeyValueDirAsync(_, _, _))
       .WillByDefault(DoAll(SetArgPointee<1>(mocked_response),
-                           InvokeArgument<2>(OkStatus())));
+                           InvokeArgument<2>(absl::OkStatus())));
   // Initialize coordination agent.
   InitializeAgent();
 
@@ -396,7 +396,7 @@ TEST_F(CoordinationServiceAgentTest, ShutdownInErrorShouldReturnError) {
   TF_ASSERT_OK(agent_->ReportError(absl::InternalError("Test Error.")));
 
   // Shutdown should return error.
-  Status s = agent_->Shutdown();
+  absl::Status s = agent_->Shutdown();
 
   EXPECT_TRUE(absl::IsFailedPrecondition(s));
 }
@@ -428,14 +428,14 @@ TEST_F(CoordinationServiceAgentTest, ResetCanBeRetried) {
   // Mock reset error failing for the first time.
   EXPECT_CALL(*GetClient(), ResetTaskAsync(_, _, _))
       .WillOnce(InvokeArgument<2>(absl::InternalError("Reset error")))
-      .WillOnce(InvokeArgument<2>(OkStatus()));
+      .WillOnce(InvokeArgument<2>(absl::OkStatus()));
   // Connect coordination agent and set it to error.
   InitializeAgent();
   TF_ASSERT_OK(agent_->Connect());
   TF_ASSERT_OK(agent_->ReportError(absl::InternalError("Test Error.")));
 
   // Reset error fails for the first time.
-  Status reset_status = agent_->Reset();
+  absl::Status reset_status = agent_->Reset();
   EXPECT_TRUE(absl::IsInternal(reset_status));
 
   // Agent should be able to attempt resetting again.
@@ -497,7 +497,7 @@ TEST_F(CoordinationServiceAgentTest, Connect_AbortedErrorShouldBeRetried) {
           InvokeArgument<3>(absl::AbortedError("DuplicateTaskRegistration")))
       .WillOnce(
           InvokeArgument<3>(absl::AbortedError("DuplicateTaskRegistration")))
-      .WillOnce(InvokeArgument<3>(OkStatus()));
+      .WillOnce(InvokeArgument<3>(absl::OkStatus()));
   InitializeAgent();
 
   TF_EXPECT_OK(agent_->Connect());
@@ -515,7 +515,7 @@ TEST_F(CoordinationServiceAgentTest, Connect_AbortedErrorShouldFailEventually) {
       absl::ToInt64Milliseconds(absl::Seconds(3)));
   InitializeAgent(config);
 
-  Status s = agent_->Connect();
+  absl::Status s = agent_->Connect();
 
   EXPECT_TRUE(absl::IsAborted(s));
 }
@@ -526,7 +526,7 @@ TEST_F(CoordinationServiceAgentTest, Connect_InternalErrorShouldBeRetried) {
           absl::InternalError("Coordination service is not enabled.")))
       .WillOnce(InvokeArgument<3>(
           absl::InternalError("Coordination service is not enabled.")))
-      .WillOnce(InvokeArgument<3>(OkStatus()));
+      .WillOnce(InvokeArgument<3>(absl::OkStatus()));
   InitializeAgent();
 
   TF_EXPECT_OK(agent_->Connect());
