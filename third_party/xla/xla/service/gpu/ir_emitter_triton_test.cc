@@ -677,10 +677,10 @@ TEST_F(
   const std::string kHloText = R"(
 HloModule h1
 
-add_computation {
+max_computation {
   x = f32[] parameter(0)
   y = f32[] parameter(1)
-  ROOT add = f32[] add(x, y)
+  ROOT _ = f32[] maximum(x, y)
 }
 
 triton_softmax_computation {
@@ -689,7 +689,7 @@ triton_softmax_computation {
   parameter_0 = f32[32,16]{1,0} parameter(0)
   add_0 = f32[32,16]{1,0} add(broadcast_1, parameter_0)
   c = f32[] constant(0)
-  reduce_0 = f32[32]{0} reduce(parameter_0, c), dimensions={1}, to_apply=add_computation
+  reduce_0 = f32[32]{0} reduce(parameter_0, c), dimensions={1}, to_apply=max_computation
   broadcast_0 = f32[32,16]{1,0} broadcast(reduce_0), dimensions={0}
   ROOT _ = f32[32,16]{1,0} add(add_0, broadcast_0)
 }
@@ -720,24 +720,24 @@ CHECK:           tt.addptr %[[P0]], %[[ROW_OFFSET]] : !tt.ptr<f32, 1>, i64
 CHECK:           tt.make_tensor_ptr
 CHECK-SAME:      <tensor<16xf32>, 1>
 CHECK:           tt.load
-CHECK-SAME:      {boundaryCheck = array<i32>, cache = 1 : i32, evict = 1 : i32, isVolatile = false} : !tt.ptr<tensor<16xf32>, 1> -> tensor<16xf32>
+CHECK-SAME:      !tt.ptr<tensor<16xf32>, 1> -> tensor<16xf32>
 CHECK:           tt.addptr %[[P1]], %[[PID_i64]] : !tt.ptr<f32, 1>, i64
 CHECK:           tt.load
 CHECK-SAME:      {cache = 1 : i32, evict = 1 : i32, isVolatile = false} : f32
 CHECK:           tt.reduce
 CHECK-NEXT:      ^bb0(%[[ARG3:.*]]: f32, %[[ARG4:.*]]: f32):
-CHECK:             %[[ADD:.*]] = arith.addf %[[ARG3]], %[[ARG4]] : f32
-CHECK:             tt.reduce.return %[[ADD]] : f32
+CHECK:             %[[MAX:.*]] = arith.maximumf %[[ARG3]], %[[ARG4]] : f32
+CHECK:             tt.reduce.return %[[MAX]] : f32
 CHECK:           }) : (tensor<16xf32>) -> f32
 CHECK:           tt.addptr %[[P2]]
 CHECK:           tt.make_tensor_ptr
 CHECK-SAME:      tensor<16xf32>
 CHECK:           tt.store
-CHECK-SAME:      {boundaryCheck = array<i32: 0>, cache = 1 : i32, evict = 1 : i32} : !tt.ptr<tensor<16xf32>, 1>, tensor<16xf32>
+CHECK-SAME:      !tt.ptr<tensor<16xf32>, 1>, tensor<16xf32>
 )"));
 
-  EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/1e-1,
-                                                /*arel=*/1e-2}));
+  EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/0,
+                                                /*arel=*/0}));
 }
 
 TEST_F(
@@ -746,10 +746,10 @@ TEST_F(
   const std::string kHloText = R"(
 HloModule h1
 
-add_computation {
+max_computation {
   x = f32[] parameter(0)
   y = f32[] parameter(1)
-  ROOT add = f32[] add(x, y)
+  ROOT _ = f32[] maximum(x, y)
 }
 
 triton_softmax_computation {
@@ -758,7 +758,7 @@ triton_softmax_computation {
   parameter_0 = f32[16,32]{1,0} parameter(0)
   add_0 = f32[16,32]{1,0} add(broadcast_1, parameter_0)
   c = f32[] constant(0)
-  reduce_0 = f32[16]{0} reduce(parameter_0, c), dimensions={1}, to_apply=add_computation
+  reduce_0 = f32[16]{0} reduce(parameter_0, c), dimensions={1}, to_apply=max_computation
   broadcast_0 = f32[16,32]{1,0} broadcast(reduce_0), dimensions={0}
   ROOT _ = f32[16,32]{1,0} add(add_0, broadcast_0)
 }
@@ -790,25 +790,25 @@ CHECK:           tt.addptr %[[P0]], %[[ROW_OFFSET]] : !tt.ptr<f32, 1>, i64
 CHECK:           tt.make_tensor_ptr
 CHECK-SAME:      <tensor<32xf32>, 1>
 CHECK:           tt.load
-CHECK-SAME:      {boundaryCheck = array<i32>, cache = 1 : i32, evict = 1 : i32, isVolatile = false} : !tt.ptr<tensor<32xf32>, 1> -> tensor<32xf32>
+CHECK-SAME:      !tt.ptr<tensor<32xf32>, 1> -> tensor<32xf32>
 CHECK:           tt.addptr %[[P1]], %[[ZERO_OFFSET]] : !tt.ptr<f32, 1>, i64
 CHECK-NEXT:      tt.make_tensor_ptr
 CHECK-SAME:      <tensor<32xf32>, 1>
 CHECK:           tt.load
-CHECK-SAME:      {boundaryCheck = array<i32>, cache = 1 : i32, evict = 1 : i32, isVolatile = false} : !tt.ptr<tensor<32xf32>, 1> -> tensor<32xf32>
+CHECK-SAME:      !tt.ptr<tensor<32xf32>, 1> -> tensor<32xf32>
 CHECK:           tt.reduce
 CHECK-NEXT:      ^bb0(%[[ARG3:.*]]: f32, %[[ARG4:.*]]: f32):
-CHECK:             %[[ADD:.*]] = arith.addf %[[ARG3]], %[[ARG4]] : f32
-CHECK:             tt.reduce.return %[[ADD]] : f32
+CHECK:             %[[MAX:.*]] = arith.maximumf %[[ARG3]], %[[ARG4]] : f32
+CHECK:             tt.reduce.return %[[MAX]] : f32
 CHECK:           }) : (tensor<32xf32>) -> f32
 CHECK:           tt.addptr %[[P2]]
 CHECK:           tt.make_tensor_ptr
 CHECK-SAME:      <tensor<32xf32>, 1>
 CHECK:           tt.store
-CHECK-SAME:      {boundaryCheck = array<i32: 0>, cache = 1 : i32, evict = 1 : i32} : !tt.ptr<tensor<32xf32>, 1>, tensor<32xf32>
+CHECK-SAME:      !tt.ptr<tensor<32xf32>, 1>, tensor<32xf32>
 )"));
 
-  EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/1e-1, /*arel=*/1e-2}));
+  EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/0, /*arel=*/0}));
 }
 
 TEST_F(
@@ -817,10 +817,10 @@ TEST_F(
   const std::string kHloText = R"(
 HloModule h1
 
-add_computation {
+max_computation {
   x = f32[] parameter(0)
   y = f32[] parameter(1)
-  ROOT add = f32[] add(x,y)
+  ROOT _ = f32[] maximum(x,y)
 }
 
 triton_softmax_computation {
@@ -829,9 +829,9 @@ triton_softmax_computation {
   parameter_0 = f32[64,32,16]{2,1,0} parameter(0)
   add_0 = f32[64,32,16]{2,1,0} add(broadcast_1, parameter_0)
   c = f32[] constant(0)
-  reduce_0 = f32[64,32]{1,0} reduce(parameter_0, c), dimensions={2}, to_apply=add_computation
+  reduce_0 = f32[64,32]{1,0} reduce(parameter_0, c), dimensions={2}, to_apply=max_computation
   broadcast_0 = f32[64,32,16]{2,1,0} broadcast(reduce_0), dimensions={0,1}
-  ROOT add1.1 = f32[64,32,16]{2,1,0} add(add_0, broadcast_0)
+  ROOT _ = f32[64,32,16]{2,1,0} add(add_0, broadcast_0)
 }
 
 ENTRY main {
@@ -862,23 +862,23 @@ ENTRY main {
 // CHECK:           tt.make_tensor_ptr
 // CHECK-SAME:      <tensor<16xf32>, 1>
 // CHECK:           tt.load
-// CHECK-SAME:      {boundaryCheck = array<i32>, cache = 1 : i32, evict = 1 : i32, isVolatile = false} : !tt.ptr<tensor<16xf32>, 1> -> tensor<16xf32>
+// CHECK-SAME:      !tt.ptr<tensor<16xf32>, 1> -> tensor<16xf32>
 // CHECK:           tt.addptr %[[P1]], %[[ZERO_OFFSET_i64]] : !tt.ptr<f32, 1>, i64
 // CHECK-NEXT:      tt.load
 // CHECK-SAME:      {cache = 1 : i32, evict = 1 : i32, isVolatile = false} : f32
 // CHECK:           tt.reduce
 // CHECK:           ^bb0(%[[ARG3:.*]]: f32, %[[ARG4:.*]]: f32):
-// CHECK:             %[[ADD:.*]] = arith.addf %[[ARG3]], %[[ARG4]] : f32
-// CHECK:             tt.reduce.return %[[ADD]] : f32
+// CHECK:             %[[MAX:.*]] = arith.maximumf %[[ARG3]], %[[ARG4]] : f32
+// CHECK:             tt.reduce.return %[[MAX]] : f32
 // CHECK:           }) : (tensor<16xf32>) -> f32
 // CHECK:           tt.addptr %[[P2]], %[[ROW_OFFSET]] : !tt.ptr<f32, 1>, i64
 // CHECK-NEXT:      tt.make_tensor_ptr
 // CHECK-SAME:      <tensor<16xf32>, 1>
 // CHECK:           tt.store
-// CHECK-SAME:      {boundaryCheck = array<i32: 0>, cache = 1 : i32, evict = 1 : i32} : !tt.ptr<tensor<16xf32>, 1>, tensor<16xf32>
+// CHECK-SAME:      !tt.ptr<tensor<16xf32>, 1>, tensor<16xf32>
 )"));
 
-  EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/1e-1, /*arel=*/1e-2}));
+  EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/0, /*arel=*/0}));
 }
 
 TEST_F(
