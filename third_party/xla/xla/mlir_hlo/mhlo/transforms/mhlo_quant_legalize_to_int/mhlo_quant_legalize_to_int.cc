@@ -605,10 +605,14 @@ LogicalResult matchAndRewriteDotLikeHybridOp(
   // For weight-only quantization:
   // result = hybridOp(lhs, dequant(rhs))
   Value lhsFloat32Tensor = adaptor.getLhs();
-  Value rhs = adaptor.getRhs();
-  quant::UniformQuantizedType rhsElementType =
-      getElementTypeOrSelf(op.getRhs().getType())
-          .template cast<quant::UniformQuantizedType>();
+  // Insert optimization_barrier to prevent constant folding of dequantize +
+  // quantized weights.
+  auto barrier = rewriter.create<mhlo::OptimizationBarrierOp>(op->getLoc(),
+                                                              adaptor.getRhs());
+  Operation::result_range resultRange = barrier.getResults();
+  Value rhs = resultRange.front();
+  auto rhsElementType = getElementTypeOrSelf(op.getRhs().getType())
+                            .template cast<quant::UniformQuantizedType>();
   auto resFloat32TensorType =
       op.getResult().getType().template cast<TensorType>();
   auto rhsFloat32TensorType =

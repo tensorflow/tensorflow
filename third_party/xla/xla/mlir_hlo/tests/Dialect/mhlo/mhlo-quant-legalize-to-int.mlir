@@ -1716,10 +1716,11 @@ func.func @conv2d_per_channel_rhs_result_scale_ratio_different(
 func.func @dot_hybrid(
     %arg0: tensor<?x?xf32>,
     %arg1: tensor<?x?x!quant.uniform<i8:f32, 1.000000e+00:3>>) -> tensor<?x?xf32> {
-  // CHECK: %[[VAL1:.*]] = mhlo.convert %[[VAL0:.*]] : (tensor<?x?xi8>) -> tensor<?x?xf32>
-  // CHECK: %[[VAL3:.*]] = chlo.broadcast_subtract %[[VAL1]], %[[VAL2:.*]] : (tensor<?x?xf32>, tensor<f32>) -> tensor<?x?xf32>
-  // CHECK: %[[VAL5:.*]] = chlo.broadcast_multiply %[[VAL3]], %[[VAL4:.*]] : (tensor<?x?xf32>, tensor<f32>) -> tensor<?x?xf32>
-  // CHECK: %[[VAL7:.*]] = "mhlo.dot"(%arg0, %[[VAL5]]) : (tensor<?x?xf32>, tensor<?x?xf32>) -> tensor<?x?xf32>
+  // CHECK: %[[VAL1:.*]] = mhlo.optimization_barrier %[[VAL0:.*]] : tensor<?x?xi8>
+  // CHECK: %[[VAL2:.*]] = mhlo.convert %[[VAL1:.*]] : (tensor<?x?xi8>) -> tensor<?x?xf32>
+  // CHECK: %[[VAL4:.*]] = chlo.broadcast_subtract %[[VAL2]], %[[VAL3:.*]] : (tensor<?x?xf32>, tensor<f32>) -> tensor<?x?xf32>
+  // CHECK: %[[VAL6:.*]] = chlo.broadcast_multiply %[[VAL4]], %[[VAL5:.*]] : (tensor<?x?xf32>, tensor<f32>) -> tensor<?x?xf32>
+  // CHECK: %[[VAL7:.*]] = "mhlo.dot"(%arg0, %[[VAL6]]) : (tensor<?x?xf32>, tensor<?x?xf32>) -> tensor<?x?xf32>
   %1 = "mhlo.dot" (%arg0, %arg1): (
       tensor<?x?xf32>, tensor<?x?x!quant.uniform<i8:f32, 1.000000e+00:3>>) -> tensor<?x?xf32>
   return %1: tensor<?x?xf32>
@@ -1758,9 +1759,10 @@ func.func @conv2d_static_hybrid(
     %arg0: tensor<128x28x28x1xf32>,
     %arg1: tensor<3x3x1x128x!quant.uniform<i8:f32, 3.000000e+00:1>>
   ) -> tensor<128x26x26x128xf32> {
+  // CHECK-DAG: %[[BARRIER:.*]] = mhlo.optimization_barrier %arg1 : tensor<3x3x1x128xi8>
   // CHECK-DAG: %[[ZP:.*]] = mhlo.constant dense<1.000000e+00> : tensor<f32>
   // CHECK-DAG: %[[SCALE:.*]] = mhlo.constant dense<3.000000e+00> : tensor<f32>
-  // CHECK: %[[RHS:.*]] = mhlo.convert %arg1 : (tensor<3x3x1x128xi8>) -> tensor<3x3x1x128xf32>
+  // CHECK: %[[RHS:.*]] = mhlo.convert %[[BARRIER]] : (tensor<3x3x1x128xi8>) -> tensor<3x3x1x128xf32>
   // CHECK: %[[SUB:.*]] = chlo.broadcast_subtract %[[RHS]], %[[ZP]]
   // CHECK: %[[MUL:.*]] = chlo.broadcast_multiply %[[SUB]], %[[SCALE]]
   // CHECK: mhlo.convolution(%arg0, %[[MUL]])
