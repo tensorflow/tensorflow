@@ -243,7 +243,6 @@ cc_library(
         "//xla/service:local_service",
         "//xla/service:local_service_utils",
         "//xla/service/gpu:executable_proto_cc",
-        "//xla/stream_executor/cuda:cuda_platform_id",
         "//xla/stream_executor/platform",
         "@com_google_absl//absl/status",
         "@local_tsl//tsl/platform:casts",
@@ -253,11 +252,13 @@ cc_library(
         "//xla/service/gpu:gpu_compiler",
     ]) + if_cuda([
         "@local_config_cuda//cuda:cuda_headers",
+        "//xla/stream_executor/cuda:cuda_platform_id",
         "//xla/stream_executor/cuda:cuda_activation_header",
         "//xla/stream_executor/gpu:gpu_cudamallocasync_allocator",
         "//xla/service/gpu:nvptx_compiler_impl",
     ]) + if_rocm([
         "@local_config_rocm//rocm:rocm_headers",
+        "//xla/stream_executor/rocm:rocm_platform_id",
         "//xla/service/gpu:amdgpu_compiler_impl",
     ]),
     alwayslink = True,
