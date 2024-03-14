@@ -742,6 +742,18 @@ GpuDriver::GraphAddNode(hipGraphNode_t* node, hipGraph_t graph,
   return absl::UnimplementedError("unsupported node type");
 }
 
+/* static */ absl::Status GpuDriver::GraphAddEmptyNode(
+    hipGraphNode_t* node, hipGraph_t graph,
+    absl::Span<const hipGraphNode_t> deps) {
+  VLOG(2) << "Add empty node to a graph " << graph << "; deps: " << deps.size();
+
+  RETURN_IF_ROCM_ERROR(
+      wrap::hipGraphAddEmptyNode(node, graph, deps.data(), deps.size()),
+      "Failed to add empty node to a HIP graph");
+
+  return absl::OkStatus();
+}
+
 /* static */ absl::Status GpuDriver::GraphAddKernelNode(
     hipGraphNode_t* node, hipGraph_t graph,
     absl::Span<const hipGraphNode_t> deps, absl::string_view kernel_name,
@@ -937,7 +949,7 @@ static hipMemAllocationType ToHipAllocationType(
 
   RETURN_IF_ROCM_ERROR(wrap::hipGraphAddMemAllocNode(node, graph, deps.data(),
                                                      deps.size(), &params),
-                       "Failed to add memory allocation node to a CUDA graph");
+                       "Failed to add memory allocation node to a HIP graph");
 
   VLOG(2) << "Add MemAllocNode to a graph " << graph << " size " << size
           << " address " << reinterpret_cast<void*>(params.dptr);
@@ -1043,7 +1055,7 @@ struct BitPatternToValue {
 
   RETURN_IF_ROCM_ERROR(wrap::hipGraphAddMemsetNode(node, graph, deps.data(),
                                                    deps.size(), &params),
-                       "Failed to add memset node to a CUDA graph");
+                       "Failed to add memset node to a HIP graph");
 
   return absl::OkStatus();
 }

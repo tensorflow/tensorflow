@@ -176,12 +176,6 @@ rocm_library(
     deps = if_rocm_is_configured(["@local_config_rocm//rocm:rocm_headers"]),
 )
 
-rocm_library(
-    name = "hip_noop_kernel",
-    srcs = if_rocm_is_configured(["hip_noop_kernel.cu.cc"]),
-    deps = if_rocm_is_configured(["@local_config_rocm//rocm:rocm_headers"]),
-)
-
 cc_library(
     name = "rocm_platform",
     srcs = if_rocm_is_configured(["rocm_platform.cc"]),

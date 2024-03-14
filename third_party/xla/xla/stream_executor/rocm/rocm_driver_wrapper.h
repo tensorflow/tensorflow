@@ -105,6 +105,7 @@ namespace wrap {
   __macro(hipGetErrorString)                        \
   __macro(hipGraphAddKernelNode)                    \
   __macro(hipGraphAddChildGraphNode)                \
+  __macro(hipGraphAddEmptyNode)                     \
   __macro(hipGraphAddMemAllocNode)                  \
   __macro(hipGraphAddMemcpyNode1D)                  \
   __macro(hipGraphAddMemsetNode)                    \
