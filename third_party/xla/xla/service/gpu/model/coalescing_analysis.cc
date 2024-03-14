@@ -110,9 +110,9 @@ void FindAllIndices(const IndexingMap& thread_id_to_physical_index,
                     std::vector<AffineExpr>* symbols,
                     std::vector<int64_t>* indices) {
   if (dim_id < thread_id_to_physical_index.GetDimensionCount()) {
-    Range dim_range = thread_id_to_physical_index.GetDimensionRange(dim_id);
-    for (int64_t dim_value = dim_range.lower_bound;
-         dim_value <= dim_range.upper_bound; ++dim_value) {
+    Interval dim_range = thread_id_to_physical_index.GetDimensionRange(dim_id);
+    for (int64_t dim_value = dim_range.lower; dim_value <= dim_range.upper;
+         ++dim_value) {
       dimensions->push_back(getAffineConstantExpr(dim_value, mlir_context));
       FindAllIndices(thread_id_to_physical_index, mlir_context, dim_id + 1,
                      symbol_id, dimensions, symbols, indices);
@@ -121,9 +121,10 @@ void FindAllIndices(const IndexingMap& thread_id_to_physical_index,
     return;
   }
   if (symbol_id < thread_id_to_physical_index.GetSymbolCount()) {
-    Range symbol_range = thread_id_to_physical_index.GetSymbolRange(symbol_id);
-    for (int64_t symbol_value = symbol_range.lower_bound;
-         symbol_value <= symbol_range.upper_bound; ++symbol_value) {
+    Interval symbol_range =
+        thread_id_to_physical_index.GetSymbolRange(symbol_id);
+    for (int64_t symbol_value = symbol_range.lower;
+         symbol_value <= symbol_range.upper; ++symbol_value) {
       symbols->push_back(getAffineConstantExpr(symbol_value, mlir_context));
       FindAllIndices(thread_id_to_physical_index, mlir_context, dim_id,
                      symbol_id + 1, dimensions, symbols, indices);
@@ -146,7 +147,7 @@ void FindAllIndices(const IndexingMap& thread_id_to_physical_index,
 //   s0 in [0, 3]
 // The intervals are [0, 63] and [2047, 2111].
 // TODO(b/325613460): Make it faster than O(number of elements in the domain).
-std::vector<Range> FindContiguousIntervals(
+std::vector<Interval> FindContiguousIntervals(
     const IndexingMap& thread_id_to_physical_index) {
   CHECK(thread_id_to_physical_index.GetAffineMap().getNumResults() == 1)
       << "Expects an affine map that maps to 1D.";
@@ -164,7 +165,7 @@ std::vector<Range> FindContiguousIntervals(
       linear_indices.end());
 
   // Scan over the sorted unique indices and combine them in intervals.
-  std::vector<Range> intervals;
+  std::vector<Interval> intervals;
   for (int i = 0, start, end; i < linear_indices.size(); ++i) {
     start = linear_indices[i++];
     end = start;
@@ -172,7 +173,7 @@ std::vector<Range> FindContiguousIntervals(
       ++end;
       ++i;
     }
-    intervals.push_back(Range{start, end});
+    intervals.push_back(Interval{start, end});
   }
   return intervals;
 }
@@ -184,13 +185,13 @@ int64_t CeilDiv(int64_t a, int64_t b) { return a / b + (a % b != 0); }
 // transactions, i.e. total number of elements in all ranges / WarpSize().
 // Note, that later we would need to take the element type into account.
 bool EstimateCoalescingViaMemoryTransactionsCount(
-    absl::Span<const Range> intervals, PrimitiveType element_type) {
+    absl::Span<const Interval> intervals, PrimitiveType element_type) {
   constexpr int64_t kBytesPerMemoryTransaction = 128;
   int64_t type_size = ShapeUtil::ByteSizeOfPrimitiveType(element_type);
   int memory_transactions = 0;
   int total_num_elements = 0;
   for (const auto& range : intervals) {
-    int64_t num_elements = range.upper_bound - range.lower_bound + 1;
+    int64_t num_elements = range.upper - range.lower + 1;
     memory_transactions +=
         CeilDiv(num_elements * type_size, kBytesPerMemoryTransaction);
     total_num_elements += num_elements;
@@ -223,7 +224,7 @@ bool IsCoalesced(const IndexingMap& thread_id_to_input_indexing_map,
   AffineExpr c0 = mlir::getAffineConstantExpr(0, mlir_context);
   IndexingMap thread_x_first_32_elements{
       AffineMap::get(1, 0, {thread_x_dim, c0, c0, c0, c0, c0}, mlir_context),
-      {Range{0, 31}},
+      {Interval{0, 31}},
       {}};
   IndexingMap thread_x_to_linearized_input =
       thread_x_first_32_elements * thread_id_to_input_indexing_map;

@@ -218,11 +218,10 @@ std::optional<RawSymbolicTile> RawSymbolicTileFromIndexingMap(
         auto symbol_expr = llvm::dyn_cast<AffineSymbolExpr>(expr);
         if (symbol_expr && symbol_expr.getPosition() < num_known_symbols) {
           CHECK(!size_expr);
-          const Range& symbol_range =
+          const Interval& symbol_range =
               indexing_map.GetSymbolRange(symbol_expr.getPosition());
           size_expr = getAffineConstantExpr(
-              symbol_range.upper_bound - symbol_range.lower_bound + 1,
-              mlir_context);
+              symbol_range.upper - symbol_range.lower + 1, mlir_context);
         } else if (auto dim_expr = llvm::dyn_cast<AffineDimExpr>(expr)) {
           CHECK(!size_expr);
           size_expr = getAffineSymbolExpr(
@@ -258,9 +257,9 @@ std::optional<RawSymbolicTile> RawSymbolicTileFromIndexingMap(
   std::vector<AffineExpr> exprs;
   exprs.reserve(num_input_dims);
 
-  std::vector<Range> tile_dimension_ranges;
+  std::vector<Interval> tile_dimension_ranges;
   tile_dimension_ranges.reserve(num_input_dims);
-  std::vector<Range> tile_symbol_ranges;
+  std::vector<Interval> tile_symbol_ranges;
   tile_symbol_ranges.reserve(kNumTileParametersPerInputDim * num_input_dims +
                              indexing_map.GetAffineMap().getNumSymbols());
 
@@ -281,7 +280,7 @@ std::optional<RawSymbolicTile> RawSymbolicTileFromIndexingMap(
 
     exprs.push_back(offset + stride * index);
 
-    Range range = indexing_map.GetDimensionRange(dim);
+    Interval range = indexing_map.GetDimensionRange(dim);
     tile_dimension_ranges.push_back(range);
 
     for (int64_t symbol_index = 0; symbol_index < kNumTileParametersPerInputDim;

@@ -310,8 +310,8 @@ absl::StatusOr<SmallVector<Value>> EmitConcat(
   SmallVector<Value> operand_indices = indices;
   for (auto [index, operand] : llvm::enumerate(instr->operands())) {
     int64_t limit = offset + operand->shape().dimensions(concat_dim);
-    auto in_bounds = b.create<CmpIOp>(CmpIPredicate::ult, indices[concat_dim],
-                                      b.create<ConstantIndexOp>(limit));
+    auto ins = b.create<CmpIOp>(CmpIPredicate::ult, indices[concat_dim],
+                                b.create<ConstantIndexOp>(limit));
 
     auto generate_operand = [&, index = index]() {
       operand_indices[concat_dim] = b.create<arith::SubIOp>(
@@ -323,8 +323,8 @@ absl::StatusOr<SmallVector<Value>> EmitConcat(
     };
 
     if (index < instr->operand_count() - 1) {
-      auto if_op = b.create<IfOp>(mlir::TypeRange{result_element_type},
-                                  in_bounds, true, true);
+      auto if_op =
+          b.create<IfOp>(mlir::TypeRange{result_element_type}, ins, true, true);
       if (outermost_if == nullptr) {
         outermost_if = if_op;
       } else {
@@ -551,13 +551,13 @@ SmallVector<Value> ApplyAffineMap(mlir::AffineMap map, ValueRange dims,
   return result;
 }
 
-Value CheckConstraint(mlir::Value constrained_value, Range range,
+Value CheckConstraint(mlir::Value constrained_value, Interval range,
                       ImplicitLocOpBuilder& b) {
-  auto lb = b.create<ConstantOp>(b.getIndexAttr(range.lower_bound));
+  auto lb = b.create<ConstantOp>(b.getIndexAttr(range.lower));
   if (range.IsPoint()) {
     return b.create<CmpIOp>(CmpIPredicate::eq, constrained_value, lb);
   }
-  auto ub = b.create<ConstantOp>(b.getIndexAttr(range.upper_bound));
+  auto ub = b.create<ConstantOp>(b.getIndexAttr(range.upper));
   return b.create<AndIOp>(
       b.create<CmpIOp>(CmpIPredicate::sge, constrained_value, lb),
       b.create<CmpIOp>(CmpIPredicate::sle, constrained_value, ub));
@@ -1042,9 +1042,9 @@ void GetLoopBoundsFromIndexingMap(ImplicitLocOpBuilder& b,
                                   SmallVectorImpl<Value>* steps) {
   Value c1 = b.create<ConstantIndexOp>(1);
 
-  for (const Range& range : indexing_map.GetSymbolRanges()) {
-    lbs->push_back(b.create<ConstantIndexOp>(range.lower_bound));
-    ubs->push_back(b.create<ConstantIndexOp>(range.upper_bound + 1));
+  for (const Interval& range : indexing_map.GetSymbolRanges()) {
+    lbs->push_back(b.create<ConstantIndexOp>(range.lower));
+    ubs->push_back(b.create<ConstantIndexOp>(range.upper + 1));
     // Note that this is not optimal, when there are mod constraints on symbols,
     // e.g. for reduce-window. In that case we have to extract loop steps from
     // the mod constraints.

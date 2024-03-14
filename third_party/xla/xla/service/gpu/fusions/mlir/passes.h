@@ -32,7 +32,7 @@ namespace gpu {
 #include "xla/service/gpu/fusions/mlir/passes.h.inc"
 
 // Returns the range of a given value, if it can be statically determined.
-std::optional<Range> GetRange(mlir::Value value);
+std::optional<Interval> GetRange(mlir::Value value);
 
 std::unique_ptr<mlir::Pass> CreateExpandFloatOpsPass(bool pre_ampere);
 std::unique_ptr<mlir::Pass> CreateLowerFuncPass();

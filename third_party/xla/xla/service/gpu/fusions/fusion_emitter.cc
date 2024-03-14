@@ -170,7 +170,7 @@ IndexingMap KernelFusionInterface::GetDefaultThreadIdToOutputIndexingMap(
     divisor *= output_shape.dimensions(dimension);
   }
 
-  std::vector<Range> dimension_ranges = {
+  std::vector<Interval> dimension_ranges = {
       {0, static_cast<int64_t>(launch_dims.thread_counts_per_block().x) - 1},
       {0, static_cast<int64_t>(launch_dims.thread_counts_per_block().y) - 1},
       {0, static_cast<int64_t>(launch_dims.thread_counts_per_block().z) - 1},
@@ -178,7 +178,7 @@ IndexingMap KernelFusionInterface::GetDefaultThreadIdToOutputIndexingMap(
       {0, static_cast<int64_t>(launch_dims.block_counts().y) - 1},
       {0, static_cast<int64_t>(launch_dims.block_counts().z) - 1},
   };
-  std::vector<Range> symbol_ranges;
+  std::vector<Interval> symbol_ranges;
   int64_t num_elements = ShapeUtil::ElementsIn(output_shape);
   symbol_ranges.push_back(
       {0, CeilOfRatio(num_elements,
@@ -193,9 +193,9 @@ IndexingMap KernelFusionInterface::GetDefaultThreadIdToOutputIndexingMap(
   // Remove the unroll_elem_id symbol if unrolling divides num_elements.
   if (num_elements % unroll_factor == 0) {
     indexing_map.AddConstraint(linear_index.replace({{unroll_elem_id, c0}}),
-                               Range{0, num_elements - unroll_factor});
+                               Interval{0, num_elements - unroll_factor});
   } else {
-    indexing_map.AddConstraint(linear_index, Range{0, num_elements - 1});
+    indexing_map.AddConstraint(linear_index, Interval{0, num_elements - 1});
   }
   indexing_map.Simplify();
   return indexing_map;
