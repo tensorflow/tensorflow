@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/kernels/batching_util/shared_batch_scheduler.h"
 
+#include <cstddef>
 #include <memory>
 #include <string>
 #include <thread>  // NOLINT(build/c++11)
@@ -37,6 +38,7 @@ limitations under the License.
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/test_benchmark.h"
 #include "tensorflow/core/protobuf/error_codes.pb.h"
+#include "tsl/platform/criticality.h"
 
 namespace tensorflow {
 namespace serving {
@@ -46,14 +48,21 @@ using ::testing::HasSubstr;
 
 class FakeTask : public BatchTask {
  public:
-  explicit FakeTask(size_t size) : size_(size) {}
+  explicit FakeTask(size_t size, tsl::criticality::Criticality criticality =
+                                     tsl::criticality::Criticality::kCritical)
+      : size_(size), criticality_(criticality) {}
 
   ~FakeTask() override = default;
 
   size_t size() const override { return size_; }
 
+  tsl::criticality::Criticality criticality() const override {
+    return criticality_;
+  }
+
  private:
   const size_t size_;
+  const tsl::criticality::Criticality criticality_;
 
   FakeTask(const FakeTask&) = delete;
   void operator=(const FakeTask&) = delete;
@@ -67,10 +76,13 @@ using SplitFunc =
                          int first_output_task_size, int input_batch_size_limit,
                          std::vector<std::unique_ptr<FakeTask>>* output_tasks)>;
 
-// Creates a FakeTask of size 'task_size', and calls 'scheduler->Schedule()' on
-// that task. Returns the resulting status.
-Status ScheduleTask(size_t task_size, BatchScheduler<FakeTask>* scheduler) {
-  std::unique_ptr<FakeTask> task(new FakeTask(task_size));
+// Creates a FakeTask of size 'task_size' and 'criticality', and calls
+// 'scheduler->Schedule()' on that task. Returns the resulting status.
+// 'criticality' defaults to kCritical.
+Status ScheduleTask(size_t task_size, BatchScheduler<FakeTask>* scheduler,
+                    tsl::criticality::Criticality criticality =
+                        tsl::criticality::Criticality::kCritical) {
+  std::unique_ptr<FakeTask> task(new FakeTask(task_size, criticality));
   Status status = scheduler->Schedule(&task);
   // Schedule() should have consumed 'task' iff it returned Status::OK.
   CHECK_EQ(status.ok(), task == nullptr);
@@ -908,6 +920,93 @@ INSTANTIATE_TEST_SUITE_P(
     ::testing::Values(std::make_tuple(/*enable_input_batch_split=*/true,
                                       /*enable_lazy_split=*/true),
                       std::make_tuple(/*enable_input_batch_split=*/true,
+                                      /*enable_lazy_split=*/false),
+                      std::make_tuple(/*enable_input_batch_split=*/false,
+                                      /*enable_lazy_split=*/false)));
+
+using SharedBatchSchedulerPriorityTest = SharedBatchSchedulerTest;
+
+TEST_P(SharedBatchSchedulerPriorityTest,
+       CallbackWithTaskVectorOkWithPriorityQueueEnabledWithPrioritySet) {
+  bool queue_callback_called = false;
+  auto queue_callback = [&queue_callback_called](
+                            std::unique_ptr<Batch<FakeTask>> batch,
+                            std::vector<std::unique_ptr<FakeTask>> tasks) {
+    queue_callback_called = true;
+    ASSERT_TRUE(batch->IsClosed());
+    ASSERT_EQ(2, batch->num_tasks());
+    EXPECT_EQ(1, batch->task(0).size());
+    EXPECT_EQ(3, batch->task(1).size());
+    EXPECT_EQ(1, tasks.size());
+    EXPECT_EQ(5, tasks[0]->size());
+  };
+
+  {
+    std::shared_ptr<Scheduler> scheduler =
+        CreateSharedBatchScheduler(/*num_batch_threads=*/3);
+
+    // Create two queues.
+    const QueueOptions queue_options = CreateQueueOptions(
+        /*max_execution_batch_size=*/10, /*input_batch_size_limit=*/10,
+        /*batch_timeout_micros=*/1 * 1000 * 1000, /*max_enqueued_batches=*/2,
+        /*enable_priority_queue=*/true);
+    std::unique_ptr<Queue> queue =
+        CreateQueue(scheduler, queue_options, queue_callback);
+
+    // Submit tasks to the two queues.
+    TF_ASSERT_OK(ScheduleTask(1, queue.get(),
+                              tsl::criticality::Criticality::kCriticalPlus));
+    TF_ASSERT_OK(ScheduleTask(3, queue.get(),
+                              tsl::criticality::Criticality::kCriticalPlus));
+    TF_ASSERT_OK(ScheduleTask(5, queue.get(),
+                              tsl::criticality::Criticality::kSheddable));
+  }
+  EXPECT_TRUE(queue_callback_called);
+}
+
+TEST_P(SharedBatchSchedulerPriorityTest,
+       CallbackWithTaskVectorOkWithPriorityQueueDisabledWithPrioritySet) {
+  bool queue_callback_called = false;
+  auto queue_callback = [&queue_callback_called](
+                            std::unique_ptr<Batch<FakeTask>> batch,
+                            std::vector<std::unique_ptr<FakeTask>> tasks) {
+    queue_callback_called = true;
+    ASSERT_TRUE(batch->IsClosed());
+    ASSERT_EQ(3, batch->num_tasks());
+    EXPECT_EQ(1, batch->task(0).size());
+    EXPECT_EQ(3, batch->task(1).size());
+    EXPECT_EQ(5, batch->task(2).size());
+    EXPECT_EQ(0, tasks.size());
+  };
+
+  {
+    std::shared_ptr<Scheduler> scheduler =
+        CreateSharedBatchScheduler(/*num_batch_threads=*/3);
+
+    // Create two queues.
+    const QueueOptions queue_options = CreateQueueOptions(
+        /*max_execution_batch_size=*/10, /*input_batch_size_limit=*/10,
+        /*batch_timeout_micros=*/1 * 1000 * 1000, /*max_enqueued_batches=*/2,
+        /*enable_priority_queue=*/false);
+    std::unique_ptr<Queue> queue =
+        CreateQueue(scheduler, queue_options, queue_callback);
+
+    // Submit tasks to the two queues.
+    TF_ASSERT_OK(ScheduleTask(1, queue.get(),
+                              tsl::criticality::Criticality::kCriticalPlus));
+    TF_ASSERT_OK(ScheduleTask(3, queue.get(),
+                              tsl::criticality::Criticality::kCriticalPlus));
+    TF_ASSERT_OK(ScheduleTask(5, queue.get(),
+                              tsl::criticality::Criticality::kSheddable));
+  }
+  EXPECT_TRUE(queue_callback_called);
+}
+
+// Lazy split is to be removed. The mixed priority batching is only supported
+// when the lazy split is not enabled.
+INSTANTIATE_TEST_SUITE_P(
+    Parameter, SharedBatchSchedulerPriorityTest,
+    ::testing::Values(std::make_tuple(/*enable_input_batch_split=*/true,
                                       /*enable_lazy_split=*/false),
                       std::make_tuple(/*enable_input_batch_split=*/false,
                                       /*enable_lazy_split=*/false)));

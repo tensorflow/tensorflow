@@ -161,6 +161,7 @@ cc_library(
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/time",
+        "@local_tsl//tsl/platform:criticality",
         "@local_tsl//tsl/platform:errors",
     ],
 )
@@ -180,6 +181,7 @@ cc_library(
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/time",
+        "@local_tsl//tsl/platform:criticality",
     ],
     alwayslink = 1,
 )
@@ -391,6 +393,7 @@ cc_library(
         "//tensorflow/core/util:incremental_barrier",
         "@com_google_absl//absl/container:fixed_array",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/functional:bind_front",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/time",

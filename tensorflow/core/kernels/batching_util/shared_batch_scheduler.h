@@ -49,6 +49,7 @@ limitations under the License.
 #include "tensorflow/core/profiler/lib/context_types.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/core/profiler/lib/traceme_encode.h"
+#include "tsl/platform/criticality.h"
 #include "tsl/platform/errors.h"
 
 namespace tensorflow {
@@ -435,6 +436,12 @@ class Queue {
 
   // Same as IsEmpty(), but assumes the caller already holds a lock on 'mu_'.
   bool IsEmptyInternal() const TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
+
+  // Implementation of ScheduleWithoutOrEagerSplit above. Enqueues `task` as it
+  // is or split it inline (eagerly) to form batches to be processed by
+  // `Queue<TaskType>::ProcessBatch`
+  Status ScheduleWithoutOrEagerSplitImpl(std::unique_ptr<TaskType>* task)
+      TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   // Closes the open batch residing at the back of std::deque, and inserts a
   // fresh open batch behind it.
@@ -949,6 +956,52 @@ Status Queue<TaskType>::ScheduleWithLazySplit(std::unique_ptr<TaskType>* task) {
   return absl::OkStatus();
 }
 
+template <typename TaskType>
+Status Queue<TaskType>::ScheduleWithoutOrEagerSplitImpl(
+    std::unique_ptr<TaskType>* task) {
+  // TODO(b/161857471):
+  // Add test coverage when when concurrent incoming batches arrives and
+  // use up all queue capacity.
+  TF_RETURN_IF_ERROR(ValidateBatchTaskQueueCapacity((*task).get()));
+
+  std::deque<std::unique_ptr<Batch<TaskType>>>& batches = GetBatches();
+
+  const int64_t open_batch_remaining_slot =
+      max_execution_batch_size() - batches.back()->size();
+
+  const int64_t input_task_size = (*task)->size();
+
+  std::vector<std::unique_ptr<TaskType>> output_tasks;
+
+  if (input_task_size <= open_batch_remaining_slot ||
+      !options_.enable_large_batch_splitting) {
+    // This is the fast path when input doesn't need to be split.
+    output_tasks.push_back(std::move(*task));
+  } else {
+    TF_RETURN_IF_ERROR(SplitInputBatchIntoSubtasks(task, &output_tasks));
+  }
+
+  for (int i = 0; i < output_tasks.size(); ++i) {
+    if (batches.back()->size() + output_tasks[i]->size() >
+        max_execution_batch_size()) {
+      StartNewBatch();
+    }
+    if (batches.back()->empty()) {
+      open_batch_start_time_micros_ = env_->NowMicros();
+    }
+    profiler::TraceMeProducer trace_me(
+        [&output_tasks, i] {
+          return profiler::TraceMeEncode("ScheduleOutputTask",
+                                         {{"size", output_tasks[i]->size()}});
+        },
+        profiler::ContextType::kSharedBatchScheduler,
+        batches.back()->traceme_context_id());
+    batches.back()->AddTask(std::move(output_tasks[i]));
+  }
+
+  return absl::OkStatus();
+}
+
 // TODO(b/194294263):
 // Merge `ScheduleWithoutOrEagerSplit` and `ScheduleWithLazySplit` into
 // `Schedule`.
@@ -969,48 +1022,23 @@ Status Queue<TaskType>::ScheduleWithoutOrEagerSplit(
 
     DCHECK(!closed_);
 
-    // TODO(b/161857471):
-    // Add test coverage when when concurrent incoming batches arrives and
-    // use up all queue capacity.
-    TF_RETURN_IF_ERROR(ValidateBatchTaskQueueCapacity((*task).get()));
-
-    std::deque<std::unique_ptr<Batch<TaskType>>>& batches = GetBatches();
-
-    const int64_t open_batch_remaining_slot =
-        max_execution_batch_size() - batches.back()->size();
-
-    const int64_t input_task_size = (*task)->size();
-
-    std::vector<std::unique_ptr<TaskType>> output_tasks;
-
-    if (input_task_size <= open_batch_remaining_slot ||
-        !large_batch_splitting) {
-      // This is the fast path when input doesn't need to be split.
-      output_tasks.push_back(std::move(*task));
+    if (options_.enable_priority_queue &&
+        ((*task)->criticality() ==
+             tsl::criticality::Criticality::kSheddablePlus ||
+         (*task)->criticality() == tsl::criticality::Criticality::kSheddable)) {
+      // Insert the task to the low priority task queue instead of the high
+      // priority batch queue below.
+      //
+      // TODO(b/316379576): Make the criticality and priority configurable.
+      low_priority_tasks_.AddTask(std::move(*task));
     } else {
-      TF_RETURN_IF_ERROR(SplitInputBatchIntoSubtasks(task, &output_tasks));
+      TF_RETURN_IF_ERROR(ScheduleWithoutOrEagerSplitImpl(task));
     }
 
-    for (int i = 0; i < output_tasks.size(); ++i) {
-      if (batches.back()->size() + output_tasks[i]->size() >
-          max_execution_batch_size()) {
-        StartNewBatch();
-      }
-      if (batches.back()->empty()) {
-        open_batch_start_time_micros_ = env_->NowMicros();
-      }
-      profiler::TraceMeProducer trace_me(
-          [&output_tasks, i] {
-            return profiler::TraceMeEncode("ScheduleOutputTask",
-                                           {{"size", output_tasks[i]->size()}});
-          },
-          profiler::ContextType::kSharedBatchScheduler,
-          batches.back()->traceme_context_id());
-      batches.back()->AddTask(std::move(output_tasks[i]));
-    }
-
+    // Check if the batch queue has a schedulable batch and mark it schedulable
+    // if it not already marked.
     if (!schedulable_batch_) {
-      if (batches.size() > 1 || IsOpenBatchSchedulable()) {
+      if (GetBatches().size() > 1 || IsOpenBatchSchedulable()) {
         schedulable_batch_ = true;
         notify_of_schedulable_batch = true;
       }
