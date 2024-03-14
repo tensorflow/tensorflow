@@ -35,17 +35,11 @@ namespace xla {
 absl::StatusOr<mlir::DenseElementsAttr> CreateDenseElementsAttrFromLiteral(
     const LiteralBase& literal, mlir::Builder builder);
 
-absl::StatusOr<int> GetElementTypeBytes(mlir::Type type);
-
 // Creates an DenseIntElementsAttr using the elements of the vector and the
 // optional shape.
 mlir::DenseIntElementsAttr CreateDenseIntElementsAttrFromVector(
     const llvm::ArrayRef<int64_t> vector, mlir::Builder builder,
     llvm::ArrayRef<int64_t> shape = {});
-
-
-mlir::mhlo::GatherDimensionNumbersAttr CreateGatherDimensionNumbers(
-    const GatherDimensionNumbers& input, mlir::Builder builder);
 
 // Converts the given XLA shape for tensors to the template MLIR type.
 template <typename TypeT>
@@ -164,8 +158,6 @@ static absl::StatusOr<mlir::Type> ConvertShapeToType(const Shape& shape,
   }
   return ConvertTensorShapeToType<TypeT>(shape, builder);
 }
-
-absl::StatusOr< ::xla::HloOpcode> MhloToHloOpcode(mlir::Operation* op);
 
 }  // namespace xla
 

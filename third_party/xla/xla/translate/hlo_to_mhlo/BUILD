@@ -128,8 +128,6 @@ cc_library(
         "//xla/mlir/utils:type_util",
         "//xla/mlir_hlo",
         "//xla/mlir_hlo:convert_op_folder",
-        "//xla/mlir_hlo:lhlo",
-        "//xla/service/llvm_ir:llvm_util",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:SparseTensorDialect",
