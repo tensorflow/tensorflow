@@ -31,10 +31,10 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "xla/debug_options_flags.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
+#include "xla/hlo/ir/hlo_dfs_reachability.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
-#include "xla/hlo/ir/hlo_reachability.h"
 #include "xla/service/gpu/gpu_fusible.h"
 #include "xla/service/gpu/model/gpu_hlo_cost_analysis.h"
 #include "xla/service/gpu/model/gpu_performance_model.h"
@@ -162,7 +162,7 @@ HloInstruction* SelectPreferredFusionCandidate(
 // reachable from the producer, this would create a cycle.
 FusionDecision OperandReachableFromProducer(
     const HloInstruction& producer, const HloInstruction& consumer,
-    const HloReachabilityMap& reachability) {
+    const HloDfsReachability& reachability) {
   for (const auto* operand : consumer.operands()) {
     // If a get-tuple-element instruction is not in the reachability
     // map, it has been created by fusion in this pass. Simply move
@@ -184,7 +184,7 @@ FusionDecision OperandReachableFromProducer(
 
 FusionDecision ProducerCandidateIsFusible(
     const HloInstruction& producer, const HloInstruction& consumer,
-    const HloReachabilityMap& reachability, FusionInfoCache* fusion_info_cache,
+    const HloDfsReachability& reachability, FusionInfoCache* fusion_info_cache,
     GpuHloCostAnalysis* cost_analysis) {
   if (!IsFusibleAsMultiOutputFusionRoot(consumer)) {
     return "consumer not eligible as multi-output fusion root.";
@@ -216,7 +216,7 @@ FusionDecision ProducerCandidateIsFusible(
 }
 
 std::vector<HloInstruction*> GetProducerConsumerMultiOutputFusionCandidates(
-    const HloInstruction* producer, const HloReachabilityMap& reachability,
+    const HloInstruction* producer, const HloDfsReachability& reachability,
     FusionInfoCache* fusion_info_cache, GpuHloCostAnalysis* cost_analysis) {
   std::vector<HloInstruction*> fusion_candidates;
   const HloComputation* computation = producer->parent();
@@ -275,7 +275,7 @@ bool IsSiblingFusionCandidate(const HloInstruction* instr) {
 FusionDecision CanFuseSiblings(const HloInstruction& sibling_consumer_1,
                                const HloInstruction& sibling_consumer_2,
                                const HloInstruction& common_producer,
-                               const HloReachabilityMap& reachability,
+                               const HloDfsReachability& reachability,
                                FusionInfoCache* fusion_info_cache,
                                GpuHloCostAnalysis* cost_analysis) {
   if (reachability.IsConnected(&sibling_consumer_1, &sibling_consumer_2)) {
@@ -305,7 +305,7 @@ FusionDecision CanFuseSiblings(const HloInstruction& sibling_consumer_1,
 }  // namespace
 
 void GpuMultiOutputFusion::RecomputeReachability() {
-  reachability_ = HloReachabilityMap::Build(computation_);
+  reachability_ = HloDfsReachability::Build(computation_);
 }
 
 bool GpuMultiOutputFusion::FuseSiblings(HloInstruction* parent,
