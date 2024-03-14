@@ -162,6 +162,7 @@ std::vector<double> MemoryReshardingCostVector(
   auto required_sharding_for_resharding = required_sharding.IsTileMaximal()
                                               ? HloSharding::Replicate()
                                               : required_sharding;
+  CHECK_OK(required_sharding.Validate(operand_shape));
   for (const auto& x : strategy_group->strategies) {
     ret.push_back(ComputeMemoryReshardingCost(operand_shape, x.output_sharding,
                                               required_sharding_for_resharding,
@@ -421,8 +422,8 @@ absl::StatusOr<std::unique_ptr<StrategyGroup>> FollowReduceStrategy(
     strategy_group->following = src_strategy_group;
     strategy_group->strategies.reserve(src_strategy_group->strategies.size());
     // Map operand dims to inst dim
-    // Example: f32[1,16]{1,0} reduce(f32[1,16,4096]{2,1,0} %param0, f32[]
-    // %param1), dimensions={2}
+    // Example: f32[1,16]{1,0} reduce(f32[1,16,4096]{2,1,0} %param0,
+    //                               f32[] %param1), dimensions={2}
     // op_dim_to_output_dim = [0, 1, -1]
     std::vector<int64_t> op_dim_to_output_dim =
         GetDimensionMapping(/*reduced_dimensions=*/ins->dimensions(),
@@ -458,12 +459,12 @@ absl::StatusOr<std::unique_ptr<StrategyGroup>> FollowReduceStrategy(
       std::unique_ptr<HloInstruction> unit_clone = unit->Clone();
       // Creates a new reduce op with one output, which is easier to use
       // GetShardingFromUser() to get the input sharding.
-      auto new_reduce = HloInstruction::CreateReduce(
+      std::unique_ptr<HloInstruction> new_reduce = HloInstruction::CreateReduce(
           output_shape, operand_clone.get(), unit_clone.get(),
           ins->dimensions(), ins->to_apply());
       operand_clone->set_sharding(
           src_strategy_group->strategies[sid].output_sharding);
-      auto s = new_reduce->ReplaceOperandWith(0, operand_clone.get());
+      absl::Status s = new_reduce->ReplaceOperandWith(0, operand_clone.get());
       if (!s.ok()) {
         continue;
       }
@@ -477,22 +478,24 @@ absl::StatusOr<std::unique_ptr<StrategyGroup>> FollowReduceStrategy(
 
       double compute_cost = 0, communication_cost = 0;
       double memory_cost = GetBytes(output_shape) / output_spec.NumTiles();
-      for (auto mesh_dim : all_reduce_dims) {
+      for (int64_t mesh_dim : all_reduce_dims) {
         communication_cost += cluster_env.AllReduceCost(memory_cost, mesh_dim);
       }
       ReshardingCosts communication_resharding_costs;
       ReshardingCosts memory_resharding_costs;
       for (int64_t k = 0; k < ins->operand_count(); ++k) {
-        auto cur_operand = ins->operand(k);
+        const HloInstruction* cur_operand = ins->operand(k);
         if (ToString(cur_operand->shape().dimensions()) ==
             ToString(operand->shape().dimensions())) {
-          auto operand_strategies = strategy_map.at(cur_operand).get();
+          const StrategyGroup* operand_strategies =
+              strategy_map.at(cur_operand).get();
           communication_resharding_costs.push_back(
               CommunicationReshardingCostVector(operand_strategies,
-                                                output_shape, input_sharding,
-                                                cluster_env));
+                                                cur_operand->shape(),
+                                                input_sharding, cluster_env));
           memory_resharding_costs.push_back(MemoryReshardingCostVector(
-              operand_strategies, output_shape, input_sharding, cluster_env));
+              operand_strategies, cur_operand->shape(), input_sharding,
+              cluster_env));
         } else {
           communication_resharding_costs.push_back(std::vector<double>(
               strategy_map.at(cur_operand)->strategies.size(), 0.0));
