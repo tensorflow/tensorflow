@@ -23,10 +23,8 @@ limitations under the License.
 #include <optional>
 #include <string>
 #include <utility>
-#include <variant>
 #include <vector>
 
-#include "absl/container/flat_hash_map.h"
 #include "absl/status/status.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
@@ -44,7 +42,6 @@ limitations under the License.
 #include "xla/service/gpu/ir_emitter.h"
 #include "xla/service/gpu/ir_emitter_context.h"
 #include "xla/service/gpu/launch_dimensions.h"
-#include "xla/service/gpu/nccl_collective_thunk.h"
 #include "xla/service/gpu/runtime/send_recv_thunk.h"
 #include "xla/service/gpu/thunk.h"
 #include "xla/service/llvm_ir/ir_array.h"

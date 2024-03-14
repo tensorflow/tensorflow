@@ -15,6 +15,7 @@ limitations under the License.
 
 #include <memory>
 
+#include "xla/service/compiler.h"
 #include "xla/service/gpu/nvptx_compiler.h"
 #include "xla/stream_executor/cuda/cuda_platform_id.h"
 

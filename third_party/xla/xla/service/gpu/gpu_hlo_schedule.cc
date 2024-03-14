@@ -63,6 +63,7 @@ limitations under the License.
 #include "tsl/platform/errors.h"
 #include "tsl/platform/path.h"
 #include "tsl/platform/protobuf.h"
+#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace gpu {

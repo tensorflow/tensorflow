@@ -35,11 +35,12 @@ limitations under the License.
 #include "xla/hlo/utils/hlo_query.h"
 #include "xla/service/computation_placer.h"
 #include "xla/service/hlo_creation_utils.h"
+#include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
-#include "xla/statusor.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/logging.h"
+#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace {

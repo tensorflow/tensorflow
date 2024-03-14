@@ -21,12 +21,17 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/synchronization/mutex.h"
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "xla/hlo/ir/hlo_instructions.h"
+#include "xla/service/gpu/nccl_clique_key.h"
 #include "xla/service/gpu/nccl_collective_thunk.h"
 #include "xla/shape.h"
+#include "xla/stream_executor/stream_executor_pimpl.h"
 
 namespace xla {
 namespace gpu {

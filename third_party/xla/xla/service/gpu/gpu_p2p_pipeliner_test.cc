@@ -28,6 +28,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/service/hlo_module_config.h"
 #include "xla/service/hlo_parser.h"
 #include "xla/service/hlo_pass_pipeline.h"
 #include "xla/service/hlo_verifier.h"

@@ -25,7 +25,6 @@ limitations under the License.
 #include "third_party/gpus/cuda/include/cuComplex.h"
 #include "third_party/gpus/cuda/include/cusolverDn.h"
 #include "third_party/gpus/cuda/include/cusolver_common.h"
-#include "third_party/gpus/cuda/include/driver_types.h"
 #include "third_party/gpus/cuda/include/library_types.h"
 #endif
 #include "xla/primitive_util.h"

@@ -17,10 +17,16 @@ limitations under the License.
 #define XLA_SERVICE_GPU_NCCL_COLLECTIVE_BROADCAST_THUNK_H_
 
 #include <cstdint>
+#include <vector>
 
+#include "absl/types/span.h"
+#include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/service/collective_ops_utils.h"
 #include "xla/service/gpu/nccl_api.h"
 #include "xla/service/gpu/nccl_collective_thunk.h"
+#include "xla/status.h"
+#include "xla/stream_executor/stream.h"
 
 namespace xla::gpu {
 // Thunk that performs a NCCL-based collective broadcast.

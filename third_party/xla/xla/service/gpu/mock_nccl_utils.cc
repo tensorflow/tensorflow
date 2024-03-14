@@ -53,6 +53,7 @@ limitations under the License.
 #include "third_party/gpus/nccl/include/info.h"
 #include "third_party/gpus/nccl/include/nccl_common.h"
 #include "third_party/nccl/nccl.h"
+#include "third_party/gpus/nccl/src/include/device.h"
 #include "xla/debug_options_flags.h"
 #include "xla/executable_run_options.h"
 #include "xla/primitive_util.h"

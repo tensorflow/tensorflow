@@ -15,6 +15,7 @@ limitations under the License.
 
 #include <memory>
 
+#include "xla/service/compiler.h"
 #include "xla/service/gpu/amdgpu_compiler.h"
 #include "xla/stream_executor/rocm/rocm_platform_id.h"
 

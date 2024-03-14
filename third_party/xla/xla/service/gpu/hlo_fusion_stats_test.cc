@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <string>
 
+#include <gtest/gtest.h>
 #include "absl/strings/match.h"
 #include "xla/service/hlo_parser.h"
 #include "xla/tests/hlo_test_base.h"

@@ -17,6 +17,7 @@ limitations under the License.
 #define XLA_SERVICE_GPU_NCCL_SEND_THUNK_H_
 
 #include <cstdint>
+#include <memory>
 
 #include "absl/status/status.h"
 #include "absl/strings/string_view.h"

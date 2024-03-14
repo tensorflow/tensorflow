@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <memory>
 
+#include <gtest/gtest.h>
 #include "absl/strings/str_cat.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
