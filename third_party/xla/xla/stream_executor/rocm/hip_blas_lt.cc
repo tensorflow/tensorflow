@@ -313,6 +313,30 @@ auto BlasLt::GetMatmulPlan(const gpu::GemmConfig& cfg, Epilogue epilogue) const
   TF_ASSIGN_OR_RETURN(auto c_desc, MatrixLayout::Create(c_layout));
   TF_ASSIGN_OR_RETURN(auto d_desc, MatrixLayout::Create(output_layout));
 
+#if TF_ROCM_VERSION >= 60000
+  // Currently, the default bias data type in hipblasLt is the same with output
+  // data type for fp8 matmul, which is different from cublasLt. This is a
+  // workaround to match cublasLt behavior.
+  if (epilogue == gpu::BlasLt::Epilogue::kBias) {
+    auto a_dtype = a_desc.type();
+    auto b_dtype = b_desc.type();
+
+    auto bias_dtype = d_desc.type();
+    if ((a_dtype == HIP_R_8F_E4M3_FNUZ || a_dtype == HIP_R_8F_E5M2_FNUZ) &&
+        (b_dtype == HIP_R_8F_E4M3_FNUZ || b_dtype == HIP_R_8F_E5M2_FNUZ)) {
+      auto d_dtype = d_desc.type();
+      if (d_dtype == HIP_R_32F) {
+        bias_dtype = HIP_R_16BF;
+      }
+
+      if (bias_dtype != d_dtype) {
+        TF_RETURN_IF_ERROR(SetAttr(
+            op_desc.get(), HIPBLASLT_MATMUL_DESC_BIAS_DATA_TYPE, bias_dtype));
+      }
+    }
+  }
+#endif  // TF_ROCM_VERSION >= 60000
+
   // std::make_unique won't work with brace initialization in C++17 ;(
   return std::make_unique<MatmulPlan>(*this, std::move(op_desc),
                                       std::move(a_desc), std::move(b_desc),
@@ -388,10 +412,27 @@ absl::Status BlasLt::MatmulPlan::DoMatmul(
           op_desc_.get(), HIPBLASLT_MATMUL_DESC_BIAS_POINTER, bias.opaque()));
     }
 
+#if TF_ROCM_VERSION >= 60000
+    if (a_scale != nullptr) {
+      TF_RETURN_IF_ERROR(SetAttr(op_desc_.get(),
+                                 HIPBLASLT_MATMUL_DESC_A_SCALE_POINTER,
+                                 a_scale.opaque()));
+    }
+    if (b_scale != nullptr) {
+      TF_RETURN_IF_ERROR(SetAttr(op_desc_.get(),
+                                 HIPBLASLT_MATMUL_DESC_B_SCALE_POINTER,
+                                 b_scale.opaque()));
+    }
+    if (c_scale != nullptr || d_scale != nullptr) {
+      return absl::InternalError(
+          "hipblaslt does not support c_scale or d_scale.");
+    }
+#else
     if ((a_scale != nullptr) || (b_scale != nullptr) || (c_scale != nullptr) ||
         (d_scale != nullptr)) {
       return absl::InternalError("hipblaslt does not support scale");
     }
+#endif
 
     if (d_amax != nullptr) {
       return absl::InternalError("hipblaslt does not support amax");
@@ -429,6 +470,17 @@ namespace {
 
 template <hipDataType>
 struct HipToNativeT;
+
+#if TF_ROCM_VERSION >= 60000
+template <>
+struct HipToNativeT<HIP_R_8F_E4M3_FNUZ> {
+  using type = tsl::float8_e4m3fnuz;
+};
+template <>
+struct HipToNativeT<HIP_R_8F_E5M2_FNUZ> {
+  using type = tsl::float8_e5m2fnuz;
+};
+#endif  // TF_ROCM_VERSION >= 60000
 
 template <>
 struct HipToNativeT<HIP_R_16BF> {
@@ -480,6 +532,23 @@ absl::Status BlasLt::MatmulPlan::ExecuteOnStream(
         c_scale, d_scale, d_amax, algorithm, scratch_allocator,           \
         profile_result);                                                  \
   }
+
+#if TF_ROCM_VERSION >= 60000
+  TYPED_MATMUL(float, HIP_R_8F_E4M3_FNUZ, HIP_R_8F_E4M3_FNUZ, HIP_R_16F,
+               HIP_R_16F)
+  TYPED_MATMUL(float, HIP_R_8F_E4M3_FNUZ, HIP_R_8F_E4M3_FNUZ, HIP_R_32F,
+               HIP_R_32F)
+
+  TYPED_MATMUL(float, HIP_R_8F_E4M3_FNUZ, HIP_R_8F_E5M2_FNUZ, HIP_R_16F,
+               HIP_R_16F)
+  TYPED_MATMUL(float, HIP_R_8F_E4M3_FNUZ, HIP_R_8F_E5M2_FNUZ, HIP_R_32F,
+               HIP_R_32F)
+
+  TYPED_MATMUL(float, HIP_R_8F_E5M2_FNUZ, HIP_R_8F_E4M3_FNUZ, HIP_R_16F,
+               HIP_R_16F)
+  TYPED_MATMUL(float, HIP_R_8F_E5M2_FNUZ, HIP_R_8F_E4M3_FNUZ, HIP_R_32F,
+               HIP_R_32F)
+#endif
 
   // Other data types:
   TYPED_MATMUL(float, HIP_R_16BF, HIP_R_16BF, HIP_R_16BF, HIP_R_16BF)

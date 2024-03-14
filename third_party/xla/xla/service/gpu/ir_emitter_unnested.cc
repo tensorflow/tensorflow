@@ -732,10 +732,6 @@ absl::Status IrEmitterUnnested::EmitCublasLtMatmulThunk(
   return absl::OkStatus();
 }
 
-#endif  // GOOGLE_CUDA || TF_HIPBLASLT
-
-#if GOOGLE_CUDA
-
 absl::Status IrEmitterUnnested::EmitCublasLtMatmulThunkF8(
     const HloCustomCallInstruction* instr) {
   TF_RET_CHECK(instr->operand_count() == 6 || instr->operand_count() == 7 ||
@@ -771,12 +767,17 @@ absl::Status IrEmitterUnnested::EmitCublasLtMatmulThunkF8(
   TF_ASSIGN_OR_RETURN(
       BufferAllocation::Slice b_scale,
       GetAllocationSliceForHlo(instr->operand(a_scale_index + 1)));
+#if GOOGLE_CUDA
   TF_ASSIGN_OR_RETURN(
       BufferAllocation::Slice c_scale,
       GetAllocationSliceForHlo(instr->operand(a_scale_index + 2)));
   TF_ASSIGN_OR_RETURN(
       BufferAllocation::Slice d_scale,
       GetAllocationSliceForHlo(instr->operand(a_scale_index + 3)));
+#else  // TENSORFLOW_USE_ROCM
+  BufferAllocation::Slice c_scale;
+  BufferAllocation::Slice d_scale;
+#endif
 
   BufferAllocation::Slice bias;
   if (has_vector_bias) {
@@ -810,7 +811,9 @@ absl::Status IrEmitterUnnested::EmitCublasLtMatmulThunkF8(
   AddThunkToThunkSequence(std::move(thunk));
   return absl::OkStatus();
 }
+#endif  // GOOGLE_CUDA || TF_HIPBLASLT
 
+#if GOOGLE_CUDA
 absl::Status IrEmitterUnnested::EmitConvolutionReorderThunk(
     const HloCustomCallInstruction* instr) {
   bool has_bias = instr->operand_count() > 1;
@@ -2902,11 +2905,11 @@ absl::Status IrEmitterUnnested::EmitHloInstruction(
       if (IsCublasLtMatmul(*instr)) {
         return EmitCublasLtMatmulThunk(custom_call);
       }
-#endif  // GOOGLE_CUDA || TF_HIPBLASLT
-#if GOOGLE_CUDA
       if (IsCublasLtMatmulF8(*instr)) {
         return EmitCublasLtMatmulThunkF8(custom_call);
       }
+#endif  // GOOGLE_CUDA || TF_HIPBLASLT
+#if GOOGLE_CUDA
       if (IsCudnnConvolutionReorder(*instr)) {
         return EmitConvolutionReorderThunk(custom_call);
       }
