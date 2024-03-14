@@ -189,6 +189,73 @@ xla_test(
 #===-------------------------------------------------------------------------------------------===//
 
 cc_library(
+    name = "address_computation_thunk",
+    srcs = ["address_computation_thunk.cc"],
+    hdrs = ["address_computation_thunk.h"],
+    deps = [
+        ":sequential_thunk",
+        "//xla:shape_util",
+        "//xla:status",
+        "//xla:status_macros",
+        "//xla/service:buffer_assignment",
+        "//xla/service/gpu:buffer_allocations",
+        "//xla/service/gpu:ir_emission_utils",
+        "//xla/service/gpu:thunk",
+        "//xla/stream_executor",
+        "//xla/stream_executor:memory_allocation",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/synchronization",
+        "@com_google_absl//absl/types:span",
+        "@llvm-project//llvm:Support",
+        "@local_tsl//tsl/platform:errors",
+        "@local_tsl//tsl/platform:statusor",
+    ],
+)
+
+xla_test(
+    name = "address_computation_thunk_test",
+    srcs = if_gpu_is_configured(["address_computation_thunk_test.cc"]),
+    backend_tags = {
+        "gpu_a100": ["config-cuda-only"],
+        "gpu_v100": ["config-cuda-only"],
+    },
+    backends = [
+        "gpu_a100",
+        "gpu_v100",
+    ],
+    local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]) + if_rocm_is_configured(["TENSORFLOW_USE_ROCM=1"]),
+    deps = [
+        ":address_computation_thunk",
+        ":gemm_thunk",
+        "//xla:shape_util",
+        "//xla:types",
+        "//xla/service:buffer_assignment",
+        "//xla/service:executable",
+        "//xla/service:platform_util",
+        "//xla/service/gpu:buffer_allocations",
+        "//xla/service/gpu:launch_dimensions",
+        "//xla/service/gpu:matmul_utils",
+        "//xla/service/gpu:thunk",
+        "//xla/stream_executor",
+        "//xla/stream_executor:platform",
+        "//xla/stream_executor:platform_manager",
+        "//xla/stream_executor/gpu:gpu_test_kernels",
+        "//xla/stream_executor/gpu:gpu_types_header",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@local_tsl//tsl/lib/core:status_test_util",
+        "@local_tsl//tsl/platform:statusor",
+        "@local_tsl//tsl/platform:test",
+        "@local_tsl//tsl/platform:test_main",
+    ] + if_cuda_is_configured([
+        "@local_config_cuda//cuda:cuda_headers",
+    ]),
+)
+
+cc_library(
     name = "cholesky_thunk",
     srcs = if_gpu_is_configured(["cholesky_thunk.cc"]),
     hdrs = if_gpu_is_configured(["cholesky_thunk.h"]),

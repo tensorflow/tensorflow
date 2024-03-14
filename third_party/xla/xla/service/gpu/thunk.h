@@ -87,6 +87,7 @@ class Thunk {
   static constexpr auto kDefaultExecutionStreamId = ExecutionStreamId(0);
 
   enum Kind {
+    kAddressComputation,
     kCholesky,
     kConditional,
     kConvolution,
