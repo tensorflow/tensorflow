@@ -312,6 +312,12 @@ class Thunk {
         CollectiveCliques* collective_cliques,
         ExecutionStreamIdMap additional_compute_streams = {});
 
+    // Constructs execute parameters from an existing parameters but with
+    // different buffer allocations.
+    static ExecuteParams CloneWithNewAllocations(
+        const ExecuteParams& params,
+        const BufferAllocations& buffer_allocations);
+
     const BufferAllocations* buffer_allocations;  // never null
 
     // Main compute stream on which thunks launch operations.

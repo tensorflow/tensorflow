@@ -176,6 +176,18 @@ Thunk::ExecuteParams Thunk::ExecuteParams::Create(
                        additional_compute_streams);
 }
 
+Thunk::ExecuteParams Thunk::ExecuteParams::CloneWithNewAllocations(
+    const Thunk::ExecuteParams& params,
+    const BufferAllocations& buffer_allocations) {
+  return ExecuteParams(
+      &buffer_allocations, params.stream, params.command_buffer_trace_stream,
+      {params.async_comms_streams.begin(), params.async_comms_streams.end()},
+      params.collective_params, params.collective_cliques,
+      params.device_to_host_stream, params.host_to_device_stream,
+      params.send_device_memory_function, params.recv_device_memory_function,
+      params.additional_compute_streams);
+}
+
 Thunk::ExecuteParams::ExecuteParams(
     const BufferAllocations* buffer_allocations, se::Stream* stream,
     se::Stream* command_buffer_trace_stream,
