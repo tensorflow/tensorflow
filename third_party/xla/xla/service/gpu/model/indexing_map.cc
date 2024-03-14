@@ -999,7 +999,6 @@ IndexingMap ComposeIndexingMaps(const IndexingMap& first,
     return IndexingMap::GetUndefined();
   }
   AffineMap producer_affine_map = second.GetAffineMap();
-  // map1.compose(map2) computes map2 ∘ map1 for some reason.
   AffineMap composed_map = producer_affine_map.compose(first.GetAffineMap());
 
   // The symbols in the composed map, i.e. combined

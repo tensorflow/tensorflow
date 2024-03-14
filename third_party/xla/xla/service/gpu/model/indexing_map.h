@@ -272,7 +272,7 @@ std::ostream& operator<<(std::ostream& out, const IndexingMap& indexing_map);
 bool operator==(const IndexingMap& lhs, const IndexingMap& rhs);
 IndexingMap operator*(const IndexingMap& lhs, const IndexingMap& rhs);
 
-// Composes affine maps, i.e. first ∘ second.
+// Composes affine maps, i.e. second ∘ first.
 IndexingMap ComposeIndexingMaps(const IndexingMap& first,
                                 const IndexingMap& second);
 
