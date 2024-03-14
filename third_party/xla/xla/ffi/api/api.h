@@ -89,7 +89,18 @@ class Handler;
 
 class Ffi {
  public:
+  // Creates and empty binding specification wich allows to define FFI handler
+  // signature separately from implementation and rely on compile time type
+  // checking to verify that signature matches the provided implementation.
   static Binding<> Bind();
+
+  // Automatic FFI binding that does binding specification inference from the
+  // `fn` type signature and binds `fn` to it. This enables a more concise FFI
+  // handler registration with fully automatic type inference at the cost of
+  // less readable error messages, template metaprogramming "magic" and a risk
+  // to accidentally change handler type without noticing it.
+  template <typename Fn>
+  static auto BindTo(Fn fn);
 
   virtual ~Ffi() = default;
   virtual XLA_FFI_Error* Call(const XLA_FFI_CallFrame* call_frame) const = 0;
@@ -270,7 +281,7 @@ class Binding {
   template <typename Fn>
   std::unique_ptr<Handler<Fn, Ts...>> To(Fn fn) {
     return std::unique_ptr<Handler<Fn, Ts...>>(
-        new Handler<Fn, Ts...>(std::forward<Fn>(fn), std::move(attrs_)));
+        new Handler<Fn, Ts...>(std::move(fn), std::move(attrs_)));
   }
 
  private:
@@ -292,6 +303,169 @@ class Binding {
 };
 
 inline Binding<> Ffi::Bind() { return xla::ffi::Binding<>(); }
+
+//===----------------------------------------------------------------------===//
+// Template metaprogramming to automatially infer Binding from invocable object.
+//===----------------------------------------------------------------------===//
+
+// A little bit of metaprogramming that automatically infers the binding schema
+// from an invocable type signature.
+
+// XLA FFI arguments binding must be defined by specializing this template.
+//
+// Example: binding for the `MyType` arguments
+//
+//   template <>
+//   struct ArgBinding<MyType> {
+//     using Arg = MyType;
+//   };
+//
+template <typename T>
+struct ArgBinding {
+  using Arg = void;
+};
+
+// XLA FFI attributes binding must be defined by specializing this template.
+//
+// Example: binding for the `MyType` attribute
+//
+//   template <>
+//   struct AttrBinding<MyAttr> {
+//     using Attr = MyAttr;
+//     static constexpr std::string_view name() { return "my_attr"; }
+//   };
+//
+template <typename T>
+struct AttrBinding {
+  using Attr = void;
+};
+
+// XLA FFI context binding must be defined by specializing this template.
+//
+// Example: binding for the `gpuStream_t` platform stream
+//
+//   template <>
+//   struct CtxBinding<gpuStream_t> {
+//     using Ctx = PlatformStream<gpuStream_t>;
+//   };
+//
+template <typename T>
+struct CtxBinding {
+  using Ctx = void;
+};
+
+namespace internal {
+
+template <typename Param>
+inline constexpr bool is_arg_binding_v =
+    !std::is_void_v<typename ArgBinding<Param>::Arg>;
+
+template <typename Param>
+inline constexpr bool is_attr_binding_v =
+    !std::is_void_v<typename AttrBinding<Param>::Attr>;
+
+template <typename Param>
+inline constexpr bool is_ctx_binding_v =
+    !std::is_void_v<typename CtxBinding<Param>::Ctx>;
+
+// A helper template to bind `Params` to `Fn` one by one.
+template <typename Fn, typename... Params>
+struct BindOne;
+
+// A specialization that binds one parameter.
+template <typename Fn, typename Param, typename... Params>
+struct BindOne<Fn, Param, Params...> {
+  // Binds single parameter and then continues with remaining parameters using
+  // recursive template instantiation.
+  template <typename InFlightBinding>
+  static auto To(Fn fn, InFlightBinding binding) {
+    if constexpr (is_arg_binding_v<Param>) {
+      // Bind parameter as an FFI handler argument.
+      return BindOne<Fn, Params...>::To(
+          std::move(fn),
+          std::move(binding).template Arg<typename ArgBinding<Param>::Arg>());
+
+    } else if constexpr (is_attr_binding_v<Param>) {
+      // Bind parameter as an FFI handler attribute.
+      return BindOne<Fn, Params...>::To(
+          std::move(fn),
+          std::move(binding).template Attr<typename AttrBinding<Param>::Attr>(
+              std::string(AttrBinding<Param>::name())));
+
+    } else if constexpr (is_ctx_binding_v<Param>) {
+      // Bind parameter as an FFI handler context.
+      return BindOne<Fn, Params...>::To(
+          std::move(fn),
+          std::move(binding).template Ctx<typename CtxBinding<Param>::Ctx>());
+
+    } else {
+      // Parameter is not recognized as one of the types that can be bound to
+      // FFI handler.
+      static_assert(sizeof(Param) == 0,
+                    "parameter is not supported for binding");
+    }
+  }
+};
+
+// A specialization that binds `Fn` after consuming all parameters.
+template <typename Fn>
+struct BindOne<Fn> {
+  template <typename InFlightBinding>
+  static auto To(Fn fn, InFlightBinding binding) {
+    return binding.To(std::move(fn));
+  }
+};
+
+template <typename Fn>
+struct Bind;
+
+// Binding specialization for function pointers (and captureless lambdas that
+// can be casted to function pointers).
+template <typename ResultType, typename... Params>
+struct Bind<ResultType (*)(Params...)> {
+  using Fn = ResultType (*)(Params...);
+
+  static auto To(Fn fn) {
+    return BindOne<Fn, Params...>::To(std::move(fn), Ffi::Bind());
+  }
+};
+
+// Binding specialization for callables (lambdas with captures).
+template <typename ResultType, typename Fn, typename... Params>
+struct Bind<ResultType (Fn::*)(Params...) const> {
+  static auto To(Fn fn) {
+    return BindOne<Fn, Params...>::To(std::move(fn), Ffi::Bind());
+  }
+};
+
+}  // namespace internal
+
+template <typename Fn>
+auto Ffi::BindTo(Fn fn) {
+  if constexpr (std::is_pointer_v<Fn>) {
+    return internal::Bind<Fn>::To(fn);
+  } else {
+    return internal::Bind<decltype(&Fn::operator())>::To(std::move(fn));
+  }
+}
+
+// A container for defining attribute type and name as compile time parameters.
+template <typename T, char const* attr_name>
+class Attr {
+ public:
+  Attr(T value) : value_(value) {}  // NOLINT
+  T& operator*() { return value_; }
+
+ private:
+  T value_;
+};
+
+// Default binding for `Attr` parameters.
+template <typename T, const char* attr_name>
+struct AttrBinding<Attr<T, attr_name>> {
+  using Attr = T;
+  static constexpr std::string_view name() { return attr_name; }
+};
 
 //===----------------------------------------------------------------------===//
 // Arguments decoding implementation
@@ -1056,11 +1230,30 @@ auto DictionaryDecoder(Members... m) {
 
 // Use captureless lambda to function pointer conversion to create a static
 // XLA_FFI_Handler function pointer variable.
-#define XLA_FFI_DEFINE_HANDLER(fn, impl, binding)                             \
+
+// Use explicit binding specification to create a handler.
+#define XLA_FFI_DEFINE_HANDLER_EXPLICIT(fn, impl, binding)                    \
   static constexpr XLA_FFI_Handler* fn = +[](XLA_FFI_CallFrame* call_frame) { \
     static auto* handler = binding.To(impl).release();                        \
     return handler->Call(call_frame);                                         \
   }
+
+// Automatically infer binding specification from the implementation.
+#define XLA_FFI_DEFINE_HANDLER_AUTO(fn, impl)                                 \
+  static constexpr XLA_FFI_Handler* fn = +[](XLA_FFI_CallFrame* call_frame) { \
+    static auto* handler = ::xla::ffi::Ffi::BindTo(impl).release();           \
+    return handler->Call(call_frame);                                         \
+  }
+
+#define XLA_FFI_DEFINE_HANDLER_X(x, fn, impl, binding, FUNC, ...) FUNC
+
+// This is a trick to define macro with optional parameters.
+// Source: https://stackoverflow.com/a/8814003
+#define XLA_FFI_DEFINE_HANDLER(fn, impl, ...)                 \
+  XLA_FFI_DEFINE_HANDLER_X(                                   \
+      , fn, impl, ##__VA_ARGS__,                              \
+      XLA_FFI_DEFINE_HANDLER_EXPLICIT(fn, impl, __VA_ARGS__), \
+      XLA_FFI_DEFINE_HANDLER_AUTO(fn, impl))
 
 // TODO(ezhulenev): Add a callback so that end users can log registration error
 // to appropriate logging destination, e.g. LOG(FATAL) for duplicate internal
