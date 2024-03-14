@@ -15,7 +15,9 @@ limitations under the License.
 
 #include "xla/service/hlo_graph_dumper.h"
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/str_format.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
@@ -210,6 +212,43 @@ ENTRY %conditional_select (constant: pred[]) -> (f32[]) {
       std::string graph,
       RenderGraph(*module->entry_computation(), /*label=*/"tuple_constant",
                   DebugOptions(), RenderedGraphFormat::kDot));
+}
+
+TEST_F(HloGraphDumperTest, OverrideColors) {
+  const char* hlo_string = R"(
+    HloModule comp
+
+    ENTRY comp {
+      param.0 = f32[10] parameter(0)
+      param.1 = f32[10] parameter(1)
+      ROOT lt = pred[10] compare(param.0, param.1), direction=LT
+    })";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  // Create a color map with color and stats
+  absl::flat_hash_map<const HloInstruction*, ColorStats> color_map;
+  ColorStats color_stats_1;
+  color_stats_1.color = "#A9C343";
+  color_stats_1.stats = absl::StrFormat("%.3f", 1.11);
+  ColorStats color_stats_2;
+  color_stats_2.color = "#BC8A3F";
+  color_stats_2.stats = absl::StrFormat("%.3f", 2.22);
+  color_map[module->entry_computation()->GetInstructionWithName("param.0")] =
+      color_stats_1;
+  color_map[module->entry_computation()->GetInstructionWithName("param.1")] =
+      color_stats_2;
+
+  HloRenderOptions hlo_render_options;
+  hlo_render_options.override_node_colors = true;
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::string graph,
+      RenderGraph(*module->entry_computation(), /*label=*/"tuple_constant",
+                  DebugOptions(), RenderedGraphFormat::kDot, hlo_render_options,
+                  color_map));
+  EXPECT_THAT(graph, HasSubstr("#A9C343"));
+  EXPECT_THAT(graph, HasSubstr("1.110"));
+  EXPECT_THAT(graph, HasSubstr("#BC8A3F"));
+  EXPECT_THAT(graph, HasSubstr("2.220"));
 }
 
 }  // anonymous namespace
