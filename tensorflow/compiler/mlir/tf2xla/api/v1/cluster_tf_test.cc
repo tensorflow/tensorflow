@@ -84,8 +84,9 @@ TEST_F(SessionClusterTensorflowDialectTest, ClustersTf) {
   TF_EXPECT_OK(
       RunSessionTf2xlaClusteringBridge(*mlir_module_,
                                        /*is_in_fallback_enabled_mode=*/false));
-  EXPECT_EQ(
-      compilation_status.Delta("tpu", "v1", "fallback_disabled", "success"), 1);
+  EXPECT_EQ(compilation_status.Delta("replicated", "v1", "tpu",
+                                     "fallback_disabled", "success"),
+            1);
 }
 
 TEST_F(SessionClusterTensorflowDialectTest, FailsWithMultipleSubmodules) {
@@ -98,8 +99,9 @@ TEST_F(SessionClusterTensorflowDialectTest, FailsWithMultipleSubmodules) {
                                        /*is_in_fallback_enabled_mode=*/false)
           .ok());
 
-  EXPECT_EQ(
-      compilation_status.Delta("tpu", "v1", "fallback_disabled", "failure"), 1);
+  EXPECT_EQ(compilation_status.Delta("replicated", "v1", "tpu",
+                                     "fallback_disabled", "failure"),
+            1);
 }
 
 }  // namespace
