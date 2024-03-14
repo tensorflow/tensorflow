@@ -584,7 +584,8 @@ bool IsCuDnnEnabled(const AutotuneConfig& config,
                     const DebugOptions& debug_opts) {
   return std::get<se::CudaComputeCapability>(config.GetGpuComputeCapability())
              .IsAtLeastHopper() &&
-         debug_opts.xla_gpu_cudnn_gemm_fusion();
+         debug_opts.xla_gpu_cudnn_gemm_fusion() &&
+         GetDnnVersionInfo(config.GetExecutor()).major_version() >= 9;
 }
 
 bool HasAlgorithmSupportedByCublasOrCublasLt(
