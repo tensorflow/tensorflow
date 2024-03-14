@@ -16,7 +16,6 @@ limitations under the License.
 #ifndef XLA_STREAM_EXECUTOR_STREAM_EXECUTOR_PIMPL_H_
 #define XLA_STREAM_EXECUTOR_STREAM_EXECUTOR_PIMPL_H_
 
-#include <atomic>
 #include <cstddef>
 #include <cstdint>
 #include <initializer_list>
@@ -46,6 +45,7 @@ limitations under the License.
 #include "xla/stream_executor/launch_dim.h"
 #include "xla/stream_executor/module_spec.h"
 #include "xla/stream_executor/platform.h"
+#include "xla/stream_executor/stream_executor_internal.h"
 #include "tsl/platform/logging.h"
 #include "tsl/platform/status.h"
 
@@ -76,7 +76,7 @@ class StreamExecutor {
       std::unique_ptr<internal::StreamExecutorInterface> implementation,
       int device_ordinal);
 
-  ~StreamExecutor();
+  ~StreamExecutor() = default;
 
   absl::Status Init();
 
@@ -460,13 +460,6 @@ class StreamExecutor {
   //
   // Immutable post-initialization.
   int device_ordinal_;
-
-  // Counter for the current number of live streams. This is used to check
-  // for accidentally-outstanding streams at StreamExecutor teardown time, as
-  // well
-  // as to indicate leaks (via a large outstanding count being logged) in the
-  // case we can't allocate more streams.
-  std::atomic_int_fast32_t live_stream_count_;
 
   // Only one worker thread is needed; little work will be done by the
   // executor.
