@@ -33,6 +33,7 @@ limitations under the License.
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/register_common_dialects.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
+#include "tensorflow/compiler/mlir/tensorflow/utils/attribute_utils.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "tensorflow/core/lib/monitoring/cell_reader.h"
 #include "tensorflow/core/platform/env.h"
@@ -167,9 +168,11 @@ TEST_F(LowerClusterToRuntimeOpsTest, ErrorsWithBadCluster) {
                    *mlir_module_, DeviceType(DEVICE_TPU_XLA_JIT))
                    .ok());
 
-  EXPECT_EQ(compilation_status.Delta("XLA_TPU_JIT", "v2", "fallback_disabled",
-                                     "failure"),
-            1);
+  EXPECT_EQ(
+      compilation_status.Delta(mlir::TF::kMlirPh1BridgeCounterReplicated,
+                               mlir::TF::kMlirPh1BridgeCounterV2, "XLA_TPU_JIT",
+                               "fallback_disabled", "failure"),
+      1);
 }
 
 TEST_F(LowerClusterToRuntimeOpsTest, DumpsPipelinePasses) {
