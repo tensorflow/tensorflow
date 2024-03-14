@@ -41,6 +41,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_input_output_alias_config.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_sharding.h"
+#include "xla/layout.h"
 #include "xla/layout_util.h"
 #include "xla/pjrt/layout_mode.h"
 #include "xla/primitive_util.h"
@@ -213,9 +214,9 @@ StatusOr<MemorySpaceColor> GetMemorySpaceColor(const std::string& memory_kind) {
   // pinned_host matters. So should there be a different lowering for
   // unpinned_host?
   if (memory_kind == "unpinned_host" || memory_kind == "pinned_host") {
-    return 5;
+    return xla::Layout::kHostMemorySpace;
   } else if (memory_kind == "device") {
-    return 0;
+    return xla::Layout::kDefaultMemorySpace;
   } else {
     return InvalidArgument("Unknown memory kind %s", memory_kind);
   }
@@ -227,7 +228,8 @@ StatusOr<MemorySpaceColor> GetMemorySpaceColor(const std::string& memory_kind) {
 static absl::StatusOr<std::vector<MemorySpaceColor>> MlirAttrsToMemoryKinds(
     mlir::ArrayAttr all_attrs, size_t num_values) {
   if (all_attrs == nullptr) {
-    return std::vector<MemorySpaceColor>(num_values, 0);
+    return std::vector<MemorySpaceColor>(num_values,
+                                         xla::Layout::kDefaultMemorySpace);
   }
   if (all_attrs.size() != num_values) {
     return InvalidArgument(
@@ -247,7 +249,7 @@ static absl::StatusOr<std::vector<MemorySpaceColor>> MlirAttrsToMemoryKinds(
                           GetMemorySpaceColor(attr.getValue().str()));
       result.emplace_back(memory_space);
     } else {
-      result.emplace_back(0);
+      result.emplace_back(xla::Layout::kDefaultMemorySpace);
     }
   }
   return result;
@@ -302,7 +304,7 @@ GetTupleMemoryKinds(mlir::ArrayRef<mlir::Type> types,
   }
   // Use default layout for all outputs.
   return std::vector<MemorySpaceColor>(types[0].cast<mlir::TupleType>().size(),
-                                       0);
+                                       xla::Layout::kDefaultMemorySpace);
 }
 
 StatusOr<std::vector<LayoutMode>> GetArgLayoutModes(mlir::ModuleOp module) {
@@ -476,7 +478,8 @@ static StatusOr<std::vector<MemorySpaceColor>> GetMemoryKinds(
   auto iter = frontend_attrs.find(frontend_attr_name);
   if (iter == frontend_attrs.end()) {
     // Return all default memory space i.e. 0 if frontend attr isn't present.
-    return std::vector<MemorySpaceColor>(num_values, 0);
+    return std::vector<MemorySpaceColor>(num_values,
+                                         xla::Layout::kDefaultMemorySpace);
   }
   return GetMemoryKindsFromFrontendAttr(iter->second);
 }
