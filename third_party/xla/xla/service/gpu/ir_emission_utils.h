@@ -101,6 +101,9 @@ bool IsSliceWithUnitStrides(const HloInstruction* instr);
 // slice.
 bool IsContiguousSlice(const HloInstruction& instr);
 
+// Returns true if `sliced` is a contiguous slice of `orig`.
+bool IsContiguousSlice(const Shape& orig, const Shape& sliced);
+
 // Emits code to shuffle data between threads of a warp. This has the same
 // semantics as the PTX "shfl.sync.down" instruction but works for values that
 // aren't 32 bits in size. The last operand of the emitted "shfl" is

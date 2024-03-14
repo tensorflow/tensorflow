@@ -216,13 +216,17 @@ bool IsContiguousSlice(const HloInstruction& instr) {
   // src and dst dimensions match.
   const Shape& src_shape = slice->operand(0)->shape();
   const Shape& dst_shape = slice->shape();
+  return IsContiguousSlice(src_shape, dst_shape);
+}
+
+bool IsContiguousSlice(const Shape& orig, const Shape& sliced) {
   bool sliced_dim_found = false;
-  for (auto dim : src_shape.layout().minor_to_major()) {
+  for (auto dim : orig.layout().minor_to_major()) {
     if (!sliced_dim_found) {
-      sliced_dim_found = dst_shape.dimensions(dim) < src_shape.dimensions(dim);
+      sliced_dim_found = sliced.dimensions(dim) < orig.dimensions(dim);
       continue;
     }
-    if (dst_shape.dimensions(dim) != 1) return false;
+    if (sliced.dimensions(dim) != 1) return false;
   }
   return true;
 }
