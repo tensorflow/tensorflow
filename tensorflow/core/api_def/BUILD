@@ -11,11 +11,11 @@ load(
     "tf_cc_binary",
     "tf_cc_test",
 )
-load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load(
-    "@local_tsl//tsl/mkl:build_defs.bzl",
+    "@local_xla//xla/tsl/mkl:build_defs.bzl",
     "if_mkl",
 )
+load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load(
     "@local_config_tensorrt//:build_defs.bzl",
     "if_tensorrt",

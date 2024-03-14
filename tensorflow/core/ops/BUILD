@@ -11,12 +11,12 @@ load(
     "tf_gen_op_libs",
 )
 load(
-    "//tensorflow/core/platform:rules_cc.bzl",
-    "cc_library",
+    "@local_xla//xla/tsl/mkl:build_defs.bzl",
+    "if_mkl",
 )
 load(
-    "@local_tsl//tsl/mkl:build_defs.bzl",
-    "if_mkl",
+    "//tensorflow/core/platform:rules_cc.bzl",
+    "cc_library",
 )
 
 # A lot of packages try to minimize binary size by depending on individual ops,\

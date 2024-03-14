@@ -4,7 +4,7 @@ load(
     "tf_mkl_kernel_library",
 )
 load(
-    "@local_tsl//tsl/mkl:build_defs.bzl",
+    "@local_xla//xla/tsl/mkl:build_defs.bzl",
     "mkl_deps",
 )
 
