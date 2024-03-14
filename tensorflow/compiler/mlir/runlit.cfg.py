@@ -63,7 +63,7 @@ llvm_config.config.substitutions.append(
 # Tweak the PATH to include the tools dir.
 llvm_config.with_environment('PATH', config.llvm_tools_dir, append_path=True)
 
-for key in ['HIP_VISIBLE_DEVICES', 'CUDA_VISIBLE_DEVICES',
+for key in ['ROCM_PATH', 'HIP_VISIBLE_DEVICES', 'CUDA_VISIBLE_DEVICES',
             'TF_PER_DEVICE_MEMORY_LIMIT_MB']:
   value = os.environ.get(key, None)
   if value != None:
