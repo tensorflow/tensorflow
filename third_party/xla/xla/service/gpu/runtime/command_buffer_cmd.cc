@@ -38,6 +38,9 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
+#include "xla/executable_run_options.h"
+#include "xla/ffi/call_frame.h"
+#include "xla/ffi/ffi_api.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/collective_ops_utils.h"
 #include "xla/service/computation_placer.h"
@@ -55,6 +58,7 @@ limitations under the License.
 #include "xla/service/gpu/runtime/nccl_all_reduce_thunk.h"
 #include "xla/service/gpu/stream_executor_util.h"
 #include "xla/service/gpu/thunk.h"
+#include "xla/service/service_executable_run_options.h"
 #include "xla/stream_executor/command_buffer.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/kernel.h"
@@ -62,6 +66,7 @@ limitations under the License.
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/types.h"  // IWYU pragma: keep
+#include "xla/util.h"
 #include "tsl/concurrency/ref_count.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/errors.h"
@@ -1194,6 +1199,16 @@ CommandBufferCmd::BufferUsageVector CuDnnCmd::buffers() {
 absl::Status CustomCallCmd::Record(const Thunk::ExecuteParams& execute_params,
                                    const RecordParams& record_params,
                                    se::CommandBuffer* command_buffer) {
+  if (handler_ == nullptr) {
+    return RecordLegacyCustomCall(execute_params, record_params,
+                                  command_buffer);
+  }
+  return RecordXlaFfiCall(execute_params, record_params, command_buffer);
+}
+
+absl::Status CustomCallCmd::RecordLegacyCustomCall(
+    const Thunk::ExecuteParams& execute_params,
+    const RecordParams& record_params, se::CommandBuffer* command_buffer) {
   std::vector<void*> buffers;
   buffers.reserve(operands_.size() + results_.size());
   for (auto& slices : {operands_, results_}) {
@@ -1250,6 +1265,81 @@ absl::Status CustomCallCmd::Record(const Thunk::ExecuteParams& execute_params,
                   absl::StrCat("CustomCall failed: ", *message));
             }
             return absl::OkStatus();
+          }));
+
+  return command_buffer->AddNestedCommandBuffer(execution_scope_id,
+                                                *nested_cmd);
+#else   //  GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+  return Unavailable(
+      "Custom calls on GPU are not supported in this configuration. Please "
+      "build with --config=cuda or --config=rocm");
+#endif  //   GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+}
+
+absl::Status CustomCallCmd::RecordXlaFfiCall(
+    const Thunk::ExecuteParams& execute_params,
+    const RecordParams& record_params, se::CommandBuffer* command_buffer) {
+  // TODO(ezhulenev): This is not the most optimal approach, as we'll be doing
+  // a lot of extra allocation on every call. We have to keep attributes
+  // separate from arguments, as they do not change after thunk is constructed.
+  ffi::CallFrameBuilder builder;
+
+  ExecutionScopeId execution_scope_id = GetExecutionScope(record_params);
+  VLOG(5) << "CustomCallCmd: execution_scope_id=" << execution_scope_id.value();
+
+  for (int i = 0; i < operands_.size(); ++i) {
+    const std::optional<Slice>& slice = operands_[i];
+    // TODO(ezhulenev): Add a token argument type to XLA:FFI.
+    if (!slice.has_value()) {
+      return Internal("FFI handlers do not support tokens (yet)!");
+    }
+
+    if (!slice->slice.allocation())
+      return Internal("custom call input missing buffer allocation");
+
+    se::DeviceMemoryBase buffer =
+        execute_params.buffer_allocations->GetDeviceAddress(slice->slice);
+    VLOG(5) << "  Operand " << i << ": " << slice->slice << " ("
+            << buffer.opaque() << ")";
+    builder.AddBufferArg(buffer, slice->shape.element_type(),
+                         slice->shape.dimensions());
+  }
+
+  for (int i = 0; i < results_.size(); ++i) {
+    const std::optional<Slice>& slice = results_[i];
+    // TODO(ezhulenev): Add a token argument type to XLA:FFI.
+    if (!slice.has_value()) {
+      return Internal("FFI handlers do not support tokens (yet)!");
+    }
+
+    if (!slice->slice.allocation())
+      return Internal("custom call input missing buffer allocation");
+
+    se::DeviceMemoryBase buffer =
+        execute_params.buffer_allocations->GetDeviceAddress(slice->slice);
+    VLOG(5) << "  Result " << i << ": " << slice->slice << " ("
+            << buffer.opaque() << ")";
+    builder.AddBufferArg(buffer, slice->shape.element_type(),
+                         slice->shape.dimensions());
+  }
+
+  ffi::CallFrameBuilder::AttributesBuilder attrs;
+  attrs.Append(attributes_);
+  builder.AddAttributes(attrs.Build());
+  ffi::CallFrame call_frame = builder.Build();
+
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+  TF_ASSIGN_OR_RETURN(
+      auto nested_cmd,
+      se::CommandBuffer::Trace(
+          execute_params.stream->parent(),
+          execute_params.command_buffer_trace_stream, [&](se::Stream* stream) {
+            ExecutableRunOptions run_options;
+            run_options.set_stream(stream);
+            ServiceExecutableRunOptions service_run_options(run_options);
+            ffi::CallOptions options = {&service_run_options,
+                                        called_computation_};
+            return ffi::Call(handler_, call_frame, options);
           }));
 
   return command_buffer->AddNestedCommandBuffer(execution_scope_id,
