@@ -19,13 +19,21 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/flags/flag.h"
+#include "absl/flags/parse.h"
 #include "absl/time/time.h"
+#include "third_party/opencl_headers/CL/cl_ext.h"
 #include "tensorflow/lite/core/kernels/register.h"
 #include "tensorflow/lite/delegates/gpu/cl/environment.h"
 #include "tensorflow/lite/delegates/gpu/cl/inference_context.h"
 #include "tensorflow/lite/delegates/gpu/common/model.h"
 #include "tensorflow/lite/delegates/gpu/common/model_builder.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
+
+ABSL_FLAG(int, num_tests, 10, "Number of benchmark tests");
+ABSL_FLAG(int, num_runs_per_test, 0,
+          "Number of runs per benchmark test. Use 0 for default");
+ABSL_FLAG(bool, benchmark_command_buffer, true, "Run command buffer benchmark");
 
 namespace tflite {
 namespace gpu {
@@ -225,7 +233,7 @@ absl::Status RunSerializedTest(const std::string& model_name) {
   return absl::OkStatus();
 }
 
-absl::Status RunCommandBufferSample(int num_tests, int num_runs_per_sec,
+absl::Status RunCommandBufferSample(int num_tests, int num_runs_per_test,
                                     Environment* env,
                                     InferenceContext* context) {
   if (!env->device().GetInfo().SupportsExtension("cl_khr_command_buffer")) {
@@ -234,7 +242,7 @@ absl::Status RunCommandBufferSample(int num_tests, int num_runs_per_sec,
 
   cl_command_queue command_queue = env->queue()->queue();
   cl_int errcode_ret;
-  std::vector<cl_command_buffer_khr> cbs(num_runs_per_sec);
+  std::vector<cl_command_buffer_khr> cbs(num_runs_per_test);
   for (auto& cb : cbs) {
     cb = clCreateCommandBufferKHR(1, &command_queue, nullptr, &errcode_ret);
     if (errcode_ret != CL_SUCCESS) {
@@ -262,7 +270,7 @@ absl::Status RunCommandBufferSample(int num_tests, int num_runs_per_sec,
     clFinish(command_queue);
     const auto end = std::chrono::high_resolution_clock::now();
     const double total_time_ms = (end - start).count() * 1e-6f;
-    const double average_inference_time = total_time_ms / num_runs_per_sec;
+    const double average_inference_time = total_time_ms / num_runs_per_test;
     std::cout << "Total time CB - " << average_inference_time << "ms"
               << std::endl;
   }
@@ -314,26 +322,30 @@ absl::Status RunModelSample(const std::string& model_name) {
             << (const_mem_bytes + runtime_mem_bytes) / 1024.0 / 1024.0 << " MB"
             << std::endl;
 
+  const int num_tests = absl::GetFlag(FLAGS_num_tests);
   const int num_runs_per_sec = std::max(
       1, static_cast<int>(1000.0f / absl::ToDoubleMilliseconds(
                                         profiling_info.GetTotalTime())));
+  int num_runs_per_test = absl::GetFlag(FLAGS_num_runs_per_test);
+  if (num_runs_per_test == 0) {
+    num_runs_per_test = num_runs_per_sec;
+  }
 
-  const int kNumRuns = 10;
-  for (int i = 0; i < kNumRuns; ++i) {
+  for (int i = 0; i < num_tests; ++i) {
     const auto start = std::chrono::high_resolution_clock::now();
-    for (int k = 0; k < num_runs_per_sec; ++k) {
+    for (int k = 0; k < num_runs_per_test; ++k) {
       RETURN_IF_ERROR(context.AddToQueue(env.queue()));
     }
     RETURN_IF_ERROR(env.queue()->WaitForCompletion());
     const auto end = std::chrono::high_resolution_clock::now();
     const double total_time_ms = (end - start).count() * 1e-6f;
-    const double average_inference_time = total_time_ms / num_runs_per_sec;
+    const double average_inference_time = total_time_ms / num_runs_per_test;
     std::cout << "Total time - " << average_inference_time << "ms" << std::endl;
   }
-
-  RETURN_IF_ERROR(
-      RunCommandBufferSample(kNumRuns, num_runs_per_sec, &env, &context));
-
+  if (absl::GetFlag(FLAGS_benchmark_command_buffer)) {
+    RETURN_IF_ERROR(
+        RunCommandBufferSample(num_tests, num_runs_per_test, &env, &context));
+  }
   return absl::OkStatus();
 }
 
@@ -342,6 +354,7 @@ absl::Status RunModelSample(const std::string& model_name) {
 }  // namespace tflite
 
 int main(int argc, char** argv) {
+  absl::ParseCommandLine(argc, argv);
   if (argc <= 1) {
     std::cerr << "Expected model path as second argument.";
     return -1;
