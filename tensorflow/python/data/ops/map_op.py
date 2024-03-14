@@ -14,7 +14,6 @@
 # ==============================================================================
 """The implementation of `tf.data.Dataset.map`."""
 
-import inspect
 import warnings
 
 from tensorflow.python.data.ops import dataset_ops
@@ -23,27 +22,6 @@ from tensorflow.python.data.ops import structured_function
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import gen_dataset_ops
-
-
-def _generate_default_name():
-  """Generates a transformation name based on the current call stack.
-
-  The name is useful for debugging, e.g. identifying transformations in xprofs.
-
-  Returns:
-    The generated name.
-  """
-  # Use the closest non-tf-data stack frame.
-  for frame in inspect.stack():
-    if "tensorflow/python/data" in frame.filename:
-      continue
-    name = (
-        "file_" + frame.filename.split("/")[-1] + "_line_" + str(frame.lineno)
-    ).replace(".", "_")
-    if name.isidentifier():
-      return name
-
-  return None
 
 
 def _map_v2(input_dataset,  # pylint: disable=unused-private-name
@@ -131,7 +109,7 @@ class _MapDataset(dataset_ops.UnaryDataset):
         self._transformation_name(),
         dataset=input_dataset,
         use_legacy_function=use_legacy_function)
-    self._name = name or _generate_default_name()
+    self._name = name
     variant_tensor = gen_dataset_ops.map_dataset(
         input_dataset._variant_tensor,  # pylint: disable=protected-access
         self._map_func.function.captured_inputs,
@@ -181,7 +159,7 @@ class _ParallelMapDataset(dataset_ops.UnaryDataset):
     self._preserve_cardinality = preserve_cardinality
     self._num_parallel_calls = ops.convert_to_tensor(
         num_parallel_calls, dtype=dtypes.int64, name="num_parallel_calls")
-    self._name = name or _generate_default_name()
+    self._name = name
     variant_tensor = gen_dataset_ops.parallel_map_dataset_v2(
         input_dataset._variant_tensor,  # pylint: disable=protected-access
         self._map_func.function.captured_inputs,
