@@ -853,18 +853,20 @@ void EmbeddingSequencingPass::runOnOperation() {
 
   TF::WhileOp while_op = nullptr;
   result = FindOwningWhileOp(loop_body_func, module, &while_op);
-  if (failed(result)) return signalPassFailure();
-
-  // Override the WhileOp parallel_iterations if requested by flag.
-  int parallel_iterations_flag = tensorflow::GetBuildXlaOpsPassFlags()
-                                     ->tf_xla_embedding_parallel_iterations;
-  if (parallel_iterations_flag > 0) {
-    VLOG(1) << "Setting WhileOp parallel_iterations_flag to "
-            << parallel_iterations_flag;
-    while_op.setParallelIterations(parallel_iterations_flag);
+  if (failed(result)) {
+    VLOG(1) << "WhileOp not found: assuming external loop.";
   } else {
-    VLOG(1) << "Using original WhileOp parallel_iterations = "
-            << while_op.getParallelIterations();
+    // Override the WhileOp parallel_iterations if requested by flag.
+    int parallel_iterations_flag = tensorflow::GetBuildXlaOpsPassFlags()
+                                       ->tf_xla_embedding_parallel_iterations;
+    if (parallel_iterations_flag > 0) {
+      VLOG(1) << "Setting WhileOp parallel_iterations_flag to "
+              << parallel_iterations_flag;
+      while_op.setParallelIterations(parallel_iterations_flag);
+    } else {
+      VLOG(1) << "Using original WhileOp parallel_iterations = "
+              << while_op.getParallelIterations();
+    }
   }
 
   OpBuilder builder(module);
