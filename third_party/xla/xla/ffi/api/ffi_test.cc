@@ -147,7 +147,7 @@ TEST(FfiTest, WrongTypeBufferArgument) {
                HasSubstr("Wrong buffer dtype: expected F32 but got S32")));
 }
 
-TEST(FfiTest, BindingTypeInference) {
+TEST(FfiTest, AutoBinding) {
   static constexpr char kI32[] = "i32";
 
   auto handler = Ffi::BindTo(+[](BufferBase buffer, Attr<int32_t, kI32> foo) {
@@ -163,6 +163,52 @@ TEST(FfiTest, BindingTypeInference) {
 
   CallFrameBuilder builder;
   builder.AddBufferArg(memory, PrimitiveType::F32, /*dims=*/{2, 2});
+  builder.AddAttributes(attrs.Build());
+  auto call_frame = builder.Build();
+
+  auto status = Call(*handler, call_frame);
+  TF_ASSERT_OK(status);
+}
+
+struct I32AndF32 {
+  int32_t i32;
+  float f32;
+};
+
+XLA_FFI_REGISTER_STRUCT_ATTR_DECODING(I32AndF32, StructMember<int32_t>("i32"),
+                                      StructMember<float>("f32"));
+
+TEST(FfiTest, AutoBindingStructs) {
+  auto handler = Ffi::BindTo(+[](I32AndF32 attrs) {
+    EXPECT_EQ(attrs.i32, 42);
+    EXPECT_EQ(attrs.f32, 42.0f);
+    return Error::Success();
+  });
+
+  CallFrameBuilder::AttributesBuilder attrs;
+  attrs.Insert("i32", 42);
+  attrs.Insert("f32", 42.0f);
+
+  CallFrameBuilder builder;
+  builder.AddAttributes(attrs.Build());
+  auto call_frame = builder.Build();
+
+  auto status = Call(*handler, call_frame);
+  TF_ASSERT_OK(status);
+}
+
+TEST(FfiTest, AutoBindingDictionary) {
+  auto handler = Ffi::BindTo(+[](Dictionary attrs) {
+    EXPECT_EQ(*attrs.get<int32_t>("i32"), 42);
+    EXPECT_EQ(*attrs.get<float>("f32"), 42.0f);
+    return Error::Success();
+  });
+
+  CallFrameBuilder::AttributesBuilder attrs;
+  attrs.Insert("i32", 42);
+  attrs.Insert("f32", 42.0f);
+
+  CallFrameBuilder builder;
   builder.AddAttributes(attrs.Build());
   auto call_frame = builder.Build();
 

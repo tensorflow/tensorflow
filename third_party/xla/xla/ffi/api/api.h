@@ -311,9 +311,9 @@ inline Binding<> Ffi::Bind() { return xla::ffi::Binding<>(); }
 // A little bit of metaprogramming that automatically infers the binding schema
 // from an invocable type signature.
 
-// XLA FFI arguments binding must be defined by specializing this template.
+// XLA FFI binding for an argument.
 //
-// Example: binding for the `MyType` arguments
+// Example: binding for the `MyType` argument
 //
 //   template <>
 //   struct ArgBinding<MyType> {
@@ -325,7 +325,7 @@ struct ArgBinding {
   using Arg = void;
 };
 
-// XLA FFI attributes binding must be defined by specializing this template.
+// XLA FFI binding for a named attribute.
 //
 // Example: binding for the `MyType` attribute
 //
@@ -340,7 +340,14 @@ struct AttrBinding {
   using Attr = void;
 };
 
-// XLA FFI context binding must be defined by specializing this template.
+// XLA FFI binding for dictionary attributes: automatic parsing of all
+// attributes into user defined struct.
+template <typename T>
+struct AttrsBinding {
+  using Attrs = void;
+};
+
+// XLA FFI binding for values passed via context.
 //
 // Example: binding for the `gpuStream_t` platform stream
 //
@@ -365,6 +372,10 @@ inline constexpr bool is_attr_binding_v =
     !std::is_void_v<typename AttrBinding<Param>::Attr>;
 
 template <typename Param>
+inline constexpr bool is_attrs_binding_v =
+    !std::is_void_v<typename AttrsBinding<Param>::Attrs>;
+
+template <typename Param>
 inline constexpr bool is_ctx_binding_v =
     !std::is_void_v<typename CtxBinding<Param>::Ctx>;
 
@@ -386,11 +397,18 @@ struct BindOne<Fn, Param, Params...> {
           std::move(binding).template Arg<typename ArgBinding<Param>::Arg>());
 
     } else if constexpr (is_attr_binding_v<Param>) {
-      // Bind parameter as an FFI handler attribute.
+      // Bind parameter as a named FFI handler attribute.
       return BindOne<Fn, Params...>::To(
           std::move(fn),
           std::move(binding).template Attr<typename AttrBinding<Param>::Attr>(
               std::string(AttrBinding<Param>::name())));
+
+    } else if constexpr (is_attrs_binding_v<Param>) {
+      // Bind parameter as attributes dictionary.
+      return BindOne<Fn, Params...>::To(
+          std::move(fn),
+          std::move(binding)
+              .template Attrs<typename AttrsBinding<Param>::Attrs>());
 
     } else if constexpr (is_ctx_binding_v<Param>) {
       // Bind parameter as an FFI handler context.
@@ -460,11 +478,21 @@ class Attr {
   T value_;
 };
 
-// Default binding for `Attr` parameters.
+//===----------------------------------------------------------------------===//
+// Attributes bindings
+//===----------------------------------------------------------------------===//
+
+// Default attribute binding for `Attr` parameters.
 template <typename T, const char* attr_name>
 struct AttrBinding<Attr<T, attr_name>> {
   using Attr = T;
   static constexpr std::string_view name() { return attr_name; }
+};
+
+// Default attributes binding for `Dictonary` parameters.
+template <>
+struct AttrsBinding<Dictionary> {
+  using Attrs = Dictionary;
 };
 
 //===----------------------------------------------------------------------===//
@@ -1199,7 +1227,15 @@ auto DictionaryDecoder(Members... m) {
 //     StructMember<int64_t>("a"),
 //     StructMember<int64_t>("b"));
 //
+// Automatically registers attributes binding for a struct that allows automatic
+// binding specification inference from a callable signature.
+//
 #define XLA_FFI_REGISTER_STRUCT_ATTR_DECODING(T, ...)                 \
+  template <>                                                         \
+  struct AttrsBinding<T> {                                            \
+    using Attrs = T;                                                  \
+  };                                                                  \
+                                                                      \
   template <>                                                         \
   struct AttrDecoding<T> {                                            \
     using Type = T;                                                   \
