@@ -844,6 +844,7 @@ cc_library(
     srcs = ["resource_loader.cc"],
     textual_hdrs = ["resource_loader.h"],
     deps = [
+        ":logging",
         ":path",
         ":test",
     ],
