@@ -599,15 +599,6 @@ static void ExtractFrontendAttributesFromFunction(
     }
 }
 
-// Checks if all shardings are set.
-static bool AllOptionalShardingsAreSet(
-    llvm::ArrayRef<std::optional<xla::OpSharding>> shardings) {
-  return llvm::all_of(shardings,
-                      [](const std::optional<xla::OpSharding>& sharding) {
-                        return sharding.has_value();
-                      });
-}
-
 static bool SomeOptionalShardingsAreSet(
     llvm::ArrayRef<std::optional<xla::OpSharding>> shardings) {
   return llvm::any_of(shardings,
@@ -3352,23 +3343,29 @@ LogicalResult ConvertToHloModule::SetEntryTupleShardings(
     Block* block, xla::XlaBuilder* builder,
     llvm::ArrayRef<std::optional<xla::OpSharding>> arg_shardings,
     llvm::SmallVectorImpl<xla::Shape>* arg_shapes) {
-  if (!arg_shardings.empty() && AllOptionalShardingsAreSet(arg_shardings)) {
+  if (!arg_shardings.empty() && SomeOptionalShardingsAreSet(arg_shardings)) {
     xla::OpSharding sharding;
     sharding.set_type(xla::OpSharding::TUPLE);
     for (const auto& arg_sharding : llvm::enumerate(arg_shardings)) {
-      auto hlo_sharding = xla::HloSharding::FromProto(*arg_sharding.value());
-      if (!hlo_sharding.ok())
-        return block->getParentOp()->emitError()
-               << hlo_sharding.status().message();
+      if (arg_sharding.value().has_value()) {
+        auto hlo_sharding = xla::HloSharding::FromProto(*arg_sharding.value());
+        if (!hlo_sharding.ok())
+          return block->getParentOp()->emitError()
+                 << hlo_sharding.status().message();
 
-      auto status = RewriteLayoutWithShardedShape(
-          hlo_sharding.value(), /*use_fast_memory=*/false,
-          options_.layout_preference_fn, options_.shape_representation_fn,
-          &(*arg_shapes)[arg_sharding.index()]);
-      if (!status.ok())
-        return block->getParentOp()->emitError() << status.message();
+        auto status = RewriteLayoutWithShardedShape(
+            hlo_sharding.value(), /*use_fast_memory=*/false,
+            options_.layout_preference_fn, options_.shape_representation_fn,
+            &(*arg_shapes)[arg_sharding.index()]);
+        if (!status.ok())
+          return block->getParentOp()->emitError() << status.message();
 
-      *sharding.add_tuple_shardings() = *arg_sharding.value();
+        *sharding.add_tuple_shardings() = *arg_sharding.value();
+      } else {
+        xla::OpSharding fallback_sharding;
+        fallback_sharding.set_type(xla::OpSharding::REPLICATED);
+        *sharding.add_tuple_shardings() = fallback_sharding;
+      }
     }
 
     builder->SetSharding(sharding);
@@ -3409,13 +3406,15 @@ LogicalResult ConvertToHloModule::LowerBasicBlockAsFunction(
     builder->ClearSharding();
 
     bool set_tuple_element_sharding =
-        !arg_shardings.empty() && AllOptionalShardingsAreSet(arg_shardings);
+        !arg_shardings.empty() && SomeOptionalShardingsAreSet(arg_shardings);
     for (BlockArgument& arg : block->getArguments()) {
-      if (set_tuple_element_sharding)
+      if (set_tuple_element_sharding &&
+          arg_shardings[arg.getArgNumber()].has_value()) {
         builder->SetSharding(*arg_shardings[arg.getArgNumber()]);
+      }
       lowering[arg] = xla::GetTupleElement(tuple, arg.getArgNumber());
+      builder->ClearSharding();
     }
-    builder->ClearSharding();
   } else {
     if (ensure_single_arg) {
       // Applicable for mhlo.IfOp or mhlo.CaseOp or mhlo.WhileOp.
