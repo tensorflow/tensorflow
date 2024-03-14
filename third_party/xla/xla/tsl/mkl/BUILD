@@ -1,6 +1,6 @@
 load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
 load(
-    "//tsl:tsl.bzl",
+    "@local_tsl//tsl:tsl.bzl",
     "clean_dep",
 )
 
@@ -85,7 +85,7 @@ cc_library(
     ],
     hdrs = ["@llvm_openmp//:config_omp"],
     target_compatible_with = select({
-        "//tsl/mkl:build_with_mkl": [],
+        "@local_xla//xla/tsl/mkl:build_with_mkl": [],
         "//conditions:default": ["@platforms//:incompatible"],
     }),
     visibility = ["//visibility:public"],
@@ -99,7 +99,7 @@ cc_library(
     ],
     hdrs = ["@llvm_openmp//:config_omp"],
     target_compatible_with = select({
-        "//tsl/mkl:build_with_mkl": [],
+        "@local_xla//xla/tsl/mkl:build_with_mkl": [],
         "//conditions:default": ["@platforms//:incompatible"],
     }),
     visibility = ["//visibility:public"],
@@ -112,7 +112,7 @@ cc_library(
     ],
     hdrs = ["@llvm_openmp//:config_omp"],
     target_compatible_with = select({
-        "//tsl/mkl:build_with_mkl": [],
+        "@local_xla//xla/tsl/mkl:build_with_mkl": [],
         "//conditions:default": ["@platforms//:incompatible"],
     }),
     visibility = ["//visibility:public"],
@@ -121,18 +121,18 @@ cc_library(
 cc_library(
     name = "intel_binary_blob",
     target_compatible_with = select({
-        "//tsl/mkl:build_with_mkl": [],
+        "@local_xla//xla/tsl/mkl:build_with_mkl": [],
         "//conditions:default": ["@platforms//:incompatible"],
     }),
     visibility = ["//visibility:public"],
     deps = select({
-        clean_dep("//tsl:linux_x86_64"): [
+        clean_dep("@local_tsl//tsl:linux_x86_64"): [
             ":mkl_libs_linux",
         ],
-        clean_dep("//tsl:macos"): [
+        clean_dep("@local_tsl//tsl:macos"): [
             ":mkl_libs_darwin",
         ],
-        clean_dep("//tsl:windows"): [
+        clean_dep("@local_tsl//tsl:windows"): [
             ":mkl_libs_windows",
         ],
         "//conditions:default": [],

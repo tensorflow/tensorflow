@@ -13,6 +13,11 @@ load(
     "tf_openmp_lopts",
 )
 load("//tensorflow:tensorflow.default.bzl", "cc_header_only_library", "filegroup", "tf_cuda_cc_test")
+load(
+    "@local_xla//xla/tsl/mkl:build_defs.bzl",
+    "if_mkl",
+    "if_mkl_ml",
+)
 
 # For platform specific build config
 load(
@@ -33,11 +38,6 @@ load(
 load(
     "//tensorflow/security/fuzzing:tf_fuzzing.bzl",
     "tf_cc_fuzz_test",
-)
-load(
-    "@local_tsl//tsl/mkl:build_defs.bzl",
-    "if_mkl",
-    "if_mkl_ml",
 )
 
 default_package_visibility = [
@@ -1932,7 +1932,7 @@ cc_library(
         "//tensorflow/core:protos_all_cc",
         "@com_google_absl//absl/base",
     ] + if_mkl([":mkl_cpu_allocator"]) + if_mkl_ml([
-        "@local_tsl//tsl/mkl:intel_binary_blob",
+        "@local_xla//xla/tsl/mkl:intel_binary_blob",
     ]),
 )
 
