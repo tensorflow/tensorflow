@@ -152,6 +152,14 @@ class ServingDeviceSelector {
   virtual DeviceReservation ReserveDevice(
       absl::string_view program_fingerprint) = 0;
 
+  // Enqueues a program on the given device. Used only for load tracking
+  // purposes when the device selection feature is unused.
+  virtual void Enqueue(int32_t device_index, absl::string_view fingerprint) = 0;
+
+  // Marks the completion of a program on the given device. Used only for load
+  // tracking purposes when the device selection feature is unused.
+  virtual void Completed(int32_t device_index, bool had_error) = 0;
+
  protected:
   // A helper function for Enqueue. The EnqueueHelper does the following things.
   //  1. If there are programs in the scheduled_programs queue of the given
