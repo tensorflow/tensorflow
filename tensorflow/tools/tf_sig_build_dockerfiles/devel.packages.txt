@@ -57,10 +57,9 @@ libtool
 libzmq3-dev
 mlocate
 moreutils
-openjdk-11-jdk
-openjdk-11-jre-headless
+openjdk-21-jdk
+openjdk-21-jre-headless
 pkg-config
-python3-dev
 python3-setuptools
 rsync
 software-properties-common
