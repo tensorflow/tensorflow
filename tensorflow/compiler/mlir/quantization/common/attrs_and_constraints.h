@@ -16,9 +16,11 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_MLIR_QUANTIZATION_COMMON_ATTRS_AND_CONSTRAINTS_H_
 
 #include <cstdint>
+#include <optional>
 #include <type_traits>
 
 #include "llvm/Support/Debug.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypeInterfaces.h"  // from @llvm-project
@@ -28,6 +30,7 @@ limitations under the License.
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
+#include "stablehlo/dialect/StablehloOps.h"  // from @stablehlo
 #include "tensorflow/compiler/mlir/quantization/common/quantization_lib/quantization_utils.h"  // IWYU pragma: keep
 #include "tensorflow/compiler/mlir/quantization/tensorflow/quantization_options.pb.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
@@ -202,6 +205,11 @@ inline bool HasQuantizableTrait(Operation* op) {
 // Returns true if `op` has two operands and one result and only second operand
 // is quantized.
 bool IsHybridQuantizedOp(Operation* op);
+
+// Returns the quantization dimension for a given `stablehlo.dot_general` op,
+// or `std::nullopt` if the given op is not per-channel quantizable.
+std::optional<int64_t> GetDotGeneralQuantizationDim(
+    ::mlir::stablehlo::DotGeneralOp dot_general_op);
 
 }  // namespace mlir::quant
 

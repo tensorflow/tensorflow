@@ -56,10 +56,10 @@ module {
 // -----
 
 module {
-  // CHECK-LABEL: dot_disable_per_channel
-  func.func private @dot_disable_per_channel(%arg0: tensor<2x2xf32>) -> tensor<2x2xf32> {
+  // CHECK-LABEL: dot_general
+  func.func private @dot_general(%arg0: tensor<2x2xf32>) -> tensor<2x2xf32> {
     // CHECK: %[[q_weight:.*]] = "quantfork.qcast"
-    // CHECK-SAME: -> tensor<2x2x!quant.uniform<i8<-127:127>:f32, 0.060200210631363035>>
+    // CHECK-SAME: -> tensor<2x2x!quant.uniform<i8<-127:127>:f32:1, {0.049663885371891529,0.060200210631363035}>>
     // CHECK: %[[dq_weight:.*]] = "quantfork.dcast"(%[[q_weight]])
     %cst = "tf.Const"() {device = "", value = dense<[[-6.30731344, 5.4962182], [1.80364347, -7.64542675]]> : tensor<2x2xf32>} : () -> tensor<2x2xf32>
     // CHECK: %[[q_act:.*]] = "quantfork.qcast"(%arg0)
@@ -69,16 +69,24 @@ module {
     // CHECK: "tf.XlaCallModule"(%[[dq_act]], %[[dq_weight]]
     %1 = "tf.XlaCallModule"(%0, %cst) {
       Sout = [#tf_type.shape<2x2>], config = "",
-      _entry_function = @composite_dot,
-      module = "composite_dot",
+      _entry_function = @composite_dot_general,
+      module = "composite_dot_general",
       platforms = [], version = 4 : i64
     } : (tensor<2x2xf32>, tensor<2x2xf32>) -> tensor<2x2xf32>
     %2 = "quantfork.stats"(%1) {layerStats = dense<[0.000000e+00, 6.000000e+00]> : tensor<2xf32>} : (tensor<2x2xf32>) -> tensor<2x2xf32>
     return %2 : tensor<2x2xf32>
   }
 
-  // CHECK-LABEL: composite_dot
-  func.func private @composite_dot(%arg0: tensor<2x2xf32>, %arg1: tensor<2x2xf32>) -> tensor<2x2xf32> {
-    return %arg0 : tensor<2x2xf32>
+  // CHECK-LABEL: composite_dot_general
+  func.func private @composite_dot_general(%arg0: tensor<2x2xf32>, %arg1: tensor<2x2xf32>) -> tensor<2x2xf32> {
+    %0 = "stablehlo.dot_general"(%arg0, %arg1) {
+    dot_dimension_numbers = #stablehlo.dot<
+      lhs_batching_dimensions = [],
+      rhs_batching_dimensions = [],
+      lhs_contracting_dimensions = [1],
+      rhs_contracting_dimensions = [0]
+      >
+    } : (tensor<2x2xf32>, tensor<2x2xf32>) -> tensor<2x2xf32>
+    return %0 : tensor<2x2xf32>
   }
 }

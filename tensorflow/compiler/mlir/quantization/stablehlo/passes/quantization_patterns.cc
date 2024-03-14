@@ -32,6 +32,7 @@ limitations under the License.
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypeInterfaces.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Location.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
@@ -356,11 +357,18 @@ void RewriteGemmStyleOp(func::FuncOp entry_func_op, PatternRewriter& rewriter,
             .cast<UniformQuantizedPerAxisType>()
             .getZeroPoints();
 
+    // `stablehlo.convolution` assumes the following format:
     // [b, 0, 1, f]x[0, 1, i, o]->[b, 0, 1, f]
+    // `stablehlo.dot_general` can take various formats. We only per-channel
+    // quantize non-batch ops.
+    // `stablehlo.dot_general` legalizable to `tfl.fully_connected` has a
+    // filter rank of 2 with the last dimension as the channel dimension.
+    const int64_t quantization_dimension =
+        filter_type.cast<ShapedType>().getShape().size() - 1;
     accumulation_quantized_element_type =
         CreateI32F32UniformQuantizedPerAxisType(
             gemm_style_op->getLoc(), *rewriter.getContext(), result_scales,
-            zero_points, /*quantization_dimension=*/3);
+            zero_points, quantization_dimension);
 
     new_gemm_style_op_result_type = gemm_style_op_result_type.cloneWith(
         gemm_style_shape, accumulation_quantized_element_type);
@@ -456,7 +464,9 @@ void RewriteSingularOp(func::FuncOp entry_func_op, PatternRewriter& rewriter) {
 class QuantizeDotGeneralOpPattern : public EntryFuncBodyQuantizationPattern {
  public:
   explicit QuantizeDotGeneralOpPattern(
-      const bool enable_per_channel_quantized_weight) {}
+      const bool enable_per_channel_quantized_weight)
+      : enable_per_channel_quantized_weight_(
+            enable_per_channel_quantized_weight) {}
 
   LogicalResult match(func::FuncOp entry_func_op) const override {
     return MatchGemmStyleOp<DotGeneralOp>(entry_func_op);
@@ -464,10 +474,16 @@ class QuantizeDotGeneralOpPattern : public EntryFuncBodyQuantizationPattern {
 
   void rewrite(func::FuncOp entry_func_op,
                PatternRewriter& rewriter) const override {
-    RewriteGemmStyleOp<DotGeneralOp>(
-        entry_func_op, rewriter,
-        /*enable_per_channel_quantized_weight=*/false);
+    DotGeneralOp dot_general_op = *entry_func_op.getOps<DotGeneralOp>().begin();
+    const bool should_quantize_per_channel =
+        enable_per_channel_quantized_weight_ &&
+        GetDotGeneralQuantizationDim(dot_general_op);
+    RewriteGemmStyleOp<DotGeneralOp>(entry_func_op, rewriter,
+                                     should_quantize_per_channel);
   }
+
+ private:
+  const bool enable_per_channel_quantized_weight_;
 };
 
 // Quantizes the entry function's body containing a `ConvolutionOp`.
@@ -923,13 +939,8 @@ void PopulateFusedGemmStylePatterns(
     const bool enable_per_channel_quantized_weight) {
   patterns.add<XlaCallModuleOpToCallOp<QuantizeConvolutionOpPattern>>(
       ctx, enable_per_channel_quantized_weight);
-  // By default, we set `enable_per_channel_quantized_weight` to true for
-  // passes to ensure per-channel quantization for all supported ops.
-  // For ops that do not yet support per-channel quantization, explicitly
-  // mark as false like below. We will soon add support for per-channel
-  // quantization of the following ops.
   patterns.add<XlaCallModuleOpToCallOp<QuantizeDotGeneralOpPattern>>(
-      ctx, /*enable_per_channel_quantized_weight=*/false);
+      ctx, enable_per_channel_quantized_weight);
 }
 
 void PopulateQuantizeHybridPatterns(MLIRContext& ctx,
