@@ -38,15 +38,18 @@ extern "C" {
 // Forwards `absl::Status` object pointed to by `status` to XLA FFI error
 // (status left in moved-from state). Pointer ownership stays with the
 // caller.
-typedef XLA_FFI_Error* XLA_FFI_Error_Forward(void* status);
+typedef XLA_FFI_Error* XLA_FFI_INTERNAL_Error_Forward(void* status);
 
-// Returns a pointer to `xla::ServiceExecutableRunOptions`.
-typedef void* XLA_FFI_ServiceExecutableRunOptions_Get(
-    XLA_FFI_ExecutionContext* ctx);
+// Returns a pointer to main compute stream (pointer to `se::Stream`). In
+// contrast to public C API which returns a pointer to underlying platform
+// stream (i.e. cudaStream_t for CUDA backend), this API returns a pointer to
+// StreamExecutor stream which is unsafe to use across dynamic library boundary.
+typedef void* XLA_FFI_INTERNAL_Stream_Get(XLA_FFI_ExecutionContext* ctx);
 
 // Returns a pointer to `xla::HloComputation` if FFI handler has a called
 // computation attached to it.
-typedef void* XLA_FFI_CalledComputation_Get(XLA_FFI_ExecutionContext* ctx);
+typedef void* XLA_FFI_INTERNAL_CalledComputation_Get(
+    XLA_FFI_ExecutionContext* ctx);
 
 //===----------------------------------------------------------------------===//
 // API access
@@ -55,9 +58,9 @@ typedef void* XLA_FFI_CalledComputation_Get(XLA_FFI_ExecutionContext* ctx);
 #define _XLA_FFI_INTERNAL_API_STRUCT_FIELD(fn_type) fn_type* fn_type
 
 struct XLA_FFI_InternalApi {
-  _XLA_FFI_INTERNAL_API_STRUCT_FIELD(XLA_FFI_Error_Forward);
-  _XLA_FFI_INTERNAL_API_STRUCT_FIELD(XLA_FFI_ServiceExecutableRunOptions_Get);
-  _XLA_FFI_INTERNAL_API_STRUCT_FIELD(XLA_FFI_CalledComputation_Get);
+  _XLA_FFI_INTERNAL_API_STRUCT_FIELD(XLA_FFI_INTERNAL_Error_Forward);
+  _XLA_FFI_INTERNAL_API_STRUCT_FIELD(XLA_FFI_INTERNAL_Stream_Get);
+  _XLA_FFI_INTERNAL_API_STRUCT_FIELD(XLA_FFI_INTERNAL_CalledComputation_Get);
 };
 
 #undef _XLA_FFI_INTERNAL_API_STRUCT_FIELD

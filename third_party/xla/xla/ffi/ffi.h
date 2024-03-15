@@ -35,9 +35,9 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/primitive_util.h"
 #include "xla/runtime/memref_view.h"
-#include "xla/service/service_executable_run_options.h"
 #include "xla/status.h"
 #include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/stream.h"
 #include "xla/types.h"  // IWYU pragma: keep
 #include "xla/xla_data.pb.h"
 
@@ -185,16 +185,14 @@ struct AttrDecoding<Pointer<T>> {
 // Context decoding
 //===----------------------------------------------------------------------===//
 
-// TODO(ezhulenev): We should remove `ServiceExecutableRunOptions` context and
-// pass only se::Stream to FFI handlers.
 template <>
-struct CtxDecoding<ServiceExecutableRunOptions> {
-  using Type = const ServiceExecutableRunOptions*;
+struct CtxDecoding<se::Stream> {
+  using Type = se::Stream*;
 
   static std::optional<Type> Decode(const XLA_FFI_Api* api,
                                     XLA_FFI_ExecutionContext* ctx,
                                     DiagnosticEngine&) {
-    void* ptr = api->internal_api->XLA_FFI_ServiceExecutableRunOptions_Get(ctx);
+    void* ptr = api->internal_api->XLA_FFI_INTERNAL_Stream_Get(ctx);
     return reinterpret_cast<Type>(ptr);
   }
 };
@@ -206,7 +204,7 @@ struct CtxDecoding<CalledComputation> {
   static std::optional<Type> Decode(const XLA_FFI_Api* api,
                                     XLA_FFI_ExecutionContext* ctx,
                                     DiagnosticEngine&) {
-    void* ptr = api->internal_api->XLA_FFI_CalledComputation_Get(ctx);
+    void* ptr = api->internal_api->XLA_FFI_INTERNAL_CalledComputation_Get(ctx);
     return reinterpret_cast<Type>(ptr);
   }
 };
@@ -218,7 +216,7 @@ struct CtxDecoding<CalledComputation> {
 template <>
 struct ResultEncoding<Status> {
   static XLA_FFI_Error* Encode(XLA_FFI_Api* api, Status status) {
-    return api->internal_api->XLA_FFI_Error_Forward(&status);
+    return api->internal_api->XLA_FFI_INTERNAL_Error_Forward(&status);
   }
 };
 

@@ -49,10 +49,9 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/service/custom_call_status.h"
 #include "xla/service/custom_call_target_registry.h"
-#include "xla/service/service_executable_run_options.h"
 #include "xla/shape_util.h"
-#include "xla/status.h"
 #include "xla/stream_executor/gpu/gpu_types.h"
+#include "xla/stream_executor/stream.h"
 #include "xla/test_helpers.h"
 #include "xla/tests/client_library_test_base.h"
 #include "tsl/lib/core/status_test_util.h"
@@ -375,9 +374,9 @@ TEST_F(CustomCallTest, RuntimeCustomCallAlwaysFail) {
   EXPECT_THAT(status.message(), ::testing::HasSubstr("Uh oh, wrong value: 42"));
 }
 
-static absl::Status Memcpy(const ServiceExecutableRunOptions* run_options,
-                           ffi::BufferBase src, ffi::BufferBase dst) {
-  return run_options->stream()->MemcpyD2D(
+static absl::Status Memcpy(se::Stream* stream, ffi::BufferBase src,
+                           ffi::BufferBase dst) {
+  return stream->MemcpyD2D(
       &dst.data, src.data,
       absl::c_accumulate(src.dimensions, 1.0, std::multiplies<int64_t>()) *
           sizeof(float));
@@ -385,7 +384,7 @@ static absl::Status Memcpy(const ServiceExecutableRunOptions* run_options,
 
 XLA_FFI_DEFINE_HANDLER(kMemcpy, Memcpy,
                        ffi::Ffi::Bind()
-                           .Ctx<ServiceExecutableRunOptions>()
+                           .Ctx<se::Stream>()
                            .Arg<ffi::BufferBase>()  // src
                            .Arg<ffi::BufferBase>()  // dst
 );
@@ -620,8 +619,8 @@ TEST_F(CustomCallTest, ExportedFfiWithStatusSucceeded) {
 //===----------------------------------------------------------------------===//
 
 static absl::Status MemcpyWithCalledComputation(
-    const ServiceExecutableRunOptions* run_options, ffi::BufferBase src,
-    ffi::BufferBase dst, const HloComputation* called_computation) {
+    se::Stream* stream, ffi::BufferBase src, ffi::BufferBase dst,
+    const HloComputation* called_computation) {
   if (called_computation == nullptr)
     return absl::InternalError("Called computation is not defined");
 
@@ -631,13 +630,13 @@ static absl::Status MemcpyWithCalledComputation(
   if (!DynCast<HloParameterInstruction>(called_computation->root_instruction()))
     return absl::InternalError("ROOT must be a paremeter");
 
-  return Memcpy(run_options, src, dst);
+  return Memcpy(stream, src, dst);
 }
 
 XLA_FFI_DEFINE_HANDLER(kMemcpyWithCalledComputation,
                        MemcpyWithCalledComputation,
                        ffi::Ffi::Bind()
-                           .Ctx<ServiceExecutableRunOptions>()
+                           .Ctx<se::Stream>()
                            .Arg<ffi::BufferBase>()  // src
                            .Arg<ffi::BufferBase>()  // dst
                            .Ctx<ffi::CalledComputation>());

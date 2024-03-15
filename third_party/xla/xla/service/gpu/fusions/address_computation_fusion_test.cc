@@ -32,6 +32,7 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/stream_executor/gpu/gpu_types.h"
+#include "xla/stream_executor/stream.h"
 #include "xla/tests/hlo_test_base.h"
 #include "tsl/platform/statusor.h"
 #include "tsl/platform/test.h"
@@ -844,9 +845,9 @@ TEST_F(AddressComputationFusionTest, SlicedOperandAliasingOutput) {
                                       /*run_hlo_passes=*/false));
 }
 
-static absl::Status Memcpy(const ServiceExecutableRunOptions* run_options,
-                           ffi::BufferBase src, ffi::BufferBase dst) {
-  return run_options->stream()->MemcpyD2D(
+static absl::Status Memcpy(se::Stream* stream, ffi::BufferBase src,
+                           ffi::BufferBase dst) {
+  return stream->MemcpyD2D(
       &dst.data, src.data,
       absl::c_accumulate(src.dimensions, 1.0, std::multiplies<int64_t>()) *
           sizeof(float));
@@ -854,7 +855,7 @@ static absl::Status Memcpy(const ServiceExecutableRunOptions* run_options,
 
 XLA_FFI_DEFINE_HANDLER(kMemcpy, Memcpy,
                        ffi::Ffi::Bind()
-                           .Ctx<ServiceExecutableRunOptions>()
+                           .Ctx<se::Stream>()
                            .Arg<ffi::BufferBase>()  // src
                            .Arg<ffi::BufferBase>()  // dst
 );
@@ -894,12 +895,12 @@ TEST_F(AddressComputationFusionTest, CustomCallSimple) {
                                       /*run_hlo_passes=*/false));
 }
 
-static absl::Status SubBuffers(const ServiceExecutableRunOptions* run_options,
-                               ffi::BufferBase src0, ffi::BufferBase src1,
-                               ffi::BufferBase src2, ffi::BufferBase src3,
-                               ffi::BufferBase src4, ffi::BufferBase dst0,
-                               ffi::BufferBase dst1, ffi::BufferBase dst2,
-                               ffi::BufferBase dst3, ffi::BufferBase dst4) {
+static absl::Status SubBuffers(se::Stream* stream, ffi::BufferBase src0,
+                               ffi::BufferBase src1, ffi::BufferBase src2,
+                               ffi::BufferBase src3, ffi::BufferBase src4,
+                               ffi::BufferBase dst0, ffi::BufferBase dst1,
+                               ffi::BufferBase dst2, ffi::BufferBase dst3,
+                               ffi::BufferBase dst4) {
   //  src0:  param 0 at tuple index {0}, shape f32[128]
   //  src1:  param 0 at tuple index {1}, shape f32[256]
   //  src2:  param 1 at tuple index {0}, shape f32[1024]
@@ -912,22 +913,22 @@ static absl::Status SubBuffers(const ServiceExecutableRunOptions* run_options,
   //  dst3:  result at tuple index {2}, shape f32[1024]
   //  dst4:  result at tuple index {3}, shape f32[4,8]
 
-  TF_RETURN_IF_ERROR(run_options->stream()->MemcpyD2D(&dst0.data, src3.data,
-                                                      8 * sizeof(float)));
-  TF_RETURN_IF_ERROR(run_options->stream()->MemcpyD2D(&dst1.data, src0.data,
-                                                      128 * sizeof(float)));
-  TF_RETURN_IF_ERROR(run_options->stream()->MemcpyD2D(&dst2.data, src1.data,
-                                                      256 * sizeof(float)));
-  TF_RETURN_IF_ERROR(run_options->stream()->MemcpyD2D(&dst3.data, src2.data,
-                                                      1024 * sizeof(float)));
-  TF_RETURN_IF_ERROR(run_options->stream()->MemcpyD2D(&dst4.data, src4.data,
-                                                      4 * 8 * sizeof(float)));
+  TF_RETURN_IF_ERROR(
+      stream->MemcpyD2D(&dst0.data, src3.data, 8 * sizeof(float)));
+  TF_RETURN_IF_ERROR(
+      stream->MemcpyD2D(&dst1.data, src0.data, 128 * sizeof(float)));
+  TF_RETURN_IF_ERROR(
+      stream->MemcpyD2D(&dst2.data, src1.data, 256 * sizeof(float)));
+  TF_RETURN_IF_ERROR(
+      stream->MemcpyD2D(&dst3.data, src2.data, 1024 * sizeof(float)));
+  TF_RETURN_IF_ERROR(
+      stream->MemcpyD2D(&dst4.data, src4.data, 4 * 8 * sizeof(float)));
   return absl::OkStatus();
 }
 
 XLA_FFI_DEFINE_HANDLER(kSubBuffers, SubBuffers,
                        ffi::Ffi::Bind()
-                           .Ctx<ServiceExecutableRunOptions>()
+                           .Ctx<se::Stream>()
                            .Arg<ffi::BufferBase>()  // src0
                            .Arg<ffi::BufferBase>()  // src1
                            .Arg<ffi::BufferBase>()  // src2
@@ -995,15 +996,13 @@ TEST_F(AddressComputationFusionTest, CustomCallWithTuple) {
                                       /*run_hlo_passes=*/false));
 }
 
-static absl::Status NoOp(const ServiceExecutableRunOptions* run_options,
-                         ffi::BufferBase operand) {
+static absl::Status NoOp(se::Stream* stream, ffi::BufferBase operand) {
   return absl::OkStatus();
 }
 
-XLA_FFI_DEFINE_HANDLER(kNoOp, NoOp,
-                       ffi::Ffi::Bind()
-                           .Ctx<ServiceExecutableRunOptions>()
-                           .Arg<ffi::BufferBase>()  // operand
+XLA_FFI_DEFINE_HANDLER(
+    kNoOp, NoOp,
+    ffi::Ffi::Bind().Ctx<se::Stream>().Arg<ffi::BufferBase>()  // operand
 );
 XLA_FFI_REGISTER_HANDLER(ffi::GetXlaFfiApi(), "__xla_test$$noop", PLATFORM,
                          kNoOp);

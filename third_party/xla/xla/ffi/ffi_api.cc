@@ -31,8 +31,6 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/service/service_executable_run_options.h"
 #include "xla/status.h"
-#include "xla/statusor.h"
-#include "tsl/platform/logging.h"
 
 //===----------------------------------------------------------------------===//
 // XLA FFI C structs definition
@@ -259,16 +257,16 @@ static XLA_FFI_Error* XLA_FFI_Stream_Get(XLA_FFI_Stream_Get_Args* args) {
 // XLA FFI Internal Api Implementation
 //===----------------------------------------------------------------------===//
 
-static XLA_FFI_Error* XLA_FFI_Error_Forward(void* status) {
+static XLA_FFI_Error* XLA_FFI_INTERNAL_Error_Forward(void* status) {
   return new XLA_FFI_Error{std::move(*reinterpret_cast<Status*>(status))};
 }
 
-static void* XLA_FFI_ServiceExecutableRunOptions_Get(
-    XLA_FFI_ExecutionContext* ctx) {
-  return const_cast<ServiceExecutableRunOptions*>(ctx->run_options);
+static void* XLA_FFI_INTERNAL_Stream_Get(XLA_FFI_ExecutionContext* ctx) {
+  return ctx->run_options->stream();
 }
 
-static void* XLA_FFI_CalledComputation_Get(XLA_FFI_ExecutionContext* ctx) {
+static void* XLA_FFI_INTERNAL_CalledComputation_Get(
+    XLA_FFI_ExecutionContext* ctx) {
   return const_cast<HloComputation*>(ctx->called_computation);
 }
 
@@ -277,9 +275,9 @@ static void* XLA_FFI_CalledComputation_Get(XLA_FFI_ExecutionContext* ctx) {
 //===----------------------------------------------------------------------===//
 
 static XLA_FFI_InternalApi internal_api = {
-    XLA_FFI_Error_Forward,
-    XLA_FFI_ServiceExecutableRunOptions_Get,
-    XLA_FFI_CalledComputation_Get,
+    XLA_FFI_INTERNAL_Error_Forward,
+    XLA_FFI_INTERNAL_Stream_Get,
+    XLA_FFI_INTERNAL_CalledComputation_Get,
 };
 
 static XLA_FFI_Api api = {
