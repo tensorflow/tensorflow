@@ -1881,6 +1881,7 @@ Status EagerRemoteExecute(EagerOperation* op, TensorHandle** retvals,
       tensorflow::Device* input_device_or_cpu = input->DeviceOrHostCPU(ctx);
       const string* input_device_name = &input_device_or_cpu->name();
       bool serialize_resource_dtype_and_shape = false;
+      TensorHandle* handle = input;
       if (op_device != input_device &&
           // If the expected and actual devices are on the same task, don't
           // explicitly copy, and instead depend on the copy to happen locally
@@ -1893,7 +1894,6 @@ Status EagerRemoteExecute(EagerOperation* op, TensorHandle** retvals,
           // Always copy to the remote CPU so that the actual device can be
           // correctly determined after the kernel is selected/instantiated,
           // since the op might have its inputs on host memory.
-          TensorHandle* handle = input;
           Device* handle_device = handle->DeviceOrHostCPU(ctx);
           // If the input is already on the right device, then nothing to do.
           if (remote_cpu_device != handle_device) {
@@ -1905,8 +1905,6 @@ Status EagerRemoteExecute(EagerOperation* op, TensorHandle** retvals,
             input = handle;
             input_device = remote_cpu_device;
             input_device_name = &remote_cpu_device->name();
-            // Unref handle since it has a ref as an input now
-            handle->Unref();
           }
         } else {
           serialize_resource_dtype_and_shape =
@@ -1931,6 +1929,8 @@ Status EagerRemoteExecute(EagerOperation* op, TensorHandle** retvals,
             input->AddResourceShapeMirror(op_device, input_handle->op_id(),
                                           input_handle->output_num(), &ctx));
       }
+      // Unref handle since it has a ref as an input now
+      handle->Unref();
     }
   }
 
