@@ -855,7 +855,7 @@ static absl::Status Memcpy(se::Stream* stream, ffi::BufferBase src,
 
 XLA_FFI_DEFINE_HANDLER(kMemcpy, Memcpy,
                        ffi::Ffi::Bind()
-                           .Ctx<se::Stream>()
+                           .Ctx<ffi::Stream>()
                            .Arg<ffi::BufferBase>()  // src
                            .Arg<ffi::BufferBase>()  // dst
 );
@@ -928,7 +928,7 @@ static absl::Status SubBuffers(se::Stream* stream, ffi::BufferBase src0,
 
 XLA_FFI_DEFINE_HANDLER(kSubBuffers, SubBuffers,
                        ffi::Ffi::Bind()
-                           .Ctx<se::Stream>()
+                           .Ctx<ffi::Stream>()
                            .Arg<ffi::BufferBase>()  // src0
                            .Arg<ffi::BufferBase>()  // src1
                            .Arg<ffi::BufferBase>()  // src2
@@ -1000,9 +1000,10 @@ static absl::Status NoOp(se::Stream* stream, ffi::BufferBase operand) {
   return absl::OkStatus();
 }
 
-XLA_FFI_DEFINE_HANDLER(
-    kNoOp, NoOp,
-    ffi::Ffi::Bind().Ctx<se::Stream>().Arg<ffi::BufferBase>()  // operand
+XLA_FFI_DEFINE_HANDLER(kNoOp, NoOp,
+                       ffi::Ffi::Bind()
+                           .Ctx<ffi::Stream>()      // stream
+                           .Arg<ffi::BufferBase>()  // operand
 );
 XLA_FFI_REGISTER_HANDLER(ffi::GetXlaFfiApi(), "__xla_test$$noop", PLATFORM,
                          kNoOp);

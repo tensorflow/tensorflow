@@ -384,7 +384,7 @@ static absl::Status Memcpy(se::Stream* stream, ffi::BufferBase src,
 
 XLA_FFI_DEFINE_HANDLER(kMemcpy, Memcpy,
                        ffi::Ffi::Bind()
-                           .Ctx<se::Stream>()
+                           .Ctx<ffi::Stream>()
                            .Arg<ffi::BufferBase>()  // src
                            .Arg<ffi::BufferBase>()  // dst
 );
@@ -637,10 +637,10 @@ static absl::Status MemcpyWithCalledComputation(
 XLA_FFI_DEFINE_HANDLER(kMemcpyWithCalledComputation,
                        MemcpyWithCalledComputation,
                        ffi::Ffi::Bind()
-                           .Ctx<se::Stream>()
-                           .Ctx<se::OwningScratchAllocator<>>()  // scratch
-                           .Arg<ffi::BufferBase>()               // src
-                           .Arg<ffi::BufferBase>()               // dst
+                           .Ctx<ffi::Stream>()
+                           .Ctx<ffi::ScratchAllocator>()  // scratch
+                           .Arg<ffi::BufferBase>()        // src
+                           .Arg<ffi::BufferBase>()        // dst
                            .Ctx<ffi::CalledComputation>());
 
 XLA_FFI_REGISTER_HANDLER(ffi::GetXlaFfiApi(),

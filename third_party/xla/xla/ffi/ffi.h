@@ -45,8 +45,10 @@ limitations under the License.
 
 namespace xla::ffi {
 
-// A tag to declare called computation argument in FFI handler.
-struct CalledComputation {};
+// Type tags to bind parameters passed via execution context to FFI handler.
+struct Stream {};             // binds `se::Stream*`
+struct ScratchAllocator {};   // binds `se::OwningScratchAllocator`
+struct CalledComputation {};  // binds `HloComputation*`
 
 //===----------------------------------------------------------------------===//
 // Arguments
@@ -188,7 +190,7 @@ struct AttrDecoding<Pointer<T>> {
 //===----------------------------------------------------------------------===//
 
 template <>
-struct CtxDecoding<se::Stream> {
+struct CtxDecoding<Stream> {
   using Type = se::Stream*;
 
   static std::optional<Type> Decode(const XLA_FFI_Api* api,
@@ -199,9 +201,9 @@ struct CtxDecoding<se::Stream> {
   }
 };
 
-template <size_t n>
-struct CtxDecoding<se::OwningScratchAllocator<n>> {
-  using Type = se::OwningScratchAllocator<n>;
+template <>
+struct CtxDecoding<ScratchAllocator> {
+  using Type = se::OwningScratchAllocator<>;
 
   static std::optional<Type> Decode(const XLA_FFI_Api* api,
                                     XLA_FFI_ExecutionContext* ctx,
@@ -211,7 +213,7 @@ struct CtxDecoding<se::OwningScratchAllocator<n>> {
     void* device_allocator =
         api->internal_api->XLA_FFI_INTERNAL_DeviceMemoryAllocator_Get(ctx);
 
-    return se::OwningScratchAllocator<n>(
+    return se::OwningScratchAllocator<>(
         device_ordinal,
         reinterpret_cast<se::DeviceMemoryAllocator*>(device_allocator));
   }
