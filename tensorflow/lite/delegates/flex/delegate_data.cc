@@ -33,11 +33,13 @@ limitations under the License.
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/tstring.h"
 #include "tensorflow/core/protobuf/error_codes.pb.h"
 #include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/core/subgraph.h"
+#include "tensorflow/lite/delegates/flex/subgraph_resource.h"
 #include "tensorflow/lite/delegates/flex/util.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 #include "tensorflow/lite/util.h"
@@ -157,7 +159,8 @@ tensorflow::Status RegisterFunctionDefForSubgraphs(
         const std::vector<std::unique_ptr<Subgraph>>&, std::set<std::string>*)>&
         select_subgraphs_to_register,
     tensorflow::ResourceMgr* resource_mgr,
-    tensorflow::EagerContext* eager_context, TfLiteDelegate* flex_delegate) {
+    tensorflow::EagerContext* eager_context, TfLiteDelegate* flex_delegate,
+    tensorflow::mutex* mutex) {
   std::vector<std::unique_ptr<Subgraph>>* subgraphs =
       main_subgraph.GetSubgraphs();
   if (!subgraphs) {
@@ -179,7 +182,7 @@ tensorflow::Status RegisterFunctionDefForSubgraphs(
     // This is to ensure that we only register FunctionDefs for subgraphs that
     // are used by TF ops to invoke functions.
     auto* subgraph_resource =
-        new TFLiteSubgraphResource(*(subgraphs->at(i)), flex_delegate);
+        new TFLiteSubgraphResource(*(subgraphs->at(i)), flex_delegate, mutex);
     TF_RETURN_IF_ERROR(resource_mgr->Create<TFLiteSubgraphResource>(
         "flex", subgraph_name, subgraph_resource));
     tensorflow::FunctionDef fdef;
@@ -232,7 +235,7 @@ tensorflow::Status DelegateData::Prepare(
     TF_RETURN_IF_ERROR(RegisterFunctionDefForSubgraphs(
         *main_subgraph, GetSubgraphNamesForFunctionExecution,
         eager_context_->HostCPU()->resource_manager(), eager_context_,
-        flex_delegate));
+        flex_delegate, &mutex_));
   }
   return tensorflow::Status();
 }
