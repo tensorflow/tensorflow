@@ -96,7 +96,7 @@ int main(int argc, char** argv) {
                 "A path to which the HLO output will be dumped. "
                 "Example: /a/b/literal.txt."),
       tsl::Flag("task_id", &task_id, "Borg task id."),
-      tsl::Flag("device_type", &device_type_str, "Device type: gpu"),
+      tsl::Flag("device_type", &device_type_str, "Device type: gpu, host"),
       tsl::Flag("num_nodes", &num_nodes, "Number of nodes (hosts)"),
       tsl::Flag(
           "enable_mock_nccl", &enable_mock_nccl,
@@ -116,7 +116,8 @@ int main(int argc, char** argv) {
   bool parse_ok = tsl::Flags::Parse(&argc, argv, flag_list);
   parse_ok = parse_ok &&
              xla::AbslParseFlag(input_format_str, &input_format, &parse_error);
-  parse_ok = parse_ok && device_type_str == "gpu";
+  parse_ok =
+      parse_ok && (device_type_str == "gpu" || device_type_str == "host");
   parse_ok = parse_ok && hlo_runner_flags.CreateOptionsFromFlags(
                              &preproc_options, &raw_compile_options,
                              &running_options, &parse_error);
@@ -131,14 +132,23 @@ int main(int argc, char** argv) {
   }
 
   // The main logic:
-  absl::StatusOr<std::unique_ptr<xla::PjRtClient>> client;
-  if (enable_mock_nccl) {
-    CHECK_GT(num_nodes, 1);
-    client = xla::FunctionalHloRunner::CreateMockGpuClient(num_nodes);
-  } else {
-    CHECK_EQ(num_nodes, 1);
-    client = xla::FunctionalHloRunner::CreateGpuClient();
-  }
+  absl::StatusOr<std::unique_ptr<xla::PjRtClient>> client = [&] {
+    if (device_type_str == "host") {
+      CHECK_EQ(num_nodes, 1);
+      return xla::FunctionalHloRunner::CreateHostClient();
+    }
+
+    CHECK_EQ(device_type_str, "gpu");
+
+    if (enable_mock_nccl) {
+      CHECK_GT(num_nodes, 1);
+      return xla::FunctionalHloRunner::CreateMockGpuClient(num_nodes);
+    } else {
+      CHECK_EQ(num_nodes, 1);
+      return xla::FunctionalHloRunner::CreateGpuClient();
+    }
+  }();
+
   TF_QCHECK_OK(client.status());
 
   if (should_run) {

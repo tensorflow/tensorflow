@@ -15,6 +15,7 @@ package(
 build_test(
     name = "hlo_runner_main_build_test",
     tags = [
+        "cpu",
         "gpu",
     ],
     targets = [
@@ -38,6 +39,7 @@ xla_cc_binary(
         "//xla:status",
         "//xla:statusor",
         "//xla/pjrt:pjrt_client",
+        "//xla/service:cpu_plugin",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/strings",
         "@local_tsl//tsl/platform:logging",
@@ -70,6 +72,7 @@ cc_library(
         "//xla/pjrt:pjrt_compiler",
         "//xla/pjrt:pjrt_executable",
         "//xla/pjrt:pjrt_future",
+        "//xla/pjrt/cpu:cpu_client",
         "//xla/pjrt/distributed:client",
         "//xla/pjrt/gpu:se_gpu_pjrt_client",
         "//xla/service:hlo_parser",
