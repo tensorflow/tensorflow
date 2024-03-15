@@ -20,6 +20,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/strings/str_format.h"
+#include "absl/types/span.h"
 #include "pybind11/pybind11.h"  // from @pybind11
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/python/ifrt/array.h"
@@ -88,7 +89,7 @@ void PythonDeprecationWarning(const absl::FormatSpec<Args...>& format,
 
 // Requests if given buffers are ready, awaits for results and returns OK if
 // all of the buffers are ready or the last non-ok status.
-Status AwaitBuffersReady(ifrt::Array* ifrt_array);
+Status AwaitBuffersReady(absl::Span<ifrt::Array* const> ifrt_arrays);
 
 }  // namespace xla
 

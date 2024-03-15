@@ -1369,6 +1369,13 @@ static void Init(py::module_& m) {
       py::arg("committed") = true, py::arg("force_copy") = false,
       py::arg("host_buffer_semantics") =
           PjRtClient::HostBufferSemantics::kZeroCopy);
+
+  m.def("batched_block_until_ready", [](py::object xs_py) {
+    // TODO(phawkins): simplify after nanobind transition is complete.
+    auto xs = nb::cast<std::vector<nb::object>>(nb::handle(xs_py.ptr()));
+    xla::ThrowIfError(PyArray::BatchedBlockUntilReady(std::move(xs)));
+  });
+
   m_nb.def("check_and_canonicalize_memory_kind",
            &jax::CheckAndCanonicalizeMemoryKind, nb::arg("memory_kind").none(),
            nb::arg("device_list"));

@@ -616,6 +616,9 @@ ArrayImpl = Any
 def copy_array_to_devices_with_sharding(
     self: ArrayImpl, devices: List[Device], sharding: Any
 ) -> ArrayImpl: ...
+
+def batched_block_until_ready(x: Sequence[ArrayImpl]) -> None: ...
+
 def batched_device_put(
     aval: Any,
     sharding: Any,

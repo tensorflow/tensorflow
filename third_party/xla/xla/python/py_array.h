@@ -27,6 +27,7 @@ limitations under the License.
 #include <vector>
 
 // placeholder for index annotation headers
+#include "absl/status/status.h"
 #include "absl/types/span.h"
 #include "llvm/Support/Casting.h"
 #include "third_party/nanobind/include/nanobind/nanobind.h"
@@ -296,6 +297,9 @@ class PyArray : public nanobind::object {
       std::vector<ClientAndPtr<PjRtDevice>> dst_devices, bool committed,
       bool force_copy, PjRtClient::HostBufferSemantics host_buffer_semantics,
       bool jax_enable_x64);
+
+  static absl::Status BatchedBlockUntilReady(
+      std::vector<nanobind::object> objs);
 
  private:
   StatusOr<PyArray> FetchSingleShard(std::string_view api);

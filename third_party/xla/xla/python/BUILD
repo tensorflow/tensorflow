@@ -1011,6 +1011,7 @@ cc_library(
         "//xla/pjrt:pjrt_future",
         "//xla/python/ifrt",
         "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/types:span",
         "@pybind11",
     ],
 )

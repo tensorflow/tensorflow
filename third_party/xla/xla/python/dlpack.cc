@@ -330,7 +330,8 @@ absl::StatusOr<py::capsule> BufferToDLPackManagedTensor(
       TF_RETURN_IF_ERROR(
           pack->external_reference->WaitUntilBufferReadyOnStream(*stream));
     } else {
-      TF_RETURN_IF_ERROR(AwaitBuffersReady(ifrt_array));
+      TF_RETURN_IF_ERROR(
+          AwaitBuffersReady(absl::MakeConstSpan(&ifrt_array, 1)));
     }
   }
   pack->buffer_reference = py::reinterpret_borrow<py::object>(py_buffer);

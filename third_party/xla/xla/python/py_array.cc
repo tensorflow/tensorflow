@@ -58,6 +58,7 @@ limitations under the License.
 #include "xla/python/ifrt/array.h"
 #include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt/dtype.h"
+#include "xla/python/ifrt/future.h"
 #include "xla/python/ifrt/memory.h"
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/sharding.h"
@@ -653,7 +654,8 @@ Status PyArray::BlockUntilReady() const {
     return InvalidArgument(
         "BlockHostUntilReady() called on deleted or donated buffer");
   }
-  return AwaitBuffersReady(ifrt_array());
+  ifrt::Array* ifrt_array = this->ifrt_array();
+  return AwaitBuffersReady(absl::MakeConstSpan(&ifrt_array, 1));
 }
 
 StatusOr<size_t> PyArray::GetOnDeviceSizeInBytes() {
@@ -1146,6 +1148,33 @@ StatusOr<PyArray> PyArray::BatchedDevicePut(
   return PyArray(aval, weak_type, dtype, std::move(shape), sharding,
                  dst_devices[0].client(), Traceback::Get(),
                  std::move(ifrt_array), committed, /*skip_checks=*/true);
+}
+
+absl::Status PyArray::BatchedBlockUntilReady(std::vector<nb::object> objs) {
+  // Create ready futures for all arrays before blocking on their readiness.
+  // This helps reduce the latency in some backend implementations where
+  // querying readiness of an array is not free.
+
+  std::vector<ifrt::Array*> ifrt_arrays;
+  ifrt_arrays.reserve(objs.size());
+  for (nb::handle obj : objs) {
+    if (obj.type().is(PyArray::type())) {
+      auto py_array = nb::borrow<PyArray>(obj);
+      ifrt::Array* const ifrt_array = py_array.ifrt_array();
+      if (ifrt_array == nullptr) {
+        return absl::InvalidArgumentError(
+            "BlockHostUntilReady() called on deleted or donated buffer");
+      }
+      ifrt_arrays.push_back(ifrt_array);
+    } else {
+      return absl::InvalidArgumentError(
+          "PyArray::BatchedBlockUntilReady can take PyArray only");
+    }
+  }
+
+  GlobalPyRefManager()->CollectGarbage();
+  nb::gil_scoped_release gil_release;
+  return AwaitBuffersReady(absl::MakeConstSpan(ifrt_arrays));
 }
 
 std::vector<nb::object> PyClient::LiveArrays() const {
