@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/service/gpu/nccl_p2p_thunk_common.h"
+#include "xla/service/gpu/runtime/nccl_p2p_thunk_common.h"
 
 #include <cstdint>
 #include <optional>

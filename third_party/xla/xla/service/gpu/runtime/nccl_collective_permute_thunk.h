@@ -24,7 +24,7 @@ limitations under the License.
 #include "xla/service/collective_ops_utils.h"
 #include "xla/service/gpu/nccl_api.h"
 #include "xla/service/gpu/nccl_collective_thunk.h"
-#include "xla/service/gpu/nccl_p2p_thunk_common.h"
+#include "xla/service/gpu/runtime/nccl_p2p_thunk_common.h"
 #include "xla/stream_executor/stream.h"
 
 namespace xla {
