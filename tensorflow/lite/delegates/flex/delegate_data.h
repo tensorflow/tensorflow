@@ -101,7 +101,8 @@ tensorflow::Status RegisterFunctionDefForSubgraphs(
         const std::vector<std::unique_ptr<Subgraph>>&,
         std::set<std::string>* result)>& select_subgraphs_to_register,
     tensorflow::ResourceMgr* resource_mgr,
-    tensorflow::EagerContext* eager_context, TfLiteDelegate* flex_delegate);
+    tensorflow::EagerContext* eager_context, TfLiteDelegate* flex_delegate,
+    tensorflow::mutex* mutex);
 
 }  // namespace flex
 }  // namespace tflite
