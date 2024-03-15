@@ -26,5 +26,6 @@ tf_py_strict_test(
     deps = [
         ":testing",
         "//tensorflow/python/platform:client_testlib",
+        "//third_party/py/pyfakefs",
     ],
 )

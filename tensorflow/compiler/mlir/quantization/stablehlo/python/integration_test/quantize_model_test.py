@@ -144,6 +144,14 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
     # values are arbitrary.
     self.assertAllClose(new_outputs, expected_outputs, rtol=0.03, atol=0.2)
 
+    # Due to other meta data, the compression is not exactly 1/4.
+    self.assertLess(
+        testing.get_size_ratio(
+            self._output_saved_model_path, self._input_saved_model_path
+        ),
+        0.65,
+    )
+
   @parameterized.parameters(
       testing.parameter_combinations([{
           'same_scale_op': (
@@ -225,6 +233,14 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
     # values are arbitrary.
     self.assertAllClose(new_outputs, expected_outputs, rtol=0.03, atol=0.2)
 
+    # Due to other meta data, the compression is not exactly 1/4.
+    self.assertLess(
+        testing.get_size_ratio(
+            self._output_saved_model_path, self._input_saved_model_path
+        ),
+        0.65,
+    )
+
   @parameterized.parameters(
       testing.parameter_combinations([{
           'same_scale_op': (
@@ -303,6 +319,14 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
     # Tests that the quantized graph outputs similar values. The rtol and atol
     # values are arbitrary.
     self.assertAllClose(new_outputs, expected_outputs, rtol=0.03, atol=0.2)
+
+    # Due to other meta data, the compression is not exactly 1/4.
+    self.assertLess(
+        testing.get_size_ratio(
+            self._output_saved_model_path, self._input_saved_model_path
+        ),
+        0.6,
+    )
 
   @parameterized.parameters(
       testing.parameter_combinations([{
@@ -412,6 +436,14 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
     # values are arbitrary.
     self.assertAllClose(new_outputs, expected_outputs, rtol=0.02, atol=0.05)
 
+    # Due to other meta data, the compression is not exactly 1/4.
+    self.assertLess(
+        testing.get_size_ratio(
+            self._output_saved_model_path, self._input_saved_model_path
+        ),
+        0.6,
+    )
+
   @parameterized.parameters(
       testing.parameter_combinations([{
           'equation': (
@@ -488,6 +520,14 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
     # Tests that the quantized graph outputs similar values. The rtol and atol
     # values are arbitrary.
     self.assertAllClose(new_outputs, expected_outputs, rtol=0.02, atol=0.04)
+
+    # Due to other meta data, the compression is not exactly 1/4.
+    self.assertLess(
+        testing.get_size_ratio(
+            self._output_saved_model_path, self._input_saved_model_path
+        ),
+        0.65,
+    )
 
   def test_when_preset_not_srq_raises_error(self):
     self._create_matmul_model(
@@ -572,6 +612,14 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
     # Indirectly tests that the model is not quantized by asserting that there
     # are negligible numeric difference.
     self.assertAllClose(new_outputs, expected_outputs, rtol=0.000001)
+
+    # Due to other meta data, the compression is not exactly 1/4.
+    self.assertLess(
+        testing.get_size_ratio(
+            self._output_saved_model_path, self._input_saved_model_path
+        ),
+        0.4,
+    )
 
   @test_util.run_in_graph_and_eager_modes
   def test_ptq_selective_denylist(self):
@@ -667,6 +715,14 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
     # Indirectly tests that the model is only partially quantized.
     self.assertAllClose(new_outputs, expected_outputs, rtol=0.011)
 
+    # Due to other meta data, the compression is not exactly 1/4.
+    self.assertLess(
+        testing.get_size_ratio(
+            self._output_saved_model_path, self._input_saved_model_path
+        ),
+        0.55,
+    )
+
   @test_util.run_in_graph_and_eager_modes
   def test_ptq_quantization_method_not_applied_when_matcher_mismatch(self):
     """Tests that quantization method is not applied to unmatched units."""
@@ -736,6 +792,14 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
     # with regex '.*invalid_function_name.*' did not match the quantizable unit.
     self.assertAllClose(new_outputs, expected_outputs, rtol=0.04)
     self.assertNotAllClose(new_outputs, expected_outputs, rtol=0.00001)
+
+    # Due to other meta data, the compression is not exactly 1/4.
+    self.assertLess(
+        testing.get_size_ratio(
+            self._output_saved_model_path, self._input_saved_model_path
+        ),
+        0.4,
+    )
 
 
 @test_util.run_all_in_graph_and_eager_modes
@@ -856,6 +920,14 @@ class CalibrationOptionsTest(quantize_model_test_base.QuantizedModelTest):
     # values are arbitrary.
     self.assertAllClose(new_outputs, expected_outputs, rtol=0.02, atol=0.5)
 
+    # Due to other meta data, the compression is not exactly 1/4.
+    self.assertLess(
+        testing.get_size_ratio(
+            self._output_saved_model_path, self._input_saved_model_path
+        ),
+        0.4,
+    )
+
 
 class WeightOnlyQuantizationTest(quantize_model_test_base.QuantizedModelTest):
 
@@ -944,7 +1016,13 @@ class WeightOnlyQuantizationTest(quantize_model_test_base.QuantizedModelTest):
         re.search('stablehlo.dot_general.*xf32>.*xf32>.*xf32>', module_str)
     )
 
-    # TODO: b/329342175 - Add check for output file size.
+    # Due to other meta data, the compression is not exactly 1/4.
+    self.assertLess(
+        testing.get_size_ratio(
+            self._output_saved_model_path, self._input_saved_model_path
+        ),
+        0.3,
+    )
 
 
 if __name__ == '__main__':
