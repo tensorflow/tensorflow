@@ -1900,7 +1900,7 @@ cc_library(
         "@local_tsl//tsl/platform:logging",
         "@local_tsl//tsl/platform:statusor",
         "@local_tsl//tsl/util/proto:proto_utils",
-    ]),
+    ]) + ["@com_google_absl//absl/log"],
 )
 
 cc_library(
