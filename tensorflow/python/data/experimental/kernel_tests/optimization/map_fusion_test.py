@@ -151,6 +151,35 @@ class MapFusionTest(test_base.DatasetTestBase, parameterized.TestCase):
     )
 
   @combinations.generate(test_base.default_test_combinations())
+  def testMixedMapAndParallelMap(self):
+    n = 5
+    dataset = dataset_ops.Dataset.range(n)
+    dataset = dataset.apply(
+        testing.assert_next(["ParallelMap", "MemoryCacheImpl"])
+    )
+
+    # These 3 maps should be merged because the non-parallel Map should be
+    # parallelized by `map_parallelization` before `map_fusion` is applied.
+    dataset = dataset.map(lambda x: 2 * x,
+                          num_parallel_calls=dataset_ops.AUTOTUNE)
+    dataset = dataset.map(lambda x: 2 * x)
+    dataset = dataset.map(lambda x: 2 * x,
+                          num_parallel_calls=dataset_ops.AUTOTUNE)
+
+    dataset = dataset.cache()
+    options = options_lib.Options()
+    options.experimental_optimization.apply_default_optimizations = False
+    options.experimental_optimization.map_parallelization = True
+    options.experimental_optimization.map_fusion = True
+    dataset = dataset.with_options(options)
+
+    self.assertDatasetProduces(
+        dataset,
+        expected_output=[x * 2**3 for x in range(n)],
+        assert_items_equal=True,
+    )
+
+  @combinations.generate(test_base.default_test_combinations())
   def testControlInputs(self):
     def f(x):
       with ops.control_dependencies([check_ops.assert_type(x, dtypes.int64)]):
