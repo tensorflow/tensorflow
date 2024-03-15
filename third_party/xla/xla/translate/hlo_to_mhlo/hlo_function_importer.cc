@@ -833,12 +833,13 @@ absl::StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
       }
 
     case HloOpcode::kDot: {
+      auto dot = Cast<HloDotInstruction>(instruction);
       attributes.push_back(builder_->getNamedAttr(
           "precision_config",
           ConvertPrecisionConfig(&instruction->precision_config(), builder_)));
 
       // Consider consolidating DotOps together.
-      if (DotIsDefault(instruction)) {
+      if (DotIsDefault(instruction) && !dot->sparse_operands()) {
         return func_builder
             ->create<mlir::mhlo::DotOp>(loc, result_type, operands, attributes)
             .getOperation();
@@ -848,9 +849,23 @@ absl::StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
           "dot_dimension_numbers",
           ConvertDotDimensionNumbers(instruction->dot_dimension_numbers(),
                                      builder_)));
+      if (!dot->sparse_operands()) {
+        return func_builder
+            ->create<mlir::mhlo::DotGeneralOp>(loc, result_type, operands,
+                                               attributes)
+            .getOperation();
+      }
+
+      for (const SparsityDescriptor& descriptor : dot->sparsity()) {
+        TF_ASSIGN_OR_RETURN(auto sparsity,
+                            ConvertSparsityDescriptor(descriptor, builder_));
+        attributes.push_back(builder_->getNamedAttr(
+            descriptor.index() == 0 ? "lhs_sparsity" : "rhs_sparsity",
+            sparsity));
+      }
       return func_builder
-          ->create<mlir::mhlo::DotGeneralOp>(loc, result_type, operands,
-                                             attributes)
+          ->create<mlir::mhlo::SparseDotOp>(loc, result_type, operands,
+                                            attributes)
           .getOperation();
     }
     case HloOpcode::kCall: {

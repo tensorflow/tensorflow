@@ -17,11 +17,11 @@ cc_library(
     hdrs = ["attribute_importer.h"],
     deps = [
         "//xla:shape_util",
-        "//xla:statusor",
         "//xla:util",
         "//xla:xla_data_proto_cc",
         "//xla/mlir_hlo",
         "//xla/service:hlo_proto_cc",
+        "@com_google_absl//absl/status:statusor",
         "@llvm-project//mlir:IR",
     ],
 )

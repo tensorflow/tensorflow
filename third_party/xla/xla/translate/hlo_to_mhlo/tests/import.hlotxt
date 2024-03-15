@@ -723,6 +723,18 @@ add {
   ROOT %dot.1 = s16[14,1,12,16,3] dot(%Arg_0.1, %Arg_1.2), lhs_contracting_dims={1}, rhs_contracting_dims={0}
 }
 
+// CHECK-LABEL:  @test_dot_sparse
+// CHECK-SAME:  [[LHS:%.*]]: tensor<10x16xf32>, [[RHS:%.*]]: tensor<32x20xf32>, [[META:%.*]]: tensor<10x2xui16>
+%test_dot_sparse (Arg_0: f32[10,16], Arg_1: f32[32,20], Arg_2: u16[10,2]) -> f32[10,20] {
+  %lhs = f32[10,16] parameter(0)
+  %rhs = f32[32,20] parameter(1)
+  %meta = u16[10,2] parameter(2)
+  // CHECK:  "mhlo.sparse_dot"([[LHS]], [[RHS]], [[META]])
+  // CHECK-SAME: lhs_sparsity = #mhlo.sparsity<dimension = 1, n = 2, m = 4>
+  ROOT %dot = f32[10,20] dot(%lhs, %rhs, %meta), lhs_contracting_dims={1}, rhs_contracting_dims={0}, sparsity=L.1@2:4
+}
+
+
 // CHECK-LABEL:  func private @test_dynamic_slice
 // CHECK-SAME:  [[OPERAND:%.*]]: tensor<2x2x258xi32>, [[START_IDX_1:%.*]]: tensor<i32>, [[START_IDX_2:%.*]]: tensor<i32>, [[START_IDX_3:%.*]]: tensor<i32>
 %test_dynamic_slice (operand: s32[2,2,258], start_indices: s32[3]) -> s32[1,1,32] {

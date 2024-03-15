@@ -216,3 +216,13 @@ def test_type_extensions():
   attr = mhlo.TypeExtensions.get(bounds=[128, dyn_size])
   assert attr is not None
   assert attr.bounds == [128, dyn_size]
+
+
+@run
+def test_sparsity_descriptor():
+  attr = mhlo.SparsityDescriptor.get(dimension=1, n=2, m=4)
+  assert attr is not None
+  assert str(attr) == "#mhlo.sparsity<dimension = 1, n = 2, m = 4>"
+  assert attr.dimension == 1
+  assert attr.n == 2
+  assert attr.m == 4

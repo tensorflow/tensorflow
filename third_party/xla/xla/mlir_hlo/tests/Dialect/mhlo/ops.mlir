@@ -3389,6 +3389,70 @@ func.func @dot_general_three_element_precision_config(%arg0: tensor<2x3x4xf32>, 
 
 // -----
 
+// CHECK-LABEL: func @sparse_dot
+func.func @sparse_dot(%arg0: tensor<2x16xf32>, %arg1: tensor<32x2xf32>, %meta: tensor<2x2xi16>) -> tensor<2x2xf32> {
+  %0 = "mhlo.sparse_dot"(%arg0, %arg1, %meta) {
+    lhs_sparsity = #mhlo.sparsity<dimension = 1, n = 2, m = 4>,
+    dot_dimension_numbers = #mhlo.dot<
+      lhs_batching_dimensions = [],
+      rhs_batching_dimensions = [],
+      lhs_contracting_dimensions = [1],
+      rhs_contracting_dimensions = [0]
+    >
+  } : (tensor<2x16xf32>, tensor<32x2xf32>, tensor<2x2xi16>) -> tensor<2x2xf32>
+  func.return %0 : tensor<2x2xf32>
+}
+
+// -----
+
+func.func @sparse_dot_incorrect_dimension(%arg0: tensor<2x16xf32>, %arg1: tensor<32x2xf32>, %meta: tensor<2x2xi16>) -> tensor<2x2xf32> {
+  // expected-error@+1 {{sparsity dimension is incorrect}}
+  %0 = "mhlo.sparse_dot"(%arg0, %arg1, %meta) {
+    lhs_sparsity = #mhlo.sparsity<dimension = 2, n = 2, m = 4>,
+    dot_dimension_numbers = #mhlo.dot<
+      lhs_batching_dimensions = [],
+      rhs_batching_dimensions = [],
+      lhs_contracting_dimensions = [1],
+      rhs_contracting_dimensions = [0]
+    >
+  } : (tensor<2x16xf32>, tensor<32x2xf32>, tensor<2x2xi16>) -> tensor<2x2xf32>
+  func.return %0 : tensor<2x2xf32>
+}
+
+// -----
+
+func.func @sparse_dot_incorrect_dimension(%arg0: tensor<2x16xf32>, %arg1: tensor<32x2xf32>, %meta: tensor<2x2xi16>) -> tensor<2x2xf32> {
+  // expected-error@+1 {{only 2:4 sparsity is supported}}
+  %0 = "mhlo.sparse_dot"(%arg0, %arg1, %meta) {
+    lhs_sparsity = #mhlo.sparsity<dimension = 1, n = 1, m = 4>,
+    dot_dimension_numbers = #mhlo.dot<
+      lhs_batching_dimensions = [],
+      rhs_batching_dimensions = [],
+      lhs_contracting_dimensions = [1],
+      rhs_contracting_dimensions = [0]
+    >
+  } : (tensor<2x16xf32>, tensor<32x2xf32>, tensor<2x2xi16>) -> tensor<2x2xf32>
+  func.return %0 : tensor<2x2xf32>
+}
+
+// -----
+
+func.func @sparse_dot(%arg0: tensor<2x32xf32>, %arg1: tensor<32x2xf32>, %meta: tensor<2x2xi16>) -> tensor<2x2xf32> {
+  // expected-error@+1 {{contracting dimension sizes must match for lhs/rhs}}
+  %0 = "mhlo.sparse_dot"(%arg0, %arg1, %meta) {
+    lhs_sparsity = #mhlo.sparsity<dimension = 1, n = 2, m = 4>,
+    dot_dimension_numbers = #mhlo.dot<
+      lhs_batching_dimensions = [],
+      rhs_batching_dimensions = [],
+      lhs_contracting_dimensions = [1],
+      rhs_contracting_dimensions = [0]
+    >
+  } : (tensor<2x32xf32>, tensor<32x2xf32>, tensor<2x2xi16>) -> tensor<2x2xf32>
+  func.return %0 : tensor<2x2xf32>
+}
+
+// -----
+
 func.func @compatible_shapes(%arg0: tensor<?xf32>, %shape: tensor<2xindex>) -> tensor<?x?xf32> {
   %0 = "mhlo.dynamic_reshape"(%arg0, %shape) : (tensor<?xf32>, tensor<2xindex>) -> tensor<?x?xf32>
   func.return %0 : tensor<?x?xf32>
