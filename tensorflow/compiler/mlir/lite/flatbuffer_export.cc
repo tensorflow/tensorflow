@@ -2017,7 +2017,10 @@ std::optional<BufferOffset<tflite::Operator>> Translator::BuildOperator(
     if (auto shlo_op = llvm::dyn_cast<mlir::stablehlo::PadOp>(inst)) {
       return BuildStablehloPadOp(shlo_op, operands, results);
     }
-
+    if (auto shlo_op = llvm::dyn_cast<mlir::stablehlo::AddOp>(inst)) {
+      return BuildStablehloOperatorwithoutOptions(
+          shlo_op, operands, results, tflite::BuiltinOperator_STABLEHLO_ADD);
+    }
     return inst->emitOpError("is not part of the stablehlo support yet."),
            std::nullopt;
   }
