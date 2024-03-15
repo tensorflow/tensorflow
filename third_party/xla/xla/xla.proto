@@ -723,8 +723,9 @@ message DebugOptions {
 
   // Let GEMM fusion autotuning probe cuDNN as a backend.
   // Current levels:
-  // 0: disabled.
-  // 1: fusions of GEMM, elementwise, transpose/reshape operations.
+  // 0: Disabled.
+  // 1: Fusions of GEMM, elementwise, transpose/reshape operations.
+  // 2: + Broadcasts.
   int32 xla_gpu_cudnn_gemm_fusion_level = 285;
 
   // Next id: 286

@@ -28,6 +28,7 @@ class CuDnnFusionTest : public GpuCodegenTest {
     // Let this group of tests just use first available plan skipping
     // autotuning.
     debug_options.set_xla_gpu_autotune_level(0);
+    debug_options.set_xla_gpu_cudnn_gemm_fusion_level(1);
     return debug_options;
   }
   bool IsAtLeastHopperWithCuDnn9() {
@@ -289,6 +290,128 @@ ENTRY %e {
 })";
 
   EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
+}
+
+class CuDnnFusionLevel2Test : public CuDnnFusionExecutionTest {
+ public:
+  DebugOptions GetDebugOptionsForTest() override {
+    DebugOptions debug_options =
+        CuDnnFusionExecutionTest::GetDebugOptionsForTest();
+    debug_options.set_xla_gpu_cudnn_gemm_fusion_level(2);
+    return debug_options;
+  }
+};
+
+TEST_F(CuDnnFusionLevel2Test, BroadcastToDim2ExecutesCorrectly) {
+  EXPECT_TRUE(RunAndCompare(R"(
+fusion1 {
+  p0 = f16[16,32,128] parameter(0)
+  p1 = f16[16,128,64] parameter(1)
+  p2 = f16[16,32] parameter(2)
+  p2b = f16[16,32,128] broadcast(p2), dimensions={0,1}
+  a = f16[16,32,128] add(p0, p2b)
+  ROOT r = f16[16,32,64] dot(a, p1),
+    lhs_batch_dims={0}, rhs_batch_dims={0},
+    lhs_contracting_dims={2}, rhs_contracting_dims={1}
+}
+
+ENTRY e {
+  p0 = f16[16,32,128] parameter(0)
+  p1 = f16[16,128,64] parameter(1)
+  p2 = f16[16,32] parameter(2)
+  ROOT _ = f16[16,32,64] fusion(p0, p1, p2), kind=kCustom, calls=fusion1,
+    backend_config={"fusion_backend_config": {kind: "__cudnn$fusion"}}
+})",
+                            ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
+}
+
+TEST_F(CuDnnFusionLevel2Test, BroadcastToDim1ExecutesCorrectly) {
+  EXPECT_TRUE(RunAndCompare(R"(
+fusion1 {
+  p0 = f16[16,32,128] parameter(0)
+  p1 = f16[16,128,64] parameter(1)
+  p2 = f16[16,128] parameter(2)
+  p2b = f16[16,32,128] broadcast(p2), dimensions={0,2}
+  a = f16[16,32,128] add(p0, p2b)
+  ROOT r = f16[16,32,64] dot(a, p1),
+    lhs_batch_dims={0}, rhs_batch_dims={0},
+    lhs_contracting_dims={2}, rhs_contracting_dims={1}
+}
+
+ENTRY e {
+  p0 = f16[16,32,128] parameter(0)
+  p1 = f16[16,128,64] parameter(1)
+  p2 = f16[16,128] parameter(2)
+  ROOT _ = f16[16,32,64] fusion(p0, p1, p2), kind=kCustom, calls=fusion1,
+    backend_config={"fusion_backend_config": {kind: "__cudnn$fusion"}}
+})",
+                            ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
+}
+
+TEST_F(CuDnnFusionLevel2Test, BroadcastToDim0ExecutesCorrectly) {
+  EXPECT_TRUE(RunAndCompare(R"(
+fusion1 {
+  p0 = bf16[32,128] parameter(0)
+  p0b = bf16[5,32,128] broadcast(p0), dimensions={1,2}
+  p1 = bf16[5,128,64] parameter(1)
+  ROOT r = f32[5,32,64] dot(p0b, p1),
+    lhs_batch_dims={0}, rhs_batch_dims={0},
+    lhs_contracting_dims={2}, rhs_contracting_dims={1}
+}
+
+ENTRY e {
+  p0 = bf16[32,128] parameter(0)
+  p1 = bf16[5,128,64] parameter(1)
+  ROOT _ = f32[5,32,64] fusion(p0, p1), kind=kCustom, calls=fusion1,
+    backend_config={"fusion_backend_config": {kind: "__cudnn$fusion"}}
+})",
+                            ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
+}
+
+TEST_F(CuDnnFusionLevel2Test, BroadcastTo2DimsExecutesCorrectly) {
+  EXPECT_TRUE(RunAndCompare(R"(
+fusion1 {
+  p0 = f16[16,32,128] parameter(0)
+  p1 = f16[16,128,64] parameter(1)
+  p2 = f16[128] parameter(2)
+  p2b = f16[16,32,128] broadcast(p2), dimensions={2}
+  a = f16[16,32,128] add(p0, p2b)
+  ROOT r = f16[16,32,64] dot(a, p1),
+    lhs_batch_dims={0}, rhs_batch_dims={0},
+    lhs_contracting_dims={2}, rhs_contracting_dims={1}
+}
+
+ENTRY e {
+  p0 = f16[16,32,128] parameter(0)
+  p1 = f16[16,128,64] parameter(1)
+  p2 = f16[128] parameter(2)
+  ROOT _ = f16[16,32,64] fusion(p0, p1, p2), kind=kCustom, calls=fusion1,
+    backend_config={"fusion_backend_config": {kind: "__cudnn$fusion"}}
+})",
+                            ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
+}
+
+TEST_F(CuDnnFusionLevel2Test, BroadcastTo3DimsExecutesCorrectly) {
+  EXPECT_TRUE(RunAndCompare(R"(
+fusion1 {
+  p0 = f16[16,32,128] parameter(0)
+  p1 = f16[16,128,64] parameter(1)
+  p2 = f16[] parameter(2)
+  p2b = f16[16,32,128] broadcast(p2), dimensions={}
+  a = f16[16,32,128] add(p0, p2b)
+  ROOT r = f16[16,32,64] dot(a, p1),
+    lhs_batch_dims={0}, rhs_batch_dims={0},
+    lhs_contracting_dims={2}, rhs_contracting_dims={1}
+}
+
+ENTRY e {
+  p0 = f16[16,32,128] parameter(0)
+  p1 = f16[16,128,64] parameter(1)
+  p2 = f16[] parameter(2)
+  ROOT _ = f16[16,32,64] fusion(p0, p1, p2), kind=kCustom, calls=fusion1,
+    backend_config={"fusion_backend_config": {kind: "__cudnn$fusion"}}
+})",
+                            ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
 }
 
 class CuDnnFusionRewriteTest : public CuDnnFusionTest {

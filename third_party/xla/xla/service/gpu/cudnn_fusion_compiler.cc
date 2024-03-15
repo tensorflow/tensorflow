@@ -243,6 +243,13 @@ absl::StatusOr<std::optional<se::gpu::CudnnGraph>> HloFusionToCuDnnGraph(
     }
   }
 
+  auto fusion_level = [&fusion]() {
+    return fusion.GetModule()
+        ->config()
+        .debug_options()
+        .xla_gpu_cudnn_gemm_fusion_level();
+  };
+
   for (const HloInstruction* hlo : instructions) {
     VLOG(5) << hlo->ToShortString();
     auto operand = [&hlo_to_cudnn, &hlo](int i) {
@@ -254,7 +261,9 @@ absl::StatusOr<std::optional<se::gpu::CudnnGraph>> HloFusionToCuDnnGraph(
     } else if (hlo->opcode() == HloOpcode::kReshape ||
                hlo->opcode() == HloOpcode::kBitcast ||
                hlo->opcode() == HloOpcode::kTranspose ||
-               hlo->opcode() == HloOpcode::kCopy) {
+               hlo->opcode() == HloOpcode::kCopy ||
+               (fusion_level() >= 2 &&
+                hlo->opcode() == HloOpcode::kBroadcast)) {
       // All these are accounted for separately as transformations of strides.
       hlo_to_cudnn[hlo] = operand(0);
     } else if (hlo->IsElementwise()) {
