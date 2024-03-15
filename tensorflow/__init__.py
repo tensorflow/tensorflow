@@ -24,9 +24,12 @@ from tensorflow.python.platform import app  # pylint: disable=g-import-not-at-to
 app.flags = flags
 
 # These symbols appear because we import the python package which
-# in turn imports from tensorflow.core and tensorflow.python. They
-# must come from this module. So python adds these symbols for the
-# resolution to succeed.
+# in turn imports from tensorflow.core and tensorflow.python. These
+# symbols are necessary for successful resolutions
+# and must originate from this module. Therefore, python adds these
+# symbols. To prevent undefined variable errors, the pylint directive
+# is used to disable the check for undefined variables. Afterwards, the 
+# check is re-enabled. 
 # pylint: disable=undefined-variable
 del python
 del core
