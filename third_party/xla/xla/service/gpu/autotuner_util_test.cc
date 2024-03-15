@@ -157,7 +157,7 @@ TEST_F(AutotunerUtilTest, FailIfRequireCompleteAotAutotuning) {
       NewStreamExecutor();
   auto options = DebugOptions();
   options.set_xla_gpu_require_complete_aot_autotune_results(true);
-  AutotuneConfig config(DeviceConfig(executor.get()), options);
+  AutotuneConfig config(DeviceConfig{executor.get()}, options);
   EXPECT_THAT(
       AutotunerUtil::Autotune(instruction, config,
                               [&] { return AutotuneResult(); }),
@@ -181,7 +181,7 @@ TEST_F(AutotunerUtilTest, OkIfJitAutotuningDisabledButAlreadyLoadedAOT) {
 
   {
     // By default, JIT autotuning is OK.
-    AutotuneConfig config(DeviceConfig(executor.get()), DebugOptions());
+    AutotuneConfig config(DeviceConfig{executor.get()}, DebugOptions());
     TF_EXPECT_OK(AutotunerUtil::Autotune(instruction, config, [&] {
                    return AutotuneResult();
                  }).status());
@@ -191,7 +191,7 @@ TEST_F(AutotunerUtilTest, OkIfJitAutotuningDisabledButAlreadyLoadedAOT) {
   auto options = DebugOptions();
   options.set_xla_gpu_require_complete_aot_autotune_results(true);
 
-  AutotuneConfig config(DeviceConfig(executor.get()), options);
+  AutotuneConfig config(DeviceConfig{executor.get()}, options);
   // Even though JIT autotuning is disabled, there is no cache miss when running
   // autotuning for the same entry, so no error should be raised either.
   TF_EXPECT_OK(AutotunerUtil::Autotune(instruction, config, [&] {
