@@ -21,6 +21,7 @@ limitations under the License.
 #define TENSORFLOW_LITE_CORE_C_C_API_OPAQUE_H_
 
 #include <stddef.h>
+#include <stdint.h>
 
 #include "tensorflow/lite/core/c/c_api.h"
 #include "tensorflow/lite/core/c/c_api_types.h"  // IWYU pragma: export
