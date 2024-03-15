@@ -77,7 +77,7 @@ def QuantizeCompositeFunctionsPass : Pass<"stablehlo-quantize-composite-function
   ];
 }
 
-def PrepareQuantizePass : Pass<"stablehlo-prepare-quantize", "mlir::func::FuncOp"> {
+def PrepareQuantizePass : Pass<"stablehlo-prepare-quantize", "mlir::ModuleOp"> {
   let summary = "Prepare StableHLO dialect for static range quantization by converting quantfork.stats into quantfork.qcast and dcast ops.";
   let options = [
     Option<"enable_per_channel_quantized_weight_",
