@@ -334,10 +334,19 @@ gpu_kernel_library(
 )
 
 # TODO(hebecker): Remove this once we have fixed our ARM build
+gpu_only_cc_library(
+    name = "gpu_timer_kernel_stub",
+    srcs = [
+        "gpu_timer_kernel_stub.cc",
+    ],
+    deps = [":gpu_timer_kernel_header"],
+)
+
+# TODO(hebecker): Remove this once we have fixed our ARM build
 cc_library(
     name = "gpu_timer_kernel_not_on_google_arm",
     deps = if_google_arm_build(
-        [],
+        [":gpu_timer_kernel_stub"],
         [":gpu_timer_kernel"],
     ),
 )
