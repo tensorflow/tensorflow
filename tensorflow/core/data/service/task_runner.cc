@@ -118,6 +118,10 @@ FirstComeFirstServedTaskRunner::~FirstComeFirstServedTaskRunner() { Cancel(); }
 
 Status FirstComeFirstServedTaskRunner::GetNext(const GetElementRequest& req,
                                                GetElementResult& result) {
+  if (req.allow_skip() && buffer_.Empty()) {
+    result.skip = true;
+    return absl::OkStatus();
+  }
   return GetNext(result);
 }
 

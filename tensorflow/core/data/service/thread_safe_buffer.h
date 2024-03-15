@@ -47,6 +47,9 @@ class ThreadSafeBuffer final {
   // REQUIRES: !status.ok()
   void Cancel(Status status);
 
+  // Returns whether the buffer is empty.
+  bool Empty();
+
  private:
   const size_t buffer_size_;
 
@@ -66,6 +69,12 @@ ThreadSafeBuffer<T>::ThreadSafeBuffer(size_t buffer_size)
   DCHECK_GT(buffer_size, 0)
       << "ThreadSafeBuffer must have a positive buffer size. Got "
       << buffer_size << ".";
+}
+
+template <class T>
+bool ThreadSafeBuffer<T>::Empty() {
+  tf_shared_lock l(mu_);
+  return results_.empty();
 }
 
 template <class T>
