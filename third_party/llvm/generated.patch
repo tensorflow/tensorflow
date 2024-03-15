@@ -1,1 +1,183 @@
 Auto generated patch. Do not edit or delete it, even if empty.
+diff -ruN --strip-trailing-cr a/llvm/include/llvm/IR/AutoUpgrade.h b/llvm/include/llvm/IR/AutoUpgrade.h
+--- a/llvm/include/llvm/IR/AutoUpgrade.h
++++ b/llvm/include/llvm/IR/AutoUpgrade.h
+@@ -88,9 +88,6 @@
+   /// info. Return true if module is modified.
+   bool UpgradeDebugInfo(Module &M);
+ 
+-  /// Copies module attributes to the functions in the module.
+-  void CopyModuleAttrToFunctions(Module &M);
+-
+   /// Check whether a string looks like an old loop attachment tag.
+   inline bool mayBeOldLoopAttachmentTag(StringRef Name) {
+     return Name.starts_with("llvm.vectorizer.");
+diff -ruN --strip-trailing-cr a/llvm/lib/IR/AutoUpgrade.cpp b/llvm/lib/IR/AutoUpgrade.cpp
+--- a/llvm/lib/IR/AutoUpgrade.cpp
++++ b/llvm/lib/IR/AutoUpgrade.cpp
+@@ -5178,72 +5178,6 @@
+     Arg.removeAttrs(AttributeFuncs::typeIncompatible(Arg.getType()));
+ }
+ 
+-// Check if the module attribute is present and not zero.
+-static bool isModuleAttributeSet(Module &M, const StringRef &ModAttr) {
+-  const auto *Attr =
+-      mdconst::extract_or_null<ConstantInt>(M.getModuleFlag(ModAttr));
+-  return Attr && Attr->getZExtValue();
+-}
+-
+-// Copy an attribute from module to the function if exists.
+-// First value of the pair is used when the module attribute is not zero
+-// the second otherwise.
+-static void
+-CopyModuleAttributeToFunction(Function &F, StringRef FnAttrName,
+-                              StringRef ModAttrName,
+-                              std::pair<StringRef, StringRef> Values) {
+-  if (F.hasFnAttribute(FnAttrName))
+-    return;
+-  F.addFnAttr(FnAttrName, isModuleAttributeSet(*F.getParent(), ModAttrName)
+-                              ? Values.first
+-                              : Values.second);
+-}
+-
+-// Copy a boolean attribute from module to the function if exists.
+-// Module attribute treated false if zero otherwise true.
+-static void CopyModuleAttributeToFunction(Function &F, StringRef AttrName) {
+-  CopyModuleAttributeToFunction(
+-      F, AttrName, AttrName,
+-      std::make_pair<StringRef, StringRef>("true", "false"));
+-}
+-
+-// Copy an attribute from module to the function if exists.
+-// First value of the pair is used when the module attribute is not zero
+-// the second otherwise.
+-static void
+-CopyModuleAttributeToFunction(Function &F, StringRef AttrName,
+-                              std::pair<StringRef, StringRef> Values) {
+-  CopyModuleAttributeToFunction(F, AttrName, AttrName, Values);
+-}
+-
+-void llvm::CopyModuleAttrToFunctions(Module &M) {
+-  Triple T(M.getTargetTriple());
+-  if (!T.isThumb() && !T.isARM() && !T.isAArch64())
+-    return;
+-
+-  for (Function &F : M.getFunctionList()) {
+-    if (F.isDeclaration())
+-      continue;
+-
+-    if (!F.hasFnAttribute("sign-return-address")) {
+-      StringRef SignType = "none";
+-      if (isModuleAttributeSet(M, "sign-return-address"))
+-        SignType = "non-leaf";
+-
+-      if (isModuleAttributeSet(M, "sign-return-address-all"))
+-        SignType = "all";
+-
+-      F.addFnAttr("sign-return-address", SignType);
+-    }
+-    CopyModuleAttributeToFunction(F, "branch-target-enforcement");
+-    CopyModuleAttributeToFunction(F, "branch-protection-pauth-lr");
+-    CopyModuleAttributeToFunction(F, "guarded-control-stack");
+-    CopyModuleAttributeToFunction(
+-        F, "sign-return-address-key",
+-        std::make_pair<StringRef, StringRef>("b_key", "a_key"));
+-  }
+-}
+-
+ static bool isOldLoopArgument(Metadata *MD) {
+   auto *T = dyn_cast_or_null<MDTuple>(MD);
+   if (!T)
+diff -ruN --strip-trailing-cr a/llvm/lib/Linker/IRMover.cpp b/llvm/lib/Linker/IRMover.cpp
+--- a/llvm/lib/Linker/IRMover.cpp
++++ b/llvm/lib/Linker/IRMover.cpp
+@@ -1606,11 +1606,6 @@
+   // Loop over all of the linked values to compute type mappings.
+   computeTypeMapping();
+ 
+-  // Convert module level attributes to function level attributes because
+-  // after merging modules the attributes might change and would have different
+-  // effect on the functions as the original module would have.
+-  CopyModuleAttrToFunctions(*SrcM);
+-
+   std::reverse(Worklist.begin(), Worklist.end());
+   while (!Worklist.empty()) {
+     GlobalValue *GV = Worklist.back();
+diff -ruN --strip-trailing-cr a/llvm/test/Linker/link-arm-and-thumb.ll b/llvm/test/Linker/link-arm-and-thumb.ll
+--- a/llvm/test/Linker/link-arm-and-thumb.ll
++++ b/llvm/test/Linker/link-arm-and-thumb.ll
+@@ -13,12 +13,11 @@
+   ret i32 %add
+ }
+ 
+-; CHECK: define i32 @main() [[MAIN_ATTRS:#[0-9]+]]
++; CHECK: define i32 @main() {
+ ; CHECK: define i32 @foo(i32 %a, i32 %b) [[ARM_ATTRS:#[0-9]+]]
+ ; CHECK: define i32 @bar(i32 %a, i32 %b) [[THUMB_ATTRS:#[0-9]+]]
+ 
+-; CHECK: attributes [[MAIN_ATTRS]] = { {{.*}} }
+-; CHECK: attributes [[ARM_ATTRS]] = { {{.*}} "target-features"="-thumb-mode" }
+-; CHECK: attributes [[THUMB_ATTRS]] = { {{.*}} "target-features"="+thumb-mode" }
++; CHECK: attributes [[ARM_ATTRS]] = { "target-features"="-thumb-mode" }
++; CHECK: attributes [[THUMB_ATTRS]] = { "target-features"="+thumb-mode" }
+ 
+ ; STDERR-NOT: warning: Linking two modules of different target triples:
+diff -ruN --strip-trailing-cr a/llvm/test/LTO/AArch64/link-branch-target-enforcement.ll b/llvm/test/LTO/AArch64/link-branch-target-enforcement.ll
+--- a/llvm/test/LTO/AArch64/link-branch-target-enforcement.ll
++++ b/llvm/test/LTO/AArch64/link-branch-target-enforcement.ll
+@@ -32,7 +32,6 @@
+ ; CHECK-DUMP: <main>:
+ ; CHECK-DUMP:      bl      0x8 <main+0x8>
+ ; CHECK-DUMP: <foo>:
+-; CHECK-DUMP:     paciasp
+ 
+ ; `main` doesn't support BTI while `foo` does, so in the binary
+ ; we should see only PAC which is supported by both.
+diff -ruN --strip-trailing-cr a/llvm/test/LTO/AArch64/link-sign-return-address.ll b/llvm/test/LTO/AArch64/link-sign-return-address.ll
+--- a/llvm/test/LTO/AArch64/link-sign-return-address.ll
++++ b/llvm/test/LTO/AArch64/link-sign-return-address.ll
+@@ -1,43 +0,0 @@
+-; Testcase to check that module with different branch-target-enforcement can
+-; be mixed.
+-;
+-; RUN: llvm-as %s -o %t1.bc
+-; RUN: llvm-as %p/Inputs/foo.ll -o %t2.bc
+-; RUN: llvm-lto -exported-symbol main \
+-; RUN:          -exported-symbol foo \
+-; RUN:          -filetype=obj \
+-; RUN:           %t2.bc %t1.bc \
+-; RUN:           -o %t1.exe 2>&1
+-; RUN: llvm-objdump -d %t1.exe | FileCheck --check-prefix=CHECK-DUMP %s
+-; RUN: llvm-readelf -n %t1.exe | FileCheck --allow-empty --check-prefix=CHECK-PROP %s
+-
+-target datalayout = "e-m:e-i8:8:32-i16:16:32-i64:64-i128:128-n32:64-S128"
+-target triple = "aarch64-unknown-linux-gnu"
+-
+-declare i32 @foo();
+-
+-define i32 @main() {
+-entry:
+-  %add = call i32 @foo()
+-  ret i32 %add
+-}
+-
+-!llvm.module.flags = !{!0, !1, !2, !3 }
+-!0 = !{i32 8, !"branch-target-enforcement", i32 0}
+-!1 = !{i32 8, !"sign-return-address", i32 0}
+-!2 = !{i32 8, !"sign-return-address-all", i32 0}
+-!3 = !{i32 8, !"sign-return-address-with-bkey", i32 0}
+-
+-; CHECK-DUMP: <foo>:
+-; CHECK-DUMP:     paciasp
+-; CHECK-DUMP:     mov     w0, #0x2a
+-; CHECK-DUMP:     autiasp
+-; CHECK-DUMP:     ret
+-; CHECK-DUMP: <main>:
+-; CHECK-DUMP-NOT:  paciasp
+-; CHECK-DUMP:      str     x30,
+-; CHECK-DUMP:      bl      0x14 <main+0x4>
+-
+-; `main` doesn't support PAC sign-return-address while `foo` does, so in the binary
+-; we should not see anything.
+-; CHECK-PROP-NOT:   Properties: aarch64 feature: PAC
+\ No newline at end of file
