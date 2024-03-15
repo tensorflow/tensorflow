@@ -15,6 +15,7 @@ limitations under the License.
 #include "xla/service/gpu/fusions/mlir/elemental_hlo_to_mlir.h"
 
 #include <string>
+#include <vector>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
@@ -63,9 +64,7 @@ class ElementalHloToMlirTest : public HloTestBase {
   // MLIR.
   absl::Status Run(
       const std::string& hlo, const std::string& filecheck_str,
-      std::function<bool(const HloInstruction*)> is_subgraph_root = nullptr,
-      std::function<bool(const HloInstruction*, int)>
-          operand_is_function_argument = nullptr) {
+      std::function<bool(const HloInstruction*)> is_subgraph_root = nullptr) {
     auto hlo_module = ParseAndReturnVerifiedModule(hlo).value();
 
     mlir::ImplicitLocOpBuilder builder(mlir::UnknownLoc::get(&context_),
@@ -77,17 +76,29 @@ class ElementalHloToMlirTest : public HloTestBase {
                              builder.getContext()));
     builder.setInsertionPointToStart(module->getBody());
     auto* entry_computation = hlo_module->entry_computation();
-    PartitionedComputations partitioned_computations(
-        entry_computation, is_subgraph_root, operand_is_function_argument);
+    std::vector<const HloInstruction*> roots;
+    if (is_subgraph_root) {
+      for (auto* instr : entry_computation->instructions()) {
+        if (is_subgraph_root(instr)) {
+          roots.push_back(instr);
+        }
+      }
+    }
+    PartitionedComputations partitioned_computations(entry_computation, roots);
     auto fns = partitioned_computations.DeclareFunctions(module.get());
     auto entry_func = fns[&partitioned_computations
                                .FindPartitionedComputation(entry_computation)
                                .GetRootSubgraph()];
     auto& entry_pc =
         partitioned_computations.FindPartitionedComputation(entry_computation);
+    auto call_targets = partitioned_computations.CreateCallTargetProvider(fns);
     TF_RETURN_IF_ERROR(SubgraphToMlirFunction(
-        entry_pc, entry_pc.GetRootSubgraph(), entry_func,
-        partitioned_computations.CreateCallTargetProvider(fns)));
+        entry_pc, entry_pc.GetRootSubgraph(), entry_func, call_targets));
+
+    if (const auto& epilogue = partitioned_computations.epilogue()) {
+      TF_RETURN_IF_ERROR(SubgraphToMlirFunction(entry_pc, *epilogue,
+                                                fns[&*epilogue], call_targets));
+    }
 
     // Canonicalize and CSE for better readability of check tests.
     mlir::PassManager pm(&context_);
@@ -97,7 +108,7 @@ class ElementalHloToMlirTest : public HloTestBase {
 
     std::string out;
     llvm::raw_string_ostream stream(out);
-    stream << entry_func;
+    stream << module.get();
 
     TF_ASSIGN_OR_RETURN(auto filecheck_result,
                         RunFileCheck(out, filecheck_str));
@@ -504,7 +515,7 @@ TEST_F(ElementalHloToMlirTest, PopulationCountUnsigned) {
   )"));
 }
 
-TEST_F(ElementalHloToMlirTest, InjectedParameter) {
+TEST_F(ElementalHloToMlirTest, Epilogue) {
   TF_EXPECT_OK(Run(
       R"(
       ENTRY main {
@@ -516,7 +527,7 @@ TEST_F(ElementalHloToMlirTest, InjectedParameter) {
         ROOT %add = f32[2,17,16] add(%transpose, %bc)
       })",
       R"(
-      // CHECK:      @main_add(
+      // CHECK:      @main__epilogue__(
       // CHECK-SAME:     %[[ARG0:.*]]: tensor<2x16x17xf32>
       // CHECK-SAME:     %[[ARG1:.*]]: tensor<f32>
       // CHECK-SAME:     %[[X:.*]]: index {xla.range = [0 : index, 1 :
@@ -529,10 +540,6 @@ TEST_F(ElementalHloToMlirTest, InjectedParameter) {
       [](const HloInstruction* instr) {
         // Make the transpose a new root.
         return instr->opcode() == HloOpcode::kTranspose;
-      },
-      [](const HloInstruction* instr, int operand_id) {
-        // Inject the transpose argument.
-        return instr->operand(operand_id)->opcode() == HloOpcode::kTranspose;
       }));
 }
 

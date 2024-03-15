@@ -42,7 +42,7 @@ class MlirReductionFusion : public ReductionFusionBase<MlirFusionEmitterBase> {
       mlir::func::FuncOp entry_function,
       const HloFusionInstruction& fusion) const override;
 
-  absl::flat_hash_set<const HloInstruction*> GetInstructionsWithCustomCodegen(
+  std::vector<const HloInstruction*> GetInstructionsWithCustomCodegen(
       const HloFusionInstruction& fusion) const override;
 
  private:
@@ -52,9 +52,8 @@ class MlirReductionFusion : public ReductionFusionBase<MlirFusionEmitterBase> {
   absl::Status EmitReduction(EmitterState& state) const;
 
   std::vector<const HloInstruction*> reduction_heroes_;
-  // The roots for each reduction hero.
-  absl::flat_hash_map<const HloInstruction*, const HloInstruction*>
-      reduction_roots_;
+  // The root indices for each reduction hero.
+  absl::flat_hash_map<const HloInstruction*, std::vector<int>> reduction_roots_;
 };
 
 }  // namespace gpu

@@ -183,7 +183,7 @@ TEST_F(MlirTransposeFusionTest, FusedTranspose021) {
     // CHECK:      scf.for
     // CHECK-SAME:    %[[C0]] to %[[C8]] step %[[C1]]
     // CHECK-SAME:    iter_args(%[[OUT_:.*]] = %[[OUT]])
-    // CHECK:       %[[ABS:.*]] = xla_gpu.pure_call @fused_computation_abs
+    // CHECK:       %[[ABS:.*]] = xla_gpu.pure_call @fused_computation__epilogue__
     // CHECK:       tensor.insert %[[ABS]] into %[[OUT_]]
   )"));
   EXPECT_TRUE(RunAndCompareNoHloPasses(kHloString, ErrorSpec{1e-3}));
@@ -224,7 +224,7 @@ TEST_F(MlirTransposeFusionTest, Transpose021_Parameter) {
     // CHECK:      scf.for
     // CHECK-SAME:    %[[C0]] to %[[C8]] step %[[C1]]
     // CHECK-SAME:    iter_args(%[[OUT_:.*]] = %[[OUT]])
-    // CHECK:       %[[ABS:.*]] = xla_gpu.pure_call @fused_computation_abs
+    // CHECK:       %[[ABS:.*]] = xla_gpu.pure_call @fused_computation__epilogue__
     // CHECK:       tensor.insert %[[ABS]] into %[[OUT_]]
   )"));
   EXPECT_TRUE(RunAndCompareNoHloPasses(kHloString, ErrorSpec{1e-3}));

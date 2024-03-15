@@ -289,8 +289,9 @@ absl::StatusOr<SmallVector<Value, 4>> MlirTransposeFusion::EmitWriteToShMemMlir(
                              symbol_values, builder);
 
           auto result_scalars = mlir_converter::ProvideParameter(
-              root_computation, transpose, /*operand_index=*/0, input_indices,
-              call_target_provider, builder);
+              root_computation.FindSubgraph(transpose), transpose,
+              /*operand_index=*/0, input_indices, call_target_provider,
+              entry_function, builder);
 
           SmallVector<Value> result_tensors;
           result_tensors.reserve(num_outputs);
@@ -309,8 +310,9 @@ absl::StatusOr<SmallVector<Value, 4>> MlirTransposeFusion::EmitWriteToShMemMlir(
 
 absl::Status MlirTransposeFusion::EmitReadFromShMemMlir(
     mlir::ImplicitLocOpBuilder& builder, FuncOp entry_function,
-    const HloFusionInstruction& fusion, const CallTargetProvider& call_targets,
-    ValueRange shmem_tensors) const {
+    const HloFusionInstruction& fusion,
+    const mlir_converter::PartitionedComputations& computations,
+    const CallTargetProvider& call_targets, ValueRange shmem_tensors) const {
   SmallVector<Value, 4> result_tensors;
 
   int num_inputs = fusion.fused_instructions_computation()->num_parameters();
@@ -377,7 +379,7 @@ absl::Status MlirTransposeFusion::EmitReadFromShMemMlir(
 
             mlir::Value value = builder.create<ExtractOp>(
                 hero_to_shmem_tensor[transpose], shmem_indices);
-            auto result_scalars = EmitEpilogue(root, transpose, call_targets,
+            auto result_scalars = EmitEpilogue(computations, entry_function,
                                                value, root_indices, builder);
             SmallVector<Value> results;
             results.reserve(output_tensor_args.size());
@@ -424,18 +426,10 @@ absl::Status MlirTransposeFusion::EmitReadFromShMemMlir(
   return absl::OkStatus();
 }
 
-absl::flat_hash_set<const HloInstruction*>
+std::vector<const HloInstruction*>
 MlirTransposeFusion::GetInstructionsWithCustomCodegen(
     const HloFusionInstruction& fusion) const {
-  if (fusion.fused_expression_root()->opcode() == HloOpcode::kTuple) {
-    absl::flat_hash_set<const HloInstruction*> result{shmem_transposes_.begin(),
-                                                      shmem_transposes_.end()};
-    // In multi-output fusion with transpose, each root epilogue will be
-    // generated separately.
-    result.insert(fusion.fused_expression_root());
-    return result;
-  }
-  return shmem_transposes_;
+  return {shmem_transposes_.begin(), shmem_transposes_.end()};
 }
 
 absl::Status MlirTransposeFusion::EmitEntryFunction(
@@ -456,8 +450,8 @@ absl::Status MlirTransposeFusion::EmitEntryFunction(
       mlir::TypeRange(shmem_tensors), shmem_tensors);
 
   // Read intermediate results from shmem and compute epilogues.
-  return EmitReadFromShMemMlir(builder, entry_function, fusion, call_targets,
-                               sync_threads.getResults());
+  return EmitReadFromShMemMlir(builder, entry_function, fusion, computations,
+                               call_targets, sync_threads.getResults());
 }
 
 }  // namespace gpu

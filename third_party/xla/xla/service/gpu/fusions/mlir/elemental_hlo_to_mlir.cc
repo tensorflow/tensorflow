@@ -491,11 +491,10 @@ absl::StatusOr<SmallVector<Value>> EmitPad(
   return if_op.getResults();
 }
 
-absl::StatusOr<SmallVector<Value>> EmitParameter(
-    const HloInstruction* instr, ValueRange indices,
-    const CallTargetProvider& call_target_provider, ImplicitLocOpBuilder& b) {
-  auto this_fn = call_target_provider(instr);
-
+absl::StatusOr<SmallVector<Value>> EmitParameter(const HloInstruction* instr,
+                                                 mlir::func::FuncOp this_fn,
+                                                 ValueRange indices,
+                                                 ImplicitLocOpBuilder& b) {
   Value value = this_fn.getArgument(instr->parameter_number());
   if (value.getType().isa<mlir::TensorType>()) {
     value = b.create<mlir::tensor::ExtractOp>(value, indices);
@@ -577,8 +576,10 @@ Value CheckConstraints(const IndexingMap& map, ValueRange dims,
   return ret;
 }
 
+namespace {
+
 absl::StatusOr<SmallVector<Value>> HloToMlir(
-    const HloInstruction* instr, ValueRange indices,
+    const HloInstruction* instr, mlir::func::FuncOp this_fn, ValueRange indices,
     const OperandProvider& operand_provider,
     const CallTargetProvider& call_target_provider,
     ImplicitLocOpBuilder& builder) {
@@ -639,7 +640,7 @@ absl::StatusOr<SmallVector<Value>> HloToMlir(
       return EmitPad(instr, result_element_type, indices, operand_provider,
                      builder);
     case HloOpcode::kParameter:
-      return EmitParameter(instr, indices, call_target_provider, builder);
+      return EmitParameter(instr, this_fn, indices, builder);
     case HloOpcode::kReduce:
       return EmitReduce(instr, indices, operand_provider, call_target_provider,
                         builder);
@@ -691,8 +692,8 @@ absl::StatusOr<SmallVector<Value>> HloToMlir(
 
   switch (instr->opcode()) {
     case HloOpcode::kAbs:
-        return {MapHloOp<mhlo::AbsOp>(element_mlir_type, arg_types, operands,
-                                      builder)};
+      return {MapHloOp<mhlo::AbsOp>(element_mlir_type, arg_types, operands,
+                                    builder)};
     case HloOpcode::kAdd:
       if (element_type == PRED) {
         return MapElementwiseOp<mhlo::OrOp>(arg_types, operands, builder);
@@ -840,6 +841,8 @@ absl::StatusOr<SmallVector<Value>> HloToMlir(
   return absl::UnimplementedError(absl::StrCat("Unsupported: ", instr->name()));
 }
 
+}  // namespace
+
 bool IsHloOpSupported(const HloInstruction* instr,
                       se::CudaComputeCapability compute_capability) {
   auto is_unsupported_type = [](const HloInstruction* instr) {
@@ -922,20 +925,16 @@ bool IsHloConversionSupported(const HloFusionAdaptor& fusion,
 }
 
 SmallVector<Value> ProvideParameter(
-    const PartitionedComputation& computation, const HloInstruction* instr,
+    const PartitionedComputation::Subgraph& caller, const HloInstruction* instr,
     int operand_index, ValueRange indices,
-    const CallTargetProvider& call_target_provider,
+    const CallTargetProvider& call_target_provider, mlir::func::FuncOp this_fn,
     ImplicitLocOpBuilder& builder) {
-  auto& caller_subgraph = computation.FindSubgraph(instr);
-  auto this_fn = call_target_provider(caller_subgraph.roots[0]);
-
   auto* operand = instr->operand(operand_index);
 
-  const auto& injected_params = caller_subgraph.injected_param_indices;
-  if (auto it = injected_params.find(std::make_pair(instr, operand_index));
-      it != injected_params.end()) {
+  const auto& injected_values = caller.injected_values;
+  if (auto it = injected_values.find(operand); it != injected_values.end()) {
     auto injected_param_values =
-        this_fn.getArguments().take_back(injected_params.size());
+        this_fn.getArguments().take_back(caller.injected_values.size());
     return {{injected_param_values[it->second]}};
   }
 
@@ -947,14 +946,14 @@ SmallVector<Value> ProvideParameter(
 }
 
 SmallVector<Value> ProvideParameterRange(
-    const PartitionedComputation& computation, const HloInstruction* instr,
+    const PartitionedComputation::Subgraph& caller, const HloInstruction* instr,
     int start, int num, ValueRange indices,
-    const CallTargetProvider& call_target_provider,
+    const CallTargetProvider& call_target_provider, mlir::func::FuncOp this_fn,
     ImplicitLocOpBuilder& builder) {
   SmallVector<Value> scalars;
   for (int i = 0; i < num; ++i) {
-    auto scalar = ProvideParameter(computation, instr, i + start, indices,
-                                   call_target_provider, builder);
+    auto scalar = ProvideParameter(caller, instr, i + start, indices,
+                                   call_target_provider, this_fn, builder);
     CHECK_EQ(scalar.size(), 1);
     scalars.push_back(scalar.front());
   }
@@ -964,11 +963,9 @@ SmallVector<Value> ProvideParameterRange(
 namespace {
 
 absl::StatusOr<SmallVector<Value>> SubgraphToMlir(
-    const PartitionedComputation& computation,
     const PartitionedComputation::Subgraph& subgraph,
-    const CallTargetProvider& call_target_provider, ValueRange parameters,
-    ValueRange indices, ValueRange injected_param_values,
-    ImplicitLocOpBuilder& builder) {
+    mlir::func::FuncOp this_fn, const CallTargetProvider& call_target_provider,
+    ValueRange parameters, ValueRange indices, ImplicitLocOpBuilder& builder) {
   SmallVector<Value> results;
   absl::node_hash_map<std::pair<const HloInstruction*, std::vector<void*>>,
                       SmallVector<Value>>
@@ -982,12 +979,12 @@ absl::StatusOr<SmallVector<Value>> SubgraphToMlir(
       [&](const HloInstruction* instr, int index,
           ValueRange indices) -> absl::StatusOr<SmallVector<Value>> {
     auto* operand = instr->operand(index);
-    if (&computation.FindSubgraph(operand) == &subgraph) {
+    if (subgraph.instructions.contains(operand)) {
       return emit_instr(operand, indices);
     }
     return ConvertToSignless(
-        ProvideParameter(computation, instr, index, indices,
-                         call_target_provider, builder),
+        ProvideParameter(subgraph, instr, index, indices, call_target_provider,
+                         this_fn, builder),
         builder);
     return results;
   };
@@ -999,7 +996,7 @@ absl::StatusOr<SmallVector<Value>> SubgraphToMlir(
     // padding_value = log(param)
     // pad = pad(bar, padding_value)
     // broadcast = broadcast(padding_value)
-    // pad + broadcasub
+    // pad + broadcast
     //
     // If padding_value was first emitted in the context of pad, it'll be
     // inside an scf.if. For now this doesn't matter, because the indexing
@@ -1018,7 +1015,7 @@ absl::StatusOr<SmallVector<Value>> SubgraphToMlir(
     }
 
     TF_ASSIGN_OR_RETURN(auto lowered_instr,
-                        HloToMlir(instr, indices, provide_operand,
+                        HloToMlir(instr, this_fn, indices, provide_operand,
                                   call_target_provider, builder));
 
     entry = ConvertToSignless(lowered_instr, builder);
@@ -1063,16 +1060,13 @@ absl::Status SubgraphToMlirFunction(
   builder.setInsertionPointToStart(func.addEntryBlock());
   auto parameters = func.getArguments().take_front(
       computation.computation().num_parameters());
-  auto indices_and_injected_params = func.getArguments().drop_front(
+  auto indices_and_injected_values = func.getArguments().drop_front(
       computation.computation().num_parameters());
-  int num_injected_params = subgraph.injected_param_indices.size();
-  auto indices = indices_and_injected_params.drop_back(num_injected_params);
-  auto injected_params =
-      indices_and_injected_params.take_back(num_injected_params);
-  TF_ASSIGN_OR_RETURN(
-      auto results,
-      SubgraphToMlir(computation, subgraph, call_target_provider, parameters,
-                     indices, injected_params, builder));
+  int num_injected_values = subgraph.injected_values.size();
+  auto indices = indices_and_injected_values.drop_back(num_injected_values);
+  TF_ASSIGN_OR_RETURN(auto results,
+                      SubgraphToMlir(subgraph, func, call_target_provider,
+                                     parameters, indices, builder));
 
   // We have been converting signed types to signless types. To match the
   // function signature, we have to convert back to signed types.
