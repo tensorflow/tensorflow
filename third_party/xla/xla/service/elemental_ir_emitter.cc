@@ -2838,6 +2838,10 @@ absl::StatusOr<llvm::Value*> ElementalIrEmitter::EmitElementalDot(
         "Algorithm not supported by the ElementalIrEmitter: %s",
         PrecisionConfig::Algorithm_Name(hlo->precision_config().algorithm())));
   }
+  const HloDotInstruction* dot = Cast<HloDotInstruction>(hlo);
+  if (dot->sparse_operands()) {
+    return Unimplemented("Sparse dot is supported by Triton emitter only.");
+  }
 
   auto lhs_generator = operand_to_generator.at(hlo->operand(0));
   auto rhs_generator = operand_to_generator.at(hlo->operand(1));

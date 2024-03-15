@@ -19,6 +19,7 @@ limitations under the License.
 
 #include "absl/log/check.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/service/float_support.h"
 #include "xla/stream_executor/device_description.h"
@@ -33,7 +34,7 @@ bool GpuFloatSupport::SupportsMixedPrecisions(const HloInstruction& hlo) const {
   switch (hlo.opcode()) {
     // Handled by Triton GEMM or cuBLAS.
     case HloOpcode::kDot: {
-      CHECK_EQ(hlo.operand_count(), 2);
+      CHECK_GE(hlo.operand_count(), HloDotInstruction::kOperands);
       const PrimitiveType lhs_type = hlo.operand(0)->shape().element_type();
       const PrimitiveType rhs_type = hlo.operand(1)->shape().element_type();
       const PrimitiveType result_type = hlo.shape().element_type();

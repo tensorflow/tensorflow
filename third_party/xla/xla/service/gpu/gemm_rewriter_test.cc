@@ -22,6 +22,7 @@ limitations under the License.
 #include "xla/tests/hlo_test_base.h"
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
+#include "tsl/platform/statusor.h"
 
 namespace xla::gpu {
 namespace {
@@ -81,6 +82,23 @@ ENTRY e {
 )";
 
   RunAndFilecheckHloRewrite(hlo, GemmRewriter(gpu_version_), expected);
+}
+
+TEST_F(GemmRewriterTest, SparseDotNotSupported) {
+  const char* hlo = R"(
+HloModule test
+
+ENTRY main {
+  lhs = f16[5,16] parameter(0)
+  rhs = f16[32,10] parameter(1)
+  meta = u16[5,2] parameter(2)
+  ROOT dot = f32[5,10] dot(lhs, rhs, meta),
+      lhs_contracting_dims={1}, rhs_contracting_dims={0}, sparsity=L.1@2:4
+})";
+  auto hlo_pass = GemmRewriter(gpu_version_);
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunHloPass(&hlo_pass, module.get()));
+  EXPECT_FALSE(changed);
 }
 
 }  // namespace

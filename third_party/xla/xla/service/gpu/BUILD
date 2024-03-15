@@ -1574,6 +1574,7 @@ xla_cc_test(
         "//xla/tests:xla_internal_test_main",  # fixdeps: keep
         "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest",
+        "@local_tsl//tsl/platform:statusor",
     ],
 )
 

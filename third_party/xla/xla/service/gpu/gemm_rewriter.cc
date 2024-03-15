@@ -493,6 +493,11 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
         !IsMatrixVectorMultiplication(*instr)) {
       return absl::OkStatus();
     }
+    // Sparse dot is not supported.
+    if (Cast<HloDotInstruction>(instr)->sparse_operands()) {
+      return absl::OkStatus();
+    }
+
     int64_t gemm_rewrite_size_threshold =
         instr->GetModule()
             ->config()

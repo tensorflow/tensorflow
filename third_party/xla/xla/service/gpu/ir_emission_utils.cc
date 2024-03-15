@@ -138,17 +138,7 @@ bool IsMatrixMultiplication(const HloInstruction& dot) {
       !ShapeUtil::IsZeroElementArray(lhs_shape) &&
       !ShapeUtil::IsZeroElementArray(rhs_shape);
 
-  if (!shapes_are_valid) {
-    return false;
-  }
-
-  // The size of the reduction dimension should match. The shape inference
-  // guarantees this invariant, so the check here is for programming
-  // errors.
-  CHECK_EQ(lhs_shape.dimensions(dim_numbers.lhs_contracting_dimensions(0)),
-           rhs_shape.dimensions(dim_numbers.rhs_contracting_dimensions(0)));
-
-  return true;
+  return shapes_are_valid;
 }
 
 bool IsMatrixVectorMultiplication(const HloInstruction& dot) {
@@ -178,17 +168,7 @@ bool IsMatrixVectorMultiplication(const HloInstruction& dot) {
       !ShapeUtil::IsZeroElementArray(lhs_shape) &&
       !ShapeUtil::IsZeroElementArray(rhs_shape);
 
-  if (!shapes_are_valid) {
-    return false;
-  }
-
-  // The size of the reduction dimension should match. The shape inference
-  // guarantees this invariant, so the check here is for programming
-  // errors.
-  CHECK_EQ(lhs_shape.dimensions(dim_numbers.lhs_contracting_dimensions(0)),
-           rhs_shape.dimensions(dim_numbers.rhs_contracting_dimensions(0)));
-
-  return true;
+  return shapes_are_valid;
 }
 
 const char* const kCusolverCholeskyCallTarget = "__cusolver$cholesky";
