@@ -75,7 +75,7 @@ py_strict_library(
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:tf2",
         "//tensorflow/python/data/experimental/service:_pywrap_server_lib",
-        "//tensorflow/python/data/experimental/service:_pywrap_utils",
+        "//tensorflow/python/data/experimental/service:_pywrap_utils_exp",
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/data/ops:options",
         "//tensorflow/python/data/ops:structured_function",
