@@ -615,7 +615,7 @@ struct PyOperation {
   void _init_outputs() {
     int num_outputs = TF_OperationNumOutputs(tf_op());
     for (int i = 0; i < num_outputs; ++i) {
-      auto dtype = TF_OperationOutputType(TF_Output{tf_op(), i});
+      int dtype = TF_OperationOutputType(TF_Output{tf_op(), i});
       data->outputs.append(data->tensor_fn(AsPyObject(this), i, dtype));
     }
   }
