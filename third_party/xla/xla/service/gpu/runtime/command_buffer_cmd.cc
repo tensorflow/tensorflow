@@ -1157,7 +1157,7 @@ CommandBufferCmd::BufferUsageVector GemmCmd::buffers() {
 
 CuDnnCmd::CuDnnCmd(ExecutionStreamId execution_stream_id,
                    absl::Span<const BufferAllocation::Slice> args,
-                   const se::dnn::DnnGraph& graph)
+                   const std::shared_ptr<se::dnn::LazyDnnGraph> graph)
     : TracedCommandBufferCmd(execution_stream_id),
       args_(args.cbegin(), args.cend()),
       graph_(graph) {}
@@ -1173,6 +1173,7 @@ absl::Status CuDnnCmd::Initialize(const Thunk::InitializeParams& params,
 absl::Status CuDnnCmd::Record(const Thunk::ExecuteParams& execute_params,
                               const RecordParams& record_params,
                               se::CommandBuffer* command_buffer) {
+  CHECK(graph_ != nullptr);
   std::vector<se::DeviceMemoryBase> operands;
   operands.reserve(args_.size());
   for (const BufferAllocation::Slice& arg : args_) {
@@ -1184,8 +1185,8 @@ absl::Status CuDnnCmd::Record(const Thunk::ExecuteParams& execute_params,
 
   return AddTracedCommandBuffer(
       execute_params, record_params, command_buffer, [&](se::Stream* stream) {
-        return graph_.Execute(*stream,
-                              absl::Span<se::DeviceMemoryBase>(operands));
+        return graph_->get()->Execute(
+            *stream, absl::Span<se::DeviceMemoryBase>(operands));
       });
 }
 

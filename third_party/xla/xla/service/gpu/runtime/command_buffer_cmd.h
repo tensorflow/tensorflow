@@ -44,7 +44,6 @@ limitations under the License.
 #include "xla/service/gpu/nccl_api.h"
 #include "xla/service/gpu/nccl_clique_key.h"
 #include "xla/service/gpu/nccl_collective_thunk.h"
-#include "xla/service/gpu/runtime/cudnn_thunk.h"
 #include "xla/service/gpu/runtime/custom_call_thunk.h"
 #include "xla/service/gpu/thunk.h"
 #include "xla/status.h"
@@ -756,7 +755,7 @@ class CuDnnCmd : public TracedCommandBufferCmd {
  public:
   CuDnnCmd(ExecutionStreamId execution_stream_id,
            absl::Span<const BufferAllocation::Slice> args,
-           const se::dnn::DnnGraph& graph);
+           std::shared_ptr<se::dnn::LazyDnnGraph> graph);
 
   absl::Status Initialize(const Thunk::InitializeParams& params,
                           StateManager& state) override;
@@ -771,7 +770,7 @@ class CuDnnCmd : public TracedCommandBufferCmd {
 
  private:
   std::vector<BufferAllocation::Slice> args_;
-  const se::dnn::DnnGraph& graph_;
+  const std::shared_ptr<se::dnn::LazyDnnGraph> graph_;
 };
 
 //===----------------------------------------------------------------------===//

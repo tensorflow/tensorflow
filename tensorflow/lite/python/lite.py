@@ -665,6 +665,7 @@ class TFLiteConverterBase:
     self._experimental_reduce_type_precision = False
     self._experimental_qdq_conversion_mode = None
     self._experimental_disable_per_channel_quantization_for_dense_layers = False
+    self._experimental_enable_composite_direct_lowering = False
 
     # Debug parameters
     self.ir_dump_dir = None
@@ -818,6 +819,9 @@ class TFLiteConverterBase:
         "qdq_conversion_mode": self._experimental_qdq_conversion_mode,
         "disable_per_channel_quantization_for_dense_layers": (
             self._experimental_disable_per_channel_quantization_for_dense_layers
+        ),
+        "enable_composite_direct_lowering": (
+            self._experimental_enable_composite_direct_lowering
         ),
     }
 

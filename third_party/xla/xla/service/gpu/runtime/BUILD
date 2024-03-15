@@ -70,7 +70,6 @@ cc_library(
     ]),
     deps = [
         ":annotation",
-        ":cudnn_thunk",
         ":custom_call_thunk",
         ":nccl_all_gather_thunk",
         ":nccl_all_reduce_thunk",
