@@ -90,6 +90,7 @@ std::unique_ptr<HloDfsReachability> HloDfsReachability::Build(
   std::vector<HloInstruction*> instructions =
       computation->MakeInstructionPostOrder(channel_dependencies);
 
+  res->instruction_to_idx_.reserve(instructions.size());
   for (size_t i = 0; i < instructions.size(); ++i) {
     res->instruction_to_idx_[instructions[i]] = i;
   }
