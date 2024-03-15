@@ -21,13 +21,6 @@ limitations under the License.
 #include <string>
 #include <vector>
 
-#include <gmock/gmock.h>
-#include <gtest/gtest.h>
-#include "absl/algorithm/container.h"
-#include "absl/strings/str_format.h"
-#include "xla/shape.h"
-#include "tsl/platform/statusor.h"
-
 #if GOOGLE_CUDA
 #include "third_party/gpus/cuda/include/cuda.h"  // IWYU pragma: keep
 #include "third_party/gpus/cuda/include/cuda_runtime_api.h"
@@ -38,8 +31,12 @@ limitations under the License.
 #define PLATFORM "ROCM"
 #endif
 
+#include <gmock/gmock.h>
+#include <gtest/gtest.h>
+#include "absl/algorithm/container.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/str_format.h"
 #include "xla/client/lib/constants.h"
 #include "xla/client/xla_builder.h"
 #include "xla/ffi/ffi.h"
@@ -49,12 +46,15 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/service/custom_call_status.h"
 #include "xla/service/custom_call_target_registry.h"
+#include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/stream_executor/gpu/gpu_types.h"
+#include "xla/stream_executor/scratch_allocator.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/test_helpers.h"
 #include "xla/tests/client_library_test_base.h"
 #include "tsl/lib/core/status_test_util.h"
+#include "tsl/platform/statusor.h"
 
 #if GOOGLE_CUDA
 #define gpuSuccess cudaSuccess
@@ -619,7 +619,8 @@ TEST_F(CustomCallTest, ExportedFfiWithStatusSucceeded) {
 //===----------------------------------------------------------------------===//
 
 static absl::Status MemcpyWithCalledComputation(
-    se::Stream* stream, ffi::BufferBase src, ffi::BufferBase dst,
+    se::Stream* stream, se::OwningScratchAllocator<> scratch_allocator,
+    ffi::BufferBase src, ffi::BufferBase dst,
     const HloComputation* called_computation) {
   if (called_computation == nullptr)
     return absl::InternalError("Called computation is not defined");
@@ -637,8 +638,9 @@ XLA_FFI_DEFINE_HANDLER(kMemcpyWithCalledComputation,
                        MemcpyWithCalledComputation,
                        ffi::Ffi::Bind()
                            .Ctx<se::Stream>()
-                           .Arg<ffi::BufferBase>()  // src
-                           .Arg<ffi::BufferBase>()  // dst
+                           .Ctx<se::OwningScratchAllocator<>>()  // scratch
+                           .Arg<ffi::BufferBase>()               // src
+                           .Arg<ffi::BufferBase>()               // dst
                            .Ctx<ffi::CalledComputation>());
 
 XLA_FFI_REGISTER_HANDLER(ffi::GetXlaFfiApi(),

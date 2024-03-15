@@ -37,6 +37,8 @@ limitations under the License.
 #include "xla/runtime/memref_view.h"
 #include "xla/status.h"
 #include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/device_memory_allocator.h"
+#include "xla/stream_executor/scratch_allocator.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/types.h"  // IWYU pragma: keep
 #include "xla/xla_data.pb.h"
@@ -194,6 +196,24 @@ struct CtxDecoding<se::Stream> {
                                     DiagnosticEngine&) {
     void* ptr = api->internal_api->XLA_FFI_INTERNAL_Stream_Get(ctx);
     return reinterpret_cast<Type>(ptr);
+  }
+};
+
+template <size_t n>
+struct CtxDecoding<se::OwningScratchAllocator<n>> {
+  using Type = se::OwningScratchAllocator<n>;
+
+  static std::optional<Type> Decode(const XLA_FFI_Api* api,
+                                    XLA_FFI_ExecutionContext* ctx,
+                                    DiagnosticEngine&) {
+    int32_t device_ordinal =
+        api->internal_api->XLA_FFI_INTERNAL_DeviceOrdinal_Get(ctx);
+    void* device_allocator =
+        api->internal_api->XLA_FFI_INTERNAL_DeviceMemoryAllocator_Get(ctx);
+
+    return se::OwningScratchAllocator<n>(
+        device_ordinal,
+        reinterpret_cast<se::DeviceMemoryAllocator*>(device_allocator));
   }
 };
 

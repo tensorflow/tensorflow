@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/ffi/ffi_api.h"
 
 #include <cstddef>
+#include <cstdint>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -265,6 +266,16 @@ static void* XLA_FFI_INTERNAL_Stream_Get(XLA_FFI_ExecutionContext* ctx) {
   return ctx->run_options->stream();
 }
 
+static int32_t XLA_FFI_INTERNAL_DeviceOrdinal_Get(
+    XLA_FFI_ExecutionContext* ctx) {
+  return ctx->run_options->device_ordinal();
+}
+
+static void* XLA_FFI_INTERNAL_DeviceMemoryAllocator_Get(
+    XLA_FFI_ExecutionContext* ctx) {
+  return ctx->run_options->allocator();
+}
+
 static void* XLA_FFI_INTERNAL_CalledComputation_Get(
     XLA_FFI_ExecutionContext* ctx) {
   return const_cast<HloComputation*>(ctx->called_computation);
@@ -277,6 +288,8 @@ static void* XLA_FFI_INTERNAL_CalledComputation_Get(
 static XLA_FFI_InternalApi internal_api = {
     XLA_FFI_INTERNAL_Error_Forward,
     XLA_FFI_INTERNAL_Stream_Get,
+    XLA_FFI_INTERNAL_DeviceOrdinal_Get,
+    XLA_FFI_INTERNAL_DeviceMemoryAllocator_Get,
     XLA_FFI_INTERNAL_CalledComputation_Get,
 };
 

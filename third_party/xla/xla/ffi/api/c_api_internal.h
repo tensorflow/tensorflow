@@ -16,6 +16,8 @@ limitations under the License.
 #ifndef XLA_FFI_API_C_API_INTERNAL_H_
 #define XLA_FFI_API_C_API_INTERNAL_H_
 
+#include <cstdint>
+
 #include "xla/ffi/api/c_api.h"
 
 // Internal XLA FFI API that gives access to XLA implementation details that
@@ -40,11 +42,22 @@ extern "C" {
 // caller.
 typedef XLA_FFI_Error* XLA_FFI_INTERNAL_Error_Forward(void* status);
 
-// Returns a pointer to main compute stream (pointer to `se::Stream`). In
+// Returns a pointer to main compute stream (`se::Stream` pointer). In
 // contrast to public C API which returns a pointer to underlying platform
 // stream (i.e. cudaStream_t for CUDA backend), this API returns a pointer to
 // StreamExecutor stream which is unsafe to use across dynamic library boundary.
 typedef void* XLA_FFI_INTERNAL_Stream_Get(XLA_FFI_ExecutionContext* ctx);
+
+// Returns the device ordinal of the device associated with the execution
+// context.
+typedef int32_t XLA_FFI_INTERNAL_DeviceOrdinal_Get(
+    XLA_FFI_ExecutionContext* ctx);
+
+// Returns a pointer to device memory allocator (`se::DeviceMemoryAllocator`
+// pointer) which allows to allocate memory inside a custom call from the same
+// allocator as XLA (i.e. it allows to construct scratch memory allocator).
+typedef void* XLA_FFI_INTERNAL_DeviceMemoryAllocator_Get(
+    XLA_FFI_ExecutionContext* ctx);
 
 // Returns a pointer to `xla::HloComputation` if FFI handler has a called
 // computation attached to it.
@@ -60,6 +73,9 @@ typedef void* XLA_FFI_INTERNAL_CalledComputation_Get(
 struct XLA_FFI_InternalApi {
   _XLA_FFI_INTERNAL_API_STRUCT_FIELD(XLA_FFI_INTERNAL_Error_Forward);
   _XLA_FFI_INTERNAL_API_STRUCT_FIELD(XLA_FFI_INTERNAL_Stream_Get);
+  _XLA_FFI_INTERNAL_API_STRUCT_FIELD(XLA_FFI_INTERNAL_DeviceOrdinal_Get);
+  _XLA_FFI_INTERNAL_API_STRUCT_FIELD(
+      XLA_FFI_INTERNAL_DeviceMemoryAllocator_Get);
   _XLA_FFI_INTERNAL_API_STRUCT_FIELD(XLA_FFI_INTERNAL_CalledComputation_Get);
 };
 
