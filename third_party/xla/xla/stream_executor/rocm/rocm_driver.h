@@ -24,6 +24,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/synchronization/mutex.h"
 #include "xla/stream_executor/gpu/gpu_driver.h"
+#include "tsl/platform/logging.h"
 
 namespace stream_executor {
 namespace gpu {
