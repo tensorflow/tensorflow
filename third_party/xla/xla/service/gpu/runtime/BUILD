@@ -277,12 +277,11 @@ cc_library(
         "//xla/stream_executor",
         "//xla/stream_executor:device_memory",
         "//xla/stream_executor/gpu:gpu_asm_opts",
-    ]) + [
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings:str_format",
         "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:status",
-    ],
+    ]),
 )
 
 cc_library(
@@ -885,24 +884,23 @@ cc_library(
     srcs = if_gpu_is_configured(["triangular_solve_thunk.cc"]),
     hdrs = if_gpu_is_configured(["triangular_solve_thunk.h"]),
     deps = if_gpu_is_configured([
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings:str_format",
-        "//xla/service/gpu:buffer_allocations",
-        "//xla/service/gpu:make_batch_pointers",
-        "//xla/service/gpu:thunk",
         "//xla:types",
         "//xla:util",
         "//xla:xla_data_proto_cc",
-        "//xla/service:buffer_assignment",
         "//xla/hlo/ir:hlo",
-        "@local_tsl//tsl/platform:errors",
-        "@local_tsl//tsl/platform:logging",
+        "//xla/service:buffer_assignment",
+        "//xla/service/gpu:buffer_allocations",
+        "//xla/service/gpu:make_batch_pointers",
+        "//xla/service/gpu:thunk",
         "//xla/stream_executor",
         "//xla/stream_executor:device_memory",
         "//xla/stream_executor/gpu:gpu_asm_opts",
-    ]) + [
-        "@com_google_absl//absl/status",
+        "@local_tsl//tsl/platform:errors",
+        "@local_tsl//tsl/platform:logging",
         "@local_tsl//tsl/platform:status",
-    ],
+    ]),
 )
 
 cc_library(
