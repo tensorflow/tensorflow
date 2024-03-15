@@ -408,3 +408,48 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 12 : i32, p
   // CHECK: return %[[SUBGRAPH_1]] : tensor<1024x3xf32>
   // CHECK: }
 }
+
+// -----
+
+// main function contains StatefulPartitionedCall ops which is used to preserve
+// aliased functions. This test make sure stablehlo ops in each PartitionedCall
+// functions are lifted.
+
+module attributes {tf.versions = {bad_consumers = [], min_consumer = 12 : i32, producer = 1629 : i32}, tf_saved_model.semantics} {
+  // CHECK: func private @_stablehlo_main_1
+  // CHECK: stablehlo.add %arg1, %arg2 : tensor<3x3xf32>
+  // CHECK: return
+  // CHECK: }
+
+  // CHECK: func private @_stablehlo_main_0
+  // CHECK: stablehlo.constant dense<1.000000e+03> : tensor<3x3xf32>
+  // CHECK: stablehlo.constant dense<2.000000e+03> : tensor<3x3xf32>
+  // CHECK: return
+  // CHECK: }
+
+  func.func @main() -> (tensor<3x3xf32> {tf_saved_model.index_path = ["output"]}) attributes {tf.entry_function = {control_outputs = "", inputs = "serving_default_input_tensor:0", outputs = "PartitionedCall:0"}, tf_saved_model.exported_names = ["serving_default"]} {
+    %0 = stablehlo.constant dense<1.000000e+03> : tensor<3x3xf32>
+    %1 = stablehlo.constant dense<2.000000e+03> : tensor<3x3xf32>
+    %2 = "tf.StatefulPartitionedCall"(%0, %1) <{
+      config = "", config_proto = "", executor_type = "", f = @some_func
+    }> {
+      _collective_manager_ids = [], device = ""
+    } : (tensor<3x3xf32>, tensor<3x3xf32>) -> tensor<3x3xf32>
+    return %2 : tensor<3x3xf32>
+  }
+  // CHECK: func.func @main
+  // CHECK: %[[INPUT:.*]]:2 = "tf.XlaCallModule"()
+  // CHECK-SAME: _entry_function = @_stablehlo_main_0
+  // CHECK: "tf.StatefulPartitionedCall"(%[[INPUT]]#0, %[[INPUT]]#1)
+  // CHECK-SAME: f = @some_func
+  // CHECK: return
+
+  func.func private @some_func(%arg0: tensor<3x3xf32>, %arg1: tensor<3x3xf32>) -> tensor<3x3xf32> attributes {tf._noinline = true} {
+    %0 = stablehlo.add %arg0, %arg1 : tensor<3x3xf32>
+    return %0 : tensor<3x3xf32>
+  }
+  // CHECK: func.func private @some_func
+  // CHECK: tf.XlaCallModule
+  // CHECK-SAME: _entry_function = @_stablehlo_main_1
+  // CHECK: return
+}

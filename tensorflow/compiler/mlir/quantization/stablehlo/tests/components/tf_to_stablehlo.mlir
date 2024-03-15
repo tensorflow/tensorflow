@@ -109,3 +109,51 @@ func.func @func_conv_batchnorm_relu6_dynamic(%arg_0: tensor<?x3x4x3xf32>) -> (te
 // CHECK-DAG: %[[ADD:.*]] = stablehlo.add %[[CONV]], %[[BROADCAST]] : tensor<?x3x2x2xf32>
 // CHECK-DAG: %[[RELU6:.*]] = stablehlo.clamp %[[CONST_2]], %[[ADD]], %[[CONST_1]] : (tensor<f32>, tensor<?x3x2x2xf32>, tensor<f32>) -> tensor<?x3x2x2xf32>
 // CHECK: return %[[RELU6]] : tensor<?x3x2x2xf32>
+
+// -----
+
+// This test makes sure functions with tf._noinline=true is not inlined.
+
+module {
+  func.func @partitioned_call(%arg0: tensor<1x2x2x3xf32>) -> (tensor<1x2x2x3xf32>) {
+    %0 = "tf.StatefulPartitionedCall"(%arg0) <{
+      config = "", config_proto = "", executor_type = "", f = @some_func
+    }> {
+      _collective_manager_ids = [], device = ""
+    } : (tensor<1x2x2x3xf32>) -> tensor<1x2x2x3xf32>
+    func.return %0: tensor<1x2x2x3xf32>
+  }
+
+  func.func private @some_func(%arg0: tensor<1x2x2x3xf32>) -> tensor<1x2x2x3xf32> attributes {tf._noinline = true} {
+    return %arg0 : tensor<1x2x2x3xf32>
+  }
+}
+
+// CHECK: module
+// CHECK: tf.StatefulPartitionedCall
+// CHECK: func.func private @some_func
+// CHECK-NOT: func.call
+
+// -----
+
+// This test makes sure functions without tf._noinline=true is inlined.
+
+module {
+  func.func @partitioned_call(%arg0: tensor<1x2x2x3xf32>) -> (tensor<1x2x2x3xf32>) {
+    %0 = "tf.StatefulPartitionedCall"(%arg0) <{
+      config = "", config_proto = "", executor_type = "", f = @some_func
+    }> {
+      _collective_manager_ids = [], device = ""
+    } : (tensor<1x2x2x3xf32>) -> tensor<1x2x2x3xf32>
+    func.return %0: tensor<1x2x2x3xf32>
+  }
+
+  func.func private @some_func(%arg0: tensor<1x2x2x3xf32>) -> tensor<1x2x2x3xf32> {
+    return %arg0 : tensor<1x2x2x3xf32>
+  }
+}
+
+// CHECK: module
+// CHECK-NOT: tf.StatefulPartitionedCall
+// CHECK-NOT: some_func
+// CHECK-NOT: func.call

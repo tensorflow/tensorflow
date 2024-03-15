@@ -119,8 +119,10 @@ void AddTFToStablehloPasses(mlir::PassManager& pm) {
   pm.addPass(mlir::createCanonicalizerPass());
 
   // TF -> StableHLO legalization.
-  mlir::odml::AddLegalizeTFToStablehloPasses(pm, /*skip_quantization_ops=*/true,
-                                             /*skip_resize=*/false);
+  // Skip StatefulPartitionedCall to preserve aliased functions.
+  mlir::odml::AddLegalizeTFToStablehloPasses(
+      pm, /*skip_quantization_ops=*/true,
+      /*skip_resize=*/false, /*skip_stateful_partitioned_call=*/true);
   // StableHLO -> MHLO legalization for MHLO optimization.
   pm.addPass(mlir::mhlo::createStablehloLegalizeToHloPass());
   // Rewrites legacy StableHLO ops.
