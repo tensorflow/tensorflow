@@ -493,6 +493,31 @@ cc_library(
 )
 
 cc_library(
+    name = "stablehlo_legalize_custom_call_to_composite_pass",
+    srcs = [
+        "transforms/stablehlo_legalize_custom_call_to_composite.cc",
+    ],
+    hdrs = [
+        "transforms/passes.h",
+        "transforms/passes.h.inc",
+    ],
+    copts = [
+        "-Ithird_party",
+    ],
+    deps = [
+        ":uniform_quantized_stablehlo_to_tfl_pass",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:Support",
+        "@llvm-project//mlir:Transforms",
+        "@stablehlo//:stablehlo_ops",
+    ],
+    alwayslink = 1,
+)
+
+cc_library(
     name = "optimize",
     srcs = [
         "transforms/optimize.cc",
@@ -713,6 +738,7 @@ tf_cc_binary(
         ":legalize_tf_xla_call_module_to_stablehlo_pass",
         ":optimize",
         ":passes_inc_gen",
+        ":stablehlo_legalize_custom_call_to_composite_pass",
         ":stablehlo_tfl",
         ":tf_legalize_hlo",
         ":tf_stablehlo",
