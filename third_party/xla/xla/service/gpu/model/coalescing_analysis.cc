@@ -55,7 +55,10 @@ bool IsReadCoalescedHeuristic(HloFusionAnalysis::EmitterFusionKind fusion_kind,
   if (fusion_kind != HloFusionAnalysis::EmitterFusionKind::kTranspose) {
     auto is_broadcast = [&](const HloInstruction* instr) {
       while (true) {
-        if (instr->opcode() == HloOpcode::kBroadcast) return true;
+        if (instr->opcode() == HloOpcode::kBroadcast ||
+            instr->opcode() == HloOpcode::kIota) {
+          return true;
+        }
         if (instr->operand_count() != 1) return false;
         if (instr->opcode() != HloOpcode::kBitcast && !instr->IsElementwise()) {
           return false;
@@ -66,7 +69,7 @@ bool IsReadCoalescedHeuristic(HloFusionAnalysis::EmitterFusionKind fusion_kind,
     auto is_bad_transpose = [&](const HloInstruction* instr) {
       if (instr->opcode() == HloOpcode::kFusion) {
         for (auto* instr : instr->fused_instructions()) {
-          // Hack: we allow transposes of broadcasts.
+          // Hack: we allow transposes of broadcasts or iotas.
           if (TransposesMinorDimension(instr) &&
               !is_broadcast(instr->operand(0))) {
             return true;
@@ -74,7 +77,9 @@ bool IsReadCoalescedHeuristic(HloFusionAnalysis::EmitterFusionKind fusion_kind,
         }
         return false;
       }
-      return TransposesMinorDimension(instr);
+      // Hack: we allow transposes of broadcasts or iotas.
+      return TransposesMinorDimension(instr) &&
+             !is_broadcast(instr->operand(0));
     };
     if (is_bad_transpose(producer)) return false;
     if (consumer && is_bad_transpose(consumer)) return false;
