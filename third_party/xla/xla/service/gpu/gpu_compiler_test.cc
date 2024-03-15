@@ -321,7 +321,7 @@ ENTRY main {
 }
 
 TEST_F(GpuCompilerTest,
-       GemmRewriterTritonIsNoOpWhenGemmFusionAutotunerFallsBackToCublas) {
+       GemmFusionIsNoOpWhenGemmFusionAutotunerFallsBackToCublas) {
   const absl::string_view hlo_string = R"(
 HloModule test
 

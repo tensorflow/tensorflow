@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/service/gpu/gemm_rewriter_triton.h"
+#include "xla/service/gpu/gemm_fusion.h"
 
 #include <array>
 #include <cstddef>
@@ -667,10 +667,9 @@ absl::StatusOr<FusionDecision> CreateDotFusion(
 
 // Extracts into fused computations parts of HLO graph including dot()
 // operations that can target the triton GEMM emitter.
-class GemmRewriterTritonVisitor : public DfsHloRewriteVisitor {
+class GemmFusionVisitor : public DfsHloRewriteVisitor {
  public:
-  explicit GemmRewriterTritonVisitor(
-      const se::GpuComputeCapability& gpu_version)
+  explicit GemmFusionVisitor(const se::GpuComputeCapability& gpu_version)
       : gpu_version_(gpu_version) {}
   // Checks that a dot() should be targeting the triton GEMM emitter;
   // if so - fuses all its compatible inputs and outputs as a new computation
@@ -690,7 +689,7 @@ class GemmRewriterTritonVisitor : public DfsHloRewriteVisitor {
       return absl::OkStatus();
     }
 
-    std::string fusion_name = absl::StrCat("triton_gemm_", dot->name());
+    std::string fusion_name = absl::StrCat("gemm_fusion_", dot->name());
     HloComputation::Builder builder(absl::StrCat(fusion_name, "_computation"));
     std::vector<HloInstruction*> fusion_inputs;
     HloInstruction* fusion_output = nullptr;
@@ -747,7 +746,7 @@ class GemmRewriterTritonVisitor : public DfsHloRewriteVisitor {
 
 absl::StatusOr<bool> RunOnComputation(
     HloComputation* computation, const se::GpuComputeCapability& gpu_version) {
-  GemmRewriterTritonVisitor visitor(gpu_version);
+  GemmFusionVisitor visitor(gpu_version);
   TF_RETURN_IF_ERROR(computation->Accept(&visitor));
   return visitor.changed();
 }
@@ -863,7 +862,7 @@ bool ShouldTritonHandleGEMM(HloDotInstruction& dot,
       ->CanFuse();
 }
 
-absl::StatusOr<bool> GemmRewriterTriton::Run(
+absl::StatusOr<bool> GemmFusion::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   bool changed = false;

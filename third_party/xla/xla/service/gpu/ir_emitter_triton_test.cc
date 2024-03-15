@@ -1803,7 +1803,7 @@ ENTRY e {
 })";
 
   MatchOptimizedHlo(hlo_text, R"(
-; CHECK: fusion
+; CHECK: fusion(
 ; CHECK-SAME: kind=kCustom
 ; CHECK-SAME: block_m
 )");
@@ -2119,7 +2119,7 @@ ENTRY e {
 })";
 
   MatchOptimizedHlo(kHloText, R"(
-; CHECK: triton_gemm_dot
+; CHECK: gemm_fusion_dot
 ; CHECK: dot(
 ; CHECK: bf16[] constant(0.123)
 ; CHECK: ROOT
@@ -2197,7 +2197,7 @@ ENTRY e {
 })";
 
   MatchOptimizedHlo(kHloText, R"(
-; CHECK: fusion
+; CHECK: fusion(
 ; CHECK-SAME: kind=kCustom
 ; CHECK-SAME: block_m
 )");
@@ -2220,7 +2220,7 @@ ENTRY e {
 })";
 
   MatchOptimizedHlo(kHloText, R"(
-; CHECK: fusion
+; CHECK: fusion(
 ; CHECK-SAME: kind=kCustom
 ; CHECK-SAME: block_m
 )");
@@ -2243,7 +2243,7 @@ ENTRY e {
 })";
 
   MatchOptimizedHlo(kHloText, R"(
-; CHECK: fusion
+; CHECK: fusion(
 ; CHECK-SAME: kind=kCustom
 ; CHECK-SAME: block_m
 )");
@@ -2266,7 +2266,7 @@ ENTRY e {
 })";
 
   MatchOptimizedHlo(kHloText, R"(
-; CHECK: fusion
+; CHECK: fusion(
 ; CHECK-SAME: kind=kCustom
 ; CHECK-SAME: block_m
 )");
@@ -2290,7 +2290,7 @@ ENTRY e {
 })";
 
   MatchOptimizedHlo(kHloText, R"(
-; CHECK: fusion
+; CHECK: fusion(
 ; CHECK-SAME: kind=kCustom
 ; CHECK-SAME: block_m
 )");
@@ -2315,7 +2315,7 @@ ENTRY e {
 })";
 
   MatchOptimizedHlo(kHloText, R"(
-; CHECK: fusion
+; CHECK: fusion(
 ; CHECK-SAME: kind=kCustom
 ; CHECK-SAME: block_m
 )");
@@ -2340,7 +2340,7 @@ ENTRY e {
 })";
 
   MatchOptimizedHlo(kHloText, R"(
-; CHECK: fusion
+; CHECK: fusion(
 ; CHECK-SAME: kind=kCustom
 ; CHECK-SAME: block_m
 )");
@@ -2365,7 +2365,7 @@ ENTRY e {
 })";
 
   MatchOptimizedHlo(kHloText, R"(
-; CHECK: fusion
+; CHECK: fusion(
 ; CHECK-SAME: kind=kCustom
 ; CHECK-SAME: block_m
 )");
@@ -2684,9 +2684,9 @@ ENTRY e {
 })";
 
   MatchOptimizedHlo(hlo_text, R"(
-; CHECK: %triton_gemm_r_computation (
-; CHECK: ROOT %triton_gemm_r
-; CHECK-SAME: fusion
+; CHECK: %gemm_fusion_r_computation (
+; CHECK: ROOT %gemm_fusion_r
+; CHECK-SAME: kCustom
 )");
 }
 
@@ -3343,7 +3343,7 @@ ENTRY entry {
                                       /*run_hlo_passes=*/false));
 }
 
-// This is based on gemm_rewriter_triton_test.cc/SplitKTest.SupportsIndivisible.
+// This is based on gemm_fusion_test.cc/SplitKTest.SupportsIndivisible.
 //
 // There were relatively large numeric errors with an f16 temporary buffer, so I
 // ended up using --xla_gpu_triton_gemm_disable_reduced_precision_reduction=true

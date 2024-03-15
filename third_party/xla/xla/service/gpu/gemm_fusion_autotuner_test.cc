@@ -36,7 +36,7 @@ limitations under the License.
 #include "xla/service/executable.h"
 #include "xla/service/gpu/autotuner_util.h"
 #include "xla/service/gpu/backend_configs.pb.h"
-#include "xla/service/gpu/gemm_rewriter_triton.h"
+#include "xla/service/gpu/gemm_fusion.h"
 #include "xla/service/gpu/matmul_utils.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/hlo_pass_pipeline.h"
@@ -181,10 +181,10 @@ class GemmFusionAutotunerTest : public StatelessAutotunerTest {
   void CheckTritonAutotuning(absl::string_view hlo,
                              absl::string_view expected) {
     HloPassPipeline pipeline("gemm_rewrite");
-    pipeline.AddPass<GemmRewriterTriton>(backend()
-                                             .default_stream_executor()
-                                             ->GetDeviceDescription()
-                                             .cuda_compute_capability());
+    pipeline.AddPass<GemmFusion>(backend()
+                                     .default_stream_executor()
+                                     ->GetDeviceDescription()
+                                     .cuda_compute_capability());
     tsl::thread::ThreadPool thread_pool(tsl::Env::Default(), "",
                                         tsl::port::MaxParallelism());
     DebugOptions opts;
@@ -662,10 +662,10 @@ ENTRY e {
 )";
 
   HloPassPipeline pipeline("gemm_rewrite_deviceless");
-  pipeline.AddPass<GemmRewriterTriton>(backend()
-                                           .default_stream_executor()
-                                           ->GetDeviceDescription()
-                                           .cuda_compute_capability());
+  pipeline.AddPass<GemmFusion>(backend()
+                                   .default_stream_executor()
+                                   ->GetDeviceDescription()
+                                   .cuda_compute_capability());
   tsl::thread::ThreadPool thread_pool(tsl::Env::Default(), "",
                                       tsl::port::MaxParallelism());
   DebugOptions opts;

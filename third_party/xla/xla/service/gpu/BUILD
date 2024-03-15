@@ -761,8 +761,8 @@ xla_test(
     deps = [
         ":autotuner_util",
         ":backend_configs_cc",
+        ":gemm_fusion",
         ":gemm_fusion_autotuner",
-        ":gemm_rewriter_triton",
         ":matmul_utils",
         "//xla:autotuning_proto_cc",
         "//xla:error_spec",
@@ -1642,7 +1642,7 @@ xla_cc_test(
     name = "triton_fusion_analysis_test",
     srcs = ["triton_fusion_analysis_test.cc"],
     deps = [
-        ":gemm_rewriter_triton",
+        ":gemm_fusion",
         ":triton_fusion_analysis",
         "//xla:statusor",
         "//xla/hlo/ir:hlo",
@@ -1658,9 +1658,9 @@ xla_cc_test(
 )
 
 cc_library(
-    name = "gemm_rewriter_triton",
-    srcs = ["gemm_rewriter_triton.cc"],
-    hdrs = ["gemm_rewriter_triton.h"],
+    name = "gemm_fusion",
+    srcs = ["gemm_fusion.cc"],
+    hdrs = ["gemm_fusion.h"],
     deps = [
         ":backend_configs_cc",
         ":cublas_padding_requirements",
@@ -1693,11 +1693,11 @@ cc_library(
 )
 
 xla_cc_test(
-    name = "gemm_rewriter_triton_test",
-    srcs = ["gemm_rewriter_triton_test.cc"],
+    name = "gemm_fusion_test",
+    srcs = ["gemm_fusion_test.cc"],
     deps = [
         ":cublas_padding_requirements",
-        ":gemm_rewriter_triton",
+        ":gemm_fusion",
         ":triton_fusion_analysis",
         "//xla:autotuning_proto_cc",
         "//xla:statusor",
@@ -3171,7 +3171,7 @@ cc_library(
     srcs = ["cublas_pad_for_gemms.cc"],
     hdrs = ["cublas_pad_for_gemms.h"],
     deps = [
-        ":gemm_rewriter_triton",
+        ":gemm_fusion",
         ":ir_emission_utils",
         "//xla:literal_util",
         "//xla:shape_util",
@@ -3644,7 +3644,7 @@ cc_library(
         ":fusion_merger",
         ":fusion_wrapper",
         ":gemm_broadcast_folding_rewriter",
-        ":gemm_rewriter_triton",
+        ":gemm_fusion",
         ":gemm_rewriter",
         ":gpu_all_gather_optimizer",
         ":gpu_async_collective_annotator",

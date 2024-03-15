@@ -12,8 +12,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef XLA_SERVICE_GPU_GEMM_REWRITER_TRITON_H_
-#define XLA_SERVICE_GPU_GEMM_REWRITER_TRITON_H_
+#ifndef XLA_SERVICE_GPU_GEMM_FUSION_H_
+#define XLA_SERVICE_GPU_GEMM_FUSION_H_
 
 // This file contains the code for fusing dots and other operations into Triton
 // GEMM fusions.
@@ -40,9 +40,9 @@ bool ShouldTritonHandleGEMM(HloDotInstruction&,
 
 // Rewrite compatible dot() calls into custom calls with fused computations
 // that target Triton-based matmul emitter.
-class GemmRewriterTriton : public HloModulePass {
+class GemmFusion : public HloModulePass {
  public:
-  explicit GemmRewriterTriton(const se::GpuComputeCapability& gpu_version)
+  explicit GemmFusion(const se::GpuComputeCapability& gpu_version)
       : gpu_version_(gpu_version) {}
   absl::string_view name() const override { return "triton-gemm-rewriter"; }
 
@@ -58,4 +58,4 @@ class GemmRewriterTriton : public HloModulePass {
 }  // namespace gpu
 }  // namespace xla
 
-#endif  // XLA_SERVICE_GPU_GEMM_REWRITER_TRITON_H_
+#endif  // XLA_SERVICE_GPU_GEMM_FUSION_H_
