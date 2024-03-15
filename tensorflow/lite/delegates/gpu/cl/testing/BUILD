@@ -90,9 +90,11 @@ cc_binary(
         "//tensorflow/lite/core/kernels:builtin_ops",
         "//tensorflow/lite/delegates/gpu/cl:environment",
         "//tensorflow/lite/delegates/gpu/cl:inference_context",
+        "//tensorflow/lite/delegates/gpu/cl:opencl_wrapper",
         "//tensorflow/lite/delegates/gpu/common:model",
         "//tensorflow/lite/delegates/gpu/common:model_builder",
         "//tensorflow/lite/delegates/gpu/common:status",
         "@com_google_absl//absl/time",
+        "@opencl_headers",
     ],
 )
