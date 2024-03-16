@@ -137,7 +137,7 @@ bool QuantizationDriver::SetConstantResultParams(Operation* op) {
   if (!matchPattern(res, m_Constant(&attr))) {
     return false;
   }
-  // TODO(fengliuai): make storage_type_width and narrow_range configurable.
+  // TODO: b/323478683 - Make storage_type_width and narrow_range configurable.
   Type final_type;
   const auto it = optimized_weights_.find(op);
   const bool is_weight = it != optimized_weights_.end();
@@ -272,7 +272,7 @@ void QuantizationDriver::QuantizeValue(Value value, QuantParams params,
   // This attribute is set to distinguish the quantize ops being added by the
   // quantization pass. These ops can be removed without losing original
   // program accuracy.
-  // TODO(fengliuai): make the attribute being part of op definition.
+  // TODO: b/323478683 - Make the attribute being part of op definition.
   quantize->setAttr(kVolatileOpAttrName, builder_.getUnitAttr());
 
   // `original_result` has a use to `quantize`, so this will replace that use
@@ -720,12 +720,12 @@ bool QuantizationDriver::SetBiasParamsWithAdjustments(
 
 // This method scans the operations in the function to setup the initial
 // states for quantization parameter propagation.
-// TODO(fengliuai): This algorithm assumes there are only one pair of
+// TODO: b/323478683 - This algorithm assumes there are only one pair of
 // `quantfork::QuantizeCastOp` and `quantfork::DequantizeCastOp` ops between two
 // quantizable ops. A sanity check should be applied.
 void QuantizationDriver::Initialize() {
   // Duplicate the bias constant, so the states can be setup correctly.
-  // TODO(fengliuai): Function definition should also be duplicated if there
+  // TODO: b/323478683 - Function definition should also be duplicated if there
   // are multiple call sites.
   PreprocessConstantOps();
 
@@ -736,7 +736,7 @@ void QuantizationDriver::Initialize() {
 // Propagates the quantization parameters to the operands, results, and biases.
 // TODO: b/323478683 - Do not use while loop to handle this logic.
 bool QuantizationDriver::PropagateParamsAndReturnIfChanged() {
-  // TODO(fengliuai): uses a typed indicator instead of a bool value.
+  // TODO: b/323478683 - Use a typed indicator instead of a bool value.
   bool changed = false;
   while (!work_list_.empty()) {
     Operation* op = work_list_.back();
@@ -807,7 +807,7 @@ bool QuantizationDriver::PropagateParamsAndReturnIfChanged() {
         !is_qdq_conversion_) {
       // Infer ranges from the activation ops. This is usually required for
       // the post-training quantization workflow.
-      // TODO(fengliuai): different result can have different fixed range.
+      // TODO: b/323478683 - Different result can have different fixed range.
       const auto params =
           scale_spec->fixed_output_range_func(is_signed_, bit_width_);
       for (auto i = 0; i < op->getNumResults(); ++i) {
