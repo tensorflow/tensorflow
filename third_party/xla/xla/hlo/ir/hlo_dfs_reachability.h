@@ -19,7 +19,7 @@ limitations under the License.
 #include <cstddef>
 #include <memory>
 
-#include "absl/container/flat_hash_map.h"
+#include "llvm/ADT/DenseMap.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 
@@ -52,7 +52,8 @@ class HloDfsReachability {
       const HloComputation* computation);
 
  private:
-  absl::flat_hash_map<const HloInstruction*, size_t> instruction_to_idx_;
+  // LLVM dense map shows ~10-20% speedup compared to absl::flat_hash_map.
+  llvm::DenseMap<const HloInstruction*, size_t> instruction_to_idx_;
 };
 
 }  // namespace xla

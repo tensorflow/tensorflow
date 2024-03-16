@@ -141,8 +141,7 @@ cc_library(
     deps = [
         ":hlo",
         "@com_google_absl//absl/algorithm:container",
-        "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/container:flat_hash_set",
+        "@llvm-project//llvm:Support",
     ],
 )
 
