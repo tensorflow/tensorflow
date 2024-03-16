@@ -47,9 +47,13 @@ class AddressComputationThunk : public Thunk {
       std::vector<std::optional<const BufferAllocation::Slice>> operands,
       std::vector<std::optional<const BufferAllocation::Slice>> results,
       std::vector<std::optional<const BufferAllocation::Slice>>
-          offset_buffer_indices,
-      std::vector<std::optional<const Shape>> orig_shapes,
-      std::vector<std::optional<const Shape>> sliced_shapes);
+          operand_offset_buffer_indices,
+      std::vector<std::optional<const Shape>> operand_orig_shapes,
+      std::vector<std::optional<const Shape>> operand_sliced_shapes,
+      std::vector<std::optional<const BufferAllocation::Slice>>
+          result_offset_buffer_indices,
+      std::vector<std::optional<const Shape>> result_orig_shapes,
+      std::vector<std::optional<const Shape>> result_sliced_shapes);
 
   AddressComputationThunk(const AddressComputationThunk&) = delete;
   AddressComputationThunk& operator=(const AddressComputationThunk&) = delete;
@@ -66,16 +70,22 @@ class AddressComputationThunk : public Thunk {
   std::vector<std::optional<const BufferAllocation::Slice>>
       embedded_thunk_results_;
   std::vector<std::optional<const BufferAllocation::Slice>>
-      offset_buffer_indices_;
-
-  std::vector<std::optional<const Shape>> orig_shapes_;
-  std::vector<std::optional<const Shape>> sliced_shapes_;
+      operand_offset_buffer_indices_;
+  std::vector<std::optional<const Shape>> operand_orig_shapes_;
+  std::vector<std::optional<const Shape>> operand_sliced_shapes_;
+  std::vector<std::optional<const BufferAllocation::Slice>>
+      result_offset_buffer_indices_;
+  std::vector<std::optional<const Shape>> result_orig_shapes_;
+  std::vector<std::optional<const Shape>> result_sliced_shapes_;
 
   // Pinned host memory for transferring offset values from device to host.
   absl::Mutex mutex_;
   absl::flat_hash_map<se::StreamExecutor*,
                       std::unique_ptr<se::MemoryAllocation>>
-      offsets_ ABSL_GUARDED_BY(mutex_);
+      operand_offsets_ ABSL_GUARDED_BY(mutex_);
+  absl::flat_hash_map<se::StreamExecutor*,
+                      std::unique_ptr<se::MemoryAllocation>>
+      result_offsets_ ABSL_GUARDED_BY(mutex_);
 };
 
 }  // namespace gpu
