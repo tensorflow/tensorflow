@@ -3627,6 +3627,7 @@ cc_library(
     ]),
     deps = if_gpu_is_configured([
         ":gpu_p2p_pipeliner",
+        ":collective_permute_cycle_decomposer",
         ":address_computation_fusion_rewriter",
         ":algorithm_checker",
         ":alias_passthrough_params",

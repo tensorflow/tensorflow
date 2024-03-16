@@ -119,6 +119,7 @@ limitations under the License.
 #include "xla/service/gpu/alias_passthrough_params.h"
 #include "xla/service/gpu/all_reduce_blueconnect.h"
 #include "xla/service/gpu/autotuner_util.h"
+#include "xla/service/gpu/collective_permute_cycle_decomposer.h"
 #include "xla/service/gpu/command_buffer_scheduling.h"
 #include "xla/service/gpu/compile_module_to_llvm_ir.h"
 #include "xla/service/gpu/conv_layout_normalization.h"
@@ -952,6 +953,11 @@ absl::Status RunCollectiveOptimizationPasses(
         [](const HloInstruction*) { return false; }};
     collectives_pipeline.AddPass<CollectivePipeliner>(config);
   }
+
+  collectives_pipeline.AddPass<CollectivePermuteCycleDecomposer>(
+      hlo_module->config()
+          .debug_options()
+          .xla_gpu_collective_permute_decomposer_threshold());
 
   // Run algebraic simplifier to reshape(broadcast) into a broadcast when
   // the reshape is just adding a unit dimension. This will help with the

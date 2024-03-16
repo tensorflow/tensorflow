@@ -93,25 +93,18 @@ CycleType ShouldDecomposeWithCycleType(
     return CycleType::kUnknown;
   }
 
-  auto backend_config =
-      collective_permute.backend_config<xla::gpu::GpuBackendConfig>()
-          ->collective_backend_config();
-  if (backend_config.is_sync()) {
-    return CycleType::kUnknown;
-  }
   if (collective_permute.operand_count() != 1) {
     return CycleType::kUnknown;
   }
 
   const Shape& result_shape = collective_permute.shape();
   // Skip the transformation if there is any context data.
-  if (result_shape.tuple_shapes_size() != 2) {
+  if (result_shape.IsTuple()) {
     return CycleType::kUnknown;
   }
 
-  const Shape& shape = result_shape.tuple_shapes(0);
-  CHECK(shape.IsArray());
-  if (ShapeUtil::ByteSizeOf(shape) < threshold_in_bytes) {
+  CHECK(result_shape.IsArray());
+  if (ShapeUtil::ByteSizeOf(result_shape) < threshold_in_bytes) {
     return CycleType::kUnknown;
   }
 
@@ -153,9 +146,6 @@ Status DecomposeCollectivePermuteCycle(HloCollectivePermuteInstruction* cp,
       computation->AddInstruction(HloInstruction::CreateCollectivePermute(
           cp->shape(), cp->mutable_operand(0), backedge,
           cp->channel_id().value()));
-  HloInstruction* cp1_done =
-      computation->AddInstruction(HloInstruction::CreateUnary(
-          cp->shape().tuple_shapes(0), HloOpcode::kCollectivePermuteDone, cp1));
   cp1->set_metadata(metadata);
   int64_t cp1_receiver = backedge.back().second;
 
@@ -164,9 +154,6 @@ Status DecomposeCollectivePermuteCycle(HloCollectivePermuteInstruction* cp,
   HloInstruction* cp2 =
       computation->AddInstruction(HloInstruction::CreateCollectivePermute(
           cp->shape(), cp->mutable_operand(0), other_edges, next_channel_id));
-  HloInstruction* cp2_done =
-      computation->AddInstruction(HloInstruction::CreateUnary(
-          cp->shape().tuple_shapes(0), HloOpcode::kCollectivePermuteDone, cp2));
   cp2->set_metadata(metadata);
 
   // Calculate the received data as follows:
@@ -184,15 +171,12 @@ Status DecomposeCollectivePermuteCycle(HloCollectivePermuteInstruction* cp,
                                     constant, Comparison::Direction::kEq));
   HloInstruction* compare =
       computation->AddInstruction(HloInstruction::CreateBroadcast(
-          ShapeUtil::MakeShape(PRED, cp1_done->shape().dimensions()), compare0,
-          {}));
+          ShapeUtil::MakeShape(PRED, cp1->shape().dimensions()), compare0, {}));
   HloInstruction* recv_data =
       computation->AddInstruction(HloInstruction::CreateTernary(
-          cp1_done->shape(), HloOpcode::kSelect, compare, cp1_done, cp2_done));
+          cp1->shape(), HloOpcode::kSelect, compare, cp1, cp2));
 
-  HloInstruction* cp_done = cp->users().front();
-  TF_RETURN_IF_ERROR(cp_done->ReplaceAllUsesWith(recv_data));
-  TF_RETURN_IF_ERROR(computation->RemoveInstructionAndUnusedOperands(cp_done));
+  TF_RETURN_IF_ERROR(cp->ReplaceAllUsesWith(recv_data));
   TF_RETURN_IF_ERROR(computation->RemoveInstructionAndUnusedOperands(cp));
 
   return OkStatus();
@@ -206,7 +190,7 @@ absl::StatusOr<bool> CollectivePermuteCycleDecomposer::Run(
   int64_t next_channel_id;
   for (auto comp : module->computations(execution_threads)) {
     for (auto hlo : comp->MakeInstructionPostOrder()) {
-      if (hlo->opcode() != HloOpcode::kCollectivePermuteStart) {
+      if (hlo->opcode() != HloOpcode::kCollectivePermute) {
         continue;
       }
       auto collective_permute = Cast<HloCollectivePermuteInstruction>(hlo);

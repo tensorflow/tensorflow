@@ -26,17 +26,16 @@ limitations under the License.
 
 namespace xla {
 
-// CollectivePermuteCycleDecomposer is a pass that converts an asynchronous
-// CollectivePermute instructions with all participants forming either a forward
-// cycle (such as {{0,1},{1,2},{2,3},{3,0}) or a backward cycle (such as {{3,2},
-// {2,1},[1,0},{0,3}}) into two CollectivePermute instructions. We currently
-// restrict this transformation to CollectivePermuteStart using partition mode,
-// with one input, without any context data. Here is an example.
+// CollectivePermuteCycleDecomposer is a pass that converts CollectivePermute
+// instructions with all participants forming either a forward cycle (such as
+// {{0,1},{1,2},{2,3},{3,0}) or a backward cycle (such as {{3,2},{2,1},{1,0},
+// {0,3}}) into two CollectivePermute instructions. We currently restrict
+// this transformation to CollectivePermute using partition mode, with one
+// input, without any context data. Here is an example.
 //
 // before transformation:
-//     start = (<rt>, <rt>) collective-permute-start(data),
+//     start = (<rt>, <rt>) collective-permute(data),
 //       source_target_pairs={{0,1},{1,2},{2,3},{3,0}}
-//     done = <rt> collective-permute-done(start)
 //
 // after transformation:
 //     partition-id = u32[] partition-id()
@@ -45,11 +44,9 @@ namespace xla {
 //       direction=EQ
 //     pred = pred[] broadcast(pred[] compare), dimensions={}
 //     cp1 = (<rt>, <rt>) collective-permute(data), source_target_pairs={{3,0}}
-//     cp1-done = <rt> collective-permute-done(cp1)
 //     cp2 = (<rt>, <rt>) collective-permute(data),
 //       source_target_pairs={{0,1},{1,2},{2,3}}
-//     cp2-done = <rt> collective-permute-done(cp2)
-//     done = <rt> select(pred, cp1-done, cp2-done)
+//     data = <rt> select(pred, cp1, cp2)
 //
 class CollectivePermuteCycleDecomposer : public HloModulePass {
  public:
