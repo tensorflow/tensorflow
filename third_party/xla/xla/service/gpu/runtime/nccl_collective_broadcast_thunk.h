@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_SERVICE_GPU_NCCL_COLLECTIVE_BROADCAST_THUNK_H_
-#define XLA_SERVICE_GPU_NCCL_COLLECTIVE_BROADCAST_THUNK_H_
+#ifndef XLA_SERVICE_GPU_RUNTIME_NCCL_COLLECTIVE_BROADCAST_THUNK_H_
+#define XLA_SERVICE_GPU_RUNTIME_NCCL_COLLECTIVE_BROADCAST_THUNK_H_
 
 #include <cstdint>
 #include <vector>
@@ -64,4 +64,4 @@ Status RunCollectiveBroadcast(std::vector<DeviceBufferPair>& buffers,
 
 }  // namespace xla::gpu
 
-#endif  // XLA_SERVICE_GPU_NCCL_COLLECTIVE_BROADCAST_THUNK_H_
+#endif  // XLA_SERVICE_GPU_RUNTIME_NCCL_COLLECTIVE_BROADCAST_THUNK_H_

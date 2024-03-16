@@ -74,6 +74,7 @@ cc_library(
         ":custom_call_thunk",
         ":nccl_all_gather_thunk",
         ":nccl_all_reduce_thunk",
+        ":nccl_collective_broadcast_thunk",
         "//xla:executable_run_options",
         "//xla:status",
         "//xla:types",
@@ -681,6 +682,25 @@ cc_library(
         "@llvm-project//mlir:IR",
         "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:logging",
+        "@local_tsl//tsl/platform:statusor",
+    ],
+)
+
+cc_library(
+    name = "nccl_collective_broadcast_thunk",
+    srcs = ["nccl_collective_broadcast_thunk.cc"],
+    hdrs = ["nccl_collective_broadcast_thunk.h"],
+    deps = [
+        "//xla:status",
+        "//xla:xla_data_proto_cc",
+        "//xla/hlo/ir:hlo",
+        "//xla/service:collective_ops_utils",
+        "//xla/service/gpu:nccl_api",
+        "//xla/service/gpu:nccl_collective_thunks",
+        "//xla/service/gpu:thunk",
+        "//xla/stream_executor",
+        "@com_google_absl//absl/types:span",
+        "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:statusor",
     ],
 )
