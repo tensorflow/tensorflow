@@ -618,7 +618,6 @@ void MemoryPressureTracker::UpdateBuffers(const HloInstruction* instruction) {
       }
       if (live_buffers_[b.value->id()] != 0) {
         if (b.first_definition == instruction) {
-          // VLOG(0) << "Removing " << b.buffer_size;
           live_memory_usage_ -= b.buffer_size;
           live_buffers_set_.erase(b.value->id());
         }
@@ -1938,15 +1937,21 @@ LatencyHidingScheduler::LatencyHidingStatistics(
           .push_back({instr, current_time, curr_pos});
     } else if (async_tracker->IsSupportedAsyncDone(*instr)) {
       const HloInstruction* start_instr = instr->operand(0);
-      auto it = find_outstanding_async(start_instr);
-      const HloGraphNode& start_node = schedule_graph.GetNode(std::get<0>(*it));
-      auto edge_it = find_node_successor_edge(start_node, instr_node);
-      const double async_wasted_cycles =
-          std::max(0.0, edge_it->Latency() - (current_time - std::get<1>(*it)));
-      AsyncKind kind = opcode_to_async_kind(
-          async_tracker->GetCanonicalAsyncOp(*start_instr).inner);
-      wasted_time_per_collective[kind] += async_wasted_cycles;
-      current_time += async_wasted_cycles;
+      // TODO(b/329731042): Handle pipelined Send/Recv in while-body, which
+      // is the only situation where an async done operand is not an async
+      // start.
+      if (async_tracker->IsSupportedAsyncStart(*start_instr)) {
+        auto it = find_outstanding_async(start_instr);
+        const HloGraphNode& start_node =
+            schedule_graph.GetNode(std::get<0>(*it));
+        auto edge_it = find_node_successor_edge(start_node, instr_node);
+        const double async_wasted_cycles = std::max(
+            0.0, edge_it->Latency() - (current_time - std::get<1>(*it)));
+        AsyncKind kind = opcode_to_async_kind(
+            async_tracker->GetCanonicalAsyncOp(*start_instr).inner);
+        wasted_time_per_collective[kind] += async_wasted_cycles;
+        current_time += async_wasted_cycles;
+      }
     }
     curr_pos++;
   }
