@@ -61,6 +61,16 @@ void AddCallModuleSerializationPasses(OpPassManager& pm);
 // through a StableHLO <-> MHLO roundtrip to utilize the MHLOQuantToInt pass.
 void AddStablehloQuantToIntPasses(OpPassManager& pm);
 
+// Processes tensors with NCHW format (== (batch, channel, height, weight)) by
+// converting them to NHWC formats along with extra optimizations such as
+// constant folding the transpose->convolution pattern. This is useful when
+// downstream pipeline (e.g. XLA) is more optimized when accepting NHWC formats.
+void AddProcessNchwTensorPasses(OpPassManager& pm);
+
+// Registers quantization pass pipelines. This is only required when running
+// MLIR opt binaries and not required when adding passes programmatically.
+void RegisterPassPipelines();
+
 }  // namespace mlir::quant::stablehlo
 
 #endif  // TENSORFLOW_COMPILER_MLIR_QUANTIZATION_STABLEHLO_CC_PASS_PIPELINE_H_

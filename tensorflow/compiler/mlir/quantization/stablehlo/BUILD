@@ -48,6 +48,7 @@ cc_library(
     srcs = [
         "passes/convert_func_to_bfloat16.cc",
         "passes/convert_xla_call_module_op_to_bfloat16.cc",
+        "passes/defer_activation_transpose.cc",
         "passes/fold_constant_transpose.cc",
         "passes/lift_quantizable_spots_as_functions.cc",
         "passes/lift_quantizable_spots_as_functions_fusion.inc",
@@ -756,6 +757,7 @@ tf_cc_binary(
         ":test_passes",
         "//tensorflow/compiler/mlir:init_mlir",
         "//tensorflow/compiler/mlir/lite/quantization/ir:QuantOps",
+        "//tensorflow/compiler/mlir/quantization/stablehlo/cc:pass_pipeline",
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow/transforms:tensorflow_passes",
         "//tensorflow/compiler/mlir/tensorflow/transforms:tf_dialect_passes",
