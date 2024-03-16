@@ -19,6 +19,7 @@ limitations under the License.
 
 #include "absl/status/status.h"
 #include "tensorflow/core/data/dataset_utils.h"
+#include "tensorflow/core/data/global_shuffle_utils.h"
 #include "tensorflow/core/data/name_utils.h"
 #include "tensorflow/core/data/split_utils.h"
 #include "tensorflow/core/framework/partial_tensor_shape.h"
@@ -102,7 +103,7 @@ class TensorSliceDatasetOp::Dataset : public DatasetBase {
     return Get(index, out_tensors);
   }
 
-  Status Get(int64 index, std::vector<Tensor>* out_tensors) const {
+  Status Get(int64 index, std::vector<Tensor>* out_tensors) const override {
     TF_RETURN_IF_ERROR(CheckRandomAccessCompatible(index));
     out_tensors->clear();
     out_tensors->reserve(tensors_.size());
@@ -156,7 +157,8 @@ class TensorSliceDatasetOp::Dataset : public DatasetBase {
   class Iterator : public DatasetIterator<Dataset> {
    public:
     explicit Iterator(const Params& params)
-        : DatasetIterator<Dataset>(params) {}
+        : DatasetIterator<Dataset>(params),
+          global_shuffle_iterator_(dataset()) {}
 
     bool SymbolicCheckpointCompatible() const override { return true; }
 
@@ -175,7 +177,8 @@ class TensorSliceDatasetOp::Dataset : public DatasetBase {
                            std::vector<Tensor>* out_tensors,
                            bool* end_of_sequence) override {
       if (ctx->index_mapper() != nullptr) {
-        return Get(ctx, out_tensors, end_of_sequence);
+        return global_shuffle_iterator_.GetNext(ctx, out_tensors,
+                                                end_of_sequence);
       }
 
       Tensor split;
@@ -188,19 +191,6 @@ class TensorSliceDatasetOp::Dataset : public DatasetBase {
       for (size_t i = 0; i < dataset()->tensors_.size(); ++i) {
         out_tensors->push_back(
             MaybeCopySubSlice(dataset()->tensors_[i], index));
-      }
-      *end_of_sequence = false;
-      return absl::OkStatus();
-    }
-
-    absl::Status Get(IteratorContext* ctx, std::vector<Tensor>* out_tensors,
-                     bool* end_of_sequence) {
-      tsl::mutex_lock l(mu_);
-      int64_t output_index = ctx->index_mapper()(element_count_++);
-      absl::Status status = dataset()->Get(output_index, out_tensors);
-      if (absl::IsOutOfRange(status)) {
-        *end_of_sequence = true;
-        return absl::OkStatus();
       }
       *end_of_sequence = false;
       return absl::OkStatus();
@@ -221,9 +211,7 @@ class TensorSliceDatasetOp::Dataset : public DatasetBase {
     Status RestoreInternal(IteratorContext* ctx,
                            IteratorStateReader* reader) override {
       if (ctx->restored_element_count().has_value()) {
-        tsl::mutex_lock l(mu_);
-        element_count_ = *(ctx->restored_element_count());
-        return absl::OkStatus();
+        return global_shuffle_iterator_.Restore(ctx);
       }
       return split_provider_->Restore(
           [this](const std::string& key) { return full_name(key); }, reader);
@@ -231,11 +219,7 @@ class TensorSliceDatasetOp::Dataset : public DatasetBase {
 
    private:
     std::shared_ptr<SplitProvider> split_provider_;
-
-    mutable tsl::mutex mu_;
-    // Count of elements produced by this iterator when it runs in the random
-    // access mode.
-    int64_t element_count_ TF_GUARDED_BY(mu_) = 0;
+    GlobalShuffleIterator global_shuffle_iterator_;
   };
 
   const std::vector<Tensor> tensors_;

@@ -15,9 +15,15 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_DATA_GLOBAL_SHUFFLE_UTILS_H_
 #define TENSORFLOW_CORE_DATA_GLOBAL_SHUFFLE_UTILS_H_
 
+#include <cstdint>
 #include <optional>
+#include <vector>
 
+#include "absl/base/thread_annotations.h"
+#include "absl/status/status.h"
+#include "absl/synchronization/mutex.h"
 #include "tensorflow/core/framework/dataset.h"
+#include "tensorflow/core/framework/tensor.h"
 
 namespace tensorflow {
 namespace data {
@@ -53,6 +59,34 @@ class IteratorContextWithIndexMapper {
  private:
   IteratorContext* ctx_;
   std::optional<IteratorContext> ctx_with_index_mapper_;
+};
+
+// For source datasets that support random access, this class adapts the dataset
+// random access API to support globally shuffled iterators.
+class GlobalShuffleIterator {
+ public:
+  // The dataset is expected to support random access by implementing the
+  // absl::Status Get(int64_t index, std::vector<Tensor>* out_tensors) const.
+  explicit GlobalShuffleIterator(const DatasetBase* dataset)
+      : dataset_(dataset) {}
+
+  // Returns the next shuffled element.
+  // REQUIRES: ctx->index_mapper() != nullptr.
+  absl::Status GetNext(IteratorContext* ctx, std::vector<Tensor>* out_tensors,
+                       bool* end_of_sequence);
+
+  // Restores the element count.
+  // REQUIRES: ctx->restored_element_count() != nullopt.
+  absl::Status Restore(IteratorContext* ctx);
+
+ private:
+  const DatasetBase* const dataset_;
+
+  mutable absl::Mutex mu_;
+
+  // Count of elements produced by this iterator when it runs in the random
+  // access mode.
+  int64_t element_count_ ABSL_GUARDED_BY(mu_) = 0;
 };
 
 }  // namespace data
