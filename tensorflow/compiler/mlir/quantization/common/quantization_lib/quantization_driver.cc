@@ -734,14 +734,10 @@ void QuantizationDriver::Initialize() {
 }
 
 // Propagates the quantization parameters to the operands, results, and biases.
-// TODO: b/323478683 - Do not use while loop to handle this logic.
 bool QuantizationDriver::PropagateParamsAndReturnIfChanged() {
   // TODO(fengliuai): uses a typed indicator instead of a bool value.
   bool changed = false;
-  while (!work_list_.empty()) {
-    Operation* op = work_list_.back();
-    work_list_.pop_back();
-
+  for (Operation* op : llvm::reverse(work_list_)) {
     // This op has been quantized, so we should not consider it again.
     if (llvm::is_contained(quantized_, op)) continue;
     quantized_.insert(op);
