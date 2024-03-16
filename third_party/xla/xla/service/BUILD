@@ -1253,6 +1253,7 @@ cc_library(
     srcs = ["p2p_schedule_preparation.cc"],
     hdrs = ["p2p_schedule_preparation.h"],
     deps = [
+        ":collective_ops_utils",
         ":hlo_pass",
         "//xla:status",
         "//xla:statusor",

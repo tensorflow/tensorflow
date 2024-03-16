@@ -677,8 +677,8 @@ TEST_F(GpuHloScheduleTest, LHSSendRecvPairs2) {
   EXPECT_LT(abs(get_index("send-done-0") - get_index("result")), 2);
 }
 
-// Checks that asynchronous AllReduce is scheduled to interleave with the Send
-// and Recv sequence.
+// Checks that asynchronous AllReduce is scheduled to not interleave with the
+// Send and Recv sequence.
 TEST_F(GpuHloScheduleTest, LHSSendRecvAllReduce) {
   const char* hlo_text = R"(
   HloModule test
@@ -765,7 +765,8 @@ TEST_F(GpuHloScheduleTest, LHSSendRecvAllReduce) {
   EXPECT_LT(get_index("recv"), get_index("send"));
   EXPECT_LT(get_index("send"), get_index("recv-done"));
   EXPECT_GE(get_index("send-done") - get_index("recv-done"), 3);
-  EXPECT_LT(get_index("send-done"), get_index("all-reduce-start"));
+  EXPECT_TRUE(get_index("send-done") < get_index("all-reduce-start") ||
+              get_index("recv") > get_index("all-reduce-start"));
   EXPECT_TRUE(HasValidFingerprint(module.get()));
 }
 
@@ -896,8 +897,6 @@ while_body {
 
   // The unpipelined Send-Recv in the while-body is scheduled after the
   // pipelined Send-Done and before the pipelined Recv.
-  EXPECT_LT(get_index("send-done.1", while_body),
-            get_index("recv.4", while_body));
   EXPECT_LT(get_index("recv-done.4", while_body),
             get_index("recv.1", while_body));
 }

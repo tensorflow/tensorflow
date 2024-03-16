@@ -21,81 +21,94 @@ limitations under the License.
 
 namespace xla {
 
-// P2PSchedulePreparation is a pass to linearize point-to-point operation chain
+// P2PSchedulePreparation is a pass to linearize point-to-point operation chains
 // to prepare for any HLO scheduler. In particular, this pass currently does the
 // following:
 // (1) For an unpipelined P2P Send-Recv chain, add control dependence to
 //     express this ordering:
 //       recv => send => recv-done => send-done
 //
-// (2) For a pipelined P2P Send-Recv chain, add control dependence to the
-//     while-body to express this ordering:
-//       send => recv
-//     In the computation with such a while-loop, the data dependence already
-//     expresses this ordering:
-//       recv => recv-done => while-loop => send => send-done
+// (2.1) For a single pipelined P2P Send-Recv chain, add control dependence to
+//     the while-body to express this ordering:
+//       recv-done => send-done => recv => send
+//       In the computation with such a while-loop, add control dependence to
+//     express this ordering:
+//       recv => send
+//       recv-done => send-done
+//     The data dependence already express this dependence:
+//       recv, send => while-loop => recv-done, send-done
+//
+// (2.2) For two pipelined P2P Send-Recv chain together forms a cycle, add
+//    control dependence to the while-body to express this ordering:
+//       recv-done.0 => send-done.0 => recv-done.1 => send-done.1 => recv.0 =>
+//       send.0 => recv.1 => send.1
+//       In the computation with such a while-loop, add control dependence to
+//     express this ordering:
+//       recv.0 => send.0 => recv.1 => send.1
+//       recv-done.0 => send-done.0 => recv-done.1 => send-done.1
+//     The data dependence already express this dependence:
+//       recv.0/1, send.0/1 => while-loop => recv-done.0/1, send-done.0/1
 //
 // (3) For a pipelined P2P Send-Recv chain, if the while-body has other
 // collective ops, we add control dependence to ensure that the pipelined
-// Send-done is ordered before other P2P chains while the pipelined
-// Recv is ordered after other P2P chains. For example, if the other collective
-// op is another Send-Recv chain, we make the pipelined Send-done the control
-// predecessor of the other Recv and the pipelined Recv the control successor of
-// the other other Send. Here is an example to illustrate the problem we
-// address:
+// Send-done (or Send-done.1 in the cyclic case) is ordered before other P2P
+// chains while the pipelined Recv ( or Recv.1 in the cyclic case) is ordered
+// after other P2P chains. For example, if the other collective op is another
+// Send-Recv chain, we make the pipelined Send-done the control predecessor of
+// the other Recv and the pipelined Recv the control successor of the other
+// other Send. Here is an example to illustrate the problem we address:
 //
 // Assume a while-body with the following HLO collective-permute operations:
-//    collective-permute-start-1 = (u32[2], u32[2])
+//    collective-permute-start.1 = (u32[2], u32[2])
 //      collective-permute-start(data), channel_id=1...
-//    collective-permute-done-1 = u32[2], channel_id=1
-//    use of collective-permute-done-1 result
-//    collective-permute-start-2 = (u32[2], u32[2])
+//    collective-permute-done.1 = u32[2], channel_id=1
+//    use of collective-permute-done.1 result
+//    collective-permute-start.2 = (u32[2], u32[2])
 //      collective-permute-start(data), channel_id=2...
-//    collective-permute-done-2 = u32[2], channel_id=2
-//    use of collective-permute-done-2 result
+//    collective-permute-done.2 = u32[2], channel_id=2
+//    use of collective-permute-don.2 result
 //
 // Now assume we transform the collective-permute operations into two P2P
 // Send-Recv chains, the block of code will become something like this:
-//    after-all-1 = token[] after-all()
-//    recv-1 = (u32[2], token[]) recv(after-all-1), channel_id=1 ...
-//    send-1 = (u32[2], token[]) send(data, after-all-1), channel_id=1 ...
-//    recv-done-1 = (u32[2], token[]) recv-done(recv-1), channel_id=1 ...
-//    send-done-1 = token[] send-done(send-1), channel_id=1 ...
-//    use of recv-done-1 result
-//    after-all-2 = token[] after-all()
-//    recv-2 = (u32[2], token[]) recv(after-all-2), channel_id=2 ...
-//    send-2 = (u32[2], token[]) send(data, after-all-2), channel_id=2 ...
-//    recv-done-2 = (u32[2], token[]) recv-done(recv-2), channel_id=2 ...
-//    send-done-2 = token[] send-done(send-2), channel_id=2 ...
-//    use of recv-done-2 result
+//    after-all.1 = token[] after-all()
+//    recv.1 = (u32[2], token[]) recv(after-all.1), channel_id=1 ...
+//    send.1 = (u32[2], token[]) send(data, after-all.1), channel_id=1 ...
+//    recv-done.1 = (u32[2], token[]) recv-done(recv.1), channel_id=1 ...
+//    send-done.1 = token[] send-done(send.1), channel_id=1 ...
+//    use of recv-done.1 result
+//    after-all.2 = token[] after-all()
+//    recv.2 = (u32[2], token[]) recv(after-all.2), channel_id=2 ...
+//    send.2 = (u32[2], token[]) send(data, after-all.2), channel_id=2 ...
+//    recv-done.2 = (u32[2], token[]) recv-done(recv.2), channel_id=2 ...
+//    send-done.2 = token[] send-done(send.2), channel_id=2 ...
+//    use of recv-done.2 result
 //
 // If the while-loop is not pipelined, this pass adds control dependence to
 // make sure the first Send-Recv chain finish before the second Send-Recv
 // starts.
 //
 // If the while-loop is pipelined for the first Send-Recv chain, then the
-// first Recv and the last Send of the chain are moved to the computation
-// that calls the while-loop, and the block of code in the while-body will
-// become something like this:
-
-//    after-all-1 = token[] after-all()
-//    send-1 = (u32[2], token[]) send(data, after-all-1), channel_id=1 ...
-//    send-done-1 = token[] send-done(send-1), channel_id=1 ...
-//    use of recv-done-1 result from the previous iteration or the computation
-//      that calls the while-loop (for the first iteration)
-//
-//    after-all-2 = token[] after-all()
-//    recv-2 = (u32[2], token[]) recv(after-all-2), channel_id=2 ...
-//    send-2 = (u32[2], token[]) send(data, after-all-2), channel_id=2 ...
-//    recv-done-2 = (u32[2], token[]) recv-done(recv-2), channel_id=2 ...
-//    send-done-2 = token[] send-done(send-2), channel_id=2 ...
-//    use of recv-done-2 result
-//
-//    recv-1 = (u32[2], token[]) recv(after-all-1), channel_id=1 ...
-//    recv-done-1 = (u32[2], token[]) recv-done(recv-1), channel_id=1 ...
+// first Recv/Send and the last Recv-done/Send-done of the chain are moved to
+// the computation that calls the while-loop, and the block of code in the
+// while-body will become something like this:
+//    recv.1 = (u32[2], u32[], token[]) get-tuple-element(param), index=1
+//    recv-done.1 = (u32[2], token[]) recv-done(recv.1), channel_id=1
+//    send.1 = (u32[2], u32[], token[]) get-tuple-element(param), index=4
+//    send-done.1 = token[] send-done(send.1), channel_id=1
+//    use of recv-done.1 result
+//    after-all.2 = token[] after-all()
+//    recv.2 = (u32[2], token[]) recv(after-all.2), channel_id=2 ...
+//    send.2 = (u32[2], token[]) send(data, after-all.2), channel_id=2 ...
+//    recv-done.2 = (u32[2], token[]) recv-done(recv.2), channel_id=2 ...
+//    send-done.2 = token[] send-done(send.2), channel_id=2 ...
+//    use of recv-done.2 result
+//    after-all.1.n = token[] after-all()
+//    recv.1.n = (u32[2], u32[], token[]) recv(after-all.1.n), channel_id=1
+//    send.1.n = (u32[2], u32[], token[]) send(new-data, after-all.1.n),
+//      channel_id=1
 //
 // In this case, we make send-done-1 the control predecessor of recv-2 and
-// send-done-2 the control predecessor of recv-1 to ensure that the second
+// send-done-2 the control predecessor of recv-1.n to ensure that the second
 // Send-Recv chain is executed after the Send for the first chain finishes and
 // before the Recv for the first chain starts.
 //
