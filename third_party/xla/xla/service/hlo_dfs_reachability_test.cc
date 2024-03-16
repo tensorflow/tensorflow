@@ -15,11 +15,12 @@ limitations under the License.
 
 #include "xla/hlo/ir/hlo_dfs_reachability.h"
 
-#include <memory>
+#include <cstddef>
 #include <set>
 #include <string_view>
 
 #include "absl/random/random.h"
+#include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/test.h"
 #include "xla/tests/hlo_test_base.h"
@@ -153,9 +154,12 @@ class HloDfsReachabilityBenchmark {
     computation_ =
         module_->AddEntryComputation(builder.Build(/*root_instruction=*/prev));
   }
+
   std::unique_ptr<HloDfsReachability> Build() {
     return HloDfsReachability::Build(computation_);
   }
+
+  const HloComputation* computation() { return computation_; }
 
  private:
   std::unique_ptr<HloModule> module_;
@@ -169,8 +173,25 @@ void BM_HloDfsReachabilityBuild(benchmark::State& state) {
     benchmark::DoNotOptimize(bm.Build());
   }
 }
+
+void BM_HloDfsReachabilityCheck(benchmark::State& state) {
+  size_t size = state.range(0);
+
+  HloDfsReachabilityBenchmark bm(size, state.name());
+  auto reachability = bm.Build();
+  auto instrs = bm.computation()->MakeInstructionPostOrder();
+
+  size_t i = 0;
+  for (auto s : state) {
+    size_t from = i % size;
+    size_t to = (++i + size / 2) % size;
+    reachability->IsReachable(instrs[from], instrs[to]);
+  }
+}
+
 #define BM_ARGS Arg(1)->Arg(64)->Arg(128)->Arg(256)->Range(512, 256 * 1024)
 BENCHMARK(BM_HloDfsReachabilityBuild)->BM_ARGS;
+BENCHMARK(BM_HloDfsReachabilityCheck)->BM_ARGS;
 
 }  // namespace
 
