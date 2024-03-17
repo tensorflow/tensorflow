@@ -2,21 +2,21 @@
   <img src="https://www.tensorflow.org/images/tf_logo_horizontal.png">
 </div>
 
-[![Python](https://img.shields.io/pypi/pyversions/tensorflow.svg)](https://badge.fury.io/py/tensorflow)
-[![PyPI](https://badge.fury.io/py/tensorflow.svg)](https://badge.fury.io/py/tensorflow)
-[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.4724125.svg)](https://doi.org/10.5281/zenodo.4724125)
-[![CII Best Practices](https://bestpractices.coreinfrastructure.org/projects/1486/badge)](https://bestpractices.coreinfrastructure.org/projects/1486)
-[![OpenSSF Scorecard](https://api.securityscorecards.dev/projects/github.com/tensorflow/tensorflow/badge)](https://securityscorecards.dev/viewer/?uri=github.com/tensorflow/tensorflow)
-[![Fuzzing Status](https://oss-fuzz-build-logs.storage.googleapis.com/badges/tensorflow.svg)](https://bugs.chromium.org/p/oss-fuzz/issues/list?sort=-opened&can=1&q=proj:tensorflow)
-[![Fuzzing Status](https://oss-fuzz-build-logs.storage.googleapis.com/badges/tensorflow-py.svg)](https://bugs.chromium.org/p/oss-fuzz/issues/list?sort=-opened&can=1&q=proj:tensorflow-py)
-[![OSSRank](https://shields.io/endpoint?url=https://ossrank.com/shield/44)](https://ossrank.com/p/44)
-[![Contributor Covenant](https://img.shields.io/badge/Contributor%20Covenant-v1.4%20adopted-ff69b4.svg)](CODE_OF_CONDUCT.md)
-[![TF Official Continuous](https://tensorflow.github.io/build/TF%20Official%20Continuous.svg)](https://tensorflow.github.io/build#TF%20Official%20Continuous)
-[![TF Official Nightly](https://tensorflow.github.io/build/TF%20Official%20Nightly.svg)](https://tensorflow.github.io/build#TF%20Official%20Nightly)
+[![Python](https://img.shields.io/pypi/pyversions/tensorflow.svg?style=for-the-badge&logo=python)](https://badge.fury.io/py/tensorflow)
+[![PyPI](https://img.shields.io/badge/pypi%20package-2.16.1-green?style=for-the-badge&logo=pypi)](https://badge.fury.io/py/tensorflow)
+[![DOI](https://img.shields.io/badge/DOI-10.5281/zenodo.4724125-blue?style=for-the-badge&logo=doi)](https://doi.org/10.5281/zenodo.4724125)
+[![OpenSSF Scorecard](https://img.shields.io/badge/openssf%20scorecard-8.2-green?style=for-the-badge)](https://securityscorecards.dev/viewer/?uri=github.com/tensorflow/tensorflow)
+[![CII Best Practices](https://img.shields.io/badge/openssf%20best%20practices-passing-green?style=for-the-badge)](https://bestpractices.coreinfrastructure.org/projects/1486)
+[![Fuzzing Status](https://img.shields.io/badge/oss--fuzz-coverage%20failing-yellow?style=for-the-badge)](https://bugs.chromium.org/p/oss-fuzz/issues/list?sort=-opened&can=1&q=proj:tensorflow)
+[![Fuzzing Status](https://img.shields.io/badge/oss--fuzz-build%20failing-red?style=for-the-badge)](https://bugs.chromium.org/p/oss-fuzz/issues/list?sort=-opened&can=1&q=proj:tensorflow-py)
+[![OSSRank](https://img.shields.io/badge/OSSRank-%239%20(Top%201%25)-green?style=for-the-badge)](https://ossrank.com/p/44)
+[![Contributor Covenant](https://img.shields.io/badge/Contributor%20Covenant-v1.4%20adopted-ff69b4.svg?style=for-the-badge)](CODE_OF_CONDUCT.md)
+[![TF Official Continuous](https://img.shields.io/badge/TF%20Official%20Continuous-8%20passed%2C%200%20failed-green?style=for-the-badge&logo=tensorflow)](https://tensorflow.github.io/build#TF%20Official%20Continuous)
+[![TF Official Nightly](https://img.shields.io/badge/TF%20Official%20Nightly-8%20passed%2C%208%20failed-red?style=for-the-badge&logo=tensorflow)](https://tensorflow.github.io/build#TF%20Official%20Nightly)
 
 **`Documentation`** |
 ------------------- |
-[![Documentation](https://img.shields.io/badge/api-reference-blue.svg)](https://www.tensorflow.org/api_docs/) |
+[![Documentation](https://img.shields.io/badge/api-reference-blue.svg?style=for-the-badge)](https://www.tensorflow.org/api_docs/) |
 
 [TensorFlow](https://www.tensorflow.org/) is an end-to-end open source platform
 for machine learning. It has a comprehensive, flexible ecosystem of
