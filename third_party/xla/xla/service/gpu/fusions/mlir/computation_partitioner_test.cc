@@ -39,6 +39,15 @@ using ::testing::SizeIs;
 
 using ComputationPartitionerTest = HloTestBase;
 
+std::string PrintAndErase(mlir::func::FuncOp func) {
+  std::string out;
+  llvm::raw_string_ostream os(out);
+  os << func;
+  // Erase the function so we don't leak memory.
+  func.erase();
+  return out;
+}
+
 TEST_F(ComputationPartitionerTest, PartitionDiamonds) {
   auto module = ParseAndReturnVerifiedModule(R"(
     HloModule test_module
@@ -113,9 +122,42 @@ TEST_F(ComputationPartitionerTest, TupleRoot) {
   ASSERT_NE(fusion, nullptr);
   PartitionedComputation computation(fusion);
 
-  ASSERT_THAT(computation.subgraphs(), SizeIs(3)) << computation.ToString();
-  EXPECT_THAT(computation.GetRootSubgraph().roots, SizeIs(1));
-  EXPECT_THAT(computation.GetRootSubgraph().instructions_post_order, SizeIs(3));
+  ASSERT_THAT(computation.subgraphs(), SizeIs(1)) << computation.ToString();
+}
+
+TEST_F(ComputationPartitionerTest, TupleRootWithInjectedValues) {
+  auto module = ParseAndReturnVerifiedModule(R"(
+    HloModule test_module
+
+    add {
+      p0 = f32[] parameter(0)
+      p1 = f32[] parameter(1)
+      ROOT add = f32[] add(p0, p1)
+    }
+
+    fused_computation {
+      p0 = f32[4] parameter(0)
+      c0 = f32[] constant(0)
+      reduce = f32[] reduce(p0, c0), dimensions={0}, to_apply=add
+      bitcast = f32[1] bitcast(reduce)
+      abs = f32[1] abs(bitcast)
+      log = f32[1] log(abs)
+      sign = f32[1] sign(bitcast)
+      ROOT tuple = (f32[1], f32[1]) tuple(log, sign)
+    })")
+                    .value();
+
+  auto* fused_computation = module->GetComputationWithName("fused_computation");
+  PartitionedComputations fusion(
+      fused_computation,
+      /*heroes=*/
+      {fused_computation->GetInstructionWithName("reduce")});
+
+  // The epilogue should be one subgraph.
+  EXPECT_EQ(
+      &fusion.FindSubgraph(
+          fused_computation->GetInstructionWithName("bitcast")),
+      &fusion.FindSubgraph(fused_computation->GetInstructionWithName("tuple")));
 }
 
 TEST_F(ComputationPartitionerTest, EnforcePartitioning) {
@@ -163,15 +205,6 @@ TEST_F(ComputationPartitionerTest, PartiallyMergable) {
   ASSERT_THAT(computation.subgraphs(), SizeIs(2));
   EXPECT_THAT(computation.GetRootSubgraph().instructions_post_order,
               ElementsAre(transpose, sub));
-}
-
-std::string PrintAndErase(mlir::func::FuncOp func) {
-  std::string out;
-  llvm::raw_string_ostream os(out);
-  os << func;
-  // Erase the function so we don't leak memory.
-  func.erase();
-  return out;
 }
 
 TEST_F(ComputationPartitionerTest, SubgraphSignatures) {
@@ -247,22 +280,23 @@ TEST_F(ComputationPartitionerTest, SubgraphSignaturesWithInjectedValues) {
   // We force a split at the transpose (like the transpose emitter would do) and
   // enforce that the transpose is injected as a parameter into the epilogue.
   auto* fused_computation = module->GetComputationWithName("fused_computation");
-  PartitionedComputations fusion(
-      fused_computation,
-      /*isolated_and_injected_instructions=*/
-      {fused_computation->GetInstructionWithName("transpose")});
-  auto& root_graph = fusion.FindSubgraph(fused_computation->root_instruction());
-  auto& injected_params = root_graph.injected_param_indices;
-  EXPECT_EQ(injected_params.size(), 1);
+  auto* transpose = fused_computation->GetInstructionWithName("transpose");
+  PartitionedComputations fusion(fused_computation,
+                                 /*heroes=*/
+                                 {transpose});
+  auto& epilogue_graph = fusion.epilogue();
+  auto& injected_values = epilogue_graph->injected_values;
+  EXPECT_EQ(injected_values.size(), 1);
   std::pair<const HloInstruction*, int> injected_operand_key(
       fused_computation->root_instruction(), 0);
-  ASSERT_TRUE(injected_params.contains(injected_operand_key));
-  EXPECT_EQ(injected_params.at(injected_operand_key), 0);
-  EXPECT_EQ(PrintAndErase(CreateSubgraphMlirFunction(root_graph, builder)),
-            "func.func private @fused_computation_add(tensor<2x16x17xf32>, "
-            "tensor<f32>, index {xla.range = [0 : index, 1 : index]}, index "
-            "{xla.range = [0 : index, 16 : index]}, index {xla.range = [0 : "
-            "index, 15 : index]}, f32) -> f32");
+  ASSERT_TRUE(injected_values.contains(transpose));
+  EXPECT_EQ(injected_values.at(transpose), 0);
+  EXPECT_EQ(
+      PrintAndErase(CreateSubgraphMlirFunction(*epilogue_graph, builder)),
+      "func.func private @fused_computation__epilogue__(tensor<2x16x17xf32>, "
+      "tensor<f32>, index {xla.range = [0 : index, 1 : index]}, index "
+      "{xla.range = [0 : index, 16 : index]}, index {xla.range = [0 : "
+      "index, 15 : index]}, f32) -> f32");
 }
 
 }  // namespace

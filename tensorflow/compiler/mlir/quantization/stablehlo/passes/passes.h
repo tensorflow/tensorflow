@@ -44,8 +44,6 @@ std::unique_ptr<OperationPass<ModuleOp>>
 CreateLiftQuantizableSpotsAsFunctionsPass(
     const ::stablehlo::quantization::QuantizationSpecs& quantization_specs);
 
-QuantizationSpecs DefaultQuantizationSpecs();
-
 // Adds generated pass default constructors or options definitions.
 #define GEN_PASS_DECL
 // Adds generated pass registration functions.

@@ -21,7 +21,6 @@ limitations under the License.
 #include <cstdint>
 #include <iterator>
 #include <memory>
-#include <numeric>
 #include <optional>
 #include <string>
 #include <utility>
@@ -35,6 +34,7 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/time/time.h"
@@ -475,7 +475,8 @@ absl::StatusOr<std::unique_ptr<HloModule>> TritonGemmAutotuneExtractor(
 
   if (config.split_k > 1) {
     TF_RETURN_IF_ERROR(MakeDotSplitKBatch(cloned_dot_fusion, config));
-    GpuFloatSupport bf16_support(BF16);
+    GpuFloatSupport bf16_support(gpu_device_info.cuda_compute_capability(),
+                                 BF16);
     FloatNormalization float_normalization(&bf16_support);
     TF_RETURN_IF_ERROR(float_normalization.Run(new_module.get()).status());
     GpuInstructionFusion instruction_fusion(/*may_duplicate=*/false,
@@ -583,7 +584,8 @@ bool IsCuDnnEnabled(const AutotuneConfig& config,
                     const DebugOptions& debug_opts) {
   return std::get<se::CudaComputeCapability>(config.GetGpuComputeCapability())
              .IsAtLeastHopper() &&
-         debug_opts.xla_gpu_cudnn_gemm_fusion();
+         debug_opts.xla_gpu_cudnn_gemm_fusion_level() > 0 &&
+         GetDnnVersionInfo(config.GetExecutor()).major_version() >= 9;
 }
 
 bool HasAlgorithmSupportedByCublasOrCublasLt(
@@ -1148,11 +1150,15 @@ absl::StatusOr<bool> GemmFusionAutotuner::Run(
 
   if (debug_options.xla_gpu_autotune_level() == 0 ||
       debug_options.xla_gpu_deterministic_ops()) {
-    // Pick the first option for each gemm instead of autotuning..
+    // Pick the first option for each gemm instead of autotuning.
     for (const auto& [fusion, tilings] : gemm_config_sets) {
       const AutotuneCacheKey key = AutotunerUtil::GetKey(fusion, config_);
       AutotuneResult res;
-      *res.mutable_triton() = kDefaultGemmTiling.ToProto();
+      if (IsFusionKind(*fusion, kCuDnnFusionKind)) {
+        res.mutable_algorithm()->set_algo_id(-1);
+      } else {
+        *res.mutable_triton() = kDefaultGemmTiling.ToProto();
+      }
       *res.mutable_run_time() =
           tsl::proto_utils::ToDurationProto(absl::ZeroDuration());
       AutotunerUtil::AddResult(key, res);

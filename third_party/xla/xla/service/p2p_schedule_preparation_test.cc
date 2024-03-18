@@ -18,7 +18,6 @@ limitations under the License.
 #include <memory>
 #include <string>
 
-#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/algorithm/container.h"
 #include "absl/log/log.h"
@@ -36,8 +35,9 @@ namespace {
 
 class P2PSchedulePreparationTest : public HloTestBase {
  public:
-  // Verifies that no control dependence enforces are added to the P2P chain.
-  void VerifyP2PNotTransformed(HloModule* module, std::string suffix = "") {
+  // Verifies that no control dependence is added to the P2P group.
+  void VerifyP2PNotTransformed(HloModule* module,
+                               const std::string& suffix = "") {
     HloInstruction* recv = FindInstruction(module, "recv" + suffix);
     HloInstruction* recv_done = FindInstruction(module, "recv-done" + suffix);
     HloInstruction* send_done = FindInstruction(module, "send-done" + suffix);
@@ -48,8 +48,8 @@ class P2PSchedulePreparationTest : public HloTestBase {
 
   // Verifies that the control dependence enforces this ordering for an
   // unpipelined Send-Recv chain:
-  //   recv => send => recv-done => send-done.
-  void VerifyUnpipelinedP2P(HloModule* module, std::string suffix = "") {
+  //   recv => send => recv-done => send-done
+  void VerifyUnpipelinedP2P(HloModule* module, const std::string& suffix = "") {
     HloInstruction* send = FindInstruction(module, "send" + suffix);
     HloInstruction* recv = FindInstruction(module, "recv" + suffix);
     HloInstruction* recv_done = FindInstruction(module, "recv-done" + suffix);
@@ -61,25 +61,84 @@ class P2PSchedulePreparationTest : public HloTestBase {
 
   // Verifies that the control dependence enforces this ordering for a pipelined
   // Send-Recv chain in the while-body:
-  // send => recv.
-  void VerifyPipelinedP2PChild(HloModule* module, std::string suffix = "") {
+  // recv-done => send-done => recv => send.
+  void VerifyPipelinedP2PChild(HloModule* module,
+                               const std::string& suffix = "") {
     HloInstruction* send = FindInstruction(module, "send" + suffix);
     HloInstruction* recv = FindInstruction(module, "recv" + suffix);
     HloInstruction* recv_done = FindInstruction(module, "recv-done" + suffix);
     HloInstruction* send_done = FindInstruction(module, "send-done" + suffix);
-    // If the while-body has other P2P, the pipelined Recv should also the
+    // If the while-body has other P2P, the pipelined Recv should also have the
     // Send-done of the other P2P as control predecessors.
-    EXPECT_EQ(1, absl::c_count(recv->control_predecessors(), send));
+    EXPECT_EQ(1, absl::c_count(recv->control_predecessors(), send_done));
     EXPECT_EQ(recv_done->control_predecessors().size(), 0);
-    EXPECT_EQ(send_done->control_predecessors().size(), 0);
+    EXPECT_EQ(send_done->control_predecessors().size(), 1);
+    EXPECT_EQ(send_done->control_predecessors()[0], recv_done);
+    EXPECT_EQ(send->control_predecessors().size(), 1);
+    EXPECT_EQ(send->control_predecessors()[0], recv);
   }
 
-  // Verifies that no control dependence are added to a pipelined Send-Recv
-  // in the computation with the while-loop as the data dependence already
-  // expresses this ordering:
-  //   recv => recv-done => while-loop => send => send-done.
-  void VerifyPipelinedP2PParent(HloModule* module, std::string suffix = "") {
-    VerifyP2PNotTransformed(module, suffix);
+  // Verifies that the control dependence enforces this ordering for a pipelined
+  // Send-Recv chain in the while-loop calling computation:
+  //   recv => send => while-loop => recv-done => send-done.
+  void VerifyPipelinedP2PParent(HloModule* module,
+                                const std::string& suffix = "") {
+    HloInstruction* send = FindInstruction(module, "send" + suffix);
+    HloInstruction* recv = FindInstruction(module, "recv" + suffix);
+    HloInstruction* recv_done = FindInstruction(module, "recv-done" + suffix);
+    HloInstruction* send_done = FindInstruction(module, "send-done" + suffix);
+    EXPECT_EQ(send_done->control_predecessors().size(), 1);
+    EXPECT_EQ(send_done->control_predecessors()[0], recv_done);
+    EXPECT_EQ(send->control_predecessors().size(), 1);
+    EXPECT_EQ(send->control_predecessors()[0], recv);
+  }
+
+  // Verifies that the control dependence enforces this ordering for a pipelined
+  // chain with two Send-Recv groups in a while-body:
+  //  recv-done.0 => send-done.0 => recv-done.1 => send-done.1 =>
+  //  recv.0 => send.0 => recv.1 => send.1
+  void VerifyPipelined2P2PChild(HloModule* module, const std::string& suffix0,
+                                const std::string& suffix1) {
+    HloInstruction* send0 = FindInstruction(module, "send" + suffix0);
+    HloInstruction* recv0 = FindInstruction(module, "recv" + suffix0);
+    HloInstruction* recv_done0 = FindInstruction(module, "recv-done" + suffix0);
+    HloInstruction* send_done0 = FindInstruction(module, "send-done" + suffix0);
+    HloInstruction* send1 = FindInstruction(module, "send" + suffix1);
+    HloInstruction* recv1 = FindInstruction(module, "recv" + suffix1);
+    HloInstruction* recv_done1 = FindInstruction(module, "recv-done" + suffix1);
+    HloInstruction* send_done1 = FindInstruction(module, "send-done" + suffix1);
+
+    EXPECT_EQ(send_done0->control_predecessors()[0], recv_done0);
+    EXPECT_EQ(recv_done1->control_predecessors()[0], send_done0);
+    EXPECT_EQ(send_done1->control_predecessors()[0], recv_done1);
+
+    EXPECT_EQ(send0->control_predecessors()[0], recv0);
+    EXPECT_EQ(recv1->control_predecessors()[0], send0);
+    EXPECT_EQ(send1->control_predecessors()[0], recv1);
+  }
+
+  // Verifies that the control dependence enforces this ordering for a pipelined
+  // chain with two Send-Recv groups in the while-loop calling computation:
+  //   recv.0 => send.0 => recv.1 => send.1 => while-loop
+  //   => recv-done.0 => send-done.0 => recv-done.1 => send-done.1
+  void VerifyPipelined2P2PParent(HloModule* module, const std::string& suffix0,
+                                 const std::string& suffix1) {
+    HloInstruction* send0 = FindInstruction(module, "send" + suffix0);
+    HloInstruction* recv0 = FindInstruction(module, "recv" + suffix0);
+    HloInstruction* recv_done0 = FindInstruction(module, "recv-done" + suffix0);
+    HloInstruction* send_done0 = FindInstruction(module, "send-done" + suffix0);
+    HloInstruction* send1 = FindInstruction(module, "send" + suffix1);
+    HloInstruction* recv1 = FindInstruction(module, "recv" + suffix1);
+    HloInstruction* recv_done1 = FindInstruction(module, "recv-done" + suffix1);
+    HloInstruction* send_done1 = FindInstruction(module, "send-done" + suffix1);
+
+    EXPECT_EQ(send0->control_predecessors()[0], recv0);
+    EXPECT_EQ(recv1->control_predecessors()[0], send0);
+    EXPECT_EQ(send1->control_predecessors()[0], recv1);
+
+    EXPECT_EQ(send_done0->control_predecessors()[0], recv_done0);
+    EXPECT_EQ(recv_done1->control_predecessors()[0], send_done0);
+    EXPECT_EQ(send_done1->control_predecessors()[0], recv_done1);
   }
 };
 
@@ -288,7 +347,6 @@ TEST_F(P2PSchedulePreparationTest, NestedP2PChainTransformed) {
 //    the purpose of testing its ordering with respect to P2P chain.
 std::string GetPipelinedP2PModuleString(bool nested_p2p_in_main = false,
                                         bool other_p2p_in_while = false,
-                                        bool deadlock_in_while = false,
                                         bool test_custom_call = false) {
   // This is to support the while-loop with nested P2P chains called from the
   // main computation.
@@ -334,7 +392,8 @@ std::string GetPipelinedP2PModuleString(bool nested_p2p_in_main = false,
   // Similar to the above, but for test_custom_call = true.
   constexpr char kUnnestedResultWithCustomCall[] = R"(
   while-result-1 = f32[1, 1024, 1024] get-tuple-element(while-result), index=1
-  ROOT custom-call = f32[1, 1024, 1024] custom-call(while-result-1), custom_call_target="my_custom_call"
+  ROOT custom-call = f32[1, 1024, 1024] custom-call(while-result-1),
+    custom_call_target="my_custom_call"
 )";
 
   // This is the result for the main computation, if it has another while-loop
@@ -350,21 +409,14 @@ std::string GetPipelinedP2PModuleString(bool nested_p2p_in_main = false,
 
   constexpr char kPipelinedWhileBodyWithoutOtherP2P[] = R"(
   while-body {
-    param = (u32[], f32[1, 1024, 1024], f32[1, 1024, 1024]) parameter(0)
+    param = (u32[], (f32[1, 1024, 1024], token[]),
+      (f32[1, 1024, 1024], token[])) parameter(0)
     count = get-tuple-element(param), index=0
-    send-data = get-tuple-element(param), index=1
-    recv-data = get-tuple-element(param), index=2
-
-    after-all.1 = token[] after-all()
-    send.1 = (f32[1, 1024, 1024], u32[], token[]) send(send-data, after-all.1),
-      channel_id=1, frontend_attributes={
-      _xla_send_recv_source_target_pairs="{{0,1}, {1,2}, {2,3}, {3,4}}"
-    }
-    send-done.1 = token[] send-done(send.1), channel_id=1
-    recv.1 = (f32[1, 1024, 1024], u32[], token[]) recv(after-all.1), channel_id=1,
-      frontend_attributes={
-       _xla_send_recv_source_target_pairs="{{0,1}, {1,2}, {2,3}, {3,4}}"
-    }
+    send.1.q = (f32[1, 1024, 1024], token[]) get-tuple-element(param), index=2
+    recv.1.q = (f32[1, 1024, 1024], token[])get-tuple-element(param), index=1
+    send-done.1 = token[] send-done(send.1.q), channel_id=1
+    recv-done.1 = token[] recv-done(recv.1.q), channel_id=1
+    recv-data = f32[1, 1024, 1024] get-tuple-element(recv-done.1), index=0
 
     c1 = u32[] constant(1)
     new-count = u32[] add(count, c1)
@@ -383,30 +435,32 @@ std::string GetPipelinedP2PModuleString(bool nested_p2p_in_main = false,
       source_target_pairs={{0,1}, {1,2}, {2,3}, {3,4}}
     new-data = f32[1, 1024, 1024] add(c, collective-permute.1)
 
-    recv-done.1 = (f32[1, 1024, 1024], token[]) recv-done(recv.1), channel_id=1
-    new-recv-data = f32[1, 1024, 1024] get-tuple-element(recv-done.1), index=0
+    after-all.1 = token[] after-all()
+    send.1 = (f32[1, 1024, 1024], token[]) send(new-data, after-all.1),
+      channel_id=1, frontend_attributes={
+      _xla_send_recv_source_target_pairs="{{0,1}, {1,2}, {2,3}, {3,4}}",
+      _xla_send_recv_pipeline="0"
+    }
+    recv.1 = (f32[1, 1024, 1024], u32[], token[]) recv(after-all.1), channel_id=1,
+      frontend_attributes={
+       _xla_send_recv_source_target_pairs="{{0,1}, {1,2}, {2,3}, {3,4}}",
+       _xla_send_recv_pipeline="0"
+    }
 
-    ROOT body-result = (u32[], f32[1, 1024, 1024], f32[1, 1024, 1024]) tuple(new-count, new-data, new-recv-data)
+    ROOT body-result = (u32[], (f32[1, 1024, 1024], token[]),
+      (f32[1, 1024, 1024], token[])) tuple(new-count, recv.1, send.1)
   }
 )";
 
   constexpr char kPipelinedWhileBodyWithOtherP2P[] = R"(
   while-body {
-    param = (u32[], f32[1, 1024, 1024], f32[1, 1024, 1024]) parameter(0)
+    param = (u32[], (f32[1, 1024, 1024], token[]), (f32[1, 1024, 1024], token[])) parameter(0)
     count = get-tuple-element(param), index=0
-    send-data = get-tuple-element(param), index=1
-    recv-data = get-tuple-element(param), index=2
-
-    after-all.1 = token[] after-all()
-    send.1 = (f32[1, 1024, 1024], u32[], token[]) send(send-data, after-all.1),
-      channel_id=1, frontend_attributes={
-      _xla_send_recv_source_target_pairs="{{0,1}, {1,2}, {2,3}, {3,4}}"
-    }
-    send-done.1 = token[] send-done(send.1), channel_id=1
-    recv.1 = (f32[1, 1024, 1024], u32[], token[]) recv(after-all.1), channel_id=1,
-      frontend_attributes={
-       _xla_send_recv_source_target_pairs="{{0,1}, {1,2}, {2,3}, {3,4}}"
-    }
+    send.1.q = (f32[1, 1024, 1024], token[]) get-tuple-element(param), index=2
+    recv.1.q = (f32[1, 1024, 1024], token[])get-tuple-element(param), index=1
+    send-done.1 = token[] send-done(send.1.q), channel_id=1
+    recv-done.1 = token[] recv-done(recv.1.q), channel_id=1
+    recv-data = f32[1, 1024, 1024] get-tuple-element(recv-done.1), index=0
 
     c1 = u32[] constant(1)
     new-count = u32[] add(count, c1)
@@ -421,10 +475,9 @@ std::string GetPipelinedP2PModuleString(bool nested_p2p_in_main = false,
     d = f32[1, 1024, 1024] tan(c)
     s = f32[1, 1024, 1024] dot(c, d), lhs_batch_dims={0},
       lhs_contracting_dims={1}, rhs_batch_dims={0}, rhs_contracting_dims={1}
-    new-data-0 = f32[1, 1024, 1024] add(c, s)
-
-    recv-done.1 = (f32[1, 1024, 1024], token[]) recv-done(recv.1), channel_id=1
-    new-recv-data = f32[1, 1024, 1024] get-tuple-element(recv-done.1), index=0
+    collective-permute.1 = f32[1, 1024, 1024] collective-permute(s),
+      source_target_pairs={{0,1}, {1,2}, {2,3}, {3,4}}
+    send-data = f32[1, 1024, 1024] add(c, collective-permute.1)
 
     after-all.4 = token[] after-all()
     send.4 = (f32[1, 1024, 1024], u32[], token[]) send(send-data, after-all.4),
@@ -437,52 +490,22 @@ std::string GetPipelinedP2PModuleString(bool nested_p2p_in_main = false,
        _xla_send_recv_source_target_pairs="{{0,1}, {1,2}, {2,3}, {3,4}}"
     }
     recv-done.4 = (f32[1, 1024, 1024], token[]) recv-done(recv.4), channel_id=4
-    recv-data-4 = f32[1, 1024, 1024] get-tuple-element(recv-done.4), index=0
-    new-data = f32[1, 1024, 1024] add(new-data-0, recv-data-4)
+    new-data = f32[1, 1024, 1024] get-tuple-element(recv-done.4), index=0
 
-    ROOT body-result = (u32[], f32[1, 1024, 1024], f32[1, 1024, 1024]) tuple(new-count, new-data, new-recv-data)
-  }
-)";
-
-  constexpr char kPipelinedWhileBodyDeadlock[] = R"(
-  while-body {
-    param = (u32[], f32[1, 1024, 1024], f32[1, 1024, 1024]) parameter(0)
-    count = get-tuple-element(param), index=0
-    send-data = get-tuple-element(param), index=1
-    recv-data = get-tuple-element(param), index=2
-
-    collective-permute.1 = f32[1, 1024, 1024] collective-permute(send-data),
-      source_target_pairs={{0,1}, {1,2}, {2,3}, {3,4}}
     after-all.1 = token[] after-all()
-    send.1 = (f32[1, 1024, 1024], u32[], token[]) send(collective-permute.1, after-all.1),
+    send.1 = (f32[1, 1024, 1024], token[]) send(new-data, after-all.1),
       channel_id=1, frontend_attributes={
-      _xla_send_recv_source_target_pairs="{{0,1}, {1,2}, {2,3}, {3,4}}"
+      _xla_send_recv_source_target_pairs="{{0,1}, {1,2}, {2,3}, {3,4}}",
+      _xla_send_recv_pipeline="0"
     }
-    send-done.1 = token[] send-done(send.1), channel_id=1
     recv.1 = (f32[1, 1024, 1024], u32[], token[]) recv(after-all.1), channel_id=1,
       frontend_attributes={
-       _xla_send_recv_source_target_pairs="{{0,1}, {1,2}, {2,3}, {3,4}}"
+       _xla_send_recv_source_target_pairs="{{0,1}, {1,2}, {2,3}, {3,4}}",
+       _xla_send_recv_pipeline="0"
     }
 
-    c1 = u32[] constant(1)
-    new-count = u32[] add(count, c1)
-    replica = u32[] replica-id()
-    c10 = u32[] constant(10)
-    sum = u32[] add(replica, c10)
-    sum2 = u32[] add(sum, count)
-    conv = f32[] convert(sum2)
-    p = f32[1, 1024, 1024] broadcast(conv), dimensions={}
-    b = f32[1, 1024, 1024] add(p, recv-data)
-    c = f32[1, 1024, 1024] multiply(b, b)
-    d = f32[1, 1024, 1024] tan(c)
-    s = f32[1, 1024, 1024] dot(c, d), lhs_batch_dims={0},
-      lhs_contracting_dims={1}, rhs_batch_dims={0}, rhs_contracting_dims={1}
-    new-data = f32[1, 1024, 1024] add(c, s)
-
-    recv-done.1 = (f32[1, 1024, 1024], token[]) recv-done(recv.1), channel_id=1
-    new-recv-data = f32[1, 1024, 1024] get-tuple-element(recv-done.1), index=0
-
-    ROOT body-result = (u32[], f32[1, 1024, 1024], f32[1, 1024, 1024]) tuple(new-count, new-data, new-recv-data)
+    ROOT body-result = (u32[], (f32[1, 1024, 1024], token[]),
+      (f32[1, 1024, 1024], token[])) tuple(new-count, recv.1, send.1)
   }
 )";
 
@@ -490,16 +513,16 @@ std::string GetPipelinedP2PModuleString(bool nested_p2p_in_main = false,
   HloModule test
 
   while-cond {
-    param = (u32[], f32[1, 1024, 1024], f32[1, 1024, 1024]) parameter(0)
+    param = (u32[], (f32[1, 1024, 1024], u32[], token[]), (f32[1, 1024, 1024], u32[], token[])) parameter(0)
     count = get-tuple-element(param), index=0
     ub = u32[] constant(25)
     ROOT cond-result = pred[] compare(count, ub), direction=LT
   }
 
-  // The pipelined while-body goes here.
+  // The code that support the while-loop with nested P2P chains goes here.
   %s
 
-  // The code that support the while-loop with nested P2P chains goes here.
+  // The pipelined while-body goes here.
   %s
 
   ENTRY test-computation {
@@ -508,24 +531,29 @@ std::string GetPipelinedP2PModuleString(bool nested_p2p_in_main = false,
     init = f32[1, 1024, 1024] broadcast(f0), dimensions={}
 
     after-all.2 = token[] after-all()
-    recv.2 = (f32[1, 1024, 1024], u32[], token[]) recv(after-all.2), channel_id=1,
+    recv.2 = (f32[1, 1024, 1024], token[]) recv(after-all.2), channel_id=1,
       frontend_attributes={
-       _xla_send_recv_source_target_pairs="{{0,1}, {1,2}, {2,3}, {3,4}}"
+       _xla_send_recv_source_target_pairs="{{0,1}, {1,2}, {2,3}, {3,4}}",
+       _xla_send_recv_pipeline="0"
     }
-    recv-done.2 = (f32[1, 1024, 1024], token[]) recv-done(recv.2), channel_id=1
-    recv-data = f32[1, 1024, 1024] get-tuple-element(recv-done.2), index=0
+    send.2 = (f32[1, 1024, 1024], token[]) send(init, after-all.2),
+      channel_id=1, frontend_attributes={
+      _xla_send_recv_source_target_pairs="{{0,1}, {1,2}, {2,3}, {3,4}}",
+      _xla_send_recv_pipeline="0"
+    }
 
-    while-init =  (u32[], f32[1, 1024, 1024], f32[1, 1024, 1024]) tuple(c0, init, recv-data)
-    while-result = (u32[], f32[1, 1024, 1024], f32[1, 1024, 1024]) while(while-init),
+    while-init =  (u32[], (f32[1, 1024, 1024], token[]),
+      (f32[1, 1024, 1024], token[])) tuple(c0, recv.2, send.2)
+    while-result =  (u32[], (f32[1, 1024, 1024], token[]),
+      (f32[1, 1024, 1024], token[])) while(while-init),
       body=while-body, condition=while-cond,
       backend_config={"known_trip_count":{"n":"25"}}
 
-    send-data = f32[1, 1024, 1024] get-tuple-element(while-result), index=2
-    send.2 = (f32[1, 1024, 1024], u32[], token[]) send(send-data, after-all.2),
-      channel_id=1, frontend_attributes={
-      _xla_send_recv_source_target_pairs="{{0,1}, {1,2}, {2,3}, {3,4}}"
-    }
-    send-done.2 = token[] send-done(send.2), channel_id=1
+    recv.2.q = (f32[1, 1024, 1024], token[]) get-tuple-element(while-result), index=1
+    recv-done.2 = (f32[1, 1024, 1024], token[]) recv-done(recv.2.q), channel_id=1
+    recv-data.2.q = f32[1, 1024, 1024] get-tuple-element(recv-done.2), index=0
+    send.2.q = (f32[1, 1024, 1024], token[]) get-tuple-element(while-result), index=2
+    send-done.2 = token[] send-done(send.2.q), channel_id=1
 
     // The code for the computation result goes here.
     %s
@@ -534,29 +562,14 @@ std::string GetPipelinedP2PModuleString(bool nested_p2p_in_main = false,
 
   const char* while_str = nested_p2p_in_main ? kWhileForMain : kEmpty;
   const char* pipelined_while_body_str =
-      deadlock_in_while
-          ? kPipelinedWhileBodyDeadlock
-          : (other_p2p_in_while ? kPipelinedWhileBodyWithOtherP2P
-                                : kPipelinedWhileBodyWithoutOtherP2P);
+      other_p2p_in_while ? kPipelinedWhileBodyWithOtherP2P
+                         : kPipelinedWhileBodyWithoutOtherP2P;
   const char* result_str =
       nested_p2p_in_main ? kNestedResult
                          : (test_custom_call ? kUnnestedResultWithCustomCall
                                              : kUnnestedResult);
   return absl::StrFormat(kModuleTemplate, while_str, pipelined_while_body_str,
                          result_str);
-}
-
-TEST_F(P2PSchedulePreparationTest, PipelinedP2PChainDeadlocked) {
-  std::string kModuleStr = GetPipelinedP2PModuleString(
-      /*nested_p2p_in_main=*/false, /*other_p2p_in_while=*/false,
-      /*deadlock_in_while=*/true);
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnUnverifiedModule((kModuleStr)));
-  P2PSchedulePreparation preparation;
-  auto status = preparation.Run(module.get());
-  EXPECT_EQ(status.ok(), false);
-  EXPECT_THAT(status.status().message(),
-              ::testing::HasSubstr("deadlock in input HLO"));
 }
 
 TEST_F(P2PSchedulePreparationTest, UnnestedPipelinedP2PChainTransformed) {
@@ -568,19 +581,16 @@ TEST_F(P2PSchedulePreparationTest, UnnestedPipelinedP2PChainTransformed) {
   EXPECT_TRUE(changed);
 
   VLOG(10) << module->ToString();
-  // Verify the pipelined P2P chain in the whild-body.
+  // Verify the pipelined P2P chain in the while-body.
   VerifyPipelinedP2PChild(module.get(), ".1");
   // Verify the pipelined P2P chain in the main computation.
   VerifyPipelinedP2PParent(module.get(), ".2");
 
-  // Verify in the while-body collective-permute is scheduled after Send-done
-  // and before Recv.
+  // Verify in the while-body collective-permute is scheduled after Send-done.
   HloInstruction* send_done_1 = FindInstruction(module.get(), "send-done.1");
-  HloInstruction* recv = FindInstruction(module.get(), "recv.1");
   HloInstruction* collective_1 =
       FindInstruction(module.get(), "collective-permute.1");
   EXPECT_EQ(collective_1->control_predecessors()[0], send_done_1);
-  EXPECT_EQ(1, absl::c_count(recv->control_predecessors(), collective_1));
 
   // Verify in the main computation collective-permute is scheduled after the
   // Send-done for the pipelined while-loop.
@@ -600,7 +610,7 @@ TEST_F(P2PSchedulePreparationTest, NestedPipelinedP2PChainTransformed) {
   EXPECT_TRUE(changed);
 
   VLOG(10) << module->ToString();
-  // Verify the pipelined P2P chain in the whild-body.
+  // Verify the pipelined P2P chain in the while-body.
   VerifyPipelinedP2PChild(module.get(), ".1");
   // Verify the pipelined P2P chain in the main computation.
   VerifyPipelinedP2PParent(module.get(), ".2");
@@ -625,14 +635,14 @@ TEST_F(P2PSchedulePreparationTest,
   EXPECT_TRUE(changed);
 
   VLOG(10) << module->ToString();
-  // Verify the pipelined P2P chain in the whild-body.
+  // Verify the pipelined P2P chain in the while-body.
   VerifyPipelinedP2PChild(module.get(), ".1");
   // Verify the pipelined P2P chain in the main computation.
   VerifyPipelinedP2PParent(module.get(), ".2");
   // Verify the other unpipelined P2P chain in the while-body.
   VerifyUnpipelinedP2P(module.get(), ".4");
 
-  // Verify that in the pipelined while-body, the pipelined Send is ordered
+  // Verify that in the pipelined while-body, the pipelined Send-done is ordered
   // before other P2P while the pipelined Recv is ordered after other P2P.
   HloInstruction* pipelined_send_done =
       FindInstruction(module.get(), "send-done.1");
@@ -650,7 +660,7 @@ TEST_F(P2PSchedulePreparationTest,
        UnnestedPipelinedP2PChainWithCustomCallTransformed) {
   std::string kModuleStr = GetPipelinedP2PModuleString(
       /*nested_p2p_in_main=*/false, /*other_p2p_in_while=*/false,
-      /*deadlock_in_while=*/false, /*test_custom_call=*/true);
+      /*test_custom_call=*/true);
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseAndReturnUnverifiedModule((kModuleStr)));
   P2PSchedulePreparation preparation;
@@ -662,6 +672,161 @@ TEST_F(P2PSchedulePreparationTest,
   HloInstruction* send_done_2 = FindInstruction(module.get(), "send-done.2");
   HloInstruction* custom_call = FindInstruction(module.get(), "custom-call");
   EXPECT_EQ(custom_call->control_predecessors()[0], send_done_2);
+}
+
+TEST_F(P2PSchedulePreparationTest, PipelinedP2PChain2Transformed) {
+  const char* const kModuleStr = R"(
+  HloModule test
+
+cond {
+    param = (u32[], (u32[2], u32[], token[]), (u32[2], u32[], token[]),
+      (u32[2], u32[], token[]), (u32[2], u32[], token[])) parameter(0)
+    count = get-tuple-element(%param), index=0
+    ub = u32[] constant(10)
+    ROOT result = pred[] compare(count, ub), direction=LT
+ }
+
+body {
+    param = (u32[], (u32[2], u32[], token[]), (u32[2], u32[], token[]),
+      (u32[2], u32[], token[]), (u32[2], u32[], token[])) parameter(0)
+    count = get-tuple-element(param), index=0
+
+    recv.0.f = (u32[2], u32[], token[]) get-tuple-element(param), index=1
+    recv-done.0 = (u32[2], token[]) recv-done(recv.0.f), channel_id=1
+    recv-data.0 = u32[2] get-tuple-element(recv-done.0), index=0
+
+    recv.1.f = (u32[2], u32[], token[]) get-tuple-element(param), index=2
+    recv-done.1 = (u32[2], token[]) recv-done(recv.1.f), channel_id=2
+    recv-data.1 = u32[2] get-tuple-element(recv-done.1), index=0
+
+    replica = u32[] replica-id()
+    constant0 = u32[] constant(0)
+    compare0 = pred[] compare(replica, constant0), direction=EQ
+    compare = pred[2] broadcast(compare0), dimensions={}
+    recv-data = u32[2] select(compare, recv-data.0, recv-data.1)
+
+    c1 = u32[] constant(1)
+    new_count = u32[] add(count, c1)
+
+    r = u32[2] broadcast(c1), dimensions={}
+    s = u32[2] add(r, recv-data)
+
+    send.0.f = (u32[2], u32[], token[]) get-tuple-element(param), index=3
+    send-done.0 = token[] send-done(send.0.f), channel_id=1
+    send.1.f = (u32[2], u32[], token[]) get-tuple-element(param), index=4
+    send-done.1 = token[] send-done(send.1.f), channel_id=2
+
+    // The Recv "rotated" from the beginning of the loop to the end of the loop.
+    after-all.0.n = token[] after-all()
+    recv.0 = (u32[2], u32[], token[]) recv(after-all.0.n), channel_id=1,
+      frontend_attributes={
+        _xla_send_recv_source_target_pairs="{{3,0}}",
+        _xla_send_recv_pipeline="0"
+      }
+    send.0 = (u32[2], u32[], token[]) send(s, after-all.0.n),
+      channel_id=1,
+      frontend_attributes={
+        _xla_send_recv_source_target_pairs="{{3,0}}",
+        _xla_send_recv_pipeline="0"
+      }
+
+    after-all.1.n = token[] after-all()
+    recv.1 = (u32[2], u32[], token[]) recv(after-all.1.n), channel_id=2,
+      frontend_attributes={
+        _xla_send_recv_source_target_pairs="{{0,1},{1,2},{2,3}}",
+        _xla_send_recv_pipeline="1"
+      }
+    send.1 = (u32[2], u32[], token[]) send(s, after-all.1.n),
+      channel_id=2,
+      frontend_attributes={
+        _xla_send_recv_source_target_pairs="{{0,1},{1,2},{2,3}}",
+        _xla_send_recv_pipeline="1"
+      }
+
+    ROOT result = (u32[], (u32[2], u32[], token[]), (u32[2], u32[], token[]),
+      (u32[2], u32[], token[]), (u32[2], u32[], token[])) tuple(new_count, recv.0, recv.1, send.0, send.1)
+  }
+
+  ENTRY test_computation {
+    c0 = u32[] constant(0)
+    c1 = u32[] constant(1)
+    r = u32[] replica-id()
+    a = u32[] add(c1, r)
+    init = u32[2] broadcast(a), dimensions={}
+
+    // Peel off both Recv.
+    after-all.0.p = token[] after-all()
+    recv.2 = (u32[2], u32[], token[]) recv(after-all.0.p), channel_id=1,
+      frontend_attributes={
+        _xla_send_recv_source_target_pairs="{{3,0}}",
+        _xla_send_recv_pipeline="0"
+      }
+    send.2 = (u32[2], u32[], token[]) send(init, after-all.0.p),
+      channel_id=1,
+      frontend_attributes={
+        _xla_send_recv_source_target_pairs="{{3,0}}",
+        _xla_send_recv_pipeline="0"
+      }
+
+    after-all.1.p = token[] after-all()
+    recv.3 = (u32[2], u32[], token[]) recv(after-all.1.p), channel_id=2,
+      frontend_attributes={
+        _xla_send_recv_source_target_pairs="{{0,1},{1,2},{2,3}}",
+        _xla_send_recv_pipeline="1"
+      }
+    send.3 = (u32[2], u32[], token[]) send(init, after-all.1.p),
+      channel_id=2,
+      frontend_attributes={
+        _xla_send_recv_source_target_pairs="{{0,1},{1,2},{2,3}}",
+        _xla_send_recv_pipeline="1"
+      }
+
+    // This is the pipelined loop.
+    while_init = (u32[], (u32[2], u32[], token[]), (u32[2], u32[], token[]),
+      (u32[2], u32[], token[]), (u32[2], u32[], token[])) tuple(c0, recv.2, recv.3, send.2, send.3)
+    while_result = (u32[], (u32[2], u32[], token[]), (u32[2], u32[], token[]),
+      (u32[2], u32[], token[]), (u32[2], u32[], token[])) while(while_init), body=body, condition=cond,
+    backend_config={"known_trip_count":{"n":"10"}}
+
+    // This is the remaining Send/Send-done/Recv-done for the pipeline.
+    // Use .q as suffix for HLO name.
+
+     recv.0.q = (u32[2], u32[], token[]) get-tuple-element(while_result), index=1
+     recv-done.2 = (u32[2], token[]) recv-done(recv.0.q), channel_id=1
+     recv-data.0.q = u32[2] get-tuple-element(recv-done.2), index=0
+
+     recv.1.q = (u32[2], u32[], token[]) get-tuple-element(while_result), index=2
+     recv-done.3 = (u32[2], token[]) recv-done(recv.1.q), channel_id=2
+     recv-data.1.q = u32[2] get-tuple-element(recv-done.2), index=0
+
+    replica = u32[] replica-id()
+    constant0 = u32[] constant(0)
+    compare0 = pred[] compare(replica, constant0), direction=EQ
+    compare = pred[2] broadcast(compare0), dimensions={}
+    recv-data = u32[2] select(compare, recv-data.0.q, recv-data.1.q)
+
+    s = u32[2] add(c1, recv-data)
+
+    send.0.q = (u32[2], u32[], token[]) get-tuple-element(while_result), index=3
+    send-done.2 = token[] send-done(send.0.q), channel_id=1
+    send.1.q = (u32[2], u32[], token[]) get-tuple-element(while_result), index=4
+    send-done.3 = token[] send-done(send.1.q), channel_id=2
+
+    ROOT result = u32[2] add(s, recv-data)
+  }
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnUnverifiedModule((kModuleStr)));
+  P2PSchedulePreparation preparation;
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, preparation.Run(module.get()));
+  VLOG(10) << module->ToString();
+  EXPECT_TRUE(changed);
+
+  // Verify the pipelined P2P chain in the while-body.
+  VerifyPipelined2P2PChild(module.get(), ".0", ".1");
+  // Verify the pipelined P2P chain in the main computation.
+  VerifyPipelined2P2PParent(module.get(), ".2", ".3");
 }
 
 }  // namespace

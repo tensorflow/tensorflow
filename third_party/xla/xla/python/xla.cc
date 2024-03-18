@@ -1316,7 +1316,16 @@ static void Init(py::module_& m) {
                  nb::cast(self.GetParameterShardings()).release().ptr());
            })
       .def("get_compiled_memory_stats",
-           xla::ValueOrThrowWrapper(&PjRtExecutable::GetCompiledMemoryStats))
+           [](const PjRtExecutable& self) {
+             // TODO(phawkins): revert to a direct wrapping of
+             // PjRtExecutable::GetCompiledMemoryStats when nanobind transition
+             // is complete.
+             // xla::ValueOrThrowWrapper(&PjRtExecutable::GetCompiledMemoryStats)
+             return py::reinterpret_steal<py::object>(
+                 nb::cast(ValueOrThrow(self.GetCompiledMemoryStats()))
+                     .release()
+                     .ptr());
+           })
       .def("compile_options",
            // TODO(phawkins): revert to the following when nanobind transition
            // complete
@@ -1360,6 +1369,13 @@ static void Init(py::module_& m) {
       py::arg("committed") = true, py::arg("force_copy") = false,
       py::arg("host_buffer_semantics") =
           PjRtClient::HostBufferSemantics::kZeroCopy);
+
+  m.def("batched_block_until_ready", [](py::object xs_py) {
+    // TODO(phawkins): simplify after nanobind transition is complete.
+    auto xs = nb::cast<std::vector<nb::object>>(nb::handle(xs_py.ptr()));
+    xla::ThrowIfError(PyArray::BatchedBlockUntilReady(std::move(xs)));
+  });
+
   m_nb.def("check_and_canonicalize_memory_kind",
            &jax::CheckAndCanonicalizeMemoryKind, nb::arg("memory_kind").none(),
            nb::arg("device_list"));

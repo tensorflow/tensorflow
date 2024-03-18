@@ -1751,6 +1751,21 @@ func.func @main(%arg0: tensor<2x2x2xi8>, %arg1: tensor<2x2x3xi8>) -> tensor<2x2x
 // -----
 
 // CHECK:  HloModule
+func.func @main(%arg0: tensor<10x16xbf16>, %arg1: tensor<32x20xbf16>, %meta: tensor<10x2xui16>) -> tensor<10x20xf32> {
+  // CHECK:  dot(bf16[10,16] %{{.*}}, bf16[32,20] %{{.*}}, u16[10,2] %{{.*}}), lhs_contracting_dims={1}, rhs_contracting_dims={0}, sparsity=L.1@2:4
+  %0 = "mhlo.sparse_dot"(%arg0, %arg1, %meta) {
+    lhs_sparsity = #mhlo.sparsity<dimension=1, n=2, m=4>,
+    dot_dimension_numbers = #mhlo.dot<
+      lhs_contracting_dimensions = [1],
+      rhs_contracting_dimensions = [0]
+    >,
+    precision_config = []} : (tensor<10x16xbf16>, tensor<32x20xbf16>, tensor<10x2xui16>) -> tensor<10x20xf32>
+  func.return %0 : tensor<10x20xf32>
+}
+
+// -----
+
+// CHECK:  HloModule
 func.func @main(%arg0: tensor<3x4xi32>, %arg1: tensor<4x5xi32>) -> tensor<3x5xi32> {
   // Simple einsum is lowered to HLO dot op.
   // CHECK:  dot(s32[3,4] %{{.*}}, s32[4,5] %{{.*}}), lhs_contracting_dims={1}, rhs_contracting_dims={0}

@@ -28,7 +28,6 @@ limitations under the License.
 #include "xla/stream_executor/allocator_stats.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/device_memory.h"
-#include "xla/stream_executor/device_options.h"
 #include "xla/stream_executor/event.h"
 #include "xla/stream_executor/stream_executor_internal.h"
 #include "xla/stream_executor/tpu/c_api_conversions.h"
@@ -51,14 +50,10 @@ using xla::Status;
 
 TpuExecutor::~TpuExecutor() { ExecutorApiFn()->TpuExecutor_FreeFn(executor_); }
 
-Status TpuExecutor::Init(int device_ordinal,
-                         ::stream_executor::DeviceOptions device_options) {
+Status TpuExecutor::Init(int device_ordinal) {
   StatusHelper status;
-  SE_DeviceOptions* options =
-      ExecutorApiFn()->TpuExecutor_NewDeviceOptionsFn(device_options.flags());
-  ExecutorApiFn()->TpuExecutor_InitFn(executor_, device_ordinal, options,
+  ExecutorApiFn()->TpuExecutor_InitFn(executor_, device_ordinal,
                                       status.c_status);
-  ExecutorApiFn()->TpuExecutor_FreeDeviceOptionsFn(options);
   return status.status();
 }
 

@@ -68,7 +68,7 @@ class MlirTransposeFusion : public MlirFusionEmitterBase {
       mlir::func::FuncOp entry_function,
       const HloFusionInstruction& fusion) const override;
 
-  absl::flat_hash_set<const HloInstruction*> GetInstructionsWithCustomCodegen(
+  std::vector<const HloInstruction*> GetInstructionsWithCustomCodegen(
       const HloFusionInstruction& fusion) const override;
 
   absl::StatusOr<llvm::SmallVector<mlir::Value, 4>> EmitWriteToShMemMlir(
@@ -79,6 +79,7 @@ class MlirTransposeFusion : public MlirFusionEmitterBase {
   absl::Status EmitReadFromShMemMlir(
       mlir::ImplicitLocOpBuilder& builder, mlir::func::FuncOp entry_function,
       const HloFusionInstruction& fusion,
+      const mlir_converter::PartitionedComputations& computations,
       const mlir_converter::CallTargetProvider& call_target_provider,
       mlir::ValueRange shmem_tensors) const;
 

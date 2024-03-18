@@ -2796,6 +2796,19 @@ TEST_F(LiteralUtilTest, PopulateR3FromArray3DDynamicDim2) {
   EXPECT_EQ(expected, literal.ToString());
 }
 
+TEST_F(LiteralUtilTest, Compare4BitType) {
+  Literal literal1 = Literal(ShapeUtil::MakeShape(S4, {}));
+  Literal literal2 = Literal(ShapeUtil::MakeShape(S4, {}));
+  void* p = literal1.untyped_data();
+  void* q = literal2.untyped_data();
+  *((uint8_t*)p) = 0x44;
+  *((uint8_t*)q) = 0xc4;
+  std::string expected = R"(s4[] 4)";
+  EXPECT_EQ(expected, literal1.ToString());
+  EXPECT_EQ(literal1.ToString(), literal2.ToString());
+  EXPECT_EQ(literal1, literal2);
+}
+
 class LiteralSerializationTest : public ::testing::Test,
                                  public ::testing::WithParamInterface<Shape> {
  public:

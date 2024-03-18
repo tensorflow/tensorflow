@@ -31,8 +31,10 @@ limitations under the License.
 #include "xla/python/ifrt/client.h"
 #include "tensorflow/core/tfrt/ifrt/ifrt_executable_registry.h"
 #include "tensorflow/core/tfrt/ifrt/ifrt_loaded_variable_registry.h"
+#include "tensorflow/core/tfrt/ifrt/ifrt_restore_tensor_registry.h"
 #include "tsl/concurrency/ref_count.h"
 #include "tsl/platform/threadpool.h"
+#include "tfrt/host_context/concurrent_work_queue.h"  // from @tf_runtime
 
 namespace tensorflow {
 namespace ifrt_serving {
@@ -82,15 +84,31 @@ class IfrtModelContext {
     return loaded_variable_registry_;
   }
 
+  const IfrtRestoreTensorRegistry& GetRestoreTensorRegistry() const {
+    return restore_tensor_registry_;
+  }
+  IfrtRestoreTensorRegistry& GetRestoreTensorRegistry() {
+    return restore_tensor_registry_;
+  }
+
+  tfrt::ConcurrentWorkQueue* work_queue() const { return work_queue_; }
+  void set_work_queue(tfrt::ConcurrentWorkQueue* work_queue) {
+    work_queue_ = work_queue;
+  }
+
  private:
   std::shared_ptr<xla::ifrt::Client> client_;
   const tsl::thread::ThreadPool& thread_pool_;
   tensorflow::XlaHelpers::ShapeRepresentationFn shape_representation_fn_ =
       tensorflow::IdentityShapeRepresentationFn();
 
+  // Dedicated work queue for heavy task such as variable tensor restoration.
+  tfrt::ConcurrentWorkQueue* work_queue_ = nullptr;
+
   std::vector<ServingExecutableRegistry::Handle> handles_;
 
   IfrtLoadedVariableRegistry loaded_variable_registry_;
+  IfrtRestoreTensorRegistry restore_tensor_registry_;
 };
 
 }  // namespace ifrt_serving

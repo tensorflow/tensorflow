@@ -143,6 +143,7 @@ cc_library(
 
 cc_library(
     name = "auto_sharding_cost_graph",
+    srcs = ["auto_sharding_cost_graph.cc"],
     hdrs = ["auto_sharding_cost_graph.h"],
     compatible_with = get_compatible_with_libtpu_portable(),
     deps = [

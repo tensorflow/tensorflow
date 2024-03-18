@@ -416,12 +416,15 @@ absl::Status MlirFusionEmitterBase::EmitMlir(
       fusion.fused_instructions_computation(), customized);
   auto subgraph_to_mlir_fn = computations.DeclareFunctions(module);
 
-  // Erase subgraphs for all customized instructions - we don't want to
-  // automatically emit functions for them.
+  // Erase subgraphs for all customized instructions that aren't used anywhere
+  // else. This is necessary because the instructions may not have elemental
+  // implementations (scatter).
   for (auto* custom : customized) {
-    subgraph_to_mlir_fn.extract(&computations.FindSubgraph(custom))
-        .mapped()
-        .erase();
+    if (custom->user_count() == 0) {
+      subgraph_to_mlir_fn.extract(&computations.FindSubgraph(custom))
+          .mapped()
+          .erase();
+    }
   }
 
   auto call_targets =
@@ -434,31 +437,33 @@ absl::Status MlirFusionEmitterBase::EmitMlir(
       }
     }
   }
-
-  // Restore the mapping for the customized instructions - they are emitted
-  // inside the entry function.
-  for (auto* root : customized) {
-    subgraph_to_mlir_fn[&computations.FindSubgraph(root)] = entry_function;
+  if (const auto& epilogue = computations.epilogue()) {
+    TF_RETURN_IF_ERROR(mlir_converter::SubgraphToMlirFunction(
+        computations.FindPartitionedComputation(
+            fusion.fused_instructions_computation()),
+        *epilogue, subgraph_to_mlir_fn[&*epilogue], call_targets));
   }
 
   return EmitEntryFunction(computations, call_targets, entry_function, fusion);
 }
 
 mlir::ValueRange MlirFusionEmitterBase::EmitEpilogue(
-    const HloInstruction* root, const HloInstruction* hero,
-    const mlir_converter::CallTargetProvider& call_targets,
-    mlir::ValueRange injected_values, mlir::ValueRange output_indices,
+    const mlir_converter::PartitionedComputations& computations,
+    mlir::func::FuncOp entry_fn, mlir::ValueRange hero_values,
+    mlir::ValueRange output_indices,
     mlir::ImplicitLocOpBuilder& builder) const {
-  if (root == hero) {
-    return injected_values;
+  const auto& epilogue = computations.epilogue();
+  if (!epilogue) {
+    return hero_values;
   }
 
-  auto entry_fn = call_targets(hero);
-  auto epilogue_fn = call_targets(root);
-  SmallVector<Value> operands = mlir::ValueRange(
-      entry_fn.getArguments().take_front(hero->parent()->num_parameters()));
+  auto epilogue_fn = mlir::cast<mlir::func::FuncOp>(
+      entry_fn->getParentOfType<mlir::ModuleOp>().lookupSymbol(epilogue->name));
+  SmallVector<Value> operands =
+      mlir::ValueRange(entry_fn.getArguments().take_front(
+          computations.fusion()->num_parameters()));
   absl::c_copy(output_indices, std::back_inserter(operands));
-  absl::c_copy(injected_values, std::back_inserter(operands));
+  absl::c_copy(hero_values, std::back_inserter(operands));
 
   return builder.create<PureCallOp>(epilogue_fn, operands).getResults();
 }

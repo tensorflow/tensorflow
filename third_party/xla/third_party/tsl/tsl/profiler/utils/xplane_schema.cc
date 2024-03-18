@@ -140,6 +140,7 @@ const HostEventTypeMap& GetHostEventTypeMap() {
       // Batching related.
       {"BatchingSessionRun", kBatchingSessionRun},
       {"ProcessBatch", kProcessBatch},
+      {"BrainSessionRun", kBrainSessionRun},
       {"ConcatInputTensors", kConcatInputTensors},
       {"MergeInputTensors", kMergeInputTensors},
       {"ScheduleWithoutSplit", kScheduleWithoutSplit},

@@ -2963,8 +2963,18 @@ absl::StatusOr<bool> ShardingPropagation::Run(
            "computation.";
   }
   if (allow_spmd_sharding_propagation_to_parameters_) {
+    auto is_same_sized_tuple = [](HloModule* module, int64_t size) {
+      if (module->entry_computation()->num_parameters() != 1) {
+        return false;
+      }
+      HloInstruction* param =
+          module->entry_computation()->parameter_instruction(0);
+      return param->shape().IsTuple() &&
+             size == param->shape().tuple_shapes_size();
+    };
     auto size = allow_spmd_sharding_propagation_to_parameters_vector_.size();
-    CHECK(size == 1 || size == module->entry_computation()->num_parameters())
+    CHECK(size == 1 || size == module->entry_computation()->num_parameters() ||
+          is_same_sized_tuple(module, size))
         << "allow-spmd-sharding-propagation-to-parameters-vector's size can be "
            "either 1 or the number of parameters in the entry computation.";
   }
@@ -3396,18 +3406,36 @@ absl::StatusOr<bool> ShardingPropagation::Run(
     root_instruction->set_sharding(std::move(root_sharding));
   }
   auto params = module->entry_computation()->parameter_instructions();
-  if (allow_spmd_sharding_propagation_to_parameters_ &&
-      allow_spmd_sharding_propagation_to_parameters_vector_.size() ==
-          params.size()) {
-    for (int64_t i = 0; i < params.size(); ++i) {
-      if (!allow_spmd_sharding_propagation_to_parameters_vector_[i]) {
-        if (saved_parameter_shardings.contains(i) &&
-            !saved_parameter_shardings.at(i).IsUnknown()) {
-          params[i]->set_sharding(saved_parameter_shardings.at(i));
-        } else {
-          params[i]->clear_sharding();
+  if (allow_spmd_sharding_propagation_to_parameters_) {
+    if (allow_spmd_sharding_propagation_to_parameters_vector_.size() ==
+        params.size()) {
+      for (int64_t i = 0; i < params.size(); ++i) {
+        if (!allow_spmd_sharding_propagation_to_parameters_vector_[i]) {
+          if (saved_parameter_shardings.contains(i) &&
+              !saved_parameter_shardings.at(i).IsUnknown()) {
+            params[i]->set_sharding(saved_parameter_shardings.at(i));
+          } else {
+            params[i]->clear_sharding();
+          }
         }
       }
+    } else if (params.size() == 1 && saved_parameter_shardings.size() == 1 &&
+               params[0]->shape().IsTuple() &&
+               params[0]->shape().tuple_shapes_size() ==
+                   allow_spmd_sharding_propagation_to_parameters_vector_
+                       .size()) {
+      // There is a single parameter which is a tuple with many elements.
+      HloSharding param_sharding = params[0]->sharding();
+      for (int64_t i = 0; i < params[0]->shape().tuple_shapes_size(); ++i) {
+        HloSharding saved_subsharding =
+            saved_parameter_shardings.at(0).GetSubSharding(params[0]->shape(),
+                                                           {i});
+        if (!allow_spmd_sharding_propagation_to_parameters_vector_[i] &&
+            !saved_subsharding.IsUnknown()) {
+          param_sharding.tuple_elements()[i] = saved_subsharding;
+        }
+      }
+      params[0]->set_sharding(std::move(param_sharding));
     }
   }
   // Replicate the parameter/output sharding if the propagated sharding does not
@@ -3461,16 +3489,33 @@ absl::StatusOr<bool> ShardingPropagation::Run(
       }
     }
   }
-  if (allow_spmd_sharding_propagation_to_parameters_ &&
-      allow_spmd_sharding_propagation_to_parameters_vector_.size() ==
-          params.size()) {
+  if (allow_spmd_sharding_propagation_to_parameters_) {
     // Sharding propagation is allowed for at least one parameter.
-    for (int64_t i = 0; i < params.size(); ++i) {
-      if (params[i]->has_sharding() &&
-          allow_spmd_sharding_propagation_to_parameters_vector_[i] &&
-          !evenly_partitions(params[i]->shape(), params[i]->sharding())) {
-        params[i]->set_sharding(HloSharding::Replicate());
+    if (allow_spmd_sharding_propagation_to_parameters_vector_.size() ==
+        params.size()) {
+      for (int64_t i = 0; i < params.size(); ++i) {
+        if (params[i]->has_sharding() &&
+            allow_spmd_sharding_propagation_to_parameters_vector_[i] &&
+            !evenly_partitions(params[i]->shape(), params[i]->sharding())) {
+          params[i]->set_sharding(HloSharding::Replicate());
+        }
       }
+    } else if (params.size() == 1 && params[0]->shape().IsTuple() &&
+               params[0]->has_sharding() &&
+               params[0]->shape().tuple_shapes_size() ==
+                   allow_spmd_sharding_propagation_to_parameters_vector_
+                       .size()) {
+      HloSharding param_sharding = params[0]->sharding();
+      for (int64_t i = 0; i < params[0]->shape().tuple_shapes_size(); ++i) {
+        if (allow_spmd_sharding_propagation_to_parameters_vector_[i] &&
+            !evenly_partitions(
+                ShapeUtil::GetSubshapeOneIndex(params[0]->shape(), i),
+                params[0]->sharding().GetSubSharding(params[0]->shape(),
+                                                     {i}))) {
+          param_sharding.tuple_elements()[i] = HloSharding::Replicate();
+        }
+      }
+      params[0]->set_sharding(std::move(param_sharding));
     }
   }
   TF_RETURN_IF_ERROR(CanonicalizeLayouts(module));

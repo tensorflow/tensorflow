@@ -19,6 +19,9 @@ limitations under the License.
 #include <memory>
 #include <vector>
 
+#include "absl/status/statusor.h"
+#include "xla/hlo/ir/hlo_computation.h"
+#include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 
 namespace xla {
@@ -34,6 +37,11 @@ absl::StatusOr<std::vector<std::unique_ptr<HloModule>>> DecomposeHloModule(
 // with parameter instructions.
 std::unique_ptr<HloModule> ExtractInstructionIntoNewModule(
     const HloInstruction& hlo);
+
+// Extracts producer and consumer HLO instruction into a new HLO module
+// replacing its operands with parameter instructions.
+std::unique_ptr<HloModule> ExtractProducerConsumerIntoNewModule(
+    const HloInstruction& producer, const HloInstruction& consumer);
 
 // Extracts an HLO computation into a new HLO module, using its clone as the
 // root computation.

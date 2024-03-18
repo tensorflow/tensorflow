@@ -140,30 +140,9 @@ limitations under the License.
         break;                                                               \
       case DataType::kSI16:                                                  \
         switch (expressed_type) {                                            \
-          case DataType::kBF16:                                              \
-            RETURN_OK_STATUS_IF_VOID(                                        \
-                (name<DataType::kSI16, DataType::kBF16>(__VA_ARGS__)));      \
-          case DataType::kF16:                                               \
-            RETURN_OK_STATUS_IF_VOID(                                        \
-                (name<DataType::kSI16, DataType::kF16>(__VA_ARGS__)));       \
           case DataType::kF32:                                               \
             RETURN_OK_STATUS_IF_VOID(                                        \
                 (name<DataType::kSI16, DataType::kF32>(__VA_ARGS__)));       \
-          default:                                                           \
-            return absl::InvalidArgumentError("Unsupported expressed type"); \
-        }                                                                    \
-        break;                                                               \
-      case DataType::kSI32:                                                  \
-        switch (expressed_type) {                                            \
-          case DataType::kBF16:                                              \
-            RETURN_OK_STATUS_IF_VOID(                                        \
-                (name<DataType::kSI32, DataType::kBF16>(__VA_ARGS__)));      \
-          case DataType::kF16:                                               \
-            RETURN_OK_STATUS_IF_VOID(                                        \
-                (name<DataType::kSI32, DataType::kF16>(__VA_ARGS__)));       \
-          case DataType::kF32:                                               \
-            RETURN_OK_STATUS_IF_VOID(                                        \
-                (name<DataType::kSI32, DataType::kF32>(__VA_ARGS__)));       \
           default:                                                           \
             return absl::InvalidArgumentError("Unsupported expressed type"); \
         }                                                                    \

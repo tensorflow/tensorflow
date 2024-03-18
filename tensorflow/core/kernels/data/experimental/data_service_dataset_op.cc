@@ -555,7 +555,7 @@ DataServiceDatasetOp::DataServiceDatasetOp(OpKernelConstruction* ctx)
   if (ctx->HasAttr(kTargetWorkers)) {
     OP_REQUIRES_OK(ctx, ctx->GetAttr(kTargetWorkers, &target_workers_str));
   }
-  StatusOr<TargetWorkers> status_or_target_workers =
+  absl::StatusOr<TargetWorkers> status_or_target_workers =
       ParseTargetWorkers(target_workers_str);
   OP_REQUIRES_OK(ctx, status_or_target_workers.status());
   target_workers_ = *status_or_target_workers;
@@ -613,7 +613,8 @@ void DataServiceDatasetOp::MakeDataset(OpKernelContext* ctx,
   tstring job_name;
   OP_REQUIRES_OK(ctx, ParseScalarArgument(ctx, kJobName, &job_name));
 
-  StatusOr<DataServiceConfig> config = GetDataServiceConfig(address, protocol);
+  absl::StatusOr<DataServiceConfig> config =
+      GetDataServiceConfig(address, protocol);
   OP_REQUIRES_OK(ctx, config.status());
 
   if (IsStaticShard(processing_mode) &&
@@ -684,13 +685,13 @@ void DataServiceDatasetOp::MakeDataset(OpKernelContext* ctx,
       errors::InvalidArgument(kMaxOutstandingRequests, " must be positive or ",
                               model::kAutotune));
 
-  StatusOr<DataServiceMetadata> metadata =
+  absl::StatusOr<DataServiceMetadata> metadata =
       GetDataServiceMetadata(dataset_id, address, protocol);
   OP_REQUIRES_OK(ctx, metadata.status());
 
   bool should_uncompress = op_version_ >= 3 && uncompress_;
   if (should_uncompress) {
-    StatusOr<DataServiceMetadata::Compression> compression =
+    absl::StatusOr<DataServiceMetadata::Compression> compression =
         GetValidatedCompression(dataset_id, *metadata);
     OP_REQUIRES_OK(ctx, compression.status());
     should_uncompress =
@@ -698,10 +699,11 @@ void DataServiceDatasetOp::MakeDataset(OpKernelContext* ctx,
         (*compression == DataServiceMetadata::COMPRESSION_SNAPPY);
   }
   if (should_uncompress) {
-    StatusOr<bool> disable_compression_at_runtime = DisableCompressionAtRuntime(
-        data_transfer_protocol_, config->deployment_mode());
+    absl::StatusOr<bool> disable_compression_at_runtime =
+        DisableCompressionAtRuntime(data_transfer_protocol_,
+                                    config->deployment_mode());
     OP_REQUIRES_OK(ctx, disable_compression_at_runtime.status());
-    StatusOr<bool> compression_disabled_at_runtime =
+    absl::StatusOr<bool> compression_disabled_at_runtime =
         CompressionDisabledAtRuntime(dataset_id, address, protocol,
                                      *disable_compression_at_runtime);
     OP_REQUIRES_OK(ctx, compression_disabled_at_runtime.status());

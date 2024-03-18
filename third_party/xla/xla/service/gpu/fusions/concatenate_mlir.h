@@ -55,7 +55,7 @@ class MlirConcatenateFusion : public MlirFusionEmitterBase {
       mlir::func::FuncOp entry_function,
       const HloFusionInstruction& fusion) const override;
 
-  absl::flat_hash_set<const HloInstruction*> GetInstructionsWithCustomCodegen(
+  std::vector<const HloInstruction*> GetInstructionsWithCustomCodegen(
       const HloFusionInstruction& fusion) const override;
 
  private:

@@ -136,10 +136,10 @@ LaunchDimensions MlirScatterFusion::launch_dimensions() const {
   return CalculateLaunchDimensions(shape, analysis_.device_info());
 }
 
-absl::flat_hash_set<const HloInstruction*>
+std::vector<const HloInstruction*>
 MlirScatterFusion::GetInstructionsWithCustomCodegen(
     const HloFusionInstruction& fusion) const {
-  return {analysis_.fusion_heroes()[0]};
+  return analysis_.fusion_heroes();
 }
 
 mlir::Value EmitScatterComputation(
@@ -147,14 +147,14 @@ mlir::Value EmitScatterComputation(
     Value output_tensor,
     const mlir_converter::PartitionedComputation& root_computation,
     const mlir_converter::CallTargetProvider& call_targets,
-    mlir::ImplicitLocOpBuilder& b) {
+    mlir::func::FuncOp entry_function, mlir::ImplicitLocOpBuilder& b) {
   constexpr int kScatterOperandIndex = 0;
   auto reducer =
       call_targets(scatter->called_computations()[0]->root_instruction());
   if (scatter->unique_indices()) {
-    auto operand_elem =
-        ProvideParameter(root_computation, scatter, kScatterOperandIndex,
-                         indices, call_targets, b)[0];
+    auto operand_elem = ProvideParameter(root_computation.FindSubgraph(scatter),
+                                         scatter, kScatterOperandIndex, indices,
+                                         call_targets, entry_function, b)[0];
     auto reduced_val = mlir_converter::InlineBlock(
         b, reducer.getBody().front(), {operand_elem, update_elem})[0];
 
@@ -195,6 +195,7 @@ absl::Status MlirScatterFusion::EmitEntryFunction(
 
   const auto& root_computation = computations.FindPartitionedComputation(
       fusion.fused_instructions_computation());
+  const auto& scatter_subgraph = root_computation.FindSubgraph(scatter);
   mlir::ImplicitLocOpBuilder b(entry_function.getLoc(), entry_function);
   b.setInsertionPointToStart(entry_function.addEntryBlock());
 
@@ -210,8 +211,9 @@ absl::Status MlirScatterFusion::EmitEntryFunction(
             ApplyAffineMap(thread_id_to_update_map.GetAffineMap(), dim_values,
                            symbol_values, b);
         auto update_elem =
-            ProvideParameter(root_computation, scatter, kScatterUpdateIndex,
-                             update_tensor_indices, call_targets, b)
+            ProvideParameter(scatter_subgraph, scatter, kScatterUpdateIndex,
+                             update_tensor_indices, call_targets,
+                             entry_function, b)
                 .front();
 
         // Extract slice offsets from scatter_indices operand, compute if the
@@ -226,8 +228,8 @@ absl::Status MlirScatterFusion::EmitEntryFunction(
             SmallVector<Value, 4> indices_tensor_indices = {
                 update_tensor_indices.front(), b.create<ConstantIndexOp>(i)};
             extracted_index = ProvideParameter(
-                root_computation, scatter, kScatterIndicesIndex,
-                indices_tensor_indices, call_targets, b)[0];
+                scatter_subgraph, scatter, kScatterIndicesIndex,
+                indices_tensor_indices, call_targets, entry_function, b)[0];
             if (extracted_index.getType() != b.getIndexType()) {
               extracted_index = b.create<mlir::arith::IndexCastOp>(
                   b.getIndexType(), extracted_index);
@@ -252,7 +254,7 @@ absl::Status MlirScatterFusion::EmitEntryFunction(
                  [&](OpBuilder& then_builder, Location then_loc) -> void {
                    Value updated_output = EmitScatterComputation(
                        scatter, indices, update_elem, output_tensor,
-                       root_computation, call_targets, b);
+                       root_computation, call_targets, entry_function, b);
                    b.create<scf::YieldOp>(updated_output);
                  },
                  [&](OpBuilder& else_b, Location else_loc) {

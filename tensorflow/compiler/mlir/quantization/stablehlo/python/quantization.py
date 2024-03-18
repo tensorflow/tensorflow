@@ -43,25 +43,6 @@ def _serialize_signature_def_map(
   return signature_def_map_serialized
 
 
-def _populate_default_quantization_config(
-    config: qc.QuantizationConfig,
-) -> qc.QuantizationConfig:
-  """Populates `QuantizationConfig` with default values.
-
-  Args:
-    config: User-provided quantization config.
-
-  Returns:
-    Updated `QuantizationConfig` after populating default values to fields that
-    the user did not explicitly specify.
-  """
-  pipeline_config = config.pipeline_config
-  if not pipeline_config.HasField('unpack_quantized_types'):
-    pipeline_config.unpack_quantized_types = True
-
-  return config
-
-
 # TODO: b/310594193 - Export API to pip package.
 def quantize_saved_model(
     src_saved_model_path: str,

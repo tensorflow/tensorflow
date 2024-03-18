@@ -705,11 +705,29 @@ message DebugOptions {
   int64 xla_gpu_nccl_p2p_max_nchannels = 274;
 
   bool xla_gpu_enable_mlir_emitters = 275;
+  // The maximum number of kernels to emit with MLIR. Unlimited if 0.
+  int64 xla_gpu_max_mlir_kernels = 281;
+  // The number of initial kernels to not emit with MLIR. Only supported kernels
+  // are counted.
+  int64 xla_gpu_skip_mlir_kernels = 282;
+
+  // Threshold to rewrite matmul to cuBLAS or Triton (minumum combined number of
+  // elements of both matrices in non-batch dimensions to be considered for a
+  // rewrite).
+  int64 xla_gpu_gemm_rewrite_size_threshold = 283;
+
+  // If true, will require complete AOT autotuning results; in the case of
+  // missing AOT result, the model will not be compiled or executed, a
+  // `NotFound` error will be returned.
+  bool xla_gpu_require_complete_aot_autotune_results = 284;
 
   // Let GEMM fusion autotuning probe cuDNN as a backend.
-  bool xla_gpu_cudnn_gemm_fusion = 277;
+  // Current levels:
+  // 0: disabled.
+  // 1: fusions of GEMM, elementwise, transpose/reshape operations.
+  int32 xla_gpu_cudnn_gemm_fusion_level = 285;
 
-  // Next id: 281
+  // Next id: 286
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.

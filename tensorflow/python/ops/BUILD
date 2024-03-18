@@ -3111,6 +3111,7 @@ py_strict_library(
         "variables.py",
     ],
     srcs_version = "PY3",
+    visibility = visibility,
     deps = [
         ":array_ops",
         ":array_ops_gen",

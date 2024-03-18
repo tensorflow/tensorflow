@@ -15,14 +15,19 @@ limitations under the License.
 
 #include "xla/service/collective_transformation_reorderer.h"
 
+#include <cstdint>
 #include <optional>
 #include <utility>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
+#include "absl/log/check.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
+#include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/service/hlo_dce.h"
+#include "tsl/platform/statusor.h"
 
 namespace xla {
 
@@ -131,6 +136,26 @@ GetAllGatherTransformations(HloInstruction* all_gather) {
   }
   return transformations;
 }
+
+// Find a list of reshapes feeding the all-reduce that could be moved to after
+// the all-reduce.
+std::vector<HloInstruction*> GetAllReduceTransformations(
+    HloInstruction* all_reduce) {
+  HloAllReduceInstruction* all_reduce_instruction =
+      DynCast<HloAllReduceInstruction>(all_reduce);
+  CHECK_NE(all_reduce_instruction, nullptr);
+  if (all_reduce_instruction->constrain_layout()) {
+    return {};
+  }
+  std::vector<HloInstruction*> transformation_hlos;
+  HloInstruction* transformation_hlo = all_reduce->mutable_operand(0);
+  while (transformation_hlo->opcode() == HloOpcode::kReshape &&
+         transformation_hlo->user_count() == 1) {
+    transformation_hlos.push_back(transformation_hlo);
+    transformation_hlo = transformation_hlo->mutable_operand(0);
+  }
+  return transformation_hlos;
+}
 }  // namespace
 
 absl::StatusOr<bool>
@@ -206,16 +231,76 @@ CollectiveTransformationReorder::ReorderAllGatherTransformations(
       computation->set_root_instruction(new_all_gather);
     }
   }
-  // Remove the original all-gather and reshapes.
-  HloDCE dce;
-  TF_RETURN_IF_ERROR(dce.Run(module, execution_threads).status());
+  return true;
+}
+
+absl::StatusOr<bool>
+CollectiveTransformationReorder::ReorderAllReduceTransformations(
+    HloModule* module,
+    const absl::flat_hash_set<absl::string_view>& execution_threads) {
+  // First, find all reshapes and all-reduces that are eligible for this
+  // transformation.
+  absl::flat_hash_map<HloInstruction*, std::vector<HloInstruction*>>
+      all_reduce_to_transformations;
+  for (HloComputation* computation :
+       module->MakeComputationPostOrder(execution_threads)) {
+    for (HloInstruction* instruction :
+         computation->MakeInstructionPostOrder()) {
+      if (instruction->opcode() == HloOpcode::kAllReduce) {
+        if (instruction->user_count() != 1 ||
+            computation->root_instruction() == instruction) {
+          continue;
+        }
+        std::vector<HloInstruction*> reshapes =
+            GetAllReduceTransformations(instruction);
+        if (reshapes.empty()) {
+          continue;
+        }
+        all_reduce_to_transformations[instruction] = std::move(reshapes);
+      }
+    }
+  }
+  if (all_reduce_to_transformations.empty()) {
+    return false;
+  }
+  for (auto& [inst, reshapes] : all_reduce_to_transformations) {
+    HloComputation* computation = inst->parent();
+    HloAllReduceInstruction* all_reduce =
+        DynCast<HloAllReduceInstruction>(inst);
+    CHECK(!reshapes.empty());
+    HloInstruction* cur_operand = reshapes.back()->mutable_operand(0);
+    HloInstruction* new_all_reduce =
+        computation->AddInstruction(HloInstruction::CreateAllReduce(
+            cur_operand->shape(), {cur_operand}, all_reduce->to_apply(),
+            all_reduce->replica_groups(), all_reduce->constrain_layout(),
+            all_reduce->channel_id(), all_reduce->use_global_device_ids()));
+
+    // For each eligible reshape on the old all-reduce's operand, we reshape the
+    // new all-reduce result instead.
+    cur_operand = new_all_reduce;
+    for (int64_t i = reshapes.size() - 1; i >= 0; --i) {
+      cur_operand = computation->AddInstruction(
+          HloInstruction::CreateReshape(reshapes[i]->shape(), cur_operand));
+    }
+    TF_RETURN_IF_ERROR(
+        computation->ReplaceInstruction(all_reduce, cur_operand));
+  }
   return true;
 }
 
 absl::StatusOr<bool> CollectiveTransformationReorder::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
-  return ReorderAllGatherTransformations(module, execution_threads);
+  TF_ASSIGN_OR_RETURN(bool ag_changed, ReorderAllGatherTransformations(
+                                           module, execution_threads));
+  TF_ASSIGN_OR_RETURN(bool ar_changed, ReorderAllReduceTransformations(
+                                           module, execution_threads));
+  if (ag_changed || ar_changed) {
+    // Remove the original all-gathers/all-reduces and reshapes.
+    HloDCE dce;
+    TF_RETURN_IF_ERROR(dce.Run(module, execution_threads).status());
+  }
+  return ag_changed || ar_changed;
 }
 
 }  // namespace xla

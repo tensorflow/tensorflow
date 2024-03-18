@@ -1844,6 +1844,15 @@ bool LiteralBase::Piece::EqualElements(const LiteralBase::Piece& other) const {
     CHECK(LayoutUtil::IsDenseArray(subshape()))
         << __func__ << " is only supported for dense arrays: " << subshape();
     CHECK_EQ(size_bytes_dense(), other.size_bytes_dense());
+    if (primitive_util::Is4BitType(subshape().element_type())) {
+      auto one_array = buffer();
+      auto two_array = other.buffer();
+      for (int64_t i = 0; i < size_bytes_dense(); ++i) {
+        if ((one_array[i] & uint8_t{0xf}) != (two_array[i] & uint8_t{0xf}))
+          return false;
+      }
+      return true;
+    }
     return memcmp(buffer(), other.buffer(), size_bytes_dense()) == 0;
   }
 

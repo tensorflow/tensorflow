@@ -29,7 +29,6 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
-#include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "mlir/IR/Operation.h"  // from @llvm-project
@@ -177,6 +176,18 @@ Thunk::ExecuteParams Thunk::ExecuteParams::Create(
                        additional_compute_streams);
 }
 
+Thunk::ExecuteParams Thunk::ExecuteParams::CloneWithNewAllocations(
+    const Thunk::ExecuteParams& params,
+    const BufferAllocations& buffer_allocations) {
+  return ExecuteParams(
+      &buffer_allocations, params.stream, params.command_buffer_trace_stream,
+      {params.async_comms_streams.begin(), params.async_comms_streams.end()},
+      params.collective_params, params.collective_cliques,
+      params.device_to_host_stream, params.host_to_device_stream,
+      params.send_device_memory_function, params.recv_device_memory_function,
+      params.additional_compute_streams);
+}
+
 Thunk::ExecuteParams::ExecuteParams(
     const BufferAllocations* buffer_allocations, se::Stream* stream,
     se::Stream* command_buffer_trace_stream,
@@ -206,6 +217,7 @@ Thunk::ExecuteParams::ExecuteParams(
   case Thunk::x: \
     return #x
   switch (kind) {
+    CASE(kAddressComputation);
     CASE(kCholesky);
     CASE(kCommandBuffer);
     CASE(kConditional);

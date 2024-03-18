@@ -222,8 +222,7 @@ void GpuExecutor::UnloadKernel(const Kernel* kernel) {
   kernel_to_gpu_binary_.erase(gpu_binary_it);
 }
 
-absl::Status GpuExecutor::Init(int device_ordinal,
-                               DeviceOptions device_options) {
+absl::Status GpuExecutor::Init(int device_ordinal) {
   device_ordinal_ = device_ordinal;
 
   auto status = GpuDriver::Init();
@@ -236,8 +235,7 @@ absl::Status GpuExecutor::Init(int device_ordinal,
     return status;
   }
 
-  status = GpuDriver::CreateContext(device_ordinal_, device_, device_options,
-                                    &context_);
+  status = GpuDriver::CreateContext(device_ordinal_, device_, &context_);
   if (!status.ok()) {
     return status;
   }
@@ -897,8 +895,6 @@ std::unique_ptr<GpuCommandBuffer> GpuExecutor::CreateCommandBuffer(
   return std::make_unique<GpuCommandBuffer>(mode, /*parent=*/this, graph,
                                             is_owned_graph);
 }
-
-void* GpuExecutor::platform_specific_context() { return context_; }
 
 GpuContext* GpuExecutor::gpu_context() { return context_; }
 

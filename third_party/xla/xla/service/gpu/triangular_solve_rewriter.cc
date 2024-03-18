@@ -15,7 +15,9 @@ limitations under the License.
 
 #include "xla/service/gpu/triangular_solve_rewriter.h"
 
+#include <cstdint>
 #include <numeric>
+#include <vector>
 
 #include "absl/container/flat_hash_set.h"
 #include "absl/status/statusor.h"

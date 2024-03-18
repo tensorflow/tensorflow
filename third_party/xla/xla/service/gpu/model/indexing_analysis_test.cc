@@ -2080,14 +2080,15 @@ TEST_F(IndexingAnalysisTest, FusionWithUnsupportedOp) {
 }
 
 TEST_F(IndexingAnalysisTest, TilingIndexing) {
-  Tiling tiling{/*shape=*/{1024, 256, 16},
+  Tiling tiling{/*shape=*/{1022, 256, 16},
                 /*tile_sizes=*/{8, 1, 4},
                 /*num_threads=*/{1, 4, 4}};
-  EXPECT_THAT(GetIndexingMapForTiling(tiling, &mlir_context_).ToString(),
-              MatchIndexingString(R"(
+  auto indexing_map = GetIndexingMapForTiling(tiling, &mlir_context_);
+  indexing_map.Simplify();
+  EXPECT_THAT(indexing_map.ToString(), MatchIndexingString(R"(
         (d0, d1, d2, d3, d4, d5)[s0, s1, s2] -> (
           (d3 floordiv 64) * 8 + s0,
-          (d3 mod 64) * 4 + d0 floordiv 4,
+          d0 floordiv 4 + (d3 mod 64) * 4,
           d0 mod 4 + s2 * 4
         )
         domain:
@@ -2100,6 +2101,7 @@ TEST_F(IndexingAnalysisTest, TilingIndexing) {
         s0 in [0, 7]
         s1 in [0, 0]
         s2 in [0, 3]
+        (d3 floordiv 64) * 8 + s0 in [0, 1021]
       )"));
 }
 

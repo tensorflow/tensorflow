@@ -67,13 +67,17 @@ limitations under the License.
 #include "mlir/IR/SymbolTable.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
+#include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
+#include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Tools/mlir-translate/Translation.h"  // from @llvm-project
 #include "stablehlo/dialect/StablehloOps.h"  // from @stablehlo
+#include "stablehlo/dialect/VhloOps.h"  // from @stablehlo
 #include "tensorflow/compiler/mlir/lite/flatbuffer_operator.h"
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
 #include "tensorflow/compiler/mlir/lite/offset_buffer.h"
 #include "tensorflow/compiler/mlir/lite/quantization/ir/QuantOps.h"
+#include "tensorflow/compiler/mlir/lite/stablehlo/transforms/passes.h"
 #include "tensorflow/compiler/mlir/lite/utils/const_tensor_utils.h"
 #include "tensorflow/compiler/mlir/lite/utils/convert_type.h"
 #include "tensorflow/compiler/mlir/lite/utils/size_utils.h"
@@ -427,7 +431,14 @@ StatusOr<Operation*> BuildConstOp(const tflite::TensorT& tensor,
   }
 
   if (use_stablehlo_constant) {
-    auto op = builder.create<mlir::stablehlo::ConstantOp>(loc, value);
+    mlir::StablehloVhloTypeConverter vhlo_type_converter;
+    llvm::ArrayRef<char> val_ref(reinterpret_cast<const char*>(buffer.data()),
+                                 buffer.size());
+    auto vhlo_val = mlir::vhlo::TensorV1Attr::get(
+        builder.getContext(), vhlo_type_converter.convertType(shaped_type),
+        val_ref);
+    auto op =
+        builder.create<mlir::vhlo::ConstantOpV1>(loc, shaped_type, vhlo_val);
     return op.getOperation();
   }
   auto op = builder.create<tfl::ConstOp>(loc, value);
@@ -724,11 +735,11 @@ StatusOr<Operation*> ConvertOp(
       }
     }
   }
-  if (op_name == "stablehlo.reduce" || op_name == "stablehlo.reduce_window" ||
-      op_name == "stablehlo.sort" || op_name == "stablehlo.scatter") {
+  if (op_name == "vhlo.reduce_v1" || op_name == "vhlo.reduce_window_v1" ||
+      op_name == "vhlo.sort_v1" || op_name == "vhlo.scatter_v1") {
     op_state.addRegion();
   }
-  if (op_name == "stablehlo.while") {
+  if (op_name == "vhlo.while_v1") {
     op_state.addRegion();
     op_state.addRegion();
   }
@@ -1387,6 +1398,17 @@ void InlineStablehloOpRegion(mlir::Region& region, mlir::func::FuncOp func) {
   return_op.erase();
 }
 
+void InlineVhloOpRegion(mlir::Region& region, mlir::func::FuncOp func) {
+  OpBuilder op_builder{region};
+  mlir::IRMapping mapper;
+  func.getBody().cloneInto(&region, mapper);
+  mlir::Operation& return_op = region.back().back();
+  mlir::Location loc = return_op.getLoc();
+  op_builder.setInsertionPointToEnd(&region.back());
+  op_builder.create<mlir::vhlo::ReturnOpV1>(loc, return_op.getOperands());
+  return_op.erase();
+}
+
 // TFL::WhileOp has regions, so we add CallOp to call the FuncOp in the regions
 // if we have while ops.
 void AddRegionsForTflWhileOp(mlir::ModuleOp module) {
@@ -1406,52 +1428,51 @@ void AddRegionsForTflWhileOp(mlir::ModuleOp module) {
 void AddRegionsForStableHLOOp(mlir::ModuleOp module) {
   mlir::SymbolTable symbol_table(module);
   std::vector<mlir::func::FuncOp> to_delete_funcs;
-  module.walk([&](mlir::stablehlo::ReduceOp reduce_op) {
+  module.walk([&](mlir::vhlo::ReduceOpV1 reduce_op) {
     auto body = symbol_table.lookup<mlir::func::FuncOp>(
         reduce_op->getAttr("body").cast<mlir::FlatSymbolRefAttr>().getValue());
-    InlineStablehloOpRegion(reduce_op.getBody(), body);
+    InlineVhloOpRegion(reduce_op.getBody(), body);
     reduce_op->removeAttr("body");
     to_delete_funcs.push_back(body);
   });
-  module.walk([&](mlir::stablehlo::ReduceWindowOp reduce_window_op) {
+  module.walk([&](mlir::vhlo::ReduceWindowOpV1 reduce_window_op) {
     auto body = symbol_table.lookup<mlir::func::FuncOp>(
         reduce_window_op->getAttr("body")
             .cast<mlir::FlatSymbolRefAttr>()
             .getValue());
-    InlineStablehloOpRegion(reduce_window_op.getBody(), body);
+    InlineVhloOpRegion(reduce_window_op.getBody(), body);
     reduce_window_op->removeAttr("body");
     to_delete_funcs.push_back(body);
   });
-  module.walk([&](mlir::stablehlo::SortOp sort_op) {
-    auto comparator = symbol_table.lookup<mlir::func::FuncOp>(
-        sort_op->getAttr("comparator")
-            .cast<mlir::FlatSymbolRefAttr>()
-            .getValue());
-    InlineStablehloOpRegion(sort_op.getComparator(), comparator);
-    sort_op->removeAttr("comparator");
-    to_delete_funcs.push_back(comparator);
-  });
-  module.walk([&](mlir::stablehlo::WhileOp while_op) {
-    auto cond = symbol_table.lookup<mlir::func::FuncOp>(
-        while_op->getAttr("cond").cast<mlir::FlatSymbolRefAttr>().getValue());
-    InlineStablehloOpRegion(while_op.getCond(), cond);
-    while_op->removeAttr("cond");
-    auto body = symbol_table.lookup<mlir::func::FuncOp>(
-        while_op->getAttr("body").cast<mlir::FlatSymbolRefAttr>().getValue());
-    InlineStablehloOpRegion(while_op.getBody(), body);
-    while_op->removeAttr("body");
-    to_delete_funcs.push_back(body);
-    to_delete_funcs.push_back(cond);
-  });
-  module.walk([&](mlir::stablehlo::ScatterOp scatter_op) {
+  module.walk([&](mlir::vhlo::ScatterOpV1 scatter_op) {
     auto update_computation = symbol_table.lookup<mlir::func::FuncOp>(
         scatter_op->getAttr(kScatterRegionFuncName)
             .cast<mlir::FlatSymbolRefAttr>()
             .getValue());
-    InlineStablehloOpRegion(scatter_op.getUpdateComputation(),
-                            update_computation);
+    InlineVhloOpRegion(scatter_op.getUpdateComputation(), update_computation);
     scatter_op->removeAttr(kScatterRegionFuncName);
     to_delete_funcs.push_back(update_computation);
+  });
+  module.walk([&](mlir::vhlo::SortOpV1 sort_op) {
+    auto comparator = symbol_table.lookup<mlir::func::FuncOp>(
+        sort_op->getAttr("comparator")
+            .cast<mlir::FlatSymbolRefAttr>()
+            .getValue());
+    InlineVhloOpRegion(sort_op.getComparator(), comparator);
+    sort_op->removeAttr("comparator");
+    to_delete_funcs.push_back(comparator);
+  });
+  module.walk([&](mlir::vhlo::WhileOpV1 while_op) {
+    auto cond = symbol_table.lookup<mlir::func::FuncOp>(
+        while_op->getAttr("cond").cast<mlir::FlatSymbolRefAttr>().getValue());
+    InlineVhloOpRegion(while_op.getCond(), cond);
+    while_op->removeAttr("cond");
+    auto body = symbol_table.lookup<mlir::func::FuncOp>(
+        while_op->getAttr("body").cast<mlir::FlatSymbolRefAttr>().getValue());
+    InlineVhloOpRegion(while_op.getBody(), body);
+    while_op->removeAttr("body");
+    to_delete_funcs.push_back(body);
+    to_delete_funcs.push_back(cond);
   });
   for (auto& func : to_delete_funcs) {
     func.erase();
@@ -1464,22 +1485,23 @@ OwningOpRef<mlir::ModuleOp> tflite::FlatBufferToMlir(
     bool use_external_constant,
     const std::vector<std::string>& ordered_input_arrays,
     const std::vector<std::string>& ordered_output_arrays,
-    bool experimental_prune_unreachable_nodes_unconditionally) {
+    bool experimental_prune_unreachable_nodes_unconditionally,
+    const bool disable_vhlo_to_stablehlo) {
   mlir::DialectRegistry registry;
   registry.insert<mlir::arith::ArithDialect, mlir::func::FuncDialect,
                   mlir::quant::QuantizationDialect,
                   mlir::quantfork::QuantizationForkDialect,
                   mlir::TFL::TensorFlowLiteDialect, mlir::TF::TensorFlowDialect,
-                  mlir::stablehlo::StablehloDialect>();
+                  mlir::stablehlo::StablehloDialect, mlir::vhlo::VhloDialect>();
   mlir::func::registerAllExtensions(registry);
   context->appendDialectRegistry(registry);
 
-  context->loadDialect<mlir::arith::ArithDialect, mlir::func::FuncDialect,
-                       mlir::quant::QuantizationDialect,
-                       mlir::quantfork::QuantizationForkDialect,
-                       mlir::TFL::TensorFlowLiteDialect,
-                       mlir::TF::TensorFlowDialect,
-                       mlir::stablehlo::StablehloDialect>();
+  context->loadDialect<
+      mlir::arith::ArithDialect, mlir::func::FuncDialect,
+      mlir::quant::QuantizationDialect,
+      mlir::quantfork::QuantizationForkDialect,
+      mlir::TFL::TensorFlowLiteDialect, mlir::TF::TensorFlowDialect,
+      mlir::stablehlo::StablehloDialect, mlir::vhlo::VhloDialect>();
 
   auto model_ptr =
       FlatBufferModel::VerifyAndBuildFromBuffer(buffer.data(), buffer.length());
@@ -1591,5 +1613,13 @@ OwningOpRef<mlir::ModuleOp> tflite::FlatBufferToMlir(
   }
   AddRegionsForTflWhileOp(module);
   AddRegionsForStableHLOOp(module);
+  if (!disable_vhlo_to_stablehlo) {
+    mlir::PassManager pass_manager(module.getContext());
+    pass_manager.addPass(mlir::odml::createLegalizeVhloToStablehloPass());
+    auto result = pass_manager.run(module);
+    if (failed(result)) {
+      return nullptr;
+    }
+  }
   return OwningOpRef<mlir::ModuleOp>(module);
 }

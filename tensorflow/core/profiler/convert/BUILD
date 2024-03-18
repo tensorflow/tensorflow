@@ -637,6 +637,7 @@ cc_library(
         ":xplane_to_tool_names",
         ":xplane_to_trace_container",
         "//tensorflow/core:lib",
+        "//tensorflow/core/profiler/convert/trace_viewer:trace_events",
         "//tensorflow/core/profiler/convert/trace_viewer:trace_events_to_json",
         "//tensorflow/core/profiler/protobuf:dcn_slack_analysis_proto_cc",
         "//tensorflow/core/profiler/protobuf:hardware_types_proto_cc",

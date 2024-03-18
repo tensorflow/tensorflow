@@ -79,6 +79,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_schedule.h"
+#include "xla/layout.h"
 #include "xla/layout_util.h"
 #include "xla/literal.h"
 #include "xla/mlir_hlo/transforms/gpu_passes.h"
@@ -99,6 +100,7 @@ limitations under the License.
 #include "xla/service/gpu/gpu_norm_runner.h"
 #include "xla/service/gpu/hlo_fusion_analysis.h"
 #include "xla/service/gpu/ir_emission_utils.h"
+#include "xla/service/gpu/ir_emitter.h"
 #include "xla/service/gpu/ir_emitter_context.h"
 #include "xla/service/gpu/ir_emitter_nested.h"
 #include "xla/service/gpu/kernel_arguments.h"
@@ -108,10 +110,7 @@ limitations under the License.
 #include "xla/service/gpu/launch_dimensions.h"
 #include "xla/service/gpu/matmul_utils.h"
 #include "xla/service/gpu/nccl_api.h"
-#include "xla/service/gpu/nccl_collective_broadcast_thunk.h"
 #include "xla/service/gpu/nccl_collective_thunk.h"
-#include "xla/service/gpu/nccl_recv_thunk.h"
-#include "xla/service/gpu/nccl_send_thunk.h"
 #include "xla/service/gpu/parallel_loop_emitter.h"
 #include "xla/service/gpu/runtime/command_buffer_cmd.h"
 #include "xla/service/gpu/runtime/command_buffer_cmd_emitter.h"
@@ -128,7 +127,10 @@ limitations under the License.
 #include "xla/service/gpu/runtime/nccl_all_gather_thunk.h"
 #include "xla/service/gpu/runtime/nccl_all_reduce_thunk.h"
 #include "xla/service/gpu/runtime/nccl_all_to_all_thunk.h"
+#include "xla/service/gpu/runtime/nccl_collective_broadcast_thunk.h"
 #include "xla/service/gpu/runtime/nccl_collective_permute_thunk.h"
+#include "xla/service/gpu/runtime/nccl_recv_thunk.h"
+#include "xla/service/gpu/runtime/nccl_send_thunk.h"
 #include "xla/service/gpu/runtime/norm_thunk.h"
 #include "xla/service/gpu/runtime/outfeed_thunk.h"
 #include "xla/service/gpu/runtime/replica_id_thunk.h"
@@ -141,7 +143,9 @@ limitations under the License.
 #include "xla/service/llvm_ir/buffer_assignment_util.h"
 #include "xla/service/llvm_ir/ir_array.h"
 #include "xla/service/llvm_ir/kernel_support_library.h"
+#include "xla/service/llvm_ir/llvm_loop.h"
 #include "xla/service/llvm_ir/llvm_util.h"
+#include "xla/service/llvm_ir/loop_emitter.h"
 #include "xla/service/llvm_ir/sort_util.h"
 #include "xla/service/name_uniquer.h"
 #include "xla/shape.h"
@@ -728,10 +732,6 @@ absl::Status IrEmitterUnnested::EmitCublasLtMatmulThunk(
   return absl::OkStatus();
 }
 
-#endif  // GOOGLE_CUDA || TF_HIPBLASLT
-
-#if GOOGLE_CUDA
-
 absl::Status IrEmitterUnnested::EmitCublasLtMatmulThunkF8(
     const HloCustomCallInstruction* instr) {
   TF_RET_CHECK(instr->operand_count() == 6 || instr->operand_count() == 7 ||
@@ -767,12 +767,17 @@ absl::Status IrEmitterUnnested::EmitCublasLtMatmulThunkF8(
   TF_ASSIGN_OR_RETURN(
       BufferAllocation::Slice b_scale,
       GetAllocationSliceForHlo(instr->operand(a_scale_index + 1)));
+#if GOOGLE_CUDA
   TF_ASSIGN_OR_RETURN(
       BufferAllocation::Slice c_scale,
       GetAllocationSliceForHlo(instr->operand(a_scale_index + 2)));
   TF_ASSIGN_OR_RETURN(
       BufferAllocation::Slice d_scale,
       GetAllocationSliceForHlo(instr->operand(a_scale_index + 3)));
+#else  // TENSORFLOW_USE_ROCM
+  BufferAllocation::Slice c_scale;
+  BufferAllocation::Slice d_scale;
+#endif
 
   BufferAllocation::Slice bias;
   if (has_vector_bias) {
@@ -806,7 +811,9 @@ absl::Status IrEmitterUnnested::EmitCublasLtMatmulThunkF8(
   AddThunkToThunkSequence(std::move(thunk));
   return absl::OkStatus();
 }
+#endif  // GOOGLE_CUDA || TF_HIPBLASLT
 
+#if GOOGLE_CUDA
 absl::Status IrEmitterUnnested::EmitConvolutionReorderThunk(
     const HloCustomCallInstruction* instr) {
   bool has_bias = instr->operand_count() > 1;
@@ -1716,16 +1723,17 @@ absl::Status IrEmitterUnnested::EmitTritonCustomCall(
     // Move function body into kernel prototype.
     llvm::Function* prototype_func = builder.GetInsertBlock()->getParent();
     prototype_func->splice(prototype_func->begin(), impl_fn);
-    for (const auto& [kernel_arg, arg, input] :
-         llvm::zip(kernel_arguments.args(), impl_fn->args(), inputs)) {
+    for (const auto& [arg, input] : llvm::zip(impl_fn->args(), inputs)) {
+      arg.replaceAllUsesWith(input.GetBasePointer());
+    }
+    impl_fn->eraseFromParent();
+
+    for (auto& arg : prototype_func->args()) {
       // Remove the alignment and aliasing attributes to avoid recompiling the
       // kernel for each alignment/aliasing combination.
       arg.removeAttr(llvm::Attribute::Alignment);
       arg.removeAttr(llvm::Attribute::NoAlias);
-
-      arg.replaceAllUsesWith(input.GetBasePointer());
     }
-    impl_fn->eraseFromParent();
 
     return {{kernel->getName().str(), launch_dimensions, result.cluster_dim,
              result.shmem_bytes}};
@@ -2897,11 +2905,11 @@ absl::Status IrEmitterUnnested::EmitHloInstruction(
       if (IsCublasLtMatmul(*instr)) {
         return EmitCublasLtMatmulThunk(custom_call);
       }
-#endif  // GOOGLE_CUDA || TF_HIPBLASLT
-#if GOOGLE_CUDA
       if (IsCublasLtMatmulF8(*instr)) {
         return EmitCublasLtMatmulThunkF8(custom_call);
       }
+#endif  // GOOGLE_CUDA || TF_HIPBLASLT
+#if GOOGLE_CUDA
       if (IsCudnnConvolutionReorder(*instr)) {
         return EmitConvolutionReorderThunk(custom_call);
       }

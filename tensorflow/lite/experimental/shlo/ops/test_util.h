@@ -74,8 +74,17 @@ Vector<typename Config::Type> IotaBuffer(
   return vec;
 }
 
-template <DataType storage_type, DataType expressed_type = DataType::kF32>
-struct TestParam {
+template <DataType... Types>
+struct TestParam;
+
+template <DataType storage_type>
+struct TestParam<storage_type> {
+  static constexpr DataType kStorage = storage_type;
+  using StorageT = StorageType<storage_type>;
+};
+
+template <DataType storage_type, DataType expressed_type>
+struct TestParam<storage_type, expressed_type> {
   static constexpr DataType kStorage = storage_type;
   static constexpr DataType kExpressed = expressed_type;
   using StorageT = StorageType<storage_type>;
@@ -115,10 +124,12 @@ constexpr const char* ToString(DataType t) {
 template <class T>
 struct ParamName;
 
-template <DataType S, DataType E>
-struct ParamName<TestParam<S, E>> {
+template <DataType T, DataType... Ts>
+struct ParamName<TestParam<T, Ts...>> {
   static std::string Get() {
-    return std::string("TypeParam<") + ToString(S) + ", " + ToString(E) + ">";
+    std::string name = std::string("") + ToString(T);
+    ((name += std::string("_") + ToString(Ts)), ...);
+    return name;
   }
 };
 

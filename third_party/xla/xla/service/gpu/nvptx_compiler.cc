@@ -94,10 +94,12 @@ limitations under the License.
 #include "xla/stream_executor/cuda/ptx_compiler.h"
 #include "xla/stream_executor/cuda/ptx_compiler_support.h"
 #include "xla/stream_executor/device_description.h"
+#include "xla/stream_executor/device_memory_allocator.h"
 #include "xla/stream_executor/dnn.h"
 #include "xla/stream_executor/gpu/asm_compiler.h"
 #include "xla/stream_executor/gpu/gpu_asm_opts.h"
 #include "xla/stream_executor/gpu/gpu_driver.h"
+#include "xla/stream_executor/gpu/gpu_executor.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/util.h"
 #include "xla/xla.pb.h"
@@ -224,8 +226,6 @@ absl::Status NVPTXCompiler::OptimizeHloPostLayoutAssignment(
     HloModule* hlo_module, se::StreamExecutor* stream_exec,
     const CompileOptions& options, const TargetConfig& gpu_target_config,
     tsl::thread::ThreadPool* thread_pool) {
-  HloPassPipeline pre_pipeline("nvptx post-layout_assignment part 1");
-
   // This needs to run before GemmRewriter, which is part of
   // OptimizeHloPostLayoutAssignment().
   auto cuda_compute_capability = std::get<se::CudaComputeCapability>(
@@ -234,7 +234,6 @@ absl::Status NVPTXCompiler::OptimizeHloPostLayoutAssignment(
   if (hlo_module->config().debug_options().xla_gpu_enable_cudnn_fmha()) {
     HloPassPipeline mha_fusion_pipeline(
         "nvptx cudnn multi-headed attention fusion");
-    const DebugOptions& debug_options = hlo_module->config().debug_options();
     // The LayoutAssignment pass may leave behind kCopy instructions which are
     // duplicate or NOPs, so remove them with algebraic simplification and CSE.
     AlgebraicSimplifierOptions alg_sim_options =
@@ -247,11 +246,6 @@ absl::Status NVPTXCompiler::OptimizeHloPostLayoutAssignment(
         !hlo_module->config().debug_options().xla_gpu_enable_fast_min_max());
     alg_sim_options.set_enable_unconditional_reduce_of_concat_replacement(
         false);
-    if (debug_options.xla_gpu_normalize_layouts()) {
-      mha_fusion_pipeline.AddPass<ReshapeDecomposer>();
-      mha_fusion_pipeline.AddPass<HloPassFix<MoveCopyToUsers>>();
-      mha_fusion_pipeline.AddPass<LayoutNormalization>();
-    }
 
     mha_fusion_pipeline.AddPass<HloCSE>(/*is_layout_sensitive=*/true);
     mha_fusion_pipeline.AddPass<HloPassFix<AlgebraicSimplifier>>(
@@ -272,6 +266,7 @@ absl::Status NVPTXCompiler::OptimizeHloPostLayoutAssignment(
     TF_RETURN_IF_ERROR(mha_fusion_pipeline.Run(hlo_module).status());
   }
 
+  HloPassPipeline pre_pipeline("nvptx post-layout_assignment part 1");
   // Rewrite normalization patterns into cuDNN Custom Calls.
   pre_pipeline.AddPass<CudnnNormRewriter>(cuda_compute_capability);
 
@@ -333,7 +328,7 @@ absl::Status NVPTXCompiler::AddConvAndGemmAutotuningPasses(
   return absl::OkStatus();
 }
 
-absl::Status NVPTXCompiler::AddTritonGemmAutotuningPasses(
+absl::Status NVPTXCompiler::AddGemmFusionAutotuningPasses(
     HloPassPipeline* pipeline, HloModule* hlo_module,
     AutotuneConfig& autotune_config, tsl::thread::ThreadPool* thread_pool) {
   pipeline->AddPass<GemmFusionAutotuner>(autotune_config, thread_pool);
@@ -799,8 +794,7 @@ absl::StatusOr<std::vector<uint8_t>> NVPTXCompiler::LinkModules(
   for (std::vector<uint8_t>& module : modules) {
     images.push_back({"", std::move(module)});
   }
-  auto context = static_cast<se::gpu::GpuContext*>(
-      stream_exec->platform_specific_handle().context);
+  auto context = se::gpu::ExtractGpuExecutor(stream_exec)->gpu_context();
 
   TF_ASSIGN_OR_RETURN(LinkingMethod linking_method,
                       ChooseLinkingMethod(debug_options));

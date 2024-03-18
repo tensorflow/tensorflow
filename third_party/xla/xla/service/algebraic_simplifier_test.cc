@@ -10736,7 +10736,7 @@ TEST_F(AlgebraicSimplifierTest, SparseDotRemoveDegenerateDimensions) {
     ENTRY test {
       %lhs = f32[1,5,10,16,1] parameter(0)
       %rhs = f32[5,1,20,1,32] parameter(1)
-      %meta = u16[10,2,1] parameter(2)
+      %meta = u16[1,5,10,2,1] parameter(2)
       ROOT %dot = f32[1,5,10,20] dot(%lhs, %rhs, %meta),
           lhs_batch_dims={0,1}, rhs_batch_dims={1,0},
           lhs_contracting_dims={3,4}, rhs_contracting_dims={4,3},
@@ -10763,7 +10763,7 @@ TEST_F(AlgebraicSimplifierTest, SparseDotMoveSliceToOperands) {
     ENTRY test {
       %lhs = f32[7,12,16] parameter(0)
       %rhs = f32[7,22,32] parameter(1)
-      %meta = u16[12,2] parameter(2)
+      %meta = u16[7,12,2] parameter(2)
       %dot = f32[7,12,22] dot(%lhs, %rhs, %meta),
           lhs_batch_dims={0}, rhs_batch_dims={0},
           lhs_contracting_dims={2}, rhs_contracting_dims={2},

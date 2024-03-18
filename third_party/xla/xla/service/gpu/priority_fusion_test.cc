@@ -19,6 +19,7 @@ limitations under the License.
 
 #include <memory>
 #include <optional>
+#include <utility>
 #include <vector>
 
 #include <gmock/gmock.h>

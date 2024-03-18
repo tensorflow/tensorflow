@@ -18,11 +18,8 @@ limitations under the License.
 #include <algorithm>
 #include <cstdint>
 #include <limits>
-#include <memory>
 #include <string>
-#include <tuple>
 #include <utility>
-#include <vector>
 
 #include "absl/base/const_init.h"
 #include "absl/base/thread_annotations.h"
@@ -37,14 +34,12 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_clone_context.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
-#include "xla/service/compilation_environments.h"
 #include "xla/service/gpu/gpu_asm_opts_util.h"
 #include "xla/service/gpu/stream_executor_util.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/status.h"
 #include "xla/status_macros.h"
-#include "xla/statusor.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/gpu/redzone_allocator.h"
 #include "xla/stream_executor/stream.h"
@@ -167,8 +162,19 @@ static AutotuneResult* TryFindInCache(const AutotuneCacheKey& key) {
   absl::MutexLock lock(&autotune_cache_mu);
   auto it = autotune_cache.find(key);
   if (it != autotune_cache.end()) {
-    VLOG(1) << "Autotune cache hit";
+    // Cache hit.
+    if (VLOG_IS_ON(1)) {
+      LOG(INFO) << "Autotune cache hit";
+    } else if (VLOG_IS_ON(2)) {
+      LOG(INFO) << "Autotune cache hit: key = " << key.ToString();
+    }
     return &it->second;
+  }
+
+  if (VLOG_IS_ON(1)) {
+    LOG(INFO) << "Autotune cache miss";
+  } else if (VLOG_IS_ON(2)) {
+    LOG(INFO) << "Autotune cache miss: key = " << key.ToString();
   }
   return nullptr;
 }
@@ -192,9 +198,17 @@ static AutotuneResult* TryFindInCache(const AutotuneCacheKey& key) {
 /*static*/ absl::StatusOr<AutotuneResult> AutotunerUtil::Autotune(
     const HloInstruction* instr, const AutotuneConfig& config,
     const AutotuneNoCacheFn& autotune_fn) {
-  AutotuneCacheKey key = GetKey(instr, config);
+  const AutotuneCacheKey key = GetKey(instr, config);
   if (AutotuneResult* res = TryFindInCache(key)) {
     return *res;
+  }
+
+  // Cache miss.
+  if (config.should_require_complete_aot_autotune_results()) {
+    return NotFound(
+        "Complete XLA AOT autotuning results are required, but no AOT result "
+        "was found for key: %s",
+        key.ToString());
   }
 
   TF_ASSIGN_OR_RETURN(AutotuneResult autotune_result, autotune_fn());

@@ -35,6 +35,7 @@ limitations under the License.
 #include "absl/synchronization/mutex.h"
 #include "absl/time/time.h"
 #include "mlir/IR/Value.h"  // from @llvm-project
+#include "xla/debug_options_flags.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/layout_util.h"
 #include "xla/primitive_util.h"
@@ -50,7 +51,6 @@ limitations under the License.
 #include "xla/service/rendezvous.h"
 #include "xla/shape.h"
 #include "xla/status.h"
-#include "xla/statusor.h"
 #include "xla/stream_executor/event.h"
 #include "xla/stream_executor/gpu/gpu_activation.h"
 #include "xla/stream_executor/stream.h"

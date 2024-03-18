@@ -133,6 +133,9 @@ std::string AutoShardingOption::ToString() const {
       absl::StrCat("use_sharding_propagation_for_default_shardings: ",
                    use_sharding_propagation_for_default_shardings));
 
+  lines.push_back(absl::StrCat("model_resharding_memory_costs: ",
+                               model_resharding_memory_costs));
+
   return absl::StrJoin(lines, "\n");
 }
 

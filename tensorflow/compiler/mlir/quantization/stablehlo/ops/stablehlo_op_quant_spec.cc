@@ -23,12 +23,15 @@ limitations under the License.
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/OpDefinition.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
+#include "mlir/IR/SymbolTable.h"  // from @llvm-project  // IWYU pragma: keep
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "stablehlo/dialect/StablehloOps.h"  // from @stablehlo
 #include "tensorflow/compiler/mlir/lite/quantization/ir/QuantOps.h"
+#include "tensorflow/compiler/mlir/quantization/common/attrs_and_constraints.h"
 #include "tensorflow/compiler/mlir/quantization/common/lift_as_function_call.h"
 #include "tensorflow/compiler/mlir/quantization/common/quantization_lib/quantization_utils.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/quantization_config.pb.h"
@@ -42,6 +45,7 @@ limitations under the License.
 namespace mlir::quant::stablehlo {
 namespace {
 
+using ::mlir::stablehlo::DotGeneralOp;
 using ::stablehlo::quantization::Method;
 
 // Whether it represents a lifted function (i.e. `op` is the corresponding
@@ -75,13 +79,16 @@ std::unique_ptr<OpQuantSpec> GetStableHloOpQuantSpec(Operation* op) {
                                   quant::GetUniformQuantizedTypeForBias};
       }
     } else if (function_name.contains("dot_general")) {
-      spec->coeff_op_quant_dim[1] = -1;
-      if (function_name.contains("with_bias")) {
-        spec->biases_params[2] = {{0, 1},
-                                  quant::GetUniformQuantizedTypeForBias};
+      const auto module_op = call_op->getParentOfType<ModuleOp>();
+
+      const SymbolTable symbol_table(module_op);
+      auto entry_func_op =
+          dyn_cast_or_null<func::FuncOp>(symbol_table.lookup(function_name));
+      auto dot_general_op = *entry_func_op.getOps<DotGeneralOp>().begin();
+      if (auto optional_dim = GetDotGeneralQuantizationDim(dot_general_op);
+          optional_dim) {
+        spec->coeff_op_quant_dim[1] = optional_dim.value();
       }
-    } else if (function_name.contains("dot")) {
-      spec->coeff_op_quant_dim[1] = -1;
       if (function_name.contains("with_bias")) {
         spec->biases_params[2] = {{0, 1},
                                   quant::GetUniformQuantizedTypeForBias};

@@ -70,8 +70,8 @@ class MlirFusionEmitterBase : public KernelFusionInterface {
   // Returns the set of instructions that will be isolated in the partitioned,
   // i.e., they will get their own subgraph. We won't automatically emit
   // functions for these instructions.
-  virtual absl::flat_hash_set<const HloInstruction*>
-  GetInstructionsWithCustomCodegen(const HloFusionInstruction& fusion) const {
+  virtual std::vector<const HloInstruction*> GetInstructionsWithCustomCodegen(
+      const HloFusionInstruction& fusion) const {
     return {};
   }
 
@@ -81,12 +81,12 @@ class MlirFusionEmitterBase : public KernelFusionInterface {
       mlir::func::FuncOp entry_function,
       const HloFusionInstruction& fusion) const = 0;
 
-  // If the root is not the same as the hero, emits the epilogue for the hero.
-  // The hero must have been passed in `GetInstructionsWithCustomCodegen`.
+  // Evaluates the epilogue of the fusion. Returns `hero_values` if there is no
+  // epilogue.
   mlir::ValueRange EmitEpilogue(
-      const HloInstruction* root, const HloInstruction* hero,
-      const mlir_converter::CallTargetProvider& call_targets,
-      mlir::ValueRange injected_values, mlir::ValueRange output_indices,
+      const mlir_converter::PartitionedComputations& computations,
+      mlir::func::FuncOp entry_fn, mlir::ValueRange hero_values,
+      mlir::ValueRange output_indices,
       mlir::ImplicitLocOpBuilder& builder) const;
 
   // Emit a loop nest for the symbols in the output map. The map should have

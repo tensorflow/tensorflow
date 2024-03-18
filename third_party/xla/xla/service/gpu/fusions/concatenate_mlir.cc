@@ -79,10 +79,10 @@ MlirConcatenateFusion::ComputeThreadIdToInputIndexing(
       GetLargestConcatOperandShape(analysis_), ctx);
 }
 
-absl::flat_hash_set<const HloInstruction*>
+std::vector<const HloInstruction*>
 MlirConcatenateFusion::GetInstructionsWithCustomCodegen(
     const HloFusionInstruction& fusion) const {
-  return {analysis_.fusion_heroes()[0]};
+  return analysis_.fusion_heroes();
 }
 
 absl::Status MlirConcatenateFusion::EmitEntryFunction(
@@ -131,14 +131,13 @@ absl::Status MlirConcatenateFusion::EmitEntryFunction(
                                          dim_values, symbol_values, builder);
 
       auto result_scalars = mlir_converter::ProvideParameter(
-          root_computation, concat, operand_index, input_indices, call_targets,
-          builder);
+          root_computation.FindSubgraph(concat), concat, operand_index,
+          input_indices, call_targets, entry_function, builder);
       auto output_indices =
           mlir_converter::ApplyAffineMap(thread_id_to_output_map.GetAffineMap(),
                                          dim_values, symbol_values, builder);
-      result_scalars =
-          EmitEpilogue(analysis_.fusion_roots()[0], concat, call_targets,
-                       result_scalars, output_indices, builder);
+      result_scalars = EmitEpilogue(computations, entry_function,
+                                    result_scalars, output_indices, builder);
 
       SmallVector<Value> result_tensors;
       result_tensors.reserve(output_tensor_args.size());

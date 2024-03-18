@@ -980,6 +980,56 @@ LogicalResult DotGeneralOp::reifyReturnTypeShapes(
 }
 
 //===----------------------------------------------------------------------===//
+// SparseDotOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult SparseDotOp::verify() {
+  RankedTensorType lhsType = getLhs().getType().dyn_cast<RankedTensorType>();
+  RankedTensorType rhsType = getRhs().getType().dyn_cast<RankedTensorType>();
+  // If either operand is unranked, static verification is not possible.
+  if (!lhsType || !rhsType) return success();
+
+  auto applySparsityDescriptor = [&](std::optional<SparsityDescriptorAttr> attr,
+                                     RankedTensorType* type) {
+    if (!attr.has_value()) return success();
+    SmallVector<int64_t> sparseShape(type->getShape());
+    if (static_cast<size_t>(attr->getDimension()) >= sparseShape.size()) {
+      return emitOptionalError(getLoc(), "sparsity dimension is incorrect");
+    }
+    if (attr->getN() != 2 || attr->getM() != 4) {
+      return emitOptionalError(getLoc(), "only 2:4 sparsity is supported");
+    }
+    sparseShape[attr->getDimension()] *= attr->getM() / attr->getN();
+    *type = type->clone(sparseShape);
+    return success();
+  };
+  if (failed(applySparsityDescriptor(getLhsSparsity(), &lhsType)) ||
+      failed(applySparsityDescriptor(getRhsSparsity(), &rhsType)))
+    return failure();
+
+  SmallVector<ShapedTypeComponents> inferredReturnShapes;
+  if (failed(hlo::inferDotGeneralOp(
+          getLoc(), lhsType, rhsType,
+          getDotDimensionNumbersAttr().getLhsBatchingDimensions(),
+          getDotDimensionNumbersAttr().getRhsBatchingDimensions(),
+          getDotDimensionNumbersAttr().getLhsContractingDimensions(),
+          getDotDimensionNumbersAttr().getRhsContractingDimensions(),
+          getPrecisionConfig(), inferredReturnShapes)))
+    return failure();
+
+  auto inferredShape = inferredReturnShapes[0];
+  auto resultType = getResult().getType().cast<ShapedType>();
+  if (inferredShape.hasRank() && resultType.hasRank() &&
+      failed(verifyCompatibleShape(inferredShape.getDims(),
+                                   resultType.getShape())))
+    return emitOptionalError(getLoc(), "inferred shape '",
+                             hlo::dimSizesToString(inferredShape.getDims()),
+                             "' is incompatible with return type of operation ",
+                             resultType);
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
 // FftOp
 //===----------------------------------------------------------------------===//
 LogicalResult verify1dTensor(std::optional<Location> loc,

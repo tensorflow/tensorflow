@@ -16,21 +16,23 @@ limitations under the License.
 #include "xla/service/gpu/matmul_utils.h"
 
 #include <algorithm>
+#include <cstddef>
 #include <cstdint>
 #include <optional>
 #include <string>
 #include <tuple>
-#include <type_traits>
 #include <utility>
 #include <vector>
 
 #include "absl/algorithm/container.h"
 #include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/types/span.h"
 #include "xla/autotuning.pb.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/primitive_util.h"
 #include "xla/service/algorithm_util.h"
 #include "xla/service/gpu/backend_configs.pb.h"
@@ -38,7 +40,6 @@ limitations under the License.
 #include "xla/shape_util.h"
 #include "xla/status.h"
 #include "xla/status_macros.h"
-#include "xla/statusor.h"
 #include "xla/stream_executor/blas.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/gpu/gpu_blas_lt.h"
@@ -47,11 +48,11 @@ limitations under the License.
 #include "xla/types.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
+#include "tsl/platform/errors.h"
 #include "tsl/platform/status.h"
 #include "tsl/platform/statusor.h"
 
 #if GOOGLE_CUDA
-#include "xla/stream_executor/host_or_device_scalar.h"
 #endif  // GOOGLE_CUDA
 
 namespace xla {
@@ -389,6 +390,8 @@ absl::StatusOr<bool> CanFoldTransposeOperandIntoDot(const HloInstruction& dot,
   switch (output_shape.element_type()) {
     case F8E4M3FN:
     case F8E5M2:
+    case F8E4M3FNUZ:
+    case F8E5M2FNUZ:
     case F16:
     case BF16:
     case F32:
@@ -836,6 +839,59 @@ std::string TritonGemmConfig::ToString() const {
                       ",block_k:", block_k, ",split_k:", split_k,
                       ",num_stages:", num_stages, ",num_warps:", num_warps,
                       ",num_ctas:", num_ctas, "}");
+}
+
+absl::StatusOr<bool> IsMatrixMultiplicationTooSmallForRewriting(
+    const HloInstruction& dot, int64_t threshold) {
+  CHECK_EQ(dot.opcode(), HloOpcode::kDot);
+
+  const Shape& lhs_shape = dot.operand(0)->shape();
+  const Shape& rhs_shape = dot.operand(1)->shape();
+  const DotDimensionNumbers& dot_dims = dot.dot_dimension_numbers();
+
+  int64_t contracting_size = 1;
+  for (int64_t dim : dot_dims.lhs_contracting_dimensions()) {
+    contracting_size *= lhs_shape.dimensions(dim);
+  }
+
+  TF_ASSIGN_OR_RETURN(
+      std::vector<int64_t> lhs_non_contracting_dims,
+      GetNonContractingDims(lhs_shape, dot_dims.lhs_batch_dimensions(),
+                            dot_dims.lhs_contracting_dimensions()));
+  int64_t lhs_non_contracting_size = 1;
+  for (int64_t dim : lhs_non_contracting_dims) {
+    lhs_non_contracting_size *= lhs_shape.dimensions(dim);
+  }
+
+  TF_ASSIGN_OR_RETURN(
+      std::vector<int64_t> rhs_non_contracting_dims,
+      GetNonContractingDims(rhs_shape, dot_dims.rhs_batch_dimensions(),
+                            dot_dims.rhs_contracting_dimensions()));
+  int64_t rhs_non_contracting_size = 1;
+  for (int64_t dim : rhs_non_contracting_dims) {
+    rhs_non_contracting_size *= rhs_shape.dimensions(dim);
+  }
+
+  return (rhs_non_contracting_size + lhs_non_contracting_size) *
+             contracting_size <
+         threshold;
+}
+
+bool IsDotSupportedByClassicalEmitters(const HloInstruction& dot) {
+  if (!algorithm_util::IsSupportedByElementalIrEmitter(
+          dot.precision_config().algorithm())) {
+    return false;
+  }
+
+  // Let us be conservative and only throw float dots at the emitters.
+  switch (dot.shape().element_type()) {
+    case F16:
+    case F32:
+    case BF16:
+      return true;
+    default:
+      return false;
+  }
 }
 
 }  // namespace gpu

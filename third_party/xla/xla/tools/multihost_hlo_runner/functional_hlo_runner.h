@@ -207,6 +207,9 @@ class FunctionalHloRunner {
     int partitions = 1;
   };
 
+  // Create a PjRtClient which can run HLOs on Host CPU.
+  static absl::StatusOr<std::unique_ptr<PjRtClient>> CreateHostClient();
+
   // Create a PjRtClient which can run HLOs on GPU.
   static absl::StatusOr<std::unique_ptr<PjRtClient>> CreateGpuClient();
 

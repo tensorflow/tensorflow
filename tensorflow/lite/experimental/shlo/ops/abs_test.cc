@@ -23,6 +23,7 @@ limitations under the License.
 #include "tensorflow/lite/experimental/shlo/quantize.h"
 #include "tensorflow/lite/experimental/shlo/quantized_tensor_element_type.h"
 #include "tensorflow/lite/experimental/shlo/shape.h"
+#include "tensorflow/lite/experimental/shlo/status_matcher.h"
 #include "tensorflow/lite/experimental/shlo/tensor.h"
 
 using testing::ElementsAreArray;
@@ -39,7 +40,7 @@ constexpr struct AbsRef {
 } abs_ref;
 
 template <class T>
-struct AbsTest : testing::Test {};
+struct AbsTest : ::testing::Test {};
 
 TYPED_TEST_SUITE(AbsTest, NonQuantizedTestTypes, TestParamNames);
 
@@ -67,7 +68,7 @@ TYPED_TEST(AbsTest, NonQuantized) {
 }
 
 template <class T>
-struct QuantizedAbsTest : testing::Test {};
+struct QuantizedAbsTest : ::testing::Test {};
 
 TYPED_TEST_SUITE(QuantizedAbsTest, QuantizedTestTypes, TestParamNames);
 

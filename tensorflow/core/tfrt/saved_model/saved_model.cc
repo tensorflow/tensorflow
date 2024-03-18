@@ -111,6 +111,12 @@ auto* lazy_loading_count = monitoring::Counter<3>::New(
     "/tensorflow/tfrt/lazy_loading_count", "The total number of lazy loadings.",
     "model_name", "model_version", "use_graph_executor");
 
+auto* saved_model_graph_executor_mode = monitoring::Counter<3>::New(
+    "/tensorflow/tfrt/saved_model/graph_executor_mode",
+    "Record the total number of imported savedmodel using different graph "
+    "executor modes (BEF vs MLRT interpreter)",
+    "model_name", "model_version", "mode");
+
 auto* saved_model_import_time_seconds =
     tensorflow::monitoring::Gauge<int64_t, 1>::New(
         "/tensorflow/tfrt/saved_model/import_time",
@@ -603,11 +609,25 @@ SavedModelImpl::LoadSavedModel(Options options,
     tensorflow::tf_mlrt::RegisterTfMlrtBatchKernels(*kernel_registry);
 
     if (options.graph_execution_options.enable_mlrt) {
+      saved_model_graph_executor_mode
+          ->GetCell(
+              options.graph_execution_options.model_metadata.name(),
+              absl::StrCat(
+                  options.graph_execution_options.model_metadata.version()),
+              "mlrt")
+          ->IncrementBy(1);
       ASSIGN_OR_RETURN_IN_COMPILE(
           bytecode, tensorflow::mlrt_compiler::ConvertTfMlirToBytecode(
                         options.graph_execution_options.compile_options,
                         *fallback_state, mlir_module.get(), model_context));
     } else {
+      saved_model_graph_executor_mode
+          ->GetCell(
+              options.graph_execution_options.model_metadata.name(),
+              absl::StrCat(
+                  options.graph_execution_options.model_metadata.version()),
+              "bef")
+          ->IncrementBy(1);
       RETURN_IF_ERROR_IN_COMPILE(tensorflow::ConvertTfMlirToBef(
           options.graph_execution_options.compile_options, mlir_module.get(),
           &bef, model_context, fallback_state.get()));

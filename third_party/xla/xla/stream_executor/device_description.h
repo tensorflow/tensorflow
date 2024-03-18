@@ -171,6 +171,11 @@ class RocmComputeCapability {
     return absl::c_count(kList, gfx_version()) != 0;
   }
 
+  bool gfx9_mi300() const {
+    static constexpr absl::string_view kList[] = {"gfx940", "gfx941", "gfx942"};
+    return absl::c_count(kList, gfx_version()) != 0;
+  }
+
   bool navi21() const { return gfx_version() == "gfx1030"; }
 
   bool navi31() const { return gfx_version() == "gfx1100"; }
@@ -195,6 +200,8 @@ class RocmComputeCapability {
   }
 
   bool has_hipblaslt() const { return gfx9_mi200_or_later(); }
+
+  bool has_fp8_support() const { return gfx9_mi300(); }
 
   RocmComputeCapabilityProto ToProto() const {
     RocmComputeCapabilityProto proto;

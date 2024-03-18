@@ -61,7 +61,6 @@ filegroup(
         "device_description.h",
         "device_memory.h",
         "device_memory_allocator.h",
-        "device_options.h",
         "event.h",
         "executor_cache.h",
         "host_memory_allocation.h",
@@ -204,15 +203,6 @@ cc_library(
 )
 
 cc_library(
-    name = "device_options",
-    hdrs = ["device_options.h"],
-    deps = [
-        "@com_google_absl//absl/strings",
-        "@local_tsl//tsl/platform:logging",
-    ],
-)
-
-cc_library(
     name = "host_memory_allocation",
     srcs = ["host_memory_allocation.cc"],
     hdrs = ["host_memory_allocation.h"],
@@ -272,7 +262,6 @@ cc_library(
     hdrs = ["platform.h"],
     deps = [
         ":device_description",
-        ":device_options",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
     ],

@@ -82,10 +82,9 @@ template <typename ConcreteT, typename QuantizeOpT, typename DequantizeOpT,
               DequantizeOpT::template hasTrait<OpTrait::OneResult>()>>
 class StableHloQuantizationPattern : public OpRewritePattern<RootOpT> {
  public:
-  StableHloQuantizationPattern(MLIRContext* context, QuantPassSpec quant_params)
+  explicit StableHloQuantizationPattern(MLIRContext* context)
       // Set the benefit to a large number so that it is always preferred.
-      : OpRewritePattern<RootOpT>(context, /*benefit=*/300),
-        quant_params_(std::move(quant_params)) {}
+      : OpRewritePattern<RootOpT>(context, /*benefit=*/300) {}
 
  private:
   // Collects all candidate ops for quantization, which are the
@@ -131,11 +130,6 @@ class StableHloQuantizationPattern : public OpRewritePattern<RootOpT> {
     // Safeguard check to ensure that there is at least one quantizable op.
     if (failed(candidate_ops) || candidate_ops->empty()) return failure();
 
-    const absl::flat_hash_set<std::string>& ops_blocklist =
-        quant_params_.quant_spec.ops_blocklist;
-    const absl::flat_hash_set<std::string>& nodes_blocklist =
-        quant_params_.quant_spec.nodes_blocklist;
-
     // Rewrite the floating-point ops to the quantized version, by fusing
     // preceding dequantize ops and succeding quantize ops.
     for (Operation* candidate_op : *candidate_ops) {
@@ -162,24 +156,6 @@ class StableHloQuantizationPattern : public OpRewritePattern<RootOpT> {
       // Ops with regions will be quantized in a separate pattern.
       if (isa<mlir::stablehlo::ReduceWindowOp>(candidate_op)) {
         return failure();
-      }
-
-      // Blocklist op is checked in advance for non-dynamic range quantization
-      // case.
-      if (!quant_params_.quant_spec.weight_quantization &&
-          (ops_blocklist.contains(
-              candidate_op->getName().getStringRef().str()))) {
-        return failure();
-      }
-
-      if (!nodes_blocklist.empty()) {
-        if (auto name_loc = candidate_op->getLoc().dyn_cast<NameLoc>()) {
-          std::string sloc = name_loc.getName().str();
-          if (!sloc.empty() &&
-              (nodes_blocklist.find(sloc) != nodes_blocklist.end())) {
-            return failure();
-          }
-        }
       }
 
       // Collect all the quantized inputs and "clone" the matched op by these
@@ -271,8 +247,6 @@ class StableHloQuantizationPattern : public OpRewritePattern<RootOpT> {
     }
     return success();
   }
-
-  QuantPassSpec quant_params_;
 };
 
 // Gemm Style Op: glossary/gemm.

@@ -78,6 +78,23 @@ cc_library(
 )
 
 cc_library(
+    name = "ifrt_restore_tensor_registry",
+    srcs = ["ifrt_restore_tensor_registry.cc"],
+    hdrs = ["ifrt_restore_tensor_registry.h"],
+    deps = [
+        "//tensorflow/core/framework:tensor",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/synchronization",
+        "@local_xla//xla/python/ifrt",
+    ],
+)
+
+cc_library(
     name = "ifrt_loaded_variable_registry",
     srcs = ["ifrt_loaded_variable_registry.cc"],
     hdrs = ["ifrt_loaded_variable_registry.h"],
@@ -103,6 +120,7 @@ cc_library(
     deps = [
         ":ifrt_executable_registry",
         ":ifrt_loaded_variable_registry",
+        ":ifrt_restore_tensor_registry",
         "//tensorflow/compiler/tf2xla:xla_helpers",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/status",
@@ -112,6 +130,7 @@ cc_library(
         "@local_tsl//tsl/concurrency:ref_count",
         "@local_tsl//tsl/platform:env",
         "@local_xla//xla/python/ifrt",
+        "@tf_runtime//:hostcontext",
     ],
 )
 

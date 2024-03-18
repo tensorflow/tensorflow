@@ -51,6 +51,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/metrics/error_collector_inst.h"
 #include "tensorflow/compiler/mlir/lite/quantization/stablehlo/quantization.h"
 #include "tensorflow/compiler/mlir/lite/stablehlo/transforms/op_stat_pass.h"
+#include "tensorflow/compiler/mlir/lite/stablehlo/transforms/passes.h"
 #include "tensorflow/compiler/mlir/lite/stablehlo/transforms/stablehlo_util.h"
 #include "tensorflow/compiler/mlir/lite/stablehlo/transforms/transforms.h"
 #include "tensorflow/compiler/mlir/lite/tf_tfl_passes.h"
@@ -353,11 +354,16 @@ absl::Status ConvertTFExecutorToStablehloFlatbuffer(
   if (failed(pass_manager.run(module))) {
     return status_handler.ConsumeStatus();
   }
-
   if (export_to_mlir) {
     llvm::raw_string_ostream os(*result);
     module.print(os);
     return status_handler.ConsumeStatus();
+  }
+  pass_manager.clear();
+  pass_manager.addPass(mlir::odml::createLegalizeStablehloToVhloPass());
+  if (failed(pass_manager.run(module))) {
+    return status_handler.Combine(
+        absl::InvalidArgumentError("VHLO lowering failed"));
   }
 
   // Write MLIR Stablehlo dialect into FlatBuffer

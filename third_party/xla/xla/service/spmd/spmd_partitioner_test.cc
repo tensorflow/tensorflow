@@ -7544,6 +7544,43 @@ ENTRY entry {
             op::Shape("(f32[2,3],f32[2,3])")));
 }
 
+TEST_P(SpmdPartitioningTest, VariadicScatterSharedOperands) {
+  absl::string_view hlo_string = R"(
+HloModule module
+
+add (lhs.0: f32[], lhs.1: f32[], rhs.0: f32[], rhs.1: f32[]) -> (f32[], f32[]) {
+  lhs.0 = f32[] parameter(0)
+  lhs.1 = f32[] parameter(1)
+  rhs.0 = f32[] parameter(2)
+  rhs.1 = f32[] parameter(3)
+  sum.0 = f32[] add(lhs.0, rhs.0)
+  sum.1 = f32[] add(lhs.1, rhs.1)
+  ROOT tuple = tuple(sum.0, sum.1)
+}
+
+ENTRY entry {
+  %input.0 = f32[8,16,32] parameter(0), sharding={devices=[4,1,1,2]<=[8] last_tile_dim_replicate}
+  %indices = s32[16,1] parameter(1), sharding={replicated}
+  %updates.0 = f32[8,16,16] parameter(2), sharding={devices=[4,1,1,2]<=[8] last_tile_dim_replicate}
+  %updates.1 = f32[8,16,16] parameter(3), sharding={devices=[4,1,1,2]<=[8] last_tile_dim_replicate}
+  ROOT %scatter = (f32[8,16,32], f32[8,16,32]) scatter(%input.0, %input.0, %indices, %updates.0, %updates.1),
+      to_apply=add,
+      update_window_dims={0,1},
+      inserted_window_dims={2},
+      scatter_dims_to_operand_dims={2},
+      index_vector_dim=1,
+      indices_are_sorted=true,
+      unique_indices=true,
+      sharding={{devices=[4,1,1,2]<=[8] last_tile_dim_replicate}, {devices=[4,1,1,2]<=[8] last_tile_dim_replicate}}
+})";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/8));
+  VLOG(1) << module->ToString();
+  HloInstruction* root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(root,
+              AllOf(op::Scatter(), op::Shape("(f32[2,16,32],f32[2,16,32])")));
+}
+
 TEST_P(SpmdPartitioningTest, PassthroughScatter) {
   absl::string_view hlo_string = R"(
 HloModule module
@@ -8448,6 +8485,37 @@ ENTRY entry {
   const auto lhs = AllOf(op::Shape("f32[1,24,100]"), op::Parameter(0));
   const auto rhs = AllOf(op::Shape("f32[1,32,100]"), op::Parameter(1));
   auto dot = AllOf(op::Shape("f32[1,24,32]"), op::Dot(lhs, rhs));
+  const auto root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(root, dot);
+}
+
+TEST_P(SpmdPartitioningTest, SimpleSparseDot) {
+  absl::string_view hlo_string = R"(
+HloModule module
+
+ENTRY entry {
+  %lhs = f32[2,24,128] parameter(0),
+    sharding={devices=[2,2,1]<=[4]}
+  %rhs = f32[2,32,256] parameter(1),
+    sharding={devices=[2,1,1,2]<=[4] last_tile_dim_replicate}
+  %meta = u16[2,24,16] parameter(2),
+    sharding={devices=[2,2,1]<=[4]}
+  ROOT %dot = f32[2,24,32] dot(%lhs, %rhs, %meta),
+    lhs_batch_dims={0}, rhs_batch_dims={0},
+    lhs_contracting_dims={2}, rhs_contracting_dims={2}, sparsity=L.2@2:4,
+    sharding={devices=[2,2,1]<=[4]}
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/4));
+  VLOG(1) << module->ToString();
+
+  const auto lhs = AllOf(op::Shape("f32[1,12,128]"), op::Parameter(0));
+  const auto rhs = AllOf(op::Shape("f32[1,32,256]"), op::Parameter(1));
+  const auto meta = AllOf(op::Shape("u16[1,12,16]"), op::Parameter(2));
+  auto dot = AllOf(op::Shape("f32[1,12,32]"),
+                   ::testing::MakeMatcher(new ::xla::testing::HloMatcher(
+                       HloOpcode::kDot, {lhs, rhs, meta})));
   const auto root = module->entry_computation()->root_instruction();
   EXPECT_THAT(root, dot);
 }

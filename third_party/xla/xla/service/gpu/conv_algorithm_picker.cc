@@ -53,12 +53,13 @@ limitations under the License.
 #include "xla/service/slow_operation_alarm.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/statusor.h"
 #include "xla/stream_executor/cuda/cuda_platform_id.h"
+#include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/device_memory_allocator.h"
 #include "xla/stream_executor/dnn.h"
 #include "xla/stream_executor/lazy_op_runner.h"
 #include "xla/stream_executor/numeric_options.h"
+#include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/rocm/rocm_platform_id.h"
 #include "xla/stream_executor/scratch_allocator.h"
 #include "xla/stream_executor/stream.h"
@@ -68,10 +69,12 @@ limitations under the License.
 #include "tsl/platform/errors.h"
 #include "tsl/platform/logging.h"
 #include "tsl/platform/numbers.h"
+#include "tsl/platform/statusor.h"
 #include "tsl/util/proto/proto_utils.h"
 
 #if (defined(GOOGLE_CUDA) && GOOGLE_CUDA)
 #include "third_party/gpus/cudnn/cudnn.h"  // IWYU pragma: keep
+#include "third_party/gpus/cudnn/cudnn_version.h"
 #if CUDNN_VERSION >= 90000
 #include "third_party/gpus/cudnn/cudnn_ops.h"
 #else
@@ -609,7 +612,6 @@ absl::StatusOr<AutotuneResult> GpuConvAlgorithmPicker::AutotuneOneConvRunner(
   // Use assignment instead of brace-list to make GCC 4.9 happy.
   RunConvOptions options;
   options.runner_cache = runner;
-  options.profile_result = &profile_result;
   // The following plan timing code is based on
   // https://github.com/NVIDIA/cudnn-frontend/blob/60496f42fdc7a4ccc059f5934e306e728a756755/include/cudnn_frontend_find_plan.h
   float max_time = 0;
@@ -622,15 +624,20 @@ absl::StatusOr<AutotuneResult> GpuConvAlgorithmPicker::AutotuneOneConvRunner(
   // Dry-run to warmup the plan.
   launch_status = RunGpuConv(config, operand_buffers, result_buffers,
                              scratch_memory, stream, options);
+  // It is intentional that the warm-up run does not have a profile result.
+  // This avoids a timeout and error message if lazy module loading is enabled
+  // by ensuring that lazy loading happens outside the GpuTimer region.
+  options.profile_result = &profile_result;
   constexpr int kMaxIter = 10;
   // Iterate until the new measurement is within kThreshold of the current
   // minimum.
   int num_iters = 0;
-  for (;
-       num_iters < kMaxIter && launch_status.ok() && profile_result.is_valid();
-       num_iters++) {
+  for (; num_iters < kMaxIter && launch_status.ok(); ++num_iters) {
     launch_status = RunGpuConv(config, operand_buffers, result_buffers,
                                scratch_memory, stream, options);
+    if (!profile_result.is_valid()) {
+      break;
+    }
     float old_min_time = min_time;
     min_time = std::min(min_time, profile_result.elapsed_time_in_ms());
     max_time = std::max(max_time, profile_result.elapsed_time_in_ms());

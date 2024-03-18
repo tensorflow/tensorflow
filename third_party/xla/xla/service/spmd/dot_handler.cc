@@ -13,11 +13,13 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <algorithm>
 #include <cstdint>
 #include <deque>
 #include <memory>
 #include <optional>
 #include <string>
+#include <tuple>
 #include <utility>
 #include <vector>
 
@@ -25,7 +27,11 @@ limitations under the License.
 #include "absl/cleanup/cleanup.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/functional/function_ref.h"
+#include "absl/log/log.h"
 #include "absl/types/span.h"
+#include "xla/comparison_util.h"
+#include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_input_output_alias_config.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -35,6 +41,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/hlo/utils/hlo_sharding_util.h"
 #include "xla/literal_util.h"
+#include "xla/service/call_graph.h"
 #include "xla/service/shape_inference.h"
 #include "xla/service/sharding_propagation.h"
 #include "xla/service/spmd/convolution_handler.h"
@@ -43,9 +50,12 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/status.h"
+#include "xla/status_macros.h"
 #include "xla/util.h"
 #include "xla/window_util.h"
 #include "xla/xla_data.pb.h"
+#include "tsl/platform/errors.h"
+#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace spmd {
@@ -90,6 +100,15 @@ Status SpmdPartitioningVisitor::HandleDot(HloInstruction* hlo) {
     mapping.rhs_non_contracting_dims.back().rhs = i;
     mapping.rhs_non_contracting_dims.back().output = next_output_dim++;
   }
+
+  HloDotInstruction* dot = Cast<HloDotInstruction>(hlo);
+  std::vector<SparsityDescriptor> sparsity(dot->sparsity().begin(),
+                                           dot->sparsity().end());
+  std::vector<HloInstruction*> resharded_meta(dot->sparse_operands());
+  for (int i = 0; i < dot->sparse_operands(); ++i) {
+    resharded_meta[i] =
+        GetPartitionedHlo(dot->operand(HloDotInstruction::kOperands + i)).hlo();
+  }
   auto create_sharded_dot =
       [&](HloInstruction* l, HloInstruction* r, SpmdBuilder* b,
           const Window& conv_window) -> absl::StatusOr<HloInstruction*> {
@@ -97,10 +116,10 @@ Status SpmdPartitioningVisitor::HandleDot(HloInstruction* hlo) {
         auto sharded_dot_shape,
         ShapeInference::InferDotOpShape(
             l->shape(), r->shape(), hlo->dot_dimension_numbers(),
-            /*preferred_element_type=*/hlo->shape().element_type()));
+            /*preferred_element_type=*/hlo->shape().element_type(), sparsity));
     return b->AddInstruction(HloInstruction::CreateDot(
         sharded_dot_shape, l, r, hlo->dot_dimension_numbers(),
-        hlo->precision_config()));
+        hlo->precision_config(), sparsity, resharded_meta));
   };
   return HandleDotHelper(hlo, mapping, create_sharded_dot);
 }

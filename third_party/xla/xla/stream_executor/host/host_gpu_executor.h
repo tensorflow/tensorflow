@@ -28,7 +28,6 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/device_memory.h"
-#include "xla/stream_executor/device_options.h"
 #include "xla/stream_executor/event.h"
 #include "xla/stream_executor/kernel.h"
 #include "xla/stream_executor/kernel_spec.h"
@@ -52,7 +51,7 @@ class HostExecutor : public internal::StreamExecutorInterface {
  public:
   HostExecutor() = default;
 
-  absl::Status Init(int device_ordinal, DeviceOptions device_options) override;
+  absl::Status Init(int device_ordinal) override;
 
   absl::Status GetKernel(const MultiKernelLoaderSpec& spec,
                          Kernel* kernel) override {

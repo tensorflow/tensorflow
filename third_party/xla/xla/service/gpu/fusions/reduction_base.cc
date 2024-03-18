@@ -332,7 +332,7 @@ std::optional<IndexingMap> ReductionInfo::ComputeThreadIdToOutputIndexing(
 
   auto physical_shape = ShapeUtil::DeleteDimensions(hero->dimensions(),
                                                     hero->operand(0)->shape());
-  std::vector<Range> dimension_ranges{
+  std::vector<Interval> dimension_ranges{
       {0, tiling_.GetNumThreadsPerBlock() - 1},
       {},
       {},

@@ -173,9 +173,6 @@ quant::UniformQuantizedPerAxisType ResetAxisAndBroadcast(
     // - for Reshape, the data layout isn't changed but the innermost dimension
     // is expand to cover the last two original dimensions. Thus we just need to
     // be repeated the `scales` dim[2] times to covers the new dim length.
-    //
-    // TODO: b/141709944 - after the fix, the `scales` can be for dim[2], thus
-    // we have to repeat each elements in the `scales` locally dim[3] times.
     if (BroadcastVector<double>(shaped.getDimSize(quant_dim), scales) ||
         BroadcastVector<int64_t>(shaped.getDimSize(quant_dim), zero_points)) {
       return {};

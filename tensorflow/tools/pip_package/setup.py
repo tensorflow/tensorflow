@@ -125,9 +125,6 @@ FAKE_REQUIRED_PACKAGES = [
     # different architectures having different requirements.
     # The entries here should be a simple duplicate of those in the collaborator
     # build section.
-    standard_or_nightly('tensorflow-cpu-aws', 'tf-nightly-cpu-aws') + '==' +
-    _VERSION + ';platform_system=="Linux" and (platform_machine=="arm64" or '
-    'platform_machine=="aarch64")',
     standard_or_nightly('tensorflow-intel', 'tf-nightly-intel') + '==' +
     _VERSION + ';platform_system=="Windows"',
 ]
@@ -139,25 +136,12 @@ if collaborator_build:
   # If this is a collaborator build, then build an "installer" wheel and
   # add the collaborator packages as the only dependencies.
   REQUIRED_PACKAGES = [
-      # Install the TensorFlow package built by AWS if the user is running
-      # Linux on an Aarch64 machine.
-      standard_or_nightly('tensorflow-cpu-aws', 'tf-nightly-cpu-aws')
-      + '=='
-      + _VERSION
-      + ';platform_system=="Linux" and (platform_machine=="arm64" or '
-      'platform_machine=="aarch64")',
       # Install the TensorFlow package built by Intel if the user is on a
       # Windows machine.
       standard_or_nightly('tensorflow-intel', 'tf-nightly-intel')
       + '=='
       + _VERSION
       + ';platform_system=="Windows"',
-      # Install the TensorFlow package built by Apple if the user is running
-      # macOS on an Apple Silicon machine.
-      standard_or_nightly('tensorflow-macos', 'tf-nightly-macos')
-      + '=='
-      + _VERSION
-      + ';platform_system=="Darwin" and platform_machine=="arm64"',
   ]
 
 # Set up extra packages, which are optional sets of other Python package deps.

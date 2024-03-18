@@ -129,6 +129,9 @@ std::optional<MovableCluster> FindMovableClusterAtBodyRoot(
       }
     }
   }
+  if (cluster.collective_permute == nullptr) {
+    return std::nullopt;
+  }
   return cluster;
 }
 

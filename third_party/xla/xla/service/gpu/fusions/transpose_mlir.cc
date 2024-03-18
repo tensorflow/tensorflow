@@ -170,18 +170,25 @@ std::optional<IndexingMap> MlirTransposeFusion::ComputeThreadIdToOutputIndexing(
   auto permuted_tiled_shape =
       ShapeUtil::MakeShape(U8, Permute(tiling_.GetShape(), permutation_));
 
-  return ComposeIndexingMaps(
-      GetIndexingMapForTiling(block_offset, thread_offset, tiling_),
+  auto map = ComposeIndexingMaps(
+      GetIndexingMapForTiling(
+          block_offset, thread_offset, tiling_.GetNumThreadsPerBlock(),
+          tiling_.GetNumBlocks(), tiling_.GetThreadTileSize(),
+          permuted_tiled_shape.dimensions()),
       GetBitcastMap(permuted_tiled_shape, hero.shape(), ctx));
+  map.Simplify();
+  return map;
 }
 
 std::optional<IndexingMap> MlirTransposeFusion::ComputeThreadIdToInputIndexing(
     int64_t root_index, int64_t hero_operand_index, MLIRContext* ctx) const {
   const auto& hero = *analysis_.fusion_heroes()[root_index];
 
-  return ComposeIndexingMaps(
+  auto map = ComposeIndexingMaps(
       GetIndexingMapForTiling(tiling_, ctx),
       GetBitcastMap(tiling_.GetXlaShape(), hero.operand(0)->shape(), ctx));
+  map.Simplify();
+  return map;
 }
 
 LaunchDimensions MlirTransposeFusion::launch_dimensions() const {
@@ -191,7 +198,7 @@ LaunchDimensions MlirTransposeFusion::launch_dimensions() const {
 
 // Returns an indexing map with block_x, block_y, block_z set to 0.
 IndexingMap GetSharedMemoryWriteIndexingMap(
-    const IndexingMap& thread_id_indexing) {
+    const IndexingMap& thread_id_indexing, int loop_dim) {
   auto* mlir_context = thread_id_indexing.GetMLIRContext();
 
   AffineExpr c0 = mlir::getAffineConstantExpr(0, mlir_context);
@@ -200,11 +207,11 @@ IndexingMap GetSharedMemoryWriteIndexingMap(
   mlir::bindSymbolsList(mlir_context, llvm::MutableArrayRef(tile_sizes));
 
   IndexingMap shmem_write_indexing{
-      AffineMap::get(thread_id_indexing.GetDimensionCount(),
-                     thread_id_indexing.GetSymbolCount(),
-
-                     {c0, th_x.floorDiv(32) + 4 * tile_sizes[1], th_x % 32},
-                     mlir_context),
+      AffineMap::get(
+          thread_id_indexing.GetDimensionCount(),
+          thread_id_indexing.GetSymbolCount(),
+          {c0, th_x.floorDiv(32) + 4 * tile_sizes[loop_dim], th_x % 32},
+          mlir_context),
       thread_id_indexing.GetDimensionRanges(),
       thread_id_indexing.GetSymbolRanges(),
       thread_id_indexing.GetConstraints()};
@@ -215,9 +222,9 @@ IndexingMap GetSharedMemoryWriteIndexingMap(
 // Returns an indexing map with block_x, block_y, block_z set to 0 and swapped
 // 2nd and 3rd results.
 IndexingMap GetSharedMemoryReadIndexingMap(
-    const IndexingMap& thread_id_indexing) {
+    const IndexingMap& thread_id_indexing, int loop_dim) {
   IndexingMap write_indexing =
-      GetSharedMemoryWriteIndexingMap(thread_id_indexing);
+      GetSharedMemoryWriteIndexingMap(thread_id_indexing, loop_dim);
   return IndexingMap{write_indexing.GetAffineMap().getSubMap({0, 2, 1}),
                      write_indexing.GetDimensionRanges(),
                      write_indexing.GetSymbolRanges(),
@@ -260,7 +267,7 @@ absl::StatusOr<SmallVector<Value, 4>> MlirTransposeFusion::EmitWriteToShMemMlir(
         root_index, /*hero_operand_index=*/0, builder.getContext());
     TF_RET_CHECK(input_indexing) << "Indexing is never nullopt";
     IndexingMap shmem_input_indexing =
-        GetSharedMemoryWriteIndexingMap(*input_indexing);
+        GetSharedMemoryWriteIndexingMap(*input_indexing, permutation_[2]);
 
     // Allocate shared memory.
     const HloInstruction* transpose_operand = transpose->operand(0);
@@ -282,8 +289,9 @@ absl::StatusOr<SmallVector<Value, 4>> MlirTransposeFusion::EmitWriteToShMemMlir(
                              symbol_values, builder);
 
           auto result_scalars = mlir_converter::ProvideParameter(
-              root_computation, transpose, /*operand_index=*/0, input_indices,
-              call_target_provider, builder);
+              root_computation.FindSubgraph(transpose), transpose,
+              /*operand_index=*/0, input_indices, call_target_provider,
+              entry_function, builder);
 
           SmallVector<Value> result_tensors;
           result_tensors.reserve(num_outputs);
@@ -302,8 +310,9 @@ absl::StatusOr<SmallVector<Value, 4>> MlirTransposeFusion::EmitWriteToShMemMlir(
 
 absl::Status MlirTransposeFusion::EmitReadFromShMemMlir(
     mlir::ImplicitLocOpBuilder& builder, FuncOp entry_function,
-    const HloFusionInstruction& fusion, const CallTargetProvider& call_targets,
-    ValueRange shmem_tensors) const {
+    const HloFusionInstruction& fusion,
+    const mlir_converter::PartitionedComputations& computations,
+    const CallTargetProvider& call_targets, ValueRange shmem_tensors) const {
   SmallVector<Value, 4> result_tensors;
 
   int num_inputs = fusion.fused_instructions_computation()->num_parameters();
@@ -346,7 +355,7 @@ absl::Status MlirTransposeFusion::EmitReadFromShMemMlir(
     const IndexingMap& root_indexing = root_to_hero_indexing.at(transpose);
 
     IndexingMap shmem_output_indexing =
-        GetSharedMemoryReadIndexingMap(*output_indexing);
+        GetSharedMemoryReadIndexingMap(*output_indexing, permutation_[2]);
     auto description =
         GetDescriptionForTiledTransposeEmitter(*root, *transpose);
 
@@ -370,7 +379,7 @@ absl::Status MlirTransposeFusion::EmitReadFromShMemMlir(
 
             mlir::Value value = builder.create<ExtractOp>(
                 hero_to_shmem_tensor[transpose], shmem_indices);
-            auto result_scalars = EmitEpilogue(root, transpose, call_targets,
+            auto result_scalars = EmitEpilogue(computations, entry_function,
                                                value, root_indices, builder);
             SmallVector<Value> results;
             results.reserve(output_tensor_args.size());
@@ -417,18 +426,10 @@ absl::Status MlirTransposeFusion::EmitReadFromShMemMlir(
   return absl::OkStatus();
 }
 
-absl::flat_hash_set<const HloInstruction*>
+std::vector<const HloInstruction*>
 MlirTransposeFusion::GetInstructionsWithCustomCodegen(
     const HloFusionInstruction& fusion) const {
-  if (fusion.fused_expression_root()->opcode() == HloOpcode::kTuple) {
-    absl::flat_hash_set<const HloInstruction*> result{shmem_transposes_.begin(),
-                                                      shmem_transposes_.end()};
-    // In multi-output fusion with transpose, each root epilogue will be
-    // generated separately.
-    result.insert(fusion.fused_expression_root());
-    return result;
-  }
-  return shmem_transposes_;
+  return {shmem_transposes_.begin(), shmem_transposes_.end()};
 }
 
 absl::Status MlirTransposeFusion::EmitEntryFunction(
@@ -449,8 +450,8 @@ absl::Status MlirTransposeFusion::EmitEntryFunction(
       mlir::TypeRange(shmem_tensors), shmem_tensors);
 
   // Read intermediate results from shmem and compute epilogues.
-  return EmitReadFromShMemMlir(builder, entry_function, fusion, call_targets,
-                               sync_threads.getResults());
+  return EmitReadFromShMemMlir(builder, entry_function, fusion, computations,
+                               call_targets, sync_threads.getResults());
 }
 
 }  // namespace gpu

@@ -209,7 +209,7 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_gpu_enable_reduction_epilogue_fusion(true);
   opts.set_xla_gpu_enable_nccl_clique_optimization(false);
   opts.set_xla_gpu_cublas_fallback(true);
-  opts.set_xla_gpu_cudnn_gemm_fusion(false);
+  opts.set_xla_gpu_cudnn_gemm_fusion_level(0);
   opts.set_xla_gpu_enable_while_loop_double_buffering(false);
   opts.set_xla_gpu_ensure_minor_dot_contraction_dims(false);
   opts.set_xla_gpu_filter_kernels_spilling_registers_on_autotuning(true);
@@ -236,7 +236,19 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_gpu_nccl_p2p_max_nchannels(0);
 
   opts.set_xla_gpu_enable_mlir_emitters(false);
+  opts.set_xla_gpu_max_mlir_kernels(0);
+  opts.set_xla_gpu_skip_mlir_kernels(0);
+
   opts.set_xla_gpu_multi_streamed_windowed_einsum(false);
+
+  // Minimum combined size of matrices in matrix multiplication to
+  // be rewritten to cuBLAS or Triton kernel call.
+  // This threshold is a conservative estimate and has been measured
+  // to be always beneficial (up to generally several times faster)
+  // on V100 and H100 GPUs. See openxla/xla #9319 for details.
+  const int64_t kDefaultMinGemmRewriteSize = 100;
+  opts.set_xla_gpu_gemm_rewrite_size_threshold(kDefaultMinGemmRewriteSize);
+
   return opts;
 }
 
@@ -1416,6 +1428,12 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       "once per process. This only works on CUDA. In tests, the TEST_WORKSPACE "
       "prefix can be used to load files from their data dependencies."));
   flag_list->push_back(tsl::Flag(
+      "xla_gpu_require_complete_aot_autotune_results",
+      bool_setter_for(
+          &DebugOptions::set_xla_gpu_require_complete_aot_autotune_results),
+      debug_options->xla_gpu_multi_streamed_windowed_einsum(),
+      "Whether to require complete AOT autotuning results."));
+  flag_list->push_back(tsl::Flag(
       "xla_gpu_auto_spmd_partitioning_memory_budget_gb",
       int32_setter_for(
           &DebugOptions::set_xla_gpu_auto_spmd_partitioning_memory_budget_gb),
@@ -1489,11 +1507,12 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
                 debug_options->xla_gpu_cublas_fallback(),
                 "Allow Triton GEMM autotuning to fall back to cuBLAS when that "
                 "is faster."));
-  flag_list->push_back(
-      tsl::Flag("xla_gpu_cudnn_gemm_fusion",
-                bool_setter_for(&DebugOptions::set_xla_gpu_cudnn_gemm_fusion),
-                debug_options->xla_gpu_cudnn_gemm_fusion(),
-                "Allow GEMM fusion autotuning probe cuDNN as a backend."));
+  flag_list->push_back(tsl::Flag(
+      "xla_gpu_cudnn_gemm_fusion_level",
+      int32_setter_for(&DebugOptions::set_xla_gpu_cudnn_gemm_fusion_level),
+      debug_options->xla_gpu_cudnn_gemm_fusion_level(),
+      "cuDNN GEMM fusion level; higher level corresponds to more kinds of "
+      "fused operations."));
   flag_list->push_back(
       tsl::Flag("xla_gpu_mock_custom_calls",
                 bool_setter_for(&DebugOptions::set_xla_gpu_mock_custom_calls),
@@ -1605,12 +1624,29 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       bool_setter_for(&DebugOptions::set_xla_gpu_enable_mlir_emitters),
       debug_options->xla_gpu_enable_mlir_emitters(),
       "Enable new MLIR-based emitters."));
+  flag_list->push_back(
+      tsl::Flag("xla_gpu_max_mlir_kernels",
+                int64_setter_for(&DebugOptions::set_xla_gpu_max_mlir_kernels),
+                debug_options->xla_gpu_max_mlir_kernels(),
+                "Maximum number of kernels to emit with MLIR."));
+  flag_list->push_back(
+      tsl::Flag("xla_gpu_skip_mlir_kernels",
+                int64_setter_for(&DebugOptions::set_xla_gpu_skip_mlir_kernels),
+                debug_options->xla_gpu_skip_mlir_kernels(),
+                "Number of initial kernels to skip MLIR emission for."));
   flag_list->push_back(tsl::Flag(
       "xla_gpu_multi_streamed_windowed_einsum",
       bool_setter_for(
           &DebugOptions::set_xla_gpu_multi_streamed_windowed_einsum),
       debug_options->xla_gpu_multi_streamed_windowed_einsum(),
       "Whether to run windowed einsum using multiple compute streams."));
+  flag_list->push_back(tsl::Flag(
+      "xla_gpu_gemm_rewrite_size_threshold",
+      int64_setter_for(&DebugOptions::set_xla_gpu_gemm_rewrite_size_threshold),
+      debug_options->xla_gpu_gemm_rewrite_size_threshold(),
+      "Threshold to rewrite matmul to cuBLAS or Triton "
+      "(minumum combined number of elements of both matrices "
+      "in non-batch dimensions to be considered for a rewrite)."));
 }  // NOLINT(readability/fn_size)
 
 // Allocates flag_values and flag_objects; this function must not be called more

@@ -1408,7 +1408,7 @@ class DatasetV2(
     return Dataset.zip((range_dataset, self), name=name)
 
   def shuffle(
-      self, buffer_size, seed=None, reshuffle_each_iteration=None, name=None
+      self, buffer_size, seed=None, reshuffle_each_iteration=True, name=None
   ) -> "DatasetV2":
     """Randomly shuffles the elements of this dataset.
 
@@ -1424,8 +1424,12 @@ class DatasetV2(
     maintaining the 1,000 element buffer.
 
     `reshuffle_each_iteration` controls whether the shuffle order should be
-    different for each epoch. In TF 1.X, the idiomatic way to create epochs
-    was through the `repeat` transformation:
+    different for each epoch. However you should avoid using
+    `shuffle(reshuffle_each_iteration=True)`, then `take` and `skip` to split
+    a dataset into training and test sets, which would lead to data leakage (as
+    the entire dataset would be re-shuffled then re-split after each epoch).
+    Please use the `tf.keras.utils.split_dataset` method instead. In TF 1.X,
+    the idiomatic way to create epochs was through the `repeat` transformation:
 
     ```python
     dataset = tf.data.Dataset.range(3)

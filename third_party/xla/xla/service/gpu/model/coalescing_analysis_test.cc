@@ -68,6 +68,14 @@ class CoalescingTest : public HloTestBase {
     return results;
   }
 
+  bool IsReadCoalescedHeuristic(absl::string_view hlo_string) {
+    auto module = ParseAndReturnVerifiedModule(hlo_string).value();
+    HloInstruction* root = module->entry_computation()->root_instruction();
+    auto analysis = AnalyzeFusion(*root, device_info_);
+    return xla::gpu::IsReadCoalescedHeuristic(analysis.GetEmitterFusionKind(),
+                                              root->operand(0), root);
+  }
+
  protected:
   stream_executor::DeviceDescription device_info_ =
       TestGpuDeviceInfo::RTXA6000DeviceInfo();
@@ -170,6 +178,59 @@ TEST_F(CoalescingTest, Transpose) {
   // thread_x to linearized input mapping for thread_x in [0, 31]:
   // Operand 1:  (thread_x)[s0] -> (thread_x + s0 * 128) for s0 in [0, 7]
   EXPECT_THAT(IsReadCoalescedPerOperand(ir), ElementsAre(true));
+}
+
+TEST_F(CoalescingTest, TransposeOfBroadcastHeuristic) {
+  absl::string_view ir = R"(
+    HloModule module
+
+    fusion {
+      input = f32[32, 100, 64] parameter(0)
+      ROOT slice = f32[32, 100, 1] slice(input), slice={[0:32:1], [0:100:1], [0:1:1]}
+    }
+
+    ENTRY entry {
+      p0 = f32[32] parameter(0)
+      broadcast = f32[100, 64, 32] broadcast(p0), dimensions={2}
+      transpose = f32[32, 100, 64] transpose(broadcast), dimensions={2, 0, 1}
+      ROOT %fusion = f32[32, 100, 1] fusion(transpose), kind=kLoop, calls=fusion
+  })";
+  EXPECT_TRUE(IsReadCoalescedHeuristic(ir));
+}
+
+TEST_F(CoalescingTest, TransposeOfIotaHeuristic) {
+  absl::string_view ir = R"(
+    HloModule module
+
+    fusion {
+      p0 = f32[32, 100, 64] parameter(0)
+      ROOT slice = f32[32, 100, 1] slice(p0), slice={[0:32:1], [0:100:1], [0:1:1]}
+    }
+
+    ENTRY entry {
+      iota = f32[100, 64, 32] iota(), iota_dimension=1
+      transpose = f32[32, 100, 64] transpose(iota), dimensions={2, 0, 1}
+      ROOT %fusion = f32[32, 100, 1] fusion(transpose), kind=kLoop, calls=fusion
+  })";
+  EXPECT_TRUE(IsReadCoalescedHeuristic(ir));
+}
+
+TEST_F(CoalescingTest, TransposeOfAddHeuristic) {
+  absl::string_view ir = R"(
+    HloModule module
+
+    fusion {
+      p0 = f32[32, 100, 64] parameter(0)
+      ROOT slice = f32[32, 100, 1] slice(p0), slice={[0:32:1], [0:100:1], [0:1:1]}
+    }
+
+    ENTRY entry {
+      input = f32[100, 64, 32] parameter(0)
+      add = f32[100, 64, 32] add(input, input)
+      transpose = f32[32, 100, 64] transpose(add), dimensions={2, 0, 1}
+      ROOT %fusion = f32[32, 100, 1] fusion(transpose), kind=kLoop, calls=fusion
+  })";
+  EXPECT_FALSE(IsReadCoalescedHeuristic(ir));
 }
 
 TEST_F(CoalescingTest, TransposeOnlyOuterDims) {

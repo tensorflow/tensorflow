@@ -135,6 +135,17 @@ cc_library(
 )
 
 cc_library(
+    name = "hlo_dfs_reachability",
+    srcs = ["hlo_dfs_reachability.cc"],
+    hdrs = ["hlo_dfs_reachability.h"],
+    deps = [
+        ":hlo",
+        "@com_google_absl//absl/algorithm:container",
+        "@llvm-project//llvm:Support",
+    ],
+)
+
+cc_library(
     name = "ptrvec",
     hdrs = ["ptrvec.h"],
     deps = [

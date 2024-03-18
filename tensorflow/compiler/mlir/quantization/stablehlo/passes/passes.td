@@ -77,7 +77,7 @@ def QuantizeCompositeFunctionsPass : Pass<"stablehlo-quantize-composite-function
   ];
 }
 
-def PrepareQuantizePass : Pass<"stablehlo-prepare-quantize", "mlir::func::FuncOp"> {
+def PrepareQuantizePass : Pass<"stablehlo-prepare-quantize", "mlir::ModuleOp"> {
   let summary = "Prepare StableHLO dialect for static range quantization by converting quantfork.stats into quantfork.qcast and dcast ops.";
   let options = [
     Option<"enable_per_channel_quantized_weight_",
@@ -106,10 +106,6 @@ def QuantizePass : Pass<"stablehlo-quantize", "mlir::ModuleOp"> {
         "enable-weight-only",
         "bool", /*default=*/"false",
         "Whether to produce weight-only quantized op for dot_general op.">,
-    Option<"quant_specs_",
-      "quant-specs",
-      "QuantizationSpecs", /*default=*/"DefaultQuantizationSpecs()",
-      "Spec for quantization. Specifies op and node blocklist.">,
   ];
   let dependentDialects = [
     "mlir::stablehlo::StablehloDialect",
@@ -185,6 +181,17 @@ def FoldConstantTransposePass : Pass<"stablehlo-fold-constant-transpose", "mlir:
     `stablehlo.constant`->`stablehlo.transpose` patterns which are often
     by-products of other shape conversion optimizations, such as NCHW->NHWC
     convolution conversion.
+  }];
+  let dependentDialects = ["mlir::stablehlo::StablehloDialect"];
+}
+
+def RemoveShardingCustomCallPass : Pass<"stablehlo-remove-sharding-custom-call", "mlir::func::FuncOp"> {
+  let summary = "Removes `stablehlo.custom_call @Sharding`";
+  let description = [{
+    Finds `stablehlo.custom_call @Sharding` and removes all instances of them,
+    replacing the usages by its operand. This is used where sharding doesn't
+    make much sense or sharding custom calls are incompatible, e.g. on-device
+    targets.
   }];
   let dependentDialects = ["mlir::stablehlo::StablehloDialect"];
 }

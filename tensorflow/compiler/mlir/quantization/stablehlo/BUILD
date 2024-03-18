@@ -60,6 +60,8 @@ cc_library(
         "passes/quantize.cc",
         "passes/quantize_composite_functions.cc",
         "passes/quantize_weight.cc",
+        "passes/remove_sharding_custom_call.cc",
+        "passes/remove_sharding_custom_call.inc",
         "passes/replace_stablehlo_ops_in_main_function_with_xla_call_module_ops.cc",
         "passes/restore_function_name.cc",
         "passes/unfuse_mhlo_batch_norm.cc",
@@ -79,6 +81,7 @@ cc_library(
         ":quantization_config_proto_cc",
         ":quantization_options_proto_cc",
         ":quantization_patterns",
+        ":remove_sharding_custom_call_inc_gen",
         ":stablehlo_passes_inc_gen",
         ":stablehlo_type_utils",
         "//tensorflow/compiler/mlir/lite:tensorflow_lite",
@@ -179,6 +182,7 @@ td_library(
         "passes/lift_quantizable_spots_as_functions_fusion.td",
         "passes/lift_quantizable_spots_as_functions_simple.td",
         "passes/optimize_graph.td",
+        "passes/remove_sharding_custom_call.td",
     ],
     compatible_with = get_compatible_with_portable(),
     deps = [
@@ -240,6 +244,22 @@ gentbl_cc_library(
     deps = [
         ":quant_td_files",
         "//tensorflow/compiler/mlir/quantization/common:quant_td_files",
+    ],
+)
+
+gentbl_cc_library(
+    name = "remove_sharding_custom_call_inc_gen",
+    compatible_with = get_compatible_with_portable(),
+    tbl_outs = [
+        (
+            ["-gen-rewriters"],
+            "passes/remove_sharding_custom_call.inc",
+        ),
+    ],
+    tblgen = "@llvm-project//mlir:mlir-tblgen",
+    td_file = "passes/remove_sharding_custom_call.td",
+    deps = [
+        ":quant_td_files",
     ],
 )
 

@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include <gtest/gtest.h>
+#include "xla/service/gpu/stream_executor_util.h"
 #include "xla/service/gpu/tests/gpu_codegen_test.h"
 
 namespace xla {
@@ -29,16 +30,46 @@ class CuDnnFusionTest : public GpuCodegenTest {
     debug_options.set_xla_gpu_autotune_level(0);
     return debug_options;
   }
-  bool IsAtLeastHopper() {
-    return backend()
-        .default_stream_executor()
-        ->GetDeviceDescription()
-        .cuda_compute_capability()
-        .IsAtLeastHopper();
+  bool IsAtLeastHopperWithCuDnn9() {
+    se::StreamExecutor* executor = backend().default_stream_executor();
+    return executor->GetDeviceDescription()
+               .cuda_compute_capability()
+               .IsAtLeastHopper() &&
+           GetDnnVersionInfo(executor).major_version() >= 9;
+  }
+
+ protected:
+  void SetUp() override {
+    if (!IsAtLeastHopperWithCuDnn9()) {
+      GTEST_SKIP()
+          << "cuDNN GEMM fusion is not enabled before Hopper / cuDNN 9.";
+    }
   }
 };
 
 using CuDnnFusionExecutionTest = CuDnnFusionTest;
+
+TEST_F(CuDnnFusionExecutionTest,
+       NoTritonConfigIsAssignedAtZeroAutotuningLevel) {
+  EXPECT_EQ(GetDebugOptionsForTest().xla_gpu_autotune_level(), 0);
+  MatchOptimizedHlo(R"(
+fusion1 {
+  p0 = f32[32,96] parameter(0)
+  p1 = f32[96,64] parameter(1)
+  ROOT r = f32[32,64] dot(p0, p1),
+    lhs_contracting_dims={1}, rhs_contracting_dims={0}
+}
+
+ENTRY e {
+  p0 = f32[32,96] parameter(0)
+  p1 = f32[96,64] parameter(1)
+  ROOT _ = f32[32,64] fusion(p0, p1), kind=kCustom, calls=fusion1,
+    backend_config={"fusion_backend_config": {kind: "__cudnn$fusion"}}
+})",
+                    R"(
+CHECK-NOT: triton_gemm_config
+  )");
+}
 
 TEST_F(CuDnnFusionExecutionTest, DotF32ExecutesCorrectly) {
   EXPECT_TRUE(RunAndCompare(R"(
@@ -139,7 +170,7 @@ ENTRY e {
 }
 
 TEST_F(CuDnnFusionExecutionTest, RHSFusionExecutesCorrectly) {
-  EXPECT_EQ(RunAndCompare(R"(
+  EXPECT_TRUE(RunAndCompare(R"(
 fusion1 {
   p0 = bf16[5,32,96] parameter(0)
   p1 = s8[5,96,16] parameter(1)
@@ -155,8 +186,7 @@ ENTRY e {
   ROOT _ = bf16[5,32,16] fusion(p0, p1), kind=kCustom, calls=fusion1,
     backend_config={"fusion_backend_config": {kind: "__cudnn$fusion"}}
 })",
-                          ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}),
-            IsAtLeastHopper());
+                            ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
 }
 
 TEST_F(CuDnnFusionExecutionTest, SkipNonDefaultPrecision) {
@@ -201,7 +231,7 @@ ENTRY e {
 }
 
 TEST_F(CuDnnFusionExecutionTest, DotS8BF16ExecutesCorrectly) {
-  EXPECT_EQ(RunAndCompare(R"(
+  EXPECT_TRUE(RunAndCompare(R"(
 fusion1 {
   p0 = s8[5,32,96] parameter(0)
   p0c = bf16[5,32,96] convert(p0)
@@ -217,8 +247,7 @@ ENTRY e {
   ROOT _ = bf16[5,32,16] fusion(p0, p1), kind=kCustom, calls=fusion1,
     backend_config={"fusion_backend_config": {kind: "__cudnn$fusion"}}
 })",
-                          ErrorSpec{/*aabs=*/1e-5, /*arel=*/1e-5}),
-            IsAtLeastHopper());
+                            ErrorSpec{/*aabs=*/1e-5, /*arel=*/1e-5}));
 }
 
 TEST_F(CuDnnFusionExecutionTest, CommandBuffersAreSupported) {
@@ -269,7 +298,7 @@ class CuDnnFusionRewriteTest : public CuDnnFusionTest {
     // Reset autotuning level to default.
     debug_options.set_xla_gpu_autotune_level(
         GetDebugOptionsFromFlags().xla_gpu_autotune_level());
-    debug_options.set_xla_gpu_cudnn_gemm_fusion(true);
+    debug_options.set_xla_gpu_cudnn_gemm_fusion_level(1);
     return debug_options;
   }
 };
@@ -303,9 +332,6 @@ TEST_F(CuDnnFusionRewriteTest, AutotuningPicksCuDnnForS8BF16OnHopper) {
   // The test case relies on measurements by the autotuner and current
   // performance comparison of the backends. May need to be updated if
   // the situation changes.
-  if (!IsAtLeastHopper()) {
-    GTEST_SKIP() << "cuDNN GEMM fusion is not enabled on pre-Hopper hardware.";
-  }
   MatchOptimizedHlo(R"(
 e {
   p0 = bf16[720,720,720] parameter(0)

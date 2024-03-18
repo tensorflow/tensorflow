@@ -43,6 +43,16 @@ cc_library(
     ],
 )
 
+tf_cc_test(
+    name = "config_test",
+    srcs = ["config_test.cc"],
+    deps = [
+        ":config",
+        "//tensorflow/compiler/mlir/quantization/stablehlo:quantization_config_proto_cc",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
 cc_library(
     name = "io",
     srcs = ["io.cc"],

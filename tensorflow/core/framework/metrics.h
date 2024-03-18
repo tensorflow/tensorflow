@@ -200,15 +200,19 @@ void RecordTFDataFilename(const string& name, const string& filename);
 // Records the total attempts made by file logger.
 void RecordTFDataFileLoggerAttempts();
 
-// Records the total errors encountered by file logger with this error code.
-void RecordTFDataFileLoggerErrors(error::Code code);
+// Records an error of type `code` with message `error_message` encountered by
+// file logger.
+void RecordTFDataFileLoggerErrors(error::Code code,
+                                  const string& error_message);
 
 // Records the total number of files attempted to be logged by file logger.
 void RecordTFDataFileLoggerAttemptedNumFiles(size_t num_files);
 
-// Records the total number of files that encountered errors during logging by
-// file logger with this error code.
-void RecordTFDataFileLoggerErrorsNumFiles(size_t num_files, error::Code code);
+// Records the number of files that encountered an error of type
+// `code` with message `error_message` during logging by file logger with this
+// error code.
+void RecordTFDataFileLoggerErrorsNumFiles(size_t num_files, error::Code code,
+                                          const string& error_message);
 
 // Records statistics of tf.data auto sharding.
 //

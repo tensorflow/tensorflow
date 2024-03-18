@@ -52,8 +52,8 @@ namespace gpu {
 
 namespace {
 
-Range::ComparisonResult EvaluateCmpI(mlir::arith::CmpIPredicate pred, Range lhs,
-                                     int64_t rhs) {
+Interval::ComparisonResult EvaluateCmpI(mlir::arith::CmpIPredicate pred,
+                                        Interval lhs, int64_t rhs) {
   switch (pred) {
     case mlir::arith::CmpIPredicate::eq:
       return lhs == rhs;
@@ -84,7 +84,7 @@ struct RewriteCmpI : mlir::OpRewritePattern<mlir::arith::CmpIOp> {
     auto rhs = mlir::getConstantIntValue(op.getRhs());
     auto lhs = GetRange(op.getLhs());
     if (lhs && rhs) {
-      Range::ComparisonResult result =
+      Interval::ComparisonResult result =
           EvaluateCmpI(op.getPredicate(), *lhs, *rhs);
       if (result != std::nullopt) {
         rewriter.replaceOpWithNewOp<mlir::arith::ConstantIntOp>(

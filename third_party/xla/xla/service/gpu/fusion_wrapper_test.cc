@@ -14,6 +14,8 @@ limitations under the License.
 ==============================================================================*/
 #include "xla/service/gpu/fusion_wrapper.h"
 
+#include <optional>
+
 #include <gtest/gtest.h>
 #include "xla/tests/hlo_test_base.h"
 

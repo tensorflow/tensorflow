@@ -15,18 +15,17 @@ limitations under the License.
 
 #include "xla/service/gpu/stream_attribute_async_wrapper.h"
 
-#include <cstdint>
 #include <memory>
-#include <vector>
 
 #include <gtest/gtest.h>
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
+#include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/tests/hlo_test_base.h"
-#include "tsl/platform/status_matchers.h"
 #include "tsl/platform/statusor.h"
 
 namespace xla::gpu {

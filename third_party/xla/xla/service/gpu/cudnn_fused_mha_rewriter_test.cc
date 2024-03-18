@@ -16,12 +16,15 @@ limitations under the License.
 #include "xla/service/gpu/cudnn_fused_mha_rewriter.h"
 
 #include <cstddef>
+#include <memory>
 #include <optional>
+#include <utility>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/algorithm/container.h"
 #include "absl/strings/string_view.h"
+#include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/service/algebraic_simplifier.h"
 #include "xla/service/computation_layout.h"
 #include "xla/service/gpu/backend_configs.pb.h"

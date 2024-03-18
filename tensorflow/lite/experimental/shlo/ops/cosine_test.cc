@@ -26,12 +26,13 @@ limitations under the License.
 #include "tensorflow/lite/experimental/shlo/quantize.h"
 #include "tensorflow/lite/experimental/shlo/quantized_tensor_element_type.h"
 #include "tensorflow/lite/experimental/shlo/shape.h"
+#include "tensorflow/lite/experimental/shlo/status_matcher.h"
 #include "tensorflow/lite/experimental/shlo/tensor.h"
 
+using shlo_ref::testing::StatusIs;
 using testing::ElementsAreArray;
 using testing::NanSensitiveFloatEq;
 using testing::Pointwise;
-using testing::status::StatusIs;
 
 namespace shlo_ref {
 
@@ -55,7 +56,7 @@ struct Cosine {
 } cosine_ref;
 
 template <class T>
-struct NonQuantizedIntCosineTest : testing::Test {};
+struct NonQuantizedIntCosineTest : ::testing::Test {};
 
 TYPED_TEST_SUITE(NonQuantizedIntCosineTest, NonQuantizedIntTestTypes,
                  TestParamNames);
@@ -78,7 +79,7 @@ TYPED_TEST(NonQuantizedIntCosineTest, IntTensorsRaiseAnError) {
 }
 
 template <class T>
-struct NonQuantizedCosineTest : testing::Test {};
+struct NonQuantizedCosineTest : ::testing::Test {};
 
 TYPED_TEST_SUITE(NonQuantizedCosineTest, NonQuantizedFloatTestTypes,
                  TestParamNames);
@@ -107,7 +108,7 @@ TYPED_TEST(NonQuantizedCosineTest, FloatTensorsWork) {
 }
 
 template <class T>
-struct QuantizedCosineTest : testing::Test {};
+struct QuantizedCosineTest : ::testing::Test {};
 
 TYPED_TEST_SUITE(QuantizedCosineTest, QuantizedTestTypes, TestParamNames);
 

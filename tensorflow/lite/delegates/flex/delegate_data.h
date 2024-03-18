@@ -87,6 +87,8 @@ class DelegateData {
   // lifetime information.
   std::unordered_map<const TfLiteContext*, std::map<int, int>>
       tensor_release_map_;
+  // Shared mutex for accessing TFLite subgraphs.
+  tensorflow::mutex mutex_;
 };
 
 // Creates a `TFLiteSubgraphResource` for each subgraph (execpt
@@ -99,7 +101,8 @@ tensorflow::Status RegisterFunctionDefForSubgraphs(
         const std::vector<std::unique_ptr<Subgraph>>&,
         std::set<std::string>* result)>& select_subgraphs_to_register,
     tensorflow::ResourceMgr* resource_mgr,
-    tensorflow::EagerContext* eager_context, TfLiteDelegate* flex_delegate);
+    tensorflow::EagerContext* eager_context, TfLiteDelegate* flex_delegate,
+    tensorflow::mutex* mutex);
 
 }  // namespace flex
 }  // namespace tflite

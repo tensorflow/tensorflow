@@ -891,20 +891,6 @@ PjRtStreamExecutorClient::BufferFromHostBuffer(
       py_buffer->GetBufferWithUsageHold());
   CHECK(device_buffer.ok());
 
-  // If necessary, allocate a host-side buffer for staging host-to-device
-  // transfers. On GPU this is a buffer in pinned memory.
-  std::shared_ptr<void> staging_buffer;
-  if (host_buffer_semantics == HostBufferSemantics::kImmutableOnlyDuringCall ||
-      should_stage_host_to_device_transfers() ||
-      !host_and_device_strides_equal) {
-    void* ptr = host_memory_allocator()->AllocateRaw(
-        tsl::Allocator::kAllocatorAlignment, size);
-    staging_buffer = std::shared_ptr<void>(
-        ptr, [host_memory_allocator = host_memory_allocator()](void* ptr) {
-          host_memory_allocator->DeallocateRaw(ptr);
-        });
-  }
-
   std::shared_ptr<TransposePlan> transpose;
   if (!host_and_device_strides_equal) {
     absl::InlinedVector<int64_t, 4> permutation(dims.size());
@@ -919,6 +905,32 @@ PjRtStreamExecutorClient::BufferFromHostBuffer(
     TF_ASSIGN_OR_RETURN(transpose, transpose_cache_.GetOrCreate(options));
   }
 
+  int64_t packed_size;
+  if (primitive_util::Is4BitType(type)) {
+    packed_size = CeilOfRatio<int64_t>(size, 2);
+  } else {
+    packed_size = size;
+  }
+
+  // If necessary, allocate a host-side buffer for staging host-to-device
+  // transfers. On GPU this is a buffer in pinned memory.
+  std::shared_ptr<void> staging_buffer;
+  bool must_use_staging_buffer =
+      host_buffer_semantics == HostBufferSemantics::kImmutableOnlyDuringCall ||
+      !host_and_device_strides_equal || packed_size != size;
+  // Allocating multigigabyte pinned buffers can be very slow. In that case,
+  // using a staging buffer is probably worse than not using one.
+  // TODO(phawkins): add chunking for transfers.
+  if (must_use_staging_buffer || (should_stage_host_to_device_transfers() &&
+                                  packed_size < (int64_t{1} << 30))) {
+    void* ptr = host_memory_allocator()->AllocateRaw(
+        tsl::Allocator::kAllocatorAlignment, transpose ? size : packed_size);
+    staging_buffer = std::shared_ptr<void>(
+        ptr, [host_memory_allocator = host_memory_allocator()](void* ptr) {
+          host_memory_allocator->DeallocateRaw(ptr);
+        });
+  }
+
   // Copy the buffer into a staging buffer before returning control to the
   // caller if the caller only guaranteed that the buffer is valid for the
   // duration of the call. Otherwise, we stage (if necessary) on a separate
@@ -926,8 +938,20 @@ PjRtStreamExecutorClient::BufferFromHostBuffer(
   if (host_buffer_semantics == HostBufferSemantics::kImmutableOnlyDuringCall) {
     if (transpose) {
       transpose->Execute(data, staging_buffer.get());
+      if (primitive_util::Is4BitType(type)) {
+        PackInt4(absl::MakeConstSpan(
+                     static_cast<const char*>(staging_buffer.get()), size),
+                 absl::MakeSpan(static_cast<char*>(staging_buffer.get()),
+                                packed_size));
+      }
     } else {
-      std::memcpy(staging_buffer.get(), data, size);
+      if (primitive_util::Is4BitType(type)) {
+        PackInt4(absl::MakeConstSpan(static_cast<const char*>(data), size),
+                 absl::MakeSpan(static_cast<char*>(staging_buffer.get()),
+                                packed_size));
+      } else {
+        std::memcpy(staging_buffer.get(), data, size);
+      }
     }
     if (on_done_with_host_buffer) {
       std::move(on_done_with_host_buffer)();
@@ -943,8 +967,8 @@ PjRtStreamExecutorClient::BufferFromHostBuffer(
   // put the transfer into the calling thread for small literals.
   auto transfer_h2d =
       [local_client = client(), transfer_manager, local_device, data, size,
-       movable_device_buffer{device_buffer.ToClosure()}, device_shape,
-       py_buffer{py_buffer.get()},
+       type, packed_size, movable_device_buffer{device_buffer.ToClosure()},
+       device_shape, py_buffer{py_buffer.get()},
        on_device_shape{py_buffer->on_device_shape()},
        staging_buffer{std::move(staging_buffer)},
        on_done_with_host_buffer =
@@ -961,7 +985,8 @@ PjRtStreamExecutorClient::BufferFromHostBuffer(
         // memory that has already been allocated, and a possible Event
         // allocation.
 
-        ShapedBuffer buffer = device_buffer->AsShapedBuffer(on_device_shape);
+        se::DeviceMemoryBase device_memory = device_buffer->device_memory()[0];
+
         // If applicable on the backend, stage the transfer via host memory
         // allocated via the host_memory_allocator. On GPU, this is pinned
         // memory.
@@ -972,24 +997,29 @@ PjRtStreamExecutorClient::BufferFromHostBuffer(
               HostBufferSemantics::kImmutableOnlyDuringCall) {
             if (transpose) {
               transpose->Execute(data, staging_buffer.get());
+              if (primitive_util::Is4BitType(type)) {
+                PackInt4(
+                    absl::MakeConstSpan(
+                        static_cast<const char*>(staging_buffer.get()), size),
+                    absl::MakeSpan(static_cast<char*>(staging_buffer.get()),
+                                   packed_size));
+              }
             } else {
-              std::memcpy(staging_buffer.get(), data, size);
+              if (primitive_util::Is4BitType(type)) {
+                PackInt4(
+                    absl::MakeConstSpan(static_cast<const char*>(data), size),
+                    absl::MakeSpan(static_cast<char*>(staging_buffer.get()),
+                                   packed_size));
+              } else {
+                std::memcpy(staging_buffer.get(), data, size);
+              }
             }
           }
-          // The buffer has the same dimension order as the on-device shape, but
-          // is not tiled, etc.
-          BorrowingLiteral literal(
-              static_cast<const char*>(staging_buffer.get()),
-              ShapeUtil::DeviceShapeToHostShape(on_device_shape));
-          TF_CHECK_OK(transfer_manager->TransferLiteralToDeviceAsync(
-              local_device->host_to_device_stream(), literal, buffer));
+          TF_CHECK_OK(local_device->host_to_device_stream()->Memcpy(
+              &device_memory, staging_buffer.get(), packed_size));
         } else {
-          BorrowingLiteral literal(
-              reinterpret_cast<const char*>(data),
-              ShapeUtil::DeviceShapeToHostShape(on_device_shape));
-          // Otherwise, just transfer the literal.
-          TF_CHECK_OK(transfer_manager->TransferLiteralToDeviceAsync(
-              local_device->host_to_device_stream(), literal, buffer));
+          TF_CHECK_OK(local_device->host_to_device_stream()->Memcpy(
+              &device_memory, data, packed_size));
         }
 
         std::shared_ptr<BufferSequencingEvent> event =
@@ -1131,6 +1161,7 @@ PjRtStreamExecutorClient::BufferFromHostLiteral(const LiteralSlice& literal,
     // allocation.
 
     se::Stream* h2d_stream = local_device->host_to_device_stream();
+
     ShapedBuffer buffer = device_buffer->AsShapedBuffer(on_device_shape);
     TF_CHECK_OK(transfer_manager->TransferLiteralToDeviceAsync(
         h2d_stream, literal, buffer));
@@ -2331,7 +2362,7 @@ static SendDeviceMemoryFunction ConvertSendCallbacksToSendFunction(
     auto done_event = MakeConstructedAsyncValueRef<se::Event>(stream->parent());
     if (!done_event->Init())
       return Internal("Failed to initialize done event (channel_id=%d)",
-                           channel_id);
+                      channel_id);
 
     thread_pool->Schedule([done_event, stream, src, channel_id, shape, send] {
       tsl::profiler::TraceMe trace([&] {
@@ -2510,7 +2541,7 @@ static RecvDeviceMemoryFunction ConvertRecvCallbacksToRecvFunction(
     auto done_event = MakeConstructedAsyncValueRef<se::Event>(stream->parent());
     if (!done_event->Init())
       return Internal("Failed to initialize done event (channel_id=%d)",
-                           channel_id);
+                      channel_id);
 
     recv->callback({shape}, std::make_unique<StreamExecutorCopyToDeviceStream>(
                                 channel_id, stream, *dst, done_event));

@@ -107,6 +107,7 @@ xla_test(
         "//xla/service:custom_call_target_registry",
         "//xla/service:executable",
         "//xla/service:hlo_module_config",
+        "//xla/stream_executor",
         "//xla/stream_executor:device_description",
         "//xla/stream_executor/gpu:gpu_types_header",
         "//xla/tests:hlo_test_base",
@@ -573,6 +574,7 @@ xla_test(
         "gpu",
     ],
     deps = [
+        "//xla/service/gpu:stream_executor_util",
         "//xla/service/gpu/tests:gpu_codegen_test",
         "@com_google_googletest//:gtest_main",
         "@local_tsl//tsl/platform:test",
@@ -724,6 +726,7 @@ cc_library(
         "//xla:status_macros",
         "//xla/hlo/ir:hlo",
         "//xla/service/gpu:hlo_fusion_analysis",
+        "//xla/service/gpu:hlo_traversal",
         "//xla/service/gpu:ir_emission_utils",
         "//xla/service/gpu:reduction_utils",
         "//xla/service/gpu/fusions/mlir:computation_partitioner",
@@ -746,7 +749,6 @@ cc_library(
         "@llvm-project//mlir:GPUDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:SCFDialect",
-        "@llvm-project//mlir:TensorDialect",
         "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:statusor",
     ],
@@ -755,6 +757,7 @@ cc_library(
 xla_cc_test(
     name = "reduction_mlir_test",
     srcs = ["reduction_mlir_test.cc"],
+    shard_count = 11,
     tags = tf_cuda_tests_tags(),
     deps = [
         ":mlir_emitter_test_base",

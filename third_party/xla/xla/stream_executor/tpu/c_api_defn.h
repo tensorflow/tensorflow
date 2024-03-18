@@ -18,7 +18,6 @@ limitations under the License.
 
 #include <memory>
 
-#include "xla/stream_executor/device_options.h"
 #include "xla/stream_executor/event.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
@@ -52,10 +51,6 @@ struct SE_Event {
 
 struct SE_StreamExecutorConfig {
   stream_executor::StreamExecutorConfig config;
-};
-
-struct SE_DeviceOptions {
-  stream_executor::DeviceOptions options;
 };
 
 // Ignored -- these are just used to enforce the interface types

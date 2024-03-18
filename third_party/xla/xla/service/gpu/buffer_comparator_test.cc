@@ -23,9 +23,11 @@ limitations under the License.
 
 #include "xla/primitive_util.h"
 #include "xla/service/gpu/stream_executor_util.h"
+#include "xla/service/hlo_module_config.h"
 #include "xla/shape_util.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/device_memory_allocator.h"
+#include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/platform_manager.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/types.h"

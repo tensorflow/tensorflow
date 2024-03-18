@@ -4,8 +4,8 @@
 load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
 load("@rules_pkg//:pkg.bzl", "pkg_tar", "pkg_zip")
 load("//tensorflow:tensorflow.bzl", "VERSION", "VERSION_MAJOR", "if_macos")
+load("@local_xla//xla/tsl/mkl:build_defs.bzl", "if_enable_mkl", "if_mkl")
 load("//tensorflow/core/platform:build_config_root.bzl", "tf_additional_license_deps")
-load("@local_tsl//tsl/mkl:build_defs.bzl", "if_enable_mkl", "if_mkl")
 
 package(default_visibility = ["//visibility:private"])
 
@@ -169,7 +169,7 @@ genrule(
         "@local_config_nccl//:LICENSE",
     ]) + if_mkl([
         "//third_party/mkl_dnn:LICENSE",
-    ]) + if_enable_mkl(["@local_tsl//tsl/mkl:LICENSE"]) + tf_additional_license_deps(),
+    ]) + if_enable_mkl(["@local_xla//xla/tsl/mkl:LICENSE"]) + tf_additional_license_deps(),
     outs = ["THIRD_PARTY_TF_C_LICENSES"],
     cmd = "$(location :concat_licenses.sh) $(SRCS) >$@",
     tools = [":concat_licenses.sh"],
@@ -212,7 +212,7 @@ genrule(
         "@local_config_nccl//:LICENSE",
     ]) + if_mkl([
         "//third_party/mkl_dnn:LICENSE",
-    ]) + if_enable_mkl(["@local_tsl//tsl/mkl:LICENSE"]) + tf_additional_license_deps(),
+    ]) + if_enable_mkl(["@local_xla//xla/tsl/mkl:LICENSE"]) + tf_additional_license_deps(),
     outs = ["THIRD_PARTY_TF_JNI_LICENSES"],
     cmd = "$(location :concat_licenses.sh) $(SRCS) >$@",
     tools = [":concat_licenses.sh"],

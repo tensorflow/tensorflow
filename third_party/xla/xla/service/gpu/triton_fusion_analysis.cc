@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/service/gpu/triton_fusion_analysis.h"
 
 #include <cstdint>
+#include <memory>
 #include <queue>
 #include <string>
 #include <utility>
@@ -29,6 +30,7 @@ limitations under the License.
 #include "absl/strings/str_join.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/utils/hlo_query.h"
 #include "xla/service/gpu/matmul_utils.h"
@@ -37,6 +39,8 @@ limitations under the License.
 #include "xla/shape_util.h"
 #include "xla/status.h"
 #include "xla/status_macros.h"
+#include "xla/tools/hlo_decomposer.h"
+#include "xla/util.h"
 #include "tsl/platform/errors.h"
 
 namespace xla {
@@ -168,14 +172,26 @@ absl::Status FusionContext::PropagateDimensionOrdersToParameters(
       // more elementwise users - they share the same tiling. Situations when
       // one instruction is read differently by different users in the same
       // scope of the dot are currently prevented during the fusion.
-      TF_RET_CHECK(parameters.insert(hlo).second);
+      if (!parameters.insert(hlo).second) {
+        return FailedPrecondition(
+            "A parameter is read differently by different users. hlo: %s",
+            hlo->ToString());
+      }
       VLOG(5) << hlo->ToString();
     }
     DimOrdersAndReqsOrError result = GetPropagatedDimOrdersAndRequirements(
         *hlo, dim_orders_.at(hlo), TransformDirection::kOutputToInput,
         properties_);
-    TF_RET_CHECK(std::holds_alternative<DimOrdersAndReqs>(result));
-    TF_RET_CHECK(CombineDimOrdersAndReqs(std::get<DimOrdersAndReqs>(result)));
+
+    if (!std::holds_alternative<DimOrdersAndReqs>(result)) {
+      return FailedPrecondition(
+          "Can not propagate dim orders and requirements.");
+    }
+
+    if (!CombineDimOrdersAndReqs(std::get<DimOrdersAndReqs>(result))) {
+      return FailedPrecondition("Can not combine dim orders and requirements.");
+    }
+
     iter_specs[hlo] = dim_orders_.at(hlo).ToTensorIterationSpec();
     for (const HloInstruction* operand : hlo->operands()) {
       if (!visited.insert(operand).second) {
@@ -220,11 +236,49 @@ absl::Status TritonFusionAnalysis::ExecuteForSoftmaxFusion(
   return absl::OkStatus();
 }
 
+absl::Status TritonFusionAnalysis::ExecuteForProducerConsumer(
+    const HloInstruction& producer, const HloInstruction& consumer,
+    int split_k) {
+  // TODO(shyshkov): Use HloFusionAdaptor to avoid the need to materialize the
+  // hlo fusion.
+  std::unique_ptr<HloModule> new_module =
+      ExtractProducerConsumerIntoNewModule(producer, consumer);
+
+  auto* new_producer =
+      new_module->entry_computation()->GetInstructionWithName(producer.name());
+  auto* new_consumer =
+      new_module->entry_computation()->GetInstructionWithName(consumer.name());
+
+  std::unique_ptr<HloInstruction> fusion_instruction_holder;
+  HloInstruction* fusion_instruction;
+  if (new_consumer->opcode() == HloOpcode::kFusion) {
+    fusion_instruction = new_consumer;
+  } else {
+    fusion_instruction_holder = HloInstruction::CreateFusion(
+        new_consumer->shape(), new_producer->fusion_kind(), new_consumer);
+    fusion_instruction = fusion_instruction_holder.get();
+  }
+
+  // Try to merge the producer into candidate fusion.
+  if (new_producer->opcode() == HloOpcode::kFusion) {
+    fusion_instruction->MergeFusionInstruction(new_producer);
+  } else {
+    fusion_instruction->FuseInstruction(new_producer);
+  }
+
+  auto* fused_computation =
+      fusion_instruction->fused_instructions_computation();
+  return Execute(*fused_computation, split_k).status();
+}
+
 absl::Status TritonFusionAnalysis::ExecuteForDotFusion(
     const HloInstruction& dot, const int split_k) {
   DotRequirements lhs_requirements(kNoSplitRequirement);
-  for (const Scope scope : {Scope::LHS, Scope::RHS}) {
+  for (const Scope scope : {Scope::LHS, Scope::RHS, Scope::META}) {
     const int operand_number = static_cast<int>(scope);
+    if (dot.operand_count() < operand_number + 1) {
+      continue;  // Meta scope is optional.
+    }
     auto context = FusionContext::FromDotOperand(dot, operand_number, split_k);
     TF_RETURN_IF_ERROR(context.PropagateDimensionOrdersToParameters(
         *dot.operand(operand_number), parameters_[scope], iter_specs_[scope]));
@@ -294,6 +348,8 @@ std::string ScopeToString(TritonFusionAnalysis::Scope s) {
       return "LHS";
     case TritonFusionAnalysis::Scope::RHS:
       return "RHS";
+    case TritonFusionAnalysis::Scope::META:
+      return "META";
     case TritonFusionAnalysis::Scope::OUTPUT:
       return "OUTPUT";
   }

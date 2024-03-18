@@ -42,7 +42,6 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/stream_executor/command_buffer.h"
 #include "xla/stream_executor/device_memory.h"
-#include "xla/stream_executor/device_options.h"
 #include "xla/stream_executor/dnn.h"
 #include "xla/stream_executor/event.h"
 #include "xla/stream_executor/fft.h"
@@ -113,7 +112,7 @@ class GpuExecutor : public internal::StreamExecutorInterface {
 
   ~GpuExecutor() override;
 
-  absl::Status Init(int device_ordinal, DeviceOptions device_options) override;
+  absl::Status Init(int device_ordinal) override;
 
   int device_ordinal() const override { return device_ordinal_; };
 
@@ -292,8 +291,6 @@ class GpuExecutor : public internal::StreamExecutorInterface {
   // nodes and owned by a parent graph executable.
   std::unique_ptr<GpuCommandBuffer> CreateCommandBuffer(
       CommandBuffer::Mode mode, GpuGraphHandle graph, bool is_owned_graph);
-
-  void* platform_specific_context() override;
 
   GpuContext* gpu_context();
 

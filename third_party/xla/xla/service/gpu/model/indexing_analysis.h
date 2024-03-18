@@ -152,7 +152,10 @@ IndexingMap GetIndexingMapForTiling(const Tiling& tiling,
                                     mlir::MLIRContext* ctx);
 IndexingMap GetIndexingMapForTiling(mlir::AffineMap block_offsets,
                                     mlir::AffineMap thread_offsets,
-                                    const Tiling& tiling);
+                                    int64_t threads_per_block,
+                                    int64_t num_blocks,
+                                    absl::Span<const int64_t> thread_tile_sizes,
+                                    absl::Span<const int64_t> tiled_shape);
 
 // Returns the shape of the output of the instruction.
 const Shape& GetOutputShape(const HloInstruction* instr, int64_t output_id);

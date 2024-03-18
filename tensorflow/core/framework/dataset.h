@@ -1025,6 +1025,13 @@ class IteratorBase : public Checkpointable {
     return GetNext(&ctx, out_tensors, end_of_sequence);
   }
 
+  // If a dataset needs to provide its own index mapper behavior to support
+  // global shuffling, implement this method.
+  virtual IndexMapperFn GetIndexMapper(
+      IndexMapperFn parent_index_mapper) const {
+    return parent_index_mapper;
+  }
+
   // Skips the next `num_to_skip` outputs from the range that this iterator
   // is traversing.
   //
@@ -1338,6 +1345,10 @@ class DatasetBase : public core::RefCounted {
   // Return the element at a particular index for a randomly accessible dataset.
   virtual Status Get(OpKernelContext* ctx, int64 index,
                      std::vector<Tensor>* out_tensors) const;
+
+  // Same as above, but without an `OpKernelContext`. Used to support datasets
+  // that provide random access through both the dataset and iterator APIs.
+  virtual Status Get(int64 index, std::vector<Tensor>* out_tensors) const;
 
   // Returns true if the dataset and its inputs support random access.
   virtual absl::Status RandomIndexingCompatible() const {
