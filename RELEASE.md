@@ -13,6 +13,14 @@
     * C API:
         * An optional, fourth parameter was added `TfLiteOperatorCreate` as a step forward towards a cleaner API for `TfLiteOperator`. Function `TfLiteOperatorCreate` was added recently, in TensorFlow Lite version 2.17.0, released on 7/11/2024, and we do not expect there will be much code using this function yet. Any code breakages can be easily resolved by passing nullptr as the new, 4th parameter.
 
+* Hermetic CUDA support is added.
+
+  Hermetic CUDA uses a specific downloadable version of CUDA instead of the
+  user’s locally installed CUDA. Bazel will download CUDA, CUDNN and NCCL
+  distributions, and then use CUDA libraries and tools as dependencies in
+  various Bazel targets. This enables more reproducible builds for Google ML
+  projects and supported CUDA versions.
+
 ### Known Caveats
 
 * <CAVEATS REGARDING THE RELEASE (BUT NOT BREAKING CHANGES).>
