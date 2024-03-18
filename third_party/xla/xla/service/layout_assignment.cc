@@ -15,24 +15,23 @@ limitations under the License.
 
 #include "xla/service/layout_assignment.h"
 
-#include <algorithm>
+#include <cstdint>
 #include <deque>
-#include <functional>
 #include <map>
 #include <memory>
-#include <numeric>
 #include <ostream>
 #include <set>
 #include <string>
-#include <tuple>
 #include <utility>
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/container/flat_hash_set.h"
 #include "absl/log/log.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
+#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -40,12 +39,13 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/ir/hlo_sharding.h"
+#include "xla/layout.h"
 #include "xla/layout_util.h"
 #include "xla/map_util.h"
 #include "xla/permutation_util.h"
 #include "xla/service/call_graph.h"
 #include "xla/service/computation_layout.h"
-#include "xla/service/hlo_alias_analysis.h"
 #include "xla/service/hlo_dce.h"
 #include "xla/service/logical_buffer.h"
 #include "xla/service/tuple_points_to_analysis.h"
@@ -53,15 +53,15 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_layout.h"
 #include "xla/shape_util.h"
+#include "xla/status.h"
 #include "xla/status_macros.h"
 #include "xla/statusor.h"
-#include "xla/types.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/logging.h"
-#include "tsl/platform/protobuf.h"
 #include "tsl/platform/status.h"
+#include "tsl/platform/statusor.h"
 
 namespace xla {
 
@@ -2019,12 +2019,28 @@ Status LayoutAssignment::PropagateBufferConstraintToUses(
 Status LayoutAssignment::PropagateResultConstraint(
     const ComputationLayoutConstraint& layout_constraint,
     LayoutConstraints* constraints) {
+  ShapeLayout result_layout =
+      layout_constraint.computation_layout().result_layout();
+  // Clear out memory space in layout for entry computation root. Host offloader
+  // will do the analysis later and add back the memory space for host outputs.
+  if (constraints->computation()->IsEntryComputation()) {
+    Shape result_shape = result_layout.shape();
+    TF_RETURN_IF_ERROR(ShapeUtil::ForEachMutableSubshapeWithStatus(
+        &result_shape, [](Shape* subshape, const ShapeIndex& shape_index) {
+          if (subshape->has_layout() && subshape->IsArray()) {
+            subshape->mutable_layout()->set_memory_space(
+                Layout::kDefaultMemorySpace);
+          }
+          return OkStatus();
+        }));
+    TF_RETURN_IF_ERROR(result_layout.CopyLayoutFromShape(result_shape));
+  }
+
   // Propagate the use constraint of the root instruction up to the logical
   // buffers which make up the result.
   return PropagateUseConstraintToDefs(
-      layout_constraint.computation_layout().result_layout(),
-      constraints->computation()->root_instruction(), constraints,
-      current_priority_);
+      result_layout, constraints->computation()->root_instruction(),
+      constraints, current_priority_);
 }
 
 // Infers the layout of the array at the given index in the given instruction's

@@ -4571,7 +4571,6 @@ cc_library(
     deps = [
         ":call_graph",
         ":computation_layout",
-        ":hlo_alias_analysis",
         ":hlo_dce",
         ":hlo_graph_dumper",
         ":hlo_pass",
@@ -4581,6 +4580,7 @@ cc_library(
         "//xla:permutation_util",
         "//xla:shape_layout",
         "//xla:shape_util",
+        "//xla:status",
         "//xla:status_macros",
         "//xla:statusor",
         "//xla:types",
@@ -4598,8 +4598,8 @@ cc_library(
         "@com_google_absl//absl/types:span",
         "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:logging",
-        "@local_tsl//tsl/platform:protobuf",
         "@local_tsl//tsl/platform:status",
+        "@local_tsl//tsl/platform:statusor",
     ],
 )
 
