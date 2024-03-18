@@ -104,6 +104,7 @@ cc_library(
         "//xla/mlir_hlo",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:BufferizationDialect",
+        "@llvm-project//mlir:BufferizationInterfaces",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:InferTypeOpInterface",
     ],

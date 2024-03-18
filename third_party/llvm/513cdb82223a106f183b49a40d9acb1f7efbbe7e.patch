@@ -1,0 +1,393 @@
+Reverts
+https://github.com/llvm/llvm-project/commit/513cdb82223a106f183b49a40d9acb1f7efbbe7e
+diff --git b/mlir/lib/Dialect/Affine/IR/AffineOps.cpp a/mlir/lib/Dialect/Affine/IR/AffineOps.cpp
+index c591e5056480..8a070d256398 100644
+--- b/mlir/lib/Dialect/Affine/IR/AffineOps.cpp
++++ a/mlir/lib/Dialect/Affine/IR/AffineOps.cpp
+@@ -17,7 +17,6 @@
+ #include "mlir/IR/OpDefinition.h"
+ #include "mlir/IR/PatternMatch.h"
+ #include "mlir/Interfaces/ShapedOpInterfaces.h"
+-#include "mlir/Interfaces/ValueBoundsOpInterface.h"
+ #include "mlir/Support/MathExtras.h"
+ #include "mlir/Transforms/InliningUtils.h"
+ #include "llvm/ADT/ScopeExit.h"
+@@ -221,8 +220,6 @@ void AffineDialect::initialize() {
+ #include "mlir/Dialect/Affine/IR/AffineOps.cpp.inc"
+                 >();
+   addInterfaces<AffineInlinerInterface>();
+-  declarePromisedInterfaces<ValueBoundsOpInterface, AffineApplyOp, AffineMaxOp,
+-                            AffineMinOp>();
+ }
+ 
+ /// Materialize a single constant operation from a given attribute value with
+diff --git b/mlir/lib/Dialect/Arith/IR/ArithDialect.cpp a/mlir/lib/Dialect/Arith/IR/ArithDialect.cpp
+index 6a593185cced..745c5706a838 100644
+--- b/mlir/lib/Dialect/Arith/IR/ArithDialect.cpp
++++ a/mlir/lib/Dialect/Arith/IR/ArithDialect.cpp
+@@ -8,12 +8,9 @@
+ 
+ #include "mlir/Conversion/ConvertToLLVM/ToLLVMInterface.h"
+ #include "mlir/Dialect/Arith/IR/Arith.h"
+-#include "mlir/Dialect/Bufferization/IR/BufferDeallocationOpInterface.h"
+-#include "mlir/Dialect/Bufferization/IR/BufferizableOpInterface.h"
+ #include "mlir/Dialect/UB/IR/UBOps.h"
+ #include "mlir/IR/Builders.h"
+ #include "mlir/IR/DialectImplementation.h"
+-#include "mlir/Interfaces/ValueBoundsOpInterface.h"
+ #include "mlir/Transforms/InliningUtils.h"
+ #include "llvm/ADT/TypeSwitch.h"
+ 
+@@ -49,12 +46,6 @@ void arith::ArithDialect::initialize() {
+       >();
+   addInterfaces<ArithInlinerInterface>();
+   declarePromisedInterface<ArithDialect, ConvertToLLVMPatternInterface>();
+-  declarePromisedInterface<SelectOp,
+-                           bufferization::BufferDeallocationOpInterface>();
+-  declarePromisedInterfaces<bufferization::BufferizableOpInterface, ConstantOp,
+-                            IndexCastOp, SelectOp>();
+-  declarePromisedInterfaces<ValueBoundsOpInterface, AddIOp, ConstantOp, SubIOp,
+-                            MulIOp>();
+ }
+ 
+ /// Materialize an integer or floating point constant.
+diff --git b/mlir/lib/Dialect/ControlFlow/IR/ControlFlowOps.cpp a/mlir/lib/Dialect/ControlFlow/IR/ControlFlowOps.cpp
+index c6b02b9703e7..d242d75bd51f 100644
+--- b/mlir/lib/Dialect/ControlFlow/IR/ControlFlowOps.cpp
++++ a/mlir/lib/Dialect/ControlFlow/IR/ControlFlowOps.cpp
+@@ -10,8 +10,6 @@
+ 
+ #include "mlir/Conversion/ConvertToLLVM/ToLLVMInterface.h"
+ #include "mlir/Dialect/Arith/IR/Arith.h"
+-#include "mlir/Dialect/Bufferization/IR/BufferDeallocationOpInterface.h"
+-#include "mlir/Dialect/Bufferization/IR/BufferizableOpInterface.h"
+ #include "mlir/IR/AffineExpr.h"
+ #include "mlir/IR/AffineMap.h"
+ #include "mlir/IR/Builders.h"
+@@ -71,10 +69,6 @@ void ControlFlowDialect::initialize() {
+       >();
+   addInterfaces<ControlFlowInlinerInterface>();
+   declarePromisedInterface<ControlFlowDialect, ConvertToLLVMPatternInterface>();
+-  declarePromisedInterfaces<bufferization::BufferizableOpInterface, BranchOp,
+-                            CondBranchOp>();
+-  declarePromisedInterface<CondBranchOp,
+-                           bufferization::BufferDeallocationOpInterface>();
+ }
+ 
+ //===----------------------------------------------------------------------===//
+diff --git b/mlir/lib/Dialect/Func/IR/FuncOps.cpp a/mlir/lib/Dialect/Func/IR/FuncOps.cpp
+index ed2ecfe9d0fb..d18ec279e85c 100644
+--- b/mlir/lib/Dialect/Func/IR/FuncOps.cpp
++++ a/mlir/lib/Dialect/Func/IR/FuncOps.cpp
+@@ -9,7 +9,6 @@
+ #include "mlir/Dialect/Func/IR/FuncOps.h"
+ 
+ #include "mlir/Conversion/ConvertToLLVM/ToLLVMInterface.h"
+-#include "mlir/Dialect/Bufferization/IR/BufferizableOpInterface.h"
+ #include "mlir/IR/BuiltinOps.h"
+ #include "mlir/IR/BuiltinTypes.h"
+ #include "mlir/IR/IRMapping.h"
+@@ -44,8 +43,6 @@ void FuncDialect::initialize() {
+       >();
+   declarePromisedInterface<FuncDialect, DialectInlinerInterface>();
+   declarePromisedInterface<FuncDialect, ConvertToLLVMPatternInterface>();
+-  declarePromisedInterfaces<bufferization::BufferizableOpInterface, CallOp,
+-                            FuncOp, ReturnOp>();
+ }
+ 
+ /// Materialize a single constant operation from a given attribute value with
+diff --git b/mlir/lib/Dialect/GPU/IR/GPUDialect.cpp a/mlir/lib/Dialect/GPU/IR/GPUDialect.cpp
+index a02eca8b1179..33ce5c159db4 100644
+--- b/mlir/lib/Dialect/GPU/IR/GPUDialect.cpp
++++ a/mlir/lib/Dialect/GPU/IR/GPUDialect.cpp
+@@ -13,7 +13,6 @@
+ #include "mlir/Dialect/GPU/IR/GPUDialect.h"
+ 
+ #include "mlir/Dialect/Arith/IR/Arith.h"
+-#include "mlir/Dialect/Bufferization/IR/BufferDeallocationOpInterface.h"
+ #include "mlir/Dialect/MemRef/IR/MemRef.h"
+ #include "mlir/IR/Attributes.h"
+ #include "mlir/IR/Builders.h"
+@@ -216,8 +215,6 @@ void GPUDialect::initialize() {
+ #include "mlir/Dialect/GPU/IR/GPUOpsAttributes.cpp.inc"
+       >();
+   addInterfaces<GPUInlinerInterface>();
+-  declarePromisedInterface<TerminatorOp,
+-                           bufferization::BufferDeallocationOpInterface>();
+ }
+ 
+ static std::string getSparseHandleKeyword(SparseHandleKind kind) {
+diff --git b/mlir/lib/Dialect/Linalg/IR/LinalgDialect.cpp a/mlir/lib/Dialect/Linalg/IR/LinalgDialect.cpp
+index a6936fde4370..027058d4de63 100644
+--- b/mlir/lib/Dialect/Linalg/IR/LinalgDialect.cpp
++++ a/mlir/lib/Dialect/Linalg/IR/LinalgDialect.cpp
+@@ -21,10 +21,7 @@
+ #include "mlir/IR/BuiltinTypes.h"
+ #include "mlir/IR/Dialect.h"
+ #include "mlir/IR/DialectImplementation.h"
+-#include "mlir/Interfaces/DestinationStyleOpInterface.h"
+ #include "mlir/Interfaces/FunctionInterfaces.h"
+-#include "mlir/Interfaces/SubsetOpInterface.h"
+-#include "mlir/Interfaces/ValueBoundsOpInterface.h"
+ #include "mlir/Parser/Parser.h"
+ #include "mlir/Support/LLVM.h"
+ #include "mlir/Transforms/InliningUtils.h"
+@@ -126,23 +123,6 @@ void mlir::linalg::LinalgDialect::initialize() {
+   declarePromisedInterface<GenericOp, mesh::ShardingInterface>();
+   declarePromisedInterfaces<mesh::ShardingInterface,
+ #define GET_OP_LIST
+-#include "mlir/Dialect/Linalg/IR/LinalgStructuredOps.cpp.inc"
+-                            >();
+-  declarePromisedInterface<CopyOp, SubsetOpInterface>();
+-  declarePromisedInterface<CopyOp, SubsetInsertionOpInterface>();
+-  declarePromisedInterface<IndexOp, ValueBoundsOpInterface>();
+-  declarePromisedInterface<linalg::GenericOp, TilingInterface>();
+-  declarePromisedInterface<linalg::GenericOp, PartialReductionOpInterface>();
+-  declarePromisedInterfaces<TilingInterface,
+-#define GET_OP_LIST
+-#include "mlir/Dialect/Linalg/IR/LinalgStructuredOps.cpp.inc"
+-                            >();
+-  declarePromisedInterfaces<PartialReductionOpInterface,
+-#define GET_OP_LIST
+-#include "mlir/Dialect/Linalg/IR/LinalgStructuredOps.cpp.inc"
+-                            >();
+-  declarePromisedInterfaces<bufferization::BufferizableOpInterface,
+-#define GET_OP_LIST
+ #include "mlir/Dialect/Linalg/IR/LinalgStructuredOps.cpp.inc"
+                             >();
+ }
+diff --git b/mlir/lib/Dialect/MemRef/IR/MemRefDialect.cpp a/mlir/lib/Dialect/MemRef/IR/MemRefDialect.cpp
+index 41082a85a485..d71669a274b8 100644
+--- b/mlir/lib/Dialect/MemRef/IR/MemRefDialect.cpp
++++ a/mlir/lib/Dialect/MemRef/IR/MemRefDialect.cpp
+@@ -8,13 +8,8 @@
+ 
+ #include "mlir/Conversion/ConvertToLLVM/ToLLVMInterface.h"
+ #include "mlir/Dialect/Arith/IR/Arith.h"
+-#include "mlir/Dialect/Bufferization/IR/AllocationOpInterface.h"
+ #include "mlir/Dialect/MemRef/IR/MemRef.h"
+-#include "mlir/IR/BuiltinTypes.h"
+-#include "mlir/Interfaces/MemorySlotInterfaces.h"
+-#include "mlir/Interfaces/RuntimeVerifiableOpInterface.h"
+ #include "mlir/Interfaces/SideEffectInterfaces.h"
+-#include "mlir/Interfaces/ValueBoundsOpInterface.h"
+ #include "mlir/Transforms/InliningUtils.h"
+ #include <optional>
+ 
+@@ -48,13 +43,6 @@ void mlir::memref::MemRefDialect::initialize() {
+       >();
+   addInterfaces<MemRefInlinerInterface>();
+   declarePromisedInterface<MemRefDialect, ConvertToLLVMPatternInterface>();
+-  declarePromisedInterfaces<bufferization::AllocationOpInterface, AllocOp,
+-                            AllocaOp, ReallocOp>();
+-  declarePromisedInterfaces<RuntimeVerifiableOpInterface, CastOp, ExpandShapeOp,
+-                            LoadOp, ReinterpretCastOp, StoreOp, SubViewOp>();
+-  declarePromisedInterfaces<ValueBoundsOpInterface, AllocOp, AllocaOp, CastOp,
+-                            DimOp, GetGlobalOp, RankOp, SubViewOp>();
+-  declarePromisedInterface<MemRefType, DestructurableTypeInterface>();
+ }
+ 
+ /// Finds the unique dealloc operation (if one exists) for `allocValue`.
+diff --git b/mlir/lib/Dialect/SCF/IR/SCF.cpp a/mlir/lib/Dialect/SCF/IR/SCF.cpp
+index ddb9676eb4f6..233e702dbb22 100644
+--- b/mlir/lib/Dialect/SCF/IR/SCF.cpp
++++ a/mlir/lib/Dialect/SCF/IR/SCF.cpp
+@@ -9,8 +9,6 @@
+ #include "mlir/Dialect/SCF/IR/SCF.h"
+ #include "mlir/Dialect/Arith/IR/Arith.h"
+ #include "mlir/Dialect/Arith/Utils/Utils.h"
+-#include "mlir/Dialect/Bufferization/IR/BufferDeallocationOpInterface.h"
+-#include "mlir/Dialect/Bufferization/IR/BufferizableOpInterface.h"
+ #include "mlir/Dialect/ControlFlow/IR/ControlFlowOps.h"
+ #include "mlir/Dialect/MemRef/IR/MemRef.h"
+ #include "mlir/Dialect/SCF/IR/DeviceMappingInterface.h"
+@@ -20,7 +18,6 @@
+ #include "mlir/IR/Matchers.h"
+ #include "mlir/IR/PatternMatch.h"
+ #include "mlir/Interfaces/FunctionInterfaces.h"
+-#include "mlir/Interfaces/ValueBoundsOpInterface.h"
+ #include "mlir/Support/MathExtras.h"
+ #include "mlir/Transforms/InliningUtils.h"
+ #include "llvm/ADT/MapVector.h"
+@@ -74,12 +71,6 @@ void SCFDialect::initialize() {
+ #include "mlir/Dialect/SCF/IR/SCFOps.cpp.inc"
+       >();
+   addInterfaces<SCFInlinerInterface>();
+-  declarePromisedInterfaces<bufferization::BufferDeallocationOpInterface,
+-                            InParallelOp, ReduceReturnOp>();
+-  declarePromisedInterfaces<bufferization::BufferizableOpInterface, ConditionOp,
+-                            ExecuteRegionOp, ForOp, IfOp, IndexSwitchOp,
+-                            ForallOp, InParallelOp, WhileOp, YieldOp>();
+-  declarePromisedInterface<ForOp, ValueBoundsOpInterface>();
+ }
+ 
+ /// Default callback for IfOp builders. Inserts a yield without arguments.
+diff --git b/mlir/lib/Dialect/Shape/IR/Shape.cpp a/mlir/lib/Dialect/Shape/IR/Shape.cpp
+index f5a3717f815d..d9ee39a4e8dd 100644
+--- b/mlir/lib/Dialect/Shape/IR/Shape.cpp
++++ a/mlir/lib/Dialect/Shape/IR/Shape.cpp
+@@ -11,7 +11,6 @@
+ #include "mlir/Dialect/Shape/IR/Shape.h"
+ 
+ #include "mlir/Dialect/Arith/IR/Arith.h"
+-#include "mlir/Dialect/Bufferization/IR/BufferizableOpInterface.h"
+ #include "mlir/Dialect/CommonFolders.h"
+ #include "mlir/Dialect/Tensor/IR/Tensor.h"
+ #include "mlir/Dialect/Traits.h"
+@@ -144,8 +143,6 @@ void ShapeDialect::initialize() {
+   // still evolving it makes it simple to start with an unregistered ops and
+   // try different variants before actually defining the op.
+   allowUnknownOperations();
+-  declarePromisedInterfaces<bufferization::BufferizableOpInterface, AssumingOp,
+-                            AssumingYieldOp>();
+ }
+ 
+ Operation *ShapeDialect::materializeConstant(OpBuilder &builder,
+diff --git b/mlir/lib/Dialect/SparseTensor/IR/SparseTensorDialect.cpp a/mlir/lib/Dialect/SparseTensor/IR/SparseTensorDialect.cpp
+index 6da51bb6b9ca..7750efdd9add 100644
+--- b/mlir/lib/Dialect/SparseTensor/IR/SparseTensorDialect.cpp
++++ a/mlir/lib/Dialect/SparseTensor/IR/SparseTensorDialect.cpp
+@@ -16,7 +16,6 @@
+ #include "mlir/Dialect/SparseTensor/IR/SparseTensorType.h"
+ 
+ #include "mlir/Dialect/Arith/IR/Arith.h"
+-#include "mlir/Dialect/Bufferization/IR/BufferizableOpInterface.h"
+ #include "mlir/Dialect/Utils/StaticValueUtils.h"
+ #include "mlir/IR/Builders.h"
+ #include "mlir/IR/DialectImplementation.h"
+@@ -1957,10 +1956,6 @@ void SparseTensorDialect::initialize() {
+ #define GET_OP_LIST
+ #include "mlir/Dialect/SparseTensor/IR/SparseTensorOps.cpp.inc"
+       >();
+-  declarePromisedInterfaces<
+-      bufferization::BufferizableOpInterface, ConcatenateOp, ConvertOp, LoadOp,
+-      NewOp, NumberOfEntriesOp, AssembleOp, DisassembleOp,
+-      ToCoordinatesBufferOp, ToCoordinatesOp, ToPositionsOp, ToValuesOp>();
+ }
+ 
+ #define GET_OP_CLASSES
+diff --git b/mlir/lib/Dialect/Tensor/IR/TensorDialect.cpp a/mlir/lib/Dialect/Tensor/IR/TensorDialect.cpp
+index 5ca9510408c3..62032ff301be 100644
+--- b/mlir/lib/Dialect/Tensor/IR/TensorDialect.cpp
++++ a/mlir/lib/Dialect/Tensor/IR/TensorDialect.cpp
+@@ -8,11 +8,8 @@
+ 
+ #include "mlir/Dialect/Affine/IR/AffineOps.h"
+ #include "mlir/Dialect/Arith/IR/Arith.h"
+-#include "mlir/Dialect/Bufferization/IR/BufferizableOpInterface.h"
+ #include "mlir/Dialect/Complex/IR/Complex.h"
+ #include "mlir/Dialect/Tensor/IR/Tensor.h"
+-#include "mlir/Dialect/Transform/IR/TransformInterfaces.h"
+-#include "mlir/Interfaces/SubsetOpInterface.h"
+ #include "mlir/Transforms/InliningUtils.h"
+ 
+ using namespace mlir;
+@@ -48,22 +45,4 @@ void TensorDialect::initialize() {
+ #include "mlir/Dialect/Tensor/IR/TensorOps.cpp.inc"
+       >();
+   addInterfaces<TensorInlinerInterface>();
+-  declarePromisedInterfaces<
+-      bufferization::BufferizableOpInterface, CastOp, CollapseShapeOp, DimOp,
+-      EmptyOp, ExpandShapeOp, ExtractSliceOp, ExtractOp, FromElementsOp,
+-      GenerateOp, InsertOp, InsertSliceOp, PadOp, ParallelInsertSliceOp, RankOp,
+-      ReshapeOp, SplatOp>();
+-  declarePromisedInterfaces<transform::FindPayloadReplacementOpInterface,
+-                            CollapseShapeOp, ExpandShapeOp, ExtractSliceOp,
+-                            InsertSliceOp, ReshapeOp>();
+-  declarePromisedInterfaces<ReifyRankedShapedTypeOpInterface, ExpandShapeOp,
+-                            CollapseShapeOp, PadOp>();
+-  declarePromisedInterfaces<SubsetOpInterface, ExtractSliceOp, InsertSliceOp,
+-                            ParallelInsertSliceOp>();
+-  declarePromisedInterfaces<SubsetInsertionOpInterface, InsertSliceOp,
+-                            ParallelInsertSliceOp>();
+-  declarePromisedInterface<ExtractSliceOp, SubsetExtractionOpInterface>();
+-  declarePromisedInterfaces<TilingInterface, PadOp, PackOp, UnPackOp>();
+-  declarePromisedInterfaces<ValueBoundsOpInterface, CastOp, DimOp, EmptyOp,
+-                            ExtractSliceOp, PadOp, RankOp>();
+ }
+diff --git b/mlir/lib/Dialect/Tosa/CMakeLists.txt a/mlir/lib/Dialect/Tosa/CMakeLists.txt
+index 1911405c63cd..ba5343dcd7ac 100644
+--- b/mlir/lib/Dialect/Tosa/CMakeLists.txt
++++ a/mlir/lib/Dialect/Tosa/CMakeLists.txt
+@@ -12,7 +12,6 @@ add_mlir_dialect_library(MLIRTosaDialect
+   MLIRTosaDialectBytecodeIncGen
+   MLIRTosaOpsIncGen
+   MLIRTosaInterfacesIncGen
+-  MLIRShardingInterfaceIncGen
+ 
+   LINK_LIBS PUBLIC
+   MLIRIR
+diff --git b/mlir/lib/Dialect/Tosa/IR/TosaOps.cpp a/mlir/lib/Dialect/Tosa/IR/TosaOps.cpp
+index f461e7e1a555..62d07859e32f 100644
+--- b/mlir/lib/Dialect/Tosa/IR/TosaOps.cpp
++++ a/mlir/lib/Dialect/Tosa/IR/TosaOps.cpp
+@@ -13,7 +13,6 @@
+ //===----------------------------------------------------------------------===//
+ 
+ #include "mlir/Dialect/Tosa/IR/TosaOps.h"
+-#include "mlir/Dialect/Mesh/Interfaces/ShardingInterface.h"
+ #include "mlir/Dialect/Quant/QuantOps.h"
+ #include "mlir/Dialect/Tensor/IR/Tensor.h"
+ #include "mlir/Dialect/Tosa/Utils/QuantUtils.h"
+@@ -137,14 +136,6 @@ void TosaDialect::initialize() {
+ #include "mlir/Dialect/Tosa/IR/TosaAttributes.cpp.inc"
+       >();
+   addInterfaces<TosaDialectBytecodeInterface, TosaInlinerInterface>();
+-  declarePromisedInterfaces<
+-      mesh::ShardingInterface, ClampOp, SigmoidOp, TanhOp, AddOp,
+-      ArithmeticRightShiftOp, BitwiseAndOp, BitwiseOrOp, BitwiseXorOp, DivOp,
+-      LogicalAndOp, LogicalLeftShiftOp, LogicalRightShiftOp, LogicalOrOp,
+-      LogicalXorOp, MaximumOp, MinimumOp, MulOp, PowOp, SubOp, AbsOp,
+-      BitwiseNotOp, CeilOp, ClzOp, ExpOp, FloorOp, LogOp, LogicalNotOp,
+-      NegateOp, ReciprocalOp, RsqrtOp, SelectOp, EqualOp, GreaterOp,
+-      GreaterEqualOp, MatMulOp>();
+ }
+ 
+ Operation *TosaDialect::materializeConstant(OpBuilder &builder, Attribute value,
+diff --git b/mlir/lib/Dialect/Vector/IR/VectorOps.cpp a/mlir/lib/Dialect/Vector/IR/VectorOps.cpp
+index 023aec79a1c0..75f6220ad8f3 100644
+--- b/mlir/lib/Dialect/Vector/IR/VectorOps.cpp
++++ a/mlir/lib/Dialect/Vector/IR/VectorOps.cpp
+@@ -16,7 +16,6 @@
+ #include "mlir/Dialect/Affine/IR/ValueBoundsOpInterfaceImpl.h"
+ #include "mlir/Dialect/Arith/IR/Arith.h"
+ #include "mlir/Dialect/Arith/Utils/Utils.h"
+-#include "mlir/Dialect/Bufferization/IR/BufferizableOpInterface.h"
+ #include "mlir/Dialect/MemRef/IR/MemRef.h"
+ #include "mlir/Dialect/Tensor/IR/Tensor.h"
+ #include "mlir/Dialect/Utils/IndexingUtils.h"
+@@ -32,7 +31,6 @@
+ #include "mlir/IR/OpImplementation.h"
+ #include "mlir/IR/PatternMatch.h"
+ #include "mlir/IR/TypeUtilities.h"
+-#include "mlir/Interfaces/SubsetOpInterface.h"
+ #include "mlir/Interfaces/ValueBoundsOpInterface.h"
+ #include "mlir/Support/LLVM.h"
+ #include "mlir/Transforms/InliningUtils.h"
+@@ -376,14 +374,6 @@ void VectorDialect::initialize() {
+       >();
+ 
+   addInterfaces<VectorInlinerInterface>();
+-
+-  declarePromisedInterfaces<bufferization::BufferizableOpInterface,
+-                            TransferReadOp, TransferWriteOp, GatherOp, MaskOp,
+-                            YieldOp>();
+-  declarePromisedInterfaces<SubsetOpInterface, TransferReadOp,
+-                            TransferWriteOp>();
+-  declarePromisedInterface<TransferReadOp, SubsetExtractionOpInterface>();
+-  declarePromisedInterface<TransferWriteOp, SubsetInsertionOpInterface>();
+ }
+ 
+ /// Materialize a single constant operation from a given attribute value with
+diff --git a/utils/bazel/llvm-project-overlay/mlir/BUILD.bazel b/utils/bazel/llvm-project-overlay/mlir/BUILD.bazel
+index 7f08667d9f78..530af7fc088c 100644
+--- a/utils/bazel/llvm-project-overlay/mlir/BUILD.bazel
++++ b/utils/bazel/llvm-project-overlay/mlir/BUILD.bazel
+@@ -7382,7 +7382,6 @@ cc_library(
+         ":Support",
+         ":TensorOpsIncGen",
+         ":TilingInterface",
+-        ":TransformDialect",
+         ":ValueBoundsOpInterface",
+         ":ViewLikeInterface",
+         "//llvm:Support",
