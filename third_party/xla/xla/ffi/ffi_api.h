@@ -66,6 +66,8 @@ struct HandlerRegistration {
   XLA_FFI_Handler_Traits traits = 0;
 };
 
+bool IsCommandBufferCompatible(XLA_FFI_Handler_Traits traits);
+
 // Returns registered FFI handler for a given name and platform, or an error if
 // it's not found in the static registry.
 absl::StatusOr<HandlerRegistration> FindHandler(std::string_view name,

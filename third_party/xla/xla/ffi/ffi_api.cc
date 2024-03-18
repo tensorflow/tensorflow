@@ -50,6 +50,10 @@ struct XLA_FFI_ExecutionContext {
 
 namespace xla::ffi {
 
+bool IsCommandBufferCompatible(XLA_FFI_Handler_Traits traits) {
+  return traits & XLA_FFI_HANDLER_TRAITS_COMMAND_BUFFER_COMPATIBLE;
+}
+
 //===----------------------------------------------------------------------===//
 // Calling XLA FFI handlers
 //===----------------------------------------------------------------------===//
