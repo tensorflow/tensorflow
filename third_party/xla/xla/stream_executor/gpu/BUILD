@@ -367,6 +367,9 @@ gpu_only_cc_library(
     name = "gpu_timer",
     srcs = ["gpu_timer.cc"],
     hdrs = ["gpu_timer.h"],
+    local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]) + if_rocm_is_configured([
+        "TENSORFLOW_USE_ROCM=1",
+    ]),
     deps = [
         ":gpu_driver_header",
         ":gpu_executor_header",

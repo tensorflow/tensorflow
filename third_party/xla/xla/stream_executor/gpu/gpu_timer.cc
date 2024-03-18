@@ -52,12 +52,16 @@ absl::Duration RandomDuration() {
 }
 
 bool ShouldLaunchDelayKernel() {
+#if GOOGLE_CUDA
   // Only launch the delay kernel if CUDA_LAUNCH_BLOCKING is not set to 1.
   static bool value = [] {
     const char* blocking = std::getenv("CUDA_LAUNCH_BLOCKING");
     return !blocking || std::string_view{blocking} != "1";
   }();
   return value;
+#elif TENSORFLOW_USE_ROCM
+  return false;
+#endif
 }
 
 }  // namespace
@@ -124,9 +128,13 @@ DeviceMemory<GpuSemaphoreState> GpuTimer::GpuSemaphore::device() {
   if (ShouldLaunchDelayKernel()) {
     // Check the assumption that this device supports unified addressing,
     // otherwise skip the delay kernel
+#if GOOGLE_CUDA
+    auto attr = CU_DEVICE_ATTRIBUTE_UNIFIED_ADDRESSING;
+#elif TENSORFLOW_USE_ROCM
+    auto attr = hipDeviceAttributeUnifiedAddressing;
+#endif
     TF_ASSIGN_OR_RETURN(int status, GpuDriver::GetDeviceAttribute(
-                                        CU_DEVICE_ATTRIBUTE_UNIFIED_ADDRESSING,
-                                        parent->device()));
+                                        attr, parent->device()));
     if (!status) {
       LOG(WARNING) << "Skipping the delay kernel because the device does not "
                       "support unified addressing";
