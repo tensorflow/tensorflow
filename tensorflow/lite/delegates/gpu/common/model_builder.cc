@@ -1143,19 +1143,32 @@ class ElementwiseOperationParser : public TFLiteOperationParser {
         int input_tensor1 = 1;
         if (operation_type_ == OperationType::MUL ||
             operation_type_ == OperationType::ADD) {
-          // The "larger" input tensor must be bound to 1st input and the
-          // "smaller" input tensor must be bound to 2nd input.
+          // The "larger" input tensor MUST be the 1st argument, and the
+          // "smaller" input tensor must be the 2nd.
           BHWC shape0;
           RETURN_IF_ERROR(ExtractTensorShape(*input0, &shape0));
           BHWC shape1;
           RETURN_IF_ERROR(ExtractTensorShape(*input1, &shape1));
+          if (shape0.b != shape1.b) {
+            return absl::InvalidArgumentError(absl::StrCat(
+                "Tensor shape (b) mismatch: ", shape0.b, " vs ", shape1.b));
+          } else if (shape0.c != shape1.c) {
+            return absl::InvalidArgumentError(absl::StrCat(
+                "Tensor shape (c) mismatch: ", shape0.c, " vs ", shape1.c));
+          } else if (!(shape0.h <= shape1.h && shape0.w <= shape1.w) &&
+                     !(shape0.h >= shape1.h && shape0.w >= shape1.w)) {
+            // One input tensor must be consistently larger (or smaller) than or
+            // as same shaped as the other input tensor in both dimensions.
+            return absl::InvalidArgumentError(absl::StrCat(
+                "Tensor shape (h, w) mismatch: (", shape0.h, ", ", shape0.w,
+                ") vs (", shape1.h, ", ", shape1.w, ")"));
+          }
           if (shape0.h <= shape1.h && shape0.w <= shape1.w &&
               shape0.c == shape1.c) {
             input_tensor0 = 1;
             input_tensor1 = 0;
           }
         }
-
         RETURN_IF_ERROR(reader->AddInput(node, input_tensor0));
         RETURN_IF_ERROR(reader->AddInput(node, input_tensor1));
       }
