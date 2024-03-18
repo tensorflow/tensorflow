@@ -557,6 +557,45 @@ xla_cc_test(
 )
 
 cc_library(
+    name = "symbolic_tile_analysis",
+    srcs = ["symbolic_tile_analysis.cc"],
+    hdrs = ["symbolic_tile_analysis.h"],
+    deps = [
+        ":indexing_analysis",
+        ":indexing_map",
+        ":tile_analysis",
+        "//xla:shape_util",
+        "//xla:status",
+        "//xla/hlo/ir:hlo",
+        "//xla/service:instruction_fusion",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:IR",
+    ],
+)
+
+xla_cc_test(
+    name = "symbolic_tile_analysis_test",
+    srcs = ["symbolic_tile_analysis_test.cc"],
+    deps = [
+        ":indexing_map",
+        ":symbolic_tile_analysis",
+        "//xla/hlo/ir:hlo",
+        "//xla/tests:hlo_test_base",
+        "//xla/tests:verified_hlo_module",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
+        "@com_google_googletest//:gtest_main",
+        "@llvm-project//mlir:IR",
+        "@local_tsl//tsl/platform:statusor",
+    ],
+)
+
+cc_library(
     name = "coalescing_analysis",
     srcs = ["coalescing_analysis.cc"],
     hdrs = ["coalescing_analysis.h"],

@@ -78,23 +78,6 @@ HloInstructionIndexing CreateUnknownIndexing(int64_t count = 1) {
   return indexing;
 }
 
-IndexingMap CreateIdentityMap(const Shape& shape,
-                              IndexingContext* indexing_context) {
-  if (shape.IsTuple()) {
-    // Should happen only for variadic reduce. In that case all tuple shapes are
-    // equal.
-    return CreateIdentityMap(shape.tuple_shapes(0), indexing_context);
-  }
-
-  auto dims = shape.dimensions();
-  IndexingMap identity_map = IndexingMap::FromTensorSizes(
-      indexing_context,
-      AffineMap::getMultiDimIdentityMap(dims.size(),
-                                        indexing_context->GetMLIRContext()),
-      dims, {});
-  return identity_map;
-}
-
 HloInstructionIndexing ComputeOutputToInputCwiseOpIndexing(
     const HloInstruction* instr, IndexingContext* indexing_context) {
   IndexingMap identity_map =
@@ -894,6 +877,23 @@ AffineMap GetTilingAffineMap(llvm::ArrayRef<AffineExpr> exprs,
 }
 
 }  // namespace
+
+IndexingMap CreateIdentityMap(const Shape& shape,
+                              IndexingContext* indexing_context) {
+  if (shape.IsTuple()) {
+    // Should happen only for variadic reduce. In that case all tuple shapes are
+    // equal.
+    return CreateIdentityMap(shape.tuple_shapes(0), indexing_context);
+  }
+
+  auto dims = shape.dimensions();
+  IndexingMap identity_map = IndexingMap::FromTensorSizes(
+      indexing_context,
+      AffineMap::getMultiDimIdentityMap(dims.size(),
+                                        indexing_context->GetMLIRContext()),
+      dims, {});
+  return identity_map;
+}
 
 llvm::SmallVector<AffineExpr, 4> DelinearizeInBoundsIndex(
     AffineExpr linear, absl::Span<const int64_t> sizes,
