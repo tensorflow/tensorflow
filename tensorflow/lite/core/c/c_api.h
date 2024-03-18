@@ -28,7 +28,7 @@ limitations under the License.
 #include "tensorflow/lite/builtin_ops.h"
 #include "tensorflow/lite/core/async/c/types.h"
 #include "tensorflow/lite/core/c/c_api_types.h"  // IWYU pragma: export
-#include "tensorflow/lite/core/c/registration_external.h"  // IWYU pragma: export
+#include "tensorflow/lite/core/c/operator.h"  // IWYU pragma: export
 
 /// C API for TensorFlow Lite.
 ///
@@ -266,19 +266,18 @@ TFL_CAPI_EXPORT extern void TfLiteInterpreterOptionsSetErrorReporter(
 
 /// Adds an op registration to be applied during `TfLiteInterpreter` creation.
 ///
-/// The `TfLiteRegistrationExternal` object is needed to implement custom op of
+/// The `TfLiteOperator` object is needed to implement custom op of
 /// TFLite Interpreter via C API. Calling this function ensures that any
 /// `TfLiteInterpreter` created with the specified `options` can execute models
 /// that use the custom operator specified in `registration`.
 /// Please refer https://www.tensorflow.org/lite/guide/ops_custom for custom op
 /// support.
-/// \note The caller retains ownership of the TfLiteRegistrationExternal object
+/// \note The caller retains ownership of the TfLiteOperator object
 /// and should ensure that it remains valid for the duration of any created
 /// interpreter's lifetime.
 /// \warning This is an experimental API and subject to change.
-TFL_CAPI_EXPORT extern void TfLiteInterpreterOptionsAddRegistrationExternal(
-    TfLiteInterpreterOptions* options,
-    TfLiteRegistrationExternal* registration);
+TFL_CAPI_EXPORT extern void TfLiteInterpreterOptionsAddOperator(
+    TfLiteInterpreterOptions* options, TfLiteOperator* registration);
 
 /// Enables users to cancel in-flight invocations with
 /// `TfLiteInterpreterCancel`.

@@ -72,6 +72,9 @@
       schema globally in the converter and inference engine. The new behaviour
       can be disabled via experimental
       flag `converter._experimental_disable_per_channel_quantization_for_dense_layers = True`.
+    * C API:
+        * The experimental `TfLiteRegistrationExternal` type has been renamed as
+          `TfLiteOperator`, and likewise for the corresponding API functions.
 
 ## Thanks to our Contributors
 

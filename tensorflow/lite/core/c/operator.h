@@ -17,14 +17,14 @@ limitations under the License.
 /// Only the TensorFlow Lite implementation itself should include this
 /// file directly.
 ///
-/// The types and functions declared in registration_external.h are
+/// The types and functions declared in operator.h are
 /// part of the TensorFlow Lite Extension APIs.
 /// We reserve the right to make changes to this API in future releases,
 /// potentially including non-backwards-compatible changes, on a different
 /// schedule than for the other TensorFlow Lite APIs. See
 /// https://www.tensorflow.org/guide/versions#separate_version_number_for_tensorflow_lite_extension_apis.
-#ifndef TENSORFLOW_LITE_CORE_C_REGISTRATION_EXTERNAL_H_
-#define TENSORFLOW_LITE_CORE_C_REGISTRATION_EXTERNAL_H_
+#ifndef TENSORFLOW_LITE_CORE_C_OPERATOR_H_
+#define TENSORFLOW_LITE_CORE_C_OPERATOR_H_
 
 #include <stdint.h>
 #include <stdlib.h>
@@ -37,31 +37,31 @@ limitations under the License.
 extern "C" {
 #endif  // __cplusplus
 
-// TfLiteRegistrationExternal is an opaque version of TfLiteRegistration,
+// TfLiteOperator is an opaque version of TfLiteRegistration,
 // and is used for registering custom ops.  It represents a definition of a
 // custom op or a builtin op.
 //
 // \warning This is an experimental type and subject to change.
-typedef struct TfLiteRegistrationExternal TfLiteRegistrationExternal;
+typedef struct TfLiteOperator TfLiteOperator;
 
-// Returns a new TfLiteRegistrationExternal instance.
+// Returns a new TfLiteOperator instance.
 //
-// The returned TfLiteRegistrationExternal instance represents a definition
+// The returned TfLiteOperator instance represents a definition
 // of an operator with the identity (builtin_code/custom_name and
 // version) specified by the parameters, but with all callbacks initially unset.
 //
 // Evaluation of any operation using this operator will be done using
 // the "prepare" and "invoke" callbacks, which can be set using
-// `TfLiteRegistrationExternalSetPrepare` and
-// `TfLiteRegistrationExternalSetInvoke`, or for async execution
+// `TfLiteOperatorSetPrepare` and
+// `TfLiteOperatorSetInvoke`, or for async execution
 // the "prepare", "eval", and "wait" callbacks of the `TfLiteAsyncKernel`,
-// which can be set using `TfLiteRegistrationExternalSetAsyncKernel`.
+// which can be set using `TfLiteOperatorSetAsyncKernel`.
 // If the relevant callbacks are not set, then such evaluation will result
 // in an error status.  So normally any use of this function should be followed
 // by appropriate calls to set those callbacks.
 //
 // \note The caller retains ownership and should ensure that
-// the lifetime of the `TfLiteRegistrationExternal` must be at least as long as
+// the lifetime of the `TfLiteOperator` must be at least as long as
 // the lifetime of any `TfLiteInterpreter` or `tflite::Interpreter` that it is
 // used in.
 //
@@ -74,36 +74,33 @@ typedef struct TfLiteRegistrationExternal TfLiteRegistrationExternal;
 //                     https://www.tensorflow.org/lite/guide/ops_version
 //
 // \warning This is an experimental API and subject to change.
-TFL_CAPI_EXPORT extern TfLiteRegistrationExternal*
-TfLiteRegistrationExternalCreate(TfLiteBuiltinOperator builtin_code,
-                                 const char* custom_name, int version);
+TFL_CAPI_EXPORT extern TfLiteOperator* TfLiteOperatorCreate(
+    TfLiteBuiltinOperator builtin_code, const char* custom_name, int version);
 
-// Destroys the TfLiteRegistrationExternal instance.
+// Destroys the TfLiteOperator instance.
 //
 // \warning This is an experimental API and subject to change.
-TFL_CAPI_EXPORT extern void TfLiteRegistrationExternalDelete(
-    TfLiteRegistrationExternal* registration);
+TFL_CAPI_EXPORT extern void TfLiteOperatorDelete(TfLiteOperator* registration);
 
 // Return the builtin op code of the provided external 'registration'.
 //
 // \warning This is an experimental API and subject to change.
-TFL_CAPI_EXPORT extern TfLiteBuiltinOperator
-TfLiteRegistrationExternalGetBuiltInCode(
-    const TfLiteRegistrationExternal* registration);
+TFL_CAPI_EXPORT extern TfLiteBuiltinOperator TfLiteOperatorGetBuiltInCode(
+    const TfLiteOperator* registration);
 
 /// Returns the custom name of the provided 'registration'. The returned pointer
 /// will be non-null iff the op is a custom op.
 ///
 /// \warning This is an experimental API and subject to change.
-TFL_CAPI_EXPORT extern const char* TfLiteRegistrationExternalGetCustomName(
-    const TfLiteRegistrationExternal* registration);
+TFL_CAPI_EXPORT extern const char* TfLiteOperatorGetCustomName(
+    const TfLiteOperator* registration);
 
 /// Return the OP version of the provided external 'registration'.  Return -1
 /// in case of error, or if the provided address is null.
 ///
 /// \warning This is an experimental API and subject to change.
-TFL_CAPI_EXPORT extern int TfLiteRegistrationExternalGetVersion(
-    const TfLiteRegistrationExternal* registration);
+TFL_CAPI_EXPORT extern int TfLiteOperatorGetVersion(
+    const TfLiteOperator* registration);
 
 // Sets the initialization callback for the registration.
 //
@@ -111,8 +108,8 @@ TFL_CAPI_EXPORT extern int TfLiteRegistrationExternalGetVersion(
 // Please refer `init` of `TfLiteRegistration` for the detail.
 //
 // \warning This is an experimental API and subject to change.
-TFL_CAPI_EXPORT extern void TfLiteRegistrationExternalSetInit(
-    TfLiteRegistrationExternal* registration,
+TFL_CAPI_EXPORT extern void TfLiteOperatorSetInit(
+    TfLiteOperator* registration,
     void* (*init)(TfLiteOpaqueContext* context, const char* buffer,
                   size_t length));
 
@@ -124,8 +121,8 @@ TFL_CAPI_EXPORT extern void TfLiteRegistrationExternalSetInit(
 // Please refer `free` of `TfLiteRegistration` for the detail.
 //
 // \warning This is an experimental API and subject to change.
-TFL_CAPI_EXPORT extern void TfLiteRegistrationExternalSetFree(
-    TfLiteRegistrationExternal* registration,
+TFL_CAPI_EXPORT extern void TfLiteOperatorSetFree(
+    TfLiteOperator* registration,
     void (*free)(TfLiteOpaqueContext* context, void* data));
 
 // Sets the preparation callback for the registration.
@@ -134,8 +131,8 @@ TFL_CAPI_EXPORT extern void TfLiteRegistrationExternalSetFree(
 // Please refer `prepare` of `TfLiteRegistration` for the detail.
 //
 // \warning This is an experimental API and subject to change.
-TFL_CAPI_EXPORT extern void TfLiteRegistrationExternalSetPrepare(
-    TfLiteRegistrationExternal* registration,
+TFL_CAPI_EXPORT extern void TfLiteOperatorSetPrepare(
+    TfLiteOperator* registration,
     TfLiteStatus (*prepare)(TfLiteOpaqueContext* context,
                             TfLiteOpaqueNode* node));
 
@@ -145,8 +142,8 @@ TFL_CAPI_EXPORT extern void TfLiteRegistrationExternalSetPrepare(
 // Please refer `invoke` of `TfLiteRegistration` for the detail.
 //
 // \warning This is an experimental API and subject to change.
-TFL_CAPI_EXPORT extern void TfLiteRegistrationExternalSetInvoke(
-    TfLiteRegistrationExternal* registration,
+TFL_CAPI_EXPORT extern void TfLiteOperatorSetInvoke(
+    TfLiteOperator* registration,
     TfLiteStatus (*invoke)(TfLiteOpaqueContext* context,
                            TfLiteOpaqueNode* node));
 
@@ -158,8 +155,8 @@ TFL_CAPI_EXPORT extern void TfLiteRegistrationExternalSetInvoke(
 /// `node` is the delegate TfLiteNode created by `ModifyGraphWithDelegate`.
 /// Please refer `async_kernel` of `TfLiteRegistration` for the detail.
 /// \warning This is an experimental API and subject to change.
-TFL_CAPI_EXPORT extern void TfLiteRegistrationExternalSetAsyncKernel(
-    TfLiteRegistrationExternal* registration,
+TFL_CAPI_EXPORT extern void TfLiteOperatorSetAsyncKernel(
+    TfLiteOperator* registration,
     struct TfLiteAsyncKernel* (*async_kernel)(TfLiteOpaqueContext* context,
                                               TfLiteOpaqueNode* node));
 
@@ -169,11 +166,11 @@ TFL_CAPI_EXPORT extern void TfLiteRegistrationExternalSetAsyncKernel(
 /// `TfLiteRegistration` for details.
 ///
 /// \warning This is an experimental API and subject to change.
-TFL_CAPI_EXPORT extern void TfLiteRegistrationExternalSetInplaceOperator(
-    TfLiteRegistrationExternal* registration, uint64_t inplace_operator);
+TFL_CAPI_EXPORT extern void TfLiteOperatorSetInplaceOperator(
+    TfLiteOperator* registration, uint64_t inplace_operator);
 
 #ifdef __cplusplus
 }  // extern "C"
 #endif  // __cplusplus
 
-#endif  // TENSORFLOW_LITE_CORE_C_REGISTRATION_EXTERNAL_H_
+#endif  // TENSORFLOW_LITE_CORE_C_OPERATOR_H_

@@ -96,7 +96,7 @@ TFL_CAPI_EXPORT void TfLiteInterpreterOptionsAddCustomOp(
 /// The `TfLiteInterpreterOptionsSetOpResolverExternal` function provides an
 /// alternative method for registering builtin ops and/or custom ops, by
 /// providing operator resolver callbacks.  Unlike using
-/// `TfLiteInterpreterOptionsAddRegistrationExternal`,
+/// `TfLiteInterpreterOptionsAddOperator`,
 /// `TfLiteInterpreterOptionsAddBuiltinOp` and/or
 /// `TfLiteInterpreterOptionsAddAddCustomOp`, these let you register all the
 /// operators in a single call.
@@ -108,18 +108,17 @@ TFL_CAPI_EXPORT void TfLiteInterpreterOptionsAddCustomOp(
 /// If `op_resolver_user_data` is non-null, its lifetime must be at least as
 /// long as the lifetime of the `TfLiteInterpreterOptions`.
 ///
-/// The TfLiteRegistrationExternal objects whose addresses are returned by
+/// The TfLiteOperator objects whose addresses are returned by
 /// `find_builtin_op` and `find_custom_op` must outlive both the
 /// InterpreterOptions object and any Interpreter object created from it.
 ///
 /// WARNING: This is an experimental API and subject to change.
 void TfLiteInterpreterOptionsSetOpResolverExternal(
     TfLiteInterpreterOptions* options,
-    const TfLiteRegistrationExternal* (*find_builtin_op)(void* user_data,
-                                                         int op, int version),
-    const TfLiteRegistrationExternal* (*find_custom_op)(void* user_data,
-                                                        const char* custom_op,
-                                                        int version),
+    const TfLiteOperator* (*find_builtin_op)(void* user_data, int op,
+                                             int version),
+    const TfLiteOperator* (*find_custom_op)(void* user_data,
+                                            const char* custom_op, int version),
     void* op_resolver_user_data);
 
 /// \private
@@ -127,8 +126,8 @@ void TfLiteInterpreterOptionsSetOpResolverExternal(
 ///
 /// This combines the effects of TfLiteInterpreterOptionsSetOpResolverExternal
 /// and TfLiteInterpreterOptionsSetOpResolver.  The callbacks that return
-/// TfLiteRegistrationExternal will be called first, but if they return a
-/// TfLiteRegistrationExternal object that has no methods set, then
+/// TfLiteOperator will be called first, but if they return a
+/// TfLiteOperator object that has no methods set, then
 /// the callbacks that return a TfLiteRegistration will be called to get
 /// the methods.
 ///
@@ -139,10 +138,11 @@ void TfLiteInterpreterOptionsSetOpResolverExternal(
 /// TF Lite itself.
 void TfLiteInterpreterOptionsSetOpResolverExternalWithFallback(
     TfLiteInterpreterOptions* options,
-    const TfLiteRegistrationExternal* (*find_builtin_op_external)(
-        void* user_data, int op, int version),
-    const TfLiteRegistrationExternal* (*find_custom_op_external)(
-        void* user_data, const char* custom_op, int version),
+    const TfLiteOperator* (*find_builtin_op_external)(void* user_data, int op,
+                                                      int version),
+    const TfLiteOperator* (*find_custom_op_external)(void* user_data,
+                                                     const char* custom_op,
+                                                     int version),
     const TfLiteRegistration* (*find_builtin_op)(void* user_data,
                                                  TfLiteBuiltinOperator op,
                                                  int version),
