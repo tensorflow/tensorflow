@@ -30,19 +30,19 @@ limitations under the License.
 
 namespace tflite {
 namespace {
-TfLiteRegistrationExternal* CreateDelegateKernelRegistration(
+TfLiteOperator* CreateDelegateKernelRegistration(
     SimpleOpaqueDelegateInterface* delegate) {
-  TfLiteRegistrationExternal* kernel_registration =
-      TfLiteRegistrationExternalCreate(kTfLiteBuiltinDelegate, delegate->Name(),
-                                       /*version=*/1);
+  TfLiteOperator* kernel_registration =
+      TfLiteOperatorCreate(kTfLiteBuiltinDelegate, delegate->Name(),
+                           /*version=*/1);
 
-  TfLiteRegistrationExternalSetFree(
+  TfLiteOperatorSetFree(
       kernel_registration,
       [](TfLiteOpaqueContext* context, void* buffer) -> void {
         delete reinterpret_cast<SimpleOpaqueDelegateInterface*>(buffer);
       });
 
-  TfLiteRegistrationExternalSetInit(
+  TfLiteOperatorSetInit(
       kernel_registration,
       [](TfLiteOpaqueContext* context, const char* buffer,
          size_t length) -> void* {
@@ -60,7 +60,7 @@ TfLiteRegistrationExternal* CreateDelegateKernelRegistration(
         }
         return delegate_kernel.release();
       });
-  TfLiteRegistrationExternalSetPrepare(
+  TfLiteOperatorSetPrepare(
       kernel_registration,
       [](TfLiteOpaqueContext* context,
          TfLiteOpaqueNode* opaque_node) -> TfLiteStatus {
@@ -69,7 +69,7 @@ TfLiteRegistrationExternal* CreateDelegateKernelRegistration(
                 TfLiteOpaqueNodeGetUserData(opaque_node));
         return delegate_kernel->Prepare(context, opaque_node);
       });
-  TfLiteRegistrationExternalSetInvoke(
+  TfLiteOperatorSetInvoke(
       kernel_registration,
       [](TfLiteOpaqueContext* context,
          TfLiteOpaqueNode* opaque_node) -> TfLiteStatus {
@@ -100,7 +100,7 @@ TfLiteStatus DelegatePrepare(TfLiteOpaqueContext* opaque_context,
     const int node_id = plan->data[i];
 
     TfLiteOpaqueNode* opaque_node;
-    TfLiteRegistrationExternal* registration_external;
+    TfLiteOperator* registration_external;
     TfLiteOpaqueContextGetNodeAndRegistration(
         opaque_context, node_id, &opaque_node, &registration_external);
 
@@ -110,7 +110,7 @@ TfLiteStatus DelegatePrepare(TfLiteOpaqueContext* opaque_context,
     }
   }
 
-  TfLiteRegistrationExternal* delegate_kernel_registration =
+  TfLiteOperator* delegate_kernel_registration =
       CreateDelegateKernelRegistration(simple_opaque_delegate);
 
   // Transfers ownership of delegate_kernel_registration to the opaque_context.
