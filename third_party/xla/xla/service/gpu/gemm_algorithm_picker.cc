@@ -187,6 +187,12 @@ class GemmAutotuner {
         -> absl::StatusOr<se::blas::ProfileResult> {
       se::OwningScratchAllocator<> scratch_allocator(
           stream_->parent()->device_ordinal(), autotune_config_.GetAllocator());
+      // Run a warmup iteration without the profiler active.
+      TF_RETURN_IF_ERROR(plan->ExecuteOnStream(
+          stream_, lhs_buffer_, rhs_buffer_, output_buffer_, output_buffer_,
+          bias_buffer, aux_buffer, a_scale_buffer, b_scale_buffer,
+          c_scale_buffer, d_scale_buffer, d_amax_buffer, algorithm,
+          scratch_allocator));
       se::blas::ProfileResult profile_result;
       TF_RETURN_IF_ERROR(plan->ExecuteOnStream(
           stream_, lhs_buffer_, rhs_buffer_, output_buffer_, output_buffer_,
