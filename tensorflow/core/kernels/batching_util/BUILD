@@ -190,6 +190,7 @@ tf_cc_test(
     name = "shared_batch_scheduler_test",
     size = "small",
     srcs = ["shared_batch_scheduler_test.cc"],
+    tags = ["no_windows"],
     deps = [
         ":batch_scheduler",
         ":fake_clock_env",
