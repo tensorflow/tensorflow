@@ -46,11 +46,11 @@ class AddressComputationThunk : public Thunk {
       ThunkInfo thunk_info, std::unique_ptr<ThunkSequence> embedded_thunk,
       std::vector<std::optional<const BufferAllocation::Slice>> operands,
       std::vector<std::optional<const BufferAllocation::Slice>> results,
-      std::vector<std::optional<const BufferAllocation::Slice>>
+      std::vector<std::optional<std::vector<BufferAllocation::Slice>>>
           operand_offset_buffer_indices,
       std::vector<std::optional<const Shape>> operand_orig_shapes,
       std::vector<std::optional<const Shape>> operand_sliced_shapes,
-      std::vector<std::optional<const BufferAllocation::Slice>>
+      std::vector<std::optional<std::vector<BufferAllocation::Slice>>>
           result_offset_buffer_indices,
       std::vector<std::optional<const Shape>> result_orig_shapes,
       std::vector<std::optional<const Shape>> result_sliced_shapes);
@@ -69,11 +69,11 @@ class AddressComputationThunk : public Thunk {
       embedded_thunk_operands_;
   std::vector<std::optional<const BufferAllocation::Slice>>
       embedded_thunk_results_;
-  std::vector<std::optional<const BufferAllocation::Slice>>
+  std::vector<std::optional<std::vector<BufferAllocation::Slice>>>
       operand_offset_buffer_indices_;
   std::vector<std::optional<const Shape>> operand_orig_shapes_;
   std::vector<std::optional<const Shape>> operand_sliced_shapes_;
-  std::vector<std::optional<const BufferAllocation::Slice>>
+  std::vector<std::optional<std::vector<BufferAllocation::Slice>>>
       result_offset_buffer_indices_;
   std::vector<std::optional<const Shape>> result_orig_shapes_;
   std::vector<std::optional<const Shape>> result_sliced_shapes_;

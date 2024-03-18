@@ -46,11 +46,11 @@ AddressComputationThunk::AddressComputationThunk(
     ThunkInfo thunk_info, std::unique_ptr<ThunkSequence> embedded_thunk,
     std::vector<std::optional<const BufferAllocation::Slice>> operands,
     std::vector<std::optional<const BufferAllocation::Slice>> results,
-    std::vector<std::optional<const BufferAllocation::Slice>>
+    std::vector<std::optional<std::vector<BufferAllocation::Slice>>>
         operand_offset_buffer_indices,
     std::vector<std::optional<const Shape>> operand_orig_shapes,
     std::vector<std::optional<const Shape>> operand_sliced_shapes,
-    std::vector<std::optional<const BufferAllocation::Slice>>
+    std::vector<std::optional<std::vector<BufferAllocation::Slice>>>
         result_offset_buffer_indices,
     std::vector<std::optional<const Shape>> result_orig_shapes,
     std::vector<std::optional<const Shape>> result_sliced_shapes)
@@ -79,6 +79,10 @@ absl::Status AddressComputationThunk::Prepare(
       TF_RET_CHECK(operand_sliced_shapes_[i]->IsArray());
       TF_RET_CHECK(operand_orig_shapes_[i].has_value() &&
                    operand_orig_shapes_[i]->IsArray());
+      TF_RET_CHECK(operand_sliced_shapes_[i]->rank() ==
+                   operand_orig_shapes_[i]->rank());
+      TF_RET_CHECK(operand_offset_buffer_indices_[i]->size() ==
+                   operand_orig_shapes_[i]->rank());
     }
   }
 
@@ -93,6 +97,10 @@ absl::Status AddressComputationThunk::Prepare(
       TF_RET_CHECK(result_sliced_shapes_[i]->IsArray());
       TF_RET_CHECK(result_orig_shapes_[i].has_value() &&
                    result_orig_shapes_[i]->IsArray());
+      TF_RET_CHECK(result_sliced_shapes_[i]->rank() ==
+                   result_orig_shapes_[i]->rank());
+      TF_RET_CHECK(result_offset_buffer_indices_[i]->size() ==
+                   result_orig_shapes_[i]->rank());
     }
   }
 
@@ -167,32 +175,37 @@ absl::Status AddressComputationThunk::ExecuteOnStream(
       continue;
     }
 
-    se::DeviceMemoryBase offset_src =
-        orig_allocations.GetDeviceAddress(*operand_offset_buffer_indices_[i]);
-
-    // Copy the ith offset from device to host.
     const Shape& src_shape = *operand_orig_shapes_[i];
     const Shape& dst_shape = *operand_sliced_shapes_[i];
-    int64_t* offset_dst = &operand_offsets_base[i];
-    TF_RETURN_IF_ERROR(stream.Memcpy(offset_dst, offset_src,
-                                     dst_shape.rank() * sizeof(int64_t)));
+    TF_RET_CHECK(IsContiguousSlice(src_shape, dst_shape));
 
-    if (absl::Status blocked = stream.BlockHostUntilDone(); !blocked.ok()) {
-      return absl::InternalError(absl::StrFormat(
-          "Failed to retrieve all slice offset values on stream %p: %s",
-          &stream, blocked.message()));
+    std::vector<int64_t> slice_starts;
+    slice_starts.reserve(dst_shape.rank());
+
+    // Get offset for ith operand, which has `dst_shape.rank()` components.
+    for (auto [idx, offset_slice] :
+         llvm::enumerate(*operand_offset_buffer_indices_[i])) {
+      se::DeviceMemoryBase offset_src =
+          orig_allocations.GetDeviceAddress(offset_slice);
+      int64_t* offset_dst = &operand_offsets_base[i + idx];
+      // Copy the idx-th component of the ith offset from device to host.
+      TF_RETURN_IF_ERROR(
+          stream.Memcpy(offset_dst, offset_src, sizeof(int64_t)));
+
+      if (absl::Status blocked = stream.BlockHostUntilDone(); !blocked.ok()) {
+        return absl::InternalError(absl::StrFormat(
+            "Failed to retrieve all slice offset values on stream %p: %s",
+            &stream, blocked.message()));
+      }
+      slice_starts.push_back(*offset_dst);
     }
 
     // Compute new slice. No need to copy the content to new buffers as we can
     // reuse the original buffers since slices are contiguous.
-    TF_RET_CHECK(IsContiguousSlice(src_shape, dst_shape));
-
     int64_t new_size = ShapeUtil::ByteSizeOf(dst_shape);
     BufferAllocation::Slice orig_slice = *embedded_thunk_operands_[i];
 
     int64_t new_offset = orig_slice.offset();
-    std::vector<int64_t> slice_starts(offset_dst,
-                                      offset_dst + dst_shape.rank());
     for (auto [start, stride] :
          llvm::zip(slice_starts, *ShapeUtil::ByteStrides(src_shape))) {
       new_offset += start * stride;
@@ -221,32 +234,37 @@ absl::Status AddressComputationThunk::ExecuteOnStream(
       continue;
     }
 
-    se::DeviceMemoryBase offset_src =
-        orig_allocations.GetDeviceAddress(*result_offset_buffer_indices_[i]);
-
-    // Copy the ith offset from device to host.
     const Shape& src_shape = *result_orig_shapes_[i];
     const Shape& dst_shape = *result_sliced_shapes_[i];
-    int64_t* offset_dst = &result_offsets_base[i];
-    TF_RETURN_IF_ERROR(stream.Memcpy(offset_dst, offset_src,
-                                     dst_shape.rank() * sizeof(int64_t)));
+    TF_RET_CHECK(IsContiguousSlice(src_shape, dst_shape));
 
-    if (absl::Status blocked = stream.BlockHostUntilDone(); !blocked.ok()) {
-      return absl::InternalError(absl::StrFormat(
-          "Failed to retrieve all slice offset values on stream %p: %s",
-          &stream, blocked.message()));
+    std::vector<int64_t> slice_starts;
+    slice_starts.reserve(dst_shape.rank());
+
+    // Get offset for ith result, which has `dst_shape.rank()` components.
+    for (auto [idx, offset_slice] :
+         llvm::enumerate(*result_offset_buffer_indices_[i])) {
+      se::DeviceMemoryBase offset_src =
+          orig_allocations.GetDeviceAddress(offset_slice);
+      int64_t* offset_dst = &result_offsets_base[i + idx];
+      // Copy the idx-th component of the ith offset from device to host.
+      TF_RETURN_IF_ERROR(
+          stream.Memcpy(offset_dst, offset_src, sizeof(int64_t)));
+
+      if (absl::Status blocked = stream.BlockHostUntilDone(); !blocked.ok()) {
+        return absl::InternalError(absl::StrFormat(
+            "Failed to retrieve all slice offset values on stream %p: %s",
+            &stream, blocked.message()));
+      }
+      slice_starts.push_back(*offset_dst);
     }
 
     // Compute new slice. No need to copy the content to new buffers as we can
     // reuse the original buffers since slices are contiguous.
-    TF_RET_CHECK(IsContiguousSlice(src_shape, dst_shape));
-
     int64_t new_size = ShapeUtil::ByteSizeOf(dst_shape);
     BufferAllocation::Slice orig_slice = *embedded_thunk_results_[i];
 
     int64_t new_offset = orig_slice.offset();
-    std::vector<int64_t> slice_starts(offset_dst,
-                                      offset_dst + dst_shape.rank());
     for (auto [start, stride] :
          llvm::zip(slice_starts, *ShapeUtil::ByteStrides(src_shape))) {
       new_offset += start * stride;
