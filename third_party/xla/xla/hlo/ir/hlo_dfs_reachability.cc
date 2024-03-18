@@ -96,10 +96,11 @@ std::unique_ptr<HloDfsReachability> HloDfsReachability::Build(
     const HloComputation* computation) {
   auto res = std::make_unique<HloDfsReachability>();
 
-  HloComputation::ChannelDependencies channel_dependencies =
-      computation->ComputeChannelDependencies();
+  // For instruction reachability we do not care about correct order of
+  // collective operations as we only care about use-def chains.
+  HloComputation::ChannelDependencies empty_channel_dependencies;
   std::vector<HloInstruction*> instructions =
-      computation->MakeInstructionPostOrder(channel_dependencies);
+      computation->MakeInstructionPostOrder(empty_channel_dependencies);
 
   res->instruction_to_idx_.reserve(instructions.size());
   for (size_t i = 0; i < instructions.size(); ++i) {

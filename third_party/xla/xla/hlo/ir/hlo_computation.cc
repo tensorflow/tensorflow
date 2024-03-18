@@ -31,6 +31,7 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/container/inlined_vector.h"
+#include "absl/functional/function_ref.h"
 #include "absl/memory/memory.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
@@ -506,6 +507,7 @@ void HloComputation::ForEachInstructionPostOrderImpl(
     absl::FunctionRef<void(HloInstruction*)> func, HloInstruction* root,
     const ChannelDependencies& channel_dependencies, VisitMap& visited,
     std::vector<HloInstruction*>* dfs_stack_scratch) const {
+  bool has_channel_dependencies = !channel_dependencies.empty();
   auto* dfs_stack = dfs_stack_scratch;
   dfs_stack->clear();
   dfs_stack->push_back(root);
@@ -532,7 +534,7 @@ void HloComputation::ForEachInstructionPostOrderImpl(
     // Collectives with the same channel ID must be performed together, as these
     // represent MPMD-partitioned that will later be split into separate modules
     // and the order must be preserved.
-    if (&current != root) {
+    if (has_channel_dependencies && &current != root) {
       auto it = channel_dependencies.find(&current);
       if (it != channel_dependencies.end()) {
         dfs_stack->insert(dfs_stack->end(), it->second.begin(),
