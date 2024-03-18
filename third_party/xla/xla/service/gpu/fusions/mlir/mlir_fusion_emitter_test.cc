@@ -61,12 +61,12 @@ class DummyCopyFusionEmitter : public MlirFusionEmitterBase {
   LaunchDimensions launch_dimensions() const final { return {1, 100}; }
 
   std::optional<IndexingMap> ComputeThreadIdToOutputIndexing(
-      int64_t, mlir::MLIRContext*) const final {
+      int64_t, IndexingContext*) const final {
     return std::nullopt;
   }
 
   std::optional<IndexingMap> ComputeThreadIdToInputIndexing(
-      int64_t, int64_t, mlir::MLIRContext*) const final {
+      int64_t, int64_t, IndexingContext*) const final {
     return std::nullopt;
   }
 

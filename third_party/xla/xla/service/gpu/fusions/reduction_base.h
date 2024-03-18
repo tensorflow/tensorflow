@@ -57,11 +57,11 @@ class ReductionInfo {
   int GetRowsPerWarp() const;
 
   std::optional<IndexingMap> ComputeThreadIdToOutputIndexing(
-      int64_t root_index, mlir::MLIRContext* ctx) const;
+      int64_t root_index, IndexingContext* indexing_context) const;
 
   std::optional<IndexingMap> ComputeThreadIdToInputIndexing(
       int64_t root_index, int64_t hero_operand_index,
-      mlir::MLIRContext* ctx) const;
+      IndexingContext* indexing_context) const;
 
   LaunchDimensions launch_dimensions() const;
 
@@ -93,15 +93,16 @@ class ReductionFusionBase : public Base {
       : analysis_(analysis), reduction_info_(ReductionInfo::Create(analysis)) {}
 
   std::optional<IndexingMap> ComputeThreadIdToOutputIndexing(
-      int64_t root_index, mlir::MLIRContext* ctx) const override {
-    return reduction_info().ComputeThreadIdToOutputIndexing(root_index, ctx);
+      int64_t root_index, IndexingContext* indexing_context) const override {
+    return reduction_info().ComputeThreadIdToOutputIndexing(root_index,
+                                                            indexing_context);
   }
 
   std::optional<IndexingMap> ComputeThreadIdToInputIndexing(
       int64_t root_index, int64_t hero_operand_index,
-      mlir::MLIRContext* ctx) const override {
+      IndexingContext* indexing_context) const override {
     return reduction_info().ComputeThreadIdToInputIndexing(
-        root_index, hero_operand_index, ctx);
+        root_index, hero_operand_index, indexing_context);
   }
 
   LaunchDimensions launch_dimensions() const override {

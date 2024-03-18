@@ -183,7 +183,7 @@ LaunchDimensions InputSlicesFusion::launch_dimensions() const {
 }
 
 std::optional<IndexingMap> InputSlicesFusion::ComputeThreadIdToOutputIndexing(
-    int64_t output_id, mlir::MLIRContext* ctx) const {
+    int64_t output_id, IndexingContext* indexing_context) const {
   // The mapping here is trivial and the same for all outputs - slice offsets
   // are applied in the indexing from slice outputs to slice inputs.
   auto launch_dims = launch_dimensions();
@@ -191,7 +191,7 @@ std::optional<IndexingMap> InputSlicesFusion::ComputeThreadIdToOutputIndexing(
   // still use the requested output's shape for clarity.
   const auto& shape = analysis_.fusion_roots()[output_id]->shape();
   return GetDefaultThreadIdToOutputIndexingMap(launch_dims, unroll_factor_,
-                                               shape, ctx);
+                                               shape, indexing_context);
 }
 
 absl::Status InputSlicesFusion::EmitKernel(

@@ -35,6 +35,7 @@ limitations under the License.
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "xla/service/gpu/model/affine_map_printer.h"
+#include "xla/service/gpu/model/indexing_context.h"
 #include "tsl/platform/logging.h"  // IWYU pragma: keep
 
 namespace xla {
@@ -376,7 +377,7 @@ AffineExpr AffineExprSimplifier::SimplifyOnce(AffineExpr expr) {
       auto rhs = SimplifyOnce(binop.getRHS());
 
       // Rewrite `(x // c) * c + (x % c)` to `x`.
-      // TODO(jreiffers): This should also work with (a+b)+c.
+      // This should also work with (a+b)+c.
       auto rewrite_add = [&](AffineExpr a, AffineExpr b) -> AffineExpr {
         if (auto mod = GetConstantRhs(a, AffineExprKind::Mod)) {
           if (auto mul = GetConstantRhs(b, AffineExprKind::Mul); mod == mul) {
@@ -596,10 +597,20 @@ std::vector<Interval> RangesFromTensorSizes(
 }
 
 IndexingMap IndexingMap::FromTensorSizes(
-    AffineMap affine_map, absl::Span<const int64_t> dim_upper_bounds,
+    IndexingContext* indexing_context, AffineMap affine_map,
+    absl::Span<const int64_t> dim_upper_bounds,
     absl::Span<const int64_t> symbol_upper_bounds) {
-  return IndexingMap{affine_map, RangesFromTensorSizes(dim_upper_bounds),
+  return IndexingMap{indexing_context, affine_map,
+                     RangesFromTensorSizes(dim_upper_bounds),
                      RangesFromTensorSizes(symbol_upper_bounds)};
+}
+
+mlir::MLIRContext* IndexingMap::GetMLIRContext() const {
+  return indexing_context_->GetMLIRContext();
+}
+
+IndexingContext* IndexingMap::GetIndexingContext() const {
+  return indexing_context_;
 }
 
 void IndexingMap::AddConstraint(mlir::AffineExpr expr, Interval range) {
@@ -1011,7 +1022,9 @@ IndexingMap ComposeIndexingMaps(const IndexingMap& first,
     combined_symbol_ranges.push_back(symbol_range);
   }
 
-  IndexingMap composed_indexing_map(composed_map, first.GetDimensionRanges(),
+  IndexingContext* indexing_context = first.GetIndexingContext();
+  IndexingMap composed_indexing_map(indexing_context, composed_map,
+                                    first.GetDimensionRanges(),
                                     std::move(combined_symbol_ranges));
   // Add constraints that are already present in the producer_map. We have to
   // compute consumer_map(producer_constraints). To keep all symbols and

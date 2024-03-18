@@ -37,9 +37,14 @@ namespace {
 using ::testing::HasSubstr;
 
 class TransposeTest : public HloTestBase {
+ public:
+  TransposeTest() : indexing_context_(&mlir_context_) {}
+
  protected:
   stream_executor::DeviceDescription device_info_ =
       TestGpuDeviceInfo::RTXA6000DeviceInfo();
+  mlir::MLIRContext mlir_context_;
+  IndexingContext indexing_context_;
 };
 
 absl::StatusOr<std::unique_ptr<TransposeFusion>> GetTransposeFusion(
@@ -74,9 +79,9 @@ TEST_F(TransposeTest, ThreadIndexing021) {
   TF_ASSERT_OK_AND_ASSIGN(auto fusion, GetTransposeFusion(analysis));
   mlir::MLIRContext mlir_context;
 
-  EXPECT_THAT(
-      fusion->ComputeThreadIdToInputIndexing(0, 0, &mlir_context)->ToString(),
-      MatchIndexingString(R"(
+  EXPECT_THAT(fusion->ComputeThreadIdToInputIndexing(0, 0, &indexing_context_)
+                  ->ToString(),
+              MatchIndexingString(R"(
         (d0, d1, d2, d3, d4, d5)[s0, s1, s2] -> (
           d3 floordiv 2,
           d0 floordiv 32 + s1 * 4,
@@ -94,9 +99,9 @@ TEST_F(TransposeTest, ThreadIndexing021) {
         s1 in [0, 7]
         s2 in [0, 0]
       )"));
-  EXPECT_THAT(
-      fusion->ComputeThreadIdToOutputIndexing(0, &mlir_context)->ToString(),
-      MatchIndexingString(R"(
+  EXPECT_THAT(fusion->ComputeThreadIdToOutputIndexing(0, &indexing_context_)
+                  ->ToString(),
+              MatchIndexingString(R"(
         (d0, d1, d2, d3, d4, d5)[s0, s1, s2] -> (
           d3 floordiv 2,
           d0 floordiv 32 + (d3 mod 2) * 32 + s1 * 4,
@@ -136,9 +141,9 @@ TEST_F(TransposeTest, ThreadIndexing201) {
 
   TF_ASSERT_OK_AND_ASSIGN(auto fusion, GetTransposeFusion(analysis));
   mlir::MLIRContext mlir_context;
-  EXPECT_THAT(
-      fusion->ComputeThreadIdToInputIndexing(0, 0, &mlir_context)->ToString(),
-      MatchIndexingString(R"(
+  EXPECT_THAT(fusion->ComputeThreadIdToInputIndexing(0, 0, &indexing_context_)
+                  ->ToString(),
+              MatchIndexingString(R"(
         (d0, d1, d2, d3, d4, d5)[s0, s1, s2] -> (
           d3 floordiv 2,
           d0 floordiv 32 + (d3 * 32 + s1 * 4) mod 64,
@@ -156,9 +161,9 @@ TEST_F(TransposeTest, ThreadIndexing201) {
         s1 in [0, 7]
         s2 in [0, 0]
       )"));
-  EXPECT_THAT(
-      fusion->ComputeThreadIdToOutputIndexing(0, &mlir_context)->ToString(),
-      MatchIndexingString(R"(
+  EXPECT_THAT(fusion->ComputeThreadIdToOutputIndexing(0, &indexing_context_)
+                  ->ToString(),
+              MatchIndexingString(R"(
         (d0, d1, d2, d3, d4, d5)[s0, s1, s2] -> (
           d0 floordiv 32 + s1 * 4,
           d3 floordiv 2,
@@ -200,9 +205,9 @@ TEST_F(TransposeTest, ThreadIndexingPartialBlock) {
 
   TF_ASSERT_OK_AND_ASSIGN(auto fusion, GetTransposeFusion(analysis));
   mlir::MLIRContext mlir_context;
-  EXPECT_THAT(
-      fusion->ComputeThreadIdToInputIndexing(0, 0, &mlir_context)->ToString(),
-      MatchIndexingString(R"(
+  EXPECT_THAT(fusion->ComputeThreadIdToInputIndexing(0, 0, &indexing_context_)
+                  ->ToString(),
+              MatchIndexingString(R"(
         (d0, d1, d2, d3, d4, d5)[s0, s1, s2] -> (
           d0 floordiv 32 + s0 * 4,
           d3,
@@ -222,9 +227,9 @@ TEST_F(TransposeTest, ThreadIndexingPartialBlock) {
         d0 floordiv 32 + s0 * 4 in [0, 23]
         d0 mod 32 in [0, 23]
       )"));
-  EXPECT_THAT(
-      fusion->ComputeThreadIdToOutputIndexing(0, &mlir_context)->ToString(),
-      MatchIndexingString(R"(
+  EXPECT_THAT(fusion->ComputeThreadIdToOutputIndexing(0, &indexing_context_)
+                  ->ToString(),
+              MatchIndexingString(R"(
         (d0, d1, d2, d3, d4, d5)[s0, s1, s2] -> (
           s0,
           d0 floordiv 32,

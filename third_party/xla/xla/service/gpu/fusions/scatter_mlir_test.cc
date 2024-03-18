@@ -97,25 +97,25 @@ TEST_F(MlirScatterFusionTest, ThreadId_IndexingUnrolled) {
   EXPECT_THAT(
       fusion
           .ComputeThreadIdToInputIndexing(
-              /*root_index=*/0, /*hero_operand_index=*/3, &mlir_context_)
+              /*root_index=*/0, /*hero_operand_index=*/3, &indexing_context_)
           ->ToString(thread_id_printer_),
       MatchIndexingString(kUpdatesIndexing));
   EXPECT_THAT(
       fusion
           .ComputeThreadIdToInputIndexing(
-              /*root_index=*/0, /*hero_operand_index=*/4, &mlir_context_)
+              /*root_index=*/0, /*hero_operand_index=*/4, &indexing_context_)
           ->ToString(thread_id_printer_),
       MatchIndexingString(kUpdatesIndexing));
   EXPECT_THAT(
       fusion
           .ComputeThreadIdToInputIndexing(
-              /*root_index=*/1, /*hero_operand_index=*/3, &mlir_context_)
+              /*root_index=*/1, /*hero_operand_index=*/3, &indexing_context_)
           ->ToString(thread_id_printer_),
       MatchIndexingString(kUpdatesIndexing));
   EXPECT_THAT(
       fusion
           .ComputeThreadIdToInputIndexing(
-              /*root_index=*/1, /*hero_operand_index=*/4, &mlir_context_)
+              /*root_index=*/1, /*hero_operand_index=*/4, &indexing_context_)
           ->ToString(thread_id_printer_),
       MatchIndexingString(kUpdatesIndexing));
 
@@ -137,13 +137,13 @@ TEST_F(MlirScatterFusionTest, ThreadId_IndexingUnrolled) {
   EXPECT_THAT(
       fusion
           .ComputeThreadIdToInputIndexing(
-              /*root_index=*/0, /*hero_operand_index=*/2, &mlir_context_)
+              /*root_index=*/0, /*hero_operand_index=*/2, &indexing_context_)
           ->ToString(thread_id_printer_),
       MatchIndexingString(kIndicesIndexing));
   EXPECT_THAT(
       fusion
           .ComputeThreadIdToInputIndexing(
-              /*root_index=*/1, /*hero_operand_index=*/2, &mlir_context_)
+              /*root_index=*/1, /*hero_operand_index=*/2, &indexing_context_)
           ->ToString(thread_id_printer_),
       MatchIndexingString(kIndicesIndexing));
 }

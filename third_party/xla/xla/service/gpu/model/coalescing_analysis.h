@@ -38,7 +38,7 @@ class CoalescingAnalysis {
                      absl::Span<const HloInstruction* const> operands,
                      const HloFusionAnalysis& fusion_analysis,
                      KernelFusionInterface* fusion_interface = nullptr,
-                     mlir::MLIRContext* mlir_context = nullptr,
+                     IndexingContext* indexing_context = nullptr,
                      bool use_heuristic = true);
 
   // Computes read coalescing for operands of fused `producer` and `consumer`.
@@ -47,7 +47,7 @@ class CoalescingAnalysis {
                      absl::Span<const HloInstruction* const> operands,
                      const HloFusionAnalysis& fusion_analysis,
                      KernelFusionInterface* fusion_interface = nullptr,
-                     mlir::MLIRContext* mlir_context = nullptr,
+                     IndexingContext* indexing_context = nullptr,
                      bool use_heuristic = true);
 
   // Returns true if the operand is read coalesced.
@@ -58,7 +58,8 @@ class CoalescingAnalysis {
       const HloFusionAdaptor& fusion_adaptor,
       absl::Span<const HloInstruction* const> operands,
       const HloFusionAnalysis& fusion_analysis,
-      KernelFusionInterface* fusion_interface, mlir::MLIRContext* mlir_context);
+      KernelFusionInterface* fusion_interface,
+      IndexingContext* indexing_context = nullptr);
 
   absl::flat_hash_map<const HloInstruction*, bool> coalescing_per_operand_;
   bool is_coalesced_computed_by_heuristic_ = false;

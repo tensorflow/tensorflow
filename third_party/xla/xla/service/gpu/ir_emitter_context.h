@@ -35,6 +35,7 @@ limitations under the License.
 #include "xla/service/gpu/gpu_executable.h"
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/kernel_reuse_cache.h"
+#include "xla/service/gpu/model/indexing_context.h"
 #include "xla/service/gpu/nccl_collective_thunk.h"
 #include "xla/service/name_uniquer.h"
 #include "xla/stream_executor/device_description.h"
@@ -69,6 +70,7 @@ class IrEmitterContext {
         platform_name_(std::move(platform_name)),
         gpu_device_info_(gpu_device_info),
         mlir_context_(mlir_context),
+        indexing_context_(mlir_context_),
         llvm_module_(llvm_module),
         emit_kernels_(emit_kernels) {}
   // Disallow copy and assign.
@@ -98,6 +100,7 @@ class IrEmitterContext {
     return cc != nullptr ? *cc : se::RocmComputeCapability();
   }
   mlir::MLIRContext* mlir_context() { return mlir_context_; }
+  IndexingContext* indexing_context() { return &indexing_context_; }
   llvm::Module* llvm_module() { return llvm_module_; }
   NameUniquer* name_uniquer() { return &name_uniquer_; }
 
@@ -126,6 +129,7 @@ class IrEmitterContext {
   std::string platform_name_;
   const se::DeviceDescription& gpu_device_info_;
   mlir::MLIRContext* mlir_context_;
+  IndexingContext indexing_context_;
   llvm::Module* llvm_module_;
   NameUniquer name_uniquer_;
   std::vector<GpuExecutable::ConstantInfo> constants_;

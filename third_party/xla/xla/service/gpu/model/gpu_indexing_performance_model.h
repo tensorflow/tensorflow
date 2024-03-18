@@ -24,6 +24,7 @@ limitations under the License.
 #include "xla/service/gpu/hlo_fusion_analysis.h"
 #include "xla/service/gpu/model/gpu_performance_model_base.h"
 #include "xla/service/gpu/model/hlo_op_profiles.h"
+#include "xla/service/gpu/model/indexing_context.h"
 #include "xla/service/hlo_cost_analysis.h"
 #include "xla/shape.h"
 #include "xla/stream_executor/device_description.h"
@@ -42,7 +43,8 @@ class GpuPerformanceModelWithIndexingAnalysis : public GpuPerformanceModelBase {
       : hlo_op_profile_(&HloOpProfiles::Singleton().GetProfile(device_info)),
         device_info_(device_info),
         shape_size_(shape_size),
-        mlir_context_(mlir_context) {}
+        mlir_context_(mlir_context),
+        indexing_context_(mlir_context_) {}
 
   EstimateRunTimeData EstimateRunTimeForFusion(
       const HloFusionAnalysis& fusion_analysis, bool is_coalesced = true);
@@ -68,6 +70,7 @@ class GpuPerformanceModelWithIndexingAnalysis : public GpuPerformanceModelBase {
   const se::DeviceDescription* device_info_;
   HloCostAnalysis::ShapeSizeFunction shape_size_;
   mlir::MLIRContext* mlir_context_;
+  IndexingContext indexing_context_;
 };
 
 }  // namespace gpu

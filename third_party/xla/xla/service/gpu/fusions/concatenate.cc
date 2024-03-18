@@ -58,7 +58,7 @@ ConcatenateFusion::ConcatenateFusion(const HloFusionAnalysis& analysis)
     : analysis_(analysis) {}
 
 std::optional<IndexingMap> ConcatenateFusion::ComputeThreadIdToOutputIndexing(
-    int64_t output_id, mlir::MLIRContext* ctx) const {
+    int64_t output_id, IndexingContext* indexing_context) const {
   return std::nullopt;  // TODO(b/319081342): Implement this.
 }
 

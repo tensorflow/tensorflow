@@ -63,23 +63,24 @@ const Shape& GetFusionResultShape(const HloFusionAnalysis& analysis) {
 }  // namespace
 
 std::optional<IndexingMap> MlirLoopFusion::ComputeThreadIdToOutputIndexing(
-    int64_t root_index, mlir::MLIRContext* ctx) const {
+    int64_t root_index, IndexingContext* indexing_context) const {
   auto launch_dims = launch_dimensions();
   return GetDefaultThreadIdToOutputIndexingMap(
-      launch_dims, config_.unroll_factor, GetFusionResultShape(analysis_), ctx);
+      launch_dims, config_.unroll_factor, GetFusionResultShape(analysis_),
+      indexing_context);
 }
 
 std::optional<IndexingMap> MlirLoopFusion::ComputeThreadIdToInputIndexing(
     int64_t root_index, int64_t hero_operand_index,
-    mlir::MLIRContext* ctx) const {
+    IndexingContext* indexing_context) const {
   std::optional<IndexingMap> thread_id_to_output_indexing =
-      ComputeThreadIdToOutputIndexing(root_index, ctx);
+      ComputeThreadIdToOutputIndexing(root_index, indexing_context);
   if (!thread_id_to_output_indexing.has_value()) {
     return std::nullopt;
   }
   const HloInstruction* fusion_root = analysis_.fusion_roots()[root_index];
-  auto output_to_input_indexing =
-      ComputeOutputToInputIndexing(fusion_root, /*output_id=*/0, ctx);
+  auto output_to_input_indexing = ComputeOutputToInputIndexing(
+      fusion_root, /*output_id=*/0, indexing_context);
   IndexingMapSet output_to_input_indexing_set =
       output_to_input_indexing.indexing_maps[hero_operand_index];
   // Since we are computing the indexing for a non-fusion op, there is only one
@@ -106,8 +107,8 @@ absl::Status MlirLoopFusion::EmitEntryFunction(
 
   // We enforce that all the root shapes have identical dimensions in
   // IsHloOpSupported.
-  auto indexing =
-      ComputeThreadIdToOutputIndexing(0, entry_function.getContext());
+  IndexingContext indexing_context{entry_function.getContext()};
+  auto indexing = ComputeThreadIdToOutputIndexing(0, &indexing_context);
   TF_RET_CHECK(indexing) << "Indexing is never nullopt";
 
   int num_inputs = fusion.fused_instructions_computation()->num_parameters();

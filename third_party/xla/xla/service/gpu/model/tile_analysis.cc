@@ -32,6 +32,7 @@ limitations under the License.
 #include "mlir/IR/AffineMap.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "xla/service/gpu/model/affine_map_printer.h"
+#include "xla/service/gpu/model/indexing_context.h"
 #include "xla/service/gpu/model/indexing_map.h"
 
 namespace xla {
@@ -252,7 +253,8 @@ std::optional<RawSymbolicTile> RawSymbolicTileFromIndexingMap(
 
 /*static*/ std::optional<SymbolicTile> SymbolicTile::FromIndexingMap(
     const IndexingMap& indexing_map) {
-  MLIRContext* mlir_context = indexing_map.GetAffineMap().getContext();
+  IndexingContext* indexing_context = indexing_map.GetIndexingContext();
+  MLIRContext* mlir_context = indexing_context->GetMLIRContext();
   int64_t num_input_dims = indexing_map.GetDimensionCount();
   std::vector<AffineExpr> exprs;
   exprs.reserve(num_input_dims);
@@ -294,8 +296,8 @@ std::optional<RawSymbolicTile> RawSymbolicTileFromIndexingMap(
       mlir_context);
 
   IndexingMap composed_indexing_map(
-      indexing_map.GetAffineMap().compose(producer_map), tile_dimension_ranges,
-      tile_symbol_ranges);
+      indexing_context, indexing_map.GetAffineMap().compose(producer_map),
+      tile_dimension_ranges, tile_symbol_ranges);
 
   composed_indexing_map.Simplify();
 

@@ -146,23 +146,24 @@ MlirTransposeFusion::MlirTransposeFusion(const HloFusionAnalysis& analysis)
 }
 
 std::optional<IndexingMap> MlirTransposeFusion::ComputeThreadIdToOutputIndexing(
-    int64_t root_index, MLIRContext* ctx) const {
+    int64_t root_index, IndexingContext* indexing_context) const {
   const auto& hero = *analysis_.fusion_heroes()[root_index];
   const auto& root = *analysis_.fusion_roots()[root_index];
   if (!GetDescriptionForTiledTransposeEmitter(root, hero)) {
     // Non-transpose roots are elementwise by definition.
-    return ComputeThreadIdToInputIndexing(root_index, 0, ctx);
+    return ComputeThreadIdToInputIndexing(root_index, 0, indexing_context);
   }
-  return ComputeThreadIdToOutputIndexing(hero, ctx);
+  return ComputeThreadIdToOutputIndexing(hero, indexing_context);
 }
 
 IndexingMap MlirTransposeFusion::ComputeThreadIdToOutputIndexing(
-    const HloInstruction& hero, MLIRContext* ctx) const {
+    const HloInstruction& hero, IndexingContext* indexing_context) const {
   // The block offsets are permuted, but the thread offsets remain the same.
-  auto block_offset = GetBlockOffsetsForTiling(tiling_, ctx)
+  auto* mlir_context = indexing_context->GetMLIRContext();
+  auto block_offset = GetBlockOffsetsForTiling(tiling_, mlir_context)
                           .getSubMap(std::vector<unsigned>{permutation_.begin(),
                                                            permutation_.end()});
-  auto thread_offset = GetThreadOffsetsForTiling(tiling_, ctx);
+  auto thread_offset = GetThreadOffsetsForTiling(tiling_, mlir_context);
   auto permuted_tiled_shape =
       ShapeUtil::MakeShape(U8, Permute(tiling_.GetShape(), permutation_));
 
@@ -170,17 +171,18 @@ IndexingMap MlirTransposeFusion::ComputeThreadIdToOutputIndexing(
       GetIndexingMapForTiling(
           block_offset, thread_offset, tiling_.GetNumThreadsPerBlock(),
           tiling_.GetNumBlocks(), tiling_.GetThreadTileSize(),
-          permuted_tiled_shape.dimensions()),
-      GetBitcastMap(permuted_tiled_shape, hero.shape(), ctx));
+          permuted_tiled_shape.dimensions(), indexing_context),
+      GetBitcastMap(permuted_tiled_shape, hero.shape(), indexing_context));
   map.Simplify();
   return map;
 }
 
 IndexingMap MlirTransposeFusion::ComputeThreadIdToInputIndexing(
-    const HloInstruction& hero, MLIRContext* ctx) const {
+    const HloInstruction& hero, IndexingContext* indexing_context) const {
   auto map = ComposeIndexingMaps(
-      GetIndexingMapForTiling(tiling_, ctx),
-      GetBitcastMap(tiling_.GetXlaShape(), hero.operand(0)->shape(), ctx));
+      GetIndexingMapForTiling(tiling_, indexing_context),
+      GetBitcastMap(tiling_.GetXlaShape(), hero.operand(0)->shape(),
+                    indexing_context));
   map.Simplify();
   return map;
 }
@@ -194,6 +196,7 @@ LaunchDimensions MlirTransposeFusion::launch_dimensions() const {
 IndexingMap GetSharedMemoryWriteIndexingMap(
     const IndexingMap& thread_id_indexing, int loop_dim) {
   auto* mlir_context = thread_id_indexing.GetMLIRContext();
+  IndexingContext indexing_context{mlir_context};
 
   AffineExpr c0 = mlir::getAffineConstantExpr(0, mlir_context);
   AffineExpr th_x = mlir::getAffineDimExpr(0, mlir_context);
@@ -201,6 +204,7 @@ IndexingMap GetSharedMemoryWriteIndexingMap(
   mlir::bindSymbolsList(mlir_context, llvm::MutableArrayRef(tile_sizes));
 
   IndexingMap shmem_write_indexing{
+      &indexing_context,
       AffineMap::get(
           thread_id_indexing.GetDimensionCount(),
           thread_id_indexing.GetSymbolCount(),
@@ -219,7 +223,8 @@ IndexingMap GetSharedMemoryReadIndexingMap(
     const IndexingMap& thread_id_indexing, int loop_dim) {
   IndexingMap write_indexing =
       GetSharedMemoryWriteIndexingMap(thread_id_indexing, loop_dim);
-  return IndexingMap{write_indexing.GetAffineMap().getSubMap({0, 2, 1}),
+  return IndexingMap{thread_id_indexing.GetIndexingContext(),
+                     write_indexing.GetAffineMap().getSubMap({0, 2, 1}),
                      write_indexing.GetDimensionRanges(),
                      write_indexing.GetSymbolRanges(),
                      write_indexing.GetConstraints()};
@@ -236,10 +241,11 @@ absl::StatusOr<SmallVector<Value, 4>> MlirTransposeFusion::EmitWriteToShMemMlir(
   int num_inputs = fusion.fused_instructions_computation()->num_parameters();
   int num_outputs = entry_function.getArguments().size() - num_inputs;
 
+  IndexingContext indexing_context{builder.getContext()};
   SmallVector<Value> shmem_intermediate_result;
   for (auto* transpose : shmem_transposes_) {
     auto input_indexing =
-        ComputeThreadIdToInputIndexing(*transpose, builder.getContext());
+        ComputeThreadIdToInputIndexing(*transpose, &indexing_context);
     IndexingMap shmem_input_indexing =
         GetSharedMemoryWriteIndexingMap(input_indexing, permutation_[2]);
 
@@ -288,15 +294,16 @@ absl::Status MlirTransposeFusion::EmitReadFromShMemMlir(
     const mlir_converter::PartitionedComputations& computations,
     const CallTargetProvider& call_targets, ValueRange shmem_tensors) const {
   int num_inputs = fusion.fused_instructions_computation()->num_parameters();
-
+  auto* mlir_context = builder.getContext();
+  IndexingContext indexing_context{mlir_context};
   ValueRange output_tensor_args =
       entry_function.getArguments().drop_front(num_inputs);
   auto output_indexing = ComputeThreadIdToOutputIndexing(
-      *shmem_transposes_.front(), builder.getContext());
+      *shmem_transposes_.front(), &indexing_context);
   auto shmem_output_indexing =
       GetSharedMemoryReadIndexingMap(output_indexing, permutation_[2]);
   auto epilogue_indexing = ComputeEpilogueInputToOutputIndexing(
-      shmem_transposes_.front(), builder.getContext());
+      shmem_transposes_.front(), &indexing_context);
   auto root_indexing = ComposeIndexingMaps(output_indexing, epilogue_indexing);
   auto result_tensors = EmitThreadLoopNest(
       builder, output_tensor_args, output_indexing,

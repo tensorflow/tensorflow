@@ -418,10 +418,18 @@ xla_cc_test(
 
 cc_library(
     name = "indexing_map",
-    srcs = ["indexing_map.cc"],
-    hdrs = ["indexing_map.h"],
+    srcs = [
+        "indexing_context.cc",
+        "indexing_map.cc",
+    ],
+    hdrs = [
+        "indexing_context.h",
+        "indexing_map.h",
+    ],
     deps = [
         ":affine_map_printer",
+        "//xla/hlo/ir:hlo",
+        "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/types:span",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
@@ -576,6 +584,7 @@ xla_cc_test(
     srcs = ["coalescing_analysis_test.cc"],
     deps = [
         ":coalescing_analysis",
+        ":indexing_map",
         "//xla:shape_util",
         "//xla/hlo/ir:hlo",
         "//xla/service:hlo_module_config",

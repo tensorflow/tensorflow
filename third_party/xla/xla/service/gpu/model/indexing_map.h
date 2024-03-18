@@ -36,6 +36,8 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
+class IndexingContext;
+
 // Interval represents a closed interval [lower_bound, upper_bound].
 struct Interval {
   std::string ToString() const;
@@ -166,10 +168,11 @@ std::vector<Interval> RangesFromTensorSizes(
 class IndexingMap {
  public:
   IndexingMap(
-      mlir::AffineMap affine_map, std::vector<Interval> dim_ranges,
-      std::vector<Interval> symbol_ranges,
+      IndexingContext* indexing_context, mlir::AffineMap affine_map,
+      std::vector<Interval> dim_ranges, std::vector<Interval> symbol_ranges,
       absl::Span<std::pair<mlir::AffineExpr, Interval>> constraints = {})
-      : affine_map_(affine_map),
+      : indexing_context_(indexing_context),
+        affine_map_(affine_map),
         dim_ranges_(std::move(dim_ranges)),
         symbol_ranges_(std::move(symbol_ranges)) {
     for (const auto& [expr, range] : constraints) {
@@ -177,10 +180,12 @@ class IndexingMap {
     }
   }
 
-  IndexingMap(mlir::AffineMap affine_map, std::vector<Interval> dim_ranges,
+  IndexingMap(IndexingContext* indexing_context, mlir::AffineMap affine_map,
+              std::vector<Interval> dim_ranges,
               std::vector<Interval> symbol_ranges,
               const llvm::DenseMap<mlir::AffineExpr, Interval>& constraints)
-      : affine_map_(affine_map),
+      : indexing_context_(indexing_context),
+        affine_map_(affine_map),
         dim_ranges_(std::move(dim_ranges)),
         symbol_ranges_(std::move(symbol_ranges)),
         constraints_(constraints) {}
@@ -188,7 +193,8 @@ class IndexingMap {
   static IndexingMap GetUndefined() { return IndexingMap(); }
 
   static IndexingMap FromTensorSizes(
-      mlir::AffineMap affine_map, absl::Span<const int64_t> dim_upper_bounds,
+      IndexingContext* indexing_context, mlir::AffineMap affine_map,
+      absl::Span<const int64_t> dim_upper_bounds,
       absl::Span<const int64_t> symbol_upper_bounds);
 
   std::string ToString(
@@ -200,7 +206,10 @@ class IndexingMap {
   bool Simplify();
 
   // Return MLIRContext.
-  mlir::MLIRContext* GetMLIRContext() const { return affine_map_.getContext(); }
+  mlir::MLIRContext* GetMLIRContext() const;
+
+  // Return IndexingContext.
+  IndexingContext* GetIndexingContext() const;
 
   // Returns the affine map.
   mlir::AffineMap GetAffineMap() const { return affine_map_; }
@@ -265,6 +274,7 @@ class IndexingMap {
   // Returns true if simplification was performed.
   bool SimplifyConstraintRanges();
 
+  IndexingContext* indexing_context_ = nullptr;
   mlir::AffineMap affine_map_;
   std::vector<Interval> dim_ranges_;
   std::vector<Interval> symbol_ranges_;

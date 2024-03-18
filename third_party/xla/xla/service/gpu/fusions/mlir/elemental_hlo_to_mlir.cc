@@ -67,6 +67,7 @@ limitations under the License.
 #include "xla/service/gpu/fusions/mlir/ir/xla_gpu_ops.h"
 #include "xla/service/gpu/hlo_traversal.h"
 #include "xla/service/gpu/model/indexing_analysis.h"
+#include "xla/service/gpu/model/indexing_context.h"
 #include "xla/service/gpu/model/indexing_map.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
@@ -468,7 +469,8 @@ absl::StatusOr<SmallVector<Value>> EmitPad(
     const HloInstruction* instr, mlir::Type result_element_type,
     ValueRange indices, const OperandProvider& operand_provider,
     ImplicitLocOpBuilder& b) {
-  auto indexing = ComputeOutputToInputIndexing(instr, 0, b.getContext());
+  IndexingContext indexing_context{b.getContext()};
+  auto indexing = ComputeOutputToInputIndexing(instr, 0, &indexing_context);
   const auto& indexing_map = *indexing.indexing_maps[0].begin();
   mlir::Value is_in_bounds = CheckConstraints(indexing_map, indices, {}, b);
 
@@ -673,9 +675,10 @@ absl::StatusOr<SmallVector<Value>> HloToMlir(
                             operand->shape().element_type(), builder));
     arg_types.push_back(operand_element_type);
   }
-  auto input_indices = GetInputIndices(
-      ComputeOutputToInputIndexing(instr, 0, builder.getContext()), indices,
-      builder);
+  IndexingContext indexing_context(builder.getContext());
+  auto input_indices =
+      GetInputIndices(ComputeOutputToInputIndexing(instr, 0, &indexing_context),
+                      indices, builder);
   SmallVector<Value> operands;
   for (auto&& [operand_number, operand_indices] :
        llvm::enumerate(input_indices)) {

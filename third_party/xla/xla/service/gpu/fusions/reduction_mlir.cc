@@ -147,7 +147,9 @@ absl::Status MlirReductionFusion::EmitReduction(EmitterState& state) const {
   int num_warps_row = tiling.GetThreadsPerBlock()
                           [ReductionDimensions::kRowMinorReducedDimension] /
                       WarpSize();
-  auto ctx = state.entry_function.getContext();
+
+  auto* mlir_context = state.entry_function.getContext();
+  IndexingContext indexing_context(mlir_context);
 
   auto zero = builder.create<mlir::arith::ConstantIndexOp>(0);
   auto lane_id = builder.create<mlir::gpu::LaneIdOp>();
@@ -161,10 +163,10 @@ absl::Status MlirReductionFusion::EmitReduction(EmitterState& state) const {
   auto thread_ids = mlir_converter::ApplyAffineMap(
       mlir::AffineMap::get(
           /*dimCount=*/1, /*symbolCount=*/0,
-          DelinearizeInBoundsIndex(mlir::getAffineDimExpr(0, ctx),
+          DelinearizeInBoundsIndex(mlir::getAffineDimExpr(0, mlir_context),
                                    tiling.GetThreadsPerBlock(),
                                    tiling.GetThreadStrides()),
-          ctx),
+          mlir_context),
       {thread_id}, {}, builder);
   SmallVector<Value> thread_and_block_indices{thread_id, zero, zero,
                                               block_id,  zero, zero};
@@ -200,7 +202,7 @@ absl::Status MlirReductionFusion::EmitReduction(EmitterState& state) const {
   }
   bool use_shared = !shared_tile_size.empty();
 
-  auto output_indexing = ComputeThreadIdToOutputIndexing(0, ctx);
+  auto output_indexing = ComputeThreadIdToOutputIndexing(0, &indexing_context);
   auto output_indices = mlir_converter::ApplyAffineMap(
       output_indexing->GetAffineMap(), thread_and_block_indices, {}, builder);
   auto thread_has_output = mlir_converter::CheckConstraints(
@@ -236,7 +238,7 @@ absl::Status MlirReductionFusion::EmitReduction(EmitterState& state) const {
   SmallVector<llvm::SmallVector<Value>> results;
   for (auto* hero : reduction_heroes_) {
     auto input_indexing = ComputeThreadIdToInputIndexing(
-        reduction_roots_.at(hero).front(), 0, ctx);
+        reduction_roots_.at(hero).front(), 0, &indexing_context);
     TF_ASSIGN_OR_RETURN(
         auto accumulated,
         state.EmitPerThreadReducedElements(*input_indexing, hero, inits[hero]));
