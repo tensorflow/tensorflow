@@ -1,6 +1,7 @@
 """Helpers for defining multi-platform DTensor test targets."""
 
 load("//tensorflow:strict.default.bzl", "py_strict_test")
+load("//tensorflow:tensorflow.bzl", "if_cuda_configured", "if_oss")
 
 # LINT.IfChange
 ALL_BACKENDS = [
@@ -160,6 +161,9 @@ def dtensor_test(
 
     all_tests = []
     for config in configurations:
+        if config["suffix"] == "gpu":
+            data = data + if_oss(if_cuda_configured(["@cuda_nvcc//:nvvm"]))
+
         config_name = name + "_" + config["suffix"]
 
         all_tests.append(config_name)

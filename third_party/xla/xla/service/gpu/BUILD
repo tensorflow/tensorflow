@@ -13,6 +13,7 @@ load(
     "@local_tsl//tsl:tsl.bzl",
     "if_google",
     "if_nccl",
+    "if_oss",
     "internal_visibility",
     "tsl_copts",
     "tsl_gpu_library",
@@ -3858,6 +3859,9 @@ cc_library(
     hdrs = if_cuda_is_configured([
         "nvptx_compiler.h",
     ]),
+    data = if_oss(if_cuda_is_configured([
+        "@cuda_nvcc//:nvlink",
+    ])),
     local_defines = select({
         "//xla/stream_executor/cuda:libnvptxcompiler_support_enabled": [
             "ENABLE_LIBNVPTXCOMPILER_SUPPORT=1",

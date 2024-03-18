@@ -7,7 +7,7 @@ load("@bazel_skylib//lib:versions.bzl", "versions")
 load("@bazel_tools//tools/build_defs/repo:java.bzl", "java_import_external")
 load("@io_bazel_rules_closure//closure:defs.bzl", "filegroup_external")
 load("@tf_runtime//:dependencies.bzl", "tfrt_dependencies")
-load("//third_party:repo.bzl", "tf_http_archive", "tf_mirror_urls")
+load("//third_party:repo.bzl", "cuda_http_archive", "tf_http_archive", "tf_mirror_urls")
 
 # Import third party repository rules. See go/tfbr-thirdparty.
 load("//third_party/absl:workspace.bzl", absl = "repo")
@@ -18,13 +18,13 @@ load("//third_party/eigen3:workspace.bzl", eigen3 = "repo")
 load("//third_party/farmhash:workspace.bzl", farmhash = "repo")
 load("//third_party/gemmlowp:workspace.bzl", gemmlowp = "repo")
 load("//third_party/git:git_configure.bzl", "git_configure")
-load("//third_party/gpus:cuda_configure.bzl", "cuda_configure")
+load("//third_party/gpus:hermetic_cuda_configure.bzl", "hermetic_cuda_configure")
 load("//third_party/gpus:rocm_configure.bzl", "rocm_configure")
 load("//third_party/hwloc:workspace.bzl", hwloc = "repo")
 load("//third_party/implib_so:workspace.bzl", implib_so = "repo")
 load("//third_party/llvm:setup.bzl", "llvm_setup")
 load("//third_party/nasm:workspace.bzl", nasm = "repo")
-load("//third_party/nccl:nccl_configure.bzl", "nccl_configure")
+load("//third_party/nccl:hermetic_nccl_configure.bzl", "hermetic_nccl_configure")
 load("//third_party/py:python_configure.bzl", "python_configure")
 load("//third_party/py/ml_dtypes:workspace.bzl", ml_dtypes = "repo")
 load("//third_party/pybind11_abseil:workspace.bzl", pybind11_abseil = "repo")
@@ -69,9 +69,9 @@ def _tf_toolchains():
     # Note that we check the minimum bazel version in WORKSPACE.
     clang6_configure(name = "local_config_clang6")
     cc_download_clang_toolchain(name = "local_config_download_clang")
-    cuda_configure(name = "local_config_cuda")
+    hermetic_cuda_configure(name = "local_config_cuda")
     tensorrt_configure(name = "local_config_tensorrt")
-    nccl_configure(name = "local_config_nccl")
+    hermetic_nccl_configure(name = "local_config_nccl")
     git_configure(name = "local_config_git")
     syslibs_configure(name = "local_config_syslibs")
     python_configure(name = "local_config_python")
@@ -603,6 +603,189 @@ def _tf_repositories():
         urls = tf_mirror_urls("https://github.com/google/glog/archive/refs/tags/v0.4.0.tar.gz"),
     )
 
+def _cuda_distributives():
+    cuda_http_archive(
+        name = "cuda_cccl",
+        sha256_dict = {
+            "12.3-amd64": "dabd433bbef5f6d1b79f9a7eea909a3c273e20641f07a6a8667f42577462e34d",
+            "12.3-aarch64": "77b22b4b5c54d7649edd62253979e7290314de73f268df152c1c21811ae20084",
+            "12.1-amd64": "b84ef3ec3dc1b4891267be25846f0c3ed7f9fa84154d59eba805402b86991baa",
+        },
+        build_file = Label("//third_party/gpus/cuda:cuda_cccl.BUILD"),
+        version_dict = {"12.3": "12.3.101", "12.1": "12.1.109"},
+        url_template = "https://developer.download.nvidia.com/compute/cuda/redist/cuda_cccl/linux-{arch}/cuda_cccl-linux-{arch}-{version}-archive.tar.xz",
+    )
+
+    cuda_http_archive(
+        name = "cuda_cublas",
+        sha256_dict = {
+            "12.3-amd64": "2cb5c340f89d9bad6e0f1fb2a93a8a4962fe106eeb96d8887abd25c1552bd219",
+            "12.3-aarch64": "063f0e1a130b35ff662d21c2e05613122146bec2eab4818139eaee5a1c4d94bd",
+            "12.1-amd64": "90044d7ad8c44f33cb670c1fe6f2c22246db6c22c2db22c7a172bb61cccb438c",
+        },
+        build_template = Label("//third_party/gpus/cuda:cuda_cublas.BUILD.tpl"),
+        version_dict = {"12.3": "12.3.4.1", "12.1": "12.1.3.1"},
+        url_template = "https://developer.download.nvidia.com/compute/cuda/redist/libcublas/linux-{arch}/libcublas-linux-{arch}-{version}-archive.tar.xz",
+    )
+
+    cuda_http_archive(
+        name = "cuda_cudart",
+        sha256_dict = {
+            "12.3-amd64": "e37d478d1e7a10490d55fb87a5ef379a18c648f3010e1d3687c4298ddc3e9e19",
+            "12.3-aarch64": "131e62c60ba979f6870687db99a7537482f6df445915789d2a4799dc4e898b66",
+            "12.1-amd64": "6096ec878c8c443258d39c6e9cf2decef127f8aa8da594fdc5a336d047ab6bd9",
+        },
+        build_template = Label("//third_party/gpus/cuda:cuda_cudart.BUILD.tpl"),
+        version_dict = {"12.3": "12.3.101", "12.1": "12.1.105"},
+        url_template = "https://developer.download.nvidia.com/compute/cuda/redist/cuda_cudart/linux-{arch}/cuda_cudart-linux-{arch}-{version}-archive.tar.xz",
+    )
+
+    cuda_http_archive(
+        name = "cuda_cudnn",
+        sha256_dict = {
+            "12.3-amd64": "475333625c7e42a7af3ca0b2f7506a106e30c93b1aa0081cd9c13efb6e21e3bb",
+            "12.3-aarch64": "e98b7c80010785e5d5ca01ee4ce9b5b0c8c73587ea6f8648be34d3f8d1d47bd1",
+            "12.1-amd64": "79d77a769c7e7175abc7b5c2ed5c494148c0618a864138722c887f95c623777c",
+        },
+        build_template = Label("//third_party/gpus/cuda:cuda_cudnn.BUILD.tpl"),
+        version_dict = {"12.3": "8.9.7.29_cuda12", "12.1": "8.8.1.3_cuda12"},
+        url_template = "https://developer.download.nvidia.com/compute/cudnn/redist/cudnn/linux-{arch}/cudnn-linux-{arch}-{version}-archive.tar.xz",
+    )
+
+    cuda_http_archive(
+        name = "cuda_cufft",
+        sha256_dict = {
+            "12.3-amd64": "db057e20e123124fa43e71c97276a8bb02bb14dcdd467e901f542217ca603a48",
+            "12.3-aarch64": "8bde00bd10cba318998d6aee5677b5094be55c6e77259581495f8b31450c3ec2",
+            "12.1-amd64": "7136c1d42c7d1fbc29db2f401c8d5f169d4b81cff4d017946d3e6f45077e7b14",
+        },
+        build_template = Label("//third_party/gpus/cuda:cuda_cufft.BUILD.tpl"),
+        version_dict = {"12.3": "11.0.12.1", "12.1": "11.0.2.54"},
+        url_template = "https://developer.download.nvidia.com/compute/cuda/redist/libcufft/linux-{arch}/libcufft-linux-{arch}-{version}-archive.tar.xz",
+    )
+
+    cuda_http_archive(
+        name = "cuda_cupti",
+        sha256_dict = {
+            "12.3-amd64": "082c178c1b94671d2feac5f1cc241ea0e8b46860b1fd1aed530eca2d919e4360",
+            "12.3-aarch64": "a9417e7ef9af4e592099e372b0e6a1714d617866b2fc93c6832da2bdc07a707c",
+            "12.1-amd64": "397594a200619aa748bdd9e1c95bbf01bfddbb00624940c5ed26e43df1bec363",
+        },
+        build_template = Label("//third_party/gpus/cuda:cuda_cupti.BUILD.tpl"),
+        version_dict = {"12.3": "12.3.101", "12.1": "12.1.105"},
+        url_template = "https://developer.download.nvidia.com/compute/cuda/redist/cuda_cupti/linux-{arch}/cuda_cupti-linux-{arch}-{version}-archive.tar.xz",
+    )
+
+    cuda_http_archive(
+        name = "cuda_curand",
+        sha256_dict = {
+            "12.3-amd64": "ae34384e17563b2bb156f0491ef30a280298509a243e4c32e6edf507606bdb4d",
+            "12.3-aarch64": "eaf641c5f29b3e8984c489bdfbe57f5c64711446e5ff83486b9e2e3d1da92d37",
+            "12.1-amd64": "9941216fad2d419e6172dbd2ee431d77effe671065c08490782fc286ebb364de",
+        },
+        build_template = Label("//third_party/gpus/cuda:cuda_curand.BUILD.tpl"),
+        version_dict = {"12.3": "10.3.4.107", "12.1": "10.3.2.106"},
+        url_template = "https://developer.download.nvidia.com/compute/cuda/redist/libcurand/linux-{arch}/libcurand-linux-{arch}-{version}-archive.tar.xz",
+    )
+
+    cuda_http_archive(
+        name = "cuda_cusolver",
+        sha256_dict = {
+            "12.3-amd64": "c271621cba76a12dd3cbddc491416f6cfea975bea695c418abb1f7fe281b8596",
+            "12.3-aarch64": "66cfb75fa2941b13b0ac287230f38b686369f9a8eb1eec01690095daf4205939",
+            "12.1-amd64": "7169970001e71fbd8ff2678830af9a90edd23d0165f53c829c00a6decfe464f8",
+        },
+        build_template = Label("//third_party/gpus/cuda:cuda_cusolver.BUILD.tpl"),
+        version_dict = {"12.3": "11.5.4.101", "12.1": "11.4.5.107"},
+        url_template = "https://developer.download.nvidia.com/compute/cuda/redist/libcusolver/linux-{arch}/libcusolver-linux-{arch}-{version}-archive.tar.xz",
+    )
+
+    cuda_http_archive(
+        name = "cuda_cusparse",
+        sha256_dict = {
+            "12.3-amd64": "2705bea3c1ae1f0eeb5850a32b9af58bd9d3ecacca6cd2a557236e11a1c46efa",
+            "12.3-aarch64": "f356b0fff937946e661582362c754bec29314191613d26867db2b1625c06e208",
+            "12.1-amd64": "ae1f604d6aa753b156e3072519a29938b74b37b727c7bd78fab73add78f83907",
+        },
+        build_template = Label("//third_party/gpus/cuda:cuda_cusparse.BUILD.tpl"),
+        version_dict = {"12.3": "12.2.0.103", "12.1": "12.1.0.106"},
+        url_template = "https://developer.download.nvidia.com/compute/cuda/redist/libcusparse/linux-{arch}/libcusparse-linux-{arch}-{version}-archive.tar.xz",
+    )
+
+    cuda_http_archive(
+        name = "cuda_nccl",
+        sha256_dict = {
+            "12.3-amd64": "a9734707a2c96443331c1e48c717024aa6678a0e2a4cb66b2c364d18cee6b48d",
+            "12.3-aarch64": "a9734707a2c96443331c1e48c717024aa6678a0e2a4cb66b2c364d18cee6b48d",
+            "12.1-amd64": "0e8c73799b5cfa35fd4fb04c7a358ea6943b206de34ec83594fd0b0bf665387f",
+        },
+        build_file = Label("//third_party/gpus/cuda:cuda_nccl.BUILD"),
+        version_dict = {"12.3": "cu12-2.19.3", "12.1": "cu12-2.17.1"},
+        url_template = "https://files.pythonhosted.org/packages/38/00/d0d4e48aef772ad5aebcf70b73028f88db6e5640b36c38e90445b7a57c45/nvidia_nccl_{version}-py3-none-manylinux1_x86_64.whl",
+        strip_prefix = "nvidia/nccl",
+        type = "whl",
+    )
+
+    cuda_http_archive(
+        name = "cuda_nvcc",
+        sha256_dict = {
+            "12.3-amd64": "65dba017ed1dbbe819a6ccc1841a4add4dfbc652603aa89be773888e82a5629e",
+            "12.1-amd64": "0b85f7eee17788abbd170b0b493c74ce2e9fd5a9604461b99c2c378165e1083b",
+            "12.3-aarch64": "4c0e6a79a67fb86489be9e0976cc22127ca2ae160b1ad22ac4742d52f0ebe32d",
+        },
+        build_file = Label("//third_party/gpus/cuda:cuda_nvcc.BUILD"),
+        version_dict = {"12.3": "12.3.107", "12.1": "12.1.105"},
+        url_template = "https://developer.download.nvidia.com/compute/cuda/redist/cuda_nvcc/linux-{arch}/cuda_nvcc-linux-{arch}-{version}-archive.tar.xz",
+    )
+
+    cuda_http_archive(
+        name = "cuda_nvjitlink",
+        sha256_dict = {
+            "12.3-amd64": "c66ebf27cf9bcfc584918c98eb7683ea2f5ab68c9c95c361ccb9e27d0520df13",
+            "12.3-aarch64": "cae34a104a8b61f061ba5f133792c28e2f6f6c0b6a726ff15c225a58649816d2",
+            "12.1-amd64": "21ee6206cf9509e1c1c31be918b1971da8eb1e7c5492804ecd6750105c7db6b4",
+        },
+        build_template = Label("//third_party/gpus/cuda:cuda_nvjitlink.BUILD.tpl"),
+        version_dict = {"12.3": "12.3.101", "12.1": "12.1.105"},
+        url_template = "https://developer.download.nvidia.com/compute/cuda/redist/libnvjitlink/linux-{arch}/libnvjitlink-linux-{arch}-{version}-archive.tar.xz",
+    )
+
+    cuda_http_archive(
+        name = "cuda_nvml",
+        sha256_dict = {
+            "12.3-amd64": "34ab12792d46a839012236608ec446a13f6e7775556f9122a7c33bc742b3b29d",
+            "12.3-aarch64": "e14f15f6eb8dc25d37872d713bfb40530b67b68e7b8441078310f40a3aec121f",
+            "12.1-amd64": "20ae775b1c78a107fca1cc52f2cba35f55e5296356fe0678937212f70923d77f",
+        },
+        build_file = Label("//third_party/gpus/cuda:cuda_nvml.BUILD"),
+        version_dict = {"12.3": "12.3.101", "12.1": "12.1.105"},
+        url_template = "https://developer.download.nvidia.com/compute/cuda/redist/cuda_nvml_dev/linux-{arch}/cuda_nvml_dev-linux-{arch}-{version}-archive.tar.xz",
+    )
+
+    cuda_http_archive(
+        name = "cuda_nvprune",
+        sha256_dict = {
+            "12.3-amd64": "61ac07de3c24e666932f61467ca79f8ac39560b04ea43b0c270e36bae64cd923",
+            "12.3-aarch64": "bc91e618a3548631ee6a7990d615987ffd480a92b35a73bbb3db5c283d9506d2",
+            "12.1-amd64": "aaf3b1f67bb3d6cafc1ea2b9519ec4285a8312be0f44402c7ac292a6a0d23163",
+        },
+        build_file = Label("//third_party/gpus/cuda:cuda_nvprune.BUILD"),
+        version_dict = {"12.3": "12.3.101", "12.1": "12.1.105"},
+        url_template = "https://developer.download.nvidia.com/compute/cuda/redist/cuda_nvprune/linux-{arch}/cuda_nvprune-linux-{arch}-{version}-archive.tar.xz",
+    )
+
+    cuda_http_archive(
+        name = "cuda_nvtx",
+        sha256_dict = {
+            "12.3-amd64": "cd21f7fc329337f3c1be888e68aef5d580f243b5cc9a63d392cdb08e49be1689",
+            "12.3-aarch64": "69535a21d1db11e904eaddfa6861bec8203f5f4e97fe9b191ab35ca7ba5e5e1e",
+            "12.1-amd64": "8ca2c72c247bf10ca10653637c60e792a1249cbeecc1d817c4815d98b45cf1c2",
+        },
+        build_file = Label("//third_party/gpus/cuda:cuda_nvtx.BUILD"),
+        version_dict = {"12.3": "12.3.101", "12.1": "12.1.105"},
+        url_template = "https://developer.download.nvidia.com/compute/cuda/redist/cuda_nvtx/linux-{arch}/cuda_nvtx-linux-{arch}-{version}-archive.tar.xz",
+    )
+
 def workspace():
     # Check the bazel version before executing any repository rules, in case
     # those rules rely on the version we require here.
@@ -620,6 +803,7 @@ def workspace():
     # don't already exist (at least if the external repository macros were
     # written according to common practice to query native.existing_rule()).
     _tf_repositories()
+    _cuda_distributives()
 
     tfrt_dependencies()
 

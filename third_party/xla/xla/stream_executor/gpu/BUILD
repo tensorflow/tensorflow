@@ -13,6 +13,7 @@ load(
 load(
     "@local_tsl//tsl:tsl.bzl",
     "if_libtpu",
+    "if_oss",
     "internal_visibility",
     "tsl_copts",
     "tsl_gpu_library",
@@ -428,6 +429,10 @@ gpu_only_cc_library(
     srcs = ["asm_compiler.cc"],
     hdrs = ["asm_compiler.h"],
     copts = tsl_copts(),
+    data = if_oss(if_cuda_is_configured([
+        "@cuda_nvcc//:ptxas",
+        "@cuda_nvcc//:fatbinary",
+    ])),
     visibility = internal_visibility([
         "//third_party/py/jax:__subpackages__",
         "//tensorflow/compiler/mlir/tools/kernel_gen:__subpackages__",

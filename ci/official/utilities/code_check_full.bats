@@ -210,53 +210,6 @@ EOF
   fi
 }
 
-# The Python package is not allowed to depend on any CUDA packages.
-@test "Pip package doesn't depend on CUDA" {
-  bazel cquery \
-    --experimental_cc_shared_library \
-    --@local_config_cuda//:enable_cuda \
-    "somepath(//tensorflow/tools/pip_package:wheel, " \
-    "@local_config_cuda//cuda:cudart + "\
-    "@local_config_cuda//cuda:cudart + "\
-    "@local_config_cuda//cuda:cuda_driver + "\
-    "@local_config_cuda//cuda:cudnn + "\
-    "@local_config_cuda//cuda:curand + "\
-    "@local_config_cuda//cuda:cusolver + "\
-    "@local_config_tensorrt//:tensorrt)" --keep_going > $BATS_TEST_TMPDIR/out
-
-  cat <<EOF
-There was a path found connecting //tensorflow/tools/pip_package:wheel
-to a banned CUDA dependency. Here's the output from bazel query:
-EOF
-  cat $BATS_TEST_TMPDIR/out
-  [[ ! -s $BATS_TEST_TMPDIR/out ]]
-}
-
-@test "Pip package doesn't depend on CUDA for static builds (i.e. Windows)" {
-  bazel cquery \
-    --experimental_cc_shared_library \
-    --@local_config_cuda//:enable_cuda \
-    --define framework_shared_object=false \
-    "somepath(//tensorflow/tools/pip_package:wheel, " \
-    "@local_config_cuda//cuda:cudart + "\
-    "@local_config_cuda//cuda:cudart + "\
-    "@local_config_cuda//cuda:cuda_driver + "\
-    "@local_config_cuda//cuda:cudnn + "\
-    "@local_config_cuda//cuda:curand + "\
-    "@local_config_cuda//cuda:cusolver + "\
-    "@local_config_tensorrt//:tensorrt)" --keep_going > $BATS_TEST_TMPDIR/out
-
-  cat <<EOF
-There was a path found connecting //tensorflow/tools/pip_package:wheel
-to a banned CUDA dependency when '--define framework_shared_object=false' is set.
-This means that a CUDA target was probably included via an is_static condition,
-used when targeting platforms like Windows where we build statically instead
-of dynamically. Here's the output from bazel query:
-EOF
-  cat $BATS_TEST_TMPDIR/out
-  [[ ! -s $BATS_TEST_TMPDIR/out ]]
-}
-
 @test "All tensorflow.org/code links point to real files" {
     for i in $(grep -onI 'https://www.tensorflow.org/code/[a-zA-Z0-9/._-]\+' -r tensorflow); do
         target=$(echo $i | sed 's!.*https://www.tensorflow.org/code/!!g')
