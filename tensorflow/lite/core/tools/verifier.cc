@@ -409,6 +409,9 @@ bool VerifyNumericTensorBuffer(const Tensor& tensor, const Buffer& buffer,
     case TensorType_FLOAT16:
       bytes_required *= sizeof(uint16_t);
       break;
+    case TensorType_BFLOAT16:
+      bytes_required *= sizeof(uint16_t);
+      break;
     case TensorType_FLOAT64:
       bytes_required *= sizeof(double);
       break;

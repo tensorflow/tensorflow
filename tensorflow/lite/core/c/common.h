@@ -296,6 +296,13 @@ typedef struct TfLiteFloat16 {
   uint16_t data;
 } TfLiteFloat16;
 
+/// bfloat16 data type compatible with the Google Brain definition.
+/// https://cloud.google.com/tpu/docs/bfloat16.
+/// This provides 1 bit of sign, 8 bits of exponent, and 7 bits of mantissa.
+typedef struct TfLiteBFloat16 {
+  uint16_t data;
+} TfLiteBFloat16;
+
 /// Return the name of a given type, for error reporting purposes.
 const char* TfLiteTypeGetName(TfLiteType type);
 
