@@ -29,6 +29,7 @@ limitations under the License.
 
 #include "absl/container/fixed_array.h"
 #include "absl/container/flat_hash_map.h"
+#include "absl/functional/bind_front.h"
 #include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
@@ -50,6 +51,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_util.h"
+#include "tensorflow/core/kernels/batching_util/batch_scheduler.h"
 #include "tensorflow/core/kernels/batching_util/concat_split_util.h"
 #include "tensorflow/core/kernels/batching_util/input_split_metadata.h"
 #include "tensorflow/core/kernels/batching_util/threadsafe_status.h"
@@ -270,6 +272,17 @@ const string& GetModelName(OpKernelContext* ctx) {
   if (!ctx->session_metadata()) return *kModelNameUnset;
   if (ctx->session_metadata()->name().empty()) return *kModelNameUnset;
   return ctx->session_metadata()->name();
+}
+
+// Returns the sum of the task sizes. The caller must guarantee that the
+// unique_ptrs in the argument vectors are not null.
+int GetTotalTaskSize(
+    const std::vector<std::unique_ptr<BatchResourceBase::BatchTask>>& tasks) {
+  int tasks_size = 0;
+  for (const auto& task : tasks) {
+    tasks_size += task->size();
+  }
+  return tasks_size;
 }
 
 }  // namespace
@@ -617,17 +630,22 @@ int BatchResourceBase::RoundToLowestAllowedBatchSize(int batch_size) const {
 }
 
 Status BatchResourceBase::ConcatInputTensors(
-    const BatchT& batch, OpKernelContext* context,
-    std::vector<Tensor>* concatenated_tensors) const {
+    const BatchT& batch,
+    const std::vector<std::unique_ptr<BatchTask>>& unbatched_tasks,
+    OpKernelContext* context, std::vector<Tensor>* concatenated_tensors) const {
   if (batch.num_tasks() == 0) {
     return errors::InvalidArgument("Empty batch.");
   }
+
+  int unbatched_tasks_size = GetTotalTaskSize(unbatched_tasks);
   const bool just_for_warmup = batch.task(0).forced_warmup_batch_size > 0;
   const int padded_batch_size =
-      just_for_warmup ? batch.task(0).forced_warmup_batch_size
-                      : RoundToLowestAllowedBatchSize(batch.size());
+      just_for_warmup
+          ? batch.task(0).forced_warmup_batch_size
+          : RoundToLowestAllowedBatchSize(batch.size() + unbatched_tasks_size);
   const int padding_amount =
-      just_for_warmup ? padded_batch_size : padded_batch_size - batch.size();
+      just_for_warmup ? padded_batch_size
+                      : padded_batch_size - batch.size() - unbatched_tasks_size;
   profiler::TraceMe trace_me([padded_batch_size, padding_amount,
                               disable_padding =
                                   batcher_queue_options_.disable_padding]() {
@@ -636,6 +654,9 @@ Status BatchResourceBase::ConcatInputTensors(
                                {"padding_amount", padding_amount},
                                {"disable_padding", disable_padding}});
   });
+  // TODO(b/316379576): Add metrics for the breakdown between the size of the
+  // original batch size and the unbatched task size and update the batch size
+  // to include the unbatched tasks.
   RecordPaddingSize(padding_amount, GetModelName(context), padded_batch_size,
                     context->op_kernel().name());
   RecordPaddingSizeV2(padding_amount, GetModelName(context), padded_batch_size,
@@ -660,9 +681,13 @@ Status BatchResourceBase::ConcatInputTensors(
     if (just_for_warmup) {
       to_concatenate.reserve(padding_amount);
     } else {
-      to_concatenate.reserve(batch.num_tasks() + padding_amount);
+      to_concatenate.reserve(batch.num_tasks() + unbatched_tasks.size() +
+                             padding_amount);
       for (int task_idx = 0; task_idx < batch.num_tasks(); ++task_idx) {
         to_concatenate.push_back(batch.task(task_idx).inputs.at(i));
+      }
+      for (int task_idx = 0; task_idx < unbatched_tasks.size(); ++task_idx) {
+        to_concatenate.push_back(unbatched_tasks[task_idx]->inputs.at(i));
       }
     }
 
@@ -794,7 +819,8 @@ Status BatchResourceBase::ConcatInputTensors(
 }
 
 Status BatchResourceBase::SplitOutputTensors(
-    const std::vector<Tensor>& combined_outputs, BatchT* batch) const {
+    const std::vector<Tensor>& combined_outputs, BatchT* batch,
+    std::vector<std::unique_ptr<BatchTask>>& unbatched_tasks) const {
   DCHECK_GE(batch->num_tasks(), 1);
   if (batch->num_tasks() < 1) {
     return errors::Internal("Batch size expected to be positive; was ",
@@ -802,14 +828,20 @@ Status BatchResourceBase::SplitOutputTensors(
   }
 
   std::vector<int64_t> task_sizes_plus_optional_padding;
-  task_sizes_plus_optional_padding.reserve(batch->num_tasks());
+  task_sizes_plus_optional_padding.reserve(batch->num_tasks() +
+                                           unbatched_tasks.size());
   for (int i = 0; i < batch->num_tasks(); ++i) {
     task_sizes_plus_optional_padding.push_back(batch->task(i).size());
   }
-  const int padding_size =
-      batcher_queue_options_.disable_padding
-          ? 0
-          : RoundToLowestAllowedBatchSize(batch->size()) - batch->size();
+  for (int i = 0; i < unbatched_tasks.size(); ++i) {
+    task_sizes_plus_optional_padding.push_back(unbatched_tasks[i]->size());
+  }
+  int unbatched_tasks_size = GetTotalTaskSize(unbatched_tasks);
+  const int padding_size = batcher_queue_options_.disable_padding
+                               ? 0
+                               : RoundToLowestAllowedBatchSize(
+                                     batch->size() + unbatched_tasks_size) -
+                                     batch->size() - unbatched_tasks_size;
   if (padding_size > 0) {
     task_sizes_plus_optional_padding.push_back(padding_size);
   }
@@ -829,7 +861,8 @@ Status BatchResourceBase::SplitOutputTensors(
           "Batched output tensor has 0 dimensions");
     }
     if (output_tensor.shape().dim_size(0) !=
-        static_cast<int64_t>(batch->size() + padding_size)) {
+        static_cast<int64_t>(batch->size() + unbatched_tasks_size +
+                             padding_size)) {
       return errors::FailedPrecondition(
           "Batched output tensor's 0th dimension does not equal the sum of "
           "the 0th dimension sizes of the input tensors");
@@ -861,12 +894,35 @@ Status BatchResourceBase::SplitOutputTensors(
         task.context->set_output(i, split_tensor[j]);
       }
     }
+    for (int j = 0; j < unbatched_tasks.size(); ++j) {
+      // The unbatched tasks are not split, so no need to handle the partial
+      // case separately.
+      unbatched_tasks[j]->context->set_output(
+          i, split_tensor[batch->num_tasks() + j]);
+    }
   }
 
   return absl::OkStatus();
 }
 
-void BatchResourceBase::ProcessFuncBatch(std::unique_ptr<BatchT> batch) const {
+void BatchResourceBase::CleanUpFunctionHelper(BatchTask& task,
+                                              const Status& status) const {
+  WithContext wc(task.propagated_context);
+  if (!status.ok()) {
+    if (!absl::StrContains(status.message(),
+                           "Function was cancelled before it was started")) {
+      task.status->Update(status);
+    } else {
+      // Do not propagate this error; Prefer a more helpful error message.
+      LOG(ERROR) << "ERROR!!!! " << status.message();
+    }
+  }
+  task.done_callback();
+}
+
+void BatchResourceBase::ProcessFuncBatch(
+    std::unique_ptr<BatchT> batch,
+    std::vector<std::unique_ptr<BatchTask>> unbatched_tasks) const {
   if (batch->empty()) {
     return;
   }
@@ -896,24 +952,19 @@ void BatchResourceBase::ProcessFuncBatch(std::unique_ptr<BatchT> batch) const {
     if (cleanup_done) {
       return;
     }
+    // TODO(b/316379576): Update this to take the unbatch task cost into
+    // consideration when excluding the wasted cost and propagate cost to the
+    // unbatched tasks.
     SplitBatchCostsAndRecordMetrics(model_name, batch_cost_measurements,
                                     processed_size, *batch);
     // Clear the measurements before unblocking the batch task, as measurements
     // are associated with the task's thread context.
     batch_cost_measurements.clear();
     for (int i = 0; i < batch->num_tasks(); ++i) {
-      WithContext wc(batch->task(i).propagated_context);
-      if (!status.ok()) {
-        if (!absl::StrContains(
-                status.message(),
-                "Function was cancelled before it was started")) {
-          batch->mutable_task(i)->status->Update(status);
-        } else {
-          // Do not propagate this error; Prefer a more helpful error message.
-          LOG(ERROR) << "ERROR!!!! " << status.message();
-        }
-      }
-      batch->mutable_task(i)->done_callback();
+      CleanUpFunctionHelper(*batch->mutable_task(i), status);
+    }
+    for (int i = 0; i < unbatched_tasks.size(); ++i) {
+      CleanUpFunctionHelper(*unbatched_tasks[i], status);
     }
     cleanup_done = true;
   };
@@ -927,7 +978,8 @@ void BatchResourceBase::ProcessFuncBatch(std::unique_ptr<BatchT> batch) const {
   }
 
   std::vector<Tensor> concatenated_tensors;
-  status = ConcatInputTensors(*batch, last_task_context, &concatenated_tensors);
+  status = ConcatInputTensors(*batch, unbatched_tasks, last_task_context,
+                              &concatenated_tensors);
   processed_size = RoundToLowestAllowedBatchSize(batch->size());
   if (!status.ok()) {
     return;
@@ -969,7 +1021,8 @@ void BatchResourceBase::ProcessFuncBatch(std::unique_ptr<BatchT> batch) const {
           return;
         }
         if (last_task.forced_warmup_batch_size == 0) {
-          final_status = SplitOutputTensors(combined_outputs, batch.get());
+          final_status = SplitOutputTensors(combined_outputs, batch.get(),
+                                            unbatched_tasks);
         }
       });
 }
@@ -1011,7 +1064,7 @@ void BatchResourceBase::ProcessBatch(std::unique_ptr<BatchT> batch) const {
   const int num_input_edges = batch->task(0).inputs.size();
   std::vector<Tensor> concatenated_tensors;
   const Status concat_status =
-      ConcatInputTensors(*batch, last_task_context, &concatenated_tensors);
+      ConcatInputTensors(*batch, {}, last_task_context, &concatenated_tensors);
   processed_size = RoundToLowestAllowedBatchSize(batch->size());
   OP_REQUIRES_OK_ASYNC(last_task_context, concat_status, last_task_callback);
 
@@ -1081,6 +1134,20 @@ void BatchResourceBase::ProcessBatch(std::unique_ptr<BatchT> batch) const {
   return absl::OkStatus();
 }
 
+void BatchResourceBase::ProcessBatchCallBack(
+    std::unique_ptr<Batch<BatchTask>> batch,
+    std::vector<std::unique_ptr<BatchTask>> unbatched_tasks) {
+  if (!session_metadata().name().empty()) {
+    absl::MutexLock lock(&outstanding_batch_mu_);
+    num_outstanding_batched_items_ -= batch->size();
+  }
+  if (!has_process_batch_function_) {
+    ProcessBatch(std::move(batch));
+  } else {
+    ProcessFuncBatch(std::move(batch), std::move(unbatched_tasks));
+  }
+}
+
 // Looks up the batcher queue for 'queue_name'. If it didn't previously exist,
 // creates it.
 Status BatchResourceBase::LookupOrCreateBatcherQueue(const string& queue_name,
@@ -1094,23 +1161,19 @@ Status BatchResourceBase::LookupOrCreateBatcherQueue(const string& queue_name,
   }
 
   std::unique_ptr<BatcherQueueT> new_queue;
-  auto process_batch_callback = [this](std::unique_ptr<BatchT> batch) {
-    if (!session_metadata().name().empty()) {
-      absl::MutexLock lock(&outstanding_batch_mu_);
-      num_outstanding_batched_items_ -= batch->size();
-    }
-    if (!has_process_batch_function_) {
-      ProcessBatch(std::move(batch));
-    } else {
-      ProcessFuncBatch(std::move(batch));
-    }
-  };
   if (batcher_) {
-    TF_RETURN_IF_ERROR(batcher_->AddQueue(batcher_queue_options_,
-                                          process_batch_callback, &new_queue));
+    TF_RETURN_IF_ERROR(batcher_->AddQueue(
+        batcher_queue_options_,
+        absl::bind_front(&BatchResourceBase::ProcessBatchCallBack, this),
+        &new_queue));
   } else if (adaptive_batcher_) {
+    std::function<void(std::unique_ptr<Batch<BatchTask>>)>
+        reduced_process_batch_callback = [this](std::unique_ptr<BatchT> batch) {
+          ProcessBatchCallBack(std::move(batch), {});
+        };
     TF_RETURN_IF_ERROR(adaptive_batcher_->AddQueue(
-        adaptive_batcher_queue_options_, process_batch_callback, &new_queue));
+        adaptive_batcher_queue_options_, reduced_process_batch_callback,
+        &new_queue));
   } else {
     return errors::Internal("No batcher defined.");
   }
