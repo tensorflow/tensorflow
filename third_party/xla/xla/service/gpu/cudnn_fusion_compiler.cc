@@ -103,6 +103,13 @@ inline std::optional<fe::DataType_t> ToCudnnDataType(const PrimitiveType type) {
   }
 }
 
+int FusionLevel(const HloInstruction& hlo) {
+  return hlo.GetModule()
+      ->config()
+      .debug_options()
+      .xla_gpu_cudnn_gemm_fusion_level();
+};
+
 // Extracts dimensions and strides from HLO tensors in the format expected by
 // cuDNN.
 class GemmDimensionAdapter {
@@ -139,17 +146,21 @@ class GemmDimensionAdapter {
                             std::vector<int64_t>& strides) {
     const DotDimensionNumbers& dims = dot_.dot_dimension_numbers();
     // GEMM fusions require a specific canonical order of dimensions.
+    constexpr int kBatchDimensionIndex = 0;
+    constexpr int kOutputLHSNonContractingDimensionIndex = 1;
     std::vector<int64_t> dim_indices;
+    int lhs_noncontracting_index = -1;
     switch (scope) {
       case TritonFusionAnalysis::Scope::LHS:
-        dim_indices = {dims.lhs_batch_dimensions().empty()
-                           ? -1
-                           : dims.lhs_batch_dimensions(0),
-                       GetNonContractingDims(dot_.operand(0)->shape(),
-                                             dims.lhs_batch_dimensions(),
-                                             dims.lhs_contracting_dimensions())
-                           .value()[0],
-                       dims.lhs_contracting_dimensions(0)};
+        lhs_noncontracting_index =
+            GetNonContractingDims(dot_.operand(0)->shape(),
+                                  dims.lhs_batch_dimensions(),
+                                  dims.lhs_contracting_dimensions())
+                .value()[0];
+        dim_indices = {
+            dims.lhs_batch_dimensions().empty() ? -1
+                                                : dims.lhs_batch_dimensions(0),
+            lhs_noncontracting_index, dims.lhs_contracting_dimensions(0)};
         break;
       case TritonFusionAnalysis::Scope::RHS:
         dim_indices = {dims.rhs_batch_dimensions().empty()
@@ -162,8 +173,9 @@ class GemmDimensionAdapter {
                            .value()[0]};
         break;
       case TritonFusionAnalysis::Scope::OUTPUT:
+        lhs_noncontracting_index = dot_.shape().rank() - 2;
         dim_indices = {dims.lhs_batch_dimensions().empty() ? -1 : 0,
-                       dot_.shape().rank() - 2, dot_.shape().rank() - 1};
+                       lhs_noncontracting_index, dot_.shape().rank() - 1};
         break;
       case TritonFusionAnalysis::Scope::META:
         LOG(FATAL) << "Unsupported scope.";
@@ -177,17 +189,67 @@ class GemmDimensionAdapter {
         strides.push_back(strides.empty() ? 1 : strides.back());
         continue;
       } else {
-        if (spec->size() != 1) {
+        if (spec->size() == 1) {
+          // The dimension is not split, nothing to do.
+        } else if (spec->size() == 2) {
+          if (FusionLevel(hlo) < 3) {
+            return false;
+          }
+          if (!dims.lhs_batch_dimensions().empty()) {
+            VLOG(8) << "Noncontracting dimension split is not compatible with "
+                       "batch dimensions.";
+            return false;
+          }
+          if (index != lhs_noncontracting_index) {
+            VLOG(8) << "Only LHS noncontracting dimension can be split.";
+            return false;
+          }
+          switch (scope) {
+            case TritonFusionAnalysis::Scope::LHS:
+              lhs_noncontracting_split_ = spec->back().count;
+              break;
+            case TritonFusionAnalysis::Scope::OUTPUT:
+              if (lhs_noncontracting_split_ != spec->back().count) {
+                VLOG(8) << "Output non-contracting dimension has to be split "
+                           "the same way as the LHS input one if it is split.";
+                return false;
+              }
+              break;
+            default:
+              VLOG(8) << "Only LHS noncontracting dimension can be split.";
+              return false;
+          }
+          // Assign the major part of the noncontracting dimension to the
+          // unused batch one.
+          CHECK_EQ(dimensions[kBatchDimensionIndex], 1);
+          dimensions[kBatchDimensionIndex] = spec->back().count;
+          strides[kBatchDimensionIndex] = spec->back().stride;
+        } else {
+          VLOG(8) << "The dimension is split multiple times.";
           return false;
         }
         dimensions.push_back(spec->front().count);
         strides.push_back(spec->front().stride);
       }
     }
+    if (lhs_noncontracting_split_ > 1 &&
+        scope == TritonFusionAnalysis::Scope::OUTPUT &&
+        dimensions[kBatchDimensionIndex] == 1) {
+      // LHS input noncontracting dimension is split but the corresponding
+      // output one is not. Assign part of the output one to the unused batch
+      // dimension.
+      dimensions[kBatchDimensionIndex] = lhs_noncontracting_split_;
+      dimensions[kOutputLHSNonContractingDimensionIndex] /=
+          lhs_noncontracting_split_;
+      strides[kBatchDimensionIndex] =
+          strides[kOutputLHSNonContractingDimensionIndex] *
+          dimensions[kOutputLHSNonContractingDimensionIndex];
+    }
     return true;
   }
 
  private:
+  int64_t lhs_noncontracting_split_ = 1;
   const HloDotInstruction& dot_;
 };
 
@@ -254,7 +316,9 @@ absl::StatusOr<std::optional<se::gpu::CudnnGraph>> HloFusionToCuDnnGraph(
     } else if (hlo->opcode() == HloOpcode::kReshape ||
                hlo->opcode() == HloOpcode::kBitcast ||
                hlo->opcode() == HloOpcode::kTranspose ||
-               hlo->opcode() == HloOpcode::kCopy) {
+               hlo->opcode() == HloOpcode::kCopy ||
+               (FusionLevel(fusion) >= 2 &&
+                hlo->opcode() == HloOpcode::kBroadcast)) {
       // All these are accounted for separately as transformations of strides.
       hlo_to_cudnn[hlo] = operand(0);
     } else if (hlo->IsElementwise()) {
