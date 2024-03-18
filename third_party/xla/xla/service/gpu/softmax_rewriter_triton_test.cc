@@ -1887,7 +1887,7 @@ ENTRY main {
   broadcast_0 = f32[64,32,16]{2,1,0} broadcast(reduce_0), dimensions={0,1}
   broadcast_1 = f32[64,32,16]{2,1,0} broadcast(parameter_0), dimensions={}
   add_0 = f32[64,32,16]{2,1,0} add(broadcast_1, parameter_1)
-  ROOT add1 = f32[64,32,16]{2,1,0} add(add_0, broadcast_0)
+  ROOT _ = f32[64,32,16]{2,1,0} add(add_0, broadcast_0)
 })";
   auto module = ParseAndReturnVerifiedModule(hlo_string).value();
   EXPECT_TRUE(
