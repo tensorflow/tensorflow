@@ -88,11 +88,3 @@ def cuda_only_cc_library(name, tags = [], **kwargs):
         restricted_to = kwargs.get("restricted_to"),
         target_compatible_with = kwargs.get("target_compatible_with"),
     )
-
-# TODO(hebecker): Remove this once we've fixed our ARM build
-def if_google_arm_build(
-        if_true,  # @unused
-        if_false = []):
-    return select({
-        "//conditions:default": if_false,
-    })
