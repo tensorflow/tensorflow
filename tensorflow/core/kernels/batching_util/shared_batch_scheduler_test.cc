@@ -434,39 +434,39 @@ TEST_P(
 
     // Create two queues.
 
-    const SharedBatchScheduler<FakeTaskWithoutCriticality>::QueueOptions
-        queue_options = {
-            .input_batch_size_limit = 10,
-            .batch_timeout_micros = 1000 * 1000,
-            .max_enqueued_batches = 2,
-            .enable_large_batch_splitting = enable_input_batch_split(),
-            .split_input_task_func =
-                [](std::unique_ptr<FakeTaskWithoutCriticality>* input_task,
-                   int open_batch_remaining_slot, int max_batch_size,
-                   std::vector<std::unique_ptr<FakeTaskWithoutCriticality>>*
-                       output_tasks) -> Status {
-              std::unique_ptr<FakeTaskWithoutCriticality> owned_input_task =
-                  std::move(*input_task);
-              const int input_task_size = owned_input_task->size();
+    SharedBatchScheduler<FakeTaskWithoutCriticality>::QueueOptions
+        queue_options;
+    queue_options.input_batch_size_limit = 10;
+    queue_options.batch_timeout_micros = 1000 * 1000;
+    queue_options.max_enqueued_batches = 2;
+    queue_options.enable_large_batch_splitting = enable_input_batch_split();
+    queue_options.split_input_task_func =
+        [](std::unique_ptr<FakeTaskWithoutCriticality>* input_task,
+           int open_batch_remaining_slot, int max_batch_size,
+           std::vector<std::unique_ptr<FakeTaskWithoutCriticality>>*
+               output_tasks) -> Status {
+      std::unique_ptr<FakeTaskWithoutCriticality> owned_input_task =
+          std::move(*input_task);
+      const int input_task_size = owned_input_task->size();
 
-              const internal::InputSplitMetadata input_split_metadata(
-                  input_task_size, open_batch_remaining_slot, max_batch_size);
+      const internal::InputSplitMetadata input_split_metadata(
+          input_task_size, open_batch_remaining_slot, max_batch_size);
 
-              const absl::FixedArray<int> task_sizes =
-                  input_split_metadata.task_sizes();
-              const int num_batches = task_sizes.size();
+      const absl::FixedArray<int> task_sizes =
+          input_split_metadata.task_sizes();
+      const int num_batches = task_sizes.size();
 
-              output_tasks->resize(num_batches);
-              for (int i = 0; i < num_batches; i++) {
-                (*output_tasks)[i] =
-                    std::make_unique<FakeTaskWithoutCriticality>(task_sizes[i]);
-              }
+      output_tasks->resize(num_batches);
+      for (int i = 0; i < num_batches; i++) {
+        (*output_tasks)[i] =
+            std::make_unique<FakeTaskWithoutCriticality>(task_sizes[i]);
+      }
 
-              return absl::OkStatus();
-            },
-            .enable_lazy_split = enable_lazy_split(),
-            .max_execution_batch_size = 10,
-            .enable_priority_queue = true};
+      return absl::OkStatus();
+    };
+    queue_options.enable_lazy_split = enable_lazy_split();
+    queue_options.max_execution_batch_size = 10;
+    queue_options.enable_priority_queue = true;
 
     std::unique_ptr<BatchScheduler<FakeTaskWithoutCriticality>> queue_0;
     TF_CHECK_OK(shared_batch_scheduler->AddQueue(queue_options,
