@@ -562,7 +562,8 @@ tensorflow::Safe_PyObjectPtr
 tensorflow::quantization::QuantizeQatModel
 tensorflow::quantization::QuantizePtqModelPreCalibration
 tensorflow::quantization::QuantizePtqModelPostCalibration
-tensorflow::quantization::QuantizePtqDynamicRange
+tensorflow::quantization::QuantizeStaticRangePtq
+tensorflow::quantization::QuantizeDynamicRangePtq
 tensorflow::quantization::QuantizeWeightOnly
 
 [//tensorflow/dtensor/cc:dtensor_device_cc] # DTensor

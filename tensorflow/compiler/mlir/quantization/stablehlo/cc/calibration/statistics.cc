@@ -19,21 +19,19 @@ limitations under the License.
 
 #include "absl/status/status.h"
 #include "absl/strings/str_format.h"
-#include "tensorflow/compiler/mlir/quantization/stablehlo/cc/graph_def.h"
+#include "mlir/IR/Builders.h"  // from @llvm-project
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/quantization/stablehlo/quantization_config.pb.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/calibrator/calibration_statistics.pb.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/calibrator/calibrator_singleton.h"
+#include "tensorflow/compiler/mlir/quantization/tensorflow/passes/tf_quant_ops.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/python/py_function_lib.h"
-#include "tensorflow/compiler/mlir/quantization/tensorflow/quantization_options.pb.h"
-#include "tensorflow/core/framework/attr_value.pb.h"
-#include "tensorflow/core/framework/graph.pb.h"
 
 namespace stablehlo::quantization {
 namespace {
 
 using ::stablehlo::quantization::CalibrationOptions;
-using ::tensorflow::GraphDef;
-using ::tensorflow::NodeDef;
 using ::tensorflow::calibrator::CalibrationStatistics;
 using ::tensorflow::calibrator::CalibratorSingleton;
 using ::tensorflow::quantization::PyFunctionLibrary;
@@ -41,13 +39,12 @@ using ::tensorflow::quantization::PyFunctionLibrary;
 }  // namespace
 
 absl::Status AddCalibrationStatistics(
-    GraphDef& graph_def, const CalibrationOptions& calibration_options,
+    mlir::ModuleOp module_op, const CalibrationOptions& calibration_options,
     const PyFunctionLibrary& py_function_library) {
   absl::Status status = absl::OkStatus();
-  MutateNodeDefs(graph_def, [&py_function_library, &calibration_options,
-                             &status](NodeDef& node_def) {
-    if (node_def.op() != "CustomAggregator") return;
-    const std::string& id = node_def.attr().at("id").s();
+  module_op.walk([&py_function_library, &calibration_options,
+                  &status](mlir::TF::CustomAggregatorOp aggregator_op) {
+    mlir::StringRef id = aggregator_op.getId();
     std::optional<CalibrationStatistics> statistics =
         CalibratorSingleton::GetStatistics(id);
     if (statistics == std::nullopt) {
@@ -63,8 +60,9 @@ absl::Status AddCalibrationStatistics(
                                                       calibration_options);
     CalibratorSingleton::ClearData(id);
 
-    (*node_def.mutable_attr())["min"].set_f(min_value);
-    (*node_def.mutable_attr())["max"].set_f(max_value);
+    mlir::OpBuilder builder(aggregator_op);
+    aggregator_op->setAttr("min", builder.getF32FloatAttr(min_value));
+    aggregator_op->setAttr("max", builder.getF32FloatAttr(max_value));
   });
   return status;
 }
