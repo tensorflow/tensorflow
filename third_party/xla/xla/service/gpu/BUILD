@@ -766,6 +766,7 @@ xla_test(
         ":backend_configs_cc",
         ":gemm_fusion",
         ":gemm_fusion_autotuner",
+        ":ir_emission_utils",
         ":matmul_utils",
         "//xla:autotuning_proto_cc",
         "//xla:error_spec",
