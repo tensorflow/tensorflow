@@ -271,36 +271,16 @@ class BatchResourceBase : public ResourceBase {
   // returns 'batch_size'.
   int RoundToLowestAllowedBatchSize(int batch_size) const;
 
-  // Helper function to propagate the status to the task's context and call the
-  // done callback on the task.
-  void CleanUpFunctionHelper(BatchTask& task, const Status& status) const;
+  Status ConcatInputTensors(const BatchT& batch, OpKernelContext* context,
+                            std::vector<Tensor>* concatenated_tensors) const;
 
-  // Concatenates the input tensors of the tasks from the batch and the
-  // unbatched task vector. When padding is enabled in the batcher queue, they
-  // are padded with garbage value up to the nearest allowed batch size.
-  Status ConcatInputTensors(
-      const BatchT& batch,
-      const std::vector<std::unique_ptr<BatchTask>>& unbatched_tasks,
-      OpKernelContext* context,
-      std::vector<Tensor>* concatenated_tensors) const;
+  Status SplitOutputTensors(const std::vector<Tensor>& combined_outputs,
+                            BatchT* batch) const;
 
-  Status SplitOutputTensors(
-      const std::vector<Tensor>& combined_outputs, BatchT* batch,
-      std::vector<std::unique_ptr<BatchTask>>& unbatched_tasks) const;
-
-  void ProcessFuncBatch(
-      std::unique_ptr<BatchT> batch,
-      std::vector<std::unique_ptr<BatchTask>> unbatched_tasks = {}) const;
+  void ProcessFuncBatch(std::unique_ptr<BatchT> batch) const;
 
   // Processes a batch of one or more BatchTask entries.
   void ProcessBatch(std::unique_ptr<BatchT> batch) const;
-
-  // Callback function that wraps the Process*Batch functions above. The caller
-  // of the callback must guarantee that the unique pointers passed as argument
-  // are not null.
-  void ProcessBatchCallBack(
-      std::unique_ptr<Batch<BatchTask>> batch,
-      std::vector<std::unique_ptr<BatchTask>> unbatched_tasks);
 
   // Emits an index tensor, which the Unbatch op will use to un-concatenate
   // the tensor and attribute the pieces to the right batch keys. The index
