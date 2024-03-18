@@ -47,7 +47,7 @@ func.func @reshard_requires_same_global_shape(
 func.func @reshard_requires_non_negative_axis_index(
     %arg0: !ifrt.array<tensor<2x2xi32>, 1x1 to [0] on 2, [0,1]>)
     attributes {ifrt.function} {
-  // expected-error@+3 {{Out of range axis -1 to the mesh of -1 on 2}}
+  // expected-error@+3 {{Out of range axis -1 to the mesh of [-1] on 2}}
   %0 = ifrt.Reshard(%arg0)
       : (!ifrt.array<tensor<2x2xi32>, 1x1 to [0] on 2, [0,1]>)
       -> !ifrt.array<tensor<2x1xi32>, 1x2 to [-1] on 2, [2,3]>
@@ -59,7 +59,7 @@ func.func @reshard_requires_non_negative_axis_index(
 func.func @reshard_requires_valid_axis_index(
     %arg0: !ifrt.array<tensor<2x2xi32>, 1x1 to [0] on 2, [0,1]>)
     attributes {ifrt.function} {
-  // expected-error@+3 {{Out of range axis 1234567890 to the mesh of 1234567890 on 2}}
+  // expected-error@+3 {{Out of range axis 1234567890 to the mesh of [1234567890] on 2}}
   %0 = ifrt.Reshard(%arg0)
       : (!ifrt.array<tensor<2x2xi32>, 1x1 to [0] on 2, [0,1]>)
       -> !ifrt.array<tensor<2x1xi32>, 1x2 to [1234567890] on 2, [2,3]>
