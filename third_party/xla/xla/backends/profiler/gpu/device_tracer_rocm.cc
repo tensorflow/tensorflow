@@ -100,13 +100,9 @@ class RocmTraceCollectorImpl : public profiler::RocmTraceCollector {
         num_callback_events_(0),
         num_activity_events_(0),
         start_walltime_ns_(start_walltime_ns),
-<<<<<<< HEAD
-        start_gputime_ns_(start_gputime_ns) {}
-=======
         start_gputime_ns_(start_gputime_ns),
         num_gpus_(options.num_gpus),
         per_device_collector_(options.num_gpus) {}
->>>>>>> upstream/master
 
   void AddEvent(RocmTracerEvent&& event, bool is_auxiliary) override {
     mutex_lock lock(event_maps_mutex_);
@@ -169,18 +165,6 @@ class RocmTraceCollectorImpl : public profiler::RocmTraceCollector {
     // They are offset by number of CPUs on the machine
     tsl::uint32 min_device_id = INT32_MAX;
     for (auto& event : aggregated_events_) {
-<<<<<<< HEAD
-      activity_api_events_map_.clear();
-      activity_ops_events_map_.clear();
-      api_events_map_.clear();
-      auxiliary_api_events_map_.clear();
-
-      per_device_collector_[event.device_id].AddEvent(event);
-    }
-
-    for (auto& device : per_device_collector_) {
-      device.second.SortByStartTime();
-=======
       if (event.device_id < min_device_id) {
         min_device_id = event.device_id;
       }
@@ -195,7 +179,6 @@ class RocmTraceCollectorImpl : public profiler::RocmTraceCollector {
                         event.correlation_id);
         DumpRocmTracerEvent(event, 0, 0, ". Dropped!");
       }
->>>>>>> upstream/master
     }
 
     activity_ops_events_map_.clear();
@@ -207,20 +190,6 @@ class RocmTraceCollectorImpl : public profiler::RocmTraceCollector {
     uint64_t end_gputime_ns = RocmTracer::GetTimestamp();
     XPlaneBuilder host_plane(FindOrAddMutablePlaneWithName(
         space, tsl::profiler::kRoctracerApiPlaneName));
-<<<<<<< HEAD
-    int i = 0;
-    for (auto& device : per_device_collector_) {
-      std::string name = GpuPlaneName(i);
-      XPlaneBuilder device_plane(FindOrAddMutablePlaneWithName(space, name));
-      device_plane.SetId(device.first);
-      // Calculate device capabilities before flushing, so that device
-      // properties are available to the occupancy calculator in export().
-      device.second.GetDeviceCapabilities(i, &device_plane);
-      device.second.Export(start_walltime_ns_, start_gputime_ns_,
-                                      end_gputime_ns, &device_plane,
-                                      &host_plane);
-=======
-
     for (int device_ordinal = 0; device_ordinal < num_gpus_; ++device_ordinal) {
       std::string name = GpuPlaneName(device_ordinal);
       XPlaneBuilder device_plane(FindOrAddMutablePlaneWithName(space, name));
@@ -232,9 +201,7 @@ class RocmTraceCollectorImpl : public profiler::RocmTraceCollector {
       per_device_collector_[device_ordinal].Export(
           start_walltime_ns_, start_gputime_ns_, end_gputime_ns, &device_plane,
           &host_plane);
->>>>>>> upstream/master
       NormalizeTimeStamps(&device_plane, start_walltime_ns_);
-      ++i;
     }
     NormalizeTimeStamps(&host_plane, start_walltime_ns_);
   }
@@ -516,7 +483,7 @@ class RocmTraceCollectorImpl : public profiler::RocmTraceCollector {
       stats.occupancy_pct /= device_properties_.maxThreadsPerMultiProcessor;
 
       err = hipOccupancyMaxPotentialBlockSize(
-          &stats.min_grid_size, &stats.suggested_block_size, 
+          &stats.min_grid_size, &stats.suggested_block_size,
           (const void*)params.func_ptr,
           params.dynamic_smem_size, 0);
 
@@ -800,12 +767,8 @@ class RocmTraceCollectorImpl : public profiler::RocmTraceCollector {
     hipDeviceProp_t device_properties_;
   };
 
-<<<<<<< HEAD
   absl::flat_hash_map<const uint32_t, PerDeviceCollector>
       per_device_collector_;
-=======
-  absl::flat_hash_map<const uint32_t, PerDeviceCollector> per_device_collector_;
->>>>>>> upstream/master
 };
 
 // GpuTracer for ROCm GPU.

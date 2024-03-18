@@ -185,22 +185,14 @@ class ElementalIrEmitter : public IrBuilderMixin<ElementalIrEmitter> {
   EmitComplexAbsHelper(PrimitiveType prim_type, llvm::Value* real,
                        llvm::Value* imag, bool return_sqrt);
 
-<<<<<<< HEAD
-  virtual StatusOr<llvm::Value*> EmitComplexAbs(PrimitiveType prim_type,
-                                                llvm::Value* operand_value);
 
-  virtual StatusOr<std::tuple<llvm::Value*, llvm::Value*, llvm::Value*>>
-  EmitLogComplexAbsHelper(PrimitiveType prim_type, llvm::Value* operand_value);
+  virtual absl::StatusOr<std::tuple<llvm::Value*, llvm::Value*, llvm::Value*>>
+    EmitLogComplexAbsHelper(PrimitiveType prim_type, llvm::Value* operand_value);
 
-  virtual StatusOr<llvm::Value*> EmitLogComplexAbs(PrimitiveType prim_type,
-                                                llvm::Value* operand_value);
+  virtual absl::StatusOr<llvm::Value*> EmitLogComplexAbs(
+          PrimitiveType prim_type, llvm::Value* operand_value);
 
-  virtual StatusOr<llvm::Value*> EmitSqrtComplexAbs(PrimitiveType prim_type,
-                                                    llvm::Value* operand_value);
-  virtual StatusOr<llvm::Value*> EmitRsqrtComplexAbs(
-=======
   virtual absl::StatusOr<llvm::Value*> EmitComplexAbs(
->>>>>>> upstream/master
       PrimitiveType prim_type, llvm::Value* operand_value);
 
   virtual absl::StatusOr<llvm::Value*> EmitSqrtComplexAbs(

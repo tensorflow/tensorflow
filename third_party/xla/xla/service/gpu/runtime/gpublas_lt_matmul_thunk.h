@@ -16,13 +16,10 @@ limitations under the License.
 #ifndef XLA_SERVICE_GPU_RUNTIME_GPUBLAS_LT_MATMUL_THUNK_H_
 #define XLA_SERVICE_GPU_RUNTIME_GPUBLAS_LT_MATMUL_THUNK_H_
 
-<<<<<<< HEAD
 #if TENSORFLOW_USE_ROCM
 #include "rocm/rocm_config.h"
 #endif
-=======
 #include <cstdint>
->>>>>>> upstream/master
 #include <optional>
 
 #include "absl/base/thread_annotations.h"

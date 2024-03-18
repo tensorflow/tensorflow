@@ -575,13 +575,8 @@ Status CallTfKernel(void* stream_handle, void** buffers, const char* opaque,
   // Look up the platform only once, for a small performance gain.
   static Status* platform_status = nullptr;
   static se::Platform* platform = [&]() -> se::Platform* {
-<<<<<<< HEAD
-    StatusOr<se::Platform*> p =
-        se::MultiPlatformManager::PlatformWithName(PLATFORM);
-=======
     absl::StatusOr<se::Platform*> p =
-        se::PlatformManager::PlatformWithName("CUDA");
->>>>>>> upstream/master
+        se::PlatformManager::PlatformWithName(PLATFORM);
     if (!p.ok()) {
       platform_status = new Status(p.status());
       return nullptr;

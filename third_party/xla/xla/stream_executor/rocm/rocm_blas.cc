@@ -869,11 +869,7 @@ absl::StatusOr<AllocateStridedResult<T>> AllocateStridedBuffer(
   res.reallocated = true;
   if (copy_data) {
     TF_RETURN_IF_ERROR(ReorganizeMemory(stream, &res.device_mem, raw_ptrs,
-<<<<<<< HEAD
-                       batch_count, batch_stride, true));
-=======
                                         batch_count, batch_stride, true));
->>>>>>> upstream/master
   }
   return res;
 }
