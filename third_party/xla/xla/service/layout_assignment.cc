@@ -273,7 +273,8 @@ Status LayoutAssignment::SetBufferLayout(const Layout& layout,
                                          const HloInstruction* user) {
   VLOG(3) << "SetBufferLayout : " << buffer << " : "
           << LayoutUtil::HumanString(layout) << " with priority " << priority
-          << "; mandatory = " << mandatory << "; dfs = " << dfs << "\n";
+          << "; mandatory = " << mandatory << "; dfs = " << dfs
+          << buffer.instruction()->ToString() << "\n";
   TF_RETURN_IF_ERROR(points_to_analysis_->VerifyBuffer(buffer));
   if (unconstrained_buffer_ids_.find(buffer.id()) !=
       unconstrained_buffer_ids_.end()) {
@@ -305,7 +306,7 @@ Status LayoutAssignment::SetBufferLayout(const Layout& layout,
       VLOG(3) << "Unable to update existing Buffer layout for "
               << curr_constraint.ToString() << " with new layout"
               << LayoutUtil::HumanString(layout) << " at priority " << priority
-              << "\n";
+              << " user " << (user == nullptr ? "" : user->ToString()) << "\n";
       return OkStatus();
     }
   } else {
@@ -488,16 +489,18 @@ Status LayoutAssignment::SetInstructionLayout(const Shape& shape_with_layout,
                                               bool mandatory, bool dfs,
                                               bool allow_alias,
                                               int64_t priority) {
-  VLOG(3) << "SetInstructionLayout : " << instruction->name() << ", "
+  VLOG(1) << "SetInstructionLayout : " << instruction->name() << ", "
           << ShapeUtil::HumanStringWithLayout(shape_with_layout)
           << ": priority = " << priority << " : mandatory = " << mandatory
           << "; dfs = " << dfs << "\n";
 
   if (!ShapeUtil::Compatible(shape_with_layout, instruction->shape())) {
     return FailedPrecondition(
-        "Instruction %s of shape %s cannot be assigned incompatible layout %s",
+        "Instruction %s of shape %s cannot be assigned incompatible layout %s "
+        "for instruction %s",
         instruction->name(), ShapeUtil::HumanString(instruction->shape()),
-        ShapeUtil::HumanStringWithLayout(shape_with_layout));
+        ShapeUtil::HumanStringWithLayout(shape_with_layout),
+        instruction->ToString());
   }
 
   // Create a BufferLayoutConstraint for each array shape in the output of the
@@ -520,12 +523,12 @@ Status LayoutAssignment::SetInstructionLayout(const Shape& shape_with_layout,
           return OkStatus();
         }
       }));
-  VLOG(3) << "Setting operand layout?\n";
+  VLOG(1) << "Setting operand layout?\n";
   if (shape_with_layout.IsArray() &&
       instruction->opcode() != HloOpcode::kWhile &&
       instruction->opcode() != HloOpcode::kConditional &&
       !InstructionCanChangeLayoutInstance(instruction)) {
-    VLOG(3) << "Setting operand layout: " << instruction->ToString();
+    VLOG(1) << "Setting operand layout: " << instruction->ToString();
     for (int i = 0; i < instruction->operand_count(); ++i) {
       if (instruction->operand(i)->shape().rank() == shape_with_layout.rank()) {
         TF_RETURN_IF_ERROR(SetArrayOperandLayout(
@@ -2774,6 +2777,8 @@ absl::StatusOr<bool> LayoutAssignment::Run(
 
   TF_RETURN_IF_ERROR(CheckLayouts(module, execution_threads));
 
+  LOG(INFO) << "layout assignment done";
+  XLA_VLOG_LINES(1, module->ToString());
   // All layouts are reset then reassigned by this pass.
   return true;
 }
