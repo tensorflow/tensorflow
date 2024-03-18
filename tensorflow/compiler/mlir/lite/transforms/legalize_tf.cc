@@ -394,6 +394,17 @@ LogicalResult ConvertTFMatMulOp::matchAndRewrite(
   }
 
   Type output_type = tf_matmul_op.getResult().getType();
+  bool keep_num_dims = false;
+  auto out_dims = output_type.cast<ShapedType>().getShape();
+  auto input_dims = lhs.getType().cast<ShapedType>().getShape();
+  if (out_dims.size() == input_dims.size()) {
+    for (int i = 0; i < out_dims.size() - 1; ++i) {
+      if (out_dims[i] != input_dims[i]) {
+        break;
+      }
+    }
+    keep_num_dims = true;
+  }
   auto no_input = rewriter.create<TFL::NoValueOp>(
       op->getLoc(), rewriter.getNoneType(), rewriter.getUnitAttr());
   auto fc_op = rewriter.create<FullyConnectedOp>(
@@ -401,7 +412,7 @@ LogicalResult ConvertTFMatMulOp::matchAndRewrite(
       /*input=*/lhs, /*filter=*/rhs, /*bias=*/no_input,
       /*fused_activation_function=*/rewriter.getStringAttr("NONE"),
       /*weights_format=*/rewriter.getStringAttr("DEFAULT"),
-      /*keep_num_dims=*/rewriter.getBoolAttr(false),
+      /*keep_num_dims=*/rewriter.getBoolAttr(keep_num_dims),
       /*asymmetric_quantize_inputs=*/mlir::BoolAttr());
   rewriter.replaceOp(op, {fc_op.getResult(0)});
   return success();
