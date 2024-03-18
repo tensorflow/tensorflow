@@ -22,7 +22,7 @@ limitations under the License.
 
 namespace xla {
 
-StatusOr<bool> MemorySpacePropagation::Run(
+absl::StatusOr<bool> MemorySpacePropagation::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   bool modified = false;

@@ -6,7 +6,7 @@ package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [
         ":friends",
-        "//tensorflow/tools/pip_package/v2:__subpackages__",
+        "//tensorflow/tools/pip_package:__subpackages__",
     ],
     licenses = ["notice"],
 )

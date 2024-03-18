@@ -187,6 +187,10 @@ struct AutoShardingOption {
   // a simple replicated default.
   bool use_sharding_propagation_for_default_shardings = false;
 
+  // Whether or not to model the memory usage of intermediate tensors, if any,
+  // for resharding edges.
+  bool model_resharding_memory_costs = true;
+
   // Prints a debug string.
   std::string ToString() const;
 

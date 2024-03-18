@@ -25,13 +25,15 @@ limitations under the License.
 #include <utility>
 
 #include "absl/functional/any_invocable.h"
+#include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/numbers.h"
 #include "absl/strings/str_cat.h"
 #include "absl/synchronization/notification.h"
 #include "xla/stream_executor/device_description.h"
-#include "xla/stream_executor/device_options.h"
+#include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/event.h"
 #include "xla/stream_executor/host/host_stream.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/stream_executor/stream_executor_internal.h"
@@ -46,19 +48,7 @@ HostStream* AsHostStream(Stream* stream) {
   return dynamic_cast<HostStream*>(stream->implementation());
 }
 
-absl::Status HostExecutor::Init(int device_ordinal,
-                                DeviceOptions device_options) {
-  auto it =
-      device_options.non_portable_tags.find("host_thread_stack_size_in_bytes");
-  if (it != device_options.non_portable_tags.end()) {
-    if (!absl::SimpleAtoi(it->second, &thread_stack_size_in_bytes_)) {
-      return absl::InvalidArgumentError(absl::StrCat(
-          "Unable to parse host_thread_stack_size_in_bytes as an integer: ",
-          it->second));
-    }
-  }
-  return absl::OkStatus();
-}
+absl::Status HostExecutor::Init(int device_ordinal) { return absl::OkStatus(); }
 
 bool HostExecutor::DeviceMemoryUsage(int64_t* free, int64_t* total) const {
   tsl::port::MemoryInfo mem_info = tsl::port::GetMemoryInfo();
@@ -92,24 +82,25 @@ absl::Status HostExecutor::SynchronousMemSet(DeviceMemoryBase* location,
   return absl::OkStatus();
 }
 
-bool HostExecutor::Memcpy(Stream* stream, void* host_dst,
-                          const DeviceMemoryBase& gpu_src, uint64_t size) {
+absl::Status HostExecutor::Memcpy(Stream* stream, void* host_dst,
+                                  const DeviceMemoryBase& gpu_src,
+                                  uint64_t size) {
   // Enqueue the [asynchronous] memcpy on the stream (HostStream) associated
   // with the HostExecutor.
   void* src_mem = const_cast<void*>(gpu_src.opaque());
   AsHostStream(stream)->EnqueueTask(
       [host_dst, src_mem, size]() { memcpy(host_dst, src_mem, size); });
-  return true;
+  return absl::OkStatus();
 }
 
-bool HostExecutor::Memcpy(Stream* stream, DeviceMemoryBase* gpu_dst,
-                          const void* host_src, uint64_t size) {
+absl::Status HostExecutor::Memcpy(Stream* stream, DeviceMemoryBase* gpu_dst,
+                                  const void* host_src, uint64_t size) {
   void* dst_mem = gpu_dst->opaque();
   // Enqueue the [asynchronous] memcpy on the stream (HostStream) associated
   // with the HostExecutor.
   AsHostStream(stream)->EnqueueTask(
       [dst_mem, host_src, size]() { memcpy(dst_mem, host_src, size); });
-  return true;
+  return absl::OkStatus();
 }
 
 bool HostExecutor::MemcpyDeviceToDevice(Stream* stream,
@@ -275,8 +266,7 @@ HostExecutor::CreateDeviceDescription(int device_ordinal) {
 
 std::unique_ptr<internal::StreamInterface>
 HostExecutor::GetStreamImplementation() {
-  return std::unique_ptr<internal::StreamInterface>(
-      new HostStream(thread_stack_size_in_bytes_));
+  return std::make_unique<HostStream>();
 }
 
 }  // namespace host

@@ -386,7 +386,7 @@ bool CUDAFft::DoFftInternal(Stream *stream, fft::Plan *plan, FuncT cufftExec,
     if (allocator) {
       auto allocated = allocator->AllocateBytes(input.size());
       if (allocated.ok()) {
-        if (stream->ThenMemcpy(&allocated.value(), input, input.size()).ok()) {
+        if (stream->Memcpy(&allocated.value(), input, input.size()).ok()) {
           input_maybe_copy = DeviceMemory<InputT>(allocated.value());
         }
       }

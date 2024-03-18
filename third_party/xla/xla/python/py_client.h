@@ -24,6 +24,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
+#include "third_party/nanobind/include/nanobind/nanobind.h"
 #include "pybind11/pybind11.h"  // from @pybind11
 #include "xla/client/xla_builder.h"
 #include "xla/pjrt/exceptions.h"
@@ -179,7 +180,6 @@ class PyClient : public std::enable_shared_from_this<PyClient> {
   // Returns a vector of live PyArray objects. PyArray objects may share
   // PjRtBuffers, so there may be duplicates of the same underlying device
   // buffer.
-  std::vector<pybind11::object> LiveBuffers();
   std::vector<pybind11::object> LiveBuffersOnDevice(PjRtDevice* device);
 
   // Returns a vector of live PyLoadedExecutable objects.
@@ -222,10 +222,12 @@ class PyClient : public std::enable_shared_from_this<PyClient> {
   // The callable receives as arguments NumPy arrays for arguments with array
   // types, and None for Token argument. The callable must return a tuple of
   // either arrays or None values.
+  // TODO(phawkins): pass operand_shapes and result_shapes as
+  // absl::Span<Shape const> when nanobind transition is complete.
   StatusOr<std::pair<uint64_t, pybind11::object>>
   GetEmitPythonCallbackDescriptor(pybind11::function callable,
-                                  absl::Span<Shape const> operand_shapes,
-                                  absl::Span<Shape const> result_shapes);
+                                  pybind11::object operand_shapes,
+                                  pybind11::object result_shapes);
   // Deprecated; please switch to emitting a `CustomCallOp` directly.
   StatusOr<XlaOp> EmitPythonCallbackFromDescriptor(
       XlaBuilder& builder, uint64_t descriptor,
@@ -260,7 +262,7 @@ class PyClient : public std::enable_shared_from_this<PyClient> {
       absl::Span<uint16_t const> recv_channel_ids,
       pybind11::function serializer);
 
-  std::vector<pybind11::object> LiveArrays();
+  std::vector<nanobind::object> LiveArrays() const;
 
  private:
   friend class PyLoadedExecutable;

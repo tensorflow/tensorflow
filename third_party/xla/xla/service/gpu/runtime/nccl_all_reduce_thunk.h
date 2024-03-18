@@ -17,13 +17,11 @@ limitations under the License.
 #define XLA_SERVICE_GPU_RUNTIME_NCCL_ALL_REDUCE_THUNK_H_
 
 #include <cstdint>
-#include <optional>
 #include <vector>
 
 #include "absl/status/status.h"
 #include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_instructions.h"
-#include "xla/mlir_hlo/lhlo_gpu/IR/lhlo_gpu_ops.h"
 #include "xla/service/collective_ops_utils.h"
 #include "xla/service/gpu/nccl_api.h"
 #include "xla/service/gpu/nccl_collective_thunk.h"
@@ -41,9 +39,6 @@ struct NcclAllReduceConfig {
 // GPU-based replicas.
 class NcclAllReduceReduceScatterThunkBase : public NcclCollectiveThunk {
  public:
-  static std::optional<ReductionKind> MatchAllReduceComputation(
-      mlir::Region& computation);
-
   NcclAllReduceReduceScatterThunkBase(Kind kind, ThunkInfo thunk_info,
                                       NcclApi* nccl_api,
                                       NcclAllReduceConfig config,
@@ -67,25 +62,14 @@ class NcclAllReduceReduceScatterThunkBase : public NcclCollectiveThunk {
 class NcclAllReduceStartThunk : public NcclAllReduceReduceScatterThunkBase {
  public:
   NcclAllReduceStartThunk(ThunkInfo thunk_info, NcclApi* nccl_api,
-                          mlir::lmhlo_gpu::AllReduceStartOp op,
-                          std::vector<Buffer> buffers);
-
-  NcclAllReduceStartThunk(ThunkInfo thunk_info, NcclApi* nccl_api,
                           const HloAllReduceInstruction* inst,
                           std::vector<Buffer> buffers);
 
   static const char* GetHloOpName() { return "all-reduce-start"; }
 
-  static absl::Status CheckImplementable(mlir::lmhlo_gpu::AllReduceStartOp op,
-                                         int64_t replica_count,
-                                         int64_t partition_count);
-
   static absl::Status CheckImplementable(const HloAllReduceInstruction* inst,
                                          int64_t replica_count,
                                          int64_t partition_count);
-
-  static CollectiveOpGroupMode GetGroupMode(
-      mlir::lmhlo_gpu::AllReduceStartOp op);
 
   static CollectiveOpGroupMode GetGroupMode(
       const HloAllReduceInstruction* inst);
@@ -102,25 +86,14 @@ class NcclAllReduceStartThunk : public NcclAllReduceReduceScatterThunkBase {
 class NcclReduceScatterStartThunk : public NcclAllReduceReduceScatterThunkBase {
  public:
   NcclReduceScatterStartThunk(ThunkInfo thunk_info, NcclApi* nccl_api,
-                              mlir::lmhlo_gpu::ReduceScatterStartOp op,
-                              std::vector<Buffer> buffers);
-
-  NcclReduceScatterStartThunk(ThunkInfo thunk_info, NcclApi* nccl_api,
                               const HloReduceScatterInstruction* inst,
                               std::vector<Buffer> buffers);
 
   static const char* GetHloOpName() { return "reduce-scatter-start"; }
 
   static absl::Status CheckImplementable(
-      mlir::lmhlo_gpu::ReduceScatterStartOp op, int64_t replica_count,
-      int64_t partition_count);
-
-  static absl::Status CheckImplementable(
       const HloReduceScatterInstruction* inst, int64_t replica_count,
       int64_t partition_count);
-
-  static CollectiveOpGroupMode GetGroupMode(
-      mlir::lmhlo_gpu::ReduceScatterStartOp op);
 
   static CollectiveOpGroupMode GetGroupMode(
       const HloReduceScatterInstruction* inst);

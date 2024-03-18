@@ -28,8 +28,8 @@ limitations under the License.
 
 namespace jax {
 
-// This file contains utilities to write Python wrapers using the C API.
-// It's used for performance critical code such as PyBuffer, jax.jit or
+// This file contains utilities to write Python wrappers using the C API.
+// It's used for performance critical code such as PyArray, jax.jit or
 // jax.pmap.
 
 // Helpers for building Python properties
@@ -46,13 +46,6 @@ pybind11::object property(GetFunc&& get, SetFunc&& set) {
   return property(pybind11::cpp_function(std::forward<GetFunc>(get)),
                   pybind11::cpp_function(std::forward<SetFunc>(set)),
                   pybind11::none(), "");
-}
-
-template <typename Constructor>
-pybind11::object def_static(Constructor&& constructor) {
-  pybind11::handle property(reinterpret_cast<PyObject*>(&PyProperty_Type));
-  return pybind11::staticmethod(
-      pybind11::cpp_function(std::forward<Constructor>(constructor)));
 }
 
 }  // namespace jax

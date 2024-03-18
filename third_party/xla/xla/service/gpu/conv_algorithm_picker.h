@@ -18,18 +18,28 @@ limitations under the License.
 
 #include <optional>
 #include <string>
-#include <string_view>
 #include <vector>
 
+#include "absl/container/flat_hash_set.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
+#include "absl/types/span.h"
 #include "xla/autotune_results.pb.h"
 #include "xla/autotuning.pb.h"
+#include "xla/hlo/ir/hlo_computation.h"
+#include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/gpu/autotuner_util.h"
+#include "xla/service/gpu/cublas_cudnn.h"
 #include "xla/service/gpu/gpu_conv_runner.h"
+#include "xla/service/hlo_module_config.h"
 #include "xla/service/hlo_pass_interface.h"
 #include "xla/service/service_executable_run_options.h"
+#include "xla/shape.h"
+#include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/device_memory_allocator.h"
+#include "xla/stream_executor/dnn.h"
 #include "xla/stream_executor/stream_executor.h"
 
 #if (defined(GOOGLE_CUDA) && GOOGLE_CUDA)

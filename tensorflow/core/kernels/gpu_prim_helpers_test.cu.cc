@@ -211,14 +211,11 @@ class TestGpuSelectFlaggedKernel : public tensorflow::OpKernel {
     // Copy the computed output size to host and ensure it matches.
     se::Stream* stream = context->op_device_context()->stream();
     int64_t output_size_host;
-    OP_REQUIRES(context,
-                stream
-                    ->ThenMemcpy(&output_size_host,
-                                 se::DeviceMemoryBase(output_size_data,
-                                                      sizeof(output_size_data)),
-                                 sizeof(output_size_host))
-                    .ok(),
-                errors::Internal("Failed to copy output_size_gpu to host"));
+    OP_REQUIRES_OK(
+        context, stream->Memcpy(&output_size_host,
+                                se::DeviceMemoryBase(output_size_data,
+                                                     sizeof(output_size_data)),
+                                sizeof(output_size_host)));
     OP_REQUIRES_OK(context, stream->BlockHostUntilDone());
     OP_REQUIRES(context, output_size_host == output_size_,
                 errors::Internal("Incorrect output size: expected ",

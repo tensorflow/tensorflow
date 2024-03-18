@@ -14,41 +14,49 @@ limitations under the License.
 ==============================================================================*/
 #include "xla/service/gpu/amdgpu_compiler.h"
 
-#include <memory>
-#include <optional>
+#include <cstdint>
+#include <utility>
 #include <vector>
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "llvm/IR/Module.h"
+#include "xla/hlo/ir/hlo_computation.h"
+#include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/algebraic_simplifier.h"
 #include "xla/service/call_inliner.h"
+#include "xla/service/convert_mover.h"
 #include "xla/service/dot_dimension_merger.h"
+#include "xla/service/gpu/autotuner_util.h"
 #include "xla/service/gpu/conv_algorithm_picker.h"
 #include "xla/service/gpu/cublas_pad_for_gemms.h"
 #include "xla/service/gpu/cublas_padding_requirements.h"
 #include "xla/service/gpu/cusolver_rewriter.h"
 #include "xla/service/gpu/gemm_algorithm_picker.h"
-#include "xla/service/gpu/gemm_rewriter.h"
+#include "xla/service/gpu/gpu_compiler.h"
 #include "xla/service/gpu/gpu_conv_padding_legalization.h"
 #include "xla/service/gpu/gpu_conv_rewriter.h"
-#include "xla/service/gpu/gpu_layout_assignment.h"
 #include "xla/service/gpu/gpu_sort_rewriter.h"
 #include "xla/service/gpu/llvm_gpu_backend/gpu_backend_lib.h"
-#include "xla/service/gpu/reduction_degenerate_dim_remover.h"
-#include "xla/service/gpu/reduction_dimension_grouper.h"
-#include "xla/service/gpu/reduction_layout_normalizer.h"
 #include "xla/service/gpu/target_constants.h"
-#include "xla/service/gpu/tree_reduction_rewriter.h"
 #include "xla/service/gpu/triangular_solve_rewriter.h"
 #include "xla/service/hlo_constant_folding.h"
-#include "xla/service/hlo_cse.h"
+#include "xla/service/hlo_module_config.h"
 #include "xla/service/hlo_pass_fix.h"
 #include "xla/service/hlo_pass_pipeline.h"
 #include "xla/service/hlo_verifier.h"
-#include "xla/service/llvm_ir/llvm_util.h"
+#include "xla/service/reshape_mover.h"
 #include "xla/service/tuple_simplifier.h"
+#include "xla/stream_executor/device_description.h"
+#include "xla/stream_executor/device_memory_allocator.h"
+#include "xla/stream_executor/dnn.h"
 #include "xla/stream_executor/rocm/rocm_platform_id.h"
+#include "xla/stream_executor/stream_executor_pimpl.h"
+#include "xla/util.h"
+#include "tsl/platform/errors.h"
+#include "tsl/platform/statusor.h"
+#include "tsl/platform/threadpool.h"
 
 namespace xla {
 namespace gpu {
@@ -82,6 +90,31 @@ absl::Status AMDGPUCompiler::OptimizeHloConvolutionCanonicalization(
   options.set_enable_unconditional_reduce_of_concat_replacement(false);
   pipeline.AddPass<HloPassFix<AlgebraicSimplifier>>(options);
 
+  // tf2xla bridge, DepthwiseConvolutionConverter, GpuConvRewriter, and
+  // CudnnSimplifyPadding introduce reshapes and transposes.  Run ReshapeMover
+  // to a fixed point.  Include algsimp because ReshapeMover relies on it.
+  [&, &pipeline = pipeline.AddPass<HloPassFix<HloPassPipeline>>(
+          "reshape_mover_after_conv_canonicalization")] {
+    ReshapeMoverOptions reshape_mover_options;
+    reshape_mover_options.reshape_of_1d_broadcast_is_cheap = true;
+    pipeline.AddPass<HloPassFix<ReshapeMover>>(reshape_mover_options);
+    pipeline.AddPass<AlgebraicSimplifier>(options);
+  }();
+
+  // The reshapes and transposes can possibly be eliminated using
+  // AlgebraicSimplifier. ConvertMover and ReshapeMover fight with each other.
+  // ConvertMover wants to move some converts down the graph, but ReshapeMover
+  // wants to move them up the graph. We run ConvertMover and algsimp to a fixed
+  // point.
+  [&, &pipeline = pipeline.AddPass<HloPassFix<HloPassPipeline>>(
+          "simplify_after_conv_canonicalization")] {
+    pipeline.AddPass<ConvertMover>();
+    pipeline.AddPass<AlgebraicSimplifier>(options);
+  }();
+
+  // GpuConvRewriter, GpuConvPaddingLegalization and
+  // CudnnConvPadForTensorCores may add instructions which can be simplified
+  // by constant folding.
   pipeline.AddPass<HloConstantFolding>();
   TF_RETURN_IF_ERROR(pipeline.Run(hlo_module).status());
 

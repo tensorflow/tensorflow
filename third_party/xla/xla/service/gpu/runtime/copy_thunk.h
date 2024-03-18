@@ -16,6 +16,9 @@ limitations under the License.
 #ifndef XLA_SERVICE_GPU_RUNTIME_COPY_THUNK_H_
 #define XLA_SERVICE_GPU_RUNTIME_COPY_THUNK_H_
 
+#include <cstdint>
+
+#include "absl/status/status.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/gpu/thunk.h"
 
@@ -31,34 +34,43 @@ class DeviceToDeviceCopyThunk : public Thunk {
   DeviceToDeviceCopyThunk(ThunkInfo thunk_info,
                           const BufferAllocation::Slice& source_buffer,
                           const BufferAllocation::Slice& destination_buffer,
-                          uint64_t mem_size, mlir::Value source_value,
-                          mlir::Value destination_value);
+                          uint64_t mem_size);
 
   DeviceToDeviceCopyThunk(const DeviceToDeviceCopyThunk&) = delete;
   DeviceToDeviceCopyThunk& operator=(const DeviceToDeviceCopyThunk&) = delete;
 
   absl::Status ExecuteOnStream(const ExecuteParams& params) override;
 
-  void ClearCompileTimeInfo() override {
-    Thunk::ClearCompileTimeInfo();
-    source_value_ = nullptr;
-    destination_value_ = nullptr;
-  }
+  void ClearCompileTimeInfo() override { Thunk::ClearCompileTimeInfo(); }
 
   const BufferAllocation::Slice& source() const { return source_buffer_; }
   const BufferAllocation::Slice& destination() const {
     return destination_buffer_;
   }
   uint64_t size_bytes() const { return mem_size_; }
-  mlir::Value source_value() const { return source_value_; }
-  mlir::Value destination_value() const { return destination_value_; }
 
  private:
   const BufferAllocation::Slice source_buffer_;
   const BufferAllocation::Slice destination_buffer_;
   const uint64_t mem_size_;
-  mlir::Value source_value_;
-  mlir::Value destination_value_;
+};
+
+class DeviceToHostCopyThunk : public DeviceToDeviceCopyThunk {
+ public:
+  DeviceToHostCopyThunk(ThunkInfo thunk_info,
+                        const BufferAllocation::Slice& source_buffer,
+                        const BufferAllocation::Slice& destination_buffer,
+                        uint64_t mem_size);
+  absl::Status ExecuteOnStream(const ExecuteParams& params) override;
+};
+
+class HostToDeviceCopyThunk : public DeviceToDeviceCopyThunk {
+ public:
+  HostToDeviceCopyThunk(ThunkInfo thunk_info,
+                        const BufferAllocation::Slice& source_buffer,
+                        const BufferAllocation::Slice& destination_buffer,
+                        uint64_t mem_size);
+  absl::Status ExecuteOnStream(const ExecuteParams& params) override;
 };
 
 }  // namespace gpu

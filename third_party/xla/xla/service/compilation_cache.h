@@ -39,7 +39,7 @@ class CompilationCache {
 
   // Lookup the Executable for the specified handle in the cache. Return a
   // shared_ptr to the Executable if it exists in the cache.
-  StatusOr<std::shared_ptr<Executable>> LookUp(
+  absl::StatusOr<std::shared_ptr<Executable>> LookUp(
       const ExecutionHandle& handle) const;
 
  protected:

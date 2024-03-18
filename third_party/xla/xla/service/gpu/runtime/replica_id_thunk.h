@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef XLA_SERVICE_GPU_RUNTIME_REPLICA_ID_THUNK_H_
 #define XLA_SERVICE_GPU_RUNTIME_REPLICA_ID_THUNK_H_
 
+#include "absl/status/status.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/gpu/thunk.h"
 

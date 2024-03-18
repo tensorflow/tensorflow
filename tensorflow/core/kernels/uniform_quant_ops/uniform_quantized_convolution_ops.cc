@@ -302,7 +302,7 @@ Status EvalLhsPerTensorAndRhsPerTensorQuantizedConv(
             /*input_zero_point=*/0, output_zero_point,
             output_quantization_min_val, output_quantization_max_val);
       });
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Quantized Conv on per-tensor quantized padded and dilated transposed lhs and
@@ -383,7 +383,7 @@ Status EvalLhsPerTensorAndRhsPerChannelQuantizedConv(
                                                             : out_feature_idx],
             output_quantization_min_val, output_quantization_max_val);
       });
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Quantized Conv on per-batch quantized padded and dilated transposed lhs and
@@ -509,7 +509,7 @@ Status EvalQuantizedConv(
   // Transpose transposed_out back to out.
   const auto& out_perm_back = OutBackTransposePerm(out_perm);
   Transpose<Tout>(out_transposed, out_perm_back, out);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Given float `lhs` and quantized `rhs`, performs per-batch dynamic range
@@ -593,7 +593,7 @@ Status EvalHybridConv(
   // Transpose transposed_out back to out.
   const auto& out_perm_back = OutBackTransposePerm(out_perm);
   Transpose<float>(out_transposed, out_perm_back, out);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace

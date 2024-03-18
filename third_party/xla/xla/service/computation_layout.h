@@ -86,12 +86,12 @@ class ComputationLayout {
   // Returns a list of each parameter's layout. If the parameters are tupled,
   // returns an untupled list. Must only be called if all parameters have
   // layouts set (check with LayoutIsSet()).
-  StatusOr<std::vector<Layout>> FlattenedParameterLayouts() const;
+  absl::StatusOr<std::vector<Layout>> FlattenedParameterLayouts() const;
 
   // Returns a list of each output's layout. If the result shape is a tuple,
   // returns an untupled list. Must only be called if all outputs have layouts
   // set (check with LayoutIsSet()).
-  StatusOr<std::vector<Layout>> FlattenedResultLayouts() const;
+  absl::StatusOr<std::vector<Layout>> FlattenedResultLayouts() const;
 
   // Prints a string representation of this object.
   void Print(Printer* printer) const;

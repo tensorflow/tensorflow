@@ -13,8 +13,12 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <cstdint>
+#include <memory>
 #include <optional>
 
+#include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
@@ -22,7 +26,9 @@ limitations under the License.
 #include "xla/service/copy_insertion.h"
 #include "xla/service/gpu/buffer_sharing.h"
 #include "xla/test.h"
+#include "xla/test_helpers.h"
 #include "xla/tests/hlo_test_base.h"
+#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace gpu {

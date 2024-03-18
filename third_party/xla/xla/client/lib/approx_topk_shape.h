@@ -41,7 +41,7 @@ namespace xla {
 //
 // 2. is invalid and set to -1 when the approximate output is disabled, i.e.
 //   top_k = 1 or aggregate_to_topk = true.
-StatusOr<std::pair<int64_t, int64_t>> ApproxTopKReductionOutputSize(
+absl::StatusOr<std::pair<int64_t, int64_t>> ApproxTopKReductionOutputSize(
     int64_t input_size, int64_t rank, int64_t top_k, float recall_target,
     bool aggregate_to_topk, int64_t input_size_override = -1);
 

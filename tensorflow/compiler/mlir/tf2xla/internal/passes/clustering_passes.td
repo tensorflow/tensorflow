@@ -388,3 +388,55 @@ def HoistBroadcastReadPass : Pass<"tf-hoist-broadcast-read", "mlir::func::FuncOp
 
   let constructor = "tensorflow::tf2xla::internal::CreateHoistBroadcastReadPass()";
 }
+
+def XlaBroadcastPass : Pass<"tf-xla-broadcast", "mlir::func::FuncOp"> {
+  let summary = "Moves a broadcast from host into XLA, encoded as XlaAllReduce";
+
+  let description = [{
+    This pass moves brodcasts from host TF ops into XLA. This enables use of
+    the inter-device network, which is faster than the inter-host network.
+    Broadcasts in XLA are encoded as XlaAllReduce. An all_reduce with all 0
+    inputs except for one real input produces the same result as a broadcast.
+
+    For example, the following:
+
+    ```mlir
+    func.func @main(%arg0: tensor<f32>) -> () {
+      tf_device.replicate {n = 2 : i32} {
+        "tf_device.cluster"() ({
+          "tf.OpA"(%arg0) : (tensor<f32>) -> ()
+          tf_device.return
+        }) : () -> ()
+      }
+      func.return
+    }
+    ```
+
+    will be transformed into
+
+    ```mlir
+    func.func @main(%arg0: tensor<f32>) {
+      %elem = "tf.Const"() <{value = dense<0.000000e+00> : tensor<f32>}> : () -> tensor<f32>
+      %shape = "tf.Const"() <{value = dense<> : tensor<0xi64>}> : () -> tensor<0xi64>
+      %zero = "tf.Fill"(%shape, %elem) : (tensor<0xi64>, tensor<f32>) -> tensor<f32>
+      tf_device.replicate([%arg0, %zero] as %arg1: tensor<f32>) {n = 2 : i32} {
+        %arg1_id = "tf_device.launch"() <{device = "TPU_REPLICATED_HOST_0"}> ({
+          %1 = "tf.Identity"(%arg1) : (tensor<f32>) -> tensor<f32>
+          tf_device.return %1 : tensor<f32>
+        }) : () -> tensor<f32>
+        "tf_device.cluster"() ({
+          %group = "tf.Const"() <{value = dense<[[0, 1]]> : tensor<1x2xi32>}> : () -> tensor<1x2xi32>
+          %arg1_reduced = "tf.XlaAllReduce"(%arg1_id, %group) <{mode = "CrossReplica", reduce_op = "Add"}> : (tensor<f32>, tensor<1x2xi32>) -> tensor<f32>
+          "tf.OpA"(%arg1_reduced) : (tensor<f32>) -> ()
+          tf_device.return
+        }) : () -> ()
+        tf_device.return
+      }
+      return
+    }
+    ```
+  }];
+
+  let constructor = "tensorflow::tf2xla::internal::CreateXlaBroadcastPass()";
+  let dependentDialects = ["mlir::tf_device::TensorFlowDeviceDialect"];
+}

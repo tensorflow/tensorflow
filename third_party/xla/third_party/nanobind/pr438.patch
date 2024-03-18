@@ -1,0 +1,51 @@
+diff --git a/src/nb_enum.cpp b/src/nb_enum.cpp
+index 86f64d1..91f3932 100644
+--- a/src/nb_enum.cpp
++++ b/src/nb_enum.cpp
+@@ -73,6 +73,13 @@ static PyObject *nb_enum_get_doc(PyObject *self, void *) {
+     return result;
+ }
+
++static PyObject *nb_enum_get_value(PyObject *self, void *) {
++    enum_supplement &supp = nb_enum_supplement(Py_TYPE(self));
++    return supp.is_signed ? nb_enum_int_signed(self)
++                          : nb_enum_int_unsigned(self);
++}
++
++
+ NB_NOINLINE static PyObject *nb_enum_int_signed(PyObject *o) {
+     type_data *t = nb_type_data(Py_TYPE(o));
+     const void *p = inst_ptr((nb_inst *) o);
+@@ -141,6 +148,8 @@ error:
+ static PyGetSetDef nb_enum_getset[] = {
+     { "__doc__", nb_enum_get_doc, nullptr, nullptr, nullptr },
+     { "__name__", nb_enum_get_name, nullptr, nullptr, nullptr },
++    { "name", nb_enum_get_name, nullptr, nullptr, nullptr },
++    { "value", nb_enum_get_value, nullptr, nullptr, nullptr },
+     { nullptr, nullptr, nullptr, nullptr, nullptr }
+ };
+
+diff --git a/tests/test_enum.py b/tests/test_enum.py
+index 2a6e9ff..1063eef 100644
+--- a/tests/test_enum.py
++++ b/tests/test_enum.py
+@@ -14,6 +14,9 @@ def test01_unsigned_enum():
+     assert int(t.Enum.A) == 0
+     assert int(t.Enum.B) == 1
+     assert int(t.Enum.C) == 0xffffffff
++    assert t.Enum.A.value == 0
++    assert t.Enum.B.value == 1
++    assert t.Enum.C.value == 0xffffffff
+     assert t.Enum(0) is t.Enum.A
+     assert t.Enum(1) is t.Enum.B
+     assert t.Enum(0xffffffff) is t.Enum.C
+@@ -48,6 +51,9 @@ def test02_signed_enum():
+     assert int(t.SEnum.A) == 0
+     assert int(t.SEnum.B) == 1
+     assert int(t.SEnum.C) == -1
++    assert t.SEnum.A.value == 0
++    assert t.SEnum.B.value == 1
++    assert t.SEnum.C.value == -1
+     assert t.SEnum(0) is t.SEnum.A
+     assert t.SEnum(1) is t.SEnum.B
+     assert t.SEnum(-1) is t.SEnum.C

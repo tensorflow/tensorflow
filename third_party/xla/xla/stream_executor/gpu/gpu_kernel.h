@@ -63,24 +63,8 @@ class GpuKernel : public Kernel {
   // object, for the CUDA API which wants to load into a GpuFunctionHandle*.
   GpuFunctionHandle* gpu_function_ptr() { return &gpu_function_; }
 
-  // CUDA supports setting the preferred cache configuration of a
-  // GpuFunctionHandle (more-or-less equivalent to a GpuKernel). We support this
-  // via the below functions; users can set a preference, and that is applied
-  // when the kernel is [lazy-]loaded (in GpuExecutor::Launch). The alternative
-  // would be to load the kernel & set the preference when the user calls the
-  // setter below; either approach is valid. Sets the current kernel cache
-  // configuration preference.
-  void SetPreferredCacheConfig(KernelCacheConfig config) override {
-    preferred_cache_config_ = config;
-  }
-
-  // Returns the current kernel cache configuration preference.
-  KernelCacheConfig GetPreferredCacheConfig() const override {
-    return preferred_cache_config_;
-  }
-
   // Returns the current kernel cache configuration preference as a
-  // CUfunc_cache.
+  // GpuFuncCachePreference.
   GpuFuncCachePreference GetGpuCacheConfig() const;
 
   absl::StatusOr<int32_t> GetMaxOccupiedBlocksPerCore(
@@ -93,9 +77,6 @@ class GpuKernel : public Kernel {
 
   GpuFunctionHandle gpu_function_ = nullptr;  // wrapped CUDA kernel handle
   unsigned arity_ = 0;  // number of formal parameters the kernel takes
-
-  // Preferred (but not required) cache configuration for this kernel
-  KernelCacheConfig preferred_cache_config_ = KernelCacheConfig::kNoPreference;
 };
 
 inline const GpuKernel* AsGpuKernel(const Kernel* kernel) {

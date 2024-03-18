@@ -19,6 +19,7 @@ limitations under the License.
 #include <iostream>
 #include <mutex>  // NOLINT
 #include <string>
+#include <unordered_map>
 #include <utility>
 
 namespace xla {
@@ -50,6 +51,20 @@ void* CustomCallTargetRegistry::Lookup(const std::string& symbol,
   std::lock_guard<std::mutex> lock(mu_);
   auto it = registered_symbols_.find(std::make_pair(symbol, platform));
   return it == registered_symbols_.end() ? nullptr : it->second;
+}
+
+std::unordered_map<std::string, void*>
+CustomCallTargetRegistry::registered_symbols(
+    const std::string& platform) const {
+  std::unordered_map<std::string, void*> calls;
+  std::lock_guard<std::mutex> lock(mu_);
+  for (const auto& [metadata, address] : registered_symbols_) {
+    if (metadata.second == platform) {
+      calls[metadata.first] = address;
+    }
+  }
+
+  return calls;
 }
 
 }  // namespace xla

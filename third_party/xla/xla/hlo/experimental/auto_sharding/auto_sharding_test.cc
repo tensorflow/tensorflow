@@ -188,6 +188,28 @@ ENTRY %elementwise {
   EXPECT_THAT(instruction, op::Sharding("{devices=[2,2]0,2,1,3}"));
 }
 
+TEST_F(AutoShardingTest, Unsupported3DShardingTest) {
+  constexpr absl::string_view hlo_string = R"(
+HloModule module
+ENTRY %elementwise {
+  %param0 = f32[32,32,32,32] parameter(0)
+  %param1 = f32[32,32,32,32] parameter(1)
+  %add = f32[32,32,32,32] add(%param0, %param1), sharding={devices=[2,2,1,2]<=[8]}
+  ROOT %copy = f32[32,32,32,32] copy(%add)
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  AutoShardingOption option;
+  option.enable = true;
+  // The case of a fleet HLO when run with try_multiple_mesh_shapes = true
+  option.device_mesh_shape = {2, 4};
+  option.device_mesh_alpha = {1.0, 1.0};
+  option.device_mesh_beta = {0.01, 1.0};
+  EXPECT_DEATH(auto status = AutoSharding(option).Run(module.get()),
+               ".*too many axes.*");
+}
+
 TEST_F(AutoShardingTest, NDIterativeSolveTest) {
   constexpr absl::string_view hlo_string = R"(
 HloModule module
@@ -589,7 +611,7 @@ ENTRY %entry (param0: f32[4,256,64], param1: f32[4,256,32]) -> f32[64,32] {
                   IsTrue())));
 
   auto verified_parse_sharding = [](const absl::string_view sharding_str) {
-    StatusOr<HloSharding> sharding = ParseSharding(sharding_str);
+    absl::StatusOr<HloSharding> sharding = ParseSharding(sharding_str);
     CHECK_OK(sharding);
     return *sharding;
   };
@@ -643,7 +665,7 @@ ENTRY %entry (param0: f32[4,256,64], param1: f32[4,256,32]) -> f32[64,32] {
                   IsTrue())));
 
   auto verified_parse_sharding = [](const absl::string_view sharding_str) {
-    StatusOr<HloSharding> sharding = ParseSharding(sharding_str);
+    absl::StatusOr<HloSharding> sharding = ParseSharding(sharding_str);
     CHECK_OK(sharding);
     return *sharding;
   };

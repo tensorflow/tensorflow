@@ -27,7 +27,7 @@ limitations under the License.
 
 namespace xla {
 
-StatusOr<bool> AllGatherBroadcastReorder::Run(
+absl::StatusOr<bool> AllGatherBroadcastReorder::Run(
     HloModule *module,
     const absl::flat_hash_set<absl::string_view> &execution_threads) {
   if (hlo_query::ContainsLayoutConstrainedCollective(*module,

@@ -16,14 +16,18 @@ limitations under the License.
 #include "tensorflow/core/distributed_runtime/eager/remote_mgr.h"
 
 #include <memory>
+#include <string>
 #include <tuple>
 #include <utility>
 #include <vector>
 
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "tensorflow/core/distributed_runtime/eager/remote_tensor_handle.h"
 #include "tensorflow/core/platform/error_payloads.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/util/env_var.h"
 
 namespace tensorflow {
 
@@ -64,14 +68,27 @@ Status RemoteMgr::GetTensorHandleImpl(
   auto iter = remote_tensor_handle_map_.find(remote_handle);
   if (iter == remote_tensor_handle_map_.end()) {
     // TODO(b/217820532): Fix the tensor deallocation order issue.
-    return WithErrorSourcePayload(errors::InvalidArgument(
+    std::string error_message = absl::StrCat(
         "Unable to find the relevant tensor remote_handle: Op ID: ",
         remote_handle.op_id, ", Output num: ", remote_handle.output_num,
         ". One possible cause is that the tensor was accessed after "
-        "deallocation in a distributed worker setup. Try setting "
-        "`os.environ['TF_ENABLE_EAGER_CLIENT_STREAMING_ENQUEUE']='False'` in "
-        "your client to disable async streaming behavior to see if it fixes "
-        "the problem."));
+        "deallocation in a distributed worker setup.");
+
+    bool result;
+    TF_CHECK_OK(ReadBoolFromEnvVar("TF_ENABLE_EAGER_CLIENT_STREAMING_ENQUEUE",
+                                   true, &result));
+    if (result) {
+      std::string error_message_ext;
+      absl::StrAppend(
+          &error_message_ext, error_message,
+          "Try setting "
+          "`os.environ['TF_ENABLE_EAGER_CLIENT_STREAMING_ENQUEUE']='False'` in "
+          "your client to disable async streaming behavior to see if it fixes "
+          "the problem.");
+      return WithErrorSourcePayload(
+          absl::InvalidArgumentError(error_message_ext));
+    }
+    return WithErrorSourcePayload(absl::InvalidArgumentError(error_message));
   }
 
   *handle = iter->second;

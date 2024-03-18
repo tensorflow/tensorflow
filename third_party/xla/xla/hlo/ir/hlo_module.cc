@@ -370,6 +370,15 @@ void HloModule::Print(Printer* printer, const HloPrintOptions& options) const {
     entry_computation_layout().Print(printer);
     printer->Append("}");
   }
+  if (config.allow_spmd_sharding_propagation_to_parameters().size() != 1 ||
+      config.allow_spmd_sharding_propagation_to_parameters().back()) {
+    printer->Append(", allow_spmd_sharding_propagation_to_parameters={");
+    AppendJoin(printer, config.allow_spmd_sharding_propagation_to_parameters(),
+               ",", [](Printer* printer, bool i) {
+                 printer->Append(i ? "true" : "false");
+               });
+    printer->Append("}");
+  }
   if (config.allow_spmd_sharding_propagation_to_output().size() != 1 ||
       config.allow_spmd_sharding_propagation_to_output().back()) {
     printer->Append(", allow_spmd_sharding_propagation_to_output={");
@@ -702,6 +711,11 @@ StatusOr<HloModuleConfig> HloModule::CreateModuleConfigFromShape(
     }
     module_config.set_auto_spmd_partitioning_mesh_ids(mesh_ids);
     module_config.set_deduplicate_hlo(execution_options->deduplicate_hlo());
+    if (!execution_options->allow_spmd_sharding_propagation_to_parameters()
+             .empty()) {
+      module_config.set_allow_spmd_sharding_propagation_to_parameters(
+          execution_options->allow_spmd_sharding_propagation_to_parameters());
+    }
     if (!execution_options->allow_spmd_sharding_propagation_to_output()
              .empty()) {
       module_config.set_allow_spmd_sharding_propagation_to_output(

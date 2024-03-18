@@ -16,22 +16,28 @@ limitations under the License.
 #define XLA_SERVICE_GPU_AUTOTUNER_UTIL_H_
 
 #include <algorithm>
+#include <cstdint>
 #include <functional>
-#include <memory>
 #include <string>
-#include <tuple>
 #include <utility>
 #include <variant>
 
+#include "absl/log/check.h"
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/str_format.h"
+#include "absl/strings/string_view.h"
 #include "xla/autotune_results.pb.h"
 #include "xla/autotuning.pb.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
-#include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
+#include "xla/shape.h"
+#include "xla/stream_executor/device_description.h"
+#include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/device_memory_allocator.h"
 #include "xla/stream_executor/gpu/redzone_allocator.h"
 #include "xla/stream_executor/stream_executor.h"
-#include "xla/types.h"
 #include "xla/xla.pb.h"
 
 namespace xla {
@@ -98,6 +104,9 @@ class AutotuneConfig {
   bool should_crash_on_check_failure() const {
     return should_crash_on_check_failure_;
   }
+  bool should_require_complete_aot_autotune_results() const {
+    return require_complete_aot_autotune_results_;
+  }
 
   AutotuneConfig(const std::variant<DeviceConfig, DevicelessConfig>& config,
                  const DebugOptions& debug_options)
@@ -106,7 +115,9 @@ class AutotuneConfig {
         should_crash_on_check_failure_(
             debug_options.xla_gpu_crash_on_verification_failures()),
         exhaustive_tiling_search_(
-            debug_options.xla_gpu_exhaustive_tiling_search()) {}
+            debug_options.xla_gpu_exhaustive_tiling_search()),
+        require_complete_aot_autotune_results_(
+            debug_options.xla_gpu_require_complete_aot_autotune_results()) {}
 
   absl::string_view GetModelStr() const {
     if (auto deviceless_config = std::get_if<DevicelessConfig>(&config_)) {
@@ -151,6 +162,7 @@ class AutotuneConfig {
   int32_t autotune_level_;
   bool should_crash_on_check_failure_;
   bool exhaustive_tiling_search_;
+  bool require_complete_aot_autotune_results_;
 };
 
 using AutotuneNoCacheFn = std::function<absl::StatusOr<AutotuneResult>()>;

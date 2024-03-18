@@ -556,7 +556,7 @@ void RocmApiCallbackImpl::AddNormalMemcpyEventUponApiExit(
     missing:
       device_id(partially, have only for async), context_id,
     memcpy_info.kind(CUPTI puts CUPTI_ACTIVITY_MEMCPY_KIND_UNKNOWN),
-      memcpy_info.destenation(partially, only for async)( CUPTI puts device_id),
+      memcpy_info.destination(partially, only for async)( CUPTI puts device_id),
 
     extra:
       domain, name,
@@ -1335,8 +1335,7 @@ void RocmActivityCallbackImpl::AddHipOpsMemsetActivityEvent(
 void AnnotationMap::Add(uint32_t correlation_id,
                         const std::string& annotation) {
   if (annotation.empty()) return;
-  VLOG(3) << "Add annotation: "
-          << " correlation_id=" << correlation_id
+  VLOG(3) << "Add annotation: " << " correlation_id=" << correlation_id
           << ", annotation: " << annotation;
   absl::MutexLock lock(&map_.mutex);
   if (map_.annotations.size() < max_size_) {
@@ -1589,8 +1588,8 @@ absl::Status RocmTracer::DisableActivityTracing() {
   size_t threshold = 1;
   for (int i = 0; i < 6; i++, duration_ms *= 2, threshold *= 2) {
     if (GetPendingActivityRecordsCount() < threshold) break;
-    VLOG(3) << "Wait for pending activity records :"
-            << " Pending count = " << GetPendingActivityRecordsCount()
+    VLOG(3) << "Wait for pending activity records :" << " Pending count = "
+            << GetPendingActivityRecordsCount()
             << ", Threshold = " << threshold;
     VLOG(3) << "Wait for pending activity records : sleep for " << duration_ms
             << " ms";

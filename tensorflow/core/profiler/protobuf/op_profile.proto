@@ -42,7 +42,7 @@ message Node {
   message XLAInstruction {
     string op = 1;          // Opcode like %multiply
     string expression = 2;  // %multiply = [shape]multiply(operand1, operand2)
-    string provenance = 3;  // Typically the TensorFlow operation name.
+    string provenance = 3;  // Provenance op name, eg. TF Op name, JAX Op name
     string category = 4;
     // Describes the physical memory layout of the instruction's primary input.
     // e.g. for a convolution, this analyzes the image and ignores the kernel.

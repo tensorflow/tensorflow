@@ -16,13 +16,17 @@ limitations under the License.
 #ifndef XLA_SERVICE_GPU_HLO_TO_IR_BINDINGS_H_
 #define XLA_SERVICE_GPU_HLO_TO_IR_BINDINGS_H_
 
+#include <string>
+
 #include "absl/container/flat_hash_map.h"
+#include "absl/log/check.h"
 #include "absl/types/span.h"
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/Value.h"
 #include "xla/hlo/ir/hlo_instruction.h"
-#include "xla/map_util.h"
 #include "xla/service/llvm_ir/ir_array.h"
+#include "xla/shape_tree.h"
+#include "xla/shape_util.h"
 
 namespace xla {
 namespace gpu {

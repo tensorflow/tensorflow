@@ -97,7 +97,7 @@ bool IsExecuteNodeOrIdentityToExecuteNode(
 // by searching/traversing nodes in below pattern of nodes:
 // Enter ----> (identity) --->  While body input
 // Returns nullptr if the Enter node is not found.
-StatusOr<Node*> FindEnterNodeFromTPUExecuteNodeInput(Node* input_node) {
+absl::StatusOr<Node*> FindEnterNodeFromTPUExecuteNodeInput(Node* input_node) {
   Node* node = input_node;
   while (node->IsIdentity()) {
     TF_RETURN_IF_ERROR(node->input_node(0, &node));
@@ -109,7 +109,7 @@ StatusOr<Node*> FindEnterNodeFromTPUExecuteNodeInput(Node* input_node) {
   return nullptr;
 }
 
-StatusOr<bool> ResourceOnlyUsedForTPUExecuteInLoop(
+absl::StatusOr<bool> ResourceOnlyUsedForTPUExecuteInLoop(
     const Graph& graph, const std::unordered_set<Node*>& loop_nodes,  // NOLINT
     const Node* enter_node, const absl::flat_hash_set<Node*> execute_nodes) {
   for (const Edge* output_edge : enter_node->out_edges()) {

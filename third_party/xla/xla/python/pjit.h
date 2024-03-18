@@ -17,12 +17,11 @@ limitations under the License.
 #define XLA_PYTHON_PJIT_H_
 
 // placeholder for index annotation headers
-#include "pybind11/pybind11.h"  // from @pybind11
+#include "third_party/nanobind/include/nanobind/nanobind.h"
 
 namespace jax {
 
-void BuildPjitSubmodule(pybind11::module& m);
-
+void BuildPjitSubmodule(nanobind::module_& m);
 }
 
 #endif  // XLA_PYTHON_PJIT_H_

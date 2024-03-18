@@ -19,6 +19,7 @@ limitations under the License.
 #include <memory>
 #include <optional>
 #include <string>
+#include <unordered_map>
 #include <utility>
 #include <vector>
 
@@ -281,6 +282,27 @@ Status EagerServiceImpl::CreateContext(const CreateContextRequest* request,
     return tensorflow::errors::Internal(
         "invalid eager env_ or env_->rendezvous_mgr.");
   }
+  if (request->clear_existing_contexts()) {
+    // Cleanup state from WorkerEnv
+    for (auto* device : env_->device_mgr->ListDevices()) {
+      device->ClearResourceMgr();
+    }
+    env_->rendezvous_mgr->CleanupAll();
+    env_->collective_executor_mgr->CleanupAll();
+    TF_RETURN_IF_ERROR(env_->session_mgr->DeleteAllSessions());
+
+    // Cleanup existing contexts if any.
+    std::unordered_map<uint64, ServerContext*> tmp_contexts;
+    {
+      mutex_lock l(contexts_mu_);
+      if (!contexts_.empty()) {
+        std::swap(tmp_contexts, contexts_);
+      }
+    }
+    for (auto& context : tmp_contexts) {
+      context.second->Unref();
+    }
+  }
 
   tsl::core::RefCountPtr<RemoteRendezvous> r =
       env_->rendezvous_mgr->Find(request->context_id());
@@ -395,7 +417,7 @@ Status EagerServiceImpl::CreateContext(const CreateContextRequest* request,
         tsl::PreemptionNotifier::CreatePreemptionNotifier("sigterm",
                                                           Env::Default());
     preemption_notifier->WillBePreemptedAtAsync(
-        [coord_agent](StatusOr<absl::Time> time_or_status) {
+        [coord_agent](absl::StatusOr<absl::Time> time_or_status) {
           if (time_or_status.ok()) {
             const auto coord_task = coord_agent->GetOwnTask().value();
             Status s = coord_agent->InsertKeyValue(
@@ -753,8 +775,6 @@ Status EagerServiceImpl::KeepAlive(const KeepAliveRequest* request,
 
 Status EagerServiceImpl::CloseContext(const CloseContextRequest* request,
                                       CloseContextResponse* response) {
-  VLOG(1) << "Executing EagerService::CloseContext for context "
-          << request->context_id();
   ServerContext* context = nullptr;
   if (!GetServerContext(request->context_id(), &context).ok()) {
     // Swallow the error here.

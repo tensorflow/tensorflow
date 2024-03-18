@@ -31,7 +31,7 @@ namespace xla {
 
 // Remove Sharding custom-call instruction by assigning its users to
 // to its operand.
-StatusOr<bool> ShardingRemover::Run(
+absl::StatusOr<bool> ShardingRemover::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   bool changed = false;

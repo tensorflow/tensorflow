@@ -20,7 +20,6 @@ from tensorflow.compiler.mlir.quantization.stablehlo.python import pywrap_quanti
 from tensorflow.compiler.mlir.quantization.tensorflow.python import py_function_lib
 from tensorflow.compiler.mlir.quantization.tensorflow.python import save_model
 from tensorflow.core.protobuf import meta_graph_pb2
-from tensorflow.python.saved_model import loader_impl
 
 # Mapping of signature def key -> SignatureDef.
 _SignatureDefMap = Mapping[str, meta_graph_pb2.SignatureDef]
@@ -42,25 +41,6 @@ def _serialize_signature_def_map(
     signature_def_map_serialized[key] = signature_def.SerializeToString()
 
   return signature_def_map_serialized
-
-
-def _populate_default_quantization_config(
-    config: qc.QuantizationConfig,
-) -> qc.QuantizationConfig:
-  """Populates `QuantizationConfig` with default values.
-
-  Args:
-    config: User-provided quantization config.
-
-  Returns:
-    Updated `QuantizationConfig` after populating default values to fields that
-    the user did not explicitly specify.
-  """
-  pipeline_config = config.pipeline_config
-  if not pipeline_config.HasField('unpack_quantized_types'):
-    pipeline_config.unpack_quantized_types = True
-
-  return config
 
 
 # TODO: b/310594193 - Export API to pip package.
@@ -99,11 +79,6 @@ def quantize_saved_model(
       tags=set(config.tf_saved_model.tags),
   )
 
-  loader = loader_impl.SavedModelLoader(src_saved_model_path)
-  function_aliases = loader.get_meta_graph_def_from_tags(
-      config.tf_saved_model.tags
-  ).meta_info_def.function_aliases
-
   signature_def_map_serialized = _serialize_signature_def_map(signature_def_map)
   pywrap_quantization.static_range_ptq(
       src_saved_model_path,
@@ -111,6 +86,5 @@ def quantize_saved_model(
       quantization_config_serialized=config.SerializeToString(),
       signature_keys=list(signature_def_map.keys()),
       signature_def_map_serialized=signature_def_map_serialized,
-      function_aliases=dict(function_aliases),
       py_function_library=py_function_lib.PyFunctionLibrary(),
   )

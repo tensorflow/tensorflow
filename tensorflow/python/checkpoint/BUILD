@@ -35,6 +35,17 @@ py_strict_library(
 )
 
 py_strict_library(
+    name = "checkpoint_adapter",
+    srcs = ["checkpoint_adapter.py"],
+    srcs_version = "PY3",
+    deps = [
+        "//tensorflow/python/framework:tensor",
+        "//tensorflow/python/trackable:base",
+        "@absl_py//absl/logging",
+    ],
+)
+
+py_strict_library(
     name = "async_checkpoint_helper",
     srcs = ["async_checkpoint_helper.py"],
     srcs_version = "PY3",
@@ -331,12 +342,14 @@ py_strict_library(
     srcs = ["restore.py"],
     srcs_version = "PY3",
     deps = [
+        ":checkpoint_adapter",
         ":checkpoint_view",
         ":functional_saver",
         ":save_util_v1",
         ":saveable_compat",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/framework:ops",
+        "//tensorflow/python/framework:tensor",
         "//tensorflow/python/ops:array_ops",
         "//tensorflow/python/ops:io_ops",
         "//tensorflow/python/ops:io_ops_gen",

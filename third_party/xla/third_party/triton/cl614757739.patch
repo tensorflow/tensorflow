@@ -1,0 +1,14 @@
+==== triton/python/src/ir.cc#8 - /google/src/cloud/shyshkov/mlir_a924da6d4b8733e5bf08098b18dd7ad1a5ba5f46_1710185763/triton/python/src/ir.cc ====
+# action=edit type=text
+--- triton/python/src/ir.cc	2024-02-21 21:40:18.000000000 -0800
++++ triton/python/src/ir.cc	2024-03-11 12:39:44.000000000 -0700
+@@ -205,7 +205,8 @@
+   });
+ 
+   py::class_<Type>(m, "type", py::module_local())
+-      .def("is_integer", &Type::isInteger)
++      .def("is_integer",
++           [](Type &self, unsigned width) { return self.isInteger(width); })
+       .def("is_fp16", &Type::isF16)
+       .def("__str__", [](Type &self) {
+         std::string str;

@@ -16,6 +16,9 @@ limitations under the License.
 #ifndef XLA_SERVICE_GPU_RUNTIME_OUTFEED_THUNK_H_
 #define XLA_SERVICE_GPU_RUNTIME_OUTFEED_THUNK_H_
 
+#include <vector>
+
+#include "absl/status/status.h"
 #include "xla/service/gpu/thunk.h"
 
 namespace xla {

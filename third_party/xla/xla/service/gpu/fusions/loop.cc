@@ -139,6 +139,8 @@ std::pair<bool /*enabled*/, int> RowVectorizationEnabled(
                         num_big_inputs);
 }
 
+}  // namespace
+
 LaunchDimensionsConfig ComputeLoopFusionConfig(
     const HloFusionAnalysis& analysis) {
   int unroll_factor = 1;
@@ -209,17 +211,14 @@ LaunchDimensionsConfig ComputeLoopFusionConfig(
   return launch_config;
 }
 
-}  // namespace
-
 LoopFusion::LoopFusion(const HloFusionAnalysis& analysis)
     : analysis_(analysis), config_(ComputeLoopFusionConfig(analysis)) {}
 
 std::optional<IndexingMap> LoopFusion::ComputeThreadIdToOutputIndexing(
     int64_t root_index, mlir::MLIRContext* ctx) const {
   auto launch_dims = launch_dimensions();
-  const auto& shape = analysis_.fusion_roots()[root_index]->shape();
   return GetDefaultThreadIdToOutputIndexingMap(
-      launch_dims, config_.unroll_factor, shape, ctx);
+      launch_dims, config_.unroll_factor, GetElementShape(analysis_), ctx);
 }
 
 std::optional<IndexingMap> LoopFusion::ComputeThreadIdToInputIndexing(

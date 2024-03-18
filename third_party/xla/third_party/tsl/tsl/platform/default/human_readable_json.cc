@@ -21,8 +21,9 @@ limitations under the License.
 
 namespace tsl {
 
-Status ProtoToHumanReadableJson(const protobuf::Message& proto, string* result,
-                                bool ignore_accuracy_loss) {
+absl::Status ProtoToHumanReadableJson(const protobuf::Message& proto,
+                                      string* result,
+                                      bool ignore_accuracy_loss) {
   result->clear();
 
   protobuf::util::JsonPrintOptions json_options;
@@ -38,16 +39,18 @@ Status ProtoToHumanReadableJson(const protobuf::Message& proto, string* result,
         strings::StrCat("Could not convert proto to JSON string: ",
                         StringPiece(error_msg.data(), error_msg.length())));
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-Status ProtoToHumanReadableJson(const protobuf::MessageLite& proto,
-                                string* result, bool ignore_accuracy_loss) {
+absl::Status ProtoToHumanReadableJson(const protobuf::MessageLite& proto,
+                                      string* result,
+                                      bool ignore_accuracy_loss) {
   *result = "[human readable output not available for lite protos]";
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-Status HumanReadableJsonToProto(const string& str, protobuf::Message* proto) {
+absl::Status HumanReadableJsonToProto(const string& str,
+                                      protobuf::Message* proto) {
   proto->Clear();
   auto status = protobuf::util::JsonStringToMessage(str, proto);
   if (!status.ok()) {
@@ -58,11 +61,11 @@ Status HumanReadableJsonToProto(const string& str, protobuf::Message* proto) {
         strings::StrCat("Could not convert JSON string to proto: ",
                         StringPiece(error_msg.data(), error_msg.length())));
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-Status HumanReadableJsonToProto(const string& str,
-                                protobuf::MessageLite* proto) {
+absl::Status HumanReadableJsonToProto(const string& str,
+                                      protobuf::MessageLite* proto) {
   return errors::Internal("Cannot parse JSON protos on Android");
 }
 

@@ -42,6 +42,8 @@ class DefaultExecutionProvider : public DelegateProvider {
     default_params_.AddParam(
         "last_delegate_node_index",
         ToolParam::Create<int32_t>(std::numeric_limits<int32_t>::max()));
+    default_params_.AddParam("gpu_invoke_loop_times",
+                             ToolParam::Create<int32_t>(-1));
   }
 
   std::vector<Flag> CreateFlags(ToolParams* params) const final;
@@ -76,6 +78,10 @@ std::vector<Flag> DefaultExecutionProvider::CreateFlags(
           "last_delegate_node_index", params,
           "The index of the last node that could be delegated. Used only when "
           "TFLITE_DEBUG_DELEGATE is defined. Default is INT_MAX."),
+      CreateFlag<int32_t>(
+          "gpu_invoke_loop_times", params,
+          "Number of GPU delegate invoke loop iterations. Used only when "
+          "TFLITE_GPU_ENABLE_INVOKE_LOOP is defined. Default is -1."),
       CreateFlag<std::string>(
           "delegate_serialize_dir", params,
           "Directory to be used by delegates for serializing any model data. "
@@ -107,6 +113,8 @@ void DefaultExecutionProvider::LogParams(const ToolParams& params,
                  "Index of the first node that could be delegated", verbose);
   LOG_TOOL_PARAM(params, int32_t, "last_delegate_node_index",
                  "Index of the first node that could be delegated", verbose);
+  LOG_TOOL_PARAM(params, int32_t, "gpu_invoke_loop_times",
+                 "Number of GPU delegate invoke loop iterations", verbose);
   LOG_TOOL_PARAM(params, std::string, "delegate_serialize_dir",
                  "Directory for delegate serialization", verbose);
   LOG_TOOL_PARAM(params, std::string, "delegate_serialize_token",

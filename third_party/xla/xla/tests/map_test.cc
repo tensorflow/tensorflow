@@ -489,7 +489,7 @@ TEST_F(MapTest, MapOperationWithBuildError) {
   auto param1 = Parameter(&builder, 1, param1_literal.shape(), "param1");
   Map(&builder, {param0, param1}, error_add, {0});
 
-  StatusOr<XlaComputation> computation_status = builder.Build();
+  absl::StatusOr<XlaComputation> computation_status = builder.Build();
   ASSERT_TRUE(!computation_status.ok());
   EXPECT_THAT(computation_status.status().ToString(),
               ::testing::HasSubstr("error from: ErrorAdd: Binary op add with "

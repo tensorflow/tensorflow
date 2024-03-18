@@ -37,6 +37,7 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/strings/str_cat.h"
+#include "absl/types/span.h"
 #include "xla/service/graphcycles/ordered_set.h"
 #include "tsl/platform/logging.h"
 

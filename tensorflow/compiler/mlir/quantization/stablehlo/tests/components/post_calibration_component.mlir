@@ -19,11 +19,6 @@ func.func private @composite_dot_general_fn_1(%arg0: tensor<1x1024xf32>, %arg1: 
 }
 // CHECK-LABEL: func.func @main
 // CHECK-SAME: (%[[ARG_0:.+]]: tensor<1x1024xf32>) -> tensor<1x3xf32>
-// CHECK: %[[XLA_CALL_MODULE_0:.+]] = "tf.XlaCallModule"(%[[ARG_0]]) <{Sout = [#tf_type.shape<1x3>], {{.*}}, module = "", platforms = ["CPU", "TPU"], version = 9 : i64}> {_entry_function = @main_0, {{.*}}} : (tensor<1x1024xf32>) -> tensor<1x3xf32>
-// CHECK-NEXT: return %[[XLA_CALL_MODULE_0]] : tensor<1x3xf32>
-
-// CHECK: func.func private @main_0(%arg0: tensor<i32>, %[[ARG_1:.+]]: tensor<1x1024xf32>) -> tensor<1x3xf32>
-// CHECK-SAME: attributes {_from_xla_call_module}
 
 // Tests that the dot_general accepts i8 tensors and outputs an i32 tensor.
 // Note: Argument quantization sequence omitted.
@@ -54,8 +49,8 @@ func.func private @composite_dot_general_fn_1(%arg0: tensor<1x1024xf32>, %arg1: 
 // CHECK-NO-UNPACK-SAME: (%[[ARG_0:.+]]: tensor<1x1024xf32>) -> tensor<1x3xf32>
 // CHECK-NO-UNPACK-DAG: %[[CONST:.+]] = stablehlo.constant() {value = dense<{{.*}}> : tensor<1024x3xi8>} : () -> tensor<1024x3x!quant.uniform<i8<-127:127>:f32, {{.*}}>>
 // CHECK-NO-UNPACK: %[[QUANTIZE_0:.+]] = stablehlo.uniform_quantize %[[ARG_0]] : (tensor<1x1024xf32>) -> tensor<1x1024x!quant.uniform<i8:f32, {{.*}}>>
-// CHECK-NO-UNPACK: %[[DOT_GENERAL_0:.+]] = stablehlo.dot_general %[[QUANTIZE_0]], %[[CONST]], contracting_dims = [1] x [0] : (tensor<1x1024x!quant.uniform<i8:f32, {{.*}}>>, tensor<1024x3x!quant.uniform<i8<-127:127>:f32, {{.*}}>>) -> tensor<1x3x!quant.uniform<i32:f32, {{.*}}>>
-// CHECK-NO-UNPACK: %[[QUANTIZE_1:.+]] = stablehlo.uniform_quantize %[[DOT_GENERAL_0]] : (tensor<1x3x!quant.uniform<i32:f32, {{.*}}>>) -> tensor<1x3x!quant.uniform<i8:f32, {{.*}}>>
+// CHECK-NO-UNPACK: %[[DOT:.+]] = stablehlo.dot_general %[[QUANTIZE_0]], %[[CONST]]
+// CHECK-NO-UNPACK: %[[QUANTIZE_1:.+]] = stablehlo.uniform_quantize %2 : (tensor<1x3x!quant.uniform<i32:f32, 1.5439127852413524E-5>>) -> tensor<1x3x!quant.uniform<i8:f32, 0.14049033370672487:-3>>
 // CHECK-NO-UNPACK: %[[DEQUANTIZE:.+]] = stablehlo.uniform_dequantize %[[QUANTIZE_1]] : (tensor<1x3x!quant.uniform<i8:f32, {{.*}}>>) -> tensor<1x3xf32>
 // CHECK-NO-UNPACK: return %[[DEQUANTIZE]] : tensor<1x3xf32>
 
@@ -74,16 +69,11 @@ func.func private @composite_dot_general_fn_1(%arg0: tensor<1x1024xf32>, %arg1: 
 }
 // CHECK-LABEL: func.func @main
 // CHECK-SAME: (%[[ARG_0:.+]]: tensor<1x1024xf32>) -> tensor<1x3xf32>
-// CHECK: %[[XLA_CALL_MODULE_0:.+]] = "tf.XlaCallModule"() <{Sout = [#tf_type.shape<1024x3>], {{.*}}, module = "", platforms = ["CPU", "TPU"], version = 9 : i64}>
-// CHECK-SAME: {_entry_function = @main_0, _stablehlo_module_attrs = {jax.uses_shape_polymorphism = true}} : () -> tensor<1024x3xf32>
-// CHECK: %[[XLA_CALL_MODULE_1:.+]] = "tf.XlaCallModule"(%[[ARG_0]], %[[XLA_CALL_MODULE_0]]) <{Sout = [#tf_type.shape<1x3>], {{.*}}, module = "", platforms = [], version = 5 : i64}> {_entry_function = @main_1, _original_entry_function = "composite_dot_general_fn_1", _stablehlo_module_attrs = {}, _tfl_quant_trait = "fully_quantizable", device = ""} : (tensor<1x1024xf32>, tensor<1024x3xf32>) -> tensor<1x3xf32>
-// CHECK: return %[[XLA_CALL_MODULE_1]] : tensor<1x3xf32>
 
-// CHECK: func.func private @main_0(%arg0: tensor<i32>) -> tensor<1024x3xf32>
-// CHECK-SAME: attributes {_from_xla_call_module}
-// CHECK: %[[CONST_0:.+]] = stablehlo.constant dense<{{.*}}> : tensor<1024x3xf32>
-// CHECK: return %[[CONST_0]] : tensor<1024x3xf32>
+// CHECK-DAG: %[[CONST_0:.+]] = stablehlo.constant dense<{{.*}}> : tensor<1024x3xf32>
+// CHECK: "tf.XlaCallModule"(%[[ARG_0]], %[[CONST_0]])
 
-// CHECK: func.func private @main_1(%[[ARG_1:.+]]: tensor<1x1024xf32>, %[[ARG_2:.+]]: tensor<1024x3xf32>) -> tensor<1x3xf32>
+// CHECK: func.func private @composite_dot_general_fn_1
 // CHECK-SAME: attributes {_from_xla_call_module}
-// CHECK: %[[DOT_GENERAL_0:.+]] = stablehlo.dot_general %[[ARG_1]], %[[ARG_2]], contracting_dims = [1] x [0] : (tensor<1x1024xf32>, tensor<1024x3xf32>) -> tensor<1x3xf32>
+// CHECK: %[[DOT_GENERAL_0:.+]] = stablehlo.dot_general
+// CHECK-SAME: contracting_dims = [1] x [0] : (tensor<1x1024xf32>, tensor<1024x3xf32>) -> tensor<1x3xf32>

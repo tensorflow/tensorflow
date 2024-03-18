@@ -29,7 +29,9 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/synchronization/mutex.h"
+#include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
+#include "mlir/IR/Value.h"  // from @llvm-project
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/service/buffer_assignment.h"
@@ -38,7 +40,6 @@ limitations under the License.
 #include "xla/service/gpu/buffer_allocations.h"
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/nccl_api.h"
-#include "xla/service/gpu/nccl_clique.h"
 #include "xla/service/gpu/nccl_clique_key.h"
 #include "xla/service/gpu/thunk.h"
 #include "xla/service/llvm_ir/llvm_util.h"
@@ -159,6 +160,9 @@ class NcclCollectiveThunk : public Thunk {
 
   NcclApi* nccl_api() const { return nccl_api_; }
   std::shared_ptr<AsyncEvents> async_events() const { return async_events_; }
+  void set_async_events(std::shared_ptr<AsyncEvents> async_events) {
+    async_events_ = async_events;
+  }
 
  protected:
   virtual absl::Status RunNcclCollective(const ExecuteParams& params,
@@ -261,7 +265,8 @@ absl::StatusOr<NcclApi::NcclCommHandle> GetNcclComm(
     const Thunk::CollectiveExecuteParams& params,
     const Thunk::CollectiveCliques& collective_cliques,
     const std::vector<ReplicaGroup>& replica_groups,
-    CollectiveOpGroupMode group_mode, int64_t stream_id);
+    CollectiveOpGroupMode group_mode, int64_t stream_id,
+    AsyncStreamKind stream_kind);
 
 struct DeviceBufferPair {
   PrimitiveType element_type;

@@ -21,7 +21,9 @@ limitations under the License.
 
 #include <variant>
 
+#include "absl/log/check.h"
 #include "xla/stream_executor/gpu/gpu_types.h"
+#include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/stream_executor_internal.h"
 
 namespace stream_executor {

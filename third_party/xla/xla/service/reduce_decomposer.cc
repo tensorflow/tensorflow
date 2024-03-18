@@ -123,7 +123,7 @@ class ReduceDecomposerVisitor : public DfsHloRewriteVisitor {
   }
 
  private:
-  StatusOr<HloInstruction*> GetOutput(HloInstruction* instr, int idx) {
+  absl::StatusOr<HloInstruction*> GetOutput(HloInstruction* instr, int idx) {
     if (instr->shape().IsTuple()) {
       return MakeGetTupleElementHlo(instr, idx);
     } else {
@@ -147,7 +147,7 @@ class ReduceDecomposerVisitor : public DfsHloRewriteVisitor {
 
 }  // namespace
 
-StatusOr<bool> ReduceDecomposer::Run(
+absl::StatusOr<bool> ReduceDecomposer::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   TF_ASSIGN_OR_RETURN(bool changed1,

@@ -13,45 +13,47 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "pybind11/pybind11.h"  // from @pybind11
-#include "pybind11/pytypes.h"  // from @pybind11
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
+#include "third_party/nanobind/include/nanobind/nanobind.h"
 #include "xla/pjrt/exceptions.h"
 #include "xla/pjrt/status_casters.h"
 
 namespace xla {
 
-namespace py = ::pybind11;
+namespace nb = ::nanobind;
 
 namespace {
 
-xla::Status MyFunc() { return xla::OkStatus(); }
+absl::Status MyFunc() { return absl::OkStatus(); }
 
 class MyClass {
  public:
-  xla::Status MyMethod(int a, int b) { return xla::OkStatus(); }
-  xla::Status MyMethodConst(int a, int b) const { return xla::OkStatus(); }
+  absl::Status MyMethod(int a, int b) { return absl::OkStatus(); }
+  absl::Status MyMethodConst(int a, int b) const { return absl::OkStatus(); }
 
-  xla::StatusOr<int> MyStatusOrMethod(int a, int b) { return a + b; }
-  xla::StatusOr<int> MyStatusOrMethodConst(int a, int b) const { return a + b; }
+  absl::StatusOr<int> MyStatusOrMethod(int a, int b) { return a + b; }
+  absl::StatusOr<int> MyStatusOrMethodConst(int a, int b) const {
+    return a + b;
+  }
 };
 
-xla::StatusOr<int> StatusOrIdentity(int i) { return i; }
+absl::StatusOr<int> StatusOrIdentity(int i) { return i; }
 
-PYBIND11_MODULE(status_casters_ext, m) {
+NB_MODULE(status_casters_ext, m) {
   // Exceptions
-  py::register_exception<xla::XlaRuntimeError>(m, "XlaRuntimeError",
-                                               PyExc_RuntimeError);
+  nb::exception<xla::XlaRuntimeError>(m, "XlaRuntimeError", PyExc_RuntimeError);
 
   m.def("my_lambda",
-        xla::ThrowIfErrorWrapper([]() { return xla::OkStatus(); }));
+        xla::ThrowIfErrorWrapper([]() { return absl::OkStatus(); }));
   m.def("my_lambda2", xla::ThrowIfErrorWrapper(MyFunc));
 
   m.def("my_lambda_statusor",
-        xla::ValueOrThrowWrapper([]() -> xla::StatusOr<int> { return 1; }));
+        xla::ValueOrThrowWrapper([]() -> absl::StatusOr<int> { return 1; }));
   m.def("status_or_identity", xla::ValueOrThrowWrapper(StatusOrIdentity));
 
-  py::class_<MyClass> my_class(m, "MyClass");
-  my_class.def(py::init<>());
+  nb::class_<MyClass> my_class(m, "MyClass");
+  my_class.def(nb::init<>());
   my_class.def("my_method", xla::ThrowIfErrorWrapper(&MyClass::MyMethod));
   my_class.def("my_method_const", xla::ThrowIfErrorWrapper(&MyClass::MyMethod));
   my_class.def("my_method_status_or",

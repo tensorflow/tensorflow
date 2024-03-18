@@ -224,7 +224,7 @@ Status ConfigureTPUEmbeddingRewritePass::Run(
 
             auto get_updated_device_name =
                 [](absl::string_view initial_device_name)
-                -> xla::StatusOr<std::string> {
+                -> absl::StatusOr<std::string> {
               DeviceNameUtils::ParsedName device_spec;
               TF_RET_CHECK(DeviceNameUtils::ParseFullName(initial_device_name,
                                                           &device_spec));

@@ -17,6 +17,7 @@ limitations under the License.
 #define XLA_PJRT_PJRT_FUTURE_H_
 
 #include <algorithm>
+#include <cstdint>
 #include <functional>
 #include <type_traits>
 #include <utility>

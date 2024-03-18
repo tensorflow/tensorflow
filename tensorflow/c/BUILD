@@ -68,7 +68,7 @@ filegroup(
         "tf_tensor_helper.h",
         "tf_tstring.h",
         "//tensorflow/core/platform:ctstring",
-        "@local_tsl//tsl/c:headers",
+        "@local_xla//xla/tsl/c:headers",
     ] + if_tensorrt([
         "//tensorflow/compiler/tf2tensorrt:headers",
     ]),
@@ -92,8 +92,8 @@ filegroup(
     ) + [
         "//tensorflow/cc:srcs_no_runtime",
         "//tensorflow/core/distributed_runtime:server_lib.h",
-        "@local_tsl//tsl/c:srcs",
         "@local_tsl//tsl/platform:ctstring",
+        "@local_xla//xla/tsl/c:srcs",
     ],
     visibility = ["//visibility:public"],
 )
@@ -111,7 +111,7 @@ cc_library(
         "tf_status_internal.h",
         "tf_tensor_helper.h",
         "tf_tensor_internal.h",
-        "@local_tsl//tsl/c:tsl_status_internal_headers",
+        "@local_xla//xla/tsl/c:tsl_status_internal_headers",
     ],
     visibility = [
         "//tensorflow/core:__pkg__",
@@ -252,7 +252,7 @@ tf_cuda_library(
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/platform:tstring",
         "@com_google_absl//absl/status",
-        "@local_tsl//tsl/c:tsl_status",
+        "@local_xla//xla/tsl/c:tsl_status",
     ] + select({
         "//tensorflow:with_xla_support": [
             "//tensorflow/compiler/jit",
@@ -345,7 +345,7 @@ tf_cuda_library(
     hdrs = [
         "tf_status.h",
         "tf_status_internal.h",
-        "@local_tsl//tsl/c:tsl_status_internal_headers",
+        "@local_xla//xla/tsl/c:tsl_status_internal_headers",
     ],
     visibility = [
         "//tensorflow/c:__subpackages__",
@@ -360,9 +360,9 @@ tf_cuda_library(
     ],
     deps = [
         ":c_api_macros_hdrs",
-        "@local_tsl//tsl/c:tsl_status",
-        "@local_tsl//tsl/c:tsl_status_internal",
         "@local_tsl//tsl/platform:status",
+        "@local_xla//xla/tsl/c:tsl_status",
+        "@local_xla//xla/tsl/c:tsl_status_internal",
     ] + select({
         "//tensorflow:android": [
             "//tensorflow/core:portable_tensorflow_lib_lite",  # TODO(annarev): exclude runtime srcs
@@ -377,7 +377,7 @@ filegroup(
     name = "tf_status_internal_headers",
     srcs = [
         "tf_status_internal.h",
-        "@local_tsl//tsl/c:tsl_status_internal_headers",
+        "@local_xla//xla/tsl/c:tsl_status_internal_headers",
     ],
     visibility = [
         "//tensorflow/python:__subpackages__",
@@ -417,7 +417,7 @@ cc_library(
     deps = [
         ":c_api_macros_hdrs",
         ":tf_status_internal",
-        "@local_tsl//tsl/c:tsl_status",
+        "@local_xla//xla/tsl/c:tsl_status",
     ] + select({
         "//tensorflow:android": [
             "//tensorflow/core:portable_tensorflow_lib_lite",  # TODO(annarev): exclude runtime srcs
@@ -434,7 +434,7 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":c_api_macros_hdrs",
-        "@local_tsl//tsl/c:tsl_status_headers",
+        "@local_xla//xla/tsl/c:tsl_status_headers",
     ],
 )
 
@@ -455,7 +455,7 @@ cc_library(
         ":tf_tensor_hdrs",
         "//tensorflow/core/platform:status",
         "//tensorflow/core/platform:tstring",
-        "@local_tsl//tsl/c:tsl_status",
+        "@local_xla//xla/tsl/c:tsl_status",
     ],
 )
 
@@ -664,7 +664,7 @@ tf_cuda_library(
         "//tensorflow/core/platform",
         "//tensorflow/core/platform:blocking_counter",
         "@com_google_absl//absl/strings",
-        "@local_tsl//tsl/c:tsl_status_internal",
+        "@local_xla//xla/tsl/c:tsl_status_internal",
     ],
     alwayslink = 1,
 )
@@ -693,8 +693,8 @@ tf_cuda_library(
     visibility = ["//visibility:public"],
     deps = [
         ":tf_status_headers",
-        "@local_tsl//tsl/c:tsl_status_helper",
         "@local_tsl//tsl/platform:status",
+        "@local_xla//xla/tsl/c:tsl_status_helper",
     ],
 )
 
@@ -797,7 +797,7 @@ tf_cuda_library(
         "//tensorflow/core/platform:notification",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
-        "@local_tsl//tsl/c:tsl_status_internal",
+        "@local_xla//xla/tsl/c:tsl_status_internal",
     ] + select({
         "//tensorflow:android": [
             "//tensorflow/c/experimental/stream_executor:stream_executor_hdrs",

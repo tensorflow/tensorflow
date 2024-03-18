@@ -1,13 +1,13 @@
-load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load("//tensorflow:tensorflow.bzl", "tf_cc_test", "tf_cc_test_mkl", "tf_copts", "tf_cuda_cc_test")
-load("//third_party/mkl:build_defs.bzl", "if_mkl")
 load("//tensorflow:tensorflow.default.bzl", "filegroup", "tf_kernel_library")
+load("@local_xla//xla/tsl/mkl:build_defs.bzl", "if_mkl")
 
 # Platform specific build config
 load(
     "//tensorflow/core/platform:build_config_root.bzl",
     "if_static",
 )
+load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load(
     "@local_config_rocm//rocm:build_defs.bzl",
     "if_rocm_is_configured",

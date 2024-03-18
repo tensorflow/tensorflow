@@ -328,6 +328,7 @@ cc_library(
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
+        "@com_google_absl//absl/strings",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:AffineUtils",
         "@llvm-project//mlir:Analysis",

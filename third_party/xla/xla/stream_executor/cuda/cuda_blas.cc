@@ -750,8 +750,7 @@ absl::Status CUDABlas::DoBlasGemmWithAlgorithm(
 
   TF_ASSIGN_OR_RETURN(
       std::optional<GpuTimer> timer,
-      GpuTimer::CreateIfNeeded(AsGpuStream(stream),
-                               output_profile_result != nullptr));
+      GpuTimer::CreateIfNeeded(stream, output_profile_result != nullptr));
 
   // Since we are converting 'algorithm' to cublasGemmAlgo_t by static_cast,
   // we do the following compile-time check on the default value:
@@ -783,8 +782,7 @@ absl::Status CUDABlas::DoBlasGemmStridedBatchedWithAlgorithm(
       GetMathTypeForGemmEx(stream, algorithm, type_a, type_b, numeric_options));
   TF_ASSIGN_OR_RETURN(
       std::optional<GpuTimer> timer,
-      GpuTimer::CreateIfNeeded(AsGpuStream(stream),
-                               output_profile_result != nullptr));
+      GpuTimer::CreateIfNeeded(stream, output_profile_result != nullptr));
   cudaDataType_t cuda_in_type = AsCudaDataType(type_a);
 
 #if CUDA_VERSION >= 11000
@@ -968,13 +966,9 @@ absl::Status CUDABlas::DoBlasGemmBatchedInternal(
   DeviceMemory<CUDA_T *> b(b_bytes);
   DeviceMemory<CUDA_T *> c(c_bytes);
 
-  if (!stream->ThenMemcpy(&a, a_raw_ptrs.data(), size).ok() ||
-      !stream->ThenMemcpy(&b, b_raw_ptrs.data(), size).ok() ||
-      !stream->ThenMemcpy(&c, c_raw_ptrs.data(), size).ok()) {
-    return absl::InternalError(
-        "failed to copy memory from host to device in "
-        "CUDABlas::DoBlasGemmBatched");
-  }
+  TF_RETURN_IF_ERROR(stream->Memcpy(&a, a_raw_ptrs.data(), size));
+  TF_RETURN_IF_ERROR(stream->Memcpy(&b, b_raw_ptrs.data(), size));
+  TF_RETURN_IF_ERROR(stream->Memcpy(&c, c_raw_ptrs.data(), size));
 
   cudaDataType_t data_type = CUDADataType<T>::type;
 

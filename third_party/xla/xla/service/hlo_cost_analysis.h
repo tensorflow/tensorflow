@@ -445,6 +445,7 @@ class HloCostAnalysis : public ConstDfsHloVisitor {
   Status HandleAllReduceStart(const HloInstruction* hlo) override;
   Status HandleAllReduceDone(const HloInstruction* hlo) override;
   Status HandleAllToAll(const HloInstruction* hlo) override;
+  Status HandleCollectiveBroadcast(const HloInstruction* hlo) override;
   Status HandleCollectivePermute(const HloInstruction* hlo) override;
   Status HandleCollectivePermuteStart(const HloInstruction* hlo) override;
   Status HandleCollectivePermuteDone(const HloInstruction* hlo) override;

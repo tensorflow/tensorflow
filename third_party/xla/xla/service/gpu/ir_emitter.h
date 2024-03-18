@@ -18,9 +18,11 @@ limitations under the License.
 
 #include <vector>
 
+#include "absl/status/status.h"
 #include "llvm/IR/Function.h"
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/Value.h"
+#include "llvm/Support/AtomicOrdering.h"
 #include "xla/hlo/ir/dfs_hlo_visitor_with_default.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/service/gpu/hlo_to_ir_bindings.h"
@@ -29,6 +31,7 @@ limitations under the License.
 #include "xla/service/llvm_ir/ir_array.h"
 #include "xla/service/llvm_ir/ir_builder_mixin.h"
 #include "xla/service/llvm_ir/loop_emitter.h"
+#include "xla/shape_util.h"
 
 namespace xla {
 namespace gpu {

@@ -203,6 +203,7 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core/platform:stream_executor",
+        "@local_xla//xla/stream_executor:platform_manager",
     ],
     alwayslink = 1,
 )

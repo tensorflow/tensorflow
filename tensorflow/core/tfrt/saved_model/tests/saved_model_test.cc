@@ -174,7 +174,7 @@ TEST(SavedModelTest, BasicInlineExecution) {
   auto runtime = DefaultTfrtRuntime(/*num_threads=*/1);
 
   runtime->SetCreateRequestQueueFn(
-      [](int64_t) -> StatusOr<std::unique_ptr<WorkQueueInterface>> {
+      [](int64_t) -> absl::StatusOr<std::unique_ptr<WorkQueueInterface>> {
         return tensorflow::tfrt_stub::WrapDefaultWorkQueue(
             tfrt::CreateSingleThreadedWorkQueue());
       });

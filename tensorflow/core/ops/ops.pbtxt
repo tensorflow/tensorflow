@@ -24240,6 +24240,18 @@ op {
   is_stateful: true
 }
 op {
+  name: "IteratorGetModelProto"
+  input_arg {
+    name: "iterator"
+    type: DT_RESOURCE
+  }
+  output_arg {
+    name: "model_proto"
+    type: DT_STRING
+  }
+  is_stateful: true
+}
+op {
   name: "IteratorGetNext"
   input_arg {
     name: "iterator"

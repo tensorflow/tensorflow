@@ -25,16 +25,15 @@ limitations under the License.
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/mlir/utils/type_util.h"
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 #include "xla/mlir_hlo/utils/convert_op_folder.h"
 #include "xla/util.h"
 
 namespace xla {
 
-StatusOr<mlir::DenseElementsAttr> CreateDenseElementsAttrFromLiteral(
+absl::StatusOr<mlir::DenseElementsAttr> CreateDenseElementsAttrFromLiteral(
     const LiteralBase& literal, mlir::Builder builder);
-
-StatusOr<int> GetElementTypeBytes(mlir::Type type);
 
 // Creates an DenseIntElementsAttr using the elements of the vector and the
 // optional shape.
@@ -42,18 +41,12 @@ mlir::DenseIntElementsAttr CreateDenseIntElementsAttrFromVector(
     const llvm::ArrayRef<int64_t> vector, mlir::Builder builder,
     llvm::ArrayRef<int64_t> shape = {});
 
-StatusOr<mlir::Type> ConvertPrimitiveTypeToMLIRType(PrimitiveType element_type,
-                                                    mlir::Builder builder);
-
-mlir::mhlo::GatherDimensionNumbersAttr CreateGatherDimensionNumbers(
-    const GatherDimensionNumbers& input, mlir::Builder builder);
-
 // Converts the given XLA shape for tensors to the template MLIR type.
 template <typename TypeT>
 static StatusOr<TypeT> ConvertTensorShapeToType(const Shape& xla_ty,
                                                 mlir::Builder builder) {
   auto element_type_or =
-      ConvertPrimitiveTypeToMLIRType(xla_ty.element_type(), builder);
+      ConvertPrimitiveTypeToMlirType(xla_ty.element_type(), builder);
   if (!element_type_or.ok()) return element_type_or.status();
 
   bool is_bounded_dynamic = false;
@@ -133,11 +126,11 @@ static StatusOr<TypeT> ConvertTensorShapeToType(const Shape& xla_ty,
   return TypeT::get(shape, element_type_or.value(), encoding);
 }
 
-StatusOr<mlir::MemRefType> ConvertTensorShapeToMemRefType(
+absl::StatusOr<mlir::MemRefType> ConvertTensorShapeToMemRefType(
     const Shape& shape, mlir::Builder builder);
 
 template <>
-inline StatusOr<mlir::MemRefType> ConvertTensorShapeToType(
+inline absl::StatusOr<mlir::MemRefType> ConvertTensorShapeToType(
     const Shape& shape, mlir::Builder builder) {
   if (shape.is_dynamic()) {
     return FailedPrecondition(  // NOLINT
@@ -148,8 +141,8 @@ inline StatusOr<mlir::MemRefType> ConvertTensorShapeToType(
 
 // Converts the given XLA shape to the template MLIR type.
 template <typename TypeT>
-static StatusOr<mlir::Type> ConvertShapeToType(const Shape& shape,
-                                               mlir::Builder builder) {
+static absl::StatusOr<mlir::Type> ConvertShapeToType(const Shape& shape,
+                                                     mlir::Builder builder) {
   if (shape.IsTuple()) {
     llvm::SmallVector<mlir::Type, 4> contents;
     contents.reserve(shape.tuple_shapes_size());
@@ -165,8 +158,6 @@ static StatusOr<mlir::Type> ConvertShapeToType(const Shape& shape,
   }
   return ConvertTensorShapeToType<TypeT>(shape, builder);
 }
-
-::xla::StatusOr<::xla::HloOpcode> MhloToHloOpcode(mlir::Operation* op);
 
 }  // namespace xla
 

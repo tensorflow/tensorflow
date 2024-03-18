@@ -652,7 +652,7 @@ class LayoutNormalizationVisitor : public DfsHloRewriteVisitor {
 
   // Due to Local Precondition we have, the input to all processed ops should
   // be HLO in descending layout piped through bitcast.
-  StatusOr<HloInstruction*> GetNormalizedInput(HloInstruction* hlo) {
+  absl::StatusOr<HloInstruction*> GetNormalizedInput(HloInstruction* hlo) {
     TF_RET_CHECK(hlo->opcode() == HloOpcode::kBitcast)
         << "Unexpected HLO input: " << hlo->ToString();
     auto input = hlo->mutable_operand(0);
@@ -673,7 +673,7 @@ class LayoutNormalizationVisitor : public DfsHloRewriteVisitor {
 
 }  // end namespace
 
-StatusOr<bool> LayoutNormalization::Run(
+absl::StatusOr<bool> LayoutNormalization::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   return LayoutNormalizationVisitor{custom_call_transformer_}.RunOnModule(

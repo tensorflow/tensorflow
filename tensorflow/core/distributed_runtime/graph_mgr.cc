@@ -130,6 +130,7 @@ Status GraphMgr::InitItem(const string& handle, const GraphDef& gdef,
                           DistributedFunctionLibraryRuntime* cluster_flr,
                           Item* item) {
   item->session = handle;
+  item->session_config = config_proto;
   item->collective_graph_key = collective_graph_key;
   item->lib_def.reset(
       new FunctionLibraryDefinition(OpRegistry::Global(), gdef.library()));
@@ -538,6 +539,7 @@ void GraphMgr::StartParallelExecutors(
   args.rendezvous = rendezvous;
   args.collective_executor = ce_handle ? ce_handle->get() : nullptr;
   args.cancellation_manager = cancellation_manager;
+  args.session_config = &item->session_config;
   args.stats_collector = collector;
   args.step_container = step_container;
   args.sync_on_finish = sync_on_finish_;

@@ -40,15 +40,6 @@ def ChloLegalizeToHloBasisOpsPass : Pass<"chlo-legalize-to-hlo-basis-ops", "func
   let dependentDialects = ["mhlo::MhloDialect", "chlo::ChloDialect"];
 }
 
-def LegalizeSparseOpsPass : Pass<"legalize-sparse-ops", "func::FuncOp"> {
-  let summary = "Legalize from sparse ops before convert MLIR to XLA computation.";
-  let constructor = "createLegalizeSparseOperationsPass()";
-  let options = [
-    Option<"legalize_to_custom_calls_", "legalize-to-custom-calls", "bool",
-           /*default=*/"true", "Whether legalize the sparse operations to custom_calls to be able to translate sparse operations to XLA computations">,
-  ];
-}
-
 def HloCanonicalizeScatterPass : Pass<"hlo-canonicalize-scatter", "func::FuncOp"> {
   let summary = "Rewrites scatter into transposes, reshapes and a simple scatter.";
   let constructor = "createHloCanonicalizeScatterPass()";
@@ -329,11 +320,6 @@ def ConvertToSignlessPass : Pass<"convert-to-signless", "ModuleOp"> {
   let constructor = "createConvertToSignlessPass()";
 }
 
-def SparseRewritingPass : Pass<"mhlo-sparse-rewriting", "func::FuncOp"> {
-  let summary = "Pass to rewrite mhlo sparse tensor types.";
-  let constructor = "createSparseRewritingPass()";
-}
-
 def MhloExpandOpsSimplifierPass
     : Pass<"mhlo-expand-ops-simplifier", "func::FuncOp"> {
   let summary = "Expand feature rich mhlo ops into a set of simpler mhlo ops.";
@@ -393,4 +379,17 @@ def ShapeLegalizeToHloPass : Pass<"shape-legalize-to-hlo", "func::FuncOp"> {
     Option<"legalize_constraints_", "legalize-constraints", "bool",
            /*default=*/"false", "Whether to legalize Cstr Ops to shape_assertion custom_call">
   ];
+}
+
+def MhloQuantLegalizeToInt : Pass<"mhlo-quant-legalize-to-int", "mlir::func::FuncOp"> {
+  let summary = "Convert from MHLO quantized ops to MHLO primitive ops.";
+
+  let description = [{
+    Convert from MHLO quantized ops with MHLO quant types to MHLO primitive ops
+    like int ops.
+  }];
+  let constructor = "createMhloQuantLegalizeToIntPass()";
+  let dependentDialects = ["chlo::ChloDialect", "mhlo::MhloDialect",
+                           "quant::QuantizationDialect",
+                           "func::FuncDialect"];
 }

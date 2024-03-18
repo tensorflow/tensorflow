@@ -24,7 +24,7 @@ namespace xla {
 
 // Returns a ShapeTree where each index is a GetTupleElement instruction for
 // that subshape of the tuple.  The root index is the original argument.
-StatusOr<ShapeTree<XlaOp>> DisassembleTuple(XlaOp tuple);
+absl::StatusOr<ShapeTree<XlaOp>> DisassembleTuple(XlaOp tuple);
 
 // Assembles a tuple from a ShapeTree that contains the leaves of the tuple.
 // Non-leaf elements of the ShapeTree are ignored.  DisassembleTuple and

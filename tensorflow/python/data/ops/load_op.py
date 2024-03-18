@@ -82,7 +82,7 @@ def _load_with_retry(  # pylint: disable=unused-private-name
           path, element_spec, compression, reader_func)
       logging.info("Load tf.data snapshot at %s.", path)
       return dataset
-    except errors.NotFoundError as e:
+    except (errors.NotFoundError, FileNotFoundError) as e:
       logging.info(
           "Could not find tf.data snapshot at %s. Will wait and retry.", path)
       error = e
@@ -140,11 +140,20 @@ def _load_element_spec(path: str) -> Any:
 
   Returns:
     Dataset element_spec.
+
+  Raises:
+    NotFoundError if the element spec file does not exist or cannot be decoded.
   """
-  with gfile.GFile(
-      os.path.join(path, dataset_ops.DATASET_SPEC_FILENAME), "rb") as f:
+  dataset_spec_filename = os.path.join(path, dataset_ops.DATASET_SPEC_FILENAME)
+  with gfile.GFile(dataset_spec_filename, "rb") as f:
     encoded_spec = f.read()
-  return _parse_element_spec(encoded_spec)
+  try:
+    return _parse_element_spec(encoded_spec)
+  except nested_structure_coder.NotEncodableError as e:
+    raise errors.NotFoundError(
+        node_def=None, op=None,
+        message="tf.data snapshot element_spec file not found or invalid: "
+                f"{dataset_spec_filename}.") from e
 
 
 def _parse_element_spec(encoded_element_spec: Union[bytes, str]) -> Any:

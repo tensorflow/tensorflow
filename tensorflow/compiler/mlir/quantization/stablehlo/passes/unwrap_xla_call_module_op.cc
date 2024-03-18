@@ -27,7 +27,7 @@ limitations under the License.
 #include "mlir/Pass/Pass.h"  // from @llvm-project  // IWYU pragma: keep
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/TypeID.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/lite/quantization/quantization_utils.h"
+#include "tensorflow/compiler/mlir/quantization/common/quantization_lib/quantization_utils.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/xla_call_module_attrs.h"
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"

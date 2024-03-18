@@ -13,6 +13,7 @@ cc_library(
     visibility = internal_visibility([
         "//tsl/profiler:internal",
         "//tsl/profiler:xla_profiler_backends",
+        "//tensorflow/lite:__pkg__",
     ]),
     deps = [
         "//tsl/platform:macros",

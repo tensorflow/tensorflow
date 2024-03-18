@@ -28,7 +28,7 @@ namespace xla {
 class OpExpanderPass : public HloModulePass {
  public:
   using HloPassInterface::Run;
-  StatusOr<bool> Run(
+  absl::StatusOr<bool> Run(
       HloModule* module,
       const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 
@@ -44,7 +44,7 @@ class OpExpanderPass : public HloModulePass {
   // Returns a replacement for `instruction`, or nullptr if no replacement is
   // needed (e.g. only the to_apply subcomputation of the instruction was
   // modified).
-  virtual StatusOr<HloInstruction*> ExpandInstruction(
+  virtual absl::StatusOr<HloInstruction*> ExpandInstruction(
       HloInstruction* instruction) = 0;
 
   HloPredicate extra_filter_;

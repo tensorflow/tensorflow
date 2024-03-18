@@ -1,4 +1,4 @@
-/* Copyright 2022 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2024 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -51,6 +51,17 @@ bool ThreadPoolUseCallerThread() {
                                    &threadpool_use_caller_thread));
   });
   return threadpool_use_caller_thread;
+}
+
+bool UseOnednnSpmm() {
+  static bool use_onednn_spmm = [] {
+    bool setting;
+    TF_CHECK_OK(ReadBoolFromEnvVar("TF_ENABLE_ONEDNN_SPMM",
+                                   /*default_value*/ false, &setting));
+    return setting;
+  }();
+
+  return use_onednn_spmm;
 }
 
 std::string FPMathModeSetting() {

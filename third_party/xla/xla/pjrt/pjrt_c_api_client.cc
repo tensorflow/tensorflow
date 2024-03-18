@@ -56,6 +56,7 @@ limitations under the License.
 #include "xla/mlir_hlo/mhlo/transforms/passes.h"
 #include "xla/pjrt/c/pjrt_c_api.h"
 #include "xla/pjrt/c/pjrt_c_api_helpers.h"
+#include "xla/pjrt/c/pjrt_c_api_profiler_extension.h"
 #include "xla/pjrt/compile_options.pb.h"
 #include "xla/pjrt/distributed/key_value_store_interface.h"
 #include "xla/pjrt/mlir_to_hlo.h"
@@ -66,6 +67,7 @@ limitations under the License.
 #include "xla/pjrt/pjrt_device_description.h"
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/pjrt/pjrt_future.h"
+#include "xla/pjrt/pjrt_layout.h"
 #include "xla/service/computation_placer.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/service/hlo_module_config.h"
@@ -105,12 +107,6 @@ namespace xla {
 
 static StatusOr<const PjRtCApiTopologyDescription> InitClientTopoDesc(
     const PJRT_Api* c_api, PJRT_Client* c_client) {
-  if (c_api->pjrt_api_version.major_version == 0 &&
-      c_api->pjrt_api_version.minor_version < 36) {
-    return Unimplemented(
-        "Getting TopologyDescription for PJRT client requires plugin with PJRT "
-        "C API version >= 0.36");
-  }
   StatusOr<PJRT_TopologyDescription*> c_topo =
       pjrt::GetTopologyDescription(c_client, c_api);
   TF_RETURN_IF_ERROR(c_topo.status());
@@ -360,7 +356,10 @@ static StatusOr<std::unique_ptr<PjRtLoadedExecutable>> InitializeArgsAndCompile(
     const std::string& format) {
   PJRT_Client_Compile_Args args;
   args.struct_size = PJRT_Client_Compile_Args_STRUCT_SIZE;
-  args.extension_start = nullptr;
+  PJRT_Profiler_Extension profiler_extension =
+      pjrt::CreatePjrtProfilerExtension("PJRT_Client_Compile linkage");
+  args.extension_start =
+      reinterpret_cast<PJRT_Extension_Base*>(&profiler_extension);
   args.client = client;
   TF_ASSIGN_OR_RETURN(const CompileOptionsProto options_proto,
                       options.ToProto());
@@ -1081,12 +1080,11 @@ PjRtCApiExecutable::GetHloModules() const {
     pm.addPass(mlir::mhlo::createStablehloLegalizeToHloPass());
     if (mlir::failed(pm.run(module.get())))
       return xla::Internal("failed to convert to MHLO");
-    mlir::MlirToHloConversionOptions options;
     // TODO(jieying): Tuple args should really come from GetCompileOptions (or
     // equivalent) once implemented.
-    TF_RETURN_IF_ERROR(mlir::ConvertMlirHloToHlo(
-        module.get(), &hlo_proto, /*use_tuple_args=*/false,
-        /*return_tuple=*/false, options));
+    TF_RETURN_IF_ERROR(mlir::ConvertMlirHloToHlo(module.get(), &hlo_proto,
+                                                 /*use_tuple_args=*/false,
+                                                 /*return_tuple=*/false));
     xla::DebugOptions debug_options;
     TF_ASSIGN_OR_RETURN(xla::HloModuleConfig module_config,
                         xla::HloModule::CreateModuleConfigFromProto(
@@ -1127,14 +1125,6 @@ StatusOr<std::string> PjRtCApiExecutable::SerializeExecutable() const {
 
 StatusOr<std::string> PjRtCApiExecutable::FingerprintExecutable() const {
   const PJRT_Api* c_api_ = pjrt_c_api();
-  if (c_api_->pjrt_api_version.major_version == 0 &&
-      c_api_->pjrt_api_version.minor_version < 35) {
-    // TODO(yeounoh): To be removed after 01/20/2024.
-    return xla::Unimplemented(
-        "Getting fingerprint from unloaded PJRT executable requires plugin "
-        "with PJRT C API version >= 0.35");
-  }
-
   PJRT_Executable_Fingerprint_Args args;
   args.struct_size = PJRT_Executable_Fingerprint_Args_STRUCT_SIZE;
   args.extension_start = nullptr;
@@ -1430,7 +1420,6 @@ PjRtCApiLoadedExecutable::GetCommonExecuteArgs(
 
   PJRT_LoadedExecutable_Execute_Args args;
   args.struct_size = PJRT_LoadedExecutable_Execute_Args_STRUCT_SIZE;
-  args.extension_start = nullptr;
   args.executable = c_loaded_executable();
   args.options = &c_options;
   args.options->struct_size = PJRT_ExecuteOptions_STRUCT_SIZE;
@@ -1535,6 +1524,11 @@ PjRtCApiLoadedExecutable::Execute(
                            non_donatable_input_indices_storage));
 
   args.execute_device = nullptr;
+  PJRT_Profiler_Extension profiler_extension =
+      pjrt::CreatePjrtProfilerExtension(
+          "PJRT_LoadedExecutable_Execute linkage");
+  args.extension_start =
+      reinterpret_cast<PJRT_Extension_Base*>(&profiler_extension);
 
   RETURN_STATUS_IF_PJRT_ERROR(
       pjrt_c_api()->PJRT_LoadedExecutable_Execute(&args), pjrt_c_api());
@@ -1603,6 +1597,11 @@ PjRtCApiLoadedExecutable::ExecuteWithSingleDevice(
 
   args.execute_device =
       tensorflow::down_cast<PjRtCApiDevice*>(device)->c_device();
+  PJRT_Profiler_Extension profiler_extension =
+      pjrt::CreatePjrtProfilerExtension(
+          "PJRT_LoadedExecutable_Execute linkage");
+  args.extension_start =
+      reinterpret_cast<PJRT_Extension_Base*>(&profiler_extension);
 
   RETURN_STATUS_IF_PJRT_ERROR(
       pjrt_c_api()->PJRT_LoadedExecutable_Execute(&args), pjrt_c_api());
@@ -1711,7 +1710,7 @@ absl::Span<const int64_t> PjRtCApiBuffer::dimensions() const {
   return absl::Span<const int64_t>(args.dims, args.num_dims);
 }
 
-const Layout& PjRtCApiBuffer::layout() const {
+std::unique_ptr<PjRtLayout> PjRtCApiBuffer::layout() const {
   {
     absl::MutexLock lock(&mu_);
     if (!layout_.has_value()) {
@@ -1729,7 +1728,7 @@ const Layout& PjRtCApiBuffer::layout() const {
       layout_.emplace(*cpp_layout);
     }
   }
-  return *layout_;
+  return std::make_unique<PjRtXlaLayout>(*layout_);
 }
 
 bool PjRtCApiBuffer::has_dynamic_dimensions() const {
@@ -1787,6 +1786,15 @@ StatusOr<std::vector<int64_t>> PjRtCApiBuffer::logical_dimensions() {
       pjrt_c_api()->PJRT_Buffer_UnpaddedDimensions(&args), pjrt_c_api());
   return std::vector<int64_t>(args.unpadded_dims,
                               args.unpadded_dims + args.num_dims);
+}
+
+PjRtFuture<absl::Status> PjRtCApiBuffer::LazyToLiteral(
+    absl::AnyInvocable<absl::StatusOr<MutableLiteralBase*>() &&> generator) {
+  auto buffer = std::move(generator)();
+  if (!buffer.ok()) {
+    return PjRtFuture<Status>(buffer.status());
+  }
+  return ToLiteral(buffer.value());
 }
 
 PjRtFuture<Status> PjRtCApiBuffer::ToLiteral(MutableLiteralBase* literal) {
@@ -2204,10 +2212,8 @@ StatusOr<std::unique_ptr<PjRtClient>> GetCApiClient(
   PJRT_Client_Create_Args init_args;
   init_args.struct_size = PJRT_Client_Create_Args_STRUCT_SIZE;
   init_args.extension_start = nullptr;
-  TF_ASSIGN_OR_RETURN(
-      std::vector<PJRT_NamedValue> c_options,
-      pjrt::ConvertToPjRtNamedValueList(create_options,
-                                        c_api->pjrt_api_version.minor_version));
+  TF_ASSIGN_OR_RETURN(std::vector<PJRT_NamedValue> c_options,
+                      pjrt::ConvertToPjRtNamedValueList(create_options));
   init_args.create_options = c_options.data();
   init_args.num_options = c_options.size();
 
@@ -2234,14 +2240,17 @@ StatusOr<std::unique_ptr<PjRtTopologyDescription>> GetCApiTopology(
   if (c_api == nullptr) {
     return Internal("PJRT C API is nullptr for %s", device_type);
   }
+  return GetCApiTopology(c_api, topology_name, create_options);
+}
 
+absl::StatusOr<std::unique_ptr<PjRtTopologyDescription>> GetCApiTopology(
+    const PJRT_Api* c_api, absl::string_view topology_name,
+    const absl::flat_hash_map<std::string, PjRtValueType>& create_options) {
   PJRT_TopologyDescription_Create_Args init_args;
   init_args.struct_size = PJRT_TopologyDescription_Create_Args_STRUCT_SIZE;
   init_args.extension_start = nullptr;
-  TF_ASSIGN_OR_RETURN(
-      std::vector<PJRT_NamedValue> c_options,
-      pjrt::ConvertToPjRtNamedValueList(create_options,
-                                        c_api->pjrt_api_version.minor_version));
+  TF_ASSIGN_OR_RETURN(std::vector<PJRT_NamedValue> c_options,
+                      pjrt::ConvertToPjRtNamedValueList(create_options));
   init_args.create_options = c_options.data();
   init_args.num_options = c_options.size();
   init_args.topology_name = topology_name.data();

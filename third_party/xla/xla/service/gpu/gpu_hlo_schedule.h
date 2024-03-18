@@ -16,7 +16,13 @@ limitations under the License.
 #ifndef XLA_SERVICE_GPU_GPU_HLO_SCHEDULE_H_
 #define XLA_SERVICE_GPU_GPU_HLO_SCHEDULE_H_
 
+#include <cstdint>
+
+#include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_module.h"
+#include "xla/hlo/ir/hlo_schedule.h"
+#include "xla/shape.h"
 #include "xla/stream_executor/device_description.h"
 
 namespace xla {
@@ -29,7 +35,7 @@ struct ScheduleMetadata {
 };
 
 // Determines the schedule of HLO instructions for a module run on the GPU.
-StatusOr<ScheduleMetadata> ScheduleGpuModule(
+absl::StatusOr<ScheduleMetadata> ScheduleGpuModule(
     HloModule* module, int64_t pointer_size,
     const se::DeviceDescription& gpu_device_info);
 

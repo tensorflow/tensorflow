@@ -12,7 +12,7 @@ package(
         "//tensorflow/python/keras:__subpackages__",
         "//tensorflow/python/trackable:__pkg__",
         "//tensorflow/tools/pip_package:__pkg__",
-        "//tensorflow/tools/pip_package/v2:__subpackages__",
+        "//tensorflow/tools/pip_package:__subpackages__",
         "//tensorflow_models/official/projects/residual_mobilenet/modeling/backbones:__pkg__",
     ],
     licenses = ["notice"],

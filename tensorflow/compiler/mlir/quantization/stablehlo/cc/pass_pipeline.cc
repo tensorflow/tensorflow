@@ -27,21 +27,33 @@ limitations under the License.
 
 namespace mlir::quant::stablehlo {
 
+using ::stablehlo::quantization::CalibrationOptions;
+using ::stablehlo::quantization::DebuggerConfig;
 using ::stablehlo::quantization::PipelineConfig;
 using ::stablehlo::quantization::QuantizationSpecs;
 using ::stablehlo::quantization::StaticRangePtqPreset;
-using ::tensorflow::quantization::CalibrationOptions;
 
 void AddPreCalibrationPasses(OpPassManager& pm,
                              const CalibrationOptions& calibration_options,
-                             const QuantizationSpecs& quantization_specs) {
+                             const QuantizationSpecs& quantization_specs,
+                             const DebuggerConfig& debugger_config) {
+  // For models with NCHW convolution format. This pass is required because
+  // downstream pipeline handles NHWC convolution better for most cases.
+  pm.addNestedPass<func::FuncOp>(createNchwConvolutionToNhwcPass());
+
+  // Folds `stablehlo.constant`->`stablehlo.transpose` patterns, which is often
+  // generated as by-products after optimizing dimension numbers (e.g.
+  // NCHW->NHWC convolution conversion).
+  pm.addNestedPass<func::FuncOp>(createFoldConstantTransposePass());
   pm.addPass(CreateLiftQuantizableSpotsAsFunctionsPass(quantization_specs));
+  if (debugger_config.debugger_type() !=
+      DebuggerConfig::DEBUGGER_TYPE_UNSPECIFIED) {
+    pm.addPass(CreateAddDumpTensorOpPass(debugger_config.debugger_type(),
+                                         debugger_config.log_dir_path()));
+  }
   pm.addNestedPass<func::FuncOp>(
       CreateInsertCustomAggregationOpsPass(calibration_options));
   pm.addPass(CreateIssueIDsOfCustomAggregationOpsPass());
-  // StableHLO Quantizer currently uses TF's calibration passes. Serialize
-  // the StableHLO module as tf.XlaCallModule to run calibration.
-  AddCallModuleSerializationPasses(pm);
 }
 
 void AddPostCalibrationPasses(
@@ -50,13 +62,17 @@ void AddPostCalibrationPasses(
   QuantizeCompositeFunctionsPassOptions options;
   options.enable_per_channel_quantized_weight_ =
       static_range_ptq_preset.enable_per_channel_quantized_weight();
+  // For debugging purposes.
+  options.mlir_dump_file_name_ = "quantize_composite_functions";
+  options.enable_weight_only_ = false;
   pm.addNestedPass<func::FuncOp>(
       CreateConvertCustomAggregationOpToQuantStatsPass());
   pm.addPass(createQuantizeCompositeFunctionsPass(options));
+  // Add an inliner pass to inline quantized StableHLO functions.
+  pm.addPass(createInlinerPass());
   if (pipeline_config.unpack_quantized_types()) {
     AddStablehloQuantToIntPasses(pm);
   }
-  AddCallModuleSerializationPasses(pm);
 }
 
 void AddXlaCallModuleOpDeserializationPasses(OpPassManager& pm) {
@@ -79,13 +95,15 @@ void AddShapeLegalizationPasses(OpPassManager& pm) {
 }
 
 void AddStablehloQuantToIntPasses(OpPassManager& pm) {
-  pm.addPass(createInlinerPass());
   // StableHLO -> MHLO legalization.
   pm.addPass(mhlo::createStablehloLegalizeToHloPass());
-  pm.addNestedPass<func::FuncOp>(createConvertMHLOQuantToIntPass(
-      /*legalize_chlo=*/true));
+  pm.addNestedPass<func::FuncOp>(mhlo::createMhloQuantLegalizeToIntPass());
   pm.addNestedPass<func::FuncOp>(createCanonicalizerPass());
+  // Integer graph optimization relies on chlo broadcast ops for easier handling
+  // of dynamic shapes. Therefore we lower chlo ops after optimization.
   pm.addNestedPass<func::FuncOp>(CreateOptimizeIntGraphPass());
+  pm.addNestedPass<func::FuncOp>(mhlo::createChloLegalizeToHloPass());
+  pm.addNestedPass<func::FuncOp>(createCanonicalizerPass());
   pm.addPass(createSymbolDCEPass());
   // MHLO -> StableHLO legalization.
   pm.addPass(mhlo::createHloLegalizeToStablehloPass());
@@ -94,10 +112,6 @@ void AddStablehloQuantToIntPasses(OpPassManager& pm) {
 // NOMUTANTS -- Add tests for individual passes with migration below.
 void AddCallModuleSerializationPasses(OpPassManager& pm) {
   AddShapeLegalizationPasses(pm);
-  // Add an inliner pass to inline quantized StableHLO functions (and others) so
-  // that StableHLO ops are properly grouped and converted into XlaCallModule
-  // ops by the ReplaceStablehloOpsInMainFunctionWithXlaCallModuleOpsPass.
-  pm.addPass(createInlinerPass());
   pm.addPass(createReplaceStablehloOpsInMainFunctionWithXlaCallModuleOpsPass());
   // ReplaceStablehloOpsInMainFunctionWithXlaCallModuleOpsPass may create
   // duplicate constants. Add canonicalizer to deduplicate.

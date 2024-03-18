@@ -189,6 +189,20 @@ class FlatMapTest(test_base.DatasetTestBase, parameterized.TestCase):
     dataset = dataset_ops.Dataset.from_tensors(42).flat_map(fn, name="flat_map")
     self.assertDatasetProduces(dataset, [42])
 
+  @combinations.generate(test_base.default_test_combinations())
+  def testMapFuncFailWithErrorContext(self):
+
+    def fn(x):
+      return dataset_ops.Dataset.from_tensors(x // 0)
+
+    dataset = dataset_ops.Dataset.from_tensors(42).flat_map(fn, name="flat_map")
+    get_next = self.getNext(dataset)
+    with self.assertRaisesRegex(
+        errors.InvalidArgumentError,
+        r".*Error in user-defined function passed to .* transformation with "
+        r"iterator: Iterator::Root::.*"):
+      self.evaluate(get_next())
+
   @combinations.generate(test_base.v2_eager_only_combinations())
   def testSymbolicCheckpointSize(self):
     examples_per_flat_map = 100

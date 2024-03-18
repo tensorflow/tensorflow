@@ -19,20 +19,30 @@ limitations under the License.
 
 #include "xla/stream_executor/stream_executor_pimpl.h"
 
+#include <atomic>
+#include <cstddef>
 #include <cstdint>
 #include <memory>
+#include <optional>
+#include <string>
+#include <tuple>
 #include <utility>
+#include <variant>
 
 #include "absl/functional/any_invocable.h"
+#include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
+#include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
+#include "xla/stream_executor/allocator_stats.h"
 #include "xla/stream_executor/blas.h"
 #include "xla/stream_executor/command_buffer.h"
+#include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/device_memory_allocator.h"
-#include "xla/stream_executor/device_options.h"
 #include "xla/stream_executor/dnn.h"
 #include "xla/stream_executor/event.h"
 #include "xla/stream_executor/fft.h"
@@ -41,13 +51,14 @@ limitations under the License.
 #include "xla/stream_executor/kernel_spec.h"
 #include "xla/stream_executor/launch_dim.h"
 #include "xla/stream_executor/module_spec.h"
-#include "xla/stream_executor/platform/port.h"
+#include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor_internal.h"
 #include "tsl/platform/errors.h"
+#include "tsl/platform/numbers.h"
 #include "tsl/platform/stacktrace.h"
+#include "tsl/platform/status.h"
 #include "tsl/platform/statusor.h"
-#include "tsl/platform/threadpool.h"
 #include "tsl/util/env_var.h"
 
 namespace stream_executor {
@@ -91,20 +102,10 @@ StreamExecutor::~StreamExecutor() {
   }
 }
 
-StreamExecutor::PlatformSpecificHandle
-StreamExecutor::platform_specific_handle() const {
-  PlatformSpecificHandle handle;
-  handle.context = implementation_->platform_specific_context();
-  return handle;
-}
-
-absl::Status StreamExecutor::Init(DeviceOptions device_options) {
-  TF_RETURN_IF_ERROR(
-      implementation_->Init(device_ordinal_, std::move(device_options)));
+absl::Status StreamExecutor::Init() {
+  TF_RETURN_IF_ERROR(implementation_->Init(device_ordinal_));
   return absl::OkStatus();
 }
-
-absl::Status StreamExecutor::Init() { return Init(DeviceOptions::Default()); }
 
 absl::Status StreamExecutor::GetKernel(const MultiKernelLoaderSpec& spec,
                                        Kernel* kernel) {
@@ -379,12 +380,12 @@ absl::Status StreamExecutor::SynchronousMemcpyH2D(
 
 bool StreamExecutor::Memcpy(Stream* stream, void* host_dst,
                             const DeviceMemoryBase& device_src, uint64_t size) {
-  return implementation_->Memcpy(stream, host_dst, device_src, size);
+  return implementation_->Memcpy(stream, host_dst, device_src, size).ok();
 }
 
 bool StreamExecutor::Memcpy(Stream* stream, DeviceMemoryBase* device_dst,
                             const void* host_src, uint64_t size) {
-  return implementation_->Memcpy(stream, device_dst, host_src, size);
+  return implementation_->Memcpy(stream, device_dst, host_src, size).ok();
 }
 
 bool StreamExecutor::MemcpyDeviceToDevice(Stream* stream,
@@ -436,6 +437,20 @@ absl::Status StreamExecutor::WaitForEventOnExternalStream(std::intptr_t stream,
 
 Event::Status StreamExecutor::PollForEventStatus(Event* event) {
   return implementation_->PollForEventStatus(event);
+}
+
+absl::StatusOr<std::unique_ptr<Stream>> StreamExecutor::CreateStream(
+    std::optional<std::variant<StreamPriority, int>> priority) {
+  auto stream = std::make_unique<Stream>(this);
+  if (priority.has_value()) {
+    if (std::holds_alternative<StreamPriority>(*priority)) {
+      stream->SetPriority(std::get<StreamPriority>(*priority));
+    } else {
+      stream->SetPriority(std::get<int>(*priority));
+    }
+  }
+  TF_RETURN_IF_ERROR(stream->Initialize());
+  return std::move(stream);
 }
 
 bool StreamExecutor::AllocateStream(Stream* stream) {

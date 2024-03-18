@@ -16,11 +16,15 @@ limitations under the License.
 #ifndef XLA_SERVICE_GPU_RUNTIME_NCCL_ALL_TO_ALL_THUNK_H_
 #define XLA_SERVICE_GPU_RUNTIME_NCCL_ALL_TO_ALL_THUNK_H_
 
+#include <cstdint>
 #include <vector>
 
+#include "absl/status/status.h"
+#include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/service/collective_ops_utils.h"
 #include "xla/service/gpu/nccl_api.h"
 #include "xla/service/gpu/nccl_collective_thunk.h"
+#include "xla/stream_executor/stream.h"
 
 namespace xla {
 namespace gpu {
@@ -34,25 +38,17 @@ struct NcclAllToAllConfig {
 class NcclAllToAllStartThunk : public NcclCollectiveThunk {
  public:
   NcclAllToAllStartThunk(ThunkInfo thunk_info, NcclApi* nccl_api,
-                         mlir::lmhlo_gpu::AllToAllStartOp op,
-                         std::vector<Buffer> buffers);
-  NcclAllToAllStartThunk(ThunkInfo thunk_info, NcclApi* nccl_api,
                          const HloAllToAllInstruction* instr,
                          std::vector<Buffer> buffers);
 
   // Returns whether the given instruction can be lowered to a nccl all-to-all
   // call.
-  static absl::Status CheckImplementable(mlir::lmhlo_gpu::AllToAllStartOp op,
-                                         int64_t replica_count,
-                                         int64_t partition_count);
   static absl::Status CheckImplementable(const HloAllToAllInstruction* instr,
                                          int64_t replica_count,
                                          int64_t partition_count);
 
   static const char* GetHloOpName() { return "all-to-all-start"; }
 
-  static CollectiveOpGroupMode GetGroupMode(
-      mlir::lmhlo_gpu::AllToAllStartOp op);
   static CollectiveOpGroupMode GetGroupMode(
       const HloAllToAllInstruction* instr);
 

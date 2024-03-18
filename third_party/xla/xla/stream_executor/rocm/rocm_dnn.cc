@@ -2296,7 +2296,9 @@ bool CreateRnnWorkspace(Stream* stream, miopenHandle_t miopen_handle,
 
       return false;
     }
-    stream->ThenMemZero(workspace, workspace_size_in_bytes);
+    if (!stream->MemZero(workspace, workspace_size_in_bytes).ok()) {
+      return false;
+    }
   } else {
     *workspace = DeviceMemory<uint8>();
   }
@@ -2374,15 +2376,15 @@ absl::Status MIOpenSupport::DoRnnForwardImpl(
         LOG(ERROR) << "Fail to allocate RNN reserve space";
         return absl::InternalError("AllocateBytes for RNN failed");
       }
-      stream->ThenMemZero(&reserve_space, reserve_space_size_in_bytes);
+      TF_RETURN_IF_ERROR(
+          stream->MemZero(&reserve_space, reserve_space_size_in_bytes));
     }
   }
 
   const bool is_profiling = output_profile_result != nullptr;
 
-  TF_ASSIGN_OR_RETURN(
-      std::optional<GpuTimer> timer,
-      GpuTimer::CreateIfNeeded(AsGpuStream(stream), is_profiling));
+  TF_ASSIGN_OR_RETURN(std::optional<GpuTimer> timer,
+                      GpuTimer::CreateIfNeeded(stream, is_profiling));
 
   // make the forward call
   if (!is_training) {
@@ -2492,23 +2494,25 @@ absl::Status MIOpenSupport::DoRnnBackwardImpl(
   auto size_data = input_desc.seq_length() * input_desc.batch_size() *
                    input_desc.data_size();
   if ((size_data > 0) && (input_backprop_data->opaque() != nullptr))
-    stream->ThenMemZero(input_backprop_data, size_data * type_size);
+    TF_RETURN_IF_ERROR(
+        stream->MemZero(input_backprop_data, size_data * type_size));
 
   size_data = input_h_desc.num_layers() * input_h_desc.batch_size() *
               input_h_desc.data_size();
   if ((size_data > 0) && (input_h_backprop_data->opaque() != nullptr))
-    stream->ThenMemZero(input_h_backprop_data, size_data * type_size);
+    TF_RETURN_IF_ERROR(
+        stream->MemZero(input_h_backprop_data, size_data * type_size));
 
   size_data = input_c_desc.num_layers() * input_c_desc.batch_size() *
               input_c_desc.data_size();
   if ((size_data > 0) && (input_c_backprop_data->opaque() != nullptr))
-    stream->ThenMemZero(input_c_backprop_data, size_data * type_size);
+    TF_RETURN_IF_ERROR(
+        stream->MemZero(input_c_backprop_data, size_data * type_size));
 
   const bool is_profiling = output_profile_result != nullptr;
 
-  TF_ASSIGN_OR_RETURN(
-      std::optional<GpuTimer> timer,
-      GpuTimer::CreateIfNeeded(AsGpuStream(stream), is_profiling));
+  TF_ASSIGN_OR_RETURN(std::optional<GpuTimer> timer,
+                      GpuTimer::CreateIfNeeded(stream, is_profiling));
 
   // make the backward data call
   auto status = wrap::miopenRNNBackwardData(
@@ -2537,7 +2541,8 @@ absl::Status MIOpenSupport::DoRnnBackwardImpl(
 
   if (params_backprop_data != nullptr) {
     // Clear the dw to zeros.
-    stream->ThenMemZero(params_backprop_data, params_backprop_data->size());
+    TF_RETURN_IF_ERROR(
+        stream->MemZero(params_backprop_data, params_backprop_data->size()));
     // make the backward weight call
     status = wrap::miopenRNNBackwardWeights(
         miopen.handle() /*handle*/, rnn_desc.handle() /*rnnDesc*/,
@@ -3199,9 +3204,8 @@ class RocmConvRunner : public dnn::ConvRunner {
     float beta = 0.0;
 
     const bool is_profiling = profile_result != nullptr;
-    TF_ASSIGN_OR_RETURN(
-        std::optional<GpuTimer> timer,
-        GpuTimer::CreateIfNeeded(AsGpuStream(stream), is_profiling));
+    TF_ASSIGN_OR_RETURN(std::optional<GpuTimer> timer,
+                        GpuTimer::CreateIfNeeded(stream, is_profiling));
 
     miopenStatus_t status = miopenStatusSuccess;
     switch (kind_) {

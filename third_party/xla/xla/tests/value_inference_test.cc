@@ -56,8 +56,8 @@ class DynamismInferenceTest : public ValueInferenceTest {
   explicit DynamismInferenceTest(se::Platform* platform = nullptr)
       : platform_(platform) {}
 
-  StatusOr<Literal> ComputeDynamismLiteral(XlaOp operand, XlaBuilder* builder,
-                                           Layout* output_layout = nullptr) {
+  absl::StatusOr<Literal> ComputeDynamismLiteral(
+      XlaOp operand, XlaBuilder* builder, Layout* output_layout = nullptr) {
     TF_RETURN_IF_ERROR(builder->first_error());
     ValueInference value_inference(builder);
     TF_ASSIGN_OR_RETURN(auto literal_slice,
@@ -65,8 +65,8 @@ class DynamismInferenceTest : public ValueInferenceTest {
     return literal_slice.Clone();
   }
 
-  StatusOr<bool> ComputeDynamismScalar(XlaOp operand, XlaBuilder* builder,
-                                       ShapeIndex index = {}) {
+  absl::StatusOr<bool> ComputeDynamismScalar(XlaOp operand, XlaBuilder* builder,
+                                             ShapeIndex index = {}) {
     TF_ASSIGN_OR_RETURN(auto literal,
                         ComputeDynamismLiteral(operand, builder, nullptr));
     return literal.Get<bool>({}, index);
@@ -558,7 +558,7 @@ class UpperBoundInferenceTest : public ValueInferenceTest {
   explicit UpperBoundInferenceTest(se::Platform* platform = nullptr)
       : platform_(platform) {}
 
-  StatusOr<OptionalLiteral> ComputeUpperBoundLiteral(
+  absl::StatusOr<OptionalLiteral> ComputeUpperBoundLiteral(
       XlaOp operand, XlaBuilder* builder, Layout* output_layout = nullptr) {
     ValueInference value_inference(builder);
     TF_ASSIGN_OR_RETURN(auto literal,
@@ -715,7 +715,7 @@ class ConstValueInferenceTest : public ValueInferenceTest {
   explicit ConstValueInferenceTest(se::Platform* platform = nullptr)
       : platform_(platform) {}
 
-  StatusOr<OptionalLiteral> ComputeConstantValueLiteral(
+  absl::StatusOr<OptionalLiteral> ComputeConstantValueLiteral(
       XlaOp operand, XlaBuilder* builder, Layout* output_layout = nullptr) {
     ValueInference value_inference(builder);
     TF_ASSIGN_OR_RETURN(auto literal, value_inference.AnalyzeConstant(

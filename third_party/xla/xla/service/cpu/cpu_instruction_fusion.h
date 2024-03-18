@@ -31,9 +31,9 @@ class CpuInstructionFusion : public InstructionFusion {
   ~CpuInstructionFusion() override = default;
 
   using HloPassInterface::Run;
-  StatusOr<bool> Run(HloModule* module,
-                     const absl::flat_hash_set<absl::string_view>&
-                         execution_threads) override {
+  absl::StatusOr<bool> Run(HloModule* module,
+                           const absl::flat_hash_set<absl::string_view>&
+                               execution_threads) override {
     fusion_node_evaluations_.clear();
     return InstructionFusion::Run(module, execution_threads);
   }

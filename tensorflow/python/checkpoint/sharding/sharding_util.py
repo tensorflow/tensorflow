@@ -30,8 +30,11 @@ from tensorflow.python.training.saving import saveable_object
 from tensorflow.python.util import tf_export
 
 
-TensorSlice = MutableMapping[tensor_spec.TensorSpec, tensor_lib.Tensor]
-TensorSliceDict = MutableMapping[str, TensorSlice]
+TensorSlices = MutableMapping[tensor_spec.TensorSpec, tensor_lib.Tensor]
+# A mapping from a checkpoint key (full tensor name) to the corresponding tensor
+# slices of the full tensor. It represents the collection of tensors stored in a
+# checkpoint shard data file.
+Shard = MutableMapping[str, TensorSlices]
 
 
 @tf_export.tf_export("train.experimental.ShardableTensor")
@@ -134,17 +137,18 @@ class ShardingCallback(abc.ABC):
   ```
 
   """
-  description: str
 
   @property
   @abc.abstractmethod
   def description(self) -> str:
+    """Returns a text description of the sharding policy."""
     pass
 
   @abc.abstractmethod
   def __call__(
       self, shardable_tensors: Sequence[ShardableTensor]
-  ) -> Sequence[TensorSliceDict]:
+  ) -> Sequence[Shard]:
+    """Returns a list of shards for the given shardable tensors."""
     pass
 
   def __hash__(self) -> int:
@@ -159,7 +163,7 @@ class ShardingCallback(abc.ABC):
 
 
 def validate_shards(
-    shards: Sequence[TensorSliceDict],
+    shards: Sequence[Shard],
     shardable_tensors: Sequence[ShardableTensor],
     callback_description: str
 ) -> None:

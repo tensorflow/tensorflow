@@ -18,8 +18,8 @@ limitations under the License.
 
 #include "absl/status/status.h"
 #include "xla/stream_executor/event.h"
-#include "xla/stream_executor/gpu/gpu_driver.h"
 #include "xla/stream_executor/gpu/gpu_stream.h"
+#include "xla/stream_executor/gpu/gpu_types.h"
 
 namespace stream_executor {
 namespace gpu {

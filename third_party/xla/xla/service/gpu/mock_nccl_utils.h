@@ -22,6 +22,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "xla/executable_run_options.h"
@@ -31,7 +32,7 @@ limitations under the License.
 #include "xla/service/gpu/nccl_api.h"
 #include "xla/service/gpu/nccl_clique_key.h"
 #include "xla/service/gpu/nccl_collective_thunk.h"
-#include "xla/service/gpu/nccl_p2p_thunk_common.h"
+#include "xla/service/gpu/runtime/nccl_p2p_thunk_common.h"
 #include "xla/service/gpu/thunk.h"
 #include "xla/service/lockable.h"
 #include "xla/stream_executor/stream.h"

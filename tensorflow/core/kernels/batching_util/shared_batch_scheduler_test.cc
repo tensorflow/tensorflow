@@ -20,10 +20,12 @@ limitations under the License.
 #include <thread>  // NOLINT(build/c++11)
 #include <tuple>
 #include <utility>
+#include <vector>
 
 #include "absl/base/call_once.h"
 #include "absl/container/fixed_array.h"
 #include "absl/time/time.h"
+#include "tensorflow/core/kernels/batching_util/batch_scheduler.h"
 #include "tensorflow/core/kernels/batching_util/fake_clock_env.h"
 #include "tensorflow/core/lib/core/notification.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
@@ -121,7 +123,8 @@ QueueOptions CreateQueueOptions(size_t max_execution_batch_size,
                                 size_t batch_timeout_micros,
                                 size_t max_enqueued_batches,
                                 bool enable_large_batch_splitting,
-                                bool enable_lazy_split, SplitFunc split_func) {
+                                bool enable_lazy_split, SplitFunc split_func,
+                                bool enable_priority_queue = false) {
   QueueOptions queue_options;
   queue_options.max_enqueued_batches = max_enqueued_batches;
   queue_options.max_execution_batch_size = max_execution_batch_size;
@@ -129,6 +132,7 @@ QueueOptions CreateQueueOptions(size_t max_execution_batch_size,
   queue_options.batch_timeout_micros = batch_timeout_micros;
   queue_options.enable_large_batch_splitting = enable_large_batch_splitting;
   queue_options.enable_lazy_split = enable_lazy_split;
+  queue_options.enable_priority_queue = enable_priority_queue;
   if (enable_large_batch_splitting) {
     queue_options.split_input_task_func = split_func;
   }
@@ -141,11 +145,12 @@ class SharedBatchSchedulerTest
   QueueOptions CreateQueueOptions(size_t max_execution_batch_size,
                                   size_t input_batch_size_limit,
                                   size_t batch_timeout_micros,
-                                  size_t max_enqueued_batches) {
+                                  size_t max_enqueued_batches,
+                                  bool enable_priority_queue = false) {
     return tensorflow::serving::CreateQueueOptions(
         max_execution_batch_size, input_batch_size_limit, batch_timeout_micros,
         max_enqueued_batches, enable_input_batch_split(), enable_lazy_split(),
-        get_split_func());
+        get_split_func(), enable_priority_queue);
   }
   bool enable_input_batch_split() const { return std::get<0>(GetParam()); }
 
@@ -240,6 +245,108 @@ TEST_P(SharedBatchSchedulerTest, Basic) {
       }
     }
   }
+}
+
+TEST_P(SharedBatchSchedulerTest,
+       CallbackWithTaskVectorOkWithPriorityQueueEnabled) {
+  bool queue_0_callback_called = false;
+  auto queue_0_callback = [&queue_0_callback_called](
+                              std::unique_ptr<Batch<FakeTask>> batch,
+                              std::vector<std::unique_ptr<FakeTask>> tasks) {
+    queue_0_callback_called = true;
+    ASSERT_TRUE(batch->IsClosed());
+    ASSERT_EQ(3, batch->num_tasks());
+    EXPECT_EQ(1, batch->task(0).size());
+    EXPECT_EQ(3, batch->task(1).size());
+    EXPECT_EQ(5, batch->task(2).size());
+    EXPECT_EQ(0, tasks.size());
+  };
+  bool queue_1_callback_called = false;
+  auto queue_1_callback = [&queue_1_callback_called](
+                              std::unique_ptr<Batch<FakeTask>> batch,
+                              std::vector<std::unique_ptr<FakeTask>> tasks) {
+    queue_1_callback_called = true;
+    ASSERT_TRUE(batch->IsClosed());
+    ASSERT_EQ(2, batch->num_tasks());
+    EXPECT_EQ(2, batch->task(0).size());
+    EXPECT_EQ(4, batch->task(1).size());
+    EXPECT_EQ(0, tasks.size());
+  };
+  {
+    std::shared_ptr<Scheduler> scheduler =
+        CreateSharedBatchScheduler(/*num_batch_threads=*/3);
+
+    // Create two queues.
+    const QueueOptions queue_options = CreateQueueOptions(
+        /*max_execution_batch_size=*/10, /*input_batch_size_limit=*/10,
+        /*batch_timeout_micros=*/1 * 1000 * 1000, /*max_enqueued_batches=*/2,
+        /*enable_priority_queue=*/true);
+    std::unique_ptr<Queue> queue_0 =
+        CreateQueue(scheduler, queue_options, queue_0_callback);
+    std::unique_ptr<Queue> queue_1 =
+        CreateQueue(scheduler, queue_options, queue_1_callback);
+
+    // Submit tasks to the two queues.
+    TF_ASSERT_OK(ScheduleTask(1, queue_0.get()));
+    TF_ASSERT_OK(ScheduleTask(2, queue_1.get()));
+    TF_ASSERT_OK(ScheduleTask(3, queue_0.get()));
+    TF_ASSERT_OK(ScheduleTask(4, queue_1.get()));
+    TF_ASSERT_OK(ScheduleTask(5, queue_0.get()));
+  }
+  EXPECT_TRUE(queue_0_callback_called);
+  EXPECT_TRUE(queue_1_callback_called);
+}
+
+// For now there shouldn't be much difference with the enabled case above since
+// nothing currently inserts any tasks to the low priority task queue.
+TEST_P(SharedBatchSchedulerTest,
+       CallbackWithTaskVectorOkWithPriorityQueueDisabled) {
+  bool queue_0_callback_called = false;
+  auto queue_0_callback = [&queue_0_callback_called](
+                              std::unique_ptr<Batch<FakeTask>> batch,
+                              std::vector<std::unique_ptr<FakeTask>> tasks) {
+    queue_0_callback_called = true;
+    ASSERT_TRUE(batch->IsClosed());
+    ASSERT_EQ(3, batch->num_tasks());
+    EXPECT_EQ(1, batch->task(0).size());
+    EXPECT_EQ(3, batch->task(1).size());
+    EXPECT_EQ(5, batch->task(2).size());
+    EXPECT_EQ(0, tasks.size());
+  };
+  bool queue_1_callback_called = false;
+  auto queue_1_callback = [&queue_1_callback_called](
+                              std::unique_ptr<Batch<FakeTask>> batch,
+                              std::vector<std::unique_ptr<FakeTask>> tasks) {
+    queue_1_callback_called = true;
+    ASSERT_TRUE(batch->IsClosed());
+    ASSERT_EQ(2, batch->num_tasks());
+    EXPECT_EQ(2, batch->task(0).size());
+    EXPECT_EQ(4, batch->task(1).size());
+    EXPECT_EQ(0, tasks.size());
+  };
+  {
+    std::shared_ptr<Scheduler> scheduler =
+        CreateSharedBatchScheduler(/*num_batch_threads=*/3);
+
+    // Create two queues.
+    const QueueOptions queue_options = CreateQueueOptions(
+        /*max_execution_batch_size=*/10, /*input_batch_size_limit=*/10,
+        /*batch_timeout_micros=*/1 * 1000 * 1000, /*max_enqueued_batches=*/2,
+        /*enable_priority_queue=*/true);
+    std::unique_ptr<Queue> queue_0 =
+        CreateQueue(scheduler, queue_options, queue_0_callback);
+    std::unique_ptr<Queue> queue_1 =
+        CreateQueue(scheduler, queue_options, queue_1_callback);
+
+    // Submit tasks to the two queues.
+    TF_ASSERT_OK(ScheduleTask(1, queue_0.get()));
+    TF_ASSERT_OK(ScheduleTask(2, queue_1.get()));
+    TF_ASSERT_OK(ScheduleTask(3, queue_0.get()));
+    TF_ASSERT_OK(ScheduleTask(4, queue_1.get()));
+    TF_ASSERT_OK(ScheduleTask(5, queue_0.get()));
+  }
+  EXPECT_TRUE(queue_0_callback_called);
+  EXPECT_TRUE(queue_1_callback_called);
 }
 
 TEST_P(SharedBatchSchedulerTest, ObeyBatchSizeConstraint) {

@@ -75,6 +75,7 @@ namespace xla {
   V(kCholesky, "cholesky", 1)                                                  \
   V(kClamp, "clamp", 3)                                                        \
   V(kClz, "count-leading-zeros", 1)                                            \
+  V(kCollectiveBroadcast, "collective-broadcast", kHloOpcodeIsVariadic)        \
   V(kCollectivePermute, "collective-permute", kHloOpcodeIsVariadic)            \
   V(kCollectivePermuteDone, "collective-permute-done", 1)                      \
   V(kCollectivePermuteStart, "collective-permute-start", kHloOpcodeIsVariadic) \
@@ -92,7 +93,7 @@ namespace xla {
   V(kCustomCall, "custom-call", kHloOpcodeIsVariadic)                          \
   V(kDivide, "divide", 2)                                                      \
   V(kDomain, "domain", 1)                                                      \
-  V(kDot, "dot", 2)                                                            \
+  V(kDot, "dot", kHloOpcodeIsVariadic)                                         \
   V(kDynamicReshape, "dynamic-reshape", kHloOpcodeIsVariadic)                  \
   V(kDynamicSlice, "dynamic-slice", kHloOpcodeIsVariadic)                      \
   V(kDynamicUpdateSlice, "dynamic-update-slice", kHloOpcodeIsVariadic)         \

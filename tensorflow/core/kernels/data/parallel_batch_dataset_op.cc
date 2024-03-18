@@ -388,9 +388,8 @@ class ParallelBatchDatasetOp::Dataset : public DatasetBase {
 
       // Each row of `batch_elements` is a tuple of tensors from the input
       // iterator.
-      auto batch_elements =
-          std::make_shared<std::vector<std::vector<Tensor>>>();
-      batch_elements->reserve(dataset()->reserve_size_);
+      std::vector<std::vector<Tensor>> batch_elements;
+      batch_elements.reserve(dataset()->reserve_size_);
 
       bool end_of_input = false;
       for (int i = 0; i < dataset()->batch_size_ && !end_of_input; ++i) {
@@ -405,7 +404,7 @@ class ParallelBatchDatasetOp::Dataset : public DatasetBase {
           if (result->end_of_input || !result->status.ok()) break;
         }
         if (!end_of_input) {
-          batch_elements->emplace_back(std::move(batch_element_tuple));
+          batch_elements.emplace_back(std::move(batch_element_tuple));
           mutex_lock l(result->mu);
           result->num_elements++;
         } else {
@@ -413,26 +412,29 @@ class ParallelBatchDatasetOp::Dataset : public DatasetBase {
         }
       }
 
-      if (batch_elements->empty()) {
+      if (batch_elements.empty()) {
         CallCompleted(ctx, result);
         return;
       }
 
-      auto copy_elements_fn = [this, ctx, result, batch_elements]() {
+      auto copy_elements_fn = [this, ctx, result,
+                               batch_elements =
+                                   std::move(batch_elements)]() mutable {
         Status status;
         {
           mutex_lock l(result->mu);
-          auto allocation_callback =
-              [this, ctx, result]()
-                  TF_EXCLUSIVE_LOCKS_REQUIRED(&BatchResult::mu) {
-                    result->output_allocated = true;
-                    RecordBufferEnqueue(ctx.get(), result->output);
-                    return absl::OkStatus();
-                  };
-          status = CopyBatch(CopyBatchParams(ctx.get()), *batch_elements,
-                             dataset()->parallel_copy_,
-                             std::move(allocation_callback), &result->output);
+          status =
+              CopyBatch(CopyBatchParams(ctx.get()), std::move(batch_elements),
+                        dataset()->parallel_copy_, &result->output);
           result->status.Update(status);
+
+          if (result->status.ok()) {
+            result->output_allocated = true;
+            RecordBufferEnqueue(ctx.get(), result->output);
+          } else {
+            result->output.clear();
+            result->output_allocated = false;
+          }
         }
         CallCompleted(ctx, result);
         return status;

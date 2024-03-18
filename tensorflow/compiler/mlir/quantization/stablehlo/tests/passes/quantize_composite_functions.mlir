@@ -16,6 +16,13 @@ module attributes {tf_saved_model.semantics} {
 // Checks that the quantized XlaCallModule has been replaced by a CallOp, which
 // calls the quantized entry function.
 
+// CHECK: func.func private @quantize_dot_general_fn(%[[ARG_0:.+]]: tensor<1x2xf32>) -> tensor<1x3xf32> attributes {tf._original_func_name = "main_0"}
+// CHECK: %[[CONST_0:.+]] = stablehlo.constant() {value = dense<{{.*}}> : tensor<2x3xi8>} : () -> tensor<2x3x!quant.uniform<i8<-127:127>:f32:1, {{.*}}>
+// CHECK: %[[UNIFORM_QUANTIZE_0:.+]] = stablehlo.uniform_quantize %[[ARG_0]] : (tensor<1x2xf32>) -> tensor<1x2x!quant.uniform<i8:f32, {{.*}}>>
+// CHECK: %[[CALL_0:.+]] = call @quantized_dot_general_fn(%[[UNIFORM_QUANTIZE_0]], %[[CONST_0]]) : (tensor<1x2x!quant.uniform<i8:f32, {{.*}}>>, tensor<2x3x!quant.uniform<i8<-127:127>:f32:1, {{.*}}>) -> tensor<1x3x!quant.uniform<i8:f32, {{.*}}>>
+// CHECK: %[[UNIFORM_DEQUANTIZE_0:.+]] = stablehlo.uniform_dequantize %[[CALL_0]] : (tensor<1x3x!quant.uniform<i8:f32, {{.*}}>) -> tensor<1x3xf32>
+// CHECK: return %[[UNIFORM_DEQUANTIZE_0]] : tensor<1x3xf32>
+
 // CHECK-PER-TENSOR: func.func private @quantize_dot_general_fn(%[[ARG_0:.+]]: tensor<1x2xf32>) -> tensor<1x3xf32> attributes {tf._original_func_name = "main_0"}
 // CHECK-PER-TENSOR: %[[CONST_0:.+]] = stablehlo.constant() {value = dense<{{.*}}> : tensor<2x3xi8>} : () -> tensor<2x3x!quant.uniform<i8<-127:127>:f32, {{.*}}>
 // CHECK-PER-TENSOR: %[[UNIFORM_QUANTIZE_0:.+]] = stablehlo.uniform_quantize %[[ARG_0]] : (tensor<1x2xf32>) -> tensor<1x2x!quant.uniform<i8:f32, {{.*}}>>
@@ -31,10 +38,40 @@ module attributes {tf_saved_model.semantics} {
 // dot_general outputs an i32 quantized tensor, followed by requantization to
 // i8 quantized tensor.
 
+// CHECK: func.func private @quantized_dot_general_fn(%[[ARG_1:.+]]: tensor<1x2x!quant.uniform<i8:f32, {{.*}}>>, %[[ARG_2:.+]]: tensor<2x3x!quant.uniform<i8<-127:127>:f32:1, {{.*}}>>) -> tensor<1x3x!quant.uniform<i8:f32, {{.*}}>> attributes {_from_xla_call_module}
+// CHECK: %[[DOT_GENERAL_0:.+]] = stablehlo.dot_general %[[ARG_1]], %[[ARG_2]], contracting_dims = [1] x [0] : (tensor<1x2x!quant.uniform<i8:f32, {{.*}}>>, tensor<2x3x!quant.uniform<i8<-127:127>:f32:1, {{.*}}>>) -> tensor<1x3x!quant.uniform<i32:f32:1, {{.*}}>>
+// CHECK: %[[UNIFORM_QUANTIZE_1:.+]] = stablehlo.uniform_quantize %[[DOT_GENERAL_0]] : (tensor<1x3x!quant.uniform<i32:f32:1, {{.*}}>>) -> tensor<1x3x!quant.uniform<i8:f32, {{.*}}>>
+// CHECK: return %[[UNIFORM_QUANTIZE_1]] : tensor<1x3x!quant.uniform<i8:f32, {{.*}}>>
+
 // CHECK-PER-TENSOR: func.func private @quantized_dot_general_fn(%[[ARG_1:.+]]: tensor<1x2x!quant.uniform<i8:f32, {{.*}}>>, %[[ARG_2:.+]]: tensor<2x3x!quant.uniform<i8<-127:127>:f32, {{.*}}>>) -> tensor<1x3x!quant.uniform<i8:f32, {{.*}}>> attributes {_from_xla_call_module}
 // CHECK-PER-TENSOR: %[[DOT_GENERAL_0:.+]] = stablehlo.dot_general %[[ARG_1]], %[[ARG_2]], contracting_dims = [1] x [0] : (tensor<1x2x!quant.uniform<i8:f32, {{.*}}>>, tensor<2x3x!quant.uniform<i8<-127:127>:f32, {{.*}}>>) -> tensor<1x3x!quant.uniform<i32:f32, {{.*}}>>
 // CHECK-PER-TENSOR: %[[UNIFORM_QUANTIZE_1:.+]] = stablehlo.uniform_quantize %[[DOT_GENERAL_0]] : (tensor<1x3x!quant.uniform<i32:f32, {{.*}}>>) -> tensor<1x3x!quant.uniform<i8:f32, {{.*}}>>
 // CHECK-PER-TENSOR: return %[[UNIFORM_QUANTIZE_1]] : tensor<1x3x!quant.uniform<i8:f32, {{.*}}>>
+}
+
+// -----
+
+// Tests that `stablehlo.dot_general` with `batching_dim` is not quantized.
+
+module attributes {tf_saved_model.semantics} {
+  func.func private @quantize_dot_general_batch_per_tensor_quantized_fn(%arg0: tensor<2x2x2xf32>) -> tensor<2x2x3xf32> attributes {tf._original_func_name = "main_0"} {
+    %cst = "tf.Const"() {value = dense<3.00000000e-1> : tensor<2x2x3xf32>} : () -> tensor<2x2x3xf32>
+    %0 = "quantfork.stats"(%arg0) {layerStats = dense<[6.00000000e-6, 9.00000000e-1]> : tensor<2xf32>} : (tensor<2x2x2xf32>) -> tensor<2x2x2xf32>
+    %1 = "tf.XlaCallModule"(%0, %cst) {Sout = [#tf_type.shape<1x3>], _entry_function = @composite_dot_general_fn, _original_entry_function = "composite_dot_general_fn", _stablehlo_module_attrs = {}, _tfl_quant_trait = "fully_quantizable",   device = "", dim_args_spec = [], disabled_checks = [], has_token_input_output = false, module = "", platforms = [], version = 5 : i64} : (tensor<2x2x2xf32>, tensor<2x2x3xf32>) -> tensor<2x2x3xf32>
+    %2 = "quantfork.stats"(%1) {layerStats = dense<[5.00000000e-6, 7.00000000e-1]> : tensor<2xf32>} : (tensor<2x2x3xf32>) -> tensor<2x2x3xf32>
+    return %2 : tensor<2x2x3xf32>
+  }
+// CHECK: func.func private @quantize_dot_general_batch_per_tensor_quantized_fn(%[[ARG_0:.+]]: tensor<2x2x2xf32>) -> tensor<2x2x3xf32> attributes {tf._original_func_name = "main_0"}
+// CHECK: %[[CONST_0:.+]] = stablehlo.constant() {value = dense<127> : tensor<2x2x3xi8>} : () -> tensor<2x2x3x!quant.uniform<i8:f32, {{.*}}>>
+// CHECK: %[[UNIFORM_QUANTIZE_0:.+]] = stablehlo.uniform_quantize %[[ARG_0]] : (tensor<2x2x2xf32>) -> tensor<2x2x2x!quant.uniform<i8:f32, {{.*}}>>
+// CHECK: %[[CALL_0:.+]] = call @quantized_dot_general_fn(%[[UNIFORM_QUANTIZE_0]], %[[CONST_0]]) : (tensor<2x2x2x!quant.uniform<i8:f32, {{.*}}>>, tensor<2x2x3x!quant.uniform<i8:f32, {{.*}}>) -> tensor<2x2x3x!quant.uniform<i8:f32, {{.*}}>>
+// CHECK: %[[UNIFORM_DEQUANTIZE_0:.+]] = stablehlo.uniform_dequantize %[[CALL_0]] : (tensor<2x2x3x!quant.uniform<i8:f32, {{.*}}>) -> tensor<2x2x3xf32>
+// CHECK: return %[[UNIFORM_DEQUANTIZE_0]] : tensor<2x2x3xf32>
+
+  func.func private @composite_dot_general_fn(%arg0: tensor<2x2x2xf32>, %arg1: tensor<2x2x3xf32>) -> tensor<2x2x3xf32> attributes {_from_xla_call_module} {
+    %0 = stablehlo.dot_general %arg0, %arg1, batching_dims = [0] x [0], contracting_dims = [2] x [1] : (tensor<2x2x2xf32>, tensor<2x2x3xf32>) -> tensor<2x2x3xf32>
+    return %0 : tensor<2x2x3xf32>
+  }
 }
 
 // -----
@@ -50,6 +87,14 @@ module attributes {tf_saved_model.semantics} {
     %2 = "quantfork.stats"(%1) {layerStats = dense<[5.00000000e-6, 7.00000000e-1]> : tensor<2xf32>} : (tensor<1x3xf32>) -> tensor<1x3xf32>
     return %2 : tensor<1x3xf32>
   }
+// CHECK: func.func private @quantize_dot_general_with_bias_same_shape_fn(%[[ARG_0:.+]]: tensor<1x2xf32>) -> tensor<1x3xf32> attributes {tf._original_func_name = "main_0"}
+// CHECK: %[[CONST_0:.+]] = stablehlo.constant() {value = dense<{{.*}}> : tensor<2x3xi8>} : () -> tensor<2x3x!quant.uniform<i8<-127:127>:f32:1, {{.*}}>
+// CHECK: %[[CONST_1:.+]] = stablehlo.constant() {value = dense<{{.*}}> : tensor<1x3xi32>} : () -> tensor<1x3x!quant.uniform<i32:f32:1, {{.*}}>
+// CHECK: %[[UNIFORM_QUANTIZE_0:.+]] = stablehlo.uniform_quantize %[[ARG_0]] : (tensor<1x2xf32>) -> tensor<1x2x!quant.uniform<i8:f32, {{.*}}>>
+// CHECK: %[[CALL_0:.+]] = call @quantized_dot_general_with_bias_same_shape_fn(%[[UNIFORM_QUANTIZE_0]], %[[CONST_0]], %[[CONST_1]]) : (tensor<1x2x!quant.uniform<i8:f32, {{.*}}>>, tensor<2x3x!quant.uniform<i8<-127:127>:f32:1, {{.*}}>, tensor<1x3x!quant.uniform<i32:f32:1, {{.*}}>) -> tensor<1x3x!quant.uniform<i8:f32, {{.*}}>
+// CHECK: %[[UNIFORM_DEQUANTIZE_0:.+]] = stablehlo.uniform_dequantize %[[CALL_0]] : (tensor<1x3x!quant.uniform<i8:f32, {{.*}}>) -> tensor<1x3xf32>
+// CHECK: return %[[UNIFORM_DEQUANTIZE_0]] : tensor<1x3xf32>
+
 // CHECK-PER-TENSOR: func.func private @quantize_dot_general_with_bias_same_shape_fn(%[[ARG_0:.+]]: tensor<1x2xf32>) -> tensor<1x3xf32> attributes {tf._original_func_name = "main_0"}
 // CHECK-PER-TENSOR-DAG: %[[CONST_0:.+]] = stablehlo.constant() {value = dense<{{.*}}> : tensor<2x3xi8>} : () -> tensor<2x3x!quant.uniform<i8<-127:127>:f32, {{.*}}>
 // CHECK-PER-TENSOR-DAG: %[[CONST_1:.+]] = stablehlo.constant() {value = dense<{{.*}}> : tensor<1x3xi32>} : () -> tensor<1x3x!quant.uniform<i32:f32, {{.*}}>
@@ -63,9 +108,15 @@ module attributes {tf_saved_model.semantics} {
     %1 = stablehlo.add %0, %arg2 : tensor<1x3xf32>
     return %1 : tensor<1x3xf32>
   }
+// CHECK: func.func private @quantized_dot_general_with_bias_same_shape_fn(%[[ARG_1:.+]]: tensor<1x2x!quant.uniform<i8:f32, {{.*}}>>, %[[ARG_2:.+]]: tensor<2x3x!quant.uniform<i8<-127:127>:f32:1, {{.*}}>>, %[[ARG_3:.+]]: tensor<1x3x!quant.uniform<i32:f32:1, {{.*}}>>) -> tensor<1x3x!quant.uniform<i8:f32, {{.*}}>> attributes {_from_xla_call_module}
+// CHECK: %[[DOT_GENERAL_0:.+]] = stablehlo.dot_general %[[ARG_1]], %[[ARG_2]], contracting_dims = [1] x [0] : (tensor<1x2x!quant.uniform<i8:f32, {{.*}}>>, tensor<2x3x!quant.uniform<i8<-127:127>:f32:1, {{.*}}>) -> tensor<1x3x!quant.uniform<i32:f32:1, {{.*}}>>
+// CHECK: %[[ADD_0:.+]] = stablehlo.add %[[DOT_GENERAL_0]], %[[ARG_3]] : tensor<1x3x!quant.uniform<i32:f32:1, {{.*}}>>
+// CHECK: %[[UNIFORM_QUANTIZE_1:.+]] = stablehlo.uniform_quantize %[[ADD_0]] : (tensor<1x3x!quant.uniform<i32:f32:1, {{.*}}>>) -> tensor<1x3x!quant.uniform<i8:f32, {{.*}}>>
+// CHECK: return %[[UNIFORM_QUANTIZE_1]] : tensor<1x3x!quant.uniform<i8:f32, {{.*}}>>
+
 // CHECK-PER-TENSOR: func.func private @quantized_dot_general_with_bias_same_shape_fn(%[[ARG_1:.+]]: tensor<1x2x!quant.uniform<i8:f32, {{.*}}>>, %[[ARG_2:.+]]: tensor<2x3x!quant.uniform<i8<-127:127>:f32, {{.*}}>>, %[[ARG_3:.+]]: tensor<1x3x!quant.uniform<i32:f32, {{.*}}>>) -> tensor<1x3x!quant.uniform<i8:f32, {{.*}}>> attributes {_from_xla_call_module}
-// CHECK-PER-TENSOR: %[[DOT_GENERAL_0:.+]] = stablehlo.dot_general %[[ARG_1]], %[[ARG_2]], contracting_dims = [1] x [0] : (tensor<1x2x!quant.uniform<i8:f32, {{.*}}>>, tensor<2x3x!quant.uniform<i8<-127:127>:f32, {{.*}}>) -> tensor<1x3x!quant.uniform<i32:f32, 8.3371932554046126E-6>>
-// CHECK-PER-TENSOR: %[[ADD_0:.+]] = stablehlo.add %[[DOT_GENERAL_0]], %[[ARG_3]] : tensor<1x3x!quant.uniform<i32:f32, 8.3371932554046126E-6>>
+// CHECK-PER-TENSOR: %[[DOT_GENERAL_0:.+]] = stablehlo.dot_general %[[ARG_1]], %[[ARG_2]], contracting_dims = [1] x [0] : (tensor<1x2x!quant.uniform<i8:f32, {{.*}}>>, tensor<2x3x!quant.uniform<i8<-127:127>:f32, {{.*}}>) -> tensor<1x3x!quant.uniform<i32:f32, {{.*}}>>
+// CHECK-PER-TENSOR: %[[ADD_0:.+]] = stablehlo.add %[[DOT_GENERAL_0]], %[[ARG_3]] : tensor<1x3x!quant.uniform<i32:f32, {{.*}}>>
 // CHECK-PER-TENSOR: %[[UNIFORM_QUANTIZE_1:.+]] = stablehlo.uniform_quantize %[[ADD_0]] : (tensor<1x3x!quant.uniform<i32:f32, {{.*}}>>) -> tensor<1x3x!quant.uniform<i8:f32, {{.*}}>>
 // CHECK-PER-TENSOR: return %[[UNIFORM_QUANTIZE_1]] : tensor<1x3x!quant.uniform<i8:f32, {{.*}}>>
 
@@ -85,6 +136,14 @@ module attributes {tf_saved_model.semantics} {
     %2 = "quantfork.stats"(%1) {layerStats = dense<[5.00000000e-6, 7.00000000e-1]> : tensor<2xf32>} : (tensor<?x3xf32>) -> tensor<?x3xf32>
     return %2 : tensor<?x3xf32>
   }
+// CHECK: func.func private @quantize_dot_general_with_bias_dynamic_fn(%[[ARG_0:.+]]: tensor<?x2xf32>) -> tensor<?x3xf32> attributes {tf._original_func_name = "main_0"}
+// CHECK-DAG: %[[CONST_0:.+]] = stablehlo.constant() {value = dense<{{.*}}> : tensor<2x3xi8>} : () -> tensor<2x3x!quant.uniform<i8<-127:127>:f32:1, {{.*}}>
+// CHECK-DAG: %[[CONST_1:.+]] = stablehlo.constant() {value = dense<{{.*}}> : tensor<3xi32>} : () -> tensor<3x!quant.uniform<i32:f32:0, {{.*}}>
+// CHECK: %[[UNIFORM_QUANTIZE_0:.+]] = stablehlo.uniform_quantize %[[ARG_0]] : (tensor<?x2xf32>) -> tensor<?x2x!quant.uniform<i8:f32, {{.*}}>>
+// CHECK: %[[CALL_0:.+]] = call @quantized_dot_general_with_bias_dynamic_fn(%[[UNIFORM_QUANTIZE_0]], %[[CONST_0]], %[[CONST_1]]) : (tensor<?x2x!quant.uniform<i8:f32, {{.*}}>>, tensor<2x3x!quant.uniform<i8<-127:127>:f32:1, {{.*}}>, tensor<3x!quant.uniform<i32:f32:0, {{.*}}>) -> tensor<?x3x!quant.uniform<i8:f32, {{.*}}>
+// CHECK: %[[UNIFORM_DEQUANTIZE_0:.+]] = stablehlo.uniform_dequantize %[[CALL_0]] : (tensor<?x3x!quant.uniform<i8:f32, {{.*}}>) -> tensor<?x3xf32>
+// CHECK: return %[[UNIFORM_DEQUANTIZE_0]] : tensor<?x3xf32>
+
 // CHECK-PER-TENSOR: func.func private @quantize_dot_general_with_bias_dynamic_fn(%[[ARG_0:.+]]: tensor<?x2xf32>) -> tensor<?x3xf32> attributes {tf._original_func_name = "main_0"}
 // CHECK-PER-TENSOR-DAG: %[[CONST_0:.+]] = stablehlo.constant() {value = dense<{{.*}}> : tensor<2x3xi8>} : () -> tensor<2x3x!quant.uniform<i8<-127:127>:f32, {{.*}}>
 // CHECK-PER-TENSOR-DAG: %[[CONST_1:.+]] = stablehlo.constant() {value = dense<{{.*}}> : tensor<3xi32>} : () -> tensor<3x!quant.uniform<i32:f32, {{.*}}>
@@ -104,6 +163,17 @@ module attributes {tf_saved_model.semantics} {
       return %5 : tensor<?x3xf32>
     }
 }
+// CHECK: func.func private @quantized_dot_general_with_bias_dynamic_fn(%[[ARG_1:.+]]: tensor<?x2x!quant.uniform<i8:f32, {{.*}}>>, %[[ARG_2:.+]]: tensor<2x3x!quant.uniform<i8<-127:127>:f32:1, {{.*}}>>, %[[ARG_3:.+]]: tensor<3x!quant.uniform<i32:f32:0, {{.*}}>>) -> tensor<?x3x!quant.uniform<i8:f32, {{.*}}>> attributes {_from_xla_call_module}
+// CHECK: %[[CONST_2:.+]] = stablehlo.constant dense<2> : tensor<1xi32>
+// CHECK: %[[DOT_GENERAL_0:.+]] = stablehlo.dot_general %[[ARG_1]], %[[ARG_2]], contracting_dims = [1] x [0] : (tensor<?x2x!quant.uniform<i8:f32, {{.*}}>>, tensor<2x3x!quant.uniform<i8<-127:127>:f32:1, {{.*}}>>) -> tensor<?x3x!quant.uniform<i32:f32:1, {{.*}}>>
+// CHECK: %[[GET_DIMENSION_SIZE_0:.+]] = stablehlo.get_dimension_size %[[DOT_GENERAL_0]], dim = 0 : (tensor<?x3x!quant.uniform<i32:f32:1, {{.*}}>)
+// CHECK: %[[RESHAPE_0:.+]] = stablehlo.reshape %[[GET_DIMENSION_SIZE_0]] : (tensor<i32>) -> tensor<1xi32>
+// CHECK: %[[CONCATENATE_0:.+]] = stablehlo.concatenate %[[RESHAPE_0]], %[[CONST_2]], dim = 0 : (tensor<1xi32>, tensor<1xi32>) -> tensor<2xi32>
+// CHECK: %[[DYNAMIC_BROADCAST_IN_DIM_0:.+]] = stablehlo.dynamic_broadcast_in_dim %[[ARG_3]], %[[CONCATENATE_0]], dims = [1] : (tensor<3x!quant.uniform<i32:f32:0, {{.*}}>>, tensor<2xi32>) -> tensor<?x3x!quant.uniform<i32:f32:1, {{.*}}>>
+// CHECK: %[[ADD_0:.+]] = stablehlo.add %[[DOT_GENERAL_0]], %[[DYNAMIC_BROADCAST_IN_DIM_0]] : tensor<?x3x!quant.uniform<i32:f32:1, {{.*}}>>
+// CHECK: %[[UNIFORM_QUANTIZE_1:.+]] = stablehlo.uniform_quantize %[[ADD_0]] : (tensor<?x3x!quant.uniform<i32:f32:1, {{.*}}>>)
+// CHECK: return %[[UNIFORM_QUANTIZE_1]] : tensor<?x3x!quant.uniform<i8:f32, {{.*}}>>
+
 // CHECK-PER-TENSOR: func.func private @quantized_dot_general_with_bias_dynamic_fn(%[[ARG_1:.+]]: tensor<?x2x!quant.uniform<i8:f32, {{.*}}>>, %[[ARG_2:.+]]: tensor<2x3x!quant.uniform<i8<-127:127>:f32, {{.*}}>>, %[[ARG_3:.+]]: tensor<3x!quant.uniform<i32:f32, {{.*}}>>) -> tensor<?x3x!quant.uniform<i8:f32, {{.*}}>> attributes {_from_xla_call_module}
 // CHECK-PER-TENSOR: %[[CONST_2:.+]] = stablehlo.constant dense<2> : tensor<1xi32>
 // CHECK-PER-TENSOR: %[[DOT_GENERAL_0:.+]] = stablehlo.dot_general %[[ARG_1]], %[[ARG_2]], contracting_dims = [1] x [0] : (tensor<?x2x!quant.uniform<i8:f32, {{.*}}>>, tensor<2x3x!quant.uniform<i8<-127:127>:f32, {{.*}}>>) -> tensor<?x3x!quant.uniform<i32:f32, {{.*}}>>
@@ -114,7 +184,6 @@ module attributes {tf_saved_model.semantics} {
 // CHECK-PER-TENSOR: %[[ADD_0:.+]] = stablehlo.add %[[DOT_GENERAL_0]], %[[DYNAMIC_BROADCAST_IN_DIM_0]] : tensor<?x3x!quant.uniform<i32:f32, {{.*}}>>
 // CHECK-PER-TENSOR: %[[UNIFORM_QUANTIZE_1:.+]] = stablehlo.uniform_quantize %[[ADD_0]] : (tensor<?x3x!quant.uniform<i32:f32, {{.*}}>>)
 // CHECK-PER-TENSOR: return %[[UNIFORM_QUANTIZE_1]] : tensor<?x3x!quant.uniform<i8:f32, {{.*}}>>
-
 
 // -----
 

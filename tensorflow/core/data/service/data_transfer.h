@@ -30,6 +30,7 @@ limitations under the License.
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/protobuf/service_config.pb.h"
 
 namespace tensorflow {
 namespace data {
@@ -69,6 +70,7 @@ class DataTransferClient {
   struct Config {
     absl::string_view protocol;
     std::string address;
+    Allocator* allocator;
   };
   using ClientFactoryT =
       std::function<Status(Config, std::unique_ptr<DataTransferClient>*)>;
@@ -91,7 +93,7 @@ class DataTransferClient {
 
   // Returns a string describing properties of the client relevant for checking
   // compatibility with a server for a given protocol.
-  virtual StatusOr<std::string> GetCompatibilityInfo() const {
+  virtual absl::StatusOr<std::string> GetCompatibilityInfo() const {
     return std::string();
   }
 
@@ -116,7 +118,7 @@ class DataTransferServer {
   virtual ~DataTransferServer() = default;
 
   // Starts DataTransferServer, it should be available for requests afterwards.
-  virtual Status Start() = 0;
+  virtual Status Start(const experimental::WorkerConfig& config) = 0;
 
   // Return the port that this server is listening on.
   virtual int Port() const = 0;
@@ -130,7 +132,7 @@ class DataTransferServer {
 
   // Returns a string describing properties of the server relevant for checking
   // compatibility with a client for a given protocol.
-  virtual StatusOr<std::string> GetCompatibilityInfo() const {
+  virtual absl::StatusOr<std::string> GetCompatibilityInfo() const {
     return std::string();
   }
 };

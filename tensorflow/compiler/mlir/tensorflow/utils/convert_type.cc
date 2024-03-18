@@ -205,9 +205,8 @@ Status ConvertToMlirShape(const TensorShapeProto& input_shape,
   return OkStatus();
 }
 
-StatusOr<mlir::Type> ConvertToMlirTensorType(const TensorShapeProto& shape,
-                                             DataType dtype,
-                                             mlir::Builder* builder) {
+absl::StatusOr<mlir::Type> ConvertToMlirTensorType(
+    const TensorShapeProto& shape, DataType dtype, mlir::Builder* builder) {
   mlir::Type element_type;
   TF_RETURN_IF_ERROR(ConvertDataType(dtype, *builder, &element_type));
   if (shape.unknown_rank()) {

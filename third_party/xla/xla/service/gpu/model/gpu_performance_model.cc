@@ -120,7 +120,8 @@ GpuPerformanceModel::EstimateRunTimeForInstruction(
   VLogResult(flops, bytes_read, bytes_written, num_threads, compute_time,
              read_time, write_time, exec_time);
 
-  return {flops, bytes_written, num_threads, write_time, exec_time};
+  return {flops,      bytes_written, num_threads, read_time,
+          write_time, compute_time,  exec_time};
 }
 
 /*static*/ EstimateRunTimeData
@@ -430,9 +431,15 @@ void GpuPerformanceModel::RecordEstimatedRunTime(
 
   auto gpu_config = instruction->backend_config<GpuBackendConfig>();
   TF_CHECK_OK(gpu_config.status()) << instruction->ToString();
-  FusionBackendConfig& backend_config =
-      *gpu_config->mutable_fusion_backend_config();
-  backend_config.mutable_reification_cost()->set_end_to_end_cycles(cycles);
+  auto reification_cost =
+      gpu_config->mutable_fusion_backend_config()->mutable_reification_cost();
+  reification_cost->set_end_to_end_cycles(cycles);
+  reification_cost->set_compute_time_us(
+      absl::ToDoubleMicroseconds(data.compute_time));
+  reification_cost->set_memory_access_time_us(
+      absl::ToDoubleMicroseconds(data.read_time + data.write_time));
+  reification_cost->set_exec_time_us(
+      absl::ToDoubleMicroseconds(data.exec_time));
   TF_CHECK_OK(instruction->set_backend_config(*gpu_config));
 
   VLOG(8) << "RecordEstimatedRunTime: " << instruction->ToString();

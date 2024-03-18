@@ -1,13 +1,13 @@
 # Description:
 #   JNI-based Java inference interface for TensorFlow.
 
-load("@build_bazel_rules_android//android:rules.bzl", "android_library")
 load(
     "//tensorflow:tensorflow.bzl",
     "if_android",
     "tf_cc_binary",  # @unused
     "tf_copts",
 )
+load("@build_bazel_rules_android//android:rules.bzl", "android_library")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -45,7 +45,6 @@ android_library(
     name = "android_tensorflow_inference_java",
     srcs = glob(["java/**/*.java"]) + ["//tensorflow/java:java_sources"],
     javacopts = [
-        "-XepOpt:CheckReturnValue:CheckAllConstructors=false",  # b/226969262
     ],
     tags = [
         "manual",

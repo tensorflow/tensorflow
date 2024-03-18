@@ -16,29 +16,30 @@ limitations under the License.
 #include "xla/service/gpu/matmul_utils.h"
 
 #include <algorithm>
+#include <cstddef>
 #include <cstdint>
 #include <optional>
 #include <string>
 #include <tuple>
-#include <type_traits>
 #include <utility>
 #include <vector>
 
 #include "absl/algorithm/container.h"
 #include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/types/span.h"
 #include "xla/autotuning.pb.h"
 #include "xla/hlo/ir/hlo_instruction.h"
-#include "xla/mlir_hlo/lhlo_gpu/IR/lhlo_gpu_ops.h"
+#include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/primitive_util.h"
+#include "xla/service/algorithm_util.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/status.h"
 #include "xla/status_macros.h"
-#include "xla/statusor.h"
 #include "xla/stream_executor/blas.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/gpu/gpu_blas_lt.h"
@@ -47,11 +48,11 @@ limitations under the License.
 #include "xla/types.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
+#include "tsl/platform/errors.h"
 #include "tsl/platform/status.h"
 #include "tsl/platform/statusor.h"
 
 #if GOOGLE_CUDA
-#include "xla/stream_executor/host_or_device_scalar.h"
 #endif  // GOOGLE_CUDA
 
 namespace xla {
@@ -294,13 +295,15 @@ absl::StatusOr<bool> CanFoldTransposeOperandIntoDot(const HloInstruction& dot,
     absl::Span<const int64_t> rhs_batch_dims,
     absl::Span<const int64_t> rhs_contracting_dims, const Shape& output_shape,
     double alpha_real, double alpha_imag, double beta,
+    PrecisionConfig::Algorithm precision_algorithm,
     std::optional<int64_t> algorithm, int64_t compute_precision, bool grad_x,
     bool grad_y) {
   return GemmConfig::For(lhs_shape, lhs_batch_dims, lhs_contracting_dims,
                          rhs_shape, rhs_batch_dims, rhs_contracting_dims,
                          /*c_shape=*/output_shape, /*bias_shape_ptr=*/nullptr,
-                         output_shape, alpha_real, alpha_imag, beta, algorithm,
-                         compute_precision, grad_x, grad_y);
+                         output_shape, alpha_real, alpha_imag, beta,
+                         precision_algorithm, algorithm, compute_precision,
+                         grad_x, grad_y);
 }
 
 /*static*/ absl::StatusOr<GemmConfig> GemmConfig::For(
@@ -309,8 +312,10 @@ absl::StatusOr<bool> CanFoldTransposeOperandIntoDot(const HloInstruction& dot,
     absl::Span<const int64_t> rhs_batch_dims,
     absl::Span<const int64_t> rhs_contracting_dims, const Shape& c_shape,
     const Shape* bias_shape_ptr, const Shape& output_shape, double alpha_real,
-    double alpha_imag, double beta, std::optional<int64_t> algorithm,
-    int64_t compute_precision, bool grad_x, bool grad_y) {
+    double alpha_imag, double beta,
+    PrecisionConfig::Algorithm precision_algorithm,
+    std::optional<int64_t> algorithm, int64_t compute_precision, bool grad_x,
+    bool grad_y) {
   absl::Span<const int64_t> lhs_col_dims = lhs_contracting_dims;
   TF_ASSIGN_OR_RETURN(
       std::vector<int64_t> lhs_row_dims,
@@ -385,6 +390,8 @@ absl::StatusOr<bool> CanFoldTransposeOperandIntoDot(const HloInstruction& dot,
   switch (output_shape.element_type()) {
     case F8E4M3FN:
     case F8E5M2:
+    case F8E4M3FNUZ:
+    case F8E5M2FNUZ:
     case F16:
     case BF16:
     case F32:
@@ -418,10 +425,24 @@ absl::StatusOr<bool> CanFoldTransposeOperandIntoDot(const HloInstruction& dot,
                     {alpha_real, alpha_imag},
                     beta,
                     compute_precision,
+                    precision_algorithm,
                     algorithm,
                     grad_x,
                     grad_y};
 }
+
+namespace {
+
+bool IsTf32Allowed(PrecisionConfig::Algorithm algorithm,
+                   int64_t compute_precision) {
+  if (algorithm == PrecisionConfig::ALG_UNSET) {
+    return compute_precision <= 1;
+  }
+
+  return algorithm_util::HasTf32InputType(algorithm);
+}
+
+}  // namespace
 
 /*static*/ absl::StatusOr<GemmConfig> GemmConfig::For(
     const HloInstruction* gemm) {
@@ -441,6 +462,22 @@ absl::StatusOr<bool> CanFoldTransposeOperandIntoDot(const HloInstruction& dot,
   const Shape& output_shape =
       gemm->shape().IsTuple() ? gemm->shape().tuple_shapes(0) : gemm->shape();
 
+  bool has_matrix_bias = config.beta() != 0.;
+  Shape c_shape = has_matrix_bias ? gemm->operand(2)->shape() : output_shape;
+
+  std::optional<Shape> vector_bias_shape;
+  TF_ASSIGN_OR_RETURN(
+      bool has_vector_bias,
+      xla::gpu::gpublas_lt::EpilogueAddsVectorBias(config.epilogue()));
+  if (has_vector_bias) {
+    int vector_bias_index = has_matrix_bias ? 3 : 2;
+    if (primitive_util::IsF8Type(lhs_shape.element_type())) {
+      // FP8 gemms have 4 scales as inputs which come before the vector bias.
+      vector_bias_index += 4;
+    }
+    vector_bias_shape = gemm->operand(vector_bias_index)->shape();
+  }
+
   auto attributes = gemm->frontend_attributes().map();
   bool grad_x = (attributes["grad_x"] == "true");
   bool grad_y = (attributes["grad_y"] == "true");
@@ -449,49 +486,18 @@ absl::StatusOr<bool> CanFoldTransposeOperandIntoDot(const HloInstruction& dot,
   for (auto operand_precision : config.precision_config().operand_precision()) {
     precision = std::max(precision, static_cast<int64_t>(operand_precision));
   }
-
-  return GemmConfig::For(lhs_shape, dot_dims.lhs_batch_dimensions(),
-                         dot_dims.lhs_contracting_dimensions(), rhs_shape,
-                         dot_dims.rhs_batch_dimensions(),
-                         dot_dims.rhs_contracting_dimensions(), output_shape,
-                         config.alpha_real(), config.alpha_imag(),
-                         config.beta(), algorithm, precision, grad_x, grad_y);
-}
-
-/*static*/ absl::StatusOr<GemmConfig> GemmConfig::For(
-    mlir::lmhlo_gpu::GEMMOp op) {
-  mlir::mhlo::DotDimensionNumbersAttr dot_dims = op.getDotDimensionNumbers();
-
-  std::optional<int64_t> algorithm;
-  if (op.getAlgorithm()) algorithm = *op.getAlgorithm();
-
-  bool grad_x = false;
-  bool grad_y = false;
-  auto attr_grad_x = op.getGradX();
-  if (attr_grad_x) grad_x = attr_grad_x.value();
-  auto attr_grad_y = op.getGradY();
-  if (attr_grad_y) grad_y = attr_grad_y.value();
-
-  int64_t compute_precision = 0;  // Default
-  if (op.getPrecisionConfig().has_value()) {
-    auto precision_config = op.getPrecisionConfig();
-    for (auto attr : precision_config.value()) {
-      int64_t value = static_cast<int64_t>(
-          attr.template cast<mlir::mhlo::PrecisionAttr>().getValue());
-      if (value > compute_precision) {
-        compute_precision = value;
-      }
-    }
-  }
+  const PrecisionConfig::Algorithm precision_algorithm =
+      config.precision_config().algorithm();
 
   return GemmConfig::For(
-      GetShape(op.getA()), dot_dims.getLhsBatchingDimensions(),
-      dot_dims.getLhsContractingDimensions(), GetShape(op.getB()),
-      dot_dims.getRhsBatchingDimensions(),
-      dot_dims.getRhsContractingDimensions(), GetShape(op.getC()),
-      op.getAlphaReal().convertToDouble(), op.getAlphaImag().convertToDouble(),
-      op.getBeta().convertToDouble(), algorithm, compute_precision, grad_x,
-      grad_y);
+      lhs_shape, dot_dims.lhs_batch_dimensions(),
+      dot_dims.lhs_contracting_dimensions(), rhs_shape,
+      dot_dims.rhs_batch_dimensions(), dot_dims.rhs_contracting_dimensions(),
+      /*c_shape=*/c_shape,
+      /*bias_shape_ptr=*/
+      vector_bias_shape ? &vector_bias_shape.value() : nullptr, output_shape,
+      config.alpha_real(), config.alpha_imag(), config.beta(),
+      precision_algorithm, algorithm, precision, grad_x, grad_y);
 }
 
 absl::StatusOr<GemmConfig::DescriptorsTuple> GemmConfig::GetMatrixDescriptors(
@@ -524,10 +530,12 @@ absl::StatusOr<GemmConfig::DescriptorsTuple> GemmConfig::GetMatrixDescriptors(
   out_desc.m = out.num_rows;
   out_desc.n = out.num_cols;
   out_desc.k = lhs.num_cols;
-  TF_ASSIGN_OR_RETURN(
-      out_desc.compute_type,
-      se::gpu::GetBlasComputationType(lhs.dtype, out.dtype,
-                                      se::blas::kDefaultComputePrecision));
+  // TODO(tdanyluk): Investigate why don't we use the actual precision (and
+  // algorithm) here? Why do we use the default?
+  TF_ASSIGN_OR_RETURN(out_desc.compute_type,
+                      se::gpu::GetBlasComputationType(
+                          PrecisionConfig::ALG_UNSET, lhs.dtype, out.dtype,
+                          se::blas::kDefaultComputePrecision));
 
   TF_ASSIGN_OR_RETURN(se::gpu::MatrixDescriptor lhs_desc,
                       create_matrix_desc(lhs, lhs_buf));
@@ -545,6 +553,7 @@ absl::Status DoGemmWithAlgorithm(const se::gpu::MatrixDescriptor& lhs,
                                  const se::gpu::OutputMatrixDescriptor& output,
                                  se::DeviceMemoryBase workspace, Scale alpha,
                                  Scale beta, se::Stream* stream,
+                                 PrecisionConfig::Algorithm precision_algorithm,
                                  se::blas::AlgorithmType algorithm,
                                  se::blas::ComputePrecision compute_precision,
                                  const se::NumericOptions& numeric_options,
@@ -553,9 +562,10 @@ absl::Status DoGemmWithAlgorithm(const se::gpu::MatrixDescriptor& lhs,
   CHECK(output.transpose == se::blas::Transpose::kNoTranspose);
   PrimitiveType lhs_type = primitive_util::NativeToPrimitiveType<Input>();
   PrimitiveType output_type = primitive_util::NativeToPrimitiveType<Output>();
-  TF_ASSIGN_OR_RETURN(se::blas::ComputationType computation_type,
-                      se::gpu::GetBlasComputationType(lhs_type, output_type,
-                                                      compute_precision));
+  TF_ASSIGN_OR_RETURN(
+      se::blas::ComputationType computation_type,
+      se::gpu::GetBlasComputationType(precision_algorithm, lhs_type,
+                                      output_type, compute_precision));
   se::DeviceMemory<Output> output_data(output.data);
 
   // Set a workspace for all Blas operations launched below.
@@ -589,6 +599,7 @@ absl::Status DoGemm(const se::gpu::MatrixDescriptor& lhs,
                     const se::gpu::OutputMatrixDescriptor& output,
                     se::DeviceMemoryBase workspace, Scale alpha, Scale beta,
                     se::Stream* stream,
+                    PrecisionConfig::Algorithm precision_algorithm,
                     std::optional<se::blas::AlgorithmType> algorithm,
                     se::blas::ComputePrecision compute_precision,
                     const se::NumericOptions& numeric_options,
@@ -606,8 +617,9 @@ absl::Status DoGemm(const se::gpu::MatrixDescriptor& lhs,
 
   if (algorithm) {
     return DoGemmWithAlgorithm<Scale, Input, Output>(
-        lhs, rhs, output, workspace, alpha, beta, stream, *algorithm,
-        compute_precision, numeric_options, profile_result, context);
+        lhs, rhs, output, workspace, alpha, beta, stream, precision_algorithm,
+        *algorithm, compute_precision, numeric_options, profile_result,
+        context);
   }
 
   if (output.batch_size != 1) {
@@ -643,7 +655,8 @@ absl::Status RunGemm(const GemmConfig& config, se::DeviceMemoryBase lhs_buffer,
 
   se::NumericOptions numeric_options{
       deterministic_ops,
-      /*allow_tf32=*/config.compute_precision <= 1};
+      /*allow_tf32=*/IsTf32Allowed(config.precision_algorithm,
+                                   config.compute_precision)};
 
   if (!algorithm) algorithm = config.algorithm;
 
@@ -667,44 +680,47 @@ absl::Status RunGemm(const GemmConfig& config, se::DeviceMemoryBase lhs_buffer,
   // graphs, so we are making sure we do not trigger it).
   if (config.alpha.real() == 0.0 && config.alpha.imag() == 0.0 &&
       config.beta == 0.0) {
-    stream->ThenMemZero(&output_buffer, output_buffer.size());
-    return absl::OkStatus();
+    return stream->MemZero(&output_buffer, output_buffer.size());
   }
 
-#define TYPED_GEMM(SCALENTYPE, ATYPE, BTYPE, CTYPE)                          \
-  if (operand_types == std::make_tuple(ATYPE, BTYPE, CTYPE)) {               \
-    using NativeScaleType =                                                  \
-        primitive_util::PrimitiveTypeToNative<SCALENTYPE>::type;             \
-    using NativeAType = primitive_util::PrimitiveTypeToNative<ATYPE>::type;  \
-    using NativeCType = primitive_util::PrimitiveTypeToNative<CTYPE>::type;  \
-    return DoGemm<NativeScaleType, NativeAType, NativeCType>(                \
-        desc.lhs, desc.rhs, desc.output, workspace_buffer,                   \
-        static_cast<NativeScaleType>(config.alpha.real()),                   \
-        static_cast<NativeScaleType>(config.beta), stream, algorithm,        \
-        config.compute_precision, numeric_options, profile_result, context); \
+#define TYPED_GEMM(SCALENTYPE, ATYPE, BTYPE, CTYPE)                         \
+  if (operand_types == std::make_tuple(ATYPE, BTYPE, CTYPE)) {              \
+    using NativeScaleType =                                                 \
+        primitive_util::PrimitiveTypeToNative<SCALENTYPE>::type;            \
+    using NativeAType = primitive_util::PrimitiveTypeToNative<ATYPE>::type; \
+    using NativeCType = primitive_util::PrimitiveTypeToNative<CTYPE>::type; \
+    return DoGemm<NativeScaleType, NativeAType, NativeCType>(               \
+        desc.lhs, desc.rhs, desc.output, workspace_buffer,                  \
+        static_cast<NativeScaleType>(config.alpha.real()),                  \
+        static_cast<NativeScaleType>(config.beta), stream,                  \
+        config.precision_algorithm, algorithm, config.compute_precision,    \
+        numeric_options, profile_result, context);                          \
   }
 
-#define TYPED_GEMM_COMPLEX(SCALENTYPE, ATYPE, BTYPE, CTYPE)                  \
-  if (operand_types == std::make_tuple(ATYPE, BTYPE, CTYPE)) {               \
-    using NativeScaleType =                                                  \
-        primitive_util::PrimitiveTypeToNative<SCALENTYPE>::type;             \
-    using NativeAType = primitive_util::PrimitiveTypeToNative<ATYPE>::type;  \
-    using NativeCType = primitive_util::PrimitiveTypeToNative<CTYPE>::type;  \
-    return DoGemm<NativeScaleType, NativeAType, NativeCType>(                \
-        desc.lhs, desc.rhs, desc.output, workspace_buffer,                   \
-        static_cast<NativeScaleType>(config.alpha),                          \
-        static_cast<NativeScaleType>(config.beta), stream, algorithm,        \
-        config.compute_precision, numeric_options, profile_result, context); \
+#define TYPED_GEMM_COMPLEX(SCALENTYPE, ATYPE, BTYPE, CTYPE)                 \
+  if (operand_types == std::make_tuple(ATYPE, BTYPE, CTYPE)) {              \
+    using NativeScaleType =                                                 \
+        primitive_util::PrimitiveTypeToNative<SCALENTYPE>::type;            \
+    using NativeAType = primitive_util::PrimitiveTypeToNative<ATYPE>::type; \
+    using NativeCType = primitive_util::PrimitiveTypeToNative<CTYPE>::type; \
+    return DoGemm<NativeScaleType, NativeAType, NativeCType>(               \
+        desc.lhs, desc.rhs, desc.output, workspace_buffer,                  \
+        static_cast<NativeScaleType>(config.alpha),                         \
+        static_cast<NativeScaleType>(config.beta), stream,                  \
+        config.precision_algorithm, algorithm, config.compute_precision,    \
+        numeric_options, profile_result, context);                          \
   }
 
   if (config.output_layout.dtype == S32) {
     if (!algorithm) algorithm = se::blas::kDefaultGemmAlgo;
+    // TODO(tdanyluk): Investigate why don't we use the actual precision (and
+    // algorithm) here? Why do we use the default?
     return DoGemmWithAlgorithm<int32_t, int8_t, int32_t>(
         desc.lhs, desc.rhs, desc.output, workspace_buffer,
         static_cast<int32_t>(config.alpha.real()),
-        static_cast<int32_t>(config.beta), stream, *algorithm,
-        se::blas::kDefaultComputePrecision, numeric_options, profile_result,
-        context);
+        static_cast<int32_t>(config.beta), stream, PrecisionConfig::ALG_UNSET,
+        *algorithm, se::blas::kDefaultComputePrecision, numeric_options,
+        profile_result, context);
   }
 
   TYPED_GEMM(F32, BF16, BF16, BF16)
@@ -765,30 +781,6 @@ absl::StatusOr<bool> EpilogueHasAuxiliaryOutput(
 }
 
 absl::StatusOr<se::gpu::BlasLt::Epilogue> AsBlasLtEpilogue(
-    mlir::lmhlo_gpu::CublasLtMatmulEpilogue epilogue) {
-  using mlir::lmhlo_gpu::CublasLtMatmulEpilogue;
-  switch (epilogue) {
-    case CublasLtMatmulEpilogue::Default:
-      return se::gpu::BlasLt::Epilogue::kDefault;
-    case CublasLtMatmulEpilogue::Relu:
-      return se::gpu::BlasLt::Epilogue::kReLU;
-    case CublasLtMatmulEpilogue::Gelu:
-      return se::gpu::BlasLt::Epilogue::kGELU;
-    case CublasLtMatmulEpilogue::GeluAux:
-      return se::gpu::BlasLt::Epilogue::kGELUWithAux;
-    case CublasLtMatmulEpilogue::Bias:
-      return se::gpu::BlasLt::Epilogue::kBias;
-    case CublasLtMatmulEpilogue::BiasRelu:
-      return se::gpu::BlasLt::Epilogue::kBiasThenReLU;
-    case CublasLtMatmulEpilogue::BiasGelu:
-      return se::gpu::BlasLt::Epilogue::kBiasThenGELU;
-    case CublasLtMatmulEpilogue::BiasGeluAux:
-      return se::gpu::BlasLt::Epilogue::kBiasThenGELUWithAux;
-  }
-  return Internal("unexpected epilogue value");
-}
-
-absl::StatusOr<se::gpu::BlasLt::Epilogue> AsBlasLtEpilogue(
     GemmBackendConfig_Epilogue epilogue) {
   switch (epilogue) {
     case GemmBackendConfig::DEFAULT:
@@ -814,7 +806,7 @@ absl::StatusOr<se::gpu::BlasLt::Epilogue> AsBlasLtEpilogue(
 
 }  // namespace gpublas_lt
 
-/*static*/ StatusOr<TritonGemmConfig> TritonGemmConfig::FromProto(
+/*static*/ absl::StatusOr<TritonGemmConfig> TritonGemmConfig::FromProto(
     const AutotuneResult::TritonGemmKey& proto) {
   // Sanity check to avoid loading incomplete data.
   TF_RET_CHECK(proto.block_m() > 0);
@@ -847,6 +839,59 @@ std::string TritonGemmConfig::ToString() const {
                       ",block_k:", block_k, ",split_k:", split_k,
                       ",num_stages:", num_stages, ",num_warps:", num_warps,
                       ",num_ctas:", num_ctas, "}");
+}
+
+absl::StatusOr<bool> IsMatrixMultiplicationTooSmallForRewriting(
+    const HloInstruction& dot, int64_t threshold) {
+  CHECK_EQ(dot.opcode(), HloOpcode::kDot);
+
+  const Shape& lhs_shape = dot.operand(0)->shape();
+  const Shape& rhs_shape = dot.operand(1)->shape();
+  const DotDimensionNumbers& dot_dims = dot.dot_dimension_numbers();
+
+  int64_t contracting_size = 1;
+  for (int64_t dim : dot_dims.lhs_contracting_dimensions()) {
+    contracting_size *= lhs_shape.dimensions(dim);
+  }
+
+  TF_ASSIGN_OR_RETURN(
+      std::vector<int64_t> lhs_non_contracting_dims,
+      GetNonContractingDims(lhs_shape, dot_dims.lhs_batch_dimensions(),
+                            dot_dims.lhs_contracting_dimensions()));
+  int64_t lhs_non_contracting_size = 1;
+  for (int64_t dim : lhs_non_contracting_dims) {
+    lhs_non_contracting_size *= lhs_shape.dimensions(dim);
+  }
+
+  TF_ASSIGN_OR_RETURN(
+      std::vector<int64_t> rhs_non_contracting_dims,
+      GetNonContractingDims(rhs_shape, dot_dims.rhs_batch_dimensions(),
+                            dot_dims.rhs_contracting_dimensions()));
+  int64_t rhs_non_contracting_size = 1;
+  for (int64_t dim : rhs_non_contracting_dims) {
+    rhs_non_contracting_size *= rhs_shape.dimensions(dim);
+  }
+
+  return (rhs_non_contracting_size + lhs_non_contracting_size) *
+             contracting_size <
+         threshold;
+}
+
+bool IsDotSupportedByClassicalEmitters(const HloInstruction& dot) {
+  if (!algorithm_util::IsSupportedByElementalIrEmitter(
+          dot.precision_config().algorithm())) {
+    return false;
+  }
+
+  // Let us be conservative and only throw float dots at the emitters.
+  switch (dot.shape().element_type()) {
+    case F16:
+    case F32:
+    case BF16:
+      return true;
+    default:
+      return false;
+  }
 }
 
 }  // namespace gpu

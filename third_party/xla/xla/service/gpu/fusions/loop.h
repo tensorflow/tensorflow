@@ -59,6 +59,9 @@ class LoopFusion : public KernelFusionEmitterBase {
   LaunchDimensionsConfig config_;
 };
 
+LaunchDimensionsConfig ComputeLoopFusionConfig(
+    const HloFusionAnalysis& analysis);
+
 }  // namespace gpu
 }  // namespace xla
 

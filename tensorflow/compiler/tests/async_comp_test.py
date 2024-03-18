@@ -51,7 +51,7 @@ def MetadataHasXlaRunOp(run_metadata):
 class AsyncCompilationTest(test.TestCase):
 
   # Asynchrobnous compilation uses the existing fallback path and existing
-  # compiler. This test only tests that asynchronus compilation is performed.
+  # compiler. This test only tests that asynchronous compilation is performed.
   @unittest.skip("b/263146341 - flaky Kokoro build.")
   def testAsyncCompilationJit(self):
 

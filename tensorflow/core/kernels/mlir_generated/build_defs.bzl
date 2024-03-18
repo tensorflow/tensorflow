@@ -96,7 +96,6 @@ _gen_mlir_op_rule = rule(
         "platform": attr.string(mandatory = True),
         "out": attr.output(mandatory = True),
     },
-    output_to_genfiles = True,
     implementation = _gen_mlir_op_impl,
 )
 

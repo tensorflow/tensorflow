@@ -36,7 +36,7 @@ using ::testing::_;
 
 class AllReduceSimplifierTest : public HloTestBase {
  public:
-  StatusOr<std::unique_ptr<HloModule>> RunPass(
+  absl::StatusOr<std::unique_ptr<HloModule>> RunPass(
       absl::string_view hlo_module, bool expect_change,
       bool reassociate_converted_ar = false) {
     TF_ASSIGN_OR_RETURN(auto module, ParseAndReturnVerifiedModule(hlo_module));
@@ -46,7 +46,7 @@ class AllReduceSimplifierTest : public HloTestBase {
       return changed.status();
     }
     EXPECT_EQ(changed.value(), expect_change);
-    return StatusOr<std::unique_ptr<HloModule>>(std::move(module));
+    return absl::StatusOr<std::unique_ptr<HloModule>>(std::move(module));
   }
 
   size_t AllReduceCount(std::unique_ptr<HloModule>& module) {

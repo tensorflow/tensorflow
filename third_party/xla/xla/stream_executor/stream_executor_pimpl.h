@@ -19,9 +19,11 @@ limitations under the License.
 #include <atomic>
 #include <cstddef>
 #include <cstdint>
+#include <initializer_list>
 #include <memory>
 #include <optional>
 #include <string>
+#include <variant>
 #include <vector>
 
 #include "absl/base/attributes.h"
@@ -29,7 +31,6 @@ limitations under the License.
 #include "absl/functional/any_invocable.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
-#include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "xla/stream_executor/allocator_stats.h"
@@ -37,7 +38,6 @@ limitations under the License.
 #include "xla/stream_executor/command_buffer.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/device_memory_allocator.h"
-#include "xla/stream_executor/device_options.h"
 #include "xla/stream_executor/dnn.h"
 #include "xla/stream_executor/event.h"
 #include "xla/stream_executor/fft.h"
@@ -47,6 +47,7 @@ limitations under the License.
 #include "xla/stream_executor/module_spec.h"
 #include "xla/stream_executor/platform.h"
 #include "tsl/platform/logging.h"
+#include "tsl/platform/status.h"
 
 namespace stream_executor {
 
@@ -70,12 +71,6 @@ class StreamExecutorInterface;
 // StreamExecutor interface should not be invoked from a signal handler.
 class StreamExecutor {
  public:
-  // Platform specific handle to the underlying resources behind an executor
-  // implementation (e.g. it gives access to CUcontext for CUDA platform).
-  struct PlatformSpecificHandle {
-    void* context = nullptr;  // will be nullptr if not supported
-  };
-
   StreamExecutor(
       const Platform* platform,
       std::unique_ptr<internal::StreamExecutorInterface> implementation,
@@ -83,13 +78,7 @@ class StreamExecutor {
 
   ~StreamExecutor();
 
-  // TODO(ezhulenev): Consider removing this platform-specific accessor and
-  // forward all users to platform-specific headers, however it requires careful
-  // build rules set up to avoid leaking even more implementation details.
-  PlatformSpecificHandle platform_specific_handle() const;
-
   absl::Status Init();
-  absl::Status Init(DeviceOptions device_options);
 
   // Returns a reference to the platform that created this executor.
   const Platform* platform() const { return platform_; }
@@ -278,22 +267,6 @@ class StreamExecutor {
   // Returns a borrowed pointer to the underlying StreamExecutor implementation.
   internal::StreamExecutorInterface* implementation();
 
-  // Creates a kernel which can be launched with `stream.ThenLaunch(...)` from a
-  // PTX (and optional CUBIN), such that the types of the arguments provided for
-  // launch would have to match types of the arguments provided at creation
-  // time. The canonical storage for both ptx and cubin_data should outlive the
-  // lifetime of the kernel.
-  template <typename... Args>
-  absl::StatusOr<TypedKernel<Args...>> CreateTypedKernel(
-      absl::string_view kernel_name, absl::string_view ptx,
-      absl::Span<const uint8_t> cubin_data);
-
-  // Creates a kernel which can be launched with `stream.ThenLaunch(...)` from
-  // an in-process symbol pointer.
-  template <typename... Args>
-  absl::StatusOr<TypedKernel<Args...>> CreateTypedKernel(
-      absl::string_view kernel_name, void* symbol);
-
   // Warning: use Stream::ThenLaunch instead, this method is not for general
   // consumption. However, this is the only way to launch a kernel for which
   // the type signature is only known at runtime; say, if an application
@@ -365,15 +338,16 @@ class StreamExecutor {
   // Performs linear search over alive GPU streams.
   Stream* FindAllocatedStream(void* gpu_stream);
 
+  // Creates and initializes a Stream.
+  absl::StatusOr<std::unique_ptr<Stream>> CreateStream(
+      std::optional<std::variant<StreamPriority, int>> priority = std::nullopt);
+  // Deallocates a region of host memory allocated by HostMemoryAllocate().
+  void HostMemoryDeallocate(void* data, uint64_t size);
+
  private:
   friend class Event;
   friend class Stream;
-  template <typename... Params>
-  friend class TypedKernel;
   friend class HostMemoryAllocation;
-
-  // Deallocates a region of host memory allocated by HostMemoryAllocate().
-  void HostMemoryDeallocate(void* data, uint64_t size);
 
   // Synchronously allocates size bytes on the underlying platform and returns
   // a DeviceMemoryBase representing that allocation. In the case of failure,
@@ -547,30 +521,6 @@ class ScopedModuleHandle {
 ////////////
 // Inlines
 
-template <typename... Args>
-inline absl::StatusOr<TypedKernel<Args...>> StreamExecutor::CreateTypedKernel(
-    absl::string_view kernel_name, absl::string_view ptx,
-    absl::Span<const uint8_t> cubin_data) {
-  MultiKernelLoaderSpec loader_spec(TypedKernel<Args...>::kNumberOfParameters);
-  loader_spec.AddCudaPtxInMemory(ptx, kernel_name);
-
-  if (!cubin_data.empty()) {
-    loader_spec.AddCudaCubinInMemory(
-        reinterpret_cast<const char*>(cubin_data.data()), kernel_name);
-  }
-
-  return TypedKernel<Args...>::Create(this, loader_spec);
-}
-
-template <typename... Args>
-inline absl::StatusOr<TypedKernel<Args...>> StreamExecutor::CreateTypedKernel(
-    absl::string_view kernel_name, void* symbol) {
-  MultiKernelLoaderSpec loader_spec(TypedKernel<Args...>::kNumberOfParameters);
-  loader_spec.AddInProcessSymbol(symbol, kernel_name);
-
-  return TypedKernel<Args...>::Create(this, loader_spec);
-}
-
 template <typename T>
 inline DeviceMemory<T> StreamExecutor::AllocateArray(uint64_t element_count,
                                                      int64_t memory_space) {
@@ -591,8 +541,7 @@ ScopedDeviceMemory<ElemT>::ScopedDeviceMemory(
     : ScopedDeviceMemory(parent, parent->AllocateArray<ElemT>(values.size())) {
   if (ptr() != nullptr) {
     std::vector<ElemT> local(values);
-    if (!parent->SynchronousMemcpy(ptr(), const_cast<const ElemT*>(&local[0]),
-                                   ptr()->size())) {
+    if (!parent->SynchronousMemcpy(ptr(), local.data(), ptr()->size())) {
       TF_CHECK_OK(Free());
     }
   }

@@ -788,10 +788,8 @@ Status ProcessBatch(int64_t batch_size, int64_t num_elements,
 }
 
 Status CopyBatch(CopyBatchParams params,
-                 const std::vector<std::vector<Tensor>>& batch_elements,
-                 bool parallel_copy,
-                 std::function<Status()> allocation_callback,
-                 std::vector<Tensor>* out_tensors) {
+                 std::vector<std::vector<Tensor>>&& batch_elements,
+                 bool parallel_copy, std::vector<Tensor>* out_tensors) {
   const size_t num_tuple_components = batch_elements.at(0).size();
   out_tensors->reserve(num_tuple_components);
   const int64_t num_batch_elements = batch_elements.size();
@@ -808,9 +806,6 @@ Status CopyBatch(CopyBatchParams params,
           "Failed to allocate memory for the batch of component ",
           component_index);
     }
-  }
-  if (allocation_callback) {
-    TF_RETURN_IF_ERROR(allocation_callback());
   }
   for (size_t component_index = 0; component_index < num_tuple_components;
        ++component_index) {
@@ -1019,7 +1014,7 @@ REGISTER_DATASET_EXPERIMENT("data_transfer", RandomJobSamplePercentage<0>,
                             AllTasks);
 REGISTER_DATASET_EXPERIMENT("file_locality", RandomJobSamplePercentage<0>,
                             AllTasks);
-REGISTER_DATASET_EXPERIMENT("file_locality_v2", RandomJobSamplePercentage<50>,
+REGISTER_DATASET_EXPERIMENT("file_locality_v2", RandomJobSamplePercentage<0>,
                             AllTasks);
 REGISTER_DATASET_EXPERIMENT("no_compression", RandomJobSamplePercentage<0>,
                             AllTasks);
@@ -1028,9 +1023,9 @@ REGISTER_DATASET_EXPERIMENT("no_compression_v2", RandomJobSamplePercentage<50>,
 REGISTER_DATASET_EXPERIMENT("inject_io_prefetch", RandomJobSamplePercentage<0>,
                             AllTasks);
 REGISTER_DATASET_EXPERIMENT("reduce_array_record_dataset_memory_usage",
-                            RandomJobSamplePercentage<0>, AllTasks);
-REGISTER_DATASET_EXPERIMENT("map_fusion", RandomJobSamplePercentage<5>,
-                            IndependentHostTasks);
+                            RandomJobSamplePercentage<50>, AllTasks);
+REGISTER_DATASET_EXPERIMENT("map_fusion", RandomJobSamplePercentage<50>,
+                            AllTasks);
 }  // namespace
 }  // namespace data
 }  // namespace tensorflow

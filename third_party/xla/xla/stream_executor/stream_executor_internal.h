@@ -27,7 +27,6 @@ limitations under the License.
 #include <optional>
 #include <string>
 #include <variant>
-#include <vector>
 
 #include "absl/functional/any_invocable.h"
 #include "absl/status/status.h"
@@ -38,7 +37,6 @@ limitations under the License.
 #include "xla/stream_executor/command_buffer.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/device_memory.h"
-#include "xla/stream_executor/device_options.h"
 #include "xla/stream_executor/dnn.h"
 #include "xla/stream_executor/event.h"
 #include "xla/stream_executor/fft.h"
@@ -48,7 +46,6 @@ limitations under the License.
 #include "xla/stream_executor/module_spec.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/platform/port.h"
-#include "tsl/platform/errors.h"
 
 namespace stream_executor {
 
@@ -129,8 +126,7 @@ class StreamExecutorInterface {
   virtual StreamExecutorInterface* GetUnderlyingExecutor() { return this; }
 
   // See the StreamExecutor interface for comments on the same-named methods.
-  virtual absl::Status Init(int device_ordinal,
-                            DeviceOptions device_options) = 0;
+  virtual absl::Status Init(int device_ordinal) = 0;
 
   // This value is cached by the wrapping StreamExecutor instance, so it's OK if
   // this function is slow.
@@ -221,10 +217,11 @@ class StreamExecutorInterface {
   }
   virtual absl::Status Memset32(Stream* stream, DeviceMemoryBase* location,
                                 uint32_t pattern, uint64_t size) = 0;
-  virtual bool Memcpy(Stream* stream, void* host_dst,
-                      const DeviceMemoryBase& gpu_src, uint64_t size) = 0;
-  virtual bool Memcpy(Stream* stream, DeviceMemoryBase* gpu_dst,
-                      const void* host_src, uint64_t size) = 0;
+  virtual absl::Status Memcpy(Stream* stream, void* host_dst,
+                              const DeviceMemoryBase& gpu_src,
+                              uint64_t size) = 0;
+  virtual absl::Status Memcpy(Stream* stream, DeviceMemoryBase* gpu_dst,
+                              const void* host_src, uint64_t size) = 0;
   virtual bool MemcpyDeviceToDevice(Stream* stream, DeviceMemoryBase* gpu_dst,
                                     const DeviceMemoryBase& gpu_src,
                                     uint64_t size) = 0;
@@ -307,12 +304,6 @@ class StreamExecutorInterface {
       CommandBuffer::Mode mode) {
     return absl::UnimplementedError("Command buffers are not implemented");
   }
-
-  // Returns a pointer to a platform specific context associated with this
-  // object if it exists, or nullptr otherwise. This is available via
-  // StreamExecutor public API as StreamExecuto::PlatformSpecificHandle, and
-  // should not be accessed directly outside of a StreamExecutor package.
-  virtual void* platform_specific_context() { return nullptr; }
 
   // Return allocator statistics.
   virtual std::optional<AllocatorStats> GetAllocatorStats() {

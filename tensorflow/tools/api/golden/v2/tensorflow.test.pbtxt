@@ -53,6 +53,10 @@ tf_module {
     argspec: "args=[], varargs=None, keywords=None, defaults=None"
   }
   member_method {
+    name: "is_cpu_target_available"
+    argspec: "args=[\'target\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
     name: "is_gpu_available"
     argspec: "args=[\'cuda_only\', \'min_cuda_compute_capability\'], varargs=None, keywords=None, defaults=[\'False\', \'None\'], "
   }

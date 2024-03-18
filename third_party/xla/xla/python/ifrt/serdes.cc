@@ -24,6 +24,7 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "xla/python/ifrt/serdes.pb.h"
@@ -87,7 +88,8 @@ absl::StatusOr<Serialized> Serialize(Serializable& serializable) {
     auto it = r->type_id_to_serdes.find(serializable.dynamicClassID());
     if (it == r->type_id_to_serdes.end()) {
       return absl::UnimplementedError(
-          "Serializable has no associated SerDes implementation");
+          "Serialize call failed. Serializable has no associated SerDes "
+          "implementation");
     }
     serdes = it->second;
   }
@@ -107,8 +109,9 @@ absl::StatusOr<std::unique_ptr<Serializable>> Deserialize(
     absl::MutexLock l(&r->mu);
     auto it = r->name_to_serdes.find(serialized.type_name());
     if (it == r->name_to_serdes.end()) {
-      return absl::UnimplementedError(
-          "Serializable has no associated SerDes implementation");
+      return absl::UnimplementedError(absl::StrCat(
+          "Deserialize call failed. Serializable has no associated SerDes ",
+          "implementation. type_name: ", serialized.type_name()));
     }
     serdes = it->second;
   }

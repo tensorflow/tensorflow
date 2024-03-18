@@ -25,7 +25,7 @@ limitations under the License.
 #include "mlir/Support/TypeID.h"  // from @llvm-project
 #include "stablehlo/dialect/StablehloOps.h"  // from @stablehlo  // IWYU pragma: keep
 #include "tensorflow/compiler/mlir/lite/quantization/ir/QuantOps.h"  // IWYU pragma: keep
-#include "tensorflow/compiler/mlir/lite/quantization/quantization_config.h"
+#include "tensorflow/compiler/mlir/quantization/common/quantization_lib/quantization_config.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/passes/passes.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/quantization_config.pb.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/cc/run_passes.h"
@@ -54,8 +54,10 @@ class QuantizeCompositeFunctionsPass
       QuantizeCompositeFunctionsPass>::QuantizeCompositeFunctionsPassBase;
 
   explicit QuantizeCompositeFunctionsPass(
-      bool enable_per_channel_quantized_weight) {
+      const bool enable_per_channel_quantized_weight,
+      const bool enable_weight_only) {
     enable_per_channel_quantized_weight_ = enable_per_channel_quantized_weight;
+    enable_weight_only_ = enable_weight_only;
   }
 
  private:
@@ -65,24 +67,32 @@ class QuantizeCompositeFunctionsPass
 void QuantizeCompositeFunctionsPass::runOnOperation() {
   MLIRContext& ctx = getContext();
 
-  QuantizationSpecs quant_specs;
-  quant_specs.inference_type = tensorflow::DT_QINT8;
-
   PassManager pm(&ctx);
   // Intermediate output from QuantizePass will have quantized ops
   // (XlaCallModuleOps) with quantized input and output types, which are not
   // allowed in the TF dialect.
   pm.enableVerifier(false);
+
   PrepareQuantizePassOptions options;
   options.enable_per_channel_quantized_weight_ =
       enable_per_channel_quantized_weight_;
   // Change this to user-given bit width once we have custom configuration.
   options.bit_width_ = 8;
-  pm.addNestedPass<func::FuncOp>(createPrepareQuantizePass(options));
+
+  if (enable_weight_only_) {
+    pm.addNestedPass<func::FuncOp>(createPrepareQuantizeHybridPass());
+  }
+  // PrepareQuantizePass uses SymbolTable to fetch relevant GEMM ops for
+  // determining quantization attributes. This requires module-level context.
+  pm.addPass(createPrepareQuantizePass(options));
+
+  QuantizePassOptions quantize_options;
+  quantize_options.enable_per_channel_quantized_weight_ =
+      enable_per_channel_quantized_weight_;
+  quantize_options.enable_weight_only_ = enable_weight_only_;
   // QuantizePass modifies FuncOps referenced outside of its given scope
   // and therefore requires a module-level context.
-  pm.addPass(
-      CreateQuantizePass(quant_specs, enable_per_channel_quantized_weight_));
+  pm.addPass(createQuantizePass(quantize_options));
   pm.addNestedPass<func::FuncOp>(createPostQuantizePass());
 
   ModuleOp module_op = getOperation();
@@ -93,12 +103,5 @@ void QuantizeCompositeFunctionsPass::runOnOperation() {
   }
 }
 }  // namespace
-
-// Creates an instance of the TensorFlow dialect QuantizeCompositeFunctionsPass.
-std::unique_ptr<OperationPass<ModuleOp>> CreateQuantizeCompositeFunctionsPass(
-    bool enable_per_channel_quantized_weight) {
-  return std::make_unique<QuantizeCompositeFunctionsPass>(
-      enable_per_channel_quantized_weight);
-}
 
 }  // namespace mlir::quant::stablehlo

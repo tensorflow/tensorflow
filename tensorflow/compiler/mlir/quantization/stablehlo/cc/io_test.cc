@@ -71,12 +71,12 @@ class TestEnvBrokenFileSystem : public tsl::Env {
 
   absl::Status LoadDynamicLibrary(const char* library_filename,
                                   void** handle) override {
-    return tsl::OkStatus();
+    return absl::OkStatus();
   }
 
   absl::Status GetSymbolFromLibrary(void* handle, const char* symbol_name,
                                     void** symbol) override {
-    return tsl::OkStatus();
+    return absl::OkStatus();
   }
 
   tsl::string FormatLibraryFileName(const tsl::string& name,

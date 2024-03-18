@@ -28,8 +28,8 @@ limitations under the License.
 
 namespace xla {
 
-StatusOr<bool> RunFileCheck(const std::string& input,
-                            absl::string_view pattern) {
+absl::StatusOr<bool> RunFileCheck(const std::string& input,
+                                  absl::string_view pattern) {
   // Generate an input file for the FileCheck pattern.
   std::string pattern_path;
   auto env = tsl::Env::Default();
@@ -41,8 +41,8 @@ StatusOr<bool> RunFileCheck(const std::string& input,
   return RunFileCheckWithPatternFile(input, pattern_path);
 }
 
-StatusOr<bool> RunFileCheckWithPatternFile(const std::string& input,
-                                           const std::string& pattern_file) {
+absl::StatusOr<bool> RunFileCheckWithPatternFile(
+    const std::string& input, const std::string& pattern_file) {
   // Invoke FileCheck to check whether input matches `pattern`.
   std::string file_check_path = tsl::GetDataDependencyFilepath(
       tsl::testing::kIsOpenSource
@@ -50,9 +50,23 @@ StatusOr<bool> RunFileCheckWithPatternFile(const std::string& input,
           : tsl::io::JoinPath("llvm", "llvm-project", "llvm", "FileCheck"));
 
   tsl::SubProcess file_check_process;
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+  std::string file_check_prefixes;
+#if GOOGLE_CUDA
+  file_check_prefixes = "--check-prefixes=CHECK,CHECK-PTX";
+#endif  // GOOGLE_CUDA
+#if TENSORFLOW_USE_ROCM
+  file_check_prefixes = "--check-prefixes=CHECK,CHECK-GCN";
+#endif  // TENSORFLOW_USE_ROCM
+  file_check_process.SetProgram(
+      file_check_path,
+      {file_check_path, "-v", "-dump-input=fail", "--dump-input-filter=all",
+       file_check_prefixes, "--allow-unused-prefixes", pattern_file});
+#else  // !(GOOGLE_CUDA || TENSORFLOW_USE_ROCM)
   file_check_process.SetProgram(file_check_path,
                                 {file_check_path, "-v", "-dump-input=fail",
                                  "--dump-input-filter=all", pattern_file});
+#endif
   file_check_process.SetChannelAction(tsl::CHAN_STDIN, tsl::ACTION_PIPE);
   file_check_process.SetChannelAction(tsl::CHAN_STDERR, tsl::ACTION_PIPE);
   if (!file_check_process.Start()) {

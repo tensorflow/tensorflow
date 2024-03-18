@@ -194,6 +194,8 @@ Status MergeBundles(Env* env, gtl::ArraySlice<tstring> prefixes,
                     absl::string_view merged_prefix,
                     bool allow_missing_files = false);
 
+class BundleCache;
+
 // On construction, silently attempts to read the metadata associated with
 // "prefix".  If caller intends to call any function afterwards, "status()"
 // must be checked.
@@ -202,6 +204,17 @@ class BundleReader {
  public:
   BundleReader(Env* const env, absl::string_view prefix,
                bool enable_multi_threading_for_testing = false);
+
+  struct Options {
+    // If supplied, a shared cache that is used to read tensor data. If not
+    // supplied, a BundleCache private to the BundleReader is used.
+    BundleCache* cache = nullptr;
+
+    // For tests only.
+    bool enable_multi_threading_for_testing = false;
+  };
+  BundleReader(Env* env, absl::string_view prefix, Options options);
+
   ~BundleReader();
 
   // Is ok() iff the reader construction is successful (completed the read of
@@ -319,13 +332,16 @@ class BundleReader {
 
   Env* env_;  // Not owned.
   const std::string prefix_;
+  std::unique_ptr<BundleCache> owned_cache_;  // may be null
+  BundleCache* cache_;  // Not owned, or owned_cache_.get()
 
   Status status_;
   RandomAccessFile* metadata_;  // Owned.
   table::Table* table_;
   table::Cache* index_cache_;
   table::Iterator* iter_;
-  // Owned the InputBuffer objects and their underlying RandomAccessFile's.
+
+  // Owned InputBuffer objects. cache_ owns the underlying RandomAccessFiles.
   std::unordered_map<int32_t, io::InputBuffer*> data_;
 
   // Maps each partitioned tensor's key to its stored slices (represented in a
@@ -373,6 +389,34 @@ Status BundleReader::SortForSequentialAccess(
   });
   return OkStatus();
 }
+
+// BundleCache provides cached opening of files.
+// Used internally by BundleReader.
+// Safe for concurrent uses by multiple threads and BundleReaders.
+class BundleCache {
+ public:
+  explicit BundleCache(Env* env);
+
+  // Get the underlying file object for fname. The result will remain valid
+  // while the BundleCache lives.
+  Status GetFile(const std::string& fname, RandomAccessFile** file);
+
+ private:
+  // State for each opened file (opened on first read).
+  struct FileState {
+    absl::once_flag once;  // Ensures file is opened exactly once.
+
+    std::unique_ptr<RandomAccessFile> file;
+    Status open_status;  // Records any error encountered on open
+  };
+
+  FileState* EnsureOpened(std::string name);
+
+  Env* const env_;
+  absl::Mutex mu_;
+  absl::flat_hash_map<std::string, std::unique_ptr<FileState>> opened_files_
+      TF_GUARDED_BY(mu_);
+};
 
 }  // namespace tensorflow
 

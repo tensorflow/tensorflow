@@ -58,7 +58,7 @@ namespace cpu {
 
 namespace runtime = ::xla::runtime;
 
-StatusOr<std::unique_ptr<CpuExecutable>> CpuExecutable::Create(
+absl::StatusOr<std::unique_ptr<CpuExecutable>> CpuExecutable::Create(
     std::unique_ptr<SimpleOrcJIT> jit,
     std::unique_ptr<const BufferAssignment> assignment,
     std::unique_ptr<HloModule> hlo_module,
@@ -91,7 +91,7 @@ StatusOr<std::unique_ptr<CpuExecutable>> CpuExecutable::Create(
   return executable;
 }
 
-StatusOr<std::unique_ptr<CpuExecutable>> CpuExecutable::Create(
+absl::StatusOr<std::unique_ptr<CpuExecutable>> CpuExecutable::Create(
     std::unique_ptr<HloModule> hlo_module,
     std::unique_ptr<HloProfilePrinterData> hlo_profile_printer_data,
     std::unique_ptr<HloProfileIndexMap> hlo_profile_index_map,
@@ -127,7 +127,7 @@ CpuExecutable::~CpuExecutable() {
   }
 }
 
-static StatusOr<MaybeOwningDeviceMemory> MemoryForAllocation(
+static absl::StatusOr<MaybeOwningDeviceMemory> MemoryForAllocation(
     const BufferAllocation& allocation,
     absl::Span<ExecutionInput const> arguments,
     se::DeviceMemoryAllocator* memory_allocator, int device_ordinal) {
@@ -163,9 +163,10 @@ static StatusOr<MaybeOwningDeviceMemory> MemoryForAllocation(
   return MaybeOwningDeviceMemory{std::move(out)};
 }
 
-StatusOr<std::vector<MaybeOwningDeviceMemory>> CpuExecutable::CreateBufferTable(
-    se::DeviceMemoryAllocator* memory_allocator, int device_ordinal,
-    absl::Span<ExecutionInput const> arguments) {
+absl::StatusOr<std::vector<MaybeOwningDeviceMemory>>
+CpuExecutable::CreateBufferTable(se::DeviceMemoryAllocator* memory_allocator,
+                                 int device_ordinal,
+                                 absl::Span<ExecutionInput const> arguments) {
   std::vector<MaybeOwningDeviceMemory> buffers(
       assignment_->Allocations().size());
   VLOG(3) << "Allocating " << assignment_->Allocations().size()
@@ -268,7 +269,7 @@ Status CpuExecutable::ExecuteComputeFunction(
   return OkStatus();
 }
 
-StatusOr<std::unique_ptr<Executable>> CpuExecutable::LoadFromObjFile(
+absl::StatusOr<std::unique_ptr<Executable>> CpuExecutable::LoadFromObjFile(
     std::unique_ptr<HloModule> hlo_module, absl::string_view obj_file,
     absl::string_view mlir_module,
     std::unique_ptr<BufferAssignment> buffer_assignment,
@@ -332,7 +333,7 @@ StatusOr<std::unique_ptr<Executable>> CpuExecutable::LoadFromObjFile(
                                std::move(xla_runtime_executable));
 }
 
-StatusOr<ExecutionOutput> CpuExecutable::CreateResultShapedBuffer(
+absl::StatusOr<ExecutionOutput> CpuExecutable::CreateResultShapedBuffer(
     const ServiceExecutableRunOptions* run_options,
     absl::Span<MaybeOwningDeviceMemory> buffers,
     absl::Span<ExecutionInput> arguments) {
@@ -436,7 +437,7 @@ StatusOr<ExecutionOutput> CpuExecutable::CreateResultShapedBuffer(
 // which should point to a runtime::MemrefType.
 // Note: 'descriptor_index' and 'operand_index' are just used for error
 // reporting.
-static StatusOr<runtime::MemrefDesc> BufferToMemref(
+static absl::StatusOr<runtime::MemrefDesc> BufferToMemref(
     const BufferDesc& descriptor, const runtime::Type& operand_type,
     size_t descriptor_index, size_t operand_index) {
   auto* memref = llvm::dyn_cast<runtime::MemrefType>(&operand_type);
@@ -511,7 +512,7 @@ Status XlaRuntimeCpuExecutable::Execute(
     size_t operand_index = arguments.size() + 1;
     const runtime::Type* operand_type = signature.operand(operand_index);
 
-    StatusOr<runtime::MemrefDesc> memref = BufferToMemref(
+    absl::StatusOr<runtime::MemrefDesc> memref = BufferToMemref(
         descriptor, *operand_type, descriptor_index, operand_index);
     if (!memref.ok()) {
       return memref.status();
@@ -588,7 +589,7 @@ Status XlaRuntimeCpuExecutable::Execute(
   return OkStatus();
 }
 
-StatusOr<ExecutionOutput> CpuExecutable::ExecuteAsyncOnStream(
+absl::StatusOr<ExecutionOutput> CpuExecutable::ExecuteAsyncOnStream(
     const ServiceExecutableRunOptions* run_options,
     std::vector<ExecutionInput> arguments,
     HloExecutionProfile* hlo_execution_profile) {

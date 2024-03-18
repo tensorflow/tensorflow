@@ -228,17 +228,17 @@ class SpmdPartitioner : public HloModulePass {
         collective_ops_creator_(std::move(collective_ops_creator)) {}
   absl::string_view name() const override { return "spmd-partitioning"; }
   using HloPassInterface::Run;
-  StatusOr<bool> Run(
+  absl::StatusOr<bool> Run(
       HloModule* module,
       const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 
   // Transforms the given computation with SPMD instructions, replacing it with
   // a new computation.
-  StatusOr<bool> PartitionComputation(HloComputation* computation,
-                                      const HloSharding& root_sharding,
-                                      int64_t* next_channel_id,
-                                      SpmdLogger* logger,
-                                      const CallGraph& call_graph);
+  absl::StatusOr<bool> PartitionComputation(HloComputation* computation,
+                                            const HloSharding& root_sharding,
+                                            int64_t* next_channel_id,
+                                            SpmdLogger* logger,
+                                            const CallGraph& call_graph);
 
   // Creates all-gather(s) based on HloSharding. Can be overridden to customize.
   // The default uses a single all-gather even if there are multiple sharded
@@ -562,7 +562,7 @@ class SpmdPartitioningVisitor : public DfsHloVisitorWithDefault {
   // Implementation of dot partitioning given DotGeneralDimsMapping.
   Status HandleDotHelper(HloInstruction* hlo,
                          const DotConvDimsMapping& dims_mapping,
-                         absl::FunctionRef<StatusOr<HloInstruction*>(
+                         absl::FunctionRef<absl::StatusOr<HloInstruction*>(
                              HloInstruction*, HloInstruction*, SpmdBuilder*,
                              const Window& conv_window)>
                              create_sharded_dot);
@@ -611,9 +611,9 @@ class SpmdPartitioningVisitor : public DfsHloVisitorWithDefault {
 
   SpmdBuilder* builder() { return &b_; }
 
-  virtual StatusOr<bool> DoPartition(HloComputation* computation,
-                                     const HloSharding& root_sharding,
-                                     const SpmdPartitionerOptions& options);
+  virtual absl::StatusOr<bool> DoPartition(
+      HloComputation* computation, const HloSharding& root_sharding,
+      const SpmdPartitionerOptions& options);
 
   virtual double GetComputationTimeInMilliSec(HloInstruction* hlo) {
     return 0.0;

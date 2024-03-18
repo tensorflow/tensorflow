@@ -44,6 +44,11 @@ class HloModuleGroup {
   HloModuleGroup(absl::string_view name,
                  std::vector<std::unique_ptr<HloModule>>&& modules);
 
+  HloModuleGroup(const HloModuleGroup& other) = delete;
+  HloModuleGroup(HloModuleGroup&& other) = default;
+  HloModuleGroup& operator=(const HloModuleGroup& other) = delete;
+  HloModuleGroup& operator=(HloModuleGroup&& other) = default;
+
   // Returns the modules contained in the group.
   const std::vector<HloModule*>& modules() const { return module_ptrs_; }
 

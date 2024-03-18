@@ -258,7 +258,7 @@ TEST(OutfeedReceiverTest, DifferentShapeForConsumerIdError) {
   const Shape shape1 = ShapeUtil::MakeShape(U32, {128});
   XlaOp data1 = Iota(&builder, shape1, 0);
   // A different shape for the same consumer ID.
-  StatusOr<XlaOp> send1 = outfeed_receiver->AddOutfeedToBuilder(
+  absl::StatusOr<XlaOp> send1 = outfeed_receiver->AddOutfeedToBuilder(
       &builder, send0, consumer_id0, {data1}, 0);
   EXPECT_FALSE(send1.ok());
   EXPECT_THAT(send1.status().ToString(),
@@ -283,7 +283,7 @@ TEST(OutfeedReceiverTest, InvalidConsumerIdError) {
   XlaBuilder builder("execute_test_outfeed");
   const Shape shape0 = ShapeUtil::MakeShape(U32, {16});
   XlaOp data0 = Iota(&builder, shape0, 0);
-  StatusOr<XlaOp> send0 = outfeed_receiver->AddOutfeedToBuilder(
+  absl::StatusOr<XlaOp> send0 = outfeed_receiver->AddOutfeedToBuilder(
       &builder, CreateToken(&builder), 0, {data0}, 0);
 
   EXPECT_FALSE(send0.ok());

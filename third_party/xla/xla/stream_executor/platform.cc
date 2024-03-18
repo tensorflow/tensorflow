@@ -19,7 +19,6 @@ limitations under the License.
 #include <string>
 
 #include "absl/status/status.h"
-#include "xla/stream_executor/device_options.h"
 
 namespace stream_executor {
 
@@ -34,11 +33,10 @@ std::string StreamPriorityToString(StreamPriority priority) {
   }
 }
 
-StreamExecutorConfig::StreamExecutorConfig()
-    : ordinal(-1), device_options(DeviceOptions::Default()) {}
+StreamExecutorConfig::StreamExecutorConfig() : ordinal(-1) {}
 
 StreamExecutorConfig::StreamExecutorConfig(int ordinal_in)
-    : ordinal(ordinal_in), device_options(DeviceOptions::Default()) {}
+    : ordinal(ordinal_in) {}
 
 Platform::~Platform() {}
 

@@ -211,7 +211,7 @@ TEST_F(FunctionalHloRunnerTest, CanCompileWithoutHavingEnoughGpus) {
     std::string after_opt_hlo;
     TF_ASSERT_OK(
         tsl::ReadFileToString(env, after_opt_hlo_paths[0], &after_opt_hlo));
-    StatusOr<bool> file_check_result = RunFileCheck(after_opt_hlo, R"(
+    absl::StatusOr<bool> file_check_result = RunFileCheck(after_opt_hlo, R"(
       // CHECK: param = f32[16,1]{1,0}
       // CHECK: add = f32[16,1]{1,0}
     )");

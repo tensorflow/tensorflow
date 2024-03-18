@@ -181,6 +181,7 @@ class ShapeVerifier : public DfsHloVisitor {
   Status HandleAllReduceStart(HloInstruction* hlo) override;
   Status HandleAllReduceDone(HloInstruction* hlo) override;
   Status HandleAllToAll(HloInstruction* hlo) override;
+  Status HandleCollectiveBroadcast(HloInstruction* hlo) override;
   Status HandleCollectivePermute(HloInstruction* hlo) override;
   Status HandleCollectivePermuteStart(HloInstruction* hlo) override;
   Status HandleCollectivePermuteDone(HloInstruction* hlo) override;
@@ -254,7 +255,7 @@ class ShapeVerifier : public DfsHloVisitor {
 
   // Overload which takes a StatusOr to reduce boilerplate in the caller.
   Status CheckShape(const HloInstruction* instruction,
-                    const StatusOr<Shape>& inferred_shape_status);
+                    const absl::StatusOr<Shape>& inferred_shape_status);
 
   static Status CheckParameterCount(const HloInstruction* calling_instruction,
                                     const HloComputation* computation,
@@ -375,7 +376,7 @@ class HloVerifier : public HloModulePass {
   // Never returns true; no instructions are ever modified by this pass.
   using HloPassInterface::Run;
   using HloPassInterface::RunOnModuleGroup;
-  StatusOr<bool> Run(
+  absl::StatusOr<bool> Run(
       HloModule* module,
       const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 

@@ -21,8 +21,9 @@ limitations under the License.
 
 #include <gtest/gtest.h>
 #include "absl/time/clock.h"
-#include "tensorflow/core/common_runtime/serving_device_selector.h"
-#include "tensorflow/core/common_runtime/serving_device_selector_policies.h"
+#include "tensorflow/core/common_runtime/gpu/gpu_scheduling_metrics_storage.h"
+#include "tsl/framework/serving_device_selector.h"
+#include "tsl/framework/serving_device_selector_policies.h"
 
 namespace tensorflow {
 namespace gpu {
@@ -52,10 +53,11 @@ namespace {
 TEST(GpuServingDeviceSelector, Basic) {
   // Create a selector with two devices and round-robin policy.
   GpuServingDeviceSelector selector(/*num_devices=*/2,
-                                    std::make_unique<RoundRobinPolicy>());
+                                    std::make_unique<tsl::RoundRobinPolicy>());
 
   const std::string program_fingerprint = "TensorFlow";
-  DeviceReservation reservation = selector.ReserveDevice(program_fingerprint);
+  tsl::DeviceReservation reservation =
+      selector.ReserveDevice(program_fingerprint);
   EXPECT_EQ(reservation.device_index(), 0);
 
   reservation = selector.ReserveDevice(program_fingerprint);
@@ -67,7 +69,7 @@ TEST(GpuServingDeviceSelector, Basic) {
 
 TEST(GpuServingDeviceSelector, DefaultPolicyOnlyEnqueueCall) {
   ServingDeviceSelectorTestHelper helper;
-  auto policy = std::make_unique<RoundRobinPolicy>();
+  auto policy = std::make_unique<tsl::RoundRobinPolicy>();
   auto serving_device_selector =
       std::make_unique<tensorflow::gpu::GpuServingDeviceSelector>(
           4, std::move(policy));
@@ -82,39 +84,55 @@ TEST(GpuServingDeviceSelector, DefaultPolicyOnlyEnqueueCall) {
   serving_device_selector->Enqueue(1, "4ms");
   serving_device_selector->Enqueue(0, "2ms");
   helper.ElapseNs(2e6);
-  serving_device_selector->Completed(0);
+  serving_device_selector->Completed(0, false);
   helper.ElapseNs(2e6);
-  serving_device_selector->Completed(0);
-  serving_device_selector->Completed(1);
+  serving_device_selector->Completed(0, false);
+  serving_device_selector->Completed(1, false);
   helper.ElapseNs(4e6);
-  serving_device_selector->Completed(1);
-  serving_device_selector->Completed(2);
+  serving_device_selector->Completed(1, false);
+  serving_device_selector->Completed(2, false);
   helper.ElapseNs(8e6);
-  serving_device_selector->Completed(2);
-  serving_device_selector->Completed(3);
+  serving_device_selector->Completed(2, false);
+  serving_device_selector->Completed(3, false);
   helper.ElapseNs(16e6);
-  serving_device_selector->Completed(3);
+  serving_device_selector->Completed(3, false);
 
   serving_device_selector->Enqueue(3, "16ms");
-  EXPECT_EQ(serving_device_selector->TotalGpuLoadNsForTest(), 16e6);
+  EXPECT_EQ(
+      GpuSchedulingMetricsStorage::GetGlobalStorage().TotalGpuLoadNs().Get(),
+      16e6);
   serving_device_selector->Enqueue(2, "8ms");
-  EXPECT_EQ(serving_device_selector->TotalGpuLoadNsForTest(), 24e6);
+  EXPECT_EQ(
+      GpuSchedulingMetricsStorage::GetGlobalStorage().TotalGpuLoadNs().Get(),
+      24e6);
   serving_device_selector->Enqueue(1, "4ms");
-  EXPECT_EQ(serving_device_selector->TotalGpuLoadNsForTest(), 28e6);
+  EXPECT_EQ(
+      GpuSchedulingMetricsStorage::GetGlobalStorage().TotalGpuLoadNs().Get(),
+      28e6);
   serving_device_selector->Enqueue(0, "2ms");
-  EXPECT_EQ(serving_device_selector->TotalGpuLoadNsForTest(), 30e6);
+  EXPECT_EQ(
+      GpuSchedulingMetricsStorage::GetGlobalStorage().TotalGpuLoadNs().Get(),
+      30e6);
   helper.ElapseNs(2e6);
-  serving_device_selector->Completed(0);
-  EXPECT_EQ(serving_device_selector->TotalGpuLoadNsForTest(), 22e6);
+  serving_device_selector->Completed(0, false);
+  EXPECT_EQ(
+      GpuSchedulingMetricsStorage::GetGlobalStorage().TotalGpuLoadNs().Get(),
+      22e6);
   helper.ElapseNs(2e6);
-  serving_device_selector->Completed(1);
-  EXPECT_EQ(serving_device_selector->TotalGpuLoadNsForTest(), 16e6);
+  serving_device_selector->Completed(1, false);
+  EXPECT_EQ(
+      GpuSchedulingMetricsStorage::GetGlobalStorage().TotalGpuLoadNs().Get(),
+      16e6);
   helper.ElapseNs(4e6);
-  serving_device_selector->Completed(2);
-  EXPECT_EQ(serving_device_selector->TotalGpuLoadNsForTest(), 8e6);
+  serving_device_selector->Completed(2, false);
+  EXPECT_EQ(
+      GpuSchedulingMetricsStorage::GetGlobalStorage().TotalGpuLoadNs().Get(),
+      8e6);
   helper.ElapseNs(8e6);
-  serving_device_selector->Completed(3);
-  EXPECT_EQ(serving_device_selector->TotalGpuLoadNsForTest(), 0e6);
+  serving_device_selector->Completed(3, false);
+  EXPECT_EQ(
+      GpuSchedulingMetricsStorage::GetGlobalStorage().TotalGpuLoadNs().Get(),
+      0e6);
 }
 
 }  // namespace

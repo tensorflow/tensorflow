@@ -40,7 +40,7 @@ TEST(NcclCliqueKeyTest, IsSubsetOf) {
   EXPECT_FALSE(key0.IsSubsetOf(key3));
 }
 
-TEST(NcclCliqueKeyTest, LargerCliqueGoFirst) {
+TEST(NcclCliqueKeyTest, Compare) {
   GlobalDeviceId id0 = GlobalDeviceId(0);
   GlobalDeviceId id1 = GlobalDeviceId(1);
   GlobalDeviceId id2 = GlobalDeviceId(2);

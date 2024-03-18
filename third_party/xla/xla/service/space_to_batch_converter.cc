@@ -118,11 +118,12 @@ class ConvolutionVisitor {
 
   // Propagates space-to-batch on the op, and returns a bool that indicates if
   // the users of the op need to be propagated through.
-  StatusOr<bool> Propagate(HloInstruction* consumer, HloInstruction* producer);
+  absl::StatusOr<bool> Propagate(HloInstruction* consumer,
+                                 HloInstruction* producer);
 
   // Splits the given spatial dimension on the activations and returns the
   // new instructions, and the dimension permutation of the new shape.
-  StatusOr<std::pair<HloInstruction*, std::vector<int64_t>>> SplitSpace(
+  absl::StatusOr<std::pair<HloInstruction*, std::vector<int64_t>>> SplitSpace(
       HloInstruction* activations, ConvolutionDimensionNumbers& dim_numbers,
       int64_t& activations_batch_dim, int64_t high_padding, int64_t low_padding,
       int64_t spatial_split_size, int64_t num_splits,
@@ -130,7 +131,7 @@ class ConvolutionVisitor {
       bool is_backprop = false, bool is_rhs = false);
 
   // Performs the actual dimension splitting.
-  StatusOr<HloInstruction*> PerformSplitSpace(
+  absl::StatusOr<HloInstruction*> PerformSplitSpace(
       HloInstruction* activations,
       absl::Span<const int64_t> spatial_dimensions_to_split,
       int64_t activations_batch_dim, int64_t spatial_split_size,
@@ -140,22 +141,22 @@ class ConvolutionVisitor {
   // merges the batch(es).
   // The input activations dimensions are ... B, B0, S0, B1, S1, ... Bn, Sn, ...
   // The output dimensions will be ..., B, S0, S1,.. Sn, ...
-  StatusOr<HloInstruction*> TransposeAndMergeBatch(
+  absl::StatusOr<HloInstruction*> TransposeAndMergeBatch(
       HloInstruction* activations,
       absl::Span<const int64_t> final_split_spatial_dim_positioning,
       int64_t activations_batch_dim, int64_t old_batch_size);
 
   // Helper function for the SplitSpace function above. Handles padding and
   // reshaping to generate space-to-batched shape.
-  StatusOr<HloInstruction*> PadAndSplitSpace(
+  absl::StatusOr<HloInstruction*> PadAndSplitSpace(
       HloInstruction* activations,
       absl::Span<const int64_t> spatial_dimensions_to_split,
       int64_t activations_batch_dim, int64_t high_padding, int64_t low_padding,
       int64_t spatial_split_size, int64_t num_splits);
 
   // Perform space-to-batch propagation on constants.
-  StatusOr<HloInstruction*> PropagateOnConstant(HloInstruction* consumer,
-                                                HloInstruction* producer);
+  absl::StatusOr<HloInstruction*> PropagateOnConstant(HloInstruction* consumer,
+                                                      HloInstruction* producer);
 
   // Perform space-to-batch propagation on the convolution. Assumes the
   // activations were already space-to-batched.
@@ -189,7 +190,7 @@ class ConvolutionVisitor {
 
   // Generates masked output with valid data. This is useful when larger shapes
   // are generated due to space-to-batch.
-  StatusOr<HloInstruction*> SelectValidPortion(
+  absl::StatusOr<HloInstruction*> SelectValidPortion(
       HloInstruction* new_instr, HloInstruction* old_instr,
       HloInstruction* select_val, int64_t new_batch_dim,
       absl::Span<const int64_t> new_space_dims, int64_t old_batch_dim,
@@ -201,7 +202,7 @@ class ConvolutionVisitor {
   };
 
   // Performs tranposition so that space dimension follows the batch dimension.
-  StatusOr<SpaceNextToBatchDetails> BringSpaceNextToBatch(
+  absl::StatusOr<SpaceNextToBatchDetails> BringSpaceNextToBatch(
       HloInstruction* activations, ConvolutionDimensionNumbers& dim_numbers,
       int64_t& activations_batch_dim,
       std::vector<int64_t>* spatial_dimensions_to_split,
@@ -209,29 +210,29 @@ class ConvolutionVisitor {
 
   // Decreases the spatial dimension size in an already space-to-batched shape
   // so that the new size is new_spatial_dim_size.
-  StatusOr<HloInstruction*> ChangeSpatialSizeOnSpaceToBatchedShape(
+  absl::StatusOr<HloInstruction*> ChangeSpatialSizeOnSpaceToBatchedShape(
       HloInstruction* activations, int64_t batch_dimension,
       int64_t old_batch_size,
       absl::Span<const int64_t> spatial_dimensions_to_split,
       int64_t new_spatial_dim_size, bool increase_spatial_size = false);
 
   // Turns B, S0, S1, ..., Sn into B, B0, S0, B1, S1,... Bn, Sn.
-  StatusOr<HloInstruction*> SplitAndTransposeMergedBatch(
+  absl::StatusOr<HloInstruction*> SplitAndTransposeMergedBatch(
       HloInstruction* activations, int64_t batch_dimension,
       int64_t old_batch_size, absl::Span<const int64_t> spatial_dimensions);
 
   // Function that converts spaced-to-batch shape back to the original.
-  StatusOr<HloInstruction*> BatchToSpace(HloInstruction* old_instr);
+  absl::StatusOr<HloInstruction*> BatchToSpace(HloInstruction* old_instr);
 
   // Duplicates elements at boundaries.
-  StatusOr<HloInstruction*> HaloDuplicateWithSlice(
+  absl::StatusOr<HloInstruction*> HaloDuplicateWithSlice(
       HloInstruction* activations,
       absl::Span<const int64_t> spatial_dimensions_to_split,
       int64_t activations_batch_dim, int64_t low_padding, int64_t halo_size,
       HloInstruction* pad_val = nullptr);
 
   // Runs the visitor on a computation.
-  StatusOr<bool> Run();
+  absl::StatusOr<bool> Run();
 
   // Returns whether any convolution ops were rewritten.
   const bool changed() const { return changed_; }
@@ -507,7 +508,7 @@ bool ConvolutionVisitor::IsThisBackPropFilterConv(HloInstruction* convolution) {
   return true;
 }
 
-StatusOr<HloInstruction*> ConvolutionVisitor::HaloDuplicateWithSlice(
+absl::StatusOr<HloInstruction*> ConvolutionVisitor::HaloDuplicateWithSlice(
     HloInstruction* activations,
     absl::Span<const int64_t> spatial_dimensions_to_split,
     int64_t activations_batch_dim, int64_t low_padding, int64_t halo_size,
@@ -636,7 +637,7 @@ StatusOr<HloInstruction*> ConvolutionVisitor::HaloDuplicateWithSlice(
   return activations;
 }
 
-StatusOr<ConvolutionVisitor::SpaceNextToBatchDetails>
+absl::StatusOr<ConvolutionVisitor::SpaceNextToBatchDetails>
 ConvolutionVisitor::BringSpaceNextToBatch(
     HloInstruction* activations, ConvolutionDimensionNumbers& dim_numbers,
     int64_t& activations_batch_dim,
@@ -741,7 +742,8 @@ ConvolutionVisitor::BringSpaceNextToBatch(
   return SpaceNextToBatchDetails{activations, transpose_dims};
 }
 
-StatusOr<HloInstruction*> ConvolutionVisitor::SplitAndTransposeMergedBatch(
+absl::StatusOr<HloInstruction*>
+ConvolutionVisitor::SplitAndTransposeMergedBatch(
     HloInstruction* activations, int64_t batch_dimension,
     int64_t old_batch_size, absl::Span<const int64_t> spatial_dimensions) {
   CHECK_EQ(batch_dimension + 1, spatial_dimensions[0]);
@@ -792,7 +794,7 @@ StatusOr<HloInstruction*> ConvolutionVisitor::SplitAndTransposeMergedBatch(
   return batch_split_activations;
 }
 
-StatusOr<HloInstruction*>
+absl::StatusOr<HloInstruction*>
 ConvolutionVisitor::ChangeSpatialSizeOnSpaceToBatchedShape(
     HloInstruction* activations, int64_t batch_dimension,
     int64_t old_batch_size, absl::Span<const int64_t> spatial_dimensions,
@@ -881,7 +883,7 @@ ConvolutionVisitor::ChangeSpatialSizeOnSpaceToBatchedShape(
   return activations_new;
 }
 
-StatusOr<bool> ConvolutionVisitor::Run() {
+absl::StatusOr<bool> ConvolutionVisitor::Run() {
   for (auto conv : conv_visitor_list_) {
     // If we expect to see an unpropagatable op, space-to-batch may not be
     // beneficial.
@@ -1770,8 +1772,8 @@ bool ConvolutionVisitor::SupportedOpForPropagation(HloInstruction* consumer,
   return false;
 }
 
-StatusOr<bool> ConvolutionVisitor::Propagate(HloInstruction* consumer,
-                                             HloInstruction* producer) {
+absl::StatusOr<bool> ConvolutionVisitor::Propagate(HloInstruction* consumer,
+                                                   HloInstruction* producer) {
   auto computation = consumer->parent();
   if (IsTrivialElementwise(consumer)) {
     auto dim_map_val = instr_to_dim_map_[producer];
@@ -2325,7 +2327,7 @@ StatusOr<bool> ConvolutionVisitor::Propagate(HloInstruction* consumer,
   return true;
 }
 
-StatusOr<HloInstruction*> ConvolutionVisitor::SelectValidPortion(
+absl::StatusOr<HloInstruction*> ConvolutionVisitor::SelectValidPortion(
     HloInstruction* new_instr, HloInstruction* old_instr,
     HloInstruction* select_val, int64_t new_batch_dim,
     absl::Span<const int64_t> new_space_dims, int64_t old_batch_dim,
@@ -2407,7 +2409,7 @@ StatusOr<HloInstruction*> ConvolutionVisitor::SelectValidPortion(
   return new_instr;
 }
 
-StatusOr<HloInstruction*> ConvolutionVisitor::BatchToSpace(
+absl::StatusOr<HloInstruction*> ConvolutionVisitor::BatchToSpace(
     HloInstruction* old_instr) {
   if (batch_to_space_map_.count(old_instr)) {
     CHECK_NE(batch_to_space_map_[old_instr], nullptr);
@@ -2885,7 +2887,7 @@ Status ConvolutionVisitor::PropagateOnSlice(HloInstruction* slice) {
   return OkStatus();
 }
 
-StatusOr<HloInstruction*> ConvolutionVisitor::TransposeAndMergeBatch(
+absl::StatusOr<HloInstruction*> ConvolutionVisitor::TransposeAndMergeBatch(
     HloInstruction* activations,
     absl::Span<const int64_t> final_split_spatial_dim_positioning,
     int64_t activations_batch_dim, int64_t old_batch_size) {
@@ -2927,7 +2929,7 @@ StatusOr<HloInstruction*> ConvolutionVisitor::TransposeAndMergeBatch(
   return batch_collapsed_reshape;
 }
 
-StatusOr<HloInstruction*> ConvolutionVisitor::PerformSplitSpace(
+absl::StatusOr<HloInstruction*> ConvolutionVisitor::PerformSplitSpace(
     HloInstruction* activations,
     absl::Span<const int64_t> spatial_dimensions_to_split,
     int64_t activations_batch_dim, int64_t spatial_split_size,
@@ -2973,7 +2975,7 @@ StatusOr<HloInstruction*> ConvolutionVisitor::PerformSplitSpace(
       activations_batch_dim, old_batch_size);
 }
 
-StatusOr<HloInstruction*> ConvolutionVisitor::PadAndSplitSpace(
+absl::StatusOr<HloInstruction*> ConvolutionVisitor::PadAndSplitSpace(
     HloInstruction* activations,
     absl::Span<const int64_t> spatial_dimensions_to_split,
     int64_t activations_batch_dim, int64_t high_padding, int64_t low_padding,
@@ -3007,7 +3009,7 @@ StatusOr<HloInstruction*> ConvolutionVisitor::PadAndSplitSpace(
                            num_splits);
 }
 
-StatusOr<std::pair<HloInstruction*, std::vector<int64_t>>>
+absl::StatusOr<std::pair<HloInstruction*, std::vector<int64_t>>>
 ConvolutionVisitor::SplitSpace(
     HloInstruction* activations, ConvolutionDimensionNumbers& dim_numbers,
     int64_t& activations_batch_dim, int64_t high_padding, int64_t low_padding,
@@ -3029,7 +3031,7 @@ ConvolutionVisitor::SplitSpace(
   return std::make_pair(new_activations, transpose_dims);
 }
 
-StatusOr<HloInstruction*> ConvolutionVisitor::PropagateOnConstant(
+absl::StatusOr<HloInstruction*> ConvolutionVisitor::PropagateOnConstant(
     HloInstruction* consumer, HloInstruction* producer) {
   CHECK(old_to_new_instrs_.contains(producer));
   HloInstruction* new_producer = old_to_new_instrs_[producer];
@@ -3920,7 +3922,7 @@ Status ConvolutionVisitor::PerformSpaceToBatchOnConvolution(
 
 }  // namespace
 
-StatusOr<bool> SpaceToBatchConverter::Run(
+absl::StatusOr<bool> SpaceToBatchConverter::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   XLA_VLOG_LINES(

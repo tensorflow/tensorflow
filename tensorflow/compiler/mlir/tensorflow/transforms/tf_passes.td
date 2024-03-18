@@ -851,48 +851,48 @@ def DecomposeReduceDatasetPass : Pass<"tf-decompose-reduce-dataset", "mlir::func
         f = @__reduce_func_1, f._tf_data_function = true,
         output_shapes = [#tf_type.shape<>],
         output_types = [i64], use_inter_op_parallelism = true, _xla_compile_device_type="TPU"} :
-	  (tensor<!tf_type.variant>, tensor<i64>) -> (tensor<i64>)
+          (tensor<!tf_type.variant>, tensor<i64>) -> (tensor<i64>)
       func.return
-   }
-   ```
+    }
+    ```
 
-   with the following reduction function:
+    with the following reduction function:
 
-   ```mlir
-   func.func private @__reduce_func_1(%arg0: tensor<i64> {tf._user_specified_name = "args_0"},
-     %arg1: tensor<32xf32> {tf._user_specified_name = "args_1"}) -> (tensor<i64>)
-     attributes {tf._tf_data_function = true, tf.signature.is_stateful} {
-       %0 = "tf.JustPretend"(%arg1) : (tensor<32xf32>) -> (tensor<i64>)
-       func.return %0 : tensor<i64>
-   }
-   ```
+    ```mlir
+    func.func private @__reduce_func_1(%arg0: tensor<i64> {tf._user_specified_name = "args_0"},
+      %arg1: tensor<32xf32> {tf._user_specified_name = "args_1"}) -> (tensor<i64>)
+      attributes {tf._tf_data_function = true, tf.signature.is_stateful} {
+        %0 = "tf.JustPretend"(%arg1) : (tensor<32xf32>) -> (tensor<i64>)
+        func.return %0 : tensor<i64>
+    }
+    ```
 
-   will be transformed into:
+    will be transformed into:
 
-   ```mlir
-   func.func @single_state_single_dataset_type_no_arguments(%arg0: tensor<!tf_type.variant>, %arg1: tensor<i64>) {
-    %0 = "tf.AnonymousIteratorV3"() {output_shapes = [#tf_type.shape<32>], output_types = [f32]} : () -> tensor<!tf_type.resource>
-    "tf.MakeIterator"(%arg0, %0) : (tensor<!tf_type.variant>, tensor<!tf_type.resource>) -> ()
-    %cst = "tf.Const"() {value = dense<true> : tensor<i1>} : () -> tensor<i1>
-    %1:2 = "tf.WhileRegion"(%cst, %arg1) ({
-    ^bb0(%arg2: tensor<i1>, %arg3: tensor<i64>):
-      "tf.Yield"(%arg2) : (tensor<i1>) -> ()
-    }, {
-    ^bb0(%arg2: tensor<i1>, %arg3: tensor<i64>):
-      %2 = "tf.IteratorGetNextAsOptional"(%0) {output_shapes = [#tf_type.shape<32>], output_types = [f32]} : (tensor<!tf_type.resource>) -> tensor<!tf_type.variant>
-      %3 = "tf.OptionalHasValue"(%2) : (tensor<!tf_type.variant>) -> tensor<i1>
-      %4 = "tf.IfRegion"(%3) ({
-        %5 = "tf.OptionalGetValue"(%2) : (tensor<!tf_type.variant>) -> tensor<32xf32>
-        %6 = func.call @__reduce_func_1(%arg3, %5) {_xla_compile_device_type = "TPU"} : (tensor<i64>, tensor<32xf32>) -> tensor<i64>
-        "tf.Yield"(%6) : (tensor<i64>) -> ()
+    ```mlir
+    func.func @single_state_single_dataset_type_no_arguments(%arg0: tensor<!tf_type.variant>, %arg1: tensor<i64>) {
+      %0 = "tf.AnonymousIteratorV3"() {output_shapes = [#tf_type.shape<32>], output_types = [f32]} : () -> tensor<!tf_type.resource>
+      "tf.MakeIterator"(%arg0, %0) : (tensor<!tf_type.variant>, tensor<!tf_type.resource>) -> ()
+      %cst = "tf.Const"() {value = dense<true> : tensor<i1>} : () -> tensor<i1>
+      %1:2 = "tf.WhileRegion"(%cst, %arg1) ({
+      ^bb0(%arg2: tensor<i1>, %arg3: tensor<i64>):
+        "tf.Yield"(%arg2) : (tensor<i1>) -> ()
       }, {
-        "tf.Yield"(%arg3) : (tensor<i64>) -> ()
-      }) {_lower_using_switch_merge = true, is_stateless = false} : (tensor<i1>) -> tensor<i64>
-      "tf.Yield"(%3, %4) : (tensor<i1>, tensor<i64>) -> ()
-    }) {_lower_using_switch_merge = true, is_stateless = false, parallel_iterations = 10 : i64} : (tensor<i1>, tensor<i64>) -> (tensor<i1>, tensor<i64>)
-    return
-  }
-  ```
+      ^bb0(%arg2: tensor<i1>, %arg3: tensor<i64>):
+        %2 = "tf.IteratorGetNextAsOptional"(%0) {output_shapes = [#tf_type.shape<32>], output_types = [f32]} : (tensor<!tf_type.resource>) -> tensor<!tf_type.variant>
+        %3 = "tf.OptionalHasValue"(%2) : (tensor<!tf_type.variant>) -> tensor<i1>
+        %4 = "tf.IfRegion"(%3) ({
+          %5 = "tf.OptionalGetValue"(%2) : (tensor<!tf_type.variant>) -> tensor<32xf32>
+          %6 = func.call @__reduce_func_1(%arg3, %5) {_xla_compile_device_type = "TPU"} : (tensor<i64>, tensor<32xf32>) -> tensor<i64>
+          "tf.Yield"(%6) : (tensor<i64>) -> ()
+        }, {
+          "tf.Yield"(%arg3) : (tensor<i64>) -> ()
+        }) {_lower_using_switch_merge = true, is_stateless = false} : (tensor<i1>) -> tensor<i64>
+        "tf.Yield"(%3, %4) : (tensor<i1>, tensor<i64>) -> ()
+      }) {_lower_using_switch_merge = true, is_stateless = false, parallel_iterations = 10 : i64} : (tensor<i1>, tensor<i64>) -> (tensor<i1>, tensor<i64>)
+      return
+    }
+    ```
   }];
 
   let constructor = "TF::CreateDecomposeReduceDatasetPass()";
@@ -2206,14 +2206,14 @@ def HoistLoopInvariantPass : Pass<"tf-hoist-loop-invariant", "mlir::func::FuncOp
       brevity)
       ```mlir
         func.func @hoist_loop_invariant(%arg0, %arg1) {
-	  %var = "tf.VarHandleOp"() {container="", shared_name="var_name", device = "/device:CPU:0"}
+          %var = "tf.VarHandleOp"() {container="", shared_name="var_name", device = "/device:CPU:0"}
           %results:2 = "tf.WhileRegion"(%arg0, %arg1) ({
           ^bb0(%arg2, %arg3):
             %0 = "tf.OpA"() {is_stateless = true}
             "tf.Yield"(%0)
           }, {
           ^bb0(%arg2, %arg3):
-	    %1 = "tf.ReadVariableOp"(%var)
+            %1 = "tf.ReadVariableOp"(%var)
             %2 = "tf.OpB"(%1) {is_stateless = true}
             %3 = "tf.OpC"(%arg2, %2) {is_stateless = true}
             %4 = "tf.OpD"(%arg3, %2) {is_stateless = true}
@@ -2225,8 +2225,8 @@ def HoistLoopInvariantPass : Pass<"tf-hoist-loop-invariant", "mlir::func::FuncOp
       would be transformed to
       ```mlir
        func.func @hoist_loop_invariant(%arg0, %arg1) {
-	  %var = "tf.VarHandleOp"() {container="", shared_name="var_name", device = "/device:CPU:0"}
-	  %1 = "tf.ReadVariableOp"(%var)
+          %var = "tf.VarHandleOp"() {container="", shared_name="var_name", device = "/device:CPU:0"}
+          %1 = "tf.ReadVariableOp"(%var)
           %2 = "tf.OpB"(%1) {is_stateless = true}
           %results:2 = "tf.WhileRegion"(%arg0, %arg1) ({
           ^bb0(%arg2, %arg3):

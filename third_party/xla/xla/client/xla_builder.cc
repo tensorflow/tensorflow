@@ -837,6 +837,69 @@ StatusOr<XlaComputation> XlaBuilder::Build(int64_t root_id,
   return OkStatus();
 }
 
+XlaOp XlaBuilder::DynamicBroadcastInDim(
+    const XlaOp operand, const XlaOp output_dimensions,
+    absl::Span<const int64_t> broadcast_dimensions, const Shape& output_shape) {
+  return ReportErrorOrReturn([&]() -> absl::StatusOr<XlaOp> {
+    TF_ASSIGN_OR_RETURN(const Shape* operand_shape, GetShapePtr(operand));
+    TF_ASSIGN_OR_RETURN(const Shape* output_dimensions_shape,
+                        GetShapePtr(output_dimensions));
+
+    if (!output_dimensions_shape->IsInteger()) {
+      return InvalidArgument("output_dimensions must be an integer type %s",
+                             output_dimensions_shape->ToString());
+    }
+
+    if (output_dimensions_shape->rank() != 1) {
+      return InvalidArgument("output_dimensions must be rank 1 but got rank %d",
+                             output_dimensions_shape->rank());
+    }
+
+    int64_t operand_rank = operand_shape->rank();
+    int64_t result_rank = output_shape.rank();
+    int64_t broadcast_dimensions_size = broadcast_dimensions.size();
+    if (broadcast_dimensions_size != operand_rank) {
+      return InvalidArgument(
+          "broadcast_dimensions size (%d) does not match operand rank (%d)",
+          broadcast_dimensions_size, operand_rank);
+    }
+
+    if (result_rank < operand_rank) {
+      return InvalidArgument("result rank (%d) is less than operand rank (%d)",
+                             result_rank, operand_rank);
+    }
+
+    for (int64_t i = 0; i != broadcast_dimensions_size; ++i) {
+      int64_t dim_index = broadcast_dimensions[i];
+      if (dim_index < 0 || dim_index >= result_rank) {
+        return InvalidArgument(
+            "broadcast_dimensions contains invalid value %d for result with "
+            "rank %d",
+            dim_index, result_rank);
+      }
+
+      int64_t dim_size = operand_shape->dimensions(i);
+      int64_t result_dim_size = output_shape.dimensions(dim_index);
+
+      if (dim_size != 1 && dim_size != result_dim_size &&
+          dim_size != Shape::kUnboundedSize) {
+        return InvalidArgument(
+            "size of operand dimension %d (%d) is not compatible with size of "
+            "result dimension %d (%d)",
+            i, dim_size, dim_index, result_dim_size);
+      }
+    }
+
+    return xla::CustomCall(
+        operand.builder(), "mhlo.dynamic_broadcast_in_dim",
+        /*operands=*/{operand, output_dimensions},
+        /*shape=*/output_shape,
+        /*opaque=*/
+        absl::StrCat("{broadcast_dimensions=[",
+                     absl::StrJoin(broadcast_dimensions, ","), "]}"));
+  });
+}
+
 StatusOr<XlaOp> XlaBuilder::InDimBroadcast(
     const Shape& shape, XlaOp operand,
     absl::Span<const int64_t> broadcast_dimensions) {
@@ -943,10 +1006,14 @@ namespace {
 StatusOr<XlaOp> BroadcastToTargetRank(
     XlaOp origin, const Shape& origin_shape, const Shape& target_shape,
     absl::Span<const int64_t> broadcast_dimensions) {
+  if (ShapeUtil::IsScalar(origin_shape)) {
+    return origin;
+  }
+
   const int64_t origin_rank = origin_shape.rank();
   const int64_t target_rank = target_shape.rank();
 
-  // Identity op if ranks match, shold never be larger than target.
+  // Identity op if ranks match, should never be larger than target.
   if (origin_rank >= target_rank) {
     return origin;
   }
@@ -962,26 +1029,105 @@ StatusOr<XlaOp> BroadcastToTargetRank(
   return xla::BroadcastInDim(origin, target_size, broadcast_dimensions);
 }
 
-// For ternary ops, only scalar broadcasting is supported.
-// Return the non-scalar shape that all scalars should be broadcasted too
-// Returns status if non-scalar operands do not match.
-StatusOr<std::optional<Shape>> InferScalarBroadcastShape(
-    const Shape* lhs_shape, const Shape* rhs_shape, const Shape* ehs_shape) {
-  // The shape is not scalar, it may have unbounded/bounded dynamic
-  // dimensions.
-  std::optional<Shape> broadcasted_shape;
-  for (const Shape* shape : {lhs_shape, rhs_shape, ehs_shape}) {
-    if (!shape->IsArray() || shape->rank() == 0) continue;
-    if (!broadcasted_shape.has_value()) {
-      broadcasted_shape = ShapeUtil::MakeStaticShape(*shape);
-    }
-    // TODO(jpienaar): The case where we need to compute the broadcasted
-    // shape by considering multiple of the shapes is not implemented.
-    // Consider reusing getBroadcastedType from mlir/Dialect/Traits.h.
-    TF_RET_CHECK(ShapeUtil::SameDimensions(broadcasted_shape.value(), *shape))
-        << "Unimplemented implicit broadcast.";
+// Extract the `num_dims` counts of dimension sizes from the `op`. First,
+// prepend `pad_count` of 1's reshaped to `tensor<1xi32>` to `op_dims`. If size
+// is static, append them at `op_dims`. If size is dynamic, get the dimension
+// size, reshape them to `tensor<1xi32>`, and append them at `op_dims`.
+absl::StatusOr<std::vector<XlaOp>> ExtractDimensionSizesAndPadOnesToLeft(
+    XlaBuilder* builder, XlaOp op, size_t num_dims, int pad_count) {
+  TF_ASSIGN_OR_RETURN(const Shape* op_shape, builder->GetShapePtr(op));
+  std::vector<XlaOp> op_dims(
+      pad_count, xla::ConstantR1(builder, absl::Span<const int32_t>({1})));
+  for (size_t i = 0; i < num_dims; i++) {
+    op_dims.push_back(
+        op_shape->is_static_dimension(i)
+            ? ConstantR1(builder,
+                         absl::Span<const int32_t>(
+                             {static_cast<int32_t>(op_shape->dimensions(i))}))
+            : xla::Reshape(xla::GetDimensionSize(op, i), {1}));
   }
-  return broadcasted_shape;
+  return op_dims;
+}
+
+// Broadcast `scalar` to `output_shape` with all shapes static at runtime. If a
+// dimension of `output_shape` is dynamic, get the dimension size of the dynamic
+// dimension from `output` and reshape them to `tensor<1xi32>`. This is used as
+// one of the inputs to DynamicBroadcastInDim.
+absl::StatusOr<XlaOp> BroadcastScalarToOutputShapeWithUnbounded(
+    XlaBuilder* builder, XlaOp scalar, XlaOp output,
+    const Shape& output_shape) {
+  TF_ASSIGN_OR_RETURN(const Shape* scalar_shape, builder->GetShapePtr(scalar));
+  CHECK(ShapeUtil::IsScalar(*scalar_shape));
+
+  std::vector<XlaOp> output_sizes(output_shape.rank());
+  for (size_t i = 0; i < output_shape.rank(); i++) {
+    output_sizes[i] =
+        output_shape.is_static_dimension(i)
+            ? ConstantR1(builder,
+                         absl::Span<const int32_t>({static_cast<int32_t>(
+                             output_shape.dimensions(i))}))
+            : xla::Reshape(xla::GetDimensionSize(output, i), {1});
+  }
+  return xla::DynamicBroadcastInDim(
+      scalar, /*output_dimensions=*/ConcatInDim(builder, output_sizes, 0), {},
+      output_shape);
+}
+
+// The shape of `operand` is broadcasted to the values in `output_dimensions` if
+// the dimension size is degenerate (dimension size is 1).
+absl::StatusOr<XlaOp> DegenerateBroadcastWithUnbounded(
+    XlaBuilder* builder, XlaOp operand, XlaOp output_dimensions,
+    const Shape& output_shape) {
+  TF_ASSIGN_OR_RETURN(const Shape* operand_shape,
+                      builder->GetShapePtr(operand));
+
+  std::vector<int64_t> broadcast_dimensions(operand_shape->rank());
+  std::iota(broadcast_dimensions.begin(), broadcast_dimensions.end(),
+            output_shape.rank() - operand_shape->rank());
+
+  return xla::DynamicBroadcastInDim(operand, output_dimensions,
+                                    broadcast_dimensions, output_shape);
+}
+
+// Helper struct to store the result of `BroadcastToOutputShapeWithUnbounded`.
+struct UnboundedBroadcastResult {
+  XlaOp lhs;
+  XlaOp rhs;
+};
+
+// Broadcast `lhs` and `rhs` to `output_shape` with unbounded dimensions where
+// `lhs` or `rhs` are possibly different ranks than `output_shape`.
+absl::StatusOr<UnboundedBroadcastResult> BroadcastToOutputShapeWithUnbounded(
+    XlaBuilder* builder, XlaOp lhs, const Shape& lhs_shape, XlaOp rhs,
+    const Shape rhs_shape, const Shape& output_shape,
+    absl::Span<const int64_t> broadcast_dimensions) {
+  const int64_t lhs_rank = lhs_shape.rank();
+  const int64_t rhs_rank = rhs_shape.rank();
+  const int64_t output_rank = output_shape.rank();
+
+  // If the rank of the op is less than the output rank, pad the dimension
+  // sizes of the op with 1's to match the output rank.
+  TF_ASSIGN_OR_RETURN(std::vector<XlaOp> lhs_dims,
+                      ExtractDimensionSizesAndPadOnesToLeft(
+                          builder, lhs, lhs_rank, output_rank - lhs_rank));
+  TF_ASSIGN_OR_RETURN(std::vector<XlaOp> rhs_dims,
+                      ExtractDimensionSizesAndPadOnesToLeft(
+                          builder, rhs, rhs_rank, output_rank - rhs_rank));
+
+  // The output dimensions of the dynamic broadcast is the maximum of the input
+  // shapes. The `output_dimensions` refer to the runtime shape and should not
+  // contain any dynamic sizes at run time.
+  XlaOp output_dimensions =
+      Max(ConcatInDim(builder, lhs_dims, 0), ConcatInDim(builder, rhs_dims, 0));
+
+  // Broadcast `lhs` and `rhs` to `output_shape`.
+  TF_ASSIGN_OR_RETURN(XlaOp lhs_result,
+                      DegenerateBroadcastWithUnbounded(
+                          builder, lhs, output_dimensions, output_shape));
+  TF_ASSIGN_OR_RETURN(XlaOp rhs_result,
+                      DegenerateBroadcastWithUnbounded(
+                          builder, rhs, output_dimensions, output_shape));
+  return UnboundedBroadcastResult{lhs_result, rhs_result};
 }
 
 }  // namespace
@@ -997,19 +1143,24 @@ XlaOp XlaBuilder::BinaryOp(HloOpcode binop, XlaOp lhs, XlaOp rhs,
         Shape shape, ShapeInference::InferBinaryOpShape(
                          binop, *lhs_shape, *rhs_shape, broadcast_dimensions));
 
-    TF_ASSIGN_OR_RETURN(
-        XlaOp updated_lhs,
-        BroadcastToTargetRank(lhs, *lhs_shape, shape, broadcast_dimensions));
-    TF_ASSIGN_OR_RETURN(
-        XlaOp updated_rhs,
-        BroadcastToTargetRank(rhs, *rhs_shape, shape, broadcast_dimensions));
-
-    TF_ASSIGN_OR_RETURN(const Shape* updated_lhs_shape,
-                        GetShapePtr(updated_lhs));
-    TF_ASSIGN_OR_RETURN(const Shape* updated_rhs_shape,
-                        GetShapePtr(updated_rhs));
-    if (!updated_lhs_shape->is_unbounded_dynamic() &&
-        !updated_rhs_shape->is_unbounded_dynamic()) {
+    XlaOp updated_lhs = lhs;
+    XlaOp updated_rhs = rhs;
+    if (!lhs_shape->is_unbounded_dynamic() &&
+        !rhs_shape->is_unbounded_dynamic()) {
+      if (lhs_shape->rank() < shape.rank()) {
+        TF_ASSIGN_OR_RETURN(updated_lhs,
+                            BroadcastToTargetRank(lhs, *lhs_shape, shape,
+                                                  broadcast_dimensions));
+      }
+      if (rhs_shape->rank() < shape.rank()) {
+        TF_ASSIGN_OR_RETURN(updated_rhs,
+                            BroadcastToTargetRank(rhs, *rhs_shape, shape,
+                                                  broadcast_dimensions));
+      }
+      TF_ASSIGN_OR_RETURN(const Shape* updated_lhs_shape,
+                          GetShapePtr(updated_lhs));
+      TF_ASSIGN_OR_RETURN(const Shape* updated_rhs_shape,
+                          GetShapePtr(updated_rhs));
       if (!ShapeUtil::SameDimensions(shape, *updated_lhs_shape)) {
         TF_ASSIGN_OR_RETURN(updated_lhs,
                             AddBroadcastSequence(shape, updated_lhs));
@@ -1017,6 +1168,26 @@ XlaOp XlaBuilder::BinaryOp(HloOpcode binop, XlaOp lhs, XlaOp rhs,
       if (!ShapeUtil::SameDimensions(shape, *updated_rhs_shape)) {
         TF_ASSIGN_OR_RETURN(updated_rhs,
                             AddBroadcastSequence(shape, updated_rhs));
+      }
+    } else {
+      if (ShapeUtil::IsScalar(*lhs_shape) || ShapeUtil::IsScalar(*rhs_shape)) {
+        if (ShapeUtil::IsScalar(*lhs_shape)) {
+          TF_ASSIGN_OR_RETURN(updated_lhs,
+                              BroadcastScalarToOutputShapeWithUnbounded(
+                                  this, lhs, rhs, *rhs_shape));
+        }
+        if (ShapeUtil::IsScalar(*rhs_shape)) {
+          TF_ASSIGN_OR_RETURN(updated_rhs,
+                              BroadcastScalarToOutputShapeWithUnbounded(
+                                  this, rhs, lhs, *lhs_shape));
+        }
+      } else {
+        TF_ASSIGN_OR_RETURN(UnboundedBroadcastResult broadcast_result,
+                            BroadcastToOutputShapeWithUnbounded(
+                                this, lhs, *lhs_shape, rhs, *rhs_shape, shape,
+                                broadcast_dimensions));
+        updated_lhs = broadcast_result.lhs;
+        updated_rhs = broadcast_result.rhs;
       }
     }
 
@@ -1068,11 +1239,32 @@ StatusOr<XlaOp> XlaBuilder::Compare(const Shape& shape, XlaOp lhs, XlaOp rhs,
   return AddInstruction(std::move(instr), HloOpcode::kCompare, {lhs, rhs});
 }
 
+absl::StatusOr<XlaOp> XlaBuilder::BroadcastScalarToOutputShape(XlaOp scalar,
+                                                               XlaOp output) {
+  TF_ASSIGN_OR_RETURN(const Shape* scalar_shape, GetShapePtr(scalar));
+  TF_ASSIGN_OR_RETURN(const Shape* output_shape, GetShapePtr(output));
+
+  XlaOp updated_output = scalar;
+  if (output_shape->is_unbounded_dynamic()) {
+    Shape output_shape_copy = *output_shape;
+    output_shape_copy.set_element_type(scalar_shape->element_type());
+    TF_ASSIGN_OR_RETURN(updated_output,
+                        BroadcastScalarToOutputShapeWithUnbounded(
+                            this, scalar, output, output_shape_copy));
+    return updated_output;
+  }
+
+  TF_ASSIGN_OR_RETURN(updated_output,
+                      AddBroadcastSequence(*output_shape, updated_output));
+  return updated_output;
+}
+
 XlaOp XlaBuilder::TernaryOp(HloOpcode triop, XlaOp lhs, XlaOp rhs, XlaOp ehs) {
   return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
     XlaOp updated_lhs = lhs;
     XlaOp updated_rhs = rhs;
     XlaOp updated_ehs = ehs;
+
     // The client API supports implicit broadcast for kSelect and kClamp, but
     // XLA does not support implicit broadcast. Make implicit broadcast explicit
     // and update the operands.
@@ -1080,31 +1272,36 @@ XlaOp XlaBuilder::TernaryOp(HloOpcode triop, XlaOp lhs, XlaOp rhs, XlaOp ehs) {
       TF_ASSIGN_OR_RETURN(const Shape* lhs_shape, GetShapePtr(lhs));
       TF_ASSIGN_OR_RETURN(const Shape* rhs_shape, GetShapePtr(rhs));
       TF_ASSIGN_OR_RETURN(const Shape* ehs_shape, GetShapePtr(ehs));
-
       TF_ASSIGN_OR_RETURN(
-          std::optional<Shape> non_scalar_shape,
-          InferScalarBroadcastShape(lhs_shape, rhs_shape, ehs_shape));
+          std::optional<Shape> output_shape,
+          ShapeInference::InferScalarBroadcastShape(
+              absl::Span<const Shape>({*lhs_shape, *rhs_shape, *ehs_shape})));
 
       // Scalar broadcast if mix of scalars and non-scalars
-      if (non_scalar_shape.has_value()) {
-        bool is_unbounded_dynamic = non_scalar_shape->is_unbounded_dynamic();
+      if (output_shape.has_value()) {
         if (ShapeUtil::IsScalar(*lhs_shape)) {
-          TF_RET_CHECK(!is_unbounded_dynamic)
-              << "Unimplemented implicit broadcast.";
-          TF_ASSIGN_OR_RETURN(updated_lhs,
-                              AddBroadcastSequence(*non_scalar_shape, lhs));
+          TF_ASSIGN_OR_RETURN(
+              updated_lhs,
+              BroadcastScalarToOutputShape(
+                  /*scalar=*/lhs,
+                  /*output=*/
+                  ShapeUtil::Equal(*output_shape, *rhs_shape) ? rhs : ehs));
         }
         if (ShapeUtil::IsScalar(*rhs_shape)) {
-          TF_RET_CHECK(!is_unbounded_dynamic)
-              << "Unimplemented implicit broadcast.";
-          TF_ASSIGN_OR_RETURN(updated_rhs,
-                              AddBroadcastSequence(*non_scalar_shape, rhs));
+          TF_ASSIGN_OR_RETURN(
+              updated_rhs,
+              BroadcastScalarToOutputShape(
+                  /*scalar=*/rhs,
+                  /*output=*/
+                  ShapeUtil::Equal(*output_shape, *lhs_shape) ? lhs : ehs));
         }
         if (ShapeUtil::IsScalar(*ehs_shape)) {
-          TF_RET_CHECK(!is_unbounded_dynamic)
-              << "Unimplemented implicit broadcast.";
-          TF_ASSIGN_OR_RETURN(updated_ehs,
-                              AddBroadcastSequence(*non_scalar_shape, ehs));
+          TF_ASSIGN_OR_RETURN(
+              updated_ehs,
+              BroadcastScalarToOutputShape(
+                  /*scalar=*/ehs,
+                  /*output=*/
+                  ShapeUtil::Equal(*output_shape, *lhs_shape) ? lhs : rhs));
         }
       }
     }
@@ -1112,15 +1309,11 @@ XlaOp XlaBuilder::TernaryOp(HloOpcode triop, XlaOp lhs, XlaOp rhs, XlaOp ehs) {
     TF_ASSIGN_OR_RETURN(const Shape* lhs_shape, GetShapePtr(updated_lhs));
     TF_ASSIGN_OR_RETURN(const Shape* rhs_shape, GetShapePtr(updated_rhs));
     TF_ASSIGN_OR_RETURN(const Shape* ehs_shape, GetShapePtr(updated_ehs));
-    StatusOr<const Shape> status_or_shape = ShapeInference::InferTernaryOpShape(
-        triop, *lhs_shape, *rhs_shape, *ehs_shape);
-    if (!status_or_shape.status().ok()) {
-      return InvalidArgument(
-          "%s Input scalar shapes may have been changed to non-scalar shapes.",
-          status_or_shape.status().message());
-    }
+    TF_ASSIGN_OR_RETURN(const Shape inferred_shape,
+                        ShapeInference::InferTernaryOpShape(
+                            triop, *lhs_shape, *rhs_shape, *ehs_shape));
 
-    return AddOpWithShape(triop, status_or_shape.value(),
+    return AddOpWithShape(triop, inferred_shape,
                           {updated_lhs, updated_rhs, updated_ehs});
   });
 }
@@ -1689,6 +1882,35 @@ StatusOr<XlaOp> XlaBuilder::DotGeneralInternal(
     *instr.mutable_precision_config() = *precision_config;
   }
   return AddInstruction(std::move(instr), HloOpcode::kDot, {lhs, rhs});
+}
+
+XlaOp XlaBuilder::SparseDot(
+    XlaOp lhs, XlaOp rhs, absl::Span<const XlaOp> sparse_meta,
+    absl::Span<const SparsityDescriptor> sparsity,
+    const DotDimensionNumbers& dimension_numbers,
+    const PrecisionConfig* precision_config,
+    std::optional<PrimitiveType> preferred_element_type) {
+  return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
+    TF_ASSIGN_OR_RETURN(const Shape* lhs_shape, GetShapePtr(lhs));
+    TF_ASSIGN_OR_RETURN(const Shape* rhs_shape, GetShapePtr(rhs));
+    TF_ASSIGN_OR_RETURN(Shape shape,
+                        ShapeInference::InferDotOpShape(
+                            *lhs_shape, *rhs_shape, dimension_numbers,
+                            preferred_element_type, sparsity));
+    std::vector<XlaOp> operands{lhs, rhs};
+    operands.insert(operands.end(), sparse_meta.begin(), sparse_meta.end());
+
+    HloInstructionProto instr;
+    *instr.mutable_shape() = shape.ToProto();
+    *instr.mutable_dot_dimension_numbers() = dimension_numbers;
+    if (precision_config != nullptr) {
+      *instr.mutable_precision_config() = *precision_config;
+    }
+    for (const SparsityDescriptor& descriptor : sparsity) {
+      *instr.add_dot_sparsity() = descriptor;
+    }
+    return AddInstruction(std::move(instr), HloOpcode::kDot, operands);
+  });
 }
 
 Status XlaBuilder::VerifyConvolution(
@@ -3606,6 +3828,34 @@ XlaOp XlaBuilder::AllToAllTuple(
   });
 }
 
+XlaOp XlaBuilder::CollectiveBroadcast(
+    XlaOp operand, absl::Span<const ReplicaGroup> replica_groups,
+    const std::optional<ChannelHandle>& channel_id) {
+  return CollectiveBroadcastImpl(operand, replica_groups, channel_id);
+}
+
+XlaOp XlaBuilder::CollectiveBroadcastImpl(
+    XlaOp operand, absl::Span<const ReplicaGroup> replica_groups,
+    const std::optional<ChannelHandle>& channel_id) {
+  return ReportErrorOrReturn([&]() -> absl::StatusOr<XlaOp> {
+    TF_ASSIGN_OR_RETURN(const Shape* operand_shape, GetShapePtr(operand));
+    HloInstructionProto instr;
+    TF_ASSIGN_OR_RETURN(
+        Shape shape,
+        ShapeInference::InferCollectiveBroadcastShape({operand_shape}));
+    *instr.mutable_shape() = shape.ToProto();
+    for (const ReplicaGroup& group : replica_groups) {
+      *instr.add_replica_groups() = group;
+    }
+    if (channel_id.has_value()) {
+      instr.set_channel_id(channel_id->handle());
+    }
+
+    return AddInstruction(std::move(instr), HloOpcode::kCollectiveBroadcast,
+                          {operand});
+  });
+}
+
 XlaOp XlaBuilder::CollectivePermute(
     XlaOp operand,
     const std::vector<std::pair<int64_t, int64_t>>& source_target_pairs,
@@ -4434,6 +4684,13 @@ XlaOp BroadcastInDim(const XlaOp operand,
                                            broadcast_dimensions);
 }
 
+XlaOp DynamicBroadcastInDim(const XlaOp operand, const XlaOp output_dimensions,
+                            absl::Span<const int64_t> broadcast_dimensions,
+                            const Shape& output_shape) {
+  return operand.builder()->DynamicBroadcastInDim(
+      operand, output_dimensions, broadcast_dimensions, output_shape);
+}
+
 XlaOp Copy(const XlaOp operand) {
   return operand.builder()->UnaryOp(HloOpcode::kCopy, operand);
 }
@@ -4631,6 +4888,17 @@ XlaOp DotGeneral(const XlaOp lhs, const XlaOp rhs,
                  std::optional<PrimitiveType> preferred_element_type) {
   return lhs.builder()->DotGeneral(lhs, rhs, dimension_numbers,
                                    precision_config, preferred_element_type);
+}
+
+XlaOp SparseDot(const XlaOp lhs, const XlaOp rhs,
+                absl::Span<const XlaOp> sparse_meta,
+                absl::Span<const SparsityDescriptor> sparsity,
+                const DotDimensionNumbers& dimension_numbers,
+                const PrecisionConfig* precision_config,
+                std::optional<PrimitiveType> preferred_element_type) {
+  return lhs.builder()->SparseDot(lhs, rhs, sparse_meta, sparsity,
+                                  dimension_numbers, precision_config,
+                                  preferred_element_type);
 }
 
 XlaOp Conv(const XlaOp lhs, const XlaOp rhs,
@@ -5110,6 +5378,13 @@ XlaOp AllToAllTuple(const XlaOp operand, int64_t split_dimension,
   return operand.builder()->AllToAllTuple(operand, split_dimension,
                                           concat_dimension, split_count,
                                           replica_groups, layout, channel_id);
+}
+
+XlaOp CollectiveBroadcast(const XlaOp operand,
+                          absl::Span<const ReplicaGroup> replica_groups,
+                          const std::optional<ChannelHandle>& channel_id) {
+  return operand.builder()->CollectiveBroadcast(operand, replica_groups,
+                                                channel_id);
 }
 
 XlaOp CollectivePermute(

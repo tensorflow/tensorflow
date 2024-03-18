@@ -15,9 +15,11 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/quantization/stablehlo/utils/tf_type_utils.h"
 
+#include "absl/status/status.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/ADT/TypeSwitch.h"
+#include "llvm/Support/Casting.h"
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/TypeUtilities.h"  // from @llvm-project
@@ -31,16 +33,15 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/framework/types.pb.h"
-#include "tensorflow/core/platform/status.h"
 
 namespace mlir::quant::tensorflow {
 
-bool IsTFQintType(Type type) {
+bool IsTFQintType(const Type type) {
   return type.isa<TF::Qint8Type, TF::Qint16Type, TF::Qint32Type, TF::Quint8Type,
                   TF::Quint16Type>();
 }
 
-Type GetIntTypeFromTFQint(Type type) {
+Type GetIntTypeFromTFQint(const Type type) {
   return TypeSwitch<Type, Type>(type)
       .Case<TF::Qint8Type>(
           [&type](Type) { return IntegerType::get(type.getContext(), 8); })
@@ -60,9 +61,9 @@ Type GetIntTypeFromTFQint(Type type) {
 }
 
 FailureOr<mlir::DenseElementsAttr> GetDenseAttrFromTensorProtoAttr(
-    llvm::StringRef mangled_tensor_proto, TensorType tensor_type) {
+    const llvm::StringRef mangled_tensor_proto, TensorType tensor_type) {
   ::tensorflow::TensorProto tensor_proto;
-  ::tensorflow::Status status = ::tensorflow::mangling_util::DemangleTensor(
+  absl::Status status = ::tensorflow::mangling_util::DemangleTensor(
       mangled_tensor_proto, &tensor_proto);
   if (!status.ok()) {
     return failure();
@@ -74,12 +75,12 @@ FailureOr<mlir::DenseElementsAttr> GetDenseAttrFromTensorProtoAttr(
   }
 
   if (t.dtype() == ::tensorflow::DT_QINT8) {
-    auto arr = t.flat<::tensorflow::qint8>();
+    const auto arr = t.flat<::tensorflow::qint8>();
     return mlir::DenseElementsAttr::get(
         tensor_type.clone(IntegerType::get(tensor_type.getContext(), 8)),
         llvm::ArrayRef(arr.data(), arr.size()));
   } else if (t.dtype() == ::tensorflow::DT_QINT32) {
-    auto arr = t.flat<::tensorflow::qint32>();
+    const auto arr = t.flat<::tensorflow::qint32>();
     return mlir::DenseElementsAttr::get(
         tensor_type.clone(IntegerType::get(tensor_type.getContext(), 32)),
         llvm::ArrayRef(arr.data(), arr.size()));

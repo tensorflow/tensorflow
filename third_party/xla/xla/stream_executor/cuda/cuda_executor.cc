@@ -29,7 +29,6 @@ limitations under the License.
 #include "absl/strings/str_join.h"
 #include "xla/stream_executor/blas.h"
 #include "xla/stream_executor/device_description.h"
-#include "xla/stream_executor/device_options.h"
 #include "xla/stream_executor/dnn.h"
 #include "xla/stream_executor/event.h"
 #include "xla/stream_executor/fft.h"
@@ -70,6 +69,7 @@ limitations under the License.
 #include "xla/stream_executor/gpu/gpu_stream.h"
 #include "xla/stream_executor/gpu/gpu_timer.h"
 #include "xla/stream_executor/gpu/gpu_types.h"
+#include "xla/stream_executor/integrations/device_mem_allocator.h"
 #include "xla/stream_executor/kernel.h"
 #include "xla/stream_executor/module_spec.h"
 #include "xla/stream_executor/platform.h"
@@ -136,14 +136,13 @@ GpuExecutor::~GpuExecutor() {
   }
 }
 
-absl::Status GpuExecutor::Init(int device_ordinal,
-                               DeviceOptions device_options) {
+absl::Status GpuExecutor::Init(int device_ordinal) {
   device_ordinal_ = device_ordinal;
 
   TF_RETURN_IF_ERROR(GpuDriver::Init());
   TF_RETURN_IF_ERROR(GpuDriver::GetDevice(device_ordinal_, &device_));
-  TF_RETURN_IF_ERROR(GpuDriver::CreateContext(device_ordinal_, device_,
-                                              device_options, &context_));
+  TF_RETURN_IF_ERROR(
+      GpuDriver::CreateContext(device_ordinal_, device_, &context_));
   TF_RETURN_IF_ERROR(
       GpuDriver::GetComputeCapability(&cc_major_, &cc_minor_, device_));
   return absl::OkStatus();
@@ -219,7 +218,8 @@ absl::Status GpuExecutor::GetKernel(const MultiKernelLoaderSpec& spec,
   if (spec.has_cuda_cubin_in_memory()) {
     absl::MutexLock lock{&in_memory_modules_mu_};
     kernel_name = &spec.cuda_cubin_in_memory().kernel_name();
-    const char* cubin = spec.cuda_cubin_in_memory().bytes();
+    const char* cubin = reinterpret_cast<const char*>(
+        spec.cuda_cubin_in_memory().cubin_bytes().data());
     TF_RETURN_IF_ERROR(LoadModuleFromCuBin(cubin, &module));
     kernel_to_gpu_binary_[kernel] = cubin;
 
@@ -278,7 +278,7 @@ absl::Status GpuExecutor::GetKernel(const MultiKernelLoaderSpec& spec,
   TF_RETURN_IF_ERROR(GetKernelMetadata(cuda_kernel, &kernel_metadata));
   kernel->set_metadata(kernel_metadata);
   kernel->set_name(*kernel_name);
-  kernel->set_kernel_args_packing(spec.kernel_args_packing());
+  kernel->set_args_packing(spec.kernel_args_packing());
   return absl::OkStatus();
 }
 
@@ -407,9 +407,9 @@ GpuExecutor::CreateOrShareConstant(Stream* stream,
           "Failed to allocate %d bytes for new constant", content.size()));
     }
 
-    absl::Status status =
-        stream->ThenMemcpy(new_constant, content.data(), content.size())
-            .BlockHostUntilDone();
+    TF_RETURN_IF_ERROR(
+        stream->Memcpy(new_constant, content.data(), content.size()));
+    absl::Status status = stream->BlockHostUntilDone();
     if (!status.ok()) {
       Deallocate(new_constant);
       status.Update(absl::InternalError(absl::StrFormat(
@@ -480,8 +480,7 @@ absl::Status GpuExecutor::Launch(Stream* stream, const ThreadDim& thread_dims,
     }
   }
 
-  if (cuda_kernel->GetPreferredCacheConfig() !=
-      KernelCacheConfig::kNoPreference) {
+  if (cuda_kernel->cache_config() != KernelCacheConfig::kNoPreference) {
     TF_RETURN_IF_ERROR(GpuDriver::FuncSetCacheConfig(
         cufunc, cuda_kernel->GetGpuCacheConfig()));
   }
@@ -522,7 +521,7 @@ absl::Status GpuExecutor::Launch(Stream* stream, const ThreadDim& thread_dims,
 
   // For device memory array we rely on a custom kernel arguments packing.
   if (auto* device_mem = DynCast<KernelArgsDeviceMemoryArray>(&args)) {
-    auto& pack = kernel.kernel_args_packing();
+    auto& pack = kernel.args_packing();
     if (!pack) {
       return absl::InternalError(
           "Kernel is missing a custom arguments packing function for device "
@@ -544,8 +543,8 @@ absl::Status GpuExecutor::Submit(Stream* stream,
   }
 
   auto exec = GpuCommandBuffer::Cast(&command_buffer)->executable();
-  VLOG(3) << "Launch command buffer execuable graph " << exec
-          << " on a stream: " << stream->DebugStreamPointers();
+  VLOG(3) << "Launch command buffer executable graph " << exec
+          << " on a stream: " << stream;
   return GpuDriver::GraphLaunch(exec, AsGpuStreamValue(stream));
 }
 
@@ -632,6 +631,9 @@ DeviceMemoryBase GpuExecutor::Allocate(uint64_t size, int64_t memory_space) {
       LOG(ERROR) << result.status();
     }
     return DeviceMemoryBase(*result, size);
+  } else if (memory_space ==
+             static_cast<int64_t>(stream_executor::MemoryType::kHost)) {
+    return DeviceMemoryBase(GpuDriver::HostAllocate(context_, size), size);
   }
   CHECK_EQ(memory_space, 0);
   return DeviceMemoryBase(GpuDriver::DeviceAllocate(context_, size), size);
@@ -737,18 +739,29 @@ absl::Status GpuExecutor::Memset32(Stream* stream, DeviceMemoryBase* location,
       AsGpuStreamValue(stream));
 }
 
-bool GpuExecutor::Memcpy(Stream* stream, void* host_dst,
-                         const DeviceMemoryBase& gpu_src, uint64_t size) {
-  return GpuDriver::AsynchronousMemcpyD2H(context_, host_dst,
-                                          AsCudaDevicePtr(gpu_src), size,
-                                          AsGpuStreamValue(stream));
+absl::Status GpuExecutor::Memcpy(Stream* stream, void* host_dst,
+                                 const DeviceMemoryBase& gpu_src,
+                                 uint64_t size) {
+  bool ok = GpuDriver::AsynchronousMemcpyD2H(context_, host_dst,
+                                             AsCudaDevicePtr(gpu_src), size,
+                                             AsGpuStreamValue(stream));
+  // TODO(b/326130105): Change AsynchronousMemcpyD2H calls to return Status.
+  if (!ok) {
+    return absl::InternalError("Failed to memcpy from device to host.");
+  }
+  return absl::OkStatus();
 }
 
-bool GpuExecutor::Memcpy(Stream* stream, DeviceMemoryBase* gpu_dst,
-                         const void* host_src, uint64_t size) {
-  return GpuDriver::AsynchronousMemcpyH2D(context_, AsCudaDevicePtr(gpu_dst),
-                                          host_src, size,
-                                          AsGpuStreamValue(stream));
+absl::Status GpuExecutor::Memcpy(Stream* stream, DeviceMemoryBase* gpu_dst,
+                                 const void* host_src, uint64_t size) {
+  bool ok = GpuDriver::AsynchronousMemcpyH2D(context_, AsCudaDevicePtr(gpu_dst),
+                                             host_src, size,
+                                             AsGpuStreamValue(stream));
+  // TODO(b/326130105): Change AsynchronousMemcpyD2H calls to return Status.
+  if (!ok) {
+    return absl::InternalError("Failed to memcpy from device to host.");
+  }
+  return absl::OkStatus();
 }
 
 bool GpuExecutor::MemcpyDeviceToDevice(Stream* stream,
@@ -972,8 +985,6 @@ std::unique_ptr<GpuCommandBuffer> GpuExecutor::CreateCommandBuffer(
   return std::make_unique<GpuCommandBuffer>(mode, /*parent=*/this, graph,
                                             is_owned_graph);
 }
-
-void* GpuExecutor::platform_specific_context() { return context_; }
 
 GpuContext* GpuExecutor::gpu_context() { return context_; }
 

@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/lite/tools/benchmark/benchmark_performance_options.h"
 
 #include <algorithm>
+#include <cstdint>
 #include <iomanip>
 #include <memory>
 #include <random>
@@ -148,6 +149,7 @@ BenchmarkParams BenchmarkPerformanceOptions::DefaultParams() {
                   BenchmarkParam::Create<float>(-1.0f));
   params.AddParam("random_shuffle_benchmark_runs",
                   BenchmarkParam::Create<bool>(true));
+  params.AddParam("gpu_invoke_loop_times", BenchmarkParam::Create<int32_t>(-1));
   return params;
 }
 
@@ -166,7 +168,10 @@ std::vector<Flag> BenchmarkPerformanceOptions::GetFlags() {
           "random_shuffle_benchmark_runs", &params_,
           "Whether to perform all benchmark runs, each of which has different "
           "performance options, in a random order. It is enabled by default."),
-  };
+      CreateFlag<int32_t>(
+          "gpu_invoke_loop_times", &params_,
+          "Number of GPU delegate invoke loop iterations. Used only when "
+          "TFLITE_GPU_ENABLE_INVOKE_LOOP is defined.")};
 }
 
 TfLiteStatus BenchmarkPerformanceOptions::ParseFlags(int* argc, char** argv) {
@@ -244,6 +249,10 @@ bool BenchmarkPerformanceOptions::HasOption(const std::string& option) const {
 void BenchmarkPerformanceOptions::ResetPerformanceOptions() {
   single_option_run_params_->Set<int32_t>("num_threads", 1);
   single_option_run_params_->Set<bool>("use_gpu", false);
+#ifdef TFLITE_GPU_ENABLE_INVOKE_LOOP
+  single_option_run_params_->Set<int32_t>("gpu_invoke_loop_times", -1);
+  single_option_run_params_->Set<bool>("require_full_delegation", false);
+#endif
 #if defined(__ANDROID__)
   single_option_run_params_->Set<bool>("gpu_precision_loss_allowed", true);
   single_option_run_params_->Set<bool>("use_nnapi", false);
@@ -303,11 +312,25 @@ void BenchmarkPerformanceOptions::CreatePerformanceOptions() {
       params.AddParam("use_gpu", BenchmarkParam::Create<bool>(true));
       params.AddParam("gpu_precision_loss_allowed",
                       BenchmarkParam::Create<bool>(precision_loss));
+#ifdef TFLITE_GPU_ENABLE_INVOKE_LOOP
+      int32_t invoke_loop_times = params_.Get<int32_t>("gpu_invoke_loop_times");
+      params.AddParam("gpu_invoke_loop_times",
+                      BenchmarkParam::Create<int32_t>(invoke_loop_times));
+      params.AddParam("require_full_delegation",
+                      BenchmarkParam::Create<bool>(true));
+#endif
       all_run_params_.emplace_back(std::move(params));
     }
 #else
     BenchmarkParams params;
     params.AddParam("use_gpu", BenchmarkParam::Create<bool>(true));
+#ifdef TFLITE_GPU_ENABLE_INVOKE_LOOP
+    int32_t invoke_loop_times = params_.Get<int32_t>("gpu_invoke_loop_times");
+    params.AddParam("gpu_invoke_loop_times",
+                    BenchmarkParam::Create<int32_t>(invoke_loop_times));
+    params.AddParam("require_full_delegation",
+                    BenchmarkParam::Create<bool>(true));
+#endif
     all_run_params_.emplace_back(std::move(params));
 #endif
   }

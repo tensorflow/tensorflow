@@ -51,7 +51,7 @@ ExecutionHandle CompilationCache::Insert(
   return handle;
 }
 
-StatusOr<std::shared_ptr<Executable>> CompilationCache::LookUp(
+absl::StatusOr<std::shared_ptr<Executable>> CompilationCache::LookUp(
     const ExecutionHandle& handle) const {
   absl::MutexLock lock(&mutex_);
 

@@ -260,7 +260,7 @@ HloSharding GatherOutputOrScatterUpdateShardingFromIndicesParallelDimensions(
 // - If computation is min/max, return max value/min value with corresponding op
 //   code.
 // - Otherwise, return error status.
-StatusOr<std::pair<std::unique_ptr<HloInstruction>, HloOpcode>>
+absl::StatusOr<std::pair<std::unique_ptr<HloInstruction>, HloOpcode>>
 IdentityValueAndHloOpcodeForScatterReduceComputation(
     const HloScatterInstruction& scatter);
 

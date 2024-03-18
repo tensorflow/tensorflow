@@ -411,7 +411,7 @@ CreateFlatBufferOperator(mlir::Operation* op, uint32_t opcode_index,
   return std::nullopt;
 }
 
-static StatusOr<::stablehlo::flatbuf::DataType> GetDataType(
+static absl::StatusOr<::stablehlo::flatbuf::DataType> GetDataType(
     Type type, bool is_signed = true) {
   if (type.isF16()) return ::stablehlo::flatbuf::DataType_FLOAT16;
   if (type.isF32()) return ::stablehlo::flatbuf::DataType_FLOAT32;

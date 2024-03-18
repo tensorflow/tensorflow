@@ -72,6 +72,7 @@ limitations under the License.
 #include "xla/literal.h"
 #include "xla/literal_util.h"
 #include "xla/mlir/utils/error_util.h"
+#include "xla/mlir/utils/type_util.h"
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 #include "xla/mlir_hlo/mhlo/transforms/passes.h"
 #include "xla/primitive_util.h"
@@ -482,6 +483,17 @@ static xla::ConvolutionDimensionNumbers Convert_dimension_numbers(
   return xla::ConvertConvDimensionNumbers(input);
 }
 
+static xla::SparsityDescriptor Convert_sparsity_descriptor(
+    mlir::mhlo::SparsityDescriptorAttr sparsity_attr, bool is_lhs) {
+  xla::SparsityDescriptor sparsity_descriptor;
+  sparsity_descriptor.set_type(xla::SPARSITY_STRUCTURED_N_M);
+  sparsity_descriptor.set_index(is_lhs ? 0 : 1);
+  sparsity_descriptor.set_dimension(sparsity_attr.getDimension());
+  sparsity_descriptor.set_n(sparsity_attr.getN());
+  sparsity_descriptor.set_m(sparsity_attr.getM());
+  return sparsity_descriptor;
+}
+
 xla::ChannelHandle Convert_channel_handle(mlir::mhlo::ChannelHandleAttr attr) {
   xla::ChannelHandle channel_handle;
   channel_handle.set_handle(attr.getHandle());
@@ -596,15 +608,6 @@ static void ExtractFrontendAttributesFromFunction(
       ConstructFrontendAttributesFromAttribute(fe_attr, frontend_attributes);
       (*fe_attrs)[i] = frontend_attributes;
     }
-}
-
-// Checks if all shardings are set.
-static bool AllOptionalShardingsAreSet(
-    llvm::ArrayRef<std::optional<xla::OpSharding>> shardings) {
-  return llvm::all_of(shardings,
-                      [](const std::optional<xla::OpSharding>& sharding) {
-                        return sharding.has_value();
-                      });
 }
 
 static bool SomeOptionalShardingsAreSet(
@@ -834,9 +837,20 @@ bool SimplyReturnedOp(mlir::Operation* op) {
 namespace mlir {
 namespace mhlo {
 namespace {
+LogicalResult ExportXlaOp(CollectiveBroadcastOp op, OpLoweringContext ctx) {
+  auto& value_map = *ctx.values;
+  xla::XlaOp operand;
+  if (failed(GetXlaOp(op.getOperand(), value_map, &operand, op)))
+    return failure();
+  value_map[op->getResult(0)] = xla::CollectiveBroadcast(
+      operand, Convert_replica_groups(op.getReplicaGroups()),
+      Convert_channel_handle(op.getChannelHandle()));
 
-LogicalResult ExportXlaOp(CollectiveBroadcastOp, OpLoweringContext) {
-  // TODO: b/314330871 - Implement MHLO export for CollectiveBroadcastOp.
+  return success();
+}
+
+LogicalResult ExportXlaOp(CompositeOp, OpLoweringContext) {
+  // TODO: b/328526226 - Implement MHLO export for CompositeOp.
   return failure();
 }
 
@@ -1384,7 +1398,8 @@ LogicalResult ExportXlaOp(BitcastConvertOp op, OpLoweringContext ctx) {
     return failure();
 
   value_map[op] = xla::BitcastConvertType(
-      operand, xla::TypeToPrimitiveType(getElementTypeOrSelf(op.getType())));
+      operand,
+      xla::ConvertMlirTypeToPrimitiveType(getElementTypeOrSelf(op.getType())));
   return success();
 }
 
@@ -1412,7 +1427,7 @@ LogicalResult ExportXlaOp(StochasticConvertOp op, OpLoweringContext ctx) {
 
   value_map[op] = xla::StochasticConvertType(
       operand, random,
-      xla::TypeToPrimitiveType(getElementTypeOrSelf(op.getType())));
+      xla::ConvertMlirTypeToPrimitiveType(getElementTypeOrSelf(op.getType())));
   return success();
 }
 
@@ -1446,7 +1461,7 @@ LogicalResult ExportXlaOp(DotOp op, OpLoweringContext ctx) {
   if (failed(GetXlaOp(op.getRhs(), value_map, &rhs, op)))
     return mlir::failure();
   xla::PrimitiveType preferred_element_type =
-      xla::TypeToPrimitiveType(getElementTypeOrSelf(op.getType()));
+      xla::ConvertMlirTypeToPrimitiveType(getElementTypeOrSelf(op.getType()));
   value_map[op] = xla::Dot(
       lhs, rhs, Unwrap(Convert_precision_config(op.getPrecisionConfig())),
       preferred_element_type);
@@ -1461,11 +1476,41 @@ LogicalResult ExportXlaOp(DotGeneralOp op, OpLoweringContext ctx) {
   if (failed(GetXlaOp(op.getRhs(), value_map, &rhs, op)))
     return mlir::failure();
   xla::PrimitiveType preferred_element_type =
-      xla::TypeToPrimitiveType(getElementTypeOrSelf(op.getType()));
+      xla::ConvertMlirTypeToPrimitiveType(getElementTypeOrSelf(op.getType()));
   value_map[op] = xla::DotGeneral(
       lhs, rhs, Convert_dot_dimension_numbers(op.getDotDimensionNumbers()),
       Unwrap(Convert_precision_config(op.getPrecisionConfig())),
       preferred_element_type);
+  return mlir::success();
+}
+
+LogicalResult ExportXlaOp(SparseDotOp op, OpLoweringContext ctx) {
+  auto& value_map = *ctx.values;
+  xla::XlaOp lhs, rhs;
+  if (failed(GetXlaOp(op.getLhs(), value_map, &lhs, op)))
+    return mlir::failure();
+  if (failed(GetXlaOp(op.getRhs(), value_map, &rhs, op)))
+    return mlir::failure();
+  xla::PrimitiveType preferred_element_type =
+      xla::ConvertMlirTypeToPrimitiveType(getElementTypeOrSelf(op.getType()));
+
+  llvm::SmallVector<xla::XlaOp> sparse_meta;
+  if (failed(GetTuple(op, op.getMeta(), ctx, sparse_meta))) return failure();
+  std::vector<xla::SparsityDescriptor> sparsity;
+  if (op.getLhsSparsity().has_value()) {
+    sparsity.push_back(
+        Convert_sparsity_descriptor(*op.getLhsSparsity(), /*is_lhs=*/true));
+  }
+  if (op.getRhsSparsity().has_value()) {
+    sparsity.push_back(
+        Convert_sparsity_descriptor(*op.getRhsSparsity(), /*is_lhs=*/false));
+  }
+
+  value_map[op] =
+      xla::SparseDot(lhs, rhs, absl::MakeSpan(sparse_meta), sparsity,
+                     Convert_dot_dimension_numbers(op.getDotDimensionNumbers()),
+                     Unwrap(Convert_precision_config(op.getPrecisionConfig())),
+                     preferred_element_type);
   return mlir::success();
 }
 
@@ -1657,7 +1702,7 @@ LogicalResult ExportXlaOp(mlir::mhlo::ConvolutionOp op, OpLoweringContext ctx) {
   if (failed(GetXlaOp(op.getRhs(), value_map, &rhs, op)))
     return mlir::failure();
   xla::PrimitiveType preferred_element_type =
-      xla::TypeToPrimitiveType(getElementTypeOrSelf(op.getType()));
+      xla::ConvertMlirTypeToPrimitiveType(getElementTypeOrSelf(op.getType()));
   xla::XlaOp xla_result = xla::ConvGeneralDilated(
       lhs, rhs, Convert_window_strides(op.getWindowStrides()),
       Convert_padding(op.getPadding()),
@@ -1679,7 +1724,8 @@ LogicalResult ExportXlaOp(ConvertOp op, OpLoweringContext ctx) {
     return failure();
 
   value_map[op] = xla::ConvertElementType(
-      operand, xla::TypeToPrimitiveType(getElementTypeOrSelf(op.getType())));
+      operand,
+      xla::ConvertMlirTypeToPrimitiveType(getElementTypeOrSelf(op.getType())));
   return success();
 }
 
@@ -3338,23 +3384,29 @@ LogicalResult ConvertToHloModule::SetEntryTupleShardings(
     Block* block, xla::XlaBuilder* builder,
     llvm::ArrayRef<std::optional<xla::OpSharding>> arg_shardings,
     llvm::SmallVectorImpl<xla::Shape>* arg_shapes) {
-  if (!arg_shardings.empty() && AllOptionalShardingsAreSet(arg_shardings)) {
+  if (!arg_shardings.empty() && SomeOptionalShardingsAreSet(arg_shardings)) {
     xla::OpSharding sharding;
     sharding.set_type(xla::OpSharding::TUPLE);
     for (const auto& arg_sharding : llvm::enumerate(arg_shardings)) {
-      auto hlo_sharding = xla::HloSharding::FromProto(*arg_sharding.value());
-      if (!hlo_sharding.ok())
-        return block->getParentOp()->emitError()
-               << hlo_sharding.status().message();
+      if (arg_sharding.value().has_value()) {
+        auto hlo_sharding = xla::HloSharding::FromProto(*arg_sharding.value());
+        if (!hlo_sharding.ok())
+          return block->getParentOp()->emitError()
+                 << hlo_sharding.status().message();
 
-      auto status = RewriteLayoutWithShardedShape(
-          hlo_sharding.value(), /*use_fast_memory=*/false,
-          options_.layout_preference_fn, options_.shape_representation_fn,
-          &(*arg_shapes)[arg_sharding.index()]);
-      if (!status.ok())
-        return block->getParentOp()->emitError() << status.message();
+        auto status = RewriteLayoutWithShardedShape(
+            hlo_sharding.value(), /*use_fast_memory=*/false,
+            options_.layout_preference_fn, options_.shape_representation_fn,
+            &(*arg_shapes)[arg_sharding.index()]);
+        if (!status.ok())
+          return block->getParentOp()->emitError() << status.message();
 
-      *sharding.add_tuple_shardings() = *arg_sharding.value();
+        *sharding.add_tuple_shardings() = *arg_sharding.value();
+      } else {
+        xla::OpSharding fallback_sharding;
+        fallback_sharding.set_type(xla::OpSharding::REPLICATED);
+        *sharding.add_tuple_shardings() = fallback_sharding;
+      }
     }
 
     builder->SetSharding(sharding);
@@ -3395,13 +3447,15 @@ LogicalResult ConvertToHloModule::LowerBasicBlockAsFunction(
     builder->ClearSharding();
 
     bool set_tuple_element_sharding =
-        !arg_shardings.empty() && AllOptionalShardingsAreSet(arg_shardings);
+        !arg_shardings.empty() && SomeOptionalShardingsAreSet(arg_shardings);
     for (BlockArgument& arg : block->getArguments()) {
-      if (set_tuple_element_sharding)
+      if (set_tuple_element_sharding &&
+          arg_shardings[arg.getArgNumber()].has_value()) {
         builder->SetSharding(*arg_shardings[arg.getArgNumber()]);
+      }
       lowering[arg] = xla::GetTupleElement(tuple, arg.getArgNumber());
+      builder->ClearSharding();
     }
-    builder->ClearSharding();
   } else {
     if (ensure_single_arg) {
       // Applicable for mhlo.IfOp or mhlo.CaseOp or mhlo.WhileOp.

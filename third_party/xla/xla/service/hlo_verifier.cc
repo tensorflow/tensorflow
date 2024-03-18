@@ -194,12 +194,15 @@ Status ShapeVerifier::HandleCopy(HloInstruction* copy) {
 }
 
 Status ShapeVerifier::HandleDot(HloInstruction* dot) {
+  auto sparsity = Cast<HloDotInstruction>(dot)->sparsity();
+  TF_RETURN_IF_ERROR(
+      CheckOperandCount(dot, HloDotInstruction::kOperands + sparsity.size()));
   TF_ASSIGN_OR_RETURN(
       const Shape expected,
       ShapeInference::InferDotOpShape(
           dot->operand(0)->shape(), dot->operand(1)->shape(),
           dot->dot_dimension_numbers(),
-          /*preferred_element_type=*/dot->shape().element_type()));
+          /*preferred_element_type=*/dot->shape().element_type(), sparsity));
   if (auto nibble_count =
           absl::c_count(dot->precision_config().operand_precision(),
                         PrecisionConfig::PACKED_NIBBLE)) {
@@ -219,6 +222,24 @@ Status ShapeVerifier::HandleDot(HloInstruction* dot) {
             "%s.",
             dot->operand(1)->ToString());
       }
+    }
+  }
+  for (int i = 0; i < sparsity.size(); ++i) {
+    const SparsityDescriptor& descriptor = sparsity[i];
+    TF_RET_CHECK(descriptor.index() == 0 || descriptor.index() == 1);
+    TF_ASSIGN_OR_RETURN(const Shape expected_metadata_shape,
+                        ShapeInference::InferSparseDotMetadataShape(
+                            dot->operand(descriptor.index())->shape(),
+                            dot->dot_dimension_numbers(), descriptor));
+    const Shape actual_metadata_shape =
+        dot->operand(HloDotInstruction::kOperands + i)->shape();
+    if (!ShapeUtil::Compatible(actual_metadata_shape,
+                               expected_metadata_shape)) {
+      return Internal(
+          "Expected sparse dot metadata to have shape equal to %s, actual "
+          "shape is %s:\n%s",
+          StringifyShape(expected_metadata_shape),
+          StringifyShape(actual_metadata_shape), dot->ToString());
     }
   }
   return CheckShape(dot, expected);
@@ -761,6 +782,15 @@ Status CheckDuplicatedSourceOrTarget(HloInstruction* hlo,
 }
 
 }  // namespace
+
+Status ShapeVerifier::HandleCollectiveBroadcast(HloInstruction* hlo) {
+  std::vector<const Shape*> operand_shapes;
+  for (const HloInstruction* operand : hlo->operands()) {
+    operand_shapes.push_back(&operand->shape());
+  }
+  return CheckShape(
+      hlo, ShapeInference::InferCollectiveBroadcastShape(operand_shapes));
+}
 
 Status ShapeVerifier::HandleCollectivePermute(HloInstruction* hlo) {
   TF_ASSIGN_OR_RETURN(
@@ -1866,8 +1896,9 @@ Status ShapeVerifier::CheckShape(const HloInstruction* instruction,
   return OkStatus();
 }
 
-Status ShapeVerifier::CheckShape(const HloInstruction* instruction,
-                                 const StatusOr<Shape>& inferred_shape_status) {
+Status ShapeVerifier::CheckShape(
+    const HloInstruction* instruction,
+    const absl::StatusOr<Shape>& inferred_shape_status) {
   if (!inferred_shape_status.ok()) {
     Status s = inferred_shape_status.status();
     tsl::errors::AppendToMessage(&s, ", for instruction ",
@@ -2238,10 +2269,20 @@ Status VerifyChannels(const HloModule& module) {
       switch (instruction->opcode()) {
         case HloOpcode::kSend: {
           TF_RET_CHECK(instruction->users().size() == 1);
-          const HloInstruction* send_done = instruction->users().front();
-          TF_RET_CHECK(send_done->opcode() == HloOpcode::kSendDone);
-          TF_RETURN_IF_ERROR(CheckSameChannel(instruction, send_done));
-          TF_RETURN_IF_ERROR(CheckSameIsHostTransfer(instruction, send_done));
+          const HloInstruction* send_user = instruction->users().front();
+          if (send_user->opcode() == HloOpcode::kSendDone) {
+            TF_RETURN_IF_ERROR(CheckSameChannel(instruction, send_user));
+            TF_RETURN_IF_ERROR(CheckSameIsHostTransfer(instruction, send_user));
+          } else {
+            // If a Send user is not a SendDone, it has to be a tuple that is
+            // either the root of a while-body or the init of a while-loop.
+            TF_RET_CHECK(send_user->opcode() == HloOpcode::kTuple);
+            if (send_user != send_user->parent()->root_instruction()) {
+              TF_RET_CHECK(send_user->users().size() == 1);
+              const HloInstruction* user = send_user->users().front();
+              TF_RET_CHECK(user->opcode() == HloOpcode::kWhile);
+            }
+          }
           break;
         }
         case HloOpcode::kRecv: {
@@ -2262,10 +2303,20 @@ Status VerifyChannels(const HloModule& module) {
           }
           break;
         }
-        case HloOpcode::kSendDone:
+        case HloOpcode::kSendDone: {
           TF_RET_CHECK(instruction->operands().size() == 1);
-          TF_RET_CHECK(instruction->operand(0)->opcode() == HloOpcode::kSend);
+          const HloInstruction* send_done_operand = instruction->operand(0);
+          if (send_done_operand->opcode() != HloOpcode::kSend) {
+            // If the SendDone operand is not a Send, it has to be either part
+            // of a while-loop result or a parameter of a while-body.
+            TF_RET_CHECK(send_done_operand->opcode() ==
+                         HloOpcode::kGetTupleElement);
+            HloOpcode opcode = send_done_operand->operand(0)->opcode();
+            TF_RET_CHECK(opcode == HloOpcode::kWhile ||
+                         opcode == HloOpcode::kParameter);
+          }
           break;
+        }
         case HloOpcode::kRecvDone: {
           TF_RET_CHECK(instruction->operands().size() == 1);
           const HloInstruction* recv_done_operand = instruction->operand(0);
@@ -2765,14 +2816,14 @@ class InstructionVerifier : public DfsHloVisitorWithDefault {
 
 }  // namespace
 
-StatusOr<bool> HloVerifier::Run(
+absl::StatusOr<bool> HloVerifier::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   auto disabled = module->config().debug_options().xla_disable_hlo_passes();
   if (std::find(disabled.begin(), disabled.end(), name()) != disabled.end()) {
     return false;
   }
-  auto status_or_changed = [&]() -> StatusOr<bool> {
+  auto status_or_changed = [&]() -> absl::StatusOr<bool> {
     TF_RET_CHECK(!module->name().empty());
 
     if (module->entry_computation()->IsFusionComputation()) {

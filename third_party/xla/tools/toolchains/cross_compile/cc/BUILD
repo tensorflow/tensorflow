@@ -214,7 +214,7 @@ cc_toolchain_config(
     name = "macos_x86_toolchain_config",
     abi_libc_version = "darwin_x86_64",
     abi_version = "darwin_x86_64",
-    builtin_sysroot = "tensorflow/tools/toolchains/cross_compile/cc/MacOSX.sdk",
+    builtin_sysroot = "tools/toolchains/cross_compile/cc/MacOSX.sdk",
     compile_flags = [
         "--target=x86_64-apple-darwin",
         "-fstack-protector",

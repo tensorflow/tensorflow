@@ -331,6 +331,7 @@ cc_library(
     data = [
         "@llvm-project//llvm:FileCheck",
     ],
+    local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]) + if_rocm_is_configured(["TENSORFLOW_USE_ROCM=1"]),
     deps = [
         "//xla:statusor",
         "//xla:types",
@@ -1000,10 +1001,13 @@ xla_test(
         ":hlo_test_base",
         ":test_macros_header",
         ":xla_internal_test_main",
+        "//xla:array2d",
         "//xla:error_spec",
         "//xla:literal",
+        "//xla:shape_util",
         "//xla:status_macros",
         "//xla:test",
+        "//xla:types",
         "@com_google_absl//absl/strings",
     ],
 )
@@ -1785,6 +1789,7 @@ xla_test(
         "//xla:test",
         "//xla/client:local_client",
         "//xla/client:xla_builder",
+        "@com_google_absl//absl/strings:string_view",
     ],
 )
 
@@ -1983,10 +1988,6 @@ xla_test(
 xla_test(
     name = "convert_test",
     srcs = ["convert_test.cc"],
-    backend_tags = {
-        # TODO(b/305009066)
-        "ghostfish_grm": ["broken"],
-    },
     deps = [
         ":client_library_test_base",
         ":literal_test_util",
@@ -2870,6 +2871,7 @@ xla_test(
         "//xla:shape_util",
         "//xla:test",
         "//xla:test_helpers",
+        "//xla/service/cpu:onednn_util",
         "@local_tsl//tsl/platform:platform_port",
     ],
 )

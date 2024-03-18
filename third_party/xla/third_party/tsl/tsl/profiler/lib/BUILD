@@ -148,6 +148,7 @@ cc_library(
         "//tsl/platform:macros",
         "//tsl/platform:statusor",
         "//tsl/util:env_var",
+        "@com_google_absl//absl/strings:string_view",
     ],
 )
 
@@ -156,6 +157,7 @@ tsl_cc_test(
     srcs = ["profiler_lock_test.cc"],
     deps = [
         ":profiler_lock",
+        "//tsl/platform:statusor",
         "//tsl/platform:test",
         "//tsl/platform:test_main",
     ],
@@ -268,6 +270,7 @@ cc_library(
 cc_library(
     name = "nvtx_utils",
     hdrs = ["nvtx_utils.h"],
+    local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]),
     visibility = ["//visibility:public"],
     deps = [
         "//tsl/platform:logging",

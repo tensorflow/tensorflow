@@ -50,7 +50,7 @@ absl::StatusOr<mlir::ModuleOp> RunQuantization(
     const SavedModelBundle* saved_model_bundle,
     absl::string_view saved_model_dir,
     const std::unordered_set<std::string>& saved_model_tags,
-    const stablehlo::quantization::QuantizationConfig& quantization_config,
+    stablehlo::quantization::QuantizationConfig& quantization_config,
     const tensorflow::quantization::PyFunctionLibrary*
         quantization_py_function_lib,
     mlir::ModuleOp module_op);

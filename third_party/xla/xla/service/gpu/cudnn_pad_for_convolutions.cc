@@ -38,11 +38,11 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/status.h"
-#include "xla/statusor.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/util.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/logging.h"
+#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace gpu {
@@ -388,7 +388,7 @@ absl::StatusOr<bool> TryResolvePaddedShapesForIntegerConvolution(
       case CudnnConvKind::kForward:
         CHECK_EQ(new_input_shapes.size(), 2);
         // Input feature maps
-        pad_dim(&new_input_shapes[0], dnums.input_feature_dimension(),
+        pad_dim(new_input_shapes.data(), dnums.input_feature_dimension(),
                 input_vect_size);
         // Kernel for the input feature maps
         pad_dim(&new_input_shapes[1], dnums.kernel_input_feature_dimension(),
@@ -404,7 +404,7 @@ absl::StatusOr<bool> TryResolvePaddedShapesForIntegerConvolution(
       case CudnnConvKind::kForwardActivation:
         CHECK(new_input_shapes.size() == 3 || new_input_shapes.size() == 4);
         // Input feature maps
-        pad_dim(&new_input_shapes[0], dnums.input_feature_dimension(),
+        pad_dim(new_input_shapes.data(), dnums.input_feature_dimension(),
                 input_vect_size);
         // Kernel for the input feature maps
         pad_dim(&new_input_shapes[1], dnums.kernel_input_feature_dimension(),

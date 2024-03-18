@@ -15,20 +15,34 @@ limitations under the License.
 
 #include "xla/stream_executor/dnn.h"
 
+#include <Eigen/Core>
 #include <algorithm>
+#include <complex>
+#include <cstddef>
 #include <cstdint>
 #include <iterator>
+#include <memory>
+#include <optional>
+#include <ostream>
+#include <string>
+#include <utility>
+#include <vector>
 
 #include "absl/algorithm/container.h"
 #include "absl/container/btree_map.h"
+#include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
 #include "absl/types/span.h"
+#include "xla/stream_executor/data_type.h"
+#include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/numeric_options.h"
 #include "tsl/lib/strings/proto_serialization.h"
+#include "tsl/platform/ml_dtypes.h"
 #include "tsl/protobuf/dnn.pb.h"
 
 namespace stream_executor {

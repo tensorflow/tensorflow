@@ -37,7 +37,7 @@ ArrayAttr getWrittenOperandsAttribute(Operation* op);
 
 /// Pass that transforms gpu modules in standard dialect to NNVM.
 std::unique_ptr<OperationPass<mlir::gpu::GPUModuleOp>>
-createGpuKernelToNvvmPass();
+createGpuKernelToNvvmPass(bool useBarePtrCallConv = false);
 
 /// Pass that transforms gpu modules in standard dialect to ROCDL.
 std::unique_ptr<OperationPass<mlir::gpu::GPUModuleOp>>

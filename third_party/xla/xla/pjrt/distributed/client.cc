@@ -50,16 +50,16 @@ class DistributedRuntimeCoordinationServiceClient
 
   xla::Status Connect() override;
   xla::Status Shutdown() override;
-  xla::StatusOr<std::string> BlockingKeyValueGet(
+  absl::StatusOr<std::string> BlockingKeyValueGet(
       std::string_view key, absl::Duration timeout) override;
-  xla::StatusOr<std::vector<std::pair<std::string, std::string>>>
+  absl::StatusOr<std::vector<std::pair<std::string, std::string>>>
   KeyValueDirGet(std::string_view key) override;
   xla::Status KeyValueSet(std::string_view key,
                           std::string_view value) override;
   xla::Status KeyValueDelete(std::string_view key) override;
   xla::Status WaitAtBarrier(std::string barrier_id,
                             absl::Duration timeout) override;
-  xla::StatusOr<tsl::CoordinationServiceAgent*> GetCoordinationServiceAgent()
+  absl::StatusOr<tsl::CoordinationServiceAgent*> GetCoordinationServiceAgent()
       override;
 
  private:
@@ -137,13 +137,13 @@ xla::Status DistributedRuntimeCoordinationServiceClient::Shutdown() {
   return s;
 }
 
-xla::StatusOr<std::string>
+absl::StatusOr<std::string>
 DistributedRuntimeCoordinationServiceClient::BlockingKeyValueGet(
     std::string_view key, absl::Duration timeout) {
   return coord_agent_->GetKeyValue(key, timeout);
 }
 
-xla::StatusOr<std::vector<std::pair<std::string, std::string>>>
+absl::StatusOr<std::vector<std::pair<std::string, std::string>>>
 DistributedRuntimeCoordinationServiceClient::KeyValueDirGet(
     std::string_view key) {
   // TODO(hanyangtay): Migrate to string_view for both client and coordination
@@ -177,7 +177,7 @@ xla::Status DistributedRuntimeCoordinationServiceClient::WaitAtBarrier(
   return coord_agent_->WaitAtBarrier(barrier_id, timeout, /*tasks=*/{});
 }
 
-xla::StatusOr<tsl::CoordinationServiceAgent*>
+absl::StatusOr<tsl::CoordinationServiceAgent*>
 DistributedRuntimeCoordinationServiceClient::GetCoordinationServiceAgent() {
   return coord_agent_.get();
 }

@@ -14,7 +14,9 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/tools/proto_splitter/cc/saved_model_splitter.h"
 
+#include <cstdint>
 #include <memory>
+#include <string>
 #include <variant>
 #include <vector>
 
@@ -29,6 +31,7 @@ limitations under the License.
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/protobuf/saved_model.pb.h"
 #include "tensorflow/tools/proto_splitter/cc/max_size.h"
+#include "tensorflow/tools/proto_splitter/cc/util.h"
 #include "tensorflow/tools/proto_splitter/testdata/test_message.pb.h"
 #include "tsl/lib/core/status_test_util.h"
 #include "tsl/platform/protobuf.h"
@@ -55,7 +58,7 @@ namespace {
     }                                                                       \
   } while (0)
 
-string NonChunkedSavedModel() {
+std::string NonChunkedSavedModel() {
   return io::JoinPath(testing::TensorFlowSrcRoot(), "cc", "saved_model",
                       "testdata", "chunked_saved_model", "non_chunked_model",
                       "saved_model.pb");
@@ -68,12 +71,13 @@ TEST(SavedModelSplitterTest, TestSplit) {
 
   TF_EXPECT_OK(tensorflow::ReadBinaryProto(tensorflow::Env::Default(),
                                            NonChunkedSavedModel(), &proto));
-  EXPECT_GE(proto.ByteSize(), GetMaxSize());
+  EXPECT_GE(proto.ByteSizeLong(), GetMaxSize());
 
   SavedModelSplitter splitter(&proto);
 
   TF_ASSERT_OK_AND_ASSIGN(auto x, splitter.Split());
-  auto chunks = x.first;
+  std::vector<MessageBytes>* chunks = x.chunks;
+  ASSERT_NE(chunks, nullptr);
 
   // Should create a new chunk with the single large constant.
   EXPECT_EQ(2, chunks->size());

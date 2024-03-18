@@ -87,13 +87,14 @@ class NcclApiStub final : public NcclApi {
   }
 
   absl::StatusOr<std::vector<OwnedNcclComm>> CommInitRanks(
-      int32_t, const NcclCliqueId&, absl::Span<const DeviceRank>) final {
+      int32_t, const NcclCliqueId&, absl::Span<const DeviceRank>,
+      const Config&) final {
     return UnimplementedError();
   }
 
   absl::StatusOr<std::vector<OwnedNcclComm>> CommSplit(
-      absl::Span<const NcclCommHandle>, int32_t,
-      absl::Span<const int32_t>) final {
+      absl::Span<const NcclCommHandle>, int32_t, absl::Span<const int32_t>,
+      std::optional<Config>) final {
     return UnimplementedError();
   }
 
@@ -121,6 +122,13 @@ class NcclApiStub final : public NcclApi {
   absl::Status AllReduce(se::DeviceMemoryBase, se::DeviceMemoryBase,
                          PrimitiveType, size_t, ReductionKind, NcclCommHandle,
                          se::Stream*) final {
+    return UnimplementedError();
+  }
+
+  absl::Status Broadcast(se::DeviceMemoryBase send_buffer,
+                         se::DeviceMemoryBase recv_buffer, PrimitiveType dtype,
+                         size_t count, size_t root, NcclCommHandle comm,
+                         se::Stream* stream) final {
     return UnimplementedError();
   }
 

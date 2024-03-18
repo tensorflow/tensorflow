@@ -11,9 +11,9 @@ func.func @tfInplaceUpdate(%arg0: tensor<2x1x2xf32>) -> tensor<2x1x2xf32> {
 }
 }
 
-//CHECK: module attributes 
+//CHECK: module attributes
 //CHECK-SAME: keep_stablehlo_constant = "true"
-//CHECK-NEXT:  func.func @main(%arg0: tensor<2x1x2xf32>) -> tensor<2x1x2xf32> attributes {tf.entry_function = {inputs = "arg0", outputs = "stablehlo.dynamic_update_slice"}} {
+//CHECK-NEXT:  func.func @main(%arg0: tensor<2x1x2xf32>) -> tensor<2x1x2xf32> attributes {tf.entry_function = {inputs = "arg0", outputs = "vhlo.dynamic_update_slice_v1"}} {
 //CHECK-DAG:    %0 = stablehlo.constant dense<2.000000e+00> : tensor<1x1x2xf32>
 //CHECK-DAG:    %1 = stablehlo.constant dense<1> : tensor<i32>
 //CHECK-DAG:    %2 = stablehlo.constant dense<0> : tensor<i32>

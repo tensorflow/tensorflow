@@ -135,17 +135,6 @@ func.func @index_select_to_gather_batch_dim_greater_than_1(%arg0 : tensor<5x1x5x
 
 // -----
 
-func.func @index_select_to_gather_unranked(%arg0 : tensor<*xi32>, %arg1 : tensor<*xi32>) -> tensor<*xi32> {
-  // CHECK: mhlo.torch_index_select
-  %0 = "mhlo.torch_index_select"(%arg0, %arg1) {
-    dim = 0 : i64,
-    batch_dims = 0 : i64
-  } : (tensor<*xi32>, tensor<*xi32>) -> tensor<*xi32>
-  func.return %0 : tensor<*xi32>
-}
-
-// -----
-
 func.func @index_select_to_gather_non_static_operand(%arg0 : tensor<5x1x?xi32>, %arg1 : tensor<2xi32>) -> tensor<2x1x5xi32> {
   // CHECK: mhlo.torch_index_select
   %0 = "mhlo.torch_index_select"(%arg0, %arg1) {

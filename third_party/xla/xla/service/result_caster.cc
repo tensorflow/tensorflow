@@ -15,19 +15,28 @@ limitations under the License.
 
 #include "xla/service/result_caster.h"
 
+#include <optional>
+
+#include "absl/status/statusor.h"
+#include "xla/hlo/ir/hlo_casting_utils.h"
+#include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_instructions.h"
+#include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/service/shape_inference.h"
+#include "xla/shape.h"
 
 namespace xla {
 namespace {
 
-StatusOr<std::optional<Shape>> MaybeInferShape(
+absl::StatusOr<std::optional<Shape>> MaybeInferShape(
     const HloInstruction* instruction) {
   switch (instruction->opcode()) {
     case HloOpcode::kDot:
       return ShapeInference::InferDotOpShape(
           instruction->operand(0)->shape(), instruction->operand(1)->shape(),
           instruction->dot_dimension_numbers(),
-          /*preferred_element_type=*/std::nullopt);
+          /*preferred_element_type=*/std::nullopt,
+          Cast<HloDotInstruction>(instruction)->sparsity());
     case HloOpcode::kConvolution:
       return ShapeInference::InferConvolveShape(
           instruction->operand(0)->shape(), instruction->operand(1)->shape(),
@@ -51,7 +60,7 @@ bool ResultCaster::InstructionMatchesPattern(HloInstruction* instruction) {
   return inferred_shape.element_type() != instruction->shape().element_type();
 }
 
-StatusOr<HloInstruction*> ResultCaster::ExpandInstruction(
+absl::StatusOr<HloInstruction*> ResultCaster::ExpandInstruction(
     HloInstruction* instruction) {
   auto* computation = instruction->parent();
   Shape inferred_shape = MaybeInferShape(instruction).value().value();

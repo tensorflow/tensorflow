@@ -23,6 +23,7 @@
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "xla/service/host_memory_offload_annotations.h"
 #include "xla/statusor.h"
 #include "xla/tests/hlo_test_base.h"
 #include "xla/util.h"
@@ -248,8 +249,10 @@ ENTRY main.183 {
   int64_t custom_calls_count = 0;
   for (auto* c : module->computations()) {
     for (auto* instr : c->instructions()) {
-      if (instr->IsCustomCall("PipelineForward") ||
-          instr->IsCustomCall("PipelineBackward")) {
+      if (instr->IsCustomCall(
+              host_memory_offload_annotations::kMoveToHostCustomCallTarget) ||
+          instr->IsCustomCall(
+              host_memory_offload_annotations::kMoveToDeviceCustomCallTarget)) {
         ++custom_calls_count;
       }
     }
@@ -470,8 +473,10 @@ ENTRY main.183 {
   int64_t custom_calls_count = 0;
   for (auto* c : module->computations()) {
     for (auto* instr : c->instructions()) {
-      if (instr->IsCustomCall("PipelineForward") ||
-          instr->IsCustomCall("PipelineBackward")) {
+      if (instr->IsCustomCall(
+              host_memory_offload_annotations::kMoveToHostCustomCallTarget) ||
+          instr->IsCustomCall(
+              host_memory_offload_annotations::kMoveToDeviceCustomCallTarget)) {
         ++custom_calls_count;
       }
     }

@@ -95,10 +95,8 @@ if [[ "$2" == "jax" ]]; then
   # E.g., numpy supports py3.11 only from 1.23.4
   if [[ ${PYTHON_VERSION} -eq 12 ]]; then
     "${PIP_INSTALL[@]}" "numpy==1.26.0" "scipy==1.11.2"
-  elif [[ ${PYTHON_VERSION} -eq 11 ]]; then
-    "${PIP_INSTALL[@]}" "numpy==1.23.4" "scipy==1.9.3"
   else
-    "${PIP_INSTALL[@]}" "numpy==1.22.4" "scipy==1.9.3"
+    "${PIP_INSTALL[@]}" "numpy==1.23.4" "scipy==1.9.3"
   fi
 else
   # Special casing by version of Python

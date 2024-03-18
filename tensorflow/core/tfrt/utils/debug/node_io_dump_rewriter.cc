@@ -41,7 +41,7 @@ namespace tensorflow {
 namespace tfrt_stub {
 namespace {
 
-StatusOr<std::string> GetDumpDir(absl::string_view dump_dir) {
+absl::StatusOr<std::string> GetDumpDir(absl::string_view dump_dir) {
   if (!dump_dir.empty()) return std::string(dump_dir);
   const char* prefix = getenv("TF_DUMP_GRAPH_PREFIX");
   if (prefix != nullptr) return std::string(prefix);

@@ -51,12 +51,12 @@ using fingerprinting_utils_internal::HashSavedObjectGraph;
 using fingerprinting_utils_internal::HashSignatureDef;
 using fingerprinting_utils_internal::PruneChunkedMessage;
 using fingerprinting_utils_internal::SerializeProto;
-using ::proto_splitter::ChunkedField;
-using ::proto_splitter::ChunkedMessage;
-using ::proto_splitter::ChunkInfo;
-using ::proto_splitter::ChunkMetadata;
-using ::proto_splitter::FieldIndex;
-using ::proto_splitter_testdata::ManyFields;
+using ::tensorflow::proto_splitter::ChunkedField;
+using ::tensorflow::proto_splitter::ChunkedMessage;
+using ::tensorflow::proto_splitter::ChunkInfo;
+using ::tensorflow::proto_splitter::ChunkMetadata;
+using ::tensorflow::proto_splitter::FieldIndex;
+using ::tensorflow::proto_splitter_testdata::ManyFields;
 using ::tensorflow::protobuf::Message;
 using ::tensorflow::protobuf::RepeatedPtrField;
 using ::tensorflow::protobuf::TextFormat;
@@ -82,8 +82,8 @@ absl::Status ParseTextProto(absl::string_view text_proto,
       absl::StrCat("Could not parse text proto: ", text_proto));
 }
 
-absl::StatusOr<RepeatedPtrField<::proto_splitter::FieldIndex>> ExtractFieldTags(
-    absl::string_view chunked_field_text_proto) {
+absl::StatusOr<RepeatedPtrField<::tensorflow::proto_splitter::FieldIndex>>
+ExtractFieldTags(absl::string_view chunked_field_text_proto) {
   ChunkedField chunked_field;
   TF_RETURN_IF_ERROR(ParseTextProto(chunked_field_text_proto, &chunked_field));
   return chunked_field.field_tag();

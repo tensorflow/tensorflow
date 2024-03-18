@@ -82,10 +82,10 @@ Status UpdateInfeedLayout(xla::Shape* shape,
             "(--transpose_tpu_infeed=false) and report to XLA team.");
       }
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
   *shape = GetTPUInfeedLayout(*shape);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // TODO(pbar) Work out if we need to Infeed Tuples - if so then

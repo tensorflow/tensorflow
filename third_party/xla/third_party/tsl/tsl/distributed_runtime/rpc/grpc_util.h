@@ -52,7 +52,7 @@ inline bool IsStreamRemovedError(const ::grpc::Status& s) {
          s.error_message() == kStreamRemovedMessage;
 }
 
-inline std::string SerializePayloads(const Status& s) {
+inline std::string SerializePayloads(const absl::Status& s) {
   tensorflow::distributed_runtime::GrpcPayloadContainer container;
   s.ForEachPayload([&container](StringPiece key, const absl::Cord& value) {
     (*container.mutable_payloads())[std::string(key)] = std::string(value);
@@ -60,7 +60,7 @@ inline std::string SerializePayloads(const Status& s) {
   return container.SerializeAsString();
 }
 
-inline void InsertSerializedPayloads(Status& s, std::string payloads) {
+inline void InsertSerializedPayloads(absl::Status& s, std::string payloads) {
   tensorflow::distributed_runtime::GrpcPayloadContainer container;
   if (container.ParseFromString(payloads)) {
     for (const auto& key_val : container.payloads()) {
@@ -73,24 +73,25 @@ inline void InsertSerializedPayloads(Status& s, std::string payloads) {
   }
 }
 
-inline Status FromGrpcStatus(const ::grpc::Status& s) {
+inline absl::Status FromGrpcStatus(const ::grpc::Status& s) {
   if (s.ok()) {
-    return OkStatus();
+    return absl::OkStatus();
   } else {
-    Status converted;
+    absl::Status converted;
     // Convert "UNKNOWN" stream removed errors into unavailable, to allow
     // for retry upstream.
     if (IsStreamRemovedError(s)) {
-      converted = Status(absl::StatusCode::kUnavailable, s.error_message());
+      converted =
+          absl::Status(absl::StatusCode::kUnavailable, s.error_message());
     }
-    converted = Status(static_cast<absl::StatusCode>(s.error_code()),
-                       s.error_message());
+    converted = absl::Status(static_cast<absl::StatusCode>(s.error_code()),
+                             s.error_message());
     InsertSerializedPayloads(converted, s.error_details());
     return converted;
   }
 }
 
-inline ::grpc::Status ToGrpcStatus(const Status& s) {
+inline ::grpc::Status ToGrpcStatus(const absl::Status& s) {
   if (s.ok()) {
     return ::grpc::Status::OK;
   } else {

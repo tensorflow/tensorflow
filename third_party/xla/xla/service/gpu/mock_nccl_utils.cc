@@ -53,8 +53,10 @@ limitations under the License.
 #include "third_party/gpus/nccl/include/info.h"
 #include "third_party/gpus/nccl/include/nccl_common.h"
 #include "third_party/nccl/nccl.h"
+#include "third_party/gpus/nccl/src/include/device.h"
 #include "xla/debug_options_flags.h"
 #include "xla/executable_run_options.h"
+#include "xla/primitive_util.h"
 #include "xla/service/collective_ops_utils.h"
 #include "xla/service/global_device_id.h"
 #include "xla/service/gpu/gpu_executable_run_options.h"
@@ -64,9 +66,10 @@ limitations under the License.
 #include "xla/service/gpu/nccl_clique.h"
 #include "xla/service/gpu/nccl_clique_key.h"
 #include "xla/service/gpu/nccl_collective_thunk.h"
-#include "xla/service/gpu/nccl_p2p_thunk_common.h"
+#include "xla/service/gpu/runtime/nccl_p2p_thunk_common.h"
 #include "xla/service/gpu/sleep_kernel.h"
 #include "xla/service/gpu/thunk.h"
+#include "xla/service/lockable.h"
 #include "xla/service/rendezvous.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
@@ -590,7 +593,7 @@ absl::Status RunMockCollectivePermute(
     // buffer.
     VLOG(3) << absl::StreamFormat(
         "%s : mock collective-Permute: Issuing MemZero", device_string);
-    stream.ThenMemZero(&dest_addr, dest_addr.size());
+    return stream.MemZero(&dest_addr, dest_addr.size());
   }
   return absl::OkStatus();
 }
@@ -783,7 +786,7 @@ absl::StatusOr<NcclComm::Lock> AcquireMockNcclComm(
       AcquireNcclClique(
           run_id, op_id, clique_key, clique_id_callback, 1,
           enable_clique_optimization ||
-              stream_id == GetStreamId(true, AsyncStreamKind::kP2P)));
+              stream_id == GetStreamId(true, AsyncStreamKind::kP2P0)));
 
   struct AllCommunicators {
     absl::Mutex mu;

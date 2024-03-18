@@ -75,7 +75,7 @@ namespace tsl {
 
 class PreemptionNotifier {
  public:
-  typedef std::function<void(StatusOr<absl::Time>)> PreemptTimeCallback;
+  typedef std::function<void(absl::StatusOr<absl::Time>)> PreemptTimeCallback;
   using PreemptionNotifierFactory =
       std::function<std::unique_ptr<PreemptionNotifier>(Env* env)>;
 
@@ -112,7 +112,7 @@ class PreemptionNotifier {
   // termination will occur once the listener receives the preemption
   // notification. If no death time is specified, absl::Now() is returned.
   // Returns error::Cancelled if UnregisterListeners() is called.
-  StatusOr<absl::Time> WillBePreemptedAt();
+  absl::StatusOr<absl::Time> WillBePreemptedAt();
 
   // Registers a callback that takes the death time as input once the listener
   // receives the preemption notification.
@@ -126,7 +126,7 @@ class PreemptionNotifier {
   Env* GetEnv() { return env_; }
   // Invokes all pending callbacks upon receipt of preemption notice with death
   // time or errors (e.g. cancellation during shutdown).
-  void NotifyRegisteredListeners(StatusOr<absl::Time> death_time);
+  void NotifyRegisteredListeners(absl::StatusOr<absl::Time> death_time);
 
  private:
   static std::unordered_map<std::string, PreemptionNotifierFactory>*

@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include <string>
 
+#include "tensorflow/compiler/mlir/quantization/stablehlo/quantization_config.pb.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/calibrator/calibrator_singleton.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/quantization_options.pb.h"
 #include "tensorflow/core/framework/op.h"
@@ -23,7 +24,7 @@ limitations under the License.
 
 namespace tensorflow {
 
-using ::tensorflow::quantization::CalibrationOptions;
+using ::stablehlo::quantization::CalibrationOptions;
 
 REGISTER_OP("CustomAggregator")
     .Input("input: float")

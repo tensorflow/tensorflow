@@ -55,7 +55,7 @@ class DummyAutoSharding : public HloModulePass {
   absl::string_view name() const override { return "dummy_auto_sharding"; }
 
   using HloPassInterface::Run;
-  StatusOr<bool> Run(
+  absl::StatusOr<bool> Run(
       HloModule* module,
       const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 };
@@ -71,7 +71,7 @@ class AutoShardingImplementation {
   explicit AutoShardingImplementation(const AutoShardingOption& option);
   ~AutoShardingImplementation() = default;
 
-  StatusOr<AutoShardingResult> RunAutoSharding(
+  absl::StatusOr<AutoShardingResult> RunAutoSharding(
       HloModule* module,
       const absl::flat_hash_set<std::string>& replicated_small_tensors,
       const absl::flat_hash_set<absl::string_view>& execution_threads,
@@ -115,7 +115,7 @@ class AutoSharding : public HloModulePass {
   absl::string_view name() const override { return "auto_sharding"; }
 
   using HloPassInterface::Run;
-  StatusOr<bool> Run(
+  absl::StatusOr<bool> Run(
       HloModule* module,
       const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 
@@ -140,10 +140,15 @@ HloSharding Tile(const Shape& shape, absl::Span<const int64_t> tensor_dims,
                  absl::Span<const int64_t> mesh_dims,
                  const Array<int64_t>& device_mesh);
 
-std::vector<double> ReshardingCostVector(const StrategyGroup* strategy_group,
-                                         const Shape& shape,
-                                         const HloSharding& required_sharding,
-                                         const ClusterEnvironment& cluster_env);
+std::vector<double> CommunicationReshardingCostVector(
+    const StrategyGroup* strategy_group, const Shape& shape,
+    const HloSharding& required_sharding,
+    const ClusterEnvironment& cluster_env);
+
+std::vector<double> MemoryReshardingCostVector(
+    const StrategyGroup* strategy_group, const Shape& operand_shape,
+    const HloSharding& required_sharding,
+    const ClusterEnvironment& cluster_env);
 
 std::vector<double> FollowInsCostVector(int64_t source_len, int64_t index);
 
@@ -258,7 +263,7 @@ void FillAllStrategiesForArray(
     bool create_replicated_strategies,
     bool create_partially_replicated_strategies);
 
-StatusOr<std::unique_ptr<StrategyGroup>> CreateAllStrategiesGroup(
+absl::StatusOr<std::unique_ptr<StrategyGroup>> CreateAllStrategiesGroup(
     const HloInstruction* ins, const Shape& shape, size_t instruction_id,
     StrategyGroups& strategy_groups, const ClusterEnvironment& cluster_env,
     const StrategyMap& strategy_map, const AutoShardingOption& option,
@@ -317,7 +322,7 @@ void EnumerateAllPartition(const HloInstruction* ins, const Shape& shape,
                            int64_t partition_dimensions,
                            const std::vector<int64_t>& tensor_dims = {});
 
-StatusOr<std::unique_ptr<StrategyGroup>> FollowReduceStrategy(
+absl::StatusOr<std::unique_ptr<StrategyGroup>> FollowReduceStrategy(
     const HloInstruction* ins, const Shape& output_shape,
     const HloInstruction* operand, const HloInstruction* unit,
     size_t instruction_id, StrategyMap& strategy_map,
@@ -330,7 +335,7 @@ void GenerateOutfeedStrategy(const HloInstruction* ins, const Shape& shape,
                              std::unique_ptr<StrategyGroup>& strategy_group,
                              double replicated_penalty);
 
-std::vector<std::vector<double>>
+std::pair<ReshardingCosts, ReshardingCosts>
 GenerateReshardingCostsAndMissingShardingsForAllOperands(
     const HloInstruction* ins, const HloSharding& output_sharding,
     const StrategyMap& strategy_map, const ClusterEnvironment& cluster_env,
@@ -367,7 +372,7 @@ void TrimOrGenerateStrategiesBasedOnExistingSharding(
     const CallGraph& call_graph, bool strict);
 
 // Build possible sharding strategies and their costs for all instructions.
-StatusOr<std::tuple<StrategyMap, StrategyGroups, AssociativeDotPairs>>
+absl::StatusOr<std::tuple<StrategyMap, StrategyGroups, AssociativeDotPairs>>
 BuildStrategyAndCost(const HloInstructionSequence& sequence,
                      const HloModule* module,
                      const absl::flat_hash_map<const HloInstruction*, int64_t>&

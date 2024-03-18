@@ -35,8 +35,8 @@ limitations under the License.
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/common/tfl_pass_config.h"
 #include "tensorflow/compiler/mlir/lite/python/tf_tfl_flatbuffer_helpers.h"
-#include "tensorflow/compiler/mlir/lite/quantization/quantization_config.h"
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h"
+#include "tensorflow/compiler/mlir/quantization/common/quantization_lib/quantization_config.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/service/hlo_parser.h"
 #include "xla/translate/hlo_to_mhlo/hlo_to_mlir_hlo.h"
@@ -121,7 +121,7 @@ mlir::OwningOpRef<mlir::ModuleOp> HloTextToMlirHloTranslateFunction(
 }  // namespace
 absl::Status ConvertJaxToTFLiteFlatBuffer(const std::string& input,
                                           const toco::ModelFlags& model_flags,
-                                          const toco::TocoFlags& toco_flags,
+                                          toco::TocoFlags& toco_flags,
                                           std::string* result) {
   mlir::MLIRContext context;
   mlir::quant::QuantizationSpecs quant_specs;

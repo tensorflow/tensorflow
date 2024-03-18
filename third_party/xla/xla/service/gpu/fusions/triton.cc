@@ -28,7 +28,6 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
-#include "xla/mlir_hlo/lhlo/IR/lhlo_ops.h"
 #include "xla/service/gpu/fusions/fusion_emitter.h"
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/ir_emitter_context.h"
@@ -96,26 +95,15 @@ LaunchDimensions CalculateSoftMaxLaunchDimensions(
 }  // namespace
 
 absl::StatusOr<FusionEmissionResult> TritonFusion::Emit(
-    IrEmitterContext& ir_emitter_context, mlir::lmhlo::FusionOp fusion_op,
+    IrEmitterContext& ir_emitter_context,
     const HloFusionInstruction& fusion) const {
   llvm::IRBuilder builder(ir_emitter_context.llvm_module()->getContext());
 #if GOOGLE_CUDA
-  if (!ir_emitter_context.emit_ir_from_hlo()) {
-    CHECK_NE(fusion_op, nullptr);
-  }
-  if (ir_emitter_context.emit_ir_from_hlo()) {
-    VLOG(3) << fusion.ToString();
-  } else {
-    VLOG(3) << llvm_ir::DumpToString(fusion_op);
-  }
+  VLOG(3) << fusion.ToString();
   std::string suggested_kernel_name = std::string(fusion.name());
-  TF_ASSIGN_OR_RETURN(auto kernel_arguments,
-                      ir_emitter_context.emit_ir_from_hlo()
-                          ? KernelArguments::Create(
-                                ir_emitter_context.buffer_assignment(), &fusion)
-                          : KernelArguments::Create(
-                                ir_emitter_context.allocations(),
-                                mlir::cast<mlir::lmhlo::FusionOp>(fusion_op)));
+  TF_ASSIGN_OR_RETURN(
+      auto kernel_arguments,
+      KernelArguments::Create(ir_emitter_context.buffer_assignment(), &fusion));
 
   const HloComputation* hlo_computation =
       fusion.fused_instructions_computation();
@@ -157,13 +145,8 @@ absl::StatusOr<FusionEmissionResult> TritonFusion::Emit(
     } else {  // Must be a MatMul
       CHECK_EQ(fusion_kind, kTritonGemmFusionKind);
       if (!backend_config.has_triton_gemm_config()) {
-        if (ir_emitter_context.emit_ir_from_hlo()) {
-          LOG(WARNING) << "Using fallback triton GEMM config for op "
-                       << fusion.name();
-        } else {
-          LOG(WARNING) << "Using fallback triton GEMM config for op "
-                       << GetIrNameFromLoc(fusion_op->getLoc());
-        }
+        LOG(WARNING) << "Using fallback triton GEMM config for op "
+                     << fusion.name();
         auto& triton_config = *backend_config.mutable_triton_gemm_config();
         triton_config.set_block_m(64);
         triton_config.set_block_k(64);
@@ -222,16 +205,9 @@ absl::StatusOr<FusionEmissionResult> TritonFusion::Emit(
           /*discriminator=*/"", generate);
   TF_ASSIGN_OR_RETURN(const KernelReuseCache::Entry* entry, status_or_entry);
 
-  std::variant<mlir::Operation*, const HloInstruction*> fusion_op_or_hlo;
-  if (ir_emitter_context.emit_ir_from_hlo()) {
-    fusion_op_or_hlo = &fusion;
-  } else {
-    fusion_op_or_hlo = fusion_op;
-  }
-
   FusionEmissionResult result;
   result.thunks.emplace_back(std::make_unique<KernelThunk>(
-      fusion_op_or_hlo, entry->kernel_name, kernel_arguments.args(),
+      &fusion, entry->kernel_name, kernel_arguments.args(),
       entry->launch_dimensions, entry->cluster_dim, entry->shmem_bytes));
 
   return result;

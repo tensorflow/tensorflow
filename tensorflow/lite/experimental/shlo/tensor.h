@@ -20,6 +20,7 @@ limitations under the License.
 #include <cstddef>
 #include <variant>
 
+#include "absl/types/span.h"
 #include "tensorflow/lite/experimental/shlo/data_type.h"
 #include "tensorflow/lite/experimental/shlo/quantized_tensor_element_type.h"
 #include "tensorflow/lite/experimental/shlo/shape.h"
@@ -27,6 +28,13 @@ limitations under the License.
 namespace shlo_ref {
 
 using TensorElementType = DataType;
+
+constexpr TensorElementType BaselineType(TensorElementType type) {
+  return type;
+}
+
+std::variant<TensorElementType, QuantizedTensorElementType> BaselineType(
+    const std::variant<TensorElementType, QuantizedTensorElementType>& type);
 
 struct TensorType {
   Shape shape;
@@ -50,6 +58,7 @@ struct Tensor {
   DataType StorageType() const;
 
   DimensionSize NumElements() const;
+  size_t SizeInBytes() const;
 
   TensorType& tensor_type();
   const TensorType& tensor_type() const;
@@ -60,14 +69,23 @@ struct Tensor {
   const TensorElementType& tensor_element_type() const;
   const QuantizedTensorElementType& quantized_tensor_element_type() const;
 
-  template <DataType data_type, typename T = Storage<data_type>::Type>
+  std::variant<TensorElementType, QuantizedTensorElementType> element_type()
+      const;
+
+  template <DataType data_type, typename T = typename Storage<data_type>::Type>
   T* GetDataAs() {
     return reinterpret_cast<T*>(data);
   }
 
-  template <DataType data_type, typename T = Storage<data_type>::Type>
+  template <DataType data_type, typename T = typename Storage<data_type>::Type>
   const T* GetDataAs() const {
     return reinterpret_cast<const T*>(data);
+  }
+
+  template <DataType data_type, typename T = typename Storage<data_type>::Type>
+  absl::Span<const T> Flat() const {
+    return absl::MakeConstSpan(GetDataAs<data_type>(),
+                               static_cast<size_t>(NumElements()));
   }
 
   std::variant<TensorType, QuantizedTensorType> type;
@@ -79,6 +97,12 @@ struct Tensor {
   // The size of the array must be equal to Size(shape).
   void* data = nullptr;
 };
+
+bool operator==(const TensorType& lhs, const TensorType& rhs);
+bool operator!=(const TensorType& lhs, const TensorType& rhs);
+
+bool operator==(const QuantizedTensorType& lhs, const QuantizedTensorType& rhs);
+bool operator!=(const QuantizedTensorType& lhs, const QuantizedTensorType& rhs);
 
 }  // namespace shlo_ref
 

@@ -104,7 +104,7 @@ TEST_P(SavedVariableLoadingTest, LoadSavedVariableWithInvalidDevice) {
       shape.AsProto(saved_variable.mutable_shape());
 
   std::unique_ptr<Variable> var;
-  ASSERT_NE(OkStatus(),
+  ASSERT_NE(absl::OkStatus(),
             internal::LoadSavedVariable(context(), saved_variable, &var));
 }
 

@@ -17,9 +17,11 @@ limitations under the License.
 #define TENSORFLOW_LITE_EXPERIMENTAL_SHLO_QUANTIZED_TENSOR_ELEMENT_TYPE_H_
 
 #include <optional>
+#include <type_traits>
 #include <utility>
 #include <variant>
 
+#include "absl/algorithm/container.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/log/absl_check.h"
 #include "absl/types/span.h"
@@ -37,8 +39,8 @@ class QuantizedTensorElementType {
                   "Storage type must be an integer type");
     static_assert(IsFloat(expressed_type),
                   "Expressed type must be a floating point type");
-    using StorageT = Storage<storage_type>::Type;
-    using ExpressedT = Storage<expressed_type>::Type;
+    using StorageT = typename Storage<storage_type>::Type;
+    using ExpressedT = typename Storage<expressed_type>::Type;
 
     return QuantizedTensorElementType(
         storage_type, expressed_type, std::nullopt,
@@ -55,8 +57,8 @@ class QuantizedTensorElementType {
                   "Storage type must be an integer type");
     static_assert(IsFloat(expressed_type),
                   "Expressed type must be a floating point type");
-    using StorageT = Storage<storage_type>::Type;
-    using ExpressedT = Storage<expressed_type>::Type;
+    using StorageT = typename Storage<storage_type>::Type;
+    using ExpressedT = typename Storage<expressed_type>::Type;
 
     ABSL_CHECK(scales.size() == zero_points.size());
     return QuantizedTensorElementType(
@@ -76,18 +78,52 @@ class QuantizedTensorElementType {
     return quantized_dimension_.value();
   }
 
-  template <DataType expressed_type, typename T = Storage<expressed_type>::Type>
+  template <DataType expressed_type,
+            typename T = typename Storage<expressed_type>::Type>
   absl::Span<const T> Scales() const {
     ABSL_CHECK(expressed_type == expressed_type_);
     ABSL_CHECK(std::holds_alternative<SmallInlinedVector<T>>(scales_));
     return std::get<SmallInlinedVector<T>>(scales_);
   }
 
-  template <DataType storage_type, typename T = Storage<storage_type>::Type>
+  template <DataType storage_type,
+            typename T = typename Storage<storage_type>::Type>
   absl::Span<const T> ZeroPoints() const {
     ABSL_CHECK(storage_type == storage_type_);
     ABSL_CHECK(std::holds_alternative<SmallInlinedVector<T>>(zero_points_));
     return std::get<SmallInlinedVector<T>>(zero_points_);
+  }
+
+  friend bool operator==(const QuantizedTensorElementType& lhs,
+                         const QuantizedTensorElementType& rhs) {
+    return lhs.storage_type_ == rhs.storage_type_ &&
+           lhs.expressed_type_ == rhs.expressed_type_ &&
+           lhs.quantized_dimension_ == rhs.quantized_dimension_ &&
+           lhs.scales_ == rhs.scales_ && lhs.zero_points_ == rhs.zero_points_;
+  }
+
+  friend bool operator!=(const QuantizedTensorElementType& lhs,
+                         const QuantizedTensorElementType& rhs) {
+    return !(lhs == rhs);
+  }
+
+  friend QuantizedTensorElementType BaselineType(
+      const QuantizedTensorElementType& type) {
+    QuantizedTensorElementType baseline = type;
+    std::visit(
+        [](auto& scales) -> void {
+          using Container = std::remove_reference_t<decltype(scales)>;
+          absl::c_fill(scales, static_cast<typename Container::value_type>(1));
+        },
+        baseline.scales_);
+    std::visit(
+        [](auto& zero_points) -> void {
+          using Container = std::remove_reference_t<decltype(zero_points)>;
+          absl::c_fill(zero_points,
+                       static_cast<typename Container::value_type>(0));
+        },
+        baseline.zero_points_);
+    return baseline;
   }
 
  private:
@@ -110,6 +146,7 @@ class QuantizedTensorElementType {
 
   DataType storage_type_;
   DataType expressed_type_;
+
   std::optional<Axis> quantized_dimension_;
 
   std::variant<SmallInlinedVector<Storage<DataType::kBF16>::Type>,

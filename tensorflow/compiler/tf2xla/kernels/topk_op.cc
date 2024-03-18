@@ -35,7 +35,7 @@ class TopKOp : public XlaOpKernel {
   }
 
   void Compile(XlaOpKernelContext* context) override {
-    const StatusOr<xla::Shape> input_shape_or = context->InputXlaShape(0);
+    const absl::StatusOr<xla::Shape> input_shape_or = context->InputXlaShape(0);
     OP_REQUIRES_OK(context, input_shape_or.status());
     const xla::Shape& input_shape = *input_shape_or;
     int last_dim = input_shape.dimensions_size() - 1;

@@ -354,7 +354,7 @@ XLA_TEST_F(CustomCallClientAPITest, IllegalCustomCallTarget) {
   CustomCall(&builder, "$illegal", /*operands=*/{},
              ShapeUtil::MakeShape(F32, {1}));
 
-  StatusOr<std::unique_ptr<GlobalData>> result =
+  absl::StatusOr<std::unique_ptr<GlobalData>> result =
       Execute(&builder, /*arguments=*/{});
   EXPECT_FALSE(result.ok());
 }

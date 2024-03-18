@@ -66,6 +66,7 @@ limitations under the License.
 #include "tensorflow/core/framework/attr_value_util.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/graph_debug_info.pb.h"
+#include "tensorflow/core/framework/metrics.h"
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/graph/node_builder.h"
@@ -105,11 +106,11 @@ Status CheckSignature(const DataTypeVector& types,
 
 // Uses the _Arg and _Retval nodes in the graph to determine an OpSharding for
 // each argument and return value.
-StatusOr<
+absl::StatusOr<
     std::pair<std::map<int, xla::OpSharding>, std::map<int, xla::OpSharding>>>
 ComputeArgAndRetvalShardings(const Graph& graph) {
   auto get_sharding_for_node =
-      [](const Node* n) -> StatusOr<std::optional<xla::OpSharding>> {
+      [](const Node* n) -> absl::StatusOr<std::optional<xla::OpSharding>> {
     TF_ASSIGN_OR_RETURN(
         auto sharding,
         ParseShardingFromDevice(*n, std::numeric_limits<int32>::max(),
@@ -761,8 +762,18 @@ Status XlaCompiler::CompileSingleOp(
 
   auto compile_with_old_bridge = [&]() {
     *result = {};
-    return ADD_SOURCE_LOCATION(CompileGraph(compile_options, node_def.name(),
-                                            std::move(graph), args, result));
+    Status status = ADD_SOURCE_LOCATION(CompileGraph(
+        compile_options, node_def.name(), std::move(graph), args, result));
+    if (status.ok()) {
+      tensorflow::metrics::IncrementPhase2XlaCompilerCounter(
+          tensorflow::metrics::Phase2XlaCompilerMetric::
+              kCompileSingleOpXlaBuilderSuccess);
+    } else {
+      tensorflow::metrics::IncrementPhase2XlaCompilerCounter(
+          tensorflow::metrics::Phase2XlaCompilerMetric::
+              kCompileSingleOpXlaBuilderFailure);
+    }
+    return status;
   };
 
   const ConfigProto* config = &(single_op_compile_argument.config_proto);
@@ -794,9 +805,14 @@ Status XlaCompiler::CompileSingleOp(
       options_.shape_determination_fns, result);
 
   if (mlir_result.ok() || mlir_enabled) {
+    tensorflow::metrics::IncrementPhase2XlaCompilerCounter(
+        tensorflow::metrics::Phase2XlaCompilerMetric::
+            kCompileSingleOpMlirSuccess);
     return mlir_result;
   }
-
+  tensorflow::metrics::IncrementPhase2XlaCompilerCounter(
+      tensorflow::metrics::Phase2XlaCompilerMetric::
+          kCompileSingleOpMlirFailure);
   VLOG(1) << "Failed second phase of the MLIR bridge. Will "
              "retry with the old bridge. MLIR bridge compilation status: "
           << mlir_result;
@@ -907,8 +923,14 @@ Status XlaCompiler::CompileFunction(
         options.use_tuple_arg, /*analyse_graph=*/false, *options_.flib_def,
         debug_info, options_.shape_determination_fns, result);
     if (mlir_result.ok()) {
+      tensorflow::metrics::IncrementPhase2XlaCompilerCounter(
+          tensorflow::metrics::Phase2XlaCompilerMetric::
+              kCompileFunctionMlirSuccess);
       VLOG(1) << "MLIR bridge was successfull";
     } else {
+      tensorflow::metrics::IncrementPhase2XlaCompilerCounter(
+          tensorflow::metrics::Phase2XlaCompilerMetric::
+              kCompileFunctionMlirFailure);
       VLOG(1) << "MLIR failed, no fallback";
       return mlir_result;
     }
@@ -917,6 +939,9 @@ Status XlaCompiler::CompileFunction(
     auto status =
         CompileGraph(options, function_id, std::move(graph), args, result);
     if (!status.ok()) {
+      tensorflow::metrics::IncrementPhase2XlaCompilerCounter(
+          tensorflow::metrics::Phase2XlaCompilerMetric::
+              kCompileFunctionXlaBuilderFailure);
       ::tsl::errors::AppendToMessage(
           &status, "tf2xla conversion failed while converting ", function_id,
           ". Run with TF_DUMP_GRAPH_PREFIX=/path/to/dump/dir and "
@@ -925,8 +950,10 @@ Status XlaCompiler::CompileFunction(
       return status;
     }
   }
+  tensorflow::metrics::IncrementPhase2XlaCompilerCounter(
+      tensorflow::metrics::Phase2XlaCompilerMetric::
+          kCompileFunctionXlaBuilderSuccess);
   VLOG(1) << "====================================================";
-
   cache_[{function_id, arg_vector}] = *result;
   return absl::OkStatus();
 }
@@ -1796,7 +1823,7 @@ Status XlaCompiler::SetNodeToken(const string& node_name, const xla::XlaOp op) {
   return absl::OkStatus();
 }
 
-StatusOr<xla::XlaOp> XlaCompiler::GetNodeToken(const string& node_name) {
+absl::StatusOr<xla::XlaOp> XlaCompiler::GetNodeToken(const string& node_name) {
   if (node_token_mapping_stack_.empty()) {
     return errors::FailedPrecondition(
         "Calling GetNodeToken() when node_token_mapping_stack_ is "

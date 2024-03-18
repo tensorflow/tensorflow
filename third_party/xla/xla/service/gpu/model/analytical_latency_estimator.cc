@@ -26,6 +26,7 @@ limitations under the License.
 #include "xla/service/gpu/model/gpu_collective_performance_model.h"
 #include "xla/service/gpu/model/gpu_hlo_cost_analysis.h"
 #include "xla/service/gpu/model/gpu_performance_model.h"
+#include "xla/service/gpu/model/gpu_performance_model_base.h"
 #include "xla/service/hlo_cost_analysis.h"
 #include "xla/service/latency_hiding_scheduler.h"
 #include "xla/stream_executor/device_description.h"

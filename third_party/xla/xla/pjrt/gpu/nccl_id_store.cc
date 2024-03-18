@@ -29,7 +29,7 @@ limitations under the License.
 
 namespace xla {
 
-StatusOr<gpu::NcclCliqueId> NcclIdStore::GetNcclUniqueId(
+absl::StatusOr<gpu::NcclCliqueId> NcclIdStore::GetNcclUniqueId(
     const gpu::NcclCliqueKey& key) {
   // The caller must ensure that threads calling this method concurrently have
   // unique keys, otherwise the global key-value store may hold the wrong value.

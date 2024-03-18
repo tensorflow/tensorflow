@@ -449,9 +449,9 @@ class HloCholeskyInstruction : public HloInstruction {
 
 // Class that represents instructions that synchronize and transfer data between
 // partitioned devices. Send/Recv and collective instructions (AllReduce,
-// AllToAll, CollectivePermute) belong to this instruction type. A group of
-// instructions (of the same opcode) with the same channel_id communicate during
-// execution.
+// AllToAll, CollectivePermute, CollectiveBroadcast) belong to this instruction
+// type. A group of instructions (of the same opcode) with the same channel_id
+// communicate during execution.
 class HloChannelInstruction : public HloInstruction {
  public:
   // Returns the channel id associated with the instruction. The id is
@@ -579,7 +579,8 @@ class HloSendDoneInstruction : public HloSendRecvInstruction {
  public:
   explicit HloSendDoneInstruction(HloSendInstruction* operand,
                                   bool is_host_transfer);
-
+  explicit HloSendDoneInstruction(HloInstruction* operand, int64_t channel_id,
+                                  bool is_host_transfer);
   static bool ClassOf(const HloInstruction* hlo) {
     return hlo->opcode() == HloOpcode::kSendDone;
   }
@@ -849,6 +850,28 @@ class HloAllToAllInstruction : public HloCollectiveInstruction {
   std::optional<int64_t> split_dimension_;
 };
 
+class HloCollectiveBroadcastInstruction : public HloCollectiveInstruction {
+ public:
+  explicit HloCollectiveBroadcastInstruction(
+      HloOpcode opcode, const Shape& shape,
+      absl::Span<HloInstruction* const> operands,
+      absl::Span<const ReplicaGroup> replica_groups, bool constrain_layout,
+      const std::optional<int64_t>& channel_id);
+
+  // Returns a serialized representation of this instruction.
+  HloInstructionProto ToProto() const override;
+
+  static bool ClassOf(const HloInstruction* hlo) {
+    return hlo->opcode() == HloOpcode::kCollectiveBroadcast;
+  }
+
+ private:
+  // Implementation for non-common logic of CloneWithNewOperands.
+  std::unique_ptr<HloInstruction> CloneWithNewOperandsImpl(
+      const Shape& shape, absl::Span<HloInstruction* const> new_operands,
+      HloCloneContext* context) const override;
+};
+
 class HloCollectivePermuteInstruction : public HloChannelInstruction {
  public:
   explicit HloCollectivePermuteInstruction(
@@ -904,6 +927,7 @@ inline bool HloAllReduceInstructionBase::ClassOf(const HloInstruction* hlo) {
 
 inline bool HloCollectiveInstruction::ClassOf(const HloInstruction* hlo) {
   return HloAllReduceInstructionBase::ClassOf(hlo) ||
+         HloCollectiveBroadcastInstruction::ClassOf(hlo) ||
          HloAllGatherInstruction::ClassOf(hlo) ||
          HloAllToAllInstruction::ClassOf(hlo);
 }
@@ -2348,12 +2372,17 @@ class HloIotaInstruction : public HloInstruction {
 
 class HloDotInstruction : public HloInstruction {
  public:
+  static const int kOperands = 2;
+
   // Creates a dot op with operands 'lhs' and 'rhs' with contracting and batch
-  // dimensions specified in 'dimension_numbers'.
-  explicit HloDotInstruction(const Shape& shape, HloInstruction* lhs,
-                             HloInstruction* rhs,
-                             const DotDimensionNumbers& dimension_numbers,
-                             const PrecisionConfig& precision_config);
+  // dimensions specified in 'dimension_numbers'. If 'sparsity' is set, then
+  // 'sparse_meta' must also be present (and have the same size).
+  explicit HloDotInstruction(
+      const Shape& shape, HloInstruction* lhs, HloInstruction* rhs,
+      const DotDimensionNumbers& dimension_numbers,
+      const PrecisionConfig& precision_config,
+      std::vector<SparsityDescriptor> sparsity = {},
+      absl::Span<HloInstruction* const> sparse_meta = {});
 
   // Returns data on the dimension numbers used for a dot operation.
   const DotDimensionNumbers& dot_dimension_numbers() const {
@@ -2374,6 +2403,13 @@ class HloDotInstruction : public HloInstruction {
   // superior.
   const PrecisionConfig& precision_config() const { return precision_config_; }
   PrecisionConfig* mutable_precision_config() { return &precision_config_; }
+
+  // Sparsity descriptors are optional. If present, additional operands define
+  // how the data is read for the dot inputs.
+  int sparse_operands() const { return sparsity_.size(); }
+  absl::Span<const SparsityDescriptor> sparsity() const {
+    return absl::MakeSpan(sparsity_);
+  }
 
   // Returns a serialized representation of this instruction.
   HloInstructionProto ToProto() const override;
@@ -2400,6 +2436,11 @@ class HloDotInstruction : public HloInstruction {
   // Information used to communicate to the implementation about the algorithm
   // used to produce results. See the documentation on precision_config().
   PrecisionConfig precision_config_;
+
+  // Sparsity descriptors are set if some operands are sparse. In this case, the
+  // additional metadata operands contain the information that defines how
+  // the data is read.
+  std::vector<SparsityDescriptor> sparsity_;
 };
 
 class HloDomainInstruction : public HloInstruction {

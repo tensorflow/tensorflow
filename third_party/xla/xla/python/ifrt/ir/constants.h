@@ -33,6 +33,11 @@ inline constexpr llvm::StringLiteral kIfrtDonatedArgAttrName = "ifrt.donated";
 // in "local" view (i.e., already sharded).
 inline constexpr llvm::StringLiteral kIfrtLocalViewAttrName = "ifrt.local_view";
 
+// Name of StringAttr on CallOp used to store an optional key to use into a
+// mapping of user-provided compile options.
+inline constexpr llvm::StringLiteral kIfrtCompileOptionsKey =
+    "ifrt.compile_options_key";
+
 }  // namespace ifrt
 }  // namespace xla
 

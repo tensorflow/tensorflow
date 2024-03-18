@@ -47,7 +47,7 @@ constexpr absl::string_view kClassAttr = "_class";
 // root of the tree. We find root of the tree in other place.
 // For a valid tree node, it must
 // 1. not a arg node
-// 2. not have device attr
+// 2. not have device attr (neither assigned device nor requested device)
 // 3. not have colocation attr
 // 4. must register for CPU
 // 5. only have one output node
@@ -56,6 +56,9 @@ bool IsValidTreeNode(const Node& node, bool in_node_mode) {
     return false;
   }
   if (node.has_assigned_device_name()) {
+    return false;
+  }
+  if (!node.requested_device().empty()) {
     return false;
   }
   if (HasNodeAttr(node.def(), kClassAttr)) {
@@ -78,15 +81,15 @@ bool IsValidTreeNode(const Node& node, bool in_node_mode) {
 }
 
 // Check if the node is potential root node. For a valid root node, it must
-// 1. have device attr
+// 1. have requested device attr
 // 2. not a arg node
 // 3. must register for CPU has device type must be CPU
 // 4. the output node can only be exit or sink node
 bool IsPotentialRootNode(const Node& node) {
-  if (!node.has_assigned_device_name()) {
+  if (node.requested_device().empty()) {
     return false;
   }
-  auto device_name = node.assigned_device_name();
+  auto device_name = node.requested_device();
   DeviceNameUtils::ParsedName parsed_device_name;
   DeviceNameUtils::ParseFullName(device_name, &parsed_device_name);
   if (parsed_device_name.type != DEVICE_CPU) {
@@ -136,21 +139,28 @@ std::optional<absl::flat_hash_set<Node*>> FindTreeNodes(Node* potential_root) {
     return true;
   };
 
-  if (!seek_tree_nodes(/*in_node_mode=*/true) ||
-      !seek_tree_nodes(/*in_node_mode=*/false)) {
+  if (!seek_tree_nodes(/*in_node_mode=*/true)) {
     return std::nullopt;
   }
+
+  // size of tree node must larger than one which means the tree contains at
+  // least one non root node.
+  if (tree_nodes.size() == 1) {
+    return std::nullopt;
+  }
+
   return tree_nodes;
 }
 
 // Propagate colocation info from root node to each tree nodes.
 void PropagateColocationInfo(Node* root_node,
                              absl::flat_hash_set<Node*>& tree_nodes) {
+  VLOG(2) << "PropagateColocationInfo: tree root node is " << root_node->name();
   std::string colocation_prefix = "loc:@";
   std::string node_name = root_node->name();
   for (auto node : tree_nodes) {
     node->AddAttr(std::string(kClassAttr),
-                  absl::StrCat(colocation_prefix, node_name));
+                  {absl::StrCat(colocation_prefix, node_name)});
   }
 }
 
@@ -191,8 +201,7 @@ Status ColocatePredecessorTreesPass::Run(
   return absl::OkStatus();
 }
 
-// TODO(b/325245805): Fix the bug then register the pass again.
-// REGISTER_OPTIMIZATION(OptimizationPassRegistry::PRE_PLACEMENT, 50,
-//                       ColocatePredecessorTreesPass);
+REGISTER_OPTIMIZATION(OptimizationPassRegistry::PRE_PLACEMENT, 50,
+                      ColocatePredecessorTreesPass);
 
 }  // namespace tensorflow

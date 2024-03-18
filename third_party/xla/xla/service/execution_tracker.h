@@ -78,7 +78,7 @@ class ExecutionTracker {
   // Resolves the given ExecutionHandle to an AsyncExecution. Returns an
   // error status if the given handle is not found, which means that the
   // execution is not yet registered or already unregistered.
-  StatusOr<const AsyncExecution*> Resolve(const ExecutionHandle& handle);
+  absl::StatusOr<const AsyncExecution*> Resolve(const ExecutionHandle& handle);
 
  private:
   // The next handle to assign to an execution.

@@ -52,6 +52,7 @@ cc_library(
 cc_library(
     name = "tf_ifrt_passes",
     srcs = [
+        "lower_to_ifrt_restore_variable.cc",
         "rewrite_cluster_to_ifrt_call.cc",
         "sink_variable_as_named_array.cc",
         "tf_ifrt_passes.cc",
@@ -70,9 +71,11 @@ cc_library(
         "//tensorflow/compiler/mlir/tensorflow:device_util",
         "//tensorflow/compiler/mlir/tensorflow:dump_mlir_util",
         "//tensorflow/compiler/mlir/tensorflow:error_util",
+        "//tensorflow/compiler/mlir/tensorflow:export_tf_dialect_op",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_ops",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_types",
         "//tensorflow/compiler/mlir/tensorflow:tpu_rewrite_device_util",
+        "//tensorflow/compiler/mlir/tensorflow/ir/host_runtime:tensorflow_tfrt_ops",
         "//tensorflow/compiler/mlir/tensorflow/transforms:tensorflow_passes",
         "//tensorflow/compiler/mlir/tensorflow/transforms/host_runtime:tpu_metadata_utils",
         "//tensorflow/compiler/mlir/tfrt:tf_to_tfrt",

@@ -28,7 +28,7 @@ namespace xla {
 class LogicalBufferAnalysis : public DfsHloVisitorWithDefault {
  public:
   // Runs points-to analysis on 'module'.
-  static StatusOr<std::unique_ptr<LogicalBufferAnalysis>> Run(
+  static absl::StatusOr<std::unique_ptr<LogicalBufferAnalysis>> Run(
       const HloModule* module);
 
   // Returns the logical buffer with the given ID.

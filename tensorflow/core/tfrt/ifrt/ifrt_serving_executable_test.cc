@@ -27,10 +27,6 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-
-// Enable definition of Eigen::ThreadPoolDevice instead of just declaration.
-#define EIGEN_USE_THREADS
-#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/DialectRegistry.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
@@ -74,15 +70,12 @@ using ::tensorflow::test::AsTensor;
 using ::tensorflow::test::TensorEq;
 using ::testing::ElementsAre;
 
-Eigen::ThreadPoolDevice GetThreadPoolDevice() {
+const tsl::thread::ThreadPool& GetThreadPool() {
   constexpr int kMaxParallelism = 16;
-  static tsl::thread::ThreadPool* thread_pool = []() {
-    return new tsl::thread::ThreadPool(tsl::Env::Default(),
-                                       tsl::ThreadOptions(), "IfrtSharding",
-                                       kMaxParallelism);
-  }();
-  return Eigen::ThreadPoolDevice(thread_pool->AsEigenThreadPool(),
-                                 kMaxParallelism);
+  static auto* const thread_pool =
+      new tsl::thread::ThreadPool(tsl::Env::Default(), tsl::ThreadOptions(),
+                                  "IfrtSharding", kMaxParallelism);
+  return *thread_pool;
 }
 
 TEST(IfrtServingExecutableTest, Basic) {
@@ -106,11 +99,10 @@ TEST(IfrtServingExecutableTest, Basic) {
   // Create contexts required for the compiler execution.
   TF_ASSERT_OK_AND_ASSIGN(std::shared_ptr<xla::ifrt::Client> client,
                           xla::ifrt::test_util::GetClient());
-  Eigen::ThreadPoolDevice thread_pool_device = GetThreadPoolDevice();
 
   IfrtLoadedVariableRegistry ifrt_loaded_variable_registry;
   IfrtServingExecutable executable("test", "main", std::move(mlir_module),
-                                   client, &thread_pool_device,
+                                   client, &GetThreadPool(),
                                    &ifrt_loaded_variable_registry,
                                    tensorflow::IdentityShapeRepresentationFn());
 
@@ -148,12 +140,11 @@ TEST(IfrtServingExecutableTest, MultipleShapes) {
   // Create contexts required for the compiler execution.
   TF_ASSERT_OK_AND_ASSIGN(std::shared_ptr<xla::ifrt::Client> client,
                           xla::ifrt::test_util::GetClient());
-  Eigen::ThreadPoolDevice thread_pool_device = GetThreadPoolDevice();
 
   IfrtLoadedVariableRegistry ifrt_loaded_variable_registry;
 
   IfrtServingExecutable executable("test", "main", std::move(mlir_module),
-                                   client, &thread_pool_device,
+                                   client, &GetThreadPool(),
                                    &ifrt_loaded_variable_registry,
                                    tensorflow::IdentityShapeRepresentationFn());
 
@@ -206,12 +197,11 @@ TEST(IfrtServingExecutableTest, Spmd) {
   // Create contexts required for the compiler execution.
   TF_ASSERT_OK_AND_ASSIGN(std::shared_ptr<xla::ifrt::Client> client,
                           xla::ifrt::test_util::GetClient());
-  Eigen::ThreadPoolDevice thread_pool_device = GetThreadPoolDevice();
 
   IfrtLoadedVariableRegistry ifrt_loaded_variable_registry;
 
   IfrtServingExecutable executable("test", "main", std::move(mlir_module),
-                                   client, &thread_pool_device,
+                                   client, &GetThreadPool(),
                                    &ifrt_loaded_variable_registry,
                                    tensorflow::IdentityShapeRepresentationFn());
 
@@ -254,12 +244,11 @@ TEST(IfrtServingExecutableTest, SpmdTwoReturns) {
   // Create contexts required for the compiler execution.
   TF_ASSERT_OK_AND_ASSIGN(std::shared_ptr<xla::ifrt::Client> client,
                           xla::ifrt::test_util::GetClient());
-  Eigen::ThreadPoolDevice thread_pool_device = GetThreadPoolDevice();
 
   IfrtLoadedVariableRegistry ifrt_loaded_variable_registry;
 
   IfrtServingExecutable executable("test", "main", std::move(mlir_module),
-                                   client, &thread_pool_device,
+                                   client, &GetThreadPool(),
                                    &ifrt_loaded_variable_registry,
                                    tensorflow::IdentityShapeRepresentationFn());
 
@@ -306,12 +295,11 @@ TEST(IfrtServingExecutableTest, NoReturn) {
   // Create contexts required for the compiler execution.
   TF_ASSERT_OK_AND_ASSIGN(std::shared_ptr<xla::ifrt::Client> client,
                           xla::ifrt::test_util::GetClient());
-  Eigen::ThreadPoolDevice thread_pool_device = GetThreadPoolDevice();
 
   IfrtLoadedVariableRegistry ifrt_loaded_variable_registry;
 
   IfrtServingExecutable executable("test", "main", std::move(mlir_module),
-                                   client, &thread_pool_device,
+                                   client, &GetThreadPool(),
                                    &ifrt_loaded_variable_registry,
                                    tensorflow::IdentityShapeRepresentationFn());
 
@@ -346,11 +334,10 @@ TEST_P(VariableInputTest, InterleaveVariable) {
   // Create contexts required for the compiler execution.
   TF_ASSERT_OK_AND_ASSIGN(std::shared_ptr<xla::ifrt::Client> client,
                           xla::ifrt::test_util::GetClient());
-  Eigen::ThreadPoolDevice thread_pool_device = GetThreadPoolDevice();
 
   IfrtLoadedVariableRegistry ifrt_loaded_variable_registry;
   IfrtServingExecutable executable("test", "main", std::move(mlir_module),
-                                   client, &thread_pool_device,
+                                   client, &GetThreadPool(),
                                    &ifrt_loaded_variable_registry,
                                    tensorflow::IdentityShapeRepresentationFn());
 
@@ -367,7 +354,7 @@ TEST_P(VariableInputTest, InterleaveVariable) {
                 MakeArrayFromTensor(*client, GetParam().in_tensors[i],
                                     /*device_ids=*/{0},
                                     xla::HloSharding::Replicate(),
-                                    thread_pool_device));
+                                    GetThreadPool()));
 
             return array;
           }));

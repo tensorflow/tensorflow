@@ -33,6 +33,12 @@ config_setting(
     define_values = {"xnnpack_use_latest_ops": "true"},
 )
 
+# Force XNNPACK to enable subgraph reshaping.
+config_setting(
+    name = "xnnpack_enable_subgraph_reshaping_explicit",
+    define_values = {"xnnpack_enable_subgraph_reshaping": "true"},
+)
+
 # Use transient indirection buffers.
 config_setting(
     name = "xnnpack_use_transient_indirection_buffers_explicit",
@@ -227,6 +233,9 @@ cc_library(
         ":xnnpack_force_float_precision_explicit_fp16": ["-DXNNPACK_DELEGATE_FORCE_PRECISION_FP16=1"],
         "//conditions:default": [],
     }) + select({
+        ":xnnpack_enable_subgraph_reshaping_explicit": ["-DXNNPACK_DELEGATE_ENABLE_SUBGRAPH_RESHAPING=1"],
+        "//conditions:default": [],
+    }) + select({
         ":xnnpack_use_latest_ops_explicit": ["-DXNNPACK_DELEGATE_USE_LATEST_OPS=1"],
         "//conditions:default": [],
     }) + select({
@@ -243,6 +252,7 @@ cc_library(
         ":tflite_with_xnnpack_transient_indirection_buffer",
         "//tensorflow/lite:kernel_api",
         "//tensorflow/lite:minimal_logging",
+        "//tensorflow/lite/core:subgraph",
         "//tensorflow/lite/core/api",
         "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/kernels:cpu_backend_context",
@@ -278,6 +288,7 @@ cc_library(
         ":quantization_util",
         "//tensorflow/lite:kernel_api",
         "//tensorflow/lite:minimal_logging",
+        "//tensorflow/lite/core:subgraph",
         "//tensorflow/lite/core/api",
         "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/kernels:cpu_backend_context",

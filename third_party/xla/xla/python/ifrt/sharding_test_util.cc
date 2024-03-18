@@ -73,7 +73,7 @@ std::shared_ptr<MockClient> MakeShardingTestClient(
       .WillByDefault(
           [state]() -> absl::Span<Device* const> { return state->devices; });
   ON_CALL(*client, LookupDevice)
-      .WillByDefault([state](int device_id) -> StatusOr<Device*> {
+      .WillByDefault([state](int device_id) -> absl::StatusOr<Device*> {
         auto it = state->device_map.find(device_id);
         if (it == state->device_map.end()) {
           return InvalidArgument("Unexpected device id: %d", device_id);

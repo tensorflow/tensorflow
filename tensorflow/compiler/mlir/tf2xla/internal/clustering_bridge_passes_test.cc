@@ -28,7 +28,7 @@ TEST(ClusteringBridgePassesTest, AddsBridgePasses) {
   OpPassManager pass_manager;
   AddReplicatedBridgeClusteringPipelinePasses(pass_manager);
 
-  EXPECT_EQ(pass_manager.size(), 44);
+  EXPECT_EQ(pass_manager.size(), 45);
 }
 
 TEST(ClusteringBridgePassesTest, AddsNonTPUBridgePasses) {

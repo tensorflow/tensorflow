@@ -33,7 +33,7 @@ namespace xla {
 namespace {
 
 // Simplifies floating-point conversions `A -> B -> C -> D` as `A -> D`.
-StatusOr<bool> RunOnComputation(HloComputation& computation) {
+absl::StatusOr<bool> RunOnComputation(HloComputation& computation) {
   bool changed = false;
   for (HloInstruction* instruction : computation.MakeInstructionPostOrder()) {
     HloInstruction* input = instruction;
@@ -64,7 +64,7 @@ StatusOr<bool> RunOnComputation(HloComputation& computation) {
 
 }  // namespace
 
-StatusOr<bool> SimplifyFPConversions::Run(
+absl::StatusOr<bool> SimplifyFPConversions::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   XLA_VLOG_LINES(

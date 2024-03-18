@@ -78,6 +78,14 @@ class HloInstructionSequence {
     *id_it = new_instruction->unique_id();
   }
 
+  // Adds the instruction to the sequence at a specified index,
+  void insert_instruction(HloInstruction* instruction, int64_t index) {
+    CHECK(0 <= index && index < size()) << "Index out of bounds";
+    instruction_sequence_.insert(instruction_sequence_.begin() + index,
+                                 instruction);
+    id_sequence_.insert(id_sequence_.begin() + index, instruction->unique_id());
+  }
+
   // Clears the sequence of all instructions.
   void clear() {
     instruction_sequence_.clear();

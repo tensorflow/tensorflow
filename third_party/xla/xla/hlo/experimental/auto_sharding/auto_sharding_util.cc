@@ -901,7 +901,8 @@ void RemoveDuplicatedStrategy(std::unique_ptr<StrategyGroup>& strategy_group) {
     absl::flat_hash_set<std::string> added;
     size_t num_skipped_due_to_infinity_costs = 0;
     for (size_t i = 0; i < strategy_group->strategies.size(); ++i) {
-      if (AllInfinityCosts(strategy_group->strategies[i].resharding_costs)) {
+      if (AllInfinityCosts(
+              strategy_group->strategies[i].communication_resharding_costs)) {
         num_skipped_due_to_infinity_costs++;
         continue;
       }
@@ -1074,8 +1075,8 @@ void UseAllReduceForGradAcc(StableHashSet<HloInstruction*>& replicated_set,
 // dimensions at 0, e.g., array is 2D and dim = 1, this returns array[0, 1],
 // array[1, 1], array [2, 1], ....
 // Returns error status if dim >= array.num_dimensions().
-StatusOr<std::vector<int64_t>> GetValuesAlongOneDim(const Array<int64_t>& array,
-                                                    int dim) {
+absl::StatusOr<std::vector<int64_t>> GetValuesAlongOneDim(
+    const Array<int64_t>& array, int dim) {
   if (dim >= array.num_dimensions()) {
     return absl::OutOfRangeError(absl::StrCat(
         "Input dim (", dim,
@@ -1092,7 +1093,8 @@ StatusOr<std::vector<int64_t>> GetValuesAlongOneDim(const Array<int64_t>& array,
 }
 
 // Check whether a sequence is an arithmetic sequence.
-StatusOr<int64_t> CheckArithmeticSequence(absl::Span<const int64_t> sequence) {
+absl::StatusOr<int64_t> CheckArithmeticSequence(
+    absl::Span<const int64_t> sequence) {
   if (sequence.size() < 2) {
     return absl::OutOfRangeError(
         "Invalid device id assignment: sequence.size() < 2");
@@ -1918,52 +1920,7 @@ HloInstruction* FindInstruction(
   return nullptr;
 }
 
-double AllToAllCostUtil(double num_bytes, int mesh_dim, int64_t num_devices,
-                        const std::vector<double>& mesh_alpha,
-                        const std::vector<double>& mesh_beta) {
-  // A penalty factor to make the theoretical cost match the
-  // empirical cost on v100 + nvlink.
-  double penalty_factor = static_cast<double>(num_devices) / 2.0;
-  return (round(mesh_alpha[mesh_dim] + mesh_beta[mesh_dim] * (num_devices - 1) /
-                                           num_devices / num_devices *
-                                           num_bytes * penalty_factor) +
-          0.001);
-}
-
-// Do not consider device id changes yet.
-double ReshardingCostMixedMeshShape(
-    const Shape& shape, std::vector<int64_t> src_tensor_dim_to_mesh_dim,
-    std::vector<int64_t> dst_tensor_dim_to_mesh_dim, int64_t num_devices,
-    const std::vector<double>& mesh_alpha,
-    const std::vector<double>& mesh_beta) {
-  double resharding_costs = 0.0;
-  for (size_t i = 0; i < shape.rank(); ++i) {
-    // Only consider sharded dimensions, do not consider replicate_on_last_dim.
-    if (src_tensor_dim_to_mesh_dim[i] == dst_tensor_dim_to_mesh_dim[i]) {
-      continue;
-    }
-    if (dst_tensor_dim_to_mesh_dim[i] == -1 ||
-        src_tensor_dim_to_mesh_dim[i] == -1) {
-      // AllToAll cost
-      int64_t communication_dim;
-      if (dst_tensor_dim_to_mesh_dim[i] != -1) {
-        communication_dim = dst_tensor_dim_to_mesh_dim[i];
-      } else {
-        communication_dim = src_tensor_dim_to_mesh_dim[i];
-      }
-      int64_t communication_bytes = GetBytes(shape);
-      resharding_costs +=
-          AllToAllCostUtil(communication_bytes, communication_dim, num_devices,
-                           mesh_alpha, mesh_beta);
-    } else {
-      // Do not support this sharding, assuming it is gonna be very expensive.
-      return kInfinityCost;
-    }
-  }
-  return resharding_costs;
-}
-
-StatusOr<std::optional<HloSharding>>
+absl::StatusOr<std::optional<HloSharding>>
 AdjustShardingWithPartialMeshShapePerElement(
     const HloSharding& sharding,
     const absl::flat_hash_set<int64_t>& valid_shards, int64_t total_num_devices,
@@ -2053,7 +2010,7 @@ AdjustShardingWithPartialMeshShapePerElement(
   return std::nullopt;
 }
 
-StatusOr<bool> AdjustShardingsWithPartialMeshShape(
+absl::StatusOr<bool> AdjustShardingsWithPartialMeshShape(
     const std::vector<HloInstruction*>& instructions,
     const std::vector<int64_t>& mesh_shape, int64_t total_num_devices,
     bool crash_on_error) {
@@ -2074,7 +2031,7 @@ StatusOr<bool> AdjustShardingsWithPartialMeshShape(
       for (size_t i = 0; i < inst->shape().tuple_shapes_size(); i++) {
         auto shape = inst->shape().tuple_shapes(i);
         auto sharding = inst->sharding().tuple_elements()[i];
-        StatusOr<std::optional<HloSharding>> new_sharding_result =
+        absl::StatusOr<std::optional<HloSharding>> new_sharding_result =
             AdjustShardingWithPartialMeshShapePerElement(
                 sharding, valid_shards, total_num_devices, crash_on_error);
         if (new_sharding_result.ok()) {
@@ -2093,7 +2050,7 @@ StatusOr<bool> AdjustShardingsWithPartialMeshShape(
       }
       inst->set_sharding(HloSharding::Tuple(output_tuple_sharding));
     } else {
-      StatusOr<std::optional<HloSharding>> sharding_result =
+      absl::StatusOr<std::optional<HloSharding>> sharding_result =
           AdjustShardingWithPartialMeshShapePerElement(
               inst->sharding(), valid_shards, total_num_devices,
               crash_on_error);

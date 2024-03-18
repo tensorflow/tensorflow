@@ -31,15 +31,18 @@ limitations under the License.
 #include "absl/base/attributes.h"
 #include "absl/base/thread_annotations.h"
 #include "absl/functional/any_invocable.h"
+#include "absl/log/check.h"
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/synchronization/mutex.h"
+#include "absl/types/span.h"
+#include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/event.h"
 #include "xla/stream_executor/fft.h"
 #include "xla/stream_executor/kernel.h"
 #include "xla/stream_executor/launch_dim.h"
 #include "xla/stream_executor/platform.h"
-#include "xla/stream_executor/platform/port.h"
 #include "xla/stream_executor/stream_executor_pimpl.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/thread_annotations.h"
@@ -107,8 +110,6 @@ class Stream {
 
   // Initialize the stream. This must be performed before entraining any other
   // operations.
-  ABSL_DEPRECATED("Use absl::Status Stream::Initialize instead.")
-  Stream &Init() TF_LOCKS_EXCLUDED(mu_);
   absl::Status Initialize();
 
   // Get or create a sub-stream from this stream. If there is any sub-stream in
@@ -116,7 +117,7 @@ class Stream {
   // create a new sub-stream.
   //
   // TODO(b/112196569): The semantics of failed sub-streams is error-prone.
-  Stream *GetOrCreateSubStream() TF_LOCKS_EXCLUDED(mu_);
+  absl::StatusOr<Stream *> GetOrCreateSubStream() TF_LOCKS_EXCLUDED(mu_);
 
   // Return the sub-stream back to the host stream so that it can be reused
   // later. Sub-streams that are !ok() will not be reused.
@@ -169,82 +170,80 @@ class Stream {
   // Checks that a stream does not wait for itself, and it is up to the
   // user to guarantee that a stream does not come to wait on itself in a
   // cyclic manner; in that case, behavior is undefined.
-  //
-  // N.B. Base recursion case for the variadic ThenWaitFor.
-  Stream &ThenWaitFor(Stream *other);
+  absl::Status WaitFor(Stream *other);
 
   // Waits for an event object to be set.
-  // Note that ThenRecordEvent must have been called on the event before
+  // Note that RecordEvent must have been called on the event before
   // you call this function; otherwise the event will be considered complete
   // and this wait will do nothing.
-  Stream &ThenWaitFor(Event *event);
+  absl::Status WaitFor(Event *event);
 
   // Inserts the specified event into the end of this stream. Once the stream
   // has processed all events prior to the insertion point, the event will be
   // marked as completed.
   // The stream does not take ownership of event - meaning that event's lifetime
   // must extend past the point at which it is marked complete!
-  Stream &ThenRecordEvent(Event *event);
+  absl::Status RecordEvent(Event *event);
 
   // Entrain onto the stream: a memcpy to a host destination from a GPU source
   // of the given target size. host_dst must be a pointer to host memory
   // allocated by StreamExecutor::HostMemoryAllocate or otherwise allocated and
   // then registered with StreamExecutor::HostMemoryRegister.
-  Stream &ThenMemcpy(void *host_dst, const DeviceMemoryBase &gpu_src,
-                     uint64_t size);
+  absl::Status Memcpy(void *host_dst, const DeviceMemoryBase &gpu_src,
+                      uint64_t size);
 
   // Entrain onto the stream: a memcpy to a GPU destination from a host source
   // of the given target size. host_src must be a pointer to host memory
   // allocated by StreamExecutor::HostMemoryAllocate or otherwise allocated and
   // then registered with StreamExecutor::HostMemoryRegister.
-  Stream &ThenMemcpy(DeviceMemoryBase *gpu_dst, const void *host_src,
-                     uint64_t size);
+  absl::Status Memcpy(DeviceMemoryBase *gpu_dst, const void *host_src,
+                      uint64_t size);
 
   // Alternative interface for memcpying from device to host that takes an
   // array slice. Checks that the destination size can accommodate the host
   // slice size.
   template <typename T>
-  Stream &ThenMemcpyD2H(const DeviceMemory<T> &gpu_src,
-                        absl::Span<T> host_dst) {
+  absl::Status MemcpyD2H(const DeviceMemory<T> &gpu_src,
+                         absl::Span<T> host_dst) {
     auto host_size = host_dst.size() * sizeof(T);
-    CHECK(gpu_src.size() == 0 || host_size >= gpu_src.size());
-    return ThenMemcpy(host_dst.begin(), gpu_src, host_size);
+    if (gpu_src.size() == 0 || host_size >= gpu_src.size()) {
+      return Memcpy(host_dst.begin(), gpu_src, host_size);
+    }
+    return absl::InternalError("Bad source size.");
   }
 
   // Alternative interface for memcpying from host to device that takes an
   // array slice. Checks that the destination size can accommodate the host
   // slice size.
   template <typename T>
-  Stream &ThenMemcpyH2D(absl::Span<const T> host_src,
-                        DeviceMemory<T> *gpu_dst) {
+  absl::Status MemcpyH2D(absl::Span<const T> host_src,
+                         DeviceMemory<T> *gpu_dst) {
     auto host_size = host_src.size() * sizeof(T);
-    CHECK(gpu_dst->size() == 0 || gpu_dst->size() >= host_size);
-    return ThenMemcpy(gpu_dst, host_src.begin(), host_size);
+    if (gpu_dst->size() == 0 || gpu_dst->size() >= host_size) {
+      return Memcpy(gpu_dst, host_src.begin(), host_size);
+    }
+    return absl::InternalError("Bad destination size.");
   }
 
   // Entrain onto the stream: a memcpy to a GPU destination from a GPU source
   // of the given target size. gpu_src/dst must be pointers to GPU memory and
   // peer access must be enabled between their owning StreamExecutors.
-  Stream &ThenMemcpy(DeviceMemoryBase *gpu_dst, const DeviceMemoryBase &gpu_src,
-                     uint64_t size);
-
-  // Calls to the device-to-device copy overload of ThenMemcpy -- useful for
-  // ensuring that the host pointer isn't getting confused accidentally with a
-  // device pointer if you're not doing metaprogramming against the API.
-  Stream &ThenMemcpyD2D(DeviceMemoryBase *gpu_dst,
-                        const DeviceMemoryBase &gpu_src, uint64_t size) {
-    return ThenMemcpy(gpu_dst, gpu_src, size);
+  absl::Status Memcpy(DeviceMemoryBase *gpu_dst,
+                      const DeviceMemoryBase &gpu_src, uint64_t size);
+  absl::Status MemcpyD2D(DeviceMemoryBase *gpu_dst,
+                         const DeviceMemoryBase &gpu_src, uint64_t size) {
+    return Memcpy(gpu_dst, gpu_src, size);
   }
 
   // Entrain onto the stream: a memset of zero at a GPU location of size bytes.
   // The location must not be null.
-  Stream &ThenMemZero(DeviceMemoryBase *location, uint64_t size);
+  absl::Status MemZero(DeviceMemoryBase *location, uint64_t size);
 
   // Entrain onto the stream: a memset of a 32-bit pattern at a GPU location of
   // size bytes, where bytes must be evenly 32-bit sized (i.e. evenly divisible
   // by 4). The location must not be null.
-  Stream &ThenMemset32(DeviceMemoryBase *location, uint32_t pattern,
-                       uint64_t size);
+  absl::Status Memset32(DeviceMemoryBase *location, uint32_t pattern,
+                        uint64_t size);
 
   // (Synchronously) block the host code waiting for the operations
   // entrained on the stream (enqueued to this point in program
@@ -259,13 +258,13 @@ class Stream {
   internal::StreamInterface *implementation() { return implementation_.get(); }
 
   // Entrains onto the stream a callback to the host (from the device).
-  // Behaves as ThenDoHostCallbackWithStatus below, but the callback should
+  // Behaves as DoHostCallbackWithStatus below, but the callback should
   // never fail or its failure is inconsequential.
   //
   // This is kept for backward compatibility. Future code should use
-  // ThenDoHostCallbackWithStatus and explicitly return a success status.
+  // DoHostCallbackWithStatus and explicitly return a success status.
   // TODO(b/112125301): Eventually remove this method.
-  Stream &ThenDoHostCallback(absl::AnyInvocable<void() &&> callback);
+  absl::Status DoHostCallback(absl::AnyInvocable<void() &&> callback);
 
   // Entrains onto the stream a callback to the host (from the device).
   // Host callbacks block/occupy the stream just as device functions
@@ -273,13 +272,9 @@ class Stream {
   // Whether the callback return status affects the result of BlockHostUntilDone
   // is platform-dependent.
   //
-  // Behavior is undefined when synchronizing using OpenCL user events.
-  // Behavior is undefined if host callbacks call device routines or insert
-  // them into any stream.
-  //
-  // On certain platforms, ThenDoHostCallback is expected to have significant
+  // On certain platforms, DoHostCallback is expected to have significant
   // negative effects on performance.
-  Stream &ThenDoHostCallbackWithStatus(
+  absl::Status DoHostCallbackWithStatus(
       absl::AnyInvocable<absl::Status() &&> callback);
 
   // Returns the StreamExecutor (parent object) associated with this stream.
@@ -296,9 +291,6 @@ class Stream {
   RocmComputeCapability GetRocmComputeCapability() const {
     return parent()->GetDeviceDescription().rocm_compute_capability();
   }
-
-  // Returns a debugging string "[stream=0x...,impl=0x...]".
-  std::string DebugStreamPointers() const;
 
   void SetPriority(StreamPriority priority);
   void SetPriority(int priority);

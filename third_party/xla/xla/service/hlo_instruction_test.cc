@@ -36,6 +36,7 @@ limitations under the License.
 #include "xla/tests/hlo_test_base.h"
 #include "xla/util.h"
 #include "xla/window_util.h"
+#include "xla/xla_data.pb.h"
 #include "tsl/lib/core/status_test_util.h"
 
 namespace xla {
@@ -1663,6 +1664,35 @@ TEST_F(HloInstructionTest, StringifyDot) {
             "lhs_contracting_dims={1}, rhs_contracting_dims={0}");
 }
 
+TEST_F(HloInstructionTest, StringifySparseDot) {
+  HloComputation::Builder builder("SparseDot");
+  HloInstruction* x = builder.AddInstruction(HloInstruction::CreateParameter(
+      0, ShapeUtil::MakeShape(F32, {5, 16}), "x"));
+  HloInstruction* y = builder.AddInstruction(HloInstruction::CreateParameter(
+      1, ShapeUtil::MakeShape(F32, {32, 20}), "y"));
+  HloInstruction* meta = builder.AddInstruction(HloInstruction::CreateParameter(
+      1, ShapeUtil::MakeShape(U16, {5, 2}), "meta"));
+
+  DotDimensionNumbers dot_dnums;
+  dot_dnums.add_lhs_contracting_dimensions(1);
+  dot_dnums.add_rhs_contracting_dimensions(0);
+  SparsityDescriptor sparsity_descriptor;
+  sparsity_descriptor.set_type(SparsityType::SPARSITY_STRUCTURED_N_M);
+  sparsity_descriptor.set_n(2);
+  sparsity_descriptor.set_m(4);
+  sparsity_descriptor.set_index(0);
+  sparsity_descriptor.set_dimension(1);
+  std::vector<HloInstruction*> meta_operands = {meta};
+  HloInstruction* dot = builder.AddInstruction(HloInstruction::CreateDot(
+      ShapeUtil::MakeShape(F32, {5, 20}), x, y, dot_dnums,
+      DefaultPrecisionConfig(2), {sparsity_descriptor}, meta_operands));
+
+  EXPECT_EQ(dot->ToString(),
+            "%dot = f32[5,20]{1,0} dot(f32[5,16]{1,0} %x, f32[32,20]{1,0} %y, "
+            "u16[5,2]{1,0} %meta), lhs_contracting_dims={1}, "
+            "rhs_contracting_dims={0}, sparsity=L.1@2:4");
+}
+
 TEST_F(HloInstructionTest, StringifyConditional) {
   const Shape s1 = ShapeUtil::MakeShape(F32, {5, 10});
   const Shape s2 = ShapeUtil::MakeShape(F32, {20, 10});
@@ -2803,6 +2833,42 @@ TEST_F(HloInstructionTest,
     }
   }
   EXPECT_EQ(num_conditional_branch_comp, branch_computations.size());
+}
+
+TEST_F(HloInstructionTest, BackendConfigCopiedToDerived) {
+  HloComputation::Builder b(TestName());
+  Shape shape = ShapeUtil::MakeShape(F32, {2, 2});
+  auto p0 = b.AddInstruction(HloInstruction::CreateParameter(0, shape, "p0"));
+  auto p1 = b.AddInstruction(HloInstruction::CreateParameter(0, shape, "p1"));
+  auto add = b.AddInstruction(
+      HloInstruction::CreateBinary(shape, HloOpcode::kAdd, p0, p1));
+
+  gpu::GpuBackendConfig gpu_config;
+  gpu_config.set_operation_queue_id(2);
+  TF_ASSERT_OK(add->set_backend_config(gpu_config));
+  auto add2 = b.AddInstruction(
+      HloInstruction::CreateBinary(shape, HloOpcode::kAdd, p0, p0));
+  add->SetupDerivedInstruction(add2);
+  auto backend_config = add2->backend_config<gpu::GpuBackendConfig>();
+  EXPECT_TRUE(backend_config.ok());
+  EXPECT_EQ(backend_config->operation_queue_id(), 2);
+}
+
+TEST_F(HloInstructionTest, BackendConfigNotCopiedToDerivedWithDiffOpcode) {
+  HloComputation::Builder b(TestName());
+  Shape shape = ShapeUtil::MakeShape(F32, {2, 2});
+  auto p0 = b.AddInstruction(HloInstruction::CreateParameter(0, shape, "p0"));
+  auto p1 = b.AddInstruction(HloInstruction::CreateParameter(0, shape, "p1"));
+  auto or1 = b.AddInstruction(
+      HloInstruction::CreateBinary(shape, HloOpcode::kOr, p0, p1));
+
+  gpu::GpuBackendConfig gpu_config;
+  gpu_config.set_operation_queue_id(2);
+  TF_ASSERT_OK(or1->set_backend_config(gpu_config));
+  auto add2 = b.AddInstruction(
+      HloInstruction::CreateBinary(shape, HloOpcode::kAdd, p0, p1));
+  or1->SetupDerivedInstruction(add2);
+  EXPECT_FALSE(add2->has_backend_config());
 }
 
 }  // namespace

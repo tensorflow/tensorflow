@@ -56,13 +56,13 @@ class DeviceList {
   DeviceList& operator=(DeviceList&& other) = default;
 
   // Function that matches the semantics of `Client::LookupDevice()`.
-  using LookupDeviceFunc = absl::FunctionRef<StatusOr<Device*>(int)>;
+  using LookupDeviceFunc = absl::FunctionRef<absl::StatusOr<Device*>(int)>;
 
   // Constructs `DeviceList` from `DeviceListProto`. Devices are looked up using
   // `lookup_device`. Device ids in the proto must be consistent with the
   // devices returned by `lookup_device`.
-  static StatusOr<DeviceList> FromProto(LookupDeviceFunc lookup_device,
-                                        const DeviceListProto& proto);
+  static absl::StatusOr<DeviceList> FromProto(LookupDeviceFunc lookup_device,
+                                              const DeviceListProto& proto);
 
   // Returns a `DeviceListProto` representation.
   DeviceListProto ToProto() const;

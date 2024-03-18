@@ -220,5 +220,10 @@ bool IsOpFullyQuantized(Operation* op) {
          llvm::all_of(op->getResultTypes(), IsQuantizedTensorType);
 }
 
+bool IsOpNotQuantized(Operation* op) {
+  return !llvm::any_of(op->getOperandTypes(), IsQuantizedTensorType) &&
+         !llvm::any_of(op->getResultTypes(), IsQuantizedTensorType);
+}
+
 }  // namespace quant
 }  // namespace mlir

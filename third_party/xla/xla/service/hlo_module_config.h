@@ -324,8 +324,16 @@ class HloModuleConfig {
   int phase_index() const { return phase_index_; }
   void set_phase_index(const int phase_index) { phase_index_ = phase_index; }
 
+  absl::Span<const bool> allow_spmd_sharding_propagation_to_parameters() const {
+    return allow_spmd_sharding_propagation_to_parameters_;
+  }
   absl::Span<const bool> allow_spmd_sharding_propagation_to_output() const {
     return allow_spmd_sharding_propagation_to_output_;
+  }
+  void set_allow_spmd_sharding_propagation_to_parameters(
+      absl::Span<const bool> data) {
+    return allow_spmd_sharding_propagation_to_parameters_.assign(data.begin(),
+                                                                 data.end());
   }
   void set_allow_spmd_sharding_propagation_to_output(
       absl::Span<const bool> data) {
@@ -453,6 +461,18 @@ class HloModuleConfig {
   // config across functions during compilation.
   int phase_index_ = 0;
 
+  // Allows sharding propagation to propagate to the parameters. This changes
+  // the input shape of the computation (which is undesirable), but it can be
+  // used to allow to run partial compilation to determine what would be the
+  // input sharding of a computation if XLA would be allowed to propagate the
+  // sharding which can be used by higher level framework as a way to query
+  // intermediate sharding of operations when multiple computation would be
+  // chained and merged together.
+  // This is a vector of bool, because the user can control which parameters can
+  // have the sharding substituted. If only one boolean value is passed in the
+  // vector that is interpreted as the value to be applied for every parameter.
+  absl::InlinedVector<bool, 1> allow_spmd_sharding_propagation_to_parameters_ =
+      {false};
   // Allows sharding propagation to propagate to the outputs. This changes the
   // output shape of the computation (which is undesirable), but it can be used
   // to allow to run partial compilation to determine what would be the output

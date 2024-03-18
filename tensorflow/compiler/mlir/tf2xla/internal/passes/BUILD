@@ -10,6 +10,7 @@ package(
         "//learning/pathways/serving/transforms:__pkg__",
         "//tensorflow/compiler/mlir:__pkg__",
         "//tensorflow/compiler/mlir/tensorflow:__pkg__",
+        "//tensorflow/compiler/mlir/tf2xla/api:__subpackages__",
         "//tensorflow/compiler/mlir/tf2xla/internal:__subpackages__",
     ],
     licenses = ["notice"],
@@ -30,6 +31,7 @@ cc_library(
         ":mark_ops_for_outside_compilation",
         ":tpu_cluster_formation",
         ":verify_clustering_pass",
+        ":xla_broadcast",
         ":xla_cluster_formation",
         ":xla_outline_entry_functions",
         "@llvm-project//mlir:FuncDialect",
@@ -387,11 +389,116 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "xla_broadcast",
+    srcs = ["xla_broadcast.cc"],
+    textual_hdrs = [
+        "clustering_passes.h.inc",
+    ],
+    deps = [
+        ":clustering_passes_inc_gen",
+        "//tensorflow/compiler/mlir/tensorflow",
+        "//tensorflow/compiler/mlir/tensorflow:attribute_utils",
+        "//tensorflow/compiler/mlir/tensorflow:string_util",
+        "//tensorflow/compiler/mlir/tensorflow:tensorflow_analysis",
+        "//tensorflow/compiler/mlir/tensorflow:tensorflow_ops",
+        "//tensorflow/compiler/mlir/tensorflow:tensorflow_types",
+        "//tensorflow/compiler/mlir/tensorflow:tpu_rewrite_device_util",
+        "//tensorflow/compiler/mlir/tensorflow:xla_rewrite_util",
+        "//tensorflow/compiler/mlir/tensorflow/transforms:lower_tf_lib",
+        "//tensorflow/compiler/mlir/tensorflow/transforms:tf_pass_inc_gen",
+        "//tensorflow/compiler/mlir/tensorflow/transforms:verify_no_outside_compilation_markers_pass",
+        "//tensorflow/compiler/mlir/tf2xla/transforms:legalization_op_config",
+        "//tensorflow/compiler/mlir/tf2xla/transforms:legalize_tf",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/strings",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:Rewrite",
+        "@llvm-project//mlir:Support",
+        "@llvm-project//mlir:TransformUtils",
+    ],
+)
+
 tf_cc_test(
     name = "tpu_cluster_formation_test",
     srcs = ["tpu_cluster_formation_test.cc"],
     deps = [
         ":clustering_passes",
+        "//tensorflow/compiler/mlir/tf2xla/transforms:test_utils",
+        "//tensorflow/core/lib/monitoring:cell_reader",
+        "@com_google_googletest//:gtest_main",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:Support",
+        "@local_tsl//tsl/platform:statusor",
+    ],
+)
+
+cc_library(
+    name = "lowering_passes",
+    hdrs = [
+        "lowering_passes.h",
+    ],
+    textual_hdrs = [
+        "lowering_passes.h.inc",
+    ],
+    deps = [
+        ":input_metrics_lowering_pass",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
+    ],
+)
+
+gentbl_cc_library(
+    name = "lowering_passes_inc_gen",
+    compatible_with = get_compatible_with_portable(),
+    tbl_outs = [
+        (
+            [
+                "-gen-pass-decls",
+                "-name=TFXLABridgeLowering",
+            ],
+            "lowering_passes.h.inc",
+        ),
+    ],
+    tblgen = "@llvm-project//mlir:mlir-tblgen",
+    td_file = "lowering_passes.td",
+    deps = [
+        "@llvm-project//mlir:PassBaseTdFiles",
+    ],
+)
+
+cc_library(
+    name = "input_metrics_lowering_pass",
+    srcs = [
+        "input_lowering_metrics_pass.cc",
+    ],
+    deps = [
+        ":lowering_passes_inc_gen",
+        "//tensorflow/compiler/mlir/tensorflow",
+        "//tensorflow/compiler/mlir/tf2xla/transforms:legalization_op_config",
+        "//tensorflow/core:lib",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:Support",
+    ],
+)
+
+tf_cc_test(
+    name = "input_metrics_lowering_pass_test",
+    srcs = ["input_lowering_metrics_pass_test.cc"],
+    deps = [
+        ":lowering_passes",
         "//tensorflow/compiler/mlir/tf2xla/transforms:test_utils",
         "//tensorflow/core/lib/monitoring:cell_reader",
         "@com_google_googletest//:gtest_main",

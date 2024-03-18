@@ -17,7 +17,6 @@ limitations under the License.
 #define XLA_SERVICE_GPU_MAKE_BATCH_POINTERS_H_
 
 #include <cstddef>
-#include <cstdint>
 
 #include "xla/status.h"
 #include "xla/stream_executor/device_memory.h"

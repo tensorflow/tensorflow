@@ -13,8 +13,11 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <optional>
+
 #include "xla/literal_util.h"
 #include "xla/service/gpu/tests/gpu_codegen_test.h"
+#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace gpu {

@@ -69,6 +69,10 @@ def IsUniformQuantizedType : Constraint<
 def AreTheSameElementType : Constraint<
   CPred<"$0.getType() == $1.getType()">>;
 
+// Checks if the given two values are the same.
+def AreTheSameValue : Constraint<
+  CPred<"$0 == $1">>;
+
 // Checks if the value has rank.
 def HasRank : Constraint<
   CPred<"$0.getType().cast<ShapedType>().hasRank()">>;
@@ -104,7 +108,7 @@ class CreateScalarConst<string value> : NativeCodeCall<
   "CreateScalarConstValue<float>($_builder, $_loc, "# value #")">;
 
 // Creates an 1D array const with integer values.
-// TODO(b/239490133): Make the rule name and function name consistent.
+// TODO: b/239490133 - Make the rule name and function name consistent.
 class Create1DIntegerConst<string type, string values> : NativeCodeCall<
   "Create1DConstValue<"# type #">($_builder, $_loc, "# values #")">;
 

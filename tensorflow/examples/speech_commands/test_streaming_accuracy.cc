@@ -109,7 +109,7 @@ Status LoadGraph(const string& graph_file_name,
   if (!session_create_status.ok()) {
     return session_create_status;
   }
-  return ::tensorflow::OkStatus();
+  return absl::OkStatus();
 }
 
 // Takes a file name, and loads a list of labels from it, one per line, and
@@ -125,7 +125,7 @@ Status ReadLabelsFile(const string& file_name, std::vector<string>* result) {
   while (std::getline(file, line)) {
     result->push_back(line);
   }
-  return ::tensorflow::OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace

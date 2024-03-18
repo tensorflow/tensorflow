@@ -47,7 +47,7 @@ class ComparisonExpander : public OpExpanderPass {
   // Returns a replacement for `instruction`, or nullptr if no replacement is
   // needed (e.g. only the to_apply subcomputation of the instruction was
   // modified).
-  StatusOr<HloInstruction*> ExpandInstruction(
+  absl::StatusOr<HloInstruction*> ExpandInstruction(
       HloInstruction* instruction) override;
 
   std::vector<std::pair<PrimitiveType, PrimitiveType>> expand_via_upcast_;

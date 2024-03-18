@@ -67,7 +67,7 @@ DotConvolutionDimsInfo ParseConvolutionDimsInfo(const HloInstruction* conv);
 //  - 'dot_dnums' is the result of ParseDotConvolutionDimsInfo() for 'conv'.
 //  - 'sharded_lhs_hlo' and 'sharded_rhs_hlo' are sharded inputs for the result
 //    convolution instruction.
-StatusOr<std::unique_ptr<HloInstruction>>
+absl::StatusOr<std::unique_ptr<HloInstruction>>
 CreateShardedConvForDotGeneralConvolution(
     const HloInstruction& conv, const DotConvolutionDimsInfo& dot_dnums,
     HloInstruction* sharded_lhs_hlo, HloInstruction* sharded_rhs_hlo);

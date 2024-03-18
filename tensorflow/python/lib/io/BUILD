@@ -62,6 +62,7 @@ py_strict_library(
         "//tensorflow:__subpackages__",
         "//tensorflow:internal",
         "//third_party/cloud_tpu/convergence_tools:__subpackages__",
+        "//third_party/proto_splitter:__subpackages__",  # TODO(b/277279227): remove this dep from proto_splitter
         "//third_party/py/tf_agents:__subpackages__",
         "//third_party/py/tf_slim:__subpackages__",
     ],

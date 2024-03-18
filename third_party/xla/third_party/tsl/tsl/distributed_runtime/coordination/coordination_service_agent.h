@@ -65,10 +65,10 @@ class Env;
 class CoordinationServiceAgent {
  public:
   using StatusOrValueCallback =
-      std::function<void(const StatusOr<std::string>&)>;
+      std::function<void(const absl::StatusOr<std::string>&)>;
   // Collection of key-value pairs in the same directory.
   using StatusOrValueDirCallback = std::function<void(
-      const StatusOr<std::vector<tensorflow::KeyValueEntry>>&)>;
+      const absl::StatusOr<std::vector<tensorflow::KeyValueEntry>>&)>;
   using ChangedKeyValuesCallback =
       std::function<void(const std::map<std::string, std::string>&)>;
 
@@ -127,10 +127,10 @@ class CoordinationServiceAgent {
   //                                         Reset
 
   // Get task associated with this agent.
-  virtual StatusOr<tensorflow::CoordinatedTask> GetOwnTask() = 0;
+  virtual absl::StatusOr<tensorflow::CoordinatedTask> GetOwnTask() = 0;
 
   // Get status of a remote task.
-  virtual StatusOr<std::vector<tensorflow::CoordinatedTaskStateInfo>>
+  virtual absl::StatusOr<std::vector<tensorflow::CoordinatedTaskStateInfo>>
   GetTaskState(const std::vector<tensorflow::CoordinatedTask>& task) = 0;
 
   // Report error to coordination service. This will invoke the error callback.
@@ -169,9 +169,9 @@ class CoordinationServiceAgent {
   // If the key-value is not inserted yet, this is a blocking call that waits
   // until the corresponding key is inserted.
   //   - DeadlineExceeded: timed out waiting for key.
-  virtual StatusOr<std::string> GetKeyValue(std::string_view key) = 0;
-  virtual StatusOr<std::string> GetKeyValue(std::string_view key,
-                                            absl::Duration timeout) = 0;
+  virtual absl::StatusOr<std::string> GetKeyValue(std::string_view key) = 0;
+  virtual absl::StatusOr<std::string> GetKeyValue(std::string_view key,
+                                                  absl::Duration timeout) = 0;
   // Note: Cancel the underlying RPC call with `call_opts->StartCancel()` and
   // `call_opts->ClearCancelCallback()`.
   virtual std::shared_ptr<CallOptions> GetKeyValueAsync(
@@ -179,14 +179,14 @@ class CoordinationServiceAgent {
 
   // Get config key-value from the service.
   //   - NotFound: the requested key does not exist.
-  virtual StatusOr<std::string> TryGetKeyValue(std::string_view key) = 0;
+  virtual absl::StatusOr<std::string> TryGetKeyValue(std::string_view key) = 0;
 
   // Get all values under a directory (key).
   // A value is considered to be in the directory if its key is prefixed with
   // the directory.
   // This is not a blocking call. If no keys are found, an empty vector is
   // returned immediately.
-  virtual StatusOr<std::vector<tensorflow::KeyValueEntry>> GetKeyValueDir(
+  virtual absl::StatusOr<std::vector<tensorflow::KeyValueEntry>> GetKeyValueDir(
       std::string_view key) = 0;
   virtual void GetKeyValueDirAsync(std::string_view key,
                                    StatusOrValueDirCallback done) = 0;
@@ -260,7 +260,7 @@ class CoordinationServiceAgent {
                                   StatusCallback done) = 0;
 
   // Get unowned Env* that the agent was initialized with.
-  virtual StatusOr<tsl::Env*> GetEnv() = 0;
+  virtual absl::StatusOr<tsl::Env*> GetEnv() = 0;
 
  protected:
   // Set the service agent to error status and invoke the error callback.

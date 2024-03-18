@@ -38,8 +38,8 @@ Client::Client(ServiceInterface* stub) : stub_(stub) {}
 
 Client::~Client() = default;
 
-StatusOr<Literal> Client::Transfer(const GlobalData& data,
-                                   const Shape* shape_with_layout) {
+absl::StatusOr<Literal> Client::Transfer(const GlobalData& data,
+                                         const Shape* shape_with_layout) {
   TransferToClientRequest request;
   *request.mutable_data() = data.handle();
   if (shape_with_layout != nullptr) {
@@ -65,7 +65,7 @@ StatusOr<Literal> Client::Transfer(const GlobalData& data,
   return Literal::CreateFromProto(*response.mutable_literal());
 }
 
-StatusOr<std::unique_ptr<GlobalData>> Client::TransferToServer(
+absl::StatusOr<std::unique_ptr<GlobalData>> Client::TransferToServer(
     const LiteralSlice& literal, const DeviceHandle* device_handle) {
   TransferToServerRequest request;
   *request.mutable_literal() = literal.ToProto();
@@ -115,7 +115,7 @@ Status Client::TransferToInfeed(const LiteralSlice& literal, int64_t replica_id,
   return OkStatus();
 }
 
-StatusOr<Literal> Client::TransferFromOutfeed(
+absl::StatusOr<Literal> Client::TransferFromOutfeed(
     const Shape* shape_with_layout, int64_t replica_id,
     const DeviceHandle* device_handle) {
   TransferFromOutfeedRequest request;
@@ -163,7 +163,7 @@ Status Client::ResetDevice() {
   return OkStatus();
 }
 
-StatusOr<Literal> Client::ExecuteAndTransfer(
+absl::StatusOr<Literal> Client::ExecuteAndTransfer(
     const XlaComputation& computation, absl::Span<GlobalData* const> arguments,
     const ExecutionOptions* execution_options,
     ExecutionProfile* execution_profile) {
@@ -181,8 +181,8 @@ StatusOr<Literal> Client::ExecuteAndTransfer(
                              : nullptr);
 }
 
-StatusOr<Literal> Client::ComputeConstant(const XlaComputation& computation,
-                                          const Layout* output_layout) const {
+absl::StatusOr<Literal> Client::ComputeConstant(
+    const XlaComputation& computation, const Layout* output_layout) const {
   ComputeConstantGraphRequest request;
   *request.mutable_computation() = computation.proto();
   if (output_layout != nullptr) {
@@ -209,12 +209,12 @@ StatusOr<Literal> Client::ComputeConstant(const XlaComputation& computation,
   return Literal::CreateFromProto(response.literal());
 }
 
-StatusOr<XlaComputation> Client::LoadSnapshot(const HloSnapshot& module) {
+absl::StatusOr<XlaComputation> Client::LoadSnapshot(const HloSnapshot& module) {
   TF_RET_CHECK(module.has_hlo() && module.hlo().has_hlo_module());
   return XlaComputation(module.hlo().hlo_module());
 }
 
-StatusOr<ExecutionHandle> Client::Compile(
+absl::StatusOr<ExecutionHandle> Client::Compile(
     const XlaComputation& computation, absl::Span<const Shape> argument_shapes,
     const ExecutionOptions* execution_options) {
   CompileRequest request;
@@ -248,7 +248,7 @@ StatusOr<ExecutionHandle> Client::Compile(
   return response.handle();
 }
 
-StatusOr<std::unique_ptr<GlobalData>> Client::Execute(
+absl::StatusOr<std::unique_ptr<GlobalData>> Client::Execute(
     const ExecutionHandle& handle, absl::Span<GlobalData* const> arguments,
     ExecutionProfile* execution_profile) {
   ExecuteRequest request;
@@ -274,7 +274,7 @@ StatusOr<std::unique_ptr<GlobalData>> Client::Execute(
   return std::make_unique<GlobalData>(stub_, response.output());
 }
 
-StatusOr<std::unique_ptr<GlobalData>> Client::Execute(
+absl::StatusOr<std::unique_ptr<GlobalData>> Client::Execute(
     const XlaComputation& computation, absl::Span<GlobalData* const> arguments,
     const ExecutionOptions* execution_options,
     ExecutionProfile* execution_profile) {
@@ -325,8 +325,8 @@ StatusOr<std::unique_ptr<GlobalData>> Client::Execute(
   return std::move(results[0]);
 }
 
-StatusOr<std::vector<std::unique_ptr<GlobalData>>> Client::ExecuteParallel(
-    absl::Span<const XlaComputationInstance> computations) {
+absl::StatusOr<std::vector<std::unique_ptr<GlobalData>>>
+Client::ExecuteParallel(absl::Span<const XlaComputationInstance> computations) {
   ExecuteGraphParallelRequest request;
 
   for (const XlaComputationInstance& computation : computations) {
@@ -362,7 +362,7 @@ StatusOr<std::vector<std::unique_ptr<GlobalData>>> Client::ExecuteParallel(
   return std::move(outputs);
 }
 
-StatusOr<std::vector<DeviceHandle>> Client::GetDeviceHandles(
+absl::StatusOr<std::vector<DeviceHandle>> Client::GetDeviceHandles(
     int64_t device_count) {
   if (device_count < 1) {
     return InvalidArgument("device_count must be greater than 0");
@@ -401,8 +401,8 @@ Status Client::Unregister(const GlobalData& data) {
   return s;
 }
 
-StatusOr<std::vector<std::unique_ptr<GlobalData>>> Client::DeconstructTuple(
-    const GlobalData& data) {
+absl::StatusOr<std::vector<std::unique_ptr<GlobalData>>>
+Client::DeconstructTuple(const GlobalData& data) {
   DeconstructTupleRequest request;
   *request.mutable_tuple_handle() = data.handle();
   DeconstructTupleResponse response;
@@ -422,7 +422,7 @@ StatusOr<std::vector<std::unique_ptr<GlobalData>>> Client::DeconstructTuple(
   return std::move(handles);
 }
 
-StatusOr<ComputationStats> Client::GetComputationStats(
+absl::StatusOr<ComputationStats> Client::GetComputationStats(
     const XlaComputation& computation,
     const DebugOptions& debug_options) const {
   ComputationGraphStatsRequest request;
@@ -443,13 +443,13 @@ StatusOr<ComputationStats> Client::GetComputationStats(
   return response.stats();
 }
 
-StatusOr<std::unique_ptr<ProgramShape>> Client::GetComputationShape(
+absl::StatusOr<std::unique_ptr<ProgramShape>> Client::GetComputationShape(
     const XlaComputation& computation) {
   TF_ASSIGN_OR_RETURN(const auto& result, computation.GetProgramShape());
   return std::make_unique<ProgramShape>(result);
 }
 
-StatusOr<Shape> Client::GetShape(const GlobalData& data) {
+absl::StatusOr<Shape> Client::GetShape(const GlobalData& data) {
   GetShapeRequest request;
   *request.mutable_data() = data.handle();
   GetShapeResponse response;
@@ -465,7 +465,7 @@ StatusOr<Shape> Client::GetShape(const GlobalData& data) {
   return Shape(response.shape());
 }
 
-StatusOr<std::string> Client::ExecutionStatsAsString(
+absl::StatusOr<std::string> Client::ExecutionStatsAsString(
     const XlaComputation& computation, const ExecutionProfile& profile) {
   TF_ASSIGN_OR_RETURN(
       auto computation_stats,
@@ -486,7 +486,7 @@ StatusOr<std::string> Client::ExecutionStatsAsString(
   return std::string("[Execution Statistics] not available.");
 }
 
-StatusOr<ChannelHandle> Client::CreateChannelHandleByType(
+absl::StatusOr<ChannelHandle> Client::CreateChannelHandleByType(
     ChannelHandle::ChannelType type) {
   CreateChannelHandleRequest request;
   request.set_channel_type(type);
@@ -503,15 +503,15 @@ StatusOr<ChannelHandle> Client::CreateChannelHandleByType(
   return response.channel();
 }
 
-StatusOr<ChannelHandle> Client::CreateChannelHandle() {
+absl::StatusOr<ChannelHandle> Client::CreateChannelHandle() {
   return CreateChannelHandleByType(ChannelHandle::DEVICE_TO_DEVICE);
 }
 
-StatusOr<ChannelHandle> Client::CreateHostToDeviceChannelHandle() {
+absl::StatusOr<ChannelHandle> Client::CreateHostToDeviceChannelHandle() {
   return CreateChannelHandleByType(ChannelHandle::HOST_TO_DEVICE);
 }
 
-StatusOr<ChannelHandle> Client::CreateDeviceToHostChannelHandle() {
+absl::StatusOr<ChannelHandle> Client::CreateDeviceToHostChannelHandle() {
   return CreateChannelHandleByType(ChannelHandle::DEVICE_TO_HOST);
 }
 

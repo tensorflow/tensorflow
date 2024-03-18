@@ -32,7 +32,7 @@ namespace {
 
 using ::testing::NotNull;
 
-class IsOpQuantizableStableHloTest : public QuantizationTestBase {};
+using IsOpQuantizableStableHloTest = ::mlir::quant::QuantizationTestBase;
 
 // Quantizable ops: constants
 // Non-quantizable ops: normal StableHLO ops and terminators
@@ -75,8 +75,10 @@ constexpr absl::string_view kModuleCompositeNoAttr = R"mlir(
 )mlir";
 
 TEST_F(IsOpQuantizableStableHloTest, ConstantOpQuantizable) {
-  OwningOpRef<ModuleOp> module_op_ref = ParseModuleOpString(kModuleConstantAdd);
-  auto test_func = module_op_ref->lookupSymbol<func::FuncOp>("constant_add");
+  OwningOpRef<ModuleOp> module_op = ParseModuleOpString(kModuleConstantAdd);
+  ASSERT_TRUE(module_op);
+
+  auto test_func = module_op->lookupSymbol<func::FuncOp>("constant_add");
   ASSERT_THAT(test_func, NotNull());
 
   auto constant_op =
@@ -85,8 +87,10 @@ TEST_F(IsOpQuantizableStableHloTest, ConstantOpQuantizable) {
 }
 
 TEST_F(IsOpQuantizableStableHloTest, TerminatorOpNotQuantizable) {
-  OwningOpRef<ModuleOp> module_op_ref = ParseModuleOpString(kModuleConstantAdd);
-  auto test_func = module_op_ref->lookupSymbol<func::FuncOp>("constant_add");
+  OwningOpRef<ModuleOp> module_op = ParseModuleOpString(kModuleConstantAdd);
+  ASSERT_TRUE(module_op);
+
+  auto test_func = module_op->lookupSymbol<func::FuncOp>("constant_add");
   ASSERT_THAT(test_func, NotNull());
 
   auto return_op = FindOperationOfType<func::ReturnOp>(test_func);
@@ -94,10 +98,12 @@ TEST_F(IsOpQuantizableStableHloTest, TerminatorOpNotQuantizable) {
 }
 
 TEST_F(IsOpQuantizableStableHloTest, SameScaleOpQuantizable) {
-  OwningOpRef<ModuleOp> module_op_ref =
+  OwningOpRef<ModuleOp> module_op =
       ParseModuleOpString(kModuleCompositeSameScale);
+  ASSERT_TRUE(module_op);
+
   auto test_func =
-      module_op_ref->lookupSymbol<func::FuncOp>("same_scale_after_composite");
+      module_op->lookupSymbol<func::FuncOp>("same_scale_after_composite");
   ASSERT_THAT(test_func, NotNull());
 
   auto reshape_op = FindOperationOfType<mlir::stablehlo::ReshapeOp>(test_func);
@@ -105,8 +111,10 @@ TEST_F(IsOpQuantizableStableHloTest, SameScaleOpQuantizable) {
 }
 
 TEST_F(IsOpQuantizableStableHloTest, NonSameScaleOpNotQuantizable) {
-  OwningOpRef<ModuleOp> module_op_ref = ParseModuleOpString(kModuleConstantAdd);
-  auto test_func = module_op_ref->lookupSymbol<func::FuncOp>("constant_add");
+  OwningOpRef<ModuleOp> module_op = ParseModuleOpString(kModuleConstantAdd);
+  ASSERT_TRUE(module_op);
+
+  auto test_func = module_op->lookupSymbol<func::FuncOp>("constant_add");
   ASSERT_THAT(test_func, NotNull());
 
   auto add_op = FindOperationOfType<mlir::stablehlo::AddOp>(test_func);
@@ -114,10 +122,12 @@ TEST_F(IsOpQuantizableStableHloTest, NonSameScaleOpNotQuantizable) {
 }
 
 TEST_F(IsOpQuantizableStableHloTest, ValidXlaCallModuleOpQuantizable) {
-  OwningOpRef<ModuleOp> module_op_ref =
+  OwningOpRef<ModuleOp> module_op =
       ParseModuleOpString(kModuleCompositeSameScale);
+  ASSERT_TRUE(module_op);
+
   auto test_func =
-      module_op_ref->lookupSymbol<func::FuncOp>("same_scale_after_composite");
+      module_op->lookupSymbol<func::FuncOp>("same_scale_after_composite");
   ASSERT_THAT(test_func, NotNull());
 
   auto xla_call_module_op = FindOperationOfType<TF::XlaCallModuleOp>(test_func);
@@ -125,10 +135,11 @@ TEST_F(IsOpQuantizableStableHloTest, ValidXlaCallModuleOpQuantizable) {
 }
 
 TEST_F(IsOpQuantizableStableHloTest, InvalidXlaCallModuleOpNotQuantizable) {
-  OwningOpRef<ModuleOp> module_op_ref =
-      ParseModuleOpString(kModuleCompositeNoAttr);
+  OwningOpRef<ModuleOp> module_op = ParseModuleOpString(kModuleCompositeNoAttr);
+  ASSERT_TRUE(module_op);
+
   auto test_func =
-      module_op_ref->lookupSymbol<func::FuncOp>("composite_without_attr");
+      module_op->lookupSymbol<func::FuncOp>("composite_without_attr");
   ASSERT_THAT(test_func, NotNull());
 
   auto xla_call_module_op = FindOperationOfType<TF::XlaCallModuleOp>(test_func);
@@ -136,10 +147,12 @@ TEST_F(IsOpQuantizableStableHloTest, InvalidXlaCallModuleOpNotQuantizable) {
 }
 
 TEST_F(IsOpQuantizableStableHloTest, QuantizeDequantizeOpNotQuantizable) {
-  OwningOpRef<ModuleOp> module_op_ref =
+  OwningOpRef<ModuleOp> module_op =
       ParseModuleOpString(kModuleCompositeSameScale);
+  ASSERT_TRUE(module_op);
+
   auto test_func =
-      module_op_ref->lookupSymbol<func::FuncOp>("same_scale_after_composite");
+      module_op->lookupSymbol<func::FuncOp>("same_scale_after_composite");
   ASSERT_THAT(test_func, NotNull());
 
   auto quantize_op = FindOperationOfType<quantfork::QuantizeCastOp>(test_func);
@@ -148,6 +161,51 @@ TEST_F(IsOpQuantizableStableHloTest, QuantizeDequantizeOpNotQuantizable) {
   auto dequantize_op =
       FindOperationOfType<quantfork::DequantizeCastOp>(test_func);
   EXPECT_FALSE(IsOpQuantizableStableHlo(dequantize_op));
+}
+
+TEST_F(IsOpQuantizableStableHloTest,
+       XlaCallModuleOpQuantizableWhenNotDenylisted) {
+  // A `TF::XlaCallModuleOp` with `_quantization_method = ""`.
+  constexpr absl::string_view
+      kModuleXlaCallModuleOpWithDefaultQuantizationMethod = R"mlir(
+    func.func @xla_call_module_default_quantization_method(%arg0: tensor<1x1x3xf32>, %arg1: tensor<3x4xf32>) -> tensor<1x1x4xf32> {
+      %0 = "tf.XlaCallModule"(%arg0, %arg1) <{Sout = [#tf_type.shape<1x1x4>], dim_args_spec = [], disabled_checks = [], function_list = [], has_token_input_output = false, module = "", platforms = ["CPU"], version = 9 : i64}> {_entry_function = @composite_dot_general_fn_1, _original_entry_function = "composite_dot_general_fn_1", _quantization_method = "", _stablehlo_module_attrs = {jax.uses_shape_polymorphism = true}, _tfl_quant_trait = "fully_quantizable"} : (tensor<1x1x3xf32>, tensor<3x4xf32>) -> tensor<1x1x4xf32>
+      return %0 : tensor<1x1x4xf32>
+    }
+  )mlir";
+
+  OwningOpRef<ModuleOp> module_op =
+      ParseModuleOpString(kModuleXlaCallModuleOpWithDefaultQuantizationMethod);
+  ASSERT_TRUE(module_op);
+
+  auto test_func = module_op->lookupSymbol<func::FuncOp>(
+      "xla_call_module_default_quantization_method");
+  ASSERT_THAT(test_func, NotNull());
+
+  auto xla_call_module_op = FindOperationOfType<TF::XlaCallModuleOp>(test_func);
+  EXPECT_TRUE(IsOpQuantizableStableHlo(xla_call_module_op));
+}
+
+TEST_F(IsOpQuantizableStableHloTest, DenylistedXlaCallModuleOpNotQuantizable) {
+  // A `TF::XlaCallModuleOp` with `_quantization_method = "no_quantization {}"`,
+  // indicating it has been explicitly denylisted by the user.
+  constexpr absl::string_view kModuleDenylistedXlaCallModuleOp = R"mlir(
+    func.func @xla_call_module_denylisted(%arg0: tensor<1x1x3xf32>, %arg1: tensor<3x4xf32>) -> tensor<1x1x4xf32> {
+      %0 = "tf.XlaCallModule"(%arg0, %arg1) <{Sout = [#tf_type.shape<1x1x4>], dim_args_spec = [], disabled_checks = [], function_list = [], has_token_input_output = false, module = "", platforms = ["CPU"], version = 9 : i64}> {_entry_function = @composite_dot_general_fn_1, _original_entry_function = "composite_dot_general_fn_1", _quantization_method = "no_quantization {}", _stablehlo_module_attrs = {jax.uses_shape_polymorphism = true}, _tfl_quant_trait = "fully_quantizable"} : (tensor<1x1x3xf32>, tensor<3x4xf32>) -> tensor<1x1x4xf32>
+      return %0 : tensor<1x1x4xf32>
+    }
+  )mlir";
+
+  OwningOpRef<ModuleOp> module_op =
+      ParseModuleOpString(kModuleDenylistedXlaCallModuleOp);
+  ASSERT_TRUE(module_op);
+
+  auto test_func =
+      module_op->lookupSymbol<func::FuncOp>("xla_call_module_denylisted");
+  ASSERT_THAT(test_func, NotNull());
+
+  auto xla_call_module_op = FindOperationOfType<TF::XlaCallModuleOp>(test_func);
+  EXPECT_FALSE(IsOpQuantizableStableHlo(xla_call_module_op));
 }
 
 }  // namespace

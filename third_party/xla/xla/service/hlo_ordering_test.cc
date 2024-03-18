@@ -283,7 +283,7 @@ TEST_F(HloOrderingTest, ValuesInWhileComputations) {
   ASSERT_EQ(dataflow->GetValueDefinedAt(xla_while).GetUses().size(), 1);
 
   const HloUse* while_use =
-      &dataflow->GetValueDefinedAt(xla_while).GetUses()[0];
+      dataflow->GetValueDefinedAt(xla_while).GetUses().data();
   EXPECT_EQ(while_use->instruction, add);
   EXPECT_TRUE(ordering.UsesBeforeValueDefinition(
       {&while_use, 1}, dataflow->GetValueDefinedAt(add), *dataflow));

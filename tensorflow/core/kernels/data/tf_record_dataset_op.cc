@@ -317,6 +317,7 @@ void TFRecordDatasetOp::MakeDataset(OpKernelContext* ctx,
     is_s3_fs &= absl::StartsWith(filenames[i], kS3FsPrefix);
     metrics::RecordTFDataFilename(kDatasetType, filenames[i]);
   }
+  LogFilenames(filenames);
 
   tstring compression_type;
   OP_REQUIRES_OK(ctx, ParseScalarArgument<tstring>(ctx, kCompressionType,

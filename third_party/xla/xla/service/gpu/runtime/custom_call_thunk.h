@@ -17,14 +17,11 @@ limitations under the License.
 #define XLA_SERVICE_GPU_RUNTIME_CUSTOM_CALL_THUNK_H_
 
 #include <cstddef>
-#include <cstdint>
 #include <functional>
 #include <optional>
 #include <string>
-#include <variant>
 #include <vector>
 
-#include "absl/container/flat_hash_map.h"
 #include "absl/strings/string_view.h"
 #include "xla/ffi/api/c_api.h"
 #include "xla/ffi/call_frame.h"

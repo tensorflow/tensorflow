@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <algorithm>
 #include <cstddef>
 #include <cstdint>
 #include <memory>
@@ -314,6 +315,20 @@ struct ConvertIndexCastOpPattern : public OpRewritePattern<arith::IndexCastOp> {
                                  op.getLoc(), op.getOut().getType(), result));
       return success();
     }
+    if (!op.getIn().getType().isa<ShapedType>() && hasIndexStyle(op.getOut())) {
+      // Handle a special case of i32 -> index.
+      // This is converted to the following sequence:
+      //   unrealized_conversion_cast i32 -> tensor<i32>
+      //   unrealized_conversion_cast tensor<i32> -> index
+      result = rewriter
+                   .create<UnrealizedConversionCastOp>(
+                       op.getLoc(), RankedTensorType::get({}, result.getType()),
+                       result)
+                   .getResult(0);
+      rewriter.replaceOp(op, rewriter.create<UnrealizedConversionCastOp>(
+                                 op.getLoc(), op.getOut().getType(), result));
+      return success();
+    }
 
     if (hasIndexStyle(result)) {
       result = castToI32(rewriter, op.getLoc(), result);
@@ -448,6 +463,67 @@ struct ConvertTensorDimPattern : public OpRewritePattern<tensor::DimOp> {
   }
 };
 
+struct ConvertTensorExtractPattern
+    : public OpRewritePattern<tensor::ExtractOp> {
+  using OpRewritePattern::OpRewritePattern;
+  LogicalResult matchAndRewrite(tensor::ExtractOp op,
+                                PatternRewriter& rewriter) const override {
+    SmallVector<int64_t> indices;
+    auto tensorType = op.getTensor().getType();
+    // We only support getting static indices.
+    for (auto index : op.getIndices()) {
+      auto constIndex =
+          dyn_cast_or_null<arith::ConstantIndexOp>(index.getDefiningOp());
+      if (!constIndex)
+        return rewriter.notifyMatchFailure(op, "expected constant index op");
+
+      // Check if the index is out of range.
+      int idx = indices.size();
+      if (tensorType.isDynamicDim(idx) ||
+          constIndex.value() >= tensorType.getDimSize(idx))
+        return rewriter.notifyMatchFailure(op, "index out of range");
+
+      indices.push_back(constIndex.value());
+    }
+    auto input = castToI32(rewriter, op.getLoc(), op.getTensor());
+    auto startIndices = DenseIntElementsAttr::get(
+        RankedTensorType::get({static_cast<int64_t>(indices.size())},
+                              rewriter.getI64Type()),
+        indices);
+    for (auto& index : indices) {
+      index += 1;
+    }
+    auto limitIndices = DenseIntElementsAttr::get(
+        RankedTensorType::get({static_cast<int64_t>(indices.size())},
+                              rewriter.getI64Type()),
+        indices);
+
+    Value extractedTensor = rewriter.create<SliceOp>(
+        op.getLoc(), input, startIndices, limitIndices,
+        /*strides=*/
+        DenseIntElementsAttr::get<int64_t>(
+            RankedTensorType::get({static_cast<int64_t>(indices.size())},
+                                  rewriter.getI64Type()),
+            1));
+    Value extractedScalarTensor = rewriter.create<ReshapeOp>(
+        op.getLoc(), RankedTensorType::get({}, rewriter.getI32Type()),
+        extractedTensor);
+    if (getElementTypeOrSelf(op.getResult().getType()).isIndex()) {
+      auto extractedIndex =
+          castToIndex(rewriter, op.getLoc(), extractedScalarTensor);
+      rewriter.replaceOp(op, extractedIndex);
+    } else {
+      // For the special case when the input is a i32 tensor and output is i32,
+      // convert the result back to i32 to be consistent:
+      //   unrealized_conversion_cast tensor<i32> -> i32
+      rewriter.replaceOp(op, rewriter.create<UnrealizedConversionCastOp>(
+                                 op.getLoc(), op.getResult().getType(),
+                                 extractedScalarTensor));
+    }
+    return success();
+  }
+};
+
 struct ConvertTensorFromElementsPattern
     : public OpRewritePattern<tensor::FromElementsOp> {
   using OpRewritePattern::OpRewritePattern;
@@ -518,6 +594,8 @@ struct ConvertCstrBroadcastableOp
 
     // If the two operand shapes are of different sizes, the smaller one is
     // padded with 1's from the left.
+    int32_t rank =
+        std::max(tensorType1.getDimSize(0), tensorType2.getDimSize(0));
     if (tensorType1.getDimSize(0) < tensorType2.getDimSize(0)) {
       shape1 =
           padFromLeft(rewriter, op.getLoc(), shape1,
@@ -532,8 +610,7 @@ struct ConvertCstrBroadcastableOp
     // dimSize1 == dimSize2 or dimSize1 == 1 or dimSize2 == 1
     auto allOne = rewriter.create<mhlo::ConstantOp>(
         op.getLoc(), DenseIntElementsAttr::get<int32_t>(
-                         RankedTensorType::get({tensorType1.getDimSize(0)},
-                                               rewriter.getI32Type()),
+                         RankedTensorType::get({rank}, rewriter.getI32Type()),
                          static_cast<int32_t>(1)));
     Value dimSize1Is1 = rewriter.create<mhlo::CompareOp>(
         op.getLoc(), shape1, allOne, ComparisonDirection::EQ);
@@ -550,7 +627,7 @@ struct ConvertCstrBroadcastableOp
     auto boolType = RankedTensorType::get({1}, rewriter.getI1Type());
     Value allBroadcastable = rewriter.create<ConstantOp>(
         op.getLoc(), DenseIntElementsAttr::get<bool>(boolType, true));
-    for (auto i = 0; i < tensorType1.getDimSize(0); ++i) {
+    for (auto i = 0; i < rank; ++i) {
       Value broadcastable = rewriter.create<SliceOp>(
           op.getLoc(), dimBroadcastable, rewriter.getI64TensorAttr(i),
           rewriter.getI64TensorAttr(i + 1), rewriter.getI64TensorAttr(1));
@@ -774,6 +851,7 @@ struct ShapeLegalizeToHloPass
     patterns.add<CastOperandsPattern<DynamicBroadcastInDimOp>>(&getContext());
     patterns.add<CastOperandsPattern<DynamicReshapeOp>>(&getContext());
     patterns.add<ConvertTensorDimPattern>(&getContext());
+    patterns.add<ConvertTensorExtractPattern>(&getContext());
     patterns.add<ConvertTensorFromElementsPattern>(&getContext());
     if (this->legalize_constraints_) {
       patterns.add<ConvertCstrBroadcastableOp>(&getContext());

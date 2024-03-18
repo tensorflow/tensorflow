@@ -187,7 +187,8 @@ Status DataServiceWorkerImpl::Start(
                                       should_retry, "Worker heartbeat.",
                                       /*deadline_micros=*/kint64max));
   LOG(INFO) << "Worker registered with dispatcher running at "
-            << config_.dispatcher_address();
+            << config_.dispatcher_address()
+            << ". Worker config: " << config_.DebugString();
   task_completion_thread_ = absl::WrapUnique(
       Env::Default()->StartThread({}, "data-service-worker-task-completion",
                                   [this]() { TaskCompletionThread(); }));

@@ -21,6 +21,7 @@ limitations under the License.
 
 #if GOOGLE_CUDA
 #include "nvtx3/nvToolsExt.h"
+#include "nvtx3/nvToolsExtPayload.h"
 #else
 // Some typedef to help build without NVTX.
 typedef void* nvtxDomainHandle_t;
@@ -49,6 +50,7 @@ inline bool RangesEnabled() {
 #endif
 }
 
+// Older/simpler version; NVTX implementation copies a C-style string each time
 inline void RangePush(nvtxDomainHandle_t domain, const char* ascii) {
 #if GOOGLE_CUDA
   nvtxEventAttributes_t attrs{};
@@ -63,13 +65,20 @@ inline void RangePush(nvtxDomainHandle_t domain, const std::string& str) {
   RangePush(domain, str.c_str());
 }
 
-inline void RangePush(nvtxDomainHandle_t domain, nvtxStringHandle_t handle) {
+// More powerful version: pass a registered string instead of a C-style string,
+// and attach a generic payload. The Annotation type must implement a method
+// called NvtxSchemaId() that allows the NVTX backend to interpret the payload.
+template <typename Annotation>
+void RangePush(nvtxDomainHandle_t domain, nvtxStringHandle_t handle,
+               const Annotation& annotation) {
 #if GOOGLE_CUDA
   nvtxEventAttributes_t attrs{};
   attrs.version = NVTX_VERSION;
   attrs.size = NVTX_EVENT_ATTRIB_STRUCT_SIZE;
   attrs.messageType = NVTX_MESSAGE_TYPE_REGISTERED;
   attrs.message.registered = handle;
+  NVTX_PAYLOAD_EVTATTR_SET(attrs, annotation.NvtxSchemaId(), &annotation,
+                           sizeof(Annotation));
   ::nvtxDomainRangePushEx(domain, &attrs);
 #endif
 }

@@ -40,9 +40,9 @@ limitations under the License.
 #include "mlir/IR/Visitors.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/tensorflow/ir/host_runtime/tfrt_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
-#include "tensorflow/compiler/mlir/tensorflow/ir/tfrt_ops.h"
 #include "tensorflow/compiler/mlir/tfrt/transforms/ifrt/ifrt_constants.h"
 #include "xla/service/computation_placer.h"
 #include "xla/xla_data.pb.h"

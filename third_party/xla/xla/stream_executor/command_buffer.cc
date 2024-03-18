@@ -38,12 +38,8 @@ absl::StatusOr<std::unique_ptr<CommandBuffer>> CommandBuffer::Create(
 absl::StatusOr<std::unique_ptr<CommandBuffer>> CommandBuffer::Trace(
     StreamExecutor* executor,
     absl::AnyInvocable<absl::Status(Stream*)> function, Mode mode) {
-  Stream stream(executor);
-  if (stream.Init(); !stream.ok())
-    return absl::InternalError(
-        "Failed to initialize stream for command buffer tracing");
-
-  return Trace(executor, &stream, std::move(function), mode);
+  TF_ASSIGN_OR_RETURN(auto stream, executor->CreateStream());
+  return Trace(executor, stream.get(), std::move(function), mode);
 }
 
 absl::StatusOr<std::unique_ptr<CommandBuffer>> CommandBuffer::Trace(
@@ -63,16 +59,6 @@ absl::StatusOr<std::unique_ptr<CommandBuffer>> CommandBuffer::Trace(
   TF_RETURN_IF_ERROR(command_buffer->Finalize());
 
   return command_buffer;
-}
-
-bool CommandBuffer::SupportsConditionalCommands(const Platform* platform) {
-  // TODO(ezhulenev): We should extend a Platform with a way to query
-  // implemented StreamExecutor features, for now we know that only CUDA
-  // platform supports conditional commands in command buffers.
-#if defined(STREAM_EXECUTOR_CUDA_ENABLE_GRAPH_CONDITIONAL)
-  return platform->Name() == "CUDA";
-#endif
-  return false;
 }
 
 }  // namespace stream_executor

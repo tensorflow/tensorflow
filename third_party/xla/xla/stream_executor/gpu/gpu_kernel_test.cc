@@ -20,11 +20,13 @@ limitations under the License.
 #include "absl/strings/ascii.h"
 #include "xla/service/platform_util.h"
 #include "xla/stream_executor/gpu/gpu_test_kernels.h"
+#include "xla/stream_executor/kernel_spec.h"
 #include "xla/stream_executor/launch_dim.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/platform_manager.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
+#include "tsl/lib/core/status_test_util.h"
 #include "tsl/platform/statusor.h"
 #include "tsl/platform/test.h"
 
@@ -38,16 +40,13 @@ TEST(GpuKernelTest, Add) {
   Platform* platform = PlatformManager::PlatformWithName(name).value();
   StreamExecutor* executor = platform->ExecutorForDevice(0).value();
 
-  Stream stream(executor);
-  stream.Init();
-  ASSERT_TRUE(stream.ok());
+  TF_ASSERT_OK_AND_ASSIGN(auto stream, executor->CreateStream());
 
   MultiKernelLoaderSpec spec(/*arity=*/3);
 #if defined(GOOGLE_CUDA)
   spec.AddCudaPtxInMemory(internal::kAddI32Kernel, "add");
 #elif defined(TENSORFLOW_USE_ROCM)
-  spec.AddCudaCubinInMemory(
-      reinterpret_cast<const char*>(&internal::kAddI32KernelModule[0]), "add");
+  spec.AddCudaCubinInMemory(internal::kAddI32KernelModule, "add");
 #endif
 
   TF_ASSERT_OK_AND_ASSIGN(auto add, AddI32Kernel::Create(executor, spec));
@@ -60,16 +59,16 @@ TEST(GpuKernelTest, Add) {
   DeviceMemory<int32_t> b = executor->AllocateArray<int32_t>(length, 0);
   DeviceMemory<int32_t> c = executor->AllocateArray<int32_t>(length, 0);
 
-  stream.ThenMemset32(&a, 1, byte_length);
-  stream.ThenMemset32(&b, 2, byte_length);
-  stream.ThenMemZero(&c, byte_length);
+  TF_ASSERT_OK(stream->Memset32(&a, 1, byte_length));
+  TF_ASSERT_OK(stream->Memset32(&b, 2, byte_length));
+  TF_ASSERT_OK(stream->MemZero(&c, byte_length));
 
   // Launch kernel.
-  ASSERT_TRUE(stream.ThenLaunch(ThreadDim(), BlockDim(4), add, a, b, c).ok());
+  ASSERT_TRUE(stream->ThenLaunch(ThreadDim(), BlockDim(4), add, a, b, c).ok());
 
   // Copy data back to host.
   std::vector<int32_t> dst(4, 42);
-  stream.ThenMemcpy(dst.data(), c, byte_length);
+  TF_ASSERT_OK(stream->Memcpy(dst.data(), c, byte_length));
 
   std::vector<int32_t> expected = {3, 3, 3, 3};
   ASSERT_EQ(dst, expected);

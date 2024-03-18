@@ -86,7 +86,7 @@ std::ostream& operator<<(std::ostream& stream,
 }
 
 /*static*/
-StatusOr<int64_t> HeapSimulator::MinimumMemoryForModule(
+absl::StatusOr<int64_t> HeapSimulator::MinimumMemoryForModule(
     const HloSchedule& schedule,
     const LogicalBuffer::SizeFunction& size_function) {
   if (schedule.empty()) {
@@ -110,7 +110,7 @@ StatusOr<int64_t> HeapSimulator::MinimumMemoryForModule(
 }
 
 /*static*/
-StatusOr<int64_t> HeapSimulator::MinimumMemoryForComputation(
+absl::StatusOr<int64_t> HeapSimulator::MinimumMemoryForComputation(
     const HloComputation& computation, const HloInstructionSequence& sequence,
     const HloAliasAnalysis& alias_analysis,
     const LogicalBuffer::SizeFunction& size_function,
@@ -124,7 +124,7 @@ StatusOr<int64_t> HeapSimulator::MinimumMemoryForComputation(
   return result.heap_size;
 }
 
-StatusOr<int64_t> HeapSimulator::MinimumMemoryForComputation(
+absl::StatusOr<int64_t> HeapSimulator::MinimumMemoryForComputation(
     const HloComputation& computation, const HloInstructionSequence& sequence,
     const HloAliasAnalysis& alias_analysis,
     const LogicalBuffer::SizeFunction& size_function,
@@ -138,7 +138,7 @@ StatusOr<int64_t> HeapSimulator::MinimumMemoryForComputation(
 }
 
 /*static*/
-StatusOr<HeapSimulator::Result<HloValue>> HeapSimulator::Run(
+absl::StatusOr<HeapSimulator::Result<HloValue>> HeapSimulator::Run(
     std::unique_ptr<HeapAlgorithm<HloValue>> algorithm, const HloModule& module,
     const HloSchedule& schedule, const HloAliasAnalysis& alias_analysis,
     const BufferValue::SizeFunction& size_fn, const Options& options) {
@@ -156,7 +156,7 @@ StatusOr<HeapSimulator::Result<HloValue>> HeapSimulator::Run(
 }
 
 /*static*/
-StatusOr<HeapSimulator::Result<HloValue>> HeapSimulator::Run(
+absl::StatusOr<HeapSimulator::Result<HloValue>> HeapSimulator::Run(
     std::unique_ptr<HeapAlgorithm<HloValue>> algorithm,
     const HloComputation& computation,
     const HloInstructionSequence& instruction_sequence,
@@ -177,7 +177,7 @@ StatusOr<HeapSimulator::Result<HloValue>> HeapSimulator::Run(
 }
 
 /*static*/
-StatusOr<HeapSimulator::Result<HloValue>> HeapSimulator::Run(
+absl::StatusOr<HeapSimulator::Result<HloValue>> HeapSimulator::Run(
     std::unique_ptr<HeapAlgorithm<HloValue>> algorithm,
     const HloComputation& computation,
     const HloInstructionSequence& instruction_sequence,
@@ -464,7 +464,7 @@ int64_t HeapSimulator::GetBufferSize(const HloValue* buffer) const {
   return it->second;
 }
 
-StatusOr<HeapSimulator::Result<HloValue>> HeapSimulator::Finish() {
+absl::StatusOr<HeapSimulator::Result<HloValue>> HeapSimulator::Finish() {
   TF_ASSIGN_OR_RETURN(Result<HloValue> result, algorithm_->Finish());
 
   // Post-process the result to add chunks for shared buffers.  An empty chunk
@@ -2343,7 +2343,7 @@ void GlobalDecreasingSizeBestFitHeap<BufferType>::AddToChunkMap(
   DCHECK(emplace_result.second);
 }
 
-StatusOr<HeapSimulator::Result<HloValue>>
+absl::StatusOr<HeapSimulator::Result<HloValue>>
 ConstrainedGlobalDecreasingSizeBestFitHeap::Finish() {
   std::vector<BufferInterval> sorted_buffer_vec = GetSortedBufferIntervals();
   // Convert into std::list so that erase() is O(1).

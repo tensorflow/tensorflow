@@ -259,13 +259,13 @@ class WeakPtr {
     return *this;
   }
 
-  WeakPtr(WeakPtr&& other) {
+  WeakPtr(WeakPtr&& other) noexcept {
     data_ = std::move(other.data_);
     notifier_id_ = other.notifier_id_;
     other.notifier_id_ = 0;
   }
 
-  WeakPtr& operator=(WeakPtr&& other) {
+  WeakPtr& operator=(WeakPtr&& other) noexcept {
     if (this != &other) {
       if (data_ != nullptr && notifier_id_ != 0) {
         data_->RemoveNotifier(notifier_id_);

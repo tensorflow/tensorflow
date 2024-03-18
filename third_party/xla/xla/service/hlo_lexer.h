@@ -82,6 +82,7 @@ enum class TokKind {
   kDimLabels,      // [0-9bf?]{2,}_[0-9io?]{2,}->[0-9bf?]{2,}
   kDxD,            // [0-9]+(x[0-9]+)+
   kPad,            // [0-9]+_[0-9]+(_[0-9]+)?(x[0-9]+_[0-9]+(_[0-9]+)?)*
+  kSparsityDesc,   // ([LR]\.[0-9]+@[0-9]+:[0-9]+_?)+
   kIdent,          // other identifiers
   kString,         // "abcd\"\n"
   kInt,            // 42
@@ -110,6 +111,7 @@ class HloLexer {
       case TokKind::kDimLabels:
       case TokKind::kDxD:
       case TokKind::kPad:
+      case TokKind::kSparsityDesc:
       case TokKind::kString:
       case TokKind::kIdent:
         return token_state_.str_val;

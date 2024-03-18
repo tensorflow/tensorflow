@@ -36,7 +36,7 @@ bool ConvolutionPredExpander::InstructionMatchesPattern(
                                 .WithElementType(PRED));
 }
 
-StatusOr<HloInstruction*> ConvolutionPredExpander::ExpandInstruction(
+absl::StatusOr<HloInstruction*> ConvolutionPredExpander::ExpandInstruction(
     HloInstruction* instruction) {
   HloComputation* computation = instruction->parent();
 

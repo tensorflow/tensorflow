@@ -29,10 +29,10 @@ class CholeskyExpander : public OpExpanderPass {
  protected:
   bool InstructionMatchesPattern(HloInstruction* instruction) override;
 
-  StatusOr<HloInstruction*> ExpandInstruction(
+  absl::StatusOr<HloInstruction*> ExpandInstruction(
       HloInstruction* instruction) override;
 
-  virtual StatusOr<std::pair<XlaOp, XlaOp>> CholeskyUnblocked(
+  virtual absl::StatusOr<std::pair<XlaOp, XlaOp>> CholeskyUnblocked(
       XlaOp a, PrecisionConfig::Precision precision);
 
  private:

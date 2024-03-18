@@ -35,9 +35,9 @@ limitations under the License.
 #include "mlir/Transforms/ViewOpGraph.h"  // from @llvm-project
 #include "tensorflow/cc/saved_model/loader.h"
 #include "tensorflow/compiler/mlir/lite/common/tfl_pass_config.h"
-#include "tensorflow/compiler/mlir/lite/quantization/quantization_config.h"
 #include "tensorflow/compiler/mlir/lite/tf_to_tfl_flatbuffer.h"
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h"
+#include "tensorflow/compiler/mlir/quantization/common/quantization_lib/quantization_config.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/python/py_function_lib.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops_n_z.h"
 #include "tensorflow/core/framework/graph.pb.h"
@@ -59,8 +59,8 @@ namespace tensorflow {
 namespace internal {
 namespace {
 
-using ::mlir::quant::ReducedPrecisionSupport;
 using ::tensorflow::quantization::PyFunctionLibrary;
+using ::tflite::optimize::ReducedPrecisionSupport;
 
 // Op def string for TFLite_Detection_PostProcess Op.
 constexpr mlir::StringRef kDetectionPostProcessOp =
@@ -217,7 +217,7 @@ absl::Status RegisterAllCustomOps(const toco::TocoFlags& toco_flags) {
 }
 
 absl::Status PopulateQuantizationSpecs(
-    const toco::ModelFlags& model_flags, const toco::TocoFlags& toco_flags,
+    const toco::ModelFlags& model_flags, toco::TocoFlags& toco_flags,
     mlir::quant::QuantizationSpecs* quant_specs,
     std::vector<std::string>* node_names, std::vector<std::string>* node_dtypes,
     std::vector<std::optional<std::vector<int>>>* node_shapes,
@@ -345,7 +345,7 @@ absl::Status DumpOpGraphToFile(mlir::ModuleOp module,
 }
 
 absl::Status ConvertMLIRToTFLiteFlatBuffer(
-    const toco::ModelFlags& model_flags, const toco::TocoFlags& toco_flags,
+    const toco::ModelFlags& model_flags, toco::TocoFlags& toco_flags,
     mlir::OwningOpRef<mlir::ModuleOp> module,
     const mlir::TFL::PassConfig& pass_config,
     const std::unordered_set<std::string>& saved_model_tags,

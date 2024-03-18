@@ -20,6 +20,7 @@ limitations under the License.
 
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
+#include "xla/service/gpu/runtime/annotation.h"
 #include "xla/service/gpu/thunk.h"
 #include "tsl/platform/errors.h"
 #include "tsl/profiler/lib/scoped_annotation.h"
@@ -54,8 +55,10 @@ absl::Status SequentialThunk::Initialize(const InitializeParams& params) {
 }
 
 absl::Status SequentialThunk::ExecuteOnStream(const ExecuteParams& params) {
+  const ModuleAnnotations* annotations = GetCurrentModuleAnnotations();
   for (const auto& thunk : thunks_) {
-    ScopedAnnotation annotation([&] { return thunk->profile_annotation(); });
+    auto annotation =
+        GetKernelAnnotation(annotations, thunk->profile_annotation());
     TF_RETURN_IF_ERROR(thunk->ExecuteOnStream(params));
   }
   return absl::OkStatus();

@@ -16,6 +16,7 @@ limitations under the License.
 #define TENSORFLOW_TOOLS_PROTO_SPLITTER_CC_UTIL_H_
 
 #include <functional>
+#include <memory>
 #include <optional>
 #include <string>
 #include <utility>
@@ -23,6 +24,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/status/statusor.h"
+#include "absl/strings/cord.h"
 #include "absl/strings/string_view.h"
 #include "riegeli/bytes/fd_reader.h"  // from @riegeli
 #include "riegeli/records/record_reader.h"  // from @riegeli
@@ -31,6 +33,14 @@ limitations under the License.
 
 namespace tensorflow {
 namespace tools::proto_splitter {
+
+using MessageBytes = std::variant<std::shared_ptr<tsl::protobuf::Message>,
+                                  tsl::protobuf::Message*, std::string>;
+
+struct ChunkedProto {
+  std::vector<MessageBytes>* chunks = nullptr;
+  ::tensorflow::proto_splitter::ChunkedMessage* chunked_message = nullptr;
+};
 
 // TODO(b/282796592): Consider switching to `tsl::protobuf::FieldPath` in the
 // future.
@@ -44,8 +54,8 @@ using Field = std::pair<FieldType, std::optional<FieldType>>;
 // std::vector<FieldType>, since multiple field tags may correspond to a single
 // field when the field is repeated or a map.
 absl::StatusOr<const std::vector<Field>> GetFieldTypes(
-    const tsl::protobuf::RepeatedPtrField<::proto_splitter::FieldIndex>&
-        field_tags);
+    const tsl::protobuf::RepeatedPtrField<
+        ::tensorflow::proto_splitter::FieldIndex>& field_tags);
 
 // Sets message.field_desc[field_index] to the data contained in chunk,
 // according to the (cpp) type described by field_desc. Uses message_callback
@@ -111,13 +121,13 @@ absl::StatusOr<FieldResult> GetField(const tsl::protobuf::Message& message,
                                      const std::vector<FieldType>& fields);
 
 // Updates `field_tag` in the ChunkedField proto.
-absl::Status AddFieldTag(const tsl::protobuf::Descriptor& desc,
-                         const std::vector<FieldType>& fields,
-                         ::proto_splitter::ChunkedField& chunked_field);
+absl::Status AddFieldTag(
+    const tsl::protobuf::Descriptor& desc, const std::vector<FieldType>& fields,
+    ::tensorflow::proto_splitter::ChunkedField& chunked_field);
 
-absl::Status AddFieldTag(const tsl::protobuf::Descriptor& desc,
-                         const Field& field,
-                         ::proto_splitter::ChunkedField& chunked_field);
+absl::Status AddFieldTag(
+    const tsl::protobuf::Descriptor& desc, const Field& field,
+    ::tensorflow::proto_splitter::ChunkedField& chunked_field);
 
 // Returns the index of the map key in the map field. If the key is not found,
 // returns -1.
@@ -137,13 +147,13 @@ absl::StatusOr<riegeli::RecordReader<riegeli::FdReader<>>> GetRiegeliReader(
 
 // Read the last chunk, which contains metadata necessary for reading the
 // remaining chunks.
-absl::StatusOr<::proto_splitter::ChunkMetadata> GetChunkMetadata(
+absl::StatusOr<::tensorflow::proto_splitter::ChunkMetadata> GetChunkMetadata(
     riegeli::RecordReader<riegeli::FdReader<>>& reader);
 
 // Use the `reader` to read in the chunk specified by `chunk_info`.
 absl::StatusOr<std::string> ReadChunk(
     riegeli::RecordReader<riegeli::FdReader<>>& reader,
-    const ::proto_splitter::ChunkInfo& chunk_info);
+    const ::tensorflow::proto_splitter::ChunkInfo& chunk_info);
 
 // Returns true if prefix can only be found as a .pb file, and false if a .cpb
 // file exists. Returns an error if neither .pb nor .cpb exist.

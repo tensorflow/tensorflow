@@ -33,8 +33,8 @@ using PjRtClientsMap = std::map<DeviceType, std::unique_ptr<xla::PjRtClient>>;
 class PjRtState : public ResourceBase {
  public:
   static PjRtState* Create();
-  StatusOr<xla::PjRtClient*> GetPjRtClient(const DeviceType& device_type);
-  StatusOr<xla::PjRtClient*> GetOrCreatePjRtClient(
+  absl::StatusOr<xla::PjRtClient*> GetPjRtClient(const DeviceType& device_type);
+  absl::StatusOr<xla::PjRtClient*> GetOrCreatePjRtClient(
       const DeviceType& device_type);
   Status SetPjRtClient(const DeviceType& device_type,
                        std::unique_ptr<xla::PjRtClient> client);

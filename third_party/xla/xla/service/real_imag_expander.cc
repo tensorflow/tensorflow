@@ -25,7 +25,7 @@ bool RealImagExpander::InstructionMatchesPattern(HloInstruction* inst) {
          !ShapeUtil::ElementIsComplex(inst->operand(0)->shape());
 }
 
-StatusOr<HloInstruction*> RealImagExpander::ExpandInstruction(
+absl::StatusOr<HloInstruction*> RealImagExpander::ExpandInstruction(
     HloInstruction* inst) {
   if (inst->opcode() == HloOpcode::kReal) {
     // real with a non-complex input is just a copy.

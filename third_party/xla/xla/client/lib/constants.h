@@ -66,7 +66,7 @@ XlaOp ConstantR0WithType(XlaBuilder* builder, PrimitiveType type, T value) {
 template <typename T>
 XlaOp ScalarLike(XlaOp prototype, T value) {
   XlaBuilder* builder = prototype.builder();
-  return builder->ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
+  return builder->ReportErrorOrReturn([&]() -> absl::StatusOr<XlaOp> {
     TF_ASSIGN_OR_RETURN(Shape shape, builder->GetShape(prototype));
     return ConstantR0WithType(builder, shape.element_type(), value);
   });
@@ -80,7 +80,7 @@ XlaOp ScalarLike(XlaOp prototype, T value) {
 template <typename T>
 XlaOp FullLike(XlaOp prototype, T value) {
   XlaBuilder* builder = prototype.builder();
-  return builder->ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
+  return builder->ReportErrorOrReturn([&]() -> absl::StatusOr<XlaOp> {
     TF_ASSIGN_OR_RETURN(Shape shape, builder->GetShape(prototype));
     if (ShapeUtil::IsScalar(shape) || shape.IsArray()) {
       return Broadcast(ScalarLike(prototype, value), shape.dimensions());

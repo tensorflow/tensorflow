@@ -527,15 +527,13 @@ bool HloDataflowAnalysis::Phi(
 }
 
 const HloValue& HloDataflowAnalysis::GetValue(HloValue::Id value_id) const {
-  const auto value = values_.find(value_id);
-  CHECK(value != values_.end()) << "Value not found: " << value_id;
-  return *value->second;
+  DCHECK(values_.contains(value_id)) << "Value not found: " << value_id;
+  return *values_.find(value_id)->second;
 }
 
 HloValue& HloDataflowAnalysis::GetValue(HloValue::Id value_id) {
-  const auto value = values_.find(value_id);
-  CHECK(value != values_.end()) << "Value not found: " << value_id;
-  return *value->second;
+  DCHECK(values_.contains(value_id)) << "Value not found: " << value_id;
+  return *values_.find(value_id)->second;
 }
 
 HloValueSet HloDataflowAnalysis::GetFlattenedValueSet(
@@ -1408,18 +1406,16 @@ void HloDataflowAnalysis::Propagate() {
 
 const InstructionValueSet& HloDataflowAnalysis::GetInstructionValueSet(
     const HloInstruction* instruction) const {
-  const auto value_set = value_sets_.find(instruction);
-  CHECK(value_set != value_sets_.end())
+  DCHECK(value_sets_.contains(instruction))
       << "Instruction " << instruction->ToString() << " not found.";
-  return *value_set->second;
+  return *value_sets_.find(instruction)->second;
 }
 
 InstructionValueSet& HloDataflowAnalysis::GetInstructionValueSet(
     const HloInstruction* instruction) {
-  const auto value_set = value_sets_.find(instruction);
-  CHECK(value_set != value_sets_.end())
+  DCHECK(value_sets_.contains(instruction))
       << "Instruction " << instruction->ToString() << " not found.";
-  return *value_set->second;
+  return *value_sets_.find(instruction)->second;
 }
 
 Status HloDataflowAnalysis::InitializeInstructionValueSets() {

@@ -31,7 +31,7 @@ limitations under the License.
 namespace xla {
 
 // Builds an xla::LocalClient for the GPU platform.
-StatusOr<LocalClient*> GetGpuXlaClient(
+absl::StatusOr<LocalClient*> GetGpuXlaClient(
     const std::optional<std::string>& platform_name,
     const std::optional<std::set<int>>& allowed_devices);
 
@@ -70,11 +70,11 @@ std::unique_ptr<tsl::BFCAllocator> GetGpuHostAllocator(
     se::StreamExecutor* executor);
 
 // Builds a BFCAllocator for all local GPUs.
-StatusOr<std::unique_ptr<tsl::BFCAllocator>> CreateBFCAllocator(
+absl::StatusOr<std::unique_ptr<tsl::BFCAllocator>> CreateBFCAllocator(
     se::StreamExecutor* executor, double memory_fraction, bool preallocate);
 
 // Builds a BFCAllocator for all local GPUs that uses collective memory.
-StatusOr<std::unique_ptr<tsl::BFCAllocator>> CreateCollectiveBFCAllocator(
+absl::StatusOr<std::unique_ptr<tsl::BFCAllocator>> CreateCollectiveBFCAllocator(
     se::StreamExecutor* executor, double memory_fraction,
     size_t collective_memory_size);
 

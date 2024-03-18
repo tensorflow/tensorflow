@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/python/py_host_callback.h"
 
+#include <cstdint>
 #include <exception>
 #include <memory>
 #include <string>
@@ -22,9 +23,12 @@ limitations under the License.
 #include <vector>
 
 #include "google/protobuf/any.pb.h"
+#include "absl/algorithm/container.h"
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
 #include "absl/types/span.h"
-#include "pybind11/gil.h"  // from @pybind11
-#include "pybind11/pybind11.h"  // from @pybind11
+#include "third_party/nanobind/include/nanobind/nanobind.h"
 #include "xla/layout_util.h"
 #include "xla/pjrt/host_callback.h"
 #include "xla/pjrt/pjrt_compiler.h"
@@ -36,8 +40,9 @@ limitations under the License.
 #include "xla/python/python_ref_manager.h"
 #include "xla/python/types.h"
 #include "xla/shape.h"
-#include "xla/statusor.h"
 #include "xla/util.h"
+
+namespace nb = nanobind;
 
 namespace xla {
 
@@ -46,7 +51,7 @@ char PyHostSendAndRecvLoadedHostCallback::ID = 0;
 
 namespace {
 
-StatusOr<std::vector<CpuCallback::Arg>> CreateCallbackArgs(
+absl::StatusOr<std::vector<CpuCallback::Arg>> CreateCallbackArgs(
     absl::Span<const Shape> operand_shapes) {
   std::vector<CpuCallback::Arg> callback_args(operand_shapes.size());
   for (int i = 0; i < operand_shapes.size(); ++i) {
@@ -62,7 +67,7 @@ StatusOr<std::vector<CpuCallback::Arg>> CreateCallbackArgs(
       callback_args[i].type = shape.element_type();
       callback_args[i].size_in_bytes = ShapeUtil::ByteSizeOf(layout);
       TF_ASSIGN_OR_RETURN(callback_args[i].dtype,
-                          PrimitiveTypeToDtype(shape.element_type()));
+                          PrimitiveTypeToNbDtype(shape.element_type()));
     } else if (shape.IsToken()) {
       callback_args[i].type = TOKEN;
     } else {
@@ -75,7 +80,7 @@ StatusOr<std::vector<CpuCallback::Arg>> CreateCallbackArgs(
   return callback_args;
 }
 
-StatusOr<std::vector<CpuCallback::Result>> CreateCallbackResults(
+absl::StatusOr<std::vector<CpuCallback::Result>> CreateCallbackResults(
     absl::Span<const Shape> result_shapes) {
   std::vector<CpuCallback::Result> callback_results(result_shapes.size());
   for (int i = 0; i < result_shapes.size(); ++i) {
@@ -107,9 +112,9 @@ StatusOr<std::vector<CpuCallback::Result>> CreateCallbackResults(
 
 }  // namespace
 
-StatusOr<tsl::RCReference<PyCpuLoadedHostCallback>>
+absl::StatusOr<tsl::RCReference<PyCpuLoadedHostCallback>>
 PyCpuLoadedHostCallback::Create(ifrt::Client* ifrt_client,
-                                pybind11::function callable,
+                                nb::callable callable,
                                 absl::Span<const Shape> operand_shapes,
                                 absl::Span<const Shape> result_shapes) {
   ifrt::PlatformId platform_id = ifrt_client->platform_id();
@@ -131,19 +136,18 @@ PyCpuLoadedHostCallback::Create(ifrt::Client* ifrt_client,
                                             std::move(cpu_callback)));
 }
 
-StatusOr<std::string> PyCpuLoadedHostCallback::Serialize() const {
+absl::StatusOr<std::string> PyCpuLoadedHostCallback::Serialize() const {
   return Unimplemented(
       "PyHostSendAndRecvLoadedHostCallback serialization is not supported");
 }
 
-StatusOr<tsl::RCReference<PyHostSendAndRecvLoadedHostCallback>>
+absl::StatusOr<tsl::RCReference<PyHostSendAndRecvLoadedHostCallback>>
 PyHostSendAndRecvLoadedHostCallback::Create(
-    ifrt::Client* ifrt_client, pybind11::function callable,
+    ifrt::Client* ifrt_client, nb::callable callable,
     absl::Span<const Shape> operand_shapes,
     absl::Span<const Shape> result_shapes,
     absl::Span<const uint16_t> send_channel_ids,
-    absl::Span<const uint16_t> recv_channel_ids,
-    pybind11::function serializer) {
+    absl::Span<const uint16_t> recv_channel_ids, nb::callable serializer) {
   TF_ASSIGN_OR_RETURN(auto callback_args, CreateCallbackArgs(operand_shapes));
   TF_ASSIGN_OR_RETURN(auto callback_results,
                       CreateCallbackResults(result_shapes));
@@ -188,11 +192,11 @@ PyHostSendAndRecvLoadedHostCallback::Create(
 
 PyHostSendAndRecvLoadedHostCallback::PyHostSendAndRecvLoadedHostCallback(
     ifrt::Client* ifrt_client,
-    std::unique_ptr<xla::HostCallback> xla_host_callback,
-    pybind11::function callable, absl::Span<const Shape> operand_shapes,
+    std::unique_ptr<xla::HostCallback> xla_host_callback, nb::callable callable,
+    absl::Span<const Shape> operand_shapes,
     absl::Span<const Shape> result_shapes,
     absl::Span<const uint16_t> send_channel_ids,
-    absl::Span<const uint16_t> recv_channel_ids, pybind11::function serializer)
+    absl::Span<const uint16_t> recv_channel_ids, nb::callable serializer)
     : llvm::RTTIExtends<PyHostSendAndRecvLoadedHostCallback,
                         ifrt::PjRtHostSendAndRecvLoadedHostCallback>(
           ifrt_client, std::move(xla_host_callback)),
@@ -205,12 +209,13 @@ PyHostSendAndRecvLoadedHostCallback::PyHostSendAndRecvLoadedHostCallback(
 
 PyHostSendAndRecvLoadedHostCallback::~PyHostSendAndRecvLoadedHostCallback() {
   GlobalPyRefManager()->AddGarbage(
-      absl::MakeSpan(static_cast<pybind11::object*>(&callable_), 1));
+      absl::MakeSpan(static_cast<nb::object*>(&callable_), 1));
   GlobalPyRefManager()->AddGarbage(
-      absl::MakeSpan(static_cast<pybind11::object*>(&serializer_), 1));
+      absl::MakeSpan(static_cast<nb::object*>(&serializer_), 1));
 }
 
-StatusOr<std::string> PyHostSendAndRecvLoadedHostCallback::Serialize() const {
+absl::StatusOr<std::string> PyHostSendAndRecvLoadedHostCallback::Serialize()
+    const {
   if (serializer_.is_none()) {
     return InvalidArgument(
         "Host callback cannot be serialized because serializer was not "
@@ -236,10 +241,11 @@ StatusOr<std::string> PyHostSendAndRecvLoadedHostCallback::Serialize() const {
 
   std::string callable;
   {
-    pybind11::gil_scoped_acquire gil_acquire;
+    nb::gil_scoped_acquire gil_acquire;
     try {
-      callable = pybind11::cast<std::string>(serializer_(callable_));
-    } catch (const pybind11::error_already_set& e) {
+      nb::bytes bytes = nb::cast<nb::bytes>(serializer_(callable_));
+      callable = std::string(bytes.c_str(), bytes.size());
+    } catch (const nb::python_error& e) {
       return absl::InternalError(absl::StrCat(
           "Unable to pickle the host_callback callable: ", e.what()));
     } catch (const std::exception& e) {

@@ -15,7 +15,6 @@ limitations under the License.
 
 #include "xla/stream_executor/gpu/redzone_allocator.h"
 
-#include <cstdint>
 
 namespace stream_executor {
 

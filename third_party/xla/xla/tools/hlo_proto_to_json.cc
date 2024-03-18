@@ -42,7 +42,7 @@ using std::string;
 namespace xla {
 namespace tools {
 
-StatusOr<std::string> ToJson(const tsl::protobuf::Message& message) {
+absl::StatusOr<std::string> ToJson(const tsl::protobuf::Message& message) {
   std::string json_output;
   tsl::protobuf::util::JsonPrintOptions json_options;
   json_options.add_whitespace = true;

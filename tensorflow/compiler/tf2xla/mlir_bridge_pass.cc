@@ -89,17 +89,6 @@ bool HasDevice(mlir::ModuleOp module) {
   return !devices.device_names().empty();
 }
 
-bool HasTPUPartitionedCallOpInModule(mlir::ModuleOp module) {
-  bool has_tpu_partitioned_call = false;
-  for (auto func_op : module.getOps<mlir::func::FuncOp>()) {
-    func_op->walk([&](mlir::TF::TPUPartitionedCallOp op) {
-      has_tpu_partitioned_call = true;
-    });
-    if (has_tpu_partitioned_call) break;
-  }
-  return has_tpu_partitioned_call;
-}
-
 // V1 Compat Bridge extracts out a program into a submodule and runs clustering
 // only on the submodule.
 absl::Status RunLowerToRuntimeOpsOnSubmodule(ModuleOp parent_module,
@@ -143,9 +132,8 @@ MlirOptimizationPassState GetPassStateImpl(
     bool is_supported_by_replicated_brige, const ConfigProto& config_proto,
     const Graph& graph, const FunctionLibraryDefinition& function_library) {
   // Skip MLIR TF/XLA Bridge if no XLA-compilable ops are found.
-  // TODO(b/324474356): also check the called function in the library.
   if (!is_supported_by_replicated_brige &&
-      !IsSupportedByNonReplicatedBridge(graph, /*function_library*/ nullptr)) {
+      !IsSupportedByNonReplicatedBridge(graph, &function_library)) {
     VLOG(3) << "Skipping MLIR Bridge, graph is not qualified to run the bridge";
     return MlirOptimizationPassState::Disabled;
   }
@@ -170,7 +158,7 @@ MlirOptimizationPassState GetPassStateImpl(
     case MlirBridgeRolloutPolicy::kDisabledByUser: {
       VLOG(1) << "Skipping MLIR "
               << (is_supported_by_replicated_brige ? "Replicated"
-                                                   : "Non-Replicated")
+                                                   : "Non-replicated")
               << " Bridge, disabled by user. "
                  "The fallback will evaluate.";
       metrics::UpdateTfMlirBridgeFirstPhaseCounter(
@@ -236,7 +224,7 @@ Status MlirBridgePass::Run(const std::string& function_name,
     VLOG(1) << "Skipping MLIR TF2XLA Bridge. This is an inference graph, "
                "Session V1 Bridge should be used during execution of "
                "TPUPartitionedCall.";
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   // TODO(b/241853328): Add caching of pass state and call logging/metrics
@@ -251,7 +239,7 @@ Status MlirBridgePass::Run(const std::string& function_name,
     // when the pass state was originally calculated and now, so this check is
     // required to reflect any possible changes.
     VLOG(1) << "MlirBridgePass is disabled and will not run.";
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   bool fallback_enabled = false;
@@ -267,7 +255,7 @@ Status MlirBridgePass::Run(const std::string& function_name,
                        /*is_v1_compat=*/false);
       fallback_enabled = true;
     }
-    VLOG(1) << "Running MLIR TPU Bridge";
+    VLOG(1) << "Running MLIR Replicated Bridge";
     mlir_bridge_gauge_v2->GetCell()->Set(true);
 
     TF_RETURN_IF_ERROR(
@@ -279,7 +267,7 @@ Status MlirBridgePass::Run(const std::string& function_name,
         tensorflow::tfrt_compiler::RunLowerClusterToRuntimeOpsPassPipeline(
             module, tsl::DeviceType(DEVICE_TPU_XLA_JIT), function_name));
   } else {
-    VLOG(1) << "Running GPU/CPU Bridge";
+    VLOG(1) << "Running MLIR Non-replicated Bridge";
     TF_RETURN_IF_ERROR(
         tensorflow::tf2xla::v2::RunFunctionTf2xlaClusteringBridge(
             module, /*is_supported_by_replicated_brige*/ false,
@@ -314,13 +302,15 @@ MlirOptimizationPassState MlirBridgeV1CompatPass::GetPassState(
     case MlirBridgeRolloutPolicy::kEnabledAfterGraphAnalysis:
       return MlirOptimizationPassState::FallbackEnabled;
     case MlirBridgeRolloutPolicy::kDisabledByUser:
-      VLOG(1) << "Skipping MLIR TPU Bridge V1 Compat, MLIR TPU bridge disabled "
-                 "by user. Old bridge will evaluate.";
+      VLOG(1) << "Skipping MLIR Replicated Bridge V1 Compat, MLIR Replicated "
+                 "bridge disabled "
+                 "by user. Fallback will evaluate.";
       metrics::UpdateTfMlirBridgeFirstPhaseCounter("tpu", "v1", true,
                                                    "disabled_by_user");
       return MlirOptimizationPassState::Disabled;
     case MlirBridgeRolloutPolicy::kDisabledAfterGraphAnalysis:
-      VLOG(1) << "Skipping MLIR TPU Bridge V1 Compat, MLIR TPU bridge disabled "
+      VLOG(1) << "Skipping MLIR Replicated Bridge V1 Compat, MLIR Replicated "
+                 "bridge disabled "
                  "because graph has unsupported features. Old bridge will "
                  "evaluate.";
       metrics::UpdateTfMlirBridgeFirstPhaseCounter("tpu", "v1", true,
@@ -343,13 +333,13 @@ Status MlirBridgeV1CompatPass::Run(const GraphOptimizationPassOptions& options,
   absl::call_once(flag, UpdateLogVerbosityIfDefined, "TF_DEBUG_LOG_VERBOSITY");
 
   // Skip function graphs as MlirBridgePass will be used instead.
-  if (options.is_function_graph) return OkStatus();
+  if (options.is_function_graph) return absl::OkStatus();
 
-  // Skip MLIR TPU Bridge if no TPU devices or TPU ops found.
+  // Skip MLIR Replicated Bridge if no eligible ops found.
   if (!IsSupportedByReplicatedBridge(module)) {
-    VLOG(1) << "Skipping MLIR TPU Bridge V1 Compat, no TPU devices or TPU ops "
+    VLOG(1) << "Skipping MLIR Replicated Bridge V1 Compat, no eligible ops "
                "found";
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   MlirOptimizationPassState pass_state =
@@ -363,9 +353,10 @@ Status MlirBridgeV1CompatPass::Run(const GraphOptimizationPassOptions& options,
     // pass is not disabled. However, the graph may have been updated between
     // when the pass state was originally calculated and now, so this check is
     // required to reflect any possible changes.
-    VLOG(1) << "Skipping MLIR TPU Bridge V1 Compat, session flag not enabled";
+    VLOG(1) << "Skipping MLIR Replicated Bridge V1 Compat, session flag not "
+               "enabled";
     mlir_bridge_gauge_v1->GetCell()->Set(false);
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   // 1) If the MLIR module contains a TPUPartitionedCall, we skip here
@@ -373,10 +364,10 @@ Status MlirBridgeV1CompatPass::Run(const GraphOptimizationPassOptions& options,
   // part of PRE_PLACEMENT optimization
   // 3) This MLIR bridge version is V1 Compat
   if (HasTPUPartitionedCallOpInModule(module)) {
-    VLOG(1)
-        << "Skipping MLIR TPU Bridge V1 Compat. This is an inference graph, V1 "
-           "Compat should be used during execution of TPUPartitionedCall.";
-    return OkStatus();
+    VLOG(1) << "Skipping MLIR Replicated Bridge V1 Compat. This is an "
+               "inference graph, V1 "
+               "Compat should be used during execution of TPUPartitionedCall.";
+    return absl::OkStatus();
   }
 
   bool fallback_enabled = false;
@@ -392,7 +383,7 @@ Status MlirBridgeV1CompatPass::Run(const GraphOptimizationPassOptions& options,
     fallback_enabled = true;
   }
 
-  VLOG(1) << "Running MLIR TPU Bridge V1 Compat";
+  VLOG(1) << "Running MLIR Replicated Bridge V1 Compat";
   mlir_bridge_gauge_v1->GetCell()->Set(true);
   TF_RETURN_IF_ERROR(tensorflow::tf2xla::v1::RunSessionTf2xlaClusteringBridge(
       module, fallback_enabled));

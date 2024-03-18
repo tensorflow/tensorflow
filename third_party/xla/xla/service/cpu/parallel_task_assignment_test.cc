@@ -40,7 +40,7 @@ class ParallelTaskAssignmentTest : public HloTestBase {
           return cpu::TargetMachineFeatures::kEigenExpectedTensorAlignment;
         }) {}
 
-  StatusOr<bool> RunParallelTaskAssigner(HloModule* module) {
+  absl::StatusOr<bool> RunParallelTaskAssigner(HloModule* module) {
     return cpu::ParallelTaskAssigner(max_parallelism_, shape_size_func_,
                                      &target_machine_features_)
         .Run(module);

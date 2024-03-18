@@ -17,12 +17,16 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include "absl/status/status.h"
 #include "tensorflow/core/data/dataset_utils.h"
+#include "tensorflow/core/data/global_shuffle_utils.h"
 #include "tensorflow/core/data/name_utils.h"
 #include "tensorflow/core/data/split_utils.h"
 #include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/graph/graph.h"
+#include "tsl/platform/mutex.h"
+#include "tsl/platform/thread_annotations.h"
 
 namespace tensorflow {
 namespace data {
@@ -84,8 +88,16 @@ class TensorDatasetOp::Dataset : public DatasetBase {
 
   Status Get(OpKernelContext* ctx, int64 index,
              std::vector<Tensor>* out_tensors) const override {
+    return Get(index, out_tensors);
+  }
+
+  Status Get(int64 index, std::vector<Tensor>* out_tensors) const override {
     TF_RETURN_IF_ERROR(CheckRandomAccessCompatible(index));
     *out_tensors = tensors_;
+    return absl::OkStatus();
+  }
+
+  absl::Status RandomIndexingCompatible() const override {
     return absl::OkStatus();
   }
 
@@ -117,7 +129,9 @@ class TensorDatasetOp::Dataset : public DatasetBase {
   class Iterator : public DatasetIterator<Dataset> {
    public:
     explicit Iterator(const Params& params)
-        : DatasetIterator<Dataset>(params), produced_(false) {}
+        : DatasetIterator<Dataset>(params),
+          produced_(false),
+          global_shuffle_iterator_(dataset()) {}
 
     bool SymbolicCheckpointCompatible() const override { return true; }
 
@@ -132,6 +146,11 @@ class TensorDatasetOp::Dataset : public DatasetBase {
     Status GetNextInternal(IteratorContext* ctx,
                            std::vector<Tensor>* out_tensors,
                            bool* end_of_sequence) override {
+      if (ctx->index_mapper() != nullptr) {
+        return global_shuffle_iterator_.GetNext(ctx, out_tensors,
+                                                end_of_sequence);
+      }
+
       mutex_lock l(mu_);
       if (split_provider_) {
         bool end_of_splits;
@@ -168,6 +187,10 @@ class TensorDatasetOp::Dataset : public DatasetBase {
 
     Status RestoreInternal(IteratorContext* ctx,
                            IteratorStateReader* reader) override {
+      if (ctx->restored_element_count().has_value()) {
+        return global_shuffle_iterator_.Restore(ctx);
+      }
+
       mutex_lock l(mu_);
       int64_t produced;
       TF_RETURN_IF_ERROR(reader->ReadScalar(prefix(), kProduced, &produced));
@@ -179,6 +202,7 @@ class TensorDatasetOp::Dataset : public DatasetBase {
     mutex mu_;
     std::shared_ptr<SplitProvider> split_provider_;
     bool produced_ TF_GUARDED_BY(mu_);
+    GlobalShuffleIterator global_shuffle_iterator_;
   };
 
   const std::vector<Tensor> tensors_;

@@ -533,10 +533,11 @@ std::vector<std::vector<int64_t>> GetReplicaGroupsAlongOneDimension(
 // dimensions at 0, e.g., array is 2D and dim = 1, this returns array[0, 1],
 // array[1, 1], array [2, 1], ....
 // Returns error status if dim >= array.num_dimensions().
-StatusOr<std::vector<int64_t>> GetValuesAlongOneDim(const Array<int64_t>& array,
-                                                    int dim);
+absl::StatusOr<std::vector<int64_t>> GetValuesAlongOneDim(
+    const Array<int64_t>& array, int dim);
 
-StatusOr<int64_t> CheckArithmeticSequence(absl::Span<const int64_t> sequence);
+absl::StatusOr<int64_t> CheckArithmeticSequence(
+    absl::Span<const int64_t> sequence);
 
 // Checks if the number of sharded dimensions in the tile assignment matches the
 // device mesh.
@@ -608,21 +609,12 @@ int64_t GetShardedInstructionSize(
 
 HloInstruction* FindInstruction(
     const std::vector<HloInstruction*>& instructions, absl::string_view name);
-double AllToAllCostUtil(double num_bytes, int mesh_dim, int64_t num_devices,
-                        const std::vector<double>& mesh_alpha,
-                        const std::vector<double>& mesh_beta);
-
-double ReshardingCostMixedMeshShape(
-    const Shape& shape, std::vector<int64_t> src_tensor_dim_to_mesh_dim,
-    std::vector<int64_t> dst_tensor_dim_to_mesh_dim, int64_t num_devices,
-    const std::vector<double>& mesh_alpha,
-    const std::vector<double>& mesh_beta);
 
 // When a complete mesh shape is [1, 8, 4], [1, 8, 1] is its partial mesh shape.
 // If a sharding is [8, 4] for the complete mesh shape, we convert it to [8, 1]
 // given [1, 8, 1] as the partial mesh shape.
 // total_num_devices should equal to the product of mesh_shape elements.
-StatusOr<bool> AdjustShardingsWithPartialMeshShape(
+absl::StatusOr<bool> AdjustShardingsWithPartialMeshShape(
     const std::vector<HloInstruction*>& instructions,
     const std::vector<int64_t>& mesh_shape, int64_t total_num_devices,
     bool crash_on_error);

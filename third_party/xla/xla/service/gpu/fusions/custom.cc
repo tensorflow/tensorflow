@@ -39,7 +39,6 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
-#include "xla/mlir_hlo/lhlo/IR/lhlo_ops.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/custom_call_status.h"
 #include "xla/service/custom_call_target_registry.h"
@@ -61,7 +60,6 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/status.h"
-#include "xla/status_macros.h"
 #include "xla/util.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/statusor.h"
@@ -72,23 +70,13 @@ namespace {
 
 absl::StatusOr<std::unique_ptr<Thunk>> BuildCustomKernelThunkForFusion(
     IrEmitterContext& ir_emitter_context, const HloFusionInstruction& fusion,
-    mlir::lmhlo::FusionOp fusion_op, CustomKernel custom_kernel) {
-  TF_ASSIGN_OR_RETURN(auto kernel_arguments,
-                      ir_emitter_context.emit_ir_from_hlo()
-                          ? KernelArguments::Create(
-                                ir_emitter_context.buffer_assignment(), &fusion)
-                          : KernelArguments::Create(
-                                ir_emitter_context.allocations(), fusion_op));
-
-  std::variant<mlir::Operation*, const HloInstruction*> instr;
-  if (ir_emitter_context.emit_ir_from_hlo()) {
-    instr = &fusion;
-  } else {
-    instr = fusion_op;
-  }
+    CustomKernel custom_kernel) {
+  TF_ASSIGN_OR_RETURN(
+      auto kernel_arguments,
+      KernelArguments::Create(ir_emitter_context.buffer_assignment(), &fusion));
 
   return std::make_unique<CustomKernelThunk>(
-      instr, std::move(custom_kernel), std::move(kernel_arguments.args()));
+      &fusion, std::move(custom_kernel), std::move(kernel_arguments.args()));
 }
 
 // TODO(vuson): this is duplicated from ir_emitter_unnested.cc
@@ -156,14 +144,18 @@ absl::StatusOr<BufferAllocation::Slice> GetSliceWithUpdatedOffsetAndSize(
   auto slice_adaptor =
       HloFindIf({HloInstructionAdaptor(start)}, fusion,
                 [](auto node) { return node.opcode() == HloOpcode::kSlice; });
-  TF_RET_CHECK(slice_adaptor.has_value())
-      << "AddressComputationFusion expects at least one sliced operand";
+  if (!slice_adaptor.has_value()) {
+    return absl::InternalError(
+        "AddressComputationFusion expects at least one sliced operand");
+  }
 
   const auto& slice_instr =
       *static_cast<const HloSliceInstruction*>(&slice_adaptor->instruction());
 
-  TF_RET_CHECK(IsContiguousSlice(slice_instr))
-      << "AddressComputationFusion only handles contiguous slices currently";
+  if (!IsContiguousSlice(slice_instr)) {
+    return absl::InternalError(
+        "AddressComputationFusion only handles contiguous slices currently");
+  }
 
   const Shape& src_shape = slice_instr.operand(0)->shape();
   const Shape& dst_shape = slice_instr.shape();
@@ -264,9 +256,11 @@ absl::StatusOr<FusionEmissionResult> EmitCustomCall(
   bool found_custom_call = !is_ffi_custom_call && call_target != nullptr;
   bool found_ffi_handler = is_ffi_custom_call && handler.ok();
 
-  TF_RET_CHECK(found_custom_call || found_ffi_handler)
-      << "AddressComputationFusion expects custom calls that are emittable as "
-         "thunks";
+  if (!found_custom_call && !found_ffi_handler) {
+    return absl::InternalError(
+        "AddressComputationFusion expects custom calls that are emittable as "
+        "thunks");
+  }
 
   using Slices = std::vector<std::optional<CustomCallThunk::Slice>>;
 
@@ -400,7 +394,7 @@ absl::StatusOr<FusionEmissionResult> EmitCustomCall(
 }  // namespace
 
 absl::StatusOr<FusionEmissionResult> CustomFusion::Emit(
-    IrEmitterContext& ir_emitter_context, mlir::lmhlo::FusionOp fusion_op,
+    IrEmitterContext& ir_emitter_context,
     const HloFusionInstruction& fusion) const {
   TF_ASSIGN_OR_RETURN(auto gpu_config,
                       fusion.backend_config<GpuBackendConfig>());
@@ -440,9 +434,9 @@ absl::StatusOr<FusionEmissionResult> CustomFusion::Emit(
     return absl::InternalError("Expected exactly one custom kernel");
   }
 
-  TF_ASSIGN_OR_RETURN(auto thunk, BuildCustomKernelThunkForFusion(
-                                      ir_emitter_context, fusion, fusion_op,
-                                      std::move(kernels[0])));
+  TF_ASSIGN_OR_RETURN(
+      auto thunk, BuildCustomKernelThunkForFusion(ir_emitter_context, fusion,
+                                                  std::move(kernels[0])));
 
   FusionEmissionResult result;
   result.thunks.push_back(std::move(thunk));
@@ -450,14 +444,16 @@ absl::StatusOr<FusionEmissionResult> CustomFusion::Emit(
 }
 
 absl::StatusOr<FusionEmissionResult> AddressComputationFusion::Emit(
-    IrEmitterContext& ir_emitter_context, mlir::lmhlo::FusionOp fusion_op,
+    IrEmitterContext& ir_emitter_context,
     const HloFusionInstruction& fusion) const {
   const HloFusionAdaptor& adaptor = analysis_.fusion();
   auto maybe_custom_call_adaptor = HloFindIf(
       adaptor.GetRoots(), adaptor,
       [](auto node) { return node.opcode() == HloOpcode::kCustomCall; });
-  TF_RET_CHECK(maybe_custom_call_adaptor != std::nullopt)
-      << "AddressComputationFusion requires a CustomCall hero";
+  if (maybe_custom_call_adaptor == std::nullopt) {
+    return absl::InternalError(
+        "AddressComputationFusion requires a CustomCall hero");
+  }
 
   const auto& custom_call = *static_cast<const HloCustomCallInstruction*>(
       &maybe_custom_call_adaptor->instruction());

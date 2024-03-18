@@ -14,7 +14,6 @@ limitations under the License.
 ==============================================================================*/
 
 #include <cstdint>
-#include <functional>
 #include <memory>
 #include <random>
 
@@ -26,25 +25,39 @@ limitations under the License.
 namespace tflite {
 namespace xnnpack {
 
-TEST(BatchMatrixMultiply, 3D) {
-  TfLiteXNNPackDelegateOptions delegate_options =
-      TfLiteXNNPackDelegateOptionsDefault();
-  delegate_options.flags |=
-      TFLITE_XNNPACK_DELEGATE_FLAG_ENABLE_LATEST_OPERATORS;
-  std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
-      xnnpack_delegate(TfLiteXNNPackDelegateCreate(&delegate_options),
-                       TfLiteXNNPackDelegateDelete);
+class BatchMatrixMultiplyTest : public testing::Test {
+ public:
+  // std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
+  auto get_delegate(int num_threads = 1) {
+    TfLiteXNNPackDelegateOptions delegate_options =
+        TfLiteXNNPackDelegateOptionsDefault();
+    delegate_options.flags |=
+        TFLITE_XNNPACK_DELEGATE_FLAG_ENABLE_LATEST_OPERATORS;
+    delegate_options.num_threads = num_threads;
+    return std::unique_ptr<TfLiteDelegate,
+                           decltype(&TfLiteXNNPackDelegateDelete)>(
+        TfLiteXNNPackDelegateCreate(&delegate_options),
+        TfLiteXNNPackDelegateDelete);
+  }
 
-  std::random_device random_device;
-  auto rng = std::mt19937(random_device());
-  auto shape_rng =
-      std::bind(std::uniform_int_distribution<int32_t>(2, 5), std::ref(rng));
-  auto channels_rng =
-      std::bind(std::uniform_int_distribution<int32_t>(2, 9), std::ref(rng));
+  int32_t shape_rng() {
+    return std::uniform_int_distribution<int32_t>(2, 5)(rng_);
+  }
+  int32_t channels_rng() {
+    return std::uniform_int_distribution<int32_t>(2, 9)(rng_);
+  }
+
+ private:
+  std::random_device random_device_;
+  std::mt19937 rng_ = std::mt19937(random_device_());
+};
+
+TEST_F(BatchMatrixMultiplyTest, 3D) {
   const auto batch = shape_rng();
   const auto height = shape_rng();
   const auto input1_channels = channels_rng();
   const auto output_channels = channels_rng();
+  auto xnnpack_delegate = get_delegate();
 
   BatchMatrixMultiplyTester()
       .Input1Shape({batch, height, input1_channels})
@@ -52,26 +65,49 @@ TEST(BatchMatrixMultiply, 3D) {
       .Test(xnnpack_delegate.get());
 }
 
-TEST(BatchMatrixMultiply, 4D) {
-  TfLiteXNNPackDelegateOptions delegate_options =
-      TfLiteXNNPackDelegateOptionsDefault();
-  delegate_options.flags |=
-      TFLITE_XNNPACK_DELEGATE_FLAG_ENABLE_LATEST_OPERATORS;
-  std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
-      xnnpack_delegate(TfLiteXNNPackDelegateCreate(&delegate_options),
-                       TfLiteXNNPackDelegateDelete);
+TEST_F(BatchMatrixMultiplyTest, BroadcastOne3D) {
+  const auto batch = shape_rng();
+  const auto height = shape_rng();
+  const auto input1_channels = channels_rng();
+  const auto output_channels = channels_rng();
+  auto xnnpack_delegate = get_delegate();
 
-  std::random_device random_device;
-  auto rng = std::mt19937(random_device());
-  auto shape_rng =
-      std::bind(std::uniform_int_distribution<int32_t>(2, 5), std::ref(rng));
-  auto channels_rng =
-      std::bind(std::uniform_int_distribution<int32_t>(2, 9), std::ref(rng));
+  BatchMatrixMultiplyTester()
+      .Input1Shape({batch, height, input1_channels})
+      .Input2Shape({1, input1_channels, output_channels})
+      .Test(xnnpack_delegate.get());
+
+  BatchMatrixMultiplyTester()
+      .Input1Shape({1, height, input1_channels})
+      .Input2Shape({batch, input1_channels, output_channels})
+      .Test(xnnpack_delegate.get());
+}
+
+TEST_F(BatchMatrixMultiplyTest, BroadcastImplicit3D) {
+  const auto batch = shape_rng();
+  const auto height = shape_rng();
+  const auto input1_channels = channels_rng();
+  const auto output_channels = channels_rng();
+  auto xnnpack_delegate = get_delegate();
+
+  BatchMatrixMultiplyTester()
+      .Input1Shape({batch, height, input1_channels})
+      .Input2Shape({input1_channels, output_channels})
+      .Test(xnnpack_delegate.get());
+
+  BatchMatrixMultiplyTester()
+      .Input1Shape({height, input1_channels})
+      .Input2Shape({batch, input1_channels, output_channels})
+      .Test(xnnpack_delegate.get());
+}
+
+TEST_F(BatchMatrixMultiplyTest, 4D) {
   const auto outer_batch = shape_rng();
   const auto inner_batch = shape_rng();
   const auto height = shape_rng();
   const auto input1_channels = channels_rng();
   const auto output_channels = channels_rng();
+  auto xnnpack_delegate = get_delegate();
 
   BatchMatrixMultiplyTester()
       .Input1Shape({outer_batch, inner_batch, height, input1_channels})
@@ -79,26 +115,73 @@ TEST(BatchMatrixMultiply, 4D) {
       .Test(xnnpack_delegate.get());
 }
 
-TEST(BatchMatrixMultiply, 4D_AdjY) {
-  TfLiteXNNPackDelegateOptions delegate_options =
-      TfLiteXNNPackDelegateOptionsDefault();
-  delegate_options.flags |=
-      TFLITE_XNNPACK_DELEGATE_FLAG_ENABLE_LATEST_OPERATORS;
-  std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
-      xnnpack_delegate(TfLiteXNNPackDelegateCreate(&delegate_options),
-                       TfLiteXNNPackDelegateDelete);
-
-  std::random_device random_device;
-  auto rng = std::mt19937(random_device());
-  auto shape_rng =
-      std::bind(std::uniform_int_distribution<int32_t>(2, 5), std::ref(rng));
-  auto channels_rng =
-      std::bind(std::uniform_int_distribution<int32_t>(2, 9), std::ref(rng));
+TEST_F(BatchMatrixMultiplyTest, BroadcastOne4D) {
   const auto outer_batch = shape_rng();
   const auto inner_batch = shape_rng();
   const auto height = shape_rng();
   const auto input1_channels = channels_rng();
   const auto output_channels = channels_rng();
+  auto xnnpack_delegate = get_delegate();
+
+  BatchMatrixMultiplyTester()
+      .Input1Shape({1, inner_batch, height, input1_channels})
+      .Input2Shape({outer_batch, inner_batch, input1_channels, output_channels})
+      .Test(xnnpack_delegate.get());
+  BatchMatrixMultiplyTester()
+      .Input1Shape({outer_batch, inner_batch, height, input1_channels})
+      .Input2Shape({1, inner_batch, input1_channels, output_channels})
+      .Test(xnnpack_delegate.get());
+  BatchMatrixMultiplyTester()
+      .Input1Shape({outer_batch, 1, height, input1_channels})
+      .Input2Shape({outer_batch, inner_batch, input1_channels, output_channels})
+      .Test(xnnpack_delegate.get());
+  BatchMatrixMultiplyTester()
+      .Input1Shape({outer_batch, inner_batch, height, input1_channels})
+      .Input2Shape({outer_batch, 1, input1_channels, output_channels})
+      .Test(xnnpack_delegate.get());
+  BatchMatrixMultiplyTester()
+      .Input1Shape({1, 1, height, input1_channels})
+      .Input2Shape({outer_batch, inner_batch, input1_channels, output_channels})
+      .Test(xnnpack_delegate.get());
+  BatchMatrixMultiplyTester()
+      .Input1Shape({outer_batch, inner_batch, height, input1_channels})
+      .Input2Shape({1, 1, input1_channels, output_channels})
+      .Test(xnnpack_delegate.get());
+}
+
+TEST_F(BatchMatrixMultiplyTest, BroadcastImplicit4D) {
+  const auto outer_batch = shape_rng();
+  const auto inner_batch = shape_rng();
+  const auto height = shape_rng();
+  const auto input1_channels = channels_rng();
+  const auto output_channels = channels_rng();
+  auto xnnpack_delegate = get_delegate();
+
+  BatchMatrixMultiplyTester()
+      .Input1Shape({inner_batch, height, input1_channels})
+      .Input2Shape({outer_batch, inner_batch, input1_channels, output_channels})
+      .Test(xnnpack_delegate.get());
+  BatchMatrixMultiplyTester()
+      .Input1Shape({outer_batch, inner_batch, height, input1_channels})
+      .Input2Shape({inner_batch, input1_channels, output_channels})
+      .Test(xnnpack_delegate.get());
+  BatchMatrixMultiplyTester()
+      .Input1Shape({height, input1_channels})
+      .Input2Shape({outer_batch, inner_batch, input1_channels, output_channels})
+      .Test(xnnpack_delegate.get());
+  BatchMatrixMultiplyTester()
+      .Input1Shape({outer_batch, inner_batch, height, input1_channels})
+      .Input2Shape({input1_channels, output_channels})
+      .Test(xnnpack_delegate.get());
+}
+
+TEST_F(BatchMatrixMultiplyTest, 4D_AdjY) {
+  const auto outer_batch = shape_rng();
+  const auto inner_batch = shape_rng();
+  const auto height = shape_rng();
+  const auto input1_channels = channels_rng();
+  const auto output_channels = channels_rng();
+  auto xnnpack_delegate = get_delegate();
 
   BatchMatrixMultiplyTester()
       .Input1Shape({outer_batch, inner_batch, height, input1_channels})
@@ -107,26 +190,12 @@ TEST(BatchMatrixMultiply, 4D_AdjY) {
       .Test(xnnpack_delegate.get());
 }
 
-TEST(BatchMatrixMultiply, MultiThreading) {
-  TfLiteXNNPackDelegateOptions delegate_options =
-      TfLiteXNNPackDelegateOptionsDefault();
-  delegate_options.num_threads = 2;
-  delegate_options.flags |=
-      TFLITE_XNNPACK_DELEGATE_FLAG_ENABLE_LATEST_OPERATORS;
-  std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
-      xnnpack_delegate(TfLiteXNNPackDelegateCreate(&delegate_options),
-                       TfLiteXNNPackDelegateDelete);
-
-  std::random_device random_device;
-  auto rng = std::mt19937(random_device());
-  auto channels_rng =
-      std::bind(std::uniform_int_distribution<int32_t>(2, 9), std::ref(rng));
-  auto shape_rng =
-      std::bind(std::uniform_int_distribution<int32_t>(2, 5), std::ref(rng));
+TEST_F(BatchMatrixMultiplyTest, MultiThreading) {
   const auto batch = shape_rng();
   const auto height = shape_rng();
   const auto input1_channels = channels_rng();
   const auto output_channels = channels_rng();
+  auto xnnpack_delegate = get_delegate(/*num_threads=*/2);
 
   BatchMatrixMultiplyTester()
       .Input1Shape({batch, height, input1_channels})
@@ -134,7 +203,7 @@ TEST(BatchMatrixMultiply, MultiThreading) {
       .Test(xnnpack_delegate.get());
 }
 
-TEST(BatchMatrixMultiply, WeightsCache) {
+TEST_F(BatchMatrixMultiplyTest, WeightsCache) {
   TfLiteXNNPackDelegateOptions delegate_options =
       TfLiteXNNPackDelegateOptionsDefault();
   std::unique_ptr<TfLiteXNNPackDelegateWeightsCache,
@@ -148,12 +217,6 @@ TEST(BatchMatrixMultiply, WeightsCache) {
       xnnpack_delegate(TfLiteXNNPackDelegateCreate(&delegate_options),
                        TfLiteXNNPackDelegateDelete);
 
-  std::random_device random_device;
-  auto rng = std::mt19937(random_device());
-  auto channels_rng =
-      std::bind(std::uniform_int_distribution<int32_t>(2, 9), std::ref(rng));
-  auto shape_rng =
-      std::bind(std::uniform_int_distribution<int32_t>(2, 5), std::ref(rng));
   const auto batch = shape_rng();
   const auto height = shape_rng();
   const auto input1_channels = channels_rng();

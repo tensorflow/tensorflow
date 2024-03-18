@@ -88,6 +88,10 @@ is_tfrt_enabled = tfrt_utils.enabled
 # be removed, once this experiment is enabled by default.
 _JIT_COMPILE_REWRITE_ENABLED = os.getenv("TF_JIT_COMPILE_REWRITE") == "1"
 
+_XLA_SHARDING_FOR_RESOURCE_VARIABLES = (
+    os.getenv("TF_XLA_SHARDING_FOR_RESOURCE_VARIABLES") == "1"
+)
+
 
 def run_eager_op_as_function_enabled():
   return True
@@ -118,6 +122,32 @@ def jit_compile_rewrite_enabled():
   if context_safe() is not None:
     return context_safe().jit_compile_rewrite
   return _JIT_COMPILE_REWRITE_ENABLED
+
+
+def enable_xla_sharding_for_resource_variables():
+  """Enables support for annotating TF2 ResourceVariables with XLA sharding.
+
+  This allows placing XLA sharding annotations on the TF2 ResourceVariable
+  python object and inserts an XlaShardingOp with the annotation whenever a
+  ReadVariableOp is created.
+  """
+  global _XLA_SHARDING_FOR_RESOURCE_VARIABLES
+  _XLA_SHARDING_FOR_RESOURCE_VARIABLES = True
+  if context_safe() is not None:
+    context_safe().xla_sharding_for_resource_variables = True
+
+
+def disable_xla_sharding_for_resource_variables():
+  global _XLA_SHARDING_FOR_RESOURCE_VARIABLES
+  _XLA_SHARDING_FOR_RESOURCE_VARIABLES = False
+  if context_safe() is not None:
+    context_safe().xla_sharding_for_resource_variables = False
+
+
+def xla_sharding_for_resource_variables_enabled():
+  if context_safe() is not None:
+    return context_safe().xla_sharding_for_resource_variables
+  return _XLA_SHARDING_FOR_RESOURCE_VARIABLES
 
 
 # Expose it as internally public APIs for Keras use cases in b/171080602.
@@ -480,6 +510,9 @@ class Context:
     self._default_is_async = execution_mode == ASYNC
     self._use_tfrt = is_tfrt_enabled()
     self._jit_compile_rewrite = jit_compile_rewrite_enabled()
+    self._xla_sharding_for_resource_variables = (
+        xla_sharding_for_resource_variables_enabled()
+    )
     self._server_def = server_def
     self._collective_ops_server_def = None
     self._collective_leader = None
@@ -2063,6 +2096,14 @@ class Context:
     if self._context_handle is not None:
       pywrap_tfe.TFE_ContextSetJitCompileRewrite(self._handle, enable)
     self._jit_compile_rewrite = enable
+
+  @property
+  def xla_sharding_for_resource_variables(self):
+    return self._xla_sharding_for_resource_variables
+
+  @xla_sharding_for_resource_variables.setter
+  def xla_sharding_for_resource_variables(self, enable):
+    self._xla_sharding_for_resource_variables = enable
 
   @property
   def device_policy(self):

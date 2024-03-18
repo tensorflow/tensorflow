@@ -37,3 +37,15 @@ func.func @main(%arg0: tensor<4x4xf32>) -> (tensor<4x4xf32> {mhlo.sharding = "\0
   // CHECK-SAME: sharding={{\{}}{devices=[2,1,2]0,1,2,3 last_tile_dim_replicate}, {replicated}}
   return %arg0, %arg0 : tensor<4x4xf32>, tensor<4x4xf32>
 }
+
+// -----
+
+// CHECK-LABEL: ENTRY %main.{{.*}} () -> f32[12,24,36]
+func.func @main() -> (tensor<12x24x36xf32>) {
+  // CHECK-NEXT: %constant.1 = f32[] constant(3.1415925)
+  // CHECK-NEXT: %broadcast.2 = f32[12,24,36] broadcast(f32[] %constant.1), dimensions={}, sharding={devices=[1,2,1]0,1}
+  // CHECK-NEXT: ROOT %add.3 = f32[12,24,36] add(f32[12,24,36] %broadcast.2, f32[12,24,36] %broadcast.2)
+  %0 = mhlo.constant {mhlo.sharding = "{devices=[1,2,1]0,1}"} dense<3.1415926> : tensor<12x24x36xf32>
+  %1 = mhlo.add %0, %0 : tensor<12x24x36xf32>
+  return %1 : tensor<12x24x36xf32>
+}

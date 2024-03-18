@@ -3009,7 +3009,10 @@ bool FindInstanceNorm(RemapperContext* ctx, int node_index,
     return false;
   }
   Tensor gamma_tensor, beta_tensor;
-  if (!gamma_tensor.FromProto(gamma_node->attr().at("value").tensor()) ||
+  // TODO(intel-tf): Allow fusions for cases where gamma and beta aren't Consts
+  if (gamma_node->op() != "Const" ||
+      !gamma_tensor.FromProto(gamma_node->attr().at("value").tensor()) ||
+      beta_node->op() != "Const" ||
       !beta_tensor.FromProto(beta_node->attr().at("value").tensor())) {
     return false;
   }
@@ -3856,12 +3859,26 @@ Status ReplaceMulMaximumWithLeakyRelu(
       ctx->graph_view.GetNode(matched_nodes_map.at("max_to_leakyrelu"))->node();
   const NodeDef* input =
       ctx->graph_view.GetNode(matched_nodes_map.at("input"))->node();
+  const auto* alpha_node_view =
+      ctx->graph_view.GetNode(matched_nodes_map.at("alpha"));
 
   NodeDef fused_op;
   fused_op.set_name(maximum->name());
   fused_op.set_op("LeakyRelu");
   fused_op.set_device(maximum->device());
   fused_op.add_input(input->name());
+
+  // Addressing the corner case where the Const (which becomes an attr of
+  // LeakyRelu) has input control dependencies. In that case, we transfer the
+  // control dependencies to the fused op (LeakyRelu).
+  if (alpha_node_view->NumControllingFanins() > 0) {
+    const auto& control_fanins = alpha_node_view->GetControllingFanins();
+    for (int i = 0; i < alpha_node_view->NumControllingFanins(); i++) {
+      const auto* control_node_view = control_fanins[i].node_view();
+      *fused_op.add_input() =
+          AsControlDependency(control_node_view->node()->name());
+    }
+  }
 
   auto* attr = fused_op.mutable_attr();
   (*attr)["T"] = maximum->attr().at("T");

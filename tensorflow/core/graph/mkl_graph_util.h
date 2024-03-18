@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2024 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -143,6 +143,7 @@ inline string GetMklNativeOpName(const string& name) {
   // prefixed with _Mkl instead of _MklNative.
   bool result =
       (0 == name.compare("ConjugateTranspose") ||
+       0 == name.compare("SparseTensorDenseMatMul") ||
        0 == name.compare("BatchMatMul") || 0 == name.compare("BatchMatMulV2") ||
        0 == name.compare("Einsum") || 0 == name.compare("MatMul") ||
        0 == name.compare("Transpose") || 0 == name.compare("QuantizeV2") ||

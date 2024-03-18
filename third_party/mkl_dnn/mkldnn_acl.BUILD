@@ -26,6 +26,7 @@ _DNNL_RUNTIME_THREADPOOL = {
     "#cmakedefine DNNL_SYCL_CUDA": "#undef DNNL_SYCL_CUDA",
     "#cmakedefine DNNL_SYCL_HIP": "#undef DNNL_SYCL_HIP",
     "#cmakedefine DNNL_ENABLE_STACK_CHECKER": "#undef DNNL_ENABLE_STACK_CHECKER",
+    "#cmakedefine DNNL_EXPERIMENTAL_SPARSE": "#define DNNL_EXPERIMENTAL_SPARSE",
     "#cmakedefine DNNL_EXPERIMENTAL": "#undef DNNL_EXPERIMENTAL",
     "#cmakedefine ONEDNN_BUILD_GRAPH": "#undef ONEDNN_BUILD_GRAPH",
     "#cmakedefine01 BUILD_TRAINING": "#define BUILD_TRAINING 1",

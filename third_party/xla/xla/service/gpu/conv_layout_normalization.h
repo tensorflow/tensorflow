@@ -16,14 +16,11 @@ limitations under the License.
 #ifndef XLA_SERVICE_GPU_CONV_LAYOUT_NORMALIZATION_H_
 #define XLA_SERVICE_GPU_CONV_LAYOUT_NORMALIZATION_H_
 
-#include <functional>
 #include <optional>
-#include <utility>
 
-#include "absl/strings/string_view.h"
+#include "absl/status/statusor.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
-#include "xla/statusor.h"
 
 namespace xla {
 namespace gpu {

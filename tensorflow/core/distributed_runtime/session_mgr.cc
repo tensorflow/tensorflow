@@ -386,6 +386,19 @@ Status SessionMgr::DeleteSession(const std::string& session) {
   return absl::OkStatus();
 }
 
+Status SessionMgr::DeleteAllSessions() {
+  std::map<std::string, std::shared_ptr<WorkerSession>> tmp_sessions;
+  {
+    mutex_lock l(mu_);
+    swap(sessions_, tmp_sessions);
+  }
+  for (auto& session : tmp_sessions) {
+    session.second.reset();
+  }
+
+  return absl::OkStatus();
+}
+
 Status SessionMgr::WorkerSessionForSessionLocked(
     const std::string& session_handle,
     std::shared_ptr<WorkerSession>* out_session) {

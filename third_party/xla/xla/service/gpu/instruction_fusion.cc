@@ -130,7 +130,7 @@ FusionDecision GpuInstructionFusion::ShouldFuse(HloInstruction* consumer,
 
 HloInstruction::FusionKind GpuInstructionFusion::ChooseKind(
     const HloInstruction* producer, const HloInstruction* consumer) {
-  return ChooseFusionKind(*consumer);
+  return ChooseFusionKind(*producer, *consumer);
 }
 
 HloInstruction* GpuInstructionFusion::FuseInstruction(

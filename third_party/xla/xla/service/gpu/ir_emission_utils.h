@@ -23,18 +23,22 @@ limitations under the License.
 #include <variant>
 #include <vector>
 
+#include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "llvm/ADT/SmallVector.h"
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/Value.h"
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
+#include "mlir/IR/Value.h"  // from @llvm-project
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/literal.h"
-#include "xla/mlir_hlo/lhlo/IR/lhlo_ops.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/gpu/hlo_traversal.h"
-#include "xla/statusor.h"
+#include "xla/shape.h"
+#include "xla/shape_util.h"
+#include "xla/util.h"
 
 namespace xla {
 namespace gpu {
@@ -50,10 +54,8 @@ inline constexpr int64_t kMinDimensionToTransposeTiled2 = 8;
 inline constexpr int64_t kMinTotalDimensionsToTransposeTiled = 64 * 128;
 
 // Matrix multiplication before the rewrite.
-//
-// This function should never return "true" on instructions after
-// GemmRewriter pass has finished.
 bool IsMatrixMultiplication(const HloInstruction& dot);
+bool IsMatrixVectorMultiplication(const HloInstruction& dot);
 
 inline constexpr int64_t WarpSize() { return 32; }
 
@@ -68,6 +70,8 @@ inline constexpr absl::string_view kTritonGemmFusionKind = "__triton_gemm";
 // this string.
 inline constexpr absl::string_view kTritonSoftmaxFusionKind =
     "__triton_softmax";
+
+inline constexpr absl::string_view kCuDnnFusionKind = "__cudnn$fusion";
 
 inline constexpr absl::string_view kUncompilableFusion =
     "__uncompilable_fusion";
@@ -97,6 +101,9 @@ bool IsSliceWithUnitStrides(const HloInstruction* instr);
 // slice.
 bool IsContiguousSlice(const HloInstruction& instr);
 
+// Returns true if `sliced` is a contiguous slice of `orig`.
+bool IsContiguousSlice(const Shape& orig, const Shape& sliced);
+
 // Emits code to shuffle data between threads of a warp. This has the same
 // semantics as the PTX "shfl.sync.down" instruction but works for values that
 // aren't 32 bits in size. The last operand of the emitted "shfl" is
@@ -114,7 +121,6 @@ llvm::Value* EmitFullWarpShuffleDown(llvm::Value* value, llvm::Value* offset,
 // block 0 of the kernel.
 llvm::Value* IsBlock0Thread0(llvm::IRBuilder<>* b);
 
-int PartitionLmhloOperandsAndOutputs(mlir::Operation* op);
 llvm::SmallVector<mlir::Value> GetHloOperands(mlir::Operation* op);
 llvm::SmallVector<mlir::Value> GetHloOutputs(mlir::Operation* op);
 
@@ -128,10 +134,6 @@ absl::StatusOr<BufferAllocation::Slice> GetAllocationSlice(
     const BufferAssignment& buffer_assignment, const HloInstruction* instr,
     const ShapeIndex& index);
 
-bool CanEmitFusedDynamicUpdateSliceInPlaceForGpu(
-    mlir::lmhlo::FusionOp fusion,
-    absl::Span<const BufferAllocation* const> allocations);
-
 absl::StatusOr<bool> CanEmitFusedDynamicUpdateSliceInPlaceForGpu(
     const HloFusionInstruction* fusion,
     const BufferAssignment* buffer_assignment,
@@ -144,14 +146,6 @@ absl::StatusOr<bool> CanEmitFusedDynamicUpdateSliceInPlaceForGpu(
 // handled as a no-op.
 std::vector<const HloInstruction*> GetOutputDefiningDynamicUpdateSlices(
     const std::vector<const HloInstruction*>& roots);
-
-// Returns the DynamicUpdateSliceOp(s) defining the results of a fusion node.
-// A dynamic slice update is said to be "defining" of a result if that result is
-// the output of a dynamic slice update, or if that result is the output of a
-// bitcast of a dynamic slice update---since such bitcast may be handled as a
-// no-op.
-std::vector<mlir::mhlo::DynamicUpdateSliceOp>
-GetOutputDefiningDynamicUpdateSliceOps(mlir::lmhlo::FusionOp fusion);
 
 Shape GetShape(mlir::Value value);
 

@@ -15,20 +15,13 @@ limitations under the License.
 
 #include "xla/service/gpu/gpu_executable_run_options.h"
 
-#include <cstdint>
 #include <map>
 #include <optional>
 #include <utility>
 
-#include "absl/status/status.h"
-#include "absl/status/statusor.h"
-#include "absl/strings/str_cat.h"
 #include "xla/executable_run_options.h"
 #include "xla/service/global_device_id.h"
 #include "xla/service/gpu/nccl_clique_key.h"
-#include "xla/service/service_executable_run_options.h"
-#include "tsl/platform/logging.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace gpu {

@@ -30,6 +30,7 @@ limitations under the License.
 #include "tensorflow/core/data/stats_utils.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/cancellation.h"
+#include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/function_handle_cache.h"
 #include "tensorflow/core/framework/op_kernel.h"
@@ -385,7 +386,7 @@ class BorrowedArgsCallFrame : public CallFrameBase {
 }  // namespace
 
 Status MakeIteratorFromInputElement(
-    IteratorContext* ctx, const IteratorBase* parent,
+    IteratorContext* ctx, const DatasetBaseIterator* parent,
     const std::vector<Tensor>& input_element, int64_t thread_index,
     const InstantiatedCapturedFunction& inst_captured_func, StringPiece prefix,
     std::unique_ptr<IteratorBase>* out_iterator) {
@@ -395,15 +396,18 @@ Status MakeIteratorFromInputElement(
 }
 
 Status MakeIteratorFromInputElement(
-    IteratorContext* ctx, const IteratorBase* parent,
+    IteratorContext* ctx, const DatasetBaseIterator* parent,
     const std::vector<Tensor>& input_element, int64_t thread_index,
     const InstantiatedCapturedFunction& inst_captured_func, StringPiece prefix,
     std::unique_ptr<IteratorBase>* out_iterator,
     const std::shared_ptr<model::Node>& node) {
   std::vector<Tensor> return_values;
 
-  TF_RETURN_IF_ERROR(inst_captured_func.RunWithBorrowedArgs(
-      ctx, input_element, &return_values, node));
+  auto status = inst_captured_func.RunWithBorrowedArgs(ctx, input_element,
+                                                       &return_values, node);
+  if (!status.ok()) {
+    return parent->AddErrorContext(status);
+  }
 
   if (!(return_values.size() == 1 && return_values[0].dtype() == DT_VARIANT &&
         TensorShapeUtils::IsScalar(return_values[0].shape()))) {

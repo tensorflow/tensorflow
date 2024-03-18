@@ -33,7 +33,7 @@ namespace xla {
 // Builds a distributed runtime service. `address` is the address on which
 // the service should listen, e.g., [::]:1234 . `num_nodes` is the number
 // of nodes in the cluster.
-StatusOr<std::unique_ptr<DistributedRuntimeService>>
+absl::StatusOr<std::unique_ptr<DistributedRuntimeService>>
 GetDistributedRuntimeService(std::string address,
                              const CoordinationServiceImpl::Options& options);
 

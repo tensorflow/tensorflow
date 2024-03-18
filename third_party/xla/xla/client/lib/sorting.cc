@@ -30,7 +30,7 @@ namespace xla {
 
 XlaOp TopK(XlaOp input, int64_t k, PrimitiveType index_type) {
   XlaBuilder* const builder = input.builder();
-  return builder->ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
+  return builder->ReportErrorOrReturn([&]() -> absl::StatusOr<XlaOp> {
     TF_ASSIGN_OR_RETURN(Shape input_shape, builder->GetShape(input));
     int last_dim = input_shape.dimensions_size() - 1;
     int64_t last_dim_size = input_shape.dimensions(last_dim);
@@ -158,7 +158,7 @@ XlaOp TopK(XlaOp input, int64_t k, PrimitiveType index_type) {
 XlaOp TopKWithPartitions(XlaOp input, int64_t k, int64_t num_partitions,
                          PrimitiveType index_type) {
   XlaBuilder* const builder = input.builder();
-  return builder->ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
+  return builder->ReportErrorOrReturn([&]() -> absl::StatusOr<XlaOp> {
     TF_ASSIGN_OR_RETURN(Shape input_shape, builder->GetShape(input));
     int last_dim = input_shape.dimensions_size() - 1;
     // Calculate per partition size.
@@ -183,7 +183,7 @@ XlaOp TopKWithPartitions(XlaOp input, int64_t k, int64_t num_partitions,
 
     auto topk_body_fn =
         [&](XlaOp partition, absl::Span<const XlaOp> values_and_indices,
-            XlaBuilder* builder) -> StatusOr<std::vector<XlaOp>> {
+            XlaBuilder* builder) -> absl::StatusOr<std::vector<XlaOp>> {
       auto values = values_and_indices[0];
       auto indices = values_and_indices[1];
       auto input = values_and_indices[2];

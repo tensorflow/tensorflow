@@ -262,7 +262,6 @@ def _make_cmd(api_gen_binary_target, flags, loading, output_paths):
 # To not break internal cross-platform builds, we only set `cfg` to `target` for the OSS build.
 api_gen_rule = rule(
     implementation = _api_gen_rule_impl,
-    output_to_genfiles = True,
     attrs = {
         "outs": attr.output_list(mandatory = True),
         "srcs": attr.label_list(allow_files = True),

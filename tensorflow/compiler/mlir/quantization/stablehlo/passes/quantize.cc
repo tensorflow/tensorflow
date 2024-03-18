@@ -32,9 +32,12 @@ limitations under the License.
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
 #include "stablehlo/dialect/StablehloOps.h"  // from @stablehlo  // IWYU pragma: keep
 #include "tensorflow/compiler/mlir/lite/quantization/ir/QuantOps.h"
-#include "tensorflow/compiler/mlir/lite/quantization/quantization_config.h"
-#include "tensorflow/compiler/mlir/lite/quantization/quantization_utils.h"
+#include "tensorflow/compiler/mlir/quantization/common/attrs_and_constraints.h"
+#include "tensorflow/compiler/mlir/quantization/common/quantization_lib/quantization_config.h"
+#include "tensorflow/compiler/mlir/quantization/common/quantization_lib/quantization_utils.h"
+#include "tensorflow/compiler/mlir/quantization/stablehlo/passes/passes.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/passes/quantization_patterns.h"
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 
 namespace mlir::quant::stablehlo {
 
@@ -49,42 +52,19 @@ struct StableHloQuantizationBase
     : public StableHloQuantizationPattern<ConcreteT, quantfork::QuantizeCastOp,
                                           quantfork::DequantizeCastOp,
                                           /*VerifierT=*/void, RootOpT> {
-  explicit StableHloQuantizationBase(MLIRContext* ctx,
-                                     const QuantPassSpec& quant_params)
+  explicit StableHloQuantizationBase(MLIRContext* ctx)
       : StableHloQuantizationPattern<ConcreteT, quantfork::QuantizeCastOp,
                                      quantfork::DequantizeCastOp,
-                                     /*VerifierT=*/void, RootOpT>(
-            ctx, quant_params) {}
+                                     /*VerifierT=*/void, RootOpT>(ctx) {}
 
-  static bool IsQuantizableCustomOp(Operation& op,
-                                    const CustomMap& custom_op_map) {
-    return false;
-  }
-
-  static bool AllowDynamicRangeQuantizedOperand(
-      Operation& quantized_op, const CustomMap& custom_op_map) {
-    return false;
-  }
-
-  static bool AllowDynamicRangeQuantizedResult(Operation& quantized_op,
-                                               const CustomMap& custom_op_map) {
-    return false;
-  }
-
-  static bool IsWeightOnlyOp(Operation& quantized_op,
-                             absl::flat_hash_set<std::string>& ops_blocklist,
-                             bool weight_only_quantization,
-                             const CustomMap& custom_op_map) {
-    return false;
-  }
+  static bool AllowHybridQuantization(Operation& op) { return false; }
 };
 
 // Quantization rewrite pattern using DQ as the root op.
 struct StableHloQuantization
     : public StableHloQuantizationBase<StableHloQuantization> {
-  explicit StableHloQuantization(MLIRContext* ctx,
-                                 const QuantPassSpec& quant_params)
-      : StableHloQuantizationBase<StableHloQuantization>(ctx, quant_params) {}
+  explicit StableHloQuantization(MLIRContext* ctx)
+      : StableHloQuantizationBase<StableHloQuantization>(ctx) {}
 };
 
 // Quantization rewrite pattern using Q as the root op. This is for the
@@ -92,51 +72,51 @@ struct StableHloQuantization
 struct StableHloQuantizationReverse
     : public StableHloQuantizationBase<StableHloQuantizationReverse,
                                        quantfork::QuantizeCastOp> {
-  explicit StableHloQuantizationReverse(MLIRContext* ctx,
-                                        const QuantPassSpec& quant_params)
+  explicit StableHloQuantizationReverse(MLIRContext* ctx)
       : StableHloQuantizationBase<StableHloQuantizationReverse,
-                                  quantfork::QuantizeCastOp>(ctx,
-                                                             quant_params) {}
+                                  quantfork::QuantizeCastOp>(ctx) {}
+};
+
+// Quantization rewrite pattern using DQ as the root op.
+struct StableHloQuantizationHybrid
+    : public StableHloQuantizationBase<StableHloQuantizationHybrid> {
+  explicit StableHloQuantizationHybrid(MLIRContext* ctx)
+      : StableHloQuantizationBase<StableHloQuantizationHybrid>(ctx) {}
+
+  static bool AllowHybridQuantization(Operation& op) {
+    auto call_op = cast<TF::XlaCallModuleOp>(op);
+    return call_op && GetEntryFunctionName(call_op).contains("dot_general");
+  }
 };
 
 class QuantizePass : public impl::QuantizePassBase<QuantizePass> {
  public:
   MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(QuantizePass)
 
-  explicit QuantizePass() = default;
+  using impl::QuantizePassBase<QuantizePass>::QuantizePassBase;
 
-  explicit QuantizePass(const QuantizationSpecs& quant_specs,
-                        bool enable_per_channel_quantized_weight)
-      : quant_specs_(quant_specs),
-        enable_per_channel_quantized_weight_(
-            enable_per_channel_quantized_weight) {}
-
-  QuantizePass(const QuantizePass& other)
-      : quant_specs_(other.quant_specs_),
-        enable_per_channel_quantized_weight_(
-            other.enable_per_channel_quantized_weight_) {}
+  explicit QuantizePass(const bool enable_per_channel_quantized_weight,
+                        const bool enable_weight_only,
+                        const QuantizationSpecs& quant_specs) {
+    enable_per_channel_quantized_weight_ = enable_per_channel_quantized_weight;
+    enable_weight_only_ = enable_weight_only;
+  }
 
  private:
   void runOnOperation() override;
-
-  QuantizationSpecs quant_specs_;
-  bool enable_per_channel_quantized_weight_;
 };
 
 void QuantizePass::runOnOperation() {
   ModuleOp module_op = getOperation();
   MLIRContext& ctx = getContext();
 
-  NumericVerifySpec numeric_verify_spec;
-  numeric_verify_spec.verify_numeric = quant_specs_.verify_numeric;
-  numeric_verify_spec.whole_model_verify = quant_specs_.whole_model_verify;
-
-  const QuantPassSpec quant_params = {std::move(numeric_verify_spec),
-                                      quant_specs_};
-
   RewritePatternSet patterns(&ctx);
-  patterns.add<StableHloQuantization, StableHloQuantizationReverse>(
-      &ctx, quant_params);
+  patterns.add<StableHloQuantization, StableHloQuantizationReverse>(&ctx);
+  if (enable_weight_only_) {
+    patterns.add<StableHloQuantizationHybrid>(&ctx);
+    PopulateQuantizeHybridPatterns(ctx, patterns);
+  }
+
   PopulateQuantizeOpWithRegionPattern(ctx, patterns);
   PopulateFusedGemmStylePatterns(ctx, patterns,
                                  enable_per_channel_quantized_weight_);
@@ -151,12 +131,5 @@ void QuantizePass::runOnOperation() {
 }
 
 }  // namespace
-
-std::unique_ptr<OperationPass<ModuleOp>> CreateQuantizePass(
-    const QuantizationSpecs& quantization_specs,
-    bool enable_per_channel_quantized_weight) {
-  return std::make_unique<QuantizePass>(quantization_specs,
-                                        enable_per_channel_quantized_weight);
-}
 
 }  // namespace mlir::quant::stablehlo
