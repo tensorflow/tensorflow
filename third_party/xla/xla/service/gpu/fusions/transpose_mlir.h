@@ -17,15 +17,14 @@ limitations under the License.
 
 #include <cstdint>
 #include <optional>
+#include <vector>
 
-#include "absl/container/flat_hash_set.h"
 #include "llvm/ADT/SmallVector.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/ImplicitLocOpBuilder.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/IR/ValueRange.h"  // from @llvm-project
-#include "mlir/Interfaces/DataLayoutInterfaces.h"  // from @llvm-project
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/service/gpu/fusions/mlir/computation_partitioner.h"
 #include "xla/service/gpu/fusions/mlir/mlir_fusion_emitter.h"
@@ -59,9 +58,17 @@ class MlirTransposeFusion : public MlirFusionEmitterBase {
 
   std::optional<IndexingMap> ComputeThreadIdToInputIndexing(
       int64_t root_index, int64_t hero_operand_index,
-      mlir::MLIRContext* ctx) const override;
+      mlir::MLIRContext* ctx) const override {
+    return ComputeThreadIdToInputIndexing(
+        *analysis_.fusion_heroes()[root_index], ctx);
+  }
 
  protected:
+  IndexingMap ComputeThreadIdToInputIndexing(const HloInstruction& hero,
+                                             mlir::MLIRContext* ctx) const;
+  IndexingMap ComputeThreadIdToOutputIndexing(const HloInstruction& hero,
+                                              mlir::MLIRContext* ctx) const;
+
   absl::Status EmitEntryFunction(
       const mlir_converter::PartitionedComputations& computations,
       const mlir_converter::CallTargetProvider& call_targets,
@@ -87,7 +94,7 @@ class MlirTransposeFusion : public MlirFusionEmitterBase {
   const HloFusionAnalysis& analysis_;
   Tiling tiling_;
   Vector3 permutation_;
-  absl::flat_hash_set<const HloInstruction*> shmem_transposes_;
+  std::vector<const HloInstruction*> shmem_transposes_;
 };
 
 }  // namespace gpu

@@ -1188,6 +1188,10 @@ HloInstructionIndexing ComputeInputToOutputIndexing(const HloInstruction* instr,
   if (auto transpose = DynCast<HloTransposeInstruction>(instr)) {
     return ComputeInputToOutputTransposeOpIndexing(transpose, ctx);
   }
+  if (instr->opcode() == HloOpcode::kTuple) {
+    return HloInstructionIndexing::FromIndexingMaps(
+        {CreateIdentityMap(instr->shape().tuple_shapes(input_id), ctx)});
+  }
   // If we cannot compute input-to-output indexing, we return std::nullopt for
   // every op result.
   int64_t num_results =
