@@ -46,7 +46,7 @@ using ::testing::NotNull;
 using ::tsl::testing::IsOk;
 using ::tsl::testing::StatusIs;
 
-using LiftAsFunctionCallTest = ::mlir::quant::QuantizationTestBase;
+using LiftAsFunctionCallTest = QuantizationTestBase;
 
 constexpr absl::string_view kModuleLifted = R"mlir(
   module {
@@ -65,9 +65,8 @@ TEST_F(LiftAsFunctionCallTest, LiftedFunctionSucceeds) {
       module_op->lookupSymbol<func::FuncOp>("composite_dot_general_fn_1");
   ASSERT_THAT(composite_dot_general_fn, NotNull());
 
-  Operation* dot_general_op =
-      FindOperationOfType<mlir::stablehlo::DotGeneralOp>(
-          composite_dot_general_fn);
+  auto dot_general_op = FindOperationOfType<mlir::stablehlo::DotGeneralOp>(
+      composite_dot_general_fn);
   EXPECT_TRUE(IsInLiftedFunc(*dot_general_op));
 }
 
@@ -87,7 +86,7 @@ TEST_F(LiftAsFunctionCallTest, FunctionLiftedAsXlaCallModuleOp) {
   func::FuncOp main_fn = FindMainFuncOp(*module_op);
   ASSERT_THAT(main_fn, NotNull());
 
-  Operation* dot_general_op =
+  auto dot_general_op =
       FindOperationOfType<mlir::stablehlo::DotGeneralOp>(main_fn);
 
   const SmallVector<NamedAttribute>& attributes = {
@@ -97,19 +96,20 @@ TEST_F(LiftAsFunctionCallTest, FunctionLiftedAsXlaCallModuleOp) {
               1, mlir::stablehlo::PrecisionAttr::get(
                      ctx_.get(), mlir::stablehlo::Precision::DEFAULT)))),
   };
+  const SmallVector<Value> operands(dot_general_op->getOperands());
+  const SmallVector<Value> results(dot_general_op->getResults());
   Operation* lifted_op =
       LiftAsFunctionCall(builder_, dot_general_op->getLoc(),
                          FunctionCallOpType::TFXlaCallModuleOp,
-                         "composite_dot_general_fn",
-                         dot_general_op->getOperands(),
-                         dot_general_op->getResults(), attributes)[0]
+                         "composite_dot_general_fn", operands, results,
+                         attributes)[0]
           .getDefiningOp();
   const auto entry_function_symbol_ref =
       lifted_op->getAttrOfType<FlatSymbolRefAttr>("_entry_function");
   SymbolTable symbol_table(*module_op);
   auto entry_func = dyn_cast_or_null<func::FuncOp>(
       symbol_table.lookup(entry_function_symbol_ref.getValue()));
-  Operation* lifted_dot_general_op =
+  auto lifted_dot_general_op =
       FindOperationOfType<mlir::stablehlo::DotGeneralOp>(entry_func);
 
   EXPECT_TRUE(isa<TF::XlaCallModuleOp>(lifted_op));
@@ -129,13 +129,14 @@ TEST_F(LiftAsFunctionCallTest, FunctionNoAttrLiftedAsXlaCallModuleOp) {
   func::FuncOp main_fn = FindMainFuncOp(*module_op);
   ASSERT_THAT(main_fn, NotNull());
 
-  Operation* dot_general_op =
+  auto dot_general_op =
       FindOperationOfType<mlir::stablehlo::DotGeneralOp>(main_fn);
+  const SmallVector<Value> operands(dot_general_op->getOperands());
+  const SmallVector<Value> results(dot_general_op->getResults());
   Operation* lifted_op =
-      LiftAsFunctionCall(
-          builder_, dot_general_op->getLoc(),
-          FunctionCallOpType::TFXlaCallModuleOp, "composite_dot_general_fn",
-          dot_general_op->getOperands(), dot_general_op->getResults())[0]
+      LiftAsFunctionCall(builder_, dot_general_op->getLoc(),
+                         FunctionCallOpType::TFXlaCallModuleOp,
+                         "composite_dot_general_fn", operands, results)[0]
           .getDefiningOp();
   EXPECT_TRUE(isa<TF::XlaCallModuleOp>(lifted_op));
   EXPECT_EQ(lifted_op->getAttr("_original_entry_function").cast<StringAttr>(),
