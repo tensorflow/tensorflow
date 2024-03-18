@@ -26,10 +26,10 @@ limitations under the License.
 #include <memory>
 #include <string>
 #include <type_traits>
-#include <unordered_map>
 #include <utility>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/strings/string_view.h"
 #include "llvm/ADT/DenseMap.h"
@@ -86,11 +86,11 @@ inline constexpr double kNearZeroTolerance = 1.0e-6;
 using QuantParams = QuantizedType;
 using QuantSpec = QuantizationSpecs;
 using SignedInteger = std::pair<unsigned, unsigned>;  // bitwidth and sign
-using QuantParamsForResults = llvm::SmallVector<QuantParams, 4>;
+using QuantParamsForResults = llvm::SmallVector<QuantizedType, 4>;
 using AccumulatorScaleFunc =
-    std::function<QuantParams(const std::vector<QuantParams>&, int, bool)>;
+    std::function<QuantizedType(const std::vector<QuantizedType>&, int, bool)>;
 using BiasParamsMap =
-    std::unordered_map<int, std::pair<std::vector<int>, AccumulatorScaleFunc>>;
+    absl::flat_hash_map<int, std::pair<std::vector<int>, AccumulatorScaleFunc>>;
 // UniformQuantizedType GetFixedOutputRange(bool sign, int bit_width)
 using GetFixedOutputRangeFunc = std::function<UniformQuantizedType(bool, int)>;
 // bool RequiredSameOperandsAndResultsScale(bool sign, int $bit_width)
