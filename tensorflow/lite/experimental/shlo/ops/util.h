@@ -70,6 +70,9 @@ bool IsSignedIntTensor(const Tensor& tensor);
 // Returns true if the tensor's storage type is an unsigned integer type.
 bool IsUnsignedIntTensor(const Tensor& tensor);
 
+// Returns true if the tensor's storage type is an integer type.
+bool IsIntTensor(const Tensor& tensor);
+
 // Returns true if the tensor's storage type is an floating point type.
 bool IsFloatTensor(const Tensor& tensor);
 

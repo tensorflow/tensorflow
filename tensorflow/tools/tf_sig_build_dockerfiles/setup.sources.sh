@@ -48,6 +48,6 @@ deb http://ppa.launchpad.net/deadsnakes/ppa/ubuntu focal main
 deb-src http://ppa.launchpad.net/deadsnakes/ppa/ubuntu focal main
 
 # LLVM/Clang repository
-deb http://apt.llvm.org/focal/ llvm-toolchain-focal-17 main
-deb-src http://apt.llvm.org/focal/ llvm-toolchain-focal-17 main
+deb http://apt.llvm.org/focal/ llvm-toolchain-focal-18 main
+deb-src http://apt.llvm.org/focal/ llvm-toolchain-focal-18 main
 SOURCES

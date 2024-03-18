@@ -36,10 +36,10 @@ autoconf
 automake
 build-essential
 ca-certificates
-llvm-17
-clang-17
-clang-tidy-17
-lld-17
+llvm-18
+clang-18
+clang-tidy-18
+lld-18
 clang-format-12
 colordiff
 curl

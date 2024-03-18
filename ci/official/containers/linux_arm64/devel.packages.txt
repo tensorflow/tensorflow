@@ -3,10 +3,10 @@ autoconf
 automake
 build-essential
 ca-certificates
-llvm-17
-clang-17
+llvm-18
+clang-18
 clang-format-12
-lld-17
+lld-18
 colordiff
 curl
 ffmpeg
@@ -18,7 +18,7 @@ libcurl3-dev
 libcurl4-openssl-dev
 libfreetype6-dev
 libhdf5-serial-dev
-libomp-17-dev
+libomp-18-dev
 libssl-dev
 libtool
 libxml2-dev
