@@ -162,14 +162,17 @@ struct HlosAndRequirements {
 HloInstruction& FuseDot(const HloDotInstruction& dot,
                         const HloInstruction& fused_lhs,
                         const HloInstruction& fused_rhs,
+                        std::optional<const HloInstruction*> fused_meta,
                         HloComputation::Builder& builder  // append
 ) {
-  CHECK_EQ(dot.operand_count(), 2);
   VLOG(3) << "Fusing " << dot.ToString();
 
-  std::array<HloInstruction*, 2> hlo_new_operands = {
+  std::vector<HloInstruction*> hlo_new_operands = {
       const_cast<HloInstruction*>(&fused_lhs),
       const_cast<HloInstruction*>(&fused_rhs)};
+  if (fused_meta.has_value()) {
+    hlo_new_operands.push_back(const_cast<HloInstruction*>(fused_meta.value()));
+  }
   return *builder.AddInstruction(
       dot.CloneWithNewOperands(dot.shape(), hlo_new_operands));
 }
@@ -620,12 +623,33 @@ absl::StatusOr<FusionDecision> CreateDotFusion(
     return can_handle;
   }
 
+  // Verify sparse dot constraints.
+  if (dot.sparse_operands()) {
+    const SparsityDescriptor& descriptor = dot.sparsity().front();
+    if (dot.sparse_operands() != 1 || descriptor.index() != 0) {
+      return InvalidArgument("Sparsity is only supported on left operand");
+    }
+    if (descriptor.type() != SparsityType::SPARSITY_STRUCTURED_N_M ||
+        descriptor.n() != 2 || descriptor.m() != 4) {
+      return InvalidArgument("Only 2:4 structured sparsity is supported");
+    }
+    // DotDimensionSorter pass makes sure the sparse dimension is minor.
+    CHECK_EQ(descriptor.dimension(), dot.operand(0)->shape().rank() - 1);
+  }
+
   HlosAndRequirements lhs_hlos_and_reqs = FuseDotOperand(
       dot, /*operand_index=*/0, gpu_version, builder, fusion_inputs);
   HlosAndRequirements rhs_hlos_and_reqs = FuseDotOperand(
       dot, /*operand_index=*/1, gpu_version, builder, fusion_inputs);
-  HloInstruction& fused_dot = FuseDot(dot, *lhs_hlos_and_reqs.fused_hlo,
-                                      *rhs_hlos_and_reqs.fused_hlo, builder);
+  std::optional<const HloInstruction*> meta_hlo;
+  if (dot.sparse_operands()) {
+    HlosAndRequirements meta_hlos_and_reqs = FuseDotOperand(
+        dot, /*operand_index=*/2, gpu_version, builder, fusion_inputs);
+    meta_hlo.emplace(meta_hlos_and_reqs.fused_hlo);
+  }
+  HloInstruction& fused_dot =
+      FuseDot(dot, *lhs_hlos_and_reqs.fused_hlo, *rhs_hlos_and_reqs.fused_hlo,
+              meta_hlo, builder);
   // For now the RHS doesn't support splits, so it also doesn't impose any
   // requirements.
   HlosAndRequirements fused_output_and_reqs =
@@ -642,7 +666,8 @@ absl::StatusOr<FusionDecision> CreateDotFusion(
       dot.precision_config().algorithm();
   if (algorithm == PrecisionConfig::ALG_DOT_BF16_BF16_F32_X6 ||
       algorithm == PrecisionConfig::ALG_DOT_BF16_BF16_F32_X3 ||
-      dot.GetModule()->config().debug_options().xla_gpu_triton_gemm_any()) {
+      dot.GetModule()->config().debug_options().xla_gpu_triton_gemm_any() ||
+      dot.sparse_operands()) {
     return FusionDecision{};
   }
 
