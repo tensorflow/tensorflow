@@ -9,13 +9,6 @@
 """
 
 load(
-    ":cuda_configure.bzl",
-    "enable_cuda",
-    "make_copy_dir_rule",
-    "make_copy_files_rule",
-    "to_list_of_strings",
-)
-load(
     "//third_party/remote_config:common.bzl",
     "config_repo_label",
     "err_out",
@@ -28,6 +21,16 @@ load(
     "raw_exec",
     "realpath",
     "which",
+)
+load(
+    ":cuda_common_tools.bzl",
+    "enable_cuda",
+    "to_list_of_strings",
+)
+load(
+    ":cuda_configure.bzl",
+    "make_copy_dir_rule",
+    "make_copy_files_rule",
 )
 
 _GCC_HOST_COMPILER_PATH = "GCC_HOST_COMPILER_PATH"

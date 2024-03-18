@@ -1,7 +1,9 @@
+load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
 load(
     "//tsl:tsl.bzl",
     "if_not_fuchsia",
     "if_not_windows",
+    "if_oss",
     "internal_visibility",
     "tsl_copts",
 )
@@ -59,6 +61,10 @@ cc_library(
     srcs = ["cuda_libdevice_path.cc"],
     hdrs = ["//tsl/platform:cuda_libdevice_path.h"],
     compatible_with = [],
+    data = if_oss(if_cuda([
+        "@cuda_nvcc//:bin",
+        "@cuda_nvcc//:nvvm",
+    ])),
     tags = [
         "manual",
         "no_oss",
@@ -66,6 +72,7 @@ cc_library(
     ],
     deps = [
         "//tsl/platform",
+        "//tsl/platform:env",
         "//tsl/platform:logging",
         "//tsl/platform:path",
         "//tsl/platform:types",
@@ -252,7 +259,25 @@ cc_library(
     ],
     deps = [
         "@com_google_absl//absl/status",
-    ],
+    ] + if_oss(if_cuda([
+        "@cuda_cudart//:cudart",
+        "@cuda_cudnn//:cudnn",
+        "@cuda_cudnn//:cudnn_ops_infer",
+        "@cuda_cudnn//:cudnn_cnn_infer",
+        "@cuda_cudnn//:cudnn_ops_train",
+        "@cuda_cudnn//:cudnn_cnn_train",
+        "@cuda_cudnn//:cudnn_adv_infer",
+        "@cuda_cudnn//:cudnn_adv_train",
+        "@cuda_cublas//:cublas",
+        "@cuda_curand//:curand",
+        "@cuda_cublas//:cublasLt",
+        "@cuda_nccl//:nccl",
+        "@cuda_cusolver//:cusolver",
+        "@cuda_cufft//:cufft",
+        "@cuda_cupti//:cupti",
+        "@cuda_cusparse//:cusparse",
+        "@cuda_nvjitlink//:nvjitlink",
+    ])),
 )
 
 cc_library(

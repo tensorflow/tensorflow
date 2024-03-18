@@ -15,8 +15,15 @@
 """
 
 load(
-    "//third_party/gpus:cuda_configure.bzl",
+    "//third_party/gpus:cuda_common_tools.bzl",
+    "CUDA_TOOLKIT_PATH",
+    "TF_CUDA_CLANG",
+    "TF_CUDA_COMPUTE_CAPABILITIES",
+    "TF_NEED_CUDA",
     "enable_cuda",
+)
+load(
+    "//third_party/gpus:cuda_configure.bzl",
     "find_cuda_config",
 )
 load(
@@ -26,14 +33,10 @@ load(
     "get_host_environ",
 )
 
-_CUDA_TOOLKIT_PATH = "CUDA_TOOLKIT_PATH"
 _NCCL_HDR_PATH = "NCCL_HDR_PATH"
 _NCCL_INSTALL_PATH = "NCCL_INSTALL_PATH"
-_TF_CUDA_COMPUTE_CAPABILITIES = "TF_CUDA_COMPUTE_CAPABILITIES"
 _TF_NCCL_VERSION = "TF_NCCL_VERSION"
-_TF_NEED_CUDA = "TF_NEED_CUDA"
 _TF_CUDA_PATHS = "TF_CUDA_PATHS"
-_TF_CUDA_CLANG = "TF_CUDA_CLANG"
 _TF_NCCL_USE_STUB = "TF_NCCL_USE_STUB"
 
 _DEFINE_NCCL_MAJOR = "#define NCCL_MAJOR"
@@ -129,7 +132,12 @@ def _create_local_nccl_repository(repository_ctx):
             _label("build_defs.bzl.tpl"),
             {
                 "%{cuda_version}": "(%s, %s)" % tuple(cuda_version),
-                "%{cuda_clang}": repr(get_host_environ(repository_ctx, _TF_CUDA_CLANG)),
+                "%{cuda_clang}": repr(get_host_environ(repository_ctx, TF_CUDA_CLANG)),
+                "%{nvlink_label}": "@local_config_cuda//cuda:cuda/bin/nvlink",
+                "%{fatbinary_label}": "@local_config_cuda//cuda:cuda/bin/fatbinary",
+                "%{bin2c_label}": "@local_config_cuda//cuda:cuda/bin/bin2c",
+                "%{link_stub_label}": "@local_config_cuda//cuda:cuda/bin/crt/link.stub",
+                "%{nvprune_label}": "@local_config_cuda//cuda:cuda/bin/nvprune",
             },
         )
     else:
@@ -174,14 +182,14 @@ def _nccl_autoconf_impl(repository_ctx):
         _create_local_nccl_repository(repository_ctx)
 
 _ENVIRONS = [
-    _CUDA_TOOLKIT_PATH,
+    CUDA_TOOLKIT_PATH,
     _NCCL_HDR_PATH,
     _NCCL_INSTALL_PATH,
     _TF_NCCL_VERSION,
-    _TF_CUDA_COMPUTE_CAPABILITIES,
-    _TF_NEED_CUDA,
+    TF_CUDA_COMPUTE_CAPABILITIES,
+    TF_NEED_CUDA,
     _TF_CUDA_PATHS,
-    _TF_CUDA_CLANG,
+    TF_CUDA_CLANG,
 ]
 
 remote_nccl_configure = repository_rule(

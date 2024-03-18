@@ -7,9 +7,12 @@
 """
 
 load(
+    "//third_party/gpus:cuda_common_tools.bzl",
+    "lib_name",
+)
+load(
     "//third_party/gpus:cuda_configure.bzl",
     "find_cuda_config",
-    "lib_name",
     "make_copy_files_rule",
 )
 load(
