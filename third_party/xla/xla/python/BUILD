@@ -1258,6 +1258,7 @@ cc_library(
         "//xla/pjrt/distributed:protocol_proto_cc",
         "//xla/pjrt/distributed:service",
         "//xla/python/ifrt",
+        "//xla/python/ifrt_proxy/client:py_module",
         "//xla/python/pjrt_ifrt",
         "//xla/service/cpu:collectives_interface",
         "@local_tsl//tsl/distributed_runtime/preemption:preemption_sync_manager",

@@ -11,6 +11,7 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
+#include "xla/python/ifrt_proxy/client/py_module.h"
 
 #include <functional>
 #include <memory>
@@ -32,7 +33,6 @@
 #include "pybind11/pybind11.h"  // from @pybind11
 #include "pybind11/pytypes.h"  // from @pybind11
 #include "pybind11_abseil/absl_casters.h"  // from @pybind11_abseil  // NOLINT  // IWYU pragma: keep
-#include "pybind11_protobuf/native_proto_caster.h"  // from @pybind11_protobuf
 #include "xla/pjrt/status_casters.h"
 #include "xla/python/ifrt/client.h"
 #include "xla/python/ifrt_proxy/client/registry.h"
@@ -100,20 +100,22 @@ absl::StatusOr<std::shared_ptr<xla::PyClient>> GetClient(
 }
 
 }  // namespace
-}  // namespace proxy
-}  // namespace ifrt
-}  // namespace xla
 
-PYBIND11_MODULE(py_module, m) {
-  pybind11_protobuf::ImportNativeProtoCasters();
+void BuildIfrtProxySubmodule(pybind11::module_& m) {
+  pybind11::module_ sub_module = m.def_submodule("ifrt_proxy", "IFRT proxy");
 
-  using ::xla::ifrt::proxy::PyClientConnectionOptions;
-  pybind11::class_<PyClientConnectionOptions>(m, "ClientConnectionOptions")
+  pybind11::class_<PyClientConnectionOptions>(sub_module,
+                                              "ClientConnectionOptions")
       .def(pybind11::init<>())
       .def_readwrite("on_disconnect", &PyClientConnectionOptions::on_disconnect)
       .def_readwrite("on_connection_update",
                      &PyClientConnectionOptions::on_connection_update);
 
-  m.def("get_client", xla::ValueOrThrowWrapper(xla::ifrt::proxy::GetClient),
-        pybind11::arg("proxy_server_address"), pybind11::arg("options"));
+  sub_module.def("get_client", xla::ValueOrThrowWrapper(GetClient),
+                 pybind11::arg("proxy_server_address"),
+                 pybind11::arg("options"));
 }
+
+}  // namespace proxy
+}  // namespace ifrt
+}  // namespace xla

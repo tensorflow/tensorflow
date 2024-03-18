@@ -65,6 +65,7 @@ limitations under the License.
 #include "xla/pjrt/distributed/protocol.pb.h"
 #include "xla/pjrt/distributed/service.h"
 #include "xla/pjrt/pjrt_compiler.h"
+#include "xla/python/ifrt_proxy/client/py_module.h"
 #include "xla/python/py_client.h"
 #include "xla/service/cpu/collectives_interface.h"
 #include "tsl/python/lib/core/numpy.h"  //NOLINT
@@ -1015,6 +1016,10 @@ static void Init(py::module_& m) {
   BuildTracebackSubmodule(m_nb);
   BuildMlirSubmodule(m_nb);
   BuildCustomCallShardingPybindAPI(m_nb);
+
+  // The following uses python bindings for PyClient defined above using
+  // pybind11, and hence needs pybind11::module_ (not just nanobind::module_).
+  xla::ifrt::proxy::BuildIfrtProxySubmodule(m);
 
   py::class_<tsl::PreemptionSyncManager,
              std::unique_ptr<tsl::PreemptionSyncManager>>
