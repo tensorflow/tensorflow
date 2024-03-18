@@ -1017,6 +1017,9 @@ TfLiteStatus ConvertTensorType(TensorType tensor_type, TfLiteType* type,
     case TensorType_FLOAT16:
       *type = kTfLiteFloat16;
       return kTfLiteOk;
+    case TensorType_BFLOAT16:
+      *type = kTfLiteBFloat16;
+      return kTfLiteOk;
     case TensorType_FLOAT32:
       *type = kTfLiteFloat32;
       return kTfLiteOk;
