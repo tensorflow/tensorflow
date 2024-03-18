@@ -106,7 +106,8 @@ absl::Status AddressComputationThunk::Initialize(
 absl::Status AddressComputationThunk::ExecuteOnStream(
     const ExecuteParams& params) {
   auto& stream = *params.stream;
-  std::vector<se::DeviceMemoryBase> new_buffers;
+  std::vector<se::DeviceMemoryBase> new_buffers(
+      embedded_thunk_arguments_.size(), se::DeviceMemoryBase());
   const BufferAllocations& orig_allocations = *params.buffer_allocations;
 
   // Get memory allocation for copying offsets from device.
@@ -117,14 +118,13 @@ absl::Status AddressComputationThunk::ExecuteOnStream(
 
   for (unsigned i = 0; i < offset_buffer_indices_.size(); ++i) {
     if (embedded_thunk_arguments_[i] == std::nullopt) {
-      new_buffers.push_back(se::DeviceMemoryBase());
       continue;
     }
 
     se::DeviceMemoryBase orig_operand =
         orig_allocations.GetDeviceAddress(*embedded_thunk_arguments_[i]);
     if (offset_buffer_indices_[i] == std::nullopt) {
-      new_buffers.push_back(orig_operand);
+      new_buffers[embedded_thunk_arguments_[i]->index()] = orig_operand;
       continue;
     }
 
@@ -164,7 +164,8 @@ absl::Status AddressComputationThunk::ExecuteOnStream(
       new_offset += start * stride;
     }
 
-    new_buffers.push_back(orig_operand.GetByteSlice(new_offset, new_size));
+    new_buffers[embedded_thunk_arguments_[i]->index()] =
+        orig_operand.GetByteSlice(new_offset, new_size);
   }
 
   // Safe to create a local BufferAllocations here since buffers are only slices
