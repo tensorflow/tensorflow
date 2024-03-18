@@ -342,6 +342,7 @@ tf_cc_test(
     srcs = ["util_test.cc"],
     deps = [
         ":util",
+        "//tensorflow/c:tf_datatype",
         "//tensorflow/core:framework",
         "//tensorflow/core/protobuf:error_codes_proto_impl_cc",
         "//tensorflow/lite:string",
