@@ -35,7 +35,7 @@ load(
     "tf_fingerprint_deps",
 )
 load(
-    "//third_party/mkl:build_defs.bzl",
+    "@local_xla//xla/tsl/mkl:build_defs.bzl",
     "if_mkl",
     "mkl_deps",
 )
