@@ -546,10 +546,32 @@ bool PjRtArray::IsDeleted() const {
 
 std::string PjRtArray::DebugString() const {
   DCHECK(this);
+  absl::StatusOr<std::unique_ptr<PjRtLayout>> layout_ptr = layout();
+  std::string layout_str =
+      layout_ptr.ok() ? (*layout_ptr)->ToString() : "<unknown>";
+
   return absl::StrFormat(
-      "PjRtArray(dtype=%s; shape=%s; sharding=%s)", dtype_.DebugString(),
+      "PjRtArray(dtype=%s; shape=%s; sharding=%s; layout=%s)",
+      dtype_.DebugString(),
       std::visit([](const auto& shape) { return shape.DebugString(); }, shape_),
-      sharding_->DebugString());
+      sharding_->DebugString(), layout_str);
+}
+
+// TODO(b/330198879): populate layout at construction instead of accessing PJRT
+// buffer directly for consistency with Pathways.
+absl::StatusOr<std::unique_ptr<PjRtLayout>> PjRtArray::layout() const {
+  CHECK(!pjrt_buffers_.empty());
+  std::unique_ptr<PjRtLayout> layout = pjrt_buffers_[0]->layout();
+#ifndef NDEBUG
+  for (int i = 1; i < pjrt_buffers_.size(); ++i) {
+    std::unique_ptr<PjRtLayout> layout_i = pjrt_buffers_[i]->layout();
+    DCHECK_EQ(layout, layout_i)
+        << "PjRtArray has mismatched layouts across shards! "
+        << "shard 0: " << layout->ToString() << ", shard " << i << ": "
+        << layout_i->ToString();
+  }
+#endif
+  return layout;
 }
 
 }  // namespace ifrt
