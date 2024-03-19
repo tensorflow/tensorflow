@@ -876,7 +876,8 @@ NB_MODULE(xla_extension, m_nb) {
       .def("get_output_layouts",
            xla::ValueOrThrowWrapper(&PjRtExecutable::GetOutputLayouts))
       .def("get_parameter_shardings", &PjRtExecutable::GetParameterShardings)
-      .def("get_compiled_memory_stats", &PjRtExecutable::GetCompiledMemoryStats)
+      .def("get_compiled_memory_stats",
+           xla::ValueOrThrowWrapper(&PjRtExecutable::GetCompiledMemoryStats))
       .def("compile_options",
            xla::ValueOrThrowWrapper(&PjRtExecutable::GetCompileOptions))
       .def("serialize",
