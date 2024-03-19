@@ -44,7 +44,6 @@ cc_library(
         "//xla/mlir/runtime/utils:custom_calls",
         "//xla/mlir/xla_cpu/ir:xla_cpu",
         "//xla/mlir_hlo",
-        "//xla/mlir_hlo:lhlo",
         "//xla/service:hlo_parser",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:Analysis",
