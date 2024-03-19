@@ -35,20 +35,28 @@ inline constexpr int64_t kCollectiveMemorySpaceColor = 1;
 // collective memory using ncclMemAlloc in the runtime.
 inline BufferAssigner::Colorer CollectiveColorer() {
   return [](HloAliasAnalysis* alias_analysis, const HloOrdering&) {
+    static const auto* kSupportedOpcodes = new absl::flat_hash_set<HloOpcode>{
+        HloOpcode::kAllReduce,
+        HloOpcode::kAllReduceStart,
+        HloOpcode::kAllReduceDone,
+        HloOpcode::kAllGather,
+        HloOpcode::kAllGatherStart,
+        HloOpcode::kAllGatherDone,
+        HloOpcode::kReduceScatter,
+        HloOpcode::kCollectivePermute,
+        HloOpcode::kCollectivePermuteStart,
+        HloOpcode::kCollectivePermuteDone,
+        HloOpcode::kAllToAll,
+    };
     for (HloValue* value : alias_analysis->dataflow_analysis().values()) {
       auto& buffer = alias_analysis->GetBufferContainingValue(*value);
       for (const auto& alias : buffer.values()) {
-        if ((alias->instruction()->opcode() == HloOpcode::kAllReduce ||
-             alias->instruction()->opcode() == HloOpcode::kAllReduceStart ||
-             alias->instruction()->opcode() == HloOpcode::kAllReduceDone ||
-             alias->instruction()->opcode() == HloOpcode::kAllGather ||
-             alias->instruction()->opcode() == HloOpcode::kAllGatherStart ||
-             alias->instruction()->opcode() == HloOpcode::kAllGatherDone ||
-             alias->instruction()->opcode() == HloOpcode::kReduceScatter) ||
+        // opcode or async wrapped opcode is in kSupportedOpcodes.
+        if (kSupportedOpcodes->contains(alias->instruction()->opcode()) ||
             ((alias->instruction()->opcode() == HloOpcode::kAsyncStart ||
               alias->instruction()->opcode() == HloOpcode::kAsyncDone) &&
-             alias->instruction()->async_wrapped_opcode() ==
-                 HloOpcode::kReduceScatter)) {
+             kSupportedOpcodes->contains(
+                 alias->instruction()->async_wrapped_opcode()))) {
           value->set_color(kCollectiveMemorySpaceColor);
         }
       }

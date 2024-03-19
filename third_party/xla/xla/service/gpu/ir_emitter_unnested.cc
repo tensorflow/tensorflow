@@ -2179,7 +2179,8 @@ Status IrEmitterUnnested::EmitCollectivePermute(
   // First output is aliased.
   TF_RET_CHECK(
       instr->shape().IsTuple() && instr->shape().tuple_shapes_size() == 2 &&
-      instr->shape().tuple_shapes(0) == instr->shape().tuple_shapes(1));
+      Shape::Equal().IgnoreMemorySpaceInLayout()(
+          instr->shape().tuple_shapes(0), instr->shape().tuple_shapes(1)));
   TF_ASSIGN_OR_RETURN(BufferAllocation::Slice result_slice,
                       GetAllocationSliceForHlo(instr, {1}));
 
@@ -2187,6 +2188,9 @@ Status IrEmitterUnnested::EmitCollectivePermute(
   const auto& hlo_config = ir_emitter_context_->hlo_module().config();
   const int64_t replica_count = hlo_config.replica_count();
   const int64_t partition_count = hlo_config.num_partitions();
+  const int64_t src_memory_space = shape.layout().memory_space();
+  const int64_t dst_memory_space =
+      instr->shape().tuple_shapes(1).layout().memory_space();
 
   if (NcclCollectivePermuteStartThunk::IsDegenerate(instr, replica_count,
                                                     partition_count)) {
@@ -2202,7 +2206,9 @@ Status IrEmitterUnnested::EmitCollectivePermute(
     const NcclCollectiveThunk::Buffer buffer = {
         /*element_count=*/ShapeUtil::ElementsIn(shape),
         /*source_buffer=*/source_slice,
-        /*destination_buffer=*/result_slice};
+        /*destination_buffer=*/result_slice,
+        /*source_memory_space=*/src_memory_space,
+        /*destination_memory_space=*/dst_memory_space};
     auto thunk = std::make_unique<NcclCollectivePermuteStartThunk>(
         Thunk::ThunkInfo::WithProfileAnnotation(instr), NcclApi::Default(),
         instr, replica_count, partition_count, buffer);
@@ -2619,10 +2625,13 @@ absl::Status IrEmitterUnnested::EmitSendThunk(const HloSendInstruction* instr) {
     const auto& hlo_config = ir_emitter_context_->hlo_module().config();
     const int64_t replica_count = hlo_config.replica_count();
     const int64_t partition_count = hlo_config.num_partitions();
+    const int64_t memory_space = src->shape().layout().memory_space();
     const NcclCollectiveThunk::Buffer nccl_buffer = {
         /*element_count=*/ShapeUtil::ElementsIn(src->shape()),
         /*source_buffer=*/buffer,
-        /*destination_buffer=*/buffer};
+        /*destination_buffer=*/buffer,
+        /*source_memory_space=*/memory_space,
+        /*destination_memory_space=*/memory_space};
     auto thunk = std::make_unique<NcclSendThunk>(
         Thunk::ThunkInfo::WithProfileAnnotation(instr), NcclApi::Default(),
         instr, replica_count, partition_count, nccl_buffer);
@@ -2685,10 +2694,13 @@ absl::Status IrEmitterUnnested::EmitRecvThunk(const HloRecvInstruction* instr) {
     const auto& hlo_config = ir_emitter_context_->hlo_module().config();
     const int64_t replica_count = hlo_config.replica_count();
     const int64_t partition_count = hlo_config.num_partitions();
+    const int64_t memory_space = instr->shape().layout().memory_space();
     const NcclCollectiveThunk::Buffer nccl_buffer = {
         /*element_count=*/ShapeUtil::ElementsIn(instr->shape().tuple_shapes(0)),
         /*source_buffer=*/buffer,
-        /*destination_buffer=*/buffer};
+        /*destination_buffer=*/buffer,
+        /*source_memory_space=*/memory_space,
+        /*destination_memory_space=*/memory_space};
     auto thunk = std::make_unique<NcclRecvThunk>(
         Thunk::ThunkInfo::WithProfileAnnotation(instr), NcclApi::Default(),
         instr, replica_count, partition_count, nccl_buffer);

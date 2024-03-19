@@ -108,6 +108,8 @@ absl::Status RunAllToAll(NcclApi* nccl_api, bool has_split_dimension,
                          se::Stream& stream, NcclApi::NcclCommHandle comm) {
   int device_ordinal = stream.parent()->device_ordinal();
   VLOG(3) << "Performing all-to-all from device ordinal: " << device_ordinal;
+  TF_RETURN_IF_ERROR(
+      MaybeRegisterBuffers(nccl_api, device_ordinal, buffers, comm));
 
   TF_ASSIGN_OR_RETURN(int32_t num_participants, nccl_api->CommCount(comm));
 
