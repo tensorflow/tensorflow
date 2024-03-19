@@ -497,6 +497,13 @@ absl::Status ConvertTFExecutorToTFLOrFlatbuffer(
     options.metadata.insert(
         MetadataForReducedPrecisionSupport(quant_specs.support_mask));
   }
+  pass_manager.clear();
+  pass_manager.addPass(mlir::odml::createLegalizeStablehloToVhloPass());
+  if (failed(pass_manager.run(module))) {
+    return status_handler.Combine(
+        absl::InvalidArgumentError("VHLO lowering failed"));
+  }
+
   if (!tflite::MlirToFlatBufferTranslateFunction(
           module, options, &translated_result, serialize_stablehlo_ops)) {
     return status_handler.Combine(
