@@ -616,9 +616,7 @@ void PjRtStreamExecutorBuffer::ScopedHold::AddToInput(
   }
 }
 
-bool PjRtStreamExecutorBuffer::IsOnCpu() const {
-  return client()->platform_id() == CpuId();
-}
+bool PjRtStreamExecutorBuffer::IsOnCpu() const { return false; }
 
 StatusOr<Shape> PjRtStreamExecutorBuffer::logical_on_device_shape() {
   if (on_device_shape_.is_static()) {
@@ -827,59 +825,6 @@ PjRtStreamExecutorClient::BufferFromHostBuffer(
       ShapeUtil::ByteStrides(device_shape, absl::MakeSpan(shape_strides)));
   bool host_and_device_strides_equal =
       (size == 0 || *byte_strides == shape_strides);
-  // The CPU platform is special because the "host" and the "device" are in the
-  // same memory space. If the input shape is in the correct layout and we don't
-  // want to defer the copy onto a thread, we can use the following fast
-  // path.
-  bool is_cpu_platform =
-      local_device->executor()->platform()->id() == se::host::kHostPlatformId;
-  if (is_cpu_platform) {
-    // If we are on the host platform and the input buffer is sufficiently
-    // aligned, we can simply point to the input array's data without any
-    // further copies. At the time of writing we require a 16-byte alignment
-    // because XLA may generate code which requires it.
-    bool can_use_zero_copy =
-        host_buffer_semantics == HostBufferSemantics::kZeroCopy &&
-        ((absl::bit_cast<std::uintptr_t>(data) &
-          (cpu_function_runtime::MinAlign() - 1)) == 0);
-    if (host_and_device_strides_equal &&
-        (host_buffer_semantics ==
-             HostBufferSemantics::kImmutableOnlyDuringCall ||
-         can_use_zero_copy)) {
-      absl::AnyInvocable<void() &&> on_delete_callback;
-      se::DeviceMemoryBase buffer;
-      // If we are on the host platform and the input buffer is sufficiently
-      // aligned, we can simply point to the input array's data without any
-      // further copies. At the time of writing we require a 16-byte alignment
-      // because XLA may generate code which requires it.
-      if (can_use_zero_copy) {
-        on_delete_callback = std::move(on_done_with_host_buffer);
-        buffer = se::DeviceMemoryBase(
-            const_cast<void*>(static_cast<const void*>(data)), size);
-      } else {
-        void* staging_buffer = host_memory_allocator()->AllocateRaw(
-            cpu_function_runtime::MinAlign(), size);
-        buffer = se::DeviceMemoryBase(staging_buffer, size);
-        std::memcpy(staging_buffer, data, size);
-        if (on_done_with_host_buffer) {
-          std::move(on_done_with_host_buffer)();
-        }
-        on_delete_callback = [staging_buffer, host_memory_allocator =
-                                                  host_memory_allocator()]() {
-          host_memory_allocator->DeallocateRaw(staging_buffer);
-        };
-      }
-      absl::Span<const std::shared_ptr<BufferSequencingEvent>>
-          definition_events;
-      auto device_buffer = std::make_shared<TrackedDeviceBuffer>(
-          /*allocator=*/nullptr, local_device->local_device_id().value(),
-          std::initializer_list<se::DeviceMemoryBase>{buffer},
-          definition_events, std::move(on_delete_callback));
-      return std::unique_ptr<PjRtBuffer>(
-          std::make_unique<PjRtStreamExecutorBuffer>(
-              device_shape, std::move(device_buffer), this, device));
-    }
-  }
 
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<PjRtStreamExecutorBuffer> py_buffer,
@@ -1038,13 +983,7 @@ PjRtStreamExecutorClient::BufferFromHostBuffer(
               }
             }));
       };
-  if (is_cpu_platform) {
-    // Using the thread_pool would be a double thread hop; the code
-    // already defers its work onto a stream (= thread on CPU).
-    transfer_h2d();
-  } else {
-    thread_pool()->Schedule(transfer_h2d);
-  }
+  thread_pool()->Schedule(transfer_h2d);
   return std::unique_ptr<PjRtBuffer>(std::move(py_buffer));
 }
 
