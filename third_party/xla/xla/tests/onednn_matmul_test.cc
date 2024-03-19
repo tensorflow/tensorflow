@@ -17,14 +17,19 @@ limitations under the License.
 
 #include <utility>
 
+#include "xla/hlo/utils/hlo_matchers.h"
 #include "xla/literal.h"
+#include "xla/service/cpu/onednn_matmul_rewriter.h"
 #include "xla/service/cpu/onednn_util.h"
 #include "xla/shape_util.h"
 #include "xla/test.h"
 #include "xla/test_helpers.h"
+#include "xla/tests/filecheck.h"
 #include "xla/tests/hlo_test_base.h"
 #include "xla/tests/test_macros.h"
 #include "tsl/platform/cpu_info.h"
+
+namespace op = xla::testing::opcode_matchers;
 
 namespace xla {
 namespace cpu {
@@ -88,6 +93,23 @@ TEST_F(MatmulTest, SimpleTestBF16) {
     arg.0 = bf16[32,8,128,64]{3,2,1,0} parameter(0), parameter_replication={false}
     arg.1 = bf16[32,8,64,128]{3,2,1,0} parameter(1), parameter_replication={false}
     ROOT onednn.matmul.0 = bf16[32,8,128,128]{3,2,1,0} dot(arg.0, arg.1), lhs_batch_dims={0,1}, lhs_contracting_dims={3}, rhs_batch_dims={0,1}, rhs_contracting_dims={2}
+  })";
+
+  EXPECT_TRUE(RunAndCompare(matmul_module_str, ErrorSpec{1e-2, 1e-4}));
+  MatchOptimizedHlo(matmul_module_str, matmul_rewrite_str_);
+}
+
+TEST_F(MatmulTest, SimpleTestF16) {
+  if (!IsSupportedType(PrimitiveType::F16)) {
+    GTEST_SKIP() << "CPU does not support F16.";
+  }
+
+  const char* matmul_module_str = R"(
+  HloModule matmul.test.f16, entry_computation_layout={(f16[32,8,128,64]{3,2,1,0},f16[32,8,64,128]{3,2,1,0})->f16[32,8,128,128]{3,2,1,0}}
+  ENTRY matmul.test.f16 {
+    arg.0 = f16[32,8,128,64]{3,2,1,0} parameter(0), parameter_replication={false}
+    arg.1 = f16[32,8,64,128]{3,2,1,0} parameter(1), parameter_replication={false}
+    ROOT onednn.matmul.0 = f16[32,8,128,128]{3,2,1,0} dot(arg.0, arg.1), lhs_batch_dims={0,1}, lhs_contracting_dims={3}, rhs_batch_dims={0,1}, rhs_contracting_dims={2}
   })";
 
   EXPECT_TRUE(RunAndCompare(matmul_module_str, ErrorSpec{1e-2, 1e-4}));
@@ -479,6 +501,55 @@ TEST_F(MatmulTest, DivisionByConstantWithEltwiseLinearF32) {
   ; CHECK-DAG:   }
   ; CHECK:     }
   )");
+}
+
+TEST_F(MatmulTest, SimpleBiasTestFP16_PARAM_F32) {
+  if (!IsSupportedType(PrimitiveType::F16)) {
+    GTEST_SKIP() << "CPU does not support F16.";
+  }
+
+  const char* matmul_module_str = R"(
+  HloModule jit_apply, entry_computation_layout={(f32[3072]{0}, f32[768,3072]{1,0}, f32[16,128,768]{2,1,0})->f16[16,128,3072]{2,1,0}}, allow_spmd_sharding_propagation_to_output={true}
+  ENTRY matmul.test.f16 {
+    Arg_2.3 = f32[16,128,768]{2,1,0} parameter(2), sharding={replicated}
+    convert.4 = f16[16,128,768]{2,1,0} convert(Arg_2.3)
+    Arg_1.2 = f32[768,3072]{1,0} parameter(1), sharding={replicated}
+    convert.5 = f16[768,3072]{1,0} convert(Arg_1.2)
+    dot.7 = f16[16,128,3072]{2,1,0} dot(convert.4, convert.5), lhs_contracting_dims={2}, rhs_contracting_dims={0}
+    Arg_0.1 = f32[3072]{0} parameter(0), sharding={replicated}
+    convert.6 = f16[3072]{0} convert(Arg_0.1)
+    reshape.8 = f16[1,1,3072]{2,1,0} reshape(convert.6)
+    broadcast.9 = f16[1,1,3072]{2,1,0} broadcast(reshape.8), dimensions={0,1,2}
+    reshape.10 = f16[3072]{0} reshape(broadcast.9)
+    broadcast.11 = f16[16,128,3072]{2,1,0} broadcast(reshape.10), dimensions={2}
+    ROOT add.12 = f16[16,128,3072]{2,1,0} add(dot.7, broadcast.11)
+  })";
+
+  EXPECT_TRUE(RunAndCompare(matmul_module_str, ErrorSpec{1e-2, 1e-2}));
+  MatchOptimizedHlo(matmul_module_str, fused_matmul_bias_);
+}
+
+TEST_F(MatmulTest, SimpleBiasTestFP16_PARAM_FP16) {
+  if (!IsSupportedType(PrimitiveType::F16)) {
+    GTEST_SKIP() << "CPU does not support F16.";
+  }
+  const char* matmul_module_str = R"(
+  HloModule jit_apply, entry_computation_layout={(f16[3072]{0}, f16[768,3072]{1,0}, f32[16,128,768]{2,1,0})->f16[16,128,3072]{2,1,0}}, allow_spmd_sharding_propagation_to_output={true}
+  ENTRY matmul.test.f16 {
+    Arg_2.3 = f32[16,128,768]{2,1,0} parameter(2), sharding={replicated}
+    convert.4 = f16[16,128,768]{2,1,0} convert(Arg_2.3)
+    Arg_1.2 = f16[768,3072]{1,0} parameter(1), sharding={replicated}
+    dot.5 = f16[16,128,3072]{2,1,0} dot(convert.4, Arg_1.2), lhs_contracting_dims={2}, rhs_contracting_dims={0}
+    Arg_0.1 = f16[3072]{0} parameter(0), sharding={replicated}
+    reshape.6 = f16[1,1,3072]{2,1,0} reshape(Arg_0.1)
+    broadcast.7 = f16[1,1,3072]{2,1,0} broadcast(reshape.6), dimensions={0,1,2}
+    reshape.8 = f16[3072]{0} reshape(broadcast.7)
+    broadcast.9 = f16[16,128,3072]{2,1,0} broadcast(reshape.8), dimensions={2}
+    ROOT add.10 = f16[16,128,3072]{2,1,0} add(dot.5, broadcast.9)
+  })";
+
+  EXPECT_TRUE(RunAndCompare(matmul_module_str, ErrorSpec{1e-2, 1e-2}));
+  MatchOptimizedHlo(matmul_module_str, fused_matmul_bias_);
 }
 
 TEST_F(MatmulTest, TestF32NonConstantWeights) {
