@@ -45,4 +45,5 @@ message OneDnnLayerNormConfig {
     SCALE_AND_SHIFT = 3;
   }
   FusionKind fused_ops = 1;
+  int32 epsilon_typecast = 2;
 }
