@@ -52,6 +52,10 @@ struct GpuAllocatorConfig {
   // allocate. This is the default value of XLA_PYTHON_CLIENT_MEM_FRACTION.
   double memory_fraction = 0.75;
 
+  // Only used if kind == kBFC. The size of reserved memory space for gpu system
+  // in mega bytes. If null, the default value will be used.
+  std::optional<int> gpu_system_memory_size = std::nullopt;
+
   // Only used if kind == kBFC. If true, the allocator will immediately allocate
   // the maximum amount allowed by `memory_fraction`. This reduces
   // fragmentation, allowing more of the total memory to be used. If false, the
@@ -71,7 +75,8 @@ std::unique_ptr<tsl::BFCAllocator> GetGpuHostAllocator(
 
 // Builds a BFCAllocator for all local GPUs.
 absl::StatusOr<std::unique_ptr<tsl::BFCAllocator>> CreateBFCAllocator(
-    se::StreamExecutor* executor, double memory_fraction, bool preallocate);
+    se::StreamExecutor* executor, double memory_fraction, bool preallocate,
+    std::optional<int> gpu_system_memory_size);
 
 // Builds a BFCAllocator for all local GPUs that uses collective memory.
 absl::StatusOr<std::unique_ptr<tsl::BFCAllocator>> CreateCollectiveBFCAllocator(
