@@ -106,9 +106,9 @@ absl::Status AddressComputationThunk::Initialize(
 absl::Status AddressComputationThunk::ExecuteOnStream(
     const ExecuteParams& params) {
   auto& stream = *params.stream;
-  std::vector<se::DeviceMemoryBase> new_buffers(
-      embedded_thunk_arguments_.size(), se::DeviceMemoryBase());
   const BufferAllocations& orig_allocations = *params.buffer_allocations;
+  std::vector<se::DeviceMemoryBase> new_buffers(orig_allocations.size(),
+                                                se::DeviceMemoryBase());
 
   // Get memory allocation for copying offsets from device.
   int64_t* offsets_base = [&] {
