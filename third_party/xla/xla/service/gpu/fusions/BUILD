@@ -76,6 +76,7 @@ cc_library(
         "//xla/service/gpu:thunk",
         "//xla/service/gpu/kernels:custom_kernel",
         "//xla/service/gpu/kernels:custom_kernel_fusion",
+        "//xla/service/gpu/runtime:address_computation_thunk",
         "//xla/service/gpu/runtime:custom_call_thunk",
         "//xla/service/gpu/runtime:gemm_thunk",
         "//xla/service/gpu/runtime:kernel_thunk",

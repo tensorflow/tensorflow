@@ -1,75 +1,396 @@
 Auto generated patch. Do not edit or delete it, even if empty.
-diff -ruN --strip-trailing-cr a/utils/bazel/llvm-project-overlay/libc/BUILD.bazel b/utils/bazel/llvm-project-overlay/libc/BUILD.bazel
---- a/utils/bazel/llvm-project-overlay/libc/BUILD.bazel
-+++ b/utils/bazel/llvm-project-overlay/libc/BUILD.bazel
-@@ -66,7 +66,7 @@
+diff -ruN --strip-trailing-cr a/llvm/include/llvm/Transforms/Scalar/Float2Int.h b/llvm/include/llvm/Transforms/Scalar/Float2Int.h
+--- a/llvm/include/llvm/Transforms/Scalar/Float2Int.h
++++ b/llvm/include/llvm/Transforms/Scalar/Float2Int.h
+@@ -44,7 +44,7 @@
+   std::optional<ConstantRange> calcRange(Instruction *I);
+   void walkBackwards();
+   void walkForwards();
+-  bool validateAndTransform(const DataLayout &DL);
++  bool validateAndTransform();
+   Value *convert(Instruction *I, Type *ToTy);
+   void cleanup();
  
- libc_support_library(
-     name = "internal_includes",
--    hdrs = glob([
-+    textual_hdrs = glob([
-         "include/llvm-libc-macros/*.h",
-         "include/llvm-libc-types/*",
-     ]),
-diff -ruN --strip-trailing-cr a/utils/bazel/llvm-project-overlay/libc/test/src/math/BUILD.bazel b/utils/bazel/llvm-project-overlay/libc/test/src/math/BUILD.bazel
---- a/utils/bazel/llvm-project-overlay/libc/test/src/math/BUILD.bazel
-+++ b/utils/bazel/llvm-project-overlay/libc/test/src/math/BUILD.bazel
-@@ -178,6 +178,7 @@
-     deps = [
-         "//libc:__support_fputil_basic_operations",
-         "//libc:__support_fputil_fp_bits",
-+        "//libc:internal_includes",
-         "//libc/test/UnitTest:LibcUnitTest",
-         "//libc/test/UnitTest:fp_test_helpers",
-         "//libc/utils/MPFRWrapper:mpfr_wrapper",
-@@ -323,6 +324,7 @@
-         "//libc:__support_fputil_basic_operations",
-         "//libc:__support_fputil_fenv_impl",
-         "//libc:__support_fputil_fp_bits",
-+        "//libc:internal_includes",
-         "//libc/test/UnitTest:LibcUnitTest",
-         "//libc/test/UnitTest:fp_test_helpers",
-     ],
-@@ -350,6 +352,7 @@
-         "//libc:__support_cpp_limits",
-         "//libc:__support_fputil_fp_bits",
-         "//libc:__support_fputil_normal_float",
-+        "//libc:internal_includes",
-         "//libc/test/UnitTest:LibcUnitTest",
-         "//libc/test/UnitTest:fp_test_helpers",
-     ],
-@@ -376,6 +379,7 @@
-     deps = [
-         "//libc:__support_fputil_fenv_impl",
-         "//libc:__support_fputil_fp_bits",
-+        "//libc:internal_includes",
-         "//libc/test/UnitTest:LibcUnitTest",
-         "//libc/test/UnitTest:fp_test_helpers",
-         "//libc/utils/MPFRWrapper:mpfr_wrapper",
-@@ -412,6 +416,7 @@
-     deps = [
-         "//libc:__support_fputil_fenv_impl",
-         "//libc:__support_fputil_fp_bits",
-+        "//libc:internal_includes",
-         "//libc/test/UnitTest:LibcUnitTest",
-         "//libc/test/UnitTest:fp_test_helpers",
-         "//libc/utils/MPFRWrapper:mpfr_wrapper",
-@@ -523,6 +528,7 @@
-         "//libc:__support_cpp_type_traits",
-         "//libc:__support_fputil_basic_operations",
-         "//libc:__support_fputil_fp_bits",
-+        "//libc:internal_includes",
-         "//libc/test/UnitTest:LibcUnitTest",
-         "//libc/test/UnitTest:fp_test_helpers",
-     ],
-diff -ruN --strip-trailing-cr a/utils/bazel/llvm-project-overlay/libc/test/UnitTest/BUILD.bazel b/utils/bazel/llvm-project-overlay/libc/test/UnitTest/BUILD.bazel
---- a/utils/bazel/llvm-project-overlay/libc/test/UnitTest/BUILD.bazel
-+++ b/utils/bazel/llvm-project-overlay/libc/test/UnitTest/BUILD.bazel
-@@ -84,6 +84,7 @@
-         "//libc:__support_fputil_fp_bits",
-         "//libc:__support_fputil_fpbits_str",
-         "//libc:__support_fputil_rounding_mode",
-+        "//libc:internal_includes",
-     ],
- )
+diff -ruN --strip-trailing-cr a/llvm/lib/Transforms/Scalar/Float2Int.cpp b/llvm/lib/Transforms/Scalar/Float2Int.cpp
+--- a/llvm/lib/Transforms/Scalar/Float2Int.cpp
++++ b/llvm/lib/Transforms/Scalar/Float2Int.cpp
+@@ -311,7 +311,7 @@
+ }
  
+ // If there is a valid transform to be done, do it.
+-bool Float2IntPass::validateAndTransform(const DataLayout &DL) {
++bool Float2IntPass::validateAndTransform() {
+   bool MadeChange = false;
+ 
+   // Iterate over every disjoint partition of the def-use graph.
+@@ -376,24 +376,16 @@
+       LLVM_DEBUG(dbgs() << "F2I: Value not guaranteed to be representable!\n");
+       continue;
+     }
+-
+-    // OK, R is known to be representable.
+-    // Pick the smallest legal type that will fit.
+-    Type *Ty = DL.getSmallestLegalIntType(*Ctx, MinBW);
+-    if (!Ty) {
+-      // Every supported target supports 64-bit and 32-bit integers,
+-      // so fallback to a 32 or 64-bit integer if the value fits.
+-      if (MinBW <= 32) {
+-        Ty = Type::getInt32Ty(*Ctx);
+-      } else if (MinBW <= 64) {
+-        Ty = Type::getInt64Ty(*Ctx);
+-      } else {
+-        LLVM_DEBUG(dbgs() << "F2I: Value requires more than bits to represent "
+-                             "than the target supports!\n");
+-        continue;
+-      }
++    if (MinBW > 64) {
++      LLVM_DEBUG(
++          dbgs() << "F2I: Value requires more than 64 bits to represent!\n");
++      continue;
+     }
+ 
++    // OK, R is known to be representable. Now pick a type for it.
++    // FIXME: Pick the smallest legal type that will fit.
++    Type *Ty = (MinBW > 32) ? Type::getInt64Ty(*Ctx) : Type::getInt32Ty(*Ctx);
++
+     for (auto MI = ECs.member_begin(It), ME = ECs.member_end();
+          MI != ME; ++MI)
+       convert(*MI, Ty);
+@@ -499,8 +491,7 @@
+   walkBackwards();
+   walkForwards();
+ 
+-  const DataLayout &DL = F.getParent()->getDataLayout();
+-  bool Modified = validateAndTransform(DL);
++  bool Modified = validateAndTransform();
+   if (Modified)
+     cleanup();
+   return Modified;
+diff -ruN --strip-trailing-cr a/llvm/test/Transforms/Float2Int/basic.ll b/llvm/test/Transforms/Float2Int/basic.ll
+--- a/llvm/test/Transforms/Float2Int/basic.ll
++++ b/llvm/test/Transforms/Float2Int/basic.ll
+@@ -1,29 +1,16 @@
+ ; NOTE: Assertions have been autogenerated by utils/update_test_checks.py
+-; RUN: opt < %s -passes=float2int -S | FileCheck %s -check-prefixes=CHECK,NONE
+-; RUN: opt < %s -passes=float2int -S --data-layout="n64" | FileCheck %s -check-prefixes=CHECK,ONLY64
+-; RUN: opt < %s -passes=float2int -S --data-layout="n8:16:32:64"| FileCheck %s -check-prefixes=CHECK,MULTIPLE
++; RUN: opt < %s -passes='float2int' -S | FileCheck %s
+ 
+ ;
+ ; Positive tests
+ ;
+ 
+ define i16 @simple1(i8 %a) {
+-; NONE-LABEL: @simple1(
+-; NONE-NEXT:    [[TMP1:%.*]] = zext i8 [[A:%.*]] to i32
+-; NONE-NEXT:    [[T21:%.*]] = add i32 [[TMP1]], 1
+-; NONE-NEXT:    [[TMP2:%.*]] = trunc i32 [[T21]] to i16
+-; NONE-NEXT:    ret i16 [[TMP2]]
+-;
+-; ONLY64-LABEL: @simple1(
+-; ONLY64-NEXT:    [[TMP1:%.*]] = zext i8 [[A:%.*]] to i64
+-; ONLY64-NEXT:    [[T21:%.*]] = add i64 [[TMP1]], 1
+-; ONLY64-NEXT:    [[TMP2:%.*]] = trunc i64 [[T21]] to i16
+-; ONLY64-NEXT:    ret i16 [[TMP2]]
+-;
+-; MULTIPLE-LABEL: @simple1(
+-; MULTIPLE-NEXT:    [[TMP1:%.*]] = zext i8 [[A:%.*]] to i16
+-; MULTIPLE-NEXT:    [[T21:%.*]] = add i16 [[TMP1]], 1
+-; MULTIPLE-NEXT:    ret i16 [[T21]]
++; CHECK-LABEL: @simple1(
++; CHECK-NEXT:    [[TMP1:%.*]] = zext i8 [[A:%.*]] to i32
++; CHECK-NEXT:    [[T21:%.*]] = add i32 [[TMP1]], 1
++; CHECK-NEXT:    [[TMP2:%.*]] = trunc i32 [[T21]] to i16
++; CHECK-NEXT:    ret i16 [[TMP2]]
+ ;
+   %t1 = uitofp i8 %a to float
+   %t2 = fadd float %t1, 1.0
+@@ -32,23 +19,11 @@
+ }
+ 
+ define i8 @simple2(i8 %a) {
+-; NONE-LABEL: @simple2(
+-; NONE-NEXT:    [[TMP1:%.*]] = zext i8 [[A:%.*]] to i32
+-; NONE-NEXT:    [[T21:%.*]] = sub i32 [[TMP1]], 1
+-; NONE-NEXT:    [[TMP2:%.*]] = trunc i32 [[T21]] to i8
+-; NONE-NEXT:    ret i8 [[TMP2]]
+-;
+-; ONLY64-LABEL: @simple2(
+-; ONLY64-NEXT:    [[TMP1:%.*]] = zext i8 [[A:%.*]] to i64
+-; ONLY64-NEXT:    [[T21:%.*]] = sub i64 [[TMP1]], 1
+-; ONLY64-NEXT:    [[TMP2:%.*]] = trunc i64 [[T21]] to i8
+-; ONLY64-NEXT:    ret i8 [[TMP2]]
+-;
+-; MULTIPLE-LABEL: @simple2(
+-; MULTIPLE-NEXT:    [[TMP1:%.*]] = zext i8 [[A:%.*]] to i16
+-; MULTIPLE-NEXT:    [[T21:%.*]] = sub i16 [[TMP1]], 1
+-; MULTIPLE-NEXT:    [[TMP2:%.*]] = trunc i16 [[T21]] to i8
+-; MULTIPLE-NEXT:    ret i8 [[TMP2]]
++; CHECK-LABEL: @simple2(
++; CHECK-NEXT:    [[TMP1:%.*]] = zext i8 [[A:%.*]] to i32
++; CHECK-NEXT:    [[T21:%.*]] = sub i32 [[TMP1]], 1
++; CHECK-NEXT:    [[TMP2:%.*]] = trunc i32 [[T21]] to i8
++; CHECK-NEXT:    ret i8 [[TMP2]]
+ ;
+   %t1 = uitofp i8 %a to float
+   %t2 = fsub float %t1, 1.0
+@@ -57,22 +32,10 @@
+ }
+ 
+ define i32 @simple3(i8 %a) {
+-; NONE-LABEL: @simple3(
+-; NONE-NEXT:    [[TMP1:%.*]] = zext i8 [[A:%.*]] to i32
+-; NONE-NEXT:    [[T21:%.*]] = sub i32 [[TMP1]], 1
+-; NONE-NEXT:    ret i32 [[T21]]
+-;
+-; ONLY64-LABEL: @simple3(
+-; ONLY64-NEXT:    [[TMP1:%.*]] = zext i8 [[A:%.*]] to i64
+-; ONLY64-NEXT:    [[T21:%.*]] = sub i64 [[TMP1]], 1
+-; ONLY64-NEXT:    [[TMP2:%.*]] = trunc i64 [[T21]] to i32
+-; ONLY64-NEXT:    ret i32 [[TMP2]]
+-;
+-; MULTIPLE-LABEL: @simple3(
+-; MULTIPLE-NEXT:    [[TMP1:%.*]] = zext i8 [[A:%.*]] to i16
+-; MULTIPLE-NEXT:    [[T21:%.*]] = sub i16 [[TMP1]], 1
+-; MULTIPLE-NEXT:    [[TMP2:%.*]] = zext i16 [[T21]] to i32
+-; MULTIPLE-NEXT:    ret i32 [[TMP2]]
++; CHECK-LABEL: @simple3(
++; CHECK-NEXT:    [[TMP1:%.*]] = zext i8 [[A:%.*]] to i32
++; CHECK-NEXT:    [[T21:%.*]] = sub i32 [[TMP1]], 1
++; CHECK-NEXT:    ret i32 [[T21]]
+ ;
+   %t1 = uitofp i8 %a to float
+   %t2 = fsub float %t1, 1.0
+@@ -81,23 +44,11 @@
+ }
+ 
+ define i1 @cmp(i8 %a, i8 %b) {
+-; NONE-LABEL: @cmp(
+-; NONE-NEXT:    [[TMP1:%.*]] = zext i8 [[A:%.*]] to i32
+-; NONE-NEXT:    [[TMP2:%.*]] = zext i8 [[B:%.*]] to i32
+-; NONE-NEXT:    [[T31:%.*]] = icmp slt i32 [[TMP1]], [[TMP2]]
+-; NONE-NEXT:    ret i1 [[T31]]
+-;
+-; ONLY64-LABEL: @cmp(
+-; ONLY64-NEXT:    [[TMP1:%.*]] = zext i8 [[A:%.*]] to i64
+-; ONLY64-NEXT:    [[TMP2:%.*]] = zext i8 [[B:%.*]] to i64
+-; ONLY64-NEXT:    [[T31:%.*]] = icmp slt i64 [[TMP1]], [[TMP2]]
+-; ONLY64-NEXT:    ret i1 [[T31]]
+-;
+-; MULTIPLE-LABEL: @cmp(
+-; MULTIPLE-NEXT:    [[TMP1:%.*]] = zext i8 [[A:%.*]] to i16
+-; MULTIPLE-NEXT:    [[TMP2:%.*]] = zext i8 [[B:%.*]] to i16
+-; MULTIPLE-NEXT:    [[T31:%.*]] = icmp slt i16 [[TMP1]], [[TMP2]]
+-; MULTIPLE-NEXT:    ret i1 [[T31]]
++; CHECK-LABEL: @cmp(
++; CHECK-NEXT:    [[TMP1:%.*]] = zext i8 [[A:%.*]] to i32
++; CHECK-NEXT:    [[TMP2:%.*]] = zext i8 [[B:%.*]] to i32
++; CHECK-NEXT:    [[T31:%.*]] = icmp slt i32 [[TMP1]], [[TMP2]]
++; CHECK-NEXT:    ret i1 [[T31]]
+ ;
+   %t1 = uitofp i8 %a to float
+   %t2 = uitofp i8 %b to float
+@@ -119,27 +70,12 @@
+ }
+ 
+ define i32 @simple5(i8 %a, i8 %b) {
+-; NONE-LABEL: @simple5(
+-; NONE-NEXT:    [[TMP1:%.*]] = zext i8 [[A:%.*]] to i32
+-; NONE-NEXT:    [[TMP2:%.*]] = zext i8 [[B:%.*]] to i32
+-; NONE-NEXT:    [[T31:%.*]] = add i32 [[TMP1]], 1
+-; NONE-NEXT:    [[T42:%.*]] = mul i32 [[T31]], [[TMP2]]
+-; NONE-NEXT:    ret i32 [[T42]]
+-;
+-; ONLY64-LABEL: @simple5(
+-; ONLY64-NEXT:    [[TMP1:%.*]] = zext i8 [[A:%.*]] to i64
+-; ONLY64-NEXT:    [[TMP2:%.*]] = zext i8 [[B:%.*]] to i64
+-; ONLY64-NEXT:    [[T31:%.*]] = add i64 [[TMP1]], 1
+-; ONLY64-NEXT:    [[T42:%.*]] = mul i64 [[T31]], [[TMP2]]
+-; ONLY64-NEXT:    [[TMP3:%.*]] = trunc i64 [[T42]] to i32
+-; ONLY64-NEXT:    ret i32 [[TMP3]]
+-;
+-; MULTIPLE-LABEL: @simple5(
+-; MULTIPLE-NEXT:    [[TMP1:%.*]] = zext i8 [[A:%.*]] to i32
+-; MULTIPLE-NEXT:    [[TMP2:%.*]] = zext i8 [[B:%.*]] to i32
+-; MULTIPLE-NEXT:    [[T31:%.*]] = add i32 [[TMP1]], 1
+-; MULTIPLE-NEXT:    [[T42:%.*]] = mul i32 [[T31]], [[TMP2]]
+-; MULTIPLE-NEXT:    ret i32 [[T42]]
++; CHECK-LABEL: @simple5(
++; CHECK-NEXT:    [[TMP1:%.*]] = zext i8 [[A:%.*]] to i32
++; CHECK-NEXT:    [[TMP2:%.*]] = zext i8 [[B:%.*]] to i32
++; CHECK-NEXT:    [[T31:%.*]] = add i32 [[TMP1]], 1
++; CHECK-NEXT:    [[T42:%.*]] = mul i32 [[T31]], [[TMP2]]
++; CHECK-NEXT:    ret i32 [[T42]]
+ ;
+   %t1 = uitofp i8 %a to float
+   %t2 = uitofp i8 %b to float
+@@ -150,27 +86,12 @@
+ }
+ 
+ define i32 @simple6(i8 %a, i8 %b) {
+-; NONE-LABEL: @simple6(
+-; NONE-NEXT:    [[TMP1:%.*]] = zext i8 [[A:%.*]] to i32
+-; NONE-NEXT:    [[TMP2:%.*]] = zext i8 [[B:%.*]] to i32
+-; NONE-NEXT:    [[T31:%.*]] = sub i32 0, [[TMP1]]
+-; NONE-NEXT:    [[T42:%.*]] = mul i32 [[T31]], [[TMP2]]
+-; NONE-NEXT:    ret i32 [[T42]]
+-;
+-; ONLY64-LABEL: @simple6(
+-; ONLY64-NEXT:    [[TMP1:%.*]] = zext i8 [[A:%.*]] to i64
+-; ONLY64-NEXT:    [[TMP2:%.*]] = zext i8 [[B:%.*]] to i64
+-; ONLY64-NEXT:    [[T31:%.*]] = sub i64 0, [[TMP1]]
+-; ONLY64-NEXT:    [[T42:%.*]] = mul i64 [[T31]], [[TMP2]]
+-; ONLY64-NEXT:    [[TMP3:%.*]] = trunc i64 [[T42]] to i32
+-; ONLY64-NEXT:    ret i32 [[TMP3]]
+-;
+-; MULTIPLE-LABEL: @simple6(
+-; MULTIPLE-NEXT:    [[TMP1:%.*]] = zext i8 [[A:%.*]] to i32
+-; MULTIPLE-NEXT:    [[TMP2:%.*]] = zext i8 [[B:%.*]] to i32
+-; MULTIPLE-NEXT:    [[T31:%.*]] = sub i32 0, [[TMP1]]
+-; MULTIPLE-NEXT:    [[T42:%.*]] = mul i32 [[T31]], [[TMP2]]
+-; MULTIPLE-NEXT:    ret i32 [[T42]]
++; CHECK-LABEL: @simple6(
++; CHECK-NEXT:    [[TMP1:%.*]] = zext i8 [[A:%.*]] to i32
++; CHECK-NEXT:    [[TMP2:%.*]] = zext i8 [[B:%.*]] to i32
++; CHECK-NEXT:    [[T31:%.*]] = sub i32 0, [[TMP1]]
++; CHECK-NEXT:    [[T42:%.*]] = mul i32 [[T31]], [[TMP2]]
++; CHECK-NEXT:    ret i32 [[T42]]
+ ;
+   %t1 = uitofp i8 %a to float
+   %t2 = uitofp i8 %b to float
+@@ -184,37 +105,15 @@
+ ; cause failure of the other.
+ 
+ define i32 @multi1(i8 %a, i8 %b, i8 %c, float %d) {
+-; NONE-LABEL: @multi1(
+-; NONE-NEXT:    [[TMP1:%.*]] = zext i8 [[A:%.*]] to i32
+-; NONE-NEXT:    [[TMP2:%.*]] = zext i8 [[B:%.*]] to i32
+-; NONE-NEXT:    [[FC:%.*]] = uitofp i8 [[C:%.*]] to float
+-; NONE-NEXT:    [[X1:%.*]] = add i32 [[TMP1]], [[TMP2]]
+-; NONE-NEXT:    [[Z:%.*]] = fadd float [[FC]], [[D:%.*]]
+-; NONE-NEXT:    [[W:%.*]] = fptoui float [[Z]] to i32
+-; NONE-NEXT:    [[R:%.*]] = add i32 [[X1]], [[W]]
+-; NONE-NEXT:    ret i32 [[R]]
+-;
+-; ONLY64-LABEL: @multi1(
+-; ONLY64-NEXT:    [[TMP1:%.*]] = zext i8 [[A:%.*]] to i64
+-; ONLY64-NEXT:    [[TMP2:%.*]] = zext i8 [[B:%.*]] to i64
+-; ONLY64-NEXT:    [[FC:%.*]] = uitofp i8 [[C:%.*]] to float
+-; ONLY64-NEXT:    [[X1:%.*]] = add i64 [[TMP1]], [[TMP2]]
+-; ONLY64-NEXT:    [[TMP3:%.*]] = trunc i64 [[X1]] to i32
+-; ONLY64-NEXT:    [[Z:%.*]] = fadd float [[FC]], [[D:%.*]]
+-; ONLY64-NEXT:    [[W:%.*]] = fptoui float [[Z]] to i32
+-; ONLY64-NEXT:    [[R:%.*]] = add i32 [[TMP3]], [[W]]
+-; ONLY64-NEXT:    ret i32 [[R]]
+-;
+-; MULTIPLE-LABEL: @multi1(
+-; MULTIPLE-NEXT:    [[TMP1:%.*]] = zext i8 [[A:%.*]] to i16
+-; MULTIPLE-NEXT:    [[TMP2:%.*]] = zext i8 [[B:%.*]] to i16
+-; MULTIPLE-NEXT:    [[FC:%.*]] = uitofp i8 [[C:%.*]] to float
+-; MULTIPLE-NEXT:    [[X1:%.*]] = add i16 [[TMP1]], [[TMP2]]
+-; MULTIPLE-NEXT:    [[TMP3:%.*]] = zext i16 [[X1]] to i32
+-; MULTIPLE-NEXT:    [[Z:%.*]] = fadd float [[FC]], [[D:%.*]]
+-; MULTIPLE-NEXT:    [[W:%.*]] = fptoui float [[Z]] to i32
+-; MULTIPLE-NEXT:    [[R:%.*]] = add i32 [[TMP3]], [[W]]
+-; MULTIPLE-NEXT:    ret i32 [[R]]
++; CHECK-LABEL: @multi1(
++; CHECK-NEXT:    [[TMP1:%.*]] = zext i8 [[A:%.*]] to i32
++; CHECK-NEXT:    [[TMP2:%.*]] = zext i8 [[B:%.*]] to i32
++; CHECK-NEXT:    [[FC:%.*]] = uitofp i8 [[C:%.*]] to float
++; CHECK-NEXT:    [[X1:%.*]] = add i32 [[TMP1]], [[TMP2]]
++; CHECK-NEXT:    [[Z:%.*]] = fadd float [[FC]], [[D:%.*]]
++; CHECK-NEXT:    [[W:%.*]] = fptoui float [[Z]] to i32
++; CHECK-NEXT:    [[R:%.*]] = add i32 [[X1]], [[W]]
++; CHECK-NEXT:    ret i32 [[R]]
+ ;
+   %fa = uitofp i8 %a to float
+   %fb = uitofp i8 %b to float
+@@ -228,22 +127,11 @@
+ }
+ 
+ define i16 @simple_negzero(i8 %a) {
+-; NONE-LABEL: @simple_negzero(
+-; NONE-NEXT:    [[TMP1:%.*]] = zext i8 [[A:%.*]] to i32
+-; NONE-NEXT:    [[T21:%.*]] = add i32 [[TMP1]], 0
+-; NONE-NEXT:    [[TMP2:%.*]] = trunc i32 [[T21]] to i16
+-; NONE-NEXT:    ret i16 [[TMP2]]
+-;
+-; ONLY64-LABEL: @simple_negzero(
+-; ONLY64-NEXT:    [[TMP1:%.*]] = zext i8 [[A:%.*]] to i64
+-; ONLY64-NEXT:    [[T21:%.*]] = add i64 [[TMP1]], 0
+-; ONLY64-NEXT:    [[TMP2:%.*]] = trunc i64 [[T21]] to i16
+-; ONLY64-NEXT:    ret i16 [[TMP2]]
+-;
+-; MULTIPLE-LABEL: @simple_negzero(
+-; MULTIPLE-NEXT:    [[TMP1:%.*]] = zext i8 [[A:%.*]] to i16
+-; MULTIPLE-NEXT:    [[T21:%.*]] = add i16 [[TMP1]], 0
+-; MULTIPLE-NEXT:    ret i16 [[T21]]
++; CHECK-LABEL: @simple_negzero(
++; CHECK-NEXT:    [[TMP1:%.*]] = zext i8 [[A:%.*]] to i32
++; CHECK-NEXT:    [[T21:%.*]] = add i32 [[TMP1]], 0
++; CHECK-NEXT:    [[TMP2:%.*]] = trunc i32 [[T21]] to i16
++; CHECK-NEXT:    ret i16 [[TMP2]]
+ ;
+   %t1 = uitofp i8 %a to float
+   %t2 = fadd fast float %t1, -0.0
+@@ -252,26 +140,12 @@
+ }
+ 
+ define i32 @simple_negative(i8 %call) {
+-; NONE-LABEL: @simple_negative(
+-; NONE-NEXT:    [[TMP1:%.*]] = sext i8 [[CALL:%.*]] to i32
+-; NONE-NEXT:    [[MUL1:%.*]] = mul i32 [[TMP1]], -3
+-; NONE-NEXT:    [[TMP2:%.*]] = trunc i32 [[MUL1]] to i8
+-; NONE-NEXT:    [[CONV3:%.*]] = sext i8 [[TMP2]] to i32
+-; NONE-NEXT:    ret i32 [[CONV3]]
+-;
+-; ONLY64-LABEL: @simple_negative(
+-; ONLY64-NEXT:    [[TMP1:%.*]] = sext i8 [[CALL:%.*]] to i64
+-; ONLY64-NEXT:    [[MUL1:%.*]] = mul i64 [[TMP1]], -3
+-; ONLY64-NEXT:    [[TMP2:%.*]] = trunc i64 [[MUL1]] to i8
+-; ONLY64-NEXT:    [[CONV3:%.*]] = sext i8 [[TMP2]] to i32
+-; ONLY64-NEXT:    ret i32 [[CONV3]]
+-;
+-; MULTIPLE-LABEL: @simple_negative(
+-; MULTIPLE-NEXT:    [[TMP1:%.*]] = sext i8 [[CALL:%.*]] to i16
+-; MULTIPLE-NEXT:    [[MUL1:%.*]] = mul i16 [[TMP1]], -3
+-; MULTIPLE-NEXT:    [[TMP2:%.*]] = trunc i16 [[MUL1]] to i8
+-; MULTIPLE-NEXT:    [[CONV3:%.*]] = sext i8 [[TMP2]] to i32
+-; MULTIPLE-NEXT:    ret i32 [[CONV3]]
++; CHECK-LABEL: @simple_negative(
++; CHECK-NEXT:    [[TMP1:%.*]] = sext i8 [[CALL:%.*]] to i32
++; CHECK-NEXT:    [[MUL1:%.*]] = mul i32 [[TMP1]], -3
++; CHECK-NEXT:    [[TMP2:%.*]] = trunc i32 [[MUL1]] to i8
++; CHECK-NEXT:    [[CONV3:%.*]] = sext i8 [[TMP2]] to i32
++; CHECK-NEXT:    ret i32 [[CONV3]]
+ ;
+   %conv1 = sitofp i8 %call to float
+   %mul = fmul float %conv1, -3.000000e+00
+@@ -281,22 +155,11 @@
+ }
+ 
+ define i16 @simple_fneg(i8 %a) {
+-; NONE-LABEL: @simple_fneg(
+-; NONE-NEXT:    [[TMP1:%.*]] = zext i8 [[A:%.*]] to i32
+-; NONE-NEXT:    [[T21:%.*]] = sub i32 0, [[TMP1]]
+-; NONE-NEXT:    [[TMP2:%.*]] = trunc i32 [[T21]] to i16
+-; NONE-NEXT:    ret i16 [[TMP2]]
+-;
+-; ONLY64-LABEL: @simple_fneg(
+-; ONLY64-NEXT:    [[TMP1:%.*]] = zext i8 [[A:%.*]] to i64
+-; ONLY64-NEXT:    [[T21:%.*]] = sub i64 0, [[TMP1]]
+-; ONLY64-NEXT:    [[TMP2:%.*]] = trunc i64 [[T21]] to i16
+-; ONLY64-NEXT:    ret i16 [[TMP2]]
+-;
+-; MULTIPLE-LABEL: @simple_fneg(
+-; MULTIPLE-NEXT:    [[TMP1:%.*]] = zext i8 [[A:%.*]] to i16
+-; MULTIPLE-NEXT:    [[T21:%.*]] = sub i16 0, [[TMP1]]
+-; MULTIPLE-NEXT:    ret i16 [[T21]]
++; CHECK-LABEL: @simple_fneg(
++; CHECK-NEXT:    [[TMP1:%.*]] = zext i8 [[A:%.*]] to i32
++; CHECK-NEXT:    [[T21:%.*]] = sub i32 0, [[TMP1]]
++; CHECK-NEXT:    [[TMP2:%.*]] = trunc i32 [[T21]] to i16
++; CHECK-NEXT:    ret i16 [[TMP2]]
+ ;
+   %t1 = uitofp i8 %a to float
+   %t2 = fneg fast float %t1
