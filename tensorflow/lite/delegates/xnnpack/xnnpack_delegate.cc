@@ -141,12 +141,14 @@ xnn_datatype GetXNNPackDatatype(TfLiteContext* context,
 
       return xnn_datatype_quint8;
     }
-    case kTfLiteInt8: {
+    case kTfLiteInt8:
+    case kTfLiteInt4: {
       if (tensor.quantization.type != kTfLiteAffineQuantization) {
         TF_LITE_KERNEL_LOG(context,
-                           "unsupported quantization type %d for INT8 "
+                           "unsupported quantization type %d for %s "
                            "tensor %d in XNNPACK delegate",
-                           tensor.quantization.type, t);
+                           tensor.quantization.type,
+                           TfLiteTypeGetName(tensor.type), t);
         return xnn_datatype_invalid;
       }
       const auto quantization_params =
@@ -154,26 +156,27 @@ xnn_datatype GetXNNPackDatatype(TfLiteContext* context,
               tensor.quantization.params);
       if (quantization_params->scale == nullptr) {
         TF_LITE_KERNEL_LOG(context,
-                           "missing scale quantization parameters for INT8 "
+                           "missing scale quantization parameters for %s "
                            "tensor %d in XNNPACK delegate",
-                           t);
+                           TfLiteTypeGetName(tensor.type), t);
         return xnn_datatype_invalid;
       }
       if (quantization_params->zero_point == nullptr) {
         TF_LITE_KERNEL_LOG(context,
                            "missing zero point quantization parameters for "
-                           "INT8 tensor %d in XNNPACK delegate",
-                           t);
+                           "%s tensor %d in XNNPACK delegate",
+                           TfLiteTypeGetName(tensor.type), t);
         return xnn_datatype_invalid;
       }
       if (quantization_params->scale->size !=
           quantization_params->zero_point->size) {
         TF_LITE_KERNEL_LOG(context,
                            "mismatching number of scale (%d) and zero "
-                           "point (%d) quantization parameters for INT8 "
+                           "point (%d) quantization parameters for %s "
                            "tensor %d in XNNPACK delegate",
                            quantization_params->scale->size,
-                           quantization_params->zero_point->size, t);
+                           quantization_params->zero_point->size,
+                           TfLiteTypeGetName(tensor.type), t);
         return xnn_datatype_invalid;
       }
 
@@ -182,14 +185,22 @@ xnn_datatype GetXNNPackDatatype(TfLiteContext* context,
         if (!std::isnormal(scale) || scale <= 0.0f) {
           TF_LITE_KERNEL_LOG(context,
                              "unsupported scale value (%f) in channel %d for "
-                             "INT8 tensor %d in XNNPACK delegate",
-                             scale, i, t);
+                             "%s tensor %d in XNNPACK delegate",
+                             scale, i, TfLiteTypeGetName(tensor.type), t);
           return xnn_datatype_invalid;
         }
       }
 
       if (quantization_params->scale->size == 1) {
         // Per-tensor quantization parameters
+        if (kTfLiteInt8 != tensor.type) {
+          TF_LITE_KERNEL_LOG(context,
+                             "unsupported per-tensor quantization scale "
+                             "parameter for %s tensor %d in XNNPACK delegate",
+                             TfLiteTypeGetName(tensor.type), t);
+          return xnn_datatype_invalid;
+        }
+
         const int zero_point = quantization_params->zero_point->data[0];
         if (zero_point < std::numeric_limits<int8_t>::min() ||
             zero_point > std::numeric_limits<int8_t>::max()) {
@@ -209,15 +220,25 @@ xnn_datatype GetXNNPackDatatype(TfLiteContext* context,
              c <
              SizeOfDimension(&tensor, quantization_params->quantized_dimension);
              c++) {
-          if (quantization_params->zero_point->data[c] != 0) {
+          if (quantization_params->zero_point->data[c] != 0 &&
+              (tensor.type != kTfLiteInt4 &&
+               quantization_params->zero_point->data[c] != 8)) {
             TF_LITE_KERNEL_LOG(context,
                                "unsupported zero-point value %d in channel "
-                               "%d of INT8 tensor %d in XNNPACK delegate",
-                               quantization_params->zero_point->data[c], c, t);
+                               "%d of %s tensor %d in XNNPACK delegate",
+                               quantization_params->zero_point->data[c], c,
+                               TfLiteTypeGetName(tensor.type), t);
             return xnn_datatype_invalid;
           }
         }
-        return xnn_datatype_qcint8;
+        switch (tensor.type) {
+          case kTfLiteInt4:
+            return xnn_datatype_qcint4;
+          case kTfLiteInt8:
+            return xnn_datatype_qcint8;
+          default:
+            return xnn_datatype_invalid;
+        }
       } else {
         TF_LITE_KERNEL_LOG(
             context,
@@ -989,6 +1010,7 @@ class Subgraph {
               dims.size(), dims.data(), data, XNN_INVALID_VALUE_ID, flags,
               &xnnpack_id);
           break;
+        case xnn_datatype_qcint4:
         case xnn_datatype_qcint8:
         case xnn_datatype_qcint32:
           status = xnn_define_channelwise_quantized_tensor_value(
@@ -1994,6 +2016,77 @@ class Subgraph {
                                      "Quantized tensor #%d in node #%d has "
                                      "invalid quantization parameters",
                                      tensor_index, node_index);
+            return kTfLiteError;
+          }
+          return kTfLiteOk;
+        }
+        break;
+      default:
+        break;
+    }
+
+    TF_LITE_MAYBE_KERNEL_LOG(
+        context, "unsupported type %s in tensor #%d in node #%d",
+        TfLiteTypeGetName(tensor.type), tensor_index, node_index);
+    return kTfLiteError;
+  }
+
+  static TfLiteStatus CheckTensorFloat32OrQCInt4OrQCInt8Type(
+      const Delegate& delegate, TfLiteContext* context,
+      const TfLiteTensor& tensor, int expected_quantized_dimension,
+      int tensor_index, int node_index) {
+    switch (tensor.type) {
+      case kTfLiteFloat32:
+        return kTfLiteOk;
+      case kTfLiteInt4:
+      case kTfLiteInt8:
+        if (delegate.support_signed_8bit_quantization() &&
+            (kTfLiteInt8 == tensor.type || kTfLiteInt4 == tensor.type)) {
+          if (tensor.quantization.type != kTfLiteAffineQuantization) {
+            TF_LITE_MAYBE_KERNEL_LOG(
+                context,
+                "unsupported quantization type %d in tensor #%d in node #%d",
+                tensor.quantization.type, tensor_index, node_index);
+            return kTfLiteError;
+          }
+          const TfLiteAffineQuantization* quantization_params =
+              static_cast<const TfLiteAffineQuantization*>(
+                  tensor.quantization.params);
+          if (quantization_params->scale == nullptr) {
+            TF_LITE_MAYBE_KERNEL_LOG(context,
+                                     "missing scale quantization parameters in "
+                                     "tensor #%d in node #%d",
+                                     tensor_index, node_index);
+            return kTfLiteError;
+          }
+          if (quantization_params->scale->size > 1 &&
+              quantization_params->quantized_dimension !=
+                  expected_quantized_dimension) {
+            TF_LITE_MAYBE_KERNEL_LOG(
+                context,
+                "unsupported quantized dimension %d in tensor #%d in node #%d",
+                quantization_params->quantized_dimension, tensor_index,
+                node_index);
+            return kTfLiteError;
+          }
+          return kTfLiteOk;
+        }
+        break;
+      case kTfLiteUInt8:
+        if (delegate.support_unsigned_8bit_quantization()) {
+          const auto* quantization_params =
+              static_cast<const TfLiteAffineQuantization*>(
+                  tensor.quantization.params);
+          if (tensor.quantization.type != kTfLiteAffineQuantization ||
+              quantization_params->quantized_dimension != 0 ||
+              quantization_params->scale == nullptr ||
+              quantization_params->zero_point == nullptr ||
+              quantization_params->scale->size != 1 ||
+              quantization_params->zero_point->size != 1) {
+            TF_LITE_MAYBE_KERNEL_LOG(
+                context,
+                "unsupported quantization type %d in tensor #%d in node #%d",
+                tensor.quantization.type, tensor_index, node_index);
             return kTfLiteError;
           }
           return kTfLiteOk;
@@ -3802,7 +3895,7 @@ class Subgraph {
           delegate, logging_context, filter_tensor, node->inputs->data[1],
           node_index));
     } else {
-      TF_LITE_ENSURE_STATUS(CheckTensorFloat32OrQCInt8Type(
+      TF_LITE_ENSURE_STATUS(CheckTensorFloat32OrQCInt4OrQCInt8Type(
           delegate, logging_context, filter_tensor,
           /*expected_quantized_dimension=*/0, node->inputs->data[1],
           node_index));
@@ -3853,7 +3946,8 @@ class Subgraph {
 
     bool dynamically_quantized = (delegate.enable_latest_operators() &&
                                   (input_tensor.type == kTfLiteFloat32 &&
-                                   filter_tensor.type == kTfLiteInt8));
+                                   (filter_tensor.type == kTfLiteInt4 ||
+                                    filter_tensor.type == kTfLiteInt8)));
     if (input_tensor.type != output_tensor.type ||
         ((input_tensor.type != filter_tensor.type) && !dynamically_quantized)) {
       TF_LITE_MAYBE_KERNEL_LOG(
@@ -3868,6 +3962,15 @@ class Subgraph {
           logging_context,
           "unexpected number of shape dimensions %d in tensor #%d",
           NumDimensions(&input_tensor), node->inputs->data[0]);
+      return kTfLiteError;
+    }
+
+    if (filter_tensor.type == kTfLiteInt4 && input_channels % 2 == 1) {
+      TF_LITE_MAYBE_KERNEL_LOG(
+          logging_context,
+          "unsupported odd number of inputs channels (%d) in FULLY_CONNECTED"
+          " operator #%d",
+          input_channels, node_index);
       return kTfLiteError;
     }
 
@@ -4004,11 +4107,15 @@ class Subgraph {
         std::vector<size_t> filter_dims(
             &filter_tensor.dims->data[0],
             &filter_tensor.dims->data[NumDimensions(&filter_tensor)]);
+        const xnn_datatype filter_datatype = GetXNNPackDatatype(
+            logging_context, filter_tensor, node->inputs->data[1]);
+        int32_t zero_point_value = filter_params->zero_point->data[0];
         uint32_t kernel_id = XNN_INVALID_VALUE_ID;
-        status = xnn_define_channelwise_quantized_tensor_value(
-            subgraph, xnn_datatype_qcint8, filter_params->scale->data,
-            filter_dims.size(), /*channel_dim=*/0, filter_dims.data(),
-            GetTensorData<int8_t>(&filter_tensor), XNN_INVALID_VALUE_ID,
+        status = xnn_define_channelwise_quantized_tensor_value_v2(
+            subgraph, filter_datatype, zero_point_value,
+            filter_params->scale->data, filter_dims.size(), /*channel_dim=*/0,
+            filter_dims.data(), GetTensorData<int8_t>(&filter_tensor),
+            XNN_INVALID_VALUE_ID,
             /*flags=*/0, &kernel_id);
         if (status != xnn_status_success) {
           TF_LITE_KERNEL_LOG(
