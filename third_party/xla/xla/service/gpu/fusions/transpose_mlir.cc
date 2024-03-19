@@ -207,8 +207,9 @@ IndexingMap GetSharedMemoryWriteIndexingMap(
           thread_id_indexing.GetSymbolCount(),
           {c0, th_x.floorDiv(32) + 4 * tile_sizes[loop_dim], th_x % 32},
           mlir_context),
-      thread_id_indexing.GetDimensionRanges(),
-      thread_id_indexing.GetSymbolRanges(),
+      thread_id_indexing.GetDimVars(),
+      thread_id_indexing.GetRangeVars(),
+      thread_id_indexing.GetRTVars(),
       thread_id_indexing.GetConstraints()};
   shmem_write_indexing.Simplify();
   return shmem_write_indexing;
@@ -222,8 +223,9 @@ IndexingMap GetSharedMemoryReadIndexingMap(
       GetSharedMemoryWriteIndexingMap(thread_id_indexing, loop_dim);
   return IndexingMap{thread_id_indexing.GetIndexingContext(),
                      write_indexing.GetAffineMap().getSubMap({0, 2, 1}),
-                     write_indexing.GetDimensionRanges(),
-                     write_indexing.GetSymbolRanges(),
+                     write_indexing.GetDimVars(),
+                     write_indexing.GetRangeVars(),
+                     write_indexing.GetRTVars(),
                      write_indexing.GetConstraints()};
 }
 

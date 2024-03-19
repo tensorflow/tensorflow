@@ -115,7 +115,7 @@ void FindAllIndices(const IndexingMap& thread_id_to_physical_index,
                     std::vector<AffineExpr>* symbols,
                     std::vector<int64_t>* indices) {
   if (dim_id < thread_id_to_physical_index.GetDimensionCount()) {
-    Interval dim_range = thread_id_to_physical_index.GetDimensionRange(dim_id);
+    Interval dim_range = thread_id_to_physical_index.GetDimensionBound(dim_id);
     for (int64_t dim_value = dim_range.lower; dim_value <= dim_range.upper;
          ++dim_value) {
       dimensions->push_back(getAffineConstantExpr(dim_value, mlir_context));
@@ -127,7 +127,7 @@ void FindAllIndices(const IndexingMap& thread_id_to_physical_index,
   }
   if (symbol_id < thread_id_to_physical_index.GetSymbolCount()) {
     Interval symbol_range =
-        thread_id_to_physical_index.GetSymbolRange(symbol_id);
+        thread_id_to_physical_index.GetSymbolBound(symbol_id);
     for (int64_t symbol_value = symbol_range.lower;
          symbol_value <= symbol_range.upper; ++symbol_value) {
       symbols->push_back(getAffineConstantExpr(symbol_value, mlir_context));
@@ -232,8 +232,9 @@ bool IsCoalesced(const IndexingMap& thread_id_to_input_indexing_map,
   IndexingMap thread_x_first_32_elements{
       indexing_context,
       AffineMap::get(1, 0, {thread_x_dim, c0, c0, c0, c0, c0}, mlir_context),
-      {Interval{0, 31}},
-      {}};
+      {DimVar{{0, 31}}},
+      /*range_vars=*/{},
+      /*rt_vars=*/{}};
   IndexingMap thread_x_to_linearized_input =
       thread_x_first_32_elements * thread_id_to_input_indexing_map;
   thread_x_to_linearized_input.Simplify();

@@ -29,8 +29,6 @@ namespace gpu {
 
 class IndexingContext {
  public:
-  using RTValsID = int64_t;
-
   explicit IndexingContext(mlir::MLIRContext* mlir_context)
       : mlir_context_(mlir_context) {}
 
@@ -39,13 +37,13 @@ class IndexingContext {
   // TBD: This method should behave like a thread-safe counter. It will register
   // a new RTSymbol by adding it to `rt_vals_registry_` with the newly generated
   // ID.
-  RTValsID RegisterRTSymbol(const HloInstruction* instr,
-                            IndexingMap indexing_map);
+  RTVar RegisterRTVar(RTVarData rt_var_data);
+
+  RTVarData& GetRTVarData(RTVarID id);
 
  private:
   mlir::MLIRContext* mlir_context_;
-  absl::flat_hash_map<RTValsID, std::pair<const HloInstruction*, IndexingMap>>
-      rt_vals_registry_;
+  absl::flat_hash_map<RTVarID, RTVarData> rt_vars_registry_;
 };
 
 }  // namespace gpu

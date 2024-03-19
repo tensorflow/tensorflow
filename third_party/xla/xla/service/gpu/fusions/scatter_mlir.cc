@@ -123,9 +123,9 @@ std::optional<IndexingMap> MlirScatterFusion::ComputeThreadIdToInputIndexing(
             {mlir::getAffineDimExpr(0, mlir_context),
              mlir::getAffineSymbolExpr(0, mlir_context)},
             mlir_context),
-        /*dim_ranges=*/RangesFromTensorSizes(scatter_update_shape.dimensions()),
-        /*symbol_ranges=*/
-        RangesFromTensorSizes({scatter_indices_shape.dimensions(1)})};
+        DimVarsFromTensorSizes(scatter_update_shape.dimensions()),
+        RangeVarsFromTensorSizes({scatter_indices_shape.dimensions(1)}),
+        /*rt_vars=*/{}};
     auto scatter_indices_map = scatter_update_map * updates_to_indices_map;
     scatter_indices_map.Simplify();
     return scatter_indices_map;

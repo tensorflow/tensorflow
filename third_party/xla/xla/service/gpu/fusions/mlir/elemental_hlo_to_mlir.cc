@@ -576,8 +576,8 @@ Value CheckConstraints(const IndexingMap& map, ValueRange dims,
         ret, CheckConstraint(ApplyAffineExpr(expression, dims, symbols, b),
                              range, b));
   }
-  for (auto&& [index, range] : llvm::enumerate(map.GetDimensionRanges())) {
-    ret = b.create<AndIOp>(ret, CheckConstraint(dims[index], range, b));
+  for (auto&& [index, bound] : llvm::enumerate(map.GetDimensionBounds())) {
+    ret = b.create<AndIOp>(ret, CheckConstraint(dims[index], bound, b));
   }
   return ret;
 }
@@ -1061,9 +1061,9 @@ void GetLoopBoundsFromIndexingMap(ImplicitLocOpBuilder& b,
                                   SmallVectorImpl<Value>* steps) {
   Value c1 = b.create<ConstantIndexOp>(1);
 
-  for (const Interval& range : indexing_map.GetSymbolRanges()) {
-    lbs->push_back(b.create<ConstantIndexOp>(range.lower));
-    ubs->push_back(b.create<ConstantIndexOp>(range.upper + 1));
+  for (const Interval& bound : indexing_map.GetSymbolBounds()) {
+    lbs->push_back(b.create<ConstantIndexOp>(bound.lower));
+    ubs->push_back(b.create<ConstantIndexOp>(bound.upper + 1));
     // Note that this is not optimal, when there are mod constraints on symbols,
     // e.g. for reduce-window. In that case we have to extract loop steps from
     // the mod constraints.

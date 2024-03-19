@@ -15,12 +15,22 @@ limitations under the License.
 
 #include "xla/service/gpu/model/indexing_context.h"
 
+#include <utility>
+
+#include "xla/service/gpu/model/indexing_map.h"
+
 namespace xla {
 namespace gpu {
 
-IndexingContext::RTValsID IndexingContext::RegisterRTSymbol(
-    const HloInstruction* instr, IndexingMap indexing_map) {
-  return 0;
+static RTVarID rt_var_count = 0;
+
+RTVar IndexingContext::RegisterRTVar(RTVarData rt_var_data) {
+  rt_vars_registry_.insert(std::make_pair(rt_var_count, rt_var_data));
+  return RTVar{rt_var_count++};
+}
+
+RTVarData& IndexingContext::GetRTVarData(RTVarID id) {
+  return rt_vars_registry_.at(id);
 }
 
 }  // namespace gpu

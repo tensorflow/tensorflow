@@ -172,27 +172,27 @@ IndexingMap KernelFusionInterface::GetDefaultThreadIdToOutputIndexingMap(
     divisor *= output_shape.dimensions(dimension);
   }
 
-  std::vector<Interval> dimension_ranges = {
-      {0, static_cast<int64_t>(launch_dims.thread_counts_per_block().x) - 1},
-      {0, static_cast<int64_t>(launch_dims.thread_counts_per_block().y) - 1},
-      {0, static_cast<int64_t>(launch_dims.thread_counts_per_block().z) - 1},
-      {0, static_cast<int64_t>(launch_dims.block_counts().x) - 1},
-      {0, static_cast<int64_t>(launch_dims.block_counts().y) - 1},
-      {0, static_cast<int64_t>(launch_dims.block_counts().z) - 1},
+  std::vector<DimVar> dim_vars = {
+      {{0, static_cast<int64_t>(launch_dims.thread_counts_per_block().x) - 1}},
+      {{0, static_cast<int64_t>(launch_dims.thread_counts_per_block().y) - 1}},
+      {{0, static_cast<int64_t>(launch_dims.thread_counts_per_block().z) - 1}},
+      {{0, static_cast<int64_t>(launch_dims.block_counts().x) - 1}},
+      {{0, static_cast<int64_t>(launch_dims.block_counts().y) - 1}},
+      {{0, static_cast<int64_t>(launch_dims.block_counts().z) - 1}},
   };
-  std::vector<Interval> symbol_ranges;
+  std::vector<RangeVar> range_vars;
   int64_t num_elements = ShapeUtil::ElementsIn(output_shape);
-  symbol_ranges.push_back(
-      {0, CeilOfRatio(num_elements,
-                      static_cast<int64_t>(launch_dims.launch_bound()) *
-                          unroll_factor) -
-              1});
-  symbol_ranges.push_back({0, unroll_factor - 1});
+  range_vars.push_back(
+      {{0, CeilOfRatio(num_elements,
+                       static_cast<int64_t>(launch_dims.launch_bound()) *
+                           unroll_factor) -
+               1}});
+  range_vars.push_back({0, unroll_factor - 1});
   IndexingMap indexing_map(
       indexing_context,
       mlir::AffineMap::get(/*dimCount=*/6,
                            /*symbolCount=*/2, output_dims, mlir_context),
-      dimension_ranges, symbol_ranges);
+      dim_vars, range_vars, /*rt_vars=*/{});
   // Remove the unroll_elem_id symbol if unrolling divides num_elements.
   if (num_elements % unroll_factor == 0) {
     indexing_map.AddConstraint(linear_index.replace({{unroll_elem_id, c0}}),
