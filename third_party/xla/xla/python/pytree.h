@@ -19,9 +19,9 @@ limitations under the License.
 // See https://jax.readthedocs.io/en/latest/pytrees.html for the documentation
 // about pytree.
 
+#include <cstddef>
 #include <memory>
 #include <optional>
-#include <stdexcept>
 #include <string>
 #include <utility>
 #include <vector>
@@ -30,6 +30,7 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/hash/hash.h"
+#include "absl/types/span.h"
 #include "third_party/nanobind/include/nanobind/nanobind.h"
 #include "xla/python/nb_class_ptr.h"
 #include "xla/python/pytree.pb.h"
@@ -67,6 +68,11 @@ class PyTreeRegistry : public std::enable_shared_from_this<PyTreeRegistry> {
     nanobind::callable to_iterable;
     // A function with signature: (aux_data, iterable) -> object
     nanobind::callable from_iterable;
+
+    // Helper that calls to_iterable and validates that it returns a pair
+    // of an iterable and an aux_data object
+    std::pair<nanobind::iterable, nanobind::object> ToIterable(
+        nanobind::handle o) const;
   };
 
   // Registers a new custom type. Objects of `type` will be treated as container
