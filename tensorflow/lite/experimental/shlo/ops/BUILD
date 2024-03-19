@@ -688,3 +688,31 @@ cc_test(
         "@com_google_googletest//:gtest_main",
     ],
 )
+
+cc_library(
+    name = "not",
+    srcs = ["not.cc"],
+    hdrs = ["not.h"],
+    deps = [
+        ":unary_elementwise",
+        ":util",
+        "//tensorflow/lite/experimental/shlo:dispatch",
+        "//tensorflow/lite/experimental/shlo:tensor",
+        "@com_google_absl//absl/status",
+    ],
+)
+
+cc_test(
+    name = "not_test",
+    srcs = ["not_test.cc"],
+    deps = [
+        ":not",
+        ":test_util",
+        ":unary_elementwise_test_util",
+        "//tensorflow/lite/experimental/shlo:data_type",
+        "//tensorflow/lite/experimental/shlo:shape",
+        "//tensorflow/lite/experimental/shlo:status_matcher",
+        "//tensorflow/lite/experimental/shlo:tensor",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
