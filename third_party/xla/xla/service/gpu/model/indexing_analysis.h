@@ -161,6 +161,10 @@ IndexingMap GetIndexingMapForTiling(mlir::AffineMap block_offsets,
 // Returns the shape of the output of the instruction.
 const Shape& GetOutputShape(const HloInstruction* instr, int64_t output_id);
 
+// Creates an identity indexing map corresponding to the parameter shape.
+IndexingMap CreateIdentityMap(const Shape& shape,
+                              IndexingContext* indexing_context);
+
 llvm::SmallVector<mlir::AffineExpr, 4> DelinearizeInBoundsIndex(
     mlir::AffineExpr linear, absl::Span<const int64_t> sizes,
     absl::Span<const int64_t> strides);
