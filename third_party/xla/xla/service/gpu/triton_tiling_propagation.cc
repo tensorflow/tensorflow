@@ -49,6 +49,27 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
+namespace {
+
+// The input is a map from dimension index to DimIterationSpec. The function
+// removes dimensions that have a trivial DimIterationSpec.
+absl::flat_hash_map<int, TensorIterationSpec::DimIterationSpec>
+FilterTrivialDims(
+    const absl::flat_hash_map<int, TensorIterationSpec::DimIterationSpec>&
+        dim_iter_specs) {
+  absl::flat_hash_map<int, TensorIterationSpec::DimIterationSpec>
+      non_trivial_dim_iteration_specs;
+  for (const auto& [dim, dim_spec] : dim_iter_specs) {
+    if (dim_spec.size() == 1 && dim_spec[0].count == 1) {
+      continue;
+    }
+    non_trivial_dim_iteration_specs[dim] = dim_spec;
+  }
+  return non_trivial_dim_iteration_specs;
+}
+
+}  // namespace
+
 const TensorIterationSpec::DimIterationSpec* TensorIterationSpec::Find(
     const int dimension) const {
   if (auto it = dim_iteration_specs_.find(dimension);
@@ -60,14 +81,23 @@ const TensorIterationSpec::DimIterationSpec* TensorIterationSpec::Find(
 
 bool TensorIterationSpec::IsPhysicallyEquivalent(
     const TensorIterationSpec& other) const {
-  if (dim_iteration_specs_.size() != other.dim_iteration_specs_.size()) {
+  // Filter out trivial dims since they don't affect physical representation.
+  const absl::flat_hash_map<int, DimIterationSpec>
+      non_trivial_dim_iteration_specs = FilterTrivialDims(dim_iteration_specs_);
+  const absl::flat_hash_map<int, DimIterationSpec>
+      other_non_trivial_dim_iteration_specs =
+          FilterTrivialDims(other.dim_iteration_specs_);
+
+  if (non_trivial_dim_iteration_specs.size() !=
+      other_non_trivial_dim_iteration_specs.size()) {
     return false;
   }
-  for (const auto& pair : dim_iteration_specs_) {
+
+  for (const auto& pair : non_trivial_dim_iteration_specs) {
     int dimension = pair.first;
     const DimIterationSpec& dim_iter_spec = pair.second;
-    auto other_it = other.dim_iteration_specs_.find(dimension);
-    if (other_it == other.dim_iteration_specs_.end()) {
+    auto other_it = other_non_trivial_dim_iteration_specs.find(dimension);
+    if (other_it == other_non_trivial_dim_iteration_specs.end()) {
       return false;
     }
     const DimIterationSpec& other_dim_iter_spec = other_it->second;
