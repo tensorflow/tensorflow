@@ -343,6 +343,26 @@ class IfrtLoadVariableOpConversion
   }
 };
 
+// Convert tf.IfrtRestoreVariableOp to tf_mlrt.IfrtRestoreVariableOp
+class IfrtRestoreVariableOpConversion
+    : public mlir::OpConversionPattern<mlir::TF::IfrtRestoreVariableOp> {
+ public:
+  using OpConversionPattern::OpConversionPattern;
+
+  mlir::LogicalResult matchAndRewrite(
+      mlir::TF::IfrtRestoreVariableOp op, OpAdaptor adaptor,
+      mlir::ConversionPatternRewriter &rewriter) const override {
+    auto new_op = rewriter.create<tf_mlrt::IfrtRestoreVariableOp>(
+        op.getLoc(), adaptor.getOperands()[0], adaptor.getOperands()[1],
+        adaptor.getOperands()[2],
+        adaptor.getOperands().slice(3, adaptor.getOperands().size() - 3),
+        op.getRestoredDtypes());
+    rewriter.replaceOp(op, new_op);
+
+    return mlir::success();
+  }
+};
+
 std::optional<std::string> DecodeLongName(mlir::Location loc) {
   if (auto name_loc = loc.dyn_cast<mlir::NameLoc>()) {
     return name_loc.getName().str();
@@ -1189,7 +1209,8 @@ class TfToMlrtConversionPass
     patterns.add<WhileOpConversion>(&context, &type_converter_, &symbol_table);
     patterns.add<AsyncOpConversion, GetResourceOpConversion,
                  SetResourceOpConversion, IfrtLoadVariableOpConversion,
-                 TFAwaitOpConversion, TFPromiseOpConversion>(&context);
+                 IfrtRestoreVariableOpConversion, TFAwaitOpConversion,
+                 TFPromiseOpConversion>(&context);
     patterns.add<BatchFunctionOpConversion, CaseOpConversion, CondOpConversion,
                  TFAsyncWhileOpConversion, TFMapFnOpConversion>(type_converter_,
                                                                 &context);

@@ -476,3 +476,24 @@ func.func @ifrt_load_variable_test() -> () {
   func.return
 }
 
+// -----
+
+// Test lowering of IfrtRestoreVariableOp
+
+// CHECK-LABEL: func @ifrt_restore_variable_test
+func.func @ifrt_restore_variable_test() -> () {
+  // CHECK-NEXT: [[PREFIX:%.*]] = tf_mlrt.executeop
+  %cst = "tf.Const"() {__op_key = 0: i32, value = dense<"restore_ariables"> : tensor<!tf_type.string>} : () -> tensor<!tf_type.string>
+  // CHECK-NEXT: [[SLICE:%.*]] = tf_mlrt.executeop
+  %cst_0 = "tf.Const"()  {__op_key = 1: i32, value = dense<""> : tensor<1x!tf_type.string>} : () -> tensor<1x!tf_type.string>
+  // CHECK-NEXT: [[NAME:%.*]] = tf_mlrt.executeop
+  %cst_1 = "tf.Const"()  {__op_key = 2: i32, value = dense<["y"]> : tensor<1x!tf_type.string>} : () -> tensor<1x!tf_type.string>
+  // CHECK-NEXT: [[HANDLE:%.*]] = tf_mlrt.executeop
+  %handle = "tf.VarHandleOp"() {__op_key = 3: i32, container = "x", shared_name = "y"} : () -> tensor<!tf_type.resource<tensor<3x1xf32>>>
+  // CHECK-NEXT: "tf_mlrt.ifrt_restore_variable"([[PREFIX]], [[NAME]], [[SLICE]], [[HANDLE]]) {restored_dtypes = [f32]}
+  "tf.IfrtRestoreVariableOp"(%cst, %cst_1, %cst_0, %handle) {restored_dtypes = [f32]} : (tensor<!tf_type.string>, tensor<1x!tf_type.string>, tensor<1x!tf_type.string>, tensor<!tf_type.resource<tensor<3x1xf32>>>) -> ()
+  // CHECK-NEXT: return
+  func.return
+}
+
+
