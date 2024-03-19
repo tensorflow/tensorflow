@@ -1173,9 +1173,9 @@ tf_py_strict_test(
 
 tf_py_strict_test(
     name = "skip_test",
-    size = "small",
+    size = "medium",
     srcs = ["skip_test.py"],
-    shard_count = 4,
+    shard_count = 8,
     deps = [
         ":checkpoint_test_base",
         ":test_base",
