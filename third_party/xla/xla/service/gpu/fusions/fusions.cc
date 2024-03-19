@@ -178,6 +178,9 @@ absl::StatusOr<std::unique_ptr<FusionInterface>> GetFusionEmitter(
       if (config.name() == "address_computation") {
         return std::make_unique<AddressComputationFusion>(analysis);
       }
+      if (config.name() == "dynamic_address_computation") {
+        return std::make_unique<DynamicAddressComputationFusion>(analysis);
+      }
       return std::make_unique<CustomFusion>();
     }
     case HloFusionAnalysis::EmitterFusionKind::kInputSlices:
