@@ -267,8 +267,10 @@ absl::Status NVPTXCompiler::OptimizeHloPostLayoutAssignment(
   }
 
   HloPassPipeline pre_pipeline("nvptx post-layout_assignment part 1");
-  // Rewrite normalization patterns into cuDNN Custom Calls.
-  pre_pipeline.AddPass<CudnnNormRewriter>(cuda_compute_capability);
+  if (hlo_module->config().debug_options().xla_gpu_enable_cudnn_layer_norm()) {
+    // Rewrite normalization patterns into cuDNN Custom Calls.
+    pre_pipeline.AddPass<CudnnNormRewriter>(cuda_compute_capability);
+  }
 
   pre_pipeline.AddPass<DotDimensionMerger>();
 
