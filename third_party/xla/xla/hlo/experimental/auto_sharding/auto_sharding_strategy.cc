@@ -277,17 +277,13 @@ BuildStrategyAndCost(const HloInstructionSequence& sequence,
         break;
       }
       case HloOpcode::kBroadcast: {
-        // For an unknown reason, we do not generate partially replicated
-        // strategies for >1D broadcast ops. This can be changed if we find that
-        // our search isn't exhaustive enough for certain ops.
         strategy_group =
             CreateAllStrategiesGroup(
                 ins, ins->shape(), instruction_id, strategy_groups, cluster_env,
                 strategy_map, option, replicated_penalty, batch_dim_map,
                 call_graph, only_allow_divisible,
                 /* create_replicated_strategies */ true,
-                /* create_partially_replicated_strategies */
-                (ins->shape().rank() == 1))
+                /* create_partially_replicated_strategies */ true)
                 .value();
         break;
       }
