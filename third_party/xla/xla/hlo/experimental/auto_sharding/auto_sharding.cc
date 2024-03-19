@@ -3631,9 +3631,16 @@ absl::StatusOr<AutoShardingResult> AutoShardingImplementation::RunAutoSharding(
         return changed.status();
       }
     }
-    std::vector<int64_t> device_mesh_ids = std::vector<int64_t>(total_devices);
-    std::iota(device_mesh_ids.begin(), device_mesh_ids.end(), 0);
-    device_mesh.SetValues(device_mesh_ids);
+    if (option_.device_mesh_ids.size() == total_devices) {
+      // It is unclear what device order to use for partial meshes. So we only
+      // use the actual device order only for the final full mesh.
+      device_mesh.SetValues(option_.device_mesh_ids);
+    } else {
+      std::vector<int64_t> device_mesh_ids =
+          std::vector<int64_t>(total_devices);
+      std::iota(device_mesh_ids.begin(), device_mesh_ids.end(), 0);
+      device_mesh.SetValues(device_mesh_ids);
+    }
 
     // TODO (zhuohan): Include the prof result as an option.
     spmd::ProfilingResult prof_result;

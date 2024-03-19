@@ -393,13 +393,32 @@ BuildStrategyAndCost(const HloInstructionSequence& sequence,
           // Find output shardings.
           switch (opcode) {
             case HloOpcode::kSlice: {
+              // When solve_nd_sharding_iteratively is true, in some cases, we
+              // can have 1D shardings where the total number of tiles is larger
+              // than the number of elements in the partial mesh (and is
+              // actually equal to the number of devices in the original
+              // mesh). Below, we use the correct mesh depending on the number
+              // of elements in the 1D sharding.
               bool is_1d_sharding =
                   VectorGreaterThanOneElementCount(
                       input_spec.tile_assignment().dimensions()) == 1;
-              output_spec = PropagateDimwiseShardingSlice(
-                  input_spec, operand->shape(), ins->shape(),
-                  is_1d_sharding ? cluster_env.device_mesh_1d_
-                                 : cluster_env.device_mesh_);
+              if (is_1d_sharding &&
+                  input_spec.TotalNumTiles() ==
+                      cluster_env.device_mesh_1d_.num_elements()) {
+                output_spec = PropagateDimwiseShardingSlice(
+                    input_spec, operand->shape(), ins->shape(),
+                    cluster_env.device_mesh_1d_);
+              } else if (is_1d_sharding) {
+                CHECK_EQ(input_spec.TotalNumTiles(),
+                         cluster_env.original_device_mesh_1d_.num_elements());
+                output_spec = PropagateDimwiseShardingSlice(
+                    input_spec, operand->shape(), ins->shape(),
+                    cluster_env.original_device_mesh_1d_);
+              } else {
+                output_spec = PropagateDimwiseShardingSlice(
+                    input_spec, operand->shape(), ins->shape(),
+                    cluster_env.device_mesh_);
+              }
               break;
             }
             case HloOpcode::kPad:
