@@ -1290,7 +1290,7 @@ class RewriteQuantizedConvolutionOp
     // output_spatial_shape[i] = ceil(input_spatial_shape[i] / strides[i])
     auto get_output_dim_for_same_padding = [](int64_t input_dim,
                                               int64_t stride_dim) -> int64_t {
-      return std::ceil(input_dim / stride_dim);
+      return std::ceil(input_dim / static_cast<double>(stride_dim));
     };
     return output_height ==
                get_output_dim_for_same_padding(input_height, stride_height) &&
