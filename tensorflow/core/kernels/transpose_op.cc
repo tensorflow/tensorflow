@@ -137,12 +137,11 @@ void TransposeOp::Compute(OpKernelContext* ctx) {
   auto perm_vector = perm.vec<int>();
   auto perm_size = perm.NumElements();
   for (int i = 0; i < perm_size; ++i) {
-    if (perm_vector(i) < 0) {
-      return absl::InvalidArgumentError(absl::StrCat(
-          "The perm values should be non-negative "
-          "but found ",
-          perm_vector(i), " at index ", i));
-    }
+    OP_REQUIRES(ctx, perm_vector(i) > 0, 
+                absl::InvalidArgumentError(absl::StrCat(
+                        "The perm values should be non-negative "
+                        "but found ",
+                        perm_vector(i), " at index ", i)));
   }
   // Although Tperm may be an int64 type, an int32 is sufficient to hold
   // dimension range values, so the narrowing here should be safe.
