@@ -226,7 +226,7 @@ message CalibrationOptions {
   }
 
   // Determines how to calibrate.
-  // The default calibration method is MIN_MAX.
+  // Default value: CALIBRATION_METHOD_MIN_MAX
   CalibrationMethod calibration_method = 1;
 
   // Defines the parameters required for calibration. Parameters such as the

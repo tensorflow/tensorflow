@@ -14,11 +14,14 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/compiler/mlir/quantization/stablehlo/cc/config.h"
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "tensorflow/compiler/mlir/quantization/stablehlo/quantization_config.pb.h"
 
 namespace stablehlo::quantization {
 namespace {
+
+using ::testing::Eq;
 
 TEST(PopulateDefaultsTest, PopulateDefaultsForEmptyConfig) {
   QuantizationConfig config{};
@@ -35,6 +38,34 @@ TEST(PopulateDefaultsTest, PopulateDefaultsForConfigWithUnpackQuantizedTypes) {
   // not overridden.
   const QuantizationConfig new_config = PopulateDefaults(config);
   EXPECT_FALSE(new_config.pipeline_config().unpack_quantized_types());
+}
+
+TEST(PopulateDefaultsTest, DefaultCalibrationOptionsPopulated) {
+  QuantizationConfig config{};
+
+  const QuantizationConfig new_config = PopulateDefaults(config);
+  EXPECT_THAT(new_config.calibration_options().calibration_method(),
+              Eq(CalibrationOptions::CALIBRATION_METHOD_MIN_MAX));
+}
+
+TEST(PopulateDefaultsTest, ExplicitCalibrationOptionsNotOverridden) {
+  QuantizationConfig config{};
+  CalibrationOptions& calibration_options =
+      *config.mutable_calibration_options();
+  calibration_options.set_calibration_method(
+      CalibrationOptions::CALIBRATION_METHOD_AVERAGE_MIN_MAX);
+  calibration_options.mutable_calibration_parameters()->set_initial_num_bins(
+      512);
+
+  // Test that if the user explicitly provided `calibration_options`, it is not
+  // overridden.
+  const QuantizationConfig new_config = PopulateDefaults(config);
+  EXPECT_THAT(new_config.calibration_options().calibration_method(),
+              Eq(CalibrationOptions::CALIBRATION_METHOD_AVERAGE_MIN_MAX));
+  EXPECT_THAT(new_config.calibration_options()
+                  .calibration_parameters()
+                  .initial_num_bins(),
+              Eq(512));
 }
 
 }  // namespace

@@ -243,17 +243,13 @@ absl::StatusOr<ModuleOp> StaticRangePtqComponent::Run(
 absl::Status QuantizeStaticRangePtq(
     const absl::string_view src_saved_model_path,
     const absl::string_view dst_saved_model_path,
-    QuantizationConfig quantization_config,
+    const QuantizationConfig& quantization_config,
     const std::vector<std::string>& signature_keys,
     const absl::flat_hash_map<std::string, SignatureDef>& signature_def_map,
     const PyFunctionLibrary& py_function_library) {
   std::unordered_set<std::string> tags;
   tags.insert(quantization_config.tf_saved_model().tags().begin(),
               quantization_config.tf_saved_model().tags().end());
-  if (!quantization_config.has_calibration_options()) {
-    *quantization_config.mutable_calibration_options() =
-        GetDefaultCalibrationOptions();
-  }
 
   std::unique_ptr<MLIRContext> ctx = CreateMlirContextForQuantization();
 

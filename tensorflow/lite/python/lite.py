@@ -864,7 +864,11 @@ class TFLiteConverterBase:
                     )
                 ],
                 enable_per_channel_quantized_weight=True,
-            )
+            ),
+            # For ODML use cases, uniform quantized types should be left intact.
+            pipeline_config=qc.PipelineConfig(
+                unpack_quantized_types=False,
+            ),
         )
 
         args["quantization_config"] = quantization_config

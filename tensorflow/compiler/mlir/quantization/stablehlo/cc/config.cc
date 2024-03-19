@@ -15,10 +15,26 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/quantization/stablehlo/cc/config.h"
 
 namespace stablehlo::quantization {
+namespace {
+
+// Creates `CalibrationOptions` with default fields. Uses simple min-max
+// calibration by default.
+CalibrationOptions GetDefaultCalibrationOptions() {
+  CalibrationOptions options{};
+  options.set_calibration_method(
+      CalibrationOptions::CALIBRATION_METHOD_MIN_MAX);
+  return options;
+}
+
+}  // namespace
 
 QuantizationConfig PopulateDefaults(
     const QuantizationConfig& user_provided_config) {
   QuantizationConfig config = user_provided_config;
+
+  if (!config.has_calibration_options()) {
+    *config.mutable_calibration_options() = GetDefaultCalibrationOptions();
+  }
 
   PipelineConfig& pipeline_config = *config.mutable_pipeline_config();
   if (!pipeline_config.has_unpack_quantized_types()) {
