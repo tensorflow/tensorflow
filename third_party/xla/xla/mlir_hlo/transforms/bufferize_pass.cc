@@ -138,6 +138,9 @@ struct ComputeOpAndFuncBufferizePass
         .insert<bufferization::BufferizationDialect, lmhlo::LmhloDialect,
                 linalg::LinalgDialect, memref::MemRefDialect, mhlo::MhloDialect,
                 shape::ShapeDialect, vector::VectorDialect>();
+    arith::registerBufferizableOpInterfaceExternalModels(registry);
+    mlir::bufferization::func_ext::
+        registerBufferizableOpInterfaceExternalModels(registry);
     linalg::registerBufferizableOpInterfaceExternalModels(registry);
     mhlo::registerBufferizableOpInterfaceExternalModels(registry);
     shape::registerBufferizableOpInterfaceExternalModels(registry);

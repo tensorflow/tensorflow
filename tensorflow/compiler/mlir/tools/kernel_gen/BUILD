@@ -125,6 +125,7 @@ tf_cc_binary(
         "@llvm-project//llvm:Support",
         "@llvm-project//llvm:Target",
         "@llvm-project//llvm:TargetParser",
+        "@llvm-project//mlir:BufferizationInterfaces",
         "@llvm-project//mlir:ExecutionEngineUtils",
         "@llvm-project//mlir:LLVMToLLVMIRTranslation",
         "@llvm-project//mlir:MemRefTransforms",

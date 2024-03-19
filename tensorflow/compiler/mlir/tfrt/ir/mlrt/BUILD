@@ -58,6 +58,7 @@ cc_library(
         ":mlrt_ops_inc_gen",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:InliningUtils",
     ],
 )
 

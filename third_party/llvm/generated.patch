@@ -1,1 +1,75 @@
 Auto generated patch. Do not edit or delete it, even if empty.
+diff -ruN --strip-trailing-cr a/utils/bazel/llvm-project-overlay/libc/BUILD.bazel b/utils/bazel/llvm-project-overlay/libc/BUILD.bazel
+--- a/utils/bazel/llvm-project-overlay/libc/BUILD.bazel
++++ b/utils/bazel/llvm-project-overlay/libc/BUILD.bazel
+@@ -66,7 +66,7 @@
+ 
+ libc_support_library(
+     name = "internal_includes",
+-    hdrs = glob([
++    textual_hdrs = glob([
+         "include/llvm-libc-macros/*.h",
+         "include/llvm-libc-types/*",
+     ]),
+diff -ruN --strip-trailing-cr a/utils/bazel/llvm-project-overlay/libc/test/src/math/BUILD.bazel b/utils/bazel/llvm-project-overlay/libc/test/src/math/BUILD.bazel
+--- a/utils/bazel/llvm-project-overlay/libc/test/src/math/BUILD.bazel
++++ b/utils/bazel/llvm-project-overlay/libc/test/src/math/BUILD.bazel
+@@ -178,6 +178,7 @@
+     deps = [
+         "//libc:__support_fputil_basic_operations",
+         "//libc:__support_fputil_fp_bits",
++        "//libc:internal_includes",
+         "//libc/test/UnitTest:LibcUnitTest",
+         "//libc/test/UnitTest:fp_test_helpers",
+         "//libc/utils/MPFRWrapper:mpfr_wrapper",
+@@ -323,6 +324,7 @@
+         "//libc:__support_fputil_basic_operations",
+         "//libc:__support_fputil_fenv_impl",
+         "//libc:__support_fputil_fp_bits",
++        "//libc:internal_includes",
+         "//libc/test/UnitTest:LibcUnitTest",
+         "//libc/test/UnitTest:fp_test_helpers",
+     ],
+@@ -350,6 +352,7 @@
+         "//libc:__support_cpp_limits",
+         "//libc:__support_fputil_fp_bits",
+         "//libc:__support_fputil_normal_float",
++        "//libc:internal_includes",
+         "//libc/test/UnitTest:LibcUnitTest",
+         "//libc/test/UnitTest:fp_test_helpers",
+     ],
+@@ -376,6 +379,7 @@
+     deps = [
+         "//libc:__support_fputil_fenv_impl",
+         "//libc:__support_fputil_fp_bits",
++        "//libc:internal_includes",
+         "//libc/test/UnitTest:LibcUnitTest",
+         "//libc/test/UnitTest:fp_test_helpers",
+         "//libc/utils/MPFRWrapper:mpfr_wrapper",
+@@ -412,6 +416,7 @@
+     deps = [
+         "//libc:__support_fputil_fenv_impl",
+         "//libc:__support_fputil_fp_bits",
++        "//libc:internal_includes",
+         "//libc/test/UnitTest:LibcUnitTest",
+         "//libc/test/UnitTest:fp_test_helpers",
+         "//libc/utils/MPFRWrapper:mpfr_wrapper",
+@@ -523,6 +528,7 @@
+         "//libc:__support_cpp_type_traits",
+         "//libc:__support_fputil_basic_operations",
+         "//libc:__support_fputil_fp_bits",
++        "//libc:internal_includes",
+         "//libc/test/UnitTest:LibcUnitTest",
+         "//libc/test/UnitTest:fp_test_helpers",
+     ],
+diff -ruN --strip-trailing-cr a/utils/bazel/llvm-project-overlay/libc/test/UnitTest/BUILD.bazel b/utils/bazel/llvm-project-overlay/libc/test/UnitTest/BUILD.bazel
+--- a/utils/bazel/llvm-project-overlay/libc/test/UnitTest/BUILD.bazel
++++ b/utils/bazel/llvm-project-overlay/libc/test/UnitTest/BUILD.bazel
+@@ -84,6 +84,7 @@
+         "//libc:__support_fputil_fp_bits",
+         "//libc:__support_fputil_fpbits_str",
+         "//libc:__support_fputil_rounding_mode",
++        "//libc:internal_includes",
+     ],
+ )
+ 

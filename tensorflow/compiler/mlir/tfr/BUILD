@@ -1,4 +1,10 @@
 load("//tensorflow:strict.default.bzl", "py_strict_library")
+load("//tensorflow/compiler/mlir:glob_lit_test.bzl", "glob_lit_tests")
+load(
+    "@llvm-project//mlir:tblgen.bzl",
+    "gentbl_cc_library",
+    "td_library",
+)
 load(
     "//tensorflow:tensorflow.bzl",
     "tf_cc_binary",
@@ -6,12 +12,6 @@ load(
 )
 load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable", "tf_py_strict_test", "tf_python_pybind_extension")
 load("//tensorflow/compiler/mlir/tfr:build_defs.bzl", "gen_op_libraries")
-load(
-    "@llvm-project//mlir:tblgen.bzl",
-    "gentbl_cc_library",
-    "td_library",
-)
-load("//tensorflow/compiler/mlir:glob_lit_test.bzl", "glob_lit_tests")
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 
 package(
@@ -114,6 +114,7 @@ cc_library(
         "@llvm-project//mlir:FunctionInterfaces",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:InferTypeOpInterface",
+        "@llvm-project//mlir:InliningUtils",
         "@llvm-project//mlir:QuantOps",
         "@llvm-project//mlir:ShapeDialect",
         "@llvm-project//mlir:SideEffectInterfaces",
@@ -163,6 +164,7 @@ cc_library(
         "@llvm-project//mlir:ArithDialect",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:InliningUtils",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:QuantOps",
         "@llvm-project//mlir:SCFDialect",
