@@ -806,6 +806,16 @@ def choose_compiler(environ_cp):
   )
   return var
 
+def choose_compiler_Win(environ_cp):
+  question = 'Do you want to use Clang to build TensorFlow?'
+  yes_reply = 'Please use "--config=win_clang" to compile TensorFlow with CLANG.'
+  no_reply = 'MSVC will be used to compile TensorFlow.'
+  var = int(
+      get_var(
+          environ_cp, 'TF_NEED_CLANG', None, True, question, yes_reply, no_reply
+      )
+  )
+  return var
 
 def set_clang_compiler_path(environ_cp):
   """Set CLANG_COMPILER_PATH and environment variables.
@@ -1411,6 +1421,12 @@ def main():
     # CUDA not required. Ask whether we should use clang for the CPU build.
     if is_linux():
       environ_cp['TF_NEED_CLANG'] = str(choose_compiler(environ_cp))
+      if environ_cp.get('TF_NEED_CLANG') == '1':
+        clang_compiler_path = set_clang_compiler_path(environ_cp)
+        clang_version = retrieve_clang_version(clang_compiler_path)
+        disable_clang_offsetof_extension(clang_version)
+    if is_windows():
+      environ_cp['TF_NEED_CLANG'] = str(choose_compiler_Win(environ_cp))
       if environ_cp.get('TF_NEED_CLANG') == '1':
         clang_compiler_path = set_clang_compiler_path(environ_cp)
         clang_version = retrieve_clang_version(clang_compiler_path)
