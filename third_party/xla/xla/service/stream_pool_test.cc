@@ -34,20 +34,23 @@ class StreamPoolTest : public ::testing::Test {
   }
 };
 
-TEST_F(StreamPoolTest, EmptyPool) { StreamPool pool; }
+TEST_F(StreamPoolTest, EmptyPool) {
+  std::unique_ptr<se::StreamExecutor> executor = NewStreamExecutor();
+  StreamPool pool(executor.get());
+}
 
 TEST_F(StreamPoolTest, OneStreamPool) {
   std::unique_ptr<se::StreamExecutor> executor = NewStreamExecutor();
-  StreamPool pool;
+  StreamPool pool(executor.get());
 
   // Borrow and return a stream.
-  StreamPool::Ptr stream1 = pool.BorrowStream(executor.get());
+  StreamPool::Ptr stream1 = pool.BorrowStream();
   se::Stream* stream1_ptr = stream1.get();
   EXPECT_TRUE(stream1->ok());
   stream1 = nullptr;
 
   // Borrow and return another stream.
-  StreamPool::Ptr stream2 = pool.BorrowStream(executor.get());
+  StreamPool::Ptr stream2 = pool.BorrowStream();
   se::Stream* stream2_ptr = stream2.get();
   EXPECT_TRUE(stream2->ok());
   stream2 = nullptr;
@@ -59,13 +62,13 @@ TEST_F(StreamPoolTest, OneStreamPool) {
 
 TEST_F(StreamPoolTest, TwoStreamPool) {
   std::unique_ptr<se::StreamExecutor> executor = NewStreamExecutor();
-  StreamPool pool;
+  StreamPool pool(executor.get());
 
   // Borrow two streams.
-  StreamPool::Ptr stream1 = pool.BorrowStream(executor.get());
+  StreamPool::Ptr stream1 = pool.BorrowStream();
   se::Stream* stream1_ptr = stream1.get();
   EXPECT_TRUE(stream1->ok());
-  StreamPool::Ptr stream2 = pool.BorrowStream(executor.get());
+  StreamPool::Ptr stream2 = pool.BorrowStream();
   se::Stream* stream2_ptr = stream2.get();
   EXPECT_TRUE(stream2->ok());
 
@@ -75,7 +78,7 @@ TEST_F(StreamPoolTest, TwoStreamPool) {
 
   // Return stream1 and borrow stream3.
   stream1 = nullptr;
-  StreamPool::Ptr stream3 = pool.BorrowStream(executor.get());
+  StreamPool::Ptr stream3 = pool.BorrowStream();
   se::Stream* stream3_ptr = stream3.get();
   EXPECT_TRUE(stream3->ok());
 
@@ -85,7 +88,7 @@ TEST_F(StreamPoolTest, TwoStreamPool) {
 
   // Return stream2, and borrow stream4.
   stream2 = nullptr;
-  StreamPool::Ptr stream4 = pool.BorrowStream(executor.get());
+  StreamPool::Ptr stream4 = pool.BorrowStream();
   se::Stream* stream4_ptr = stream4.get();
   EXPECT_TRUE(stream4->ok());
 

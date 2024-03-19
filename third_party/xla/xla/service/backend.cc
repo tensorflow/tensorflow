@@ -114,9 +114,9 @@ absl::StatusOr<StreamPool::Ptr> Backend::BorrowStream(
     se::StreamExecutor* executor, se::StreamPriority priority) {
   absl::MutexLock l(&mu_);
   if (!stream_pools_.contains(executor)) {
-    stream_pools_.emplace(executor, std::make_unique<StreamPool>());
+    stream_pools_.emplace(executor, std::make_unique<StreamPool>(executor));
   }
-  return stream_pools_.at(executor)->BorrowStream(executor, priority);
+  return stream_pools_.at(executor)->BorrowStream(priority);
 }
 
 absl::StatusOr<std::vector<StreamPool::Ptr>> Backend::BorrowStreams(
@@ -124,13 +124,12 @@ absl::StatusOr<std::vector<StreamPool::Ptr>> Backend::BorrowStreams(
   absl::MutexLock l(&mu_);
   TF_ASSIGN_OR_RETURN(auto executor, stream_executor(device_ordinal));
   if (!stream_pools_.contains(executor)) {
-    stream_pools_.emplace(executor, std::make_unique<StreamPool>());
+    stream_pools_.emplace(executor, std::make_unique<StreamPool>(executor));
   }
 
   std::vector<StreamPool::Ptr> ptrs;
   for (int i = 0; i < num_streams; i++) {
-    StreamPool::Ptr ptr =
-        stream_pools_.at(executor)->BorrowStream(executor, priority);
+    StreamPool::Ptr ptr = stream_pools_.at(executor)->BorrowStream(priority);
     ptrs.push_back(std::move(ptr));
   }
   return ptrs;
