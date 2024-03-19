@@ -249,6 +249,21 @@ Literal::Literal() : Literal(NilShape()) {}
 Literal::Literal(const Shape& shape)
     : Literal(shape, /*allocate_arrays=*/true) {}
 
+void Literal::SetShape(const Shape& shape) {
+  Shape shape_storage;
+  const Shape* shape_ptr = &shape;
+  if (LayoutUtil::HasCustomElementSizeInBits(shape)) {
+    shape_storage = shape;
+    shape_storage.mutable_layout()->set_element_size_in_bits(0);
+    shape_ptr = &shape_storage;
+  }
+  if (const Shape* intered_shape_ptr = TryInternShape(*shape_ptr)) {
+    shape_ = intered_shape_ptr;
+  } else {
+    shape_ = std::make_unique<Shape>(*shape_ptr);
+  }
+}
+
 void Literal::SetPiece(const Shape& shape, Piece* piece, bool allocate_arrays,
                        ArrayValueState leaf_array_value_state) {
   if (shape.IsTuple()) {
@@ -276,16 +291,9 @@ void Literal::SetPiece(const Shape& shape, Piece* piece, bool allocate_arrays,
 Literal::Literal(const Shape& shape, bool allocate_arrays,
                  ArrayValueState leaf_array_value_state)
     : MutableLiteralBase() {
-  if (const Shape* intered_shape_ptr = TryInternShape(shape)) {
-    shape_ = intered_shape_ptr;
-  } else {
-    shape_ = std::make_unique<Shape>(shape);
-  }
+  SetShape(shape);
   CHECK(leaf_array_value_state != ArrayValueState::kKnown ||
         LayoutUtil::HasLayout(*shape_));
-  // Currently we do nibble packing/unpacking in TPU host/device transfer.
-  CHECK(!LayoutUtil::HasCustomElementSizeInBits(*shape_))
-      << "Literal does not support layouts with custom bit size: " << *shape_;
   root_piece_.set_subshape(shape_.get());
   CHECK(&root_piece_.subshape() == shape_.get());
 

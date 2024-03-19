@@ -1469,6 +1469,11 @@ class Literal : public MutableLiteralBase {
   // Deallocate the buffers held by this literal.
   void DeallocateBuffers();
 
+  // Sets the shape_ field from a Shape. shape_'s element_size_in_bits field
+  // on the layout is always set to 0 since Literals do not support packed
+  // subbyte elements.
+  void SetShape(const Shape& shape);
+
   // Recursively sets the subshapes and buffers of all subpieces rooted at
   // 'piece'. If 'allocate_array' is true, memory is allocated for the arrays in
   // the shape.
