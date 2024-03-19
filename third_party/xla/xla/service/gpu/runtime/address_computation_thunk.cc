@@ -116,34 +116,41 @@ absl::Status AddressComputationThunk::ExecuteOnStream(
     return reinterpret_cast<int64_t*>(offsets_.at(stream.parent())->opaque());
   }();
 
-  for (unsigned i = 0; i < offset_buffer_indices_.size(); ++i) {
-    if (embedded_thunk_arguments_[i] == std::nullopt) {
+  for (auto [operand_idx, values] : llvm::enumerate(
+           llvm::zip(embedded_thunk_arguments_, offset_buffer_indices_,
+                     orig_shapes_, sliced_shapes_))) {
+    auto [argument_slice, offset_slice, orig_shape, sliced_shape] = values;
+
+    if (argument_slice == std::nullopt) {
       continue;
     }
 
     // `orig_operand` will contain the original offset for slice
-    // `embedded_thunk_arguments_[i]` within `orig_allocations`
+    // `argument_slice` within `orig_allocations`
     se::DeviceMemoryBase orig_operand =
-        orig_allocations.GetDeviceAddress(*embedded_thunk_arguments_[i]);
-    if (offset_buffer_indices_[i] == std::nullopt) {
-      new_buffers[embedded_thunk_arguments_[i]->index()] = orig_operand;
+        orig_allocations.GetDeviceAddress(*argument_slice);
+    auto buffer_idx = argument_slice->index();
+
+    if (offset_slice == std::nullopt) {
+      new_buffers[buffer_idx] = orig_operand;
       continue;
     }
 
-    const Shape& src_shape = *orig_shapes_[i];
-    const Shape& dst_shape = *sliced_shapes_[i];
+    const Shape& src_shape = *orig_shape;
+    const Shape& dst_shape = *sliced_shape;
     TF_RET_CHECK(IsContiguousSlice(src_shape, dst_shape));
 
     std::vector<int64_t> slice_starts;
     slice_starts.reserve(dst_shape.rank());
 
-    // Get offset for ith operand, which has `dst_shape.rank()` components.
-    for (auto [idx, offset_slice] :
-         llvm::enumerate(*offset_buffer_indices_[i])) {
+    // Get offset for `operand_idx`-th operand, which has `dst_shape.rank()`
+    // components.
+    for (auto [offset_idx, offset_slice] : llvm::enumerate(*offset_slice)) {
       se::DeviceMemoryBase offset_src =
           orig_allocations.GetDeviceAddress(offset_slice);
-      int64_t* offset_dst = &offsets_base[i + idx];
-      // Copy the idx-th component of the ith offset from device to host.
+      int64_t* offset_dst = &offsets_base[operand_idx + offset_idx];
+      // Copy the `offset_idx`-th component of the offset for the
+      // `operand_idx`-th operand from device to host.
       TF_RETURN_IF_ERROR(
           stream.Memcpy(offset_dst, offset_src, sizeof(int64_t)));
 
@@ -165,8 +172,7 @@ absl::Status AddressComputationThunk::ExecuteOnStream(
       new_offset += start * stride;
     }
 
-    new_buffers[embedded_thunk_arguments_[i]->index()] =
-        orig_operand.GetByteSlice(new_offset, new_size);
+    new_buffers[buffer_idx] = orig_operand.GetByteSlice(new_offset, new_size);
   }
 
   // Safe to create a local BufferAllocations here since buffers are only slices
