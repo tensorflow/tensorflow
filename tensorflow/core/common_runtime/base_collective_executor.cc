@@ -387,28 +387,29 @@ void BaseCollectiveExecutor::CompleteParamsAsync(
       done(GetStatus(s));
     }
   };
+
+  constexpr int64_t mio = 1'000'000;
   auto timeout_microseconds = static_cast<int64_t>(
-      cp->instance.impl_details.timeout_seconds * 1'000'000);
+      cp->instance.impl_details.timeout_seconds * mio);
   if (timeout_microseconds > 0) {
     // TODO(xldrx): Share the timeout watchdog thread among collectives.
-    int timeout = cp->instance.impl_details.timeout_seconds;
+    int64_t usecs = std::min(timeout_microseconds, mio);
     SchedNonBlockingClosureAfter(
-        1'000'000, [this, is_callback_called, done, timeout]() {
-          for(int count = 0; count < timeout; count++) {
-              if(bool called = is_callback_called->exchange(false); called) {
-                return;
-              }
-              usleep(1000000);
+        usecs, [this, is_callback_called, done, timeout_microseconds, usecs]() {
+          for(auto cnt = timeout_microseconds - usecs; cnt > 0; cnt -= mio) {
+            if(bool called = is_callback_called->exchange(false); called) {
+              return;
+            }
+            usleep(mio);
           }
           // The last chance: if callback is not called, reset it and abort
-          if(bool called = is_callback_called->exchange(true); called) {
-            return; 
-          }
-          Status status(
+          if(bool called = is_callback_called->exchange(true); !called) {
+            Status status(
               absl::StatusCode::kDeadlineExceeded,
               "Collective has timed out waiting for other workers.");
-          StartAbort(status);
-          done(status);
+            StartAbort(status);
+            done(status);
+          }
         });
   }
   cem_->GetParamResolver()->CompleteParamsAsync(device, cp, cancel_mgr,
