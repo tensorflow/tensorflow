@@ -1612,6 +1612,17 @@ cc_library(
     ],
 )
 
+xla_cc_test(
+    name = "triton_tiling_propagation_test",
+    srcs = ["triton_tiling_propagation_test.cc"],
+    deps = [
+        ":triton_tiling_propagation",
+        "//xla/tests:hlo_test_base",
+        "//xla/tests:xla_internal_test_main",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
 cc_library(
     name = "triton_fusion_analysis",
     srcs = ["triton_fusion_analysis.cc"],
