@@ -406,14 +406,14 @@ PyLoadedExecutable::GetOutputMemoryKinds() const {
   return ifrt_loaded_executable_->GetOutputMemoryKinds();
 }
 
-absl::StatusOr<std::vector<Layout>> PyLoadedExecutable::GetParameterLayouts()
-    const {
+absl::StatusOr<std::vector<std::unique_ptr<ifrt::Layout>>>
+PyLoadedExecutable::GetParameterLayouts() const {
   nb::gil_scoped_release gil_release;
   return ifrt_loaded_executable_->GetParameterLayouts();
 }
 
-absl::StatusOr<std::vector<Layout>> PyLoadedExecutable::GetOutputLayouts()
-    const {
+absl::StatusOr<std::vector<std::unique_ptr<ifrt::Layout>>>
+PyLoadedExecutable::GetOutputLayouts() const {
   nb::gil_scoped_release gil_release;
   return ifrt_loaded_executable_->GetOutputLayouts();
 }

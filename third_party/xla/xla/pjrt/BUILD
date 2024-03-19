@@ -236,6 +236,7 @@ cc_library(
         ":executable_metadata_proto_cc",
         ":execute_options_proto_cc",
         ":pjrt_common",
+        ":pjrt_layout",
         "//xla:shape_layout",
         "//xla:shape_util",
         "//xla:status",
