@@ -30,6 +30,15 @@ limitations under the License.
 
 namespace shlo_ref {
 
+template <class Op>
+using BaselineMismatchSignedIntegerTypes = ::testing::Types<
+    std::tuple<Op, TestParam<DataType::kSI4>, TestParam<DataType::kSI8>>,
+    std::tuple<Op, TestParam<DataType::kSI4>, TestParam<DataType::kSI16>>,
+    std::tuple<Op, TestParam<DataType::kSI8>, TestParam<DataType::kSI4>>,
+    std::tuple<Op, TestParam<DataType::kSI8>, TestParam<DataType::kSI16>>,
+    std::tuple<Op, TestParam<DataType::kSI16>, TestParam<DataType::kSI4>>,
+    std::tuple<Op, TestParam<DataType::kSI16>, TestParam<DataType::kSI8>>>;
+
 // Lists couples of unmatched baseline element types.
 template <class Op>
 using UnaryElementwiseConstraint1Types = ::testing::Types<
@@ -126,6 +135,16 @@ using UnaryElementwiseConstraint1Types = ::testing::Types<
 
 // Tests that the input shape is compared to the output shape and that it is
 // propagated if needed.
+
+// Customization point for generic tests that need to create a supported tensor
+// for an op but that don't care what that type is.
+//
+// Specialize this in the test file if F32 isn't supported by the op under test.
+template <class Op>
+struct SupportedOpDataType {
+  static constexpr DataType kStorageType = DataType::kF32;
+};
+
 template <class Op>
 class UnaryElementwiseOpShapePropagationTest : public ::testing::Test {
  protected:
@@ -137,11 +156,13 @@ class UnaryElementwiseOpShapePropagationTest : public ::testing::Test {
   }
 
   Op op_ = Create(typename Op::Attributes{});
-  Tensor input_tensor_ = {.type = TensorType{.shape = Shape({2, 3, 4}),
-                                             .element_type = DataType::kF32},
-                          .data = nullptr};
+  Tensor input_tensor_ = {
+      .type = TensorType{.shape = Shape({2, 3, 4}),
+                         .element_type = SupportedOpDataType<Op>::kStorageType},
+      .data = nullptr};
   Tensor output_tensor_ = {
-      .type = TensorType{.shape = Shape(), .element_type = DataType::kF32},
+      .type = TensorType{.shape = Shape(),
+                         .element_type = SupportedOpDataType<Op>::kStorageType},
       .data = nullptr};
 };
 

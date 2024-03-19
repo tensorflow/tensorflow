@@ -658,3 +658,33 @@ cc_test(
         "@com_google_googletest//:gtest_main",
     ],
 )
+
+cc_library(
+    name = "count_leading_zeros",
+    srcs = ["count_leading_zeros.cc"],
+    hdrs = ["count_leading_zeros.h"],
+    deps = [
+        ":unary_elementwise",
+        ":util",
+        "//tensorflow/lite/experimental/shlo:dispatch",
+        "//tensorflow/lite/experimental/shlo:tensor",
+        "@com_google_absl//absl/numeric:bits",
+        "@com_google_absl//absl/status",
+    ],
+)
+
+cc_test(
+    name = "count_leading_zeros_test",
+    srcs = ["count_leading_zeros_test.cc"],
+    linkopts = shlo_ref_linkopts(),
+    deps = [
+        ":count_leading_zeros",
+        ":test_util",
+        ":unary_elementwise_test_util",
+        "//tensorflow/lite/experimental/shlo:data_type",
+        "//tensorflow/lite/experimental/shlo:shape",
+        "//tensorflow/lite/experimental/shlo:status_matcher",
+        "//tensorflow/lite/experimental/shlo:tensor",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
