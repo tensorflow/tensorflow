@@ -21,6 +21,7 @@ limitations under the License.
 #include <iterator>
 #include <memory>
 #include <optional>
+#include <ostream>
 #include <queue>
 #include <stack>
 #include <string>
@@ -58,7 +59,22 @@ namespace xla {
 
 using absl::StrCat;
 
-enum VisitState { kNew = 0, kVisiting = 1, kVisited = 2 };
+enum class VisitState { kNew = 0, kVisiting = 1, kVisited = 2 };
+
+static std::ostream& operator<<(std::ostream& os, const VisitState& state) {
+  switch (state) {
+    case VisitState::kNew:
+      os << "new";
+      break;
+    case VisitState::kVisiting:
+      os << "visiting";
+      break;
+    case VisitState::kVisited:
+      os << "visited";
+      break;
+  }
+  return os;
+}
 
 class HloComputation::VisitMap {
  public:
@@ -516,7 +532,7 @@ void HloComputation::ForEachInstructionPostOrderImpl(
   // Pushes instruction to dfs stack only if it was not already processed.
   auto dfs_stack_push = [&](HloInstruction* instr) {
     VisitState state = visited.GetState(instr->index_in_parent_);
-    if (state != kVisited) dfs_stack->push_back(instr);
+    if (state != VisitState::kVisited) dfs_stack->push_back(instr);
   };
 
   dfs_stack_push(root);
@@ -528,12 +544,12 @@ void HloComputation::ForEachInstructionPostOrderImpl(
 
     VisitMap::Handle h = current->index_in_parent_;
     VisitState state = visited.GetState(h);
-    if (state == kNew) {
-      visited.SetState(h, kVisiting);
+    if (state == VisitState::kNew) {
+      visited.SetState(h, VisitState::kVisiting);
     } else {
       dfs_stack->pop_back();
-      if (state != kVisited) {
-        visited.SetState(h, kVisited);
+      if (state != VisitState::kVisited) {
+        visited.SetState(h, VisitState::kVisited);
         func(current);
       }
       continue;
@@ -1568,16 +1584,16 @@ std::unique_ptr<HloComputation> HloComputation::CloneInContext(
       auto it = visited.find(cur);
       if (it != visited.end()) {
         dfs_stack.pop_back();
-        if (it->second == kVisited) {
+        if (it->second == VisitState::kVisited) {
           continue;
         }
-        CHECK_EQ(it->second, kVisiting);
+        CHECK_EQ(it->second, VisitState::kVisiting);
         postorder.push_back(cur);
-        it->second = kVisited;
+        it->second = VisitState::kVisited;
         continue;
       }
 
-      visited.insert({cur, kVisiting});
+      visited.insert({cur, VisitState::kVisiting});
       for (HloInstruction* operand : cur->operands()) {
         const HloInstruction* new_operand = replace(operand);
         if (new_operand) {
