@@ -43,7 +43,6 @@ limitations under the License.
 #include "third_party/nanobind/include/nanobind/stl/string.h"  // IWYU pragma: keep
 #include "third_party/nanobind/include/nanobind/stl/variant.h"  // IWYU pragma: keep
 #include "third_party/nanobind/include/nanobind/stl/vector.h"  // IWYU pragma: keep
-#include "pybind11/pybind11.h"  // from @pybind11
 #include "xla/pjrt/exceptions.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/status_casters.h"
@@ -53,10 +52,12 @@ limitations under the License.
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/sharding.h"
 #include "xla/python/jax_jit.h"
+#include "xla/python/nb_class_ptr.h"
 #include "xla/python/nb_helpers.h"
 #include "xla/python/nb_numpy.h"
 #include "xla/python/py_array.h"
 #include "xla/python/py_client.h"
+#include "xla/python/py_device.h"
 #include "xla/python/py_executable.h"
 #include "xla/python/py_values.h"
 #include "xla/python/python_ref_manager.h"
@@ -77,7 +78,6 @@ limitations under the License.
 namespace jax {
 
 namespace nb = nanobind;
-namespace py = pybind11;
 
 namespace {
 
@@ -203,16 +203,15 @@ absl::StatusOr<ShardArgResult> ShardArg(
     options.squash_64bit_types = !jax_enable_x64;
     options.allow_zero_copy = true;
     for (size_t i = 0; i < n_devices; ++i) {
-      auto to_device = py::cast<xla::ClientAndPtr<xla::PjRtDevice>>(
-          py::handle(py_devices_list[i].ptr()));
-      if (to_device.get_client() == nullptr) {
+      auto to_device = nb::cast<xla::PyDevice*>(py_devices_list[i]);
+      if (to_device->client().get() == nullptr) {
         return xla::InvalidArgument("Cannot copy to unattached devices.");
       }
 
       TF_ASSIGN_OR_RETURN(
           xla::DevicePutResult on_device,
-          DevicePut(arg[indices[i]], to_device.get_client()->ifrt_client(),
-                    to_device.get(), options, xla::ifrt::MemoryKind()));
+          DevicePut(arg[indices[i]], to_device->client()->ifrt_client(),
+                    to_device->device(), options, xla::ifrt::MemoryKind()));
 
       per_device_arrays.push_back(std::move(on_device.ifrt_array));
       devices.push_back(per_device_arrays.back()->sharding().devices().front());
@@ -341,7 +340,7 @@ class PmapFunction {
       return PmapFunction::AsPmapFunctionUnchecked(*this);
     }
   };
-  // Alias as ::object; outside the scope above we won't confuse pybind11's
+  // Alias as ::object; outside the scope above we won't confuse nanobind's
   // macros.
   using object = pyobject;
 
@@ -459,19 +458,19 @@ void PmapFunction::PopulateCacheEntry(PmapCacheEntry& cache_entry,
     return;
   }
   cache_entry.executable = std::move(executable);
-  const std::vector<xla::ClientAndPtr<xla::PjRtDevice>>& client_and_devices =
+  const std::vector<xla::nb_class_ptr<xla::PyDevice>>& devices =
       cache_entry.executable->AddressableDevices();
-  cache_entry.devices.reserve(client_and_devices.size());
-  for (auto& client_and_device : client_and_devices) {
-    cache_entry.devices.push_back(client_and_device.get());
+  cache_entry.devices.reserve(devices.size());
+  for (auto& device : devices) {
+    cache_entry.devices.push_back(device->device());
   }
 
   // Inputs shard args details.
   nb::list input_indices = pmap_data.attr("input_indices");
 
   cache_entry.py_devices = pmap_data.attr("input_devices");
-  auto input_devices = py::cast<std::vector<xla::PjRtDevice*>>(
-      py::handle(pmap_data.attr("input_devices").ptr()));
+  auto input_devices = nb::cast<std::vector<xla::nb_class_ptr<xla::PyDevice>>>(
+      pmap_data.attr("input_devices"));
 
   nb::list input_array_shardings = pmap_data.attr("input_array_shardings");
 
@@ -654,7 +653,7 @@ absl::StatusOr<nb::object> PmapFunction::Call(nb::handle callable,
   // we access them from Python.
   auto traceback = xla::Traceback::Get();
   // TODO(jblespiau): Change the `client` function to return a reference.
-  std::shared_ptr<xla::PyClient> client = cache_entry.executable->client();
+  xla::nb_class_ptr<xla::PyClient> client = cache_entry.executable->client();
 
   // Convert the PjRtBuffer objects to PyBuffer, and invert the order from
   // [num_devices, num_args] to [num_args, num_devices].
@@ -747,12 +746,6 @@ PyObject* JaxPmapFunction_tp_vectorcall(PyObject* callable,
       return nullptr;
     }
     return out.value().release().ptr();
-  } catch (py::error_already_set& e) {
-    e.restore();
-    return nullptr;
-  } catch (py::cast_error& e) {
-    PyErr_SetString(PyExc_ValueError, e.what());
-    return nullptr;
   } catch (nb::python_error& e) {
     e.restore();
     return nullptr;

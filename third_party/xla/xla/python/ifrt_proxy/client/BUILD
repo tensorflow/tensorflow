@@ -507,7 +507,9 @@ cc_library(
     deps = [
         ":grpc_client",
         ":registry",
+        "//third_party/nanobind",
         "//xla/pjrt:status_casters",
+        "//xla/python:nb_class_ptr",
         "//xla/python:py_client",
         "//xla/python/ifrt",
         "@com_google_absl//absl/log",
@@ -519,7 +521,5 @@ cc_library(
         "@com_google_absl//absl/strings:string_view",
         "@local_tsl//tsl/platform:env",
         "@local_tsl//tsl/platform:statusor",
-        "@pybind11",
-        "@pybind11_abseil//pybind11_abseil:absl_casters",
     ],
 )

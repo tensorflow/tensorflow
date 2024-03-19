@@ -13,19 +13,21 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_PYTHON_IFRT_PROXY_CLIENT_PY_MODULE_H_
-#define XLA_PYTHON_IFRT_PROXY_CLIENT_PY_MODULE_H_
+#ifndef XLA_PYTHON_NB_ABSL_FLAT_HASH_SET_H_
+#define XLA_PYTHON_NB_ABSL_FLAT_HASH_SET_H_
 
+#include "absl/container/flat_hash_set.h"
 #include "third_party/nanobind/include/nanobind/nanobind.h"
+#include "third_party/nanobind/include/nanobind/stl/detail/nb_set.h"
 
-namespace xla {
-namespace ifrt {
-namespace proxy {
+namespace nanobind {
+namespace detail {
 
-void BuildIfrtProxySubmodule(nanobind::module_& m);
+template <typename Key, typename Hash, typename Eq, typename Alloc>
+struct type_caster<absl::flat_hash_set<Key, Hash, Eq, Alloc>>
+    : set_caster<absl::flat_hash_set<Key, Hash, Eq, Alloc>, Key> {};
 
-}  // namespace proxy
-}  // namespace ifrt
-}  // namespace xla
+}  // namespace detail
+}  // namespace nanobind
 
-#endif  // XLA_PYTHON_IFRT_PROXY_CLIENT_PY_MODULE_H_
+#endif  // XLA_PYTHON_NB_ABSL_FLAT_HASH_SET_H_

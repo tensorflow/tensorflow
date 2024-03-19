@@ -21,7 +21,6 @@ within google code. TODO(madthanu): Remove library.
 import dataclasses
 from typing import Callable, Optional
 
-from pybind11_abseil import status
 from xla.python import xla_client
 
 
@@ -38,7 +37,7 @@ class ConnectionOptions:
       provided as human-readable strings, and an end-user may find them helpful.
   """
 
-  on_disconnect: Optional[Callable[[status.Status], None]] = None
+  on_disconnect: Optional[Callable[[str], None]] = None
   on_connection_update: Optional[Callable[[str], None]] = None
 
 

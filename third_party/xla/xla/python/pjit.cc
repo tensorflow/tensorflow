@@ -228,7 +228,7 @@ class PjitFunction {
       return PjitFunction::AsPjitFunctionUnchecked(*this);
     }
   };
-  // Alias as ::object; outside the scope above we won't confuse pybind11's
+  // Alias as ::object; outside the scope above we won't confuse nanobind's
   // macros.
   using object = pyobject;
 
@@ -368,7 +368,8 @@ PrepareIfrtInputs(const xla::PyLoadedExecutable& executable,
                   const std::vector<bool>& kept_args,
                   const std::vector<nb::object>& in_shardings,
                   const nb::callable& shard_arg_fallback) {
-  const auto& addressable_devices = executable.AddressableDevices();
+  const auto& addressable_devices =
+      executable.ifrt_loaded_executable()->addressable_devices();
   int num_args = arguments.flat_dynamic_args.size();
 
   std::vector<tsl::RCReference<xla::ifrt::Array>> num_args_arrays;
@@ -443,10 +444,10 @@ PrepareIfrtInputs(const xla::PyLoadedExecutable& executable,
     // `PjitFunction::UpdateArgsSignature()`.
     DCHECK(ifrt_array != nullptr) << "PyArray has been unexpectedly deleted.";
 
-    if (sharding_num_devices == 1 && ifrt_array->sharding().devices().front() !=
-                                         addressable_devices[0].get()) {
+    if (sharding_num_devices == 1 &&
+        ifrt_array->sharding().devices().front() != addressable_devices[0]) {
       xla::ifrt::DeviceList::Devices ifrt_devices;
-      ifrt_devices.push_back(addressable_devices[0].get());
+      ifrt_devices.push_back(addressable_devices[0]);
       auto sharding = xla::ifrt::OpaqueSharding::Create(
           xla::ifrt::DeviceList(std::move(ifrt_devices)),
           ifrt_array->sharding().memory_kind());

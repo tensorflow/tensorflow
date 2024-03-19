@@ -19,7 +19,6 @@ limitations under the License.
 
 #include <cstddef>
 #include <cstdint>
-#include <memory>
 #include <optional>
 #include <string>
 #include <utility>
@@ -31,12 +30,12 @@ limitations under the License.
 #include "third_party/nanobind/include/nanobind/make_iterator.h"
 #include "third_party/nanobind/include/nanobind/nanobind.h"
 #include "third_party/nanobind/include/nanobind/stl/string.h"  // IWYU pragma: keep
-#include "pybind11/pybind11.h"  // from @pybind11
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/python/ifrt/device.h"
 #include "xla/python/nb_class_ptr.h"
 #include "xla/python/nb_helpers.h"
 #include "xla/python/py_client.h"
+#include "xla/python/py_device.h"
 #include "xla/python/python_ref_manager.h"
 #include "xla/python/sharding.h"
 #include "xla/python/types.h"
@@ -45,9 +44,8 @@ limitations under the License.
 namespace jax {
 
 namespace nb = ::nanobind;
-namespace py = ::pybind11;
 
-PyDeviceList::PyDeviceList(std::shared_ptr<xla::PyClient> py_client,
+PyDeviceList::PyDeviceList(xla::nb_class_ptr<xla::PyClient> py_client,
                            xla::ifrt::DeviceList device_list)
     : py_client_(std::move(py_client)), device_list_(std::move(device_list)) {}
 
@@ -61,19 +59,19 @@ PyDeviceList::PyDeviceList(nb::tuple py_device_assignment)
   xla::ifrt::DeviceList::Devices devices;
   devices.reserve(py_device_assignment.size());
   for (nb::handle obj : py_device_assignment) {
-    if (!py::isinstance<xla::PjRtDevice>(obj.ptr())) {
-      // Non-`xla::PjRtDevice` is used on an alternative JAX backend with device
+    if (!nb::isinstance<xla::PyDevice>(obj.ptr())) {
+      // Non-`xla::PyDevice` is used on an alternative JAX backend with device
       // duck typing. Use Python device objects already set in `device_list_`.
       return;
     }
-    auto py_device = py::cast<xla::ClientAndPtr<xla::PjRtDevice>>(obj.ptr());
-    if (py_client_ == nullptr) {
-      py_client_ = py_device.client();
-    } else if (py_device.client() != py_client_) {
+    auto py_device = nb::cast<xla::PyDevice*>(obj);
+    if (py_client_.get() == nullptr) {
+      py_client_ = py_device->client();
+    } else if (py_device->client().get() != py_client_.get()) {
       // If the list contains multiple clients, fall back to device duck typing.
       return;
     }
-    devices.push_back(py_device.get());
+    devices.push_back(py_device->device());
   }
   device_list_ = xla::ifrt::DeviceList(std::move(devices));
 }
@@ -154,9 +152,7 @@ nb::object PyDeviceList::GetItem(int index) {
       } else if (index < 0) {
         index += device_list.size();
       }
-      py::object d =
-          py::cast(xla::WrapWithClient(py_client_, device_list[index]));
-      return nb::steal(d.release().ptr());
+      return py_client_->GetPyDevice(device_list[index]);
     }
     case 1:
       return std::get<1>(device_list_).attr("__getitem__")(index);
@@ -176,8 +172,7 @@ nb::object PyDeviceList::GetSlice(nb::slice slice) {
       }
       nb::tuple out = nb::steal<nb::tuple>(PyTuple_New(slicelength));
       for (size_t i = 0; i < slicelength; ++i) {
-        py::object d =
-            py::cast(xla::WrapWithClient(py_client_, device_list[start]));
+        nb::object d = py_client_->GetPyDevice(device_list[start]);
         PyTuple_SET_ITEM(out.ptr(), i, d.release().ptr());
         start += step;
       }
@@ -197,7 +192,7 @@ nb::tuple PyDeviceList::AsTuple() const {
       nb::tuple out = nb::steal<nb::tuple>(PyTuple_New(device_list.size()));
       int i = 0;
       for (xla::ifrt::Device* device : device_list) {
-        py::object d = py::cast(xla::WrapWithClient(py_client_, device));
+        nb::object d = py_client_->GetPyDevice(device);
         PyTuple_SET_ITEM(out.ptr(), i, d.release().ptr());
         ++i;
       }
@@ -218,18 +213,16 @@ nb::iterator PyDeviceList::Iter() {
       struct Iterator {
         void operator++() { ++it; }
         bool operator==(const Iterator& other) const { return it == other.it; }
-        xla::ClientAndPtr<xla::PjRtDevice> operator*() const {
-          return xla::WrapWithClient(py_client, *it);
+        xla::nb_class_ptr<xla::PyDevice> operator*() const {
+          return py_client->GetPyDevice(*it);
         }
-        const std::shared_ptr<xla::PyClient>& py_client;
+        xla::nb_class_ptr<xla::PyClient> py_client;
         xla::ifrt::DeviceList::Devices::const_iterator it;
       };
-      return nb::steal<nb::iterator>(
-          py::make_iterator(
-              Iterator{py_client_, std::get<0>(device_list_).begin()},
-              Iterator{py_client_, std::get<0>(device_list_).end()})
-              .release()
-              .ptr());
+      return nb::make_iterator(
+          nb::type<PyDeviceList>(), "ifrt_device_iterator",
+          Iterator{py_client_, std::get<0>(device_list_).begin()},
+          Iterator{py_client_, std::get<0>(device_list_).end()});
     }
     case 1:
       return nb::make_iterator(

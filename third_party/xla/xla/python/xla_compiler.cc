@@ -40,7 +40,6 @@ limitations under the License.
 #include "third_party/nanobind/include/nanobind/stl/string_view.h"  // IWYU pragma: keep
 #include "third_party/nanobind/include/nanobind/stl/variant.h"  // IWYU pragma: keep
 #include "third_party/nanobind/include/nanobind/stl/vector.h"  // IWYU pragma: keep
-#include "pybind11/pybind11.h"  // from @pybind11
 #include "xla/array.h"
 #include "xla/client/executable_build_options.h"
 #include "xla/client/xla_builder.h"
@@ -715,9 +714,8 @@ void BuildXlaCompilerSubmodule(nb::module_& m) {
         });
   m.def(
       "hlo_module_cost_analysis",
-      xla::ValueOrThrowWrapper([](nb::handle client_py, const HloModule& module)
+      xla::ValueOrThrowWrapper([](PyClient* client, const HloModule& module)
                                    -> StatusOr<nb::dict> {
-        PyClient* client = pybind11::cast<PyClient*>(client_py.ptr());
         TF_ASSIGN_OR_RETURN(auto analysis,
                             client->pjrt_client()->GetHloCostAnalysis());
         TF_RETURN_IF_ERROR(module.entry_computation()->Accept(analysis.get()));

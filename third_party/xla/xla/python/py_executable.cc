@@ -34,7 +34,6 @@ limitations under the License.
 #include "third_party/nanobind/include/nanobind/nanobind.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/layout.h"
-#include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/pjrt/pjrt_future.h"
 #include "xla/python/ifrt/array.h"
@@ -43,8 +42,10 @@ limitations under the License.
 #include "xla/python/ifrt/future.h"
 #include "xla/python/ifrt/memory.h"
 #include "xla/python/ifrt/sharding.h"
+#include "xla/python/nb_class_ptr.h"
 #include "xla/python/py_array.h"
 #include "xla/python/py_client.h"
+#include "xla/python/py_device.h"
 #include "xla/python/traceback.h"
 #include "tsl/concurrency/ref_count.h"
 #include "tsl/platform/fingerprint.h"
@@ -74,7 +75,7 @@ absl::Status PyShardedToken::Await() {
 }
 
 PyLoadedExecutable::PyLoadedExecutable(
-    std::shared_ptr<PyClient> client,
+    nb_class_ptr<PyClient> client,
     std::unique_ptr<ifrt::LoadedExecutable> ifrt_loaded_executable,
     std::optional<nb_traceback> traceback,
     std::optional<std::string> fingerprint)
@@ -111,12 +112,12 @@ PyLoadedExecutable::~PyLoadedExecutable() {
   }
 }
 
-std::vector<ClientAndPtr<PjRtDevice>> PyLoadedExecutable::AddressableDevices()
+std::vector<nb_class_ptr<PyDevice>> PyLoadedExecutable::AddressableDevices()
     const {
-  std::vector<ClientAndPtr<PjRtDevice>> devices;
+  std::vector<nb_class_ptr<PyDevice>> devices;
   devices.reserve(ifrt_loaded_executable_->addressable_devices().size());
   for (ifrt::Device* device : ifrt_loaded_executable_->addressable_devices()) {
-    devices.push_back(WrapWithClient(client_, device));
+    devices.push_back(client_->GetPyDevice(device));
   }
   return devices;
 }
@@ -175,7 +176,7 @@ struct ShardedBufferAdapter<ExecuteShardedArg> {
 };
 
 void PopulateExecuteShardedResults(
-    const std::shared_ptr<PyClient>& client,
+    const nb_class_ptr<PyClient>& client,
     std::vector<tsl::RCReference<ifrt::Array>> ifrt_arrays,
     const xla::PjRtFuture<absl::Status>& result_status, int num_computations,
     std::vector<std::vector<PyArray>>& outputs) {
@@ -199,7 +200,7 @@ void PopulateExecuteShardedResults(
 
 template <typename ArgT, typename ArgAdapter = ShardedBufferAdapter<ArgT>>
 absl::StatusOr<PyExecuteResults> ExecuteShardedOnLocalDevicesInternal(
-    const ExecuteOptions& options, const std::shared_ptr<PyClient>& client,
+    const ExecuteOptions& options, const nb_class_ptr<PyClient>& client,
     ifrt::LoadedExecutable* ifrt_loaded_executable, absl::Span<const ArgT> args,
     std::optional<std::vector<PjRtFuture<absl::Status>>>& returned_futures,
     bool attach_status_to_results) {
@@ -253,7 +254,7 @@ absl::StatusOr<PyExecuteResults> ExecuteShardedOnLocalDevicesInternal(
 }  // namespace
 
 PyExecuteResults::PyExecuteResults(
-    const std::shared_ptr<PyClient>& client,
+    const nb_class_ptr<PyClient>& client,
     std::vector<tsl::RCReference<ifrt::Array>> ifrt_arrays,
     int num_computations, PyShardedToken token,
     xla::PjRtFuture<absl::Status> result_status)

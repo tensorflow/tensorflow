@@ -31,7 +31,6 @@ pytype_strict_library(
     # copybara:uncomment_end
     deps = [
         "//xla/python:xla_client",
-        "@pybind11_abseil//pybind11_abseil:status",
     ],
 )
 
