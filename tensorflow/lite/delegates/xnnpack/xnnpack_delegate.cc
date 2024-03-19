@@ -36,6 +36,7 @@ limitations under the License.
 #include "tensorflow/lite/core/api/profiler.h"
 #include "tensorflow/lite/core/c/builtin_op_data.h"
 #include "tensorflow/lite/core/c/common.h"
+#include "tensorflow/lite/core/subgraph.h"
 #include "tensorflow/lite/delegates/xnnpack/quantization_util.h"
 #include "tensorflow/lite/kernels/cpu_backend_context.h"
 #include "tensorflow/lite/kernels/internal/compatibility.h"
@@ -490,7 +491,6 @@ class Delegate {
 
  public:
   explicit Delegate(const TfLiteXNNPackDelegateOptions* options,
-                    xnn_workspace_t workspace,
                     TfLiteContext* context = nullptr) {
 #if !defined(__EMSCRIPTEN__) || defined(__EMSCRIPTEN_PTHREADS__)
     pthreadpool_t threadpool = nullptr;
@@ -522,7 +522,6 @@ class Delegate {
     options_ =
         options != nullptr ? *options : TfLiteXNNPackDelegateOptionsDefault();
     delegate_.flags = GetXNNPackDelegateFlags();
-    workspace_.reset(workspace);
   }
 
   TfLiteIntArray* PrepareOpsToDelegate(TfLiteContext* context);
@@ -616,7 +615,7 @@ class Delegate {
     }
   }
 
-  xnn_workspace_t workspace() const { return workspace_.get(); }
+  xnn_workspace_t workspace(int i) const { return workspaces_[i].get(); }
 
   TfLiteStatus AssociateVariableWithTensor(int local_id,
                                            const TfLiteTensor* tensor,
@@ -703,8 +702,13 @@ class Delegate {
   // Boolean that indicates if threadpool_ was created by xnnpack_delegate.
   bool own_threadpool_;
 #endif
-  std::unique_ptr<xnn_workspace, decltype(&xnn_release_workspace)> workspace_{
-      nullptr, &xnn_release_workspace};
+
+  struct XNNWorkspaceReleaser {
+    void operator()(xnn_workspace_t workspace) {
+      xnn_release_workspace(workspace);
+    }
+  };
+  std::vector<std::unique_ptr<xnn_workspace, XNNWorkspaceReleaser>> workspaces_;
 
   TfLiteXNNPackDelegateOptions options_{};
   VariableHolder variable_holder_;
@@ -1103,9 +1107,24 @@ class Subgraph {
     if (context->profiler) {
       flags |= XNN_FLAG_BASIC_PROFILING;
     }
+    tflite::Subgraph* this_subgraph =
+        reinterpret_cast<tflite::Subgraph*>(context->impl_);
+    auto* subgraphs = this_subgraph->GetSubgraphs();
+    int num_workspaces = subgraphs->size();
+    if (delegate.workspaces_.size() < num_workspaces) {
+      delegate.workspaces_.resize(num_workspaces);
+      for (int i = 0; i < num_workspaces; ++i) {
+        xnn_workspace_t w;
+        if (xnn_create_workspace(&w) != xnn_status_success) {
+          return nullptr;
+        }
+        delegate.workspaces_[i].reset(w);
+      }
+    }
+    int subgraph_number = this_subgraph->GetSubgraphIndex();
     status = xnn_create_runtime_v4(subgraph.get(), delegate.weights_cache(),
-                                   delegate.workspace(), delegate.threadpool(),
-                                   flags, &runtime_ptr);
+                                   delegate.workspace(subgraph_number),
+                                   delegate.threadpool(), flags, &runtime_ptr);
     if (status != xnn_status_success) {
       TF_LITE_KERNEL_LOG(context, "failed to create XNNPACK runtime");
       return nullptr;
@@ -7202,13 +7221,7 @@ TfLiteDelegate* TfLiteXNNPackDelegateCreateWithThreadpool(
     return nullptr;
   }
 
-  xnn_workspace_t workspace = nullptr;
-  if (xnn_create_workspace(&workspace) != xnn_status_success) {
-    return nullptr;
-  }
-
-  auto* xnnpack_delegate =
-      new ::tflite::xnnpack::Delegate(options, workspace, context);
+  auto* xnnpack_delegate = new ::tflite::xnnpack::Delegate(options, context);
   return xnnpack_delegate ? xnnpack_delegate->tflite_delegate() : nullptr;
 }
 
