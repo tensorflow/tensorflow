@@ -41,6 +41,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/placer.h"
 #include "tensorflow/core/common_runtime/replicate_per_replica_nodes.h"
 #include "tensorflow/core/framework/device.h"
+#include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/metrics.h"
 #include "tensorflow/core/framework/optimized_function_graph.pb.h"
@@ -640,8 +641,12 @@ StatusOr<OptimizedFunctionGraphInfo> OptimizeFunctionGraph(
 
   graph->mutable_flib_def()->set_default_registry(nullptr);
   graph->mutable_flib_def()->Clear();
+
+  FunctionLibraryDefinition pruned_lib_def =
+      reachable_lib_def.ReachableDefinitions(*graph);
+
   return OptimizedFunctionGraphInfo(
-      function_name, std::move(graph), std::move(reachable_lib_def),
+      function_name, std::move(graph), std::move(pruned_lib_def),
       node_name_to_control_ret, ret_types, ret_nodes.size(),
       env->NowMicros() - graph_optimization_start_time_usecs,
       optimization_source);
