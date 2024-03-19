@@ -14,9 +14,17 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/kernels/data/skip_dataset_op.h"
 
+#include <cstddef>
+#include <cstdint>
+
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
+#include "tensorflow/core/data/global_shuffle_utils.h"
 #include "tensorflow/core/data/name_utils.h"
+#include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/framework/tensor.h"
+#include "tsl/platform/errors.h"
 
 namespace tensorflow {
 namespace data {
@@ -40,6 +48,14 @@ class SkipDatasetOp::Dataset : public DatasetBase {
   Dataset(OpKernelContext* ctx, int64_t count, const DatasetBase* input)
       : DatasetBase(DatasetContext(ctx)), count_(count), input_(input) {
     input_->Ref();
+    if (input_ != nullptr && count >= 0) {
+      random_indexing_compatible_ = input_->RandomIndexingCompatible();
+    } else {
+      random_indexing_compatible_ = absl::FailedPreconditionError(
+          absl::StrCat("Global shuffling does not support empty dataset or "
+                       "skipping the entire dataset. Got skip(",
+                       count, ")."));
+    }
   }
 
   ~Dataset() override { input_->Unref(); }
@@ -88,6 +104,10 @@ class SkipDatasetOp::Dataset : public DatasetBase {
              std::vector<Tensor>* out_tensors) const override {
     TF_RETURN_IF_ERROR(CheckRandomAccessCompatible(index));
     return input_->Get(ctx, index + count_, out_tensors);
+  }
+
+  absl::Status RandomIndexingCompatible() const override {
+    return random_indexing_compatible_;
   }
 
  protected:
@@ -156,10 +176,13 @@ class SkipDatasetOp::Dataset : public DatasetBase {
         return absl::OkStatus();
       }
 
+      IteratorContextWithIndexMapper ctx_with_index_mapper(ctx, this);
       if (i_ < dataset()->count_) {
         int num_skipped;
-        TF_RETURN_IF_ERROR(input_impl_->Skip(ctx, dataset()->count_ - i_,
+        TF_RETURN_IF_ERROR(input_impl_->Skip(ctx_with_index_mapper.Get(),
+                                             dataset()->count_ - i_,
                                              end_of_sequence, &num_skipped));
+        ctx_with_index_mapper.MergeCheckpoint();
         i_ += num_skipped;
         if (*end_of_sequence) {
           // We reached the end before the count was reached.
@@ -169,12 +192,27 @@ class SkipDatasetOp::Dataset : public DatasetBase {
       }
 
       // Return GetNext() on the underlying iterator.
-      TF_RETURN_IF_ERROR(
-          input_impl_->GetNext(ctx, out_tensors, end_of_sequence));
+      TF_RETURN_IF_ERROR(input_impl_->GetNext(ctx_with_index_mapper.Get(),
+                                              out_tensors, end_of_sequence));
+      ctx_with_index_mapper.MergeCheckpoint();
       if (*end_of_sequence) {
         input_impl_.reset();
       }
       return absl::OkStatus();
+    }
+
+    IndexMapperFn GetIndexMapper(
+        IndexMapperFn parent_index_mapper) const override {
+      int64_t skip_count = dataset()->count_;
+      return [parent_index_mapper,
+              skip_count](size_t element_position) -> size_t {
+        if (element_position < skip_count) {
+          // The first `skip_count` elements are to be skipped.
+          return parent_index_mapper(element_position);
+        }
+        // Maps the range [skip_count, cardinality) to a permuted range.
+        return parent_index_mapper(element_position - skip_count) + skip_count;
+      };
     }
 
    protected:
@@ -198,6 +236,22 @@ class SkipDatasetOp::Dataset : public DatasetBase {
 
     Status RestoreInternal(IteratorContext* ctx,
                            IteratorStateReader* reader) override {
+      if (ctx->restored_element_count().has_value()) {
+        mutex_lock l(mu_);
+        if (*ctx->restored_element_count() > 0) {
+          i_ = dataset()->count_;
+          // For upstream iterators, the restored count is the returned element
+          // count + skipped element count.
+          IteratorContext::Params params(ctx);
+          params.restored_element_count =
+              *ctx->restored_element_count() + dataset()->count_;
+          IteratorContext ctx_with_restored_count(params);
+          return RestoreInput(&ctx_with_restored_count, reader, input_impl_);
+        }
+        i_ = 0;
+        return RestoreInput(ctx, reader, input_impl_);
+      }
+
       mutex_lock l(mu_);
       TF_RETURN_IF_ERROR(reader->ReadScalar(prefix(), kCurIndex, &i_));
       int64_t input_empty;
@@ -219,6 +273,7 @@ class SkipDatasetOp::Dataset : public DatasetBase {
 
   const int64_t count_;
   const DatasetBase* const input_;
+  absl::Status random_indexing_compatible_;
 };
 
 SkipDatasetOp::SkipDatasetOp(OpKernelConstruction* ctx)
