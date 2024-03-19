@@ -179,6 +179,16 @@ TfLiteStatus AsyncSubgraph::SetAttributes(int tensor_index,
                                           opaque_node_, tensor_index, attrs);
 }
 
+TfLiteStatus AsyncSubgraph::SetBufferAttributes(
+    const TfLiteBackendBuffer* buffer, const TfLiteAttributeMap* attrs) {
+  return (*async_kernel_->set_buffer_attributes)(async_kernel_, buffer, attrs);
+}
+
+TfLiteStatus AsyncSubgraph::GetBufferAttributes(
+    const TfLiteBackendBuffer* buffer, TfLiteAttributeMap* attrs) {
+  return (*async_kernel_->get_buffer_attributes)(async_kernel_, buffer, attrs);
+}
+
 TfLiteStatus AsyncSubgraph::Prepare() {
   if (async_kernel() == nullptr) return kTfLiteError;
   return (*async_kernel_->prepare)(async_kernel_, opaque_context(),
