@@ -203,7 +203,7 @@ diff --ruN a/stablehlo/stablehlo/dialect/TypeInference.cpp b/stablehlo/stablehlo
  
  //===----------------------------------------------------------------------===//
  // Utils for shape functions.
-@@ -3472,61 +3453,6 @@
+@@ -3472,60 +3453,6 @@
                               "is incompatible with return type of operation ",
                               shapedResultType, "");
  
@@ -237,16 +237,15 @@ diff --ruN a/stablehlo/stablehlo/dialect/TypeInference.cpp b/stablehlo/stablehlo
 -  if (noneQuantized<quant::UniformQuantizedPerAxisType>(typeEntriesPerAxis))
 -    return success();
 -  // convolution_c31
--  if (!allQuantized<quant::UniformQuantizedPerAxisType>(typeEntriesPerAxis)) {
--    return emitOptionalError(location,
--                             "rhs and result are of mixed per_tensor and "
--                             "per_axis quantized tensor type ",
--                             rhsType, " and ", resultType);
--  }
--
 -  auto rhsQPAType = rhsQType.dyn_cast<quant::UniformQuantizedPerAxisType>();
 -  auto resultQPAType =
 -      resultQType.dyn_cast<quant::UniformQuantizedPerAxisType>();
+-  if (!rhsQPAType && resultQPAType) {
+-    return emitOptionalError(
+-        location, "per-tensor rhs expects per-tensor result but received ",
+-        rhsType, " and ", resultType, " respectively");
+-  }
+-
 -  // convolution_c32
 -  if (rhsQPAType &&
 -      rhsQPAType.getQuantizedDimension() != kernelOutputFeatureDimension)
@@ -2685,14 +2684,14 @@ diff --ruN a/stablehlo/stablehlo/tests/ops_stablehlo_quantized.mlir b/stablehlo/
 -
 -// -----
 -
--func.func @convolution_c31(%arg0: tensor<1x8x8x207x!quant.uniform<i8:f32, 2.0:15>>, %arg1: tensor<3x3x207x16x!quant.uniform<i8:f32:0, {0.1:-30}>>) -> tensor<1x8x8x16x!quant.uniform<i8:f32, 10.0:50>> {
--  // expected-error@+1 {{rhs and result are of mixed per_tensor and per_axis quantized tensor type 'tensor<3x3x207x16x!quant.uniform<i8:f32:0, {1.000000e-01:-30}>>' and 'tensor<1x8x8x16x!quant.uniform<i8:f32, 1.000000e+01:50>>'}}
+-func.func @convolution_c31(%arg0: tensor<1x8x8x207x!quant.uniform<i8:f32, 2.0:15>>, %arg1: tensor<3x3x207x16x!quant.uniform<i8:f32, 0.1:-30>>) -> tensor<1x8x8x16x!quant.uniform<i8:f32:0, {10.0:50}>> {
+-  // expected-error@+1 {{per-tensor rhs expects per-tensor result but received 'tensor<3x3x207x16x!quant.uniform<i8:f32, 1.000000e-01:-30>>' and 'tensor<1x8x8x16x!quant.uniform<i8:f32:0, {1.000000e+01:50}>>' respectively}}
 -  %0 = stablehlo.convolution(%arg0, %arg1)
 -         dim_numbers = [b, 0, 1, f]x[0, 1, i, o]->[b, 0, 1, f],
 -         window = {stride = [1, 1], pad = [[1, 1], [1, 1]], lhs_dilate = [1, 1], rhs_dilate = [1, 1]}
 -         {batch_group_count = 1 : i64, feature_group_count = 1 : i64, precision_config = [#stablehlo<precision DEFAULT>, #stablehlo<precision DEFAULT>]} :
--       (tensor<1x8x8x207x!quant.uniform<i8:f32, 2.0:15>>, tensor<3x3x207x16x!quant.uniform<i8:f32:0, {0.1:-30}>>) -> tensor<1x8x8x16x!quant.uniform<i8:f32, 10.0:50>>
--  func.return %0 : tensor<1x8x8x16x!quant.uniform<i8:f32, 10.0:50>>
+-       (tensor<1x8x8x207x!quant.uniform<i8:f32, 2.0:15>>, tensor<3x3x207x16x!quant.uniform<i8:f32, 0.1:-30>>) -> tensor<1x8x8x16x!quant.uniform<i8:f32:0, {10.0:50}>>
+-  func.return %0 : tensor<1x8x8x16x!quant.uniform<i8:f32:0, {10.0:50}>>
 -}
 -
 -// -----
