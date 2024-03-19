@@ -508,6 +508,7 @@ cc_library(
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/container:inlined_vector",
+        "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status:statusor",
         "@local_tsl//tsl/platform:statusor",
     ],
@@ -649,6 +650,29 @@ xla_cc_binary(
         ":hlo_module_loader",
         "//xla/service:hlo_cost_analysis",
         "@local_tsl//tsl/platform:platform_port",
+    ],
+)
+
+xla_cc_binary(
+    name = "extract_collective_operations",
+    srcs = ["extract_collective_operations.cc"],
+    deps = [
+        ":hlo_decomposer_lib",
+        ":hlo_module_loader",
+        "//xla:debug_options_flags",
+        "//xla:status",
+        "//xla/hlo/ir:hlo",
+        "//xla/service:hlo_proto_cc",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
+        "@local_tsl//tsl/platform:env",
+        "@local_tsl//tsl/platform:path",
+        "@local_tsl//tsl/platform:platform_port",
+        "@local_tsl//tsl/platform:status",
+        "@local_tsl//tsl/platform:statusor",
+        "@local_tsl//tsl/util:command_line_flags",
     ],
 )
 
