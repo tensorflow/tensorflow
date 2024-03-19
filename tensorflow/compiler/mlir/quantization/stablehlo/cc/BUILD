@@ -277,6 +277,26 @@ tf_cc_test(
 )
 
 cc_library(
+    name = "report",
+    srcs = ["report.cc"],
+    hdrs = ["report.h"],
+    compatible_with = get_compatible_with_portable(),
+    deps = [
+        "//tensorflow/compiler/mlir/quantization/stablehlo:quantization_config_proto_cc",
+    ],
+)
+
+tf_cc_test(
+    name = "report_test",
+    srcs = ["report_test.cc"],
+    deps = [
+        ":report",
+        "//tensorflow/compiler/mlir/quantization/stablehlo:quantization_config_proto_cc",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_library(
     name = "context",
     srcs = [],
     hdrs = ["context.h"],
