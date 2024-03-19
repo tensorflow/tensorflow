@@ -18,16 +18,21 @@ limitations under the License.
 
 #include <random>
 #include <string>
+#include <tuple>
 #include <type_traits>
 
 #include <gtest/gtest.h>
 #include "absl/algorithm/container.h"
 #include "absl/container/inlined_vector.h"
 #include "tensorflow/lite/experimental/shlo/data_type.h"
+#include "tensorflow/lite/experimental/shlo/quantized_tensor_element_type.h"
 #include "tensorflow/lite/experimental/shlo/shape.h"
+#include "tensorflow/lite/experimental/shlo/tensor.h"
 
 namespace shlo_ref {
 
+// We use a vector class that is different from std::vector to have a consistent
+// API when dealing with bool tensors.
 template <class T>
 using Vector = absl::InlinedVector<T, 1>;
 
@@ -91,6 +96,19 @@ struct TestParam<storage_type, expressed_type> {
   using ExpressedT = StorageType<expressed_type>;
 };
 
+// Typed test parameter tag to ask for a per-tensor quantized tensor.
+template <class TestParamT>
+struct PerTensor {
+  using Param = TestParamT;
+};
+
+// Typed test parameter tag to ask for a per-channel quantized tensor.
+template <class TestParamT, Axis kAxis = 0>
+struct PerAxis {
+  using Param = TestParamT;
+  static constexpr Axis axis = kAxis;
+};
+
 constexpr const char* ToString(DataType t) {
   switch (t) {
     case DataType::kI1:
@@ -133,6 +151,33 @@ struct ParamName<TestParam<T, Ts...>> {
   }
 };
 
+template <DataType T, DataType... Ts>
+struct ParamName<PerTensor<TestParam<T, Ts...>>> {
+  static std::string Get() {
+    std::string name = std::string("PerTensor[") + ToString(T);
+    ((name += std::string("_") + ToString(Ts)), ...);
+    return name + "]";
+  }
+};
+
+template <DataType T, DataType... Ts, Axis axis>
+struct ParamName<PerAxis<TestParam<T, Ts...>, axis>> {
+  static std::string Get() {
+    std::string name = std::string("PerAxis[") + ToString(T);
+    ((name += std::string("_") + ToString(Ts)), ...);
+    return name + ":" + std::to_string(axis) + "]";
+  }
+};
+
+template <class TestParamT, class... TestParamTs>
+struct ParamName<std::tuple<TestParamT, TestParamTs...>> {
+  static std::string Get() {
+    std::string name = ParamName<TestParamT>::Get();
+    ((name += std::string(":") + ParamName<TestParamTs>::Get()), ...);
+    return name;
+  }
+};
+
 class TestParamNames {
  public:
   template <class T>
@@ -141,32 +186,123 @@ class TestParamNames {
   }
 };
 
+template <template <class> class F, class T>
+struct Map;
+
+template <template <class> class F, class... Ts>
+struct Map<F, ::testing::Types<Ts...>> {
+  using Types = ::testing::Types<F<Ts>...>;
+};
+
+template <template <class> class F, class T>
+using MapTypes = typename Map<F, T>::Types;
+
+template <class... Ts>
+struct Concat;
+
+template <class... Ts>
+struct Concat<::testing::Types<Ts...>> {
+  using Types = ::testing::Types<Ts...>;
+};
+
+template <class... Ts, class... Us, class... ExtraTypes>
+struct Concat<::testing::Types<Ts...>, ::testing::Types<Us...>, ExtraTypes...> {
+  using Types =
+      typename Concat<::testing::Types<Ts..., Us...>, ExtraTypes...>::Types;
+};
+
+template <class... Ts>
+using ConcatTypes = typename Concat<Ts...>::Types;
+
+template <class Op, class T>
+struct WithOp;
+
+template <class Op, class... Ts>
+struct WithOp<Op, ::testing::Types<Ts...>> {
+  using Types = ::testing::Types<std::tuple<Op, Ts>...>;
+};
+
+template <class Op, class T>
+using WithOpTypes = typename WithOp<Op, T>::Types;
+
+// Use this with TYPED_TEST_SUITE for boolean testing.
+using BoolTestType = ::testing::Types<TestParam<DataType::kI1>>;
+
 // Use this with TYPED_TEST_SUITE for non quantized integer testing.
-using NonQuantizedIntTestTypes =
-    testing::Types<TestParam<DataType::kSI4>, TestParam<DataType::kSI8>,
-                   TestParam<DataType::kSI16>, TestParam<DataType::kSI32>>;
+using IntTestTypes =
+    ::testing::Types<TestParam<DataType::kSI4>, TestParam<DataType::kSI8>,
+                     TestParam<DataType::kSI16>, TestParam<DataType::kSI32>>;
 
 // Use this with TYPED_TEST_SUITE for non quantized floating point testing.
-using NonQuantizedFloatTestTypes =
-    testing::Types<TestParam<DataType::kBF16>, TestParam<DataType::kF16>,
-                   TestParam<DataType::kF32>>;
+using FloatTestTypes =
+    ::testing::Types<TestParam<DataType::kBF16>, TestParam<DataType::kF16>,
+                     TestParam<DataType::kF32>>;
 
 // Use this with TYPED_TEST_SUITE for non quantized testing.
-using NonQuantizedTestTypes =
-    testing::Types<TestParam<DataType::kSI4>, TestParam<DataType::kSI8>,
-                   TestParam<DataType::kSI16>, TestParam<DataType::kSI32>,
-                   TestParam<DataType::kBF16>, TestParam<DataType::kF16>,
-                   TestParam<DataType::kF32>>;
+using ArithmeticTestTypes = ConcatTypes<IntTestTypes, FloatTestTypes>;
 
-// Use this with TYPED_TEST_SUITE for quantized testing.
+// Use this with TYPED_TEST_SUITE for unspecified quantized testing.
 using QuantizedTestTypes =
-    testing::Types<TestParam<DataType::kSI4, DataType::kF32>,
-                   TestParam<DataType::kSI8, DataType::kF32>,
-                   TestParam<DataType::kSI16, DataType::kF32>,
-                   TestParam<DataType::kSI4, DataType::kBF16>,
-                   TestParam<DataType::kSI8, DataType::kBF16>,
-                   TestParam<DataType::kSI4, DataType::kF16>,
-                   TestParam<DataType::kSI8, DataType::kF16>>;
+    ::testing::Types<TestParam<DataType::kSI4, DataType::kF32>,
+                     TestParam<DataType::kSI8, DataType::kF32>,
+                     TestParam<DataType::kSI16, DataType::kF32>,
+                     TestParam<DataType::kSI4, DataType::kBF16>,
+                     TestParam<DataType::kSI8, DataType::kBF16>,
+                     TestParam<DataType::kSI4, DataType::kF16>,
+                     TestParam<DataType::kSI8, DataType::kF16>>;
+
+// Use this with TYPED_TEST_SUITE for quantized per tensor testing.
+using PerTensorQuantizedTestTypes = MapTypes<PerTensor, QuantizedTestTypes>;
+
+template <class T>
+using PerAxis0 = PerAxis<T, 0>;
+
+// Use this with TYPED_TEST_SUITE for quantized per axis testing.
+using PerAxisQuantizedTestTypes = MapTypes<PerAxis0, QuantizedTestTypes>;
+
+// Builds a TensorType object and returns it in a variant that can be passed to
+// a tensor.
+template <DataType storage_type>
+TensorTypeVariant TensorTypeFor(TestParam<storage_type>, const Shape& shape) {
+  return TensorType{.shape = shape, .element_type = storage_type};
+}
+
+// Builds a per tensor QuantizedTensorType object and returns it in a variant
+// that can be passed to a tensor.
+//
+// WARNING: the scale and zero point are randomly generated:
+//   - scale is in [0.5, 1.5]
+//   - zero_point is in [-5, 5]
+template <DataType storage_type, DataType expressed_type>
+TensorTypeVariant TensorTypeFor(
+    PerTensor<TestParam<storage_type, expressed_type>>, const Shape& shape) {
+  std::random_device rd;
+  Distribution<expressed_type> expressed_dist(0.5, 1.5);
+  Distribution<storage_type> storage_dist(-5, 5);
+  StorageType<expressed_type> scale =
+      static_cast<StorageType<expressed_type>>(expressed_dist(rd));
+  StorageType<storage_type> zero_point = storage_dist(rd);
+  return QuantizedTensorType{
+      .shape = shape,
+      .element_type =
+          QuantizedTensorElementType::PerTensor<storage_type, expressed_type>(
+              scale, zero_point)};
+}
+
+// Builds a per axis QuantizedTensorType object and returns it in a variant
+// that can be passed to a tensor.
+//
+// WARNING: scales and zero points are unspecified and may be empty.
+template <DataType storage_type, DataType expressed_type, Axis axis>
+TensorTypeVariant TensorTypeFor(
+    PerAxis<TestParam<storage_type, expressed_type>, axis>,
+    const Shape& shape) {
+  return QuantizedTensorType{
+      .shape = shape,
+      .element_type =
+          QuantizedTensorElementType::PerAxis<storage_type, expressed_type>(
+              /*scales=*/{}, /*zero_points=*/{}, axis)};
+}
 
 }  // namespace shlo_ref
 

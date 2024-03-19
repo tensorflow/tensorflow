@@ -19,7 +19,6 @@ limitations under the License.
 
 #include "absl/status/status.h"
 #include "tensorflow/lite/experimental/shlo/bf16.h"
-#include "tensorflow/lite/experimental/shlo/data_type.h"
 #include "tensorflow/lite/experimental/shlo/dispatch.h"
 #include "tensorflow/lite/experimental/shlo/f16.h"
 #include "tensorflow/lite/experimental/shlo/ops/unary_elementwise.h"
@@ -49,20 +48,10 @@ CosineOp Create(CosineOp::Attributes) { return {}; }
 
 absl::Status Prepare(CosineOp& op, const Tensor& input, Tensor& output) {
   SHLO_REF_RETURN_ON_ERROR(Propagate(input.shape(), output.shape()));
-  if (!input.IsQuantized() && IsInteger(input.StorageType())) {
-    return absl::FailedPreconditionError(
-        "stablehlo.cosine does not support integer tensor types.");
-  }
-  if (input.IsPerAxisQuantized()) {
-    return absl::FailedPreconditionError(
-        "stablehlo.cosine does not support per axis quantization.");
-  }
-  if (BaselineType(input.element_type()) !=
-      BaselineType(output.element_type())) {
-    return absl::FailedPreconditionError(
-        "stablehlo.cosine constraint (C1) is not satisfied (incompatible "
-        "baseline types).");
-  }
+  SHLO_REF_RETURN_ON_ERROR(CheckSupportedTypes(
+      CheckCtx("cosine"), input, IsFloatTensor, IsQuantizedPerTensorTensor));
+  SHLO_REF_RETURN_ON_ERROR(
+      CheckSameBaselineType(CheckCtx("cosine"), input, output));
   return absl::OkStatus();
 }
 
@@ -73,11 +62,11 @@ absl::Status Evaluate(CosineOp& op, const Tensor& input, Tensor& output) {
                        input.quantized_tensor_element_type().StorageType(),
                        input.quantized_tensor_element_type().ExpressedType(),
                        cosine, input, output)
-  } else {
+  } else if (IsFloatTensor(input)) {
     DISPATCH_FLOAT(detail::EvaluateNoQuantization, input.tensor_element_type(),
                    cosine, input, output);
   }
-  return absl::OkStatus();
+  return absl::FailedPreconditionError("Unsupported tensor type.");
 }
 
 };  // namespace shlo_ref

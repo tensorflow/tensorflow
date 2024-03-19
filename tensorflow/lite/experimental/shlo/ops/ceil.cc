@@ -49,20 +49,10 @@ CeilOp Create(CeilOp::Attributes) { return {}; }
 
 absl::Status Prepare(CeilOp& op, const Tensor& input, Tensor& output) {
   SHLO_REF_RETURN_ON_ERROR(Propagate(input.shape(), output.shape()));
-  if (!input.IsQuantized() && IsInteger(input.StorageType())) {
-    return absl::FailedPreconditionError(
-        "stablehlo.ceil does not support integer tensor types.");
-  }
-  if (input.IsPerAxisQuantized()) {
-    return absl::FailedPreconditionError(
-        "stablehlo.ceil does not support per axis quantization.");
-  }
-  if (BaselineType(input.element_type()) !=
-      BaselineType(output.element_type())) {
-    return absl::FailedPreconditionError(
-        "stablehlo.ceil constraint (C1) is not satisfied (incompatible "
-        "baseline types).");
-  }
+  SHLO_REF_RETURN_ON_ERROR(CheckSupportedTypes(
+      CheckCtx("ceil"), input, IsFloatTensor, IsQuantizedPerTensorTensor));
+  SHLO_REF_RETURN_ON_ERROR(
+      CheckSameBaselineType(CheckCtx("ceil"), input, output));
   return absl::OkStatus();
 }
 
@@ -73,11 +63,11 @@ absl::Status Evaluate(CeilOp& op, const Tensor& input, Tensor& output) {
                        input.quantized_tensor_element_type().StorageType(),
                        input.quantized_tensor_element_type().ExpressedType(),
                        ceil, input, output)
-  } else {
+  } else if (IsFloatTensor(input)) {
     DISPATCH_FLOAT(detail::EvaluateNoQuantization, input.tensor_element_type(),
                    ceil, input, output);
   }
-  return absl::OkStatus();
+  return absl::FailedPreconditionError("Unsupported tensor type.");
 }
 
 };  // namespace shlo_ref

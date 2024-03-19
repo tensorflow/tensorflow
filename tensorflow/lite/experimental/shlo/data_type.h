@@ -95,10 +95,17 @@ using StorageType = typename Storage<data_type>::Type;
 
 constexpr bool IsBool(DataType data_type) { return data_type == DataType::kI1; }
 
-constexpr bool IsInteger(DataType data_type) {
+constexpr bool IsSignedInteger(DataType data_type) {
   return data_type == DataType::kSI4 || data_type == DataType::kSI8 ||
          data_type == DataType::kSI16 || data_type == DataType::kSI32;
 }
+
+constexpr bool IsUnsignedInteger(DataType data_type) { return false; }
+
+constexpr bool IsInteger(DataType data_type) {
+  return IsSignedInteger(data_type) || IsUnsignedInteger(data_type);
+}
+
 constexpr bool IsFloat(DataType data_type) {
   return data_type == DataType::kBF16 || data_type == DataType::kF16 ||
          data_type == DataType::kF32;

@@ -16,25 +16,30 @@ limitations under the License.
 #include "tensorflow/lite/experimental/shlo/ops/cbrt.h"
 
 #include <cmath>
+#include <string>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
-#include "absl/status/status.h"
 #include "tensorflow/lite/experimental/shlo/bf16.h"
 #include "tensorflow/lite/experimental/shlo/f16.h"
 #include "tensorflow/lite/experimental/shlo/ops/test_util.h"
+#include "tensorflow/lite/experimental/shlo/ops/unary_elementwise_test_util.h"
 #include "tensorflow/lite/experimental/shlo/quantize.h"
 #include "tensorflow/lite/experimental/shlo/quantized_tensor_element_type.h"
 #include "tensorflow/lite/experimental/shlo/shape.h"
 #include "tensorflow/lite/experimental/shlo/status_matcher.h"
 #include "tensorflow/lite/experimental/shlo/tensor.h"
 
-using shlo_ref::testing::StatusIs;
 using testing::ElementsAreArray;
 using testing::NanSensitiveFloatEq;
 using testing::Pointwise;
 
 namespace shlo_ref {
+
+template <>
+struct ParamName<CbrtOp> {
+  static std::string Get() { return "Cbrt"; }
+};
 
 namespace {
 
@@ -55,36 +60,25 @@ struct Cbrt {
   }
 } cbrt_ref;
 
-template <class T>
-struct NonQuantizedIntCbrtTest : ::testing::Test {};
+INSTANTIATE_TYPED_TEST_SUITE_P(Cbrt, UnaryElementwiseOpShapePropagationTest,
+                               CbrtOp, TestParamNames);
 
-TYPED_TEST_SUITE(NonQuantizedIntCbrtTest, NonQuantizedIntTestTypes,
-                 TestParamNames);
+INSTANTIATE_TYPED_TEST_SUITE_P(
+    Cbrt, UnaryElementwiseSameBaselineElementTypeConstraintTest,
+    UnaryElementwiseConstraint1Types<CbrtOp>, TestParamNames);
 
-TYPED_TEST(NonQuantizedIntCbrtTest, IntTensorsRaiseAnError) {
-  using StorageT = typename TypeParam::StorageT;
+using UnsupportedTypes = WithOpTypes<
+    CbrtOp, ConcatTypes<BoolTestType, IntTestTypes, PerAxisQuantizedTestTypes>>;
 
-  const Shape shape({2, 3, 4});
-  Vector<StorageT> input_data = RandomBuffer<TypeParam::kStorage>(shape);
-  Vector<StorageT> output_data(shape.NumElements());
-
-  Tensor input_tensor{
-      .type = TensorType{.shape = shape, .element_type = TypeParam::kStorage},
-      .data = nullptr};
-  Tensor output_tensor = input_tensor;
-
-  auto op = Create(CbrtOp::Attributes{});
-  EXPECT_THAT(Prepare(op, input_tensor, output_tensor),
-              StatusIs(absl::StatusCode::kFailedPrecondition));
-}
+INSTANTIATE_TYPED_TEST_SUITE_P(Cbrt, UnaryElementwiseUnsupportedTypeTest,
+                               UnsupportedTypes, TestParamNames);
 
 template <class T>
-struct NonQuantizedCbrtTest : ::testing::Test {};
+struct CbrtTest : ::testing::Test {};
 
-TYPED_TEST_SUITE(NonQuantizedCbrtTest, NonQuantizedFloatTestTypes,
-                 TestParamNames);
+TYPED_TEST_SUITE(CbrtTest, FloatTestTypes, TestParamNames);
 
-TYPED_TEST(NonQuantizedCbrtTest, FloatTensorsWork) {
+TYPED_TEST(CbrtTest, FloatTensorsWork) {
   using StorageT = typename TypeParam::StorageT;
 
   const Shape shape({2, 3, 4});
@@ -145,28 +139,6 @@ TYPED_TEST(QuantizedCbrtTest, PerTensorWorks) {
   ASSERT_OK(Prepare(op, input_tensor, output_tensor));
   ASSERT_OK(Evaluate(op, input_tensor, output_tensor));
   EXPECT_THAT(output_data, ElementsAreArray(expected_data));
-}
-
-TYPED_TEST(QuantizedCbrtTest, PerAxisFails) {
-  using StorageT = typename TypeParam::StorageT;
-  using ExpressedT = typename TypeParam::ExpressedT;
-
-  const Shape shape({4, 3, 2});
-  const int quantized_dimension = 2;
-  Vector<ExpressedT> empty_scales;
-  Vector<StorageT> empty_zero_points;
-  const QuantizedTensorElementType tensor_type =
-      QuantizedTensorElementType::PerAxis<TypeParam::kStorage,
-                                          TypeParam::kExpressed>(
-          empty_scales, empty_zero_points, quantized_dimension);
-  Tensor input_tensor{
-      .type = QuantizedTensorType{.shape = shape, .element_type = tensor_type},
-      .data = nullptr};
-  Tensor output_tensor = input_tensor;
-
-  auto op = Create(CbrtOp::Attributes{});
-  EXPECT_THAT(Prepare(op, input_tensor, output_tensor),
-              StatusIs(absl::StatusCode::kFailedPrecondition));
 }
 
 }  // namespace

@@ -70,7 +70,9 @@ cc_library(
     srcs = ["util.cc"],
     hdrs = ["util.h"],
     deps = [
+        "//tensorflow/lite/experimental/shlo:data_type",
         "//tensorflow/lite/experimental/shlo:shape",
+        "//tensorflow/lite/experimental/shlo:tensor",
         "@com_google_absl//absl/status",
     ],
 )
@@ -118,7 +120,6 @@ cc_test(
         "//tensorflow/lite/experimental/shlo:status_matcher",
         "//tensorflow/lite/experimental/shlo:tensor",
         "@com_google_absl//absl/algorithm:container",
-        "@com_google_absl//absl/container:inlined_vector",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -129,9 +130,26 @@ cc_library(
     hdrs = ["test_util.h"],
     deps = [
         "//tensorflow/lite/experimental/shlo:data_type",
+        "//tensorflow/lite/experimental/shlo:quantized_tensor_element_type",
         "//tensorflow/lite/experimental/shlo:shape",
+        "//tensorflow/lite/experimental/shlo:tensor",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:inlined_vector",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_library(
+    name = "unary_elementwise_test_util",
+    testonly = True,
+    hdrs = ["unary_elementwise_test_util.h"],
+    deps = [
+        ":test_util",
+        "//tensorflow/lite/experimental/shlo:data_type",
+        "//tensorflow/lite/experimental/shlo:shape",
+        "//tensorflow/lite/experimental/shlo:status_matcher",
+        "//tensorflow/lite/experimental/shlo:tensor",
+        "@com_google_absl//absl/status",
         "@com_google_googletest//:gtest",
     ],
 )
@@ -156,6 +174,7 @@ cc_test(
     deps = [
         ":abs",
         ":test_util",
+        ":unary_elementwise_test_util",
         "//tensorflow/lite/experimental/shlo:quantize",
         "//tensorflow/lite/experimental/shlo:quantized_tensor_element_type",
         "//tensorflow/lite/experimental/shlo:shape",
@@ -173,7 +192,6 @@ cc_library(
         ":unary_elementwise",
         ":util",
         "//tensorflow/lite/experimental/shlo:bf16",
-        "//tensorflow/lite/experimental/shlo:data_type",
         "//tensorflow/lite/experimental/shlo:dispatch",
         "//tensorflow/lite/experimental/shlo:f16",
         "//tensorflow/lite/experimental/shlo:tensor",
@@ -188,6 +206,7 @@ cc_test(
     deps = [
         ":cbrt",
         ":test_util",
+        ":unary_elementwise_test_util",
         "//tensorflow/lite/experimental/shlo:bf16",
         "//tensorflow/lite/experimental/shlo:f16",
         "//tensorflow/lite/experimental/shlo:quantize",
@@ -195,7 +214,6 @@ cc_test(
         "//tensorflow/lite/experimental/shlo:shape",
         "//tensorflow/lite/experimental/shlo:status_matcher",
         "//tensorflow/lite/experimental/shlo:tensor",
-        "@com_google_absl//absl/status",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -223,6 +241,7 @@ cc_test(
     deps = [
         ":ceil",
         ":test_util",
+        ":unary_elementwise_test_util",
         "//tensorflow/lite/experimental/shlo:bf16",
         "//tensorflow/lite/experimental/shlo:f16",
         "//tensorflow/lite/experimental/shlo:quantize",
@@ -230,7 +249,6 @@ cc_test(
         "//tensorflow/lite/experimental/shlo:shape",
         "//tensorflow/lite/experimental/shlo:status_matcher",
         "//tensorflow/lite/experimental/shlo:tensor",
-        "@com_google_absl//absl/status",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -244,7 +262,6 @@ cc_library(
         ":unary_elementwise",
         ":util",
         "//tensorflow/lite/experimental/shlo:bf16",
-        "//tensorflow/lite/experimental/shlo:data_type",
         "//tensorflow/lite/experimental/shlo:dispatch",
         "//tensorflow/lite/experimental/shlo:f16",
         "//tensorflow/lite/experimental/shlo:tensor",
@@ -258,6 +275,7 @@ cc_test(
     deps = [
         ":cosine",
         ":test_util",
+        ":unary_elementwise_test_util",
         "//tensorflow/lite/experimental/shlo:bf16",
         "//tensorflow/lite/experimental/shlo:f16",
         "//tensorflow/lite/experimental/shlo:quantize",
@@ -265,7 +283,6 @@ cc_test(
         "//tensorflow/lite/experimental/shlo:shape",
         "//tensorflow/lite/experimental/shlo:status_matcher",
         "//tensorflow/lite/experimental/shlo:tensor",
-        "@com_google_absl//absl/status",
         "@com_google_googletest//:gtest_main",
     ],
 )

@@ -15,7 +15,9 @@ limitations under the License.
 #include "tensorflow/lite/experimental/shlo/ops/util.h"
 
 #include "absl/status/status.h"
+#include "tensorflow/lite/experimental/shlo/data_type.h"
 #include "tensorflow/lite/experimental/shlo/shape.h"
+#include "tensorflow/lite/experimental/shlo/tensor.h"
 
 namespace shlo_ref {
 
@@ -28,6 +30,41 @@ absl::Status Propagate(const Shape& input_shape, Shape& output_shape) {
           "The specified output tensor shape is not compatible with the input "
           "shape.");
     }
+  }
+  return absl::OkStatus();
+}
+
+bool IsBoolTensor(const Tensor& tensor) {
+  return !tensor.IsQuantized() && IsBool(tensor.StorageType());
+}
+
+bool IsSignedIntTensor(const Tensor& tensor) {
+  return !tensor.IsQuantized() && IsSignedInteger(tensor.StorageType());
+}
+
+bool IsUnsignedIntTensor(const Tensor& tensor) {
+  return !tensor.IsQuantized() && IsUnsignedInteger(tensor.StorageType());
+}
+
+bool IsFloatTensor(const Tensor& tensor) {
+  return !tensor.IsQuantized() && IsFloat(tensor.StorageType());
+}
+
+bool IsQuantizedPerTensorTensor(const Tensor& tensor) {
+  return tensor.IsPerTensorQuantized();
+}
+
+bool IsQuantizedPerAxisTensor(const Tensor& tensor) {
+  return tensor.IsPerAxisQuantized();
+}
+
+absl::Status CheckSameBaselineType(CheckCtx ctx, const Tensor& tensor1,
+                                   const Tensor& tensor2) {
+  if (BaselineType(tensor1.element_type()) !=
+      BaselineType(tensor2.element_type())) {
+    return absl::FailedPreconditionError(
+        "stablehlo." + ctx.op_name +
+        ": baseline type constraint is not satisfied.");
   }
   return absl::OkStatus();
 }
