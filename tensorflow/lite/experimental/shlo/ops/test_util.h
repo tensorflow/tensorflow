@@ -257,6 +257,11 @@ using NonQuantizedBoolIntTestTypes =
                    TestParam<DataType::kSI8>, TestParam<DataType::kSI16>,
                    TestParam<DataType::kSI32>>;
 
+// Use this with TYPED_TEST_SUITE for non quantized integer testing.
+using NonQuantizedBoolFloatTestTypes =
+    testing::Types<TestParam<DataType::kI1>, TestParam<DataType::kBF16>,
+                   TestParam<DataType::kF16>, TestParam<DataType::kF32>>;
+
 // Use this with TYPED_TEST_SUITE for non quantized testing.
 using ArithmeticTestTypes = ConcatTypes<IntTestTypes, FloatTestTypes>;
 
