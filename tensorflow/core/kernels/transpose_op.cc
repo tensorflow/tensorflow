@@ -137,7 +137,7 @@ void TransposeOp::Compute(OpKernelContext* ctx) {
   auto perm_vector = perm.vec<int>();
   auto perm_size = perm.NumElements();
   for (int i = 0; i < perm_size; ++i) {
-    OP_REQUIRES(ctx, perm_vector(i) > 0, 
+    OP_REQUIRES(ctx, perm_vector(i) >= 0, 
                 absl::InvalidArgumentError(absl::StrCat(
                         "The perm values should be non-negative "
                         "but found ",
