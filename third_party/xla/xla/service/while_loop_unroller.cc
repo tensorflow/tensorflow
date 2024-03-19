@@ -436,7 +436,8 @@ absl::StatusOr<bool> PrepareModuleForUnrolling(
 
   // We apply constant sinking to fix point.
   HloPassFix<WhileLoopConstantSinking> constant_sinking(
-      /*sink_broadcast_of_constants=*/true);
+      /*sink_broadcast_of_constants=*/true,
+      /*sink_only_scalar_constants=*/true);
   TF_ASSIGN_OR_RETURN(bool applied_constant_sinking,
                       constant_sinking.Run(module, execution_threads));
   if (applied_constant_sinking) {

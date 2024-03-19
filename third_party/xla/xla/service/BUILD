@@ -6202,6 +6202,7 @@ cc_library(
     deps = [
         ":hlo_pass",
         ":while_util",
+        "//xla:shape_util",
         "//xla:statusor",
         "//xla:util",
         "//xla/hlo/ir:hlo",

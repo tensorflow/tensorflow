@@ -48,8 +48,10 @@ namespace xla {
 //
 class WhileLoopConstantSinking : public HloModulePass {
  public:
-  explicit WhileLoopConstantSinking(bool sink_broadcast_of_constants = false)
-      : sink_broadcast_of_constants_(sink_broadcast_of_constants) {}
+  explicit WhileLoopConstantSinking(bool sink_broadcast_of_constants = false,
+                                    bool sink_only_scalar_constants = false)
+      : sink_broadcast_of_constants_(sink_broadcast_of_constants),
+        sink_only_scalar_constants_(sink_only_scalar_constants) {}
 
   ~WhileLoopConstantSinking() override = default;
 
@@ -66,6 +68,7 @@ class WhileLoopConstantSinking : public HloModulePass {
   StatusOr<bool> TrySinkingConstantsIntoWhileLoop(HloInstruction* while_instr);
 
   const bool sink_broadcast_of_constants_;
+  const bool sink_only_scalar_constants_;
 };
 }  // namespace xla
 
