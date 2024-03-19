@@ -45,9 +45,11 @@ limitations under the License.
 #include "xla/printer.h"
 #include "xla/service/mapped_ptr_container_sorter.h"
 #include "xla/service/name_uniquer.h"
+#include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
 #include "xla/util.h"
+#include "tsl/lib/gtl/iterator_range.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/logging.h"
 #include "tsl/platform/status.h"
@@ -510,22 +512,29 @@ void HloComputation::ForEachInstructionPostOrderImpl(
   bool has_channel_dependencies = !channel_dependencies.empty();
   auto* dfs_stack = dfs_stack_scratch;
   dfs_stack->clear();
-  dfs_stack->push_back(root);
-  while (!dfs_stack->empty()) {
-    HloInstruction& current = *dfs_stack->back();
 
-    VisitMap::Handle h = current.index_in_parent_;
+  // Pushes instruction to dfs stack only if it was not already processed.
+  auto dfs_stack_push = [&](HloInstruction* instr) {
+    VisitState state = visited.GetState(instr->index_in_parent_);
+    if (state != kVisited) dfs_stack->push_back(instr);
+  };
+
+  dfs_stack_push(root);
+  while (!dfs_stack->empty()) {
+    HloInstruction* current = dfs_stack->back();
+    DCHECK_EQ(current->parent(), this)
+        << "Instruction " << current->name()
+        << " is not in the current computation (" << name() << ").";
+
+    VisitMap::Handle h = current->index_in_parent_;
     VisitState state = visited.GetState(h);
     if (state == kNew) {
       visited.SetState(h, kVisiting);
     } else {
       dfs_stack->pop_back();
       if (state != kVisited) {
-        DCHECK_EQ(current.parent(), this)
-            << "Instruction " << current.name()
-            << " is not in the current computation (" << name() << ").";
-        func(&current);
         visited.SetState(h, kVisited);
+        func(current);
       }
       continue;
     }
@@ -534,34 +543,22 @@ void HloComputation::ForEachInstructionPostOrderImpl(
     // Collectives with the same channel ID must be performed together, as these
     // represent MPMD-partitioned that will later be split into separate modules
     // and the order must be preserved.
-    if (has_channel_dependencies && &current != root) {
-      auto it = channel_dependencies.find(&current);
+    if (has_channel_dependencies && current != root) {
+      auto it = channel_dependencies.find(current);
       if (it != channel_dependencies.end()) {
-        dfs_stack->insert(dfs_stack->end(), it->second.begin(),
-                          it->second.end());
+        absl::c_for_each(it->second, dfs_stack_push);
       }
     }
 
     // Add the operands to the stack in reverse order so the first operand is
     // processed first. This will produce a more natural ordering and a nicer
     // result for things like HLO stringification.
-    const HloInstruction::InstructionVector& operands = current.operands();
+    const HloInstruction::InstructionVector& operands = current->operands();
+    absl::c_for_each(tsl::gtl::make_range(operands.rbegin(), operands.rend()),
+                     dfs_stack_push);
 
-    for (auto it = operands.rbegin(); it != operands.rend(); ++it) {
-      HloInstruction* operand = *it;
-      if (visited.GetState(operand->index_in_parent_) != kVisited) {
-        dfs_stack->push_back(operand);
-      } else {
-        // Already fully visited, so we avoid pushing onto the stack
-      }
-    }
-
-    const PtrVec<HloInstruction*>& predecessors =
-        current.control_predecessors();
-    if (!predecessors.empty()) {
-      dfs_stack->insert(dfs_stack->end(), predecessors.begin(),
-                        predecessors.end());
-    }
+    // Add control predecessors to the stack.
+    absl::c_for_each(current->control_predecessors(), dfs_stack_push);
   }
 }
 
