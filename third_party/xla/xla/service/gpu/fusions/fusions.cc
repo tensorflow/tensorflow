@@ -212,7 +212,7 @@ absl::StatusOr<std::unique_ptr<FusionInterface>> GetFusionEmitter(
       return std::make_unique<ScatterFusion>(analysis);
     }
     case HloFusionAnalysis::EmitterFusionKind::kTranspose: {
-      if (check_mlir_emitters(MlirTransposeFusion::IsSupported)) {
+      if (check_mlir_emitters(nullptr)) {
         return std::make_unique<MlirTransposeFusion>(analysis);
       }
       return std::make_unique<TransposeFusion>(analysis);

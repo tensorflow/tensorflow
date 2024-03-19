@@ -187,12 +187,14 @@ bool IsUnsupportedTuple(const HloInstruction* instr) {
     return true;
   }
 
-  // All tuple elements must have the same dimensions (element types may
-  // differ).
+  // All tuple elements must have bitcast-compatible dimensions (element types
+  // may differ).
   auto first_shape = instr->shape().tuple_shapes(0);
   for (int i = 1; i < instr->operand_count(); ++i) {
-    if (instr->shape().tuple_shapes(i).dimensions() !=
-        first_shape.dimensions()) {
+    const auto& tuple_shape = instr->shape().tuple_shapes(i);
+    if (!ShapeUtil::EqualIgnoringElementType(tuple_shape, first_shape) &&
+        !ShapeUtil::IsReshapeOrTransposeBitcast(tuple_shape, first_shape,
+                                                /*ignore_element_type=*/true)) {
       return true;
     }
   }
@@ -544,6 +546,8 @@ Value ApplyAffineExpr(mlir::AffineExpr expr, ValueRange dims,
 
 SmallVector<Value> ApplyAffineMap(mlir::AffineMap map, ValueRange dims,
                                   ValueRange symbols, ImplicitLocOpBuilder& b) {
+  CHECK_EQ(map.getNumDims(), dims.size());
+  CHECK_EQ(map.getNumSymbols(), symbols.size());
   SmallVector<Value> result;
   result.reserve(map.getNumResults());
   for (auto expr : map.getResults()) {
@@ -606,6 +610,7 @@ absl::StatusOr<SmallVector<Value>> HloToMlir(
     result_element_type = sign_converter.convertType(element_mlir_type);
   }
 
+  IndexingContext indexing_context(builder.getContext());
   // Handle ops that aren't elementwise and aren't just indexing
   // transformations.
   switch (instr->opcode()) {
@@ -648,11 +653,26 @@ absl::StatusOr<SmallVector<Value>> HloToMlir(
                         builder);
     case HloOpcode::kTuple: {
       CHECK(!IsUnsupportedTuple(instr));
+      const auto& first_shape = instr->shape().tuple_shapes(0);
+      CHECK_EQ(first_shape.rank(), indices.size())
+          << "Indices for tuple must be for the first tuple element";
       SmallVector<Value> operands;
       for (int i = 0; i < instr->operand_count(); ++i) {
+        llvm::SmallVector<Value> operand_indices;
+        // The tuple shapes only need to be bitcast compatible, so insert
+        // bitcasts where necessary.
+        if (i > 0 && !ShapeUtil::EqualIgnoringElementType(
+                         first_shape, instr->operand(i)->shape())) {
+          auto operand_map = GetBitcastMap(
+              first_shape, instr->operand(i)->shape(), &indexing_context);
+          operand_indices =
+              ApplyAffineMap(operand_map.GetAffineMap(), indices, {}, builder);
+        } else {
+          operand_indices = indices;
+        }
         TF_ASSIGN_OR_RETURN(
             operands.emplace_back(),
-            GetSingleOperandValue(operand_provider, instr, i, indices));
+            GetSingleOperandValue(operand_provider, instr, i, operand_indices));
       }
       return operands;
     }
@@ -675,7 +695,6 @@ absl::StatusOr<SmallVector<Value>> HloToMlir(
                             operand->shape().element_type(), builder));
     arg_types.push_back(operand_element_type);
   }
-  IndexingContext indexing_context(builder.getContext());
   auto input_indices =
       GetInputIndices(ComputeOutputToInputIndexing(instr, 0, &indexing_context),
                       indices, builder);

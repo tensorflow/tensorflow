@@ -51,22 +51,15 @@ class MlirTransposeFusion : public MlirFusionEmitterBase {
   explicit MlirTransposeFusion(const HloFusionAnalysis& analysis);
   LaunchDimensions launch_dimensions() const override;
 
-  static bool IsSupported(const HloFusionAnalysis& analysis);
-
   std::optional<IndexingMap> ComputeThreadIdToOutputIndexing(
       int64_t root_index, IndexingContext* indexing_context) const override;
 
   std::optional<IndexingMap> ComputeThreadIdToInputIndexing(
       int64_t root_index, int64_t hero_operand_index,
-      IndexingContext* indexing_context) const override {
-    return ComputeThreadIdToInputIndexing(
-        *analysis_.fusion_heroes()[root_index], indexing_context);
-  }
+      IndexingContext* indexing_context) const override;
 
  protected:
   IndexingMap ComputeThreadIdToInputIndexing(
-      const HloInstruction& hero, IndexingContext* indexing_context) const;
-  IndexingMap ComputeThreadIdToOutputIndexing(
       const HloInstruction& hero, IndexingContext* indexing_context) const;
 
   absl::Status EmitEntryFunction(

@@ -728,6 +728,27 @@ TEST_F(ElementalHloToMlirTest, IotaComplex) {
   )"));
 }
 
+TEST_F(ElementalHloToMlirTest, MixedIndexingTuple) {
+  TF_EXPECT_OK(Run(R"(
+    ENTRY main {
+      %p0 = f32[10,10] parameter(0)
+      %p1 = f32[100] parameter(1)
+      ROOT tuple = (f32[10,10], f32[100]) tuple(%p0, %p1)
+    })",
+                   R"(
+    // CHECK:      @main_tuple(
+    // CHECK-SAME:     %[[P0:.*]]: tensor<10x10xf32>,
+    // CHECK-SAME:     %[[P1:.*]]: tensor<100xf32>,
+    // CHECK-SAME:     %[[X:.*]]: index {{{.*}}}, %[[Y:.*]]: index {{{.*}}}
+    // CHECK:        %[[A:.*]] = tensor.extract %[[P0]][%[[X]], %[[Y]]]
+    // CHECK:        %[[IDX:.*]] = affine.apply
+    // CHECK-SAME:       affine_map<()[s0, s1] -> (s0 * 10 + s1)>()
+    // CHECK-SAME:       [%[[X]], %[[Y]]]
+    // CHECK:        %[[B:.*]] = tensor.extract %[[P1]][%[[IDX]]]
+    // CHECK:        return %[[A]], %[[B]]
+  )"));
+}
+
 }  // namespace
 }  // namespace mlir_converter
 }  // namespace gpu
