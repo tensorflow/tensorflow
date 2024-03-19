@@ -83,7 +83,6 @@ _PER_CHANNEL_QUANTIZED_OPS = (
     'UniformQuantizedDotHybrid',
 )
 
-_DebuggerOptions = quant_opts_pb2.DebuggerOptions
 _DebuggerConfig = stablehlo_quant_config_pb2.DebuggerConfig
 
 # Lists of ops whose channel dimension should be changed if per_channel
@@ -5926,7 +5925,7 @@ class DebuggerTest(quantize_model_test_base.QuantizedModelTest):
             preset_method=_PresetMethod.METHOD_STATIC_RANGE_INT8
         ),
         op_set=quant_opts_pb2.XLA,
-        debugger_options=_DebuggerOptions(
+        debugger_config=_DebuggerConfig(
             debugger_type=_DebuggerConfig.DebuggerType.DEBUGGER_TYPE_WHOLE_MODEL,
             unquantized_dump_model_path=unquantized_dump_model_path,
             log_dir_path=log_dir_path,
@@ -6039,7 +6038,7 @@ class DebuggerTest(quantize_model_test_base.QuantizedModelTest):
             preset_method=_PresetMethod.METHOD_STATIC_RANGE_INT8
         ),
         op_set=target_opset,
-        debugger_options=_DebuggerOptions(
+        debugger_config=_DebuggerConfig(
             debugger_type=debugger_type,
             log_dir_path=log_dir_path,
         ),

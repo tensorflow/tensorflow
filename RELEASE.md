@@ -29,6 +29,8 @@
 * GPU
     * Support for NVIDIA GPUs with compute capability 8.9 (e.g. L4 & L40) has
       been added to TF binary distributions (Python wheels).
+* Replace `DebuggerOptions` of TensorFlow Quantizer, and migrate to
+  `DebuggerConfig` of StableHLO Quantizer.
 
 ## Keras
 

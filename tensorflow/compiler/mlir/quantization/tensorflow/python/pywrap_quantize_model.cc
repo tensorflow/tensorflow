@@ -89,7 +89,7 @@ PYBIND11_MODULE(pywrap_quantize_model, m) {
         // Remove the `tpu` tag from the debug quantized saved model as it is
         // for CPU. Note the 'tpu' value should be the same as `TPU` defined in
         // tensorflow/python/saved_model/tag_constants.py.
-        if (quantization_options.has_debugger_options()) {
+        if (quantization_options.has_debugger_config()) {
           tags.erase("tpu");
         }
         py_function_library.SaveExportedModel(
@@ -138,7 +138,7 @@ PYBIND11_MODULE(pywrap_quantize_model, m) {
         // Remove the `tpu` tag from the debug quantized saved model as it is
         // for CPU. Note the 'tpu' value should be the same as `TPU` defined in
         // tensorflow/python/saved_model/tag_constants.py.
-        if (quantization_options.has_debugger_options()) {
+        if (quantization_options.has_debugger_config()) {
           tags.erase("tpu");
         }
         py_function_library.SaveExportedModel(
@@ -255,9 +255,9 @@ PYBIND11_MODULE(pywrap_quantize_model, m) {
                        << status;
         }
 
-        if (quantization_options.has_debugger_options()) {
+        if (quantization_options.has_debugger_config()) {
           EnableDebugging(*exported_model,
-                          quantization_options.debugger_options(),
+                          quantization_options.debugger_config(),
                           py_function_library, src_saved_model_path, tags,
                           signature_def_map);
         }
@@ -283,7 +283,7 @@ PYBIND11_MODULE(pywrap_quantize_model, m) {
         // Remove the `tpu` tag from the debug quantized saved model as it is
         // for CPU. Note the 'tpu' value should be the same as `TPU` defined in
         // tensorflow/python/saved_model/tag_constants.py.
-        if (quantization_options.has_debugger_options()) {
+        if (quantization_options.has_debugger_config()) {
           tags.erase("tpu");
         }
         py_function_library.SaveExportedModel(

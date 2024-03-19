@@ -38,7 +38,7 @@ namespace stablehlo::quantization {
 // and compare them offline.
 void EnableDebugging(
     tensorflow::quantization::ExportedModel& exported_model,
-    const tensorflow::quantization::DebuggerOptions& debugger_options,
+    const stablehlo::quantization::DebuggerConfig& debugger_config,
     const tensorflow::quantization::PyFunctionLibrary& py_function_library,
     absl::string_view src_saved_model_path,
     const std::unordered_set<std::string>& tags,

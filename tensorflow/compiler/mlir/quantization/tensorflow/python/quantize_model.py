@@ -692,7 +692,7 @@ def _populate_quantization_options_default_values(
         ' quantization via TF Quantizer.'
     )
 
-  if quantization_options.HasField('debugger_options'):
+  if quantization_options.HasField('debugger_config'):
     # Set `force_graph_mode_calibration` to True to avoid skipping op execution,
     # which are not connected to return ops, during calibration execution.
     # Setting `force_graph_mode_calibration` to True enables execution of the
@@ -704,11 +704,11 @@ def _populate_quantization_options_default_values(
     )
     quantization_options.force_graph_mode_calibration = True
 
-    if not quantization_options.debugger_options.log_dir_path:
-      quantization_options.debugger_options.log_dir_path = '/tmp/dumps'
+    if not quantization_options.debugger_config.log_dir_path:
+      quantization_options.debugger_config.log_dir_path = '/tmp/dumps'
 
     if (
-        quantization_options.debugger_options.debugger_type
+        quantization_options.debugger_config.debugger_type
         == stablehlo_quant_config_pb2.DebuggerConfig.DebuggerType.DEBUGGER_TYPE_UNSPECIFIED
     ):
       raise ValueError(
@@ -716,9 +716,9 @@ def _populate_quantization_options_default_values(
       )
 
     if (
-        quantization_options.debugger_options.debugger_type
+        quantization_options.debugger_config.debugger_type
         == stablehlo_quant_config_pb2.DebuggerConfig.DebuggerType.DEBUGGER_TYPE_WHOLE_MODEL
-        and not quantization_options.debugger_options.unquantized_dump_model_path
+        and not quantization_options.debugger_config.unquantized_dump_model_path
     ):
       raise ValueError(
           'Debugger type whole model verify was used but'

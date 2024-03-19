@@ -79,18 +79,6 @@ using ::stablehlo::quantization::DebuggerConfig;
 using ::stablehlo::quantization::QuantizationConfig;
 using ::stablehlo::quantization::io::GetLocalTmpFileName;
 
-// TODO: b/326355110 - Removes `ConvertDebuggerOptionToDebuggerConfig` when
-// merging `DebuggingOption` to `DebuggingConfig`.
-DebuggerConfig ConvertDebuggerOptionToDebuggerConfig(
-    const DebuggerOptions &debugger_options) {
-  DebuggerConfig debugger_config;
-  debugger_config.set_debugger_type(debugger_options.debugger_type());
-  debugger_config.set_unquantized_dump_model_path(
-      debugger_options.unquantized_dump_model_path());
-  debugger_config.set_log_dir_path(debugger_options.log_dir_path());
-  return debugger_config;
-}
-
 absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ImportAndPreprocessSavedModel(
     absl::string_view saved_model_path,
     const std::vector<std::string> &signature_keys,
@@ -268,8 +256,7 @@ absl::StatusOr<ExportedModel> QuantizePtqModelPreCalibration(
   if (is_stablehlo) {
     QuantizationConfig quantization_config;
     *quantization_config.mutable_debugger_config() =
-        ConvertDebuggerOptionToDebuggerConfig(
-            quantization_options.debugger_options());
+        quantization_options.debugger_config();
     PreCalibrationComponent pre_calibration_component(context.get());
     TF_ASSIGN_OR_RETURN(*module_ref, pre_calibration_component.Run(
                                          *module_ref, quantization_config));
