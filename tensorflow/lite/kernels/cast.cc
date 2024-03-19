@@ -13,9 +13,11 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 #include <algorithm>
+#include <cmath>
 #include <complex>
 #include <cstddef>
 #include <cstdint>
+#include <limits>
 
 #include "Eigen/Core"  // from @eigen_archive
 #include "tensorflow/lite/core/c/common.h"
@@ -34,6 +36,17 @@ namespace {
 
 constexpr int kInputTensor = 0;
 constexpr int kOutputTensor = 0;
+
+void copyCast(const float* in, int32_t* out, int num_elements) {
+  float min_int_float =
+      std::nextafterf((float)std::numeric_limits<int32_t>::min(), 0);
+  float max_int_float =
+      std::nextafterf((float)std::numeric_limits<int32_t>::max(), 0);
+  std::transform(in, in + num_elements, out, [=](float a) {
+    return static_cast<int32_t>(
+        std::max(std::min(a, max_int_float), min_int_float));
+  });
+}
 
 template <typename FromT, typename ToT>
 void copyCast(const FromT* in, ToT* out, int num_elements) {
