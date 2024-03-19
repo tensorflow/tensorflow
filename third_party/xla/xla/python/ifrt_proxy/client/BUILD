@@ -477,6 +477,7 @@ ifrt_proxy_cc_test(
         ":version",
         "//xla:shape_util",
         "//xla/pjrt:pjrt_common",
+        "//xla/pjrt:pjrt_layout",
         "//xla/python/ifrt",
         "//xla/python/ifrt:mock",
         "//xla/python/ifrt_proxy/common:ifrt_service_proto_cc",

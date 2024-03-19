@@ -201,6 +201,7 @@ ifrt_proxy_cc_test(
         "//xla/pjrt:host_callback",
         "//xla/pjrt:pjrt_common",
         "//xla/pjrt:pjrt_device_description",
+        "//xla/pjrt:pjrt_layout",
         "//xla/python/ifrt",
         "//xla/python/ifrt:mock",
         "//xla/python/ifrt:serdes",
