@@ -80,12 +80,12 @@ bool IsCustomCall(const HloInstruction* hlo, absl::string_view platform_name) {
   void* call_target = CustomCallTargetRegistry::Global()->Lookup(
       call_target_name, std::string(platform_name));
 
-  absl::StatusOr<XLA_FFI_Handler*> handler =
+  absl::StatusOr<ffi::HandlerRegistration> handler_registration =
       ffi::FindHandler(call_target_name, platform_name);
 
   // At least one implementation should be available at run time.
   bool found_custom_call = !is_ffi_custom_call && call_target != nullptr;
-  bool found_ffi_handler = is_ffi_custom_call && handler.ok();
+  bool found_ffi_handler = is_ffi_custom_call && handler_registration.ok();
 
   return found_custom_call || found_ffi_handler;
 }

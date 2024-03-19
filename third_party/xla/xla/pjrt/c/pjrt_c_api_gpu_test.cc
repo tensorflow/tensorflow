@@ -430,8 +430,8 @@ TEST(PjrtCApiGpuExtensionTest, CustomCallTyped) {
       reinterpret_cast<const PJRT_Gpu_Custom_Call*>(next)->custom_call(&args);
 
   CHECK_EQ(error, nullptr);
-  auto* custom_call = xla::ffi::FindHandler(function_name, "CUDA").value();
-  EXPECT_EQ(reinterpret_cast<void*>(custom_call), kNoop);
+  auto registration = xla::ffi::FindHandler(function_name, "CUDA").value();
+  EXPECT_EQ(reinterpret_cast<void*>(registration.handler), kNoop);
 }
 
 }  // namespace

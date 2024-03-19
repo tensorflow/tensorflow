@@ -187,7 +187,7 @@ absl::StatusOr<FusionEmissionResult> EmitCustomCall(
   const BufferAssignment& buffer_assignment =
       ir_emitter_context.buffer_assignment();
 
-  const std::string call_target_name = custom_call.custom_call_target();
+  const std::string& call_target_name = custom_call.custom_call_target();
 
   // Typed FFI custom calls is a replacement for legacy custom calls with
   // a rich type safe API. It's under construction and not fully supported.
@@ -197,12 +197,12 @@ absl::StatusOr<FusionEmissionResult> EmitCustomCall(
   void* call_target = CustomCallTargetRegistry::Global()->Lookup(
       call_target_name, std::string(ir_emitter_context.platform_name()));
 
-  absl::StatusOr<XLA_FFI_Handler*> handler =
+  absl::StatusOr<ffi::HandlerRegistration> registration =
       ffi::FindHandler(call_target_name, ir_emitter_context.platform_name());
 
   // At least one implementation should be available at run time.
   bool found_custom_call = !is_ffi_custom_call && call_target != nullptr;
-  bool found_ffi_handler = is_ffi_custom_call && handler.ok();
+  bool found_ffi_handler = is_ffi_custom_call && registration.ok();
 
   if (!found_custom_call && !found_ffi_handler) {
     return absl::InternalError(
@@ -323,8 +323,9 @@ absl::StatusOr<FusionEmissionResult> EmitCustomCall(
   auto ffi_thunk = [&] {
     auto& called_computations = custom_call.called_computations();
     return std::make_unique<CustomCallThunk>(
-        Thunk::ThunkInfo::WithProfileAnnotation(&custom_call), *handler,
-        std::move(operands), std::move(results), std::move(attributes),
+        Thunk::ThunkInfo::WithProfileAnnotation(&custom_call),
+        registration->handler, std::move(operands), std::move(results),
+        std::move(attributes),
         called_computations.empty() ? nullptr : called_computations[0]);
   };
 

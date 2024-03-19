@@ -943,10 +943,10 @@ void BuildXlaCompilerSubmodule(nb::module_& m) {
           targets[nb::str(name.data(), name.size())] = nb::capsule(target);
         }
 
-        for (const auto& [name, target] :
+        for (const auto& [name, registration] :
              ffi::StaticRegisteredHandlers(platform)) {
           targets[nb::str(name.data(), name.size())] =
-              nb::capsule(reinterpret_cast<void*>(target));
+              nb::capsule(reinterpret_cast<void*>(registration.handler));
         }
         return targets;
       },

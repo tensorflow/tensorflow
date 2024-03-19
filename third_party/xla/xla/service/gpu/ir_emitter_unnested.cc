@@ -1315,12 +1315,12 @@ absl::Status IrEmitterUnnested::EmitCustomCallThunk(
   void* call_target = CustomCallTargetRegistry::Global()->Lookup(
       call_target_name, std::string(platform_name()));
 
-  absl::StatusOr<XLA_FFI_Handler*> handler =
+  absl::StatusOr<ffi::HandlerRegistration> registration =
       ffi::FindHandler(call_target_name, platform_name());
 
   // At least one implementation should be available at run time.
   bool found_custom_call = !is_ffi_custom_call && call_target != nullptr;
-  bool found_ffi_handler = is_ffi_custom_call && handler.ok();
+  bool found_ffi_handler = is_ffi_custom_call && registration.ok();
 
   if (!found_custom_call && !found_ffi_handler) {
     auto& debug_options = ir_emitter_context_->debug_options();
@@ -1452,7 +1452,7 @@ absl::Status IrEmitterUnnested::EmitCustomCallThunk(
   auto ffi_thunk = [&] {
     auto& called_computations = instr->called_computations();
     return std::make_unique<CustomCallThunk>(
-        Thunk::ThunkInfo::WithProfileAnnotation(instr), *handler,
+        Thunk::ThunkInfo::WithProfileAnnotation(instr), registration->handler,
         std::move(operands), std::move(results), std::move(attributes),
         called_computations.empty() ? nullptr : called_computations[0]);
   };

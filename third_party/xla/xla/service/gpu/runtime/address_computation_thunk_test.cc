@@ -560,8 +560,8 @@ TEST(AddressComputationThunkTest, SlicedMemcpy) {
 
   // Preparing custom call thunk: setting up call target and operands + results
   // buffers.
-  auto handler = xla::ffi::FindHandler("__xla_test$$memcpy", PLATFORM);
-  ASSERT_TRUE(handler.ok());
+  auto registration = xla::ffi::FindHandler("__xla_test$$memcpy", PLATFORM);
+  ASSERT_TRUE(registration.ok());
 
   std::vector<std::optional<CustomCallThunk::Slice>> operands{
       CustomCallThunk::Slice{slice_src_fake,
@@ -573,7 +573,7 @@ TEST(AddressComputationThunkTest, SlicedMemcpy) {
   // Creating embedded custom call thunk.
   ThunkSequence seq;
   seq.emplace_back(std::make_unique<CustomCallThunk>(
-      Thunk::ThunkInfo(nullptr), *handler, operands, results,
+      Thunk::ThunkInfo(nullptr), registration->handler, operands, results,
       /*attributes=*/CustomCallThunk::AttributesMap(),
       /*called_computation=*/nullptr));
 
@@ -713,8 +713,8 @@ TEST(AddressComputationThunkTest, SlicedOutputMemcpy) {
 
   // Preparing custom call thunk: setting up call target and operands + results
   // buffers.
-  auto handler = xla::ffi::FindHandler("__xla_test$$memcpy", PLATFORM);
-  ASSERT_TRUE(handler.ok());
+  auto registration = xla::ffi::FindHandler("__xla_test$$memcpy", PLATFORM);
+  ASSERT_TRUE(registration.ok());
 
   std::vector<std::optional<CustomCallThunk::Slice>> operands{
       CustomCallThunk::Slice{slice_src_fake,
@@ -726,7 +726,7 @@ TEST(AddressComputationThunkTest, SlicedOutputMemcpy) {
   // Creating embedded custom call thunk.
   ThunkSequence seq;
   seq.emplace_back(std::make_unique<CustomCallThunk>(
-      Thunk::ThunkInfo(nullptr), *handler, operands, results,
+      Thunk::ThunkInfo(nullptr), registration->handler, operands, results,
       /*attributes=*/CustomCallThunk::AttributesMap(),
       /*called_computation=*/nullptr));
 
