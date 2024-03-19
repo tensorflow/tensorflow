@@ -395,11 +395,15 @@ void BaseCollectiveExecutor::CompleteParamsAsync(
     SchedNonBlockingClosureAfter(
         1'000'000, [this, is_callback_called, done, timeout]() {
           for(int count = 0; count < timeout; count++) {
-              bool called = is_callback_called->exchange(false);
-              if(called)
+              if(bool called = is_callback_called->exchange(false); called) {
                 return;
+              }
               usleep(1000000);
-            }
+          }
+          // The last chance: if callback is not called, reset it and abort
+          if(bool called = is_callback_called->exchange(true); called) {
+            return; 
+          }
           Status status(
               absl::StatusCode::kDeadlineExceeded,
               "Collective has timed out waiting for other workers.");
