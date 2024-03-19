@@ -153,8 +153,7 @@ struct ComputeOpAndFuncBufferizePass
     // will be migrated to BufferizableOpInterface-based bufferization.
     options.opFilter.allowDialect<bufferization::BufferizationDialect,
                                   linalg::LinalgDialect, mhlo::MhloDialect,
-                                  shape::ShapeDialect, tensor::TensorDialect,
-                                  vector::VectorDialect>();
+                                  shape::ShapeDialect, vector::VectorDialect>();
 
     if (failed(bufferization::bufferizeOp(getOperation(), options))) {
       signalPassFailure();
