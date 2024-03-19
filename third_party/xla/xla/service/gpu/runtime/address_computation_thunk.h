@@ -44,16 +44,11 @@ class AddressComputationThunk : public Thunk {
  public:
   AddressComputationThunk(
       ThunkInfo thunk_info, std::unique_ptr<ThunkSequence> embedded_thunk,
-      std::vector<std::optional<const BufferAllocation::Slice>> operands,
-      std::vector<std::optional<const BufferAllocation::Slice>> results,
+      std::vector<std::optional<const BufferAllocation::Slice>> arguments,
       std::vector<std::optional<std::vector<BufferAllocation::Slice>>>
-          operand_offset_buffer_indices,
-      std::vector<std::optional<const Shape>> operand_orig_shapes,
-      std::vector<std::optional<const Shape>> operand_sliced_shapes,
-      std::vector<std::optional<std::vector<BufferAllocation::Slice>>>
-          result_offset_buffer_indices,
-      std::vector<std::optional<const Shape>> result_orig_shapes,
-      std::vector<std::optional<const Shape>> result_sliced_shapes);
+          offset_buffer_indices,
+      std::vector<std::optional<const Shape>> orig_shapes,
+      std::vector<std::optional<const Shape>> sliced_shapes);
 
   AddressComputationThunk(const AddressComputationThunk&) = delete;
   AddressComputationThunk& operator=(const AddressComputationThunk&) = delete;
@@ -66,26 +61,17 @@ class AddressComputationThunk : public Thunk {
  private:
   std::unique_ptr<SequentialThunk> embedded_thunk_;
   std::vector<std::optional<const BufferAllocation::Slice>>
-      embedded_thunk_operands_;
-  std::vector<std::optional<const BufferAllocation::Slice>>
-      embedded_thunk_results_;
+      embedded_thunk_arguments_;
   std::vector<std::optional<std::vector<BufferAllocation::Slice>>>
-      operand_offset_buffer_indices_;
-  std::vector<std::optional<const Shape>> operand_orig_shapes_;
-  std::vector<std::optional<const Shape>> operand_sliced_shapes_;
-  std::vector<std::optional<std::vector<BufferAllocation::Slice>>>
-      result_offset_buffer_indices_;
-  std::vector<std::optional<const Shape>> result_orig_shapes_;
-  std::vector<std::optional<const Shape>> result_sliced_shapes_;
+      offset_buffer_indices_;
+  std::vector<std::optional<const Shape>> orig_shapes_;
+  std::vector<std::optional<const Shape>> sliced_shapes_;
 
   // Pinned host memory for transferring offset values from device to host.
   absl::Mutex mutex_;
   absl::flat_hash_map<se::StreamExecutor*,
                       std::unique_ptr<se::MemoryAllocation>>
-      operand_offsets_ ABSL_GUARDED_BY(mutex_);
-  absl::flat_hash_map<se::StreamExecutor*,
-                      std::unique_ptr<se::MemoryAllocation>>
-      result_offsets_ ABSL_GUARDED_BY(mutex_);
+      offsets_ ABSL_GUARDED_BY(mutex_);
 };
 
 }  // namespace gpu

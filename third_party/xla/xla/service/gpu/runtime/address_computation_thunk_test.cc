@@ -128,12 +128,13 @@ TEST(AddressComputationThunkTest, SlicedGemm) {
                                                    slice_lhs_offset_1};
   AddressComputationThunk thunk(
       Thunk::ThunkInfo(nullptr),
-      std::make_unique<ThunkSequence>(std::move(seq)), {slice_lhs, slice_rhs},
-      {slice_out, slice_workspace}, {lhs_offsets, std::nullopt},
-      {ShapeUtil::MakeShape(PrimitiveType::F32, {2, 4}), std::nullopt},
-      {ShapeUtil::MakeShape(PrimitiveType::F32, {1, 3}), std::nullopt},
-      {std::nullopt, std::nullopt}, {std::nullopt, std::nullopt},
-      {std::nullopt, std::nullopt});
+      std::make_unique<ThunkSequence>(std::move(seq)),
+      {slice_lhs, slice_rhs, slice_out, slice_workspace},
+      {lhs_offsets, std::nullopt, std::nullopt, std::nullopt},
+      {ShapeUtil::MakeShape(PrimitiveType::F32, {2, 4}), std::nullopt,
+       std::nullopt, std::nullopt},
+      {ShapeUtil::MakeShape(PrimitiveType::F32, {1, 3}), std::nullopt,
+       std::nullopt, std::nullopt});
 
   // Step 2:
   // Execute address computation thunk.
@@ -270,14 +271,15 @@ TEST(AddressComputationThunkTest, SlicedNonContiguousGemm) {
                                                    slice_rhs_offset_1};
   AddressComputationThunk thunk(
       Thunk::ThunkInfo(nullptr),
-      std::make_unique<ThunkSequence>(std::move(seq)), {slice_lhs, slice_rhs},
-      {slice_out, slice_workspace}, {lhs_offsets, rhs_offsets},
+      std::make_unique<ThunkSequence>(std::move(seq)),
+      {slice_lhs, slice_rhs, slice_out, slice_workspace},
+      {lhs_offsets, rhs_offsets, std::nullopt, std::nullopt},
       {ShapeUtil::MakeShape(PrimitiveType::F32, {2, 4}),
-       ShapeUtil::MakeShape(PrimitiveType::F32, {4, 3})},
+       ShapeUtil::MakeShape(PrimitiveType::F32, {4, 3}), std::nullopt,
+       std::nullopt},
       {ShapeUtil::MakeShape(PrimitiveType::F32, {2, 2}),
-       ShapeUtil::MakeShape(PrimitiveType::F32, {2, 2})},
-      {std::nullopt, std::nullopt}, {std::nullopt, std::nullopt},
-      {std::nullopt, std::nullopt});
+       ShapeUtil::MakeShape(PrimitiveType::F32, {2, 2}), std::nullopt,
+       std::nullopt});
 
   // Step 2:
   // Execute address computation thunk.
@@ -418,14 +420,15 @@ TEST(AddressComputationThunkTest, MulipleSlicedOperandsGemm) {
                                                    slice_rhs_offset_1};
   AddressComputationThunk thunk(
       Thunk::ThunkInfo(nullptr),
-      std::make_unique<ThunkSequence>(std::move(seq)), {slice_lhs, slice_rhs},
-      {slice_out, slice_workspace}, {lhs_offsets, rhs_offsets},
+      std::make_unique<ThunkSequence>(std::move(seq)),
+      {slice_lhs, slice_rhs, slice_out, slice_workspace},
+      {lhs_offsets, rhs_offsets, std::nullopt, std::nullopt},
       {ShapeUtil::MakeShape(PrimitiveType::F32, {2, 4}),
-       ShapeUtil::MakeShape(PrimitiveType::F32, {8, 1})},
+       ShapeUtil::MakeShape(PrimitiveType::F32, {8, 1}), std::nullopt,
+       std::nullopt},
       {ShapeUtil::MakeShape(PrimitiveType::F32, {1, 3}),
-       ShapeUtil::MakeShape(PrimitiveType::F32, {3, 1})},
-      {std::nullopt, std::nullopt}, {std::nullopt, std::nullopt},
-      {std::nullopt, std::nullopt});
+       ShapeUtil::MakeShape(PrimitiveType::F32, {3, 1}), std::nullopt,
+       std::nullopt});
 
   // Step 2:
   // Execute address computation thunk.
@@ -582,13 +585,12 @@ TEST(AddressComputationThunkTest, SlicedMemcpy) {
       slice_offset_0, slice_offset_1, slice_offset_2, slice_offset_3};
   AddressComputationThunk thunk(
       Thunk::ThunkInfo(nullptr),
-      std::make_unique<ThunkSequence>(std::move(seq)), {slice_src}, {slice_dst},
-      {slice_offsets},
-      {ShapeUtil::MakeShape(PrimitiveType::S32, {8, 8, 10, 8})},
+      std::make_unique<ThunkSequence>(std::move(seq)), {slice_src, slice_dst},
+      {slice_offsets, std::nullopt},
+      {ShapeUtil::MakeShape(PrimitiveType::S32, {8, 8, 10, 8}), std::nullopt},
       // Make sure to pass a dst shape with the same rank as src shape (i.e.
       // original slice result and not bitcasted one)
-      {ShapeUtil::MakeShape(PrimitiveType::S32, {1, 1, 8, 8})}, {std::nullopt},
-      {std::nullopt}, {std::nullopt});
+      {ShapeUtil::MakeShape(PrimitiveType::S32, {1, 1, 8, 8}), std::nullopt});
 
   // Step 2:
   // Execute address computation thunk.
@@ -739,15 +741,14 @@ TEST(AddressComputationThunkTest, SlicedOutputMemcpy) {
       slice_dst_offset_3};
   AddressComputationThunk thunk(
       Thunk::ThunkInfo(nullptr),
-      std::make_unique<ThunkSequence>(std::move(seq)), {slice_src}, {slice_dst},
-      {slice_src_offsets},
-      {ShapeUtil::MakeShape(PrimitiveType::S32, {8, 8, 10, 2})},
+      std::make_unique<ThunkSequence>(std::move(seq)), {slice_src, slice_dst},
+      {slice_src_offsets, slice_dst_offsets},
+      {ShapeUtil::MakeShape(PrimitiveType::S32, {8, 8, 10, 2}),
+       ShapeUtil::MakeShape(PrimitiveType::S32, {2, 2, 2, 2})},
       // Make sure to pass a dst shape with the same rank as src shape (i.e.
       // original slice result and not bitcasted one)
-      {ShapeUtil::MakeShape(PrimitiveType::S32, {1, 1, 2, 2})},
-      {slice_dst_offsets},
-      {{ShapeUtil::MakeShape(PrimitiveType::S32, {2, 2, 2, 2})}},
-      {ShapeUtil::MakeShape(PrimitiveType::S32, {1, 1, 2, 2})});
+      {ShapeUtil::MakeShape(PrimitiveType::S32, {1, 1, 2, 2}),
+       ShapeUtil::MakeShape(PrimitiveType::S32, {1, 1, 2, 2})});
 
   // Step 2:
   // Execute address computation thunk.
