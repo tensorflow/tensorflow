@@ -45,6 +45,10 @@ export ROCM_PATH=$ROCM_INSTALL_DIR
 
 if [ -f /usertools/rocm.bazelrc ]; then
 	 # Use the bazelrc files in /usertools if available
+  	if [ ! -d /tf ];then
+	   # The bazelrc files in /usertools expect /tf to exist
+           mkdir /tf
+	fi
 	bazel \
            --bazelrc=/usertools/rocm.bazelrc \
            test \

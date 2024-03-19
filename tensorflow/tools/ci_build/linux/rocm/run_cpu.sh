@@ -32,6 +32,10 @@ export TF_NEED_ROCM=0
 
 if [ -f /usertools/cpu.bazelrc ]; then
         # Use the bazelrc files in /usertools if available
+	if [ ! -d /tf ];then
+           # The bazelrc files in /usertools expect /tf to exist
+           mkdir /tf
+        fi
         bazel \
           --bazelrc=/usertools/cpu.bazelrc \
           test \
