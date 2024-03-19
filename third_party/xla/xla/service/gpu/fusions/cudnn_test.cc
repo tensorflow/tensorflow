@@ -14,6 +14,9 @@ limitations under the License.
 ==============================================================================*/
 
 #include <gtest/gtest.h>
+#include "absl/strings/str_replace.h"
+#include "absl/strings/substitute.h"
+#include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/service/gpu/stream_executor_util.h"
 #include "xla/service/gpu/tests/gpu_codegen_test.h"
 
@@ -470,6 +473,167 @@ ENTRY r {
 })",
                             ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
 }
+
+class ElementwiseTest : public CuDnnFusionExecutionTest,
+                        public ::testing::WithParamInterface<
+                            std::tuple<PrimitiveType, HloOpcode, float>> {};
+
+std::string ElementwiseTestParamsToString(
+    const ::testing::TestParamInfo<std::tuple<PrimitiveType, HloOpcode, float>>&
+        data) {
+  PrimitiveType data_type;
+  HloOpcode opcode;
+  float tolerance;
+  std::tie(data_type, opcode, tolerance) = data.param;
+  return absl::StrCat(
+      primitive_util::LowercasePrimitiveTypeName(data_type), "_",
+      absl::StrReplaceAll(HloOpcodeString(opcode), {{"-", "_"}}));
+}
+
+using UnaryElementwiseTest = ElementwiseTest;
+
+TEST_P(UnaryElementwiseTest, ElementwiseFusionExecutesCorrectly) {
+  PrimitiveType data_type;
+  HloOpcode opcode;
+  float tolerance;
+  std::tie(data_type, opcode, tolerance) = GetParam();
+
+  const std::string kHloTemplate = R"(
+fusion_computation {
+  p0 = f32[32,32] parameter(0)
+  p1 = $0[32,32] parameter(1)
+  f1.1 = $0[32,32] $1(p1)
+  c.1 = f32[32,32] convert(f1.1)
+  ROOT _ = f32[32,32] dot(p0, c.1),
+    lhs_contracting_dims={1}, rhs_contracting_dims={0}
+}
+
+ENTRY e {
+  p1 = $0[32,32] parameter(1)
+  p0 = f32[32,32] parameter(0)
+  ROOT r = f32[32,32] fusion(p0, p1), kind=kCustom,
+    calls=fusion_computation,
+    backend_config={"fusion_backend_config":{"kind":"__cudnn$$fusion"}}
+})";
+  const std::string hlo_test = absl::Substitute(
+      kHloTemplate, primitive_util::LowercasePrimitiveTypeName(data_type),
+      HloOpcodeString(opcode));
+
+  EXPECT_TRUE(RunAndCompare(hlo_test,
+                            ErrorSpec{/*aabs=*/tolerance, /*arel=*/tolerance}));
+}
+
+INSTANTIATE_TEST_SUITE_P(
+    ElementwiseTestSuiteF32, UnaryElementwiseTest,
+    ::testing::Combine(::testing::Values(F32),
+                       ::testing::ValuesIn({HloOpcode::kAbs, HloOpcode::kCos,
+                                            HloOpcode::kExp, HloOpcode::kLog,
+                                            HloOpcode::kNegate,
+                                            HloOpcode::kRsqrt, HloOpcode::kSin,
+                                            HloOpcode::kSqrt, HloOpcode::kTan,
+                                            HloOpcode::kTanh}),
+                       ::testing::Values(5e-4)),
+    ElementwiseTestParamsToString);
+
+using BinaryElementwiseTest = ElementwiseTest;
+
+TEST_P(BinaryElementwiseTest, ElementwiseFusionExecutesCorrectly) {
+  PrimitiveType data_type;
+  HloOpcode opcode;
+  float tolerance;
+  std::tie(data_type, opcode, tolerance) = GetParam();
+
+  const std::string kHloTemplate = R"(
+fusion_computation {
+  p0 = f32[32,32] parameter(0)
+  p1 = $0[32,32] parameter(1)
+  p2 = $0[32,32] parameter(2)
+  f1.1 = $0[32,32] $1(p1, p2)
+  c.1 = f32[32,32] convert(f1.1)
+  ROOT _ = f32[32,32] dot(p0, c.1),
+    lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  }
+
+ENTRY e {
+  p0 = f32[32,32] parameter(0)
+  p1 = $0[32,32] parameter(1)
+  p2 = $0[32,32] parameter(2)
+  ROOT r = f32[32,32] fusion(p0, p1, p2), kind=kCustom,
+    calls=fusion_computation,
+    backend_config={"fusion_backend_config":{"kind":"__cudnn$$fusion"}}
+})";
+  const std::string hlo_test = absl::Substitute(
+      kHloTemplate, primitive_util::LowercasePrimitiveTypeName(data_type),
+      HloOpcodeString(opcode));
+
+  EXPECT_TRUE(RunAndCompare(hlo_test,
+                            ErrorSpec{/*aabs=*/tolerance, /*arel=*/tolerance}));
+}
+
+INSTANTIATE_TEST_SUITE_P(
+    ElementwiseTestSuiteF32, BinaryElementwiseTest,
+    ::testing::Combine(
+        ::testing::Values(F32),
+        ::testing::ValuesIn({HloOpcode::kAdd, HloOpcode::kDivide,
+                             HloOpcode::kMaximum, HloOpcode::kMinimum,
+                             HloOpcode::kMultiply, HloOpcode::kPower,
+                             HloOpcode::kSubtract}),
+        ::testing::Values(3e-3)),
+    ElementwiseTestParamsToString);
+
+class CompareTest : public CuDnnFusionExecutionTest,
+                    public ::testing::WithParamInterface<
+                        std::tuple<PrimitiveType, Comparison::Direction>> {};
+
+std::string CompareTestParamsToString(
+    const ::testing::TestParamInfo<
+        std::tuple<PrimitiveType, Comparison::Direction>>& data) {
+  PrimitiveType data_type;
+  Comparison::Direction direction;
+  std::tie(data_type, direction) = data.param;
+  return absl::StrCat(primitive_util::LowercasePrimitiveTypeName(data_type),
+                      "_", ComparisonDirectionToString(direction));
+}
+
+TEST_P(CompareTest, FusedComparisonExecutesCorrectly) {
+  PrimitiveType data_type;
+  Comparison::Direction direction;
+  std::tie(data_type, direction) = GetParam();
+
+  const std::string kHloTemplate = R"(
+fusion_computation {
+  p0 = f32[32,32] parameter(0)
+  p1 = $0[32,32] parameter(1)
+  p2 = $0[32,32] parameter(2)
+  f1.1 = pred[32,32] compare(p1, p2), direction=$1
+  c.1 = f32[32,32] convert(f1.1)
+  ROOT _ = f32[32,32] dot(p0, c.1),
+    lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  }
+
+ENTRY e {
+  p0 = f32[32,32] parameter(0)
+  p1 = $0[32,32] parameter(1)
+  p2 = $0[32,32] parameter(2)
+  ROOT r = f32[32,32] fusion(p0, p1, p2), kind=kCustom,
+    calls=fusion_computation,
+    backend_config={"fusion_backend_config":{"kind":"__cudnn$$fusion"}}
+})";
+  const std::string hlo_test = absl::Substitute(
+      kHloTemplate, primitive_util::LowercasePrimitiveTypeName(data_type),
+      ComparisonDirectionToString(direction));
+
+  EXPECT_TRUE(RunAndCompare(hlo_test, ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
+}
+
+using cd = Comparison::Direction;
+
+INSTANTIATE_TEST_SUITE_P(
+    CompareTestSuite, CompareTest,
+    ::testing::Combine(::testing::Values(PRED, S8, S32, F16, F32),
+                       ::testing::Values(cd::kEq, cd::kNe, cd::kGe, cd::kGt,
+                                         cd::kLe, cd::kLt)),
+    CompareTestParamsToString);
 
 class CuDnnFusionRewriteTest : public CuDnnFusionTest {
  public:

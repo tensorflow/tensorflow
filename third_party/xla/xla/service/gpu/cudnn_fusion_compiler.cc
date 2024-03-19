@@ -68,18 +68,58 @@ inline std::optional<fe::PointwiseMode_t> GetElementwiseMode(
   const HloOpcode opcode = instruction.opcode();
   using m = fe::PointwiseMode_t;
   switch (opcode) {
+    case HloOpcode::kAbs:
+      return m::ABS;
     case HloOpcode::kAdd:
       return m::ADD;
+    case HloOpcode::kCompare:
+      switch (instruction.comparison_direction()) {
+        case Comparison::Direction::kEq:
+          return m::CMP_EQ;
+        case Comparison::Direction::kNe:
+          return m::CMP_NEQ;
+        case Comparison::Direction::kGe:
+          return m::CMP_GE;
+        case Comparison::Direction::kGt:
+          return m::CMP_GT;
+        case Comparison::Direction::kLe:
+          return m::CMP_LE;
+        case Comparison::Direction::kLt:
+          return m::CMP_LT;
+      }
+      break;
     case HloOpcode::kConvert:
       return m::IDENTITY;
+    case HloOpcode::kCos:
+      return m::COS;
     case HloOpcode::kDivide:
       return m::DIV;
+    case HloOpcode::kExp:
+      return m::EXP;
+    case HloOpcode::kLog:
+      return m::LOG;
+    case HloOpcode::kMaximum:
+      return m::MAX;
+    case HloOpcode::kMinimum:
+      return m::MIN;
     case HloOpcode::kMultiply:
       return m::MUL;
     case HloOpcode::kNegate:
       return m::NEG;
+    case HloOpcode::kPower:
+      return m::POW;
+    case HloOpcode::kRsqrt:
+      return m::RSQRT;
+    case HloOpcode::kSin:
+      return m::SIN;
+    case HloOpcode::kSqrt:
+      return m::SQRT;
     case HloOpcode::kSubtract:
       return m::SUB;
+    case HloOpcode::kTan:
+      return m::TAN;
+    case HloOpcode::kTanh:
+      return m::TANH_FWD;
     default:
       return std::nullopt;
   }
@@ -97,6 +137,8 @@ inline std::optional<fe::DataType_t> ToCudnnDataType(const PrimitiveType type) {
     case PrimitiveType::S32:
       return t::INT32;
     case PrimitiveType::S8:
+      return t::INT8;
+    case PrimitiveType::PRED:
       return t::INT8;
     default:
       return std::nullopt;

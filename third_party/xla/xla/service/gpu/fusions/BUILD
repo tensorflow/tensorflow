@@ -575,8 +575,10 @@ xla_test(
         "gpu",
     ],
     deps = [
+        "//xla/hlo/ir:hlo",
         "//xla/service/gpu:stream_executor_util",
         "//xla/service/gpu/tests:gpu_codegen_test",
+        "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest_main",
         "@local_tsl//tsl/platform:test",
         "@local_tsl//tsl/platform:test_main",
