@@ -348,7 +348,7 @@ cc_library(
         "//xla/service/gpu/fusions/triton:triton_fusion_emitter",
         "//xla/service/gpu/kernels:custom_kernel",
         "//xla/service/gpu/kernels:topk_custom_kernel",
-        "//xla/service/gpu/model:tiled_hlo_computation",
+        "//xla/service/gpu/model:tiled_hlo_instruction_or_computation",
         "//xla/service/gpu/runtime:command_buffer_cmd",
         "//xla/service/gpu/runtime:command_buffer_cmd_emitter",
         "//xla/service/gpu/runtime:command_buffer_thunk",
