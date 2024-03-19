@@ -2858,14 +2858,8 @@ using ConstHloInstructionSet =
 
 template <HloOpcode op, HloOpcode... rest>
 bool HloPredicateIsOp(const HloInstruction* instruction) {
-  if (instruction->opcode() == op) {
-    return true;
-  }
-  if constexpr (sizeof...(rest) == 0) {
-    return false;
-  } else {
-    return HloPredicateIsOp<rest...>(instruction);
-  }
+  return (instruction->opcode() == op) ||
+         ((instruction->opcode() == rest) || ...);
 }
 
 /* static */ inline bool HloInstruction::MightHaveCalledComputations(
