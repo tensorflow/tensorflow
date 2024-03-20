@@ -56,14 +56,7 @@ class SubstrOp : public OpKernel {
                 errors::InvalidArgument(
                     "pos and len should have the same shape, got: ",
                     pos_shape.DebugString(), " vs. ", len_shape.DebugString()));
-    OP_REQUIRES(
-        context, pos_tensor.NumElements() > 0,
-        absl::InvalidArgumentError(absl::StrCat(
-            "received empty tensor pos_tensor: ", pos_tensor.DebugString())));
-    OP_REQUIRES(
-        context, len_tensor.NumElements() > 0,
-        absl::InvalidArgumentError(absl::StrCat(
-            "received empty tensor len_tensor: ", len_tensor.DebugString())));
+
     bool is_scalar = TensorShapeUtils::IsScalar(pos_shape);
 
     if (is_scalar || input_shape == pos_shape) {
