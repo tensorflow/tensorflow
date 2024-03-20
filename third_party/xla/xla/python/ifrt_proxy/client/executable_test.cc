@@ -236,8 +236,7 @@ TEST_F(LoadedExecutableTest, Execute) {
   for (const uint64_t handle : {1000, 1001}) {
     args.push_back(tsl::MakeRef<Array>(
         &client, rpc_helper_, DType(DType::kF32), Shape({2, 2}),
-        OpaqueSharding::Create(devices, MemoryKind()),
-        ArrayHandle{.handle = handle}));
+        OpaqueSharding::Create(devices, MemoryKind()), ArrayHandle{handle}));
   }
 
   TF_ASSERT_OK_AND_ASSIGN(

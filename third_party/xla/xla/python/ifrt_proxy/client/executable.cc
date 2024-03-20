@@ -427,9 +427,8 @@ LoadedExecutable::Execute(absl::Span<tsl::RCReference<xla::ifrt::Array>> args,
     result.outputs.clear();  // Cleaned up by `~Array()`.
 
     for (; index < response->outputs_size(); ++index) {
-      Array::Destruct(
-          rpc_helper_.get(),
-          ArrayHandle{.handle = response->outputs(index).array_handle()});
+      Array::Destruct(rpc_helper_.get(),
+                      ArrayHandle{response->outputs(index).array_handle()});
     }
   };
   const auto lookup_device = absl::bind_front(&Client::LookupDevice, client());
@@ -440,7 +439,7 @@ LoadedExecutable::Execute(absl::Span<tsl::RCReference<xla::ifrt::Array>> args,
                         FromShardingProto(lookup_device, output.sharding()));
     result.outputs.push_back(tsl::MakeRef<Array>(
         client(), rpc_helper_, dtype, std::move(shape), std::move(sharding),
-        ArrayHandle{.handle = output.array_handle()}));
+        ArrayHandle{output.array_handle()}));
   }
   std::move(cleanup).Cancel();
 

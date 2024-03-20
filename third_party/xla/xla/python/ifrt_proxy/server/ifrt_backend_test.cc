@@ -890,8 +890,8 @@ TEST_F(IfrtBackendHandlerTest, CompileSuccess) {
       addressable_device_logical_ids;
   std::vector<xla::ifrt::Device*> addressable_devices;
   for (int i = 0; i < 4; ++i) {
-    addressable_device_logical_ids.push_back(
-        {.replica = i / 2, .partition = i % 2});
+    xla::ifrt::LoadedExecutable::LogicalDeviceIds id{i / 2, i % 2};
+    addressable_device_logical_ids.push_back(id);
     addressable_devices.push_back(&devices[i]);
   }
 

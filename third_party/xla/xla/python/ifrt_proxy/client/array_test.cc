@@ -98,8 +98,7 @@ TEST_F(ArrayTest, Destruction) {
 
   MockClient client;
   tsl::MakeRef<Array>(&client, rpc_helper_, DType(DType::Kind::kBF16),
-                      Shape({}), /*sharding=*/nullptr,
-                      ArrayHandle{.handle = 1234});
+                      Shape({}), /*sharding=*/nullptr, ArrayHandle{1234});
 }
 #endif
 
@@ -124,9 +123,9 @@ TEST_F(ArrayTest, FullyReplicatedShard) {
   auto sharding = xla::ifrt::SingleDeviceSharding::Create(
       &mock_device, xla::ifrt::MemoryKind());
 
-  auto array = tsl::MakeRef<Array>(
-      &client, rpc_helper_, DType(DType::Kind::kBF16), Shape({}),
-      std::move(sharding), ArrayHandle{.handle = 1234});
+  auto array =
+      tsl::MakeRef<Array>(&client, rpc_helper_, DType(DType::Kind::kBF16),
+                          Shape({}), std::move(sharding), ArrayHandle{1234});
 
   ASSERT_THAT(array->FullyReplicatedShard(ArrayCopySemantics::kAlwaysCopy),
               IsOk());
