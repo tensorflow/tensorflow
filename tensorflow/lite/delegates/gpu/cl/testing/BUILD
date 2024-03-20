@@ -91,6 +91,7 @@ cc_binary(
     ],
     deps = [
         "//tensorflow/lite/core/kernels:builtin_ops",
+        "//tensorflow/lite/delegates/gpu/cl:cl_command_buffer",
         "//tensorflow/lite/delegates/gpu/cl:environment",
         "//tensorflow/lite/delegates/gpu/cl:inference_context",
         "//tensorflow/lite/delegates/gpu/cl:opencl_wrapper",
