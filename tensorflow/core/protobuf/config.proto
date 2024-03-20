@@ -265,6 +265,14 @@ message GPUOptions {
     // system memory size for better resource estimation of multi-tenancy(one
     // gpu with multiple model) use case.
     int32 gpu_system_memory_size_in_mb = 16;
+
+    // If true, save information needed for created a PjRt GPU client for
+    // creating a client with remote devices.
+    bool populate_pjrt_gpu_client_creation_info = 17;
+
+    // node_id for use when creating a PjRt GPU client with remote devices,
+    // which enumerates jobs*tasks from a ServerDef.
+    int32 node_id = 18;
   }
 
   // Everything inside experimental is subject to change and is not subject
