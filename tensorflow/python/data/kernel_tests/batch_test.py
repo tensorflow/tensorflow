@@ -15,7 +15,6 @@
 # ==============================================================================
 """Tests for `tf.data.Dataset.batch()`."""
 
-import math
 import time
 from typing import Callable, Optional
 
@@ -453,19 +452,16 @@ class BatchGlobalShuffleTest(test_base.DatasetTestBase, parameterized.TestCase):
           test_base.default_test_combinations(),
           combinations.combine(
               dataset_range=[100],
-              batch_size=[2, 7],
-              drop_remainder=[True, False])))
+              batch_size=[2, 7])))
   def testBatch(
-      self, dataset_range: int, batch_size: int, drop_remainder: bool):
+      self, dataset_range: int, batch_size: int):
     dataset = dataset_ops.Dataset.range(dataset_range)
-    dataset = dataset.batch(batch_size, drop_remainder=drop_remainder)
+    dataset = dataset.batch(batch_size, drop_remainder=True)
     dataset = dataset.prefetch(buffer_size=dataset_ops.AUTOTUNE)
     dataset = global_shuffle_op._global_shuffle(dataset)
-    dataset = dataset.map(lambda x: x[0])
+    dataset = dataset.unbatch()
 
-    expected = list(range(0, dataset_range, batch_size))
-    if drop_remainder:
-      expected = expected[: (dataset_range // batch_size)]
+    expected = list(range(0, (dataset_range // batch_size) * batch_size))
     dataset_output = self.getDatasetOutput(
         dataset, requires_initialization=True)
     self.assertCountEqual(dataset_output, expected)
@@ -477,27 +473,23 @@ class BatchGlobalShuffleTest(test_base.DatasetTestBase, parameterized.TestCase):
           combinations.combine(
               dataset_range=[100],
               batch_size=[2, 7],
-              drop_remainder=[True, False],
               reshuffle=[True, False],
               seed=[None, 42])))
   def testReshuffleRepeatEpochs(
       self,
       dataset_range: int,
       batch_size: int,
-      drop_remainder: bool,
       reshuffle: bool,
       seed: Optional[int]):
     dataset = dataset_ops.Dataset.range(dataset_range)
-    dataset = dataset.batch(batch_size, drop_remainder=drop_remainder)
+    dataset = dataset.batch(batch_size, drop_remainder=True)
     dataset = dataset.prefetch(buffer_size=dataset_ops.AUTOTUNE)
     dataset = global_shuffle_op._global_shuffle(
         dataset, seed=seed, reshuffle_each_iteration=reshuffle)
-    dataset = dataset.map(lambda x: x[0])
     dataset = dataset.repeat(2)
+    dataset = dataset.unbatch()
 
-    expected = list(range(0, dataset_range, batch_size))
-    if drop_remainder:
-      expected = expected[: (dataset_range // batch_size)]
+    expected = list(range(0, (dataset_range // batch_size) * batch_size))
     len_per_iteration = len(expected)
     expected *= 2
 
@@ -511,6 +503,24 @@ class BatchGlobalShuffleTest(test_base.DatasetTestBase, parameterized.TestCase):
     else:
       self.assertEqual(output_per_iteration[0], output_per_iteration[1])
 
+  @combinations.generate(
+      combinations.times(
+          test_base.default_test_combinations(),
+          combinations.combine(
+              dataset_range=[100],
+              batch_size=[2, 7])))
+  def testNoDropRemainder(
+      self, dataset_range: int, batch_size: int):
+    dataset = dataset_ops.Dataset.range(dataset_range)
+    dataset = dataset.batch(batch_size, drop_remainder=False)
+    dataset = dataset.prefetch(buffer_size=dataset_ops.AUTOTUNE)
+
+    with self.assertRaisesRegex(
+        errors.FailedPreconditionError,
+        "does not support global shuffling with `drop_remainder=False`."):
+      dataset = global_shuffle_op._global_shuffle(dataset)
+      self.getDatasetOutput(dataset, requires_initialization=True)
+
 
 class BatchGlobalShuffleCheckpointTest(checkpoint_test_base.CheckpointTestBase,
                                        parameterized.TestCase):
@@ -522,22 +532,20 @@ class BatchGlobalShuffleCheckpointTest(checkpoint_test_base.CheckpointTestBase,
           combinations.combine(
               dataset_range=[10],
               batch_size=[2, 3],
-              drop_remainder=[True, False],
               symbolic_checkpoint=[True, False])))
   def testBatch(
       self,
       verify_fn: Callable[..., None],
       dataset_range: int,
       batch_size: int,
-      drop_remainder: bool,
       symbolic_checkpoint: bool):
 
     def _build_dataset() -> dataset_ops.Dataset:
       dataset = dataset_ops.Dataset.range(dataset_range)
-      dataset = dataset.batch(batch_size, drop_remainder=drop_remainder)
+      dataset = dataset.batch(batch_size, drop_remainder=True)
       dataset = dataset.prefetch(buffer_size=dataset_ops.AUTOTUNE)
       dataset = global_shuffle_op._global_shuffle(dataset, seed=42)
-      dataset = dataset.map(lambda x: x[0])
+      dataset = dataset.unbatch()
       options = options_lib.Options()
       options.experimental_symbolic_checkpoint = symbolic_checkpoint
       return dataset.with_options(options)
@@ -545,10 +553,7 @@ class BatchGlobalShuffleCheckpointTest(checkpoint_test_base.CheckpointTestBase,
     verify_fn(
         self,
         _build_dataset,
-        num_outputs=(
-            dataset_range // batch_size
-            if drop_remainder
-            else math.ceil(dataset_range / batch_size)),
+        num_outputs=(dataset_range // batch_size) * batch_size,
         assert_items_equal=True)
 
   # Creating multiple iterators with the same seed is only supported in v2 API.
@@ -559,7 +564,6 @@ class BatchGlobalShuffleCheckpointTest(checkpoint_test_base.CheckpointTestBase,
           combinations.combine(
               dataset_range=[10],
               batch_size=[2, 3],
-              drop_remainder=[True, False],
               reshuffle_each_iteration=[True, False],
               symbolic_checkpoint=[True, False])))
   def testReshuffleEachIteration(
@@ -567,17 +571,16 @@ class BatchGlobalShuffleCheckpointTest(checkpoint_test_base.CheckpointTestBase,
       verify_fn: Callable[..., None],
       dataset_range: int,
       batch_size: int,
-      drop_remainder: bool,
       reshuffle_each_iteration: bool,
       symbolic_checkpoint: bool):
 
     def _build_dataset() -> dataset_ops.Dataset:
       dataset = dataset_ops.Dataset.range(dataset_range)
-      dataset = dataset.batch(batch_size, drop_remainder=drop_remainder)
+      dataset = dataset.batch(batch_size, drop_remainder=True)
       dataset = dataset.prefetch(buffer_size=dataset_ops.AUTOTUNE)
       dataset = global_shuffle_op._global_shuffle(
           dataset, seed=42, reshuffle_each_iteration=reshuffle_each_iteration)
-      dataset = dataset.map(lambda x: x[0])
+      dataset = dataset.unbatch()
       options = options_lib.Options()
       options.experimental_symbolic_checkpoint = symbolic_checkpoint
       return dataset.with_options(options)
@@ -585,10 +588,7 @@ class BatchGlobalShuffleCheckpointTest(checkpoint_test_base.CheckpointTestBase,
     verify_fn(
         self,
         _build_dataset,
-        num_outputs=(
-            dataset_range // batch_size
-            if drop_remainder
-            else math.ceil(dataset_range / batch_size)),
+        num_outputs=(dataset_range // batch_size) * batch_size,
         assert_items_equal=reshuffle_each_iteration)
 
 

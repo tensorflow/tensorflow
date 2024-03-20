@@ -21,6 +21,7 @@ limitations under the License.
 #include <utility>
 
 #include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "tensorflow/core/data/dataset_utils.h"
 #include "tensorflow/core/data/global_shuffle_utils.h"
 #include "tensorflow/core/data/name_utils.h"
@@ -90,7 +91,11 @@ class BatchDatasetOp::Dataset : public DatasetBase {
     }
 
     random_indexing_compatible_ = absl::OkStatus();
-    if (input_ != nullptr) {
+    if (!drop_remainder_) {
+      random_indexing_compatible_ = absl::FailedPreconditionError(absl::StrCat(
+          type_string(),
+          " does not support global shuffling with `drop_remainder=False`."));
+    } else if (input_ != nullptr) {
       random_indexing_compatible_ = input_->RandomIndexingCompatible();
     }
   }

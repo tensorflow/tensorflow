@@ -44,6 +44,7 @@ tf_kernel_library(
         "//tensorflow/core:framework",
         "//tensorflow/core/data:name_utils",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
     ],
 )
 
