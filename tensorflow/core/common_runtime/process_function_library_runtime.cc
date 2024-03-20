@@ -684,7 +684,8 @@ Status ProcessFunctionLibraryRuntime::InstantiateMultiDevice(
     }
 
     FunctionDef shard;
-    s = GraphToFunctionDef(*subgraph, comp_data->name, control_ret, &shard);
+    s = GraphToFunctionDef(std::move(subgraph), comp_data->name, control_ret,
+                           &shard);
     if (!s.ok()) {
       done(s);
       return;
