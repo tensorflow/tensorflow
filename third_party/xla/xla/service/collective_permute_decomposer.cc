@@ -30,6 +30,7 @@ limitations under the License.
 #include "xla/service/collective_ops_utils.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/graphcycles/graphcycles.h"
+#include "xla/shape_util.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/errors.h"
 
@@ -71,10 +72,10 @@ bool HasCycles(const SourceTargetPairs& pairs) {
   return false;
 }
 
-// Returns true if the CollectivePermuteStart instruction should be transformed
-// to Send/Recv. We currently limit the transformation to asynchronous
-// CollectivePermuteStart without any cycle in the (source, target)
-// relationship, with only one input and without any context data.
+// Returns true if the CollectivePermute instruction should be transformed
+// to Send/Recv. We currently limit the transformation to CollectivePermute
+// operations without any cycle in their (source, target) relationship,
+// with only one input and without any context data.
 bool ShouldDecompose(const HloCollectivePermuteInstruction& collective_permute,
                      int64_t threshold_in_bytes) {
   // TODO(b/316043789): enable the transformation for the no channel_id case.
@@ -82,25 +83,14 @@ bool ShouldDecompose(const HloCollectivePermuteInstruction& collective_permute,
     return false;
   }
 
-  auto backend_config =
-      collective_permute.backend_config<xla::gpu::GpuBackendConfig>()
-          ->collective_backend_config();
-  if (backend_config.is_sync()) {
-    return false;
-  }
-  if (collective_permute.operand_count() != 1) {
-    return false;
-  }
-
   const Shape& result_shape = collective_permute.shape();
-  // Skip the transformation if there is any context data.
-  if (result_shape.tuple_shapes_size() != 2) {
+  // Skip the transformation if result is not an array, such as containing
+  // context data.
+  if (!result_shape.IsArray()) {
     return false;
   }
 
-  const Shape& shape = result_shape.tuple_shapes(0);
-  CHECK(shape.IsArray());
-  if (ShapeUtil::ByteSizeOf(shape) < threshold_in_bytes) {
+  if (ShapeUtil::ByteSizeOf(result_shape) < threshold_in_bytes) {
     return false;
   }
   return !HasCycles(collective_permute.source_target_pairs());
@@ -121,9 +111,6 @@ bool MayPipeline(const HloCollectivePermuteInstruction& collective_permute) {
 Status DecomposeCollectivePermute(
     HloCollectivePermuteInstruction* collective_permute,
     HloComputation* computation, const std::string& pipeline_decision) {
-  // The HLO verifier ensures that CollectivePermuteStart's single user is
-  // CollectivePermuteDone.
-  HloInstruction* collective_permute_done = collective_permute->users().front();
   // We currently only decompose collective-permute with a channel_id.
   int64_t channel_id = collective_permute->channel_id().value();
   HloInstruction* data = collective_permute->mutable_operand(0);
@@ -168,9 +155,7 @@ Status DecomposeCollectivePermute(
 
   HloInstruction* recv_data = computation->AddInstruction(
       HloInstruction::CreateGetTupleElement(recv_done, 0));
-  TF_RETURN_IF_ERROR(collective_permute_done->ReplaceAllUsesWith(recv_data));
-  TF_RETURN_IF_ERROR(
-      computation->RemoveInstructionAndUnusedOperands(collective_permute_done));
+  TF_RETURN_IF_ERROR(collective_permute->ReplaceAllUsesWith(recv_data));
   TF_RETURN_IF_ERROR(
       computation->RemoveInstructionAndUnusedOperands(collective_permute));
 
@@ -287,7 +272,7 @@ absl::StatusOr<bool> CollectivePermuteDecomposer::Run(
         while_bodies.insert(hlo->while_body());
         continue;
       }
-      if (hlo->opcode() != HloOpcode::kCollectivePermuteStart) {
+      if (hlo->opcode() != HloOpcode::kCollectivePermute) {
         continue;
       }
 

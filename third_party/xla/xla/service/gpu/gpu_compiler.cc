@@ -959,6 +959,18 @@ absl::Status RunCollectiveOptimizationPasses(
           .debug_options()
           .xla_gpu_collective_permute_decomposer_threshold());
 
+  collectives_pipeline.AddPass<CollectivePermuteDecomposer>(
+      hlo_module->config()
+          .debug_options()
+          .xla_gpu_collective_permute_decomposer_threshold());
+
+  if (hlo_module->config()
+          .debug_options()
+          .xla_gpu_enable_pipelined_collectives() ||
+      hlo_module->config().debug_options().xla_gpu_enable_pipelined_p2p()) {
+    AddP2PPipeliner(collectives_pipeline);
+  }
+
   // Run algebraic simplifier to reshape(broadcast) into a broadcast when
   // the reshape is just adding a unit dimension. This will help with the
   // AllGatherBroadcastReorder pass.
@@ -1167,17 +1179,6 @@ absl::Status RunPostFusionCollectiveOptimizationPasses(HloModule* hlo_module) {
   };
   pipeline.AddPass<GpuAsyncCollectiveAnnotator>(convert_to_async);
 
-  pipeline.AddPass<CollectivePermuteDecomposer>(
-      hlo_module->config()
-          .debug_options()
-          .xla_gpu_collective_permute_decomposer_threshold());
-
-  if (hlo_module->config()
-          .debug_options()
-          .xla_gpu_enable_pipelined_collectives() ||
-      hlo_module->config().debug_options().xla_gpu_enable_pipelined_p2p()) {
-    AddP2PPipeliner(pipeline);
-  }
   return pipeline.Run(hlo_module).status();
 }
 

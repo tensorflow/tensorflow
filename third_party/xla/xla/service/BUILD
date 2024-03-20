@@ -381,6 +381,7 @@ cc_library(
     deps = [
         ":collective_ops_utils",
         ":hlo_pass",
+        "//xla:shape_util",
         "//xla:xla_data_proto_cc",
         "//xla/hlo/ir:hlo",
         "//xla/service/gpu:backend_configs_cc",
