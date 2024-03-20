@@ -25,6 +25,7 @@ package_group(
         "//third_party/mira/...",
         "//third_party/mlcompass/...",
         "//third_party/mlir_edge/model_curriculum/...",
+        "//third_party/openxla/shardonnay/...",
         "//third_party/py/enzyme_ad/...",
         "//third_party/py/jax/...",
         "//third_party/py/t5x/...",
