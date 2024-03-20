@@ -69,9 +69,18 @@ def quantize_saved_model(
         ' single signature or weight-only quantization.'
     )
 
+  # Updates user-provided `QuantizationConfig`s for the internal quantization
+  # pipeline to work with.
+  print('=== User-provided QuantizationConfig ===')
+  print(config)
   config = qc.QuantizationConfig.FromString(
       pywrap_quantization.populate_default_configs(config.SerializeToString())
   )
+  config = qc.QuantizationConfig.FromString(
+      pywrap_quantization.expand_preset_configs(config.SerializeToString())
+  )
+  print('=== Updated QuantizationConfig ===')
+  print(config)
 
   signature_def_map = save_model.get_signatures_from_saved_model(
       src_saved_model_path,

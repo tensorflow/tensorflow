@@ -17,7 +17,6 @@ from typing import Any
 from tensorflow.compiler.mlir.quantization.tensorflow.python import py_function_lib
 from tensorflow.compiler.mlir.quantization.tensorflow.python import representative_dataset as rd
 
-
 # LINT.IfChange(static_range_ptq)
 def static_range_ptq(
     src_saved_model_path: str,
@@ -30,7 +29,6 @@ def static_range_ptq(
 ) -> Any: ...  # Status
 
 # LINT.ThenChange()
-
 
 # LINT.IfChange(weight_only_ptq)
 def weight_only_ptq(
@@ -45,10 +43,16 @@ def weight_only_ptq(
 
 # LINT.ThenChange()
 
-
 # LINT.IfChange(populate_default_configs)
 def populate_default_configs(
     user_provided_quantization_config_serialized: bytes,
+) -> bytes: ...  # QuantizationConfig
+
+# LINT.ThenChange()
+
+# LINT.IfChange(expand_preset_configs)
+def expand_preset_configs(
+    quantization_config_serialized: bytes,
 ) -> bytes: ...  # QuantizationConfig
 
 # LINT.ThenChange()

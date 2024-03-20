@@ -168,11 +168,6 @@ LogicalResult ApplyQuantizationSpec(const QuantizationSpec& spec,
   if (!main_func) return failure();
 
   const Method& quantization_method = spec.method();
-  if (!quantization_method.has_no_quantization()) {
-    module_op->emitError() << "Unsupported quantization method: "
-                           << quantization_method.DebugString() << "\n";
-    return failure();
-  }
 
   FailureOr<std::string> quantization_method_txtpb =
       QuantizationMethodToTextProto(quantization_method);

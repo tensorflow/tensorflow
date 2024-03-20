@@ -27,6 +27,7 @@ namespace py = pybind11;
 
 namespace {
 
+using ::stablehlo::quantization::pywrap::PywrapExpandPresets;
 using ::stablehlo::quantization::pywrap::PywrapPopulateDefaults;
 using ::stablehlo::quantization::pywrap::PywrapQuantizeStaticRangePtq;
 using ::stablehlo::quantization::pywrap::PywrapQuantizeWeightOnlyPtq;
@@ -93,5 +94,19 @@ PYBIND11_MODULE(pywrap_quantization, m) {
         default values to fields that the user did not explicitly specify.
         )pbdoc",
         py::arg("user_provided_config_serialized"));
-  // LINT.ThenChange(pywrap_quantization.pyi:static_range_ptq)
+  // LINT.ThenChange(pywrap_quantization.pyi:populate_default_configs)
+
+  // If the function signature changes, likely its corresponding .pyi type
+  // hinting should also change.
+  // LINT.IfChange(expand_preset_configs)
+  m.def("expand_preset_configs", &PywrapExpandPresets, R"pbdoc(
+        Expands presets to other fields in `QuantizationConfig`.
+
+        Each preset is expressible by other fields in `QuantizationConfig`.
+        Returns a copy of `QuantizationConfig` (serialized) where the fields are
+        expanded from presets. If no preset has been set, it is a no-op and
+        returns the same copy of the input.
+        )pbdoc",
+        py::arg("quantization_config_serialized"));
+  // LINT.ThenChange(pywrap_quantization.pyi:expand_preset_configs)
 }

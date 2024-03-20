@@ -55,6 +55,10 @@ absl::Status PywrapQuantizeWeightOnlyPtq(
 QuantizationConfig PywrapPopulateDefaults(
     const QuantizationConfig& user_provided_config);
 
+// Function used by the pywrap_quantization module to mirror
+// `::stablehlo::quantization::ExpandPresets`.
+QuantizationConfig PywrapExpandPresets(const QuantizationConfig& config);
+
 }  // namespace stablehlo::quantization::pywrap
 
 #endif  // TENSORFLOW_COMPILER_MLIR_QUANTIZATION_STABLEHLO_PYTHON_PYWRAP_QUANTIZATION_LIB_H_

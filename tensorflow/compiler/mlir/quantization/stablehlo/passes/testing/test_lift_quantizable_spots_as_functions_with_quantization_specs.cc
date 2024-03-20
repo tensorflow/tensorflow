@@ -22,6 +22,7 @@ limitations under the License.
 #include "mlir/Support/TypeID.h"  // from @llvm-project
 #include "stablehlo/dialect/StablehloOps.h"  // from @stablehlo  // IWYU pragma: keep
 #include "tensorflow/compiler/mlir/quantization/stablehlo/passes/passes.h"
+#include "tensorflow/compiler/mlir/quantization/stablehlo/passes/testing/passes.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/quantization_config.pb.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"  // IWYU pragma: keep
 #include "tsl/platform/protobuf.h"  // IWYU pragma: keep
@@ -39,13 +40,26 @@ using ::tsl::protobuf::TextFormat;
 // NOLINTNEXTLINE(misc-include-cleaner) - Required for OSS.
 using ::tsl::protobuf::io::ArrayInputStream;
 
+// Empty (default) `QuantizationSpecs` proto.
+constexpr absl::string_view kSpecsEmpty = R"pb(specs
+                                               [])pb";
+
 // Configure `QuantizationSpecs` to disable quantization for all dot_general
 // quantizable units.
-constexpr absl::string_view kSpecsDisableAllDotGeneralByFuncName =
+constexpr absl::string_view kSpecsDisableAllDotGeneral =
     R"pb(specs
          [ {
            matcher { function_name { regex: "composite_dot_general_.*" } }
            method { no_quantization {} }
+         }])pb";
+
+// Configure `QuantizationSpecs` to apply `StaticRangePtq` to all quantizable
+// units.
+constexpr absl::string_view kSpecsStaticRangePtqToAll =
+    R"pb(specs
+         [ {
+           matcher { function_name { regex: ".*" } }
+           method { static_range_ptq {} }
          }])pb";
 
 class TestLiftQuantizableSpotsAsFunctionsWithQuantizationSpecsPass
@@ -64,9 +78,22 @@ class TestLiftQuantizableSpotsAsFunctionsWithQuantizationSpecsPass
   void runOnOperation() override;
 };
 
+// `TestQuantizationSpecs` -> predefined `QuantizationSpecs` textproto.
+absl::string_view GetQuantizationSpecsTextProto(
+    const TestQuantizationSpecs test_specs) {
+  switch (test_specs) {
+    case TestQuantizationSpecs::kEmpty:
+      return kSpecsEmpty;
+    case TestQuantizationSpecs::kDisableAllDotGeneral:
+      return kSpecsDisableAllDotGeneral;
+    case TestQuantizationSpecs::kStaticRangePtqToAll:
+      return kSpecsStaticRangePtqToAll;
+  }
+}
+
 // Parses a text proto into a `QuantizationSpecs` proto. Returns
 // `InvalidArgumentError` if `text_proto` is invalid.
-absl::StatusOr<QuantizationSpecs> ParseQuantizationSpecsTextProto(
+absl::StatusOr<QuantizationSpecs> ParseTextProto(
     const absl::string_view text_proto) {
   QuantizationSpecs quantization_specs;
   TextFormat::Parser parser;
@@ -81,8 +108,9 @@ void TestLiftQuantizableSpotsAsFunctionsWithQuantizationSpecsPass::
     runOnOperation() {
   PassManager pass_manager{&getContext()};
 
+  // Construct `QuantizationSpecs` from the pass option `quantization-specs`.
   const absl::StatusOr<QuantizationSpecs> quantization_specs =
-      ParseQuantizationSpecsTextProto(kSpecsDisableAllDotGeneralByFuncName);
+      ParseTextProto(GetQuantizationSpecsTextProto(quantization_specs_));
   if (!quantization_specs.ok()) {
     signalPassFailure();
     return;
@@ -93,7 +121,6 @@ void TestLiftQuantizableSpotsAsFunctionsWithQuantizationSpecsPass::
 
   if (failed(pass_manager.run(getOperation()))) {
     signalPassFailure();
-    return;
   }
 }
 

@@ -64,4 +64,8 @@ QuantizationConfig PywrapPopulateDefaults(
   return PopulateDefaults(user_provided_config);
 }
 
+QuantizationConfig PywrapExpandPresets(const QuantizationConfig& config) {
+  return ExpandPresets(config);
+}
+
 }  // namespace stablehlo::quantization::pywrap
