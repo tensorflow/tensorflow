@@ -728,9 +728,14 @@ class GemmFusionVisitor : public DfsHloRewriteVisitor {
     // If a GEMM requiring padding for cuBLAS is encountered here this
     // happened because earlier ShouldTritonHandleGEMM() accepted it and padding
     // was skipped. Accept it ignoring profitability checks.
-    if (!CublasRequiresPadding(*Cast<HloDotInstruction>(dot), gpu_version_) &&
-        !should_fuse) {
-      return absl::OkStatus();
+    // TODO(rocm): check ROCM padding requirements.
+    if (std::holds_alternative<se::CudaComputeCapability>(gpu_version_)) {
+      if (!CublasRequiresPadding(
+              *Cast<HloDotInstruction>(dot),
+              std::get<se::CudaComputeCapability>(gpu_version_)) &&
+          !should_fuse) {
+        return OkStatus();
+      }
     }
 
     HloComputation* computation =
@@ -776,17 +781,29 @@ absl::StatusOr<bool> RunOnComputation(
   return visitor.changed();
 }
 
-bool IsSupportedByTriton(
-    PrecisionConfig::Algorithm algorithm,
-    const se::CudaComputeCapability& cuda_compute_capability) {
+bool IsSupportedByTriton(PrecisionConfig::Algorithm algorithm,
+                         const se::GpuComputeCapability& gpu_version) {
+  auto cuda_compute_capability =
+      std::get_if<se::CudaComputeCapability>(&gpu_version);
+  auto rocm_compute_capability =
+      std::get_if<se::RocmComputeCapability>(&gpu_version);
   switch (algorithm) {
-    case PrecisionConfig::ALG_DOT_BF16_BF16_F32:
-      return true;
-
     case PrecisionConfig::ALG_DOT_TF32_TF32_F32:
+      if (cuda_compute_capability) {
+        return cuda_compute_capability->IsAtLeastAmpere();
+      }
+      return false;
+    case PrecisionConfig::ALG_DOT_BF16_BF16_F32:
+
     case PrecisionConfig::ALG_DOT_BF16_BF16_F32_X3:
     case PrecisionConfig::ALG_DOT_BF16_BF16_F32_X6:
-      return cuda_compute_capability.IsAtLeastAmpere();
+      if (cuda_compute_capability) {
+        return cuda_compute_capability->IsAtLeastAmpere();
+      }
+      if (rocm_compute_capability) {
+        return rocm_compute_capability->has_bf16_dtype_support();
+      }
+      return false;
 
     // TODO(b/326579472): Fix the support of this algorithm and maybe allow it
     // here.
@@ -804,8 +821,12 @@ FusionDecision CanTritonHandleGEMM(
     const HloDotInstruction& dot, const se::GpuComputeCapability& gpu_version) {
   auto cuda_compute_capability =
       std::get_if<se::CudaComputeCapability>(&gpu_version);
+  auto rocm_compute_capability =
+      std::get_if<se::RocmComputeCapability>(&gpu_version);
 
-  if (!cuda_compute_capability) return "Non CUDA device.";
+  if (!cuda_compute_capability && !rocm_compute_capability) {
+    return "Non CUDA or ROCM device.";
+  }
 
   if (dot.precision_config().algorithm() == PrecisionConfig::ALG_UNSET) {
     if (!tsl::tensor_float_32_execution_enabled() ||
@@ -826,8 +847,14 @@ FusionDecision CanTritonHandleGEMM(
       case F32:
         return true;
       case BF16:
-        return cuda_compute_capability->IsAtLeast(
-            stream_executor::CudaComputeCapability::AMPERE);
+        if (cuda_compute_capability) {
+          return cuda_compute_capability->IsAtLeast(
+              stream_executor::CudaComputeCapability::AMPERE);
+        }
+        if (rocm_compute_capability) {
+          return rocm_compute_capability->has_bf16_dtype_support();
+        }
+        return false;
       default:
         return false;
     }
