@@ -22,6 +22,7 @@ limitations under the License.
 
 #include "absl/memory/memory.h"
 #include "absl/status/status.h"
+#include "tensorflow/core/data/global_shuffle_utils.h"
 #include "tensorflow/core/data/name_utils.h"
 #include "tensorflow/core/data/split_utils.h"
 #include "tensorflow/core/framework/dataset.h"
@@ -236,6 +237,10 @@ class RangeDatasetOp::Dataset : public DatasetBase {
 
   Status Get(OpKernelContext* ctx, int64 index,
              std::vector<Tensor>* out_tensors) const override {
+    return Get(index, out_tensors);
+  }
+
+  Status Get(int64 index, std::vector<Tensor>* out_tensors) const override {
     TF_RETURN_IF_ERROR(CheckRandomAccessCompatible(index));
     return ConvertOutputTypes(output_dtypes(), out_tensors,
                               start_ + (index * step_));
@@ -265,7 +270,8 @@ class RangeDatasetOp::Dataset : public DatasetBase {
   class Iterator : public DatasetIterator<Dataset> {
    public:
     explicit Iterator(const Params& params)
-        : DatasetIterator<Dataset>(params) {}
+        : DatasetIterator<Dataset>(params),
+          global_shuffle_iterator_(dataset()) {}
 
     bool SymbolicCheckpointCompatible() const override { return true; }
 
@@ -284,7 +290,8 @@ class RangeDatasetOp::Dataset : public DatasetBase {
                            std::vector<Tensor>* out_tensors,
                            bool* end_of_sequence) override {
       if (ctx->index_mapper() != nullptr) {
-        return Get(ctx, out_tensors, end_of_sequence);
+        return global_shuffle_iterator_.GetNext(ctx, out_tensors,
+                                                end_of_sequence);
       }
       int64_t value;
       if (split_provider_ != nullptr) {
@@ -301,20 +308,6 @@ class RangeDatasetOp::Dataset : public DatasetBase {
         }
       }
       out_tensors->reserve(1);
-      return ConvertOutputTypes(output_dtypes(), out_tensors, value);
-    }
-
-    absl::Status Get(IteratorContext* ctx, std::vector<Tensor>* out_tensors,
-                     bool* end_of_sequence) {
-      tsl::mutex_lock l(mu_);
-      if (element_count_ >=
-          (dataset()->stop_ - dataset()->start_) / dataset()->step_) {
-        *end_of_sequence = true;
-        return absl::OkStatus();
-      }
-      size_t output_index = ctx->index_mapper()(element_count_++);
-      int64_t value = dataset()->start_ + output_index * dataset()->step_;
-      *end_of_sequence = false;
       return ConvertOutputTypes(output_dtypes(), out_tensors, value);
     }
 
@@ -344,9 +337,7 @@ class RangeDatasetOp::Dataset : public DatasetBase {
     Status RestoreInternal(IteratorContext* ctx,
                            IteratorStateReader* reader) override {
       if (ctx->restored_element_count().has_value()) {
-        tsl::mutex_lock l(mu_);
-        element_count_ = *(ctx->restored_element_count());
-        return absl::OkStatus();
+        return global_shuffle_iterator_.Restore(ctx);
       }
       if (reader->Contains(prefix(), kHasSplitProvider)) {
         TF_RETURN_IF_ERROR(split_provider_->Restore(
@@ -369,11 +360,7 @@ class RangeDatasetOp::Dataset : public DatasetBase {
    private:
     std::unique_ptr<RangeCounter> counter_;
     std::shared_ptr<SplitProvider> split_provider_;
-
-    mutable tsl::mutex mu_;
-    // Count of elements produced by this iterator when it runs in the random
-    // access mode.
-    size_t element_count_ TF_GUARDED_BY(mu_) = 0;
+    GlobalShuffleIterator global_shuffle_iterator_;
   };
 
   const int64_t start_;

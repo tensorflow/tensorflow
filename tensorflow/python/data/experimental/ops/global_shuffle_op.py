@@ -55,8 +55,9 @@ def _global_shuffle(  # pylint: disable=unused-private-name
     A new `Dataset` where elements are produced in a globally shuffled order.
 
   Raises:
-    InvalidArgumentError if the input dataset does not support random access, or
-    it has infinite or unknown cardinality.
+    - InvalidArgumentError if the input dataset does not support random access,
+      or it has infinite or unknown cardinality.
+    - FailedPreconditionError for batching with `drop_remainder=False`.
   """
   return _GlobalShuffleDataset(
       input_dataset,

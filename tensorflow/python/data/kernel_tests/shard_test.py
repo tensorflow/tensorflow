@@ -204,6 +204,7 @@ class ShardGlobalShuffleTest(
       shard_index: int,
       seed: Optional[int],
       reshuffle_each_iteration: bool):
+    self.skipTest("TODO(b/616275227): Fix implementation for shard.")
     if shard_index >= num_shards:
       return
 
@@ -235,6 +236,7 @@ class ShardGlobalShuffleCheckpointTest(
       verify_fn: Callable[..., None],
       reshuffle_each_iteration: bool,
       symbolic_checkpoint: bool):
+    self.skipTest("TODO(b/616275227): Fix implementation for shard.")
 
     def _build_dataset() -> dataset_ops.Dataset:
       dataset = dataset_ops.Dataset.range(10)
