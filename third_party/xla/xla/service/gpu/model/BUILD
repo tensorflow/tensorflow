@@ -487,6 +487,7 @@ cc_library(
         "//xla:util",
         "//xla:xla_data_proto_cc",
         "//xla/hlo/ir:hlo",
+        "//xla/service:gather_simplifier",
         "//xla/service/gpu:hlo_traversal",
         "//xla/service/gpu:matmul_utils",
         "//xla/service/gpu/fusions:tiling_util",
