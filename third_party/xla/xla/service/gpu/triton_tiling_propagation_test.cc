@@ -80,5 +80,22 @@ TEST_F(
   EXPECT_TRUE(spec_1.IsPhysicallyEquivalent(spec_2));
 }
 
+TEST_F(TritonTilingPropagationTest,
+       DimensionsShouldNotBeRemovedByToTensorIterationSpec) {
+  DimensionOrder::Fragment fragment_0(/*dst_dim_number=*/0, /*count=*/97);
+  DimensionOrder::Fragment fragment_1(/*dst_dim_number=*/1, /*count=*/1);
+  DimensionOrder dimension_order = FromFragments({fragment_0, fragment_1});
+  TensorIterationSpec spec = dimension_order.ToTensorIterationSpec();
+  const TensorIterationSpec::DimIterationSpec* dim_spec_0 = spec.Find(0);
+  EXPECT_NE(dim_spec_0, nullptr);
+  EXPECT_EQ(dim_spec_0->size(), 1);
+  EXPECT_EQ(dim_spec_0->at(0).count, 97);
+
+  const TensorIterationSpec::DimIterationSpec* dim_spec_1 = spec.Find(1);
+  EXPECT_NE(dim_spec_1, nullptr);
+  EXPECT_EQ(dim_spec_1->size(), 1);
+  EXPECT_EQ(dim_spec_1->at(0).count, 1);
+}
+
 }  // namespace
 }  // namespace xla::gpu
