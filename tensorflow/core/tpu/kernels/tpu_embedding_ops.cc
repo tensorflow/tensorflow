@@ -39,6 +39,7 @@ limitations under the License.
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/op_requires.h"
 #include "tensorflow/core/framework/tensor.pb.h"
+#include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/protobuf/tpu/tpu_embedding_configuration.pb.h"
 #include "tensorflow/core/tpu/tpu_embedding_spmd_sharding_utils.h"
@@ -48,6 +49,297 @@ namespace tensorflow {
 using xla::LiteralUtil;
 
 namespace {
+
+void CompileRecvTPUEmbeddingActivations(
+    XlaOpKernelContext* ctx, const std::string& config_string,
+    const tensorflow::tpu::TPUEmbeddingConfiguration& tpu_embedding_config,
+    const std::string& embedding_partitions_string,
+    const std::string& hbm_buffers_config_string,
+    const std::string& tpu_topology_string) {
+  xla::XlaOp deduplication_data = ctx->Input("deduplication_data");
+  TpuEmbeddingEngine_RecvActivationsComputation_Params params;
+  params.tpu_embedding_config.bytes = config_string.c_str();
+  params.tpu_embedding_config.size = config_string.size();
+  params.embedding_partitions.bytes = embedding_partitions_string.c_str();
+  params.embedding_partitions.size = embedding_partitions_string.size();
+  params.hbm_buffers_config.bytes = hbm_buffers_config_string.c_str();
+  params.hbm_buffers_config.size = hbm_buffers_config_string.size();
+  params.tpu_topology.bytes = tpu_topology_string.c_str();
+  params.tpu_topology.size = tpu_topology_string.size();
+  StatusHelper status;
+  params.status = status.c_status;
+  auto builder = ctx->builder();
+  OP_REQUIRES_VALUE(auto shape, ctx, builder->GetShape(deduplication_data));
+  TpuSerializedProto xla_computation_serialized;
+  auto proto_cleanup = absl::MakeCleanup([&xla_computation_serialized] {
+    StreamExecutor_Tpu_FreeSerializedProto(&xla_computation_serialized);
+  });
+  params.xla_computation = &xla_computation_serialized;
+  XLA_Shape c_shape;
+  ApiConverter::ToC(shape, &c_shape);
+  auto c_shape_cleanup =
+      absl::MakeCleanup([&c_shape] { ApiConverter::Destroy(&c_shape); });
+  params.deduplication_data_shape = &c_shape;
+
+  TpuSerializedProto op_sharding_proto_serialized;
+  if (ctx->builder()->sharding().has_value()) {
+    stream_executor::tpu::SerializeProto(ctx->builder()->sharding().value(),
+                                         &op_sharding_proto_serialized);
+    params.op_sharding = &op_sharding_proto_serialized;
+  } else {
+    params.op_sharding = nullptr;
+  }
+  auto op_sharding_cleanup = absl::MakeCleanup([&] {
+    if (params.op_sharding) {
+      StreamExecutor_Tpu_FreeSerializedProto(&op_sharding_proto_serialized);
+    }
+  });
+
+  stream_executor::tpu::OpsApiFn()
+      ->TpuEmbeddingEngine_RecvActivationsComputationFn(&params);
+  OP_REQUIRES_OK(ctx, status.status());
+  auto xla_computation =
+      stream_executor::tpu::DeserializeProto<xla::HloModuleProto>(
+          xla_computation_serialized);
+  auto final_activations =
+      xla::Call(builder, xla_computation, {deduplication_data});
+
+  // Ensure that the number of outputs is the same as the number of user
+  // tables.
+  const int32_t output_count =
+      (tpu_embedding_config.feature_descriptor_size() == 0)
+          ? tpu_embedding_config.table_descriptor_size()
+          : tpu_embedding_config.feature_descriptor_size();
+  OP_REQUIRES(ctx, ctx->num_outputs() == output_count,
+              errors::InvalidArgument(
+                  "Kernel has %d outputs but configuration expects %d outputs.",
+                  ctx->num_outputs(), output_count));
+
+  for (int32_t output_id = 0; output_id < output_count; ++output_id) {
+    ctx->SetOutput(output_id,
+                   xla::GetTupleElement(final_activations, output_id));
+  }
+}
+
+void CompileRecvTPUEmbeddingDeduplicationData(
+    XlaOpKernelContext* ctx, const std::string& config_string,
+    const std::string& embedding_partitions_string,
+    const std::string& hbm_buffers_config_string,
+    const std::string& tpu_topology_string) {
+  TpuEmbeddingEngine_RecvTPUEmbeddingDeduplicationDataComputation_Params params;
+
+  params.tpu_embedding_config.bytes = config_string.c_str();
+  params.tpu_embedding_config.size = config_string.size();
+  params.embedding_partitions.bytes = embedding_partitions_string.c_str();
+  params.embedding_partitions.size = embedding_partitions_string.size();
+  params.hbm_buffers_config.bytes = hbm_buffers_config_string.c_str();
+  params.hbm_buffers_config.size = hbm_buffers_config_string.size();
+  params.tpu_topology.bytes = tpu_topology_string.c_str();
+  params.tpu_topology.size = tpu_topology_string.size();
+  TpuSerializedProto xla_computation_serialized;
+  auto proto_cleanup = absl::MakeCleanup([&xla_computation_serialized] {
+    StreamExecutor_Tpu_FreeSerializedProto(&xla_computation_serialized);
+  });
+  params.xla_computation = &xla_computation_serialized;
+  StatusHelper status;
+  params.status = status.c_status;
+
+  TpuSerializedProto op_sharding_proto_serialized;
+  if (ctx->builder()->sharding().has_value()) {
+    stream_executor::tpu::SerializeProto(ctx->builder()->sharding().value(),
+                                         &op_sharding_proto_serialized);
+    params.op_sharding = &op_sharding_proto_serialized;
+  } else {
+    params.op_sharding = nullptr;
+  }
+  auto op_sharding_cleanup = absl::MakeCleanup([&] {
+    if (params.op_sharding) {
+      StreamExecutor_Tpu_FreeSerializedProto(&op_sharding_proto_serialized);
+    }
+  });
+
+  stream_executor::tpu::OpsApiFn()
+      ->TpuEmbeddingEngine_RecvTPUEmbeddingDeduplicationDataComputationFn(
+          &params);
+  OP_REQUIRES_OK(ctx, status.status());
+
+  auto xla_computation =
+      stream_executor::tpu::DeserializeProto<xla::HloModuleProto>(
+          xla_computation_serialized);
+
+  const xla::XlaOp deduplication_data =
+      xla::Call(ctx->builder(), xla_computation, {});
+
+  // Ensure that the number of outputs is equal to 1 (for deduplication data).
+  OP_REQUIRES(ctx, ctx->num_outputs() == 1,
+              errors::InvalidArgument(
+                  "Kernel has %d outputs but configuration expects 1 output.",
+                  ctx->num_outputs()));
+
+  ctx->SetOutput(0, deduplication_data);
+}
+
+void CompileSendTPUEmbeddingGradients(
+    XlaOpKernelContext* ctx, const std::string& config_string,
+    const std::string& embedding_partitions_string,
+    const std::string& hbm_buffers_config_string,
+    const std::string& tpu_topology_string) {
+  std::vector<xla::XlaOp> gradients;
+  std::vector<TensorShape> tf_gradient_shapes;
+  OP_REQUIRES_OK(ctx,
+                 ctx->InputList("gradients", &gradients, &tf_gradient_shapes));
+  std::vector<xla::Shape> gradient_shapes;
+  auto builder = ctx->builder();
+  gradient_shapes.reserve(gradients.size());
+  for (xla::XlaOp op : gradients) {
+    // Gradient layout information is added by XLA, so we can just create
+    // default layout information.
+    xla::Shape gradient_shape = builder->GetShape(op).value();
+    xla::LayoutUtil::SetToDefaultLayout(&gradient_shape);
+    gradient_shapes.push_back(gradient_shape);
+  }
+
+  std::vector<xla::XlaOp> learning_rates;
+  std::vector<TensorShape> tf_learning_rate_shapes;
+  OP_REQUIRES_OK(ctx, ctx->InputList("learning_rates", &learning_rates,
+                                     &tf_learning_rate_shapes));
+  std::vector<xla::Shape> learning_rate_shapes;
+  learning_rate_shapes.reserve(learning_rates.size());
+  for (xla::XlaOp op : learning_rates) {
+    learning_rate_shapes.push_back(builder->GetShape(op).value());
+  }
+
+  xla::XlaOp deduplication_data = ctx->Input("deduplication_data");
+
+  TpuEmbeddingEngine_SendTPUEmbeddingGradientsComputation_Params params;
+  params.tpu_embedding_config.bytes = config_string.c_str();
+  params.tpu_embedding_config.size = config_string.size();
+  params.embedding_partitions.bytes = embedding_partitions_string.c_str();
+  params.embedding_partitions.size = embedding_partitions_string.size();
+  params.hbm_buffers_config.bytes = hbm_buffers_config_string.c_str();
+  params.hbm_buffers_config.size = hbm_buffers_config_string.size();
+  params.tpu_topology.bytes = tpu_topology_string.c_str();
+  params.tpu_topology.size = tpu_topology_string.size();
+  TpuSerializedProto xla_computation_serialized;
+  auto proto_cleanup = absl::MakeCleanup([&xla_computation_serialized] {
+    StreamExecutor_Tpu_FreeSerializedProto(&xla_computation_serialized);
+  });
+  params.xla_computation = &xla_computation_serialized;
+  StatusHelper status;
+  params.status = status.c_status;
+  OP_REQUIRES_VALUE(auto deduplication_shape, ctx,
+                    builder->GetShape(deduplication_data));
+  XLA_Shape gradient_tuple_c_shape;
+  params.gradient_tuple_shape = &gradient_tuple_c_shape;
+  ApiConverter::ToC(xla::ShapeUtil::MakeTupleShape(gradient_shapes),
+                    &gradient_tuple_c_shape);
+  XLA_Shape learning_rate_tuple_c_shape;
+  params.learning_rate_tuple_shape = &learning_rate_tuple_c_shape;
+  ApiConverter::ToC(xla::ShapeUtil::MakeTupleShape(learning_rate_shapes),
+                    &learning_rate_tuple_c_shape);
+  XLA_Shape deduplication_c_shape;
+  params.deduplication_data_shape = &deduplication_c_shape;
+  ApiConverter::ToC(deduplication_shape, &deduplication_c_shape);
+
+  auto c_shape_cleanup =
+      absl::MakeCleanup([&gradient_tuple_c_shape, &learning_rate_tuple_c_shape,
+                         &deduplication_c_shape] {
+        ApiConverter::Destroy(&gradient_tuple_c_shape);
+        ApiConverter::Destroy(&learning_rate_tuple_c_shape);
+        ApiConverter::Destroy(&deduplication_c_shape);
+      });
+  params.num_inputs = ctx->num_inputs();
+
+  TpuSerializedProto op_sharding_proto_serialized;
+  if (ctx->builder()->sharding().has_value()) {
+    stream_executor::tpu::SerializeProto(ctx->builder()->sharding().value(),
+                                         &op_sharding_proto_serialized);
+    params.op_sharding = &op_sharding_proto_serialized;
+  } else {
+    params.op_sharding = nullptr;
+  }
+  auto op_sharding_cleanup = absl::MakeCleanup([&] {
+    if (params.op_sharding) {
+      StreamExecutor_Tpu_FreeSerializedProto(&op_sharding_proto_serialized);
+    }
+  });
+
+  stream_executor::tpu::OpsApiFn()
+      ->TpuEmbeddingEngine_SendTPUEmbeddingGradientsComputationFn(&params);
+  OP_REQUIRES_OK(ctx, status.status());
+
+  auto xla_computation =
+      stream_executor::tpu::DeserializeProto<xla::HloModuleProto>(
+          xla_computation_serialized);
+
+  xla::Call(builder, xla_computation,
+            {xla::Tuple(builder, gradients),
+             xla::Tuple(builder, learning_rates), deduplication_data});
+}
+
+void CompileComputeDedupDataSize(XlaOpKernelContext* ctx,
+                                 const std::string& config_string,
+                                 const std::string& embedding_partitions_string,
+                                 const std::string& hbm_buffers_config_string,
+                                 const std::string& tpu_topology_string) {
+  TpuEmbeddingEngine_DedupDataSizeComputation_Params params;
+  params.tpu_embedding_config.bytes = config_string.c_str();
+  params.tpu_embedding_config.size = config_string.size();
+  params.embedding_partitions.bytes = embedding_partitions_string.c_str();
+  params.embedding_partitions.size = embedding_partitions_string.size();
+  params.hbm_buffers_config.bytes = hbm_buffers_config_string.c_str();
+  params.hbm_buffers_config.size = hbm_buffers_config_string.size();
+  params.tpu_topology.bytes = tpu_topology_string.c_str();
+  params.tpu_topology.size = tpu_topology_string.size();
+  int num_elements = -1;
+  params.num_elements = &num_elements;
+  StatusHelper status;
+  params.status = status.c_status;
+
+  stream_executor::tpu::OpsApiFn()
+      ->TpuEmbeddingEngine_DedupDataSizeComputationFn(&params);
+  OP_REQUIRES_OK(ctx, status.status());
+
+  auto output = xla::ConstantLiteral(
+      ctx->builder(), LiteralUtil::CreateR0<int32_t>(num_elements));
+  ctx->SetOutput(0, output);
+}
+
+void CompileComputeDedupDataTupleMask(
+    XlaOpKernelContext* ctx, const std::string& config_string,
+    const std::string& embedding_partitions_string,
+    const std::string& hbm_buffers_config_string,
+    const std::string& tpu_topology_string) {
+  TpuEmbeddingEngine_DedupDataTupleMaskComputation_Params params;
+  params.tpu_embedding_config.bytes = config_string.c_str();
+  params.tpu_embedding_config.size = config_string.size();
+  params.embedding_partitions.bytes = embedding_partitions_string.c_str();
+  params.embedding_partitions.size = embedding_partitions_string.size();
+  params.hbm_buffers_config.bytes = hbm_buffers_config_string.c_str();
+  params.hbm_buffers_config.size = hbm_buffers_config_string.size();
+  params.tpu_topology.bytes = tpu_topology_string.c_str();
+  params.tpu_topology.size = tpu_topology_string.size();
+
+  TpuSerializedProto xla_computation_serialized;
+  auto proto_cleanup = absl::MakeCleanup([&xla_computation_serialized] {
+    StreamExecutor_Tpu_FreeSerializedProto(&xla_computation_serialized);
+  });
+
+  params.xla_computation = &xla_computation_serialized;
+  StatusHelper status;
+  params.status = status.c_status;
+
+  stream_executor::tpu::OpsApiFn()
+      ->TpuEmbeddingEngine_DedupDataTupleMaskComputationFn(&params);
+  OP_REQUIRES_OK(ctx, status.status());
+
+  auto xla_computation =
+      stream_executor::tpu::DeserializeProto<xla::HloModuleProto>(
+          xla_computation_serialized);
+  const xla::XlaOp deduplication_data_tuple_mask =
+      xla::Call(ctx->builder(), xla_computation, {});
+  ctx->SetOutput(0, deduplication_data_tuple_mask);
+}
 
 // This TensorFlow op receives a batch of activations from the
 // TpuEmbeddingEngine.
@@ -70,66 +362,8 @@ class RecvTPUEmbeddingActivationsOp : public XlaOpKernel {
         ctx, ctx->num_inputs() == 1,
         errors::Internal("Kernel has ", ctx->num_inputs(),
                          " inputs but configuration expects one input"));
-
-    xla::XlaOp deduplication_data = ctx->Input("deduplication_data");
-
-    TpuEmbeddingEngine_RecvActivationsComputation_Params params;
-    params.tpu_embedding_config.bytes = config_string_.c_str();
-    params.tpu_embedding_config.size = config_string_.size();
-    StatusHelper status;
-    params.status = status.c_status;
-    auto builder = ctx->builder();
-    OP_REQUIRES_VALUE(auto shape, ctx, builder->GetShape(deduplication_data));
-    TpuSerializedProto xla_computation_serialized;
-    auto proto_cleanup = absl::MakeCleanup([&xla_computation_serialized] {
-      StreamExecutor_Tpu_FreeSerializedProto(&xla_computation_serialized);
-    });
-    params.xla_computation = &xla_computation_serialized;
-    XLA_Shape c_shape;
-    ApiConverter::ToC(shape, &c_shape);
-    auto c_shape_cleanup =
-        absl::MakeCleanup([&c_shape] { ApiConverter::Destroy(&c_shape); });
-    params.deduplication_data_shape = &c_shape;
-
-    TpuSerializedProto op_sharding_proto_serialized;
-    if (ctx->builder()->sharding().has_value()) {
-      stream_executor::tpu::SerializeProto(ctx->builder()->sharding().value(),
-                                           &op_sharding_proto_serialized);
-      params.op_sharding = &op_sharding_proto_serialized;
-    } else {
-      params.op_sharding = nullptr;
-    }
-    auto op_sharding_cleanup = absl::MakeCleanup([&] {
-      if (params.op_sharding) {
-        StreamExecutor_Tpu_FreeSerializedProto(&op_sharding_proto_serialized);
-      }
-    });
-
-    stream_executor::tpu::OpsApiFn()
-        ->TpuEmbeddingEngine_RecvActivationsComputationFn(&params);
-    OP_REQUIRES_OK(ctx, status.status());
-    auto xla_computation =
-        stream_executor::tpu::DeserializeProto<xla::HloModuleProto>(
-            xla_computation_serialized);
-    auto final_activations =
-        xla::Call(builder, xla_computation, {deduplication_data});
-
-    // Ensure that the number of outputs is the same as the number of user
-    // tables.
-    const int32 output_count =
-        (tpu_embedding_config_.feature_descriptor_size() == 0)
-            ? tpu_embedding_config_.table_descriptor_size()
-            : tpu_embedding_config_.feature_descriptor_size();
-    OP_REQUIRES(
-        ctx, ctx->num_outputs() == output_count,
-        errors::InvalidArgument(
-            "Kernel has %d outputs but configuration expects %d outputs.",
-            ctx->num_outputs(), output_count));
-
-    for (int32 output_id = 0; output_id < output_count; ++output_id) {
-      ctx->SetOutput(output_id,
-                     xla::GetTupleElement(final_activations, output_id));
-    }
+    CompileRecvTPUEmbeddingActivations(ctx, config_string_,
+                                       tpu_embedding_config_, "", "", "");
   }
 
  private:
@@ -164,52 +398,8 @@ class RecvTPUEmbeddingDeduplicationDataOp : public XlaOpKernel {
   void Compile(XlaOpKernelContext* ctx) override {
     VLOG(1) << "Compile RecvTPUEmbeddingDeduplicationDataOp";
 
-    TpuEmbeddingEngine_RecvTPUEmbeddingDeduplicationDataComputation_Params
-        params;
+    CompileRecvTPUEmbeddingDeduplicationData(ctx, config_string_, "", "", "");
 
-    params.tpu_embedding_config.bytes = config_string_.c_str();
-    params.tpu_embedding_config.size = config_string_.size();
-    TpuSerializedProto xla_computation_serialized;
-    auto proto_cleanup = absl::MakeCleanup([&xla_computation_serialized] {
-      StreamExecutor_Tpu_FreeSerializedProto(&xla_computation_serialized);
-    });
-    params.xla_computation = &xla_computation_serialized;
-    StatusHelper status;
-    params.status = status.c_status;
-
-    TpuSerializedProto op_sharding_proto_serialized;
-    if (ctx->builder()->sharding().has_value()) {
-      stream_executor::tpu::SerializeProto(ctx->builder()->sharding().value(),
-                                           &op_sharding_proto_serialized);
-      params.op_sharding = &op_sharding_proto_serialized;
-    } else {
-      params.op_sharding = nullptr;
-    }
-    auto op_sharding_cleanup = absl::MakeCleanup([&] {
-      if (params.op_sharding) {
-        StreamExecutor_Tpu_FreeSerializedProto(&op_sharding_proto_serialized);
-      }
-    });
-
-    stream_executor::tpu::OpsApiFn()
-        ->TpuEmbeddingEngine_RecvTPUEmbeddingDeduplicationDataComputationFn(
-            &params);
-    OP_REQUIRES_OK(ctx, status.status());
-
-    auto xla_computation =
-        stream_executor::tpu::DeserializeProto<xla::HloModuleProto>(
-            xla_computation_serialized);
-
-    const xla::XlaOp deduplication_data =
-        xla::Call(ctx->builder(), xla_computation, {});
-
-    // Ensure that the number of outputs is equal to 1 (for deduplication data).
-    OP_REQUIRES(ctx, ctx->num_outputs() == 1,
-                errors::InvalidArgument(
-                    "Kernel has %d outputs but configuration expects 1 output.",
-                    ctx->num_outputs()));
-
-    ctx->SetOutput(0, deduplication_data);
     VLOG(1) << "Compile RecvTPUDeduplicationDataOp done";
   }
 
@@ -246,91 +436,7 @@ class SendTPUEmbeddingGradientsOp : public XlaOpKernel {
   void Compile(XlaOpKernelContext* ctx) override {
     VLOG(1) << "Compile SendTPUEmbeddingGradientsOp";
 
-    std::vector<xla::XlaOp> gradients;
-    std::vector<TensorShape> tf_gradient_shapes;
-    OP_REQUIRES_OK(
-        ctx, ctx->InputList("gradients", &gradients, &tf_gradient_shapes));
-    std::vector<xla::Shape> gradient_shapes;
-    auto builder = ctx->builder();
-    gradient_shapes.reserve(gradients.size());
-    for (xla::XlaOp op : gradients) {
-      // Gradient layout information is added by XLA, so we can just create
-      // default layout information.
-      xla::Shape gradient_shape = builder->GetShape(op).value();
-      xla::LayoutUtil::SetToDefaultLayout(&gradient_shape);
-      gradient_shapes.push_back(gradient_shape);
-    }
-
-    std::vector<xla::XlaOp> learning_rates;
-    std::vector<TensorShape> tf_learning_rate_shapes;
-    OP_REQUIRES_OK(ctx, ctx->InputList("learning_rates", &learning_rates,
-                                       &tf_learning_rate_shapes));
-    std::vector<xla::Shape> learning_rate_shapes;
-    learning_rate_shapes.reserve(learning_rates.size());
-    for (xla::XlaOp op : learning_rates) {
-      learning_rate_shapes.push_back(builder->GetShape(op).value());
-    }
-
-    xla::XlaOp deduplication_data = ctx->Input("deduplication_data");
-
-    TpuEmbeddingEngine_SendTPUEmbeddingGradientsComputation_Params params;
-    params.tpu_embedding_config.bytes = config_string_.c_str();
-    params.tpu_embedding_config.size = config_string_.size();
-    TpuSerializedProto xla_computation_serialized;
-    auto proto_cleanup = absl::MakeCleanup([&xla_computation_serialized] {
-      StreamExecutor_Tpu_FreeSerializedProto(&xla_computation_serialized);
-    });
-    params.xla_computation = &xla_computation_serialized;
-    StatusHelper status;
-    params.status = status.c_status;
-    OP_REQUIRES_VALUE(auto deduplication_shape, ctx,
-                      builder->GetShape(deduplication_data));
-    XLA_Shape gradient_tuple_c_shape;
-    params.gradient_tuple_shape = &gradient_tuple_c_shape;
-    ApiConverter::ToC(xla::ShapeUtil::MakeTupleShape(gradient_shapes),
-                      &gradient_tuple_c_shape);
-    XLA_Shape learning_rate_tuple_c_shape;
-    params.learning_rate_tuple_shape = &learning_rate_tuple_c_shape;
-    ApiConverter::ToC(xla::ShapeUtil::MakeTupleShape(learning_rate_shapes),
-                      &learning_rate_tuple_c_shape);
-    XLA_Shape deduplication_c_shape;
-    params.deduplication_data_shape = &deduplication_c_shape;
-    ApiConverter::ToC(deduplication_shape, &deduplication_c_shape);
-
-    auto c_shape_cleanup = absl::MakeCleanup([&gradient_tuple_c_shape,
-                                              &learning_rate_tuple_c_shape,
-                                              &deduplication_c_shape] {
-      ApiConverter::Destroy(&gradient_tuple_c_shape);
-      ApiConverter::Destroy(&learning_rate_tuple_c_shape);
-      ApiConverter::Destroy(&deduplication_c_shape);
-    });
-    params.num_inputs = ctx->num_inputs();
-
-    TpuSerializedProto op_sharding_proto_serialized;
-    if (ctx->builder()->sharding().has_value()) {
-      stream_executor::tpu::SerializeProto(ctx->builder()->sharding().value(),
-                                           &op_sharding_proto_serialized);
-      params.op_sharding = &op_sharding_proto_serialized;
-    } else {
-      params.op_sharding = nullptr;
-    }
-    auto op_sharding_cleanup = absl::MakeCleanup([&] {
-      if (params.op_sharding) {
-        StreamExecutor_Tpu_FreeSerializedProto(&op_sharding_proto_serialized);
-      }
-    });
-
-    stream_executor::tpu::OpsApiFn()
-        ->TpuEmbeddingEngine_SendTPUEmbeddingGradientsComputationFn(&params);
-    OP_REQUIRES_OK(ctx, status.status());
-
-    auto xla_computation =
-        stream_executor::tpu::DeserializeProto<xla::HloModuleProto>(
-            xla_computation_serialized);
-
-    xla::Call(builder, xla_computation,
-              {xla::Tuple(builder, gradients),
-               xla::Tuple(builder, learning_rates), deduplication_data});
+    CompileSendTPUEmbeddingGradients(ctx, config_string_, "", "", "");
 
     VLOG(1) << "Compile SendTPUEmbeddingGradientsOp done";
   }
@@ -719,21 +825,7 @@ class ComputeDedupDataSizeOp : public XlaOpKernel {
   void Compile(XlaOpKernelContext* ctx) override {
     VLOG(1) << "Compile ComputeDedupDataSizeOp";
 
-    TpuEmbeddingEngine_DedupDataSizeComputation_Params params;
-    params.tpu_embedding_config.bytes = config_string_.c_str();
-    params.tpu_embedding_config.size = config_string_.size();
-    int num_elements = -1;
-    params.num_elements = &num_elements;
-    StatusHelper status;
-    params.status = status.c_status;
-
-    stream_executor::tpu::OpsApiFn()
-        ->TpuEmbeddingEngine_DedupDataSizeComputationFn(&params);
-    OP_REQUIRES_OK(ctx, status.status());
-
-    auto output = xla::ConstantLiteral(
-        ctx->builder(), LiteralUtil::CreateR0<int32_t>(num_elements));
-    ctx->SetOutput(0, output);
+    CompileComputeDedupDataSize(ctx, config_string_, "", "", "");
 
     VLOG(1) << "Compile ComputeDedupDataSizeOp done";
   }
@@ -765,29 +857,8 @@ class ComputeDedupDataTupleMaskOp : public XlaOpKernel {
   void Compile(XlaOpKernelContext* ctx) override {
     VLOG(1) << "Compile ComputeDedupDataTupleMaskOp";
 
-    TpuEmbeddingEngine_DedupDataTupleMaskComputation_Params params;
-    params.tpu_embedding_config.bytes = config_string_.c_str();
-    params.tpu_embedding_config.size = config_string_.size();
+    CompileComputeDedupDataTupleMask(ctx, config_string_, "", "", "");
 
-    TpuSerializedProto xla_computation_serialized;
-    auto proto_cleanup = absl::MakeCleanup([&xla_computation_serialized] {
-      StreamExecutor_Tpu_FreeSerializedProto(&xla_computation_serialized);
-    });
-
-    params.xla_computation = &xla_computation_serialized;
-    StatusHelper status;
-    params.status = status.c_status;
-
-    stream_executor::tpu::OpsApiFn()
-        ->TpuEmbeddingEngine_DedupDataTupleMaskComputationFn(&params);
-    OP_REQUIRES_OK(ctx, status.status());
-
-    auto xla_computation =
-        stream_executor::tpu::DeserializeProto<xla::HloModuleProto>(
-            xla_computation_serialized);
-    const xla::XlaOp deduplication_data_tuple_mask =
-        xla::Call(ctx->builder(), xla_computation, {});
-    ctx->SetOutput(0, deduplication_data_tuple_mask);
     VLOG(1) << "Compile ComputeDedupDataTupleMaskOp done";
   }
 
@@ -801,6 +872,231 @@ class ComputeDedupDataTupleMaskOp : public XlaOpKernel {
 
 REGISTER_XLA_OP(Name("ComputeDedupDataTupleMask").AllowVariantTypes(),
                 ComputeDedupDataTupleMaskOp);
+
+// This Op has the same functionality as `XlaRecvTPUEmbeddingActivations`, but
+// it accepts `embedding_partitions` and `hbm_buffers_config` (which can be
+// obtained from `FinalizeTPUEmbeddingV2`). This is meaningful for use cases
+// where the kernel runs in a different address space from where
+// `embedding_partitions` and `hbm_buffers_config` are stored.
+// The same principle applies to all the other V2 Ops here.
+class RecvTPUEmbeddingActivationsV2Op : public XlaOpKernel {
+ public:
+  explicit RecvTPUEmbeddingActivationsV2Op(OpKernelConstruction* ctx)
+      : XlaOpKernel(ctx) {
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("config", &config_string_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("embedding_partitions",
+                                     &embedding_partitions_string_));
+    OP_REQUIRES_OK(
+        ctx, ctx->GetAttr("hbm_buffers_config", &hbm_buffers_config_string_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("tpu_topology", &tpu_topology_string_));
+
+    OP_REQUIRES(
+        ctx, tpu_embedding_config_.ParseFromString(config_string_),
+        errors::InvalidArgument("Failed to parse TPUEmbeddingConfiguration "
+                                "proto from config attr"));
+  }
+
+  ~RecvTPUEmbeddingActivationsV2Op() override = default;
+
+  void Compile(XlaOpKernelContext* ctx) override {
+    OP_REQUIRES(
+        ctx, ctx->num_inputs() == 1,
+        errors::Internal("Kernel has ", ctx->num_inputs(),
+                         " inputs but configuration expects one input"));
+
+    CompileRecvTPUEmbeddingActivations(
+        ctx, config_string_, tpu_embedding_config_,
+        embedding_partitions_string_, hbm_buffers_config_string_,
+        tpu_topology_string_);
+  }
+
+ private:
+  tensorflow::tpu::TPUEmbeddingConfiguration tpu_embedding_config_;
+  std::string config_string_;
+  std::string embedding_partitions_string_;
+  std::string hbm_buffers_config_string_;
+  std::string tpu_topology_string_;
+
+  RecvTPUEmbeddingActivationsV2Op(const RecvTPUEmbeddingActivationsV2Op&) =
+      delete;
+  void operator=(const RecvTPUEmbeddingActivationsV2Op&) = delete;
+};
+
+REGISTER_XLA_OP(Name("XlaRecvTPUEmbeddingActivationsV2").AllowVariantTypes(),
+                RecvTPUEmbeddingActivationsV2Op);
+
+class RecvTPUEmbeddingDeduplicationDataV2Op : public XlaOpKernel {
+ public:
+  explicit RecvTPUEmbeddingDeduplicationDataV2Op(OpKernelConstruction* ctx)
+      : XlaOpKernel(ctx) {
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("config", &config_string_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("embedding_partitions",
+                                     &embedding_partitions_string_));
+    OP_REQUIRES_OK(
+        ctx, ctx->GetAttr("hbm_buffers_config", &hbm_buffers_config_string_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("tpu_topology", &tpu_topology_string_));
+    OP_REQUIRES(
+        ctx,
+        tensorflow::tpu::TPUEmbeddingConfiguration().ParseFromString(
+            config_string_),
+        errors::InvalidArgument("Failed to parse TPUEmbeddingConfiguration "
+                                "proto from config attr"));
+  }
+
+  ~RecvTPUEmbeddingDeduplicationDataV2Op() override = default;
+
+  void Compile(XlaOpKernelContext* ctx) override {
+    VLOG(1) << "Compile RecvTPUEmbeddingDeduplicationDataV2Op";
+
+    CompileRecvTPUEmbeddingDeduplicationData(
+        ctx, config_string_, embedding_partitions_string_,
+        hbm_buffers_config_string_, tpu_topology_string_);
+
+    VLOG(1) << "Compile RecvTPUDeduplicationDataV2Op done";
+  }
+
+ private:
+  // TPU Embedding config string.
+  std::string config_string_;
+  std::string embedding_partitions_string_;
+  std::string hbm_buffers_config_string_;
+  std::string tpu_topology_string_;
+
+  RecvTPUEmbeddingDeduplicationDataV2Op(
+      const RecvTPUEmbeddingDeduplicationDataV2Op&) = delete;
+  void operator=(const RecvTPUEmbeddingDeduplicationDataV2Op&) = delete;
+};
+
+REGISTER_XLA_OP(
+    Name("XlaRecvTPUEmbeddingDeduplicationDataV2").AllowVariantTypes(),
+    RecvTPUEmbeddingDeduplicationDataV2Op);
+
+class SendTPUEmbeddingGradientsV2Op : public XlaOpKernel {
+ public:
+  explicit SendTPUEmbeddingGradientsV2Op(OpKernelConstruction* ctx)
+      : XlaOpKernel(ctx) {
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("config", &config_string_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("embedding_partitions",
+                                     &embedding_partitions_string_));
+    OP_REQUIRES_OK(
+        ctx, ctx->GetAttr("hbm_buffers_config", &hbm_buffers_config_string_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("tpu_topology", &tpu_topology_string_));
+    OP_REQUIRES(
+        ctx,
+        tensorflow::tpu::TPUEmbeddingConfiguration().ParseFromString(
+            config_string_),
+        errors::InvalidArgument("Failed to parse TPUEmbeddingConfiguration "
+                                "proto from config attr"));
+  }
+
+  ~SendTPUEmbeddingGradientsV2Op() override = default;
+
+  void Compile(XlaOpKernelContext* ctx) override {
+    VLOG(1) << "Compile SendTPUEmbeddingGradientsV2Op";
+
+    CompileSendTPUEmbeddingGradients(
+        ctx, config_string_, embedding_partitions_string_,
+        hbm_buffers_config_string_, tpu_topology_string_);
+
+    VLOG(1) << "Compile SendTPUEmbeddingGradientsV2Op done";
+  }
+
+ private:
+  // TPU Embedding config string.
+  std::string config_string_;
+  std::string embedding_partitions_string_;
+  std::string hbm_buffers_config_string_;
+  std::string tpu_topology_string_;
+
+  SendTPUEmbeddingGradientsV2Op(const SendTPUEmbeddingGradientsV2Op&) = delete;
+  void operator=(const SendTPUEmbeddingGradientsV2Op&) = delete;
+};
+
+REGISTER_XLA_OP(Name("XlaSendTPUEmbeddingGradientsV2").AllowVariantTypes(),
+                SendTPUEmbeddingGradientsV2Op);
+
+class ComputeDedupDataSizeV2Op : public XlaOpKernel {
+ public:
+  explicit ComputeDedupDataSizeV2Op(OpKernelConstruction* ctx)
+      : XlaOpKernel(ctx) {
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("config", &config_string_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("embedding_partitions",
+                                     &embedding_partitions_string_));
+    OP_REQUIRES_OK(
+        ctx, ctx->GetAttr("hbm_buffers_config", &hbm_buffers_config_string_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("tpu_topology", &tpu_topology_string_));
+    OP_REQUIRES(
+        ctx,
+        tensorflow::tpu::TPUEmbeddingConfiguration().ParseFromString(
+            config_string_),
+        absl::InvalidArgumentError("Failed to parse TPUEmbeddingConfiguration "
+                                   "proto from config attr."));
+  }
+
+  void Compile(XlaOpKernelContext* ctx) override {
+    VLOG(1) << "Compile ComputeDedupDataSizeV2Op";
+
+    CompileComputeDedupDataSize(
+        ctx, config_string_, embedding_partitions_string_,
+        hbm_buffers_config_string_, tpu_topology_string_);
+
+    VLOG(1) << "Compile ComputeDedupDataSizeV2Op done";
+  }
+
+ private:
+  // TPU Embedding config string.
+  std::string config_string_;
+  std::string embedding_partitions_string_;
+  std::string hbm_buffers_config_string_;
+  std::string tpu_topology_string_;
+
+  ComputeDedupDataSizeV2Op(const ComputeDedupDataSizeV2Op&) = delete;
+  void operator=(const ComputeDedupDataSizeV2Op&) = delete;
+};
+
+REGISTER_XLA_OP(Name("ComputeDedupDataSizeV2"), ComputeDedupDataSizeV2Op);
+
+class ComputeDedupDataTupleMaskV2Op : public XlaOpKernel {
+ public:
+  explicit ComputeDedupDataTupleMaskV2Op(OpKernelConstruction* ctx)
+      : XlaOpKernel(ctx) {
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("config", &config_string_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("embedding_partitions",
+                                     &embedding_partitions_string_));
+    OP_REQUIRES_OK(
+        ctx, ctx->GetAttr("hbm_buffers_config", &hbm_buffers_config_string_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("tpu_topology", &tpu_topology_string_));
+    OP_REQUIRES(
+        ctx,
+        tensorflow::tpu::TPUEmbeddingConfiguration().ParseFromString(
+            config_string_),
+        errors::InvalidArgument("Failed to parse TPUEmbeddingConfiguration "
+                                "proto from config attr"));
+  }
+
+  void Compile(XlaOpKernelContext* ctx) override {
+    VLOG(1) << "Compile ComputeDedupDataTupleMaskV2Op";
+
+    CompileComputeDedupDataTupleMask(
+        ctx, config_string_, embedding_partitions_string_,
+        hbm_buffers_config_string_, tpu_topology_string_);
+
+    VLOG(1) << "Compile ComputeDedupDataTupleMaskV2Op done";
+  }
+
+ private:
+  // TPU Embedding config string.
+  std::string config_string_;
+  std::string embedding_partitions_string_;
+  std::string hbm_buffers_config_string_;
+  std::string tpu_topology_string_;
+
+  ComputeDedupDataTupleMaskV2Op(const ComputeDedupDataTupleMaskV2Op&) = delete;
+  void operator=(const ComputeDedupDataTupleMaskV2Op&) = delete;
+};
+
+REGISTER_XLA_OP(Name("ComputeDedupDataTupleMaskV2").AllowVariantTypes(),
+                ComputeDedupDataTupleMaskV2Op);
 
 }  // anonymous namespace
 }  // namespace tensorflow

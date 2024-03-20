@@ -567,4 +567,133 @@ REGISTER_OP("ComputeDedupDataTupleMask")
       return absl::OkStatus();
     });
 
+REGISTER_OP("XlaRecvTPUEmbeddingActivationsV2")
+    .Input("deduplication_data: variant")
+    .Output("outputs: num_tables * float32")
+    .Attr("num_tables: int >= 1")
+    .Attr("config: string")
+    .Attr("embedding_partitions: string")
+    .Attr("hbm_buffers_config: string")
+    .Attr("tpu_topology: string")
+    .SetIsStateful()
+    .SetShapeFn([](shape_inference::InferenceContext* c) -> absl::Status {
+      int num_tables;
+      TF_RETURN_IF_ERROR(c->GetAttr("num_tables", &num_tables));
+      if (c->num_outputs() != num_tables) {
+        return absl::InvalidArgumentError(
+            absl::StrFormat("Number of outputs: %d of the "
+                            "XlaRecvTPUEmbeddingActivationsV2 node "
+                            "does not match the num_tables attribute: %d.",
+                            c->num_outputs(), num_tables));
+      }
+      std::string config_string;
+      TF_RETURN_IF_ERROR(c->GetAttr("config", &config_string));
+      tpu::TPUEmbeddingConfiguration config;
+      if (!config.ParseFromString(config_string)) {
+        return absl::InvalidArgumentError(
+            "Malformed config attribute in the "
+            "XlaRecvTPUEmbeddingActivationsV2 "
+            "node.");
+      }
+      std::string embedding_partitions_string;
+      TF_RETURN_IF_ERROR(
+          c->GetAttr("embedding_partitions", &embedding_partitions_string));
+      std::string hbm_buffers_config_string;
+      TF_RETURN_IF_ERROR(
+          c->GetAttr("hbm_buffers_config", &hbm_buffers_config_string));
+      std::string tpu_topology_string;
+      TF_RETURN_IF_ERROR(c->GetAttr("tpu_topology", &tpu_topology_string));
+      std::vector<TensorShapeProto> output_shapes;
+      TF_RETURN_IF_ERROR(ComputeOutputTensorShapes(config, &output_shapes));
+      if (c->num_outputs() != output_shapes.size()) {
+        return absl::InvalidArgumentError(absl::StrFormat(
+            "Number of outputs: %d of the XlaRecvTPUEmbeddingActivationsV2 "
+            "node "
+            "does not match the number of tables or features in the TPU "
+            "embedding config: %d.",
+            c->num_outputs(), output_shapes.size()));
+      }
+      for (int i = 0; i < c->num_outputs(); ++i) {
+        shape_inference::ShapeHandle output_shape;
+        TF_RETURN_IF_ERROR(
+            c->MakeShapeFromShapeProto(output_shapes[i], &output_shape));
+        c->set_output(i, output_shape);
+      }
+      return absl::OkStatus();
+    });
+
+REGISTER_OP("XlaRecvTPUEmbeddingDeduplicationDataV2")
+    .Output("output: variant")
+    .Attr("config: string")
+    .Attr("embedding_partitions: string")
+    .Attr("hbm_buffers_config: string")
+    .Attr("tpu_topology: string")
+    .SetIsStateful()
+    .SetShapeFn(tensorflow::shape_inference::ScalarShape);
+
+REGISTER_OP("XlaSendTPUEmbeddingGradientsV2")
+    .Input("gradients: NumTables * float32")
+    .Input("learning_rates: NumLearningRateTags * float32")
+    .Input("deduplication_data: variant")
+    .Attr("NumTables: int >= 1")
+    .Attr("NumLearningRateTags: int >= 0 = 0")
+    .Attr("config: string")
+    .Attr("embedding_partitions: string")
+    .Attr("hbm_buffers_config: string")
+    .Attr("tpu_topology: string")
+    .SetIsStateful()
+    .SetShapeFn([](shape_inference::InferenceContext* c) -> absl::Status {
+      int learning_rate_tag_count;
+      TF_RETURN_IF_ERROR(
+          c->GetAttr("NumLearningRateTags", &learning_rate_tag_count));
+      std::vector<shape_inference::ShapeHandle> learning_rates;
+      TF_RETURN_IF_ERROR(c->input("learning_rates", &learning_rates));
+      for (int i = 0; i < learning_rate_tag_count; ++i) {
+        // Verify that each learning_rates element is scalar
+        shape_inference::ShapeHandle learning_rates_shape;
+        TF_RETURN_IF_ERROR(
+            c->WithRank(learning_rates[i], 0, &learning_rates_shape));
+      }
+
+      return absl::OkStatus();
+    });
+
+REGISTER_OP("ComputeDedupDataSizeV2")
+    .Output("num_elements: int32")
+    .Attr("config: string")
+    .Attr("embedding_partitions: string")
+    .Attr("hbm_buffers_config: string")
+    .Attr("tpu_topology: string")
+    .SetIsStateful()
+    .SetShapeFn(tensorflow::shape_inference::ScalarShape);
+
+REGISTER_OP("ComputeDedupDataTupleMaskV2")
+    .Output("output_shape: int32")
+    .Attr("config: string")
+    .Attr("embedding_partitions: string")
+    .Attr("hbm_buffers_config: string")
+    .Attr("tpu_topology: string")
+    .SetIsStateful()
+    .SetShapeFn([](shape_inference::InferenceContext* c) {
+      c->set_output(0, c->UnknownShapeOfRank(2));
+      return absl::OkStatus();
+    });
+
+REGISTER_OP("FinalizeTPUEmbeddingV2")
+    .Input("common_config: string")
+    .Input("memory_config: string")
+    .Output("embedding_partitions: string")
+    .Output("hbm_buffers_config: string")
+    .SetIsStateful()
+    .SetShapeFn([](InferenceContext* c) -> absl::Status {
+      // Validate that all the inputs are compatible with the correct
+      // vector shape.
+      TF_RET_CHECK(c->num_inputs() == 2);
+      ShapeHandle input(c->Scalar());
+      TF_RETURN_IF_ERROR(c->Merge(c->input(0), input, &input));
+      TF_RETURN_IF_ERROR(c->Merge(c->input(1), input, &input));
+      TF_RET_CHECK(c->num_outputs() == 2);
+      return absl::OkStatus();
+    });
+
 }  // namespace tensorflow
