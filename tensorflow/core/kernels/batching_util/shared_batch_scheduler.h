@@ -1048,7 +1048,7 @@ Status Queue<TaskType>::ScheduleWithoutOrEagerSplit(
     if (IsLowPriorityTask(task)) {
       // Insert the task to the low priority task queue instead of the high
       // priority batch queue below.
-      low_priority_tasks_.AddTask(std::move(*task));
+      low_priority_tasks_.AddTask(std::move(*task), env_->NowMicros());
     } else {
       TF_RETURN_IF_ERROR(ScheduleWithoutOrEagerSplitImpl(task));
     }
