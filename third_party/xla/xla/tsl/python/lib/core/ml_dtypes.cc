@@ -12,7 +12,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include "tsl/python/lib/core/ml_dtypes.h"
+#include "xla/tsl/python/lib/core/ml_dtypes.h"
 
 #include <atomic>
 #include <exception>
@@ -23,7 +23,7 @@ limitations under the License.
 #include "pybind11/gil.h"  // from @pybind11
 #include "pybind11/numpy.h"  // from @pybind11
 #include "pybind11/pybind11.h"  // from @pybind11
-#include "tsl/python/lib/core/numpy.h"  // IWYU pragma: keep
+#include "xla/tsl/python/lib/core/numpy.h"  // IWYU pragma: keep
 
 namespace tsl {
 namespace ml_dtypes {

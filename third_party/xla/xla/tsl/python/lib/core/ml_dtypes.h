@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_TSL_PYTHON_LIB_CORE_ML_DTYPES_H_
-#define TENSORFLOW_TSL_PYTHON_LIB_CORE_ML_DTYPES_H_
+#ifndef XLA_TSL_PYTHON_LIB_CORE_ML_DTYPES_H_
+#define XLA_TSL_PYTHON_LIB_CORE_ML_DTYPES_H_
 
 // Registers all custom types from the python ml_dtypes package.
 //   https://github.com/jax-ml/ml_dtypes
@@ -47,4 +47,4 @@ inline int GetBfloat16TypeNum() { return GetNumpyDtypes().bfloat16; }
 }  // namespace ml_dtypes
 }  // namespace tsl
 
-#endif  // TENSORFLOW_TSL_PYTHON_LIB_CORE_ML_DTYPES_H_
+#endif  // XLA_TSL_PYTHON_LIB_CORE_ML_DTYPES_H_
