@@ -326,7 +326,9 @@ absl::Status NVPTXCompiler::AddConvAndGemmAutotuningPasses(
     pipeline->AddPass<GpuConvAlgorithmPicker>(autotune_config);
   }
   pipeline->AddPass<GemmAlgorithmPicker>(autotune_config);
-  pipeline->AddPass<CuDnnFusionCompiler>(autotune_config);
+  if (!autotune_config.IsDeviceless()) {
+    pipeline->AddPass<CuDnnFusionCompiler>(autotune_config);
+  }
   return absl::OkStatus();
 }
 

@@ -229,6 +229,19 @@ class CudnnHandle {
   cudnnHandle_t handle_;  // Not owned.
 };
 
+// RAII wrapper for temporary cuDNN handles that are used for multithreaded
+// compilation. Unlike with CudnnAccess these are not associated
+// with GPU devices and are not locked.
+class LocalCuDnnHandle {
+ public:
+  explicit LocalCuDnnHandle(cudnnHandle_t handle) : handle_(handle) {}
+  ~LocalCuDnnHandle() { cudnnDestroy(handle_); }
+  cudnnHandle_t handle() { return handle_; }
+
+ private:
+  cudnnHandle_t handle_;
+};
+
 // Major version is neither forward or backward compatible and therefore major
 // versions needs to match between source and library.
 //
@@ -286,6 +299,14 @@ class CudnnAccess {
       CHECK_EQ(status, CUDNN_STATUS_SUCCESS) << "Failed to set cuDNN stream.";
     }
     return CudnnHandle(executor, std::move(lock), handle_);
+  }
+
+  absl::StatusOr<std::unique_ptr<LocalCuDnnHandle>> GetLocalHandle() {
+    cudnnHandle_t handle = nullptr;
+    if (cudnnCreate(&handle) != CUDNN_STATUS_SUCCESS) {
+      return absl::InternalError("Creation of local cudnn handle failed.");
+    }
+    return std::make_unique<LocalCuDnnHandle>(handle);
   }
 
   void NotifyStreamDestroyed(Stream* stream) {
@@ -6344,7 +6365,8 @@ CreateCudnnFlashAttentionCausalMaskTensor(
 }
 
 absl::StatusOr<CudnnGraph> GetCudnnFlashAttentionOperationGraph(
-    CudnnHandle& cudnn, const dnn::MatmulTensorDescriptor& q_descriptor,
+    dnn::DnnSupport& dnn_support,
+    const dnn::MatmulTensorDescriptor& q_descriptor,
     const dnn::MatmulTensorDescriptor& k_descriptor,
     const dnn::MatmulTensorDescriptor& v_descriptor,
     const dnn::TensorDescriptor& o_descriptor,
@@ -6464,11 +6486,11 @@ absl::StatusOr<CudnnGraph> GetCudnnFlashAttentionOperationGraph(
   }
 
   CudnnGraph cudnnGraph(std::move(graph));
-  TF_ASSIGN_OR_RETURN(bool supported, cudnnGraph.Prepare());
+  TF_ASSIGN_OR_RETURN(bool supported, cudnnGraph.Prepare(dnn_support));
   if (!supported) {
     return absl::InternalError("cuDNN graph is not supported.");
   }
-  TF_RETURN_IF_ERROR(cudnnGraph.Build(/*plan_id=*/0));
+  TF_RETURN_IF_ERROR(cudnnGraph.Build(dnn_support, /*plan_id=*/0));
 
   if (VLOG_IS_ON(4)) {
     VLOG(4) << "\b flash attention operation graph: " << graph;
@@ -9087,7 +9109,7 @@ CudnnSupport::FusedMHARunnerFromDesc(
     TF_ASSIGN_OR_RETURN(
         auto graph,
         GetCudnnFlashAttentionOperationGraph(
-            cudnn, /*q_descriptor=*/bmm1_lhs_descriptor,
+            *this, /*q_descriptor=*/bmm1_lhs_descriptor,
             /*k_descriptor=*/bmm1_rhs_descriptor,
             /*v_descriptor=*/bmm2_rhs_descriptor,
             /*o_descriptor=*/output_descriptor, bias_descriptor,
@@ -10354,31 +10376,11 @@ bool CudnnSupport::DeriveOutputBatchDescriptor(
   return IsStatusOk(status, /*report_error=*/true);
 }
 
-// RAII wrapper for temporary cuDNN handles that are used for multithreaded
-// compilation. Unlike with CudnnAccess these are not associated
-// with GPU devices and are not locked.
-class LocalCuDnnHandle {
- public:
-  explicit LocalCuDnnHandle(cudnnHandle_t handle) : handle_(handle) {}
-  ~LocalCuDnnHandle() { cudnnDestroy(handle_); }
-  cudnnHandle_t handle() { return handle_; }
-  static absl::StatusOr<std::unique_ptr<LocalCuDnnHandle>> create() {
-    cudnnHandle_t handle = nullptr;
-    if (cudnnCreate(&handle) != CUDNN_STATUS_SUCCESS) {
-      return absl::InternalError("Could not create cudnn handle");
-    }
-    return std::make_unique<LocalCuDnnHandle>(handle);
-  }
-
- private:
-  cudnnHandle_t handle_;
-};
-
 #if CUDNN_VERSION >= 8100
 
 absl::StatusOr<std::unique_ptr<dnn::DnnGraph>> CudnnSupport::DeserializeGraph(
     absl::string_view serialized_data) const {
-  TF_ASSIGN_OR_RETURN(auto cudnn, LocalCuDnnHandle::create());
+  TF_ASSIGN_OR_RETURN(auto cudnn, cudnn_->GetLocalHandle());
   cudnn_frontend::graph::Graph graph;
   RETURN_IF_CUDNN_FRONTEND_ERROR(graph.deserialize(
       cudnn->handle(),
@@ -10387,8 +10389,9 @@ absl::StatusOr<std::unique_ptr<dnn::DnnGraph>> CudnnSupport::DeserializeGraph(
   return std::make_unique<CudnnGraph>(std::move(graph));
 }
 
-absl::StatusOr<bool> CudnnGraph::Prepare() {
-  TF_ASSIGN_OR_RETURN(auto cudnn, LocalCuDnnHandle::create());
+absl::StatusOr<bool> CudnnGraph::Prepare(dnn::DnnSupport& dnn_support) {
+  const CudnnSupport& cudnn_support = static_cast<CudnnSupport&>(dnn_support);
+  TF_ASSIGN_OR_RETURN(auto cudnn, cudnn_support.cudnn_->GetLocalHandle());
   RETURN_IF_CUDNN_FRONTEND_ERROR(graph_.validate());
   RETURN_IF_CUDNN_FRONTEND_ERROR(graph_.build_operation_graph(cudnn->handle()));
   RETURN_IF_CUDNN_FRONTEND_ERROR(
@@ -10400,8 +10403,10 @@ absl::StatusOr<bool> CudnnGraph::Prepare() {
   return true;
 }
 
-absl::Status CudnnGraph::Build(const int64_t plan_id) {
-  TF_ASSIGN_OR_RETURN(auto cudnn, LocalCuDnnHandle::create());
+absl::Status CudnnGraph::Build(dnn::DnnSupport& dnn_support,
+                               const int64_t plan_id) {
+  const CudnnSupport& cudnn_support = static_cast<CudnnSupport&>(dnn_support);
+  TF_ASSIGN_OR_RETURN(auto cudnn, cudnn_support.cudnn_->GetLocalHandle());
   RETURN_IF_CUDNN_FRONTEND_ERROR(
       graph_.build_plan_at_index(cudnn->handle(), plan_id));
   return absl::OkStatus();

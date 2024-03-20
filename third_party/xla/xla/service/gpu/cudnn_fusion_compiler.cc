@@ -42,7 +42,6 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/utils/hlo_query.h"
 #include "xla/primitive_util.h"
-#include "xla/service/gpu/autotuner_util.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/kernel_reuse_cache.h"
@@ -50,7 +49,6 @@ limitations under the License.
 #include "xla/service/gpu/triton_fusion_analysis.h"
 #include "xla/stream_executor/cuda/cuda_dnn.h"
 #include "xla/stream_executor/cuda/cudnn_frontend_helpers.h"
-#include "xla/stream_executor/stream_executor.h"
 #include "xla/util.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/statusor.h"
@@ -436,13 +434,13 @@ absl::StatusOr<std::optional<se::gpu::CudnnGraph>> HloFusionToCuDnnGraph(
 
 // Creates a cuDNN graph, queries cuDNN whether it is supported.
 absl::StatusOr<se::gpu::CudnnGraph> PrepareGraph(
-    const HloFusionInstruction& hlo, se::Stream& stream) {
+    se::dnn::DnnSupport& dnn_support, const HloFusionInstruction& hlo) {
   TF_ASSIGN_OR_RETURN(std::optional<se::gpu::CudnnGraph> graph,
                       HloFusionToCuDnnGraph(hlo));
   if (!graph.has_value()) {
     return absl::InternalError("Construction of cuDNN graph failed.");
   }
-  TF_ASSIGN_OR_RETURN(bool supported, graph->Prepare());
+  TF_ASSIGN_OR_RETURN(bool supported, graph->Prepare(dnn_support));
   if (!supported) {
     return absl::InternalError("cuDNN graph is not supported.");
   }
@@ -451,7 +449,8 @@ absl::StatusOr<se::gpu::CudnnGraph> PrepareGraph(
 
 class CuDnnFusionVisitor : public DfsHloRewriteVisitor {
  public:
-  explicit CuDnnFusionVisitor(const AutotuneConfig& config) : config_(config) {}
+  explicit CuDnnFusionVisitor(se::dnn::DnnSupport& dnn_support)
+      : dnn_support_(dnn_support) {}
 
   absl::Status HandleFusion(HloInstruction* hlo) override {
     TF_ASSIGN_OR_RETURN(auto gpu_config,
@@ -476,25 +475,23 @@ class CuDnnFusionVisitor : public DfsHloRewriteVisitor {
         GetComputationFingerprint(hlo->fused_instructions_computation(), {});
     std::string& cache_entry = compilation_cache_[cache_key];
     if (cache_entry.empty()) {
-      TF_ASSIGN_OR_RETURN(se::Stream * stream, config_.GetStream());
-
       TF_ASSIGN_OR_RETURN(
           se::gpu::CudnnGraph graph,
-          PrepareGraph(*DynCast<HloFusionInstruction>(hlo), *stream));
+          PrepareGraph(dnn_support_, *DynCast<HloFusionInstruction>(hlo)));
 
       if (plan_id >= 0) {
         // Build single plan with given ID.
         if (plan_id >= graph.Graph().get_execution_plan_count()) {
           return absl::InternalError("cuDNN graph plan does not exist.");
         }
-        TF_RETURN_IF_ERROR(graph.Build(plan_id));
+        TF_RETURN_IF_ERROR(graph.Build(dnn_support_, plan_id));
       } else {
         // Build plans one by one till first successful when no plan_id was
         // provided.
         for (plan_id = 0; plan_id < graph.Graph().get_execution_plan_count();
              ++plan_id) {
           VLOG(7) << "Trying plan ID " << plan_id;
-          if (graph.Build(plan_id).ok()) {
+          if (graph.Build(dnn_support_, plan_id).ok()) {
             VLOG(7) << "Successfully built plan ID " << plan_id;
             break;
           }
@@ -528,7 +525,7 @@ class CuDnnFusionVisitor : public DfsHloRewriteVisitor {
   }
 
  private:
-  AutotuneConfig config_;
+  se::dnn::DnnSupport& dnn_support_;
   // <HLO computation fingerprint, serialized compiled cuDNN graph>.
   absl::flat_hash_map<std::string, std::string> compilation_cache_;
 };
@@ -539,13 +536,13 @@ absl::StatusOr<bool> CuDnnFusionCompiler::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   XLA_SCOPED_LOGGING_TIMER("cuDNN fusion compiler");
-  return CuDnnFusionVisitor(config_).RunOnModule(module, execution_threads);
+  return CuDnnFusionVisitor(dnn_support_)
+      .RunOnModule(module, execution_threads);
 }
 
 int CuDnnFusionCompiler::GetAvailablePlanCount(
     const HloFusionInstruction& hlo) const {
-  se::Stream& stream = *config_.GetStream().value();
-  auto graph = PrepareGraph(hlo, stream);
+  auto graph = PrepareGraph(dnn_support_, hlo);
   if (!graph.ok()) {
     return 0;
   }

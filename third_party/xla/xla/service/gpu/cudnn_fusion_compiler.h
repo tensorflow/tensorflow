@@ -23,6 +23,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/gpu/autotuner_util.h"
 #include "xla/service/hlo_pass_interface.h"
+#include "xla/stream_executor/dnn.h"
 
 namespace xla {
 namespace gpu {
@@ -33,7 +34,7 @@ namespace gpu {
 class CuDnnFusionCompiler : public HloModulePass {
  public:
   explicit CuDnnFusionCompiler(const AutotuneConfig& config)
-      : config_(config) {}
+      : dnn_support_(*config.GetExecutor()->AsDnn()) {}
 
   absl::string_view name() const override { return "cudnn-fusion-compiler"; }
 
@@ -45,7 +46,7 @@ class CuDnnFusionCompiler : public HloModulePass {
   int GetAvailablePlanCount(const HloFusionInstruction& hlo) const;
 
  private:
-  AutotuneConfig config_;
+  se::dnn::DnnSupport& dnn_support_;
 };
 
 }  // namespace gpu

@@ -1250,6 +1250,8 @@ class VersionInfo {
   int patch_;
 };
 
+class DnnSupport;
+
 class DnnGraph {
  public:
   DnnGraph() = default;
@@ -1259,8 +1261,8 @@ class DnnGraph {
   // anything else unexpected),
   // false on expected ones (graph is valid but not supported),
   // true on success.
-  virtual absl::StatusOr<bool> Prepare() = 0;
-  virtual absl::Status Build(int64_t plan_id) = 0;
+  virtual absl::StatusOr<bool> Prepare(DnnSupport&) = 0;
+  virtual absl::Status Build(DnnSupport&, int64_t plan_id) = 0;
   virtual absl::Status Execute(Stream& stream,
                                absl::Span<DeviceMemoryBase> operands) const = 0;
 };
