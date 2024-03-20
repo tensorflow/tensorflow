@@ -1,4 +1,4 @@
-/* Copyright 2021 The OpenXLA Authors.
+/* Copyright 2024 The OpenXLA Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -169,7 +169,15 @@ inline void DumpApiCallbackData(uint32_t domain, uint32_t cbid,
         break;
       case HIP_API_ID_hipStreamSynchronize:
         break;
+      case HIP_API_ID_hipStreamWaitEvent:  // ignore all aux HIP API Events
+      case HIP_API_ID_hipHostFree:
+      case HIP_API_ID_hipHostMalloc:
+      case HIP_API_ID_hipSetDevice:
+        break;
       default:
+        VLOG(3) << "Warning: HIP_API_ID_x is not handled in "
+                   "DumpApiCallbackData, HIP_API_ID="
+                << cbid;
         DCHECK(false);
         break;
     }
@@ -269,51 +277,8 @@ const char* GetRocmTracerEventDomainName(const RocmTracerEventDomain& domain) {
   return "";
 }
 
-void DumpRocmTracerEvent(const RocmTracerEvent& event,
-                         uint64_t start_walltime_ns, uint64_t start_gputime_ns,
-                         const std::string& message) {
-  std::ostringstream oss;
-  oss << "correlation_id=" << event.correlation_id;
-  oss << ",type=" << GetRocmTracerEventTypeName(event.type);
-  oss << ",source=" << GetRocmTracerEventSourceName(event.source);
-  oss << ",domain=" << GetRocmTracerEventDomainName(event.domain);
-  oss << ",name=" << event.name;
-  oss << ",annotation=" << event.annotation;
-  oss << ",start_time_us="
-      << (start_walltime_ns + (start_gputime_ns - event.start_time_ns)) / 1000;
-  oss << ",duration=" << (event.end_time_ns - event.start_time_ns) / 1000;
-  oss << ",device_id=" << event.device_id;
-  oss << ",thread_id=" << event.thread_id;
-  oss << ",stream_id=" << event.stream_id;
-
-  switch (event.type) {
-    case RocmTracerEventType::Kernel:
-      break;
-    case RocmTracerEventType::MemcpyD2H:
-    case RocmTracerEventType::MemcpyH2D:
-    case RocmTracerEventType::MemcpyD2D:
-    case RocmTracerEventType::MemcpyP2P:
-      oss << ",num_bytes=" << event.memcpy_info.num_bytes;
-      oss << ",destination=" << event.memcpy_info.destination;
-      oss << ",async=" << event.memcpy_info.async;
-      break;
-    case RocmTracerEventType::MemoryAlloc:
-      oss << ",num_bytes=" << event.memalloc_info.num_bytes;
-      break;
-    case RocmTracerEventType::Synchronization:
-      break;
-    case RocmTracerEventType::Generic:
-      break;
-    default:
-      DCHECK(false);
-      break;
-  }
-  oss << message;
-  VLOG(3) << oss.str();
-}
-
-absl::Status RocmApiCallbackImpl::operator()(uint32_t domain, uint32_t cbid,
-                                             const void* cbdata) {
+tsl::Status RocmApiCallbackImpl::operator()(uint32_t domain, uint32_t cbid,
+                                            const void* cbdata) {
   /* Some APIs such as hipMalloc, implicitly work on th devices set by the
     user using APIs such as hipSetDevice. API callbacks and activity records
     for functions like hipMalloc does not return the device id (CUDA does). To
@@ -325,7 +290,7 @@ absl::Status RocmApiCallbackImpl::operator()(uint32_t domain, uint32_t cbid,
 
   // DumpApiCallbackData(domain, cbid, cbdata);
 
-  if (domain != ACTIVITY_DOMAIN_HIP_API) return absl::OkStatus();
+  if (domain != ACTIVITY_DOMAIN_HIP_API) return tsl::OkStatus();
 
   const hip_api_data_t* data = reinterpret_cast<const hip_api_data_t*>(cbdata);
 
@@ -353,7 +318,7 @@ absl::Status RocmApiCallbackImpl::operator()(uint32_t domain, uint32_t cbid,
       } else {
         LOG(WARNING) << "An API exit callback received without API enter "
                         "with same correlation id. Event droped!";
-        return absl::OkStatus();  // This API does not belong to us.
+        return tsl::OkStatus();  // This API does not belong to us.
       }
       exit_time = RocmTracer::GetTimestamp();
     }
@@ -434,7 +399,7 @@ absl::Status RocmApiCallbackImpl::operator()(uint32_t domain, uint32_t cbid,
         break;
     }
   }
-  return absl::OkStatus();
+  return tsl::OkStatus();
 }
 
 void RocmApiCallbackImpl::AddKernelEventUponApiExit(uint32_t cbid,
@@ -873,8 +838,8 @@ void RocmApiCallbackImpl::AddSynchronizeEventUponApiExit(
   collector_->AddEvent(std::move(event), is_auxiliary);
 }
 
-absl::Status RocmActivityCallbackImpl::operator()(const char* begin,
-                                                  const char* end) {
+tsl::Status RocmActivityCallbackImpl::operator()(const char* begin,
+                                                 const char* end) {
   // we do not dump activities in this set in logger
 
   static std::set<activity_op_t> dump_excluded_activities = {
@@ -1021,7 +986,7 @@ absl::Status RocmActivityCallbackImpl::operator()(const char* begin,
             ));
   }
 
-  return absl::OkStatus();
+  return tsl::OkStatus();
 }
 
 void RocmActivityCallbackImpl::AddHipKernelActivityEvent(
@@ -1332,25 +1297,6 @@ void RocmActivityCallbackImpl::AddHipOpsMemsetActivityEvent(
   collector_->AddEvent(std::move(event), false);
 }
 
-void AnnotationMap::Add(uint32_t correlation_id,
-                        const std::string& annotation) {
-  if (annotation.empty()) return;
-  VLOG(3) << "Add annotation: " << " correlation_id=" << correlation_id
-          << ", annotation: " << annotation;
-  absl::MutexLock lock(&map_.mutex);
-  if (map_.annotations.size() < max_size_) {
-    absl::string_view annotation_str =
-        *map_.annotations.insert(annotation).first;
-    map_.correlation_map.emplace(correlation_id, annotation_str);
-  }
-}
-
-absl::string_view AnnotationMap::LookUp(uint32_t correlation_id) {
-  absl::MutexLock lock(&map_.mutex);
-  auto it = map_.correlation_map.find(correlation_id);
-  return it != map_.correlation_map.end() ? it->second : absl::string_view();
-}
-
 /* static */ RocmTracer* RocmTracer::GetRocmTracerSingleton() {
   static auto* singleton = new RocmTracer();
   return singleton;
@@ -1413,15 +1359,15 @@ void ApiCallback(uint32_t domain, uint32_t cbid, const void* cbdata,
   tracer->ApiCallbackHandler(domain, cbid, cbdata).IgnoreError();
 }
 
-absl::Status RocmTracer::ApiCallbackHandler(uint32_t domain, uint32_t cbid,
-                                            const void* cbdata) {
+tsl::Status RocmTracer::ApiCallbackHandler(uint32_t domain, uint32_t cbid,
+                                           const void* cbdata) {
   if (api_tracing_enabled_)
     TF_RETURN_IF_ERROR((*api_cb_impl_)(domain, cbid, cbdata));
-  return absl::OkStatus();
+  return tsl::OkStatus();
 }
 
-absl::Status RocmTracer::EnableApiTracing() {
-  if (api_tracing_enabled_) return absl::OkStatus();
+tsl::Status RocmTracer::EnableApiTracing() {
+  if (api_tracing_enabled_) return tsl::OkStatus();
   api_tracing_enabled_ = true;
 
   for (auto& iter : options_->api_callbacks) {
@@ -1443,11 +1389,11 @@ absl::Status RocmTracer::EnableApiTracing() {
       }
     }
   }
-  return absl::OkStatus();
+  return tsl::OkStatus();
 }
 
-absl::Status RocmTracer::DisableApiTracing() {
-  if (!api_tracing_enabled_) return absl::OkStatus();
+tsl::Status RocmTracer::DisableApiTracing() {
+  if (!api_tracing_enabled_) return tsl::OkStatus();
   api_tracing_enabled_ = false;
 
   for (auto& iter : options_->api_callbacks) {
@@ -1469,7 +1415,7 @@ absl::Status RocmTracer::DisableApiTracing() {
       }
     }
   }
-  return absl::OkStatus();
+  return tsl::OkStatus();
 }
 
 void ActivityCallback(const char* begin, const char* end, void* user_data) {
@@ -1477,8 +1423,8 @@ void ActivityCallback(const char* begin, const char* end, void* user_data) {
   tracer->ActivityCallbackHandler(begin, end).IgnoreError();
 }
 
-absl::Status RocmTracer::ActivityCallbackHandler(const char* begin,
-                                                 const char* end) {
+tsl::Status RocmTracer::ActivityCallbackHandler(const char* begin,
+                                                const char* end) {
   if (activity_tracing_enabled_) {
     TF_RETURN_IF_ERROR((*activity_cb_impl_)(begin, end));
   } else {
@@ -1503,11 +1449,11 @@ absl::Status RocmTracer::ActivityCallbackHandler(const char* begin,
     }
     VLOG(3) << "Dropped Activity Records End";
   }
-  return absl::OkStatus();
+  return tsl::OkStatus();
 }
 
-absl::Status RocmTracer::EnableActivityTracing() {
-  if (activity_tracing_enabled_) return absl::OkStatus();
+tsl::Status RocmTracer::EnableActivityTracing() {
+  if (activity_tracing_enabled_) return tsl::OkStatus();
   activity_tracing_enabled_ = true;
 
   if (!options_->activity_tracing.empty()) {
@@ -1544,11 +1490,11 @@ absl::Status RocmTracer::EnableActivityTracing() {
     }
   }
 
-  return absl::OkStatus();
+  return tsl::OkStatus();
 }
 
-absl::Status RocmTracer::DisableActivityTracing() {
-  if (!activity_tracing_enabled_) return absl::OkStatus();
+tsl::Status RocmTracer::DisableActivityTracing() {
+  if (!activity_tracing_enabled_) return tsl::OkStatus();
 
   for (auto& iter : options_->activity_tracing) {
     activity_domain_t domain = iter.first;
@@ -1599,7 +1545,7 @@ absl::Status RocmTracer::DisableActivityTracing() {
 
   activity_tracing_enabled_ = false;
 
-  return absl::OkStatus();
+  return tsl::OkStatus();
 }
 
 /*static*/ uint64_t RocmTracer::GetTimestamp() {
