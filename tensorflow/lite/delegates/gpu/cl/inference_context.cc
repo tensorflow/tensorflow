@@ -817,6 +817,23 @@ absl::Status InferenceContext::AddToQueue(CLCommandQueue* queue) {
   return absl::OkStatus();
 }
 
+absl::Status InferenceContext::ClarifyTimeMultipleEnqueue(
+    double ops_total_duration_ms, int min_ops, int max_ops,
+    ProfilingCommandQueue* queue, ProfilingInfo* result) {
+  queue->ResetMeasurements();
+  for (int i = 0; i < nodes_.size(); ++i) {
+    queue->SetEventsLabel(nodes_[i].name);
+    const int times =
+        ops_total_duration_ms /
+        absl::ToDoubleMilliseconds(result->dispatches[i].duration);
+    const int n = std::min(max_ops, std::max(min_ops, times));
+    RETURN_IF_ERROR(nodes_[i].cl_operation.AddToQueueNTimes(queue, n));
+  }
+  RETURN_IF_ERROR(queue->WaitForCompletion());
+  *result = queue->GetProfilingInfo();
+  return absl::OkStatus();
+}
+
 absl::Status InferenceContext::ProfileTime(ProfilingCommandQueue* queue,
                                            ProfilingInfo* result) {
   queue->ResetMeasurements();
@@ -832,42 +849,18 @@ absl::Status InferenceContext::ProfileTime(ProfilingCommandQueue* queue,
   }
 
   if (gpu_info_.IsMali()) {
-    queue->ResetMeasurements();
-    for (int i = 0; i < nodes_.size(); ++i) {
-      queue->SetEventsLabel(nodes_[i].name);
-      const double times =
-          16.0 / absl::ToDoubleMilliseconds(result->dispatches[i].duration);
-      const int n = std::min(256.0, std::max(2.0, times));
-      RETURN_IF_ERROR(nodes_[i].cl_operation.AddToQueueNTimes(queue, n));
-    }
-    RETURN_IF_ERROR(queue->WaitForCompletion());
-    *result = queue->GetProfilingInfo();
-    return absl::OkStatus();
+    return ClarifyTimeMultipleEnqueue(/*ops_total_duration_ms=*/16.0,
+                                      /*min_ops=*/2, /*max_ops=*/256, queue,
+                                      result);
   }
 
   if (gpu_info_.IsPowerVR()) {
-    queue->ResetMeasurements();
-    for (int i = 0; i < nodes_.size(); ++i) {
-      queue->SetEventsLabel(nodes_[i].name);
-      const double times =
-          32.0 / absl::ToDoubleMilliseconds(result->dispatches[i].duration);
-      const int n = std::min(64.0, std::max(4.0, times));
-      RETURN_IF_ERROR(nodes_[i].cl_operation.AddToQueueNTimes(queue, n));
-    }
-    RETURN_IF_ERROR(queue->WaitForCompletion());
-    *result = queue->GetProfilingInfo();
-
-    queue->ResetMeasurements();
-    for (int i = 0; i < nodes_.size(); ++i) {
-      queue->SetEventsLabel(nodes_[i].name);
-      const double times =
-          128.0 / absl::ToDoubleMilliseconds(result->dispatches[i].duration);
-      const int n = std::min(1024.0, std::max(4.0, times));
-      RETURN_IF_ERROR(nodes_[i].cl_operation.AddToQueueNTimes(queue, n));
-    }
-    RETURN_IF_ERROR(queue->WaitForCompletion());
-    *result = queue->GetProfilingInfo();
-    return absl::OkStatus();
+    RETURN_IF_ERROR(ClarifyTimeMultipleEnqueue(/*ops_total_duration_ms=*/32.0,
+                                               /*min_ops=*/4, /*max_ops=*/64,
+                                               queue, result));
+    return ClarifyTimeMultipleEnqueue(/*ops_total_duration_ms=*/128.0,
+                                      /*min_ops=*/4, /*max_ops=*/1024, queue,
+                                      result);
   }
 
   return absl::OkStatus();
