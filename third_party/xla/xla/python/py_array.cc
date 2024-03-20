@@ -219,7 +219,10 @@ ifrt::MemoryKind CreateIfRtMemoryKindFromSharding(const nb::object& sharding) {
 
 struct PyArrayObject {
   PyObject_HEAD;
+#if PY_VERSION_HEX < 0x030C0000
   PyObject* weakrefs;
+  PyObject* dict;
+#endif  // PY_VERSION_HEX < 0x030B0000
   alignas(PyArray::Storage) char array_storage[sizeof(PyArray::Storage)];
 };
 static_assert(std::is_standard_layout<PyArrayObject>::value);
@@ -239,14 +242,15 @@ extern "C" void PyArray_tp_dealloc(PyObject* self) {
   PyTypeObject* tp = Py_TYPE(self);
   auto* obj = reinterpret_cast<PyArrayObject*>(self);
 
-  if (obj->weakrefs) {
-    PyObject_ClearWeakRefs(self);
-  }
-
   GetPyArrayStorageFromObject(obj)->~PyArray_Storage();
 
+  PyObject_ClearWeakRefs(self);
+#if PY_VERSION_HEX < 0x030C0000
   PyObject*& dict = *_PyObject_GetDictPtr(self);
   Py_CLEAR(dict);
+#else
+  _PyObject_ClearManagedDict(self);
+#endif  // PY_VERSION_HEX < 0x030C0000
 
   tp->tp_free(self);
   Py_DECREF(tp);
@@ -255,40 +259,26 @@ extern "C" void PyArray_tp_dealloc(PyObject* self) {
 // dynamic_attr: Allow the garbage collector to traverse the internal instance
 // `__dict__`.
 extern "C" int PyArray_tp_traverse(PyObject* self, visitproc visit, void* arg) {
+#if PY_VERSION_HEX < 0x030C0000
   PyObject*& dict = *_PyObject_GetDictPtr(self);
   Py_VISIT(dict);
-// https://docs.python.org/3/c-api/typeobj.html#c.PyTypeObject.tp_traverse
-#if PY_VERSION_HEX >= 0x03090000
+#else
+  _PyObject_VisitManagedDict(self, visit, arg);
+#endif  // PY_VERSION_HEX < 0x030C0000
+  // https://docs.python.org/3/c-api/typeobj.html#c.PyTypeObject.tp_traverse
   Py_VISIT(Py_TYPE(self));
-#endif
   return 0;
 }
 
 // dynamic_attr: Allow the GC to clear the dictionary.
 extern "C" int PyArray_tp_clear(PyObject* self) {
+#if PY_VERSION_HEX < 0x030C0000
   PyObject*& dict = *_PyObject_GetDictPtr(self);
   Py_CLEAR(dict);
-  return 0;
-}
-
-// Give instances of this type a `__dict__` and opt into garbage collection.
-void EnableDynamicAttribute(PyHeapTypeObject* heap_type) {
-  auto* type = &heap_type->ht_type;
-  type->tp_flags |= Py_TPFLAGS_HAVE_GC;
-#if PY_VERSION_HEX < 0x030B0000
-  type->tp_dictoffset = type->tp_basicsize;  // place dict at the end
-  type->tp_basicsize +=
-      (ssize_t)sizeof(PyObject*);  // and allocate enough space for it
 #else
-  type->tp_flags |= Py_TPFLAGS_MANAGED_DICT;
-#endif
-  type->tp_traverse = PyArray_tp_traverse;
-  type->tp_clear = PyArray_tp_clear;
-
-  static PyGetSetDef getset[] = {{"__dict__", PyObject_GenericGetDict,
-                                  PyObject_GenericSetDict, nullptr, nullptr},
-                                 {nullptr, nullptr, nullptr, nullptr, nullptr}};
-  type->tp_getset = getset;
+  _PyObject_ClearManagedDict(self);
+#endif  // PY_VERSION_HEX < 0x030C0000
+  return 0;
 }
 
 template <typename... Args>
@@ -1335,13 +1325,6 @@ void PyArray_bf_releasebuffer(PyObject*, Py_buffer* buffer) {
   delete extra;
 }
 
-PyBufferProcs PyArray_tp_as_buffer = []() {
-  PyBufferProcs procs;
-  procs.bf_getbuffer = &PyArray_bf_getbuffer;
-  procs.bf_releasebuffer = &PyArray_bf_releasebuffer;
-  return procs;
-}();
-
 // Returns if shape has a major-to-minor layout.
 bool HasMajorToMinorLayout(const xla::Shape& shape) {
   if (shape.has_layout()) {
@@ -1485,50 +1468,59 @@ Status PyHostValue::CopyToHostAsync(std::optional<Shape>& dynamic_shape_holder,
   return OkStatus();
 }
 
-Status PyArray::SetUpType() {
-  static constexpr char kName[] = "ArrayImpl";
+namespace {
+PyGetSetDef PyArray_tp_getset[] = {
+    {"__dict__", PyObject_GenericGetDict, PyObject_GenericSetDict, nullptr,
+     nullptr},
+    {nullptr, nullptr, nullptr, nullptr, nullptr},
+};
 
-  nb::str name(kName);
-  nb::str qualname(kName);
+PyMemberDef PyArray_members[] = {
+#if PY_VERSION_HEX < 0x030C0000
+    {"__weaklistoffset__", T_PYSSIZET,
+     static_cast<Py_ssize_t>(offsetof(PyArrayObject, weakrefs)), READONLY,
+     nullptr},
+    {"__dictoffset__", T_PYSSIZET,
+     static_cast<Py_ssize_t>(offsetof(PyArrayObject, dict)), READONLY, nullptr},
+#endif  // PY_VERSION_HEX < 0x030C0000
+    {nullptr, 0, 0, 0, nullptr},
+};  // namespace xla
 
-  auto* heap_type = reinterpret_cast<PyHeapTypeObject*>(
-      PyType_Type.tp_alloc(&PyType_Type, 0));
-  // Caution: we must not call any functions that might invoke the GC until
-  // PyType_Ready() is called below. Otherwise the GC might see a
-  // half-constructed type object.
-  if (!heap_type) {
-    return Internal("Unable to create heap type object");
-  }
-  heap_type->ht_name = name.release().ptr();
-  heap_type->ht_qualname = qualname.release().ptr();
-  PyTypeObject* type = &heap_type->ht_type;
-  type->tp_name = kName;
-  type->tp_basicsize = sizeof(PyArrayObject);
-  type->tp_flags = Py_TPFLAGS_DEFAULT | Py_TPFLAGS_HEAPTYPE;
-  type->tp_new = PyArray_tp_new;
-  type->tp_dealloc = PyArray_tp_dealloc;
+PyType_Slot PyArray_slots[] = {
+    {Py_tp_new, reinterpret_cast<void*>(PyArray_tp_new)},
+    {Py_tp_dealloc, reinterpret_cast<void*>(PyArray_tp_dealloc)},
+    {Py_tp_members, reinterpret_cast<void*>(PyArray_members)},
+    {Py_tp_traverse, reinterpret_cast<void*>(PyArray_tp_traverse)},
+    {Py_tp_clear, reinterpret_cast<void*>(PyArray_tp_clear)},
+    {Py_tp_getset, reinterpret_cast<void*>(PyArray_tp_getset)},
+    {Py_bf_getbuffer, reinterpret_cast<void*>(PyArray_bf_getbuffer)},
+    {Py_bf_releasebuffer, reinterpret_cast<void*>(PyArray_bf_releasebuffer)},
+    {0, nullptr},
+};
 
-  // Supported protocols
-  type->tp_as_number = &heap_type->as_number;
-  type->tp_as_sequence = &heap_type->as_sequence;
-  type->tp_as_mapping = &heap_type->as_mapping;
-  type->tp_as_buffer = &PyArray_tp_as_buffer;
-
-  // Allow dynamic attributes.
-  EnableDynamicAttribute(heap_type);
-
-  // Allow weak references to DeviceArray objects.
-  type->tp_weaklistoffset = offsetof(PyArrayObject, weakrefs);
-
-  TF_RET_CHECK(PyType_Ready(type) == 0);
-
-  PyArray::type_ = reinterpret_cast<PyObject*>(type);
-
-  return OkStatus();
-}
+}  // namespace
 
 Status PyArray::RegisterTypes(nb::module_& m) {
-  TF_RETURN_IF_ERROR(PyArray::SetUpType());
+  std::string name =
+      absl::StrCat(nb::cast<std::string>(m.attr("__name__")), ".ArrayImpl");
+
+  PyType_Spec PyArray_spec = {
+      /*.name=*/name.c_str(),
+      /*.basicsize=*/static_cast<int>(sizeof(PyArrayObject)),
+      /*.itemsize=*/0,
+#if PY_VERSION_HEX < 0x030C0000
+      /*.flags=*/Py_TPFLAGS_DEFAULT | Py_TPFLAGS_HAVE_GC,
+#else   // PY_VERSION_HEX >= 0x030C0000
+      /*.flags=*/Py_TPFLAGS_DEFAULT | Py_TPFLAGS_HAVE_GC |
+          Py_TPFLAGS_MANAGED_DICT | Py_TPFLAGS_MANAGED_WEAKREF,
+#endif  // PY_VERSION_HEX >= 0x030C0000
+      /*.slots=*/PyArray_slots,
+  };
+
+  type_ = PyType_FromSpec(&PyArray_spec);
+  if (!type_) {
+    throw nb::python_error();
+  }
   auto type = nb::borrow<nb::object>(type_);
   m.attr("ArrayImpl") = type;
 

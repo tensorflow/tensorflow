@@ -307,8 +307,6 @@ class PyArray : public nanobind::object {
   Storage& GetStorage();
   const Storage& GetStorage() const;
 
-  static Status SetUpType();
-
   inline static PyObject* type_ = nullptr;
 };
 
