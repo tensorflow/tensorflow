@@ -13,12 +13,19 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <memory>
+
 #include <gtest/gtest.h>
+#include "absl/status/statusor.h"
 #include "absl/strings/str_replace.h"
 #include "absl/strings/substitute.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/service/executable.h"
 #include "xla/service/gpu/stream_executor_util.h"
 #include "xla/service/gpu/tests/gpu_codegen_test.h"
+#include "xla/tests/filecheck.h"
+#include "tsl/lib/core/status_test_util.h"
+#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace gpu {
@@ -254,44 +261,58 @@ ENTRY e {
                             ErrorSpec{/*aabs=*/1e-5, /*arel=*/1e-5}));
 }
 
-TEST_F(CuDnnFusionExecutionTest, CommandBuffersAreSupported) {
+class CuDnnFusionCommandBufferTest : public CuDnnFusionTest {
+ public:
+  DebugOptions GetDebugOptionsForTest() override {
+    DebugOptions debug_options = CuDnnFusionTest::GetDebugOptionsForTest();
+    debug_options.set_xla_gpu_graph_min_graph_size(1);
+    return debug_options;
+  }
+};
+
+TEST_F(CuDnnFusionCommandBufferTest, CommandBuffersAreSupported) {
   const std::string kHloText = R"(
-HloModule m
-
-%fusion0 {
-  %p0 = f32[64,64]{1,0} parameter(0)
-  %p1 = f32[64,64]{1,0} parameter(1)
-  ROOT %d = f32[64,64]{1,0} dot(%p0, %p1), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+fd0 {
+  p0 = f32[64,64]{1,0} parameter(0)
+  p1 = f32[64,64]{1,0} parameter(1)
+  ROOT d = f32[64,64]{1,0} dot(p0, p1), lhs_contracting_dims={1}, rhs_contracting_dims={0}
 }
 
-%fusion_a {
-  %p0.2 = f32[64,64]{1,0} parameter(0)
-  %p1.2 = f32[64,64]{1,0} parameter(1)
-  ROOT %a = f32[64,64]{1,0} add(%p0.2, %p1.2)
+fd1 {
+  p0 = f32[64,64]{1,0} parameter(0)
+  p1 = f32[64,64]{1,0} parameter(1)
+  ROOT d = f32[64,64]{1,0} dot(p0, p1), lhs_contracting_dims={0}, rhs_contracting_dims={1}
 }
 
-%fusion1 {
-  %p0.1 = f32[64,64]{1,0} parameter(0)
-  %p1.1 = f32[64,64]{1,0} parameter(1)
-  ROOT %d.1 = f32[64,64]{1,0} dot(%p0.1, %p1.1), lhs_contracting_dims={0}, rhs_contracting_dims={1}
-}
-
-%command_buffer {
-  %p0.4 = f32[64,64]{1,0} parameter(0)
-  %p1.4 = f32[64,64]{1,0} parameter(1)
-  %d0.1 = f32[64,64]{1,0} fusion(%p0.4, %p1.4), kind=kCustom, calls=%fusion0,
+ENTRY e {
+  p0 = f32[64,64]{1,0} parameter(0)
+  p1 = f32[64,64]{1,0} parameter(1)
+  d0 = f32[64,64]{1,0} fusion(p0, p1), kind=kCustom, calls=fd0,
     backend_config={"fusion_backend_config":{"kind":"__cudnn$fusion","cudnn_fusion_config":{"plan_id":"0"}}}
-  %a.2 = f32[64,64]{1,0} fusion(%d0.1, %d0.1), kind=kLoop, calls=%fusion_a
-  ROOT %d1.1 = f32[64,64]{1,0} fusion(%a.2, %p1.4), kind=kCustom, calls=%fusion1,
+  a = f32[64,64]{1,0} add(d0, d0)
+  ROOT d1 = f32[64,64]{1,0} fusion(a, d0), kind=kCustom, calls=fd1,
     backend_config={"fusion_backend_config":{"kind":"__cudnn$fusion","cudnn_fusion_config":{"plan_id":"0"}}}
-}
-
-ENTRY %e {
-  %p0.3 = f32[64,64]{1,0} parameter(0)
-  %p1.3 = f32[64,64]{1,0} parameter(1)
-  ROOT %call = f32[64,64]{1,0} call(%p0.3, %p1.3), to_apply=%command_buffer
 })";
 
+  // Verify that a command buffer is applied.
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<Executable> executable,
+      backend().compiler()->RunBackend(
+          GetOptimizedModule(kHloText).value(),
+          backend().default_stream_executor(),
+          backend().default_stream_executor()->GetAllocator()));
+  absl::StatusOr<bool> filecheck_result =
+      RunFileCheck(executable->module().ToString(), R"(
+; CHECK: ENTRY
+; CHECK-NEXT: parameter
+; CHECK-NEXT: parameter
+; CHECK-NEXT: ROOT
+; CHECK-SAME: command_buffer
+)");
+  TF_ASSERT_OK(filecheck_result.status());
+  EXPECT_TRUE(filecheck_result.value());
+
+  // Verify that the command buffer executes correctly.
   EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
 }
 

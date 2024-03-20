@@ -1267,6 +1267,8 @@ class DnnGraph {
                                absl::Span<DeviceMemoryBase> operands) const = 0;
 };
 
+using LazyDnnGraph = std::unique_ptr<DnnGraph>;
+
 // Suite of operations typically used for implementing Deep/Convolutional Neural
 // Nets. Note: A false return value of an operation indicates the
 // implementation is not available.
