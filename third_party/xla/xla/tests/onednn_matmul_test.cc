@@ -277,19 +277,19 @@ TEST_F(MatmulTest, SimpleTestF32WithBiasAsParameter3) {
 
 TEST_F(MatmulTest, SimpleTestF32TransposeBWithBiasAddFusion) {
   const char* matmul_module_str = R"(
-  HloModule matmul.test.1, entry_computation_layout={(f32[32,8,4,16]{3,1,2,0},f32[32,8,4,16]{3,1,2,0})->f32[32,8,4,4]{3,2,1,0}}
+  HloModule matmul.test.1, entry_computation_layout={(f32[32,8,4,16]{3,1,2,0},f32[32,8,16,16]{3,1,2,0})->f32[32,8,4,16]{3,2,1,0}}
   
   ENTRY matmul.test.1 {
     arg.0 = f32[32,8,4,16]{3,1,2,0} parameter(0), parameter_replication={false}
-    arg.1 = f32[32,8,4,16]{3,1,2,0} parameter(1), parameter_replication={false}
-    dot.7 = f32[32,8,4,4]{3,2,1,0} dot(arg.0, arg.1), lhs_batch_dims={0,1}, lhs_contracting_dims={3}, rhs_batch_dims={0,1}, rhs_contracting_dims={3}
+    arg.1 = f32[32,8,16,16]{3,1,2,0} parameter(1), parameter_replication={false}
+    dot.7 = f32[32,8,4,16]{3,2,1,0} dot(arg.0, arg.1), lhs_batch_dims={0,1}, lhs_contracting_dims={3}, rhs_batch_dims={0,1}, rhs_contracting_dims={3}
     constant.5 = f32[] constant(15)
-    broadcast.6 = f32[4]{0} broadcast(constant.5), dimensions={}
-    broadcast.9 = f32[32,8,4,4]{3,2,1,0} broadcast(broadcast.6), dimensions={3}
-    add.10 = f32[32,8,4,4]{3,2,1,0} add(dot.7, broadcast.9)
-    reshape.11 = f32[32,8,4,4]{3,2,1,0} reshape(add.10)
-    tuple.12 = (f32[32,8,4,4]{3,2,1,0}) tuple(reshape.11)
-    ROOT get-tuple-element.13 = f32[32,8,4,4]{3,2,1,0} get-tuple-element(tuple.12), index=0
+    broadcast.6 = f32[16]{0} broadcast(constant.5), dimensions={}
+    broadcast.9 = f32[32,8,4,16]{3,2,1,0} broadcast(broadcast.6), dimensions={3}
+    add.10 = f32[32,8,4,16]{3,2,1,0} add(dot.7, broadcast.9)
+    reshape.11 = f32[32,8,4,16]{3,2,1,0} reshape(add.10)
+    tuple.12 = (f32[32,8,4,16]{3,2,1,0}) tuple(reshape.11)
+    ROOT get-tuple-element.13 = f32[32,8,4,16]{3,2,1,0} get-tuple-element(tuple.12), index=0
   })";
 
   EXPECT_TRUE(RunAndCompare(matmul_module_str, ErrorSpec{1e-4, 1e-4}));
@@ -596,6 +596,25 @@ TEST_F(MatmulTest, TestF32ConstantWeights) {
   ; CHECK:     %matmul.test.f32
   ; CHECK-NOT: custom_call_target="__onednn$matmul_reorder",
   ; CHECK:     custom-call(%{{[a-z,A-Z,0-9,\.]*}}, %constant{{[a-z,A-Z,0-9,\.]*}}), custom_call_target="__onednn$matmul",
+  )");
+}
+
+TEST_F(MatmulTest, TestTransposeBNoRewriteF32) {
+  const char* matmul_module_str = R"(
+  HloModule matmul.test.f32, entry_computation_layout={(f32[384,1024]{1,0},f32[2,1024]{1,0})->f32[384,2]{1,0}}
+
+  ENTRY matmul.test.f32 {
+    arg.0 = f32[384,1024]{1,0} parameter(0), parameter_replication={false}
+    arg.1 = f32[2,1024]{1,0} parameter(1), parameter_replication={false}
+    ROOT dot.2 = f32[384,2]{1,0} dot(arg.0, arg.1), lhs_contracting_dims={1}, rhs_contracting_dims={1}
+  })";
+
+  EXPECT_TRUE(RunAndCompare(matmul_module_str, ErrorSpec{1e-4, 1e-4}));
+  MatchOptimizedHlo(matmul_module_str,
+                    R"(
+  ; CHECK:     %matmul.test.f32
+  ; CHECK-NOT: custom_call_target="__onednn$matmul",
+  ; CHECK:     f32[384,2]{1,0} dot(%arg.0, %arg.1), lhs_contracting_dims={1}, rhs_contracting_dims={1}
   )");
 }
 
