@@ -162,6 +162,20 @@ def NchwConvolutionToNhwcPass : Pass<"stablehlo-nchw-convolution-to-nhwc", "mlir
   let dependentDialects = ["mlir::stablehlo::StablehloDialect"];
 }
 
+def DeferActivationTransposePass : Pass<"stablehlo-defer-activation-transpose", "mlir::func::FuncOp"> {
+  let summary = "Merges stablehlo.transpose for activations.";
+  let description = [{
+    Defers activation transposes (e.g. LHS of `stablehlo.add`) to the output and
+    optionally inserts `stablehlo.transpose`s to match the shape of operands.
+    This is useful when recursively pushing down the extra `stablehlo.transpose`
+    inserted to activation tensors after running `NchwConvolutionToNhwcPass`.
+
+    Currently only converts limited cases that appear in NCHW->NHWC 2D
+    convolution conversion, to avoid introducing unwanted pessimizations.
+  }];
+  let dependentDialects = ["mlir::stablehlo::StablehloDialect"];
+}
+
 def PrepareQuantizeHybridPass : Pass<"stablehlo-prepare-quantize-hybrid", "mlir::func::FuncOp"> {
   let summary = "Prepare hybrid quantization for weight-only quantization and dynamic range quantization.";
   let dependentDialects = [
