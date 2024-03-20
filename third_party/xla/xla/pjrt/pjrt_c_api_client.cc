@@ -37,6 +37,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
+#include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
@@ -393,8 +394,11 @@ StatusOr<std::unique_ptr<PjRtLoadedExecutable>> PjRtCApiClient::Compile(
 StatusOr<std::unique_ptr<PjRtLoadedExecutable>> PjRtCApiClient::Compile(
     mlir::ModuleOp module, CompileOptions options) {
   // TODO: Once plugins are ready, use SerializeUsingVersionedStablehlo.
-  TF_ASSIGN_OR_RETURN(std::string serialized,
-                      xla::SerializeUsingNativeBytecode(module));
+  if (!pjrt_c_api()) llvm::report_fatal_error("pjrt_c_api is null");
+  TF_ASSIGN_OR_RETURN(
+      std::string serialized,
+      xla::SerializeUsingNativeBytecode(
+          module, plugin_attributes()->pjrt_c_api_minor_version));
   std::string format(pjrt::kMlirFormat);
   return InitializeArgsAndCompile(this, c_api_, c_client_.get(), options,
                                   serialized, format);
@@ -2191,8 +2195,12 @@ StatusOr<std::unique_ptr<PjRtExecutable>> PjRtCApiCompiler::Compile(
     CompileOptions options, mlir::ModuleOp module,
     const PjRtTopologyDescription& topology, PjRtClient* client) {
   // TODO: Once plugins are ready, use SerializeUsingVersionedStablehlo.
-  TF_ASSIGN_OR_RETURN(std::string serialized,
-                      xla::SerializeUsingNativeBytecode(module));
+  std::optional<int64_t> plugin_version;
+  if (client) {
+    plugin_version = client->plugin_attributes()->pjrt_c_api_minor_version;
+  }
+  TF_ASSIGN_OR_RETURN(std::string serialized, xla::SerializeUsingNativeBytecode(
+                                                  module, plugin_version));
   std::string format(pjrt::kMlirFormat);
   return InitializeArgsAndCompileAot(c_api_, client, options, topology,
                                      serialized, format);
