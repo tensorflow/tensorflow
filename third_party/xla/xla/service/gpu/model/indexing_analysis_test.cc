@@ -626,6 +626,71 @@ TEST_F(IndexingAnalysisTest, ConcatenateOp) {
                           )"))));
 }
 
+TEST_F(IndexingAnalysisTest, DynamicSliceOp) {
+  auto input_indexing = GetOutputToInputIndexing(ParseAndGetRoot(R"(
+    HloModule m
+    ENTRY e {
+      %src = s32[2,2,258] parameter(0)
+      %of1 = s32[] parameter(1)
+      %of2 = s32[] parameter(2)
+      %of3 = s32[] parameter(3)
+      ROOT %ds = s32[1,2,32] dynamic-slice(s32[2,2,258] %src,
+        s32[] %of1, s32[] %of2, s32[] %of3),
+        dynamic_slice_sizes={1, 2, 32}
+    }
+  )"));
+  EXPECT_THAT(input_indexing.indexing_maps,
+              ElementsAre(ElementsAre(MatchIndexingMap(R"(
+                (d0, d1, d2)[s0, s1, s2] -> (d0 + s0, d1 + s1, d2 + s2)
+                domain:
+                d0 in [0, 0]
+                d1 in [0, 1]
+                d2 in [0, 31]
+                s0 id: 0 in [0, 1]
+                  hlo: %of1 = s32[] parameter(1)
+                  (d0, d1, d2)  -> ()
+                  domain:
+                  d0 in [0, 0]
+                  d1 in [0, 1]
+                  d2 in [0, 31]
+                s1 id: 1 in [0, 0]
+                  hlo: %of2 = s32[] parameter(2)
+                  (d0, d1, d2)  -> ()
+                  domain:
+                  d0 in [0, 0]
+                  d1 in [0, 1]
+                  d2 in [0, 31]
+                s2 id: 2 in [0, 226]
+                  hlo: %of3 = s32[] parameter(3)
+                  (d0, d1, d2) -> ()
+                  domain:
+                  d0 in [0, 0]
+                  d1 in [0, 1]
+                  d2 in [0, 31]
+              )")),
+                          ElementsAre(MatchIndexingMap(R"(
+                (d0, d1, d2)  -> ()
+                domain:
+                d0 in [0, 0]
+                d1 in [0, 1]
+                d2 in [0, 31]
+              )")),
+                          ElementsAre(MatchIndexingMap(R"(
+                (d0, d1, d2)  -> ()
+                domain:
+                d0 in [0, 0]
+                d1 in [0, 1]
+                d2 in [0, 31]
+              )")),
+                          ElementsAre(MatchIndexingMap(R"(
+                (d0, d1, d2)  -> ()
+                domain:
+                d0 in [0, 0]
+                d1 in [0, 1]
+                d2 in [0, 31]
+              )"))));
+}
+
 TEST_F(IndexingAnalysisTest, FusionOpWithSingleBinaryOp) {
   auto input_indexing = GetOutputToInputIndexing(ParseAndGetRoot(R"(
     HloModule m
@@ -2053,30 +2118,35 @@ TEST_F(IndexingAnalysisTest, FusionWithUnsupportedOp) {
   auto input_indexing = GetOutputToInputIndexing(ParseAndGetRoot(R"(
     HloModule m
     fused_computation {
-      input = f32[20, 20] parameter(0)
-      start_indices = s32[2] parameter(1)
-      lhs = f32[5, 5] dynamic-slice(f32[20,20] input, s32[2] start_indices),
-          dynamic_slice_sizes={5, 5}
-      rhs = f32[5, 5] slice(f32[20, 20] input),
-          slice={[0:20:4], [0:5:1]}
-      ROOT add = f32[5, 5] add(lhs, rhs)
+      p0 = f32[20, 20] parameter(0)
+      p1 = f32[4,4] parameter(1)
+      p2 = f32[4,3] parameter(2)
+      lhs =  f32[4,3] triangular-solve(f32[4,4] p1, f32[4,3] p2),
+        left_side=true,
+        lower=true,
+        transpose_a=NO_TRANSPOSE,
+        unit_diagonal=true
+      rhs = f32[4, 3] slice(f32[20, 20] p0),
+          slice={[0:20:6], [0:5:2]}
+      ROOT add = f32[4, 3] add(lhs, rhs)
     }
     ENTRY e {
       p0 = f32[20, 20] parameter(0)
-      p1 = s32[2] parameter(1)
-      ROOT fusion = f32[5, 5] fusion(p0, p1), kind=kLoop,
+      p1 = f32[4, 4] parameter(1)
+      p2 = f32[4, 3] parameter(2)
+      ROOT fusion = f32[4, 3] fusion(p0, p1, p2), kind=kLoop,
           calls=fused_computation
     }
   )"));
-  EXPECT_THAT(input_indexing.indexing_maps,
-              ElementsAre(UnorderedElementsAre(MatchIndexingMap(R"(
-                            (d0, d1) -> (d0 * 4, d1)
+  EXPECT_THAT(
+      input_indexing.indexing_maps,
+      ElementsAre(UnorderedElementsAre(MatchIndexingMap(R"(
+                            (d0, d1) -> (d0 * 6, d1 * 2)
                             domain:
-                            d0 in [0, 4]
-                            d1 in [0, 4]
-                          )"),
-                                               UndefinedMap()),
-                          ElementsAre(UndefinedMap())));
+                            d0 in [0, 3]
+                            d1 in [0, 2]
+                          )")),
+                  ElementsAre(UndefinedMap()), ElementsAre(UndefinedMap())));
 }
 
 TEST_F(IndexingAnalysisTest, TilingIndexing) {
