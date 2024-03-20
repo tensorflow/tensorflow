@@ -188,7 +188,12 @@ absl::StatusOr<FusionEmissionResult> EmitDynamicSlicedGemm(
   const BufferAssignment& buffer_assignment =
       ir_emitter_context.buffer_assignment();
 
-  HloDynamicSliceInstruction* slice_instr = nullptr;
+  std::vector<std::optional<std::vector<BufferAllocation::Slice>>>
+      offset_buffer_indices;
+  std::vector<std::optional<const Shape>> orig_shapes;
+  std::vector<std::optional<const Shape>> sliced_shapes;
+
+  HloDynamicIndexInstruction* slice_instr = nullptr;
   auto get_original_slice =
       [&](const HloInstruction* start,
           const ShapeIndex& index) -> absl::StatusOr<BufferAllocation::Slice> {
@@ -202,17 +207,19 @@ absl::StatusOr<FusionEmissionResult> EmitDynamicSlicedGemm(
         [](auto node) { return node.opcode() == HloOpcode::kDynamicSlice; });
     if (!slice_adaptor.has_value()) {
       return absl::InternalError(
-          "AddressComputationFusion expects at least one sliced operand");
+          "DynamicAddressComputationFusion expects at least one sliced "
+          "operand");
     }
 
-    slice_instr = const_cast<HloDynamicSliceInstruction*>(
-        static_cast<const HloDynamicSliceInstruction*>(
+    slice_instr = const_cast<HloDynamicIndexInstruction*>(
+        static_cast<const HloDynamicIndexInstruction*>(
             &slice_adaptor->instruction()));
 
     if (!IsContiguousSlice(slice_instr->operand(0)->shape(),
                            slice_instr->shape())) {
       return absl::InternalError(
-          "AddressComputationFusion only handles contiguous slices currently");
+          "DynamicAddressComputationFusion only handles contiguous slices "
+          "currently");
     }
 
     const auto* param = Cast<HloParameterInstruction>(slice_instr->operand(0));
@@ -220,12 +227,7 @@ absl::StatusOr<FusionEmissionResult> EmitDynamicSlicedGemm(
                               fusion.operand(param->parameter_number()), index);
   };
 
-  std::vector<std::optional<std::vector<BufferAllocation::Slice>>>
-      offset_buffer_indices;
-  std::vector<std::optional<const Shape>> orig_shapes;
-  std::vector<std::optional<const Shape>> sliced_shapes;
-
-  auto get_operand_slice_info = [&]() {
+  auto collect_slice_info = [&]() {
     if (slice_instr == nullptr) {
       offset_buffer_indices.push_back(std::nullopt);
       orig_shapes.push_back(std::nullopt);
@@ -249,12 +251,12 @@ absl::StatusOr<FusionEmissionResult> EmitDynamicSlicedGemm(
 
   TF_ASSIGN_OR_RETURN(BufferAllocation::Slice lhs_slice,
                       get_original_slice(custom_call.operand(0), /*index=*/{}));
-  get_operand_slice_info();
+  collect_slice_info();
 
   slice_instr = nullptr;
   TF_ASSIGN_OR_RETURN(BufferAllocation::Slice rhs_slice,
                       get_original_slice(custom_call.operand(1), /*index=*/{}));
-  get_operand_slice_info();
+  collect_slice_info();
 
   BufferAllocation::Slice output;
   std::optional<BufferAllocation::Slice> workspace = std::nullopt;
@@ -356,7 +358,7 @@ absl::StatusOr<FusionEmissionResult> EmitCustomCall(
   using Slices = std::vector<std::optional<CustomCallThunk::Slice>>;
 
   Slices operands;
-  // TODO(vuson): add test with custom call with tuple-typed operands
+  // TODO(vuson): add test with custom call with token-typed operands
   for (auto* operand : custom_call.operands()) {
     TF_RETURN_IF_ERROR(ShapeUtil::ForEachSubshapeWithStatus(
         operand->shape(), [&](const Shape& subshape, const ShapeIndex& index) {
