@@ -821,8 +821,13 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
                                         .WithOneUser()))
                       .WithOneUser(),
                   m::Op(&bias).WithPredicate(is_not_broadcast)))) {
-      return FuseMatrixBiasAdd(instr, bias, existing_gemm,
-                               optional_bitcast_matrix, optional_slice_matrix);
+      // The matrix bias must not be FP8, see
+      // https://docs.nvidia.com/cuda/cublas/index.html.
+      if (!IsF8Type(bias)) {
+        return FuseMatrixBiasAdd(instr, bias, existing_gemm,
+                                 optional_bitcast_matrix,
+                                 optional_slice_matrix);
+      }
     }
 
     return absl::OkStatus();
