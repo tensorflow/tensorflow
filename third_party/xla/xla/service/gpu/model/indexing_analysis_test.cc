@@ -22,6 +22,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/service/gpu/fusions/tiling_util.h"
 #include "xla/service/gpu/hlo_traversal.h"
+#include "xla/service/gpu/model/indexing_context.h"
 #include "xla/service/gpu/model/indexing_test_utils.h"
 #include "xla/tests/hlo_test_base.h"
 #include "tsl/platform/test.h"
@@ -43,7 +44,12 @@ MATCHER_P2(MatchInstrIndexing, operand_id, indexing_map_matchers, "") {
                             result_listener);
 }
 
-using IndexingAnalysisTest = IndexingTestBase;
+class IndexingAnalysisTest : public IndexingTestBase {
+  void SetUp() override {
+    IndexingTestBase::SetUp();
+    IndexingContext::ResetRTVarStateForTests();
+  }
+};
 
 TEST_F(IndexingAnalysisTest, FuseProducerConsumerOutputToInputIndexing) {
   auto root = ParseAndGetRoot(R"(
@@ -688,6 +694,57 @@ TEST_F(IndexingAnalysisTest, DynamicSliceOp) {
                 d0 in [0, 0]
                 d1 in [0, 1]
                 d2 in [0, 31]
+              )"))));
+}
+
+TEST_F(IndexingAnalysisTest, DynamicUpdateSliceOp) {
+  auto input_indexing = GetOutputToInputIndexing(ParseAndGetRoot(R"(
+    HloModule m
+    ENTRY e {
+      %src = s32[20,30] parameter(0)
+      %upd = s32[5,10] parameter(1)
+      %of1 = s32[] parameter(2)
+      %of2 = s32[] parameter(3)
+      ROOT %dus = s32[20,30] dynamic-update-slice(
+          s32[20,30] %src, s32[5,10] %upd, s32[] %of1, s32[] %of2)
+    }
+  )"));
+  EXPECT_THAT(input_indexing.indexing_maps,
+              ElementsAre(ElementsAre(MatchIndexingMap(R"(
+                (d0, d1) -> (d0, d1)
+                domain:
+                d0 in [0, 19]
+                d1 in [0, 29]
+              )")),
+                          ElementsAre(MatchIndexingMap(R"(
+                (d0, d1)[s0, s1]  -> (d0 - s0, d1 - s1)
+                domain:
+                d0 in [0, 19]
+                d1 in [0, 29]
+                s0 id: 0 in [0, 15]
+                  hlo: %of1 = s32[] parameter(2)
+                  (d0, d1)  -> ()
+                  domain:
+                  d0 in [0, 19]
+                  d1 in [0, 29]
+                s1 id: 1 in [0, 20]
+                  hlo: %of2 = s32[] parameter(3)
+                  (d0, d1)  -> ()
+                  domain:
+                  d0 in [0, 19]
+                  d1 in [0, 29]
+              )")),
+                          ElementsAre(MatchIndexingMap(R"(
+                (d0, d1)  -> ()
+                domain:
+                d0 in [0, 19]
+                d1 in [0, 29]
+              )")),
+                          ElementsAre(MatchIndexingMap(R"(
+                (d0, d1)  -> ()
+                domain:
+                d0 in [0, 19]
+                d1 in [0, 29]
               )"))));
 }
 
@@ -2088,18 +2145,20 @@ TEST_F(IndexingAnalysisTest, UnsupportedOps) {
   auto root = ParseAndGetRoot(R"(
     HloModule m
     ENTRY e {
-      input = s32[1,1,25,1] parameter(0)
-      update = s32[1,1,2,1] parameter(1)
-      start_indices = s32[4] parameter(2)
-      ROOT dyn-update = s32[1,1,25,1] dynamic-update-slice(
-        input, update, start_indices)
+      p0 = f32[20, 20] parameter(0)
+      p1 = f32[4,4] parameter(1)
+      p2 = f32[4,3] parameter(2)
+      ROOT out = f32[4,3] triangular-solve(f32[4,4] p1, f32[4,3] p2),
+        left_side=true,
+        lower=true,
+        transpose_a=NO_TRANSPOSE,
+        unit_diagonal=true
     }
   )");
   auto input_indexing = GetOutputToInputIndexing(root);
   EXPECT_THAT(
       input_indexing.indexing_maps,
-      ElementsAre(ElementsAre(UndefinedMap()), ElementsAre(UndefinedMap()),
-                  ElementsAre(UndefinedMap())));
+      ElementsAre(ElementsAre(UndefinedMap()), ElementsAre(UndefinedMap())));
 
   auto output_indexing_0 = GetInputToOutputIndexing(root, 0);
   EXPECT_THAT(output_indexing_0.indexing_maps,
@@ -2107,10 +2166,6 @@ TEST_F(IndexingAnalysisTest, UnsupportedOps) {
 
   auto output_indexing_1 = GetInputToOutputIndexing(root, 1);
   EXPECT_THAT(output_indexing_1.indexing_maps,
-              ElementsAre(ElementsAre(UndefinedMap())));
-
-  auto output_indexing_2 = GetInputToOutputIndexing(root, 2);
-  EXPECT_THAT(output_indexing_2.indexing_maps,
               ElementsAre(ElementsAre(UndefinedMap())));
 }
 

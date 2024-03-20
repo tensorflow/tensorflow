@@ -33,5 +33,7 @@ RTVarData& IndexingContext::GetRTVarData(RTVarID id) {
   return rt_vars_registry_.at(id);
 }
 
+/*static*/ void IndexingContext::ResetRTVarStateForTests() { rt_var_count = 0; }
+
 }  // namespace gpu
 }  // namespace xla

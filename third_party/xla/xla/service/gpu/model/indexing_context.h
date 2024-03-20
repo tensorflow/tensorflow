@@ -41,6 +41,8 @@ class IndexingContext {
 
   RTVarData& GetRTVarData(RTVarID id);
 
+  static void ResetRTVarStateForTests();
+
  private:
   mlir::MLIRContext* mlir_context_;
   absl::flat_hash_map<RTVarID, RTVarData> rt_vars_registry_;
