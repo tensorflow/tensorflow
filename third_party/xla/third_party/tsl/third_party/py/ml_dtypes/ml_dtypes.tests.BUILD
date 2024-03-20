@@ -60,11 +60,11 @@ cc_test(
 )
 
 cc_test(
-    name = "int4_test_cc",
-    srcs = ["int4_test.cc"],
+    name = "intn_test_cc",
+    srcs = ["intn_test.cc"],
     linkstatic = 1,
     deps = [
-        "//:int4",
+        "//:intn",
         "@com_google_googletest//:gtest_main",
         "@eigen_archive//:eigen3",
     ],
