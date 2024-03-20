@@ -73,7 +73,7 @@ func.func @array_requires_enough_devices() {
 // -----
 
 func.func @array_requires_shard_distributable_to_axes() {
-  // expected-error@+2 {{Dimension #1 of 2 shards can't be assigned to the axes}}
+  // expected-error@+2 {{Can't shard the dims 1x2 to the mesh of [0] on 3}}
   %0 = builtin.unrealized_conversion_cast to
       !ifrt.array<tensor<4x4xi32>, 1x2 to [0] on 3, [0,1,2]>
   return

@@ -161,12 +161,9 @@ absl::Status ShardingParam::verify() const {
       break;
     }
     cum_size *= minor_to_major().axis_sizes[index];
-    if (cum_size > dim_shards()[dim_index]) {
-      return absl::InvalidArgumentError(absl::StrCat(
-          "Dimension #", dim_index, " of ", dim_shards()[dim_index],
-          " shards can't be assigned to the axes"));
-    } else if (cum_size == dim_shards()[dim_index]) {
-      cum_size = 1;
+    while (dim_index < dim_shards().size() &&
+           cum_size % dim_shards()[dim_index] == 0) {
+      cum_size /= dim_shards()[dim_index];
       dim_index++;
     }
   }

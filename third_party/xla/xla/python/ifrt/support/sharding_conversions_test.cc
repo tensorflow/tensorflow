@@ -164,9 +164,6 @@ TEST(ShardingConversionsTest, VerifyIncorrectShardings) {
   ShardingParam too_many_slices{/*dim_shards=*/{2, 2},
                                 {/*permutation=*/{0}, /*axis_sizes=*/{2}}};
   EXPECT_FALSE(too_many_slices.verify().ok());
-  ShardingParam cannot_distribute_slices{
-      /*dim_shards=*/{1, 2}, {/*permutation=*/{0, 1}, /*axis_sizes=*/{3, 2}}};
-  EXPECT_FALSE(cannot_distribute_slices.verify().ok());
   ShardingParam incorrect_permutation{
       /*dim_shards=*/{4, 1},
       {/*permutation=*/{0, 1, 1}, /*axis_sizes=*/{2, 2, 2}}};
@@ -197,10 +194,7 @@ TEST_P(HloShardingToShardingParamTest, HloShardingToShardingParam) {
   TF_ASSERT_OK_AND_ASSIGN(
       auto sharding_param,
       ToShardingParam(param.hlo_sharding, param.rank, param.num_devices));
-  // We cannot verify sharding param because we're losing info about the
-  // axis_size during these conversions. While strictly some ShardingParam
-  // are invalid because they have more dims than axis, in practice this is not
-  // a problem because we can still correctly map the shards to the devices.
+  EXPECT_TRUE(sharding_param.verify().ok());
   TF_ASSERT_OK_AND_ASSIGN(auto actual_hlo_sharding,
                           ToHloSharding(sharding_param));
   EXPECT_EQ(param.hlo_sharding, actual_hlo_sharding);
