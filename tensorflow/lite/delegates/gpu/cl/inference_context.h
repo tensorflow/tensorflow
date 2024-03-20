@@ -152,6 +152,8 @@ class InferenceContext {
                                           int min_ops, int max_ops,
                                           ProfilingCommandQueue* queue,
                                           ProfilingInfo* result);
+  absl::Status ClarifyTimeWithCommandBuffer(ProfilingCommandQueue* queue,
+                                            ProfilingInfo* result);
 
   struct ExecutionHints {
     bool need_flush = false;

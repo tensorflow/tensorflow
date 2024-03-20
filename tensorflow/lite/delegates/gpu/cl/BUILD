@@ -409,8 +409,10 @@ cc_library(
     ],
     deps = [
         ":buffer",
+        ":cl_command_buffer",
         ":cl_command_queue",
         ":cl_device",
+        ":cl_event",
         ":cl_operation",
         ":environment",
         ":gpu_object",
