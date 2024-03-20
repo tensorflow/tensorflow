@@ -40,7 +40,7 @@ cc_library(
     ],
     visibility = ["//visibility:public"],
     deps = [
-        ":host_gpu_executor",
+        ":host_executor",
         ":host_platform_id",
         "//xla/stream_executor",
         "//xla/stream_executor:platform_manager",
@@ -110,14 +110,13 @@ xla_cc_test(
     ],
 )
 
-# TODO(22689637): Rename this target.
 cc_library(
-    name = "host_gpu_executor",
+    name = "host_executor",
     srcs = [
-        "host_gpu_executor.cc",
+        "host_executor.cc",
     ],
     hdrs = [
-        "host_gpu_executor.h",
+        "host_executor.h",
     ],
     deps = [
         ":host_stream",

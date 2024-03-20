@@ -16,8 +16,10 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_MLIR_TENSORFLOW_UTILS_XLA_SHARDING_UTIL_H_
 #define TENSORFLOW_COMPILER_MLIR_TENSORFLOW_UTILS_XLA_SHARDING_UTIL_H_
 
+#include <map>
 #include <string>
 
+#include "absl/status/statusor.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
@@ -122,6 +124,9 @@ bool IsSplitSharding(const xla::OpSharding& sharding);
 // REPLICATED type and replicated OTHER type.
 bool IsReplicatedSharding(const xla::OpSharding& sharding);
 
+// Returns a map of dimension indices and number of splits for tiled sharding.
+absl::StatusOr<std::map<int, int>> GetDimensionIndicesAndNumSplitsFromSharding(
+    const xla::OpSharding& sharding);
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_COMPILER_MLIR_TENSORFLOW_UTILS_XLA_SHARDING_UTIL_H_
