@@ -41,6 +41,7 @@ xla_cc_test(
     deps = [
         ":graphcycles",
         "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/random",
         "@local_tsl//tsl/platform:logging",
         "@local_tsl//tsl/platform:test",
         "@local_tsl//tsl/platform:test_benchmark",
