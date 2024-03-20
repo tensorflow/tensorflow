@@ -510,7 +510,7 @@ TEST_F(GraphCyclesTest, CanContractEdge) {
 static void BM_StressTest(::testing::benchmark::State &state) {
   const int num_nodes = state.range(0);
 
-  for (auto s : state) {
+  while (state.KeepRunningBatch(num_nodes)) {
     tensorflow::GraphCycles g;
     int32_t *nodes = new int32_t[num_nodes];
     for (int i = 0; i < num_nodes; i++) {
@@ -532,7 +532,7 @@ BENCHMARK(BM_StressTest)->Range(2048, 1048576);
 static void BM_ContractEdge(::testing::benchmark::State &state) {
   const int num_nodes = state.range(0);
 
-  for (auto s : state) {
+  while (state.KeepRunningBatch(num_nodes)) {
     state.PauseTiming();
     tensorflow::GraphCycles g;
     std::vector<int32_t> nodes;
