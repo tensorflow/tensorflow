@@ -93,13 +93,6 @@ class CudnnFusedMhaRewriterTestHloTest : public HloTestBase {
     // Fake a supported compute capability to run tests,
     // we don't run any kernels in these tests so they should be safe
     // to run anywhere.
-    return se::dnn::VersionInfo(8, 9, 3);
-  }
-
-  se::dnn::VersionInfo GetCudnnVersionWithFlashCrossAttentionSupport() {
-    // Fake a supported compute capability to run tests,
-    // we don't run any kernels in these tests so they should be safe
-    // to run anywhere.
     return se::dnn::VersionInfo(8, 9, 4);
   }
 
@@ -4361,73 +4354,6 @@ ENTRY main.82 {
   EXPECT_EQ(config.is_causal_mask(), false);
 }
 
-TEST_F(CudnnFusedMhaRewriterTestHloTest,
-       FlashAttentionF16Bmm1BiasSoftmaxBmm2PatternCrossAttention) {
-  if (skip_reason_) GTEST_SKIP() << *skip_reason_;
-  const char* module_str = R"(
-HloModule jit__unnamed_wrapped_function_, entry_computation_layout={(f16[2,6,2048,64]{3,2,1,0},f16[2,6,64,1024]{3,2,1,0},f16[2,6,1024,64]{3,2,1,0},f16[2,6,2048,1024]{3,2,1,0})->f16[2,6,2048,64]{3,2,1,0}}
-
-region_0.7 {
-  Arg_0.8 = f16[] parameter(0)
-  Arg_1.9 = f16[] parameter(1)
-  ROOT maximum = f16[] maximum(Arg_0.8, Arg_1.9)
-}
-
-region_1.19 {
-  Arg_0.20 = f32[] parameter(0)
-  Arg_1.21 = f32[] parameter(1)
-  ROOT add = f32[] add(Arg_0.20, Arg_1.21)
-}
-
-ENTRY main.31 {
-  Arg_0.1 = f16[2,6,2048,64]{3,2,1,0} parameter(0), sharding={replicated}
-  Arg_1.2 = f16[2,6,64,1024]{3,2,1,0} parameter(1), sharding={replicated}
-  dot = f16[2,6,2048,1024]{3,2,1,0} dot(Arg_0.1, Arg_1.2), lhs_contracting_dims={3}, rhs_contracting_dims={2}, lhs_batch_dims={0,1}, rhs_batch_dims={0,1}
-  Arg_3.4 = f16[2,6,2048,1024]{3,2,1,0} parameter(3), sharding={replicated}
-  add.1 = f16[2,6,2048,1024]{3,2,1,0} add(dot, Arg_3.4)
-  constant = f16[] constant(-inf)
-  reduce.11 = f16[2,6,2048]{2,1,0} reduce(add.1, constant), dimensions={3}, to_apply=region_0.7
-  broadcast.3 = f16[2,6,2048,1024]{3,2,1,0} broadcast(reduce.11), dimensions={0,1,2}
-  subtract.1 = f16[2,6,2048,1024]{3,2,1,0} subtract(add.1, broadcast.3)
-  exponential.1 = f16[2,6,2048,1024]{3,2,1,0} exponential(subtract.1)
-  convert.1 = f32[2,6,2048,1024]{3,2,1,0} convert(exponential.1)
-  constant.1 = f32[] constant(0)
-  reduce.23 = f32[2,6,2048]{2,1,0} reduce(convert.1, constant.1), dimensions={3}, to_apply=region_1.19
-  convert.2 = f16[2,6,2048]{2,1,0} convert(reduce.23)
-  broadcast.4 = f16[2,6,2048,1024]{3,2,1,0} broadcast(convert.2), dimensions={0,1,2}
-  divide = f16[2,6,2048,1024]{3,2,1,0} divide(exponential.1, broadcast.4)
-  Arg_2.3 = f16[2,6,1024,64]{3,2,1,0} parameter(2), sharding={replicated}
-  ROOT dot.1 = f16[2,6,2048,64]{3,2,1,0} dot(divide, Arg_2.3), lhs_contracting_dims={3}, rhs_contracting_dims={2}, lhs_batch_dims={0,1}, rhs_batch_dims={0,1}
-})";
-
-  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(module_str));
-  CudnnFusedMHARewriter fusedMhaRewriter{
-      GetCudaComputeCapability(), GetCudnnVersionWithFlashAttentionSupport()};
-  TF_ASSERT_OK(RunHloPass(&fusedMhaRewriter, m.get()).status());
-
-  SCOPED_TRACE(m->ToString());
-  EXPECT_THAT(m->entry_computation()->root_instruction(), GmockMatch(m::Dot()));
-
-  CudnnFusedMHARewriter fusedMhaRewriterWithCrossAttention{
-      GetCudaComputeCapability(),
-      GetCudnnVersionWithFlashCrossAttentionSupport()};
-  TF_ASSERT_OK(
-      RunHloPass(&fusedMhaRewriterWithCrossAttention, m.get()).status());
-  SCOPED_TRACE(m->ToString());
-  const HloInstruction* fmha;
-  EXPECT_THAT(
-      m->entry_computation()->root_instruction(),
-      GmockMatch(
-          m::GetTupleElement(
-              m::CustomCall(&fmha, {kCudnnfMHAScaleBiasSoftmaxCallTarget}), 0)
-              .WithShape(F16, {2, 6, 2048, 64})));
-  TF_ASSERT_OK_AND_ASSIGN(auto gpu_config,
-                          fmha->backend_config<GpuBackendConfig>());
-  const CudnnfMHABackendConfig& config = gpu_config.cudnn_fmha_backend_config();
-  EXPECT_EQ(config.is_flash_attention(), true);
-  EXPECT_EQ(config.is_causal_mask(), false);
-}
-
 // GPT3 pattern
 TEST_F(CudnnFusedMhaRewriterTestHloTest, FlashAttentionBF16TrainingGPT3_5B) {
   if (skip_reason_) GTEST_SKIP() << *skip_reason_;
@@ -5192,6 +5118,40 @@ ENTRY main.164_spmd {
               m::Op(), m::Op().WithPredicate([](const HloInstruction* instr) {
                 return instr->name() == "multiply.39.fmha_no_match_clone";
               }))))));
+}
+
+constexpr absl::string_view hlo_should_lower_to_flash_attention = R"(
+HloModule fmha_test, entry_computation_layout={(bf16[16,16,128,64]{3,2,1,0},bf16[16,16,1024,64]{3,2,1,0},bf16[16,16,1024,64]{3,2,1,0})->bf16[16,16,128,64]{3,2,1,0}}
+ENTRY main.6 {
+  Arg_0.1 = bf16[16,16,128,64]{3,2,1,0} parameter(0)
+  Arg_1.2 = bf16[16,16,1024,64]{3,2,1,0} parameter(1)
+  Arg_2.3 = bf16[16,16,1024,64]{3,2,1,0} parameter(2)
+  dot.0 = bf16[16,16,128,1024]{3,2,1,0} dot(Arg_0.1, Arg_1.2), lhs_batch_dims={0,1}, lhs_contracting_dims={3}, rhs_batch_dims={0,1}, rhs_contracting_dims={3}, metadata={}
+  ROOT dot.1 = bf16[16,16,128,64]{3,2,1,0} dot(dot.0, Arg_2.3), lhs_batch_dims={0,1}, lhs_contracting_dims={3}, rhs_batch_dims={0,1}, rhs_contracting_dims={2}, metadata={}
+})";
+
+TEST_F(CudnnFusedMhaRewriterTestHloTest, ShouldLowerToFlashAttention) {
+  if (skip_reason_) GTEST_SKIP() << *skip_reason_;
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto m, ParseAndReturnVerifiedModule(hlo_should_lower_to_flash_attention,
+                                           GetModuleConfig()));
+  CudnnFusedMHARewriter fusedMhaRewriter{
+      GetCudaComputeCapability(), GetCudnnVersionWithFlashAttentionSupport()};
+  TF_ASSERT_OK(RunHloPass(&fusedMhaRewriter, m.get()).status());
+  const HloInstruction* fmha;
+
+  SCOPED_TRACE(m->ToString());
+  EXPECT_THAT(
+      m->entry_computation()->root_instruction(),
+      GmockMatch(m::GetTupleElement(
+                     m::CustomCall(&fmha, {kCudnnfMHABmmBmmCallTarget}), 0)
+                     .WithShape(BF16, {16, 16, 128, 64})));
+  TF_ASSERT_OK_AND_ASSIGN(auto gpu_config,
+                          fmha->backend_config<GpuBackendConfig>());
+  const CudnnfMHABackendConfig& config = gpu_config.cudnn_fmha_backend_config();
+  EXPECT_EQ(config.fmha_scale(), 1.0);
+  EXPECT_EQ(config.dropout_rate(), 0.0);
+  EXPECT_EQ(config.is_flash_attention(), true);
 }
 
 }  // anonymous namespace
