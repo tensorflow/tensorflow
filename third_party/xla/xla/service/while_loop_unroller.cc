@@ -421,12 +421,13 @@ absl::StatusOr<bool> PrepareModuleForUnrolling(
   bool changed = false;
   TF_ASSIGN_OR_RETURN(
       bool applied_cse,
-      HloCSE{/*is_layout_sensitive=*/true}.Run(module, execution_threads));
+      HloCSE(/*is_layout_sensitive=*/true, /*only_fusion_computations=*/false,
+             /*ignore_control_dependencies=*/false, /*only_scalars=*/true)
+          .Run(module, execution_threads));
   if (applied_cse) {
     changed = true;
     VLOG(3) << "Applied hlo cse to module " << module->name();
   }
-
   TF_ASSIGN_OR_RETURN(bool applied_tuple_simplifier,
                       TupleSimplifier{}.Run(module, execution_threads));
   if (applied_tuple_simplifier) {
