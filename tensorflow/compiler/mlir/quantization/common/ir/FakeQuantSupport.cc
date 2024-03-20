@@ -13,12 +13,22 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/compiler/mlir/lite/quantization/ir/FakeQuantSupport.h"
+#include "tensorflow/compiler/mlir/quantization/common/ir/FakeQuantSupport.h"
+
+#include <cassert>
+#include <cmath>
+#include <cstddef>
+#include <cstdint>
+#include <limits>
 
 #include "mlir/Dialect/Quant/QuantTypes.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
+#include "mlir/IR/Diagnostics.h"  // from @llvm-project
+#include "mlir/IR/MLIRContext.h"  // from @llvm-project
+#include "mlir/IR/Types.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 
-using namespace mlir;
-using namespace mlir::quantfork;
+namespace mlir::quantfork {
 
 static bool getDefaultStorageParams(unsigned numBits, bool narrowRange,
                                     bool isSigned, MLIRContext *ctx,
@@ -121,9 +131,11 @@ static void getNudgedScaleAndZeroPoint(int64_t qmin, int64_t qmax, double rmin,
   assert(nudgedZeroPoint <= qmax);
 }
 
-quant::UniformQuantizedType mlir::quantfork::fakeQuantAttrsToType(
-    Location loc, unsigned numBits, double rmin, double rmax, bool narrowRange,
-    Type expressedType, bool isSigned) {
+quant::UniformQuantizedType fakeQuantAttrsToType(Location loc, unsigned numBits,
+                                                 double rmin, double rmax,
+                                                 bool narrowRange,
+                                                 Type expressedType,
+                                                 bool isSigned) {
   MLIRContext *ctx = expressedType.getContext();
   unsigned flags = isSigned ? quant::QuantizationFlags::Signed : 0;
   Type storageType;
@@ -152,7 +164,7 @@ quant::UniformQuantizedType mlir::quantfork::fakeQuantAttrsToType(
                                                  nudgedZeroPoint, qmin, qmax);
 }
 
-quant::UniformQuantizedPerAxisType mlir::quantfork::fakeQuantAttrsToType(
+quant::UniformQuantizedPerAxisType fakeQuantAttrsToType(
     Location loc, unsigned numBits, int32_t quantizedDimension,
     ArrayRef<double> rmins, ArrayRef<double> rmaxs, bool narrowRange,
     Type expressedType, bool isSigned) {
@@ -198,3 +210,5 @@ quant::UniformQuantizedPerAxisType mlir::quantfork::fakeQuantAttrsToType(
       loc, flags, storageType, expressedType, scales, zeroPoints,
       quantizedDimension, qmin, qmax);
 }
+
+}  // namespace mlir::quantfork

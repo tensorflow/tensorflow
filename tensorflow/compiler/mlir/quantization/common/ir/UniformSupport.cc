@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/compiler/mlir/lite/quantization/ir/UniformSupport.h"
+#include "tensorflow/compiler/mlir/quantization/common/ir/UniformSupport.h"
 
 #include <numeric>
 

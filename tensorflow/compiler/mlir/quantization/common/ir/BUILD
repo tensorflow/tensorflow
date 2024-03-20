@@ -57,9 +57,15 @@ gentbl_cc_library(
 cc_library(
     name = "QuantOps",
     srcs = [
+        "FakeQuantSupport.cc",
         "QuantOps.cc",
+        "UniformSupport.cc",
     ],
-    hdrs = ["QuantOps.h"],
+    hdrs = [
+        "FakeQuantSupport.h",
+        "QuantOps.h",
+        "UniformSupport.h",
+    ],
     compatible_with = get_compatible_with_portable(),
     deps = [
         ":QuantOpsIncGen",
@@ -67,5 +73,6 @@ cc_library(
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:InferTypeOpInterface",
         "@llvm-project//mlir:QuantOps",
+        "@llvm-project//mlir:Support",
     ],
 )

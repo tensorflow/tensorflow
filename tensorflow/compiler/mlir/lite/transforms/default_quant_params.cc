@@ -27,10 +27,10 @@ limitations under the License.
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/Support/TypeID.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
-#include "tensorflow/compiler/mlir/lite/quantization/ir/FakeQuantSupport.h"
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h"
 #include "tensorflow/compiler/mlir/lite/transforms/prepare_quantize_helper.h"  // IWYU pragma: keep
 #include "tensorflow/compiler/mlir/lite/utils/utils.h"
+#include "tensorflow/compiler/mlir/quantization/common/ir/FakeQuantSupport.h"
 #include "tensorflow/compiler/mlir/quantization/common/quantization_lib/quantization_utils.h"
 
 //===----------------------------------------------------------------------===//
