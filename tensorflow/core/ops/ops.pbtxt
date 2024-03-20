@@ -9385,6 +9385,30 @@ op {
   is_stateful: true
 }
 op {
+  name: "ComputeDedupDataSizeV2"
+  output_arg {
+    name: "num_elements"
+    type: DT_INT32
+  }
+  attr {
+    name: "config"
+    type: "string"
+  }
+  attr {
+    name: "embedding_partitions"
+    type: "string"
+  }
+  attr {
+    name: "hbm_buffers_config"
+    type: "string"
+  }
+  attr {
+    name: "tpu_topology"
+    type: "string"
+  }
+  is_stateful: true
+}
+op {
   name: "ComputeDedupDataTupleMask"
   output_arg {
     name: "output_shape"
@@ -9392,6 +9416,30 @@ op {
   }
   attr {
     name: "config"
+    type: "string"
+  }
+  is_stateful: true
+}
+op {
+  name: "ComputeDedupDataTupleMaskV2"
+  output_arg {
+    name: "output_shape"
+    type: DT_INT32
+  }
+  attr {
+    name: "config"
+    type: "string"
+  }
+  attr {
+    name: "embedding_partitions"
+    type: "string"
+  }
+  attr {
+    name: "hbm_buffers_config"
+    type: "string"
+  }
+  attr {
+    name: "tpu_topology"
     type: "string"
   }
   is_stateful: true
@@ -19931,6 +19979,26 @@ op {
   }
   input_arg {
     name: "memory_config"
+    type: DT_STRING
+  }
+  is_stateful: true
+}
+op {
+  name: "FinalizeTPUEmbeddingV2"
+  input_arg {
+    name: "common_config"
+    type: DT_STRING
+  }
+  input_arg {
+    name: "memory_config"
+    type: DT_STRING
+  }
+  output_arg {
+    name: "embedding_partitions"
+    type: DT_STRING
+  }
+  output_arg {
+    name: "hbm_buffers_config"
     type: DT_STRING
   }
   is_stateful: true
@@ -66310,6 +66378,41 @@ op {
   is_stateful: true
 }
 op {
+  name: "XlaRecvTPUEmbeddingActivationsV2"
+  input_arg {
+    name: "deduplication_data"
+    type: DT_VARIANT
+  }
+  output_arg {
+    name: "outputs"
+    type: DT_FLOAT
+    number_attr: "num_tables"
+  }
+  attr {
+    name: "num_tables"
+    type: "int"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "config"
+    type: "string"
+  }
+  attr {
+    name: "embedding_partitions"
+    type: "string"
+  }
+  attr {
+    name: "hbm_buffers_config"
+    type: "string"
+  }
+  attr {
+    name: "tpu_topology"
+    type: "string"
+  }
+  is_stateful: true
+}
+op {
   name: "XlaRecvTPUEmbeddingDeduplicationData"
   output_arg {
     name: "output"
@@ -66317,6 +66420,30 @@ op {
   }
   attr {
     name: "config"
+    type: "string"
+  }
+  is_stateful: true
+}
+op {
+  name: "XlaRecvTPUEmbeddingDeduplicationDataV2"
+  output_arg {
+    name: "output"
+    type: DT_VARIANT
+  }
+  attr {
+    name: "config"
+    type: "string"
+  }
+  attr {
+    name: "embedding_partitions"
+    type: "string"
+  }
+  attr {
+    name: "hbm_buffers_config"
+    type: "string"
+  }
+  attr {
+    name: "tpu_topology"
     type: "string"
   }
   is_stateful: true
@@ -66353,6 +66480,54 @@ op {
   }
   attr {
     name: "config"
+    type: "string"
+  }
+  is_stateful: true
+}
+op {
+  name: "XlaSendTPUEmbeddingGradientsV2"
+  input_arg {
+    name: "gradients"
+    type: DT_FLOAT
+    number_attr: "NumTables"
+  }
+  input_arg {
+    name: "learning_rates"
+    type: DT_FLOAT
+    number_attr: "NumLearningRateTags"
+  }
+  input_arg {
+    name: "deduplication_data"
+    type: DT_VARIANT
+  }
+  attr {
+    name: "NumTables"
+    type: "int"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "NumLearningRateTags"
+    type: "int"
+    default_value {
+      i: 0
+    }
+    has_minimum: true
+  }
+  attr {
+    name: "config"
+    type: "string"
+  }
+  attr {
+    name: "embedding_partitions"
+    type: "string"
+  }
+  attr {
+    name: "hbm_buffers_config"
+    type: "string"
+  }
+  attr {
+    name: "tpu_topology"
     type: "string"
   }
   is_stateful: true
