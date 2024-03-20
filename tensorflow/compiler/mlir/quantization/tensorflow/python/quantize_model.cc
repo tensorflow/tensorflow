@@ -123,41 +123,6 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ImportAndPreprocessSavedModel(
   return module_ref;
 }
 
-// Sets up and runs the passes for exporting `module_op`. The behavior of the
-// exporting passes is controlled by `export_opts`. Returns `AssetFileDef`s that
-// associate the input arguments of @main and the asset file names. Asset file
-// names will be used to feed the corresponding tensors during initialization
-// upon model loading.
-absl::StatusOr<llvm::SmallVector<AssetFileDef>> RunExportPasses(
-    const ExportOptions &export_opts, mlir::MLIRContext &ctx,
-    mlir::ModuleOp module_op) {
-  if (export_opts.unfreeze_constants) {
-    TF_RETURN_IF_ERROR(UnfreezeConstantsAndSaveVariables(
-        export_opts.checkpoint_dir, ctx, module_op));
-    LOG(INFO) << "Unfrozen constants and saved variables to checkpoint file: "
-              << export_opts.checkpoint_dir;
-  }
-
-  if (absl::Status pass_run_status = RunPasses(
-          /*name=*/
-          export_opts.debug_name,
-          /*add_passes_func=*/
-          [dup_constants = export_opts.duplicate_shape_determining_constants](
-              mlir::PassManager &pm) { AddExportPasses(pm, dup_constants); },
-          ctx, module_op);
-      !pass_run_status.ok()) {
-    return pass_run_status;
-  }
-
-  mlir::FailureOr<llvm::SmallVector<AssetFileDef>> asset_file_defs =
-      mlir::quant::ConvertAssetArgs(module_op);
-  if (failed(asset_file_defs)) {
-    return absl::InternalError("Failed to convert asset args.");
-  }
-
-  return *asset_file_defs;
-}
-
 absl::StatusOr<ExportedModel> ModuleOpToExportedModel(
     mlir::ModuleOp module_op, mlir::MLIRContext *ctx,
     absl::string_view step_name, const bool unfreeze_constants,

@@ -20,8 +20,6 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "absl/algorithm/container.h"
-#include "absl/base/attributes.h"
 #include "absl/base/nullability.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
@@ -34,10 +32,8 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
-#include "mlir/IR/OwningOpRef.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
-#include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "tensorflow/cc/saved_model/loader.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/cc/calibration/representative_dataset.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/cc/calibration/statistics.h"
@@ -46,21 +42,15 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/quantization/stablehlo/cc/saved_model_import.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/cc/types.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/quantization_config.pb.h"
-#include "tensorflow/compiler/mlir/quantization/tensorflow/cc/convert_asset_args.h"
-#include "tensorflow/compiler/mlir/quantization/tensorflow/cc/run_passes.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/exported_model.pb.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/python/py_function_lib.h"
-#include "tensorflow/compiler/mlir/quantization/tensorflow/python/unfreeze_constants.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/quantization_options.pb.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/quantize_preprocess.h"
-#include "tensorflow/compiler/mlir/tensorflow/translate/mlir_import_options.h"
-#include "tensorflow/compiler/mlir/tensorflow/translate/tf_mlir_translate.h"
 #include "tensorflow/core/protobuf/meta_graph.pb.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/statusor.h"
 
 namespace mlir::quant::stablehlo {
-namespace {
 
 using ::stablehlo::quantization::AddCalibrationStatistics;
 using ::stablehlo::quantization::CreateRepresentativeDatasetFileMap;
@@ -69,87 +59,14 @@ using ::stablehlo::quantization::RepresentativeDatasetConfig;
 using ::stablehlo::quantization::io::CreateTmpDir;
 using ::stablehlo::quantization::io::GetLocalTmpFileName;
 using ::tensorflow::AssetFileDef;
-using ::tensorflow::MLIRImportOptions;
 using ::tensorflow::SavedModelBundle;
-using ::tensorflow::SavedModelSignatureDefsToMlirImport;
 using ::tensorflow::SignatureDef;
 using ::tensorflow::quantization::ExportedModel;
 using ::tensorflow::quantization::PreprocessAndFreezeGraph;
 using ::tensorflow::quantization::PyFunctionLibrary;
-using ::tensorflow::quantization::RunPasses;
-using ::tensorflow::quantization::UnfreezeConstantsAndSaveVariables;
 
 using ImportedMlirModuleOp =
     std::pair<ModuleOp, std::unique_ptr<SavedModelBundle>>;
-
-// Loads a SavedModel at `saved_model_path` and converts it to `mlir::ModuleOp`.
-//
-// `tags` identify the `tensorflow::MetaGraphDef` to load from the SavedModel.
-// Similarly, `signature_keys` identify the functions (`SignatureDef`s) to load
-// within the `MetaGraphDef`. `ctx` is the `MLIRContext`, which should outlive
-// the returned `ModuleOp`, thus marked with the lifetime bound attribute.
-absl::StatusOr<ImportedMlirModuleOp> SavedModelToMlirModuleOp(
-    const absl::string_view saved_model_path,
-    const std::unordered_set<std::string>& tags,
-    const std::vector<std::string>& signature_keys,
-    MLIRContext& ctx ABSL_ATTRIBUTE_LIFETIME_BOUND) {
-  MLIRImportOptions import_options;
-  import_options.upgrade_legacy = true;
-  import_options.lift_variables = false;
-  import_options.include_variables_in_initializers = true;
-
-  auto bundle = std::make_unique<SavedModelBundle>();
-
-  // Copy to eliminate the `const` qualifier so that `absl::MakeSpan` can be
-  // called on it.
-  std::vector<std::string> exported_names = signature_keys;
-  absl::StatusOr<OwningOpRef<ModuleOp>> module_op =
-      SavedModelSignatureDefsToMlirImport(saved_model_path, tags,
-                                          absl::MakeSpan(exported_names), &ctx,
-                                          import_options, &bundle);
-  if (!module_op.status().ok()) {
-    return absl::InternalError(absl::StrCat("Failed to import SavedModel: ",
-                                            module_op.status().ToString()));
-  }
-
-  return std::make_pair(module_op->release(), std::move(bundle));
-}
-
-// Sets up and runs the passes for exporting `module_op`. The behavior of the
-// exporting passes is controlled by `export_opts`. Returns `AssetFileDef`s that
-// associate the input arguments of @main and the asset file names. Asset file
-// names will be used to feed the corresponding tensors during initialization
-// upon model loading.
-absl::StatusOr<SmallVector<AssetFileDef>> RunExportPasses(
-    const ExportOptions& export_opts, MLIRContext& ctx, ModuleOp module_op) {
-  if (export_opts.unfreeze_constants) {
-    TF_RETURN_IF_ERROR(UnfreezeConstantsAndSaveVariables(
-        export_opts.checkpoint_dir, ctx, module_op));
-    LOG(INFO) << "Unfrozen constants and saved variables to checkpoint file: "
-              << export_opts.checkpoint_dir;
-  }
-
-  if (absl::Status pass_run_status = RunPasses(
-          /*name=*/
-          export_opts.debug_name,
-          /*add_passes_func=*/
-          [dup_constants = export_opts.duplicate_shape_determining_constants](
-              PassManager& pm) { AddExportPasses(pm, dup_constants); },
-          ctx, module_op);
-      !pass_run_status.ok()) {
-    return pass_run_status;
-  }
-
-  FailureOr<SmallVector<AssetFileDef>> asset_file_defs =
-      quant::ConvertAssetArgs(module_op);
-  if (failed(asset_file_defs)) {
-    return absl::InternalError("Failed to convert asset args.");
-  }
-
-  return *asset_file_defs;
-}
-
-}  // namespace
 
 CalibrationComponent::CalibrationComponent(
     absl::Nonnull<MLIRContext*> ctx,
