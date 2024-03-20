@@ -37,6 +37,13 @@ void AddPostCalibrationPasses(
     const ::stablehlo::quantization::StaticRangePtqPreset&
         static_range_ptq_preset);
 
+// Adds passes for weight-only quantization.
+void AddWeightOnlyQuantizationPasses(
+    OpPassManager& pm,
+    const ::stablehlo::quantization::QuantizationSpecs& quantization_specs,
+    const ::stablehlo::quantization::PipelineConfig& pipeline_config,
+    const ::stablehlo::quantization::DebuggerConfig& debugger_config);
+
 // Deserializes StableHLO functions serialized and embedded in XlaCallModuleOps.
 void AddXlaCallModuleOpDeserializationPasses(OpPassManager& pm);
 

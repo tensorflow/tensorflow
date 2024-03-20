@@ -29,6 +29,7 @@ namespace {
 
 using ::stablehlo::quantization::pywrap::PywrapPopulateDefaults;
 using ::stablehlo::quantization::pywrap::PywrapQuantizeStaticRangePtq;
+using ::stablehlo::quantization::pywrap::PywrapQuantizeWeightOnlyPtq;
 
 }  // namespace
 
@@ -59,6 +60,27 @@ PYBIND11_MODULE(pywrap_quantization, m) {
         py::arg("signature_keys"), py::arg("signature_def_map_serialized"),
         py::arg("py_function_library"));
   // LINT.ThenChange(pywrap_quantization.pyi:static_range_ptq)
+
+  // If the function signature changes, likely its corresponding .pyi type
+  // hinting should also change.
+  // LINT.IfChange(weight_only_ptq)
+  m.def("weight_only_ptq", &PywrapQuantizeWeightOnlyPtq,
+        R"pbdoc(
+        Runs weight-only Quantization on a SavedModel at `src_saved_model_path`
+        and saves the resulting model to `dst_saved_model_path`.
+
+        The user should pass a serialized `QuantizationConfig` for the
+        `quantization_config_serialized` argument, and a signature key ->
+        serialized `SignatureDef` mapping for the `signature_def_map_serialized`
+        argument.
+
+        Raises `StatusNotOk` exception if when the run was unsuccessful.
+        )pbdoc",
+        py::arg("src_saved_model_path"), py::arg("dst_saved_model_path"),
+        py::arg("quantization_config_serialized"), py::kw_only(),
+        py::arg("signature_keys"), py::arg("signature_def_map_serialized"),
+        py::arg("py_function_library"));
+  // LINT.ThenChange(pywrap_quantization.pyi:weight_only_ptq)
 
   // If the function signature changes, likely its corresponding .pyi type
   // hinting should also change.

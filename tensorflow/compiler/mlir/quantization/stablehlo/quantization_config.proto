@@ -55,6 +55,9 @@ message StaticRangePtqPreset {
   bool enable_per_channel_quantized_weight = 2;
 }
 
+// Applies int8 per-tensor weight-only quantization for all dot_general op.
+message WeightOnlyPreset {}
+
 // Metadata specific to the input TensorFlow SavedModel, which may be required
 // to identify the specific MetaGraphDef to quantize, for example.
 // Next ID: 2
@@ -259,7 +262,7 @@ message CalibrationOptions {
 
 // Quantization configuration for StableHLO Quantizer. This is the primary
 // message containing all configurable options.
-// Next ID: 7
+// Next ID: 8
 message QuantizationConfig {
   // Config presets provide predefined popular or common quantization specs.
   // Lightweight users may choose one of the presets for quick experiments. Each
@@ -270,6 +273,7 @@ message QuantizationConfig {
   oneof preset {
     // Performs best-effort static-range post-training quantization (PTQ).
     StaticRangePtqPreset static_range_ptq_preset = 1;
+    WeightOnlyPreset weight_only_preset = 7;
   }
 
   // TF SavedModel specific information for the input model.

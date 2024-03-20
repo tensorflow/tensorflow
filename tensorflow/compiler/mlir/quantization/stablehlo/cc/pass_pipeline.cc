@@ -75,6 +75,38 @@ void AddPostCalibrationPasses(
   }
 }
 
+void AddWeightOnlyQuantizationPasses(
+    OpPassManager& pm, const QuantizationSpecs& quantization_specs,
+    const PipelineConfig& pipeline_config,
+    const DebuggerConfig& debugger_config) {
+  // For models with NCHW convolution format. This pass is required because
+  // downstream pipeline handles NHWC convolution better for most cases.
+  pm.addNestedPass<func::FuncOp>(createNchwConvolutionToNhwcPass());
+
+  // Folds `stablehlo.constant`->`stablehlo.transpose` patterns, which is often
+  // generated as by-products after optimizing dimension numbers (e.g.
+  // NCHW->NHWC convolution conversion).
+  pm.addNestedPass<func::FuncOp>(createFoldConstantTransposePass());
+  pm.addPass(CreateLiftQuantizableSpotsAsFunctionsPass(quantization_specs));
+  if (debugger_config.debugger_type() !=
+      DebuggerConfig::DEBUGGER_TYPE_UNSPECIFIED) {
+    pm.addPass(CreateAddDumpTensorOpPass(debugger_config.debugger_type(),
+                                         debugger_config.log_dir_path()));
+  }
+  AddShapeLegalizationPasses(pm);
+  QuantizeCompositeFunctionsPassOptions options;
+  // For debugging purposes.
+  options.mlir_dump_file_name_ = "quantize_composite_functions";
+  options.enable_weight_only_ = true;
+  pm.addPass(createQuantizeCompositeFunctionsPass(options));
+
+  // Add an inliner pass to inline quantized StableHLO functions.
+  pm.addPass(createInlinerPass());
+  if (pipeline_config.unpack_quantized_types()) {
+    AddStablehloQuantToIntPasses(pm);
+  }
+}
+
 void AddXlaCallModuleOpDeserializationPasses(OpPassManager& pm) {
   pm.addPass(TF::CreateXlaCallModuleDeserializationPass());
   pm.addPass(createRestoreFunctionNamePass());
