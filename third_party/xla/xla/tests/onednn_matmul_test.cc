@@ -437,6 +437,10 @@ TEST_F(MatmulTest, ReLUTestF32) {
 }
 
 TEST_F(MatmulTest, SimpleBiasTestBF16_PARAM_F32) {
+  if (!IsSupportedType(PrimitiveType::BF16)) {
+    GTEST_SKIP() << "CPU does not support BF16.";
+  }
+
   const char* matmul_module_str = R"(
   HloModule jit_apply, entry_computation_layout={(f32[3072]{0}, f32[768,3072]{1,0}, f32[16,128,768]{2,1,0})->bf16[16,128,3072]{2,1,0}}, allow_spmd_sharding_propagation_to_output={true}
   ENTRY matmul.test.bf16 {
@@ -459,6 +463,10 @@ TEST_F(MatmulTest, SimpleBiasTestBF16_PARAM_F32) {
 }
 
 TEST_F(MatmulTest, SimpleBiasTestBF16_PARAM_BF16) {
+  if (!IsSupportedType(PrimitiveType::BF16)) {
+    GTEST_SKIP() << "CPU does not support BF16.";
+  }
+
   const char* matmul_module_str = R"(
   HloModule jit_apply, entry_computation_layout={(bf16[3072]{0}, bf16[768,3072]{1,0}, f32[16,128,768]{2,1,0})->bf16[16,128,3072]{2,1,0}}, allow_spmd_sharding_propagation_to_output={true}
   ENTRY matmul.test.bf16 {
