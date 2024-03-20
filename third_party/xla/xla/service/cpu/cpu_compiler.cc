@@ -910,14 +910,20 @@ Status CpuCompiler::RunHloPassesAfterLayoutAssn(
 #if defined(INTEL_MKL) && defined(ENABLE_ONEDNN_V3)
   // AOT compiled code runs in single thread.
   if (!is_aot_compile) {
+    auto debug_options = module->config().debug_options();
     // Run SimplifyFPConversions pass to simplify the BF16 pattern and make it
     // easier to match.
-    pipeline.AddPass<SimplifyFPConversions>();
+    // Remove `f32 -> bf16 -> f32` casts inserted by bf16 normalization.
+    if (debug_options.xla_allow_excess_precision()) {
+      pipeline.AddPass<SimplifyFPConversions>();
+    }
     pipeline.AddPass<OneDnnMatMulRewriter>(max_parallelism,
                                            compile_options.thread_pool);
     // Run SimplifyFPConversions pass again to remove redundant Convert ops
     // that may exist as a result of running OneDnnMatMulRewriter pass.
-    pipeline.AddPass<SimplifyFPConversions>();
+    if (debug_options.xla_allow_excess_precision()) {
+      pipeline.AddPass<SimplifyFPConversions>();
+    }
   }
 #endif  // INTEL_MKL && ENABLE_ONEDNN_V3
 
