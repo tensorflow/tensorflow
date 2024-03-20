@@ -1479,6 +1479,67 @@ class LegacyCublasGemmRewriteTest : public GemmRewriteTest {
   }
 };
 
+TEST_F(LegacyCublasGemmRewriteTest, MatrixVectorMultiplication) {
+  const char* hlo_text = R"(
+HloModule m
+
+ENTRY e {
+  p0 = f32[2048] parameter(0)
+  p1 = f32[2048, 16384] parameter(1)
+  ROOT d = f32[16384] dot(p0, p1),
+    lhs_contracting_dims={0}, rhs_contracting_dims={0}
+})";
+
+  RunAndFilecheckHloRewrite(hlo_text,
+                            GemmRewriter(se::CudaComputeCapability{
+                                se::CudaComputeCapability::AMPERE, 0}),
+                            R"(
+; CHECK:  %[[P0:.+]] = f32[2048]{0} parameter(0)
+; CHECK:  %[[P1:.+]] = f32[2048,16384]{1,0} parameter(1)
+; CHECK:  %[[CUSTOM_CALL:.+]] = (f32[16384]{0}, s8[4194304]{0}) custom-call(%[[P0]], %[[P1]]), custom_call_target="__cublas$gemm"
+)");
+}
+
+TEST_F(LegacyCublasGemmRewriteTest, MatrixVectorMultiplicationWithBatch) {
+  const char* hlo_text = R"(
+HloModule m
+
+ENTRY e {
+  p0 = f32[10, 10, 2048] parameter(0)
+  p1 = f32[10, 10, 2048, 16384] parameter(1)
+  ROOT d = f32[10, 10, 16384] dot(p0, p1),
+   lhs_batch_dims={0, 1}, rhs_batch_dims={0, 1},
+   lhs_contracting_dims={2}, rhs_contracting_dims={2}
+})";
+
+  RunAndFilecheckHloRewrite(hlo_text,
+                            GemmRewriter(se::CudaComputeCapability{
+                                se::CudaComputeCapability::AMPERE, 0}),
+                            R"(
+; CHECK:  %[[P0:.+]] = f32[10,10,2048]{2,1,0} parameter(0)
+; CHECK:  %[[P1:.+]] = f32[10,10,2048,16384]{3,2,1,0} parameter(1)
+; CHECK:  %[[CUSTOM_CALL:.+]] = (f32[10,10,16384]{2,1,0}, s8[4194304]{0}) custom-call(%[[P0]], %[[P1]]), custom_call_target="__cublas$gemm"
+)");
+}
+
+TEST_F(LegacyCublasGemmRewriteTest, SparseDotNotSupported) {
+  const char* hlo_text = R"(
+HloModule test
+
+ENTRY main {
+  lhs = f16[5,16] parameter(0)
+  rhs = f16[32,10] parameter(1)
+  meta = u16[5,2] parameter(2)
+  ROOT dot = f32[5,10] dot(lhs, rhs, meta),
+      lhs_contracting_dims={1}, rhs_contracting_dims={0}, sparsity=L.1@2:4
+})";
+  auto hlo_pass = GemmRewriter(
+      se::CudaComputeCapability{se::CudaComputeCapability::AMPERE, 0});
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_text));
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunHloPass(&hlo_pass, module.get()));
+  EXPECT_FALSE(changed);
+}
+
 // Test that the alpha and beta fields of the GemmBackendConfig are updated.
 // A bias must be present for the beta value to be set.
 // In order to have a bias add fused, the bias term must be overwritable.
