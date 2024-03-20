@@ -137,9 +137,20 @@ class QuantizationDriver {
 
   SmallVector<BlockArgument, 4> GetArgs() { return args_; }
 
+  llvm::DenseMap<std::pair<mlir::Operation*, int>, int> GetResultStates() {
+    return result_states_;
+  }
+
+  DenseMap<OpWithResultIndex, QuantStateIndex> result_states_;
+
   // Returns the state of the block argument.
   QuantState& GetArgQuantState(BlockArgument arg) {
     return states_[arg_states_[arg]];
+  }
+
+  // Returns the state of the index-th result of the op.
+  QuantState& GetResultQuantState(Operation* op, const int index) {
+    return states_[result_states_[{op, index}]];
   }
 
  private:
@@ -262,11 +273,6 @@ class QuantizationDriver {
     return states_[operand_states_[{op, index}]];
   }
 
-  // Returns the state of the index-th result of the op.
-  QuantState& GetResultQuantState(Operation* op, const int index) {
-    return states_[result_states_[{op, index}]];
-  }
-
   // Returns the states of the index-th operand of the op.
   RequantizeStates& GetOperandRequantizeStates(Operation* op, const int index) {
     return rescale_states_[operand_states_[{op, index}]];
@@ -330,7 +336,6 @@ class QuantizationDriver {
   // Maps of indexes to the propagation state vector from the ops operands,
   // results and arguments.
   DenseMap<OpWithOperandIndex, QuantStateIndex> operand_states_;
-  DenseMap<OpWithResultIndex, QuantStateIndex> result_states_;
   DenseMap<BlockArgument, QuantStateIndex> arg_states_;
   DenseMap<Value, QuantStateIndex> value_to_state_;
 
