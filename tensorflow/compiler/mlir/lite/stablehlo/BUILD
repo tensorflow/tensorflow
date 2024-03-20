@@ -34,30 +34,6 @@ cc_library(
 )
 
 cc_library(
-    name = "stablehlo_tfl",
-    srcs = [
-        "transforms/stablehlo_tfl_pass.cc",
-    ],
-    hdrs = [
-        "transforms/stablehlo_tfl_pass.h",
-    ],
-    copts = [
-        "-Ithird_party",
-    ],
-    deps = [
-        "//tensorflow/compiler/mlir/lite:tensorflow_lite",
-        "@flatbuffers",
-        "@llvm-project//mlir:FuncDialect",
-        "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:Pass",
-        "@llvm-project//mlir:Support",
-        "@llvm-project//mlir:TransformUtils",
-        "@stablehlo//:stablehlo_ops",
-    ],
-    alwayslink = 1,
-)
-
-cc_library(
     name = "stablehlo_util",
     srcs = [
         "transforms/stablehlo_util.cc",
@@ -667,7 +643,6 @@ tf_cc_binary(
     deps = [
         ":check_accepted_ops_pass",
         ":op_stat_pass",
-        ":stablehlo_tfl",
         ":stablehlo_util",
         ":transforms",
         "//tensorflow/cc/saved_model:loader",
@@ -675,7 +650,6 @@ tf_cc_binary(
         "//tensorflow/compiler/mlir:passes",
         "//tensorflow/compiler/mlir/lite:flatbuffer_export",
         "//tensorflow/compiler/mlir/lite:tf_to_tfl_flatbuffer",
-        "//tensorflow/compiler/mlir/lite/stablehlo/serializer:flatbuffer_export",
         "//tensorflow/compiler/mlir/quantization/tensorflow:quantize_preprocess",
         "//tensorflow/compiler/mlir/quantization/tensorflow:tf_quant_ops",
         "//tensorflow/compiler/mlir/quantization/tensorflow/calibrator:calibrator_singleton_impl",
@@ -713,7 +687,6 @@ tf_cc_binary(
         ":legalize_tf_xla_call_module_to_stablehlo_pass",
         ":optimize",
         ":passes_inc_gen",
-        ":stablehlo_tfl",
         ":tf_legalize_hlo",
         ":tf_stablehlo",
         ":tfl_legalize_hlo",
