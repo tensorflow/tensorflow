@@ -1182,12 +1182,14 @@ XlaOp XlaBuilder::BinaryOp(HloOpcode binop, XlaOp lhs, XlaOp rhs,
                                   this, rhs, lhs, *lhs_shape));
         }
       } else {
-        TF_ASSIGN_OR_RETURN(UnboundedBroadcastResult broadcast_result,
-                            BroadcastToOutputShapeWithUnbounded(
-                                this, lhs, *lhs_shape, rhs, *rhs_shape, shape,
-                                broadcast_dimensions));
-        updated_lhs = broadcast_result.lhs;
-        updated_rhs = broadcast_result.rhs;
+        if (lhs_shape->rank() != rhs_shape->rank()) {
+          TF_ASSIGN_OR_RETURN(UnboundedBroadcastResult broadcast_result,
+                              BroadcastToOutputShapeWithUnbounded(
+                                  this, lhs, *lhs_shape, rhs, *rhs_shape, shape,
+                                  broadcast_dimensions));
+          updated_lhs = broadcast_result.lhs;
+          updated_rhs = broadcast_result.rhs;
+        }
       }
     }
 
