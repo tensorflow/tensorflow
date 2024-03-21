@@ -75,6 +75,11 @@ class SymbolicTileAnalysis {
   // concrete values using `TileOffsets`, `TileSizes`, and `TileStrides`.
   void SetTileParameters(absl::Span<int64_t const> parameters);
 
+  // Populate tile parameters with given sizes. All offsets are 0 and strides
+  // are 1.
+  void SetTileParametersWithDefaultOffsetsAndStrides(
+      absl::Span<int64_t const> sizes);
+
   // Return the underlying IndexingContext.
   IndexingContext* GetIndexingContext() const { return context_; };
 

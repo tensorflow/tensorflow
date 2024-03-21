@@ -36,21 +36,6 @@ namespace gpu {
 namespace {
 
 using ::testing::ElementsAre;
-
-void SetTileParametersWithDefaultOffsetsAndStrides(
-    absl::Span<int64_t const> sizes, SymbolicTileAnalysis& analysis) {
-  std::vector<int64_t> parameters;
-  parameters.reserve(3 * sizes.size());
-
-  for (int64_t size : sizes) {
-    // Untiled dims have offset = 0 and stride = 1.
-    parameters.push_back(0);
-    parameters.push_back(size);
-    parameters.push_back(1);
-  }
-  analysis.SetTileParameters(parameters);
-}
-
 using SymbolicTileAnalysisTest = HloTestBase;
 
 TEST_F(SymbolicTileAnalysisTest, SimpleNormalizationDiamondIsSupported) {
@@ -81,7 +66,7 @@ ENTRY main {
   SymbolicTileAnalysis analysis =
       std::get<SymbolicTileAnalysis>(analysis_or_error);
 
-  SetTileParametersWithDefaultOffsetsAndStrides(/*sizes=*/{1, 10}, analysis);
+  analysis.SetTileParametersWithDefaultOffsetsAndStrides(/*sizes=*/{1, 10});
 
   const HloInstruction* p0 =
       module->entry_computation()->parameter_instruction(0);
