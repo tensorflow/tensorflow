@@ -1612,11 +1612,12 @@ Status RangeSize(const Tensor* start_t, const Tensor* limit_t,
     size = Eigen::divup(static_cast<int64_t>(Eigen::numext::abs(limit - start)),
                         static_cast<int64_t>(Eigen::numext::abs(delta)));
   } else {
-    auto size_auto =
-        Eigen::numext::ceil(Eigen::numext::abs((limit / delta) - (start / delta)));
+    auto size_auto = Eigen::numext::ceil(
+        Eigen::numext::abs((limit / delta) - (start / delta)));
     if (size_auto > std::numeric_limits<int64_t>::max()) {
-      return errors::InvalidArgument("Requires ((limit / delta) - (start / delta)) <= ",
-                                     std::numeric_limits<int64_t>::max());
+      return errors::InvalidArgument(
+          "Requires ((limit / delta) - (start / delta)) <= ",
+          std::numeric_limits<int64_t>::max());
     }
     size = static_cast<int64_t>(size_auto);
   }
