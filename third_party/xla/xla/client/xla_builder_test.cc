@@ -1907,6 +1907,16 @@ TEST(XlaBuilderTest, UnboundedBatchNormTraining) {
               GmockMatch(m::Op().WithShapeEqualTo(&expected)));
 }
 
+TEST(XlaBuilderTest, UnboundedBitcastConvert) {
+  XlaBuilder b(TestName());
+  TF_ASSERT_OK_AND_ASSIGN(Shape operand, ParseShape("f32[?, 10]"));
+  TF_ASSERT_OK_AND_ASSIGN(Shape expected, ParseShape("f16[?, 10, 2]"));
+  BitcastConvertType(Parameter(&b, 0, operand, "operand"), PrimitiveType::F16);
+  TF_ASSERT_OK_AND_ASSIGN(auto module, BuildHloModule(b));
+  EXPECT_THAT(GetRoot(*module),
+              GmockMatch(m::Op().WithShapeEqualTo(&expected)));
+}
+
 TEST(XlaBuilderTest, UnboundedBroadcastUnsupportedOperand) {
   XlaBuilder b(TestName());
   TF_ASSERT_OK_AND_ASSIGN(Shape operand, ParseShape("f32[<=3, ?]"));
