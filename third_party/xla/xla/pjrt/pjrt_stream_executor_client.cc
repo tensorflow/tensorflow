@@ -1625,6 +1625,29 @@ PjRtFuture<Status> PjRtStreamExecutorBuffer::CopyRawToHost(
   return client_->CopyRawSubBufferToHost(this, dst, offset, transfer_size);
 }
 
+PjRtFuture<Status> PjRtStreamExecutorBuffer::CopyRawToHostFuture(
+    PjRtFuture<StatusOr<void*>> dst, int64_t offset, int64_t transfer_size) {
+  auto promise = PjRtFuture<Status>::CreatePromise();
+  dst.OnReady([this, promise, offset,
+               transfer_size](absl::StatusOr<void*> dst) mutable {
+    if (dst.ok()) {
+      // Trampoline through a thread pool since some device types (e.g., GPUs)
+      // do not allow calling D2H inside the callback's context.
+      client_->thread_pool()->Schedule(
+          [this, dst = *dst, offset, transfer_size,
+           promise = std::move(promise)]() mutable {
+            CopyRawToHost(dst, offset, transfer_size)
+                .OnReady([promise = std::move(promise)](Status status) mutable {
+                  promise.Set(status);
+                });
+          });
+    } else {
+      promise.Set(dst.status());
+    }
+  });
+  return PjRtFuture<Status>(std::move(promise));
+}
+
 StatusOr<ShapedBuffer> PjRtStreamExecutorBuffer::AsShapedBuffer() const {
   absl::MutexLock lock(&mu_);
   if (device_buffer_ == nullptr) {
