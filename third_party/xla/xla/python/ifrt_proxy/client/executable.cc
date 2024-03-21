@@ -356,15 +356,30 @@ std::optional<std::vector<OpSharding>> LoadedExecutable::GetOutputShardings()
   return (*info)->output_shardings;
 }
 
-absl::StatusOr<std::vector<Layout>> LoadedExecutable::GetParameterLayouts()
-    const {
+absl::StatusOr<std::vector<std::unique_ptr<Layout>>>
+LoadedExecutable::GetParameterLayouts() const {
   TF_ASSIGN_OR_RETURN(auto info, metadata_future_.Await());
-  return info->parameter_layouts;
+  RETURN_IF_ERROR(info->parameter_layouts.status());
+
+  std::vector<std::unique_ptr<Layout>> result;
+  result.reserve(info->parameter_layouts->size());
+  for (const xla::Layout& layout : *info->parameter_layouts) {
+    result.emplace_back(std::make_unique<xla::PjRtXlaLayout>(layout));
+  }
+  return result;
 }
 
-absl::StatusOr<std::vector<Layout>> LoadedExecutable::GetOutputLayouts() const {
+absl::StatusOr<std::vector<std::unique_ptr<Layout>>>
+LoadedExecutable::GetOutputLayouts() const {
   TF_ASSIGN_OR_RETURN(auto info, metadata_future_.Await());
-  return info->output_layouts;
+  RETURN_IF_ERROR(info->output_layouts.status());
+
+  std::vector<std::unique_ptr<Layout>> result;
+  result.reserve(info->output_layouts->size());
+  for (const xla::Layout& layout : *info->output_layouts) {
+    result.emplace_back(std::make_unique<xla::PjRtXlaLayout>(layout));
+  }
+  return result;
 }
 
 absl::StatusOr<std::vector<std::vector<absl::string_view>>>

@@ -225,8 +225,9 @@ NB_MODULE(xla_extension, m_nb) {
         // generic method on PjRtCompiler instead, although we'll have
         // somehow have to attach a compiler to this PjRtLayout (something
         // like ClientAndPtr).
-        absl::StatusOr<PjRtXlaLayout> layout =
-            PjRtXlaLayout::Deserialize(nb::cast<std::string_view>(t[0]));
+        nb::bytes serialized = nb::cast<nb::bytes>(t[0]);
+        absl::StatusOr<PjRtXlaLayout> layout = PjRtXlaLayout::Deserialize(
+            std::string_view(serialized.c_str(), serialized.size()));
         ThrowIfError(layout.status());
         new (self) PjRtXlaLayout(std::move(*layout));
       });
