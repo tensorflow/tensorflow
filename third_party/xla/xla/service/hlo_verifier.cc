@@ -2772,7 +2772,8 @@ class InstructionVerifier : public DfsHloVisitorWithDefault {
             operand_shape.rank() == result_shape.rank() &&
             operand_shape.has_layout()) {
           const Layout& operand_layout = operand_shape.layout();
-          Layout::Equal equal_predicate = Layout::Equal();
+          Layout::Equal equal_predicate =
+              Layout::Equal().IgnoreTiles().IgnoreMemorySpace();
           if (instruction->opcode() == HloOpcode::kConvert) {
             // Convert instructions can change element_size_in_bits
             equal_predicate.IgnoreElementSize();
