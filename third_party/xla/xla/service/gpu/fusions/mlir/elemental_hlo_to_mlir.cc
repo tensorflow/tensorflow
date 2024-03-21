@@ -44,6 +44,7 @@ limitations under the License.
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributeInterfaces.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/IRMapping.h"  // from @llvm-project
 #include "mlir/IR/ImplicitLocOpBuilder.h"  // from @llvm-project
@@ -64,6 +65,7 @@ limitations under the License.
 #include "xla/mlir_hlo/mhlo/transforms/map_mhlo_to_scalar_op.h"
 #include "xla/mlir_hlo/mhlo/utils/type_conversion.h"
 #include "xla/primitive_util.h"
+#include "xla/service/gpu/fusions/mlir/computation_partitioner.h"
 #include "xla/service/gpu/fusions/mlir/ir/xla_gpu_ops.h"
 #include "xla/service/gpu/hlo_traversal.h"
 #include "xla/service/gpu/model/indexing_analysis.h"
@@ -249,57 +251,53 @@ absl::StatusOr<SmallVector<Value>> EmitReduce(
     const HloInstruction* instr, ValueRange indices,
     const OperandProvider& operand_provider,
     const CallTargetProvider& call_target_provider, ImplicitLocOpBuilder& b) {
-  SmallVector<Value> reduction_indices(indices);
-  SmallVector<Value> accumulators;
+  IndexingContext indexing_context{b.getContext()};
+  HloInstructionIndexing indexing =
+      ComputeOutputToInputIndexing(instr, 0, &indexing_context);
+  const auto& indexing_map = *indexing.indexing_maps[0].begin();
+
+  SmallVector<Value> init_values;
   for (int i = instr->operand_count() / 2; i < instr->operand_count(); ++i) {
-    TF_ASSIGN_OR_RETURN(accumulators.emplace_back(),
+    TF_ASSIGN_OR_RETURN(init_values.emplace_back(),
                         GetSingleOperandValue(operand_provider, instr, i, {}));
     // Convert back to signed type.
     TF_ASSIGN_OR_RETURN(auto element_mlir_type,
                         ConvertPrimitiveTypeToMlirType(
                             instr->operand(i)->shape().element_type(), b));
-    accumulators.back() = b.create<mlir::UnrealizedConversionCastOp>(
-                               element_mlir_type, accumulators.back())
-                              .getResult(0);
+    init_values.back() = b.create<mlir::UnrealizedConversionCastOp>(
+                              element_mlir_type, init_values.back())
+                             .getResult(0);
   }
-  auto dims = llvm::to_vector(instr->dimensions());
-  absl::c_sort(dims);
-  ForOp outermost_loop = nullptr;
-  for (int dim : dims) {
-    auto bound = instr->operands()[0]->shape().dimensions(dim);
-    auto loop = b.create<ForOp>(b.create<ConstantIndexOp>(0),
-                                b.create<ConstantIndexOp>(bound),
-                                b.create<ConstantIndexOp>(1), accumulators);
-    if (outermost_loop == nullptr) {
-      outermost_loop = loop;
-    } else {
-      b.create<YieldOp>(loop.getResults());
-    }
-    b.setInsertionPointToStart(loop.getBody());
-    reduction_indices.insert(reduction_indices.begin() + dim,
-                             loop.getInductionVar());
-    accumulators = {loop.getRegionIterArgs().begin(),
-                    loop.getRegionIterArgs().end()};
-  }
-  SmallVector<Value> args = accumulators;
-  for (int i = 0; i < instr->operand_count() / 2; ++i) {
-    TF_ASSIGN_OR_RETURN(
-        args.emplace_back(),
-        GetSingleOperandValue(operand_provider, instr, i, reduction_indices));
-    // Convert back to signed type.
-    TF_ASSIGN_OR_RETURN(auto element_mlir_type,
-                        ConvertPrimitiveTypeToMlirType(
-                            instr->operand(i)->shape().element_type(), b));
-    args.back() = b.create<mlir::UnrealizedConversionCastOp>(element_mlir_type,
-                                                             args.back())
-                      .getResult(0);
-  }
-  auto reducer = call_target_provider(
-      instr->called_computations().front()->root_instruction());
-  b.create<YieldOp>(b.create<mlir::func::CallOp>(reducer, args).getResults());
 
-  b.setInsertionPointAfter(outermost_loop);
-  return ConvertToSignless(outermost_loop.getResults(), b);
+  auto body =
+      [&](ValueRange iter_args, ValueRange dim_values,
+          ValueRange symbol_values) -> absl::StatusOr<SmallVector<Value>> {
+    auto indices = ApplyAffineMap(indexing_map.GetAffineMap(), dim_values,
+                                  symbol_values, b);
+
+    SmallVector<Value> args{iter_args};
+    for (int i = 0; i < instr->operand_count() / 2; ++i) {
+      TF_ASSIGN_OR_RETURN(
+          args.emplace_back(),
+          GetSingleOperandValue(operand_provider, instr, i, indices));
+      // Convert back to signed type.
+      TF_ASSIGN_OR_RETURN(auto element_mlir_type,
+                          ConvertPrimitiveTypeToMlirType(
+                              instr->operand(i)->shape().element_type(), b));
+      args.back() = b.create<mlir::UnrealizedConversionCastOp>(
+                         element_mlir_type, args.back())
+                        .getResult(0);
+    }
+    auto reducer = call_target_provider(
+        instr->called_computations().front()->root_instruction());
+    return b.create<mlir::func::CallOp>(reducer, args).getResults();
+  };
+
+  TF_ASSIGN_OR_RETURN(
+      auto result,
+      EmitLoopNestWithStatus(b, indices, init_values, indexing_map, body));
+
+  return ConvertToSignless(result, b);
 }
 
 absl::StatusOr<SmallVector<Value>> EmitConcat(
@@ -1110,9 +1108,10 @@ absl::Status SubgraphToMlirFunction(
 SmallVector<Value> EmitLoopNest(
     ImplicitLocOpBuilder& b, ValueRange dim_values, ValueRange iter_args_inits,
     const IndexingMap& indexing_map,
-    const std::function<
-        SmallVector<Value>(ValueRange /*iter_args*/, ValueRange /*dim_values*/,
-                           ValueRange /*symbol_values*/)>& create_body) {
+    mlir::function_ref<SmallVector<Value>(ValueRange /*iter_args*/,
+                                          ValueRange /*dim_values*/,
+                                          ValueRange /*symbol_values*/)>
+        create_body) {
   SmallVector<Value, 4> lbs, ubs, steps;
   GetLoopBoundsFromIndexingMap(b, indexing_map, &lbs, &ubs, &steps);
 
@@ -1140,6 +1139,34 @@ SmallVector<Value> EmitLoopNest(
         return if_op.getResults();
       });
   return loop_nest.results;
+}
+
+absl::StatusOr<SmallVector<Value>> EmitLoopNestWithStatus(
+    ImplicitLocOpBuilder& b, ValueRange dim_values, ValueRange iter_args_inits,
+    const IndexingMap& indexing_map,
+    mlir::function_ref<absl::StatusOr<SmallVector<Value>>(
+        ValueRange /*iter_args*/, ValueRange /*dim_values*/,
+        ValueRange /*symbol_values*/)>
+        create_body) {
+  absl::Status status = absl::OkStatus();
+
+  auto result = EmitLoopNest(
+      b, dim_values, iter_args_inits, indexing_map,
+      [&](ValueRange iter_args, ValueRange dim_values,
+          ValueRange symbol_values) -> SmallVector<Value> {
+        auto body_result = create_body(iter_args, dim_values, symbol_values);
+        if (!body_result.ok()) {
+          status = std::move(body_result.status());
+          return SmallVector<Value>{};
+        }
+
+        return std::move(body_result.value());
+      });
+
+  if (!status.ok()) {
+    return status;
+  }
+  return result;
 }
 
 mlir::Value ClampIndex(mlir::Value index, bool is_unsigned, int64_t high,
