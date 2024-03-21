@@ -1161,6 +1161,7 @@ tf_kernel_library(
         "//tensorflow/core/data:global_shuffle_utils",
         "//tensorflow/core/data:name_utils",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
         "@local_tsl//tsl/platform:thread_annotations",
     ],
 )

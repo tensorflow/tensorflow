@@ -22,6 +22,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "tensorflow/core/data/dataset_utils.h"
 #include "tensorflow/core/data/global_shuffle_utils.h"
 #include "tensorflow/core/data/name_utils.h"
@@ -51,6 +52,12 @@ namespace data {
 
 constexpr char kInputImplEmpty[] = "input_impl_empty";
 constexpr char kNextIndex[] = "next_index";
+constexpr char kFileShardErrorMessage[] =
+    "If you are using datasets with distribution strategy, consider setting "
+    "the auto sharding policy to either DATA or OFF using the "
+    "`experimental_distribute.auto_shard_policy` option of `tf.data.Options()`."
+    " Or, split your input files into a larger number of small files such that "
+    "number of files is greater than number of shards/workers.";
 
 class ShardDatasetOp::Dataset : public DatasetBase {
  public:
@@ -145,7 +152,7 @@ class ShardDatasetOp::Dataset : public DatasetBase {
   class Iterator : public DatasetIterator<Dataset> {
    public:
     explicit Iterator(const Params& params)
-        : DatasetIterator<Dataset>(params), next_index_(0) {}
+        : DatasetIterator<Dataset>(params), next_index_(0), element_count_(0) {}
 
     bool SymbolicCheckpointCompatible() const override { return true; }
 
@@ -172,10 +179,9 @@ class ShardDatasetOp::Dataset : public DatasetBase {
         return absl::OkStatus();
       }
 
-      IteratorContextWithIndexMapper ctx_with_index_mapper(ctx, this);
-      auto merge_checkpoint = gtl::MakeCleanup([&ctx_with_index_mapper] {
-        ctx_with_index_mapper.MergeCheckpoint();
-      });
+      if (ctx->index_mapper() != nullptr) {
+        return Get(ctx, out_tensors, end_of_sequence);
+      }
 
       int num_to_skip =
           (dataset()->index_ - next_index_) % dataset()->num_shards_;
@@ -183,9 +189,8 @@ class ShardDatasetOp::Dataset : public DatasetBase {
         num_to_skip += dataset()->num_shards_;
       }
       int num_skipped;
-      TF_RETURN_IF_ERROR(input_impl_->Skip(ctx_with_index_mapper.Get(),
-                                           num_to_skip, end_of_sequence,
-                                           &num_skipped));
+      TF_RETURN_IF_ERROR(
+          input_impl_->Skip(ctx, num_to_skip, end_of_sequence, &num_skipped));
       next_index_ += num_skipped;
       if (*end_of_sequence) {
         input_impl_.reset();
@@ -193,8 +198,7 @@ class ShardDatasetOp::Dataset : public DatasetBase {
       }
 
       std::vector<Tensor> result;
-      TF_RETURN_IF_ERROR(input_impl_->GetNext(ctx_with_index_mapper.Get(),
-                                              &result, end_of_sequence));
+      TF_RETURN_IF_ERROR(input_impl_->GetNext(ctx, &result, end_of_sequence));
       if (*end_of_sequence) {
         input_impl_.reset();
         return absl::OkStatus();
@@ -204,24 +208,17 @@ class ShardDatasetOp::Dataset : public DatasetBase {
       if (dataset()->require_non_empty_ &&
           next_index_ < dataset()->num_shards_) {
         int num_skipped;
-        Status s = input_impl_->Skip(ctx_with_index_mapper.Get(),
-                                     dataset()->num_shards_ - next_index_,
+        Status s = input_impl_->Skip(ctx, dataset()->num_shards_ - next_index_,
                                      end_of_sequence, &num_skipped);
         if (*end_of_sequence || errors::IsOutOfRange(s)) {
           // `dataset()->require_non_empty_` implies that this transformation
           // was introduced by auto_sharding rewrite, so it's acceptable
           // produce an error message that assumes auto-sharding context.
-          return errors::InvalidArgument(
+          return absl::InvalidArgumentError(absl::StrCat(
               "Could not apply FILE based sharding: the dataset only has ",
               next_index_, " file(s), which is not enough for the required ",
-              dataset()->num_shards_,
-              " shards/workers."
-              "If you are using datasets with distribution strategy, "
-              "consider setting the auto sharding policy to either DATA or "
-              "OFF using the `experimental_distribute.auto_shard_policy` option"
-              "of `tf.data.Options()`. Or, split your input files into a "
-              "larger number of small files such that number of files is "
-              "greater than number of shards/workers.");
+              dataset()->num_shards_, " shards/workers. ",
+              kFileShardErrorMessage));
         } else if (!s.ok()) {
           return s;
         }
@@ -233,16 +230,37 @@ class ShardDatasetOp::Dataset : public DatasetBase {
       return absl::OkStatus();
     }
 
-    IndexMapperFn GetIndexMapper(IndexMapperFn parent_index_mapper)
-        const override TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+    Status Get(IteratorContext* ctx, std::vector<Tensor>* out_tensors,
+               bool* end_of_sequence) TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+      IteratorContextWithIndexMapper ctx_with_index_mapper(ctx, this);
+      auto merge_checkpoint = gtl::MakeCleanup([&ctx_with_index_mapper] {
+        ctx_with_index_mapper.MergeCheckpoint();
+      });
+      TF_RETURN_IF_ERROR(input_impl_->GetNext(ctx_with_index_mapper.Get(),
+                                              out_tensors, end_of_sequence));
+      if (*end_of_sequence && dataset()->require_non_empty_ &&
+          element_count_ == 0) {
+        // `dataset()->require_non_empty_` implies that this transformation
+        // was introduced by auto_sharding rewrite, so it's acceptable to
+        // produce an error message that assumes auto-sharding context.
+        return absl::InvalidArgumentError(absl::StrCat(
+            "Could not apply FILE based sharding: The dataset does not have "
+            "enough file(s) for the required ",
+            dataset()->num_shards_, " shards/workers. ",
+            kFileShardErrorMessage));
+      }
+      ++element_count_;
+      return absl::OkStatus();
+    }
+
+    IndexMapperFn GetIndexMapper(
+        IndexMapperFn parent_index_mapper) const override {
       int64_t num_shards = dataset()->num_shards_;
-      return [parent_index_mapper,
-              num_shards](size_t element_position) -> size_t {
-        size_t sharded_element_position = element_position / num_shards;
-        size_t input_element_offset = element_position % num_shards;
-        size_t shuffled_element_position =
-            parent_index_mapper(sharded_element_position);
-        return shuffled_element_position * num_shards + input_element_offset;
+      int64_t shard_index = dataset()->index_;
+      return [parent_index_mapper, num_shards,
+              shard_index](size_t element_position) -> size_t {
+        size_t output_index = parent_index_mapper(element_position);
+        return output_index * num_shards + shard_index;
       };
     }
 
@@ -270,13 +288,8 @@ class ShardDatasetOp::Dataset : public DatasetBase {
                            IteratorStateReader* reader) override {
       mutex_lock l(mu_);
       if (ctx->restored_element_count().has_value()) {
-        next_index_ = *ctx->restored_element_count() * dataset()->num_shards_;
-        IteratorContext::Params params(ctx);
-        params.restored_element_count =
-            *ctx->restored_element_count() * dataset()->num_shards_;
-        IteratorContext ctx_with_restored_element_count(params);
-        return RestoreInput(&ctx_with_restored_element_count, reader,
-                            input_impl_);
+        element_count_ = *ctx->restored_element_count();
+        return RestoreInput(ctx, reader, input_impl_);
       }
 
       int64_t input_empty;
@@ -300,6 +313,7 @@ class ShardDatasetOp::Dataset : public DatasetBase {
     mutex mu_;
     std::unique_ptr<IteratorBase> input_impl_ TF_GUARDED_BY(mu_);
     int64_t next_index_ TF_GUARDED_BY(mu_);
+    size_t element_count_ TF_GUARDED_BY(mu_);
   };
 
   const int64_t num_shards_;
