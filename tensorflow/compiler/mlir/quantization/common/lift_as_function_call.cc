@@ -75,8 +75,15 @@ constexpr StringRef kStablehloModuleAttrsAttrName = "_stablehlo_module_attrs";
 constexpr StringRef kUsesShapePolymorphismAttr = "jax.uses_shape_polymorphism";
 
 // Checks if the op is inside a lifted function.
-bool IsInLiftedFunc(Operation& op) {
-  return op.getParentOfType<func::FuncOp>()->hasAttr(kFusedFunctionAttr);
+bool IsInLiftedFunc(Operation* op) {
+  return op->getParentOfType<func::FuncOp>()->hasAttr(kFusedFunctionAttr);
+}
+
+// Checks if the op is inside an op with region.
+bool IsInRegion(Operation* op) {
+  if (op == nullptr) return false;
+  auto parent_op = op->getParentOp();
+  return parent_op != nullptr && stablehlo::IsStablehloOp(parent_op);
 }
 
 // Inserts the function to the symbol table of the module thread-safely.
