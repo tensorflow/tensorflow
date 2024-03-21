@@ -13,8 +13,8 @@
 # limitations under the License.
 # ==============================================================================
 
-load("//tensorflow/lite:build_def.bzl", "tflite_copts", "tflite_linkopts")
 load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")
+load("//tensorflow/lite:build_def.bzl", "tflite_copts", "tflite_linkopts")
 load("//tensorflow/lite:special_rules.bzl", "tflite_portable_test_suite")
 
 package(
@@ -168,12 +168,14 @@ cc_test(
         "TFLITE_USE_OPAQUE_DELEGATE",
     ],
     deps = [
+        "//tensorflow/lite:builtin_ops",
         "//tensorflow/lite:framework",
         "//tensorflow/lite/c:c_api_experimental",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/core/c:c_api_types",
         "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/kernels:builtin_ops",
+        "//tensorflow/lite/schema:schema_fbs",
         "//tensorflow/lite/testing:util",
         "@com_google_googletest//:gtest_main",
     ],
@@ -192,12 +194,14 @@ cc_test(
         "TF_LITE_STRIP_ERROR_STRINGS",
     ],
     deps = [
+        "//tensorflow/lite:builtin_ops",
         "//tensorflow/lite:framework",
         "//tensorflow/lite/c:c_api_experimental",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/core/c:c_api_types",
         "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/kernels:builtin_ops",
+        "//tensorflow/lite/schema:schema_fbs",
         "//tensorflow/lite/testing:util",
         "@com_google_googletest//:gtest_main",
     ],

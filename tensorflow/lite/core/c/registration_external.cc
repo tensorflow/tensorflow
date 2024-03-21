@@ -14,7 +14,13 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/core/c/registration_external.h"
 
+#include <stddef.h>
+#include <stdint.h>
+
+#include "tensorflow/lite/builtin_ops.h"
 #include "tensorflow/lite/c/common_internal.h"
+#include "tensorflow/lite/core/async/c/types.h"
+#include "tensorflow/lite/core/c/c_api_types.h"
 
 TfLiteRegistrationExternal* TfLiteRegistrationExternalCreate(
     TfLiteBuiltinOperator builtin_code, const char* custom_name, int version) {

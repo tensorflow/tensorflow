@@ -28,6 +28,7 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "tensorflow/lite/builtin_ops.h"
 #include "tensorflow/lite/c/c_api_internal.h"
 #include "tensorflow/lite/core/c/builtin_op_data.h"
 #include "tensorflow/lite/core/c/c_api_opaque.h"
