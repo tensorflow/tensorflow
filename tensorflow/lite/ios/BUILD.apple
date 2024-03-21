@@ -1,6 +1,8 @@
 # TensorFlow Lite for iOS
 
 load("@bazel_skylib//rules:build_test.bzl", "build_test")
+load("//tensorflow:pytype.default.bzl", "pytype_strict_binary", "pytype_strict_library")
+load("//tensorflow:strict.default.bzl", "py_strict_test")
 load(
     "//tensorflow/lite/ios:ios.bzl",
     "TFL_MINIMUM_OS_VERSION",
@@ -9,8 +11,6 @@ load(
     "tflite_ios_xcframework",
 )
 load("@build_bazel_rules_apple//apple:ios.bzl", "ios_static_framework")
-load("//tensorflow:pytype.default.bzl", "pytype_strict_binary", "pytype_strict_library")
-load("//tensorflow:strict.default.bzl", "py_strict_test")
 
 package(
     default_visibility = [
@@ -97,7 +97,7 @@ strip_common_include_path_prefix(
         "//tensorflow/lite/core/c:c_api_opaque.h",
         "//tensorflow/lite/core/c:c_api_types.h",
         "//tensorflow/lite/core/c:common.h",
-        "//tensorflow/lite/core/c:registration_external.h",
+        "//tensorflow/lite/core/c:operator.h",
         "//tensorflow/lite/core/async/c:types.h",
         "//tensorflow/lite/delegates/xnnpack:xnnpack_delegate.h",
         "//tensorflow/lite/profiling/telemetry/c:profiler.h",
@@ -124,8 +124,8 @@ tflite_ios_framework(
         ":c_api_opaque.h",
         ":c_api_types.h",
         ":common.h",
+        ":operator.h",
         ":profiler.h",
-        ":registration_external.h",
         ":telemetry_setting.h",
         ":types.h",
         ":xnnpack_delegate.h",
@@ -178,8 +178,8 @@ ios_static_framework(
         ":c_api_opaque.h",
         ":c_api_types.h",
         ":common.h",
+        ":operator.h",
         ":profiler.h",
-        ":registration_external.h",
         ":telemetry_setting.h",
         ":types.h",
         ":xnnpack_delegate.h",
@@ -262,7 +262,7 @@ cc_library(
         "//tensorflow/lite/core/c:c_api_opaque.h",
         "//tensorflow/lite/core/c:c_api_types.h",
         "//tensorflow/lite/core/c:common.h",
-        "//tensorflow/lite/core/c:registration_external.h",
+        "//tensorflow/lite/core/c:operator.h",
         "//tensorflow/lite/delegates/xnnpack:xnnpack_delegate.h",
         "//tensorflow/lite/profiling/telemetry/c:profiler.h",
         "//tensorflow/lite/profiling/telemetry/c:telemetry_setting.h",

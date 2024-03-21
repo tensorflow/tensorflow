@@ -957,27 +957,25 @@ class Subgraph {
   // sits inside the associated TFLite interpreter instance.
   TfLiteExternalContext** external_contexts_;
 
-  // A set of 'TfLiteRegistrationExternal' pointers that are owned by the
-  // subgraph.  The objects pointed to by the 'TfLiteRegistrationExternal'
+  // A set of 'TfLiteOperator' pointers that are owned by the
+  // subgraph.  The objects pointed to by the 'TfLiteOperator'
   // pointers are deleted in the 'Subgraph' destructor.
   //
   // The intended usage of this container is to provide (friend) classes
-  // the option to dynamically allocate 'TfLiteRegistrationExternal' objects
+  // the option to dynamically allocate 'TfLiteOperator' objects
   // and then tie the lifetime of these objects to a subgraph.
   //
   // WARNING: This field needs to precede 'nodes_and_registration_', to ensure
   // that it outlives that field, since that field might contain references to
-  // the TfLiteRegistrationExternal objects contained in this fielld.
+  // the TfLiteOperator objects contained in this fielld.
   //
   // LINT.IfChange
-  // The definition of RegistrationExternalsCache implicitly assumes that
-  // TfLiteRegistrationExternalDelete is the same as the standard C++ delete
-  // operator.
-  // TODO(b/238435088): in op_resolver, include registration_external.h and use
-  // 'TfLiteRegistrationExternalDelete' as the deleter, then we can eliminate
+  // The definition of OperatorsCache implicitly assumes that
+  // TfLiteOperatorDelete is the same as the standard C++ delete operator.
+  // TODO(b/238435088): in op_resolver, include operator.h and use
+  // 'TfLiteOperatorDelete' as the deleter, then we can eliminate
   // the IfChange...ThenChange directive below.
-  std::shared_ptr<::tflite::internal::RegistrationExternalsCache>
-      registration_externals_;
+  std::shared_ptr<::tflite::internal::OperatorsCache> registration_externals_;
   // LINT.ThenChange(//tensorflow/lite/core/c/c_api.cc)
 
   // Node inputs/outputs are stored in TfLiteNode and TfLiteRegistration stores

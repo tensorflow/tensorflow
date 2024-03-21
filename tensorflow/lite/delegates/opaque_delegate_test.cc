@@ -70,20 +70,19 @@ TEST(TestOpaqueDelegate, AddDelegate) {
                                        void* data) -> TfLiteStatus {
     // Test that an unnamed delegate kernel can be passed to the TF Lite
     // runtime.
-    TfLiteRegistrationExternal* registration_external =
-        TfLiteRegistrationExternalCreate(kTfLiteBuiltinDelegate,
-                                         /*name*/ nullptr,
-                                         /*version=*/1);
-    TfLiteRegistrationExternalSetInit(
-        registration_external,
-        [](TfLiteOpaqueContext* context, const char* buffer,
-           size_t length) -> void* { return nullptr; });
+    TfLiteOperator* registration_external =
+        TfLiteOperatorCreate(kTfLiteBuiltinDelegate,
+                             /*name*/ nullptr,
+                             /*version=*/1);
+    TfLiteOperatorSetInit(registration_external,
+                          [](TfLiteOpaqueContext* context, const char* buffer,
+                             size_t length) -> void* { return nullptr; });
     TfLiteIntArray* execution_plan;
     TF_LITE_ENSURE_STATUS(
         TfLiteOpaqueContextGetExecutionPlan(opaque_context, &execution_plan));
     for (int i = 0; i < execution_plan->size; ++i) {
       TfLiteOpaqueNode* node = nullptr;
-      TfLiteRegistrationExternal* registration = nullptr;
+      TfLiteOperator* registration = nullptr;
       TfLiteOpaqueContextGetNodeAndRegistration(opaque_context, i, &node,
                                                 &registration);
       int fd = -1;
@@ -127,20 +126,19 @@ TEST(TestOpaqueDelegate, ModelWithCustomOpAndInitData) {
   opaque_delegate_builder.Prepare = [](TfLiteOpaqueContext* opaque_context,
                                        TfLiteOpaqueDelegate* opaque_delegate,
                                        void* data) -> TfLiteStatus {
-    TfLiteRegistrationExternal* registration_external =
-        TfLiteRegistrationExternalCreate(kTfLiteBuiltinDelegate,
-                                         /*name*/ nullptr,
-                                         /*version=*/1);
-    TfLiteRegistrationExternalSetInit(
-        registration_external,
-        [](TfLiteOpaqueContext* context, const char* buffer,
-           size_t length) -> void* { return nullptr; });
+    TfLiteOperator* registration_external =
+        TfLiteOperatorCreate(kTfLiteBuiltinDelegate,
+                             /*name*/ nullptr,
+                             /*version=*/1);
+    TfLiteOperatorSetInit(registration_external,
+                          [](TfLiteOpaqueContext* context, const char* buffer,
+                             size_t length) -> void* { return nullptr; });
     TfLiteIntArray* execution_plan;
     TF_LITE_ENSURE_STATUS(
         TfLiteOpaqueContextGetExecutionPlan(opaque_context, &execution_plan));
     for (int i = 0; i < execution_plan->size; ++i) {
       TfLiteOpaqueNode* node = nullptr;
-      TfLiteRegistrationExternal* registration = nullptr;
+      TfLiteOperator* registration = nullptr;
       TfLiteOpaqueContextGetNodeAndRegistration(opaque_context, i, &node,
                                                 &registration);
       int fd = -1;
