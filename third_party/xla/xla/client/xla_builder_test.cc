@@ -2435,6 +2435,8 @@ INSTANTIATE_TEST_SUITE_P(
         {"f32[?, 10]", "f32[1]", /*broadcast_dimensions=*/zero_array,
          "f32[?, 10]", &Add},
         {"f32[1, ?, 2, ?, <=2, ?, ?]", "f32[?, 1, ?, 2, ?, <=2, ?]",
+         /*broadcast_dimensions=*/{}, "f32[?, ?, 2, 2, <=2, <=2, ?]", &Atan2},
+        {"f32[1, ?, 2, ?, <=2, ?, ?]", "f32[?, 1, ?, 2, ?, <=2, ?]",
          /*broadcast_dimensions=*/{}, "f32[?, ?, 2, 2, <=2, <=2, ?]", &Div},
         {"f32[?, 10]", "f32[1]", /*broadcast_dimensions=*/zero_array,
          "f32[?, 10]", &Div},
