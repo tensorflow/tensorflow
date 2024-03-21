@@ -191,7 +191,7 @@ Status CompileGraphToXlaHlo(
 // Compiles a TensorFlow Graph into XLA HLO, generates all accompanying metadata
 // and stores them in CompilationResult.
 ABSL_DEPRECATED(
-    "Use v1/compile_tf_graph.h::CompileTensorflowGraphToHloinstead.")
+    "Use v1/compile_tf_graph.h::CompileTensorflowGraphToHlo instead.")
 Status CompileGraphToXlaHlo(
     const Graph& graph, llvm::ArrayRef<XlaArgument> args,
     llvm::ArrayRef<std::string> control_rets, llvm::StringRef device_type,
@@ -207,7 +207,7 @@ Status CompileGraphToXlaHlo(
 // HLO-level inputs are supplied, and HLO-level outputs are produced.
 // xla_params is the HLO-level inputs and returns is the HLO-level outputs.
 ABSL_DEPRECATED(
-    "Use v1/compile_tf_graph.h::CompileTensorflowGraphToHloinstead.")
+    "Use v1/compile_tf_graph.h::CompileTensorflowGraphToHlo instead.")
 Status BuildHloFromGraph(
     const Graph& graph, xla::XlaBuilder& builder,
     mlir::MLIRContext& mlir_context, llvm::ArrayRef<xla::XlaOp> xla_params,
