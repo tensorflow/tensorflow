@@ -103,6 +103,7 @@ limitations under the License.
 #include "xla/literal.h"
 #include "xla/pjrt/distributed/protocol.pb.h"
 #include "xla/pjrt/event_pool.h"
+#include "xla/pjrt/host_callback.h"
 #include "xla/pjrt/local_device_state.h"
 #include "xla/pjrt/metrics.h"
 #include "xla/pjrt/mlir_to_hlo.h"
@@ -2898,7 +2899,7 @@ PjRtStreamExecutorLoadedExecutable::Execute(
           << " num_partitions=" << num_partitions()
           << " num_addressable_devices=" << num_addressable_devices;
   std::vector<StatusOr<Result>> results(num_addressable_devices);
-  if (num_addressable_devices == 1) {
+  if (num_addressable_devices == 1 && !ThisThreadIsInsideHostCallback()) {
     // Fast-path if there is only one device — run the computation on the
     // current thread.
     const int replica = addressable_device_logical_ids_[0].replica;

@@ -441,6 +441,7 @@ cc_library(
     visibility = internal_visibility(["//xla:friends"]),
     deps = [
         ":event_pool",
+        ":host_callback",
         ":local_device_state",
         ":metrics",
         ":mlir_to_hlo",
