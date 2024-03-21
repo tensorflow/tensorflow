@@ -36,6 +36,7 @@ limitations under the License.
 #include "xla/layout.h"
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/pjrt/pjrt_future.h"
+#include "xla/pjrt/pjrt_layout.h"
 #include "xla/python/ifrt/array.h"
 #include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt/executable.h"
@@ -406,14 +407,14 @@ PyLoadedExecutable::GetOutputMemoryKinds() const {
   return ifrt_loaded_executable_->GetOutputMemoryKinds();
 }
 
-absl::StatusOr<std::vector<Layout>> PyLoadedExecutable::GetParameterLayouts()
-    const {
+absl::StatusOr<std::vector<std::unique_ptr<PjRtLayout>>>
+PyLoadedExecutable::GetParameterLayouts() const {
   nb::gil_scoped_release gil_release;
   return ifrt_loaded_executable_->GetParameterLayouts();
 }
 
-absl::StatusOr<std::vector<Layout>> PyLoadedExecutable::GetOutputLayouts()
-    const {
+absl::StatusOr<std::vector<std::unique_ptr<PjRtLayout>>>
+PyLoadedExecutable::GetOutputLayouts() const {
   nb::gil_scoped_release gil_release;
   return ifrt_loaded_executable_->GetOutputLayouts();
 }

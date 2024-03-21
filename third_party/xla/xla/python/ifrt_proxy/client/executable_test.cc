@@ -25,6 +25,7 @@
 #include "llvm/Support/Casting.h"
 #include "xla/layout_util.h"
 #include "xla/pjrt/pjrt_common.h"
+#include "xla/pjrt/pjrt_layout.h"
 #include "xla/python/ifrt/array.h"
 #include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt/dtype.h"
@@ -44,6 +45,7 @@
 #include "xla/python/ifrt_proxy/common/ifrt_service.pb.h"
 #include "xla/python/ifrt_proxy/common/types.h"
 #include "tsl/concurrency/ref_count.h"
+#include "tsl/platform/casts.h"
 #include "tsl/platform/protobuf.h"  // IWYU pragma: keep
 #include "tsl/platform/status_matchers.h"
 #include "tsl/platform/statusor.h"
@@ -151,13 +153,22 @@ TEST_F(LoadedExecutableTest, Metadata) {
                             tile_assignment_dimensions: [ 0, 1 ])pb"))));
   EXPECT_THAT(executable.GetOutputShardings(),
               Optional(ElementsAre(EquivToProto(R"pb(type: REPLICATED)pb"))));
-  EXPECT_THAT(executable.GetParameterLayouts(),
-              IsOkAndHolds(ElementsAre(
-                  xla::LayoutUtil::MakeDescendingLayout(/*rank=*/1),
-                  xla::LayoutUtil::MakeDescendingLayout(/*rank=*/2))));
-  EXPECT_THAT(executable.GetOutputLayouts(),
-              IsOkAndHolds(ElementsAre(
-                  xla::LayoutUtil::MakeDescendingLayout(/*rank=*/2))));
+  ASSERT_OK_AND_ASSIGN(auto parameter_layouts,
+                       executable.GetParameterLayouts());
+  EXPECT_EQ(parameter_layouts.size(), 2);
+  EXPECT_EQ(
+      tensorflow::down_cast<xla::PjRtXlaLayout*>(parameter_layouts[0].get())
+          ->xla_layout(),
+      xla::LayoutUtil::MakeDescendingLayout(/*rank=*/1));
+  EXPECT_EQ(
+      tensorflow::down_cast<xla::PjRtXlaLayout*>(parameter_layouts[1].get())
+          ->xla_layout(),
+      xla::LayoutUtil::MakeDescendingLayout(/*rank=*/2));
+  ASSERT_OK_AND_ASSIGN(auto output_layouts, executable.GetOutputLayouts());
+  EXPECT_EQ(output_layouts.size(), 1);
+  EXPECT_EQ(tensorflow::down_cast<xla::PjRtXlaLayout*>(output_layouts[0].get())
+                ->xla_layout(),
+            xla::LayoutUtil::MakeDescendingLayout(/*rank=*/2));
   EXPECT_THAT(executable.GetOutputMemoryKinds(),
               IsOkAndHolds(ElementsAre(ElementsAre("foo"))));
 }

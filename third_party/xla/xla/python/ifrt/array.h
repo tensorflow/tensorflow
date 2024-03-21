@@ -37,6 +37,8 @@ namespace ifrt {
 
 class Client;
 
+using Layout = ::xla::PjRtLayout;
+
 // Semantics for operations that may copy or move sharded buffers in an array.
 enum class ArrayCopySemantics : int {
   // Always creates new buffers to construct an output array. Mutation of the
