@@ -160,9 +160,7 @@ class PReLU(Layer):
     self.built = True
 
   def call(self, inputs):
-    pos = backend.relu(inputs)
-    neg = -self.alpha * backend.relu(-inputs)
-    return pos + neg
+    return self.alpha * inputs if inputs < 0 else backend.relu(inputs)
 
   def get_config(self):
     config = {
