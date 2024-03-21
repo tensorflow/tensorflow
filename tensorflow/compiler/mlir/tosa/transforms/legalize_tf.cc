@@ -1047,7 +1047,6 @@ LogicalResult ConvertTFConv2DBackpropInputOp::matchAndRewrite(
 
   DenseI64ArrayAttr stride;
   DenseI64ArrayAttr outpad;
-  DenseI64ArrayAttr output_shape;
   {
     auto tmpAttr = tf_conv_op.getStrides();
     if (!tmpAttr) {
@@ -1089,21 +1088,6 @@ LogicalResult ConvertTFConv2DBackpropInputOp::matchAndRewrite(
         return failure();
     }
   }
-  {
-    ElementsAttr output_shape_elems;
-    // Match from input_sizes tensor first.
-    if (matchPattern(tf_conv_op.getInputSizes(),
-                     m_Constant(&output_shape_elems))) {
-      SmallVector<int64_t> shape_vec;
-      for (int i = 0; i < output_shape_elems.getNumElements(); i++)
-        shape_vec.push_back(
-            output_shape_elems.getValues<IntegerAttr>()[i].getInt());
-      output_shape = rewriter.getDenseI64ArrayAttr(shape_vec);
-    } else {
-      // Use output tensor's shape otherwise.
-      output_shape = rewriter.getDenseI64ArrayAttr(output_type.getShape());
-    }
-  }
 
   int output_channel = output_type.getShape()[3];
   SmallVector<float> vec(output_channel, 0.0f);
@@ -1120,7 +1104,7 @@ LogicalResult ConvertTFConv2DBackpropInputOp::matchAndRewrite(
   CreateReplaceOpAndInfer<tosa::TransposeConv2DOp>(
       rewriter, op, output_type, tf_conv_op.getOutBackprop(),
       a1_filter_transpose_op.getResult(), zero_bias.value(), outpad, stride,
-      output_shape, acc_type);
+      acc_type);
 
   return success();
 }

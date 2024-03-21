@@ -38,7 +38,7 @@ func.func @test_depthwise_conv2d(%arg0: tensor<1x32x32x8xf32>, %arg1: tensor<2x2
 // CHECK-DAG:     %[[CONST:.*]] = "tosa.const"() <{value = dense<0.000000e+00> : tensor<16xf32>}>
 // CHECK-DAG:     %[[ZP:.*]] = "tosa.const"() <{value = dense<0.000000e+00> : tensor<1xf32>}>
 // CHECK:         %[[RESHAPE:.*]] = tosa.reshape %[[ARG1]], %[[VAR0]]
-// CHECK:         %[[TRANSPOSE:.*]] = tosa.transpose_conv2d %[[ARG0]], %[[RESHAPE]], %[[CONST]], %[[ZP]], %[[ZP]] {acc_type = f32, out_pad = array<i64: 0, 0, 0, 0>, out_shape = array<i64: 1, 32, 32, 16>, stride = array<i64: 1, 1>}
+// CHECK:         %[[TRANSPOSE:.*]] = tosa.transpose_conv2d %[[ARG0]], %[[RESHAPE]], %[[CONST]] {acc_type = f32, out_pad = array<i64: 0, 0, 0, 0>, stride = array<i64: 1, 1>}
 // CHECK:         return %[[TRANSPOSE]]
 func.func @test_transpose_conv2d(%arg0: tensor<1x32x32x8xf32>, %arg1: tensor<1x1x16x8xf32>) -> tensor<1x32x32x16xf32> {
   %3 = "tf.Const"()  {value = dense<[1, 32, 32, 16]> : tensor<4xi32>}  : () -> tensor<4xi32>
