@@ -122,6 +122,27 @@ cc_library(
 )
 
 cc_library(
+    name = "permutation",
+    hdrs = ["permutation.h"],
+    compatible_with = get_compatible_with_portable(),
+    deps = [
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:Support",
+    ],
+)
+
+tf_cc_test(
+    name = "permutation_test",
+    srcs = ["permutation_test.cc"],
+    deps = [
+        ":permutation",
+        "@com_google_googletest//:gtest_main",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:Support",
+    ],
+)
+
+cc_library(
     name = "saved_model_export",
     srcs = ["saved_model_export.cc"],
     hdrs = ["saved_model_export.h"],
