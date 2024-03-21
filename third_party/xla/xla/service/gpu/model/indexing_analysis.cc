@@ -319,33 +319,33 @@ HloInstructionIndexing ComputeOutputToInputDynamicSliceOpIndexing(
       << "b/118437727: Old form, not supported.";
   // A map from tensor iteration space to (), because index operands are 0d
   // tensors.
-  IndexingMap zero_dim_map = IndexingMap::FromTensorSizes(
-      indexing_context,
-      AffineMap::get(/*dimCount=*/rank, /*symbolCount=*/0, /*results=*/{},
-                     mlir_context),
-      output_shape.dimensions(), {});
+  AffineMap empty_results_affine_map = AffineMap::get(
+      /*dimCount=*/rank, /*symbolCount=*/0, /*results=*/{}, mlir_context);
+  IndexingMap start_indices_map =
+      IndexingMap::FromTensorSizes(indexing_context, empty_results_affine_map,
+                                   output_shape.dimensions(), {});
 
   std::vector<RTVar> offsets_rt_vars;
   offsets_rt_vars.reserve(rank);
   std::vector<AffineExpr> exprs;
   exprs.reserve(rank);
-  for (int64_t dim = 0; dim < rank; ++dim) {
+  for (auto [dim, slice_size] :
+       llvm::enumerate(dynamic_slice->dynamic_slice_sizes())) {
     exprs.push_back(getAffineDimExpr(dim, mlir_context) +
                     getAffineSymbolExpr(dim, mlir_context));
-    Interval feasible_values{
-        0, input_shape.dimensions(dim) - dynamic_slice->slice_sizes(dim)};
-    RTVarData rt_var_data{feasible_values,
-                          dynamic_slice->operand(dim + first_index_num),
-                          zero_dim_map};
-    offsets_rt_vars.push_back(indexing_context->RegisterRTVar(rt_var_data));
+    offsets_rt_vars.push_back(
+        RTVar{Interval{0, input_shape.dimensions(dim) - slice_size},
+              dynamic_slice->operand(dim + first_index_num),
+              empty_results_affine_map});
   }
   std::vector<IndexingMap> indexing_maps(dynamic_slice->operand_count(),
-                                         zero_dim_map);
-  indexing_maps.front() = IndexingMap{
-      indexing_context,
-      AffineMap::get(/*dimCount=*/rank, /*symbolCount=*/rank, exprs,
-                     mlir_context),
-      zero_dim_map.GetDimVars(), /*range_vars=*/{}, std::move(offsets_rt_vars)};
+                                         start_indices_map);
+  indexing_maps.front() =
+      IndexingMap{indexing_context,
+                  AffineMap::get(/*dimCount=*/rank, /*symbolCount=*/rank, exprs,
+                                 mlir_context),
+                  start_indices_map.GetDimVars(), /*range_vars=*/{},
+                  std::move(offsets_rt_vars)};
   return HloInstructionIndexing::FromIndexingMaps(indexing_maps);
 }
 
@@ -370,24 +370,23 @@ HloInstructionIndexing ComputeOutputToInputDynamicUpdateSliceOpIndexing(
       output_shape.dimensions(), {});
 
   // start_indices: (d0, ... d_{N-1}) -> ()
-  IndexingMap start_indices_map = IndexingMap::FromTensorSizes(
-      indexing_context,
-      AffineMap::get(/*dimCount=*/rank, /*symbolCount=*/0, /*results=*/{},
-                     mlir_context),
-      output_shape.dimensions(), {});
+  AffineMap empty_results_affine_map = AffineMap::get(
+      /*dimCount=*/rank, /*symbolCount=*/0, /*results=*/{}, mlir_context);
+  IndexingMap start_indices_map =
+      IndexingMap::FromTensorSizes(indexing_context, empty_results_affine_map,
+                                   output_shape.dimensions(), {});
 
   // update: (d_0 - s_0, ..., d_{N-1} - s_{N-1})
   std::vector<AffineExpr> exprs;
   exprs.reserve(rank);
   std::vector<RTVar> rt_vars;
   rt_vars.reserve(rank);
-  for (int64_t dim = 0; dim < rank; ++dim) {
+  for (auto [dim, slice_size] : llvm::enumerate(update_shape.dimensions())) {
     exprs.push_back(getAffineDimExpr(dim, mlir_context) -
                     getAffineSymbolExpr(dim, mlir_context));
-    Interval feasible_values{
-        0, output_shape.dimensions(dim) - update_shape.dimensions(dim)};
-    rt_vars.push_back(indexing_context->RegisterRTVar(
-        {feasible_values, dus->operand(2 + dim), start_indices_map}));
+    Interval feasible_values{0, output_shape.dimensions(dim) - slice_size};
+    rt_vars.push_back(RTVar{feasible_values, dus->operand(2 + dim),
+                            empty_results_affine_map});
   }
   IndexingMap update_map{indexing_context,
                          AffineMap::get(/*dimCount=*/rank, /*symbolCount=*/rank,
@@ -447,17 +446,13 @@ HloInstructionIndexing ComputeOutputToInputGatherOpIndexing(
 
     if (operand_dim_id >= index_vector_length) continue;
 
-    RTVarData rt_var_data{
+    rt_vars.push_back(RTVar{
         Interval{0, operand_shape.dimensions(operand_dim_id) - slice_size},
         gather->operand(1),
-        IndexingMap{
-            indexing_context,
-            AffineMap::get(output_rank, /*symbolCount=*/0,
-                           {indices_id_dim, getAffineConstantExpr(
-                                                operand_dim_id, mlir_context)},
-                           mlir_context),
-            dim_vars, /*range_vars=*/{}, /*rt_vars=*/{}}};
-    rt_vars.push_back(indexing_context->RegisterRTVar(rt_var_data));
+        AffineMap::get(output_rank, /*symbolCount=*/0,
+                       {indices_id_dim,
+                        getAffineConstantExpr(operand_dim_id, mlir_context)},
+                       mlir_context)});
     exprs.back() =
         exprs.back() + getAffineSymbolExpr(operand_dim_id, mlir_context);
   }

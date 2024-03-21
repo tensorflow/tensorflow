@@ -594,7 +594,10 @@ bool operator==(const RangeVar& lhs, const RangeVar& rhs) {
   return lhs.range == rhs.range;
 }
 
-bool operator==(const RTVar& lhs, const RTVar& rhs) { return lhs.id == rhs.id; }
+bool operator==(const RTVar& lhs, const RTVar& rhs) {
+  return lhs.feasible_values == rhs.feasible_values && lhs.hlo == rhs.hlo &&
+         lhs.map == rhs.map;
+}
 
 std::vector<DimVar> DimVarsFromTensorSizes(
     absl::Span<const int64_t> tensor_sizes) {
@@ -656,9 +659,7 @@ const Interval& IndexingMap::GetSymbolBound(int64_t symbol_id) const {
   int64_t range_var_count = GetRangeVarsCount();
   return symbol_id < range_var_count
              ? range_vars_[symbol_id].range
-             : indexing_context_
-                   ->GetRTVarData(rt_vars_[symbol_id - range_var_count].id)
-                   .feasible_values;
+             : rt_vars_[symbol_id - range_var_count].feasible_values;
 }
 
 Interval& IndexingMap::GetMutableSymbolBound(int64_t symbol_id) {
@@ -667,9 +668,7 @@ Interval& IndexingMap::GetMutableSymbolBound(int64_t symbol_id) {
   int64_t range_var_count = GetRangeVarsCount();
   return symbol_id < range_var_count
              ? range_vars_[symbol_id].range
-             : indexing_context_
-                   ->GetRTVarData(rt_vars_[symbol_id - range_var_count].id)
-                   .feasible_values;
+             : rt_vars_[symbol_id - range_var_count].feasible_values;
 }
 
 std::vector<Interval> IndexingMap::GetSymbolBounds() const {
@@ -679,8 +678,7 @@ std::vector<Interval> IndexingMap::GetSymbolBounds() const {
     bounds.push_back(range_var.range);
   }
   for (const auto& rt_var : rt_vars_) {
-    bounds.push_back(
-        indexing_context_->GetRTVarData(rt_var.id).feasible_values);
+    bounds.push_back(rt_var.feasible_values);
   }
   return bounds;
 }
@@ -835,23 +833,25 @@ void IndexingMap::Print(std::ostream& out,
                         const AffineMapPrinter& printer) const {
   printer.Print(out, affine_map_);
   out << "\ndomain:\n";
-  for (const auto& [index, range] : llvm::enumerate(dim_vars_)) {
+  for (const auto& [index, dim_var] : llvm::enumerate(dim_vars_)) {
     out << printer.GetDimensionName(static_cast<int64_t>(index)) << " in ";
-    dim_vars_.at(index).bounds.Print(out);
+    dim_var.bounds.Print(out);
+    out << '\n';
+  }
+  for (const auto& [index, range_var] : llvm::enumerate(range_vars_)) {
+    out << printer.GetSymbolName(static_cast<int64_t>(index)) << " in ";
+    range_var.range.Print(out);
     out << '\n';
   }
   int64_t range_vars_count = GetRangeVarsCount();
-  for (const auto& [index, range] : llvm::enumerate(range_vars_)) {
-    out << printer.GetSymbolName(static_cast<int64_t>(index)) << " in ";
-    range_vars_.at(index).range.Print(out);
-    out << '\n';
-  }
-  for (const auto& [index, range] : llvm::enumerate(rt_vars_)) {
-    auto id = rt_vars_.at(index).id;
-    const RTVarData& rt_var_data = indexing_context_->GetRTVarData(id);
+  for (const auto& [index, rt_var] : llvm::enumerate(rt_vars_)) {
     out << printer.GetSymbolName(static_cast<int64_t>(range_vars_count + index))
-        << " id: " << id;
-    rt_var_data.Print(out);
+        << " in ";
+    rt_var.feasible_values.Print(out);
+    out << "\n  hlo: "
+        << (rt_var.hlo == nullptr ? "NULL" : rt_var.hlo->ToString()) << "\n  ";
+    printer.Print(out, rt_var.map);
+    out << '\n';
   }
   std::vector<std::string> expr_range_strings;
   expr_range_strings.reserve(constraints_.size());
@@ -1156,18 +1156,6 @@ IndexingMap ComposeIndexingMaps(const IndexingMap& first,
         producer_dim_range);
   }
   return composed_indexing_map;
-}
-
-std::string RTVarData::ToString() const {
-  std::stringstream ss;
-  Print(ss);
-  return ss.str();
-}
-
-void RTVarData::Print(std::ostream& out) const {
-  out << " in " << feasible_values
-      << "\nhlo: " << (hlo == nullptr ? "NULL" : hlo->ToString()) << '\n';
-  indexing_map.Print(out, AffineMapPrinter());
 }
 
 }  // namespace gpu

@@ -418,10 +418,7 @@ xla_cc_test(
 
 cc_library(
     name = "indexing_map",
-    srcs = [
-        "indexing_context.cc",
-        "indexing_map.cc",
-    ],
+    srcs = ["indexing_map.cc"],
     hdrs = [
         "indexing_context.h",
         "indexing_map.h",
