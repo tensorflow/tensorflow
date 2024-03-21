@@ -48,6 +48,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/layout.h"
 #include "xla/permutation_util.h"
+#include "xla/service/gather_simplifier.h"
 #include "xla/service/gpu/fusions/tiling_util.h"
 #include "xla/service/gpu/hlo_traversal.h"
 #include "xla/service/gpu/matmul_utils.h"
@@ -399,6 +400,73 @@ HloInstructionIndexing ComputeOutputToInputDynamicUpdateSliceOpIndexing(
   indexing_maps[0] = std::move(operand_map);
   indexing_maps[1] = std::move(update_map);
   return HloInstructionIndexing::FromIndexingMaps(indexing_maps);
+}
+
+HloInstructionIndexing ComputeOutputToInputGatherOpIndexing(
+    const HloGatherInstruction* gather, IndexingContext* indexing_context) {
+  CHECK(GatherSimplifier::IsSimplifiedGather(gather))
+      << "Non-simplified HLO Gather is not supported.";
+  MLIRContext* mlir_context = indexing_context->GetMLIRContext();
+
+  const Shape& operand_shape = gather->operand(0)->shape();
+  const Shape& indices_shape = gather->operand(1)->shape();
+
+  const GatherDimensionNumbers& dimension_numbers =
+      gather->gather_dimension_numbers();
+  int64_t index_vector_length =
+      indices_shape.dimensions(dimension_numbers.index_vector_dim());
+
+  const Shape& output_shape = gather->shape();
+  int64_t output_rank = output_shape.rank();
+
+  // A map for the `indices` operand of gather. It is always
+  // (d_0, ... d_{rank - 1}) -> (d_0, s_0),
+  // where 0 <= s_0 <= indices_shape[1] - 1.
+  AffineExpr indices_id_dim = getAffineDimExpr(0, mlir_context);
+  std::vector<DimVar> dim_vars =
+      DimVarsFromTensorSizes(output_shape.dimensions());
+  IndexingMap indices_map{
+      indexing_context,
+      AffineMap::get(output_rank, 1,
+                     {indices_id_dim, getAffineSymbolExpr(0, mlir_context)},
+                     mlir_context),
+      dim_vars,
+      {RangeVar{{0, index_vector_length - 1}}},
+      /*rt_vars=*/{}};
+
+  // A map for the `operand` operand of gather, from which we extract slices.
+  // (d_0, ... d_{rank - 1}) -> (d_1 + s0, d_2 + s_1, ...),
+  // where s_i are RTVars that extract indices from the `indices` operand.
+  std::vector<RTVar> rt_vars;
+  std::vector<AffineExpr> exprs;
+  exprs.reserve(operand_shape.rank());
+  for (auto [operand_dim_id, slice_size] :
+       llvm::enumerate(gather->gather_slice_sizes())) {
+    int64_t output_dim_id = dimension_numbers.offset_dims(operand_dim_id);
+    exprs.push_back(getAffineDimExpr(output_dim_id, mlir_context));
+
+    if (operand_dim_id >= index_vector_length) continue;
+
+    RTVarData rt_var_data{
+        Interval{0, operand_shape.dimensions(operand_dim_id) - slice_size},
+        gather->operand(1),
+        IndexingMap{
+            indexing_context,
+            AffineMap::get(output_rank, /*symbolCount=*/0,
+                           {indices_id_dim, getAffineConstantExpr(
+                                                operand_dim_id, mlir_context)},
+                           mlir_context),
+            dim_vars, /*range_vars=*/{}, /*rt_vars=*/{}}};
+    rt_vars.push_back(indexing_context->RegisterRTVar(rt_var_data));
+    exprs.back() =
+        exprs.back() + getAffineSymbolExpr(operand_dim_id, mlir_context);
+  }
+  IndexingMap operand_map = {
+      indexing_context,
+      AffineMap::get(/*dimCount=*/output_rank,
+                     /*symbolCount=*/index_vector_length, exprs, mlir_context),
+      std::move(dim_vars), /*range_vars=*/{}, std::move(rt_vars)};
+  return HloInstructionIndexing::FromIndexingMaps({operand_map, indices_map});
 }
 
 IndexingMap ComputeOutputToInputPadOpIndexingImpl(
@@ -1294,6 +1362,9 @@ HloInstructionIndexing ComputeOutputToInputIndexing(const HloInstruction* instr,
   }
   if (auto fusion = DynCast<HloFusionInstruction>(instr)) {
     return ComputeOutputToInputFusionOpIndexing(fusion, output_id, ctx);
+  }
+  if (auto gather = DynCast<HloGatherInstruction>(instr)) {
+    return ComputeOutputToInputGatherOpIndexing(gather, ctx);
   }
   if (auto iota = DynCast<HloIotaInstruction>(instr)) {
     return HloInstructionIndexing{};

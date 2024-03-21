@@ -1049,6 +1049,53 @@ TEST_F(IndexingAnalysisTest, FusionExponentialDuplication) {
                           )"))));
 }
 
+TEST_F(IndexingAnalysisTest, GatherOp) {
+  auto input_indexing = GetOutputToInputIndexing(ParseAndGetRoot(R"(
+    HloModule m
+    ENTRY main {
+      operand = f32[33,76,70] parameter(0)
+      indices = s32[1806,2] parameter(1)
+      ROOT r = f32[1806,7,8,4] gather(operand, indices), offset_dims={1,2,3},
+                                 collapsed_slice_dims={}, start_index_map={0,1},
+                                 index_vector_dim=1, slice_sizes={7,8,4}
+    }
+  )"));
+  EXPECT_THAT(input_indexing.indexing_maps,
+              ElementsAre(ElementsAre(MatchIndexingMap(R"(
+                (d0, d1, d2, d3)[s0, s1] -> (d1 + s0, d2 + s1, d3)
+                domain:
+                d0 in [0, 1805]
+                d1 in [0, 6]
+                d2 in [0, 7]
+                d3 in [0, 3]
+                s0 id: 0 in [0, 26]
+                  hlo: %indices = s32[1806,2]{1,0} parameter(1)
+                  (d0, d1, d2, d3) -> (d0, 0)
+                  domain:
+                  d0 in [0, 1805]
+                  d1 in [0, 6]
+                  d2 in [0, 7]
+                  d3 in [0, 3]
+                s1 id: 1 in [0, 68]
+                  hlo: %indices = s32[1806,2]{1,0} parameter(1)
+                  (d0, d1, d2, d3) -> (d0, 1)
+                  domain:
+                  d0 in [0, 1805]
+                  d1 in [0, 6]
+                  d2 in [0, 7]
+                  d3 in [0, 3]
+              )")),
+                          ElementsAre(MatchIndexingMap(R"(
+                (d0, d1, d2, d3)[s0] -> (d0, s0)
+                domain:
+                d0 in [0, 1805]
+                d1 in [0, 6]
+                d2 in [0, 7]
+                d3 in [0, 3]
+                s0 in [0, 1]
+              )"))));
+}
+
 TEST_F(IndexingAnalysisTest, FusionOpWithReduceOfReduce) {
   auto input_indexing = GetOutputToInputIndexing(ParseAndGetRoot(R"(
     HloModule m
