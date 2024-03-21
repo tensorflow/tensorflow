@@ -17,9 +17,9 @@ limitations under the License.
 #define XLA_SERVICE_WHILE_LOOP_UNROLLER_H_
 
 #include <cstdint>
-#include <optional>
+#include <utility>
+#include <vector>
 
-#include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
@@ -48,7 +48,8 @@ absl::StatusOr<bool> PrepareModuleForUnrolling(
     const absl::flat_hash_set<absl::string_view>& execution_threads);
 
 // Returns the list of unrollable loops in the given module
-absl::flat_hash_map<HloInstruction*, WhileLoopConfig> GetUnrollableLoops(
+
+std::vector<std::pair<HloInstruction*, WhileLoopConfig>> GetUnrollableLoops(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads);
 

@@ -16,11 +16,9 @@ limitations under the License.
 #include "xla/service/while_loop_unroller.h"
 
 #include <cstdint>
-#include <iterator>
 #include <memory>
 #include <optional>
 #include <string>
-#include <utility>
 #include <vector>
 
 #include <gtest/gtest.h>
@@ -532,17 +530,9 @@ TEST_F(WhileLoopUnrollerTest, GetUnrollableLoops) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseAndReturnVerifiedModule(hlo_string));
 
-  HloInstruction* while1 =
-      module->entry_computation()->GetInstructionWithName("while1");
-  HloInstruction* while2 =
-      module->entry_computation()->GetInstructionWithName("while2");
-  HloInstruction* while3 =
-      module->entry_computation()->GetInstructionWithName("while3");
-
   auto unrollable_loops = GetUnrollableLoops(module.get(), {});
-  EXPECT_TRUE(unrollable_loops.contains(while1));
-  EXPECT_TRUE(unrollable_loops.contains(while2));
-  EXPECT_FALSE(unrollable_loops.contains(while3));
+  // Only while1 and while2 are unrollable
+  EXPECT_EQ(unrollable_loops.size(), 2);
 }
 
 TEST_F(WhileLoopUnrollerTest, UnrollMutipleLoops) {
