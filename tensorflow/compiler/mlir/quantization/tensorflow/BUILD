@@ -301,6 +301,7 @@ cc_library(
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_traits",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_types",
         "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:CallOpInterfaces",
         "@llvm-project//mlir:ControlFlowInterfaces",
         "@llvm-project//mlir:DerivedAttributeOpInterface",
         "@llvm-project//mlir:Dialect",

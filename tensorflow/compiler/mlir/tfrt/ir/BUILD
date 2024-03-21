@@ -28,6 +28,7 @@ cc_library(
     deps = [
         ":tfrt_fallback_opdefs_inc_gen",
         "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:SideEffectInterfaces",
     ],
 )
 
