@@ -71,6 +71,7 @@ limitations under the License.
 #include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/core/profiler/lib/traceme_encode.h"
 #include "tensorflow/core/util/incremental_barrier.h"
+#include "tsl/platform/criticality.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/statusor.h"
 
@@ -539,6 +540,8 @@ BatchResourceBase::GetBatcherQueueOptions(
     batcher_queue_options.low_priority_queue_options.max_execution_batch_size =
         *low_priority_allowed_batch_sizes.rbegin();
   }
+  batcher_queue_options.low_priority_queue_options.allowed_batch_sizes =
+      low_priority_allowed_batch_sizes;
   batcher_queue_options.enable_large_batch_splitting =
       enable_large_batch_splitting;
   if (enable_large_batch_splitting) {
@@ -610,14 +613,32 @@ BatchResourceBase::GetAdaptiveBatcherQueueOptions(
   return absl::OkStatus();
 }
 
+bool BatchResourceBase::IsLowPriorityBatch(const BatchT& batch) const {
+  if (!batcher_queue_options_.enable_priority_queue) return false;
+  if (batch.empty()) return false;
+
+  // TODO(b/316379576): Once the criticality and priority become configurable,
+  // this should rely on the batch parameters instead of the hard coded value.
+  return batch.task(0).criticality() ==
+             tsl::criticality::Criticality::kSheddablePlus ||
+         batch.task(0).criticality() ==
+             tsl::criticality::Criticality::kSheddable;
+}
+
 // Returns the smallest entry in 'allowed_batch_sizes_' that is greater than
 // or equal to 'batch_size'. If 'allowed_batch_sizes_' is empty, simply
 // returns 'batch_size'.
-int BatchResourceBase::RoundToLowestAllowedBatchSize(int batch_size) const {
-  if (batcher_queue_options_.disable_padding || allowed_batch_sizes_.empty()) {
+int BatchResourceBase::RoundToLowestAllowedBatchSize(
+    int batch_size, bool is_low_priority_batch) const {
+  const std::vector<int32>& allowed_batch_sizes =
+      is_low_priority_batch ? batcher_queue_options_.low_priority_queue_options
+                                  .allowed_batch_sizes
+                            : allowed_batch_sizes_;
+
+  if (batcher_queue_options_.disable_padding || allowed_batch_sizes.empty()) {
     return batch_size;
   }
-  for (int allowed_size : allowed_batch_sizes_) {
+  for (int allowed_size : allowed_batch_sizes) {
     if (allowed_size >= batch_size) {
       return allowed_size;
     }
@@ -641,7 +662,8 @@ Status BatchResourceBase::ConcatInputTensors(
   const int padded_batch_size =
       just_for_warmup
           ? batch.task(0).forced_warmup_batch_size
-          : RoundToLowestAllowedBatchSize(batch.size() + unbatched_tasks_size);
+          : RoundToLowestAllowedBatchSize(batch.size() + unbatched_tasks_size,
+                                          IsLowPriorityBatch(batch));
   const int padding_amount =
       just_for_warmup ? padded_batch_size
                       : padded_batch_size - batch.size() - unbatched_tasks_size;
@@ -836,11 +858,12 @@ Status BatchResourceBase::SplitOutputTensors(
     task_sizes_plus_optional_padding.push_back(unbatched_tasks[i]->size());
   }
   int unbatched_tasks_size = GetTotalTaskSize(unbatched_tasks);
-  const int padding_size = batcher_queue_options_.disable_padding
-                               ? 0
-                               : RoundToLowestAllowedBatchSize(
-                                     batch->size() + unbatched_tasks_size) -
-                                     batch->size() - unbatched_tasks_size;
+  const int padding_size =
+      batcher_queue_options_.disable_padding
+          ? 0
+          : RoundToLowestAllowedBatchSize(batch->size() + unbatched_tasks_size,
+                                          IsLowPriorityBatch(*batch)) -
+                batch->size() - unbatched_tasks_size;
   if (padding_size > 0) {
     task_sizes_plus_optional_padding.push_back(padding_size);
   }

@@ -254,8 +254,12 @@ class SharedBatchScheduler
       size_t input_batch_size_limit = 0;
       // See QueueOptions.max_enqueued_batches
       size_t max_enqueued_batches = 0;
+      // See QueueOptions.allowed_batch_sizes
+      std::vector<int32> allowed_batch_sizes;
     };
-    // A subset of queue options for high priority input.
+    // A subset of queue options for high priority input. These options are
+    // currently not being used in favor of the equivalents options at the
+    // QueueOptions level.
     PriorityQueueOptions high_priority_queue_options;
     // A subset of queue options for low priority input.
     PriorityQueueOptions low_priority_queue_options;
@@ -464,6 +468,12 @@ class Queue {
   // A variant of `IsOpenBatchSchedulable`; used when batches are formed at
   // task enqueue time, and open batch is `high_priority_batches_.back()`.
   bool IsOpenBatchSchedulableAfterEagerSplit() const
+      TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
+
+  // Determines whether the low priority tasks in `low_priority_tasks_` can form
+  // a batch on their own. If yes, returns a batch that is ready to be
+  // processed. Otherwise, returns an empty unique_ptr.
+  std::unique_ptr<Batch<TaskType>> ScheduleLowPriorityBatch()
       TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   // Same as SchedulingCapacity(), but assumes the caller already holds a
@@ -1210,14 +1220,26 @@ Queue<TaskType>::ScheduleBatchWithEagerSplit() {
 
     if (batches.size() >= 2) {
       // There is at least one closed batch that is ready to be scheduled.
-      ++num_batches_being_processed_;
       batch_to_schedule = std::move(batches.front());
       batches.pop_front();
-    } else {
-      schedulable_batch_ = false;
     }
-  }
 
+    if (batch_to_schedule == nullptr) {
+      // If there was no schedulable batch in the batch queue, try to schedule
+      // from the low priority task queue.
+      batch_to_schedule = ScheduleLowPriorityBatch();
+    }
+
+    if (batch_to_schedule == nullptr) {
+      // There is neither high nor low priority batch that can be scheduled,
+      // mark the condition false and return the nullptr.
+      schedulable_batch_ = false;
+      return batch_to_schedule;
+    }
+
+    // Otherwise, increment the counter and return the batch.
+    ++num_batches_being_processed_;
+  }
   return batch_to_schedule;
 }
 
@@ -1329,7 +1351,7 @@ bool Queue<TaskType>::IsEmptyInternal() const {
   }
   const std::deque<std::unique_ptr<Batch<TaskType>>>& batches = GetBatches();
   return num_batches_being_processed_ == 0 && batches.size() == 1 &&
-         batches.back()->empty();
+         batches.back()->empty() && low_priority_tasks_.empty();
 }
 
 template <typename TaskType>
@@ -1380,6 +1402,38 @@ bool Queue<TaskType>::IsOpenBatchSchedulable() const {
   return closed_ || open_batch->size() >= max_execution_batch_size() ||
          env_->NowMicros() >=
              open_batch_start_time_micros_ + options_.batch_timeout_micros;
+}
+
+template <typename TaskType>
+std::unique_ptr<Batch<TaskType>> Queue<TaskType>::ScheduleLowPriorityBatch() {
+  std::unique_ptr<Batch<TaskType>> batch_to_schedule;
+  if (!options_.enable_priority_queue || low_priority_tasks_.empty()) {
+    // Return early if priority queue is disabled or there is no low priority
+    // task.
+    return batch_to_schedule;
+  }
+  if (env_->NowMicros() <
+          *low_priority_tasks_.EarliestTaskStartTime() +
+              options_.low_priority_queue_options.batch_timeout_micros &&
+      low_priority_tasks_.size() <
+          options_.low_priority_queue_options.max_execution_batch_size) {
+    // Return early if the low priority tasks can't fill up the max batch size
+    // and the earliest task didn't time out.
+    return batch_to_schedule;
+  }
+  if (!GetBatches().empty() && !GetBatches().front()->empty()) {
+    // Return early if there is a non-empty high priority batch in the queue.
+    return batch_to_schedule;
+  }
+
+  batch_to_schedule = std::make_unique<Batch<TaskType>>();
+  for (std::unique_ptr<TaskType>& task : low_priority_tasks_.RemoveTask(
+           options_.low_priority_queue_options.max_execution_batch_size)) {
+    batch_to_schedule->AddTask(std::move(task));
+  }
+  batch_to_schedule->Close();
+
+  return batch_to_schedule;
 }
 
 template <typename TaskType>
