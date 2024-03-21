@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/client/xla_builder.h"
 
 #include <algorithm>
+#include <array>
 #include <complex>
 #include <cstdint>
 #include <functional>
@@ -27,24 +28,31 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/algorithm/container.h"
 #include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/client/padding.h"
 #include "xla/client/sharding_builder.h"
 #include "xla/client/value_inference.h"
 #include "xla/client/xla_computation.h"
+#include "xla/comparison_util.h"
 #include "xla/debug_options_flags.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_input_output_alias_config.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
+#include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/ir/hlo_sharding.h"
+#include "xla/layout_util.h"
 #include "xla/service/hlo_parser.h"
 #include "xla/service/pattern_matcher.h"
 #include "xla/service/pattern_matcher_gmock.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/status.h"
 #include "xla/statusor.h"
 #include "xla/test.h"
 #include "xla/test_helpers.h"
@@ -2436,6 +2444,8 @@ INSTANTIATE_TEST_SUITE_P(
          /*broadcast_dimensions=*/{}, "f32[?, ?, 2, 2, <=2, <=2, ?]", &Mul},
         {"f32[?, 10]", "f32[1]", /*broadcast_dimensions=*/zero_array,
          "f32[?, 10]", &Mul},
+        {"f32[?, 10]", "f32[1]", /*broadcast_dimensions=*/zero_array,
+         "pred[?, 10]", &Ne},
         {"f32[1, ?, 2, ?, <=2, ?, ?]", "f32[?, 1, ?, 2, ?, <=2, ?]",
          /*broadcast_dimensions=*/{}, "f32[?, ?, 2, 2, <=2, <=2, ?]", &Pow},
         {"f32[?, 10]", "f32[1]", /*broadcast_dimensions=*/zero_array,

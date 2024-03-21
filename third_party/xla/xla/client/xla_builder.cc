@@ -1182,10 +1182,12 @@ XlaOp XlaBuilder::BinaryOp(HloOpcode binop, XlaOp lhs, XlaOp rhs,
                                   this, rhs, lhs, *lhs_shape));
         }
       } else {
+        Shape output_shape = shape;
+        output_shape.set_element_type(lhs_shape->element_type());
         TF_ASSIGN_OR_RETURN(UnboundedBroadcastResult broadcast_result,
                             BroadcastToOutputShapeWithUnbounded(
-                                this, lhs, *lhs_shape, rhs, *rhs_shape, shape,
-                                broadcast_dimensions));
+                                this, lhs, *lhs_shape, rhs, *rhs_shape,
+                                output_shape, broadcast_dimensions));
         updated_lhs = broadcast_result.lhs;
         updated_rhs = broadcast_result.rhs;
       }
@@ -3791,7 +3793,7 @@ XlaOp XlaBuilder::AllToAllTuple(
   return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
     TF_ASSIGN_OR_RETURN(const Shape* operand_shape, GetShapePtr(operand));
 
-    // The HloInstruction for Alltoall currently only handles the data
+    // The HloInstruction for AllToAll currently only handles the data
     // communication: it accepts N already split parts and scatters them to N
     // cores, and each core gathers the N received parts into a tuple as the
     // output. So here we explicitly split the operand before the hlo alltoall,
