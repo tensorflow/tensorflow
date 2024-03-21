@@ -1074,8 +1074,8 @@ using BoolTensorInputs = std::vector<std::pair<std::string, bool>>;
 // function's input signature. Currently this is only useful to invoke when
 // small_constants_optimizer is enabled because the runtime will have equivalent
 // FunctionDefs of the original tf.function without the boolean tensor input.
-StatusOr<BoolTensorInputs> GetBoolInputs(EagerOperation* op,
-                                         bool delete_inputs) {
+absl::StatusOr<BoolTensorInputs> GetBoolInputs(EagerOperation* op,
+                                               bool delete_inputs) {
   BoolTensorInputs result;
   if (!op->is_function()) return result;
   // Extract tensor inputs.
@@ -1188,7 +1188,7 @@ bool IsSummaryOptimizerEnabled(const EagerOperation* op) {
   return arg_value.value() == include_summary_arg.second;
 }
 
-StatusOr<Fprint128> GetKernelCacheKey(
+absl::StatusOr<Fprint128> GetKernelCacheKey(
     const EagerOperation& op, const Fprint128& op_cache_key,
     const std::vector<Device*>& input_device_ptrs,
     const std::unordered_map<int, DtypeAndPartialTensorShape>&
