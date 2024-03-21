@@ -142,6 +142,7 @@ cc_library(
         "@local_xla//xla/mlir_hlo",
         "@local_xla//xla/mlir_hlo:hlo_dialect_registration",
         "@local_xla//xla/mlir_hlo:mhlo_passes",
+        "@local_xla//xla/mlir_hlo:type_conversion",
         "@stablehlo//:chlo_ops",
         "@stablehlo//:register",
     ],

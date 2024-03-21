@@ -200,8 +200,7 @@ Status MlirToXlaComputation(mlir::ModuleOp module,
     mlir::PassManager pm(module->getContext());
     pm.addPass(mlir::mhlo::createStablehloLegalizeToHloPass());
     pm.addNestedPass<mlir::func::FuncOp>(
-        mlir::mhlo::createChloLegalizeToHloPass(
-            /*legalizeBroadcasts=*/true, /*expandCompositions=*/true));
+        mlir::mhlo::createChloLegalizeToHloPass());
     pm.addNestedPass<mlir::func::FuncOp>(mlir::createCanonicalizerPass());
     // In order to export to XLA, we must sink constants to control flow
     // regions, since XLA uses functional control flow.
@@ -303,12 +302,15 @@ absl::StatusOr<std::string> SerializeUsingNativeBytecode(
 
 absl::StatusOr<std::string> SerializeUsingVersionedStablehlo(
     mlir::ModuleOp mlir_module, absl::string_view target, bool inplace) {
-  // Legalize CHLO -> [MHLO+Shape] -> StableHLO
+  // Legalize CHLO -> [StableHLO+Shape] -> StableHLO
+  // Preserve higher-level ops with XLA support. To be replaced by composites.
   mlir::PassManager pm(mlir_module->getContext());
   pm.addNestedPass<mlir::func::FuncOp>(
-      mlir::mhlo::createChloLegalizeToHloPass());
+      mlir::mhlo::createChloLegalizeToHighLevelMhloPass());
   pm.addNestedPass<mlir::func::FuncOp>(
-      mlir::mhlo::createShapeLegalizeToHloPass());
+      mlir::stablehlo::createChloLegalizeToStablehloPass());
+  pm.addNestedPass<mlir::func::FuncOp>(
+      mlir::stablehlo::createShapeLegalizeToStablehloPass());
   pm.addPass(mlir::createReconcileUnrealizedCastsPass());
   pm.addPass(mlir::mhlo::createHloLegalizeToStablehloPass());
   if (!mlir::succeeded(pm.run(mlir_module))) {
@@ -316,7 +318,7 @@ absl::StatusOr<std::string> SerializeUsingVersionedStablehlo(
   }
 
   // Avoid mutating the original module if it will be reused elsewhere
-  mlir::OwningOpRef<mlir::ModuleOp> cloned = mlir_module.clone();
+  mlir::OwningOpRef<mlir::ModuleOp> cloned;
   if (!inplace) {
     cloned = mlir_module.clone();
     mlir_module = *cloned;

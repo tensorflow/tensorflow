@@ -331,7 +331,6 @@ cc_library(
         "@llvm-project//mlir:Transforms",
         "@local_xla//xla:xla_data_proto_cc",
         "@local_xla//xla/mlir_hlo",
-        "@local_xla//xla/mlir_hlo:chlo_legalize_to_hlo",
         "@local_xla//xla/mlir_hlo:mhlo_passes",
         "@local_xla//xla/translate/hlo_to_mhlo:attribute_importer",
         "@stablehlo//:chlo_ops",

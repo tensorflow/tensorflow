@@ -150,14 +150,8 @@ void AddPreQuantizationStableHloToTfPasses(
   // specific features like mhlo::ErfOp which aren't supported
   // in StableHLO, but we have CHLO->StableHLO decompositions to legalize.
   pass_manager.addPass(mlir::mhlo::createHloLegalizeToStablehloPass());
-  pass_manager.addPass(
-      mlir::stablehlo::experimental::createChloRecomposeOpsPass());
-  pass_manager.addNestedPass<mlir::func::FuncOp>(
-      mlir::mhlo::createChloLegalizeToHloBasisOpsPass());
-  pass_manager.addNestedPass<mlir::func::FuncOp>(
-      mlir::mhlo::createChloLegalizeToHloPass());
-  pass_manager.addNestedPass<mlir::func::FuncOp>(
-      mlir::mhlo::createShapeLegalizeToHloPass());
+  mlir::stablehlo::experimental::createChloLegalizeToStablehloPipeline(
+      pass_manager);
   pass_manager.addPass(mlir::mhlo::createHloLegalizeToStablehloPass());
 
   // The following two passes find specific uniform quantization patterns in
