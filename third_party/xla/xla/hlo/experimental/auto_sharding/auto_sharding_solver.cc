@@ -519,7 +519,8 @@ AutoShardingSolverResult CallORToolsSolver(
     }
     LOG(INFO) << "Minimum memory budget estimate: "
               << MinimumMemoryBudgetRequired(request);
-    LOG(INFO) << "Using memory budget: " << request.memory_budget();
+    LOG(INFO) << "Using memory budget: "
+              << static_cast<double>(request.memory_budget());
   }
 
   // d. specified via "BoolVarArray"
