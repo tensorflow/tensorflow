@@ -850,8 +850,10 @@ PjRtStreamExecutorClient::BufferFromHostBuffer(
     TF_ASSIGN_OR_RETURN(transpose, transpose_cache_.GetOrCreate(options));
   }
 
+  bool should_pack =
+      primitive_util::Is4BitType(type) && transfer_manager->PackSubbyteTypes();
   int64_t packed_size;
-  if (primitive_util::Is4BitType(type)) {
+  if (should_pack) {
     packed_size = CeilOfRatio<int64_t>(size, 2);
   } else {
     packed_size = size;
@@ -883,14 +885,14 @@ PjRtStreamExecutorClient::BufferFromHostBuffer(
   if (host_buffer_semantics == HostBufferSemantics::kImmutableOnlyDuringCall) {
     if (transpose) {
       transpose->Execute(data, staging_buffer.get());
-      if (primitive_util::Is4BitType(type)) {
+      if (should_pack) {
         PackInt4(absl::MakeConstSpan(
                      static_cast<const char*>(staging_buffer.get()), size),
                  absl::MakeSpan(static_cast<char*>(staging_buffer.get()),
                                 packed_size));
       }
     } else {
-      if (primitive_util::Is4BitType(type)) {
+      if (should_pack) {
         PackInt4(absl::MakeConstSpan(static_cast<const char*>(data), size),
                  absl::MakeSpan(static_cast<char*>(staging_buffer.get()),
                                 packed_size));
@@ -913,7 +915,7 @@ PjRtStreamExecutorClient::BufferFromHostBuffer(
   auto transfer_h2d =
       [local_client = client(), transfer_manager, local_device, data, size,
        type, packed_size, movable_device_buffer{device_buffer.ToClosure()},
-       device_shape, py_buffer{py_buffer.get()},
+       device_shape, should_pack, py_buffer{py_buffer.get()},
        on_device_shape{py_buffer->on_device_shape()},
        staging_buffer{std::move(staging_buffer)},
        on_done_with_host_buffer =
@@ -942,7 +944,7 @@ PjRtStreamExecutorClient::BufferFromHostBuffer(
               HostBufferSemantics::kImmutableOnlyDuringCall) {
             if (transpose) {
               transpose->Execute(data, staging_buffer.get());
-              if (primitive_util::Is4BitType(type)) {
+              if (should_pack) {
                 PackInt4(
                     absl::MakeConstSpan(
                         static_cast<const char*>(staging_buffer.get()), size),
@@ -950,7 +952,7 @@ PjRtStreamExecutorClient::BufferFromHostBuffer(
                                    packed_size));
               }
             } else {
-              if (primitive_util::Is4BitType(type)) {
+              if (should_pack) {
                 PackInt4(
                     absl::MakeConstSpan(static_cast<const char*>(data), size),
                     absl::MakeSpan(static_cast<char*>(staging_buffer.get()),
