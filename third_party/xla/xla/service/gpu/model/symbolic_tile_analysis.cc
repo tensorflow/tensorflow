@@ -219,5 +219,19 @@ void SymbolicTileAnalysis::SetTileParameters(
   tile_parameters_ = std::vector(parameters.begin(), parameters.end());
 }
 
+void SymbolicTileAnalysis::SetTileParametersWithDefaultOffsetsAndStrides(
+    absl::Span<int64_t const> sizes) {
+  std::vector<int64_t> parameters;
+  parameters.reserve(3 * sizes.size());
+
+  for (int64_t size : sizes) {
+    // Untiled dims have offset = 0 and stride = 1.
+    parameters.push_back(0);
+    parameters.push_back(size);
+    parameters.push_back(1);
+  }
+  SetTileParameters(parameters);
+}
+
 }  // namespace gpu
 }  // namespace xla
