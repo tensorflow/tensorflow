@@ -72,6 +72,9 @@
       schema globally in the converter and inference engine. The new behaviour
       can be disabled via experimental
       flag `converter._experimental_disable_per_channel_quantization_for_dense_layers = True`.
+    * The Python TF Lite Interpreter bindings now have an option
+      `experimental_default_delegate_latest_features` to enable all default
+      delegate features.
 
 ## Thanks to our Contributors
 
