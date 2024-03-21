@@ -18,6 +18,7 @@ limitations under the License.
 #include <memory>
 #include <vector>
 
+#include "absl/types/span.h"
 #include "tensorflow/compiler/tf2xla/tf2xla.h"
 #include "tensorflow/compiler/tf2xla/tf2xla.pb.h"
 #include "tensorflow/compiler/tf2xla/xla_compiled_cpu_function.h"
@@ -48,6 +49,18 @@ absl::StatusOr<size_t> ComputeResultIndex(
   TF_ASSIGN_OR_RETURN(const xla::BufferAllocation::Slice result_slice,
                       buffer_assignment.GetUniqueTopLevelOutputSlice());
   return result_slice.index();
+}
+
+// Returns the number of results.
+int CountResults(
+    absl::Span<const xla::cpu_function_runtime::BufferInfo> buffer_infos) {
+  int num_results = 0;
+  for (const auto& info : buffer_infos) {
+    if (info.is_result_parameter()) {
+      ++num_results;
+    }
+  }
+  return num_results;
 }
 
 // Collect names from `entries`, where T is one of
@@ -146,6 +159,7 @@ XlaJitCompiledCpuFunction::Compile(
       xla::cpu::CreateArgIndexTableFromBufferInfos(buffer_infos);
   TF_ASSIGN_OR_RETURN(size_t result_index,
                       ComputeResultIndex(buffer_assignment));
+  const int num_results = CountResults(buffer_infos);
 
   std::unique_ptr<XlaJitCompiledCpuFunction> jit_unique_ptr(
       new XlaJitCompiledCpuFunction);
@@ -173,6 +187,8 @@ XlaJitCompiledCpuFunction::Compile(
       &jit->static_data_, jit->arg_index_table_.size());
   XlaCompiledCpuFunction::set_static_data_num_variables(&jit->static_data_,
                                                         config.variable_size());
+  XlaCompiledCpuFunction::set_static_data_num_results(&jit->static_data_,
+                                                      num_results);
   XlaCompiledCpuFunction::set_static_data_result_index(&jit->static_data_,
                                                        result_index);
   // Optional metadata is collected and set below.
