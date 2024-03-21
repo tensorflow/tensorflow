@@ -101,7 +101,7 @@ func TestSavedModelWithEmptyTags(t *testing.T) {
 	}
 
 	if op := m.Graph.Operation("x"); op == nil {
-		t.Errorf("\"x\" operation not found in the graph of the loaded model")
+		t.Fatalf("\"x\" not found in graph")
 	}
 
 	t.Logf("Model loaded successfully with an empty tags set: %+v", m)
