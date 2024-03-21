@@ -218,6 +218,45 @@ bool PyTreeDef::operator==(const PyTreeDef& other) const {
   return true;
 }
 
+nb::object PyTreeRegistry::FlattenOneLevel(nb::handle x) const {
+  PyTreeRegistry::Registration const* custom;
+  PyTreeKind kind = KindOfObject(x, &custom);
+  switch (kind) {
+    case PyTreeKind::kNone:
+      return nb::make_tuple(nb::make_tuple(), nb::none());
+    case PyTreeKind::kTuple:
+    case PyTreeKind::kList:
+      return nb::make_tuple(nb::borrow(x), nb::none());
+    case PyTreeKind::kDict: {
+      nb::dict dict = nb::borrow<nb::dict>(x);
+      std::vector<nb::object> sorted_keys = GetSortedPyDictKeys(dict.ptr());
+      nb::tuple keys = nb::steal<nb::tuple>(PyTuple_New(sorted_keys.size()));
+      nb::tuple values = nb::steal<nb::tuple>(PyTuple_New(sorted_keys.size()));
+      for (size_t i = 0; i < sorted_keys.size(); ++i) {
+        PyTuple_SET_ITEM(values.ptr(), i,
+                         nb::object(dict[sorted_keys[i]]).release().ptr());
+        PyTuple_SET_ITEM(keys.ptr(), i, sorted_keys[i].release().ptr());
+      }
+      return nb::make_tuple(std::move(values), std::move(keys));
+    }
+    case PyTreeKind::kNamedTuple: {
+      nb::tuple in = nb::borrow<nb::tuple>(x);
+      nb::list out;
+      for (size_t i = 0; i < in.size(); ++i) {
+        out.append(in[i]);
+      }
+      return nb::make_tuple(std::move(out), x.type());
+    }
+    case PyTreeKind::kCustom: {
+      auto [leaves, aux_data] = custom->ToIterable(x);
+      return nb::make_tuple(std::move(leaves), std::move(aux_data));
+    }
+    default:
+      DCHECK(kind == PyTreeKind::kLeaf);
+      return nb::none();
+  }
+}
+
 template <typename T>
 void PyTreeDef::FlattenImpl(nb::handle handle, T& leaves,
                             const std::optional<nb::callable>& leaf_predicate) {
@@ -1122,6 +1161,8 @@ void BuildPytreeSubmodule(nb::module_& m) {
         return nb::make_tuple(std::move(leaves), std::move(def));
       },
       nb::arg("tree").none(), nb::arg("leaf_predicate").none() = std::nullopt);
+  registry.def("flatten_one_level", &PyTreeRegistry::FlattenOneLevel,
+               nb::arg("tree").none());
   registry.def("register_node", &PyTreeRegistry::Register);
   registry.def("__reduce__",
                [](nb::object self) { return self.attr("__name__"); });

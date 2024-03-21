@@ -87,6 +87,10 @@ class PyTreeRegistry : public std::enable_shared_from_this<PyTreeRegistry> {
   PyTreeKind KindOfObject(nanobind::handle obj,
                           PyTreeRegistry::Registration const** custom) const;
 
+  // Flattens a pytree one level, returning either a tuple of the leaves and
+  // the node data, or None, if the entry is a leaf.
+  nanobind::object FlattenOneLevel(nanobind::handle x) const;
+
  private:
   struct TypeHash {
     using is_transparent = void;
