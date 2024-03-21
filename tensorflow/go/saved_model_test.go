@@ -87,3 +87,22 @@ func TestSavedModelHalfPlusTwo(t *testing.T) {
 	// TODO(jhseu): half_plus_two has a tf.Example proto dependency to run.
 	// Add a more thorough test when the generated protobufs are available.
 }
+
+func TestSavedModelWithEmptyTags(t *testing.T) {
+	var (
+		exportDir = "testdata/saved_model/half_plus_two/00000123"
+		tags      = []string{}
+		options   = new(SessionOptions)
+	)
+
+	m, err := LoadSavedModel(exportDir, tags, options)
+	if err != nil {
+		t.Fatalf("LoadSavedModel() failed with an empty tags set: %v", err)
+	}
+
+	if op := m.Graph.Operation("x"); op == nil {
+		t.Errorf("\"x\" operation not found in the graph of the loaded model")
+	}
+
+	t.Logf("Model loaded successfully with an empty tags set: %+v", m)
+}
