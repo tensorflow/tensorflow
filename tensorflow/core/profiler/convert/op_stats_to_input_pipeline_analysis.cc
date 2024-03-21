@@ -222,7 +222,8 @@ InputPipelineAnalysisResult ComputeGenericInputPipelineAnalysisResult(
     } else {
       details.set_step_name(step_info.step_name());
     }
-    details.set_step_time_ms(PicoToMilli(step_info.duration_ps()));
+    details.set_step_time_ms(
+        tsl::profiler::PicoToMilli(step_info.duration_ps()));
     GenericStepBreakdown generic;
     bool success = step_info.step_breakdown().UnpackTo(&generic);
     if (!success && !step_info.step_breakdown().type_url().empty()) {
@@ -350,8 +351,9 @@ InputOpDetails ConvertOpMetricsToInputOpDetails(const OpMetrics& op_metrics,
   InputOpDetails details;
   details.set_op_name(op_metrics.name());
   details.set_count(op_metrics.occurrences());
-  details.set_time_in_ms(PicoToMilli(op_metrics.time_ps()));
-  details.set_self_time_in_ms(PicoToMilli(op_metrics.self_time_ps()));
+  details.set_time_in_ms(tsl::profiler::PicoToMilli(op_metrics.time_ps()));
+  details.set_self_time_in_ms(
+      tsl::profiler::PicoToMilli(op_metrics.self_time_ps()));
   details.set_time_in_percent(
       100.0 * SafeDivide(op_metrics.time_ps(), input_op_time_ps));
   details.set_self_time_in_percent(

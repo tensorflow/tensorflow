@@ -193,8 +193,8 @@ void PopulateOpMetricsNode(
       hbm_gibibytes_per_second,
       peak_mem_gibibytes_per_second_per_core[MemBwType::MEM_BW_TYPE_HBM_RW]);
   metrics->add_bandwidth_utils(hbm_bw_utilization);
-  double hbm_bytes =
-      GibiToGiga(hbm_gibibytes_per_second) * PicoToNano(op_metrics.time_ps());
+  double hbm_bytes = tsl::profiler::GibiToGiga(hbm_gibibytes_per_second) *
+                     tsl::profiler::PicoToNano(op_metrics.time_ps());
 
   const double sram_rd_gibibytes_per_second = GigaToGibi(
       GigaBytesPerSecondPerCore(op_metrics, MemorySpace::MEMORY_SPACE_ON_CHIP,
@@ -203,8 +203,9 @@ void PopulateOpMetricsNode(
       sram_rd_gibibytes_per_second,
       peak_mem_gibibytes_per_second_per_core[MemBwType::MEM_BW_TYPE_SRAM_RD]);
   metrics->add_bandwidth_utils(sram_rd_bw_utilization);
-  double sram_rd_bytes = GibiToGiga(sram_rd_gibibytes_per_second) *
-                         PicoToNano(op_metrics.time_ps());
+  double sram_rd_bytes =
+      tsl::profiler::GibiToGiga(sram_rd_gibibytes_per_second) *
+      tsl::profiler::PicoToNano(op_metrics.time_ps());
 
   const double sram_wr_gibibytes_per_second = GigaToGibi(
       GigaBytesPerSecondPerCore(op_metrics, MemorySpace::MEMORY_SPACE_ON_CHIP,
@@ -213,8 +214,9 @@ void PopulateOpMetricsNode(
       sram_wr_gibibytes_per_second,
       peak_mem_gibibytes_per_second_per_core[MemBwType::MEM_BW_TYPE_SRAM_WR]);
   metrics->add_bandwidth_utils(sram_wr_bw_utilization);
-  double sram_wr_bytes = GibiToGiga(sram_wr_gibibytes_per_second) *
-                         PicoToNano(op_metrics.time_ps());
+  double sram_wr_bytes =
+      tsl::profiler::GibiToGiga(sram_wr_gibibytes_per_second) *
+      tsl::profiler::PicoToNano(op_metrics.time_ps());
 
   metrics->add_raw_bytes_accessed_array(hbm_bytes);
   metrics->add_raw_bytes_accessed_array(sram_rd_bytes);
