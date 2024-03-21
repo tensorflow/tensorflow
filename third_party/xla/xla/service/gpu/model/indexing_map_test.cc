@@ -177,10 +177,10 @@ TEST_F(IndexingMapTest, Composition_ProducerAndConsumerHaveConstraints) {
   EXPECT_THAT(composed, MatchIndexingMap(R"(
                           (d0)[s0, s1, s2] -> (s2, d0, s1, s0)
                           domain:
-                          d0 in [0, 9]
-                          s0 in [0, 69]
+                          d0 in [0, 8]
+                          s0 in [1, 67]
                           s1 in [0, 19]
-                          s2 in [0, 7]
+                          s2 in [0, 4]
                           d0 mod 8 in [0, 0]
                           s0 mod 3 in [1, 1]
                           s2 mod 4 in [0, 0]
@@ -355,6 +355,34 @@ TEST_F(IndexingMapTest,
                           domain:
                           d0 in [0, 99]
                           s0 in [2, 3]
+                        )"));
+}
+
+TEST_F(IndexingMapTest, ConstraintMerge_Mod) {
+  IndexingMap indexing_map(
+      &indexing_context_,
+      ParseAffineMap("(d0)[s0, s1] -> (d0, s1, s0)", &mlir_context_),
+      {DimVar{{0, 4}}}, {RangeVar{{-21, -1}}, RangeVar{{0, 10}}},
+      /*rt_vars=*/{});
+  indexing_map.AddConstraint(ParseAffineExpr("d0 mod 3", &mlir_context_),
+                             Interval{0, 0});
+  indexing_map.AddConstraint(ParseAffineExpr("s0 mod 2", &mlir_context_),
+                             Interval{0, 0});
+  indexing_map.AddConstraint(ParseAffineExpr("s0 mod 3", &mlir_context_),
+                             Interval{0, 0});
+  indexing_map.AddConstraint(ParseAffineExpr("s1 mod 5", &mlir_context_),
+                             Interval{1, 1});
+  indexing_map.Simplify();
+
+  EXPECT_THAT(indexing_map.ToString(), MatchIndexingString(R"(
+                          (d0)[s0, s1] -> (d0, s1, s0)
+                          domain:
+                          d0 in [0, 3]
+                          s0 in [-18, -6]
+                          s1 in [1, 6]
+                          d0 mod 3 in [0, 0]
+                          s0 mod 6 in [0, 0]
+                          s1 mod 5 in [1, 1]
                         )"));
 }
 

@@ -336,6 +336,9 @@ class IndexingMap {
   // Returns true if simplification was performed.
   bool SimplifyConstraintRanges();
 
+  // Merges "mod" constraints for the same AffineExpr.
+  void MergeModConstraints();
+
   IndexingContext* indexing_context_ = nullptr;
   mlir::AffineMap affine_map_;
   std::vector<DimVar> dim_vars_;

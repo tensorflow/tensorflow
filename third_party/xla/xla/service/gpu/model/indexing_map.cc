@@ -908,6 +908,8 @@ bool IndexingMap::Simplify() {
     constraints_were_simplified = true;
     if (!SimplifyConstraintRanges()) break;
   }
+  // Simplify dependent constraints.
+  MergeModConstraints();
   // Simplify affine_map using the optimized ranges.
   // Potentially, we can be smarter about recreating the range_evaluator.
   RangeEvaluator range_evaluator(GetDimensionBounds(), GetSymbolBounds(),
@@ -1088,6 +1090,67 @@ void IndexingMap::RemoveUnusedSymbols() {
   }
   for (const auto& [expr, range] : to_add) {
     AddConstraint(expr, range);
+  }
+}
+
+void IndexingMap::MergeModConstraints() {
+  RangeEvaluator range_evaluator(GetDimensionBounds(), GetSymbolBounds(),
+                                 GetMLIRContext());
+
+  // Group constraints by LHS.
+  llvm::DenseMap<AffineExpr, llvm::SmallVector<AffineBinaryOpExpr, 2>>
+      grouped_constraints;
+  for (const auto& [expr, _] : constraints_) {
+    if (expr.getKind() != AffineExprKind::Mod) continue;
+    auto binop = mlir::cast<AffineBinaryOpExpr>(expr);
+    grouped_constraints[binop.getLHS()].push_back(binop);
+  }
+
+  // Merge constraints of type MOD.
+  // (X mod 3 == 0) & (X mod 2 == 0) => (X mod 6 == 0)
+  for (const auto& [lhs, binops] : grouped_constraints) {
+    llvm::DenseMap<int64_t, llvm::SmallVector<AffineBinaryOpExpr, 2>>
+        mod_groups;
+    for (const auto& binop : binops) {
+      Interval mod_result = constraints_[binop];
+      if (mod_result.IsPoint()) {
+        mod_groups[mod_result.lower].push_back(binop);
+      }
+    }
+    if (mod_groups.empty()) continue;
+
+    // Update domain for dimensions and symbols only.
+    Interval* update = nullptr;
+    if (lhs.getKind() == AffineExprKind::DimId) {
+      update = &GetMutableDimensionBound(
+          mlir::cast<AffineDimExpr>(lhs).getPosition());
+    } else if (lhs.getKind() == AffineExprKind::SymbolId) {
+      update = &GetMutableSymbolBound(
+          mlir::cast<AffineSymbolExpr>(lhs).getPosition());
+    }
+    for (const auto& [res, ops] : mod_groups) {
+      // Calculate least common multiple for the divisors.
+      int64_t div = 1;
+      for (const auto& op : ops) {
+        int64_t rhs_value =
+            range_evaluator.ComputeExpressionRange(op.getRHS()).lower;
+        div = std::lcm(div, rhs_value);
+      }
+      // Replace multiple constraints with a merged one.
+      if (ops.size() > 1) {
+        for (const auto& op : ops) {
+          constraints_.erase(op);
+        }
+        constraints_[lhs % div] = Interval{res, res};
+      }
+      // Update dimension and symbol bounds.
+      if (update != nullptr) {
+        int64_t l = (update->lower / div) * div + res;
+        update->lower = l >= update->lower ? l : l + div;
+        int64_t h = (update->upper / div) * div + res;
+        update->upper = h <= update->upper ? h : h - div;
+      }
+    }
   }
 }
 
