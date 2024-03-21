@@ -34,7 +34,7 @@ namespace gpu {
 // Wraps executable cuDNN graph objects.
 class CuDnnThunk : public Thunk {
  public:
-  CuDnnThunk(std::string serialized_graph, ThunkInfo,
+  CuDnnThunk(std::string fingerprint, ThunkInfo,
              absl::Span<const KernelArgument>);
   CuDnnThunk(const CuDnnThunk&) = delete;
   CuDnnThunk& operator=(const CuDnnThunk&) = delete;
@@ -50,7 +50,7 @@ class CuDnnThunk : public Thunk {
 
  private:
   absl::once_flag once_flag_;
-  std::string serialized_graph_;
+  std::string fingerprint_;
   std::shared_ptr<se::dnn::LazyDnnGraph> graph_;
   std::vector<BufferAllocation::Slice> args_;
 };

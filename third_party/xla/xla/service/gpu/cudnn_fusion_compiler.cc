@@ -30,7 +30,6 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
-#include "absl/strings/escaping.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/dfs_hlo_visitor_with_default.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
@@ -449,8 +448,10 @@ absl::StatusOr<se::gpu::CudnnGraph> PrepareGraph(
 
 class CuDnnFusionVisitor : public DfsHloRewriteVisitor {
  public:
-  explicit CuDnnFusionVisitor(se::dnn::DnnSupport& dnn_support)
-      : dnn_support_(dnn_support) {}
+  explicit CuDnnFusionVisitor(
+      se::dnn::DnnSupport& dnn_support,
+      CuDnnFusionCompiler::BinaryMap& compilation_results)
+      : dnn_support_(dnn_support), compilation_results_(compilation_results) {}
 
   absl::Status HandleFusion(HloInstruction* hlo) override {
     TF_ASSIGN_OR_RETURN(auto gpu_config,
@@ -461,10 +462,6 @@ class CuDnnFusionVisitor : public DfsHloRewriteVisitor {
     }
     int64_t plan_id = -1;
     if (fusion_backend_config.has_cudnn_fusion_config()) {
-      if (fusion_backend_config.cudnn_fusion_config().has_serialized_graph()) {
-        VLOG(4) << "Skipping already serialized " << hlo->ToShortString();
-        return absl::OkStatus();
-      }
       plan_id = fusion_backend_config.cudnn_fusion_config().plan_id();
     }
 
@@ -473,7 +470,7 @@ class CuDnnFusionVisitor : public DfsHloRewriteVisitor {
 
     const std::string cache_key =
         GetComputationFingerprint(hlo->fused_instructions_computation(), {});
-    std::string& cache_entry = compilation_cache_[cache_key];
+    std::string& cache_entry = compilation_results_[cache_key];
     if (cache_entry.empty()) {
       TF_ASSIGN_OR_RETURN(
           se::gpu::CudnnGraph graph,
@@ -508,16 +505,15 @@ class CuDnnFusionVisitor : public DfsHloRewriteVisitor {
 
       std::vector<uint8_t> serialized_graph;
       RETURN_IF_CUDNN_FRONTEND_ERROR(graph.Graph().serialize(serialized_graph));
-      cache_entry = absl::CEscape(
-          absl::string_view(reinterpret_cast<char*>(serialized_graph.data()),
-                            serialized_graph.size()));
+      cache_entry =
+          std::string(reinterpret_cast<char*>(serialized_graph.data()),
+                      serialized_graph.size());
     } else {
       VLOG(4) << "Cache hit.";
     }
     auto cudnn_config = gpu_config.mutable_fusion_backend_config()
                             ->mutable_cudnn_fusion_config();
     cudnn_config->set_plan_id(plan_id);
-    cudnn_config->set_serialized_graph(cache_entry);
     TF_RETURN_IF_ERROR(hlo->set_backend_config(gpu_config));
 
     MarkAsChanged();
@@ -527,7 +523,7 @@ class CuDnnFusionVisitor : public DfsHloRewriteVisitor {
  private:
   se::dnn::DnnSupport& dnn_support_;
   // <HLO computation fingerprint, serialized compiled cuDNN graph>.
-  absl::flat_hash_map<std::string, std::string> compilation_cache_;
+  CuDnnFusionCompiler::BinaryMap& compilation_results_;
 };
 
 }  // namespace
@@ -536,13 +532,13 @@ absl::StatusOr<bool> CuDnnFusionCompiler::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   XLA_SCOPED_LOGGING_TIMER("cuDNN fusion compiler");
-  return CuDnnFusionVisitor(dnn_support_)
+  return CuDnnFusionVisitor(dnn_support_, compilation_results_)
       .RunOnModule(module, execution_threads);
 }
 
 int CuDnnFusionCompiler::GetAvailablePlanCount(
-    const HloFusionInstruction& hlo) const {
-  auto graph = PrepareGraph(dnn_support_, hlo);
+    se::StreamExecutor& stream_exec, const HloFusionInstruction& hlo) {
+  auto graph = PrepareGraph(*stream_exec.AsDnn(), hlo);
   if (!graph.ok()) {
     return 0;
   }

@@ -151,7 +151,6 @@ message CustomFusionConfig {
 
 message CuDnnFusionConfig {
   int64 plan_id = 1;
-  optional string serialized_graph = 2;
 }
 
 message FusionBackendConfig {

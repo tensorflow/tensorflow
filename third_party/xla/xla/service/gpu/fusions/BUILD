@@ -562,7 +562,6 @@ cc_library(
         "//xla/hlo/ir:hlo",
         "//xla/service/gpu:hlo_fusion_analysis",
         "//xla/service/gpu/runtime:cudnn_thunk",
-        "@com_google_absl//absl/strings",
     ],
 )
 

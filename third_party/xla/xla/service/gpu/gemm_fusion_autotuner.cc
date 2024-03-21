@@ -571,8 +571,6 @@ absl::StatusOr<std::unique_ptr<HloModule>> CudnnGemmAutotuneExtractor(
   TF_RETURN_IF_ERROR(
       new_module->entry_computation()->root_instruction()->set_backend_config(
           gpu_config));
-  CuDnnFusionCompiler compiler(autotune_config);
-  TF_RETURN_IF_ERROR(compiler.Run(new_module.get()).status());
 
   return new_module;
 }
@@ -592,18 +590,19 @@ bool IsFusionKind(const HloInstruction& hlo, absl::string_view kind) {
 
 int GetCuDnnPlanCount(const HloInstruction& hlo,
                       const AutotuneConfig& autotune_config) {
-  auto gpu_config = hlo.backend_config<GpuBackendConfig>();
-  if (!gpu_config.ok() ||
+  if (auto gpu_config = hlo.backend_config<GpuBackendConfig>();
+      !gpu_config.ok() ||
       gpu_config->fusion_backend_config().has_cudnn_fusion_config()) {
     return {};
   }
-  return CuDnnFusionCompiler(autotune_config)
-      .GetAvailablePlanCount(*DynCast<HloFusionInstruction>(&hlo));
+  return CuDnnFusionCompiler::GetAvailablePlanCount(
+      *autotune_config.GetExecutor(), *DynCast<HloFusionInstruction>(&hlo));
 }
 
 bool IsCuDnnEnabled(const AutotuneConfig& config,
                     const DebugOptions& debug_opts) {
-  return std::get<se::CudaComputeCapability>(config.GetGpuComputeCapability())
+  return !config.IsDeviceless() &&
+         std::get<se::CudaComputeCapability>(config.GetGpuComputeCapability())
              .IsAtLeastHopper() &&
          debug_opts.xla_gpu_cudnn_gemm_fusion_level() > 0 &&
          GetDnnVersionInfo(config.GetExecutor()).major_version() >= 9;

@@ -124,6 +124,7 @@ limitations under the License.
 #include "xla/service/gpu/compile_module_to_llvm_ir.h"
 #include "xla/service/gpu/conv_layout_normalization.h"
 #include "xla/service/gpu/copy_fusion.h"
+#include "xla/service/gpu/cudnn_fusion_compiler.h"
 #include "xla/service/gpu/custom_kernel_fusion_rewriter.h"
 #include "xla/service/gpu/dot_dimension_sorter.h"
 #include "xla/service/gpu/dot_operand_converter.h"
@@ -391,13 +392,16 @@ class GpuThunkAotCompilationResult : public AotCompilationResult {
   static absl::StatusOr<std::unique_ptr<GpuThunkAotCompilationResult>>
   FromModule(const HloModule* hlo_module,
              const BufferAssignment* buffer_assignment,
-             std::string_view asm_text, absl::Span<const uint8_t> binary) {
+             std::string_view asm_text, absl::Span<const uint8_t> binary,
+             const Thunk::BinaryMap& dnn_compiled_graphs) {
     CompilationResultProto proto;
     TF_ASSIGN_OR_RETURN(*proto.mutable_hlo_module_with_config(),
                         hlo_module->ToProtoWithConfig());
     *proto.mutable_buffer_assignment() = buffer_assignment->ToProto();
     proto.set_asm_text(std::string(asm_text));
     proto.set_binary(binary.data(), binary.size());
+    proto.mutable_dnn_compiled_graphs()->insert(dnn_compiled_graphs.cbegin(),
+                                                dnn_compiled_graphs.cend());
     return std::unique_ptr<GpuThunkAotCompilationResult>(
         new GpuThunkAotCompilationResult(hlo_module->Clone(),
                                          std::move(proto)));
@@ -506,6 +510,9 @@ GpuThunkAotCompilationResult::LoadExecutable(
       GpuExecutable::Create(GpuExecutable::Params{
           /*asm_text=*/proto_.asm_text(),
           /*binary=*/binary,
+          /*dnn_compiled_graphs=*/
+          Thunk::BinaryMap(proto_.dnn_compiled_graphs().cbegin(),
+                           proto_.dnn_compiled_graphs().cend()),
           /*gpu_version=*/gpu_device_info.gpu_compute_capability(),
           /*executable=*/std::move(thunk_sequence),
           /*constants=*/std::move(constants),
@@ -1974,6 +1981,12 @@ GpuCompiler::CompileToBackendResult(
 absl::StatusOr<std::unique_ptr<Executable>> GpuCompiler::RunBackend(
     std::unique_ptr<HloModule> module, se::StreamExecutor* stream_exec,
     const CompileOptions& options) {
+  Thunk::BinaryMap dnn_compiled_graphs;
+  if (stream_exec) {
+    CuDnnFusionCompiler cudnn_compiler(*stream_exec, dnn_compiled_graphs);
+    TF_RETURN_IF_ERROR(cudnn_compiler.Run(&*module).status());
+  }
+
   const DebugOptions& debug_opts = module->config().debug_options();
   TF_ASSIGN_OR_RETURN(TargetConfig gpu_target_config,
                       GetTargetConfig(options, debug_opts, stream_exec));
@@ -2048,6 +2061,8 @@ absl::StatusOr<std::unique_ptr<Executable>> GpuCompiler::RunBackend(
               ? std::string()
               : std::move(res.backend_result.asm_text),
           /*binary=*/std::move(res.backend_result.binary),
+          /*dnn_compiled_graphs=*/
+          std::move(dnn_compiled_graphs),
           /*gpu_version=*/gpu_device_info.gpu_compute_capability(),
           /*executable=*/std::move(res.compile_module_results.executable),
           /*constants=*/std::move(res.compile_module_results.constants),
@@ -2140,7 +2155,8 @@ GpuCompiler::CompileAheadOfTime(std::unique_ptr<HloModuleGroup> module_group,
         results.emplace_back(),
         GpuThunkAotCompilationResult::FromModule(
             module.get(), res.compile_module_results.buffer_assignment.get(),
-            res.backend_result.asm_text, res.backend_result.binary));
+            res.backend_result.asm_text, res.backend_result.binary,
+            res.backend_result.dnn_compiled_graphs));
   }
 
   return std::move(results);
@@ -2160,7 +2176,8 @@ absl::StatusOr<std::unique_ptr<AotCompilationResult>> GpuCompiler::Export(
 
   return GpuThunkAotCompilationResult::FromModule(
       &gpu_executable->module(), gpu_executable->buffer_assignment(),
-      gpu_executable->text(), gpu_executable->binary());
+      gpu_executable->text(), gpu_executable->binary(),
+      gpu_executable->dnn_compiled_graphs());
 }
 
 absl::Status GpuCompiler::RunPostSchedulingPipelines(
