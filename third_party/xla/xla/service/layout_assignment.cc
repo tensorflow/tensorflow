@@ -2004,9 +2004,14 @@ Status LayoutAssignment::PropagateBufferConstraintToUses(
       VLOG(3) << "Propagating layout through backedge"
               << buffer_constraint.layout().ToString();
       int64_t index = user->operand_index(buffer.instruction());
-      TF_ASSIGN_OR_RETURN(
-          auto buffer, points_to_analysis_->GetBufferDefinedAt(
-                           user->parent()->parameter_instruction(0), {index}));
+
+      const HloInstruction* inputs = user->parent()->parameter_instruction(0);
+
+      ShapeIndex used_index = buffer.index();
+      used_index.push_front(index);
+
+      TF_ASSIGN_OR_RETURN(auto buffer, points_to_analysis_->GetBufferDefinedAt(
+                                           inputs, used_index));
 
       TF_RETURN_IF_ERROR(SetBufferLayout(buffer_constraint.layout(), *buffer,
                                          /*mandatory=*/false));
