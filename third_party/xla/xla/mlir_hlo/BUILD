@@ -1054,6 +1054,7 @@ cc_library(
         "@llvm-project//mlir:TensorTransforms",
         "@llvm-project//mlir:TensorUtils",
         "@llvm-project//mlir:TransformDialect",
+        "@llvm-project//mlir:TransformDialectInterfaces",
         "@llvm-project//mlir:TransformDialectTransforms",
         "@llvm-project//mlir:TransformUtils",
         "@llvm-project//mlir:Transforms",
