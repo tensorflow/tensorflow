@@ -20,10 +20,9 @@ limitations under the License.
 #define _USE_MATH_DEFINES
 #include <algorithm>
 #include <array>
+#include <cassert>
 #include <cmath>
 #include <limits>
-#include <numeric>
-#include <vector>
 
 #include "llvm/ADT/SmallVector.h"
 #include "mhlo/IR/hlo_ops.h"
@@ -34,7 +33,6 @@ limitations under the License.
 #include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/Dialect/Shape/IR/Shape.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
-#include "mlir/IR/Attributes.h"
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/ImplicitLocOpBuilder.h"
 #include "mlir/IR/MLIRContext.h"
@@ -1136,7 +1134,11 @@ Value materializeZeta(ConversionPatternRewriter &rewriter, Location loc,
   assert(args.size() == 2);
   Value x = args[0];
   Value q = args[1];
-  static const std::array<double, 12> kZetaCoeffs{
+
+  static constexpr auto kTerms = 12;
+  static constexpr auto kIters = 9;
+  static constexpr auto kTwoTermsMinusOne = 2 * kTerms - 1;
+  static constexpr auto kZetaCoeffs = std::array<double, kTerms>{
       -7.1661652561756670113e18,
       1.8152105401943546773e17,
       -4.5979787224074726105e15,
@@ -1153,79 +1155,84 @@ Value materializeZeta(ConversionPatternRewriter &rewriter, Location loc,
 
   // For speed we'll always use 9 iterations for the initial series estimate,
   // and a 12 term expansion for the Euler-Maclaurin formula.
-  Value a = q;
-  Value zero = chlo::getConstantLike(rewriter, loc, 0.0, a);
-  Value negPower = zero;
+  Value zero = chlo::getConstantLike(rewriter, loc, 0.0, q);
+  Value one = chlo::getConstantLike(rewriter, loc, 1.0, q);
+  Value acc = q;
+  Value qNegPower = zero;
   Value negX = rewriter.create<mhlo::NegOp>(loc, x);
-  Value initialSum = rewriter.create<mhlo::PowOp>(loc, q, negX);
-  Value one = chlo::getConstantLike(rewriter, loc, 1.0, a);
-  for (int i = 0; i < 9; ++i) {
-    a = rewriter.create<mhlo::AddOp>(loc, a, one);
-    negPower = rewriter.create<mhlo::PowOp>(loc, a, negX);
-    initialSum = rewriter.create<mhlo::AddOp>(loc, initialSum, negPower);
+  Value powerSum = rewriter.create<mhlo::PowOp>(loc, q, negX);
+  for (int i = 0; i < kIters; ++i) {
+    acc = rewriter.create<mhlo::AddOp>(loc, acc, one);
+    qNegPower = rewriter.create<mhlo::PowOp>(loc, acc, negX);
+    powerSum = rewriter.create<mhlo::AddOp>(loc, powerSum, qNegPower);
   }
-  a = rewriter.create<mhlo::AddOp>(loc, a, one);
-  negPower = rewriter.create<mhlo::PowOp>(loc, a, negX);
+  acc = rewriter.create<mhlo::AddOp>(loc, acc, one);
+  qNegPower = rewriter.create<mhlo::PowOp>(loc, acc, negX);
   Value oneLikeX = chlo::getConstantLike(rewriter, loc, 1.0, x);
-  Value xMinusOne = rewriter.create<mhlo::SubtractOp>(loc, x, oneLikeX);
-  Value negPowerMulA = rewriter.create<mhlo::MulOp>(loc, negPower, a);
-  Value negPowerMulADivXMinusOne =
-      rewriter.create<mhlo::DivOp>(loc, negPowerMulA, xMinusOne);
-  Value s =
-      rewriter.create<mhlo::AddOp>(loc, initialSum, negPowerMulADivXMinusOne);
-  Value aInverseSquare = rewriter.create<mhlo::DivOp>(
-      loc, one, rewriter.create<mhlo::MulOp>(loc, a, a));
+  Value correctionEulerMaclaurin = rewriter.create<mhlo::DivOp>(
+      loc, rewriter.create<mhlo::MulOp>(loc, qNegPower, acc),
+      rewriter.create<mhlo::SubtractOp>(loc, x, oneLikeX));
 
-  Value hornerSum = zero;
-  Value factor = one;
+  // Manual reciprocal of the square root as mhlo::RsqrtOp decreases precision.
+  Value rsqrtAcc = rewriter.create<mhlo::DivOp>(
+      loc, one, rewriter.create<mhlo::MulOp>(loc, acc, acc));
+
   // Use Horner's rule for this.
   // Note this differs from Cephes which does a 'naive' polynomial evaluation.
   // Using Horner's rule allows to avoid some NaN's and Infs from happening,
   // resulting in more numerically stable code.
-  for (int i = 0; i < 11; ++i) {
+  Value hornerSum = zero;
+  Value hornerProduct = one;
+
+  for (int i = 0; i < kTerms - 1; ++i) {
     Value factorLhs = rewriter.create<mhlo::AddOp>(
-        loc, x, chlo::getConstantLike(rewriter, loc, 22 - 2 * i, x));
+        loc, x,
+        chlo::getConstantLike(rewriter, loc, kTwoTermsMinusOne - 1 - 2 * i, x));
     Value factorRhs = rewriter.create<mhlo::AddOp>(
-        loc, x, chlo::getConstantLike(rewriter, loc, 21 - 2 * i, x));
-    factor = rewriter.create<mhlo::MulOp>(loc, factorLhs, factorRhs);
+        loc, x,
+        chlo::getConstantLike(rewriter, loc, kTwoTermsMinusOne - 2 - 2 * i, x));
+    hornerProduct = rewriter.create<mhlo::MulOp>(loc, factorLhs, factorRhs);
     hornerSum = rewriter.create<mhlo::MulOp>(
-        loc, factor,
+        loc, hornerProduct,
         rewriter.create<mhlo::MulOp>(
-            loc, aInverseSquare,
+            loc, rsqrtAcc,
             rewriter.create<mhlo::AddOp>(
                 loc, hornerSum,
-                chlo::getConstantLike(rewriter, loc, 1. / kZetaCoeffs[i], a))));
+                chlo::getConstantLike(rewriter, loc, 1. / kZetaCoeffs[i],
+                                      acc))));
   }
-  Value zeroPointFiveLikeNegPower =
-      chlo::getConstantLike(rewriter, loc, .5, negPower);
-  Value xDivA = rewriter.create<mhlo::DivOp>(loc, x, a);
-  s = rewriter.create<mhlo::AddOp>(
-      loc, s,
-      rewriter.create<mhlo::MulOp>(
-          loc, negPower,
-          rewriter.create<mhlo::AddOp>(
-              loc, zeroPointFiveLikeNegPower,
-              rewriter.create<mhlo::MulOp>(
-                  loc, xDivA,
-                  rewriter.create<mhlo::AddOp>(
-                      loc,
-                      chlo::getConstantLike(rewriter, loc, 1. / kZetaCoeffs[11],
-                                            a),
-                      hornerSum)))));
+  Value zeroPointFiveLikeQNegPower =
+      chlo::getConstantLike(rewriter, loc, .5, qNegPower);
+  Value xDivAcc = rewriter.create<mhlo::DivOp>(loc, x, acc);
+  Value bernoulliTailTerm = rewriter.create<mhlo::MulOp>(
+      loc, qNegPower,
+      rewriter.create<mhlo::AddOp>(
+          loc, zeroPointFiveLikeQNegPower,
+          rewriter.create<mhlo::MulOp>(
+              loc, xDivAcc,
+              rewriter.create<mhlo::AddOp>(
+                  loc,
+                  chlo::getConstantLike(rewriter, loc,
+                                        1. / kZetaCoeffs[kTerms - 1], acc),
+                  hornerSum))));
+  Value accurateResult = rewriter.create<mhlo::AddOp>(
+      loc,
+      rewriter.create<mhlo::AddOp>(loc, powerSum, correctionEulerMaclaurin),
+      bernoulliTailTerm);
 
   // Use the initial zeta sum without the correction term coming
   // from Euler-Maclaurin if it is accurate enough.
-  Value absNegPower = rewriter.create<mhlo::AbsOp>(loc, negPower);
-  Value absInitialSum = rewriter.create<mhlo::AbsOp>(loc, initialSum);
+  Value absQNegPower = rewriter.create<mhlo::AbsOp>(loc, qNegPower);
+  Value absPowerSum = rewriter.create<mhlo::AbsOp>(loc, powerSum);
   Value output = rewriter.create<mhlo::SelectOp>(
       loc,
       rewriter.create<mhlo::CompareOp>(
-          loc, absNegPower,
+          loc, absQNegPower,
           rewriter.create<mhlo::MulOp>(
-              loc, absInitialSum,
-              chlo::getConstantLikeSmallestFiniteValue(rewriter, loc, a)),
+              loc, absPowerSum,
+              chlo::getConstantLikeSmallestFiniteValue(rewriter, loc, acc)),
           mhlo::ComparisonDirection::LT),
-      initialSum, s);
+      powerSum, accurateResult);
 
   // Function is not defined for x < 1.
   Value nan = chlo::getConstantLike(
