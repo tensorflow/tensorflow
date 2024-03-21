@@ -41,8 +41,8 @@ limitations under the License.
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef TENSORFLOW_COMPILER_MLIR_LITE_QUANTIZATION_IR_FAKEQUANTSUPPORT_H_
-#define TENSORFLOW_COMPILER_MLIR_LITE_QUANTIZATION_IR_FAKEQUANTSUPPORT_H_
+#ifndef TENSORFLOW_COMPILER_MLIR_QUANTIZATION_COMMON_IR_FAKEQUANTSUPPORT_H_
+#define TENSORFLOW_COMPILER_MLIR_QUANTIZATION_COMMON_IR_FAKEQUANTSUPPORT_H_
 
 #include "mlir/Dialect/Quant/QuantTypes.h"  // from @llvm-project
 
@@ -71,4 +71,4 @@ quant::UniformQuantizedPerAxisType fakeQuantAttrsToType(
 }  // namespace quantfork
 }  // namespace mlir
 
-#endif  // TENSORFLOW_COMPILER_MLIR_LITE_QUANTIZATION_IR_FAKEQUANTSUPPORT_H_
+#endif  // TENSORFLOW_COMPILER_MLIR_QUANTIZATION_COMMON_IR_FAKEQUANTSUPPORT_H_

@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPILER_MLIR_LITE_QUANTIZATION_IR_UNIFORMSUPPORT_H_
-#define TENSORFLOW_COMPILER_MLIR_LITE_QUANTIZATION_IR_UNIFORMSUPPORT_H_
+#ifndef TENSORFLOW_COMPILER_MLIR_QUANTIZATION_COMMON_IR_UNIFORMSUPPORT_H_
+#define TENSORFLOW_COMPILER_MLIR_QUANTIZATION_COMMON_IR_UNIFORMSUPPORT_H_
 
 #include <utility>
 
@@ -237,4 +237,4 @@ class UniformQuantizedPerAxisValueConverter {
 }  // namespace quantfork
 }  // namespace mlir
 
-#endif  // TENSORFLOW_COMPILER_MLIR_LITE_QUANTIZATION_IR_UNIFORMSUPPORT_H_
+#endif  // TENSORFLOW_COMPILER_MLIR_QUANTIZATION_COMMON_IR_UNIFORMSUPPORT_H_
