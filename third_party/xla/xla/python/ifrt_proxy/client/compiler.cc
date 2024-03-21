@@ -101,10 +101,9 @@ absl::StatusOr<std::unique_ptr<xla::ifrt::LoadedExecutable>> Compiler::Compile(
       response->addressable_device_logical_ids_size());
   for (const auto& logical_device_id :
        response->addressable_device_logical_ids()) {
-    addressable_device_logical_device_ids.push_back({
-        .replica = logical_device_id.replica(),
-        .partition = logical_device_id.partition(),
-    });
+    xla::ifrt::LoadedExecutable::LogicalDeviceIds id{
+        logical_device_id.replica(), logical_device_id.partition()};
+    addressable_device_logical_device_ids.push_back(id);
   }
 
   std::vector<xla::ifrt::Device*> addressable_devices;
