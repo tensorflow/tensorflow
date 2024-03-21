@@ -97,10 +97,10 @@ class RangeOp : public OpKernel {
                           Eigen::numext::abs(delta));
     } else {
       auto size_auto =
-          Eigen::numext::ceil(Eigen::numext::abs((limit - start) / delta));
+          Eigen::numext::ceil(Eigen::numext::abs((limit / delta) - (start / delta)));
       OP_REQUIRES(
           context, size_auto <= std::numeric_limits<int64_t>::max(),
-          errors::InvalidArgument("Requires ((limit - start) / delta) <= ",
+          errors::InvalidArgument("Requires ((limit / delta) - (start / delta)) <= ",
                                   std::numeric_limits<int64_t>::max()));
       size = static_cast<int64_t>(size_auto);
     }
