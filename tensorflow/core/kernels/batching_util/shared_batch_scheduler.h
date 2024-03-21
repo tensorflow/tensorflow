@@ -31,6 +31,7 @@ limitations under the License.
 
 #include "absl/log/check.h"
 #include "absl/status/status.h"
+#include "absl/strings/str_format.h"
 #include "absl/time/clock.h"
 #include "tensorflow/core/kernels/batching_util/batch_input_task.h"
 #include "tensorflow/core/kernels/batching_util/batch_scheduler.h"
@@ -475,6 +476,15 @@ class Queue {
   Status ValidateBatchTaskQueueCapacity(TaskType* task) const
       TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
+  // Returns an error if the low priority task queue doesn't have capacity for
+  // this task using the low priority batch options. Since the low priority
+  // tasks are not batched until they get scheduled, it only checks that a
+  // single task does not it exceed input batch size limit and the total size of
+  // the tasks in the queue does not exceed the max batch size * max enqueued
+  // batch sizes.
+  Status ValidateLowPriorityTaskQueueCapacity(const TaskType& task) const
+      TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
+
   // The task size of the last batch in the queue.
   size_t tail_batch_task_size() const TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
@@ -884,11 +894,6 @@ Queue<TaskType>::~Queue() {
 
 template <typename TaskType>
 Status Queue<TaskType>::Schedule(std::unique_ptr<TaskType>* task) {
-  if ((*task)->size() > options_.input_batch_size_limit) {
-    return errors::InvalidArgument("Task size ", (*task)->size(),
-                                   " is larger than maximum input batch size ",
-                                   options_.input_batch_size_limit);
-  }
   if (options_.enable_lazy_split) {
     return ScheduleWithLazySplit(std::move(task));
   }
@@ -1048,6 +1053,7 @@ Status Queue<TaskType>::ScheduleWithoutOrEagerSplit(
     if (IsLowPriorityTask(task)) {
       // Insert the task to the low priority task queue instead of the high
       // priority batch queue below.
+      TF_RETURN_IF_ERROR(ValidateLowPriorityTaskQueueCapacity(**task));
       low_priority_tasks_.AddTask(std::move(*task), env_->NowMicros());
     } else {
       TF_RETURN_IF_ERROR(ScheduleWithoutOrEagerSplitImpl(task));
@@ -1084,7 +1090,7 @@ size_t Queue<TaskType>::NumEnqueuedTasks() const {
   for (const auto& batch : GetBatches()) {
     num_enqueued_tasks += batch->num_tasks();
   }
-  return num_enqueued_tasks;
+  return num_enqueued_tasks + low_priority_tasks_.num_tasks();
 }
 
 template <typename TaskType>
@@ -1109,6 +1115,14 @@ size_t Queue<TaskType>::SchedulingCapacityInternal() const {
 
 template <typename TaskType>
 Status Queue<TaskType>::ValidateBatchTaskQueueCapacity(TaskType* task) const {
+  // Check if the task size is larger than the batch size limit, regardless of
+  // the batch capacity.
+  if (task->size() > options_.input_batch_size_limit) {
+    return absl::InvalidArgumentError(absl::StrFormat(
+        "Task size %d is larger than maximum input batch size %d", task->size(),
+        options_.input_batch_size_limit));
+  }
+
   // Queue creation requires that `enable_large_batch_splitting` is true
   // when `enable_lazy_split` is true, so this covers both eager split and
   // lazy split.
@@ -1144,6 +1158,36 @@ Status Queue<TaskType>::ValidateBatchTaskQueueCapacity(TaskType* task) const {
           batches.size(), " batches enqueued and max_enqueued_batches is ",
           options_.max_enqueued_batches);
     }
+  }
+  return absl::OkStatus();
+}
+
+template <typename TaskType>
+Status Queue<TaskType>::ValidateLowPriorityTaskQueueCapacity(
+    const TaskType& task) const {
+  // Unlike the high priority batch capacity validation where having only
+  // input_batch_size_limit without max_execution_batch_size is allowed, it
+  // doesn't have the backward compatibility check and always assume that
+  // max_execution_batch_size is present.
+  if (task.size() >
+      options_.low_priority_queue_options.max_execution_batch_size) {
+    return absl::UnavailableError(absl::StrFormat(
+        "The low priority task queue to which this task was submitted has "
+        "max_execution_batch_size=%d and the task size is %d",
+        options_.low_priority_queue_options.max_execution_batch_size,
+        task.size()));
+  }
+  if (low_priority_tasks_.size() + task.size() >
+      options_.low_priority_queue_options.max_enqueued_batches *
+          options_.low_priority_queue_options.max_execution_batch_size) {
+    return absl::UnavailableError(absl::StrFormat(
+        "The low priority task queue to which this task was submitted does not "
+        "have the capcity to handle this task; currently the low priority "
+        "queue has %d tasks enqueued and the submitted task size is %d while "
+        "max_enqueued_batches=%d and max_execution_batch_size=%d",
+        low_priority_tasks_.size(), task.size(),
+        options_.low_priority_queue_options.max_enqueued_batches,
+        options_.low_priority_queue_options.max_execution_batch_size));
   }
   return absl::OkStatus();
 }

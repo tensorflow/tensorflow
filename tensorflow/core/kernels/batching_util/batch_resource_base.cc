@@ -532,6 +532,13 @@ BatchResourceBase::GetBatcherQueueOptions(
       low_priority_max_enqueued_batches;
   batcher_queue_options.low_priority_queue_options.batch_timeout_micros =
       low_priority_batch_timeout_micros;
+  if (low_priority_allowed_batch_sizes.empty()) {
+    batcher_queue_options.low_priority_queue_options.max_execution_batch_size =
+        low_priority_max_batch_size;
+  } else {
+    batcher_queue_options.low_priority_queue_options.max_execution_batch_size =
+        *low_priority_allowed_batch_sizes.rbegin();
+  }
   batcher_queue_options.enable_large_batch_splitting =
       enable_large_batch_splitting;
   if (enable_large_batch_splitting) {
@@ -553,14 +560,6 @@ BatchResourceBase::GetBatcherQueueOptions(
       batcher_queue_options.high_priority_queue_options
           .max_execution_batch_size = *allowed_batch_sizes.rbegin();
       batcher_queue_options.allowed_batch_sizes = allowed_batch_sizes;
-    }
-    if (low_priority_allowed_batch_sizes.empty()) {
-      batcher_queue_options.low_priority_queue_options
-          .max_execution_batch_size = low_priority_max_batch_size;
-    } else {
-      batcher_queue_options.low_priority_queue_options
-          .max_execution_batch_size =
-          *low_priority_allowed_batch_sizes.rbegin();
     }
   }
   batcher_queue_options.disable_padding = disable_padding;

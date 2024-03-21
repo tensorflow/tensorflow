@@ -160,6 +160,7 @@ cc_library(
         "//tensorflow/core/profiler/lib:traceme_encode",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/time",
         "@local_tsl//tsl/platform:criticality",
         "@local_tsl//tsl/platform:errors",
@@ -180,6 +181,7 @@ cc_library(
         "//tensorflow/core/profiler/lib:traceme_encode",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/time",
         "@local_tsl//tsl/platform:criticality",
     ],
@@ -201,6 +203,7 @@ tf_cc_test(
         "//tensorflow/core/platform:status_matchers",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/container:fixed_array",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/time",
     ],
 )

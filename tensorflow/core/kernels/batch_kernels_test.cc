@@ -117,28 +117,29 @@ class BatchFunctionTestState : public SharedBatchFunctionTestState {
 
     std::vector<NodeDefBuilder::NodeOut> inputs(
         {NodeDefBuilder::NodeOut({"n1", 0, DataType::DT_INT64})});
-    TF_RETURN_IF_ERROR(NodeDefBuilder("BatchTPUInput", "BatchFunction")
-                           .Attr("max_batch_size", 4)
-                           .Attr("num_batch_threads", 4)
-                           .Attr("allowed_batch_sizes", {4})
-                           .Attr("batch_timeout_micros", 5000000)
-                           .Attr("max_enqueued_batches", 10)
-                           .Attr("low_priority_max_batch_size",
-                                 enable_low_priority_queue ? 64 : 0)
-                           .Attr("low_priority_batch_timeout_micros",
-                                 enable_low_priority_queue ? 50000000 : 0)
-                           .Attr("low_priority_allowed_batch_sizes",
-                                 enable_low_priority_queue ? std::vector<int>{1}
-                                                           : std::vector<int>())
-                           .Attr("low_priority_max_enqueued_batches",
-                                 enable_low_priority_queue ? 100 : 0)
-                           .Attr("Tin", {DataType::DT_INT64})
-                           .Input(inputs)
-                           .Attr("Tcaptured", std::vector<DataType>{})
-                           .Input(std::vector<NodeDefBuilder::NodeOut>{})
-                           .Attr("Tout", std::vector<DataType>{DT_INT64})
-                           .Attr("f", f)
-                           .Finalize(node_def()));
+    TF_RETURN_IF_ERROR(
+        NodeDefBuilder("BatchTPUInput", "BatchFunction")
+            .Attr("max_batch_size", 4)
+            .Attr("num_batch_threads", 4)
+            .Attr("allowed_batch_sizes", {4})
+            .Attr("batch_timeout_micros", 5000000)
+            .Attr("max_enqueued_batches", 10)
+            .Attr("low_priority_max_batch_size",
+                  enable_low_priority_queue ? 64 : 0)
+            .Attr("low_priority_batch_timeout_micros",
+                  enable_low_priority_queue ? 50000000 : 0)
+            .Attr("low_priority_allowed_batch_sizes", enable_low_priority_queue
+                                                          ? std::vector<int>{64}
+                                                          : std::vector<int>())
+            .Attr("low_priority_max_enqueued_batches",
+                  enable_low_priority_queue ? 100 : 0)
+            .Attr("Tin", {DataType::DT_INT64})
+            .Input(inputs)
+            .Attr("Tcaptured", std::vector<DataType>{})
+            .Input(std::vector<NodeDefBuilder::NodeOut>{})
+            .Attr("Tout", std::vector<DataType>{DT_INT64})
+            .Attr("f", f)
+            .Finalize(node_def()));
     return OpsTestBase::InitOp();
   }
 

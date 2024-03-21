@@ -25,6 +25,7 @@ limitations under the License.
 
 #include "absl/base/call_once.h"
 #include "absl/container/fixed_array.h"
+#include "absl/status/status.h"
 #include "absl/time/time.h"
 #include "tensorflow/core/kernels/batching_util/batch_scheduler.h"
 #include "tensorflow/core/kernels/batching_util/fake_clock_env.h"
@@ -38,6 +39,7 @@ limitations under the License.
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/test_benchmark.h"
 #include "tensorflow/core/protobuf/error_codes.pb.h"
+#include "tsl/lib/core/status_test_util.h"
 #include "tsl/platform/criticality.h"
 
 namespace tensorflow {
@@ -1052,6 +1054,102 @@ INSTANTIATE_TEST_SUITE_P(
 using SharedBatchSchedulerPriorityTest = SharedBatchSchedulerTest;
 
 TEST_P(SharedBatchSchedulerPriorityTest,
+       InvalidLowPriorityTaskWithPriorityQueueEnabled) {
+  bool queue_callback_called = false;
+  auto queue_callback = [&queue_callback_called](
+                            std::unique_ptr<Batch<FakeTask>> batch,
+                            std::vector<std::unique_ptr<FakeTask>> tasks) {
+    queue_callback_called = true;
+  };
+
+  {
+    std::shared_ptr<Scheduler> scheduler =
+        CreateSharedBatchScheduler(/*num_batch_threads=*/3);
+
+    QueueOptions queue_options = CreateQueueOptions(
+        /*max_execution_batch_size=*/100, /*input_batch_size_limit=*/100,
+        /*batch_timeout_micros=*/1 * 1000 * 1000, /*max_enqueued_batches=*/2,
+        /*enable_priority_queue=*/true);
+    queue_options.low_priority_queue_options.max_execution_batch_size = 1;
+    queue_options.low_priority_queue_options.batch_timeout_micros =
+        1 * 1000 * 1000;
+    queue_options.low_priority_queue_options.input_batch_size_limit = 1;
+    queue_options.low_priority_queue_options.max_enqueued_batches = 2;
+    std::unique_ptr<Queue> queue =
+        CreateQueue(scheduler, queue_options, queue_callback);
+
+    EXPECT_THAT(
+        ScheduleTask(10, queue.get(),
+                     tsl::criticality::Criticality::kSheddablePlus),
+        testing::StatusIs(
+            absl::StatusCode::kUnavailable,
+            HasSubstr(
+                "The low priority task queue to which this task was submitted "
+                "has max_execution_batch_size=1 and the task size is 10")));
+  }
+  EXPECT_FALSE(queue_callback_called);
+}
+
+TEST_P(SharedBatchSchedulerPriorityTest,
+       InvalidLowPriorityTaskWithQueueFullWithPriorityQueueEnabled) {
+  Notification processing, proceed;
+  auto queue_callback = [&processing, &proceed](
+                            std::unique_ptr<Batch<FakeTask>> batch,
+                            std::vector<std::unique_ptr<FakeTask>> tasks) {
+    if (!processing.HasBeenNotified()) {
+      processing.Notify();
+    }
+    proceed.WaitForNotification();
+  };
+
+  std::shared_ptr<Scheduler> scheduler =
+      CreateSharedBatchScheduler(/*num_batch_threads=*/1);
+
+  QueueOptions queue_options = CreateQueueOptions(
+      /*max_execution_batch_size=*/100, /*input_batch_size_limit=*/100,
+      /*batch_timeout_micros=*/1 * 1000 * 1000, /*max_enqueued_batches=*/2,
+      /*enable_priority_queue=*/true);
+  queue_options.low_priority_queue_options.max_execution_batch_size = 10;
+  queue_options.low_priority_queue_options.batch_timeout_micros =
+      1 * 1000 * 1000;
+  queue_options.low_priority_queue_options.input_batch_size_limit = 10;
+  queue_options.low_priority_queue_options.max_enqueued_batches = 2;
+  std::unique_ptr<Queue> queue =
+      CreateQueue(scheduler, queue_options, queue_callback);
+
+  // Schedule one task and block the thread.
+  TF_ASSERT_OK(ScheduleTask(5, queue.get(),
+                            tsl::criticality::Criticality::kCriticalPlus));
+  TF_ASSERT_OK(ScheduleTask(5, queue.get(),
+                            tsl::criticality::Criticality::kSheddablePlus));
+  processing.WaitForNotification();
+  ASSERT_EQ(0, queue->NumEnqueuedTasks());
+
+  // Adding tasks up to size 20 should be fine.
+  TF_ASSERT_OK(ScheduleTask(10, queue.get(),
+                            tsl::criticality::Criticality::kSheddablePlus));
+  ASSERT_EQ(1, queue->NumEnqueuedTasks());
+  TF_ASSERT_OK(ScheduleTask(10, queue.get(),
+                            tsl::criticality::Criticality::kSheddablePlus));
+  ASSERT_EQ(2, queue->NumEnqueuedTasks());
+
+  // Adding one more task should result in an error.
+  EXPECT_THAT(
+      ScheduleTask(1, queue.get(),
+                   tsl::criticality::Criticality::kSheddablePlus),
+      testing::StatusIs(
+          absl::StatusCode::kUnavailable,
+          HasSubstr("The low priority task queue to which this task was "
+                    "submitted does not have the capcity to handle this task; "
+                    "currently the low priority queue has 20 tasks enqueued "
+                    "and the submitted task size is 1 while "
+                    "max_enqueued_batches=2 and max_execution_batch_size=10")));
+
+  // Unblock the thread.
+  proceed.Notify();
+}
+
+TEST_P(SharedBatchSchedulerPriorityTest,
        CallbackWithTaskVectorOkWithPriorityQueueEnabledWithPrioritySet) {
   bool queue_callback_called = false;
   auto queue_callback = [&queue_callback_called](
@@ -1070,11 +1168,16 @@ TEST_P(SharedBatchSchedulerPriorityTest,
     std::shared_ptr<Scheduler> scheduler =
         CreateSharedBatchScheduler(/*num_batch_threads=*/3);
 
-    // Create two queues.
-    const QueueOptions queue_options = CreateQueueOptions(
+    // Create a queue with the priority queue enabled.
+    QueueOptions queue_options = CreateQueueOptions(
         /*max_execution_batch_size=*/10, /*input_batch_size_limit=*/10,
         /*batch_timeout_micros=*/1 * 1000 * 1000, /*max_enqueued_batches=*/2,
         /*enable_priority_queue=*/true);
+    queue_options.low_priority_queue_options.max_execution_batch_size = 10;
+    queue_options.low_priority_queue_options.batch_timeout_micros =
+        1 * 1000 * 1000;
+    queue_options.low_priority_queue_options.input_batch_size_limit = 10;
+    queue_options.low_priority_queue_options.max_enqueued_batches = 2;
     std::unique_ptr<Queue> queue =
         CreateQueue(scheduler, queue_options, queue_callback);
 
