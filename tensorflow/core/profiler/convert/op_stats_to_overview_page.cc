@@ -193,12 +193,12 @@ OverviewPageAnalysis ComputeAnalysisResult(const OpStats& op_stats) {
     OverviewTfOp* op = analysis.add_top_device_ops();
     op->set_name(metrics->name());
     op->set_category(metrics->category());
-    op->set_self_time_fraction(
-        SafeDivide(metrics->self_time_ps(), total_device_time_ps));
+    op->set_self_time_fraction(tsl::profiler::SafeDivide(
+        metrics->self_time_ps(), total_device_time_ps));
     device_cumulative_fraction += op->self_time_fraction();
     op->set_cumulative_time_fraction(device_cumulative_fraction);
-    op->set_flop_rate(
-        SafeDivide(metrics->flops(), PicoToNano(metrics->time_ps())));
+    op->set_flop_rate(tsl::profiler::SafeDivide(
+        metrics->flops(), PicoToNano(metrics->time_ps())));
     auto iter = kernel_stats_by_op_name.find(op->name());
     if (iter != kernel_stats_by_op_name.end()) {
       op->set_is_op_tensorcore_eligible(
@@ -211,12 +211,12 @@ OverviewPageAnalysis ComputeAnalysisResult(const OpStats& op_stats) {
       op_stats.device_op_metrics_db().precision_stats().compute_32bit_ps();
   analysis.set_device_compute_16bit_percent(
       100.0 *
-      SafeDivide(
+      tsl::profiler::SafeDivide(
           op_stats.device_op_metrics_db().precision_stats().compute_16bit_ps(),
           total_device_compute_ps));
   analysis.set_device_compute_32bit_percent(
       100.0 *
-      SafeDivide(
+      tsl::profiler::SafeDivide(
           op_stats.device_op_metrics_db().precision_stats().compute_32bit_ps(),
           total_device_compute_ps));
 
@@ -256,19 +256,19 @@ OverviewPageAnalysis ComputeAnalysisResult(const OpStats& op_stats) {
   }
   uint64 num_total_tf_ops = num_host_tf_ops + num_device_tf_ops;
   analysis.set_host_tf_op_percent(
-      100.0 * SafeDivide(num_host_tf_ops, num_total_tf_ops));
+      100.0 * tsl::profiler::SafeDivide(num_host_tf_ops, num_total_tf_ops));
   analysis.set_device_tf_op_percent(
-      100.0 * SafeDivide(num_device_tf_ops, num_total_tf_ops));
+      100.0 * tsl::profiler::SafeDivide(num_device_tf_ops, num_total_tf_ops));
   analysis.set_host_trace_level(op_stats.run_environment().host_trace_level());
   analysis.set_host_op_time_eager_percent(
-      100.0 *
-      SafeDivide(eager_host_op_time_ps, total_host_op_time_ps_exclude_idle));
+      100.0 * tsl::profiler::SafeDivide(eager_host_op_time_ps,
+                                        total_host_op_time_ps_exclude_idle));
   analysis.set_device_op_time_eager_percent(
-      100.0 * SafeDivide(eager_device_op_time_ps,
-                         total_device_op_time_ps_exclude_idle));
+      100.0 * tsl::profiler::SafeDivide(eager_device_op_time_ps,
+                                        total_device_op_time_ps_exclude_idle));
   analysis.set_device_op_time_outside_compilation_percent(
-      100.0 * SafeDivide(outside_compilation_device_op_time_ps,
-                         total_device_op_time_ps_exclude_idle));
+      100.0 * tsl::profiler::SafeDivide(outside_compilation_device_op_time_ps,
+                                        total_device_op_time_ps_exclude_idle));
   return analysis;
 }
 
