@@ -2295,6 +2295,15 @@ Status SetHloShardingPostProcessing(
       continue;
     } else {
       if (inst->shape().IsTuple()) {
+        // While we do not support nested tuples fully, this is a hack to get
+        // things to work in some cases (specifically observed for the llama and
+        // gemma models) where nested tuples as used as inputs/outputs of the
+        // kOptimizationBarrier instruction.
+        if (absl::c_any_of(
+                inst->shape().tuple_shapes(),
+                [](const Shape& shape) { return shape.IsTuple(); })) {
+          continue;
+        }
         switch (inst->opcode()) {
           case HloOpcode::kReduce:
           case HloOpcode::kCustomCall:
