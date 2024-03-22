@@ -85,26 +85,28 @@ const tsl::protobuf::RepeatedField<int64_t>& BatchDimensionsForOperand(
   return dimension_numbers.rhs_batch_dimensions();
 }
 
-int64_t ContractingDimensionIndex(const HloInstruction& dot,
-                                  const int operand_number) {
+absl::StatusOr<int64_t> ContractingDimensionIndex(const HloInstruction& dot,
+                                                  const int operand_number) {
   const DotDimensionNumbers& dimension_numbers = dot.dot_dimension_numbers();
   if (operand_number == 0) {
-    CHECK_EQ(dimension_numbers.lhs_contracting_dimensions().size(), 1);
+    TF_RET_CHECK(dimension_numbers.lhs_contracting_dimensions().size() == 1);
     return dimension_numbers.lhs_contracting_dimensions(0);
   }
-  CHECK_EQ(dimension_numbers.rhs_contracting_dimensions().size(), 1);
+  TF_RET_CHECK(dimension_numbers.rhs_contracting_dimensions().size() == 1);
   return dimension_numbers.rhs_contracting_dimensions(0);
 }
 
-int64_t NonContractingDimensionIndex(const HloInstruction& dot,
-                                     const int operand_number) {
-  absl::StatusOr<std::vector<int64_t>> non_contracting_dims =
+absl::StatusOr<int64_t> NonContractingDimensionIndex(const HloInstruction& dot,
+                                                     const int operand_number) {
+  TF_ASSIGN_OR_RETURN(int64_t contracting_dim,
+                      ContractingDimensionIndex(dot, operand_number));
+  TF_ASSIGN_OR_RETURN(
+      std::vector<int64_t> non_contracting_dims,
       GetNonContractingDims(dot.operand(operand_number)->shape(),
                             BatchDimensionsForOperand(dot, operand_number),
-                            {ContractingDimensionIndex(dot, operand_number)});
-  TF_CHECK_OK(non_contracting_dims.status());
-  CHECK_EQ(non_contracting_dims->size(), 1);
-  return non_contracting_dims->front();
+                            {contracting_dim}));
+  TF_RET_CHECK(non_contracting_dims.size() == 1);
+  return non_contracting_dims.front();
 }
 
 absl::StatusOr<Shape> GetBatchRowColumnShape(
