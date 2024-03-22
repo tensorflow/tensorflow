@@ -2625,7 +2625,10 @@ absl::Status IrEmitterUnnested::EmitSendThunk(const HloSendInstruction* instr) {
     const auto& hlo_config = ir_emitter_context_->hlo_module().config();
     const int64_t replica_count = hlo_config.replica_count();
     const int64_t partition_count = hlo_config.num_partitions();
-    const int64_t memory_space = src->shape().layout().memory_space();
+    const int64_t memory_space =
+        instr->shape().IsTuple()
+            ? instr->shape().tuple_shapes(0).layout().memory_space()
+            : instr->shape().layout().memory_space();
     const NcclCollectiveThunk::Buffer nccl_buffer = {
         /*element_count=*/ShapeUtil::ElementsIn(src->shape()),
         /*source_buffer=*/buffer,
@@ -2690,11 +2693,17 @@ absl::Status IrEmitterUnnested::EmitRecvThunk(const HloRecvInstruction* instr) {
   TF_RET_CHECK(instr->shape().IsTuple());
   TF_ASSIGN_OR_RETURN(BufferAllocation::Slice buffer,
                       GetAllocationSliceForHlo(instr, {0}));
+
   if (!instr->is_host_transfer()) {
     const auto& hlo_config = ir_emitter_context_->hlo_module().config();
     const int64_t replica_count = hlo_config.replica_count();
     const int64_t partition_count = hlo_config.num_partitions();
-    const int64_t memory_space = instr->shape().layout().memory_space();
+
+    const int64_t memory_space =
+        instr->shape().IsTuple()
+            ? instr->shape().tuple_shapes(0).layout().memory_space()
+            : instr->shape().layout().memory_space();
+
     const NcclCollectiveThunk::Buffer nccl_buffer = {
         /*element_count=*/ShapeUtil::ElementsIn(instr->shape().tuple_shapes(0)),
         /*source_buffer=*/buffer,
