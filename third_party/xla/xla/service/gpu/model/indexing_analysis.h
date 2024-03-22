@@ -67,15 +67,15 @@ std::string ToString(const mlir::AffineMap& affine_map);
 
 // Computes indexing maps for all input operands necessary to compute an element
 // of the `output_id` instruction output.
-HloInstructionIndexing ComputeOutputToInputIndexing(
-    const HloInstruction* instr, int output_id,
-    IndexingContext* indexing_context);
+HloInstructionIndexing ComputeOutputToInputIndexing(const HloInstruction* instr,
+                                                    int output_id,
+                                                    mlir::MLIRContext* ctx);
 
 // Computes indexing maps for all output operands that the element of the
 // `input_id` instruction input will participate in.
-HloInstructionIndexing ComputeInputToOutputIndexing(
-    const HloInstruction* instr, int input_id,
-    IndexingContext* indexing_context);
+HloInstructionIndexing ComputeInputToOutputIndexing(const HloInstruction* instr,
+                                                    int input_id,
+                                                    mlir::MLIRContext* ctx);
 
 // Computes the indexing for `epilogue_parent`'s epilogue. For example, if
 // `epilogue_parent` is a transpose, computes the input to output indexing for
@@ -94,7 +94,7 @@ HloInstructionIndexing ComputeInputToOutputIndexing(
 // FindNonTrivialHero, i.e., each instruction in the epilogue only has a single
 // user, or the users have identical indexing maps.
 IndexingMap ComputeEpilogueInputToOutputIndexing(
-    const HloInstruction* epilogue_root, IndexingContext* indexing_context,
+    const HloInstruction* epilogue_root, mlir::MLIRContext* ctx,
     std::function<bool(const HloInstruction*)> is_root =
         [](const HloInstruction* instr) { return instr->IsRoot(); });
 
@@ -105,7 +105,7 @@ using GroupedByOpIndexingMap =
 // cluster starting with `target_instr` and going from def to use.
 GroupedByOpIndexingMap ComputeGroupedOutputToInputIndexing(
     const HloFusionAdaptor& fusion_adaptor, HloInstructionAdaptor target_instr,
-    IndexingContext* indexing_context);
+    mlir::MLIRContext* ctx);
 
 // Groups indexing maps by instructions.
 absl::flat_hash_map<const HloInstruction*, IndexingMapSet>
@@ -118,52 +118,51 @@ bool FuseProducerConsumerOutputToInputIndexing(
     const HloInstruction* producer_instr,
     absl::flat_hash_map<const HloInstruction*, IndexingMapSet>*
         consumer_indexing,
-    IndexingContext* mlir_context);
+    mlir::MLIRContext* mlir_context);
 
 // Creates an indexing map for bitcasting from `input_shape` to `output_shape`.
 // Equivalent to linearizing the input_shape index and then delinearizing it
 // to output_shape.
 IndexingMap GetBitcastMap(const Shape& input_shape, const Shape& output_shape,
-                          IndexingContext* indexing_context);
+                          mlir::MLIRContext* ctx);
 
 // Creates an indexing map from the physical layout of the tensor to its logical
 // layout.
-IndexingMap GetIndexingMapFromPhysicalLayoutToLogical(
-    const Shape& shape, IndexingContext* indexing_context);
+IndexingMap GetIndexingMapFromPhysicalLayoutToLogical(const Shape& shape,
+                                                      mlir::MLIRContext* ctx);
 
 // Creates an indexing map from the logical layout of the tensor to its physical
 // layout.
-IndexingMap GetIndexingMapFromLogicalToPhysicalLayout(
-    const Shape& shape, IndexingContext* indexing_context);
+IndexingMap GetIndexingMapFromLogicalToPhysicalLayout(const Shape& shape,
+                                                      mlir::MLIRContext* ctx);
 
 // Creates an indexing map from thread and block IDs to elements of the tiled
 // shape. Uses the same convention as KernelFusionInterface: dimensions 0 to 2
 // are thread indices (currently only 0 is used), dimensions 3 to 5 are block
 // indices (currently only 3 is used).
 mlir::AffineMap GetBlockOffsetsForTiling(const Tiling& tiling,
-                                         mlir::MLIRContext* mlir_context);
+                                         mlir::MLIRContext* ctx);
 mlir::AffineMap GetThreadOffsetsForTiling(const Tiling& tiling,
-                                          mlir::MLIRContext* mlir_context);
+                                          mlir::MLIRContext* ctx);
 
 // Convenience functions for the two functions above
 // (`GetBlockOffsestsForTiling` + `GetThreadOffsetsForTiling`). Also sets up
 // the ranges of dimensions and symbols.
 IndexingMap GetIndexingMapForTiling(const Tiling& tiling,
-                                    IndexingContext* indexing_context);
+                                    mlir::MLIRContext* ctx);
 IndexingMap GetIndexingMapForTiling(mlir::AffineMap block_offsets,
                                     mlir::AffineMap thread_offsets,
                                     int64_t threads_per_block,
                                     int64_t num_blocks,
                                     absl::Span<const int64_t> thread_tile_sizes,
-                                    absl::Span<const int64_t> tiled_shape,
-                                    IndexingContext* indexing_context);
+                                    absl::Span<const int64_t> tiled_shape);
 
 // Returns the shape of the output of the instruction.
 const Shape& GetOutputShape(const HloInstruction* instr, int64_t output_id);
 
 // Creates an identity indexing map corresponding to the parameter shape.
 IndexingMap CreateIdentityMap(const Shape& shape,
-                              IndexingContext* indexing_context);
+                              mlir::MLIRContext* mlir_context);
 
 llvm::SmallVector<mlir::AffineExpr, 4> DelinearizeInBoundsIndex(
     mlir::AffineExpr linear, absl::Span<const int64_t> sizes,

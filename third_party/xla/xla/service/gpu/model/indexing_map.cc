@@ -35,7 +35,6 @@ limitations under the License.
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "xla/service/gpu/model/affine_map_printer.h"
-#include "xla/service/gpu/model/indexing_context.h"
 #include "tsl/platform/logging.h"  // IWYU pragma: keep
 
 namespace xla {
@@ -620,20 +619,11 @@ std::vector<RangeVar> RangeVarsFromTensorSizes(
 }
 
 IndexingMap IndexingMap::FromTensorSizes(
-    IndexingContext* indexing_context, AffineMap affine_map,
-    absl::Span<const int64_t> dim_upper_bounds,
+    AffineMap affine_map, absl::Span<const int64_t> dim_upper_bounds,
     absl::Span<const int64_t> symbol_upper_bounds) {
-  return IndexingMap{
-      indexing_context, affine_map, DimVarsFromTensorSizes(dim_upper_bounds),
-      RangeVarsFromTensorSizes(symbol_upper_bounds), /*rt_vars=*/{}};
-}
-
-mlir::MLIRContext* IndexingMap::GetMLIRContext() const {
-  return indexing_context_->GetMLIRContext();
-}
-
-IndexingContext* IndexingMap::GetIndexingContext() const {
-  return indexing_context_;
+  return IndexingMap{affine_map, DimVarsFromTensorSizes(dim_upper_bounds),
+                     RangeVarsFromTensorSizes(symbol_upper_bounds),
+                     /*rt_vars=*/{}};
 }
 
 const Interval& IndexingMap::GetDimensionBound(int64_t dim_id) const {
@@ -866,6 +856,10 @@ void IndexingMap::Print(std::ostream& out,
   for (const auto& expr_range_string : expr_range_strings) {
     out << expr_range_string << '\n';
   }
+}
+
+MLIRContext* IndexingMap::GetMLIRContext() const {
+  return IsUndefined() ? nullptr : affine_map_.getContext();
 }
 
 std::ostream& operator<<(std::ostream& out, const IndexingMap& indexing_map) {
@@ -1177,9 +1171,7 @@ IndexingMap ComposeIndexingMaps(const IndexingMap& first,
     combined_symbol_ranges.push_back(symbol_range);
   }
 
-  IndexingContext* indexing_context = first.GetIndexingContext();
-  IndexingMap composed_indexing_map(indexing_context, composed_map,
-                                    first.GetDimVars(),
+  IndexingMap composed_indexing_map(composed_map, first.GetDimVars(),
                                     std::move(combined_symbol_ranges),
                                     /*rt_vars=*/{});
   // Add constraints that are already present in the producer_map. We have to

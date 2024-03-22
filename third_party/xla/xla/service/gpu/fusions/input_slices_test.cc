@@ -23,7 +23,6 @@ limitations under the License.
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
 #include "xla/service/gpu/hlo_fusion_analysis.h"
 #include "xla/service/gpu/model/affine_map_printer.h"
-#include "xla/service/gpu/model/indexing_context.h"
 #include "xla/service/gpu/model/indexing_test_utils.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/tests/hlo_test_base.h"
@@ -35,7 +34,6 @@ namespace {
 
 class InputSlicesTest : public HloTestBase {
  public:
-  InputSlicesTest() : indexing_context_(&mlir_context_) {}
   void SetUp() override {
     HloTestBase::SetUp();
     printer_ =
@@ -46,7 +44,6 @@ class InputSlicesTest : public HloTestBase {
  protected:
   AffineMapPrinter printer_;
   mlir::MLIRContext mlir_context_;
-  IndexingContext indexing_context_;
 };
 
 TEST_F(InputSlicesTest, ThreadIndexing) {
@@ -79,7 +76,7 @@ TEST_F(InputSlicesTest, ThreadIndexing) {
   ASSERT_NE(fusion, nullptr);
 
   auto thread_id_to_output_indexing =
-      fusion->ComputeThreadIdToOutputIndexing(0, &indexing_context_);
+      fusion->ComputeThreadIdToOutputIndexing(0, &mlir_context_);
   EXPECT_THAT(thread_id_to_output_indexing->ToString(printer_),
               MatchIndexingString(R"(
     (th_x, th_y, th_z, bl_x, bl_y, bl_z)[chunk_id, unroll_id] -> (0,

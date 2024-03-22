@@ -36,7 +36,6 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/service/gpu/model/indexing_analysis.h"
-#include "xla/service/gpu/model/indexing_context.h"
 #include "xla/service/gpu/model/indexing_map.h"
 #include "xla/service/gpu/model/tile_analysis.h"
 #include "xla/shape.h"
@@ -49,6 +48,7 @@ namespace {
 
 using ::mlir::AffineExpr;
 using ::mlir::AffineMap;
+using ::mlir::MLIRContext;
 using ::mlir::SmallVector;
 
 struct HloAndPath {
@@ -59,7 +59,7 @@ struct HloAndPath {
 }  // namespace
 
 /*static*/ SymbolicTileAnalysisOrError SymbolicTileAnalysis::AnalyzeComputation(
-    const HloComputation& computation, IndexingContext* ctx) {
+    const HloComputation& computation, MLIRContext* ctx) {
   absl::flat_hash_map<InstructionPathFromRoot, SymbolicTile>
       symbolic_tile_from_path;
   ConstHloInstructionMap<absl::flat_hash_set<InstructionPathFromRoot>>

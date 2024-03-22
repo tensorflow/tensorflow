@@ -419,10 +419,7 @@ xla_cc_test(
 cc_library(
     name = "indexing_map",
     srcs = ["indexing_map.cc"],
-    hdrs = [
-        "indexing_context.h",
-        "indexing_map.h",
-    ],
+    hdrs = ["indexing_map.h"],
     deps = [
         ":affine_map_printer",
         "//xla/hlo/ir:hlo",

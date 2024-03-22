@@ -69,7 +69,6 @@ limitations under the License.
 #include "xla/service/gpu/fusions/mlir/ir/xla_gpu_ops.h"
 #include "xla/service/gpu/hlo_traversal.h"
 #include "xla/service/gpu/model/indexing_analysis.h"
-#include "xla/service/gpu/model/indexing_context.h"
 #include "xla/service/gpu/model/indexing_map.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
@@ -89,6 +88,7 @@ using mlir::Block;
 using mlir::ImplicitLocOpBuilder;
 using mlir::IRMapping;
 using mlir::Location;
+using mlir::MLIRContext;
 using mlir::OpBuilder;
 using mlir::Value;
 using mlir::ValueRange;
@@ -250,9 +250,9 @@ absl::StatusOr<SmallVector<Value>> EmitReduce(
     const HloInstruction* instr, ValueRange indices,
     const OperandProvider& operand_provider,
     const CallTargetProvider& call_target_provider, ImplicitLocOpBuilder& b) {
-  IndexingContext indexing_context{b.getContext()};
+  auto* mlir_context = b.getContext();
   HloInstructionIndexing indexing =
-      ComputeOutputToInputIndexing(instr, 0, &indexing_context);
+      ComputeOutputToInputIndexing(instr, 0, mlir_context);
   const auto& indexing_map = *indexing.indexing_maps[0].begin();
 
   SmallVector<Value> init_values;
@@ -303,9 +303,9 @@ absl::StatusOr<SmallVector<Value>> EmitReduceWindow(
     const HloInstruction* instr, mlir::Type result_element_type,
     ValueRange indices, const OperandProvider& operand_provider,
     const CallTargetProvider& call_target_provider, ImplicitLocOpBuilder& b) {
-  IndexingContext indexing_context{b.getContext()};
+  MLIRContext* mlir_context = b.getContext();
   HloInstructionIndexing indexing =
-      ComputeOutputToInputIndexing(instr, 0, &indexing_context);
+      ComputeOutputToInputIndexing(instr, 0, mlir_context);
   const auto& indexing_map = *indexing.indexing_maps[0].begin();
 
   auto reduce_window = DynCast<HloReduceWindowInstruction>(instr);
@@ -529,8 +529,7 @@ absl::StatusOr<SmallVector<Value>> EmitPad(
     const HloInstruction* instr, mlir::Type result_element_type,
     ValueRange indices, const OperandProvider& operand_provider,
     ImplicitLocOpBuilder& b) {
-  IndexingContext indexing_context{b.getContext()};
-  auto indexing = ComputeOutputToInputIndexing(instr, 0, &indexing_context);
+  auto indexing = ComputeOutputToInputIndexing(instr, 0, b.getContext());
   const auto& indexing_map = *indexing.indexing_maps[0].begin();
   mlir::Value is_in_bounds = CheckConstraints(indexing_map, indices, {}, b);
 
@@ -668,7 +667,7 @@ absl::StatusOr<SmallVector<Value>> HloToMlir(
     result_element_type = sign_converter.convertType(element_mlir_type);
   }
 
-  IndexingContext indexing_context(builder.getContext());
+  auto* mlir_context = builder.getContext();
   // Handle ops that aren't elementwise and aren't just indexing
   // transformations.
   switch (instr->opcode()) {
@@ -725,7 +724,7 @@ absl::StatusOr<SmallVector<Value>> HloToMlir(
         if (i > 0 && !ShapeUtil::EqualIgnoringElementType(
                          first_shape, instr->operand(i)->shape())) {
           auto operand_map = GetBitcastMap(
-              first_shape, instr->operand(i)->shape(), &indexing_context);
+              first_shape, instr->operand(i)->shape(), mlir_context);
           operand_indices =
               ApplyAffineMap(operand_map.GetAffineMap(), indices, {}, builder);
         } else {
@@ -756,9 +755,8 @@ absl::StatusOr<SmallVector<Value>> HloToMlir(
                             operand->shape().element_type(), builder));
     arg_types.push_back(operand_element_type);
   }
-  auto input_indices =
-      GetInputIndices(ComputeOutputToInputIndexing(instr, 0, &indexing_context),
-                      indices, builder);
+  auto input_indices = GetInputIndices(
+      ComputeOutputToInputIndexing(instr, 0, mlir_context), indices, builder);
   SmallVector<Value> operands;
   for (auto&& [operand_number, operand_indices] :
        llvm::enumerate(input_indices)) {

@@ -317,19 +317,18 @@ ReductionInfo ReductionInfo::Create(const HloFusionAnalysis& analysis) {
 }
 
 std::optional<IndexingMap> ReductionInfo::ComputeThreadIdToOutputIndexing(
-    int64_t root_index, IndexingContext* indexing_context) const {
+    int64_t root_index, mlir::MLIRContext* ctx) const {
   if (!groups_.is_reduction_root[root_index]) {
     // Non-transpose roots are elementwise by definition.
-    return ComputeThreadIdToInputIndexing(root_index, 0, indexing_context);
+    return ComputeThreadIdToInputIndexing(root_index, 0, ctx);
   }
   auto* root = analysis_.fusion_roots()[root_index];
   auto* hero = analysis_.fusion_heroes()[root_index];
 
-  auto mlir_context = indexing_context->GetMLIRContext();
-  auto block_offsets = GetBlockOffsetsForTiling(tiling_, mlir_context);
-  auto thread_ids = DelinearizeInBoundsIndex(
-      mlir::getAffineDimExpr(0, mlir_context), tiling_.GetThreadsPerBlock(),
-      tiling_.GetThreadStrides());
+  auto block_offsets = GetBlockOffsetsForTiling(tiling_, ctx);
+  auto thread_ids = DelinearizeInBoundsIndex(mlir::getAffineDimExpr(0, ctx),
+                                             tiling_.GetThreadsPerBlock(),
+                                             tiling_.GetThreadStrides());
 
   auto physical_shape = ShapeUtil::DeleteDimensions(hero->dimensions(),
                                                     hero->operand(0)->shape());
@@ -353,10 +352,9 @@ std::optional<IndexingMap> ReductionInfo::ComputeThreadIdToOutputIndexing(
   auto physical_index = [&]() {
     if (is_row_reduction_) {
       IndexingMap linear_index(
-          indexing_context,
           mlir::AffineMap::get(
               6, 0, block_offsets.getResult(kRowKept) + thread_ids[kRowKept],
-              mlir_context),
+              ctx),
           dimension_ranges, /*range_vars=*/{}, /*rt_vars=*/{});
       int rows_per_warp = GetRowsPerWarp();
       if (rows_per_warp > 1) {
@@ -369,21 +367,20 @@ std::optional<IndexingMap> ReductionInfo::ComputeThreadIdToOutputIndexing(
       return ComposeIndexingMaps(
           linear_index, GetBitcastMap(ShapeUtil::MakeShape(
                                           PRED, {tiling_.GetShape()[kRowKept]}),
-                                      physical_shape, indexing_context));
+                                      physical_shape, ctx));
     }
 
     IndexingMap projected_index(
-        indexing_context,
         mlir::AffineMap::get(
             6, 0,
             {block_offsets.getResult(kColMajorKept),
              block_offsets.getResult(kColMinorKept) + thread_ids[kColReduced]},
-            mlir_context),
+            ctx),
         dimension_ranges, /*range_vars=*/{}, /*rt_vars=*/{});
 
     projected_index.AddConstraint(
         mlir::getAffineDimExpr(
-            KernelFusionInterface::kIndexingMapThreadIdxDims[0], mlir_context) %
+            KernelFusionInterface::kIndexingMapThreadIdxDims[0], ctx) %
             WarpSize(),
         {0, 0});
     if (!is_row_reduction_) {
@@ -398,25 +395,24 @@ std::optional<IndexingMap> ReductionInfo::ComputeThreadIdToOutputIndexing(
         GetBitcastMap(ShapeUtil::DeleteDimension(
                           ReductionDimensions::kColReducedDimension,
                           tiling_.GetXlaShape()),
-                      physical_shape, indexing_context));
+                      physical_shape, ctx));
   }();
 
   auto map = ComposeIndexingMaps(
       physical_index,
-      GetBitcastMap(FirstShape(hero->shape()), FirstShape(root->shape()),
-                    indexing_context));
+      GetBitcastMap(FirstShape(hero->shape()), FirstShape(root->shape()), ctx));
 
   int group_index = groups_.group_id_per_root[root_index];
   map.AddConstraint(
       mlir::getAffineDimExpr(KernelFusionInterface::kIndexingMapBlockIdxDims[1],
-                             mlir_context),
+                             ctx),
       {group_index, group_index});
   return map;
 }
 
 std::optional<IndexingMap> ReductionInfo::ComputeThreadIdToInputIndexing(
     int64_t root_index, int64_t hero_operand_index,
-    IndexingContext* indexing_context) const {
+    mlir::MLIRContext* ctx) const {
   auto* hero = analysis_.fusion_heroes()[root_index];
   if (groups_.is_reduction_root[root_index] &&
       hero_operand_index >= hero->operand_count() / 2) {
@@ -425,16 +421,15 @@ std::optional<IndexingMap> ReductionInfo::ComputeThreadIdToInputIndexing(
   }
 
   auto map = ComposeIndexingMaps(
-      GetIndexingMapForTiling(tiling_, indexing_context),
+      GetIndexingMapForTiling(tiling_, ctx),
       GetBitcastMap(tiling_.GetXlaShape(),
-                    hero->operand(hero_operand_index)->shape(),
-                    indexing_context));
+                    hero->operand(hero_operand_index)->shape(), ctx));
   // Only threads with the right y block index actually do anything for this
   // root.
   int group_index = groups_.group_id_per_root[root_index];
   map.AddConstraint(
       mlir::getAffineDimExpr(KernelFusionInterface::kIndexingMapBlockIdxDims[1],
-                             indexing_context->GetMLIRContext()),
+                             ctx),
       {group_index, group_index});
   return map;
 }

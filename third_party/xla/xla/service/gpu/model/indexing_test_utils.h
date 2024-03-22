@@ -26,7 +26,6 @@ limitations under the License.
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/service/gpu/model/indexing_analysis.h"
-#include "xla/service/gpu/model/indexing_context.h"
 #include "xla/tests/hlo_test_base.h"
 #include "xla/tests/verified_hlo_module.h"
 
@@ -53,8 +52,6 @@ MATCHER_P(MatchIndexingString, indexing_string, "") {
 
 class IndexingTestBase : public HloTestBase {
  public:
-  IndexingTestBase()
-      : HloTestBase(), mlir_context_(), indexing_context_(&mlir_context_) {}
   HloInstruction* ParseAndGetRoot(absl::string_view hlo_string);
 
   HloInstructionIndexing GetOutputToInputIndexing(
@@ -66,7 +63,6 @@ class IndexingTestBase : public HloTestBase {
       bool use_physical_layout = false);
 
   mlir::MLIRContext mlir_context_;
-  IndexingContext indexing_context_;
   std::unique_ptr<VerifiedHloModule> module_;
 };
 

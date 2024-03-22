@@ -37,8 +37,6 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
-class IndexingContext;
-
 // Interval represents a closed interval [lower_bound, upper_bound].
 struct Interval {
   std::string ToString() const;
@@ -215,12 +213,10 @@ std::vector<RangeVar> RangeVarsFromTensorSizes(
 class IndexingMap {
  public:
   IndexingMap(
-      IndexingContext* indexing_context, mlir::AffineMap affine_map,
-      std::vector<DimVar> dimensions, std::vector<RangeVar> range_vars,
-      std::vector<RTVar> rt_vars,
+      mlir::AffineMap affine_map, std::vector<DimVar> dimensions,
+      std::vector<RangeVar> range_vars, std::vector<RTVar> rt_vars,
       absl::Span<std::pair<mlir::AffineExpr, Interval>> constraints = {})
-      : indexing_context_(indexing_context),
-        affine_map_(affine_map),
+      : affine_map_(affine_map),
         dim_vars_(std::move(dimensions)),
         range_vars_(std::move(range_vars)),
         rt_vars_(std::move(rt_vars)) {
@@ -228,12 +224,10 @@ class IndexingMap {
       AddConstraint(expr, range);
     }
   }
-  IndexingMap(IndexingContext* indexing_context, mlir::AffineMap affine_map,
-              std::vector<DimVar> dimensions, std::vector<RangeVar> range_vars,
-              std::vector<RTVar> rt_vars,
+  IndexingMap(mlir::AffineMap affine_map, std::vector<DimVar> dimensions,
+              std::vector<RangeVar> range_vars, std::vector<RTVar> rt_vars,
               const llvm::DenseMap<mlir::AffineExpr, Interval>& constraints)
-      : indexing_context_(indexing_context),
-        affine_map_(affine_map),
+      : affine_map_(affine_map),
         dim_vars_(std::move(dimensions)),
         range_vars_(std::move(range_vars)),
         rt_vars_(std::move(rt_vars)),
@@ -242,8 +236,7 @@ class IndexingMap {
   static IndexingMap GetUndefined() { return IndexingMap(); }
 
   static IndexingMap FromTensorSizes(
-      IndexingContext* indexing_context, mlir::AffineMap affine_map,
-      absl::Span<const int64_t> dim_upper_bounds,
+      mlir::AffineMap affine_map, absl::Span<const int64_t> dim_upper_bounds,
       absl::Span<const int64_t> symbol_upper_bounds);
 
   std::string ToString(
@@ -256,9 +249,6 @@ class IndexingMap {
 
   // Return MLIRContext.
   mlir::MLIRContext* GetMLIRContext() const;
-
-  // Return IndexingContext.
-  IndexingContext* GetIndexingContext() const;
 
   // Returns the affine map.
   mlir::AffineMap GetAffineMap() const { return affine_map_; }
@@ -339,7 +329,6 @@ class IndexingMap {
   // Merges "mod" constraints for the same AffineExpr.
   void MergeModConstraints();
 
-  IndexingContext* indexing_context_ = nullptr;
   mlir::AffineMap affine_map_;
   std::vector<DimVar> dim_vars_;
   std::vector<RangeVar> range_vars_;

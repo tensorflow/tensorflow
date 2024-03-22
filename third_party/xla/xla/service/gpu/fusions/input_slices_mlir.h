@@ -37,11 +37,11 @@ class MlirInputSlicesFusion : public MlirFusionEmitterBase {
   LaunchDimensions launch_dimensions() const override;
 
   std::optional<IndexingMap> ComputeThreadIdToOutputIndexing(
-      int64_t output_id, IndexingContext* indexing_context) const override;
+      int64_t output_id, mlir::MLIRContext* ctx) const override;
 
   std::optional<IndexingMap> ComputeThreadIdToInputIndexing(
       int64_t root_index, int64_t hero_operand_index,
-      IndexingContext* indexing_context) const override {
+      mlir::MLIRContext* ctx) const override {
     // TODO(b/319081342): Implement this.
     return std::nullopt;
   }

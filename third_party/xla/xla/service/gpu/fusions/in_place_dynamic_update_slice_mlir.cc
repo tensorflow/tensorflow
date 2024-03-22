@@ -80,13 +80,13 @@ LaunchDimensions MlirInPlaceDynamicUpdateSliceFusion::launch_dimensions()
 std::optional<IndexingMap>
 MlirInPlaceDynamicUpdateSliceFusion::ComputeThreadIdToInputIndexing(
     int64_t root_index, int64_t hero_operand_index,
-    IndexingContext* indexing_context) const {
+    mlir::MLIRContext* mlir_context) const {
   auto launch_dims = launch_dimensions();
   // It is guaranteed that all DUS ops have the same output shape at this point.
   const auto& update_shape =
       dus_ops_.front()->operand(kDUSUpdateIndex)->shape();
   return GetDefaultThreadIdToOutputIndexingMap(launch_dims, /*unroll_factor=*/1,
-                                               update_shape, indexing_context);
+                                               update_shape, mlir_context);
 }
 
 std::vector<const HloInstruction*>
@@ -102,12 +102,11 @@ absl::Status MlirInPlaceDynamicUpdateSliceFusion::EmitEntryFunction(
   ImplicitLocOpBuilder b(entry_function.getLoc(), entry_function);
   b.setInsertionPointToStart(entry_function.addEntryBlock());
 
-  MLIRContext* mlir_context = entry_function.getContext();
-  IndexingContext indexing_context{mlir_context};
+  mlir::MLIRContext* mlir_context = entry_function.getContext();
 
   auto indexing = *ComputeThreadIdToInputIndexing(
       /*root_index=*/0,
-      /*hero_operand_index=*/kDUSUpdateIndex, &indexing_context);
+      /*hero_operand_index=*/kDUSUpdateIndex, mlir_context);
   indexing.Simplify();
   indexing.RemoveUnusedSymbols();
 

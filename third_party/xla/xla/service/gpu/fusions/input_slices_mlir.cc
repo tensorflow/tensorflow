@@ -52,7 +52,7 @@ using mlir::ValueRange;
 
 std::optional<IndexingMap>
 MlirInputSlicesFusion::ComputeThreadIdToOutputIndexing(
-    int64_t output_id, IndexingContext* indexing_context) const {
+    int64_t output_id, mlir::MLIRContext* ctx) const {
   // The mapping here is trivial and the same for all outputs - slice offsets
   // are applied in the indexing from slice outputs to slice inputs.
   auto launch_dims = launch_dimensions();
@@ -60,7 +60,7 @@ MlirInputSlicesFusion::ComputeThreadIdToOutputIndexing(
   // still use the requested output's shape for clarity.
   const auto& shape = analysis_.fusion_roots()[output_id]->shape();
   return GetDefaultThreadIdToOutputIndexingMap(launch_dims, unroll_factor_,
-                                               shape, indexing_context);
+                                               shape, ctx);
 }
 
 LaunchDimensions MlirInputSlicesFusion::launch_dimensions() const {
@@ -80,8 +80,8 @@ absl::Status MlirInputSlicesFusion::EmitEntryFunction(
 
   // We enforce that all the root shapes have identical dimensions in
   // IsHloOpSupported.
-  IndexingContext indexing_context{entry_function.getContext()};
-  auto indexing = ComputeThreadIdToOutputIndexing(0, &indexing_context);
+  auto indexing =
+      ComputeThreadIdToOutputIndexing(0, entry_function.getContext());
   TF_RET_CHECK(indexing) << "Indexing is never nullopt";
 
   int num_inputs = fusion.fused_instructions_computation()->num_parameters();

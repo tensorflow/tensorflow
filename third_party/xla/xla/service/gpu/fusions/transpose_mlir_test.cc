@@ -46,9 +46,9 @@ TEST_F(MlirTransposeFusionTest, ThreadIndexing021) {
   auto analysis = AnalyzeFusion(*root, device_info_);
 
   MlirTransposeFusion fusion(analysis);
-  EXPECT_THAT(fusion.ComputeThreadIdToInputIndexing(0, 0, &indexing_context_)
-                  ->ToString(),
-              MatchIndexingString(R"(
+  EXPECT_THAT(
+      fusion.ComputeThreadIdToInputIndexing(0, 0, &mlir_context_)->ToString(),
+      MatchIndexingString(R"(
         (d0, d1, d2, d3, d4, d5)[s0, s1, s2] -> (
           d3 floordiv 2,
           d0 floordiv 32 + s1 * 4,
@@ -67,7 +67,7 @@ TEST_F(MlirTransposeFusionTest, ThreadIndexing021) {
         s2 in [0, 0]
       )"));
   EXPECT_THAT(
-      fusion.ComputeThreadIdToOutputIndexing(0, &indexing_context_)->ToString(),
+      fusion.ComputeThreadIdToOutputIndexing(0, &mlir_context_)->ToString(),
       MatchIndexingString(R"(
         (d0, d1, d2, d3, d4, d5)[s0, s1, s2] -> (
           d3 floordiv 2,
@@ -105,9 +105,9 @@ TEST_F(MlirTransposeFusionTest, ThreadIndexing201) {
   auto analysis = AnalyzeFusion(*root, device_info_);
   MlirTransposeFusion fusion(analysis);
 
-  EXPECT_THAT(fusion.ComputeThreadIdToInputIndexing(0, 0, &indexing_context_)
-                  ->ToString(),
-              MatchIndexingString(R"(
+  EXPECT_THAT(
+      fusion.ComputeThreadIdToInputIndexing(0, 0, &mlir_context_)->ToString(),
+      MatchIndexingString(R"(
         (d0, d1, d2, d3, d4, d5)[s0, s1, s2] -> (
           d3 floordiv 2,
           d0 floordiv 32 + (d3 * 32 + s1 * 4) mod 64,
@@ -126,7 +126,7 @@ TEST_F(MlirTransposeFusionTest, ThreadIndexing201) {
         s2 in [0, 0]
       )"));
   EXPECT_THAT(
-      fusion.ComputeThreadIdToOutputIndexing(0, &indexing_context_)->ToString(),
+      fusion.ComputeThreadIdToOutputIndexing(0, &mlir_context_)->ToString(),
       MatchIndexingString(R"(
         (d0, d1, d2, d3, d4, d5)[s0, s1, s2] -> (
           d0 floordiv 32 + s1 * 4,

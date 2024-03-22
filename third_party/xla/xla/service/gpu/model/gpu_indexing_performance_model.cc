@@ -123,7 +123,7 @@ GpuPerformanceModelWithIndexingAnalysis::EstimateRunTimeForFusion(
   // operands. For each instruction, tells which elements of the instructions
   // result will be used to compute one result element of the fusion.
   auto grouped_fusion_indexing = ComputeGroupedOutputToInputIndexing(
-      fusion_adaptor, roots[0], &indexing_context_);
+      fusion_adaptor, roots[0], mlir_context_);
 
   int64_t flops = 0;
   int64_t bytes_read = 0;

@@ -29,7 +29,6 @@ limitations under the License.
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
 #include "xla/service/gpu/hlo_fusion_analysis.h"
 #include "xla/service/gpu/hlo_traversal.h"
-#include "xla/service/gpu/model/indexing_context.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
@@ -45,8 +44,6 @@ using ::testing::ElementsAre;
 
 class CoalescingTest : public HloTestBase {
  public:
-  CoalescingTest() : indexing_context_(&mlir_context_) {}
-
   std::vector<bool> IsReadCoalescedPerOperand(absl::string_view hlo_string) {
     auto module = ParseAndReturnVerifiedModule(hlo_string).value();
     HloInstruction* root = module->entry_computation()->root_instruction();
@@ -61,7 +58,7 @@ class CoalescingTest : public HloTestBase {
     EXPECT_TRUE(emitter.ok());
 
     CoalescingAnalysis coalescing_analysis(root, root->operands(), analysis,
-                                           fusion, &indexing_context_,
+                                           fusion, &mlir_context_,
                                            /*use_heuristic=*/false);
 
     std::vector<bool> results;
@@ -83,7 +80,6 @@ class CoalescingTest : public HloTestBase {
   stream_executor::DeviceDescription device_info_ =
       TestGpuDeviceInfo::RTXA6000DeviceInfo();
   mlir::MLIRContext mlir_context_;
-  IndexingContext indexing_context_;
 };
 
 TEST_F(CoalescingTest, IdentityLayout) {

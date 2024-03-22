@@ -64,11 +64,11 @@ class TransposeFusion : public KernelFusionEmitterBase {
   LaunchDimensions launch_dimensions() const override;
 
   std::optional<IndexingMap> ComputeThreadIdToOutputIndexing(
-      int64_t root_index, IndexingContext* indexing_context) const override;
+      int64_t root_index, mlir::MLIRContext* ctx) const override;
 
   std::optional<IndexingMap> ComputeThreadIdToInputIndexing(
       int64_t root_index, int64_t hero_operand_index,
-      IndexingContext* indexing_context) const override;
+      mlir::MLIRContext* ctx) const override;
 
  protected:
   absl::Status EmitKernel(IrEmitterContext& ir_emitter_context,

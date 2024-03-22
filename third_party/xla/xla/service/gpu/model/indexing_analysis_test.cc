@@ -22,7 +22,6 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/service/gpu/fusions/tiling_util.h"
 #include "xla/service/gpu/hlo_traversal.h"
-#include "xla/service/gpu/model/indexing_context.h"
 #include "xla/service/gpu/model/indexing_test_utils.h"
 #include "xla/tests/hlo_test_base.h"
 #include "tsl/platform/test.h"
@@ -92,7 +91,7 @@ TEST_F(IndexingAnalysisTest, ComputeGroupedOutputToInputIndexing) {
   auto fusion_adaptor = ProducerConsumerFusion(transpose, root);
 
   auto grouped_indexing = ComputeGroupedOutputToInputIndexing(
-      fusion_adaptor, fusion_adaptor.GetRoots()[0], &indexing_context_);
+      fusion_adaptor, fusion_adaptor.GetRoots()[0], &mlir_context_);
   EXPECT_THAT(grouped_indexing,
               UnorderedElementsAre(
                   Pair(root, ElementsAre(MatchIndexingMap(R"(
@@ -149,7 +148,7 @@ TEST_F(IndexingAnalysisTest,
   auto fusion_adaptor = HloFusionAdaptor::ForInstruction(root);
 
   auto grouped_indexing = ComputeGroupedOutputToInputIndexing(
-      *fusion_adaptor, fusion_adaptor->GetRoots()[0], &indexing_context_);
+      *fusion_adaptor, fusion_adaptor->GetRoots()[0], &mlir_context_);
 
   EXPECT_THAT(grouped_indexing,
               UnorderedElementsAre(
@@ -201,7 +200,7 @@ TEST_F(IndexingAnalysisTest, ComputeGroupedOutputToInputIndexing_SingleOp) {
   auto fusion_adaptor = HloFusionAdaptor::ForInstruction(exponential);
   HloInstructionAdaptor parameter_adaptor(*parameter);
   auto grouped_indexing = ComputeGroupedOutputToInputIndexing(
-      *fusion_adaptor, parameter_adaptor, &indexing_context_);
+      *fusion_adaptor, parameter_adaptor, &mlir_context_);
   EXPECT_THAT(grouped_indexing, UnorderedElementsAre(Pair(
                                     parameter, ElementsAre(MatchIndexingMap(R"(
                                                      (d0, d1) -> (d0, d1)
@@ -241,7 +240,7 @@ TEST_F(IndexingAnalysisTest,
   auto parameter_0 = bcast.GetOperand(0);
 
   auto grouped_indexing = ComputeGroupedOutputToInputIndexing(
-      *fusion_adaptor, bcast, &indexing_context_);
+      *fusion_adaptor, bcast, &mlir_context_);
   EXPECT_THAT(
       grouped_indexing,
       UnorderedElementsAre(
@@ -2254,7 +2253,7 @@ TEST_F(IndexingAnalysisTest, TilingIndexing) {
   Tiling tiling{/*shape=*/{1022, 256, 16},
                 /*tile_sizes=*/{8, 1, 4},
                 /*num_threads=*/{1, 4, 4}};
-  auto indexing_map = GetIndexingMapForTiling(tiling, &indexing_context_);
+  auto indexing_map = GetIndexingMapForTiling(tiling, &mlir_context_);
   indexing_map.Simplify();
   EXPECT_THAT(indexing_map.ToString(), MatchIndexingString(R"(
         (d0, d1, d2, d3, d4, d5)[s0, s1, s2] -> (
@@ -2289,7 +2288,7 @@ TEST_F(IndexingAnalysisTest, EpilogueIndexing) {
   ASSERT_TRUE(module.ok());
   EXPECT_THAT(ComputeEpilogueInputToOutputIndexing(
                   (*module)->entry_computation()->GetInstructionWithName("t"),
-                  &indexing_context_)
+                  &mlir_context_)
                   .ToString(),
               MatchIndexingString(R"(
                   (d0, d1) -> (d0 + d1 * 1000)
@@ -2310,7 +2309,7 @@ TEST_F(IndexingAnalysisTest, EpilogueIndexing_NoEpilogue) {
   ASSERT_TRUE(module.ok());
   EXPECT_THAT(ComputeEpilogueInputToOutputIndexing(
                   (*module)->entry_computation()->GetInstructionWithName("t"),
-                  &indexing_context_)
+                  &mlir_context_)
                   .ToString(),
               MatchIndexingString(R"(
                   (d0, d1) -> (d0, d1)

@@ -49,8 +49,7 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
-MlirEmitterTestBaseImpl::MlirEmitterTestBaseImpl()
-    : indexing_context_(&mlir_context_) {
+MlirEmitterTestBaseImpl::MlirEmitterTestBaseImpl() {
   // clang-format off
   mlir_context_.loadDialect<
       mlir::affine::AffineDialect,
