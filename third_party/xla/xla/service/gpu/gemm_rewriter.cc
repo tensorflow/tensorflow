@@ -922,8 +922,10 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
 
 #endif  // TENSORFLOW_USE_ROCM
 
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
     PrimitiveType a_type = a->shape().element_type();
     PrimitiveType b_type = b->shape().element_type();
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
     // cuBLASLt FP8 GEMM kernels require one of the two operands to be in
     // F8E4M3FN format.
