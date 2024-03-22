@@ -176,10 +176,6 @@ class PyArray : public nanobind::object {
 
   const nanobind::object& sharding() const { return GetStorage().sharding; }
 
-  StatusOr<std::unique_ptr<PjRtLayout>> layout() {
-    return ifrt_array()->layout();
-  }
-
   bool committed() const { return GetStorage().committed; }
 
   const nanobind::object& npy_value() const { return GetStorage().npy_value; }
