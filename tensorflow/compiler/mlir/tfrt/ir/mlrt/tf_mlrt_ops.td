@@ -35,6 +35,24 @@ def CreateOp: TensorflowMlrt_Op<"createop", []> {
   let assemblyFormat = "attr-dict";
 }
 
+def ConstOp: TensorflowMlrt_Op<"constop", []> {
+  let summary = "The tf_mlrt ConstOp";
+
+  let description = [{
+    The ConstOp creates a constant tensorflow::Tensor from serialized proto.
+  }];
+
+  let arguments = (ins
+    StrAttr:$tensor_proto
+  );
+
+  let results = (outs
+    TFTensorType:$result
+  );
+
+  let assemblyFormat = "attr-dict";
+}
+
 def ExecuteOp : TensorflowMlrt_Op<"executeop", []> {
   let summary = "The Fallback ExecuteOp";
   let description = [{

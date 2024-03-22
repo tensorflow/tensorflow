@@ -236,7 +236,7 @@ func.func @while_body_add2(%arg0: tensor<i32>) -> tensor<i32> {
 // CHECK-LABEL: func @while_test()
 // CHECK-SAME: -> !tf_mlrt.tensor
 func.func @while_test() -> (tensor<i32>) {
-  // CHECK: [[CONST:%.*]] = tf_mlrt.executeop
+  // CHECK: [[CONST:%.*]] = tf_mlrt.constop
   %0 = "tf.Const"() {__op_key = 4: i32, device = "/device:CPU:0", value = dense<0> : tensor<i32>} : () -> tensor<i32>
   // CHECK: [[pred_res:%.*]] = call @"while_cond_lt9/tf_mlrt_predicate"([[CONST]]) : (!tf_mlrt.tensor) -> i1
   // CHECK: [[while_res:%.*]]:2 = mlrt.while
@@ -353,8 +353,7 @@ func.func @main(%input0: tensor<i32>) -> tensor<i32> {
     {callee = @main_stream_0} :
     (tensor<i32>, !mlrt.promise) -> !mlrt.async_handle
 
-  // CHECK: [[const:%.*]]  = tf_mlrt.executeop
-  // CHECK-SAME: Const
+  // CHECK: [[const:%.*]]  = tf_mlrt.const
   %const = "tf.Const"() {__op_key = 1: i32, value = dense<2> : tensor<i32>} : () -> tensor<i32>
 
   // CHECK: [[b:%.*]] = tf_mlrt.await [[futures]]
@@ -482,11 +481,11 @@ func.func @ifrt_load_variable_test() -> () {
 
 // CHECK-LABEL: func @ifrt_restore_variable_test
 func.func @ifrt_restore_variable_test() -> () {
-  // CHECK-NEXT: [[PREFIX:%.*]] = tf_mlrt.executeop
+  // CHECK-NEXT: [[PREFIX:%.*]] = tf_mlrt.constop
   %cst = "tf.Const"() {__op_key = 0: i32, value = dense<"restore_ariables"> : tensor<!tf_type.string>} : () -> tensor<!tf_type.string>
-  // CHECK-NEXT: [[SLICE:%.*]] = tf_mlrt.executeop
+  // CHECK-NEXT: [[SLICE:%.*]] = tf_mlrt.constop
   %cst_0 = "tf.Const"()  {__op_key = 1: i32, value = dense<""> : tensor<1x!tf_type.string>} : () -> tensor<1x!tf_type.string>
-  // CHECK-NEXT: [[NAME:%.*]] = tf_mlrt.executeop
+  // CHECK-NEXT: [[NAME:%.*]] = tf_mlrt.constop
   %cst_1 = "tf.Const"()  {__op_key = 2: i32, value = dense<["y"]> : tensor<1x!tf_type.string>} : () -> tensor<1x!tf_type.string>
   // CHECK-NEXT: [[HANDLE:%.*]] = tf_mlrt.executeop
   %handle = "tf.VarHandleOp"() {__op_key = 3: i32, container = "x", shared_name = "y"} : () -> tensor<!tf_type.resource<tensor<3x1xf32>>>
