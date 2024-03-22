@@ -259,4 +259,16 @@ message GpuBackendConfig {
 
     CudnnfMHABackendConfig cudnn_fmha_backend_config = 9;
   }
+
+  // This attribute instructs the latency-hiding scheduler to
+  // schedule this particular instruction to the earliest position.
+  // Note that setting this to true will make this instruction scheduled
+  // at the very beginning of the parent computation before
+  // every other nodes.
+  // An example use case would be deciding to schedule between collective
+  // or an async compute. LHS might put either one at the first place
+  // depending on the cost, but it'd be more beneficial if the collective
+  // is always scheduled first as it's not SM-heavy.
+  // In this case we can use this flag to enforce the ordering.
+  bool force_earliest_schedule = 10;
 }
