@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_TSL_PYTHON_LIB_CORE_NUMPY_H_
-#define TENSORFLOW_TSL_PYTHON_LIB_CORE_NUMPY_H_
+#ifndef XLA_TSL_PYTHON_LIB_CORE_NUMPY_H_
+#define XLA_TSL_PYTHON_LIB_CORE_NUMPY_H_
 
 #ifdef PyArray_Type
 #error "Numpy cannot be included before numpy.h."
@@ -50,4 +50,4 @@ void ImportNumpy();
 
 }  // namespace tsl
 
-#endif  // TENSORFLOW_TSL_PYTHON_LIB_CORE_NUMPY_H_
+#endif  // XLA_TSL_PYTHON_LIB_CORE_NUMPY_H_

@@ -56,7 +56,7 @@ limitations under the License.
 #include "xla/python/ifrt_proxy/client/py_module.h"
 #include "xla/python/py_client.h"
 #include "xla/service/cpu/collectives_interface.h"
-#include "tsl/python/lib/core/numpy.h"  //NOLINT
+#include "xla/tsl/python/lib/core/numpy.h"  //NOLINT
 #ifdef XLA_PYTHON_ENABLE_GPU
 #include "xla/pjrt/gpu/se_gpu_pjrt_client.h"
 #endif  // XLA_PYTHON_ENABLE_GPU
