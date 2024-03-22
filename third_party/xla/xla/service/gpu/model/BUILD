@@ -567,6 +567,7 @@ cc_library(
         "//xla:status",
         "//xla/hlo/ir:hlo",
         "//xla/service:instruction_fusion",
+        "@com_google_absl//absl/base:nullability",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/log:check",

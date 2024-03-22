@@ -21,6 +21,7 @@ limitations under the License.
 #include <variant>
 #include <vector>
 
+#include "absl/base/nullability.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/types/span.h"
@@ -58,29 +59,29 @@ class SymbolicTileAnalysis {
   // Evaluates the tile offsets of an instruction from the analyzed computation
   // following the provided path from the root. Tile parameters must have been
   // set before calling this method.
-  std::vector<int64_t> TileOffsets(const HloInstruction* hlo,
+  std::vector<int64_t> TileOffsets(absl::Nonnull<const HloInstruction*> hlo,
                                    const InstructionPathFromRoot& path) const;
   // Evaluates the tile sizes of an instruction from the analyzed computation
   // following the provided path from the root. Tile parameters must have been
   // set before calling this method.
-  std::vector<int64_t> TileSizes(const HloInstruction* hlo,
+  std::vector<int64_t> TileSizes(absl::Nonnull<const HloInstruction*> hlo,
                                  const InstructionPathFromRoot& path) const;
   // Evaluates the tile strides of an instruction from the analyzed computation
   // following the provided path from the root. Tile parameters must have been
   // set before calling this method.
-  std::vector<int64_t> TileStrides(const HloInstruction* hlo,
+  std::vector<int64_t> TileStrides(absl::Nonnull<const HloInstruction*> hlo,
                                    const InstructionPathFromRoot& path) const;
 
-  // Populate tile parameters. This is a prerequisite in order to extract
+  // Populates tile parameters. This is a prerequisite in order to extract
   // concrete values using `TileOffsets`, `TileSizes`, and `TileStrides`.
   void SetTileParameters(absl::Span<int64_t const> parameters);
 
-  // Populate tile parameters with given sizes. All offsets are 0 and strides
+  // Populates tile parameters with given sizes. All offsets are 0 and strides
   // are 1.
   void SetTileParametersWithDefaultOffsetsAndStrides(
       absl::Span<int64_t const> sizes);
 
-  // Return the underlying IndexingContext.
+  // Returns the underlying IndexingContext.
   IndexingContext* GetIndexingContext() const { return context_; };
 
  private:

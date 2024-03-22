@@ -21,6 +21,7 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/base/nullability.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
@@ -95,9 +96,10 @@ struct HloAndPath {
           .c_str();
     }
 
-    const IndexingMap& hlo_indexing_map =
-        indexing_map_from_path.at(hlo_and_path.path);
+    auto hlo_indexing_map_it = indexing_map_from_path.find(hlo_and_path.path);
+    CHECK(hlo_indexing_map_it != indexing_map_from_path.end());
 
+    const IndexingMap& hlo_indexing_map = hlo_indexing_map_it->second;
     std::optional<SymbolicTile> symbolic_tile =
         SymbolicTile::FromIndexingMap(hlo_indexing_map);
     if (!symbolic_tile.has_value()) {
@@ -136,9 +138,8 @@ struct HloAndPath {
       indexing_map_from_path.insert({operand_path, operand_indexing_map});
       to_process.push(HloAndPath{operand, operand_path});
 
-      // TODO(bchetioui): replace instances of 'count' with 'contains' once OSS
-      // builds use C++20.
-      if (paths_from_root_to_instruction.count(operand) == 0) {
+      if (paths_from_root_to_instruction.find(operand) ==
+          paths_from_root_to_instruction.end()) {
         paths_from_root_to_instruction.insert({operand, {operand_path}});
       } else {
         paths_from_root_to_instruction.at(operand).insert(operand_path);
@@ -164,7 +165,7 @@ std::vector<int64_t> EvaluateTileMap(AffineMap affine_map,
         return mlir::getAffineConstantExpr(v, affine_map.getContext());
       }));
 
-  mlir::AffineMap simplified_affine_map =
+  AffineMap simplified_affine_map =
       mlir::simplifyAffineMap(affine_map.replaceDimsAndSymbols(
           /*dimReplacements=*/{}, symbol_replacements, /*numResultDims=*/0,
           /*numResultSyms=*/0));
@@ -180,35 +181,38 @@ std::vector<int64_t> EvaluateTileMap(AffineMap affine_map,
 }  // namespace
 
 std::vector<int64_t> SymbolicTileAnalysis::TileOffsets(
-    const HloInstruction* hlo, const InstructionPathFromRoot& path) const {
+    absl::Nonnull<const HloInstruction*> hlo,
+    const InstructionPathFromRoot& path) const {
   CHECK(tile_parameters_.has_value());
-  // TODO(bchetioui): replace instances of 'count' with 'contains' once OSS
-  // builds use C++20.
-  CHECK_EQ(paths_from_root_to_instruction_.count(hlo), 1);
-  CHECK_EQ(paths_from_root_to_instruction_.at(hlo).count(path), 1);
+  CHECK(paths_from_root_to_instruction_.find(hlo) !=
+        paths_from_root_to_instruction_.end());
+  CHECK(paths_from_root_to_instruction_.at(hlo).find(path) !=
+        paths_from_root_to_instruction_.at(hlo).end());
   return EvaluateTileMap(symbolic_tile_from_path_.at(path).offset_map(),
                          *tile_parameters_);
 }
 
 // TODO(bchetioui): remove dependency on stride and offset parameters.
 std::vector<int64_t> SymbolicTileAnalysis::TileSizes(
-    const HloInstruction* hlo, const InstructionPathFromRoot& path) const {
+    absl::Nonnull<const HloInstruction*> hlo,
+    const InstructionPathFromRoot& path) const {
   CHECK(tile_parameters_.has_value());
-  // TODO(bchetioui): replace instances of 'count' with 'contains' once OSS
-  // builds use C++20.
-  CHECK_EQ(paths_from_root_to_instruction_.count(hlo), 1);
-  CHECK_EQ(paths_from_root_to_instruction_.at(hlo).count(path), 1);
+  CHECK(paths_from_root_to_instruction_.find(hlo) !=
+        paths_from_root_to_instruction_.end());
+  CHECK(paths_from_root_to_instruction_.at(hlo).find(path) !=
+        paths_from_root_to_instruction_.at(hlo).end());
   return EvaluateTileMap(symbolic_tile_from_path_.at(path).size_map(),
                          *tile_parameters_);
 }
 
 std::vector<int64_t> SymbolicTileAnalysis::TileStrides(
-    const HloInstruction* hlo, const InstructionPathFromRoot& path) const {
+    absl::Nonnull<const HloInstruction*> hlo,
+    const InstructionPathFromRoot& path) const {
   CHECK(tile_parameters_.has_value());
-  // TODO(bchetioui): replace instances of 'count' with 'contains' once OSS
-  // builds use C++20.
-  CHECK_EQ(paths_from_root_to_instruction_.count(hlo), 1);
-  CHECK_EQ(paths_from_root_to_instruction_.at(hlo).count(path), 1);
+  CHECK(paths_from_root_to_instruction_.find(hlo) !=
+        paths_from_root_to_instruction_.end());
+  CHECK(paths_from_root_to_instruction_.at(hlo).find(path) !=
+        paths_from_root_to_instruction_.at(hlo).end());
   return EvaluateTileMap(symbolic_tile_from_path_.at(path).stride_map(),
                          *tile_parameters_);
 }

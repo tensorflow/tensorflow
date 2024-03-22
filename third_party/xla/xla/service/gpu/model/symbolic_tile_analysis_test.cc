@@ -62,7 +62,7 @@ ENTRY main {
       SymbolicTileAnalysis::AnalyzeComputation(*module->entry_computation(),
                                                &ctx);
 
-  EXPECT_TRUE(std::holds_alternative<SymbolicTileAnalysis>(analysis_or_error));
+  ASSERT_TRUE(std::holds_alternative<SymbolicTileAnalysis>(analysis_or_error));
   SymbolicTileAnalysis analysis =
       std::get<SymbolicTileAnalysis>(analysis_or_error);
 

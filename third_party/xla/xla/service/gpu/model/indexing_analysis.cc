@@ -1042,12 +1042,12 @@ IndexingMap CreateIdentityMap(const Shape& shape,
     return CreateIdentityMap(shape.tuple_shapes(0), indexing_context);
   }
 
-  auto dims = shape.dimensions();
+  auto dimensions = shape.dimensions();
   IndexingMap identity_map = IndexingMap::FromTensorSizes(
       indexing_context,
-      AffineMap::getMultiDimIdentityMap(dims.size(),
+      AffineMap::getMultiDimIdentityMap(dimensions.size(),
                                         indexing_context->GetMLIRContext()),
-      dims, {});
+      dimensions, {});
   return identity_map;
 }
 
