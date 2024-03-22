@@ -20,11 +20,11 @@ limitations under the License.
 #include <optional>
 #include <string>
 
+#include "absl/strings/string_view.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/quantization/common/attrs_and_constraints.h"
 #include "tensorflow/compiler/mlir/quantization/common/quantization_lib/quantization_config.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/quantization_config.pb.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/quantization_options.pb.h"
@@ -49,14 +49,14 @@ CreateLiftQuantizableSpotsAsFunctionsPass(
 // Apply graph optimizations such as fusing and constant folding to prepare
 // lifting.
 std::unique_ptr<OperationPass<func::FuncOp>> CreatePrepareLiftingPass(
-    OpSet target_opset);
+    tensorflow::quantization::OpSet target_opset);
 
 // Lifts the dynamic range quantizable spots as composite functions.
 std::unique_ptr<OperationPass<ModuleOp>>
 CreateLiftQuantizableSpotsAsFunctionsDRQPass(
     tensorflow::quantization::QuantizationMethod::PresetMethod
         quantization_method,
-    OpSet op_set, int min_num_elements_for_weights);
+    tensorflow::quantization::OpSet op_set, int min_num_elements_for_weights);
 
 // Replaces tf.CustomAggregator ops with quant.Stats ops for finalizing the
 // calibration procedure.
@@ -71,7 +71,7 @@ CreateIssueIDsOfCustomAggregationOpsPass();
 std::unique_ptr<OperationPass<ModuleOp>> CreateInsertQuantizedFunctionsPass(
     tensorflow::quantization::QuantizationMethod::PresetMethod
         quantization_method,
-    OpSet target_opset);
+    tensorflow::quantization::OpSet target_opset);
 
 // Inserts custom aggregation operators for the calibration procedure.
 std::unique_ptr<OperationPass<func::FuncOp>>
@@ -86,8 +86,9 @@ CreateInsertCustomAggregationOpsPass(
 std::unique_ptr<OperationPass<ModuleOp>> CreateQuantizeCompositeFunctionsPass(
     tensorflow::quantization::QuantizationMethod::PresetMethod
         quantization_method,
-    OpSet target_opset, bool enable_per_channel_quantization,
-    int min_num_elements_for_weight, bool enable_legacy_weight_only = false,
+    tensorflow::quantization::OpSet target_opset,
+    bool enable_per_channel_quantization, int min_num_elements_for_weights,
+    bool enable_legacy_weight_only = false,
     std::optional<const absl::string_view> mlir_dump_file_prefix =
         std::nullopt);
 
@@ -100,7 +101,8 @@ std::unique_ptr<OperationPass<func::FuncOp>> CreateQuantizePass();
 
 // Overloading of CreateQuantizePass which takes QuantizationSpecs.
 std::unique_ptr<OperationPass<func::FuncOp>> CreateQuantizePass(
-    QuantizationSpecs quant_specs, OpSet target_opset);
+    QuantizationSpecs quant_specs,
+    tensorflow::quantization::OpSet target_opset);
 
 // Creates an instance of the PrepareQuantize pass, which will perform similar
 // transformations as TFL::PrepareQuantizePass.
@@ -112,12 +114,13 @@ std::unique_ptr<OperationPass<func::FuncOp>> CreatePrepareQuantizePass(
 // Creates an instance of the PrepareQuantizeDRQ pass, which will
 // perform similar transformations as TFL::PrepareQuantizeDynamicRangePass.
 std::unique_ptr<OperationPass<ModuleOp>> CreatePrepareQuantizeDRQPass(
-    const QuantizationSpecs& quant_specs, OpSet op_set);
+    const QuantizationSpecs& quant_specs,
+    tensorflow::quantization::OpSet op_set);
 
 // Creates an instance of the PreprocessOp pass, which will perform op
 // preprocessing to allow multi-axis quantization, prior to quantization.
 std::unique_ptr<OperationPass<ModuleOp>> CreatePreprocessOpPass(
-    OpSet op_set,
+    tensorflow::quantization::OpSet op_set,
     tensorflow::quantization::QuantizationMethod::PresetMethod
         quantization_method,
     bool enable_per_channel_quantization);
