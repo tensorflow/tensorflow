@@ -59,20 +59,21 @@ struct Distribution<storage_type, std::enable_if_t<IsFloat(storage_type)>>
   using std::uniform_real_distribution<float>::uniform_real_distribution;
 };
 
-template <DataType storage_type, class Config = Storage<storage_type>>
-Vector<typename Config::Type> RandomBuffer(
-    const Shape& shape, const typename Config::Type min = Config::kMinValue,
-    const typename Config::Type max = Config::kMaxValue) {
+template <DataType storage_type, class MinT = StorageType<storage_type>,
+          class MaxT = StorageType<storage_type>,
+          class Config = Storage<storage_type>>
+Vector<typename Config::Type> RandomBuffer(const Shape& shape,
+                                           const MinT min = Config::kMinValue,
+                                           const MaxT max = Config::kMaxValue) {
+  using StorageT = StorageType<storage_type>;
+  const StorageT min_val =
+      min > Config::kMinValue ? static_cast<StorageT>(min) : Config::kMinValue;
+  const StorageT max_val =
+      max < Config::kMaxValue ? static_cast<StorageT>(max) : Config::kMaxValue;
   Vector<typename Config::Type> vec(shape.NumElements());
   std::random_device rd;
-  Distribution<storage_type> dist(min, max);
-  absl::c_generate(vec, [&] {
-    if constexpr (storage_type == DataType::kI1) {
-      return dist(rd) >= 0;
-    } else {
-      return dist(rd);
-    }
-  });
+  Distribution<storage_type> dist(min_val, max_val);
+  absl::c_generate(vec, [&] { return dist(rd); });
   return vec;
 }
 
