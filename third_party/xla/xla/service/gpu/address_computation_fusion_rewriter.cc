@@ -298,7 +298,6 @@ absl::StatusOr<bool> AddressComputationFusionRewriter::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   if (!module->has_schedule()) return Internal("module is not scheduled");
-  bool changed = false;
 
   absl::flat_hash_map<HloInstruction*, absl::InlinedVector<HloInstruction*, 8>>
       matches;
@@ -316,6 +315,8 @@ absl::StatusOr<bool> AddressComputationFusionRewriter::Run(
       }
     }
   }
+
+  if (matches.empty()) return false;
 
   HloSchedule& schedule = module->schedule();
   for (auto& kv : matches) {
@@ -340,14 +341,11 @@ absl::StatusOr<bool> AddressComputationFusionRewriter::Run(
 
     // TODO(vuson): handle control dependencies
     TF_RETURN_IF_ERROR(parent->ReplaceInstruction(kv.first, fusion));
-    changed = true;
   }
 
-  if (changed) {
-    TF_RETURN_IF_ERROR(module->schedule().Update());
-  }
+  TF_RETURN_IF_ERROR(module->schedule().Update());
 
-  return changed;
+  return true;
 }
 
 }  // namespace gpu
