@@ -176,8 +176,10 @@ tf_py_strict_test(
     name = "from_list_test",
     size = "small",
     srcs = ["from_list_test.py"],
+    shard_count = 4,
     deps = [
         "//tensorflow/python/data/experimental/ops:from_list",
+        "//tensorflow/python/data/experimental/ops:global_shuffle_op",
         "//tensorflow/python/data/experimental/ops:random_access",
         "//tensorflow/python/data/kernel_tests:checkpoint_test_base",
         "//tensorflow/python/data/kernel_tests:test_base",
