@@ -244,7 +244,8 @@ absl::Status MakeDotComputationSplitKBatch(
   const DotDimensionNumbers& old_dim_numbers = dot->dot_dimension_numbers();
   DotDimensionNumbers new_dim_numbers;
 
-  const int64_t lhs_contracting_idx = ContractingDimensionIndex(*dot, 0);
+  TF_ASSIGN_OR_RETURN(const int64_t lhs_contracting_idx,
+                      ContractingDimensionIndex(*dot, 0));
   CopyIncrementingAboveThreshold(
       old_dim_numbers.lhs_contracting_dimensions(),
       *new_dim_numbers.mutable_lhs_contracting_dimensions(),
@@ -254,7 +255,8 @@ absl::Status MakeDotComputationSplitKBatch(
       old_dim_numbers.lhs_batch_dimensions(),
       *new_dim_numbers.mutable_lhs_batch_dimensions(), lhs_contracting_idx);
 
-  const int64_t rhs_contracting_idx = ContractingDimensionIndex(*dot, 1);
+  TF_ASSIGN_OR_RETURN(const int64_t rhs_contracting_idx,
+                      ContractingDimensionIndex(*dot, 1));
   CopyIncrementingAboveThreshold(
       old_dim_numbers.rhs_contracting_dimensions(),
       *new_dim_numbers.mutable_rhs_contracting_dimensions(),

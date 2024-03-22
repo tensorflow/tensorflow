@@ -120,6 +120,8 @@ absl::InlinedVector<HloInstruction*, 8> GetSlicedOperandChains(
   absl::InlinedVector<HloInstruction*, 8> sliced_operand_chains = {
       const_cast<HloInstruction*>(instr)};
   auto fusion = HloFusionAdaptor::ForComputation(instr->parent());
+  // This set is used to avoid duplicates in the matched results. It contains
+  // the matched instructions that we have seen so far.
   absl::flat_hash_set<HloInstruction*> processed_sliced_chain_set;
 
   const auto& aliasing_pairs =
@@ -138,6 +140,7 @@ absl::InlinedVector<HloInstruction*, 8> GetSlicedOperandChains(
     auto maybe_slice_adaptor =
         HloFindIf({HloInstructionAdaptor(*operand)}, *fusion, [&](auto node) {
           const HloInstruction* cur = &node.instruction();
+          // If the node is a match that has been processed, stop the traversal.
           if (processed_sliced_chain_set.contains(cur)) return true;
           maybe_sliced_operand_chain.push_back(
               const_cast<HloInstruction*>(cur));
@@ -145,13 +148,17 @@ absl::InlinedVector<HloInstruction*, 8> GetSlicedOperandChains(
           // uses of the operand to reuse the address computation. Only worth it
           // if other uses are also custom calls though.
           // TODO(vuson): lift the second restriction by considering fusing the
-          // non-noop instructions to the computation if possible.
+          // non-noop instructions to the computation if possible (i.e. for
+          // dynamic slices).
           return cur->user_count() > 1 || !IsNoOp(cur) || IsAlignedSlice(*cur);
         });
     if (maybe_slice_adaptor == std::nullopt) continue;
     const auto& maybe_slice_instr = maybe_slice_adaptor->instruction();
     if (IsAlignedSlice(maybe_slice_instr) ||
         processed_sliced_chain_set.contains(&maybe_slice_instr)) {
+      // Even in the case of stopping at a match that has been processed, we
+      // still need to add instructions encountered in the sliced operand chain
+      // during the latest traversal.
       sliced_operand_chains.insert(sliced_operand_chains.end(),
                                    maybe_sliced_operand_chain.begin(),
                                    maybe_sliced_operand_chain.end());

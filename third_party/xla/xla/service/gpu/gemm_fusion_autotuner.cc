@@ -33,6 +33,7 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
@@ -241,11 +242,14 @@ class GemmConfigSetCollector : public ConstDfsHloVisitorWithDefault {
 
     if (backend_config.kind() == kTritonGemmFusionKind &&
         !backend_config.has_triton_gemm_config()) {
-      CHECK(
-          gemm_config_sets_.insert({fusion, GetGemmConfigSet(fusion)}).second);
+      TF_ASSIGN_OR_RETURN(GemmConfigSet gemm_config_set,
+                          GetGemmConfigSet(fusion));
+      TF_RET_CHECK(
+          gemm_config_sets_.insert({fusion, std::move(gemm_config_set)})
+              .second);
     } else if (backend_config.kind() == kCuDnnFusionKind &&
                !backend_config.has_cudnn_fusion_config()) {
-      CHECK(gemm_config_sets_.insert({fusion, {}}).second);
+      TF_RET_CHECK(gemm_config_sets_.insert({fusion, {}}).second);
     }
 
     handled_fusions_.insert(key);
@@ -257,7 +261,8 @@ class GemmConfigSetCollector : public ConstDfsHloVisitorWithDefault {
   }
 
  private:
-  GemmConfigSet GetGemmConfigSet(const HloFusionInstruction* fusion) {
+  absl::StatusOr<GemmConfigSet> GetGemmConfigSet(
+      const HloFusionInstruction* fusion) {
     const DebugOptions& debug_options =
         fusion->GetModule()->config().debug_options();
     auto cuda_comp =
@@ -265,9 +270,11 @@ class GemmConfigSetCollector : public ConstDfsHloVisitorWithDefault {
     const HloDotInstruction* dot_instr =
         Cast<HloDotInstruction>(hlo_query::GetFirstInstructionWithOpcode(
             *fusion->called_computations().at(0), HloOpcode::kDot));
-    auto configs = GetPossibleMatmulAutotuneConfigs(
-        *dot_instr, cuda_comp, debug_options, config_.ExhaustiveTilingSearch());
-    return {configs, /*has_sparsity=*/dot_instr->sparse_operands() > 0};
+    TF_ASSIGN_OR_RETURN(auto configs, GetPossibleMatmulAutotuneConfigs(
+                                          *dot_instr, cuda_comp, debug_options,
+                                          config_.ExhaustiveTilingSearch()));
+    return GemmConfigSet{std::move(configs),
+                         /*has_sparsity=*/dot_instr->sparse_operands() > 0};
   }
 
   AutotuneConfig config_;
@@ -282,19 +289,22 @@ struct TileSizeLimit {
   int64_t block_k = 0;
 };
 
-TileSizeLimit GetUpperLimit(const HloDotInstruction& dot) {
+absl::StatusOr<TileSizeLimit> GetUpperLimit(const HloDotInstruction& dot) {
+  TF_ASSIGN_OR_RETURN(int64_t non_contracting_index0,
+                      NonContractingDimensionIndex(dot, /*operand_number=*/0));
+  TF_ASSIGN_OR_RETURN(int64_t non_contracting_index1,
+                      NonContractingDimensionIndex(dot, /*operand_number=*/1));
+  TF_ASSIGN_OR_RETURN(int64_t contracting_index0,
+                      ContractingDimensionIndex(dot, /*operand_number=*/0));
   // This is not a sharp upper limit, the actual m value can be much smaller
   // based on how much of the m dimension is physically contiguous.
   // TODO(tdanyluk): Get the exact m value by running a TritonFusionAnalysis.
-  const int64_t m = dot.operand(0)->shape().dimensions(
-      NonContractingDimensionIndex(dot, /*operand_number=*/0));
+  const int64_t m = dot.operand(0)->shape().dimensions(non_contracting_index0);
   // Theoretically the same is true as for m, but that is not possible in
   // practice with the current implementation.
-  const int64_t n = dot.operand(1)->shape().dimensions(
-      NonContractingDimensionIndex(dot, /*operand_number=*/1));
+  const int64_t n = dot.operand(1)->shape().dimensions(non_contracting_index1);
   // This is before doing the split-k transform.
-  const int64_t k = dot.operand(0)->shape().dimensions(
-      ContractingDimensionIndex(dot, /*operand_number=*/0));
+  const int64_t k = dot.operand(0)->shape().dimensions(contracting_index0);
   const int64_t block_m_limit =
       std::max<int64_t>(tsl::NextPowerOfTwoS64(m), kMinTileSize);
   const int64_t block_n_limit =
@@ -304,7 +314,7 @@ TileSizeLimit GetUpperLimit(const HloDotInstruction& dot) {
   const int64_t block_k_limit =
       std::max<int64_t>(tsl::NextPowerOfTwoS64(k),
                         kMinTileSize * (dot.sparse_operands() ? 2 : 1));
-  return {block_m_limit, block_n_limit, block_k_limit};
+  return TileSizeLimit{block_m_limit, block_n_limit, block_k_limit};
 }
 
 int64_t GetSplitKLimit(int64_t block_k, int64_t block_k_limit) {
@@ -323,11 +333,12 @@ constexpr std::array<int, 5> SPLIT_K = {1, 2, 4, 8, 16};
 // It's possible that some other values may be(come) supported.
 constexpr std::array<int, 5> NUM_CTAS = {1, 2, 4, 8, 16};
 
-std::vector<TritonGemmConfig> GetExhaustiveMatmulAutotuneConfigs(
+absl::StatusOr<std::vector<TritonGemmConfig>>
+GetExhaustiveMatmulAutotuneConfigs(
     const HloDotInstruction& dot,
     const se::CudaComputeCapability compute_capability, const int max_split_k,
     const DebugOptions& debug_options) {
-  const TileSizeLimit limit = GetUpperLimit(dot);
+  TF_ASSIGN_OR_RETURN(const TileSizeLimit limit, GetUpperLimit(dot));
   std::vector<TritonGemmConfig> configs;
   bool mma_layout_v2 =
       compute_capability.IsAtLeast(se::CudaComputeCapability::AMPERE);
@@ -433,9 +444,9 @@ std::vector<TritonGemmConfig> GetFixedMatmulAutotuneConfigs(
 }
 
 // This prefers to take the parameter by moving it.
-std::vector<TritonGemmConfig> ReduceTileSizes(
+absl::StatusOr<std::vector<TritonGemmConfig>> ReduceTileSizes(
     const HloDotInstruction& dot, std::vector<TritonGemmConfig> configs) {
-  const TileSizeLimit limit = GetUpperLimit(dot);
+  TF_ASSIGN_OR_RETURN(const TileSizeLimit limit, GetUpperLimit(dot));
   // Decrease the block sizes and split_k if they are unnecessarily big.
   for (TritonGemmConfig& config : configs) {
     config.block_m = std::min<int64_t>(config.block_m, limit.block_m);
@@ -459,7 +470,7 @@ std::vector<TritonGemmConfig> ReduceTileSizes(
                                  return !configs_so_far.insert(config).second;
                                }),
                 configs.end());
-  CHECK(!configs.empty());
+  TF_RET_CHECK(!configs.empty());
   return configs;
 }
 
@@ -1127,7 +1138,7 @@ absl::Status Autotune(
 
 }  // anonymous namespace
 
-std::vector<TritonGemmConfig> GetPossibleMatmulAutotuneConfigs(
+absl::StatusOr<std::vector<TritonGemmConfig>> GetPossibleMatmulAutotuneConfigs(
     const HloDotInstruction& dot,
     const se::CudaComputeCapability compute_capability,
     const DebugOptions& debug_options, bool exhaustive_tiling_search) {
@@ -1187,7 +1198,9 @@ absl::StatusOr<bool> GemmFusionAutotuner::Run(
         const HloDotInstruction* dot_instr =
             Cast<HloDotInstruction>(hlo_query::GetFirstInstructionWithOpcode(
                 *fusion->called_computations().at(0), HloOpcode::kDot));
-        auto config = ReduceTileSizes(*dot_instr, {kDefaultGemmTiling}).front();
+        TF_ASSIGN_OR_RETURN(auto configs,
+                            ReduceTileSizes(*dot_instr, {kDefaultGemmTiling}));
+        auto config = configs.front();
         *res.mutable_triton() = config.ToProto();
       }
       *res.mutable_run_time() =

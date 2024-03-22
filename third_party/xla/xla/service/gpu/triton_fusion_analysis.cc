@@ -42,6 +42,7 @@ limitations under the License.
 #include "xla/tools/hlo_decomposer.h"
 #include "xla/util.h"
 #include "tsl/platform/errors.h"
+#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace gpu {
@@ -60,14 +61,17 @@ using triton_fusion::TransformDirection;
 
 namespace triton_fusion {
 
-/*static*/ FusionContext FusionContext::FromDotOperand(
+/*static*/ absl::StatusOr<FusionContext> FusionContext::FromDotOperand(
     const HloInstruction& dot, const int operand_number, const int split_k) {
   // There can be either none or one split-K batch dimension.
   const int num_split_k_batch_dims = split_k > 1;
   int split_k_dimension_index = kNoDimensionIndex;
+  TF_ASSIGN_OR_RETURN(int contracting_dimension_index,
+                      ContractingDimensionIndex(dot, operand_number));
+  TF_ASSIGN_OR_RETURN(int non_contracting_dimension_index,
+                      NonContractingDimensionIndex(dot, operand_number));
   if (split_k > 1) {
-    split_k_dimension_index =
-        ContractingDimensionIndex(dot, operand_number) - 1;
+    split_k_dimension_index = contracting_dimension_index - 1;
   }
   int splittable_dimension_index = kNoDimensionIndex;
   // LHS non-contracting dimension can be split if non-splitK batch is absent.
@@ -75,14 +79,11 @@ namespace triton_fusion {
       dot.dot_dimension_numbers().lhs_batch_dimensions_size() -
               num_split_k_batch_dims ==
           0) {
-    splittable_dimension_index =
-        NonContractingDimensionIndex(dot, operand_number);
+    splittable_dimension_index = non_contracting_dimension_index;
   }
-  FusionContext context(
-      DotProperties{
-          static_cast<int>(NonContractingDimensionIndex(dot, operand_number)),
-          splittable_dimension_index},
-      DotRequirements(kNoSplitRequirement));
+  FusionContext context(DotProperties{non_contracting_dimension_index,
+                                      splittable_dimension_index},
+                        DotRequirements(kNoSplitRequirement));
   context.dim_orders_[dot.operand(operand_number)] =
       DimensionOrder::FromDotOperandOrOutput(*dot.operand(operand_number),
                                              split_k_dimension_index);
@@ -279,7 +280,8 @@ absl::Status TritonFusionAnalysis::ExecuteForDotFusion(
     if (dot.operand_count() < operand_number + 1) {
       continue;  // Meta scope is optional.
     }
-    auto context = FusionContext::FromDotOperand(dot, operand_number, split_k);
+    TF_ASSIGN_OR_RETURN(auto context, FusionContext::FromDotOperand(
+                                          dot, operand_number, split_k));
     TF_RETURN_IF_ERROR(context.PropagateDimensionOrdersToParameters(
         *dot.operand(operand_number), parameters_[scope], iter_specs_[scope]));
     if (scope == Scope::LHS) {
