@@ -16,6 +16,7 @@ limitations under the License.
 
 #include <algorithm>
 #include <cstddef>
+#include <cstdint>
 #include <functional>
 #include <iterator>
 #include <memory>
@@ -26,6 +27,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/cleanup/cleanup.h"
+#include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
@@ -39,10 +41,9 @@ limitations under the License.
 #include "mlir/IR/DialectRegistry.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/OwningOpRef.h"  // from @llvm-project
-#include "tensorflow/cc/saved_model/reader.h"
 #include "tensorflow/compiler/jit/flags.h"
-#include "tensorflow/compiler/mlir/tensorflow/ir/tf_saved_model.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/import_model.h"
+#include "tensorflow/compiler/mlir/tensorflow/translate/mlir_roundtrip_flags.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/tf_mlir_translate.h"
 #include "tensorflow/compiler/mlir/tfrt/saved_model/saved_model.h"
 #include "tensorflow/compiler/mlir/tfrt/transforms/mlrt/import_model.h"
@@ -53,21 +54,19 @@ limitations under the License.
 #include "tensorflow/core/framework/metrics.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor.pb.h"
-#include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/lib/monitoring/counter.h"
 #include "tensorflow/core/lib/monitoring/gauge.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/mutex.h"
-#include "tensorflow/core/platform/path.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/statusor.h"
-#include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/core/protobuf/meta_graph.pb.h"
 #include "tensorflow/core/protobuf/rewriter_config.pb.h"
 #include "tensorflow/core/runtime_fallback/kernel/kernel_fallback_compat_request_state.h"
 #include "tensorflow/core/tfrt/fallback/fallback_state.h"
+#include "tensorflow/core/tfrt/fallback/op_kernel_runner.h"
 #include "tensorflow/core/tfrt/graph_executor/export_mlir.h"
 #include "tensorflow/core/tfrt/graph_executor/graph_execution_options.h"
 #include "tensorflow/core/tfrt/graph_executor/graph_executor.h"
@@ -77,21 +76,15 @@ limitations under the License.
 #include "tensorflow/core/tfrt/mlrt/kernel/batch_kernel.h"
 #include "tensorflow/core/tfrt/mlrt/kernel/kernel.h"
 #include "tensorflow/core/tfrt/runtime/runtime.h"
-#include "tensorflow/core/tfrt/runtime/work_queue_interface.h"
 #include "tensorflow/core/tfrt/saved_model/saved_model_util.h"
 #include "tensorflow/core/tfrt/saved_model/utils/serialize_utils.h"
 #include "tensorflow/core/tfrt/stubs/model_config_stub.h"
-#include "tensorflow/core/tfrt/utils/error_util.h"
-#include "tensorflow/core/tfrt/utils/fallback_tensor.h"
 #include "tensorflow/core/tfrt/utils/utils.h"
-#include "tsl/platform/env.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/statusor.h"
 #include "tfrt/bef/bef_buffer.h"  // from @tf_runtime
 #include "tfrt/bef_executor/bef_file.h"  // from @tf_runtime
 #include "tfrt/core_runtime/core_runtime.h"  // from @tf_runtime
-#include "tfrt/host_context/async_value.h"  // from @tf_runtime
-#include "tfrt/host_context/chain.h"  // from @tf_runtime
 #include "tfrt/host_context/execution_context.h"  // from @tf_runtime
 #include "tfrt/host_context/function.h"  // from @tf_runtime
 #include "tfrt/host_context/host_context.h"  // from @tf_runtime
@@ -110,12 +103,6 @@ constexpr absl::string_view kSignatureJoiningDelimiter = "+";
 auto* lazy_loading_count = monitoring::Counter<3>::New(
     "/tensorflow/tfrt/lazy_loading_count", "The total number of lazy loadings.",
     "model_name", "model_version", "use_graph_executor");
-
-auto* saved_model_graph_executor_mode = monitoring::Counter<3>::New(
-    "/tensorflow/tfrt/saved_model/graph_executor_mode",
-    "Record the total number of imported savedmodel using different graph "
-    "executor modes (BEF vs MLRT interpreter)",
-    "model_name", "model_version", "mode");
 
 auto* saved_model_import_time_seconds =
     tensorflow::monitoring::Gauge<int64_t, 1>::New(
@@ -609,25 +596,11 @@ SavedModelImpl::LoadSavedModel(Options options,
     tensorflow::tf_mlrt::RegisterTfMlrtBatchKernels(*kernel_registry);
 
     if (options.graph_execution_options.enable_mlrt) {
-      saved_model_graph_executor_mode
-          ->GetCell(
-              options.graph_execution_options.model_metadata.name(),
-              absl::StrCat(
-                  options.graph_execution_options.model_metadata.version()),
-              "mlrt")
-          ->IncrementBy(1);
       ASSIGN_OR_RETURN_IN_COMPILE(
           bytecode, tensorflow::mlrt_compiler::ConvertTfMlirToBytecode(
                         options.graph_execution_options.compile_options,
                         *fallback_state, mlir_module.get(), model_context));
     } else {
-      saved_model_graph_executor_mode
-          ->GetCell(
-              options.graph_execution_options.model_metadata.name(),
-              absl::StrCat(
-                  options.graph_execution_options.model_metadata.version()),
-              "bef")
-          ->IncrementBy(1);
       RETURN_IF_ERROR_IN_COMPILE(tensorflow::ConvertTfMlirToBef(
           options.graph_execution_options.compile_options, mlir_module.get(),
           &bef, model_context, fallback_state.get()));
