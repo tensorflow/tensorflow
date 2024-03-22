@@ -335,18 +335,18 @@ std::pair<GpuResourceType, ResourceUsageType> GetP2PResourceAndUsage(
       // A pipelined P2P. Find the corresponding start-op.
       const HloSendRecvInstruction* start;
       const HloGetTupleElementInstruction* gte =
-          DynCast<HloGetTupleElementInstruction>(operand);
+          Cast<HloGetTupleElementInstruction>(operand);
       int64_t tuple_index = gte->tuple_index();
       if (gte->operand(0)->opcode() == HloOpcode::kWhile) {
         // The op is a while-result, so the start-op should be a value in the
         // while-op operands.
-        start = DynCast<HloSendRecvInstruction>(
+        start = Cast<HloSendRecvInstruction>(
             gte->operand(0)->operand(0)->operand(tuple_index));
       } else {
         // The op is a while-body parameter, so the start-op should be a value
         // in the while-body result.
         const HloComputation* computation = instr.parent();
-        start = DynCast<HloSendRecvInstruction>(
+        start = Cast<HloSendRecvInstruction>(
             computation->root_instruction()->operand(tuple_index));
       }
       pipeline = GetPipelineStream(*start);
