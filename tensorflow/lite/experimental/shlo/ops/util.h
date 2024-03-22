@@ -28,11 +28,18 @@ namespace shlo_ref {
     return s;                             \
   }
 
-// Propages the input shape to the output shape.
+// Propagates the input shape to the output shape.
 //
 // If the output shape is already populated, checks that is it compatible with
 // the input.
 absl::Status Propagate(const Shape& input_shape, Shape& output_shape);
+
+// Propagates the input shapes to the output shape.
+//
+// If the output shape is already populated, checks that is it compatible with
+// the inputs.
+absl::Status Propagate(const Shape& lhs_shape, const Shape& rhs_shape,
+                       Shape& output_shape);
 
 // Provides context information for the `Check*` functions error messages.
 struct CheckCtx {

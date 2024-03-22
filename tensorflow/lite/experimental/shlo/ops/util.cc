@@ -24,12 +24,25 @@ namespace shlo_ref {
 absl::Status Propagate(const Shape& input_shape, Shape& output_shape) {
   if (output_shape.Dimensions().empty()) {
     output_shape = input_shape;
-  } else {
-    if (output_shape != input_shape) {
-      return absl::FailedPreconditionError(
-          "The specified output tensor shape is not compatible with the input "
-          "shape.");
-    }
+  } else if (output_shape != input_shape) {
+    return absl::FailedPreconditionError(
+        "The specified output tensor shape is not compatible with the input "
+        "shape.");
+  }
+  return absl::OkStatus();
+}
+
+absl::Status Propagate(const Shape& lhs_shape, const Shape& rhs_shape,
+                       Shape& output_shape) {
+  if (lhs_shape != rhs_shape) {
+    return absl::FailedPreconditionError(
+        "The LHS and RHS shapes are incompatible.");
+  } else if (output_shape.Dimensions().empty()) {
+    output_shape = lhs_shape;
+  } else if (output_shape != lhs_shape) {
+    return absl::FailedPreconditionError(
+        "The specified output tensor shape is not compatible with the input "
+        "shapes.");
   }
   return absl::OkStatus();
 }

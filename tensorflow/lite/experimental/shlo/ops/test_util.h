@@ -239,6 +239,77 @@ struct WithOp<Op, ::testing::Types<Ts...>> {
 template <class Op, class T>
 using WithOpTypes = typename WithOp<Op, T>::Types;
 
+template <class Accu, class... Lists>
+struct CrossProductImpl;
+
+template <class... AccuTs, class... Ts, class... Lists>
+struct CrossProductImpl<::testing::Types<AccuTs...>, ::testing::Types<Ts...>,
+                        Lists...> {
+  using Types =
+      ConcatTypes<typename CrossProductImpl<::testing::Types<AccuTs..., Ts>,
+                                            Lists...>::Types...>;
+};
+
+template <class... AccuTs>
+struct CrossProductImpl<::testing::Types<AccuTs...>> {
+  using Types = ::testing::Types<::testing::Types<AccuTs...>>;
+};
+
+// Generates a cross-product of lists.
+template <class... Lists>
+struct CrossProduct {
+  using Types = typename CrossProductImpl<::testing::Types<>, Lists...>::Types;
+};
+
+template <class... Lists>
+using CrossProductTypes = typename CrossProduct<Lists...>::Types;
+
+static_assert(
+    std::is_same_v<
+        CrossProductTypes<::testing::Types<int, float>,
+                          ::testing::Types<char, double>>,
+        ::testing::Types<
+            ::testing::Types<int, char>, ::testing::Types<int, double>,
+            ::testing::Types<float, char>, ::testing::Types<float, double>>>);
+
+static_assert(
+    std::is_same_v<
+        CrossProductTypes<::testing::Types<int>, ::testing::Types<char, double>,
+                          ::testing::Types<float>>,
+        ::testing::Types<::testing::Types<int, char, float>,
+                         ::testing::Types<int, double, float>>>);
+
+template <template <class...> class Predicate, class List>
+struct Filter;
+
+template <template <class...> class Predicate, class... Ts>
+struct Filter<Predicate, ::testing::Types<Ts...>> {
+  using Type =
+      ConcatTypes<std::conditional_t<Predicate<Ts>::value, ::testing::Types<Ts>,
+                                     ::testing::Types<>>...>;
+};
+
+template <template <class...> class Predicate, class List>
+using FilterTypes = typename Filter<Predicate, List>::Type;
+
+static_assert(std::is_same_v<
+              FilterTypes<std::is_integral, ::testing::Types<int, char, float>>,
+              ::testing::Types<int, char>>);
+
+template <class T, class... Ts>
+struct SameTypes : std::bool_constant<(std::is_same_v<T, Ts> && ...)> {};
+
+// Checks if all types in the testing::Types list are the same.
+template <class T, class... Ts>
+struct SameTypes<::testing::Types<T, Ts...>> : SameTypes<T, Ts...> {};
+
+// Provides a new predicate that negates the given one.
+template <template <class...> class Pred>
+struct NegatePred {
+  template <class... Ts>
+  using Predicate = std::negation<Pred<Ts...>>;
+};
+
 // Use this with TYPED_TEST_SUITE for boolean testing.
 using BoolTestType = ::testing::Types<TestParam<DataType::kI1>>;
 
@@ -251,17 +322,6 @@ using IntTestTypes =
 using FloatTestTypes =
     ::testing::Types<TestParam<DataType::kBF16>, TestParam<DataType::kF16>,
                      TestParam<DataType::kF32>>;
-
-// Use this with TYPED_TEST_SUITE for non quantized integer testing.
-using NonQuantizedBoolIntTestTypes =
-    testing::Types<TestParam<DataType::kI1>, TestParam<DataType::kSI4>,
-                   TestParam<DataType::kSI8>, TestParam<DataType::kSI16>,
-                   TestParam<DataType::kSI32>>;
-
-// Use this with TYPED_TEST_SUITE for non quantized integer testing.
-using NonQuantizedBoolFloatTestTypes =
-    testing::Types<TestParam<DataType::kI1>, TestParam<DataType::kBF16>,
-                   TestParam<DataType::kF16>, TestParam<DataType::kF32>>;
 
 // Use this with TYPED_TEST_SUITE for non quantized testing.
 using ArithmeticTestTypes = ConcatTypes<IntTestTypes, FloatTestTypes>;
