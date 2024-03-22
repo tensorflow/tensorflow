@@ -38,8 +38,6 @@ class MlirConcatenateFusion : public MlirFusionEmitterBase {
   explicit MlirConcatenateFusion(const HloFusionAnalysis& analysis)
       : analysis_(analysis) {}
 
-  static bool IsSupported(const HloFusionAnalysis& analysis);
-
   LaunchDimensions launch_dimensions() const override;
 
   std::optional<IndexingMap> ComputeThreadIdToOutputIndexing(
