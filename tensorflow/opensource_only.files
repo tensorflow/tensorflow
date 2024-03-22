@@ -164,7 +164,6 @@ tf_staging/tensorflow/tools/lib_package/libtensorflow_test.sh:
 tf_staging/tensorflow/tools/pip_package/BUILD:
 tf_staging/tensorflow/tools/pip_package/MANIFEST.in:
 tf_staging/tensorflow/tools/pip_package/README:
-tf_staging/tensorflow/tools/pip_package/build_pip_package.sh:
 tf_staging/tensorflow/tools/pip_package/check_load_py_test:.py
 tf_staging/tensorflow/tools/pip_package/pip_smoke_test:.py
 tf_staging/tensorflow/tools/pip_package/setup:.py
