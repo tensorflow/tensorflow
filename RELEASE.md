@@ -75,6 +75,9 @@
     * C API:
         * The experimental `TfLiteRegistrationExternal` type has been renamed as
           `TfLiteOperator`, and likewise for the corresponding API functions.
+    * The Python TF Lite Interpreter bindings now have an option
+      `experimental_default_delegate_latest_features` to enable all default
+      delegate features.
 
 ## Thanks to our Contributors
 

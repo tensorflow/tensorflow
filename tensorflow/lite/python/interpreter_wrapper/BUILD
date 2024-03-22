@@ -39,6 +39,7 @@ cc_library(
         "//tensorflow/lite/core/api",
         "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/core/kernels:builtin_ops",
+        "//tensorflow/lite/delegates/xnnpack:xnnpack_delegate",
         "//tensorflow/lite/kernels:reference_ops",
         "//tensorflow/lite/kernels/internal:compatibility",
         "//third_party/python_runtime:headers",  # buildcleaner: keep
