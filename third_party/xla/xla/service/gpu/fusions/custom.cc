@@ -24,6 +24,7 @@ limitations under the License.
 #include <variant>
 #include <vector>
 
+#include "absl/algorithm/container.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
@@ -197,32 +198,25 @@ absl::StatusOr<FusionEmissionResult> EmitDynamicSlicedGemm(
   auto get_original_operand_slice =
       [&](const HloInstruction* start,
           const ShapeIndex& index) -> absl::StatusOr<BufferAllocation::Slice> {
-    if (const auto* param = DynCast<HloParameterInstruction>(start)) {
-      return GetAllocationSlice(
-          buffer_assignment, fusion.operand(param->parameter_number()), index);
-    }
-
+    auto* param = DynCast<HloParameterInstruction>(start);
     auto slice_adaptor = HloFindIf(
         {HloInstructionAdaptor(*start)}, adaptor,
         [](auto node) { return node.opcode() == HloOpcode::kDynamicSlice; });
-    if (!slice_adaptor.has_value()) {
-      return absl::InternalError(
-          "DynamicAddressComputationFusion expects all operands to be either "
-          "sliced or parameter");
+    if (slice_adaptor.has_value()) {
+      slice_instr = const_cast<HloDynamicIndexInstruction*>(
+          static_cast<const HloDynamicIndexInstruction*>(
+              &slice_adaptor->instruction()));
+
+      if (!IsContiguousSlice(slice_instr->operand(0)->shape(),
+                             slice_instr->shape())) {
+        return absl::InternalError(
+            "DynamicAddressComputationFusion only handles contiguous slices "
+            "currently");
+      }
+
+      param = Cast<HloParameterInstruction>(slice_instr->operand(0));
     }
 
-    slice_instr = const_cast<HloDynamicIndexInstruction*>(
-        static_cast<const HloDynamicIndexInstruction*>(
-            &slice_adaptor->instruction()));
-
-    if (!IsContiguousSlice(slice_instr->operand(0)->shape(),
-                           slice_instr->shape())) {
-      return absl::InternalError(
-          "DynamicAddressComputationFusion only handles contiguous slices "
-          "currently");
-    }
-
-    const auto* param = Cast<HloParameterInstruction>(slice_instr->operand(0));
     return GetAllocationSlice(buffer_assignment,
                               fusion.operand(param->parameter_number()), index);
   };
@@ -315,6 +309,13 @@ absl::StatusOr<FusionEmissionResult> EmitDynamicSlicedGemm(
     slice_workspace_fake =
         BufferAllocation::Slice(workspace->allocation(), 0, workspace->size());
   }
+
+  if (absl::c_all_of(offset_buffer_indices, [&](auto offset_slices) {
+        return offset_slices == std::nullopt;
+      }))
+    return absl::InternalError(
+        "DynamicAddressComputationFusion expects at least one sliced "
+        "operand/result");
 
   // Creating embedded GEMM thunk.
   bool deterministic_ops =
