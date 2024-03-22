@@ -127,8 +127,8 @@ struct BinaryOpTestCase {
   std::optional<std::string_view> error_message;
 };
 
-// Subclass for testing unbounded dynamic and op
-class UnboundedAndOpShapeInferenceTest
+// Subclass for testing unbounded dynamic logical ops
+class UnboundedLogicalOpShapeInferenceTest
     : public ::testing::TestWithParam<BinaryOpTestCase> {};
 
 // Subclass for testing unbounded dynamic binary ops
@@ -3910,7 +3910,7 @@ TEST_P(UnboundedBinaryOpShapeInferenceTest, UnboundedAdd) {
   }
 }
 
-TEST_P(UnboundedAndOpShapeInferenceTest, UnboundedAnd) {
+TEST_P(UnboundedLogicalOpShapeInferenceTest, UnboundedAnd) {
   TF_ASSERT_OK_AND_ASSIGN(Shape lhs, ParseShape(GetParam().lhs));
   TF_ASSERT_OK_AND_ASSIGN(Shape rhs, ParseShape(GetParam().rhs));
   absl::StatusOr<Shape> inferred_status = ShapeInference::InferBinaryOpShape(
@@ -4309,6 +4309,25 @@ TEST_P(UnboundedBinaryOpShapeInferenceTest, UnboundedMul) {
   }
 }
 
+TEST_P(UnboundedLogicalOpShapeInferenceTest, UnboundedOr) {
+  TF_ASSERT_OK_AND_ASSIGN(const Shape lhs, ParseShape(GetParam().lhs));
+  TF_ASSERT_OK_AND_ASSIGN(const Shape rhs, ParseShape(GetParam().rhs));
+  const absl::StatusOr<Shape> inferred_status =
+      ShapeInference::InferBinaryOpShape(HloOpcode::kOr, lhs, rhs,
+                                         GetParam().broadcast_dimensions);
+  if (inferred_status.ok()) {
+    TF_ASSERT_OK_AND_ASSIGN(const Shape expected,
+                            ParseShape(GetParam().expected));
+    EXPECT_TRUE(ShapeUtil::Equal(*inferred_status, expected))
+        << "inferred: " << ShapeUtil::HumanString(*inferred_status)
+        << " expected: " << ShapeUtil::HumanString(expected);
+  } else {
+    ASSERT_TRUE(GetParam().error_message.has_value());
+    EXPECT_THAT(inferred_status.status().message(),
+                HasSubstr(*GetParam().error_message));
+  }
+}
+
 TEST_F(ShapeInferenceTest, UnboundedPad) {
   TF_ASSERT_OK_AND_ASSIGN(Shape operand, ParseShape("f32[?, 10]"));
   TF_ASSERT_OK_AND_ASSIGN(Shape padding_value, ParseShape("f32[]"));
@@ -4546,7 +4565,8 @@ TEST_F(ShapeInferenceTest, UnboundedTransposeRank1) {
       << " expected: " << ShapeUtil::HumanString(expected);
 }
 
-INSTANTIATE_TEST_SUITE_P(UnboundedDynamism, UnboundedAndOpShapeInferenceTest,
+INSTANTIATE_TEST_SUITE_P(UnboundedDynamism,
+                         UnboundedLogicalOpShapeInferenceTest,
                          ::testing::ValuesIn<BinaryOpTestCase>(
                              {// LHS | RHS | bdims | Res
                               // 1   | ?   | []    | ?
