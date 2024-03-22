@@ -60,11 +60,11 @@ limitations under the License.
 #include "xla/python/nb_class_ptr.h"
 #include "xla/python/py_client.h"
 #include "xla/service/computation_placer.h"
+#include "xla/tsl/python/lib/core/numpy.h"
 #include "xla/util.h"
 #include "tsl/concurrency/ref_count.h"
 #include "tsl/platform/logging.h"
 #include "tsl/platform/statusor.h"
-#include "tsl/python/lib/core/numpy.h"
 
 namespace nb = nanobind;
 

@@ -80,7 +80,7 @@ cc_library(
         "@com_google_absl//absl/types:variant",
         "@local_tsl//tsl/platform:status",
         "@local_tsl//tsl/profiler/lib:traceme",
-        "@local_tsl//tsl/python/lib/core:numpy",
+        "@local_xla//xla/tsl/python/lib/core:numpy",
         "@pybind11",
     ],
 )

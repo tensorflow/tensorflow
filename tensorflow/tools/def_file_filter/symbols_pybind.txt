@@ -59,7 +59,7 @@ tensorflow::tfprof::SerializeToString
 [//tensorflow/core/grappler/graph_analyzer:graph_analyzer_tool] # graph_analyze
 tensorflow::grappler::graph_analyzer::GraphAnalyzerTool
 
-[//external/local_tsl/tsl/python/lib/core:ml_dtypes_lib] # bfloat16, float8
+[//external/local_xla/xla/tsl/python/lib/core:ml_dtypes_lib] # bfloat16, float8
 tsl::ml_dtypes::RegisterTypes
 tsl::ml_dtypes::GetBfloat16Dtype
 tsl::ml_dtypes::GetFloat8E4m3b11fnuzDtype
@@ -307,7 +307,7 @@ tensorflow::AddWhileInputHack
 tensorflow::RecordMutation
 tensorflow::Graph::IsControlEdge
 
-[//external/local_tsl/tsl/python/lib/core:numpy] # tf_session
+[//external/local_xla/xla/tsl/python/lib/core:numpy] # tf_session
 tsl::ImportNumpy
 _tsl_numpy_api
 

@@ -14,7 +14,7 @@ limitations under the License.
 ==============================================================================*/
 // Must be included first
 // clang-format off
-#include "tsl/python/lib/core/numpy.h" //NOLINT
+#include "xla/tsl/python/lib/core/numpy.h" //NOLINT
 // clang-format on
 
 #include "tensorflow/python/eager/pywrap_tensor.h"

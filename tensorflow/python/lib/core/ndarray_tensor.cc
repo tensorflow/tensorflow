@@ -15,7 +15,7 @@ limitations under the License.
 // Must be included first
 // clang-format off
 #include "tensorflow/c/tf_datatype.h"
-#include "tsl/python/lib/core/numpy.h" //NOLINT
+#include "xla/tsl/python/lib/core/numpy.h" //NOLINT
 // clang-format on
 
 #include "tensorflow/python/lib/core/ndarray_tensor.h"
@@ -25,6 +25,7 @@ limitations under the License.
 
 #include "tensorflow/c/eager/tfe_context_internal.h"
 #include "tensorflow/c/tf_tensor_internal.h"
+#include "xla/tsl/python/lib/core/ml_dtypes.h"
 #include "tensorflow/core/lib/core/coding.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
@@ -32,7 +33,6 @@ limitations under the License.
 #include "tensorflow/core/util/port.h"
 #include "tensorflow/python/lib/core/ndarray_tensor_bridge.h"
 #include "tensorflow/python/lib/core/safe_pyobject_ptr.h"
-#include "tsl/python/lib/core/ml_dtypes.h"
 
 namespace tensorflow {
 namespace {
