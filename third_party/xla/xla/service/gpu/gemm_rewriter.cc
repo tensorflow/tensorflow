@@ -1612,6 +1612,16 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
       return absl::OkStatus();
     }
 
+#if CUDA_VERSION < 12040
+    // For CUDA versions less than 12.3.2, cuBLAS LT returns
+    // CUBLAS_STATUS_NOT_SUPPORTED in some cases when fusing gelu into an FP8
+    // matmul. We cannot check the patch version, so disable this fusion with
+    // CUDA versions less than 12.4.
+    if (IsCublasLtMatmulF8(*gemm)) {
+      return absl::OkStatus();
+    }
+#endif
+
     // There are four users of the gemm output within the GELU calculation.
     bool has_aux = gemm->user_count() > 4;
 
