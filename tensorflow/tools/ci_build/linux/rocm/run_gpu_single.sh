@@ -25,7 +25,6 @@ STATUS=$?
 if [ $STATUS -ne 0 ]; then TF_GPU_COUNT=1; else
    TF_GPU_COUNT=$(rocm-smi -i|grep 'ID' |grep 'GPU' |wc -l)
 fi
-TF_GPU_COUNT=1
 TF_TESTS_PER_GPU=1
 N_TEST_JOBS=$(expr ${TF_GPU_COUNT} \* ${TF_TESTS_PER_GPU})
 
@@ -71,7 +70,7 @@ if [ -f /usertools/rocm.bazelrc ]; then
              --test_env=TF_GPU_COUNT=$TF_GPU_COUNT
 else
 	# Legacy style: run configure then build
-	#yes "" | $PYTHON_BIN_PATH configure.py
+	yes "" | $PYTHON_BIN_PATH configure.py
 
 	# Run bazel test command. Double test timeouts to avoid flakes.
 	bazel test \
