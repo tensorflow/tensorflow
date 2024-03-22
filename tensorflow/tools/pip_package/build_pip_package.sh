@@ -37,7 +37,7 @@ function cp_external() {
 
   pushd .
   cd "$src_dir"
-  for f in `find . ! -type d ! -name '*.py' ! -path '*local_config_cuda*' ! -path '*local_config_tensorrt*' ! -path '*pypi*' ! -path '*python_x86_64*' ! -path '*python_aarch64*' ! -path '*local_config_syslibs*' ! -path '*org_tensorflow*' ! -path '*llvm-project/llvm/*' ! -path '*local_tsl*' ! -path '*local_xla*'`; do
+  for f in `find . ! -type d ! -name '*.py' ! -path '*local_config_cuda*' ! -path '*local_config_tensorrt*' ! -path '*pypi*' ! -path '*python_x86_64*' ! -path '*python_aarch64*' ! -path '*python_ppc64le*' ! -path '*local_config_syslibs*' ! -path '*org_tensorflow*' ! -path '*llvm-project/llvm/*' ! -path '*local_tsl*' ! -path '*local_xla*'`; do
     mkdir -p "${dest_dir}/$(dirname ${f})"
     cp "${f}" "${dest_dir}/$(dirname ${f})/"
   done
