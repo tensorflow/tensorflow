@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/python/pjrt_ifrt/pjrt_array.h"
 
+#include <cstdint>
 #include <memory>
 #include <optional>
 #include <string>
@@ -24,24 +25,29 @@ limitations under the License.
 
 #include "absl/log/check.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
+#include "absl/types/span.h"
 #include "xla/literal.h"
 #include "xla/pjrt/pjrt_client.h"
+#include "xla/pjrt/pjrt_layout.h"
 #include "xla/pjrt/utils.h"
 #include "xla/python/ifrt/array.h"
 #include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt/dtype.h"
+#include "xla/python/ifrt/future.h"
 #include "xla/python/ifrt/memory.h"
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/sharding.h"
 #include "xla/python/pjrt_ifrt/pjrt_client.h"
 #include "xla/shape_util.h"
 #include "xla/status.h"
-#include "xla/statusor.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
+#include "tsl/concurrency/ref_count.h"
 #include "tsl/platform/errors.h"
+#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace ifrt {
@@ -565,7 +571,7 @@ absl::StatusOr<std::unique_ptr<PjRtLayout>> PjRtArray::layout() const {
 #ifndef NDEBUG
   for (int i = 1; i < pjrt_buffers_.size(); ++i) {
     std::unique_ptr<PjRtLayout> layout_i = pjrt_buffers_[i]->layout();
-    DCHECK_EQ(layout, layout_i)
+    DCHECK(*layout == *layout_i)
         << "PjRtArray has mismatched layouts across shards! "
         << "shard 0: " << layout->ToString() << ", shard " << i << ": "
         << layout_i->ToString();

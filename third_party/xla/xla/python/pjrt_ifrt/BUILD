@@ -231,6 +231,7 @@ cc_library(
         "//xla/pjrt:pjrt_client",
         "//xla/pjrt:pjrt_executable",
         "//xla/pjrt:pjrt_future",
+        "//xla/pjrt:pjrt_layout",
         "//xla/pjrt:utils",
         "//xla/python/ifrt",
         "//xla/service:hlo_proto_cc",
