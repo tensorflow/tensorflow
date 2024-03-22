@@ -36,6 +36,7 @@ limitations under the License.
 #include "xla/service/gpu/fusions/custom.h"
 #include "xla/service/gpu/fusions/fusion_emitter.h"
 #include "xla/service/gpu/fusions/in_place_dynamic_update_slice.h"
+#include "xla/service/gpu/fusions/in_place_dynamic_update_slice_mlir.h"
 #include "xla/service/gpu/fusions/input_slices.h"
 #include "xla/service/gpu/fusions/input_slices_mlir.h"
 #include "xla/service/gpu/fusions/loop.h"
@@ -191,6 +192,11 @@ absl::StatusOr<std::unique_ptr<FusionInterface>> GetFusionEmitter(
     case HloFusionAnalysis::EmitterFusionKind::kLoop: {
       if (IsDynamicUpdateSliceFusion(analysis) &&
           fusion_info.CanEmitDynamicUpdateSliceInPlace()) {
+        if (check_mlir_emitters(
+                MlirInPlaceDynamicUpdateSliceFusion::IsSupported)) {
+          return std::make_unique<MlirInPlaceDynamicUpdateSliceFusion>(
+              analysis);
+        }
         return std::make_unique<InPlaceDynamicUpdateSliceFusion>(analysis);
       }
 
