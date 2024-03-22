@@ -136,15 +136,6 @@ using UnaryElementwiseConstraint1Types = ::testing::Types<
 // Tests that the input shape is compared to the output shape and that it is
 // propagated if needed.
 
-// Customization point for generic tests that need to create a supported tensor
-// for an op but that don't care what that type is.
-//
-// Specialize this in the test file if F32 isn't supported by the op under test.
-template <class Op>
-struct SupportedOpDataType {
-  static constexpr DataType kStorageType = DataType::kF32;
-};
-
 template <class Op>
 class UnaryElementwiseOpShapePropagationTest : public ::testing::Test {
  protected:

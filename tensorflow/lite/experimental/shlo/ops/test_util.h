@@ -285,6 +285,15 @@ using PerAxis0 = PerAxis<T, 0>;
 // Use this with TYPED_TEST_SUITE for quantized per axis testing.
 using PerAxisQuantizedTestTypes = MapTypes<PerAxis0, QuantizedTestTypes>;
 
+// Customization point for generic tests that need to create a supported tensor
+// for an op but that don't care what that type is.
+//
+// Specialize this in the test file if F32 isn't supported by the op under test.
+template <class Op>
+struct SupportedOpDataType {
+  static constexpr DataType kStorageType = DataType::kF32;
+};
+
 // Builds a TensorType object and returns it in a variant that can be passed to
 // a tensor.
 template <DataType storage_type>
