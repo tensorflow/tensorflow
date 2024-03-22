@@ -49,9 +49,9 @@ struct TritonWrapperResult {
 };
 
 // Compute the launch dimensions for the given Triton MatMul.
-LaunchDimensions GetMatMulLaunchDimensions(const TritonFusionAnalysis& analysis,
-                                           const HloFusionAdaptor& fusion,
-                                           const TritonGemmConfig& config);
+absl::StatusOr<LaunchDimensions> GetMatMulLaunchDimensions(
+    const TritonFusionAnalysis& analysis, const HloFusionAdaptor& fusion,
+    const TritonGemmConfig& config);
 // Use tiling and execution parameters from 'config'.
 absl::Status EmitMatMul(mlir::OpBuilder b, absl::string_view libdevice_path,
                         const se::DeviceDescription& device_info,

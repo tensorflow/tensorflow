@@ -97,8 +97,9 @@ class FusionContext {
  public:
   // Create fusion context from a dot operand according to
   // the currently supported configurations.
-  static FusionContext FromDotOperand(const HloInstruction& dot,
-                                      int operand_number, int split_k = 1);
+  static absl::StatusOr<FusionContext> FromDotOperand(const HloInstruction& dot,
+                                                      int operand_number,
+                                                      int split_k = 1);
 
   // Create fusion context from dot's output.
   static FusionContext FromDotOutput(const HloInstruction& dot, int split_k,

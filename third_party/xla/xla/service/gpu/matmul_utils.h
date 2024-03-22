@@ -54,12 +54,12 @@ const tsl::protobuf::RepeatedField<int64_t>& BatchDimensionsForOperand(
     const HloInstruction& dot, int operand_number);
 
 // Index of the only contracting dimension of dot instruction operand.
-int64_t ContractingDimensionIndex(const HloInstruction& dot,
-                                  int operand_number);
+absl::StatusOr<int64_t> ContractingDimensionIndex(const HloInstruction& dot,
+                                                  int operand_number);
 
 // Index of the only non-contracting dimension of dot instruction operand.
-int64_t NonContractingDimensionIndex(const HloInstruction& dot,
-                                     int operand_number);
+absl::StatusOr<int64_t> NonContractingDimensionIndex(const HloInstruction& dot,
+                                                     int operand_number);
 
 // Normalize shape to (batch, rows, columns) logical dimensions.
 absl::StatusOr<Shape> GetBatchRowColumnShape(

@@ -169,8 +169,9 @@ absl::StatusOr<FusionEmissionResult> TritonFusion::Emit(
                         ir_emitter_context.gpu_device_info(), config,
                         ir_emitter_context.llvm_module(), &EmitMatMul,
                         *ir_emitter_context.mlir_context()));
-      launch_dimensions =
-          GetMatMulLaunchDimensions(analysis, analysis_.fusion(), config);
+      TF_ASSIGN_OR_RETURN(
+          launch_dimensions,
+          GetMatMulLaunchDimensions(analysis, analysis_.fusion(), config));
     }
 
     llvm::Function* impl_fn =

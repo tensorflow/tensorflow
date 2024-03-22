@@ -32,6 +32,7 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/dfs_hlo_visitor_with_default.h"
@@ -480,15 +481,15 @@ HlosAndRequirements FuseTowardOperands(
 //
 // The return value contains the HLOs corresponding to the given dot operand and
 // the requirements corresponding to the whole fusion so far.
-HlosAndRequirements FuseDotOperand(
+absl::StatusOr<HlosAndRequirements> FuseDotOperand(
     const HloInstruction& dot, int operand_index,
     const se::GpuComputeCapability& gpu_version,
     HloComputation::Builder& builder,            // append
     std::vector<HloInstruction*>& fusion_params  // append
 ) {
   // Direct dot inputs have well defined dimension orders.
-  const FusionContext context =
-      FusionContext::FromDotOperand(dot, operand_index);
+  TF_ASSIGN_OR_RETURN(const FusionContext context,
+                      FusionContext::FromDotOperand(dot, operand_index));
   const HloInstruction& operand = *dot.operand(operand_index);
   return FuseTowardOperands(operand, context.dim_orders().at(&operand),
                             TritonFusionAnalysis::kMaxParameterPerDotOperand,
@@ -637,14 +638,17 @@ absl::StatusOr<FusionDecision> CreateDotFusion(
     CHECK_EQ(descriptor.dimension(), dot.operand(0)->shape().rank() - 1);
   }
 
-  HlosAndRequirements lhs_hlos_and_reqs = FuseDotOperand(
-      dot, /*operand_index=*/0, gpu_version, builder, fusion_inputs);
-  HlosAndRequirements rhs_hlos_and_reqs = FuseDotOperand(
-      dot, /*operand_index=*/1, gpu_version, builder, fusion_inputs);
+  TF_ASSIGN_OR_RETURN(HlosAndRequirements lhs_hlos_and_reqs,
+                      FuseDotOperand(dot, /*operand_index=*/0, gpu_version,
+                                     builder, fusion_inputs));
+  TF_ASSIGN_OR_RETURN(HlosAndRequirements rhs_hlos_and_reqs,
+                      FuseDotOperand(dot, /*operand_index=*/1, gpu_version,
+                                     builder, fusion_inputs));
   std::optional<const HloInstruction*> meta_hlo;
   if (dot.sparse_operands()) {
-    HlosAndRequirements meta_hlos_and_reqs = FuseDotOperand(
-        dot, /*operand_index=*/2, gpu_version, builder, fusion_inputs);
+    TF_ASSIGN_OR_RETURN(HlosAndRequirements meta_hlos_and_reqs,
+                        FuseDotOperand(dot, /*operand_index=*/2, gpu_version,
+                                       builder, fusion_inputs));
     meta_hlo.emplace(meta_hlos_and_reqs.fused_hlo);
   }
   HloInstruction& fused_dot =
@@ -893,10 +897,14 @@ FusionDecision CanTritonHandleGEMM(
     // This pass relies on dot decomposer which ensures that all non-contracting
     // dimensions are merged into one. Using NonContractingDimensionIndex is
     // sufficient.
-    const int64_t nc_size =
-        dot.operand(operand_number)
-            ->shape()
-            .dimensions(NonContractingDimensionIndex(dot, operand_number));
+    absl::StatusOr<int64_t> non_contracting_dimension_index =
+        NonContractingDimensionIndex(dot, operand_number);
+    if (!non_contracting_dimension_index.ok()) {
+      return non_contracting_dimension_index.status().message();
+    }
+    const int64_t nc_size = dot.operand(operand_number)
+                                ->shape()
+                                .dimensions(*non_contracting_dimension_index);
     if (nc_size <= 1) {
       return "Trivial non-contracting dimensions.";
     }
