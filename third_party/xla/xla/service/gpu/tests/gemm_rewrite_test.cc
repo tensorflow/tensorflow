@@ -4688,9 +4688,10 @@ class ParameterizedFp8GemmRewriteTest : public ParameterizedGemmRewriteTest {
     }
   }
 
-  StatusOr<std::unique_ptr<VerifiedHloModule>> ParseAndReturnVerifiedModule(
-      absl::string_view hlo_text, int64_t replica_count = 1,
-      int64_t num_partitions = 1) {
+  absl::StatusOr<std::unique_ptr<VerifiedHloModule>>
+  ParseAndReturnVerifiedModule(absl::string_view hlo_text,
+                               int64_t replica_count = 1,
+                               int64_t num_partitions = 1) {
     return GemmRewriteTest::ParseAndReturnVerifiedModule(
         absl::StrReplaceAll(hlo_text, replacements_));
   }
