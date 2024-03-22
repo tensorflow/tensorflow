@@ -79,6 +79,7 @@ tf_proto_library(
     name = "metrics_proto",
     srcs = ["metrics.proto"],
     cc_api_version = 2,
+    visibility = ["//visibility:public"],
 )
 
 xla_py_proto_library(
