@@ -20,6 +20,7 @@ limitations under the License.
 
 #include "tsl/platform/status.h"
 #include "tsl/platform/stringpiece.h"
+#include "tsl/platform/types.h"
 
 namespace tsl {
 

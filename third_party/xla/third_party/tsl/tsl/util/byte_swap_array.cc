@@ -16,6 +16,7 @@ limitations under the License.
 #include "tsl/util/byte_swap_array.h"
 
 #include "tsl/platform/errors.h"
+#include "tsl/platform/status.h"
 
 namespace tsl {
 

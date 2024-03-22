@@ -17,6 +17,7 @@ limitations under the License.
 
 #include "absl/strings/string_view.h"
 #include "tsl/platform/mutex.h"
+#include "tsl/platform/status.h"
 #include "tsl/util/env_var.h"
 
 namespace tsl {

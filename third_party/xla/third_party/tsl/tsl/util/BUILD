@@ -12,12 +12,12 @@ load(
 )
 load("//tsl:tsl.default.bzl", "filegroup", "get_compatible_with_portable")
 load(
-    "//tsl/platform:build_config_root.bzl",
-    "if_static",
-)
-load(
     "//tsl/platform:build_config.bzl",
     "tsl_cc_test",
+)
+load(
+    "//tsl/platform:build_config_root.bzl",
+    "if_static",
 )
 load(
     "@local_tsl//tsl/platform:rules_cc.bzl",
@@ -152,6 +152,7 @@ cc_library(
     deps = [
         ":env_var",
         "//tsl/platform:mutex",
+        "//tsl/platform:status",
         "@com_google_absl//absl/strings",
     ],
     alwayslink = 1,
@@ -201,13 +202,13 @@ cc_library(
     hdrs = ["env_var.h"],
     deps = [
         "//tsl/platform:errors",
-        "//tsl/platform:logging",
         "//tsl/platform:numbers",
         "//tsl/platform:status",
         "//tsl/platform:str_util",
         "//tsl/platform:strcat",
         "//tsl/platform:stringpiece",
         "//tsl/platform:types",
+        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -221,13 +222,15 @@ cc_library(
     ]),
     deps = [
         "//tsl/platform:env",
-        "//tsl/platform:env_impl",
         "//tsl/platform:errors",
         "//tsl/platform:macros",
         "//tsl/platform:mutex",
+        "//tsl/platform:status",
         "//tsl/platform:str_util",
+        "//tsl/platform:strcat",
         "//tsl/platform:types",
         "//tsl/protobuf:test_log_proto_cc",
+        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -263,7 +266,12 @@ cc_library(
     deps = [
         "//tsl/platform:errors",
         "//tsl/platform:status",
+        "//tsl/platform:str_util",
+        "//tsl/platform:strcat",
         "//tsl/platform:stringpiece",
+        "//tsl/platform:types",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -275,10 +283,15 @@ tsl_cc_test(
         ":device_name_utils",
         "//tsl/lib/core:status_test_util",
         "//tsl/platform:errors",
+        "//tsl/platform:status",
         "//tsl/platform:strcat",
+        "//tsl/platform:stringpiece",
         "//tsl/platform:test",
         "//tsl/platform:test_benchmark",
         "//tsl/platform:test_main",
+        "//tsl/platform:types",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -288,7 +301,6 @@ cc_library(
     hdrs = ["command_line_flags.h"],
     deps = [
         "//tsl/platform:logging",
-        "//tsl/platform:str_util",
         "//tsl/platform:stringpiece",
         "//tsl/platform:stringprintf",
         "//tsl/platform:types",

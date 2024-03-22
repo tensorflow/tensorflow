@@ -22,8 +22,10 @@ limitations under the License.
 #include <unordered_set>
 
 #include "tsl/platform/env.h"
+#include "tsl/platform/file_system.h"
 #include "tsl/platform/macros.h"
 #include "tsl/platform/mutex.h"
+#include "tsl/platform/status.h"
 #include "tsl/platform/types.h"
 #include "tsl/protobuf/test_log.pb.h"
 

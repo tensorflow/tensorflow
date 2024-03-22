@@ -17,8 +17,8 @@ limitations under the License.
 
 #include <cstdint>
 
-#include "tsl/platform/str_util.h"
-#include "tsl/platform/stringpiece.h"
+#include "absl/log/log.h"
+#include "tsl/platform/status.h"
 #include "tsl/util/env_var.h"
 
 #if GOOGLE_CUDA
