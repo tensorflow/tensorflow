@@ -162,7 +162,8 @@ std::vector<double> MemoryReshardingCostVector(
   auto required_sharding_for_resharding = required_sharding.IsTileMaximal()
                                               ? HloSharding::Replicate()
                                               : required_sharding;
-  CHECK_OK(required_sharding.Validate(operand_shape));
+  CHECK_OK(required_sharding.Validate(operand_shape))
+      << strategy_group->ToString();
   for (const auto& x : strategy_group->strategies) {
     ret.push_back(ComputeMemoryReshardingCost(operand_shape, x.output_sharding,
                                               required_sharding_for_resharding,
@@ -1452,13 +1453,9 @@ void TrimOrGenerateStrategiesBasedOnExistingSharding(
           for (size_t i = 0; i < strategy_group->in_nodes.size(); i++) {
             HloInstruction* operand =
                 instructions.at(strategy_group->in_nodes.at(i)->instruction_id);
-            std::optional<HloSharding> input_sharding_or =
+            std::optional<HloSharding> input_sharding =
                 ShardingPropagation::GetShardingFromUser(*operand, *ins, 10,
                                                          true, call_graph);
-            if (input_sharding_or.has_value()) {
-              input_shardings.push_back(input_sharding_or.value());
-            }
-
             StrategyGroup* operand_strategy_group =
                 strategy_map.at(operand).get();
             Shape operand_shape = operand->shape();
@@ -1467,12 +1464,23 @@ void TrimOrGenerateStrategiesBasedOnExistingSharding(
                   operand_strategy_group->childs[ins->tuple_index()].get();
               operand_shape = operand_shape.tuple_shapes(ins->tuple_index());
             }
+
+            if (input_sharding.has_value()) {
+              input_sharding = *input_sharding;
+            } else if (existing_sharding.Validate(operand_shape).ok()) {
+              input_sharding = existing_sharding;
+            } else {
+              input_sharding = HloSharding::Replicate();
+            }
+            CHECK(input_sharding.has_value());
+
+            input_shardings.push_back(*input_sharding);
             communication_resharding_costs.push_back(
                 CommunicationReshardingCostVector(
-                    operand_strategy_group, operand_shape, existing_sharding,
+                    operand_strategy_group, operand_shape, *input_sharding,
                     cluster_env));
             memory_resharding_costs.push_back(MemoryReshardingCostVector(
-                operand_strategy_group, operand_shape, existing_sharding,
+                operand_strategy_group, operand_shape, *input_sharding,
                 cluster_env));
           }
         }
