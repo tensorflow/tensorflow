@@ -160,7 +160,7 @@ absl::Status XlaCallModuleLoader::SetPlatformIndex(
     }
   }
 
-  if (platform_index < 0) return tsl::OkStatus();
+  if (platform_index < 0) return absl::OkStatus();
   VLOG(3) << "XlaCallModule setting the platform_index to " << platform_index
           << " for platform " << compilation_platform << ".";
   mlir::Block &main_body = main_.front();
@@ -193,7 +193,7 @@ absl::Status XlaCallModuleLoader::SetPlatformIndex(
 
   main_.eraseArgument(0);
   platform_index_arg_set_ = true;
-  return tsl::OkStatus();
+  return absl::OkStatus();
 }
 
 static mlir::stablehlo::CustomCallOp MakeShapeRefinementOperandWrapper(
@@ -232,13 +232,13 @@ absl::Status XlaCallModuleLoader::RefineDynamicShapes(
         VLOG(3) << "XlaCallModule skipping shape refinement due to module "
                 << " attribute " << kUsesShapePolymorphismAttr.str() << "="
                 << mlir::debugString(uses_shape_poly_attr);
-        return tsl::OkStatus();
+        return absl::OkStatus();
       }
     } else {
       VLOG(3) << "XlaCallModule skipping shape refinement due to module "
               << " attribute " << kUsesShapePolymorphismAttr.str()
               << " missing";
-      return tsl::OkStatus();
+      return absl::OkStatus();
     }
   }
   // Add the tokens to the input_shapes. Starting with version 9, the main
@@ -430,7 +430,7 @@ absl::Status XlaCallModuleLoader::RefineDynamicShapes(
     DumpMlirOpToFile("xla_call_module.after_shape_refinement", *module_);
   }
 
-  return tsl::OkStatus();
+  return absl::OkStatus();
 }
 
 absl::Status XlaCallModuleLoader::LoadModule(
@@ -527,7 +527,7 @@ absl::Status XlaCallModuleLoader::LoadModule(
         " arguments of which ", nr_platform_args, " platform index arguments, ",
         "and ", nr_token_arguments, " token arguments."));
   }
-  return tsl::OkStatus();
+  return absl::OkStatus();
 }
 
 absl::Status XlaCallModuleLoader::ValidateDialect() {
@@ -550,7 +550,7 @@ absl::Status XlaCallModuleLoader::ValidateDialect() {
         absl::StrCat("Module has unsupported dialects: ",
                      diag_handler.ConsumeStatus().ToString()));
   }
-  return tsl::OkStatus();
+  return absl::OkStatus();
 }
 
 absl::Status XlaCallModuleLoader::ValidateStaticShapes() {
