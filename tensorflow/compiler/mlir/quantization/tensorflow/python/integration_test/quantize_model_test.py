@@ -3595,7 +3595,9 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
         for _ in range(8)
     ]
 
-    with self.assertRaisesRegex(ValueError, 'Invalid representative dataset.'):
+    with self.assertRaisesRegex(
+        Exception, 'Representative dataset is not a mapping'
+    ):
       quantize_model.quantize(
           self._input_saved_model_path,
           output_directory=self._output_saved_model_path,
@@ -3950,8 +3952,8 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
     )
 
     with self.assertRaisesRegex(
-        ValueError,
-        'Failed to run graph for post-training quantization calibration',
+        Exception,
+        'Invalid input keys for representative sample.',
     ):
       quantize_model.quantize(
           self._input_saved_model_path,

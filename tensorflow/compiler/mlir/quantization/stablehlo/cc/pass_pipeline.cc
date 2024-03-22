@@ -63,6 +63,8 @@ void AddPostCalibrationPasses(
   // For debugging purposes.
   options.mlir_dump_file_name_ = "quantize_composite_functions";
   options.enable_weight_only_ = false;
+
+  AddShapeLegalizationPasses(pm);
   pm.addNestedPass<func::FuncOp>(
       CreateConvertCustomAggregationOpToQuantStatsPass());
   pm.addPass(createQuantizeCompositeFunctionsPass(options));

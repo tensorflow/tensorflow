@@ -30,9 +30,6 @@ limitations under the License.
 #include "pybind11_abseil/import_status_module.h"  // from @pybind11_abseil
 #include "pybind11_abseil/status_casters.h"  // from @pybind11_abseil  // IWYU pragma: keep
 #include "pybind11_protobuf/native_proto_caster.h"  // from @pybind11_protobuf
-#include "tensorflow/compiler/mlir/quantization/stablehlo/cc/calibration/statistics.h"
-#include "tensorflow/compiler/mlir/quantization/stablehlo/cc/debugger.h"
-#include "tensorflow/compiler/mlir/quantization/stablehlo/cc/io.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/exported_model.pb.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/python/py_function_lib.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/python/quantize_model.h"
@@ -45,17 +42,13 @@ namespace py = pybind11;
 
 namespace {
 
-using ::stablehlo::quantization::AddCalibrationStatistics;
-using ::stablehlo::quantization::EnableDebugging;
-using ::stablehlo::quantization::io::CreateTmpDir;
 using ::tensorflow::SignatureDef;
 using ::tensorflow::quantization::ExportedModel;
 using ::tensorflow::quantization::PyFunctionLibrary;
 using ::tensorflow::quantization::QuantizationOptions;
-using ::tensorflow::quantization::QuantizePtqDynamicRange;
-using ::tensorflow::quantization::QuantizePtqModelPostCalibration;
-using ::tensorflow::quantization::QuantizePtqModelPreCalibration;
+using ::tensorflow::quantization::QuantizeDynamicRangePtq;
 using ::tensorflow::quantization::QuantizeQatModel;
+using ::tensorflow::quantization::QuantizeStaticRangePtq;
 using ::tensorflow::quantization::QuantizeWeightOnly;
 using ::tensorflow::quantization::RepresentativeDatasetFile;
 
@@ -132,7 +125,7 @@ PYBIND11_MODULE(pywrap_quantize_model, m) {
                     quantization_options.tags().end());
 
         const absl::StatusOr<ExportedModel> exported_model =
-            QuantizePtqDynamicRange(src_saved_model_path, signature_keys, tags,
+            QuantizeDynamicRangePtq(src_saved_model_path, signature_keys, tags,
                                     quantization_options);
 
         // Remove the `tpu` tag from the debug quantized saved model as it is
@@ -222,63 +215,12 @@ PYBIND11_MODULE(pywrap_quantize_model, m) {
         std::unordered_set<std::string> tags;
         tags.insert(quantization_options.tags().begin(),
                     quantization_options.tags().end());
-
-        absl::StatusOr<ExportedModel> exported_model =
-            QuantizePtqModelPreCalibration(src_saved_model_path, signature_keys,
-                                           tags, quantization_options);
+        const absl::StatusOr<ExportedModel> exported_model =
+            QuantizeStaticRangePtq(src_saved_model_path, signature_keys, tags,
+                                   quantization_options, signature_def_map,
+                                   py_function_library,
+                                   representative_dataset_file_map_serialized);
         if (!exported_model.ok()) return exported_model.status();
-
-        const absl::StatusOr<std::string> precalibrated_saved_model_dir =
-            CreateTmpDir();
-        if (!precalibrated_saved_model_dir.ok()) {
-          throw py::value_error(
-              precalibrated_saved_model_dir.status().ToString());
-        }
-
-        py_function_library.SaveExportedModel(
-            *precalibrated_saved_model_dir, *exported_model,
-            src_saved_model_path, tags, signature_def_map);
-
-        py_function_library.RunCalibration(
-            *precalibrated_saved_model_dir, signature_keys, tags,
-            quantization_options.calibration_options(),
-            quantization_options.force_graph_mode_calibration(),
-            representative_dataset_file_map_serialized);
-
-        if (absl::Status status = AddCalibrationStatistics(
-                *exported_model->mutable_graph_def(),
-                quantization_options.calibration_options(),
-                py_function_library);
-            !status.ok()) {
-          LOG(WARNING) << "Some CustomAggregator ops do not have min or max "
-                          "values. Parts of the graph are not quantized. "
-                       << status;
-        }
-
-        if (quantization_options.has_debugger_config()) {
-          EnableDebugging(*exported_model,
-                          quantization_options.debugger_config(),
-                          py_function_library, src_saved_model_path, tags,
-                          signature_def_map);
-        }
-
-        const absl::StatusOr<std::string> calibrated_saved_model_path =
-            CreateTmpDir();
-        if (!calibrated_saved_model_path.ok()) {
-          throw py::value_error(
-              calibrated_saved_model_path.status().ToString());
-        }
-
-        py_function_library.SaveExportedModel(
-            *calibrated_saved_model_path, *exported_model, src_saved_model_path,
-            tags, signature_def_map);
-
-        const absl::StatusOr<ExportedModel> post_calibrated_exported_model =
-            QuantizePtqModelPostCalibration(*calibrated_saved_model_path,
-                                            signature_keys, tags,
-                                            quantization_options);
-        if (!post_calibrated_exported_model.ok())
-          return post_calibrated_exported_model.status();
 
         // Remove the `tpu` tag from the debug quantized saved model as it is
         // for CPU. Note the 'tpu' value should be the same as `TPU` defined in
@@ -287,8 +229,8 @@ PYBIND11_MODULE(pywrap_quantize_model, m) {
           tags.erase("tpu");
         }
         py_function_library.SaveExportedModel(
-            dst_saved_model_path, *post_calibrated_exported_model,
-            *calibrated_saved_model_path, tags, signature_def_map);
+            dst_saved_model_path, *exported_model, src_saved_model_path, tags,
+            signature_def_map);
 
         return absl::OkStatus();
       },

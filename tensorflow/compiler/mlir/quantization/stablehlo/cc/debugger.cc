@@ -14,61 +14,34 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/compiler/mlir/quantization/stablehlo/cc/debugger.h"
 
-#include <string>
-#include <unordered_set>
-
-#include "absl/container/flat_hash_map.h"
-#include "absl/strings/string_view.h"
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/quantization/stablehlo/cc/graph_def.h"
-#include "tensorflow/compiler/mlir/quantization/stablehlo/quantization_config.pb.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/exported_model.pb.h"
-#include "tensorflow/compiler/mlir/quantization/tensorflow/python/py_function_lib.h"
+#include "tensorflow/compiler/mlir/quantization/tensorflow/passes/tf_quant_ops.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/node_def.pb.h"
-#include "tensorflow/core/protobuf/meta_graph.pb.h"
 
 namespace stablehlo::quantization {
-namespace {
 
-using ::stablehlo::quantization::DebuggerConfig;
-using ::tensorflow::NodeDef;
-using ::tensorflow::SignatureDef;
-using ::tensorflow::quantization::ExportedModel;
-using ::tensorflow::quantization::PyFunctionLibrary;
+void DisableDebugging(mlir::ModuleOp module_op) {
+  module_op.walk(
+      [](mlir::TF::DumpTensorOp dump_op) { dump_op.setEnabled(false); });
+}
 
-}  // namespace
+void EnableDebugging(tensorflow::quantization::ExportedModel& exported_model) {
+  MutateNodeDefs(*exported_model.mutable_graph_def(),
+                 [](tensorflow::NodeDef& node_def) {
+                   if (node_def.op() == "DumpTensor") {
+                     (*node_def.mutable_attr())["enabled"].set_b(true);
+                   }
+                 });
+}
 
-void EnableDebugging(
-    ExportedModel& exported_model, const DebuggerConfig& debugger_config,
-    const PyFunctionLibrary& py_function_library,
-    const absl::string_view src_saved_model_path,
-    const std::unordered_set<std::string>& tags,
-    const absl::flat_hash_map<std::string, SignatureDef>& signature_def_map) {
-  // Enable `DumpTensor` nodes in `graph_def`. DumpTensor is disabled by
-  // default to avoid logging data during calibration.
-  MutateNodeDefs(*exported_model.mutable_graph_def(), [](NodeDef& node_def) {
-    if (node_def.op() == "DumpTensor") {
-      (*node_def.mutable_attr())["enabled"].set_b(true);
-    }
+void ChangeToQuantizedFilename(mlir::ModuleOp module_op) {
+  module_op.walk([](mlir::TF::DumpTensorOp dump_op) {
+    dump_op.setFileName("quantized_tensor_data.pb");
   });
-
-  if (debugger_config.debugger_type() ==
-      DebuggerConfig::DEBUGGER_TYPE_WHOLE_MODEL) {
-    // TODO: b/295139417 - Remove CustomAggregator op in unquantized dump model.
-    // TODO: b/296916287 - Create a separate function for saving unquantized
-    // dump model.
-    py_function_library.SaveExportedModel(
-        debugger_config.unquantized_dump_model_path(), exported_model,
-        src_saved_model_path, tags, signature_def_map);
-
-    // Update the `DumpTensor` ops' file name in `graph_def`.
-    MutateNodeDefs(*exported_model.mutable_graph_def(), [](NodeDef& node_def) {
-      if (node_def.op() == "DumpTensor") {
-        (*node_def.mutable_attr())["file_name"].set_s(
-            "quantized_tensor_data.pb");
-      }
-    });
-  }
 }
 
 }  // namespace stablehlo::quantization
