@@ -18,7 +18,6 @@ limitations under the License.
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
-#include <functional>
 #include <memory>
 #include <optional>
 #include <string>
@@ -54,7 +53,6 @@ limitations under the License.
 #include "xla/shape_tree.h"
 #include "xla/shape_util.h"
 #include "xla/status.h"
-#include "xla/statusor.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
@@ -346,8 +344,7 @@ AbstractTfrtCpuBuffer::Release(bool wait_for_operations_to_complete) {
     for (const auto& av : events) {
       BlockUntilReady(av.GetAsyncValue());
       if (auto* error = av.GetErrorIfPresent()) {
-        first_error.Update(
-            Internal("Error Execute: %s", error->message()));
+        first_error.Update(Internal("Error Execute: %s", error->message()));
       }
     }
     if (!first_error.ok()) return std::move(first_error);
@@ -703,8 +700,17 @@ AbstractTfrtCpuBuffer::BufferFromHostBufferHelper(
   absl::AnyInvocable<void() &&> on_delete_callback;
   size_t byte_size = ShapeUtil::ByteSizeOf(shape);
   if (can_use_zero_copy) {
+    // Zero-copy host buffer semantics requires caller to keep original data
+    // alive and not modify its content as long as constructed buffer is alive,
+    // which effectively transfers ownership of the memory to PjRtBuffer. We
+    // create owning CPU memory to signal the ownership semantics, however we
+    // use a no-op deleter as we don't know where the memory is coming from and
+    // rely on the caller to free the memory if needed inside a callback.
+    MaybeOwningCpuMemory::OwnedDataPtr::deleter_type no_op = +[](void*) {};
     auto device_buffer = std::make_shared<MaybeOwningCpuMemory>(
-        const_cast<void*>(data), byte_size);
+        MaybeOwningCpuMemory::OwnedDataPtr(
+            reinterpret_cast<uint8_t*>(const_cast<void*>(data)), no_op),
+        byte_size);
     buffers.push_back(std::move(device_buffer));
     on_delete_callback = std::move(on_done_with_host_buffer);
   } else {
