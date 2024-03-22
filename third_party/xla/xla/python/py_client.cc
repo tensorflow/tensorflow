@@ -285,12 +285,14 @@ absl::Status PyClient::Defragment() {
     std::string shape;
     std::string dtype;
     try {
-      shape = nb::cast<std::string>(nb::str(argument.attr("shape")));
+      shape =
+          nb::cast<std::string>(nb::str(nb::object(argument.attr("shape"))));
     } catch (const std::exception& e) {
       shape = "<unknown>";
     }
     try {
-      dtype = nb::cast<std::string>(nb::str(argument.attr("dtype")));
+      dtype =
+          nb::cast<std::string>(nb::str(nb::object(argument.attr("dtype"))));
     } catch (const std::exception& e) {
       dtype = "<unknown>";
     }

@@ -31,6 +31,8 @@ namespace xla {
 namespace ifrt {
 namespace proxy {
 
+class Client;
+
 class Memory : public xla::ifrt::Memory {
  public:
   Memory(int id, std::string memory_space_kind, std::string debug_string,
