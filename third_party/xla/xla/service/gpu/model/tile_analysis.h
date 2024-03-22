@@ -37,16 +37,18 @@ namespace gpu {
 // A N-dimensional symbolic tile is a function from offsets, strides, and sizes
 // to a N-dimensional tile. It can be represented as three affine maps with
 // domain
-//     ()[offset0, size0, stride0, ... offset{M-1}, size{P-1}, stride{M-1}]
+//     ()[size0, ..., size{M-1}}]
 // and respective co-domains
-//     (offset0', ..., offset'{N-1})     (offset_map())
-//     (size0', ..., size'{N-1})         (size_map())
-//     (stride0', ..., stride'{N-1})     (stride_map())
+//     (offset0, ..., offset{N-1})     (offset_map())
+//     (size0', ..., size'{N-1})       (size_map())
+//     (stride0, ..., stride{N-1})     (stride_map())
 // where maps respectively encode the offset, size, and stride component of
 // each strided expression in the tile. The parameters to the maps above are all
-// assumed to be non-negative, but results of stride_map() may be negative.
+// assumed to be strictly positive, but results of stride_map() may be negative.
+// The input offsets are assumed to be all 0s, and the input strides are assumed
+// to be all 1s.
 //
-// A symbolic tile with 3*M symbols and N results is constructed using an
+// A symbolic tile with M symbols and N results is constructed using an
 // `IndexingMap` with M input dimensions and N results. The construction of the
 // symbolic tile may fail if any one of the resulting expressions is not a
 // strided expression as described above.
@@ -74,8 +76,7 @@ class SymbolicTile {
       : offset_map_(offset_map), size_map_(size_map), stride_map_(stride_map) {}
 };
 
-// Prints symbolic_tile with triplet labels for each symbol.
-// i.e. a symbol si which corresponds to an offset will be labeled offseti.
+// Prints symbolic_tile with renamed labels for each symbol, s{i} => size{i}.
 std::ostream& operator<<(std::ostream& out, const SymbolicTile& symbolic_tile);
 
 }  // namespace gpu

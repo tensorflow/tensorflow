@@ -16,20 +16,21 @@ limitations under the License.
 #include "xla/service/gpu/model/tile_analysis.h"
 
 #include <cstdint>
-#include <iterator>
 #include <optional>
 #include <ostream>
 #include <sstream>
 #include <string>
 #include <vector>
 
-#include "absl/algorithm/container.h"
 #include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "absl/strings/str_cat.h"
+#include "absl/types/span.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/Support/Casting.h"
 #include "mlir/IR/AffineExpr.h"  // from @llvm-project
 #include "mlir/IR/AffineMap.h"  // from @llvm-project
+#include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "xla/service/gpu/model/affine_map_printer.h"
 #include "xla/service/gpu/model/indexing_map.h"
@@ -38,38 +39,34 @@ namespace xla {
 namespace gpu {
 namespace {
 
-using absl::StrCat;
-using mlir::AffineDimExpr;
-using mlir::AffineExpr;
-using mlir::AffineMap;
-using mlir::AffineSymbolExpr;
-using mlir::getAffineConstantExpr;
-using mlir::getAffineDimExpr;
-using mlir::MLIRContext;
-using mlir::simplifyAffineExpr;
+using ::absl::StrCat;
+using ::mlir::AffineExpr;
+using ::mlir::AffineExprKind;
+using ::mlir::AffineMap;
+using ::mlir::getAffineConstantExpr;
+using ::mlir::getAffineDimExpr;
+using ::mlir::MLIRContext;
 
-// The number of tile parameters that are inserted for each input dimension when
-// constructing a symbolic tile from an indexing map.
-constexpr int kNumTileParametersPerInputDim = 3;
-
-// Internal helper that checks whether an affine map of the form
-//     (index0, ..., index{M-1})
-//       [sym0, ..., sym{P-1}, offset0, size0, stride0, ...,
-//        offset{M-1}, size{M-1}, stride{M-1}]
-//  -> (expr0, ..., expr{N-1})
+// Internal helper that checks whether an affine map describes a tileable space.
+// In simple terms, this currently returns true if "dimensions don't mix", i.e.,
+// every result expression only refers to a single dimension (or symbol).
 //
-// describes a symbolic tile. The documentation for
-// `RawSymbolicTileFromIndexingMap` explains what this means in details.
-bool AffineMapDescribesTile(AffineMap affine_map) {
-  int64_t num_known_symbols =
-      affine_map.getNumSymbols() -
-      kNumTileParametersPerInputDim * affine_map.getNumDims();
-  for (AffineExpr result_expr : affine_map.getResults()) {
+// TODO(b/328427138): this is too restrictive for expressions involving e.g.
+// (output-to-input) split reshapes, where several symbols may appear within the
+// same expression but still yield a tileable space. This will be handled in a
+// forthcoming change.
+bool IndexingMapDescribesTileableSpace(const IndexingMap& indexing_map) {
+  for (AffineExpr result_expr : indexing_map.GetAffineMap().getResults()) {
+    // Using a simple integer here might be overly restrictive, since there may
+    // be cases where the same symbol appears in several places within the
+    // expression. It is a bit unclear whether this is a case that would happen
+    // in practice and whether we would be able to handle it well in all cases
+    // if it did. For that reason, we err on the side of conservatism and
+    // explicitly do not support such cases.
     int64_t num_hits = 0;
-    result_expr.walk([&num_hits, &num_known_symbols](AffineExpr expr) {
-      if (auto symbol_expr = llvm::dyn_cast<AffineSymbolExpr>(expr)) {
-        num_hits += (symbol_expr.getPosition() < num_known_symbols);
-      } else if (auto dim_expr = llvm::dyn_cast<AffineDimExpr>(expr)) {
+    result_expr.walk([&num_hits](AffineExpr expr) {
+      if (expr.getKind() == AffineExprKind::SymbolId ||
+          expr.getKind() == AffineExprKind::DimId) {
         ++num_hits;
       }
     });
@@ -81,237 +78,241 @@ bool AffineMapDescribesTile(AffineMap affine_map) {
   return true;
 }
 
-// Internal helper to construct symbolic tiles. The only difference with an
-// actual symbolic tile is that this structure does not enforce the relevant
-// important invariants by construction.
-struct RawSymbolicTile {
-  AffineMap offset_map;
-  AffineMap size_map;
-  AffineMap stride_map;
-};
-
-// Helper to perform function applications as described in the documentation of
-// `RawSymbolicTileFromIndexingMap`.
-AffineMap SubstituteAllIndicesAndKnownSymbolsWithSameValue(
-    AffineMap affine_map, AffineExpr value, int64_t num_known_symbols) {
+// Helper to perform function application to using the same parameter for every
+// dimension and symbol parameter.
+AffineMap SubstituteAllIndicesAndKnownSymbolsWithSameValue(AffineMap affine_map,
+                                                           AffineExpr value) {
   MLIRContext* mlir_context = affine_map.getContext();
-  int64_t num_input_dims = affine_map.getNumDims();
+  int64_t num_dims = affine_map.getNumDims();
+  int64_t num_symbols = affine_map.getNumSymbols();
   llvm::DenseMap<AffineExpr, AffineExpr> indices;
 
-  for (int64_t i = 0; i < num_input_dims; ++i) {
+  for (int64_t i = 0; i < num_dims; ++i) {
     indices[getAffineDimExpr(i, mlir_context)] = value;
   }
 
-  for (int64_t i = 0; i < num_known_symbols; ++i) {
+  for (int64_t i = 0; i < num_symbols; ++i) {
     indices[getAffineSymbolExpr(i, mlir_context)] = value;
   }
 
-  return simplifyAffineMap(affine_map.replace(indices, affine_map.getNumDims(),
-                                              affine_map.getNumSymbols()));
+  return simplifyAffineMap(affine_map.replace(indices, num_dims, num_symbols));
 }
 
-// Extracts non-negative offset, size, and stride expression for each result
-// expression in the parameter affine map if the affine map describes a tile.
-// Returns `std::nullopt` if the parameter affine map does not describe a tile.
-//
-// The parameter affine map f must follow the pattern
-//     (index0, ..., index{M-1})
-//       [sym0, ..., sym{P-1}, offset0, size0, stride0, ...,
-//        offset{M-1}, size{M-1}, stride{M-1}]
-//  -> (expr0, ..., expr{N-1})
-// where the result expressions expr0, ..., expr{N-1} are strided expressions of
-// the form
-//     offset_expr{i} + stride_expr{i} * index_expr{i}
-// with 0 <= i < N, and index_expr{i} is either a symbol with known bound
-// (sym0, ..., sym{P-1}) or an index.
-//
-// Let f'(x0, ..., x{M-1})[x{M}, ..., x{M+P-1}]
-//   = f(x0, ..., x{M-1})[x{M}, ..., x{M+P-1}, offset0, size0, stride0, ...,
-//                        offset{M-1}, size{M-1}, stride{M-1}]
-//
-// Then, the following equations hold:
-//
-// (1) f'(0, ..., 0)[0, ..., 0]{i}
-//   = offset_expr{i} + stride_expr{i} * 0
-//   = offset_expr{i}
-//
-// (2) f'(1, ..., 1)[1, ..., 1]{i} - f'(0, ..., 0)[0, ..., 0]{i}
-//   = offset_expr{i} + stride_expr{i} * 1 - offset_expr{i}
-//   = stride_expr{i}
-//
-// (3) If stride_expr{i} = 0, we automatically set size_expr{i} = 1. This
-//     happens when the strided expression points to a single value that is the
-//     same for all elements in the tile.
-//
-//     If stride_expr{i} != 0, then the relevant size expression can be obtained
-//     by analyzing the index expression, which is known to be either a symbol
-//     with known bound, or an index parameter. In the former case, we set the
-//     size to be the upper bound of the symbol; in the latter case, we
-//     substitute the index parameter by its corresponding size parameter.
-//
-// Strictly solving (1) may yield negative strides (e.g. in the case of
-// reverse). Conceptually, negative strides denote of a decremental iteration
-// order over indices {0, ..., size_expr{i} - 1}. This is not normalized in
-// symbolic tiles, and must be handled by consumers.
-//
-// The resulting affine maps elide known symbols from the list of parameter
-// symbols, since they will have been replaced by constants.
-std::optional<RawSymbolicTile> RawSymbolicTileFromIndexingMap(
-    const IndexingMap& indexing_map) {
-  AffineMap affine_map = indexing_map.GetAffineMap();
-  if (!AffineMapDescribesTile(affine_map)) {
+struct SizeAndStrideExpression {
+  AffineExpr size;
+  AffineExpr stride;
+};
+
+// Converts a dimension expression to a symbol expression with the corresponding
+// index.
+AffineExpr ToSymbol(mlir::AffineDimExpr dim_expr) {
+  return mlir::getAffineSymbolExpr(dim_expr.getPosition(),
+                                   dim_expr.getContext());
+}
+
+std::optional<SizeAndStrideExpression> ExtractSizeAndStrideFromMod(
+    AffineExpr lhs, AffineExpr modulus) {
+  // TODO(b/326998704): derive constraints here, as well as the non-one stride
+  // case, both in the code and in the proof.
+  // Let f(d0) = d0 mod c. Then, given an input tile size n,
+  // {f(x) | x in Fin(n)} contains:
+  //   * n elements if n < c (and we add a constraint such that c | n);
+  //   * c elements if n >= c (and we add a constraint such that n | c).
+  // Given these constraints and assumptions, we derive
+  //   card({f(x) | x in Fin(n)}) = n - ((n - 1) floordiv n) * n.
+  // Proof:
+  //   * n < c (and c | n):
+  //       n - ((n - 1) floordiv c) * c
+  //     = n - 0 * c           (n < c => n floordiv c == 0)
+  //     = n
+  //   * n >= c (and n | c):
+  //       n - ((n - 1) floordiv c) * c
+  //     = n - (n / c - 1) * c     (n | c => (n - 1) floordiv c = n / c)
+  //     = n - (n - c)
+  //     = c
+  CHECK(modulus.getKind() == AffineExprKind::Constant);
+  if (auto dim_expr = llvm::dyn_cast<mlir::AffineDimExpr>(lhs)) {
+    AffineExpr sym = ToSymbol(dim_expr);
+    AffineExpr size = sym - mlir::getAffineBinaryOpExpr(
+                                AffineExprKind::FloorDiv, sym - 1, modulus) *
+                                modulus;
+    // In this case, stride is effectively 1 mod modulus = 1.
+    return SizeAndStrideExpression{
+        size, /*stride=*/getAffineConstantExpr(1, lhs.getContext())};
+  }
+
+  return std::nullopt;
+}
+
+std::optional<SizeAndStrideExpression> ExtractSizeAndStrideFromFloorDiv(
+    AffineExpr num, AffineExpr den) {
+  if (den.getKind() != AffineExprKind::Constant) {
     return std::nullopt;
   }
 
-  MLIRContext* mlir_context = affine_map.getContext();
-  int64_t num_known_symbols =
-      affine_map.getNumSymbols() -
-      affine_map.getNumDims() * kNumTileParametersPerInputDim;
-  int64_t num_results = affine_map.getNumResults();
-
-  // offsets_expr = f'(0, ..., 0)[0, ..., 0]
-  AffineMap f_prime_0 = SubstituteAllIndicesAndKnownSymbolsWithSameValue(
-      affine_map, getAffineConstantExpr(0, mlir_context), num_known_symbols);
-  llvm::ArrayRef<AffineExpr> offset_expressions = f_prime_0.getResults();
-
-  // Compute f'(1, ..., 1)[1, ..., 1].
-  AffineMap f_prime_1 = SubstituteAllIndicesAndKnownSymbolsWithSameValue(
-      affine_map, getAffineConstantExpr(1, mlir_context), num_known_symbols);
-
-  // strides_expr = f'(1, ..., 1)[1, ..., 1] - f'(0, ..., 0)[0, ..., 0]
-  std::vector<AffineExpr> stride_expressions;
-  stride_expressions.reserve(num_results);
-  for (auto [sub_lhs, sub_rhs] :
-       llvm::zip(f_prime_1.getResults(), offset_expressions)) {
-    stride_expressions.push_back(
-        simplifyAffineExpr(sub_lhs - sub_rhs, affine_map.getNumDims(),
-                           affine_map.getNumSymbols()));
+  if (auto dim_expr = llvm::dyn_cast<mlir::AffineDimExpr>(num)) {
+    // Let f(d0) = d0 floordiv c. Then, given an input tile size n,
+    // {f(x) | x in Fin(n)} contains n ceildiv c elements, with stride
+    // (1 ceildiv c) = 1.
+    //
+    // We represent `a ceildiv b` as `(a + b - 1) floordiv b`, since indexing
+    // maps are not compatible with CeilDiv affine expressions.
+    AffineExpr size = mlir::getAffineBinaryOpExpr(
+        AffineExprKind::FloorDiv, ToSymbol(dim_expr) + (den - 1), den);
+    return SizeAndStrideExpression{
+        size, /*stride=*/getAffineConstantExpr(1, num.getContext())};
   }
 
-  // Deduce size_expr. At each index, if the stride is non-zero, once rid of
-  // the offset expression, the remaining expression can be one of two things;
-  //   1. a single parameter---either an index parameter, or a symbol with
-  //      known bounds. This parameter is the size expression, and in the
-  //      case of a symbol with known bounds, we can directly make it a
-  //      constant;
-  //   2. the product of an index parameter (or symbol with known bound)
-  //      with an expression consisting only of constants, and offsets
-  //      and strides parameters. In that case, the index parameter/symbol
-  //      with known bound is the size expression, and we do like in the
-  //      first bullet.
-  // This structure is guaranteed by the `AffineMapDescribesTile` filter
-  // at the top of the function.
-  std::vector<AffineExpr> size_expressions;
-  size_expressions.reserve(num_results);
-  constexpr int kSizePositionWithinTileParameters = 1;
-  for (auto [offset_expr, stride_expr, input_expr] : llvm::zip(
-           offset_expressions, stride_expressions, affine_map.getResults())) {
-    AffineExpr size_expr;
-    if (stride_expr == getAffineConstantExpr(0, mlir_context)) {
-      size_expr = getAffineConstantExpr(1, mlir_context);
-    } else {
-      AffineExpr strided_size_expr =
-          simplifyAffineExpr(input_expr - offset_expr, affine_map.getNumDims(),
-                             affine_map.getNumSymbols());
+  return std::nullopt;
+}
 
-      strided_size_expr.walk([&](AffineExpr expr) {
-        auto symbol_expr = llvm::dyn_cast<AffineSymbolExpr>(expr);
-        if (symbol_expr && symbol_expr.getPosition() < num_known_symbols) {
-          CHECK(!size_expr);
-          const Interval& symbol_range =
-              indexing_map.GetSymbolBound(symbol_expr.getPosition());
-          size_expr = getAffineConstantExpr(
-              symbol_range.upper - symbol_range.lower + 1, mlir_context);
-        } else if (auto dim_expr = llvm::dyn_cast<AffineDimExpr>(expr)) {
-          CHECK(!size_expr);
-          size_expr = getAffineSymbolExpr(
-              num_known_symbols +
-                  dim_expr.getPosition() * kNumTileParametersPerInputDim +
-                  kSizePositionWithinTileParameters,
-              mlir_context);
-        }
-      });
+std::optional<SizeAndStrideExpression> ExtractSizeAndStride(
+    AffineExpr strided_indexing, absl::Span<Interval const> symbol_intervals) {
+  MLIRContext* ctx = strided_indexing.getContext();
+  // Deal with the symbol case (capturing a whole untiled dimension).
+  // TODO(b/330906085): concatenating across a reduction dimension needs to be
+  // handled by this code.
+  if (auto symbol = llvm::dyn_cast<mlir::AffineSymbolExpr>(strided_indexing)) {
+    const Interval& symbol_interval = symbol_intervals[symbol.getPosition()];
+    if (symbol_interval.lower != 0) {
+      return std::nullopt;
     }
-    size_expressions.push_back(size_expr);
+
+    return SizeAndStrideExpression{
+        /*size=*/getAffineConstantExpr(symbol_interval.upper + 1, ctx),
+        /*stride=*/getAffineConstantExpr(1, ctx)};
   }
 
-  int64_t num_symbols = affine_map.getNumSymbols();
-  return RawSymbolicTile(
-      {.offset_map =
-           AffineMap::get(0, num_symbols, offset_expressions, mlir_context)
-               .shiftSymbols(-num_known_symbols),
-       .size_map =
-           AffineMap::get(0, num_symbols, size_expressions, mlir_context)
-               .shiftSymbols(-num_known_symbols),
-       .stride_map =
-           AffineMap::get(0, num_symbols, stride_expressions, mlir_context)
-               .shiftSymbols(-num_known_symbols)});
+  AffineMapPrinter printer;
+
+  // TODO(b/328427138): support multivariate size expressions.
+  switch (strided_indexing.getKind()) {
+    case AffineExprKind::DimId:
+      return SizeAndStrideExpression{
+          /*size=*/ToSymbol(llvm::cast<mlir::AffineDimExpr>(strided_indexing)),
+          /*stride=*/getAffineConstantExpr(1, ctx)};
+    case mlir::AffineExprKind::Mul: {
+      auto mul = llvm::cast<mlir::AffineBinaryOpExpr>(strided_indexing);
+      AffineExpr lhs = mul.getLHS();
+      // The stride may not be fully collapsed if it is negative; in that case,
+      // we need to extract the negative multiplier first.
+      if (auto rhs = llvm::dyn_cast<mlir::AffineConstantExpr>(mul.getRHS());
+          rhs && rhs.getValue() == -1) {
+        std::optional<SizeAndStrideExpression> maybe_size_and_stride =
+            ExtractSizeAndStride(lhs, symbol_intervals);
+        if (!maybe_size_and_stride.has_value()) {
+          return std::nullopt;
+        }
+
+        return SizeAndStrideExpression{
+            /*size=*/maybe_size_and_stride->size,
+            /*stride=*/maybe_size_and_stride->stride * rhs};
+      }
+      CHECK(lhs.getKind() == AffineExprKind::DimId);
+      return SizeAndStrideExpression{
+          /*size=*/ToSymbol(llvm::cast<mlir::AffineDimExpr>(lhs)),
+          /*stride=*/mul.getRHS()};
+    }
+    case mlir::AffineExprKind::Mod: {
+      auto mod = llvm::cast<mlir::AffineBinaryOpExpr>(strided_indexing);
+      return ExtractSizeAndStrideFromMod(mod.getLHS(), mod.getRHS());
+    }
+    case mlir::AffineExprKind::FloorDiv: {
+      auto floor_div = llvm::cast<mlir::AffineBinaryOpExpr>(strided_indexing);
+      return ExtractSizeAndStrideFromFloorDiv(floor_div.getLHS(),
+                                              floor_div.getRHS());
+    };
+    case mlir::AffineExprKind::Constant:
+      return SizeAndStrideExpression{/*size=*/getAffineConstantExpr(1, ctx),
+                                     /*stride=*/getAffineConstantExpr(0, ctx)};
+    case mlir::AffineExprKind::SymbolId:
+      VLOG(1) << "Encountered complex size expression involving symbol "
+              << printer.ToString(strided_indexing);
+      return std::nullopt;
+    case mlir::AffineExprKind::Add:
+      // TODO(b/328427138): this should only be necessary in the multivariate
+      // case, and will be implemented later.
+      VLOG(1) << "Encountered complex strided indexing expression "
+              << printer.ToString(strided_indexing);
+      return std::nullopt;
+    case mlir::AffineExprKind::CeilDiv:
+      LOG(FATAL) << "unreachable";
+  };
 }
 
 }  // anonymous namespace
 
 /*static*/ std::optional<SymbolicTile> SymbolicTile::FromIndexingMap(
     const IndexingMap& indexing_map) {
+  // Bail out on runtime offsets.
   if (indexing_map.GetRTVarsCount()) {
     return std::nullopt;
   }
-  MLIRContext* mlir_context = indexing_map.GetMLIRContext();
-  int64_t num_input_dims = indexing_map.GetDimensionCount();
-  std::vector<AffineExpr> exprs;
-  exprs.reserve(num_input_dims);
-
-  std::vector<DimVar> tile_dim_vars;
-  tile_dim_vars.reserve(num_input_dims);
-  std::vector<RangeVar> tile_range_vars;
-  tile_range_vars.reserve(kNumTileParametersPerInputDim * num_input_dims +
-                          indexing_map.GetAffineMap().getNumSymbols());
-
-  // The symbols declared in 'indexing_map.affine_map' will precede those
-  // defined in the producer map we construct here.
-  absl::c_copy(indexing_map.GetRangeVars(),
-               std::back_inserter(tile_range_vars));
-
-  // For each input dims we add kNumTileParametersPerInputDim = 3 symbols, as
-  // well as a single dim. Symbols are ordered in (offset, size, stride)
-  // triplets.
-  for (int64_t dim = 0; dim < num_input_dims; ++dim) {
-    AffineExpr index = getAffineDimExpr(dim, mlir_context);
-    AffineExpr offset =
-        getAffineSymbolExpr(kNumTileParametersPerInputDim * dim, mlir_context);
-    AffineExpr stride = getAffineSymbolExpr(
-        kNumTileParametersPerInputDim * dim + 2, mlir_context);
-
-    exprs.push_back(offset + stride * index);
-
-    Interval range = indexing_map.GetDimensionBound(dim);
-    tile_dim_vars.push_back({range});
-
-    for (int64_t symbol_index = 0; symbol_index < kNumTileParametersPerInputDim;
-         ++symbol_index) {
-      tile_range_vars.push_back({range});
-    }
-  }
-
-  AffineMap producer_map = AffineMap::get(
-      num_input_dims, kNumTileParametersPerInputDim * num_input_dims, exprs,
-      mlir_context);
-
-  IndexingMap composed_indexing_map(
-      indexing_map.GetAffineMap().compose(producer_map), tile_dim_vars,
-      tile_range_vars, /*rt_vars=*/{});
-
-  composed_indexing_map.Simplify();
-
-  std::optional<RawSymbolicTile> maybe_raw_symbolic_tile =
-      RawSymbolicTileFromIndexingMap(composed_indexing_map);
-
-  if (!maybe_raw_symbolic_tile.has_value()) {
+  // TODO(b/328427138): handle multiple symbols in a single tile to support
+  // merging dimensions.
+  if (!IndexingMapDescribesTileableSpace(indexing_map)) {
     return std::nullopt;
   }
 
-  return SymbolicTile(maybe_raw_symbolic_tile->offset_map,
-                      maybe_raw_symbolic_tile->size_map,
-                      maybe_raw_symbolic_tile->stride_map);
+  AffineMap input_affine_map = indexing_map.GetAffineMap();
+  MLIRContext* mlir_context = input_affine_map.getContext();
+
+  // If indexing_map describes a tileable space, then input_affine_map can be
+  // expressed as
+  //   f(dim0, ..., dim{M-1})[sym0, ..., sym{P-1}] = (expr0, ..., expr{N-1})
+  // where the result expressions expr0, ..., expr{N-1} are strided expressions
+  // of the form
+  //     offset_expr{i} + stride_expr{i} * index_expr{i}
+  // with 0 <= i < N.
+  //
+  // We are interested in extracting expressions for offset_expr{i},
+  // stride_expr{i}, and size_expr{i} (the count of different values that
+  // expr{i} can represent).
+  //
+  // We have that the following equations hold:
+  //
+  // (1) f(0, ..., 0)[0, ..., 0]{i}
+  //   = offset_expr{i} + stride_expr{i} * 0
+  //   = offset_expr{i}
+  //
+  // (2) f(x0, ..., x{M-1})[x{M}, ..., x{M+P-1}]{i} - f(0, ..., 0)[0, ..., 0]{i}
+  //   = offset_expr{i} + stride_expr{i} * index_expr{i} - offset_expr{i}
+  //   = stride_expr{i} * index_expr{i}
+  //
+  // offset_expressions = f(0, ..., 0)[0, ..., 0].
+  llvm::ArrayRef<AffineExpr> offset_expressions =
+      SubstituteAllIndicesAndKnownSymbolsWithSameValue(
+          input_affine_map, getAffineConstantExpr(0, mlir_context))
+          .getResults();
+
+  std::vector<AffineExpr> size_expressions;
+  std::vector<AffineExpr> stride_expressions;
+  size_expressions.reserve(offset_expressions.size());
+  stride_expressions.reserve(offset_expressions.size());
+
+  // strided_indexing_expressions =
+  //     f(x0, ..., x{M-1})[x{M}, ..., x{M+P-1}] - offset_expressions
+  for (auto [composite_indexing, offset] :
+       llvm::zip(input_affine_map.getResults(), offset_expressions)) {
+    std::optional<SizeAndStrideExpression> maybe_size_and_stride =
+        ExtractSizeAndStride(composite_indexing - offset,
+                             indexing_map.GetSymbolBounds());
+    if (!maybe_size_and_stride.has_value()) {
+      return std::nullopt;
+    }
+    size_expressions.push_back(maybe_size_and_stride->size);
+    stride_expressions.push_back(maybe_size_and_stride->stride);
+  }
+
+  int64_t num_symbols = input_affine_map.getNumDims();
+  AffineMap offset_map =
+      AffineMap::get(0, num_symbols, offset_expressions, mlir_context);
+  AffineMap size_map =
+      AffineMap::get(0, num_symbols, size_expressions, mlir_context);
+  AffineMap stride_map =
+      AffineMap::get(0, num_symbols, stride_expressions, mlir_context);
+
+  return SymbolicTile(offset_map, size_map, stride_map);
 }
 
 std::string SymbolicTile::ToString(const AffineMapPrinter& printer) const {
@@ -335,17 +336,9 @@ void SymbolicTile::Print(std::ostream& out,
 
 std::ostream& operator<<(std::ostream& out, const SymbolicTile& symbolic_tile) {
   AffineMapPrinter printer;
-
-  // This utilizes the assumption that symbols are structured as triplets, i.e.
-  // [offset0, size0, stride0, ... offset{N-1}, size{N-1}, stride{N-1}]
-  // where N is the tensor rank.
-  for (int64_t triplet_start = 0;
-       triplet_start < symbolic_tile.offset_map().getNumSymbols();
-       triplet_start += kNumTileParametersPerInputDim) {
-    int64_t triplet_idx = triplet_start / kNumTileParametersPerInputDim;
-    printer.SetSymbolName(triplet_start, StrCat("offset", triplet_idx));
-    printer.SetSymbolName(triplet_start + 1, StrCat("size", triplet_idx));
-    printer.SetSymbolName(triplet_start + 2, StrCat("stride", triplet_idx));
+  for (int64_t symbol_id = 0;
+       symbol_id < symbolic_tile.size_map().getNumSymbols(); symbol_id++) {
+    printer.SetSymbolName(symbol_id, StrCat("size", symbol_id));
   }
 
   symbolic_tile.Print(out, printer);

@@ -217,24 +217,9 @@ std::vector<int64_t> SymbolicTileAnalysis::TileStrides(
                          *tile_parameters_);
 }
 
-void SymbolicTileAnalysis::SetTileParameters(
-    absl::Span<int64_t const> parameters) {
+void SymbolicTileAnalysis::SetTileSizes(absl::Span<int64_t const> sizes) {
   // TODO(bchetioui): CHECK num parameters somehow?
-  tile_parameters_ = std::vector(parameters.begin(), parameters.end());
-}
-
-void SymbolicTileAnalysis::SetTileParametersWithDefaultOffsetsAndStrides(
-    absl::Span<int64_t const> sizes) {
-  std::vector<int64_t> parameters;
-  parameters.reserve(3 * sizes.size());
-
-  for (int64_t size : sizes) {
-    // Untiled dims have offset = 0 and stride = 1.
-    parameters.push_back(0);
-    parameters.push_back(size);
-    parameters.push_back(1);
-  }
-  SetTileParameters(parameters);
+  tile_parameters_ = std::vector(sizes.begin(), sizes.end());
 }
 
 }  // namespace gpu
