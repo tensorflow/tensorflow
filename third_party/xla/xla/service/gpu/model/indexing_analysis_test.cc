@@ -1875,7 +1875,7 @@ TEST_F(IndexingAnalysisTest, ReduceWindowOp_PaddingAndWindowStride) {
                           )"))));
 }
 
-TEST_F(IndexingAnalysisTest, ReduceWindowOp_Dilation) {
+TEST_F(IndexingAnalysisTest, ReduceWindowOp_BaseDilation) {
   auto root = ParseAndGetRoot(R"(
     HloModule m
     max {
@@ -1905,6 +1905,38 @@ TEST_F(IndexingAnalysisTest, ReduceWindowOp_Dilation) {
                             domain:
                             d0 in [0, 2]
                             d1 in [0, 4]
+                          )"))));
+}
+
+TEST_F(IndexingAnalysisTest, ReduceWindowOp_WindowDilation) {
+  auto root = ParseAndGetRoot(R"(
+    HloModule m
+    max {
+      p0 = f32[] parameter(0)
+      p1 = f32[] parameter(1)
+      ROOT max = f32[] maximum(p0, p1)
+    }
+    ENTRY e {
+      c_inf = f32[] constant(-inf)
+      p0 = f32[7, 3] parameter(0)
+      ROOT reduce-window = f32[4, 3] reduce-window(p0, c_inf),
+       window={size=2x1 pad=0_0x0_0 rhs_dilate=3x1}, to_apply=max
+    }
+  )");
+  auto input_indexing = GetOutputToInputIndexing(root);
+  EXPECT_THAT(input_indexing.indexing_maps,
+              ElementsAre(ElementsAre(MatchIndexingMap(R"(
+                            (d0, d1)[s0] -> (d0 + s0 * 3, d1)
+                            domain:
+                            d0 in [0, 3]
+                            d1 in [0, 2]
+                            s0 in [0, 1]
+                          )")),
+                          ElementsAre(MatchIndexingMap(R"(
+                            (d0, d1) -> ()
+                            domain:
+                            d0 in [0, 3]
+                            d1 in [0, 2]
                           )"))));
 }
 

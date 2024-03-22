@@ -17,7 +17,6 @@ limitations under the License.
 #include <string>
 #include <vector>
 
-#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
 #include "llvm/Support/raw_ostream.h"
@@ -194,6 +193,53 @@ TEST_F(ElementalHloToMlirTest, ReduceUnsigned) {
     // CHECK:          scf.yield %[[UPD]]
     // CHECK:        }
     // CHECK:        scf.yield %[[RET_INNER]]
+    // CHECK:      }
+    // CHECK:      return %[[RET]]
+  )"));
+}
+
+TEST_F(ElementalHloToMlirTest, ReduceWindow) {
+  TF_EXPECT_OK(Run(R"(
+    add {
+      p0 = f32[] parameter(0)
+      p1 = f32[] parameter(1)
+      ROOT sum = f32[] add(p0, p1)
+    }
+
+    ENTRY main {
+      p0 = f32[42,12,8] parameter(0)
+      p1 = f32[] parameter(1)
+      ROOT r = f32[42,3,8] reduce-window(p0, p1), window={
+                                                size=1x1x7
+                                                stride=1x4x1
+                                                pad=0_0x0_0x3_3
+                                               },
+                                               to_apply=add
+    })",
+                   R"(
+    // CHECK:      @main_r(
+    // CHECK-SAME:   %[[ARG0:.*]]: tensor<42x12x8xf32>
+    // CHECK-SAME:   %[[ARG1:.*]]: tensor<f32>
+    // CHECK-SAME:   %[[X:arg[0-9]*]]: index {{[^}]*}}},
+    // CHECK-SAME:   %[[Y:arg[0-9]*]]: index {{[^}]*}}},
+    // CHECK-SAME:   %[[Z:arg[0-9]*]]: index {{[^}]*}}}) -> f32
+    // CHECK-DAG:  %[[C10:.*]] = arith.constant 10
+    // CHECK-DAG:  %[[C0:.*]] = arith.constant 0
+    // CHECK-DAG:  %[[C1:.*]] = arith.constant 1
+    // CHECK-DAG:  %[[C7:.*]] = arith.constant 7
+    // CHECK:      %[[INIT:.*]] = tensor.extract %[[ARG1]][]
+    // CHECK:      %[[RET:.*]] = scf.for %[[I:.*]] = %[[C0]] to %[[C7]]
+    // CHECK-SAME:   step %[[C1]] iter_args(%[[ACC:.*]] = %[[INIT]])
+    // CHECK:      %[[J:.*]] = affine.apply affine_map<()[s0] ->
+    // CHECK-SAME: (s0 * 4)>()[%[[Y]]]
+    // CHECK:      %[[K:.*]] = affine.apply affine_map<()[s0, s1] ->
+    // CHECK-SAME: (s0 + s1 - 3)>()[%[[I]], %[[Z]]]
+    // CHECK:          %[[VAL:.*]] = tensor.extract %[[ARG0]]
+    // CHECK-SAME:        [%[[X]], %[[J]], %[[K]]]
+    // CHECK:          %[[UPD:.*]] = func.call @add_sum(%[[ACC]],
+    // CHECK-SAME:                                      %[[VAL]])
+    // CHECK:          scf.yield %[[UPD]]
+    // CHECK:        }
     // CHECK:      }
     // CHECK:      return %[[RET]]
   )"));

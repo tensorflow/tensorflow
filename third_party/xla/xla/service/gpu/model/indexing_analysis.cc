@@ -661,7 +661,8 @@ HloInstructionIndexing ComputeOutputToInputReduceWindowOpIndexing(
     AffineExpr dim_expr = getAffineDimExpr(dim_id, mlir_context);
     AffineExpr symbol_expr = getAffineSymbolExpr(dim_id, mlir_context);
 
-    exprs.push_back(symbol_expr + window_config.stride() * dim_expr);
+    exprs.push_back(symbol_expr * window_config.window_dilation() +
+                    window_config.stride() * dim_expr);
     dim_vars.push_back({Interval{0, output_shape.dimensions(dim_id) - 1}});
     range_vars.push_back({Interval{0, window_config.size() - 1}});
   }
