@@ -252,6 +252,13 @@ void AddPostQuantizationStableHloToTfPasses(
 
   // Legalize all remaining mhlo ops to stableHLO
   pass_manager.addPass(mlir::mhlo::createHloLegalizeToStablehloPass());
+
+  // Translate "stablehlo.custom_call @stablehlo.composite" to
+  // "stablehlo.composite"
+  // TODO: b/330741524 - clean this up when "stablehlo.composite" is emitted
+  // directly.
+  pass_manager.addPass(
+      mlir::odml::createLegalizeStablehloCustomCallToCompositePass());
 }
 
 // This is the early part of the conversion in isolation. This enables a caller
