@@ -156,17 +156,19 @@ absl::InlinedVector<HloInstruction*, 8> GetSlicedOperandChains(
           if (dynamic) {
             if (const auto slice_instr =
                     DynCast<HloDynamicSliceInstruction>(cur)) {
-              if (IsAlignedSlice(slice_instr->shape(),
-                                 slice_instr->operand(0)->shape(), nullptr))
+              if (IsAlignedSlice(slice_instr->operand(0)->shape(),
+                                 slice_instr->shape(), nullptr)) {
                 slice_found = true;
-              return slice_found;
+                return slice_found;
+              }
             }
           } else {
             if (const auto slice_instr = DynCast<HloSliceInstruction>(cur)) {
               if (IsAlignedSlice(slice_instr->operand(0)->shape(),
-                                 slice_instr->shape(), slice_instr))
+                                 slice_instr->shape(), slice_instr)) {
                 slice_found = true;
-              return slice_found;
+                return slice_found;
+              }
             }
           }
           return cur->user_count() > 1 || !IsNoOp(cur);
@@ -379,7 +381,9 @@ absl::StatusOr<bool> AddressComputationFusionRewriter::Run(
     return true;
   };
 
-  return process_slices(false);
+  TF_ASSIGN_OR_RETURN(bool static_sliced, process_slices(false));
+  TF_ASSIGN_OR_RETURN(bool dynamic_sliced, process_slices(true));
+  return static_sliced || dynamic_sliced;
 }
 
 }  // namespace gpu
