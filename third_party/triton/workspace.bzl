@@ -1,6 +1,7 @@
 """Provides the repository macro to import Triton."""
 
 load("//third_party:repo.bzl", "tf_http_archive", "tf_mirror_urls")
+load("//:tensorflow/third_party/triton/series.bzl", "patch_list")
 
 def repo():
     """Imports Triton."""
@@ -13,7 +14,5 @@ def repo():
         strip_prefix = "triton-{commit}".format(commit = TRITON_COMMIT),
         urls = tf_mirror_urls("https://github.com/openxla/triton/archive/{commit}.tar.gz".format(commit = TRITON_COMMIT)),
         # For temporary changes which haven't landed upstream yet.
-        patch_file = [
-            "//third_party/triton:cl607293980.patch",  # long standing :(
-        ],
+        patch_file = patch_list,
     )
