@@ -146,6 +146,7 @@ tensorflow::Status RunTFXLABridge(
 
 tensorflow::Status RecordStatusIfError(const std::string error_prefix,
                                        bool is_in_fallback_enabled_mode,
+                                       const std::string &is_inference,
                                        absl::Status status) {
   if (status.ok()) {
     return status;
@@ -154,6 +155,7 @@ tensorflow::Status RecordStatusIfError(const std::string error_prefix,
   tensorflow::metrics::UpdateTfMlirBridgeFirstPhaseCounter(
       /*device_type=*/"tpu", /*bridge_version=*/"v1",
       /*fallback_enabled=*/is_in_fallback_enabled_mode,
+      /*is_inference=*/is_inference,
       /*result=*/"failure");
   tsl::error_logging::Log(kBridgeComponent,
                           "TFXLA_PHASE_ONE_MLIR_TPU_V1_COMPAT_BRIDGE",
@@ -166,8 +168,9 @@ tensorflow::Status RecordStatusIfError(const std::string error_prefix,
 // V1 Compat Bridge takes a TF Executor dialect and extracts the TF2 portion
 // and inserts it into a submodule. We just want to run the clustering
 // portion of the pipeline on just the single submodule.
-absl::Status RunClusteringPipelineOnSubmodule(
-    ModuleOp parent_module, bool is_in_fallback_enabled_mode) {
+absl::Status RunClusteringPipelineOnSubmodule(ModuleOp parent_module,
+                                              bool is_in_fallback_enabled_mode,
+                                              const std::string &is_inference) {
   int num_submodules = 0;
   absl::Status clustering_pipeline_status;
   parent_module.walk([&](ModuleOp submodule) {
@@ -191,20 +194,21 @@ absl::Status RunClusteringPipelineOnSubmodule(
         "V1 Compat Bridge has more than one submodule. Erroring out.");
     TF_RETURN_IF_ERROR(RecordStatusIfError(
         /*error_prefix=*/"Bridge has more than one submodule:",
-        is_in_fallback_enabled_mode, num_submodules_error));
+        is_in_fallback_enabled_mode, is_inference, num_submodules_error));
   }
 
   if (!clustering_pipeline_status.ok()) {
     TF_RETURN_IF_ERROR(RecordStatusIfError(
         /*error_prefix=*/"Bridge Errored running clustering pipeline:",
-        is_in_fallback_enabled_mode, clustering_pipeline_status));
+        is_in_fallback_enabled_mode, is_inference, clustering_pipeline_status));
   }
 
   return absl::OkStatus();
 }
 
 tensorflow::Status RunSessionTf2xlaClusteringBridge(
-    ModuleOp module, bool is_in_fallback_enabled_mode) {
+    ModuleOp module, bool is_in_fallback_enabled_mode,
+    const std::string &is_inference) {
   VLOG(2) << "TPU Sessions Bridge called stack trace is "
           << "(NOTE: this is not an error; rather the stack trace for "
              "debugging) : "
@@ -215,14 +219,15 @@ tensorflow::Status RunSessionTf2xlaClusteringBridge(
       /*module_name=*/"", /*dump_prefix=*/"tf_xla_functional_import_bridge_v1");
   TF_RETURN_IF_ERROR(RecordStatusIfError(
       /*error_prefix=*/"Bridge Function Import V1", is_in_fallback_enabled_mode,
-      functional_import_status));
+      is_inference, functional_import_status));
 
-  TF_RETURN_IF_ERROR(
-      RunClusteringPipelineOnSubmodule(module, is_in_fallback_enabled_mode));
+  TF_RETURN_IF_ERROR(RunClusteringPipelineOnSubmodule(
+      module, is_in_fallback_enabled_mode, is_inference));
 
   tensorflow::metrics::UpdateTfMlirBridgeFirstPhaseCounter(
       /*device_type=*/"tpu", /*bridge_version=*/"v1",
       /*n_fallback_enabled*/ is_in_fallback_enabled_mode,
+      /*is_inference=*/is_inference,
       /*result=*/"success");
 
   return absl::OkStatus();

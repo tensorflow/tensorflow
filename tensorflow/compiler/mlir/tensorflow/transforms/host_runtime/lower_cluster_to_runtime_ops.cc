@@ -128,9 +128,10 @@ tensorflow::Status RecordIfErrorStatus(const std::string error_prefix,
   }
 
   VLOG(2) << error_prefix << " " << status;
+  // TODO(b/328770316): Replace this streamz with a new one to meet runtime need
   tensorflow::metrics::UpdateTfMlirBridgeFirstPhaseCounter(
       device_type.type_string(), /*bridge_version=*/"v2",
-      /*fallback_enabled=*/false,
+      /*fallback_enabled=*/false, /*is_inference=*/"not_detected",
       /*result=*/"failure");
 
   constexpr char kBridgeComponent[] = "TFXLABridge";

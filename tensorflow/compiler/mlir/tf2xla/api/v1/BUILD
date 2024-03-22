@@ -229,7 +229,6 @@ tf_cc_test(
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Parser",
         "@local_tsl//tsl/lib/core:status_test_util",
-        "@local_tsl//tsl/lib/monitoring:test_utils",
         "@local_tsl//tsl/platform:status",
     ],
 )

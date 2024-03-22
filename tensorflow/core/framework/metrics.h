@@ -348,6 +348,7 @@ int64_t GetFunctionGraphOptimizationCacheLoadCount(
 void UpdateTfMlirBridgeFirstPhaseCounter(const std::string& device_type,
                                          const std::string& bridge_version,
                                          bool fallback_enabled,
+                                         const std::string& is_inference,
                                          const std::string& result);
 
 enum class Phase2XlaCompilerMetric {

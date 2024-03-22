@@ -216,6 +216,7 @@ tf_proto_library(
         "@local_tsl//tsl/protobuf:status_proto",
     ],
     tags = ["alt_dep=//third_party/tensorflow/core:protos_all"],
+    visibility = ["//visibility:public"],
     exports = [
         "@local_tsl//tsl/protobuf:bfc_memory_map_proto",
         "@local_tsl//tsl/protobuf:rpc_options_proto",

@@ -115,6 +115,7 @@ tensorflow::Status RunTFXLABridge(
 tensorflow::Status RecordIfErrorStatus(const std::string error_prefix,
                                        bool fallback_enabled,
                                        std::string device_type,
+                                       const std::string &is_inference,
                                        absl::Status status) {
   if (status.ok()) {
     return status;
@@ -124,6 +125,7 @@ tensorflow::Status RecordIfErrorStatus(const std::string error_prefix,
   tensorflow::metrics::UpdateTfMlirBridgeFirstPhaseCounter(
       device_type, /*bridge_version=*/"v2",
       /*fallback_enabled=*/fallback_enabled,
+      /*is_inference=*/is_inference,
       /*result=*/"failure");
 
   tsl::OkOrSetErrorCounterPayload(
@@ -161,7 +163,8 @@ void CreateReplicatedClusteringPipelineV2(OpPassManager &pm) {
 
 tensorflow::Status RunFunctionTf2xlaClusteringBridge(
     ModuleOp module, bool is_supported_by_replicated_brige,
-    bool is_in_fallback_enabled_mode, llvm::StringRef module_name) {
+    bool is_in_fallback_enabled_mode, const std::string &is_inference,
+    llvm::StringRef module_name) {
   std::string device_type_filter =
       is_supported_by_replicated_brige ? "tpu" : "cpu/gpu";
 
@@ -189,12 +192,13 @@ tensorflow::Status RunFunctionTf2xlaClusteringBridge(
   // TODO(b/317798386): add is_supported_by_replicated_brige as a filter.
   TF_RETURN_IF_ERROR(RecordIfErrorStatus(
       /*error_prefix=*/"clustering_v2", is_in_fallback_enabled_mode,
-      device_type_filter, clustering_status));
+      is_inference, device_type_filter, clustering_status));
 
   // TODO(b/317798386): add is_supported_by_replicated_brige as a filter.
   tensorflow::metrics::UpdateTfMlirBridgeFirstPhaseCounter(
       device_type_filter, /*bridge_version=*/"v2",
       /*fallback_enabled=*/is_in_fallback_enabled_mode,
+      /*is_inference=*/is_inference,
       /*result=*/"success");
 
   return absl::OkStatus();

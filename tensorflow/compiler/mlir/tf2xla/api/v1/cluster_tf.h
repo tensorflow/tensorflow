@@ -35,7 +35,8 @@ namespace v1 {
 // input MLIR should not have infeed and outfeed ops, which are unsupported via
 // this API. Returns OkStatus if passed, otherwise an error.
 tensorflow::Status RunSessionTf2xlaClusteringBridge(
-    mlir::ModuleOp module, bool is_in_fallback_enabled_mode);
+    mlir::ModuleOp module, bool is_in_fallback_enabled_mode,
+    const std::string& is_inference = "not_detected");
 
 }  // namespace v1
 }  // namespace tf2xla

@@ -168,7 +168,7 @@ TEST_F(LowerClusterToRuntimeOpsTest, ErrorsWithBadCluster) {
                    .ok());
 
   EXPECT_EQ(compilation_status.Delta("XLA_TPU_JIT", "v2", "fallback_disabled",
-                                     "failure"),
+                                     "not_detected", "failure"),
             1);
 }
 

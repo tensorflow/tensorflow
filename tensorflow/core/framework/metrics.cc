@@ -443,10 +443,10 @@ auto* eager_client_error_counter = tsl::monitoring::Counter<2>::New(
     "Count the errors in eager client as a central place.", "error_source",
     "error_type");
 
-auto* mlir_bridge_first_phase_counter = tsl::monitoring::Counter<4>::New(
+auto* mlir_bridge_first_phase_counter = tsl::monitoring::Counter<5>::New(
     "/tensorflow/core/tf_mlir_bridge_first_phase_count",
     "Tracks processing state in first phase of mlir bridge", "device",
-    "version", "fallback", "result");
+    "version", "fallback", "inference", "result");
 
 auto* mlir_second_phase_count = tensorflow::monitoring::Counter<1>::New(
     "/tensorflow/core/tf2xla/api/v2/phase2_compilation_status" /*metric_name*/,
@@ -951,11 +951,13 @@ int64 TestDelta::Get() { return cell_->value() - last_value_; }
 void UpdateTfMlirBridgeFirstPhaseCounter(const std::string& device_type,
                                          const std::string& bridge_version,
                                          bool fallback_enabled,
+                                         const std::string& is_inference,
                                          const std::string& result) {
   std::string fallback_status =
       fallback_enabled ? "fallback_enabled" : "fallback_disabled";
   mlir_bridge_first_phase_counter
-      ->GetCell(device_type, bridge_version, fallback_status, result)
+      ->GetCell(device_type, bridge_version, fallback_status, is_inference,
+                result)
       ->IncrementBy(1);
 }
 

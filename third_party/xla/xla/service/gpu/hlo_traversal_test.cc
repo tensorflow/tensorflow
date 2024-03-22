@@ -226,7 +226,6 @@ TEST_F(HloTraversalTest, FindIf) {
   auto module = ParseAndReturnVerifiedModule(kTestModule).value();
   auto fusion = HloFusionAdaptor::ForInstruction(
       module->entry_computation()->GetInstructionWithName("fusion"));
-  std::vector<std::string> visited_nodes;
   auto result =
       HloFindIf(fusion->GetRoots(), *fusion, [&](HloInstructionAdaptor node) {
         return node.opcode() == HloOpcode::kMultiply;
@@ -239,7 +238,6 @@ TEST_F(HloTraversalTest, NotFound) {
   auto module = ParseAndReturnVerifiedModule(kTestModule).value();
   auto fusion = HloFusionAdaptor::ForInstruction(
       module->entry_computation()->GetInstructionWithName("fusion"));
-  std::vector<std::string> visited_nodes;
   auto result = HloFindIf(fusion->GetRoots(), *fusion,
                           [&](HloInstructionAdaptor node) { return false; });
   ASSERT_EQ(result, std::nullopt);

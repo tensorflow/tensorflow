@@ -53,6 +53,7 @@ namespace v2 {
 tensorflow::Status RunFunctionTf2xlaClusteringBridge(
     mlir::ModuleOp module, bool is_supported_by_replicated_brige,
     bool is_in_fallback_enabled_mode,
+    const std::string& is_inference = "not_detected",
     llvm::StringRef module_name = llvm::StringRef());
 }  // namespace v2
 }  // namespace tf2xla

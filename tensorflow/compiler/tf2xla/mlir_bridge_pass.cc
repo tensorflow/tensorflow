@@ -163,15 +163,15 @@ MlirOptimizationPassState GetPassStateImpl(
                  "The fallback will evaluate.";
       metrics::UpdateTfMlirBridgeFirstPhaseCounter(
           is_supported_by_replicated_brige ? "tpu" : "cpu/gpu", "v2", true,
-          "disabled_by_user");
+          "not_detected", "disabled_by_user");
       return MlirOptimizationPassState::Disabled;
     }
     case MlirBridgeRolloutPolicy::kDisabledAfterGraphAnalysis:
       // Graph analysis only runs on TPU graph.
       VLOG(1) << "Skipping MLIR TPU Bridge, disabled because the "
                  "graph has unsupported features. The fallback will evaluate.";
-      metrics::UpdateTfMlirBridgeFirstPhaseCounter("tpu", "v2", true,
-                                                   "invalid_graph");
+      metrics::UpdateTfMlirBridgeFirstPhaseCounter(
+          "tpu", "v2", true, "not_detected", "invalid_graph");
       // We set `uses_uninitialized_resource_args` to false here because the
       // first phase of the bridge is not affected by uninitialized resource
       // args.
@@ -230,6 +230,9 @@ Status MlirBridgePass::Run(const std::string& function_name,
   // TODO(b/241853328): Add caching of pass state and call logging/metrics
   // related to graph analysis from here.
   bool is_supported_by_replicated_brige = IsSupportedByReplicatedBridge(module);
+  const std::string is_inference = IsInferenceGraph(graph, &function_library)
+                                       ? "inference"
+                                       : "non-inference";
   auto pass_state = GetPassStateImpl(is_supported_by_replicated_brige,
                                      config_proto, graph, function_library);
 
@@ -261,7 +264,7 @@ Status MlirBridgePass::Run(const std::string& function_name,
     TF_RETURN_IF_ERROR(
         tensorflow::tf2xla::v2::RunFunctionTf2xlaClusteringBridge(
             module, /*is_supported_by_replicated_brige*/ true, fallback_enabled,
-            function_name));
+            is_inference, function_name));
 
     TF_RETURN_IF_ERROR(
         tensorflow::tfrt_compiler::RunLowerClusterToRuntimeOpsPassPipeline(
@@ -271,7 +274,7 @@ Status MlirBridgePass::Run(const std::string& function_name,
     TF_RETURN_IF_ERROR(
         tensorflow::tf2xla::v2::RunFunctionTf2xlaClusteringBridge(
             module, /*is_supported_by_replicated_brige*/ false,
-            fallback_enabled, function_name));
+            fallback_enabled, is_inference, function_name));
 
     TF_RETURN_IF_ERROR(
         tensorflow::tfrt_compiler::RunLowerClusterToRuntimeOpsPassPipeline(
@@ -305,16 +308,16 @@ MlirOptimizationPassState MlirBridgeV1CompatPass::GetPassState(
       VLOG(1) << "Skipping MLIR Replicated Bridge V1 Compat, MLIR Replicated "
                  "bridge disabled "
                  "by user. Fallback will evaluate.";
-      metrics::UpdateTfMlirBridgeFirstPhaseCounter("tpu", "v1", true,
-                                                   "disabled_by_user");
+      metrics::UpdateTfMlirBridgeFirstPhaseCounter(
+          "tpu", "v1", true, "not_detected", "disabled_by_user");
       return MlirOptimizationPassState::Disabled;
     case MlirBridgeRolloutPolicy::kDisabledAfterGraphAnalysis:
       VLOG(1) << "Skipping MLIR Replicated Bridge V1 Compat, MLIR Replicated "
                  "bridge disabled "
                  "because graph has unsupported features. Old bridge will "
                  "evaluate.";
-      metrics::UpdateTfMlirBridgeFirstPhaseCounter("tpu", "v1", true,
-                                                   "invalid_graph");
+      metrics::UpdateTfMlirBridgeFirstPhaseCounter(
+          "tpu", "v1", true, "not_detected", "invalid_graph");
       // We set `uses_uninitialized_resource_args` to false here because the
       // first phase of the bridge is not affected by uninitialized resource
       // args.
@@ -341,6 +344,10 @@ Status MlirBridgeV1CompatPass::Run(const GraphOptimizationPassOptions& options,
                "found";
     return absl::OkStatus();
   }
+
+  const std::string is_inference =
+      IsInferenceGraph(**options.graph, options.flib_def) ? "inference"
+                                                          : "non-inference";
 
   MlirOptimizationPassState pass_state =
       GetPassState(/*device_set=*/nullptr, options.session_options->config,
@@ -386,7 +393,7 @@ Status MlirBridgeV1CompatPass::Run(const GraphOptimizationPassOptions& options,
   VLOG(1) << "Running MLIR Replicated Bridge V1 Compat";
   mlir_bridge_gauge_v1->GetCell()->Set(true);
   TF_RETURN_IF_ERROR(tensorflow::tf2xla::v1::RunSessionTf2xlaClusteringBridge(
-      module, fallback_enabled));
+      module, fallback_enabled, is_inference));
 
   auto lower_cluster_to_runtime_ops_pass_pipeline =
       RunLowerToRuntimeOpsOnSubmodule(module, fallback_enabled);
