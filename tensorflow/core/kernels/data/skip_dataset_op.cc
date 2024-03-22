@@ -169,20 +169,20 @@ class SkipDatasetOp::Dataset : public DatasetBase {
     Status GetNextInternal(IteratorContext* ctx,
                            std::vector<Tensor>* out_tensors,
                            bool* end_of_sequence) override {
-      mutex_lock l(mu_);  // TODO(mrry): Make locking less conservative.
+      if (ctx->index_mapper() != nullptr) {
+        return Get(ctx, out_tensors, end_of_sequence);
+      }
 
+      mutex_lock l(mu_);  // TODO(mrry): Make locking less conservative.
       if (!input_impl_) {
         *end_of_sequence = true;
         return absl::OkStatus();
       }
 
-      IteratorContextWithIndexMapper ctx_with_index_mapper(ctx, this);
       if (i_ < dataset()->count_) {
         int num_skipped;
-        TF_RETURN_IF_ERROR(input_impl_->Skip(ctx_with_index_mapper.Get(),
-                                             dataset()->count_ - i_,
+        TF_RETURN_IF_ERROR(input_impl_->Skip(ctx, dataset()->count_ - i_,
                                              end_of_sequence, &num_skipped));
-        ctx_with_index_mapper.MergeCheckpoint();
         i_ += num_skipped;
         if (*end_of_sequence) {
           // We reached the end before the count was reached.
@@ -192,27 +192,36 @@ class SkipDatasetOp::Dataset : public DatasetBase {
       }
 
       // Return GetNext() on the underlying iterator.
-      TF_RETURN_IF_ERROR(input_impl_->GetNext(ctx_with_index_mapper.Get(),
-                                              out_tensors, end_of_sequence));
-      ctx_with_index_mapper.MergeCheckpoint();
+      TF_RETURN_IF_ERROR(
+          input_impl_->GetNext(ctx, out_tensors, end_of_sequence));
       if (*end_of_sequence) {
         input_impl_.reset();
       }
       return absl::OkStatus();
     }
 
+    absl::Status Get(IteratorContext* ctx, std::vector<Tensor>* out_tensors,
+                     bool* end_of_sequence) {
+      mutex_lock l(mu_);
+      if (!input_impl_) {
+        *end_of_sequence = true;
+        return absl::OkStatus();
+      }
+
+      IteratorContextWithIndexMapper ctx_with_index_mapper(ctx, this);
+      TF_RETURN_IF_ERROR(input_impl_->GetNext(ctx_with_index_mapper.Get(),
+                                              out_tensors, end_of_sequence));
+      ctx_with_index_mapper.MergeCheckpoint();
+      return absl::OkStatus();
+    }
+
     IndexMapperFn GetIndexMapper(
         IndexMapperFn parent_index_mapper) const override {
       int64_t skip_count = dataset()->count_;
-      return [parent_index_mapper,
-              skip_count](size_t element_position) -> size_t {
-        if (element_position < skip_count) {
-          // The first `skip_count` elements are to be skipped.
-          return parent_index_mapper(element_position);
-        }
-        // Maps the range [skip_count, cardinality) to a permuted range.
-        return parent_index_mapper(element_position - skip_count) + skip_count;
-      };
+      return
+          [parent_index_mapper, skip_count](size_t element_position) -> size_t {
+            return parent_index_mapper(element_position) + skip_count;
+          };
     }
 
    protected:
@@ -238,17 +247,6 @@ class SkipDatasetOp::Dataset : public DatasetBase {
                            IteratorStateReader* reader) override {
       if (ctx->restored_element_count().has_value()) {
         mutex_lock l(mu_);
-        if (*ctx->restored_element_count() > 0) {
-          i_ = dataset()->count_;
-          // For upstream iterators, the restored count is the returned element
-          // count + skipped element count.
-          IteratorContext::Params params(ctx);
-          params.restored_element_count =
-              *ctx->restored_element_count() + dataset()->count_;
-          IteratorContext ctx_with_restored_count(params);
-          return RestoreInput(&ctx_with_restored_count, reader, input_impl_);
-        }
-        i_ = 0;
         return RestoreInput(ctx, reader, input_impl_);
       }
 
