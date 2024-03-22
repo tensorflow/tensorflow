@@ -1,7 +1,6 @@
-load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
-
 # Experimental posix filesystem plugin.
 load("//tensorflow:tensorflow.bzl", "tf_cc_shared_object")
+load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
