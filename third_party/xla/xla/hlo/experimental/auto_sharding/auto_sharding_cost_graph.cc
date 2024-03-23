@@ -42,9 +42,9 @@ CostGraph::CostGraph(const StrategyGroups& strategy_groups,
 
   // Build the cost graph.
   for (StrategyGroup* strategy_group : strategy_groups) {
-    node_lens_.push_back(strategy_group->strategies.size());
+    node_lens_.push_back(strategy_group->GetNumStrategies());
     extra_node_costs_.push_back(
-        std::vector<double>(strategy_group->strategies.size(), 0.0));
+        std::vector<double>(strategy_group->GetNumStrategies(), 0.0));
 
     const auto& in_nodes = strategy_group->in_nodes;
     for (size_t i = 0; i < in_nodes.size(); ++i) {
@@ -91,8 +91,8 @@ CostGraph::CostGraph(const StrategyGroups& strategy_groups,
     }
 
     if (strategy_group->following) {
-      if (strategy_group->strategies.size() ==
-          strategy_group->following->strategies.size()) {
+      if (strategy_group->GetNumStrategies() ==
+          strategy_group->following->GetNumStrategies()) {
         to_merge_pairs_.push_back(
             {strategy_group->node_idx, strategy_group->following->node_idx});
       } else {
@@ -116,19 +116,19 @@ CostGraph::CostGraph(const StrategyGroups& strategy_groups,
         src_strategy_name_to_idx_map;
     for (NodeStrategyIdx i = 0; i < node_lens_[src_idx]; ++i) {
       const ShardingStrategy& strategy =
-          strategy_groups[src_idx]->strategies[i];
+          strategy_groups[src_idx]->GetStrategies()[i];
       if (strategy.communication_cost > 0) {
         src_strategy_name_to_idx_map[strategy.name] = i;
       }
     }
     for (NodeStrategyIdx i = 0; i < node_lens_[dst_idx]; ++i) {
       const ShardingStrategy& dst_strategy =
-          strategy_groups[dst_idx]->strategies[i];
+          strategy_groups[dst_idx]->GetStrategies()[i];
       if (dst_strategy.communication_cost > 0) {
         auto it = src_strategy_name_to_idx_map.find(dst_strategy.name);
         if (it != src_strategy_name_to_idx_map.end()) {
           const ShardingStrategy& src_strategy =
-              strategy_groups[src_idx]->strategies[it->second];
+              strategy_groups[src_idx]->GetStrategies()[it->second];
           CHECK_LE(std::abs(src_strategy.communication_cost -
                             dst_strategy.communication_cost),
                    1e-6);
@@ -149,8 +149,8 @@ Matrix CostGraph::CreateEdgeCommunicationCost(const NodeIdx src_idx,
   CHECK_LT(src_idx, node_lens_.size());
   CHECK_LT(dst_idx, node_lens_.size());
   Matrix edge_communication_cost(node_lens_[src_idx], node_lens_[dst_idx]);
-  for (NodeStrategyIdx k = 0; k < strategy_group->strategies.size(); ++k) {
-    const ShardingStrategy& strategy = strategy_group->strategies[k];
+  for (NodeStrategyIdx k = 0; k < strategy_group->GetNumStrategies(); ++k) {
+    const ShardingStrategy& strategy = strategy_group->GetStrategy(k);
     size_t start_idx = 0;
     if (strategy.communication_resharding_costs[in_node_idx].size() >
         node_lens_[src_idx]) {
@@ -175,8 +175,8 @@ Matrix CostGraph::CreateEdgeMemoryCost(const NodeIdx src_idx,
   CHECK_LT(src_idx, node_lens_.size());
   CHECK_LT(dst_idx, node_lens_.size());
   Matrix edge_communication_cost(node_lens_[src_idx], node_lens_[dst_idx]);
-  for (NodeStrategyIdx k = 0; k < strategy_group->strategies.size(); ++k) {
-    const ShardingStrategy& strategy = strategy_group->strategies[k];
+  for (NodeStrategyIdx k = 0; k < strategy_group->GetNumStrategies(); ++k) {
+    const ShardingStrategy& strategy = strategy_group->GetStrategy(k);
     size_t start_idx = 0;
     CHECK_LT(in_node_idx, strategy.memory_resharding_costs.size())
         << strategy_group->node_idx;

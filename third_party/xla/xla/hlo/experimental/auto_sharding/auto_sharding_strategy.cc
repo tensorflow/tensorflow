@@ -190,12 +190,13 @@ BuildStrategyAndCost(const HloInstructionSequence& sequence,
         strategy_group = CreateLeafStrategyGroup(instruction_id, ins,
                                                  strategy_map, strategy_groups);
         // We follow the first operand (the array we're scattering into)
-        auto src_strategy_group = strategy_map.at(ins->operand(0)).get();
+        const StrategyGroup* src_strategy_group =
+            strategy_map.at(ins->operand(0)).get();
         CHECK(!src_strategy_group->is_tuple);
-        for (int64_t sid = 0; sid < src_strategy_group->strategies.size();
+        for (int64_t sid = 0; sid < src_strategy_group->GetNumStrategies();
              ++sid) {
           HloSharding output_spec =
-              src_strategy_group->strategies[sid].output_sharding;
+              src_strategy_group->GetStrategies()[sid].output_sharding;
           std::string name = ToStringSimple(output_spec);
           double compute_cost = 0, communication_cost = 0;
           double memory_cost = GetBytes(ins->shape()) / output_spec.NumTiles();
@@ -211,7 +212,7 @@ BuildStrategyAndCost(const HloInstructionSequence& sequence,
             CHECK(sharding_optional.has_value());
           }
 
-          strategy_group->strategies.push_back(ShardingStrategy(
+          strategy_group->AddStrategy(ShardingStrategy(
               {name, output_spec, compute_cost, communication_cost, memory_cost,
                std::move(resharding_costs.first),
                std::move(resharding_costs.second), input_shardings_optional}));
@@ -264,7 +265,7 @@ BuildStrategyAndCost(const HloInstructionSequence& sequence,
                     ins, output_spec, strategy_map, cluster_env, call_graph,
                     input_shardings_optional);
 
-            strategy_group->strategies.push_back(ShardingStrategy(
+            strategy_group->AddStrategy(ShardingStrategy(
                 {name, output_spec, compute_cost, communication_cost,
                  memory_cost, std::move(resharding_costs.first),
                  std::move(resharding_costs.second),
@@ -307,10 +308,11 @@ BuildStrategyAndCost(const HloInstructionSequence& sequence,
         CHECK(!src_strategy_group->is_tuple);
         strategy_group->following = src_strategy_group;
 
-        for (int64_t sid = 0; sid < src_strategy_group->strategies.size();
+        for (int64_t sid = 0; sid < src_strategy_group->GetNumStrategies();
              ++sid) {
           HloSharding output_spec = Undefined();
-          auto input_spec = src_strategy_group->strategies[sid].output_sharding;
+          auto input_spec =
+              src_strategy_group->GetStrategies()[sid].output_sharding;
           if (opcode == HloOpcode::kTranspose) {
             output_spec = hlo_sharding_util::TransposeSharding(
                 input_spec, ins->dimensions());
@@ -329,7 +331,7 @@ BuildStrategyAndCost(const HloInstructionSequence& sequence,
           std::vector<double> memory_resharding_costs =
               MemoryReshardingCostVector(src_strategy_group, operand->shape(),
                                          input_spec, cluster_env);
-          strategy_group->strategies.push_back(
+          strategy_group->AddStrategy(
               ShardingStrategy({name,
                                 output_spec,
                                 compute_cost,
@@ -380,11 +382,11 @@ BuildStrategyAndCost(const HloInstructionSequence& sequence,
         CHECK(!src_strategy_group->is_tuple);
         strategy_group->following = src_strategy_group;
 
-        for (int64_t sid = 0; sid < src_strategy_group->strategies.size();
+        for (int64_t sid = 0; sid < src_strategy_group->GetNumStrategies();
              ++sid) {
           std::optional<HloSharding> output_spec;
           HloSharding input_spec =
-              src_strategy_group->strategies[sid].output_sharding;
+              src_strategy_group->GetStrategy(sid).output_sharding;
 
           // Find output shardings.
           switch (opcode) {
@@ -456,7 +458,7 @@ BuildStrategyAndCost(const HloInstructionSequence& sequence,
                   ins, *output_spec, strategy_map, cluster_env, call_graph,
                   input_shardings);
 
-          strategy_group->strategies.push_back(
+          strategy_group->AddStrategy(
               ShardingStrategy({name,
                                 *output_spec,
                                 compute_cost,
@@ -467,7 +469,7 @@ BuildStrategyAndCost(const HloInstructionSequence& sequence,
                                 {input_spec}}));
         }
 
-        if (strategy_group->strategies.empty()) {
+        if (strategy_group->GetStrategies().empty()) {
           strategy_group->following = nullptr;
           AddReplicatedStrategy(ins, ins->shape(), cluster_env, strategy_map,
                                 strategy_group, 0);
@@ -804,8 +806,9 @@ BuildStrategyAndCost(const HloInstructionSequence& sequence,
           option.nd_sharding_iteratively_strict_search_space);
     }
     if (!strategy_group->is_tuple && strategy_group->following) {
-      if (!LeafVectorsAreConsistent(strategy_group->strategies,
-                                    strategy_group->following->strategies)) {
+      if (!LeafVectorsAreConsistent(
+              strategy_group->GetStrategies(),
+              strategy_group->following->GetStrategies())) {
         // It confuses the solver if two instructions have different number of
         // sharding strategies but share the same ILP variable. The solver would
         // run much longer and/or return infeasible solutions. So if two
@@ -819,8 +822,8 @@ BuildStrategyAndCost(const HloInstructionSequence& sequence,
       for (size_t i = 0; i < strategy_group->childs.size(); i++) {
         if (strategy_group->childs.at(i)->following &&
             !LeafVectorsAreConsistent(
-                strategy_group->childs.at(i)->strategies,
-                strategy_group->childs.at(i)->following->strategies)) {
+                strategy_group->childs.at(i)->GetStrategies(),
+                strategy_group->childs.at(i)->following->GetStrategies())) {
           CHECK(!is_follow_necessary_for_correctness)
               << "Reverting a following decision that is necessary for "
                  "correctness. Please report this as a bug.";
@@ -851,12 +854,12 @@ BuildStrategyAndCost(const HloInstructionSequence& sequence,
         CHECK(!strategy_group->is_tuple);
         std::vector<ShardingStrategy> new_strategies;
         int64_t idx = it - inst_indices.begin();
-        for (const auto& stra : strategy_group->strategies) {
+        for (const auto& stra : strategy_group->GetStrategies()) {
           if (stra.name == stra_names[idx]) {
             new_strategies.push_back(stra);
           }
         }
-        strategy_group->strategies = std::move(new_strategies);
+        strategy_group->SetStrategies(std::move(new_strategies));
       }
     }
 
@@ -867,10 +870,11 @@ BuildStrategyAndCost(const HloInstructionSequence& sequence,
     // the mesh shape we're trying does not match with the mesh shape used in
     // user specified shardings. So we disable the check in that situation.
     if (!trying_multiple_mesh_shapes) {
-      CHECK(strategy_group->is_tuple || !strategy_group->strategies.empty())
+      CHECK(strategy_group->is_tuple ||
+            !strategy_group->GetStrategies().empty())
           << ins->ToString() << " does not have any valid strategies.";
     } else if (!(strategy_group->is_tuple ||
-                 !strategy_group->strategies.empty())) {
+                 !strategy_group->GetStrategies().empty())) {
       return Status(absl::StatusCode::kFailedPrecondition,
                     "Could not generate any shardings for an instruction due "
                     "to mismatched mesh shapes.");
@@ -892,7 +896,8 @@ BuildStrategyAndCost(const HloInstructionSequence& sequence,
       StrategyGroup* stra_vector = strategy_map[inst].get();
       CHECK(!stra_vector->is_tuple);
 
-      for (auto& stra : stra_vector->strategies) {
+      for (size_t sid = 0; sid < stra_vector->GetNumStrategies(); ++sid) {
+        auto& stra = stra_vector->GetStrategy(sid);
         if (absl::StrContains(stra.name, "allreduce")) {
           stra.communication_cost /= option.grad_acc_num_micro_batches;
         }

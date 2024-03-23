@@ -895,37 +895,37 @@ void RemoveDuplicatedStrategy(std::unique_ptr<StrategyGroup>& strategy_group) {
       RemoveDuplicatedStrategy(child);
     }
   } else if (!strategy_group->following) {
-    if (strategy_group->strategies.empty()) return;
+    if (strategy_group->GetStrategies().empty()) return;
     std::vector<ShardingStrategy> new_vector;
     std::vector<ShardingStrategy> deduped_replicated_strategies;
     absl::flat_hash_set<std::string> added;
     size_t num_skipped_due_to_infinity_costs = 0;
-    for (size_t i = 0; i < strategy_group->strategies.size(); ++i) {
+    for (size_t i = 0; i < strategy_group->GetNumStrategies(); ++i) {
       if (AllInfinityCosts(
-              strategy_group->strategies[i].communication_resharding_costs)) {
+              strategy_group->GetStrategy(i).communication_resharding_costs)) {
         num_skipped_due_to_infinity_costs++;
         continue;
       }
       std::string key =
-          strategy_group->strategies[i].output_sharding.ToString();
-      if (!strategy_group->strategies[i].input_shardings.empty()) {
+          strategy_group->GetStrategy(i).output_sharding.ToString();
+      if (!strategy_group->GetStrategy(i).input_shardings.empty()) {
         for (const auto& sharding :
-             strategy_group->strategies[i].input_shardings) {
+             strategy_group->GetStrategy(i).input_shardings) {
           key += "/" + (sharding.has_value() ? sharding->ToString() : "none");
         }
       }
       if (!added.contains(key)) {
         added.insert(key);
-        if (!strategy_group->strategies[i].output_sharding.IsReplicated()) {
-          new_vector.push_back(std::move(strategy_group->strategies[i]));
+        if (!strategy_group->GetStrategy(i).output_sharding.IsReplicated()) {
+          new_vector.push_back(std::move(strategy_group->GetStrategy(i)));
         } else {
           deduped_replicated_strategies.push_back(
-              std::move(strategy_group->strategies[i]));
+              std::move(strategy_group->GetStrategy(i)));
         }
       }
     }
     CHECK_LT(num_skipped_due_to_infinity_costs,
-             strategy_group->strategies.size())
+             strategy_group->GetNumStrategies())
         << "All strategies removed due to infinite resharding costs";
     // Keeps replicated strategies as the last ones.
     if (!deduped_replicated_strategies.empty()) {
@@ -933,7 +933,7 @@ void RemoveDuplicatedStrategy(std::unique_ptr<StrategyGroup>& strategy_group) {
         new_vector.push_back(std::move(deduped_replicated_strategies[i]));
       }
     }
-    strategy_group->strategies = std::move(new_vector);
+    strategy_group->SetStrategies(std::move(new_vector));
   }
 }
 
@@ -1801,12 +1801,12 @@ Status CheckAliasSetCompatibility(const AliasSet& alias_set,
 
     size_t compatible_cnt = 0;
     bool replicated = false;
-    for (size_t i = 0; i < src_strategy_group->strategies.size(); ++i) {
-      for (size_t j = 0; j < dst_strategy_group->strategies.size(); ++j) {
-        if (src_strategy_group->strategies[i].output_sharding ==
-            dst_strategy_group->strategies[j].output_sharding) {
+    for (size_t i = 0; i < src_strategy_group->GetNumStrategies(); ++i) {
+      for (size_t j = 0; j < dst_strategy_group->GetNumStrategies(); ++j) {
+        if (src_strategy_group->GetStrategies()[i].output_sharding ==
+            dst_strategy_group->GetStrategies()[j].output_sharding) {
           compatible_cnt += 1;
-          if (src_strategy_group->strategies[i]
+          if (src_strategy_group->GetStrategies()[i]
                   .output_sharding.IsReplicated()) {
             replicated = true;
           }
@@ -1815,8 +1815,8 @@ Status CheckAliasSetCompatibility(const AliasSet& alias_set,
     }
 
     if (compatible_cnt == 1 &&
-        (replicated && (src_strategy_group->strategies.size() > 1 ||
-                        dst_strategy_group->strategies.size() > 1))) {
+        (replicated && (src_strategy_group->GetNumStrategies() > 1 ||
+                        dst_strategy_group->GetNumStrategies() > 1))) {
       LOG(WARNING)
           << "Alias pair has only replicated strategy in common. This "
              "will result in choosing replicated strategy for these "

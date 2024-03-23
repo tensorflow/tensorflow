@@ -116,7 +116,7 @@ inline const ShardingStrategy& GetShardingStrategy(
   CHECK(!strategy_group->is_tuple);
   NodeIdx node_idx = strategy_group->node_idx;
   NodeStrategyIdx stra_idx = cost_graph.RemapIndex(node_idx, s_val[node_idx]);
-  return strategy_group->strategies[stra_idx];
+  return strategy_group->GetStrategies()[stra_idx];
 }
 
 // Get the final sharding strategy according to the ILP solution.
@@ -133,7 +133,7 @@ inline const ShardingStrategy& GetShardingStrategyForTuple(
   }
   NodeIdx node_idx = strategy_group->node_idx;
   NodeStrategyIdx stra_idx = cost_graph.RemapIndex(node_idx, s_val[node_idx]);
-  return strategy_group->strategies[stra_idx];
+  return strategy_group->GetStrategies()[stra_idx];
 }
 
 }  // namespace spmd

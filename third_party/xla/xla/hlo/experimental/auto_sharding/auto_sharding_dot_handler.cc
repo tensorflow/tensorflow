@@ -267,7 +267,7 @@ void HandlerBase::AppendNewStrategy(const std::string& name,
         cluster_env_));
   }
 
-  strategy_group_->strategies.push_back(ShardingStrategy({
+  strategy_group_->AddStrategy(ShardingStrategy({
       name,
       output_spec,
       compute_cost,
@@ -814,7 +814,7 @@ Status DotHandler::RegisterStrategies() {
       cluster_env_.non_zero_mesh_dims_.size() > 1) {
     // If there is a batch dim and the device mesh is multi-dimensional,
     // always split on batch dim. Clear all old strategies.
-    strategy_group_->strategies.clear();
+    strategy_group_->SetStrategies({});
   }
 
   // Sb = Sb x Sb
@@ -838,7 +838,7 @@ Status DotHandler::RegisterStrategies() {
                        [](int64_t size) { return size > 1; }) > 1) {
     // If there are two batch dims, always split on these two dims.
     // Clear all old strategies.
-    strategy_group_->strategies.clear();
+    strategy_group_->SetStrategies({});
   }
 
   // Sb = Sb x Sb

@@ -166,9 +166,6 @@ struct StrategyGroup {
   std::vector<const StrategyGroup*> in_nodes;
   // The followed strategy. Used for merging nodes.
   const StrategyGroup* following = nullptr;
-  // Used when is_tuple == False. Leaf strategy vector.
-  // A vector of strategy choices for the non-tuple output.
-  std::vector<ShardingStrategy> strategies;
   // Used when is_tuple == True. A vector of pointers, each pointer is one
   // StrategyGroup for one value in the output Tuple
   std::vector<std::unique_ptr<StrategyGroup>> childs;
@@ -217,6 +214,29 @@ struct StrategyGroup {
     }
     return result;
   }
+
+  void AddStrategy(const ShardingStrategy& strategy) {
+    strategies.push_back(strategy);
+  }
+
+  ShardingStrategy& GetStrategy(int strategy_idx) {
+    return strategies[strategy_idx];
+  }
+
+  const std::vector<ShardingStrategy>& GetStrategies() const {
+    return strategies;
+  }
+
+  size_t GetNumStrategies() const { return strategies.size(); }
+
+  void SetStrategies(const std::vector<ShardingStrategy>& other) {
+    strategies = other;
+  }
+
+ private:
+  // Used when is_tuple == False. Leaf strategy vector.
+  // A vector of strategy choices for the non-tuple output.
+  std::vector<ShardingStrategy> strategies;
 };
 
 // Type aliases.
