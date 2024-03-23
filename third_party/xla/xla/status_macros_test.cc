@@ -59,9 +59,9 @@ TEST(StatusMacros, RetCheckSucceeding) {
   EXPECT_IS_OK(status);
 }
 
-StatusOr<int> CreateIntSuccessfully() { return 42; }
+absl::StatusOr<int> CreateIntSuccessfully() { return 42; }
 
-StatusOr<int> CreateIntUnsuccessfully() {
+absl::StatusOr<int> CreateIntUnsuccessfully() {
   return tsl::errors::Internal("foobar");
 }
 
@@ -76,19 +76,20 @@ Status ReturnStatusError() { return (tsl::errors::Internal("foobar")); }
 
 using StatusReturningFunction = std::function<Status()>;
 
-StatusOr<int> CallStatusReturningFunction(const StatusReturningFunction& func) {
+absl::StatusOr<int> CallStatusReturningFunction(
+    const StatusReturningFunction& func) {
   TF_RETURN_IF_ERROR(func());
   return 42;
 }
 
 TEST(StatusMacros, ReturnIfErrorOnOK) {
-  StatusOr<int> rc = CallStatusReturningFunction(ReturnStatusOK);
+  absl::StatusOr<int> rc = CallStatusReturningFunction(ReturnStatusOK);
   EXPECT_IS_OK(rc);
   EXPECT_EQ(42, std::move(rc).value());
 }
 
 TEST(StatusMacros, ReturnIfErrorOnError) {
-  StatusOr<int> rc = CallStatusReturningFunction(ReturnStatusError);
+  absl::StatusOr<int> rc = CallStatusReturningFunction(ReturnStatusError);
   EXPECT_FALSE(rc.ok());
   EXPECT_EQ(rc.status().code(), tsl::error::INTERNAL);
 }

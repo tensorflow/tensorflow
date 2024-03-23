@@ -417,9 +417,9 @@ class ShapeUtil {
   // dimensions. Method checks if the element type is valid, the shape's
   // size fits in std::numeric_limits<int64_t>::max(), and dynamic size is not
   // marked static.
-  static StatusOr<Shape> MakeValidatedShape(
+  static absl::StatusOr<Shape> MakeValidatedShape(
       PrimitiveType element_type, absl::Span<const int64_t> dimensions);
-  static StatusOr<Shape> MakeValidatedShape(
+  static absl::StatusOr<Shape> MakeValidatedShape(
       PrimitiveType element_type, absl::Span<const int64_t> dimensions,
       const std::vector<bool>& dynamic_dimensions);
 
@@ -554,8 +554,8 @@ class ShapeUtil {
   // Faster version for one index.
   static const Shape& GetSubshapeOneIndex(const Shape& shape, int64_t index);
 
-  static StatusOr<const Shape*> TryGetSubshape(const Shape& shape,
-                                               ShapeIndexView index);
+  static absl::StatusOr<const Shape*> TryGetSubshape(const Shape& shape,
+                                                     ShapeIndexView index);
   static Shape* GetMutableSubshape(Shape* shape, ShapeIndexView index);
 
   // Returns whether the given index in the given shape is a leaf element of the
@@ -871,7 +871,7 @@ class ShapeUtil {
                                        const xla::Shape& bounded_shape);
 
   using ForEachVisitorFunction =
-      absl::FunctionRef<StatusOr<bool>(absl::Span<const int64_t>)>;
+      absl::FunctionRef<absl::StatusOr<bool>(absl::Span<const int64_t>)>;
 
   using ForEachVisitorFunctionNoStatus =
       absl::FunctionRef<bool(absl::Span<const int64_t>)>;
@@ -936,12 +936,12 @@ class ShapeUtil {
   static void ForEachIndex(const Shape& shape,
                            const ForEachVisitorFunction& visitor_function) {
     ForEachIndexWithStatus(shape, [&](absl::Span<const int64_t> indices) {
-      return StatusOr<bool>(visitor_function(indices));
+      return absl::StatusOr<bool>(visitor_function(indices));
     }).IgnoreError();
   }
 
   using ForEachParallelVisitorFunction =
-      absl::FunctionRef<StatusOr<bool>(absl::Span<const int64_t>, int)>;
+      absl::FunctionRef<absl::StatusOr<bool>(absl::Span<const int64_t>, int)>;
 
   // A parallel version of ForEachIndex(WithStatus). This can only be used if
   // the visitor_function is thread-safe and the order of iteration does not
