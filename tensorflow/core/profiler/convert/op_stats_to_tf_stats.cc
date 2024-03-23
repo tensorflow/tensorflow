@@ -70,8 +70,8 @@ TfStatsTable GenerateTfStatsTable(
     auto iter = kernel_stats_by_op_name.find(record->op_name());
     if (iter != kernel_stats_by_op_name.end()) {
       record->set_gpu_tensorcore_utilization(
-          SafeDivide(iter->second.tensor_core_duration_ns,
-                     iter->second.total_duration_ns));
+          tsl::profiler::SafeDivide(iter->second.tensor_core_duration_ns,
+                                    iter->second.total_duration_ns));
     } else {
       record->set_gpu_tensorcore_utilization(0.0);
     }
