@@ -66,7 +66,7 @@ class MockArray final : public llvm::RTTIExtends<MockArray, Array> {
               (const, final));
   MOCK_METHOD(absl::StatusOr<std::unique_ptr<PjRtLayout>>, layout, (),
               (const, final));
-  MOCK_METHOD(StatusOr<std::vector<tsl::RCReference<Array>>>,
+  MOCK_METHOD(absl::StatusOr<std::vector<tsl::RCReference<Array>>>,
               DisassembleIntoSingleDeviceArrays, (ArrayCopySemantics semantics),
               (final));
   MOCK_METHOD(absl::StatusOr<tsl::RCReference<Array>>, FullyReplicatedShard,
