@@ -90,7 +90,19 @@ PjRtClient::CreatePjRtArray(Shape shape, PjRtBuffers pjrt_buffers) {
   return tsl::RCReference<PjRtCompatibleArray>(std::move(array));
 }
 
-absl::StatusOr<tsl::RCReference<Array>> PjRtClient::MakeArrayFromHostBuffer(
+absl::StatusOr<tsl::RCReference<PjRtCompatibleArray>>
+PjRtClient::CreatePjRtArray(DType dtype, Shape shape,
+                            std::shared_ptr<const Sharding> sharding,
+                            PjRtBuffers pjrt_buffers) {
+  TF_ASSIGN_OR_RETURN(
+      auto array,
+      PjRtArray::Create(this, dtype, std::move(shape), std::move(sharding),
+                        std::move(pjrt_buffers)));
+  return tsl::RCReference<PjRtCompatibleArray>(std::move(array));
+}
+
+absl::StatusOr<tsl::RCReference<Array>>
+PjRtCompatibleClient::MakeArrayFromHostBuffer(
     const void* data, DType dtype, Shape shape,
     std::optional<absl::Span<const int64_t>> byte_strides,
     std::shared_ptr<const Sharding> sharding,
@@ -130,24 +142,24 @@ absl::StatusOr<tsl::RCReference<Array>> PjRtClient::MakeArrayFromHostBuffer(
     }
     TF_ASSIGN_OR_RETURN(
         buffer,
-        pjrt_client_->BufferFromHostBuffer(
+        pjrt_client()->BufferFromHostBuffer(
             data, primitive_type, shape.dims(), byte_strides, semantics,
             FromStdFunction(std::move(on_done_with_host_buffer)), memory_space,
             /*device_layout=*/nullptr));
   } else {
     TF_ASSIGN_OR_RETURN(
-        buffer, pjrt_client_->BufferFromHostBuffer(
+        buffer, pjrt_client()->BufferFromHostBuffer(
                     data, primitive_type, shape.dims(), byte_strides, semantics,
                     FromStdFunction(std::move(on_done_with_host_buffer)),
                     sharding->devices().front()));
   }
-  return PjRtArray::Create(
-      this, dtype, std::move(shape), std::move(sharding),
+  return CreatePjRtArray(
+      dtype, std::move(shape), std::move(sharding),
       PjRtArray::PjRtBuffers({std::shared_ptr<PjRtBuffer>(buffer.release())}));
 }
 
 absl::StatusOr<tsl::RCReference<Array>>
-PjRtClient::AssembleArrayFromSingleDeviceArrays(
+PjRtCompatibleClient::AssembleArrayFromSingleDeviceArrays(
     Shape shape, std::shared_ptr<const Sharding> sharding,
     absl::Span<tsl::RCReference<Array>> arrays, ArrayCopySemantics semantics) {
   DCHECK(this);
@@ -211,8 +223,8 @@ PjRtClient::AssembleArrayFromSingleDeviceArrays(
         break;
     }
   }
-  return PjRtArray::Create(this, dtype, std::move(shape), std::move(sharding),
-                           std::move(buffers));
+  return CreatePjRtArray(dtype, std::move(shape), std::move(sharding),
+                         std::move(buffers));
 }
 
 absl::StatusOr<tsl::RCReference<Tuple>> PjRtClient::MakeTuple(
