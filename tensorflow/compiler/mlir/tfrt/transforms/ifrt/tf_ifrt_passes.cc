@@ -70,6 +70,8 @@ void AddClusterToIfrtRuntimeOpsPassPipeline(OpPassManager& pm,
   pm.addNestedPass<mlir::func::FuncOp>(
       mlir::TF::CreateCanonicalizeCompileAndReplicateAttributesPass());
 
+  pm.addNestedPass<mlir::func::FuncOp>(CreateTfIdentityPropagationPass());
+
   pm.addPass(CreateRewriteClusterToIfrtCallPass());
 
   // Sink VarHandle with ReadVariableOp: subsequent SinkVariableAsNamedArrayPass

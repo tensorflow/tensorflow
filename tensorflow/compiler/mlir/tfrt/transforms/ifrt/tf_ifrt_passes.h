@@ -44,6 +44,10 @@ CreateTfRestoreSplittingPass();
 std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
 CreateTfRestoreMergingPass();
 
+// Creates a pass that propagates inputs of no-op identity ops to their outputs.
+std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
+CreateTfIdentityPropagationPass();
+
 // Creates a pass that lower `tf.RestoreVariableOp` to
 // `tf.IfrtRestoreVariableOp`.
 std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
