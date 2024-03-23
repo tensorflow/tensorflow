@@ -18,6 +18,7 @@ limitations under the License.
 #include <cstdint>
 #include <functional>
 #include <memory>
+#include <string>
 #include <utility>
 #include <vector>
 
@@ -645,7 +646,10 @@ struct ConstOp : mlrt::KernelFrame {
 
 void ConstOp::Invoke() {
   tensorflow::TensorProto proto;
-  if (!proto.ParseFromString(tensor_proto())) {
+  // TODO(b/330806453): Remove the std::string conversion once ParseFromString()
+  // in OSS accepets absl::string_view.
+  // NOLINTNEXTLINE: readability-redundant-string-conversions
+  if (!proto.ParseFromString(std::string(tensor_proto()))) {
     execution_context().Fail(
         absl::InternalError("Failed to parse const tensor proto"));
     return;
