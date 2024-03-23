@@ -57,6 +57,8 @@ cc_library(
         "sink_variable_as_named_array.cc",
         "tf_ifrt_passes.cc",
         "tf_restore_merging.cc",
+        "tf_restore_prune_identity.cc",
+        "tf_restore_pruning.cc",
         "tf_restore_splitting.cc",
     ],
     hdrs = [
@@ -86,6 +88,7 @@ cc_library(
         "//tensorflow/core/tfrt/ifrt:ifrt_config_proto_cc",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
