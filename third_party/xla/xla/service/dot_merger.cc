@@ -392,9 +392,10 @@ absl::StatusOr<bool> MergeDots(HloComputation* comp,
         int32_t b_id = graph_id(b);
 
         if (dead_instrs.contains(a) || dead_instrs.contains(b) ||
+            (!is_merge_candidate(a) && !is_merge_candidate(b)) ||
+            // Perform reachability checks last since they can be expensive.
             graph.IsReachableNonConst(a_id, b_id) ||
-            graph.IsReachableNonConst(b_id, a_id) ||
-            (!is_merge_candidate(a) && !is_merge_candidate(b))) {
+            graph.IsReachableNonConst(b_id, a_id)) {
           continue;
         }
 
