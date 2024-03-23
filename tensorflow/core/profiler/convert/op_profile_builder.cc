@@ -26,6 +26,7 @@ limitations under the License.
 #include "absl/container/node_hash_map.h"
 #include "absl/strings/ascii.h"
 #include "absl/strings/str_cat.h"
+#include "third_party/protobuf/map.h"
 #include "tensorflow/core/lib/gtl/top_n.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/profiler/convert/op_metrics_db_combiner.h"

@@ -17,6 +17,7 @@ limitations under the License.
 
 #include "absl/strings/match.h"
 #include "absl/strings/string_view.h"
+#include "tsl/profiler/utils/math_utils.h"
 #include "tsl/profiler/utils/xplane_schema.h"
 #include "tsl/profiler/utils/xplane_visitor.h"
 
