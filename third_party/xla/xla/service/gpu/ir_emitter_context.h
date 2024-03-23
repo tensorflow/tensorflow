@@ -35,7 +35,7 @@ limitations under the License.
 #include "xla/service/gpu/gpu_executable.h"
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/kernel_reuse_cache.h"
-#include "xla/service/gpu/nccl_collective_thunk.h"
+#include "xla/service/gpu/runtime/nccl_collective_thunk.h"
 #include "xla/service/name_uniquer.h"
 #include "xla/stream_executor/device_description.h"
 
