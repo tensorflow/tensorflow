@@ -208,8 +208,8 @@ Status WriteToCache(const std::string& dir_name, const std::string& file_name,
 
 // Retrieves the OptimizedFunctionGraphInfo from a cache file.
 // Returns error if cache file loading fails.
-StatusOr<OptimizedFunctionGraphInfo> ReadFromCache(const string& file_name,
-                                                   Env* env) {
+absl::StatusOr<OptimizedFunctionGraphInfo> ReadFromCache(
+    const string& file_name, Env* env) {
   absl::Time cache_reading_start_time = absl::Now();
 
   OptimizedFunctionGraph optimized_function_graph_proto;
@@ -464,7 +464,7 @@ Status PinArgsAndRets(const std::vector<string>& input_devices,
   return absl::OkStatus();
 }
 
-StatusOr<OptimizedFunctionGraphInfo> OptimizeFunctionGraph(
+absl::StatusOr<OptimizedFunctionGraphInfo> OptimizeFunctionGraph(
     const string& function_name, AttrSlice attrs,
     const FunctionLibraryRuntime::InstantiateOptions& options,
     const DeviceSet& dev_set, const FunctionLibraryDefinition* input_lib_def,
@@ -652,7 +652,8 @@ StatusOr<OptimizedFunctionGraphInfo> OptimizeFunctionGraph(
       optimization_source);
 }
 
-StatusOr<OptimizedFunctionGraphInfo> OptimizeFunctionGraphOrReadFromFileCache(
+absl::StatusOr<OptimizedFunctionGraphInfo>
+OptimizeFunctionGraphOrReadFromFileCache(
     const string& function_name, AttrSlice attrs,
     const FunctionLibraryRuntime::InstantiateOptions& options,
     const DeviceSet& dev_set, const FunctionLibraryDefinition* input_lib_def,
@@ -693,7 +694,7 @@ StatusOr<OptimizedFunctionGraphInfo> OptimizeFunctionGraphOrReadFromFileCache(
         << "TensorFlow graph cache existed; reading from cache; function name: "
         << function_name << ", full cache file path: " << file_name;
 
-    StatusOr<OptimizedFunctionGraphInfo> optimized_function_graph_info =
+    absl::StatusOr<OptimizedFunctionGraphInfo> optimized_function_graph_info =
         ReadFromCache(file_name, env);
     if (optimized_function_graph_info.ok()) {
       metrics::UpdateFunctionGraphOptimizationSavingTime(
@@ -734,7 +735,7 @@ StatusOr<OptimizedFunctionGraphInfo> OptimizeFunctionGraphOrReadFromFileCache(
   // Step 1: Run the graph optimization passes normally.
   absl::Time optimization_start_time = absl::Now();
   TF_ASSIGN_OR_RETURN(
-      StatusOr<OptimizedFunctionGraphInfo> optimized_function_graph_info,
+      absl::StatusOr<OptimizedFunctionGraphInfo> optimized_function_graph_info,
       OptimizeFunctionGraph(function_name, attrs, options, dev_set,
                             input_lib_def, composite_devices, cpu_device,
                             default_device, env, OptimizedFunctionGraph::JIT));
@@ -770,7 +771,8 @@ StatusOr<OptimizedFunctionGraphInfo> OptimizeFunctionGraphOrReadFromFileCache(
   return optimized_function_graph_info;
 }
 
-StatusOr<std::unique_ptr<std::unordered_map<string, std::unique_ptr<Graph>>>>
+absl::StatusOr<
+    std::unique_ptr<std::unordered_map<string, std::unique_ptr<Graph>>>>
 PreprocessAndPartitionGraph(
     const std::string& function_name,
     OptimizedFunctionGraphInfo& input_optimized_graph,
