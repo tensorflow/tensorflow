@@ -32,6 +32,7 @@ cc_library(
         ":ifrt_loaded_variable_registry",
         ":ifrt_tensor_utils",
         ":sharding_utils",
+        "//tensorflow/compiler/mlir/tfrt/transforms/ifrt:ifrt_types",
         "//tensorflow/compiler/mlir/tfrt/transforms/ifrt:tf2hlo",
         "//tensorflow/compiler/tf2xla:xla_helpers",
         "//tensorflow/core:framework",
@@ -99,6 +100,7 @@ cc_library(
     srcs = ["ifrt_loaded_variable_registry.cc"],
     hdrs = ["ifrt_loaded_variable_registry.h"],
     deps = [
+        "//tensorflow/compiler/mlir/tfrt/transforms/ifrt:ifrt_types",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/functional:any_invocable",
         "@com_google_absl//absl/log",

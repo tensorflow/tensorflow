@@ -17,7 +17,6 @@ limitations under the License.
 
 #include <memory>
 #include <optional>
-#include <string>
 #include <utility>
 #include <vector>
 
@@ -30,6 +29,7 @@ limitations under the License.
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "mlir/IR/OwningOpRef.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/tfrt/transforms/ifrt/ifrt_types.h"
 #include "tensorflow/compiler/mlir/tfrt/transforms/ifrt/tf2hlo.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "xla/hlo/ir/hlo_sharding.h"
@@ -37,10 +37,8 @@ limitations under the License.
 #include "xla/python/ifrt/array.h"
 #include "xla/python/ifrt/client.h"
 #include "xla/python/ifrt/device.h"
-#include "xla/python/ifrt/dtype.h"
 #include "xla/python/ifrt/executable.h"
 #include "xla/python/ifrt/future.h"
-#include "xla/python/ifrt/memory.h"
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/sharding.h"
 #include "xla/python/pjrt_ifrt/xla_compiler.h"
@@ -74,12 +72,10 @@ absl::StatusOr<std::vector<DtypeAndShape>> BuildDtypeAndShape(
     if (variable_index < variable_arg_indices.size() &&
         i == variable_arg_indices[variable_index]) {
       // Get already loaded variable tensor.
-      TF_ASSIGN_OR_RETURN(auto single_array,
+      TF_ASSIGN_OR_RETURN(auto loaded_variable,
                           ifrt_loaded_variable_registry.GetLoadedVariable(
                               inputs[i].scalar<tsl::tstring>()()));
-      TF_ASSIGN_OR_RETURN(auto dtype, ToTensorDataType(single_array->dtype()));
-      dtypes_and_shapes.push_back(DtypeAndShape{
-          .dtype = dtype, .shape = ToTensorShape(single_array->shape())});
+      dtypes_and_shapes.push_back(loaded_variable.dtype_and_shape);
 
       variable_index++;
     } else {
@@ -304,9 +300,11 @@ absl::StatusOr<std::vector<tensorflow::Tensor>> IfrtServingExecutable::Execute(
   for (int i = 0; i < inputs.size(); i++) {
     if (variable_index < variable_arg_indices.size() &&
         i == variable_arg_indices[variable_index]) {
-      TF_ASSIGN_OR_RETURN(auto single_array,
+      TF_ASSIGN_OR_RETURN(auto loaded_variable,
                           ifrt_loaded_variable_registry_.GetLoadedVariable(
                               inputs[i].scalar<tsl::tstring>()()));
+      TF_ASSIGN_OR_RETURN(tsl::RCReference<xla::ifrt::Array> single_array,
+                          loaded_variable.array.Await());
       args.push_back(single_array);
       variable_index++;
     } else {
