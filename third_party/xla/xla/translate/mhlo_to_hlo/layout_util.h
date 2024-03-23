@@ -52,11 +52,11 @@ enum class XlaLayoutPreference {
 // The following defines the layout preference of an xla tensor.
 // The return value of LayoutPreferenceFn can be used in
 // ShapeRepresentationFn.
-typedef std::function<xla::StatusOr<XlaLayoutPreference>(
+typedef std::function<absl::StatusOr<XlaLayoutPreference>(
     const xla::Shape& shape)>
     LayoutPreferenceFn;
 
-typedef std::function<xla::StatusOr<xla::Shape>(
+typedef std::function<absl::StatusOr<xla::Shape>(
     const xla::Shape& shape, bool fast_mem,
     XlaLayoutPreference layout_preference)>
     ShapeRepresentationFn;
@@ -73,7 +73,7 @@ xla::Status RewriteLayoutWithShardedShape(
 
 // Adds reshapes to fix the layout of an output, if a shape_representation_fn or
 // sharding is present.
-xla::StatusOr<xla::XlaOp> ReshapeWithCorrectRepresentationAndSharding(
+absl::StatusOr<xla::XlaOp> ReshapeWithCorrectRepresentationAndSharding(
     xla::XlaBuilder* builder, xla::XlaOp original, xla::Shape original_shape,
     const LayoutPreferenceFn& layout_preference_fn,
     const ShapeRepresentationFn& shape_representation_fn,
