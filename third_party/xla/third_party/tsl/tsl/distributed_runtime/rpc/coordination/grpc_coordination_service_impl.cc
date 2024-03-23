@@ -15,8 +15,13 @@ limitations under the License.
 
 #include "tsl/distributed_runtime/rpc/coordination/grpc_coordination_service_impl.h"
 
+#include "third_party/grpc/include/grpc/support/time.h"
+#include "third_party/grpc/include/grpcpp/alarm.h"
+#include "third_party/grpc/include/grpcpp/server_builder.h"
+#include "tsl/distributed_runtime/rpc/grpc_call.h"
 #include "tsl/platform/mutex.h"
 #include "tsl/platform/threadpool.h"
+#include "tsl/protobuf/coordination_service.grpc.pb.h"
 
 namespace tsl {
 

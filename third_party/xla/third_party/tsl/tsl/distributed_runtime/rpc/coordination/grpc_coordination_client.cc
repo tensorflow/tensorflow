@@ -21,12 +21,17 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/log/log.h"
+#include "third_party/grpc/include/grpcpp/channel.h"
+#include "third_party/grpc/include/grpcpp/completion_queue.h"
+#include "third_party/grpc/include/grpcpp/generic/generic_stub.h"
 #include "tsl/distributed_runtime/call_options.h"
 #include "tsl/distributed_runtime/coordination/coordination_client.h"
 #include "tsl/distributed_runtime/rpc/grpc_channel.h"
 #include "tsl/distributed_runtime/rpc/grpc_client_cq_tag.h"
 #include "tsl/distributed_runtime/rpc/grpc_state.h"
 #include "tsl/distributed_runtime/rpc/grpc_util.h"
+#include "tsl/platform/env.h"
 #include "tsl/platform/mutex.h"
 #include "tsl/platform/protobuf.h"
 #include "tsl/platform/status.h"
