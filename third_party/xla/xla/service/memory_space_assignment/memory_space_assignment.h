@@ -477,12 +477,12 @@ class MemorySpaceAssignment {
   virtual ~MemorySpaceAssignment() = default;
 
   // Runs the MemorySpaceAssignment pass.
-  static StatusOr<std::unique_ptr<PresetAssignments>> Run(
+  static absl::StatusOr<std::unique_ptr<PresetAssignments>> Run(
       HloModule* module, const HloLiveRange& hlo_live_range,
       const HloAliasAnalysis& alias_analysis, const Options& options);
 
   // Calculates asynchronous copy statistics.
-  StatusOr<AsyncCopyStats> CalculateAsyncCopyStats() const;
+  absl::StatusOr<AsyncCopyStats> CalculateAsyncCopyStats() const;
 
   // Verify that the memory space assignment is free of overlapping buffers and
   // export heap simulator trace to be used by buffer_assignment.
@@ -490,9 +490,9 @@ class MemorySpaceAssignment {
 
  protected:
   // Main driver of the memory space assignment pass.
-  virtual StatusOr<std::unique_ptr<PresetAssignments>> RunMemorySpaceAssignment(
-      const HloLiveRange& hlo_live_range,
-      const HloAliasAnalysis& alias_analysis);
+  virtual absl::StatusOr<std::unique_ptr<PresetAssignments>>
+  RunMemorySpaceAssignment(const HloLiveRange& hlo_live_range,
+                           const HloAliasAnalysis& alias_analysis);
 
   // Finds an AllocationSequence for placing buffers in alternate memory using
   // the AlternateMemoryBestFitHeap algorithm. Must be set before Process() is
@@ -832,7 +832,7 @@ class AlternateMemoryBestFitHeap
   void AllocateCrossProgramPrefetchBuffer(
       HloModule* module, const BufferInterval& prefetch_candidate);
 
-  StatusOr<HeapSimulator::Result<HloValue>> Finish() override;
+  absl::StatusOr<HeapSimulator::Result<HloValue>> Finish() override;
 
  protected:
   // Given a buffer interval, returns the colocated intervals. Unlike the
@@ -1166,7 +1166,7 @@ class AlternateMemoryBestFitHeap
   // All of the allocation values have a must-alias relationship with each
   // other. Returns either kSuccess if all of the sites could be placed in the
   // alternate memory or a bitwise OR of failure reasons why they couldn't
-  StatusOr<Result> AllocateAllocationValues(
+  absl::StatusOr<Result> AllocateAllocationValues(
       absl::Span<AllocationValue> allocation_values);
 
   // Finds an allocation for an allocation request for a segment (see the

@@ -495,7 +495,7 @@ class BestFitRepacker
     LOG(FATAL) << "We should never get here.";
   }
 
-  StatusOr<Result> Finish() override {
+  absl::StatusOr<Result> Finish() override {
     std::vector<BufferInterval> sorted_buffer_intervals =
         GetSortedBufferIntervals();
 
@@ -632,7 +632,7 @@ class BestFitRepacker
 
 namespace memory_space_assignment {
 
-StatusOr<bool> MemorySpaceAssignmentBestFitRepacker::Repack(
+absl::StatusOr<bool> MemorySpaceAssignmentBestFitRepacker::Repack(
     absl::Span<AllocationBlock*> allocations) {
   BestFitRepacker best_fit_repacker = BestFitRepacker(
       options_, slice_time_permutation_iterator_type_, max_size_, alignment_);
