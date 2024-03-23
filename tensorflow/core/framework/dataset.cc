@@ -835,7 +835,8 @@ Status DatasetBase::Get(OpKernelContext* ctx, int64 index,
                                DebugString());
 }
 
-Status DatasetBase::Get(int64 index, std::vector<Tensor>* out_tensors) const {
+Status DatasetBase::Get(AnyContext ctx, int64 index,
+                        std::vector<Tensor>* out_tensors) const {
   return errors::Unimplemented("Random access is not implemented for dataset ",
                                DebugString());
 }

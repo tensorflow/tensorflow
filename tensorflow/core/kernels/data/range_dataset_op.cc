@@ -237,10 +237,11 @@ class RangeDatasetOp::Dataset : public DatasetBase {
 
   Status Get(OpKernelContext* ctx, int64 index,
              std::vector<Tensor>* out_tensors) const override {
-    return Get(index, out_tensors);
+    return Get(AnyContext(ctx), index, out_tensors);
   }
 
-  Status Get(int64 index, std::vector<Tensor>* out_tensors) const override {
+  Status Get(AnyContext ctx, int64 index,
+             std::vector<Tensor>* out_tensors) const override {
     TF_RETURN_IF_ERROR(CheckRandomAccessCompatible(index));
     return ConvertOutputTypes(output_dtypes(), out_tensors,
                               start_ + (index * step_));

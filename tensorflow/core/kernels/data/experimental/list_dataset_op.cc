@@ -25,6 +25,7 @@ limitations under the License.
 #include "tensorflow/core/data/global_shuffle_utils.h"
 #include "tensorflow/core/data/name_utils.h"
 #include "tensorflow/core/data/split_utils.h"
+#include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_util.h"
@@ -96,10 +97,10 @@ class ListDatasetOp::Dataset : public DatasetBase {
 
   absl::Status Get(OpKernelContext* ctx, int64_t index,
                    std::vector<Tensor>* out_tensors) const override {
-    return Get(index, out_tensors);
+    return Get(AnyContext(ctx), index, out_tensors);
   }
 
-  absl::Status Get(int64_t index,
+  absl::Status Get(AnyContext ctx, int64_t index,
                    std::vector<Tensor>* out_tensors) const override {
     TF_RETURN_IF_ERROR(CheckRandomAccessCompatible(index));
     out_tensors->clear();
