@@ -16,8 +16,6 @@ limitations under the License.
 #include "xla/service/gpu/model/tile_analysis.h"
 
 #include <optional>
-#include <sstream>
-#include <string>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
@@ -33,7 +31,6 @@ namespace gpu {
 namespace {
 
 using ::testing::ExplainMatchResult;
-using ::testing::HasSubstr;
 using ::testing::Optional;
 using ::testing::StrEq;
 
@@ -352,40 +349,6 @@ TEST_F(SymbolicTileTest,
   EXPECT_EQ(
       SymbolicTile::FromIndexingMap(*input_indexing.indexing_maps[0].begin()),
       std::nullopt);
-}
-
-TEST_F(SymbolicTileTest, CanPrintSymbolicTileWithNamedTriplets) {
-  auto input_indexing = GetOutputToInputIndexing(ParseAndGetRoot(R"(
-    HloModule m
-    ENTRY e {
-      p0 = f32[17, 19] parameter(0)
-      p1 = f32[19, 23] parameter(1)
-      ROOT dot = f32[17, 23] dot(p0, p1),
-        lhs_contracting_dims={1}, rhs_contracting_dims={0}
-    }
-  )"));
-
-  std::string s;
-  std::stringstream ss(s);
-
-  SymbolicTile first_operand_tile =
-      SymbolicTile::FromIndexingMap(*input_indexing.indexing_maps[0].begin())
-          .value();
-  SymbolicTile second_operand_tile =
-      SymbolicTile::FromIndexingMap(*input_indexing.indexing_maps[1].begin())
-          .value();
-
-  ss << first_operand_tile;
-  EXPECT_THAT(ss.str(), AllOf(HasSubstr("()[size0, size1] -> (0, 0)"),
-                              HasSubstr("()[size0, size1] -> (size0, 19)"),
-                              HasSubstr("()[size0, size1] -> (1, 1)")));
-
-  // Clear the stream and load the second map.
-  ss.str("");
-  ss << second_operand_tile;
-  EXPECT_THAT(ss.str(), AllOf(HasSubstr("()[size0, size1] -> (0, 0)"),
-                              HasSubstr("()[size0, size1] -> (19, size1)"),
-                              HasSubstr("()[size0, size1] -> (1, 1)")));
 }
 
 }  // namespace

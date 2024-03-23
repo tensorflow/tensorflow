@@ -76,9 +76,6 @@ class SymbolicTile {
       : offset_map_(offset_map), size_map_(size_map), stride_map_(stride_map) {}
 };
 
-// Prints symbolic_tile with renamed labels for each symbol, s{i} => size{i}.
-std::ostream& operator<<(std::ostream& out, const SymbolicTile& symbolic_tile);
-
 }  // namespace gpu
 }  // namespace xla
 
