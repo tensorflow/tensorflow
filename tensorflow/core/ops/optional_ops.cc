@@ -12,11 +12,14 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include "absl/status/status.h"
 #include "tensorflow/core/framework/common_shape_fns.h"
 #include "tensorflow/core/framework/full_type.pb.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_def_builder.h"
 #include "tensorflow/core/framework/shape_inference.h"
+#include "tensorflow/core/framework/types.pb.h"
+#include "tsl/platform/errors.h"
 
 namespace tensorflow {
 
