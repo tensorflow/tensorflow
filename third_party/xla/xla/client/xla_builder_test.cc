@@ -77,7 +77,7 @@ HloInstruction* GetRoot(HloModule& module) {
 }
 
 // TODO(b/74197823): Move the tests to service/.
-StatusOr<std::unique_ptr<HloModule>> BuildHloModule(XlaBuilder& b) {
+absl::StatusOr<std::unique_ptr<HloModule>> BuildHloModule(XlaBuilder& b) {
   TF_ASSIGN_OR_RETURN(XlaComputation computation,
                       b.Build(/*remove_dynamic_dimensions=*/false));
   const HloModuleProto& proto = computation.proto();
@@ -88,7 +88,8 @@ StatusOr<std::unique_ptr<HloModule>> BuildHloModule(XlaBuilder& b) {
 }
 
 // Overload which explicitly specifies the root instruction.
-StatusOr<std::unique_ptr<HloModule>> BuildHloModule(XlaBuilder& b, XlaOp root) {
+absl::StatusOr<std::unique_ptr<HloModule>> BuildHloModule(XlaBuilder& b,
+                                                          XlaOp root) {
   TF_ASSIGN_OR_RETURN(XlaComputation computation,
                       b.Build(root, /*remove_dynamic_dimensions=*/false));
   const HloModuleProto& proto = computation.proto();
@@ -704,7 +705,7 @@ TEST(XlaBuilderTest, ReportError) {
 
 TEST(XlaBuilderTest, ReportErrorOrReturnHandlesNonErrors) {
   XlaBuilder b(TestName());
-  StatusOr<XlaOp> op(ConstantR0<float>(&b, 1.0));
+  absl::StatusOr<XlaOp> op(ConstantR0<float>(&b, 1.0));
   Add(b.ReportErrorOrReturn(op), ConstantR0<float>(&b, 2.0));
   TF_ASSERT_OK_AND_ASSIGN(auto module, BuildHloModule(b));
   auto root = module->entry_computation()->root_instruction();
@@ -713,7 +714,7 @@ TEST(XlaBuilderTest, ReportErrorOrReturnHandlesNonErrors) {
 
 TEST(XlaBuilderTest, ReportErrorOrReturnHandlesErrors) {
   XlaBuilder b(TestName());
-  StatusOr<XlaOp> op(InvalidArgument("a test error"));
+  absl::StatusOr<XlaOp> op(InvalidArgument("a test error"));
   Add(b.ReportErrorOrReturn(op), ConstantR0<float>(&b, 2.0));
   auto statusor = b.Build();
   ASSERT_FALSE(statusor.ok());
@@ -1569,7 +1570,7 @@ TEST(XlaBuilderTest, ComplexAbsConstant) {
   XlaOp out =
       Abs(ConstantR0<std::complex<float>>(&b, std::complex<float>{-1, -1}));
   ValueInference value_inference(&b);
-  StatusOr<OptionalLiteral> analyzed =
+  absl::StatusOr<OptionalLiteral> analyzed =
       value_inference.AnalyzeConstant(out, kUpperBound);
   EXPECT_IS_OK(analyzed.status());
   EXPECT_EQ(analyzed->GetValue().value().shape().element_type(),
