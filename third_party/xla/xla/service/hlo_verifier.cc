@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/service/hlo_verifier.h"
 
 #include <algorithm>
+#include <cstdint>
 #include <iterator>
 #include <map>
 #include <memory>
@@ -27,6 +28,7 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/status/status.h"
 #include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
@@ -39,6 +41,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_schedule.h"
+#include "xla/layout.h"
 #include "xla/permutation_util.h"
 #include "xla/primitive_util.h"
 #include "xla/service/collective_ops_utils.h"
@@ -2777,6 +2780,13 @@ class InstructionVerifier : public DfsHloVisitorWithDefault {
           if (instruction->opcode() == HloOpcode::kConvert) {
             // Convert instructions can change element_size_in_bits
             equal_predicate.IgnoreElementSize();
+          } else if (instruction->opcode() == HloOpcode::kDynamicSlice ||
+                     instruction->opcode() == HloOpcode::kDynamicUpdateSlice ||
+                     instruction->opcode() == HloOpcode::kCopy) {
+            TF_RETURN_IF_ERROR(HostOffloadInstructionCanChangeMemorySpace(
+                instruction, operand_layout.memory_space(),
+                result_layout.memory_space()));
+            equal_predicate.IgnoreMemorySpace();
           }
           TF_RET_CHECK(equal_predicate(result_layout, operand_layout))
               << "Instruction shouldn't change layouts "
@@ -2806,6 +2816,39 @@ class InstructionVerifier : public DfsHloVisitorWithDefault {
           << " sharding among instructions: \n"
           << common_sharding_inst->ToString() << "\n"
           << check_inst->ToString();
+    }
+    return OkStatus();
+  }
+
+  // Verifies whether a given `instruction` is permitted to change the layout
+  // memory space from `operand_memory_space` to `result_memory_space`.
+  // Returns OkStatus() if the instruction's layout changes are valid;
+  // otherwise, returns an appropriate error status.
+  static Status HostOffloadInstructionCanChangeMemorySpace(
+      const HloInstruction* instruction, const int64_t operand_memory_space,
+      const int64_t result_memory_space) {
+    TF_RET_CHECK(!(operand_memory_space == Layout::kGenericFastMemorySpace &&
+                   result_memory_space != Layout::kGenericFastMemorySpace) ||
+                 (operand_memory_space != Layout::kGenericFastMemorySpace &&
+                  result_memory_space == Layout::kGenericFastMemorySpace))
+        << "Instruction shouldn't change layout memory space between generic "
+           "fast memory space and others for instruction: "
+        << instruction->ToString();
+
+    if (instruction->opcode() == HloOpcode::kDynamicSlice) {
+      TF_RET_CHECK(!(operand_memory_space == Layout::kDefaultMemorySpace &&
+                     result_memory_space == Layout::kHostMemorySpace))
+          << "DynamicSlice instruction shouldn't change layout memory "
+          << "space from device to host: " << instruction->ToString();
+    } else if (instruction->opcode() == HloOpcode::kDynamicUpdateSlice) {
+      TF_RET_CHECK(!(operand_memory_space == Layout::kHostMemorySpace &&
+                     result_memory_space == Layout::kDefaultMemorySpace))
+          << "DynamicUpdateSlice instruction shouldn't change layout "
+          << "memory space from host to device: " << instruction->ToString();
+    } else if (instruction->opcode() != HloOpcode::kCopy) {
+      return absl::InvalidArgumentError(
+          absl::StrCat("Instruction shouldn't change layout memory space: ",
+                       instruction->ToString()));
     }
     return OkStatus();
   }
