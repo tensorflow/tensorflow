@@ -596,6 +596,7 @@ tf_cc_test(
     deps = [
         ":stablehlo_type_utils",
         "@com_google_googletest//:gtest_main",
+        "@llvm-project//mlir:ArithDialect",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
         "@stablehlo//:stablehlo_ops",
