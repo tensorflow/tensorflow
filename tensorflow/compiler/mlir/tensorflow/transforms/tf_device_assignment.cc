@@ -16,7 +16,11 @@ limitations under the License.
 // This file implements device assignment in TF dialect.
 #include "mlir/IR/Builders.h"
 #include "mlir/Pass/Pass.h"
-#include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
+#include "llvm/ADT/StringRef.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
+#include "mlir/IR/Dialect.h"  // from @llvm-project
+#include "mlir/IR/Operation.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_dialect.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
 
 namespace mlir {
