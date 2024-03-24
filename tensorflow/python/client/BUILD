@@ -133,11 +133,6 @@ py_strict_library(
     name = "client",
     srcs = ["client_lib.py"],
     srcs_version = "PY3",
-    visibility = [
-        "//tensorflow:internal",
-        "//third_party/mlperf:__subpackages__",
-        "//third_party/py/tf_slim:__subpackages__",
-    ],
     deps = [
         ":_pywrap_device_lib",
         "//tensorflow/core:protos_all_py",
