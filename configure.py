@@ -808,7 +808,7 @@ def choose_compiler(environ_cp):
 
 def choose_compiler_Win(environ_cp):
   question = 'Do you want to use Clang to build TensorFlow?'
-  yes_reply = 'Please use "--config=win_clang" to compile TensorFlow with CLANG.'
+  yes_reply = 'Add "--config=win_clang" to compile TensorFlow with CLANG.'
   no_reply = 'MSVC will be used to compile TensorFlow.'
   var = int(
       get_var(
