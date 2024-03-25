@@ -37,29 +37,39 @@ namespace shlo_ref {
 template <class T>
 using Vector = absl::InlinedVector<T, 1>;
 
+// Helper for UniformDistribution.
 template <DataType storage_type, typename = void>
-struct Distribution;
+struct UniformDistributionImpl;
 
 template <>
-struct Distribution<DataType::kI1, void>
+struct UniformDistributionImpl<DataType::kI1, void>
     : std::uniform_int_distribution<int32_t> {
   using std::uniform_int_distribution<int32_t>::uniform_int_distribution;
 };
 
 template <DataType storage_type>
-struct Distribution<storage_type, std::enable_if_t<IsInteger(storage_type)>>
+struct UniformDistributionImpl<storage_type,
+                               std::enable_if_t<IsInteger(storage_type)>>
     : std::uniform_int_distribution<typename Storage<storage_type>::Type> {
   using std::uniform_int_distribution<
       typename Storage<storage_type>::Type>::uniform_int_distribution;
 };
 
 template <DataType storage_type>
-struct Distribution<storage_type, std::enable_if_t<IsFloat(storage_type)>>
+struct UniformDistributionImpl<storage_type,
+                               std::enable_if_t<IsFloat(storage_type)>>
     : std::uniform_real_distribution<float> {
   using std::uniform_real_distribution<float>::uniform_real_distribution;
 };
 
-template <DataType storage_type, class MinT = StorageType<storage_type>,
+// Helps creating a uniform distribution for the given data type.
+template <DataType storage_type>
+using UniformDistribution = UniformDistributionImpl<storage_type>;
+
+// Returns a vector filled with random data according to the set distribution.
+template <DataType storage_type,
+          template <DataType> class Distribution = UniformDistribution,
+          class MinT = StorageType<storage_type>,
           class MaxT = StorageType<storage_type>,
           class Config = Storage<storage_type>>
 Vector<typename Config::Type> RandomBuffer(const Shape& shape,
@@ -77,31 +87,44 @@ Vector<typename Config::Type> RandomBuffer(const Shape& shape,
   return vec;
 }
 
+// Returns a vector filled with incremental value. The values wrap around
+// according to the storage type range.
 template <DataType storage_type, class Config = Storage<storage_type>>
 Vector<typename Config::Type> IotaBuffer(
     const Shape& shape, const typename Config::Type start = Config::kMinValue,
     const typename Config::Type min = Config::kMinValue,
     const typename Config::Type max = Config::kMaxValue) {
+  using StorageT = StorageType<storage_type>;
+  const StorageT min_val =
+      min > Config::kMinValue ? static_cast<StorageT>(min) : Config::kMinValue;
+  const StorageT max_val =
+      max < Config::kMaxValue ? static_cast<StorageT>(max) : Config::kMaxValue;
   Vector<typename Config::Type> vec(shape.NumElements());
-  auto v = start;
+  StorageT v = start >= min_val ? static_cast<StorageT>(start) : min_val;
+  v = v <= max_val ? v : min_val;
   for (auto& e : vec) {
     e = v;
-    if (++v > max) {
-      v = min;
+    if (v >= max_val) {
+      v = min_val;
+    } else {
+      ++v;
     }
   }
   return vec;
 }
 
+// Typed test parameter type.
 template <DataType... Types>
 struct TestParam;
 
+// Typed test parameter specialization for non quantized tensors.
 template <DataType storage_type>
 struct TestParam<storage_type> {
   static constexpr DataType kStorage = storage_type;
   using StorageT = StorageType<storage_type>;
 };
 
+// Typed test parameter specialization for quantized tensors.
 template <DataType storage_type, DataType expressed_type>
 struct TestParam<storage_type, expressed_type> {
   static constexpr DataType kStorage = storage_type;
@@ -111,18 +134,23 @@ struct TestParam<storage_type, expressed_type> {
 };
 
 // Typed test parameter tag to ask for a per-tensor quantized tensor.
+//
+// TestParamT should be a `TestParam<storage_type, expressed_type>`.
 template <class TestParamT>
 struct PerTensor {
   using Param = TestParamT;
 };
 
 // Typed test parameter tag to ask for a per-channel quantized tensor.
+//
+// TestParamT should be a `TestParam<storage_type, expressed_type>`.
 template <class TestParamT, Axis kAxis = 0>
 struct PerAxis {
   using Param = TestParamT;
   static constexpr Axis axis = kAxis;
 };
 
+// Gets a string representation of the given DataType.
 constexpr const char* ToString(DataType t) {
   switch (t) {
     case DataType::kI1:
@@ -153,6 +181,7 @@ constexpr const char* ToString(DataType t) {
   return "Unknown data type";
 }
 
+// Helps getting a human readable typed test parameter name.
 template <class T>
 struct ParamName;
 
@@ -192,6 +221,7 @@ struct ParamName<std::tuple<TestParamT, TestParamTs...>> {
   }
 };
 
+// Allows GTest to print a human readable version of the typed test parameters.
 class TestParamNames {
  public:
   template <class T>
@@ -200,6 +230,7 @@ class TestParamNames {
   }
 };
 
+// Applies the F template to the given testing::Types list.
 template <template <class> class F, class T>
 struct Map;
 
@@ -211,6 +242,7 @@ struct Map<F, ::testing::Types<Ts...>> {
 template <template <class> class F, class T>
 using MapTypes = typename Map<F, T>::Types;
 
+// Concatenates testing::Types lists.
 template <class... Ts>
 struct Concat;
 
@@ -228,6 +260,7 @@ struct Concat<::testing::Types<Ts...>, ::testing::Types<Us...>, ExtraTypes...> {
 template <class... Ts>
 using ConcatTypes = typename Concat<Ts...>::Types;
 
+// Transforms a list of types into a list of tuple<Op, type>.
 template <class Op, class T>
 struct WithOp;
 
@@ -239,6 +272,7 @@ struct WithOp<Op, ::testing::Types<Ts...>> {
 template <class Op, class T>
 using WithOpTypes = typename WithOp<Op, T>::Types;
 
+// Helps generating a cross-product of lists.
 template <class Accu, class... Lists>
 struct CrossProductImpl;
 
@@ -279,6 +313,7 @@ static_assert(
         ::testing::Types<::testing::Types<int, char, float>,
                          ::testing::Types<int, double, float>>>);
 
+// Filters out the types that don't satisfy the predicate.
 template <template <class...> class Predicate, class List>
 struct Filter;
 
@@ -296,6 +331,7 @@ static_assert(std::is_same_v<
               FilterTypes<std::is_integral, ::testing::Types<int, char, float>>,
               ::testing::Types<int, char>>);
 
+// Checks if all given types are the same.
 template <class T, class... Ts>
 struct SameTypes : std::bool_constant<(std::is_same_v<T, Ts> && ...)> {};
 
@@ -371,8 +407,8 @@ template <DataType storage_type, DataType expressed_type>
 TensorTypeVariant TensorTypeFor(
     PerTensor<TestParam<storage_type, expressed_type>>, const Shape& shape) {
   std::random_device rd;
-  Distribution<expressed_type> expressed_dist(0.5, 1.5);
-  Distribution<storage_type> storage_dist(-5, 5);
+  UniformDistribution<expressed_type> expressed_dist(0.5, 1.5);
+  UniformDistribution<storage_type> storage_dist(-5, 5);
   StorageType<expressed_type> scale =
       static_cast<StorageType<expressed_type>>(expressed_dist(rd));
   StorageType<storage_type> zero_point = storage_dist(rd);
