@@ -137,12 +137,24 @@ Status MlirXlaOpKernel::ConstructXlaOp(XlaOpKernelContext* ctx) {
   // Compile the graph to HLO.
   GraphDebugInfo debug_info;
   std::vector<xla::XlaOp> returns(1);
-  TF_RETURN_IF_ERROR(BuildHloFromGraph(
-      *graph, *ctx->builder(), *ctx_res->GetContext(), xla_params, returns,
-      mlir::SpanToArrayRef<XlaCompiler::Argument>(xla_args), control_rets,
-      device->device_type(),
-      *ctx->function_library()->GetFunctionLibraryDefinition(), debug_info,
-      {}));
+  auto build_hlo = [&](bool unconditionally_use_output_shapes) {
+    return BuildHloFromGraph(
+        *graph, *ctx->builder(), *ctx_res->GetContext(), xla_params, returns,
+        unconditionally_use_output_shapes,
+        mlir::SpanToArrayRef<XlaCompiler::Argument>(xla_args), control_rets,
+        device->device_type(),
+        *ctx->function_library()->GetFunctionLibraryDefinition(), debug_info,
+        {});
+  };
+
+  // Some of the operations that come through here do not know how to set their
+  // own output shapes (e.g. _XlaHostComputeMlir') so we may need to use the
+  // unconditional output shapes option. However, many graphs fail if we do it
+  // unconditionally so try both.
+  if (!build_hlo(/*unconditionally_use_output_shapes=*/false).ok()) {
+    // If that failed, then try again with the unconditional set true
+    TF_RETURN_IF_ERROR(build_hlo(/*unconditionally_use_output_shapes=*/true));
+  }
 
   // Set context outputs.
   for (int i = 0, end = returns.size(); i < end; ++i) {

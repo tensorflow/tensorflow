@@ -57,10 +57,6 @@ static constexpr char kCompilationTimeStreamzName[] =
 static constexpr char kFullBridge[] = "full_bridge";
 static constexpr char kCompilationStatusStreamzName[] =
     "/tensorflow/core/tf2xla/api/v2/phase2_compilation_status";
-static const char kMlirWithFallbackModeSuccess[] =
-    "kMlirWithFallbackModeSuccess";
-static const char kMlirWithFallbackModeFailure[] =
-    "kMlirWithFallbackModeFailure";
 static const char kOldBridgeMlirFilteredFailure[] =
     "kOldBridgeMlirFilteredFailure";
 static const char kOldBridgeWithFallbackModeFailure[] =
@@ -143,7 +139,7 @@ TEST(LegalizeTFTest, RecordsStreamzForSuccessfulLegalizeWithMlirBridge) {
           ConfigProto::Experimental::MLIR_BRIDGE_ROLLOUT_UNSPECIFIED));
 
   // May have been filtered so check for lack of failure instead of success.
-  EXPECT_EQ(compilation_status.Delta(kMlirWithFallbackModeFailure), 0);
+  EXPECT_EQ(compilation_status.Delta(kOldBridgeMlirFilteredSuccess), 0);
 }
 
 TEST(LegalizeTFTest, MatMul) {
@@ -237,8 +233,6 @@ TEST(LegalizeTFTest, RecordsStreamzForFailedLegalizeWithMlirBridge) {
       ConfigProto::Experimental::MLIR_BRIDGE_ROLLOUT_UNSPECIFIED);
 
   EXPECT_FALSE(result.ok());
-  EXPECT_EQ(compilation_status.Delta(kMlirWithFallbackModeSuccess), 0);
-  EXPECT_EQ(compilation_status.Delta(kMlirWithFallbackModeFailure), 1);
   EXPECT_EQ(compilation_status.Delta(kMlirCombinedMlirFailure), 1);
 }
 
