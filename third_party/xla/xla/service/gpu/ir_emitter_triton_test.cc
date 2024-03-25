@@ -139,9 +139,6 @@ absl::Status TritonFilecheckTest::CreateTritonIrAndFileCheck(
       auto module, CreateTritonModule(analysis, "triton_fn", computation,
                                       TestGpuDeviceInfo::RTXA6000DeviceInfo(),
                                       config, emitter, context));
-  mlir::PassManager pm(&context);
-  pm.addPass(mlir::createCanonicalizerPass());
-  TF_RET_CHECK(pm.run(module.get()).succeeded());
 
   std::string out;
   llvm::raw_string_ostream os(out);
@@ -231,10 +228,8 @@ CHECK:        %[[RHS_MASKED:.*]] = arith.select %[[RHS_INBOUNDS_KN]], %[[RHS_TIL
 CHECK:        %[[ACC_NEXT:.*]] = tt.dot %[[LHS_MASKED]], %[[RHS_MASKED]], %[[ACC]]
 CHECK:        scf.yield %[[LHS_ITER_PTR_NEXT]], %[[RHS_ITER_PTR_NEXT]], %[[ACC_NEXT]] : !tt.ptr<tensor<16x32xi8>, 1>, !tt.ptr<tensor<32x64xf32>, 1>, tensor<16x64xf32>
 CHECK:      }
-CHECK:      %[[TILE_OFFSET_M_OUT:.*]] = arith.muli %[[TILE_INDEX_M]], %[[TILE_SIZE_M]]
-CHECK:      %[[TILE_OFFSET_N_OUT:.*]] = arith.muli %[[TILE_INDEX_N]], %[[TILE_SIZE_N]]
 CHECK:      %[[OUT_PTR:.*]] = tt.make_tensor_ptr %[[OUT]], [%[[C80]], %[[SIZE_M]]], [%[[SIZE_M]], %[[C1]]], [%[[C0]], %[[C0]]] {order = array<i32: 1, 0>} : <tensor<16x64xf32>, 1>
-CHECK:      %[[OUT_OFFSET:.*]] = tt.advance %[[OUT_PTR]], [%[[TILE_OFFSET_M_OUT]], %[[TILE_OFFSET_N_OUT]]] : <tensor<16x64xf32>, 1>
+CHECK:      %[[OUT_OFFSET:.*]] = tt.advance %[[OUT_PTR]], [%[[TILE_OFFSET_M_LHS]], %[[TILE_OFFSET_N_RHS]]] : <tensor<16x64xf32>, 1>
 CHECK:      tt.store %[[OUT_OFFSET]], %[[FOR]]#2 {boundaryCheck = array<i32: 1>, cache = 1 : i32, evict = 1 : i32} : !tt.ptr<tensor<16x64xf32>, 1>, tensor<16x64xf32>
 CHECK:      tt.return
 CHECK:    }
@@ -317,11 +312,8 @@ CHECK:      %[[ACC_NEXT:.*]] = tt.dot %[[LHS_MASKED]], %[[RHS_MASKED]], %[[ACC]]
 CHECK:      scf.yield %[[LHS_ITER_PTR_NEXT]], %[[RHS_ITER_PTR_NEXT]], %[[ACC_NEXT]] : !tt.ptr<tensor<16x32xf32>, 1>, !tt.ptr<tensor<32x16xf32>, 1>, tensor<16x16xf32>
 CHECK:    }
 
-
-CHECK:    %[[TILE_OFFSET_M_OUT:.*]] = arith.muli %[[TILE_INDEX_M]], %[[TILE_SIZE_M]]
-CHECK:    %[[TILE_OFFSET_N_OUT:.*]] = arith.muli %[[TILE_INDEX_N]], %[[TILE_SIZE_M]]
 CHECK:    %[[OUT_PTR:.*]] = tt.make_tensor_ptr %[[OUT]], [%[[SIZE_M]], %[[C1]]], [%[[C1]], %[[C1]]], [%[[C0]], %[[C0]]] {order = array<i32: 1, 0>} : <tensor<16x16xf32>, 1>
-CHECK:    %[[OUT_OFFSET:.*]] = tt.advance %[[OUT_PTR]], [%[[TILE_OFFSET_M_OUT]], %[[TILE_OFFSET_N_OUT]]] : <tensor<16x16xf32>, 1>
+CHECK:    %[[OUT_OFFSET:.*]] = tt.advance %[[OUT_PTR]], [%[[TILE_OFFSET_M_LHS]], %[[TILE_OFFSET_N_RHS]]] : <tensor<16x16xf32>, 1>
 CHECK:    tt.store %[[OUT_OFFSET]], %[[FOR]]#2 {boundaryCheck = array<i32: 0, 1>, cache = 1 : i32, evict = 1 : i32} : !tt.ptr<tensor<16x16xf32>, 1>, tensor<16x16xf32>
 CHECK:    tt.return
 CHECK:  }
@@ -1119,11 +1111,7 @@ CHECK-DAG: %[[ARG_PTR:.*]] = arith.select %[[CONCAT_COND:.*]], %[[P1]], %[[P2]]
 CHECK-DAG: %[[BATCH_STRIDE_P1:.*]] = arith.constant 1280
 CHECK-DAG: %[[BATCH_STRIDE_P2:.*]] = arith.constant 2560
 CHECK-DAG: %[[BATCH_STRIDE:.*]] = arith.select %[[CONCAT_COND_2:.*]], %[[BATCH_STRIDE_P1]], %[[BATCH_STRIDE_P2]]
-COM:       -- Note: we use "CHECK" below voluntarily because the current codegen
-COM:       -- does not do any kind of CSE before returning. This causes
-COM:       -- PID_BATCH to be constructed several times, and by construction,
-COM:       -- the second one is the relevant one.
-CHECK:     %[[PID_BATCH:.*]] = tt.get_program_id y
+CHECK-DAG: %[[PID_BATCH:.*]] = tt.get_program_id y
 CHECK-DAG: %[[OFFSET:.*]] = arith.muli %[[PID_BATCH]], %[[BATCH_STRIDE]]
 CHECK:     %[[BLOCK_BASE_PTR:.*]] = tt.addptr %[[ARG_PTR]], %[[OFFSET]]
 )"));

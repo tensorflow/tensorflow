@@ -2271,6 +2271,11 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> CreateTritonModule(
 
   b.create<mt::ReturnOp>(loc);
 
+  mlir::PassManager pm(&mlir_context);
+  pm.addPass(mlir::createCanonicalizerPass());
+  pm.addPass(mlir::createCSEPass());
+  TF_RET_CHECK(pm.run(triton_module.get()).succeeded());
+
   VLOG(6) << llvm_ir::DumpToString(*triton_module);
   if (DumpingEnabledForHloModule(*hlo_computation->parent())) {
     DumpToFileInDirOrStdout(*hlo_computation->parent(), "triton_ir", "ttir",
