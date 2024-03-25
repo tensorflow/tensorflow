@@ -42,6 +42,7 @@ from .xla_extension import OpSharding as OpSharding
 from .xla_extension import HloSharding as HloSharding
 from .xla_extension import PrimitiveType as PrimitiveType
 from .xla_extension import Traceback as Traceback
+from .xla_extension import PjRtLayout as PjRtLayout
 from .xla_extension import XlaBuilder as XlaBuilder
 from .xla_extension import XlaComputation as XlaComputation
 from .xla_extension import XlaOp as XlaOp
