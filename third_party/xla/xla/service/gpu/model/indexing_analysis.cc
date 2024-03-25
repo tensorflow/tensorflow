@@ -330,7 +330,7 @@ HloInstructionIndexing ComputeOutputToInputDynamicSliceOpIndexing(
 
 HloInstructionIndexing ComputeOutputToInputDynamicUpdateSliceOpIndexing(
     const HloDynamicUpdateSliceInstruction* dus, MLIRContext* mlir_context) {
-  const Shape& update_shape = dus->operand(1)->shape();
+  const Shape& update_shape = dus->update()->shape();
   const Shape& output_shape = dus->shape();
   int64_t rank = output_shape.rank();
 
