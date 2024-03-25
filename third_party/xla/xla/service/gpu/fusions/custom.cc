@@ -279,8 +279,10 @@ absl::StatusOr<FusionEmissionResult> EmitDynamicSlicedGemm(
           static_cast<const HloDynamicIndexInstruction*>(
               &slice_adaptor->instruction()));
 
-      if (!IsContiguousSlice(slice_instr->operand(0)->shape(),
-                             slice_instr->shape())) {
+      if (!IsContiguousSlice(slice_instr->shape(),
+                             Cast<HloDynamicUpdateSliceInstruction>(slice_instr)
+                                 ->update()
+                                 ->shape())) {
         return absl::InternalError(
             "DynamicAddressComputationFusion only handles contiguous slices "
             "currently");

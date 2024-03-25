@@ -1240,4 +1240,147 @@ TEST_F(AddressComputationFusionRewriterTest, DynamicSimpleGemmNotRoot) {
                             });
 }
 
+TEST_F(AddressComputationFusionRewriterTest, DUSSimpleGemm) {
+  const char* hlo = R"(
+    HloModule test, is_scheduled=true
+
+    ENTRY main.9 {
+      p0 = f16[1,8,8]{2,1,0} parameter(0)
+      p1 = f16[1,8,8]{2,1,0} parameter(1)
+      p2 = f16[4,8,8]{2,1,0} parameter(2)
+      c1_s32 = s32[] constant(1)
+      c0_s32 = s32[] constant(0)
+      bitcast.41 = f16[8,8]{1,0} bitcast(p0)
+      bitcast.42 = f16[8,8]{1,0} bitcast(p1)
+
+      custom-call.1 = f16[8,8]{1,0} custom-call(bitcast.41, bitcast.42),
+        custom_call_target="__cublas$gemm",
+        backend_config={"gemm_backend_config":{
+          "alpha_real":1,
+          "beta":0,
+          "dot_dimension_numbers":{
+            "lhs_contracting_dimensions":["1"],
+            "rhs_contracting_dimensions":["0"],
+            "lhs_batch_dimensions":[],
+            "rhs_batch_dimensions":[]
+          },
+          "alpha_imag":0,
+          "precision_config":{"operand_precision":["DEFAULT","DEFAULT"]},
+          "epilogue":"DEFAULT",
+          "lhs_stride":"64",
+          "rhs_stride":"64",
+          "grad_x":false,
+          "grad_y":false
+        }}
+      bitcast.43 = f16[1,8,8]{2,1,0} bitcast(custom-call.1)
+      ROOT dus = f16[4,8,8]{2,1,0} dynamic-update-slice(p2, bitcast.43, c1_s32, c0_s32, c0_s32)
+    }
+  )";
+
+  const char* expected = R"(
+    ; CHECK-DAG:   [[P0:%[^ ]+]] = f16[8,8]{1,0} parameter(3)
+    ; CHECK-DAG:   [[P1:%[^ ]+]] = f16[8,8]{1,0} parameter(4)
+    ; CHECK-DAG:   [[P2:%[^ ]+]] = f16[4,8,8]{2,1,0} parameter(0)
+    ; CHECK-DAG:   [[C1:%[^ ]+]] = s32[] parameter(1)
+    ; CHECK-DAG:   [[C0:%[^ ]+]] = s32[] parameter(2)
+    ; CHECK-DAG:   [[CC:%[^ ]+]] = f16[8,8]{1,0} custom-call([[P0]], [[P1]]),
+    ; CHECK-DAG:          custom_call_target="__cublas$gemm"
+    ; CHECK-DAG:   [[BC:%[^ ]+]] = f16[1,8,8]{2,1,0} bitcast([[CC]])
+    ; CHECK:       ROOT {{.*}} = f16[4,8,8]{2,1,0} dynamic-update-slice([[P2]], [[BC]], [[C1]], [[C0]], [[C0]])
+    ; CHECK:     }
+
+    ; CHECK:     ENTRY %main{{.*}} {
+    ; CHECK:       ROOT [[FUSION:%[^ ]+]] = f16[4,8,8]{2,1,0} fusion
+    ; CHECK:         kind=kCustom, calls=%address-computation,
+    ; CHECK:         backend_config={
+    ; CHECK:           "kind":"__custom_fusion",
+    ; CHECK:           "custom_fusion_config":{"name":"dynamic_address_computation"}
+    ; CHECK:         }
+    ; CHECK:     }
+  )";
+
+  auto device = TestGpuDeviceInfo::RTXA6000DeviceInfo();
+  RunAndFilecheckHloRewrite(hlo, AddressComputationFusionRewriter(PLATFORM),
+                            expected, [](HloModule* module) {
+                              EXPECT_TRUE(module->has_schedule());
+                              TF_CHECK_OK(module->schedule().Verify());
+                            });
+}
+
+TEST_F(AddressComputationFusionRewriterTest, DUSSimpleGemmNotRoot) {
+  const char* hlo = R"(
+    HloModule test, is_scheduled=true
+
+    ENTRY main.9 {
+      p0 = f16[2,8,8]{2,1,0} parameter(0)
+      p1 = f16[2,8,8]{2,1,0} parameter(1)
+      p2 = f16[4,8,8]{2,1,0} parameter(2)
+      c1_s32 = s32[] constant(1)
+      c0_s32 = s32[] constant(0)
+      slice.13 = f16[1,8,8]{2,1,0} dynamic-slice(p0, c1_s32, c0_s32, c0_s32), dynamic_slice_sizes={1,8,8}
+      bitcast.41 = f16[8,8]{1,0} bitcast(slice.13)
+      slice.14 = f16[1,8,8]{2,1,0} dynamic-slice(p1, c1_s32, c0_s32, c0_s32), dynamic_slice_sizes={1,8,8}
+      bitcast.42 = f16[8,8]{1,0} bitcast(slice.14)
+
+      custom-call.1 = f16[8,8]{1,0} custom-call(bitcast.41, bitcast.42),
+        custom_call_target="__cublas$gemm",
+        backend_config={"gemm_backend_config":{
+          "alpha_real":1,
+          "beta":0,
+          "dot_dimension_numbers":{
+            "lhs_contracting_dimensions":["1"],
+            "rhs_contracting_dimensions":["0"],
+            "lhs_batch_dimensions":[],
+            "rhs_batch_dimensions":[]
+          },
+          "alpha_imag":0,
+          "precision_config":{"operand_precision":["DEFAULT","DEFAULT"]},
+          "epilogue":"DEFAULT",
+          "lhs_stride":"64",
+          "rhs_stride":"64",
+          "grad_x":false,
+          "grad_y":false
+        }}
+      bitcast.43 = f16[1,8,8]{2,1,0} bitcast(custom-call.1)
+      dus = f16[4,8,8]{2,1,0} dynamic-update-slice(p2, bitcast.43, c1_s32, c0_s32, c0_s32)
+      ROOT res = f16[4,8,8]{2,1,0} log(dus)
+    }
+  )";
+
+  const char* expected = R"(
+    ; CHECK:     address-computation {{.*}} {
+    ; CHECK-DAG:   [[P0:%[^ ]+]] = f16[2,8,8]{2,1,0} parameter(3)
+    ; CHECK-DAG:   [[P1:%[^ ]+]] = f16[2,8,8]{2,1,0} parameter(4)
+    ; CHECK-DAG:   [[P2:%[^ ]+]] = f16[4,8,8]{2,1,0} parameter(0)
+    ; CHECK-DAG:   [[C1:%[^ ]+]] = s32[] parameter(1)
+    ; CHECK-DAG:   [[C0:%[^ ]+]] = s32[] parameter(2)
+    ; CHECK-DAG:   [[S0:%[^ ]+]] = f16[1,8,8]{2,1,0} dynamic-slice([[P0]], [[C1]], [[C0]], [[C0]]), dynamic_slice_sizes={1,8,8}
+    ; CHECK-DAG:   [[B0:%[^ ]+]] = f16[8,8]{1,0} bitcast([[S0]])
+    ; CHECK-DAG:   [[S1:%[^ ]+]] = f16[1,8,8]{2,1,0} dynamic-slice([[P1]], [[C1]], [[C0]], [[C0]]), dynamic_slice_sizes={1,8,8}
+    ; CHECK-DAG:   [[B1:%[^ ]+]] = f16[8,8]{1,0} bitcast([[S1]])
+    ; CHECK-DAG:   [[CC:%[^ ]+]] = f16[8,8]{1,0} custom-call([[B0]], [[B1]]),
+    ; CHECK-DAG:          custom_call_target="__cublas$gemm"
+    ; CHECK-DAG:   [[BC:%[^ ]+]] = f16[1,8,8]{2,1,0} bitcast([[CC]])
+    ; CHECK:       ROOT {{.*}} = f16[4,8,8]{2,1,0} dynamic-update-slice([[P2]], [[BC]], [[C1]], [[C0]], [[C0]])
+    ; CHECK:     }
+
+    ; CHECK:     ENTRY %main{{.*}} {
+    ; CHECK:       [[FUSION:%[^ ]+]] = f16[4,8,8]{2,1,0} fusion
+    ; CHECK:         kind=kCustom, calls=%address-computation,
+    ; CHECK:         backend_config={
+    ; CHECK:           "kind":"__custom_fusion",
+    ; CHECK:           "custom_fusion_config":{"name":"dynamic_address_computation"}
+    ; CHECK:         }
+    ; CHECK:       ROOT {{.*}} = f16[4,8,8]{2,1,0} log([[FUSION]])
+    ; CHECK:     }
+  )";
+
+  auto device = TestGpuDeviceInfo::RTXA6000DeviceInfo();
+  RunAndFilecheckHloRewrite(hlo, AddressComputationFusionRewriter(PLATFORM),
+                            expected, [](HloModule* module) {
+                              EXPECT_TRUE(module->has_schedule());
+                              TF_CHECK_OK(module->schedule().Verify());
+                            });
+}
+
 }  // namespace xla::gpu

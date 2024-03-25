@@ -2215,6 +2215,8 @@ class HloDynamicUpdateSliceInstruction : public HloDynamicIndexInstruction {
 
   int64_t first_index_operand_number() const override { return 2; }
 
+  const HloInstruction* update() const { return operand(1); }
+
   static bool ClassOf(const HloInstruction* hlo) {
     return hlo->opcode() == HloOpcode::kDynamicUpdateSlice;
   }

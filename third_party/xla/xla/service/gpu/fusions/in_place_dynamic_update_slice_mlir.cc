@@ -120,7 +120,7 @@ absl::Status MlirInPlaceDynamicUpdateSliceFusion::EmitEntryFunction(
 
   const auto* dus_instr =
       Cast<HloDynamicUpdateSliceInstruction>(dus_ops_.front());
-  const auto& update_shape = dus_instr->operand(kDUSUpdateIndex)->shape();
+  const auto& update_shape = dus_instr->update()->shape();
   auto result_tensors = EmitThreadLoopNest(
       b, output_tensor_args, indexing,
       [&](ValueRange output_tensors, ValueRange dim_values,

@@ -59,6 +59,7 @@ cc_library(
         "tf_identity_propagation.cc",
         "tf_ifrt_passes.cc",
         "tf_restore_merging.cc",
+        "tf_restore_pruning.cc",
         "tf_restore_splitting.cc",
     ],
     hdrs = [

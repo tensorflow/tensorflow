@@ -59,6 +59,20 @@ def LowerToIfrtRestoreVariablePass: Pass<"lower-to-ifrt-restore-variable", "mlir
   let constructor = "CreateLowerToIfrtRestoreVariablePass()";
  }
 
+def TfRestorePruningPass
+    : Pass<"tf-restore-pruning", "mlir::func::FuncOp"> {
+  let summary = "Prune unused`tf.RestoreV2` ops";
+
+  let description = [{
+    This pass prune unused `tf.RestoreV2` op. A typical use case is to combine
+    `TfRestoreSplittingPass`, this pass and `TfRestoreMergingPass` in sequence
+    so that the un-used restored tensors are not read into host memory.
+  }];
+
+  let constructor = "CreateTfRestorePruningPass()";
+}
+
+
 def TfRestoreSplittingPass
     : Pass<"tf-restore-splitting", "mlir::func::FuncOp"> {
   let summary = "Splits `tf.RestoreV2` ops";
