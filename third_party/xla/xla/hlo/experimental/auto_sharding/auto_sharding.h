@@ -40,11 +40,11 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/hlo/utils/hlo_live_range.h"
 #include "xla/service/call_graph.h"
+#include "xla/service/hlo_alias_analysis.h"
 #include "xla/service/hlo_cost_analysis.h"
 #include "xla/service/hlo_pass_interface.h"
 #include "xla/shape.h"
 #include "xla/status.h"
-#include "xla/statusor.h"
 
 namespace xla {
 
@@ -384,6 +384,15 @@ BuildStrategyAndCost(const HloInstructionSequence& sequence,
                      AutoShardingOption& option, const CallGraph& call_graph,
                      const HloCostAnalysis& hlo_cost_analysis,
                      bool trying_multiple_mesh_shapes);
+
+// Computes an approximate lower bound on the per-device memory usage of a
+// module once it has been sharded. This quantity is multiplied with
+// memory_budget_ratio to obtain the memory budget using in our ILP formulation.
+int64_t MemoryBudgetLowerBound(
+    const HloModule& module, const LivenessSet& liveness_set,
+    const HloAliasAnalysis& alias_analysis, int64_t num_devices,
+    const absl::flat_hash_map<std::string, std::vector<HloSharding>>&
+        preserved_shardings);
 
 }  // namespace spmd
 }  // namespace xla
