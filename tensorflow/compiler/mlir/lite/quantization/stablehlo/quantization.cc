@@ -19,6 +19,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
@@ -96,8 +97,11 @@ absl::StatusOr<mlir::ModuleOp> RunQuantization(
         "be nullptr.");
   }
 
-  const QuantizationConfig config_with_defaults =
-      PopulateDefaults(quantization_config);
+  LOG(INFO) << "User-provided quantization config: "
+            << quantization_config.DebugString();
+  const QuantizationConfig updated_config =
+      ExpandPresets(PopulateDefaults(quantization_config));
+  LOG(INFO) << "Updated quantization config: " << updated_config.DebugString();
 
   const absl::flat_hash_map<std::string, SignatureDef> signature_def_map =
       GetSignatureDefMapFromBundle(*saved_model_bundle);
@@ -131,8 +135,9 @@ absl::StatusOr<mlir::ModuleOp> RunQuantization(
       module_op.getContext(), quantization_py_function_lib, saved_model_dir,
       /*signature_keys=*/exported_names, saved_model_tags, signature_def_map,
       GetFunctionAliases(*saved_model_bundle));
-  const absl::StatusOr<mlir::ModuleOp> quantized_module_op =
-      static_range_ptq_component.Run(module_op, config_with_defaults);
+
+  absl::StatusOr<mlir::ModuleOp> quantized_module_op =
+      static_range_ptq_component.Run(module_op, updated_config);
   if (!quantized_module_op.ok()) {
     return absl::InternalError("Failed to run quantization. Status msg: " +
                                quantized_module_op.status().ToString());
