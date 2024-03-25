@@ -49,6 +49,7 @@ limitations under the License.
 #include "stablehlo/dialect/StablehloOps.h"  // from @stablehlo  // IWYU pragma: keep
 #include "tensorflow/compiler/mlir/lite/quantization/ir/QuantOps.h"
 #include "tensorflow/compiler/mlir/quantization/common/attrs_and_constraints.h"
+#include "tensorflow/compiler/mlir/quantization/common/lift_as_function_call.h"
 #include "tensorflow/compiler/mlir/quantization/common/quantization_lib/quantization_utils.h"
 #include "tensorflow/compiler/mlir/quantization/common/uniform_quantized_types.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/ops/stablehlo_op_quant_spec.h"
@@ -74,8 +75,6 @@ using ::mlir::stablehlo::GetDimensionSizeOp;
 using ::mlir::stablehlo::ReshapeOp;
 using ::mlir::stablehlo::UniformQuantizeOp;
 
-constexpr StringRef kCompositeFuncPrefix = "composite_";
-constexpr StringRef kQuantizedFuncPrefix = "quantized_";
 constexpr StringRef kEntryFuncAttrName = "_entry_function";
 
 // Returns broadcasted user op of an input op. Returns null if
@@ -592,7 +591,7 @@ class QuantizeOpWithRegionPattern
     : public OpRewritePattern<quantfork::DequantizeCastOp> {
  public:
   explicit QuantizeOpWithRegionPattern(MLIRContext& ctx)
-      : OpRewritePattern<quantfork::DequantizeCastOp>(&ctx){};
+      : OpRewritePattern<quantfork::DequantizeCastOp>(&ctx) {};
 
   LogicalResult match(quantfork::DequantizeCastOp op) const final {
     // Match only when there is one user of the dequantize op.
@@ -878,7 +877,7 @@ class HybridXlaCallModuleOpToCallOp
  public:
   explicit HybridXlaCallModuleOpToCallOp(
       MLIRContext& ctx, bool enable_per_channel_quantized_weight)
-      : OpRewritePattern<TF::XlaCallModuleOp>(&ctx){};
+      : OpRewritePattern<TF::XlaCallModuleOp>(&ctx) {};
 
   LogicalResult match(TF::XlaCallModuleOp op) const override {
     ModuleOp module_op = op->getParentOfType<ModuleOp>();

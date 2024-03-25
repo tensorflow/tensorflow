@@ -158,6 +158,7 @@ cc_library(
     deps = [
         "//tensorflow/compiler/mlir/lite/quantization/ir:QuantOps",
         "//tensorflow/compiler/mlir/quantization/common:attrs_and_constraints",
+        "//tensorflow/compiler/mlir/quantization/common:lift_as_function_call",
         "//tensorflow/compiler/mlir/quantization/common:uniform_quantized_types",
         "//tensorflow/compiler/mlir/quantization/common/quantization_lib",
         "//tensorflow/compiler/mlir/quantization/stablehlo/ops:stablehlo_op_quant_spec",
