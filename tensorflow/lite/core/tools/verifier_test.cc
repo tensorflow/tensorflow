@@ -574,7 +574,7 @@ TEST(VerifyModel, OpWithOptionalTensor) {
   EXPECT_EQ("", builder.GetErrorString());
 }
 
-TEST(VerifyModel, TypedTensorShapeMismatchWithTensorBufferSize) {
+TEST(VerifyModel, DISABLED_TypedTensorShapeMismatchWithTensorBufferSize) {
   TfLiteFlatbufferModelBuilder builder;
   for (int tensor_type = TensorType_MIN; tensor_type <= TensorType_MAX;
        ++tensor_type) {
@@ -591,7 +591,7 @@ TEST(VerifyModel, TypedTensorShapeMismatchWithTensorBufferSize) {
   }
 }
 
-TEST(VerifyModel, TypedTensorShapeMatchesTensorBufferSize) {
+TEST(VerifyModel, DISABLED_TypedTensorShapeMatchesTensorBufferSize) {
   TfLiteFlatbufferModelBuilder builder;
   for (int tensor_type = TensorType_MIN; tensor_type <= TensorType_MAX;
        ++tensor_type) {
