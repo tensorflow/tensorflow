@@ -1461,9 +1461,13 @@ void TrimOrGenerateStrategiesBasedOnExistingSharding(
                 strategy_map.at(operand).get();
             Shape operand_shape = operand->shape();
             if (ins->opcode() == HloOpcode::kGetTupleElement) {
+              if (input_sharding && input_sharding->IsTuple()) {
+                input_sharding = input_sharding->GetSubSharding(
+                    operand->shape(), {ins->tuple_index()});
+              }
               operand_strategy_group =
                   operand_strategy_group->childs[ins->tuple_index()].get();
-              operand_shape = operand_shape.tuple_shapes(ins->tuple_index());
+              operand_shape = operand->shape().tuple_shapes(ins->tuple_index());
             }
 
             if (input_sharding.has_value()) {

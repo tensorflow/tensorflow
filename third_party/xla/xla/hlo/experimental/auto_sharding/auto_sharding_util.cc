@@ -1447,7 +1447,7 @@ void FixMixedMeshShapeReshardingGetTupleElement(
   CHECK_NE(preserve_shardings, nullptr);
   if (preserve_shardings->contains(inst->name())) {
     (*preserve_shardings)[replace_with->name()] =
-        preserve_shardings->at(inst->name());
+        std::vector<HloSharding>(preserve_shardings->at(inst->name()));
     preserve_shardings->erase(inst->name());
   }
 }
