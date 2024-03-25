@@ -183,11 +183,8 @@ absl::StatusOr<std::string> FindCudaExecutable(
     std::string_view binary_name, std::string_view preferred_cuda_dir,
     ToolVersion minimum_version,
     absl::Span<const ToolVersion> excluded_versions) {
-#if defined(PLATFORM_WINDOWS)
-  const std::string binary_filename = std::string{binary_name} + ".exe";
-#else
-  std::string_view binary_filename = binary_name;
-#endif
+  std::string binary_filename = std::string{binary_name};
+  tsl::io::AppendDotExeIfWindows(binary_filename);
 
   std::vector<std::string> candidates{};
 

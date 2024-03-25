@@ -126,6 +126,9 @@ bool GetTestUndeclaredOutputsDir(std::string* dir);
 // be resolved.
 bool ResolveTestPrefixes(tsl::StringPiece path, std::string& resolved_path);
 
+// Appends `.exe` if `PLATFORM_WINDOWS` is defined.
+[[maybe_unused]] std::string& AppendDotExeIfWindows(std::string& path);
+
 }  // namespace io
 }  // namespace tsl
 
