@@ -42,6 +42,7 @@ limitations under the License.
 #include "third_party/nanobind/include/nanobind/stl/optional.h"  // IWYU pragma: keep
 #include "third_party/nanobind/include/nanobind/stl/string.h"  // IWYU pragma: keep
 #include "third_party/nanobind/include/nanobind/stl/string_view.h"  // IWYU pragma: keep
+#include "third_party/nanobind/include/nanobind/stl/unique_ptr.h"  // IWYU pragma: keep
 #include "third_party/nanobind/include/nanobind/stl/vector.h"  // IWYU pragma: keep
 #include "xla/layout.h"
 #include "xla/layout_util.h"
@@ -1570,6 +1571,8 @@ Status PyArray::RegisterTypes(nb::module_& m) {
       nb::is_method());
   type.attr("__cuda_array_interface__") = nb_property_readonly(
       [](PyArray self) { return self.CudaArrayInterface(); });
+  type.attr("_pjrt_layout") =
+      nb_property_readonly(xla::ValueOrThrowWrapper(&PyArray::layout));
   type.attr("on_device_size_in_bytes") = nb::cpp_function(
       xla::ValueOrThrowWrapper(&PyArray::GetOnDeviceSizeInBytes),
       nb::is_method());
