@@ -35,9 +35,9 @@ limitations under the License.
 #include "mlir/IR/OwningOpRef.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
-#include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "tensorflow/cc/saved_model/loader.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/cc/calibration/statistics.h"
+#include "tensorflow/compiler/mlir/quantization/stablehlo/cc/config.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/cc/context.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/cc/debugger.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/cc/io.h"
@@ -68,7 +68,6 @@ namespace tensorflow {
 namespace quantization {
 namespace {
 
-using ::mlir::quant::stablehlo::AddExportPasses;
 using ::mlir::quant::stablehlo::ConvertMlirModuleToExportedModel;
 using ::mlir::quant::stablehlo::CreateMlirContextForQuantization;
 using ::mlir::quant::stablehlo::ExportOptions;
@@ -84,6 +83,8 @@ using ::stablehlo::quantization::ChangeToQuantizedFilename;
 using ::stablehlo::quantization::DebuggerConfig;
 using ::stablehlo::quantization::DisableDebugging;
 using ::stablehlo::quantization::EnableDebugging;
+using ::stablehlo::quantization::ExpandPresets;
+using ::stablehlo::quantization::PopulateDefaults;
 using ::stablehlo::quantization::QuantizationConfig;
 using ::stablehlo::quantization::io::CreateTmpDir;
 using ::stablehlo::quantization::io::GetLocalTmpFileName;
@@ -176,6 +177,24 @@ absl::StatusOr<ExportedModel> ExportCalibrationModel(
   return *exported_model;
 }
 
+QuantizationConfig GetQuantizationConfigForStaticRangePtq(
+    const QuantizationOptions &quantization_options) {
+  QuantizationConfig quantization_config{};
+  // TODO: b/331302857 - Remove `enable_per_channel_quantized_weight` usage.
+  quantization_config.mutable_static_range_ptq_preset()
+      ->set_enable_per_channel_quantized_weight(
+          quantization_options.enable_per_channel_quantization());
+  // When targeting server TPUs quantized types should be unpacked into
+  // integer ops.
+  quantization_config.mutable_pipeline_config()->set_unpack_quantized_types(
+      true);
+  *quantization_config.mutable_debugger_config() =
+      quantization_options.debugger_config();
+  quantization_config.mutable_static_range_ptq_preset();
+
+  return ExpandPresets(PopulateDefaults(quantization_config));
+}
+
 absl::StatusOr<ExportedModel> QuantizePtqModelPreCalibrationImpl(
     mlir::ModuleOp module_op, mlir::MLIRContext *context,
     const QuantizationOptions &quantization_options,
@@ -183,9 +202,9 @@ absl::StatusOr<ExportedModel> QuantizePtqModelPreCalibrationImpl(
   const bool is_stablehlo = quantization_options.op_set() == OpSet::STABLEHLO;
   // Use StableHLO Quantizer option if opset is specified.
   if (is_stablehlo) {
-    QuantizationConfig quantization_config;
-    *quantization_config.mutable_debugger_config() =
-        quantization_options.debugger_config();
+    const QuantizationConfig quantization_config =
+        GetQuantizationConfigForStaticRangePtq(quantization_options);
+
     PreCalibrationComponent pre_calibration_component(context);
     TF_ASSIGN_OR_RETURN(module_op, pre_calibration_component.Run(
                                        module_op, quantization_config));
@@ -210,14 +229,8 @@ absl::StatusOr<ExportedModel> QuantizePtqModelPostCalibrationImpl(
   const bool is_stablehlo = quantization_options.op_set() == OpSet::STABLEHLO;
   // Use StableHLO Quantizer option if opset is specified.
   if (is_stablehlo) {
-    QuantizationConfig quantization_config{};
-    quantization_config.mutable_static_range_ptq_preset()
-        ->set_enable_per_channel_quantized_weight(
-            quantization_options.enable_per_channel_quantization());
-    // When targeting server TPUs quantized types should be unpacked into
-    // integer ops.
-    quantization_config.mutable_pipeline_config()->set_unpack_quantized_types(
-        true);
+    const QuantizationConfig quantization_config =
+        GetQuantizationConfigForStaticRangePtq(quantization_options);
 
     PostCalibrationComponent post_calibration_component(context);
     TF_ASSIGN_OR_RETURN(module_op, post_calibration_component.Run(

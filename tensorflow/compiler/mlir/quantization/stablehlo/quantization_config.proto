@@ -37,7 +37,21 @@ message RepresentativeDatasetConfig {
 //
 // ```
 // specs {matcher {function_name {regex: ".*"}} method {static_range_ptq {}}}
+// specs {
+//   matcher {function_name {regex: "composite_conv.*"}}
+//   method {static_range_ptq {
+//     input_quantized_types {
+//       key: 1
+//       value {dimension_specs {dimension: 3}}}
+//   }}
+// }
 // ```
+//
+// This preset:
+//   * Applies per-channel quantization for weights (input index 1) of
+//     convolution quantizable unit family. The quantization dimension is 3, the
+//     channel dimension, which assumes the weight tensor is in NHWC format.
+//   * Applies static-range PTQ for all other ops.
 //
 // Next ID: 3
 message StaticRangePtqPreset {
@@ -48,11 +62,16 @@ message StaticRangePtqPreset {
   repeated RepresentativeDatasetConfig representative_datasets = 1;
 
   // NOTE: This field will be deprecated.
-  // Granularity should be controlled in custom configuration, deprecating
-  // this field once available.
-  // If set true, enable channel-wise quantization for all supported ops.
-  // This value is true by default.
-  bool enable_per_channel_quantized_weight = 2;
+  // Granularity should be controlled using `Method`, deprecating this field
+  // once available.
+  //
+  // If set to true, enable channel-wise quantization for:
+  //   * Convolution ops: When the attached `Method` also specifies per-channel
+  //                      quantization.
+  //   * Non-convolution ops: All
+  //
+  // Default value: true
+  bool enable_per_channel_quantized_weight = 2 [deprecated = true];
 }
 
 // Applies int8 per-tensor weight-only quantization for all dot_general op.
@@ -102,12 +121,39 @@ message QuantizationResults {
   repeated QuantizationResult results = 1;
 }
 
+message QuantizedDimension {
+  int32 dimension = 1;  // Should be less than the rank of the quantized tensor.
+}
+
+// Corresponds to StableHLO's `QuantizedTensorElementType`. Type parameters such
+// as `QuantizationParameters` is omitted because they are determined during
+// quantization.
+// See https://github.com/openxla/stablehlo/blob/main/docs/spec.md#types for
+// details.
+//
+// Currently only supports specifying quantization granularity (e.g. for
+// per-channel quantization).
+// TODO: b/331144430 - Support specifying storage types.
+message QuantizedType {
+  // Specifies the granularity of quantization parameters for each dimension of
+  // a quantized tensor. If specified, per-channel quantization is applied. If
+  // not specified, per-tensor quantization is applied.
+  // TODO: Make it a `repeated` field to be able to express multi-channel /
+  // sub-channel quantization.
+  QuantizedDimension dimension_specs = 1;
+}
+
 // A quantization method representing "do not quantize". Mostly used for
 // denylisting quantizable units from quantization.
 message NoQuantization {}
 
-// Configurations for static-range post-training quantization method.
-message StaticRangePtq {}
+// Configurations for static-range post-training quantization method on a
+// quantizable unit.
+message StaticRangePtq {
+  // Operand index -> QuantizedType mapping. Operands that are not specified
+  // here will be quantized with best effort.
+  map<int32, QuantizedType> input_quantized_types = 1;
+}
 
 // Represents a matching method that matches quantizable units by lifted
 // functions' names.

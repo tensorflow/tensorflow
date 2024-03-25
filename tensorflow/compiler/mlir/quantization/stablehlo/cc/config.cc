@@ -14,6 +14,8 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/compiler/mlir/quantization/stablehlo/cc/config.h"
 
+#include <utility>
+
 #include "tensorflow/compiler/mlir/quantization/stablehlo/quantization_config.pb.h"
 
 namespace stablehlo::quantization {
@@ -28,6 +30,62 @@ CalibrationOptions GetDefaultCalibrationOptions() {
 
   return options;
 }
+
+// Returns a default `QuantizationSpec` for performing static-range PTQ on all
+// ops.
+//
+// In textproto, the spec corresponds to:
+//
+// {
+//   {matcher {function_name {regex: ".*"}}
+//   {method {static_range_ptq {}}}
+// }
+QuantizationSpec GetDefaultStaticRangePtqSpec() {
+  QuantizationSpec spec{};
+  // Default for all ops.
+  spec.mutable_matcher()->mutable_function_name()->set_regex(".*");
+  spec.mutable_method()->mutable_static_range_ptq();
+
+  return spec;
+}
+
+// Returns a `QuantizationSpec` for performing static-range PTQ on the
+// convolution quantizable unit family. Enables per-channel quantization for
+// weights, on the channel dimension.
+//
+// In textproto, the spec corresponds to:
+//
+// {
+//   {matcher {function_name {regex: "composite_conv.*"}}}
+//   {method {static_range_ptq
+//     {input_quantized_types {
+//       key: 1,
+//       value {dimension_specs {dimension: 3}}}}
+//   }}
+// }
+QuantizationSpec GetStaticRangePtqSpecForConvolution() {
+  QuantizationSpec spec{};
+
+  // Matches all convolution quantizable unit family.
+  spec.mutable_matcher()->mutable_function_name()->set_regex(
+      "composite_conv.*");
+  StaticRangePtq& static_range_ptq_spec =
+      *spec.mutable_method()->mutable_static_range_ptq();
+
+  // Enable per-channel quantization for convolution weights.
+  QuantizedType conv_weight_quantized_type{};
+
+  // Assumes NHWC format, specifying the channel dimension (3) as the quantized
+  // axis.
+  conv_weight_quantized_type.mutable_dimension_specs()->set_dimension(3);
+
+  // The index of weight operands passed to lifted functions for convolution
+  // is 1.
+  static_range_ptq_spec.mutable_input_quantized_types()->try_emplace(
+      1, std::move(conv_weight_quantized_type));
+
+  return spec;
+};
 
 void ExpandStaticRangePtqPreset(const StaticRangePtqPreset& preset,
                                 QuantizationConfig& config) {
@@ -45,10 +103,10 @@ void ExpandStaticRangePtqPreset(const StaticRangePtqPreset& preset,
   // from `StaticRangePtqPreset` gets populated first and then user-provided
   // explicit `QuantizationSpec`s will be appended.
   QuantizationSpecs new_specs{};
-  QuantizationSpec& spec = *new_specs.add_specs();
-  spec.mutable_matcher()->mutable_function_name()->set_regex(".*");
-  spec.mutable_method()->mutable_static_range_ptq();
+  *new_specs.add_specs() = GetDefaultStaticRangePtqSpec();
+  *new_specs.add_specs() = GetStaticRangePtqSpecForConvolution();
 
+  // Append user-provided specs to override existing specs.
   const QuantizationSpecs& previous_specs = config.specs();
   new_specs.mutable_specs()->Add(previous_specs.specs().begin(),
                                  previous_specs.specs().end());
