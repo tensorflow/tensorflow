@@ -126,6 +126,13 @@ struct CallFrame::Dictionary {
   std::unique_ptr<Attributes> attrs;
 };
 
+struct CallFrame::Array {
+  std::variant<std::vector<int32_t>, std::vector<int64_t>, std::vector<float>>
+      value;  // XLA_FFI_Array::data
+
+  XLA_FFI_Array array = {XLA_FFI_Array_STRUCT_SIZE, nullptr};
+};
+
 struct CallFrame::Scalar {
   std::variant<int32_t, int64_t, float> value;  // XLA_FFI_Scalar::value
 
@@ -265,9 +272,12 @@ CallFrame::~CallFrame() = default;
 // An std::visit overload set for converting CallFrameBuilder::Attribute to
 // CallFrame::Attribute.
 struct CallFrame::ConvertAttribute {
-  template <typename T>
-  CallFrame::Attribute operator()(const T& value) {
-    return CallFrame::Scalar{value};
+  CallFrame::Attribute operator()(const CallFrameBuilder::Array& array) {
+    return CallFrame::Array{array};
+  }
+
+  CallFrame::Attribute operator()(const CallFrameBuilder::Scalar& scalar) {
+    return CallFrame::Scalar{scalar};
   }
 
   CallFrame::Attribute operator()(const std::string& str) {
@@ -295,6 +305,16 @@ static XLA_FFI_DataType GetDataType() {
 // An std::visit overload set to fix up CallFrame::Attribute storage and
 // initialize XLA FFI structs with valid pointers into storage objects.
 struct CallFrame::FixupAttribute {
+  void operator()(CallFrame::Array& array) {
+    auto visitor = [&](auto& value) {
+      using T = typename std::remove_reference_t<decltype(value)>::value_type;
+      array.array.dtype = GetDataType<T>();
+      array.array.size = value.size();
+      array.array.data = value.data();
+    };
+    std::visit(visitor, array.value);
+  }
+
   void operator()(CallFrame::Scalar& scalar) {
     auto visitor = [&](auto& value) {
       using T = std::remove_reference_t<decltype(value)>;
@@ -314,6 +334,10 @@ struct CallFrame::FixupAttribute {
 
 // An std::visit overload set to get CallFrame::Attribute XLA FFI type.
 struct CallFrame::AttributeType {
+  XLA_FFI_AttrType operator()(CallFrame::Array&) {
+    return XLA_FFI_AttrType_ARRAY;
+  }
+
   XLA_FFI_AttrType operator()(CallFrame::Scalar&) {
     return XLA_FFI_AttrType_SCALAR;
   }
@@ -333,6 +357,8 @@ struct CallFrame::AttributeStorage {
   void* operator()(T& value) {
     return &value;
   }
+
+  void* operator()(CallFrame::Array& array) { return &array.array; }
 
   void* operator()(CallFrame::Scalar& scalar) { return &scalar.scalar; }
 

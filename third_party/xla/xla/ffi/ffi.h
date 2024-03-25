@@ -165,6 +165,34 @@ struct ArgDecoding<Buffer<dtype, rank>> {
 // Attributes decoding
 //===----------------------------------------------------------------------===//
 
+#define XLA_FFI_REGISTER_ARRRAY_ATTR_DECODING(T, TYPE)                   \
+  template <>                                                            \
+  struct AttrDecoding<absl::Span<const T>> {                             \
+    using Type = absl::Span<const T>;                                    \
+    static std::optional<Type> Decode(XLA_FFI_AttrType type, void* attr, \
+                                      DiagnosticEngine& diagnostic) {    \
+      if (XLA_FFI_PREDICT_FALSE(type != XLA_FFI_AttrType_ARRAY)) {       \
+        return diagnostic.Emit("Wrong attribute type: expected ")        \
+               << XLA_FFI_AttrType_ARRAY << " but got " << type;         \
+      }                                                                  \
+                                                                         \
+      auto* array = reinterpret_cast<XLA_FFI_Array*>(attr);              \
+      if (XLA_FFI_PREDICT_FALSE(array->dtype != TYPE)) {                 \
+        return diagnostic.Emit("Wrong array data type: expected ")       \
+               << TYPE << " but got " << array->dtype;                   \
+      }                                                                  \
+                                                                         \
+      return absl::Span<const T>(reinterpret_cast<T*>(array->data),      \
+                                 array->size);                           \
+    }                                                                    \
+  }
+
+XLA_FFI_REGISTER_ARRRAY_ATTR_DECODING(int32_t, XLA_FFI_DataType_S32);
+XLA_FFI_REGISTER_ARRRAY_ATTR_DECODING(int64_t, XLA_FFI_DataType_S64);
+XLA_FFI_REGISTER_ARRRAY_ATTR_DECODING(float, XLA_FFI_DataType_F32);
+
+#undef XLA_FFI_REGISTER_SCALAR_ATTR_DECODING
+
 // A type tag to mark i64 attributes as pointers to `T`.
 template <typename T>
 struct Pointer {};

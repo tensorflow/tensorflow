@@ -192,9 +192,10 @@ typedef enum {
 //===----------------------------------------------------------------------===//
 
 typedef enum {
-  XLA_FFI_AttrType_SCALAR = 1,
-  XLA_FFI_AttrType_STRING = 2,
-  XLA_FFI_AttrType_DICTIONARY = 3,
+  XLA_FFI_AttrType_ARRAY = 1,
+  XLA_FFI_AttrType_DICTIONARY = 2,
+  XLA_FFI_AttrType_SCALAR = 3,
+  XLA_FFI_AttrType_STRING = 4,
 } XLA_FFI_AttrType;
 
 //===----------------------------------------------------------------------===//
@@ -231,6 +232,18 @@ struct XLA_FFI_Scalar {
 };
 
 XLA_FFI_DEFINE_STRUCT_TRAITS(XLA_FFI_Scalar, value);
+
+// A struct to pass a dense array to FFI handler.
+struct XLA_FFI_Array {
+  size_t struct_size;
+  void* priv;
+
+  XLA_FFI_DataType dtype;
+  size_t size;
+  void* data;
+};
+
+XLA_FFI_DEFINE_STRUCT_TRAITS(XLA_FFI_Array, data);
 
 struct XLA_FFI_Args {
   size_t struct_size;

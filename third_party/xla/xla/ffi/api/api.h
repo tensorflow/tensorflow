@@ -1096,12 +1096,14 @@ class Handler : public Ffi {
 
 inline std::ostream& operator<<(std::ostream& os, const XLA_FFI_AttrType type) {
   switch (type) {
+    case XLA_FFI_AttrType_ARRAY:
+      return os << "array";
+    case XLA_FFI_AttrType_DICTIONARY:
+      return os << "dictionary";
     case XLA_FFI_AttrType_SCALAR:
       return os << "scalar";
     case XLA_FFI_AttrType_STRING:
       return os << "string";
-    case XLA_FFI_AttrType_DICTIONARY:
-      return os << "dictionary";
   }
 }
 
