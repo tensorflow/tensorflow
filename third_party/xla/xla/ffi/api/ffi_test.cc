@@ -231,6 +231,29 @@ TEST(FfiTest, BindingPlatformStreamInference) {
   (void)Ffi::BindTo(+[](TestStream stream) { return Error::Success(); });
 }
 
+TEST(FfiTest, ArrayAttr) {
+  CallFrameBuilder::AttributesBuilder attrs;
+  attrs.Insert("arr", std::vector<int32_t>({1, 2, 3, 4}));
+
+  CallFrameBuilder builder;
+  builder.AddAttributes(attrs.Build());
+  auto call_frame = builder.Build();
+
+  auto fn = [&](Span<const int32_t> arr) {
+    EXPECT_EQ(arr.size(), 4);
+    EXPECT_EQ(arr[0], 1);
+    EXPECT_EQ(arr[1], 2);
+    EXPECT_EQ(arr[2], 3);
+    EXPECT_EQ(arr[3], 4);
+    return Error::Success();
+  };
+
+  auto handler = Ffi::Bind().Attr<Span<const int32_t>>("arr").To(fn);
+  auto status = Call(*handler, call_frame);
+
+  TF_ASSERT_OK(status);
+}
+
 TEST(FfiTest, PointerAttr) {
   std::string foo = "foo";
 

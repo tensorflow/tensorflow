@@ -1303,6 +1303,77 @@ TEST_F(IndexingAnalysisTest, FusionOpWithSliceOfSlice) {
                           )"))));
 }
 
+TEST_F(IndexingAnalysisTest, FusionOpWithDynSliceOfDynSlice) {
+  auto input_indexing = GetOutputToInputIndexing(ParseAndGetRoot(R"(
+    HloModule m
+    f {
+      %src = s32[150, 64] parameter(0)
+      %of11 = s32[] parameter(1)
+      %of12 = s32[] parameter(2)
+      %of21 = s32[] parameter(3)
+      %of22 = s32[] parameter(4)
+
+      %ds1 = s32[50, 32] dynamic-slice(s32[150, 64] %src,
+        s32[] %of11, s32[] %of12), dynamic_slice_sizes={50, 32}
+
+      ROOT %ds2 = s32[25, 16] dynamic-slice(s32[50, 32] %ds1,
+        s32[] %of21, s32[] %of22), dynamic_slice_sizes={25, 16}
+    }
+    ENTRY e {
+      %p0 = s32[150, 64] parameter(0)
+      %p1 = s32[] parameter(1)
+      %p2 = s32[] parameter(2)
+      %p3 = s32[] parameter(3)
+      %p4 = s32[] parameter(4)
+      ROOT fusion = s32[25, 16] fusion(p0, p1, p2, p3, p4),
+        kind=kLoop, calls=f
+    }
+  )"));
+  EXPECT_THAT(input_indexing.indexing_maps,
+              ElementsAre(ElementsAre(MatchIndexingMap(R"(
+                (d0, d1)[s0, s1, s2, s3] -> (d0 + s0 + s2, d1 + s1 + s3)
+                domain:
+                d0 in [0, 24]
+                d1 in [0, 15]
+                s0 in [0, 100]
+                  hlo: %of11 = s32[] parameter(1)
+                  (d0, d1) -> ()
+                s1 in [0, 32]
+                  hlo: %of12 = s32[] parameter(2)
+                  (d0, d1) -> ()
+                s2 in [0, 25]
+                  hlo: %of21 = s32[] parameter(3)
+                  (d0, d1) -> ()
+                s3 in [0, 16]
+                  hlo: %of22 = s32[] parameter(4)
+                  (d0, d1) -> ()
+                )")),
+                          ElementsAre(MatchIndexingMap(R"(
+                  (d0, d1) -> ()
+                  domain:
+                  d0 in [0, 24]
+                  d1 in [0, 15]
+                )")),
+                          ElementsAre(MatchIndexingMap(R"(
+                  (d0, d1) -> ()
+                  domain:
+                  d0 in [0, 24]
+                  d1 in [0, 15]
+                )")),
+                          ElementsAre(MatchIndexingMap(R"(
+                  (d0, d1) -> ()
+                  domain:
+                  d0 in [0, 24]
+                  d1 in [0, 15]
+                )")),
+                          ElementsAre(MatchIndexingMap(R"(
+                  (d0, d1) -> ()
+                  domain:
+                  d0 in [0, 24]
+                  d1 in [0, 15]
+                )"))));
+}
+
 TEST_F(IndexingAnalysisTest, FusionOpSliceOfAllConcatenateOpInputs) {
   auto input_indexing = GetOutputToInputIndexing(ParseAndGetRoot(R"(
     HloModule m

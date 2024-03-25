@@ -81,6 +81,7 @@ xla_cc_test(
         "//xla/stream_executor",
         "//xla/stream_executor:device_memory",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/types:span",
         "@local_tsl//tsl/lib/core:status_test_util",
         "@local_tsl//tsl/platform:status_matchers",
         "@local_tsl//tsl/platform:test",
