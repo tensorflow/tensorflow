@@ -47,10 +47,15 @@ inline constexpr StringRef kQuantizationMethodAttr = "_quantization_method";
 // function lifting will happen.
 enum FunctionCallOpType { TFPartitionedCallOp = 0, TFXlaCallModuleOp = 1 };
 
-// Checks if the op is inside a lifted function.
-bool IsInLiftedFunc(Operation& op);
+// Checks if an op is inside a lifted function.
+// If the given op pointer is a nullptr, returns false.
+bool IsInLiftedFunc(Operation* op);
 
-// Checks if the given einsum op is supported for XlaDotV2 quantization.
+// Checks if the op is inside a StableHLO op with region.
+// If the given op pointer is a nullptr, returns false.
+bool IsInStableHloOpRegion(Operation* op);
+
+// Checks if a given einsum op is supported for XlaDotV2 quantization.
 bool IsEinsumSupportedByXlaDotV2(StringAttr equation_attr);
 
 // Gets the quantization method from the given `XlaCallModuleOp`. It is

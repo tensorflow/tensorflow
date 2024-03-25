@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/algorithm/container.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
@@ -67,7 +68,7 @@ TEST_F(LiftAsFunctionCallTest, LiftedFunctionSucceeds) {
 
   auto dot_general_op = FindOperationOfType<mlir::stablehlo::DotGeneralOp>(
       composite_dot_general_fn);
-  EXPECT_TRUE(IsInLiftedFunc(*dot_general_op));
+  EXPECT_TRUE(IsInLiftedFunc(dot_general_op));
 }
 
 constexpr absl::string_view kModuleStableHlo = R"mlir(
@@ -241,6 +242,49 @@ TEST_F(LiftAsFunctionCallTest,
   EXPECT_THAT(method,
               StatusIs(absl::StatusCode::kInternal,
                        HasSubstr("Failed to parse Method from textproto")));
+}
+
+constexpr absl::string_view kFunctionWithRegion =
+    R"mlir(
+  func.func @main(%arg0: tensor<i1>, %arg1: tensor<f32>, %arg2: tensor<f32>) -> tensor<f32> {
+    %if = "stablehlo.if"(%arg0) ({
+      %0 = stablehlo.add %arg1, %arg1 : tensor<f32>
+      stablehlo.return %0 : tensor<f32>
+    }, {
+      %1 = stablehlo.add %arg2, %arg2 : tensor<f32>
+      stablehlo.return %1 : tensor<f32>
+    }) : (tensor<i1>) -> (tensor<f32>)
+    %subtract = stablehlo.subtract %if, %if : tensor<f32>
+    return %subtract : tensor<f32>
+  }
+)mlir";
+
+TEST_F(LiftAsFunctionCallTest, IsInRegionSucceedsWhenOpInsideRegion) {
+  const OwningOpRef<ModuleOp> module_op =
+      ParseModuleOpString(kFunctionWithRegion);
+  ASSERT_TRUE(module_op);
+
+  func::FuncOp main_fn = FindMainFuncOp(*module_op);
+  ASSERT_THAT(main_fn, NotNull());
+
+  auto if_op = FindOperationOfType<mlir::stablehlo::IfOp>(main_fn);
+  Block& block = if_op->getRegion(0).front();
+  Operation& add_op = *absl::c_find_if(block, [](Operation& entry) {
+    return dyn_cast_or_null<::mlir::stablehlo::AddOp>(&entry);
+  });
+  EXPECT_TRUE(IsInStableHloOpRegion(&add_op));
+}
+
+TEST_F(LiftAsFunctionCallTest, IsInRegionFailsWhenOpNotInsideRegion) {
+  const OwningOpRef<ModuleOp> module_op =
+      ParseModuleOpString(kFunctionWithRegion);
+  ASSERT_TRUE(module_op);
+
+  func::FuncOp main_fn = FindMainFuncOp(*module_op);
+  ASSERT_THAT(main_fn, NotNull());
+
+  auto subtract_op = FindOperationOfType<mlir::stablehlo::SubtractOp>(main_fn);
+  EXPECT_FALSE(IsInStableHloOpRegion(subtract_op));
 }
 
 }  // namespace
