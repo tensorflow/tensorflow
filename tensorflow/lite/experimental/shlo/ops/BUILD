@@ -934,3 +934,32 @@ cc_test(
         "@com_google_googletest//:gtest_main",
     ],
 )
+
+cc_library(
+    name = "xor",
+    srcs = ["xor.cc"],
+    hdrs = ["xor.h"],
+    deps = [
+        ":binary_elementwise",
+        ":util",
+        "//tensorflow/lite/experimental/shlo:data_type",
+        "//tensorflow/lite/experimental/shlo:dispatch",
+        "//tensorflow/lite/experimental/shlo:tensor",
+        "@com_google_absl//absl/status",
+    ],
+)
+
+cc_test(
+    name = "xor_test",
+    srcs = ["xor_test.cc"],
+    deps = [
+        ":binary_elementwise_test_util",
+        ":test_util",
+        ":xor",
+        "//tensorflow/lite/experimental/shlo:data_type",
+        "//tensorflow/lite/experimental/shlo:shape",
+        "//tensorflow/lite/experimental/shlo:status_matcher",
+        "//tensorflow/lite/experimental/shlo:tensor",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
