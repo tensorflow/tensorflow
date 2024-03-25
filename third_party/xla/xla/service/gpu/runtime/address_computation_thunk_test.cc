@@ -1226,4 +1226,187 @@ TEST(AddressComputationThunkTest, SlicedTupledOperandGemm) {
   ASSERT_EQ(dst, std::vector<float>({9}));
 }
 
+TEST(AddressComputationThunkTest, SlicedMemcpyOOB) {
+  se::StreamExecutor* executor = GpuExecutor();
+
+  se::Stream stream(executor);
+  TF_ASSERT_OK(stream.Initialize());
+
+  int64_t src_count = 8 * 8 * 10 * 2;
+  int64_t dst_count = 2 * 2 * 2 * 2;
+  int64_t slice_count = 2 * 2;
+  int64_t src_length = sizeof(int32_t) * src_count;
+  int64_t dst_length = sizeof(int32_t) * dst_count;
+  int64_t offset_length = sizeof(int64_t);
+  int64_t slice_length = sizeof(int32_t) * slice_count;
+
+  // Step 1:
+  // Prepare embedded and address computation thunks.
+
+  // Preparing buffer allocation slices for thunk creations.
+  BufferAllocation alloc_src(/*index=*/0, src_length, /*color=*/0);
+  BufferAllocation::Slice slice_src(&alloc_src, 0, src_length);
+
+  BufferAllocation alloc_dst(/*index=*/1, dst_length, /*color=*/0);
+  BufferAllocation::Slice slice_dst(&alloc_dst, 0, dst_length);
+
+  BufferAllocation alloc_src_offset_0(/*index=*/2, offset_length, /*color=*/0);
+  BufferAllocation::Slice slice_src_offset_0(&alloc_src_offset_0, 0,
+                                             offset_length);
+
+  BufferAllocation alloc_src_offset_1(/*index=*/3, offset_length, /*color=*/0);
+  BufferAllocation::Slice slice_src_offset_1(&alloc_src_offset_1, 0,
+                                             offset_length);
+
+  BufferAllocation alloc_src_offset_2(/*index=*/4, offset_length, /*color=*/0);
+  BufferAllocation::Slice slice_src_offset_2(&alloc_src_offset_2, 0,
+                                             offset_length);
+
+  BufferAllocation alloc_src_offset_3(/*index=*/5, offset_length, /*color=*/0);
+  BufferAllocation::Slice slice_src_offset_3(&alloc_src_offset_3, 0,
+                                             offset_length);
+
+  BufferAllocation alloc_dst_offset_0(/*index=*/6, offset_length, /*color=*/0);
+  BufferAllocation::Slice slice_dst_offset_0(&alloc_dst_offset_0, 0,
+                                             offset_length);
+
+  BufferAllocation alloc_dst_offset_1(/*index=*/7, offset_length, /*color=*/0);
+  BufferAllocation::Slice slice_dst_offset_1(&alloc_dst_offset_1, 0,
+                                             offset_length);
+
+  BufferAllocation alloc_dst_offset_2(/*index=*/8, offset_length, /*color=*/0);
+  BufferAllocation::Slice slice_dst_offset_2(&alloc_dst_offset_2, 0,
+                                             offset_length);
+
+  BufferAllocation alloc_dst_offset_3(/*index=*/9, offset_length, /*color=*/0);
+  BufferAllocation::Slice slice_dst_offset_3(&alloc_dst_offset_3, 0,
+                                             offset_length);
+
+  // Fake slices for embedded thunk creation.
+  BufferAllocation alloc_src_fake(/*index=*/0, slice_length, /*color=*/0);
+  BufferAllocation::Slice slice_src_fake(&alloc_src_fake, 0, slice_length);
+
+  BufferAllocation alloc_dst_fake(/*index=*/1, slice_length, /*color=*/0);
+  BufferAllocation::Slice slice_dst_fake(&alloc_dst_fake, 0, slice_length);
+
+  // Preparing custom call thunk: setting up call target and operands + results
+  // buffers.
+  auto registration = xla::ffi::FindHandler("__xla_test$$memcpy", PLATFORM);
+  ASSERT_TRUE(registration.ok());
+
+  std::vector<std::optional<CustomCallThunk::Slice>> operands{
+      CustomCallThunk::Slice{slice_src_fake,
+                             ShapeUtil::MakeShape(PrimitiveType::S32, {2, 2})}};
+  std::vector<std::optional<CustomCallThunk::Slice>> results{
+      CustomCallThunk::Slice{slice_dst_fake,
+                             ShapeUtil::MakeShape(PrimitiveType::S32, {2, 2})}};
+
+  // Creating embedded custom call thunk.
+  ThunkSequence seq;
+  seq.emplace_back(std::make_unique<CustomCallThunk>(
+      Thunk::ThunkInfo(nullptr), registration->handler, operands, results,
+      /*attributes=*/CustomCallThunk::AttributesMap(),
+      /*called_computation=*/nullptr));
+
+  // Wrapping address computation thunk around the custom call thunk.
+  std::vector<BufferAllocation::Slice> slice_src_offsets{
+      slice_src_offset_0, slice_src_offset_1, slice_src_offset_2,
+      slice_src_offset_3};
+  std::vector<BufferAllocation::Slice> slice_dst_offsets{
+      slice_dst_offset_0, slice_dst_offset_1, slice_dst_offset_2,
+      slice_dst_offset_3};
+  AddressComputationThunk thunk(
+      Thunk::ThunkInfo(nullptr),
+      std::make_unique<ThunkSequence>(std::move(seq)), {slice_src, slice_dst},
+      {slice_src_offsets, slice_dst_offsets},
+      {ShapeUtil::MakeShape(PrimitiveType::S32, {8, 8, 10, 2}),
+       ShapeUtil::MakeShape(PrimitiveType::S32, {2, 2, 2, 2})},
+      // Make sure to pass a dst shape with the same rank as src shape (i.e.
+      // original slice result and not bitcasted one)
+      {ShapeUtil::MakeShape(PrimitiveType::S32, {1, 1, 2, 2}),
+       ShapeUtil::MakeShape(PrimitiveType::S32, {1, 1, 2, 2})},
+      {sizeof(int64_t), sizeof(int64_t)});
+
+  // Step 2:
+  // Execute address computation thunk.
+  //
+  // Given a `src` tensor of shape s32[8,8,10,2]{3,2,1,0}
+  // The `src` slice that we want to copy from will be equivalent to this static
+  // slice op:
+  // s32[1,1,2,2]{3,2,1,0} slice(src), slice={[3:4], [5:6], [2:4], [0:2]}
+  //
+  // Given a `dst` tensor of shape s32[2,2,2,2]{3,2,1,0}
+  // The `dst` slice that we want to copy into will be equivalent to this static
+  // slice op:
+  // s32[1,1,2,2]{3,2,1,0} slice(dst), slice={[1:2], [1:2], [0:2], [0:2]}
+
+  // Preparing memory for thunk arguments.
+  se::DeviceMemory<int32_t> src = executor->AllocateArray<int32_t>(src_count);
+  std::vector<int32_t> src_arr(src_count, 0);
+  for (unsigned i = 0; i < src_count; ++i) src_arr[i] = i;
+  TF_ASSERT_OK(stream.Memcpy(&src, src_arr.data(), src_length));
+
+  se::DeviceMemory<int32_t> dst = executor->AllocateArray<int32_t>(dst_count);
+  TF_ASSERT_OK(stream.MemZero(&dst, dst_length));
+
+  se::DeviceMemory<int64_t> src_offset_0 = executor->AllocateArray<int64_t>(1);
+  se::DeviceMemory<int64_t> src_offset_1 = executor->AllocateArray<int64_t>(1);
+  se::DeviceMemory<int64_t> src_offset_2 = executor->AllocateArray<int64_t>(1);
+  se::DeviceMemory<int64_t> src_offset_3 = executor->AllocateArray<int64_t>(1);
+  std::vector<int64_t> src_ref_offset_arr{3, 5, 2, 0};
+  std::vector<int64_t> src_offset_arr{3, 5, 2, -3};
+  TF_ASSERT_OK(stream.Memcpy(&src_offset_0, &src_offset_arr[0], offset_length));
+  TF_ASSERT_OK(stream.Memcpy(&src_offset_1, &src_offset_arr[1], offset_length));
+  TF_ASSERT_OK(stream.Memcpy(&src_offset_2, &src_offset_arr[2], offset_length));
+  TF_ASSERT_OK(stream.Memcpy(&src_offset_3, &src_offset_arr[3], offset_length));
+
+  se::DeviceMemory<int64_t> dst_offset_0 = executor->AllocateArray<int64_t>(1);
+  se::DeviceMemory<int64_t> dst_offset_1 = executor->AllocateArray<int64_t>(1);
+  se::DeviceMemory<int64_t> dst_offset_2 = executor->AllocateArray<int64_t>(1);
+  se::DeviceMemory<int64_t> dst_offset_3 = executor->AllocateArray<int64_t>(1);
+  std::vector<int64_t> dst_ref_offset_arr{1, 1, 0, 0};
+  std::vector<int64_t> dst_offset_arr{3, 2, 5, -4};
+  TF_ASSERT_OK(stream.Memcpy(&dst_offset_0, &dst_offset_arr[0], offset_length));
+  TF_ASSERT_OK(stream.Memcpy(&dst_offset_1, &dst_offset_arr[1], offset_length));
+  TF_ASSERT_OK(stream.Memcpy(&dst_offset_2, &dst_offset_arr[2], offset_length));
+  TF_ASSERT_OK(stream.Memcpy(&dst_offset_3, &dst_offset_arr[3], offset_length));
+
+  // Preparing parameters for thunk execution.
+  ServiceExecutableRunOptions run_options;
+  BufferAllocations allocations(
+      {src, dst, src_offset_0, src_offset_1, src_offset_2, src_offset_3,
+       dst_offset_0, dst_offset_1, dst_offset_2, dst_offset_3},
+      0, executor->GetAllocator());
+
+  Thunk::ExecuteParams params = Thunk::ExecuteParams::Create(
+      run_options, allocations, &stream, &stream, {}, nullptr, nullptr);
+
+  Thunk::ExecutableSource source = {/*text=*/"", /*binary=*/{}};
+  TF_ASSERT_OK(
+      thunk.Initialize({executor, source, &allocations, &stream, &stream}));
+
+  // Executing address computation thunk.
+  TF_ASSERT_OK(thunk.ExecuteOnStream(params));
+  TF_ASSERT_OK(stream.BlockHostUntilDone());
+
+  // Copying `dst` data back to host for verification.
+  std::vector<int32_t> out(dst_count, 0);
+  TF_ASSERT_OK(stream.Memcpy(out.data(), dst, dst_length));
+
+  // Verifying that the right slice of `src` was copied to `dst`.
+  std::vector<int32_t> ref(dst_count, 0);
+  int64_t src_offset_val =
+      src_ref_offset_arr[3] +
+      2 * (src_ref_offset_arr[2] +
+           10 * (src_ref_offset_arr[1] + 8 * src_ref_offset_arr[0]));
+  int64_t dst_offset_val =
+      dst_ref_offset_arr[3] +
+      2 * (dst_ref_offset_arr[2] +
+           2 * (dst_ref_offset_arr[1] + 2 * dst_ref_offset_arr[0]));
+  std::copy(src_arr.begin() + src_offset_val,
+            src_arr.begin() + src_offset_val + slice_count,
+            ref.begin() + dst_offset_val);
+  ASSERT_EQ(out, ref);
+}
+
 }  // namespace xla::gpu

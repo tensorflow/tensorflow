@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/service/gpu/runtime/address_computation_thunk.h"
 
+#include <algorithm>
 #include <cstdint>
 #include <memory>
 #include <optional>
@@ -151,7 +152,9 @@ absl::Status AddressComputationThunk::ExecuteOnStream(
 
     // Get offset for `argument_idx`-th argument, which has `dst_shape.rank()`
     // components.
-    for (auto [offset_idx, slice] : llvm::enumerate(*offset_slice)) {
+    for (auto [offset_idx, values] : llvm::enumerate(llvm::zip(
+             *offset_slice, src_shape.dimensions(), dst_shape.dimensions()))) {
+      auto [slice, src_dim, dst_dim] = values;
       se::DeviceMemoryBase offset_src =
           orig_allocations.GetDeviceAddress(slice);
       int64_t* offset_dst = &offsets_base[argument_idx + offset_idx];
@@ -165,7 +168,11 @@ absl::Status AddressComputationThunk::ExecuteOnStream(
             "Failed to retrieve all slice offset values on stream %p: %s",
             &stream, blocked.message()));
       }
-      slice_starts.push_back(*offset_dst);
+      // Clamp start indices:
+      // start_indices[i] = min(max(start_indices[i], 0),
+      //                        operand.dimension_size[i] - size_indices[i])
+      auto start_index = std::min(std::max(*offset_dst, 0L), src_dim - dst_dim);
+      slice_starts.push_back(start_index);
     }
 
     // Compute new slice. No need to copy the content to new buffers as we can
