@@ -315,6 +315,10 @@ class IndexingMap {
   // Removes unused symbols from the `affine_map_` and constraints.
   void RemoveUnusedSymbols();
 
+  // Rescales all symbols that are sufficiently constrained through `s? mod x =
+  // [N, N]` constraints. Returns true if a rescale took place, otherwise false.
+  bool RescaleSymbols();
+
  private:
   IndexingMap() = default;
 

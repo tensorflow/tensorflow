@@ -540,6 +540,85 @@ TEST_F(IndexingMapTest,
     )"));
 }
 
+TEST_F(IndexingMapTest, RescaleSymbols_Simple) {
+  auto serialized_map = "(d0)[s0, s1, s2] -> (s2, d0, s1, s0 floordiv 6)";
+  IndexingMap indexing_map = IndexingMap::FromTensorSizes(
+      ParseAffineMap(serialized_map, &mlir_context_), {4}, {7, 2, 6});
+  indexing_map.AddConstraint(ParseAffineExpr("s0 mod 6", &mlir_context_),
+                             Interval{0, 0});
+
+  EXPECT_TRUE(indexing_map.RescaleSymbols());
+  EXPECT_THAT(indexing_map.ToString(printer_), MatchIndexingString(R"(
+      (d0)[s0, s1, s2] -> (s2, d0, s1, s0)
+      domain:
+        d0 in [0, 3]
+        s0 in [0, 1]
+        s1 in [0, 1]
+        s2 in [0, 5]
+    )"));
+}
+
+TEST_F(IndexingMapTest, RescaleSymbols_WithShift) {
+  auto serialized_map = "(d0)[s0, s1, s2] -> (s2, d0, s1, s0)";
+  IndexingMap indexing_map = IndexingMap::FromTensorSizes(
+      ParseAffineMap(serialized_map, &mlir_context_), {4}, {42, 2, 6});
+  indexing_map.AddConstraint(ParseAffineExpr("s0 mod 6", &mlir_context_),
+                             Interval{3, 3});
+
+  // [BEFORE] Allowed values for s0: 3, 9, 15, ..., 39 = (6 * 6 + 3)
+  // [AFTER] Allowed values for s0: 0, 1, 2, ..., 6
+  EXPECT_TRUE(indexing_map.RescaleSymbols());
+  EXPECT_THAT(indexing_map.ToString(printer_), MatchIndexingString(R"(
+      (d0)[s0, s1, s2] -> (s2, d0, s1, s0 * 6 + 3)
+      domain:
+        d0 in [0, 3]
+        s0 in [0, 6]
+        s1 in [0, 1]
+        s2 in [0, 5]
+    )"));
+}
+
+TEST_F(IndexingMapTest, RescaleSymbols_TwoModConstraints) {
+  auto serialized_map = "(d0)[s0, s1, s2] -> (s2, d0, s1, s0 floordiv 6)";
+  IndexingMap indexing_map = IndexingMap::FromTensorSizes(
+      ParseAffineMap(serialized_map, &mlir_context_), {4}, {7, 2, 6});
+  indexing_map.AddConstraint(ParseAffineExpr("s0 mod 2", &mlir_context_),
+                             Interval{0, 0});
+  indexing_map.AddConstraint(ParseAffineExpr("s0 mod 3", &mlir_context_),
+                             Interval{0, 0});
+
+  EXPECT_TRUE(indexing_map.RescaleSymbols());
+  EXPECT_THAT(indexing_map.ToString(printer_), MatchIndexingString(R"(
+      (d0)[s0, s1, s2] -> (s2, d0, s1, s0)
+      domain:
+        d0 in [0, 3]
+        s0 in [0, 1]
+        s1 in [0, 1]
+        s2 in [0, 5]
+    )"));
+}
+
+TEST_F(IndexingMapTest, RescaleSymbols_RescaledSymbolInOtherConstraint) {
+  auto serialized_map = "(d0)[s0, s1, s2] -> (s2, d0, s1, s0)";
+  IndexingMap indexing_map = IndexingMap::FromTensorSizes(
+      ParseAffineMap(serialized_map, &mlir_context_), {4}, {10, 2, 6});
+  indexing_map.AddConstraint(ParseAffineExpr("s0 mod 6", &mlir_context_),
+                             Interval{3, 3});
+  indexing_map.AddConstraint(ParseAffineExpr("s0 * s2", &mlir_context_),
+                             Interval{0, 28});
+
+  EXPECT_TRUE(indexing_map.RescaleSymbols());
+  EXPECT_THAT(indexing_map.ToString(printer_), MatchIndexingString(R"(
+      (d0)[s0, s1, s2] -> (s2, d0, s1, s0 * 6 + 3)
+      domain:
+        d0 in [0, 3]
+        s0 in [0, 1]
+        s1 in [0, 1]
+        s2 in [0, 5]
+        (s0 * 6 + 3) * s2 in [0, 28]
+    )"));
+}
+
 TEST_F(IndexingMapTest, RangeEvaluatorTest) {
   RangeEvaluator range_evaluator(
       {Interval{0, 9}, Interval{-10, -1}, Interval{-1, 2}, Interval{0, 0}}, {},

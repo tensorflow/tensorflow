@@ -1213,5 +1213,53 @@ IndexingMap ComposeIndexingMaps(const IndexingMap& first,
   return composed_indexing_map;
 }
 
+bool IndexingMap::RescaleSymbols() {
+  MergeModConstraints();
+
+  std::vector<AffineExpr> to_delete;
+
+  for (const auto& [expr, range] : constraints_) {
+    if (range.lower != range.upper) continue;
+    auto shift_value = range.lower;
+
+    if (expr.getKind() != AffineExprKind::Mod) continue;
+    auto mod_expr = mlir::cast<AffineBinaryOpExpr>(expr);
+
+    auto constant_expr = mlir::dyn_cast<AffineConstantExpr>(mod_expr.getRHS());
+    if (!constant_expr) continue;
+
+    // We don't rescale mod expressions with non-positive divisors.
+    if (constant_expr.getValue() <= 0) continue;
+    auto scaling_factor = constant_expr.getValue();
+
+    if (mod_expr.getLHS().getKind() != AffineExprKind::SymbolId) continue;
+    auto symbol_expr = mlir::cast<AffineSymbolExpr>(mod_expr.getLHS());
+
+    affine_map_ = affine_map_.replace(
+        symbol_expr, constant_expr * symbol_expr + shift_value,
+        affine_map_.getNumDims(), affine_map_.getNumSymbols());
+
+    for (auto& [other_expr, other_range] : constraints_) {
+      if (other_expr == expr) continue;
+      if (!other_expr.isFunctionOfSymbol(symbol_expr.getPosition())) continue;
+
+      other_expr = other_expr.replace(
+          symbol_expr, constant_expr * symbol_expr + shift_value);
+    }
+
+    auto& symbol_range = range_vars_[symbol_expr.getPosition()].range;
+    symbol_range.lower = (symbol_range.lower - shift_value) / scaling_factor;
+    symbol_range.upper = (symbol_range.upper - shift_value) / scaling_factor;
+
+    to_delete.emplace_back(expr);
+  }
+
+  for (const auto& expr : to_delete) {
+    constraints_.erase(expr);
+  }
+
+  return !to_delete.empty();
+}
+
 }  // namespace gpu
 }  // namespace xla
