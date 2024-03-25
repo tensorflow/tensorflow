@@ -445,7 +445,7 @@ absl::StatusOr<bool> RunOnComputation(HloComputation* computation,
                                       AutotuneConfig config) {
   bool changed = false;
   for (HloInstruction* instr : computation->instructions()) {
-    if (IsCublasGemm(*instr) || IsCublasLtMatmulF8(*instr)) {
+    if (IsCublasGemm(*instr)) {
       TF_ASSIGN_OR_RETURN(bool result, RunOnInstruction(instr, config));
       changed |= result;
     }
