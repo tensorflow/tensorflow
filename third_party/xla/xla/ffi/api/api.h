@@ -694,7 +694,10 @@ struct internal::Decode<internal::AttrTag<T>> {
 
     // Attribute name does not match.
     std::string_view attr_name_view = {attr_name->ptr, attr_name->len};
-    if (attr_name_view != ctx.attrs_names[i]) return std::nullopt;
+    if (attr_name_view != ctx.attrs_names[i]) {
+      return diagnostic.Emit("Attribute name mismatch: ")
+             << attr_name_view << " vs " << ctx.attrs_names[i];
+    }
 
     return AttrDecoding<T>::Decode(attr_type, attr, diagnostic);
   }

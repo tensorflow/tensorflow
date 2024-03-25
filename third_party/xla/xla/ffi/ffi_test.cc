@@ -21,6 +21,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/status/status.h"
+#include "absl/strings/match.h"
 #include "absl/types/span.h"
 #include "xla/ffi/call_frame.h"
 #include "xla/ffi/ffi_api.h"
@@ -377,9 +378,18 @@ TEST(FfiTest, DecodingErrors) {
 
   auto status = Call(*handler, call_frame);
 
-  ASSERT_EQ(
+  EXPECT_TRUE(absl::StrContains(
       status.message(),
-      "Failed to decode all FFI handler operands (bad operands at: 0, 1, 3)");
+      "Failed to decode all FFI handler operands (bad operands at: 0, 1, 3)"));
+
+  EXPECT_TRUE(absl::StrContains(
+      status.message(), "Attribute name mismatch: i32 vs not_i32_should_fail"));
+
+  EXPECT_TRUE(absl::StrContains(
+      status.message(), "Attribute name mismatch: i64 vs not_i64_should_fail"));
+
+  EXPECT_TRUE(absl::StrContains(
+      status.message(), "Attribute name mismatch: str vs not_str_should_fail"));
 }
 
 TEST(FfiTest, BufferBaseArgument) {

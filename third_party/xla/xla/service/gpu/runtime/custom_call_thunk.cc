@@ -15,14 +15,20 @@ limitations under the License.
 
 #include "xla/service/gpu/runtime/custom_call_thunk.h"
 
+#include <cstdint>
 #include <optional>
 #include <string>
 #include <utility>
 #include <vector>
 
 #include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "llvm/ADT/TypeSwitch.h"
+#include "mlir/IR/Attributes.h"  // from @llvm-project
+#include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "xla/executable_run_options.h"
 #include "xla/ffi/api/c_api.h"
 #include "xla/ffi/call_frame.h"
@@ -182,6 +188,19 @@ absl::StatusOr<CustomCallThunk::AttributesMap> BuildAttributesMap(
       }
     };
 
+    auto arr = [&](mlir::DenseArrayAttr arr) {
+      if (auto dense = mlir::dyn_cast<mlir::DenseI32ArrayAttr>(arr)) {
+        attributes[name] = dense.asArrayRef().vec();
+        return absl::OkStatus();
+      } else if (auto dense = mlir::dyn_cast<mlir::DenseI64ArrayAttr>(arr)) {
+        attributes[name] = dense.asArrayRef().vec();
+        return absl::OkStatus();
+      }
+
+      return absl::InvalidArgumentError(
+          absl::StrCat("Unsupported array element type for attribute: ", name));
+    };
+
     auto str = [&](mlir::StringAttr str) {
       attributes[name] = str.getValue().str();
       return absl::OkStatus();
@@ -191,6 +210,7 @@ absl::StatusOr<CustomCallThunk::AttributesMap> BuildAttributesMap(
         llvm::TypeSwitch<mlir::Attribute, Status>(kv.getValue())
             .Case<mlir::IntegerAttr>(integer)
             .Case<mlir::FloatAttr>(fp)
+            .Case<mlir::DenseArrayAttr>(arr)
             .Case<mlir::StringAttr>(str)
             .Default([&](mlir::Attribute) {
               return absl::InvalidArgumentError(absl::StrCat(
