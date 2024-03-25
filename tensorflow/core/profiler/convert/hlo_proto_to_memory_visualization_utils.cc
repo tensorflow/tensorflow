@@ -28,6 +28,7 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
@@ -216,6 +217,10 @@ class HloProtoBufferWrapper {
 
   const BufferAllocationStruct& GetBufferAllocation(
       int64_t buffer_allocation_id) const {
+    if (!id_to_buffer_allocation_.contains(buffer_allocation_id)) {
+      LOG(DFATAL) << "buffer_allocation_id " << buffer_allocation_id
+                  << " not found.";
+    }
     return *id_to_buffer_allocation_.at(buffer_allocation_id);
   }
 
@@ -230,6 +235,9 @@ class HloProtoBufferWrapper {
   }
 
   LogicalBufferStruct& GetLogicalBuffer(int64_t logical_buffer_id) const {
+    if (!id_to_logical_buffer_.contains(logical_buffer_id)) {
+      LOG(DFATAL) << "logical_buffer_id " << logical_buffer_id << "not found.";
+    }
     return *id_to_logical_buffer_.at(logical_buffer_id);
   }
 
@@ -294,9 +302,17 @@ class HloProtoBufferWrapper {
           std::make_unique<BufferAllocationStruct>(buffer_allocation);
       for (const auto& assigned : buffer_allocation.assigned()) {
         const auto id = assigned.logical_buffer_id();
+        if (!id_to_logical_buffer_proto.contains(id)) {
+          LOG(DFATAL) << "logical_buffer_id " << id << " not found.";
+          continue;
+        }
         const auto* logical_buffer = id_to_logical_buffer_proto.at(id);
-        const auto* instruction =
-            unique_id_to_hlo.at(logical_buffer->defined_at().instruction_id());
+        int64_t inst_id = logical_buffer->defined_at().instruction_id();
+        if (!unique_id_to_hlo.contains(inst_id)) {
+          LOG(DFATAL) << "instruction_id " << inst_id << " not found.";
+          continue;
+        }
+        const auto* instruction = unique_id_to_hlo.at(inst_id);
         id_to_logical_buffer_[id] = std::make_unique<LogicalBufferStruct>(
             *logical_buffer, *buffer_allocation_s, *instruction,
             assigned.offset());
@@ -328,6 +344,10 @@ class HloProtoBufferWrapper {
           hlo_proto_.buffer_assignment().heap_simulator_traces(i);
       int64_t event_count = 0;
       for (const auto& event : heap_simulator_trace.events()) {
+        if (!id_to_logical_buffer_.contains(event.buffer_id())) {
+          LOG(DFATAL) << "buffer_id " << event.buffer_id() << "not found.";
+          continue;
+        }
         const auto& logical_buffer =
             id_to_logical_buffer_.at(event.buffer_id());
         if (logical_buffer->color() == memory_color) {
@@ -895,6 +915,11 @@ void ConvertAllocationTimeline(const HloProtoBufferWrapper& wrapper,
     if (!heap_simulator_trace_id) continue;
     buffer_allocation_offsets.push_back(total_y_size);
     total_y_size += buffer_allocation->size();
+    if (*heap_simulator_trace_id >= heap_simulator_traces.size()) {
+      LOG(DFATAL) << "heap_simulator_trace_id " << *heap_simulator_trace_id
+                  << " out of bounds.";
+      continue;
+    }
     total_x_size = std::max<size_t>(
         total_x_size,
         heap_simulator_traces.at(*heap_simulator_trace_id).events_size());

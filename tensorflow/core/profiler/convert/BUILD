@@ -755,6 +755,7 @@ cc_library(
         "//tensorflow/core/profiler/protobuf:memory_viewer_preprocess_proto_cc",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
