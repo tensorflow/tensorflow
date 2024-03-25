@@ -119,7 +119,10 @@ inline absl::Status ToAbslStatus(const ::absl::Status& s) { return s; }
 // the Tensorflow C-API.
 // A more robust API would be to get both a `char*` of the beginning of the
 // string, plus the size (see e.g. `XlaCustomCallStatusSetFailure`).
-const char* NullTerminatedMessage(const Status& status);
+ABSL_DEPRECATE_AND_INLINE()
+inline const char* NullTerminatedMessage(const absl::Status& status) {
+  return absl::StatusMessageAsCStr(status);
+}
 
 // TODO(b/197552541) Move this namespace to errors.h.
 namespace errors {
