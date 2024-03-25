@@ -84,7 +84,6 @@ tf_gen_op_libs(
         "set_ops",
         "script_ops",
         "sendrecv_ops",
-        "sparse_csr_matrix_ops",
         "sparse_ops",
         "spectral_ops",
         "state_ops",
@@ -99,6 +98,18 @@ tf_gen_op_libs(
     deps = [
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
+    ],
+)
+
+tf_gen_op_libs(
+    is_external = False,
+    op_lib_names = ["sparse_csr_matrix_ops"],
+    sub_directory = "",
+    deps = [
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
     ],
 )
 
