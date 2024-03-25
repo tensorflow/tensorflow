@@ -885,7 +885,6 @@ def set_clang_compiler_path_win(environ_cp):
       error_msg=(
           'Invalid clang path. %s cannot be found. Note that Clang is now'
           'preferred compiler. You may use MSVC by removing --config=win_clang'
-  
       ),
   )
 
@@ -894,7 +893,6 @@ def set_clang_compiler_path_win(environ_cp):
   write_to_bazelrc('build --repo_env=BAZEL_COMPILER=%s' % clang_compiler_path)
 
   return clang_compiler_path
-
 
 def retrieve_clang_version(clang_executable):
   """Retrieve installed clang version.
