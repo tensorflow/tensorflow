@@ -883,9 +883,9 @@ def set_clang_compiler_path_win(environ_cp):
       check_success=os.path.exists,
       resolve_symlinks=True,
       error_msg=(
-          'Invalid clang path. %s cannot be found. Note that TensorFlow now'
-          ' requires clang to compile. You may override this behavior by'
-          ' setting TF_NEED_CLANG=0'
+          'Invalid clang path. %s cannot be found. Note that Clang is now'
+          'preferred compiler. You may use MSVC by removing --config=win_clang'
+  
       ),
   )
 
