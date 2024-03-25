@@ -22,6 +22,7 @@ limitations under the License.
 #include <string>
 
 #include "absl/container/flat_hash_set.h"
+#include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/match.h"
@@ -495,6 +496,17 @@ absl::StatusOr<Method> GetQuantizationMethod(
   }
 
   return quantization_method;
+}
+
+Method GetQuantizationMethodOrDefault(TF::XlaCallModuleOp xla_call_module_op) {
+  absl::StatusOr<Method> method = GetQuantizationMethod(xla_call_module_op);
+  if (method.status().code() == absl::StatusCode::kInternal) {
+    // This indicates that the `Method` protobuf string is corrupt, but this
+    // function ignores it and returns the default instance.
+    xla_call_module_op->emitError(absl::StrCat(
+        "Failed to get quantization method: ", method.status().ToString()));
+  }
+  return method.ok() ? *method : Method::default_instance();
 }
 
 }  // namespace mlir::quant
