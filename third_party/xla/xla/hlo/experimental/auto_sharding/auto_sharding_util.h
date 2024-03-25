@@ -655,6 +655,10 @@ std::vector<std::vector<int64_t>> InferOrEnumerateMeshShapesToTry(
     const HloModule& module, int64_t num_devices, int num_mesh_dims,
     bool symmetrical_mesh_dims);
 
+HloSharding ReplaceGivenShardingsWithUnknownForTuple(
+    const HloSharding& sharding, const Shape& shape,
+    absl::Span<const bool> to_replace_sharding_ids);
+
 }  // namespace spmd
 }  // namespace xla
 
