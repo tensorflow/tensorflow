@@ -18,6 +18,7 @@ limitations under the License.
 #include <cstdint>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -147,6 +148,8 @@ absl::Status CustomCallThunk::ExecuteFfiHandler(const ExecuteParams& params) {
   // execution context, as apparently it's not easily accessible from Thunk.
   ExecutableRunOptions run_options;
   run_options.set_stream(params.stream);
+  run_options.set_allocator(params.buffer_allocations->memory_allocator());
+  run_options.set_device_ordinal(params.buffer_allocations->device_ordinal());
   ServiceExecutableRunOptions service_run_options(run_options);
 
   CallOptions options = {&service_run_options, called_computation_};
