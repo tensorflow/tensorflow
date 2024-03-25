@@ -12,11 +12,14 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include <array>
 #include <cstdint>
+#include <optional>
 #include <utility>
 
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
+#include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
+#include "mlir/IR/IRMapping.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/OpDefinition.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
@@ -27,6 +30,7 @@ limitations under the License.
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
 #include "stablehlo/dialect/StablehloOps.h"  // from @stablehlo
 #include "tensorflow/compiler/mlir/quantization/common/attrs_and_constraints.h"
+#include "tensorflow/compiler/mlir/quantization/stablehlo/cc/permutation.h"
 
 namespace mlir::quant::stablehlo {
 
@@ -60,7 +64,7 @@ class RewriteAddWithActivationTranspose : public OpRewritePattern<AddOp> {
     }
 
     return success(transpose_op.getPermutation() ==
-                   ArrayRef<int64_t>(kDesiredLhsPermutation));
+                   ArrayRef<int64_t>(kNhwcToNchwPermutation));
   }
 
   void rewrite(AddOp op, PatternRewriter& rewriter) const override {
@@ -72,7 +76,7 @@ class RewriteAddWithActivationTranspose : public OpRewritePattern<AddOp> {
     // NCHW -> NHWC for the right-hand side, to match the operand's shape.
     auto rhs_transpose_op = rewriter.create<TransposeOp>(
         op.getLoc(), /*operand=*/rhs_input,
-        rewriter.getDenseI64ArrayAttr(kRhsPermutation));
+        rewriter.getDenseI64ArrayAttr(kNchwToNhwcPermutation));
 
     auto add_op =
         rewriter.create<AddOp>(op.getLoc(), lhs_input, rhs_transpose_op);
@@ -80,22 +84,121 @@ class RewriteAddWithActivationTranspose : public OpRewritePattern<AddOp> {
     // NHWC -> NCHW for the output, to match the shapes of `op`'s users.
     auto output_transpose_op = rewriter.create<TransposeOp>(
         op.getLoc(), /*operand=*/add_op.getResult(),
-        rewriter.getDenseI64ArrayAttr(kOutputPermutation));
+        rewriter.getDenseI64ArrayAttr(kNhwcToNchwPermutation));
 
     rewriter.replaceAllUsesWith(op.getResult(), output_transpose_op);
   }
+};
+
+// Rewrites the `reduce_window(transpose(%activation), %init_value)` patterns to
+// `transpose(reduce_window(%activation), %init_value)`, deferring the transpose
+// to the result. The reduce function should be equivalent to
+// `stablehlo.maximum`, representing max pooling.
+class DeferActivationTransposeForMaxPoolReduceWindowOp
+    : public OpRewritePattern<mlir::stablehlo::ReduceWindowOp> {
+ public:
+  using OpRewritePattern<mlir::stablehlo::ReduceWindowOp>::OpRewritePattern;
+
+  LogicalResult match(mlir::stablehlo::ReduceWindowOp op) const override {
+    if (failed(MatchMaxPoolReduceWindowOp(op))) return failure();
+
+    // Match only when the lhs is connected to a transpose.
+    // Only supports the case commonly appearing for 2D convolutions.
+    Value lhs = op.getOperand(0);
+    if (!HasRankOf(lhs, /*rank=*/4)) return failure();
+
+    // Match input permutation that converts: NHWC -> NCHW.
+    auto transpose_op = dyn_cast_or_null<TransposeOp>(lhs.getDefiningOp());
+
+    return success(transpose_op != nullptr &&
+                   transpose_op.getPermutation() ==
+                       ArrayRef<int64_t>(kNhwcToNchwPermutation));
+  }
+
+  // Pushes the transpose op at the input to the result.
+  void rewrite(mlir::stablehlo::ReduceWindowOp op,
+               PatternRewriter& rewriter) const override {
+    auto transpose_op = cast<TransposeOp>(op.getOperand(0).getDefiningOp());
+
+    const auto result_type = op.getResult(0).getType().cast<TensorType>();
+    const SmallVector<int64_t> new_result_shape =
+        Permute<int64_t>(result_type.getShape(), kNchwToNhwcPermutation);
+
+    const TensorType new_result_type =
+        result_type.cloneWith(new_result_shape, result_type.getElementType());
+
+    // Create a new `stablehlo.reduce_window` with all relevant attributes
+    // permutated to match the new operand & result type.
+    auto new_reduce_window_op =
+        rewriter.create<mlir::stablehlo::ReduceWindowOp>(
+            op.getLoc(), new_result_type, transpose_op.getOperand(),
+            /*init_value=*/op.getOperand(1),
+            /*window_dimensions=*/
+            PermuteI64ArrayAttr(rewriter, op.getWindowDimensionsAttr(),
+                                kNchwToNhwcPermutation),
+            /*window_strides=*/
+            PermuteI64ArrayAttr(rewriter, op.getWindowStridesAttr(),
+                                kNchwToNhwcPermutation),
+            /*base_dilations=*/
+            PermuteI64ArrayAttr(rewriter, op.getBaseDilationsAttr(),
+                                kNchwToNhwcPermutation),
+            /*window_dilations=*/
+            PermuteI64ArrayAttr(rewriter, op.getWindowDilationsAttr(),
+                                kNchwToNhwcPermutation),
+            /*padding=*/DenseIntElementsAttr(nullptr));
+
+    // Clone the reduce body. It is not affected by the permutation.
+    IRMapping mapping;
+    op.getBody().cloneInto(&new_reduce_window_op.getBody(), mapping);
+
+    // Introduce a transpose to the result to match the shapes of `op`'s uses.
+    auto result_transpose_op = rewriter.create<stablehlo::TransposeOp>(
+        op.getLoc(), new_reduce_window_op.getResult(0), kNhwcToNchwPermutation);
+
+    rewriter.replaceAllUsesWith(op.getResult(0), result_transpose_op);
+  }
 
  private:
-  // Permutation representing NHWC -> NCHW for the activation (LHS), used for
-  // matching the pattern.
-  static constexpr std::array<int64_t, 4> kDesiredLhsPermutation = {0, 3, 1, 2};
+  // Permutes `array_attr` with `permutation`. The number of elements in
+  // `array_attr` and `permutation` must be equal. Returns a null attribute
+  // if `array_attr` is null.
+  DenseI64ArrayAttr PermuteI64ArrayAttr(
+      PatternRewriter& rewriter, const DenseI64ArrayAttr array_attr,
+      const ArrayRef<int64_t> permutation) const {
+    if (array_attr == nullptr) return DenseI64ArrayAttr(nullptr);
 
-  // Permutation representing NCHW -> NHWC for the RHS, newly inserted after the
-  // conversion.
-  static constexpr std::array<int64_t, 4> kRhsPermutation = {0, 2, 3, 1};
-  // Permutation representing NHWC -> NCHW for the output, newly inserted after
-  // the conversion.
-  static constexpr std::array<int64_t, 4> kOutputPermutation = {0, 3, 1, 2};
+    return rewriter.getDenseI64ArrayAttr(
+        Permute<int64_t>(array_attr, permutation));
+  }
+
+  LogicalResult MatchMaxPoolReduceWindowOp(
+      mlir::stablehlo::ReduceWindowOp op) const {
+    // TODO: b/321099943 - Support explicit padding.
+    if (HasPadding(op)) return failure();
+
+    // Check that the reduce-window body is a max operation.
+    return success(IsMaxFunction(op.getBody().front()));
+  }
+
+  // Whether `block` semantically corresponds to a `stablehlo.maximum` op.
+  bool IsMaxFunction(Block& block) const {
+    if (block.getNumArguments() != 2) return false;
+
+    auto return_op = cast<mlir::stablehlo::ReturnOp>(block.getTerminator());
+    if (return_op.getNumOperands() != 1) return false;
+
+    auto max_op = dyn_cast_or_null<mlir::stablehlo::MaxOp>(
+        return_op.getOperands().front().getDefiningOp());
+    if (!max_op) return false;
+
+    return (max_op.getLhs() == block.getArgument(0)) &&
+           (max_op.getRhs() == block.getArgument(1));
+  }
+
+  // Whether `op` has the `padding` attribute (which is optional).
+  bool HasPadding(mlir::stablehlo::ReduceWindowOp op) const {
+    return op.getPadding() != std::nullopt;
+  }
 };
 
 }  // namespace
@@ -112,7 +215,8 @@ void DeferActivationTransposePass::runOnOperation() {
   MLIRContext& ctx = getContext();
 
   RewritePatternSet patterns(&ctx);
-  patterns.add<RewriteAddWithActivationTranspose>(&ctx);
+  patterns.add<RewriteAddWithActivationTranspose,
+               DeferActivationTransposeForMaxPoolReduceWindowOp>(&ctx);
   if (failed(applyPatternsAndFoldGreedily(func_op, std::move(patterns)))) {
     func_op->emitWarning() << "Failed to converge patterns: " << getArgument();
   }

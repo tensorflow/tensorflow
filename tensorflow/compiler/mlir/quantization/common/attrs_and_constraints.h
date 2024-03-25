@@ -15,6 +15,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_MLIR_QUANTIZATION_COMMON_ATTRS_AND_CONSTRAINTS_H_
 #define TENSORFLOW_COMPILER_MLIR_QUANTIZATION_COMMON_ATTRS_AND_CONSTRAINTS_H_
 
+#include <array>
 #include <cstdint>
 #include <optional>
 #include <type_traits>
@@ -39,6 +40,14 @@ limitations under the License.
 namespace mlir::quant {
 
 constexpr char kAttrMapAttribute[] = "attr_map";
+
+// Permutation from the NHWC tensor format to NCHW. This is an inverse
+// permutation of `kNchwToNhwcPermutation`.
+inline constexpr std::array<int64_t, 4> kNhwcToNchwPermutation = {0, 3, 1, 2};
+
+// Permutation from the NCHW tensor format to NHWC. This is an inverse
+// permutation of `kNchwToNhwcPermutation`.
+inline constexpr std::array<int64_t, 4> kNchwToNhwcPermutation = {0, 2, 3, 1};
 
 // Returns true if the value has static shape.
 bool HasStaticShape(Value value);
