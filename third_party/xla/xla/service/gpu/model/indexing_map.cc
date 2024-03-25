@@ -564,6 +564,59 @@ bool SimplifyConstraintRange(AffineExpr* expr, Interval* range) {
   return is_simplified;
 }
 
+// Computes the symbols list replacement to go from
+// [range_vars(second)|rt_vars(second)|range_vars(first)|rt_vars(first)]
+// to
+// [range_vars(second)|range_vars(first)|rt_vars(second)|rt_vars(first)].
+SmallVector<AffineExpr, 4> GetComposedSymbolsPermutationToCorrectOrder(
+    const IndexingMap& first, const IndexingMap& second) {
+  SmallVector<AffineExpr, 4> symbol_replacements;
+  MLIRContext* mlir_context = first.GetMLIRContext();
+  for (int id = 0; id < second.GetRangeVarsCount(); ++id) {
+    symbol_replacements.push_back(getAffineSymbolExpr(id, mlir_context));
+  }
+  int64_t rt_vars_second_start =
+      first.GetRangeVarsCount() + second.GetRangeVarsCount();
+  for (int64_t id = 0; id < second.GetRTVarsCount(); ++id) {
+    symbol_replacements.push_back(
+        getAffineSymbolExpr(rt_vars_second_start++, mlir_context));
+  }
+  int64_t range_vars_first_start = second.GetRangeVarsCount();
+  for (int64_t id = 0; id < first.GetRangeVarsCount(); ++id) {
+    symbol_replacements.push_back(
+        getAffineSymbolExpr(range_vars_first_start++, mlir_context));
+  }
+  int64_t rt_vars_first_start = rt_vars_second_start + second.GetRTVarsCount();
+  for (int64_t id = 0; id < first.GetRTVarsCount(); ++id) {
+    symbol_replacements.push_back(
+        getAffineSymbolExpr(rt_vars_first_start++, mlir_context));
+  }
+  return symbol_replacements;
+}
+
+// Computes the symbols list mapping to go from
+// [range_vars(map)|rt_vars(map)]
+// to
+// [range_vars(second)|range_vars(first)|rt_vars(second)|rt_vars(first)].
+SmallVector<AffineExpr, 4> MapSymbolsToComposedSymbolsList(
+    const IndexingMap& map, const IndexingMap& composed) {
+  SmallVector<AffineExpr, 4> symbol_replacements;
+
+  MLIRContext* mlir_context = map.GetMLIRContext();
+  int64_t range_vars_start =
+      composed.GetRangeVarsCount() - map.GetRangeVarsCount();
+  for (int64_t id = 0; id < map.GetRangeVarsCount(); ++id) {
+    symbol_replacements.push_back(
+        getAffineSymbolExpr(range_vars_start++, mlir_context));
+  }
+  int64_t rt_vars_start = composed.GetSymbolCount() - map.GetRTVarsCount();
+  for (int64_t id = 0; id < map.GetRTVarsCount(); ++id) {
+    symbol_replacements.push_back(
+        getAffineSymbolExpr(rt_vars_start++, mlir_context));
+  }
+  return symbol_replacements;
+}
+
 }  // namespace
 
 std::string Interval::ToString() const {
@@ -1158,27 +1211,33 @@ IndexingMap ComposeIndexingMaps(const IndexingMap& first,
   if (second.IsUndefined() || first.IsUndefined()) {
     return IndexingMap::GetUndefined();
   }
-  // TODO(b/329052892): Implement composition with RT vars.
-  if (first.GetRTVarsCount() || second.GetRTVarsCount()) {
-    return IndexingMap::GetUndefined();
-  }
   AffineMap producer_affine_map = second.GetAffineMap();
   AffineMap composed_map = producer_affine_map.compose(first.GetAffineMap());
 
   // The symbols in the composed map, i.e. combined
-  // producer_map.compose(consumer_map) are packed as [symbols(producer_map) |
-  // symbols(consumer_map)].
-  std::vector<RangeVar> combined_symbol_ranges;
-  combined_symbol_ranges.reserve(second.GetRangeVarsCount() +
-                                 first.GetRangeVarsCount());
-  for (const RangeVar& symbol_range : llvm::concat<const RangeVar>(
+  // producer_map.compose(consumer_map) are packed as
+  // [range_vars(second)|rt_vars(second)|range_vars(first)|rt_vars(first)].
+  std::vector<RangeVar> combined_range_vars;
+  combined_range_vars.reserve(second.GetRangeVarsCount() +
+                              first.GetRangeVarsCount());
+  for (const RangeVar& range_var : llvm::concat<const RangeVar>(
            second.GetRangeVars(), first.GetRangeVars())) {
-    combined_symbol_ranges.push_back(symbol_range);
+    combined_range_vars.push_back(range_var);
   }
-
+  std::vector<RTVar> combined_rt_vars;
+  combined_rt_vars.reserve(second.GetRTVarsCount() + first.GetRTVarsCount());
+  for (const RTVar& rt_var :
+       llvm::concat<const RTVar>(second.GetRTVars(), first.GetRTVars())) {
+    combined_rt_vars.push_back(rt_var);
+  }
+  // The symbols in the composed map have to be permuted to keep the invariant
+  // that range_vars go before rt_vars in the composed affine map symbols list.
+  SmallVector<AffineExpr, 4> symbol_replacements =
+      GetComposedSymbolsPermutationToCorrectOrder(first, second);
   IndexingMap composed_indexing_map(composed_map, first.GetDimVars(),
-                                    std::move(combined_symbol_ranges),
-                                    /*rt_vars=*/{});
+                                    std::move(combined_range_vars),
+                                    std::move(combined_rt_vars));
+
   // Add constraints that are already present in the producer_map. We have to
   // compute consumer_map(producer_constraints). To keep all symbols and
   // dimension IDs the same as in the `composed_indexing_map.affine_map`, we
@@ -1194,17 +1253,22 @@ IndexingMap ComposeIndexingMaps(const IndexingMap& first,
   auto constraints_map = AffineMap::get(
       producer_affine_map.getNumDims(), producer_affine_map.getNumSymbols(),
       constraints, producer_affine_map.getContext());
-  auto remapped_constraints = constraints_map.compose(first.GetAffineMap());
+  auto remapped_constraints =
+      constraints_map.compose(first.GetAffineMap())
+          .replaceDimsAndSymbols(/*dimReplacements=*/{}, symbol_replacements,
+                                 composed_indexing_map.GetDimensionCount(),
+                                 composed_indexing_map.GetSymbolCount());
   for (const auto& [expr, range] :
        llvm::zip(remapped_constraints.getResults(), constraints_ranges)) {
     composed_indexing_map.AddConstraint(expr, range);
   }
   // Remap symbol ids and add constraints that are already present in the
   // consumer_map.
+  SmallVector<AffineExpr, 4> first_map_symbols_to_composed_symbols =
+      MapSymbolsToComposedSymbolsList(first, composed_indexing_map);
   for (const auto& [expr, range] : first.GetConstraints()) {
     composed_indexing_map.AddConstraint(
-        expr.shiftSymbols(first.GetSymbolCount(), second.GetSymbolCount()),
-        range);
+        expr.replaceSymbols(first_map_symbols_to_composed_symbols), range);
   }
   // Add constraints for consumer's codomain w.r.t. producer's domain.
   for (auto [index, expr] :
@@ -1212,7 +1276,7 @@ IndexingMap ComposeIndexingMaps(const IndexingMap& first,
     Interval producer_dim_range =
         second.GetDimensionBound(static_cast<int64_t>(index));
     composed_indexing_map.AddConstraint(
-        expr.shiftSymbols(first.GetSymbolCount(), second.GetSymbolCount()),
+        expr.replaceSymbols(first_map_symbols_to_composed_symbols),
         producer_dim_range);
   }
   return composed_indexing_map;
