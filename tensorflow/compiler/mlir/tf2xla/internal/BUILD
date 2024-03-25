@@ -47,7 +47,6 @@ tf_cc_test(
         "//tensorflow/compiler/mlir/tf2xla:compile_mlir_util",
         "//tensorflow/compiler/tf2xla:xla_helpers",
         "//tensorflow/core:lib",
-        "//tensorflow/core/lib/monitoring:cell_reader",
         "@com_google_absl//absl/status",
         "@com_google_googletest//:gtest_main",
         "@local_tsl//tsl/platform:statusor",

@@ -235,6 +235,32 @@ TEST_F(IndexingMapTest, RemoveUnusedSymbols_ConstraintsWithManySymbols) {
                             )"));
 }
 
+TEST_F(IndexingMapTest, RemoveUnusedSymbols_ConstraintsWithRTVars) {
+  auto zero_dim_map = AffineMap::get(&mlir_context_);
+  IndexingMap indexing_map(
+      ParseAffineMap("(d0)[s0, s1, s2, s3, s4] -> (d0 * 4 + s1 + s3 - 42)",
+                     &mlir_context_),
+      {DimVar{{0, 31}}}, {RangeVar{{0, 0}}, RangeVar{{0, 1}}, RangeVar{{0, 2}}},
+      {RTVar{Interval{0, 3},
+             /*instr=*/nullptr, zero_dim_map},
+       RTVar{Interval{0, 4},
+             /*instr=*/nullptr, zero_dim_map}});
+  indexing_map.AddConstraint(
+      ParseAffineExpr("d0 * 4 + s1 + s3", &mlir_context_), Interval{24, 459});
+  indexing_map.RemoveUnusedSymbols();
+  // Symbols s0, s2, s4 will be removed and s1 and s3 will become s0 and s1.
+  EXPECT_THAT(indexing_map, MatchIndexingMap(R"(
+                              (d0)[s0, s1] -> (d0 * 4 + s0 + s1 - 42)
+                              domain:
+                              d0 in [0, 31]
+                              s0 in [0, 1]
+                              s1 in [0, 3]
+                                hlo: NULL
+                                () -> ()
+                              d0 * 4 + s0 + s1 in [24, 459]
+                            )"));
+}
+
 TEST_F(IndexingMapTest, ConstraintIntervalSimplification_Sum) {
   IndexingMap indexing_map = IndexingMap::FromTensorSizes(
       ParseAffineMap("(d0) -> (d0)", &mlir_context_), {100}, {});
