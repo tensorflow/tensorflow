@@ -33,32 +33,26 @@ AbsOp Create(typename AbsOp::Attributes) { return AbsOp{}; }
 
 absl::Status Prepare(AbsOp& op, const Tensor& input, Tensor& output) {
   SHLO_REF_RETURN_ON_ERROR(Propagate(input.shape(), output.shape()));
-  if (BaselineType(input.element_type()) !=
-      BaselineType(output.element_type())) {
-    return absl::FailedPreconditionError(
-        "stablehlo.abs constraint (C2) is not satisfied (incompatible baseline "
-        "types.).");
-  }
+  SHLO_REF_RETURN_ON_ERROR(CheckSupportedTypes(CheckCtx("abs"), input,
+                                               IsSignedIntTensor, IsFloatTensor,
+                                               IsQuantizedPerTensorTensor));
+  SHLO_REF_RETURN_ON_ERROR(
+      CheckSameBaselineType(CheckCtx("abs"), input, output));
   return absl::OkStatus();
 }
 
 absl::Status Evaluate(AbsOp& op, const Tensor& input, Tensor& output) {
   Abs abs;
-  if (input.IsPerAxisQuantized()) {
-    DISPATCH_QUANTIZED(detail::DequantizeOpQuantizePerChannel,
-                       input.quantized_tensor_element_type().StorageType(),
-                       input.quantized_tensor_element_type().ExpressedType(),
-                       abs, input, output);
-  } else if (input.IsPerTensorQuantized()) {
+  if (input.IsPerTensorQuantized()) {
     DISPATCH_QUANTIZED(detail::DequantizeOpQuantizePerTensor,
                        input.quantized_tensor_element_type().StorageType(),
                        input.quantized_tensor_element_type().ExpressedType(),
                        abs, input, output)
-  } else {
-    DISPATCH_BOOL_INT_FLOAT(detail::EvaluateNoQuantization,
-                            input.tensor_element_type(), abs, input, output);
+  } else if (IsSignedIntTensor(input) || IsFloatTensor(input)) {
+    DISPATCH_INT_FLOAT(detail::EvaluateNoQuantization,
+                       input.tensor_element_type(), abs, input, output);
   }
-  return absl::OkStatus();
+  return absl::FailedPreconditionError("Unsupported tensor type.");
 }
 
 }  // namespace shlo_ref

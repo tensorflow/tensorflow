@@ -773,6 +773,22 @@ func.func @FuseReshapeAroundBMMLHS(%arg0: tensor<6x5x1024xf32>) -> tensor<6x5x81
   // CHECK: return %0 : tensor<6x5x8192xf32>
 }
 
+// CHECK-LABEL: @FuseReshapeAroundBMMLHSNegative
+func.func @FuseReshapeAroundBMMLHSNegative(%arg0: tensor<1x64xf32>, %arg1: tensor<1x64x1024xf32> ) -> (tensor<1x1024xf32> )  {
+  %cst = arith.constant dense<[1, 1024]> : tensor<2xi32>
+  %cst_0 = arith.constant dense<[1, 1, 64]> : tensor<3xi32>
+  %0 = "tfl.reshape"(%arg0, %cst_0) : (tensor<1x64xf32>, tensor<3xi32>) -> tensor<1x1x64xf32>
+  %1 = "tfl.batch_matmul"(%0, %arg1) {adj_x = false, adj_y = false} : (tensor<1x1x64xf32>, tensor<1x64x1024xf32>) -> tensor<1x1x1024xf32>
+  %2 = "tfl.reshape"(%1, %cst) : (tensor<1x1x1024xf32>, tensor<2xi32>) -> tensor<1x1024xf32>
+  return %2 : tensor<1x1024xf32>
+  // CHECK: %cst = arith.constant dense<[1, 1024]> : tensor<2xi32>
+  // CHECK: %cst_0 = arith.constant dense<[1, 1, 64]> : tensor<3xi32>
+  // CHECK: %0 = "tfl.reshape"(%arg0, %cst_0) : (tensor<1x64xf32>, tensor<3xi32>) -> tensor<1x1x64xf32>
+  // CHECK: %1 = "tfl.batch_matmul"(%0, %arg1) {adj_x = false, adj_y = false} : (tensor<1x1x64xf32>, tensor<1x64x1024xf32>) -> tensor<1x1x1024xf32>
+  // CHECK: %2 = "tfl.reshape"(%1, %cst) : (tensor<1x1x1024xf32>, tensor<2xi32>) -> tensor<1x1024xf32>
+  // CHECK: return %2 : tensor<1x1024xf32>
+}
+
 // CHECK-LABEL: @FuseReshapeAroundBMMNagativeTest
 func.func @FuseReshapeAroundBMMNagativeTest(%arg0: tensor<5x4x1x1024xf32>, %arg1: tensor<5x1024x8192xf32>) -> tensor<5x4x1x8192xf32> {
   %cst = arith.constant dense_resource<__elided__> : tensor<3xi32>

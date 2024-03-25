@@ -665,6 +665,7 @@ class TFLiteConverterBase:
     self._experimental_reduce_type_precision = False
     self._experimental_qdq_conversion_mode = None
     self._experimental_disable_per_channel_quantization_for_dense_layers = False
+    self._experimental_enable_composite_direct_lowering = False
 
     # Debug parameters
     self.ir_dump_dir = None
@@ -819,6 +820,9 @@ class TFLiteConverterBase:
         "disable_per_channel_quantization_for_dense_layers": (
             self._experimental_disable_per_channel_quantization_for_dense_layers
         ),
+        "enable_composite_direct_lowering": (
+            self._experimental_enable_composite_direct_lowering
+        ),
     }
 
     if self.saved_model_dir:
@@ -864,7 +868,11 @@ class TFLiteConverterBase:
                     )
                 ],
                 enable_per_channel_quantized_weight=True,
-            )
+            ),
+            # For ODML use cases, uniform quantized types should be left intact.
+            pipeline_config=qc.PipelineConfig(
+                unpack_quantized_types=False,
+            ),
         )
 
         args["quantization_config"] = quantization_config

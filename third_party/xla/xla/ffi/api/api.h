@@ -107,10 +107,9 @@ class Ffi {
 
   // Registers handler with an XLA runtime under the given name on a given
   // platform.
-  static inline XLA_FFI_Error* RegisterStaticHandler(const XLA_FFI_Api* api,
-                                                     std::string_view name,
-                                                     std::string_view platform,
-                                                     XLA_FFI_Handler* handler);
+  static inline XLA_FFI_Error* RegisterStaticHandler(
+      const XLA_FFI_Api* api, std::string_view name, std::string_view platform,
+      XLA_FFI_Handler* handler, XLA_FFI_Handler_Traits traits = 0);
 
  protected:
   template <typename... Args>
@@ -131,7 +130,8 @@ class Ffi {
 XLA_FFI_Error* Ffi::RegisterStaticHandler(const XLA_FFI_Api* api,
                                           std::string_view name,
                                           std::string_view platform,
-                                          XLA_FFI_Handler* handler) {
+                                          XLA_FFI_Handler* handler,
+                                          XLA_FFI_Handler_Traits traits) {
   // Make copies of string views to guarantee they are null terminated.
   std::string name_str(name);
   std::string platform_str(platform);
@@ -142,6 +142,7 @@ XLA_FFI_Error* Ffi::RegisterStaticHandler(const XLA_FFI_Api* api,
   args.name = name_str.c_str();
   args.platform = platform_str.c_str();
   args.handler = handler;
+  args.traits = traits;
   return api->XLA_FFI_Handler_Register(&args);
 }
 
@@ -1294,15 +1295,16 @@ auto DictionaryDecoder(Members... m) {
 // TODO(ezhulenev): Add a callback so that end users can log registration error
 // to appropriate logging destination, e.g. LOG(FATAL) for duplicate internal
 // FFI handlers.
-#define XLA_FFI_REGISTER_HANDLER(API, NAME, PLATFORM, FUNC) \
-  XLA_FFI_REGISTER_HANDLER_(API, NAME, PLATFORM, FUNC, __COUNTER__)
-#define XLA_FFI_REGISTER_HANDLER_(API, NAME, PLATFORM, FUNC, N) \
-  XLA_FFI_REGISTER_HANDLER__(API, NAME, PLATFORM, FUNC, N)
-#define XLA_FFI_REGISTER_HANDLER__(API, NAME, PLATFORM, FUNC, N)           \
-  XLA_FFI_ATTRIBUTE_UNUSED static const XLA_FFI_Error*                     \
-      xla_ffi_static_handler_##N##_registered_ = [] {                      \
-        return ::xla::ffi::Ffi::RegisterStaticHandler(API, NAME, PLATFORM, \
-                                                      FUNC);               \
+#define XLA_FFI_REGISTER_HANDLER(API, NAME, PLATFORM, FUNC, ...)    \
+  XLA_FFI_REGISTER_HANDLER_(API, NAME, PLATFORM, FUNC, __COUNTER__, \
+                            ##__VA_ARGS__)
+#define XLA_FFI_REGISTER_HANDLER_(API, NAME, PLATFORM, FUNC, N, ...) \
+  XLA_FFI_REGISTER_HANDLER__(API, NAME, PLATFORM, FUNC, N, ##__VA_ARGS__)
+#define XLA_FFI_REGISTER_HANDLER__(API, NAME, PLATFORM, FUNC, N, ...)       \
+  XLA_FFI_ATTRIBUTE_UNUSED static const XLA_FFI_Error*                      \
+      xla_ffi_static_handler_##N##_registered_ = [] {                       \
+        return ::xla::ffi::Ffi::RegisterStaticHandler(API, NAME, PLATFORM,  \
+                                                      FUNC, ##__VA_ARGS__); \
       }()
 
 }  // namespace xla::ffi

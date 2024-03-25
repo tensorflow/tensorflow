@@ -1,6 +1,6 @@
-load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library", "td_library")
 load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")
+load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -77,22 +77,19 @@ cc_library(
     srcs = [
         "ConvertConst.cc",
         "ConvertSimQuant.cc",
-        "FakeQuantSupport.cc",
         "QuantOps.cc",
         "QuantizeUtils.cc",
-        "UniformSupport.cc",
     ],
     hdrs = [
-        "FakeQuantSupport.h",
         "Passes.h",
         "QuantOps.h",
         "QuantizeUtils.h",
-        "UniformSupport.h",
     ],
     compatible_with = get_compatible_with_portable(),
     deps = [
         ":QuantOpsIncGen",
         ":QuantPassIncGen",
+        "//tensorflow/compiler/mlir/quantization/common/ir:QuantOps",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:ArithDialect",
         "@llvm-project//mlir:FuncDialect",

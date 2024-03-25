@@ -184,8 +184,8 @@ xla::Array<T> ArrayFromDenseElementsAttr(mlir::DenseElementsAttr dense_attr) {
   return array;
 }
 
-StatusOr<xla::Literal> CreateArrayLiteralFromAttr(mlir::ElementsAttr attr,
-                                                  xla::Layout layout) {
+absl::StatusOr<xla::Literal> CreateArrayLiteralFromAttr(mlir::ElementsAttr attr,
+                                                        xla::Layout layout) {
   auto dense_attr = attr.dyn_cast<mlir::DenseElementsAttr>();
   if (!dense_attr)
     return tsl::errors::Unimplemented("Only dense elements attr are supported");
@@ -193,7 +193,7 @@ StatusOr<xla::Literal> CreateArrayLiteralFromAttr(mlir::ElementsAttr attr,
   xla::Shape shape = xla::TypeToShape(dense_attr.getType());
 
   return xla::primitive_util::PrimitiveTypeSwitch<StatusOr<xla::Literal>>(
-      [&](auto primitive_type_constant) -> StatusOr<xla::Literal> {
+      [&](auto primitive_type_constant) -> absl::StatusOr<xla::Literal> {
         if constexpr (xla::primitive_util::IsArrayType(
                           primitive_type_constant)) {
           using cpp_type =
@@ -2056,7 +2056,7 @@ LogicalResult ExportXlaOp(CustomCallOp op, OpLoweringContext ctx) {
     }
   }
 
-  StatusOr<xla::Literal> literal;
+  absl::StatusOr<xla::Literal> literal;
   const xla::Literal* literal_ptr = nullptr;
   auto literal_attr = op->getAttrOfType<DenseElementsAttr>(kLiteralAttr);
   if (literal_attr) {
@@ -3164,7 +3164,7 @@ LogicalResult ConvertToHloModule::Lower(
         if (!is_entry_function || !has_ret_shardings) continue;
 
         xla::Shape return_shape = xla::TypeToShape(ret.get().getType());
-        StatusOr<xla::XlaOp> reshape =
+        absl::StatusOr<xla::XlaOp> reshape =
             ReshapeWithCorrectRepresentationAndSharding(
                 builder, returns[index], return_shape,
                 options_.layout_preference_fn, options_.shape_representation_fn,

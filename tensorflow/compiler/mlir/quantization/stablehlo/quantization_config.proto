@@ -28,13 +28,23 @@ message RepresentativeDatasetConfig {
 }
 
 // Preset config for static-range post-training quantization (PTQ).
+//
 // Minimal user input about representative datasets is required. Representative
 // datasets are required for static-range PTQ to retrieve quantization
 // statistics via calibration.
+//
+// This preset is equivalent to the following `QuantizationSpecs`:
+//
+// ```
+// specs {matcher {function_name {regex: ".*"}} method {static_range_ptq {}}}
+// ```
+//
 // Next ID: 3
 message StaticRangePtqPreset {
   // Configures representative dataset. Each item corresponds to a
   // representative dataset used to calibrate a function.
+  // If `QuantizationConfig.calibration_options.representative_datasets` is also
+  // provided then this field will be ignored.
   repeated RepresentativeDatasetConfig representative_datasets = 1;
 
   // NOTE: This field will be deprecated.
@@ -44,6 +54,9 @@ message StaticRangePtqPreset {
   // This value is true by default.
   bool enable_per_channel_quantized_weight = 2;
 }
+
+// Applies int8 per-tensor weight-only quantization for all dot_general op.
+message WeightOnlyPreset {}
 
 // Metadata specific to the input TensorFlow SavedModel, which may be required
 // to identify the specific MetaGraphDef to quantize, for example.
@@ -63,9 +76,38 @@ message PipelineConfig {
   optional bool unpack_quantized_types = 1;
 }
 
+// Represents a single quantizable unit, a (nearly) minimum unit of work when
+// applying quantization. It may correspond to a single or multiple ops.
+// Next ID: 2
+message QuantizableUnit {
+  // Name of the `FuncOp` symbol corresponding to the "lifted function",
+  // representing a single quantizable unit. This value is guaranteed to be
+  // unique across a single `ModuleOp`.
+  string name = 1;
+}
+
+// Represents a quantization result of a single `QuantizableUnit`. It is
+// essentially a `(QuantizableUnit, Method)` pair, where the `Method`
+// corresponds to the quantization method eventually applied to the
+// `QuantizableUnit`.
+// Next ID: 3
+message QuantizationResult {
+  QuantizableUnit quantizable_unit = 1;
+  Method method = 2;
+}
+
+// A series of `QuantizationResult`s. See `QuantizationResult` for details.
+// Next ID: 2
+message QuantizationResults {
+  repeated QuantizationResult results = 1;
+}
+
 // A quantization method representing "do not quantize". Mostly used for
 // denylisting quantizable units from quantization.
 message NoQuantization {}
+
+// Configurations for static-range post-training quantization method.
+message StaticRangePtq {}
 
 // Represents a matching method that matches quantizable units by lifted
 // functions' names.
@@ -84,7 +126,10 @@ message MatcherSpec {
 
 // Specifies how to quantize matched quantizable units.
 message Method {
-  NoQuantization no_quantization = 1;
+  oneof method {
+    NoQuantization no_quantization = 1;
+    StaticRangePtq static_range_ptq = 2;
+  }
 }
 
 // A QuantizationSpec is essentially a (matcher spec, quantization method) pair,
@@ -158,9 +203,10 @@ message DebuggerConfig {
 }
 
 // Defines various calibration options.
+// Next ID: 4
 message CalibrationOptions {
   // Configurations for calibration methods.
-  // NEXT ID: 7
+  // Next ID: 7
   enum CalibrationMethod {
     CALIBRATION_METHOD_UNSPECIFIED = 0;
     // Use the min, max values of all sample datasets.
@@ -185,7 +231,7 @@ message CalibrationOptions {
   }
 
   // Parameters required for calibration.
-  // NEXT ID: 4
+  // Next ID: 4
   message CalibrationParameters {
     // The number of bins when histogram is initialized. It can be increased
     // because histogram is dynamically expanded by sample inputs.
@@ -200,7 +246,7 @@ message CalibrationOptions {
   }
 
   // Determines how to calibrate.
-  // The default calibration method is MIN_MAX.
+  // Default value: CALIBRATION_METHOD_MIN_MAX
   CalibrationMethod calibration_method = 1;
 
   // Defines the parameters required for calibration. Parameters such as the
@@ -208,21 +254,26 @@ message CalibrationOptions {
   // MIN_MAX and AVERAGE_MIN_MAX don't require this parameter and methods
   // starting with HISTOGRAM require this parameter.
   CalibrationParameters calibration_parameters = 2;
+
+  // Configures representative dataset. Each item corresponds to a
+  // representative dataset used to calibrate a function.
+  repeated RepresentativeDatasetConfig representative_datasets = 3;
 }
 
 // Quantization configuration for StableHLO Quantizer. This is the primary
 // message containing all configurable options.
-// Next ID: 7
+// Next ID: 8
 message QuantizationConfig {
   // Config presets provide predefined popular or common quantization specs.
   // Lightweight users may choose one of the presets for quick experiments. Each
-  // preset is completely represented by `QuantizationSpecs`. When extra entries
-  // in `QuantizationSpecs` are provided along with a preset, then the preset
-  // will be overridden for the quantizable units matched by those additional
-  // `QuantizationSpec`s.
+  // preset is completely represented by other fields in `QuantizationConfig`.
+  //
+  // When extra entries in `QuantizationSpecs` are provided along with a preset,
+  // then those entries will take precedence.
   oneof preset {
     // Performs best-effort static-range post-training quantization (PTQ).
     StaticRangePtqPreset static_range_ptq_preset = 1;
+    WeightOnlyPreset weight_only_preset = 7;
   }
 
   // TF SavedModel specific information for the input model.

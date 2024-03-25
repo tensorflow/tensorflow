@@ -33,8 +33,10 @@ constexpr TensorElementType BaselineType(TensorElementType type) {
   return type;
 }
 
-std::variant<TensorElementType, QuantizedTensorElementType> BaselineType(
-    const std::variant<TensorElementType, QuantizedTensorElementType>& type);
+using TensorElementTypeVariant =
+    std::variant<TensorElementType, QuantizedTensorElementType>;
+
+TensorElementTypeVariant BaselineType(const TensorElementTypeVariant& type);
 
 struct TensorType {
   Shape shape;
@@ -45,6 +47,8 @@ struct QuantizedTensorType {
   Shape shape;
   QuantizedTensorElementType element_type;
 };
+
+using TensorTypeVariant = std::variant<TensorType, QuantizedTensorType>;
 
 struct Tensor {
   const Shape& shape() const;
@@ -69,8 +73,7 @@ struct Tensor {
   const TensorElementType& tensor_element_type() const;
   const QuantizedTensorElementType& quantized_tensor_element_type() const;
 
-  std::variant<TensorElementType, QuantizedTensorElementType> element_type()
-      const;
+  TensorElementTypeVariant element_type() const;
 
   template <DataType data_type, typename T = typename Storage<data_type>::Type>
   T* GetDataAs() {
@@ -88,7 +91,7 @@ struct Tensor {
                                static_cast<size_t>(NumElements()));
   }
 
-  std::variant<TensorType, QuantizedTensorType> type;
+  TensorTypeVariant type;
 
   // If type is TensorType, the type should be Storage<type.element_type>::Type.
   // If type is QuantizedTensorType, the type should be

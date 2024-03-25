@@ -117,7 +117,7 @@ std::ostream& operator<<(std::ostream& out, const ShapeIndex& shape_index) {
 namespace {
 // Constructs and returns the new shape with the given minor_to_major order in
 // its Layout.
-StatusOr<Shape> MakeShapeWithLayoutInternal(
+absl::StatusOr<Shape> MakeShapeWithLayoutInternal(
     PrimitiveType element_type, absl::Span<const int64_t> dimensions,
     absl::Span<const int64_t> minor_to_major,
     absl::Span<const DimLevelType> dim_level_types,
@@ -304,7 +304,7 @@ Shape MakeTupleShapeImpl(absl::Span<ShapePtrOrRef> shapes) {
   return output;
 }
 
-/* static */ StatusOr<Shape> ShapeUtil::MakeValidatedShape(
+/* static */ absl::StatusOr<Shape> ShapeUtil::MakeValidatedShape(
     PrimitiveType element_type, absl::Span<const int64_t> dimensions) {
   Shape shape;
   if (!FillNewShape(element_type, dimensions, &shape)) {
@@ -315,7 +315,7 @@ Shape MakeTupleShapeImpl(absl::Span<ShapePtrOrRef> shapes) {
   return std::move(shape);
 }
 
-/* static */ StatusOr<Shape> ShapeUtil::MakeValidatedShape(
+/* static */ absl::StatusOr<Shape> ShapeUtil::MakeValidatedShape(
     PrimitiveType element_type, absl::Span<const int64_t> dimensions,
     const std::vector<bool>& dynamic_dimensions) {
   if (dynamic_dimensions.size() != dimensions.size()) {
@@ -1100,7 +1100,7 @@ Shape ShapeUtil::PrependMajorDimension(int64_t bound, Shape shape) {
   return *return_shape;
 }
 
-/* static */ StatusOr<const Shape*> ShapeUtil::TryGetSubshape(
+/* static */ absl::StatusOr<const Shape*> ShapeUtil::TryGetSubshape(
     const Shape& shape, ShapeIndexView index) {
   const Shape* return_shape = &shape;
   for (auto i : index) {
@@ -1931,7 +1931,7 @@ struct ParallelState {
     auto indexes_copy = s.indexes;
     pstate.pool->Schedule([indexes_copy, &visitor_function, &pstate] {
       const int thread_id = pstate.pool->CurrentThreadId();
-      StatusOr<bool> result = visitor_function(indexes_copy, thread_id);
+      absl::StatusOr<bool> result = visitor_function(indexes_copy, thread_id);
       if (!result.ok()) {
         absl::MutexLock lock(&pstate.mu);
         if (pstate.status.ok()) {

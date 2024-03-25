@@ -51,16 +51,17 @@ limitations under the License.
 #include "xla/service/gpu/matmul_utils.h"
 #include "xla/service/gpu/nccl_api.h"
 #include "xla/service/gpu/nccl_clique_key.h"
-#include "xla/service/gpu/nccl_collective_thunk.h"
 #include "xla/service/gpu/runtime/annotation.h"
 #include "xla/service/gpu/runtime/nccl_all_gather_thunk.h"
 #include "xla/service/gpu/runtime/nccl_all_reduce_thunk.h"
 #include "xla/service/gpu/runtime/nccl_collective_broadcast_thunk.h"
+#include "xla/service/gpu/runtime/nccl_collective_thunk.h"
 #include "xla/service/gpu/stream_executor_util.h"
 #include "xla/service/gpu/thunk.h"
 #include "xla/service/service_executable_run_options.h"
 #include "xla/stream_executor/command_buffer.h"
 #include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/dnn.h"
 #include "xla/stream_executor/kernel.h"
 #include "xla/stream_executor/launch_dim.h"
 #include "xla/stream_executor/stream.h"
@@ -502,6 +503,7 @@ CommandBufferCmd::BufferUsageVector ComputationIdCmd::buffers() {
 
 absl::Status ComputationIdCmd::Initialize(const Thunk::InitializeParams& params,
                                           StateManager& state) {
+#if defined(GOOGLE_CUDA)
   {
     absl::MutexLock lock(&mutex_);
     if (memset_kernels_.contains(params.executor)) return absl::OkStatus();
@@ -514,6 +516,7 @@ absl::Status ComputationIdCmd::Initialize(const Thunk::InitializeParams& params,
 
   absl::MutexLock lock(&mutex_);
   memset_kernels_.emplace(params.executor, std::move(kernel));
+#endif  // GOOGLE_CUDA
   return absl::OkStatus();
 }
 
@@ -540,6 +543,7 @@ absl::Status ComputationIdCmd::Record(
           << "; execution_scope_id=" << execution_scope_id.value();
   VLOG(5) << "  Id: " << dest_ << " (" << dst.opaque() << ")";
 
+#if defined(GOOGLE_CUDA)
   se::Kernel* memset_kernel = [&] {
     absl::MutexLock lock(&mutex_);
     return memset_kernels_[execute_params.stream->parent()].get();
@@ -553,6 +557,10 @@ absl::Status ComputationIdCmd::Record(
   auto args = se::PackKernelArgs(/*shmem_bytes=*/0, int64_t{1}, value, dst);
   return command_buffer->Launch(execution_scope_id, se::ThreadDim(1),
                                 se::BlockDim(1), *memset_kernel, *args);
+#else
+  return command_buffer->Memset(execution_scope_id, &dst, value,
+                                /*num_elements=*/1);
+#endif  // GOOGLE_CUDA
 }
 
 //===----------------------------------------------------------------------===//
@@ -1150,7 +1158,7 @@ CommandBufferCmd::BufferUsageVector GemmCmd::buffers() {
 
 CuDnnCmd::CuDnnCmd(ExecutionStreamId execution_stream_id,
                    absl::Span<const BufferAllocation::Slice> args,
-                   const se::dnn::DnnGraph& graph)
+                   const std::shared_ptr<se::dnn::LazyDnnGraph> graph)
     : TracedCommandBufferCmd(execution_stream_id),
       args_(args.cbegin(), args.cend()),
       graph_(graph) {}
@@ -1166,6 +1174,7 @@ absl::Status CuDnnCmd::Initialize(const Thunk::InitializeParams& params,
 absl::Status CuDnnCmd::Record(const Thunk::ExecuteParams& execute_params,
                               const RecordParams& record_params,
                               se::CommandBuffer* command_buffer) {
+  CHECK(graph_ != nullptr);
   std::vector<se::DeviceMemoryBase> operands;
   operands.reserve(args_.size());
   for (const BufferAllocation::Slice& arg : args_) {
@@ -1177,8 +1186,8 @@ absl::Status CuDnnCmd::Record(const Thunk::ExecuteParams& execute_params,
 
   return AddTracedCommandBuffer(
       execute_params, record_params, command_buffer, [&](se::Stream* stream) {
-        return graph_.Execute(*stream,
-                              absl::Span<se::DeviceMemoryBase>(operands));
+        return graph_->get()->Execute(
+            *stream, absl::Span<se::DeviceMemoryBase>(operands));
       });
 }
 

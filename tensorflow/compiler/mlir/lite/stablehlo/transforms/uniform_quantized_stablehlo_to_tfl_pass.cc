@@ -1290,7 +1290,7 @@ class RewriteQuantizedConvolutionOp
     // output_spatial_shape[i] = ceil(input_spatial_shape[i] / strides[i])
     auto get_output_dim_for_same_padding = [](int64_t input_dim,
                                               int64_t stride_dim) -> int64_t {
-      return std::ceil(input_dim / stride_dim);
+      return std::ceil(input_dim / static_cast<double>(stride_dim));
     };
     return output_height ==
                get_output_dim_for_same_padding(input_height, stride_height) &&
@@ -2032,20 +2032,96 @@ class RewriteQuantizedGatherOp : public OpRewritePattern<stablehlo::GatherOp> {
   }
 };
 
+// Rewrites quantized stablehlo.dynamic_slice to tfl.slice.
+// TODO: b/322428814 - Add StableHLO quantizer integration tests for ODML.
+class RewriteQuantizedDynamicSliceOp
+    : public OpRewritePattern<stablehlo::DynamicSliceOp> {
+ public:
+  using OpRewritePattern<stablehlo::DynamicSliceOp>::OpRewritePattern;
+
+  LogicalResult match(stablehlo::DynamicSliceOp op) const override {
+    if (!IsQuantizedTensorType(op.getOperand().getType()) ||
+        !IsQuantizedTensorType(op.getResult().getType())) {
+      return failure();
+    }
+
+    return success(quant::HasStaticShape(op.getOperand()));
+  }
+
+  void rewrite(stablehlo::DynamicSliceOp op,
+               PatternRewriter& rewriter) const override {
+    Type output = op.getResult().getType();
+    Value input = op.getOperand();
+    TensorType operand_type = input.getType().cast<TensorType>();
+    ArrayRef<int64_t> operand_shape = operand_type.getShape();
+    const int64_t rank = operand_type.getRank();
+    const Type i64_type = rewriter.getI64Type();
+
+    ArrayRef<int64_t> slice_sizes = op.getSliceSizes();
+    TensorType single_element_type =
+        operand_type.cloneWith({static_cast<int64_t>(1)}, i64_type);
+
+    SmallVector<Value> start_indices(rank);
+    for (auto [i, start_index] : llvm::enumerate(op.getStartIndices())) {
+      // Start indices should be casted from tensor<i64> to tensor<1xi64>.
+      auto cast = rewriter.create<TFL::BitcastOp>(
+          op->getLoc(), single_element_type, start_index);
+      int64_t upper_limit_idx = operand_shape[i] - slice_sizes[i];
+      auto upper_limit_attr =
+          DenseIntElementsAttr::get(single_element_type, {upper_limit_idx});
+      auto upper_limit_cst =
+          rewriter.create<arith::ConstantOp>(op->getLoc(), upper_limit_attr);
+      // Dynamic start indices should be clamped with upper limit of
+      // `shape(operand) - slice_sizes)` as per semantics of
+      // `stablehlo.dynamic_slice`.
+      // (https://github.com/openxla/stablehlo/blob/main/docs/spec.md#dynamic_slice)
+      start_indices[i] =
+          rewriter.create<TFL::MinimumOp>(op->getLoc(), cast, upper_limit_cst);
+    }
+
+    Value concatenated = start_indices[0];
+    if (rank > 1) {
+      SmallVector<int64_t> begin_shape{rank};
+      Type begin_type = operand_type.cloneWith(begin_shape, i64_type);
+      concatenated = rewriter.create<TFL::ConcatenationOp>(
+          op->getLoc(), begin_type, start_indices, /*axis=*/0,
+          /*fused_activation_function=*/rewriter.getStringAttr("NONE"));
+    }
+
+    // Clamp with lower limit.
+    auto lower_limit_attr = DenseIntElementsAttr::get(
+        single_element_type, {static_cast<int64_t>(0)});
+    auto lower_limit_cst =
+        rewriter.create<arith::ConstantOp>(op->getLoc(), lower_limit_attr);
+    // Dynamic start indices should be clamped with lower limit of
+    // 0 as per semantics of `stablehlo.dynamic_slice`.
+    // (https://github.com/openxla/stablehlo/blob/main/docs/spec.md#dynamic_slice)
+    auto begin = rewriter.create<TFL::MaximumOp>(op->getLoc(), concatenated,
+                                                 lower_limit_cst);
+
+    SmallVector<int64_t> size_len{rank};
+    TensorType size_type = operand_type.cloneWith(size_len, i64_type);
+    auto size_attr = DenseIntElementsAttr::get(size_type, slice_sizes);
+    auto size = rewriter.create<arith::ConstantOp>(op.getLoc(), size_attr);
+
+    rewriter.replaceOpWithNewOp<TFL::SliceOp>(op, output, input, begin, size);
+  }
+};
+
 void UniformQuantizedStableHloToTflPass::runOnOperation() {
   func::FuncOp func_op = getOperation();
   MLIRContext& ctx = getContext();
 
   RewritePatternSet patterns(&ctx);
-  patterns.add<RewriteUniformQuantizeOp, RewriteUniformDequantizeOp,
+  patterns.add<RewriteUniformDequantizeOp, RewriteUniformQuantizeOp,
+               RewriteQuantizedBroadcastInDimOp, RewriteQuantizedConcatenateOp,
+               RewriteQuantizedConvolutionOp,
                RewriteQuantizedDotGeneralOpToTflFullyConnectedOrBatchMatmulOp,
-               RewriteQuantizedConvolutionOp, RewriteQuantizedTransposeOp,
-               RewriteQuantizedReshapeOp, RewriteQuantizedSelectOp,
-               RewriteQuantizedConcatenateOp, RewriteQuantizedPadOp,
-               RewriteQuantizedSliceOp, RewriteQuantizedBroadcastInDimOp,
-               RewriteQuantizedReduceWindowOpWithMax,
-               RewriteQuantizedDynamicReshapeOp, RewriteQuantizedGatherOp>(
-      &ctx);
+               RewriteQuantizedDynamicReshapeOp, RewriteQuantizedDynamicSliceOp,
+               RewriteQuantizedGatherOp, RewriteQuantizedPadOp,
+               RewriteQuantizedReduceWindowOpWithMax, RewriteQuantizedReshapeOp,
+               RewriteQuantizedSelectOp, RewriteQuantizedSliceOp,
+               RewriteQuantizedTransposeOp>(&ctx);
 
   if (failed(applyPatternsAndFoldGreedily(func_op, std::move(patterns)))) {
     func_op.emitError() << "Failed to convert stablehlo ops with uniform "

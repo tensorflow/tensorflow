@@ -14,7 +14,6 @@
 
 load("//xla/python/ifrt_proxy/common:ifrt_proxy.bzl", "default_ifrt_proxy_visibility", "ifrt_proxy_cc_test")
 load("@local_tsl//tsl:tsl.bzl", "if_google")
-load("@local_tsl//tsl:tsl.default.bzl", "tsl_pybind_extension")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -327,6 +326,7 @@ cc_library(
         "//xla/hlo/ir:hlo",
         "//xla/pjrt:host_callback",
         "//xla/pjrt:pjrt_executable",
+        "//xla/pjrt:pjrt_layout",
         "//xla/python/ifrt",
         "//xla/python/ifrt_proxy/common:ifrt_service_proto_cc",
         "//xla/python/ifrt_proxy/common:types",
@@ -478,6 +478,7 @@ ifrt_proxy_cc_test(
         ":version",
         "//xla:shape_util",
         "//xla/pjrt:pjrt_common",
+        "//xla/pjrt:pjrt_layout",
         "//xla/python/ifrt",
         "//xla/python/ifrt:mock",
         "//xla/python/ifrt_proxy/common:ifrt_service_proto_cc",
@@ -487,6 +488,7 @@ ifrt_proxy_cc_test(
         "@com_google_googletest//:gtest_main",
         "@llvm-project//llvm:Support",
         "@local_tsl//tsl/concurrency:ref_count",
+        "@local_tsl//tsl/platform:casts",
         "@local_tsl//tsl/platform:protobuf",
         "@local_tsl//tsl/platform:status_matchers",
         "@local_tsl//tsl/platform:statusor",
@@ -494,13 +496,23 @@ ifrt_proxy_cc_test(
     ],
 )
 
-tsl_pybind_extension(
+cc_library(
     name = "py_module",
     srcs = ["py_module.cc"],
+    hdrs = ["py_module.h"],
+    compatible_with = [],
+    copts = [
+        "-fexceptions",
+        "-fno-strict-aliasing",
+    ],
+    features = ["-use_header_modules"],
+    visibility = ["//xla/python:__pkg__"],
     deps = [
         ":grpc_client",
         ":registry",
+        "//third_party/nanobind",
         "//xla/pjrt:status_casters",
+        "//xla/python:nb_class_ptr",
         "//xla/python:py_client",
         "//xla/python/ifrt",
         "@com_google_absl//absl/log",
@@ -512,8 +524,5 @@ tsl_pybind_extension(
         "@com_google_absl//absl/strings:string_view",
         "@local_tsl//tsl/platform:env",
         "@local_tsl//tsl/platform:statusor",
-        "@pybind11",
-        "@pybind11_abseil//pybind11_abseil:absl_casters",
-        "@pybind11_protobuf//pybind11_protobuf:native_proto_caster",
     ],
 )

@@ -1166,6 +1166,7 @@ cc_test(
 cc_test_with_tflite(
     name = "mutable_op_resolver_utils_test",
     srcs = ["mutable_op_resolver_utils_test.cc"],
+    tags = ["tflite_disable_mobile_test"],  # Due to b/144306101 and b/329899620.
     tflite_deps = [
         ":mutable_op_resolver_utils",
         ":test_util",

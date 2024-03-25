@@ -35,8 +35,6 @@ limitations under the License.
 #include "third_party/nanobind/include/nanobind/stl/shared_ptr.h"  // IWYU pragma: keep
 #include "third_party/nanobind/include/nanobind/stl/string.h"  // IWYU pragma: keep
 #include "third_party/nanobind/include/nanobind/stl/string_view.h"  // IWYU pragma: keep
-#include "pybind11/numpy.h"  // from @pybind11
-#include "pybind11/pytypes.h"  // from @pybind11
 #include "xla/layout.h"
 #include "xla/literal.h"
 #include "xla/pjrt/exceptions.h"
@@ -56,7 +54,6 @@ limitations under the License.
 namespace xla {
 
 namespace nb = nanobind;
-namespace py = pybind11;
 
 namespace {
 
@@ -154,10 +151,6 @@ absl::StatusOr<PrimitiveType> DtypeToPrimitiveType(const nb_dtype& np_type) {
                          np_type.char_(), np_type.kind(), np_type.itemsize());
 }
 
-absl::StatusOr<PrimitiveType> DtypeToPrimitiveType(const py::dtype& np_type) {
-  return DtypeToPrimitiveType(nb::borrow<nb_dtype>(np_type.ptr()));
-}
-
 absl::StatusOr<nb_dtype> PrimitiveTypeToNbDtype(PrimitiveType type) {
   const CustomDtypes& custom_dtypes = GetCustomDtypes();
   auto to_nb_dtype = [](int typenum) -> nb_dtype {
@@ -213,11 +206,6 @@ absl::StatusOr<nb_dtype> PrimitiveTypeToNbDtype(PrimitiveType type) {
       return Unimplemented("Unimplemented primitive type %s",
                            PrimitiveType_Name(type));
   }
-}
-
-absl::StatusOr<py::dtype> PrimitiveTypeToDtype(PrimitiveType type) {
-  TF_ASSIGN_OR_RETURN(nb_dtype np_type, PrimitiveTypeToNbDtype(type));
-  return py::reinterpret_steal<py::dtype>(np_type.release().ptr());
 }
 
 absl::StatusOr<nb_dtype> IfrtDtypeToNbDtype(ifrt::DType dtype) {
@@ -283,11 +271,6 @@ absl::StatusOr<nb_dtype> IfrtDtypeToNbDtype(ifrt::DType dtype) {
       return Unimplemented("Unimplemented primitive type %s",
                            dtype.DebugString());
   }
-}
-
-absl::StatusOr<pybind11::dtype> IfrtDtypeToDtype(ifrt::DType dtype) {
-  TF_ASSIGN_OR_RETURN(nb_dtype np_type, IfrtDtypeToNbDtype(dtype));
-  return py::reinterpret_steal<py::dtype>(np_type.release().ptr());
 }
 
 absl::StatusOr<ifrt::DType> DtypeToIfRtDType(nb_dtype dtype) {
@@ -497,24 +480,6 @@ nb::tuple MutableSpanToNbTuple(absl::Span<nb::object> xs) {
     PyTuple_SET_ITEM(out.ptr(), i, xs[i].release().ptr());
   }
   return out;
-}
-
-template <typename IntType>
-static py::tuple IntSpanToTupleHelper(absl::Span<IntType const> xs) {
-  py::tuple out(xs.size());
-  for (int i = 0; i < xs.size(); ++i) {
-    out[i] = py::int_(xs[i]);
-  }
-  return out;
-}
-
-template <>
-pybind11::tuple SpanToTuple(absl::Span<int const> xs) {
-  return IntSpanToTupleHelper(xs);
-}
-template <>
-pybind11::tuple SpanToTuple(absl::Span<int64_t const> xs) {
-  return IntSpanToTupleHelper(xs);
 }
 
 std::optional<CastToArrayResult> CastToArray(nb::handle h) {

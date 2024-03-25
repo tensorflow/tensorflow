@@ -103,7 +103,7 @@ struct ThrowIfErrorWrapper<xla::Status(Args...), xla::Status (&)(Args...)> {
 template <typename C, typename... Args, typename F>
 struct ThrowIfErrorWrapper<xla::Status (C::*)(Args...), F> {
   explicit ThrowIfErrorWrapper(F&& f) : func(std::move(f)) {}
-  void operator()(Args... args) {
+  void operator()(Args... args) const {
     xla::ThrowIfError(func(std::forward<Args>(args)...));
   }
   F func;

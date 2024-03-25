@@ -276,6 +276,12 @@ AutoShardingSolverRequest ScaleRequest(
 // 3. If request.makespan_coeff is present, the objective additionally includes
 //    a makespan term. This is experimental and turned off by default.
 // 4. request.max_departures is used only for debugging and can be ignored.
+// 5. Note that due to our modeling of XLA's AllReduceReassociate optimization
+//    (more details in CostGraph::CostGraph() in auto_sharding_cost_graph.cc,
+//    and in CreateElementwiseOperatorStrategies() in auto_sharding.cc), there
+//    can be a few (usually < 10) edges in the problem with negative costs. This
+//    is guaranteed to never produce a negative overall cost for the graph,
+//    however.
 AutoShardingSolverResult CallORToolsSolver(
     const AutoShardingSolverRequest& unscaled_request) {
   const AutoShardingSolverRequest& request = ScaleRequest(unscaled_request);
@@ -513,7 +519,8 @@ AutoShardingSolverResult CallORToolsSolver(
     }
     LOG(INFO) << "Minimum memory budget estimate: "
               << MinimumMemoryBudgetRequired(request);
-    LOG(INFO) << "Using memory budget: " << request.memory_budget();
+    LOG(INFO) << "Using memory budget: "
+              << static_cast<double>(request.memory_budget());
   }
 
   // d. specified via "BoolVarArray"
@@ -1040,9 +1047,6 @@ Status ValidateRequest(const AutoShardingSolverRequest& request) {
     const int num_u_strategies = request.computation_costs(u).costs_size();
     const int num_v_strategies = request.computation_costs(v).costs_size();
     CHECK_EQ(num_strategies, num_u_strategies * num_v_strategies);
-    for (EdgeStrategyIdx strategy = 0; strategy < num_strategies; ++strategy) {
-      TF_RET_CHECK(request.resharding_costs(e).costs(strategy) >= 0.0);
-    }
   }
   return OkStatus();
 }

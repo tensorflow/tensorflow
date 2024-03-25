@@ -1892,7 +1892,7 @@ REGISTER_OP("DenseBincount")
         return errors::InvalidArgument("size (", size_val,
                                        ") must be non-negative");
       }
-      if (c->Rank(c->input(0)) == 1) {
+      if (c->Rank(c->input(0)) == 1 || c->Rank(c->input(0)) == 0) {
         c->set_output(0, c->MakeShape({size_val}));
       } else if (c->Rank(c->input(0)) == 2) {
         c->set_output(0, c->MakeShape({c->Dim(c->input(0), 0), size_val}));

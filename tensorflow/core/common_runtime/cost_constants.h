@@ -30,12 +30,15 @@ inline constexpr char kNoOpCostName[] = "no_op";
 // '_with_smear" includes this part.
 inline constexpr char kWithSmearSuffix[] = "_with_smear";
 inline constexpr char kNoSmearSuffix[] = "_no_smear";
+inline constexpr char kNonBatchingSuffix[] = "_non_batching";
 
 // Full names of per-request cost.
 inline constexpr char kTpuWithSmearCostName[] = "tpu_with_smear";
 inline constexpr char kTpuNoSmearCostName[] = "tpu_no_smear";
+inline constexpr char kTpuNonBatchingCostName[] = "tpu_non_batching";
 inline constexpr char kGcuWithSmearCostName[] = "gcu_with_smear";
 inline constexpr char kGcuNoSmearCostName[] = "gcu_no_smear";
+inline constexpr char kGcuNonBatchingCostName[] = "gcu_non_batching";
 
 }  // namespace tensorflow
 

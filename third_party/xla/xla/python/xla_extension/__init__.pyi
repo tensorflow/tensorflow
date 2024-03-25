@@ -37,6 +37,7 @@ from typing import (
 
 import numpy as np
 
+from . import ifrt_proxy
 from . import jax_jit
 from . import mlir
 from . import ops

@@ -14,7 +14,7 @@
 # ==============================================================================
 """Defines types required for representative datasets for quantization."""
 
-import collections.abc
+from collections.abc import Collection, Sized
 import os
 from typing import Iterable, Mapping, Optional, Union
 
@@ -117,7 +117,11 @@ class TfRecordRepresentativeDatasetSaver(RepresentativeDatasetSaver):
   ```
   """
 
-  def __init__(self, path_map: Mapping[str, os.PathLike[str]]):
+  def __init__(
+      self,
+      path_map: Mapping[str, os.PathLike[str]],
+      expected_input_key_map: Optional[Mapping[str, Collection[str]]] = None,
+  ):
     """Initializes TFRecord represenatative dataset saver.
 
     Args:
@@ -125,8 +129,22 @@ class TfRecordRepresentativeDatasetSaver(RepresentativeDatasetSaver):
         to which a `RepresentativeDataset` is saved. The signature def keys
         should be a subset of the `SignatureDef` keys of the
         `representative_dataset` argument of the `save()` call.
+      expected_input_key_map: Signature def key -> expected input keys. If set,
+        validate that the sample has same set of input keys before saving.
+
+    Raises:
+      KeyError: If path_map and expected_input_key_map have different keys.
     """
     self.path_map: Mapping[str, os.PathLike[str]] = path_map
+    self.expected_input_key_map: Mapping[str, Collection[str]] = {}
+    if expected_input_key_map is not None:
+      if set(path_map.keys()) != set(expected_input_key_map.keys()):
+        raise KeyError(
+            'The `path_map` and `expected_input_key_map` should have the same'
+            ' set of keys.'
+        )
+
+      self.expected_input_key_map = expected_input_key_map
 
   def _save_tf_record_dataset(
       self,
@@ -143,6 +161,10 @@ class TfRecordRepresentativeDatasetSaver(RepresentativeDatasetSaver):
 
     Returns:
       a RepresentativeDatasetFile instance contains the path to the saved file.
+
+    Raises:
+      KeyError: If the set of input keys in the dataset samples doesn't match
+      the set of expected input keys.
     """
     # When running in graph mode (TF1), tf.Tensor types should be converted to
     # numpy ndarray types to be compatible with `make_tensor_proto`.
@@ -150,9 +172,23 @@ class TfRecordRepresentativeDatasetSaver(RepresentativeDatasetSaver):
       with session.Session() as sess:
         repr_ds = replace_tensors_by_numpy_ndarrays(repr_ds, sess)
 
+    expected_input_keys = self.expected_input_key_map.get(
+        signature_def_key, None
+    )
     tfrecord_file_path = self.path_map[signature_def_key]
     with python_io.TFRecordWriter(tfrecord_file_path) as writer:
       for repr_sample in repr_ds:
+        if (
+            expected_input_keys is not None
+            and set(repr_sample.keys()) != expected_input_keys
+        ):
+          raise KeyError(
+              'Invalid input keys for representative sample. The function'
+              f' expects input keys of: {set(expected_input_keys)}. Got:'
+              f' {set(repr_sample.keys())}. Please provide correct input keys'
+              ' for representative samples.'
+          )
+
         sample = _RepresentativeDataSample()
         for input_name, input_value in repr_sample.items():
           sample.tensor_proto_inputs[input_name].CopyFrom(
@@ -317,7 +353,7 @@ def get_num_samples(repr_ds: RepresentativeDataset) -> Optional[int]:
     is malformed; it simply means the size cannot be determined without
     iterating the whole dataset.
   """
-  if isinstance(repr_ds, collections.abc.Sized):
+  if isinstance(repr_ds, Sized):
     try:
       return len(repr_ds)
     except Exception as ex:  # pylint: disable=broad-except

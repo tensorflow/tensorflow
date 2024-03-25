@@ -179,13 +179,13 @@ static Status CreateHloXlaPipeline(
   }
   pm.addPass(mlir::createCSEPass());
   pm.addPass(mlir::createCanonicalizerPass());
-  mlir::bufferization::BufferResultsToOutParamsOptions out_params_options;
-  out_params_options.filterFn = [](mlir::func::FuncOp* func) {
+  mlir::bufferization::BufferResultsToOutParamsOpts out_params_opts;
+  out_params_opts.filterFn = [](mlir::func::FuncOp* func) {
     // Only transform the entry point.
     return func->getSymName() == "main";
   };
-  pm.addPass(mlir::bufferization::createBufferResultsToOutParamsPass(
-      out_params_options));
+  pm.addPass(
+      mlir::bufferization::createBufferResultsToOutParamsPass(out_params_opts));
 
   pm.addNestedPass<FuncOp>(
       mlir::bufferization::createPromoteBuffersToStackPass(nullptr));

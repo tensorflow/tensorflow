@@ -88,9 +88,11 @@ cc_library(
     deps = [
         "//tensorflow/compiler/mlir/lite:tensorflow_lite",
         "//tensorflow/compiler/mlir/lite/quantization/ir:QuantOps",
+        "//tensorflow/compiler/mlir/quantization/common/ir:QuantOps",
         "//tensorflow/compiler/mlir/quantization/common/quantization_lib",
         "//tensorflow/compiler/mlir/quantization/common/quantization_lib:quantization_config",
         "//tensorflow/core:protos_all_cc",
+        "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/strings",
         "@llvm-project//llvm:Support",

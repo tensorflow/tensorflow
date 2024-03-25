@@ -17,10 +17,11 @@ limitations under the License.
 #define XLA_SERVICE_WHILE_LOOP_UNROLLER_H_
 
 #include <cstdint>
-#include <optional>
+#include <utility>
+#include <vector>
 
-#include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
@@ -39,14 +40,22 @@ struct WhileLoopConfig {
   int64_t induction_var_idx;
 };
 
-// Returns the list of unrollable loops in the given module
-absl::flat_hash_map<HloInstruction*, WhileLoopConfig> GetUnrollableLoops(
+// Runs a sequence of passes that are necessary to prepare loops for unrolling.
+// Failure to run these passes will prevent unroller from unrolling loops that
+// would have been otherwise unrollable.
+absl::StatusOr<bool> PrepareModuleForUnrolling(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads);
 
-// Unrolls the given while loop with the defaul behaviour set to full unroll. If
-// wrap_in_trivial_loop is set, the unrolled body of the loop will be wrapped in
-// a loop with trip count of one.
+// Returns the list of unrollable loops in the given module
+
+std::vector<std::pair<HloInstruction*, WhileLoopConfig>> GetUnrollableLoops(
+    HloModule* module,
+    const absl::flat_hash_set<absl::string_view>& execution_threads);
+
+// Unrolls the given while loop with the default behaviour set to full unroll.
+// If wrap_in_trivial_loop is set, the unrolled body of the loop will be wrapped
+// in a loop with trip count of one.
 StatusOr<bool> Unroll(HloInstruction* while_op, int64_t unroll_factor = -1,
                       bool wrap_in_trivial_loop = false);
 

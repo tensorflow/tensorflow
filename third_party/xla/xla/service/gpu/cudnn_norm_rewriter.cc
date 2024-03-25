@@ -98,8 +98,9 @@ struct NormMetadata {
   // cuDNN. Nullptr if no transposes were inserted.
   HloInstruction *x_transpose, *y_transpose;
   // The reduction and non-reduction dimensions of the input into the forward
-  // layer norm before the potential application of transposes.
-  std::vector<int64_t> norm_dims, non_norm_dims;
+  // layer norm before the potential application of transposes and adjusted for
+  // the removal of any degenerate dimensions in the input to the norm.
+  std::vector<int64_t> norm_dims_adjusted, non_norm_dims_adjusted;
 };
 
 // Map from the instruction pointer of a layer norm Custom Call to its metadata.
@@ -171,6 +172,45 @@ bool CompatibleElementType(const HloInstruction* instr) {
   return element_type == BF16 || element_type == F16 || element_type == F32;
 }
 
+// Returns the dimensions associated with shape, adjusted for the removal of any
+// degenerate dimensions in shape. Specifically, for each dimension d in
+// dimensions, returns the new index of d if all dimensions of size 1 are
+// removed from shape. If d has size 1, it is not included in the returned
+// vector.
+std::vector<int64_t> AdjustedDimensions(const Shape& shape,
+                                        absl::Span<const int64_t> dimensions) {
+  absl::flat_hash_map<int64_t, int64_t> dimension_map;
+  for (int64_t dimension = 0, non_degen_dimension = 0; dimension < shape.rank();
+       ++dimension) {
+    if (shape.dimensions(dimension) > 1) {
+      dimension_map.insert({dimension, non_degen_dimension});
+      non_degen_dimension++;
+    }
+  }
+  std::vector<int64_t> adjusted_dimensions;
+  for (int64_t dimension : dimensions) {
+    auto non_degenerate_dimension = dimension_map.find(dimension);
+    if (non_degenerate_dimension != dimension_map.end()) {
+      adjusted_dimensions.emplace_back(non_degenerate_dimension->second);
+    }
+  }
+  return adjusted_dimensions;
+}
+
+// Returns the dimensions of broadcast or reduction instructions, adjusted for
+// the removal of any degenerate dimensions in the output or input.
+std::vector<int64_t> AdjustedDimensions(const HloInstruction* instr) {
+  Shape shape;
+  if (instr->opcode() == HloOpcode::kBroadcast) {
+    shape = instr->shape();
+  } else if (instr->opcode() == HloOpcode::kReduce) {
+    shape = instr->operand(0)->shape();
+  } else {
+    return {};
+  }
+  return AdjustedDimensions(shape, instr->dimensions());
+}
+
 // Returns whether the HLO Computation applied by instr calculates the sum of
 // the elements. When provided, compares reduce_dims to the dimensions of the
 // reduction.
@@ -179,12 +219,9 @@ bool AppliesAddReduce(const HloInstruction* instr,
   if (instr->opcode() != HloOpcode::kReduce) {
     return false;
   }
-  if (ShapeUtil::HasDegenerateDimensions(instr->operand(0)->shape())) {
-    VLOG(1) << "Reduction input must not have degenerate dimensions.";
-    return false;
-  }
+
   // Verify the dimensions of the reduction.
-  if (!reduce_dims.empty() && instr->dimensions() != reduce_dims) {
+  if (!reduce_dims.empty() && AdjustedDimensions(instr) != reduce_dims) {
     return false;
   }
 
@@ -275,12 +312,6 @@ bool FindTarget(const HloInstruction* custom_call, const HloInstruction* instr,
 std::vector<int64_t> MapDimensions(const Shape& original_shape,
                                    const Shape& reshaped_shape,
                                    const absl::Span<const int64_t> dimensions) {
-  // The original and reshaped shape must not have degenerate dimensions.
-  if (ShapeUtil::HasDegenerateDimensions(original_shape) ||
-      ShapeUtil::HasDegenerateDimensions(reshaped_shape)) {
-    return {};
-  }
-
   auto dimension_product =
       [](const Shape& shape,
          absl::Span<const int64_t> product_dimensions) -> int64_t {
@@ -296,8 +327,9 @@ std::vector<int64_t> MapDimensions(const Shape& original_shape,
   for (int64_t original_dimension = 0, reshaped_dimension = 0;
        original_dimension < original_shape.rank(); ++original_dimension) {
     original_dimensions.emplace_back(original_dimension);
-    while (dimension_product(reshaped_shape, reshaped_dimensions) <
-               dimension_product(original_shape, original_dimensions) &&
+    while ((reshaped_dimensions.empty() ||
+            dimension_product(reshaped_shape, reshaped_dimensions) <
+                dimension_product(original_shape, original_dimensions)) &&
            reshaped_dimension < reshaped_shape.rank()) {
       reshaped_dimensions.emplace_back(reshaped_dimension++);
     }
@@ -554,12 +586,12 @@ auto Expectation(Pattern pattern) {
 // Expected value, or mean, with optional broadcast.
 template <typename Pattern>
 auto Expectation(UniqueHloInstruction* expectation, Pattern pattern) {
-  auto shared_subpattern =
-      MultiplyAnyOrder(m::Broadcast(m::ConstantScalar()), AddReduce(pattern))
+  auto shared_subpattern = OptionalSupportedTransform(
+      m::MultiplyAnyOrder(m::Broadcast(m::ConstantScalar()), AddReduce(pattern))
           .WithPredicate([](const HloInstruction* instr) {
             return CalculatesExpectation(instr);
           })
-          .WithPredicate(expectation->capture_or_verify);
+          .WithPredicate(expectation->capture_or_verify));
   return m::AnyOf<HloInstruction>(m::Broadcast(shared_subpattern),
                                   shared_subpattern);
 }
@@ -568,12 +600,13 @@ auto Expectation(UniqueHloInstruction* expectation, Pattern pattern) {
 template <typename Pattern>
 auto Expectation(UniqueHloInstruction* expectation, HloInstruction** reduce,
                  Pattern pattern) {
-  auto shared_subpattern = MultiplyAnyOrder(m::Broadcast(m::ConstantScalar()),
-                                            AddReduce(reduce, pattern))
-                               .WithPredicate([](const HloInstruction* instr) {
-                                 return CalculatesExpectation(instr);
-                               })
-                               .WithPredicate(expectation->capture_or_verify);
+  auto shared_subpattern = OptionalSupportedTransform(
+      m::MultiplyAnyOrder(m::Broadcast(m::ConstantScalar()),
+                          AddReduce(reduce, pattern))
+          .WithPredicate([](const HloInstruction* instr) {
+            return CalculatesExpectation(instr);
+          })
+          .WithPredicate(expectation->capture_or_verify));
   return m::AnyOf<HloInstruction>(m::Broadcast(shared_subpattern),
                                   shared_subpattern);
 }
@@ -583,14 +616,19 @@ auto Expectation(UniqueHloInstruction* expectation, HloInstruction** reduce,
 auto Variance(UniqueHloInstruction* variance, UniqueHloInstruction* expectation,
               UniqueHloInstruction* x) {
   return m::AnyOf<HloInstruction>(
-      Subtract(Expectation(Square(m::Op().WithPredicate(x->capture_or_verify))),
-               Square(Expectation(expectation,
-                                  m::Op().WithPredicate(x->capture_or_verify))))
+      Subtract(Expectation(Square(OptionalSupportedTransform(
+                   m::Op().WithPredicate(x->capture_or_verify)))),
+               Square(Expectation(expectation, OptionalSupportedTransform(
+                                                   m::Op().WithPredicate(
+                                                       x->capture_or_verify)))))
           .WithPredicate(variance->capture_or_verify),
       Expectation(
-          Square(Subtract(m::Op().WithPredicate(x->capture_or_verify),
-                          Expectation(expectation, m::Op().WithPredicate(
-                                                       x->capture_or_verify)))))
+          Square(Subtract(
+              OptionalSupportedTransform(
+                  m::Op().WithPredicate(x->capture_or_verify)),
+              Expectation(expectation,
+                          OptionalSupportedTransform(
+                              m::Op().WithPredicate(x->capture_or_verify))))))
           .WithPredicate(variance->capture_or_verify));
 }
 
@@ -727,8 +765,8 @@ auto XCenter(UniqueHloInstruction* x_center, UniqueHloInstruction* x,
              UniqueHloInstruction* fused_expectation,
              UniqueHloInstruction* custom_call,
              const NormMetadataMap& norm_metadata) {
-  auto capture_or_verify_x = [x, x_center, custom_call, &norm_metadata](
-                                 const HloInstruction* instr) -> bool {
+  auto capture_or_verify_x =
+      [x, custom_call, &norm_metadata](const HloInstruction* instr) -> bool {
     return x->CaptureOrVerify(
         FindTarget(custom_call->Instr(), instr->operand(0),
                    custom_call->Instr()->operand(0), norm_metadata)
@@ -854,9 +892,11 @@ class CudnnNormRewriterVisitor : public DfsHloRewriteVisitor {
     if (Match(
             instr,
             SubtractMultiplyAddAnyOrder(
-                m::Op().WithPredicate(x.capture_or_verify),
+                OptionalSupportedTransform(
+                    m::Op().WithPredicate(x.capture_or_verify)),
                 Expectation(&expectation, &reduce,
-                            m::Op().WithPredicate(x.capture_or_verify)),
+                            OptionalSupportedTransform(
+                                m::Op().WithPredicate(x.capture_or_verify))),
                 NormFactor(&norm_factor, &x, &variance, &expectation, &epsilon),
                 m::Broadcast(&broadcast_scale, m::Op(&scale)),
                 m::Broadcast(&broadcast_bias, m::Op(&bias))))) {
@@ -889,11 +929,6 @@ class CudnnNormRewriterVisitor : public DfsHloRewriteVisitor {
         return absl::OkStatus();
       }
 
-      // Skip initial convert, if present.
-      if (x.Instr()->opcode() == HloOpcode::kConvert) {
-        x.SetInstr(x.Instr()->mutable_operand(0));
-      }
-
       // Verify the input and output layouts.
       // TODO(philipphack): Consider supporting more general cases.
       if (!LayoutUtil::IsMonotonicWithDim0Major(x.Instr()->shape().layout()) ||
@@ -914,10 +949,15 @@ class CudnnNormRewriterVisitor : public DfsHloRewriteVisitor {
       }
 
       // Verify that the shapes of scale and bias are compatible with the
-      // operation.
+      // operation. The adjusted norm dimensions are the dimensions of the
+      // reduction after removing any degenerate dimensions from the input of
+      // the reduction.
       std::vector<int64_t> norm_dims(reduce->dimensions().begin(),
                                      reduce->dimensions().end());
-      if (norm_dims.size() != scale->shape().dimensions_size()) {
+      std::vector<int64_t> norm_dims_adjusted = AdjustedDimensions(reduce);
+      if (norm_dims_adjusted.size() !=
+          ShapeUtil::DropDegenerateDimensions(scale->shape())
+              .dimensions_size()) {
         VLOG(1) << "Layer norm input dimensions not supported.";
         return absl::OkStatus();
       }
@@ -930,12 +970,14 @@ class CudnnNormRewriterVisitor : public DfsHloRewriteVisitor {
       }
 
       // Verify the broadcasts of scale and bias.
-      if (!ShapeUtil::EqualIgnoringElementType(reduce->operand(0)->shape(),
-                                               broadcast_scale->shape()) ||
-          !ShapeUtil::EqualIgnoringElementType(reduce->operand(0)->shape(),
-                                               broadcast_bias->shape()) ||
-          reduce->dimensions() != broadcast_scale->dimensions() ||
-          reduce->dimensions() != broadcast_bias->dimensions()) {
+      if (!ShapeUtil::EqualIgnoringElementType(
+              ShapeUtil::DropDegenerateDimensions(reduce->operand(0)->shape()),
+              ShapeUtil::DropDegenerateDimensions(broadcast_scale->shape())) ||
+          !ShapeUtil::EqualIgnoringElementType(
+              ShapeUtil::DropDegenerateDimensions(reduce->operand(0)->shape()),
+              ShapeUtil::DropDegenerateDimensions(broadcast_bias->shape())) ||
+          norm_dims_adjusted != AdjustedDimensions(broadcast_scale) ||
+          norm_dims_adjusted != AdjustedDimensions(broadcast_bias)) {
         VLOG(1) << "Layer norm operand broadcast not supported.";
         return absl::OkStatus();
       }
@@ -949,6 +991,9 @@ class CudnnNormRewriterVisitor : public DfsHloRewriteVisitor {
           non_norm_dims.emplace_back(x_dim);
         }
       }
+      std::vector<int64_t> non_norm_dims_adjusted =
+          AdjustedDimensions(x.Instr()->shape(), non_norm_dims);
+
       std::vector<int64_t> x_transpose_order = non_norm_dims;
       x_transpose_order.insert(x_transpose_order.end(), norm_dims.begin(),
                                norm_dims.end());
@@ -1052,9 +1097,10 @@ class CudnnNormRewriterVisitor : public DfsHloRewriteVisitor {
 
       // Store metadata for potential use in the backward graph.
       norm_metadata_.insert(
-          {custom_call, NormMetadata({x_transpose.value_or(nullptr),
-                                      y_transpose.value_or(nullptr), norm_dims,
-                                      non_norm_dims})});
+          {custom_call,
+           NormMetadata({x_transpose.value_or(nullptr),
+                         y_transpose.value_or(nullptr), norm_dims_adjusted,
+                         non_norm_dims_adjusted})});
 
       VLOG(1) << "Layer norm rewritten into Custom Call.";
 
@@ -1255,10 +1301,14 @@ class CudnnNormRewriterVisitor : public DfsHloRewriteVisitor {
       }
 
       // Verify the dimensions of reductions in the backward graph.
-      if (reduce0->dimensions() != norm_metadata->second.norm_dims ||
-          reduce1->dimensions() != norm_metadata->second.norm_dims ||
-          reduce2->dimensions() != norm_metadata->second.norm_dims ||
-          reduce3->dimensions() != norm_metadata->second.norm_dims) {
+      if (AdjustedDimensions(reduce0) !=
+              norm_metadata->second.norm_dims_adjusted ||
+          AdjustedDimensions(reduce1) !=
+              norm_metadata->second.norm_dims_adjusted ||
+          AdjustedDimensions(reduce2) !=
+              norm_metadata->second.norm_dims_adjusted ||
+          AdjustedDimensions(reduce3) !=
+              norm_metadata->second.norm_dims_adjusted) {
         VLOG(1) << "Unexpected reductions dimensions in layer norm gradient.";
         return absl::OkStatus();
       }
@@ -1303,8 +1353,9 @@ class CudnnNormRewriterVisitor : public DfsHloRewriteVisitor {
                                        m::Op().Is(factor1.Instr()))))) {
               // Dscale is an addition-reduction of the product.
               for (HloInstruction* multiply_user : user->users()) {
-                if (AppliesAddReduce(multiply_user,
-                                     norm_metadata->second.non_norm_dims)) {
+                if (AppliesAddReduce(
+                        multiply_user,
+                        norm_metadata->second.non_norm_dims_adjusted)) {
                   return multiply_user;
                 }
               }
@@ -1321,7 +1372,8 @@ class CudnnNormRewriterVisitor : public DfsHloRewriteVisitor {
 
       // Find Dbias, i.e. an addition-reduction of DY, starting from DY.
       // Rewriting proceeds without fusing Dbias if unsuccessful.
-      dbias = FindAddReduce(dy.Instr(), norm_metadata->second.non_norm_dims);
+      dbias = FindAddReduce(dy.Instr(),
+                            norm_metadata->second.non_norm_dims_adjusted);
 
       // Verify the input and output layouts.
       // TODO(philipphack): Consider supporting more general cases.

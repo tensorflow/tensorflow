@@ -42,8 +42,8 @@ OptimizedFunctionGraph OptimizedFunctionGraphInfo::ToProto(
   return proto;
 }
 
-StatusOr<OptimizedFunctionGraphInfo> OptimizedFunctionGraphInfo::FromProto(
-    OptimizedFunctionGraph&& proto) {
+absl::StatusOr<OptimizedFunctionGraphInfo>
+OptimizedFunctionGraphInfo::FromProto(OptimizedFunctionGraph&& proto) {
   // Reconstruct the lib_def.
   FunctionLibraryDefinition lib_def(OpRegistry::Global());
   FunctionDefLibrary proto_library;

@@ -96,7 +96,8 @@ class InsertWeightParamPattern
       return false;
     }
     Operation* user = operand.getOwner();
-    if (auto call_op = cast<TF::XlaCallModuleOp>(user)) {
+    if (isa<TF::XlaCallModuleOp>(user)) {
+      auto call_op = cast<TF::XlaCallModuleOp>(user);
       const StringRef function_name = GetEntryFunctionName(call_op);
       const bool is_conv_or_dot = function_name.contains("conv") ||
                                   function_name.contains("dot_general");

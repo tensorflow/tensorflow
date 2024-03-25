@@ -57,7 +57,6 @@ limitations under the License.
 #include "xla/service/gpu/cudnn_fused_conv_rewriter.h"
 #include "xla/service/gpu/cudnn_fused_mha_rewriter.h"
 #include "xla/service/gpu/cudnn_fused_mha_transpose_fusion.h"
-#include "xla/service/gpu/cudnn_fusion_compiler.h"
 #include "xla/service/gpu/cudnn_norm_rewriter.h"
 #include "xla/service/gpu/cudnn_pad_for_convolutions.h"
 #include "xla/service/gpu/cudnn_simplify_padding.h"
@@ -267,8 +266,10 @@ absl::Status NVPTXCompiler::OptimizeHloPostLayoutAssignment(
   }
 
   HloPassPipeline pre_pipeline("nvptx post-layout_assignment part 1");
-  // Rewrite normalization patterns into cuDNN Custom Calls.
-  pre_pipeline.AddPass<CudnnNormRewriter>(cuda_compute_capability);
+  if (hlo_module->config().debug_options().xla_gpu_enable_cudnn_layer_norm()) {
+    // Rewrite normalization patterns into cuDNN Custom Calls.
+    pre_pipeline.AddPass<CudnnNormRewriter>(cuda_compute_capability);
+  }
 
   pre_pipeline.AddPass<DotDimensionMerger>();
 
@@ -324,7 +325,6 @@ absl::Status NVPTXCompiler::AddConvAndGemmAutotuningPasses(
     pipeline->AddPass<GpuConvAlgorithmPicker>(autotune_config);
   }
   pipeline->AddPass<GemmAlgorithmPicker>(autotune_config);
-  pipeline->AddPass<CuDnnFusionCompiler>(autotune_config);
   return absl::OkStatus();
 }
 

@@ -902,6 +902,8 @@ GetStreamExecutorGpuDeviceAllocator(
                                                   std::move(allocators));
 }
 
+}  // namespace
+
 Status BuildDistributedDevices(
     std::string_view platform_name,
     std::map<int, std::unique_ptr<LocalDeviceState>> local_device_states,
@@ -909,8 +911,8 @@ Status BuildDistributedDevices(
     std::vector<std::unique_ptr<PjRtStreamExecutorDevice>>* devices,
     gpu::GpuExecutableRunOptions* gpu_executable_run_options,
     std::shared_ptr<KeyValueStoreInterface> kv_store, bool enable_mock_nccl,
-    absl::Duration get_local_topology_timeout = absl::Minutes(2),
-    absl::Duration get_global_topology_timeout = absl::Minutes(5)) {
+    absl::Duration get_local_topology_timeout,
+    absl::Duration get_global_topology_timeout) {
   LocalTopologyProto local_topology;
   local_topology.set_node_id(node_id);
   std::string boot_id_str;
@@ -990,8 +992,6 @@ Status BuildDistributedDevices(
 #endif  // GOOGLE_CUDA
   return OkStatus();
 }
-
-}  // namespace
 
 std::string MakeComputeCapabilityString(const se::DeviceDescription* desc) {
   std::string compute_capability;
@@ -1078,6 +1078,8 @@ absl::StatusOr<std::unique_ptr<PjRtClient>> GetStreamExecutorGpuClient(
     const GpuClientOptions& options) {
 #if TENSORFLOW_USE_ROCM
   auto pjrt_platform_name = xla::RocmName();
+#elif TENSORFLOW_USE_SYCL
+  auto pjrt_platform_name = xla::SyclName();
 #else   // TENSORFLOW_USE_ROCM
   auto pjrt_platform_name = xla::CudaName();
 #endif  // TENSORFLOW_USE_ROCM

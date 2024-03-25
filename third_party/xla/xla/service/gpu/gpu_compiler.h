@@ -123,6 +123,7 @@ class GpuCompiler : public LLVMCompiler {
   struct BackendCompileResult {
     std::string asm_text;
     std::vector<uint8_t> binary;
+    Thunk::BinaryMap dnn_compiled_graphs;
   };
 
   // During compilation with device, stream_exec != null and autotune_results

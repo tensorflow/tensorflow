@@ -49,16 +49,15 @@ class LowerToIfrtRestoreVariablePass
   void runOnOperation() override {
     mlir::ModuleOp module = getOperation();
 
-    mlir::WalkResult walk_result =
-        module.walk([&](mlir::TF::RestoreV2Op restore_op) {
-          if (mlir::failed(RewriteRestore(restore_op))) {
-            return mlir::WalkResult::interrupt();
-          }
-          return mlir::WalkResult::advance();
-        });
+    std::vector<mlir::TF::RestoreV2Op> restore_ops;
+    module.walk([&](mlir::TF::RestoreV2Op restore_op) {
+      restore_ops.push_back(restore_op);
+    });
 
-    if (walk_result.wasInterrupted()) {
-      return signalPassFailure();
+    for (const auto& restore_op : restore_ops) {
+      if (mlir::failed(RewriteRestore(restore_op))) {
+        return signalPassFailure();
+      }
     }
   }
 

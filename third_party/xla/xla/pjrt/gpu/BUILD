@@ -139,6 +139,7 @@ xla_cc_test(
         "//xla:literal_util",
         "//xla:statusor",
         "//xla:test",
+        "//xla/pjrt:pjrt_future",
         "//xla/pjrt:utils",
         "//xla/pjrt/distributed:in_memory_key_value_store",
         "//xla/service:gpu_plugin",

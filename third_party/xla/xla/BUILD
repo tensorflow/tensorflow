@@ -25,6 +25,7 @@ package_group(
         "//third_party/mira/...",
         "//third_party/mlcompass/...",
         "//third_party/mlir_edge/model_curriculum/...",
+        "//third_party/openxla/shardonnay/...",
         "//third_party/py/enzyme_ad/...",
         "//third_party/py/jax/...",
         "//third_party/py/t5x/...",
@@ -607,6 +608,7 @@ cc_library(
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/functional:function_ref",
+        "@com_google_absl//absl/hash",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/types:span",
@@ -869,11 +871,10 @@ cc_library(
     hdrs = ["test_helpers.h"],
     visibility = internal_visibility([":friends"]),
     deps = [
+        ":status",
         ":statusor",
         ":types",
         "@com_google_absl//absl/strings",
-        "@local_tsl//tsl/platform:protobuf",
-        "@local_tsl//tsl/platform:regexp",
         "@local_tsl//tsl/platform:test",
     ],
 )

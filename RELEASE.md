@@ -29,6 +29,8 @@
 * GPU
     * Support for NVIDIA GPUs with compute capability 8.9 (e.g. L4 & L40) has
       been added to TF binary distributions (Python wheels).
+* Replace `DebuggerOptions` of TensorFlow Quantizer, and migrate to
+  `DebuggerConfig` of StableHLO Quantizer.
 
 ## Keras
 
@@ -70,6 +72,12 @@
       schema globally in the converter and inference engine. The new behaviour
       can be disabled via experimental
       flag `converter._experimental_disable_per_channel_quantization_for_dense_layers = True`.
+    * C API:
+        * The experimental `TfLiteRegistrationExternal` type has been renamed as
+          `TfLiteOperator`, and likewise for the corresponding API functions.
+    * The Python TF Lite Interpreter bindings now have an option
+      `experimental_default_delegate_latest_features` to enable all default
+      delegate features.
 
 ## Thanks to our Contributors
 

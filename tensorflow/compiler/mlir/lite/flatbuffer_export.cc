@@ -181,6 +181,8 @@ static StatusOr<tflite::TensorType> GetTFLiteType(Type type,
     return tflite::TensorType_FLOAT32;
   } else if (type.isF16()) {
     return tflite::TensorType_FLOAT16;
+  } else if (type.isBF16()) {
+    return tflite::TensorType_BFLOAT16;
   } else if (type.isF64()) {
     return tflite::TensorType_FLOAT64;
   } else if (type.isa<mlir::TF::StringType>()) {
@@ -577,9 +579,6 @@ class Translator {
         module.getContext()->getOrLoadDialect<mlir::TF::TensorFlowDialect>();
     tfl_dialect_ = module.getContext()
                        ->getOrLoadDialect<mlir::TFL::TensorFlowLiteDialect>();
-    stablehlo_dialect_ =
-        module.getContext()
-            ->getOrLoadDialect<mlir::stablehlo::StablehloDialect>();
     vhlo_dialect_ =
         module.getContext()->getOrLoadDialect<mlir::vhlo::VhloDialect>();
     // Right now the TF executor dialect is still needed to build NodeDef.
@@ -834,7 +833,6 @@ class Translator {
   // dialect is not registered.
   const Dialect* tf_dialect_;
   const Dialect* tfl_dialect_;
-  const Dialect* stablehlo_dialect_;
   const Dialect* vhlo_dialect_;
 
   // The failed ops during legalization.
@@ -1994,35 +1992,6 @@ std::optional<BufferOffset<tflite::Operator>> Translator::BuildOperator(
       inst->emitOpError("is not a supported TFLite op");
     }
     return offset;
-  }
-
-  // EXPERIMENTAL: If the source is in stablehlo dialect, also create them as
-  // builtin ops
-  if (dialect == stablehlo_dialect_) {
-    // for stablehlo ops with kernels, we directly serialize them whenever
-    // possible
-    if (auto shlo_op = llvm::dyn_cast<mlir::stablehlo::ScatterOp>(inst)) {
-      return BuildStablehloScatterOp(shlo_op, operands, results);
-    }
-    if (auto shlo_op =
-            llvm::dyn_cast<mlir::stablehlo::RngBitGeneratorOp>(inst)) {
-      return BuildStablehloRngBitGeneratorOp(shlo_op, operands, results);
-    }
-    if (auto shlo_op = llvm::dyn_cast<mlir::stablehlo::GatherOp>(inst)) {
-      return BuildStablehloGatherOp(shlo_op, operands, results);
-    }
-    if (auto shlo_op = llvm::dyn_cast<mlir::stablehlo::ReduceWindowOp>(inst)) {
-      return BuildStablehloReduceWindowOp(shlo_op, operands, results);
-    }
-    if (auto shlo_op = llvm::dyn_cast<mlir::stablehlo::PadOp>(inst)) {
-      return BuildStablehloPadOp(shlo_op, operands, results);
-    }
-    if (auto shlo_op = llvm::dyn_cast<mlir::stablehlo::AddOp>(inst)) {
-      return BuildStablehloOperatorwithoutOptions(
-          shlo_op, operands, results, tflite::BuiltinOperator_STABLEHLO_ADD);
-    }
-    return inst->emitOpError("is not part of the stablehlo support yet."),
-           std::nullopt;
   }
 
   if (dialect == vhlo_dialect_) {

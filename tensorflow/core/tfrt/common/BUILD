@@ -85,8 +85,12 @@ cc_library(
         "//tensorflow/core:framework",
         "//tensorflow/core/platform:errors",
         "//tensorflow/core/platform:status",
+        "@com_google_absl//absl/status",
+        "@local_xla//xla/client:local_client",
+        "@local_xla//xla/pjrt:local_device_state",
         "@local_xla//xla/pjrt:pjrt_client",
         "@local_xla//xla/pjrt:tf_pjrt_client",
+        "@local_xla//xla/stream_executor/integrations:tf_allocator_adapter",
     ],
 )
 
@@ -107,6 +111,8 @@ cc_library(
         "//tensorflow/core:framework_types_hdr",
         "//tensorflow/core/platform:errors",
         "//tensorflow/core/platform:status",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
         "@local_xla//xla/pjrt:pjrt_client",
     ],
 )

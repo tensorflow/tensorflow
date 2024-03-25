@@ -34,30 +34,6 @@ cc_library(
 )
 
 cc_library(
-    name = "stablehlo_tfl",
-    srcs = [
-        "transforms/stablehlo_tfl_pass.cc",
-    ],
-    hdrs = [
-        "transforms/stablehlo_tfl_pass.h",
-    ],
-    copts = [
-        "-Ithird_party",
-    ],
-    deps = [
-        "//tensorflow/compiler/mlir/lite:tensorflow_lite",
-        "@flatbuffers",
-        "@llvm-project//mlir:FuncDialect",
-        "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:Pass",
-        "@llvm-project//mlir:Support",
-        "@llvm-project//mlir:TransformUtils",
-        "@stablehlo//:stablehlo_ops",
-    ],
-    alwayslink = 1,
-)
-
-cc_library(
     name = "stablehlo_util",
     srcs = [
         "transforms/stablehlo_util.cc",
@@ -166,6 +142,7 @@ cc_library(
         "@local_xla//xla/mlir_hlo",
         "@local_xla//xla/mlir_hlo:hlo_dialect_registration",
         "@local_xla//xla/mlir_hlo:mhlo_passes",
+        "@local_xla//xla/mlir_hlo:type_conversion",
         "@stablehlo//:chlo_ops",
         "@stablehlo//:register",
     ],
@@ -213,6 +190,7 @@ cc_library(
         ":drop_savedmodel_semantics",
         ":fold_broadcast_pass",
         ":fuse_convolution_pass",
+        ":legalize_stablehlo_custom_call_to_composite",
         ":legalize_tf_xla_call_module_to_stablehlo_pass",
         ":optimize",
         ":rename_entrypoint_to_main",
@@ -493,6 +471,30 @@ cc_library(
 )
 
 cc_library(
+    name = "legalize_stablehlo_custom_call_to_composite",
+    srcs = [
+        "transforms/legalize_stablehlo_custom_call_to_composite.cc",
+    ],
+    hdrs = [
+        "transforms/passes.h",
+        "transforms/passes.h.inc",
+    ],
+    copts = [
+        "-Ithird_party",
+    ],
+    deps = [
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:Support",
+        "@llvm-project//mlir:Transforms",
+        "@stablehlo//:stablehlo_ops",
+    ],
+    alwayslink = 1,
+)
+
+cc_library(
     name = "optimize",
     srcs = [
         "transforms/optimize.cc",
@@ -667,7 +669,6 @@ tf_cc_binary(
     deps = [
         ":check_accepted_ops_pass",
         ":op_stat_pass",
-        ":stablehlo_tfl",
         ":stablehlo_util",
         ":transforms",
         "//tensorflow/cc/saved_model:loader",
@@ -675,7 +676,6 @@ tf_cc_binary(
         "//tensorflow/compiler/mlir:passes",
         "//tensorflow/compiler/mlir/lite:flatbuffer_export",
         "//tensorflow/compiler/mlir/lite:tf_to_tfl_flatbuffer",
-        "//tensorflow/compiler/mlir/lite/stablehlo/serializer:flatbuffer_export",
         "//tensorflow/compiler/mlir/quantization/tensorflow:quantize_preprocess",
         "//tensorflow/compiler/mlir/quantization/tensorflow:tf_quant_ops",
         "//tensorflow/compiler/mlir/quantization/tensorflow/calibrator:calibrator_singleton_impl",
@@ -709,11 +709,11 @@ tf_cc_binary(
         ":compose_uniform_quantized_type_pass",
         ":fold_broadcast_pass",
         ":fuse_convolution_pass",
+        ":legalize_stablehlo_custom_call_to_composite",
         ":legalize_stablehlo_to_vhlo_pass",
         ":legalize_tf_xla_call_module_to_stablehlo_pass",
         ":optimize",
         ":passes_inc_gen",
-        ":stablehlo_tfl",
         ":tf_legalize_hlo",
         ":tf_stablehlo",
         ":tfl_legalize_hlo",

@@ -1,5 +1,5 @@
-load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")
+load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -33,6 +33,7 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:Support",
     ],
 )
 
@@ -43,11 +44,15 @@ tf_cc_test(
         "testdata/strided_slice.mlir",
     ],
     deps = [
+        ":error_collector",
         ":error_collector_inst",
         ":types_util",
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/core:test",
+        "//tensorflow/core/platform:errors",
         "//tensorflow/core/platform:resource_loader",
+        "//tensorflow/lite/python/metrics:converter_error_data_proto_cc",
+        "@com_google_absl//absl/status:statusor",
         "@com_google_googletest//:gtest_main",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:FuncDialect",

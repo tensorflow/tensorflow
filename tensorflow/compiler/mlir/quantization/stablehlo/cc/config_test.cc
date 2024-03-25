@@ -14,11 +14,16 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/compiler/mlir/quantization/stablehlo/cc/config.h"
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "tensorflow/compiler/mlir/quantization/stablehlo/quantization_config.pb.h"
 
 namespace stablehlo::quantization {
 namespace {
+
+using ::testing::Eq;
+using ::testing::SizeIs;
+using ::testing::StrEq;
 
 TEST(PopulateDefaultsTest, PopulateDefaultsForEmptyConfig) {
   QuantizationConfig config{};
@@ -35,6 +40,130 @@ TEST(PopulateDefaultsTest, PopulateDefaultsForConfigWithUnpackQuantizedTypes) {
   // not overridden.
   const QuantizationConfig new_config = PopulateDefaults(config);
   EXPECT_FALSE(new_config.pipeline_config().unpack_quantized_types());
+}
+
+TEST(PopulateDefaultsTest, DefaultCalibrationOptionsPopulated) {
+  QuantizationConfig config{};
+
+  const QuantizationConfig new_config = PopulateDefaults(config);
+  EXPECT_THAT(new_config.calibration_options().calibration_method(),
+              Eq(CalibrationOptions::CALIBRATION_METHOD_MIN_MAX));
+}
+
+TEST(PopulateDefaultsTest, ExplicitCalibrationOptionsNotOverridden) {
+  QuantizationConfig config{};
+  CalibrationOptions& calibration_options =
+      *config.mutable_calibration_options();
+  calibration_options.set_calibration_method(
+      CalibrationOptions::CALIBRATION_METHOD_AVERAGE_MIN_MAX);
+  calibration_options.mutable_calibration_parameters()->set_initial_num_bins(
+      512);
+
+  // Test that if the user explicitly provided `calibration_options`, it is not
+  // overridden.
+  const QuantizationConfig new_config = PopulateDefaults(config);
+  EXPECT_THAT(new_config.calibration_options().calibration_method(),
+              Eq(CalibrationOptions::CALIBRATION_METHOD_AVERAGE_MIN_MAX));
+  EXPECT_THAT(new_config.calibration_options()
+                  .calibration_parameters()
+                  .initial_num_bins(),
+              Eq(512));
+}
+
+TEST(ExpandPresetsTest, ExpandUnspecifiedPreset) {
+  QuantizationConfig config{};
+  const QuantizationConfig new_config = ExpandPresets(config);
+
+  // Test that nothing has been changed.
+  EXPECT_FALSE(new_config.has_specs());
+  EXPECT_FALSE(new_config.has_calibration_options());
+  EXPECT_FALSE(new_config.has_pipeline_config());
+}
+
+TEST(ExpandPresetsTest, ExpandStaticRangePtqPreset) {
+  QuantizationConfig config{};
+  RepresentativeDatasetConfig& preset_dataset_config =
+      *config.mutable_static_range_ptq_preset()->add_representative_datasets();
+  preset_dataset_config.mutable_tf_record()->set_path("/test/path");
+
+  const QuantizationConfig new_config = ExpandPresets(config);
+  ASSERT_THAT(new_config.specs().specs(), SizeIs(1));
+
+  const QuantizationSpec& spec = new_config.specs().specs(0);
+  EXPECT_THAT(spec.matcher().function_name().regex(), StrEq(".*"));
+  EXPECT_TRUE(spec.method().has_static_range_ptq());
+
+  // Test that representative dataset config has been transferred to the
+  // `CalibrationOptions`.
+  ASSERT_THAT(new_config.calibration_options().representative_datasets(),
+              SizeIs(1));
+  EXPECT_THAT(new_config.calibration_options()
+                  .representative_datasets(0)
+                  .tf_record()
+                  .path(),
+              StrEq("/test/path"));
+}
+
+TEST(ExpandPresetsTest,
+     ExpandStaticRangePtqPresetWithExplicitRepresentativeDatasetConfigs) {
+  // Test the scenario where both
+  // `config.calibration_options.representative_datasets` and
+  // `config.static_range_ptq_preset.representative_datasets` are both
+  // specified. In this case, the one set to the `calibration_options` takes
+  // precedence.
+  QuantizationConfig config{};
+  RepresentativeDatasetConfig& top_level_dataset_config =
+      *config.mutable_calibration_options()->add_representative_datasets();
+  top_level_dataset_config.mutable_tf_record()->set_path("/test/path/1");
+
+  RepresentativeDatasetConfig& preset_dataset_config =
+      *config.mutable_static_range_ptq_preset()->add_representative_datasets();
+  preset_dataset_config.mutable_tf_record()->set_path("/test/path/2");
+
+  const QuantizationConfig new_config = ExpandPresets(config);
+
+  // Test that representative dataset config has not been transferred to the
+  // `CalibrationOptions`. Top-level config takes precedence.
+  ASSERT_THAT(new_config.calibration_options().representative_datasets(),
+              SizeIs(1));
+  EXPECT_THAT(new_config.calibration_options()
+                  .representative_datasets(0)
+                  .tf_record()
+                  .path(),
+              StrEq("/test/path/1"));
+}
+
+TEST(ExpandPresetsTest,
+     ExpandStaticRangePtqPresetWithExplicitSpecsAppendedAfterExpandedSpecs) {
+  QuantizationConfig config{};
+  config.mutable_static_range_ptq_preset();
+
+  QuantizationSpec& user_provided_spec = *config.mutable_specs()->add_specs();
+  user_provided_spec.mutable_matcher()->mutable_function_name()->set_regex(
+      "composite_dot_general_fn_1");
+  user_provided_spec.mutable_method()->mutable_no_quantization();
+
+  // Test that the expanded `QuantizationSpec`s are populated first and then
+  // user-provided specs are appended.
+  //
+  // It should look like:
+  //
+  // specs {matcher {function_name {regex: ".*"}} method {static_range_ptq {}}}
+  // specs {
+  //   matcher {function_name {regex: "composite_dot_general_fn_1"}}
+  //   method {no_quantization {}}
+  // }
+  const QuantizationConfig new_config = ExpandPresets(config);
+  ASSERT_THAT(new_config.specs().specs(), SizeIs(2));
+
+  const QuantizationSpec& first_spec = new_config.specs().specs(0);
+  EXPECT_THAT(first_spec.matcher().function_name().regex(), StrEq(".*"));
+  EXPECT_TRUE(first_spec.method().has_static_range_ptq());
+
+  const QuantizationSpec& second_spec = new_config.specs().specs(1);
+  EXPECT_THAT(second_spec.matcher().function_name().regex(),
+              StrEq("composite_dot_general_fn_1"));
+  EXPECT_TRUE(second_spec.method().has_no_quantization());
 }
 
 }  // namespace

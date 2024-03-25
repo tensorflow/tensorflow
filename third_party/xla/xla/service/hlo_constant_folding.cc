@@ -233,6 +233,16 @@ StatusOr<bool> HloConstantFolding::Run(
       dead_instructions.push_back(instruction);
       HloInstruction* new_constant = computation->AddInstruction(
           HloInstruction::CreateConstant(std::move(result)));
+      if (new_constant->shape().has_layout()) {
+        // Update element_size_in_bits on the new instruction's layout. Literals
+        // always have element_size_in_bits set to 0, and CreateConstant copies
+        // the shape/layout from the Literal, so we need to set
+        // element_size_in_bits here.
+        new_constant->mutable_shape()
+            ->mutable_layout()
+            ->set_element_size_in_bits(
+                instruction->shape().layout().element_size_in_bits());
+      }
       TF_RETURN_IF_ERROR(instruction->ReplaceAllUsesWith(new_constant));
     }
   }

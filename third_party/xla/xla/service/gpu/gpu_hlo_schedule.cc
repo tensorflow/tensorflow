@@ -335,18 +335,18 @@ std::pair<GpuResourceType, ResourceUsageType> GetP2PResourceAndUsage(
       // A pipelined P2P. Find the corresponding start-op.
       const HloSendRecvInstruction* start;
       const HloGetTupleElementInstruction* gte =
-          DynCast<HloGetTupleElementInstruction>(operand);
+          Cast<HloGetTupleElementInstruction>(operand);
       int64_t tuple_index = gte->tuple_index();
       if (gte->operand(0)->opcode() == HloOpcode::kWhile) {
         // The op is a while-result, so the start-op should be a value in the
         // while-op operands.
-        start = DynCast<HloSendRecvInstruction>(
+        start = Cast<HloSendRecvInstruction>(
             gte->operand(0)->operand(0)->operand(tuple_index));
       } else {
         // The op is a while-body parameter, so the start-op should be a value
         // in the while-body result.
         const HloComputation* computation = instr.parent();
-        start = DynCast<HloSendRecvInstruction>(
+        start = Cast<HloSendRecvInstruction>(
             computation->root_instruction()->operand(tuple_index));
       }
       pipeline = GetPipelineStream(*start);
@@ -398,6 +398,22 @@ class GpuAsyncTrackerBase : public AsyncTracker {
                                                 /*include_send_recv=*/true) &&
             !IsSyncCollective(&hlo)) ||
            IsAsyncComputeOp(hlo);
+  }
+
+  void PostProcessScheduleGraph(
+      HloScheduleGraph* schedule_graph,
+      const LatencyEstimator* latency_estimator) const override {
+    for (auto inst : schedule_graph->GetOriginalInstrList()) {
+      if (inst->has_backend_config()) {
+        auto gpu_config = inst->backend_config<GpuBackendConfig>();
+        if (gpu_config.ok()) {
+          HloGraphNode& node = schedule_graph->GetNode(inst);
+          node.SetForceDelay(gpu_config->force_earliest_schedule());
+          VLOG(5) << "Setting force delay for instruction: "
+                  << inst->ToString();
+        }
+      }
+    }
   }
 };
 

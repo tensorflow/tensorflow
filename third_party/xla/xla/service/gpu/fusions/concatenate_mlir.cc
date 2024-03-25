@@ -51,14 +51,6 @@ using llvm::SmallVector;
 using mlir::Value;
 using mlir::ValueRange;
 
-/*static*/ bool MlirConcatenateFusion::IsSupported(
-    const HloFusionAnalysis& analysis) {
-  if (analysis.fusion_roots().size() != 1) return false;
-
-  return mlir_converter::IsHloConversionSupported(
-      analysis.fusion(), analysis.device_info().gpu_compute_capability());
-}
-
 LaunchDimensions MlirConcatenateFusion::launch_dimensions() const {
   return CalculateLaunchDimensions(GetLargestConcatOperandShape(analysis_),
                                    analysis_.device_info());
@@ -90,7 +82,6 @@ absl::Status MlirConcatenateFusion::EmitEntryFunction(
     const mlir_converter::CallTargetProvider& call_targets,
     mlir::func::FuncOp entry_function,
     const HloFusionInstruction& fusion) const {
-  CHECK(IsSupported(analysis_));
   const auto& root_computation = computations.FindPartitionedComputation(
       fusion.fused_instructions_computation());
   const auto* concat = analysis_.fusion_heroes()[0];

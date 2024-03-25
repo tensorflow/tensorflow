@@ -22,6 +22,7 @@ limitations under the License.
 
 #include "absl/status/status.h"
 #include "absl/strings/str_format.h"
+#include "llvm/ADT/TypeSwitch.h"
 #include "xla/executable_run_options.h"
 #include "xla/ffi/api/c_api.h"
 #include "xla/ffi/call_frame.h"
@@ -35,6 +36,7 @@ limitations under the License.
 #include "xla/status.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/util.h"
+#include "tsl/platform/errors.h"
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #include "xla/stream_executor/gpu/gpu_stream.h"
@@ -147,6 +149,55 @@ absl::Status CustomCallThunk::ExecuteFfiHandler(const ExecuteParams& params) {
 
 absl::Status CustomCallThunk::ExecuteOnStream(const ExecuteParams& params) {
   return handler_ ? ExecuteFfiHandler(params) : ExecuteCustomCall(params);
+}
+
+absl::StatusOr<CustomCallThunk::AttributesMap> BuildAttributesMap(
+    mlir::DictionaryAttr dict) {
+  CustomCallThunk::AttributesMap attributes;
+  for (auto& kv : dict) {
+    std::string_view name = kv.getName().strref();
+
+    auto integer = [&](mlir::IntegerAttr integer) {
+      switch (integer.getType().getIntOrFloatBitWidth()) {
+        case 32:
+          attributes[name] = static_cast<int32_t>(integer.getInt());
+          return absl::OkStatus();
+        case 64:
+          attributes[name] = static_cast<int64_t>(integer.getInt());
+          return absl::OkStatus();
+        default:
+          return absl::InvalidArgumentError(absl::StrCat(
+              "Unsupported integer attribute bit width for attribute: ", name));
+      }
+    };
+
+    auto fp = [&](mlir::FloatAttr fp) {
+      switch (fp.getType().getIntOrFloatBitWidth()) {
+        case 32:
+          attributes[name] = static_cast<float>(fp.getValue().convertToFloat());
+          return absl::OkStatus();
+        default:
+          return absl::InvalidArgumentError(absl::StrCat(
+              "Unsupported float attribute bit width for attribute: ", name));
+      }
+    };
+
+    auto str = [&](mlir::StringAttr str) {
+      attributes[name] = str.getValue().str();
+      return absl::OkStatus();
+    };
+
+    TF_RETURN_IF_ERROR(
+        llvm::TypeSwitch<mlir::Attribute, Status>(kv.getValue())
+            .Case<mlir::IntegerAttr>(integer)
+            .Case<mlir::FloatAttr>(fp)
+            .Case<mlir::StringAttr>(str)
+            .Default([&](mlir::Attribute) {
+              return absl::InvalidArgumentError(absl::StrCat(
+                  "Unsupported attribute type for attribute: ", name));
+            }));
+  }
+  return attributes;
 }
 
 }  // namespace gpu

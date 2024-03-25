@@ -41,6 +41,7 @@ limitations under the License.
 #include "xla/mlir_hlo/mhlo/IR/register.h"
 #include "xla/mlir_hlo/mhlo/transforms/passes.h"
 #include "xla/mlir_hlo/mhlo/transforms/rewriters.h"
+#include "xla/mlir_hlo/mhlo/utils/type_conversion.h"
 
 namespace mlir {
 namespace odml {
@@ -104,8 +105,8 @@ void TFToMhloPass::runOnOperation() {
   mhlo::Tf2XlaTypeConverter converter;
   mhlo::PopulateLegalizeTfWithTf2XlaPatterns(
       "XLA_CPU_JIT", patterns, context, converter, /*prefer_tf2xla=*/false);
-  chlo::populateDecomposeChloPatterns(context, &patterns);
-  chlo::populateChloBroadcastingPatterns(context, &patterns);
+  stablehlo::StablehloToHloTypeConverter hlo_converter;
+  chlo::populateChloToHloPatterns(context, &hlo_converter, &patterns);
   chlo::ConstantLikeOp::getCanonicalizationPatterns(patterns, context);
 
   ConversionTarget target(*context);

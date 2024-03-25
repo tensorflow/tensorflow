@@ -41,7 +41,7 @@ enum FileFormat {
 // of as properties of models, instead describing how models are to be
 // processed in the context of the present tooling job.
 //
-// Next ID to use: 63.
+// Next ID to use: 64.
 message TocoFlags {
   // Input file format
   optional FileFormat input_format = 1;
@@ -356,4 +356,8 @@ message TocoFlags {
   // inconsistent with Conv 1x1 which always performs per channel quantization.
   optional bool disable_per_channel_quantization_for_dense_layers = 62
       [default = false];
+
+  // Enables the attempt to directly lower composites into tflite ops.
+  // WARNING: Experimental interface, subject to change.
+  optional bool enable_composite_direct_lowering = 63 [default = false];
 }

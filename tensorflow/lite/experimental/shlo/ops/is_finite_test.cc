@@ -45,15 +45,15 @@ TEST_P(IsFiniteTest, IsFinite) {
   const auto& params = GetParam();
 
   IsFiniteOp op = Create(IsFiniteOp::Attributes{});
+  Tensor result{.type = params.expected.tensor().type};
 
-  EXPECT_OK(Prepare(op, params.operand.tensor(),
-                    Tensor{.type = params.expected.tensor().type}));
+  ASSERT_OK(Prepare(op, params.operand.tensor(), result));
 
-  std::vector<std::byte> result_data(op.result.SizeInBytes());
-  op.result.data = result_data.data();
+  std::vector<std::byte> result_data(result.SizeInBytes());
+  result.data = result_data.data();
 
-  EXPECT_OK(Evaluate(op));
-  EXPECT_THAT(op.result, TensorEq(params.expected.tensor()));
+  EXPECT_OK(Evaluate(op, params.operand.tensor(), result));
+  EXPECT_THAT(result, TensorEq(params.expected.tensor()));
 }
 
 INSTANTIATE_TEST_SUITE_P(

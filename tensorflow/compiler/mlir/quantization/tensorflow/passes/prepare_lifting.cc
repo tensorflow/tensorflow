@@ -49,6 +49,8 @@ namespace mlir {
 namespace quant {
 namespace {
 
+using ::tensorflow::quantization::OpSet;
+
 class PrepareLiftingPass
     : public PassWrapper<PrepareLiftingPass, OperationPass<func::FuncOp>> {
  public:

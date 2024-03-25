@@ -95,6 +95,10 @@ def LegalizeVhloToStablehloPass : Pass<"vhlo-legalize-stablehlo", "ModuleOp"> {
   let dependentDialects = ["mlir::stablehlo::StablehloDialect"];
 }
 
+def LegalizeStablehloCustomCallToCompositePass : Pass<"stablehlo-custom-call-legalize-composite", "ModuleOp"> {
+  let summary = "Legalize StableHLO custom call ops where the call target is 'stablehlo.composite' to composite ops.";
+  let dependentDialects = ["mlir::stablehlo::StablehloDialect"];
+}
 
 def UnfoldSplatConstantPass : Pass<"unfold-splat-constant-pass", "ModuleOp"> {
   let summary = "Replaces a splat constant tensor with a BroadcastInDim op.";

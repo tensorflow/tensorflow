@@ -19,11 +19,21 @@ limitations under the License.
 
 namespace mlir::quant::stablehlo::testing {
 
+// Identifies predefined `QuantizationSpecs` for
+// `TestLiftQuantizableSpotsAsFunctionsWithQuantizationSpecsPass`. The pass
+// option argument is specified in line comments for each enum value.
+enum class TestQuantizationSpecs {
+  kEmpty,                 // empty
+  kDisableAllDotGeneral,  // disable-all-dot-general
+  kStaticRangePtqToAll,   // static-range-ptq-to-all
+};
+
 // Adds generated pass default constructors or options definitions.
 #define GEN_PASS_DECL
 // Adds generated pass registration functions.
 #define GEN_PASS_REGISTRATION
 #include "tensorflow/compiler/mlir/quantization/stablehlo/passes/testing/passes.h.inc"
+
 }  // namespace mlir::quant::stablehlo::testing
 
 #endif  // TENSORFLOW_COMPILER_MLIR_QUANTIZATION_STABLEHLO_PASSES_TESTING_PASSES_H_

@@ -418,6 +418,7 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/platform:errors",
+        "@com_google_absl//absl/types:span",
         "@local_xla//xla:cpu_function_runtime",
         "@local_xla//xla:shape_util",
         "@local_xla//xla:statusor",

@@ -423,9 +423,8 @@ class ParallelBatchDatasetOp::Dataset : public DatasetBase {
         Status status;
         {
           mutex_lock l(result->mu);
-          status =
-              CopyBatch(CopyBatchParams(ctx.get()), std::move(batch_elements),
-                        dataset()->parallel_copy_, &result->output);
+          status = CopyBatch(AnyContext(ctx.get()), std::move(batch_elements),
+                             dataset()->parallel_copy_, &result->output);
           result->status.Update(status);
 
           if (result->status.ok()) {

@@ -198,6 +198,13 @@ Status GrpcServer::Init(const GrpcServerOptions& opts) {
   VLOG(3) << "Grpc Server Init Definition: " << server_def_.DebugString();
   ConfigProto config = server_def_.default_session_config();
   sess_opts.config = config;
+  // Allow creation of PjRt client that knows about remote devices so
+  // collectives will work with MultiWorkerMirroredStrategy.
+  sess_opts.config.mutable_gpu_options()
+      ->mutable_experimental()
+      ->set_populate_pjrt_gpu_client_creation_info(true);
+  sess_opts.config.mutable_gpu_options()->mutable_experimental()->set_node_id(
+      server_def_.task_index());
 
   // Configure shared devices between master and worker.
   string name_prefix = strings::StrCat("/job:", server_def_.job_name(),

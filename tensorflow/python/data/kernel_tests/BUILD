@@ -1173,12 +1173,13 @@ tf_py_strict_test(
 
 tf_py_strict_test(
     name = "skip_test",
-    size = "small",
+    size = "medium",
     srcs = ["skip_test.py"],
-    shard_count = 4,
+    shard_count = 8,
     deps = [
         ":checkpoint_test_base",
         ":test_base",
+        "//tensorflow/python/data/experimental/ops:global_shuffle_op",
         "//tensorflow/python/data/experimental/ops:random_access",
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/data/ops:options",

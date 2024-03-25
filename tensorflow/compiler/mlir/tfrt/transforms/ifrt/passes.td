@@ -90,3 +90,28 @@ def TfRestoreMergingPass : Pass<"tf-restore-merging", "mlir::func::FuncOp"> {
 
   let constructor = "CreateTfRestoreMergingPass()";
 }
+
+def TfIdentityPropagationPass
+    : Pass<"tf-identity-propagation", "mlir::func::FuncOp"> {
+  let summary = "Propagates inputs of no-op identity ops to their outputs";
+
+  let description = [{
+    This pass finds identity ops that are no-op and propagates their inputs
+    directly to outputs so that identity ops can be skipped.
+
+    One example of identity ops that are not no-op is identity ops with XLA
+    sharding annotation. Since some models use identity ops with `_XlaSharding`
+    attributes to change output sharding, this pass doesn't propagate the inputs
+    of such identity ops in order to preserve the sharding changes.
+
+    This pass is useful to make sure that ineffective identity ops don't affect
+    the graph partitioning. For example, in a pipelined model, if there is a CPU
+    identity op between two TPU computation stages (which sometimes happens
+    because TensorFlow inserts it), this will unnecessarily route the
+    intermediate tensors through the CPU device. By forwarding the inputs of the
+    identity op directly to its outputs, we can avoid such inefficiency.
+  }];
+
+  let constructor = "CreateTfIdentityPropagationPass()";
+}
+

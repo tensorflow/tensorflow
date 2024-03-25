@@ -46,10 +46,10 @@ limitations under the License.
 #include "mlir/IR/OpDefinition.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/lite/quantization/ir/FakeQuantSupport.h"
 #include "tensorflow/compiler/mlir/lite/quantization/ir/QuantOps.h"
 #include "tensorflow/compiler/mlir/lite/quantization/ir/QuantizeUtils.h"
-#include "tensorflow/compiler/mlir/lite/quantization/ir/UniformSupport.h"
+#include "tensorflow/compiler/mlir/quantization/common/ir/FakeQuantSupport.h"
+#include "tensorflow/compiler/mlir/quantization/common/ir/UniformSupport.h"
 #include "tensorflow/compiler/mlir/quantization/common/quantization_lib/quantization_traits.h"
 #include "tensorflow/lite/kernels/internal/portable_tensor_utils.h"
 #include "tensorflow/lite/tools/optimize/quantization_utils.h"

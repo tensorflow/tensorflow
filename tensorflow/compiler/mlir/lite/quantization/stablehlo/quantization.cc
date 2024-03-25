@@ -29,6 +29,7 @@ limitations under the License.
 #include "tensorflow/cc/saved_model/constants.h"
 #include "tensorflow/cc/saved_model/loader.h"
 #include "tensorflow/compiler/mlir/lite/stablehlo/transforms/tf_stablehlo_pass.h"
+#include "tensorflow/compiler/mlir/quantization/stablehlo/cc/config.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/cc/static_range_ptq.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/passes/passes.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/quantization_config.pb.h"
@@ -41,6 +42,7 @@ namespace tensorflow {
 namespace {
 
 using ::mlir::quant::stablehlo::StaticRangePtqComponent;
+using ::stablehlo::quantization::PopulateDefaults;
 using ::stablehlo::quantization::QuantizationConfig;
 using ::tensorflow::SignatureDef;
 using ::tensorflow::quantization::PyFunctionLibrary;
@@ -79,7 +81,7 @@ absl::StatusOr<mlir::ModuleOp> RunQuantization(
     const SavedModelBundle* saved_model_bundle,
     const absl::string_view saved_model_dir,
     const std::unordered_set<std::string>& saved_model_tags,
-    QuantizationConfig& quantization_config,
+    const QuantizationConfig& quantization_config,
     const PyFunctionLibrary* quantization_py_function_lib,
     mlir::ModuleOp module_op) {
   if (saved_model_bundle == nullptr) {
@@ -94,10 +96,8 @@ absl::StatusOr<mlir::ModuleOp> RunQuantization(
         "be nullptr.");
   }
 
-  if (!quantization_config.has_calibration_options()) {
-    *quantization_config.mutable_calibration_options() =
-        mlir::quant::stablehlo::GetDefaultCalibrationOptions();
-  }
+  const QuantizationConfig config_with_defaults =
+      PopulateDefaults(quantization_config);
 
   const absl::flat_hash_map<std::string, SignatureDef> signature_def_map =
       GetSignatureDefMapFromBundle(*saved_model_bundle);
@@ -132,7 +132,7 @@ absl::StatusOr<mlir::ModuleOp> RunQuantization(
       /*signature_keys=*/exported_names, saved_model_tags, signature_def_map,
       GetFunctionAliases(*saved_model_bundle));
   const absl::StatusOr<mlir::ModuleOp> quantized_module_op =
-      static_range_ptq_component.Run(module_op, quantization_config);
+      static_range_ptq_component.Run(module_op, config_with_defaults);
   if (!quantized_module_op.ok()) {
     return absl::InternalError("Failed to run quantization. Status msg: " +
                                quantized_module_op.status().ToString());

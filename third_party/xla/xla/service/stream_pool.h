@@ -38,15 +38,14 @@ class StreamPool {
   // stream to the pool on destruction.
   using Ptr = std::unique_ptr<se::Stream, PtrDeleter>;
 
-  StreamPool() = default;
+  explicit StreamPool(se::StreamExecutor* executor) : executor_(executor) {}
 
   // Returns a pointer to a stream in the pool, creating a new stream
   // if none are available in the pool. The returned smart pointer
   // returns the stream to the pool on destruction.
   //
   // This method is thread-safe.
-  Ptr BorrowStream(se::StreamExecutor* executor,
-                   se::StreamPriority priority = se::StreamPriority::Default);
+  Ptr BorrowStream(se::StreamPriority priority = se::StreamPriority::Default);
 
  private:
   // Puts a pointer to a stream back into the pool, leaving it free
@@ -61,6 +60,7 @@ class StreamPool {
   std::unordered_map<se::StreamPriority,
                      std::vector<std::unique_ptr<se::Stream>>>
       streams_with_pri_ ABSL_GUARDED_BY(mu_);
+  se::StreamExecutor* executor_;
 };
 
 }  // namespace xla

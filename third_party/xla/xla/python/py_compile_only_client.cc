@@ -15,25 +15,58 @@ limitations under the License.
 
 #include "xla/python/py_compile_only_client.h"
 
+#include <cstdint>
 #include <functional>
 #include <memory>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <utility>
 #include <vector>
 
-#include "nanobind/nanobind.h"
 #include "absl/container/flat_hash_map.h"
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "pybind11/stl.h"  // from @pybind11
+#include "llvm/Support/Casting.h"
+#include "llvm/Support/ExtensibleRTTI.h"
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
+#include "mlir/IR/MLIRContext.h"  // from @llvm-project
+#include "mlir/IR/OwningOpRef.h"  // from @llvm-project
+#include "third_party/nanobind/include/nanobind/nanobind.h"
+#include "third_party/nanobind/include/nanobind/stl/shared_ptr.h"  // IWYU pragma: keep
+#include "third_party/nanobind/include/nanobind/stl/string_view.h"  // IWYU pragma: keep
+#include "third_party/nanobind/include/nanobind/stl/vector.h"  // IWYU pragma: keep
+#include "xla/literal.h"
 #include "xla/pjrt/mlir_to_hlo.h"
+#include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_common.h"
+#include "xla/pjrt/pjrt_compiler.h"
+#include "xla/pjrt/pjrt_device_description.h"
+#include "xla/pjrt/pjrt_executable.h"
+#include "xla/pjrt/pjrt_future.h"
 #include "xla/pjrt/status_casters.h"
+#include "xla/python/ifrt/array.h"
+#include "xla/python/ifrt/client.h"
+#include "xla/python/ifrt/compiler.h"
 #include "xla/python/ifrt/device.h"
-#include "tsl/python/lib/core/numpy.h"  //NOLINT
+#include "xla/python/ifrt/dtype.h"
+#include "xla/python/ifrt/executable.h"
+#include "xla/python/ifrt/shape.h"
+#include "xla/python/ifrt/sharding.h"
+#include "xla/python/ifrt/tuple.h"
+#include "xla/python/ifrt/value.h"
+#include "xla/python/nb_class_ptr.h"
+#include "xla/python/py_client.h"
+#include "xla/service/computation_placer.h"
+#include "xla/util.h"
+#include "tsl/concurrency/ref_count.h"
+#include "tsl/platform/logging.h"
+#include "tsl/platform/statusor.h"
+#include "tsl/python/lib/core/numpy.h"
 
 namespace nb = nanobind;
-namespace py = pybind11;
 
 namespace xla {
 
@@ -66,16 +99,16 @@ class PjRtCompileOnlyDevice : public PjRtDevice {
       absl::string_view description) const override {
     return nullptr;
   }
-  Status TransferToInfeed(const LiteralSlice& literal) override {
+  absl::Status TransferToInfeed(const LiteralSlice& literal) override {
     return Unimplemented("TransferToInfeed is not supported");
   }
-  Status TransferFromOutfeed(MutableBorrowingLiteral literal) override {
+  absl::Status TransferFromOutfeed(MutableBorrowingLiteral literal) override {
     return Unimplemented("TransferFromOutfeed is not supported");
   }
   absl::Span<PjRtMemorySpace* const> memory_spaces() const override {
     return {};
   }
-  StatusOr<PjRtMemorySpace*> default_memory_space() const override {
+  absl::StatusOr<PjRtMemorySpace*> default_memory_space() const override {
     return Unimplemented("default_memory_space is not supported");
   }
 
@@ -86,13 +119,14 @@ class PjRtCompileOnlyDevice : public PjRtDevice {
 class InvalidIfrtCompiler final
     : public llvm::RTTIExtends<InvalidIfrtCompiler, ifrt::Compiler> {
  public:
-  StatusOr<std::unique_ptr<ifrt::LoadedExecutable>> Compile(
+  absl::StatusOr<std::unique_ptr<ifrt::LoadedExecutable>> Compile(
       std::unique_ptr<ifrt::Program> program,
       std::unique_ptr<ifrt::CompileOptions> options) override {
     return Unimplemented("Compile not implemented.");
   }
 
-  StatusOr<std::unique_ptr<ifrt::LoadedExecutable>> DeserializeLoadedExecutable(
+  absl::StatusOr<std::unique_ptr<ifrt::LoadedExecutable>>
+  DeserializeLoadedExecutable(
       absl::string_view serialized,
       std::unique_ptr<ifrt::DeserializeExecutableOptions> options) override {
     return Unimplemented("DeserializeLoadedExecutable not implemented.");
@@ -116,7 +150,7 @@ class CompileOnlyIfRtClient final
     }
   }
 
-  StatusOr<tsl::RCReference<ifrt::Array>> MakeArrayFromHostBuffer(
+  absl::StatusOr<tsl::RCReference<ifrt::Array>> MakeArrayFromHostBuffer(
       const void* data, ifrt::DType dtype, ifrt::Shape shape,
       std::optional<absl::Span<const int64_t>> byte_strides,
       std::shared_ptr<const ifrt::Sharding> sharding,
@@ -126,7 +160,8 @@ class CompileOnlyIfRtClient final
         "MakeArrayFromHostBuffer not available with compile-only client.");
   }
 
-  StatusOr<tsl::RCReference<ifrt::Array>> AssembleArrayFromSingleDeviceArrays(
+  absl::StatusOr<tsl::RCReference<ifrt::Array>>
+  AssembleArrayFromSingleDeviceArrays(
       ifrt::Shape shape, std::shared_ptr<const ifrt::Sharding> sharding,
       absl::Span<tsl::RCReference<ifrt::Array>> arrays,
       ifrt::ArrayCopySemantics semantics) override {
@@ -135,7 +170,7 @@ class CompileOnlyIfRtClient final
         "client.");
   }
 
-  StatusOr<tsl::RCReference<ifrt::Tuple>> MakeTuple(
+  absl::StatusOr<tsl::RCReference<ifrt::Tuple>> MakeTuple(
       absl::Span<tsl::RCReference<ifrt::Value>> values) override {
     return Unimplemented("MakeTuple not available with compile-only client.");
   }
@@ -165,17 +200,17 @@ class CompileOnlyIfRtClient final
     return {};
   }
   int process_index() const override { return 0; }
-  StatusOr<DeviceAssignment> GetDefaultDeviceAssignment(
+  absl::StatusOr<DeviceAssignment> GetDefaultDeviceAssignment(
       int num_replicas, int num_partitions) const override {
     return Unimplemented(
         "GetDefaultDeviceAssignment not available with compile-only client.");
   }
-  StatusOr<ifrt::Device*> LookupDevice(int device_id) const override {
+  absl::StatusOr<ifrt::Device*> LookupDevice(int device_id) const override {
     return Unimplemented(
         "LookupDevice not available with compile-only client.");
   }
 
-  StatusOr<ifrt::Device*> LookupAddressableDevice(
+  absl::StatusOr<ifrt::Device*> LookupAddressableDevice(
       int local_hardware_id) const override {
     return Unimplemented(
         "LookupAddressableDevice not available with compile-only client.");
@@ -187,7 +222,7 @@ class CompileOnlyIfRtClient final
 
   const PjRtTopologyDescription& topology() const { return *topology_; }
 
-  StatusOr<std::shared_ptr<const xla::PjRtTopologyDescription>>
+  absl::StatusOr<std::shared_ptr<const xla::PjRtTopologyDescription>>
   GetTopologyForDevices(
       absl::Span<ifrt::Device* const> devices) const override {
     return topology_;
@@ -207,15 +242,24 @@ class CompileOnlyPyClient : public PyClient {
  public:
   using PyClient::PyClient;
 
-  StatusOr<std::shared_ptr<PjRtExecutable>> CompileUnloaded(
-      std::string mlir_module, CompileOptions options,
-      std::vector<pybind11::capsule> host_callbacks) {
+  static nb_class_ptr<PyClient> Make(
+      std::shared_ptr<PjRtTopologyDescription> topology) {
+    auto client =
+        nb::borrow<nb_class_ptr<PyClient>>(make_nb_class<CompileOnlyPyClient>(
+            std::make_unique<CompileOnlyIfRtClient>(std::move(topology))));
+    CompileOnlyPyClient::Initialize(client);
+    return client;
+  }
+
+  absl::StatusOr<std::shared_ptr<PjRtExecutable>> CompileUnloaded(
+      std::string_view mlir_module, CompileOptions options,
+      std::vector<nb::capsule> host_callbacks) {
     if (!host_callbacks.empty()) {
       return Unimplemented(
           "Compiling with host_callbacks not available with compile-only "
           "client.");
     }
-    pybind11::gil_scoped_release gil_release;
+    nb::gil_scoped_release gil_release;
     mlir::MLIRContext context;
     TF_ASSIGN_OR_RETURN(mlir::OwningOpRef<mlir::ModuleOp> module,
                         ParseMlirModuleString(mlir_module, context));
@@ -226,42 +270,36 @@ class CompileOnlyPyClient : public PyClient {
     return PjRtCompile(std::move(options), module.get(),
                        ifrt_client->topology());
   }
+
+ private:
+  static void Initialize(nb_class_ptr<PyClient> client) {
+    PyClient::Initialize(client);
+  }
 };
 
 }  // namespace
 
-std::shared_ptr<PyClient> MakeCompileOnlyClient(
+nb_class_ptr<PyClient> MakeCompileOnlyClient(
     std::shared_ptr<PjRtTopologyDescription> topology) {
-  return std::make_shared<CompileOnlyPyClient>(
-      std::make_unique<CompileOnlyIfRtClient>(std::move(topology)));
+  return CompileOnlyPyClient::Make(std::move(topology));
 }
 
-void RegisterCompileOnlyClient(pybind11::module& m) {
-  pybind11::class_<CompileOnlyPyClient, PyClient,
-                   std::shared_ptr<CompileOnlyPyClient>>(m,
-                                                         "CompileOnlyPyClient")
+void RegisterCompileOnlyClient(nb::module_& m) {
+  nb::class_<CompileOnlyPyClient, PyClient>(m, "CompileOnlyPyClient")
       .def(
           "compile",
-          [](CompileOnlyPyClient& self, std::string mlir_module,
-             py::object options_py,
-             std::vector<pybind11::capsule> host_callbacks) {
-            // TODO(phawkins): just wrap CompileOnlyPyClient::CompileUnloaded
-            // directly when the nanobind transition is complete.
-            CompileOptions options;
-            if (!options_py.is_none()) {
-              try {
-                options =
-                    nb::cast<CompileOptions>(nb::handle(options_py.ptr()));
-              } catch (std::exception& e) {
-                throw py::type_error(e.what());
-              }
-            }
-            return ValueOrThrow(
-                self.CompileUnloaded(mlir_module, options, host_callbacks));
+          [](CompileOnlyPyClient& self, nb::bytes mlir_module,
+             CompileOptions options, std::vector<nb::capsule> host_callbacks) {
+            return ValueOrThrow(self.CompileUnloaded(
+                std::string_view(mlir_module.c_str(), mlir_module.size()),
+                std::move(options), std::move(host_callbacks)));
           },
-          pybind11::arg("computation"),
-          pybind11::arg("compile_options") = py::none(),
-          pybind11::arg("host_callbacks") = std::vector<pybind11::capsule>());
+          nb::arg("computation"), nb::arg("compile_options") = CompileOptions(),
+          nb::arg("host_callbacks") = std::vector<nb::capsule>())
+      .def(
+          "compile", ValueOrThrowWrapper(&CompileOnlyPyClient::CompileUnloaded),
+          nb::arg("computation"), nb::arg("compile_options") = CompileOptions(),
+          nb::arg("host_callbacks") = std::vector<nb::capsule>());
 }
 
 }  // namespace xla

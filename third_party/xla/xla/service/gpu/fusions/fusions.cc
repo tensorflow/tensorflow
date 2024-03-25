@@ -36,6 +36,7 @@ limitations under the License.
 #include "xla/service/gpu/fusions/custom.h"
 #include "xla/service/gpu/fusions/fusion_emitter.h"
 #include "xla/service/gpu/fusions/in_place_dynamic_update_slice.h"
+#include "xla/service/gpu/fusions/in_place_dynamic_update_slice_mlir.h"
 #include "xla/service/gpu/fusions/input_slices.h"
 #include "xla/service/gpu/fusions/input_slices_mlir.h"
 #include "xla/service/gpu/fusions/loop.h"
@@ -178,6 +179,9 @@ absl::StatusOr<std::unique_ptr<FusionInterface>> GetFusionEmitter(
       if (config.name() == "address_computation") {
         return std::make_unique<AddressComputationFusion>(analysis);
       }
+      if (config.name() == "dynamic_address_computation") {
+        return std::make_unique<DynamicAddressComputationFusion>(analysis);
+      }
       return std::make_unique<CustomFusion>();
     }
     case HloFusionAnalysis::EmitterFusionKind::kInputSlices:
@@ -188,6 +192,11 @@ absl::StatusOr<std::unique_ptr<FusionInterface>> GetFusionEmitter(
     case HloFusionAnalysis::EmitterFusionKind::kLoop: {
       if (IsDynamicUpdateSliceFusion(analysis) &&
           fusion_info.CanEmitDynamicUpdateSliceInPlace()) {
+        if (check_mlir_emitters(
+                MlirInPlaceDynamicUpdateSliceFusion::IsSupported)) {
+          return std::make_unique<MlirInPlaceDynamicUpdateSliceFusion>(
+              analysis);
+        }
         return std::make_unique<InPlaceDynamicUpdateSliceFusion>(analysis);
       }
 
@@ -212,13 +221,13 @@ absl::StatusOr<std::unique_ptr<FusionInterface>> GetFusionEmitter(
       return std::make_unique<ScatterFusion>(analysis);
     }
     case HloFusionAnalysis::EmitterFusionKind::kTranspose: {
-      if (check_mlir_emitters(MlirTransposeFusion::IsSupported)) {
+      if (check_mlir_emitters(nullptr)) {
         return std::make_unique<MlirTransposeFusion>(analysis);
       }
       return std::make_unique<TransposeFusion>(analysis);
     }
     case HloFusionAnalysis::EmitterFusionKind::kConcatenate: {
-      if (check_mlir_emitters(MlirConcatenateFusion::IsSupported)) {
+      if (check_mlir_emitters(nullptr)) {
         return std::make_unique<MlirConcatenateFusion>(analysis);
       }
       return std::make_unique<ConcatenateFusion>(analysis);

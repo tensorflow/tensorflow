@@ -119,9 +119,9 @@ std::optional<IndexingMap> MlirScatterFusion::ComputeThreadIdToInputIndexing(
             /*dimCount=*/scatter_update_shape.rank(), /*symbolCount=*/1,
             {mlir::getAffineDimExpr(0, ctx), mlir::getAffineSymbolExpr(0, ctx)},
             ctx),
-        /*dim_ranges=*/RangesFromTensorSizes(scatter_update_shape.dimensions()),
-        /*symbol_ranges=*/
-        RangesFromTensorSizes({scatter_indices_shape.dimensions(1)})};
+        DimVarsFromTensorSizes(scatter_update_shape.dimensions()),
+        RangeVarsFromTensorSizes({scatter_indices_shape.dimensions(1)}),
+        /*rt_vars=*/{}};
     auto scatter_indices_map = scatter_update_map * updates_to_indices_map;
     scatter_indices_map.Simplify();
     return scatter_indices_map;

@@ -24,6 +24,10 @@ namespace cpu {
 
 bool CpuFloatSupport::IsSupported(const HloInstruction& hlo) const {
   switch (hlo.opcode()) {
+    // oneDNN rewritable ops
+    case HloOpcode::kDot:
+      return LowPrecisionType() == BF16 &&
+             OneDnnMatMulRewriter::ShouldRewrite(&hlo) && DotSupported(hlo);
     // Collective ops.
     case HloOpcode::kAllGather:
     case HloOpcode::kAllReduce:
@@ -32,9 +36,6 @@ bool CpuFloatSupport::IsSupported(const HloInstruction& hlo) const {
     case HloOpcode::kAllToAll:
     case HloOpcode::kCollectivePermute:
     case HloOpcode::kReduceScatter:
-    case HloOpcode::kDot:
-      return LowPrecisionType() == BF16 &&
-             OneDnnMatMulRewriter::ShouldRewrite(&hlo) && DotSupported(hlo);
     // Data movement only ops.
     case HloOpcode::kBroadcast:
     case HloOpcode::kConcatenate:

@@ -14,22 +14,71 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/compiler/mlir/quantization/stablehlo/cc/saved_model_import.h"
 
+#include <memory>
 #include <string>
 #include <unordered_set>
+#include <utility>
+#include <vector>
 
+#include "absl/algorithm/container.h"
+#include "absl/base/attributes.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
+#include "absl/types/span.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
+#include "mlir/IR/MLIRContext.h"  // from @llvm-project
+#include "mlir/IR/OwningOpRef.h"  // from @llvm-project
+#include "tensorflow/cc/saved_model/loader.h"
 #include "tensorflow/cc/saved_model/reader.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/cc/types.h"
+#include "tensorflow/compiler/mlir/quantization/stablehlo/quantization_config.pb.h"
+#include "tensorflow/compiler/mlir/quantization/tensorflow/quantize_preprocess.h"
+#include "tensorflow/compiler/mlir/tensorflow/translate/mlir_import_options.h"
+#include "tensorflow/compiler/mlir/tensorflow/translate/tf_mlir_translate.h"
 #include "tensorflow/core/protobuf/meta_graph.pb.h"
 #include "tsl/platform/errors.h"
+#include "tsl/platform/statusor.h"
 
 namespace mlir::quant::stablehlo {
+
+using ::stablehlo::quantization::QuantizationConfig;
+using ::tensorflow::MLIRImportOptions;
+using ::tensorflow::SavedModelBundle;
+using ::tensorflow::SavedModelSignatureDefsToMlirImport;
+using ::tensorflow::quantization::PreprocessAndFreezeGraph;
+
+absl::StatusOr<ImportedMlirModuleOp> SavedModelToMlirModuleOp(
+    const absl::string_view saved_model_path,
+    const std::unordered_set<std::string>& tags,
+    const std::vector<std::string>& signature_keys,
+    MLIRContext& ctx ABSL_ATTRIBUTE_LIFETIME_BOUND) {
+  MLIRImportOptions import_options;
+  import_options.upgrade_legacy = true;
+  import_options.lift_variables = false;
+  import_options.include_variables_in_initializers = true;
+
+  auto bundle = std::make_unique<SavedModelBundle>();
+
+  // Copy to eliminate the `const` qualifier so that `absl::MakeSpan` can be
+  // called on it.
+  std::vector<std::string> exported_names = signature_keys;
+  absl::StatusOr<OwningOpRef<ModuleOp>> module_op =
+      SavedModelSignatureDefsToMlirImport(saved_model_path, tags,
+                                          absl::MakeSpan(exported_names), &ctx,
+                                          import_options, &bundle);
+  if (!module_op.status().ok()) {
+    return absl::InternalError(absl::StrCat("Failed to import SavedModel: ",
+                                            module_op.status().ToString()));
+  }
+
+  return std::make_pair(module_op->release(), std::move(bundle));
+}
 
 absl::StatusOr<absl::flat_hash_map<FunctionName, FunctionAlias>>
 GetFunctionAliases(absl::string_view saved_model_path,
@@ -68,6 +117,37 @@ void UpdateFunctionAliases(
   absl::erase_if(function_aliases, [&existing_func_names](const auto& item) {
     return !existing_func_names.contains(item.first);
   });
+}
+
+absl::StatusOr<ModuleOp> ImportSavedModel(
+    const absl::string_view saved_model_path,
+    const std::vector<std::string>& signature_keys,
+    const std::unordered_set<std::string>& tags,
+    const QuantizationConfig& quantization_config,
+    const absl::string_view mlir_dump_file_prefix,
+    absl::flat_hash_map<FunctionName, FunctionAlias>& function_aliases,
+    MLIRContext& ctx ABSL_ATTRIBUTE_LIFETIME_BOUND) {
+  TF_ASSIGN_OR_RETURN(
+      ImportedMlirModuleOp imported_module,
+      SavedModelToMlirModuleOp(saved_model_path, tags, signature_keys, ctx));
+  auto [module_op, saved_model_bundle] = std::move(imported_module);
+
+  UpdateFunctionAliases(function_aliases, module_op);
+
+  // Collect the names of the functions that have aliases so that they may not
+  // be inlined.
+  absl::flat_hash_set<std::string> aliased_function_names;
+  absl::c_for_each(function_aliases, [&](const auto& aliases) {
+    return aliased_function_names.insert(aliases.first);
+  });
+
+  TF_RETURN_IF_ERROR(PreprocessAndFreezeGraph(
+      mlir_dump_file_prefix, /*is_inliner_run=*/true,
+      /*noinline_functions=*/aliased_function_names, module_op, &ctx,
+      saved_model_bundle == nullptr ? nullptr
+                                    : saved_model_bundle->GetSession(),
+      /*run_tf_to_stablehlo=*/true, /*deserialize_xla_call_module=*/false));
+  return module_op;
 }
 
 }  // namespace mlir::quant::stablehlo

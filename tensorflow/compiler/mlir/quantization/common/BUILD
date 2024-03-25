@@ -60,6 +60,7 @@ tf_cc_test(
         ":test_base",
         "//tensorflow/compiler/mlir/quantization/stablehlo:quantization_config_proto_cc",
         "//tensorflow/compiler/mlir/tensorflow",
+        "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:string_view",

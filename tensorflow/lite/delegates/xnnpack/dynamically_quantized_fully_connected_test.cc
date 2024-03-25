@@ -32,6 +32,18 @@ namespace xnnpack {
 class DynamicallyQuantizedFullyConnectedTest
     : public testing::TestWithParam<WeightsType> {};
 
+int GenInputChannels(const std::function<int()> &rng,
+                     WeightsType weights_type) {
+  switch (weights_type) {
+    case WeightsType::kChannelWiseQuantizedInt8:
+    case WeightsType::kTensorWiseQuantizedInt8:
+      return rng();
+    case WeightsType::kChannelWiseQuantizedInt4:
+      // Int4 quantized kernels only support even number of channels.
+      return (rng() / 2) * 2;
+  }
+}
+
 TEST_P(DynamicallyQuantizedFullyConnectedTest, 1D) {
   TfLiteXNNPackDelegateOptions delegate_options =
       TfLiteXNNPackDelegateOptionsDefault();
@@ -45,7 +57,8 @@ TEST_P(DynamicallyQuantizedFullyConnectedTest, 1D) {
   auto rng = std::mt19937(random_device());
   auto channels_rng =
       std::bind(std::uniform_int_distribution<int32_t>(2, 9), std::ref(rng));
-  const auto input_channels = channels_rng();
+  WeightsType weights_type = GetParam();
+  const auto input_channels = GenInputChannels(channels_rng, weights_type);
   const auto output_channels = channels_rng();
 
   DynamicallyQuantizedFullyConnectedTester()
@@ -53,7 +66,7 @@ TEST_P(DynamicallyQuantizedFullyConnectedTest, 1D) {
       .InputChannels(input_channels)
       .OutputChannels(output_channels)
       .KeepDims(true)
-      .WeightsType(GetParam())
+      .WeightsType(weights_type)
       .Test(xnnpack_delegate.get());
 }
 
@@ -73,14 +86,15 @@ TEST_P(DynamicallyQuantizedFullyConnectedTest, 2D) {
   auto channels_rng =
       std::bind(std::uniform_int_distribution<int32_t>(2, 9), std::ref(rng));
   const auto batch = batch_rng();
-  const auto input_channels = channels_rng();
+  WeightsType weights_type = GetParam();
+  const auto input_channels = GenInputChannels(channels_rng, weights_type);
   const auto output_channels = channels_rng();
 
   DynamicallyQuantizedFullyConnectedTester()
       .InputShape({batch, input_channels})
       .InputChannels(input_channels)
       .OutputChannels(output_channels)
-      .WeightsType(GetParam())
+      .WeightsType(weights_type)
       .Test(xnnpack_delegate.get());
 }
 
@@ -100,7 +114,8 @@ TEST_P(DynamicallyQuantizedFullyConnectedTest, 2DKeepDims) {
   auto channels_rng =
       std::bind(std::uniform_int_distribution<int32_t>(2, 9), std::ref(rng));
   const auto batch = batch_rng();
-  const auto input_channels = channels_rng();
+  WeightsType weights_type = GetParam();
+  const auto input_channels = GenInputChannels(channels_rng, weights_type);
   const auto output_channels = channels_rng();
 
   DynamicallyQuantizedFullyConnectedTester()
@@ -108,7 +123,7 @@ TEST_P(DynamicallyQuantizedFullyConnectedTest, 2DKeepDims) {
       .InputChannels(input_channels)
       .OutputChannels(output_channels)
       .KeepDims(true)
-      .WeightsType(GetParam())
+      .WeightsType(weights_type)
       .Test(xnnpack_delegate.get());
 }
 
@@ -128,14 +143,15 @@ TEST_P(DynamicallyQuantizedFullyConnectedTest, 3D) {
       std::bind(std::uniform_int_distribution<int32_t>(2, 9), std::ref(rng));
   const auto batch = shape_rng();
   const auto width = shape_rng();
-  const auto input_channels = channels_rng();
+  WeightsType weights_type = GetParam();
+  const auto input_channels = GenInputChannels(channels_rng, weights_type);
   const auto output_channels = channels_rng();
 
   DynamicallyQuantizedFullyConnectedTester()
       .InputShape({batch, width, input_channels})
       .InputChannels(input_channels)
       .OutputChannels(output_channels)
-      .WeightsType(GetParam())
+      .WeightsType(weights_type)
       .Test(xnnpack_delegate.get());
 }
 
@@ -184,7 +200,8 @@ TEST_P(DynamicallyQuantizedFullyConnectedTest, 3DKeepDims) {
       std::bind(std::uniform_int_distribution<int32_t>(2, 9), std::ref(rng));
   const auto batch = shape_rng();
   const auto width = shape_rng();
-  const auto input_channels = channels_rng();
+  WeightsType weights_type = GetParam();
+  const auto input_channels = GenInputChannels(channels_rng, weights_type);
   const auto output_channels = channels_rng();
 
   DynamicallyQuantizedFullyConnectedTester()
@@ -192,7 +209,7 @@ TEST_P(DynamicallyQuantizedFullyConnectedTest, 3DKeepDims) {
       .InputChannels(input_channels)
       .OutputChannels(output_channels)
       .KeepDims(true)
-      .WeightsType(GetParam())
+      .WeightsType(weights_type)
       .Test(xnnpack_delegate.get());
 }
 
@@ -214,14 +231,15 @@ TEST_P(DynamicallyQuantizedFullyConnectedTest, 4D) {
   const auto batch = shape_rng();
   const auto height = shape_rng();
   const auto width = shape_rng();
-  const auto input_channels = channels_rng();
+  WeightsType weights_type = GetParam();
+  const auto input_channels = GenInputChannels(channels_rng, weights_type);
   const auto output_channels = channels_rng();
 
   DynamicallyQuantizedFullyConnectedTester()
       .InputShape({batch, height, width, input_channels})
       .InputChannels(input_channels)
       .OutputChannels(output_channels)
-      .WeightsType(GetParam())
+      .WeightsType(weights_type)
       .Test(xnnpack_delegate.get());
 }
 
@@ -243,7 +261,8 @@ TEST_P(DynamicallyQuantizedFullyConnectedTest, 4DKeepDims) {
   const auto batch = shape_rng();
   const auto height = shape_rng();
   const auto width = shape_rng();
-  const auto input_channels = channels_rng();
+  WeightsType weights_type = GetParam();
+  const auto input_channels = GenInputChannels(channels_rng, weights_type);
   const auto output_channels = channels_rng();
 
   DynamicallyQuantizedFullyConnectedTester()
@@ -251,7 +270,7 @@ TEST_P(DynamicallyQuantizedFullyConnectedTest, 4DKeepDims) {
       .InputChannels(input_channels)
       .OutputChannels(output_channels)
       .KeepDims(true)
-      .WeightsType(GetParam())
+      .WeightsType(weights_type)
       .Test(xnnpack_delegate.get());
 }
 
@@ -271,7 +290,8 @@ TEST_P(DynamicallyQuantizedFullyConnectedTest, NoBias) {
   auto channels_rng =
       std::bind(std::uniform_int_distribution<int32_t>(2, 9), std::ref(rng));
   const auto batch = batch_rng();
-  const auto input_channels = channels_rng();
+  WeightsType weights_type = GetParam();
+  const auto input_channels = GenInputChannels(channels_rng, weights_type);
   const auto output_channels = channels_rng();
 
   DynamicallyQuantizedFullyConnectedTester()
@@ -279,7 +299,7 @@ TEST_P(DynamicallyQuantizedFullyConnectedTest, NoBias) {
       .InputChannels(input_channels)
       .OutputChannels(output_channels)
       .NoBias()
-      .WeightsType(GetParam())
+      .WeightsType(weights_type)
       .Test(xnnpack_delegate.get());
 }
 
@@ -299,7 +319,8 @@ TEST_P(DynamicallyQuantizedFullyConnectedTest, ReluActivation) {
   auto channels_rng =
       std::bind(std::uniform_int_distribution<int32_t>(2, 9), std::ref(rng));
   const auto batch = batch_rng();
-  const auto input_channels = channels_rng();
+  WeightsType weights_type = GetParam();
+  const auto input_channels = GenInputChannels(channels_rng, weights_type);
   const auto output_channels = channels_rng();
 
   DynamicallyQuantizedFullyConnectedTester()
@@ -307,7 +328,7 @@ TEST_P(DynamicallyQuantizedFullyConnectedTest, ReluActivation) {
       .InputChannels(input_channels)
       .OutputChannels(output_channels)
       .ReluActivation()
-      .WeightsType(GetParam())
+      .WeightsType(weights_type)
       .Test(xnnpack_delegate.get());
 }
 
@@ -327,7 +348,8 @@ TEST_P(DynamicallyQuantizedFullyConnectedTest, Relu6Activation) {
   auto channels_rng =
       std::bind(std::uniform_int_distribution<int32_t>(2, 9), std::ref(rng));
   const auto batch = batch_rng();
-  const auto input_channels = channels_rng();
+  WeightsType weights_type = GetParam();
+  const auto input_channels = GenInputChannels(channels_rng, weights_type);
   const auto output_channels = channels_rng();
 
   DynamicallyQuantizedFullyConnectedTester()
@@ -335,7 +357,7 @@ TEST_P(DynamicallyQuantizedFullyConnectedTest, Relu6Activation) {
       .InputChannels(input_channels)
       .OutputChannels(output_channels)
       .Relu6Activation()
-      .WeightsType(GetParam())
+      .WeightsType(weights_type)
       .Test(xnnpack_delegate.get());
 }
 
@@ -355,7 +377,8 @@ TEST_P(DynamicallyQuantizedFullyConnectedTest, ReluMinus1To1Activation) {
   auto channels_rng =
       std::bind(std::uniform_int_distribution<int32_t>(2, 9), std::ref(rng));
   const auto batch = batch_rng();
-  const auto input_channels = channels_rng();
+  WeightsType weights_type = GetParam();
+  const auto input_channels = GenInputChannels(channels_rng, weights_type);
   const auto output_channels = channels_rng();
 
   DynamicallyQuantizedFullyConnectedTester()
@@ -363,7 +386,7 @@ TEST_P(DynamicallyQuantizedFullyConnectedTest, ReluMinus1To1Activation) {
       .InputChannels(input_channels)
       .OutputChannels(output_channels)
       .ReluMinus1To1Activation()
-      .WeightsType(GetParam())
+      .WeightsType(weights_type)
       .Test(xnnpack_delegate.get());
 }
 
@@ -384,14 +407,15 @@ TEST_P(DynamicallyQuantizedFullyConnectedTest, MultiThreading) {
   auto channels_rng =
       std::bind(std::uniform_int_distribution<int32_t>(2, 9), std::ref(rng));
   const auto batch = batch_rng();
-  const auto input_channels = channels_rng();
+  WeightsType weights_type = GetParam();
+  const auto input_channels = GenInputChannels(channels_rng, weights_type);
   const auto output_channels = channels_rng();
 
   DynamicallyQuantizedFullyConnectedTester()
       .InputShape({batch, input_channels})
       .InputChannels(input_channels)
       .OutputChannels(output_channels)
-      .WeightsType(GetParam())
+      .WeightsType(weights_type)
       .Test(xnnpack_delegate.get());
 }
 
@@ -415,7 +439,8 @@ TEST_P(DynamicallyQuantizedFullyConnectedTest, WeightsCache) {
   auto channels_rng =
       std::bind(std::uniform_int_distribution<int32_t>(2, 9), std::ref(rng));
   const auto batch = batch_rng();
-  const auto input_channels = channels_rng();
+  WeightsType weights_type = GetParam();
+  const auto input_channels = GenInputChannels(channels_rng, weights_type);
   const auto output_channels = channels_rng();
 
   DynamicallyQuantizedFullyConnectedTester()
@@ -423,13 +448,15 @@ TEST_P(DynamicallyQuantizedFullyConnectedTest, WeightsCache) {
       .InputChannels(input_channels)
       .OutputChannels(output_channels)
       .WeightsCache(weights_cache.get())
-      .WeightsType(GetParam())
+      .WeightsType(weights_type)
       .Test(xnnpack_delegate.get());
 }
 
 // Returns a human readable string representation of the test parameter.
 std::string TestParamToString(testing::TestParamInfo<WeightsType> param) {
   switch (param.param) {
+    case WeightsType::kChannelWiseQuantizedInt4:
+      return "ChannelWiseQuantizedInt4";
     case WeightsType::kChannelWiseQuantizedInt8:
       return "ChannelWiseQuantizedInt8";
     case WeightsType::kTensorWiseQuantizedInt8:
@@ -444,6 +471,7 @@ INSTANTIATE_TEST_SUITE_P(
     DynamicallyQuantizedFullyConnectedTest,
     DynamicallyQuantizedFullyConnectedTest,
     testing::Values(WeightsType::kTensorWiseQuantizedInt8,
+                    WeightsType::kChannelWiseQuantizedInt4,
                     WeightsType::kChannelWiseQuantizedInt8),
     TestParamToString);
 

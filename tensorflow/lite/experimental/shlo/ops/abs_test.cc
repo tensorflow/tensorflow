@@ -14,12 +14,12 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/experimental/shlo/ops/abs.h"
 
-#include <cstddef>
-#include <cstdint>
+#include <string>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "tensorflow/lite/experimental/shlo/ops/test_util.h"
+#include "tensorflow/lite/experimental/shlo/ops/unary_elementwise_test_util.h"
 #include "tensorflow/lite/experimental/shlo/quantize.h"
 #include "tensorflow/lite/experimental/shlo/quantized_tensor_element_type.h"
 #include "tensorflow/lite/experimental/shlo/shape.h"
@@ -30,6 +30,11 @@ using testing::ElementsAreArray;
 
 namespace shlo_ref {
 
+template <>
+struct ParamName<AbsOp> {
+  static std::string Get() { return "Abs"; }
+};
+
 namespace {
 
 constexpr struct AbsRef {
@@ -39,12 +44,25 @@ constexpr struct AbsRef {
   }
 } abs_ref;
 
+INSTANTIATE_TYPED_TEST_SUITE_P(Abs, UnaryElementwiseOpShapePropagationTest,
+                               AbsOp, TestParamNames);
+
+INSTANTIATE_TYPED_TEST_SUITE_P(
+    Abs, UnaryElementwiseSameBaselineElementTypeConstraintTest,
+    UnaryElementwiseConstraint1Types<AbsOp>, TestParamNames);
+
+using UnsupportedTypes =
+    WithOpTypes<AbsOp, ConcatTypes<BoolTestType, PerAxisQuantizedTestTypes>>;
+
+INSTANTIATE_TYPED_TEST_SUITE_P(Abs, UnaryElementwiseUnsupportedTypeTest,
+                               UnsupportedTypes, TestParamNames);
+
 template <class T>
 struct AbsTest : ::testing::Test {};
 
-TYPED_TEST_SUITE(AbsTest, NonQuantizedTestTypes, TestParamNames);
+TYPED_TEST_SUITE(AbsTest, ArithmeticTestTypes, TestParamNames);
 
-TYPED_TEST(AbsTest, NonQuantized) {
+TYPED_TEST(AbsTest, ArithmeticTensorsWork) {
   using StorageT = typename TypeParam::StorageT;
 
   const Shape shape({2, 3, 4});
@@ -99,65 +117,6 @@ TYPED_TEST(QuantizedAbsTest, QuantizedPerTensor) {
         const ExpressedT dequantized_res = abs_ref(dequantized_input);
         return Quantize<TypeParam::kStorage, TypeParam::kExpressed>(
             dequantized_res, zero_point, static_cast<ExpressedT>(1.) / scale);
-      });
-
-  auto op = Create(AbsOp::Attributes{});
-  ASSERT_OK(Prepare(op, input_tensor, output_tensor));
-  ASSERT_OK(Evaluate(op, input_tensor, output_tensor));
-  EXPECT_THAT(output_data, ElementsAreArray(expected_data));
-}
-
-TYPED_TEST(QuantizedAbsTest, QuantizedPerAxis) {
-  using StorageT = typename TypeParam::StorageT;
-  using ExpressedT = typename TypeParam::ExpressedT;
-
-  const Shape shape({4, 3, 2});
-  const int quantized_dimension = 2;
-  const size_t rank = shape.Rank();
-  const Axis quantized_dimension_size = shape.Dim(quantized_dimension);
-  const size_t quantization_stride = [&] {
-    size_t res = 1;
-    for (int64_t i = rank - 1; i > quantized_dimension; --i) {
-      res *= shape.Dim(i);
-    }
-    return res;
-  }();
-  Vector<StorageT> input_data = IotaBuffer<TypeParam::kStorage>(shape);
-  Vector<StorageT> output_data(shape.NumElements());
-  Vector<StorageT> zero_points_data = RandomBuffer<TypeParam::kStorage>(
-      /*shape=*/Shape({shape.Dim(2)}), /*min=*/static_cast<StorageT>(-5),
-      /*max=*/static_cast<StorageT>(5));
-  Vector<ExpressedT> scales_data = RandomBuffer<TypeParam::kExpressed>(
-      /*shape=*/Shape({shape.Dim(2)}), /*min=*/static_cast<ExpressedT>(1),
-      /*max=*/static_cast<ExpressedT>(3));
-  const QuantizedTensorElementType tensor_type =
-      QuantizedTensorElementType::PerAxis<TypeParam::kStorage,
-                                          TypeParam::kExpressed>(
-          scales_data, zero_points_data, quantized_dimension);
-  Tensor input_tensor{
-      .type = QuantizedTensorType{.shape = shape, .element_type = tensor_type},
-      .data = input_data.data()};
-  Tensor output_tensor{
-      .type = QuantizedTensorType{.shape = shape, .element_type = tensor_type},
-      .data = output_data.data()};
-
-  Vector<StorageT> expected_data(shape.NumElements());
-  absl::c_transform(
-      input_data, expected_data.begin(),
-      [&, element_index = 0ull, quantization_index = 0ull](auto v) mutable {
-        const StorageT zero_point = zero_points_data[quantization_index];
-        const ExpressedT scale = scales_data[quantization_index];
-
-        if (++element_index >= quantization_stride) {
-          element_index = 0;
-          if (++quantization_index >= quantized_dimension_size) {
-            quantization_index = 0;
-          }
-        }
-        const ExpressedT dequantized_input = Dequantize(v, zero_point, scale);
-        const ExpressedT dequantized_res = abs_ref(dequantized_input);
-        return Quantize<TypeParam::kStorage, TypeParam::kExpressed>(
-            dequantized_res, zero_point, ExpressedT(1) / scale);
       });
 
   auto op = Create(AbsOp::Attributes{});

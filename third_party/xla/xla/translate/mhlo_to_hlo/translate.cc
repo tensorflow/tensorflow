@@ -43,7 +43,7 @@ mlir::LogicalResult MlirHloToHloTranslateFunction(mlir::ModuleOp module,
   return mlir::success();
 }
 
-StatusOr<std::unique_ptr<HloModule>> HloModuleFromProto(
+absl::StatusOr<std::unique_ptr<HloModule>> HloModuleFromProto(
     const HloProto& hlo_proto) {
   const HloModuleProto& module_proto = hlo_proto.hlo_module();
   TF_ASSIGN_OR_RETURN(const HloModuleConfig module_config,

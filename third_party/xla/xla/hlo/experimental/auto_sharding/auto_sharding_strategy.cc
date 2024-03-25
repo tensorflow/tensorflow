@@ -277,17 +277,13 @@ BuildStrategyAndCost(const HloInstructionSequence& sequence,
         break;
       }
       case HloOpcode::kBroadcast: {
-        // For an unknown reason, we do not generate partially replicated
-        // strategies for >1D broadcast ops. This can be changed if we find that
-        // our search isn't exhaustive enough for certain ops.
         strategy_group =
             CreateAllStrategiesGroup(
                 ins, ins->shape(), instruction_id, strategy_groups, cluster_env,
                 strategy_map, option, replicated_penalty, batch_dim_map,
                 call_graph, only_allow_divisible,
                 /* create_replicated_strategies */ true,
-                /* create_partially_replicated_strategies */
-                (ins->shape().rank() == 1))
+                /* create_partially_replicated_strategies */ true)
                 .value();
         break;
       }
@@ -393,13 +389,32 @@ BuildStrategyAndCost(const HloInstructionSequence& sequence,
           // Find output shardings.
           switch (opcode) {
             case HloOpcode::kSlice: {
+              // When solve_nd_sharding_iteratively is true, in some cases, we
+              // can have 1D shardings where the total number of tiles is larger
+              // than the number of elements in the partial mesh (and is
+              // actually equal to the number of devices in the original
+              // mesh). Below, we use the correct mesh depending on the number
+              // of elements in the 1D sharding.
               bool is_1d_sharding =
                   VectorGreaterThanOneElementCount(
                       input_spec.tile_assignment().dimensions()) == 1;
-              output_spec = PropagateDimwiseShardingSlice(
-                  input_spec, operand->shape(), ins->shape(),
-                  is_1d_sharding ? cluster_env.device_mesh_1d_
-                                 : cluster_env.device_mesh_);
+              if (is_1d_sharding &&
+                  input_spec.TotalNumTiles() ==
+                      cluster_env.device_mesh_1d_.num_elements()) {
+                output_spec = PropagateDimwiseShardingSlice(
+                    input_spec, operand->shape(), ins->shape(),
+                    cluster_env.device_mesh_1d_);
+              } else if (is_1d_sharding) {
+                CHECK_EQ(input_spec.TotalNumTiles(),
+                         cluster_env.original_device_mesh_1d_.num_elements());
+                output_spec = PropagateDimwiseShardingSlice(
+                    input_spec, operand->shape(), ins->shape(),
+                    cluster_env.original_device_mesh_1d_);
+              } else {
+                output_spec = PropagateDimwiseShardingSlice(
+                    input_spec, operand->shape(), ins->shape(),
+                    cluster_env.device_mesh_);
+              }
               break;
             }
             case HloOpcode::kPad:

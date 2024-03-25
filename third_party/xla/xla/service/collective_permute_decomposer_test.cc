@@ -35,33 +35,13 @@ using ::testing::HasSubstr;
 namespace op = xla::testing::opcode_matchers;
 using CollectivePermuteDecomposerTest = HloTestBase;
 
-TEST_F(CollectivePermuteDecomposerTest, SyncNotTransformed) {
-  const absl::string_view kModuleStr = R"(
-      HloModule test
-      ENTRY test_computation {
-        p = u32[] replica-id()
-        start = (u32[], u32[]) collective-permute-start(p), channel_id=1,
-          source_target_pairs={{0,1}, {1,2}},
-          backend_config="{ \"collective_backend_config\": {\"is_sync\":true}}"
-        ROOT done = u32[] collective-permute-done(start)
-      }
-    )";
-
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnUnverifiedModule((kModuleStr)));
-  CollectivePermuteDecomposer decomposer(/*threshold_in_bytes=*/0);
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, decomposer.Run(module.get()));
-  EXPECT_FALSE(changed);
-}
-
 TEST_F(CollectivePermuteDecomposerTest, WithCycleNotTransformed) {
   const absl::string_view kModuleStr = R"(
       HloModule test
       ENTRY test_computation {
-        p = (u32[], u32[]) replica-id()
-        start = u32[] collective-permute-start(p), channel_id=1,
+        p = u32[] replica-id()
+        ROOT cp = u32[] collective-permute(p), channel_id=1,
           source_target_pairs={{0,1}, {1,0}}
-        ROOT done = u32[] collective-permute-done(start)
       }
     )";
 
@@ -77,9 +57,8 @@ TEST_F(CollectivePermuteDecomposerTest, WithContextDataNotTransformed) {
   HloModule test
   ENTRY test_computation {
     p = u32[] replica-id()
-    start = (u32[], u32[], u32[], u32[]) collective-permute-start(p), channel_id=1,
+    ROOT cp = (u32[], u32[], u32[], u32[]) collective-permute(p), channel_id=1,
       source_target_pairs={{0,1}, {1,2}, {2,3}, {3,4}}
-    ROOT done = u32[] collective-permute-done(start)
   }
   )";
 
@@ -95,10 +74,9 @@ TEST_F(CollectivePermuteDecomposerTest, TransformedExplicitChannelId) {
   HloModule test
   ENTRY test_computation {
     p = u32[] replica-id()
-    start = (u32[], u32[]) collective-permute-start(p), channel_id=1,
+    ROOT cp = u32[] collective-permute(p), channel_id=1,
       source_target_pairs={{0,1}, {1,2}, {2,3}, {3,4}},
       metadata={op_name="op1/op2/add" source_file="foo/bar/mysource.py" source_line=35}
-    ROOT done = u32[] collective-permute-done(start)
   }
   )";
 
@@ -154,9 +132,8 @@ TEST_F(CollectivePermuteDecomposerTest, NotTransformedDefaultChannelId) {
   HloModule test
   ENTRY test_computation {
     p = u32[] replica-id()
-    start = (u32[], u32[]) collective-permute-start(p),
+    ROOT cp = u32[] collective-permute(p),
       source_target_pairs={{0,1}, {1,2}, {2,3}, {3,4}}
-    ROOT done = u32[] collective-permute-done(start)
   }
   )";
 
@@ -172,10 +149,9 @@ TEST_F(CollectivePermuteDecomposerTest, ThresholdNotTransformed) {
   HloModule test
   ENTRY test_computation {
     p = u32[] replica-id()
-    start = (u32[], u32[]) collective-permute-start(p), channel_id=1,
+    ROOT cp = u32[] collective-permute(p), channel_id=1,
       source_target_pairs={{0,1}, {1,2}, {2,3}, {3,4}},
       metadata={op_name="op1/op2/add" source_file="foo/bar/mysource.py" source_line=35}
-    ROOT done = u32[] collective-permute-done(start)
   }
   )";
 
@@ -201,10 +177,9 @@ TEST_F(CollectivePermuteDecomposerTest, Pipeline1) {
     count = get-tuple-element(param), index=0
     send-data = get-tuple-element(param), index=1
 
-    start = (u32[2], u32[2]) collective-permute-start(send-data), channel_id=1,
+    recv-data = u32[2] collective-permute(send-data), channel_id=1,
       source_target_pairs={{0,1}, {1,2}, {2,3}, {3,4}},
       frontend_attributes={_xla_other_attribute="xyz"}
-    recv-data = u32[2] collective-permute-done(start)
 
     c1 = u32[] constant(1)
     new_count = u32[] add(count, c1)
@@ -265,13 +240,11 @@ TEST_F(CollectivePermuteDecomposerTest, ForwardPipeline2) {
     count = get-tuple-element(param), index=0
     send-data = get-tuple-element(param), index=1
 
-    start.0 = (u32[2], u32[2]) collective-permute-start(send-data), channel_id=1,
+    recv-data.0 = u32[2] collective-permute(send-data), channel_id=1,
       source_target_pairs={{3,0}}
-    recv-data.0 = u32[2] collective-permute-done(start.0)
 
-    start.1 = (u32[2], u32[2]) collective-permute-start(send-data), channel_id=2,
+    recv-data.1 = u32[2] collective-permute(send-data), channel_id=2,
       source_target_pairs={{0,1}, {1,2}, {2,3}}
-    recv-data.1 = u32[2] collective-permute-done(start.1)
 
     replica = u32[] replica-id()
     constant0 = u32[] constant(0)
@@ -342,13 +315,11 @@ TEST_F(CollectivePermuteDecomposerTest, BackwardPipeline2) {
     count = get-tuple-element(param), index=0
     send-data = get-tuple-element(param), index=1
 
-    start.0 = (u32[2], u32[2]) collective-permute-start(send-data), channel_id=1,
+    recv-data.0 = u32[2] collective-permute(send-data), channel_id=1,
       source_target_pairs={{1,0},{2,1},{3,2}}
-    recv-data.0 = u32[2] collective-permute-done(start.0)
 
-    start.1 = (u32[2], u32[2]) collective-permute-start(send-data), channel_id=2,
+    recv-data.1 = u32[2] collective-permute(send-data), channel_id=2,
       source_target_pairs={{0,3}}
-    recv-data.1 = u32[2] collective-permute-done(start.1)
 
     replica = u32[] replica-id()
     constant0 = u32[] constant(0)

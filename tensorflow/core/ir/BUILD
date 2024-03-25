@@ -1,6 +1,6 @@
 load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library", "td_library")
-load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")
+load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -140,10 +140,12 @@ cc_library(
         ":InterfacesIncGen",
         "//tensorflow/core/ir/types:Dialect",
         "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:CallOpInterfaces",
         "@llvm-project//mlir:ControlFlowInterfaces",
         "@llvm-project//mlir:FunctionInterfaces",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:InferTypeOpInterface",
+        "@llvm-project//mlir:SideEffectInterfaces",
         "@llvm-project//mlir:Support",
     ],
 )

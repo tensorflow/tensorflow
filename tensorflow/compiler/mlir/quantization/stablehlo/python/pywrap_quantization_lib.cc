@@ -22,12 +22,14 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/cc/config.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/cc/static_range_ptq.h"
+#include "tensorflow/compiler/mlir/quantization/stablehlo/cc/weight_only_ptq.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/quantization_config.pb.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/python/py_function_lib.h"
 
 namespace stablehlo::quantization::pywrap {
 
 using ::mlir::quant::stablehlo::QuantizeStaticRangePtq;
+using ::mlir::quant::stablehlo::QuantizeWeightOnlyPtq;
 using ::tensorflow::SignatureDef;
 using ::tensorflow::quantization::PyFunctionLibrary;
 
@@ -46,9 +48,24 @@ absl::Status PywrapQuantizeStaticRangePtq(
                                 py_function_library);
 }
 
+absl::Status PywrapQuantizeWeightOnlyPtq(
+    absl::string_view src_saved_model_path,
+    absl::string_view dst_saved_model_path, const QuantizationConfig& config,
+    const std::vector<std::string>& signature_keys,
+    const absl::flat_hash_map<std::string, SignatureDef>& signature_def_map,
+    const PyFunctionLibrary& py_function_library) {
+  return QuantizeWeightOnlyPtq(src_saved_model_path, dst_saved_model_path,
+                               config, signature_keys, signature_def_map,
+                               py_function_library);
+}
+
 QuantizationConfig PywrapPopulateDefaults(
     const QuantizationConfig& user_provided_config) {
   return PopulateDefaults(user_provided_config);
+}
+
+QuantizationConfig PywrapExpandPresets(const QuantizationConfig& config) {
+  return ExpandPresets(config);
 }
 
 }  // namespace stablehlo::quantization::pywrap

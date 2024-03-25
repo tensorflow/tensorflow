@@ -36,7 +36,7 @@ class CustomFusion : public FusionInterface {
 
 // Emitter for custom fusions implementing address computation. An address
 // computation contains a custom call hero, with at least one of its operands
-// comes from a static contiguous slice. E.g. operand `%cast` of `%gemm` coming
+// coming from a static contiguous slice. E.g. operand `%cast` of `%gemm` coming
 // from `%slice`:
 // %address_computation {
 //   %p0 = f32[2, 1024, 1024]
@@ -53,6 +53,28 @@ class CustomFusion : public FusionInterface {
 class AddressComputationFusion : public FusionInterface {
  public:
   explicit AddressComputationFusion(const HloFusionAnalysis& analysis)
+      : analysis_(analysis) {}
+
+  absl::StatusOr<FusionEmissionResult> Emit(
+      IrEmitterContext& ir_emitter_context,
+      const HloFusionInstruction& fusion) const final;
+
+ private:
+  const HloFusionAnalysis& analysis_;
+};
+
+// TODO(vuson): merge these two fusions.
+// Emitter for custom fusions implementing dynamic address computation. A
+// dynamic address computation contains a custom call hero, with at least one of
+// its operands coming from a dynamic contiguous slice, and/or with at least one
+// of its results feeding into a contiguous DUS.
+//
+// The goal is to compute the buffer addresses for sliced operands/results
+// without having to allocate new buffers for these by wrapping
+// AddressComputationThunk around the original custom call thunk.
+class DynamicAddressComputationFusion : public FusionInterface {
+ public:
+  explicit DynamicAddressComputationFusion(const HloFusionAnalysis& analysis)
       : analysis_(analysis) {}
 
   absl::StatusOr<FusionEmissionResult> Emit(

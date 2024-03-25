@@ -206,8 +206,10 @@ void DataServiceClient::Cancel() TF_LOCKS_EXCLUDED(mu_) {
 TraceMeMetadata DataServiceClient::GetTraceMeMetadata() const {
   TraceMeMetadata result;
   int64_t num_tasks = -1;
+  int64_t autotuned_max_outstanding_requests = model::kAutotune;
   if (mu_.try_lock()) {
     num_tasks = tasks_.size() - finished_tasks_;
+    autotuned_max_outstanding_requests = max_outstanding_requests_;
     mu_.unlock();
   }
   result.push_back(std::make_pair(
@@ -220,6 +222,12 @@ TraceMeMetadata DataServiceClient::GetTraceMeMetadata() const {
       "max_outstanding_requests",
       strings::Printf(
           "%lld", static_cast<long long>(params_.max_outstanding_requests))));
+  if (params_.max_outstanding_requests == model::kAutotune) {
+    result.push_back(std::make_pair(
+        "autotuned_max_outstanding_requests",
+        strings::Printf("%lld", static_cast<long long>(
+                                    autotuned_max_outstanding_requests))));
+  }
   return result;
 }
 

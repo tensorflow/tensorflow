@@ -237,6 +237,16 @@ std::vector<std::unique_ptr<PjRtStreamExecutorDevice>> BuildLocalDevices(
 
 std::string MakeComputeCapabilityString(const se::DeviceDescription* desc);
 
+Status BuildDistributedDevices(
+    std::string_view platform_name,
+    std::map<int, std::unique_ptr<LocalDeviceState>> local_device_states,
+    int node_id, int num_nodes,
+    std::vector<std::unique_ptr<PjRtStreamExecutorDevice>>* devices,
+    gpu::GpuExecutableRunOptions* gpu_executable_run_options,
+    std::shared_ptr<KeyValueStoreInterface> kv_store, bool enable_mock_nccl,
+    absl::Duration get_local_topology_timeout = absl::Minutes(2),
+    absl::Duration get_global_topology_timeout = absl::Minutes(5));
+
 struct GpuClientOptions {
   GpuAllocatorConfig allocator_config;
 

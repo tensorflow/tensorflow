@@ -30,7 +30,7 @@ limitations under the License.
 #include "xla/service/computation_placer.h"
 #include "xla/service/global_device_id.h"
 #include "xla/service/gpu/nccl_api.h"
-#include "xla/service/gpu/nccl_collective_thunk.h"
+#include "xla/service/gpu/runtime/nccl_collective_thunk.h"
 #include "xla/service/gpu/runtime/nccl_p2p_thunk_common.h"
 #include "xla/service/gpu/thunk.h"
 #include "xla/status_macros.h"
@@ -93,6 +93,8 @@ absl::Status NcclSendThunk::RunNcclCollective(const ExecuteParams& params,
   int device_ordinal = stream.parent()->device_ordinal();
   VLOG(3) << "Performing collective permute from device ordinal: "
           << device_ordinal << "current_id " << current_id;
+  TF_RETURN_IF_ERROR(
+      MaybeRegisterBuffers(nccl_api(), device_ordinal, {buffer}, comm));
 
   const std::optional<int64_t> target_id = source_target.target;
   se::DeviceMemoryBase src_addr = buffer.source_buffer;

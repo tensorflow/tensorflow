@@ -49,13 +49,17 @@ TEST(FfiTest, StaticRegistration) {
   XLA_FFI_DEFINE_HANDLER(NoOp1, noop);
 
   XLA_FFI_REGISTER_HANDLER(GetXlaFfiApi(), "no-op-0", "Host", NoOp0);
-  XLA_FFI_REGISTER_HANDLER(GetXlaFfiApi(), "no-op-1", "Host", NoOp1);
+  XLA_FFI_REGISTER_HANDLER(GetXlaFfiApi(), "no-op-1", "Host", NoOp1,
+                           XLA_FFI_HANDLER_TRAITS_COMMAND_BUFFER_COMPATIBLE);
 
   auto handler0 = FindHandler("no-op-0", "Host");
   auto handler1 = FindHandler("no-op-1", "Host");
 
   TF_ASSERT_OK(handler0.status());
   TF_ASSERT_OK(handler1.status());
+
+  ASSERT_EQ(handler0->traits, 0);
+  ASSERT_EQ(handler1->traits, XLA_FFI_HANDLER_TRAITS_COMMAND_BUFFER_COMPATIBLE);
 
   EXPECT_THAT(StaticRegisteredHandlers("Host"),
               UnorderedElementsAre(Pair("no-op-0", _), Pair("no-op-1", _)));

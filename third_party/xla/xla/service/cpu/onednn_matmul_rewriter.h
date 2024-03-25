@@ -37,7 +37,7 @@ class OneDnnMatMulRewriter : public HloModulePass {
                        const tsl::thread::ThreadPool* compile_threadpool)
       : intra_op_parallelism_(intra_op_parallelism),
         compile_threadpool_(compile_threadpool) {}
-
+  OneDnnMatMulRewriter() = default;
   absl::string_view name() const override { return "onednn-matmul-rewriter"; }
 
   using HloPassInterface::Run;

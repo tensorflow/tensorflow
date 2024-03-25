@@ -22,7 +22,7 @@ limitations under the License.
 // and should not be depended on.
 
 struct TSL_Status {
-  tsl::Status status;
+  absl::Status status;
 };
 
 #endif  // XLA_TSL_C_TSL_STATUS_INTERNAL_H_

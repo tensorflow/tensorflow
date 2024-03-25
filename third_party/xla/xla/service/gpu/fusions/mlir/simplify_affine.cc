@@ -99,26 +99,28 @@ struct RewriteAffineApply
       mlir::affine::AffineApplyOp op,
       mlir::PatternRewriter& rewriter) const override {
     auto affine_map = op.getAffineMap();
-    std::vector<Interval> dim_ranges(affine_map.getNumDims());
-    std::vector<Interval> symbol_ranges(affine_map.getNumSymbols());
+    std::vector<DimVar> dim_ranges(affine_map.getNumDims());
+    std::vector<RangeVar> symbol_ranges(affine_map.getNumSymbols());
 
     for (int i = 0; i < affine_map.getNumInputs(); ++i) {
       if (auto range = GetRange(op->getOperand(i))) {
         if (i >= dim_ranges.size()) {
-          symbol_ranges[i - dim_ranges.size()] = *range;
+          symbol_ranges[i - dim_ranges.size()] = RangeVar{*range};
         } else {
-          dim_ranges[i] = *range;
+          dim_ranges[i] = DimVar{*range};
         }
       } else {
         return rewriter.notifyMatchFailure(op, "failed to deduce range");
       }
     }
 
-    IndexingMap map(op.getAffineMap(), dim_ranges, symbol_ranges);
+    IndexingMap map(op.getAffineMap(), dim_ranges, symbol_ranges,
+                    /*rt_vars=*/{});
     map.Simplify();
     auto expr = map.GetAffineMap().getResult(0);
 
-    RangeEvaluator range_evaluator(dim_ranges, symbol_ranges, op->getContext());
+    RangeEvaluator range_evaluator(map.GetDimensionBounds(),
+                                   map.GetSymbolBounds(), op->getContext());
     std::function<bool(mlir::AffineExpr)> can_be_lowered;
     bool fits_32_bits = true;
     can_be_lowered = [&](mlir::AffineExpr expr) {

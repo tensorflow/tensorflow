@@ -2874,5 +2874,66 @@ TEST_F(HloVerifierTest, SparseDotMetadataShape) {
   EXPECT_THAT(status.message(), HasSubstr("Expected sparse dot metadata"));
 }
 
+TEST_F(HloVerifierTestLayoutSensitive,
+       HostOffloadingDUSAndDSAreVerifiedWhenChangingLayout) {
+  const char* const hlo_string = R"(
+  HloModule m
+
+  ENTRY main {
+    constant_f32_0 = f32[] constant(0)
+    custom-call = f32[2,2048,2048]{2,1,0:S(5)} custom-call(), custom_call_target="AllocateBuffer"
+    data_param = f32[1,2048,2048]{2,1,0} parameter(0)
+    index_param = s32[] parameter(1)
+    constant_s32_0 = s32[] constant(0)
+    dynamic_update_slice = f32[2,2048,2048]{2,1,0:S(5)} dynamic-update-slice(custom-call, data_param, index_param, constant_s32_0, constant_s32_0)
+    ROOT dynamic_slice = f32[1,2048,2048]{2,1,0} dynamic-slice(f32[2,2048,2048]{2,1,0:S(5)} dynamic_update_slice, index_param, constant_s32_0, constant_s32_0), dynamic_slice_sizes={1,2048,2048}
+  })";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnUnverifiedModule(hlo_string));
+
+  auto status = verifier().Run(module.get()).status();
+  ASSERT_TRUE(status.ok());
+}
+
+TEST_F(HloVerifierTestLayoutSensitive,
+       HostOffloadingCopyIsVerifiedWhenChangingLayout) {
+  const char* const hlo_string = R"(
+  HloModule m
+
+  ENTRY main {
+    data_param = f32[2048]{0} parameter(0)
+    copy_0 = f32[2048]{0:S(5)} copy(f32[2048]{0} data_param)
+    ROOT copy_1 = f32[2048]{0} copy(f32[2048]{0:S(5)} copy_0)
+  })";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnUnverifiedModule(hlo_string));
+
+  auto status = verifier().Run(module.get()).status();
+  ASSERT_TRUE(status.ok());
+}
+
+TEST_F(HloVerifierTestLayoutSensitive,
+       HostOffloadingDSCannotChangeLayoutFromDeviceToHost) {
+  const char* const hlo_string = R"(
+  HloModule m
+
+  ENTRY main {
+    constant_f32_0 = f32[] constant(0)
+    custom-call = f32[2,2048,2048]{2,1,0} custom-call(), custom_call_target="AllocateBuffer"
+    data_param = f32[1,2048,2048]{2,1,0} parameter(0)
+    index_param = s32[] parameter(1)
+    constant_s32_0 = s32[] constant(0)
+    dynamic_update_slice = f32[2,2048,2048]{2,1,0} dynamic-update-slice(custom-call, data_param, index_param, constant_s32_0, constant_s32_0)
+    ROOT dynamic_slice = f32[1,2048,2048]{2,1,0:S(5)} dynamic-slice(f32[2,2048,2048]{2,1,0} dynamic_update_slice, index_param, constant_s32_0, constant_s32_0), dynamic_slice_sizes={1,2048,2048}
+  })";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnUnverifiedModule(hlo_string));
+
+  auto status = verifier().Run(module.get()).status();
+  ASSERT_FALSE(status.ok());
+  EXPECT_THAT(status.message(),
+              HasSubstr("DynamicSlice instruction shouldn't change layout "
+                        "memory space from device to host"));
+}
 }  // namespace
 }  // namespace xla

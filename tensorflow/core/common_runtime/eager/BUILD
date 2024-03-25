@@ -1,5 +1,8 @@
+load("@bazel_skylib//lib:selects.bzl", "selects")
 load(
     "//tensorflow:tensorflow.bzl",
+    "clean_dep",
+    "if_google",
     "if_zendnn",
     "tf_cc_test",
     "tf_cc_test_mkl",
@@ -234,12 +237,50 @@ tf_cuda_library(
             "//tensorflow/core/distributed_runtime/eager:cluster_function_library_runtime",
             "//tensorflow/core/distributed_runtime/eager:eager_client",
             "//tensorflow/core/distributed_runtime/eager:remote_mgr",
+            "//tensorflow/core/tfrt/common:global_state",
+            "//tensorflow/core/tfrt/common:pjrt_state",
+            "//tensorflow/core/tfrt/common:pjrt_util",
+            "@com_google_absl//absl/base:core_headers",
+            "@com_google_absl//absl/container:flat_hash_map",
+            "@com_google_absl//absl/log",
+            "@com_google_absl//absl/status",
+            "@com_google_absl//absl/status:statusor",
+            "@com_google_absl//absl/strings",
+            "@com_google_absl//absl/synchronization",
+            "@com_google_absl//absl/time",
             "@local_tsl//tsl/distributed_runtime/coordination:coordination_service",
             "@local_tsl//tsl/distributed_runtime/coordination:coordination_service_agent",
             "@local_tsl//tsl/distributed_runtime/coordination:coordination_service_impl",
             "@local_tsl//tsl/distributed_runtime/preemption:preemption_notifier",
+            "@local_tsl//tsl/platform:mutex",
+            "@local_tsl//tsl/platform:statusor",
+            "@local_xla//xla/pjrt:pjrt_stream_executor_client",
+            "@local_xla//xla/pjrt/gpu:se_gpu_pjrt_client",
         ],
-    }),
+    }) + if_google(
+        # TODO(b/282068262): PJRT pulls in TFRT components that are incompatible with ARM platform.
+        # Clean up so that PJRT can run on ARM (and remove "#if defined(PLATFORM_GOOGLE) ..." use
+        # from gpu_util.cc).
+        # Also it won't build with WeightWatcher which tracks OSS build binaries.
+        # TODO(b/290533709): Clean up this build rule.
+        selects.with_or({
+            clean_dep("//tensorflow:linux_x86_64_with_weightwatcher"): [],
+            (
+                clean_dep("//tensorflow:linux_x86_64"),
+                clean_dep("//tensorflow:haswell"),
+            ): [
+                "//tensorflow/core",
+                "//tensorflow/core/framework:resource_base",
+                "@local_xla//xla/pjrt/distributed:key_value_store_interface",
+                "@local_xla//xla/pjrt:local_device_state",
+                "@local_xla//xla/pjrt:pjrt_client",
+                "@local_xla//xla/pjrt:pjrt_compiler",
+                "@local_xla//xla/service/gpu:gpu_executable_run_options",
+                "//tensorflow/core/common_runtime/gpu:gpu_runtime_impl",
+            ],
+            "//conditions:default": [],
+        }),
+    ),
 )
 
 tf_cc_test(

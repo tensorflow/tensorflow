@@ -20,6 +20,7 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/status/status.h"
 #include "absl/strings/string_view.h"
+#include "absl/types/span.h"
 #include "xla/hlo/ir/dfs_hlo_visitor_with_default.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
@@ -62,6 +63,26 @@ class MoveCopyToUsersVisitor : public DfsHloRewriteVisitor {
           HloInstruction * earlier_slice,
           MakeSliceHlo(copied, hlo->slice_starts(), hlo->slice_limits(),
                        hlo->slice_strides(), &hlo->metadata()));
+      *earlier_slice->mutable_shape()->mutable_layout() =
+          copied->shape().layout();
+      HloInstruction* later_copy = MakeCopyHlo(earlier_slice, hlo->shape());
+      TF_RETURN_IF_ERROR(ReplaceInstruction(hlo, later_copy));
+    }
+    return absl::OkStatus();
+  }
+
+  // Turn copy->dynamic-slice into dynamic-slice->copy, as dynamic-slice is
+  // layout-preserving.
+  absl::Status HandleDynamicSlice(HloInstruction* hlo) override {
+    HloInstruction* operand = hlo->mutable_operand(0);
+    if (operand->opcode() == HloOpcode::kCopy) {
+      HloInstruction* copied = operand->mutable_operand(0);
+      TF_ASSIGN_OR_RETURN(
+          HloInstruction * earlier_slice,
+          MakeDynamicSliceHlo(
+              copied,
+              absl::Span<HloInstruction* const>(hlo->operands()).subspan(1),
+              hlo->dynamic_slice_sizes(), &hlo->metadata()));
       *earlier_slice->mutable_shape()->mutable_layout() =
           copied->shape().layout();
       HloInstruction* later_copy = MakeCopyHlo(earlier_slice, hlo->shape());

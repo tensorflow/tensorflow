@@ -19,6 +19,7 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/log/log.h"
 #include "llvm/ADT/StringRef.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
@@ -149,14 +150,8 @@ void AddPreQuantizationStableHloToTfPasses(
   // specific features like mhlo::ErfOp which aren't supported
   // in StableHLO, but we have CHLO->StableHLO decompositions to legalize.
   pass_manager.addPass(mlir::mhlo::createHloLegalizeToStablehloPass());
-  pass_manager.addPass(
-      mlir::stablehlo::experimental::createChloRecomposeOpsPass());
-  pass_manager.addNestedPass<mlir::func::FuncOp>(
-      mlir::mhlo::createChloLegalizeToHloBasisOpsPass());
-  pass_manager.addNestedPass<mlir::func::FuncOp>(
-      mlir::mhlo::createChloLegalizeToHloPass());
-  pass_manager.addNestedPass<mlir::func::FuncOp>(
-      mlir::mhlo::createShapeLegalizeToHloPass());
+  mlir::stablehlo::experimental::createChloLegalizeToStablehloPipeline(
+      pass_manager);
   pass_manager.addPass(mlir::mhlo::createHloLegalizeToStablehloPass());
 
   // The following two passes find specific uniform quantization patterns in
@@ -231,6 +226,11 @@ void AddPostQuantizationStableHloToTfPasses(
     pass_manager.addPass(mlir::mhlo::createStablehloLegalizeToHloPass());
   }
 
+  if (pass_config.enable_composite_direct_lowering) {
+    LOG(WARNING) << "Direct lowerting of composites to TFLite ops is not "
+                    "implemented yet.";
+  }
+
   // TFLite dialect passes.
   if (!pass_config.disable_hlo_to_tfl_conversion) {
     pass_manager.addPass(mlir::odml::CreateLegalizeHloToTfLitePass());
@@ -252,6 +252,13 @@ void AddPostQuantizationStableHloToTfPasses(
 
   // Legalize all remaining mhlo ops to stableHLO
   pass_manager.addPass(mlir::mhlo::createHloLegalizeToStablehloPass());
+
+  // Translate "stablehlo.custom_call @stablehlo.composite" to
+  // "stablehlo.composite"
+  // TODO: b/330741524 - clean this up when "stablehlo.composite" is emitted
+  // directly.
+  pass_manager.addPass(
+      mlir::odml::createLegalizeStablehloCustomCallToCompositePass());
 }
 
 // This is the early part of the conversion in isolation. This enables a caller

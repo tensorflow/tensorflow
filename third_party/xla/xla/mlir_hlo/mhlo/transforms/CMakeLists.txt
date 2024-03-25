@@ -192,7 +192,6 @@ add_mlir_library(MhloToStandard
 )
 
 add_mlir_library(ChloPasses
-  chlo_legalize_to_hlo/chlo_legalize_to_hlo.cc
   chlo_legalize_to_hlo/chlo_legalize_to_hlo_pass.cc
 
   DEPENDS

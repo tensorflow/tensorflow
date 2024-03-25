@@ -29,6 +29,7 @@ limitations under the License.
 #include "xla/service/cpu/onednn_matmul.h"
 #include "xla/service/cpu/onednn_memory_util.h"
 #include "xla/service/cpu/onednn_util.h"
+#include "xla/service/hlo_cost_analysis.h"
 #include "xla/service/pattern_matcher.h"
 #include "xla/status_macros.h"
 #include "tsl/platform/logging.h"  // IWYU pragma: keep
@@ -53,16 +54,6 @@ inline Status ValidateDotDimensionNumbers(
   TF_RET_CHECK(
       absl::c_equal(batch_dim_numbers, dim_numbers.rhs_batch_dimensions()));
   return OkStatus();
-}
-
-// We also check if the convert instruction has only one use.
-inline bool AllOperandsConvertedFromBF16ToF32(const HloInstruction* instr) {
-  return absl::c_all_of(instr->operands(), [](HloInstruction* operand) {
-    return Match(operand,
-                 m::Convert(m::Op().WithElementType(PrimitiveType::BF16))
-                     .WithElementType(PrimitiveType::F32)
-                     .WithOneUse());
-  });
 }
 
 template <typename Pattern>
@@ -254,10 +245,15 @@ inline bool IsRowMajor(const Shape& shape) {
 // TODO(intel-tf): Restict compatible types based on instruction kind.
 inline bool CompatibleElementType(const HloInstruction* instr) {
   PrimitiveType element_type = instr->shape().element_type();
-  return element_type == BF16 || element_type == F32;
+  return element_type == BF16 || element_type == F32 || element_type == F16;
 }
 
-// Type conversion from and to any of BF16 and FP32.
+inline bool LowPrecisionType(const HloInstruction* instr) {
+  PrimitiveType element_type = instr->shape().element_type();
+  return element_type == BF16 || element_type == F16;
+}
+
+// Type conversion from and to any of BF16, F16 and FP32.
 // TODO(intel-tf): Support more types when enabled.
 template <typename Pattern>
 inline auto SupportedConvert(Pattern pattern) {
@@ -305,14 +301,13 @@ inline auto OptionalConvertAndBitcast(HloInstruction** optional_convert,
   // Checks the presence of some intermediate operations that can be moved /
   // folded to allow dot fusion with add.
   // Try to match either of the following:
-  //   1. pattern-root -> bf16-to-fp32 convert -> bitcast
-  //   2. pattern-root -> bf16-to-fp32 convert
+  //   1. pattern-root -> bf16/f16-to-fp32 convert -> bitcast
+  //   2. pattern-root -> bf16/f16-to-fp32 convert
   //   3. pattern-root -> bitcast
   //   4. pattern-root
   auto common =
       m::AnyOf<HloInstruction>(
           SupportedConvert(optional_convert, std::move(pattern).WithOneUser())
-              .WithOperand(0, m::Op().WithElementType(PrimitiveType::BF16))
               .WithElementType(PrimitiveType::F32),
           std::move(pattern).WithOneUser())
           .WithOneUser();
@@ -365,15 +360,15 @@ bool OneDnnMatMulRewriter::ShouldRewrite(const HloInstruction* dot_instr) {
   }
 
   // OneDNN matmul has scratch allocation and copy overheads. The overheads
-  // can be amortized if there is sufficient MAC (multiply-accumulate)
-  // operations. We don't rewrite for small cases (determined empirically).
+  // can be amortized if there is sufficient number of flops. We don't rewrite
+  // for small cases (determined empirically).
   // TODO(intel-tf): Relax the condition when more optimizations in oneDNN
   // matmul is achieved.
-  auto rank = lhs_shape.rank();
-  auto rhs_dims = rhs_shape.dimensions();
-  int64_t num_mac_ops = ShapeUtil::ElementsIn(lhs_shape) * rhs_dims.back();
-  int mac_ops_threshold = (rank == 2) ? (1 << 23) : (1 << 18);
-  return (num_mac_ops >= mac_ops_threshold);
+  auto num_flops = xla::HloCostAnalysis::GetDotFlops(lhs_shape, output_shape,
+                                                     dot_dim_numbers);
+  auto rank = output_shape.rank();
+  auto flops_threshold = (rank == 2) ? (1 << 24) : (1 << 19);
+  return (num_flops >= flops_threshold);
 }
 
 class OneDnnMatMulRewriteVisitor : public DfsHloRewriteVisitor {
@@ -387,6 +382,7 @@ class OneDnnMatMulRewriteVisitor : public DfsHloRewriteVisitor {
 
     auto dot_dim_numbers = dot_instr->dot_dimension_numbers();
     TF_RETURN_IF_ERROR(ValidateDotDimensionNumbers(dot_dim_numbers));
+
     if (!OneDnnMatMulRewriter::ShouldRewrite(dot_instr)) return OkStatus();
     const Shape& lhs_shape = dot_instr->operand(0)->shape();
     const Shape& rhs_shape = dot_instr->operand(1)->shape();
@@ -410,30 +406,6 @@ class OneDnnMatMulRewriteVisitor : public DfsHloRewriteVisitor {
     matmul_config->set_transpose_b(transpose_b);
     TF_RETURN_IF_ERROR(matmul_call->set_backend_config(backend_config));
     TF_RETURN_IF_ERROR(ReplaceInstruction(dot_instr, matmul_call));
-    return OkStatus();
-  }
-
-  Status HandleConvert(HloInstruction* convert) override {
-    HloInstruction* matmul_instr;
-    auto pattern =
-        m::Convert(m::CustomCall(&matmul_instr, {"__onednn$matmul"})
-                       .WithOneUse()
-                       .WithElementType(PrimitiveType::F32)
-                       .WithPredicate(AllOperandsConvertedFromBF16ToF32))
-            .WithElementType(PrimitiveType::BF16);
-
-    if (!Match(convert, pattern)) return OkStatus();
-    if (!IsSupportedType(convert->shape().element_type())) return OkStatus();
-
-    // BFloat16 operands.
-    std::vector<HloInstruction*> bf16_operands;
-    for (auto operand : matmul_instr->operands()) {
-      bf16_operands.push_back(operand->mutable_operand(0));
-    }
-
-    HloInstruction* matmul_call = convert->AddInstruction(
-        matmul_instr->CloneWithNewOperands(convert->shape(), bf16_operands));
-    TF_RETURN_IF_ERROR(ReplaceInstruction(convert, matmul_call));
     return OkStatus();
   }
 
@@ -548,11 +520,11 @@ class OneDnnMatMulRewriteVisitor : public DfsHloRewriteVisitor {
       // for bf16 case to avoid datatype mismatch.
       if (optional_dot_bitcast != nullptr &&
           optional_dot_bitcast->opcode() == HloOpcode::kBitcast) {
-        if (matmul_call->shape().element_type() == PrimitiveType::BF16) {
+        if (LowPrecisionType(matmul_call)) {
           auto bitcast_call =
               matmul_call->AddInstruction(HloInstruction::CreateBitcast(
-                  ShapeUtil::ChangeElementType(instr->shape(),
-                                               PrimitiveType::BF16),
+                  ShapeUtil::ChangeElementType(
+                      instr->shape(), matmul_call->shape().element_type()),
                   matmul_call));
           new_instr =
               bitcast_call->AddInstruction(HloInstruction::CreateConvert(
@@ -564,7 +536,7 @@ class OneDnnMatMulRewriteVisitor : public DfsHloRewriteVisitor {
               HloInstruction::CreateBitcast(instr->shape(), matmul_call));
         }
       } else {
-        if (matmul_call->shape().element_type() == PrimitiveType::BF16) {
+        if (LowPrecisionType(matmul_call)) {
           new_instr = matmul_call->AddInstruction(HloInstruction::CreateConvert(
               ShapeUtil::ChangeElementType(matmul_call->shape(),
                                            PrimitiveType::F32),

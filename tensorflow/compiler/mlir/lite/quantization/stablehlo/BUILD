@@ -18,6 +18,7 @@ cc_library(
         "//tensorflow/compiler/mlir/lite/stablehlo:tf_stablehlo",
         "//tensorflow/compiler/mlir/quantization/stablehlo:passes",
         "//tensorflow/compiler/mlir/quantization/stablehlo:quantization_config_proto_cc",
+        "//tensorflow/compiler/mlir/quantization/stablehlo/cc:config",
         "//tensorflow/compiler/mlir/quantization/stablehlo/cc:static_range_ptq",
         "//tensorflow/compiler/mlir/quantization/tensorflow/python:py_function_lib",
         "//tensorflow/compiler/mlir/tensorflow/transforms:tensorflow_passes",

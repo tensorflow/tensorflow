@@ -343,7 +343,8 @@ Status InsertInstructionAndEnsureOperandsInserted(
   return OkStatus();
 }
 
-StatusOr<xla::HloLiveRange::LogicalTime> GetScheduleTimeFromInstructionName(
+absl::StatusOr<xla::HloLiveRange::LogicalTime>
+GetScheduleTimeFromInstructionName(
     absl::string_view name,
     const absl::flat_hash_map<const xla::HloInstruction*,
                               xla::HloLiveRange::LogicalTime>& schedule) {
@@ -381,7 +382,7 @@ bool DoesOperandMatchFilter(const HloOperandFilter& filter,
   return true;
 }
 
-StatusOr<std::optional<int64_t>> GetPrefetchTimeByEagerness(
+absl::StatusOr<std::optional<int64_t>> GetPrefetchTimeByEagerness(
     float prefetch_eagerness, int64_t earliest_prefetch_time,
     int64_t latest_prefetch_time) {
   CHECK_GE(prefetch_eagerness, 0.0);
@@ -394,7 +395,7 @@ StatusOr<std::optional<int64_t>> GetPrefetchTimeByEagerness(
       (latest_prefetch_time - earliest_prefetch_time) * prefetch_eagerness);
 }
 
-StatusOr<std::optional<int64_t>> GetPrefetchTimeAfterInstruction(
+absl::StatusOr<std::optional<int64_t>> GetPrefetchTimeAfterInstruction(
     const std::string& after_instruction_name,
     const absl::flat_hash_map<const xla::HloInstruction*,
                               xla::HloLiveRange::LogicalTime>& schedule) {
@@ -404,7 +405,7 @@ StatusOr<std::optional<int64_t>> GetPrefetchTimeAfterInstruction(
   return static_cast<std::optional<int64_t>>(reference_instruction_time);
 }
 
-StatusOr<std::optional<int64_t>> GetPrefetchTimeBeforeInstruction(
+absl::StatusOr<std::optional<int64_t>> GetPrefetchTimeBeforeInstruction(
     const std::string& before_instruction_name,
     const absl::flat_hash_map<const xla::HloInstruction*,
                               xla::HloLiveRange::LogicalTime>& schedule) {
@@ -414,7 +415,7 @@ StatusOr<std::optional<int64_t>> GetPrefetchTimeBeforeInstruction(
   return static_cast<std::optional<int64_t>>(reference_instruction_time - 1);
 }
 
-StatusOr<std::optional<int64_t>> GetPrefetchTime(
+absl::StatusOr<std::optional<int64_t>> GetPrefetchTime(
     const PreferredPrefetchOverrideOptions& override_options,
     int64_t earliest_prefetch_time, int64_t latest_prefetch_time,
     const absl::flat_hash_map<const HloInstruction*, HloLiveRange::LogicalTime>&
@@ -436,7 +437,7 @@ StatusOr<std::optional<int64_t>> GetPrefetchTime(
   return static_cast<StatusOr<std::optional<int64_t>>>(std::nullopt);
 }
 
-StatusOr<std::optional<int64_t>> GetOverriddenPreferredPrefetchTime(
+absl::StatusOr<std::optional<int64_t>> GetOverriddenPreferredPrefetchTime(
     const PreferredPrefetchOverrides& preferred_prefetch_overrides,
     int64_t operand_size, const HloUse& hlo_use,
     const absl::flat_hash_map<const HloInstruction*, HloLiveRange::LogicalTime>&
@@ -1568,7 +1569,8 @@ void AlternateMemoryBestFitHeap::IdentifyAndOptimizeMemoryBoundLoops() {
   }
 }
 
-StatusOr<HeapSimulator::Result<HloValue>> AlternateMemoryBestFitHeap::Finish() {
+absl::StatusOr<HeapSimulator::Result<HloValue>>
+AlternateMemoryBestFitHeap::Finish() {
   if (options_.autotuning_config.has_value()) {
     CHECK_EQ((*options_.autotuning_config).size(), buffer_intervals_.size());
   }
@@ -2140,7 +2142,7 @@ void AlternateMemoryBestFitHeap::CreateAllocationValuesFromColocatedIntervals(
   FindAliases(&allocation_values);
 }
 
-StatusOr<AlternateMemoryBestFitHeap::Result>
+absl::StatusOr<AlternateMemoryBestFitHeap::Result>
 AlternateMemoryBestFitHeap::AllocateAllocationValues(
     absl::Span<MemorySpaceAssignment::AllocationValue> allocation_values) {
   const auto& instruction_schedule = hlo_live_range_.instruction_schedule();
@@ -5329,7 +5331,7 @@ AlternateMemoryBestFitHeap::FindBestChunkCandidates(
   return {};
 }
 
-StatusOr<MemorySpaceAssignment::AsyncCopyStats>
+absl::StatusOr<MemorySpaceAssignment::AsyncCopyStats>
 MemorySpaceAssignment::CalculateAsyncCopyStats() const {
   AsyncCopyStats stats;
   int64_t current_copies = 0;
@@ -5373,7 +5375,7 @@ MemorySpaceAssignment::CalculateAsyncCopyStats() const {
   return stats;
 }
 
-/*static*/ StatusOr<std::unique_ptr<PresetAssignments>>
+/*static*/ absl::StatusOr<std::unique_ptr<PresetAssignments>>
 MemorySpaceAssignment::Run(HloModule* module,
                            const HloLiveRange& hlo_live_range,
                            const HloAliasAnalysis& alias_analysis,
@@ -5389,7 +5391,7 @@ MemorySpaceAssignment::Run(HloModule* module,
                                                           alias_analysis);
 }
 
-StatusOr<std::unique_ptr<PresetAssignments>>
+absl::StatusOr<std::unique_ptr<PresetAssignments>>
 MemorySpaceAssignment::RunMemorySpaceAssignment(
     const HloLiveRange& hlo_live_range,
     const HloAliasAnalysis& alias_analysis) {

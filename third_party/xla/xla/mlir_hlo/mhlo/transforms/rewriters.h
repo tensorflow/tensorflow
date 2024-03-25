@@ -191,23 +191,16 @@ void populateLegalizeSparseOpsToCustomCallPatterns(MLIRContext *context,
 
 namespace chlo {
 
-// Populates a collection of conversion patterns for legalizing broadcasting
-// client-HLO to their non-broadcasting counterparts.
-void populateChloBroadcastingPatterns(MLIRContext *context,
-                                      RewritePatternSet *patterns);
+// Populates direct translations between CHLO and MHLO ops for higher level
+// MHLO ops like TopK and Erf.
+void populateChloToHighLevelMhloOpPatterns(MLIRContext *context,
+                                           RewritePatternSet *patterns);
 
-// Populates a collection of conversion patterns for legalizing client-HLO to
-// HLO by decomposing client-operations to corresponding sequences of more
-// primitive operations. This does not include the
-// PopulateChloBroadcastingPatterns above.
-void populateDecomposeChloPatterns(MLIRContext *context,
-                                   RewritePatternSet *patterns);
-
-// Adds pattern to decompose specific CHLO ops like ErfOp and TopKOp to their
-// basis set of operations. These ops have 1:1 corresponding MHLO ops, but for
-// certain backends, they need to be expanded.
-void populateChloLegalizeToHloBasisOpsPatterns(MLIRContext *context,
-                                               RewritePatternSet *patterns);
+// Populates direct translations between CHLO->MHLO high level ops
+// and CHLO->StableHLO->MHLO patterns.
+void populateChloToHloPatterns(MLIRContext *context,
+                               TypeConverter *typeConverter,
+                               RewritePatternSet *patterns);
 
 }  // namespace chlo
 

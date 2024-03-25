@@ -16,10 +16,10 @@ limitations under the License.
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/lite/quantization/ir/FakeQuantSupport.h"
 #include "tensorflow/compiler/mlir/lite/quantization/ir/Passes.h"
 #include "tensorflow/compiler/mlir/lite/quantization/ir/QuantOps.h"
-#include "tensorflow/compiler/mlir/lite/quantization/ir/UniformSupport.h"
+#include "tensorflow/compiler/mlir/quantization/common/ir/FakeQuantSupport.h"
+#include "tensorflow/compiler/mlir/quantization/common/ir/UniformSupport.h"
 
 using namespace mlir;
 using namespace mlir::quantfork;

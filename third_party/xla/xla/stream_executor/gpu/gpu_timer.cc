@@ -51,21 +51,10 @@ absl::Duration RandomDuration() {
   return absl::Microseconds(distribution(rng));
 }
 
-bool ShouldLaunchDelayKernel() {
-  // Only launch the delay kernel if CUDA_LAUNCH_BLOCKING is not set to 1.
-  static bool value = [] {
-    const char* blocking = std::getenv("CUDA_LAUNCH_BLOCKING");
-    return !blocking || std::string_view{blocking} != "1";
-  }();
-  return value;
-}
-
 }  // namespace
 
 /*deprecated*/ /*static*/ absl::StatusOr<GpuTimer> GpuTimer::Create(
     GpuStream* stream) {
-  // This deprecated factory does not launch the delay kernel and may lead to
-  // reduced measurement accuracy.
   GpuExecutor* parent = stream->parent();
   GpuContext* context = parent->gpu_context();
   GpuEventHandle start_event;
@@ -83,8 +72,6 @@ bool ShouldLaunchDelayKernel() {
 
 /*deprecated*/ /*static*/ absl::StatusOr<std::optional<GpuTimer>>
 GpuTimer::CreateIfNeeded(GpuStream* stream, bool is_needed) {
-  // This deprecated factory does not launch the delay kernel and may lead to
-  // reduced measurement accuracy.
   if (is_needed) {
     TF_ASSIGN_OR_RETURN(GpuTimer t, GpuTimer::Create(stream));
     return {std::make_optional(std::move(t))};
@@ -92,78 +79,16 @@ GpuTimer::CreateIfNeeded(GpuStream* stream, bool is_needed) {
   return std::nullopt;
 }
 
-/*static*/ absl::StatusOr<GpuTimer::GpuSemaphore>
-GpuTimer::GpuSemaphore::Create(StreamExecutor* executor) {
-  // Allocate the value in pinned host memory that can be read from both
-  // host and device.
-  TF_ASSIGN_OR_RETURN(auto alloc,
-                      executor->HostMemoryAllocate(sizeof(GpuSemaphoreState)));
-  return GpuSemaphore{std::move(alloc)};
+[[deprecated("So it can quietly call a deprecated method")]] /*static*/ absl::
+    StatusOr<GpuTimer>
+    GpuTimer::Create(Stream* stream) {
+  return GpuTimer::Create(AsGpuStream(stream));
 }
 
-DeviceMemory<GpuSemaphoreState> GpuTimer::GpuSemaphore::device() {
-  // This assumes unified addressing, as we do not explicitly translate the
-  // host pointer into a device pointer.
-  return DeviceMemory<GpuSemaphoreState>::MakeFromByteSize(
-      ptr_->opaque(), sizeof(GpuSemaphoreState));
-}
-
-/*static*/ absl::StatusOr<GpuTimer> GpuTimer::Create(Stream* real_stream) {
-  StreamExecutor* executor = real_stream->parent();
-  GpuStream* stream = AsGpuStream(real_stream);
-  GpuExecutor* parent = stream->parent();
-  GpuContext* context = parent->gpu_context();
-  GpuEventHandle start_event;
-  TF_RETURN_IF_ERROR(GpuDriver::InitEvent(context, &start_event,
-                                          GpuDriver::EventFlags::kDefault));
-  GpuEventHandle stop_event;
-  TF_RETURN_IF_ERROR(GpuDriver::InitEvent(context, &stop_event,
-                                          GpuDriver::EventFlags::kDefault));
-  CHECK(start_event != nullptr && stop_event != nullptr);
-  GpuSemaphore semaphore{};
-  if (ShouldLaunchDelayKernel()) {
-    // Check the assumption that this device supports unified addressing,
-    // otherwise skip the delay kernel
-    TF_ASSIGN_OR_RETURN(int status, GpuDriver::GetDeviceAttribute(
-                                        CU_DEVICE_ATTRIBUTE_UNIFIED_ADDRESSING,
-                                        parent->device()));
-    if (!status) {
-      LOG(WARNING) << "Skipping the delay kernel because the device does not "
-                      "support unified addressing";
-    } else {
-      // Allocate a semaphore value that will be used to signal to the delay
-      // kernel that it may exit.
-      TF_ASSIGN_OR_RETURN(semaphore, GpuSemaphore::Create(executor));
-      *semaphore = GpuSemaphoreState::Hold;
-      // In principle the kernel could be loaded lazily and shared across
-      // multiple GpuTimer objects.
-      TF_ASSIGN_OR_RETURN(
-          auto kernel,
-          (TypedKernel<DeviceMemory<GpuSemaphoreState>,
-                       GpuSemaphoreState>::Create(executor, "DelayKernel",
-                                                  delay_kernel::kernel())));
-      // Launch a delay kernel into this stream, which will spin until
-      // GetElapsedDuration() is called, the timer is destroyed, or the timeout
-      // in the kernel is reached.
-      TF_RETURN_IF_ERROR(real_stream->ThenLaunch(
-          ThreadDim(1, 1, 1), BlockDim(1, 1, 1), kernel, semaphore.device(),
-          GpuSemaphoreState::Release));
-    }
-  }
-  // The start event goes after the delay kernel in the stream
-  TF_RETURN_IF_ERROR(GpuDriver::RecordEvent(parent->gpu_context(), start_event,
-                                            stream->gpu_stream()));
-  return absl::StatusOr<GpuTimer>{absl::in_place, parent, start_event,
-                                  stop_event,     stream, std::move(semaphore)};
-}
-
-/*static*/ absl::StatusOr<std::optional<GpuTimer>> GpuTimer::CreateIfNeeded(
-    Stream* stream, bool is_needed) {
-  if (is_needed) {
-    TF_ASSIGN_OR_RETURN(GpuTimer t, GpuTimer::Create(stream));
-    return {std::make_optional(std::move(t))};
-  }
-  return std::nullopt;
+[[deprecated("So it can quietly call a deprecated method")]] /*static*/ absl::
+    StatusOr<std::optional<GpuTimer>>
+    GpuTimer::CreateIfNeeded(Stream* stream, bool is_needed) {
+  return GpuTimer::CreateIfNeeded(AsGpuStream(stream), is_needed);
 }
 
 /*static*/ void GpuTimer::ReturnRandomDurationsForTesting() {
@@ -172,17 +97,6 @@ DeviceMemory<GpuSemaphoreState> GpuTimer::GpuSemaphore::device() {
 
 GpuTimer::~GpuTimer() {
   GpuContext* context = parent_->gpu_context();
-  if (semaphore_ && !is_stopped_) {
-    // Signal the delay kernel that it can exit
-    *semaphore_ = GpuSemaphoreState::Release;
-    // Wait for the delay kernel to exit before destroying the value that it is
-    // watching.
-    absl::Status status =
-        GpuDriver::SynchronizeStream(context, stream_->gpu_stream());
-    if (!status.ok()) {
-      LOG(ERROR) << status;
-    }
-  }
   if (start_event_ != nullptr) {
     absl::Status status = GpuDriver::DestroyEvent(context, &start_event_);
     if (!status.ok()) {
@@ -203,18 +117,6 @@ absl::StatusOr<absl::Duration> GpuTimer::GetElapsedDuration() {
   }
   TF_RETURN_IF_ERROR(GpuDriver::RecordEvent(parent_->gpu_context(), stop_event_,
                                             stream_->gpu_stream()));
-  // If we launched the delay kernel then check if it already timed out.
-  if (semaphore_) {
-    if (*semaphore_ == GpuSemaphoreState::TimedOut) {
-      // The delay kernel did not achieve the intended result.
-      LOG(ERROR) << "Delay kernel timed out: measured time has sub-optimal "
-                    "accuracy. There may be a missing warmup execution, please "
-                    "investigate in Nsight Systems.";
-    } else {
-      // Signal that the kernel can exit
-      *semaphore_ = GpuSemaphoreState::Release;
-    }
-  }
   float elapsed_milliseconds = NAN;
   if (!GpuDriver::GetEventElapsedTime(parent_->gpu_context(),
                                       &elapsed_milliseconds, start_event_,

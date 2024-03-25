@@ -752,71 +752,25 @@ Status XlaCompiler::CompileSingleOp(
     const XlaCompiler::CompileOptions& compile_options,
     const XlaCompiler::SingleOpCompileArgument& single_op_compile_argument,
     absl::Span<const Argument> args, XlaCompiler::CompilationResult* result) {
-  const std::vector<DataType>& result_dtypes =
-      single_op_compile_argument.output_dtypes;
   const NodeDef& node_def = single_op_compile_argument.node_def;
   TF_ASSIGN_OR_RETURN(
       auto graph,
       CreateSingleOpGraph(node_def, args,
                           single_op_compile_argument.output_dtypes));
 
-  auto compile_with_old_bridge = [&]() {
-    *result = {};
-    Status status = ADD_SOURCE_LOCATION(CompileGraph(
-        compile_options, node_def.name(), std::move(graph), args, result));
-    if (status.ok()) {
-      tensorflow::metrics::IncrementPhase2XlaCompilerCounter(
-          tensorflow::metrics::Phase2XlaCompilerMetric::
-              kCompileSingleOpXlaBuilderSuccess);
-    } else {
-      tensorflow::metrics::IncrementPhase2XlaCompilerCounter(
-          tensorflow::metrics::Phase2XlaCompilerMetric::
-              kCompileSingleOpXlaBuilderFailure);
-    }
-    return status;
-  };
-
-  const ConfigProto* config = &(single_op_compile_argument.config_proto);
-  auto bridge_rollout = GetMlirBridgeRolloutState(
-      config ? std::optional<ConfigProto>(*config) : std::nullopt);
-  if (bridge_rollout ==
-          ConfigProto::Experimental::MLIR_BRIDGE_ROLLOUT_DISABLED ||
-      node_def.op() == "VarIsInitializedOp" ||
-      (bridge_rollout !=
-           ConfigProto::Experimental::MLIR_BRIDGE_ROLLOUT_ENABLED &&
-       options_.device_type.type_string() != DEVICE_TPU_XLA_JIT)) {
-    return compile_with_old_bridge();
-  }
-
-  GraphDebugInfo debug_info;
-  std::vector<std::string> control_rets;
-  if (result_dtypes.empty()) {
-    control_rets.push_back(node_def.name());
-  }
-
-  bool mlir_enabled = (bridge_rollout ==
-                       ConfigProto::Experimental::MLIR_BRIDGE_ROLLOUT_ENABLED);
-  VLOG(1) << "Attempting MLIR bridge."
-          << (mlir_enabled ? " MLIR is explicitly enabled." : "");
-  auto mlir_result = CompileGraphToXlaHlo(
-      *graph, mlir::SpanToArrayRef<XlaCompiler::Argument>(args), control_rets,
-      options_.device_type.type_string(), compile_options.use_tuple_arg,
-      /*analyse_graph=*/!mlir_enabled, *options_.flib_def, debug_info,
-      options_.shape_determination_fns, result);
-
-  if (mlir_result.ok() || mlir_enabled) {
+  *result = {};
+  Status status = ADD_SOURCE_LOCATION(CompileGraph(
+      compile_options, node_def.name(), std::move(graph), args, result));
+  if (status.ok()) {
     tensorflow::metrics::IncrementPhase2XlaCompilerCounter(
         tensorflow::metrics::Phase2XlaCompilerMetric::
-            kCompileSingleOpMlirSuccess);
-    return mlir_result;
+            kCompileSingleOpXlaBuilderSuccess);
+  } else {
+    tensorflow::metrics::IncrementPhase2XlaCompilerCounter(
+        tensorflow::metrics::Phase2XlaCompilerMetric::
+            kCompileSingleOpXlaBuilderFailure);
   }
-  tensorflow::metrics::IncrementPhase2XlaCompilerCounter(
-      tensorflow::metrics::Phase2XlaCompilerMetric::
-          kCompileSingleOpMlirFailure);
-  VLOG(1) << "Failed second phase of the MLIR bridge. Will "
-             "retry with the old bridge. MLIR bridge compilation status: "
-          << mlir_result;
-  return compile_with_old_bridge();
+  return status;
 }
 
 Status XlaCompiler::CompileFunction(

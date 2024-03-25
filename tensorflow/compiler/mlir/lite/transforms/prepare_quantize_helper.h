@@ -38,8 +38,8 @@ limitations under the License.
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
-#include "tensorflow/compiler/mlir/lite/quantization/ir/FakeQuantSupport.h"
 #include "tensorflow/compiler/mlir/lite/quantization/ir/QuantOps.h"
+#include "tensorflow/compiler/mlir/quantization/common/ir/FakeQuantSupport.h"
 #include "tensorflow/compiler/mlir/quantization/common/quantization_lib/quantization_config.h"
 #include "tensorflow/compiler/mlir/quantization/common/quantization_lib/quantization_traits.h"
 #include "tensorflow/compiler/mlir/quantization/common/quantization_lib/quantization_utils.h"

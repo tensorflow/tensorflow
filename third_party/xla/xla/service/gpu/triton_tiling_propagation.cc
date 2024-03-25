@@ -49,6 +49,27 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
+namespace {
+
+// The input is a map from dimension index to DimIterationSpec. The function
+// removes dimensions that have a trivial DimIterationSpec.
+absl::flat_hash_map<int, TensorIterationSpec::DimIterationSpec>
+FilterTrivialDims(
+    const absl::flat_hash_map<int, TensorIterationSpec::DimIterationSpec>&
+        dim_iter_specs) {
+  absl::flat_hash_map<int, TensorIterationSpec::DimIterationSpec>
+      non_trivial_dim_iteration_specs;
+  for (const auto& [dim, dim_spec] : dim_iter_specs) {
+    if (dim_spec.size() == 1 && dim_spec[0].count == 1) {
+      continue;
+    }
+    non_trivial_dim_iteration_specs[dim] = dim_spec;
+  }
+  return non_trivial_dim_iteration_specs;
+}
+
+}  // namespace
+
 const TensorIterationSpec::DimIterationSpec* TensorIterationSpec::Find(
     const int dimension) const {
   if (auto it = dim_iteration_specs_.find(dimension);
@@ -58,16 +79,34 @@ const TensorIterationSpec::DimIterationSpec* TensorIterationSpec::Find(
   return nullptr;
 }
 
+std::vector<int> TensorIterationSpec::GetDimensions() const {
+  std::vector<int> result;
+  result.reserve(dim_iteration_specs_.size());
+  for (const auto& [dim, _] : dim_iteration_specs_) {
+    result.push_back(dim);
+  }
+  return result;
+}
+
 bool TensorIterationSpec::IsPhysicallyEquivalent(
     const TensorIterationSpec& other) const {
-  if (dim_iteration_specs_.size() != other.dim_iteration_specs_.size()) {
+  // Filter out trivial dims since they don't affect physical representation.
+  const absl::flat_hash_map<int, DimIterationSpec>
+      non_trivial_dim_iteration_specs = FilterTrivialDims(dim_iteration_specs_);
+  const absl::flat_hash_map<int, DimIterationSpec>
+      other_non_trivial_dim_iteration_specs =
+          FilterTrivialDims(other.dim_iteration_specs_);
+
+  if (non_trivial_dim_iteration_specs.size() !=
+      other_non_trivial_dim_iteration_specs.size()) {
     return false;
   }
-  for (const auto& pair : dim_iteration_specs_) {
+
+  for (const auto& pair : non_trivial_dim_iteration_specs) {
     int dimension = pair.first;
     const DimIterationSpec& dim_iter_spec = pair.second;
-    auto other_it = other.dim_iteration_specs_.find(dimension);
-    if (other_it == other.dim_iteration_specs_.end()) {
+    auto other_it = other_non_trivial_dim_iteration_specs.find(dimension);
+    if (other_it == other_non_trivial_dim_iteration_specs.end()) {
       return false;
     }
     const DimIterationSpec& other_dim_iter_spec = other_it->second;
@@ -172,12 +211,6 @@ TensorIterationSpec DimensionOrder::ToTensorIterationSpec() const {
   TensorIterationSpec tensor_spec;
   int64_t accumulated_stride = 1;
   int last_dim = -1;
-  auto remove_last_fragment_if_degenerate = [&tensor_spec](const int dim_idx) {
-    if (dim_idx >= 0 && !tensor_spec[dim_idx].empty() &&
-        tensor_spec[dim_idx].back().count == 1) {
-      tensor_spec[dim_idx].pop_back();
-    }
-  };
   for (int dim_order_index = 0; dim_order_index < dim_fragments.size();
        ++dim_order_index) {
     const DimensionOrder::Fragment& fragment = dim_fragments[dim_order_index];
@@ -204,7 +237,6 @@ TensorIterationSpec DimensionOrder::ToTensorIterationSpec() const {
         dim_spec.back().subfragments.push_back(fragment.sliced_count());
       }
     } else {
-      remove_last_fragment_if_degenerate(last_dim);
       // Add part of the dimension.
       dim_spec.push_back(TensorIterationSpec::IterationSpecFragment{
           accumulated_stride,
@@ -217,7 +249,23 @@ TensorIterationSpec DimensionOrder::ToTensorIterationSpec() const {
     accumulated_stride *= fragment.full_count();
     last_dim = fragment.dst_dim_number();
   }
-  remove_last_fragment_if_degenerate(last_dim);
+
+  // Remove degenerate fragments.
+  for (int dim_idx : tensor_spec.GetDimensions()) {
+    TensorIterationSpec::DimIterationSpec& dim_spec = tensor_spec[dim_idx];
+
+    // We should not remove the only fragment in a dimension, because if it is
+    // removed, the dimension will be removed from the TensorIterationSpec.
+    if (dim_spec.size() <= 1) continue;
+
+    TensorIterationSpec::DimIterationSpec filtered_dim_spec;
+    absl::c_copy_if(dim_spec, std::back_inserter(filtered_dim_spec),
+                    [](const TensorIterationSpec::IterationSpecFragment& f) {
+                      return f.count != 1;
+                    });
+    tensor_spec[dim_idx] = filtered_dim_spec;
+  }
+
   tensor_spec.RemoveEmptyDimensions();
   return tensor_spec;
 }
@@ -1037,7 +1085,9 @@ GetPropagatedDimOrdersAndRequirementsIfProfitablyFusible(
       std::move(std::get<DimOrdersAndReqs>(result_or_error));
   int fusion_level =
       hlo.GetModule()->config().debug_options().xla_gpu_triton_fusion_level();
-  if (!std::get<se::CudaComputeCapability>(gpu_version)
+  // TODO(ROCm): Check fusion level for ROCm.
+  if (std::holds_alternative<se::CudaComputeCapability>(gpu_version) &&
+      !std::get<se::CudaComputeCapability>(gpu_version)
            .IsAtLeast(se::CudaComputeCapability::AMPERE)) {
     fusion_level = std::min(fusion_level, 1);
   }

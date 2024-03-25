@@ -16,6 +16,8 @@ limitations under the License.
 #include "xla/service/gpu/model/indexing_map.h"
 
 #include <optional>
+#include <utility>
+#include <vector>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
@@ -31,6 +33,7 @@ namespace xla {
 namespace gpu {
 namespace {
 
+using ::mlir::AffineMap;
 using ::testing::ElementsAre;
 
 class IndexingMapTest : public HloTestBase {
@@ -38,6 +41,36 @@ class IndexingMapTest : public HloTestBase {
   mlir::MLIRContext mlir_context_;
   AffineMapPrinter printer_;
 };
+
+TEST_F(IndexingMapTest, RTVar) {
+  auto zero_dim_map = AffineMap::get(&mlir_context_);
+  std::vector<RTVar> rt_vars{RTVar{Interval{0, 2},
+                                   /*instr=*/nullptr, zero_dim_map},
+                             RTVar({Interval{0, 7},
+                                    /*instr=*/nullptr, zero_dim_map})};
+
+  IndexingMap indexing_map(
+      ParseAffineMap("(d0, d1)[s0, s1, s2] -> (d1, d0, s0 + s1, s1)",
+                     &mlir_context_),
+      {DimVar{{0, 99}}, DimVar{{0, 43}}}, {RangeVar{{-99, 99}}},
+      std::move(rt_vars));
+  printer_.SetSymbolName(0, "range");
+  printer_.SetSymbolName(1, "rt_0");
+  printer_.SetSymbolName(2, "rt_1");
+  EXPECT_THAT(indexing_map.ToString(printer_), MatchIndexingString(R"(
+              (d0, d1)[range, rt_0, rt_1] -> (d1, d0, range + rt_0, rt_0)
+              domain:
+              d0 in [0, 99]
+              d1 in [0, 43]
+              range in [-99, 99]
+              rt_0 in [0, 2]
+                hlo: NULL
+                () -> ()
+              rt_1 in [0, 7]
+                hlo: NULL
+                () -> ()
+              )"));
+}
 
 TEST_F(IndexingMapTest, Evaluation) {
   IndexingMap indexing_map = IndexingMap::FromTensorSizes(
@@ -134,10 +167,10 @@ TEST_F(IndexingMapTest, Composition_ProducerAndConsumerHaveConstraints) {
   EXPECT_THAT(composed, MatchIndexingMap(R"(
                           (d0)[s0, s1, s2] -> (s2, d0, s1, s0)
                           domain:
-                          d0 in [0, 9]
-                          s0 in [0, 69]
+                          d0 in [0, 8]
+                          s0 in [1, 67]
                           s1 in [0, 19]
-                          s2 in [0, 7]
+                          s2 in [0, 4]
                           d0 mod 8 in [0, 0]
                           s0 mod 3 in [1, 1]
                           s2 mod 4 in [0, 0]
@@ -235,7 +268,7 @@ TEST_F(IndexingMapTest,
        ConstraintIntervalSimplification_FloorDivPositiveDivisorNegativeBounds) {
   IndexingMap indexing_map =
       IndexingMap(ParseAffineMap("(d0)[s0] -> (d0)", &mlir_context_),
-                  {Interval{0, 99}}, {Interval{-99, 99}});
+                  {DimVar{{0, 99}}}, {RangeVar{{-99, 99}}}, /*rt_vars=*/{});
 
   indexing_map.AddConstraint(ParseAffineExpr("s0 floordiv 3", &mlir_context_),
                              Interval{-11, -5});
@@ -251,7 +284,7 @@ TEST_F(IndexingMapTest,
        ConstraintIntervalSimplification_FloorDivNegativeDivisorNegativeBounds) {
   IndexingMap indexing_map =
       IndexingMap(ParseAffineMap("(d0)[s0] -> (d0)", &mlir_context_),
-                  {Interval{0, 99}}, {Interval{-99, 99}});
+                  {DimVar{{0, 99}}}, {RangeVar{{-99, 99}}}, /*rt_vars=*/{});
 
   indexing_map.AddConstraint(ParseAffineExpr("s0 floordiv -3", &mlir_context_),
                              Interval{-11, -5});
@@ -281,7 +314,7 @@ TEST_F(IndexingMapTest,
        ConstraintIntervalSimplification_MulPositiveMultiplierNegativeBounds) {
   IndexingMap indexing_map =
       IndexingMap(ParseAffineMap("(d0)[s0] -> (d0)", &mlir_context_),
-                  {Interval{0, 99}}, {Interval{-99, 99}});
+                  {DimVar{{0, 99}}}, {RangeVar{{-99, 99}}}, /*rt_vars=*/{});
 
   indexing_map.AddConstraint(ParseAffineExpr("s0 * 3", &mlir_context_),
                              Interval{-11, -5});
@@ -297,7 +330,7 @@ TEST_F(IndexingMapTest,
        ConstraintIntervalSimplification_MulNegativeMultiplierNegativeBounds) {
   IndexingMap indexing_map =
       IndexingMap(ParseAffineMap("(d0)[s0] -> (d0)", &mlir_context_),
-                  {Interval{0, 99}}, {Interval{-99, 99}});
+                  {DimVar{{0, 99}}}, {RangeVar{{-99, 99}}}, /*rt_vars=*/{});
 
   indexing_map.AddConstraint(ParseAffineExpr("s0 * -3", &mlir_context_),
                              Interval{-11, -5});
@@ -309,9 +342,37 @@ TEST_F(IndexingMapTest,
                         )"));
 }
 
+TEST_F(IndexingMapTest, ConstraintMerge_Mod) {
+  IndexingMap indexing_map(
+      ParseAffineMap("(d0)[s0, s1] -> (d0, s1, s0)", &mlir_context_),
+      {DimVar{{0, 4}}}, {RangeVar{{-21, -1}}, RangeVar{{0, 10}}},
+      /*rt_vars=*/{});
+  indexing_map.AddConstraint(ParseAffineExpr("d0 mod 3", &mlir_context_),
+                             Interval{0, 0});
+  indexing_map.AddConstraint(ParseAffineExpr("s0 mod 2", &mlir_context_),
+                             Interval{0, 0});
+  indexing_map.AddConstraint(ParseAffineExpr("s0 mod 3", &mlir_context_),
+                             Interval{0, 0});
+  indexing_map.AddConstraint(ParseAffineExpr("s1 mod 5", &mlir_context_),
+                             Interval{1, 1});
+  indexing_map.Simplify();
+
+  EXPECT_THAT(indexing_map.ToString(), MatchIndexingString(R"(
+                          (d0)[s0, s1] -> (d0, s1, s0)
+                          domain:
+                          d0 in [0, 3]
+                          s0 in [-18, -6]
+                          s1 in [1, 6]
+                          d0 mod 3 in [0, 0]
+                          s0 mod 6 in [0, 0]
+                          s1 mod 5 in [1, 1]
+                        )"));
+}
+
 TEST_F(IndexingMapTest, AffineMapSimplification_ConstantDims) {
-  IndexingMap indexing_map = IndexingMap(
-      ParseAffineMap("(d0) -> (d0)", &mlir_context_), {Interval{5, 5}}, {});
+  IndexingMap indexing_map =
+      IndexingMap(ParseAffineMap("(d0) -> (d0)", &mlir_context_),
+                  {DimVar{{5, 5}}}, /*range_vars=*/{}, /*rt_vars=*/{});
   indexing_map.Simplify();
   EXPECT_THAT(indexing_map.ToString(printer_), MatchIndexingString(R"(
                                                   (d0) -> (5)

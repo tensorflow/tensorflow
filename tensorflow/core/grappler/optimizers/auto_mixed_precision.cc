@@ -47,6 +47,7 @@ limitations under the License.
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/core/util/env_var.h"
+#include "tensorflow/core/util/util.h"
 
 namespace tensorflow {
 namespace grappler {
@@ -1051,7 +1052,8 @@ class AutoMixedPrecisionImpl {
         num_nonvar_casts_to_f16_(0),
         mode_(mode),
         target_dtype_((mode_ == AutoMixedPrecisionMode::CUDA ||
-                       mode_ == AutoMixedPrecisionMode::CPU)
+                       mode_ == AutoMixedPrecisionMode::CPU ||
+                       mode_ == AutoMixedPrecisionMode::FP16_CPU)
                           ? DT_HALF
                           : DT_BFLOAT16) {}
 
@@ -1063,16 +1065,18 @@ class AutoMixedPrecisionImpl {
   std::unique_ptr<AutoMixedPrecisionLists> get_mixed_precision_lists() const {
     switch (mode_) {
       case AutoMixedPrecisionMode::CUDA:
-        return std::make_unique<AutoMixedPrecisionListsCuda>(cuda_version_,
-                                                             cudnn_version_);
+        return std::make_unique<AutoMixedPrecisionListsFp16>(
+            cuda_version_, cudnn_version_, AutoMixedPrecisionMode::CUDA);
       case AutoMixedPrecisionMode::BF16:
         return std::make_unique<AutoMixedPrecisionListsMkl>();
       case AutoMixedPrecisionMode::CPU:
-        // Note: this is not a typo here. AutoMixedPrecisionListsCuda is used
-        // intentionally to make CPU and GPU have the same fp16 ops.
-        return std::make_unique<AutoMixedPrecisionListsCuda>(
-            /*cuda_version=*/10000,   // Hardcode cuda and cudnn version so
-            /*cudnn_version=*/8000);  // CPU emulates the same ops on GPU.
+        return std::make_unique<AutoMixedPrecisionListsFp16>(
+            /*cuda_version=*/10000,  // Hardcode cuda and cudnn version so
+            /*cudnn_version=*/8000,  // CPU emulates the same ops on GPU.
+            AutoMixedPrecisionMode::CPU);
+      case AutoMixedPrecisionMode::FP16_CPU:
+        return std::make_unique<AutoMixedPrecisionListsFp16>(
+            0, 0, AutoMixedPrecisionMode::FP16_CPU);
     }
   }
   Status PrintDebugLogs(bool preop, size_t timestamp);
@@ -1384,9 +1388,10 @@ Status AutoMixedPrecisionImpl::Optimize() {
       "TF_AUTO_MIXED_PRECISION_GRAPH_REWRITE_LEVEL", "", &optimization_level));
   optimization_level = absl::AsciiStrToUpper(optimization_level);
   force_all_fp16_ = optimization_level == "UNSAFE_FORCE_ALL";
-  if (force_all_fp16_ && mode_ == AutoMixedPrecisionMode::BF16) {
-    // Many ops do not support bfloat16 on the CPU so we disallowing forcing to
-    // bfloat16.
+  if (force_all_fp16_ && (mode_ == AutoMixedPrecisionMode::BF16 ||
+                          mode_ == AutoMixedPrecisionMode::FP16_CPU)) {
+    // Many ops do not support bfloat16/fp16 on the CPU. So, disallowing
+    // forcing to bfloat16/fp16.
     return errors::InvalidArgument(
         "TF_AUTO_MIXED_PRECISION_GRAPH_REWRITE_LEVEL cannot be set to "
         "UNSAFE_FORCE_ALL when oneDNN is used");
@@ -1428,6 +1433,7 @@ Status AutoMixedPrecisionImpl::Optimize() {
         break;
       case AutoMixedPrecisionMode::BF16:
       case AutoMixedPrecisionMode::CPU:
+      case AutoMixedPrecisionMode::FP16_CPU:
         device_type = DEVICE_CPU;
         should_process = !MustPreserve(node) && IsOnDevice(node, device_type);
         break;
@@ -2299,9 +2305,15 @@ Status AutoMixedPrecision::Optimize(Cluster* cluster, const GrapplerItem& item,
 
   int num_gpus = GetNumGPUs(*cluster);
   if (num_gpus < 1 && mode_ == AutoMixedPrecisionMode::CUDA) {
-    // AutoMixedPrecision is currently only tuned for GPU.
-    LOG(WARNING) << "No (suitable) GPUs detected, skipping " << name()
-                 << " graph optimizer";
+    // No GPUs to run AutoMixedPrecision in FP16.
+    VLOG(1) << "No (suitable) GPUs detected, skipping " << name()
+            << " graph optimizer";
+    return absl::OkStatus();
+  }
+  // Check if CPU supports FP16
+  if (mode_ == AutoMixedPrecisionMode::FP16_CPU &&
+      !IsAMXDataTypeSupportedByOneDNNOnThisCPU(DT_HALF)) {
+    VLOG(1) << "No support for " << name() << " graph optimizer on CPU";
     return absl::OkStatus();
   }
 

@@ -41,7 +41,7 @@ namespace memory_space_assignment {
 // elapsed times of each HLO and asynchronous copy.
 class FakeCostAnalysis : public CostAnalysis {
  public:
-  static StatusOr<std::unique_ptr<FakeCostAnalysis>> Create(
+  static absl::StatusOr<std::unique_ptr<FakeCostAnalysis>> Create(
       const HloCostAnalysis& cost_analysis, const HloModule& module,
       const CostAnalysisOptions& options) {
     TF_ASSIGN_OR_RETURN(auto alias_analysis, HloAliasAnalysis::Run(&module));

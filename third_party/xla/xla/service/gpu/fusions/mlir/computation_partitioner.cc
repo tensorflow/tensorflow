@@ -341,15 +341,19 @@ mlir::func::FuncOp CreateSubgraphMlirFunction(
     return *ConvertPrimitiveTypeToMlirType(shape.element_type(), b);
   };
 
-  const xla::Shape* one_root_shape = nullptr;
+  const xla::Shape* first_root_shape = nullptr;
   for (auto* root : subgraph.roots) {
     if (root->shape().IsTuple()) {
       for (auto& shape : root->shape().tuple_shapes()) {
-        one_root_shape = &shape;
+        if (!first_root_shape) {
+          first_root_shape = &shape;
+        }
         result_types.push_back(element_type(shape));
       }
     } else {
-      one_root_shape = &root->shape();
+      if (!first_root_shape) {
+        first_root_shape = &root->shape();
+      }
       result_types.push_back(element_type(root->shape()));
     }
   }
@@ -362,13 +366,13 @@ mlir::func::FuncOp CreateSubgraphMlirFunction(
       parameter_types.push_back(TensorShapeToMlirType(param->shape(), b));
       arg_attrs.emplace_back();
     }
-    for (int dim = 0; dim < one_root_shape->rank(); ++dim) {
+    for (int dim = 0; dim < first_root_shape->rank(); ++dim) {
       parameter_types.push_back(b.getIndexType());
       arg_attrs.emplace_back(mlir::DictionaryAttr::get(
           b.getContext(),
-          {b.getNamedAttr(
-              "xla.range",
-              b.getIndexArrayAttr({0, one_root_shape->dimensions(dim) - 1}))}));
+          {b.getNamedAttr("xla.range",
+                          b.getIndexArrayAttr(
+                              {0, first_root_shape->dimensions(dim) - 1}))}));
     }
 
     // Populate arguments for injected parameters (values that are computed

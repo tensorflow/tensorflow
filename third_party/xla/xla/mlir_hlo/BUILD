@@ -488,6 +488,7 @@ cc_library(
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:LoopLikeInterface",
         "@llvm-project//mlir:MemRefDialect",
+        "@llvm-project//mlir:SideEffectInterfaces",
         "@llvm-project//mlir:ViewLikeInterface",
         "@stablehlo//:stablehlo_type_inference",
     ],
@@ -572,7 +573,7 @@ cc_library(
     ],
     strip_include_prefix = ".",
     deps = [
-        ":chlo_legalize_to_hlo",
+        ":chlo_legalize_to_hlo_inc_gen",
         ":hlo_legalize_to_stablehlo",
         ":legalize_to_linalg_utils",
         ":legalize_to_standard_inc_gen",
@@ -594,6 +595,7 @@ cc_library(
         "@llvm-project//mlir:ArithDialect",
         "@llvm-project//mlir:ArithUtils",
         "@llvm-project//mlir:BufferizationDialect",
+        "@llvm-project//mlir:BufferizationInterfaces",
         "@llvm-project//mlir:BufferizationTransforms",
         "@llvm-project//mlir:ComplexDialect",
         "@llvm-project//mlir:ControlFlowDialect",
@@ -621,6 +623,7 @@ cc_library(
         "@stablehlo//:base",
         "@stablehlo//:chlo_ops",
         "@stablehlo//:stablehlo_ops",
+        "@stablehlo//:stablehlo_passes",
     ],
 )
 
@@ -879,28 +882,6 @@ cc_library(
     ],
 )
 
-cc_library(
-    name = "chlo_legalize_to_hlo",
-    srcs = ["mhlo/transforms/chlo_legalize_to_hlo/chlo_legalize_to_hlo.cc"],
-    hdrs = ["mhlo/transforms/rewriters.h"],
-    strip_include_prefix = ".",
-    deps = [
-        ":chlo_legalize_to_hlo_inc_gen",
-        ":map_chlo_to_hlo_op",
-        ":mlir_hlo",
-        "@llvm-project//llvm:Support",
-        "@llvm-project//mlir:ComplexDialect",
-        "@llvm-project//mlir:FuncDialect",
-        "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:SCFDialect",
-        "@llvm-project//mlir:ShapeDialect",
-        "@llvm-project//mlir:TensorDialect",
-        "@llvm-project//mlir:Transforms",
-        "@stablehlo//:broadcast_utils",
-        "@stablehlo//:chlo_ops",
-    ],
-)
-
 gentbl_cc_library(
     name = "chlo_legalize_to_hlo_inc_gen",
     compatible_with = get_compatible_with_portable(),
@@ -970,7 +951,6 @@ cc_library(
     ],
     strip_include_prefix = ".",
     deps = [
-        ":chlo_legalize_to_hlo",
         ":deallocation_passes",
         ":deallocation_passes_inc_gen",
         ":lhlo",
@@ -1032,6 +1012,7 @@ cc_library(
         "@llvm-project//mlir:ArithUtils",
         "@llvm-project//mlir:AsmParser",
         "@llvm-project//mlir:BufferizationDialect",
+        "@llvm-project//mlir:BufferizationInterfaces",
         "@llvm-project//mlir:BufferizationTransforms",
         "@llvm-project//mlir:ComplexDialect",
         "@llvm-project//mlir:ComplexToLLVM",
@@ -1073,6 +1054,7 @@ cc_library(
         "@llvm-project//mlir:TensorTransforms",
         "@llvm-project//mlir:TensorUtils",
         "@llvm-project//mlir:TransformDialect",
+        "@llvm-project//mlir:TransformDialectInterfaces",
         "@llvm-project//mlir:TransformDialectTransforms",
         "@llvm-project//mlir:TransformUtils",
         "@llvm-project//mlir:Transforms",

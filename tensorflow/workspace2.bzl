@@ -150,9 +150,9 @@ def _tf_repositories():
     # LINT.IfChange
     tf_http_archive(
         name = "XNNPACK",
-        sha256 = "eba4410af9f455f484b425a80196ff3c3b8cf6f650616a281a815a3bd45bae5f",
-        strip_prefix = "XNNPACK-db84c8c822a70183e10ef6b7402c6730f5d54da5",
-        urls = tf_mirror_urls("https://github.com/google/XNNPACK/archive/db84c8c822a70183e10ef6b7402c6730f5d54da5.zip"),
+        sha256 = "55827bd7c39a080d4296e84dfbe576240d83a3347df8ad4e10cf9fe400678db7",
+        strip_prefix = "XNNPACK-65ca94a2d3f39e7ff8e4045852b32b65ca6a16b7",
+        urls = tf_mirror_urls("https://github.com/google/XNNPACK/archive/65ca94a2d3f39e7ff8e4045852b32b65ca6a16b7.zip"),
     )
     # LINT.ThenChange(//tensorflow/lite/tools/cmake/modules/xnnpack.cmake)
 
@@ -181,9 +181,9 @@ def _tf_repositories():
         name = "cudnn_frontend_archive",
         build_file = "//third_party:cudnn_frontend.BUILD",
         patch_file = ["//third_party:cudnn_frontend_header_fix.patch"],
-        sha256 = "c2f5373ddf84e33d289dad5766667f52de652dfbbb1dccb2fada9cfcf2d774cf",
-        strip_prefix = "cudnn-frontend-1.1.0",
-        urls = tf_mirror_urls("https://github.com/NVIDIA/cudnn-frontend/archive/refs/tags/v1.1.0.zip"),
+        sha256 = "1bb309af98fe9aad81b6a14fd52acbd6566aacfd322fc5803f9a1b77fc681a27",
+        strip_prefix = "cudnn-frontend-1.2.1",
+        urls = tf_mirror_urls("https://github.com/NVIDIA/cudnn-frontend/archive/refs/tags/v1.2.1.zip"),
     )
 
     tf_http_archive(

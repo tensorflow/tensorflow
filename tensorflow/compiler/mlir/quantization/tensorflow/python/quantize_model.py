@@ -160,21 +160,40 @@ def _run_static_range_ptq(
   signature_def_map_serialized = _serialize_signature_def_map(signature_def_map)
 
   if isinstance(representative_dataset, Mapping):
+    if set(signature_def_map.keys()) != set(representative_dataset.keys()):
+      raise ValueError(
+          'The signature keys and the keys of representative dataset map '
+          f'do not match. Signature keys: {set(signature_def_map.keys())}, '
+          f'representative dataset map: {set(representative_dataset.keys())}.'
+      )
     representative_dataset_map = representative_dataset
+  elif len(signature_def_map.keys()) > 1:
+    raise ValueError(
+        'Representative dataset is not a mapping (got: '
+        f'{type(representative_dataset)}), but there is more than one '
+        'signature key provided. Please provide a map of '
+        '{signature_key -> dataset} with more than one signature key.'
+    )
   else:
     representative_dataset_map = {
         list(signature_def_map.keys())[0]: representative_dataset,
     }
 
   # Save the representative dataset to temporary TFRecord files.
+  # TODO: b/329552787 - If the representative dataset is in QuantizationOptions
+  # avoid loading then saving it again.
   path_map = {}
-  for signature_key in representative_dataset_map.keys():
-    path_map[signature_key] = tempfile.mkstemp(
+  expected_input_key_map = {}
+  for signature_key, signature_def in signature_def_map.items():
+    # Filepath is the second return value of mkstemp.
+    _, path_map[signature_key] = tempfile.mkstemp(
         suffix='.tfrecord', prefix=signature_key
-    )[1]  # Filepath.
+    )
+    expected_input_key_map[signature_key] = signature_def.inputs.keys()
 
   dataset_file_map = repr_dataset.TfRecordRepresentativeDatasetSaver(
-      path_map
+      path_map=path_map,
+      expected_input_key_map=expected_input_key_map,
   ).save(representative_dataset_map)
 
   # `quantize_ptq_static_range` requires `RepresentativeDatasetFile`s to be
@@ -692,7 +711,7 @@ def _populate_quantization_options_default_values(
         ' quantization via TF Quantizer.'
     )
 
-  if quantization_options.HasField('debugger_options'):
+  if quantization_options.HasField('debugger_config'):
     # Set `force_graph_mode_calibration` to True to avoid skipping op execution,
     # which are not connected to return ops, during calibration execution.
     # Setting `force_graph_mode_calibration` to True enables execution of the
@@ -704,11 +723,11 @@ def _populate_quantization_options_default_values(
     )
     quantization_options.force_graph_mode_calibration = True
 
-    if not quantization_options.debugger_options.log_dir_path:
-      quantization_options.debugger_options.log_dir_path = '/tmp/dumps'
+    if not quantization_options.debugger_config.log_dir_path:
+      quantization_options.debugger_config.log_dir_path = '/tmp/dumps'
 
     if (
-        quantization_options.debugger_options.debugger_type
+        quantization_options.debugger_config.debugger_type
         == stablehlo_quant_config_pb2.DebuggerConfig.DebuggerType.DEBUGGER_TYPE_UNSPECIFIED
     ):
       raise ValueError(
@@ -716,9 +735,9 @@ def _populate_quantization_options_default_values(
       )
 
     if (
-        quantization_options.debugger_options.debugger_type
+        quantization_options.debugger_config.debugger_type
         == stablehlo_quant_config_pb2.DebuggerConfig.DebuggerType.DEBUGGER_TYPE_WHOLE_MODEL
-        and not quantization_options.debugger_options.unquantized_dump_model_path
+        and not quantization_options.debugger_config.unquantized_dump_model_path
     ):
       raise ValueError(
           'Debugger type whole model verify was used but'

@@ -252,7 +252,7 @@ Status WriteField(const FieldDescriptor& field_desc, const Tensor& input,
       WireFormatLite::FieldType(field_desc.type()));
 
   auto input_t = input.flat_inner_dims<TensorT>();
-  if (field_desc.options().packed()) {
+  if (field_desc.is_packed()) {
     // Write the tag for the packed field.
     WireFormatLite::WriteTag(field_desc.number(),
                              WireFormatLite::WIRETYPE_LENGTH_DELIMITED, output);

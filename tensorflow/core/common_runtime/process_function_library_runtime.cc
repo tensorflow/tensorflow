@@ -573,7 +573,7 @@ Status ProcessFunctionLibraryRuntime::InstantiateMultiDevice(
     }
   }
 
-  StatusOr<OptimizedFunctionGraphInfo> optimized_graph_info =
+  absl::StatusOr<OptimizedFunctionGraphInfo> optimized_graph_info =
       (!optimized_graph_proto.has_value() ||
        !optimized_graph_proto.value().ok())
           ? OptimizeFunctionGraphOrReadFromFileCache(

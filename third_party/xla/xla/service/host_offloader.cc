@@ -166,6 +166,56 @@ HloInstruction* FindDSAnnotation(HloInstruction* hlo) {
 
 }  // namespace
 
+absl::StatusOr<bool> HostOffloader::TryOutputStreaming(
+    HloInstruction* custom_call) {
+  const HloBuffer& unique_buffer =
+      alias_analysis_->GetUniqueBufferAt(custom_call);
+  bool is_used_as_output_with_host_memory_space = false;
+  const HloComputation* const entry_computation =
+      custom_call->GetModule()->entry_computation();
+  for (const HloValue* value : unique_buffer.values()) {
+    // Check if this is memory-only.
+    if (!AllPositionsAreAllowed(value)) {
+      // Found a position which is not allowed.
+      return false;
+    }
+
+    // Look for a value used as a output.
+    for (const auto& position : value->positions()) {
+      const HloInstruction* instruction = position.instruction;
+      const ShapeIndex& index = position.index;
+      if (instruction->parent() == entry_computation && instruction->IsRoot()) {
+        const Shape& output_shape =
+            ShapeUtil::GetSubshape(entry_computation->parent()
+                                       ->entry_computation_layout()
+                                       .result_shape(),
+                                   index);
+        CHECK(output_shape.has_layout());
+
+        if (output_shape.layout().memory_space() != kHostMemorySpaceColor) {
+          return FailedPrecondition(
+              "Output buffer is annotated with %s but is not marked with host "
+              "memory space in the entry computation.",
+              custom_call->name());
+        }
+        is_used_as_output_with_host_memory_space = true;
+      }
+    }
+  }
+  if (!is_used_as_output_with_host_memory_space) {
+    VLOG(1) << "Buffer annotated by " << custom_call->name()
+            << " is not used as an output with host memory space.";
+    return false;
+  }
+
+  VLOG(3) << "Found an output buffer annotated with " << custom_call->name()
+          << ". Expecting that we'll need to insert copies.";
+
+  annotations_for_copy_to_host_to_insert_.emplace(custom_call);
+  AddAllPositionsToBeMovedToHostMemory(unique_buffer);
+  return true;
+}
+
 Status HostOffloader::HandleMoveToHostCustomCall(HloInstruction* custom_call) {
   VLOG(2) << "Found a custom call annotating start-of-host-offload: "
           << custom_call->ToString();
@@ -195,7 +245,11 @@ Status HostOffloader::HandleMoveToHostCustomCall(HloInstruction* custom_call) {
   } else if (op_being_annotated->opcode() == HloOpcode::kCopy) {
     TF_RETURN_IF_ERROR(MemoryOnlyOffloadStartingWithCopy(op_being_annotated));
   } else {
-    TF_RETURN_IF_ERROR(MemoryOnlyOffloadInsertCopies(custom_call));
+    TF_ASSIGN_OR_RETURN(bool did_output_streaming,
+                        TryOutputStreaming(custom_call));
+    if (!did_output_streaming) {
+      TF_RETURN_IF_ERROR(MemoryOnlyOffloadInsertCopies(custom_call));
+    }
   }
   return OkStatus();
 }
@@ -576,7 +630,7 @@ absl::StatusOr<bool> HostOffloader::Run(
   // Run HloAliasAnalysis on module.
   TF_ASSIGN_OR_RETURN(alias_analysis_, HloAliasAnalysis::Run(module));
 
-  // Iterate over all instructions and look for XLA host offload annoations.
+  // Iterate over all instructions and look for XLA host offload annotations.
   for (HloComputation* computation :
        module->MakeNonfusionComputations(execution_threads)) {
     for (HloInstruction* instruction :

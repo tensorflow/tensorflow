@@ -21,6 +21,7 @@
 #include "absl/container/flat_hash_set.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/service/hlo_alias_analysis.h"
 #include "xla/service/hlo_pass_interface.h"
 
@@ -67,6 +68,7 @@ class HostOffloader : public HloModulePass {
   void AddAllPositionsToBeMovedToHostMemory(const HloBuffer& unique_buffer);
 
   absl::StatusOr<bool> TryParameterStreaming(HloInstruction* custom_call);
+  absl::StatusOr<bool> TryOutputStreaming(HloInstruction* custom_call);
   Status HandleMoveToHostCustomCall(HloInstruction* custom_call);
   Status HandleMoveToDeviceCustomCall(HloInstruction* custom_call);
 

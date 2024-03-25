@@ -20,7 +20,9 @@ limitations under the License.
 #include <unordered_map>
 #include <utility>
 
+#include "mlir/IR/Diagnostics.h"  // from @llvm-project
 #include "mlir/IR/Location.h"  // from @llvm-project
+#include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/Pass/PassInstrumentation.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/metrics/error_collector.h"

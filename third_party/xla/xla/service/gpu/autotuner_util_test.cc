@@ -36,6 +36,7 @@ limitations under the License.
 #include "tsl/platform/env.h"
 #include "tsl/platform/logging.h"   // IWYU pragma: keep
 #include "tsl/platform/protobuf.h"  // IWYU pragma: keep
+#include "tsl/platform/status_matchers.h"
 
 namespace xla {
 namespace gpu {
@@ -45,7 +46,7 @@ using ::testing::HasSubstr;
 using ::testing::IsEmpty;
 using ::testing::Not;
 using ::testing::TempDir;
-using ::testing::status::StatusIs;
+using ::tsl::testing::StatusIs;
 
 class AutotunerUtilTest : public HloTestBase {
  protected:

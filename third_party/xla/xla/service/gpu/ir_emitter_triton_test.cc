@@ -241,6 +241,93 @@ CHECK:    }
 )"));
 }
 
+TEST_F(TritonFilecheckTest, TestGemmWithTrivialNonContractingDimension) {
+  const std::string kHloText = R"(
+HloModule t, is_scheduled=true
+
+triton_dot {
+  param_0.1 = f32[137,115]{1,0} parameter(0)
+  param_1.1 = f32[1,115]{1,0} parameter(1)
+  ROOT dot = f32[137,1]{1,0} dot(param_0.1, param_1.1),
+    lhs_contracting_dims={1}, rhs_contracting_dims={1}
+}
+
+ENTRY e {
+  p0 = f32[137,115]{1,0} parameter(0)
+  p1 = f32[1,115]{1,0} parameter(1)
+  ROOT custom-call = f32[137,1]{1,0} fusion(p0, p1), kind=kCustom,
+    calls=triton_dot,
+    backend_config={"fusion_backend_config": {kind: "__triton_gemm",
+    triton_gemm_config: {"block_m":16,"block_n":64,"block_k":32,
+                         "split_k":1,"num_stages":1,"num_warps":2,
+                         "num_ctas":1}}}
+})";
+
+  TritonGemmConfig config(16, 16, 32, 1, 1, 1);
+  EXPECT_OK(
+      CreateTritonIrAndFileCheck(kHloText, config, EmitMatMul, "triton_dot", R"(
+CHECK:    tt.func @triton_fn(%[[LHS:.*]]: !tt.ptr<f32, 1> {tt.divisibility = 16 : i32}, %[[RHS:.*]]: !tt.ptr<f32, 1> {tt.divisibility = 16 : i32}, %[[OUT:.*]]: !tt.ptr<f32, 1> {tt.divisibility = 16 : i32}) {
+CHECK-DAG:  %[[ZERO_KN:.*]] = arith.constant dense<0.000000e+00> : tensor<32x16xf32>
+CHECK-DAG:  %[[ZERO_MK:.*]] = arith.constant dense<0.000000e+00> : tensor<16x32xf32>
+CHECK-DAG:  %[[ZERO_MN:.*]] = arith.constant dense<0.000000e+00> : tensor<16x16xf32>
+CHECK-DAG:  %[[SIZE_K:.*]] = arith.constant 115 : i32
+CHECK-DAG:  %[[SIZE_M:.*]] = arith.constant 137 : i64
+CHECK-DAG:  %[[C1:.*]] = arith.constant 1 : i64
+CHECK-DAG:  %[[C0:.*]] = arith.constant 0 : i32
+CHECK-DAG:  %[[C115:.*]] = arith.constant 115 : i64
+CHECK-DAG:  %[[TILE_SIZE_K:.*]] = arith.constant 32 : i32
+CHECK-DAG:  %[[TILE_SIZE_M:.*]] = arith.constant 16 : i32
+CHECK-DAG:  %[[C8:.*]] = arith.constant 8 : i32
+CHECK-DAG:  %[[NUM_TILES_M:.*]] = arith.constant 9 : i32
+CHECK:    %[[PID_NC:.*]] = tt.get_program_id x : i32
+CHECK:    %[[GROUP_ID:.*]] = arith.divsi %[[PID_NC]], %[[C8]]
+CHECK:    %[[FIRST_PID_M:.*]] = arith.muli %[[GROUP_ID]], %[[C8]]
+CHECK:    %[[MAX_M:.*]] = arith.subi %[[NUM_TILES_M]], %[[FIRST_PID_M]]
+CHECK:    %[[CMP:.*]] = arith.cmpi slt, %[[MAX_M]], %[[C8]]
+CHECK:    %[[GROUP_SIZE:.*]] = arith.select %[[CMP]], %[[MAX_M]], %[[C8]]
+CHECK:    %[[PID_M:.*]] = arith.remsi %[[PID_NC]], %[[GROUP_SIZE]]
+CHECK:    %[[TILE_INDEX_M:.*]] = arith.addi %[[FIRST_PID_M]], %[[PID_M]]
+CHECK:    %[[TMP:.*]] = arith.remsi %[[PID_NC]], %[[C8]]
+CHECK:    %[[TILE_INDEX_N:.*]] = arith.divsi %[[TMP]], %[[GROUP_SIZE]]
+CHECK:    %[[TILE_OFFSET_M_LHS:.*]] = arith.muli %[[TILE_INDEX_M]], %[[TILE_SIZE_M]]
+CHECK:    %[[LHS_PTR:.*]] = tt.make_tensor_ptr %[[LHS]]
+CHECK:    %[[LHS_TILE_PTR:.*]] = tt.advance %[[LHS_PTR]], [%[[TILE_OFFSET_M_LHS]], %[[C0]]]
+CHECK:    %[[TILE_OFFSET_N_RHS:.*]] = arith.muli %[[TILE_INDEX_N]], %[[TILE_SIZE_M]]
+CHECK:    %[[RHS_PTR:.*]] = tt.make_tensor_ptr %[[RHS]]
+CHECK:    %[[RHS_TILE_PTR:.*]] = tt.advance %[[RHS_PTR]], [%[[C0]], %[[TILE_OFFSET_N_RHS]]]
+CHECK:    %[[FOR:.*]]:3 = scf.for %[[BLOCK_K:.*]] = %[[C0]] to %[[SIZE_K]] step %[[TILE_SIZE_K]]
+CHECK-SAME:       iter_args(%[[LHS_ITER_PTR:.*]] = %[[LHS_TILE_PTR]], %[[RHS_ITER_PTR:.*]] = %[[RHS_TILE_PTR]], %[[ACC:.*]] = %[[ZERO_MN]])
+CHECK:      %[[LHS_TILE:.*]] = tt.load %[[LHS_ITER_PTR]] {boundaryCheck = array<i32: 0, 1>
+CHECK:      %[[LHS_ITER_PTR_NEXT:.*]] = tt.advance %[[LHS_ITER_PTR]], [%[[C0]], %[[TILE_SIZE_K]]]
+CHECK:      %[[RHS_TILE:.*]] = tt.load %[[RHS_ITER_PTR]] {boundaryCheck = array<i32: 0, 1>
+CHECK:      %[[RHS_ITER_PTR_NEXT:.*]] = tt.advance %[[RHS_ITER_PTR]], [%[[TILE_SIZE_K]], %[[C0]]]
+CHECK:      %[[TILE_K_LIMIT:.*]] = arith.subi %[[SIZE_K]], %[[BLOCK_K]] : i32
+CHECK:      %[[K_TILE_IOTA:.*]] = tt.make_range {end = 32 : i32, start = 0 : i32} : tensor<32xi32>
+CHECK:      %[[K_OFFSETS_1K:.*]] = tt.expand_dims %[[K_TILE_IOTA]] {axis = 0 : i32} : tensor<32xi32> -> tensor<1x32xi32>
+CHECK:      %[[TILE_K_LIMIT_1K:.*]] = tt.splat %[[TILE_K_LIMIT]] : i32 -> tensor<1x32xi32>
+CHECK:      %[[LHS_INBOUNDS_1K:.*]] = arith.cmpi slt, %[[K_OFFSETS_1K]], %[[TILE_K_LIMIT_1K]] : tensor<1x32xi32>
+CHECK:      %[[LHS_INBOUNDS_MK:.*]] = tt.broadcast %[[LHS_INBOUNDS_1K]] : tensor<1x32xi1> -> tensor<16x32xi1>
+CHECK:      %[[LHS_MASKED:.*]] = arith.select %[[LHS_INBOUNDS_MK]], %[[LHS_TILE]], %[[ZERO_MK]]
+CHECK:      %[[K_OFFSETS_K1:.*]] = tt.expand_dims %[[K_TILE_IOTA]] {axis = 1 : i32} : tensor<32xi32> -> tensor<32x1xi32>
+CHECK:      %[[TILE_K_LIMIT_K1:.*]] = tt.splat %[[TILE_K_LIMIT]] : i32 -> tensor<32x1xi32>
+CHECK:      %[[RHS_INBOUNDS_K1:.*]] = arith.cmpi slt, %[[K_OFFSETS_K1]], %[[TILE_K_LIMIT_K1]] : tensor<32x1xi32>
+CHECK:      %[[RHS_INBOUNDS_KN:.*]] = tt.broadcast %[[RHS_INBOUNDS_K1]] : tensor<32x1xi1> -> tensor<32x16xi1>
+CHECK:      %[[RHS_MASKED:.*]] = arith.select %[[RHS_INBOUNDS_KN]], %[[RHS_TILE]], %[[ZERO_KN]] : tensor<32x16xi1>, tensor<32x16xf32>
+CHECK:      %[[ACC_NEXT:.*]] = tt.dot %[[LHS_MASKED]], %[[RHS_MASKED]], %[[ACC]]
+CHECK:      scf.yield %[[LHS_ITER_PTR_NEXT]], %[[RHS_ITER_PTR_NEXT]], %[[ACC_NEXT]] : !tt.ptr<tensor<16x32xf32>, 1>, !tt.ptr<tensor<32x16xf32>, 1>, tensor<16x16xf32>
+CHECK:    }
+
+
+CHECK:    %[[TILE_OFFSET_M_OUT:.*]] = arith.muli %[[TILE_INDEX_M]], %[[TILE_SIZE_M]]
+CHECK:    %[[TILE_OFFSET_N_OUT:.*]] = arith.muli %[[TILE_INDEX_N]], %[[TILE_SIZE_M]]
+CHECK:    %[[OUT_PTR:.*]] = tt.make_tensor_ptr %[[OUT]], [%[[SIZE_M]], %[[C1]]], [%[[C1]], %[[C1]]], [%[[C0]], %[[C0]]] {order = array<i32: 1, 0>} : <tensor<16x16xf32>, 1>
+CHECK:    %[[OUT_OFFSET:.*]] = tt.advance %[[OUT_PTR]], [%[[TILE_OFFSET_M_OUT]], %[[TILE_OFFSET_N_OUT]]] : <tensor<16x16xf32>, 1>
+CHECK:    tt.store %[[OUT_OFFSET]], %[[FOR]]#2 {boundaryCheck = array<i32: 0, 1>, cache = 1 : i32, evict = 1 : i32} : !tt.ptr<tensor<16x16xf32>, 1>, tensor<16x16xf32>
+CHECK:    tt.return
+CHECK:  }
+)"));
+}
+
 TEST_F(TritonFilecheckTest, TestSoftmaxEmitterWithSingleParameter) {
   const std::string kHloText = R"(
 HloModule t
@@ -2843,6 +2930,46 @@ ENTRY e {
   p0 = f32[5,7]{1,0} parameter(0)
   p1 = f32[7,33]{1,0} parameter(1)
   ROOT _ = f32[5,33] fusion(p0, p1), kind=kCustom, calls=triton_dot,
+    backend_config={"fusion_backend_config": {kind: "__triton_gemm",
+    triton_gemm_config: {"block_m":32,"block_n":32,"block_k":32,
+                         "split_k":1,"num_stages":1,"num_warps":1,
+                         "num_ctas":1}}}
+}
+)";
+
+  EXPECT_TRUE(RunAndCompareTwoModules(hlo_text_ref, hlo_text_triton,
+                                      ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3},
+                                      /*run_hlo_passes=*/false));
+}
+
+TEST_F(CompareTest, F32WithTrivialNonContractingDimension) {
+  const char* hlo_text_ref = R"(
+HloModule r
+
+ENTRY e {
+  arg0 = f32[5,7] parameter(0)
+  arg1 = f32[1,7] parameter(1)
+  gemm = (f32[5,1], s8[0]{0}) custom-call(arg0, arg1),
+    custom_call_target="__cublas$gemm",
+    backend_config={"gemm_backend_config": {"alpha_real":1,"beta":0,"dot_dimension_numbers":{"lhs_contracting_dimensions":[1],"rhs_contracting_dimensions":[1],"lhs_batch_dimensions":[],"rhs_batch_dimensions":[]},"alpha_imag":0,"precision_config":{"operand_precision":["DEFAULT","DEFAULT"]},"epilogue":"DEFAULT"}}
+  ROOT get-tuple-element = f32[5,1]{1,0} get-tuple-element((f32[5,1]{1,0}, s8[0]{0}) gemm), index=0
+}
+)";
+
+  const char* hlo_text_triton = R"(
+HloModule t
+
+triton_dot {
+  p0 = f32[5,7] parameter(0)
+  p1 = f32[1,7] parameter(1)
+  ROOT dot = f32[5,1] dot(p0, p1),
+    lhs_contracting_dims={1}, rhs_contracting_dims={1}
+}
+
+ENTRY e {
+  p0 = f32[5,7]{1,0} parameter(0)
+  p1 = f32[1,7]{1,0} parameter(1)
+  ROOT _ = f32[5,1] fusion(p0, p1), kind=kCustom, calls=triton_dot,
     backend_config={"fusion_backend_config": {kind: "__triton_gemm",
     triton_gemm_config: {"block_m":32,"block_n":32,"block_k":32,
                          "split_k":1,"num_stages":1,"num_warps":1,

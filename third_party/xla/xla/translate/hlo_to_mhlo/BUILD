@@ -94,6 +94,7 @@ cc_library(
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:QuantOps",
+        "@llvm-project//mlir:SideEffectInterfaces",
         "@llvm-project//mlir:SparseTensorDialect",
         "@llvm-project//mlir:Support",
         "@local_tsl//tsl/platform:errors",

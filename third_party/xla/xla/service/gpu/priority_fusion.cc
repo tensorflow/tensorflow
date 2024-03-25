@@ -154,12 +154,36 @@ class GpuPriorityFusionQueue {
       }
       instructions.push_back(instruction);
     }
+
+    ComputeAndSetPriorities(instructions);
+  }
+
+  void ComputeAndSetPriorities(
+      const std::vector<HloInstruction*>& instructions) {
     std::vector<Priority> priorities = ComputePriorities(instructions);
 
     for (auto [instruction, priority] : llvm::zip(instructions, priorities)) {
-      auto emplace_result = producer_priority_queue_.emplace(
-          std::make_pair(priority, instruction->unique_id()), instruction);
-      CHECK(emplace_result.second);
+      auto key = std::make_pair(priority, instruction->unique_id());
+
+      // Remove instruction with the old priority from the queue.
+      auto reverse_it = reverse_map_.find(instruction);
+      if (reverse_it != reverse_map_.end()) {
+        const PriorityQueue::iterator& queue_it = reverse_it->second;
+        // Priority didn't change. Nothing to do.
+        if (key == queue_it->first) {
+          continue;
+        }
+        producer_priority_queue_.erase(queue_it);
+        reverse_map_.erase(reverse_it);
+      }
+
+      // If the priority is negative, it's not helpful to perform fusion on this
+      // instruction.
+      if (priority < 0) {
+        continue;
+      }
+
+      auto emplace_result = producer_priority_queue_.emplace(key, instruction);
       reverse_map_.emplace(instruction, emplace_result.first);
     }
   }
@@ -195,17 +219,10 @@ class GpuPriorityFusionQueue {
 
     while (!producer_priority_queue_.empty() && current_consumers_.empty()) {
       auto next_it = std::prev(producer_priority_queue_.end());
-      auto priority = next_it->first.first;
 
       current_producer_ = next_it->second;
       producer_priority_queue_.erase(next_it);
       reverse_map_.erase(current_producer_);
-
-      // If the priority is negative, it's not helpful to perform fusion on this
-      // instruction.
-      if (priority < 0) {
-        continue;
-      }
 
       current_consumers_ = current_producer_->users();
 
@@ -229,30 +246,9 @@ class GpuPriorityFusionQueue {
       TF_CHECK_OK(cost_analysis_.RevisitInstruction(instruction));
     }
 
-    std::vector<HloInstruction*> to_update_vector{to_update_priority_.begin(),
-                                                  to_update_priority_.end()};
-    std::vector<Priority> new_priorities = ComputePriorities(to_update_vector);
+    ComputeAndSetPriorities(std::vector<HloInstruction*>{
+        to_update_priority_.begin(), to_update_priority_.end()});
 
-    for (auto [instruction, new_priority] :
-         llvm::zip(to_update_vector, new_priorities)) {
-      auto reverse_it = reverse_map_.find(instruction);
-      const auto new_key =
-          std::make_pair(new_priority, instruction->unique_id());
-      if (reverse_it != reverse_map_.end()) {
-        if (new_key == reverse_it->second->first) {
-          continue;
-        }
-        producer_priority_queue_.erase(reverse_it->second);
-      }
-      auto emplace_result =
-          producer_priority_queue_.emplace(new_key, instruction);
-      CHECK(emplace_result.second);
-      if (reverse_it != reverse_map_.end()) {
-        reverse_it->second = emplace_result.first;
-      } else {
-        reverse_map_.emplace(instruction, emplace_result.first);
-      }
-    }
     to_update_priority_.clear();
   }
 
@@ -669,7 +665,8 @@ absl::StatusOr<bool> GpuPriorityFusion::Run(
   // With this modification it will be easier to match instructions before and
   // after fusion passes, because they will have the same unique prefix. Names
   // are not used in the pipeline, but it makes debugging much easier.
-  for (auto* computation : GetFusionComputations(module, execution_threads)) {
+  for (auto* computation :
+       GetNonFusionComputations(module, execution_threads)) {
     for (auto* instruction : computation->instructions()) {
       module->SetAndUniquifyInstrName(instruction,
                                       absl::StrCat(instruction->name(), ".0"));
@@ -682,9 +679,8 @@ absl::StatusOr<bool> GpuPriorityFusion::Run(
   }
 
   int changed = false;
-  // Note: `GetFusionComputations` doesn't return the fusion computations, but
-  // the computations to be fused.
-  for (auto* computation : GetFusionComputations(module, execution_threads)) {
+  for (auto* computation :
+       GetNonFusionComputations(module, execution_threads)) {
     CHECK(!computation->IsFusionComputation());
 
     auto fusion_queue = std::make_unique<GpuPriorityFusionQueue>(

@@ -1006,6 +1006,7 @@ cc_library(
         "//tensorflow/lite/kernels:cpu_backend_context",
         "//tensorflow/lite/kernels:cpu_backend_gemm",
         "//tensorflow/lite/kernels:op_macros",
+        "@com_google_absl//absl/base:prefetch",
         "@ruy//ruy/profiler:instrumentation",
     ],
 )

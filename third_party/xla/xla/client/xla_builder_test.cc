@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/client/xla_builder.h"
 
 #include <algorithm>
+#include <array>
 #include <complex>
 #include <cstdint>
 #include <functional>
@@ -27,24 +28,31 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/algorithm/container.h"
 #include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/client/padding.h"
 #include "xla/client/sharding_builder.h"
 #include "xla/client/value_inference.h"
 #include "xla/client/xla_computation.h"
+#include "xla/comparison_util.h"
 #include "xla/debug_options_flags.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_input_output_alias_config.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
+#include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/ir/hlo_sharding.h"
+#include "xla/layout_util.h"
 #include "xla/service/hlo_parser.h"
 #include "xla/service/pattern_matcher.h"
 #include "xla/service/pattern_matcher_gmock.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/status.h"
 #include "xla/statusor.h"
 #include "xla/test.h"
 #include "xla/test_helpers.h"
@@ -69,7 +77,7 @@ HloInstruction* GetRoot(HloModule& module) {
 }
 
 // TODO(b/74197823): Move the tests to service/.
-StatusOr<std::unique_ptr<HloModule>> BuildHloModule(XlaBuilder& b) {
+absl::StatusOr<std::unique_ptr<HloModule>> BuildHloModule(XlaBuilder& b) {
   TF_ASSIGN_OR_RETURN(XlaComputation computation,
                       b.Build(/*remove_dynamic_dimensions=*/false));
   const HloModuleProto& proto = computation.proto();
@@ -80,7 +88,8 @@ StatusOr<std::unique_ptr<HloModule>> BuildHloModule(XlaBuilder& b) {
 }
 
 // Overload which explicitly specifies the root instruction.
-StatusOr<std::unique_ptr<HloModule>> BuildHloModule(XlaBuilder& b, XlaOp root) {
+absl::StatusOr<std::unique_ptr<HloModule>> BuildHloModule(XlaBuilder& b,
+                                                          XlaOp root) {
   TF_ASSIGN_OR_RETURN(XlaComputation computation,
                       b.Build(root, /*remove_dynamic_dimensions=*/false));
   const HloModuleProto& proto = computation.proto();
@@ -696,7 +705,7 @@ TEST(XlaBuilderTest, ReportError) {
 
 TEST(XlaBuilderTest, ReportErrorOrReturnHandlesNonErrors) {
   XlaBuilder b(TestName());
-  StatusOr<XlaOp> op(ConstantR0<float>(&b, 1.0));
+  absl::StatusOr<XlaOp> op(ConstantR0<float>(&b, 1.0));
   Add(b.ReportErrorOrReturn(op), ConstantR0<float>(&b, 2.0));
   TF_ASSERT_OK_AND_ASSIGN(auto module, BuildHloModule(b));
   auto root = module->entry_computation()->root_instruction();
@@ -705,7 +714,7 @@ TEST(XlaBuilderTest, ReportErrorOrReturnHandlesNonErrors) {
 
 TEST(XlaBuilderTest, ReportErrorOrReturnHandlesErrors) {
   XlaBuilder b(TestName());
-  StatusOr<XlaOp> op(InvalidArgument("a test error"));
+  absl::StatusOr<XlaOp> op(InvalidArgument("a test error"));
   Add(b.ReportErrorOrReturn(op), ConstantR0<float>(&b, 2.0));
   auto statusor = b.Build();
   ASSERT_FALSE(statusor.ok());
@@ -1561,7 +1570,7 @@ TEST(XlaBuilderTest, ComplexAbsConstant) {
   XlaOp out =
       Abs(ConstantR0<std::complex<float>>(&b, std::complex<float>{-1, -1}));
   ValueInference value_inference(&b);
-  StatusOr<OptionalLiteral> analyzed =
+  absl::StatusOr<OptionalLiteral> analyzed =
       value_inference.AnalyzeConstant(out, kUpperBound);
   EXPECT_IS_OK(analyzed.status());
   EXPECT_EQ(analyzed->GetValue().value().shape().element_type(),
@@ -1768,6 +1777,7 @@ struct BinaryOpTestCase {
 constexpr absl::string_view kBroadcastDimensionMismatch =
     "Broadcast dimension 0 mismatch: 2 != -9223372036854775808; f32[2] and "
     "f32[?,10].";
+std::array<const int64_t, 0> empty_array = {};
 std::array<const int64_t, 1> zero_array = {0};
 
 class XlaBuilderUnboundedUnaryOpTest
@@ -1810,7 +1820,7 @@ TEST(XlaBuilderTest, UnboundedAddScalarBroadcast) {
   TF_ASSERT_OK_AND_ASSIGN(Shape rhs, ParseShape("f32[]"));
   TF_ASSERT_OK_AND_ASSIGN(Shape expected, ParseShape("f32[?, 10]"));
   Add(Parameter(&b, 0, lhs, "lhs"), Parameter(&b, 1, rhs, "rhs"),
-      /*broadcast_dimensions=*/{});
+      /*broadcast_dimensions=*/empty_array);
   TF_ASSERT_OK_AND_ASSIGN(auto module, BuildHloModule(b));
   EXPECT_THAT(GetRoot(*module),
               GmockMatch(m::Op().WithShapeEqualTo(&expected)));
@@ -1834,7 +1844,7 @@ TEST(XlaBuilderTest, UnboundedAddUnsupportedImplicitBroadcast) {
   TF_ASSERT_OK_AND_ASSIGN(Shape rhs, ParseShape("f32[2]"));
   TF_ASSERT_OK_AND_ASSIGN(Shape expected, ParseShape("f32[?, 10]"));
   Add(Parameter(&b, 0, lhs, "lhs"), Parameter(&b, 1, rhs, "rhs"),
-      /*broadcast_dimensions=*/{0});
+      /*broadcast_dimensions=*/zero_array);
   EXPECT_THAT(BuildHloModule(b),
               StatusIs(_, HasSubstr(kBroadcastDimensionMismatch)));
 }
@@ -1902,6 +1912,16 @@ TEST(XlaBuilderTest, UnboundedBatchNormTraining) {
   BatchNormTraining(Parameter(&b, 0, operand, "operand"),
                     Parameter(&b, 1, scale, "scale"),
                     Parameter(&b, 2, offset, "offset"), 1.0, 1);
+  TF_ASSERT_OK_AND_ASSIGN(auto module, BuildHloModule(b));
+  EXPECT_THAT(GetRoot(*module),
+              GmockMatch(m::Op().WithShapeEqualTo(&expected)));
+}
+
+TEST(XlaBuilderTest, UnboundedBitcastConvert) {
+  XlaBuilder b(TestName());
+  TF_ASSERT_OK_AND_ASSIGN(Shape operand, ParseShape("f32[?, 10]"));
+  TF_ASSERT_OK_AND_ASSIGN(Shape expected, ParseShape("f16[?, 10, 2]"));
+  BitcastConvertType(Parameter(&b, 0, operand, "operand"), PrimitiveType::F16);
   TF_ASSERT_OK_AND_ASSIGN(auto module, BuildHloModule(b));
   EXPECT_THAT(GetRoot(*module),
               GmockMatch(m::Op().WithShapeEqualTo(&expected)));
@@ -2143,6 +2163,21 @@ TEST(XlaBuilderTest, UnboundedGather) {
          Parameter(&b, 1, start_indices, "start_indices"), dimension_numbers,
          /*slice_sizes=*/{1, 2, 2});
   TF_ASSERT_OK_AND_ASSIGN(auto module, BuildHloModule(b));
+  EXPECT_THAT(GetRoot(*module),
+              GmockMatch(m::Op().WithShapeEqualTo(&expected)));
+}
+
+TEST(XlaBuilderTest, UnboundedOr) {
+  XlaBuilder b(TestName());
+  TF_ASSERT_OK_AND_ASSIGN(const Shape lhs,
+                          ParseShape("s32[1, ?, 2, ?, <=2, ?, ?]"));
+  TF_ASSERT_OK_AND_ASSIGN(const Shape rhs,
+                          ParseShape("s32[?, 1, ?, 2, ?, <=2, ?]"));
+  TF_ASSERT_OK_AND_ASSIGN(const Shape expected,
+                          ParseShape("s32[?, ?, 2, 2, <=2, <=2, ?]"));
+  Or(Parameter(&b, 0, lhs, "lhs"), Parameter(&b, 1, rhs, "rhs"),
+     /*broadcast_dimensions=*/empty_array);
+  TF_ASSERT_OK_AND_ASSIGN(const auto module, BuildHloModule(b));
   EXPECT_THAT(GetRoot(*module),
               GmockMatch(m::Op().WithShapeEqualTo(&expected)));
 }
@@ -2421,27 +2456,38 @@ INSTANTIATE_TEST_SUITE_P(
     UnboundedDynamism, XlaBuilderUnboundedBinaryOpTest,
     ::testing::ValuesIn<BinaryOpTestCase>({
         {"f32[1, ?, 2, ?, <=2, ?, ?]", "f32[?, 1, ?, 2, ?, <=2, ?]",
-         /*broadcast_dimensions=*/{}, "f32[?, ?, 2, 2, <=2, <=2, ?]", &Add},
+         /*broadcast_dimensions=*/empty_array, "f32[?, ?, 2, 2, <=2, <=2, ?]",
+         &Add},
         {"f32[?, 10]", "f32[1]", /*broadcast_dimensions=*/zero_array,
          "f32[?, 10]", &Add},
         {"f32[1, ?, 2, ?, <=2, ?, ?]", "f32[?, 1, ?, 2, ?, <=2, ?]",
-         /*broadcast_dimensions=*/{}, "f32[?, ?, 2, 2, <=2, <=2, ?]", &Div},
+         /*broadcast_dimensions=*/empty_array, "f32[?, ?, 2, 2, <=2, <=2, ?]",
+         &Atan2},
+        {"f32[1, ?, 2, ?, <=2, ?, ?]", "f32[?, 1, ?, 2, ?, <=2, ?]",
+         /*broadcast_dimensions=*/empty_array, "f32[?, ?, 2, 2, <=2, <=2, ?]",
+         &Div},
         {"f32[?, 10]", "f32[1]", /*broadcast_dimensions=*/zero_array,
          "f32[?, 10]", &Div},
         {"f32[1, ?, 2, ?, <=2, ?, ?]", "f32[?, 1, ?, 2, ?, <=2, ?]",
-         /*broadcast_dimensions=*/{}, "f32[?, ?, 2, 2, <=2, <=2, ?]", &Max},
+         /*broadcast_dimensions=*/empty_array, "f32[?, ?, 2, 2, <=2, <=2, ?]",
+         &Max},
         {"f32[?, 10]", "f32[1]", /*broadcast_dimensions=*/zero_array,
          "f32[?, 10]", &Max},
         {"f32[1, ?, 2, ?, <=2, ?, ?]", "f32[?, 1, ?, 2, ?, <=2, ?]",
-         /*broadcast_dimensions=*/{}, "f32[?, ?, 2, 2, <=2, <=2, ?]", &Mul},
+         /*broadcast_dimensions=*/empty_array, "f32[?, ?, 2, 2, <=2, <=2, ?]",
+         &Mul},
         {"f32[?, 10]", "f32[1]", /*broadcast_dimensions=*/zero_array,
          "f32[?, 10]", &Mul},
+        {"f32[?, 10]", "f32[1]", /*broadcast_dimensions=*/zero_array,
+         "pred[?, 10]", &Ne},
         {"f32[1, ?, 2, ?, <=2, ?, ?]", "f32[?, 1, ?, 2, ?, <=2, ?]",
-         /*broadcast_dimensions=*/{}, "f32[?, ?, 2, 2, <=2, <=2, ?]", &Pow},
+         /*broadcast_dimensions=*/empty_array, "f32[?, ?, 2, 2, <=2, <=2, ?]",
+         &Pow},
         {"f32[?, 10]", "f32[1]", /*broadcast_dimensions=*/zero_array,
          "f32[?, 10]", &Pow},
         {"f32[1, ?, 2, ?, <=2, ?, ?]", "f32[?, 1, ?, 2, ?, <=2, ?]",
-         /*broadcast_dimensions=*/{}, "f32[?, ?, 2, 2, <=2, <=2, ?]", &Sub},
+         /*broadcast_dimensions=*/empty_array, "f32[?, ?, 2, 2, <=2, <=2, ?]",
+         &Sub},
         {"f32[?, 10]", "f32[1]", /*broadcast_dimensions=*/zero_array,
          "f32[?, 10]", &Sub},
     }));

@@ -16,6 +16,7 @@ limitations under the License.
 
 #include <algorithm>
 #include <complex>
+#include <limits>
 #include <random>
 #include <vector>
 
@@ -57,6 +58,15 @@ TEST(CastOpModel, CastInt4ToFloatLarge) {
   for (int i = 0; i < input.size(); ++i) {
     EXPECT_EQ(m.ExtractVector<float>(m.output())[i], input[i]);
   }
+}
+
+TEST(CastOpModel, CastFloatToInt32Infinity) {
+  CastOpModel m({TensorType_FLOAT32, {2}}, {TensorType_INT32, {2}});
+  m.PopulateTensor<float>(m.input(), {std::numeric_limits<float>::infinity(),
+                                      -std::numeric_limits<float>::infinity()});
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  EXPECT_THAT(m.ExtractVector<int32_t>(m.output()),
+              ElementsAreArray({2147483520, -2147483520}));
 }
 
 TEST(CastOpModel, CastInt16ToFloat) {

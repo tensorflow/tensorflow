@@ -186,12 +186,10 @@ func.func @convolution_upstream_srq_strides(%arg0: tensor<1x3x3x4x!quant.uniform
 }
 // CHECK-LABEL: convolution_upstream_srq_strides
 // CHECK-SAME: %[[ARG:.+]]: tensor<1x3x3x4x!quant.uniform<i8:f32, 1.000000e+00:-100>>
-// CHECK-DAG: %[[CONST_0:.+]] = "tfl.pseudo_const"() {value = dense<{{\[\[0, 0\], \[1, 1\], \[1, 1\], \[0, 0\]\]}}> : tensor<4x2xi32>} : () -> tensor<4x2xi32>
 // CHECK-DAG: %[[QCONST_0:.+]] = "tfl.pseudo_qconst"() {qtype = tensor<2x3x3x4x!quant.uniform<i8<-127:127>:f32:0, {2.000000e+02,3.000000e+03}>>, value = dense<3> : tensor<2x3x3x4xi8>} : () -> tensor<2x3x3x4x!quant.uniform<i8<-127:127>:f32:0, {2.000000e+02,3.000000e+03}>>
 // CHECK-DAG: %[[QCONST_1:.+]] = "tfl.pseudo_qconst"() {qtype = tensor<2x!quant.uniform<i32:f32:0, {2.000000e+02,3.000000e+03}>>, value = dense<0> : tensor<2xi32>} : () -> tensor<2x!quant.uniform<i32:f32:0, {2.000000e+02,3.000000e+03}>>
-// CHECK: %[[PAD:.+]] = "tfl.pad"(%[[ARG]], %[[CONST_0]]) : (tensor<1x3x3x4x!quant.uniform<i8:f32, 1.000000e+00:-100>>, tensor<4x2xi32>) -> tensor<1x5x5x4x!quant.uniform<i8:f32, 1.000000e+00:-100>>
 // Tests that the stride_w is set to 2.
-// CHECK: %[[CONV2D:.+]] = "tfl.conv_2d"(%[[PAD]], %[[QCONST_0]], %[[QCONST_1]]) {dilation_h_factor = 1 : i32, dilation_w_factor = 1 : i32, fused_activation_function = "NONE", padding = "VALID", stride_h = 1 : i32, stride_w = 2 : i32} : (tensor<1x5x5x4x!quant.uniform<i8:f32, 1.000000e+00:-100>>, tensor<2x3x3x4x!quant.uniform<i8<-127:127>:f32:0, {2.000000e+02,3.000000e+03}>>, tensor<2x!quant.uniform<i32:f32:0, {2.000000e+02,3.000000e+03}>>) -> tensor<1x3x2x2x!quant.uniform<i8:f32, 4.000000e+00>>
+// CHECK: %[[CONV2D:.+]] = "tfl.conv_2d"(%[[ARG]], %[[QCONST_0]], %[[QCONST_1]]) {dilation_h_factor = 1 : i32, dilation_w_factor = 1 : i32, fused_activation_function = "NONE", padding = "SAME", stride_h = 1 : i32, stride_w = 2 : i32} : (tensor<1x3x3x4x!quant.uniform<i8:f32, 1.000000e+00:-100>>, tensor<2x3x3x4x!quant.uniform<i8<-127:127>:f32:0, {2.000000e+02,3.000000e+03}>>, tensor<2x!quant.uniform<i32:f32:0, {2.000000e+02,3.000000e+03}>>) -> tensor<1x3x2x2x!quant.uniform<i8:f32, 4.000000e+00>>
 // CHECK: return %[[CONV2D]] : tensor<1x3x2x2x!quant.uniform<i8:f32, 4.000000e+00>>
 
 // -----
@@ -1422,3 +1420,55 @@ func.func @float_gather(%arg0: tensor<3x4x2x2xf32>, %arg1: tensor<2x3x2xi64>) ->
 // CHECK: stablehlo.gather
 // CHECK-NOT: tfl.gather_nd
 // CHECK-NOT: tfl.gather
+
+// -----
+
+// Test that a quantized stablehlo.dynamic_slice is converted to tfl.slice.
+
+// CHECK-LABEL: func @dynamic_slice
+// CHECK-SAME: %[[ARG0:.+]]: tensor<4x4x!quant.uniform<i8:f32, 3.000000e-01:-5>>, %[[ARG1:.+]]: tensor<i64>, %[[ARG2:.+]]: tensor<i64>
+func.func @dynamic_slice(
+    %arg0: tensor<4x4x!quant.uniform<i8:f32, 3.000000e-01:-5>>,
+    %arg1: tensor<i64>,
+    %arg2: tensor<i64>
+  ) -> tensor<2x1x!quant.uniform<i8:f32, 3.000000e-01:-5>> {
+  %0 = "stablehlo.dynamic_slice"(%arg0, %arg1, %arg2) {
+    slice_sizes = array<i64: 2, 1>
+  } : (
+    tensor<4x4x!quant.uniform<i8:f32, 3.000000e-01:-5>>, tensor<i64>,
+    tensor<i64>
+  ) -> tensor<2x1x!quant.uniform<i8:f32, 3.000000e-01:-5>>
+  return %0 : tensor<2x1x!quant.uniform<i8:f32, 3.000000e-01:-5>>
+}
+
+
+// CHECK-DAG: %[[SLICE_SIZE:.+]] = arith.constant dense<[2, 1]> : tensor<2xi64>
+// CHECK-DAG: %[[ZERO:.+]] = arith.constant dense<0> : tensor<1xi64>
+// CHECK-DAG: %[[MAX1:.+]] = arith.constant dense<2> : tensor<1xi64>
+// CHECK-DAG: %[[MAX2:.+]] = arith.constant dense<3> : tensor<1xi64>
+// CHECK: %[[BITCAST1:.+]] = "tfl.bitcast"(%[[ARG1]]) : (tensor<i64>) -> tensor<1xi64>
+// CHECK: %[[MIN1:.+]] = "tfl.minimum"(%[[BITCAST1]], %[[MAX1]]) : (tensor<1xi64>, tensor<1xi64>) -> tensor<1xi64>
+// CHECK: %[[BITCAST2:.+]] = "tfl.bitcast"(%[[ARG2]]) : (tensor<i64>) -> tensor<1xi64>
+// CHECK: %[[MIN2:.+]] = "tfl.minimum"(%[[BITCAST2]], %[[MAX2]]) : (tensor<1xi64>, tensor<1xi64>) -> tensor<1xi64>
+// CHECK: %[[CONCAT:.+]] = "tfl.concatenation"(%[[MIN1]], %[[MIN2]]) {axis = 0 : i32, fused_activation_function = "NONE"} : (tensor<1xi64>, tensor<1xi64>) -> tensor<2xi64>
+// CHECK: %[[MAX:.+]] = "tfl.maximum"(%[[CONCAT]], %[[ZERO]]) : (tensor<2xi64>, tensor<1xi64>) -> tensor<2xi64>
+// CHECK: %[[SLICE:.+]] = "tfl.slice"(%[[ARG0]], %[[MAX]], %[[SLICE_SIZE]])
+// CHECK-SAME: (tensor<4x4x!quant.uniform<i8:f32, 3.000000e-01:-5>>, tensor<2xi64>, tensor<2xi64>) -> tensor<2x1x!quant.uniform<i8:f32, 3.000000e-01:-5>>
+
+// -----
+
+// Test that a float stablehlo.dynamic_slice is not converted to tfl.slice.
+
+func.func @float_dynamic_slice(%arg0: tensor<4x4xf32>, %arg1: tensor<i64>, %arg2: tensor<i64>) -> tensor<2x1xf32> {
+  %0 = "stablehlo.dynamic_slice"(%arg0, %arg1, %arg2) {
+    slice_sizes = array<i64: 2, 1>
+  } : (tensor<4x4xf32>, tensor<i64>, tensor<i64>) -> tensor<2x1xf32>
+  return %0 : tensor<2x1xf32>
+}
+
+// CHECK-LABEL: func @float_dynamic_slice
+// CHECK: stablehlo.dynamic_slice
+// CHECK-NOT: tfl.bitcast
+// CHECK-NOT: tfl.minimum
+// CHECK-NOT: tfl.maximum
+// CHECK-NOT: tfl.slice
