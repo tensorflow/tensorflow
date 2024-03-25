@@ -155,17 +155,6 @@ std::vector<StackFrame> GetStackTrace(const ::tsl::Status& status) {
 
 }  // namespace errors
 
-const absl::string_view kEmptyString = "";
-
-const char* NullTerminatedMessage(const Status& status) {
-  auto message = status.message();
-  if (message.empty()) {
-    return kEmptyString.data();
-  }
-  return message.data();
-}
-
-
 std::string* TfCheckOpHelperOutOfLine(const ::tsl::Status& v, const char* msg) {
   std::string r("Non-OK-status: ");
   r += msg;
