@@ -2628,7 +2628,7 @@ diff --ruN a/stablehlo/stablehlo/experimental/transforms/StablehloRefineShapes.c
 +    GreedyRewriteConfig config;
 +    config.useTopDownTraversal = true;
 +    config.enableRegionSimplification = true;
-+    config.maxIterations = 3;
++    config.maxIterations = 10;
 +    config.maxNumRewrites = GreedyRewriteConfig::kNoLimit;
 +    config.strictMode = GreedyRewriteStrictness::AnyOp;
 +
