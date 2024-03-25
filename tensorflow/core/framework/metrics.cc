@@ -341,7 +341,7 @@ auto* tf_data_error = tsl::monitoring::Counter<2>::New(
 
 auto* tf_data_framework_type = tsl::monitoring::Counter<1>::New(
     "/tensorflow/data/framework_type",
-    "The framework type used to build the tf.data.Dataset.", "framework_type");
+    "The framework type used to build the tf.data.Dataset.", "name");
 
 auto* parse_dense_feature_counter = tsl::monitoring::Counter<0>::New(
     "/tensorflow/data/dense_feature",
