@@ -19,6 +19,7 @@ limitations under the License.
 #include <string>
 
 #include "absl/container/btree_map.h"
+#include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
@@ -68,6 +69,7 @@ uint64_t HashCheckpointIndexFile(absl::string_view model_dir) {
   if (read_status.ok()) {
     return tensorflow::Fingerprint64(data);
   } else {
+    LOG(WARNING) << "Failed to read checkpoint file: " << read_status;
     return 0;
   }
 }
@@ -209,8 +211,7 @@ absl::StatusOr<FingerprintDef> ReadSavedModelFingerprint(
     absl::string_view export_dir) {
   const std::string fingerprint_pb_path =
       io::JoinPath(export_dir, kFingerprintFilenamePb);
-  absl::Status found_pb = Env::Default()->FileExists(fingerprint_pb_path);
-  if (!found_pb.ok()) return found_pb;
+  TF_RETURN_IF_ERROR(Env::Default()->FileExists(fingerprint_pb_path));
 
   FingerprintDef fingerprint_proto;
   absl::Status result =
