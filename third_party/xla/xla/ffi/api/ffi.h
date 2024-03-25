@@ -198,10 +198,10 @@ inline std::ostream& operator<<(std::ostream& os, const XLA_FFI_ArgType type) {
 
 template <>
 struct ArgDecoding<BufferBase> {
-  XLA_ATTRIBUTE_ALWAYS_INLINE
+  XLA_FFI_ATTRIBUTE_ALWAYS_INLINE
   static std::optional<BufferBase> Decode(XLA_FFI_ArgType type, void* arg,
                                           DiagnosticEngine& diagnostic) {
-    if (type != XLA_FFI_ArgType_BUFFER) {
+    if (XLA_FFI_PREDICT_FALSE(type != XLA_FFI_ArgType_BUFFER)) {
       return diagnostic.Emit("Wrong argument type: expected ")
              << XLA_FFI_ArgType_BUFFER << " but got " << type;
     }
@@ -213,10 +213,10 @@ struct ArgDecoding<BufferBase> {
 
 template <DataType dtype, size_t rank>
 struct ArgDecoding<Buffer<dtype, rank>> {
-  XLA_ATTRIBUTE_ALWAYS_INLINE
+  XLA_FFI_ATTRIBUTE_ALWAYS_INLINE
   static std::optional<Buffer<dtype, rank>> Decode(
       XLA_FFI_ArgType type, void* arg, DiagnosticEngine& diagnostic) {
-    if (type != XLA_FFI_ArgType_BUFFER) {
+    if (XLA_FFI_PREDICT_FALSE(type != XLA_FFI_ArgType_BUFFER)) {
       return diagnostic.Emit("Wrong argument type: expected ")
              << XLA_FFI_ArgType_BUFFER << " but got " << type;
     }
@@ -224,13 +224,13 @@ struct ArgDecoding<Buffer<dtype, rank>> {
     auto* buf = reinterpret_cast<XLA_FFI_Buffer*>(arg);
 
     if (auto actual_dtype = static_cast<DataType>(buf->dtype);
-        actual_dtype != dtype) {
+        XLA_FFI_PREDICT_FALSE(actual_dtype != dtype)) {
       return diagnostic.Emit("Wrong buffer dtype: expected ")
              << dtype << " but got " << actual_dtype;
     }
 
     if constexpr (rank != internal::kDynamicRank) {
-      if (buf->rank != rank) {
+      if (XLA_FFI_PREDICT_FALSE(buf->rank != rank)) {
         return diagnostic.Emit("Wrong buffer rank: expected ")
                << rank << " but got " << buf->rank;
       }
@@ -257,13 +257,15 @@ struct AttrDecoding<Pointer<T>> {
 
   static std::optional<Type> Decode(XLA_FFI_AttrType type, void* attr,
                                     DiagnosticEngine& diagnostic) {
-    if (type != XLA_FFI_AttrType_I64) {
+    auto* scalar = reinterpret_cast<XLA_FFI_Scalar*>(attr);
+    if (XLA_FFI_PREDICT_FALSE(type != XLA_FFI_AttrType_SCALAR ||
+                              scalar->dtype != XLA_FFI_DataType_S64)) {
       return diagnostic.Emit("Wrong attribute type: ")
-             << "expected i64 for passing user data but got " << type;
+             << "expected i64 scalar for passing pointer but got " << type;
     }
 
     static_assert(sizeof(uintptr_t) == sizeof(int64_t));
-    uintptr_t ptr = *reinterpret_cast<uintptr_t*>(attr);
+    uintptr_t ptr = *reinterpret_cast<uintptr_t*>(scalar->value);
     return reinterpret_cast<Type>(ptr);
   }
 };

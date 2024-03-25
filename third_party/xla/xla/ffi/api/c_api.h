@@ -192,11 +192,9 @@ typedef enum {
 //===----------------------------------------------------------------------===//
 
 typedef enum {
-  XLA_FFI_AttrType_I32 = 1,
-  XLA_FFI_AttrType_I64 = 2,
-  XLA_FFI_AttrType_F32 = 3,
-  XLA_FFI_AttrType_STRING = 4,
-  XLA_FFI_AttrType_DICTIONARY = 5,
+  XLA_FFI_AttrType_SCALAR = 1,
+  XLA_FFI_AttrType_STRING = 2,
+  XLA_FFI_AttrType_DICTIONARY = 3,
 } XLA_FFI_AttrType;
 
 //===----------------------------------------------------------------------===//
@@ -222,6 +220,17 @@ struct XLA_FFI_ByteSpan {
 };
 
 XLA_FFI_DEFINE_STRUCT_TRAITS(XLA_FFI_ByteSpan, len);
+
+// A struct to pass a scalar value to FFI handler.
+struct XLA_FFI_Scalar {
+  size_t struct_size;
+  void* priv;
+
+  XLA_FFI_DataType dtype;
+  void* value;
+};
+
+XLA_FFI_DEFINE_STRUCT_TRAITS(XLA_FFI_Scalar, value);
 
 struct XLA_FFI_Args {
   size_t struct_size;

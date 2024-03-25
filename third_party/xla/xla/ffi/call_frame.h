@@ -127,9 +127,10 @@ class CallFrame {
   struct Buffer;
   struct Dictionary;
   struct NamedAttribute;
+  struct Scalar;
   struct String;
 
-  using Attribute = std::variant<int32_t, int64_t, float, String, Dictionary>;
+  using Attribute = std::variant<Scalar, String, Dictionary>;
 
   CallFrame(absl::Span<const CallFrameBuilder::Buffer> args,
             const CallFrameBuilder::AttributesMap& attrs);

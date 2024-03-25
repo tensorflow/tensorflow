@@ -20,6 +20,7 @@ limitations under the License.
 #include <functional>
 #include <memory>
 #include <string>
+#include <type_traits>
 #include <utility>
 #include <variant>
 #include <vector>
@@ -123,6 +124,12 @@ struct CallFrame::Buffer {
 
 struct CallFrame::Dictionary {
   std::unique_ptr<Attributes> attrs;
+};
+
+struct CallFrame::Scalar {
+  std::variant<int32_t, int64_t, float> value;  // XLA_FFI_Scalar::value
+
+  XLA_FFI_Scalar scalar = {XLA_FFI_Scalar_STRUCT_SIZE, nullptr};
 };
 
 struct CallFrame::String {
@@ -260,7 +267,7 @@ CallFrame::~CallFrame() = default;
 struct CallFrame::ConvertAttribute {
   template <typename T>
   CallFrame::Attribute operator()(const T& value) {
-    return value;
+    return CallFrame::Scalar{value};
   }
 
   CallFrame::Attribute operator()(const std::string& str) {
@@ -272,25 +279,44 @@ struct CallFrame::ConvertAttribute {
   }
 };
 
+template <typename T>
+static XLA_FFI_DataType GetDataType() {
+  if constexpr (std::is_same_v<int32_t, T>) {
+    return XLA_FFI_DataType_S32;
+  } else if constexpr (std::is_same_v<int64_t, T>) {
+    return XLA_FFI_DataType_S64;
+  } else if constexpr (std::is_same_v<float, T>) {
+    return XLA_FFI_DataType_F32;
+  } else {
+    static_assert(sizeof(T) == 0, "unsupported FFI data type");
+  }
+}
+
 // An std::visit overload set to fix up CallFrame::Attribute storage and
 // initialize XLA FFI structs with valid pointers into storage objects.
 struct CallFrame::FixupAttribute {
-  template <typename T>
-  void operator()(T& value) {}
+  void operator()(CallFrame::Scalar& scalar) {
+    auto visitor = [&](auto& value) {
+      using T = std::remove_reference_t<decltype(value)>;
+      scalar.scalar.dtype = GetDataType<T>();
+      scalar.scalar.value = &value;
+    };
+    std::visit(visitor, scalar.value);
+  }
 
   void operator()(CallFrame::String& str) {
     str.span.ptr = str.value.data();
     str.span.len = str.value.size();
   }
+
+  void operator()(CallFrame::Dictionary&) {}
 };
 
 // An std::visit overload set to get CallFrame::Attribute XLA FFI type.
 struct CallFrame::AttributeType {
-  XLA_FFI_AttrType operator()(int32_t&) { return XLA_FFI_AttrType_I32; }
-
-  XLA_FFI_AttrType operator()(int64_t&) { return XLA_FFI_AttrType_I64; }
-
-  XLA_FFI_AttrType operator()(float&) { return XLA_FFI_AttrType_F32; }
+  XLA_FFI_AttrType operator()(CallFrame::Scalar&) {
+    return XLA_FFI_AttrType_SCALAR;
+  }
 
   XLA_FFI_AttrType operator()(CallFrame::String&) {
     return XLA_FFI_AttrType_STRING;
@@ -307,6 +333,8 @@ struct CallFrame::AttributeStorage {
   void* operator()(T& value) {
     return &value;
   }
+
+  void* operator()(CallFrame::Scalar& scalar) { return &scalar.scalar; }
 
   void* operator()(CallFrame::String& str) { return &str.span; }
 
