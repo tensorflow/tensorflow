@@ -519,7 +519,7 @@ absl::StatusOr<bool> CanEmitFusedDynamicUpdateSliceInPlaceForGpu(
     // be necessary for the shape to be the same for all the dynamic slice
     // updates. Note that this equality check purposefully ignores the element
     // type.
-    if (dus->operand(1)->shape() != update_shape) {
+    if (dus->update()->shape() != update_shape) {
       return false;
     }
 

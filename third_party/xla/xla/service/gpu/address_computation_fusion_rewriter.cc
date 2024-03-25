@@ -204,7 +204,7 @@ absl::InlinedVector<HloInstruction*, 8> GetSlicedChains(
             if (const auto slice_instr =
                     DynCast<HloDynamicUpdateSliceInstruction>(cur)) {
               if (IsAlignedSlice(slice_instr->shape(),
-                                 slice_instr->operand(1)->shape(), nullptr)) {
+                                 slice_instr->update()->shape(), nullptr)) {
                 dus_found = true;
                 replacement_map[instr] = cur;
                 return dus_found;
