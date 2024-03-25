@@ -178,10 +178,25 @@ def lit_test(
         visibility = ["//visibility:private"],
         **kwargs
     )
+    lit_name = "//third_party/py/lit:lit"
 
+    # copybara:comment_begin(oss-only)
+    lit_name = "lit_custom_" + name
+    native.py_binary(
+        name = lit_name,
+        main = "@llvm-project//llvm:utils/lit/lit.py",
+        srcs = ["@llvm-project//llvm:utils/lit/lit.py"],
+        testonly = True,
+        deps = [
+            "@llvm-project//llvm:lit_lib",
+            "@pypi_lit//:pkg",
+        ],
+    )
+
+    # copybara:comment_end
     native_test(
         name = name,
-        src = "@llvm-project//llvm:lit",
+        src = lit_name,
         args = [
             "-a",
             "--path",
@@ -189,14 +204,14 @@ def lit_test(
             "$(location {})".format(test_file),
         ] + args,
         data = [
-            "@llvm-project//llvm:lit",
+            lit_name,
             test_file,
 
             # TODO(cheshire): Config is not passed properly when it's not
             # called lit.cfg.py
             cfg,
             tools_on_path_target_name,
-        ] + data,
+        ] + data + ["@pypi_lit//:pkg"],
         visibility = visibility,
         env = env,
         timeout = timeout,
