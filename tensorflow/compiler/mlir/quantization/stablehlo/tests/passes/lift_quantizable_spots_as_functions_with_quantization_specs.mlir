@@ -21,10 +21,10 @@ func.func @main(%arg0: tensor<1x1x167xf32>) -> tensor<1x1x64xf32> {
 
 // Check that the `_quantization_method` attribute contains the quantization
 // method in textproto format. The dot_general op quantization is explicitly
-// disabled by having `_quantization_method = "no_quantization {}"`.
+// disabled by having `_quantization_method = "no_quantization { }"`.
 // DISABLE-ALL-DOT-GENERAL-SAME: _entry_function = @composite_dot_general_fn_1
 // DISABLE-ALL-DOT-GENERAL-SAME: _original_entry_function
-// DISABLE-ALL-DOT-GENERAL-SAME: _quantization_method = "no_quantization {}"
+// DISABLE-ALL-DOT-GENERAL-SAME: _quantization_method = "no_quantization { }"
 // DISABLE-ALL-DOT-GENERAL-SAME: _tfl_quant_trait = "fully_quantizable"
 
 // DISABLE-ALL-DOT-GENERAL: return %[[XLA_CALL_MODULE:.*]] : tensor<1x1x64xf32>
@@ -87,7 +87,7 @@ func.func @main(%arg0: tensor<1x1x167xf32>) -> tensor<1x1x64xf32> {
 // method in textproto format, enabling static-range PTQ.
 // STATIC-RANGE-PTQ-TO-ALL-SAME: _entry_function = @composite_dot_general_fn_1
 // STATIC-RANGE-PTQ-TO-ALL-SAME: _original_entry_function
-// STATIC-RANGE-PTQ-TO-ALL-SAME: _quantization_method = "static_range_ptq {}"
+// STATIC-RANGE-PTQ-TO-ALL-SAME: _quantization_method = "static_range_ptq { }"
 // STATIC-RANGE-PTQ-TO-ALL-SAME: _tfl_quant_trait = "fully_quantizable"
 
 // STATIC-RANGE-PTQ-TO-ALL: return %[[XLA_CALL_MODULE:.*]] : tensor<1x1x64xf32>

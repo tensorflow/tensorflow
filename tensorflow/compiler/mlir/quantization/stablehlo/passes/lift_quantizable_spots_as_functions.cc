@@ -18,6 +18,7 @@ limitations under the License.
 
 #include "absl/strings/str_replace.h"
 #include "llvm/ADT/STLExtras.h"
+#include "llvm/Support/Debug.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
@@ -74,6 +75,12 @@ bool FloatValueEquals(const Attribute& attr, const double value) {
   return llvm::all_of(fp_attr.getValues<APFloat>(), [value](const APFloat& f) {
     return f.isExactlyValue(value);
   });
+}
+
+inline void TrimTrailingWhitespaces(std::string& str) {
+  while (!str.empty() && str.back() == ' ') {
+    str.pop_back();
+  }
 }
 
 // Lifts quantizable units as separate functions, thereby identifying the
@@ -146,16 +153,22 @@ class FunctionNameMatcher {
   std::unique_ptr<RE2> match_regex_;  // NOLINT
 };
 
-// Converts `Method` to text proto representation. All newline characters are
-// removed.
+// Converts `Method` to a single-line textproto representation. Returns
+// `failure()` when converting to textproto failed.
 FailureOr<std::string> QuantizationMethodToTextProto(const Method& method) {
+  TextFormat::Printer printer;
+  printer.SetSingleLineMode(true);
+
   std::string method_txtpb;
-  if (!TextFormat::PrintToString(method, &method_txtpb)) {
+  if (!printer.PrintToString(method, &method_txtpb)) {
+    LLVM_DEBUG(llvm::dbgs() << "Failed to convert Method to textproto\n.");
     return failure();
   }
 
-  // Remove newlines.
-  absl::StrReplaceAll({{"\n", ""}}, &method_txtpb);
+  // Single line mode might have an extra space at the end, due to the internal
+  // details of `Printer`.
+  TrimTrailingWhitespaces(method_txtpb);
+
   return method_txtpb;
 }
 
