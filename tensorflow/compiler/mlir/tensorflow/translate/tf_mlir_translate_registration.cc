@@ -167,7 +167,6 @@ static LogicalResult MlirToGraphdefTranslateFunction(
     ModuleOp module, llvm::raw_ostream& output) {
   if (!module) return failure();
 
-  // TODO(fengliuai): Add exporter flags.
   tensorflow::GraphExportConfig confs;
   confs.export_entry_func_to_flib = export_entry_func_to_flib;
   confs.export_original_tf_func_name = export_original_tf_func_name;
