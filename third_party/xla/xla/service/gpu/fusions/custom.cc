@@ -286,15 +286,16 @@ absl::StatusOr<FusionEmissionResult> EmitDynamicSlicedGemm(
     return GetAllocationSlice(buffer_assignment, &fusion, index);
   };
 
-  int64_t out_byte_size = 0;
-  if (custom_call.shape().IsArray()) {
+  int64_t out_fake_byte_size = ShapeUtil::ByteSizeOf(
+      custom_call.shape().IsArray() ? custom_call.shape()
+                                    : custom_call.shape().tuple_shapes(0));
+  if (fusion.shape().IsArray()) {
     TF_ASSIGN_OR_RETURN(output,
                         get_original_result_slice(&custom_call, /*index=*/{}));
     collect_slice_info();
     // Collect slice info for std::nullopt workspace.
     slice_instr = nullptr;
     collect_slice_info();
-    out_byte_size = ShapeUtil::ByteSizeOf(custom_call.shape());
   } else {
     TF_ASSIGN_OR_RETURN(output,
                         get_original_result_slice(&custom_call, /*index=*/{0}));
@@ -305,7 +306,6 @@ absl::StatusOr<FusionEmissionResult> EmitDynamicSlicedGemm(
                                                       &fusion, /*index=*/{1}));
     slice_instr = nullptr;
     collect_slice_info();
-    out_byte_size = ShapeUtil::ByteSizeOf(custom_call.shape().tuple_shapes(0));
     slice_workspace_fake =
         BufferAllocation::Slice(workspace->allocation(), 0, workspace->size());
   }
@@ -338,7 +338,8 @@ absl::StatusOr<FusionEmissionResult> EmitDynamicSlicedGemm(
   BufferAllocation::Slice slice_rhs_fake(rhs_slice.allocation(), 0,
                                          rhs_byte_size);
 
-  BufferAllocation::Slice slice_out_fake(output.allocation(), 0, out_byte_size);
+  BufferAllocation::Slice slice_out_fake(output.allocation(), 0,
+                                         out_fake_byte_size);
   ThunkSequence seq;
   seq.emplace_back(std::make_unique<GemmThunk>(
       Thunk::ThunkInfo::WithProfileAnnotation(&custom_call), std::move(config),

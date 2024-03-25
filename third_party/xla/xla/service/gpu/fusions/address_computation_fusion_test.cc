@@ -2124,6 +2124,92 @@ TEST_F(AddressComputationFusionTest, CublasGemmDUSWithWorkspace) {
                                       /*run_hlo_passes=*/false));
 }
 
+TEST_F(AddressComputationFusionTest, CublasGemmDUSWorkspaceIgnored) {
+  ErrorSpec error_spec{/*aabs=*/1e-3, /*arel=*/1e-3};
+
+  const char* hlo_ref = R"(
+  HloModule jit_slice
+
+  ENTRY %main.9 {
+    %p0 = f16[8,8]{1,0} parameter(0)
+    %p1 = f16[8,8]{1,0} parameter(1)
+    %p2 = f16[4,8,8]{2,1,0} parameter(2)
+    %c1_s32 = s32[] constant(1)
+    %c0_s32 = s32[] constant(0)
+
+    %custom-call.1 = (f16[8,8]{1,0}, s8[256]{0}) custom-call(%p0, %p1),
+      custom_call_target="__cublas$gemm",
+      backend_config={"gemm_backend_config":{
+        "alpha_real":1,
+        "beta":0,
+        "dot_dimension_numbers":{
+          "lhs_contracting_dimensions":["1"],
+          "rhs_contracting_dimensions":["0"],
+          "lhs_batch_dimensions":[],
+          "rhs_batch_dimensions":[]
+        },
+        "alpha_imag":0,
+        "precision_config":{"operand_precision":["DEFAULT","DEFAULT"]},
+        "epilogue":"DEFAULT",
+        "lhs_stride":"64",
+        "rhs_stride":"64",
+        "grad_x":false,
+        "grad_y":false
+      }}
+    %get-tuple-element.0 = f16[8,8]{1,0} get-tuple-element(%custom-call.1), index=0
+    %bitcast.43 = f16[1,8,8]{2,1,0} bitcast(%get-tuple-element.0)
+    ROOT %dus = f16[4,8,8]{2,1,0} dynamic-update-slice(%p2, %bitcast.43, %c1_s32, %c0_s32, %c0_s32)
+  })";
+
+  const char* hlo_opt = R"(
+  HloModule jit_slice
+
+  %fused_computation {
+    %p0 = f16[8,8]{1,0} parameter(0)
+    %p1 = f16[8,8]{1,0} parameter(1)
+    %p2 = f16[4,8,8]{2,1,0} parameter(2)
+    %c1_s32 = s32[] parameter(3)
+    %c0_s32 = s32[] parameter(4)
+
+    %custom-call.1 = (f16[8,8]{1,0}, s8[256]{0}) custom-call(%p0, %p1),
+      custom_call_target="__cublas$gemm",
+      backend_config={"gemm_backend_config":{
+        "alpha_real":1,
+        "beta":0,
+        "dot_dimension_numbers":{
+          "lhs_contracting_dimensions":["1"],
+          "rhs_contracting_dimensions":["0"],
+          "lhs_batch_dimensions":[],
+          "rhs_batch_dimensions":[]
+        },
+        "alpha_imag":0,
+        "precision_config":{"operand_precision":["DEFAULT","DEFAULT"]},
+        "epilogue":"DEFAULT",
+        "lhs_stride":"64",
+        "rhs_stride":"64",
+        "grad_x":false,
+        "grad_y":false
+      }}
+    %get-tuple-element.0 = f16[8,8]{1,0} get-tuple-element(%custom-call.1), index=0
+    %bitcast.43 = f16[1,8,8]{2,1,0} bitcast(%get-tuple-element.0)
+    ROOT %dus = f16[4,8,8]{2,1,0} dynamic-update-slice(%p2, %bitcast.43, %c1_s32, %c0_s32, %c0_s32)
+  }
+
+  ENTRY %main.9 {
+    %p0 = f16[8,8]{1,0} parameter(0)
+    %p1 = f16[8,8]{1,0} parameter(1)
+    %p2 = f16[4,8,8]{2,1,0} parameter(2)
+    %c1_s32 = s32[] constant(1)
+    %c0_s32 = s32[] constant(0)
+    ROOT %fusion.2 = f16[4,8,8]{2,1,0} fusion(%p0, %p1, %p2, %c1_s32, %c0_s32), kind=kCustom, calls=%fused_computation,
+        backend_config={"fusion_backend_config":{"kind":"__custom_fusion","custom_fusion_config":{"name":"dynamic_address_computation"}}}
+  })";
+
+  EXPECT_TRUE(RunAndCompareTwoModules(hlo_ref, hlo_opt, GetRefModuleConfig(),
+                                      GetOptModuleConfig(), error_spec,
+                                      /*run_hlo_passes=*/false));
+}
+
 }  // namespace
 }  // namespace gpu
 }  // namespace xla
