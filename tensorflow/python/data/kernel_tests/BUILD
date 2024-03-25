@@ -681,11 +681,15 @@ tf_py_strict_test(
 
 tf_py_strict_test(
     name = "list_files_test",
-    size = "small",
+    size = "medium",
     srcs = ["list_files_test.py"],
+    shard_count = 4,
     deps = [
+        ":checkpoint_test_base",
         ":test_base",
+        "//tensorflow/python/data/experimental/ops:global_shuffle_op",
         "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/data/ops:options",
         "//tensorflow/python/framework:combinations",
         "//tensorflow/python/framework:errors",
         "//tensorflow/python/platform:client_testlib",

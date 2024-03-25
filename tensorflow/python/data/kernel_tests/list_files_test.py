@@ -17,11 +17,15 @@
 from os import path
 import shutil
 import tempfile
+from typing import Callable, Optional
 
 from absl.testing import parameterized
 
+from tensorflow.python.data.experimental.ops import global_shuffle_op
+from tensorflow.python.data.kernel_tests import checkpoint_test_base
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.data.ops import options as options_lib
 from tensorflow.python.framework import combinations
 from tensorflow.python.framework import errors
 from tensorflow.python.platform import test
@@ -227,6 +231,97 @@ class ListFilesTest(test_base.DatasetTestBase, parameterized.TestCase):
             compat.as_bytes(path.join(self.tmp_dir, filename))
             for filename in filenames[:-1]
         ],
+        assert_items_equal=True)
+
+
+class ListFilesGlobalShuffleTest(ListFilesTest, parameterized.TestCase):
+
+  @combinations.generate(
+      combinations.times(
+          test_base.default_test_combinations(),
+          combinations.combine(
+              repetitions=[1, 2],
+              seed=[None, 42],
+              reshuffle_each_iteration=[True, False])))
+  def test(
+      self,
+      repetitions: int,
+      seed: Optional[int],
+      reshuffle_each_iteration: bool):
+    filenames = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k']
+    self._touchTempFiles(filenames)
+    dataset = dataset_ops.Dataset.list_files(path.join(self.tmp_dir, '*'),
+                                             shuffle=False)
+    dataset = dataset.prefetch(buffer_size=dataset_ops.AUTOTUNE)
+    if repetitions > 1:
+      dataset = dataset.repeat(repetitions)
+    dataset = global_shuffle_op._global_shuffle(
+        dataset, seed=seed, reshuffle_each_iteration=reshuffle_each_iteration)
+
+    expected = [
+        compat.as_bytes(path.join(self.tmp_dir, filename))
+        for filename in filenames
+    ] * repetitions
+    dataset_output = self.getDatasetOutput(
+        dataset, requires_initialization=True)
+    self.assertCountEqual(dataset_output, expected)
+    self.assertNotEqual(dataset_output, expected)
+    self.assertLen(dataset_output, self.evaluate(dataset.cardinality()))
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testShuffleNotSupported(self):
+    filenames = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k']
+    self._touchTempFiles(filenames)
+    dataset = dataset_ops.Dataset.list_files(
+        path.join(self.tmp_dir, '*'), shuffle=True)
+    with self.assertRaises(errors.FailedPreconditionError):
+      dataset = global_shuffle_op._global_shuffle(dataset)
+      self.getDatasetOutput(dataset, requires_initialization=True)
+
+
+class ListFilesGlobalShuffleCheckpointTest(
+    ListFilesTest,
+    checkpoint_test_base.CheckpointTestBase,
+    parameterized.TestCase):
+
+  @combinations.generate(
+      combinations.times(
+          test_base.default_test_combinations(),
+          checkpoint_test_base.default_test_combinations(),
+          combinations.combine(
+              repetitions=[1, 2],
+              reshuffle_each_iteration=[True, False],
+              symbolic_checkpoint=[True, False])))
+  def test(
+      self,
+      verify_fn: Callable[..., None],
+      repetitions: int,
+      reshuffle_each_iteration: bool,
+      symbolic_checkpoint: bool):
+    filenames = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k']
+    self._touchTempFiles(filenames)
+
+    def _build_dataset() -> dataset_ops.Dataset:
+      dataset = dataset_ops.Dataset.list_files(path.join(self.tmp_dir, '*'),
+                                               shuffle=False)
+      # TODO(b/325112575): Swapping the order of `repeat` and `prefetch` causes
+      # `warm_start` to be turned on which causes the wrong iterator context to
+      # be passed to the prefetch thread. Investigate this.
+      if repetitions > 1:
+        dataset = dataset.repeat(repetitions)
+      dataset = dataset.prefetch(buffer_size=dataset_ops.AUTOTUNE)
+      dataset = global_shuffle_op._global_shuffle(
+          dataset, seed=42, reshuffle_each_iteration=reshuffle_each_iteration)
+      options = options_lib.Options()
+      options.experimental_symbolic_checkpoint = symbolic_checkpoint
+      options.experimental_warm_start = False
+      options.experimental_optimization.apply_default_optimizations = False
+      return dataset.with_options(options)
+
+    verify_fn(
+        self,
+        _build_dataset,
+        num_outputs=len(filenames) * repetitions,
         assert_items_equal=True)
 
 
