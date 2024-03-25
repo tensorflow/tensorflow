@@ -48,7 +48,8 @@ class AddressComputationThunk : public Thunk {
       std::vector<std::optional<std::vector<BufferAllocation::Slice>>>
           offset_buffer_indices,
       std::vector<std::optional<const Shape>> orig_shapes,
-      std::vector<std::optional<const Shape>> sliced_shapes);
+      std::vector<std::optional<const Shape>> sliced_shapes,
+      std::vector<std::optional<uint64_t>> offset_byte_sizes);
 
   AddressComputationThunk(const AddressComputationThunk&) = delete;
   AddressComputationThunk& operator=(const AddressComputationThunk&) = delete;
@@ -66,6 +67,7 @@ class AddressComputationThunk : public Thunk {
       offset_buffer_indices_;
   std::vector<std::optional<const Shape>> orig_shapes_;
   std::vector<std::optional<const Shape>> sliced_shapes_;
+  std::vector<std::optional<uint64_t>> offset_byte_sizes_;
 
   // Pinned host memory for transferring offset values from device to host.
   absl::Mutex mutex_;

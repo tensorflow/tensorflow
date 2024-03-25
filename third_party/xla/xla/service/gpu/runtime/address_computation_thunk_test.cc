@@ -134,7 +134,8 @@ TEST(AddressComputationThunkTest, SlicedGemm) {
       {ShapeUtil::MakeShape(PrimitiveType::F32, {2, 4}), std::nullopt,
        std::nullopt, std::nullopt},
       {ShapeUtil::MakeShape(PrimitiveType::F32, {1, 3}), std::nullopt,
-       std::nullopt, std::nullopt});
+       std::nullopt, std::nullopt},
+      {sizeof(int64_t), std::nullopt, std::nullopt, std::nullopt});
 
   // Step 2:
   // Execute address computation thunk.
@@ -279,7 +280,8 @@ TEST(AddressComputationThunkTest, SlicedNonContiguousGemm) {
        std::nullopt},
       {ShapeUtil::MakeShape(PrimitiveType::F32, {2, 2}),
        ShapeUtil::MakeShape(PrimitiveType::F32, {2, 2}), std::nullopt,
-       std::nullopt});
+       std::nullopt},
+      {sizeof(int64_t), sizeof(int64_t), std::nullopt, std::nullopt});
 
   // Step 2:
   // Execute address computation thunk.
@@ -428,7 +430,8 @@ TEST(AddressComputationThunkTest, MulipleSlicedOperandsGemm) {
        std::nullopt},
       {ShapeUtil::MakeShape(PrimitiveType::F32, {1, 3}),
        ShapeUtil::MakeShape(PrimitiveType::F32, {3, 1}), std::nullopt,
-       std::nullopt});
+       std::nullopt},
+      {sizeof(int64_t), sizeof(int64_t), std::nullopt, std::nullopt});
 
   // Step 2:
   // Execute address computation thunk.
@@ -590,7 +593,8 @@ TEST(AddressComputationThunkTest, SlicedMemcpy) {
       {ShapeUtil::MakeShape(PrimitiveType::S32, {8, 8, 10, 8}), std::nullopt},
       // Make sure to pass a dst shape with the same rank as src shape (i.e.
       // original slice result and not bitcasted one)
-      {ShapeUtil::MakeShape(PrimitiveType::S32, {1, 1, 8, 8}), std::nullopt});
+      {ShapeUtil::MakeShape(PrimitiveType::S32, {1, 1, 8, 8}), std::nullopt},
+      {sizeof(int64_t), std::nullopt});
 
   // Step 2:
   // Execute address computation thunk.
@@ -748,7 +752,8 @@ TEST(AddressComputationThunkTest, SlicedOutputMemcpy) {
       // Make sure to pass a dst shape with the same rank as src shape (i.e.
       // original slice result and not bitcasted one)
       {ShapeUtil::MakeShape(PrimitiveType::S32, {1, 1, 2, 2}),
-       ShapeUtil::MakeShape(PrimitiveType::S32, {1, 1, 2, 2})});
+       ShapeUtil::MakeShape(PrimitiveType::S32, {1, 1, 2, 2})},
+      {sizeof(int64_t), sizeof(int64_t)});
 
   // Step 2:
   // Execute address computation thunk.
@@ -895,7 +900,8 @@ TEST(AddressComputationThunkTest, SlicedGemmArbitraryArgumentOrder) {
       {ShapeUtil::MakeShape(PrimitiveType::F32, {2, 4}), std::nullopt,
        std::nullopt, std::nullopt},
       {ShapeUtil::MakeShape(PrimitiveType::F32, {1, 3}), std::nullopt,
-       std::nullopt, std::nullopt});
+       std::nullopt, std::nullopt},
+      {sizeof(int64_t), std::nullopt, std::nullopt, std::nullopt});
 
   // Step 2:
   // Execute address computation thunk.
@@ -1022,7 +1028,8 @@ TEST(AddressComputationThunkTest, SlicedGemmArbitraryNumberOfArguments) {
       {ShapeUtil::MakeShape(PrimitiveType::F32, {2, 4}), std::nullopt,
        std::nullopt, std::nullopt},
       {ShapeUtil::MakeShape(PrimitiveType::F32, {1, 3}), std::nullopt,
-       std::nullopt, std::nullopt});
+       std::nullopt, std::nullopt},
+      {sizeof(int64_t), std::nullopt, std::nullopt, std::nullopt});
 
   // Step 2:
   // Execute address computation thunk.
@@ -1150,7 +1157,8 @@ TEST(AddressComputationThunkTest, SlicedTupledOperandGemm) {
       {ShapeUtil::MakeShape(PrimitiveType::F32, {2, 4}), std::nullopt,
        std::nullopt, std::nullopt},
       {ShapeUtil::MakeShape(PrimitiveType::F32, {1, 3}), std::nullopt,
-       std::nullopt, std::nullopt});
+       std::nullopt, std::nullopt},
+      {sizeof(int64_t), std::nullopt, std::nullopt, std::nullopt});
 
   // Step 2:
   // Execute address computation thunk.

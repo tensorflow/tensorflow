@@ -193,6 +193,7 @@ absl::StatusOr<FusionEmissionResult> EmitDynamicSlicedGemm(
       offset_buffer_indices;
   std::vector<std::optional<const Shape>> orig_shapes;
   std::vector<std::optional<const Shape>> sliced_shapes;
+  std::vector<std::optional<uint64_t>> offset_byte_sizes;
 
   HloDynamicIndexInstruction* slice_instr = nullptr;
   auto get_original_operand_slice =
@@ -226,6 +227,7 @@ absl::StatusOr<FusionEmissionResult> EmitDynamicSlicedGemm(
       offset_buffer_indices.push_back(std::nullopt);
       orig_shapes.push_back(std::nullopt);
       sliced_shapes.push_back(std::nullopt);
+      offset_byte_sizes.push_back(std::nullopt);
       return;
     }
 
@@ -243,6 +245,8 @@ absl::StatusOr<FusionEmissionResult> EmitDynamicSlicedGemm(
     sliced_shapes.push_back(DynCast<HloDynamicSliceInstruction>(slice_instr)
                                 ? slice_instr->shape()
                                 : slice_instr->operand(1)->shape());
+    offset_byte_sizes.push_back(ShapeUtil::ByteSizeOfPrimitiveType(
+        slice_instr->index_operands().front()->shape().element_type()));
   };
 
   TF_ASSIGN_OR_RETURN(
@@ -352,7 +356,7 @@ absl::StatusOr<FusionEmissionResult> EmitDynamicSlicedGemm(
   auto thunk = std::make_unique<AddressComputationThunk>(
       Thunk::ThunkInfo::WithProfileAnnotation(&custom_call),
       std::make_unique<ThunkSequence>(std::move(seq)), arguments,
-      offset_buffer_indices, orig_shapes, sliced_shapes);
+      offset_buffer_indices, orig_shapes, sliced_shapes, offset_byte_sizes);
 
   FusionEmissionResult result;
   result.thunks.push_back(std::move(thunk));
