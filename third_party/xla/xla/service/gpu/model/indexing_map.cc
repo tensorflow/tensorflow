@@ -1015,8 +1015,6 @@ bool IsFunctionOfUnusedDimsAndSymbolsOnly(
 
 void IndexingMap::RemoveUnusedSymbols() {
   if (IsUndefined()) return;
-  // TODO(b/329052892): Implement composition with RT vars.
-  if (GetRTVarsCount()) return;
 
   // Remove unused symbols from the affine_map.
   unsigned num_symbols_before = affine_map_.getNumSymbols();
@@ -1059,18 +1057,25 @@ void IndexingMap::RemoveUnusedSymbols() {
   if (num_symbols_after == num_symbols_before) return;
 
   std::vector<RangeVar> compressed_range_vars;
+  std::vector<RTVar> compressed_rt_vars;
   MLIRContext* mlir_context = GetMLIRContext();
   int64_t used_symbols_count = 0;
   std::vector<AffineExpr> symbol_replacements(
       num_symbols_before, getAffineConstantExpr(0, mlir_context));
+  auto range_vars_count = range_vars_.size();
   for (int i = 0; i < unused_symbols_bit_vector.size(); ++i) {
     if (!unused_symbols_bit_vector[i]) {
-      compressed_range_vars.push_back(range_vars_[i]);
+      if (i < range_vars_count) {
+        compressed_range_vars.push_back(range_vars_[i]);
+      } else {
+        compressed_rt_vars.push_back(rt_vars_[i - range_vars_count]);
+      }
       symbol_replacements[i] =
           getAffineSymbolExpr(used_symbols_count++, mlir_context);
     }
   }
   range_vars_ = std::move(compressed_range_vars);
+  rt_vars_ = std::move(compressed_rt_vars);
   std::vector<AffineExpr> to_remove;
   std::vector<std::pair<AffineExpr, Interval>> to_add;
   for (const auto& [expr, range] : constraints_) {
