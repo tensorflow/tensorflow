@@ -216,6 +216,7 @@ CallFrame::~CallFrame() = default;
   auto to_data_type = [](PrimitiveType primitive_type) {
     switch (primitive_type) {
       case PrimitiveType::PRIMITIVE_TYPE_INVALID:
+      case PrimitiveType::PRED:
       case PrimitiveType::S8:
       case PrimitiveType::S16:
       case PrimitiveType::S32:
