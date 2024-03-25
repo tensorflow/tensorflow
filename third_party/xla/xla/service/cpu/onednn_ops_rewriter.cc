@@ -407,10 +407,30 @@ class OneDnnOpsRewriterVisitor : public DfsHloRewriteVisitor {
     if (!found_ln) return OkStatus();
 
     const Shape& src_shape = src->shape();
+    auto scale_type = scale->shape().element_type();
+    auto bias_type = bias->shape().element_type();
+    HloInstruction* scale_operand = scale;
+    HloInstruction* bias_operand = bias;
+
+    // oneDNN requires scale and shift float32
+    if ((scale_type == PrimitiveType::BF16) ||
+        (scale_type == PrimitiveType::F16)) {
+      scale_operand = instr->AddInstruction(HloInstruction::CreateConvert(
+          ShapeUtil::ChangeElementType(scale->shape(), PrimitiveType::F32),
+          scale));
+    }
+
+    if ((bias_type == PrimitiveType::BF16) ||
+        (bias_type == PrimitiveType::F16)) {
+      bias_operand = instr->AddInstruction(HloInstruction::CreateConvert(
+          ShapeUtil::ChangeElementType(bias->shape(), PrimitiveType::F32),
+          bias));
+    }
 
     HloInstruction* ln_call =
         instr->AddInstruction(HloInstruction::CreateCustomCall(
-            src_shape, {src, scale, bias}, "__onednn$layernorm"));
+            src_shape, {src, scale_operand, bias_operand},
+            "__onednn$layernorm"));
     BackendConfig backend_config;
     OneDnnLayerNormConfig* ln_config =
         backend_config.mutable_onednn_layer_norm_config();
