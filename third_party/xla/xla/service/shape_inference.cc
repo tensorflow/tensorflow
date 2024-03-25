@@ -1532,8 +1532,13 @@ ShapeInference::InferScalarBroadcastShape(absl::Span<const Shape> shapes) {
     }
   }
 
+  std::vector<bool> dynamic_dimensions(arg_shape->dimensions_size());
+  for (int i = 0; i < arg_shape->dimensions_size(); ++i) {
+    dynamic_dimensions[i] = arg_shape->is_dynamic_dimension(i);
+  }
+
   return ShapeUtil::MakeShape(output_shape.element_type(),
-                              arg_shape->dimensions());
+                              arg_shape->dimensions(), dynamic_dimensions);
 }
 
 /* static */ absl::StatusOr<Shape> ShapeInference::InferBatchNormTrainingShape(

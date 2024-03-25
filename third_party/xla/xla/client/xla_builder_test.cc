@@ -2167,6 +2167,36 @@ TEST(XlaBuilderTest, UnboundedGather) {
               GmockMatch(m::Op().WithShapeEqualTo(&expected)));
 }
 
+TEST(XlaBuilderTest, UnboundedMap) {
+  XlaBuilder b(TestName());
+  TF_ASSERT_OK_AND_ASSIGN(Shape operand0, ParseShape("f32[2, ?, ?]"));
+  TF_ASSERT_OK_AND_ASSIGN(Shape operand1, ParseShape("f32[?, 3, ?]"));
+  TF_ASSERT_OK_AND_ASSIGN(Shape expected, ParseShape("f32[2, ?, ?]"));
+  std::array<const XlaOp, 2> operands = {
+      Parameter(&b, 0, operand0, "operand0"),
+      Parameter(&b, 1, operand1, "operand1")};
+
+  XlaComputation computation;
+  {
+    const std::unique_ptr<XlaBuilder> sub_builder = b.CreateSubBuilder("add");
+    const XlaOp arg0 = Parameter(sub_builder.get(), 0,
+                                 ShapeUtil::MakeScalarShape(F32), "arg0");
+    const XlaOp arg1 = Parameter(sub_builder.get(), 1,
+                                 ShapeUtil::MakeScalarShape(F32), "arg1");
+    Add(arg0, arg1);
+    TF_ASSERT_OK_AND_ASSIGN(computation, sub_builder->Build());
+  }
+
+  std::array<const int64_t, 3> dimensions = {0, 1, 2};
+  std::array<const XlaOp, 0> static_operands = {};
+
+  Map(&b, operands, computation, dimensions, static_operands);
+
+  TF_ASSERT_OK_AND_ASSIGN(const auto module, BuildHloModule(b));
+  EXPECT_THAT(GetRoot(*module),
+              GmockMatch(m::Op().WithShapeEqualTo(&expected)));
+}
+
 TEST(XlaBuilderTest, UnboundedOr) {
   XlaBuilder b(TestName());
   TF_ASSERT_OK_AND_ASSIGN(const Shape lhs,
@@ -2227,6 +2257,19 @@ TEST(XlaBuilderTest, UnboundedReduce) {
        Parameter(&b, 2, input2, "input2")},
       {init, init, init}, sum, {1});
   TF_ASSERT_OK_AND_ASSIGN(auto module, BuildHloModule(b));
+  EXPECT_THAT(GetRoot(*module),
+              GmockMatch(m::Op().WithShapeEqualTo(&expected)));
+}
+
+TEST(XlaBuilderTest, UnboundedReducePrecision) {
+  XlaBuilder b(TestName());
+  TF_ASSERT_OK_AND_ASSIGN(const Shape operand, ParseShape("f32[?, 10]"));
+  int exponent_bits = 2;
+  int mantissa_bits = 2;
+  TF_ASSERT_OK_AND_ASSIGN(const Shape expected, ParseShape("f32[?, 10]"));
+  ReducePrecision(Parameter(&b, 0, operand, "operand"), exponent_bits,
+                  mantissa_bits);
+  TF_ASSERT_OK_AND_ASSIGN(const auto module, BuildHloModule(b));
   EXPECT_THAT(GetRoot(*module),
               GmockMatch(m::Op().WithShapeEqualTo(&expected)));
 }
@@ -2442,6 +2485,7 @@ INSTANTIATE_TEST_SUITE_P(UnboundedDynamism, XlaBuilderUnboundedUnaryOpTest,
                               {"f32[?]", "f32[?]", &Log1p},
                               {"f32[?]", "f32[?]", &Logistic},
                               {"f32[?]", "f32[?]", &Neg},
+                              {"s32[?]", "s32[?]", &Not},
                               {"u32[?]", "u32[?]", &PopulationCount},
                               {"f32[?]", "f32[?]", &Real},
                               {"f32[?]", "f32[?]", &Round},
@@ -2475,6 +2519,11 @@ INSTANTIATE_TEST_SUITE_P(
          "f32[?, 10]", &Max},
         {"f32[1, ?, 2, ?, <=2, ?, ?]", "f32[?, 1, ?, 2, ?, <=2, ?]",
          /*broadcast_dimensions=*/empty_array, "f32[?, ?, 2, 2, <=2, <=2, ?]",
+         &Min},
+        {"f32[?, 10]", "f32[1]", /*broadcast_dimensions=*/zero_array,
+         "f32[?, 10]", &Min},
+        {"f32[1, ?, 2, ?, <=2, ?, ?]", "f32[?, 1, ?, 2, ?, <=2, ?]",
+         /*broadcast_dimensions=*/empty_array, "f32[?, ?, 2, 2, <=2, <=2, ?]",
          &Mul},
         {"f32[?, 10]", "f32[1]", /*broadcast_dimensions=*/zero_array,
          "f32[?, 10]", &Mul},
@@ -2485,6 +2534,11 @@ INSTANTIATE_TEST_SUITE_P(
          &Pow},
         {"f32[?, 10]", "f32[1]", /*broadcast_dimensions=*/zero_array,
          "f32[?, 10]", &Pow},
+        {"f32[1, ?, 2, ?, <=2, ?, ?]", "f32[?, 1, ?, 2, ?, <=2, ?]",
+         /*broadcast_dimensions=*/empty_array, "f32[?, ?, 2, 2, <=2, <=2, ?]",
+         &Rem},
+        {"f32[?, 10]", "f32[1]", /*broadcast_dimensions=*/zero_array,
+         "f32[?, 10]", &Rem},
         {"f32[1, ?, 2, ?, <=2, ?, ?]", "f32[?, 1, ?, 2, ?, <=2, ?]",
          /*broadcast_dimensions=*/empty_array, "f32[?, ?, 2, 2, <=2, <=2, ?]",
          &Sub},
