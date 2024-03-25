@@ -28,7 +28,9 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
+#include "llvm/Support/raw_ostream.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
+#include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Block.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
@@ -37,10 +39,12 @@ limitations under the License.
 #include "mlir/IR/BuiltinTypeInterfaces.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Location.h"  // from @llvm-project
+#include "mlir/IR/OperationSupport.h"  // from @llvm-project
 #include "mlir/IR/SymbolTable.h"  // from @llvm-project
 #include "mlir/IR/TypeUtilities.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
+#include "mlir/IR/ValueRange.h"  // from @llvm-project
 #include "mlir/IR/Verifier.h"  // from @llvm-project
 #include "mlir/Parser/Parser.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
@@ -57,6 +61,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/utils/dump_mlir_util.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
 #include "xla/client/xla_computation.h"
+#include "xla/mlir/utils/type_util.h"
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 #include "xla/mlir_hlo/mhlo/transforms/passes.h"
 #include "xla/python/refine_polymorphic_shapes.h"
@@ -105,6 +110,9 @@ bool IsShapeAssertionsCheckDisabled(
 constexpr llvm::StringRef kUsesShapePolymorphismAttr =
     "jax.uses_shape_polymorphism";
 
+constexpr llvm::StringRef kCustomCallShimTarget =
+    "stablehlo.shape_refinement_operand_wrapper";
+
 }  // namespace
 
 bool IsTokenType(mlir::Type type) {
@@ -112,11 +120,13 @@ bool IsTokenType(mlir::Type type) {
          type.isa<mlir::mhlo::TokenType>();
 }
 
-tsl::StatusOr<std::unique_ptr<XlaCallModuleLoader>> XlaCallModuleLoader::Create(
-    mlir::MLIRContext *context, int version, std::string module_str,
-    std::vector<std::string> disabled_checks,
-    std::vector<std::string> platforms, int num_invocation_args,
-    bool main_has_token_input_output) {
+absl::StatusOr<std::unique_ptr<XlaCallModuleLoader>>
+XlaCallModuleLoader::Create(mlir::MLIRContext *context, int version,
+                            std::string module_str,
+                            std::vector<std::string> disabled_checks,
+                            std::vector<std::string> platforms,
+                            int num_invocation_args,
+                            bool main_has_token_input_output) {
   std::unique_ptr<XlaCallModuleLoader> loader(new XlaCallModuleLoader);
   TF_RETURN_IF_ERROR(loader->LoadModule(
       context, version, std::move(module_str), std::move(disabled_checks),
@@ -186,6 +196,24 @@ absl::Status XlaCallModuleLoader::SetPlatformIndex(
   return tsl::OkStatus();
 }
 
+static mlir::stablehlo::CustomCallOp MakeShapeRefinementOperandWrapper(
+    mlir::OpBuilder op_builder, mlir::Value operand,
+    llvm::ArrayRef<int64_t> shape) {
+  auto constant = op_builder.create<mlir::stablehlo::ConstantOp>(
+      operand.getLoc(), op_builder.getI64TensorAttr(shape));
+  return op_builder.create<mlir::stablehlo::CustomCallOp>(
+      operand.getLoc(), operand.getType(), mlir::ValueRange{operand, constant},
+      llvm::SmallVector<mlir::NamedAttribute>{
+          op_builder.getNamedAttr(
+              "call_target_name",
+              op_builder.getStringAttr(kCustomCallShimTarget)),
+          op_builder.getNamedAttr("indices_of_shape_operands",
+                                  op_builder.getI64TensorAttr({1})),
+          op_builder.getNamedAttr("has_side_effect",
+                                  op_builder.getBoolAttr(false)),
+      });
+}
+
 absl::Status XlaCallModuleLoader::RefineDynamicShapes(
     llvm::ArrayRef<xla::Shape> input_shapes) {
   // Skip shape refinement for new versions if USES_SHAPE_POLYMORPHISM_ATTR=1
@@ -240,6 +268,7 @@ absl::Status XlaCallModuleLoader::RefineDynamicShapes(
         ")"));
   }
 
+  // Derive static input types to use for main.
   mlir::Block &main_body = main_.front();
   mlir::Builder builder(module_->getContext());
   std::vector<mlir::Type> static_array_input_types(nr_inputs);
@@ -261,7 +290,7 @@ absl::Status XlaCallModuleLoader::RefineDynamicShapes(
                                           xla_shape.dimensions().end());
       TF_ASSIGN_OR_RETURN(
           mlir::Type element_type,
-          ConvertPrimitiveTypeToMLIRType(xla_shape.element_type(), builder));
+          ConvertPrimitiveTypeToMlirType(xla_shape.element_type(), builder));
       mlir::RankedTensorType type =
           mlir::RankedTensorType::get(xla_dimensions, element_type);
       // TODO(burmako): This fails with an obscure compilation error on Windows.
@@ -301,39 +330,73 @@ absl::Status XlaCallModuleLoader::RefineDynamicShapes(
     }
   }
 
-  // Refine 'main' argument types to use static input types instead. The main
-  // arguments may occur as return values, or as inputs to called functions,
-  // and changing their types may invalidate the module. To prevent this
-  // we insert dummy conversion ops as the sole uses of the main arguments, for
-  // the arguments that are not tokens and have dynamic shape.
-  // If we use stablehlo.convert, we end up with "convert 3xf32 -> *xf32"
-  // after we set the static shapes for the main arguments. The "convert"
-  // op does not support unranked result for ranked inputs. So, we use
-  // "bitcast_convert", which is more flexible in the relationship between
-  // the input and the result.
+  // Insert custom_call ops as shims to maintain the validity of the module when
+  // main's input types are changed later. This is a workaround to allow shape
+  // refinement to be applied; the custom_calls are removed before returning.
+  // Arguments to main may occur as return values, or as inputs to called
+  // functions, and changing their types may invalidate the module due to type
+  // mismatches. To prevent this, for each argument that is a dynamically-shaped
+  // tensor, we insert a custom_call op that takes the argument as an input and
+  // replace uses of the argument with the custom_call's result. custom_call
+  // is used as it allows its inputs and outputs to be unranked.
+  //
+  // Example:
+  //
+  // The below main function returns its argument directly:
+  //
+  // func.func @main(%arg0: tensor<*xf32>) -> tensor<*xf32> {
+  //   return %arg0 : tensor<*xf32>
+  // }
+  //
+  // Changing the argument's type invalidates the IR (type mismatch):
+  //
+  // func.func @main(%arg0: tensor<2x3xf32>) -> tensor<*xf32> {
+  //   return %arg0 : tensor<*xf32>
+  // }
+  //
+  // Inserting a custom_call allows the IR to remain valid:
+  //
+  // func.func @main(%arg0: tensor<2x3xf32>) -> tensor<*xf32> {
+  //   %0 = stablehlo.constant dense<[2, 3]> : tensor<2xi64>
+  //   %1 = stablehlo.custom_call
+  //   @stablehlo.shape_refinement_operand_wrapper(%arg0, %0)
+  //   {indices_of_shape_operands = dense<1> : tensor<1xi64>} :
+  //   (tensor<2x3xf32>, tensor<2xi64>) -> tensor<*xf32>
+  //   return %1 : tensor<*xf32>
+  // }
+  //
+  // After shapes are refined and the custom_calls are removed, we get:
+  //
+  // func.func @main(%arg0: tensor<2x3xf32>) -> tensor<2x3xf32> {
+  //   return %arg0 : tensor<2x3xf32>
+  // }
+  //
   mlir::OpBuilder op_builder(module_->getBodyRegion());
   op_builder.setInsertionPointToStart(&main_body);
   for (auto i = 0; i < main_body.getNumArguments(); ++i) {
     mlir::BlockArgument arg = main_body.getArgument(i);
     mlir::Type arg_type = arg.getType();
-    if (IsTokenType(arg_type)) {
+    bool is_input_refined = arg_type == static_array_input_types[i];
+    if (IsTokenType(arg_type) || is_input_refined) {
       continue;
     }
     auto ranked_arg_type = arg_type.dyn_cast<mlir::RankedTensorType>();
     if (!ranked_arg_type || !ranked_arg_type.hasStaticShape()) {
-      auto convert_op = op_builder.create<mlir::stablehlo::BitcastConvertOp>(
-          arg.getLoc(), arg_type, arg);
-      arg.replaceAllUsesExcept(convert_op, convert_op);
+      auto type = static_array_input_types[i].cast<mlir::RankedTensorType>();
+      auto custom_call =
+          MakeShapeRefinementOperandWrapper(op_builder, arg, type.getShape());
+      auto call_result = custom_call.getResult(0);
+      arg.replaceAllUsesExcept(call_result, custom_call);
     }
   }
 
-  auto static_array_output_types = llvm::to_vector(main_.getResultTypes());
+  // Actually update main's input types.
   for (auto i = 0; i < main_body.getNumArguments(); ++i) {
     auto arg = main_body.getArgument(i);
     arg.setType(static_array_input_types[i]);
   }
   main_.setType(builder.getFunctionType(static_array_input_types,
-                                        static_array_output_types));
+                                        main_.getResultTypes()));
   if (VLOG_IS_ON(5)) {
     DumpMlirOpToFile("xla_call_module.after_refined_input_types", *module_);
   }
@@ -343,9 +406,30 @@ absl::Status XlaCallModuleLoader::RefineDynamicShapes(
   TF_RETURN_IF_ERROR(
       xla::RefinePolymorphicShapes(*module_, enable_shape_assertions));
 
+  // Clean up custom_call shims.
+  for (auto call : llvm::make_early_inc_range(
+           main_body.getOps<mlir::stablehlo::CustomCallOp>())) {
+    if (call->getAttr("call_target_name").cast<mlir::StringAttr>().strref() ==
+        kCustomCallShimTarget) {
+      auto operand = call->getOperand(0);
+      auto result = call->getResult(0);
+      if (operand.getType() != result.getType()) {
+        std::string s;
+        llvm::raw_string_ostream os(s);
+        os << "custom_call shim shape refinement failed, input type does not "
+              "match output type: "
+           << operand.getType() << " != " << result.getType();
+        return absl::InvalidArgumentError(os.str());
+      }
+      call->getResult(0).replaceAllUsesExcept(call->getOperand(0), call);
+      call.erase();
+    }
+  }
+
   if (VLOG_IS_ON(3)) {
     DumpMlirOpToFile("xla_call_module.after_shape_refinement", *module_);
   }
+
   return tsl::OkStatus();
 }
 
@@ -499,7 +583,7 @@ absl::Status XlaCallModuleLoader::LowerModuleToMhlo() {
   return absl::OkStatus();
 }
 
-tsl::StatusOr<xla::XlaComputation> XlaCallModuleLoader::ToXlaComputation() {
+absl::StatusOr<xla::XlaComputation> XlaCallModuleLoader::ToXlaComputation() {
   xla::HloProto proto;
   mlir::MlirToHloConversionOptions options;
   TF_RETURN_IF_ERROR(

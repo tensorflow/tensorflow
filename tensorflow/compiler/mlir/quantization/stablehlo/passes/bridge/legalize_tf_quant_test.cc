@@ -26,6 +26,7 @@ limitations under the License.
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/platform_manager.h"
 #include "tensorflow/core/framework/tensor_shape.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/protobuf/config.pb.h"
 #include "tensorflow/core/protobuf/tpu/compile_metadata.pb.h"
 #include "tensorflow/core/tpu/kernels/tpu_compile_op_support.h"
@@ -39,7 +40,8 @@ using ::testing::Test;
 class LegalizeTFQuantTest : public Test {
  protected:
   void TestBridgeLowering(llvm::StringRef mlir_module_string,
-                          llvm::ArrayRef<tensorflow::TensorShape> arg_shapes) {
+                          llvm::ArrayRef<tensorflow::TensorShape> arg_shapes,
+                          tensorflow::DataType dtype) {
     tensorflow::tpu::MlirToHloArgs mlir_to_hlo_args;
     mlir_to_hlo_args.rollout_state =
         tensorflow::ConfigProto::Experimental::MLIR_BRIDGE_ROLLOUT_UNSPECIFIED;
@@ -49,6 +51,15 @@ class LegalizeTFQuantTest : public Test {
     auto client =
         xla::ClientLibrary::GetOrCreateCompileOnlyClient(platform).value();
     tensorflow::tpu::TPUCompileMetadataProto metadata_proto;
+    // Set up an arg per arg_shape with the specified type.
+    for (int i = 0; i < arg_shapes.size(); ++i) {
+      auto metadata_arg = metadata_proto.add_args();
+      metadata_arg->set_kind(
+          tensorflow::tpu::TPUCompileMetadataProto::Arg::PARAMETER);
+      metadata_arg->set_dtype(dtype);
+    }
+    // Set up one dummy retval.
+    metadata_proto.add_retvals();
     bool use_tuple_args = true;
     std::vector<tensorflow::tpu::ShardingAndIndex> arg_core_mapping;
     std::vector<std::vector<xla::Shape>> per_core_arg_shapes;
@@ -82,7 +93,7 @@ TEST_F(LegalizeTFQuantTest, LegalizesModuleWithTFUniformQuantization) {
 
   std::vector<tensorflow::TensorShape> arg_shapes = {{1}};
 
-  TestBridgeLowering(mlir_module_string, arg_shapes);
+  TestBridgeLowering(mlir_module_string, arg_shapes, tensorflow::DT_FLOAT);
 }
 
 TEST_F(LegalizeTFQuantTest, LegalizesModuleWithDequantize) {
@@ -97,7 +108,7 @@ TEST_F(LegalizeTFQuantTest, LegalizesModuleWithDequantize) {
   })mlir";
   std::vector<tensorflow::TensorShape> arg_shapes = {{1}};
 
-  TestBridgeLowering(mlir_module_string, arg_shapes);
+  TestBridgeLowering(mlir_module_string, arg_shapes, tensorflow::DT_QINT8);
 }
 
 TEST_F(LegalizeTFQuantTest, LegalizesModuleWithClipByValue) {
@@ -131,7 +142,7 @@ TEST_F(LegalizeTFQuantTest, LegalizesModuleWithClipByValue) {
   })mlir";
   std::vector<tensorflow::TensorShape> arg_shapes = {{2, 2}};
 
-  TestBridgeLowering(mlir_module_string, arg_shapes);
+  TestBridgeLowering(mlir_module_string, arg_shapes, tensorflow::DT_FLOAT);
 }
 
 }  // namespace

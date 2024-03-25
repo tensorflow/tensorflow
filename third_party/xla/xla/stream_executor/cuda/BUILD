@@ -1,5 +1,4 @@
 load("@bazel_skylib//rules:common_settings.bzl", "bool_flag")
-load("@local_config_cuda//cuda:build_defs.bzl", "cuda_library", "if_cuda")
 load(
     "//xla:xla.bzl",
     "xla_cc_test",
@@ -36,20 +35,6 @@ package(
 package_group(
     name = "friends",
     packages = stream_executor_friends(),
-)
-
-# Add `--//third_party/tensorflow/compiler/xla/stream_executor/cuda:enable_graph_conditional` to
-# build command to enable CUDA graph conditional nodes support. Requires CUDA >=12.3.
-#
-# See: https://docs.nvidia.com/cuda/cuda-c-programming-guide/index.html#conditional-graph-nodes
-bool_flag(
-    name = "enable_graph_conditional",
-    build_setting_default = False,
-)
-
-config_setting(
-    name = "graph_conditional_enabled",
-    flag_values = {":enable_graph_conditional": "True"},
 )
 
 bool_flag(
@@ -140,13 +125,14 @@ cuda_only_cc_library(
     name = "cuda_driver",
     srcs = ["cuda_driver.cc"],
     hdrs = ["cuda_driver.h"],
-    local_defines = ["GOOGLE_CUDA=1"],
     deps = [
+        ":cuda_diagnostics",  # buildcleaner: keep
         "//xla/stream_executor",
-        "//xla/stream_executor:device_options",
         "//xla/stream_executor/gpu:gpu_diagnostics_header",
         "//xla/stream_executor/gpu:gpu_driver_header",
         "//xla/stream_executor/gpu:gpu_types_header",
+        "//xla/tsl/cuda",
+        "//xla/tsl/cuda:cudart",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:inlined_vector",
@@ -161,8 +147,6 @@ cuda_only_cc_library(
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/types:span",
         "@local_config_cuda//cuda:cuda_headers",
-        "@local_tsl//tsl/cuda",
-        "@local_tsl//tsl/cuda:cudart",
         "@local_tsl//tsl/platform:env",
         "@local_tsl//tsl/platform:logging",
         "@local_tsl//tsl/platform:macros",
@@ -207,53 +191,17 @@ cuda_only_cc_library(
 )
 
 xla_cc_test(
-    name = "stream_search_test",
-    size = "small",
-    srcs = ["stream_search_test.cc"],
-    local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]),
-    tags = tf_cuda_tests_tags(),
-    deps = [
-        ":cuda_platform",
-        "//xla/stream_executor",
-        "//xla/stream_executor/host:host_platform",
-        "@com_google_absl//absl/status:statusor",
-        "@local_tsl//tsl/platform:test",
-        "@local_tsl//tsl/platform:test_main",
-    ],
-)
-
-xla_cc_test(
     name = "cuda_driver_test",
     srcs = ["cuda_driver_test.cc"],
-    local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]),
     tags = tf_cuda_tests_tags() + [
-        "no_cuda_asan",  # TODO(b/171512140): re-enable.
         "no_rocm",
+        "requires-gpu-nvidia",
     ],
     deps = [
         ":cuda_driver",
         "//xla/stream_executor/gpu:gpu_driver_header",
         "@com_google_absl//absl/log",
         "@local_config_cuda//cuda:cuda_headers",
-        "@local_tsl//tsl/platform:test",
-        "@local_tsl//tsl/platform:test_main",
-    ],
-)
-
-xla_cc_test(
-    name = "memcpy_test",
-    srcs = ["memcpy_test.cc"],
-    local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]),
-    tags = tf_cuda_tests_tags() + [
-        "no_cuda_asan",  # TODO(b/171512140): re-enable.
-    ],
-    deps = [
-        ":cuda_platform",
-        "//xla/stream_executor",
-        "//xla/stream_executor:device_memory",
-        "//xla/stream_executor:platform_manager",
-        "@com_google_absl//absl/memory",
-        "@local_tsl//tsl/platform:statusor",
         "@local_tsl//tsl/platform:test",
         "@local_tsl//tsl/platform:test_main",
     ],
@@ -324,6 +272,7 @@ cuda_only_cc_library(
         "//xla:status_macros",
         "//xla:types",
         "//xla:util",
+        "//xla:xla_data_proto_cc",
         "//xla/stream_executor",
         "//xla/stream_executor:device_memory",
         "//xla/stream_executor:host_or_device_scalar",
@@ -336,6 +285,8 @@ cuda_only_cc_library(
         "//xla/stream_executor/gpu:gpu_timer",
         "//xla/stream_executor/gpu:gpu_types_header",
         "//xla/stream_executor/platform",
+        "//xla/tsl/cuda:cublas",
+        "//xla/tsl/cuda:cublas_lt",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
@@ -346,8 +297,6 @@ cuda_only_cc_library(
         "@com_google_absl//absl/time",
         "@eigen_archive//:eigen3",
         "@local_config_cuda//cuda:cuda_headers",
-        "@local_tsl//tsl/cuda:cublas",
-        "@local_tsl//tsl/cuda:cublas_lt",
         "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:logging",
         "@local_tsl//tsl/platform:ml_dtypes",
@@ -367,11 +316,11 @@ cuda_only_cc_library(
     hdrs = ["cuda_blas_utils.h"],
     deps = [
         "//xla/stream_executor",
+        "//xla/tsl/cuda:cublas",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@local_config_cuda//cuda:cuda_headers",
-        "@local_tsl//tsl/cuda:cublas",
         "@local_tsl//tsl/platform:errors",
     ],
 )
@@ -392,11 +341,11 @@ cuda_only_cc_library(
         "//xla/stream_executor/gpu:gpu_helpers_header",
         "//xla/stream_executor/gpu:gpu_stream_header",
         "//xla/stream_executor/platform",
+        "//xla/tsl/cuda:cufft",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@local_config_cuda//cuda:cuda_headers",
-        "@local_tsl//tsl/cuda:cufft",
         "@local_tsl//tsl/platform:logging",
         "@local_tsl//tsl/platform:statusor",
     ],
@@ -434,6 +383,7 @@ cuda_only_cc_library(
         ":cuda_executor",
         ":cuda_platform_id",
         ":cuda_stream",
+        ":cudnn_frontend_helpers",
         "//xla/stream_executor",
         "//xla/stream_executor:dnn",
         "//xla/stream_executor:plugin_registry",
@@ -445,6 +395,7 @@ cuda_only_cc_library(
         "//xla/stream_executor/gpu:gpu_stream",
         "//xla/stream_executor/gpu:gpu_timer_header",
         "//xla/stream_executor/platform",
+        "//xla/tsl/cuda:cudnn",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:flat_hash_map",
@@ -462,7 +413,6 @@ cuda_only_cc_library(
         "@eigen_archive//:eigen3",
         "@local_config_cuda//cuda:cuda_headers",
         "@local_config_cuda//cuda:cudnn_header",
-        "@local_tsl//tsl/cuda:cudnn",
         "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:logging",
         "@local_tsl//tsl/platform:status",
@@ -492,20 +442,9 @@ cuda_only_cc_library(
     ],
 )
 
-cuda_library(
+cc_library(
     name = "cuda_conditional_kernels",
-    srcs = if_cuda(
-        ["cuda_conditional_kernels.cu.cc"],
-        ["cuda_conditional_kernels.cc"],
-    ),
-    local_defines = select({
-        ":graph_conditional_enabled": ["STREAM_EXECUTOR_CUDA_ENABLE_GRAPH_CONDITIONAL=1"],
-        "//conditions:default": [],
-    }),
-    deps = [
-        "@com_google_absl//absl/log",
-        "@local_config_cuda//cuda:cuda_headers",
-    ],
+    srcs = ["cuda_conditional_kernels.cc"],
 )
 
 # TODO(leary) we likely need to canonicalize/eliminate this.
@@ -542,30 +481,88 @@ cuda_only_cc_library(
     ],
 )
 
-cc_library(name = "libnvptxcompiler_empty")
-
-# This intermediate target is needed because we can't nest `select` statements.
-alias(
-    name = "libnvptxcompiler_if_enabled",
-    actual = select({
-        ":libnvptxcompiler_support_enabled": "@local_config_cuda//cuda:nvptxcompiler",
-        "//conditions:default": ":libnvptxcompiler_empty",
+cc_library(
+    name = "ptx_compiler_support",
+    srcs = ["ptx_compiler_support.cc"],
+    hdrs = ["ptx_compiler_support.h"],
+    local_defines = select({
+        ":libnvptxcompiler_support_enabled": [
+            "LIBNVPTXCOMPILER_SUPPORT=true",
+        ],
+        "//conditions:default": [
+            "LIBNVPTXCOMPILER_SUPPORT=false",
+        ],
     }),
+)
+
+cc_library(
+    name = "ptx_compiler_stub",
+    srcs = [
+        "ptx_compiler_stub.cc",
+    ],
+    deps = [
+        "//xla/stream_executor/gpu:gpu_asm_opts",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+    ],
+)
+
+cc_library(
+    name = "ptx_compiler_impl",
+    srcs = [
+        "ptx_compiler_impl.cc",
+    ],
     tags = ["manual"],
+    deps = [
+        "//xla/stream_executor/gpu:gpu_asm_opts",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/cleanup",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
+        "@local_config_cuda//cuda:cuda_headers",
+        "@local_config_cuda//cuda:nvptxcompiler",
+    ],
+)
+
+cc_library(
+    name = "ptx_compiler",
+    hdrs = ["ptx_compiler.h"],
+    deps = select({
+        ":libnvptxcompiler_support_enabled": [":ptx_compiler_impl"],
+        "//conditions:default": [":ptx_compiler_stub"],
+    }) + [
+        "//xla/stream_executor/gpu:gpu_asm_opts",
+        "@com_google_absl//absl/status:statusor",
+    ],
+)
+
+xla_cc_test(
+    name = "ptx_compiler_test",
+    srcs = ["ptx_compiler_test.cc"],
+    tags = tf_cuda_tests_tags(),
+    deps = [
+        ":ptx_compiler",
+        ":ptx_compiler_support",
+        "//xla/stream_executor:device_description",
+        "//xla/stream_executor/gpu:gpu_asm_opts",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_googletest//:gtest",
+        "@local_tsl//tsl/platform:status_matchers",
+        "@local_tsl//tsl/platform:test",
+        "@local_tsl//tsl/platform:test_main",
+    ],
 )
 
 cuda_only_cc_library(
     name = "cuda_asm_compiler",
     srcs = ["cuda_asm_compiler.cc"],
     copts = tf_additional_gpu_compilation_copts(),
-    local_defines = select({
-        ":libnvptxcompiler_support_enabled": [
-            "ENABLE_LIBNVPTXCOMPILER_SUPPORT=1",
-        ],
-        "//conditions:default": [],
-    }),
     deps = [
-        ":libnvptxcompiler_if_enabled",
         "//xla:status_macros",
         "//xla/stream_executor:stream_executor_headers",
         "//xla/stream_executor/gpu:asm_compiler_header",
@@ -613,6 +610,7 @@ cuda_only_cc_library(
         "//xla/stream_executor/gpu:gpu_stream_header",
         "//xla/stream_executor/gpu:gpu_timer",
         "//xla/stream_executor/gpu:gpu_types_header",
+        "//xla/stream_executor/integrations:device_mem_allocator",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/functional:any_invocable",
         "@com_google_absl//absl/log:check",
@@ -643,9 +641,9 @@ cc_library(
         ":cuda_platform",
         ":cudnn_plugin",
         ":cufft_plugin",
-        "@local_tsl//tsl/cuda:cusolver",
-        "@local_tsl//tsl/cuda:cusparse",
-        "@local_tsl//tsl/cuda:tensorrt_rpath",
+        "//xla/tsl/cuda:cusolver",
+        "//xla/tsl/cuda:cusparse",
+        "//xla/tsl/cuda:tensorrt_rpath",
     ],
     alwayslink = 1,
 )
@@ -671,10 +669,20 @@ cc_library(
             ],
         }),
         [
-            "@local_tsl//tsl/cuda:cudart",
+            "//xla/tsl/cuda:cudart",
         ] + select({
             "@local_tsl//tsl:macos": ["IOKit"],
             "//conditions:default": [],
         }),
     ),
+)
+
+cc_library(
+    name = "cudnn_frontend_helpers",
+    srcs = ["cudnn_frontend_helpers.cc"],
+    hdrs = ["cudnn_frontend_helpers.h"],
+)
+
+cc_library(
+    name = "cuda_nvptxcompiler",
 )

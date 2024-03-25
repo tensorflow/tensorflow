@@ -25,28 +25,59 @@ limitations under the License.
 #include <sstream>
 #include <string_view>
 #include <tuple>
+#include <type_traits>
 #include <utility>
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/base/const_init.h"
+#include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
+#include "absl/synchronization/mutex.h"
 #include "absl/time/time.h"
 #include "absl/types/span.h"
+#include "Eigen/Core"  // from @eigen_archive
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/layout.h"
 #include "xla/layout_util.h"
+#include "xla/primitive_util.h"
+#include "xla/service/gpu/cublas_cudnn.h"
+#include "xla/service/gpu/launch_dimensions.h"
+#include "xla/service/hlo_module_config.h"
+#include "xla/shape_util.h"
+#include "xla/stream_executor/data_type.h"
+#include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/dnn.h"
 #include "xla/stream_executor/kernel.h"
 #include "xla/stream_executor/kernel_spec.h"
 #include "xla/stream_executor/launch_dim.h"
+#include "xla/stream_executor/platform.h"
+#include "xla/stream_executor/stream.h"
 #include "xla/util.h"
-#include "tsl/platform/errors.h"
+#include "tsl/platform/ml_dtypes.h"
+#include "tsl/platform/status.h"
 #include "tsl/platform/statusor.h"
 #include "tsl/util/env_var.h"
 #include "tsl/util/proto/proto_utils.h"
 
 namespace xla {
 namespace gpu {
+
+se::dnn::VersionInfo GetDnnVersionInfo(
+    stream_executor::StreamExecutor* stream_exec,
+    se::dnn::VersionInfo fallback_version) {
+  if (!stream_exec) {
+    return fallback_version;
+  }
+  stream_executor::dnn::DnnSupport* dnn = stream_exec->AsDnn();
+  if (!dnn) {
+    return fallback_version;
+  }
+  return dnn->GetVersion().value_or(fallback_version);
+}
 
 namespace {
 
@@ -333,8 +364,7 @@ absl::StatusOr<std::unique_ptr<se::Kernel>> CreateKernel(
   loader_spec.AddCudaPtxInMemory(ptx, kernel_name);
 
   if (!cubin_data.empty()) {
-    loader_spec.AddCudaCubinInMemory(
-        reinterpret_cast<const char*>(cubin_data.data()), kernel_name);
+    loader_spec.AddCudaCubinInMemory(cubin_data, kernel_name);
   }
 
   TF_ASSIGN_OR_RETURN(std::unique_ptr<se::Kernel> kernel,
@@ -431,8 +461,8 @@ static void InitializeTypedBuffer(se::Stream* stream,
     int64_t elements_copied =
         std::min<int64_t>(host_buffer->size() - host_index, elements_left);
     se::DeviceMemoryBase mem(current_addr, elements_copied * sizeof(T));
-    stream->ThenMemcpy(&mem, host_buffer->data() + host_index,
-                       elements_copied * sizeof(T));
+    TF_CHECK_OK(stream->Memcpy(&mem, host_buffer->data() + host_index,
+                               elements_copied * sizeof(T)));
     current_addr += elements_copied * sizeof(T);
     elements_left -= elements_copied;
     host_index += elements_copied;

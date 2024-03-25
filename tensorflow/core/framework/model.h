@@ -520,7 +520,7 @@ class Node {
   virtual double ComputeSelfTime() const;
 
   // Returns the parameter value if it exists, not ok status otherwise.
-  StatusOr<double> ParameterValue(const std::string& parameter_name) const
+  absl::StatusOr<double> ParameterValue(const std::string& parameter_name) const
       TF_LOCKS_EXCLUDED(mu_) {
     tf_shared_lock l(mu_);
     if (parameters_.contains(parameter_name)) {

@@ -44,6 +44,11 @@ CreateTfRestoreSplittingPass();
 std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
 CreateTfRestoreMergingPass();
 
+// Creates a pass that lower `tf.RestoreVariableOp` to
+// `tf.IfrtRestoreVariableOp`.
+std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
+CreateLowerToIfrtRestoreVariablePass();
+
 #define GEN_PASS_REGISTRATION
 #include "tensorflow/compiler/mlir/tfrt/transforms/ifrt/passes.h.inc"  // IWYU pragma: keep
 

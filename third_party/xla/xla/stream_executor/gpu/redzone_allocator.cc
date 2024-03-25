@@ -15,26 +15,35 @@ limitations under the License.
 
 #include "xla/stream_executor/gpu/redzone_allocator.h"
 
+#include <algorithm>
 #include <array>
 #include <cstdint>
+#include <cstring>
 #include <memory>
+#include <string>
+#include <utility>
 
 #include "absl/base/call_once.h"
 #include "absl/container/fixed_array.h"
+#include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
-#include "absl/types/optional.h"
+#include "absl/strings/string_view.h"
+#include "absl/types/span.h"
 #include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/device_memory_allocator.h"
 #include "xla/stream_executor/gpu/asm_compiler.h"
 #include "xla/stream_executor/gpu/gpu_asm_opts.h"
 #include "xla/stream_executor/kernel.h"
-#include "xla/stream_executor/kernel_spec.h"
+#include "xla/stream_executor/launch_dim.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "tsl/framework/allocator.h"
 #include "tsl/lib/math/math_util.h"
 #include "tsl/platform/errors.h"
+#include "tsl/platform/statusor.h"
 
 namespace stream_executor {
 
@@ -95,7 +104,7 @@ absl::StatusOr<DeviceMemory<uint8_t>> RedzoneAllocator::AllocateBytes(
   // Split up the RHS redzone into two pieces:
   //  - 0 to kRhsRedzoneAlign bytes adjacent to the user buffer, followed by
   //  - redzone_size_ bytes.
-  // We do this because Stream::ThenMemset32 requires the buffer address and
+  // We do this because Stream::Memset32 requires the buffer address and
   // size to be aligned to 4 bytes.
   DeviceMemory<uint8_t> rhs_redzone_slop =
       allocated_buffer_memory.GetSlice(redzone_size_ + byte_size, rhs_slop);
@@ -107,11 +116,13 @@ absl::StatusOr<DeviceMemory<uint8_t>> RedzoneAllocator::AllocateBytes(
                            redzone_pattern_};
   uint32_t pattern32;
   std::memcpy(&pattern32, pattern_arr, sizeof(pattern32));
-  stream_->ThenMemset32(&lhs_redzone, pattern32, redzone_size_);
+  TF_RETURN_IF_ERROR(stream_->Memset32(&lhs_redzone, pattern32, redzone_size_));
   if (rhs_slop != 0) {
-    stream_->ThenMemcpy(&rhs_redzone_slop, &pattern32, rhs_slop);
+    TF_RETURN_IF_ERROR(
+        stream_->Memcpy(&rhs_redzone_slop, &pattern32, rhs_slop));
   }
-  stream_->ThenMemset32(&rhs_redzone_nonslop, pattern32, redzone_size_);
+  TF_RETURN_IF_ERROR(
+      stream_->Memset32(&rhs_redzone_nonslop, pattern32, redzone_size_));
 
   allocated_buffers_.emplace_back(std::move(allocated_buffer), byte_size);
   return data_chunk;
@@ -186,8 +197,8 @@ static absl::StatusOr<RedzoneCheckStatus> CheckRedzoneHost(
     absl::string_view name, Stream* stream, uint8_t redzone_pattern) {
   uint64_t size = redzone.size();
   auto redzone_data = std::make_unique<uint8_t[]>(size);
-  TF_RETURN_IF_ERROR(stream->ThenMemcpy(redzone_data.get(), redzone, size)
-                         .BlockHostUntilDone());
+  TF_RETURN_IF_ERROR(stream->Memcpy(redzone_data.get(), redzone, size));
+  TF_RETURN_IF_ERROR(stream->BlockHostUntilDone());
 
   std::array<uint8_t, sizeof(uint64_t)> pattern_arr;
   pattern_arr.fill(redzone_pattern);
@@ -246,7 +257,8 @@ static absl::Status ReinitializeRedzone(Stream* stream,
                                         uint8_t redzone_pattern) {
   absl::FixedArray<uint8_t> redzone_array(redzone.size());
   redzone_array.fill(redzone_pattern);
-  stream->ThenMemcpy(&redzone, redzone_array.data(), redzone.size());
+  TF_RETURN_IF_ERROR(
+      stream->Memcpy(&redzone, redzone_array.data(), redzone.size()));
   TF_RETURN_IF_ERROR(stream->BlockHostUntilDone());
   return absl::OkStatus();
 }
@@ -281,7 +293,7 @@ static absl::StatusOr<RedzoneCheckStatus> CheckRedzonesForBuffer(
                                        out_param, comparison_kernel));
   int64_t result;
   CHECK_EQ(out_param.size(), sizeof(result));
-  stream->ThenMemcpy(&result, out_param, sizeof(result));
+  TF_RETURN_IF_ERROR(stream->Memcpy(&result, out_param, sizeof(result)));
   TF_RETURN_IF_ERROR(stream->BlockHostUntilDone());
 
   if (result != 0) {
@@ -333,15 +345,15 @@ absl::StatusOr<RedzoneCheckStatus> RedzoneAllocator::CheckRedzones() const {
 #elif TENSORFLOW_USE_ROCM
   TF_ASSIGN_OR_RETURN(
       ComparisonKernelT loaded_kernel,
-      (executor->CreateTypedKernel<DeviceMemory<uint8>, uint8, uint64_t,
-                                   DeviceMemory<uint64_t>>("redzone_checker",
-                                                           kernel_symbol())));
+      (TypedKernel<DeviceMemory<uint8>, uint8, uint64_t,
+                   DeviceMemory<uint64_t>>::Create(executor, "redzone_checker",
+                                                   kernel_symbol())));
   // CUDA side returns a pointer => hence get a pointer to the loaded kernel
   auto* kernel_ptr = &loaded_kernel;
 #endif  // GOOGLE_CUDA
 
   auto out_param = executor->AllocateOwnedScalar<uint64_t>();
-  stream_->ThenMemZero(out_param.ptr(), sizeof(uint64_t));
+  TF_RETURN_IF_ERROR(stream_->MemZero(out_param.ptr(), sizeof(uint64_t)));
 
   for (const auto& buf_and_size : allocated_buffers_) {
     TF_ASSIGN_OR_RETURN(

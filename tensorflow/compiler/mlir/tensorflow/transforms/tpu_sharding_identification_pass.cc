@@ -406,7 +406,7 @@ absl::Status DetermineShardingFromAlias(
 // used, we might see a Cast op.
 //
 // TODO(hongjunchoi): Add logic to parse XlaSharding op inside control flow (If,
-// Case, While) ops and Caller argument values.
+// Case) ops and Caller argument values.
 // TODO(hongjunchoi): Consider explicitly checking op patterns to detect sharded
 // inputs.
 std::optional<StringRef> GetXlaShardingFromRetval(
@@ -463,6 +463,17 @@ std::optional<StringRef> GetXlaShardingFromRetval(
       value_to_visit = func.front().getTerminator()->getOperand(
           value_to_visit.cast<OpResult>().getResultNumber());
       values_to_visit.push_back(value_to_visit);
+      continue;
+    }
+
+    if (auto while_op = llvm::dyn_cast<TF::WhileRegionOp>(def)) {
+      if (auto op_result = value_to_visit.cast<OpResult>()) {
+        int result_idx = op_result.getResultNumber();
+        if (auto yield_op = llvm::dyn_cast<TF::YieldOp>(
+                while_op.getBody().front().getTerminator())) {
+          values_to_visit.push_back(yield_op.getOperand(result_idx));
+        }
+      }
       continue;
     }
   }

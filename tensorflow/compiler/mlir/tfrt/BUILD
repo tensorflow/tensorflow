@@ -236,15 +236,17 @@ cc_library(
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_op_interfaces",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_ops",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_types",
+        "//tensorflow/compiler/mlir/tensorflow/ir/host_runtime:tensorflow_tfrt_ops",
         "//tensorflow/compiler/mlir/tensorflow/transforms:tensorflow_passes",
         "//tensorflow/compiler/mlir/tensorflow/transforms:tf_saved_model_asset_sinking_pass",
-        "//tensorflow/compiler/mlir/tensorflow/transforms/host_runtime:lower_cluster_to_runtime_ops",
         "//tensorflow/compiler/mlir/tfrt/ir:tfrt_fallback_async_opdefs",
         "//tensorflow/compiler/mlir/tfrt/ir:tfrt_fallback_opdefs",
         "//tensorflow/compiler/mlir/tfrt/ir:tfrt_gpu_opdefs",
         "//tensorflow/compiler/tf2xla:tf2xla_defs",
         "//tensorflow/core:framework",
         "//tensorflow/core/platform:status",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:string_view",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:FuncExtensions",
@@ -525,26 +527,6 @@ tf_cc_binary(
     name = "tf-tfrt-opt",
     testonly = True,
     deps = [":tf_tfrt_opt_lib"],
-)
-
-tf_cc_binary(
-    name = "lhlo-tfrt-opt",
-    srcs = ["lhlo-tfrt-opt.cc"],
-    tags = ["gpu"],
-    visibility = [":friends"],
-    deps = [
-        "//tensorflow/compiler/mlir:init_mlir",
-        "//tensorflow/compiler/mlir:passes",
-        "//tensorflow/compiler/mlir/tensorflow",
-        "//tensorflow/compiler/mlir/tensorflow/transforms:tf_graph_optimization_pass",
-        "@llvm-project//mlir:AllPassesAndDialects",
-        "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:MlirOptLib",
-        "@llvm-project//mlir:Support",
-        "@local_xla//xla/mlir_hlo:lhlo",
-        "@local_xla//xla/mlir_hlo:lhlo_gpu",
-        "@tf_runtime//:init_tfrt_dialects",
-    ],
 )
 
 tf_cc_binary(

@@ -15,9 +15,17 @@ limitations under the License.
 
 #include "xla/service/gpu/horizontal_loop_fusion.h"
 
+#include <cstdint>
+#include <optional>
+#include <utility>
 #include <vector>
 
-#include "xla/literal.h"
+#include "absl/algorithm/container.h"
+#include "absl/log/log.h"
+#include "xla/error_spec.h"
+#include "xla/hlo/ir/hlo_computation.h"
+#include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
 #include "xla/service/gpu/instruction_fusion.h"
 #include "xla/service/hlo_dce.h"
@@ -26,10 +34,10 @@ limitations under the License.
 #include "xla/service/hlo_pass_pipeline.h"
 #include "xla/service/pattern_matcher.h"
 #include "xla/service/pattern_matcher_gmock.h"
-#include "xla/service/tuple_simplifier.h"
+#include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/stream_executor/device_description.h"
 #include "xla/test.h"
-#include "xla/test_helpers.h"
 #include "xla/tests/hlo_test_base.h"
 #include "tsl/lib/core/status_test_util.h"
 

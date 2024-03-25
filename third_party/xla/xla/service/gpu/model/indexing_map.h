@@ -36,30 +36,86 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
-// Range represents a closed interval [lower_bound, upper_bound].
-struct Range {
+// Interval represents a closed interval [lower_bound, upper_bound].
+struct Interval {
   std::string ToString() const;
   void Print(std::ostream& out) const;
 
-  bool IsPoint() const { return lower_bound == upper_bound; }
+  bool IsPoint() const { return lower == upper; }
 
-  int64_t lower_bound = 0;
-  int64_t upper_bound = 0;
+  bool Contains(int64_t value) const {
+    return value >= lower && value <= upper;
+  }
+
+  // The result of a range comparison. We wrap std::optional in a struct to
+  // avoid accidental implicit conversion to bool:
+  // if (range < 42) {
+  //   Executed if the result of the comparison is known to be false!
+  // }
+  struct ComparisonResult {
+    // true or false if the result is known, nullopt otherwise.
+    std::optional<bool> result;
+
+    ComparisonResult operator!() const {
+      if (result) return {!*result};
+      return {result};
+    }
+    bool operator==(const ComparisonResult& other) const {
+      return result == other.result;
+    }
+    bool operator==(bool other) const { return result && *result == other; }
+    bool operator==(std::nullopt_t) const { return !result; }
+    bool operator!=(std::nullopt_t) const { return result.has_value(); }
+    bool operator*() const { return *result; }
+  };
+
+  // All comparison operators here return true or false if the result is known,
+  // or nullopt if it may be either true or false.
+  ComparisonResult operator>(int64_t value) const {
+    if (lower > value) {
+      return {true};
+    }
+    if (upper <= value) {
+      return {false};
+    }
+    return {std::nullopt};
+  }
+  ComparisonResult operator<(int64_t value) const {
+    if (upper < value) {
+      return {true};
+    }
+    if (lower >= value) {
+      return {false};
+    }
+    return {std::nullopt};
+  }
+  ComparisonResult operator>=(int64_t value) const { return !(*this < value); }
+  ComparisonResult operator<=(int64_t value) const { return !(*this > value); }
+  ComparisonResult operator==(int64_t value) const {
+    if (IsPoint()) return {lower == value};
+    if (!Contains(value)) return {false};
+    return {std::nullopt};
+  }
+  ComparisonResult operator!=(int64_t value) const { return !(*this == value); }
+
+  int64_t lower = 0;
+  int64_t upper = 0;
 };
-std::ostream& operator<<(std::ostream& out, const Range& range);
-bool operator==(const Range& lhs, const Range& rhs);
+
+std::ostream& operator<<(std::ostream& out, const Interval& range);
+bool operator==(const Interval& lhs, const Interval& rhs);
 
 template <typename H>
-H AbslHashValue(H h, const Range& range) {
-  return H::combine(std::move(h), range.lower_bound, range.upper_bound);
+H AbslHashValue(H h, const Interval& range) {
+  return H::combine(std::move(h), range.lower, range.upper);
 }
 
 // Evaluates lower and upper bounds for expressions given the domain.
 // Not thread safe.
 class RangeEvaluator {
  public:
-  RangeEvaluator(absl::Span<const Range> dim_ranges,
-                 absl::Span<const Range> symbol_ranges,
+  RangeEvaluator(absl::Span<const Interval> dim_ranges,
+                 absl::Span<const Interval> symbol_ranges,
                  mlir::MLIRContext* mlir_context);
 
   // Checks whether an `AffineExpr` always describes a non-negative value.
@@ -69,16 +125,18 @@ class RangeEvaluator {
   bool IsAlwaysNegativeOrZero(mlir::AffineExpr expr);
 
   // Computes the range of expression using its subexpression ranges.
-  Range ComputeExpressionRange(mlir::AffineExpr expr);
+  Interval ComputeExpressionRange(mlir::AffineExpr expr);
 
   // Return MLIR context.
   mlir::MLIRContext* GetMLIRContext() const { return mlir_context_; }
 
  private:
   mlir::MLIRContext* mlir_context_;
-  llvm::DenseMap<mlir::AffineExpr, Range> expression_ranges_cache_;
+  llvm::DenseMap<mlir::AffineExpr, Interval> expression_ranges_cache_;
 };
 
+std::vector<Interval> RangesFromTensorSizes(
+    absl::Span<const int64_t> tensor_sizes);
 
 // Contains an affine map with N dimension expressions and M symbols:
 //   (d0, ..., d_{N - 1})[s_0, ..., s_{M - 1}] -> f(d_i, s_j)
@@ -107,9 +165,10 @@ class RangeEvaluator {
 // d0 in [0, 1), d1 in [0, 16], d2 in [0, 8] and d3 in [0, 8].
 class IndexingMap {
  public:
-  IndexingMap(mlir::AffineMap affine_map, std::vector<Range> dim_ranges,
-              std::vector<Range> symbol_ranges,
-              absl::Span<std::pair<mlir::AffineExpr, Range>> constraints = {})
+  IndexingMap(
+      mlir::AffineMap affine_map, std::vector<Interval> dim_ranges,
+      std::vector<Interval> symbol_ranges,
+      absl::Span<std::pair<mlir::AffineExpr, Interval>> constraints = {})
       : affine_map_(affine_map),
         dim_ranges_(std::move(dim_ranges)),
         symbol_ranges_(std::move(symbol_ranges)) {
@@ -117,6 +176,14 @@ class IndexingMap {
       AddConstraint(expr, range);
     }
   }
+
+  IndexingMap(mlir::AffineMap affine_map, std::vector<Interval> dim_ranges,
+              std::vector<Interval> symbol_ranges,
+              const llvm::DenseMap<mlir::AffineExpr, Interval>& constraints)
+      : affine_map_(affine_map),
+        dim_ranges_(std::move(dim_ranges)),
+        symbol_ranges_(std::move(symbol_ranges)),
+        constraints_(constraints) {}
 
   static IndexingMap GetUndefined() { return IndexingMap(); }
 
@@ -139,17 +206,21 @@ class IndexingMap {
   mlir::AffineMap GetAffineMap() const { return affine_map_; }
 
   // Getters for dimension ranges.
-  Range GetDimensionRange(int64_t id) const { return dim_ranges_[id]; }
-  const std::vector<Range>& GetDimensionRanges() const { return dim_ranges_; }
+  Interval GetDimensionRange(int64_t id) const { return dim_ranges_[id]; }
+  const std::vector<Interval>& GetDimensionRanges() const {
+    return dim_ranges_;
+  }
   int64_t GetDimensionCount() const { return dim_ranges_.size(); }
 
   // Getters for symbol ranges.
-  Range GetSymbolRange(int64_t id) const { return symbol_ranges_[id]; }
-  const std::vector<Range>& GetSymbolRanges() const { return symbol_ranges_; }
+  Interval GetSymbolRange(int64_t id) const { return symbol_ranges_[id]; }
+  const std::vector<Interval>& GetSymbolRanges() const {
+    return symbol_ranges_;
+  }
   int64_t GetSymbolCount() const { return symbol_ranges_.size(); }
 
   // Getters for affine expression constraints.
-  const llvm::DenseMap<mlir::AffineExpr, Range>& GetConstraints() const {
+  const llvm::DenseMap<mlir::AffineExpr, Interval>& GetConstraints() const {
     return constraints_;
   }
   int64_t GetConstraintsCount() const { return constraints_.size(); }
@@ -157,7 +228,7 @@ class IndexingMap {
   // Allows to add bounds for the affine expression `expr`. If there are
   // bounds for the `expr`, then computes intersection of the current and new
   // ranges.
-  void AddConstraint(mlir::AffineExpr expr, Range range);
+  void AddConstraint(mlir::AffineExpr expr, Interval range);
 
   // Evaluates the constraints at a given point and returns `true` if all
   // constraints are satisfied.
@@ -195,18 +266,18 @@ class IndexingMap {
   bool SimplifyConstraintRanges();
 
   mlir::AffineMap affine_map_;
-  std::vector<Range> dim_ranges_;
-  std::vector<Range> symbol_ranges_;
+  std::vector<Interval> dim_ranges_;
+  std::vector<Interval> symbol_ranges_;
   // Inequality constraints for affine expressions. They restrict the feasible
   // set for the domain of the indexing map. It contains affine expressions
   // other than AffineDimExpr and AffineSymbolExpr.
-  llvm::DenseMap<mlir::AffineExpr, Range> constraints_;
+  llvm::DenseMap<mlir::AffineExpr, Interval> constraints_;
 };
 std::ostream& operator<<(std::ostream& out, const IndexingMap& indexing_map);
 bool operator==(const IndexingMap& lhs, const IndexingMap& rhs);
 IndexingMap operator*(const IndexingMap& lhs, const IndexingMap& rhs);
 
-// Composes affine maps, i.e. first ∘ second.
+// Composes affine maps, i.e. second ∘ first.
 IndexingMap ComposeIndexingMaps(const IndexingMap& first,
                                 const IndexingMap& second);
 

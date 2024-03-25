@@ -36,7 +36,7 @@ limitations under the License.
 namespace xla {
 namespace {
 
-StatusOr<HloInstruction*> FlattenAndTransposeUpdates(
+absl::StatusOr<HloInstruction*> FlattenAndTransposeUpdates(
     HloInstruction* updates, absl::Span<const int64_t> update_window_dims,
     absl::Span<const int64_t> inserted_window_dims,
     int64_t scatter_indices_size) {
@@ -92,7 +92,7 @@ std::vector<int64_t> MakeUpdatePermutation(
 
 // Transforms the scatter_updates field of scatter. scatter_indices_size is the
 // size of the scatter dimension in scatter_indices.
-StatusOr<std::vector<HloInstruction*>> TransformScatterUpdates(
+absl::StatusOr<std::vector<HloInstruction*>> TransformScatterUpdates(
     HloScatterInstruction* scatter,
     const std::vector<int64_t>& update_permutation,
     int64_t scatter_indices_size) {
@@ -128,7 +128,7 @@ ScatterDimensionNumbers MakeScatterDimensionNumbers(
 
 }  // namespace
 
-StatusOr<HloInstruction*> ScatterSimplifier::ExpandInstruction(
+absl::StatusOr<HloInstruction*> ScatterSimplifier::ExpandInstruction(
     HloInstruction* inst) {
   auto* scatter = Cast<HloScatterInstruction>(inst);
 

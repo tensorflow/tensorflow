@@ -67,7 +67,7 @@ bool LeafVectorsAreConsistent(const std::vector<ShardingStrategy>& one,
 
 // NOLINTBEGIN(readability/fn_size)
 // TODO(zhuohan): Decompose this function into smaller pieces
-StatusOr<std::tuple<StrategyMap, StrategyGroups, AssociativeDotPairs>>
+absl::StatusOr<std::tuple<StrategyMap, StrategyGroups, AssociativeDotPairs>>
 BuildStrategyAndCost(const HloInstructionSequence& sequence,
                      const HloModule* module,
                      const absl::flat_hash_map<const HloInstruction*, int64_t>&
@@ -202,7 +202,7 @@ BuildStrategyAndCost(const HloInstructionSequence& sequence,
 
           std::vector<std::optional<HloSharding>> input_shardings_optional(
               {output_spec, std::nullopt, std::nullopt});
-          std::vector<std::vector<double>> resharding_cost =
+          std::pair<ReshardingCosts, ReshardingCosts> resharding_costs =
               GenerateReshardingCostsAndMissingShardingsForAllOperands(
                   ins, output_spec, strategy_map, cluster_env, call_graph,
                   input_shardings_optional);
@@ -213,7 +213,8 @@ BuildStrategyAndCost(const HloInstructionSequence& sequence,
 
           strategy_group->strategies.push_back(ShardingStrategy(
               {name, output_spec, compute_cost, communication_cost, memory_cost,
-               std::move(resharding_cost), input_shardings_optional}));
+               std::move(resharding_costs.first),
+               std::move(resharding_costs.second), input_shardings_optional}));
         }
         break;
       }
@@ -258,14 +259,15 @@ BuildStrategyAndCost(const HloInstructionSequence& sequence,
             }
             std::vector<std::optional<HloSharding>> input_shardings_optional(
                 {std::nullopt, input_spec});
-            std::vector<std::vector<double>> resharding_cost =
+            std::pair<ReshardingCosts, ReshardingCosts> resharding_costs =
                 GenerateReshardingCostsAndMissingShardingsForAllOperands(
                     ins, output_spec, strategy_map, cluster_env, call_graph,
                     input_shardings_optional);
 
             strategy_group->strategies.push_back(ShardingStrategy(
                 {name, output_spec, compute_cost, communication_cost,
-                 memory_cost, std::move(resharding_cost),
+                 memory_cost, std::move(resharding_costs.first),
+                 std::move(resharding_costs.second),
                  input_shardings_optional}));
           }
         }
@@ -324,15 +326,21 @@ BuildStrategyAndCost(const HloInstructionSequence& sequence,
           std::string name = ToStringSimple(output_spec);
           double compute_cost = 0, communication_cost = 0;
           double memory_cost = GetBytes(ins->shape()) / output_spec.NumTiles();
-          auto resharding_costs = ReshardingCostVector(
-              src_strategy_group, operand->shape(), input_spec, cluster_env);
+          std::vector<double> communication_resharding_costs =
+              CommunicationReshardingCostVector(src_strategy_group,
+                                                operand->shape(), input_spec,
+                                                cluster_env);
+          std::vector<double> memory_resharding_costs =
+              MemoryReshardingCostVector(src_strategy_group, operand->shape(),
+                                         input_spec, cluster_env);
           strategy_group->strategies.push_back(
               ShardingStrategy({name,
                                 output_spec,
                                 compute_cost,
                                 communication_cost,
                                 memory_cost,
-                                {resharding_costs},
+                                {communication_resharding_costs},
+                                {memory_resharding_costs},
                                 {input_spec}}));
         }
         break;
@@ -428,7 +436,7 @@ BuildStrategyAndCost(const HloInstructionSequence& sequence,
           std::string name = ToStringSimple(*output_spec);
           double compute_cost = 0, communication_cost = 0;
           double memory_cost = GetBytes(ins->shape()) / output_spec->NumTiles();
-          std::vector<std::vector<double>> resharding_costs =
+          std::pair<ReshardingCosts, ReshardingCosts> resharding_costs =
               GenerateReshardingCostsAndMissingShardingsForAllOperands(
                   ins, *output_spec, strategy_map, cluster_env, call_graph,
                   input_shardings);
@@ -439,7 +447,8 @@ BuildStrategyAndCost(const HloInstructionSequence& sequence,
                                 compute_cost,
                                 communication_cost,
                                 memory_cost,
-                                std::move(resharding_costs),
+                                std::move(resharding_costs.first),
+                                std::move(resharding_costs.second),
                                 {input_spec}}));
         }
 

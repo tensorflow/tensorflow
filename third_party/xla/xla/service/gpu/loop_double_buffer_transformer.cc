@@ -17,6 +17,7 @@ limitations under the License.
 #include <cstdint>
 #include <iterator>
 #include <optional>
+#include <string>
 #include <vector>
 
 #include "absl/algorithm/container.h"
@@ -36,7 +37,6 @@ limitations under the License.
 #include "xla/service/collective_ops_utils.h"
 #include "xla/service/flatten_call_graph.h"
 #include "xla/status.h"
-#include "xla/statusor.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/errors.h"
@@ -152,9 +152,10 @@ absl::StatusOr<bool> LoopDoubleBufferTransformer::Run(
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   bool changed = false;
   std::vector<HloInstruction*> while_instrs;
-  absl::c_copy_if(module->entry_computation()->instructions(),
-                  std::back_inserter(while_instrs),
-                  HloPredicateIsOp<HloOpcode::kWhile>);
+  for (auto comp : module->MakeNonfusionComputations()) {
+    absl::c_copy_if(comp->instructions(), std::back_inserter(while_instrs),
+                    HloPredicateIsOp<HloOpcode::kWhile>);
+  }
   VLOG(2) << "Processing " << while_instrs.size() << " while loops.";
 
   for (HloInstruction* while_instr : while_instrs) {

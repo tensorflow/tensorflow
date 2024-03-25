@@ -26,9 +26,9 @@ using ::tensorflow::CoordinatedTask;
 using ::tensorflow::CoordinationServiceError;
 
 TEST(CoordinationServiceErrorUtil, MakeCoordinationErrorWithEmptyPayload) {
-  Status error = errors::Internal("Test Error");
+  absl::Status error = errors::Internal("Test Error");
 
-  Status coordination_error = MakeCoordinationError(error);
+  absl::Status coordination_error = MakeCoordinationError(error);
 
   EXPECT_EQ(coordination_error.code(), error.code());
   EXPECT_EQ(coordination_error.message(), error.message());
@@ -38,12 +38,12 @@ TEST(CoordinationServiceErrorUtil, MakeCoordinationErrorWithEmptyPayload) {
 }
 
 TEST(CoordinationServiceErrorUtil, MakeCoordinationErrorWithErrorOrigin) {
-  Status error = errors::Internal("Test Error");
+  absl::Status error = errors::Internal("Test Error");
   CoordinatedTask source_task;
   source_task.set_job_name("test_worker");
   source_task.set_task_id(7);
 
-  Status coordination_error = MakeCoordinationError(error, source_task);
+  absl::Status coordination_error = MakeCoordinationError(error, source_task);
 
   EXPECT_EQ(coordination_error.code(), error.code());
   EXPECT_EQ(coordination_error.message(), error.message());
@@ -57,13 +57,14 @@ TEST(CoordinationServiceErrorUtil, MakeCoordinationErrorWithErrorOrigin) {
 }
 
 TEST(CoordinationServiceErrorUtil, MakeCoordinationErrorWithUserReportedError) {
-  Status error = errors::Internal("Test Error");
+  absl::Status error = errors::Internal("Test Error");
   CoordinatedTask source_task;
   source_task.set_job_name("test_worker");
   source_task.set_task_id(7);
 
-  Status coordination_error = MakeCoordinationError(error, source_task,
-                                                    /*is_reported_error=*/true);
+  absl::Status coordination_error =
+      MakeCoordinationError(error, source_task,
+                            /*is_reported_error=*/true);
 
   EXPECT_EQ(coordination_error.code(), error.code());
   EXPECT_EQ(coordination_error.message(), error.message());
@@ -77,14 +78,14 @@ TEST(CoordinationServiceErrorUtil, MakeCoordinationErrorWithUserReportedError) {
 }
 
 TEST(CoordinationServiceErrorUtil, MakeCoordinationErrorWithPayload) {
-  Status error = errors::Internal("Test Error");
+  absl::Status error = errors::Internal("Test Error");
   CoordinationServiceError payload;
   CoordinatedTask* source_task = payload.mutable_source_task();
   source_task->set_job_name("test_worker");
   source_task->set_task_id(7);
   payload.set_is_reported_error(true);
 
-  Status coordination_error = MakeCoordinationError(error, payload);
+  absl::Status coordination_error = MakeCoordinationError(error, payload);
 
   EXPECT_EQ(coordination_error.code(), error.code());
   EXPECT_EQ(coordination_error.message(), error.message());

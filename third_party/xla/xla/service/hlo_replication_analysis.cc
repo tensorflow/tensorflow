@@ -482,14 +482,14 @@ bool HloReplicationAnalysis::HloInstructionIsReplicatedAt(
   return true;
 }
 
-/* static */ StatusOr<std::unique_ptr<HloReplicationAnalysis>>
+/* static */ absl::StatusOr<std::unique_ptr<HloReplicationAnalysis>>
 HloReplicationAnalysis::Run(const HloModule* module,
                             bool cross_partition_spmd) {
   const absl::flat_hash_set<const HloInstruction*> empty;
   return Run(module, cross_partition_spmd, &empty);
 }
 
-/* static */ StatusOr<std::unique_ptr<HloReplicationAnalysis>>
+/* static */ absl::StatusOr<std::unique_ptr<HloReplicationAnalysis>>
 HloReplicationAnalysis::Run(const HloModule* module, bool cross_partition_spmd,
                             const absl::flat_hash_set<const HloInstruction*>*
                                 loops_known_with_same_iterations) {
@@ -500,7 +500,7 @@ HloReplicationAnalysis::Run(const HloModule* module, bool cross_partition_spmd,
   return analysis;
 }
 
-/* static */ StatusOr<std::unique_ptr<HloReplicationAnalysis>>
+/* static */ absl::StatusOr<std::unique_ptr<HloReplicationAnalysis>>
 HloReplicationAnalysis::RunWithPartialReplication(const HloModule* module,
                                                   bool cross_partition_spmd) {
   const absl::flat_hash_set<const HloInstruction*> empty;

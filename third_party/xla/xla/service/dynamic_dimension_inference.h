@@ -77,7 +77,7 @@ class DynamicDimensionInference {
   // false.
   using AssertionGenerator = std::function<void(HloInstruction*)>;
 
-  static StatusOr<DynamicDimensionInference> Run(
+  static absl::StatusOr<DynamicDimensionInference> Run(
       HloModule* module,
       OpSupportsDynamismHandler op_supports_dynamism_handler = nullptr,
       CustomCallInferenceHandler custom_call_handler = nullptr,

@@ -268,6 +268,8 @@ Status DataServiceDispatcherImpl::Start() {
   TF_RETURN_IF_ERROR(journal_writer_.value()->EnsureInitialized());
   TF_RETURN_IF_ERROR(RestoreSnapshots());
   started_ = true;
+  LOG(INFO) << "Started tf.data service dispatcher with config "
+            << config_.DebugString();
   return absl::OkStatus();
 }
 
@@ -620,7 +622,8 @@ Status DataServiceDispatcherImpl::GetOrRegisterDataset(
   return absl::OkStatus();
 }
 
-StatusOr<std::optional<std::string>> DataServiceDispatcherImpl::FindDataset(
+absl::StatusOr<std::optional<std::string>>
+DataServiceDispatcherImpl::FindDataset(
     const GetOrRegisterDatasetRequest& request)
     TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
   std::shared_ptr<const Dataset> existing_dataset;

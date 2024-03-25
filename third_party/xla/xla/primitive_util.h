@@ -329,8 +329,8 @@ using PrimitiveTypeConstant =
 
 // Returns true if values of the given primitive type are held in array shapes.
 inline constexpr bool IsArrayType(PrimitiveType primitive_type) {
-  return primitive_type > PRIMITIVE_TYPE_INVALID && primitive_type != TUPLE &&
-         primitive_type != OPAQUE_TYPE && primitive_type != TOKEN &&
+  return primitive_type != TUPLE && primitive_type != OPAQUE_TYPE &&
+         primitive_type != TOKEN && primitive_type > PRIMITIVE_TYPE_INVALID &&
          primitive_type < PrimitiveType_ARRAYSIZE;
 }
 
@@ -708,7 +708,7 @@ const std::string& LowercasePrimitiveTypeName(PrimitiveType s);
 
 // Returns the PrimitiveType matching the given name. The given name is expected
 // to be lower-case.
-StatusOr<PrimitiveType> StringToPrimitiveType(absl::string_view name);
+absl::StatusOr<PrimitiveType> StringToPrimitiveType(absl::string_view name);
 
 // Returns true if the given name is a primitive type string (lower-case).
 bool IsPrimitiveTypeName(absl::string_view name);

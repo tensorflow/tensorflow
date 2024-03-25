@@ -31,8 +31,8 @@ namespace xla {
 namespace spmd {
 namespace {
 
-StatusOr<bool> ProcessScatter(HloInstruction* hlo,
-                              const CallGraph& call_graph) {
+absl::StatusOr<bool> ProcessScatter(HloInstruction* hlo,
+                                    const CallGraph& call_graph) {
   if (hlo->opcode() != HloOpcode::kScatter) {
     return false;
   }
@@ -153,8 +153,8 @@ StatusOr<bool> ProcessScatter(HloInstruction* hlo,
   return true;
 }
 
-StatusOr<bool> RunOnComputation(HloComputation* computation,
-                                const CallGraph& call_graph) {
+absl::StatusOr<bool> RunOnComputation(HloComputation* computation,
+                                      const CallGraph& call_graph) {
   bool changed = false;
   for (HloInstruction* hlo : computation->MakeInstructionPostOrder()) {
     if (!hlo->has_sharding()) {
@@ -170,7 +170,7 @@ StatusOr<bool> RunOnComputation(HloComputation* computation,
 }
 }  // namespace
 
-StatusOr<bool> SpmdPrepare::Run(
+absl::StatusOr<bool> SpmdPrepare::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   bool changed = false;

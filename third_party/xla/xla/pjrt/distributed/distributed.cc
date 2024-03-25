@@ -30,7 +30,7 @@ namespace xla {
 // In OSS, insecure credentials are used as default.
 constexpr bool kVerifySecureCredentials = false;
 
-StatusOr<std::unique_ptr<DistributedRuntimeService>>
+absl::StatusOr<std::unique_ptr<DistributedRuntimeService>>
 GetDistributedRuntimeService(std::string address,
                              const CoordinationServiceImpl::Options& options) {
   return DistributedRuntimeService::Get(

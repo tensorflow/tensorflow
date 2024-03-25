@@ -178,7 +178,7 @@ GetPrimitiveTypeStringMap() {
 
 }  // namespace
 
-StatusOr<PrimitiveType> StringToPrimitiveType(absl::string_view name) {
+absl::StatusOr<PrimitiveType> StringToPrimitiveType(absl::string_view name) {
   const auto& map = GetPrimitiveTypeStringMap();
   auto found = map.find(name);
   if (found == map.end()) {

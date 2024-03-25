@@ -29,45 +29,48 @@ class PosixFileSystem : public FileSystem {
 
   TF_USE_FILESYSTEM_METHODS_WITH_NO_TRANSACTION_SUPPORT;
 
-  Status NewRandomAccessFile(
+  absl::Status NewRandomAccessFile(
       const string& filename, TransactionToken* token,
       std::unique_ptr<RandomAccessFile>* result) override;
 
-  Status NewWritableFile(const string& fname, TransactionToken* token,
-                         std::unique_ptr<WritableFile>* result) override;
+  absl::Status NewWritableFile(const string& fname, TransactionToken* token,
+                               std::unique_ptr<WritableFile>* result) override;
 
-  Status NewAppendableFile(const string& fname, TransactionToken* token,
-                           std::unique_ptr<WritableFile>* result) override;
+  absl::Status NewAppendableFile(
+      const string& fname, TransactionToken* token,
+      std::unique_ptr<WritableFile>* result) override;
 
-  Status NewReadOnlyMemoryRegionFromFile(
+  absl::Status NewReadOnlyMemoryRegionFromFile(
       const string& filename, TransactionToken* token,
       std::unique_ptr<ReadOnlyMemoryRegion>* result) override;
 
-  Status FileExists(const string& fname, TransactionToken* token) override;
+  absl::Status FileExists(const string& fname,
+                          TransactionToken* token) override;
 
-  Status GetChildren(const string& dir, TransactionToken* token,
-                     std::vector<string>* result) override;
+  absl::Status GetChildren(const string& dir, TransactionToken* token,
+                           std::vector<string>* result) override;
 
-  Status Stat(const string& fname, TransactionToken* token,
-              FileStatistics* stats) override;
+  absl::Status Stat(const string& fname, TransactionToken* token,
+                    FileStatistics* stats) override;
 
-  Status GetMatchingPaths(const string& pattern, TransactionToken* token,
-                          std::vector<string>* results) override;
+  absl::Status GetMatchingPaths(const string& pattern, TransactionToken* token,
+                                std::vector<string>* results) override;
 
-  Status DeleteFile(const string& fname, TransactionToken* token) override;
+  absl::Status DeleteFile(const string& fname,
+                          TransactionToken* token) override;
 
-  Status CreateDir(const string& name, TransactionToken* token) override;
+  absl::Status CreateDir(const string& name, TransactionToken* token) override;
 
-  Status DeleteDir(const string& name, TransactionToken* token) override;
+  absl::Status DeleteDir(const string& name, TransactionToken* token) override;
 
-  Status GetFileSize(const string& fname, TransactionToken* token,
-                     uint64* size) override;
+  absl::Status GetFileSize(const string& fname, TransactionToken* token,
+                           uint64* size) override;
 
-  Status RenameFile(const string& src, const string& target,
-                    TransactionToken* token) override;
+  absl::Status RenameFile(const string& src, const string& target,
+                          TransactionToken* token) override;
 
-  Status CopyFile(const string& src, const string& target,
-                  TransactionToken* token) override;
+  absl::Status CopyFile(const string& src, const string& target,
+                        TransactionToken* token) override;
 };
 
 class LocalPosixFileSystem : public PosixFileSystem {

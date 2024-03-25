@@ -57,11 +57,11 @@ class RngBitGeneratorExpander : public OpExpanderPass {
   };
 
   bool InstructionMatchesPattern(HloInstruction* instruction) override;
-  StatusOr<HloInstruction*> ExpandInstruction(HloInstruction* hlo) override;
-  StatusOr<HloComputation*> GetGeneratorComputation(const Shape& data_shape,
-                                                    const Shape& state_shape,
-                                                    RandomAlgorithm algorithm,
-                                                    HloModule* module);
+  absl::StatusOr<HloInstruction*> ExpandInstruction(
+      HloInstruction* hlo) override;
+  absl::StatusOr<HloComputation*> GetGeneratorComputation(
+      const Shape& data_shape, const Shape& state_shape,
+      RandomAlgorithm algorithm, HloModule* module);
 
   const RandomAlgorithm default_algorithm_;
   absl::flat_hash_map<RngGeneratorKey, HloComputation*> computation_cache_;

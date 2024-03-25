@@ -93,7 +93,7 @@ bool ShouldReplaceDynamicPort(absl::string_view config_address,
 }
 }  // namespace
 
-StatusOr<GraphDef>
+absl::StatusOr<GraphDef>
 RemoveCompressionMapRewriter::ApplyRemoveCompressionMapRewrite(
     const GraphDef& graph_def) {
   grappler::RemoveCompressionMap remove_compression_map;
@@ -122,7 +122,8 @@ RemoveCompressionMapRewriter::GetRewriteConfig() const {
   return config;
 }
 
-StatusOr<AutoShardRewriter> AutoShardRewriter::Create(const TaskDef& task_def) {
+absl::StatusOr<AutoShardRewriter> AutoShardRewriter::Create(
+    const TaskDef& task_def) {
   TF_ASSIGN_OR_RETURN(
       AutoShardPolicy auto_shard_policy,
       ToAutoShardPolicy(task_def.processing_mode_def().sharding_policy()));
@@ -130,7 +131,7 @@ StatusOr<AutoShardRewriter> AutoShardRewriter::Create(const TaskDef& task_def) {
                            task_def.worker_index());
 }
 
-StatusOr<GraphDef> AutoShardRewriter::ApplyAutoShardRewrite(
+absl::StatusOr<GraphDef> AutoShardRewriter::ApplyAutoShardRewrite(
     const GraphDef& graph_def) {
   if (auto_shard_policy_ == AutoShardPolicy::OFF) {
     return graph_def;
@@ -214,7 +215,7 @@ void WorkerIndexResolver::AddWorker(absl::string_view worker_address) {
   }
 }
 
-StatusOr<int64_t> WorkerIndexResolver::GetWorkerIndex(
+absl::StatusOr<int64_t> WorkerIndexResolver::GetWorkerIndex(
     absl::string_view worker_address) const {
   const auto it = absl::c_find(worker_addresses_, worker_address);
   if (it == worker_addresses_.cend()) {

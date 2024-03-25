@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <cassert>
 #include <memory>
 #include <utility>
 
@@ -20,6 +21,7 @@ limitations under the License.
 #include "mlir/Conversion/ComplexToLLVM/ComplexToLLVM.h"
 #include "mlir/Conversion/ControlFlowToLLVM/ControlFlowToLLVM.h"
 #include "mlir/Conversion/FuncToLLVM/ConvertFuncToLLVM.h"
+#include "mlir/Conversion/GPUCommon/GPUCommonPass.h"
 #include "mlir/Conversion/GPUToNVVM/GPUToNVVMPass.h"
 #include "mlir/Conversion/GPUToROCDL/GPUToROCDLPass.h"
 #include "mlir/Conversion/LLVMCommon/LoweringOptions.h"
@@ -48,6 +50,10 @@ namespace {
 /// that are currently required, currently mixing std, linalg and gpu.
 class GpuKernelToNVVMPass
     : public impl::GpuKernelToNVVMPassBase<GpuKernelToNVVMPass> {
+ public:
+  explicit GpuKernelToNVVMPass(bool useBarePtrCallConv) {
+    this->useBarePtrCallConv = useBarePtrCallConv;
+  }
   void runOnOperation() override;
 };
 
@@ -95,9 +101,26 @@ void GpuKernelToNVVMPass::runOnOperation() {
 
   RewritePatternSet patterns(&getContext());
   LowerToLLVMOptions llvmOpts(&getContext(), DataLayout(getOperation()));
+  llvmOpts.useBarePtrCallConv = useBarePtrCallConv;
   LLVMTypeConverter converter(&getContext(), llvmOpts);
+
   populateCommonPatterns(converter, patterns);
   populateGpuToNVVMConversionPatterns(converter, patterns);
+
+  populateGpuMemorySpaceAttributeConversions(
+      converter, [](gpu::AddressSpace space) {
+        switch (space) {
+          case gpu::AddressSpace::Global:
+            return 1;
+          case gpu::AddressSpace::Workgroup:
+            return 3;
+          case gpu::AddressSpace::Private:
+            return 5;
+        }
+        assert(false && "unknown address space enum value");
+        return 0;
+      });
+
   ConversionTarget target(getContext());
   configureGpuToNVVMConversionLegality(target);
   if (failed(
@@ -120,8 +143,9 @@ void GpuKernelToROCDLPass::runOnOperation() {
   }
 }
 
-std::unique_ptr<OperationPass<gpu::GPUModuleOp>> createGpuKernelToNvvmPass() {
-  return std::make_unique<GpuKernelToNVVMPass>();
+std::unique_ptr<OperationPass<gpu::GPUModuleOp>> createGpuKernelToNvvmPass(
+    bool useBarePtrCallConv) {
+  return std::make_unique<GpuKernelToNVVMPass>(useBarePtrCallConv);
 }
 
 std::unique_ptr<OperationPass<gpu::GPUModuleOp>> createGpuKernelToRocdlPass() {

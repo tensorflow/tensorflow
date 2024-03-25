@@ -25,6 +25,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "tensorflow/core/common_runtime/eager/context.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
+#include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/lite/core/api/error_reporter.h"
@@ -97,10 +98,11 @@ TEST(DelegateDataTest, CheckFunctionDef) {
                          /*resources=*/nullptr, /*resource_ids=*/nullptr,
                          /*initialization_status_map=*/nullptr);
   main_subgraph.SetName("main");
+  tensorflow::mutex mutex;
   TF_ASSERT_OK(RegisterFunctionDefForSubgraphs(
       main_subgraph, select_subgraphs_to_register,
       eager_context->HostCPU()->resource_manager(), eager_context,
-      /*flex_delegate=*/nullptr));
+      /*flex_delegate=*/nullptr, &mutex));
 
   const string add_fdef_txt = R"pb(
     signature {
@@ -228,10 +230,11 @@ TEST(DelegateDataTest, CheckFunctionDefWithOnlyMainGraph) {
                          /*resource_ids=*/nullptr,
                          /*initialization_status_map=*/nullptr);
   main_subgraph.SetName("main");
+  tensorflow::mutex mutex;
   TF_ASSERT_OK(RegisterFunctionDefForSubgraphs(
       main_subgraph, select_subgraphs_to_register,
       eager_context->HostCPU()->resource_manager(), eager_context,
-      /*flex_delegate=*/nullptr));
+      /*flex_delegate=*/nullptr, &mutex));
 
   EXPECT_EQ(eager_context->GetFunctionDef("main"), nullptr);
 

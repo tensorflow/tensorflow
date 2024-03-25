@@ -81,7 +81,7 @@ Status TPUReshardVariablesOpKernel::DoWork(OpKernelContext* context) {
   TF_RETURN_IF_ERROR(LookupOrCreateResource<Var>(
       context, handle, &format_state_var, [new_format_key](Var** ptr) {
         *ptr = new Var(new_format_key->dtype());
-        return OkStatus();
+        return absl::OkStatus();
       }));
   mutex_lock ml(*format_state_var->mu());
   const bool initialized = format_state_var->is_initialized;
@@ -99,7 +99,7 @@ Status TPUReshardVariablesOpKernel::DoWork(OpKernelContext* context) {
       (initialized && format_state_var->tensor()->vec<tstring>()(2) ==
                           new_format_key->vec<tstring>()(2))) {
     VLOG(1) << "Sharding unchanged, nothing to do.";
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   if (!state_is_default) {
@@ -121,7 +121,7 @@ Status TPUReshardVariablesOpKernel::DoWork(OpKernelContext* context) {
   // Change the state.
   *format_state_var->tensor() = *new_format_key;
   format_state_var->is_initialized = true;
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status TPUReshardVariablesOpKernel::DoTpuExecute(
@@ -153,7 +153,7 @@ Status TPUReshardVariablesOpKernel::DoTpuExecute(
   if (entry.tpu_program_group() == nullptr) {
     VLOG(2) << "Sharding/unsharding program does not exist, so this is default "
                "sharding.";
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   const tpu::TpuProgramGroupInterface* tpu_program_group =
@@ -205,7 +205,7 @@ Status TPUReshardVariablesOpKernel::DoTpuExecute(
                                                      shaped_buffer)) {
     TF_RETURN_IF_ERROR(transfer_manager->WriteRootTupleIndexTable(
         transfer_stream_ptr.get(), shaped_buffer));
-    stream->ThenWaitFor(transfer_stream_ptr.get());
+    TF_RETURN_IF_ERROR(stream->WaitFor(transfer_stream_ptr.get()));
   } else {
     TF_RETURN_IF_ERROR(
         transfer_manager->WriteRootTupleIndexTable(stream, shaped_buffer));
@@ -245,7 +245,7 @@ Status TPUReshardVariablesOpKernel::DoTpuExecute(
                  transfer_stream_ptr.get(),
                  tpu_program_group->tpu_program(core_index)));
 
-  stream->ThenRecordEvent(definition_event.get());
+  TF_RETURN_IF_ERROR(stream->RecordEvent(definition_event.get()));
 
   // Assign the new buffers to the variables.
   xla::ScopedShapedBuffer result = output.ConsumeResult();

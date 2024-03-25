@@ -138,7 +138,7 @@ cc_library(
         "@local_tsl//tsl/platform:status",
         "@local_tsl//tsl/platform:statusor",
     ],
-    alwayslink = True,  # Registers itself with the MultiPlatformManager.
+    alwayslink = True,  # Registers itself with the PlatformManager.
 )
 
 cc_library(
@@ -153,6 +153,7 @@ cc_library(
         "//xla/stream_executor:stream_executor_internal",
         "//xla/stream_executor/host:host_stream",
         "@com_google_absl//absl/functional:any_invocable",
+        "@com_google_absl//absl/log",
         "@com_google_absl//absl/types:span",
     ],
 )

@@ -16,6 +16,7 @@ limitations under the License.
 
 #include "xla/backends/profiler/cpu/host_tracer.h"
 #include "tsl/profiler/lib/profiler_factory.h"
+#include "tsl/profiler/lib/profiler_interface.h"
 #include "tsl/profiler/protobuf/profiler_options.pb.h"
 
 namespace xla {

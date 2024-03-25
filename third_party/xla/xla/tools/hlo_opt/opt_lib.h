@@ -36,7 +36,7 @@ class OptProvider {
  public:
   // Generates textual output for a given stage on a given platform, returns
   // empty optional if the stage is not supported.
-  virtual StatusOr<std::optional<std::string>> GenerateStage(
+  virtual absl::StatusOr<std::optional<std::string>> GenerateStage(
       std::unique_ptr<HloModule> module, absl::string_view stage);
 
   virtual ~OptProvider() = default;
@@ -49,25 +49,26 @@ class OptProvider {
       std::string platform, std::unique_ptr<OptProvider> translate_provider);
 
   // Gets a provider for a given platform.
-  static StatusOr<OptProvider*> ProviderForPlatform(std::string platform);
+  static absl::StatusOr<OptProvider *> ProviderForPlatform(
+      std::string platform);
 
  protected:
   // Returns platform name associated with the provider.
   virtual std::string GetPlatformName() = 0;
 
   // Returns a stream executor for the provider (could be nullptr).
-  virtual StatusOr<se::StreamExecutor*> GetExecutor();
+  virtual absl::StatusOr<se::StreamExecutor *> GetExecutor();
 
   // Generates executable from a given input module.
-  StatusOr<std::unique_ptr<Executable>> GetExecutable(
+  absl::StatusOr<std::unique_ptr<Executable>> GetExecutable(
       std::unique_ptr<HloModule> input_module);
 
   // Generates optimized HLO.
-  StatusOr<std::unique_ptr<HloModule>> GetOptimizedHlo(
+  absl::StatusOr<std::unique_ptr<HloModule>> GetOptimizedHlo(
       std::unique_ptr<HloModule> input_module);
 
   // Gets a compiler associated with the provider.
-  virtual StatusOr<Compiler*> GetCompiler();
+  virtual absl::StatusOr<Compiler *> GetCompiler();
 };
 
 }  // namespace xla

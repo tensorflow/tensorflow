@@ -191,8 +191,7 @@ TEST(PjrtCApiGpuKVStoreTest, CreateClientWithKVCallback) {
           {"num_nodes", static_cast<int64_t>(num_nodes)},
           {"node_id", static_cast<int64_t>(i)}};
       TF_ASSERT_OK_AND_ASSIGN(std::vector<PJRT_NamedValue> c_options,
-                              ::pjrt::ConvertToPjRtNamedValueList(
-                                  options, /*api_minor_version=*/30));
+                              ::pjrt::ConvertToPjRtNamedValueList(options));
       TF_ASSERT_OK_AND_ASSIGN(
           PJRT_Client_Create_Args create_arg,
           BuildCreateArg(kv_callback_data.get(), c_options));
@@ -248,9 +247,8 @@ TEST(PjrtCApiGpuAllocatorTest, ValidOptionsParsing) {
     if (allocator_option == "cuda_async") {
       options["preallocate"] = true;
     }
-    TF_ASSERT_OK_AND_ASSIGN(
-        std::vector<PJRT_NamedValue> c_options,
-        ::pjrt::ConvertToPjRtNamedValueList(options, /*api_minor_version=*/30));
+    TF_ASSERT_OK_AND_ASSIGN(std::vector<PJRT_NamedValue> c_options,
+                            ::pjrt::ConvertToPjRtNamedValueList(options));
     PJRT_Client_Create_Args create_arg;
     create_arg.struct_size = PJRT_Client_Create_Args_STRUCT_SIZE;
     create_arg.extension_start = nullptr;
@@ -277,9 +275,8 @@ TEST(PjrtCApiGpuAllocatorTest, InvalidAllocatorOptionsParsing) {
       {"memory_fraction", 0.5f},
       {"preallocate", true},
   };
-  TF_ASSERT_OK_AND_ASSIGN(
-      std::vector<PJRT_NamedValue> c_options,
-      ::pjrt::ConvertToPjRtNamedValueList(options, /*api_minor_version=*/30));
+  TF_ASSERT_OK_AND_ASSIGN(std::vector<PJRT_NamedValue> c_options,
+                          ::pjrt::ConvertToPjRtNamedValueList(options));
   PJRT_Client_Create_Args create_arg;
   create_arg.struct_size = PJRT_Client_Create_Args_STRUCT_SIZE;
   create_arg.extension_start = nullptr;
@@ -312,9 +309,8 @@ TEST(PjrtCApiPlatformNameTest, AvailablePlatformName) {
       {"allocator", static_cast<std::string>("default")},
       {"visible_devices", xla::PjRtValueType(std::vector<int64_t>{0, 1})},
   };
-  TF_ASSERT_OK_AND_ASSIGN(
-      std::vector<PJRT_NamedValue> c_options,
-      ::pjrt::ConvertToPjRtNamedValueList(options, /*api_minor_version=*/30));
+  TF_ASSERT_OK_AND_ASSIGN(std::vector<PJRT_NamedValue> c_options,
+                          ::pjrt::ConvertToPjRtNamedValueList(options));
   PJRT_Client_Create_Args create_arg;
   create_arg.struct_size = PJRT_Client_Create_Args_STRUCT_SIZE;
   create_arg.extension_start = nullptr;
@@ -354,9 +350,8 @@ TEST(PjrtCApiPlatformNameTest, UnavailablePlatformName) {
       {"allocator", static_cast<std::string>("default")},
       {"visible_devices", xla::PjRtValueType(std::vector<int64_t>{0, 1})},
   };
-  TF_ASSERT_OK_AND_ASSIGN(
-      std::vector<PJRT_NamedValue> c_options,
-      ::pjrt::ConvertToPjRtNamedValueList(options, /*api_minor_version=*/30));
+  TF_ASSERT_OK_AND_ASSIGN(std::vector<PJRT_NamedValue> c_options,
+                          ::pjrt::ConvertToPjRtNamedValueList(options));
   PJRT_Client_Create_Args create_arg;
   create_arg.struct_size = PJRT_Client_Create_Args_STRUCT_SIZE;
   create_arg.extension_start = nullptr;

@@ -65,7 +65,7 @@ class AlgorithmSelectorImpl {
   TRTVersion version_;
 };
 
-// Impelements the TRT IAlgorithmSelector interface. The method
+// Implements the TRT IAlgorithmSelector interface. The method
 // "selectAlgorithms" selects allowable algorithms for each layer, and
 // "reportAlgorithms" summarizes the algorithms selected by TensorRT.
 class TftrtAlgorithmSelector : public nvinfer1::IAlgorithmSelector {

@@ -55,9 +55,9 @@ class DeviceAssignment : public Array2D<int> {
   };
 
   // Finds the (replica ID, computation ID) pair for the given device.
-  StatusOr<LogicalID> LogicalIdForDevice(GlobalDeviceId device_id) const;
+  absl::StatusOr<LogicalID> LogicalIdForDevice(GlobalDeviceId device_id) const;
   // Finds the replica ID for the given device.
-  StatusOr<int> ReplicaIdForDevice(GlobalDeviceId device_id) const;
+  absl::StatusOr<int> ReplicaIdForDevice(GlobalDeviceId device_id) const;
   // Returns a map from device ID to logical ID. Querying this map is much more
   // efficient than `LogicalIdForDevice` if queried repeatedly.
   absl::flat_hash_map<GlobalDeviceId, LogicalID> GetDeviceToLogicalIdMap()
@@ -69,7 +69,7 @@ class DeviceAssignment : public Array2D<int> {
   // Return a std::unique_ptr<DeviceAssignment> instead of a DeviceAssignment
   // directly because one of the supported TF platforms (mac) does not compile
   // due to a StatusOr of an incomplete type (DeviceAssignment).
-  static StatusOr<std::unique_ptr<DeviceAssignment>> Deserialize(
+  static absl::StatusOr<std::unique_ptr<DeviceAssignment>> Deserialize(
       const DeviceAssignmentProto& proto);
 
   std::string ToString() const;
@@ -85,13 +85,14 @@ class ComputationPlacer {
   // Returns the device id assigned to the given replica and computation
   // instance for [replica_count x computation_count] setup. The returned device
   // id must match the assignment from PlaceReplicatedComputation().
-  virtual StatusOr<int> DeviceId(int replica, int computation,
-                                 int replica_count, int computation_count);
+  virtual absl::StatusOr<int> DeviceId(int replica, int computation,
+                                       int replica_count,
+                                       int computation_count);
 
   // Returns the device ids assigned to a set of replicated computations, given
   // the number of replicas and the number of computations.
-  virtual StatusOr<DeviceAssignment> AssignDevices(int replica_count,
-                                                   int computation_count);
+  virtual absl::StatusOr<DeviceAssignment> AssignDevices(int replica_count,
+                                                         int computation_count);
 
   using ComputationPlacerCreationFunction =
       std::unique_ptr<ComputationPlacer> (*)();
@@ -103,7 +104,7 @@ class ComputationPlacer {
 
   // Returns the computation placer singleton pointer if it is available for the
   // given platform, or an error status if it is not.
-  static StatusOr<ComputationPlacer*> GetForPlatform(
+  static absl::StatusOr<ComputationPlacer*> GetForPlatform(
       const se::Platform* platform);
 
  private:

@@ -25,6 +25,16 @@ limitations under the License.
 
 namespace shlo_ref {
 
+std::variant<TensorElementType, QuantizedTensorElementType> BaselineType(
+    const std::variant<TensorElementType, QuantizedTensorElementType>& type) {
+  return std::visit(
+      [](auto t)
+          -> std::variant<TensorElementType, QuantizedTensorElementType> {
+        return BaselineType(t);
+      },
+      type);
+}
+
 const Shape& Tensor::shape() const {
   if (IsQuantized()) {
     return quantized_tensor_type().shape;
@@ -69,6 +79,16 @@ DimensionSize Tensor::NumElements() const {
                        : tensor_type().shape.NumElements();
 }
 
+size_t Tensor::SizeInBytes() const {
+  if (IsQuantized()) {
+    return SizeOf(quantized_tensor_type().element_type.StorageType()) *
+           quantized_tensor_type().shape.NumElements();
+  } else {
+    return SizeOf(tensor_type().element_type) *
+           tensor_type().shape.NumElements();
+  }
+}
+
 TensorType& Tensor::tensor_type() {
   assert(std::holds_alternative<TensorType>(type));
   return std::get<TensorType>(type);
@@ -95,6 +115,33 @@ const TensorElementType& Tensor::tensor_element_type() const {
 const QuantizedTensorElementType& Tensor::quantized_tensor_element_type()
     const {
   return quantized_tensor_type().element_type;
+}
+
+std::variant<TensorElementType, QuantizedTensorElementType>
+Tensor::element_type() const {
+  if (const TensorType* t = std::get_if<TensorType>(&type); t != nullptr) {
+    return t->element_type;
+  } else {
+    return std::get<QuantizedTensorType>(type).element_type;
+  }
+}
+
+bool operator==(const TensorType& lhs, const TensorType& rhs) {
+  return lhs.element_type == rhs.element_type && lhs.shape == rhs.shape;
+}
+
+bool operator!=(const TensorType& lhs, const TensorType& rhs) {
+  return !(lhs == rhs);
+}
+
+bool operator==(const QuantizedTensorType& lhs,
+                const QuantizedTensorType& rhs) {
+  return lhs.element_type == rhs.element_type && lhs.shape == rhs.shape;
+}
+
+bool operator!=(const QuantizedTensorType& lhs,
+                const QuantizedTensorType& rhs) {
+  return !(lhs == rhs);
 }
 
 }  // namespace shlo_ref

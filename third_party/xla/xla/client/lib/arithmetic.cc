@@ -104,7 +104,7 @@ XlaComputation CreateScalarIdentityWithZeroComputation(PrimitiveType type,
 
 XlaOp Any(XlaOp predicates) {
   XlaBuilder* builder = predicates.builder();
-  return builder->ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
+  return builder->ReportErrorOrReturn([&]() -> absl::StatusOr<XlaOp> {
     auto f = ConstantR0<bool>(builder, false);
     XlaComputation logical_or = CreateScalarOrComputation(PRED, builder);
     TF_ASSIGN_OR_RETURN(const Shape& predicates_shape,
@@ -142,7 +142,7 @@ static XlaComputation CreateMinMaxComputation(XlaBuilder* outer_builder,
 
 XlaOp ArgMinMax(XlaOp input, PrimitiveType output_type, int axis, bool is_min) {
   XlaBuilder* builder = input.builder();
-  return builder->ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
+  return builder->ReportErrorOrReturn([&]() -> absl::StatusOr<XlaOp> {
     TF_ASSIGN_OR_RETURN(Shape input_shape, builder->GetShape(input));
     XlaOp value_init_value;
     if (is_min) {

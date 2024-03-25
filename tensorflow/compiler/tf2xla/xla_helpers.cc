@@ -137,12 +137,13 @@ xla::XlaOp XlaHelpers::ConvertElementType(const xla::XlaOp operand,
 }
 
 XlaHelpers::ShapeRepresentationFn IdentityShapeRepresentationFn() {
-  return [](const TensorShape& shape, DataType dtype, bool use_fast_memory,
-            XlaLayoutPreference layout_preference) -> StatusOr<xla::Shape> {
-    xla::Shape xla_shape;
-    TF_RETURN_IF_ERROR(TensorShapeToXLAShape(dtype, shape, &xla_shape));
-    return xla_shape;
-  };
+  return
+      [](const TensorShape& shape, DataType dtype, bool use_fast_memory,
+         XlaLayoutPreference layout_preference) -> absl::StatusOr<xla::Shape> {
+        xla::Shape xla_shape;
+        TF_RETURN_IF_ERROR(TensorShapeToXLAShape(dtype, shape, &xla_shape));
+        return xla_shape;
+      };
 }
 
 Status ResolveDeviceAssignment(

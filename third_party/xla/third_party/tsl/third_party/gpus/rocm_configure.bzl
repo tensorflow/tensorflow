@@ -819,6 +819,7 @@ _ENVIRONS = [
     _GCC_HOST_COMPILER_PATH,
     _GCC_HOST_COMPILER_PREFIX,
     "TF_NEED_ROCM",
+    "TF_NEED_CUDA",  # Needed by the `if_gpu_is_configured` macro
     _ROCM_TOOLKIT_PATH,
     _TF_ROCM_AMDGPU_TARGETS,
 ]

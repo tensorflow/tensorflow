@@ -113,7 +113,7 @@ class TestCoordinationServiceTaskState {
   void InitializeAndConnectCoordinationAgents(
       const std::string& job_name, int task_id,
       const CoordinationServiceConfig& coordination_config) {
-    auto error_fn = [this, job_name](const Status& status) {
+    auto error_fn = [this, job_name](const absl::Status& status) {
       this->status_ = status;
       LOG(ERROR) << "Coordination service agent of " << job_name
                  << " is in error status: " << status;
@@ -128,11 +128,11 @@ class TestCoordinationServiceTaskState {
 
   CoordinationClient* GetCoordinationClient() { return coord_client_.get(); }
 
-  Status ReportError(const Status& status) {
+  absl::Status ReportError(const absl::Status& status) {
     return coord_agent_->ReportError(status);
   }
 
-  Status GetStatus() const { return status_; }
+  absl::Status GetStatus() const { return status_; }
 
  private:
   std::unique_ptr<::grpc::Server> grpc_server_;
@@ -142,7 +142,7 @@ class TestCoordinationServiceTaskState {
   std::unique_ptr<CoordinationServiceAgent> coord_agent_ =
       CreateCoordinationServiceAgent();
   std::unique_ptr<CoordinationClient> coord_client_;
-  Status status_;
+  absl::Status status_;
 };
 
 class CoordinationServiceRecoverableJobTest : public ::testing::Test {

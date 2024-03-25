@@ -438,8 +438,9 @@ void BatchFunctionKernel::ComputeAsync(OpKernelContext* c, DoneCallback done) {
                            container_, shared_name_, &br, creator),
                        done);
   const uint64_t guid = random::New64();
-  auto create_batch_task_fn = [handle]()
-      -> StatusOr<std::unique_ptr<serving::BatchResourceBase::BatchTask>> {
+  auto create_batch_task_fn =
+      [handle]() -> absl::StatusOr<
+                     std::unique_ptr<serving::BatchResourceBase::BatchTask>> {
     return {std::make_unique<BatchResource::BatchTask>(handle)};
   };
   Status status;
@@ -675,7 +676,7 @@ class BatchKernel : public AsyncOpKernel {
                          done);
     const Status status = br->RegisterInput(
         random::New64(), c, batcher_queue_,
-        []() -> StatusOr<
+        []() -> absl::StatusOr<
                  std::unique_ptr<serving::BatchResourceBase::BatchTask>> {
           return {std::make_unique<BatchResource::BatchTask>(kInvalidHandle)};
         },

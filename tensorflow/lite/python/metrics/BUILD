@@ -43,7 +43,7 @@ pybind_extension(
     ],
     visibility = [
         "__subpackages__",
-        "//tensorflow/tools/pip_package/v2:__subpackages__",
+        "//tensorflow/tools/pip_package:__subpackages__",
     ],
     deps = [
         ":metrics_wrapper_lib",

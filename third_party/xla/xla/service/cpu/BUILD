@@ -10,17 +10,24 @@ load(
     "xla_cc_test",
 )
 load(
+    "//xla/tsl/mkl:build_defs.bzl",
+    "mkl_deps",
+)
+load(
     "//third_party/compute_library:build_defs.bzl",
     "acl_deps",
     "if_enable_acl",
 )
 load("@local_tsl//tsl:tsl.bzl", "internal_visibility", "tf_openmp_copts", "tsl_copts")
 load("@local_tsl//tsl:tsl.default.bzl", "filegroup", "get_compatible_with_portable")
+load("@local_tsl//tsl/platform:build_config.bzl", "tf_proto_library")
 load(
-    "@local_tsl//tsl/mkl:build_defs.bzl",
-    "mkl_deps",
+    "@local_tsl//tsl/platform:build_config_root.bzl",
+    "if_llvm_aarch64_available",
+    "if_llvm_powerpc_available",
+    "if_llvm_system_z_available",
+    "if_llvm_x86_available",
 )
-load("@local_tsl//tsl/platform:build_config.bzl", "if_llvm_system_z_available", "tf_proto_library")
 load("@local_tsl//tsl/platform:rules_cc.bzl", "cc_library")
 load(":build_defs.bzl", "runtime_copts")
 
@@ -178,6 +185,7 @@ cc_library(
         "//xla/service:generic_transfer_manager",
         "//xla/service:transfer_manager",
         "//xla/stream_executor",
+        "//xla/stream_executor:platform_manager",
         "//xla/stream_executor/host:host_platform_id",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/types:span",
@@ -246,7 +254,6 @@ cc_library(
         "//xla/mlir/runtime/transforms:jit_compiler",
         "//xla/mlir_hlo",
         "//xla/mlir_hlo:all_passes",
-        "//xla/mlir_hlo:lhlo",
         "//xla/mlir_hlo:mhlo_passes",
         "//xla/mlir_hlo:transforms_passes",
         "//xla/runtime:custom_call_registry",
@@ -366,7 +373,6 @@ cc_library(
         "@llvm-project//llvm:Support",
         "@llvm-project//llvm:Target",
         "@llvm-project//llvm:TargetParser",
-        "@llvm-project//llvm:X86CodeGen",  # fixdeps: keep
         "@llvm-project//mlir:AffineDialect",
         "@llvm-project//mlir:AffineToStandard",
         "@llvm-project//mlir:ArithDialect",
@@ -396,20 +402,14 @@ cc_library(
         "@local_tsl//tsl/platform:status",
         "@local_tsl//tsl/platform:statusor",
         "@local_tsl//tsl/protobuf:error_codes_proto_impl_cc",
-    ] + select({
-        "@local_tsl//tsl:arm_any": [
-            "@llvm-project//llvm:AArch64CodeGen",  # fixdeps: keep
-        ],
-        "@local_tsl//tsl:linux_ppc64le": [
-            "@llvm-project//llvm:PowerPCCodeGen",  # fixdeps: keep
-        ],
-        "@local_tsl//tsl:macos_arm64": [
-            "@llvm-project//llvm:AArch64CodeGen",  # fixdeps: keep
-        ],
-        "//conditions:default": [
-        ],
-    }) + if_llvm_system_z_available([
+    ] + if_llvm_aarch64_available([
+        "@llvm-project//llvm:AArch64CodeGen",  # fixdeps: keep
+    ]) + if_llvm_powerpc_available([
+        "@llvm-project//llvm:PowerPCCodeGen",  # fixdeps: keep
+    ]) + if_llvm_system_z_available([
         "@llvm-project//llvm:SystemZCodeGen",  # fixdeps: keep
+    ]) + if_llvm_x86_available([
+        "@llvm-project//llvm:X86CodeGen",  # fixdeps: keep
     ]),
 )
 
@@ -1670,12 +1670,16 @@ cc_library(
 )
 
 cc_library(
+    name = "onednn_util",
+    hdrs = ["onednn_util.h"],
+)
+
+cc_library(
     name = "onednn_matmul_rewriter",
     srcs = ["onednn_matmul_rewriter.cc"],
     hdrs = [
         "onednn_matmul.h",
         "onednn_matmul_rewriter.h",
-        "onednn_util.h",
         "@local_tsl//tsl/util:onednn_util_hdrs",
     ],
     copts = tsl_copts(),
@@ -1683,6 +1687,7 @@ cc_library(
         ":backend_config_proto_cc",
         ":onednn_matmul",
         ":onednn_memory_util",
+        ":onednn_util",
         "//xla:executable_run_options",
         "//xla:shape_util",
         "//xla:status_macros",
@@ -1706,12 +1711,12 @@ cc_library(
     srcs = ["onednn_ops_rewriter.cc"],
     hdrs = [
         "onednn_ops_rewriter.h",
-        "onednn_util.h",
     ],
     copts = tsl_copts(),
     deps = [
         ":backend_config_proto_cc",
         ":onednn_memory_util",
+        ":onednn_util",
         "//xla:status_macros",
         "//xla:xla_data_proto_cc",
         "//xla/hlo/ir:hlo",

@@ -244,6 +244,7 @@ tf_cc_test(
         ":delegate_data",
         "//tensorflow/core:test",
         "//tensorflow/core/common_runtime/eager:context",
+        "//tensorflow/core/platform:mutex",
         "//tensorflow/core/platform:protobuf",
         "//tensorflow/core/platform:status",
         "//tensorflow/lite:framework",

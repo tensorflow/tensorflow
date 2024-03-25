@@ -15,7 +15,6 @@ limitations under the License.
 #include <memory>
 #include <optional>
 #include <utility>
-#include <vector>
 
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
@@ -36,6 +35,7 @@ limitations under the License.
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/logging.h"
+#include "tsl/platform/status.h"
 
 namespace xla::gpu {
 namespace {
@@ -191,9 +191,13 @@ TryMergeFusionConsumerIntoTritonSoftmaxProducer(
 
 bool TryMergeProducerAndConsumerFusionsIntoTritonSoftmax(
     HloFusionInstruction* softmax_fusion) {
-  // The softmax_fusion should come directly from the matcher, and have a single
-  // operand.
-  CHECK_EQ(softmax_fusion->operand_count(), 1);
+  // The softmax_fusion should come directly from the matcher. They might have
+  // more than a single operand, in this case attempt to fuse into the first
+  // operand only.
+  if (softmax_fusion->operand_count() > 1) {
+    LOG(INFO) << "More than one parameter detected. Will attempt to merge "
+                 "fusions only for operand 0 (diamond producer).";
+  }
 
   // TODO(b/313026024): Add support for multiple users
   bool should_try_merging_producer =

@@ -45,7 +45,6 @@ limitations under the License.
 #include "mlir/IR/AffineMap.h"  // from @llvm-project
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/layout_util.h"
-#include "xla/mlir_hlo/lhlo/IR/lhlo_ops.h"
 #include "xla/service/gpu/ir_emitter_context.h"
 #include "xla/service/gpu/kernel_arguments.h"
 #include "xla/service/gpu/kernel_reuse_cache.h"
@@ -85,6 +84,8 @@ void AnnotateWithInt32Value(std::string name, int64_t value,
            llvm::IntegerType::get(llvm_context, /*NumBits=*/32), value))}));
 }
 
+}  // namespace
+
 // Annotates the launch dimensions of the corresponding IR kernel in
 // `llvm_module`.
 absl::Status AnnotateKernelLaunchDimensions(
@@ -115,8 +116,6 @@ absl::Status AnnotateKernelLaunchDimensions(
   // LLVM supports that yet. Let's do that later when needed.
   return absl::OkStatus();
 }
-
-}  // namespace
 
 IndexingMap KernelFusionInterface::GetDefaultThreadIdToOutputIndexingMap(
     const LaunchDimensions& launch_dims, int unroll_factor,
@@ -171,7 +170,7 @@ IndexingMap KernelFusionInterface::GetDefaultThreadIdToOutputIndexingMap(
     divisor *= output_shape.dimensions(dimension);
   }
 
-  std::vector<Range> dimension_ranges = {
+  std::vector<Interval> dimension_ranges = {
       {0, static_cast<int64_t>(launch_dims.thread_counts_per_block().x) - 1},
       {0, static_cast<int64_t>(launch_dims.thread_counts_per_block().y) - 1},
       {0, static_cast<int64_t>(launch_dims.thread_counts_per_block().z) - 1},
@@ -179,7 +178,7 @@ IndexingMap KernelFusionInterface::GetDefaultThreadIdToOutputIndexingMap(
       {0, static_cast<int64_t>(launch_dims.block_counts().y) - 1},
       {0, static_cast<int64_t>(launch_dims.block_counts().z) - 1},
   };
-  std::vector<Range> symbol_ranges;
+  std::vector<Interval> symbol_ranges;
   int64_t num_elements = ShapeUtil::ElementsIn(output_shape);
   symbol_ranges.push_back(
       {0, CeilOfRatio(num_elements,
@@ -194,9 +193,9 @@ IndexingMap KernelFusionInterface::GetDefaultThreadIdToOutputIndexingMap(
   // Remove the unroll_elem_id symbol if unrolling divides num_elements.
   if (num_elements % unroll_factor == 0) {
     indexing_map.AddConstraint(linear_index.replace({{unroll_elem_id, c0}}),
-                               Range{0, num_elements - unroll_factor});
+                               Interval{0, num_elements - unroll_factor});
   } else {
-    indexing_map.AddConstraint(linear_index, Range{0, num_elements - 1});
+    indexing_map.AddConstraint(linear_index, Interval{0, num_elements - 1});
   }
   indexing_map.Simplify();
   return indexing_map;
@@ -302,22 +301,19 @@ BuildKernelPrototype(IrEmitterContext& ir_emitter_context,
 }
 
 absl::StatusOr<FusionEmissionResult> KernelFusionEmitterBase::Emit(
-    IrEmitterContext& ir_emitter_context, mlir::lmhlo::FusionOp fusion_op,
+    IrEmitterContext& ir_emitter_context,
     const HloFusionInstruction& fusion) const {
   llvm::IRBuilder<> builder(ir_emitter_context.llvm_module()->getContext());
   std::string suggested_kernel_name = std::string(fusion.name());
 
-  TF_ASSIGN_OR_RETURN(KernelArguments kernel_arguments,
-                      ir_emitter_context.emit_ir_from_hlo()
-                          ? KernelArguments::Create(
-                                ir_emitter_context.buffer_assignment(), &fusion)
-                          : KernelArguments::Create(
-                                ir_emitter_context.allocations(), fusion_op));
+  TF_ASSIGN_OR_RETURN(
+      KernelArguments kernel_arguments,
+      KernelArguments::Create(ir_emitter_context.buffer_assignment(), &fusion));
 
   auto* fused_computation = fusion.fused_instructions_computation();
 
   TF_ASSIGN_OR_RETURN(auto result,
-                      EmitInitializers(ir_emitter_context, fusion_op, fusion));
+                      EmitInitializers(ir_emitter_context, fusion));
   auto launch_dims = launch_dimensions();
   std::vector<llvm_ir::IrArray> inputs, outputs;
   auto [status_or_entry, cached] =
@@ -352,15 +348,9 @@ absl::StatusOr<FusionEmissionResult> KernelFusionEmitterBase::Emit(
             << entry->kernel_name;
   }
 
-  if (ir_emitter_context.emit_ir_from_hlo()) {
-    result.thunks.emplace_back(std::make_unique<KernelThunk>(
-        &fusion, entry->kernel_name, kernel_arguments.args(), launch_dims,
-        entry->cluster_dim, entry->shmem_bytes));
-  } else {
-    result.thunks.emplace_back(std::make_unique<KernelThunk>(
-        fusion_op, entry->kernel_name, kernel_arguments.args(), launch_dims,
-        entry->cluster_dim, entry->shmem_bytes));
-  }
+  result.thunks.emplace_back(std::make_unique<KernelThunk>(
+      &fusion, entry->kernel_name, kernel_arguments.args(), launch_dims,
+      entry->cluster_dim, entry->shmem_bytes));
 
   return result;
 }

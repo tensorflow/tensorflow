@@ -27,7 +27,6 @@ limitations under the License.
 #include "xla/stream_executor/blas.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/device_memory.h"
-#include "xla/stream_executor/device_options.h"
 #include "xla/stream_executor/event.h"
 #include "xla/stream_executor/host/host_stream.h"
 #include "xla/stream_executor/kernel.h"
@@ -47,7 +46,7 @@ class XlaInterpreterExecutor : public internal::StreamExecutorInterface {
  public:
   XlaInterpreterExecutor() = default;
 
-  absl::Status Init(int device_ordinal, DeviceOptions device_options) override {
+  absl::Status Init(int device_ordinal) override {
     device_ordinal_ = device_ordinal;
     return absl::OkStatus();
   }
@@ -73,10 +72,10 @@ class XlaInterpreterExecutor : public internal::StreamExecutorInterface {
   bool HostMemoryRegister(void *mem, uint64_t size) override { return true; }
   bool HostMemoryUnregister(void *mem) override { return true; }
 
-  bool Memcpy(Stream *stream, void *host_dst, const DeviceMemoryBase &dev_src,
-              uint64_t size) override;
-  bool Memcpy(Stream *stream, DeviceMemoryBase *dev_dst, const void *host_src,
-              uint64_t size) override;
+  absl::Status Memcpy(Stream *stream, void *host_dst,
+                      const DeviceMemoryBase &dev_src, uint64_t size) override;
+  absl::Status Memcpy(Stream *stream, DeviceMemoryBase *dev_dst,
+                      const void *host_src, uint64_t size) override;
   bool MemcpyDeviceToDevice(Stream *stream, DeviceMemoryBase *pop_dst,
                             const DeviceMemoryBase &host_src,
                             uint64_t size) override {
@@ -150,12 +149,12 @@ class XlaInterpreterExecutor : public internal::StreamExecutorInterface {
     return false;
   }
 
-  tsl::StatusOr<std::unique_ptr<DeviceDescription>> CreateDeviceDescription()
+  absl::StatusOr<std::unique_ptr<DeviceDescription>> CreateDeviceDescription()
       const override {
     return CreateDeviceDescription(0);
   }
 
-  static tsl::StatusOr<std::unique_ptr<DeviceDescription>>
+  static absl::StatusOr<std::unique_ptr<DeviceDescription>>
   CreateDeviceDescription(int device_ordinal);
 
   absl::Status EnablePeerAccessTo(StreamExecutorInterface *other) override {
@@ -173,8 +172,7 @@ class XlaInterpreterExecutor : public internal::StreamExecutorInterface {
 
   std::unique_ptr<internal::StreamInterface> GetStreamImplementation()
       override {
-    return std::unique_ptr<internal::StreamInterface>(
-        new host::HostStream(/*thread_stack_size=*/0));
+    return std::make_unique<host::HostStream>();
   }
 
  private:
@@ -184,7 +182,8 @@ class XlaInterpreterExecutor : public internal::StreamExecutorInterface {
 
   DeviceMemoryBase AllocateSingleOutput(const xla::Shape &shape);
 
-  tsl::StatusOr<DeviceMemoryBase> AllocateOutputBuffer(const xla::Shape &shape);
+  absl::StatusOr<DeviceMemoryBase> AllocateOutputBuffer(
+      const xla::Shape &shape);
 };
 
 }  // namespace interpreter

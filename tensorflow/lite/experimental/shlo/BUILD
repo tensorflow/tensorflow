@@ -1,7 +1,8 @@
 # StableHLO Reference Library
+load("build_def.bzl", "shlo_ref_linkopts")
 
 package(
-    default_applicable_licenses = ["//tensorflow:LICENSE"],
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:LICENSE"],
     default_visibility = ["//visibility:public"],
 )
 
@@ -20,6 +21,17 @@ cc_library(
         ":data_type",
         ":quantized_tensor_element_type",
         ":shape",
+        "@com_google_absl//absl/types:span",
+    ],
+)
+
+cc_test(
+    name = "tensor_test",
+    srcs = ["tensor_test.cc"],
+    deps = [
+        ":data_type",
+        ":tensor",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -37,8 +49,10 @@ cc_library(
 cc_test(
     name = "shape_test",
     srcs = ["shape_test.cc"],
+    linkopts = shlo_ref_linkopts(),
     deps = [
         ":shape",
+        "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -49,6 +63,7 @@ cc_library(
     deps = [
         ":data_type",
         ":shape",
+        "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/log:absl_check",
         "@com_google_absl//absl/types:span",
@@ -58,8 +73,10 @@ cc_library(
 cc_test(
     name = "quantized_tensor_element_type_test",
     srcs = ["quantized_tensor_element_type_test.cc"],
+    linkopts = shlo_ref_linkopts(),
     deps = [
         ":data_type",
+        ":f16",
         ":quantized_tensor_element_type",
         "@com_google_googletest//:gtest_main",
     ],
@@ -68,7 +85,22 @@ cc_test(
 cc_library(
     name = "bf16",
     hdrs = ["bf16.h"],
-    deps = [":has_keyword"],
+    deps = [
+        ":has_keyword",
+        "@com_google_absl//absl/base",
+        "@com_google_absl//absl/log:absl_check",
+    ],
+)
+
+cc_test(
+    name = "bf16_test",
+    srcs = ["bf16_test.cc"],
+    linkopts = shlo_ref_linkopts(),
+    deps = [
+        ":bf16",
+        "@com_google_absl//absl/base",
+        "@com_google_googletest//:gtest_main",
+    ],
 )
 
 cc_library(
@@ -94,6 +126,82 @@ cc_library(
 cc_library(
     name = "dispatch",
     hdrs = ["dispatch.h"],
-    visibility = ["//visibility:private"],
+    visibility = ["//tensorflow/lite/experimental/shlo:__subpackages__"],
     deps = [":data_type"],
+)
+
+cc_test(
+    name = "dispatch_test",
+    srcs = ["dispatch_test.cc"],
+    linkopts = shlo_ref_linkopts(),
+    deps = [
+        ":dispatch",
+        ":status_matcher",
+        "@com_google_absl//absl/status",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_library(
+    name = "quantize",
+    hdrs = ["quantize.h"],
+    deps = [":data_type"],
+)
+
+cc_test(
+    name = "quantize_test",
+    srcs = ["quantize_test.cc"],
+    linkopts = shlo_ref_linkopts(),
+    deps = [
+        ":data_type",
+        ":quantize",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_library(
+    name = "status_matcher",
+    testonly = True,
+    hdrs = ["status_matcher.h"],
+    deps = [
+        "@com_google_absl//absl/status",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_library(
+    name = "tensor_with_data",
+    testonly = True,
+    hdrs = ["tensor_with_data.h"],
+    deps = [
+        ":data_type",
+        ":quantize",
+        ":quantized_tensor_element_type",
+        ":shape",
+        ":tensor",
+        "@com_google_absl//absl/types:span",
+    ],
+)
+
+cc_library(
+    name = "tensor_matcher",
+    testonly = True,
+    hdrs = ["tensor_matcher.h"],
+    deps = [
+        ":data_type",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "tensor_matcher_test",
+    srcs = ["tensor_matcher_test.cc"],
+    linkopts = shlo_ref_linkopts(),
+    deps = [
+        ":data_type",
+        ":shape",
+        ":tensor_matcher",
+        ":tensor_with_data",
+        "@com_google_googletest//:gtest_main",
+    ],
 )

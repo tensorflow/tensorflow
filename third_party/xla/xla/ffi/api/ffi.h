@@ -16,9 +16,9 @@ limitations under the License.
 #ifndef XLA_FFI_API_FFI_H_
 #define XLA_FFI_API_FFI_H_
 
-#ifdef TENSORFLOW_COMPILER_XLA_FFI_FFI_H_
+#ifdef XLA_FFI_FFI_H_
 #error Two different XLA FFI implementations cannot be included together
-#endif  // XLA_FFI_API_H_
+#endif  // XLA_FFI_FFI_H_
 
 #include <cstddef>
 #include <cstdint>
@@ -170,6 +170,20 @@ template <DataType dtype> using BufferR2 = Buffer<dtype, 2>;
 template <DataType dtype> using BufferR3 = Buffer<dtype, 3>;
 template <DataType dtype> using BufferR4 = Buffer<dtype, 4>;
 // clang-format on
+
+//===----------------------------------------------------------------------===//
+// Arguments binding
+//===----------------------------------------------------------------------===//
+
+template <>
+struct ArgBinding<BufferBase> {
+  using Arg = BufferBase;
+};
+
+template <DataType dtype, size_t rank>
+struct ArgBinding<Buffer<dtype, rank>> {
+  using Arg = Buffer<dtype, rank>;
+};
 
 //===----------------------------------------------------------------------===//
 // Arguments decoding

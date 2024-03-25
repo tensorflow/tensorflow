@@ -56,7 +56,7 @@ class DeviceCompilationProfiler : public ResourceBase {
   };
 
   // Returns the compilation statistics for the given cluster.
-  StatusOr<ClusterCompileStats> GetCompileStats(
+  absl::StatusOr<ClusterCompileStats> GetCompileStats(
       const NameAttrList& function) const;
 
   // Determines whether the cluster should be compiled. Creates and inserts an

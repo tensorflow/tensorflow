@@ -51,7 +51,7 @@ class PjRtHostSendAndRecvLoadedHostCallback
 
   Client* client() const override { return client_; }
 
-  StatusOr<std::string> Serialize() const override;
+  absl::StatusOr<std::string> Serialize() const override;
 
   static char ID;  // NOLINT
 

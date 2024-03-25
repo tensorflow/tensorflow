@@ -29,13 +29,16 @@ limitations under the License.
 #define NO_IMPORT_ARRAY
 #endif
 
+// clang-format off
 // Place `<locale>` before <Python.h> to avoid build failure in macOS.
 #include <locale>
 
 #include <Python.h>
+// clang-format on
 
-#include "numpy/arrayobject.h"
-#include "numpy/ufuncobject.h"
+#include "numpy/arrayobject.h"  // IWYU pragma: export
+#include "numpy/npy_common.h"   // IWYU pragma: export
+#include "numpy/ufuncobject.h"  // IWYU pragma: export
 
 namespace tsl {
 

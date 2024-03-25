@@ -36,7 +36,7 @@ pytype_strict_library(
         "//tensorflow/dtensor:dtensor-internal",
         "//tensorflow/dtensor:dtensor-users",
         "//tensorflow/tools/pip_package:__pkg__",
-        "//tensorflow/tools/pip_package/v2:__subpackages__",
+        "//tensorflow/tools/pip_package:__subpackages__",
     ],
     deps = [
         "//tensorflow/dtensor/python:api",
@@ -483,7 +483,7 @@ pytype_strict_library(
         "//tensorflow/dtensor:dtensor-internal",
         "//tensorflow/dtensor:dtensor-users",
         "//tensorflow/tools/pip_package:__pkg__",
-        "//tensorflow/tools/pip_package/v2:__subpackages__",
+        "//tensorflow/tools/pip_package:__subpackages__",
     ],
     deps = [
         ":test_util",

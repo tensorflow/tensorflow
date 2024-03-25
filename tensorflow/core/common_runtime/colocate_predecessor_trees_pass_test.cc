@@ -61,7 +61,7 @@ TEST(ColocatePredecessorTreesPassTest, SimpleExample) {
   ops::UnaryOp("Identity", fill, builder.opts().WithName("identity"));
 
   TF_EXPECT_OK(GraphDefBuilderToGraph(builder, graph.get()));
-  GetNode(*graph, "identity")->set_assigned_device_name(kCpu0);
+  GetNode(*graph, "identity")->set_requested_device(kCpu0);
 
   GraphDef before;
   graph->ToGraphDef(&before);
@@ -79,15 +79,15 @@ TEST(ColocatePredecessorTreesPassTest, SimpleExample) {
   const AttrValue* input_value;
   TF_EXPECT_OK(
       GetNode(*graph, "const_0")->attrs().Find(kClassAttr, &input_value));
-  EXPECT_EQ(input_value->s(), expected_colocation_info);
+  EXPECT_EQ(input_value->list().s().at(0), expected_colocation_info);
   TF_EXPECT_OK(
       GetNode(*graph, "const_1")->attrs().Find(kClassAttr, &input_value));
-  EXPECT_EQ(input_value->s(), expected_colocation_info);
+  EXPECT_EQ(input_value->list().s().at(0), expected_colocation_info);
   TF_EXPECT_OK(GetNode(*graph, "fill")->attrs().Find(kClassAttr, &input_value));
-  EXPECT_EQ(input_value->s(), expected_colocation_info);
+  EXPECT_EQ(input_value->list().s().at(0), expected_colocation_info);
   TF_EXPECT_OK(
       GetNode(*graph, "identity")->attrs().Find(kClassAttr, &input_value));
-  EXPECT_EQ(input_value->s(), expected_colocation_info);
+  EXPECT_EQ(input_value->list().s().at(0), expected_colocation_info);
 }
 
 // Test colocate two predecessor trees case.
@@ -119,8 +119,8 @@ TEST(ColocatePredecessorTreesPassTest, PropagateTwoTrees) {
   ops::UnaryOp("Identity", fill_1, builder.opts().WithName("identity_1"));
 
   TF_EXPECT_OK(GraphDefBuilderToGraph(builder, graph.get()));
-  GetNode(*graph, "identity")->set_assigned_device_name(kCpu0);
-  GetNode(*graph, "identity_1")->set_assigned_device_name(kCpu0);
+  GetNode(*graph, "identity")->set_requested_device(kCpu0);
+  GetNode(*graph, "identity_1")->set_requested_device(kCpu0);
 
   GraphDef before;
   graph->ToGraphDef(&before);
@@ -138,15 +138,15 @@ TEST(ColocatePredecessorTreesPassTest, PropagateTwoTrees) {
   const AttrValue* input_value;
   TF_EXPECT_OK(
       GetNode(*graph, "const_0")->attrs().Find(kClassAttr, &input_value));
-  EXPECT_EQ(input_value->s(), expected_colocation_info);
+  EXPECT_EQ(input_value->list().s().at(0), expected_colocation_info);
   TF_EXPECT_OK(
       GetNode(*graph, "const_1")->attrs().Find(kClassAttr, &input_value));
-  EXPECT_EQ(input_value->s(), expected_colocation_info);
+  EXPECT_EQ(input_value->list().s().at(0), expected_colocation_info);
   TF_EXPECT_OK(GetNode(*graph, "fill")->attrs().Find(kClassAttr, &input_value));
-  EXPECT_EQ(input_value->s(), expected_colocation_info);
+  EXPECT_EQ(input_value->list().s().at(0), expected_colocation_info);
   TF_EXPECT_OK(
       GetNode(*graph, "identity")->attrs().Find(kClassAttr, &input_value));
-  EXPECT_EQ(input_value->s(), expected_colocation_info);
+  EXPECT_EQ(input_value->list().s().at(0), expected_colocation_info);
 
   EXPECT_TRUE(HasNodeAttr(GetNode(*graph, "const_2")->def(), kClassAttr));
   EXPECT_TRUE(HasNodeAttr(GetNode(*graph, "const_3")->def(), kClassAttr));
@@ -156,16 +156,16 @@ TEST(ColocatePredecessorTreesPassTest, PropagateTwoTrees) {
   std::string expected_colocation_info_1 = "loc:@identity_1";
   TF_EXPECT_OK(
       GetNode(*graph, "const_2")->attrs().Find(kClassAttr, &input_value));
-  EXPECT_EQ(input_value->s(), expected_colocation_info_1);
+  EXPECT_EQ(input_value->list().s().at(0), expected_colocation_info_1);
   TF_EXPECT_OK(
       GetNode(*graph, "const_3")->attrs().Find(kClassAttr, &input_value));
-  EXPECT_EQ(input_value->s(), expected_colocation_info_1);
+  EXPECT_EQ(input_value->list().s().at(0), expected_colocation_info_1);
   TF_EXPECT_OK(
       GetNode(*graph, "fill_1")->attrs().Find(kClassAttr, &input_value));
-  EXPECT_EQ(input_value->s(), expected_colocation_info_1);
+  EXPECT_EQ(input_value->list().s().at(0), expected_colocation_info_1);
   TF_EXPECT_OK(
       GetNode(*graph, "identity_1")->attrs().Find(kClassAttr, &input_value));
-  EXPECT_EQ(input_value->s(), expected_colocation_info_1);
+  EXPECT_EQ(input_value->list().s().at(0), expected_colocation_info_1);
 }
 
 // Test a simple colocate predecessor tree example.
@@ -188,7 +188,7 @@ TEST(ColocatePredecessorTreesPassTest, RootHasMultipleOutputs) {
   ops::UnaryOp("Identity", identity, builder.opts().WithName("identity_2"));
 
   TF_EXPECT_OK(GraphDefBuilderToGraph(builder, graph.get()));
-  GetNode(*graph, "identity")->set_assigned_device_name(kCpu0);
+  GetNode(*graph, "identity")->set_requested_device(kCpu0);
 
   GraphDef before;
   graph->ToGraphDef(&before);
@@ -201,28 +201,22 @@ TEST(ColocatePredecessorTreesPassTest, RootHasMultipleOutputs) {
   EXPECT_TRUE(HasNodeAttr(GetNode(*graph, "const_1")->def(), kClassAttr));
   EXPECT_TRUE(HasNodeAttr(GetNode(*graph, "fill")->def(), kClassAttr));
   EXPECT_TRUE(HasNodeAttr(GetNode(*graph, "identity")->def(), kClassAttr));
-  EXPECT_TRUE(HasNodeAttr(GetNode(*graph, "identity_1")->def(), kClassAttr));
-  EXPECT_TRUE(HasNodeAttr(GetNode(*graph, "identity_1")->def(), kClassAttr));
+  EXPECT_FALSE(HasNodeAttr(GetNode(*graph, "identity_1")->def(), kClassAttr));
+  EXPECT_FALSE(HasNodeAttr(GetNode(*graph, "identity_2")->def(), kClassAttr));
 
   std::string expected_colocation_info = "loc:@identity";
   const AttrValue* input_value;
   TF_EXPECT_OK(
       GetNode(*graph, "const_0")->attrs().Find(kClassAttr, &input_value));
-  EXPECT_EQ(input_value->s(), expected_colocation_info);
+  EXPECT_EQ(input_value->list().s().at(0), expected_colocation_info);
   TF_EXPECT_OK(
       GetNode(*graph, "const_1")->attrs().Find(kClassAttr, &input_value));
-  EXPECT_EQ(input_value->s(), expected_colocation_info);
+  EXPECT_EQ(input_value->list().s().at(0), expected_colocation_info);
   TF_EXPECT_OK(GetNode(*graph, "fill")->attrs().Find(kClassAttr, &input_value));
-  EXPECT_EQ(input_value->s(), expected_colocation_info);
+  EXPECT_EQ(input_value->list().s().at(0), expected_colocation_info);
   TF_EXPECT_OK(
       GetNode(*graph, "identity")->attrs().Find(kClassAttr, &input_value));
-  EXPECT_EQ(input_value->s(), expected_colocation_info);
-  TF_EXPECT_OK(
-      GetNode(*graph, "identity_1")->attrs().Find(kClassAttr, &input_value));
-  EXPECT_EQ(input_value->s(), expected_colocation_info);
-  TF_EXPECT_OK(
-      GetNode(*graph, "identity_2")->attrs().Find(kClassAttr, &input_value));
-  EXPECT_EQ(input_value->s(), expected_colocation_info);
+  EXPECT_EQ(input_value->list().s().at(0), expected_colocation_info);
 }
 
 // Test that a const op has device attr, no colocation info is propagated.
@@ -243,8 +237,8 @@ TEST(ColocatePredecessorTreesPassTest, ConstHasDeviceAttr) {
   ops::UnaryOp("Identity", fill, builder.opts().WithName("identity"));
 
   TF_EXPECT_OK(GraphDefBuilderToGraph(builder, graph.get()));
-  GetNode(*graph, "identity")->set_assigned_device_name(kCpu0);
-  GetNode(*graph, "const_0")->set_assigned_device_name(kCpu1);
+  GetNode(*graph, "identity")->set_requested_device(kCpu0);
+  GetNode(*graph, "const_0")->set_requested_device(kCpu1);
 
   GraphDef before;
   graph->ToGraphDef(&before);
@@ -279,7 +273,7 @@ TEST(ColocatePredecessorTreesPassTest, ConstHasColocationInfo) {
       ops::UnaryOp("Identity", fill, builder.opts().WithName("identity"));
 
   TF_EXPECT_OK(GraphDefBuilderToGraph(builder, graph.get()));
-  GetNode(*graph, "identity")->set_assigned_device_name(kCpu0);
+  GetNode(*graph, "identity")->set_requested_device(kCpu0);
 
   GraphDef before;
   graph->ToGraphDef(&before);
@@ -313,7 +307,7 @@ TEST(ColocatePredecessorTreesPassTest, InputArg) {
   ops::UnaryOp("Identity", fill, builder.opts().WithName("identity"));
 
   TF_EXPECT_OK(GraphDefBuilderToGraph(builder, graph.get()));
-  GetNode(*graph, "identity")->set_assigned_device_name(kCpu0);
+  GetNode(*graph, "identity")->set_requested_device(kCpu0);
 
   GraphDef before;
   graph->ToGraphDef(&before);

@@ -17,16 +17,20 @@ limitations under the License.
 
 #include <functional>
 #include <memory>
+#include <optional>
 #include <string>
 
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/strings/string_view.h"
 #include "llvm/ADT/StringRef.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/Visitors.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/tf2xla/tf2xla_defs.h"
 #include "tensorflow/core/common_runtime/function_body.h"
 #include "tensorflow/core/common_runtime/function_def_utils.h"
@@ -40,6 +44,8 @@ using ::mlir::LogicalResult;
 using ::mlir::success;
 
 namespace {
+constexpr absl::string_view kPartitionedCall = "TPUPartitionedCall";
+
 LogicalResult HasAttr(
     const Graph& graph, const FunctionLibraryDefinition* function_library,
     const std::function<bool(const Graph& graph)>& predicate) {
@@ -157,6 +163,45 @@ bool IsSingleCoreTPUGraph(mlir::ModuleOp module) {
   return walk_result.wasInterrupted();
 }
 
+// Traverses each node in the graph and check if any of them is
+// TPUPartitionedCall. If so, return true. Otherwise, return false.
+bool DoesGraphContainTPUPartitionedCall(const Graph& graph) {
+  for (const Node* node : graph.nodes()) {
+    if (node->type_string() == kPartitionedCall) return true;
+  }
+  return false;
+}
+
+// Checks any reachable functions from `graph_def` in `flib_def`
+// for inference graphs.
+bool DoReachableFuncsContainTPUPartitionedCall(
+    const GraphDef& graph_def, const FunctionLibraryDefinition& flib_def) {
+  for (const std::string& func_name :
+       flib_def.ReachableDefinitions(graph_def).ListFunctionNames()) {
+    const FunctionDef* func_def = flib_def.Find(func_name);
+    std::unique_ptr<FunctionBody> func_body;
+    if (!FunctionDefToBodyHelper(*func_def, AttrSlice(&func_def->attr()),
+                                 &flib_def, &func_body)
+             .ok())
+      return false;
+    if (DoesGraphContainTPUPartitionedCall(*func_body->graph)) return true;
+  }
+  return false;
+}
+
+// Iterate all functions from the flib_def if there are any that belong to
+// the inference graph.
+bool AreFunctionsFromFlibDefInference(
+    const FunctionLibraryDefinition& flib_def) {
+  for (const std::string& func_name : flib_def.ListFunctionNames()) {
+    const FunctionDef* func_def = flib_def.Find(func_name);
+    for (const NodeDef& node_def : func_def->node_def()) {
+      if (node_def.op() == kPartitionedCall) return true;
+    }
+  }
+  return false;
+}
+
 }  // namespace
 
 bool IsSupportedByNonReplicatedBridge(
@@ -172,6 +217,32 @@ bool IsSupportedByReplicatedBridge(
 
 bool IsSupportedByReplicatedBridge(mlir::ModuleOp module) {
   return IsReplicatedGraph(module) || IsSingleCoreTPUGraph(module);
+}
+
+bool HasTPUPartitionedCallOpInModule(mlir::ModuleOp module) {
+  bool has_tpu_partitioned_call = false;
+  for (auto func_op : module.getOps<mlir::func::FuncOp>()) {
+    func_op->walk([&](mlir::TF::TPUPartitionedCallOp op) {
+      has_tpu_partitioned_call = true;
+    });
+    if (has_tpu_partitioned_call) break;
+  }
+  return has_tpu_partitioned_call;
+}
+
+bool IsInferenceGraph(const Graph& graph,
+                      const FunctionLibraryDefinition* function_library) {
+  if (DoesGraphContainTPUPartitionedCall(graph)) return true;
+  GraphDef graph_def;
+  graph.ToGraphDef(&graph_def);
+  if (DoReachableFuncsContainTPUPartitionedCall(graph_def, graph.flib_def()))
+    return true;
+  if (AreFunctionsFromFlibDefInference(graph.flib_def())) return true;
+  if (function_library == nullptr) return false;
+  if (DoReachableFuncsContainTPUPartitionedCall(graph_def, *function_library))
+    return true;
+  if (AreFunctionsFromFlibDefInference(*function_library)) return true;
+  return false;
 }
 
 }  // namespace tensorflow

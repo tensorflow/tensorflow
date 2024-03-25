@@ -21,10 +21,11 @@ limitations under the License.
 
 namespace xla {
 
-// CollectivePermuteDecomposer is a pass that converts asynchronous
+// CollectivePermuteDecomposer is a pass that (1) converts asynchronous
 // CollectivePermute operations without any cycle in the (source, target)
-// relationship to Send/Recv. We currently restrict this transformation to
-// CollectivePermuteStart with one input and without any context data.
+// relationship to Send/Recv, and (2) annotates the Send/Recv for pipelining
+// with a frontend attribute. We currently restrict the decomposition
+// to CollectivePermuteStart with one input and without any context data.
 //
 // before transformation:
 //     start = (<rt>, <rt>) collective-permute-start(data),
@@ -43,6 +44,15 @@ namespace xla {
 //      control-predecessors={recv-done}
 //    done = <rt> get-tuple-element(recv-done), index=0
 //
+// For pipelining, we first make pipelining decision on CollectivePermute
+// operations, and then record the decision on the decomposed Send/Recv via
+// frontend attributes. We currently only pipeline CollectivePermute operations
+// that send loop input data. As a simple heuristics, we pick the first
+// encountered pipelineable CollectivePermute for pipelining. Then, if there is
+// another pipelineable CollectivePermute that forms a forward or backward
+// cycle with the first CollectivePermute, we mark both CollectivePermute
+// for pipelining. Otherwise, we only mark one CollectivePermute for pipelining.
+//
 class CollectivePermuteDecomposer : public HloModulePass {
  public:
   explicit CollectivePermuteDecomposer(int64_t threshold_in_bytes)
@@ -54,7 +64,7 @@ class CollectivePermuteDecomposer : public HloModulePass {
   using HloPassInterface::Run;
   // Runs CollectivePermuteDecomposer pass on computations in 'module'.
   // Returns whether the 'module' was changed.
-  StatusOr<bool> Run(
+  absl::StatusOr<bool> Run(
       HloModule* module,
       const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 

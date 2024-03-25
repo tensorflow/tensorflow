@@ -8,12 +8,12 @@ load(
     "tf_mkl_kernel_library",
 )
 load("//tensorflow:tensorflow.default.bzl", "filegroup")
-load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load(
-    "//third_party/mkl:build_defs.bzl",
+    "@local_xla//xla/tsl/mkl:build_defs.bzl",
     "if_mkl",
     "mkl_deps",
 )
+load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -121,6 +121,7 @@ tf_cuda_library(
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
+        "@local_tsl//tsl/util:env_var",
     ] + select({
         "//tensorflow:android": [
             "//tensorflow/core:portable_tensorflow_lib_lite",

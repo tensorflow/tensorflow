@@ -29,7 +29,7 @@ limitations under the License.
 
 namespace xla {
 
-static StatusOr<bool> DoConditionalToSelect(HloInstruction* conditional) {
+static absl::StatusOr<bool> DoConditionalToSelect(HloInstruction* conditional) {
   // Only allow conditional to select if the called computations
   // do not have side effects.
   if (conditional->true_computation()->HasSideEffect() ||
@@ -66,7 +66,7 @@ static StatusOr<bool> DoConditionalToSelect(HloInstruction* conditional) {
   return true;
 }
 
-StatusOr<bool> ConditionalToSelect::Run(
+absl::StatusOr<bool> ConditionalToSelect::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   std::unique_ptr<CallGraph> call_graph = CallGraph::Build(module);

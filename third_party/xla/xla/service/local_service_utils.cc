@@ -63,7 +63,7 @@ std::optional<const OpMetadata*> ParameterMetadata(
 }
 }  // namespace
 
-StatusOr<std::unique_ptr<HloModuleConfig>> GetHloModuleConfig(
+absl::StatusOr<std::unique_ptr<HloModuleConfig>> GetHloModuleConfig(
     const XlaComputation& computation,
     absl::Span<const Shape* const> argument_layouts,
     const ExecutableBuildOptions& build_options, ServiceOptions* options,

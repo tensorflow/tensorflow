@@ -43,7 +43,6 @@ limitations under the License.
 
 namespace xla {
 namespace gpu {
-namespace {
 
 const Shape& GetLargestConcatOperandShape(const HloFusionAnalysis& analysis) {
   const HloInstruction* concat = analysis.fusion_heroes().front();
@@ -54,8 +53,6 @@ const Shape& GetLargestConcatOperandShape(const HloFusionAnalysis& analysis) {
   HloInstruction* operand = *absl::c_max_element(concat->operands(), less);
   return operand->shape();
 }
-
-}  // namespace
 
 ConcatenateFusion::ConcatenateFusion(const HloFusionAnalysis& analysis)
     : analysis_(analysis) {}

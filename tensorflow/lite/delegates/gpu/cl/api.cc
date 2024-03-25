@@ -453,6 +453,10 @@ class InferenceRunnerImpl : public CLInferenceRunner {
                       ,
                       std::unique_ptr<GlInteropFabric> gl_interop_fabric
 #endif
+#ifdef TFLITE_GPU_ENABLE_INVOKE_LOOP
+                      ,
+                      int gpu_invoke_loop_times
+#endif
                       )
       : queue_(environment->queue()),
         profiling_queue_(environment->profiling_queue()),
@@ -460,6 +464,10 @@ class InferenceRunnerImpl : public CLInferenceRunner {
 #ifdef CL_DELEGATE_ALLOW_GL
         ,
         gl_interop_fabric_(std::move(gl_interop_fabric))
+#endif
+#ifdef TFLITE_GPU_ENABLE_INVOKE_LOOP
+        ,
+        gpu_invoke_loop_times_(gpu_invoke_loop_times)
 #endif
   {
   }
@@ -534,9 +542,15 @@ class InferenceRunnerImpl : public CLInferenceRunner {
     for (const auto& input : inputs_) {
       RETURN_IF_ERROR(input->CopyFromExternalObject());
     }
-
+#ifdef TFLITE_GPU_ENABLE_INVOKE_LOOP
+    // TODO(b/328511338): Remove code enabled by TFLITE_GPU_ENABLE_INVOKE_LOOP
+    // when Async API solution is ready to replace it.
+    for (int i = 0; i < gpu_invoke_loop_times_; i++) {
+      RETURN_IF_ERROR(RunWithoutExternalBufferCopy());
+    }
+#else
     RETURN_IF_ERROR(RunWithoutExternalBufferCopy());
-
+#endif  // TFLITE_GPU_ENABLE_INVOKE_LOOP
     bool has_async_copies = false;
     for (const auto& output : outputs_) {
       RETURN_IF_ERROR(output->CopyToExternalObject());
@@ -600,6 +614,9 @@ class InferenceRunnerImpl : public CLInferenceRunner {
   std::unique_ptr<InferenceContext> context_;
 #ifdef CL_DELEGATE_ALLOW_GL
   std::unique_ptr<GlInteropFabric> gl_interop_fabric_;
+#endif
+#ifdef TFLITE_GPU_ENABLE_INVOKE_LOOP
+  int gpu_invoke_loop_times_;
 #endif
   std::vector<std::unique_ptr<TensorTie>> inputs_;
   std::vector<std::unique_ptr<TensorTie>> outputs_;
@@ -701,6 +718,9 @@ class InferenceBuilderImpl : public InferenceBuilder {
     context_ = std::make_unique<InferenceContext>();
     CreateGpuModelInfo create_info = GetCreateInfo(*environment_, options);
     RETURN_IF_ERROR(context_->InitFromGraph(create_info, graph, environment_));
+#ifdef TFLITE_GPU_ENABLE_INVOKE_LOOP
+    gpu_invoke_loop_times_ = options.gpu_invoke_loop_times;
+#endif
 
 #ifdef CL_DELEGATE_ALLOW_GL
     if (env_options.IsGlAware() &&
@@ -795,10 +815,20 @@ class InferenceBuilderImpl : public InferenceBuilder {
       gl_interop_fabric_.reset(nullptr);
     }
     auto runner_impl = std::make_unique<InferenceRunnerImpl>(
-        environment_, std::move(context_), std::move(gl_interop_fabric_));
+        environment_, std::move(context_), std::move(gl_interop_fabric_)
+#ifdef TFLITE_GPU_ENABLE_INVOKE_LOOP
+                                               ,
+        gpu_invoke_loop_times_
+#endif
+    );
 #else
-    auto runner_impl = std::make_unique<InferenceRunnerImpl>(
-        environment_, std::move(context_));
+    auto runner_impl =
+        std::make_unique<InferenceRunnerImpl>(environment_, std::move(context_)
+#ifdef TFLITE_GPU_ENABLE_INVOKE_LOOP
+                                                                ,
+                                              gpu_invoke_loop_times_
+#endif
+        );
 #endif
     RETURN_IF_ERROR(
         runner_impl->Initialize(inputs_, outputs_, tie_factory_.get()));
@@ -851,6 +881,9 @@ class InferenceBuilderImpl : public InferenceBuilder {
   std::unique_ptr<InferenceContext> context_;
 #ifdef CL_DELEGATE_ALLOW_GL
   std::unique_ptr<GlInteropFabric> gl_interop_fabric_;
+#endif
+#ifdef TFLITE_GPU_ENABLE_INVOKE_LOOP
+  int gpu_invoke_loop_times_;
 #endif
   Environment* environment_;
 

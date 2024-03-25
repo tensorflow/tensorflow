@@ -24,38 +24,37 @@ limitations under the License.
 #include "absl/container/node_hash_map.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
-#include "tensorflow/core/common_runtime/serving_device_selector.h"
+#include "tsl/framework/serving_device_selector.h"
 
 namespace tensorflow {
 namespace gpu {
 
-class GpuServingDeviceSelector : public ServingDeviceSelector {
+class GpuServingDeviceSelector : public tsl::ServingDeviceSelector {
  public:
   GpuServingDeviceSelector(
       int num_devices,
       std::unique_ptr<ServingDeviceSelector::Policy> device_selector_policy);
 
-  DeviceReservation ReserveDevice(
+  tsl::DeviceReservation ReserveDevice(
       absl::string_view program_fingerprint) override;
 
   // Enqueues the program on the stream of index `index_on_host`.
-  void Enqueue(int32_t index_on_host, absl::string_view fingerprint);
+  void Enqueue(int32_t index_on_host, absl::string_view fingerprint) override;
 
   // Marks the completion of a program on the given stream.
   // If `had_error` is true, this function doesn't update program's execution
   // time stats to avoid incorrect estimates.
-  void Completed(int32_t index_on_host, bool had_error = false);
-
-  int64_t TotalGpuLoadNsForTest();
+  void Completed(int32_t index_on_host, bool had_error) override;
 
  private:
   friend class ServingDeviceSelectorTestHelper;
   static void OverwriteNowNsFunctionForTest(int64_t (*now_ns)());
 
-  void FreeDeviceReservation(const DeviceReservation& reservation) override;
+  void FreeDeviceReservation(
+      const tsl::DeviceReservation& reservation) override;
 
-  // Helper to estimate the time until the stream becomes idle in nanoseconds.
-  static int64_t EstimateTimeTillIdleNs(const DeviceState& device_state);
+  // Only for metrics reporting purposes.
+  int64_t TotalEstimatedTimeTillIdleNs() ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   absl::Mutex mu_;
   absl::FixedArray<DeviceState, 8> device_states_ ABSL_GUARDED_BY(mu_);
@@ -64,6 +63,7 @@ class GpuServingDeviceSelector : public ServingDeviceSelector {
   // Map from program fingerprint to execution info.
   absl::node_hash_map<std::string, ExecutionInfo> execution_info_
       ABSL_GUARDED_BY(mu_);
+  std::optional<int64_t> min_exec_time_ ABSL_GUARDED_BY(mu_);
 };
 
 }  // namespace gpu

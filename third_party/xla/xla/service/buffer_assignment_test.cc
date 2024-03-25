@@ -103,7 +103,7 @@ class BufferAssignmentTest : public HloTestBase {
         .value();
   }
 
-  StatusOr<std::unique_ptr<BufferAssignment>> ConvertToProtoAndBack(
+  absl::StatusOr<std::unique_ptr<BufferAssignment>> ConvertToProtoAndBack(
       const BufferAssignment* buffers, const HloModule* module) {
     // Dump proto for buffer assignments.
     auto proto = buffers->ToProto();

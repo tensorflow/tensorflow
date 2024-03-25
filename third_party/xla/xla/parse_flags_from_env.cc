@@ -210,7 +210,7 @@ bool ParseFlagsFromEnvAndIgnoreUnknown(
     }
   }
 
-  return tsl::Flags::Parse(&env_argv->argc, &env_argv->argv[0], flag_list);
+  return tsl::Flags::Parse(&env_argv->argc, env_argv->argv.data(), flag_list);
 }
 
 bool DieIfEnvHasUnknownFlagsLeft(absl::string_view envvar) {

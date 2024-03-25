@@ -75,21 +75,22 @@ class MockCoordinationServiceAgent : public CoordinationServiceAgent {
   MOCK_METHOD(Status, WaitForAllTasks, (const DeviceInfo& local_devices),
               (override));
   MOCK_METHOD(const DeviceInfo&, GetClusterDeviceInfo, (), (override));
-  MOCK_METHOD(StatusOr<CoordinatedTask>, GetOwnTask, (), (override));
-  MOCK_METHOD(StatusOr<std::vector<CoordinatedTaskStateInfo>>, GetTaskState,
-              (const std::vector<CoordinatedTask>& task), (override));
+  MOCK_METHOD(absl::StatusOr<CoordinatedTask>, GetOwnTask, (), (override));
+  MOCK_METHOD(absl::StatusOr<std::vector<CoordinatedTaskStateInfo>>,
+              GetTaskState, (const std::vector<CoordinatedTask>& task),
+              (override));
   MOCK_METHOD(Status, ReportError, (const Status& error), (override));
   MOCK_METHOD(Status, Shutdown, (), (override));
   MOCK_METHOD(Status, Reset, (), (override));
-  MOCK_METHOD(StatusOr<std::string>, GetKeyValue, (std::string_view key),
+  MOCK_METHOD(absl::StatusOr<std::string>, GetKeyValue, (std::string_view key),
               (override));
-  MOCK_METHOD(StatusOr<std::string>, GetKeyValue,
+  MOCK_METHOD(absl::StatusOr<std::string>, GetKeyValue,
               (std::string_view key, absl::Duration timeout), (override));
   MOCK_METHOD(std::shared_ptr<CallOptions>, GetKeyValueAsync,
               (std::string_view key, StatusOrValueCallback done), (override));
-  MOCK_METHOD(StatusOr<std::string>, TryGetKeyValue, (std::string_view key),
-              (override));
-  MOCK_METHOD(StatusOr<std::vector<KeyValueEntry>>, GetKeyValueDir,
+  MOCK_METHOD(absl::StatusOr<std::string>, TryGetKeyValue,
+              (std::string_view key), (override));
+  MOCK_METHOD(absl::StatusOr<std::vector<KeyValueEntry>>, GetKeyValueDir,
               (std::string_view key), (override));
   MOCK_METHOD(void, GetKeyValueDirAsync,
               (std::string_view key, StatusOrValueDirCallback done),
@@ -109,7 +110,7 @@ class MockCoordinationServiceAgent : public CoordinationServiceAgent {
               (override));
   MOCK_METHOD(void, CancelBarrierAsync,
               (std::string_view barrier_id, StatusCallback done), (override));
-  MOCK_METHOD(StatusOr<Env*>, GetEnv, (), (override));
+  MOCK_METHOD(absl::StatusOr<Env*>, GetEnv, (), (override));
   MOCK_METHOD(void, SetError, (const Status& error), (override));
   MOCK_METHOD(Status, ActivateWatch,
               (std::string_view key,

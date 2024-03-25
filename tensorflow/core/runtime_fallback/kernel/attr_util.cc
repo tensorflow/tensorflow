@@ -20,12 +20,18 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/strings/numbers.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/str_util.h"
 #include "tensorflow/core/platform/stringpiece.h"
+#include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/runtime_fallback/util/attr_util.h"
+#include "tensorflow/core/util/padding.h"
+#include "tfrt/core_runtime/op_attr_type.h"  // from @tf_runtime
+#include "tfrt/core_runtime/op_attrs.h"  // from @tf_runtime
+#include "tfrt/host_context/kernel_utils.h"  // from @tf_runtime
 
 namespace tensorflow {
 

@@ -19,13 +19,12 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "mlir/IR/Attributes.h"  // from @llvm-project
+#include "absl/status/statusor.h"
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/statusor.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
@@ -56,23 +55,27 @@ mlir::ArrayAttr ConvertOutputOperandAliasing(
                                 std::pair<int64_t, xla::ShapeIndex>>>& aliaInfo,
     mlir::Builder* builder);
 
-StatusOr<mlir::mhlo::FftType> ConvertFftType(FftType type);
-StatusOr<mlir::mhlo::Transpose> ConvertTranspose(
+// Converts the sparsity descriptor to attributes.
+absl::StatusOr<mlir::mhlo::SparsityDescriptorAttr> ConvertSparsityDescriptor(
+    xla::SparsityDescriptor sparsity_descriptor, mlir::Builder* builder);
+
+absl::StatusOr<mlir::mhlo::FftType> ConvertFftType(FftType type);
+absl::StatusOr<mlir::mhlo::Transpose> ConvertTranspose(
     TriangularSolveOptions_Transpose transpose);
 
-StatusOr<mlir::mhlo::CustomCallApiVersion> ConvertCustomCallApiVersion(
+absl::StatusOr<mlir::mhlo::CustomCallApiVersion> ConvertCustomCallApiVersion(
     xla::CustomCallApiVersion api_version);
 
 // Extracts layouts from shapes and converts it into layout attributes (array of
 // rank-1 index tensors). Returns an error if any of the shapes is a tuple.
-StatusOr<mlir::ArrayAttr> ExtractLayoutsFromShapes(
+absl::StatusOr<mlir::ArrayAttr> ExtractLayoutsFromShapes(
     const absl::Span<const Shape> shapes_with_layouts, mlir::Builder* builder);
 
 // Extracts the layouts of each element from a tuple shape and returns them as
 // an array of rank-1 index tensors. Returns an error in presence of nested
 // tuple shapes.
-StatusOr<mlir::ArrayAttr> ExtractLayoutsFromTuple(const xla::Shape shape,
-                                                  mlir::Builder* builder);
+absl::StatusOr<mlir::ArrayAttr> ExtractLayoutsFromTuple(const xla::Shape shape,
+                                                        mlir::Builder* builder);
 
 }  // namespace xla
 

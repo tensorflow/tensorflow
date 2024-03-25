@@ -21,6 +21,7 @@ limitations under the License.
 #define TENSORFLOW_LITE_CORE_C_C_API_OPAQUE_H_
 
 #include <stddef.h>
+#include <stdint.h>
 
 #include "tensorflow/lite/core/c/c_api.h"
 #include "tensorflow/lite/core/c/c_api_types.h"  // IWYU pragma: export
@@ -344,6 +345,15 @@ TFL_CAPI_EXPORT TfLiteStatus TfLiteOpaqueNodeInputs(
 /// remains valid throughout the lifetime of the 'opaque_node'.
 TFL_CAPI_EXPORT TfLiteStatus TfLiteOpaqueNodeOutputs(
     const TfLiteOpaqueNode* opaque_node, const int** outputs, int* num_outputs);
+
+/// Set tensor indices of temporary tensors used during the computations.
+/// These temporary tensors should be allocated using AddTensors().
+/// By default nodes don't have any temporary tensors, tensors, but ops are
+/// allowed to change that if they need scratch space of any sort.
+/// This will make a copy of the contents of the array pointed to by
+/// `temporaries`.
+TFL_CAPI_EXPORT TfLiteStatus TfLiteOpaqueNodeSetTemporaries(
+    TfLiteOpaqueNode* opaque_node, const int* temporaries, int num_temporaries);
 
 /// Loads into the provided '*temporaries' pointer the starting address of an
 /// array of indices representing the temporary tensors associated with the

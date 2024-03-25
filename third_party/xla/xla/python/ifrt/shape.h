@@ -52,7 +52,7 @@ class Shape {
   Shape& operator=(Shape&&) = default;
 
   // Constructs `Shape` from `ShapeProto`.
-  static StatusOr<Shape> FromProto(const ShapeProto& proto);
+  static absl::StatusOr<Shape> FromProto(const ShapeProto& proto);
 
   // Returns a `ShapeProto` representation.
   ShapeProto ToProto() const;
@@ -105,7 +105,7 @@ class BoundedDynamicShapeTag {
   }
 
   // Constructs `BoundedDynamicShapeTag` from `BoundedDynamicShapeTagProto`.
-  static StatusOr<BoundedDynamicShapeTag> FromProto(
+  static absl::StatusOr<BoundedDynamicShapeTag> FromProto(
       const BoundedDynamicShapeTagProto& proto);
 
   // Returns a `BoundedDynamicShapeTagProto` representation.
@@ -130,7 +130,7 @@ class DynamicShape {
   // When `tag` is a `BoundedDynamicShapeTag`: for any dimension that is dynamic
   // as indicated by `tag`, the corresponding dimension in `shape` represents
   // the upper bound of the dimension size.
-  static StatusOr<DynamicShape> Create(Shape shape, DynamicShapeTag tag);
+  static absl::StatusOr<DynamicShape> Create(Shape shape, DynamicShapeTag tag);
 
   DynamicShape(const DynamicShape&) = default;
   DynamicShape(DynamicShape&&) = default;
@@ -145,13 +145,13 @@ class DynamicShape {
   bool operator!=(const DynamicShape& other) const { return !(*this == other); }
 
   // Gets the shape after padding. Only works for bounded dynamic shape for now.
-  StatusOr<Shape> GetPaddedShape() const;
+  absl::StatusOr<Shape> GetPaddedShape() const;
 
   // Returns whether a certain dimension in the shape is dynamic.
   bool IsDynamicDim(int dimension) const;
 
   // Constructs `DynamicShape` from `DynamicShapeProto`.
-  static StatusOr<DynamicShape> FromProto(const DynamicShapeProto& proto);
+  static absl::StatusOr<DynamicShape> FromProto(const DynamicShapeProto& proto);
 
   // Returns a `DynamicShapeProto` representation.
   DynamicShapeProto ToProto() const;

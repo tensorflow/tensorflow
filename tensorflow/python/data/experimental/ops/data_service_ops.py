@@ -22,7 +22,7 @@ from tensorflow.core.protobuf import data_service_pb2
 from tensorflow.python import tf2
 from tensorflow.python.data.experimental.ops import compression_ops
 from tensorflow.python.data.experimental.service import _pywrap_server_lib
-from tensorflow.python.data.experimental.service import _pywrap_utils
+from tensorflow.python.data.experimental.service import _pywrap_utils_exp
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import options as options_lib
 from tensorflow.python.data.ops import structured_function
@@ -428,7 +428,7 @@ def _parse_service(service) -> tuple[str, str]:
     protocol, address = parts
   elif len(parts) == 1:
     address = parts[0]
-    protocol = _pywrap_utils.TF_DATA_DefaultProtocol()
+    protocol = _pywrap_utils_exp.TF_DATA_DefaultProtocol()
   else:
     raise ValueError("Malformed `service` string has multiple '://': "
                      f"{service}.")

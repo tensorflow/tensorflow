@@ -99,7 +99,7 @@ Status GetComputationCacheEntry(
 }
 
 // Builds an InputBuffers object that describes the inputs to the computation.
-xla::StatusOr<xla::ShapeTree<xla::MaybeOwningDeviceMemory>> BuildInputBuffers(
+absl::StatusOr<xla::ShapeTree<xla::MaybeOwningDeviceMemory>> BuildInputBuffers(
     OpKernelContext* context, const std::vector<VariableInfo>& variables,
     const xla::Shape& input_host_shape, xla::Backend* backend,
     int device_ordinal, se::Stream* stream) {

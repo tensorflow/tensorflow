@@ -244,7 +244,7 @@ Status ParseAttrMap(const Node& node, absl::string_view indices_attr,
                     std::map<int, Layout>* indices_layout_map) {
   std::vector<std::string> layouts;
   if (!TryGetNodeAttr(node.attrs(), layout_attr, &layouts)) {
-    return OkStatus();
+    return absl::OkStatus();
   }
   const TensorProto* indices;
   if (!TryGetNodeAttr(node.attrs(), indices_attr, &indices)) {
@@ -262,7 +262,7 @@ Status ParseAttrMap(const Node& node, absl::string_view indices_attr,
     indices_layout_map->emplace(
         arg_index, tensorflow::dtensor::Layout::FromString(arg_layout).value());
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status ParseResourceArgumentLayouts(
@@ -612,7 +612,7 @@ absl::Status ResourceHandleWithLayout::UpdateLayout(const Layout& new_layout) {
         "Attempted to overwrite an existing Layout.");
   }
   dereferenced_layout_.emplace(new_layout);
-  return tsl::OkStatus();
+  return absl::OkStatus();
 }
 
 char SparseTensorWithLayout::ID = 0;
@@ -753,7 +753,7 @@ Status InferOutputLayouts(const DTensorOperation& doperation,
     output_layouts->push_back(layout);
   }
   graph->RemoveNode(op_node);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status PrepareGraphForMlir(
@@ -944,7 +944,7 @@ Status PrepareGraphForMlir(
       ret_node->AddAttr(kDefaultLayoutAttr, layout->ToString());
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 StatusOr<std::vector<int64_t>> GetNumLocalOutputs(Node* node) {
@@ -995,7 +995,7 @@ Status SetMultiDeviceFunctionOutputs(
     }
   }
   function.num_local_outputs = std::move(num_local_outputs);
-  return OkStatus();
+  return absl::OkStatus();
 }
 }  // namespace
 
@@ -1109,7 +1109,7 @@ StatusOr<ExecutionFunctions> IdentifyAllFunctionsToExecute(
 // nodes.
 Status MaybeInsertIdentityNodes(const FunctionDef* function_def, Graph* graph) {
   if (function_def == nullptr || function_def->control_ret().empty()) {
-    return OkStatus();
+    return absl::OkStatus();
   }
   tensorflow::Status status;
   for (Node* n : graph->nodes()) {
@@ -1138,7 +1138,7 @@ Status MaybeInsertIdentityNodes(const FunctionDef* function_def, Graph* graph) {
     // Add an edge between Identity and _Retval.
     graph->AddEdge(ret_identity_node, 0, n, 0);
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 void AddDTensorFunctionAttr(FunctionDef& function_def) {

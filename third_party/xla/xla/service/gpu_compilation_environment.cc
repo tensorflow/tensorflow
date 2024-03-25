@@ -49,7 +49,7 @@ void InitializeFlagsForGpuCompEnv(std::vector<tsl::Flag>* flag_list,
       gpu_comp_env->dummy_flag(), "Dummy flag to demonstrate the flow"));
 }
 
-StatusOr<GpuCompilationEnvironment> CreateGpuCompEnvFromFlagStrings(
+absl::StatusOr<GpuCompilationEnvironment> CreateGpuCompEnvFromFlagStrings(
     std::vector<std::string>& flags, bool strict) {
   GpuCompilationEnvironment gpu_comp_env;
   std::vector<tsl::Flag> flag_objects;
@@ -62,7 +62,7 @@ StatusOr<GpuCompilationEnvironment> CreateGpuCompEnvFromFlagStrings(
   return gpu_comp_env;
 }
 
-StatusOr<GpuCompilationEnvironment> CreateGpuCompEnvFromEnvVar() {
+absl::StatusOr<GpuCompilationEnvironment> CreateGpuCompEnvFromEnvVar() {
   GpuCompilationEnvironment env;
   std::vector<tsl::Flag> flag_objects;
   InitializeFlagsForGpuCompEnv(&flag_objects, &env);
@@ -119,7 +119,7 @@ namespace {
 //
 // The implementation returns Empty env if one doesn't exist already.
 // NOLINTNEXTLINE
-StatusOr<std::unique_ptr<tsl::protobuf::Message>>
+absl::StatusOr<std::unique_ptr<tsl::protobuf::Message>>
 ProcessNewGpuCompilationEnvironment(
     std::unique_ptr<tsl::protobuf::Message> env) {  // NOLINT
   if (!env) {

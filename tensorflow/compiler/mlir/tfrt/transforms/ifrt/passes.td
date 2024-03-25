@@ -15,6 +15,7 @@ limitations under the License.
 
 include "mlir/Pass/PassBase.td"
 
+
 def RewriteClusterToIfrtCallPass: Pass<"rewrite-cluster-to-ifrt-call", "mlir::ModuleOp"> {
   let summary = "Lowers tf_device.cluster_func to tf.ifrt_call";
 
@@ -43,6 +44,20 @@ def SinkVariableAsNamedArrayPass: Pass<"sink-variable-as-named-array", "mlir::Mo
 
   let constructor = "CreateSinkVariableAsNamedArrayPass()";
 }
+
+def LowerToIfrtRestoreVariablePass: Pass<"lower-to-ifrt-restore-variable", "mlir::ModuleOp"> {
+  let summary = "Lowers tf.RestoreV2 to tf.IfrtRestoreVariable";
+
+  let description = [{
+    This pass rewrites `RestoreV2Op` and `AssignVariableOp` to `IfrtRestoreVariableOp`.
+
+    This pass is ran so that the runtime may run restore operation asynchronously
+    such that the expensive resotre operation can be parallerized with other 
+    model compilation operation.
+  }];
+
+  let constructor = "CreateLowerToIfrtRestoreVariablePass()";
+ }
 
 def TfRestoreSplittingPass
     : Pass<"tf-restore-splitting", "mlir::func::FuncOp"> {

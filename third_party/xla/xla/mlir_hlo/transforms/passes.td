@@ -51,12 +51,6 @@ def TileLoopsPass : Pass<"tile-loops", "func::FuncOp"> {
   let dependentDialects = ["affine::AffineDialect"];
 }
 
-def TestShapeComponentAnalysis : Pass<"test-print-shape-components",
-                                      "func::FuncOp"> {
-  let summary = "Test pass for analyzing shape components.";
-  let constructor = "createTestShapeComponentAnalysisPass()";
-}
-
 def LowerIndexCastPass
     : Pass<"lower-index-cast", "mlir::func::FuncOp"> {
   let summary = "Lower index cast on tensors to tensor dialect";

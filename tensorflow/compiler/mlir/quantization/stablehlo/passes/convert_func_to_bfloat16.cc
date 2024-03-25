@@ -41,7 +41,7 @@ namespace {
 class BFloat16TypeConverter : public TypeConverter {
  public:
   BFloat16TypeConverter() {
-    addConversion([](Type type) -> Type {
+    addConversion([](const Type type) -> Type {
       return IsLargeFloatType(type) ? ToBfloat16Type(type) : type;
     });
   }
@@ -49,10 +49,10 @@ class BFloat16TypeConverter : public TypeConverter {
 
 // This helper function makes legality check easier. Both convert ops in the
 // patterns below are considered legal:
-//  - BitcastConvertOp(i32 -> f32) + ConvertOp(f32 -> bf16)
-//  - ConvertOp(bf16 -> f32) -> BitcastConvertOp(f32 -> i32)
+//  - `BitcastConvertOp` (i32 -> f32) + `ConvertOp` (f32 -> bf16)
+//  - `ConvertOp` (bf16 -> f32) -> `BitcastConvertOp` (f32 -> i32)
 template <typename ConvertOp, typename OtherConvertOp>
-bool IsConvertOpLegal(ConvertOp convert_op, BFloat16TypeConverter &converter) {
+bool IsConvertOpLegal(ConvertOp convert_op, BFloat16TypeConverter& converter) {
   if (!converter.isLegal(convert_op.getOperand().getType())) {
     auto other_convert_op = dyn_cast_or_null<OtherConvertOp>(
         convert_op.getOperand().getDefiningOp());
@@ -72,10 +72,10 @@ bool IsConvertOpLegal(ConvertOp convert_op, BFloat16TypeConverter &converter) {
 
 class BFloat16TypeConversionTarget : public ConversionTarget {
  public:
-  explicit BFloat16TypeConversionTarget(MLIRContext &ctx,
-                                        BFloat16TypeConverter &converter)
+  explicit BFloat16TypeConversionTarget(MLIRContext& ctx,
+                                        BFloat16TypeConverter& converter)
       : ConversionTarget(ctx), converter_(converter) {
-    markUnknownOpDynamicallyLegal([this](Operation *op) {
+    markUnknownOpDynamicallyLegal([this](Operation* op) {
       // The FuncOp type can contain types that the op's operand and result
       // types do not contain.
       if (auto func = dyn_cast<func::FuncOp>(op)) {
@@ -95,22 +95,22 @@ class BFloat16TypeConversionTarget : public ConversionTarget {
   }
 
  private:
-  BFloat16TypeConverter &converter_;
+  BFloat16TypeConverter& converter_;
 };
 
 class BFloat16TypePattern : public ConversionPattern {
  public:
-  BFloat16TypePattern(TypeConverter &converter, MLIRContext *ctx)
+  BFloat16TypePattern(TypeConverter& converter, MLIRContext* ctx)
       : ConversionPattern(converter, MatchAnyOpTypeTag(), /*benefit=*/1, ctx) {}
 
   LogicalResult matchAndRewrite(
-      Operation *op, ArrayRef<Value> operands,
-      ConversionPatternRewriter &rewriter) const override {
+      Operation* op, const ArrayRef<Value> operands,
+      ConversionPatternRewriter& rewriter) const override {
     if (getTypeConverter()->isLegal(op)) {
       return failure();
     }
     if (isa<mlir::stablehlo::BitcastConvertOp>(op)) {
-      // Skip BitcastConvertOp, which is handled by the other pattern.
+      // Skip `BitcastConvertOp`, which is handled by the other pattern.
       return failure();
     }
 
@@ -125,8 +125,8 @@ class BFloat16TypePattern : public ConversionPattern {
     // OperationState so we can add regions to the new op.
     OperationState state(op->getLoc(), op->getName().getStringRef(), operands,
                          new_results, op->getAttrs(), op->getSuccessors());
-    for (Region &region : op->getRegions()) {
-      Region &new_region = *state.addRegion();
+    for (Region& region : op->getRegions()) {
+      Region& new_region = *state.addRegion();
       rewriter.inlineRegionBefore(region, new_region, new_region.begin());
       if (failed(rewriter.convertRegionTypes(&new_region, *getTypeConverter())))
         return failure();
@@ -134,12 +134,12 @@ class BFloat16TypePattern : public ConversionPattern {
 
     // Convert value of ConstantOp to bfloat16.
     if (auto const_op = dyn_cast<mlir::stablehlo::ConstantOp>(op)) {
-      auto values = const_op.getValue().tryGetValues<float>();
+      const auto values = const_op.getValue().tryGetValues<float>();
       if (!values.has_value()) {
         return failure();
       }
-      SmallVector<tensorflow::bfloat16> bfloat16_values(values->begin(),
-                                                        values->end());
+      const SmallVector<tensorflow::bfloat16> bfloat16_values(values->begin(),
+                                                              values->end());
       state.attributes.set(
           const_op.getValueAttrName(),
           DenseFPElementsAttr::get(
@@ -163,22 +163,22 @@ class BitcastConvertOpPattern
       mlir::stablehlo::BitcastConvertOp op,
       mlir::stablehlo::BitcastConvertOpAdaptor adaptor,
       ConversionPatternRewriter &rewriter) const override {
-    bool is_input_legal =
+    const bool is_input_legal =
         getTypeConverter()->isLegal(op.getOperand().getType());
-    bool is_output_legal =
+    const bool is_output_legal =
         getTypeConverter()->isLegal(op.getResult().getType());
     if (is_input_legal && is_output_legal) {
       return failure();
     } else if (is_input_legal) {
       // output is f32, we bitcast_convert to f32 and then convert to bf16.
-      Value output = rewriter.create<mlir::stablehlo::BitcastConvertOp>(
+      const Value output = rewriter.create<mlir::stablehlo::BitcastConvertOp>(
           op->getLoc(), op.getResult().getType(), adaptor.getOperand());
       rewriter.replaceOpWithNewOp<mlir::stablehlo::ConvertOp>(
           op, getTypeConverter()->convertType(op.getResult().getType()),
           output);
     } else if (is_output_legal) {
       // input is f32, we convert from bf16 and then bitcast_convert.
-      Value output = rewriter.create<mlir::stablehlo::ConvertOp>(
+      const Value output = rewriter.create<mlir::stablehlo::ConvertOp>(
           op->getLoc(), op.getOperand().getType(), adaptor.getOperand());
       rewriter.replaceOpWithNewOp<mlir::stablehlo::BitcastConvertOp>(
           op, op.getResult().getType(), output);
@@ -207,7 +207,7 @@ class ConvertFuncToBfloat16Pass
 
 void ConvertFuncToBfloat16Pass::runOnOperation() {
   func::FuncOp func_op = getOperation();
-  MLIRContext *context = func_op.getContext();
+  MLIRContext* context = func_op.getContext();
   RewritePatternSet patterns(context);
 
   BFloat16TypeConverter converter;

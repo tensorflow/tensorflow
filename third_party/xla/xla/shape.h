@@ -44,6 +44,7 @@ class Shape {
   Shape(const Shape&);
   Shape(Shape&&);
   Shape& operator=(const Shape&);
+  Shape& operator=(Shape&&);
 
   // Construct a shape from a ShapeProto.
   explicit Shape(const ShapeProto& shape_proto);
@@ -375,6 +376,7 @@ class ProgramShape {
   ProgramShape(const ProgramShape&);
   ProgramShape(ProgramShape&&);
   ProgramShape& operator=(const ProgramShape&);
+  ProgramShape& operator=(ProgramShape&&);
 
   // Creates a ProgramShape from a ProgramShapeProto protobuf.
   explicit ProgramShape(const ProgramShapeProto& program_shape_proto);

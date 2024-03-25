@@ -594,12 +594,12 @@ class HloToStablehloOpConverter : public OpConversionPattern<HloOpTy> {
     // for the generic builder.
     HloToStablehloOp<HloOpTy> stablehloOp;
     if constexpr (std::is_same<HloOpTy, mhlo::CaseOp>::value) {
-      stablehloOp = rewriter.replaceOpWithNewOp<stablehlo::CaseOp>(
-          hloOp, stablehloTypes, stablehloOperands, stablehloAttrs,
+      stablehloOp = rewriter.create<stablehlo::CaseOp>(
+          hloOp.getLoc(), stablehloTypes, stablehloOperands, stablehloAttrs,
           hloOp.getBranches().size());
     } else {
-      stablehloOp = rewriter.replaceOpWithNewOp<HloToStablehloOp<HloOpTy>>(
-          hloOp, stablehloTypes, stablehloOperands, stablehloAttrs);
+      stablehloOp = rewriter.create<HloToStablehloOp<HloOpTy>>(
+          hloOp.getLoc(), stablehloTypes, stablehloOperands, stablehloAttrs);
     }
 
     // Finally, populate the regions while converting argument types
@@ -613,6 +613,8 @@ class HloToStablehloOpConverter : public OpConversionPattern<HloOpTy> {
                                              /*entryConversion=*/nullptr)))
         return failure();
     }
+
+    rewriter.replaceOp(hloOp, stablehloOp);
     return success();
   }
 

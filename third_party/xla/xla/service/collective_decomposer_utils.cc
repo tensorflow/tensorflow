@@ -30,7 +30,7 @@ limitations under the License.
 namespace xla {
 
 // Create the start indices for decompositing the given collective.
-StatusOr<std::vector<HloInstruction *>>
+absl::StatusOr<std::vector<HloInstruction *>>
 CreateStartIndicesForCollectiveDecomposition(
     CollectiveOpGroupMode group_mode,
     absl::Span<const ReplicaGroup> replica_groups, const Shape &shard_shape,

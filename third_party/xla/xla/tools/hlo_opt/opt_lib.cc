@@ -53,13 +53,13 @@ static ProviderMap& GetProviderMap() {
     std::string platform, std::unique_ptr<OptProvider> translate_provider) {
   absl::MutexLock l(&provider_mu);
   CHECK(!GetProviderMap().contains(platform));
-  StatusOr<std::string> canonical_name =
+  absl::StatusOr<std::string> canonical_name =
       xla::PlatformUtil::CanonicalPlatformName(platform);
   CHECK_OK(canonical_name);
   GetProviderMap()[*canonical_name] = std::move(translate_provider);
 }
 
-/*static*/ StatusOr<OptProvider*> OptProvider::ProviderForPlatform(
+/*static*/ absl::StatusOr<OptProvider*> OptProvider::ProviderForPlatform(
     std::string platform) {
   absl::MutexLock l(&provider_mu);
 
@@ -79,7 +79,7 @@ static ProviderMap& GetProviderMap() {
   return it->second.get();
 }
 
-StatusOr<se::StreamExecutor*> OptProvider::GetExecutor() {
+absl::StatusOr<se::StreamExecutor*> OptProvider::GetExecutor() {
   DebugOptions debug_opts = GetDebugOptionsFromFlags();
   TF_ASSIGN_OR_RETURN(se::Platform * platform,
                       PlatformUtil::GetPlatform(GetPlatformName()));
@@ -92,7 +92,7 @@ StatusOr<se::StreamExecutor*> OptProvider::GetExecutor() {
   return nullptr;
 }
 
-StatusOr<std::optional<std::string>> OptProvider::GenerateStage(
+absl::StatusOr<std::optional<std::string>> OptProvider::GenerateStage(
     std::unique_ptr<HloModule> module, absl::string_view stage) {
   if (stage == "hlo") {
     TF_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> optimized_module,
@@ -112,7 +112,7 @@ StatusOr<std::optional<std::string>> OptProvider::GenerateStage(
   return std::nullopt;
 }
 
-StatusOr<Compiler*> OptProvider::GetCompiler() {
+absl::StatusOr<Compiler*> OptProvider::GetCompiler() {
   TF_ASSIGN_OR_RETURN(se::Platform * platform,
                       PlatformUtil::GetPlatform(GetPlatformName()));
 
@@ -120,7 +120,7 @@ StatusOr<Compiler*> OptProvider::GetCompiler() {
   return compiler;
 }
 
-StatusOr<std::unique_ptr<HloModule>> OptProvider::GetOptimizedHlo(
+absl::StatusOr<std::unique_ptr<HloModule>> OptProvider::GetOptimizedHlo(
     std::unique_ptr<HloModule> input_module) {
   TF_ASSIGN_OR_RETURN(se::StreamExecutor * executor, GetExecutor());
 
@@ -143,7 +143,7 @@ StatusOr<std::unique_ptr<HloModule>> OptProvider::GetOptimizedHlo(
   return optimized_module;
 }
 
-StatusOr<std::unique_ptr<Executable>> OptProvider::GetExecutable(
+absl::StatusOr<std::unique_ptr<Executable>> OptProvider::GetExecutable(
     std::unique_ptr<HloModule> input_module) {
   Compiler::CompileOptions opts;
   TF_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> optimized_module,

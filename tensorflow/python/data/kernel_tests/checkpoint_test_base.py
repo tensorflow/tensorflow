@@ -17,6 +17,7 @@
 import os
 
 import numpy as np
+
 from tensorflow.python.checkpoint import checkpoint as tracking_util
 from tensorflow.python.checkpoint import checkpoint_management
 from tensorflow.python.checkpoint import checkpoint_options
@@ -458,6 +459,16 @@ class CheckpointTestBase(test.TestCase):
         num_iters = end - start
         for _ in range(num_iters):
           outputs.append(self.evaluate(next(iterator)))
+        if i < len(break_points) and end == num_outputs and verify_exhausted:
+          # If the checkpoint is expected to be after the final element, makes
+          # sure the iterator is exhausted. Otherwise, it may happen that the
+          # iterator has produced `num_outputs` elements, but the source dataset
+          # has more elements, resulting in saving incorrect element counts in
+          # some source datasets.
+          # For example: `range(10).shuffle(10).filter(lambda x: x % 2 == 0)`
+          # Calling `next` one more time exhausts all upstream iterators.
+          with self.assertRaises(StopIteration):
+            next(iterator)
         if i == len(break_points) and verify_exhausted:
           with self.assertRaises(StopIteration):
             next(iterator)
@@ -494,6 +505,10 @@ class CheckpointTestBase(test.TestCase):
             num_iters = end - start
             for _ in range(num_iters):
               outputs.append(sess.run(get_next_op))
+            if (i < len(break_points) and end == num_outputs and
+                verify_exhausted):
+              with self.assertRaises(errors.OutOfRangeError):
+                sess.run(get_next_op)
             if i == len(break_points) and verify_exhausted:
               with self.assertRaises(errors.OutOfRangeError):
                 sess.run(get_next_op)

@@ -42,12 +42,12 @@ class AllocationTracker {
   // Registers a shaped buffer of device memory, and returns a corresponding
   // handle that can be used for talking to XLA clients. The given shaped buffer
   // will be treated as the buffer corresponding to the only replica.
-  StatusOr<GlobalDataHandle> Register(ScopedShapedBuffer shaped_buffer,
-                                      const std::string& tag);
+  absl::StatusOr<GlobalDataHandle> Register(ScopedShapedBuffer shaped_buffer,
+                                            const std::string& tag);
 
   // Registers a vector of shaped buffers of device memory, one per replica, and
   // returns a corresponding handle that can be used for talking to XLA clients.
-  StatusOr<GlobalDataHandle> RegisterReplicatedBuffers(
+  absl::StatusOr<GlobalDataHandle> RegisterReplicatedBuffers(
       std::vector<ScopedShapedBuffer> replicated_buffers,
       const std::string& tag);
 
@@ -55,20 +55,20 @@ class AllocationTracker {
   Status Unregister(const GlobalDataHandle& data);
 
   // Returns a vector of global data handles that point to the tuple elements.
-  StatusOr<std::vector<GlobalDataHandle>> DeconstructTuple(
+  absl::StatusOr<std::vector<GlobalDataHandle>> DeconstructTuple(
       const GlobalDataHandle& Data);
 
   // Resolve a handle from an XLA client to a vector of shaped buffers, one per
   // replica, or provide an error status to say whether any of those buffers
   // were not found (or found, but found deallocated).
-  StatusOr<std::vector<const ShapedBuffer*>> Resolve(
+  absl::StatusOr<std::vector<const ShapedBuffer*>> Resolve(
       const GlobalDataHandle& data) const;
 
   // Resolves a handle from an XLA client and replica id to a shaped buffer, or
   // provide an error status to say whether it was not found (or found, but
   // found deallocated).
-  StatusOr<const ShapedBuffer*> ResolveForReplica(const GlobalDataHandle& data,
-                                                  int replica_id) const;
+  absl::StatusOr<const ShapedBuffer*> ResolveForReplica(
+      const GlobalDataHandle& data, int replica_id) const;
 
  private:
   // Data structure encapsulating single memory allocation on the device.
@@ -83,7 +83,7 @@ class AllocationTracker {
 
   // Internal helper which resolves the given GlobalDataHandle to a
   // list of ScopedShapedBuffers.
-  StatusOr<std::vector<const ShapedBuffer*>> ResolveInternal(
+  absl::StatusOr<std::vector<const ShapedBuffer*>> ResolveInternal(
       const GlobalDataHandle& data) const ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   // Internal helper which registers a vector of shaped buffers, one per
@@ -91,7 +91,7 @@ class AllocationTracker {
   // it's ShapedBuffer, all of the given buffers must already be tracked by this
   // object -- presumably this is a call from DeconstructTuple.
   template <typename ShapedBufferTy>
-  StatusOr<GlobalDataHandle> RegisterInternal(
+  absl::StatusOr<GlobalDataHandle> RegisterInternal(
       std::vector<ShapedBufferTy> replicated_buffers, const std::string& tag)
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 

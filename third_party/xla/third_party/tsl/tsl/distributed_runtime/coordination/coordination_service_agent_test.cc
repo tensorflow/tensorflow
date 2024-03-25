@@ -338,7 +338,7 @@ TEST_F(CoordinationServiceAgentTest, CancelGetKeyValue_Success) {
 
   Status status;
   std::shared_ptr<CallOptions> get_kv_call_opts = agent_->GetKeyValueAsync(
-      test_key, [&status](const StatusOr<std::string>& result) {
+      test_key, [&status](const absl::StatusOr<std::string>& result) {
         status = result.status();
       });
   get_kv_call_opts->StartCancel();
@@ -484,7 +484,7 @@ TEST_F(CoordinationServiceAgentTest, GetEnv_SucceedsAfterInit) {
   EXPECT_TRUE(absl::IsFailedPrecondition(agent_->GetEnv().status()));
   InitializeAgent();
 
-  StatusOr<Env*> result = agent_->GetEnv();
+  absl::StatusOr<Env*> result = agent_->GetEnv();
 
   TF_ASSERT_OK(result.status());
   EXPECT_EQ(*result, Env::Default());

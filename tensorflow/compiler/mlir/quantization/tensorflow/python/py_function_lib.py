@@ -13,11 +13,13 @@
 # limitations under the License.
 # ==============================================================================
 """Defines a wrapper class for overridden python method definitions."""
+
 from collections.abc import Callable, Collection, Mapping, Sequence
 from typing import Optional
 
 from absl import logging
 
+from tensorflow.compiler.mlir.quantization.stablehlo import quantization_config_pb2 as stablehlo_quant_config_pb2
 from tensorflow.compiler.mlir.quantization.tensorflow import exported_model_pb2
 from tensorflow.compiler.mlir.quantization.tensorflow import quantization_options_pb2
 from tensorflow.compiler.mlir.quantization.tensorflow.calibrator import calibration_algorithm
@@ -37,6 +39,7 @@ from tensorflow.python.saved_model import load
 from tensorflow.python.saved_model import loader_impl
 from tensorflow.python.trackable import autotrackable
 from tensorflow.python.types import core
+
 
 # Name of the saved model assets directory.
 _ASSETS_DIR = 'assets'
@@ -634,7 +637,7 @@ class PyFunctionLibrary(pywrap_function_lib.PyFunctionLibrary):
         calibration_statistics_pb2.CalibrationStatistics.FromString(
             calibration_statistics_serialized
         ),
-        quantization_options_pb2.CalibrationOptions.FromString(
+        stablehlo_quant_config_pb2.CalibrationOptions.FromString(
             calibration_options_serialized
         ),
     )

@@ -55,7 +55,7 @@ def tf_java_op_gen_srcjar(
         outs = [gen_srcjar],
         tools = [
             # copybara:uncomment_begin(using system-provided in OSS build)
-            # "//third_party/java/jdk/jar:jar",
+            # "//third_party/java/jar:jar",
             # "//third_party/java/jdk:jdk",
             # copybara:uncomment_end
             gen_tool,

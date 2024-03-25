@@ -402,12 +402,13 @@ cc_library(
         ":replace_cast_hacks_with_tf_xla_ops_inc_gen",
         ":tf_quant_ops",
         "//tensorflow/compiler/mlir/lite:tensorflow_lite",
-        "//tensorflow/compiler/mlir/lite/quantization:quantization_config",
-        "//tensorflow/compiler/mlir/lite/quantization:quantization_lib",
         "//tensorflow/compiler/mlir/lite/quantization/ir:QuantOps",
         "//tensorflow/compiler/mlir/quantization/common:attrs_and_constraints",
         "//tensorflow/compiler/mlir/quantization/common:func",
         "//tensorflow/compiler/mlir/quantization/common:lift_as_function_call",
+        "//tensorflow/compiler/mlir/quantization/common/quantization_lib",
+        "//tensorflow/compiler/mlir/quantization/common/quantization_lib:quantization_config",
+        "//tensorflow/compiler/mlir/quantization/stablehlo:quantization_config_proto_cc",
         "//tensorflow/compiler/mlir/quantization/tensorflow/cc:const_op_size",
         "//tensorflow/compiler/mlir/quantization/tensorflow/cc:constant_fold",
         "//tensorflow/compiler/mlir/quantization/tensorflow/cc:quantization_unit_loc",
@@ -480,6 +481,7 @@ cc_library(
     compatible_with = get_compatible_with_portable(),
     deps = [
         ":passes",
+        "//tensorflow/compiler/mlir/lite/stablehlo:fold_broadcast_pass",
         "//tensorflow/compiler/mlir/lite/stablehlo:fuse_convolution_pass",
         "//tensorflow/compiler/mlir/lite/stablehlo:legalize_tf_xla_call_module_to_stablehlo_pass",
         "//tensorflow/compiler/mlir/lite/stablehlo:rename_entrypoint_to_main",
@@ -541,7 +543,10 @@ tf_proto_library(
     ],
     cc_api_version = 2,
     make_default_target_header_only = True,
-    protodeps = ["//tensorflow/core:protos_all"],
+    protodeps = [
+        "//tensorflow/core:protos_all",
+        "//tensorflow/compiler/mlir/quantization/stablehlo:quantization_config_proto",
+    ],
     visibility = ["//visibility:public"],
 )
 

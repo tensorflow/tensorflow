@@ -1005,7 +1005,7 @@ PYBIND11_MODULE(_pywrap_tfe, m) {
           TFE_ContextSetServerDefWithTimeoutAndRetries(
               tensorflow::InputTFE_Context(ctx), keep_alive_secs,
               buf.get()->data, buf.get()->length, timeout, retries,
-              status.get());
+              status.get(), /*clear_existing_contexts=*/false);
           Py_END_ALLOW_THREADS;
           tensorflow::MaybeRaiseRegisteredFromTFStatus(status.get());
         });

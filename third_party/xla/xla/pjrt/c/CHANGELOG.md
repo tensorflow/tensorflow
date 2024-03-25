@@ -1,5 +1,21 @@
 # PJRT C API changelog
 
+## 0.46
+* Update outdated struct sizes from previous changes to
+  ``PJRT_Device_AddressableMemories_Args`` and ``PJRT_ExecuteOptions``.
+
+## 0.45
+* Breaking changes
+  * Added struct_size field to beginning of PJRT_Extension_Base. This is so
+    forwards and backwards compatibility logic can be implemented with extension
+    structs.
+
+## 0.44
+* Changed all ``void*`` extension fields to have type ``PJRT_Extension_Base*``
+
+## 0.43
+* Added some new fields to PJRT_Executable_GetCompiledMemoryStats
+
 ## 0.42
 * Renamed all ``priv`` fields to ``extension_start``
 

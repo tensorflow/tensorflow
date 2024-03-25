@@ -58,9 +58,10 @@ class FloatNormalizationVisitor : public DfsHloVisitorWithDefault {
 
   // Creates a copy of `hlo` with subshapes matching `from` type converted to
   // `to` type. If no matching subshapes are found, returns the original `hlo`.
-  StatusOr<HloInstruction*> ConvertType(HloInstruction* hlo, PrimitiveType from,
-                                        PrimitiveType to,
-                                        HloComputation* computation);
+  absl::StatusOr<HloInstruction*> ConvertType(HloInstruction* hlo,
+                                              PrimitiveType from,
+                                              PrimitiveType to,
+                                              HloComputation* computation);
 
   // Inserts a conversion HLO that changes the given HLO's output type. If the
   // output is a tuple, change all elements that match the from type.
@@ -123,7 +124,7 @@ int64_t ShapeLeafCount(const Shape& shape) {
   return count;
 }
 
-StatusOr<HloInstruction*> FloatNormalizationVisitor::ConvertType(
+absl::StatusOr<HloInstruction*> FloatNormalizationVisitor::ConvertType(
     HloInstruction* hlo, PrimitiveType from, PrimitiveType to,
     HloComputation* computation) {
   if (CountSubshapesWithMatchingType(hlo->shape(), from) == 0) {
@@ -625,7 +626,7 @@ CloneComputationsForNonNormalizingInstructions(
 }
 }  // namespace
 
-StatusOr<bool> FloatNormalization::Run(
+absl::StatusOr<bool> FloatNormalization::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   XLA_VLOG_LINES(2, "FloatNormalization::Run() for " +

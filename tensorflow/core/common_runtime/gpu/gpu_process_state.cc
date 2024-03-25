@@ -38,7 +38,6 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/gpu/gpu_cudamalloc_allocator.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_debug_allocator.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_id_manager.h"
-#include "tensorflow/core/common_runtime/gpu/gpu_virtual_mem_allocator.h"
 #include "tensorflow/core/common_runtime/pool_allocator.h"
 #include "tensorflow/core/common_runtime/shared_counter.h"
 #include "tensorflow/core/framework/log_memory.h"
@@ -116,44 +115,6 @@ static std::unique_ptr<SubAllocator> CreateSubAllocator(
                       ->ExecutorForDevice(platform_device_id.value())
                       .value();
 
-  // FIXME(imintz): Observed OOM issues when using the virtual memory
-  // allocators. This should be reenabled when resolved.
-#if 0 && defined(GOOGLE_CUDA) && CUDA_VERSION >= 10020
-  // Use the old allocator when unified memory is required.
-  // TODO(imintz): Remove the cuMemAlloc capability of this allocator.
-  if (options.per_process_gpu_memory_fraction() > 1.0 ||
-      options.experimental().use_unified_memory()) {
-    return new se::DeviceMemAllocator(executor, platform_device_id,
-                                  /*use_unified_memory=*/true, alloc_visitors,
-                                  {});
-  } else {
-    auto* gpu_context = reinterpret_cast<stream_executor::gpu::GpuContext*>(
-        executor->platform_specific_handle().context);
-
-    absl::flat_hash_set<tsl::PlatformDeviceId> platform_peer_gpu_ids;
-    platform_peer_gpu_ids.reserve(peer_gpu_ids.size());
-    for (const tsl::TfDeviceId tf_device_id : peer_gpu_ids) {
-      tsl::PlatformDeviceId platform_device_id;
-      TF_CHECK_OK(GpuIdManager::TfToPlatformDeviceId(tf_device_id,
-                                                     &platform_device_id));
-      platform_peer_gpu_ids.insert(platform_device_id);
-    }
-    std::vector<tsl::PlatformDeviceId> platform_peer_gpu_ids_vec(
-        platform_peer_gpu_ids.begin(), platform_peer_gpu_ids.end());
-
-    // Adjust virtual address space to be slightly larger than the physical
-    // address space in case the BFC allocator performs suboptimal garbage
-    // collection.
-    // TODO(imintz): Update BFC allocator to ensure it doesn't create holes in
-    // the va space.
-    return GpuVirtualMemAllocator::Create(
-               alloc_visitors, {}, *gpu_context, platform_device_id,
-               /*virtual_address_space_size=*/total_bytes * 2,
-               platform_peer_gpu_ids_vec)
-        .value()
-        .release();
-  }
-#else
   bool use_unified_memory = (options.per_process_gpu_memory_fraction() > 1.0 ||
                              options.experimental().use_unified_memory());
   return absl::WrapUnique(new se::DeviceMemAllocator(
@@ -161,7 +122,6 @@ static std::unique_ptr<SubAllocator> CreateSubAllocator(
       use_unified_memory ? stream_executor::MemoryType::kUnified
                          : stream_executor::MemoryType::kDevice,
       alloc_visitors, {}));
-#endif
 }
 
 Allocator* GPUProcessState::GetGPUAllocator(

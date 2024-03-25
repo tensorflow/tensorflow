@@ -760,6 +760,17 @@ Future<BackendInterface::Response> IfrtBackend::HandleCompileRequest(
     } else if (fingerprint->has_value()) {
       compile_resp->set_fingerprint_value(std::move(fingerprint)->value());
     }
+    // Register the ready future to `futures_`. Caller is expected to call
+    // `CheckFuture` exactly once to check for its status and erase it. In
+    // future, we may introduce separate mechanisms to remove futures from
+    // `futures_` without checking its status for situations where futures are
+    // not used.
+    {
+      absl::MutexLock lock(&futures_mutex_);
+      compile_resp->set_ready_future_handle(handle_generator_.New());
+      futures_.insert(
+          {compile_resp->ready_future_handle(), executable->GetReadyFuture()});
+    }
 
     {
       absl::MutexLock lock(&executables_mutex_);

@@ -27,11 +27,11 @@ class MirrorPadOp : public XlaOpKernel {
  public:
   explicit MirrorPadOp(OpKernelConstruction* context) : XlaOpKernel(context) {}
 
-  StatusOr<xla::XlaOp> DoMirrorPad(const xla::XlaOp t,
-                                   const xla::Shape& original_shape,
-                                   const xla::LiteralSlice& pad_literal,
-                                   const MirrorPadMode mode,
-                                   xla::XlaBuilder* b) {
+  absl::StatusOr<xla::XlaOp> DoMirrorPad(const xla::XlaOp t,
+                                         const xla::Shape& original_shape,
+                                         const xla::LiteralSlice& pad_literal,
+                                         const MirrorPadMode mode,
+                                         xla::XlaBuilder* b) {
     // The difference in the semantics of REFLECT and SYMMETRIC is that REFLECT
     // will not mirror the border values while symmetric does.
     // e.g. input is [1, 2, 3] and paddings is [0, 2], then the output is:
@@ -92,9 +92,9 @@ class MirrorPadOp : public XlaOpKernel {
 
     xla::XlaBuilder* b = ctx->builder();
     auto in0 = ctx->Input("input");
-    StatusOr<xla::Shape> in0_shape = b->GetShape(in0);
+    absl::StatusOr<xla::Shape> in0_shape = b->GetShape(in0);
     OP_REQUIRES(ctx, in0_shape.ok(), in0_shape.status());
-    StatusOr<xla::XlaOp> accum_status =
+    absl::StatusOr<xla::XlaOp> accum_status =
         DoMirrorPad(in0, in0_shape.value(), pad_literal, mode, b);
 
     OP_REQUIRES_OK(ctx, accum_status.status());
@@ -115,11 +115,10 @@ class MirrorPadGradOp : public XlaOpKernel {
   explicit MirrorPadGradOp(OpKernelConstruction* context)
       : XlaOpKernel(context) {}
 
-  StatusOr<xla::XlaOp> DoMirrorPadGrad(const xla::XlaOp t,
-                                       const xla::Shape& original_shape,
-                                       const xla::LiteralSlice& pad_literal,
-                                       const MirrorPadMode mode,
-                                       xla::XlaBuilder* b) {
+  absl::StatusOr<xla::XlaOp> DoMirrorPadGrad(
+      const xla::XlaOp t, const xla::Shape& original_shape,
+      const xla::LiteralSlice& pad_literal, const MirrorPadMode mode,
+      xla::XlaBuilder* b) {
     // The difference in the semantics of REFLECT and SYMMETRIC is that REFLECT
     // will not mirror the border values while symmetric does.
     // e.g. input is [1, 2, 3] and paddings is [0, 2], then the output is:
@@ -193,9 +192,9 @@ class MirrorPadGradOp : public XlaOpKernel {
 
     xla::XlaBuilder* b = ctx->builder();
     auto in0 = ctx->Input("input");
-    StatusOr<xla::Shape> in0_shape = b->GetShape(in0);
+    absl::StatusOr<xla::Shape> in0_shape = b->GetShape(in0);
     OP_REQUIRES(ctx, in0_shape.ok(), in0_shape.status());
-    StatusOr<xla::XlaOp> accum_status =
+    absl::StatusOr<xla::XlaOp> accum_status =
         DoMirrorPadGrad(in0, in0_shape.value(), pad_literal, mode, b);
 
     OP_REQUIRES_OK(ctx, accum_status.status());

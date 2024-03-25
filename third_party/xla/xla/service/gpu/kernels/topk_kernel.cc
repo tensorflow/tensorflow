@@ -83,10 +83,9 @@ absl::Status TypedTopK(se::Stream* stream, se::DeviceMemoryBase data,
   TF_ASSIGN_OR_RETURN(void* kernel_symbol, GetKernel<T>(num_elements, k));
   TF_ASSIGN_OR_RETURN(
       auto kernel,
-      (executor
-           ->CreateTypedKernel<se::DeviceMemory<T>, size_t, se::DeviceMemory<T>,
-                               se::DeviceMemory<uint32_t>, size_t>(
-               "topk", kernel_symbol)));
+      (se::TypedKernel<se::DeviceMemory<T>, size_t, se::DeviceMemory<T>,
+                       se::DeviceMemory<uint32_t>,
+                       size_t>::Create(executor, "topk", kernel_symbol)));
 
   TF_RETURN_IF_ERROR(stream->ThenLaunch(
       se::ThreadDim(num_threads, 1, 1), se::BlockDim(batch_size, 1, 1),

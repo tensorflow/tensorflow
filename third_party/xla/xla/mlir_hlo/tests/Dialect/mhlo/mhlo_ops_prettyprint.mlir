@@ -223,8 +223,8 @@ func.func @compare_op(%arg0 : tensor<3xi32>) -> () {
 // CHECK-LABEL: func @extensions
 func.func @extensions(%arg0 : tensor<?x?xf32, #mhlo.type_extensions<bounds = [3, ?]>>,
                 %arg1 : tensor<i32>) -> () {
-  // CHECK:      %0 = "mhlo.set_dimension_size"(%arg0, %arg1) {dimension = 1 : i64} : (tensor<?x?xf32, #mhlo.type_extensions<bounds = [3, ?]>>, tensor<i32>) -> tensor<*xf32>
-  %0 = "mhlo.set_dimension_size"(%arg0, %arg1) {dimension = 1 : i64} : (tensor<?x?xf32, #mhlo.type_extensions<bounds = [3, ?]>>, tensor<i32>) -> tensor<*xf32>
+  // CHECK:      %0 = "mhlo.set_dimension_size"(%arg0, %arg1) {dimension = 1 : i64} : (tensor<?x?xf32, #mhlo.type_extensions<bounds = [3, ?]>>, tensor<i32>) -> tensor<?x?xf32>
+  %0 = "mhlo.set_dimension_size"(%arg0, %arg1) {dimension = 1 : i64} : (tensor<?x?xf32, #mhlo.type_extensions<bounds = [3, ?]>>, tensor<i32>) -> tensor<?x?xf32>
   "mhlo.return"() : () -> ()
 }
 

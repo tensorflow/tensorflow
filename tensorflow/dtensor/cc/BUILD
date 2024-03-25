@@ -388,6 +388,7 @@ cc_library(
     deps = [
         ":dstatus",
         ":tensor_layout",
+        "//tensorflow/core:portable_gif_internal",
         "//tensorflow/core/platform:status",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/types:span",

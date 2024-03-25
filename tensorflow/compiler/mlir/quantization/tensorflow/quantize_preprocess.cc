@@ -61,6 +61,8 @@ void AddUnfuseMhloOpsPasses(mlir::PassManager& pm) {
   pm.addNestedPass<mlir::func::FuncOp>(mlir::odml::createUnfuseBatchNormPass());
   // Fuse Conv + Mul to Conv.
   pm.addNestedPass<mlir::func::FuncOp>(mlir::odml::createFuseConvolutionPass());
+  // Fold broadcast_in_dim + Mul.
+  pm.addNestedPass<mlir::func::FuncOp>(mlir::odml::createFoldBroadcastPass());
   pm.addNestedPass<mlir::func::FuncOp>(
       mlir::mhlo::createLegalizeTorchIndexSelectToGatherPass());
 }
@@ -97,7 +99,6 @@ void AddTFToStablehloPasses(mlir::PassManager& pm) {
   // Propagates shapes on the TensorFlow graph.
   pm.addPass(mlir::TF::CreateTFShapeInferencePass());
   pm.addPass(mlir::createCanonicalizerPass());
-  pm.addPass(mlir::TF::CreateTensorListOpsDecompositionPass());
   pm.addNestedPass<mlir::func::FuncOp>(
       mlir::TFDevice::CreateDecomposeResourceOpsPass());
 
@@ -118,8 +119,10 @@ void AddTFToStablehloPasses(mlir::PassManager& pm) {
   pm.addPass(mlir::createCanonicalizerPass());
 
   // TF -> StableHLO legalization.
-  mlir::odml::AddLegalizeTFToStablehloPasses(pm, /*skip_quantization_ops=*/true,
-                                             /*skip_resize=*/false);
+  // Skip StatefulPartitionedCall to preserve aliased functions.
+  mlir::odml::AddLegalizeTFToStablehloPasses(
+      pm, /*skip_quantization_ops=*/true,
+      /*skip_resize=*/false, /*skip_stateful_partitioned_call=*/true);
   // StableHLO -> MHLO legalization for MHLO optimization.
   pm.addPass(mlir::mhlo::createStablehloLegalizeToHloPass());
   // Rewrites legacy StableHLO ops.

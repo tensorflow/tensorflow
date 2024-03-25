@@ -19,6 +19,7 @@ limitations under the License.
 #include <cstddef>
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <vector>
 
 #include "absl/status/status.h"
@@ -46,6 +47,14 @@ namespace xla::gpu {
 class NcclApi {
  public:
   virtual ~NcclApi() = default;
+
+  // Communicator configuration.
+  //
+  // https://docs.nvidia.com/deeplearning/nccl/user-guide/docs/api/types.html#ncclconfig
+  struct Config {
+    bool split_share = false;
+    int64_t max_nchannels = 0;
+  };
 
   // Returns a default NcclApi for a current process. Can be a real one based on
   // NCCL or a stub if XLA compiled without NCCL or CUDA support.
@@ -145,7 +154,7 @@ class NcclApi {
   // https://docs.nvidia.com/deeplearning/nccl/user-guide/docs/api/comms.html#ncclcomminitrank
   virtual absl::StatusOr<std::vector<OwnedNcclComm>> CommInitRanks(
       int32_t nranks, const NcclCliqueId& clique_id,
-      absl::Span<const DeviceRank> ranks) = 0;
+      absl::Span<const DeviceRank> ranks, const Config& config) = 0;
 
   // Creates new communicators by splitting `comms`.
   //
@@ -155,7 +164,7 @@ class NcclApi {
   // https://docs.nvidia.com/deeplearning/nccl/user-guide/docs/api/comms.html#ncclcommsplit
   virtual absl::StatusOr<std::vector<OwnedNcclComm>> CommSplit(
       absl::Span<const NcclCommHandle> comms, int32_t color,
-      absl::Span<const int32_t> keys) = 0;
+      absl::Span<const int32_t> keys, std::optional<Config> config) = 0;
 
   // Abort any uncompleted operations and destroys the communicator. Frees
   // resources that are allocated to a communicator object comm.
@@ -203,6 +212,14 @@ class NcclApi {
                                  ReductionKind reduction_kind,
                                  NcclCommHandle comm, se::Stream* stream) = 0;
 
+  // Copy data in `send_buff` from the root GPU to the `recv_buff` on
+  // all GPUs.
+  //
+  // https://docs.nvidia.com/deeplearning/nccl/user-guide/docs/api/colls.html#ncclbroadcast
+  virtual absl::Status Broadcast(se::DeviceMemoryBase send_buffer,
+                                 se::DeviceMemoryBase recv_buffer,
+                                 PrimitiveType dtype, size_t count, size_t root,
+                                 NcclCommHandle comm, se::Stream* stream) = 0;
   // Reduce data in `send_buff` from all GPUs using the `reduction_kind`
   // operation and leave the reduced result scattered over the devices so that
   // the `recv_buff` on rank `i` will contain the i-th block of the result.

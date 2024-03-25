@@ -67,16 +67,16 @@ absl::StatusOr<std::shared_ptr<xla::PyClient>> GetClient(
     auto py_on_disconnect = std::make_shared<std::function<void(absl::Status)>>(
         std::move(py_options.on_disconnect));
 
-    options.on_disconnect = [on_disconnect =
-                                 std::move(py_on_disconnect)](absl::Status s) {
-      LOG(WARNING) << "Connection to server failed, calling supplied "
-                   << "`on_disconnect` function: " << s;
-      tsl::Env::Default()->SchedClosure([s, on_disconnect]() mutable {
-        pybind11::gil_scoped_acquire gil_acquire;
-        (*on_disconnect)(s);
-        on_disconnect = nullptr;
-      });
-    };
+    options.on_disconnect =
+        [on_disconnect = std::move(py_on_disconnect)](absl::Status s) mutable {
+          LOG(WARNING) << "Connection to server failed, calling supplied "
+                       << "`on_disconnect` function: " << s;
+          tsl::Env::Default()->SchedClosure([s, on_disconnect]() mutable {
+            pybind11::gil_scoped_acquire gil_acquire;
+            (*on_disconnect)(s);
+            on_disconnect = nullptr;
+          });
+        };
   }
 
   if (py_options.on_connection_update) {

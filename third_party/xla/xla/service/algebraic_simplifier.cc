@@ -18,6 +18,7 @@ limitations under the License.
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <cstddef>
 #include <cstdint>
 #include <iterator>
 #include <memory>
@@ -55,6 +56,7 @@ limitations under the License.
 #include "xla/service/hlo_cost_analysis.h"
 #include "xla/service/hlo_creation_utils.h"
 #include "xla/service/hlo_module_config.h"
+#include "xla/service/host_memory_offload_annotations.h"
 #include "xla/service/pattern_matcher.h"
 #include "xla/service/shape_inference.h"
 #include "xla/shape.h"
@@ -1078,7 +1080,7 @@ Status AlgebraicSimplifierVisitor::HandleAdd(HloInstruction* add) {
   return OkStatus();
 }
 
-StatusOr<bool> AlgebraicSimplifierVisitor::TrySimplifyTautologicalCompare(
+absl::StatusOr<bool> AlgebraicSimplifierVisitor::TrySimplifyTautologicalCompare(
     HloInstruction* conjunction) {
   HloInstruction *lhs, *rhs;
   if (!Match(conjunction, m::And(m::Op(&lhs), m::Op(&rhs)))) {
@@ -1807,7 +1809,7 @@ Status AlgebraicSimplifierVisitor::HandleConcatenate(
   return OkStatus();
 }
 
-StatusOr<bool>
+absl::StatusOr<bool>
 AlgebraicSimplifierVisitor::TrySimplifyTautologicalBitcastConvert(
     HloInstruction* bitcast) {
   CHECK_EQ(bitcast->opcode(), HloOpcode::kBitcastConvert);
@@ -2249,8 +2251,9 @@ Status AlgebraicSimplifierVisitor::HandleDivide(HloInstruction* divide) {
   return OkStatus();
 }
 
-StatusOr<bool> AlgebraicSimplifierVisitor::RemoveDegenerateDimensionFromDot(
-    HloInstruction* dot) {
+absl::StatusOr<bool>
+AlgebraicSimplifierVisitor::RemoveDegenerateDimensionFromDot(
+    HloDotInstruction* dot) {
   const Shape& lhs_shape = dot->operand(0)->shape();
   int64_t num_degenerate_lhs_dims = 0;
   std::vector<int64_t> lhs_dimension_map(lhs_shape.rank(), -1);
@@ -2303,6 +2306,30 @@ StatusOr<bool> AlgebraicSimplifierVisitor::RemoveDegenerateDimensionFromDot(
     }
   }
 
+  std::vector<SparsityDescriptor> sparsity(dot->sparsity().begin(),
+                                           dot->sparsity().end());
+  std::vector<HloInstruction*> sparse_meta(sparsity.size());
+  for (int i = 0; i < sparsity.size(); ++i) {
+    // Update sparse dimension number in the descriptor.
+    SparsityDescriptor& descriptor = sparsity[i];
+    const std::vector<int64_t>& dimension_map =
+        descriptor.index() == 0 ? lhs_dimension_map : rhs_dimension_map;
+    CHECK_LT(static_cast<size_t>(descriptor.dimension()), dimension_map.size());
+    int preceding_dims_elided = absl::c_count_if(
+        absl::MakeSpan(dimension_map.data(), descriptor.dimension()),
+        [&](int64_t dim) { return dim == -1; });
+    descriptor.set_dimension(descriptor.dimension() - preceding_dims_elided);
+
+    // Reshape sparsity metadata operand, if affected.
+    HloInstruction* meta =
+        dot->mutable_operand(HloDotInstruction::kOperands + i);
+    Shape new_shape = ShapeUtil::DropDegenerateDimensions(meta->shape());
+    if (!ShapeUtil::Equal(new_shape, meta->shape())) {
+      TF_ASSIGN_OR_RETURN(meta, MakeReshapeHlo(new_shape, meta));
+    }
+    sparse_meta[i] = meta;
+  }
+
   HloInstruction* new_lhs =
       num_degenerate_lhs_dims > 0
           ? dot->parent()->AddInstruction(HloInstruction::CreateReshape(
@@ -2318,8 +2345,9 @@ StatusOr<bool> AlgebraicSimplifierVisitor::RemoveDegenerateDimensionFromDot(
   TF_ASSIGN_OR_RETURN(
       auto new_dot,
       MakeDotHlo(new_lhs, new_rhs, new_dnums, dot->precision_config(),
-                 /*preferred_element_type=*/dot->shape().element_type()));
+                 dot->shape().element_type(), sparsity, sparse_meta));
   dot->SetupDerivedInstruction(new_dot);
+
   if (ShapeUtil::Compatible(dot->shape(), new_dot->shape())) {
     TF_RETURN_IF_ERROR(ReplaceInstruction(dot, new_dot));
   } else {
@@ -2407,8 +2435,9 @@ Status AlgebraicSimplifierVisitor::SimplifyTransposeOfBroadcast(
                                   transpose->shape()));
 }
 
-StatusOr<bool> AlgebraicSimplifierVisitor::RemoveTransposesFromDotOperands(
-    HloInstruction* dot) {
+absl::StatusOr<bool>
+AlgebraicSimplifierVisitor::RemoveTransposesFromDotOperands(
+    HloDotInstruction* dot) {
   const int64_t rank = dot->shape().rank();
   const auto& dnums = dot->dot_dimension_numbers();
   HloInstruction* lhs = dot->mutable_operand(0);
@@ -2469,7 +2498,7 @@ StatusOr<bool> AlgebraicSimplifierVisitor::RemoveTransposesFromDotOperands(
   return true;
 }
 
-StatusOr<HloInstruction*>
+absl::StatusOr<HloInstruction*>
 AlgebraicSimplifierVisitor::NormalizeDotOperandToBatchMajorAndContractingMinor(
     HloInstruction* dot_operand, absl::Span<const int64_t> batch_dimensions,
     absl::Span<const int64_t> contracting_dimensions) {
@@ -2502,7 +2531,7 @@ HloInstruction* AlgebraicSimplifierVisitor::AddReduce(
       shape, hlo, zero, dims, AddReduce_computation));
 }
 
-StatusOr<HloInstruction*> AlgebraicSimplifierVisitor::OptimizeDotOfConcat(
+absl::StatusOr<HloInstruction*> AlgebraicSimplifierVisitor::OptimizeDotOfConcat(
     HloInstruction* dot) {
   const DotDimensionNumbers& dnums = dot->dot_dimension_numbers();
   if (dnums.lhs_contracting_dimensions_size() != 1 ||
@@ -2528,7 +2557,8 @@ StatusOr<HloInstruction*> AlgebraicSimplifierVisitor::OptimizeDotOfConcat(
                                    lhs_contracting_dim, /*swapped=*/true);
 }
 
-StatusOr<HloInstruction*> AlgebraicSimplifierVisitor::OptimizeDotOfConcatHelper(
+absl::StatusOr<HloInstruction*>
+AlgebraicSimplifierVisitor::OptimizeDotOfConcatHelper(
     HloInstruction* dot, HloInstruction* lhs, int64_t lhs_contracting_dim,
     HloInstruction* rhs, int64_t rhs_contracting_dim, bool swapped) {
   bool can_optimize = lhs->opcode() == HloOpcode::kConcatenate &&
@@ -2645,7 +2675,7 @@ StatusOr<HloInstruction*> AlgebraicSimplifierVisitor::OptimizeDotOfConcatHelper(
   return add_result;
 }
 
-StatusOr<HloInstruction*> AlgebraicSimplifierVisitor::OptimizeDotOfGather(
+absl::StatusOr<HloInstruction*> AlgebraicSimplifierVisitor::OptimizeDotOfGather(
     HloInstruction* dot) {
   const DotDimensionNumbers& dnums = dot->dot_dimension_numbers();
   if (dnums.lhs_contracting_dimensions_size() != 1 ||
@@ -2785,7 +2815,7 @@ StatusOr<HloInstruction*> AlgebraicSimplifierVisitor::OptimizeDotOfGather(
 // associative, so as long as we permute the elements of the contracting
 // dimensions on both sides of the dot in the same way, the result of the
 // dot is not affected.
-StatusOr<HloInstruction*>
+absl::StatusOr<HloInstruction*>
 AlgebraicSimplifierVisitor::OptimizeDotOfReorderContractingDims(
     HloInstruction* dot) {
   // This transformation assumes layout is not assigned yet.
@@ -2995,8 +3025,13 @@ AlgebraicSimplifierVisitor::OptimizeDotOfReorderContractingDims(
 
 // If appropriate, reorder operation on dot operand to the mirror operation on
 // the other dot operand
-StatusOr<HloInstruction*>
-AlgebraicSimplifierVisitor::AssociativeReorderDotOperator(HloInstruction* dot) {
+absl::StatusOr<HloInstruction*>
+AlgebraicSimplifierVisitor::AssociativeReorderDotOperator(
+    HloDotInstruction* dot) {
+  if (dot->sparse_operands()) {
+    return nullptr;
+  }
+
   DotDimensionNumbers dnums = dot->dot_dimension_numbers();
   HloInstruction* lhs = dot->mutable_operand(0);
   HloInstruction* rhs = dot->mutable_operand(1);
@@ -3252,6 +3287,7 @@ AlgebraicSimplifierVisitor::AssociativeReorderDotOperator(HloInstruction* dot) {
 
 Status AlgebraicSimplifierVisitor::HandleDot(HloInstruction* dot) {
   CHECK(computation_ == dot->parent());
+  HloDotInstruction* dot_cast = Cast<HloDotInstruction>(dot);
   const auto& dnums = dot->dot_dimension_numbers();
 
   HloInstruction *lhs, *rhs;
@@ -3317,7 +3353,7 @@ Status AlgebraicSimplifierVisitor::HandleDot(HloInstruction* dot) {
   }
 
   // Reorder nested dots with associativity using flops as a heuristic
-  if (options_.use_associative_reordering()) {
+  if (options_.use_associative_reordering() && !dot_cast->sparse_operands()) {
     HloInstruction *inner, *outer;
     HloInstruction *new_inner, *new_outer;
 
@@ -3325,11 +3361,13 @@ Status AlgebraicSimplifierVisitor::HandleDot(HloInstruction* dot) {
     bool outer_lhs_dot = false;
     bool outer_rhs_dot = false;
 
-    if (lhs->opcode() == HloOpcode::kDot) {
+    if (lhs->opcode() == HloOpcode::kDot &&
+        !Cast<HloDotInstruction>(lhs)->sparse_operands()) {
       outer = dot;
       inner = lhs;
       outer_lhs_dot = true;
-    } else if (rhs->opcode() == HloOpcode::kDot) {
+    } else if (rhs->opcode() == HloOpcode::kDot &&
+               !Cast<HloDotInstruction>(rhs)->sparse_operands()) {
       outer = dot;
       inner = rhs;
       outer_rhs_dot = true;
@@ -3678,7 +3716,7 @@ Status AlgebraicSimplifierVisitor::HandleDot(HloInstruction* dot) {
 
   if (options_.use_associative_reordering()) {
     TF_ASSIGN_OR_RETURN(HloInstruction * dot_operator_reordered,
-                        AssociativeReorderDotOperator(dot));
+                        AssociativeReorderDotOperator(dot_cast));
     if (dot_operator_reordered) {
       VLOG(10) << "Reordering dot operand to its mirror";
       return ReplaceInstruction(dot, dot_operator_reordered);
@@ -3783,13 +3821,13 @@ Status AlgebraicSimplifierVisitor::HandleDot(HloInstruction* dot) {
   }
 
   TF_ASSIGN_OR_RETURN(bool removed_degenerate_dimensions,
-                      RemoveDegenerateDimensionFromDot(dot));
+                      RemoveDegenerateDimensionFromDot(dot_cast));
   if (removed_degenerate_dimensions) {
     return OkStatus();
   }
 
   TF_ASSIGN_OR_RETURN(bool removed_transposes,
-                      RemoveTransposesFromDotOperands(dot));
+                      RemoveTransposesFromDotOperands(dot_cast));
   if (removed_transposes) {
     return OkStatus();
   }
@@ -3854,7 +3892,7 @@ Status AlgebraicSimplifierVisitor::HandleGather(HloInstruction* gather) {
 }
 
 namespace {
-StatusOr<std::unique_ptr<HloInstruction>> MinMaxToClamp(
+absl::StatusOr<std::unique_ptr<HloInstruction>> MinMaxToClamp(
     HloInstruction* clamp_lower_bound_bcast, HloInstruction* to_clamp,
     HloInstruction* clamp_upper_bound_bcast, AlgebraicSimplifier* simplifier) {
   HloInstruction* clamp_lower_bound;
@@ -4713,6 +4751,41 @@ Status AlgebraicSimplifierVisitor::HandleCompare(HloInstruction* compare) {
     }
   }
 
+  // Below is a common JAX code issue encountered when generating a Causal mask
+  // The user either neglected to specify `dtype=bool` in `ones()`
+  // or mistakenly applied `.astype(bool)` to the result of `tril()` instead of
+  // to `ones()`. Consequently, the mask will be converted from f32 to bool,
+  // resulting in suboptimal HLO.
+  //
+  // mask = jnp.tril(jnp.ones((seq_len, seq_len)))
+  // res = jnp.where(mask, x, -jnp.inf)
+  //
+  // # it will be lowered to the following suboptimal HLO
+  // %cmp0 = pred compare(s32, s32, direction=GE)
+  // %sel0 = f32 select(%cmp0, ones, zeros)
+  // %cmp1 = pred compare(%sel0, zeros, direction=NE)
+  //
+  // # which can be simplified to just
+  // %cmp0 = pred compare(s32, s32, direction=GE)
+  //
+  // Simplification:
+  // Ne(select(Ge(a, b), ones, zeros), zeros) -> Ge(a, b)
+  if (compare->comparison_direction() == ComparisonDirection::kNe &&
+      IsAll(rhs, 0)) {
+    HloInstruction* compare0;
+    HloInstruction* sel_on_true;
+    HloInstruction* sel_on_false;
+    if (Match(lhs,
+              m::Select(m::Op(&compare0)
+                            .WithOpcode(HloOpcode::kCompare)
+                            .WithComparisonDirection(ComparisonDirection::kGe),
+                        m::Op(&sel_on_true), m::Op(&sel_on_false))) &&
+        IsAll(sel_on_true, 1) && IsAll(sel_on_false, 0) &&
+        SameShape(compare->shape(), compare0->shape())) {
+      return ReplaceInstruction(compare, compare0);
+    }
+  }
+
   // Gt(Max(a,b), a) -> Gt(b,a)
   // Gt(Max(a,b), b) -> Gt(a,b)
   // Gt(a, Min(a,b)) -> Gt(a,b)
@@ -5087,7 +5160,7 @@ Status AlgebraicSimplifierVisitor::HandlePower(HloInstruction* power) {
   return OkStatus();
 }
 
-StatusOr<bool>
+absl::StatusOr<bool>
 AlgebraicSimplifierVisitor::TryToSinkBroadcastAfterOpWithUniqueNonScalarOperand(
     HloInstruction* broadcast) {
   TF_RET_CHECK(broadcast->opcode() == HloOpcode::kBroadcast);
@@ -5713,7 +5786,7 @@ Status AlgebraicSimplifierVisitor::HandleReverse(HloInstruction* reverse) {
   return OkStatus();
 }
 
-StatusOr<bool> AlgebraicSimplifierVisitor::TrySimplifyScalarSlice(
+absl::StatusOr<bool> AlgebraicSimplifierVisitor::TrySimplifyScalarSlice(
     HloInstruction* slice) {
   // Only try to do this for effective scalars. We could do the same for slicing
   // out larger pieces of padding (replacing with a broadcast of the padding
@@ -5765,7 +5838,7 @@ StatusOr<bool> AlgebraicSimplifierVisitor::TrySimplifyScalarSlice(
   return false;
 }
 
-StatusOr<bool> AlgebraicSimplifierVisitor::TryToReorderSliceAndReshape(
+absl::StatusOr<bool> AlgebraicSimplifierVisitor::TryToReorderSliceAndReshape(
     HloInstruction* slice) {
   CHECK_EQ(slice->opcode(), HloOpcode::kSlice);
   if (!IsUnstridedSlice(slice)) {
@@ -5821,7 +5894,7 @@ StatusOr<bool> AlgebraicSimplifierVisitor::TryToReorderSliceAndReshape(
 
 // Allowing a slice to move through a reverse with any necessary updates to the
 // slice config.
-StatusOr<bool> AlgebraicSimplifierVisitor::TryToReorderSliceAndReverse(
+absl::StatusOr<bool> AlgebraicSimplifierVisitor::TryToReorderSliceAndReverse(
     HloInstruction* slice) {
   VLOG(2) << "Entered TryToReorderSliceAndReverse for slice:"
           << slice->ToString();
@@ -6011,7 +6084,7 @@ Status AlgebraicSimplifierVisitor::HandleSlice(HloInstruction* slice) {
       options_.use_associative_reordering() &&
       slice->operand(0)->opcode() == HloOpcode::kDot) {
     // Unpack the dot operands
-    HloInstruction* dot = slice->mutable_operand(0);
+    HloDotInstruction* dot = Cast<HloDotInstruction>(slice->mutable_operand(0));
     HloInstruction* lhs = dot->mutable_operand(0);
     HloInstruction* rhs = dot->mutable_operand(1);
     DotDimensionNumbers dnums = dot->dot_dimension_numbers();
@@ -6024,6 +6097,27 @@ Status AlgebraicSimplifierVisitor::HandleSlice(HloInstruction* slice) {
     // We use these booleans to keep track of where to add slice instructions
     bool slice_lhs = false;
     bool slice_rhs = false;
+
+    // Sparse metadata may need to be sliced.
+    std::array<HloInstruction*, 2> sparse_meta = {nullptr, nullptr};
+    for (int i = 0; i < dot->sparse_operands(); ++i) {
+      const SparsityDescriptor& descriptor = dot->sparsity()[i];
+      sparse_meta[descriptor.index()] =
+          dot->mutable_operand(HloDotInstruction::kOperands + i);
+    }
+    auto slice_meta = [&](const DimensionVector& operand_start_indices,
+                          const DimensionVector& operand_limit_indices,
+                          const DimensionVector& operand_strides,
+                          HloInstruction* meta, int dimension) {
+      DimensionVector start_indices, limit_indices, strides;
+      for (int64_t i = 0; i < meta->shape().rank(); ++i) {
+        start_indices.push_back(operand_start_indices[i]);
+        limit_indices.push_back(i != dimension ? operand_limit_indices[i]
+                                               : meta->shape().dimensions(i));
+        strides.push_back(operand_strides[i]);
+      }
+      return MakeSliceHlo(meta, start_indices, limit_indices, strides);
+    };
 
     // Here we build up the slice dimensions for lhs
     DimensionVector lhs_start_indices, lhs_limit_indices, lhs_strides;
@@ -6039,9 +6133,8 @@ Status AlgebraicSimplifierVisitor::HandleSlice(HloInstruction* slice) {
       lhs_limit_indices.push_back(limit);
       lhs_strides.push_back(stride);
       // Record if any slicing occurs here
-      if (start != 0 || limit < size || stride != 1) {
-        slice_lhs = true;
-      }
+      bool update = start != 0 || limit < size || stride != 1;
+      slice_lhs |= update;
     }
 
     // Here we do the same for rhs
@@ -6058,9 +6151,8 @@ Status AlgebraicSimplifierVisitor::HandleSlice(HloInstruction* slice) {
       rhs_limit_indices.push_back(limit);
       rhs_strides.push_back(stride);
       // Record if any slicing occurs here
-      if (start != 0 || limit < size || stride != 1) {
-        slice_rhs = true;
-      }
+      bool update = start != 0 || limit < size || stride != 1;
+      slice_rhs |= update;
     }
 
     // Create Hlo for new slices
@@ -6077,11 +6169,37 @@ Status AlgebraicSimplifierVisitor::HandleSlice(HloInstruction* slice) {
           MakeSliceHlo(rhs, rhs_start_indices, rhs_limit_indices, rhs_strides));
     }
 
+    // Create Hlo for new metadata (for sparse dot)
+    std::vector<SparsityDescriptor> new_sparsity;
+    std::vector<HloInstruction*> new_meta;
+    if (dot->sparse_operands()) {
+      if (auto& lhs = dot->sparsity().front(); lhs.index() == 0) {
+        if (slice_lhs) {
+          TF_ASSIGN_OR_RETURN(
+              sparse_meta[0],
+              slice_meta(lhs_start_indices, lhs_limit_indices, lhs_strides,
+                         sparse_meta[0], lhs.dimension()));
+        }
+        new_sparsity.push_back(lhs);
+        new_meta.push_back(sparse_meta[0]);
+      }
+      if (auto& rhs = dot->sparsity().back(); rhs.index() == 1) {
+        if (slice_rhs) {
+          TF_ASSIGN_OR_RETURN(
+              sparse_meta[1],
+              slice_meta(rhs_start_indices, rhs_limit_indices, rhs_strides,
+                         sparse_meta[1], rhs.dimension()));
+        }
+        new_sparsity.push_back(rhs);
+        new_meta.push_back(sparse_meta[1]);
+      }
+    }
+
     // Finally, create Hlo for the new dot and reorder
-    HloInstruction* new_dot;
     TF_ASSIGN_OR_RETURN(
-        new_dot, MakeDotHlo(new_lhs, new_rhs, dnums, dot->precision_config(),
-                            dot->shape().element_type()));
+        HloInstruction * new_dot,
+        MakeDotHlo(new_lhs, new_rhs, dnums, dot->precision_config(),
+                   dot->shape().element_type(), new_sparsity, new_meta));
 
     // We should only do this reorder if both new_lhs and new_rhs have free
     // dimensions. Otherwise, it will conflict with an existing optimization
@@ -6500,6 +6618,20 @@ Status AlgebraicSimplifierVisitor::HandleDynamicUpdateSlice(
         compatible = false;
       }
     }
+
+    const auto custom_call_pattern = m::CustomCall(
+        {host_memory_offload_annotations::kMoveToHostCustomCallTarget});
+    if (Match(dus_update,
+              m::AnyOf<HloInstruction>(m::Reshape(custom_call_pattern),
+                                       m::Bitcast(custom_call_pattern),
+                                       custom_call_pattern))) {
+      // If this dynamic-update-slice is used for host memory offloading, it
+      // should not be converted into a pad. Also allow for a reshape or a
+      // bitcast between the host-offloading custom-call and the
+      // dynamic-update-slice.
+      compatible = false;
+    }
+
     PaddingConfig padding_config;
     if (compatible) {
       for (int64_t dim = 0; dim < updated_shape.rank(); ++dim) {
@@ -6839,7 +6971,8 @@ Status AlgebraicSimplifierVisitor::HandleReduce(HloInstruction* hlo) {
         IsScalarConstantZero(init_value) &&
         Match(reduce->to_apply()->root_instruction(),
               m::AddAnyOrder(m::Parameter(0), m::Parameter(1))) &&
-        arg->dot_dimension_numbers().lhs_batch_dimensions().empty()) {
+        arg->dot_dimension_numbers().lhs_batch_dimensions().empty() &&
+        !Cast<HloDotInstruction>(arg)->sparse_operands()) {
       // Create maps for converting AB dimensions to A and B
       DotDimensionNumbers ab_dnums = arg->dot_dimension_numbers();
       std::vector<int64_t> map_ab_a, map_ab_b;
@@ -7139,9 +7272,13 @@ Status AlgebraicSimplifierVisitor::HandleReduce(HloInstruction* hlo) {
       Match(arg, m::Dot(&dot, m::Op(&lhs), m::Op(&rhs)).WithOneUser()) &&
       Match(reduce->to_apply()->root_instruction(),
             m::AddAnyOrder(m::Parameter(0), m::Parameter(1))) &&
-      absl::c_any_of(reduce->dimensions(), [&](int64_t dim) {
-        return dim < dot->dot_dimension_numbers().lhs_batch_dimensions_size();
-      })) {
+      absl::c_any_of(
+          reduce->dimensions(),
+          [&](int64_t dim) {
+            return dim <
+                   dot->dot_dimension_numbers().lhs_batch_dimensions_size();
+          }) &&
+      !Cast<HloDotInstruction>(dot)->sparse_operands()) {
     const auto& dnums = dot->dot_dimension_numbers();
     DotDimensionNumbers new_dnums = dnums;
     new_dnums.clear_lhs_batch_dimensions();
@@ -7801,7 +7938,7 @@ Status AlgebraicSimplifierVisitor::HandleTranspose(HloInstruction* transpose) {
   }
 
   // Convert transpose(dot(a,b)) to dot(b,a).
-  auto do_transpose_of_dot = [&]() -> StatusOr<bool> {
+  auto do_transpose_of_dot = [&]() -> absl::StatusOr<bool> {
     if (options_.supports_non_canonical_dots() ||
         operand->opcode() != HloOpcode::kDot || operand->user_count() != 1) {
       return false;
@@ -7858,7 +7995,7 @@ Status AlgebraicSimplifierVisitor::HandleTranspose(HloInstruction* transpose) {
   if (options_.supports_non_canonical_dots() &&
       Match(operand, m::Dot(&dot, m::Op(&lhs), m::Op(&rhs))) &&
       dot->user_count() == 1) {
-    TF_ASSIGN_OR_RETURN(bool did_transform, [&]() -> StatusOr<bool> {
+    TF_ASSIGN_OR_RETURN(bool did_transform, [&]() -> absl::StatusOr<bool> {
       const auto& dnums = dot->dot_dimension_numbers();
       const int64_t num_batch_dims = dnums.lhs_batch_dimensions_size();
       for (int64_t i = 0; i < num_batch_dims; ++i) {
@@ -7895,10 +8032,23 @@ Status AlgebraicSimplifierVisitor::HandleTranspose(HloInstruction* transpose) {
         new_dnums.add_rhs_batch_dimensions(
             dnums.lhs_batch_dimensions(transpose->dimensions(batch_dim)));
       }
+
+      HloDotInstruction* dot_cast = Cast<HloDotInstruction>(dot);
+      int size = dot_cast->sparse_operands();  // 0..2
+      std::vector<SparsityDescriptor> sparsity(size);
+      std::vector<HloInstruction*> sparse_meta(size);
+      for (int i = 0; i < size; ++i) {
+        SparsityDescriptor descriptor = dot_cast->sparsity()[i];
+        descriptor.set_index(1 - descriptor.index());
+        sparsity[size - i - 1] = descriptor;
+        sparse_meta[size - i - 1] =
+            dot_cast->mutable_operand(HloDotInstruction::kOperands + i);
+      }
+
       HloInstruction* new_dot =
           MakeDotHlo(rhs, lhs, new_dnums,
                      SwapOperandsInDotPrecisionConfig(dot->precision_config()),
-                     dot->shape().element_type())
+                     dot->shape().element_type(), sparsity, sparse_meta)
               .value();
       *new_dot->mutable_shape()->mutable_layout() = transpose->shape().layout();
 
@@ -7939,7 +8089,7 @@ Status AlgebraicSimplifierVisitor::HandleTranspose(HloInstruction* transpose) {
     HloInstruction* reshape_operand = operand->mutable_operand(0);
     HloInstruction* outer_reshape = transpose->users()[0];
     TF_ASSIGN_OR_RETURN(
-        bool did_transform, ([&]() -> StatusOr<bool> {
+        bool did_transform, ([&]() -> absl::StatusOr<bool> {
           if (operand->shape().dimensions_size() !=
               reshape_operand->shape().dimensions_size() + 1) {
             return false;
@@ -8083,7 +8233,7 @@ Status AlgebraicSimplifierVisitor::HandleTranspose(HloInstruction* transpose) {
   return OkStatus();
 }
 
-StatusOr<bool> AlgebraicSimplifierVisitor::FoldConvInputPad(
+absl::StatusOr<bool> AlgebraicSimplifierVisitor::FoldConvInputPad(
     HloInstruction* convolution) {
   HloInstruction *lhs, *a, *b;
   if (Match(convolution,
@@ -8144,7 +8294,7 @@ StatusOr<bool> AlgebraicSimplifierVisitor::FoldConvInputPad(
   return false;
 }
 
-StatusOr<bool> AlgebraicSimplifierVisitor::FoldConvFilterPad(
+absl::StatusOr<bool> AlgebraicSimplifierVisitor::FoldConvFilterPad(
     HloInstruction* convolution) {
   auto* lhs = convolution->mutable_operand(0);
   auto* rhs = convolution->mutable_operand(1);
@@ -8210,7 +8360,7 @@ StatusOr<bool> AlgebraicSimplifierVisitor::FoldConvFilterPad(
   return true;
 }
 
-StatusOr<bool> AlgebraicSimplifierVisitor::SwapConvOperands(
+absl::StatusOr<bool> AlgebraicSimplifierVisitor::SwapConvOperands(
     HloInstruction* convolution) {
   if (!options_.enable_conv_operand_swap() || options_.is_layout_sensitive()) {
     return false;
@@ -8347,7 +8497,7 @@ StatusOr<bool> AlgebraicSimplifierVisitor::SwapConvOperands(
   return true;
 }
 
-StatusOr<bool> AlgebraicSimplifierVisitor::SimplifyConvToDot(
+absl::StatusOr<bool> AlgebraicSimplifierVisitor::SimplifyConvToDot(
     HloInstruction* convolution) {
   auto* lhs = convolution->mutable_operand(0);
   auto* rhs = convolution->mutable_operand(1);
@@ -8469,7 +8619,7 @@ StatusOr<bool> AlgebraicSimplifierVisitor::SimplifyConvToDot(
   return true;
 }
 
-StatusOr<bool> AlgebraicSimplifierVisitor::SimplifyConvToMultiply(
+absl::StatusOr<bool> AlgebraicSimplifierVisitor::SimplifyConvToMultiply(
     HloInstruction* convolution) {
   if (options_.is_layout_sensitive() ||
       absl::c_linear_search(convolution->precision_config().operand_precision(),
@@ -8657,7 +8807,7 @@ Status AlgebraicSimplifierVisitor::HandleMap(HloInstruction* map) {
   return ReplaceWithNewInstruction(map, std::move(clone));
 }
 
-StatusOr<bool> AlgebraicSimplifier::Run(
+absl::StatusOr<bool> AlgebraicSimplifier::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   bool changed = false;

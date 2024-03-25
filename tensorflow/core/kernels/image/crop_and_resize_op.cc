@@ -868,9 +868,8 @@ inline void RunIfBoxIndexIsValid<GPUDevice>(
   se::DeviceMemoryBase wrapped(isvalid_dev.data(), sizeof(bool));
   const bool status =
       stream
-          ->ThenMemcpy(
-              isvalid_host_tensor.scalar<bool>().data() /* destination */,
-              wrapped /* source */, sizeof(bool))
+          ->Memcpy(isvalid_host_tensor.scalar<bool>().data() /* destination */,
+                   wrapped /* source */, sizeof(bool))
           .ok();
   OP_REQUIRES_ASYNC(
       context, status,

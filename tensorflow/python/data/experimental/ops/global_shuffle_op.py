@@ -41,13 +41,11 @@ def _global_shuffle(  # pylint: disable=unused-private-name
     dataset if it cannot be determined at runtime.
 
   TODO(b/325112575): Move the API to dataset_ops.py.
-  TODO(b/325112575): Support reshuffle_each_iteration.
-  TODO(b/325112575): Support checkpoints.
 
   Args:
     input_dataset: The dataset to be shuffled.
-    seed: A `tf.int64` scalar `tf.Tensor` to control the shuffle order. If
-      `None`, a random seed will be used.
+    seed: An int or `tf.int64` scalar `tf.Tensor` to control the shuffle order.
+      If `None`, a random seed will be used.
     reshuffle_each_iteration: A boolean, which if True, indicates that a
       different shuffle order should be generated for each iteration of the
       dataset. (Defaults to `True`.)

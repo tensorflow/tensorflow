@@ -30,7 +30,7 @@ bool IsLargeFloatType(Type type) {
 
 Type ToBfloat16Type(Type type) {
   if (auto shaped = type.dyn_cast<ShapedType>()) {
-    Type elem = shaped.getElementType();
+    const Type elem = shaped.getElementType();
     if (IsLargeFloatType(elem)) {
       return shaped.clone(BFloat16Type::get(type.getContext()));
     }

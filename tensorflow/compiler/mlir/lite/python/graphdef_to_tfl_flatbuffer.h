@@ -29,7 +29,7 @@ namespace tensorflow {
 // given model flags, toco flags and debug information. Returns error status if
 // it fails to convert the input.
 absl::Status ConvertGraphDefToTFLiteFlatBuffer(
-    const toco::ModelFlags& model_flags, const toco::TocoFlags& toco_flags,
+    const toco::ModelFlags& model_flags, toco::TocoFlags& toco_flags,
     const GraphDebugInfo& debug_info, const GraphDef& input,
     std::string* result);
 

@@ -240,7 +240,7 @@ static auto DeviceRanksToString(absl::Span<const NcclApi::DeviceRank> ranks) {
 static absl::StatusOr<std::shared_ptr<NcclClique::Lock>> InitializeNcclClique(
     se::StreamExecutor* device, RunId run_id, NcclCliqueKey clique_key,
     const NcclCliqueIdCallback& clique_id_callback,
-    int32_t num_local_participants, int32_t rank) {
+    int32_t num_local_participants, int32_t rank, NcclApi::Config& config) {
   int nranks = clique_key.devices().size();
   VLOG(3) << "Initialize NCCL clique " << clique_key.ToString() << " rank #"
           << rank << "; num_local_participants=" << num_local_participants;
@@ -269,7 +269,7 @@ static absl::StatusOr<std::shared_ptr<NcclClique::Lock>> InitializeNcclClique(
 
     TF_ASSIGN_OR_RETURN(
         std::vector<NcclApi::OwnedNcclComm> created_comms,
-        NcclApi::Default()->CommInitRanks(nranks, clique_id, ranks));
+        NcclApi::Default()->CommInitRanks(nranks, clique_id, ranks, config));
 
     absl::btree_map<int32_t, NcclApi::OwnedNcclComm> comms;
     for (size_t i = 0; i < ranks.size(); ++i) {
@@ -339,7 +339,7 @@ static int32_t GetCommSplitColor(const NcclCliqueKey& clique_key) {
 static absl::StatusOr<std::shared_ptr<NcclClique::Lock>> InitializeNcclClique(
     se::StreamExecutor* device, RunId run_id, NcclCliqueKey clique_key,
     std::shared_ptr<NcclClique::Lock> parent_clique,
-    int32_t num_local_participants, int32_t rank) {
+    int32_t num_local_participants, int32_t rank, NcclApi::Config& config) {
   // Find our rank in the parent clique.
   const NcclCliqueKey& parent_clique_key = (*parent_clique)->clique_key();
   int32_t parent_rank = *parent_clique_key.rank(clique_key.devices()[rank]);
@@ -401,8 +401,9 @@ static absl::StatusOr<std::shared_ptr<NcclClique::Lock>> InitializeNcclClique(
         clique_key.ToString(), parent_clique_key.ToString(), color,
         absl::StrJoin(rank_mapping, ",", rank_mapping_formatter));
 
-    TF_ASSIGN_OR_RETURN(auto splitted_comms, NcclApi::Default()->CommSplit(
-                                                 parent_comms, color, keys));
+    TF_ASSIGN_OR_RETURN(
+        auto splitted_comms,
+        NcclApi::Default()->CommSplit(parent_comms, color, keys, config));
 
     absl::btree_map<int32_t, NcclApi::OwnedNcclComm> comms;
     for (size_t i = 0; i < splitted_comms.size(); ++i) {
@@ -454,7 +455,8 @@ using AcquiredCliquesMap = NcclClique::AcquiredCliquesMap;
 absl::StatusOr<std::shared_ptr<NcclClique::Lock>> AcquireNcclClique(
     se::StreamExecutor* device, RunId run_id, NcclCliqueKey clique_key,
     const NcclCliqueIdCallback& clique_id_callback, int32_t rank,
-    size_t num_local_participants, const AcquiredCliquesMap& acquired_cliques) {
+    size_t num_local_participants, const AcquiredCliquesMap& acquired_cliques,
+    int64_t max_nchannels) {
   VLOG(2) << "Acquire NCCL clique " << clique_key.ToString() << "; run"
           << run_id.ToString() << "; rank " << rank
           << "; num_local_participants=" << num_local_participants
@@ -488,6 +490,12 @@ absl::StatusOr<std::shared_ptr<NcclClique::Lock>> AcquireNcclClique(
   static const int64_t enable_nccl_comm_splitting =
       xla::GetDebugOptionsFromFlags().xla_gpu_enable_nccl_comm_splitting();
 
+  // We enable resource sharing between parent and split communicators by
+  // default because that's the only reason why we use comm splitting.
+  NcclApi::Config config;
+  config.split_share = true;
+  config.max_nchannels = max_nchannels;
+
   if (enable_nccl_comm_splitting) {
     for (auto& [acquired_clique_key, acquired_clique] : acquired_cliques) {
       // We don't support splitting non-local cliques as it requires careful
@@ -496,14 +504,14 @@ absl::StatusOr<std::shared_ptr<NcclClique::Lock>> AcquireNcclClique(
 
       if (clique_key.IsSubsetOf(acquired_clique_key)) {
         return InitializeNcclClique(device, run_id, clique_key, acquired_clique,
-                                    num_local_participants, rank);
+                                    num_local_participants, rank, config);
       }
     }
   }
 
   // If we can't split any of the acquired cliques, create a new one.
   return InitializeNcclClique(device, run_id, clique_key, clique_id_callback,
-                              num_local_participants, rank);
+                              num_local_participants, rank, config);
 }
 
 }  // namespace xla::gpu

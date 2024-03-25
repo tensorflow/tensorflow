@@ -253,7 +253,7 @@ PersistentPlanAllocator::AllocateAndInitialize(void* src, size_t size) {
   VLOG(5) << "Allocate and initialize NCCL persistent plan; mem="
           << owned_mem->opaque() << "; size=" << size;
   se::DeviceMemoryBase mem = owned_mem.Release();
-  stream_->ThenMemcpy(&mem, src, size);
+  TF_RETURN_IF_ERROR(stream_->Memcpy(&mem, src, size));
   return mem;
 }
 
@@ -295,11 +295,11 @@ class DefaultNcclApi final : public NcclApi {
 
   absl::StatusOr<std::vector<OwnedNcclComm>> CommInitRanks(
       int32_t nranks, const NcclCliqueId& clique_id,
-      absl::Span<const DeviceRank> ranks) final;
+      absl::Span<const DeviceRank> ranks, const Config& config) final;
 
   absl::StatusOr<std::vector<OwnedNcclComm>> CommSplit(
       absl::Span<const NcclCommHandle> comms, int32_t color,
-      absl::Span<const int32_t> keys) final;
+      absl::Span<const int32_t> keys, std::optional<Config> config) final;
 
   absl::Status CommAbort(NcclCommHandle comm) final;
   absl::Status CommFinalize(NcclCommHandle comm) final;
@@ -316,6 +316,11 @@ class DefaultNcclApi final : public NcclApi {
                          se::DeviceMemoryBase recv_buffer, PrimitiveType dtype,
                          size_t count, ReductionKind reduction_kind,
                          NcclCommHandle comm, se::Stream* stream) final;
+
+  absl::Status Broadcast(se::DeviceMemoryBase send_buffer,
+                         se::DeviceMemoryBase recv_buffer, PrimitiveType dtype,
+                         size_t count, size_t root, NcclCommHandle comm,
+                         se::Stream* stream) final;
 
   absl::Status ReduceScatter(se::DeviceMemoryBase send_buffer,
                              se::DeviceMemoryBase recv_buffer,
@@ -366,9 +371,20 @@ absl::StatusOr<NcclCliqueId> DefaultNcclApi::GetUniqueId() {
 
 absl::StatusOr<std::vector<NcclApi::OwnedNcclComm>>
 DefaultNcclApi::CommInitRanks(int32_t nranks, const NcclCliqueId& clique_id,
-                              absl::Span<const DeviceRank> ranks) {
+                              absl::Span<const DeviceRank> ranks,
+                              const Config& config) {
   VLOG(1) << "Initialize NCCL communicator for " << ranks.size()
           << " devices; hash(id)=" << absl::HashOf(clique_id);
+
+#if !defined(TENSORFLOW_USE_ROCM) || \
+    (defined(TENSORFLOW_USE_ROCM) && TF_ROCM_VERSION > 50700)
+  ncclConfig_t comm_config = NCCL_CONFIG_INITIALIZER;
+  comm_config.splitShare = config.split_share;
+  if (config.max_nchannels > 0) {
+    comm_config.maxCTAs = config.max_nchannels;
+    VLOG(1) << "Maximum number of channels for hash(id)="
+            << absl::HashOf(clique_id) << " is set to: " << comm_config.maxCTAs;
+  }
 
   std::vector<OwnedNcclComm> comms;
   comms.reserve(ranks.size());
@@ -381,19 +397,25 @@ DefaultNcclApi::CommInitRanks(int32_t nranks, const NcclCliqueId& clique_id,
     se::gpu::ScopedActivateExecutorContext activate_context(ranks[i].device);
 
     ncclComm_t comm_handle = nullptr;
-    XLA_NCCL_RETURN_IF_ERROR(ncclCommInitRank(
-        &comm_handle, nranks, AsNcclUniqueId(clique_id), ranks[i].rank));
+    XLA_NCCL_RETURN_IF_ERROR(
+        ncclCommInitRankConfig(&comm_handle, nranks, AsNcclUniqueId(clique_id),
+                               ranks[i].rank, &comm_config));
 
     comms.emplace_back(Cast(comm_handle), NcclCommDeleter{this});
   }
   TF_RETURN_IF_ERROR(GroupEnd());
 
   return comms;
+#else
+  return absl::UnimplementedError(absl::StrFormat(
+      "%s:%d: NCCL operation ncclCommInitRankConfig not implemented", __FILE__,
+      __LINE__));
+#endif
 }
 
 absl::StatusOr<std::vector<NcclApi::OwnedNcclComm>> DefaultNcclApi::CommSplit(
     absl::Span<const NcclCommHandle> comms, int32_t color,
-    absl::Span<const int32_t> keys) {
+    absl::Span<const int32_t> keys, std::optional<Config> config) {
   VLOG(1) << absl::StreamFormat(
       "Split %d NCCL communicators using color %d and keys: [%s]", comms.size(),
       color, absl::StrJoin(keys, ","));
@@ -405,19 +427,32 @@ absl::StatusOr<std::vector<NcclApi::OwnedNcclComm>> DefaultNcclApi::CommSplit(
                         comms.size(), keys.size()));
   }
 
+  ncclConfig_t comm_config = NCCL_CONFIG_INITIALIZER;
+  if (config.has_value()) {
+    comm_config.splitShare = config.value().split_share;
+    // If max_nchannels is set, then we don't want to
+    // inherit from parent comm.
+    if (config.value().max_nchannels > 0) {
+      comm_config.maxCTAs = config.value().max_nchannels;
+      VLOG(1) << "CommSplit maximum number of channels "
+              << " is set to: " << comm_config.maxCTAs;
+    }
+  }
+
   // In contrast to grouped initialization communicator splitting initializes
   // communicators only after a successful call to `GroupEnd`, so we keep a
   // vector of handles and after successful splitting convert to RAII wrappers.
   std::vector<ncclComm_t> split_comms_handles;
   split_comms_handles.resize(comms.size(), nullptr);
 
+  ncclConfig_t* comm_config_ptr = config.has_value() ? &comm_config : nullptr;
   TF_RETURN_IF_ERROR(GroupStart());
   for (size_t i = 0; i < comms.size(); ++i) {
     VLOG(1) << "Split NCCL communicator " << comms[i] << " with color " << color
             << " and key " << keys[i];
     XLA_NCCL_RETURN_IF_ERROR(ncclCommSplit(Cast(comms[i]), color, keys[i],
                                            &split_comms_handles[i],
-                                           /*config=*/nullptr));
+                                           /*config=*/comm_config_ptr));
   }
   TF_RETURN_IF_ERROR(GroupEnd());
 
@@ -498,6 +533,26 @@ absl::Status DefaultNcclApi::AllReduce(se::DeviceMemoryBase send_buffer,
       send_buffer.opaque(), recv_buffer.opaque(), ToNcclCount(dtype, count),
       nccl_dtype, ToNcclReduction(reduction_kind), Cast(comm),
       se::gpu::AsGpuStreamValue(stream)));
+}
+
+absl::Status DefaultNcclApi::Broadcast(se::DeviceMemoryBase send_buffer,
+                                       se::DeviceMemoryBase recv_buffer,
+                                       PrimitiveType dtype, size_t count,
+                                       size_t root, NcclCommHandle comm,
+                                       se::Stream* stream) {
+  VLOG(3) << absl::StreamFormat(
+      "Launch NCCL Broadcast operation on device #%d; send_buffer=%p; "
+      "recv_buffer=%p; dtype=%s; count=%d; root=%d; comm=%p; "
+      "stream=%p",
+      stream->parent()->device_ordinal(), send_buffer.opaque(),
+      recv_buffer.opaque(), primitive_util::LowercasePrimitiveTypeName(dtype),
+      count, root, comm, stream);
+
+  TF_ASSIGN_OR_RETURN(ncclDataType_t nccl_dtype, ToNcclDataType(dtype, false));
+
+  return XLA_NCCL_STATUS(ncclBroadcast(
+      send_buffer.opaque(), recv_buffer.opaque(), ToNcclCount(dtype, count),
+      nccl_dtype, root, Cast(comm), se::gpu::AsGpuStreamValue(stream)));
 }
 
 absl::Status DefaultNcclApi::ReduceScatter(se::DeviceMemoryBase send_buffer,
@@ -602,5 +657,4 @@ DefaultNcclApi::DeregisterBuffer(NcclCommHandle comm,
       ncclCommDeregister(Cast(comm), reinterpret_cast<void*>(handle)));
 #endif  // NCCL_VERSION_CODE >= 21901
 }
-
 }  // namespace xla::gpu

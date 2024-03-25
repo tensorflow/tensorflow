@@ -46,33 +46,17 @@ limitations under the License.
 
 namespace xla {
 namespace gpu {
-namespace {
 
 //===----------------------------------------------------------------------===//
 // KernelThunk
 //===----------------------------------------------------------------------===//
 
-mlir::Value RemoveTransformingOperations(mlir::Value value) {
-  mlir::Operation* defining_op = value.getDefiningOp();
-  if (auto cast_op = llvm::isa<mlir::memref::ReinterpretCastOp,
-                               mlir::memref::CollapseShapeOp>(defining_op)) {
-    return defining_op->getOperand(0);
-  }
-  return value;
-}
-
-}  // namespace
-
-KernelThunk::KernelThunk(
-    std::variant<mlir::Operation*, const HloInstruction*> op,
-    std::string kernel_name, absl::Span<const KernelArgument> kernel_arguments,
-    LaunchDimensions launch_dimensions,
-    std::optional<se::ClusterDim> cluster_dim, int64_t shmem_bytes)
-    : Thunk(Kind::kKernel, std::holds_alternative<mlir::Operation*>(op)
-                               ? Thunk::ThunkInfo::WithProfileAnnotation(
-                                     std::get<mlir::Operation*>(op))
-                               : Thunk::ThunkInfo::WithProfileAnnotation(
-                                     std::get<const HloInstruction*>(op))),
+KernelThunk::KernelThunk(const HloInstruction* instr, std::string kernel_name,
+                         absl::Span<const KernelArgument> kernel_arguments,
+                         LaunchDimensions launch_dimensions,
+                         std::optional<se::ClusterDim> cluster_dim,
+                         int64_t shmem_bytes)
+    : Thunk(Kind::kKernel, Thunk::ThunkInfo::WithProfileAnnotation(instr)),
       kernel_name_(std::move(kernel_name)),
       launch_dimensions_(std::move(launch_dimensions)),
       cluster_dim_(std::move(cluster_dim)),
@@ -83,18 +67,6 @@ KernelThunk::KernelThunk(
     if (!kernel_argument.first_with_same_slice().has_value()) {
       args_.push_back(kernel_argument.slice());
       written_.push_back(kernel_argument.written());
-    }
-  }
-
-  if (std::holds_alternative<const HloInstruction*>(op)) {
-    // Skip populating MLIR values_ if emitting from HLO.
-    return;
-  }
-
-  values_.reserve(kernel_arguments.size());
-  for (const auto& kernel_argument : kernel_arguments) {
-    if (!kernel_argument.first_with_same_slice().has_value()) {
-      values_.push_back(RemoveTransformingOperations(kernel_argument.value()));
     }
   }
 }
@@ -132,7 +104,7 @@ static void PrintBufferContents(
   int input_idx = 0;
   for (const se::DeviceMemoryBase& buf : buffer_args) {
     auto host_buffer = std::make_unique<char[]>(buf.size());
-    CHECK(stream->ThenMemcpy(host_buffer.get(), buf, buf.size()).ok());
+    CHECK(stream->Memcpy(host_buffer.get(), buf, buf.size()).ok());
     CHECK_OK(stream->BlockHostUntilDone());
 
     std::string buffer_contents;
@@ -150,6 +122,10 @@ absl::Status KernelThunk::ExecuteOnStream(const ExecuteParams& params) {
   LaunchDimensions launch_dimensions;
   std::optional<se::ClusterDim> cluster_dim;
   const se::Kernel* kernel = nullptr;
+
+  TF_ASSIGN_OR_RETURN(
+      se::Stream * stream,
+      GetStreamForExecution(Thunk::execution_stream_id(), params));
 
   {
     absl::MutexLock lock(&mutex_);
@@ -171,15 +147,15 @@ absl::Status KernelThunk::ExecuteOnStream(const ExecuteParams& params) {
   }
 
   if (VLOG_IS_ON(100)) {
-    PrintBufferContents(params.stream, buffer_args);
+    PrintBufferContents(stream, buffer_args);
   }
 
   if (cluster_dim.has_value()) {
     return ExecuteKernelOnStream(*kernel, buffer_args, launch_dimensions,
-                                 cluster_dim.value(), params.stream);
+                                 cluster_dim.value(), stream);
   } else {
     return ExecuteKernelOnStream(*kernel, buffer_args, launch_dimensions,
-                                 params.stream);
+                                 stream);
   }
 }
 
@@ -188,15 +164,10 @@ absl::Status KernelThunk::ExecuteOnStream(const ExecuteParams& params) {
 //===----------------------------------------------------------------------===//
 
 CustomKernelThunk::CustomKernelThunk(
-    std::variant<mlir::Operation*, const HloInstruction*> instr,
-    CustomKernel custom_kernel,
+    const HloInstruction* instr, CustomKernel custom_kernel,
     absl::Span<const KernelArgument> kernel_arguments)
     : Thunk(Kind::kCustomKernel,
-            std::holds_alternative<mlir::Operation*>(instr)
-                ? Thunk::ThunkInfo::WithProfileAnnotation(
-                      std::get<mlir::Operation*>(instr))
-                : Thunk::ThunkInfo::WithProfileAnnotation(
-                      std::get<const HloInstruction*>(instr))),
+            Thunk::ThunkInfo::WithProfileAnnotation(instr)),
       custom_kernel_(std::move(custom_kernel)) {
   args_.reserve(kernel_arguments.size());
   written_.reserve(kernel_arguments.size());
@@ -204,18 +175,6 @@ CustomKernelThunk::CustomKernelThunk(
     if (!kernel_argument.first_with_same_slice().has_value()) {
       args_.push_back(kernel_argument.slice());
       written_.push_back(kernel_argument.written());
-    }
-  }
-
-  if (std::holds_alternative<const HloInstruction*>(instr)) {
-    // Skip populating MLIR values_ if emitting from HLO.
-    return;
-  }
-
-  values_.reserve(kernel_arguments.size());
-  for (const auto& kernel_argument : kernel_arguments) {
-    if (!kernel_argument.first_with_same_slice().has_value()) {
-      values_.push_back(RemoveTransformingOperations(kernel_argument.value()));
     }
   }
 }

@@ -69,6 +69,7 @@ absl::string_view BoolToString(bool b) { return b ? "true" : "false"; }
     absl::Span<const Tile> tiles, int64_t tail_padding_alignment_in_elements,
     PrimitiveType index_primitive_type, PrimitiveType pointer_primitive_type,
     int64_t element_size_in_bits, int64_t memory_space,
+    absl::Span<const SplitConfig> split_configs,
     std::optional<Shape> physical_shape,
     int64_t dynamic_shape_metadata_prefix_bytes) {
   Layout layout;
@@ -101,6 +102,9 @@ absl::string_view BoolToString(bool b) { return b ? "true" : "false"; }
   layout.set_pointer_primitive_type(pointer_primitive_type);
   layout.set_element_size_in_bits(element_size_in_bits);
   layout.set_memory_space(memory_space);
+  for (const SplitConfig& split_config : split_configs) {
+    layout.add_split_configs(split_config);
+  }
   if (physical_shape != std::nullopt) {
     *layout.mutable_physical_shape() = *std::move(physical_shape);
   }
@@ -766,6 +770,42 @@ bool LayoutUtil::ValidateDimLevel(DimLevelType dim_level_type, bool dim_unique,
     stride *= dims[i];
   }
   return true;
+}
+
+/*static*/ int64_t LayoutUtil::MaxSplitSize(const Shape& shape, int64_t dim) {
+  CHECK(shape.IsArray()) << ShapeUtil::HumanString(shape);
+  if (!shape.has_layout()) {
+    return shape.dimensions(dim);
+  }
+  const SplitConfig* split_config = nullptr;
+  for (const SplitConfig& config : shape.layout().split_configs()) {
+    if (Major(shape.layout(), config.dimension()) == dim) {
+      split_config = &config;
+      break;
+    }
+  }
+  if (split_config != nullptr) {
+    int64_t max_split_size = 0;
+    int64_t last_split_index = 0;
+    for (int split_index : split_config->split_indices()) {
+      int64_t split_size = split_index - last_split_index;
+      max_split_size = std::max(split_size, max_split_size);
+      last_split_index = split_index;
+    }
+    max_split_size =
+        std::max(max_split_size, shape.dimensions(dim) - last_split_index);
+    return max_split_size;
+  }
+  return shape.dimensions(dim);
+}
+
+/*static*/ int64_t LayoutUtil::MaxElementsInPerSplit(const Shape& shape) {
+  CHECK(shape.IsArray()) << ShapeUtil::HumanString(shape);
+  int64_t max_elements_in = 1;
+  for (int dim = 0; dim < shape.rank(); ++dim) {
+    max_elements_in *= MaxSplitSize(shape, dim);
+  }
+  return max_elements_in;
 }
 
 }  // namespace xla

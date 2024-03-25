@@ -76,11 +76,11 @@ class EventPool {
   // such as cudaStreamWaitEvent capture the state of the event at the time of
   // the host-side call and are not affected by a later host-side
   // cudaEventRecord.
-  StatusOr<Handle> ThenAllocateAndRecordEvent(se::Stream* stream);
+  absl::StatusOr<Handle> ThenAllocateAndRecordEvent(se::Stream* stream);
 
   // Version of ThenAllocateAndRecordEvent split into two phases; this is
   // sometimes helpful if we want to avoid failures by preallocating events.
-  StatusOr<Handle> AllocateEvent(se::StreamExecutor* executor);
+  absl::StatusOr<Handle> AllocateEvent(se::StreamExecutor* executor);
   void ThenRecordEvent(se::Stream* stream, EventPool::Handle& handle);
 
  private:

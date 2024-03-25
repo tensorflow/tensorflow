@@ -787,6 +787,13 @@ TEST(HloShardingUtilTest, IsSortOperandShardingMovableRankTwoOneFreeDim) {
   EXPECT_TRUE(IsSortOperandShardingMovable(&iota, 1));
 }
 
+TEST(HloShardingUtilTest,
+     IsSortOperandShardingMovableRankTwoOneFreeDimOfSize1) {
+  HloIotaInstruction iota(ShapeUtil::MakeShape(F32, {1, 128}), 1);
+  iota.set_sharding(HloSharding::IotaTile({1, 2}));
+  EXPECT_FALSE(IsSortOperandShardingMovable(&iota, 1));
+}
+
 TEST(HloShardingUtilTest, IsSortOperandShardingMovableRankTwoNoFreeDims) {
   HloIotaInstruction iota(ShapeUtil::MakeShape(F32, {8, 128}), 1);
   iota.set_sharding(HloSharding::IotaTile({2, 2}));

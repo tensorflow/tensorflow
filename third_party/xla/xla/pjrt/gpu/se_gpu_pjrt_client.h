@@ -145,6 +145,7 @@ class StreamExecutorGpuDevice : public PjRtStreamExecutorDevice {
   StreamExecutorGpuDevice(int id,
                           std::unique_ptr<LocalDeviceState> local_device_state,
                           std::string device_kind, std::string device_vendor,
+                          std::string compute_capability, int core_count,
                           int node_id, int slice_index = 0);
 
   int slice_index() const;
@@ -182,12 +183,12 @@ class StreamExecutorGpuClient : public xla::PjRtStreamExecutorClient {
             tsl::Fingerprint64(platform_name), platform_name,
             devices_.back()->device_kind(), devices_)) {}
 
-  xla::StatusOr<xla::DeviceAssignment> GetDefaultDeviceAssignment(
+  absl::StatusOr<xla::DeviceAssignment> GetDefaultDeviceAssignment(
       int num_replicas, int num_partitions) const override;
 
   absl::string_view platform_version() const override;
 
-  StatusOr<std::unique_ptr<PjRtClient::AsyncHostToDeviceTransferManager>>
+  absl::StatusOr<std::unique_ptr<PjRtClient::AsyncHostToDeviceTransferManager>>
   CreateBuffersForAsyncHostToDevice(absl::Span<const Shape> shapes,
                                     PjRtDevice* device) override;
 
@@ -195,13 +196,13 @@ class StreamExecutorGpuClient : public xla::PjRtStreamExecutorClient {
                                             int64_t offset,
                                             int64_t transfer_size) override;
 
-  StatusOr<const xla::PjRtTopologyDescription*> GetTopologyDescription()
+  absl::StatusOr<const xla::PjRtTopologyDescription*> GetTopologyDescription()
       const override {
     return &topology_;
   }
 
   // TODO(b/285385306): Enable loading a non-loaded PjRtExecutable.
-  StatusOr<std::unique_ptr<PjRtLoadedExecutable>> Load(
+  absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>> Load(
       std::unique_ptr<PjRtExecutable> executable,
       const LoadOptions& load_options) override {
     return absl::WrapUnique<PjRtLoadedExecutable>(
@@ -210,20 +211,20 @@ class StreamExecutorGpuClient : public xla::PjRtStreamExecutorClient {
 
   // TODO(b/296466237): Unify `Load` method after (de)serialization and tests on
   // existing use cases are done.
-  StatusOr<std::unique_ptr<PjRtLoadedExecutable>> Load(
+  absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>> Load(
       std::unique_ptr<PjRtExecutable> executable);
 
   // TODO(b/296466237): Unify `LoadSerializedExecutable` after fixing existing
   // tests.
-  StatusOr<std::unique_ptr<PjRtLoadedExecutable>> LoadSerialized(
+  absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>> LoadSerialized(
       absl::string_view serialized, std::optional<CompileOptions> options,
       const LoadOptions& load_options);
 
-  StatusOr<std::unique_ptr<PjRtLoadedExecutable>> DeserializeExecutable(
+  absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>> DeserializeExecutable(
       absl::string_view serialized,
       std::optional<CompileOptions> options) override;
 
-  StatusOr<std::unique_ptr<PjRtLoadedExecutable>> Compile(
+  absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>> Compile(
       const XlaComputation& computation, CompileOptions options) override;
 
  private:
@@ -233,6 +234,8 @@ class StreamExecutorGpuClient : public xla::PjRtStreamExecutorClient {
 std::vector<std::unique_ptr<PjRtStreamExecutorDevice>> BuildLocalDevices(
     std::map<int, std::unique_ptr<LocalDeviceState>> local_device_states,
     int node_id);
+
+std::string MakeComputeCapabilityString(const se::DeviceDescription* desc);
 
 struct GpuClientOptions {
   GpuAllocatorConfig allocator_config;
@@ -253,7 +256,7 @@ struct GpuClientOptions {
   bool enable_mock_nccl = false;
 };
 
-StatusOr<std::unique_ptr<PjRtClient>> GetStreamExecutorGpuClient(
+absl::StatusOr<std::unique_ptr<PjRtClient>> GetStreamExecutorGpuClient(
     const GpuClientOptions& options);
 
 }  // namespace xla

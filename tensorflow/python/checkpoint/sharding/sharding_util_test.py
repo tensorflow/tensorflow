@@ -84,7 +84,7 @@ class ShardingUtilTest(test.TestCase):
 
       def __call__(
           self, shardable_tensors: Sequence[sharding_util.ShardableTensor]
-      ) -> Sequence[sharding_util.TensorSliceDict]:
+      ) -> Sequence[sharding_util.Shard]:
         pass
 
     self.assertEqual(hash(BlankCallback()), hash(BlankCallback()))
@@ -99,7 +99,7 @@ class ShardingUtilTest(test.TestCase):
 
       def __call__(
           self, shardable_tensors: Sequence[sharding_util.ShardableTensor]
-      ) -> Sequence[sharding_util.TensorSliceDict]:
+      ) -> Sequence[sharding_util.Shard]:
         pass
 
     self.assertEqual(hash(ValueCallback(1)), hash(ValueCallback(1)))
@@ -165,7 +165,7 @@ class ShardingUtilTest(test.TestCase):
 
       def __call__(
           self, shardable_tensors: Sequence[sharding_util.ShardableTensor]
-      ) -> Sequence[sharding_util.TensorSliceDict]:
+      ) -> Sequence[sharding_util.Shard]:
         tensor = shardable_tensors[0].tensor
         checkpoint_key = shardable_tensors[0].checkpoint_key
         slice_spec = shardable_tensors[0].slice_spec
@@ -204,7 +204,7 @@ class ShardingUtilTest(test.TestCase):
 
       def __call__(
           self, shardable_tensors: Sequence[sharding_util.ShardableTensor]
-      ) -> Sequence[sharding_util.TensorSliceDict]:
+      ) -> Sequence[sharding_util.Shard]:
         checkpoint_key = "ADDED_TENSOR_ABC123"
         slice_spec = ""
         tensor = tensor_lib.Tensor()
@@ -238,7 +238,7 @@ class ShardingUtilTest(test.TestCase):
 
       def __call__(
           self, shardable_tensors: Sequence[sharding_util.ShardableTensor]
-      ) -> Sequence[sharding_util.TensorSliceDict]:
+      ) -> Sequence[sharding_util.Shard]:
         shards = []
         for shardable_tensor in shardable_tensors:
           tensor = shardable_tensor.tensor
@@ -277,7 +277,7 @@ class ShardingUtilTest(test.TestCase):
 
       def __call__(
           self, shardable_tensors: Sequence[sharding_util.ShardableTensor]
-      ) -> Sequence[sharding_util.TensorSliceDict]:
+      ) -> Sequence[sharding_util.Shard]:
         shards = []
         for shardable_tensor in shardable_tensors:
           tensor = shardable_tensor.tensor
@@ -324,7 +324,7 @@ class ShardingUtilTest(test.TestCase):
 
       def __call__(
           self, shardable_tensors: Sequence[sharding_util.ShardableTensor]
-      ) -> Sequence[sharding_util.TensorSliceDict]:
+      ) -> Sequence[sharding_util.Shard]:
         shards = []
         for shardable_tensor in shardable_tensors:
           tensor = shardable_tensor.tensor
@@ -372,7 +372,7 @@ class ShardingUtilTest(test.TestCase):
 
       def __call__(
           self, shardable_tensors: Sequence[sharding_util.ShardableTensor]
-      ) -> Sequence[sharding_util.TensorSliceDict]:
+      ) -> Sequence[sharding_util.Shard]:
         shard = {}
         for shardable_tensor in shardable_tensors:
           tensor = shardable_tensor.tensor
@@ -407,7 +407,7 @@ class ShardingUtilTest(test.TestCase):
 
       def __call__(
           self, shardable_tensors: Sequence[sharding_util.ShardableTensor]
-      ) -> Sequence[sharding_util.TensorSliceDict]:
+      ) -> Sequence[sharding_util.Shard]:
         return []
 
     shardable_tensors = self._get_shardable_tensors_by_task(root)

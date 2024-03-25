@@ -30,7 +30,6 @@ limitations under the License.
 #include "mlir/IR/AffineMap.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "xla/hlo/ir/hlo_instructions.h"
-#include "xla/mlir_hlo/lhlo/IR/lhlo_ops.h"
 #include "xla/service/gpu/ir_emitter_context.h"
 #include "xla/service/gpu/kernel_arguments.h"
 #include "xla/service/gpu/launch_dimensions.h"
@@ -54,7 +53,7 @@ class FusionInterface {
   virtual ~FusionInterface() = default;
 
   virtual absl::StatusOr<FusionEmissionResult> Emit(
-      IrEmitterContext& ir_emitter_context, mlir::lmhlo::FusionOp fusion_op,
+      IrEmitterContext& ir_emitter_context,
       const HloFusionInstruction& fusion) const = 0;
 };
 
@@ -105,13 +104,13 @@ class KernelFusionInterface : public FusionInterface {
 class KernelFusionEmitterBase : public KernelFusionInterface {
  public:
   absl::StatusOr<FusionEmissionResult> Emit(
-      IrEmitterContext& ir_emitter_context, mlir::lmhlo::FusionOp fusion_op,
+      IrEmitterContext& ir_emitter_context,
       const HloFusionInstruction& fusion) const final;
 
  protected:
   // Creates initializer thunks that need to run before the main kernel.
   virtual absl::StatusOr<FusionEmissionResult> EmitInitializers(
-      IrEmitterContext& ir_emitter_context, mlir::lmhlo::FusionOp fusion_op,
+      IrEmitterContext& ir_emitter_context,
       const HloFusionInstruction& fusion) const {
     // No initializers by default.
     return FusionEmissionResult{};
@@ -134,6 +133,11 @@ BuildKernelPrototype(IrEmitterContext& ir_emitter_context,
                      size_t num_inputs,
                      const LaunchDimensions& launch_dimensions,
                      llvm::IRBuilder<>* builder);
+
+absl::Status AnnotateKernelLaunchDimensions(
+    const se::DeviceDescription& device_info,
+    const LaunchDimensions& launch_dims, const std::string& kernel_name,
+    llvm::Module* llvm_module);
 
 }  // namespace gpu
 }  // namespace xla

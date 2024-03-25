@@ -135,6 +135,9 @@ class GraphMgr {
     // Graph handle.
     string handle;
 
+    // Session configuration options for the graph.
+    ConfigProto session_config;
+
     std::unique_ptr<FunctionLibraryDefinition> lib_def;
     // Owns the FunctionLibraryRuntime objects needed to execute functions, one
     // per device.

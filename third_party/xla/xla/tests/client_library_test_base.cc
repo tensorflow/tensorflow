@@ -42,7 +42,7 @@ constexpr char kInterpreter[] = "interpreter";
 // value()) if the platform we intend to test is not available.
 LocalClient* GetOrCreateLocalClientOrDie(
     const LocalClientOptions& client_options) {
-  StatusOr<LocalClient*> result =
+  absl::StatusOr<LocalClient*> result =
       ClientLibrary::GetOrCreateLocalClient(client_options);
   TF_CHECK_OK(result.status()) << " could not create local client for testing";
   return result.value();
@@ -101,14 +101,14 @@ std::string ClientLibraryTestBase::TestName() const {
   return ::testing::UnitTest::GetInstance()->current_test_info()->name();
 }
 
-StatusOr<std::unique_ptr<GlobalData>> ClientLibraryTestBase::Execute(
+absl::StatusOr<std::unique_ptr<GlobalData>> ClientLibraryTestBase::Execute(
     XlaBuilder* builder, absl::Span<GlobalData* const> arguments) {
   // Build the computation, as a convenience.
   TF_ASSIGN_OR_RETURN(auto computation, builder->Build());
   return client_->Execute(computation, arguments, &execution_options_);
 }
 
-StatusOr<Literal> ClientLibraryTestBase::ExecuteAndTransfer(
+absl::StatusOr<Literal> ClientLibraryTestBase::ExecuteAndTransfer(
     const XlaComputation& computation, absl::Span<GlobalData* const> arguments,
     const Shape* shape_with_output_layout) {
   ExecutionOptions execution_options = execution_options_;
@@ -120,7 +120,7 @@ StatusOr<Literal> ClientLibraryTestBase::ExecuteAndTransfer(
                                      &execution_options);
 }
 
-StatusOr<Literal> ClientLibraryTestBase::ExecuteAndTransfer(
+absl::StatusOr<Literal> ClientLibraryTestBase::ExecuteAndTransfer(
     XlaBuilder* builder, absl::Span<GlobalData* const> arguments,
     const Shape* shape_with_output_layout) {
   // Build the computation, as a convenience.
@@ -128,7 +128,7 @@ StatusOr<Literal> ClientLibraryTestBase::ExecuteAndTransfer(
   return ExecuteAndTransfer(computation, arguments, shape_with_output_layout);
 }
 
-StatusOr<Literal> ClientLibraryTestBase::ExecuteAndTransferReference(
+absl::StatusOr<Literal> ClientLibraryTestBase::ExecuteAndTransferReference(
     const XlaComputation& computation, absl::Span<GlobalData* const> arguments,
     const Shape* shape_with_output_layout) {
   ExecutionOptions execution_options = execution_options_;
@@ -270,7 +270,7 @@ Status ClientLibraryTestBase::ComputeAndCompareLiteralWithAllInputLayouts(
   return choose(0);
 }
 
-StatusOr<Literal> ClientLibraryTestBase::ComputeAndTransfer(
+absl::StatusOr<Literal> ClientLibraryTestBase::ComputeAndTransfer(
     XlaBuilder* builder, absl::Span<GlobalData* const> arguments_passed_in,
     const Shape* shape_with_layout) {
   std::vector<GlobalData*> arguments(arguments_passed_in.begin(),
@@ -481,7 +481,7 @@ void ClientLibraryTestBase::ComputeAndCompare(
   EXPECT_TRUE(LiteralTestUtil::Near(reference, result, error));
 }
 
-StatusOr<std::pair<Literal, Literal>>
+absl::StatusOr<std::pair<Literal, Literal>>
 ClientLibraryTestBase::ComputeValueAndReference(
     XlaBuilder* builder, absl::Span<const Literal> arguments) {
   // Transfer the arguments to the executor service. We put the unique_ptr's
@@ -607,7 +607,7 @@ XlaOp ClientLibraryTestBase::CreateConstantFromLiteral(const Literal& literal,
                                       : LiteralSlice(literal));
 }
 
-StatusOr<std::unique_ptr<GlobalData>>
+absl::StatusOr<std::unique_ptr<GlobalData>>
 ClientLibraryTestBase::CreateParameterAndTransferLiteral(
     int64_t parameter_number, const Literal& literal, const std::string& name,
     XlaBuilder* builder, XlaOp* data_handle) {
@@ -637,7 +637,7 @@ Literal ClientLibraryTestBase::MaybeConvertLiteralToBfloat16(
   return literal.Clone();
 }
 
-StatusOr<std::unique_ptr<GlobalData>>
+absl::StatusOr<std::unique_ptr<GlobalData>>
 ClientLibraryTestBase::CreateParameterAndTransferLiteral(
     int64_t parameter_number, const Literal& literal, const std::string& name,
     const DeviceHandle* device_handle, XlaBuilder* builder,

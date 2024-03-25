@@ -99,6 +99,8 @@ std::ostream& operator<<(std::ostream& out, const ShapeIndex& shape_index);
 // properties, which do invariant checks before / after the operation.
 class ShapeUtil {
  public:
+  using DynamicSizeType = int32_t;
+
   // Data structure which describes the coordinates and the shape, of a tuple
   // shaped sub-shape.
   struct IndexedShape {
@@ -183,6 +185,18 @@ class ShapeUtil {
   // `ByteSizeOf(shape) == ByteSizeOfElements(shape)`. This
   // size also includes padding if present in the layout.
   static int64_t ByteSizeOfElements(const Shape& shape);
+
+  // Returns the size in bytes for the serialized form of this shape.
+  // This serialized size includes the header of the serialized format, and so
+  // should not be used for subshapes.  Use SerializedSizeOfData for that
+  // purpose.
+  static absl::StatusOr<int64_t> SerializedSize(const Shape& shape);
+
+  // As above, but assumes the given ShapeProto is the result of
+  // shape.ToProto().  This can be used to avoid converting the shape to a
+  // protobuf multiple times.
+  static absl::StatusOr<int64_t> SerializedSizeWithProto(
+      const Shape& shape, const ShapeProto& proto);
 
   // Prints a human-readable string that represents the given shape, with or
   // without layout. e.g. "f32[42x12] {0, 1}" or "f32[64]".
@@ -424,7 +438,8 @@ class ShapeUtil {
       absl::Span<const int64_t> minor_to_major,
       absl::Span<const Tile> tiles = {},
       int64_t tail_padding_alignment_in_elements = 1,
-      int64_t element_size_in_bits = 0, int64_t memory_space = 0);
+      int64_t element_size_in_bits = 0, int64_t memory_space = 0,
+      absl::Span<const SplitConfig> split_configs = {});
 
   // Constructs a new sparse array shape with the given minor_to_major order and
   // dim_level_types in its Layout. Returns a value shape such that
@@ -535,6 +550,10 @@ class ShapeUtil {
   // the given Shape argument. The non-Try variants check fail if index is
   // invalid.
   static const Shape& GetSubshape(const Shape& shape, ShapeIndexView index);
+
+  // Faster version for one index.
+  static const Shape& GetSubshapeOneIndex(const Shape& shape, int64_t index);
+
   static StatusOr<const Shape*> TryGetSubshape(const Shape& shape,
                                                ShapeIndexView index);
   static Shape* GetMutableSubshape(Shape* shape, ShapeIndexView index);
@@ -545,6 +564,7 @@ class ShapeUtil {
 
   // Returns the number of leaves in the shape.
   static int64_t GetLeafCount(const Shape& shape);
+  static int64_t GetLeafCountTuple(const Shape& shape);
 
   // Retrieves all the leaf shapes and their indexes, in the order walked by
   // the ForEachSubshape() API.
@@ -1110,7 +1130,7 @@ inline ShapeUtil::ForEachState::ForEachState(const Shape& s,
       minor_to_major(shape.layout().minor_to_major().data()),
       rank(LayoutUtil::MinorToMajor(shape).size()),
       indexes(b.begin(), b.end()),
-      indexes_ptr((rank == 0) ? nullptr : &indexes[0]),
+      indexes_ptr((rank == 0) ? nullptr : indexes.data()),
       indexes_span(indexes) {
   CHECK_EQ(shape.rank(), b.size());
   CHECK_EQ(i.size(), b.size());

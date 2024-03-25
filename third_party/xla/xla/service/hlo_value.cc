@@ -129,13 +129,10 @@ bool MayUseOperandValue(int64_t operand_number, const ShapeIndex& index,
       // These instructions always pass through their operands transparently.
       return false;
 
-    case HloOpcode::kCall:
-    case HloOpcode::kWhile:
-      // Although call and while instructions pass through their operands, they
-      // are considered uses.
-      return true;
-
     default:
+      // Although call (HloOpcode::kCall) and while (HloOpcode::kWhile)
+      // instructions pass through their operands as are all other opcode types,
+      // they are considered uses.
       return true;
   }
 }

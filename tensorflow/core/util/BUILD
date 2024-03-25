@@ -726,21 +726,12 @@ tf_kernel_library(
     hdrs = ["gpu_solvers.h"],
     compatible_with = [],
     features = ["-layering_check"],
-    # @local_config_cuda//cuda:cusolver_static, //third_party/eigen3:blas,
-    # and //third_party/libf2c all contain various parts of BLAS, LAPACK,
-    # and f2c helper functions in global namespace. Tell the compiler to
-    # allow multiple definitions when linking this.
-    linkopts = select({
-        "//tensorflow:macos": [],
-        "//tensorflow:windows": [],
-        "//conditions:default": ["-Wl,-z,muldefs"],
-    }),
     visibility = ["//tensorflow/core/kernels:friends"],
     deps = [
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
-        "@local_tsl//tsl/cuda:cusolver",
         "@local_xla//xla/stream_executor/cuda:cublas_plugin",
+        "@local_xla//xla/tsl/cuda:cusolver",
     ],
 )
 
@@ -781,7 +772,7 @@ tf_kernel_library(
     ] + if_cuda([
         "@local_xla//xla/stream_executor/cuda:cuda_blas_utils",
         "@local_xla//xla/stream_executor",
-        "@local_tsl//tsl/cuda:cusparse",
+        "@local_xla//xla/tsl/cuda:cusparse",
         "@local_config_cuda//cuda:cub_headers",
     ]) + if_rocm([
         "@local_xla//xla/stream_executor/rocm:rocsolver_wrapper",

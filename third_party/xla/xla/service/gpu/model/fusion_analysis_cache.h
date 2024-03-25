@@ -16,6 +16,10 @@ limitations under the License.
 #ifndef XLA_SERVICE_GPU_MODEL_FUSION_ANALYSIS_CACHE_H_
 #define XLA_SERVICE_GPU_MODEL_FUSION_ANALYSIS_CACHE_H_
 
+#include <utility>
+#include <vector>
+
+#include "absl/container/flat_hash_map.h"
 #include "absl/container/node_hash_map.h"
 #include "absl/synchronization/mutex.h"
 #include "xla/hlo/ir/hlo_instruction.h"

@@ -15,15 +15,22 @@ limitations under the License.
 
 #include "xla/stream_executor/host/host_platform.h"
 
-#include <thread>
+#include <memory>
+#include <string>
+#include <thread>  // NOLINT
+#include <utility>
 
-#include "absl/memory/memory.h"
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
+#include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/host/host_gpu_executor.h"
 #include "xla/stream_executor/host/host_platform_id.h"
+#include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/platform/initialize.h"
 #include "xla/stream_executor/platform_manager.h"
-#include "tsl/platform/errors.h"
+#include "xla/stream_executor/stream_executor_pimpl.h"
+#include "tsl/platform/status.h"
 
 namespace stream_executor {
 namespace host {
@@ -48,7 +55,6 @@ HostPlatform::DescriptionForDevice(int ordinal) const {
 absl::StatusOr<StreamExecutor*> HostPlatform::ExecutorForDevice(int ordinal) {
   StreamExecutorConfig config;
   config.ordinal = ordinal;
-  config.device_options = DeviceOptions::Default();
   return GetExecutor(config);
 }
 
@@ -62,7 +68,7 @@ absl::StatusOr<std::unique_ptr<StreamExecutor>>
 HostPlatform::GetUncachedExecutor(const StreamExecutorConfig& config) {
   auto executor = std::make_unique<StreamExecutor>(
       this, std::make_unique<HostExecutor>(), config.ordinal);
-  auto init_status = executor->Init(config.device_options);
+  auto init_status = executor->Init();
   if (!init_status.ok()) {
     return absl::InternalError(absl::StrFormat(
         "failed initializing StreamExecutor for device ordinal %d: %s",

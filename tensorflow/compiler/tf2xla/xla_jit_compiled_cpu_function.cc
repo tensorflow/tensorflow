@@ -43,7 +43,7 @@ namespace {
 constexpr char kHostPlatform[] = "Host";
 
 // Returns the index of the result in the temp buffers.
-StatusOr<size_t> ComputeResultIndex(
+absl::StatusOr<size_t> ComputeResultIndex(
     const xla::BufferAssignment& buffer_assignment) {
   TF_ASSIGN_OR_RETURN(const xla::BufferAllocation::Slice result_slice,
                       buffer_assignment.GetUniqueTopLevelOutputSlice());
@@ -90,7 +90,7 @@ bool RunXlaRuntime(const xla::cpu::CpuExecutable* cpu_executable,
 
 }  // namespace
 
-/*static*/ StatusOr<std::unique_ptr<XlaJitCompiledCpuFunction>>
+/*static*/ absl::StatusOr<std::unique_ptr<XlaJitCompiledCpuFunction>>
 XlaJitCompiledCpuFunction::Compile(
     const GraphDef& graph_def, const tf2xla::Config& config,
     const xla::ExecutableBuildOptions& build_options) {

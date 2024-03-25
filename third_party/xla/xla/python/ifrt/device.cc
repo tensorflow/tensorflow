@@ -32,8 +32,8 @@ DeviceList::DeviceList(Devices devices) {
   }
 }
 
-StatusOr<DeviceList> DeviceList::FromProto(LookupDeviceFunc lookup_device,
-                                           const DeviceListProto& proto) {
+absl::StatusOr<DeviceList> DeviceList::FromProto(LookupDeviceFunc lookup_device,
+                                                 const DeviceListProto& proto) {
   DeviceList::Devices devices;
   devices.reserve(proto.device_ids_size());
   for (int device_id : proto.device_ids()) {

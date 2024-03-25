@@ -59,8 +59,8 @@ bool ComputationLayout::AnyLayoutSet() const {
          result_layout_.LayoutIsSet();
 }
 
-StatusOr<std::vector<Layout>> ComputationLayout::FlattenedParameterLayouts()
-    const {
+absl::StatusOr<std::vector<Layout>>
+ComputationLayout::FlattenedParameterLayouts() const {
   std::vector<Layout> result;
   for (int i = 0; i < parameter_count(); ++i) {
     TF_RETURN_IF_ERROR(ShapeUtil::ForEachSubshapeWithStatus(
@@ -88,7 +88,7 @@ StatusOr<std::vector<Layout>> ComputationLayout::FlattenedParameterLayouts()
   return result;
 }
 
-StatusOr<std::vector<Layout>> ComputationLayout::FlattenedResultLayouts()
+absl::StatusOr<std::vector<Layout>> ComputationLayout::FlattenedResultLayouts()
     const {
   std::vector<Layout> result;
   TF_RETURN_IF_ERROR(ShapeUtil::ForEachSubshapeWithStatus(

@@ -723,7 +723,7 @@ class MemoryUsageTracker {
 
   // Get the compact shape of given hlo instruction. An internal cache is used
   // to avoid computing the shape multiple times.
-  StatusOr<Shape> GetCompactShape(const HloInstruction* hlo);
+  absl::StatusOr<Shape> GetCompactShape(const HloInstruction* hlo);
 
   // Creates a Buffer representing the given logical buffer. The buffer is added
   // to buffers_ and a reference is returned.
@@ -1506,7 +1506,8 @@ std::string MemoryUsageTracker::ToString() const {
   return output;
 }
 
-StatusOr<Shape> MemoryUsageTracker::GetCompactShape(const HloInstruction* hlo) {
+absl::StatusOr<Shape> MemoryUsageTracker::GetCompactShape(
+    const HloInstruction* hlo) {
   auto it = compact_shape_.find(hlo);
   if (it != compact_shape_.end()) {
     return it->second;
@@ -1988,7 +1989,7 @@ UsesList MemoryUsageTracker::GetItemUses(Item* item) const {
   return combined_users;
 }
 
-StatusOr<int64_t> RematerializeInstructions(
+absl::StatusOr<int64_t> RematerializeInstructions(
     MemoryUsageTracker* memory_tracker, std::vector<Item*>* best_items,
     absl::flat_hash_set<const HloInstruction*>* remat_move_instructions,
     InstructionList* instruction_list, HloSchedule* schedule,
@@ -2167,10 +2168,10 @@ StatusOr<int64_t> RematerializeInstructions(
   return net_instructions_added;
 }
 
-StatusOr<int64_t> CompressInstruction(MemoryUsageTracker* memory_tracker,
-                                      Item* best_item,
-                                      const Shape& compact_shape,
-                                      InstructionList* instruction_list) {
+absl::StatusOr<int64_t> CompressInstruction(MemoryUsageTracker* memory_tracker,
+                                            Item* best_item,
+                                            const Shape& compact_shape,
+                                            InstructionList* instruction_list) {
   HloInstruction* best = best_item->instruction;
   VLOG(5) << "Transposing instruction " << best->name() << " (saving "
           << HumanReadableNumBytes(memory_tracker->MemoryReducedIfCompressed(
@@ -2220,9 +2221,9 @@ StatusOr<int64_t> CompressInstruction(MemoryUsageTracker* memory_tracker,
   return 2;
 }
 
-StatusOr<int64_t> OffloadInstruction(MemoryUsageTracker* memory_tracker,
-                                     Item* best_item,
-                                     InstructionList* instruction_list) {
+absl::StatusOr<int64_t> OffloadInstruction(MemoryUsageTracker* memory_tracker,
+                                           Item* best_item,
+                                           InstructionList* instruction_list) {
   HloInstruction* best_instruction = best_item->instruction;
   HloComputation* computation = best_instruction->parent();
   VLOG(2) << "Best_instruction's users: "
@@ -2497,7 +2498,7 @@ struct InstructionsAdded {
 // Rematerializes the best block of instructions of size between min_block_size
 // and max_block_size (both inclusive) if at least one candidate block of
 // instructions can be found. Returns number of instructions rematerialized.
-StatusOr<InstructionsAdded> RematerializeBestBlock(
+absl::StatusOr<InstructionsAdded> RematerializeBestBlock(
     int min_block_size, int max_block_size, MemoryUsageTracker* memory_tracker,
     InstructionList* instruction_list, HloSchedule* schedule,
     int64_t memory_limit_bytes,
@@ -2566,7 +2567,7 @@ StatusOr<InstructionsAdded> RematerializeBestBlock(
 }
 }  // namespace
 
-StatusOr<int64_t> HloRematerialization::ComputePeakMemory(
+absl::StatusOr<int64_t> HloRematerialization::ComputePeakMemory(
     const HloComputation* computation, const HloInstructionSequence& order,
     const absl::flat_hash_set<absl::string_view>& execution_threads) const {
   InstructionList instruction_list(order);
@@ -2589,7 +2590,7 @@ StatusOr<int64_t> HloRematerialization::ComputePeakMemory(
   return peak_memory;
 }
 
-StatusOr<int64_t> HloRematerialization::CalledComputationsMemoryUsage(
+absl::StatusOr<int64_t> HloRematerialization::CalledComputationsMemoryUsage(
     const HloInstruction* instruction,
     const absl::flat_hash_set<absl::string_view>& execution_threads) const {
   const CallSite* callsite =
@@ -2609,7 +2610,7 @@ StatusOr<int64_t> HloRematerialization::CalledComputationsMemoryUsage(
   return callee_usage;
 }
 
-StatusOr<bool> HloRematerialization::RematerializeComputation(
+absl::StatusOr<bool> HloRematerialization::RematerializeComputation(
     HloComputation* computation, HloSchedule* schedule,
     int64_t memory_limit_bytes, int64_t min_remat_size,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
@@ -2811,7 +2812,7 @@ StatusOr<bool> HloRematerialization::RematerializeComputation(
   return changed;
 }
 
-StatusOr<bool> HloRematerialization::Run(
+absl::StatusOr<bool> HloRematerialization::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   if (options_.remat_mode_config.host_offload) {

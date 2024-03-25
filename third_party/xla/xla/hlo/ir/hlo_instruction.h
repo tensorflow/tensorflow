@@ -37,12 +37,14 @@ limitations under the License.
 #include <vector>
 
 #include "absl/base/attributes.h"
+#include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/functional/function_ref.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
+#include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "xla/comparison_util.h"
 #include "xla/hlo/ir/dfs_hlo_visitor.h"
@@ -830,11 +832,16 @@ class HloInstruction {
       const Shape& shape, HloInstruction* a, const CholeskyOptions& options);
 
   // Creates a dot op with operands 'lhs' and 'rhs' with contracting and batch
-  // dimensions specified in 'dimension_numbers'.
+  // dimensions specified in 'dimension_numbers'. If 'sparsity' is set, then
+  // 'sparse_meta' must also be present (and have the same size).
+  // Note: 'sparsity' argument is eventually moved in the HloDotInstruction
+  // constructor, so no extra copies are created.
   static std::unique_ptr<HloInstruction> CreateDot(
       const Shape& shape, HloInstruction* lhs, HloInstruction* rhs,
       const DotDimensionNumbers& dimension_numbers,
-      const PrecisionConfig& precision_config);
+      const PrecisionConfig& precision_config,
+      std::vector<SparsityDescriptor> sparsity = {},
+      absl::Span<HloInstruction* const> sparse_meta = {});
 
   // Creates a reduce-precision op, where operand is the data to reduce in
   // precision, and exponent_bits and mantissa_bits describe the precision to
@@ -947,6 +954,21 @@ class HloInstruction {
       const std::optional<int64_t>& channel_id,
       const std::optional<int64_t>& split_dimension = std::nullopt);
 
+  // Creates a communication instruction that broadcasts data cross replicas.
+  // Data is sent from to the first replica id in each group to the other ids in
+  // the same group. If a replica id is not a in any replica group, the output
+  // on that replica is a tensor consists of 0(s) in `shape`.
+  static std::unique_ptr<HloInstruction> CreateCollectiveBroadcast(
+      const Shape& shape, absl::Span<HloInstruction* const> operand,
+      absl::Span<const ReplicaGroup> replica_groups, bool constrain_layout,
+      const std::optional<int64_t>& channel_id);
+
+  static std::unique_ptr<HloInstruction> CreateCollectiveBroadcast(
+      const Shape& shape, HloInstruction* input, HloInstruction* output,
+      HloInstruction* input_start_indices, HloInstruction* output_start_indices,
+      absl::Span<const ReplicaGroup> replica_groups, bool constrain_layout,
+      const std::optional<int64_t>& channel_id);
+
   // Creates a communication instruction that permutes data cross replicas.
   // Data is sent/received according to the (source_replica_id,
   // target_replica_id) pairs in `source_target_pairs`. If a replica id is not a
@@ -1034,6 +1056,10 @@ class HloInstruction {
   // The operand must be kSend.
   static std::unique_ptr<HloInstruction> CreateSendDone(
       HloInstruction* operand, bool is_host_transfer = false);
+  // Similar to the above, but the operand doesn't have to be a kSend.
+  static std::unique_ptr<HloInstruction> CreateSendDone(
+      HloInstruction* operand, int64_t channel_id,
+      bool is_host_transfer = false);
 
   // Creates an asynchronous receive instruction with the given channel id,
   // which allocates resources to receive data of the given shape from a unique
@@ -1361,7 +1387,9 @@ class HloInstruction {
   HloOpcode* mutable_opcode() { return &opcode_; }
 
   // Returns whether this instruction is the root of its parent computation.
-  bool IsRoot() const;
+  bool IsRoot() const { return is_root_; }
+  void MarkAsRoot() { is_root_ = true; }
+  void MarkAsNonRoot() { is_root_ = false; }
 
   // Does this instruction have no users.
   bool IsDead() const { return users_.empty() && !IsRoot(); }
@@ -2522,21 +2550,41 @@ class HloInstruction {
       return !(*this == other);
     }
 
-    bool empty() const { return proto_ == nullptr && raw_string_.empty(); }
+    bool empty() const {
+      absl::MutexLock lock{&mutex_};
+      return proto_ == nullptr && raw_string_.empty();
+    }
 
     void clear() {
       proto_.reset();
+      absl::MutexLock lock{&mutex_};
       raw_string_.clear();
     }
 
+    BackendConfigRep() = default;
+    BackendConfigRep(BackendConfigRep&& other)
+        : proto_(std::move(other.proto_)), raw_string_([&] {
+            absl::MutexLock lock{&other.mutex_};
+            return std::move(other.raw_string_);
+          }()) {}
+
     BackendConfigRep& operator=(std::string raw_string);
     BackendConfigRep& operator=(const tsl::protobuf::Message& proto);
+    BackendConfigRep& operator=(BackendConfigRep&& other) {
+      proto_ = std::move(other.proto_);
+      absl::MutexLock destination_lock{&mutex_};
+      absl::MutexLock source_lock{&other.mutex_};
+      raw_string_ = std::move(other.raw_string_);
+      return *this;
+    }
+
     void SetProto(const tsl::protobuf::Message& proto);
 
    private:
     std::unique_ptr<tsl::protobuf::Message> proto_;
     // If proto_ is not null, raw_string_ is a lazy cache of its string format.
-    mutable std::string raw_string_;
+    mutable absl::Mutex mutex_;
+    mutable std::string raw_string_ ABSL_GUARDED_BY(mutex_);
   };
 
   bool IdenticalInternal(
@@ -2712,6 +2760,9 @@ class HloInstruction {
   // been marked as dead.
   bool marked_as_dead_ : 1;
 
+  // True if this instruction is the root of a computation.
+  bool is_root_ : 1;
+
   // Instruction operands.
   InstructionVector operands_;
 
@@ -2765,6 +2816,7 @@ std::string StatisticsVizToString(const StatisticsViz& statistics_viz);
 std::string RandomAlgorithmToString(const RandomAlgorithm& algorithm);
 std::string RandomDistributionToString(const RandomDistribution& distribution);
 std::string PrecisionToString(const PrecisionConfig::Precision& precision);
+std::string AlgorithmToString(const PrecisionConfig::Algorithm& algorithm);
 std::string DotDimensionNumbersToString(const DotDimensionNumbers& dnums);
 std::string ConvolutionDimensionNumbersToString(
     const ConvolutionDimensionNumbers& dnums);
@@ -2775,6 +2827,8 @@ StatusOr<RandomAlgorithm> StringToRandomAlgorithm(const std::string& name);
 StatusOr<RandomDistribution> StringToRandomDistribution(
     const std::string& name);
 StatusOr<PrecisionConfig::Precision> StringToPrecision(const std::string& name);
+absl::StatusOr<PrecisionConfig::Algorithm> StringToAlgorithm(
+    const std::string& name);
 StatusOr<CustomCallSchedule> StringToCustomCallSchedule(absl::string_view name);
 StatusOr<CustomCallApiVersion> StringToCustomCallApiVersion(
     absl::string_view name);

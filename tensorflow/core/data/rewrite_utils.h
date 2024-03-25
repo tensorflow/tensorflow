@@ -67,10 +67,10 @@ std::unique_ptr<tensorflow::grappler::GrapplerItem> GetGrapplerItem(
 
 // Returns the name of the node corresponding to the dataset. It is indicated by
 // the symbolic `_Retval` node.
-StatusOr<std::string> GetDatasetNode(const GraphDef& graph_def);
+absl::StatusOr<std::string> GetDatasetNode(const GraphDef& graph_def);
 
 // Like `GetDatasetNode` above, but returns the entire node object.
-StatusOr<NodeDef> GetDatasetNodeDef(const GraphDef& graph_def);
+absl::StatusOr<NodeDef> GetDatasetNodeDef(const GraphDef& graph_def);
 
 // Determines which optimizations should be applied.
 //

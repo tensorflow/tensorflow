@@ -94,6 +94,9 @@ class SessionMgr {
 
   Status DeleteSession(const std::string& session);
 
+  // Deletes all existing sessions.
+  Status DeleteAllSessions();
+
   // Provides access to the coordination service agent. This method should only
   // be called after the agent has been initialized during session creation, or
   // an invalid nullptr is returned. Note: the agent is thread-safe and mutable.

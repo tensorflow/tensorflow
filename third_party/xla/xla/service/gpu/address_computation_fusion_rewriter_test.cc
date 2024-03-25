@@ -38,6 +38,7 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/stream_executor/gpu/gpu_types.h"
+#include "xla/stream_executor/stream.h"
 #include "xla/tests/hlo_test_base.h"
 #include "tsl/platform/status.h"
 #include "tsl/platform/statusor.h"
@@ -750,7 +751,7 @@ TEST_F(AddressComputationFusionRewriterTest, SimpleGemmOperandAliasingOutput) {
       %get-tuple-element.287 = f32[100,100]{1,0} get-tuple-element(%p0), index=0
       %get-tuple-element.288 = f32[100,100]{1,0} get-tuple-element(%p0), index=1
       %concatenate.12 = f32[200,100]{1,0} concatenate(%get-tuple-element.287, %get-tuple-element.288), dimensions={0}
-      %slice.30 = f32[100,100]{1,0} slice(%concatenate.12), slice={[20:120], [0:100]}
+      %slice.30 = f32[100,100]{1,0} slice(%concatenate.12), slice={[16:116], [0:100]}
       %slice.34 = f32[100,100]{1,0} slice(%concatenate.12), slice={[99:199], [0:100]}
       ROOT %cublas-gemm.15 = (f32[100,100]{1,0}, s8[120000]{0}) custom-call(%get-tuple-element.287, %slice.30, %slice.34),
         custom_call_target="__cublas$gemm",
@@ -780,7 +781,7 @@ TEST_F(AddressComputationFusionRewriterTest, SimpleGemmOperandAliasingOutput) {
     ; CHECK-DAG:   [[P0:%[^ ]+]] = f32[100,100]{1,0} parameter(0)
     ; CHECK-DAG:   [[P1:%[^ ]+]] = f32[100,100]{1,0} parameter(1)
     ; CHECK-DAG:   [[P2:%[^ ]+]] = f32[200,100]{1,0} parameter(2)
-    ; CHECK-DAG:   [[S1:%[^ ]+]] = f32[100,100]{1,0} slice([[P2]]), slice={[20:120], [0:100]}
+    ; CHECK-DAG:   [[S1:%[^ ]+]] = f32[100,100]{1,0} slice([[P2]]), slice={[16:116], [0:100]}
     ; CHECK:       [[CC:%[^ ]+]] = (f32[100,100]{1,0}, s8[120000]{0}) custom-call([[P0]], [[S1]], [[P1]]),
     ; CHECK:         custom_call_target="__cublas$gemm"
     ; CHECK:     }
@@ -869,18 +870,17 @@ TEST_F(AddressComputationFusionRewriterTest, SimpleGemmOperandsFromSameSlice) {
                             });
 }
 
-static absl::Status Memcpy(const ServiceExecutableRunOptions* run_options,
-                           ffi::BufferBase src, ffi::BufferBase dst) {
-  run_options->stream()->ThenMemcpyD2D(
+static absl::Status Memcpy(se::Stream* stream, ffi::BufferBase src,
+                           ffi::BufferBase dst) {
+  return stream->MemcpyD2D(
       &dst.data, src.data,
       absl::c_accumulate(src.dimensions, 1.0, std::multiplies<int64_t>()) *
           sizeof(float));
-  return absl::OkStatus();
 }
 
 XLA_FFI_DEFINE_HANDLER(kMemcpy, Memcpy,
                        ffi::Ffi::Bind()
-                           .Ctx<ServiceExecutableRunOptions>()
+                           .Ctx<ffi::Stream>()
                            .Arg<ffi::BufferBase>()  // src
                            .Arg<ffi::BufferBase>()  // dst
 );
@@ -999,6 +999,35 @@ TEST_F(AddressComputationFusionRewriterTest, SimpleCustomCallLegacy) {
                               EXPECT_TRUE(module->has_schedule());
                               TF_CHECK_OK(module->schedule().Verify());
                             });
+}
+
+TEST_F(AddressComputationFusionRewriterTest, UnalignedSlice) {
+  XlaBuilder b(TestName());
+  CustomCall(
+      &b, "Callback_Void",
+      /*operands=*/
+      {Slice(Broadcast(ConstantR0WithType(&b, S32, 42), {17}), {1}, {17}, {1})},
+      ShapeUtil::MakeShape(S32, {16}), /*opaque=*/"");
+  TF_ASSERT_OK_AND_ASSIGN(auto computation, b.Build());
+  xla::HloModuleConfig hlo_config(
+      xla::ProgramShape(computation.proto().host_program_shape()),
+      /*ignore_layouts=*/false);
+  DebugOptions debug_options = GetDebugOptionsForTest();
+  debug_options.set_xla_gpu_enable_address_computation_fusion(false);
+  hlo_config.set_debug_options(debug_options);
+  TF_ASSERT_OK_AND_ASSIGN(auto hlo, xla::HloModule::CreateFromProto(
+                                        computation.proto(), hlo_config));
+  TF_ASSERT_OK_AND_ASSIGN(
+      HloSchedule schedule,
+      ScheduleModule(hlo.get(), [](const BufferValue& buffer) {
+        return ShapeUtil::ByteSizeOf(buffer.shape(), /*pointer_size=*/8);
+      }));
+  TF_CHECK_OK(hlo->set_schedule(std::move(schedule)));
+
+  auto device = TestGpuDeviceInfo::RTXA6000DeviceInfo();
+  RunAndFilecheckHloRewrite(hlo->ToString(),
+                            AddressComputationFusionRewriter(PLATFORM),
+                            std::nullopt);
 }
 
 }  // namespace xla::gpu

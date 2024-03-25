@@ -42,8 +42,8 @@ namespace {
 // divide by the number of partitions. Depending on the topology and the
 // implementation of the all-reduce for the backend, this may give a better
 // performance.
-StatusOr<bool> ReplaceReplicatedAllReduce(HloModule* module,
-                                          int64_t partition_count) {
+absl::StatusOr<bool> ReplaceReplicatedAllReduce(HloModule* module,
+                                                int64_t partition_count) {
   TF_ASSIGN_OR_RETURN(
       auto replication_analysis,
       HloReplicationAnalysis::Run(module, /*cross_partition_spmd=*/true));
@@ -534,7 +534,7 @@ Status ArCrsCombiner::KeepProvablyEqualInstructionGroupsSPMD(
   return OkStatus();
 }
 
-StatusOr<bool> ArCrsCombiner::RewriteGraph() {
+absl::StatusOr<bool> ArCrsCombiner::RewriteGraph() {
   if (all_reduce_map_.empty()) {
     return false;
   }
@@ -600,7 +600,7 @@ StatusOr<bool> ArCrsCombiner::RewriteGraph() {
   return true;
 }
 
-StatusOr<bool> ArCrsCombiner::Run(
+absl::StatusOr<bool> ArCrsCombiner::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   call_graph_ = CallGraph::Build(module);

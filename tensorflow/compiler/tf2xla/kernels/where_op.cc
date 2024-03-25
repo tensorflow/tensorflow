@@ -48,9 +48,9 @@ using xla::XlaOp;
 // beginning and cutting off the last element of the array.
 //
 // That is, transforms [x0, x1, ..., xn] into [0, x0, ..., xn-1].
-StatusOr<XlaOp> ShiftElemsRight(XlaOp x) {
+absl::StatusOr<XlaOp> ShiftElemsRight(XlaOp x) {
   xla::XlaBuilder* b = x.builder();
-  StatusOr<xla::Shape> shape = b->GetShape(x);
+  absl::StatusOr<xla::Shape> shape = b->GetShape(x);
   TF_RETURN_IF_ERROR(shape.status());
   TF_RET_CHECK(shape->dimensions_size() == 1);
   int64_t n = shape->dimensions(0);
@@ -87,9 +87,9 @@ StatusOr<XlaOp> ShiftElemsRight(XlaOp x) {
 //
 // Nonetheless, this is much simpler than the algorithm in the paper above, but
 // also much faster than implementing tf.where by sorting the input.
-StatusOr<XlaOp> PrefixSum(XlaOp arr) {
+absl::StatusOr<XlaOp> PrefixSum(XlaOp arr) {
   xla::XlaBuilder* b = arr.builder();
-  StatusOr<xla::Shape> input_shape = b->GetShape(arr);
+  absl::StatusOr<xla::Shape> input_shape = b->GetShape(arr);
   TF_RETURN_IF_ERROR(input_shape.status());
 
   TF_RET_CHECK(input_shape->dimensions_size() == 1);
@@ -155,7 +155,7 @@ bool ShouldUsePrefixSumImpl(const DeviceType& dt) {
          t == DEVICE_XLA_CPU || t == DEVICE_XLA_GPU;
 }
 
-StatusOr<XlaOp> CompileWhereWithSort(XlaOpKernelContext* ctx) {
+absl::StatusOr<XlaOp> CompileWhereWithSort(XlaOpKernelContext* ctx) {
   XlaOp condition = ctx->Input(0);
   TF_ASSIGN_OR_RETURN(xla::Shape input_shape,
                       ctx->builder()->GetShape(condition));
@@ -195,7 +195,7 @@ StatusOr<XlaOp> CompileWhereWithSort(XlaOpKernelContext* ctx) {
   XlaOp length =
       xla::ReduceAll(compared_int, xla::Zero(ctx->builder(), xla::S32),
                      xla::CreateScalarAddComputation(xla::S32, ctx->builder()));
-  StatusOr<XlaOp> rebounded_result = xla::SetDimensionSizeWithRebound(
+  absl::StatusOr<XlaOp> rebounded_result = xla::SetDimensionSizeWithRebound(
       &ctx->value_inference(), result, length, 0);
   if (rebounded_result.ok()) {
     return rebounded_result;
@@ -205,7 +205,7 @@ StatusOr<XlaOp> CompileWhereWithSort(XlaOpKernelContext* ctx) {
   return xla::SetDimensionSize(result, length, 0);
 }
 
-StatusOr<XlaOp> CompileWhereWithPrefixSum(XlaOpKernelContext* ctx) {
+absl::StatusOr<XlaOp> CompileWhereWithPrefixSum(XlaOpKernelContext* ctx) {
   xla::XlaBuilder* b = ctx->builder();
   XlaOp condition = ctx->Input(0);
 
@@ -312,7 +312,7 @@ StatusOr<XlaOp> CompileWhereWithPrefixSum(XlaOpKernelContext* ctx) {
   XlaOp num_valid =
       xla::ReduceAll(xla::ConvertElementType(preds, S32), xla::Zero(b, S32),
                      xla::CreateScalarAddComputation(S32, b));
-  StatusOr<XlaOp> rebounded_result = xla::SetDimensionSizeWithRebound(
+  absl::StatusOr<XlaOp> rebounded_result = xla::SetDimensionSizeWithRebound(
       &ctx->value_inference(), scattered, num_valid, 0);
   if (rebounded_result.ok()) {
     return *rebounded_result;
@@ -329,7 +329,7 @@ class WhereOp : public XlaOpKernel {
         use_prefix_sum_(ShouldUsePrefixSumImpl(ctx->device_type())) {}
 
   void Compile(XlaOpKernelContext* ctx) override {
-    StatusOr<XlaOp> ret;
+    absl::StatusOr<XlaOp> ret;
     if (use_prefix_sum_) {
       ret = CompileWhereWithPrefixSum(ctx);
     } else {

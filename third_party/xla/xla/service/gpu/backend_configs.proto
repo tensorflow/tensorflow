@@ -125,14 +125,33 @@ message CollectiveBackendConfig {
   bool no_parallel_custom_call = 2;
 }
 
+// Backend config for cost model estimates.
 message ReificationCost {
-  double end_to_end_cycles = 1;  // Total execution time of the reified op.
+  // Total execution time of the reified op.
+  double end_to_end_cycles = 1;
+
+  // Estimated overall kernel execution in microseconds.
+  //
+  // GPU Cost Model estimates compute and memory access time separately. Exec
+  // time is a combined metric of the two.
+  double exec_time_us = 2;
+
+  // Estimate for compute time in microseconds.
+  double compute_time_us = 3;
+
+  // Estimate for memory access (read+write) time in microseconds.
+  double memory_access_time_us = 4;
 }
 
 // Backend config for a custom fusion (pre-compiled device kernel implementing a
 // fusion computation).
 message CustomFusionConfig {
   string name = 1;
+}
+
+message CuDnnFusionConfig {
+  int64 plan_id = 1;
+  optional string serialized_graph = 2;
 }
 
 message FusionBackendConfig {
@@ -156,6 +175,8 @@ message FusionBackendConfig {
 
   // Cost model prediction.
   ReificationCost reification_cost = 3;
+
+  CuDnnFusionConfig cudnn_fusion_config = 5;
 }
 
 // Backed config for norm executed by cuDNN.

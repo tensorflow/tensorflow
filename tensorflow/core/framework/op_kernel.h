@@ -637,6 +637,9 @@ class OpKernelContext {
     // with parallel instances running on other devices.
     CollectiveExecutor* collective_executor = nullptr;
 
+    // Session configuration parameters. Can be nullptr.
+    const ConfigProto* session_config = nullptr;
+
     // The session state for this op.
     SessionState* session_state = nullptr;
 
@@ -708,6 +711,8 @@ class OpKernelContext {
 
   int64_t start_time_usecs() const { return params_->start_time_usecs; }
 
+  const ConfigProto* session_config() const { return params_->session_config; }
+
   // The deadline for the session to complete by. Empty if unspecified in
   // RunOptions.
   absl::optional<absl::Time> deadline() const { return params_->deadline; }
@@ -741,7 +746,7 @@ class OpKernelContext {
   // Returns an immutable input tensor in "tensor" by index. May only be used
   // for non-Ref inputs. For Ref inputs use mutable_input below.
   // REQUIRES: !IsRefType(input_dtype(index))
-  StatusOr<const Tensor*> get_input(int index) const;
+  absl::StatusOr<const Tensor*> get_input(int index) const;
 
   // Returns the named immutable input tensor in "tensor", as defined
   // in the OpDef. May only be used for non-Ref inputs. For Ref inputs

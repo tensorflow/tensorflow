@@ -15,17 +15,25 @@ limitations under the License.
 
 #include "xla/service/gpu/gpu_reduce_scatter_creator.h"
 
+#include <cstddef>
+#include <cstdint>
 #include <memory>
 #include <utility>
 
+#include "absl/algorithm/container.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
+#include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/service/hlo_module_config.h"
 #include "xla/service/pattern_matcher.h"
 #include "xla/service/pattern_matcher_gmock.h"
 #include "xla/tests/hlo_test_base.h"
 #include "xla/util.h"
+#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace gpu {

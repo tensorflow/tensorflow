@@ -30,6 +30,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/log/check.h"
 #include "absl/types/span.h"
 #include "xla/array.h"
 #include "xla/hlo/ir/tile_assignment.h"  // IWYU pragma: export
@@ -177,6 +178,10 @@ class HloSharding {
     return absl::c_all_of(
         tuple_elements_, [](const HloSharding& s) { return s.IsReplicated(); });
   }
+  bool IsReplicatedLeaf() const {
+    DCHECK(!IsTuple());
+    return replicated_;
+  }
 
   // Returns true if the tile size is the same as the input size.
   bool IsTileMaximal() const {
@@ -187,6 +192,10 @@ class HloSharding {
       return s.IsTileMaximal();
     });
   }
+  bool IsTileMaximalLeaf() const {
+    DCHECK(!IsTuple());
+    return maximal_;
+  }
 
   // Returns whether the sharding represents manual partitioning.
   bool IsManual() const {
@@ -196,6 +205,10 @@ class HloSharding {
     return absl::c_all_of(tuple_elements_,
                           [](const HloSharding& s) { return s.IsManual(); });
   }
+  bool IsManualLeaf() const {
+    DCHECK(!IsTuple());
+    return manual_;
+  }
 
   // Returns whether the sharding represents a placeholder sharding.
   bool IsUnknown() const {
@@ -204,6 +217,10 @@ class HloSharding {
     }
     return absl::c_all_of(tuple_elements_,
                           [](const HloSharding& s) { return s.IsUnknown(); });
+  }
+  bool IsUnknownLeaf() const {
+    DCHECK(!IsTuple());
+    return unknown_;
   }
 
   bool IsShardGroup() const {
@@ -249,6 +266,9 @@ class HloSharding {
   // between devices and tiles is represented through 'tile_assignment()'.
   bool IsTiled() const {
     return !IsTileMaximal() && !IsManual() && !IsUnknown();
+  }
+  bool IsTiledLeaf() const {
+    return !IsTileMaximalLeaf() && !IsManualLeaf() && !IsUnknownLeaf();
   }
 
   // Returns if the sharding has partial replication and partial sharding. If
@@ -408,6 +428,7 @@ class HloSharding {
   // Gets the number of tiles. If it has partial replication, this will not
   // equal the device count.
   int64_t NumTiles() const;
+  int64_t NumTilesLeaf() const;
   // Like NumTiles() but considers only some specific dimensions passed as
   // argument
   int64_t NumTiles(absl::Span<const int64_t> dims) const;
@@ -440,6 +461,16 @@ class HloSharding {
   // Returns the data rank for tiled sharding. It doesn't include subgroup dims.
   int64_t TiledDataRank() const {
     CHECK(IsTiled());
+    int64_t rank = tile_assignment_.num_dimensions();
+    if (ReplicateOnLastTileDim()) {
+      rank--;
+    }
+    rank -= subgroup_types_.size();
+    return rank;
+  }
+  int64_t TiledDataRankLeaf() const {
+    DCHECK(!IsTuple());
+    CHECK(IsTiledLeaf());
     int64_t rank = tile_assignment_.num_dimensions();
     if (ReplicateOnLastTileDim()) {
       rank--;
@@ -639,16 +670,19 @@ class HloSharding {
   // When creating HloSharding, subgroup dims of the same type will be merged,
   // so that there is at most one dim with a given type.
   std::vector<OpSharding::Type> subgroup_types_;
-  bool replicated_;
-  bool maximal_;
-  bool tuple_;
-  bool manual_;
-  bool unknown_;
+  bool replicated_ : 1;  // When non-tuple, true if the sharding is trivial.
+  bool maximal_ : 1;     // When non-tuple, true if the tile size is the same as
+                         // the input size.
+  bool tuple_ : 1;       // True if this is a tuple.
+  bool manual_ : 1;   // When non-tuple, true if the sharding represents manual
+                      // partitioning.
+  bool unknown_ : 1;  // When non-tuple, true if the sharding represents a
+                      // placeholder sharding.
   // This flag is to support partial replication and partial sharding. If it is
   // true, tile_assignment_ will have an extra dimension in addition to the data
   // shape rank, and the added last dimension represents the subgroups of
   // replications, i.e., elements in slice [..., :] will be replicated.
-  bool replicate_on_last_tile_dim_;
+  bool replicate_on_last_tile_dim_ : 1;
   // This field is used to store the shard group information. Instructions
   // within the same shard group(i.e. under the same shard_group_id) will be
   // sharded alike or exactly the same as each other.

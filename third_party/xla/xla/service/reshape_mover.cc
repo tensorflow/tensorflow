@@ -226,7 +226,7 @@ bool ReshapeMover::IsReshapeMoveCandidate(HloInstruction* instruction) {
 // This will often create redundant operations that we expect to be eliminated
 // by algsimp.  For example, if we have an operand rearrange(x), this will
 // produce rearrange'(rearrange(x)), which can be simplified to x.
-StatusOr<HloInstruction*> ReshapeMover::ApplyInverseRearrange(
+absl::StatusOr<HloInstruction*> ReshapeMover::ApplyInverseRearrange(
     const HloInstruction* rearrange, HloInstruction* operand) {
   switch (rearrange->opcode()) {
     case HloOpcode::kReshape: {
@@ -255,7 +255,7 @@ StatusOr<HloInstruction*> ReshapeMover::ApplyInverseRearrange(
 
 // Actually performs the reshape-move transformation -- that is, sinks the
 // reshape or transpose operands of `instruction` across it.
-StatusOr<bool> ReshapeMover::SinkRearrangeOperands(
+absl::StatusOr<bool> ReshapeMover::SinkRearrangeOperands(
     HloInstruction* instruction) {
   auto print_no_metadata = HloPrintOptions().set_print_metadata(false);
 
@@ -331,7 +331,7 @@ StatusOr<bool> ReshapeMover::SinkRearrangeOperands(
 // remaining rearrange operands have users outside `candidates`.  In the later
 // case, all the remaining instructions in `candidates` are reshape-moved and
 // the routine returns true.
-StatusOr<bool> ReshapeMover::TryReshapeMoveOnCandidates(
+absl::StatusOr<bool> ReshapeMover::TryReshapeMoveOnCandidates(
     HloInstructionSet* candidates) {
   bool removed = true;
   while (!candidates->empty() && removed) {
@@ -378,7 +378,7 @@ StatusOr<bool> ReshapeMover::TryReshapeMoveOnCandidates(
   return true;
 }
 
-StatusOr<bool> ReshapeMover::Run(
+absl::StatusOr<bool> ReshapeMover::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   bool changed = false;

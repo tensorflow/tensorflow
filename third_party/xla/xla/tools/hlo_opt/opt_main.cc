@@ -94,8 +94,8 @@ std::string GetHloPath(const HloOptConfig& opts, int argc, char** argv) {
   return argv[1];
 }
 
-StatusOr<std::string> GetHloContents(const HloOptConfig& opts, int argc,
-                                     char** argv) {
+absl::StatusOr<std::string> GetHloContents(const HloOptConfig& opts, int argc,
+                                           char** argv) {
   std::string hlo_path = GetHloPath(opts, argc, argv);
   if (hlo_path == "-") {
     std::string input;
@@ -109,7 +109,7 @@ StatusOr<std::string> GetHloContents(const HloOptConfig& opts, int argc,
   return data;
 }
 
-StatusOr<std::vector<std::unique_ptr<HloModule>>> GetModules(
+absl::StatusOr<std::vector<std::unique_ptr<HloModule>>> GetModules(
     const HloOptConfig& opts, int argc, char** argv) {
   TF_ASSIGN_OR_RETURN(std::string module_data,
                       GetHloContents(opts, argc, argv));
@@ -148,8 +148,8 @@ StatusOr<std::vector<std::unique_ptr<HloModule>>> GetModules(
   return out;
 }
 
-StatusOr<std::string> TranslateToStage(int argc, char** argv,
-                                       const HloOptConfig& opts) {
+absl::StatusOr<std::string> TranslateToStage(int argc, char** argv,
+                                             const HloOptConfig& opts) {
   TF_ASSIGN_OR_RETURN(OptProvider * provider,
                       OptProvider::ProviderForPlatform(opts.platform));
 

@@ -25,6 +25,7 @@ limitations under the License.
 #include "xla/ffi/ffi_api.h"
 #include "xla/service/service_executable_run_options.h"
 #include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/stream.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/lib/core/status_test_util.h"
 #include "tsl/platform/status_matchers.h"
@@ -32,17 +33,32 @@ limitations under the License.
 
 namespace xla::ffi {
 
+using ::testing::_;
 using ::testing::HasSubstr;
+using ::testing::Pair;
+using ::testing::UnorderedElementsAre;
 using ::tsl::testing::StatusIs;
 
 TEST(FfiTest, StaticRegistration) {
   static constexpr auto* noop = +[] { return absl::OkStatus(); };
 
-  XLA_FFI_DEFINE_HANDLER(NoOp, noop, Ffi::Bind());
-  XLA_FFI_REGISTER_HANDLER(GetXlaFfiApi(), "no-op", "Host", NoOp);
+  // Use explicit binding specification.
+  XLA_FFI_DEFINE_HANDLER(NoOp0, noop, Ffi::Bind());
 
-  auto handler = FindHandler("no-op", "Host");
-  TF_ASSERT_OK(handler.status());
+  // Automatically infer binding specification from function signature.
+  XLA_FFI_DEFINE_HANDLER(NoOp1, noop);
+
+  XLA_FFI_REGISTER_HANDLER(GetXlaFfiApi(), "no-op-0", "Host", NoOp0);
+  XLA_FFI_REGISTER_HANDLER(GetXlaFfiApi(), "no-op-1", "Host", NoOp1);
+
+  auto handler0 = FindHandler("no-op-0", "Host");
+  auto handler1 = FindHandler("no-op-1", "Host");
+
+  TF_ASSERT_OK(handler0.status());
+  TF_ASSERT_OK(handler1.status());
+
+  EXPECT_THAT(StaticRegisteredHandlers("Host"),
+              UnorderedElementsAre(Pair("no-op-0", _), Pair("no-op-1", _)));
 }
 
 TEST(FfiTest, ForwardError) {
@@ -109,6 +125,33 @@ TEST(FfiTest, BuiltinAttributes) {
 
   auto status = Call(*handler, call_frame);
 
+  TF_ASSERT_OK(status);
+}
+
+TEST(FfiTest, BuiltinAttributesAutoBinding) {
+  CallFrameBuilder::AttributesBuilder attrs;
+  attrs.Insert("i32", 42);
+  attrs.Insert("f32", 42.0f);
+  attrs.Insert("str", "foo");
+
+  CallFrameBuilder builder;
+  builder.AddAttributes(attrs.Build());
+  auto call_frame = builder.Build();
+
+  static constexpr char kI32[] = "i32";
+  static constexpr char kF32[] = "f32";
+  static constexpr char kStr[] = "str";
+
+  auto fn = [&](Attr<int32_t, kI32> i32, Attr<float, kF32> f32,
+                Attr<std::string_view, kStr> str) {
+    EXPECT_EQ(*i32, 42);
+    EXPECT_EQ(*f32, 42.0f);
+    EXPECT_EQ(*str, "foo");
+    return absl::OkStatus();
+  };
+
+  auto handler = Ffi::BindTo(fn);
+  auto status = Call(*handler, call_frame);
   TF_ASSERT_OK(status);
 }
 
@@ -326,10 +369,17 @@ TEST(FfiTest, BufferBaseArgument) {
     return absl::OkStatus();
   };
 
-  auto handler = Ffi::Bind().Arg<BufferBase>().To(fn);
-  auto status = Call(*handler, call_frame);
+  {  // Test explicit binding signature declaration.
+    auto handler = Ffi::Bind().Arg<BufferBase>().To(fn);
+    auto status = Call(*handler, call_frame);
+    TF_ASSERT_OK(status);
+  }
 
-  TF_ASSERT_OK(status);
+  {  // Test inferring binding signature from a handler type.
+    auto handler = Ffi::BindTo(fn);
+    auto status = Call(*handler, call_frame);
+    TF_ASSERT_OK(status);
+  }
 }
 
 TEST(FfiTest, TypedAndRankedBufferArgument) {
@@ -346,10 +396,17 @@ TEST(FfiTest, TypedAndRankedBufferArgument) {
     return absl::OkStatus();
   };
 
-  auto handler = Ffi::Bind().Arg<BufferR2<PrimitiveType::F32>>().To(fn);
-  auto status = Call(*handler, call_frame);
+  {  // Test explicit binding signature declaration.
+    auto handler = Ffi::Bind().Arg<BufferR2<PrimitiveType::F32>>().To(fn);
+    auto status = Call(*handler, call_frame);
+    TF_ASSERT_OK(status);
+  }
 
-  TF_ASSERT_OK(status);
+  {  // Test inferring binding signature from a handler type.
+    auto handler = Ffi::BindTo(fn);
+    auto status = Call(*handler, call_frame);
+    TF_ASSERT_OK(status);
+  }
 }
 
 TEST(FfiTest, WrongRankBufferArgument) {
@@ -410,15 +467,18 @@ TEST(FfiTest, RemainingArgs) {
 
 TEST(FfiTest, RunOptionsCtx) {
   auto call_frame = CallFrameBuilder().Build();
-  auto* expected = reinterpret_cast<ServiceExecutableRunOptions*>(0x01234567);
+  auto* expected = reinterpret_cast<se::Stream*>(0x01234567);
 
-  auto fn = [&](const ServiceExecutableRunOptions* run_options) {
+  ServiceExecutableRunOptions opts;
+  opts.mutable_run_options()->set_stream(expected);
+
+  auto fn = [&](const se::Stream* run_options) {
     EXPECT_EQ(run_options, expected);
     return absl::OkStatus();
   };
 
-  auto handler = Ffi::Bind().Ctx<ServiceExecutableRunOptions>().To(fn);
-  auto status = Call(*handler, call_frame, {expected});
+  auto handler = Ffi::Bind().Ctx<Stream>().To(fn);
+  auto status = Call(*handler, call_frame, {&opts});
 
   TF_ASSERT_OK(status);
 }

@@ -37,7 +37,7 @@ class HloLiveRange {
  public:
   // Constructs a hlo live range object for the given module and computation
   // assuming the given HLO instruction ordering.
-  static StatusOr<std::unique_ptr<HloLiveRange>> Run(
+  static absl::StatusOr<std::unique_ptr<HloLiveRange>> Run(
       const HloSchedule& schedule, const HloAliasAnalysis& alias_analysis,
       const HloComputation* computation, bool module_scoped_analysis = true);
 

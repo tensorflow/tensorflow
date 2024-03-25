@@ -112,7 +112,6 @@ ROCmPlatform::DescriptionForDevice(int ordinal) const {
 absl::StatusOr<StreamExecutor*> ROCmPlatform::ExecutorForDevice(int ordinal) {
   StreamExecutorConfig config;
   config.ordinal = ordinal;
-  config.device_options = DeviceOptions::Default();
   return GetExecutor(config);
 }
 
@@ -132,7 +131,7 @@ absl::StatusOr<std::unique_ptr<StreamExecutor>>
 ROCmPlatform::GetUncachedExecutor(const StreamExecutorConfig& config) {
   auto executor = std::make_unique<StreamExecutor>(
       this, std::make_unique<GpuExecutor>(), config.ordinal);
-  auto init_status = executor->Init(config.device_options);
+  auto init_status = executor->Init();
   if (!init_status.ok()) {
     return absl::Status{
         absl::StatusCode::kInternal,

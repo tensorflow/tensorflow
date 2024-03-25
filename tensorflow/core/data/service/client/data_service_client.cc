@@ -40,6 +40,7 @@ limitations under the License.
 #include "tensorflow/core/data/service/worker_client.h"
 #include "tensorflow/core/data/service/worker_impl.h"
 #include "tensorflow/core/data/utils.h"
+#include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/metrics.h"
 #include "tensorflow/core/framework/model.h"
@@ -65,8 +66,8 @@ bool IsColocatedTask(const TaskInfo& task) {
   });
 }
 
-StatusOr<DataTransferServerInfo> GetTransferServer(const std::string& protocol,
-                                                   const TaskInfo& task_info) {
+absl::StatusOr<DataTransferServerInfo> GetTransferServer(
+    const std::string& protocol, const TaskInfo& task_info) {
   for (const auto& transfer_server : task_info.transfer_servers()) {
     if (transfer_server.protocol() == protocol) {
       return transfer_server;
@@ -101,7 +102,8 @@ DataServiceClient::~DataServiceClient() {
           << iteration_client_id_;
 }
 
-Status DataServiceClient::Initialize() {
+Status DataServiceClient::Initialize(Allocator* allocator) {
+  allocator_ = allocator;
   TF_RETURN_IF_ERROR(ValidateDataServiceParams(params_));
   VLOG(3) << "Connecting to " << params_.address
           << " in tf.data service client.";
@@ -136,7 +138,7 @@ Status DataServiceClient::Initialize() {
   return absl::OkStatus();
 }
 
-StatusOr<GetNextResult> DataServiceClient::GetNext(
+absl::StatusOr<GetNextResult> DataServiceClient::GetNext(
     DataServiceContextFactory context_factory) TF_LOCKS_EXCLUDED(mu_) {
   VLOG(3) << "Getting the next element from tf.data service client.";
   mutex_lock l(mu_);
@@ -327,24 +329,26 @@ void DataServiceClient::UpdateIterationFinished(bool iteration_finished)
   worker_thread_cv_.notify_all();
 }
 
-StatusOr<std::unique_ptr<DataServiceWorkerClient>>
+absl::StatusOr<std::unique_ptr<DataServiceWorkerClient>>
 DataServiceClient::CreateWorkerClient(const std::string& protocol,
                                       const TaskInfo& task_info) {
   TF_ASSIGN_OR_RETURN(DataTransferServerInfo transfer_server,
                       GetTransferServer(protocol, task_info));
-  return CreateDataServiceWorkerClient(params_.protocol, transfer_server);
+  return CreateDataServiceWorkerClient(params_.protocol, transfer_server,
+                                       allocator_);
 }
 
-StatusOr<std::unique_ptr<DataServiceWorkerClient>>
+absl::StatusOr<std::unique_ptr<DataServiceWorkerClient>>
 DataServiceClient::CreateGrpcWorkerClient(const TaskInfo& task_info) {
   return CreateWorkerClient(kGrpcTransferProtocol, task_info);
 }
 
-StatusOr<std::unique_ptr<DataServiceWorkerClient>>
+absl::StatusOr<std::unique_ptr<DataServiceWorkerClient>>
 DataServiceClient::CreateAlternativeWorkerClientWithGrpcFallback(
     const DataTransferServerInfo& transfer_server, const TaskInfo& task_info) {
-  StatusOr<std::unique_ptr<DataServiceWorkerClient>> worker =
-      CreateDataServiceWorkerClient(params_.protocol, transfer_server);
+  absl::StatusOr<std::unique_ptr<DataServiceWorkerClient>> worker =
+      CreateDataServiceWorkerClient(params_.protocol, transfer_server,
+                                    allocator_);
   if (worker.ok()) {
     LOG(INFO) << "Successfully started client for data transfer protocol '"
               << transfer_server.protocol() << "' for worker '"
@@ -362,7 +366,7 @@ DataServiceClient::CreateAlternativeWorkerClientWithGrpcFallback(
   return CreateGrpcWorkerClient(task_info);
 }
 
-StatusOr<std::unique_ptr<DataServiceWorkerClient>>
+absl::StatusOr<std::unique_ptr<DataServiceWorkerClient>>
 DataServiceClient::CreateWorkerClient(const TaskInfo& task_info) {
   if (params_.data_transfer_protocol == kLocalTransferProtocol ||
       // TODO(b/291994182): Use remote workers in unit tests.
@@ -371,7 +375,7 @@ DataServiceClient::CreateWorkerClient(const TaskInfo& task_info) {
     DataTransferServerInfo info;
     info.set_protocol(kLocalTransferProtocol);
     info.set_address(task_info.worker_address());
-    return CreateDataServiceWorkerClient(params_.protocol, info);
+    return CreateDataServiceWorkerClient(params_.protocol, info, allocator_);
   }
   if (!params_.data_transfer_protocol.empty()) {
     TF_ASSIGN_OR_RETURN(
@@ -382,7 +386,7 @@ DataServiceClient::CreateWorkerClient(const TaskInfo& task_info) {
   }
   if (std::string default_protocol = DefaultDataTransferProtocol();
       default_protocol != kGrpcTransferProtocol) {
-    StatusOr<DataTransferServerInfo> transfer_server =
+    absl::StatusOr<DataTransferServerInfo> transfer_server =
         GetTransferServer(default_protocol, task_info);
     if (transfer_server.ok()) {
       return CreateAlternativeWorkerClientWithGrpcFallback(*transfer_server,

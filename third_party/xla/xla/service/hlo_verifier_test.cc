@@ -1370,7 +1370,7 @@ int64_t ReplicaCount(const std::vector<std::vector<int64_t>>& replica_groups) {
   return replica_count;
 }
 
-StatusOr<std::unique_ptr<HloModule>> MakeCollectiveCommOpComputation(
+absl::StatusOr<std::unique_ptr<HloModule>> MakeCollectiveCommOpComputation(
     std::vector<std::vector<int64_t>> replica_groups,
     std::optional<int64_t> replica_count, std::optional<int64_t> num_partitions,
     absl::string_view other_attributes, absl::string_view template_str) {
@@ -1388,7 +1388,7 @@ StatusOr<std::unique_ptr<HloModule>> MakeCollectiveCommOpComputation(
       config);
 }
 
-StatusOr<std::unique_ptr<HloModule>> MakeAllReduceComputation(
+absl::StatusOr<std::unique_ptr<HloModule>> MakeAllReduceComputation(
     std::vector<std::vector<int64_t>> replica_groups,
     std::optional<int64_t> replica_count = std::nullopt,
     std::optional<int64_t> num_partitions = std::nullopt,
@@ -1581,7 +1581,7 @@ TEST_F(HloVerifierTest, AllReduceDoneWithoutStart) {
                         "needs to be all-reduce-start, found tuple"));
 }
 
-StatusOr<std::unique_ptr<HloModule>> MakeAllToAllComputation(
+absl::StatusOr<std::unique_ptr<HloModule>> MakeAllToAllComputation(
     std::vector<std::vector<int64_t>> replica_groups,
     std::optional<int64_t> replica_count = std::nullopt,
     std::optional<int64_t> num_partitions = std::nullopt,
@@ -2854,6 +2854,24 @@ TEST_F(HloVerifierTest, EnableUnboundedDynamism) {
   HloVerifier verifier{HloVerifierOpts{}.WithAllowUnboundedDynamism(true)};
   auto status = verifier.Run(module.get()).status();
   ASSERT_TRUE(status.ok());
+}
+
+TEST_F(HloVerifierTest, SparseDotMetadataShape) {
+  const char* const kHlo = R"(
+  HloModule test
+  ENTRY entry {
+    %lhs = f32[10,16] parameter(0)
+    %rhs = f32[32,20] parameter(1)
+    %meta = u16[10,4] parameter(2)
+    ROOT %dot = f32[10,20] dot(%lhs, %rhs, %meta),
+        lhs_contracting_dims={1}, rhs_contracting_dims={0}, sparsity=L.1@2:4
+  }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(kHlo));
+  HloVerifier verifier{HloVerifierOpts{}.WithAllowUnboundedDynamism(true)};
+  auto status = verifier.Run(module.get()).status();
+  ASSERT_FALSE(status.ok());
+  EXPECT_THAT(status.message(), HasSubstr("Expected sparse dot metadata"));
 }
 
 }  // namespace

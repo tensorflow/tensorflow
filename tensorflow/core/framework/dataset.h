@@ -15,9 +15,11 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_FRAMEWORK_DATASET_H_
 #define TENSORFLOW_CORE_FRAMEWORK_DATASET_H_
 
+#include <cstdlib>
 #include <deque>
 #include <iterator>
 #include <memory>
+#include <optional>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -84,6 +86,10 @@ void MergeOptions(const protobuf::MessageLite& source,
 }  // namespace internal
 
 using TraceMeMetadata = std::vector<std::pair<StringPiece, string>>;
+
+// Maps the index of dataset elements to a globally shuffled index. See the
+// comment for IteratorContext::Params::index_mapper for more details.
+using IndexMapperFn = std::function<size_t(size_t)>;
 
 constexpr char kTFDataFunction[] = "_tf_data_function";
 
@@ -788,7 +794,12 @@ class IteratorContext {
     // Maps the index of dataset elements to a shuffled index. In other words,
     // given an index i, returns the permuted index p(i) for the iterator. Used
     // to support global shuffling of datasets that support random access.
-    std::function<int64_t(int64_t)> index_mapper = nullptr;
+    IndexMapperFn index_mapper = nullptr;
+
+    // Records the number of elements that have been produced prior to a
+    // checkpoint. This is set by globally shuffled iterators so that upstream
+    // iterators can restore the element counts in the random access mode.
+    std::optional<size_t> restored_element_count = std::nullopt;
   };
 
   explicit IteratorContext(IteratorContext* ctx)
@@ -877,8 +888,10 @@ class IteratorContext {
 
   RunMode run_mode() { return params_.run_mode; }
 
-  std::function<int64_t(int64_t)> index_mapper() const {
-    return params_.index_mapper;
+  IndexMapperFn index_mapper() const { return params_.index_mapper; }
+
+  std::optional<int64_t> restored_element_count() const {
+    return params_.restored_element_count;
   }
 
   void SetModel(std::shared_ptr<model::Model> model) { params_.model = model; }
@@ -1010,6 +1023,13 @@ class IteratorBase : public Checkpointable {
   Status GetNext(IteratorContext&& ctx, std::vector<Tensor>* out_tensors,
                  bool* end_of_sequence) {
     return GetNext(&ctx, out_tensors, end_of_sequence);
+  }
+
+  // If a dataset needs to provide its own index mapper behavior to support
+  // global shuffling, implement this method.
+  virtual IndexMapperFn GetIndexMapper(
+      IndexMapperFn parent_index_mapper) const {
+    return parent_index_mapper;
   }
 
   // Skips the next `num_to_skip` outputs from the range that this iterator
@@ -1326,6 +1346,10 @@ class DatasetBase : public core::RefCounted {
   virtual Status Get(OpKernelContext* ctx, int64 index,
                      std::vector<Tensor>* out_tensors) const;
 
+  // Same as above, but without an `OpKernelContext`. Used to support datasets
+  // that provide random access through both the dataset and iterator APIs.
+  virtual Status Get(int64 index, std::vector<Tensor>* out_tensors) const;
+
   // Returns true if the dataset and its inputs support random access.
   virtual absl::Status RandomIndexingCompatible() const {
     return absl::FailedPreconditionError(
@@ -1334,9 +1358,9 @@ class DatasetBase : public core::RefCounted {
 
   // Return a finalized version of the dataset.  The returned DatasetBase is
   // unowned and lives for as long as this dataset.
-  virtual StatusOr<DatasetBase*> Finalize(
+  virtual absl::StatusOr<DatasetBase*> Finalize(
       OpKernelContext* ctx,
-      std::function<StatusOr<core::RefCountPtr<DatasetBase>>()>
+      std::function<absl::StatusOr<core::RefCountPtr<DatasetBase>>()>
           make_finalized_dataset) const;
 
   // Wrapper around a GraphDefBuilder which provides support for serializing
@@ -1458,6 +1482,16 @@ class DatasetBaseIterator : public IteratorBase {
     VLOG(2) << "Attempting to save checkpoints on iterator (prefix: "
             << prefix() << ") from " << dataset()->DebugString();
     return IteratorBase::Save(ctx, writer);
+  }
+
+  // Returns a copy of the `status` where the error message is prepended with
+  // dataset name and the iterator prefix.
+  Status AddErrorContext(const Status& status) const {
+    return Status(status.code(),
+                  strings::StrCat("Error in user-defined function passed to ",
+                                  dataset()->metadata().name(),
+                                  " transformation with iterator: ", prefix(),
+                                  ": ", status.message()));
   }
 
  protected:

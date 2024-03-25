@@ -168,12 +168,10 @@ Useful logging and error messages
 
 #include <algorithm>
 #include <cstdint>
-#include <functional>
 #include <list>
 #include <map>
 #include <memory>
 #include <optional>
-#include <ostream>
 #include <set>
 #include <string>
 #include <tuple>
@@ -182,8 +180,6 @@ Useful logging and error messages
 #include <variant>
 #include <vector>
 
-#include "xla/service/heap_simulator/allocation_block.h"
-
 // TODO(b/210891274): Use btree_map after build issue in Windows is resolved.
 #if defined(__GNUC__) || defined(__clang__)
 #include "absl/container/btree_map.h"
@@ -191,33 +187,29 @@ Useful logging and error messages
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/functional/any_invocable.h"
-#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/utils/hlo_live_range.h"
 #include "xla/service/buffer_value.h"
 #include "xla/service/call_graph.h"
+#include "xla/service/heap_simulator/allocation_block.h"
 #include "xla/service/heap_simulator/heap_simulator.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/service/hlo_alias_analysis.h"
-#include "xla/service/hlo_buffer.h"
 #include "xla/service/hlo_value.h"
 #include "xla/service/memory_space_assignment/allocation.h"
 #include "xla/service/memory_space_assignment/cost_analysis.h"
 #include "xla/service/memory_space_assignment/memory_space_assignment.pb.h"
-#include "xla/service/memory_space_assignment/prefetch_interval_picker.h"
-#include "xla/service/memory_space_assignment/repacking.h"
+#include "xla/service/memory_space_assignment/options.h"
 #include "xla/service/memory_space_assignment/slice.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/status.h"
 #include "xla/statusor.h"
 #include "xla/util.h"
 
 namespace xla {
 namespace memory_space_assignment {
-
-// Forward Declaration of Options.
-struct Options;
 
 // This class contains pre-set assignments determined by memory space
 // assignment. It contains two data structures: (1) a chunks vector that maps a
@@ -325,58 +317,6 @@ class SlicedPrefetchStartTimePicker {
 // memory space.
 class MemorySpaceAssignment {
  public:
-  using Chunk = HeapSimulator::Chunk;
-  using BufferInterval =
-      GlobalDecreasingSizeBestFitHeap<HloValue>::BufferInterval;
-  using BufferIntervalCompare =
-      GlobalDecreasingSizeBestFitHeap<HloValue>::BufferIntervalCompare;
-  using IsAllowedInAlternateMemoryFunction =
-      std::function<bool(const HloValue&)>;
-  using IsUseAllowedInAlternateMemoryFunction =
-      std::function<bool(const HloUse&)>;
-  using IsPositionAllowedInAlternateMemoryFunction =
-      std::function<bool(const HloPosition&)>;
-  using ReservedScopedMemoryFunction = std::function<int64_t(
-      const HloInstruction*,
-      const absl::flat_hash_set<
-          std::pair<int, ShapeIndex>>& /*operands_in_alternate_memory*/,
-      const absl::flat_hash_set<ShapeIndex>& /*outputs_in_alternate_memory*/)>;
-
-  using AllocationSequence = std::vector<std::unique_ptr<Allocation>>;
-
-  // The BufferInterval sorting interface that MemorySpaceAssignment expects.
-  class BufferIntervalComparator {
-   public:
-    using BufferInterval = MemorySpaceAssignment::BufferInterval;
-
-    virtual ~BufferIntervalComparator() = default;
-
-    // A logging string explaining the sorting criteria. E.g., [ -size, offset ]
-    // indicates we sort (desc) size, then (asc) offset.
-    virtual std::string DescribeComparisonCriteria() const = 0;
-
-    // A logging string containing the values used to sort buffer_interval.
-    // E.g., we might return [ -1024, 100 ], if the criteria is [ -size,
-    // offset ].
-    virtual std::string CriteriaToString(
-        const BufferInterval& buffer_interval) = 0;
-
-    // comparator.LessThan(lhs, rhs) will be used for BufferIntervalCompare.
-    virtual bool LessThan(const BufferInterval& lhs,
-                          const BufferInterval& rhs) = 0;
-
-    // Used to create a functor that can be passed to a method like std::sort.
-    // E.g., absl::c_sort(v, comparator.GetComparisonFunctor());
-    BufferIntervalCompare GetComparisonFunctor() {
-      return [this](const BufferInterval& lhs, const BufferInterval& rhs) {
-        return LessThan(lhs, rhs);
-      };
-    }
-
-   protected:
-    BufferIntervalComparator() = default;
-  };
-
   // AllocationValue is used to break up HloValues for each non-trivial position
   // (trivial positions are considered Tuple, GetTupleElement, and Bitcast). An
   // HloValue may include positions and uses that alias with each other across
@@ -621,8 +561,10 @@ class MemorySpaceAssignment {
   std::vector<HloInstruction*> flattened_instructions_;
   absl::flat_hash_set<const HloComputation*> computations_in_schedule_;
   std::unique_ptr<PresetAssignments> preset_assignments_;
-  std::vector<std::pair<HloPosition, Chunk>> alternate_memory_assignments_;
-  std::vector<std::pair<HloInstruction*, Chunk>> scoped_memory_assignments_;
+  std::vector<std::pair<HloPosition, HeapSimulator::Chunk>>
+      alternate_memory_assignments_;
+  std::vector<std::pair<HloInstruction*, HeapSimulator::Chunk>>
+      scoped_memory_assignments_;
   int64_t alternate_memory_size_ = 0;
 
   // These maps hold vectors of new instructions that need to be scheduled after
@@ -637,7 +579,7 @@ class MemorySpaceAssignment {
 //
 // This comparator caches HloValues -> latest use time.
 class MemoryBoundednessBufferIntervalComparator
-    : public MemorySpaceAssignment::BufferIntervalComparator {
+    : public BufferIntervalComparator {
  public:
   MemoryBoundednessBufferIntervalComparator(
       const CostAnalysis& cost_analysis,
@@ -651,8 +593,10 @@ class MemoryBoundednessBufferIntervalComparator
   ~MemoryBoundednessBufferIntervalComparator() override = default;
 
   std::string DescribeComparisonCriteria() const override;
-  std::string CriteriaToString(const BufferInterval& buffer_interval) override;
-  bool LessThan(const BufferInterval& lhs, const BufferInterval& rhs) override;
+  std::string CriteriaToString(
+      const MsaBufferInterval& buffer_interval) override;
+  bool LessThan(const MsaBufferInterval& lhs,
+                const MsaBufferInterval& rhs) override;
 
  private:
   // See the value returned by DescribeComparisonCriteria() for the meaning of
@@ -660,8 +604,8 @@ class MemoryBoundednessBufferIntervalComparator
   using ComparisonTuple = std::tuple<int64_t, float, int64_t, int64_t, int64_t,
                                      int64_t, BufferValue::Id>;
 
-  ComparisonTuple GetTuple(const BufferInterval& buffer_interval);
-  int64_t GetLatestUseTime(const BufferInterval& buffer_interval);
+  ComparisonTuple GetTuple(const MsaBufferInterval& buffer_interval);
+  int64_t GetLatestUseTime(const MsaBufferInterval& buffer_interval);
   absl::flat_hash_map<const HloValue*, int64_t> buffer_to_latest_use_;
   const CostAnalysis& cost_analysis_;
   CostAnalysis::Cache* cost_analysis_cache_;
@@ -675,7 +619,7 @@ class MemoryBoundednessBufferIntervalComparator
 //
 // This class caches HloValue -> {latest use, cumulative use size }.
 class DefaultCrossProgramPrefetchBufferIntervalComparator
-    : public MemorySpaceAssignment::BufferIntervalComparator {
+    : public BufferIntervalComparator {
  public:
   explicit DefaultCrossProgramPrefetchBufferIntervalComparator(
       const HloLiveRange& hlo_live_range);
@@ -683,8 +627,10 @@ class DefaultCrossProgramPrefetchBufferIntervalComparator
   ~DefaultCrossProgramPrefetchBufferIntervalComparator() override = default;
 
   std::string DescribeComparisonCriteria() const override;
-  std::string CriteriaToString(const BufferInterval& buffer_interval) override;
-  bool LessThan(const BufferInterval& lhs, const BufferInterval& rhs) override;
+  std::string CriteriaToString(
+      const MsaBufferInterval& buffer_interval) override;
+  bool LessThan(const MsaBufferInterval& lhs,
+                const MsaBufferInterval& rhs) override;
 
  private:
   // See the value returned by DescribeComparisonCriteria() for the meaning of
@@ -697,183 +643,11 @@ class DefaultCrossProgramPrefetchBufferIntervalComparator
     int64_t cumulative_use_size = 0;
   };
 
-  ComparisonTuple GetTuple(const BufferInterval& buffer_interval);
+  ComparisonTuple GetTuple(const MsaBufferInterval& buffer_interval);
 
   absl::flat_hash_map<const HloValue*, AdditionalSortData>
       additional_sort_data_;
   const HloLiveRange& hlo_live_range_;
-};
-
-// The different options to be passed to the Run() API.
-struct Options {
-  // Backend-specific integer value that describes the alternate memory.
-  int64_t alternate_memory_space = 0;
-
-  // Maximum size of the alternate memory space.
-  int64_t max_size_in_bytes = 0;
-
-  // Memory alignment of the alternate memory space.
-  int64_t alignment_in_bytes = 1;
-
-  // If provided, we sort the buffers using this comparator. Otherwise, we use
-  // GlobalDecreasingSizeBestFitHeap::kSpatial.
-  MemorySpaceAssignment::BufferIntervalComparator* buffer_interval_comparator =
-      nullptr;
-
-  // This object determines how early and how late prefetches can occur.
-  PrefetchIntervalPicker* prefetch_interval_picker = nullptr;
-
-  // This object is used to determine the benefit of a particular allocation.
-  CostAnalysis* cost_analysis = nullptr;
-
-  // Size function for buffer values.
-  BufferValue::SizeFunction size_fn;
-
-  std::function<Shape(const Shape&)> get_equivalent_s8_shape_fn;
-
-  // This function can be used to prevent certain HloValues (e.g., based on
-  // the opcode) to be placed on the alternate memory.
-  MemorySpaceAssignment::IsAllowedInAlternateMemoryFunction
-      is_allowed_in_alternate_mem_fn;
-
-  // This function can be used to prevent certain HloUses (e.g., based on
-  // the opcode) to be placed on the alternate memory.
-  MemorySpaceAssignment::IsUseAllowedInAlternateMemoryFunction
-      is_use_allowed_in_alternate_mem_fn = [](const HloUse&) { return true; };
-
-  // Specifies if the given position is allowed in the alternate memory.
-  MemorySpaceAssignment::IsPositionAllowedInAlternateMemoryFunction
-      is_position_allowed_in_alternate_mem_fn =
-          [](const HloPosition&) { return true; };
-
-  // This function returns the amount of scoped memory in bytes that should be
-  // reserved during the execution of this instruction.
-  MemorySpaceAssignment::ReservedScopedMemoryFunction
-      reserved_scoped_memory_fn =
-          [](const HloInstruction*,
-             const absl::flat_hash_set<
-                 std::pair<int, ShapeIndex>>& /*operands_in_alternate_memory*/,
-             const absl::flat_hash_set<
-                 ShapeIndex>& /*outputs_in_alternate_memory*/) { return 0; };
-
-  // If true, we will try to reduce scoped allocation buffer size for all
-  // instructions if their operand/output has been allocated in alternate
-  // memory.
-  bool reduce_scoped_memory_limit = false;
-
-  // If true, we allocate the reserved scoped memory at the same offset. This
-  // is useful to enable more deduplication between HLOs that have reserved
-  // scoped memories, but may result in less efficient memory packing.
-  bool allocate_reserved_scoped_memory_at_same_offset = true;
-
-  // Specifies the upper bound for number of outstanding prefetches and
-  // evictions, -1 for unlimited.
-  int64_t max_outstanding_prefetches = -1;
-  int64_t max_outstanding_evictions = -1;
-
-  // Extra outstanding prefetch limit for while uses (in addition to
-  // max_outstanding_prefetches).
-  int64_t while_use_extra_outstanding_prefetch_limit = 0;
-
-  // Specifies the maximum number of retries that will be performed for each
-  // value in case prefetching failed due to running out of asynchronous
-  // copies or asynchronous copy resource.
-  int64_t max_retries = 1;
-
-  // The maximum number of repacks that we are willing to perform in case we
-  // can't allocate a buffer due to running out of memory. If this value is
-  // greater than 0, repacker must be non-nullptr.
-  int64_t max_repacks = 0;
-
-  // The repacking algorithm to reduce fragmentation. Must be non-null if
-  // max_repacks is greater than 0.
-  MemorySpaceAssignmentRepacker* repacker = nullptr;
-
-  // This is only useful for testing, repack after every allocation.
-  bool repack_after_every_allocation = false;
-
-  // If true, tries allocating buffers across (e.g., before and inside a while
-  // loop body) sequential calls (kWhile, kCall, and kConditional).
-  bool allocate_across_sequential_calls = false;
-
-  // If true, verifies the memory space assignment against overlapping
-  // buffers.
-  bool verify = false;
-
-  // If not nullptr, this function is called to dump debugging information.
-  // The first argument is appended to the file name and the second argument
-  // is the contents of the file.
-  std::function<void(absl::string_view, absl::string_view)> dump_fn = nullptr;
-
-  // Enable prefetching buffers into preferred memory across program
-  // boundaries
-  bool enable_cross_program_prefetch = true;
-
-  // If true, use buffer_interval_compare to determine which buffers to
-  // prefetch across program boundaries.
-  bool default_cross_program_prefetch_heuristic = false;
-
-  // Enable cross-program prefetch freeing optimization where the
-  // cross-program-prefetched buffer can be reused.
-  bool enable_cross_program_prefetch_freeing = true;
-
-  // The maximum number of cross program prefetches.
-  // TODO(tjablin): Use a heuristic to determine this automatically.
-  int max_cross_program_prefetches = 1;
-
-  // Enable redundant eviction optimization in/around while loops. If enabled,
-  // this optimization would keep a copy of the buffer in the default memory in
-  // addition to alternate memory to eliminate redundant evictions.
-  bool enable_while_redundant_eviction_elimination = true;
-
-  // An optional memory space assignment autotuning config, which is used
-  // to sort allocated buffers.
-  std::optional<std::vector<uint64_t>> autotuning_config = std::nullopt;
-
-  // If true, uses the earlier instance of the same instruction to use as
-  // preferred prefetch start time.
-  bool use_repeated_instance_for_preferred_prefetch_time = false;
-
-  // If true, enforces the FIFO order for prefetches.
-  bool enforce_prefetch_fifo_order = false;
-
-  // The ratio of use bytes to copy bytes for a given allocation site below
-  // which we consider the site to be inefficient. A value of 0 would treat all
-  // sites as efficient and a value of 1 would require the amount of bytes used
-  // at the site to be at least as much as the async copy bytes. There are two
-  // factors that determine the copy and use bytes:
-  //   - Some uses don't actually access the entire tensor, e.g. in
-  //     dynamic-update-slice.
-  //   - copy_bytes may be larger than the size of the tensor as well. An
-  //     example is a tensor may be prefetched, used, and then evicted. In that
-  //     case copy_bytes would be twice the size of the tensor.
-  float inefficient_use_to_copy_ratio = 0.0;
-
-  // This is mostly used for testing, it allows a test case to inject its own
-  // logic for AlternateMemoryBestFitHeap::GetInefficientAllocationSites.
-  std::function<std::vector<std::variant<HloPosition, HloUse>>(
-      absl::Span<HloPosition>)>
-      get_inefficient_allocation_sites_fn = nullptr;
-
-  // Config to filter prefetches and update preferred prefetch times for the
-  // filtered prefetches.
-  PreferredPrefetchOverrides preferred_prefetch_overrides;
-
-  // Options for slicing prefetches into smaller asynchronously copied pieces.
-  SlicedPrefetchOptions sliced_prefetch_options;
-
-  // Options for the memory-bound loop optimizer feature.
-  MemoryBoundLoopOptimizerOptions memory_bound_loop_optimizer_options;
-
-  SliceProposalFunction propose_slice_fn = [](const Shape&,
-                                              const SlicedPrefetchOptions&)
-      -> xla::StatusOr<SliceProposalCollection> {
-    return UnimplementedStrCat("Generation of SliceProposals unimplemented");
-  };
-
-  // Option to always spill buffers from alternate memory to default memory
-  // and prefetching back to alternate memory(if needed) just in time for use.
-  bool always_spill_to_default_memory = false;
 };
 
 // A struct representing an asynchronous copy with its logical start and end
@@ -1039,252 +813,6 @@ class AsynchronousCopyResource {
   std::vector<float> delay_;
 };
 
-// TODO(b/280618622): Refactor this class out of this file.
-//
-// An optimizer for unrolled memory-bound loops. It keeps track of alternate
-// memory capacity and default memory bandwidth to decide the allocations of
-// each tensor within a loop iteration. The assumption is that all of the
-// unrolled loop iterations will use the same allocation decisions, so we can
-// spend more time to optimize this one iteration as optimally as possible.
-//
-// To represent instructions, we keep track of three iterations (previous,
-// current, and next), as well as the header and footer regions that are before
-// and after the loop, respectively.
-//
-// We classify each tensor used in the current iteration as one of the following
-// allocations based on its positions and uses:
-//
-// Temporary Allocations: These are produced by a producer in the current
-// iteration and consumed either in this or the next iteration. For these, we
-// try to give them alternate memory allocations for their entire live range.
-//
-// Case 1: producer and consumer all in the current iteration.
-//                                     p-----c--c
-// Case 2: producer is in the current iter, consumer is in the next iter.
-//                                           p-----c
-//  idx:       |...| 0  1  2  3  4| 0  1  2  3  4| 0  1  2  3  4|...|
-// iter: head  |...|      prev    |    current   |     next     |...| foot
-//
-// Loop Carried Dependences: This is where the last use is at a larger index
-// than the producer. This would require 2X peak buffer consumption because both
-// this and next iteration's buffer is alive at the same time. This case is
-// currently not supported.
-//
-// Case 3: producer is in the current iter, consumer is in the next iter
-//         (consumer idx >= producer idx).
-//                                           p-----------------c
-//  idx:       |...| 0  1  2  3  4| 0  1  2  3  4| 0  1  2  3  4|...|
-// iter: head  |...|      prev    |    current   |     next     |...| foot
-//
-// Pinned Allocations: These are values produced at the header and are used in
-// every iteration at the same indices. For these, we just allocate the buffer
-// for the duration of the loop:
-//
-// Case 4: producer: kHead, consumer: kCurrent
-//         p---------------c--------------c--------------c--------
-//  idx:       |...| 0  1  2  3  4| 0  1  2  3  4| 0  1  2  3  4|...|
-// iter: head  |...|      prev    |    current   |     next     |...| foot
-//
-// Prefetch Allocations: These are values produced at the header and are used in
-// the current (and possibly next) iteration. We will try to prefetch these
-// values into the alternate memory:
-//
-// Case 5: producer: kHead, consumer: kCurrent
-//         p---------------------------------c--------c
-//  idx:       |...| 0  1  2  3  4| 0  1  2  3  4| 0  1  2  3  4|...|
-// iter: head  |...|      prev    |    current   |     next     |...| foot
-class MemoryBoundLoopOptimizer {
- public:
-  // We represent each tensor used in the current iteration as a LoopValue,
-  // wrapping the relevant information such as its HLO value, indices and
-  // pointers to its use and position sites in different iterations.
-  struct LoopValue {
-    // An enum that encodes the allocation type that is suitable for this
-    // LoopValue. See the comment above on what each of these mean.
-    enum class AllocationType {
-      kTemporary,
-      kLoopCarriedDependence,
-      kPinned,
-      kPrefetch,
-      kUnsupported
-    };
-
-    // ToString methods for logging/debugging.
-    static std::string AllocationTypeToString(AllocationType allocation_type);
-    std::string ToString() const;
-
-    // Returns true if memory-bound loop optimizer supports allocating this type
-    // of a loop value.
-    bool IsAllocationTypeSupported() const;
-
-    // The HloValues that correspond to this LoopValue.
-    std::vector<const HloValue*> hlo_values;
-    // The position in the header, if any.
-    std::optional<HloPosition> header_position;
-    // The loop index and position in the previous and current iterations.
-    std::vector<std::pair<int64_t, HloPosition>> prev_iteration_positions;
-    std::vector<std::pair<int64_t, HloPosition>> loop_positions;
-    // The loop index and use in the current and next iterations.
-    std::vector<std::pair<int64_t, HloUse>> loop_uses;
-    std::vector<std::pair<int64_t, HloUse>> next_iteration_uses;
-    // The allocation type.
-    AllocationType allocation_type;
-    // Size of this tensor.
-    int64_t size;
-    // The default memory bandwidth savings were we to successfully put this in
-    // the alternate memory using the allocation type, in bytes.
-    float savings;
-    // The savings divided by the size. This is typically 2 for temporary
-    // allocations (skip a write and a read to the default memory). More complex
-    // production/consumption patterns may result in higher or lower values. We
-    // use this value to sort LoopValues so that the algorithm can prioritize
-    // allocating the buffers with the highest savings per byte to the alternate
-    // memory.
-    float savings_per_byte;
-    // The optimized AllocationSequence.
-    MemorySpaceAssignment::AllocationSequence allocations;
-  };
-
-  // Factory method to create and initialize a MemoryBoundLoopOptimizer.
-  static StatusOr<std::unique_ptr<MemoryBoundLoopOptimizer>> Create(
-      int loop_start, int loop_end, uint64_t alternate_memory_size,
-      const MemoryBoundLoopOptimizerOptions& options,
-      const HloLiveRange& hlo_live_range,
-      const HloAliasAnalysis& alias_analysis_,
-      const CostAnalysis& cost_analysis,
-      const BufferValue::SizeFunction& size_function);
-
-  // Optimize the loop. Initialize must be called first.
-  void Optimize();
-
-  // Calculate the steady-state execution time of one loop iteration using the
-  // allocation decisions so far.
-  float CalculateExecutionTime() const;
-
-  // Return the LoopValues.
-  const std::vector<LoopValue>& loop_values() const { return loop_values_; }
-  std::vector<LoopValue>& loop_values() { return loop_values_; }
-
-  // Return the remaining memory vector for each point in time in the loop using
-  // the allocation decisions so far.
-  const std::vector<int64_t>& remaining_memory() const {
-    return remaining_memory_;
-  }
-
-  // The loop start, end, and size accessors.
-  int loop_start() const { return loop_start_; }
-  int loop_end() const { return loop_end_; }
-  int loop_size() const { return loop_size_; }
-
- private:
-  // Temporary data structures used by the AllocatePrefetch function.
-  struct AllocatePrefetchesContext {
-    // The values that are requested to be prefetched.
-    absl::Span<LoopValue*> values;
-
-    // A list of indices into values array, sorted by the start time of the
-    // first use.
-    std::vector<int> value_indices;
-
-    // Default memory remaining bandwidths assuming all prefetches succeeded.
-    std::vector<float> bandwidth_idle_times;
-
-    // Additional memory used while performing prefetching.
-    std::vector<int64_t> additional_memory_used;
-  };
-
-  MemoryBoundLoopOptimizer(int loop_start, int loop_end,
-                           uint64_t alternate_memory_size,
-                           const MemoryBoundLoopOptimizerOptions& options,
-                           const HloLiveRange& hlo_live_range,
-                           const HloAliasAnalysis& alias_analysis_,
-                           const CostAnalysis& cost_analysis,
-                           const BufferValue::SizeFunction& size_function);
-
-  // Initializes the data structures used by the optimizer.
-  Status Initialize();
-
-  // Given an HloBuffer object, determines if this buffer represents a LoopValue
-  // that can be optimized by the optimizer, and if so it adds a LoopValue to
-  // the back of loop_values_ that represents the HloBuffer. Otherwise, no new
-  // LoopValue is added to loop_values_.
-  void MaybeCreateLoopValue(const HloBuffer& buffer,
-                            const HloComputation* loop_computation);
-
-  // Sort LoopValues by savings_per_byte.
-  void SortLoopValues();
-
-  // After allocation finishes, we fix up by creating Allocation objects to any
-  // LoopValues that didn't get alternate memory allocations.
-  void PostProcess();
-
-  // Allocate LoopValues by dispatching to the correct Allocate method.
-  void AllocateLoopValues();
-
-  // Allocate and reserve memory between the given indices.
-  bool AllocateBetween(int64_t begin_idx, int64_t end_idx, int64_t size);
-
-  // Perform allocation type kTemporary. Return true if successful.
-  bool AllocateTemporary(LoopValue& value);
-
-  // Perform allocation type kPinned. Return true if successful.
-  bool AllocatePinned(LoopValue& value);
-
-  // Perform allocation type kPrefetch. Unlike the other Allocate methods, this
-  // performs allocation of multiple LoopValues in order to consider the effect
-  // of remaining bandwidth assuming the other prefetches were successful.
-  // Return true if successful.
-  bool AllocatePrefetches(absl::Span<LoopValue*> values);
-
-  // Allocate one prefetch for the loop value index that corresponds to
-  // context.context.values. Returns true if successful.
-  bool AllocatePrefetch(int value_index, AllocatePrefetchesContext& context);
-
-  // Keeps track of successful allocation of all uses and positions of this
-  // LoopValue.
-  void AddAllLoopPositionsAndUses(LoopValue& value,
-                                  bool allocate_next_iteration_uses);
-
-  // Returns the default memory bandwidth idle time at the index.
-  float GetBandwidthIdleTime(int idx) const;
-
-  // Returns the default memory bandwidth idle time at the index assuming the
-  // given uses and positions got alternate memory allocations.
-  float GetBandwidthIdleTime(
-      int idx,
-      const absl::flat_hash_map<const HloInstruction*,
-                                std::vector<std::pair<int64_t, ShapeIndex>>>&
-          additional_uses_in_alternate_mem,
-      const absl::flat_hash_map<const HloInstruction*, std::vector<ShapeIndex>>&
-          additional_positions_in_alternate_mem) const;
-
-  // Returns the instruction elapsed at the index.
-  float GetInstructionElapsed(int idx) const;
-
-  int loop_start_;
-  int loop_end_;
-  int loop_size_;
-  uint64_t alternate_memory_size_;
-  MemoryBoundLoopOptimizerOptions options_;
-  const HloLiveRange& hlo_live_range_;
-  const HloAliasAnalysis& alias_analysis_;
-  const CostAnalysis& cost_analysis_;
-  BufferValue::SizeFunction size_function_;
-
-  absl::flat_hash_map<const HloInstruction*, int64_t> instructions_in_loop_;
-  absl::flat_hash_map<const HloInstruction*, int64_t>
-      instructions_in_prev_iteration_;
-  absl::flat_hash_map<const HloInstruction*, int64_t>
-      instructions_in_next_iteration_;
-  std::vector<LoopValue> loop_values_;
-  std::vector<int64_t> remaining_memory_;
-  absl::flat_hash_map<const HloInstruction*,
-                      std::vector<std::pair<int64_t, ShapeIndex>>>
-      uses_in_alternate_mem_;
-  absl::flat_hash_map<const HloInstruction*, std::vector<ShapeIndex>>
-      positions_in_alternate_mem_;
-};
-
 // This class inherits from GlobalDecreasingSizeBestFitHeap with a notion of
 // maximum size.
 class AlternateMemoryBestFitHeap
@@ -1293,10 +821,10 @@ class AlternateMemoryBestFitHeap
   using AllocationValue = MemorySpaceAssignment::AllocationValue;
   using HloPositionOrUse = std::variant<HloPosition, HloUse>;
 
-  AlternateMemoryBestFitHeap(
-      MemorySpaceAssignment::AllocationSequence* allocations,
-      const Options& options, const HloAliasAnalysis& alias_analysis,
-      const HloLiveRange& hlo_live_range);
+  AlternateMemoryBestFitHeap(AllocationSequence* allocations,
+                             const Options& options,
+                             const HloAliasAnalysis& alias_analysis,
+                             const HloLiveRange& hlo_live_range);
 
   // Allocates a buffer in preferred memory with whole program lifetime and
   // enables prefetching prefetch_candidate from default memory across program
@@ -1330,9 +858,7 @@ class AlternateMemoryBestFitHeap
   // positions.
   void FindAliases(std::vector<AllocationValue>* allocation_values) const;
 
-  MemorySpaceAssignment::AllocationSequence* allocations() {
-    return allocations_;
-  }
+  AllocationSequence* allocations() { return allocations_; }
   const Options& options() const { return options_; }
   const HloAliasAnalysis& alias_analysis() { return alias_analysis_; }
   const HloLiveRange& hlo_live_range() { return hlo_live_range_; }
@@ -1629,9 +1155,8 @@ class AlternateMemoryBestFitHeap
   // Given an allocation sequence, returns the live allocation at time with a
   // preference towards allocations in alternate memory. Returns nullptr if no
   // allocation is alive at that time.
-  static Allocation* GetLiveAllocationAt(
-      const MemorySpaceAssignment::AllocationSequence& allocations,
-      int64_t time);
+  static Allocation* GetLiveAllocationAt(const AllocationSequence& allocations,
+                                         int64_t time);
 
   // Returns true if the use is allowed in the alternate memory.
   bool IsUseAllowedInAlternateMemory(const AllocationValue& value,
@@ -1827,16 +1352,15 @@ class AlternateMemoryBestFitHeap
       Allocation& prev_allocation, MemorySpace memory_space,
       std::optional<Chunk> chunk, int64_t exclusive_start_time,
       int64_t end_time, int64_t copy_done_schedule_before_time,
-      MemorySpaceAssignment::AllocationSequence* allocations,
-      AliasedOffset* aliased_offset, float resource,
+      AllocationSequence* allocations, AliasedOffset* aliased_offset,
+      float resource,
       std::optional<int> cross_program_prefetch_index = std::nullopt);
 
   // For prefetching, adds a SlicedCopyAllocation to allocations. Also updates
   // asynchronous copy data structures, prefetch_interval_tree_, and aliasing
   // data structures
   void AddAsyncSlicesForPrefetch(
-      const Allocation& prev_allocation,
-      MemorySpaceAssignment::AllocationSequence* allocations,
+      const Allocation& prev_allocation, AllocationSequence* allocations,
       AliasedOffset* aliased_offset,
       const std::vector<SliceDecision>& slice_decisions_sorted_by_start_time,
       int64_t prefetch_end_time, int64_t allocation_end_time);
@@ -1905,7 +1429,7 @@ class AlternateMemoryBestFitHeap
   // pinned when their layout has the alternate memory space before MSA runs.
   bool IsIntervalPinnedToAlternateMemory(const BufferInterval& interval) const;
 
-  MemorySpaceAssignment::AllocationSequence* allocations_;
+  AllocationSequence* allocations_;
   const Options& options_;
   const HloAliasAnalysis& alias_analysis_;
   const HloLiveRange& hlo_live_range_;
@@ -1958,8 +1482,7 @@ class AlternateMemoryBestFitHeap
   // allocation objects describe the allocations for one iteration of the loop,
   // so we translate them into the program-level Allocation objects in
   // allocations_.
-  std::vector<MemorySpaceAssignment::AllocationSequence>
-      loop_optimized_allocations_;
+  std::vector<AllocationSequence> loop_optimized_allocations_;
   // A map to look up the loop-optimized allocation info by use.
   absl::flat_hash_map<HloUse, LoopOptimizedAllocationInfo>
       loop_optimized_allocations_map_;

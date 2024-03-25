@@ -62,17 +62,18 @@ PJRT_Error* PJRT_Client_Create(PJRT_Client_Create_Args* args) {
       pjrt::ConvertFromPjRtNamedValueList(args->create_options,
                                           args->num_options);
   const auto kExpectedOptionNameAndTypes =
-      absl::flat_hash_map<std::string, PJRT_NamedValue_Type>(
-          {{"platform_name", PJRT_NamedValue_Type::PJRT_NamedValue_kString},
-           {"allocator", PJRT_NamedValue_Type::PJRT_NamedValue_kString},
-           {"memory_fraction", PJRT_NamedValue_Type::PJRT_NamedValue_kFloat},
-           {"preallocate", PJRT_NamedValue_Type::PJRT_NamedValue_kBool},
-           {"collective_memory_size",
-            PJRT_NamedValue_Type::PJRT_NamedValue_kInt64},
-           {"visible_devices",
-            PJRT_NamedValue_Type::PJRT_NamedValue_kInt64List},
-           {"node_id", PJRT_NamedValue_Type::PJRT_NamedValue_kInt64},
-           {"num_nodes", PJRT_NamedValue_Type::PJRT_NamedValue_kInt64}});
+      absl::flat_hash_map<std::string, PJRT_NamedValue_Type>({
+          {"platform_name", PJRT_NamedValue_Type::PJRT_NamedValue_kString},
+          {"allocator", PJRT_NamedValue_Type::PJRT_NamedValue_kString},
+          {"memory_fraction", PJRT_NamedValue_Type::PJRT_NamedValue_kFloat},
+          {"preallocate", PJRT_NamedValue_Type::PJRT_NamedValue_kBool},
+          {"collective_memory_size",
+           PJRT_NamedValue_Type::PJRT_NamedValue_kInt64},
+          {"visible_devices", PJRT_NamedValue_Type::PJRT_NamedValue_kInt64List},
+          {"node_id", PJRT_NamedValue_Type::PJRT_NamedValue_kInt64},
+          {"num_nodes", PJRT_NamedValue_Type::PJRT_NamedValue_kInt64},
+          {"enable_mock_nccl", PJRT_NamedValue_Type::PJRT_NamedValue_kBool},
+      });
   PJRT_RETURN_IF_ERROR(
       ValidateCreateOptions(create_options, kExpectedOptionNameAndTypes));
 
@@ -125,6 +126,11 @@ PJRT_Error* PJRT_Client_Create(PJRT_Client_Create_Args* args) {
   if (auto it = create_options.find("num_nodes"); it != create_options.end()) {
     num_nodes = std::get<int64_t>(it->second);
   }
+  bool enable_mock_nccl = false;
+  if (auto it = create_options.find("enable_mock_nccl");
+      it != create_options.end()) {
+    enable_mock_nccl = std::get<bool>(it->second);
+  }
 
   xla::GpuClientOptions options;
   options.allocator_config = allocator_config;
@@ -135,6 +141,7 @@ PJRT_Error* PJRT_Client_Create(PJRT_Client_Create_Args* args) {
   options.kv_store =
       pjrt::ToCppKeyValueStore(args->kv_get_callback, args->kv_get_user_arg,
                                args->kv_put_callback, args->kv_put_user_arg);
+  options.enable_mock_nccl = enable_mock_nccl;
   PJRT_ASSIGN_OR_RETURN(std::unique_ptr<xla::PjRtClient> client,
                         xla::GetStreamExecutorGpuClient(options));
   args->client = pjrt::CreateWrapperClient(std::move(client));
@@ -185,6 +192,7 @@ PLUGIN_Profiler_Api profiler_api{
 };
 
 PJRT_Profiler_Extension profiler_extension{
+    /*struct_size=*/PJRT_Profiler_Extension_STRUCT_SIZE,
     /*type=*/PJRT_Extension_Type::PJRT_Extension_Type_Profiler,
     /*next=*/nullptr,
     /*profiler_api=*/&profiler_api,
@@ -216,18 +224,21 @@ PJRT_Error* PJRT_Gpu_Register_Custom_Call(
   }
 }
 
-PJRT_Gpu_Custom_Call custom_call{
-    /*type=*/PJRT_Extension_Type::PJRT_Extension_Type_Gpu_Custom_Call,
-    /*next=*/&profiler_extension,
-    /*custom_call=*/PJRT_Gpu_Register_Custom_Call,
-};
+const PJRT_Api* GetGpuPjrtApi() {
+  static PJRT_Gpu_Custom_Call custom_call{
+      /*struct_size=*/PJRT_Gpu_Custom_Call_STRUCT_SIZE,
+      /*type=*/PJRT_Extension_Type::PJRT_Extension_Type_Gpu_Custom_Call,
+      /*next=*/reinterpret_cast<PJRT_Extension_Base*>(&profiler_extension),
+      /*custom_call=*/PJRT_Gpu_Register_Custom_Call,
+  };
+  static const PJRT_Api pjrt_api =
+      pjrt::CreatePjrtApi(pjrt::gpu_plugin::PJRT_Client_Create,
+                          pjrt::gpu_plugin::PJRT_GpuDeviceTopology_Create,
+                          pjrt::PJRT_Plugin_Initialize_NoOp,
+                          reinterpret_cast<PJRT_Extension_Base*>(&custom_call));
 
-constexpr PJRT_Api pjrt_api = pjrt::CreatePjrtApi(
-    pjrt::gpu_plugin::PJRT_Client_Create,
-    pjrt::gpu_plugin::PJRT_GpuDeviceTopology_Create,
-    pjrt::PJRT_Plugin_Initialize_NoOp, static_cast<void*>(&custom_call));
-
-const PJRT_Api* GetGpuPjrtApi() { return &pjrt_api; }
+  return &pjrt_api;
+}
 
 }  // namespace gpu_plugin
 }  // namespace pjrt

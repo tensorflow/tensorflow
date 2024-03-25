@@ -13,12 +13,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include <memory>
 #include <string>
-#include <utility>
 
+#include "xla/error_spec.h"
 #include "xla/service/gpu/tests/gpu_codegen_test.h"
-#include "xla/tests/hlo_test_base.h"
 #include "tsl/platform/test.h"
 
 namespace xla {

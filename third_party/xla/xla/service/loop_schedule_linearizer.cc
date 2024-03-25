@@ -70,7 +70,7 @@ class ComputationInstructionOrdering {
 
 }  // namespace
 
-static StatusOr<bool> AddControlEdgesForLoopWrites(
+static absl::StatusOr<bool> AddControlEdgesForLoopWrites(
     HloInstruction* xla_while, HloAliasAnalysis& alias_analysis) {
   HloDataflowAnalysis& dataflow = alias_analysis.dataflow_analysis();
   HloComputation* body = xla_while->while_body();
@@ -145,7 +145,7 @@ static StatusOr<bool> AddControlEdgesForLoopWrites(
   return changed;
 }
 
-StatusOr<bool> LoopScheduleLinearizer::Run(
+absl::StatusOr<bool> LoopScheduleLinearizer::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   // Constructing HloAliasAnalysis is expensive, so don't do it until we find at

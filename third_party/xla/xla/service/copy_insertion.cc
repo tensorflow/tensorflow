@@ -133,7 +133,7 @@ bool ShouldCopyRootValue(const HloValue& value,
 //        \   /
 //        Tuple
 //
-StatusOr<std::pair<HloInstruction*, HloInstruction*>>
+absl::StatusOr<std::pair<HloInstruction*, HloInstruction*>>
 DeepCopyAndAddControlEdges(HloInstruction* from, HloInstruction* to,
                            const ShapeTree<bool>& indices_to_copy) {
   DCHECK(ShapeUtil::Compatible(from->shape(), to->shape()));
@@ -2320,7 +2320,7 @@ Status CopyInsertion::RemoveUnnecessaryCopies(
   return OkStatus();
 }
 
-StatusOr<bool> CopyInsertion::Run(
+absl::StatusOr<bool> CopyInsertion::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   // Copy insertion is performed in three steps:

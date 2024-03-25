@@ -61,9 +61,9 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/core/common_runtime/next_pluggable_device/c:plugin_c_api_hdrs",
-        "@local_tsl//tsl/c:tsl_status_internal",
         "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:statusor",
+        "@local_xla//xla/tsl/c:tsl_status_internal",
     ],
 )
 

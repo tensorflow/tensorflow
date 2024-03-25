@@ -32,6 +32,7 @@ limitations under the License.
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypeInterfaces.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Location.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
@@ -47,8 +48,8 @@ limitations under the License.
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "stablehlo/dialect/StablehloOps.h"  // from @stablehlo  // IWYU pragma: keep
 #include "tensorflow/compiler/mlir/lite/quantization/ir/QuantOps.h"
-#include "tensorflow/compiler/mlir/lite/quantization/quantization_utils.h"
 #include "tensorflow/compiler/mlir/quantization/common/attrs_and_constraints.h"
+#include "tensorflow/compiler/mlir/quantization/common/quantization_lib/quantization_utils.h"
 #include "tensorflow/compiler/mlir/quantization/common/uniform_quantized_types.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/ops/stablehlo_op_quant_spec.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/quantization_options.pb.h"
@@ -76,12 +77,6 @@ using ::mlir::stablehlo::UniformQuantizeOp;
 constexpr StringRef kCompositeFuncPrefix = "composite_";
 constexpr StringRef kQuantizedFuncPrefix = "quantized_";
 constexpr StringRef kEntryFuncAttrName = "_entry_function";
-
-// Returns true if `type` is a TensorType with quantized elements.
-bool IsQuantizedTensorType(const Type type) {
-  return type.isa<TensorType>() &&
-         type.cast<TensorType>().getElementType().isa<QuantizedType>();
-}
 
 // Returns broadcasted user op of an input op. Returns null if
 // the op is not broadcasted or not the intended type.
@@ -182,7 +177,7 @@ bool IsQuantizedXlaCallModuleOp(TF::XlaCallModuleOp xla_call_module_op) {
 
 // Returns the entry function, i.e. the callee of `xla_call_module_op`.
 func::FuncOp GetEntryFuncOp(TF::XlaCallModuleOp xla_call_module_op,
-                            SymbolTable symbol_table) {
+                            const SymbolTable symbol_table) {
   const auto entry_function_symbol_ref =
       xla_call_module_op->getAttrOfType<FlatSymbolRefAttr>(kEntryFuncAttrName);
 
@@ -221,7 +216,7 @@ void SetQuantizedFunctionType(PatternRewriter& rewriter,
 
 // Creates a UniformQuantize op and sets it as return op.
 // The requantize scale and zero point should be determined from the
-// entry_func_op's output, containing information on layerStats of the
+// `entry_func_op`'s output, containing information on layerStats of the
 // entire function.
 void CreateAndReturnUniformQuantizeOp(PatternRewriter& rewriter, Operation& op,
                                       func::FuncOp entry_func_op,
@@ -240,7 +235,7 @@ void CreateAndReturnQuantizedBiasPattern(
     Operation* op, PatternRewriter& rewriter, func::FuncOp entry_func_op,
     const Type func_result_type, const Type accumulation_quantized_element_type,
     GemmStyleOp gemm_style_op) {
-  Value bias_op = op->getOperand(1);
+  const Value bias_op = op->getOperand(1);
   Value add_op_result = op->getResult(0);
 
   // Broadcast bias value if unmatched with output shape.
@@ -299,7 +294,7 @@ class EntryFuncBodyQuantizationPattern {
 template <typename GemmStyleOp>
 // Match for all gemm_style op and check for possible fusions.
 LogicalResult MatchGemmStyleOp(func::FuncOp entry_func_op) {
-  auto op_iterator_range = entry_func_op.getOps<GemmStyleOp>();
+  const auto op_iterator_range = entry_func_op.getOps<GemmStyleOp>();
   if (op_iterator_range.empty()) {
     LLVM_DEBUG(llvm::dbgs() << "Function does not have "
                             << GemmStyleOp::getOperationName() << " op.\n");
@@ -326,7 +321,7 @@ LogicalResult MatchGemmStyleOp(func::FuncOp entry_func_op) {
 // Gemm Style Op: glossary/gemm.
 template <typename GemmStyleOp>
 void RewriteGemmStyleOp(func::FuncOp entry_func_op, PatternRewriter& rewriter,
-                        bool enable_per_channel_quantized_weight) {
+                        const bool enable_per_channel_quantized_weight) {
   const GemmStyleOp gemm_style_op =
       *entry_func_op.getOps<GemmStyleOp>().begin();
 
@@ -353,7 +348,7 @@ void RewriteGemmStyleOp(func::FuncOp entry_func_op, PatternRewriter& rewriter,
     std::vector<double> result_scales;
     result_scales.reserve(filter_scales.size());
 
-    for (double filter_scale : filter_scales) {
+    for (const double filter_scale : filter_scales) {
       result_scales.push_back(input_scale * filter_scale);
     }
 
@@ -362,11 +357,18 @@ void RewriteGemmStyleOp(func::FuncOp entry_func_op, PatternRewriter& rewriter,
             .cast<UniformQuantizedPerAxisType>()
             .getZeroPoints();
 
+    // `stablehlo.convolution` assumes the following format:
     // [b, 0, 1, f]x[0, 1, i, o]->[b, 0, 1, f]
+    // `stablehlo.dot_general` can take various formats. We only per-channel
+    // quantize non-batch ops.
+    // `stablehlo.dot_general` legalizable to `tfl.fully_connected` has a
+    // filter rank of 2 with the last dimension as the channel dimension.
+    const int64_t quantization_dimension =
+        filter_type.cast<ShapedType>().getShape().size() - 1;
     accumulation_quantized_element_type =
         CreateI32F32UniformQuantizedPerAxisType(
             gemm_style_op->getLoc(), *rewriter.getContext(), result_scales,
-            zero_points, /*quantization_dimension=*/3);
+            zero_points, quantization_dimension);
 
     new_gemm_style_op_result_type = gemm_style_op_result_type.cloneWith(
         gemm_style_shape, accumulation_quantized_element_type);
@@ -374,7 +376,7 @@ void RewriteGemmStyleOp(func::FuncOp entry_func_op, PatternRewriter& rewriter,
     const double filter_scale = getElementTypeOrSelf(filter_type)
                                     .cast<UniformQuantizedType>()
                                     .getScale();
-    double result_scale = input_scale * filter_scale;
+    const double result_scale = input_scale * filter_scale;
 
     accumulation_quantized_element_type = CreateI32F32UniformQuantizedType(
         gemm_style_op->getLoc(), *rewriter.getContext(), result_scale,
@@ -418,7 +420,7 @@ void RewriteGemmStyleOp(func::FuncOp entry_func_op, PatternRewriter& rewriter,
 template <typename SingularOp>
 // Match for tensor manipulation op.
 LogicalResult MatchSingularOp(func::FuncOp entry_func_op) {
-  auto op_iterator_range = entry_func_op.getOps<SingularOp>();
+  const auto op_iterator_range = entry_func_op.getOps<SingularOp>();
   if (op_iterator_range.empty()) {
     LLVM_DEBUG(llvm::dbgs() << "Function does not have "
                             << SingularOp::getOperationName() << " op.\n");
@@ -442,7 +444,7 @@ void RewriteSingularOp(func::FuncOp entry_func_op, PatternRewriter& rewriter) {
 
   // Get the quantized tensor manipulation op's output type and update.
   Value singular_op_result = singular_op.getResult();
-  auto singular_op_result_type =
+  const auto singular_op_result_type =
       singular_op_result.getType().cast<RankedTensorType>();
   const ArrayRef<int64_t> singular_op_shape =
       singular_op_result_type.getShape();
@@ -462,7 +464,9 @@ void RewriteSingularOp(func::FuncOp entry_func_op, PatternRewriter& rewriter) {
 class QuantizeDotGeneralOpPattern : public EntryFuncBodyQuantizationPattern {
  public:
   explicit QuantizeDotGeneralOpPattern(
-      bool enable_per_channel_quantized_weight) {}
+      const bool enable_per_channel_quantized_weight)
+      : enable_per_channel_quantized_weight_(
+            enable_per_channel_quantized_weight) {}
 
   LogicalResult match(func::FuncOp entry_func_op) const override {
     return MatchGemmStyleOp<DotGeneralOp>(entry_func_op);
@@ -470,17 +474,23 @@ class QuantizeDotGeneralOpPattern : public EntryFuncBodyQuantizationPattern {
 
   void rewrite(func::FuncOp entry_func_op,
                PatternRewriter& rewriter) const override {
-    RewriteGemmStyleOp<DotGeneralOp>(
-        entry_func_op, rewriter,
-        /*enable_per_channel_quantized_weight=*/false);
+    DotGeneralOp dot_general_op = *entry_func_op.getOps<DotGeneralOp>().begin();
+    const bool should_quantize_per_channel =
+        enable_per_channel_quantized_weight_ &&
+        GetDotGeneralQuantizationDim(dot_general_op);
+    RewriteGemmStyleOp<DotGeneralOp>(entry_func_op, rewriter,
+                                     should_quantize_per_channel);
   }
+
+ private:
+  const bool enable_per_channel_quantized_weight_;
 };
 
 // Quantizes the entry function's body containing a `ConvolutionOp`.
 class QuantizeConvolutionOpPattern : public EntryFuncBodyQuantizationPattern {
  public:
   explicit QuantizeConvolutionOpPattern(
-      bool enable_per_channel_quantized_weight)
+      const bool enable_per_channel_quantized_weight)
       : enable_per_channel_quantized_weight_(
             enable_per_channel_quantized_weight) {}
 
@@ -495,15 +505,14 @@ class QuantizeConvolutionOpPattern : public EntryFuncBodyQuantizationPattern {
   }
 
  private:
-  bool enable_per_channel_quantized_weight_;
+  const bool enable_per_channel_quantized_weight_;
 };
 
 // Quantizes the entry function's body containing a `GatherOp`.
 class QuantizeGatherOpPattern : public EntryFuncBodyQuantizationPattern {
  public:
-  explicit QuantizeGatherOpPattern(bool enable_per_channel_quantized_weight)
-      : enable_per_channel_quantized_weight_(
-            enable_per_channel_quantized_weight) {}
+  explicit QuantizeGatherOpPattern(
+      const bool enable_per_channel_quantized_weight) {}
 
   LogicalResult match(func::FuncOp entry_func_op) const override {
     return MatchSingularOp<GatherOp>(entry_func_op);
@@ -513,9 +522,6 @@ class QuantizeGatherOpPattern : public EntryFuncBodyQuantizationPattern {
                PatternRewriter& rewriter) const override {
     RewriteSingularOp<GatherOp>(entry_func_op, rewriter);
   }
-
- private:
-  bool enable_per_channel_quantized_weight_;
 };
 
 // Converts `entry_func_op` to be quantized according to the respective
@@ -524,8 +530,8 @@ class QuantizeGatherOpPattern : public EntryFuncBodyQuantizationPattern {
 // `entry_func_body_quantization_pattern` rewrites the function's body, based on
 // the new signature.
 void QuantizeEntryFuncOp(
-    MLIRContext& ctx, PatternRewriter& rewriter,
-    TF::XlaCallModuleOp xla_call_module_op, func::FuncOp entry_func_op,
+    const MLIRContext& ctx, PatternRewriter& rewriter,
+    const TF::XlaCallModuleOp xla_call_module_op, func::FuncOp entry_func_op,
     const EntryFuncBodyQuantizationPattern& body_rewrite_pattern) {
   SetQuantizedFunctionType(rewriter, entry_func_op, xla_call_module_op);
 
@@ -541,11 +547,11 @@ void QuantizeEntryFuncOp(
 // is expected to remain unquantized (thus having a signature mismatch), and it
 // is also quantized accordingly.
 void ReplaceQuantizedXlaCallModuleOpWithQuantizedCallOp(
-    MLIRContext& ctx, PatternRewriter& rewriter,
+    const MLIRContext& ctx, PatternRewriter& rewriter,
     TF::XlaCallModuleOp xla_call_module_op,
     const EntryFuncBodyQuantizationPattern& body_rewrite_pattern) {
-  ModuleOp module_op = xla_call_module_op->getParentOfType<ModuleOp>();
-  SymbolTable symbol_table(module_op);
+  const ModuleOp module_op = xla_call_module_op->getParentOfType<ModuleOp>();
+  const SymbolTable symbol_table(module_op);
 
   func::FuncOp entry_func_op = GetEntryFuncOp(xla_call_module_op, symbol_table);
   QuantizeEntryFuncOp(ctx, rewriter, xla_call_module_op, entry_func_op,
@@ -574,8 +580,8 @@ template <typename FuncBodyRewritePatternT,
               EntryFuncBodyQuantizationPattern, FuncBodyRewritePatternT>>>
 class XlaCallModuleOpToCallOp : public OpRewritePattern<TF::XlaCallModuleOp> {
  public:
-  explicit XlaCallModuleOpToCallOp(MLIRContext& ctx,
-                                   bool enable_per_channel_quantized_weight)
+  explicit XlaCallModuleOpToCallOp(
+      MLIRContext& ctx, const bool enable_per_channel_quantized_weight)
       : OpRewritePattern<TF::XlaCallModuleOp>(&ctx),
         enable_per_channel_quantized_weight_(
             enable_per_channel_quantized_weight) {}
@@ -604,7 +610,7 @@ class XlaCallModuleOpToCallOp : public OpRewritePattern<TF::XlaCallModuleOp> {
   }
 
  private:
-  bool enable_per_channel_quantized_weight_;
+  const bool enable_per_channel_quantized_weight_;
 };
 
 // Quantizes op with regions such as stablehlo.reduce_window op.
@@ -654,13 +660,13 @@ class QuantizeOpWithRegionPattern
       SmallVector<Value, 4> inputs;
       inputs.reserve(op_with_region->getNumOperands());
       for (Value operand : op_with_region->getOperands()) {
-        Type operand_type = operand.getType();
+        const Type operand_type = operand.getType();
         if (operand_type.isa<NoneType>()) {
           inputs.push_back(operand);
           continue;
         }
 
-        Type element_type =
+        const Type element_type =
             operand.getType().cast<TensorType>().getElementType();
         if (auto dq_op = dyn_cast_or_null<quantfork::DequantizeCastOp>(
                 operand.getDefiningOp())) {
@@ -679,14 +685,14 @@ class QuantizeOpWithRegionPattern
       SmallVector<Value, 4> outputs_replaced;
       SmallVector<Type, 4> output_types;
       output_types.reserve(op_with_region->getNumResults());
-      for (Value result : op_with_region->getResults()) {
-        Type result_type = result.getType();
+      for (const Value result : op_with_region->getResults()) {
+        const Type result_type = result.getType();
         if (result_type.isa<NoneType>()) {
           outputs_replaced.push_back(result);
           output_types.push_back(result_type);
           continue;
         }
-        Type result_element_type =
+        const Type result_element_type =
             result.getType().cast<TensorType>().getElementType();
         // If the user is the QuantizeOp, it must be the only user.
         if (result.hasOneUse() &&
@@ -719,8 +725,9 @@ class QuantizeOpWithRegionPattern
         region.cloneInto(&target_region, mapping);
       }
 
-      Type operand_type = quantized_op->getOperandTypes()[0];
-      Type element_type = operand_type.cast<TensorType>().getElementType();
+      const Type operand_type = quantized_op->getOperandTypes()[0];
+      const Type element_type =
+          operand_type.cast<TensorType>().getElementType();
       for (Region& region : quantized_op->getRegions()) {
         ReplaceTypesInNestedRegion(region, element_type);
       }
@@ -757,7 +764,8 @@ class QuantizeOpWithRegionPattern
 
   // Replaces all types in nested regions under the assumption that the body
   // consists of same-scale ops only.
-  void ReplaceTypesInNestedRegion(Region& region, Type element_type) const {
+  void ReplaceTypesInNestedRegion(Region& region,
+                                  const Type element_type) const {
     for (BlockArgument arg : region.getArguments()) {
       arg.setType(ReplaceElementType(arg.getType(), element_type));
     }
@@ -775,7 +783,7 @@ class QuantizeOpWithRegionPattern
 
   // Replaces element type of the given tensor type while preserving shape of
   // the given type. If the given type is not tensor type, just return itself.
-  Type ReplaceElementType(Type type, Type element_type) const {
+  Type ReplaceElementType(const Type type, const Type element_type) const {
     if (TensorType tensor_type = type.dyn_cast<TensorType>()) {
       return tensor_type.clone(element_type);
     }
@@ -794,7 +802,7 @@ bool IsQuantizedCompositeFunction(func::CallOp call_op) {
 
   bool has_quantized_types = false;
   for (Value operand : call_op.getOperands()) {
-    if (TensorType type = operand.getType().dyn_cast<TensorType>()) {
+    if (const TensorType type = operand.getType().dyn_cast<TensorType>()) {
       if (type.getElementType().isa<FloatType>()) {
         return false;
       }
@@ -804,8 +812,8 @@ bool IsQuantizedCompositeFunction(func::CallOp call_op) {
       }
     }
   }
-  for (Value result : call_op.getResults()) {
-    if (auto type = result.getType().dyn_cast<TensorType>()) {
+  for (const Value result : call_op.getResults()) {
+    if (const auto type = result.getType().dyn_cast<TensorType>()) {
       if (type.getElementType().isa<FloatType>()) {
         return false;
       }
@@ -836,8 +844,8 @@ bool IsConnectedWithQuantizedCompsiteFunction(Operation* same_scale_op) {
 
     // Check whether the preceding op is a quantized same-scale op.
     if (GetStableHloQuantScaleSpec(preceding_op)->has_same_scale_requirement) {
-      for (OpResult result : preceding_op->getResults()) {
-        Type element_type = getElementTypeOrSelf(result.getType());
+      for (const OpResult result : preceding_op->getResults()) {
+        const Type element_type = getElementTypeOrSelf(result.getType());
         if (element_type.isa<UniformQuantizedType>()) {
           return true;
         }
@@ -865,7 +873,7 @@ bool IsConnectedWithQuantizedCompsiteFunction(Operation* same_scale_op) {
       if (GetStableHloQuantScaleSpec(following_op)
               ->has_same_scale_requirement) {
         for (Value operand : following_op->getOperands()) {
-          Type element_type = getElementTypeOrSelf(operand.getType());
+          const Type element_type = getElementTypeOrSelf(operand.getType());
           if (element_type.isa<UniformQuantizedType>()) {
             return true;
           }
@@ -877,19 +885,68 @@ bool IsConnectedWithQuantizedCompsiteFunction(Operation* same_scale_op) {
   return false;
 }
 
+class QuantizeHybridDotGeneralPattern
+    : public EntryFuncBodyQuantizationPattern {
+ public:
+  explicit QuantizeHybridDotGeneralPattern() = default;
+
+  LogicalResult match(func::FuncOp entry_func_op) const override {
+    return MatchGemmStyleOp<DotGeneralOp>(entry_func_op);
+  }
+
+  void rewrite(func::FuncOp entry_func_op,
+               PatternRewriter& rewriter) const override {}
+};
+
+template <typename FuncBodyRewritePatternT,
+          typename = std::enable_if_t<std::is_base_of_v<
+              EntryFuncBodyQuantizationPattern, FuncBodyRewritePatternT>>>
+class HybridXlaCallModuleOpToCallOp
+    : public OpRewritePattern<TF::XlaCallModuleOp> {
+ public:
+  explicit HybridXlaCallModuleOpToCallOp(
+      MLIRContext& ctx, bool enable_per_channel_quantized_weight)
+      : OpRewritePattern<TF::XlaCallModuleOp>(&ctx){};
+
+  LogicalResult match(TF::XlaCallModuleOp op) const override {
+    ModuleOp module_op = op->getParentOfType<ModuleOp>();
+    SymbolTable symbol_table(module_op);
+
+    // Ignore unquantized ops.
+    if (!IsHybridQuantizedOp(op) || !IsOpQuantizableStableHlo(op)) {
+      return failure();
+    }
+
+    func::FuncOp entry_func_op = GetEntryFuncOp(op, symbol_table);
+    if (!entry_func_op) {
+      op->emitError("Failed to find a valid entry function.");
+      return failure();
+    }
+    return FuncBodyRewritePatternT().match(entry_func_op);
+  }
+
+  void rewrite(TF::XlaCallModuleOp xla_call_module_op,
+               PatternRewriter& rewriter) const override {
+    ReplaceQuantizedXlaCallModuleOpWithQuantizedCallOp(
+        *rewriter.getContext(), rewriter, xla_call_module_op,
+        FuncBodyRewritePatternT());
+  }
+};
+
 // TODO: b/307620428 - Increase fused op coverage for static range quantization.
-void PopulateFusedGemmStylePatterns(MLIRContext& ctx,
-                                    RewritePatternSet& patterns,
-                                    bool enable_per_channel_quantized_weight) {
+void PopulateFusedGemmStylePatterns(
+    MLIRContext& ctx, RewritePatternSet& patterns,
+    const bool enable_per_channel_quantized_weight) {
   patterns.add<XlaCallModuleOpToCallOp<QuantizeConvolutionOpPattern>>(
       ctx, enable_per_channel_quantized_weight);
-  // By default, we set `enable_per_channel_quantized_weight` to true for
-  // passes to ensure per-channel quantization for all supported ops.
-  // For ops that do not yet support per-channel quantization, explicitly
-  // mark as false like below. We will soon add support for per-channel
-  // quantization of the following ops.
   patterns.add<XlaCallModuleOpToCallOp<QuantizeDotGeneralOpPattern>>(
-      ctx, /*enable_per_channel_quantized_weight=*/false);
+      ctx, enable_per_channel_quantized_weight);
+}
+
+void PopulateQuantizeHybridPatterns(MLIRContext& ctx,
+                                    RewritePatternSet& patterns) {
+  patterns.add<HybridXlaCallModuleOpToCallOp<QuantizeHybridDotGeneralPattern>>(
+      ctx, false);
 }
 
 void PopulateQuantizeOpWithRegionPattern(MLIRContext& ctx,

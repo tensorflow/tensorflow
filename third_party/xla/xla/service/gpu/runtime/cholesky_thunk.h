@@ -16,19 +16,16 @@ limitations under the License.
 #ifndef XLA_SERVICE_GPU_RUNTIME_CHOLESKY_THUNK_H_
 #define XLA_SERVICE_GPU_RUNTIME_CHOLESKY_THUNK_H_
 
-#include <optional>
+#include <cstdint>
 
-#include "xla/hlo/ir/hlo_instruction.h"
+#include "absl/status/status.h"
 #include "xla/service/buffer_assignment.h"
-#include "xla/service/gpu/buffer_allocations.h"
-#include "xla/service/gpu/cusolver_context.h"
 #include "xla/service/gpu/thunk.h"
 #include "xla/stream_executor/blas.h"
+#include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/gpu/gpu_asm_opts.h"
 #include "xla/stream_executor/stream_executor.h"
-#include "xla/types.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/status.h"
 
 namespace xla {
 namespace gpu {

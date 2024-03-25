@@ -110,6 +110,7 @@ class SaveOptions:
       "experimental_image_format",
       "experimental_skip_saver",
       "experimental_sharding_callback",
+      "extra_tags",
   )
 
   def __init__(
@@ -124,6 +125,7 @@ class SaveOptions:
       experimental_image_format=False,
       experimental_skip_saver=False,
       experimental_sharding_callback=None,
+      extra_tags=None,
   ):
     """Creates an object that stores options for SavedModel saving.
 
@@ -185,6 +187,7 @@ class SaveOptions:
         `tf.train.experimental.ShardByDevicePolicy` and
         `tf.train.experimental.MaxShardSizePolicy`. You may also write a custom
         callback, see `tf.train.experimental.ShardingCallback`.
+      extra_tags: Extra tags to be saved with the MetaGraph in the SavedModel.
     """
     self.namespace_whitelist = _validate_namespace_whitelist(
         namespace_whitelist
@@ -209,11 +212,15 @@ class SaveOptions:
 
     if experimental_sharding_callback is not None:
       if not isinstance(
-          experimental_sharding_callback, sharding_util.ShardingCallback):
-        raise ValueError("The experimental_sharding_callback checkpoint option"
-                         "must be of type ShardingCallback. The option provided"
-                         f"was of type {type(experimental_sharding_callback)}.")
+          experimental_sharding_callback, sharding_util.ShardingCallback
+      ):
+        raise ValueError(
+            "The experimental_sharding_callback checkpoint option"
+            "must be of type ShardingCallback. The option provided"
+            f"was of type {type(experimental_sharding_callback)}."
+        )
     self.experimental_sharding_callback = experimental_sharding_callback
+    self.extra_tags = extra_tags
 
 
 def _validate_namespace_whitelist(namespace_whitelist):

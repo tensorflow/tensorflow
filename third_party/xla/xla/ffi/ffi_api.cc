@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/ffi/ffi_api.h"
 
 #include <cstddef>
+#include <cstdint>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -31,8 +32,6 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/service/service_executable_run_options.h"
 #include "xla/status.h"
-#include "xla/statusor.h"
-#include "tsl/platform/logging.h"
 
 //===----------------------------------------------------------------------===//
 // XLA FFI C structs definition
@@ -108,13 +107,25 @@ static Status RegisterHandler(std::string_view name, std::string_view platform,
   return OkStatus();
 }
 
-StatusOr<XLA_FFI_Handler*> FindHandler(std::string_view name,
-                                       std::string_view platform) {
+absl::StatusOr<XLA_FFI_Handler*> FindHandler(std::string_view name,
+                                             std::string_view platform) {
   auto it = GetHandlerRegistry().find(MakeHandlerKey(name, platform));
   if (it == GetHandlerRegistry().end())
     return absl::NotFoundError(absl::StrCat("No FFI handler registered for ",
                                             name, " on a platform ", platform));
   return it->second;
+}
+
+absl::flat_hash_map<std::string, XLA_FFI_Handler*> StaticRegisteredHandlers(
+    std::string_view platform) {
+  absl::flat_hash_map<std::string, XLA_FFI_Handler*> calls;
+  for (const auto& [metadata, handler] : GetHandlerRegistry()) {
+    if (absl::AsciiStrToLower(platform) == metadata.second) {
+      calls[metadata.first] = handler;
+    }
+  }
+
+  return calls;
 }
 
 //===----------------------------------------------------------------------===//
@@ -247,16 +258,26 @@ static XLA_FFI_Error* XLA_FFI_Stream_Get(XLA_FFI_Stream_Get_Args* args) {
 // XLA FFI Internal Api Implementation
 //===----------------------------------------------------------------------===//
 
-static XLA_FFI_Error* XLA_FFI_Error_Forward(void* status) {
+static XLA_FFI_Error* XLA_FFI_INTERNAL_Error_Forward(void* status) {
   return new XLA_FFI_Error{std::move(*reinterpret_cast<Status*>(status))};
 }
 
-static void* XLA_FFI_ServiceExecutableRunOptions_Get(
-    XLA_FFI_ExecutionContext* ctx) {
-  return const_cast<ServiceExecutableRunOptions*>(ctx->run_options);
+static void* XLA_FFI_INTERNAL_Stream_Get(XLA_FFI_ExecutionContext* ctx) {
+  return ctx->run_options->stream();
 }
 
-static void* XLA_FFI_CalledComputation_Get(XLA_FFI_ExecutionContext* ctx) {
+static int32_t XLA_FFI_INTERNAL_DeviceOrdinal_Get(
+    XLA_FFI_ExecutionContext* ctx) {
+  return ctx->run_options->device_ordinal();
+}
+
+static void* XLA_FFI_INTERNAL_DeviceMemoryAllocator_Get(
+    XLA_FFI_ExecutionContext* ctx) {
+  return ctx->run_options->allocator();
+}
+
+static void* XLA_FFI_INTERNAL_CalledComputation_Get(
+    XLA_FFI_ExecutionContext* ctx) {
   return const_cast<HloComputation*>(ctx->called_computation);
 }
 
@@ -265,9 +286,11 @@ static void* XLA_FFI_CalledComputation_Get(XLA_FFI_ExecutionContext* ctx) {
 //===----------------------------------------------------------------------===//
 
 static XLA_FFI_InternalApi internal_api = {
-    XLA_FFI_Error_Forward,
-    XLA_FFI_ServiceExecutableRunOptions_Get,
-    XLA_FFI_CalledComputation_Get,
+    XLA_FFI_INTERNAL_Error_Forward,
+    XLA_FFI_INTERNAL_Stream_Get,
+    XLA_FFI_INTERNAL_DeviceOrdinal_Get,
+    XLA_FFI_INTERNAL_DeviceMemoryAllocator_Get,
+    XLA_FFI_INTERNAL_CalledComputation_Get,
 };
 
 static XLA_FFI_Api api = {

@@ -21,6 +21,11 @@ load(
 )
 load("//tensorflow:tensorflow.default.bzl", "cc_header_only_library", "filegroup", "get_compatible_with_portable", "tf_cc_shared_library", "tf_cuda_cc_test", "tf_cuda_cc_tests", "tf_disable_ptxas_warning_flags", "tf_kernel_library")
 load(
+    "@local_xla//xla/tsl/mkl:build_defs.bzl",
+    "if_mkl",
+    "mkl_deps",
+)
+load(
     "//tensorflow/core/kernels/mlir_generated:build_defs.bzl",
     "if_mlir_generated_experimental_kernels_enabled",
     "if_mlir_generated_gpu_kernels_enabled",
@@ -30,7 +35,7 @@ load(
     "tf_fingerprint_deps",
 )
 load(
-    "//third_party/mkl:build_defs.bzl",
+    "@local_xla//xla/tsl/mkl:build_defs.bzl",
     "if_mkl",
     "mkl_deps",
 )
@@ -47,11 +52,6 @@ load(
     "tf_cuda_tests_tags",
 )
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
-load(
-    "//third_party/mkl:build_defs.bzl",
-    "if_mkl",
-    "mkl_deps",
-)
 load(
     "@local_config_rocm//rocm:build_defs.bzl",
     "if_rocm",
@@ -1659,6 +1659,24 @@ tf_cc_test(
     name = "batch_kernels_test",
     size = "small",
     srcs = ["batch_kernels_test.cc"],
+    features = ["-layering_check"],
+    deps = [
+        ":batch_kernel_test_util",
+        ":batch_kernels",
+        ":function_ops",
+        ":shape_ops",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+        "//tensorflow/core/kernels/batching_util:warmup",
+        "@local_tsl//tsl/platform:blocking_counter",
+    ],
+)
+
+tf_cc_test(
+    name = "batch_kernels_auto_warmup_test",
+    size = "small",
+    srcs = ["batch_kernels_auto_warmup_test.cc"],
     features = ["-layering_check"],
     deps = [
         ":batch_kernel_test_util",
@@ -7923,10 +7941,8 @@ tf_kernel_library(
 
 # Library to link with when compiling the cwise_op kernels directly,
 # e.g. for selective registration.
-# should not be linked by projects that also link the cwise_op library.
 cc_library(
     name = "cwise_lib",
-    srcs = ["cwise_ops_common.cc"],
     hdrs = [
         "cwise_ops.h",
         "cwise_ops_common.h",

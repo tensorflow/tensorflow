@@ -16,10 +16,11 @@ limitations under the License.
 #ifndef XLA_SERVICE_GPU_KERNELS_TOPK_CUSTOM_KERNEL_H_
 #define XLA_SERVICE_GPU_KERNELS_TOPK_CUSTOM_KERNEL_H_
 
-#include <cstdint>
+#include <cstddef>
+#include <string>
 
+#include "absl/status/statusor.h"
 #include "xla/service/gpu/kernels/custom_kernel.h"
-#include "xla/statusor.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla::gpu::kernel::topk {

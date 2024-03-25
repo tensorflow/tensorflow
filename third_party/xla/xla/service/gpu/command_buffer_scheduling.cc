@@ -18,6 +18,7 @@ limitations under the License.
 #include <algorithm>
 #include <cstddef>
 #include <cstdint>
+#include <iterator>
 #include <optional>
 #include <utility>
 #include <variant>
@@ -28,6 +29,7 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/status/status.h"
+#include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
@@ -42,6 +44,7 @@ limitations under the License.
 #include "xla/service/gpu/cublas_cudnn.h"
 #include "xla/service/gpu/hlo_fusion_analysis.h"
 #include "xla/service/gpu/hlo_traversal.h"
+#include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/variant_visitor.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
@@ -125,7 +128,13 @@ static bool IsCommand(const HloCustomCallInstruction* hlo,
     return true;
   }
 
-  if (hlo->custom_call_target() == "triton_kernel_call") return true;
+  if (config.enabled_commands.contains(DebugOptions::CUSTOM_CALL) &&
+      hlo->custom_call_target() == "triton_kernel_call" &&
+      // TODO(b/327718087): This is an ugly hack to prevent capturing triton
+      // custom calls that might do autotuning at run time.
+      !absl::StrContains(hlo->metadata().op_name(), "Autotuner")) {
+    return true;
+  }
 
   return false;
 }
@@ -136,6 +145,9 @@ static bool IsCommand(const HloInstruction* hlo,
     auto gpu_config = fusion->backend_config<GpuBackendConfig>();
     const FusionBackendConfig& backend_config =
         gpu_config->fusion_backend_config();
+    if (backend_config.kind() == kCuDnnFusionKind) {
+      return config.enabled_commands.contains(DebugOptions::CUDNN);
+    }
     const auto& custom_config = backend_config.custom_fusion_config();
     if (custom_config.name() == "address_computation") {
       auto fusion_analysis =
@@ -281,7 +293,65 @@ CommandBufferScheduling::CollectCommandBufferSequences(
   };
 
   auto& instructions = schedule.instructions();
-  for (size_t i = 0; i < instructions.size(); ++i) {
+
+  // Collect the sequence of instructions that contains the async start and its
+  // corresponding done instruction. If there is another start instruction
+  // between the original start and done, we may potentially extend the sequence
+  // to include its corresponding done instruction. For example, if we call this
+  // function on async-start_a in the following sequence:
+  //
+  // async_start_a
+  // async_start_b
+  // async_done_a
+  // async_done_b
+  //
+  // The returned sequence will contain async_done_b. So that all async pairs
+  // are captured by the same command buffer.
+  auto collect_async_region = [&](const HloInstruction* start) {
+    auto get_index = [&](const HloInstruction* inst) -> size_t {
+      auto it = std::find(instructions.begin(), instructions.end(), inst);
+      return std::distance(instructions.begin(), it);
+    };
+
+    HloInstructionSequence seq;
+    size_t done_index = get_index(FindAsyncDoneCommand(start));
+    for (size_t i = get_index(start); i <= done_index; i++) {
+      HloInstruction* inst = instructions.at(i);
+      if (IsAsyncStartCommand(inst, config)) {
+        const HloInstruction* done = FindAsyncDoneCommand(inst);
+        done_index = std::max(done_index, get_index(done));
+      }
+      seq.push_back(inst);
+    }
+    return seq;
+  };
+
+  // Check that instructions are safe to be captured by command buffer, and that
+  // we do not capture unmatched async done instruction.
+  auto check_async_region = [&](const HloInstructionSequence& seq) {
+    if (!absl::c_all_of(seq.instructions(), [&](HloInstruction* inst) {
+          return IsNoOp(inst) || IsCommand(inst, config) ||
+                 IsAsyncStartCommand(inst, config) ||
+                 IsAsyncDoneCommand(inst, config);
+        })) {
+      return false;
+    }
+
+    absl::flat_hash_set<HloInstruction*> done_instructions;
+    for (const HloInstruction* inst : seq.instructions()) {
+      if (IsAsyncStartCommand(inst, config)) {
+        done_instructions.insert(FindAsyncDoneCommand(inst));
+      }
+      if (IsAsyncDoneCommand(inst, config)) {
+        if (!done_instructions.contains(inst)) {
+          return false;
+        }
+      }
+    }
+    return true;
+  };
+
+  for (size_t i = 0; i < instructions.size(); i++) {
     HloInstruction* inst = instructions.at(i);
 
     // We add no-op instructions to current sequence only if they act as a glue
@@ -300,17 +370,16 @@ CommandBufferScheduling::CollectCommandBufferSequences(
       continue;
     }
 
-    // We currently support only async start commands that are immediately
-    // followed by a corresponding done command. We should fully support
-    // capturing async commands if all instruction between start and done can
+    // We capture async commands if all instruction between start and done can
     // be outlined into a command buffer.
     if (IsAsyncStartCommand(inst, config)) {
-      HloInstruction* done = FindAsyncDoneCommand(inst);
-      if (instructions.at(i + 1) == done) {
-        num_commands_in_current_seq += 2;
-        current_seq.push_back(inst);
-        current_seq.push_back(done);
-        ++i;
+      HloInstructionSequence seq = collect_async_region(inst);
+      if (check_async_region(seq)) {
+        num_commands_in_current_seq += seq.instructions().size();
+        for (HloInstruction* inst : seq.instructions()) {
+          current_seq.push_back(inst);
+        }
+        i += seq.instructions().size() - 1;
         continue;
       }
     }
@@ -636,18 +705,18 @@ absl::StatusOr<bool> CommandBufferScheduling::Run(
   };
 
   // Check if CUDA/ROCM driver supports required features.
-  auto check_cuda = [&](const se::CudaComputeCapability& cuda_comp) {
-    return std::min(gpu_toolkit_version_, gpu_driver_version_) < 12030;
+  auto erase_cuda = [&](const se::CudaComputeCapability& cuda_comp) {
+    if (std::min(gpu_toolkit_version_, gpu_driver_version_) < 12030) {
+      erase(kRequireTracing);       // cuStreamBeginCaptureToGraph
+      erase(kRequireConditionals);  // on-device control flow
+    }
   };
-  auto check_rocm = [&](const se::RocmComputeCapability& rocm_comp) {
-    return true;  // check for ROCM support
+  auto erase_rocm = [&](const se::RocmComputeCapability& rocm_comp) {
+    erase(kRequireConditionals);  // on-device control flow
   };
 
-  if (std::visit(VariantVisitor{check_cuda, check_rocm},
-                 device_description_.gpu_compute_capability())) {
-    erase(kRequireTracing);       // cuStreamBeginCaptureToGraph
-    erase(kRequireConditionals);  // on-device control flow
-  }
+  std::visit(VariantVisitor{erase_cuda, erase_rocm},
+             device_description_.gpu_compute_capability());
 
   auto order = module->MakeComputationPostOrder();
   std::reverse(order.begin(), order.end());

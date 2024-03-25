@@ -38,25 +38,14 @@ struct NcclAllGatherConfig {
 class NcclAllGatherStartThunk : public NcclCollectiveThunk {
  public:
   NcclAllGatherStartThunk(ThunkInfo thunk_info, NcclApi* nccl_api,
-                          mlir::lmhlo_gpu::AllGatherStartOp op,
-                          std::vector<Buffer> buffers);
-
-  NcclAllGatherStartThunk(ThunkInfo thunk_info, NcclApi* nccl_api,
                           const HloAllGatherInstruction* inst,
                           std::vector<Buffer> buffers);
 
   static const char* GetHloOpName() { return "all-gather-start"; }
 
-  static absl::Status CheckImplementable(mlir::lmhlo_gpu::AllGatherStartOp op,
-                                         int64_t replica_count,
-                                         int64_t partition_count);
-
   static absl::Status CheckImplementable(const HloAllGatherInstruction* inst,
                                          int64_t replica_count,
                                          int64_t partition_count);
-
-  static CollectiveOpGroupMode GetGroupMode(
-      mlir::lmhlo_gpu::AllGatherStartOp op);
 
   static CollectiveOpGroupMode GetGroupMode(
       const HloAllGatherInstruction* inst);

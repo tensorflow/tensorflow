@@ -17,18 +17,20 @@ limitations under the License.
 #define XLA_STREAM_EXECUTOR_GPU_GPU_BLAS_LT_H_
 
 #include <any>
+#include <cstddef>
 #include <cstdint>
+#include <memory>
 #include <optional>
 #include <utility>
 #include <vector>
 
-#include "xla/shape.h"
 #include "xla/status.h"
-#include "xla/statusor.h"
 #include "xla/stream_executor/blas.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/host_or_device_scalar.h"
 #include "xla/types.h"
+#include "xla/xla_data.pb.h"
+#include "tsl/platform/errors.h"
 
 namespace stream_executor::gpu {
 
@@ -37,8 +39,8 @@ absl::StatusOr<blas::DataType> AsBlasDataType(xla::PrimitiveType dtype);
 absl::StatusOr<xla::PrimitiveType> AsXlaPrimitiveType(blas::DataType dtype);
 
 absl::StatusOr<blas::ComputationType> GetBlasComputationType(
-    xla::PrimitiveType lhs_dtype, xla::PrimitiveType output_dtype,
-    int64_t compute_precision);
+    xla::PrecisionConfig::Algorithm algorithm, xla::PrimitiveType lhs_dtype,
+    xla::PrimitiveType output_dtype, int64_t compute_precision);
 
 // Returns the type for the alpha and beta scalars.
 blas::DataType GetScaleType(blas::DataType c_type,
@@ -110,6 +112,9 @@ struct GemmConfig {  // plain GemmConfig which is extended with create functions
   xla::complex128 alpha;
   double beta;
   int64_t compute_precision;
+  // PrecisionConfig-level algorithm
+  xla::PrecisionConfig::Algorithm precision_algorithm;
+  // BLAS-library-level algorithm.
   std::optional<int64_t> algorithm;
   bool grad_x;
   bool grad_y;

@@ -34,7 +34,7 @@ namespace op = xla::testing::opcode_matchers;
 
 class HloControlFlowFlatteningTest : public HloTestBase {
  public:
-  StatusOr<std::unique_ptr<HloModule>> PartitionComputation(
+  absl::StatusOr<std::unique_ptr<HloModule>> PartitionComputation(
       std::unique_ptr<VerifiedHloModule> hlo_module, int64_t num_devices = 2) {
     spmd::SpmdPartitionerOptions options;
     auto collective_ops_creator =
@@ -52,7 +52,7 @@ class HloControlFlowFlatteningTest : public HloTestBase {
     pass.AddPass<HloVerifier>(/*layout_sensitive=*/false,
                               /*allow_mixed_precision=*/false);
     TF_RETURN_IF_ERROR(pass.Run(hlo_module.get()).status());
-    return StatusOr<std::unique_ptr<HloModule>>(std::move(hlo_module));
+    return absl::StatusOr<std::unique_ptr<HloModule>>(std::move(hlo_module));
   }
 };
 
@@ -790,6 +790,27 @@ ENTRY main {
   EXPECT_THAT(module->entry_computation()->root_instruction(),
               op::CustomCall(op::Parameter(0), op::Parameter(1)));
   EXPECT_EQ(module->entry_computation()->root_instruction()->name(), "fusion");
+}
+
+TEST_F(HloControlFlowFlatteningTest, AsyncAllToAll) {
+  absl::string_view hlo = R"(
+
+  ENTRY main {
+  param = f32[4,8,128]{2,1,0} parameter(0)
+  all-to-all-start = ((f32[4,8,128]{2,1,0}), f32[4,8,128]{2,1,0}, u32[], u32[]) all-to-all-start(param), channel_id=1, replica_groups={{0,1,2,3,4,5,6,7}}, dimensions={1}
+  ROOT all-to-all-done = f32[4,8,128]{2,1,0} all-to-all-done(all-to-all-start)
+  }
+    )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
+  EXPECT_TRUE(IsCollective(module->entry_computation()->root_instruction()));
+  HloControlFlowFlattening flattening({});
+  EXPECT_TRUE(flattening.Run(module.get()).value());
+  TF_ASSERT_OK(HloVerifier(/*layout_sensitive=*/true,
+                           /*allow_mixed_precision=*/true)
+                   .Run(module.get())
+                   .status());
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              op::CustomCall(op::CustomCall(op::Parameter(0))));
 }
 
 void CheckWhileBound(HloInstruction* while_op, int expected_bound) {

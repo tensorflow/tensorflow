@@ -25,6 +25,10 @@ load(
     "tf_cc_shared_library",
 )
 load(
+    "@local_xla//xla/tsl/mkl:build_defs.bzl",
+    "if_mkl_ml",
+)
+load(
     "//tensorflow/core/platform:build_config.bzl",
     "tf_additional_binary_deps",
 )
@@ -34,12 +38,9 @@ load(
     "tf_additional_plugin_deps",
     "tf_additional_profiler_deps",
 )
-load(
-    "//third_party/mkl:build_defs.bzl",
-    "if_mkl_ml",
-)
 load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
 
+# Do not sort: Copybara rule
 # copybara:uncomment_begin
 # # buildifier: disable=out-of-order-load
 # load("//devtools/build_cleaner/skylark:action_config_test.bzl", "action_config_test")
@@ -1068,6 +1069,7 @@ package_group(
         "//third_party/py/tf_keras/...",
         "//third_party/yggdrasil_decision_forests/...",
         "//waymo/ml/cn/...",
+        "//waymo/ml/models/...",
     ],
 )
 
@@ -1094,7 +1096,7 @@ filegroup(
     name = "intel_binary_blob",
     data = if_mkl_ml(
         [
-            "//third_party/mkl:intel_binary_blob",
+            "@local_xla//xla/tsl/mkl:intel_binary_blob",
         ],
     ),
 )
@@ -1108,7 +1110,6 @@ bzl_library(
         "//tensorflow/core/platform:rules_cc_bzl",
         "//third_party/compute_library:build_defs_bzl",
         "//third_party/llvm_openmp:openmp_bzl",
-        "//third_party/mkl:build_defs_bzl",
         "//third_party/mkl_dnn:build_defs_bzl",
         "@bazel_skylib//lib:new_sets",
         "@bazel_skylib//rules:common_settings",
@@ -1117,6 +1118,7 @@ bzl_library(
         "@local_config_tensorrt//:build_defs_bzl",
         "@local_tsl//tsl:tsl_bzl",
         "@local_tsl//tsl/platform/default:cuda_build_defs_bzl",
+        "@local_xla//xla/tsl/mkl:build_defs_bzl",
     ],
 )
 
@@ -1375,9 +1377,9 @@ tf_cc_shared_library(
         "//tensorflow/compiler/mlir/lite/python:jax_to_tfl_flatbuffer",
         "//tensorflow/compiler/mlir/lite/python:saved_model_to_tfl_flatbuffer",
         "//tensorflow/compiler/mlir/lite/quantization/lite:quantize_model",
-        "//tensorflow/compiler/mlir/lite/quantization:quantization_config",
+        "//tensorflow/compiler/mlir/quantization/common/quantization_lib:quantization_config",
         "//tensorflow/compiler/mlir/lite/sparsity:sparsify_model",
-        "//tensorflow/compiler/mlir/quantization/stablehlo/cc:static_range_ptq_impl",
+        "//tensorflow/compiler/mlir/quantization/stablehlo/python:pywrap_quantization_lib_impl",
         "//tensorflow/compiler/mlir/quantization/tensorflow/calibrator:custom_aggregator_op",
         "//tensorflow/compiler/mlir/quantization/tensorflow/python:quantize_model_cc_impl",
         "//tensorflow/compiler/mlir/quantization/tensorflow:passes",

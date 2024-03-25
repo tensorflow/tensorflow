@@ -86,7 +86,7 @@ Status ValidateArrayCreationInput(std::shared_ptr<const Sharding> sharding,
 
 // Validates the PjRtBuffers have consistent memory kind and returns the memory
 // kind.
-StatusOr<MemoryKind> GetMemoryKindFromPjRtBuffers(
+absl::StatusOr<MemoryKind> GetMemoryKindFromPjRtBuffers(
     const PjRtArray::PjRtBuffers& pjrt_buffers) {
   const auto first_memory_kind =
       MakeMemoryKindFromPjRtBuffer(pjrt_buffers.front().get());
@@ -110,7 +110,7 @@ StatusOr<MemoryKind> GetMemoryKindFromPjRtBuffers(
 char PjRtCompatibleArray::ID = 0;
 char PjRtArray::ID = 0;
 
-StatusOr<xla::PrimitiveType> ToPrimitiveType(DType dtype) {
+absl::StatusOr<xla::PrimitiveType> ToPrimitiveType(DType dtype) {
   switch (dtype.kind()) {
 #define CASE(DT, PT)                                                      \
   case DT:                                                                \
@@ -149,7 +149,7 @@ StatusOr<xla::PrimitiveType> ToPrimitiveType(DType dtype) {
   return InvalidArgument("Invalid DType: %d", static_cast<int>(dtype.kind()));
 }
 
-StatusOr<DType> ToDType(xla::PrimitiveType primitive_type) {
+absl::StatusOr<DType> ToDType(xla::PrimitiveType primitive_type) {
   switch (primitive_type) {
     case xla::PrimitiveType::PRIMITIVE_TYPE_INVALID:
     case xla::PrimitiveType::PRED:
@@ -189,7 +189,7 @@ MemoryKind MakeMemoryKindFromPjRtBuffer(PjRtBuffer* pjrt_buffer) {
   return MemoryKind(pjrt_buffer->memory_space()->memory_space_kind());
 }
 
-StatusOr<tsl::RCReference<PjRtArray>> PjRtArray::Create(
+absl::StatusOr<tsl::RCReference<PjRtArray>> PjRtArray::Create(
     PjRtCompatibleClient* client, DType dtype, Shape shape,
     std::shared_ptr<const Sharding> sharding, PjRtBuffers pjrt_buffers) {
   TF_RETURN_IF_ERROR(ValidateArrayCreationInput(sharding, pjrt_buffers));
@@ -197,7 +197,7 @@ StatusOr<tsl::RCReference<PjRtArray>> PjRtArray::Create(
                                  std::move(sharding), std::move(pjrt_buffers));
 }
 
-StatusOr<tsl::RCReference<PjRtArray>> PjRtArray::Create(
+absl::StatusOr<tsl::RCReference<PjRtArray>> PjRtArray::Create(
     PjRtCompatibleClient* client, DType dtype, DynamicShape dynamic_shape,
     std::shared_ptr<const Sharding> sharding, PjRtBuffers pjrt_buffers) {
   TF_RETURN_IF_ERROR(ValidateArrayCreationInput(sharding, pjrt_buffers));
@@ -205,7 +205,7 @@ StatusOr<tsl::RCReference<PjRtArray>> PjRtArray::Create(
                                  std::move(sharding), std::move(pjrt_buffers));
 }
 
-StatusOr<tsl::RCReference<PjRtArray>> PjRtArray::Create(
+absl::StatusOr<tsl::RCReference<PjRtArray>> PjRtArray::Create(
     PjRtCompatibleClient* client, std::shared_ptr<PjRtBuffer> pjrt_buffer) {
   TF_ASSIGN_OR_RETURN(auto dtype, ToDType(pjrt_buffer->element_type()));
   Shape shape(pjrt_buffer->dimensions());
@@ -216,7 +216,7 @@ StatusOr<tsl::RCReference<PjRtArray>> PjRtArray::Create(
                                  PjRtBuffers({std::move(pjrt_buffer)}));
 }
 
-StatusOr<tsl::RCReference<Array>> PjRtArray::FullyReplicatedShard(
+absl::StatusOr<tsl::RCReference<Array>> PjRtArray::FullyReplicatedShard(
     ArrayCopySemantics semantics) {
   return PjRtArray::Create(client(), GetPjRtBuffer(semantics, 0));
 }
@@ -237,7 +237,7 @@ std::shared_ptr<PjRtBuffer> PjRtArray::GetPjRtBuffer(
   }
 }
 
-StatusOr<tsl::RCReference<PjRtArray>> PjRtArray::Create(
+absl::StatusOr<tsl::RCReference<PjRtArray>> PjRtArray::Create(
     PjRtCompatibleClient* client, Shape shape, PjRtBuffers pjrt_buffers) {
   TF_ASSIGN_OR_RETURN(auto dtype,
                       xla::ifrt::ToDType(pjrt_buffers.front()->element_type()));
@@ -261,7 +261,7 @@ StatusOr<tsl::RCReference<PjRtArray>> PjRtArray::Create(
                            std::move(pjrt_buffers));
 }
 
-StatusOr<tsl::RCReference<PjRtArray>> PjRtArray::Create(
+absl::StatusOr<tsl::RCReference<PjRtArray>> PjRtArray::Create(
     PjRtCompatibleClient* client, DynamicShape dynamic_shape,
     PjRtBuffers pjrt_buffers) {
   TF_ASSIGN_OR_RETURN(auto dtype,
@@ -311,7 +311,7 @@ PjRtArray::PjRtArray(PjRtCompatibleClient* client, DType dtype,
       sharding_(std::move(sharding)),
       pjrt_buffers_(std::move(pjrt_buffers)) {}
 
-StatusOr<std::vector<tsl::RCReference<Array>>>
+absl::StatusOr<std::vector<tsl::RCReference<Array>>>
 PjRtArray::DisassembleIntoSingleDeviceArrays(ArrayCopySemantics semantics) {
   DCHECK(this);
   std::vector<tsl::RCReference<Array>> result;
@@ -356,7 +356,7 @@ Future<Status> PjRtArray::CopyToHostBuffer(
 
   PjRtBuffer* pjrt_buffer = pjrt_buffers_.front().get();
   absl::Span<const int64_t> dims;
-  StatusOr<std::vector<int64_t>> logical_dims;
+  absl::StatusOr<std::vector<int64_t>> logical_dims;
   if (!pjrt_buffer->has_dynamic_dimensions()) {
     dims = std::get<Shape>(shape_).dims();
   } else {
@@ -401,7 +401,7 @@ Future<Status> PjRtArray::CopyToHostBuffer(
 }
 
 // TODO(yashkatariya): Maybe move this to ifrt::Device?
-StatusOr<PjRtMemorySpace*> GetMemorySpaceFromMemoryKind(
+absl::StatusOr<PjRtMemorySpace*> GetMemorySpaceFromMemoryKind(
     ifrt::Device* device, ifrt::MemoryKind memory_kind) {
   PjRtMemorySpace* memory_space = nullptr;
   for (PjRtMemorySpace* ms : device->memory_spaces()) {
@@ -422,7 +422,7 @@ StatusOr<PjRtMemorySpace*> GetMemorySpaceFromMemoryKind(
   return memory_space;
 }
 
-StatusOr<tsl::RCReference<Array>> PjRtArray::Reshard(
+absl::StatusOr<tsl::RCReference<Array>> PjRtArray::Reshard(
     std::shared_ptr<const Sharding> new_sharding,
     ArrayCopySemantics semantics) {
   DCHECK(this);

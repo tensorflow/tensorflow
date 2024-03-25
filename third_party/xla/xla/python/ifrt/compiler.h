@@ -65,7 +65,7 @@ class Compiler : public llvm::RTTIExtends<Compiler, llvm::RTTIRoot> {
  public:
   // Compiles `mlir_module` and returns a `LoadedExecutable`.
   // TODO(hyeontaek): Move executable loading to `Client`.
-  virtual StatusOr<std::unique_ptr<LoadedExecutable>> Compile(
+  virtual absl::StatusOr<std::unique_ptr<LoadedExecutable>> Compile(
       std::unique_ptr<Program> program,
       std::unique_ptr<CompileOptions> options) = 0;
 
@@ -73,7 +73,7 @@ class Compiler : public llvm::RTTIExtends<Compiler, llvm::RTTIRoot> {
   // `LoadedExecutable::Serialize()`. The compatibility of `serialized` is
   // implementation specific.
   // TODO(hyeontaek): Move executable loading to `Client`.
-  virtual StatusOr<std::unique_ptr<LoadedExecutable>>
+  virtual absl::StatusOr<std::unique_ptr<LoadedExecutable>>
   DeserializeLoadedExecutable(
       absl::string_view serialized,
       std::unique_ptr<DeserializeExecutableOptions> options) = 0;

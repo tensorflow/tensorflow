@@ -49,11 +49,12 @@ namespace xla::gpu {
 
 enum class AsyncStreamKind : int64_t {
   kCollective = 0,  // Stream for asynchronous collective ops.
-  kP2P = 1,         // Stream for P2P Send and Recv ops.
+  kP2P0 = 1,        // One Stream for P2P Send and Recv ops.
+  kP2P1 = 2,        // Another Stream for P2P Send and Recv ops.
 };
 
 constexpr static int64_t kAsyncStreamTotal =
-    static_cast<int64_t>(AsyncStreamKind::kP2P) + 1;
+    static_cast<int64_t>(AsyncStreamKind::kP2P1) + 1;
 
 // Assigns a unique ID to a stream for asynchronous or synchronous execution.
 // These IDs can be used, for example, to look up the NCCL communicator.
@@ -73,10 +74,13 @@ inline uint64_t GetStreamId(
 // executable.
 class NcclCliqueKey {
  public:
-  explicit NcclCliqueKey(std::vector<GlobalDeviceId> devices,
-                         int64_t stream_id = 0);
+  explicit NcclCliqueKey(
+      std::vector<GlobalDeviceId> devices, int64_t stream_id = 0,
+      AsyncStreamKind stream_kind = AsyncStreamKind::kCollective);
 
   absl::Span<const GlobalDeviceId> devices() const;
+
+  int64_t stream_id() const;
 
   // Returns the rank of the global device in the clique.
   std::optional<int64_t> rank(GlobalDeviceId id) const;
@@ -84,6 +88,11 @@ class NcclCliqueKey {
   // Returns true if this clique is a subset of `other`: both cliques have the
   // same `stream_id` and all clique devices are part of `other` clique.
   bool IsSubsetOf(const NcclCliqueKey& other) const;
+
+  // Returns the stream kind for this clique key,
+  // stream kind will be used to specify what configuration
+  // to pass for each type of operation.
+  AsyncStreamKind stream_kind() const { return stream_kind_; }
 
   std::string ToString() const;
 
@@ -95,8 +104,9 @@ class NcclCliqueKey {
   friend bool operator>(const NcclCliqueKey& a, const NcclCliqueKey& b);
 
  private:
-  const std::vector<GlobalDeviceId> devices_;
-  const int64_t stream_id_;
+  std::vector<GlobalDeviceId> devices_;
+  int64_t stream_id_;
+  AsyncStreamKind stream_kind_;
 };
 
 template <typename H>

@@ -48,15 +48,20 @@ cc_library(
     srcs = [
         "passes/convert_func_to_bfloat16.cc",
         "passes/convert_xla_call_module_op_to_bfloat16.cc",
+        "passes/fold_constant_transpose_pass.cc",
         "passes/lift_quantizable_spots_as_functions.cc",
         "passes/lift_quantizable_spots_as_functions_fusion.inc",
         "passes/lift_quantizable_spots_as_functions_simple.inc",
+        "passes/nchw_convolution_to_nhwc.cc",
         "passes/optimize_graph.cc",
         "passes/post_quantize.cc",
         "passes/prepare_quantize.cc",
+        "passes/prepare_quantize_hybrid.cc",
         "passes/quantize.cc",
         "passes/quantize_composite_functions.cc",
         "passes/quantize_weight.cc",
+        "passes/remove_sharding_custom_call.cc",
+        "passes/remove_sharding_custom_call.inc",
         "passes/replace_stablehlo_ops_in_main_function_with_xla_call_module_ops.cc",
         "passes/restore_function_name.cc",
         "passes/unfuse_mhlo_batch_norm.cc",
@@ -76,16 +81,18 @@ cc_library(
         ":quantization_config_proto_cc",
         ":quantization_options_proto_cc",
         ":quantization_patterns",
+        ":remove_sharding_custom_call_inc_gen",
         ":stablehlo_passes_inc_gen",
         ":stablehlo_type_utils",
         "//tensorflow/compiler/mlir/lite:tensorflow_lite",
-        "//tensorflow/compiler/mlir/lite/quantization:quantization_config",
-        "//tensorflow/compiler/mlir/lite/quantization:quantization_lib",
         "//tensorflow/compiler/mlir/lite/quantization/ir:QuantOps",
         "//tensorflow/compiler/mlir/quantization/common:attrs_and_constraints",
         "//tensorflow/compiler/mlir/quantization/common:func",
         "//tensorflow/compiler/mlir/quantization/common:lift_as_function_call",
+        "//tensorflow/compiler/mlir/quantization/common:uniform_quantized_types",
         "//tensorflow/compiler/mlir/quantization/common/ir:QuantOps",
+        "//tensorflow/compiler/mlir/quantization/common/quantization_lib",
+        "//tensorflow/compiler/mlir/quantization/common/quantization_lib:quantization_config",
         "//tensorflow/compiler/mlir/quantization/stablehlo/ops:stablehlo_op_quant_spec",
         "//tensorflow/compiler/mlir/quantization/tensorflow:passes",
         "//tensorflow/compiler/mlir/quantization/tensorflow:quantization_options_proto_cc",
@@ -125,6 +132,7 @@ cc_library(
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TransformUtils",
         "@llvm-project//mlir:Transforms",
+        "@local_tsl//tsl/platform:protobuf",
         "@local_tsl//tsl/platform:regexp",
         "@local_tsl//tsl/platform:str_util",
         "@local_tsl//tsl/protobuf:protos_all_cc",
@@ -146,10 +154,10 @@ cc_library(
     ],
     compatible_with = get_compatible_with_portable(),
     deps = [
-        "//tensorflow/compiler/mlir/lite/quantization:quantization_lib",
         "//tensorflow/compiler/mlir/lite/quantization/ir:QuantOps",
         "//tensorflow/compiler/mlir/quantization/common:attrs_and_constraints",
         "//tensorflow/compiler/mlir/quantization/common:uniform_quantized_types",
+        "//tensorflow/compiler/mlir/quantization/common/quantization_lib",
         "//tensorflow/compiler/mlir/quantization/stablehlo/ops:stablehlo_op_quant_spec",
         "//tensorflow/compiler/mlir/quantization/tensorflow:passes",
         "//tensorflow/compiler/mlir/quantization/tensorflow:quantization_options_proto_cc",
@@ -174,6 +182,7 @@ td_library(
         "passes/lift_quantizable_spots_as_functions_fusion.td",
         "passes/lift_quantizable_spots_as_functions_simple.td",
         "passes/optimize_graph.td",
+        "passes/remove_sharding_custom_call.td",
     ],
     compatible_with = get_compatible_with_portable(),
     deps = [
@@ -239,6 +248,22 @@ gentbl_cc_library(
 )
 
 gentbl_cc_library(
+    name = "remove_sharding_custom_call_inc_gen",
+    compatible_with = get_compatible_with_portable(),
+    tbl_outs = [
+        (
+            ["-gen-rewriters"],
+            "passes/remove_sharding_custom_call.inc",
+        ),
+    ],
+    tblgen = "@llvm-project//mlir:mlir-tblgen",
+    td_file = "passes/remove_sharding_custom_call.td",
+    deps = [
+        ":quant_td_files",
+    ],
+)
+
+gentbl_cc_library(
     name = "bridge_passes_inc_gen",
     compatible_with = get_compatible_with_portable(),
     tbl_outs = [
@@ -260,7 +285,6 @@ gentbl_cc_library(
 cc_library(
     name = "bridge_passes",
     srcs = [
-        "passes/bridge/convert_mhlo_quant_to_int.cc",
         "passes/bridge/convert_tf_quant_ops_to_mhlo.cc",
         "passes/bridge/convert_tf_quant_types.cc",
         "passes/bridge/optimize.cc",
@@ -397,6 +421,7 @@ tf_cc_test(
         "//tensorflow/compiler/mlir/tf2xla/api/v2:legalize_tf",
         "//tensorflow/compiler/tf2xla:xla_helpers",
         "//tensorflow/core:framework",
+        "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core/protobuf:for_core_protos_cc",
@@ -588,7 +613,7 @@ cc_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/framework:numeric_types",
-        "//tensorflow/core/platform:status",
+        "@com_google_absl//absl/status",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Support",

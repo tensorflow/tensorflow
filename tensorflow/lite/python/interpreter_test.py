@@ -426,6 +426,36 @@ class InterpreterTensorAccessorTest(test_util.TensorFlowTestCase):
     del in0safe  # make sure in0Safe is held but lint doesn't complain
 
 
+class InterpreterNodeAccessTest(test_util.TensorFlowTestCase):
+
+  def setUp(self):
+    super().setUp()
+    self.interpreter = interpreter_wrapper.Interpreter(
+        model_path=resource_loader.get_path_to_datafile(
+            'testdata/permute_float.tflite'
+        )
+    )
+    self.interpreter.allocate_tensors()
+    self.input0 = self.interpreter.get_input_details()[0]['index']
+    self.initial_data = np.array([[-1.0, -2.0, -3.0, -4.0]], np.float32)
+
+  def testValidNode(self):
+    """Check that tensor returns a reference."""
+    ops_details = self.interpreter._get_ops_details()
+    self.assertEqual(ops_details[0]['index'], 0)
+    self.assertEqual(ops_details[0]['op_name'], 'FULLY_CONNECTED')
+    self.assertAllEqual(ops_details[0]['inputs'], [0, 1, -1])
+    self.assertAllEqual(ops_details[0]['outputs'], [2])
+    self.assertAllEqual(
+        ops_details[0]['operand_types'], [np.float32, np.float32]
+    )
+    self.assertAllEqual(ops_details[0]['result_types'], [np.float32])
+
+  def testInvalidNode(self):
+    with self.assertRaisesRegex(ValueError, 'Invalid node index'):
+      self.interpreter._get_op_details(4)
+
+
 class InterpreterDelegateTest(test_util.TensorFlowTestCase):
 
   def setUp(self):

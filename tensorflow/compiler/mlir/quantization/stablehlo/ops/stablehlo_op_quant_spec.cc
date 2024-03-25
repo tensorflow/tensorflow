@@ -17,20 +17,51 @@ limitations under the License.
 
 #include <memory>
 
+#include "absl/status/statusor.h"
 #include "llvm/Support/Casting.h"
+#include "llvm/Support/Debug.h"
+#include "llvm/Support/raw_ostream.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/OpDefinition.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
+#include "mlir/IR/SymbolTable.h"  // from @llvm-project  // IWYU pragma: keep
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "stablehlo/dialect/StablehloOps.h"  // from @stablehlo
 #include "tensorflow/compiler/mlir/lite/quantization/ir/QuantOps.h"
-#include "tensorflow/compiler/mlir/lite/quantization/quantization_utils.h"
+#include "tensorflow/compiler/mlir/quantization/common/attrs_and_constraints.h"
+#include "tensorflow/compiler/mlir/quantization/common/lift_as_function_call.h"
+#include "tensorflow/compiler/mlir/quantization/common/quantization_lib/quantization_utils.h"
+#include "tensorflow/compiler/mlir/quantization/stablehlo/quantization_config.pb.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/quantization_options.pb.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
+#include "tsl/platform/protobuf.h"  // IWYU pragma: keep
+
+// To be used with LLVM_DEBUG.
+#define DEBUG_TYPE "stablehlo_opt_quant_spec"
 
 namespace mlir::quant::stablehlo {
+namespace {
+
+using ::mlir::stablehlo::DotGeneralOp;
+using ::stablehlo::quantization::Method;
+
+// Whether it represents a lifted function (i.e. `op` is the corresponding
+// `XlaCallModuleOp`) that is explicitly marked `NoQuantization`.
+bool IsDenylistedLiftedFunction(Operation* op) {
+  if (auto xla_call_module_op = dyn_cast_or_null<TF::XlaCallModuleOp>(op);
+      xla_call_module_op != nullptr) {
+    absl::StatusOr<Method> method = GetQuantizationMethod(xla_call_module_op);
+    if (method.ok() && method->has_no_quantization()) {
+      return true;
+    }
+  }
+  return false;
+}
+
+}  // namespace
 
 std::unique_ptr<OpQuantSpec> GetStableHloOpQuantSpec(Operation* op) {
   auto spec = std::make_unique<OpQuantSpec>();
@@ -48,13 +79,16 @@ std::unique_ptr<OpQuantSpec> GetStableHloOpQuantSpec(Operation* op) {
                                   quant::GetUniformQuantizedTypeForBias};
       }
     } else if (function_name.contains("dot_general")) {
-      spec->coeff_op_quant_dim[1] = -1;
-      if (function_name.contains("with_bias")) {
-        spec->biases_params[2] = {{0, 1},
-                                  quant::GetUniformQuantizedTypeForBias};
+      const auto module_op = call_op->getParentOfType<ModuleOp>();
+
+      const SymbolTable symbol_table(module_op);
+      auto entry_func_op =
+          dyn_cast_or_null<func::FuncOp>(symbol_table.lookup(function_name));
+      auto dot_general_op = *entry_func_op.getOps<DotGeneralOp>().begin();
+      if (auto optional_dim = GetDotGeneralQuantizationDim(dot_general_op);
+          optional_dim) {
+        spec->coeff_op_quant_dim[1] = optional_dim.value();
       }
-    } else if (function_name.contains("dot")) {
-      spec->coeff_op_quant_dim[1] = -1;
       if (function_name.contains("with_bias")) {
         spec->biases_params[2] = {{0, 1},
                                   quant::GetUniformQuantizedTypeForBias};
@@ -70,7 +104,9 @@ std::unique_ptr<OpQuantSpec> GetStableHloOpQuantSpec(Operation* op) {
 std::unique_ptr<OpQuantScaleSpec> GetStableHloQuantScaleSpec(Operation* op) {
   auto scale_spec = std::make_unique<OpQuantScaleSpec>();
   if (llvm::isa<mlir::stablehlo::BroadcastInDimOp,
-                mlir::stablehlo::ConcatenateOp, mlir::stablehlo::GatherOp,
+                mlir::stablehlo::ConcatenateOp,
+                mlir::stablehlo::DynamicReshapeOp,
+                mlir::stablehlo::DynamicSliceOp, mlir::stablehlo::GatherOp,
                 mlir::stablehlo::PadOp, mlir::stablehlo::ReduceWindowOp,
                 mlir::stablehlo::ReshapeOp, mlir::stablehlo::SelectOp,
                 mlir::stablehlo::SliceOp, mlir::stablehlo::TransposeOp>(op)) {
@@ -87,6 +123,15 @@ bool IsOpQuantizableStableHlo(Operation* op) {
   } else if (op->hasTrait<OpTrait::IsTerminator>() ||
              isa<quantfork::QuantizeCastOp, quantfork::DequantizeCastOp>(op)) {
     // Terminators, qcast and decast are not quantizable.
+    return false;
+  }
+
+  // `op` is not quantizable when it is an `XlaCallModuleOp` representing lifted
+  // function whose `_quantization_method` attribute is marked `NoQuantization`.
+  // This means this quantizable unit has been explicitly denylisted by the
+  // user.
+  if (IsDenylistedLiftedFunction(op)) {
+    LLVM_DEBUG(llvm::errs() << "Denylisted quantizable unit: \n" << op << "\n");
     return false;
   }
 

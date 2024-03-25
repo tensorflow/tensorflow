@@ -19,6 +19,7 @@ limitations under the License.
 #include <stddef.h>
 
 #include "absl/crc/crc32c.h"
+#include "absl/strings/string_view.h"
 #include "tsl/platform/cord.h"
 #include "tsl/platform/platform.h"
 #include "tsl/platform/types.h"

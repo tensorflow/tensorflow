@@ -1910,7 +1910,7 @@ Status CreateTfExecutorToTfrtPipeline(mlir::PassManager &pm,
       CreateTFExecutorToTFPreInvariantOptimizationPipeline(pm, options));
   CreateTFExecutorToTFInvariantOptimizationPipelineHelper(pm, options);
   CreateTfToTfrtPipeline(pm, options);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status CreateTFExecutorToTFPipeline(mlir::PassManager &pm,
@@ -1918,7 +1918,7 @@ Status CreateTFExecutorToTFPipeline(mlir::PassManager &pm,
   TF_RETURN_IF_ERROR(
       CreateTFExecutorToTFPreInvariantOptimizationPipeline(pm, options));
   CreateTFExecutorToTFInvariantOptimizationPipelineHelper(pm, options);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 static mlir::PassRegistration<TfToTfrtConversionPass> tf_to_tfrt_pass;

@@ -18,21 +18,18 @@ limitations under the License.
 
 #include "xla/python/transfer_guard_lib.h"
 
-#include <memory>
 #include <optional>
 #include <string>
 
-#include "absl/base/attributes.h"
-#include "pybind11/cast.h"  // from @pybind11
-#include "pybind11/pybind11.h"  // from @pybind11
-#include "pybind11_abseil/absl_casters.h"  // from @pybind11_abseil
-#include "xla/pjrt/status_casters.h"
-#include "xla/status.h"
+#include "absl/functional/function_ref.h"
+#include "absl/status/status.h"
+#include "third_party/nanobind/include/nanobind/nanobind.h"
+#include "third_party/nanobind/include/nanobind/stl/optional.h"  // IWYU pragma: keep
 #include "xla/util.h"
 
 namespace jax {
 
-namespace py = ::pybind11;
+namespace nb = ::nanobind;
 
 namespace {
 
@@ -102,7 +99,7 @@ TransferGuardAction GetTransferGuardActionForDeviceToHost() {
 
 }  // namespace
 
-xla::Status ApplyTransferGuardToHostToDevice(
+absl::Status ApplyTransferGuardToHostToDevice(
     absl::FunctionRef<std::string()> formatter) {
   switch (GetTransferGuardActionForHostToDevice()) {
     case TransferGuardAction::kAllow:
@@ -117,7 +114,7 @@ xla::Status ApplyTransferGuardToHostToDevice(
   return absl::OkStatus();
 }
 
-xla::Status ApplyTransferGuardToDeviceToDevice(
+absl::Status ApplyTransferGuardToDeviceToDevice(
     absl::FunctionRef<std::string()> formatter) {
   switch (GetTransferGuardActionForDeviceToDevice()) {
     case TransferGuardAction::kAllow:
@@ -132,7 +129,7 @@ xla::Status ApplyTransferGuardToDeviceToDevice(
   return absl::OkStatus();
 }
 
-xla::Status ApplyTransferGuardToDeviceToHost(
+absl::Status ApplyTransferGuardToDeviceToHost(
     absl::FunctionRef<std::string()> formatter) {
   switch (GetTransferGuardActionForDeviceToHost()) {
     case TransferGuardAction::kAllow:
@@ -147,33 +144,35 @@ xla::Status ApplyTransferGuardToDeviceToHost(
   return absl::OkStatus();
 }
 
-void BuildTransferGuardSubmodule(py::module& m) {
-  py::module tglib = m.def_submodule("transfer_guard_lib",
-                                     "Jax transfer guard support library");
+void BuildTransferGuardSubmodule(nb::module_& m) {
+  nb::module_ tglib = m.def_submodule("transfer_guard_lib",
+                                      "Jax transfer guard support library");
 
-  py::enum_<TransferGuardLevel> tglevel(tglib, "TransferGuardLevel");
+  nb::enum_<TransferGuardLevel> tglevel(tglib, "TransferGuardLevel");
   tglevel.value("ALLOW", TransferGuardLevel::kAllow);
   tglevel.value("LOG", TransferGuardLevel::kLog);
   tglevel.value("DISALLOW", TransferGuardLevel::kDisallow);
   tglevel.value("LOG_EXPLICIT", TransferGuardLevel::kLogExplicit);
   tglevel.value("DISALLOW_EXPLICIT", TransferGuardLevel::kDisallowExplicit);
 
-  py::class_<TransferGuardState> tgstate(tglib, "TransferGuardState");
-  tgstate.def_readwrite("host_to_device", &TransferGuardState::host_to_device);
-  tgstate.def_readwrite("device_to_device",
-                        &TransferGuardState::device_to_device);
-  tgstate.def_readwrite("device_to_host", &TransferGuardState::device_to_host);
-  tgstate.def_readwrite("explicit_device_put",
-                        &TransferGuardState::explicit_device_put);
-  tgstate.def_readwrite("explicit_device_get",
-                        &TransferGuardState::explicit_device_get);
+  nb::class_<TransferGuardState> tgstate(tglib, "TransferGuardState");
+  tgstate.def_rw("host_to_device", &TransferGuardState::host_to_device,
+                 nb::arg().none());
+  tgstate.def_rw("device_to_device", &TransferGuardState::device_to_device,
+                 nb::arg().none());
+  tgstate.def_rw("device_to_host", &TransferGuardState::device_to_host,
+                 nb::arg().none());
+  tgstate.def_rw("explicit_device_put",
+                 &TransferGuardState::explicit_device_put);
+  tgstate.def_rw("explicit_device_get",
+                 &TransferGuardState::explicit_device_get);
 
   tglib.def(
       "global_state", [&]() { return &global_state; },
-      py::return_value_policy::reference);
+      nb::rv_policy::reference);
   tglib.def(
       "thread_local_state", [&]() { return &thread_local_state; },
-      py::return_value_policy::reference);
+      nb::rv_policy::reference);
 }
 
 }  // namespace jax

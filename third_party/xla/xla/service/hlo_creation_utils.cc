@@ -375,16 +375,17 @@ StatusOr<HloInstruction*> MakeDotHlo(
     const DotDimensionNumbers& dim_numbers,
     const PrecisionConfig& precision_config,
     std::optional<PrimitiveType> preferred_element_type,
-    const OpMetadata* metadata) {
+    std::vector<SparsityDescriptor> sparsity,
+    absl::Span<HloInstruction* const> sparse_meta, const OpMetadata* metadata) {
   HloComputation* computation = lhs->parent();
   CHECK_EQ(computation, rhs->parent());
-  TF_ASSIGN_OR_RETURN(
-      Shape dot_shape,
-      ShapeInference::InferDotOpShape(lhs->shape(), rhs->shape(), dim_numbers,
-                                      preferred_element_type));
+  TF_ASSIGN_OR_RETURN(Shape dot_shape,
+                      ShapeInference::InferDotOpShape(
+                          lhs->shape(), rhs->shape(), dim_numbers,
+                          preferred_element_type, absl::MakeSpan(sparsity)));
   return computation->AddInstruction(
       HloInstruction::CreateDot(dot_shape, lhs, rhs, dim_numbers,
-                                precision_config),
+                                precision_config, sparsity, sparse_meta),
       metadata);
 }
 

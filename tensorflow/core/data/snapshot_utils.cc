@@ -761,17 +761,17 @@ Status TFRecordReaderImpl::Initialize(Env* env) {
   return absl::OkStatus();
 }
 
-StatusOr<Tensor> TFRecordReaderImpl::GetNext() {
+absl::StatusOr<Tensor> TFRecordReaderImpl::GetNext() {
   tstring record;
   TF_RETURN_IF_ERROR(record_reader_->ReadRecord(&offset_, &record));
   bytes_read_ += record.size();
   return Parse(record);
 }
 
-StatusOr<std::vector<Tensor>> TFRecordReaderImpl::GetTensors() {
+absl::StatusOr<std::vector<Tensor>> TFRecordReaderImpl::GetTensors() {
   std::vector<Tensor> tensors;
   while (true) {
-    StatusOr<Tensor> tensor = GetNext();
+    absl::StatusOr<Tensor> tensor = GetNext();
     if (absl::IsOutOfRange(tensor.status())) {
       return tensors;
     }
@@ -781,7 +781,7 @@ StatusOr<std::vector<Tensor>> TFRecordReaderImpl::GetTensors() {
   return tensors;
 }
 
-StatusOr<Tensor> TFRecordReaderImpl::Parse(const tstring& record) {
+absl::StatusOr<Tensor> TFRecordReaderImpl::Parse(const tstring& record) {
   TensorProto proto;
   if (!proto.ParseFromArray(record.data(), record.size())) {
     return errors::DataLoss(

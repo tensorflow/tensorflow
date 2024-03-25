@@ -30,7 +30,7 @@ limitations under the License.
 
 namespace xla {
 
-StatusOr<HloInstruction*> GatherSimplifier::ExpandInstruction(
+absl::StatusOr<HloInstruction*> GatherSimplifier::ExpandInstruction(
     HloInstruction* inst) {
   auto* gather = DynCast<HloGatherInstruction>(inst);
 

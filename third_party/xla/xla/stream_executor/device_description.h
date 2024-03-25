@@ -28,12 +28,12 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/str_split.h"
 #include "absl/strings/string_view.h"
 #include "xla/stream_executor/device_description.pb.h"
 #include "xla/stream_executor/launch_dim.h"
-#include "xla/stream_executor/platform/port.h"
 
 namespace stream_executor {
 namespace internal {
@@ -53,8 +53,8 @@ struct CudaComputeCapability {
     HOPPER = 9
   };
 
-  CudaComputeCapability() = default;
-  CudaComputeCapability(int major, int minor) {
+  constexpr CudaComputeCapability() = default;
+  constexpr CudaComputeCapability(int major, int minor) {
     this->major = major;
     this->minor = minor;
   }
@@ -171,6 +171,11 @@ class RocmComputeCapability {
     return absl::c_count(kList, gfx_version()) != 0;
   }
 
+  bool gfx9_mi300() const {
+    static constexpr absl::string_view kList[] = {"gfx940", "gfx941", "gfx942"};
+    return absl::c_count(kList, gfx_version()) != 0;
+  }
+
   bool navi21() const { return gfx_version() == "gfx1030"; }
 
   bool navi31() const { return gfx_version() == "gfx1100"; }
@@ -195,6 +200,8 @@ class RocmComputeCapability {
   }
 
   bool has_hipblaslt() const { return gfx9_mi200_or_later(); }
+
+  bool has_fp8_support() const { return gfx9_mi300(); }
 
   RocmComputeCapabilityProto ToProto() const {
     RocmComputeCapabilityProto proto;

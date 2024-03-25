@@ -26,7 +26,6 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/synchronization/mutex.h"
 #include "xla/stream_executor/platform.h"
-#include "xla/stream_executor/platform/port.h"
 
 namespace stream_executor {
 

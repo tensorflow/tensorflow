@@ -17,6 +17,7 @@ limitations under the License.
 #define XLA_STREAM_EXECUTOR_LAZY_OP_RUNNER_H_
 
 #include <atomic>
+#include <cstdint>
 #include <memory>
 #include <optional>
 #include <string>
@@ -29,6 +30,7 @@ limitations under the License.
 #include "xla/stream_executor/dnn.h"
 #include "xla/stream_executor/stream.h"
 #include "tsl/platform/statusor.h"
+#include "tsl/protobuf/dnn.pb.h"
 
 namespace stream_executor {
 namespace dnn {

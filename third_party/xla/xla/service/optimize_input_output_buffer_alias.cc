@@ -33,7 +33,7 @@ limitations under the License.
 
 namespace xla {
 
-StatusOr<bool> OptimizeInputOutputBufferAlias::Build(
+absl::StatusOr<bool> OptimizeInputOutputBufferAlias::Build(
     absl::Span<const Shape> input_shapes, const Shape& output_shape,
     HloInputOutputAliasConfig* alias_config,
     HloBufferDonorConfig* buffer_donor_config) {
@@ -130,7 +130,7 @@ StatusOr<bool> OptimizeInputOutputBufferAlias::Build(
   return changed;
 }
 
-StatusOr<bool> OptimizeInputOutputBufferAlias::Run(
+absl::StatusOr<bool> OptimizeInputOutputBufferAlias::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   // We exactly follow HloInputOutputAliasConfig::Verify to create input_shapes

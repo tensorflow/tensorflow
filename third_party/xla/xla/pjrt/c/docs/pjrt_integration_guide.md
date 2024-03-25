@@ -41,10 +41,13 @@ With the [wrapper](https://github.com/openxla/xla/blob/c23fbd601a017be25726fd6d6
 
 ### Step 2: Implement GetPjRtApi
 
-You need to implement a method `GetPjRtApi` which returns a `PJRT_Api*` containing function pointers to PJRT C API implementations. Below is an example assuming implementing through wrapper (similar to [pjrt\_c\_api\_cpu.cc](https://github.com/openxla/xla/blob/c23fbd601a017be25726fd6d624b22daa6a8a4e5/xla/pjrt/c/pjrt_c_api_cpu.cc)):
+You need to implement a method `GetPjRtApi` which returns a `PJRT_Api*` containing function pointers to PJRT C API implementations. Below is an example assuming implementing through wrapper (similar to [pjrt\_c\_api\_cpu.cc](https://github.com/openxla/xla/blob/main/xla/pjrt/c/pjrt_c_api_cpu.cc)):
 ```
-constexpr PJRT_Api pjrt_api = pjrt::CreatePjrtApi(my_plugin::PJRT_Client_Create);
-const PJRT_Api* GetPjrtApi() { return &pjrt_api; }
+const PJRT_Api* GetPjrtApi() {
+  static const PJRT_Api pjrt_api =
+      pjrt::CreatePjrtApi(my_plugin::PJRT_Client_Create);
+  return &pjrt_api;
+}
 ```
 
 ### Step 3: Test C API implementations

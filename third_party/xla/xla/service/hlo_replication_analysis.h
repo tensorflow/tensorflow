@@ -35,19 +35,19 @@ namespace xla {
 class HloReplicationAnalysis {
  public:
   // Runs the analysis on module and returns the result or an error.
-  static StatusOr<std::unique_ptr<HloReplicationAnalysis>> Run(
+  static absl::StatusOr<std::unique_ptr<HloReplicationAnalysis>> Run(
       const HloModule* module, bool cross_partition_spmd);
 
   // Same as above, but the caller can provide additional annotations: a set of
   // while loops that are known to have the same iteration counts across
   // replicas or partitions.
-  static StatusOr<std::unique_ptr<HloReplicationAnalysis>> Run(
+  static absl::StatusOr<std::unique_ptr<HloReplicationAnalysis>> Run(
       const HloModule* module, bool cross_partition_spmd,
       const absl::flat_hash_set<const HloInstruction*>*
           loops_known_with_same_iterations);
 
   // Same as above but supports finding partially replicated HLOs.
-  static StatusOr<std::unique_ptr<HloReplicationAnalysis>>
+  static absl::StatusOr<std::unique_ptr<HloReplicationAnalysis>>
   RunWithPartialReplication(const HloModule* module, bool cross_partition_spmd);
 
   // Returns if the HLO instruction outputs the same value (i.e., replicated) at

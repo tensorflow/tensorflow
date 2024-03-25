@@ -15,6 +15,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_FRAMEWORK_METRICS_H_
 #define TENSORFLOW_CORE_FRAMEWORK_METRICS_H_
 
+#include <cstddef>
 #include <cstdint>
 #include <string>
 
@@ -196,6 +197,23 @@ void RecordTFDataServiceOptimalNumberOfWorkers(int64_t number_of_workers);
 // The `name` argument identifies the Dataset type (e.g. "TFRecordDataset").
 void RecordTFDataFilename(const string& name, const string& filename);
 
+// Records the total attempts made by file logger.
+void RecordTFDataFileLoggerAttempts();
+
+// Records an error of type `code` with message `error_message` encountered by
+// file logger.
+void RecordTFDataFileLoggerErrors(error::Code code,
+                                  const string& error_message);
+
+// Records the total number of files attempted to be logged by file logger.
+void RecordTFDataFileLoggerAttemptedNumFiles(size_t num_files);
+
+// Records the number of files that encountered an error of type
+// `code` with message `error_message` during logging by file logger with this
+// error code.
+void RecordTFDataFileLoggerErrorsNumFiles(size_t num_files, error::Code code,
+                                          const string& error_message);
+
 // Records statistics of tf.data auto sharding.
 //
 // The `id` is a unique identifier of the input pipeline. The `policy`
@@ -226,6 +244,11 @@ void RecordTFDataError(const string& error_type, const string& error_code);
 
 // Records the framework type used to build the tf.data.Dataset.
 void RecordTFDataFrameworkType(const std::string& framework_type);
+
+// Records the number of times tf.data file logger encountered an error of this
+// type occurred with this status code.
+void RecordTFDataFileLoggerError(const string& error_type,
+                                 const string& error_code);
 
 // Records parsing of dense tensor features.
 void RecordParseDenseFeature(int64_t num_features);
@@ -326,6 +349,28 @@ void UpdateTfMlirBridgeFirstPhaseCounter(const std::string& device_type,
                                          const std::string& bridge_version,
                                          bool fallback_enabled,
                                          const std::string& result);
+
+enum class Phase2XlaCompilerMetric {
+  // Bridge phase 2 CompileSingleOp Xla Builder (old version) was successful
+  kCompileSingleOpXlaBuilderSuccess,
+  // Bridge phase 2 CompileSingleOp Xla Builder (old version) failed
+  kCompileSingleOpXlaBuilderFailure,
+  // Bridge phase 2 CompileSingleOp MLIR version was successful
+  kCompileSingleOpMlirSuccess,
+  // Bridge phase 2 CompileSingleOp MLIR version failed
+  kCompileSingleOpMlirFailure,
+  // Bridge phase 2 CompileFunction Xla Builder (old version) was successful
+  kCompileFunctionXlaBuilderSuccess,
+  // Bridge phase 2 CompileFunction Xla Builder (old version) failed
+  kCompileFunctionXlaBuilderFailure,
+  // Bridge phase 2 CompileFunction MLIR version was successful
+  kCompileFunctionMlirSuccess,
+  // Bridge phase 2 CompileFunction MLIR version failed
+  kCompileFunctionMlirFailure,
+};
+
+// Records the activity of the XlaCompiler entry points.
+void IncrementPhase2XlaCompilerCounter(Phase2XlaCompilerMetric metric);
 
 enum class MlirBridgeSecondPhaseMetric {
   // MLIR bridge phase 2 was executed and the graph was processed successfully

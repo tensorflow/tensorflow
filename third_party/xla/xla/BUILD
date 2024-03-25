@@ -603,6 +603,8 @@ cc_library(
         ":util",
         ":xla_data_proto_cc",
         "@com_google_absl//absl/base",
+        "@com_google_absl//absl/base:config",
+        "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/functional:function_ref",
         "@com_google_absl//absl/strings",
@@ -635,8 +637,10 @@ xla_cc_test(
         ":status",
         ":test",
         ":types",
+        ":util",
         ":xla_data_proto_cc",
         "@com_google_absl//absl/base",
+        "@com_google_absl//absl/random",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
         "@local_tsl//tsl/lib/core:status_test_util",
@@ -1104,6 +1108,7 @@ cc_library(
         [
             ":parse_flags_from_env",
             ":xla_proto_cc",
+            "//xla/stream_executor/cuda:ptx_compiler_support",
             "@com_google_absl//absl/algorithm:container",
             "@com_google_absl//absl/base",
             "@com_google_absl//absl/container:flat_hash_map",
@@ -1242,4 +1247,10 @@ cc_library(
 cc_library(
     name = "empty",
     visibility = ["//visibility:public"],
+)
+
+# Needed to workaround https://github.com/bazelbuild/bazel/issues/21519
+alias(
+    name = "bazel_issue_21519",
+    actual = ":empty",
 )

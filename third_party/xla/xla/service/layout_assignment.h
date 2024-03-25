@@ -263,7 +263,7 @@ class LayoutAssignment : public HloModulePass {
   // Assign layouts to the given module. Returns whether the module was changed
   // (any layouts were changed).
   using HloPassInterface::Run;
-  StatusOr<bool> Run(
+  absl::StatusOr<bool> Run(
       HloModule* module,
       const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 
@@ -464,8 +464,8 @@ class LayoutAssignment : public HloModulePass {
   Status PropagateUnconstraintedBuffers(LayoutConstraints* constraints);
   const BufferLayoutConstraint* GetBufferLayoutConstraint(
       const LogicalBuffer& buffer) const;
-  StatusOr<const BufferLayoutConstraint*> GetInstructionBufferLayoutConstraint(
-      const HloInstruction* instruction) const;
+  absl::StatusOr<const BufferLayoutConstraint*>
+  GetInstructionBufferLayoutConstraint(const HloInstruction* instruction) const;
   // Find a bufferset in the bufferset cache. This is useful since we can
   // currently create the flattened buffer set for the same instruction many
   // times, which is often slow.
@@ -479,8 +479,8 @@ class LayoutAssignment : public HloModulePass {
   // buffers of its operands and would return true for each of its operands.
   bool AnyOperandBufferForwarded(const HloInstruction* instruction,
                                  int64_t operand_no) const;
-  StatusOr<Layout> InferArrayLayout(const HloInstruction* instruction,
-                                    const ShapeIndex& index);
+  absl::StatusOr<Layout> InferArrayLayout(const HloInstruction* instruction,
+                                          const ShapeIndex& index);
 
   // Propagates a buffer layout constraint into the operands that use it.
   Status PropagateBufferConstraintToUses(
@@ -619,7 +619,7 @@ class LayoutAssignment : public HloModulePass {
   // Creates and returns a copy of the given instruction with a different
   // layout. Tuple-shaped instructions will be deep-copied, and the last Tuple
   // instruction producing the copy is returned.
-  StatusOr<HloInstruction*> CreateCopyWithNewLayout(
+  absl::StatusOr<HloInstruction*> CreateCopyWithNewLayout(
       const Shape& shape_with_layout, HloInstruction* instruction);
 
   // Creates a copy of the given operand if the operand's layout does not match

@@ -243,7 +243,7 @@ TEST_F(MockArrayTest, CopyToHostFutureWaitsUntilCopied) {
 
   char data[1000];
   auto copied = arr.proxy_client_array->CopyToHostBuffer(
-      &data[0], /*byte_strides=*/std::nullopt, ArrayCopySemantics::kAlwaysCopy);
+      data, /*byte_strides=*/std::nullopt, ArrayCopySemantics::kAlwaysCopy);
 
   absl::SleepFor(kSomeTime);
   EXPECT_FALSE(copied.IsReady());
@@ -263,7 +263,7 @@ TEST_F(MockArrayTest, CopyToHostFuturePropagatesError) {
 
   char data[1000];
   auto copied = arr.proxy_client_array->CopyToHostBuffer(
-      &data[0], /*byte_strides=*/std::nullopt, ArrayCopySemantics::kAlwaysCopy);
+      data, /*byte_strides=*/std::nullopt, ArrayCopySemantics::kAlwaysCopy);
 
   EXPECT_THAT(copied.Await(), StatusIs(kInternal));
 }

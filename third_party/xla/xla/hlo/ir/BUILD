@@ -94,6 +94,7 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:cord",
         "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/types:span",
         "@local_tsl//tsl/lib/gtl:iterator_range",
         "@local_tsl//tsl/lib/gtl:map_util",
@@ -130,6 +131,17 @@ cc_library(
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/types:span",
+    ],
+)
+
+cc_library(
+    name = "hlo_dfs_reachability",
+    srcs = ["hlo_dfs_reachability.cc"],
+    hdrs = ["hlo_dfs_reachability.h"],
+    deps = [
+        ":hlo",
+        "@com_google_absl//absl/algorithm:container",
+        "@llvm-project//llvm:Support",
     ],
 )
 

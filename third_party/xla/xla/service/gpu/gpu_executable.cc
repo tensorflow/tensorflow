@@ -17,7 +17,6 @@ limitations under the License.
 
 #include <algorithm>
 #include <cstdint>
-#include <functional>
 #include <memory>
 #include <optional>
 #include <set>
@@ -26,7 +25,7 @@ limitations under the License.
 #include <variant>
 #include <vector>
 
-#include "absl/container/btree_map.h"
+#include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/container/inlined_vector.h"
@@ -37,10 +36,17 @@ limitations under the License.
 #include "absl/synchronization/mutex.h"
 #include "absl/time/time.h"
 #include "absl/types/span.h"
+#include "llvm/ADT/APInt.h"
+#include "llvm/ADT/ArrayRef.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
+#include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "xla/executable_run_options.h"
+#include "xla/hlo/ir/hlo_input_output_alias_config.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/map_util.h"
 #include "xla/service/buffer_assignment.h"
+#include "xla/service/executable.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/buffer_allocations.h"
 #include "xla/service/gpu/gpu_constants.h"
@@ -50,7 +56,11 @@ limitations under the License.
 #include "xla/service/gpu/runtime/annotation.h"
 #include "xla/service/gpu/stream_executor_util.h"
 #include "xla/service/gpu/thunk.h"
+#include "xla/service/hlo_execution_profile.h"
+#include "xla/service/hlo_module_config.h"
 #include "xla/service/hlo_parser.h"
+#include "xla/service/hlo_value.h"
+#include "xla/service/maybe_owning_device_memory.h"
 #include "xla/service/rendezvous.h"
 #include "xla/service/service_executable_run_options.h"
 #include "xla/service/shaped_buffer.h"
@@ -63,6 +73,8 @@ limitations under the License.
 #include "xla/stream_executor/cuda/cuda_platform_id.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/device_memory_allocator.h"
+#include "xla/stream_executor/module_spec.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/rocm/rocm_platform_id.h"
 #include "xla/stream_executor/stream.h"
@@ -71,6 +83,7 @@ limitations under the License.
 #include "tsl/platform/env.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/logging.h"
+#include "tsl/platform/status.h"
 #include "tsl/platform/statusor.h"
 #include "tsl/profiler/lib/scoped_annotation.h"
 #include "tsl/profiler/lib/traceme.h"
@@ -226,18 +239,29 @@ class ResourceRequests : public Thunk::ResourceRequests {
     VLOG(5) << "Add collective clique request: " << clique_key.ToString()
             << "; num_local_participants: " << num_local_participants;
 
-    // We can't have multiple requests for a same clique key with different
-    // number of local participants as we can acquire a clique only once and we
-    // have to know how many executables will join the rendezvous.
-    auto emplaced = cliques_.try_emplace(clique_key, num_local_participants);
-    if (!emplaced.second && emplaced.first->second != num_local_participants) {
-      return absl::InternalError(absl::StrCat(
-          "Clique request for a clique key ", clique_key.ToString(),
-          " has number of local participants ", num_local_participants,
-          " different from previous value of ", emplaced.first->second, ".",
-          " This will lead to deadlock at run time and is an XLA compiler"
-          " bug. Please report it to XLA team."));
+    // Check if there is already a clique request for this clique key.
+    if (auto it = cliques_.find(clique_key); it != cliques_.end()) {
+      // We can't have multiple requests for a same clique key with different
+      // number of local participants as we can acquire a clique only once and
+      // we have to know how many executables will join the rendezvous.
+      if (it->second.num_local_participants != num_local_participants) {
+        return absl::InternalError(absl::StrFormat(
+            "Clique request for a clique key %s has number of local "
+            "participants %d different from previously requested value of %d. "
+            "This will lead to deadlock at run time and is an XLA compiler "
+            "bug. Please report it to XLA team.",
+            clique_key.ToString(), num_local_participants,
+            it->second.num_local_participants));
+      }
+      return absl::OkStatus();
     }
+
+    // XLA compiler guarantees that all collective operations have the same
+    // order on all replicas. We rely on this property to assign unique id to
+    // clique requests simply based on the number of already recored requests.
+    int64_t id = cliques_.size();
+    cliques_.try_emplace(clique_key,
+                         CliqueRequest{clique_key, num_local_participants, id});
     return absl::OkStatus();
   }
 
@@ -248,7 +272,10 @@ class ResourceRequests : public Thunk::ResourceRequests {
     VLOG(2) << "Acquire " << cliques_.size()
             << " collective cliques for global device id "
             << params.global_device_id.value()
-            << "; run_id=" << params.run_id.ToInt();
+            << "; run_id=" << params.run_id.ToInt()
+            << "; max number of channels for collectives "
+            << params.collective_max_nchannels
+            << "; max number of channels for p2p " << params.p2p_max_nchannels;
 
     tsl::profiler::TraceMe trace([&] {
       return tsl::profiler::TraceMeEncode("AcquireCollectiveCliques",
@@ -259,27 +286,30 @@ class ResourceRequests : public Thunk::ResourceRequests {
 
     NcclClique::AcquiredCliquesMap cliques_map;
 
-    for (const auto& [clique_key, num_local_participants] : cliques_) {
-      std::optional<int64_t> rank = clique_key.rank(params.global_device_id);
+    for (const CliqueRequest& r : GetOrderedCliqueRequests()) {
+      std::optional<int64_t> rank = r.key.rank(params.global_device_id);
 
       if (!rank.has_value()) {
         return absl::InternalError(absl::StrCat(
             "Can't find global device id ", params.global_device_id.value(),
-            " in clique key ", clique_key.ToString()));
+            " in clique key ", r.key.ToString()));
       }
 
-      bool is_local = clique_key.devices().size() == num_local_participants;
+      bool is_local = r.key.devices().size() == r.num_local_participants;
       TF_ASSIGN_OR_RETURN(
           const NcclCliqueIdCallback* clique_id_callback,
           GetNcclCliqueIdCallback(params.nccl_clique_id_callback, is_local));
 
-      TF_ASSIGN_OR_RETURN(
-          std::shared_ptr<NcclClique::Lock> clique,
-          AcquireNcclClique(params.executor, params.run_id, clique_key,
-                            *clique_id_callback, *rank, num_local_participants,
-                            cliques_map));
+      int64_t max_channels = r.key.stream_kind() == AsyncStreamKind::kCollective
+                                 ? params.collective_max_nchannels
+                                 : params.p2p_max_nchannels;
+      TF_ASSIGN_OR_RETURN(std::shared_ptr<NcclClique::Lock> clique,
+                          AcquireNcclClique(params.executor, params.run_id,
+                                            r.key, *clique_id_callback, *rank,
+                                            r.num_local_participants,
+                                            cliques_map, max_channels));
 
-      cliques_map[clique_key] = std::move(clique);
+      cliques_map[r.key] = std::move(clique);
     }
 
     auto end_micros = tsl::Env::Default()->NowMicros();
@@ -293,10 +323,48 @@ class ResourceRequests : public Thunk::ResourceRequests {
   }
 
  private:
-  // Keep all clique requests in an ordered container so that we acquire cliques
-  // in the same order for all participants and do not create a deadlock. We use
-  // greater ordering to acquire largest cliques first.
-  absl::btree_map<NcclCliqueKey, int64_t, std::greater<NcclCliqueKey>> cliques_;
+  struct CliqueRequest {
+    NcclCliqueKey key;
+    int64_t num_local_participants;
+    int64_t id;
+  };
+
+  // Return clique requests deterministically ordered using a comparison
+  // function that produces identical ordering for all participating ranks.
+  //
+  // Example: 8 ranks splitted in different groups of communicators
+  //
+  // Group #0: [0,1], [2,3], [4,5], [6,7]
+  // Group #1: [0,4], [1,5], [2,6], [3,7]
+  //
+  // Both groups #0 and #1 can be acqured by splitting [0...7] clique. To avoid
+  // deadlocks all participants should acquire all cliques in a group #0 before
+  // acquiring any cliques in a group #1.
+  //
+  // We rely on clique request id to guarantee that the order is identical
+  // on all participating ranks (including ranks running on different hosts).
+  std::vector<CliqueRequest> GetOrderedCliqueRequests() {
+    std::vector<CliqueRequest> cliques;
+    cliques.reserve(cliques_.size());
+    for (const auto& [_, request] : cliques_) cliques.push_back(request);
+
+    absl::c_sort(cliques, [](const CliqueRequest& a, const CliqueRequest& b) {
+      // Acquire larger cliques first to be able to split them later.
+      if (a.key.devices().size() > b.key.devices().size()) return true;
+      if (b.key.devices().size() > a.key.devices().size()) return false;
+
+      // If cliques have the same size prefer cliques with smaller stream id.
+      if (a.key.stream_id() < b.key.stream_id()) return true;
+      if (b.key.stream_id() < a.key.stream_id()) return false;
+
+      // Prefer cliques with smaller id (comes earlier in execution order).
+      return a.id < b.id;
+    });
+
+    return cliques;
+  }
+
+  absl::flat_hash_map<NcclCliqueKey, CliqueRequest> cliques_;
 };
 
 absl::Status MaybeSyncAndProfile(
@@ -314,7 +382,9 @@ absl::Status ExecuteThunks(
     const ServiceExecutableRunOptions* run_options,
     const BufferAllocations& buffer_allocations, bool block_host_until_done,
     bool use_highest_priority_for_async_stream,
-    const absl::flat_hash_set<ExecutionStreamId>& execution_stream_ids) {
+    const absl::flat_hash_set<ExecutionStreamId>& execution_stream_ids,
+    int64_t collective_max_nchannels, int64_t p2p_max_nchannels,
+    const ModuleAnnotations& module_annotations) {
   se::Stream* main_stream = run_options->stream();
   se::StreamExecutor* executor = main_stream->parent();
   stream_executor::StreamPriority stream_priority =
@@ -368,17 +438,16 @@ absl::Status ExecuteThunks(
   if (ExecutionProfile* profile =
           run_options->run_options().execution_profile();
       profile) {
-    TF_ASSIGN_OR_RETURN(
-        execution_timer,
-        se::gpu::GpuTimer::Create(se::gpu::AsGpuStream(main_stream)));
+    TF_ASSIGN_OR_RETURN(execution_timer,
+                        se::gpu::GpuTimer::Create(main_stream));
   }
 #endif
 
   // Parameters for executing collective operations.
-  TF_ASSIGN_OR_RETURN(
-      Thunk::CollectiveExecuteParams collective_params,
-      Thunk::CollectiveExecuteParams::Create(
-          *run_options, main_stream->parent()->device_ordinal()));
+  TF_ASSIGN_OR_RETURN(Thunk::CollectiveExecuteParams collective_params,
+                      Thunk::CollectiveExecuteParams::Create(
+                          *run_options, main_stream->parent()->device_ordinal(),
+                          collective_max_nchannels, p2p_max_nchannels));
 
   ResourceRequests resource_requests;
 
@@ -425,7 +494,8 @@ absl::Status ExecuteThunks(
     // Annotate execution of this op if tracing was enabled when we started
     // running this module.  If tracing is enabled *while* we're running the
     // module, we won't get any data, but that's probably an OK trade-off.
-    tsl::profiler::ScopedAnnotation annotation(thunk->profile_annotation());
+    auto scoped_annotation =
+        GetKernelAnnotation(&module_annotations, thunk->profile_annotation());
     VLOG(3) << "Executing the thunk for " << thunk->profile_annotation();
     if (NeedsAsyncCommsStream(*thunk)) {
       for (se::Stream* async_stream : async_comms_streams) {
@@ -600,8 +670,8 @@ GpuExecutable::ResolveConstantGlobals(se::Stream* stream) {
       if (!info.content.span().empty()) {
         // This means the constant did not have an initializer in the PTX and
         // therefore must be initialized by XLA here.
-        stream->ThenMemcpy(&global, info.content.span().data(),
-                           info.content.span().size());
+        TF_RETURN_IF_ERROR(stream->Memcpy(&global, info.content.span().data(),
+                                          info.content.span().size()));
         submitted_mem_copies = true;
       }
     } else {
@@ -899,8 +969,8 @@ absl::StatusOr<ExecutionOutput> GpuExecutable::ExecuteAsyncOnStreamImpl(
             buffer_allocations.GetMutableDeviceAddress(
                 output_info.allocation_index);
         CHECK_EQ(aliased_buffer.size(), result_buffer.size());
-        run_options->stream()->ThenMemcpyD2D(&result_buffer, aliased_buffer,
-                                             aliased_buffer.size());
+        TF_RETURN_IF_ERROR(run_options->stream()->MemcpyD2D(
+            &result_buffer, aliased_buffer, aliased_buffer.size()));
         aliased_buffer = result_buffer;
       }
     }
@@ -946,6 +1016,15 @@ absl::Status GpuExecutable::ExecuteThunksOrXlaRuntime(
 
   if (thunks_) {
     Thunk::ExecutableSource executable_source = {text_, binary_};
+    int64_t collective_max_nchannels =
+        has_module() ? module_config()
+                           .debug_options()
+                           .xla_gpu_nccl_collective_max_nchannels()
+                     : 0;
+    int64_t p2p_max_nchannels =
+        has_module()
+            ? module_config().debug_options().xla_gpu_nccl_p2p_max_nchannels()
+            : 0;
 
     return ExecuteThunks(
         module_name_, unique_id, *thunks_, executable_source, run_options,
@@ -955,7 +1034,8 @@ absl::Status GpuExecutable::ExecuteThunksOrXlaRuntime(
                            .debug_options()
                            .xla_gpu_enable_highest_priority_async_stream()
                      : false,
-        execution_stream_ids_);
+        execution_stream_ids_, collective_max_nchannels, p2p_max_nchannels,
+        module_annotations_);
   }
 
   return FailedPrecondition("Expected XLA gpu executable is not supplied.");

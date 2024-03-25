@@ -54,6 +54,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/lib/monitoring/counter.h"
 #include "tensorflow/core/lib/monitoring/gauge.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/errors.h"
@@ -106,10 +107,15 @@ namespace {
 
 constexpr absl::string_view kSignatureJoiningDelimiter = "+";
 
-auto* saved_model_mla_check_time_milli_seconds =
-    tensorflow::monitoring::Gauge<int64_t, 1>::New(
-        "/tensorflow/tfrt/saved_model/mla_check_time",
-        "Record the MLA check time for the savedmodel.", "model_name");
+auto* lazy_loading_count = monitoring::Counter<3>::New(
+    "/tensorflow/tfrt/lazy_loading_count", "The total number of lazy loadings.",
+    "model_name", "model_version", "use_graph_executor");
+
+auto* saved_model_graph_executor_mode = monitoring::Counter<3>::New(
+    "/tensorflow/tfrt/saved_model/graph_executor_mode",
+    "Record the total number of imported savedmodel using different graph "
+    "executor modes (BEF vs MLRT interpreter)",
+    "model_name", "model_version", "mode");
 
 auto* saved_model_import_time_seconds =
     tensorflow::monitoring::Gauge<int64_t, 1>::New(
@@ -603,11 +609,25 @@ SavedModelImpl::LoadSavedModel(Options options,
     tensorflow::tf_mlrt::RegisterTfMlrtBatchKernels(*kernel_registry);
 
     if (options.graph_execution_options.enable_mlrt) {
+      saved_model_graph_executor_mode
+          ->GetCell(
+              options.graph_execution_options.model_metadata.name(),
+              absl::StrCat(
+                  options.graph_execution_options.model_metadata.version()),
+              "mlrt")
+          ->IncrementBy(1);
       ASSIGN_OR_RETURN_IN_COMPILE(
           bytecode, tensorflow::mlrt_compiler::ConvertTfMlirToBytecode(
                         options.graph_execution_options.compile_options,
                         *fallback_state, mlir_module.get(), model_context));
     } else {
+      saved_model_graph_executor_mode
+          ->GetCell(
+              options.graph_execution_options.model_metadata.name(),
+              absl::StrCat(
+                  options.graph_execution_options.model_metadata.version()),
+              "bef")
+          ->IncrementBy(1);
       RETURN_IF_ERROR_IN_COMPILE(tensorflow::ConvertTfMlirToBef(
           options.graph_execution_options.compile_options, mlir_module.get(),
           &bef, model_context, fallback_state.get()));
@@ -748,28 +768,33 @@ tensorflow::Status SavedModelImpl::Run(
       << "failed to find signature " << name << " in the graph";
   const auto& signature = sig_iter->second;
   const auto& signature_def = meta_graph_def_.signature_def().at(name);
+  const tensorflow::SessionMetadata& model_metadata =
+      options_.graph_execution_options.model_metadata;
 
   if (options_.enable_lazy_loading &&
       options_.lazy_loading_use_graph_executor) {
+    lazy_loading_count
+        ->GetCell(model_metadata.name(), absl::StrCat(model_metadata.version()),
+                  "true")
+        ->IncrementBy(1);
+
     std::vector<std::pair<std::string, tensorflow::Tensor>> input_tensors;
     input_tensors.reserve(inputs.size());
 
     std::vector<std::string> output_tensor_names;
     output_tensor_names.reserve(signature.output_names.size());
 
-    TF_RETURN_IF_ERROR(
-        PreprocessSignature(options_.graph_execution_options.model_metadata,
-                            run_options, name, signature_def, signature, inputs,
-                            /*visited_feed_tensor_names=*/nullptr,
-                            input_tensors, output_tensor_names));
+    TF_RETURN_IF_ERROR(PreprocessSignature(
+        model_metadata, run_options, name, signature_def, signature, inputs,
+        /*visited_feed_tensor_names=*/nullptr, input_tensors,
+        output_tensor_names));
 
     return graph_executor_->Run(run_options, input_tensors, output_tensor_names,
                                 /*target_tensor_names=*/{}, outputs);
   }
 
   TF_RETURN_IF_ERROR(
-      CheckInputSpecs(options_.graph_execution_options.model_metadata,
-                      run_options, name, signature, inputs));
+      CheckInputSpecs(model_metadata, run_options, name, signature, inputs));
 
   const SymbolUids* symbol_uids = nullptr;
   const tfrt::Function* func = nullptr;
@@ -780,6 +805,10 @@ tensorflow::Status SavedModelImpl::Run(
   if (options_.enable_lazy_loading) {
     // TODO(b/216379787): Remove this lazy loading path once b/279197040 is
     // unblocked.
+    lazy_loading_count
+        ->GetCell(model_metadata.name(), absl::StrCat(model_metadata.version()),
+                  "false")
+        ->IncrementBy(1);
 
     // If lazy loading is enabled, no signature is loaded into `bef_file_`, so
     // we need to find the BEF from the cache or create one.

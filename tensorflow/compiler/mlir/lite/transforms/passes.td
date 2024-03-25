@@ -466,3 +466,10 @@ def ReduceTypePrecisionPass : Pass<"tfl-reduce-type-precision", "mlir::ModuleOp"
   let constructor = "CreateReduceTypePrecisionPass()";
   let dependentDialects = ["TFL::TensorFlowLiteDialect"];
 }
+
+def PushTransposeThroughEwisePass : Pass<"push-transpose-through-ewise", "mlir::ModuleOp"> {
+  let summary = "TODO";
+  let constructor = "CreatePushTransposeThroughEwisePass()";
+  let dependentDialects = ["TFL::TensorFlowLiteDialect"];
+}
+

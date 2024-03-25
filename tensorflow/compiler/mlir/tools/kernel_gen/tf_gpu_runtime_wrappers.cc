@@ -92,7 +92,7 @@ GPURuntimeCache::~GPURuntimeCache() {
 
 tensorflow::Status GPURuntimeCache::Create(GPURuntimeCache **dst) {
   *dst = new GPURuntimeCache;
-  return ::tensorflow::OkStatus();
+  return absl::OkStatus();
 }
 
 std::string GPURuntimeCache::DebugString() const { return "GPU runtime cache"; }

@@ -28,7 +28,7 @@ limitations under the License.
 namespace xla {
 
 namespace {
-StatusOr<HloInstruction*> TransposeIndexVectorDimToLast(
+absl::StatusOr<HloInstruction*> TransposeIndexVectorDimToLast(
     HloInstruction* start_indices, int64_t index_vector_dim) {
   const Shape& start_indices_shape = start_indices->shape();
 
@@ -55,7 +55,7 @@ StatusOr<HloInstruction*> TransposeIndexVectorDimToLast(
 // specific cases in the while loop that does the heavy lifting.
 //
 // See the "High Level Algorithm" section for a broader picture.
-StatusOr<HloInstruction*> CanonicalizeGatherIndices(
+absl::StatusOr<HloInstruction*> CanonicalizeGatherIndices(
     HloInstruction* start_indices, int64_t index_vector_dim) {
   // Transpose the non-index-vector dimensions to the front.
   TF_ASSIGN_OR_RETURN(
@@ -85,7 +85,7 @@ StatusOr<HloInstruction*> CanonicalizeGatherIndices(
 
 // Expands out or contracts away the gather dimensions in the accumulator
 // produced by the while loop.
-StatusOr<HloInstruction*> AdjustBatchDimsInAccumulator(
+absl::StatusOr<HloInstruction*> AdjustBatchDimsInAccumulator(
     const Shape& start_indices_shape, HloInstruction* accumulator,
     int64_t index_vector_dim) {
   std::vector<int64_t> batch_dim_bounds;
@@ -109,7 +109,7 @@ StatusOr<HloInstruction*> AdjustBatchDimsInAccumulator(
 
 // Expand an index vector from the start_indices tensor into a vector that can
 // be used to dynamic-slice out of the gather operand.
-StatusOr<HloInstruction*> ExpandIndexVectorIntoOperandSpace(
+absl::StatusOr<HloInstruction*> ExpandIndexVectorIntoOperandSpace(
     HloInstruction* index_vector, const GatherDimensionNumbers& dim_numbers,
     int64_t operand_rank) {
   HloComputation* computation = index_vector->parent();
@@ -150,7 +150,7 @@ StatusOr<HloInstruction*> ExpandIndexVectorIntoOperandSpace(
 
 // This generates the body of the while that implements the main data movement
 // behavior of gather using dynamic-slice and dynamic-update-slice.
-StatusOr<std::vector<HloInstruction*>> GatherLoopBody(
+absl::StatusOr<std::vector<HloInstruction*>> GatherLoopBody(
     const HloInstruction& gather, HloInstruction* induction_var,
     const std::vector<HloInstruction*>& incoming_loop_state) {
   const GatherDimensionNumbers& dim_numbers = gather.gather_dimension_numbers();
@@ -227,7 +227,7 @@ StatusOr<std::vector<HloInstruction*>> GatherLoopBody(
   // New loop state -- only the accumulator has changed.  The
   // WhileUtil::MakeCountedLoop functions takes care of the induction variable
   // and the while loop exit condition.
-  return StatusOr<std::vector<HloInstruction*>>{
+  return absl::StatusOr<std::vector<HloInstruction*>>{
       {operand, start_indices, updated_accumulator}};
 }
 
@@ -251,7 +251,7 @@ HloInstruction* CreateGatherLoopAccumulatorInitValue(
 // except that it has the dimensions in the wrong order -- the batch dimensions
 // are the major dimensions and the offset dimensions are the minor dimensions.
 // Fix this up with a transpose.
-StatusOr<HloInstruction*> PermuteBatchAndOffsetDims(
+absl::StatusOr<HloInstruction*> PermuteBatchAndOffsetDims(
     HloInstruction* accumulator, absl::Span<const int64_t> offset_dims,
     int64_t output_rank) {
   std::vector<int64_t> permutation;
@@ -327,7 +327,7 @@ int64_t GatherIsBroadcast(HloInstruction* gather_instr) {
 // [3,1] out of operand into an accumulator of shape [4,3,1].  We then
 // reshape this result to [2,2,3] and finally transpose it to [2,3,2].
 
-StatusOr<HloInstruction*> GatherExpander::ExpandInstruction(
+absl::StatusOr<HloInstruction*> GatherExpander::ExpandInstruction(
     HloInstruction* gather_instr) {
   CHECK(!ShapeUtil::IsZeroElementArray(gather_instr->shape()));
 
@@ -379,7 +379,7 @@ StatusOr<HloInstruction*> GatherExpander::ExpandInstruction(
       gather_instr->gather_slice_sizes(), gather_loop_trip_count,
       gather_instr->gather_dimension_numbers());
 
-  StatusOr<std::vector<HloInstruction*>> gather_loop_result_or_error =
+  absl::StatusOr<std::vector<HloInstruction*>> gather_loop_result_or_error =
       WhileUtil::MakeCountedLoop(
           computation, gather_loop_trip_count,
           {operand, canonical_start_indices, accumulator_init},

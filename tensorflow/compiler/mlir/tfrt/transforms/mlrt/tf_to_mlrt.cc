@@ -35,9 +35,9 @@ limitations under the License.
 #include "mlir/IR/SymbolTable.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/tensorflow/ir/host_runtime/tfrt_ops.h.inc"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_dialect.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
-#include "tensorflow/compiler/mlir/tensorflow/ir/tfrt_ops.h.inc"
 #include "tensorflow/compiler/mlir/tensorflow/translate/export_tf_dialect_op.h"
 #include "tensorflow/compiler/mlir/tfrt/constants.h"
 #include "tensorflow/compiler/mlir/tfrt/ir/mlrt/mlrt_dialect.h"
@@ -1184,7 +1184,7 @@ class TfToMlrtConversionPass
           return true;
         });
 
-    // LINT.IfChange(fallback_allow_list)
+    // LINT.IfChange
     // Order the list of added ops alphabetically.
     patterns.add<WhileOpConversion>(&context, &type_converter_, &symbol_table);
     patterns.add<AsyncOpConversion, GetResourceOpConversion,
@@ -1200,7 +1200,7 @@ class TfToMlrtConversionPass
                  TFCallOpConversion<mlir::TF::StatefulPartitionedCallOp>,
                  TFCallOpConversion<mlir::TF::LegacyCallOp>>(&context,
                                                              &type_converter_);
-    // LINT.ThenChange(util.cc:fallback_allow_list)
+    // LINT.ThenChange(util.cc)
 
     mlir::populateFunctionOpInterfaceTypeConversionPattern<mlir::func::FuncOp>(
         patterns, type_converter_);

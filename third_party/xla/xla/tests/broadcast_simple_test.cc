@@ -17,6 +17,7 @@ limitations under the License.
 #include <numeric>
 #include <vector>
 
+#include "absl/strings/string_view.h"
 #include "xla/array2d.h"
 #include "xla/array4d.h"
 #include "xla/client/local_client.h"
@@ -34,6 +35,9 @@ namespace {
 
 class BroadcastSimpleTest : public ClientLibraryTestBase {
  public:
+  static constexpr absl::string_view kIncompatibleBinaryOpShapeErrorMessage =
+      "Binary op with incompatible shapes";
+
   XlaOp BuildBinOp(HloOpcode op, const XlaOp lhs, const XlaOp rhs,
                    XlaBuilder* builder) {
     switch (op) {
@@ -753,7 +757,7 @@ XLA_TEST_F(BroadcastSimpleTest, InvalidInDimensionBroadcasting) {
   auto result_status = Execute(&b, {});
   EXPECT_FALSE(result_status.ok());
   EXPECT_THAT(result_status.status().message(),
-              HasSubstr("op add with incompatible shapes"));
+              HasSubstr(kIncompatibleBinaryOpShapeErrorMessage));
 }
 
 XLA_TEST_F(BroadcastSimpleTest, InvalidDegenerateBroadcasting) {
@@ -766,7 +770,7 @@ XLA_TEST_F(BroadcastSimpleTest, InvalidDegenerateBroadcasting) {
   auto result_status = Execute(&b, {});
   EXPECT_FALSE(result_status.ok());
   EXPECT_THAT(result_status.status().message(),
-              HasSubstr("op add with incompatible shapes"));
+              HasSubstr(kIncompatibleBinaryOpShapeErrorMessage));
 }
 
 }  // namespace

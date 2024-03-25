@@ -25,13 +25,13 @@ namespace rocm {
 using DriverVersion = gpu::DriverVersion;
 
 // Converts a parsed driver version to string form.
-string DriverVersionToString(DriverVersion version);
+std::string DriverVersionToString(DriverVersion version);
 
 // Converts a parsed driver version or status value to natural string form.
-string DriverVersionStatusToString(absl::StatusOr<DriverVersion> version);
+std::string DriverVersionStatusToString(absl::StatusOr<DriverVersion> version);
 
 // Converts a string of a form like "331.79" to a DriverVersion{331, 79}.
-absl::StatusOr<DriverVersion> StringToDriverVersion(const string& value);
+absl::StatusOr<DriverVersion> StringToDriverVersion(const std::string& value);
 
 using Diagnostician = gpu::Diagnostician;
 

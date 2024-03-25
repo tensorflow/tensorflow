@@ -58,7 +58,6 @@ tsl::StatusOr<XlaCompilationResult> LegalizeTfToHlo(
                           "Combined MLIR Tf2Xla Bridge.";
 
   tsl::StatusOr<std::string> mlir_compilation
-
       = internal::CompileFromMlirToXlaHlo(
           /*lower_to_xla_hlo=*/false, computation, metadata, device_type,
           shape_determination_fns, use_tuple_args, compilation_result,

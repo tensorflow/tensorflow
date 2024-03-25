@@ -16,18 +16,24 @@ limitations under the License.
 #ifndef XLA_PYTHON_PY_HOST_CALLBACK_H_
 #define XLA_PYTHON_PY_HOST_CALLBACK_H_
 
+#include <cstdint>
 #include <memory>
 #include <string>
 #include <utility>
 #include <vector>
 
+#include "absl/base/casts.h"
+#include "absl/status/statusor.h"
 #include "absl/types/span.h"
 #include "llvm/Support/ExtensibleRTTI.h"
+#include "third_party/nanobind/include/nanobind/nanobind.h"
+#include "xla/pjrt/host_callback.h"
 #include "xla/python/callback.h"
 #include "xla/python/ifrt/client.h"
 #include "xla/python/ifrt/host_callback.h"
 #include "xla/python/pjrt_ifrt/pjrt_host_callback.h"
 #include "xla/shape.h"
+#include "tsl/concurrency/ref_count.h"
 
 namespace xla {
 
@@ -44,8 +50,8 @@ class PyCpuLoadedHostCallback final
     : public llvm::RTTIExtends<PyCpuLoadedHostCallback,
                                ifrt::LoadedHostCallback> {
  public:
-  static StatusOr<tsl::RCReference<PyCpuLoadedHostCallback>> Create(
-      ifrt::Client* ifrt_client, pybind11::function callable,
+  static absl::StatusOr<tsl::RCReference<PyCpuLoadedHostCallback>> Create(
+      ifrt::Client* ifrt_client, nanobind::callable callable,
       absl::Span<const Shape> operand_shapes,
       absl::Span<const Shape> result_shapes);
 
@@ -60,7 +66,7 @@ class PyCpuLoadedHostCallback final
 
   ifrt::Client* client() const override { return ifrt_client_; }
 
-  StatusOr<std::string> Serialize() const override;
+  absl::StatusOr<std::string> Serialize() const override;
 
   static char ID;  // NOLINT
 
@@ -89,19 +95,19 @@ class PyHostSendAndRecvLoadedHostCallback final
     : public llvm::RTTIExtends<PyHostSendAndRecvLoadedHostCallback,
                                ifrt::PjRtHostSendAndRecvLoadedHostCallback> {
  public:
-  static StatusOr<tsl::RCReference<PyHostSendAndRecvLoadedHostCallback>> Create(
-      ifrt::Client* ifrt_client, pybind11::function callable,
-      absl::Span<const Shape> operand_shapes,
-      absl::Span<const Shape> result_shapes,
-      absl::Span<const uint16_t> send_channel_ids,
-      absl::Span<const uint16_t> recv_channel_ids,
-      pybind11::function serializer);
+  static absl::StatusOr<tsl::RCReference<PyHostSendAndRecvLoadedHostCallback>>
+  Create(ifrt::Client* ifrt_client, nanobind::callable callable,
+         absl::Span<const Shape> operand_shapes,
+         absl::Span<const Shape> result_shapes,
+         absl::Span<const uint16_t> send_channel_ids,
+         absl::Span<const uint16_t> recv_channel_ids,
+         nanobind::callable serializer);
 
   // PjRtLoadedHostCallback implementation.
 
   ~PyHostSendAndRecvLoadedHostCallback() override;
 
-  StatusOr<std::string> Serialize() const override;
+  absl::StatusOr<std::string> Serialize() const override;
 
   static char ID;  // NOLINT
 
@@ -109,22 +115,22 @@ class PyHostSendAndRecvLoadedHostCallback final
   PyHostSendAndRecvLoadedHostCallback(
       ifrt::Client* ifrt_client,
       std::unique_ptr<xla::HostCallback> xla_host_callback,
-      pybind11::function callable, absl::Span<const Shape> operand_shapes,
+      nanobind::callable callable, absl::Span<const Shape> operand_shapes,
       absl::Span<const Shape> result_shapes,
       absl::Span<const uint16_t> send_channel_ids,
       absl::Span<const uint16_t> recv_channel_ids,
-      pybind11::function serializer);
+      nanobind::callable serializer);
 
   template <typename T, typename... Args>
   friend tsl::RCReference<T> tsl::MakeRef(Args&&... args);
 
   // Retained arguments for host callback serialization.
-  pybind11::function callable_;
+  nanobind::callable callable_;
   std::vector<Shape> operand_shapes_;
   std::vector<Shape> result_shapes_;
   std::vector<uint16_t> send_channel_ids_;
   std::vector<uint16_t> recv_channel_ids_;
-  pybind11::function serializer_;
+  nanobind::callable serializer_;
 };
 
 }  // namespace xla

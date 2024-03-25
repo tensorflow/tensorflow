@@ -79,8 +79,8 @@ std::unique_ptr<llvm::TargetMachine> GetTargetMachine(
 }
 
 // Compiles the given MLIR module via LLVM into an executable binary format.
-StatusOr<std::string> EmitToBinary(llvm::StringRef host_triple,
-                                   mlir::ModuleOp module) {
+absl::StatusOr<std::string> EmitToBinary(llvm::StringRef host_triple,
+                                         mlir::ModuleOp module) {
   // Translate the module.
   llvm::LLVMContext llvm_context;
   mlir::registerLLVMDialectTranslation(*module->getContext());
@@ -201,15 +201,19 @@ int main(int argc, char** argv) {
 
   tensorflow::InitMlir y(&argc, &argv);
 
+#ifdef TF_LLVM_X86_AVAILABLE
   LLVMInitializeX86Target();
   LLVMInitializeX86TargetInfo();
   LLVMInitializeX86TargetMC();
   LLVMInitializeX86AsmPrinter();
+#endif
 
+#ifdef TF_LLVM_AARCH64_AVAILABLE
   LLVMInitializeAArch64Target();
   LLVMInitializeAArch64TargetInfo();
   LLVMInitializeAArch64TargetMC();
   LLVMInitializeAArch64AsmPrinter();
+#endif
 
   mlir::registerPassManagerCLOptions();
   mlir::registerMLIRContextCLOptions();

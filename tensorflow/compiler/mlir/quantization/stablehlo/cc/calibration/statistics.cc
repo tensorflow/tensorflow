@@ -20,6 +20,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/strings/str_format.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/cc/graph_def.h"
+#include "tensorflow/compiler/mlir/quantization/stablehlo/quantization_config.pb.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/calibrator/calibration_statistics.pb.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/calibrator/calibrator_singleton.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/python/py_function_lib.h"
@@ -30,11 +31,11 @@ limitations under the License.
 namespace stablehlo::quantization {
 namespace {
 
+using ::stablehlo::quantization::CalibrationOptions;
 using ::tensorflow::GraphDef;
 using ::tensorflow::NodeDef;
 using ::tensorflow::calibrator::CalibrationStatistics;
 using ::tensorflow::calibrator::CalibratorSingleton;
-using ::tensorflow::quantization::CalibrationOptions;
 using ::tensorflow::quantization::PyFunctionLibrary;
 
 }  // namespace

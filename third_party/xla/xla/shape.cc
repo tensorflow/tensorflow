@@ -38,6 +38,7 @@ Shape::~Shape() = default;
 Shape::Shape(const Shape&) = default;
 Shape::Shape(Shape&&) = default;
 Shape& Shape::operator=(const Shape&) = default;
+Shape& Shape::operator=(Shape&&) = default;
 
 Shape::Shape(const ShapeProto& shape_proto) {
   set_element_type(shape_proto.element_type());
@@ -260,6 +261,7 @@ ProgramShape::~ProgramShape() = default;
 ProgramShape::ProgramShape(const ProgramShape&) = default;
 ProgramShape::ProgramShape(ProgramShape&&) = default;
 ProgramShape& ProgramShape::operator=(const ProgramShape&) = default;
+ProgramShape& ProgramShape::operator=(ProgramShape&&) = default;
 
 ProgramShape::ProgramShape(const ProgramShapeProto& program_shape_proto) {
   for (const ShapeProto& shape_proto : program_shape_proto.parameters()) {

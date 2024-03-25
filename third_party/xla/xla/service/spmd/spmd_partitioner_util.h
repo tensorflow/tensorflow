@@ -824,26 +824,28 @@ std::decay_t<Arg> ArgModifier(Arg&& arg, HloModule* module,
 
 // Finds SpmdPartitioningVisitor* object in an arg list.
 template <typename Arg, IsSpmdPartitioningVisitorPointer<Arg> = 0>
-StatusOr<SpmdPartitioningVisitor*> FindSpmdPartitioningVisitor(Arg&& arg) {
+absl::StatusOr<SpmdPartitioningVisitor*> FindSpmdPartitioningVisitor(
+    Arg&& arg) {
   return arg;
 }
 
 template <typename Arg, IsNotSpmdPartitioningVisitorPointer<Arg> = 0>
-StatusOr<SpmdPartitioningVisitor*> FindSpmdPartitioningVisitor(Arg&& arg) {
+absl::StatusOr<SpmdPartitioningVisitor*> FindSpmdPartitioningVisitor(
+    Arg&& arg) {
   return absl::InvalidArgumentError("No SpmdPartitioningVisitor found.");
 }
 
 template <typename Arg, typename... Args,
           IsSpmdPartitioningVisitorPointer<Arg> = 0>
-StatusOr<SpmdPartitioningVisitor*> FindSpmdPartitioningVisitor(Arg&& arg,
-                                                               Args&&... args) {
+absl::StatusOr<SpmdPartitioningVisitor*> FindSpmdPartitioningVisitor(
+    Arg&& arg, Args&&... args) {
   return arg;
 }
 
 template <typename Arg, typename... Args,
           IsNotSpmdPartitioningVisitorPointer<Arg> = 0>
-StatusOr<SpmdPartitioningVisitor*> FindSpmdPartitioningVisitor(Arg&& arg,
-                                                               Args&&... args) {
+absl::StatusOr<SpmdPartitioningVisitor*> FindSpmdPartitioningVisitor(
+    Arg&& arg, Args&&... args) {
   return FindSpmdPartitioningVisitor(std::forward<Args>(args)...);
 }
 
@@ -852,7 +854,7 @@ StatusOr<SpmdPartitioningVisitor*> FindSpmdPartitioningVisitor(Arg&& arg,
 // Evaluate the memory and communication cost for any arbitrary partitioning
 // methods.
 template <typename F, typename... Args>
-StatusOr<std::pair<int64_t, int64_t>> EvaluatePartitionCost(
+absl::StatusOr<std::pair<int64_t, int64_t>> EvaluatePartitionCost(
     const HloInstruction* original_hlo, F partition_method,
     Args&&... partition_method_args) {
   HloModule* module = original_hlo->GetModule();

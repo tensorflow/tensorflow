@@ -77,7 +77,7 @@ class HloEvaluatorTest : public HloTestBase {
  public:
   HloEvaluatorTest() : use_bfloat16_(false) { InitializeFftData(); }
 
-  StatusOr<Literal> Evaluate(
+  absl::StatusOr<Literal> Evaluate(
       absl::Span<const Literal* const> arg_literals = {}) {
     if (use_bfloat16_) {
       HloElementTypeConverter(F32, BF16).Run(m_.get()).value();
@@ -155,7 +155,7 @@ class HloEvaluatorTest : public HloTestBase {
   }
 
   void TestEvaluationFailure(HloInstruction* instruction) {
-    StatusOr<Literal> result = evaluator_.Evaluate(instruction);
+    absl::StatusOr<Literal> result = evaluator_.Evaluate(instruction);
     EXPECT_TRUE(!result.ok());
   }
 
@@ -170,7 +170,7 @@ class HloEvaluatorTest : public HloTestBase {
   }
 
   void TestRecursiveEvaluationFailure(HloInstruction* instruction) {
-    StatusOr<Literal> result = evaluator_.Evaluate(
+    absl::StatusOr<Literal> result = evaluator_.Evaluate(
         instruction, /*recursively_evaluate_nonconstant_operands=*/true);
     EXPECT_TRUE(!result.ok());
   }

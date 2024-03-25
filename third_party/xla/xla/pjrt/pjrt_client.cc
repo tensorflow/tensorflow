@@ -68,9 +68,17 @@ std::string CompiledMemoryStats::DebugString() const {
       "argument_size_in_bytes=$1, "
       "output_size_in_bytes=$2, "
       "alias_size_in_bytes=$3, "
-      "temp_size_in_bytes=$4)",
+      "temp_size_in_bytes=$4, "
+      "host_generated_code_size_in_bytes=$5, "
+      "host_argument_size_in_bytes=$6, "
+      "host_output_size_in_bytes=$7, "
+      "host_alias_size_in_bytes=$8, "
+      "host_temp_size_in_bytes=$9)",
       generated_code_size_in_bytes, argument_size_in_bytes,
-      output_size_in_bytes, alias_size_in_bytes, temp_size_in_bytes);
+      output_size_in_bytes, alias_size_in_bytes, temp_size_in_bytes,
+      host_generated_code_size_in_bytes, host_argument_size_in_bytes,
+      host_output_size_in_bytes, host_alias_size_in_bytes,
+      host_temp_size_in_bytes);
 }
 
 // Defining the first virtual non-pure method, which is usually the virtual

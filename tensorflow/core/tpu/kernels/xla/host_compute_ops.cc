@@ -84,7 +84,7 @@ Status MakeXlaShapes(gtl::ArraySlice<TensorShape> shapes,
   // Remove the dummy output from the vector that will be used to copy real
   // outputs from host to device.
   xla_shapes->pop_back();
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // This TensorFlow pseudo-op is used to record host-side computation.
@@ -310,7 +310,7 @@ class HostComputeOp : public XlaOpKernel {
       }
     } while (modified);
 
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   Status InferOutputShapes(XlaOpKernelContext* ctx,
@@ -397,7 +397,7 @@ class HostComputeOp : public XlaOpKernel {
           "Shape inference for HostCompute ", ctx->op_kernel().name(),
           " failed: inference graph has no send from host node");
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   DataTypeVector input_dtypes_;
@@ -520,8 +520,9 @@ class RecvFromHostOp : public XlaOpKernel {
     xla::XlaOp result = xla::RecvFromHost(token, xla_shape, channel);
     // xla::RecvFromHost returns a tuple of (received data, token).
     ctx->SetOutput(0, xla::GetTupleElement(result, 0));
-    OP_REQUIRES_OK(
-        ctx, compiler->SetNodeToken(name(), xla::GetTupleElement(result, 1)));
+    OP_REQUIRES_OK(ctx,
+                   compiler->SetNodeToken(original_node_name_,
+                                          xla::GetTupleElement(result, 1)));
   }
 
  private:

@@ -19,12 +19,18 @@ limitations under the License.
 #if TENSORFLOW_USE_ROCM
 #include "rocm/rocm_config.h"
 #endif
+#include <cstdint>
 #include <optional>
 
+#include "absl/base/thread_annotations.h"
+#include "absl/container/flat_hash_map.h"
+#include "absl/synchronization/mutex.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/gpu/matmul_utils.h"
 #include "xla/service/gpu/thunk.h"
 #include "xla/status.h"
+#include "xla/stream_executor/gpu/gpu_blas_lt.h"
+#include "xla/stream_executor/stream.h"
 
 namespace xla {
 namespace gpu {
@@ -50,8 +56,8 @@ class CublasLtMatmulThunk : public Thunk {
  private:
   absl::StatusOr<se::gpu::BlasLt::MatmulPlan*> GetMatmulPlan(
       const stream_executor::Stream* stream);
-  absl::StatusOr<std::optional<se::gpu::BlasLt::MatmulAlgorithm> >
-  GetMatmulAlgorithm(const se::gpu::BlasLt::MatmulPlan* plan);
+  absl::StatusOr<se::gpu::BlasLt::MatmulAlgorithm> GetMatmulAlgorithm(
+      const se::gpu::BlasLt::MatmulPlan* plan);
 
   absl::Mutex matmul_plans_cache_mutex_;
   absl::flat_hash_map<const stream_executor::Stream*,

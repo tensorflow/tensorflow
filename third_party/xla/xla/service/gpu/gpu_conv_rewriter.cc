@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/service/gpu/gpu_conv_rewriter.h"
 
+#include <cstdint>
 #include <cstdlib>
 #include <memory>
 #include <numeric>
@@ -24,17 +25,24 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "xla/hlo/ir/dfs_hlo_visitor_with_default.h"
+#include "absl/algorithm/container.h"
+#include "absl/container/flat_hash_set.h"
+#include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/permutation_util.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/cublas_cudnn.h"
+#include "xla/shape.h"
+#include "xla/shape_util.h"
 #include "xla/util.h"
 #include "xla/window_util.h"
 #include "xla/xla_data.pb.h"
+#include "tsl/platform/errors.h"
 #include "tsl/platform/logging.h"
 #include "tsl/platform/status.h"
+#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace gpu {

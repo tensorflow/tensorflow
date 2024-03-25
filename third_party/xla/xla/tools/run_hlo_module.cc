@@ -133,7 +133,7 @@ void OnMiscompare(const LiteralSlice& expected, const LiteralSlice& actual,
   WriteLiteralToTempFile(mismatches, "mismatches");
 }
 
-StatusOr<Literal> ExecuteWithRunner(
+absl::StatusOr<Literal> ExecuteWithRunner(
     std::unique_ptr<HloModule> module,
     const BufferAssignmentProto* buffer_assignment_proto,
     absl::Span<const Literal> args, HloRunnerInterface* runner,

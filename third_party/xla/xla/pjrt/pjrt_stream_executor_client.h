@@ -666,7 +666,10 @@ class PjRtStreamExecutorBuffer : public PjRtBuffer {
       bool wait_for_operations_to_complete) override;
 
   using PjRtBuffer::ToLiteralSync;
-  PjRtFuture<Status> ToLiteral(MutableLiteralBase* literal) override;
+  PjRtFuture<absl::Status> ToLiteral(MutableLiteralBase* literal) override;
+  PjRtFuture<absl::Status> LazyToLiteral(
+      absl::AnyInvocable<absl::StatusOr<MutableLiteralBase*>() &&> generator)
+      override;
 
   StatusOr<size_t> GetOnDeviceSizeInBytes() const override;
 

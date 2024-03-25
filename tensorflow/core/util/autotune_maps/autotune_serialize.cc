@@ -182,7 +182,7 @@ Status SerializeAutotuneMaps(std::string *output) {
                       ConvMapToProto(*FusedConvAutotuneMap::GetInstance()));
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
   TF_RET_CHECK(tsl::SerializeToStringDeterministic(proto, output));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status LoadSerializedAutotuneMaps(absl::string_view s) {
@@ -201,7 +201,7 @@ Status LoadSerializedAutotuneMaps(absl::string_view s) {
                                      FusedConvAutotuneMap::GetInstance()));
   // TODO(b/189530096): Populate autotune maps for more ops.
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 void ResetAutotuneMaps() {

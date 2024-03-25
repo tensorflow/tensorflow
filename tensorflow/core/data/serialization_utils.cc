@@ -587,7 +587,7 @@ Status AsGraphDef(const DatasetBase* dataset,
   return absl::OkStatus();
 }
 
-tsl::StatusOr<absl::flat_hash_map<std::string, int64_t>> CheckpointStats(
+absl::StatusOr<absl::flat_hash_map<std::string, int64_t>> CheckpointStats(
     const std::string& checkpoint_bytes) {
   TensorProto proto;
   if (!ParseProtoUnlimited(&proto, checkpoint_bytes)) {
