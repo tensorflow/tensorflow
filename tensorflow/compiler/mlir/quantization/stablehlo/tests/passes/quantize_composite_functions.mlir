@@ -598,7 +598,7 @@ module attributes {tf_saved_model.semantics} {
 
 // -----
 
-// Tests that basic gather is properly quantized.
+// Tests that basic `stablehlo.gather` is properly quantized.
 
 module attributes {tf_saved_model.semantics} {
 // CHECK: func.func private @quantize_gather_fn(%[[ARG:.+]]: tensor<3x4x2xf32>) -> tensor<2x3x2x2xf32> attributes {tf._original_func_name = "main_0"}
@@ -631,6 +631,5 @@ module attributes {tf_saved_model.semantics} {
     return %0 : tensor<2x3x2x2xf32>
   }
 // CHECK: %[[GATHER:.+]] = "stablehlo.gather"(%[[ARG_0]], %[[ARG_1]]) {{.*}} : (tensor<3x4x2x!quant.uniform<i8:f32, {{.*}}>>, tensor<2x3x2xi32>) -> tensor<2x3x2x2x!quant.uniform<i8:f32, {{.*}}>>
-// CHECK: %[[UNIFORM_QUANTIZE:.+]] = stablehlo.uniform_quantize %[[GATHER]] : tensor<2x3x2x2x!quant.uniform<i8:f32, {{.*}}>>
-// CHECK: return %[[UNIFORM_QUANTIZE]] : tensor<2x3x2x2x!quant.uniform<i8:f32, {{.*}}>>
+// CHECK: return %[[GATHER]] : tensor<2x3x2x2x!quant.uniform<i8:f32, {{.*}}>>
 }

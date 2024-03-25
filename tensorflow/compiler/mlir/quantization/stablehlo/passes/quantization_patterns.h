@@ -249,23 +249,13 @@ class StableHloQuantizationPattern : public OpRewritePattern<RootOpT> {
   }
 };
 
-// Gemm Style Op: glossary/gemm.
-void PopulateFusedGemmStylePatterns(MLIRContext& ctx,
-                                    RewritePatternSet& patterns,
-                                    bool enable_per_channel_quantized_weight);
+// Populates pattern for compute heavy operations.
+void PopulateComputeHeavyPatterns(MLIRContext& ctx, RewritePatternSet& patterns,
+                                  bool enable_per_channel_quantized_weight);
 
 // Populates pattern for hybrid quantization.
 void PopulateQuantizeHybridPatterns(MLIRContext& ctx,
                                     RewritePatternSet& patterns);
-
-// Populates pattern for quantization of ops with regions such as
-// stablehlo.reduce_window op.
-void PopulateQuantizeOpWithRegionPattern(MLIRContext& ctx,
-                                         RewritePatternSet& patterns);
-
-// Populates conversion patterns for unary data movement ops.
-void PopulateQuantizeSingularOpPatterns(MLIRContext& ctx,
-                                        RewritePatternSet& patterns);
 
 }  // namespace mlir::quant::stablehlo
 
