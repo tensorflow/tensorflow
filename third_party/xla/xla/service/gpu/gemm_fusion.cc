@@ -893,23 +893,6 @@ FusionDecision CanTritonHandleGEMM(
     return "No non-contracting dimensions.";
   }
 
-  for (int operand_number = 0; operand_number <= 1; ++operand_number) {
-    // This pass relies on dot decomposer which ensures that all non-contracting
-    // dimensions are merged into one. Using NonContractingDimensionIndex is
-    // sufficient.
-    absl::StatusOr<int64_t> non_contracting_dimension_index =
-        NonContractingDimensionIndex(dot, operand_number);
-    if (!non_contracting_dimension_index.ok()) {
-      return non_contracting_dimension_index.status().message();
-    }
-    const int64_t nc_size = dot.operand(operand_number)
-                                ->shape()
-                                .dimensions(*non_contracting_dimension_index);
-    if (nc_size <= 1) {
-      return "Trivial non-contracting dimensions.";
-    }
-  }
-
   return FusionDecision{};
 }
 
