@@ -46,7 +46,8 @@ void ExpandStaticRangePtqPreset(const StaticRangePtqPreset& preset,
   // explicit `QuantizationSpec`s will be appended.
   QuantizationSpecs new_specs{};
   QuantizationSpec& spec = *new_specs.add_specs();
-  spec.mutable_matcher()->mutable_function_name()->set_regex(".*");
+  spec.mutable_matcher()->mutable_function_name()->set_regex(
+      preset.enable_full_int_quantization() ? ".*" : "^.*(conv|dot|gather).*");
   spec.mutable_method()->mutable_static_range_ptq();
 
   const QuantizationSpecs& previous_specs = config.specs();

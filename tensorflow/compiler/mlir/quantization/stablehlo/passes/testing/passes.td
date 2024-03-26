@@ -80,7 +80,9 @@ def TestLiftQuantizableSpotsAsFunctionsWithQuantizationSpecsPass :
         clEnumValN(mlir::quant::stablehlo::testing::TestQuantizationSpecs::kDisableAllDotGeneral,
           "disable-all-dot-general", "Disables all dot_general ops by matching lifted function names"),
         clEnumValN(mlir::quant::stablehlo::testing::TestQuantizationSpecs::kStaticRangePtqToAll,
-          "static-range-ptq-to-all", "Applies `StaticRangePtq` to all quantizable units.")
+          "static-range-ptq-to-all", "Applies `StaticRangePtq` to all quantizable units."),
+        clEnumValN(mlir::quant::stablehlo::testing::TestQuantizationSpecs::kStaticRangePtqToComputeHeavy,
+          "static-range-ptq-to-compute-heavy", "Applies `StaticRangePtq` to only compute heavy units.")
       )}]>
   ];
   let dependentDialects = [

@@ -39,7 +39,7 @@ message RepresentativeDatasetConfig {
 // specs {matcher {function_name {regex: ".*"}} method {static_range_ptq {}}}
 // ```
 //
-// Next ID: 3
+// Next ID: 4
 message StaticRangePtqPreset {
   // Configures representative dataset. Each item corresponds to a
   // representative dataset used to calibrate a function.
@@ -50,9 +50,12 @@ message StaticRangePtqPreset {
   // NOTE: This field will be deprecated.
   // Granularity should be controlled in custom configuration, deprecating
   // this field once available.
-  // If set true, enable channel-wise quantization for all supported ops.
+  // Whether to enable channel-wise quantization for all supported ops.
   // This value is true by default.
   bool enable_per_channel_quantized_weight = 2;
+
+  // Whether to quantize all quantizable ops or only compute-heavy ops.
+  bool enable_full_int_quantization = 3;
 }
 
 // Applies int8 per-tensor weight-only quantization for all dot_general op.

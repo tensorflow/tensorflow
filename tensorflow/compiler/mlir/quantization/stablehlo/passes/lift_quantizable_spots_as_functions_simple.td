@@ -67,3 +67,11 @@ def LiftGather : Pat<
       (NamedAttr<"slice_sizes"> $slice_sizes),
       (NamedAttr<"indices_are_sorted"> (DefaultOrNullAttr $indices_are_sorted)))),
   [(IsNotInLiftedFunc $res), (IsStableHLOConstantOp $operand)], [], (addBenefit 1)>;
+
+def LiftAdd : Pat<
+  (StableHLO_AddOp:$res
+      $lhs, $rhs),
+  (LiftAsTFXlaCallModule<"composite_add_fn">
+    (ArgumentList $lhs, $rhs),
+    (ResultList $res)),
+  [(IsNotInLiftedFunc $res), (IsNotInStableHloOpRegion $res)], [], (addBenefit 1)>;

@@ -23,9 +23,10 @@ namespace mlir::quant::stablehlo::testing {
 // `TestLiftQuantizableSpotsAsFunctionsWithQuantizationSpecsPass`. The pass
 // option argument is specified in line comments for each enum value.
 enum class TestQuantizationSpecs {
-  kEmpty,                 // empty
-  kDisableAllDotGeneral,  // disable-all-dot-general
-  kStaticRangePtqToAll,   // static-range-ptq-to-all
+  kEmpty,                         // empty
+  kDisableAllDotGeneral,          // disable-all-dot-general
+  kStaticRangePtqToAll,           // static-range-ptq-to-all
+  kStaticRangePtqToComputeHeavy,  // static-range-ptq-to-compute-heavy
 };
 
 // Adds generated pass default constructors or options definitions.

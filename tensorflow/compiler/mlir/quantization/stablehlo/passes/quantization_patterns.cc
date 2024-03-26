@@ -921,6 +921,12 @@ void PopulateComputeHeavyPatterns(
   patterns.add<QuantizeOpWithRegionPattern>(ctx);
 }
 
+void PopulateAllQuantizablePatterns(MLIRContext& ctx,
+                                    RewritePatternSet& patterns) {
+  patterns.add<XlaCallModuleOpToCallOp<QuantizeSingularOpPattern<AddOp>>>(
+      ctx, /*enable_per_channel_quantized_weight=*/false);
+}
+
 void PopulateQuantizeHybridPatterns(MLIRContext& ctx,
                                     RewritePatternSet& patterns) {
   patterns.add<HybridXlaCallModuleOpToCallOp<QuantizeHybridDotGeneralPattern>>(

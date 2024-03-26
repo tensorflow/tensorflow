@@ -62,6 +62,15 @@ constexpr absl::string_view kSpecsStaticRangePtqToAll =
            method { static_range_ptq {} }
          }])pb";
 
+// Configure `QuantizationSpecs` to apply `StaticRangePtq` to compute heavy
+// units.
+constexpr absl::string_view kSpecsStaticRangePtqToComputeHeavy =
+    R"pb(specs
+         [ {
+           matcher { function_name { regex: "^.*(conv|dot|gather).*" } }
+           method { static_range_ptq {} }
+         }])pb";
+
 class TestLiftQuantizableSpotsAsFunctionsWithQuantizationSpecsPass
     : public impl::
           TestLiftQuantizableSpotsAsFunctionsWithQuantizationSpecsPassBase<
@@ -88,6 +97,8 @@ absl::string_view GetQuantizationSpecsTextProto(
       return kSpecsDisableAllDotGeneral;
     case TestQuantizationSpecs::kStaticRangePtqToAll:
       return kSpecsStaticRangePtqToAll;
+    case TestQuantizationSpecs::kStaticRangePtqToComputeHeavy:
+      return kSpecsStaticRangePtqToComputeHeavy;
   }
 }
 
