@@ -5,9 +5,13 @@ StableHLO kernels.
 
 ## Contributing
 
+Please review the [Tensorflow Contributing Guide] for the repository's
+contributing guidelines.
+
 The code makes use of C++17 and is built using Bazel.
 
-Unless specified, the [Google style guide] should be specified.
+Unless specified, the [Google style guide] should be followed. Clang-format with
+`google` style should be used for automatic code formatting.
 
 To keep familiarity for people who are used to working with StableHLO, the data
 structures try to follow the naming and hierarchy that are found in the
@@ -200,6 +204,20 @@ ash shell /data/local/tmp/op_name_test
 
 #### iOS
 
+##### Prerequisites
+
+Follow the instructions for setting up the iOS development environment in the
+TensorFlow Lite [Build for iOS] guide. The `configure` script must be run and
+you must opt-in to iOS development.
+
+##### Building
+
+```
+bazel build -c opt --config=ios_arm64 ops:op_name_test
+```
+
+##### Testing
+
 TODO:
 
 [stablehlo]: https://github.com/openxla/stablehlo/blob/main/docs/spec.md
@@ -208,3 +226,5 @@ TODO:
 [GoogleTest]: https://github.com/google/googletest
 [Google Benchmark]: https://github.com/google/benchmark
 [Google style guide]: https://google.github.io/styleguide/cppguide.html
+[Tensorflow Contributing Guide]: https://github.com/tensorflow/tensorflow/blob/master/CONTRIBUTING.md
+[Build for iOS]: https://www.tensorflow.org/lite/guide/build_ios
