@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <climits>
 #include <cmath>
+#include <cstddef>
 #include <cstdint>
 #include <functional>
 #include <limits>
@@ -26,6 +27,7 @@ limitations under the License.
 #include <string>
 #include <system_error>  // NOLINT(build/c++11): required to interface with LLVM
 #include <utility>
+#include <variant>
 #include <vector>
 
 #include "nvidia/include/NVGPUToLLVM/NVGPUToLLVMPass.h"
@@ -47,11 +49,14 @@ limitations under the License.
 #include "llvm/IR/Module.h"
 #include "llvm/Linker/Linker.h"
 #include "llvm/Support/FileSystem.h"
+#include "llvm/Support/MathExtras.h"
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/TargetParser/Triple.h"
+#include "mlir/Conversion/AffineToStandard/AffineToStandard.h"  // from @llvm-project
 #include "mlir/Conversion/ArithToLLVM/ArithToLLVM.h"  // from @llvm-project
 #include "mlir/Conversion/IndexToLLVM/IndexToLLVM.h"  // from @llvm-project
 #include "mlir/Conversion/SCFToControlFlow/SCFToControlFlow.h"  // from @llvm-project
+#include "mlir/Dialect/Affine/IR/AffineOps.h"  // from @llvm-project
 #include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"  // from @llvm-project
 #include "mlir/Dialect/LLVMIR/LLVMTypes.h"  // from @llvm-project
@@ -59,6 +64,7 @@ limitations under the License.
 #include "mlir/Dialect/Math/IR/Math.h"  // from @llvm-project
 #include "mlir/Dialect/SCF/IR/SCF.h"  // from @llvm-project
 #include "mlir/ExecutionEngine/OptUtils.h"  // from @llvm-project
+#include "mlir/IR/AffineExpr.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
@@ -68,6 +74,7 @@ limitations under the License.
 #include "mlir/IR/DialectRegistry.h"  // from @llvm-project
 #include "mlir/IR/ImplicitLocOpBuilder.h"  // from @llvm-project
 #include "mlir/IR/Location.h"  // from @llvm-project
+#include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/OwningOpRef.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
 #include "mlir/IR/TypeUtilities.h"  // from @llvm-project
@@ -93,17 +100,22 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/utils/hlo_query.h"
+#include "xla/layout_util.h"
 #include "xla/literal.h"
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 #include "xla/mlir_hlo/mhlo/transforms/map_mhlo_to_scalar_op.h"
 #include "xla/primitive_util.h"
 #include "xla/service/algorithm_util.h"
 #include "xla/service/dump.h"
+#include "xla/service/gpu/fusions/mlir/elemental_hlo_to_mlir.h"
 #include "xla/service/gpu/hlo_traversal.h"
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/launch_dimensions.h"
 #include "xla/service/gpu/llvm_gpu_backend/gpu_backend_lib.h"
 #include "xla/service/gpu/matmul_utils.h"
+#include "xla/service/gpu/model/indexing_analysis.h"
+#include "xla/service/gpu/model/indexing_map.h"
+#include "xla/service/gpu/model/symbolic_tile_analysis.h"
 #include "xla/service/gpu/target_util.h"
 #include "xla/service/gpu/triton_fusion_analysis.h"
 #include "xla/service/gpu/triton_tiling_propagation.h"
@@ -678,6 +690,138 @@ absl::StatusOr<Value> EmitReduce(ImplicitLocOpBuilder& b,
   }
 
   return Cast(b, result, TritonType(b, hlo_reduce.shape().element_type()));
+}
+
+// TODO(b/331332678): Add unit tests to target this function specifically.
+Value EmitTiledBroadcast(
+    ImplicitLocOpBuilder& b, const SymbolicTileAnalysis& analysis,
+    const TiledHloInstruction& tiled_broadcast,
+    absl::flat_hash_map<const TiledHloInstruction*, Value>& values) {
+  auto input_tile_shape = analysis.TileSizes(*tiled_broadcast.operands[0]);
+  auto output_tile_shape = analysis.TileSizes(tiled_broadcast);
+
+  Value expanded_input = values[tiled_broadcast.operands[0]];
+
+  // Returns true if `dim_id` is broadcasted.
+  auto is_broadcasted_dim = [&](int64_t dim_id) {
+    return !llvm::is_contained(tiled_broadcast.hlo->dimensions(), dim_id);
+  };
+
+  // The loop below iterates over output dimensions and tracks matching dims in
+  // input_tile_shape and expended_input value.
+  // `input_dim_id != expanded_input_dim_id`, because size-1 dims are present in
+  // the input tile shape, but not in the MLIR value. Triton doesn't like size-1
+  // dims, so they are inserted only for dimensions that will be broadcasted.
+  int64_t input_dim_id = 0;
+  int64_t expanded_input_dim_id = 0;
+  for (size_t output_dim_id = 0; output_dim_id < output_tile_shape.size();
+       ++output_dim_id) {
+    if (is_broadcasted_dim(output_dim_id)) {
+      // The dim is broadcasted in the original instruction, but tiled to 1 in
+      // this case. Nothing to broadcast.
+      if (output_tile_shape[output_dim_id] == 1) continue;
+
+      // Expand dim for broadcast.
+      expanded_input =
+          b.create<mt::ExpandDimsOp>(expanded_input, expanded_input_dim_id);
+      ++expanded_input_dim_id;
+    } else {
+      // The dim is not broadcasted. Validate that it's equal in the input and
+      // output tile.
+      CHECK_EQ(input_tile_shape[input_dim_id],
+               output_tile_shape[output_dim_id]);
+      ++input_dim_id;
+
+      // Size-1 dims are not present in the tensor type.
+      if (output_tile_shape[output_dim_id] != 1) {
+        ++expanded_input_dim_id;
+      }
+    }
+  }
+
+  SmallVector<int64_t> padded_output_tile_shape;
+  padded_output_tile_shape.reserve(output_tile_shape.size());
+
+  for (int64_t tile_dim : output_tile_shape) {
+    if (tile_dim != 1) {
+      padded_output_tile_shape.push_back(llvm::PowerOf2Ceil(tile_dim));
+    }
+  }
+
+  return Broadcast(b, expanded_input.cast<TensorValue>(),
+                   padded_output_tile_shape);
+}
+
+absl::StatusOr<Value> EmitTiledHloInstruction(
+    ImplicitLocOpBuilder& b, absl::string_view libdevice_path,
+    const se::DeviceDescription& device_info,
+    const SymbolicTileAnalysis& analysis, const TiledHloInstruction& tiled_hlo,
+    std::function<absl::StatusOr<Value>(const TiledHloInstruction&)>
+        emit_param_load_fn,
+    absl::flat_hash_map<const TiledHloInstruction*, Value>& values) {
+  const HloInstruction* hlo = tiled_hlo.hlo;
+
+  if (hlo->opcode() == HloOpcode::kParameter) {
+    return emit_param_load_fn(tiled_hlo);
+  }
+
+  if (hlo->opcode() == HloOpcode::kConstant &&
+      ShapeUtil::IsEffectiveScalar(hlo->shape())) {
+    // Splat makes it a tensor to avoid type mismatches.
+    return Splat(b, EmitConstant(b, *hlo), {});
+  }
+
+  if (hlo->opcode() == HloOpcode::kBroadcast) {
+    return EmitTiledBroadcast(b, analysis, tiled_hlo, values);
+  }
+
+  if (hlo->opcode() == HloOpcode::kReduce) {
+    return EmitReduce(b, libdevice_path, device_info, *hlo,
+                      values[tiled_hlo.operands[0]]);
+  }
+
+  if (hlo->IsElementwise()) {
+    std::vector<Value> operands;
+    operands.reserve(hlo->operands().size());
+
+    for (const TiledHloInstruction* operand : tiled_hlo.operands) {
+      operands.push_back(values[operand]);
+    }
+    return EmitElementwise(b, libdevice_path, device_info, *hlo, operands);
+  }
+
+  if (hlo->opcode() == HloOpcode::kTranspose ||
+      hlo->opcode() == HloOpcode::kSlice || hlo->opcode() == HloOpcode::kPad) {
+    // All these are currently supported only as operations on indices
+    // which are pushed to loads and stores. No operations on tiles are
+    // performed here.
+    return values[tiled_hlo.operands[0]];
+  }
+
+  return absl::UnimplementedError(
+      absl::StrCat("Unsupported opcode: ", hlo->opcode()));
+}
+
+// Emit sequence of instructions using compatible tiling ordered producers
+// before consumers.
+absl::StatusOr<Value> EmitTiledScope(
+    ImplicitLocOpBuilder& b, absl::string_view libdevice_path,
+    const se::DeviceDescription& device_info,
+    const SymbolicTileAnalysis& analysis,
+    std::function<absl::StatusOr<Value>(const TiledHloInstruction&)>
+        emit_param_load_fn,
+    absl::flat_hash_map<const TiledHloInstruction*, Value>& values) {
+  for (const auto& tiled_hlo : analysis.GetTiledHloInstructions()) {
+    TF_ASSIGN_OR_RETURN(
+        Value result,
+        EmitTiledHloInstruction(b, libdevice_path, device_info, analysis,
+                                *tiled_hlo, emit_param_load_fn, values));
+    TF_RET_CHECK(values.insert({tiled_hlo.get(), result}).second)
+        << tiled_hlo->hlo->ToString();
+    VLOG(8) << "Emitted "
+            << tiled_hlo->hlo->ToString(HloPrintOptions::ShortParsable());
+  }
+  return values[analysis.GetRoot()];
 }
 
 // Emit sequence of instructions using compatible tiling ordered producers
@@ -2043,6 +2187,216 @@ absl::Status EmitMatMul(mlir::OpBuilder builder,
   return absl::OkStatus();
 }
 
+// Computes indexing map from program id into the tile offset for the given
+// shape and tile sizes.
+IndexingMap ComputeProgramIdToOutputTileIndexing(
+    absl::Span<const int64_t> dimensions, absl::Span<const int64_t> tile_sizes,
+    mlir::MLIRContext* mlir_context) {
+  CHECK_EQ(dimensions.size(), tile_sizes.size());
+
+  int num_tiles = 1;
+  std::vector<int64_t> outer_loop_bounds;
+  outer_loop_bounds.reserve(dimensions.size());
+  for (auto [dim_size, tile_size] : llvm::zip(dimensions, tile_sizes)) {
+    int num_tiles_per_dim = (dim_size + tile_size - 1) / tile_size;
+
+    num_tiles *= num_tiles_per_dim;
+    outer_loop_bounds.push_back(num_tiles_per_dim);
+  }
+
+  mlir::AffineExpr program_id = mlir::getAffineDimExpr(0, mlir_context);
+
+  // Delinearize the block id.
+  auto tile_exprs =
+      DelinearizeIndex(outer_loop_bounds, program_id, mlir_context);
+
+  // Scale each index by the tile size to produce tile offset.
+  for (auto [tile_expr, tile_size] : llvm::zip(tile_exprs, tile_sizes)) {
+    tile_expr = tile_expr * tile_size;
+  }
+
+  return IndexingMap::FromTensorSizes(
+      mlir::AffineMap::get(
+          /*dimCount=*/1, /*symbolCount=*/0, tile_exprs, mlir_context),
+      /*dim_upper_bounds=*/{num_tiles}, /*symbol_upper_bounds=*/{});
+}
+
+// Computes the base pointer offset for the given pid and shape.
+// `tile_offset_indexing` is a mapping from
+// (program_id) -> [tile_offset0, ..., tile_offsetN]
+StatusOr<Value> ComputeBasePtrOffset(ImplicitLocOpBuilder b, Value pid,
+                                     const Shape& shape,
+                                     const IndexingMap& tile_offset_indexing) {
+  ArrayRef<mlir::AffineExpr> dimension_exprs =
+      tile_offset_indexing.GetAffineMap().getResults();
+
+  mlir::AffineExpr linear_index =
+      mlir::getAffineConstantExpr(0, b.getContext());
+  int64_t stride = 1;
+  for (int i : shape.layout().minor_to_major()) {
+    linear_index = linear_index + dimension_exprs[i] * stride;
+    stride *= shape.dimensions(i);
+  }
+
+  // A symbol in an indexing map means that to produce on element of output, we
+  // need to read all elements of input in the symbol range. Since this function
+  // computes start of the tile, we need to substitute each symbol with its
+  // lower bound value. We assume here the iteration order is normalized.
+  // TODO(b/330906085): Support cases when tile offsets are not 0.
+  for (const Interval& symbol_bound : tile_offset_indexing.GetSymbolBounds()) {
+    if (symbol_bound.lower != 0) {
+      return absl::FailedPreconditionError(absl::StrCat(
+          "Symbol lower bound is not zero. ", tile_offset_indexing.ToString()));
+    }
+  }
+
+  std::vector<Value> symbol_lower_bounds(
+      tile_offset_indexing.GetSymbolCount(),
+      b.create<ma::ConstantOp>(b.getIndexAttr(0)));
+
+  return b.create<ma::IndexCastUIOp>(
+      b.getI64Type(), mlir_converter::ApplyAffineExpr(linear_index, pid,
+                                                      symbol_lower_bounds, b));
+}
+
+absl::Status EmitTiledSoftMax(mlir::OpBuilder builder,
+                              absl::string_view libdevice_path,
+                              const se::DeviceDescription& device_info,
+                              SymbolicTileAnalysis* analysis,
+                              const HloComputation* computation,
+                              mlir::triton::FuncOp fn) {
+  mlir::MLIRContext* mlir_context = analysis->GetMLIRContext();
+
+  const HloInstruction* root = computation->root_instruction();
+  auto loc = mlir::NameLoc::get(builder.getStringAttr(root->name()));
+  ImplicitLocOpBuilder b(loc, builder);
+
+  // Assumptions we make about the matcher:
+  //   * matches Softmax "diamonds" on the last axis, along with any number of
+  //     elementwise operations/bitcasts on any edge
+  //   * within a given fusion, every argument to a Softmax diamond has the same
+  //     shape
+  //   * every reduction is on the last axis
+  //   * the last axis of every reduction parameter has the same length
+  //   * reductions only reduce a single operand
+  //   * all the shapes have canonical layout (logical layout = physical layout)
+  //   * the computation has a single output
+  //   * we tile along a single dimension
+
+  const HloInstruction* reduce = hlo_query::GetFirstInstructionWithOpcode(
+      *computation, HloOpcode::kReduce);
+
+  if (reduce == nullptr) {
+    return absl::InvalidArgumentError("No reduce instruction found.");
+  }
+
+  const Shape& reduce_input_shape = reduce->operand(0)->shape();
+
+  if (reduce->dimensions().size() != 1 ||
+      reduce->dimensions(0) != reduce_input_shape.rank() - 1) {
+    return absl::InvalidArgumentError(
+        absl::StrCat("Reduce instruction must reduce inner-most dimension. ",
+                     reduce->ToString()));
+  }
+
+  const Shape& root_shape = computation->root_instruction()->shape();
+  if (!root_shape.IsArray() ||
+      LayoutUtil::IsMonotonicWithDim0Minor(root_shape.layout())) {
+    return absl::InvalidArgumentError(
+        absl::StrCat("Root shape is not supported. ", root_shape.ToString()));
+  }
+
+  int row_len = reduce_input_shape.dimensions_minor(0);
+
+  Value pid = b.create<ma::IndexCastUIOp>(
+      b.getIndexType(), b.create<mt::GetProgramIdOp>(mt::ProgramIDDim::X));
+
+  std::vector<int64_t> output_tile_sizes(
+      computation->root_instruction()->shape().rank(), 1);
+  output_tile_sizes.back() = row_len;
+
+  analysis->SetTileSizes(output_tile_sizes);
+
+  IndexingMap program_id_to_output_tile_indexing =
+      ComputeProgramIdToOutputTileIndexing(root_shape.dimensions(),
+                                           output_tile_sizes, mlir_context);
+
+  // block_size must be a power of two.
+  int result_block_size = llvm::PowerOf2Ceil(row_len);
+
+  std::vector<int32_t> boundary_checks;
+  if (result_block_size != row_len) {
+    boundary_checks.push_back(0);
+  }
+
+  // Emits load instructions
+  auto emit_param_load = [&](const TiledHloInstruction& tiled_hlo_instruction)
+      -> absl::StatusOr<Value> {
+    std::vector<Value> tile_sizes, tile_strides, tile_offsets;
+    for (auto [size, stride, offset] :
+         llvm::zip(analysis->TileSizes(tiled_hlo_instruction),
+                   analysis->TileStrides(tiled_hlo_instruction),
+                   analysis->TileOffsets(tiled_hlo_instruction))) {
+      if (size == 1) continue;
+
+      tile_sizes.push_back(CreateConst(b, b.getI64Type(), size));
+      tile_strides.push_back(CreateConst(b, b.getI64Type(), stride));
+      tile_offsets.push_back(CreateConst(b, b.getI32Type(), offset));
+    }
+
+    IndexingMap program_id_to_input_tile_indexing = ComposeIndexingMaps(
+        program_id_to_output_tile_indexing, tiled_hlo_instruction.indexing_map);
+    program_id_to_input_tile_indexing.Simplify();
+
+    // Manually compute pointer offset to avoid materialized fully parallel
+    // dimensions in the tile. Current codegen tried to avoid size-1 dims.
+    TF_ASSIGN_OR_RETURN(
+        Value ptr_offset,
+        ComputeBasePtrOffset(b, pid, tiled_hlo_instruction.hlo->shape(),
+                             program_id_to_input_tile_indexing));
+
+    auto fn_arg = fn.getArgument(tiled_hlo_instruction.hlo->parameter_number());
+    auto tile_ptr = AddPtr(b, fn_arg, ptr_offset);
+
+    if (tile_sizes.empty()) {
+      return EmitParameterLoad(b, tile_ptr, boundary_checks);
+    }
+
+    Value emitted_tensor = b.create<mt::MakeTensorPtrOp>(
+        /*base=*/tile_ptr,
+        /*shape=*/tile_sizes,
+        /*strides=*/tile_strides,
+        /*offsets=*/tile_offsets,
+        /*tensorShape=*/std::vector<int32_t>{result_block_size},
+        /*order=*/std::vector<int32_t>{0});
+
+    return EmitParameterLoad(b, emitted_tensor, boundary_checks);
+  };
+
+  absl::flat_hash_map<const TiledHloInstruction*, Value> values_out;
+  TF_ASSIGN_OR_RETURN(Value result,
+                      EmitTiledScope(b, libdevice_path, device_info, *analysis,
+                                     emit_param_load, values_out));
+
+  TF_ASSIGN_OR_RETURN(Value ptr_offset,
+                      ComputeBasePtrOffset(b, pid, root_shape,
+                                           program_id_to_output_tile_indexing));
+
+  Value store_tensor = b.create<mt::MakeTensorPtrOp>(
+      /*base=*/AddPtr(b, fn.getArgument(computation->num_parameters()),
+                      ptr_offset),
+      /*shape=*/ValueRange{CreateConst(b, b.getI64Type(), row_len)},
+      /*strides=*/ValueRange{CreateConst(b, b.getI64Type(), 1)},
+      /*offsets=*/ValueRange{CreateConst(b, b.getI32Type(), 0)},
+      /*tensorShape=*/std::vector<int32_t>{result_block_size},
+      /*order=*/std::vector<int32_t>{0});
+
+  b.create<mt::StoreOp>(store_tensor, result, std::vector<int32_t>{0},
+                        mt::CacheModifier::NONE, mt::EvictionPolicy::NORMAL);
+
+  return absl::OkStatus();
+}
+
 absl::Status EmitSoftMax(mlir::OpBuilder builder,
                          absl::string_view libdevice_path,
                          const se::DeviceDescription& device_info,
@@ -2050,6 +2404,15 @@ absl::Status EmitSoftMax(mlir::OpBuilder builder,
                          const HloComputation* computation,
                          mlir::triton::FuncOp fn,
                          const TritonGemmConfig& config) {
+  SymbolicTileAnalysisOrError symbolic_tile_analysis_or =
+      SymbolicTileAnalysis::AnalyzeComputation(*computation,
+                                               builder.getContext());
+  if (auto* symbolic_tile_analysis =
+          std::get_if<SymbolicTileAnalysis>(&symbolic_tile_analysis_or)) {
+    return EmitTiledSoftMax(builder, libdevice_path, device_info,
+                            symbolic_tile_analysis, computation, fn);
+  }
+
   const HloInstruction* root = computation->root_instruction();
   auto loc = mlir::NameLoc::get(builder.getStringAttr(root->name()));
   ImplicitLocOpBuilder b(loc, builder);
@@ -2235,7 +2598,9 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> CreateTritonModule(
     const HloComputation* hlo_computation,
     const se::DeviceDescription& device_info, const TritonGemmConfig& config,
     TritonIrEmitter ir_emitter, mlir::MLIRContext& mlir_context) {
-  mlir_context.loadDialect<mt::TritonDialect>();
+  mlir_context.loadDialect<mt::TritonDialect, mlir::arith::ArithDialect,
+                           mlir::affine::AffineDialect>();
+
   mlir::OpBuilder b(&mlir_context);
   auto loc = mlir::NameLoc::get(b.getStringAttr(hlo_computation->name()));
   mlir::OwningOpRef<mlir::ModuleOp> triton_module =
@@ -2398,6 +2763,9 @@ absl::StatusOr<TritonWrapperResult> CompileTritonToLLVM(
                  << "--xla_dump_to is set, so the llvm dumps are disabled.";
     }
   }
+
+  // Lower affine expressions into arithmetic ops.
+  pm.addPass(mlir::createLowerAffinePass());
 
   mlir::triton::nvidia_gpu::ClusterInfo cluster_info;
   if (!CreateTritonPipeline(pm, cc, config, /*out*/ cluster_info).ok()) {
