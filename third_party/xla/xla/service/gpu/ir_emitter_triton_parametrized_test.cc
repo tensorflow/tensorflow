@@ -2393,17 +2393,16 @@ ENTRY main {
 }
 )";
 
-  // Param order is arbitrary. We test that only param_1 is in the fused root
-  // instruction below.
   const std::string hlo_ref = R"(
 ; CHECK:    ENTRY
 ; CHECK-DAG:    %[[param_0:.*]] = f32[125,127]{1,0} parameter(0)
 ; CHECK-DAG:    %[[param_1:.*]] = f32[127]{0} parameter(1)
 ; CHECK:      ROOT
 ; CHECK-SAME:   f32[125,127]{1,0} fusion
-; CHECK-SAME:   %[[param_1]]
-; CHECK-SAME:   kind=kCustom
-; CHECK-SAME:   triton_softmax
+; CHECK-SAME:    %[[param_0]]
+; CHECK-SAME:    %[[param_1]]
+; CHECK-SAME:          kind=kCustom
+; CHECK-SAME:          triton_softmax
 )";
   MatchOptimizedHlo(hlo_text, hlo_ref);
 
