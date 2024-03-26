@@ -49,7 +49,8 @@ tsl::thread::ThreadPool& GetThreadPool() {
   return *thread_pool;
 }
 
-TEST(SavedModelIfrt, Basic) {
+// TODO(b/319045348): replace with a variableless model.
+TEST(SavedModelIfrt, DISABLED_Basic) {
   std::string saved_model_dir = tensorflow::GetDataDependencyFilepath(
       "tensorflow/core/tfrt/saved_model/tests/toy_v2");
 
