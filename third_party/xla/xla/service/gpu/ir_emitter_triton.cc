@@ -124,6 +124,7 @@ limitations under the License.
 #include "xla/shape_util.h"
 #include "xla/status.h"
 #include "xla/status_macros.h"
+#include "xla/statusor.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/launch_dim.h"
 #include "xla/translate/hlo_to_mhlo/hlo_function_importer.h"
@@ -692,6 +693,44 @@ absl::StatusOr<Value> EmitReduce(ImplicitLocOpBuilder& b,
   return Cast(b, result, TritonType(b, hlo_reduce.shape().element_type()));
 }
 
+// Emit code corresponding to a fusion instruction somehow nested within the
+// initial Triton fusion. This can happen when we carry around auxiliary
+// computations, e.g. with reduces. Since we are emitting a single Triton
+// fusion, we simply flatten the fusion inside the computation.
+//
+// TODO(b/331413981): get rid of this special handling once this is solved.
+absl::StatusOr<Value> EmitNestedFusion(
+    ImplicitLocOpBuilder& b, absl::string_view libdevice_path,
+    const se::DeviceDescription& device_info,
+    const HloFusionInstruction& fusion_instruction,
+    absl::flat_hash_map<const HloInstruction*, Value>& values) {
+  // TODO(b/331402498): revisit the order of scope once we completely deprecate
+  // Triton fusion analysis.
+  const HloComputation* fusion_computation =
+      fusion_instruction.fused_instructions_computation();
+
+  absl::flat_hash_map<const HloInstruction*, Value> region_values;
+
+  std::vector<const HloInstruction*> to_emit;
+  for (const HloInstruction* instr :
+       fusion_computation->MakeInstructionPostOrder()) {
+    if (instr->opcode() == HloOpcode::kParameter) {
+      int64_t parameter_number = instr->parameter_number();
+      auto it = values.find(fusion_instruction.operand(parameter_number));
+      TF_RET_CHECK(it != values.end());
+      TF_RET_CHECK(region_values.insert({instr, it->second}).second);
+    } else {
+      to_emit.push_back(instr);
+    }
+  }
+
+  TF_RET_CHECK(to_emit.back() == fusion_computation->root_instruction());
+
+  return EmitScope(b, libdevice_path, device_info, /*analysis=*/nullptr,
+                   TritonFusionAnalysis::Scope::OUTPUT, {}, to_emit,
+                   region_values);
+}
+
 // TODO(b/331332678): Add unit tests to target this function specifically.
 Value EmitTiledBroadcast(
     ImplicitLocOpBuilder& b, const SymbolicTileAnalysis& analysis,
@@ -855,7 +894,7 @@ absl::StatusOr<Value> EmitScope(
     } else if (hlo->opcode() == HloOpcode::kReduce) {
       TF_ASSIGN_OR_RETURN(result, EmitReduce(b, libdevice_path, device_info,
                                              *hlo, values[hlo->operand(0)]));
-    } else if (hlo->IsElementwise()) {
+    } else if (HloInstruction::IsOpElementwise(hlo->opcode())) {
       std::vector<Value> operands;
       operands.reserve(hlo->operands().size());
       for (const HloInstruction* operand : hlo->operands()) {
@@ -873,6 +912,11 @@ absl::StatusOr<Value> EmitScope(
       // which are pushed to loads and stores. No operations on tiles are
       // performed here.
       result = values[hlo->operand(0)];
+    } else if (hlo->opcode() == HloOpcode::kFusion) {
+      const auto* fusion_instruction = ::xla::Cast<HloFusionInstruction>(hlo);
+      TF_ASSIGN_OR_RETURN(result,
+                          EmitNestedFusion(b, libdevice_path, device_info,
+                                           *fusion_instruction, values));
     } else {
       LOG(FATAL) << hlo->ToString();
     }

@@ -33,7 +33,6 @@ limitations under the License.
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
-#include "mlir/Transforms/Passes.h"  // from @llvm-project
 #include "xla/autotuning.pb.h"
 #include "xla/error_spec.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -860,6 +859,49 @@ CHECK-SAME:      !tt.ptr<tensor<16xf32>, 1>, tensor<16xf32>
 
   EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/0,
                                                 /*arel=*/0}));
+}
+
+TEST_F(TritonFilecheckTest, NestedReducerFusionGetsCodegenedCorrectly) {
+  // TODO(b/327336797): remove filter once V100 codegen in Triton is removed.
+  if (!GetCudaComputeCapability().IsAtLeast(
+          se::CudaComputeCapability::AMPERE)) {
+    GTEST_SKIP() << "Doesn't pass on pre-Ampere GPUs.";
+  }
+
+  const std::string kHloText = R"(
+HloModule softmax
+
+fused_convert {
+  p0 = f32[] parameter(0)
+  p1 = f32[] parameter(1)
+  convert0 = bf16[] convert(p0)
+  convert1 = bf16[] convert(p1)
+  add = bf16[] add(convert0, convert1)
+  ROOT output = f32[] convert(add)
+}
+
+add_computation {
+  p0 = f32[] parameter(0)
+  p1 = f32[] parameter(1)
+  ROOT fusion = f32[] fusion(p0, p1), kind=kLoop, calls=fused_convert
+}
+
+triton_softmax_computation {
+  p0 = pred[10,128]{1,0} parameter(0)
+  p0_f32 = f32[10,128]{1,0} convert(p0)
+  zero = f32[] constant(0)
+  reduce = f32[10]{0} reduce(p0_f32, zero), dimensions={1}, to_apply=add_computation
+  broadcast = f32[10,128]{1,0} broadcast(reduce), dimensions={0}
+  ROOT add = f32[10,128]{1,0} add(p0_f32, broadcast)
+}
+
+ENTRY main {
+  p0 = pred[10,128]{1,0} parameter(0)
+  ROOT softmax = f32[10,128] fusion(p0), kind=kCustom, calls=triton_softmax_computation, backend_config={"fusion_backend_config":{"kind":"__triton_softmax"}}
+})";
+
+  EXPECT_TRUE(RunAndCompareNoHloPasses(kHloText, ErrorSpec{/*aabs=*/0,
+                                                           /*arel=*/0}));
 }
 
 TEST_F(
