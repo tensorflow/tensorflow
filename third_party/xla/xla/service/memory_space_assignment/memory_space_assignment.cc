@@ -1339,11 +1339,13 @@ std::function<int(const HloInstruction*)> GetOperandDistanceFunction(
     const HloLiveRange& hlo_live_range, const HloInstruction* use_inst) {
   const int use_idx = hlo_live_range.instruction_schedule().at(use_inst);
   return [&, use_idx](const HloInstruction* operand) -> int {
-    // We just use -1 for parameter, tuple, and gte instructions. We could make
-    // this "see through" the gtes if we get too many false positives.
+    // We just use -1 for parameter, tuple, gte and constant instructions. We
+    // could make this "see through" the gtes if we get too many false
+    // positives.
     if (operand->opcode() == HloOpcode::kParameter ||
         operand->opcode() == HloOpcode::kTuple ||
-        operand->opcode() == HloOpcode::kGetTupleElement) {
+        operand->opcode() == HloOpcode::kGetTupleElement ||
+        operand->opcode() == HloOpcode::kConstant) {
       return -1;
     }
     return use_idx - hlo_live_range.instruction_schedule().at(operand);

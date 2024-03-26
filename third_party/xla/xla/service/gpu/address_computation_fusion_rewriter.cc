@@ -17,6 +17,7 @@ limitations under the License.
 #include <cstddef>
 #include <cstdint>
 #include <functional>
+#include <iterator>
 #include <optional>
 #include <string>
 #include <utility>
@@ -26,6 +27,7 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/container/inlined_vector.h"
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
@@ -45,6 +47,7 @@ limitations under the License.
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/status.h"
 #include "xla/util.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/statusor.h"
@@ -117,14 +120,11 @@ bool IsAlignedSlice(const Shape& src_shape, const Shape& dst_shape,
   return true;
 }
 
-absl::InlinedVector<HloInstruction*, 8> GetSlicedChains(
-    const HloInstruction* instr, bool dynamic,
-    absl::flat_hash_map<const HloInstruction*, const HloInstruction*>&
-        replacement_map) {
-  replacement_map[instr] = instr;
-  absl::InlinedVector<HloInstruction*, 8> dyn_slice_chains = {
+absl::InlinedVector<HloInstruction*, 8> GetSlicedOperandChains(
+    const HloInstruction* instr, bool dynamic) {
+  absl::InlinedVector<HloInstruction*, 8> sliced_operand_chains = {
       const_cast<HloInstruction*>(instr)};
-  absl::InlinedVector<HloInstruction*, 8> dus_chain;
+
   auto fusion = HloFusionAdaptor::ForComputation(instr->parent());
   // This set is used to avoid duplicates in the matched results. It contains
   // the matched instructions that we have seen so far.
@@ -181,58 +181,76 @@ absl::InlinedVector<HloInstruction*, 8> GetSlicedChains(
       // Even in the case of stopping at a match that has been processed, we
       // still need to add instructions encountered in the sliced operand chain
       // during the latest traversal.
-      dyn_slice_chains.insert(dyn_slice_chains.end(),
-                              maybe_sliced_operand_chain.begin(),
-                              maybe_sliced_operand_chain.end());
+      sliced_operand_chains.insert(sliced_operand_chains.end(),
+                                   maybe_sliced_operand_chain.begin(),
+                                   maybe_sliced_operand_chain.end());
       processed_sliced_chain_set.insert(maybe_sliced_operand_chain.begin(),
                                         maybe_sliced_operand_chain.end());
     }
   }
+  return sliced_operand_chains;
+}
 
-  if (dynamic) {
-    for (auto* user : instr->users()) {
-      absl::InlinedVector<HloInstruction*, 4> maybe_sliced_user_chain;
-      bool dus_found = false;
-      auto maybe_dus_adaptor = HloFindIf(
-          {HloInstructionAdaptor(*user)}, *fusion,
-          [&](auto node) {
-            const HloInstruction* cur = &node.instruction();
-            // If the node is a match that has been processed, stop the
-            // traversal.
-            if (processed_sliced_chain_set.contains(cur)) return true;
-            maybe_sliced_user_chain.push_back(const_cast<HloInstruction*>(cur));
-            if (const auto slice_instr =
-                    DynCast<HloDynamicUpdateSliceInstruction>(cur)) {
-              if (IsAlignedSlice(slice_instr->shape(),
-                                 slice_instr->update()->shape(), nullptr)) {
-                dus_found = true;
-                replacement_map[instr] = cur;
-                return dus_found;
-              }
+// Each user of `instr` that goes into a DUS will have an entry in the returned
+// vector.
+// Each entry contains the sliced chains for that user, i.e. the dataflow
+// sequence from the user itself to the DUS (included).
+absl::InlinedVector<absl::InlinedVector<HloInstruction*, 2>, 4>
+GetSlicedUserChains(const HloInstruction* instr) {
+  absl::InlinedVector<absl::InlinedVector<HloInstruction*, 2>, 4>
+      sliced_user_chains;
+  auto fusion = HloFusionAdaptor::ForComputation(instr->parent());
+  // This set is used to avoid duplicates in the matched results. It contains
+  // the matched instructions that we have seen so far.
+  absl::flat_hash_set<HloInstruction*> processed_sliced_chain_set;
+
+  auto traverse_hlo_and_collect = [&](HloInstruction* start) {
+    absl::InlinedVector<HloInstruction*, 2> maybe_sliced_user_chain;
+    bool dus_found = false;
+    auto maybe_dus_adaptor = HloFindIf(
+        {HloInstructionAdaptor(*start)}, *fusion,
+        [&](auto node) {
+          const HloInstruction* cur = &node.instruction();
+          // If the node is a match that has been processed, stop the
+          // traversal.
+          if (processed_sliced_chain_set.contains(cur)) return true;
+          maybe_sliced_user_chain.push_back(const_cast<HloInstruction*>(cur));
+          if (const auto slice_instr =
+                  DynCast<HloDynamicUpdateSliceInstruction>(cur)) {
+            if (IsAlignedSlice(slice_instr->shape(),
+                               slice_instr->update()->shape(), nullptr)) {
+              dus_found = true;
+              return true;
             }
-            // TODO(vuson): lift the first restriction by considering fusing
-            // other uses of the user to reuse the address computation. Only
-            // worth it if other uses are also custom calls though.
-            return cur->user_count() > 1 || !IsNoOp(cur);
-          },
-          /*visit_operands=*/false);
-      if (maybe_dus_adaptor == std::nullopt) continue;
-      const auto& maybe_dus_instr = maybe_dus_adaptor->instruction();
-      if (dus_found || processed_sliced_chain_set.contains(&maybe_dus_instr)) {
-        // Even in the case of stopping at a match that has been processed, we
-        // still need to add instructions encountered in the sliced user chain
-        // during the latest traversal.
-        dus_chain.insert(dus_chain.end(), maybe_sliced_user_chain.rbegin(),
-                         maybe_sliced_user_chain.rend());
-        processed_sliced_chain_set.insert(maybe_sliced_user_chain.begin(),
-                                          maybe_sliced_user_chain.end());
+          }
+          return cur->user_count() > 1 || !IsNoOp(cur);
+        },
+        /*visit_operands=*/false);
+    if (maybe_dus_adaptor == std::nullopt) return;
+    const auto& maybe_dus_instr = maybe_dus_adaptor->instruction();
+    if (dus_found || processed_sliced_chain_set.contains(&maybe_dus_instr)) {
+      // Even in the case of stopping at a match that has been processed, we
+      // still need to add instructions encountered in the sliced user chain
+      // during the latest traversal.
+      processed_sliced_chain_set.insert(maybe_sliced_user_chain.begin(),
+                                        maybe_sliced_user_chain.end());
+      sliced_user_chains.push_back(std::move(maybe_sliced_user_chain));
+    }
+  };
+
+  if (instr->shape().IsTuple()) {
+    for (auto* user : instr->users()) {
+      if (DynCast<HloGetTupleElementInstruction>(user)) {
+        traverse_hlo_and_collect(user);
       }
+    }
+  } else {
+    if (instr->user_count() == 1) {
+      traverse_hlo_and_collect(instr->users().front());
     }
   }
 
-  dus_chain.insert(dus_chain.end(), dyn_slice_chains.begin(),
-                   dyn_slice_chains.end());
-  return dus_chain;
+  return sliced_user_chains;
 }
 
 absl::InlinedVector<HloInstruction*, 4> GetPatternCaptures(
@@ -279,25 +297,46 @@ absl::InlinedVector<HloInstruction*, 8> GetSortedMatched(
   return sorted_matched;
 }
 
-void CreateRootTuple(HloInstruction* root, HloComputation::Builder& builder) {
+Status CreateRootTuple(
+    HloInstruction* hero, HloComputation::Builder& builder,
+    absl::InlinedVector<absl::InlinedVector<HloInstruction*, 2>, 4>
+        sliced_user_chains,
+    absl::flat_hash_map<const HloInstruction*, HloInstruction*>&
+        instr_mapping) {
+  unsigned tuple_size = hero->shape().tuple_shapes_size();
+
+  std::vector<HloInstruction*> sliced_elems(tuple_size, nullptr);
+  for (auto& sliced_user_chain : sliced_user_chains) {
+    auto gte = Cast<HloGetTupleElementInstruction>(sliced_user_chain.front());
+    sliced_elems[gte->tuple_index()] = sliced_user_chain.back();
+  }
+
   std::vector<HloInstruction*> elements;
-  elements.reserve(root->shape().tuple_shapes_size());
-  for (size_t i = 0; i < root->shape().tuple_shapes_size(); ++i) {
-    if (root->shape().tuple_shapes(i).IsTuple()) {
-      HloInstruction* gte = builder.AddInstruction(
-          HloInstruction::CreateGetTupleElement(root, i));
-      CreateRootTuple(gte, builder);
+  for (size_t i = 0; i < tuple_size; ++i) {
+    if (sliced_elems[i] != nullptr) {
+      elements.push_back(instr_mapping[sliced_elems[i]]);
+      continue;
+    }
+    auto* gte = builder.AddInstruction(
+        HloInstruction::CreateGetTupleElement(instr_mapping[hero], i));
+    if (hero->shape().tuple_shapes(i).IsTuple()) {
+      instr_mapping[gte] = gte;
+      TF_RETURN_IF_ERROR(CreateRootTuple(gte, builder, {}, instr_mapping));
       elements.push_back(builder.last_added_instruction());
     } else {
-      elements.push_back(builder.AddInstruction(
-          HloInstruction::CreateGetTupleElement(root, i)));
+      elements.push_back(gte);
     }
   }
-  builder.AddInstruction(HloInstruction::CreateTuple(elements));
+  if (elements.size() > 1)
+    builder.AddInstruction(HloInstruction::CreateTuple(elements));
+
+  return absl::OkStatus();
 }
 
 absl::StatusOr<HloComputation*> CreateFusionBody(
-    HloModule* module, absl::Span<HloInstruction* const> matched,
+    HloModule* module, absl::Span<HloInstruction* const> operand_matches,
+    absl::InlinedVector<absl::InlinedVector<HloInstruction*, 2>, 4>
+        sliced_user_chains,
     absl::Span<HloInstruction* const> captures) {
   HloComputation::Builder builder("address-computation");
 
@@ -323,16 +362,25 @@ absl::StatusOr<HloComputation*> CreateFusionBody(
 
   // Instructions in the pattern are already topologically sorted, as we visited
   // them following use-def chain, then reverse the list.
-  for (HloInstruction* instr : matched) {
+  HloInstruction* hero;
+  for (HloInstruction* instr : operand_matches) {
     instr_mapping[instr] = builder.AddInstruction(
         instr->CloneWithNewOperands(instr->shape(), mapped_operands(instr)));
+    hero = instr;
   }
 
-  HloInstruction* root = builder.last_added_instruction();
-  // Create a root tuple if the root is a tuple to make sure there's a buffer
+  for (auto& sliced_user_chain : sliced_user_chains) {
+    for (HloInstruction* instr : sliced_user_chain) {
+      instr_mapping[instr] = builder.AddInstruction(
+          instr->CloneWithNewOperands(instr->shape(), mapped_operands(instr)));
+    }
+  }
+
+  // Create a tuple if the hero is a tuple to make sure there's a buffer
   // assigned for each of the elements. Make sure the tuple is not nil first.
-  if (root->shape().IsTuple() && root->shape().tuple_shapes_size() > 0) {
-    CreateRootTuple(root, builder);
+  if (hero->shape().IsTuple() && hero->shape().tuple_shapes_size() > 0) {
+    TF_RETURN_IF_ERROR(
+        CreateRootTuple(hero, builder, sliced_user_chains, instr_mapping));
   }
 
   return module->AddComputationAndUnifyNamesAndIds(builder.Build(), false);
@@ -375,11 +423,12 @@ absl::StatusOr<bool> AddressComputationFusionRewriter::Run(
   if (!module->has_schedule()) return Internal("module is not scheduled");
 
   auto process_slices = [&](bool dynamic) -> absl::StatusOr<bool> {
-    absl::flat_hash_map<HloInstruction*,
-                        absl::InlinedVector<HloInstruction*, 8>>
+    absl::flat_hash_map<
+        HloInstruction*,
+        std::pair<
+            absl::InlinedVector<HloInstruction*, 8>,
+            absl::InlinedVector<absl::InlinedVector<HloInstruction*, 2>, 4>>>
         matches;
-    absl::flat_hash_map<const HloInstruction*, const HloInstruction*>
-        replacement_map;
 
     // Collect all potential custom call matches in the non-fusion computations.
     for (HloComputation* computation : module->computations()) {
@@ -387,11 +436,28 @@ absl::StatusOr<bool> AddressComputationFusionRewriter::Run(
       for (HloInstruction* instr : computation->instructions()) {
         if (IsLegacyCublasMatmul(*instr) ||
             (!dynamic && IsCustomCall(instr, platform_name_))) {
-          auto sliced_operand_chains =
-              GetSlicedChains(instr, dynamic, replacement_map);
-          if (!(sliced_operand_chains.size() == 1 &&
-                sliced_operand_chains.front() == instr)) {
-            matches[instr] = std::move(sliced_operand_chains);
+          auto sliced_operand_chains = GetSlicedOperandChains(instr, dynamic);
+          bool has_sliced_operand_chains = sliced_operand_chains.size() > 1;
+          absl::InlinedVector<absl::InlinedVector<HloInstruction*, 2>, 4>
+              sliced_user_chains{};
+          if (dynamic) sliced_user_chains = GetSlicedUserChains(instr);
+
+          bool has_sliced_user_chains =
+              absl::c_any_of(sliced_user_chains, [&](auto& sliced_user_chain) {
+                return !sliced_user_chain.empty();
+              });
+
+          if (absl::c_any_of(sliced_user_chains, [&](auto& sliced_user_chain) {
+                return DynCast<HloDynamicUpdateSliceInstruction>(
+                           sliced_user_chain.back()) == nullptr;
+              })) {
+            return absl::InternalError(
+                "Expect sliced user chain to end with a DUS.");
+          }
+
+          if (has_sliced_operand_chains || has_sliced_user_chains) {
+            matches[instr] = std::make_pair(std::move(sliced_operand_chains),
+                                            std::move(sliced_user_chains));
           }
         }
       }
@@ -401,18 +467,26 @@ absl::StatusOr<bool> AddressComputationFusionRewriter::Run(
 
     HloSchedule& schedule = module->schedule();
     for (auto& kv : matches) {
-      auto captures = GetPatternCaptures(kv.second);
-      auto sorted = GetSortedMatched(kv.second);
+      auto& [operand_matches, sliced_user_chains] = kv.second;
+      std::vector<HloInstruction*> matches;
+      absl::c_copy(operand_matches, std::back_inserter(matches));
+
+      for (auto& sliced_user_chain : sliced_user_chains)
+        absl::c_copy(sliced_user_chain, std::back_inserter(matches));
+
+      auto captures = GetPatternCaptures(matches);
+      auto sorted_operand_matches = GetSortedMatched(operand_matches);
 
       TF_ASSIGN_OR_RETURN(HloComputation * fusion_body,
-                          CreateFusionBody(module, sorted, captures));
+                          CreateFusionBody(module, sorted_operand_matches,
+                                           sliced_user_chains, captures));
+
       TF_ASSIGN_OR_RETURN(HloInstruction * fusion,
                           CreateFusionInstruction(module, kv.first, captures,
                                                   fusion_body, dynamic));
 
       // As we are running after scheduling we have to keep it valid.
       HloComputation* parent = kv.first->parent();
-
       // Update schedule to replace the custom call instruction with the fusion
       // instruction.
       // Removal of the rest of the instructions in the sequence is handled by
@@ -420,9 +494,42 @@ absl::StatusOr<bool> AddressComputationFusionRewriter::Run(
       HloInstructionSequence& sequence = schedule.GetOrCreateSequence(parent);
       sequence.replace_instruction(kv.first, fusion);
 
-      // TODO(vuson): handle control dependencies
-      TF_RETURN_IF_ERROR(parent->ReplaceInstruction(
-          const_cast<HloInstruction*>(replacement_map[kv.first]), fusion));
+      if (fusion->shape().IsTuple()) {
+        TF_RETURN_IF_ERROR(parent->ReplaceInstructionWithDifferentShape(
+            const_cast<HloInstruction*>(kv.first), fusion));
+        for (auto& sliced_user_chain : sliced_user_chains) {
+          auto old_gte =
+              Cast<HloGetTupleElementInstruction>(sliced_user_chain.front());
+          HloInstruction* gte =
+              parent->AddInstruction(HloInstruction::CreateGetTupleElement(
+                  fusion, old_gte->tuple_index()));
+          TF_RETURN_IF_ERROR(
+              parent->ReplaceInstruction(sliced_user_chain.back(), gte));
+        }
+      } else {
+        auto* old_instr = const_cast<HloInstruction*>(kv.first);
+        if (sliced_user_chains.empty()) {
+          // The only case where a tuple-shaped original hero op is fused into a
+          // non-tuple-shaped fusion is there's only one element of the original
+          // tuple being used. In that case, we need to replace that single
+          // get-tuple-element (instead of the hero op) with the fusion
+          // instruction.
+          if (kv.first->shape().IsTuple()) {
+            if (kv.first->user_count() != 1 ||
+                !DynCast<HloGetTupleElementInstruction>(
+                    kv.first->users().front())) {
+              return absl::InternalError(
+                  "Expect a single get-tuple-element user of the original "
+                  "tuple-shaped hero op when address computation fusion does "
+                  "not return a tuple");
+            }
+            old_instr = kv.first->users().front();
+          }
+        } else {
+          old_instr = sliced_user_chains.front().back();
+        }
+        TF_RETURN_IF_ERROR(parent->ReplaceInstruction(old_instr, fusion));
+      }
     }
 
     TF_RETURN_IF_ERROR(module->schedule().Update());
