@@ -73,7 +73,7 @@ BenchmarkParams BenchmarkModel::DefaultParams() {
                   BenchmarkParam::Create<bool>(false));
   params.AddParam("memory_footprint_check_interval_ms",
                   BenchmarkParam::Create<int32_t>(kMemoryCheckIntervalMs));
-  params.AddParam("gpu_invoke_loop_times", BenchmarkParam::Create<int32_t>(-1));
+  params.AddParam("gpu_invoke_loop_times", BenchmarkParam::Create<int32_t>(1));
   return params;
 }
 
@@ -207,10 +207,10 @@ void BenchmarkModel::LogParams() {
   LOG_BENCHMARK_PARAM(int32_t, "memory_footprint_check_interval_ms",
                       "Memory footprint check interval (ms)", verbose);
 #ifdef TFLITE_GPU_ENABLE_INVOKE_LOOP
-  LOG_BENCHMARK_PARAM(
-      int32_t, "gpu_invoke_loop_times",
-      "Number of GPU delegate invoke loop iterations to divide latency by",
-      verbose);
+  LOG_BENCHMARK_PARAM(int32_t, "gpu_invoke_loop_times",
+                      "Number of GPU delegate invoke loop iterations. Latency "
+                      "will be divided by it.",
+                      verbose);
 #endif
 }
 
