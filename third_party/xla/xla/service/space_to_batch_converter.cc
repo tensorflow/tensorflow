@@ -1466,8 +1466,9 @@ void ConvolutionVisitor::PropagateOnBroadcast(HloInstruction* consumer,
   for (auto j : dimensions) {
     broadcast_dims.push_back(DimLookUp(permute_dims, j));
   }
-  auto new_broadcast = MakeBroadcastHlo(consumer->mutable_operand(0),
-                                        broadcast_dims, final_shape_dims);
+  auto new_broadcast =
+      MakeBroadcastHlo(consumer->mutable_operand(0), broadcast_dims,
+                       final_shape_dims, &consumer->metadata());
   VLOG(1) << "Created broadcast " << new_broadcast->ToString();
 
   if (batch_is_broadcasted) {

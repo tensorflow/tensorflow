@@ -25,6 +25,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "tensorflow/compiler/mlir/tfrt/transforms/ifrt/ifrt_types.h"
 #include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/python/ifrt/array.h"
 #include "xla/python/ifrt/future.h"
@@ -34,14 +35,13 @@ limitations under the License.
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/resource_handle.h"
-#include "tensorflow/core/framework/resource_mgr.h"
-#include "tensorflow/core/framework/resource_var.h"
 #include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/platform/protobuf.h"  // IWYU pragma: keep
-#include "tensorflow/core/platform/refcount.h"
 #include "tensorflow/core/tfrt/fallback/op_kernel_runner.h"
 #include "tensorflow/core/tfrt/ifrt/ifrt_config.pb.h"
+#include "tensorflow/core/tfrt/ifrt/ifrt_loaded_variable_registry.h"
 #include "tensorflow/core/tfrt/ifrt/ifrt_model_context.h"
 #include "tensorflow/core/tfrt/ifrt/ifrt_restore_tensor_registry.h"
 #include "tensorflow/core/tfrt/ifrt/sharding_utils.h"
@@ -88,6 +88,27 @@ absl::StatusOr<tsl::RCReference<xla::ifrt::Array>> LoadIfrtVariable(
 
 std::string GetRuntimeNameFromVarHandle(const ResourceHandle& handle) {
   return absl::StrCat(handle.container(), "__", handle.name());
+}
+
+absl::StatusOr<ifrt_serving::DtypeAndShape> GetDtypeAndShape(
+    const ResourceHandle& variable) {
+  std::vector<DtypeAndPartialTensorShape> dtype_and_partial_shapes =
+      variable.dtypes_and_shapes();
+
+  if (dtype_and_partial_shapes.size() != 1) {
+    return absl::InvalidArgumentError(absl::StrCat(
+        "Expected 1 dtype and shape, got ", dtype_and_partial_shapes.size()));
+  }
+  ifrt_serving::DtypeAndShape dtype_and_shape;
+  if (!dtype_and_partial_shapes.front().shape.AsTensorShape(
+          &dtype_and_shape.shape)) {
+    return absl::InvalidArgumentError(
+        absl::StrCat("Failed to convert partial shape to full tensor shape: ",
+                     dtype_and_partial_shapes.front().shape.DebugString()));
+  }
+
+  dtype_and_shape.dtype = dtype_and_partial_shapes.front().dtype;
+  return dtype_and_shape;
 }
 
 struct MlrtIfrtRestoreVariableKernel : mlrt::KernelFrame {
@@ -218,9 +239,9 @@ void MlrtIfrtRestoreVariableKernel::Invoke() {
   }
 
   // Use dedicated work queue for restore operation.
-  DCHECK((*ifrt_model_context)->work_queue() != nullptr);
+  DCHECK((*ifrt_model_context)->checkpoint_loader_queue() != nullptr);
   (*ifrt_model_context)
-      ->work_queue()
+      ->checkpoint_loader_queue()
       ->AddTask(
           [runner = std::move(runner), async_state = std::move(async_state)]() {
             auto* op_kernel_context_ptr = &async_state->context;
@@ -241,7 +262,8 @@ void MlrtIfrtRestoreVariableKernel::Invoke() {
           });
 }
 
-struct MlrtIfrtLoadVariableKernel : mlrt::KernelFrame {
+class MlrtIfrtLoadVariableKernel : public mlrt::KernelFrame {
+ public:
   using KernelFrame::KernelFrame;
 
   static constexpr char kName[] = "tf_mlrt.ifrt_load_variable";
@@ -258,16 +280,23 @@ struct MlrtIfrtLoadVariableKernel : mlrt::KernelFrame {
     DCHECK_EQ(attributes().size(), 2);
     return attributes().GetAs<mlrt::bc::String>(0).Get();
   }
-  absl::string_view name() const {
-    DCHECK_EQ(attributes().size(), 2);
-    return attributes().GetAs<mlrt::bc::String>(1).Get();
-  }
 
   Context& context() { return execution_context().GetUserContext<Context>(); }
   void Invoke();
+
+ private:
+  absl::Status InvokeHelper();
 };
 
 void MlrtIfrtLoadVariableKernel::Invoke() {
+  absl::Status status = InvokeHelper();
+  if (!status.ok()) {
+    execution_context().Fail(std::move(status));
+    return;
+  }
+}
+
+absl::Status MlrtIfrtLoadVariableKernel::InvokeHelper() {
   DCHECK_EQ(1, results().size());
   std::optional<tensorflow::ifrt_serving::IfrtModelContext*>
       ifrt_model_context =
@@ -276,36 +305,74 @@ void MlrtIfrtLoadVariableKernel::Invoke() {
               .GetResource<tensorflow::ifrt_serving::IfrtModelContext>(
                   "IfrtModelContext");
   if (!ifrt_model_context.has_value()) {
-    execution_context().Fail(absl::FailedPreconditionError(
-        "LoadVariableOp: failed to fetch IfrtModelContext: "));
-    return;
+    return absl::FailedPreconditionError(
+        "LoadVariableOp: failed to fetch IfrtModelContext: ");
   }
 
-  auto status =
+  // TODO(b/319045348): remove name() attribute. we now gets name from variable
+  // handle.
+  std::string runtime_name = GetRuntimeNameFromVarHandle(variable());
+  xla::ifrt::Future<absl::StatusOr<tensorflow::Tensor>> restored_tensor_future =
+      (*ifrt_model_context)->GetRestoreTensorRegistry().Get(runtime_name);
+  if (!restored_tensor_future.IsValid()) {
+    return absl::InternalError(absl::StrCat(
+        "LoadVariableOp: failed to fetch variable tensor: ", runtime_name));
+  }
+
+  auto loaded_variable_promise = xla::ifrt::Future<
+      absl::StatusOr<tsl::RCReference<xla::ifrt::Array>>>::CreatePromise();
+  auto loaded_variable_future =
+      xla::ifrt::Future<absl::StatusOr<tsl::RCReference<xla::ifrt::Array>>>(
+          loaded_variable_promise);
+
+  TF_ASSIGN_OR_RETURN(ifrt_serving::DtypeAndShape dtype_and_shape,
+                      GetDtypeAndShape(variable()));
+
+  TF_RETURN_IF_ERROR(
       (*ifrt_model_context)
           ->GetLoadedVariableRegistry()
           .TryRegisterLoadedVariable(
-              name(),
-              [&]() -> absl::StatusOr<tsl::RCReference<xla::ifrt::Array>> {
-                core::RefCountPtr<Var> variable_resource;
-                TF_RETURN_IF_ERROR(
-                    LookupResource(&context().op_kernel_context(), variable(),
-                                   &variable_resource));
+              runtime_name,
+              [&]() -> absl::StatusOr<ifrt_serving::IfrtLoadedVariableRegistry::
+                                          LoadedVariable> {
+                return ifrt_serving::IfrtLoadedVariableRegistry::LoadedVariable(
+                    {.dtype_and_shape = dtype_and_shape,
+                     .array = loaded_variable_future});
+              }));
 
-                return LoadIfrtVariable(**ifrt_model_context,
-                                        *(variable_resource->tensor()),
-                                        sharding_config_proto_text(), name());
-              });
-  if (!status.ok()) {
-    execution_context().Fail(std::move(status));
-    return;
-  }
+  restored_tensor_future.OnReady(
+      [ifrt_model_context = *ifrt_model_context,
+       sharding_config = std::string(sharding_config_proto_text()),
+       runtime_name = runtime_name,
+       loaded_variable_promise = std::move(loaded_variable_promise)](
+          absl::StatusOr<tensorflow::Tensor> restored_tensor) mutable {
+        if (!restored_tensor.ok()) {
+          loaded_variable_promise.Set(std::move(restored_tensor).status());
+          return;
+        }
 
+        // Transfer tensor to array in a separate thread.
+        ifrt_model_context->checkpoint_loader_queue()->AddTask(
+            [ifrt_model_context, runtime_name = std::move(runtime_name),
+             sharding_config = std::move(sharding_config),
+             restored_tensor = std::move(*restored_tensor),
+             loaded_variable_promise =
+                 std::move(loaded_variable_promise)]() mutable {
+              absl::StatusOr<tsl::RCReference<xla::ifrt::Array>>
+                  variable_array =
+                      LoadIfrtVariable(*ifrt_model_context, restored_tensor,
+                                       sharding_config, runtime_name);
+              loaded_variable_promise.Set(std::move(variable_array));
+            });
+      });
   // Return the name as the key
   tensorflow::Tensor key_tensor(tensorflow::DT_STRING, {});
-  key_tensor.scalar<tsl::tstring>()() = std::string(name());
+  key_tensor.scalar<tsl::tstring>()() = runtime_name;
   results()[0].Set(tensorflow::tfrt_stub::FallbackTensor(key_tensor));
+
+  return absl::OkStatus();
 }
+
 void RegisterTfMlrtIfrtKernels(mlrt::KernelRegistry& registry) {
   registry.Register<MlrtIfrtLoadVariableKernel>();
   registry.Register<MlrtIfrtRestoreVariableKernel>();

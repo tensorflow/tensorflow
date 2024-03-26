@@ -817,6 +817,7 @@ cc_library(
         "//tensorflow/core/profiler/utils:op_metrics_db_utils",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:node_hash_map",
+        "@com_google_absl//absl/log",
         "@com_google_absl//absl/strings",
         "@local_tsl//tsl/profiler/convert:xla_op_utils",
     ],
