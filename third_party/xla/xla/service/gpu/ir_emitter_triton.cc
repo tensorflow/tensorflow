@@ -2002,6 +2002,8 @@ absl::Status EmitMatMul(mlir::OpBuilder builder,
     iter_args_next.reserve(iter_args.size());
     absl::flat_hash_map<const HloInstruction*, Value> values_lhs;
     absl::flat_hash_map<const HloInstruction*, Value> values_rhs;
+    bool has_8_bit_input = false;
+
     // Load tiles of all parameters of LHS and RHS scopes and advance pointers.
     for (int i = 0; i < iter_args.size() - 1; ++i) {
       const bool is_lhs =
@@ -2017,6 +2019,10 @@ absl::Status EmitMatMul(mlir::OpBuilder builder,
       if (param_ty != param_storage_ty) {
         // For example cast i8 to i1.
         param_value = Cast(b, param_value, param_ty);
+      }
+
+      if (param_ty.getIntOrFloatBitWidth() <= 8) {
+        has_8_bit_input = true;
       }
 
       CHECK(values.insert({param_hlo, param_value}).second);
@@ -2080,6 +2086,10 @@ absl::Status EmitMatMul(mlir::OpBuilder builder,
       dot_input_rhs = apply_mask(1, dot_input_rhs);
     }
 
+    // TODO(b/320659359) Allow TF32 for 8-bit types with F32.
+    bool has_convert_8_bit_to_f32 =
+        has_8_bit_input && getElementTypeOrSelf(dot_input_lhs).isF32();
+
     const HloModule* hlo_module = dot_instr->GetModule();
     if (hlo_module->config().debug_options().xla_gpu_enable_bf16_3way_gemm() &&
         hlo_module->config().debug_options().xla_gpu_enable_bf16_6way_gemm()) {
@@ -2107,10 +2117,10 @@ absl::Status EmitMatMul(mlir::OpBuilder builder,
       // maxNumImpreciseAcc flag was introduced for Hopper to accumulate in a
       // lower precision than the output type. The change was introduced here:
       // https://github.com/openai/triton/commit/31b0c521427109a8eda609b58d756c380b21599a
-      accumulator_next =
-          b.create<mt::DotOp>(dot_input_lhs, dot_input_rhs, iter_args.back(),
-                              /*allowTF32=*/IsTf32Allowed(dot_instr),
-                              /*maxNumImpreciseAcc=*/0);
+      accumulator_next = b.create<mt::DotOp>(
+          dot_input_lhs, dot_input_rhs, iter_args.back(),
+          /*allowTF32=*/IsTf32Allowed(dot_instr) && !has_convert_8_bit_to_f32,
+          /*maxNumImpreciseAcc=*/0);
     }
     iter_args_next.push_back(accumulator_next);
 
