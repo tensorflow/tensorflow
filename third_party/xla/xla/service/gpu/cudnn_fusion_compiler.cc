@@ -31,6 +31,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "third_party/gpus/cudnn/cudnn_version.h"
 #include "xla/hlo/ir/dfs_hlo_visitor_with_default.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_clone_context.h"
@@ -107,6 +108,10 @@ inline std::optional<fe::PointwiseMode_t> GetElementwiseMode(
       return m::POW;
     case HloOpcode::kRsqrt:
       return m::RSQRT;
+#if CUDNN_VERSION >= 90100
+    case HloOpcode::kSelect:
+      return m::BINARY_SELECT;
+#endif  // CUDNN_VERSION
     case HloOpcode::kSin:
       return m::SIN;
     case HloOpcode::kSqrt:
@@ -154,7 +159,7 @@ int FusionLevel(const HloInstruction& hlo) {
 class GemmDimensionAdapter {
   explicit GemmDimensionAdapter(const HloDotInstruction& dot,
                                 TritonFusionAnalysis analysis)
-      : analysis_(std::move(analysis)), dot_(dot){};
+      : analysis_(std::move(analysis)), dot_(dot) {};
 
  public:
   const TritonFusionAnalysis analysis_;
@@ -378,8 +383,13 @@ absl::StatusOr<std::optional<se::gpu::CudnnGraph>> HloFusionToCuDnnGraph(
       } else if (hlo->operand_count() == 2) {
         hlo_to_cudnn[hlo] = graph.pointwise(operand(0), operand(1), attrs);
       } else if (hlo->operand_count() == 3) {
+        if (hlo->opcode() != HloOpcode::kSelect) {
+          VLOG(3) << "Unexpected ternary operation: " << hlo->ToString();
+          return std::nullopt;
+        }
+        // Operand order for select differs between HLO and cuDNN.
         hlo_to_cudnn[hlo] =
-            graph.pointwise(operand(0), operand(1), operand(2), attrs);
+            graph.pointwise(operand(1), operand(2), operand(0), attrs);
       } else {
         VLOG(3) << "Unimplemented elementwise operation.";
         return std::nullopt;

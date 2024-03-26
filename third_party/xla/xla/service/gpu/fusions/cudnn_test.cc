@@ -48,6 +48,12 @@ class CuDnnFusionTest : public GpuCodegenTest {
                .IsAtLeastHopper() &&
            GetDnnVersionInfo(executor).major_version() >= 9;
   }
+  bool IsAtLeastCuDnn91() {
+    se::StreamExecutor* executor = backend().default_stream_executor();
+    const se::dnn::VersionInfo version = GetDnnVersionInfo(executor);
+    return (version.major_version() == 9 && version.minor_version() >= 1) ||
+           version.major_version() > 9;
+  }
 
  protected:
   void SetUp() override {
@@ -655,6 +661,45 @@ INSTANTIATE_TEST_SUITE_P(
                        ::testing::Values(cd::kEq, cd::kNe, cd::kGe, cd::kGt,
                                          cd::kLe, cd::kLt)),
     CompareTestParamsToString);
+
+class SelectTest : public CuDnnFusionExecutionTest,
+                   public ::testing::WithParamInterface<PrimitiveType> {};
+
+TEST_P(SelectTest, SelectFusionExecutesCorrectly) {
+  if (!IsAtLeastCuDnn91()) {
+    GTEST_SKIP() << "Select operation requires cuDNN 9.1+.";
+  }
+  const std::string kHloTemplate = R"(
+fusion_computation {
+  p0 = f32[32,32] parameter(0)
+  p1 = $0[32,32] parameter(1)
+  p2 = $0[32,32] parameter(2)
+  p3 = pred[32,32] parameter(3)
+  s = $0[32,32] select(p3, p1, p2)
+  c = f32[32,32] convert(s)
+  ROOT r = f32[32,32] dot(p0, c),
+    lhs_contracting_dims={1}, rhs_contracting_dims={0}
+}
+
+ENTRY e {
+  p0 = f32[32,32] parameter(0)
+  p1 = $0[32,32] parameter(1)
+  p2 = $0[32,32] parameter(2)
+  p3 = pred[32,32] parameter(3)
+  ROOT r = f32[32,32] fusion(p0, p1, p2, p3), kind=kCustom,
+    calls=fusion_computation,
+    backend_config={"fusion_backend_config":{"kind":"__cudnn$$fusion"}}
+})";
+  const std::string hlo_test = absl::Substitute(
+      kHloTemplate, primitive_util::LowercasePrimitiveTypeName(GetParam()));
+
+  EXPECT_TRUE(RunAndCompare(hlo_test, ErrorSpec{/*aabs=*/1e-4, /*arel=*/1e-4}));
+}
+
+constexpr std::array<PrimitiveType, 3> kSupportedDataTypes{F16, F32, BF16};
+
+INSTANTIATE_TEST_SUITE_P(SelectTestSuite, SelectTest,
+                         ::testing::ValuesIn(kSupportedDataTypes));
 
 class CuDnnFusionRewriteTest : public CuDnnFusionTest {
  public:
