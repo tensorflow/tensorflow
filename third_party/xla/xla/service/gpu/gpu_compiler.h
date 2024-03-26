@@ -166,6 +166,13 @@ class GpuCompiler : public LLVMCompiler {
     return absl::OkStatus();
   }
 
+  // Runs CUDNN fusion compiler pass.
+  virtual absl::Status RunCudnnFusionCompilerPass(
+      HloModule* module, se::StreamExecutor* stream_exec,
+      Thunk::BinaryMap* dnn_compiled_graphs) {
+    return absl::OkStatus();
+  }
+
   AlgebraicSimplifierOptions GetAlgebraicSimplifierOptions(
       const HloModuleConfig& config);
 

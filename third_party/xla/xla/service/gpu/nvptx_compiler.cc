@@ -56,6 +56,7 @@ limitations under the License.
 #include "xla/service/gpu/cudnn_fused_conv_rewriter.h"
 #include "xla/service/gpu/cudnn_fused_mha_rewriter.h"
 #include "xla/service/gpu/cudnn_fused_mha_transpose_fusion.h"
+#include "xla/service/gpu/cudnn_fusion_compiler.h"
 #include "xla/service/gpu/cudnn_norm_rewriter.h"
 #include "xla/service/gpu/cudnn_pad_for_convolutions.h"
 #include "xla/service/gpu/cudnn_simplify_padding.h"
@@ -341,6 +342,14 @@ absl::Status NVPTXCompiler::AddCustomKernelReplacementPasses(
   }
   return absl::OkStatus();
 }
+
+absl::Status NVPTXCompiler::RunCudnnFusionCompilerPass(
+    HloModule* module, se::StreamExecutor* stream_exec,
+    Thunk::BinaryMap* dnn_compiled_graphs) {
+  CuDnnFusionCompiler cudnn_compiler(*stream_exec, *dnn_compiled_graphs);
+  return cudnn_compiler.Run(module).status();
+}
+
 namespace {
 // Try to load ptx from files defined in the FLAGS. If successful, return true.
 bool MaybeLoadPtxFromFile(const HloModuleConfig module_config,
