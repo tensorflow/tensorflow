@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/service/gpu/model/tile_analysis.h"
+#include "xla/service/gpu/model/symbolic_tile.h"
 
 #include <optional>
 

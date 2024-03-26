@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_SERVICE_GPU_MODEL_TILE_ANALYSIS_H_
-#define XLA_SERVICE_GPU_MODEL_TILE_ANALYSIS_H_
+#ifndef XLA_SERVICE_GPU_MODEL_SYMBOLIC_TILE_H_
+#define XLA_SERVICE_GPU_MODEL_SYMBOLIC_TILE_H_
 
 #include <optional>
 #include <ostream>
@@ -78,4 +78,4 @@ class SymbolicTile {
 }  // namespace gpu
 }  // namespace xla
 
-#endif  // XLA_SERVICE_GPU_MODEL_TILE_ANALYSIS_H_
+#endif  // XLA_SERVICE_GPU_MODEL_SYMBOLIC_TILE_H_

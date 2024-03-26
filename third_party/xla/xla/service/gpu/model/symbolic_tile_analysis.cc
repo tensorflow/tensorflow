@@ -39,7 +39,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/service/gpu/model/indexing_analysis.h"
 #include "xla/service/gpu/model/indexing_map.h"
-#include "xla/service/gpu/model/tile_analysis.h"
+#include "xla/service/gpu/model/symbolic_tile.h"
 #include "xla/service/instruction_fusion.h"
 #include "xla/status.h"
 
