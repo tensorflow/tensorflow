@@ -35,6 +35,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/graph_constructor.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/graph.pb.h"
+#include "tsl/platform/protobuf.h"
 
 namespace mlir {
 using tsl::Status;
@@ -152,7 +153,7 @@ static LogicalResult MlirToGraphTranslateFunction(ModuleOp module,
   // Print the graph to the output after going through GraphDef conversion.
   // The DumpGraphToFile would do this anyway so just skip straight to it.
   graph->ToGraphDef(graphdef.get());
-  output << graphdef->DebugString();
+  output << tsl::LegacyUnredactedDebugString(*graphdef);
 
   return success();
 }
@@ -178,7 +179,7 @@ static LogicalResult MlirToGraphdefTranslateFunction(
     return mlir::failure();
   }
 
-  output << graphdef_or.value()->DebugString();
+  output << tsl::LegacyUnredactedDebugString(*graphdef_or.value());
   return success();
 }
 

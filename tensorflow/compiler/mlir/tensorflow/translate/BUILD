@@ -122,6 +122,7 @@ cc_library(
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TranslateLib",
+        "@local_tsl//tsl/platform:protobuf",
     ],
     alwayslink = 1,
 )
@@ -287,6 +288,7 @@ cc_library(
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:TranslateLib",
+        "@local_tsl//tsl/platform:protobuf",
         "@local_xla//xla/client:client_library",
         "@local_xla//xla/client:compile_only_client",
         "@local_xla//xla/service/cpu:cpu_compiler",

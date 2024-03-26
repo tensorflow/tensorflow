@@ -2894,6 +2894,7 @@ tf_cc_test(
         "//tensorflow/core/kernels:queue_ops",
         "//tensorflow/core/kernels:session_ops",
         "//tensorflow/core/kernels:variable_ops",
+        "@local_tsl//tsl/platform:protobuf",
     ],
 )
 
