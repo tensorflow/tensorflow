@@ -256,33 +256,6 @@ ENTRY %elementwise {
   EXPECT_THAT(instruction, op::Sharding("{devices=[2,2]0,2,1,3}"));
 }
 
-TEST_F(AutoShardingTest, UnusedComputationInModuleTest) {
-  constexpr absl::string_view kHloString = R"(
-HloModule module
-
-%unused_computation (x: f32[], y: f32[]) -> f32[] {
-  %x = f32[] parameter(0)
-  %y = f32[] parameter(1)
-  ROOT %add = f32[] add(f32[] %x, f32[] %y)
-}
-
-ENTRY %module_does_not_invoke_any_computation {
-  %param0 = f32[1,16,128]{2,1,0} parameter(0)
-  %param1 = f32[1,16,128]{2,1,0} parameter(1)
-  %add = f32[1,16,128]{2,1,0} add(f32[1,16,128]{2,1,0} %param0, f32[1,16,128]{2,1,0} %param1)
-})";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(kHloString));
-  AutoShardingOption option;
-  option.enable = true;
-  option.device_mesh_shape = {2, 2};
-  option.device_mesh_ids = {0, 1, 2, 3};
-  option.device_mesh_alpha = {1.0, 1.0};
-  option.device_mesh_beta = {0.01, 1.0};
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, AutoSharding(option).Run(module.get()));
-  EXPECT_TRUE(changed);
-}
-
 TEST_F(AutoShardingTest, Unsupported3DShardingTest) {
   constexpr absl::string_view kHloString = R"(
 HloModule module

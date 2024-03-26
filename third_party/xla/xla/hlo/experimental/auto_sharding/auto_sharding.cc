@@ -73,7 +73,6 @@ limitations under the License.
 #include "xla/service/hlo_alias_analysis.h"
 #include "xla/service/hlo_buffer.h"
 #include "xla/service/hlo_cost_analysis.h"
-#include "xla/service/hlo_dce.h"
 #include "xla/service/hlo_memory_scheduler.h"
 #include "xla/service/hlo_value.h"
 #include "xla/service/optimize_input_output_buffer_alias.h"
@@ -3942,8 +3941,6 @@ absl::StatusOr<bool> AutoSharding::Run(
   metrics::RecordAutoShardingInvocations();
 #endif
 
-  CHECK_OK(HloDCE().Run(module, execution_threads));
-
   TF_RETURN_IF_ERROR(option_.CheckAndSetup());
   LOG(INFO) << "AutoShardingOptions:\n" << option_.ToString();
 
@@ -4105,8 +4102,6 @@ absl::StatusOr<bool> AutoSharding::Run(
         chosen_mesh_shape_ = mesh_shapes[min_mesh_shape_index];
         absl::flat_hash_map<HloComputation*, HloComputation*>
             computation_replacements;
-        CHECK_EQ(module->computation_count(),
-                 modules[min_mesh_shape_index]->computation_count());
         for (size_t i = 0; i < module->computation_count(); ++i) {
           auto original_computation = module->mutable_computation(i);
           auto new_computation =

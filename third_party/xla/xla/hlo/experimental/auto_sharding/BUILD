@@ -59,7 +59,6 @@ cc_library(
         "//xla/service:hlo_alias_analysis",
         "//xla/service:hlo_buffer",
         "//xla/service:hlo_cost_analysis",
-        "//xla/service:hlo_dce",
         "//xla/service:hlo_memory_scheduler",
         "//xla/service:hlo_pass",
         "//xla/service:hlo_value",
