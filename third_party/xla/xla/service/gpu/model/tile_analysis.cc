@@ -108,6 +108,10 @@ AffineExpr ToSymbol(mlir::AffineDimExpr dim_expr) {
                                    dim_expr.getContext());
 }
 
+// Extracts size and stride expressions from the operands to a modulo
+// expression.
+//
+// TODO(b/326998704): Currently, this fails when the stride is not exactly unit.
 std::optional<SizeAndStrideExpression> ExtractSizeAndStrideFromMod(
     AffineExpr lhs, AffineExpr modulus) {
   // TODO(b/326998704): derive constraints here, as well as the non-one stride
@@ -121,11 +125,11 @@ std::optional<SizeAndStrideExpression> ExtractSizeAndStrideFromMod(
   // Proof:
   //   * n < c (and c | n):
   //       n - ((n - 1) floordiv c) * c
-  //     = n - 0 * c           (n < c => n floordiv c == 0)
+  //     = n - 0 * c               (n < c => n floordiv c == 0)
   //     = n
   //   * n >= c (and n | c):
   //       n - ((n - 1) floordiv c) * c
-  //     = n - (n / c - 1) * c     (n | c => (n - 1) floordiv c = n / c)
+  //     = n - (n / c - 1) * c     (n | c => (n - 1) floordiv c = n / c - 1)
   //     = n - (n - c)
   //     = c
   CHECK(modulus.getKind() == AffineExprKind::Constant);
@@ -142,6 +146,11 @@ std::optional<SizeAndStrideExpression> ExtractSizeAndStrideFromMod(
   return std::nullopt;
 }
 
+// Extracts size and stride expressions from the operands to a floordiv
+// expression.
+//
+// TODO(b/326998704): Currently, this fails when the numerator of the stride
+// is not exactly unit.
 std::optional<SizeAndStrideExpression> ExtractSizeAndStrideFromFloorDiv(
     AffineExpr num, AffineExpr den) {
   if (den.getKind() != AffineExprKind::Constant) {
@@ -190,11 +199,12 @@ std::optional<SizeAndStrideExpression> ExtractSizeAndStride(
           /*size=*/ToSymbol(llvm::cast<mlir::AffineDimExpr>(strided_indexing)),
           /*stride=*/getAffineConstantExpr(1, ctx)};
     case mlir::AffineExprKind::Mul: {
-      auto mul = llvm::cast<mlir::AffineBinaryOpExpr>(strided_indexing);
+      const auto mul = llvm::cast<mlir::AffineBinaryOpExpr>(strided_indexing);
       AffineExpr lhs = mul.getLHS();
       // The stride may not be fully collapsed if it is negative; in that case,
       // we need to extract the negative multiplier first.
-      if (auto rhs = llvm::dyn_cast<mlir::AffineConstantExpr>(mul.getRHS());
+      if (const auto rhs =
+              llvm::dyn_cast<mlir::AffineConstantExpr>(mul.getRHS());
           rhs && rhs.getValue() == -1) {
         std::optional<SizeAndStrideExpression> maybe_size_and_stride =
             ExtractSizeAndStride(lhs, symbol_intervals);
@@ -234,8 +244,9 @@ std::optional<SizeAndStrideExpression> ExtractSizeAndStride(
               << printer.ToString(strided_indexing);
       return std::nullopt;
     case mlir::AffineExprKind::CeilDiv:
-      LOG(FATAL) << "unreachable";
+      break;
   };
+  LOG(FATAL) << "unreachable";
 }
 
 }  // anonymous namespace

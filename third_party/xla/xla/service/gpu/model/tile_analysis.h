@@ -37,7 +37,7 @@ namespace gpu {
 // A N-dimensional symbolic tile is a function from offsets, strides, and sizes
 // to a N-dimensional tile. It can be represented as three affine maps with
 // domain
-//     ()[size0, ..., size{M-1}}]
+//     ()[size0, ..., size{M-1}]
 // and respective co-domains
 //     (offset0, ..., offset{N-1})     (offset_map())
 //     (size0', ..., size'{N-1})       (size_map())

@@ -206,9 +206,9 @@ std::vector<int64_t> SymbolicTileAnalysis::TileStrides(
                          *tile_parameters_);
 }
 
-void SymbolicTileAnalysis::SetTileSizes(absl::Span<int64_t const> sizes) {
+void SymbolicTileAnalysis::SetTileSizes(std::vector<int64_t> sizes) {
   // TODO(bchetioui): CHECK num parameters somehow?
-  tile_parameters_ = std::vector(sizes.begin(), sizes.end());
+  tile_parameters_ = std::vector(std::move(sizes));
 }
 
 }  // namespace gpu

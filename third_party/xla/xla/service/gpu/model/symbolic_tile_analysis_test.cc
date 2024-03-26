@@ -18,12 +18,10 @@ limitations under the License.
 #include <memory>
 #include <utility>
 #include <variant>
-#include <vector>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/strings/string_view.h"
-#include "absl/types/span.h"
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "xla/tests/hlo_test_base.h"
 #include "xla/tests/verified_hlo_module.h"

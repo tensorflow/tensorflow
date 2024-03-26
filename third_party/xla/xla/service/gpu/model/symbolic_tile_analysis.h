@@ -23,7 +23,6 @@ limitations under the License.
 #include <variant>
 #include <vector>
 
-#include "absl/types/span.h"
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/service/gpu/model/indexing_map.h"
@@ -94,7 +93,7 @@ class SymbolicTileAnalysis {
 
   // Populates input tile sizes. This is a prerequisite in order to extract
   // concrete values using `TileOffsets`, `TileSizes`, and `TileStrides`.
-  void SetTileSizes(absl::Span<int64_t const> sizes);
+  void SetTileSizes(std::vector<int64_t> sizes);
 
   // Returns the tiled root instruction.
   const TiledHloInstruction* GetRoot() const {
