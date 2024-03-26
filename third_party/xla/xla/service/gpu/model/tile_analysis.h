@@ -32,7 +32,7 @@ namespace gpu {
 // expressed as a strided expression
 //     offset + stride * iota(size)
 // with offset, stride, and size three integers, and iota the usual range
-// function. The size and offsets may never be negative.
+// function. These values may never be negative.
 //
 // A N-dimensional symbolic tile is a function from offsets, strides, and sizes
 // to a N-dimensional tile. It can be represented as three affine maps with
@@ -44,9 +44,8 @@ namespace gpu {
 //     (stride0, ..., stride{N-1})     (stride_map())
 // where maps respectively encode the offset, size, and stride component of
 // each strided expression in the tile. The parameters to the maps above are all
-// assumed to be strictly positive, but results of stride_map() may be negative.
-// The input offsets are assumed to be all 0s, and the input strides are assumed
-// to be all 1s.
+// assumed to be strictly positive. The input offsets are assumed to be all 0s,
+// and the input strides are assumed to be all 1s.
 //
 // A symbolic tile with M symbols and N results is constructed using an
 // `IndexingMap` with M input dimensions and N results. The construction of the
