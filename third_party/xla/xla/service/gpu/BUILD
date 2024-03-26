@@ -593,6 +593,7 @@ xla_test(
     backends = [
         "gpu_a100",
         "gpu_v100",
+        "gpu_h100",
     ],
     shard_count = 20,
     tags = ["nomac"],
