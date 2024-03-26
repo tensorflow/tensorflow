@@ -21,7 +21,6 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "absl/algorithm/container.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/Support/Debug.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
@@ -49,9 +48,11 @@ limitations under the License.
 #include "stablehlo/dialect/StablehloOps.h"  // from @stablehlo  // IWYU pragma: keep
 #include "tensorflow/compiler/mlir/lite/quantization/ir/QuantOps.h"
 #include "tensorflow/compiler/mlir/quantization/common/attrs_and_constraints.h"
+#include "tensorflow/compiler/mlir/quantization/common/lift_as_function_call.h"
 #include "tensorflow/compiler/mlir/quantization/common/quantization_lib/quantization_utils.h"
 #include "tensorflow/compiler/mlir/quantization/common/uniform_quantized_types.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/ops/stablehlo_op_quant_spec.h"
+#include "tensorflow/compiler/mlir/quantization/stablehlo/quantization_config.pb.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/quantization_options.pb.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 
@@ -73,6 +74,9 @@ using ::mlir::stablehlo::GatherOp;
 using ::mlir::stablehlo::GetDimensionSizeOp;
 using ::mlir::stablehlo::ReshapeOp;
 using ::mlir::stablehlo::UniformQuantizeOp;
+using ::stablehlo::quantization::Method;
+using ::stablehlo::quantization::QuantizedType;
+using ::stablehlo::quantization::StaticRangePtq;
 
 constexpr StringRef kCompositeFuncPrefix = "composite_";
 constexpr StringRef kQuantizedFuncPrefix = "quantized_";
@@ -139,22 +143,6 @@ Operation* GetBroadcastedUserOp(Operation* op) {
   return target_op;
 }
 
-// Checks if one of the inputs and outputs are quantized.
-bool HasQuantizedOperandOrOutput(Operation* call_op) {
-  SmallVector<Type> arg_types;
-  for (const Value arg : call_op->getOperands()) {
-    arg_types.push_back(arg.getType());
-  }
-
-  SmallVector<Type> output_types;
-  for (const Value output : call_op->getResults()) {
-    output_types.push_back(output.getType());
-  }
-
-  return absl::c_any_of(arg_types, IsQuantizedTensorType) &&
-         absl::c_any_of(output_types, IsQuantizedTensorType);
-}
-
 // Gets the corresponding quantized function name from the given function name.
 // Example: "composite_dot_general_fn_1" => "quantized_dot_general_fn"
 std::string GetQuantizedFunctionName(const StringRef func_name) {
@@ -170,7 +158,7 @@ std::string GetQuantizedFunctionName(const StringRef func_name) {
 // 3. It should also have the `kEntryFuncAttrName` attribute, which points to
 //    the function that `xla_call_module_op` represents.
 bool IsQuantizedXlaCallModuleOp(TF::XlaCallModuleOp xla_call_module_op) {
-  return HasQuantizedOperandOrOutput(xla_call_module_op) &&
+  return !IsOpNotQuantized(xla_call_module_op) &&
          xla_call_module_op->hasAttr(kQuantTraitAttrName) &&
          xla_call_module_op->hasAttr(kEntryFuncAttrName);
 }
@@ -287,6 +275,7 @@ class EntryFuncBodyQuantizationPattern {
 
   // Rewrites the `entry_func_op`'s body.
   virtual void rewrite(func::FuncOp entry_func_op,
+                       const Method& quantization_method,
                        PatternRewriter& rewriter) const = 0;
 };
 
@@ -429,7 +418,7 @@ class QuantizeDotGeneralOpPattern : public EntryFuncBodyQuantizationPattern {
     return MatchGemmStyleOp<DotGeneralOp>(entry_func_op);
   }
 
-  void rewrite(func::FuncOp entry_func_op,
+  void rewrite(func::FuncOp entry_func_op, const Method& quantization_method,
                PatternRewriter& rewriter) const override {
     DotGeneralOp dot_general_op = *entry_func_op.getOps<DotGeneralOp>().begin();
     const bool should_quantize_per_channel =
@@ -440,7 +429,9 @@ class QuantizeDotGeneralOpPattern : public EntryFuncBodyQuantizationPattern {
   }
 
  private:
-  const bool enable_per_channel_quantized_weight_;
+  [[deprecated(
+      "Do not rely on this field for per-channel quantization. Use `Method` "
+      "instead.")]] const bool enable_per_channel_quantized_weight_;
 };
 
 // Quantizes the entry function's body containing a `ConvolutionOp`.
@@ -455,14 +446,35 @@ class QuantizeConvolutionOpPattern : public EntryFuncBodyQuantizationPattern {
     return MatchGemmStyleOp<ConvolutionOp>(entry_func_op);
   }
 
-  void rewrite(func::FuncOp entry_func_op,
+  void rewrite(func::FuncOp entry_func_op, const Method& quantization_method,
                PatternRewriter& rewriter) const override {
-    RewriteGemmStyleOp<ConvolutionOp>(entry_func_op, rewriter,
-                                      enable_per_channel_quantized_weight_);
+    RewriteGemmStyleOp<ConvolutionOp>(
+        entry_func_op, rewriter,
+        enable_per_channel_quantized_weight_ &&
+            IsWeightPerChannelQuantized(quantization_method));
+  }
+
+  // Returns true if the quantization method indicates per-channel quantization
+  // for convolution weights. This method specifically matches a quantization
+  // dimension of 3 for the input index 1.
+  bool IsWeightPerChannelQuantized(const Method& quantization_method) const {
+    if (quantization_method.has_static_range_ptq()) {
+      const StaticRangePtq& static_range_ptq_spec =
+          quantization_method.static_range_ptq();
+
+      if (static_range_ptq_spec.input_quantized_types().contains(1)) {
+        const QuantizedType& weight_quantized_type =
+            static_range_ptq_spec.input_quantized_types().at(1);
+        return weight_quantized_type.dimension_specs().dimension() == 3;
+      }
+    }
+    return false;
   }
 
  private:
-  const bool enable_per_channel_quantized_weight_;
+  [[deprecated(
+      "Do not rely on this field for per-channel quantization. Use `Method` "
+      "instead.")]] const bool enable_per_channel_quantized_weight_;
 };
 
 template <typename SingularOpT>
@@ -487,7 +499,7 @@ class QuantizeSingularOpPattern : public EntryFuncBodyQuantizationPattern {
     return success();
   }
 
-  void rewrite(func::FuncOp entry_func_op,
+  void rewrite(func::FuncOp entry_func_op, const Method& quantization_method,
                PatternRewriter& rewriter) const override {
     auto singular_op = *entry_func_op.getOps<SingularOpT>().begin();
 
@@ -500,14 +512,17 @@ class QuantizeSingularOpPattern : public EntryFuncBodyQuantizationPattern {
 // inputs and outputs of `xla_call_module_op` that are possibly quantized. It
 // signature (type) is reset to match that of `xla_call_module_op`.
 // `entry_func_body_quantization_pattern` rewrites the function's body, based on
-// the new signature.
+// the new signature. `quantization_method` specifies the quantization method
+// applied to the quantizable unit `xla_call_module_op` and its corresponding
+// function `entry_func_op`.
 void QuantizeEntryFuncOp(
     const MLIRContext& ctx, PatternRewriter& rewriter,
     const TF::XlaCallModuleOp xla_call_module_op, func::FuncOp entry_func_op,
-    const EntryFuncBodyQuantizationPattern& body_rewrite_pattern) {
+    const EntryFuncBodyQuantizationPattern& body_rewrite_pattern,
+    const Method& quantization_method) {
   SetQuantizedFunctionType(rewriter, entry_func_op, xla_call_module_op);
 
-  body_rewrite_pattern.rewrite(entry_func_op, rewriter);
+  body_rewrite_pattern.rewrite(entry_func_op, quantization_method, rewriter);
 
   // Rename the function to be clear that the function has been quantized.
   const std::string quantized_function_name =
@@ -521,13 +536,14 @@ void QuantizeEntryFuncOp(
 void ReplaceQuantizedXlaCallModuleOpWithQuantizedCallOp(
     const MLIRContext& ctx, PatternRewriter& rewriter,
     TF::XlaCallModuleOp xla_call_module_op,
-    const EntryFuncBodyQuantizationPattern& body_rewrite_pattern) {
+    const EntryFuncBodyQuantizationPattern& body_rewrite_pattern,
+    const Method& quantization_method) {
   const ModuleOp module_op = xla_call_module_op->getParentOfType<ModuleOp>();
   const SymbolTable symbol_table(module_op);
 
   func::FuncOp entry_func_op = GetEntryFuncOp(xla_call_module_op, symbol_table);
   QuantizeEntryFuncOp(ctx, rewriter, xla_call_module_op, entry_func_op,
-                      body_rewrite_pattern);
+                      body_rewrite_pattern, quantization_method);
 
   // Replace the XlaCallModuleOp with a new CallOp.
   rewriter.setInsertionPoint(xla_call_module_op);
@@ -570,19 +586,29 @@ class XlaCallModuleOpToCallOp : public OpRewritePattern<TF::XlaCallModuleOp> {
       op->emitError("Failed to find a valid entry function.");
       return failure();
     }
+
     return FuncBodyRewritePatternT(enable_per_channel_quantized_weight_)
         .match(entry_func_op);
   }
 
   void rewrite(TF::XlaCallModuleOp xla_call_module_op,
                PatternRewriter& rewriter) const override {
+    // TODO: b/331145946 - Each quantization method should be valid
+    // (GetQuantizationMethodOrDefault swallows invalid method attribute). Check
+    // the validity in `match()`. Use accessors to achieve this.
+    const Method quantization_method =
+        GetQuantizationMethodOrDefault(xla_call_module_op);
+
     ReplaceQuantizedXlaCallModuleOpWithQuantizedCallOp(
         *rewriter.getContext(), rewriter, xla_call_module_op,
-        FuncBodyRewritePatternT(enable_per_channel_quantized_weight_));
+        FuncBodyRewritePatternT(enable_per_channel_quantized_weight_),
+        quantization_method);
   }
 
  private:
-  const bool enable_per_channel_quantized_weight_;
+  [[deprecated(
+      "Do not rely on this field for per-channel quantization. Use `Method` "
+      "instead.")]] const bool enable_per_channel_quantized_weight_;
 };
 
 // Quantizes op with regions such as stablehlo.reduce_window op.
@@ -592,7 +618,7 @@ class QuantizeOpWithRegionPattern
     : public OpRewritePattern<quantfork::DequantizeCastOp> {
  public:
   explicit QuantizeOpWithRegionPattern(MLIRContext& ctx)
-      : OpRewritePattern<quantfork::DequantizeCastOp>(&ctx){};
+      : OpRewritePattern<quantfork::DequantizeCastOp>(&ctx) {};
 
   LogicalResult match(quantfork::DequantizeCastOp op) const final {
     // Match only when there is one user of the dequantize op.
@@ -866,7 +892,7 @@ class QuantizeHybridDotGeneralPattern
     return MatchGemmStyleOp<DotGeneralOp>(entry_func_op);
   }
 
-  void rewrite(func::FuncOp entry_func_op,
+  void rewrite(func::FuncOp entry_func_op, const Method& quantization_method,
                PatternRewriter& rewriter) const override {}
 };
 
@@ -876,9 +902,8 @@ template <typename FuncBodyRewritePatternT,
 class HybridXlaCallModuleOpToCallOp
     : public OpRewritePattern<TF::XlaCallModuleOp> {
  public:
-  explicit HybridXlaCallModuleOpToCallOp(
-      MLIRContext& ctx, bool enable_per_channel_quantized_weight)
-      : OpRewritePattern<TF::XlaCallModuleOp>(&ctx){};
+  explicit HybridXlaCallModuleOpToCallOp(MLIRContext& ctx)
+      : OpRewritePattern<TF::XlaCallModuleOp>(&ctx) {};
 
   LogicalResult match(TF::XlaCallModuleOp op) const override {
     ModuleOp module_op = op->getParentOfType<ModuleOp>();
@@ -894,14 +919,21 @@ class HybridXlaCallModuleOpToCallOp
       op->emitError("Failed to find a valid entry function.");
       return failure();
     }
+
     return FuncBodyRewritePatternT().match(entry_func_op);
   }
 
   void rewrite(TF::XlaCallModuleOp xla_call_module_op,
                PatternRewriter& rewriter) const override {
+    // TODO: b/331145946 - Each quantization method should be valid
+    // (GetQuantizationMethodOrDefault swallows invalid method attribute). Check
+    // the validity in `match()`. Use accessors to achieve this.
+    const Method quantization_method =
+        GetQuantizationMethodOrDefault(xla_call_module_op);
+
     ReplaceQuantizedXlaCallModuleOpWithQuantizedCallOp(
         *rewriter.getContext(), rewriter, xla_call_module_op,
-        FuncBodyRewritePatternT());
+        FuncBodyRewritePatternT(), quantization_method);
   }
 };
 
@@ -924,7 +956,7 @@ void PopulateComputeHeavyPatterns(
 void PopulateQuantizeHybridPatterns(MLIRContext& ctx,
                                     RewritePatternSet& patterns) {
   patterns.add<HybridXlaCallModuleOpToCallOp<QuantizeHybridDotGeneralPattern>>(
-      ctx, false);
+      ctx);
 }
 
 }  // namespace mlir::quant::stablehlo
