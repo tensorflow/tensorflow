@@ -20,6 +20,8 @@ limitations under the License.
 #include <memory>
 #include <utility>
 
+#include <gmock/gmock.h>
+#include <gtest/gtest.h>
 #include "absl/algorithm/container.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"

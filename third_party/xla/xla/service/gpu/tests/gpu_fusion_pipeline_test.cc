@@ -17,6 +17,7 @@ limitations under the License.
 #include <optional>
 #include <utility>
 
+#include <gtest/gtest.h>
 #include "absl/strings/string_view.h"
 #include "xla/service/gpu/fusion_merger.h"
 #include "xla/service/gpu/gpu_device_info_for_tests.h"

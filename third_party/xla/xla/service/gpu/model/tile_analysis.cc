@@ -289,7 +289,7 @@ std::optional<SizeAndStrideExpression> ExtractSizeAndStride(
   //   = stride_expr{i} * index_expr{i}
   //
   // offset_expressions = f(0, ..., 0)[0, ..., 0].
-  llvm::ArrayRef<AffineExpr> offset_expressions =
+  std::vector<AffineExpr> offset_expressions =
       SubstituteAllIndicesAndKnownSymbolsWithSameValue(
           input_affine_map, getAffineConstantExpr(0, mlir_context))
           .getResults();
@@ -311,6 +311,23 @@ std::optional<SizeAndStrideExpression> ExtractSizeAndStride(
     }
     size_expressions.push_back(maybe_size_and_stride->size);
     stride_expressions.push_back(maybe_size_and_stride->stride);
+  }
+
+  // Eliminate negative strides and recalculate offsets.
+  std::vector<AffineExpr> dim_replacements, sym_replacements;
+  for (auto [offset, size, stride] :
+       llvm::zip(offset_expressions, size_expressions, stride_expressions)) {
+    auto constant = llvm::dyn_cast<mlir::AffineConstantExpr>(stride);
+    if (!constant) {
+      AffineMapPrinter printer;
+      VLOG(1) << "Unexpected non-constant stride expression: "
+              << printer.ToString(stride);
+      return std::nullopt;
+    }
+    if (constant.getValue() < 0) {
+      offset = offset + size * stride - stride;
+      stride = -stride;
+    }
   }
 
   int64_t num_symbols = input_affine_map.getNumDims();

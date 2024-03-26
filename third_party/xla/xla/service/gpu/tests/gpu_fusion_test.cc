@@ -17,6 +17,7 @@ limitations under the License.
 #include <optional>
 #include <vector>
 
+#include <gtest/gtest.h>
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -27,6 +28,7 @@ limitations under the License.
 #include "xla/service/gpu/tests/gpu_codegen_test.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla {
 namespace gpu {

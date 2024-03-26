@@ -15,6 +15,7 @@ limitations under the License.
 #include <memory>
 #include <utility>
 
+#include <gtest/gtest.h>
 #include "absl/algorithm/container.h"
 #include "absl/status/statusor.h"
 #include "xla/debug_options_flags.h"

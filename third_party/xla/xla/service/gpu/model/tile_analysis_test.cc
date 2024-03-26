@@ -193,8 +193,8 @@ TEST_F(SymbolicTileTest, CanPropagateTileThroughReverse) {
 
   EXPECT_THAT(
       SymbolicTile::FromIndexingMap(*input_indexing.indexing_maps[0].begin()),
-      Optional(MatchSymbolicTile("()[s0] -> (178)", "()[s0] -> (s0)",
-                                 "()[s0] -> (-1)")));
+      Optional(MatchSymbolicTile("()[s0] -> (-s0 + 179)", "()[s0] -> (s0)",
+                                 "()[s0] -> (1)")));
 }
 
 TEST_F(SymbolicTileTest, CanPropagateTileFromSliceOutputToInput) {
@@ -293,14 +293,15 @@ TEST_F(SymbolicTileTest, CanPropagateTileThroughSplitReshapeOfReverse) {
     }
   )"));
 
-  // TODO(b/328190548): normalize strides to be positive.
+  // TODO(b/331257678): the expected expressions should be simplified.
   EXPECT_THAT(
       SymbolicTile::FromIndexingMap(*input_indexing.indexing_maps[0].begin()),
       Optional(MatchSymbolicTile(
-          "()[s0, s1] -> (0, 7, 5, 0)",
+          "()[s0, s1] -> (0, -((s0 + 5) floordiv 6) + 8, "
+          "-(s0 - ((s0 - 1) floordiv 6) * 6) + 6, 0)",
           "()[s0, s1] -> "
           "(1, (s0 + 5) floordiv 6, s0 - ((s0 - 1) floordiv 6) * 6, s1)",
-          "()[s0, s1] -> (0, -1, -1, 1)")));
+          "()[s0, s1] -> (0, 1, 1, 1)")));
 }
 
 TEST_F(SymbolicTileTest,
