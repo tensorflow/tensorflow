@@ -33,7 +33,6 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
-#include "absl/container/inlined_vector.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
@@ -1422,6 +1421,9 @@ void TrimOrGenerateStrategiesBasedOnExistingSharding(
           cluster_env, pretrimmed_strategy_map, call_graph, strict);
     }
   } else {
+    if (existing_sharding.IsUnknown()) {
+      return;
+    }
     if (ShardingIsComplete(existing_sharding,
                            cluster_env.device_mesh_.num_elements())) {
       // Sharding provided by XLA users, we need to keep them.
@@ -2616,6 +2618,7 @@ void CheckUserShardingPreservation(
                    << preserve_shardings.at(inst->name())[0].ToString()
                    << "\nbut it's empty.";
       } else if (!inst->sharding().IsTuple() &&
+                 !preserve_shardings.at(inst->name())[0].IsUnknown() &&
                  preserve_shardings.at(inst->name())[0] != inst->sharding()) {
         LOG(FATAL) << "User sharding is not preserved! Instruction with name "
                    << inst->name() << " should be: "
@@ -2625,8 +2628,9 @@ void CheckUserShardingPreservation(
         const std::vector<HloSharding>* preserve_shardings_tuple =
             &preserve_shardings.at(inst->name());
         for (size_t i = 0; i < inst->shape().tuple_shapes_size(); i++) {
-          if (preserve_shardings_tuple->at(i) !=
-              inst->sharding().tuple_elements().at(i)) {
+          if (!preserve_shardings_tuple->at(i).IsUnknown() &&
+              preserve_shardings_tuple->at(i) !=
+                  inst->sharding().tuple_elements().at(i)) {
             LOG(FATAL) << "Tuple sharding is not preserved! Instruction "
                           "with name "
                        << inst->name() << " " << i << "th tuple element "
@@ -3983,13 +3987,33 @@ absl::StatusOr<bool> AutoSharding::Run(
     mesh_shapes.push_back(option_.device_mesh_shape);
   }
 
+  HloInstruction* parameter_instruction =
+      module->entry_computation()->parameter_instruction(0);
+  if (parameter_instruction->shape().IsTuple() &&
+      parameter_instruction->has_sharding()) {
+    CHECK_EQ(module->entry_computation()->num_parameters(), 1);
+    parameter_instruction->set_sharding(
+        spmd::ReplaceGivenShardingsWithUnknownForTuple(
+            parameter_instruction->sharding(), parameter_instruction->shape(),
+            module->config().allow_spmd_sharding_propagation_to_parameters()));
+  }
+
+  HloInstruction* root_instruction =
+      module->entry_computation()->root_instruction();
+  if (root_instruction->shape().IsTuple() && root_instruction->has_sharding()) {
+    root_instruction->set_sharding(
+        spmd::ReplaceGivenShardingsWithUnknownForTuple(
+            root_instruction->sharding(), root_instruction->shape(),
+            module->config().allow_spmd_sharding_propagation_to_output()));
+  }
+
   absl::flat_hash_map<std::string, const HloInstruction*>
       sharding_propagation_solution;
   std::unique_ptr<HloModule> module_with_default_solution = nullptr;
   if (option_.use_sharding_propagation_for_default_shardings) {
     module_with_default_solution = CloneModule(module);
-    // TODO(pratikf): Ensure that we're passing the correct custom call sharding
-    // helper to the sharding propagation pass.
+    // TODO(pratikf): Ensure that we're passing the correct custom call
+    // sharding helper to the sharding propagation pass.
     auto sharding_prop = ShardingPropagation(
         /*is_spmd */ true, /*propagate_metadata */ false,
         /*allow_spmd_sharding_propagation_to_output*/

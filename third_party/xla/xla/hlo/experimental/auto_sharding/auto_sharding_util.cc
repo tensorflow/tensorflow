@@ -1880,6 +1880,9 @@ int64_t GetInstructionSize(const Shape& shape) {
 
 int64_t GetShardedInstructionSize(const Shape& shape, int64_t num_devices,
                                   std::optional<HloSharding> sharding) {
+  if (sharding && sharding->IsUnknown()) {
+    sharding = HloSharding::Replicate();
+  }
   if (shape.IsTuple()) {
     int64_t size = 0;
     for (size_t i = 0; i < shape.tuple_shapes_size(); i++) {
@@ -2031,6 +2034,10 @@ absl::StatusOr<bool> AdjustShardingsWithPartialMeshShape(
       for (size_t i = 0; i < inst->shape().tuple_shapes_size(); i++) {
         auto shape = inst->shape().tuple_shapes(i);
         auto sharding = inst->sharding().tuple_elements()[i];
+        if (sharding.IsUnknown()) {
+          output_flattened_shardings.push_back(sharding);
+          continue;
+        }
         absl::StatusOr<std::optional<HloSharding>> new_sharding_result =
             AdjustShardingWithPartialMeshShapePerElement(
                 sharding, valid_shards, total_num_devices, crash_on_error);
@@ -2309,6 +2316,25 @@ bool IsShardingMisaligned(const HloSharding& sharding, const Shape& shape) {
     }
   }
   return false;
+}
+
+HloSharding ReplaceGivenShardingsWithUnknownForTuple(
+    const HloSharding& sharding, const Shape& shape,
+    absl::Span<const bool> to_replace_sharding_ids) {
+  std::vector<HloSharding> new_tuple_shardings;
+  int64_t num_elements = sharding.tuple_elements().size();
+  for (int32_t i = 0; i < num_elements; ++i) {
+    bool can_change_sharding = to_replace_sharding_ids.size() == 1
+                                   ? to_replace_sharding_ids[0]
+                                   : to_replace_sharding_ids[i];
+    if (can_change_sharding) {
+      new_tuple_shardings.push_back(HloSharding::Unknown());
+    } else {
+      new_tuple_shardings.push_back(sharding.tuple_elements()[i]);
+    }
+  }
+
+  return HloSharding::Tuple(shape, new_tuple_shardings);
 }
 
 }  // namespace spmd
