@@ -32,6 +32,26 @@ cc_library(
     ],
 )
 
+xla_cc_test(
+    name = "in_place_dynamic_update_slice_test",
+    srcs = ["in_place_dynamic_update_slice_test.cc"],
+    tags = tf_cuda_tests_tags(),
+    deps = [
+        ":fusions",
+        ":in_place_dynamic_update_slice",
+        "//xla/service/gpu:gpu_device_info_for_tests",
+        "//xla/service/gpu:hlo_fusion_analysis",
+        "//xla/service/gpu/model:affine_map_printer",
+        "//xla/service/gpu/model:indexing_test_utils",
+        "//xla/stream_executor:device_description",
+        "//xla/tests:hlo_test_base",
+        "//xla/tests:xla_internal_test_main",
+        "@com_google_googletest//:gtest",
+        "@llvm-project//mlir:IR",
+        "@local_tsl//tsl/platform:statusor",
+    ],
+)
+
 cc_library(
     name = "in_place_dynamic_update_slice_mlir",
     srcs = ["in_place_dynamic_update_slice_mlir.cc"],
@@ -67,6 +87,7 @@ xla_cc_test(
         ":mlir_emitter_test_base",
         "//xla:error_spec",
         "//xla/service:gpu_plugin",
+        "//xla/service/gpu/model:indexing_test_utils",
         "//xla/tests:xla_internal_test_main",
         "@com_google_googletest//:gtest",
         "@local_tsl//tsl/lib/core:status_test_util",
@@ -487,9 +508,9 @@ cc_library(
     hdrs = ["scatter.h"],
     deps = [
         ":fusion_emitter",
+        ":loop",
         "//xla:shape_util",
         "//xla:status",
-        "//xla:statusor",
         "//xla/hlo/ir:hlo",
         "//xla/service/gpu:hlo_fusion_analysis",
         "//xla/service/gpu:ir_emission_utils",
@@ -505,7 +526,6 @@ cc_library(
         "@com_google_absl//absl/types:span",
         "@llvm-project//llvm:Support",
         "@llvm-project//llvm:ir_headers",
-        "@local_tsl//tsl/platform:statusor",
     ],
 )
 
@@ -517,6 +537,8 @@ xla_cc_test(
         ":scatter",
         "//xla/service/gpu:gpu_device_info_for_tests",
         "//xla/service/gpu:hlo_fusion_analysis",
+        "//xla/service/gpu/model:affine_map_printer",
+        "//xla/service/gpu/model:indexing_test_utils",
         "//xla/stream_executor:device_description",
         "//xla/tests:hlo_test_base",
         "//xla/tests:xla_internal_test_main",
@@ -852,6 +874,25 @@ cc_library(
     ],
 )
 
+xla_cc_test(
+    name = "concatenate_test",
+    srcs = ["concatenate_test.cc"],
+    deps = [
+        ":concatenate",
+        ":fusions",
+        "//xla/service/gpu:gpu_device_info_for_tests",
+        "//xla/service/gpu:hlo_fusion_analysis",
+        "//xla/service/gpu/model:affine_map_printer",
+        "//xla/service/gpu/model:indexing_test_utils",
+        "//xla/stream_executor:device_description",
+        "//xla/tests:hlo_test_base",
+        "//xla/tests:xla_internal_test_main",
+        "@com_google_googletest//:gtest",
+        "@llvm-project//mlir:IR",
+        "@local_tsl//tsl/platform:statusor",
+    ],
+)
+
 cc_library(
     name = "concatenate_mlir",
     srcs = ["concatenate_mlir.cc"],
@@ -885,14 +926,14 @@ xla_cc_test(
     srcs = ["concatenate_mlir_test.cc"],
     tags = tf_cuda_tests_tags(),
     deps = [
+        ":concatenate",
         ":concatenate_mlir",
         ":mlir_emitter_test_base",
         "//xla:error_spec",
-        "//xla/service/gpu:hlo_fusion_analysis",
+        "//xla/service/gpu/model:indexing_test_utils",
         "//xla/tests:xla_internal_test_main",
         "@com_google_googletest//:gtest",
         "@local_tsl//tsl/lib/core:status_test_util",
-        "@local_tsl//tsl/platform:statusor",
     ],
 )
 

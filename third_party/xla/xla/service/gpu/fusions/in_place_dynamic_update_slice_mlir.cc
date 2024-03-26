@@ -81,6 +81,9 @@ std::optional<IndexingMap>
 MlirInPlaceDynamicUpdateSliceFusion::ComputeThreadIdToInputIndexing(
     int64_t root_index, int64_t hero_operand_index,
     mlir::MLIRContext* mlir_context) const {
+  if (hero_operand_index != kDUSUpdateIndex) {
+    return std::nullopt;
+  }
   auto launch_dims = launch_dimensions();
   // It is guaranteed that all DUS ops have the same output shape at this point.
   const auto& update_shape =

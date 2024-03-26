@@ -32,6 +32,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/service/gpu/elemental_ir_emitter.h"
+#include "xla/service/gpu/fusions/loop.h"
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/ir_emitter_context.h"
 #include "xla/service/gpu/ir_emitter_nested.h"
@@ -47,9 +48,15 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
+ScatterFusion::ScatterFusion(const HloFusionAnalysis& analysis)
+    : analysis_(analysis), config_(ComputeLoopFusionConfig(analysis)) {
+  CHECK_EQ(analysis.fusion_roots().size(), 1);
+  CHECK_EQ(analysis.fusion_roots()[0]->opcode(), HloOpcode::kScatter);
+}
+
 LaunchDimensions ScatterFusion::launch_dimensions() const {
   const auto& updates_shape =
-      analysis_.fusion_roots().front()->operand(2)->shape();
+      analysis_.fusion_roots().front()->operands().back()->shape();
   return CalculateLaunchDimensions(updates_shape, analysis_.device_info());
 }
 
@@ -230,6 +237,48 @@ absl::Status ScatterFusion::EmitKernel(IrEmitterContext& ir_emitter_context,
   return ParallelLoopEmitter(loop_body_emitter, updates_shape, launch_dims,
                              builder)
       .EmitLoop(name, index_type);
+}
+
+std::optional<IndexingMap> ScatterFusion::ComputeThreadIdToInputIndexing(
+    int64_t root_index, int64_t hero_operand_index,
+    mlir::MLIRContext* ctx) const {
+  auto* scatter =
+      DynCast<HloScatterInstruction>(analysis_.fusion_heroes().front());
+  int64_t scatter_operand_count = scatter->scatter_operand_count();
+  // Scatter operands a packed in the following way:
+  // Operand IDs [0, scatter_operand_count - 1] for `scatter operands`.
+  // Operand ID  scatter_operand_count for `scatter indices`.
+  // Operand IDs [scatter_operand_count + 1, 2 * scatter_operand_count] for
+  // `scatter updates`.
+
+  // For scatter operands we do not know the thread ID indexing.
+  if (hero_operand_index < scatter_operand_count) {
+    return std::nullopt;
+  }
+  // Compute thread id mapping based on the first update operand.
+  Shape scatter_update_shape = scatter->scatter_updates().front()->shape();
+  IndexingMap scatter_update_map = GetDefaultThreadIdToOutputIndexingMap(
+      launch_dimensions(), config_.unroll_factor, scatter_update_shape, ctx);
+
+  // For scatter indices we project indexing for scatter updates and take the
+  // first result of the affine map only, because they coincide.
+  if (hero_operand_index == scatter_operand_count) {
+    Shape scatter_indices_shape = scatter->scatter_indices()->shape();
+    CHECK_EQ(scatter_indices_shape.rank(), 2) << scatter->ToString();
+    // Create a map from scatter update to scatter indices.
+    IndexingMap updates_to_indices_map{
+        mlir::AffineMap::get(
+            /*dimCount=*/scatter_update_shape.rank(), /*symbolCount=*/1,
+            {mlir::getAffineDimExpr(0, ctx), mlir::getAffineSymbolExpr(0, ctx)},
+            ctx),
+        DimVarsFromTensorSizes(scatter_update_shape.dimensions()),
+        RangeVarsFromTensorSizes({scatter_indices_shape.dimensions(1)}),
+        /*rt_vars=*/{}};
+    auto scatter_indices_map = scatter_update_map * updates_to_indices_map;
+    scatter_indices_map.Simplify();
+    return scatter_indices_map;
+  }
+  return scatter_update_map;
 }
 
 }  // namespace gpu

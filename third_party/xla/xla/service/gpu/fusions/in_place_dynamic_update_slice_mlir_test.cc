@@ -17,6 +17,7 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "xla/error_spec.h"
 #include "xla/service/gpu/fusions/mlir_emitter_test_base.h"
+#include "xla/service/gpu/model/indexing_test_utils.h"
 #include "tsl/lib/core/status_test_util.h"
 
 namespace xla {
@@ -25,6 +26,54 @@ namespace {
 
 using MlirInPlaceDynamicUpdateSliceFusionTest =
     MlirEmitterTestBase<MlirInPlaceDynamicUpdateSliceFusion>;
+
+TEST_F(MlirInPlaceDynamicUpdateSliceFusionTest, ThreadIndexing) {
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+    HloModule module
+
+    fused_computation {
+      in = f32[20,30] parameter(0)
+      updates = f32[5,6] parameter(1)
+      i0 = s32[] parameter(2)
+      i1 = s32[] parameter(3)
+      ROOT updated = f32[20,30] dynamic-update-slice(in, updates, i0, i1)
+    }
+    ENTRY entry {
+      in = f32[20,30] parameter(0)
+      updates = f32[5,6] parameter(1)
+      i0 = s32[] constant(2)
+      i1 = s32[] constant(3)
+      ROOT fusion = f32[20,30] fusion(in, updates, i0, i1), kind=kLoop, calls=fused_computation
+    }
+  )"));
+  thread_id_printer_.SetSymbolName(0, "chunk_id");
+  thread_id_printer_.SetSymbolName(1, "unroll_id");
+
+  auto* root = module->entry_computation()->root_instruction();
+
+  auto analysis = AnalyzeFusion(*root, device_info_);
+  MlirInPlaceDynamicUpdateSliceFusion fusion(analysis);
+
+  auto thread_id_update_indexing = fusion.ComputeThreadIdToInputIndexing(
+      /*root_index=*/0, /*hero_operand_index=*/1, &mlir_context_);
+  EXPECT_THAT(thread_id_update_indexing->ToString(thread_id_printer_),
+              MatchIndexingString(R"(
+    (th_x, th_y, th_z, bl_x, bl_y, bl_z)[chunk_id, unroll_id] -> (
+    th_x floordiv 6, th_x mod 6)
+    domain:
+    th_x in [0, 29]
+    th_y in [0, 0]
+    th_z in [0, 0]
+    bl_x in [0, 0]
+    bl_y in [0, 0]
+    bl_z in [0, 0]
+    chunk_id in [0, 0]
+    unroll_id in [0, 0]
+  )"));
+  auto thread_id_dst_indexing = fusion.ComputeThreadIdToInputIndexing(
+      /*root_index=*/0, /*hero_operand_index=*/0, &mlir_context_);
+  EXPECT_THAT(thread_id_dst_indexing, ::testing::Eq(std::nullopt));
+}
 
 TEST_F(MlirInPlaceDynamicUpdateSliceFusionTest, SimpleDUS) {
   auto kHloString = R"(

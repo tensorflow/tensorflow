@@ -34,10 +34,30 @@ limitations under the License.
 
 namespace xla {
 namespace gpu {
+namespace {
+
+constexpr int kDUSUpdateIndex = 1;
+
+}  // namespace
 
 LaunchDimensions InPlaceDynamicUpdateSliceFusion::launch_dimensions() const {
   const auto& update_shape = dus_ops_.front()->operand(1)->shape();
   return CalculateLaunchDimensions(update_shape, analysis_.device_info());
+}
+
+std::optional<IndexingMap>
+InPlaceDynamicUpdateSliceFusion::ComputeThreadIdToInputIndexing(
+    int64_t root_index, int64_t hero_operand_index,
+    mlir::MLIRContext* mlir_context) const {
+  if (hero_operand_index != kDUSUpdateIndex) {
+    return std::nullopt;
+  }
+  auto launch_dims = launch_dimensions();
+  // It is guaranteed that all DUS ops have the same output shape at this point.
+  const auto& update_shape =
+      dus_ops_.front()->operand(kDUSUpdateIndex)->shape();
+  return GetDefaultThreadIdToOutputIndexingMap(launch_dims, /*unroll_factor=*/1,
+                                               update_shape, mlir_context);
 }
 
 absl::Status InPlaceDynamicUpdateSliceFusion::EmitKernel(
