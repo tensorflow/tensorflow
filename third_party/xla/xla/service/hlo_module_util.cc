@@ -112,16 +112,12 @@ StatusOr<std::unique_ptr<HloModuleConfig>> CreateModuleConfig(
     }
     config->set_use_auto_spmd_partitioning(
         execution_options->use_auto_spmd_partitioning());
-    std::vector<int64_t> mesh_shape;
-    for (auto t : execution_options->auto_spmd_partitioning_mesh_shape()) {
-      mesh_shape.push_back(t);
-    }
-    config->set_auto_spmd_partitioning_mesh_shape(mesh_shape);
-    std::vector<int64_t> mesh_ids;
-    for (auto t : execution_options->auto_spmd_partitioning_mesh_ids()) {
-      mesh_ids.push_back(t);
-    }
-    config->set_auto_spmd_partitioning_mesh_ids(mesh_ids);
+    config->set_auto_spmd_partitioning_mesh_shape(std::vector<int64_t>(
+        execution_options->auto_spmd_partitioning_mesh_shape().begin(),
+        execution_options->auto_spmd_partitioning_mesh_shape().end()));
+    config->set_auto_spmd_partitioning_mesh_ids(std::vector<int64_t>(
+        execution_options->auto_spmd_partitioning_mesh_ids().begin(),
+        execution_options->auto_spmd_partitioning_mesh_ids().end()));
     config->set_deduplicate_hlo(execution_options->deduplicate_hlo());
     config->set_seed(execution_options->seed());
     config->set_launch_id(execution_options->launch_id());

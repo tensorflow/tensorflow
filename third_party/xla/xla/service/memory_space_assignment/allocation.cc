@@ -201,7 +201,7 @@ Allocation::Allocation(HloPosition defining_position, MemorySpace memory_space,
                        std::optional<int64_t> cross_program_prefetch_index)
     : original_defining_position_(std::move(defining_position)),
       memory_space_(memory_space),
-      chunk_(std::move(chunk)),
+      chunk_(chunk),
       start_time_(start_time),
       end_time_(end_time),
       is_scoped_allocation_(is_scoped_allocation),

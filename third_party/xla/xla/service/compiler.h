@@ -448,7 +448,7 @@ class AotCompilationOptions {
     return target_config_;
   }
   void set_target_config(const Compiler::TargetConfig& target_config) {
-    target_config_ = std::move(target_config);
+    target_config_ = target_config;
   }
 
  protected:

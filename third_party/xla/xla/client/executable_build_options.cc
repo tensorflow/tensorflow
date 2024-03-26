@@ -110,14 +110,14 @@ ExecutableBuildOptions& ExecutableBuildOptions::set_use_auto_spmd_partitioning(
 ExecutableBuildOptions&
 ExecutableBuildOptions::set_auto_spmd_partitioning_mesh_shape(
     std::vector<int64_t> mesh_shape) {
-  auto_spmd_partitioning_mesh_shape_ = mesh_shape;
+  auto_spmd_partitioning_mesh_shape_ = std::move(mesh_shape);
   return *this;
 }
 
 ExecutableBuildOptions&
 ExecutableBuildOptions::set_auto_spmd_partitioning_mesh_ids(
     std::vector<int64_t> mesh_ids) {
-  auto_spmd_partitioning_mesh_ids_ = mesh_ids;
+  auto_spmd_partitioning_mesh_ids_ = std::move(mesh_ids);
   return *this;
 }
 

@@ -6324,10 +6324,9 @@ DefaultCrossProgramPrefetchBufferIntervalComparator::GetTuple(
       sort_data.cumulative_use_size +=
           ShapeUtil::ElementsInRecursive(use.instruction->shape());
     });
-    sort_data_it = additional_sort_data_
-                       .insert(std::make_pair(buffer_interval.buffer,
-                                              std::move(sort_data)))
-                       .first;
+    sort_data_it =
+        additional_sort_data_.try_emplace(buffer_interval.buffer, sort_data)
+            .first;
   }
 
   return std::make_tuple(

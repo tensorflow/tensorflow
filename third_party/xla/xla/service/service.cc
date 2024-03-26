@@ -790,10 +790,10 @@ absl::StatusOr<std::unique_ptr<Executable>> Service::BuildExecutable(
       buffer_assignment_proto_after_opt != nullptr) {
     CHECK(DumpingEnabledForHloModule(executable->module()));
     *hlo_proto_before_opt->mutable_buffer_assignment() =
-        std::move(*buffer_assignment_proto_after_opt);
+        *buffer_assignment_proto_after_opt;
     executable->set_hlo_proto(std::move(hlo_proto_before_opt));
   }
-  return std::move(executable);
+  return executable;
 }
 
 Status Service::Compile(const CompileRequest* arg, CompileResponse* result) {
