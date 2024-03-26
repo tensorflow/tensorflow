@@ -15,16 +15,17 @@ limitations under the License.
 
 #include "tensorflow/core/distributed_runtime/device_resolver_distributed.h"
 
-#include "absl/memory/memory.h"
+#include <gmock/gmock.h>
+#include "absl/status/status.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
-#include "tensorflow/core/distributed_runtime/test_utils.h"
-#include "tensorflow/core/lib/core/notification.h"
-#include "tensorflow/core/lib/core/status_test_util.h"
-#include "tensorflow/core/lib/strings/strcat.h"
+#include "tensorflow/core/framework/allocator.h"
+#include "tensorflow/core/framework/device.h"
+#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/random.h"
+#include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/test.h"
-#include "tensorflow/core/util/device_name_utils.h"
+#include "tsl/lib/core/status_test_util.h"
 
 namespace tensorflow {
 namespace {

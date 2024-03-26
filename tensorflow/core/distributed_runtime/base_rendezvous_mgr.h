@@ -33,6 +33,7 @@ limitations under the License.
 #include "tensorflow/core/framework/control_flow.h"
 #include "tensorflow/core/framework/local_rendezvous.h"
 #include "tensorflow/core/framework/rendezvous.h"
+#include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/hash/hash.h"
 #include "tensorflow/core/platform/macros.h"

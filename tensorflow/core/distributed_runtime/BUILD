@@ -3,7 +3,6 @@
 # to be distributed and performed in parallel across multiple
 # processes.
 
-load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load(
     "//tensorflow:tensorflow.bzl",
     "if_google",
@@ -21,6 +20,7 @@ load(
     "//tensorflow/core/platform:build_config_root.bzl",
     "tf_cuda_tests_tags",
 )
+load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -118,6 +118,7 @@ cc_library(
     hdrs = ["cluster_function_library_runtime.h"],
     # copybara:uncomment copts = ["-Wthread-safety-analysis"],
     deps = [
+        ":call_options",
         ":worker_cache",
         ":worker_interface",
         ":worker_session",
@@ -127,6 +128,10 @@ cc_library(
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/protobuf:worker_proto_cc",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:optional",
     ],
 )
@@ -141,16 +146,29 @@ tf_cc_test(
     deps = [
         ":cluster_function_library_runtime",
         ":worker_session",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:core_cpu_base",
+        "//tensorflow/core:framework",
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib_internal",
+        "//tensorflow/core:portable_gif_internal",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
         "//tensorflow/core/distributed_runtime/rpc:grpc_channel",
         "//tensorflow/core/distributed_runtime/rpc:grpc_testlib",
         "//tensorflow/core/distributed_runtime/rpc:grpc_worker_cache",
+        "//tensorflow/core/framework:function_proto_cc",
+        "//tensorflow/core/framework:op",
+        "//tensorflow/core/framework:op_def_proto_cc",
+        "//tensorflow/core/framework:types_proto_cc",
         "//tensorflow/core/kernels:cast_op",
         "//tensorflow/core/kernels:cwise_op",
+        "//tensorflow/core/platform:notification",
+        "//tensorflow/core/platform:status",
+        "//third_party/protobuf",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
     ],
 )
 
@@ -297,6 +315,7 @@ cc_library(
     deps = [
         ":call_options",
         ":worker_cache",
+        ":worker_interface",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
     ],
@@ -476,11 +495,15 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core/common_runtime/eager:rendezvous_cache",
+        "//tensorflow/core/framework:types_proto_cc",
         "//tensorflow/core/profiler/lib:scoped_memory_debug_annotation",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/hash",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -615,13 +638,17 @@ cc_library(
         ":cancellable_call",
         ":request_id",
         ":worker_cache",
+        ":worker_interface",
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib_internal",  # protobuf::Any
+        "//tensorflow/core:portable_gif_internal",
         "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/platform:errors",
+        "//tensorflow/core/platform:status",
         "//tensorflow/core/profiler/lib:scoped_memory_debug_annotation",
         "//tensorflow/core/protobuf:worker_proto_cc",
-        "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/status",
     ],
 )
@@ -635,9 +662,11 @@ tf_cc_test(
         "no_windows",  # TODO(b/187863739): Fix failure and remove.
     ],
     deps = [
+        ":call_options",
         ":collective_rma_distributed",
         ":device_resolver_distributed",
         ":test_utils",
+        ":worker_interface",
         "//tensorflow/core:core_cpu_lib",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
@@ -645,8 +674,9 @@ tf_cc_test(
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
-        "//tensorflow/core:testlib",
         "//tensorflow/core/protobuf:worker_proto_cc",
+        "@com_google_absl//absl/status",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -661,10 +691,16 @@ cc_library(
         ":worker_cache",
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework",
+        "//tensorflow/core:framework_lite",
+        "//tensorflow/core:portable_gif_internal",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/platform:errors",
         "//tensorflow/core/platform:status",
+        "//tensorflow/core/protobuf:worker_proto_cc",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
+        "@local_tsl//tsl/platform:thread_annotations",
     ],
 )
 
@@ -689,6 +725,7 @@ tf_cc_test(
         ":collective_param_resolver_distributed",
         ":device_resolver_distributed",
         ":test_utils",
+        ":worker_interface",
         "//tensorflow/core:collective_ops_op_lib",
         "//tensorflow/core:core_cpu_lib",
         "//tensorflow/core:framework",
@@ -702,7 +739,11 @@ tf_cc_test(
         "//tensorflow/core/distributed_runtime:worker",
         "//tensorflow/core/distributed_runtime:worker_env",
         "//tensorflow/core/kernels:collective_ops",
+        "//tensorflow/core/protobuf:worker_proto_cc",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
+        "@local_tsl//tsl/platform:status",
     ],
 )
 
@@ -712,13 +753,16 @@ cc_library(
     hdrs = ["device_resolver_distributed.h"],
     # copybara:uncomment copts = ["-Wthread-safety-analysis"],
     deps = [
-        ":worker_cache",
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework",
+        "//tensorflow/core:framework_lite",
+        "//tensorflow/core:portable_gif_internal",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/platform:errors",
         "//tensorflow/core/platform:status",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/status",
+        "@local_tsl//tsl/platform:thread_annotations",
     ],
 )
 
@@ -729,15 +773,13 @@ tf_cc_test(
     # copybara:uncomment extra_copts = ["-Wthread-safety-analysis"],
     deps = [
         ":device_resolver_distributed",
-        ":test_utils",
         "//tensorflow/core:core_cpu_lib",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
-        "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
-        "//tensorflow/core:testlib",
-        "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/status",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
