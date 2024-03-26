@@ -555,6 +555,67 @@ ENTRY main {
             LayoutUtil::MakeLayout({1, 3, 2, 0}).minor_to_major());
 }
 
+TEST_F(LayoutAssignmentTest, SendRcvLayout) {
+  const char* hlo = R"(
+HloModule Module
+
+condition  {
+    p = (f32[100,100], (f32[100,100], u32[], token[])) parameter(0)
+    ROOT lt = pred[] constant(1)
+}
+
+body {
+    p = (f32[100,100], (f32[100,100], u32[], token[])) parameter(0)
+
+    t1 = f32[100,100] get-tuple-element(p), index=0
+    t = (f32[100,100], u32[], token[]) get-tuple-element(p), index=1
+    sdone = token[] send-done(t), channel_id=3, frontend_attributes={
+      _xla_send_recv_pipeline="0"
+    }
+    tk = token[] after-all()
+
+
+    rcvd = (f32[100,100]{0,1}, u32[], token[]) recv(tk), channel_id=2
+    zz = (f32[100,100]{0,1}, token[]) recv-done(rcvd), channel_id=2
+
+    rcvd_d = get-tuple-element(zz), index=0
+
+    snd = (f32[100,100]{0,1}, u32[], token[]) send(t1, tk), channel_id=3, frontend_attributes={
+      _xla_send_recv_pipeline="0"
+    }
+    a = add(t1, t1)
+
+    b = add(rcvd_d, a)
+
+    ROOT tup =  tuple(b, snd)
+}
+
+ENTRY %main {
+    p0 = f32[100,100] parameter(0)
+    tk = token[] after-all()
+    snd = (f32[100,100]{0,1}, u32[], token[]) send(p0, tk), channel_id=1, frontend_attributes={
+      _xla_send_recv_pipeline="0"
+    }
+    t = tuple(p0, snd)
+    ROOT loop = while(t), condition=condition, body=body
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m,
+                          ParseAndReturnVerifiedModule(hlo));
+  ComputationLayout computation_layout(
+      m->entry_computation()->ComputeProgramShape());
+
+  RunAndFilecheckHloRewrite(
+      hlo,
+      GpuLayoutAssignment{&computation_layout, GetGpuComputeCapability(),
+                          GetDnnVersion()},
+      R"(
+// CHECK: (f32[100,100]{1,0}, u32[], token[]) recv
+// CHECK:  (f32[100,100]{1,0}, token[]) recv-done
+// CHECK:  (f32[100,100]{1,0}, u32[], token[]) send
+                                )");
+}
+
 }  // namespace
 }  // namespace gpu
 }  // namespace xla
