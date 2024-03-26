@@ -223,3 +223,59 @@ func.func @reduce_window_max_activation_transpose_with_padding(%arg0: tensor<16x
 // CHECK-DAG: stablehlo.constant
 // CHECK: stablehlo.transpose %[[ARG]]
 // CHECK: stablehlo.reduce_window
+
+// -----
+
+// Tests that an `max(transpose(arg0), arg1)` pattern is converted to
+// `transpose(max(arg0, transpose(arg1)))`. The transpose in the activation is
+// deferred to the output of `stablehlo.max` and an extra transpose op is
+// inserted to the RHS to match the shape of the operand.
+
+// CHECK-LABEL: max_with_activation_transpose
+func.func @max_with_activation_transpose(%arg0: tensor<1x3x3x4xf32>) -> tensor<1x4x3x3xf32> {
+  %0 = stablehlo.constant dense<2.000000e+00> : tensor<1x4x3x3xf32>
+  %1 = stablehlo.transpose %arg0, dims = [0, 3, 1, 2] : (tensor<1x3x3x4xf32>) -> tensor<1x4x3x3xf32>
+  %2 = stablehlo.maximum %1, %0 : tensor<1x4x3x3xf32>
+  return %2 : tensor<1x4x3x3xf32>
+}
+// CHECK-SAME: (%[[ARG_0:.+]]: tensor<1x3x3x4xf32>) -> tensor<1x4x3x3xf32>
+// CHECK-DAG: %[[CONST_0:.+]] = stablehlo.constant
+// CHECK-DAG: %[[TRANSPOSE_0:.+]] = stablehlo.transpose %[[CONST_0]], dims = [0, 2, 3, 1] : (tensor<1x4x3x3xf32>) -> tensor<1x3x3x4xf32>
+
+// Check that the shape of the add is changed to reflect the deferred transpose.
+// CHECK: %[[MAX_0:.+]] = stablehlo.maximum %[[ARG_0]], %[[TRANSPOSE_0]] : tensor<1x3x3x4xf32>
+// CHECK: %[[TRANSPOSE_1:.+]] = stablehlo.transpose
+// CHECK: return %[[TRANSPOSE_1]]
+
+// -----
+
+// [No change] Tests that the activation transpose of `stablehlo.maximum` whose
+// permutation is not `[0, 3, 1, 2]` is not deferred.
+
+// CHECK-LABEL: max_with_activation_transpose_permutation_mismatch
+func.func @max_with_activation_transpose_permutation_mismatch(
+      %arg0: tensor<1x2x3x4xf32>) -> tensor<1x3x2x4xf32> {
+  %0 = stablehlo.constant dense<2.000000e+00> : tensor<1x3x2x4xf32>
+  %1 = stablehlo.transpose %arg0, dims = [0, 2, 1, 3] : (tensor<1x2x3x4xf32>) -> tensor<1x3x2x4xf32>
+  %2 = stablehlo.maximum %1, %0 : tensor<1x3x2x4xf32>
+  return %2 : tensor<1x3x2x4xf32>
+}
+// CHECK: %[[TRANSPOSE_0:.+]] = stablehlo.transpose
+// CHECK: %[[MAX_0:.+]] = stablehlo.maximum %[[TRANSPOSE_0]], {{.*}}
+// CHECK: return %[[MAX_0]]
+
+// -----
+
+// [No change] Tests that the activation transpose of `stablehlo.maximum` whose
+// rank is not 4 is not deferred.
+
+// CHECK-LABEL: max_with_activation_transpose_rank_two
+func.func @max_with_activation_transpose_rank_two(%arg0: tensor<1x2xf32>) -> tensor<2x1xf32> {
+  %0 = stablehlo.constant dense<2.000000e+00> : tensor<2x1xf32>
+  %1 = stablehlo.transpose %arg0, dims = [1, 0] : (tensor<1x2xf32>) -> tensor<2x1xf32>
+  %2 = stablehlo.maximum %1, %0 : tensor<2x1xf32>
+  return %2 : tensor<2x1xf32>
+}
+// CHECK: %[[TRANSPOSE_0:.+]] = stablehlo.transpose
+// CHECK: %[[MAX_0:.+]] = stablehlo.maximum %[[TRANSPOSE_0]], {{.*}}
+// CHECK: return %[[MAX_0]]

@@ -16,6 +16,7 @@ limitations under the License.
 #include <optional>
 #include <utility>
 
+#include "absl/base/nullability.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
@@ -40,7 +41,49 @@ namespace mlir::quant::stablehlo {
 namespace {
 
 using ::mlir::stablehlo::AddOp;
+using ::mlir::stablehlo::MaxOp;
 using ::mlir::stablehlo::TransposeOp;
+
+// Returns `success()` if `op` is a `TransposeOp` with permutation attribute
+// equivalent to `permuation`.
+LogicalResult IsTransposeOpWithPermuation(absl::Nullable<Operation*> op,
+                                          const ArrayRef<int64_t> permutation) {
+  auto transpose_op = dyn_cast_or_null<TransposeOp>(op);
+  return success(transpose_op != nullptr && transpose_op.getPermutation() ==
+                                                ArrayRef<int64_t>(permutation));
+}
+
+// Convenience function to create a `TransposeOp` with a given `permutation`.
+// The Location is set as `input`'s loc.
+TransposeOp CreateTransposeOp(Value input, const ArrayRef<int64_t> permutation,
+                              PatternRewriter& rewriter) {
+  return rewriter.create<TransposeOp>(
+      input.getLoc(), input, rewriter.getDenseI64ArrayAttr(permutation));
+}
+
+// Defers the transpose of the left-hand side (LHS) to the right-hand side and
+// the result of a binary operation. In detail, this rewrites the
+// `op(transpose(%rhs), %lhs)` to `transpose(op(%rhs, transpose(%lhs)))`. The
+// LHS transpose permutation must be a NCHW->NHWC permutation.
+template <typename OpT>
+void DeferRhsTransposeForBinaryOp(OpT op, PatternRewriter& rewriter) {
+  auto transpose_op = cast<TransposeOp>(op.getOperand(0).getDefiningOp());
+  Value lhs_pre_transpose = transpose_op.getOperand();
+
+  // NCHW -> NHWC for the right-hand side, to match the operand's shape.
+  Value rhs = op.getOperand(1);
+  TransposeOp rhs_transpose_op = CreateTransposeOp(
+      /*input=*/rhs, kNchwToNhwcPermutation, rewriter);
+
+  auto new_binary_op =
+      rewriter.create<OpT>(op.getLoc(), lhs_pre_transpose, rhs_transpose_op);
+
+  // NHWC -> NCHW for the output, to match the shapes of `op`'s users.
+  TransposeOp output_transpose_op = CreateTransposeOp(
+      /*input=*/new_binary_op, kNhwcToNchwPermutation, rewriter);
+
+  rewriter.replaceAllUsesWith(op.getResult(), output_transpose_op);
+}
 
 class RewriteAddWithActivationTranspose : public OpRewritePattern<AddOp> {
  public:
@@ -58,35 +101,12 @@ class RewriteAddWithActivationTranspose : public OpRewritePattern<AddOp> {
     }
 
     // Match LHS permutation that converts: NHWC -> NCHW.
-    auto transpose_op = dyn_cast_or_null<TransposeOp>(lhs.getDefiningOp());
-    if (transpose_op == nullptr) {
-      return failure();
-    }
-
-    return success(transpose_op.getPermutation() ==
-                   ArrayRef<int64_t>(kNhwcToNchwPermutation));
+    return IsTransposeOpWithPermuation(lhs.getDefiningOp(),
+                                       kNhwcToNchwPermutation);
   }
 
   void rewrite(AddOp op, PatternRewriter& rewriter) const override {
-    auto lhs_transpose_op = cast<TransposeOp>(op.getOperand(0).getDefiningOp());
-    Value lhs_input = lhs_transpose_op.getOperand();
-
-    Value rhs_input = op.getOperand(1);
-
-    // NCHW -> NHWC for the right-hand side, to match the operand's shape.
-    auto rhs_transpose_op = rewriter.create<TransposeOp>(
-        op.getLoc(), /*operand=*/rhs_input,
-        rewriter.getDenseI64ArrayAttr(kNchwToNhwcPermutation));
-
-    auto add_op =
-        rewriter.create<AddOp>(op.getLoc(), lhs_input, rhs_transpose_op);
-
-    // NHWC -> NCHW for the output, to match the shapes of `op`'s users.
-    auto output_transpose_op = rewriter.create<TransposeOp>(
-        op.getLoc(), /*operand=*/add_op.getResult(),
-        rewriter.getDenseI64ArrayAttr(kNhwcToNchwPermutation));
-
-    rewriter.replaceAllUsesWith(op.getResult(), output_transpose_op);
+    DeferRhsTransposeForBinaryOp(op, rewriter);
   }
 };
 
@@ -108,11 +128,8 @@ class DeferActivationTransposeForMaxPoolReduceWindowOp
     if (!HasRankOf(lhs, /*rank=*/4)) return failure();
 
     // Match input permutation that converts: NHWC -> NCHW.
-    auto transpose_op = dyn_cast_or_null<TransposeOp>(lhs.getDefiningOp());
-
-    return success(transpose_op != nullptr &&
-                   transpose_op.getPermutation() ==
-                       ArrayRef<int64_t>(kNhwcToNchwPermutation));
+    return IsTransposeOpWithPermuation(lhs.getDefiningOp(),
+                                       kNhwcToNchwPermutation);
   }
 
   // Pushes the transpose op at the input to the result.
@@ -152,8 +169,9 @@ class DeferActivationTransposeForMaxPoolReduceWindowOp
     op.getBody().cloneInto(&new_reduce_window_op.getBody(), mapping);
 
     // Introduce a transpose to the result to match the shapes of `op`'s uses.
-    auto result_transpose_op = rewriter.create<stablehlo::TransposeOp>(
-        op.getLoc(), new_reduce_window_op.getResult(0), kNhwcToNchwPermutation);
+    TransposeOp result_transpose_op = CreateTransposeOp(
+        /*input=*/new_reduce_window_op.getResult(0), kNhwcToNchwPermutation,
+        rewriter);
 
     rewriter.replaceAllUsesWith(op.getResult(0), result_transpose_op);
   }
@@ -187,7 +205,7 @@ class DeferActivationTransposeForMaxPoolReduceWindowOp
     auto return_op = cast<mlir::stablehlo::ReturnOp>(block.getTerminator());
     if (return_op.getNumOperands() != 1) return false;
 
-    auto max_op = dyn_cast_or_null<mlir::stablehlo::MaxOp>(
+    auto max_op = dyn_cast_or_null<MaxOp>(
         return_op.getOperands().front().getDefiningOp());
     if (!max_op) return false;
 
@@ -198,6 +216,32 @@ class DeferActivationTransposeForMaxPoolReduceWindowOp
   // Whether `op` has the `padding` attribute (which is optional).
   bool HasPadding(mlir::stablehlo::ReduceWindowOp op) const {
     return op.getPadding() != std::nullopt;
+  }
+};
+
+// Rewrites `maximum(transpose(%rhs), %lhs)` patterns to
+// `transpose(maximum(%rhs, transpose(%lhs)))`.
+class DeferActivationTransposeForMaxOp : public OpRewritePattern<MaxOp> {
+ public:
+  using OpRewritePattern<MaxOp>::OpRewritePattern;
+
+  LogicalResult match(MaxOp op) const override {
+    Value input = op.getOperand(0);
+    if (!HasRankOf(input, /*rank=*/4)) return failure();
+
+    const Value max_value = op.getOperand(1);
+    Operation* max_value_op = max_value.getDefiningOp();
+    if (max_value_op == nullptr ||
+        !max_value_op->hasTrait<OpTrait::ConstantLike>()) {
+      return failure();
+    }
+
+    return IsTransposeOpWithPermuation(input.getDefiningOp(),
+                                       kNhwcToNchwPermutation);
+  }
+
+  void rewrite(MaxOp op, PatternRewriter& rewriter) const override {
+    DeferRhsTransposeForBinaryOp(op, rewriter);
   }
 };
 
@@ -216,7 +260,8 @@ void DeferActivationTransposePass::runOnOperation() {
 
   RewritePatternSet patterns(&ctx);
   patterns.add<RewriteAddWithActivationTranspose,
-               DeferActivationTransposeForMaxPoolReduceWindowOp>(&ctx);
+               DeferActivationTransposeForMaxPoolReduceWindowOp,
+               DeferActivationTransposeForMaxOp>(&ctx);
   if (failed(applyPatternsAndFoldGreedily(func_op, std::move(patterns)))) {
     func_op->emitWarning() << "Failed to converge patterns: " << getArgument();
   }
