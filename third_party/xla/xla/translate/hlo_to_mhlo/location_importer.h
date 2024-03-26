@@ -17,6 +17,7 @@ limitations under the License.
 #define XLA_TRANSLATE_HLO_TO_MHLO_LOCATION_IMPORTER_H_
 
 #include "mlir/IR/Location.h"  // from @llvm-project
+#include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "xla/hlo/ir/hlo_instruction.h"
 
 namespace mlir {

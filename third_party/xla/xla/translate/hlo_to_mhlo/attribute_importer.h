@@ -20,6 +20,8 @@ limitations under the License.
 #include <vector>
 
 #include "absl/status/statusor.h"
+#include "absl/types/span.h"
+#include "mlir/Dialect/Quant/QuantTypes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 #include "xla/service/hlo.pb.h"
