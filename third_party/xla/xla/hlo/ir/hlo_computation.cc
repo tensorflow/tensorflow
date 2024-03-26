@@ -167,10 +167,10 @@ HloComputation::~HloComputation() {
     CHECK(async_start_->async_wrapped_computation() == this);
     async_start_->ClearCalledComputations();
   }
+  Cleanup();
   for (const auto& i : instructions_) {
     delete i.inst();
   }
-  Cleanup();
 }
 
 void HloComputation::SetInstruction(HloInstruction* instruction,
@@ -472,8 +472,63 @@ Status HloComputation::RemoveInstructionImpl(HloInstruction* instruction,
   info->inst_ =
       nullptr;  // Leave a hole: this is no longer part of "instructions()"
   instruction_indices_.erase(inst_it);
-  instruction->index_in_parent_ = ~0u;
+  DCHECK_EQ(instructions_.size() - to_be_deleted_.size(),
+            instruction_indices_.size())
+      << "instructions_.size(): " << instructions_.size()
+      << ", to_be_deleted_.size(): " << to_be_deleted_.size();
   return OkStatus();
+}
+
+void HloComputation::Cleanup() {
+  if (to_be_deleted_.empty()) return;
+
+  // Given that there are instructions to be deleted, there must be at least one
+  // instruction not marked for deletion. Otherwise we have deleted *all*
+  // instructions, which is probably a bug.
+  DCHECK(!instruction_indices_.empty());
+
+  // Replacement, i.e. the rightmost "unmarked" (a.k.a. not marked for deletion)
+  // entry in the vector.
+  HloInstructionInfo* replacement = &instructions_.back();
+  for (HloInstruction* marked_instruction : to_be_deleted_) {
+    int marked_index = marked_instruction->index_in_parent_;
+    HloInstructionInfo* marked = &instructions_[marked_index];
+    DCHECK(marked->inst() == nullptr);
+
+    delete marked_instruction;
+
+    // Find the first unmarked entry to the left of 'replacement', if needed.
+    while (replacement >= instructions_.data() &&
+           replacement->inst() == nullptr) {
+      --replacement;
+    }
+    DCHECK_GE(replacement, instructions_.data());
+
+    // Nothing to do if 'marked' is already to the right of 'replacement'.
+    if (marked > replacement) continue;
+
+    // Replace the marked entry with the unmarked one.
+    HloInstruction* unmarked_instruction = replacement->inst();
+    int unmarked_index = marked_index;
+    // Small optimization: instead of std::swap(), just overwrite *marked. This
+    // requires us to also decrement 'replacement' to avoid reusing the
+    // unmarked entry we just copied.
+    *marked = *replacement;
+    --replacement;
+
+    // Update reverse mapping.
+    auto it = instruction_indices_.find(unmarked_instruction);
+    DCHECK(it != instruction_indices_.end());
+    it->second = unmarked_index;
+    unmarked_instruction->index_in_parent_ = unmarked_index;
+  }
+
+  DCHECK_EQ(instructions_.size() - to_be_deleted_.size(),
+            instruction_indices_.size())
+      << "instructions_.size(): " << instructions_.size()
+      << ", to_be_deleted_.size(): " << to_be_deleted_.size();
+  to_be_deleted_.clear();
+  instructions_.resize(instruction_indices_.size());
 }
 
 void HloComputation::set_root_instruction(HloInstruction* new_root_instruction,
