@@ -810,7 +810,7 @@ class CalibrationOptionsTest(quantize_model_test_base.QuantizedModelTest):
   (default in TF2) to ensure support for when TF2 is disabled.
   """
 
-  # TODO(b/307621353): add CALIBRATION_METHOD_HISTOGRAM_PERCENTILE.
+  # TODO(b/331467239): Fix CALIBRATION_METHOD_HISTOGRAM_PERCENTILE.
   @parameterized.parameters(
       {
           'calibration_options': qc.CalibrationOptions(
@@ -822,6 +822,14 @@ class CalibrationOptionsTest(quantize_model_test_base.QuantizedModelTest):
               calibration_method=_CalibrationMethod.CALIBRATION_METHOD_AVERAGE_MIN_MAX
           ),
       },
+      # {
+      #     'calibration_options': qc.CalibrationOptions(
+      #         calibration_method=_CalibrationMethod.CALIBRATION_METHOD_HISTOGRAM_PERCENTILE,
+      #         calibration_parameters=qc.CalibrationOptions.CalibrationParameters(
+      #             initial_num_bins=10,
+      #         ),
+      #     ),
+      # },
       {
           'calibration_options': qc.CalibrationOptions(
               calibration_method=_CalibrationMethod.CALIBRATION_METHOD_HISTOGRAM_MSE_BRUTEFORCE,
@@ -855,7 +863,7 @@ class CalibrationOptionsTest(quantize_model_test_base.QuantizedModelTest):
     bias_fn = nn_ops.bias_add
     activation_fn = nn_ops.relu6
     enable_per_channel_quantized_weight = False
-    has_batch_norm = False
+    has_batch_norm = True
     dilations = None
     input_shape = (1, 3, 4, 3)
     filter_shape = (2, 3, 3, 2)

@@ -284,13 +284,13 @@ class QuantizedModelTest(test.TestCase, parameterized.TestCase):
         )
         if bias_fn is not None:
           out = nn_ops.bias_add(out, self.bias)
-        if activation_fn is not None:
-          out = activation_fn(out)
         if has_batch_norm:
           # Fusing is supported for non-training case.
           out, _, _, _, _, _ = nn_ops.fused_batch_norm_v3(
               out, scale, offset, mean, variance, is_training=False
           )
+        if activation_fn is not None:
+          out = activation_fn(out)
         return {'output': out}
 
     model = ConvModel()
