@@ -27,7 +27,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/utils/hlo_query.h"
 #include "xla/service/gpu/backend_configs.pb.h"
-#include "xla/service/gpu/thunk.h"
+#include "xla/service/gpu/runtime/thunk.h"
 #include "xla/statusor.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"

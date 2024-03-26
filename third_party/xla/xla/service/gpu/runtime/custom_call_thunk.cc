@@ -38,7 +38,7 @@ limitations under the License.
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/custom_call_status.h"
 #include "xla/service/custom_call_status_internal.h"
-#include "xla/service/gpu/thunk.h"
+#include "xla/service/gpu/runtime/thunk.h"
 #include "xla/service/service_executable_run_options.h"
 #include "xla/status.h"
 #include "xla/stream_executor/device_memory.h"

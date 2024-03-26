@@ -28,7 +28,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/custom_call_status.h"
-#include "xla/service/gpu/thunk.h"
+#include "xla/service/gpu/runtime/thunk.h"
 #include "xla/shape.h"
 #include "xla/status.h"
 

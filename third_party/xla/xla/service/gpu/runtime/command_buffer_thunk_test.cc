@@ -30,7 +30,7 @@ limitations under the License.
 #include "xla/service/gpu/matmul_utils.h"
 #include "xla/service/gpu/runtime/command_buffer_allocations.h"
 #include "xla/service/gpu/runtime/command_buffer_cmd.h"
-#include "xla/service/gpu/thunk.h"
+#include "xla/service/gpu/runtime/thunk.h"
 #include "xla/service/platform_util.h"
 #include "xla/service/service_executable_run_options.h"
 #include "xla/shape_util.h"

@@ -41,7 +41,7 @@ limitations under the License.
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/nccl_api.h"
 #include "xla/service/gpu/nccl_clique_key.h"
-#include "xla/service/gpu/thunk.h"
+#include "xla/service/gpu/runtime/thunk.h"
 #include "xla/service/llvm_ir/llvm_util.h"
 #include "xla/service/rendezvous.h"
 #include "xla/shape.h"

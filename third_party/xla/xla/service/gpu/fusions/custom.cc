@@ -58,7 +58,7 @@ limitations under the License.
 #include "xla/service/gpu/runtime/custom_call_thunk.h"
 #include "xla/service/gpu/runtime/gemm_thunk.h"
 #include "xla/service/gpu/runtime/kernel_thunk.h"
-#include "xla/service/gpu/thunk.h"
+#include "xla/service/gpu/runtime/thunk.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/status.h"
