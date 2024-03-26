@@ -95,6 +95,10 @@ def LegalizeVhloToStablehloPass : Pass<"vhlo-legalize-stablehlo", "ModuleOp"> {
   let dependentDialects = ["mlir::stablehlo::StablehloDialect"];
 }
 
+def LegalizeCompositeToCustomOpPass : Pass<"stablehlo-composite-legalize-tfl-custom", "func::FuncOp"> {
+  let summary = "Legalize supported StableHLO CompositeOps to TFL CustomOp";
+  let dependentDialects = ["TFL::TensorFlowLiteDialect"];
+}
 def LegalizeStablehloCustomCallToCompositePass : Pass<"stablehlo-custom-call-legalize-composite", "ModuleOp"> {
   let summary = "Legalize StableHLO custom call ops where the call target is 'stablehlo.composite' to composite ops.";
   let dependentDialects = ["mlir::stablehlo::StablehloDialect"];

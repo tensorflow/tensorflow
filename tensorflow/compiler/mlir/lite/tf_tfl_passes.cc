@@ -256,9 +256,12 @@ void AddPostQuantizationStableHloToTfPasses(
   // Translate "stablehlo.custom_call @stablehlo.composite" to
   // "stablehlo.composite"
   // TODO: b/330741524 - clean this up when "stablehlo.composite" is emitted
-  // directly.
+  // directly. Additionally remove the composite to custom once ODML long term
+  // solution lands.
   pass_manager.addPass(
       mlir::odml::createLegalizeStablehloCustomCallToCompositePass());
+  pass_manager.addNestedPass<mlir::func::FuncOp>(
+      mlir::odml::createLegalizeCompositeToCustomOpPass());
 }
 
 // This is the early part of the conversion in isolation. This enables a caller
