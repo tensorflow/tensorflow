@@ -73,6 +73,9 @@ constexpr double kMemoryMultiplier = 1e-6;
 // Any memory terms below this threshold will be dropped (to reduce MIP size).
 constexpr double kTinyTermThreshold = 1e-6;
 
+// Any memory segments differing by this amount are skipped (reduces MIP size).
+constexpr double kSimilarityThreshold = 1e-2;
+
 bool AutoShardingSolverResult::operator==(
     const AutoShardingSolverResult& other) const {
   return status == other.status &&
@@ -211,6 +214,24 @@ AutoShardingSolverRequest ScaleRequest(
   ScaleCoeffs(scaling_factor, scaled_request.mutable_computation_costs());
   ScaleCoeffs(scaling_factor, scaled_request.mutable_resharding_costs());
   return scaled_request;
+}
+
+double MemoryDifference(
+    const AutoShardingSolverRequest& request,
+    const tsl::protobuf::RepeatedPtrField<AutoShardingSolverRequest_Costs>& c,
+    const absl::flat_hash_set<int64_t>& live_prev,
+    const absl::flat_hash_set<int64_t>& live_curr) {
+  double memory_diff = 0.0;  // How much this segment differs from the last.
+  absl::flat_hash_set<int64_t> live_union;
+  live_union.insert(live_prev.begin(), live_prev.end());
+  live_union.insert(live_curr.begin(), live_curr.end());
+  for (int64_t idx : live_union) {
+    if (!live_prev.contains(idx) || !live_curr.contains(idx)) {
+      memory_diff +=
+          *std::max_element(c.at(idx).costs().begin(), c.at(idx).costs().end());
+    }
+  }
+  return memory_diff;
 }
 
 // Taking an auto-sharding problem (`request`) as an input, calls the OR tools
@@ -466,7 +487,27 @@ AutoShardingSolverResult CallORToolsSolver(
   // c.
   if (request.memory_budget() > 0) {
     int tiny_term_count = 0;
+    int segment_similarity_skips = 0;
+    absl::flat_hash_set<int64_t> live_nodes_prev, live_edges_prev;
     for (LivenessIdx time_idx = 0; time_idx < request.live_size(); ++time_idx) {
+      // Decide whether this segment is similar enough to be skipped.
+      absl::flat_hash_set<int64_t> live_nodes_curr, live_edges_curr;
+      const auto& live_nodes = request.live(time_idx).nodes();
+      live_nodes_curr.insert(live_nodes.begin(), live_nodes.end());
+      double memory_diff = MemoryDifference(request, request.memory_costs(),
+                                            live_nodes_prev, live_nodes_curr);
+      if (!request.live_edges().empty() && request.enable_memory_edge_costs()) {
+        const auto& live_edges = request.live_edges(time_idx).edges();
+        live_edges_curr.insert(live_edges.begin(), live_edges.end());
+        memory_diff += MemoryDifference(request, request.memory_edge_costs(),
+                                        live_edges_prev, live_edges_curr);
+      }
+      if (memory_diff < kSimilarityThreshold * request.memory_budget()) {
+        ++segment_similarity_skips;
+        continue;
+      }
+      live_nodes_prev = live_nodes_curr;
+      live_edges_prev = live_edges_curr;
       MPConstraint* constraint =
           solver->MakeRowConstraint(-MPSolver::infinity(), MPSolver::infinity(),
                                     absl::StrCat("mem[", time_idx, "]"));
@@ -512,6 +553,8 @@ AutoShardingSolverResult CallORToolsSolver(
                         (request.memory_budget() - tiny_term_total));
     }
     LOG(INFO) << "Number of tiny terms: " << tiny_term_count;
+    LOG(INFO) << "Skipped " << segment_similarity_skips << " segments out of "
+              << request.live().size() << " due to similarity";
     if (overbudget_var) {
       solver->MutableObjective()->SetCoefficient(
           overbudget_var,
