@@ -33,14 +33,13 @@ limitations under the License.
 #include "xla/service/gpu/kernel_arguments.h"
 #include "xla/service/gpu/kernels/custom_kernel.h"
 #include "xla/service/gpu/launch_dimensions.h"
+#include "xla/service/gpu/runtime/thunk.h"
 #include "xla/service/gpu/stream_executor_util.h"
-#include "xla/service/gpu/thunk.h"
 #include "xla/status.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/kernel.h"
 #include "xla/stream_executor/launch_dim.h"
 #include "xla/stream_executor/stream_executor.h"
-#include "tsl/platform/errors.h"
 #include "tsl/platform/logging.h"
 #include "tsl/platform/statusor.h"
 
@@ -55,7 +54,7 @@ KernelThunk::KernelThunk(const HloInstruction* instr, std::string kernel_name,
                          absl::Span<const KernelArgument> kernel_arguments,
                          LaunchDimensions launch_dimensions,
                          std::optional<se::ClusterDim> cluster_dim,
-                         int64_t shmem_bytes)
+                         int64_t shmem_bytes, bool dedup_kernel_args)
     : Thunk(Kind::kKernel, Thunk::ThunkInfo::WithProfileAnnotation(instr)),
       kernel_name_(std::move(kernel_name)),
       launch_dimensions_(std::move(launch_dimensions)),
@@ -63,10 +62,17 @@ KernelThunk::KernelThunk(const HloInstruction* instr, std::string kernel_name,
       shmem_bytes_(shmem_bytes) {
   args_.reserve(kernel_arguments.size());
   written_.reserve(kernel_arguments.size());
-  for (const auto& kernel_argument : kernel_arguments) {
-    if (!kernel_argument.first_with_same_slice().has_value()) {
-      args_.push_back(kernel_argument.slice());
-      written_.push_back(kernel_argument.written());
+
+  // XLA:GPU kernel emitter deduplicates arguments corresponding to same buffer
+  // slices, however it might be not true for all other backends, i.e. Triton
+  // codegen does not deduplicate arguments as this information is not available
+  // at the codegen time.
+  if (dedup_kernel_args) {
+    for (const auto& kernel_argument : kernel_arguments) {
+      if (!kernel_argument.first_with_same_slice().has_value()) {
+        args_.push_back(kernel_argument.slice());
+        written_.push_back(kernel_argument.written());
+      }
     }
   }
 }

@@ -108,3 +108,9 @@ def UnfoldSplatConstantPass : Pass<"unfold-splat-constant-pass", "ModuleOp"> {
   let summary = "Replaces a splat constant tensor with a BroadcastInDim op.";
   let constructor = "mlir::odml::CreateUnfoldSplatConstantPass()";
 }
+
+def CompositeLoweringPass : Pass<"composite-lowering", "ModuleOp"> {
+  let summary = "Lowers mhlo composites directly to tflite ops (when possible).";
+  let dependentDialects = ["mlir::mhlo::MhloDialect", "TFL::TensorFlowLiteDialect"];
+  let constructor = "mlir::odml::CreateCompositeLoweringPass()";
+}

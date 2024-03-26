@@ -32,7 +32,7 @@ limitations under the License.
 #include "xla/service/gpu/kernel_arguments.h"
 #include "xla/service/gpu/kernels/custom_kernel.h"
 #include "xla/service/gpu/launch_dimensions.h"
-#include "xla/service/gpu/thunk.h"
+#include "xla/service/gpu/runtime/thunk.h"
 #include "xla/status.h"
 #include "xla/stream_executor/kernel.h"
 #include "xla/stream_executor/launch_dim.h"
@@ -72,7 +72,8 @@ class KernelThunk : public Thunk {
   KernelThunk(const HloInstruction* instr, std::string kernel_name,
               absl::Span<const KernelArgument> kernel_arguments,
               LaunchDimensions launch_dimensions,
-              std::optional<se::ClusterDim> cluster_dim, int64_t shmem_bytes);
+              std::optional<se::ClusterDim> cluster_dim, int64_t shmem_bytes,
+              bool dedup_kernel_args = true);
   KernelThunk(const KernelThunk&) = delete;
   KernelThunk& operator=(const KernelThunk&) = delete;
   ~KernelThunk() override = default;
