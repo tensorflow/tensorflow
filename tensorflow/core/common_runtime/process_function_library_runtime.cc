@@ -615,7 +615,7 @@ Status ProcessFunctionLibraryRuntime::InstantiateMultiDevice(
   // We must preserve control returns in each of the function components,
   // otherwise after function inlining we might prune side-effectful nodes.
   const auto control_ret =
-      [&node_name_to_control_ret](const Node* n) -> absl::optional<string> {
+      [&node_name_to_control_ret](const Node* n) -> std::optional<string> {
     const auto it = node_name_to_control_ret.find(n->name());
     return it != node_name_to_control_ret.end()
                // NOLINTNEXTLINE
@@ -684,7 +684,8 @@ Status ProcessFunctionLibraryRuntime::InstantiateMultiDevice(
     }
 
     FunctionDef shard;
-    s = GraphToFunctionDef(*subgraph, comp_data->name, control_ret, &shard);
+    s = GraphToFunctionDef(std::move(subgraph), comp_data->name, control_ret,
+                           &shard);
     if (!s.ok()) {
       done(s);
       return;
