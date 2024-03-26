@@ -1,151 +1,71 @@
 Auto generated patch. Do not edit or delete it, even if empty.
-diff -ruN --strip-trailing-cr a/compiler-rt/lib/tsan/rtl/tsan_interceptors_posix.cpp b/compiler-rt/lib/tsan/rtl/tsan_interceptors_posix.cpp
---- a/compiler-rt/lib/tsan/rtl/tsan_interceptors_posix.cpp
-+++ b/compiler-rt/lib/tsan/rtl/tsan_interceptors_posix.cpp
-@@ -126,7 +126,6 @@
- const int SIGSEGV = 11;
- const int SIGPIPE = 13;
- const int SIGTERM = 15;
--const int SIGPROF = 27;
- #if defined(__mips__) || SANITIZER_FREEBSD || SANITIZER_APPLE || SANITIZER_NETBSD
- const int SIGBUS = 10;
- const int SIGSYS = 12;
-@@ -2180,8 +2179,7 @@
-     return;
-   }
-   // Don't mess with synchronous signals.
--  const bool sync = is_sync_signal(sctx, sig, info) ||
--                    (sig == SIGPROF && thr->is_inited && !thr->is_dead);
-+  const bool sync = is_sync_signal(sctx, sig, info);
-   if (sync ||
-       // If we are in blocking function, we can safely process it now
-       // (but check if we are in a recursive interceptor,
-diff -ruN --strip-trailing-cr a/compiler-rt/test/tsan/signal_errno.cpp b/compiler-rt/test/tsan/signal_errno.cpp
---- a/compiler-rt/test/tsan/signal_errno.cpp
-+++ b/compiler-rt/test/tsan/signal_errno.cpp
-@@ -18,7 +18,7 @@
+diff -ruN --strip-trailing-cr a/utils/bazel/llvm-project-overlay/llvm/BUILD.bazel b/utils/bazel/llvm-project-overlay/llvm/BUILD.bazel
+--- a/utils/bazel/llvm-project-overlay/llvm/BUILD.bazel
++++ b/utils/bazel/llvm-project-overlay/llvm/BUILD.bazel
+@@ -598,14 +598,14 @@
+     name = "llvm-min-tblgen",
+     srcs = [
+         "utils/TableGen/Attributes.cpp",
+-        "utils/TableGen/CodeGenIntrinsics.cpp",
+-        "utils/TableGen/CodeGenIntrinsics.h",
++        "utils/TableGen/Basic/CodeGenIntrinsics.cpp",
++        "utils/TableGen/Basic/CodeGenIntrinsics.h",
++        "utils/TableGen/Basic/SDNodeProperties.cpp",
++        "utils/TableGen/Basic/SDNodeProperties.h",
++        "utils/TableGen/Basic/SequenceToOffsetTable.h",
+         "utils/TableGen/DirectiveEmitter.cpp",
+         "utils/TableGen/IntrinsicEmitter.cpp",
+         "utils/TableGen/RISCVTargetDefEmitter.cpp",
+-        "utils/TableGen/SDNodeProperties.cpp",
+-        "utils/TableGen/SDNodeProperties.h",
+-        "utils/TableGen/SequenceToOffsetTable.h",
+         "utils/TableGen/TableGen.cpp",
+         "utils/TableGen/VTEmitter.cpp",
+     ],
+@@ -621,7 +621,7 @@
+ cc_library(
+     name = "TableGenGlobalISel",
+     srcs = [
+-        "utils/TableGen/GlobalISel/CodeExpander.cpp",
++        "utils/TableGen/Common/GlobalISel/CodeExpander.cpp",
+     ],
+     hdrs = glob([
+         # We have to include these headers here as well as in the `hdrs` below
+@@ -629,8 +629,8 @@
+         # them, even though consumers of this library use inclusion relative to
+         # `utils/TableGen` with the `strip_includes_prefix` of this library.
+         # This mixture appears to be incompatible with header modules.
+-        "utils/TableGen/GlobalISel/CodeExpander.h",
+-        "utils/TableGen/GlobalISel/CodeExpansions.h",
++        "utils/TableGen/Common/GlobalISel/CodeExpander.h",
++        "utils/TableGen/Common/GlobalISel/CodeExpansions.h",
+     ]),
+     copts = llvm_copts,
+     features = ["-header_modules"],
+@@ -654,8 +654,12 @@
+         [
+             "utils/TableGen/*.cpp",
+             "utils/TableGen/*.h",
+-            "utils/TableGen/GlobalISel/*.cpp",
+-            "utils/TableGen/GlobalISel/*.h",
++            "utils/TableGen/Basic/*.cpp",
++            "utils/TableGen/Basic/*.h",
++            "utils/TableGen/Common/*.cpp",
++            "utils/TableGen/Common/*.h",
++            "utils/TableGen/Common/GlobalISel/*.cpp",
++            "utils/TableGen/Common/GlobalISel/*.h",
  
- static void* sendsignal(void *p) {
-   barrier_wait(&barrier);
--  pthread_kill(mainth, SIGALRM);
-+  pthread_kill(mainth, SIGPROF);
-   return 0;
- }
- 
-@@ -37,7 +37,7 @@
-   mainth = pthread_self();
-   struct sigaction act = {};
-   act.sa_sigaction = &MyHandler;
--  sigaction(SIGALRM, &act, 0);
-+  sigaction(SIGPROF, &act, 0);
-   pthread_t th;
-   pthread_create(&th, 0, sendsignal, 0);
-   loop();
-@@ -46,7 +46,7 @@
- }
- 
- // CHECK: WARNING: ThreadSanitizer: signal handler spoils errno
--// CHECK:   Signal 14 handler invoked at:
-+// CHECK:   Signal 27 handler invoked at:
- // CHECK:     #0 MyHandler(int, {{(__)?}}siginfo{{(_t)?}}*, void*) {{.*}}signal_errno.cpp
- // CHECK:     main
- // CHECK: SUMMARY: ThreadSanitizer: signal handler spoils errno{{.*}}MyHandler
-diff -ruN --strip-trailing-cr a/compiler-rt/test/tsan/signal_reset.cpp b/compiler-rt/test/tsan/signal_reset.cpp
---- a/compiler-rt/test/tsan/signal_reset.cpp
-+++ b/compiler-rt/test/tsan/signal_reset.cpp
-@@ -28,12 +28,12 @@
-   struct sigaction act = {};
-   for (int i = 0; i < 1000000; i++) {
-     act.sa_handler = &handler;
--    if (sigaction(SIGALRM, &act, 0)) {
-+    if (sigaction(SIGPROF, &act, 0)) {
-       perror("sigaction");
-       exit(1);
-     }
-     act.sa_handler = SIG_IGN;
--    if (sigaction(SIGALRM, &act, 0)) {
-+    if (sigaction(SIGPROF, &act, 0)) {
-       perror("sigaction");
-       exit(1);
-     }
-@@ -44,7 +44,7 @@
- int main() {
-   struct sigaction act = {};
-   act.sa_handler = SIG_IGN;
--  if (sigaction(SIGALRM, &act, 0)) {
-+  if (sigaction(SIGPROF, &act, 0)) {
-     perror("sigaction");
-     exit(1);
-   }
-@@ -53,7 +53,7 @@
-   t.it_value.tv_sec = 0;
-   t.it_value.tv_usec = 10;
-   t.it_interval = t.it_value;
--  if (setitimer(ITIMER_REAL, &t, 0)) {
-+  if (setitimer(ITIMER_PROF, &t, 0)) {
-     perror("setitimer");
-     exit(1);
-   }
-diff -ruN --strip-trailing-cr a/compiler-rt/test/tsan/signal_sync.cpp b/compiler-rt/test/tsan/signal_sync.cpp
---- a/compiler-rt/test/tsan/signal_sync.cpp
-+++ b/compiler-rt/test/tsan/signal_sync.cpp
-@@ -30,7 +30,7 @@
- 
-   struct sigaction act = {};
-   act.sa_handler = &handler;
--  if (sigaction(SIGVTALRM, &act, 0)) {
-+  if (sigaction(SIGPROF, &act, 0)) {
-     perror("sigaction");
-     exit(1);
-   }
-@@ -39,7 +39,7 @@
-   t.it_value.tv_sec = 0;
-   t.it_value.tv_usec = 10;
-   t.it_interval = t.it_value;
--  if (setitimer(ITIMER_VIRTUAL, &t, 0)) {
-+  if (setitimer(ITIMER_PROF, &t, 0)) {
-     perror("setitimer");
-     exit(1);
-   }
-diff -ruN --strip-trailing-cr a/compiler-rt/test/tsan/signal_thread2.cpp b/compiler-rt/test/tsan/signal_thread2.cpp
---- a/compiler-rt/test/tsan/signal_thread2.cpp
-+++ b/compiler-rt/test/tsan/signal_thread2.cpp
-@@ -40,7 +40,7 @@
- int main() {
-   struct sigaction act = {};
-   act.sa_handler = &handler;
--  if (sigaction(SIGALRM, &act, 0)) {
-+  if (sigaction(SIGPROF, &act, 0)) {
-     perror("sigaction");
-     exit(1);
-   }
-@@ -49,7 +49,7 @@
-   t.it_value.tv_sec = 0;
-   t.it_value.tv_usec = 10;
-   t.it_interval = t.it_value;
--  if (setitimer(ITIMER_REAL, &t, 0)) {
-+  if (setitimer(ITIMER_PROF, &t, 0)) {
-     perror("setitimer");
-     exit(1);
-   }
-diff -ruN --strip-trailing-cr a/compiler-rt/test/tsan/signal_thread.cpp b/compiler-rt/test/tsan/signal_thread.cpp
---- a/compiler-rt/test/tsan/signal_thread.cpp
-+++ b/compiler-rt/test/tsan/signal_thread.cpp
-@@ -24,7 +24,7 @@
- int main() {
-   struct sigaction act = {};
-   act.sa_handler = &handler;
--  if (sigaction(SIGVTALRM, &act, 0)) {
-+  if (sigaction(SIGPROF, &act, 0)) {
-     perror("sigaction");
-     exit(1);
-   }
-@@ -33,7 +33,7 @@
-   t.it_value.tv_sec = 0;
-   t.it_value.tv_usec = 10;
-   t.it_interval = t.it_value;
--  if (setitimer(ITIMER_VIRTUAL, &t, 0)) {
-+  if (setitimer(ITIMER_PROF, &t, 0)) {
-     perror("setitimer");
-     exit(1);
-   }
+             # Some tablegen sources include headers from MC, so these have to be
+             # listed here. MC uses headers produced by tablegen, so it cannot be a
+@@ -663,9 +667,10 @@
+             "include/llvm/MC/*.h",
+             "include/llvm/TargetParser/SubtargetFeature.h",
+         ],
+-        exclude = ["utils/TableGen/GlobalISel/CodeExpander.cpp"],
++        exclude = ["utils/TableGen/Common/GlobalISel/CodeExpander.cpp"],
+     ),
+     copts = llvm_copts,
++    includes = ["utils/TableGen"],
+     stamp = 0,
+     deps = [
+         ":CodeGenTypes",
