@@ -660,7 +660,8 @@ std::vector<int64_t> ComputeStrides(absl::Span<const int64_t> dims) {
   return strides;
 }
 
-// Computes 1D index given a shape and N-d indexing expressions.
+}  // namespace
+
 AffineExpr LinearizeShape(absl::Span<const int64_t> dims,
                           absl::Span<const AffineExpr> dimension_exprs,
                           MLIRContext* mlir_context) {
@@ -673,7 +674,6 @@ AffineExpr LinearizeShape(absl::Span<const int64_t> dims,
   return linear_index;
 }
 
-// Computes N-d indexing expressions given a linear index and a shape.
 std::vector<AffineExpr> DelinearizeIndex(absl::Span<const int64_t> dims,
                                          AffineExpr linear_index,
                                          MLIRContext* mlir_context) {
@@ -687,6 +687,8 @@ std::vector<AffineExpr> DelinearizeIndex(absl::Span<const int64_t> dims,
   }
   return multi_index;
 }
+
+namespace {
 
 // Computes indexing for "minimal" reshapes, i.e. reshapes that cannot be
 // represented by a series of composed reshapes, i.e. when there are no
