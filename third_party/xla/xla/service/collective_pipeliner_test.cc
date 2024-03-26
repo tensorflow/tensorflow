@@ -1751,12 +1751,16 @@ TEST_F(CollectivePipelinerTest, TransformRecvSendBackwards) {
 
     after-all = token[] after-all()
     recv = (f32[1, 1024, 1024], u32[], token[]) recv(after-all), channel_id=1, frontend_attributes={
-      _xla_send_recv_source_target_pairs="{{0, 1}, {1, 2}, {2, 3}, {3, 4}}"
+      _xla_send_recv_source_target_pairs="{{0, 1}, {1, 2}, {2, 3}, {3, 4}}",
+      _xla_send_recv_pipeline="0"
     }
     send = (f32[1, 1024, 1024], u32[], token[]) send(p, after-all), channel_id=1, frontend_attributes={
-      _xla_send_recv_source_target_pairs="{{0, 1}, {1, 2}, {2, 3}, {3, 4}}"
+      _xla_send_recv_source_target_pairs="{{0, 1}, {1, 2}, {2, 3}, {3, 4}}",
+      _xla_send_recv_pipeline="0"
     }
-    recv-done = (f32[1, 1024, 1024], token[]) recv-done(recv), channel_id=1
+    recv-done = (f32[1, 1024, 1024], token[]) recv-done(recv), channel_id=1, frontend_attributes={
+       _xla_send_recv_pipeline="0"
+    }
     recv-data = f32[1, 1024, 1024] get-tuple-element(recv-done), index=0
 
     replica = u32[] replica-id()
@@ -1769,7 +1773,9 @@ TEST_F(CollectivePipelinerTest, TransformRecvSendBackwards) {
     d = f32[1, 1024, 1024] tan(c)
     s = f32[1, 1024, 1024] dot(c, d), lhs_batch_dims={0}, lhs_contracting_dims={1}, rhs_batch_dims={0}, rhs_contracting_dims={1}
 
-    send-done = token[] send-done(send), channel_id=1
+    send-done = token[] send-done(send), channel_id=1, frontend_attributes={
+       _xla_send_recv_pipeline="0"
+    }
     ROOT result = (u32[], f32[1, 1024, 1024]) tuple(new_count, s)
   }
 
@@ -1848,7 +1854,10 @@ TEST_F(CollectivePipelinerTest,
         _xla_send_recv_source_target_pairs="{{3,0}}",
         _xla_other_attr="0"
       }
-    recv-done.0 = (u32[2], token[]) recv-done(recv.0), channel_id=1
+    recv-done.0 = (u32[2], token[]) recv-done(recv.0), channel_id=1,
+      frontend_attributes={
+        _xla_send_recv_pipeline="0"
+      }
     recv-data = u32[2] get-tuple-element(recv-done.0), index=0
 
     c1 = u32[] constant(1)
@@ -1857,7 +1866,10 @@ TEST_F(CollectivePipelinerTest,
     r = u32[2] broadcast(c1), dimensions={}
     s = u32[2] add(r, recv-data)
 
-    send-done.0 = token[] send-done(send.0), channel_id=1
+    send-done.0 = token[] send-done(send.0), channel_id=1,
+      frontend_attributes={
+        _xla_send_recv_pipeline="0"
+      }
     ROOT result = (u32[], u32[2]) tuple(new_count, s)
   }
 

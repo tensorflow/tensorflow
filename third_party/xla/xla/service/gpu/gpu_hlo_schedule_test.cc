@@ -790,11 +790,17 @@ TEST_F(GpuHloScheduleTest, LHSSendRecvPipelined1) {
     count = get-tuple-element(param), index=0
 
     recv.1.q = (f32[1,1024,1024], u32[], token[]) get-tuple-element(param), index=1
-    recv-done.1 = (f32[1,1024,1024], token[]) recv-done(recv.1.q), channel_id=1
+    recv-done.1 = (f32[1,1024,1024], token[]) recv-done(recv.1.q), channel_id=1,
+      frontend_attributes={
+      _xla_send_recv_pipeline="0"
+      }
     recv-data = f32[1, 1024, 1024] get-tuple-element(recv-done.1), index=0
 
     send.1.q = (f32[1,1024,1024], u32[], token[]) get-tuple-element(param), index=2
-    send-done.1 = token[] send-done(send.1.q), channel_id=1
+    send-done.1 = token[] send-done(send.1.q), channel_id=1,
+      frontend_attributes={
+      _xla_send_recv_pipeline="0"
+      }
 
     c1 = u32[] constant(1)
     new-count = u32[] add(count, c1)
@@ -852,10 +858,16 @@ TEST_F(GpuHloScheduleTest, LHSSendRecvPipelined1) {
       backend_config={"known_trip_count":{"n":"25"}}
 
     recv.2.q = (f32[1,1024,1024], u32[], token[]) get-tuple-element(while-result), index=1
-    recv-done.2 = (f32[1,1024,1024], token[]) recv-done(recv.2.q), channel_id=1
+    recv-done.2 = (f32[1,1024,1024], token[]) recv-done(recv.2.q), channel_id=1,
+      frontend_attributes={
+      _xla_send_recv_pipeline="0"
+      }
 
     send.2.q = (f32[1,1024,1024], u32[], token[]) get-tuple-element(while-result), index=2
-    send-done.2 = token[] send-done(send.2.q), channel_id=1
+    send-done.2 = token[] send-done(send.2.q), channel_id=1,
+      frontend_attributes={
+      _xla_send_recv_pipeline="0"
+      }
 
     ROOT entry-result = f32[1, 1024, 1024] get-tuple-element(recv-done.2), index=0
   }
@@ -920,18 +932,30 @@ TEST_F(GpuHloScheduleTest, LHSSendRecvPipelined2) {
     count = get-tuple-element(param), index=0
 
     recv.0.q = (f32[1,1024,1024], u32[], token[]) get-tuple-element(param), index=1
-    recv-done.0 = (f32[1,1024,1024], token[]) recv-done(recv.0.q), channel_id=1
+    recv-done.0 = (f32[1,1024,1024], token[]) recv-done(recv.0.q), channel_id=1,
+      frontend_attributes={
+      _xla_send_recv_pipeline="0"
+      }
     recv-data.0 = f32[1, 1024, 1024] get-tuple-element(recv-done.0), index=0
 
     send.0.q = (f32[1,1024,1024], u32[], token[]) get-tuple-element(param), index=2
-    send-done.0 = token[] send-done(send.0.q), channel_id=1
+    send-done.0 = token[] send-done(send.0.q), channel_id=1,
+      frontend_attributes={
+      _xla_send_recv_pipeline="0"
+      }
 
     recv.1.q = (f32[1,1024,1024], u32[], token[]) get-tuple-element(param), index=3
-    recv-done.1 = (f32[1,1024,1024], token[]) recv-done(recv.1.q), channel_id=2
+    recv-done.1 = (f32[1,1024,1024], token[]) recv-done(recv.1.q), channel_id=2,
+      frontend_attributes={
+      _xla_send_recv_pipeline="1"
+      }
     recv-data.1 = f32[1, 1024, 1024] get-tuple-element(recv-done.1), index=0
 
     send.1.q = (f32[1,1024,1024], u32[], token[]) get-tuple-element(param), index=4
-    send-done.1 = token[] send-done(send.1.q), channel_id=2
+    send-done.1 = token[] send-done(send.1.q), channel_id=2,
+      frontend_attributes={
+      _xla_send_recv_pipeline="1"
+      }
 
     replica = u32[] replica-id()
     constant0 = u32[] constant(0)
@@ -1021,18 +1045,30 @@ TEST_F(GpuHloScheduleTest, LHSSendRecvPipelined2) {
       backend_config={"known_trip_count":{"n":"25"}}
 
     recv.2.q = (f32[1,1024,1024], u32[], token[]) get-tuple-element(while-result), index=1
-    recv-done.2 = (f32[1,1024,1024], token[]) recv-done(recv.2.q), channel_id=1
+    recv-done.2 = (f32[1,1024,1024], token[]) recv-done(recv.2.q), channel_id=1,
+      frontend_attributes={
+      _xla_send_recv_pipeline="0"
+      }
     recv-data.2 = f32[1, 1024, 1024] get-tuple-element(recv-done.2), index=0
 
     send.2.q = (f32[1,1024,1024], u32[], token[]) get-tuple-element(while-result), index=2
-    send-done.2 = token[] send-done(send.2.q), channel_id=1
+    send-done.2 = token[] send-done(send.2.q), channel_id=1,
+      frontend_attributes={
+      _xla_send_recv_pipeline="0"
+      }
 
     recv.3.q = (f32[1,1024,1024], u32[], token[]) get-tuple-element(while-result), index=3
-    recv-done.3 = (f32[1,1024,1024], token[]) recv-done(recv.3.q), channel_id=2
+    recv-done.3 = (f32[1,1024,1024], token[]) recv-done(recv.3.q), channel_id=2,
+      frontend_attributes={
+      _xla_send_recv_pipeline="1"
+      }
     recv-data.3 = f32[1, 1024, 1024] get-tuple-element(recv-done.3), index=0
 
     send.3.q = (f32[1,1024,1024], u32[], token[]) get-tuple-element(while-result), index=4
-    send-done.3 = token[] send-done(send.3.q), channel_id=2
+    send-done.3 = token[] send-done(send.3.q), channel_id=2,
+      frontend_attributes={
+      _xla_send_recv_pipeline="1"
+      }
 
     replica = u32[] replica-id()
     constant0 = u32[] constant(0)
