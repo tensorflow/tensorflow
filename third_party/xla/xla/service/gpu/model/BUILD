@@ -579,7 +579,6 @@ xla_cc_test(
     deps = [
         ":indexing_map",
         ":symbolic_tile_analysis",
-        "//xla/hlo/ir:hlo",
         "//xla/tests:hlo_test_base",
         "//xla/tests:verified_hlo_module",
         "@com_google_absl//absl/strings",

@@ -9,6 +9,7 @@ You may obtain a copy of the License at
 Unless required by applicable law or agreed to in writing, software
 distributed under the License is distributed on an "AS IS" BASIS,
 WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
@@ -159,6 +160,17 @@ IndexingMap GetIndexingMapForTiling(mlir::AffineMap block_offsets,
 
 // Returns the shape of the output of the instruction.
 const Shape& GetOutputShape(const HloInstruction* instr, int64_t output_id);
+
+// Computes 1D index given a shape and N-d indexing expressions.
+mlir::AffineExpr LinearizeShape(
+    absl::Span<const int64_t> dims,
+    absl::Span<const mlir::AffineExpr> dimension_exprs,
+    mlir::MLIRContext* mlir_context);
+
+// Computes N-d indexing expressions given a linear index and a shape.
+std::vector<mlir::AffineExpr> DelinearizeIndex(absl::Span<const int64_t> dims,
+                                               mlir::AffineExpr linear_index,
+                                               mlir::MLIRContext* mlir_context);
 
 // Creates an identity indexing map corresponding to the parameter shape.
 IndexingMap CreateIdentityMap(const Shape& shape,
