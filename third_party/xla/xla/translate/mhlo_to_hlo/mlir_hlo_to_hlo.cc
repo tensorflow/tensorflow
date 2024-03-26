@@ -2374,9 +2374,11 @@ LogicalResult ExportXlaOp(RngBitGeneratorOp op, OpLoweringContext ctx) {
       static_cast<xla::RandomAlgorithm>(op.getRngAlgorithm()),
       Unwrap(xla_arg_1), xla::TypeToShape(results[1].getType()));
 
-  for (const auto& item : llvm::enumerate(results))
-    value_map[item.value()] = xla::GetTupleElement(xla_result, item.index());
-
+  {
+    xla::XlaScopedShardingAssignment scoped_sharding(ctx.builder, std::nullopt);
+    for (const auto& item : llvm::enumerate(results))
+      value_map[item.value()] = xla::GetTupleElement(xla_result, item.index());
+  }
   return mlir::success();
 }
 
