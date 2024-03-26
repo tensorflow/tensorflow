@@ -99,6 +99,8 @@ py_strict_library(
     visibility = ["//tensorflow:internal"],
     deps = [
         "//tensorflow/core:protos_all_py",
+        "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/framework:ops",
         "//tensorflow/python/ops:experimental_dataset_ops_gen",
         "//tensorflow/python/saved_model:nested_structure_coder",
     ],

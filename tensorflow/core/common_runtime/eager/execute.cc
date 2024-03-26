@@ -81,6 +81,7 @@ limitations under the License.
 #include "tensorflow/core/util/device_name_utils.h"
 #include "tsl/platform/fingerprint.h"
 #include "tsl/platform/statusor.h"
+#include "tsl/util/env_var.h"
 #if !defined(IS_MOBILE_PLATFORM)
 #include "tensorflow/core/distributed_runtime/eager/eager_client.h"
 #include "tensorflow/core/distributed_runtime/eager/remote_copy_node.h"
@@ -120,6 +121,16 @@ auto* top_level_jit_compilation_counter = monitoring::Counter<1>::New(
     "/tensorflow/core/tf_top_level_jit_compilation",
     "The number of times a top-level JIT-compiled function is called.",
     "device");
+
+bool SendAsProtosWhenPossible() {
+  static bool send_as_protos_when_possible = []() {
+    bool result;
+    TF_CHECK_OK(tsl::ReadBoolFromEnvVar("TF_SEND_AS_PROTOS_WHEN_POSSIBLE",
+                                        false, &result));
+    return result;
+  }();
+  return send_as_protos_when_possible;
+}
 
 const string& DeviceNameOrUnspecified(Device* device) {
   static string* unspecified_string = new string("<unspecified>");
@@ -1915,21 +1926,41 @@ Status EagerRemoteExecute(EagerOperation* op, TensorHandle** retvals,
                                               ctx.GetContextViewId()));
         }
       }
-      auto* input_handle = remote_op->add_op_inputs()->mutable_remote_handle();
-      // For a remote component function, a function execution request and an
-      // input generation request may come from different workers. We need to
-      // guarantee that the input generation request is processed before the
-      // function execution request, so wait until the remote input is ready
-      // before sending it to the multi-device function device.
-      bool wait_until_ready =
-          SkipRemoteHandleWaitReady() ? false : op->is_function();
-      TF_RETURN_IF_ERROR(ctx.RemoteMgr()->SerializeRemoteTensorHandle(
-          input, wait_until_ready, input_handle, input_device,
-          *input_device_name, serialize_resource_dtype_and_shape));
-      if (!input_handle->resource_dtypes_and_shapes().empty()) {
-        TF_RETURN_IF_ERROR(
-            input->AddResourceShapeMirror(op_device, input_handle->op_id(),
-                                          input_handle->output_num(), &ctx));
+      int64_t num_elements;
+      TF_RETURN_IF_ERROR(input->NumElements(&num_elements));
+      if ((input->Type() == TensorHandle::HandleType::LOCAL) &&
+          (num_elements == 1) && (input->DataType() != DT_VARIANT) &&
+          SendAsProtosWhenPossible()) {
+        auto* input_tensor_proto = remote_op->add_op_inputs()->mutable_tensor();
+        const tensorflow::Tensor* input_tensor = nullptr;
+        TensorHandle* local_cpu_input_handle = nullptr;
+        TF_RETURN_IF_ERROR(EagerCopyToDevice(input, &ctx, &ctx.Executor(),
+                                             ctx.HostCPU(), false,
+                                             &local_cpu_input_handle));
+        TF_RETURN_IF_ERROR(local_cpu_input_handle->Tensor(&input_tensor));
+        input_tensor->AsProtoTensorContent(input_tensor_proto);
+        // `TensorHandle::AddResourceShapeMirror` can change `input` but only if
+        // `TensorHandle::handle_dtypes_and_shapes_` is not empty. And that
+        // requires `TensorHandle::dtype` to be equal to `DT_RESOURCE` which
+        // cannot be the case when we are here. So nothing else to do.
+      } else {
+        auto* input_handle =
+            remote_op->add_op_inputs()->mutable_remote_handle();
+        // For a remote component function, a function execution request and an
+        // input generation request may come from different workers. We need to
+        // guarantee that the input generation request is processed before the
+        // function execution request, so wait until the remote input is ready
+        // before sending it to the multi-device function device.
+        bool wait_until_ready =
+            SkipRemoteHandleWaitReady() ? false : op->is_function();
+        TF_RETURN_IF_ERROR(ctx.RemoteMgr()->SerializeRemoteTensorHandle(
+            input, wait_until_ready, input_handle, input_device,
+            *input_device_name, serialize_resource_dtype_and_shape));
+        if (!input_handle->resource_dtypes_and_shapes().empty()) {
+          TF_RETURN_IF_ERROR(
+              input->AddResourceShapeMirror(op_device, input_handle->op_id(),
+                                            input_handle->output_num(), &ctx));
+        }
       }
     }
   }
