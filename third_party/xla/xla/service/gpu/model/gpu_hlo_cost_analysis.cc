@@ -39,6 +39,7 @@ limitations under the License.
 #include "xla/service/elemental_ir_emitter.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/cublas_cudnn.h"
+#include "xla/service/gpu/gpu_fusible.h"
 #include "xla/service/gpu/model/hlo_op_profile.pb.h"
 #include "xla/service/gpu/model/hlo_op_profiles.h"
 #include "xla/service/hlo_cost_analysis.h"
@@ -131,6 +132,9 @@ absl::Status GpuHloCostAnalysis::FusionCalculateUtilizations(
   current_properties_[kBasicBlockSplitCountKey] = 0;
   current_properties_[kIRSizeKey] = 0;
 
+  bool is_softmax =
+      IsTritonSoftmaxFusion(*fusion) && enable_triton_softmax_fusion_analysis_;
+
   for (const HloInstruction* instr : instructions) {
     VLOG(8) << instr->name() << ":";
     VLOG(9) << "Elementwise use roots:";
@@ -139,6 +143,12 @@ absl::Status GpuHloCostAnalysis::FusionCalculateUtilizations(
       VLOG(9) << "\t" << r->name() << ": " << root_utilizations_[r];
       instr_props[kUtilizationKey] += root_utilizations_[r];
       instr_props[kIRSizeKey] += root_ir_sizes[r];
+    }
+
+    if (is_softmax) {
+      // Special case for Triton Softmax fusions. The fusion will be codegen in
+      // a way that each unique element is computed only once per tile.
+      instr_props[kUtilizationKey] = 1;
     }
 
     float cur_instr_utilization = instr_props[kUtilizationKey];

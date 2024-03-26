@@ -41,8 +41,12 @@ class GpuHloCostAnalysis : public HloCostAnalysis {
  public:
   explicit GpuHloCostAnalysis(
       const Options& options,
-      const se::DeviceDescription* device_info = nullptr)
-      : HloCostAnalysis(options), device_info_(device_info) {}
+      const se::DeviceDescription* device_info = nullptr,
+      bool enable_triton_softmax_fusion_analysis = false)
+      : HloCostAnalysis(options),
+        device_info_(device_info),
+        enable_triton_softmax_fusion_analysis_(
+            enable_triton_softmax_fusion_analysis) {}
 
   absl::Status Preprocess(const HloInstruction* hlo) override;
 
@@ -109,6 +113,9 @@ class GpuHloCostAnalysis : public HloCostAnalysis {
   // This is different from hlo_properties_[instr][kUtilizationKey] which
   // is the utilization of the instruction by other roots.
   absl::flat_hash_map<const HloInstruction*, float> root_utilizations_;
+
+  // If true, enable special handling of Triton Softmax fusions.
+  bool enable_triton_softmax_fusion_analysis_;
 };
 
 }  // namespace gpu
