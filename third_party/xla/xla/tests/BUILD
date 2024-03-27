@@ -1,12 +1,6 @@
 # Description:
 #   Base testing infrastructure for XLA.
 
-load("//xla/tests:build_defs.bzl", "generate_backend_suites", "generate_backend_test_macros", "xla_test", "xla_test_library")
-load("//xla:xla.bzl", "xla_cc_binary", "xla_cc_test")
-load(
-    "//xla/stream_executor:build_defs.bzl",
-    "if_gpu_is_configured",
-)
 load(
     "@local_config_rocm//rocm:build_defs.bzl",
     "if_rocm_is_configured",
@@ -22,6 +16,12 @@ load(
     "@local_tsl//tsl/platform/default:cuda_build_defs.bzl",
     "if_cuda_is_configured",
 )
+load("//xla:xla.bzl", "xla_cc_binary", "xla_cc_test")
+load(
+    "//xla/stream_executor:build_defs.bzl",
+    "if_gpu_is_configured",
+)
+load("//xla/tests:build_defs.bzl", "generate_backend_suites", "generate_backend_test_macros", "xla_test", "xla_test_library")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],

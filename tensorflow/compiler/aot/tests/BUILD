@@ -1,8 +1,8 @@
 load("//tensorflow:strict.default.bzl", "py_strict_binary")
-load("//tensorflow/compiler/mlir:glob_lit_test.bzl", "glob_lit_tests")
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 load("//tensorflow:tensorflow.default.bzl", "filegroup", "genrule")
 load("//tensorflow/compiler/aot:tfcompile.bzl", "tf_library")
+load("//tensorflow/compiler/mlir:glob_lit_test.bzl", "glob_lit_tests")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],

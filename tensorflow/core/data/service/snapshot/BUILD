@@ -1,9 +1,9 @@
 # Distributed snapshot library.
 
+load("@local_tsl//tsl:tsl.default.bzl", "get_compatible_with_portable")
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 load("//tensorflow:tensorflow.default.bzl", "tf_grpc_cc_dependencies", "tf_kernel_library")
 load("//tensorflow/core/platform:build_config.bzl", "tf_protos_profiler_service")
-load("@local_tsl//tsl:tsl.default.bzl", "get_compatible_with_portable")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
