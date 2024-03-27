@@ -1200,6 +1200,12 @@ struct ExtraBufferInfo {
   std::unique_ptr<PjRtBuffer::ExternalReference> external_reference_hold;
 };
 
+// The default layout of a non-tuple array should have major-to-minor layout
+// and no tiles.
+bool HasDefaultLayout(const Layout& layout) {
+  return LayoutUtil::IsMonotonicWithDim0Major(layout) && layout.tiles().empty();
+}
+
 int PyArray_bf_getbuffer(PyObject* exporter, Py_buffer* view, int flags) {
   Status status = [&]() {
     PyArray py_array = nb::borrow<PyArray>(exporter);
@@ -1277,6 +1283,12 @@ int PyArray_bf_getbuffer(PyObject* exporter, Py_buffer* view, int flags) {
                !LayoutUtil::IsMonotonicWithDim0Major(xla_layout) &&
                !LayoutUtil::IsMonotonicWithDim0Minor(xla_layout)) {
       return InvalidArgument("Buffer is not in contiguous layout.");
+    } else if (!HasDefaultLayout(xla_layout)) {
+      // Fail and fall back to using __array__ if the CPU buffer has a device
+      // specific layout. For instance, this happens for host buffers in pinned
+      // memories of the TPU device.
+      return InvalidArgument(
+          "Buffer is potentially a device buffer with non default layout.");
     }
     std::memset(view, 0, sizeof(Py_buffer));
     const void* root_ptr =
@@ -1348,6 +1360,18 @@ std::optional<std::vector<int64_t>> ByteStridesOrDefaultForShapeInt64(
   return ByteStridesForShape(shape);
 }
 
+bool IsZeroCopyableCpuBuffer(const PjRtBuffer* buf) {
+  // For CPU buffers with device-specific layouts, we must delinearize
+  // to unpack the array. This could happen for the host buffer
+  // pre-mapped to the TPU device, a.k.a., pinned host buffers for the
+  // device.
+  bool has_default_layout = buf->layout() == nullptr ||
+                            HasDefaultLayout(GetXlaLayoutUnsafe(buf->layout()));
+  // On CPU for non-int4 values, we can return the value in a zero-copy way.
+  // For int4 values, we must copy in order to unpack the array.
+  return buf->IsOnCpu() && !primitive_util::Is4BitType(buf->element_type()) &&
+         has_default_layout;
+}
 }  // namespace
 
 PyHostValue::PyHostValue() = default;
@@ -1364,8 +1388,7 @@ StatusOr<nb::object> PyHostValue::AsNumPyArray(
     TF_RET_CHECK(!pjrt_buffer->IsTuple());
     // On CPU for non-int4 values, we can return the value in a zero-copy way.
     // For int4 values, we must copy in order to unpack the array.
-    if (pjrt_buffer->IsOnCpu() &&
-        !primitive_util::Is4BitType(pjrt_buffer->element_type())) {
+    if (IsZeroCopyableCpuBuffer(pjrt_buffer)) {
       TF_ASSIGN_OR_RETURN(const auto* shape,
                           XlaDynamicShape(ifrt_array, dynamic_shape_holder));
       TF_ASSIGN_OR_RETURN(nb_dtype dtype,
@@ -1412,12 +1435,9 @@ Status PyHostValue::CopyToHostAsync(std::optional<Shape>& dynamic_shape_holder,
     return OkStatus();
   }
   auto* arr = llvm::dyn_cast_or_null<ifrt::PjRtCompatibleArray>(ifrt_array);
-  if (arr != nullptr) {
-    auto* pjrt_buffer = arr->pjrt_buffers().front().get();
-    if (pjrt_buffer->IsOnCpu() &&
-        !primitive_util::Is4BitType(pjrt_buffer->element_type())) {
-      return OkStatus();
-    }
+  if (arr != nullptr && !arr->pjrt_buffers().front()->IsTuple() &&
+      IsZeroCopyableCpuBuffer(arr->pjrt_buffers().front().get())) {
+    return OkStatus();
   }
   auto transfer_guard_formatter = [ifrt_array] {
     return absl::StrCat(
