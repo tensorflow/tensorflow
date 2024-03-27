@@ -1,5 +1,10 @@
 load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
 load(
+    "@local_xla//xla/tsl/mkl:build_defs.bzl",
+    "if_mkl",
+    "if_mkl_ml",
+)
+load(
     "//tensorflow:tensorflow.bzl",
     "if_libtpu",
     "if_macos",
@@ -13,11 +18,6 @@ load(
     "tf_openmp_lopts",
 )
 load("//tensorflow:tensorflow.default.bzl", "cc_header_only_library", "filegroup", "tf_cuda_cc_test")
-load(
-    "@local_xla//xla/tsl/mkl:build_defs.bzl",
-    "if_mkl",
-    "if_mkl_ml",
-)
 
 # For platform specific build config
 load(

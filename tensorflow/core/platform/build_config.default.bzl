@@ -2,16 +2,16 @@
 
 load("@local_config_rocm//rocm:build_defs.bzl", "if_rocm")
 load(
+    "@local_tsl//tsl:tsl.bzl",
+    "if_libtpu",
+)
+load(
     "@local_xla//xla/tsl/mkl:build_defs.bzl",
     "if_mkl_ml",
 )
 load(
     "//tensorflow/core/platform:build_config_root.bzl",
     "if_static",
-)
-load(
-    "@local_tsl//tsl:tsl.bzl",
-    "if_libtpu",
 )
 
 def tf_tpu_dependencies():

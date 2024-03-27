@@ -1,5 +1,6 @@
 # Description: Utilities for TPU Operations
 
+load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
 load(
     "//tensorflow:tensorflow.bzl",
     "if_libtpu",
@@ -7,7 +8,6 @@ load(
     "tf_cc_test",
 )
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
-load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],

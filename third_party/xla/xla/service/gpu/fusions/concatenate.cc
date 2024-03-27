@@ -65,9 +65,9 @@ std::optional<IndexingMap> ConcatenateFusion::ComputeThreadIdToOutputIndexing(
 std::optional<IndexingMap> ConcatenateFusion::ComputeThreadIdToInputIndexing(
     int64_t root_index, int64_t hero_operand_index,
     mlir::MLIRContext* ctx) const {
-  return GetDefaultThreadIdToOutputIndexingMap(
-      launch_dimensions(), /*unroll_factor=*/1,
-      GetLargestConcatOperandShape(analysis_), ctx);
+  return GetDefaultThreadIdIndexingMap(launch_dimensions(), /*unroll_factor=*/1,
+                                       GetLargestConcatOperandShape(analysis_),
+                                       ctx);
 }
 
 absl::Status ConcatenateFusion::EmitKernel(

@@ -1,6 +1,7 @@
 # Description:
 # Cloud file system implementation.
 
+load("@local_tsl//tsl/platform:rules_cc.bzl", "cc_library")
 load(
     "//tsl:tsl.bzl",
     "if_windows",
@@ -8,7 +9,6 @@ load(
     "tsl_copts",
 )
 load("//tsl/platform:build_config.bzl", "tsl_cc_test")
-load("@local_tsl//tsl/platform:rules_cc.bzl", "cc_library")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],

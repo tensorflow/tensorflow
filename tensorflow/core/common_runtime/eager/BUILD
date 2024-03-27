@@ -1,5 +1,10 @@
 load("@bazel_skylib//lib:selects.bzl", "selects")
 load(
+    "@local_xla//xla/tsl/mkl:build_defs.bzl",
+    "if_mkl",
+    "mkl_deps",
+)
+load(
     "//tensorflow:tensorflow.bzl",
     "clean_dep",
     "if_google",
@@ -11,11 +16,6 @@ load(
     "tf_mkl_kernel_library",
 )
 load("//tensorflow:tensorflow.default.bzl", "filegroup")
-load(
-    "@local_xla//xla/tsl/mkl:build_defs.bzl",
-    "if_mkl",
-    "mkl_deps",
-)
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 
 package(

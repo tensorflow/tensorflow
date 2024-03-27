@@ -1,10 +1,10 @@
 load("//tensorflow:strict.default.bzl", "py_strict_library")
-load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load(
     "//tensorflow:tensorflow.bzl",
     "tf_custom_op_library",
     "tf_gen_op_wrapper_py",
 )
+load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],

@@ -5,6 +5,10 @@
 #   to other TF components outside of TSL.
 
 load(
+    "@local_tsl//tsl/platform:rules_cc.bzl",
+    "cc_library",
+)
+load(
     "//tsl:tsl.bzl",
     "check_deps",
     "internal_visibility",
@@ -12,16 +16,12 @@ load(
 )
 load("//tsl:tsl.default.bzl", "filegroup", "get_compatible_with_portable")
 load(
-    "//tsl/platform:build_config_root.bzl",
-    "if_static",
-)
-load(
     "//tsl/platform:build_config.bzl",
     "tsl_cc_test",
 )
 load(
-    "@local_tsl//tsl/platform:rules_cc.bzl",
-    "cc_library",
+    "//tsl/platform:build_config_root.bzl",
+    "if_static",
 )
 
 package(

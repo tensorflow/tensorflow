@@ -1,3 +1,4 @@
+# buildifier: disable=load-on-top
 workspace(name = "xla")
 
 # Initialize the XLA repository and all dependencies.
