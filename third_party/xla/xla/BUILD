@@ -603,6 +603,7 @@ cc_library(
         ":types",
         ":util",
         ":xla_data_proto_cc",
+        "//xla/tsl/util:byte_swap_array",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/base:config",
         "@com_google_absl//absl/base:core_headers",
@@ -621,7 +622,6 @@ cc_library(
         "@local_tsl//tsl/platform:platform_port",
         "@local_tsl//tsl/platform:status",
         "@local_tsl//tsl/platform:statusor",
-        "@local_tsl//tsl/util:byte_swap_array",
     ],
 )
 
@@ -1072,12 +1072,12 @@ cc_library(
     deps =
         [
             ":types",
+            "//xla/tsl/util:command_line_flags",
             "@com_google_absl//absl/container:flat_hash_map",
             "@com_google_absl//absl/strings",
             "@com_google_absl//absl/strings:str_format",
             "@com_google_absl//absl/types:span",
             "@local_tsl//tsl/platform:logging",
-            "@local_tsl//tsl/util:command_line_flags",
         ],
 )
 
@@ -1087,12 +1087,12 @@ xla_cc_test(
     deps =
         [
             ":parse_flags_from_env",
+            "//xla/tsl/util:command_line_flags",
             "@com_google_absl//absl/strings:str_format",
             "@local_tsl//tsl/platform:env",
             "@local_tsl//tsl/platform:logging",
             "@local_tsl//tsl/platform:subprocess",
             "@local_tsl//tsl/platform:test",
-            "@local_tsl//tsl/util:command_line_flags",
         ],
 )
 
@@ -1110,6 +1110,7 @@ cc_library(
             ":parse_flags_from_env",
             ":xla_proto_cc",
             "//xla/stream_executor/cuda:ptx_compiler_support",
+            "//xla/tsl/util:command_line_flags",
             "@com_google_absl//absl/algorithm:container",
             "@com_google_absl//absl/base",
             "@com_google_absl//absl/container:flat_hash_map",
@@ -1118,7 +1119,6 @@ cc_library(
             "@com_google_absl//absl/strings:str_format",
             "@local_tsl//tsl/platform:logging",
             "@local_tsl//tsl/platform:protobuf",
-            "@local_tsl//tsl/util:command_line_flags",
         ],
 )
 
@@ -1254,4 +1254,5 @@ cc_library(
 alias(
     name = "bazel_issue_21519",
     actual = ":empty",
+    visibility = ["//visibility:public"],
 )

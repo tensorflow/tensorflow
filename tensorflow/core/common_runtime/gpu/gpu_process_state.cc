@@ -32,6 +32,7 @@ limitations under the License.
 #include "xla/stream_executor/gpu/gpu_init.h"
 #include "xla/stream_executor/integrations/device_mem_allocator.h"
 #include "xla/stream_executor/stream_executor.h"
+#include "xla/tsl/util/env_var.h"
 #include "tensorflow/core/common_runtime/device/device_host_allocator.h"
 #include "tensorflow/core/common_runtime/device_id_utils.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_bfc_allocator.h"
@@ -50,7 +51,6 @@ limitations under the License.
 #include "tsl/platform/mutex.h"
 #include "tsl/platform/strcat.h"
 #include "tsl/platform/types.h"
-#include "tsl/util/env_var.h"
 
 namespace tensorflow {
 

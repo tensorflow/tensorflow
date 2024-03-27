@@ -18,11 +18,11 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "xla/tsl/util/device_name_utils.h"
 #include "tsl/lib/core/status_test_util.h"
 #include "tsl/platform/strcat.h"
 #include "tsl/platform/test.h"
 #include "tsl/protobuf/rpc_options.pb.h"
-#include "tsl/util/device_name_utils.h"
 
 namespace tsl {
 #define IsSameAddrSp DeviceNameUtils::IsSameAddressSpace

@@ -61,6 +61,7 @@ limitations under the License.
 #include "xla/service/llvm_ir/llvm_type_conversion_util.h"
 #include "xla/status_macros.h"
 #include "xla/stream_executor/device_description.h"
+#include "xla/tsl/util/env_var.h"
 #include "xla/types.h"
 #include "xla/util.h"
 #include "tsl/platform/cuda_libdevice_path.h"
@@ -70,7 +71,6 @@ limitations under the License.
 #include "tsl/platform/random.h"
 #include "tsl/platform/rocm_rocdl_path.h"
 #include "tsl/profiler/lib/traceme.h"
-#include "tsl/util/env_var.h"
 
 #if !defined(PLATFORM_GOOGLE) && TENSORFLOW_USE_ROCM
 #include "rocm/rocm_config.h"

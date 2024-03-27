@@ -16,6 +16,7 @@ limitations under the License.
 #include <chrono>
 #include <thread>
 
+#include "xla/tsl/util/determinism_test_util.h"
 #include "tensorflow/core/framework/fake_input.h"
 #include "tensorflow/core/framework/node_def_builder.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -27,7 +28,6 @@ limitations under the License.
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/status_matchers.h"
-#include "tsl/util/determinism_test_util.h"
 
 namespace tensorflow {
 namespace {

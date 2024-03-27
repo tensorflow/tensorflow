@@ -239,7 +239,7 @@ cc_library(
         "@local_tsl//tsl/profiler/utils:tf_xplane_visitor",
         "@local_tsl//tsl/profiler/utils:timespan",
         "@local_tsl//tsl/profiler/utils:tpu_xplane_utils",
-        "@local_tsl//tsl/util:stats_calculator_portable",
+        "@local_xla//xla/tsl/util:stats_calculator_portable",
     ],
 )
 

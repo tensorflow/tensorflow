@@ -40,8 +40,8 @@ limitations under the License.
 #include "xla/stream_executor/rocm/rocm_platform_id.h"
 #include "xla/stream_executor/scratch_allocator.h"
 #include "xla/stream_executor/stream_executor.h"
+#include "xla/tsl/util/determinism.h"
 #include "tsl/platform/logging.h"
-#include "tsl/util/determinism.h"
 using tsl::OpDeterminismRequired;
 
 namespace stream_executor {

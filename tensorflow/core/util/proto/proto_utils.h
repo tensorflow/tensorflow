@@ -17,10 +17,10 @@ limitations under the License.
 #define TENSORFLOW_CORE_UTIL_PROTO_PROTO_UTILS_H_
 
 #include "absl/strings/string_view.h"
+#include "xla/tsl/util/proto/proto_utils.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/protobuf.h"
-#include "tsl/util/proto/proto_utils.h"
 
 namespace tensorflow {
 namespace proto_utils {

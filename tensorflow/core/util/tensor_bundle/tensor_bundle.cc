@@ -22,6 +22,7 @@ limitations under the License.
 
 #include "absl/base/call_once.h"
 #include "absl/synchronization/mutex.h"
+#include "xla/tsl/util/byte_swap_array.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"
@@ -54,7 +55,6 @@ limitations under the License.
 #include "tensorflow/core/util/tensor_bundle/naming.h"
 #include "tensorflow/core/util/tensor_slice_util.h"
 #include "tsl/lib/io/buffered_file.h"
-#include "tsl/util/byte_swap_array.h"
 
 #ifdef PLATFORM_WINDOWS
 #undef DeleteFile

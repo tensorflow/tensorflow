@@ -21,11 +21,11 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "xla/tsl/util/stats_calculator.h"
 #include "tensorflow/lite/tools/evaluation/evaluation_delegate_provider.h"
 #include "tensorflow/lite/tools/evaluation/evaluation_stage.h"
 #include "tensorflow/lite/tools/evaluation/proto/evaluation_config.pb.h"
 #include "tensorflow/lite/tools/evaluation/stages/tflite_inference_stage.h"
-#include "tsl/util/stats_calculator.h"
 
 namespace tflite {
 namespace evaluation {

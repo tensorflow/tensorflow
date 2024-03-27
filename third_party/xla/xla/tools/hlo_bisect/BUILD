@@ -32,8 +32,8 @@ xla_cc_binary(
         "//xla/service:cpu_plugin",
         "//xla/service:gpu_plugin",
         "//xla/service:interpreter_plugin",
+        "//xla/tsl/util:command_line_flags",
         "@local_tsl//tsl/platform:platform_port",
-        "@local_tsl//tsl/util:command_line_flags",
     ] + if_cuda(["//xla/stream_executor/cuda:cublas_plugin"]),
 )
 

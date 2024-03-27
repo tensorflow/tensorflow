@@ -80,6 +80,7 @@ limitations under the License.
 #include "xla/stream_executor/gpu/redzone_allocator.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/tools/hlo_decomposer.h"
+#include "xla/tsl/util/proto/proto_utils.h"
 #include "xla/util.h"
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
@@ -89,7 +90,6 @@ limitations under the License.
 #include "tsl/platform/status.h"
 #include "tsl/platform/statusor.h"
 #include "tsl/platform/threadpool.h"
-#include "tsl/util/proto/proto_utils.h"
 
 // Log levels used in this file:
 // VLOG(1): Overview

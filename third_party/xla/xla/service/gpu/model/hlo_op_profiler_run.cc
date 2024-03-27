@@ -28,12 +28,12 @@ limitations under the License.
 #include "xla/service/hlo_runner.h"
 #include "xla/service/platform_util.h"
 #include "xla/stream_executor/device_description.h"
+#include "xla/tsl/util/command_line_flags.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/init_main.h"
 #include "tsl/platform/path.h"
 #include "tsl/platform/status.h"
-#include "tsl/util/command_line_flags.h"
 
 namespace xla {
 namespace gpu {

@@ -591,6 +591,7 @@ tsl_gpu_library(
     deps = [
         ":gpu_init_impl",
         "//xla/stream_executor:stream_executor_headers",
+        "//xla/tsl/util:env_var",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/strings",
@@ -598,7 +599,6 @@ tsl_gpu_library(
         "@local_tsl//tsl/framework:device_id",
         "@local_tsl//tsl/platform:logging",
         "@local_tsl//tsl/platform:mutex",
-        "@local_tsl//tsl/util:env_var",
     ],
 )
 

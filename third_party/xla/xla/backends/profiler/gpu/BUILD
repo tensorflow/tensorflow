@@ -42,6 +42,7 @@ tsl_gpu_library(
     ],
     deps = [
         ":cupti_utils",
+        "//xla/tsl/util:env_var",
         "@com_google_absl//absl/container:fixed_array",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
@@ -52,7 +53,6 @@ tsl_gpu_library(
         "@local_tsl//tsl/profiler/lib:profiler_interface",
         "@local_tsl//tsl/profiler/protobuf:xplane_proto_cc",
         "@local_tsl//tsl/profiler/utils:time_utils",
-        "@local_tsl//tsl/util:env_var",
     ],
     alwayslink = 1,
 )
@@ -329,7 +329,7 @@ tsl_gpu_library(
         "@com_google_absl//absl/memory",
         "@local_tsl//tsl/platform:logging",
         "@local_tsl//tsl/platform:stringpiece",
-        "@local_tsl//tsl/util:env_var",
+        "//xla/tsl/util:env_var",
     ],
     visibility = ["//visibility:public"],
     alwayslink = 1,

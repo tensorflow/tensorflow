@@ -5,19 +5,19 @@
 #   to other TF components outside of TSL.
 
 load(
-    "//tsl:tsl.bzl",
+    "@local_tsl//tsl:tsl.bzl",
     "check_deps",
     "internal_visibility",
     "tsl_copts",
 )
-load("//tsl:tsl.default.bzl", "filegroup", "get_compatible_with_portable")
+load("@local_tsl//tsl:tsl.default.bzl", "filegroup", "get_compatible_with_portable")
 load(
-    "//tsl/platform:build_config_root.bzl",
-    "if_static",
+    "@local_tsl//tsl/platform:build_config.bzl",
+    "tsl_cc_test",
 )
 load(
-    "//tsl/platform:build_config.bzl",
-    "tsl_cc_test",
+    "@local_tsl//tsl/platform:build_config_root.bzl",
+    "if_static",
 )
 load(
     "@local_tsl//tsl/platform:rules_cc.bzl",
@@ -127,9 +127,9 @@ cc_library(
     srcs = ["byte_swap_array.cc"],
     hdrs = ["byte_swap_array.h"],
     deps = [
-        "//tsl/platform:byte_order",
-        "//tsl/platform:errors",
-        "//tsl/platform:status",
+        "@local_tsl//tsl/platform:byte_order",
+        "@local_tsl//tsl/platform:errors",
+        "@local_tsl//tsl/platform:status",
     ],
 )
 
@@ -151,8 +151,8 @@ cc_library(
     visibility = internal_visibility(["//tensorflow:__subpackages__"]),
     deps = [
         ":env_var",
-        "//tsl/platform:mutex",
         "@com_google_absl//absl/strings",
+        "@local_tsl//tsl/platform:mutex",
     ],
     alwayslink = 1,
 )
@@ -200,14 +200,14 @@ cc_library(
     srcs = ["env_var.cc"],
     hdrs = ["env_var.h"],
     deps = [
-        "//tsl/platform:errors",
-        "//tsl/platform:logging",
-        "//tsl/platform:numbers",
-        "//tsl/platform:status",
-        "//tsl/platform:str_util",
-        "//tsl/platform:strcat",
-        "//tsl/platform:stringpiece",
-        "//tsl/platform:types",
+        "@local_tsl//tsl/platform:errors",
+        "@local_tsl//tsl/platform:logging",
+        "@local_tsl//tsl/platform:numbers",
+        "@local_tsl//tsl/platform:status",
+        "@local_tsl//tsl/platform:str_util",
+        "@local_tsl//tsl/platform:strcat",
+        "@local_tsl//tsl/platform:stringpiece",
+        "@local_tsl//tsl/platform:types",
     ],
 )
 
@@ -217,17 +217,17 @@ cc_library(
     hdrs = ["reporter.h"],
     visibility = internal_visibility([
         "//tensorflow/core:__subpackages__",
-        "//tsl:__subpackages__",
+        "@local_tsl//tsl:__subpackages__",
     ]),
     deps = [
-        "//tsl/platform:env",
-        "//tsl/platform:env_impl",
-        "//tsl/platform:errors",
-        "//tsl/platform:macros",
-        "//tsl/platform:mutex",
-        "//tsl/platform:str_util",
-        "//tsl/platform:types",
-        "//tsl/protobuf:test_log_proto_cc",
+        "@local_tsl//tsl/platform:env",
+        "@local_tsl//tsl/platform:env_impl",
+        "@local_tsl//tsl/platform:errors",
+        "@local_tsl//tsl/platform:macros",
+        "@local_tsl//tsl/platform:mutex",
+        "@local_tsl//tsl/platform:str_util",
+        "@local_tsl//tsl/platform:types",
+        "@local_tsl//tsl/protobuf:test_log_proto_cc",
     ],
 )
 
@@ -242,7 +242,7 @@ cc_library(
     ],
     copts = tsl_copts(),
     visibility = internal_visibility([
-        "//tsl:internal",
+        "@local_tsl//tsl:internal",
     ]),
 )
 
@@ -251,8 +251,8 @@ tsl_cc_test(
     srcs = ["stats_calculator_test.cc"],
     deps = [
         ":stats_calculator_portable",
-        "//tsl/platform:test",
-        "//tsl/platform:test_main",
+        "@local_tsl//tsl/platform:test",
+        "@local_tsl//tsl/platform:test_main",
     ],
 )
 
@@ -261,9 +261,9 @@ cc_library(
     srcs = ["device_name_utils.cc"],
     hdrs = ["device_name_utils.h"],
     deps = [
-        "//tsl/platform:errors",
-        "//tsl/platform:status",
-        "//tsl/platform:stringpiece",
+        "@local_tsl//tsl/platform:errors",
+        "@local_tsl//tsl/platform:status",
+        "@local_tsl//tsl/platform:stringpiece",
     ],
 )
 
@@ -273,12 +273,12 @@ tsl_cc_test(
     srcs = ["device_name_utils_test.cc"],
     deps = [
         ":device_name_utils",
-        "//tsl/lib/core:status_test_util",
-        "//tsl/platform:errors",
-        "//tsl/platform:strcat",
-        "//tsl/platform:test",
-        "//tsl/platform:test_benchmark",
-        "//tsl/platform:test_main",
+        "@local_tsl//tsl/lib/core:status_test_util",
+        "@local_tsl//tsl/platform:errors",
+        "@local_tsl//tsl/platform:strcat",
+        "@local_tsl//tsl/platform:test",
+        "@local_tsl//tsl/platform:test_benchmark",
+        "@local_tsl//tsl/platform:test_main",
     ],
 )
 
@@ -287,12 +287,12 @@ cc_library(
     srcs = ["command_line_flags.cc"],
     hdrs = ["command_line_flags.h"],
     deps = [
-        "//tsl/platform:logging",
-        "//tsl/platform:str_util",
-        "//tsl/platform:stringpiece",
-        "//tsl/platform:stringprintf",
-        "//tsl/platform:types",
         "@com_google_absl//absl/strings",
+        "@local_tsl//tsl/platform:logging",
+        "@local_tsl//tsl/platform:str_util",
+        "@local_tsl//tsl/platform:stringpiece",
+        "@local_tsl//tsl/platform:stringprintf",
+        "@local_tsl//tsl/platform:types",
     ],
 )
 
@@ -311,7 +311,7 @@ filegroup(
         "onednn_threadpool.h",
     ],
     visibility = internal_visibility([
-        "@local_xla//xla:__subpackages__",
+        "//xla:__subpackages__",
         "//tensorflow/core:__pkg__",
         "//tensorflow/core/framework:__pkg__",
         "//tensorflow/core/util:__pkg__",

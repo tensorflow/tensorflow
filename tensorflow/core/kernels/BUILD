@@ -3433,7 +3433,7 @@ tf_cc_tests(
         "//tensorflow/core:testlib",
         "//tensorflow/core/platform:status_matchers",
         "@com_google_absl//absl/strings",
-        "@local_tsl//tsl/util:determinism_test_util",
+        "@local_xla//xla/tsl/util:determinism_test_util",
     ],
 )
 
