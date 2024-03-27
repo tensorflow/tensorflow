@@ -941,6 +941,7 @@ void AMDGPUBackendInit(const DebugOptions& debug_options,
   LLVMInitializeAMDGPUTarget();
   LLVMInitializeAMDGPUTargetInfo();
   LLVMInitializeAMDGPUTargetMC();
+  LLVMInitializeAMDGPUAsmParser();
   LLVMInitializeAMDGPUAsmPrinter();
 #endif
 
@@ -952,6 +953,18 @@ void AMDGPUBackendInit(const DebugOptions& debug_options,
 }  // namespace
 
 namespace amdgpu {
+
+std::string LibDevicePath(std::string gcn_arch_name,
+                          const std::string& rocdl_dir_path) {
+  auto libdevice_dir_paths = GetROCDLPaths(gcn_arch_name, rocdl_dir_path);
+  for (auto libdevice_dir_path : libdevice_dir_paths) {
+    if (libdevice_dir_path.find("ocml.bc")) {
+      return libdevice_dir_path;
+    }
+  }
+  return "";
+}
+
 absl::StatusOr<std::vector<uint8_t>> CompileToHsaco(
     llvm::Module* module, se::GpuComputeCapability gpu_version,
     const DebugOptions& debug_options,
