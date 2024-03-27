@@ -81,6 +81,7 @@ std::optional<IndexingMap>
 MlirInPlaceDynamicUpdateSliceFusion::ComputeThreadIdToInputIndexing(
     int64_t root_index, int64_t hero_operand_index,
     mlir::MLIRContext* mlir_context) const {
+  // TODO(b/331355203): Implement thread ID -> operand indexing.
   if (hero_operand_index != kDUSUpdateIndex) {
     return std::nullopt;
   }
