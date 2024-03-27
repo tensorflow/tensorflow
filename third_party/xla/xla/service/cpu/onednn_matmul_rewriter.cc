@@ -248,11 +248,6 @@ inline bool CompatibleElementType(const HloInstruction* instr) {
   return element_type == BF16 || element_type == F32 || element_type == F16;
 }
 
-inline bool LowPrecisionType(const HloInstruction* instr) {
-  PrimitiveType element_type = instr->shape().element_type();
-  return element_type == BF16 || element_type == F16;
-}
-
 // Type conversion from and to any of BF16, F16 and FP32.
 // TODO(intel-tf): Support more types when enabled.
 template <typename Pattern>
@@ -516,11 +511,12 @@ class OneDnnMatMulRewriteVisitor : public DfsHloRewriteVisitor {
       HloInstruction* new_instr;
       // If matched pattern has custom-call -> bitcast -> add, then we need to
       // insert bitcast after the new fusion to maintain the correct shape
-      // (new-custom-call -> bitcast). Also, this will be followed by -> convert
-      // for bf16 case to avoid datatype mismatch.
+      // (new-custom-call -> bitcast). Also, this will optionally be followed
+      // by -> convert for bf16 case to avoid datatype mismatch.
       if (optional_dot_bitcast != nullptr &&
           optional_dot_bitcast->opcode() == HloOpcode::kBitcast) {
-        if (LowPrecisionType(matmul_call)) {
+        if (optional_dot_convert != nullptr &&
+            optional_dot_convert->opcode() == HloOpcode::kConvert) {
           auto bitcast_call =
               matmul_call->AddInstruction(HloInstruction::CreateBitcast(
                   ShapeUtil::ChangeElementType(
@@ -528,18 +524,21 @@ class OneDnnMatMulRewriteVisitor : public DfsHloRewriteVisitor {
                   matmul_call));
           new_instr =
               bitcast_call->AddInstruction(HloInstruction::CreateConvert(
-                  ShapeUtil::ChangeElementType(bitcast_call->shape(),
-                                               PrimitiveType::F32),
+                  ShapeUtil::ChangeElementType(
+                      bitcast_call->shape(),
+                      optional_dot_convert->shape().element_type()),
                   bitcast_call));
         } else {
           new_instr = matmul_call->AddInstruction(
               HloInstruction::CreateBitcast(instr->shape(), matmul_call));
         }
       } else {
-        if (LowPrecisionType(matmul_call)) {
+        if (optional_dot_convert != nullptr &&
+            optional_dot_convert->opcode() == HloOpcode::kConvert) {
           new_instr = matmul_call->AddInstruction(HloInstruction::CreateConvert(
-              ShapeUtil::ChangeElementType(matmul_call->shape(),
-                                           PrimitiveType::F32),
+              ShapeUtil::ChangeElementType(
+                  matmul_call->shape(),
+                  optional_dot_convert->shape().element_type()),
               matmul_call));
         } else {
           new_instr = matmul_call;

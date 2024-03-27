@@ -189,8 +189,9 @@ class RewriteNchwConvolutionToNhwc
 
   // Permutes the shape according to the permutation. The size of `shape` and
   // `permutation` should be equal.
-  SmallVector<int64_t> PermuteShape(const ArrayRef<int64_t> shape,
-                                    const ArrayRef<int64_t> permutation) const {
+  SmallVector<int64_t, 4> PermuteShape(
+      const ArrayRef<int64_t> shape,
+      const ArrayRef<int64_t> permutation) const {
     const int64_t size = shape.size();
     SmallVector<int64_t, 4> after_shape(size);
     for (int i = 0; i < size; ++i) {

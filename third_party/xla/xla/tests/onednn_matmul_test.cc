@@ -511,7 +511,7 @@ TEST_F(MatmulTest, DivisionByConstantWithEltwiseLinearF32) {
   )");
 }
 
-TEST_F(MatmulTest, SimpleBiasTestFP16_PARAM_F32) {
+TEST_F(MatmulTest, SimpleBiasTestF16_PARAM_F32) {
   if (!IsSupportedType(PrimitiveType::F16)) {
     GTEST_SKIP() << "CPU does not support F16.";
   }
@@ -537,7 +537,7 @@ TEST_F(MatmulTest, SimpleBiasTestFP16_PARAM_F32) {
   MatchOptimizedHlo(matmul_module_str, fused_matmul_bias_);
 }
 
-TEST_F(MatmulTest, SimpleBiasTestFP16_PARAM_FP16) {
+TEST_F(MatmulTest, SimpleBiasTestF16_PARAM_F16) {
   if (!IsSupportedType(PrimitiveType::F16)) {
     GTEST_SKIP() << "CPU does not support F16.";
   }
