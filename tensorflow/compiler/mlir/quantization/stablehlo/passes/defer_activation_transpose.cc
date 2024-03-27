@@ -41,6 +41,7 @@ namespace mlir::quant::stablehlo {
 namespace {
 
 using ::mlir::stablehlo::AddOp;
+using ::mlir::stablehlo::BroadcastInDimOp;
 using ::mlir::stablehlo::MaxOp;
 using ::mlir::stablehlo::TransposeOp;
 
@@ -85,7 +86,19 @@ void DeferRhsTransposeForBinaryOp(OpT op, PatternRewriter& rewriter) {
   rewriter.replaceAllUsesWith(op.getResult(), output_transpose_op);
 }
 
-class RewriteAddWithActivationTranspose : public OpRewritePattern<AddOp> {
+// "Climbs up" the `op` if `op` is a `BraodcastInDimOp` and returns the defining
+// op of its operand. Returns `op` otherwise. May return `nullptr` when the
+// `BroadcastInDimOp`'s operand is a block argument.
+absl::Nullable<Operation*> SkipUpwardsOptionalBroadcastInDimOp(
+    absl::Nonnull<Operation*> op) {
+  if (auto broadcast_in_dim_op = dyn_cast_or_null<BroadcastInDimOp>(op);
+      broadcast_in_dim_op != nullptr) {
+    return broadcast_in_dim_op.getOperand().getDefiningOp();
+  }
+  return op;
+}
+
+class DeferActivationTransposeForAddOp : public OpRewritePattern<AddOp> {
  public:
   using OpRewritePattern<AddOp>::OpRewritePattern;
 
@@ -96,6 +109,11 @@ class RewriteAddWithActivationTranspose : public OpRewritePattern<AddOp> {
 
     const Value rhs = op.getOperand(1);
     Operation* rhs_op = rhs.getDefiningOp();
+    if (rhs_op == nullptr) return failure();
+
+    // Ignore the optional `BroadcastInDimOp` in between the constant and RHS.
+    rhs_op = SkipUpwardsOptionalBroadcastInDimOp(rhs_op);
+
     if (rhs_op == nullptr || !rhs_op->hasTrait<OpTrait::ConstantLike>()) {
       return failure();
     }
@@ -259,7 +277,7 @@ void DeferActivationTransposePass::runOnOperation() {
   MLIRContext& ctx = getContext();
 
   RewritePatternSet patterns(&ctx);
-  patterns.add<RewriteAddWithActivationTranspose,
+  patterns.add<DeferActivationTransposeForAddOp,
                DeferActivationTransposeForMaxPoolReduceWindowOp,
                DeferActivationTransposeForMaxOp>(&ctx);
   if (failed(applyPatternsAndFoldGreedily(func_op, std::move(patterns)))) {

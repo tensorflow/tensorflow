@@ -133,3 +133,39 @@ func.func @nchw_conv_with_bias_add_relu(%arg0: tensor<1x2x5x5xf32>) -> tensor<1x
 // CHECK: %[[MAX:.+]] = stablehlo.maximum %[[ADD]], %[[ZERO_CONST]] : tensor<1x5x5x4xf32>
 // CHECK: %[[TRANSPOSE_1:.+]] = stablehlo.transpose %[[MAX]], dims = [0, 3, 1, 2] : (tensor<1x5x5x4xf32>) -> tensor<1x4x5x5xf32>
 // CHECK: return %[[TRANSPOSE_1]]
+
+// -----
+
+// Tests that a `maximum(add(convolution(%activation, %weight), broadcast(%bias)
+// ), %zero)` with the activation tensor of NCHW format is converted to NHWC
+// convolution + add + maximum operation. Transpose ops are inserted to the
+// first activation, final output, and the bias constant (after the broadcast),
+// to match the function signature. Constants are also transpose-folded
+// accordingly.
+//
+// Note that the `transpose` after the `broadcast_in_dim` is not folded by the
+// `FoldConstantTransposePass`.
+
+// CHECK-LABEL: nchw_conv_with_broadcasted_bias_add_relu
+// CHECK-SAME: %[[ARG:.+]]: tensor<1x2x5x5xf32>
+func.func @nchw_conv_with_broadcasted_bias_add_relu(%arg0: tensor<1x2x5x5xf32>) -> tensor<1x4x5x5xf32> {
+  %0 = stablehlo.constant dense<2.000000e+00> : tensor<4x2x3x3xf32>  // weight
+  %1 = stablehlo.constant dense<3.000000e+00> : tensor<4xf32>  // bias
+  %2 = stablehlo.constant dense<0.000000e+00> : tensor<1x4x5x5xf32>  // relu
+  %3 = stablehlo.broadcast_in_dim %1, dims = [1] : (tensor<4xf32>) -> tensor<1x4x5x5xf32>
+  %4 = stablehlo.convolution(%arg0, %0) dim_numbers = [b, f, 0, 1]x[o, i, 0, 1]->[b, f, 0, 1], window = {pad = [[1, 1], [1, 1]]} {batch_group_count = 1 : i64, feature_group_count = 1 : i64} : (tensor<1x2x5x5xf32>, tensor<4x2x3x3xf32>) -> tensor<1x4x5x5xf32>
+  %5 = stablehlo.add %4, %3 : tensor<1x4x5x5xf32>
+  %6 = stablehlo.maximum %5, %2 : tensor<1x4x5x5xf32>
+  return %6 : tensor<1x4x5x5xf32>
+}
+// CHECK-DAG: %[[WEIGHT_CONST:.+]] = stablehlo.constant {{.*}} : tensor<3x3x2x4xf32>
+// CHECK-DAG: %[[ZERO_CONST:.+]] = stablehlo.constant {{.*}} : tensor<1x5x5x4xf32>
+// CHECK-DAG: %[[BIAS_CONST:.+]] = stablehlo.constant {{.*}} : tensor<4xf32>
+// CHECK-DAG: %[[BROADCAST_IN_DIM:.+]] = stablehlo.broadcast_in_dim %[[BIAS_CONST]], dims = [1] : (tensor<4xf32>) -> tensor<1x4x5x5xf32>
+// CHECK-DAG: %[[TRANSPOSE_0:.+]] = stablehlo.transpose %[[ARG]], dims = [0, 2, 3, 1] : (tensor<1x2x5x5xf32>) -> tensor<1x5x5x2xf32>
+// CHECK: %[[CONV:.+]] = stablehlo.convolution(%[[TRANSPOSE_0]], %[[WEIGHT_CONST]]) dim_numbers = [b, 0, 1, f]x[0, 1, i, o]->[b, 0, 1, f], window = {pad = {{\[\[}}1, 1], [1, 1]]} {batch_group_count = 1 : i64, feature_group_count = 1 : i64} : (tensor<1x5x5x2xf32>, tensor<3x3x2x4xf32>) -> tensor<1x5x5x4xf32>
+// CHECK: %[[TRANSPOSE_1:.+]] = stablehlo.transpose %[[BROADCAST_IN_DIM]], dims = [0, 2, 3, 1] : (tensor<1x4x5x5xf32>) -> tensor<1x5x5x4xf32>
+// CHECK: %[[ADD:.+]] = stablehlo.add %[[CONV]], %[[TRANSPOSE_1]] : tensor<1x5x5x4xf32>
+// CHECK: %[[MAX:.+]] = stablehlo.maximum %[[ADD]], %[[ZERO_CONST]] : tensor<1x5x5x4xf32>
+// CHECK: %[[TRANSPOSE_1:.+]] = stablehlo.transpose %[[MAX]], dims = [0, 3, 1, 2] : (tensor<1x5x5x4xf32>) -> tensor<1x4x5x5xf32>
+// CHECK: return %[[TRANSPOSE_1]]
