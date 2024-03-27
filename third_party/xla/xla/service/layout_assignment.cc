@@ -794,14 +794,17 @@ Status LayoutAssignment::AddMandatoryConstraints(
       const ComputationLayout& called_computation_layout =
           FindOrDie(computation_layouts_, instruction->to_apply())
               ->computation_layout();
-      TF_RETURN_IF_ERROR(SetInstructionLayout(
-          called_computation_layout.result_layout().shape(), instruction));
+      auto result_shape = UnShardedShape(
+          instruction, called_computation_layout.result_layout().shape(), -1);
+      TF_RETURN_IF_ERROR(SetInstructionLayout(result_shape, instruction));
       TF_RET_CHECK(instruction->operand_count() ==
                    called_computation_layout.parameter_count());
       for (int64_t i = 0; i < instruction->operand_count(); ++i) {
-        TF_RETURN_IF_ERROR(SetOperandLayout(
-            called_computation_layout.parameter_layout(i).shape(), instruction,
-            i, /*mandatory=*/true, /*dfs=*/true));
+        auto operand_shape = UnShardedShape(
+            instruction, called_computation_layout.parameter_layout(i).shape(),
+            i);
+        TF_RETURN_IF_ERROR(SetOperandLayout(operand_shape, instruction, i,
+                                            /*mandatory=*/true, /*dfs=*/true));
       }
     } else if (instruction->opcode() == HloOpcode::kWhile &&
                computation_layouts_.find(instruction->while_body()) !=
@@ -951,22 +954,6 @@ bool LayoutsInShapesEqual(const Shape& lhs, const Shape& rhs) {
   return Layout::Equal().MinorToMajorOnly()(lhs.layout(), rhs.layout());
 }
 
-// The operands of a call must match the layouts of parameters in the
-// ComputationLayout, and the call instruction itself must match the result
-// layout in the ComputationLayout.
-Status CheckCallLayout(HloInstruction* call,
-                       const ComputationLayout& computation_layout) {
-  HloComputation* computation = call->to_apply();
-  TF_RET_CHECK(computation->num_parameters() == call->operand_count());
-  for (int64_t i = 0; i < computation->num_parameters(); ++i) {
-    TF_RET_CHECK(computation_layout.parameter_layout(i).MatchesLayoutInShape(
-        call->operand(i)->shape(), /*minor_to_major_only=*/true));
-  }
-  TF_RET_CHECK(computation_layout.result_layout().MatchesLayoutInShape(
-      call->shape(), /*minor_to_major_only=*/true));
-  return OkStatus();
-}
-
 // Operands of layout-constrained custom calls must match the expected
 // constrained layouts.
 Status CheckCustomCallLayout(HloInstruction* instruction) {
@@ -1113,6 +1100,23 @@ Status CheckBroadcastLayout(HloInstruction* broadcast) {
 }
 
 }  // namespace
+
+// The operands of a call must match the layouts of parameters in the
+// ComputationLayout, and the call instruction itself must match the result
+// layout in the ComputationLayout.
+Status LayoutAssignment::CheckCallLayout(
+    HloInstruction* call, const ComputationLayout& computation_layout) {
+  HloComputation* computation = call->to_apply();
+  TF_RET_CHECK(computation->num_parameters() == call->operand_count());
+  for (int64_t i = 0; i < computation->num_parameters(); ++i) {
+    TF_RET_CHECK(computation_layout.parameter_layout(i).MatchesLayoutInShape(
+        ShardedShape(call, call->operand(i)->shape(), i),
+        /*minor_to_major_only=*/true));
+  }
+  TF_RET_CHECK(computation_layout.result_layout().MatchesLayoutInShape(
+      ShardedShape(call, call->shape(), -1), /*minor_to_major_only=*/true));
+  return OkStatus();
+}
 
 absl::StatusOr<HloInstruction*> LayoutAssignment::CreateCopyWithNewLayout(
     const Shape& shape_with_layout, HloInstruction* instruction) {
