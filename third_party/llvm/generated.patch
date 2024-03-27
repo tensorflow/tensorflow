@@ -1,1 +1,67 @@
 Auto generated patch. Do not edit or delete it, even if empty.
+diff -ruN --strip-trailing-cr a/clang/lib/AST/TypePrinter.cpp b/clang/lib/AST/TypePrinter.cpp
+--- a/clang/lib/AST/TypePrinter.cpp
++++ b/clang/lib/AST/TypePrinter.cpp
+@@ -2303,10 +2303,10 @@
+     } else {
+       if (!FirstArg)
+         OS << Comma;
+-        // Tries to print the argument with location info if exists.
+-        printArgument(Arg, Policy, ArgOS,
+-                      TemplateParameterList::shouldIncludeTypeForArgument(
+-                          Policy, TPL, ParmIndex));
++      // Tries to print the argument with location info if exists.
++      printArgument(Arg, Policy, ArgOS,
++                    TemplateParameterList::shouldIncludeTypeForArgument(
++                        Policy, TPL, ParmIndex));
+     }
+     StringRef ArgString = ArgOS.str();
+ 
+diff -ruN --strip-trailing-cr a/clang/unittests/AST/DeclPrinterTest.cpp b/clang/unittests/AST/DeclPrinterTest.cpp
+--- a/clang/unittests/AST/DeclPrinterTest.cpp
++++ b/clang/unittests/AST/DeclPrinterTest.cpp
+@@ -1391,7 +1391,7 @@
+                                       "struct X {};"
+                                       "Z<X> A;",
+                                       "A", "Z<X> A"));
+-  [](PrintingPolicy &Policy) { Policy.SuppressTagKeyword = false; };
++  (void)[](PrintingPolicy &Policy) { Policy.SuppressTagKeyword = false; };
+ }
+ 
+ TEST(DeclPrinter, TestCXXRecordDecl18) {
+@@ -1402,7 +1402,7 @@
+                                       "struct Y{};"
+                                       "Y<Z<X>, 2> B;",
+                                       "B", "Y<Z<X>, 2> B"));
+-  [](PrintingPolicy &Policy) { Policy.SuppressTagKeyword = false; };
++  (void)[](PrintingPolicy &Policy) { Policy.SuppressTagKeyword = false; };
+ }
+ 
+ TEST(DeclPrinter, TestCXXRecordDecl19) {
+@@ -1413,7 +1413,7 @@
+                                       "struct Y{};"
+                                       "Y<Z<X>, 2> B;",
+                                       "B", "Y<Z<X>, 2> B"));
+-  [](PrintingPolicy &Policy) { Policy.SuppressTagKeyword = true; };
++  (void)[](PrintingPolicy &Policy) { Policy.SuppressTagKeyword = true; };
+ }
+ TEST(DeclPrinter, TestCXXRecordDecl20) {
+   ASSERT_TRUE(PrintedDeclCXX98Matches(
+@@ -1432,7 +1432,7 @@
+       "Outer<Inner<int, 10>, 5>::NestedStruct nestedInstance(100);",
+       "nestedInstance",
+       "Outer<Inner<int, 10>, 5>::NestedStruct nestedInstance(100)"));
+-  [](PrintingPolicy &Policy) { Policy.SuppressTagKeyword = false; };
++  (void)[](PrintingPolicy &Policy) { Policy.SuppressTagKeyword = false; };
+ }
+ 
+ TEST(DeclPrinter, TestCXXRecordDecl21) {
+@@ -1452,7 +1452,7 @@
+       "Outer<Inner<int, 10>, 5>::NestedStruct nestedInstance(100);",
+       "nestedInstance",
+       "Outer<Inner<int, 10>, 5>::NestedStruct nestedInstance(100)"));
+-  [](PrintingPolicy &Policy) { Policy.SuppressTagKeyword = true; };
++  (void)[](PrintingPolicy &Policy) { Policy.SuppressTagKeyword = true; };
+ }
+ 
+ TEST(DeclPrinter, TestFunctionParamUglified) {
