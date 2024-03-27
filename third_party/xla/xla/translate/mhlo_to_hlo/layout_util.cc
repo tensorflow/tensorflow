@@ -105,6 +105,7 @@ absl::StatusOr<xla::XlaOp> ReshapeWithCorrectRepresentationAndSharding(
       to_shape.set_dynamic_dimension(i, original_shape.is_dynamic_dimension(i));
     }
   }
+  xla::XlaScopedShardingAssignment scoped_sharding(builder, sharding);
   return xla::Reshape(to_shape, original);
 }
 
