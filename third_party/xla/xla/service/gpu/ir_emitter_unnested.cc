@@ -1653,7 +1653,8 @@ absl::Status IrEmitterUnnested::EmitTritonCustomCall(
     TF_ASSIGN_OR_RETURN(
         auto kernel_arguments,
         KernelArguments::Create(ir_emitter_context_->buffer_assignment(), instr,
-                                instr->operands()));
+                                instr->operands(),
+                                /*dedup=*/false));
     auto launch_dimensions =
         LaunchDimensions(se::BlockDim(call.grid_x, call.grid_y, call.grid_z),
                          se::ThreadDim(call.num_warps * 32));
@@ -1696,7 +1697,8 @@ absl::Status IrEmitterUnnested::EmitTritonCustomCall(
   TF_ASSIGN_OR_RETURN(
       auto kernel_arguments,
       KernelArguments::Create(ir_emitter_context_->buffer_assignment(), instr,
-                              instr->operands()));
+                              instr->operands(),
+                              /*dedup=*/false));
 
   AddThunkToThunkSequence(std::make_unique<KernelThunk>(
       instr, entry->kernel_name, kernel_arguments.args(),
