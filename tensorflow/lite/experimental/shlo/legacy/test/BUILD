@@ -8,6 +8,7 @@ cc_library(
         "//tensorflow/lite/experimental/shlo/legacy:debug",
         "@com_google_googletest//:gtest_main",
     ],
+    tags = ["no_oss"],
 )
 
 cc_library(
@@ -23,6 +24,7 @@ cc_library(
         "//tensorflow/lite/experimental/shlo/legacy:shlo",
         "@com_google_absl//absl/log:check",
     ],
+    tags = ["no_oss"],
 )
 
 cc_test(
@@ -39,6 +41,7 @@ cc_test(
         "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest_main",
     ],
+    tags = ["no_oss"],
 )
 
 cc_test(
@@ -54,6 +57,7 @@ cc_test(
         "//tensorflow/lite/experimental/shlo/legacy:shlo",
         "@com_google_googletest//:gtest_main",
     ],
+    tags = ["no_oss"],
 )
 
 cc_test(
@@ -69,6 +73,7 @@ cc_test(
         "//tensorflow/lite/experimental/shlo/legacy:shlo",
         "@com_google_googletest//:gtest_main",
     ],
+    tags = ["no_oss"],
 )
 
 cc_test(
@@ -85,6 +90,7 @@ cc_test(
         "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest_main",
     ],
+    tags = ["no_oss"],
 )
 
 cc_test(
@@ -102,6 +108,7 @@ cc_test(
         "@com_google_absl//absl/status",
         "@com_google_googletest//:gtest_main",
     ],
+    tags = ["no_oss"],
 )
 
 cc_test(
@@ -119,6 +126,7 @@ cc_test(
         "@com_google_absl//absl/status",
         "@com_google_googletest//:gtest_main",
     ],
+    tags = ["no_oss"],
 )
 
 cc_test(
@@ -134,6 +142,7 @@ cc_test(
         "//tensorflow/lite/experimental/shlo/legacy:shlo",
         "@com_google_googletest//:gtest_main",
     ],
+    tags = ["no_oss"],
 )
 
 cc_test(
@@ -148,6 +157,7 @@ cc_test(
         "//tensorflow/lite/experimental/shlo/legacy:shlo",
         "@com_google_googletest//:gtest_main",
     ],
+    tags = ["no_oss"],
 )
 
 cc_test(
@@ -163,6 +173,7 @@ cc_test(
         "//tensorflow/lite/experimental/shlo/legacy:shlo",
         "@com_google_googletest//:gtest_main",
     ],
+    tags = ["no_oss"],
 )
 
 cc_test(
@@ -178,4 +189,5 @@ cc_test(
         "//tensorflow/lite/experimental/shlo/legacy:shlo",
         "@com_google_googletest//:gtest_main",
     ],
+    tags = ["no_oss"],
 )

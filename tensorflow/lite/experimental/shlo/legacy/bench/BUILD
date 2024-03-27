@@ -10,6 +10,7 @@ cc_library(
     deps = [
         "//tensorflow/lite/experimental/shlo/legacy:float",
     ],
+    tags = ["no_oss"],
 )
 
 cc_binary(
@@ -26,6 +27,7 @@ cc_binary(
         "@com_google_absl//absl/status",
         "@com_google_benchmark//:benchmark",
     ],
+    tags = ["no_oss"],
 )
 
 cc_binary(
@@ -42,4 +44,5 @@ cc_binary(
         "@com_google_absl//absl/log",
         "@com_google_benchmark//:benchmark",
     ],
+    tags = ["no_oss"],
 )
