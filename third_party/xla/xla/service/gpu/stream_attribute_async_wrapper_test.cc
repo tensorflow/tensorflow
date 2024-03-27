@@ -40,7 +40,7 @@ TEST_F(StreamAttributeAsyncWrapperTest, NonDefaultOpIsWrapped) {
   ENTRY entry {
     p1_32 = f32[1] parameter(0)
     p2_32 = f32[1] parameter(1)
-    add_32 = f32[1] add(p1_32, p2_32), backend_config={"operation_queue_id":"1", "wait_on_operation_queues":[]}
+    add_32 = f32[1] add(p1_32, p2_32), backend_config={"operation_queue_id":"1", "wait_on_operation_queues":[], "force_earliest_schedule":true}
     ROOT exp_32 = f32[1] exponential(add_32), backend_config={"operation_queue_id":"0", "wait_on_operation_queues":[1]}
   }
   )";
@@ -55,6 +55,11 @@ TEST_F(StreamAttributeAsyncWrapperTest, NonDefaultOpIsWrapped) {
   const HloInstruction* producer =
       module->entry_computation()->root_instruction()->operand(0);
   EXPECT_EQ(producer->opcode(), HloOpcode::kAsyncDone);
+  // Verify that the force_earliest_schedule is set to false for the done op.
+  TF_ASSERT_OK_AND_ASSIGN(GpuBackendConfig done_gpu_config,
+                          producer->backend_config<GpuBackendConfig>());
+  EXPECT_EQ(done_gpu_config.force_earliest_schedule(), false);
+
   const HloInstruction* producer_start = producer->operand(0);
   EXPECT_EQ(producer_start->opcode(), HloOpcode::kAsyncStart);
 
@@ -65,6 +70,7 @@ TEST_F(StreamAttributeAsyncWrapperTest, NonDefaultOpIsWrapped) {
   TF_ASSERT_OK_AND_ASSIGN(GpuBackendConfig gpu_config,
                           async->backend_config<GpuBackendConfig>());
   EXPECT_EQ(gpu_config.operation_queue_id(), 1);
+  EXPECT_EQ(gpu_config.force_earliest_schedule(), true);
   EXPECT_EQ(async->async_execution_thread(), "parallel");
 }
 }  // namespace
