@@ -84,8 +84,8 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/transforms/mark_initialized_variables.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/tf_saved_model_passes.h"
-#include "tensorflow/compiler/mlir/tensorflow/translate/mlir_import_options.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/mlir_roundtrip_flags.h"
+#include "tensorflow/compiler/mlir/tensorflow/translate/saved_model_import_options.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/upgrade_graph.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_attr.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_tensor.h"
@@ -2791,7 +2791,7 @@ class SavedModelObjectGraphImporter : public ImporterBase {
   // Module.
   static absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> Convert(
       SavedModelV2Bundle* saved_model, absl::Span<std::string> exported_names,
-      mlir::MLIRContext* context, MLIRImportOptions options);
+      mlir::MLIRContext* context, SavedModelImportOptions options);
 
  private:
   explicit SavedModelObjectGraphImporter(
@@ -3345,7 +3345,7 @@ Status CreateSavedModelIR(
     const ObjectNames& object_names, mlir::ModuleOp module,
     const SavedObjectGraph& object_graph,
     const std::unordered_map<std::string, std::string>& tf_name_to_mlir_name,
-    SavedModelV2Bundle* saved_model, MLIRImportOptions import_options) {
+    SavedModelV2Bundle* saved_model, SavedModelImportOptions import_options) {
   mlir::OpBuilder builder(module.getBodyRegion());
   mlir::SymbolTable symbol_table(module);
 
@@ -3562,7 +3562,7 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>>
 SavedModelObjectGraphImporter::Convert(SavedModelV2Bundle* saved_model,
                                        absl::Span<std::string> exported_names,
                                        mlir::MLIRContext* context,
-                                       MLIRImportOptions import_options) {
+                                       SavedModelImportOptions import_options) {
   LoadImporterDialects(*context);
   GraphDebugInfo dummy_debug_info;
   const GraphDebugInfo& debug_info =
@@ -3641,7 +3641,7 @@ SavedModelObjectGraphImporter::Convert(SavedModelV2Bundle* saved_model,
 class SimpleSavedModelMLIRImportInput : public SavedModelMLIRImportInput {
  public:
   static absl::StatusOr<SimpleSavedModelMLIRImportInput> Create(
-      const MLIRImportOptions& import_options,
+      const SavedModelImportOptions& import_options,
       const MetaGraphDef* meta_graph_def, const GraphDebugInfo& debug_info) {
     DCHECK(meta_graph_def);
     GraphDef graph_def(meta_graph_def->graph_def());
@@ -4183,7 +4183,7 @@ class SavedModelSignatureDefImporter {
   static absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> Convert(
       const SavedModelBundle& bundle,
       std::optional<absl::Span<const std::string>> exported_names,
-      mlir::MLIRContext* context, tensorflow::MLIRImportOptions options) {
+      mlir::MLIRContext* context, tensorflow::SavedModelImportOptions options) {
     // debug_info might not be loaded with loader_lite.
     GraphDebugInfo debug_info;
     if (bundle.debug_info != nullptr) debug_info = *bundle.debug_info;
@@ -4348,14 +4348,14 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ConvertFunctionToMlir(
 
 absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ConvertSavedModelToMlir(
     SavedModelV2Bundle* saved_model, mlir::MLIRContext* context,
-    absl::Span<std::string> exported_names, MLIRImportOptions options) {
+    absl::Span<std::string> exported_names, SavedModelImportOptions options) {
   return SavedModelObjectGraphImporter::Convert(saved_model, exported_names,
                                                 context, options);
 }
 
 absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ConvertSavedModelV1ToMlir(
     const SavedModelBundle& saved_model, absl::Span<std::string> exported_names,
-    mlir::MLIRContext* context, MLIRImportOptions options) {
+    mlir::MLIRContext* context, SavedModelImportOptions options) {
   std::optional<absl::Span<const std::string>> optional_exported_names;
   // TODO(b/187062560): Change ConvertSavedModelV1ToMlir() to take an optional
   // `exported_names` so that it can be configured to import only restore/init
@@ -4368,7 +4368,7 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ConvertSavedModelV1ToMlir(
 absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ConvertSavedModelV1ToMlirLite(
     const MetaGraphDef& meta_graph_def, const GraphDebugInfo& debug_info,
     std::optional<absl::Span<const std::string>> exported_names,
-    mlir::MLIRContext* context, MLIRImportOptions options) {
+    mlir::MLIRContext* context, SavedModelImportOptions options) {
   TF_ASSIGN_OR_RETURN(auto input, SimpleSavedModelMLIRImportInput::Create(
                                       options, &meta_graph_def, debug_info));
   return ConvertSavedModelV1ToMlirLite(

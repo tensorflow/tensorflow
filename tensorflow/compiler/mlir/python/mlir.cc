@@ -55,6 +55,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/transforms/tf_saved_model_passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/import_model.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/mlir_roundtrip_flags.h"
+#include "tensorflow/compiler/mlir/tensorflow/translate/saved_model_import_options.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/tf_mlir_translate.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/import_utils.h"
@@ -275,7 +276,7 @@ std::string ExperimentalConvertSavedModelV1ToMlirLite(
   mlir::func::registerAllExtensions(registry);
   mlir::MLIRContext context(registry);
 
-  tensorflow::MLIRImportOptions import_options;
+  tensorflow::SavedModelImportOptions import_options;
   import_options.upgrade_legacy = upgrade_legacy;
   auto module_or = SavedModelSignatureDefsToMlirImportLite(
       saved_model_path, tag_set, absl::Span<std::string>(exported_names),
@@ -312,7 +313,7 @@ std::string ExperimentalConvertSavedModelV1ToMlir(
   mlir::DialectRegistry registry;
   mlir::func::registerAllExtensions(registry);
   mlir::MLIRContext context(registry);
-  tensorflow::MLIRImportOptions import_options;
+  tensorflow::SavedModelImportOptions import_options;
   import_options.upgrade_legacy = upgrade_legacy;
   import_options.lift_variables = lift_variables;
   import_options.include_variables_in_initializers =

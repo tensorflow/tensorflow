@@ -13,16 +13,12 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPILER_MLIR_TENSORFLOW_TRANSLATE_MLIR_IMPORT_OPTIONS_H_
-#define TENSORFLOW_COMPILER_MLIR_TENSORFLOW_TRANSLATE_MLIR_IMPORT_OPTIONS_H_
+#ifndef TENSORFLOW_COMPILER_MLIR_TENSORFLOW_TRANSLATE_SAVED_MODEL_IMPORT_OPTIONS_H_
+#define TENSORFLOW_COMPILER_MLIR_TENSORFLOW_TRANSLATE_SAVED_MODEL_IMPORT_OPTIONS_H_
 
 namespace tensorflow {
 
-// TODO(jpienaar): This file and class are confusingly named. This seems to be
-// a SavedModel only import options file that exposes a subset of the
-// GraphImportConfig options, but the naming would make one think it is more
-// general.
-struct MLIRImportOptions {
+struct SavedModelImportOptions {
   // If true, functionalize the input graph before importing it into MLIR.
   bool upgrade_legacy = false;
 
@@ -53,4 +49,4 @@ struct MLIRImportOptions {
 
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_COMPILER_MLIR_TENSORFLOW_TRANSLATE_MLIR_IMPORT_OPTIONS_H_
+#endif  // TENSORFLOW_COMPILER_MLIR_TENSORFLOW_TRANSLATE_SAVED_MODEL_IMPORT_OPTIONS_H_

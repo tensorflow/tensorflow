@@ -68,8 +68,8 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_executor.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/tf_saved_model_freeze_variables.h"
-#include "tensorflow/compiler/mlir/tensorflow/translate/mlir_import_options.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/mlir_roundtrip_flags.h"
+#include "tensorflow/compiler/mlir/tensorflow/translate/saved_model_import_options.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/tf_mlir_translate.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
 #include "tensorflow/core/framework/op.h"
@@ -551,7 +551,7 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ImportSavedModel(
     if (!module_or.status().ok()) return module_or.status();
     return std::move(module_or).value();
   } else if (saved_model_version == 1) {
-    MLIRImportOptions options;
+    SavedModelImportOptions options;
     options.upgrade_legacy = specs.upgrade_legacy;
     options.unconditionally_use_set_output_shapes = true;
     options.lift_variables = enable_variable_lifting;

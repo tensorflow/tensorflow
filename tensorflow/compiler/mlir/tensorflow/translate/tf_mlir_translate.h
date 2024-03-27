@@ -28,7 +28,7 @@ limitations under the License.
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "tensorflow/cc/saved_model/loader.h"
-#include "tensorflow/compiler/mlir/tensorflow/translate/mlir_import_options.h"
+#include "tensorflow/compiler/mlir/tensorflow/translate/saved_model_import_options.h"
 
 namespace tensorflow {
 
@@ -116,7 +116,7 @@ SavedModelSignatureDefsToMlirImport(
     absl::string_view saved_model_dir,
     const std::unordered_set<std::string>& tags,
     absl::Span<std::string> exported_names, mlir::MLIRContext* context,
-    MLIRImportOptions options,
+    SavedModelImportOptions options,
     std::unique_ptr<tensorflow::SavedModelBundle>* saved_model_bundle =
         nullptr);
 
@@ -129,7 +129,7 @@ SavedModelSignatureDefsToMlirImportLite(
     absl::string_view saved_model_dir,
     const std::unordered_set<std::string>& tags,
     absl::Span<std::string> exported_names, mlir::MLIRContext* context,
-    MLIRImportOptions options);
+    SavedModelImportOptions options);
 
 }  // namespace tensorflow
 

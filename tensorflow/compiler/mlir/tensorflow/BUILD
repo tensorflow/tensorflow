@@ -1666,7 +1666,7 @@ aliased_targets = [
     "export_tf_dialect_op",
     "translate_tf_dialect_op",
     "mlir_roundtrip_flags",
-    "mlir_import_options",
+    "saved_model_import_options",
     "translate_lib",
     "translate_cl_options",
     "translate_registration",

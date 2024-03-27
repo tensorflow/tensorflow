@@ -338,6 +338,9 @@ class TypedKernel {
 
   operator bool() const { return static_cast<bool>(kernel_); }  // NOLINT
 
+  // Type of factory used to create a TypedKernel.
+  using FactoryType = TypedKernelFactory<Params...>;
+
  private:
   friend class TypedKernelFactory<Params...>;
   explicit TypedKernel(std::unique_ptr<Kernel> kernel)

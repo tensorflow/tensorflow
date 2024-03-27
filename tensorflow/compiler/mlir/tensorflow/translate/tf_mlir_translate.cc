@@ -33,6 +33,7 @@ limitations under the License.
 #include "tensorflow/cc/saved_model/reader.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/import_model.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/mlir_roundtrip_flags.h"
+#include "tensorflow/compiler/mlir/tensorflow/translate/saved_model_import_options.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/import_utils.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/mangling_util.h"
@@ -165,7 +166,7 @@ SavedModelObjectGraphToMlirImport(absl::string_view saved_model_dir,
     return load_status;
   }
 
-  MLIRImportOptions options;
+  SavedModelImportOptions options;
   options.add_default_attributes = true;
   options.unconditionally_use_set_output_shapes =
       unconditionally_use_set_output_shapes;
@@ -183,7 +184,7 @@ SavedModelSignatureDefsToMlirImport(
     absl::string_view saved_model_dir,
     const std::unordered_set<std::string>& tags,
     absl::Span<std::string> exported_names, mlir::MLIRContext* context,
-    MLIRImportOptions options,
+    SavedModelImportOptions options,
     std::unique_ptr<tensorflow::SavedModelBundle>* saved_model_bundle) {
   // Create local bundle if no one is provided to use.
   std::unique_ptr<tensorflow::SavedModelBundle> bundle;
@@ -220,7 +221,7 @@ SavedModelSignatureDefsToMlirImportLite(
     absl::string_view saved_model_dir,
     const std::unordered_set<std::string>& tags,
     absl::Span<std::string> exported_names, mlir::MLIRContext* context,
-    MLIRImportOptions options) {
+    SavedModelImportOptions options) {
   MetaGraphDef meta_graph_def;
   auto status =
       ReadMetaGraphDefFromSavedModel(saved_model_dir, tags, &meta_graph_def);

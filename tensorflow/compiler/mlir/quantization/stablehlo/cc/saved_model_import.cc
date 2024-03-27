@@ -39,7 +39,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/quantization/stablehlo/cc/types.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/quantization_config.pb.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/quantize_preprocess.h"
-#include "tensorflow/compiler/mlir/tensorflow/translate/mlir_import_options.h"
+#include "tensorflow/compiler/mlir/tensorflow/translate/saved_model_import_options.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/tf_mlir_translate.h"
 #include "tensorflow/core/protobuf/meta_graph.pb.h"
 #include "tsl/platform/errors.h"
@@ -48,8 +48,8 @@ limitations under the License.
 namespace mlir::quant::stablehlo {
 
 using ::stablehlo::quantization::QuantizationConfig;
-using ::tensorflow::MLIRImportOptions;
 using ::tensorflow::SavedModelBundle;
+using ::tensorflow::SavedModelImportOptions;
 using ::tensorflow::SavedModelSignatureDefsToMlirImport;
 using ::tensorflow::quantization::PreprocessAndFreezeGraph;
 
@@ -58,7 +58,7 @@ absl::StatusOr<ImportedMlirModuleOp> SavedModelToMlirModuleOp(
     const std::unordered_set<std::string>& tags,
     const std::vector<std::string>& signature_keys,
     MLIRContext& ctx ABSL_ATTRIBUTE_LIFETIME_BOUND) {
-  MLIRImportOptions import_options;
+  SavedModelImportOptions import_options;
   import_options.upgrade_legacy = true;
   import_options.lift_variables = false;
   import_options.include_variables_in_initializers = true;

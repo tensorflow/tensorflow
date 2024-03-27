@@ -46,6 +46,7 @@ cc_library(
         "//tensorflow/c/eager:c_api",
         "//tensorflow/c/eager:tfe_context_internal",
         "@local_xla//xla/mlir/framework/transforms:passes",
+        "//tensorflow/compiler/mlir/tensorflow/translate:saved_model_import_options",
         "@local_xla//xla/mlir_hlo:all_passes",
         "//tensorflow/compiler/mlir/lite:flatbuffer_import",
         "//tensorflow/compiler/mlir/lite:tensorflow_lite",
