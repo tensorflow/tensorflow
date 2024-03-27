@@ -574,15 +574,11 @@ HloInstructionIndexing ComputeInputToOutputReduceOpIndexing(
   return instr_indexing;
 }
 
-// Indexing for reduce-window with dilations and non-trivial padding can be
-// represented as a composition of pad op and reduce-window that never goes out
-// of bounds.
-HloInstructionIndexing ComputeOutputToInputReduceWindowOpIndexing(
-    const HloReduceWindowInstruction* reduce_window, int output_id,
+IndexingMap ComposeIndexingMapsForWindow(
+    absl::Span<const int64_t> input_dimensions,
+    absl::Span<const int64_t> output_dimensions, const Window& window,
     MLIRContext* mlir_context) {
-  const Shape& input_shape = reduce_window->operand(0)->shape();
-  const Shape& output_shape = GetOutputShape(reduce_window, 0);
-  int64_t rank = input_shape.rank();
+  size_t rank = input_dimensions.size();
 
   // Compute shape of the padded input and the indexing map of pad op required
   // to pad the input.
@@ -599,23 +595,22 @@ HloInstructionIndexing ComputeOutputToInputReduceWindowOpIndexing(
   dim_vars.reserve(rank);
   range_vars.reserve(rank);
   for (const auto& [dim_id, window_config] :
-       llvm::enumerate(reduce_window->window().dimensions())) {
+       llvm::enumerate(window.dimensions())) {
     padding_low.push_back(window_config.padding_low());
     padding_high.push_back(window_config.padding_high());
     // For some reason interior_padding in HLO pad is offset from base_dilations
     // in HLO reduce-window by 1.
     padding_interior.push_back(window_config.base_dilation() - 1);
-    padded_input_dimensions.push_back(input_shape.dimensions(dim_id) +
-                                      window_config.padding_low() +
-                                      window_config.padding_high() +
-                                      (input_shape.dimensions(dim_id) - 1) *
-                                          (window_config.base_dilation() - 1));
+    padded_input_dimensions.push_back(
+        input_dimensions[dim_id] + window_config.padding_low() +
+        window_config.padding_high() +
+        (input_dimensions[dim_id] - 1) * (window_config.base_dilation() - 1));
     AffineExpr dim_expr = getAffineDimExpr(dim_id, mlir_context);
     AffineExpr symbol_expr = getAffineSymbolExpr(dim_id, mlir_context);
 
     exprs.push_back(symbol_expr * window_config.window_dilation() +
                     window_config.stride() * dim_expr);
-    dim_vars.push_back({Interval{0, output_shape.dimensions(dim_id) - 1}});
+    dim_vars.push_back({Interval{0, output_dimensions[dim_id] - 1}});
     range_vars.push_back({Interval{0, window_config.size() - 1}});
   }
   // Indexing map for pad op that pads the input.
@@ -623,15 +618,31 @@ HloInstructionIndexing ComputeOutputToInputReduceWindowOpIndexing(
       padded_input_dimensions, padding_low, padding_high, padding_interior,
       mlir_context);
   // Indexing map for reduce-window, that does not do any padding.
-  IndexingMap reduce_window_indexing_no_padding(
+  IndexingMap input_indexing_no_padding(
       AffineMap::get(rank, rank, exprs, mlir_context), dim_vars, range_vars,
       /*rt_vars=*/{});
 
   // Composed indexing.
-  IndexingMap inputs_indexing = ComposeIndexingMaps(
-      reduce_window_indexing_no_padding, padded_input_indexing);
-  inputs_indexing.Simplify();
-  inputs_indexing.RemoveUnusedSymbols();
+  IndexingMap result =
+      ComposeIndexingMaps(input_indexing_no_padding, padded_input_indexing);
+  result.Simplify();
+  result.RemoveUnusedSymbols();
+  return result;
+}
+
+// Indexing for reduce-window with dilations and non-trivial padding can be
+// represented as a composition of pad op and reduce-window that never goes out
+// of bounds.
+HloInstructionIndexing ComputeOutputToInputReduceWindowOpIndexing(
+    const HloReduceWindowInstruction* reduce_window, int output_id,
+    MLIRContext* mlir_context) {
+  const Shape& input_shape = reduce_window->operand(0)->shape();
+  const Shape& output_shape = GetOutputShape(reduce_window, 0);
+
+  // Indexing map for the input value.
+  IndexingMap inputs_indexing = ComposeIndexingMapsForWindow(
+      input_shape.dimensions(), output_shape.dimensions(),
+      reduce_window->window(), mlir_context);
 
   // Indexing map for the init value.
   IndexingMap inits_indexing_map = IndexingMap::FromTensorSizes(
@@ -648,6 +659,119 @@ HloInstructionIndexing ComputeOutputToInputReduceWindowOpIndexing(
     instr_indexing.indexing_maps[id].insert(inits_indexing_map);
   }
   return instr_indexing;
+}
+
+HloInstructionIndexing ComputeOutputToInputConvolutionOpIndexing(
+    const HloConvolutionInstruction* convolution, MLIRContext* mlir_context) {
+  const Shape& input_shape = convolution->operand(0)->shape();
+  const Shape& kernel_shape = convolution->operand(1)->shape();
+  const Shape& output_shape = convolution->shape();
+  const ConvolutionDimensionNumbers& dnums =
+      convolution->convolution_dimension_numbers();
+  size_t rank = output_shape.rank();
+
+  // Collect sizes for input/output spatial dimensions.
+  size_t spatial_rank = rank - 2;
+  std::vector<int64_t> input_spatial_sizes(spatial_rank);
+  std::vector<int64_t> kernel_spatial_sizes(spatial_rank);
+  std::vector<int64_t> output_spatial_sizes(spatial_rank);
+  for (int i = 0; i < spatial_rank; ++i) {
+    input_spatial_sizes[i] =
+        input_shape.dimensions(dnums.input_spatial_dimensions(i));
+    kernel_spatial_sizes[i] =
+        kernel_shape.dimensions(dnums.kernel_spatial_dimensions(i));
+    output_spatial_sizes[i] =
+        output_shape.dimensions(dnums.output_spatial_dimensions(i));
+  }
+
+  // Indexing map for the input value (spatial dimensions only).
+  // The dimension numbers in the resulting affine expressions have to be
+  // remapped to correspond to the correct output dimensions.
+  IndexingMap input_spatial_indexing =
+      ComposeIndexingMapsForWindow(input_spatial_sizes, output_spatial_sizes,
+                                   convolution->window(), mlir_context);
+  std::vector<AffineExpr> replacement_dims(spatial_rank);
+  for (int i = 0; i < spatial_rank; ++i) {
+    replacement_dims[i] =
+        getAffineDimExpr(dnums.output_spatial_dimensions(i), mlir_context);
+  }
+
+  // Build affine expressions and constraints for input spatial dimensions.
+  std::vector<AffineExpr> input_exprs(rank);
+  for (int i = 0; i < spatial_rank; ++i) {
+    input_exprs[dnums.input_spatial_dimensions(i)] =
+        input_spatial_indexing.GetAffineMap().getResult(i).replaceDims(
+            replacement_dims);
+  }
+  llvm::DenseMap<AffineExpr, Interval> input_constraints;
+  for (const auto& [key, val] : input_spatial_indexing.GetConstraints()) {
+    input_constraints[key.replaceDims(replacement_dims)] = val;
+  }
+
+  // Build affine expressions for kernel spatial and output dimensions.
+  std::vector<AffineExpr> kernel_exprs(rank);
+  for (int i = 0; i < spatial_rank; ++i) {
+    kernel_exprs[dnums.kernel_spatial_dimensions(i)] =
+        getAffineSymbolExpr(i, mlir_context);
+  }
+  kernel_exprs[dnums.kernel_output_feature_dimension()] =
+      getAffineDimExpr(dnums.output_feature_dimension(), mlir_context);
+
+  // Build initial symbol ranges.
+  std::vector<RangeVar> input_symbols = input_spatial_indexing.GetRangeVars();
+  std::vector<RangeVar> kernel_symbols =
+      RangeVarsFromTensorSizes(kernel_spatial_sizes);
+
+  // Add symbol for input feature dimension.
+  input_exprs[dnums.input_feature_dimension()] =
+      getAffineSymbolExpr(input_symbols.size(), mlir_context);
+  kernel_exprs[dnums.kernel_input_feature_dimension()] =
+      getAffineSymbolExpr(kernel_symbols.size(), mlir_context);
+
+  int64_t input_group_size =
+      kernel_shape.dimensions(dnums.kernel_input_feature_dimension());
+  Interval input_feature_range{0, input_group_size - 1};
+  input_symbols.push_back({input_feature_range});
+  kernel_symbols.push_back({input_feature_range});
+
+  // With multiple feature groups, the input feature dimension is equally split.
+  if (convolution->feature_group_count() > 1) {
+    AffineExpr& input_feature = input_exprs[dnums.input_feature_dimension()];
+    AffineExpr dim_expr =
+        getAffineDimExpr(dnums.output_feature_dimension(), mlir_context);
+    input_feature =
+        dim_expr.floorDiv(input_group_size) * input_group_size + input_feature;
+  }
+
+  // With multiple batch groups, the input batch dimension is equally split.
+  AffineExpr batch_dim_expr =
+      getAffineDimExpr(dnums.output_batch_dimension(), mlir_context);
+  if (convolution->batch_group_count() > 1) {
+    int64_t batch_group_size =
+        output_shape.dimensions(dnums.output_batch_dimension());
+    AffineExpr batch_group_expr =
+        getAffineSymbolExpr(input_symbols.size(), mlir_context);
+    input_symbols.push_back({{0, convolution->batch_group_count() - 1}});
+    input_exprs[dnums.input_batch_dimension()] =
+        batch_group_expr * batch_group_size + batch_dim_expr;
+  } else {
+    input_exprs[dnums.input_batch_dimension()] = batch_dim_expr;
+  }
+
+  // Indexing map for the input value.
+  IndexingMap inputs_indexing(
+      AffineMap::get(rank, input_symbols.size(), input_exprs, mlir_context),
+      DimVarsFromTensorSizes(output_shape.dimensions()), input_symbols,
+      /*rt_vars=*/{}, input_constraints);
+
+  // Indexing map for the kernel value.
+  IndexingMap kernel_indexing(
+      AffineMap::get(rank, kernel_symbols.size(), kernel_exprs, mlir_context),
+      DimVarsFromTensorSizes(output_shape.dimensions()), kernel_symbols,
+      /*rt_vars=*/{});
+
+  return HloInstructionIndexing::FromIndexingMaps(
+      {inputs_indexing, kernel_indexing});
 }
 
 // Computes strides for a shape.
@@ -1303,6 +1427,9 @@ HloInstructionIndexing ComputeOutputToInputIndexing(const HloInstruction* instr,
   if (auto reduce_window = DynCast<HloReduceWindowInstruction>(instr)) {
     return ComputeOutputToInputReduceWindowOpIndexing(reduce_window, output_id,
                                                       ctx);
+  }
+  if (auto convolution = DynCast<HloConvolutionInstruction>(instr)) {
+    return ComputeOutputToInputConvolutionOpIndexing(convolution, ctx);
   }
   if (auto reshape = DynCast<HloReshapeInstruction>(instr)) {
     return ComputeOutputToInputReshapeOpIndexing(reshape, ctx);
