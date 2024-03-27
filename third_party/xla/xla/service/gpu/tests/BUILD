@@ -793,6 +793,9 @@ lit_test_suite(
     ],
     default_tags = tf_cuda_tests_tags(),
     tags_override = {
+        "add_preds.hlo": ["no_rocm"],
+        "fused_scatter.hlo": ["no_rocm"],
+        "launch_dimensions.hlo": ["no_rocm"],
         "reduction_vectorization_sm_all.hlo": ["no_rocm"],
         "element_wise_row_vectorization.hlo": ["no_rocm"],
         "single_instruction.hlo": ["no_rocm"],
