@@ -4,13 +4,13 @@
 #   The libraries in this package are not allowed to have ANY dependencies
 #   to other TF components outside of TSL.
 
-load("//tsl:tsl.bzl", "internal_visibility")
-load("//tsl:tsl.default.bzl", "get_compatible_with_portable")
-load("//tsl/platform:build_config.bzl", "tsl_cc_test")
 load(
     "@local_tsl//tsl/platform:rules_cc.bzl",
     "cc_library",
 )
+load("//tsl:tsl.bzl", "internal_visibility")
+load("//tsl:tsl.default.bzl", "get_compatible_with_portable")
+load("//tsl/platform:build_config.bzl", "tsl_cc_test")
 
 # TODO(rdzhabarov): Tighten visibility after migration is complete.
 package(
