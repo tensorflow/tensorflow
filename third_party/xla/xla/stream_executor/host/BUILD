@@ -76,6 +76,40 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "host_kernel_c_api",
+    hdrs = ["host_kernel_c_api.h"],
+)
+
+cc_library(
+    name = "host_kernel",
+    srcs = ["host_kernel.cc"],
+    hdrs = ["host_kernel.h"],
+    deps = [
+        ":host_kernel_c_api",
+        "//xla/stream_executor",
+        "//xla/stream_executor:device_memory",
+        "//xla/stream_executor:stream_executor_internal",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/types:span",
+    ],
+)
+
+xla_cc_test(
+    name = "host_kernel_test",
+    srcs = ["host_kernel_test.cc"],
+    deps = [
+        ":host_kernel",
+        ":host_kernel_c_api",
+        "//xla/stream_executor",
+        "//xla/stream_executor:device_memory",
+        "@local_tsl//tsl/lib/core:status_test_util",
+        "@local_tsl//tsl/platform:test",
+        "@local_tsl//tsl/platform:test_main",
+    ],
+)
+
 # TODO(22689637): Rename this target.
 cc_library(
     name = "host_gpu_executor",
