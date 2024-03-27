@@ -56,9 +56,7 @@ cc_library(
     name = "parallel_device",
     srcs = [":device_sources"],
     hdrs = [":device_headers"],
-    visibility = [
-        "//visibility:private",  # Only private by automation, not intent. Owner may accept CLs adding visibility. See go/scheuklappen#explicit-private.
-    ],
+    visibility = ["//visibility:private"],
     deps = [
         ":parallel_device_lib",
         "//tensorflow/c:c_api",
