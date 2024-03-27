@@ -1,5 +1,9 @@
 load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
 load(
+    "@local_config_rocm//rocm:build_defs.bzl",
+    "if_rocm",
+)
+load(
     "//tensorflow:tensorflow.bzl",
     "check_deps",
     "tf_cc_test",
@@ -23,10 +27,6 @@ load(
 load(
     "//tensorflow/core/platform:rules_cc.bzl",
     "cc_library",
-)
-load(
-    "@local_config_rocm//rocm:build_defs.bzl",
-    "if_rocm",
 )
 
 default_package_visibility = [

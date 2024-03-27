@@ -1,3 +1,4 @@
+# buildifier: disable=load-on-top
 workspace(name = "tsl")
 
 # Initialize the TSL repository and all dependencies.

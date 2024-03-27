@@ -1,6 +1,6 @@
 # copybara:uncomment_begin(oss-unused)
-# load("//net/grpc/go/build_defs:go_grpc_library.bzl", "go_grpc_library")
 # load("//net/grpc:cc_grpc_library.bzl", "cc_grpc_library")
+# load("//net/grpc/go/build_defs:go_grpc_library.bzl", "go_grpc_library")
 # copybara:uncomment_end
 
 # For platform specific build config

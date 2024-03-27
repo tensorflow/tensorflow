@@ -1,8 +1,8 @@
+load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
 load("//tensorflow:pytype.default.bzl", "pytype_strict_binary")
 load("//tensorflow:strict.default.bzl", "py_strict_library")
 load("//tensorflow:tensorflow.bzl", "if_google", "tf_cc_test")
 load("//tensorflow:tensorflow.default.bzl", "tf_cuda_cc_test")
-load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
 load(":gen_saved_model.bzl", "gen_saved_model")
 
 package(

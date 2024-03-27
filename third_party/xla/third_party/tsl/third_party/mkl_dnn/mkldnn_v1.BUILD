@@ -1,7 +1,7 @@
-load("@local_tsl//tsl:tsl.bzl", "tf_openmp_copts")
-load("@local_tsl//third_party/mkl_dnn:build_defs.bzl", "if_mkldnn_openmp")
-load("@local_xla//xla/tsl/mkl:build_defs.bzl", "if_mkl", "if_mkl_ml")
 load("@bazel_skylib//rules:expand_template.bzl", "expand_template")
+load("@local_tsl//third_party/mkl_dnn:build_defs.bzl", "if_mkldnn_openmp")
+load("@local_tsl//tsl:tsl.bzl", "tf_openmp_copts")
+load("@local_xla//xla/tsl/mkl:build_defs.bzl", "if_mkl", "if_mkl_ml")
 
 exports_files(["LICENSE"])
 

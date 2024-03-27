@@ -1,9 +1,9 @@
 # Description: this package contains shim library targets that forward
 # to the TF Lite C and C++ API targets.  See README.md.
 
+load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
 load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")
 load("//tensorflow/lite:special_rules.bzl", "tflite_portable_test_suite")
-load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
 load(":build_defs.bzl", "build_test")
 load(":cc_library_with_tflite.bzl", "custom_c_library_with_tflite")
 load(":cc_library_with_tflite_test.bzl", "cc_library_with_tflite_test_suite")
