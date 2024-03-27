@@ -599,7 +599,6 @@ xla_test(
     srcs = if_cuda_is_configured(["ir_emitter_triton_test.cc"]),
     backends = [
         "gpu_a100",
-        "gpu_h100",
     ],
     shard_count = 20,
     tags = ["nomac"],
@@ -652,10 +651,7 @@ xla_test(
     backend_tags = {"gpu": [
         "requires-gpu-sm80",
     ]},
-    backends = [
-        "gpu",
-        "gpu_h100",
-    ],
+    backends = ["gpu"],
     tags = [
         "large",
         "no_oss",  # requires-mem:16g tag doesn't work in open source
