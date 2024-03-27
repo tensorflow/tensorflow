@@ -1,11 +1,6 @@
 """Provides a redirection point for platform specific implementations of starlark utilities."""
 
 load(
-    "//tensorflow/core/platform:build_config_root.default.bzl",
-    _if_dynamic_kernels = "if_dynamic_kernels",
-    _tf_additional_plugin_deps = "tf_additional_plugin_deps",
-)
-load(
     "@local_tsl//tsl/platform/default:build_config_root.bzl",
     _if_llvm_aarch32_available = "if_llvm_aarch32_available",
     _if_llvm_aarch64_available = "if_llvm_aarch64_available",
@@ -23,6 +18,11 @@ load(
     _tf_cuda_tests_tags = "tf_cuda_tests_tags",
     _tf_exec_properties = "tf_exec_properties",
     _tf_gpu_tests_tags = "tf_gpu_tests_tags",
+)
+load(
+    "//tensorflow/core/platform:build_config_root.default.bzl",
+    _if_dynamic_kernels = "if_dynamic_kernels",
+    _tf_additional_plugin_deps = "tf_additional_plugin_deps",
 )
 
 if_llvm_aarch32_available = _if_llvm_aarch32_available

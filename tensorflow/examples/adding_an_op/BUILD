@@ -2,12 +2,12 @@
 # Code examples referenced by adding_an_op
 
 load("//tensorflow:strict.default.bzl", "py_strict_library", "py_strict_test")
+load("//tensorflow:tensorflow.bzl", "tf_cc_binary", "tf_custom_op_library")
 load(
     "//tensorflow/core/platform:build_config_root.bzl",
     "tf_cuda_tests_tags",
     "tf_exec_properties",
 )
-load("//tensorflow:tensorflow.bzl", "tf_cc_binary", "tf_custom_op_library")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],

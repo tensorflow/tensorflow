@@ -1,3 +1,6 @@
+# Tensorflow default + linux implementations of tensorflow/core/platform libraries.
+load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
+load("@local_tsl//tsl/platform:rules_cc.bzl", "cc_library")
 load(
     "//tsl:tsl.bzl",
     "if_not_fuchsia",
@@ -6,10 +9,6 @@ load(
     "tsl_copts",
 )
 load("//tsl:tsl.default.bzl", "filegroup", "tsl_grpc_cc_dependencies")
-load("@local_tsl//tsl/platform:rules_cc.bzl", "cc_library")
-
-# Tensorflow default + linux implementations of tensorflow/core/platform libraries.
-load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],

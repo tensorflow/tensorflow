@@ -1,12 +1,6 @@
 # Description: GPU-specific XLA tests. For example, codegen tests that
 # verify the IR emitted.
 
-load("//xla/tests:build_defs.bzl", "xla_test")
-load("//xla:lit.bzl", "enforce_glob", "lit_test_suite")
-load(
-    "//xla:xla.bzl",
-    "xla_cc_test",
-)
 load(
     "@local_config_rocm//rocm:build_defs.bzl",
     "if_rocm_is_configured",
@@ -21,6 +15,12 @@ load(
     "@local_tsl//tsl/platform/default:cuda_build_defs.bzl",
     "if_cuda_is_configured",
 )
+load("//xla:lit.bzl", "enforce_glob", "lit_test_suite")
+load(
+    "//xla:xla.bzl",
+    "xla_cc_test",
+)
+load("//xla/tests:build_defs.bzl", "xla_test")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
