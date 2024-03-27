@@ -1,4 +1,4 @@
-// RUN: stablehlo-quant-opt %s -split-input-file -stablehlo-prepare-quantize-hybrid | FileCheck %s
+// RUN: stablehlo-quant-opt %s -split-input-file -stablehlo-insert-weight-param | FileCheck %s
 
 // Test that q/dq pair is inserted between constant and XlaCallModule op
 // with quantizable trait and function name containing conv.

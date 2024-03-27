@@ -80,7 +80,7 @@ void QuantizeCompositeFunctionsPass::runOnOperation() {
   options.bit_width_ = 8;
 
   if (enable_weight_only_) {
-    pm.addNestedPass<func::FuncOp>(createPrepareQuantizeHybridPass());
+    pm.addNestedPass<func::FuncOp>(createInsertWeightParamPass());
   }
   // PrepareQuantizePass uses SymbolTable to fetch relevant GEMM ops for
   // determining quantization attributes. This requires module-level context.

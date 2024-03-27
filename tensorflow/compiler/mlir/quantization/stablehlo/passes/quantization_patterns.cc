@@ -883,10 +883,10 @@ bool IsConnectedWithQuantizedCompsiteFunction(Operation* same_scale_op) {
   return false;
 }
 
-class QuantizeHybridDotGeneralPattern
+class QuantizeWeightOnlyDotGeneralPattern
     : public EntryFuncBodyQuantizationPattern {
  public:
-  explicit QuantizeHybridDotGeneralPattern() = default;
+  explicit QuantizeWeightOnlyDotGeneralPattern() = default;
 
   LogicalResult match(func::FuncOp entry_func_op) const override {
     return MatchGemmStyleOp<DotGeneralOp>(entry_func_op);
@@ -899,10 +899,11 @@ class QuantizeHybridDotGeneralPattern
 template <typename FuncBodyRewritePatternT,
           typename = std::enable_if_t<std::is_base_of_v<
               EntryFuncBodyQuantizationPattern, FuncBodyRewritePatternT>>>
-class HybridXlaCallModuleOpToCallOp
+class WeightOnlyXlaCallModuleOpToCallOp
     : public OpRewritePattern<TF::XlaCallModuleOp> {
  public:
-  explicit HybridXlaCallModuleOpToCallOp(MLIRContext& ctx)
+  explicit WeightOnlyXlaCallModuleOpToCallOp(
+      MLIRContext& ctx, const bool enable_per_channel_quantized_weight)
       : OpRewritePattern<TF::XlaCallModuleOp>(&ctx) {};
 
   LogicalResult match(TF::XlaCallModuleOp op) const override {
@@ -953,10 +954,11 @@ void PopulateComputeHeavyPatterns(
   patterns.add<QuantizeOpWithRegionPattern>(ctx);
 }
 
-void PopulateQuantizeHybridPatterns(MLIRContext& ctx,
-                                    RewritePatternSet& patterns) {
-  patterns.add<HybridXlaCallModuleOpToCallOp<QuantizeHybridDotGeneralPattern>>(
-      ctx);
+void PopulateQuantizeWeightOnlyPatterns(MLIRContext& ctx,
+                                        RewritePatternSet& patterns) {
+  patterns.add<
+      WeightOnlyXlaCallModuleOpToCallOp<QuantizeWeightOnlyDotGeneralPattern>>(
+      ctx, /*enable_per_channel_quantized_weight=*/false);
 }
 
 }  // namespace mlir::quant::stablehlo

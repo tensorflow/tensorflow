@@ -47,20 +47,21 @@ limitations under the License.
 
 namespace mlir::quant::stablehlo {
 
-#define GEN_PASS_DEF_PREPAREQUANTIZEHYBRIDPASS
+#define GEN_PASS_DEF_INSERTWEIGHTPARAMPASS
 #include "tensorflow/compiler/mlir/quantization/stablehlo/passes/passes.h.inc"
 
 namespace {
 
-// Prepare hybrid quantization for weight-only quantization and dynamic range
-// quantization of `stablehlo.convolution` and `stablehlo.dot_general`.
-class PrepareQuantizeHybridPass
-    : public impl::PrepareQuantizeHybridPassBase<PrepareQuantizeHybridPass> {
+// Inserts quantization parameters of weights for weight-only quantization and
+// dynamic range quantization of `stablehlo.convolution` and
+// `stablehlo.dot_general`.
+class InsertWeightParamPass
+    : public impl::InsertWeightParamPassBase<InsertWeightParamPass> {
  public:
-  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(PrepareQuantizeHybridPass)
+  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(InsertWeightParamPass)
 
-  using impl::PrepareQuantizeHybridPassBase<
-      PrepareQuantizeHybridPass>::PrepareQuantizeHybridPassBase;
+  using impl::InsertWeightParamPassBase<
+      InsertWeightParamPass>::InsertWeightParamPassBase;
 
  private:
   void runOnOperation() override;
@@ -135,7 +136,7 @@ class InsertWeightParamPattern
   }
 };
 
-void PrepareQuantizeHybridPass::runOnOperation() {
+void InsertWeightParamPass::runOnOperation() {
   func::FuncOp func = getOperation();
   MLIRContext* context = func.getContext();
   RewritePatternSet patterns(context);

@@ -176,8 +176,8 @@ def DeferActivationTransposePass : Pass<"stablehlo-defer-activation-transpose", 
   let dependentDialects = ["mlir::stablehlo::StablehloDialect"];
 }
 
-def PrepareQuantizeHybridPass : Pass<"stablehlo-prepare-quantize-hybrid", "mlir::func::FuncOp"> {
-  let summary = "Prepare hybrid quantization for weight-only quantization and dynamic range quantization.";
+def InsertWeightParamPass : Pass<"stablehlo-insert-weight-param", "mlir::func::FuncOp"> {
+  let summary = "Insert quantization parameters of weights for weight-only quantization and dynamic range quantization.";
   let dependentDialects = [
       "mlir::stablehlo::StablehloDialect",
       "TF::TensorFlowDialect",

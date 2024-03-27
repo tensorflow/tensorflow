@@ -57,7 +57,7 @@ struct StableHloQuantizationBase
                                      quantfork::DequantizeCastOp,
                                      /*VerifierT=*/void, RootOpT>(ctx) {}
 
-  static bool AllowHybridQuantization(Operation& op) { return false; }
+  static bool AllowWeightOnlyQuantization(Operation& op) { return false; }
 };
 
 // Quantization rewrite pattern using DQ as the root op.
@@ -78,12 +78,12 @@ struct StableHloQuantizationReverse
 };
 
 // Quantization rewrite pattern using DQ as the root op.
-struct StableHloQuantizationHybrid
-    : public StableHloQuantizationBase<StableHloQuantizationHybrid> {
-  explicit StableHloQuantizationHybrid(MLIRContext* ctx)
-      : StableHloQuantizationBase<StableHloQuantizationHybrid>(ctx) {}
+struct StableHloQuantizationWeightOnly
+    : public StableHloQuantizationBase<StableHloQuantizationWeightOnly> {
+  explicit StableHloQuantizationWeightOnly(MLIRContext* ctx)
+      : StableHloQuantizationBase<StableHloQuantizationWeightOnly>(ctx) {}
 
-  static bool AllowHybridQuantization(Operation& op) {
+  static bool AllowWeightOnlyQuantization(Operation& op) {
     auto call_op = cast<TF::XlaCallModuleOp>(op);
     return call_op && GetEntryFunctionName(call_op).contains("dot_general");
   }
@@ -113,8 +113,8 @@ void QuantizePass::runOnOperation() {
   RewritePatternSet patterns(&ctx);
   patterns.add<StableHloQuantization, StableHloQuantizationReverse>(&ctx);
   if (enable_weight_only_) {
-    patterns.add<StableHloQuantizationHybrid>(&ctx);
-    PopulateQuantizeHybridPatterns(ctx, patterns);
+    patterns.add<StableHloQuantizationWeightOnly>(&ctx);
+    PopulateQuantizeWeightOnlyPatterns(ctx, patterns);
   }
 
   PopulateComputeHeavyPatterns(ctx, patterns,

@@ -1,8 +1,8 @@
 // RUN: stablehlo-quant-opt %s -split-input-file -verify-diagnostics \
 // RUN:     -stablehlo-quantize-composite-functions=enable-weight-only=true | FileCheck --check-prefix=CHECK %s
 
-// Test that hybrid quantized dot_general op is produced when hybrid-quantize
-// is set to true.
+// Test that weight-only quantized dot_general op is produced when
+// enable-weight-only is set to true.
 
 module attributes {tf_saved_model.semantics} {
   func.func private @quantize_dot_general_fn(%arg0: tensor<1x2xf32>) -> tensor<1x3xf32> attributes {tf._original_func_name = "main_0"} {
