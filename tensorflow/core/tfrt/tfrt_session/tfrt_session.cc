@@ -604,15 +604,6 @@ class TfrtSessionFactory::ThreadPoolManager {
         auto pool_index = it.index();
         auto num_threads = pool_options.num_threads();
 
-        // For the current use cases the first thread pool is always the default
-        // thread pool. We add this check here to verify the assumption. We can
-        // remove this check once the code stablizes, since it is semantically
-        // meaningful to use non-default thread pool as the first thread pool.
-        if (pool_index == 0 && num_threads != 0) {
-          return errors::InvalidArgument(
-              "The first thread pool must have num_threads = 0");
-        }
-
         if (num_threads != 0) {
           TF_ASSIGN_OR_RETURN(
               auto* thread_pool,
