@@ -1,8 +1,8 @@
 # python/ops/memory_tests package
 
 load("//tensorflow:tensorflow.default.bzl", "cuda_py_strict_test")
-load("//tensorflow/python/tpu:tpu.bzl", "tpu_py_strict_test")
 load("//tensorflow/core/platform:build_config_root.bzl", "tf_additional_xla_deps_py")
+load("//tensorflow/python/tpu:tpu.bzl", "tpu_py_strict_test")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],

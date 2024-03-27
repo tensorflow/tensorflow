@@ -105,7 +105,7 @@ std::optional<IndexingMap> MlirScatterFusion::ComputeThreadIdToInputIndexing(
   }
   // Compute thread id mapping based on the first update operand.
   Shape scatter_update_shape = scatter->scatter_updates().front()->shape();
-  IndexingMap scatter_update_map = GetDefaultThreadIdToOutputIndexingMap(
+  IndexingMap scatter_update_map = GetDefaultThreadIdIndexingMap(
       launch_dimensions(), config_.unroll_factor, scatter_update_shape, ctx);
 
   // For scatter indices we project indexing for scatter updates and take the
