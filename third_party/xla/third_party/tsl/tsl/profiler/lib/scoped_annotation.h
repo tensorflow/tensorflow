@@ -23,27 +23,23 @@ limitations under the License.
 #include <utility>
 
 #include "tsl/platform/macros.h"
+#include "tsl/profiler/lib/nvtx_utils.h"
 
 #if !defined(IS_MOBILE_PLATFORM)
 #include "tsl/profiler/backends/cpu/annotation_stack.h"
 #endif
 
-#if GOOGLE_CUDA
-#include "tsl/profiler/lib/nvtx_utils.h"
-#endif
-
-namespace tsl {
-namespace profiler {
+namespace tsl::profiler {
 
 // Adds an annotation to all activities through the currently registered
 // TraceCollector until PopAnnotation() is called.
 template <typename T>
-inline void PushAnnotation(const T& generator) {
-#if GOOGLE_CUDA
-  if (auto domain = GetNVTXDomain(); TF_PREDICT_FALSE(domain.has_value())) {
-    return RangePush(*domain, generator());
+void PushAnnotation(const T& generator) {
+  if (auto domain = DefaultProfilerDomain();
+      TF_PREDICT_FALSE(domain != nullptr)) {
+    RangePush(domain, generator());
+    return;
   }
-#endif
 
 #if !defined(IS_MOBILE_PLATFORM)
   if (TF_PREDICT_FALSE(AnnotationStack::IsEnabled())) {
@@ -64,12 +60,11 @@ inline void PopAnnotation() {
   // fail probably due to compiler in that presubmit config.
   std::atomic_thread_fence(std::memory_order_acquire);
 
-#if GOOGLE_CUDA
-  if (auto domain = GetNVTXDomain(); TF_PREDICT_FALSE(domain.has_value())) {
-    ::nvtxDomainRangePop(*domain);
+  if (auto domain = DefaultProfilerDomain();
+      TF_PREDICT_FALSE(domain != nullptr)) {
+    RangePop(domain);
     return;
   }
-#endif
 
 #if !defined(IS_MOBILE_PLATFORM)
   if (TF_PREDICT_FALSE(AnnotationStack::IsEnabled())) {
@@ -110,7 +105,6 @@ class ScopedAnnotation {
   ScopedAnnotation& operator=(const ScopedAnnotation&) = delete;
 };
 
-}  // namespace profiler
-}  // namespace tsl
+}  // namespace tsl::profiler
 
 #endif  // TENSORFLOW_TSL_PROFILER_LIB_SCOPED_ANNOTATION_H_
