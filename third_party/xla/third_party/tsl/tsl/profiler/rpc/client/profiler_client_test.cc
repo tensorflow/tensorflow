@@ -22,7 +22,6 @@ limitations under the License.
 #include "tsl/platform/errors.h"
 #include "tsl/platform/status.h"
 #include "tsl/platform/test.h"
-#include "tsl/platform/types.h"
 #include "tsl/profiler/protobuf/profiler_service.pb.h"
 #include "tsl/profiler/rpc/client/profiler_client_test_util.h"
 

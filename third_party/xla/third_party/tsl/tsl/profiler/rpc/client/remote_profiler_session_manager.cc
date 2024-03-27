@@ -20,14 +20,13 @@ limitations under the License.
 
 #include "absl/memory/memory.h"
 #include "absl/strings/string_view.h"
-#include "absl/time/clock.h"
 #include "absl/time/time.h"
-#include "tsl/platform/env_time.h"
-#include "tsl/platform/errors.h"
 #include "tsl/platform/logging.h"
-#include "tsl/platform/types.h"
+#include "tsl/platform/mutex.h"
+#include "tsl/platform/status.h"
+#include "tsl/profiler/protobuf/profiler_options.pb.h"
+#include "tsl/profiler/protobuf/profiler_service.pb.h"
 #include "tsl/profiler/rpc/client/profiler_client.h"
-#include "tsl/profiler/utils/time_utils.h"
 
 namespace tsl {
 namespace profiler {

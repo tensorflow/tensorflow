@@ -26,6 +26,8 @@ limitations under the License.
 #include "tsl/platform/status.h"
 #include "tsl/platform/thread_annotations.h"
 #include "tsl/platform/types.h"
+#include "tsl/profiler/protobuf/profiler_options.pb.h"
+#include "tsl/profiler/protobuf/profiler_service.pb.h"
 #include "tsl/profiler/rpc/client/profiler_client.h"
 
 namespace tsl {
