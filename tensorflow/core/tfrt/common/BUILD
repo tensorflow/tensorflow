@@ -1,9 +1,9 @@
-load("//tensorflow:tensorflow.bzl", "tf_cc_test", "tf_cuda_cc_test")
-load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load(
     "@local_tsl//tsl/platform:build_config_root.bzl",
     "tf_cuda_tests_tags",
 )
+load("//tensorflow:tensorflow.bzl", "tf_cc_test", "tf_cuda_cc_test")
+load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],

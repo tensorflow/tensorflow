@@ -2,6 +2,10 @@
 # Public targets:
 #  ":platform" - Low-level and platform-specific Python code.
 
+load(
+    "@local_tsl//tsl/platform/default:cuda_build_defs.bzl",
+    "if_cuda_is_configured",
+)
 load("//tensorflow:pytype.default.bzl", "pytype_strict_library")
 load("//tensorflow:strict.default.bzl", "py_strict_library")
 
@@ -18,10 +22,6 @@ load(
     "if_static",
     "tf_additional_plugin_deps",
     "tf_additional_profiler_deps",
-)
-load(
-    "@local_tsl//tsl/platform/default:cuda_build_defs.bzl",
-    "if_cuda_is_configured",
 )
 
 # TODO(mdan): Break into per-directory files.

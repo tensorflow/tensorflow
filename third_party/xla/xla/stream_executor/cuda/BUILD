@@ -1,16 +1,4 @@
 load("@bazel_skylib//rules:common_settings.bzl", "bool_flag")
-load(
-    "//xla:xla.bzl",
-    "xla_cc_test",
-)
-load(
-    "//xla/stream_executor:build_defs.bzl",
-    "cuda_only_cc_library",
-    "stream_executor_friends",
-    "tf_additional_cuda_platform_deps",
-    "tf_additional_cudnn_plugin_copts",
-    "tf_additional_gpu_compilation_copts",
-)
 load("@local_tsl//tsl:tsl.bzl", "if_google", "if_nccl", "internal_visibility", "tsl_copts")
 load(
     "@local_tsl//tsl/platform:build_config_root.bzl",
@@ -24,6 +12,18 @@ load(
 load(
     "@local_tsl//tsl/platform/default:cuda_build_defs.bzl",
     "if_cuda_is_configured",
+)
+load(
+    "//xla:xla.bzl",
+    "xla_cc_test",
+)
+load(
+    "//xla/stream_executor:build_defs.bzl",
+    "cuda_only_cc_library",
+    "stream_executor_friends",
+    "tf_additional_cuda_platform_deps",
+    "tf_additional_cudnn_plugin_copts",
+    "tf_additional_gpu_compilation_copts",
 )
 
 package(

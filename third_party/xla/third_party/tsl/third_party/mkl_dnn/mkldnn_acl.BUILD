@@ -1,6 +1,6 @@
-exports_files(["LICENSE"])
-
 load("@bazel_skylib//rules:expand_template.bzl", "expand_template")
+
+exports_files(["LICENSE"])
 
 _DNNL_COPTS_THREADPOOL = [
     "-fopenmp-simd",

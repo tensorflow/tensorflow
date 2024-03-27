@@ -1,5 +1,5 @@
-# Placeholder: load py_proto_library
 # copybara:uncomment(oss-unused) load("//net/grpc/go/build_defs:go_grpc_library.bzl", "go_grpc_library")
+# Placeholder: load py_proto_library
 load("//tsl:tsl.bzl", "internal_visibility")
 load("//tsl/platform:build_config.bzl", "tf_proto_library")
 
