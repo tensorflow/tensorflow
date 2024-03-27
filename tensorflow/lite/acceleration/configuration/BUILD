@@ -13,6 +13,8 @@
 # limitations under the License.
 # ==============================================================================
 
+# buildifier: disable=out-of-order-load
+
 load("@flatbuffers//:build_defs.bzl", "DEFAULT_FLATC_ARGS", "flatbuffer_android_library", "flatbuffer_cc_library", "flatbuffer_java_library", "flatc_path")
 
 # copybara:comment_begin(oss-only)
