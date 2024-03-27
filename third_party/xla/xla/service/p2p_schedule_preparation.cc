@@ -52,11 +52,6 @@ bool IsP2POp(const HloInstruction* op) {
   return p2p != nullptr && !p2p->is_host_transfer();
 }
 
-bool IsP2PDoneOp(const HloInstruction* op) {
-  return IsP2POp(op) && (op->opcode() == HloOpcode::kRecvDone ||
-                         op->opcode() == HloOpcode::kSendDone);
-}
-
 // Returns whether the instruction is a collective operation, for the purpose
 // of detecting whether the computation directly invokes collective
 // operations. As such, we only need to detect one of the instructions for a
@@ -111,21 +106,38 @@ struct P2PGroupNode {
     return computation == parent;
   }
 
-  bool RecordDoneOp(HloSendRecvInstruction* p2p) {
+  bool RecordP2POp(HloSendRecvInstruction* p2p) {
     if (!RecordParentComputation(p2p->parent())) {
       return false;
     }
 
-    if (p2p->opcode() == HloOpcode::kRecvDone) {
-      if (recv_done == nullptr) {
-        recv_done = Cast<HloRecvDoneInstruction>(p2p);
-        return true;
-      }
-    } else if (p2p->opcode() == HloOpcode::kSendDone) {
-      if (send_done == nullptr) {
-        send_done = Cast<HloSendDoneInstruction>(p2p);
-        return true;
-      }
+    switch (p2p->opcode()) {
+      case HloOpcode::kRecvDone:
+        if (recv_done == nullptr) {
+          recv_done = Cast<HloRecvDoneInstruction>(p2p);
+          return true;
+        }
+        break;
+      case HloOpcode::kSendDone:
+        if (send_done == nullptr) {
+          send_done = Cast<HloSendDoneInstruction>(p2p);
+          return true;
+        }
+        break;
+      case HloOpcode::kRecv:
+        if (recv == nullptr) {
+          recv = Cast<HloRecvInstruction>(p2p);
+          return true;
+        }
+        break;
+      case HloOpcode::kSend:
+        if (send == nullptr) {
+          send = Cast<HloSendInstruction>(p2p);
+          return true;
+        }
+        break;
+      default:
+        break;
     }
     return false;
   }
@@ -142,48 +154,12 @@ struct P2PGroupNode {
   }
 
   bool Incomplete() const {
-    return recv_done == nullptr || send_done == nullptr;
+    return recv_done == nullptr || send_done == nullptr || recv == nullptr ||
+           send == nullptr;
   }
 
   bool IncompletePipelinedParent() const {
     return Incomplete() || while_loop == nullptr;
-  }
-
-  // Returns the Send/Recv instruction for the given Send-done/Recv-done
-  // instruction. The HLO verifier ensures that the operand of such a done
-  // instruction can only be a Send/Recv, or a value in a while-op result, or
-  // a parameter of a while-body.
-  HloSendRecvInstruction* GetAsyncStart(HloSendRecvInstruction* done) const {
-    HloInstruction* op = done->mutable_operand(0);
-    HloSendRecvInstruction* start = DynCast<HloSendRecvInstruction>(op);
-    if (start != nullptr) {
-      return start;
-    }
-
-    HloGetTupleElementInstruction* gte =
-        DynCast<HloGetTupleElementInstruction>(op);
-    int64_t tuple_index = gte->tuple_index();
-    if (gte->operand(0)->opcode() == HloOpcode::kWhile) {
-      // The op is a while-result, so the start-op should be a value in the
-      // while-op operands.
-      start = DynCast<HloSendRecvInstruction>(
-          gte->mutable_operand(0)->mutable_operand(0)->mutable_operand(
-              tuple_index));
-    } else {
-      // The op is a while-body parameter, so the start-op should be a value in
-      // the while-body result.
-      start = DynCast<HloSendRecvInstruction>(
-          computation->root_instruction()->mutable_operand(tuple_index));
-    }
-    return start;
-  }
-
-  HloSendInstruction* GetSend() const {
-    return DynCast<HloSendInstruction>(GetAsyncStart(send_done));
-  }
-
-  HloRecvInstruction* GetRecv() const {
-    return DynCast<HloRecvInstruction>(GetAsyncStart(recv_done));
   }
 
   // Returns the pipeline stream used to execute the P2P instructions in the
@@ -205,8 +181,8 @@ struct P2PGroupNode {
   // the pipeline group node, verifies they both have the same value and returns
   // the stream.
   P2PPipelineStream GetPipelineStream() const {
-    P2PPipelineStream send_stream = GetPipelineStream(GetSend());
-    P2PPipelineStream recv_stream = GetPipelineStream(GetRecv());
+    P2PPipelineStream send_stream = GetPipelineStream(send);
+    P2PPipelineStream recv_stream = GetPipelineStream(recv);
     if (send_stream != recv_stream) {
       return kUnknown;
     }
@@ -215,6 +191,8 @@ struct P2PGroupNode {
 
   HloRecvDoneInstruction* recv_done = nullptr;
   HloSendDoneInstruction* send_done = nullptr;
+  HloRecvInstruction* recv = nullptr;
+  HloSendInstruction* send = nullptr;
   // The computation that contains the Send and Recv instructions.
   HloComputation* computation = nullptr;
   // The while-loop instruction that calls the while-body with the pipelined
@@ -254,7 +232,7 @@ static constexpr int kPipelinedParentNodeIdx = 1;
 // If a group forms a cycle with another group, records the other group as a
 // complement group.
 struct P2PGroup {
-  Status RecordDoneOpForUnpipelinedGroup(HloSendRecvInstruction* p2p) {
+  Status RecordP2POpForUnpipelinedGroup(HloSendRecvInstruction* p2p) {
     if (kind == kUnrecognized) {
       // Leave unrecognized P2P groups alone.
       return OkStatus();
@@ -263,13 +241,13 @@ struct P2PGroup {
       return Internal("Expected unpipelined group");
     }
     P2PGroupNode& node = nodes[kUnpipelinedNodeIdx];
-    if (!node.RecordDoneOp(p2p)) {
+    if (!node.RecordP2POp(p2p)) {
       kind = kUnrecognized;
     }
     return OkStatus();
   }
 
-  Status RecordDoneOpForPipelinedGroup(HloSendRecvInstruction* p2p) {
+  Status RecordP2POpForPipelinedGroup(HloSendRecvInstruction* p2p) {
     if (kind == kUnrecognized) {
       // Leave unrecognized P2P groups alone.
       return OkStatus();
@@ -281,7 +259,7 @@ struct P2PGroup {
       kind = kPipelined;
     }
     P2PGroupNode& node = nodes[kPipelinedParentNodeIdx];
-    if (!node.RecordDoneOp(p2p)) {
+    if (!node.RecordP2POp(p2p)) {
       kind = kUnrecognized;
     }
     return OkStatus();
@@ -362,7 +340,7 @@ struct P2PGroup {
   // collectives should be scheduled to.
   ChainStartEnd GetChainStartEnd(HloComputation* computation) const {
     if (kind == kUnpipelined) {
-      return std::make_pair(GetChild().GetRecv(), GetChild().send_done);
+      return std::make_pair(GetChild().recv, GetChild().send_done);
     }
 
     CHECK(kind == kPipelined);
@@ -370,18 +348,18 @@ struct P2PGroup {
       // For the child computation of a pipelined group, we return the start
       // and end of the instruction where we can put other collectives.
       if (complement_group == nullptr) {
-        return std::make_pair(GetChild().send_done, GetChild().GetRecv());
+        return std::make_pair(GetChild().send_done, GetChild().recv);
       }
       CHECK(pipeline_stream == kPipeline1);
-      return std::make_pair(GetChild().send_done, GetChild().GetRecv());
+      return std::make_pair(GetChild().send_done, GetChild().recv);
     }
 
     CHECK(computation == ParentComputation());
     if (complement_group == nullptr) {
-      return std::make_pair(GetParent().GetRecv(), GetParent().send_done);
+      return std::make_pair(GetParent().recv, GetParent().send_done);
     }
     CHECK(pipeline_stream == kPipeline1);
-    return std::make_pair(complement_group->GetParent().GetRecv(),
+    return std::make_pair(complement_group->GetParent().recv,
                           GetParent().send_done);
   }
 
@@ -419,13 +397,45 @@ bool MayInvokeCollectiveOp(
 Status MayAddWhileOpToPipelinedGroup(HloInstruction* while_op,
                                      P2PInComputation& p2p_in_computation,
                                      P2PGroupMap& p2p_group_map) {
+  if (while_op->while_init()->opcode() != HloOpcode::kTuple) {
+    // A while-init should contain the loop index variable. So if a while-init
+    // is not a tuple, it only contains the loop index variable and shouldn't
+    // contain any pipelined Send operand.
+    return OkStatus();
+  }
   HloComputation* body = while_op->called_computations()[0];
   auto p2p_in_while = p2p_in_computation.find(body);
   if (p2p_in_while == p2p_in_computation.end()) {
     return OkStatus();
   }
   int pipelined_group = 0;
-  for (auto hlo : while_op->operand(0)->operands()) {
+  // Check whether the while-op init contains a token from a Send result.
+  for (auto hlo : while_op->while_init()->operands()) {
+    if (hlo->opcode() == HloOpcode::kTuple) {
+      // A send has a tuple as its result, the tuple contains a token.
+      // If a send is pipelined, then, the while-init either contains
+      // a send-result, or contains a tuple with a token element from the
+      // send result. As such, if a tuple represent a pipelined send, it is
+      // either a direct send result, or a tuple with this code pattern:
+      ///
+      //   send = (..., token) send(...)
+      //   send.token = token[] get-tuple-element(send) index=...
+      //   send.tuple.reconstruct = tuple(..., send.token)
+      //   while-init =  tuple(..., send.tuple.reconstruct)
+      //   while-result =  while(while-init), ...
+      //
+      // So if the tuple contains a token, we make `hlo` point-to the producer
+      // of the token so that we can check whether the producer is a send after.
+      for (auto ele : hlo->operands()) {
+        if (ele->shape().IsToken()) {
+          // Assure that the token is part of an instruction result and not
+          // generated by a copy as we currently don't copy token.
+          CHECK(ele->opcode() == HloOpcode::kGetTupleElement);
+          hlo = ele->mutable_operand(0);
+          break;
+        }
+      }
+    }
     if (hlo->opcode() != HloOpcode::kSend) {
       continue;
     }
@@ -459,9 +469,9 @@ Status OrderBefore(HloInstruction* i1, HloInstruction* i2) {
 Status ConnectUnpipelinedP2P(const P2PGroup& p2p_group) {
   const P2PGroupNode& node = p2p_group.GetChild();
   HloRecvDoneInstruction* recv_done = node.recv_done;
-  HloRecvInstruction* recv = node.GetRecv();
+  HloRecvInstruction* recv = node.recv;
   HloSendDoneInstruction* send_done = node.send_done;
-  HloSendInstruction* send = node.GetSend();
+  HloSendInstruction* send = node.send;
   TF_RETURN_IF_ERROR(OrderBefore(recv, send));
   TF_RETURN_IF_ERROR(OrderBefore(send, recv_done));
   TF_RETURN_IF_ERROR(OrderBefore(recv_done, send_done));
@@ -474,9 +484,9 @@ Status ConnectUnpipelinedP2P(const P2PGroup& p2p_group) {
 Status ConnectPipelined1P2PChild(const P2PGroup& p2p_group) {
   const P2PGroupNode& node = p2p_group.GetChild();
   HloSendRecvInstruction* recv_done = node.recv_done;
-  HloRecvInstruction* recv = node.GetRecv();
+  HloRecvInstruction* recv = node.recv;
   HloSendRecvInstruction* send_done = node.send_done;
-  HloSendInstruction* send = node.GetSend();
+  HloSendInstruction* send = node.send;
   TF_RETURN_IF_ERROR(OrderBefore(recv_done, send_done));
   TF_RETURN_IF_ERROR(OrderBefore(send_done, recv));
   TF_RETURN_IF_ERROR(OrderBefore(recv, send));
@@ -491,13 +501,13 @@ Status ConnectPipelined2P2PChild(const P2PGroup& p2p_group) {
   const P2PGroupNode& node0 = p2p_group.complement_group->GetChild();
   const P2PGroupNode& node1 = p2p_group.GetChild();
   HloSendRecvInstruction* recv_done0 = node0.recv_done;
-  HloRecvInstruction* recv0 = node0.GetRecv();
+  HloRecvInstruction* recv0 = node0.recv;
   HloSendRecvInstruction* send_done0 = node0.send_done;
-  HloSendInstruction* send0 = node0.GetSend();
+  HloSendInstruction* send0 = node0.send;
   HloSendRecvInstruction* recv_done1 = node1.recv_done;
-  HloRecvInstruction* recv1 = node1.GetRecv();
+  HloRecvInstruction* recv1 = node1.recv;
   HloSendRecvInstruction* send_done1 = node1.send_done;
-  HloSendInstruction* send1 = node1.GetSend();
+  HloSendInstruction* send1 = node1.send;
 
   TF_RETURN_IF_ERROR(OrderBefore(recv_done0, send_done0));
   TF_RETURN_IF_ERROR(OrderBefore(send_done0, recv_done1));
@@ -516,9 +526,9 @@ Status ConnectPipelined2P2PChild(const P2PGroup& p2p_group) {
 Status ConnectPipelined1P2PParent(const P2PGroup& p2p_group) {
   const P2PGroupNode& node = p2p_group.GetParent();
   HloSendRecvInstruction* recv_done = node.recv_done;
-  HloRecvInstruction* recv = node.GetRecv();
+  HloRecvInstruction* recv = node.recv;
   HloSendRecvInstruction* send_done = node.send_done;
-  HloSendInstruction* send = node.GetSend();
+  HloSendInstruction* send = node.send;
   TF_RETURN_IF_ERROR(OrderBefore(recv, send));
   TF_RETURN_IF_ERROR(OrderBefore(recv_done, send_done));
   return OkStatus();
@@ -532,13 +542,13 @@ Status ConnectPipelined2P2PParent(const P2PGroup& p2p_group) {
   const P2PGroupNode& node0 = p2p_group.complement_group->GetParent();
   const P2PGroupNode& node1 = p2p_group.GetParent();
   HloSendRecvInstruction* recv_done0 = node0.recv_done;
-  HloRecvInstruction* recv0 = node0.GetRecv();
+  HloRecvInstruction* recv0 = node0.recv;
   HloSendRecvInstruction* send_done0 = node0.send_done;
-  HloSendInstruction* send0 = node0.GetSend();
+  HloSendInstruction* send0 = node0.send;
   HloSendRecvInstruction* recv_done1 = node1.recv_done;
-  HloRecvInstruction* recv1 = node1.GetRecv();
+  HloRecvInstruction* recv1 = node1.recv;
   HloSendRecvInstruction* send_done1 = node1.send_done;
-  HloSendInstruction* send1 = node1.GetSend();
+  HloSendInstruction* send1 = node1.send;
 
   TF_RETURN_IF_ERROR(OrderBefore(recv0, send0));
   TF_RETURN_IF_ERROR(OrderBefore(send0, recv1));
@@ -580,7 +590,7 @@ Status GatherP2PGroupsAndCollectiveInfo(
       while_ops.push_back(hlo);
       continue;
     }
-    if (!IsP2PDoneOp(hlo)) {
+    if (!IsP2POp(hlo)) {
       continue;
     }
     HloSendRecvInstruction* p2p = Cast<HloSendRecvInstruction>(hlo);
@@ -591,15 +601,15 @@ Status GatherP2PGroupsAndCollectiveInfo(
       // P2P group and may turn it into a kPipelined group or kUnrecognized
       // group.
       P2PGroup group;
-      TF_RETURN_IF_ERROR(group.RecordDoneOpForUnpipelinedGroup(p2p));
+      TF_RETURN_IF_ERROR(group.RecordP2POpForUnpipelinedGroup(p2p));
       p2p_group_map[channel] = group;
     } else {
       P2PGroup& group = p2p_group->second;
       if (group.ChildComputation() == computation) {
-        TF_RETURN_IF_ERROR(group.RecordDoneOpForUnpipelinedGroup(p2p));
+        TF_RETURN_IF_ERROR(group.RecordP2POpForUnpipelinedGroup(p2p));
       } else {
         // We are at the parent computation for a pipelined P2P group.
-        TF_RETURN_IF_ERROR(group.RecordDoneOpForPipelinedGroup(p2p));
+        TF_RETURN_IF_ERROR(group.RecordP2POpForPipelinedGroup(p2p));
       }
     }
     // We can't rely on the operation on p2p_group_map above to find out

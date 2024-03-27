@@ -412,10 +412,24 @@ std::string GetPipelinedP2PModuleString(bool nested_p2p_in_main = false,
     param = (u32[], (f32[1, 1024, 1024], token[]),
       (f32[1, 1024, 1024], token[])) parameter(0)
     count = get-tuple-element(param), index=0
-    send.1.q = (f32[1, 1024, 1024], token[]) get-tuple-element(param), index=2
+
+    // Mimic the code transformation done by copy-insertion to complicate
+    // the code pattern.
+    send.1.q.t = (f32[1,1024,1024], token[]) get-tuple-element(param), index=1
+    send.1.q.data = f32[1,1024,1024] get-tuple-element(send.1.q.t), index=0
+    send.1.q.data.copy = f32[1,1024,1024] copy(send.1.q.data)
+    send.1.q.token = token[] get-tuple-element(send.1.q.t), index=1
+    send.1.q = (f32[1, 1024, 1024], token[]) tuple(send.1.q.data.copy, send.1.q.token)
+
     recv.1.q = (f32[1, 1024, 1024], token[])get-tuple-element(param), index=1
-    send-done.1 = token[] send-done(send.1.q), channel_id=1
-    recv-done.1 = token[] recv-done(recv.1.q), channel_id=1
+    send-done.1 = token[] send-done(send.1.q), channel_id=1,
+      frontend_attributes={
+        _xla_send_recv_pipeline="0"
+      }
+    recv-done.1 = token[] recv-done(recv.1.q), channel_id=1,
+      frontend_attributes={
+        _xla_send_recv_pipeline="0"
+      }
     recv-data = f32[1, 1024, 1024] get-tuple-element(recv-done.1), index=0
 
     c1 = u32[] constant(1)
@@ -441,11 +455,18 @@ std::string GetPipelinedP2PModuleString(bool nested_p2p_in_main = false,
       _xla_send_recv_source_target_pairs="{{0,1}, {1,2}, {2,3}, {3,4}}",
       _xla_send_recv_pipeline="0"
     }
-    recv.1 = (f32[1, 1024, 1024], u32[], token[]) recv(after-all.1), channel_id=1,
+
+    // Mimic the code transformation done by copy-insertion to complicate
+    // the code pattern.
+    recv.1 = (f32[1, 1024, 1024], token[]) recv(after-all.1), channel_id=1,
       frontend_attributes={
        _xla_send_recv_source_target_pairs="{{0,1}, {1,2}, {2,3}, {3,4}}",
        _xla_send_recv_pipeline="0"
     }
+    recv.1.data = f32[1,1024,1024] get-tuple-element(recv.1), index=0
+    recv.1.data.copy = f32[1,1024,1024] copy(recv.1.data)
+    recv.1.token = token[] get-tuple-element(recv.1), index=1
+    recv.1.tuple = (f32[1,1024,1024], token[]) tuple(recv.1.data.copy, recv.1.token)
 
     ROOT body-result = (u32[], (f32[1, 1024, 1024], token[]),
       (f32[1, 1024, 1024], token[])) tuple(new-count, recv.1, send.1)
@@ -458,8 +479,14 @@ std::string GetPipelinedP2PModuleString(bool nested_p2p_in_main = false,
     count = get-tuple-element(param), index=0
     send.1.q = (f32[1, 1024, 1024], token[]) get-tuple-element(param), index=2
     recv.1.q = (f32[1, 1024, 1024], token[])get-tuple-element(param), index=1
-    send-done.1 = token[] send-done(send.1.q), channel_id=1
-    recv-done.1 = token[] recv-done(recv.1.q), channel_id=1
+    send-done.1 = token[] send-done(send.1.q), channel_id=1,
+      frontend_attributes={
+        _xla_send_recv_pipeline="0"
+      }
+    recv-done.1 = token[] recv-done(recv.1.q), channel_id=1,
+      frontend_attributes={
+        _xla_send_recv_pipeline="0"
+      }
     recv-data = f32[1, 1024, 1024] get-tuple-element(recv-done.1), index=0
 
     c1 = u32[] constant(1)
@@ -536,24 +563,37 @@ std::string GetPipelinedP2PModuleString(bool nested_p2p_in_main = false,
        _xla_send_recv_source_target_pairs="{{0,1}, {1,2}, {2,3}, {3,4}}",
        _xla_send_recv_pipeline="0"
     }
+
+    // Mimic the code transformation done by copy-insertion to complicate
+    // the code pattern.
     send.2 = (f32[1, 1024, 1024], token[]) send(init, after-all.2),
       channel_id=1, frontend_attributes={
       _xla_send_recv_source_target_pairs="{{0,1}, {1,2}, {2,3}, {3,4}}",
       _xla_send_recv_pipeline="0"
     }
+    send.2.data = f32[1,1024,1024] get-tuple-element(send.2), index=0
+    send.2.data.copy = f32[1,1024,1024] copy(send.2.data)
+    send.2.token = token[] get-tuple-element(send.2), index=1
+    send.2.tuple = (f32[1,1024,1024], token[]) tuple(send.2.data.copy, send.2.token)
 
     while-init =  (u32[], (f32[1, 1024, 1024], token[]),
-      (f32[1, 1024, 1024], token[])) tuple(c0, recv.2, send.2)
+      (f32[1, 1024, 1024], token[])) tuple(c0, recv.2, send.2.tuple)
     while-result =  (u32[], (f32[1, 1024, 1024], token[]),
       (f32[1, 1024, 1024], token[])) while(while-init),
       body=while-body, condition=while-cond,
       backend_config={"known_trip_count":{"n":"25"}}
 
     recv.2.q = (f32[1, 1024, 1024], token[]) get-tuple-element(while-result), index=1
-    recv-done.2 = (f32[1, 1024, 1024], token[]) recv-done(recv.2.q), channel_id=1
+    recv-done.2 = (f32[1, 1024, 1024], token[]) recv-done(recv.2.q), channel_id=1,
+      frontend_attributes={
+        _xla_send_recv_pipeline="0"
+      }
     recv-data.2.q = f32[1, 1024, 1024] get-tuple-element(recv-done.2), index=0
     send.2.q = (f32[1, 1024, 1024], token[]) get-tuple-element(while-result), index=2
-    send-done.2 = token[] send-done(send.2.q), channel_id=1
+    send-done.2 = token[] send-done(send.2.q), channel_id=1,
+      frontend_attributes={
+        _xla_send_recv_pipeline="0"
+      }
 
     // The code for the computation result goes here.
     %s
@@ -692,11 +732,17 @@ body {
     count = get-tuple-element(param), index=0
 
     recv.0.f = (u32[2], u32[], token[]) get-tuple-element(param), index=1
-    recv-done.0 = (u32[2], token[]) recv-done(recv.0.f), channel_id=1
+    recv-done.0 = (u32[2], token[]) recv-done(recv.0.f), channel_id=1,
+      frontend_attributes={
+        _xla_send_recv_pipeline="0"
+      }
     recv-data.0 = u32[2] get-tuple-element(recv-done.0), index=0
 
     recv.1.f = (u32[2], u32[], token[]) get-tuple-element(param), index=2
-    recv-done.1 = (u32[2], token[]) recv-done(recv.1.f), channel_id=2
+    recv-done.1 = (u32[2], token[]) recv-done(recv.1.f), channel_id=2,
+      frontend_attributes={
+        _xla_send_recv_pipeline="1"
+      }
     recv-data.1 = u32[2] get-tuple-element(recv-done.1), index=0
 
     replica = u32[] replica-id()
@@ -712,9 +758,15 @@ body {
     s = u32[2] add(r, recv-data)
 
     send.0.f = (u32[2], u32[], token[]) get-tuple-element(param), index=3
-    send-done.0 = token[] send-done(send.0.f), channel_id=1
+    send-done.0 = token[] send-done(send.0.f), channel_id=1,
+      frontend_attributes={
+        _xla_send_recv_pipeline="0"
+      }
     send.1.f = (u32[2], u32[], token[]) get-tuple-element(param), index=4
-    send-done.1 = token[] send-done(send.1.f), channel_id=2
+    send-done.1 = token[] send-done(send.1.f), channel_id=2,
+      frontend_attributes={
+        _xla_send_recv_pipeline="1"
+      }
 
     // The Recv "rotated" from the beginning of the loop to the end of the loop.
     after-all.0.n = token[] after-all()
@@ -792,11 +844,17 @@ body {
     // Use .q as suffix for HLO name.
 
      recv.0.q = (u32[2], u32[], token[]) get-tuple-element(while_result), index=1
-     recv-done.2 = (u32[2], token[]) recv-done(recv.0.q), channel_id=1
+     recv-done.2 = (u32[2], token[]) recv-done(recv.0.q), channel_id=1,
+       frontend_attributes={
+        _xla_send_recv_pipeline="0"
+      }
      recv-data.0.q = u32[2] get-tuple-element(recv-done.2), index=0
 
      recv.1.q = (u32[2], u32[], token[]) get-tuple-element(while_result), index=2
-     recv-done.3 = (u32[2], token[]) recv-done(recv.1.q), channel_id=2
+     recv-done.3 = (u32[2], token[]) recv-done(recv.1.q), channel_id=2,
+       frontend_attributes={
+        _xla_send_recv_pipeline="1"
+      }
      recv-data.1.q = u32[2] get-tuple-element(recv-done.2), index=0
 
     replica = u32[] replica-id()
@@ -808,9 +866,15 @@ body {
     s = u32[2] add(c1, recv-data)
 
     send.0.q = (u32[2], u32[], token[]) get-tuple-element(while_result), index=3
-    send-done.2 = token[] send-done(send.0.q), channel_id=1
+    send-done.2 = token[] send-done(send.0.q), channel_id=1,
+      frontend_attributes={
+        _xla_send_recv_pipeline="0"
+      }
     send.1.q = (u32[2], u32[], token[]) get-tuple-element(while_result), index=4
-    send-done.3 = token[] send-done(send.1.q), channel_id=2
+    send-done.3 = token[] send-done(send.1.q), channel_id=2,
+      frontend_attributes={
+        _xla_send_recv_pipeline="1"
+      }
 
     ROOT result = u32[2] add(s, recv-data)
   }
