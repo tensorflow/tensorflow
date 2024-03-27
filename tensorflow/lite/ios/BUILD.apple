@@ -1,6 +1,7 @@
 # TensorFlow Lite for iOS
 
 load("@bazel_skylib//rules:build_test.bzl", "build_test")
+load("@build_bazel_rules_apple//apple:ios.bzl", "ios_static_framework")
 load("//tensorflow:pytype.default.bzl", "pytype_strict_binary", "pytype_strict_library")
 load("//tensorflow:strict.default.bzl", "py_strict_test")
 load(
@@ -10,7 +11,6 @@ load(
     "tflite_ios_framework",
     "tflite_ios_xcframework",
 )
-load("@build_bazel_rules_apple//apple:ios.bzl", "ios_static_framework")
 
 package(
     default_visibility = [

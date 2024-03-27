@@ -1,8 +1,3 @@
-load("//xla:lit.bzl", "enforce_glob", "lit_test_suite")
-load(
-    "//xla/stream_executor:build_defs.bzl",
-    "if_gpu_is_configured",
-)
 load(
     "@local_config_rocm//rocm:build_defs.bzl",
     "if_rocm_is_configured",
@@ -17,6 +12,11 @@ load(
 load(
     "@local_tsl//tsl/platform/default:cuda_build_defs.bzl",
     "if_cuda_is_configured",
+)
+load("//xla:lit.bzl", "enforce_glob", "lit_test_suite")
+load(
+    "//xla/stream_executor:build_defs.bzl",
+    "if_gpu_is_configured",
 )
 
 package(

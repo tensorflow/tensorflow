@@ -1,6 +1,3 @@
-# Placeholder: load py_proto_library
-load("//xla:xla.bzl", "xla_cc_test", "xla_py_proto_library")
-load("//third_party/compute_library:build_defs.bzl", "if_enable_acl")
 load("@local_tsl//tsl:tsl.bzl", "internal_visibility")
 load("@local_tsl//tsl:tsl.default.bzl", "filegroup", "get_compatible_with_portable")
 load(
@@ -8,6 +5,10 @@ load(
     "tf_proto_library",
 )
 load("@local_tsl//tsl/platform:rules_cc.bzl", "cc_library")
+load("//third_party/compute_library:build_defs.bzl", "if_enable_acl")
+
+# Placeholder: load py_proto_library
+load("//xla:xla.bzl", "xla_cc_test", "xla_py_proto_library")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],

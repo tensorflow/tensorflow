@@ -1,9 +1,9 @@
 """TensorFlow workspace initialization. Consult the WORKSPACE on how to use it."""
 
 load("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
-load("//third_party/tf_runtime:workspace.bzl", tf_runtime = "repo")
-load("//third_party/llvm:workspace.bzl", llvm = "repo")
 load("//third_party:repo.bzl", "tf_vendored")
+load("//third_party/llvm:workspace.bzl", llvm = "repo")
+load("//third_party/tf_runtime:workspace.bzl", tf_runtime = "repo")
 
 def workspace():
     tf_vendored(name = "local_xla", relpath = "third_party/xla")

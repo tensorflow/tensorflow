@@ -63,6 +63,11 @@
 
 # Placeholder: load py_proto_library
 load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
+load("@local_config_tensorrt//:build_defs.bzl", "if_tensorrt")
+load(
+    "@local_xla//xla/tsl/mkl:build_defs.bzl",
+    "if_mkl",
+)
 load(
     "//tensorflow:tensorflow.bzl",
     "if_android",
@@ -83,10 +88,6 @@ load(
     "transitive_hdrs",
 )
 load("//tensorflow:tensorflow.default.bzl", "cc_header_only_library", "filegroup", "get_compatible_with_portable", "tensorflow_opensource_extra_deps", "tf_monitoring_framework_deps", "tf_selective_registration_deps")
-load(
-    "@local_xla//xla/tsl/mkl:build_defs.bzl",
-    "if_mkl",
-)
 
 # For platform specific build config
 load(
@@ -111,7 +112,6 @@ load(
     "//tensorflow/core/platform:rules_cc.bzl",
     "cc_library",
 )
-load("@local_config_tensorrt//:build_defs.bzl", "if_tensorrt")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],

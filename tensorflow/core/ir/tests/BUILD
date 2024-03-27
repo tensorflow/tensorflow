@@ -1,6 +1,6 @@
-load("//tensorflow/compiler/mlir:glob_lit_test.bzl", "glob_lit_tests")
 load("//tensorflow:tensorflow.bzl", "tf_native_cc_binary")
 load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")
+load("//tensorflow/compiler/mlir:glob_lit_test.bzl", "glob_lit_tests")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],

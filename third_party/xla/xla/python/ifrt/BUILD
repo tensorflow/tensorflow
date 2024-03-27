@@ -1,7 +1,7 @@
-load("//xla:xla.bzl", "xla_cc_test")
 load("@local_tsl//tsl:tsl.bzl", "internal_visibility")
 load("@local_tsl//tsl:tsl.default.bzl", "get_compatible_with_portable")
 load("@local_tsl//tsl/platform:build_config.bzl", "tf_proto_library")
+load("//xla:xla.bzl", "xla_cc_test")
 
 package_group(
     name = "friends",

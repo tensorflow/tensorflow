@@ -1,9 +1,9 @@
 # tf.data service client library.
 
-load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 load("//tensorflow:tensorflow.default.bzl", "tf_grpc_cc_dependencies")
 load("//tensorflow/core/platform:build_config.bzl", "tf_protos_profiler_service")
+load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],

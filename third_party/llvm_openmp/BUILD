@@ -1,5 +1,6 @@
 # Build file for OpenMP library that is part of llvm
 
+load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
 load(
     "@local_tsl//tsl:tsl.bzl",
     "if_linux_x86_64",
@@ -16,7 +17,6 @@ load(
     "dict_add",
     "libiomp5_cc_binary",
 )
-load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
 
 package(
     default_visibility = [

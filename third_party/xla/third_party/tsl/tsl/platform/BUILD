@@ -5,6 +5,14 @@
 #   to other TF components outside of TSL.
 
 load(
+    "@bazel_skylib//:bzl_library.bzl",
+    "bzl_library",
+)
+load(
+    "@local_tsl//tsl/platform:rules_cc.bzl",
+    "cc_library",
+)
+load(
     "//tsl:tsl.bzl",
     "if_not_fuchsia",
     "internal_visibility",
@@ -29,14 +37,6 @@ load(
     "tsl_protobuf_deps",
 )
 load("//tsl/platform:build_config_root.bzl", "if_static")
-load(
-    "@local_tsl//tsl/platform:rules_cc.bzl",
-    "cc_library",
-)
-load(
-    "@bazel_skylib//:bzl_library.bzl",
-    "bzl_library",
-)
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
