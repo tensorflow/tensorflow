@@ -2,6 +2,10 @@
 # Tensorflow default op definitions.
 
 load(
+    "@local_xla//xla/tsl/mkl:build_defs.bzl",
+    "if_mkl",
+)
+load(
     "//tensorflow:tensorflow.bzl",
     "tf_cc_test",
 )
@@ -9,10 +13,6 @@ load(
     "//tensorflow:tensorflow.default.bzl",
     "filegroup",
     "tf_gen_op_libs",
-)
-load(
-    "@local_xla//xla/tsl/mkl:build_defs.bzl",
-    "if_mkl",
 )
 load(
     "//tensorflow/core/platform:rules_cc.bzl",

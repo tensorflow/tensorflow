@@ -91,12 +91,12 @@ class KernelFusionInterface : public FusionInterface {
 
  protected:
   // Returns the default mapping for the given launch dimensions: linearizes
-  // the thread index and then reshapes it into the output layout.
+  // the thread index and then reshapes it into the given layout.
   // Populates the ranges for d0, d1, d2, d3, d4, d5 from the thread counts and
   // block sizes in the given launch dimensions.
-  static IndexingMap GetDefaultThreadIdToOutputIndexingMap(
+  static IndexingMap GetDefaultThreadIdIndexingMap(
       const LaunchDimensions& launch_dims, int unroll_factor,
-      const Shape& output_shape, mlir::MLIRContext* ctx);
+      const Shape& shape, mlir::MLIRContext* ctx);
 };
 
 // Base class for fusions that are implemented using a single kernel, which is

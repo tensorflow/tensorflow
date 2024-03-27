@@ -1,6 +1,7 @@
 # Platform-specific build configurations.
 
 load("@com_github_grpc_grpc//bazel:generate_cc.bzl", "generate_cc")
+load("@com_google_protobuf//:protobuf.bzl", "proto_gen")
 load(
     "//tsl:tsl.bzl",
     "clean_dep",
@@ -8,7 +9,6 @@ load(
     "if_tsl_link_protobuf",
 )
 load("//tsl/platform:build_config_root.bzl", "if_static")
-load("@com_google_protobuf//:protobuf.bzl", "proto_gen")
 
 def well_known_proto_libs():
     """Set of standard protobuf protos, like Any and Timestamp.

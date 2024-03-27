@@ -1,15 +1,7 @@
 # Tools and utilities that aid in XLA development and usage.
 
-load("//xla/tests:build_defs.bzl", "xla_test")
 load("@bazel_skylib//rules:build_test.bzl", "build_test")
 load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
-load(
-    "//xla:xla.bzl",
-    "xla_cc_binary",
-    "xla_cc_test",
-    "xla_py_proto_library",
-)
-load("//xla/stream_executor:build_defs.bzl", "if_gpu_is_configured")
 load("@local_config_rocm//rocm:build_defs.bzl", "if_rocm_is_configured")
 load(
     "@local_tsl//tsl:tsl.bzl",
@@ -26,6 +18,14 @@ load(
     "@local_tsl//tsl/platform/default:cuda_build_defs.bzl",
     "if_cuda_is_configured",
 )
+load(
+    "//xla:xla.bzl",
+    "xla_cc_binary",
+    "xla_cc_test",
+    "xla_py_proto_library",
+)
+load("//xla/stream_executor:build_defs.bzl", "if_gpu_is_configured")
+load("//xla/tests:build_defs.bzl", "xla_test")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],

@@ -2,9 +2,9 @@
 # This includes the C API, Java API, and protocol buffer files.
 
 load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
+load("@local_xla//xla/tsl/mkl:build_defs.bzl", "if_enable_mkl", "if_mkl")
 load("@rules_pkg//:pkg.bzl", "pkg_tar", "pkg_zip")
 load("//tensorflow:tensorflow.bzl", "VERSION", "VERSION_MAJOR", "if_macos")
-load("@local_xla//xla/tsl/mkl:build_defs.bzl", "if_enable_mkl", "if_mkl")
 load("//tensorflow/core/platform:build_config_root.bzl", "tf_additional_license_deps")
 
 package(default_visibility = ["//visibility:private"])

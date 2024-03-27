@@ -89,8 +89,8 @@ MlirInPlaceDynamicUpdateSliceFusion::ComputeThreadIdToInputIndexing(
   // It is guaranteed that all DUS ops have the same output shape at this point.
   const auto& update_shape =
       dus_ops_.front()->operand(kDUSUpdateIndex)->shape();
-  return GetDefaultThreadIdToOutputIndexingMap(launch_dims, /*unroll_factor=*/1,
-                                               update_shape, mlir_context);
+  return GetDefaultThreadIdIndexingMap(launch_dims, /*unroll_factor=*/1,
+                                       update_shape, mlir_context);
 }
 
 std::vector<const HloInstruction*>
