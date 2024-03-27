@@ -17,6 +17,8 @@ limitations under the License.
 
 #include "tensorflow/lite/core/acceleration/configuration/nnapi_plugin.h"
 
+#include "tensorflow/lite/core/acceleration/configuration/delegate_registry.h"
+
 namespace tflite {
 namespace delegates {
 

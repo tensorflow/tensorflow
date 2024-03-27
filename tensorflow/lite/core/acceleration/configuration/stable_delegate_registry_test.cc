@@ -15,6 +15,7 @@ limitations under the License.
 #include "tensorflow/lite/core/acceleration/configuration/stable_delegate_registry.h"
 
 #include <gtest/gtest.h>
+#include "tensorflow/lite/core/acceleration/configuration/c/stable_delegate.h"
 
 namespace {
 
