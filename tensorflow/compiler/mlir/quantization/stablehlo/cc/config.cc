@@ -21,14 +21,72 @@ limitations under the License.
 namespace stablehlo::quantization {
 namespace {
 
-// Creates `CalibrationOptions` with default fields. Uses simple min-max
-// calibration by default.
-CalibrationOptions GetDefaultCalibrationOptions() {
-  CalibrationOptions options{};
-  options.set_calibration_method(
-      CalibrationOptions::CALIBRATION_METHOD_MIN_MAX);
-
-  return options;
+// Populate `CalibrationOptions` with default fields.
+void PopulateDefaultCalibrationOptions(QuantizationConfig& quant_config) {
+  if (!quant_config.has_calibration_options() ||
+      quant_config.calibration_options().calibration_method() ==
+          CalibrationOptions::CALIBRATION_METHOD_UNSPECIFIED) {
+    quant_config.mutable_calibration_options()->set_calibration_method(
+        CalibrationOptions::CALIBRATION_METHOD_MIN_MAX);
+  }
+  switch (quant_config.calibration_options().calibration_method()) {
+    case CalibrationOptions::CALIBRATION_METHOD_MIN_MAX:
+      break;
+    case CalibrationOptions::CALIBRATION_METHOD_AVERAGE_MIN_MAX:
+      break;
+    case CalibrationOptions::CALIBRATION_METHOD_HISTOGRAM_PERCENTILE:
+      if (quant_config.calibration_options()
+              .calibration_parameters()
+              .initial_num_bins() == 0) {
+        quant_config.mutable_calibration_options()
+            ->mutable_calibration_parameters()
+            ->set_initial_num_bins(256);
+      }
+      if (quant_config.calibration_options()
+              .calibration_parameters()
+              .min_percentile() == 0) {
+        quant_config.mutable_calibration_options()
+            ->mutable_calibration_parameters()
+            ->set_min_percentile(0.001);
+      }
+      if (quant_config.calibration_options()
+              .calibration_parameters()
+              .max_percentile() == 0) {
+        quant_config.mutable_calibration_options()
+            ->mutable_calibration_parameters()
+            ->set_max_percentile(99.999);
+      }
+      break;
+    case CalibrationOptions::CALIBRATION_METHOD_HISTOGRAM_MSE_BRUTEFORCE:
+      if (quant_config.calibration_options()
+              .calibration_parameters()
+              .initial_num_bins() == 0) {
+        quant_config.mutable_calibration_options()
+            ->mutable_calibration_parameters()
+            ->set_initial_num_bins(256);
+      }
+      break;
+    case CalibrationOptions::CALIBRATION_METHOD_HISTOGRAM_MSE_MAX_FREQUENCY:
+      if (quant_config.calibration_options()
+              .calibration_parameters()
+              .initial_num_bins() == 0) {
+        quant_config.mutable_calibration_options()
+            ->mutable_calibration_parameters()
+            ->set_initial_num_bins(256);
+      }
+      break;
+    case CalibrationOptions::CALIBRATION_METHOD_HISTOGRAM_MSE_SYMMETRIC:
+      if (quant_config.calibration_options()
+              .calibration_parameters()
+              .initial_num_bins() == 0) {
+        quant_config.mutable_calibration_options()
+            ->mutable_calibration_parameters()
+            ->set_initial_num_bins(256);
+      }
+      break;
+    default:
+      break;
+  }
 }
 
 // Returns a default `QuantizationSpec` for performing static-range PTQ on all
@@ -75,8 +133,8 @@ QuantizationSpec GetStaticRangePtqSpecForConvolution() {
   // Enable per-channel quantization for convolution weights.
   QuantizedType conv_weight_quantized_type{};
 
-  // Assumes NHWC format, specifying the channel dimension (3) as the quantized
-  // axis.
+  // Assumes NHWC format, specifying the channel dimension (3) as the
+  // quantized axis.
   conv_weight_quantized_type.mutable_dimension_specs()->set_dimension(3);
 
   // The index of weight operands passed to lifted functions for convolution
@@ -99,9 +157,9 @@ void ExpandStaticRangePtqPreset(const StaticRangePtqPreset& preset,
         ->Add(preset_datasets.begin(), preset_datasets.end());
   }
 
-  // Create a new `QuantizationSpecs` to replace the existing one. The expansion
-  // from `StaticRangePtqPreset` gets populated first and then user-provided
-  // explicit `QuantizationSpec`s will be appended.
+  // Create a new `QuantizationSpecs` to replace the existing one. The
+  // expansion from `StaticRangePtqPreset` gets populated first and then
+  // user-provided explicit `QuantizationSpec`s will be appended.
   QuantizationSpecs new_specs{};
   *new_specs.add_specs() = GetDefaultStaticRangePtqSpec();
   *new_specs.add_specs() = GetStaticRangePtqSpecForConvolution();
@@ -136,9 +194,7 @@ QuantizationConfig PopulateDefaults(
     const QuantizationConfig& user_provided_config) {
   QuantizationConfig config = user_provided_config;
 
-  if (!config.has_calibration_options()) {
-    *config.mutable_calibration_options() = GetDefaultCalibrationOptions();
-  }
+  PopulateDefaultCalibrationOptions(config);
 
   PipelineConfig& pipeline_config = *config.mutable_pipeline_config();
   if (!pipeline_config.has_unpack_quantized_types()) {

@@ -191,6 +191,8 @@ QuantizationConfig GetQuantizationConfigForStaticRangePtq(
   *quantization_config.mutable_debugger_config() =
       quantization_options.debugger_config();
   quantization_config.mutable_static_range_ptq_preset();
+  *quantization_config.mutable_calibration_options() =
+      quantization_options.calibration_options();
 
   return ExpandPresets(PopulateDefaults(quantization_config));
 }
