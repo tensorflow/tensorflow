@@ -439,7 +439,7 @@ class OneDnnMatMulRewriteVisitor : public DfsHloRewriteVisitor {
         OptionalConvertAndBitcast(&optional_dot_convert, &optional_dot_bitcast,
                                   OneDnnMatmulInstr(&dot))
             .WithOneUser(),
-        m::Op(&addend_intermediate).WithOneUser());
+        m::Op(&addend_intermediate));
 
     if (Match(instr, pattern)) {
       if (!IsSupportedType(dot->shape().element_type())) return OkStatus();
@@ -588,7 +588,7 @@ class OneDnnMatMulRewriteVisitor : public DfsHloRewriteVisitor {
                                .WithOneUser()
                                .WithOpcode(HloOpcode::kCustomCall)
                                .WithCustomCallTarget({"__onednn$matmul"}),
-                           m::Broadcast(m::Constant(&constant)).WithOneUser());
+                           m::Broadcast(m::Constant(&constant)));
 
     if (Match(instr, pattern)) {
       std::vector<HloInstruction*> new_operands;
