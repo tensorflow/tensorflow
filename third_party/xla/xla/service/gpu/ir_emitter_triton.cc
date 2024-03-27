@@ -1938,6 +1938,43 @@ bool Is3xBfloat16MatMul(const HloDotInstruction* dot_instr,
   return algorithm == PrecisionConfig::ALG_DOT_BF16_BF16_F32_X3;
 }
 
+// This is a heuristic that serves as a proxy for register usage and code size.
+//
+// We have noticed that tilings with very long LLVM IR code are both slow to
+// compile and slow to run. This can be for example due to register spills. So
+// we should skip these tilings to save time. But it's better to skip them
+// before the LLVM IR is generated. To do that, we came up with a formula that
+// strongly correlates with the LLVM IR size. The formula is the size of the two
+// input and the output thread block tiles divided by the number of warps. We
+// read https://developer.nvidia.com/blog/cutlass-linear-algebra-cuda/ as a
+// reference, and found the formula by trial and error.
+//
+// To regenerate the limit, we have to run an exhaustive search on all tilings
+// for a few different HLOs, printing the runtimes and the heuristic values.
+//
+// From that, we can find a limit, such that all tilings within alpha *
+// optimal_runtime have a heuristic value less than or equal to the limit.
+//
+// In our measurements, all tilings which were within 1.13 * optimal_runtime had
+// a complexity_heuristic_value <= kComplexityHeuristicLimit.
+//
+// See go/tiling-heuristic for more details.
+absl::Status CheckGemmTilingComplexityHeuristic(
+    const TritonGemmConfig& config) {
+  constexpr int64_t kComplexityHeuristicLimit = 9000;
+  int64_t complexity_heuristic_value =
+      (config.block_m * config.block_n +
+       (config.block_m + config.block_n) * config.block_k) /
+      config.num_warps;
+  VLOG(2) << "Complexity heuristic: " << complexity_heuristic_value;
+  if (complexity_heuristic_value > kComplexityHeuristicLimit) {
+    return ResourceExhausted("Tiling complexity heuristic exceeded: %d > %d",
+                             complexity_heuristic_value,
+                             kComplexityHeuristicLimit);
+  }
+  return absl::OkStatus();
+}
+
 }  // namespace
 
 // Variable naming: lhs [m, k] x rhs [k, n] -> out [m, n].
@@ -1948,6 +1985,8 @@ absl::Status EmitMatMul(mlir::OpBuilder builder,
                         const HloComputation* computation,
                         mlir::triton::FuncOp fn,
                         const TritonGemmConfig& config) {
+  TF_RETURN_IF_ERROR(CheckGemmTilingComplexityHeuristic(config));
+
   const HloDotInstruction* dot_instr = DynCast<HloDotInstruction>(
       hlo_query::GetFirstInstructionWithOpcode(*computation, HloOpcode::kDot));
   TF_RET_CHECK(!dot_instr->sparse_operands());
@@ -2707,8 +2746,7 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> CreateTritonModule(
 
 absl::StatusOr<TritonWrapperResult> TritonWrapper(
     const TritonFusionAnalysis& analysis, absl::string_view fn_name,
-    const HloComputation* hlo_computation, absl::string_view fusion_kind,
-    const se::CudaComputeCapability& cc,
+    const HloComputation* hlo_computation, const se::CudaComputeCapability& cc,
     const se::DeviceDescription& device_info, const TritonGemmConfig& config,
     llvm::Module* llvm_module, TritonIrEmitter ir_emitter,
     mlir::MLIRContext& mlir_context) {
@@ -2717,43 +2755,6 @@ absl::StatusOr<TritonWrapperResult> TritonWrapper(
     // Set environment variables for consumption by Triton.
     tsl::setenv("ENABLE_MMA_V3", "true", true /*overwrite*/);
     tsl::setenv("ENABLE_PIPELINING", "true", true /*overwrite*/);
-  }
-
-  if (fusion_kind == kTritonGemmFusionKind) {
-    // This is a heuristic that serves as a proxy for register usage and code
-    // size.
-    //
-    // We have noticed that tilings with very long LLVM IR code are both slow to
-    // compile and slow to run. This can be for example due to register spills.
-    // So we should skip these tilings to save time. But it's better to skip
-    // them before the LLVM IR is generated. To do that, we came up with a
-    // formula that strongly correlates with the LLVM IR size. The formula is
-    // the size of the two input and the output thread block tiles divided by
-    // the number of warps. We read
-    // https://developer.nvidia.com/blog/cutlass-linear-algebra-cuda/ as a
-    // reference, and found the formula by trial and error.
-    //
-    // To regenerate the limit, we have to run an exhaustive search on all
-    // tilings for a few different HLOs, printing the runtimes and the heuristic
-    // values.
-    // From that, we can find a limit, such that all tilings within alpha *
-    // optimal_runtime have a heuristic value less than or equal to the limit.
-    //
-    // In our measurements, all tilings which were within 1.13 * optimal_runtime
-    // had a complexity_heuristic_value <= kComplexityHeuristicLimit.
-    //
-    // See go/tiling-heuristic for more details.
-    constexpr int64_t kComplexityHeuristicLimit = 9000;
-    int64_t complexity_heuristic_value =
-        (config.block_m * config.block_n +
-         (config.block_m + config.block_n) * config.block_k) /
-        config.num_warps;
-    VLOG(2) << "Complexity heuristic: " << complexity_heuristic_value;
-    if (complexity_heuristic_value > kComplexityHeuristicLimit) {
-      return ResourceExhausted("Tiling complexity heuristic exceeded: %d > %d",
-                               complexity_heuristic_value,
-                               kComplexityHeuristicLimit);
-    }
   }
 
   TF_ASSIGN_OR_RETURN(
