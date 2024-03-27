@@ -45,7 +45,6 @@
 #include "xla/python/ifrt_proxy/common/ifrt_service.pb.h"
 #include "xla/python/ifrt_proxy/common/types.h"
 #include "xla/python/ifrt_proxy/common/types.pb.h"
-#include "xla/python/pjrt_ifrt/pjrt_array.h"
 #include "xla/status_macros.h"
 #include "tsl/concurrency/ref_count.h"
 #include "tsl/platform/errors.h"

@@ -25,7 +25,6 @@
 #include "absl/strings/str_cat.h"
 #include "absl/synchronization/mutex.h"
 #if defined(PLATFORM_GOOGLE)
-#include "absl/types/source_location.h"
 #endif
 #include "xla/python/ifrt/future.h"
 #include "xla/python/ifrt_proxy/client/client_session.h"

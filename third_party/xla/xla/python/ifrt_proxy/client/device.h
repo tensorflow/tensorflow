@@ -29,6 +29,7 @@
 #include "absl/types/span.h"
 #include "xla/literal.h"
 #include "xla/pjrt/pjrt_client.h"
+#include "xla/pjrt/pjrt_common.h"
 #include "xla/pjrt/pjrt_device_description.h"
 #include "xla/pjrt/pjrt_future.h"
 #include "xla/python/ifrt/device.h"

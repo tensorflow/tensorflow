@@ -43,6 +43,7 @@
 #include "xla/python/ifrt_proxy/client/client_session.h"
 #include "xla/python/ifrt_proxy/common/grpc_credentials.h"
 #include "xla/python/ifrt_proxy/common/grpc_ifrt_service.grpc.pb.h"
+#include "xla/python/ifrt_proxy/common/grpc_ifrt_service.pb.h"
 #include "xla/python/ifrt_proxy/common/ifrt_service.pb.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/errors.h"
