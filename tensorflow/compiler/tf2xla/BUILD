@@ -303,6 +303,7 @@ cc_library(
         "@com_google_absl//absl/synchronization",
         "@ducc//:fft_wrapper",
         "@eigen_archive//:eigen3",
+        "@llvm-project//mlir:TransformUtils",
         "@local_xla//xla:empty",
         "//tensorflow/core/framework:numeric_types",
         "//tensorflow/core/platform:bfloat16",

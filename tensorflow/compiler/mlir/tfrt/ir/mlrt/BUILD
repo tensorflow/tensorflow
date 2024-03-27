@@ -167,6 +167,7 @@ cc_library(
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_side_effects",
         "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:InliningUtils",
         "@llvm-project//mlir:SideEffectInterfaces",
         "@llvm-project//mlir:Transforms",
         "@tf_runtime//:compiler_tfrt_op_interfaces",
