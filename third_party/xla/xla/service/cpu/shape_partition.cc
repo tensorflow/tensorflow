@@ -15,6 +15,10 @@ limitations under the License.
 
 #include "xla/service/cpu/shape_partition.h"
 
+#include "absl/log/check.h"
+#include "absl/types/span.h"
+#include "xla/shape.h"
+
 namespace xla {
 namespace cpu {
 

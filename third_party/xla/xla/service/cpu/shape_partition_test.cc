@@ -18,9 +18,13 @@ limitations under the License.
 #include <algorithm>
 #include <random>
 
-#include "xla/test_helpers.h"
+#include <gmock/gmock.h>
+#include <gtest/gtest.h>
+#include "absl/algorithm/container.h"
+#include "xla/shape.h"
+#include "xla/shape_util.h"
 #include "xla/tests/hlo_test_base.h"
-#include "xla/util.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla {
 namespace cpu {

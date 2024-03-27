@@ -18,16 +18,13 @@ limitations under the License.
 #include <utility>
 
 #include "absl/strings/str_format.h"
-#include "xla/array4d.h"
-#include "xla/client/client.h"
 #include "xla/client/client_library.h"
 #include "xla/client/global_data.h"
 #include "xla/client/local_client.h"
 #include "xla/client/xla_builder.h"
 #include "xla/client/xla_computation.h"
 #include "xla/literal.h"
-#include "xla/statusor.h"
-#include "xla/types.h"
+#include "xla/literal_util.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/init_main.h"
 #include "tsl/platform/logging.h"
