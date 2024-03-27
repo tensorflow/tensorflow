@@ -1,5 +1,5 @@
-load("//tensorflow/lite:build_def.bzl", "tflite_copts", "tflite_self_contained_libs_test_suite")
 load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")
+load("//tensorflow/lite:build_def.bzl", "tflite_copts", "tflite_self_contained_libs_test_suite")
 load("//tensorflow/lite/core:special_rules.bzl", "builtin_ops_visibility_allowlist")
 
 package(

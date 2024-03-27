@@ -1,4 +1,5 @@
 load("@build_bazel_rules_android//android:rules.bzl", "android_library")
+load("@rules_cc//cc:defs.bzl", "cc_binary", "cc_library")
 load(":build_defs.bzl", "flatbuffer_py_strip_prefix_srcs")
 
 package(default_visibility = ["//visibility:public"])
@@ -21,8 +22,6 @@ config_setting(
     name = "windows",
     values = {"cpu": "x64_windows"},
 )
-
-load("@rules_cc//cc:defs.bzl", "cc_binary", "cc_library")
 
 # Public flatc library to compile flatbuffer files at runtime.
 cc_library(

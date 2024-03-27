@@ -1,8 +1,8 @@
 """BUILD extension for TF composition project."""
 
+load("//tensorflow:strict.default.bzl", "py_strict_binary", "py_strict_library")
 load("//tensorflow:tensorflow.bzl", "tf_custom_op_library", "tf_gen_op_wrapper_py")
 load("//tensorflow:tensorflow.default.bzl", "tf_custom_op_py_library")
-load("//tensorflow:strict.default.bzl", "py_strict_binary", "py_strict_library")
 
 def gen_op_libraries(
         name,

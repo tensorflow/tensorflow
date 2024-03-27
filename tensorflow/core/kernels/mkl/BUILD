@@ -1,11 +1,11 @@
 load(
+    "@local_xla//xla/tsl/mkl:build_defs.bzl",
+    "mkl_deps",
+)
+load(
     "//tensorflow:tensorflow.bzl",
     "tf_cc_test_mkl",
     "tf_mkl_kernel_library",
-)
-load(
-    "@local_xla//xla/tsl/mkl:build_defs.bzl",
-    "mkl_deps",
 )
 
 package(

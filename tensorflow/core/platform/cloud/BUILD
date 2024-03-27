@@ -1,11 +1,11 @@
 # Description:
 # Cloud file system implementation.
 
-load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load(
     "@local_tsl//tsl:tsl.bzl",
     "tsl_copts",
 )
+load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],

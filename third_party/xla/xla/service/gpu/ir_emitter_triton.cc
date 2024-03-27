@@ -271,7 +271,10 @@ Value Cast(ImplicitLocOpBuilder& b, Value value, Type dst_element_ty) {
     return Cast(b, b.create<ma::ExtFOp>(fp32_ty, value), dst_element_ty);
   }
   if (dst_element_ty.isBF16()) {
-    return b.create<ma::TruncFOp>(dst_ty, Cast(b, value, b.getF32Type()));
+    // S8 -> BF16 is directly supported and doesn't need to go through f32.
+    if (!src_element_ty.isInteger(8)) {
+      return b.create<ma::TruncFOp>(dst_ty, Cast(b, value, b.getF32Type()));
+    }
   }
 
   // float => float

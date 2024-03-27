@@ -1,3 +1,5 @@
+# buildifier: disable=load-on-top
+
 workspace(name = "wheel_test")
 
 load("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
@@ -38,7 +40,7 @@ python_repository(name = "python_version_repo")
 load("@python_version_repo//:py_version.bzl", "TF_PYTHON_VERSION")
 
 # Register multi toolchains
-load("@rules_python//python:repositories.bzl", "python_register_toolchains")
+load("@rules_python//python:repositories.bzl", "python_register_toolchains")  # buildifier: disable=same-origin-load
 
 python_register_toolchains(
     name = "python",

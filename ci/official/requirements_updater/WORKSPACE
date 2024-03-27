@@ -1,3 +1,5 @@
+# buildifier: disable=load-on-top
+
 workspace(name = "requirements_updater")
 
 load("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
@@ -22,7 +24,7 @@ load("@rules_python//python:repositories.bzl", "py_repositories")
 
 py_repositories()
 
-load("@rules_python//python:repositories.bzl", "python_register_multi_toolchains")
+load("@rules_python//python:repositories.bzl", "python_register_multi_toolchains")  # buildifier: disable=same-origin-load
 load("@rules_python//python/pip_install:repositories.bzl", "pip_install_dependencies")
 
 default_python_version = "3.10"

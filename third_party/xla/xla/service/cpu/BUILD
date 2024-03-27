@@ -3,21 +3,6 @@
 
 load("@bazel_skylib//rules:build_test.bzl", "build_test")
 load("@bazel_skylib//rules:common_settings.bzl", "bool_flag")
-load(
-    "//xla:xla.bzl",
-    "ORC_JIT_MEMORY_MAPPER_TARGETS",
-    "xla_cc_binary",
-    "xla_cc_test",
-)
-load(
-    "//xla/tsl/mkl:build_defs.bzl",
-    "mkl_deps",
-)
-load(
-    "//third_party/compute_library:build_defs.bzl",
-    "acl_deps",
-    "if_enable_acl",
-)
 load("@local_tsl//tsl:tsl.bzl", "internal_visibility", "tf_openmp_copts", "tsl_copts")
 load("@local_tsl//tsl:tsl.default.bzl", "filegroup", "get_compatible_with_portable")
 load("@local_tsl//tsl/platform:build_config.bzl", "tf_proto_library")
@@ -29,6 +14,21 @@ load(
     "if_llvm_x86_available",
 )
 load("@local_tsl//tsl/platform:rules_cc.bzl", "cc_library")
+load(
+    "//third_party/compute_library:build_defs.bzl",
+    "acl_deps",
+    "if_enable_acl",
+)
+load(
+    "//xla:xla.bzl",
+    "ORC_JIT_MEMORY_MAPPER_TARGETS",
+    "xla_cc_binary",
+    "xla_cc_test",
+)
+load(
+    "//xla/tsl/mkl:build_defs.bzl",
+    "mkl_deps",
+)
 load(":build_defs.bzl", "runtime_copts")
 
 package(

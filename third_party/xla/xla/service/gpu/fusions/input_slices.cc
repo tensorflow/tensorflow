@@ -190,8 +190,7 @@ std::optional<IndexingMap> InputSlicesFusion::ComputeThreadIdToOutputIndexing(
   // The implementation requires the shapes and layouts to be the same, but we
   // still use the requested output's shape for clarity.
   const auto& shape = analysis_.fusion_roots()[output_id]->shape();
-  return GetDefaultThreadIdToOutputIndexingMap(launch_dims, unroll_factor_,
-                                               shape, ctx);
+  return GetDefaultThreadIdIndexingMap(launch_dims, unroll_factor_, shape, ctx);
 }
 
 absl::Status InputSlicesFusion::EmitKernel(
