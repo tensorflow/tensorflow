@@ -1,11 +1,11 @@
 """TensorFlow workspace initialization. Consult the WORKSPACE on how to use it."""
 
-load("//third_party/android:android_configure.bzl", "android_configure")
 load("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
 load("@com_github_grpc_grpc//bazel:grpc_deps.bzl", "grpc_deps")
 load("@com_google_benchmark//:bazel/benchmark_deps.bzl", "benchmark_deps")
 load("@io_bazel_rules_closure//closure:defs.bzl", "closure_repositories")
 load("@rules_pkg//:deps.bzl", "rules_pkg_dependencies")
+load("//third_party/android:android_configure.bzl", "android_configure")
 
 # buildifier: disable=unnamed-macro
 def workspace(with_rules_cc = True):

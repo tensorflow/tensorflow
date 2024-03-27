@@ -2,7 +2,6 @@
 # TensorFlow is a computational framework, primarily for use in machine
 # learning applications.
 
-load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load(
     "//tensorflow:tensorflow.bzl",
     "cc_library_with_android_deps",
@@ -11,6 +10,7 @@ load(
     "transitive_hdrs",
 )
 load("//tensorflow:tensorflow.default.bzl", "filegroup", "tf_gen_op_wrappers_cc")
+load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],

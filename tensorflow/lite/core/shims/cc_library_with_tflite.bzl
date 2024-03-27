@@ -1,5 +1,7 @@
 """Definitions for targets that use the TFLite shims."""
 
+load("@bazel_skylib//rules:build_test.bzl", "build_test")
+load("@build_bazel_rules_android//android:rules.bzl", "android_binary", "android_library")
 load("//tensorflow:tensorflow.bzl", "clean_dep")
 load(
     "//tensorflow/lite:build_def.bzl",
@@ -7,8 +9,6 @@ load(
     "tflite_custom_c_library",
     "tflite_jni_binary",
 )
-load("@build_bazel_rules_android//android:rules.bzl", "android_binary", "android_library")
-load("@bazel_skylib//rules:build_test.bzl", "build_test")
 
 def _concat(lists):
     """Concatenate a list of lists, without requiring the inner lists to be iterable.

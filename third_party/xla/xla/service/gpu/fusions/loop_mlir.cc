@@ -65,8 +65,8 @@ const Shape& GetFusionResultShape(const HloFusionAnalysis& analysis) {
 std::optional<IndexingMap> MlirLoopFusion::ComputeThreadIdToOutputIndexing(
     int64_t root_index, mlir::MLIRContext* ctx) const {
   auto launch_dims = launch_dimensions();
-  return GetDefaultThreadIdToOutputIndexingMap(
-      launch_dims, config_.unroll_factor, GetFusionResultShape(analysis_), ctx);
+  return GetDefaultThreadIdIndexingMap(launch_dims, config_.unroll_factor,
+                                       GetFusionResultShape(analysis_), ctx);
 }
 
 std::optional<IndexingMap> MlirLoopFusion::ComputeThreadIdToInputIndexing(

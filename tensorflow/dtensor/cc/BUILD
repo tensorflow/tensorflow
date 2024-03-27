@@ -1,13 +1,13 @@
 #include "third_party/absl/strings/str_cat.h"
 #DTensor C++ runtime and libraries.
 
-load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
+load("//tensorflow:tensorflow.bzl", "if_google", "if_libtpu")
+load("//tensorflow:tensorflow.default.bzl", "tf_kernel_library")
 load(
     "//tensorflow/core/platform:build_config.bzl",
     "tf_dtensor_tpu_dependencies",
 )
-load("//tensorflow:tensorflow.default.bzl", "tf_kernel_library")
-load("//tensorflow:tensorflow.bzl", "if_google", "if_libtpu")
+load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 
 default_visibility = [
     "//tensorflow/dtensor:dtensor-internal",

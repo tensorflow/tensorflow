@@ -1,15 +1,15 @@
 """Build rules for XLA testing."""
 
+load(
+    "@local_tsl//tsl/platform:build_config_root.bzl",
+    "tf_gpu_tests_tags",
+)
 load("//xla:xla.bzl", "xla_cc_test")
 load(
     "//xla/stream_executor:build_defs.bzl",
     "if_gpu_is_configured",
 )
 load("//xla/tests:plugin.bzl", "plugins")
-load(
-    "@local_tsl//tsl/platform:build_config_root.bzl",
-    "tf_gpu_tests_tags",
-)
 
 all_backends = ["cpu", "gpu"] + plugins.keys()
 

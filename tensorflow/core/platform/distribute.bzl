@@ -1,7 +1,7 @@
 """Build rules for tf.distribute testing."""
 
-load("//tensorflow/python/tpu:tpu.bzl", _tpu_py_test = "tpu_py_test")
 load("//tensorflow:tensorflow.default.bzl", "cuda_py_test")
+load("//tensorflow/python/tpu:tpu.bzl", _tpu_py_test = "tpu_py_test")
 
 def distribute_py_test(
         name,

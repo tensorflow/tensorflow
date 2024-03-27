@@ -1,10 +1,10 @@
-load("//xla:xla.bzl", "xla_cc_test")
-load("//xla/stream_executor:build_defs.bzl", "stream_executor_friends", "stream_executor_internal")
 load("@local_tsl//tsl:tsl.bzl", "internal_visibility", "transitive_hdrs")
 load("@local_tsl//tsl:tsl.default.bzl", "filegroup")
 load("@local_tsl//tsl/platform:build_config.bzl", "tf_proto_library")
 load("@local_tsl//tsl/platform:build_config_root.bzl", "if_static")
 load("@local_tsl//tsl/platform:rules_cc.bzl", "cc_library")
+load("//xla:xla.bzl", "xla_cc_test")
+load("//xla/stream_executor:build_defs.bzl", "stream_executor_friends", "stream_executor_internal")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
