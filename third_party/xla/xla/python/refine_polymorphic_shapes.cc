@@ -254,6 +254,10 @@ absl::Status RefinePolymorphicShapes(mlir::ModuleOp module,
 
   // TODO(necula): we should not need the inliner.
   pm.addPass(mlir::createInlinerPass());
+  // Efficiently remove dead code to avoid issues in subsequent passes.
+  // Too much dead code can cause e.g. the shape refinement pass to fail to
+  // converge.
+  pm.addPass(mlir::stablehlo::experimental::createStablehloTrivialDcePass());
   pm.addPass(mlir::createCSEPass());
   pm.addPass(mlir::stablehlo::experimental::createChloRecomposeOpsPass());
   pm.addPass(mlir::stablehlo::experimental::createStablehloRefineShapesPass());
