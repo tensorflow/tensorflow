@@ -48,17 +48,17 @@ struct Sine {
   T operator()(T v) const {
     return std::sin(v);
   }
-
-  template <>
-  F16 operator()<F16>(F16 val) const {
-    return F16(operator()(static_cast<float>(val)));
-  }
-
-  template <>
-  BF16 operator()<BF16>(BF16 val) const {
-    return BF16(operator()(static_cast<float>(val)));
-  }
 } sine_ref;
+
+template <>
+F16 Sine::operator()<F16>(F16 val) const {
+  return F16(operator()(static_cast<float>(val)));
+}
+
+template <>
+BF16 Sine::operator()<BF16>(BF16 val) const {
+  return BF16(operator()(static_cast<float>(val)));
+}
 
 INSTANTIATE_TYPED_TEST_SUITE_P(Sine, UnaryElementwiseOpShapePropagationTest,
                                SineOp, TestParamNames);

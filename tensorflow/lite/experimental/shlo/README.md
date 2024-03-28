@@ -199,7 +199,7 @@ using ADB.
 
 ```sh
 adb push shlo/ops/op_name_test /data/local/tmp
-ash shell /data/local/tmp/op_name_test
+adb shell /data/local/tmp/op_name_test
 ```
 
 #### iOS
