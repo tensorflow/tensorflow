@@ -618,10 +618,11 @@ absl::StatusOr<FusionDecision> CreateDotFusion(
     std::vector<HloInstruction*>& fusion_inputs,
     HloInstruction** fusion_output_ptr) {
   VLOG(5) << dot.ToString();
-  if (FusionDecision can_handle = CanTritonHandleGEMM(dot, gpu_version);
-      !can_handle) {
-    VLOG(3) << can_handle.Explain();
-    return can_handle;
+  if (CodegenDecision is_supported =
+          IsTritonSupportedInstruction(dot, gpu_version);
+      !is_supported) {
+    VLOG(3) << is_supported.Explain();
+    return is_supported;
   }
 
   // Verify sparse dot constraints.
@@ -785,115 +786,8 @@ absl::StatusOr<bool> RunOnComputation(
   return visitor.changed();
 }
 
-bool IsSupportedByTriton(PrecisionConfig::Algorithm algorithm,
-                         const se::GpuComputeCapability& gpu_version) {
-  auto cuda_compute_capability =
-      std::get_if<se::CudaComputeCapability>(&gpu_version);
-  auto rocm_compute_capability =
-      std::get_if<se::RocmComputeCapability>(&gpu_version);
-  switch (algorithm) {
-    case PrecisionConfig::ALG_DOT_TF32_TF32_F32:
-      if (cuda_compute_capability) {
-        return true;
-      }
-      return false;
-    case PrecisionConfig::ALG_DOT_BF16_BF16_F32:
-
-    case PrecisionConfig::ALG_DOT_BF16_BF16_F32_X3:
-    case PrecisionConfig::ALG_DOT_BF16_BF16_F32_X6:
-      if (cuda_compute_capability) {
-        return true;
-      }
-      if (rocm_compute_capability) {
-        return rocm_compute_capability->has_bf16_dtype_support();
-      }
-      return false;
-
-    // TODO(b/326579472): Fix the support of this algorithm and maybe allow it
-    // here.
-    case PrecisionConfig::ALG_DOT_F16_F16_F32:
-    // Slow to compile:
-    case PrecisionConfig::ALG_DOT_F32_F32_F32:
-    default:
-      return false;
-  }
-}
 
 }  // namespace
-
-FusionDecision CanTritonHandleGEMM(
-    const HloDotInstruction& dot, const se::GpuComputeCapability& gpu_version) {
-  auto cuda_compute_capability =
-      std::get_if<se::CudaComputeCapability>(&gpu_version);
-  auto rocm_compute_capability =
-      std::get_if<se::RocmComputeCapability>(&gpu_version);
-
-  if (!cuda_compute_capability && !rocm_compute_capability) {
-    return "Non CUDA or ROCM device.";
-  }
-
-  if (dot.precision_config().algorithm() == PrecisionConfig::ALG_UNSET) {
-    if (!tsl::tensor_float_32_execution_enabled() ||
-        absl::c_any_of(dot.precision_config().operand_precision(),
-                       [](int x) { return x != PrecisionConfig::DEFAULT; })) {
-      return "Non-default precision.";
-    }
-  } else {
-    if (!IsSupportedByTriton(dot.precision_config().algorithm(),
-                             *cuda_compute_capability)) {
-      return "Unsupported algorithm on the current device(s).";
-    }
-  }
-
-  auto supported_output_type = [&](const PrimitiveType t) {
-    switch (t) {
-      case F16:
-      case F32:
-        return true;
-      case BF16:
-        if (cuda_compute_capability) {
-          return true;
-        }
-        if (rocm_compute_capability) {
-          return rocm_compute_capability->has_bf16_dtype_support();
-        }
-        return false;
-      default:
-        return false;
-    }
-  };
-
-  // TODO(b/266862493): Support more output types.
-  if (!supported_output_type(dot.shape().element_type())) {
-    return "Unsupported output data type.";
-  }
-
-  if (!IsTritonSupportedDataType(dot.operand(0)->shape().element_type(),
-                                 gpu_version) ||
-      !IsTritonSupportedDataType(dot.operand(1)->shape().element_type(),
-                                 gpu_version)) {
-    return "Unsupported input data type.";
-  }
-
-  const DotDimensionNumbers& dim_numbers = dot.dot_dimension_numbers();
-
-  // TODO(b/269580541): support multiple batch dimensions.
-  if (dim_numbers.lhs_batch_dimensions().size() > 1) {
-    return "Multiple batch dimensions.";
-  }
-
-  // Cases where lhs or rhs have no non-contracting dims are not handled.
-  if (dim_numbers.lhs_batch_dimensions().size() +
-              dim_numbers.lhs_contracting_dimensions().size() ==
-          dot.operand(0)->shape().rank() ||
-      dim_numbers.rhs_batch_dimensions().size() +
-              dim_numbers.rhs_contracting_dimensions().size() ==
-          dot.operand(1)->shape().rank()) {
-    return "No non-contracting dimensions.";
-  }
-
-  return FusionDecision{};
-}
 
 bool ShouldTritonHandleGEMM(HloDotInstruction& dot,
                             const se::GpuComputeCapability& gpu_version) {
