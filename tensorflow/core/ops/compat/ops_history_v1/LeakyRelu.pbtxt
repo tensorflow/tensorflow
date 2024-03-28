@@ -59,6 +59,7 @@ op {
         type: DT_BFLOAT16
         type: DT_FLOAT
         type: DT_DOUBLE
+        type: DT_INT
       }
     }
   }
