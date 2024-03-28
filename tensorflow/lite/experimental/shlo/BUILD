@@ -86,7 +86,6 @@ cc_library(
     name = "bf16",
     hdrs = ["bf16.h"],
     deps = [
-        ":has_keyword",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/log:absl_check",
     ],
@@ -106,12 +105,6 @@ cc_test(
 cc_library(
     name = "f16",
     hdrs = ["f16.h"],
-    deps = [":has_keyword"],
-)
-
-cc_library(
-    name = "has_keyword",
-    hdrs = ["has_keyword.h"],
 )
 
 cc_library(

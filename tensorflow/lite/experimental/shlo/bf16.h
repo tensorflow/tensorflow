@@ -19,7 +19,7 @@ limitations under the License.
 #if defined(__STDCPP_BFLOAT16_T__)
 #include <stdfloat>
 namespace shlo_ref {
-using BF16 = bfloat16_t;
+using BF16 = ::std::bfloat16_t;
 }  // namespace shlo_ref
 
 #else

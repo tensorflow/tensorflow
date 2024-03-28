@@ -23,6 +23,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "tensorflow/lite/experimental/shlo/bf16.h"
 #include "tensorflow/lite/experimental/shlo/data_type.h"
+#include "tensorflow/lite/experimental/shlo/f16.h"
 #include "tensorflow/lite/experimental/shlo/shape.h"
 #include "tensorflow/lite/experimental/shlo/status_matcher.h"
 #include "tensorflow/lite/experimental/shlo/tensor.h"
@@ -65,11 +66,12 @@ INSTANTIATE_TEST_SUITE_P(
                     BF16{-1.0f}, BF16{0.0f}, BF16{1.0f}}),
                TensorWithData::Create<DataType::kI1>(
                    Shape{{7}}, {false, false, false, false, true, true, true})},
-        Params{TensorWithData::Create<DataType::kF16>(
-                   Shape{{7}},
-                   {+NAN, -NAN, -INFINITY, +INFINITY, -1.0f, 0.0f, 1.0f}),
-               TensorWithData::Create<DataType::kI1>(
-                   Shape{{7}}, {false, false, false, false, true, true, true})},
+        Params{
+            TensorWithData::Create<DataType::kF16>(
+                Shape{{7}}, {F16{+NAN}, F16{-NAN}, F16{-INFINITY},
+                             F16{+INFINITY}, F16{-1.0f}, F16{0.0f}, F16{1.0f}}),
+            TensorWithData::Create<DataType::kI1>(
+                Shape{{7}}, {false, false, false, false, true, true, true})},
         Params{
             TensorWithData::Create<DataType::kF32>(
                 Shape{{7}},

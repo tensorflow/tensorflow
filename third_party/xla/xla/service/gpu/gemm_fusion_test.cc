@@ -19,6 +19,7 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/status/status.h"
 #include "absl/strings/string_view.h"
 #include "xla/autotuning.pb.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
@@ -36,6 +37,7 @@ limitations under the License.
 #include "xla/tests/verified_hlo_module.h"
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
+#include "tsl/platform/status_matchers.h"
 #include "tsl/platform/statusor.h"
 
 namespace xla {
@@ -194,7 +196,7 @@ ENTRY e {
     lhs_contracting_dims={0}, rhs_contracting_dims={0}
 })"));
 
-  const se::CudaComputeCapability cc{se::CudaComputeCapability::VOLTA, 0};
+  const se::CudaComputeCapability cc{se::CudaComputeCapability::AMPERE, 0};
   EXPECT_TRUE(CublasRequiresPadding(
       *xla::Cast<HloDotInstruction>(
           module->entry_computation()->root_instruction()),
@@ -215,7 +217,7 @@ ENTRY e {
   ROOT t = tuple(d, s1)
 })"));
 
-  const se::CudaComputeCapability cc{se::CudaComputeCapability::VOLTA, 0};
+  const se::CudaComputeCapability cc{se::CudaComputeCapability::AMPERE, 0};
   EXPECT_TRUE(GemmFusion(cc).Run(module.get()).value());
 }
 
@@ -759,7 +761,7 @@ e {
                                     m::Parameter(), m::Parameter()))));
 }
 
-TEST_F(GemmFusionLevel2Test, FusionLevelIsLimitedOnVolta) {
+TEST_F(GemmFusionLevel2Test, GemmFusionBailsOutPreAmpere) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(R"(
 ENTRY e {
@@ -770,12 +772,13 @@ ENTRY e {
   ROOT dot = f32[2,2] dot(p0e, p1c),
     lhs_contracting_dims={1}, rhs_contracting_dims={0}
 })"));
-  EXPECT_TRUE(
+  EXPECT_THAT(
       GemmFusion(se::CudaComputeCapability{se::CudaComputeCapability::VOLTA, 0})
-          .Run(module.get())
-          .value());
-  EXPECT_THAT(module->entry_computation()->root_instruction(),
-              GmockMatch((m::Fusion(m::Exp(), m::Parameter()))));
+          .Run(module.get()),
+      tsl::testing::StatusIs(
+          absl::StatusCode::kFailedPrecondition,
+          ::testing::StrEq(
+              "Triton support is only enabled for Ampere GPUs and up.")));
 }
 
 TEST_F(GemmFusionLevel2Test, ParameterUsedElementwiseTwiceIsFused) {

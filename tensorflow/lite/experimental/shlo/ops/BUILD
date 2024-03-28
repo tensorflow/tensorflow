@@ -35,10 +35,10 @@ cc_test(
     srcs = ["is_finite_test.cc"],
     linkopts = shlo_ref_linkopts(),
     deps = [
-        ":benchmark_util",
         ":is_finite",
         "//tensorflow/lite/experimental/shlo:bf16",
         "//tensorflow/lite/experimental/shlo:data_type",
+        "//tensorflow/lite/experimental/shlo:f16",
         "//tensorflow/lite/experimental/shlo:shape",
         "//tensorflow/lite/experimental/shlo:status_matcher",
         "//tensorflow/lite/experimental/shlo:tensor",

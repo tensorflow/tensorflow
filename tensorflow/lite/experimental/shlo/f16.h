@@ -16,21 +16,17 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_EXPERIMENTAL_SHLO_F16_H_
 #define TENSORFLOW_LITE_EXPERIMENTAL_SHLO_F16_H_
 
-#include "tensorflow/lite/experimental/shlo/has_keyword.h"
-
 #if defined(__STDCPP_FLOAT16_T__)
 #include <stdfloat>
 namespace shlo_ref {
-using F16 = float16_t;
+using F16 = ::std::float16_t;
 }  // namespace shlo_ref
 
-#elif __has_keyword(_Float16)
+#else
 namespace shlo_ref {
 using F16 = _Float16;
 }  // namespace shlo_ref
 
-#else
-#error Type F16 is not available
 #endif
 
 #endif  // TENSORFLOW_LITE_EXPERIMENTAL_SHLO_F16_H_

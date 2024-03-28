@@ -18,7 +18,9 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/status/status.h"
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
@@ -29,7 +31,9 @@ limitations under the License.
 #include "xla/service/gpu/tests/gpu_codegen_test.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/stream_executor/device_description.h"
 #include "xla/tests/verified_hlo_module.h"
+#include "tsl/platform/status_matchers.h"
 
 namespace xla {
 namespace gpu {
@@ -37,10 +41,22 @@ namespace gpu {
 using ::mlir::ArrayRef;
 using ::mlir::NamedAttribute;
 
-using GpuIrEmitterUnnestedTest = GpuCodegenTest;
+class GpuIrEmitterUnnestedTest : public GpuCodegenTest {
+ public:
+  se::CudaComputeCapability GetCudaComputeCapability() {
+    return backend()
+        .default_stream_executor()
+        ->GetDeviceDescription()
+        .cuda_compute_capability();
+  }
+};
 
 TEST_F(GpuIrEmitterUnnestedTest,
        EmitTritonCustomCallWithCorrectLoweringAndWithoutNoaliasOrAlignment) {
+  if (!GetCudaComputeCapability().IsAtLeastAmpere()) {
+    GTEST_SKIP() << "Triton support is only enabled for Ampere GPUs and up.";
+  }
+
   // Tests that the lowering of a Triton custom call produces the correct LLVM
   // IR, and that the arguments do not specify noalias or alignment attributes.
 
@@ -137,6 +153,85 @@ TEST_F(GpuIrEmitterUnnestedTest,
 ; CHECK:    ret void
       )",
                      /*match_optimized_ir=*/false);
+}
+
+TEST_F(GpuIrEmitterUnnestedTest, CanNotEmitTritonCustomCallOnPreAmpereGpu) {
+  if (GetCudaComputeCapability().IsAtLeastAmpere()) {
+    GTEST_SKIP() << "Running on Ampere or more recent GPU, skipping.";
+  }
+
+  HloComputation::Builder computation_builder(TestName());
+  mlir::MLIRContext context_;
+  mlir::Builder builder(&context_);
+
+  // Create parameters and custom call in the computation builder.
+  Shape scalar_shape = xla::ShapeUtil::MakeShape(xla::F32, {});
+  Shape tuple_shape = ShapeUtil::MakeTupleShape({scalar_shape, scalar_shape});
+
+  HloInstruction* param_0 = computation_builder.AddInstruction(
+      HloInstruction::CreateParameter(0, scalar_shape, "arg_0"));
+
+  HloInstruction* param_1 = computation_builder.AddInstruction(
+      HloInstruction::CreateParameter(1, scalar_shape, "arg_1"));
+
+  // Create the backend_config for the triton custom call.
+  const std::string kMLIRText = R"(
+  module {
+    tt.func public @add_one(%arg0: !tt.ptr<f32, 1> {tt.divisibility = 32 : i32}, %arg1: !tt.ptr<f32, 1> {tt.divisibility = 32 : i32}, %arg2: !tt.ptr<f32, 1> {tt.divisibility = 32 : i32}, %arg3: !tt.ptr<f32, 1> {tt.divisibility = 32 : i32}) {
+      %0 = tt.get_program_id x : i32
+      %1 = tt.load %arg0 {cache = 1 : i32, evict = 1 : i32, isVolatile = false} : f32
+      %2 = tt.load %arg1 {cache = 1 : i32, evict = 1 : i32, isVolatile = false} : f32
+      %cst = arith.constant 1.000000e+00 : f32
+      %3 = arith.addf %1, %cst : f32
+      %4 = tt.load %arg2 {cache = 1 : i32, evict = 1 : i32, isVolatile = false} : f32
+      tt.store %arg2, %3 {cache = 1 : i32, evict = 1 : i32} : f32
+      %5 = tt.load %arg3 {cache = 1 : i32, evict = 1 : i32, isVolatile = false} : f32
+      tt.store %arg3, %2 {cache = 1 : i32, evict = 1 : i32} : f32
+      tt.return
+    }
+  }
+  )";
+
+  NamedAttribute name =
+      builder.getNamedAttr("name", builder.getStringAttr("add_one"));
+  NamedAttribute ir =
+      builder.getNamedAttr("ir", builder.getStringAttr(kMLIRText));
+  NamedAttribute num_stages =
+      builder.getNamedAttr("num_stages", builder.getI32IntegerAttr(3));
+  NamedAttribute num_warps =
+      builder.getNamedAttr("num_warps", builder.getI32IntegerAttr(4));
+  NamedAttribute grid_x =
+      builder.getNamedAttr("grid_x", builder.getI32IntegerAttr(1));
+  NamedAttribute grid_y =
+      builder.getNamedAttr("grid_y", builder.getI32IntegerAttr(1));
+  NamedAttribute grid_z =
+      builder.getNamedAttr("grid_z", builder.getI32IntegerAttr(1));
+  NamedAttribute debug =
+      builder.getNamedAttr("debug", builder.getBoolAttr(false));
+
+  std::vector<NamedAttribute> attributes = {
+      name, ir, num_stages, num_warps, grid_x, grid_y, grid_z, debug};
+  ArrayRef<NamedAttribute> attributesRef(attributes);
+  mlir::DictionaryAttr backend_config =
+      mlir::DictionaryAttr::get(&context_, attributesRef);
+
+  // Parse the backend_config into a string.
+  std::string backend_config_str;
+  llvm::raw_string_ostream(backend_config_str) << backend_config;
+
+  computation_builder.AddInstruction(HloInstruction::CreateCustomCall(
+      tuple_shape, {param_0, param_1}, "__gpu$xla.gpu.triton",
+      backend_config_str));
+
+  auto module = CreateNewVerifiedModule();
+  module->AddEntryComputation(computation_builder.Build());
+
+  EXPECT_THAT(
+      CompileToExecutable(std::move(module), /*run_optimization_passes=*/false),
+      tsl::testing::StatusIs(
+          absl::StatusCode::kFailedPrecondition,
+          ::testing::StrEq(
+              "Triton support is only enabled for Ampere GPUs and up.")));
 }
 
 }  // namespace gpu
