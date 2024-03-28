@@ -135,7 +135,8 @@ class ShardingPropagation : public HloModulePass {
 
   static std::optional<HloSharding> GetShardingFromUser(
       const HloInstruction& instruction, const HloInstruction& user,
-      int64_t aggressiveness, bool is_spmd, const CallGraph& call_graph);
+      int64_t aggressiveness, bool is_spmd, const CallGraph& call_graph,
+      const CustomCallShardingHelper* sharding_helper);
 
   // Canonicalizes entry_computation_layouts by calling
   // module.layout_canonicalization_callback(), which gives canolicalized

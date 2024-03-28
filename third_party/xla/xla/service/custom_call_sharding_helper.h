@@ -47,6 +47,10 @@ class CustomCallShardingHelper {
       HloInstruction* instruction) const {
     return {};
   }
+  // Returns if the given custom-call instruction can propagate sharding to its
+  // operands.
+  virtual bool CanPropagateShardingToOperands(
+      const HloInstruction* instruction) const;
   virtual ~CustomCallShardingHelper() = default;
 };
 
