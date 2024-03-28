@@ -578,8 +578,29 @@ absl::StatusOr<bool> HostOffloader::TryParameterStreaming(
   HloInstruction* copy_to_device =
       custom_call->parent()->AddInstruction(HloInstruction::CreateUnary(
           copy_shape, HloOpcode::kCopy, operand_of_load_annotation));
-  TF_RETURN_IF_ERROR(
-      operand_of_load_annotation->ReplaceAllUsesWith(copy_to_device));
+
+  auto users = operand_of_load_annotation->users();
+  for (HloInstruction* use : users) {
+    if (use == copy_to_device) {
+      continue;
+    }
+    auto callers = call_graph_->GetComputationCallers(copy_to_device->parent());
+    if (callers.size() > 1) {
+      return absl::InvalidArgumentError(
+          "Expected to be called only by one caller");
+    } else if (callers.size() == 1) {
+      auto* caller = callers[0];
+      if (caller->opcode() == HloOpcode::kWhile &&
+          use->opcode() == HloOpcode::kTuple && use->IsRoot()) {
+        // While loop body's root should not use copy_to_device since it's on
+        // host at the loop entry.
+        continue;
+      }
+    }
+
+    TF_RETURN_IF_ERROR(
+        operand_of_load_annotation->ReplaceUseWith(use, copy_to_device));
+  }
 
   AddAllPositionsToBeMovedToHostMemory(unique_buffer);
   return true;
@@ -626,6 +647,8 @@ absl::StatusOr<bool> HostOffloader::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   bool changed = false;
+
+  call_graph_ = CallGraph::Build(module);
 
   // Run HloAliasAnalysis on module.
   TF_ASSIGN_OR_RETURN(alias_analysis_, HloAliasAnalysis::Run(module));

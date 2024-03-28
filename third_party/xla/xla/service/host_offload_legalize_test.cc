@@ -78,7 +78,7 @@ class HostOffloadLegalizeTest : public HloTestBase {
 
 TEST_F(HostOffloadLegalizeTest, NoCopyWithOptBarrierMoreElaborate) {
   const std::string& hlo_string = R"(
-HloModule jit_f, entry_computation_layout={(f32[16,256]{0,1})->f32[16,256]{0,1}}
+HloModule jit_f, entry_computation_layout={(f32[16,256]{0,1})->f32[16,256]{1,0}}
 
 ENTRY main.24 {
   Arg_0.1 = f32[16,256]{0,1} parameter(0)
@@ -120,6 +120,62 @@ ENTRY main.24 {
   HloInstruction* custom_call = FindInstruction(module.get(), "custom-call.18");
   EXPECT_EQ(custom_call->users()[0]->opcode(), HloOpcode::kCopy);
   EXPECT_EQ(custom_call->shape().layout(), LayoutUtil::MakeLayout({0, 1}));
+  EXPECT_EQ(custom_call->users()[0]->shape().layout(),
+            LayoutUtil::MakeLayout({1, 0}));
+}
+
+TEST_F(HostOffloadLegalizeTest, XposeCopyOnParameterStreaming) {
+  const std::string& hlo_string = R"(
+HloModule jit_f, entry_computation_layout={(f32[16,256]{0,1},f32[16,256]{0,1:T(8,128)S(5)})->f32[16,256]{1,0}}
+
+ENTRY main.24 {
+  Arg_0.1 = f32[16,256]{0,1} parameter(0)
+  Arg_0.2 = f32[16,256]{0,1:T(8,128)} parameter(1)
+  cp0 = f32[16,256]{1,0} copy(Arg_0.2)
+  cosine.4 = f32[16,256]{0,1} cosine(Arg_0.1)
+  custom-call.5 = f32[16,256]{0,1} custom-call(cosine.4), custom_call_target="MoveToHost"
+  sine.3 = f32[16,256]{0,1} sine(Arg_0.1)
+  cosine.7 = f32[16,256]{0,1} cosine(sine.3)
+  custom-call.8 = f32[16,256]{0,1} custom-call(cosine.7), custom_call_target="MoveToHost"
+  constant.2 = f32[] constant(1)
+  cp1 = f32[16,256]{1,0} copy(custom-call.8)
+  tuple.11 = (f32[16,256]{0,1}, f32[16,256]{1,0}, f32[16,256]{1,0}, f32[]) tuple(custom-call.5, cp1, cp0, constant.2)
+  opt-barrier.12 = (f32[16,256]{0,1}, f32[16,256]{1,0}, f32[16,256]{1,0}, f32[]) opt-barrier(tuple.11)
+  get-tuple-element.16 = f32[] get-tuple-element(opt-barrier.12), index=3
+  broadcast.20 = f32[16,256]{0,1} broadcast(get-tuple-element.16), dimensions={}
+  get-tuple-element.15 = f32[16,256]{1,0} get-tuple-element(opt-barrier.12), index=2
+  custom-call.19 = f32[16,256]{1,0} custom-call(get-tuple-element.15), custom_call_target="MoveToDevice"
+  multiply.21 = f32[16,256]{0,1} multiply(broadcast.20, custom-call.19)
+  cp2 = f32[16,256]{1,0} copy(multiply.21)
+  get-tuple-element.14 = f32[16,256]{1,0} get-tuple-element(opt-barrier.12), index=1
+  custom-call.18 = f32[16,256]{1,0} custom-call(get-tuple-element.14), custom_call_target="MoveToDevice"
+  multiply.22 = f32[16,256]{1,0} multiply(cp2, custom-call.18)
+  get-tuple-element.13 = f32[16,256]{0,1} get-tuple-element(opt-barrier.12), index=0
+  custom-call.17 = f32[16,256]{0,1} custom-call(get-tuple-element.13), custom_call_target="MoveToDevice"
+  cp3 = f32[16,256]{1,0} copy(custom-call.17)
+  ROOT multiply.23 = f32[16,256]{1,0} multiply(multiply.22, cp3)
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunHostOffloadLegalize(module.get()));
+
+  EXPECT_TRUE(changed);
+  XLA_VLOG_LINES(1, module->ToString());
+  HloInstruction* custom_call = FindInstruction(module.get(), "custom-call.18");
+  EXPECT_EQ(custom_call->users()[0]->opcode(), HloOpcode::kCopy);
+  EXPECT_EQ(custom_call->shape().layout(), LayoutUtil::MakeLayout({0, 1}));
+  EXPECT_EQ(custom_call->users()[0]->shape().layout(),
+            LayoutUtil::MakeLayout({1, 0}));
+
+  custom_call = FindInstruction(module.get(), "custom-call.19");
+  EXPECT_EQ(custom_call->users()[0]->opcode(), HloOpcode::kCopy);
+  EXPECT_EQ(custom_call->shape().layout(),
+            LayoutUtil::MakeLayout({0, 1}, {}, {}, {}, {Tile{{8, 128}}}));
+  EXPECT_EQ(custom_call->users()[0]->shape().layout(),
+            LayoutUtil::MakeLayout({1, 0}));
 }
 
 TEST_F(HostOffloadLegalizeTest, LlmActivationHostMemoryMultipleConsumers) {
