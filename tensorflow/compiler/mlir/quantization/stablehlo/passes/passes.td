@@ -67,6 +67,10 @@ def QuantizeCompositeFunctionsPass : Pass<"stablehlo-quantize-composite-function
         "enable-weight-only",
         "bool", /*default=*/"false",
         "Whether to produce weight-only quantized op for dot_general op.">,
+    Option<"merge_fusion_with_dequantize_",
+        "merge-fusion-with-dequantize",
+        "bool", /*default=*/"false",
+        "Whether to merge quantized conv/dot_general fusion with subsequent dequantize.">,
   ];
   let dependentDialects = [
     "mlir::arith::ArithDialect",
@@ -119,6 +123,14 @@ def PostQuantizePass : Pass<"stablehlo-post-quantize", "mlir::func::FuncOp"> {
   let dependentDialects = [
     "mlir::stablehlo::StablehloDialect",
     "mlir::quantfork::QuantizationForkDialect",
+  ];
+}
+
+def MergeFusionWithDequantizePass : Pass<"stablehlo-merge-fusion-with-dequantize", "mlir::ModuleOp"> {
+  let summary = "Merge quantized conv/dot_general fusion with subsequent dequantize.";
+  let dependentDialects = [
+    "chlo::ChloDialect",
+    "mlir::stablehlo::StablehloDialect",
   ];
 }
 

@@ -93,6 +93,11 @@ message PipelineConfig {
   // hardware performs better with integer ops.
   // Default value: true
   optional bool unpack_quantized_types = 1;
+
+  // When set to True, requantize op in the quantized fusion will merge with the
+  // subsequent dequantize op if present.
+  // Default value: false
+  bool merge_fusion_with_dequantize = 2;
 }
 
 // Represents a single quantizable unit, a (nearly) minimum unit of work when

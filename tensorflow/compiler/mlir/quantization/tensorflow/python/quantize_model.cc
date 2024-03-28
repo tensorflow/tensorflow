@@ -188,6 +188,8 @@ QuantizationConfig GetQuantizationConfigForStaticRangePtq(
   // integer ops.
   quantization_config.mutable_pipeline_config()->set_unpack_quantized_types(
       true);
+  quantization_config.mutable_pipeline_config()
+      ->set_merge_fusion_with_dequantize(true);
   *quantization_config.mutable_debugger_config() =
       quantization_options.debugger_config();
   quantization_config.mutable_static_range_ptq_preset();

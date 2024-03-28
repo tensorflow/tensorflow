@@ -64,6 +64,7 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
               ([10, 1, 1024], [10, 1024, 3]),
               ([2, 3, 1, 1024], [2, 3, 1024, 3]),
           ),
+          'merge_fusion_with_dequantize': (False, True),
           'rng_seed': (1230, 1231, 1232, 1233),
       }])
   )
@@ -73,6 +74,7 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
       bias_fn: Optional[ops.Operation],
       activation_fn: Optional[ops.Operation],
       dim_sizes: Sequence[int],
+      merge_fusion_with_dequantize: bool,
       rng_seed: int,
   ):
     lhs_dim_size, rhs_dim_size = dim_sizes
@@ -117,6 +119,9 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
             ]
         ),
         tf_saved_model=qc.TfSavedModelConfig(tags=[tag_constants.SERVING]),
+        pipeline_config=qc.PipelineConfig(
+            merge_fusion_with_dequantize=merge_fusion_with_dequantize
+        ),
     )
     quantization.quantize_saved_model(
         self._input_saved_model_path,
@@ -151,6 +156,19 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
         ),
         0.65,
     )
+
+    if merge_fusion_with_dequantize:
+      # Check activation functions are explicitly present.
+      # If present the last op before return should be stablehlo.clamp for relu6
+      # and stablehlo.maximum for relu.
+      if activation_fn is nn_ops.relu6:
+        self.assertTrue(re.search(r'stablehlo.clamp.*\n.*return', module_str))
+      elif activation_fn is nn_ops.relu:
+        self.assertTrue(re.search(r'stablehlo.maximum.*\n.*return', module_str))
+    else:
+      # Check activation functions are implicit.
+      self.assertFalse(re.search(r'stablehlo.clamp.*\n.*return', module_str))
+      self.assertFalse(re.search(r'stablehlo.maximum.*\n.*return', module_str))
 
   @parameterized.parameters(
       testing.parameter_combinations([{
@@ -348,6 +366,7 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
               False,
               True,
           ),
+          'merge_fusion_with_dequantize': (False, True),
           'rng_seed': (10, 11, 12, 13),
       }])
   )
@@ -359,6 +378,7 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
       has_batch_norm: bool,
       input_shape_dynamic: bool,
       enable_per_channel_quantized_weight: bool,
+      merge_fusion_with_dequantize: bool,
       rng_seed: int,
       dilations: Sequence[int] = None,
   ):
@@ -409,6 +429,9 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
             enable_per_channel_quantized_weight=enable_per_channel_quantized_weight,
         ),
         tf_saved_model=qc.TfSavedModelConfig(tags=[tag_constants.SERVING]),
+        pipeline_config=qc.PipelineConfig(
+            merge_fusion_with_dequantize=merge_fusion_with_dequantize
+        ),
     )
     quantization.quantize_saved_model(
         self._input_saved_model_path,
@@ -443,6 +466,19 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
         ),
         0.6,
     )
+
+    if merge_fusion_with_dequantize:
+      # Check activation functions are explicitly present.
+      # If present the last op before return should be stablehlo.clamp for relu6
+      # and stablehlo.maximum for relu.
+      if activation_fn is nn_ops.relu6:
+        self.assertTrue(re.search(r'stablehlo.clamp.*\n.*return', module_str))
+      elif activation_fn is nn_ops.relu:
+        self.assertTrue(re.search(r'stablehlo.maximum.*\n.*return', module_str))
+    else:
+      # Check activation functions are implicit.
+      self.assertFalse(re.search(r'stablehlo.clamp.*\n.*return', module_str))
+      self.assertFalse(re.search(r'stablehlo.maximum.*\n.*return', module_str))
 
   @parameterized.parameters(
       testing.parameter_combinations([{

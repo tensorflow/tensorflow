@@ -95,6 +95,10 @@ void QuantizeCompositeFunctionsPass::runOnOperation() {
   pm.addPass(createQuantizePass(quantize_options));
   pm.addNestedPass<func::FuncOp>(createPostQuantizePass());
 
+  if (merge_fusion_with_dequantize_) {
+    pm.addPass(createMergeFusionWithDequantizePass());
+  }
+
   ModuleOp module_op = getOperation();
   if (const absl::Status pm_run_status =
           RunPassesOnModuleOp(mlir_dump_file_name_, pm, module_op);

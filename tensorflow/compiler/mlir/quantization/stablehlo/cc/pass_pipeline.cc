@@ -63,6 +63,8 @@ void AddPostCalibrationPasses(
   // For debugging purposes.
   options.mlir_dump_file_name_ = "quantize_composite_functions";
   options.enable_weight_only_ = false;
+  options.merge_fusion_with_dequantize_ =
+      pipeline_config.merge_fusion_with_dequantize();
 
   AddShapeLegalizationPasses(pm);
   pm.addNestedPass<func::FuncOp>(

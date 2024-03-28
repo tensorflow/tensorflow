@@ -54,6 +54,7 @@ cc_library(
         "passes/lift_quantizable_spots_as_functions.cc",
         "passes/lift_quantizable_spots_as_functions_fusion.inc",
         "passes/lift_quantizable_spots_as_functions_simple.inc",
+        "passes/merge_fusion_with_dequantize.cc",
         "passes/nchw_convolution_to_nhwc.cc",
         "passes/optimize_graph.cc",
         "passes/post_quantize.cc",
