@@ -133,8 +133,7 @@ bool IsAlignedSlice(const Shape& src_shape, const Shape& dst_shape,
 
 UseDefDataflowPaths GetSlicedOperandPaths(const HloInstruction* instr,
                                           bool dynamic) {
-  UseDefDataflowPaths sliced_operand_paths = {
-      const_cast<HloInstruction*>(instr)};
+  UseDefDataflowPaths sliced_operand_paths;
 
   auto fusion = HloFusionAdaptor::ForComputation(instr->parent());
   // This set is used to avoid duplicates in the matched results. It contains
@@ -191,12 +190,14 @@ UseDefDataflowPaths GetSlicedOperandPaths(const HloInstruction* instr,
       // still need to add instructions encountered in the sliced operand path
       // during the latest traversal.
       sliced_operand_paths.insert(sliced_operand_paths.end(),
-                                  maybe_sliced_operand_path.begin(),
-                                  maybe_sliced_operand_path.end());
+                                  maybe_sliced_operand_path.rbegin(),
+                                  maybe_sliced_operand_path.rend());
       processed_instrs.insert(maybe_sliced_operand_path.begin(),
                               maybe_sliced_operand_path.end());
     }
   }
+
+  sliced_operand_paths.push_back(const_cast<HloInstruction*>(instr));
   return sliced_operand_paths;
 }
 
@@ -276,30 +277,6 @@ absl::InlinedVector<HloInstruction*, 4> GetPatternCaptures(
   }
 
   return captures;
-}
-
-UseDefDataflowPaths GetSortedMatches(
-    absl::Span<HloInstruction* const> matches) {
-  UseDefDataflowPaths sorted_matches;
-  InstructionSet matched_instrs(matches.begin(), matches.end());
-  InstructionSet processed_instrs;
-  // Topologically sort `matches`
-  for (auto it = matches.rbegin(); it != matches.rend(); ++it) {
-    if (processed_instrs.contains(*it)) continue;
-    for (auto* operand : (*it)->operands()) {
-      if (!matched_instrs.contains(operand)) {
-        continue;
-      }
-      if (!processed_instrs.contains(operand)) {
-        sorted_matches.emplace_back(operand);
-        processed_instrs.insert(operand);
-      }
-    }
-    sorted_matches.emplace_back(*it);
-    processed_instrs.insert(*it);
-  }
-
-  return sorted_matches;
 }
 
 Status CreateRootTuple(HloInstruction* hero, HloComputation::Builder& builder,
@@ -473,10 +450,9 @@ absl::StatusOr<bool> AddressComputationFusionRewriter::Run(
         absl::c_copy(sliced_user_path, std::back_inserter(matches));
 
       auto captures = GetPatternCaptures(matches);
-      auto sorted_operand_matches = GetSortedMatches(operand_matches);
 
       TF_ASSIGN_OR_RETURN(HloComputation * fusion_body,
-                          CreateFusionBody(module, sorted_operand_matches,
+                          CreateFusionBody(module, operand_matches,
                                            sliced_user_paths, captures));
 
       TF_ASSIGN_OR_RETURN(HloInstruction * fusion,

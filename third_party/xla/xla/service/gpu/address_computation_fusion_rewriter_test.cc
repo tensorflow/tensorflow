@@ -324,10 +324,10 @@ TEST_F(AddressComputationFusionRewriterTest,
 
     ENTRY %main.9 {
       %p0 = f16[2,8,8]{2,1,0} parameter(0)
-      %p1 = f16[2,8,8]{2,1,0} parameter(1)
+      %p1 = f16[4,8,8]{2,1,0} parameter(1)
       %slice.13 = f16[1,8,8]{2,1,0} slice(%p0), slice={[1:2], [0:8], [0:8]}
       %bitcast.41 = f16[8,8]{1,0} bitcast(%slice.13)
-      %slice.14 = f16[1,8,8]{2,1,0} slice(%p1), slice={[1:2], [0:8], [0:8]}
+      %slice.14 = f16[1,8,8]{2,1,0} slice(%p1), slice={[2:3], [0:8], [0:8]}
       %bitcast.42 = f16[8,8]{1,0} bitcast(%slice.14)
 
       %custom-call.1 = f16[8,8]{1,0} custom-call(%bitcast.41, %bitcast.42),
@@ -355,26 +355,26 @@ TEST_F(AddressComputationFusionRewriterTest,
 
   const char* expected = R"(
     ; CHECK:     %address-computation {{.*}} {
-    ; CHECK-DAG:   [[P0:%[^ ]+]] = f16[8,8]{1,0} parameter(0)
-    ; CHECK-DAG:   [[P1:%[^ ]+]] = f16[2,8,8]{2,1,0} parameter(1)
-    ; CHECK-DAG:   [[S1:%[^ ]+]] = f16[1,8,8]{2,1,0} slice([[P1]]), slice={[1:2], [0:8], [0:8]}
+    ; CHECK-DAG:   [[P0:%[^ ]+]] = f16[8,8]{1,0} parameter(1)
+    ; CHECK-DAG:   [[P1:%[^ ]+]] = f16[4,8,8]{2,1,0} parameter(0)
+    ; CHECK-DAG:   [[S1:%[^ ]+]] = f16[1,8,8]{2,1,0} slice([[P1]]), slice={[2:3], [0:8], [0:8]}
     ; CHECK-DAG:   [[B1:%[^ ]+]] = f16[8,8]{1,0} bitcast([[S1]])
     ; CHECK:       ROOT [[CC:%[^ ]+]] = f16[8,8]{1,0} custom-call([[P0]], [[B1]]),
     ; CHECK:              custom_call_target="__cublas$gemm"
     ; CHECK:     }
 
     ; CHECK:     ENTRY %main{{.*}} {
-    ; CHECK-DAG:   [[P0:%[^ ]+]] = f16[2,8,8]{2,1,0} parameter(0)
-    ; CHECK-DAG:   [[S0:%[^ ]+]] = f16[1,8,8]{2,1,0} slice([[P0]]), slice={[1:2], [0:8], [0:8]}
-    ; CHECK-DAG:   [[B0:%[^ ]+]] = f16[8,8]{1,0} bitcast([[S0]])
-    ; CHECK-DAG:   [[P1:%[^ ]+]] = f16[2,8,8]{2,1,0} parameter(1)
-    ; CHECK:       [[FUSION:%[^ ]+]] = f16[8,8]{1,0} fusion([[B0]], [[P1]])
+    ; CHECK-DAG:   [[P1:%[^ ]+]] = f16[2,8,8]{2,1,0} parameter(0)
+    ; CHECK-DAG:   [[S1:%[^ ]+]] = f16[1,8,8]{2,1,0} slice([[P1]]), slice={[1:2], [0:8], [0:8]}
+    ; CHECK-DAG:   [[B1:%[^ ]+]] = f16[8,8]{1,0} bitcast([[S1]])
+    ; CHECK-DAG:   [[P0:%[^ ]+]] = f16[4,8,8]{2,1,0} parameter(1)
+    ; CHECK:       [[FUSION:%[^ ]+]] = f16[8,8]{1,0} fusion([[P0]], [[B1]])
     ; CHECK:         kind=kCustom, calls=%address-computation,
     ; CHECK:         backend_config={
     ; CHECK:           "kind":"__custom_fusion",
     ; CHECK:           "custom_fusion_config":{"name":"address_computation"}
     ; CHECK:         }
-    ; CHECK:       ROOT {{.*}} = f16[8,8]{1,0} add([[FUSION]], [[B0]])
+    ; CHECK:       ROOT {{.*}} = f16[8,8]{1,0} add([[FUSION]], [[B1]])
     ; CHECK:     }
   )";
 
@@ -848,11 +848,11 @@ TEST_F(AddressComputationFusionRewriterTest, SimpleGemmOperandAliasingOutput) {
 
   const char* expected = R"(
     ; CHECK:     %address-computation {{.*}} {
-    ; CHECK-DAG:   [[P0:%[^ ]+]] = f32[100,100]{1,0} parameter(0)
+    ; CHECK-DAG:   [[P2:%[^ ]+]] = f32[100,100]{1,0} parameter(2)
     ; CHECK-DAG:   [[P1:%[^ ]+]] = f32[100,100]{1,0} parameter(1)
-    ; CHECK-DAG:   [[P2:%[^ ]+]] = f32[200,100]{1,0} parameter(2)
-    ; CHECK-DAG:   [[S1:%[^ ]+]] = f32[100,100]{1,0} slice([[P2]]), slice={[16:116], [0:100]}
-    ; CHECK:       [[CC:%[^ ]+]] = (f32[100,100]{1,0}, s8[120000]{0}) custom-call([[P0]], [[S1]], [[P1]]),
+    ; CHECK-DAG:   [[P0:%[^ ]+]] = f32[200,100]{1,0} parameter(0)
+    ; CHECK-DAG:   [[S1:%[^ ]+]] = f32[100,100]{1,0} slice([[P0]]), slice={[16:116], [0:100]}
+    ; CHECK:       [[CC:%[^ ]+]] = (f32[100,100]{1,0}, s8[120000]{0}) custom-call([[P1]], [[S1]], [[P2]]),
     ; CHECK:         custom_call_target="__cublas$gemm"
     ; CHECK:     }
 
@@ -862,7 +862,7 @@ TEST_F(AddressComputationFusionRewriterTest, SimpleGemmOperandAliasingOutput) {
     ; CHECK:       [[GTE1:%[^ ]+]] = f32[100,100]{1,0} get-tuple-element([[P]]), index=1
     ; CHECK:       [[CONCAT:%[^ ]+]] = f32[200,100]{1,0} concatenate([[GTE0]], [[GTE1]]), dimensions={0}
     ; CHECK:       [[S:%[^ ]+]] = f32[100,100]{1,0} slice([[CONCAT]]), slice={[99:199], [0:100]}
-    ; CHECK:       ROOT [[FUSION:%[^ ]+]] = (f32[100,100]{1,0}, s8[120000]{0}) fusion([[GTE0]], [[S]], [[CONCAT]])
+    ; CHECK:       ROOT [[FUSION:%[^ ]+]] = (f32[100,100]{1,0}, s8[120000]{0}) fusion([[CONCAT]], [[GTE0]], [[S]])
     ; CHECK:         kind=kCustom, calls=%address-computation,
     ; CHECK:         backend_config={
     ; CHECK:           "kind":"__custom_fusion",
@@ -1108,12 +1108,12 @@ TEST_F(AddressComputationFusionRewriterTest, TupleSliceCustomCallLegacy) {
 
   const char* expected = R"(
     ; CHECK:     %address-computation {{.*}} {
-    ; CHECK-DAG:   [[P2:%[^ ]+]] = f32[8,8]{1,0} parameter(2)
-    ; CHECK-DAG:   [[S0:%[^ ]+]] = f32[4,8]{1,0} slice([[P2]]), slice={[0:4], [0:8]}
+    ; CHECK-DAG:   [[P0:%[^ ]+]] = f32[8,8]{1,0} parameter(0)
+    ; CHECK-DAG:   [[S0:%[^ ]+]] = f32[4,8]{1,0} slice([[P0]]), slice={[0:4], [0:8]}
     ; CHECK-DAG:   [[P1:%[^ ]+]] = f32[256]{0} parameter(1)
     ; CHECK-DAG:   [[T0:%[^ ]+]] = (f32[4,8]{1,0}, f32[256]{0}) tuple([[S0]], [[P1]])
-    ; CHECK-DAG:   [[P0:%[^ ]+]] = (f32[1024]{0}, f32[8]{0}) parameter(0)
-    ; CHECK:       ROOT [[CC:%[^ ]+]] = f32[128]{0} custom-call([[T0]], [[P0]]),
+    ; CHECK-DAG:   [[P2:%[^ ]+]] = (f32[1024]{0}, f32[8]{0}) parameter(2)
+    ; CHECK:       ROOT [[CC:%[^ ]+]] = f32[128]{0} custom-call([[T0]], [[P2]]),
     ; CHECK:              custom_call_target="Callback_Void"
     ; CHECK:     }
 
@@ -1184,12 +1184,12 @@ TEST_F(AddressComputationFusionRewriterTest, TupledOutputCustomCallLegacy) {
 
   const char* expected = R"(
     ; CHECK:     %address-computation {{.*}} {
-    ; CHECK-DAG:   [[P0:%[^ ]+]] = (f32[1024]{0}, f32[8]{0}) parameter(0)
+    ; CHECK-DAG:   [[P2:%[^ ]+]] = (f32[1024]{0}, f32[8]{0}) parameter(2)
     ; CHECK-DAG:   [[P1:%[^ ]+]] = f32[256]{0} parameter(1)
-    ; CHECK-DAG:   [[P2:%[^ ]+]] = f32[8,8]{1,0} parameter(2)
-    ; CHECK-DAG:   [[S0:%[^ ]+]] = f32[4,8]{1,0} slice([[P2]]), slice={[0:4], [0:8]}
+    ; CHECK-DAG:   [[P0:%[^ ]+]] = f32[8,8]{1,0} parameter(0)
+    ; CHECK-DAG:   [[S0:%[^ ]+]] = f32[4,8]{1,0} slice([[P0]]), slice={[0:4], [0:8]}
     ; CHECK-DAG:   [[T0:%[^ ]+]] = (f32[4,8]{1,0}, f32[256]{0}) tuple([[S0]], [[P1]])
-    ; CHECK:       [[CC:%[^ ]+]] = (f32[8]{0}, (f32[128]{0}, f32[256]{0}), f32[1024]{0}, f32[4,8]{1,0}) custom-call([[T0]], [[P0]]),
+    ; CHECK:       [[CC:%[^ ]+]] = (f32[8]{0}, (f32[128]{0}, f32[256]{0}), f32[1024]{0}, f32[4,8]{1,0}) custom-call([[T0]], [[P2]]),
     ; CHECK:              custom_call_target="Callback_Void"
     ; CHECK-DAG:   [[GTE0:%[^ ]+]] = f32[8]{0} get-tuple-element([[CC]]), index=0
     ; CHECK-DAG:   [[GTE1:%[^ ]+]] = (f32[128]{0}, f32[256]{0}) get-tuple-element([[CC]]), index=1
