@@ -15,16 +15,18 @@ limitations under the License.
 
 #include "tensorflow/c/experimental/saved_model/core/ops/restore_ops.h"
 
+#include "absl/types/span.h"
 #include "tensorflow/c/eager/abstract_tensor_handle.h"
 #include "tensorflow/c/eager/immediate_execution_context.h"
 #include "tensorflow/c/eager/immediate_execution_operation.h"
 #include "tensorflow/c/eager/immediate_execution_tensor_handle.h"
 #include "tensorflow/c/tensor_interface.h"
-#include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/lib/llvm_rtti/llvm_rtti.h"
 #include "tensorflow/core/platform/errors.h"
-#include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/platform/tstring.h"
+#include "tsl/platform/errors.h"
 
 namespace tensorflow {
 namespace internal {
