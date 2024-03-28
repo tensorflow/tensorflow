@@ -1433,8 +1433,8 @@ XlaOp XlaBuilder::Broadcast(XlaOp operand,
 }
 
 XlaOp XlaBuilder::BroadcastInDim(
-    XlaOp operand, const absl::Span<const int64_t> out_dim_size,
-    const absl::Span<const int64_t> broadcast_dimensions) {
+    XlaOp operand, absl::Span<const int64_t> out_dim_size,
+    absl::Span<const int64_t> broadcast_dimensions) {
   return ReportErrorOrReturn([&]() -> absl::StatusOr<XlaOp> {
     TF_ASSIGN_OR_RETURN(const Shape* operand_shape, GetShapePtr(operand));
     // Output shape, in the case of degenerate broadcast, the out_dim_size is
@@ -4690,8 +4690,8 @@ XlaOp Broadcast(const XlaOp operand,
 }
 
 XlaOp BroadcastInDim(const XlaOp operand,
-                     const absl::Span<const int64_t> out_dim_size,
-                     const absl::Span<const int64_t> broadcast_dimensions) {
+                     absl::Span<const int64_t> out_dim_size,
+                     absl::Span<const int64_t> broadcast_dimensions) {
   return operand.builder()->BroadcastInDim(operand, out_dim_size,
                                            broadcast_dimensions);
 }
@@ -5313,7 +5313,7 @@ XlaOp AllGather(const XlaOp operand, int64_t all_gather_dimension,
                                       layout, use_global_device_ids);
 }
 
-XlaOp AllGatherTuple(const absl::Span<const XlaOp> operands,
+XlaOp AllGatherTuple(absl::Span<const XlaOp> operands,
                      int64_t all_gather_dimension, int64_t shard_count,
                      absl::Span<const ReplicaGroup> replica_groups,
                      const std::optional<ChannelHandle>& channel_id,
@@ -5340,7 +5340,7 @@ XlaOp AllReduce(const XlaOp operand, const XlaComputation& computation,
                                       use_global_device_ids);
 }
 
-XlaOp AllReduceTuple(const absl::Span<const XlaOp> operands,
+XlaOp AllReduceTuple(absl::Span<const XlaOp> operands,
                      const XlaComputation& computation,
                      absl::Span<const ReplicaGroup> replica_groups,
                      const std::optional<ChannelHandle>& channel_id,
