@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/lite/core/tools/verifier_internal.h"
 
+#include "flatbuffers/verifier.h"  // from @flatbuffers
 #include "tensorflow/lite/schema/schema_generated.h"
 
 namespace tflite {
