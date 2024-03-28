@@ -270,42 +270,26 @@ LogicalResult ConvertTFSignOp::matchAndRewrite(
 LogicalResult ConvertTFSinOp::matchAndRewrite(Operation* op,
                                               PatternRewriter& rewriter) const {
   auto tf_sin_op = cast<TF::SinOp>(op);
-  ShapedType output_type = tf_sin_op.getResult().getType().cast<ShapedType>();
+  ShapedType output_type = dyn_cast<TensorType>(tf_sin_op.getResult().getType());
+  if (!output_type)
+    return rewriter.notifyMatchFailure(op, "output_type required");
 
-  std::optional<Value> result =
-      convertSinOp(rewriter, op, tf_sin_op.getX(), output_type);
-  if (!result) return failure();
+  CreateReplaceOpAndInfer<tosa::SinOp>(rewriter, op, output_type,
+                                       tf_sin_op.getX());
 
-  rewriter.replaceOp(op, {result.value()});
   return success();
 }
 
 LogicalResult ConvertTFCosOp::matchAndRewrite(Operation* op,
                                               PatternRewriter& rewriter) const {
   auto tf_cos_op = cast<TF::CosOp>(op);
-  Value input = tf_cos_op.getX();
-  RankedTensorType input_ty = dyn_cast<RankedTensorType>(input.getType());
-  ShapedType output_ty = dyn_cast<ShapedType>(tf_cos_op.getResult().getType());
+  ShapedType output_type = dyn_cast<TensorType>(tf_cos_op.getResult().getType());
+  if (!output_type)
+    return rewriter.notifyMatchFailure(op, "output_type required");
 
-  if (!input_ty || !output_ty) return failure();
+  CreateReplaceOpAndInfer<tosa::CosOp>(rewriter, op, output_type,
+                                       tf_cos_op.getX());
 
-  bool input_is_fp = input_ty.getElementType().isa<mlir::FloatType>();
-  bool output_is_fp = output_ty.getElementType().isa<mlir::FloatType>();
-
-  if (!input_is_fp || !output_is_fp) {
-    return rewriter.notifyMatchFailure(
-        op, "ConvertTFCosOp: input/result must be fp.");
-  }
-
-  // Replace with the equivalent sin operation:
-  //   cos(x) = sin(x + π / 2).
-  auto fp_scalar_ty = RankedTensorType::get({}, rewriter.getF32Type());
-  auto pi_2 = rewriter.create<ConstOp>(
-      op->getLoc(), fp_scalar_ty,
-      DenseElementsAttr::get(fp_scalar_ty, {static_cast<float>(M_PI_2)}));
-  auto offset = rewriter.create<AddOp>(op->getLoc(), input_ty, input, pi_2);
-
-  CreateReplaceOpAndInfer<TF::SinOp>(rewriter, op, output_ty, offset);
   return success();
 }
 
