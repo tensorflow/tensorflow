@@ -98,10 +98,11 @@ void PopulateDefaultCalibrationOptions(QuantizationConfig& quant_config) {
 //   {matcher {function_name {regex: ".*"}}
 //   {method {static_range_ptq {}}}
 // }
-QuantizationSpec GetDefaultStaticRangePtqSpec() {
+QuantizationSpec GetDefaultStaticRangePtqSpec(StaticRangePtqPreset preset) {
   QuantizationSpec spec{};
   // Default for all ops.
-  spec.mutable_matcher()->mutable_function_name()->set_regex(".*");
+  spec.mutable_matcher()->mutable_function_name()->set_regex(
+      preset.enable_full_int_quantization() ? ".*" : "^.*(conv|dot|gather).*");
   spec.mutable_method()->mutable_static_range_ptq();
 
   return spec;
@@ -161,7 +162,8 @@ void ExpandStaticRangePtqPreset(const StaticRangePtqPreset& preset,
   // expansion from `StaticRangePtqPreset` gets populated first and then
   // user-provided explicit `QuantizationSpec`s will be appended.
   QuantizationSpecs new_specs{};
-  *new_specs.add_specs() = GetDefaultStaticRangePtqSpec();
+  *new_specs.add_specs() =
+      GetDefaultStaticRangePtqSpec(/*preset=*/config.static_range_ptq_preset());
   *new_specs.add_specs() = GetStaticRangePtqSpecForConvolution();
 
   // Append user-provided specs to override existing specs.

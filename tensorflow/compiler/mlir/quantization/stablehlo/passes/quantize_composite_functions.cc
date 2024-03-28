@@ -55,8 +55,9 @@ class QuantizeCompositeFunctionsPass
 
   explicit QuantizeCompositeFunctionsPass(
       const bool enable_per_channel_quantized_weight,
-      const bool enable_weight_only) {
+      const bool enable_weight_only, const bool enable_full_int_quantization) {
     enable_per_channel_quantized_weight_ = enable_per_channel_quantized_weight;
+    enable_full_int_quantization_ = enable_full_int_quantization;
     enable_weight_only_ = enable_weight_only;
   }
 
@@ -89,6 +90,8 @@ void QuantizeCompositeFunctionsPass::runOnOperation() {
   QuantizePassOptions quantize_options;
   quantize_options.enable_per_channel_quantized_weight_ =
       enable_per_channel_quantized_weight_;
+  quantize_options.enable_full_int_quantization_ =
+      enable_full_int_quantization_;
   quantize_options.enable_weight_only_ = enable_weight_only_;
   // QuantizePass modifies FuncOps referenced outside of its given scope
   // and therefore requires a module-level context.

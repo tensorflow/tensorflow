@@ -442,7 +442,7 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
         testing.get_size_ratio(
             self._output_saved_model_path, self._input_saved_model_path
         ),
-        0.6,
+        0.61,
     )
 
   @parameterized.parameters(
@@ -931,7 +931,7 @@ class CalibrationOptionsTest(quantize_model_test_base.QuantizedModelTest):
         testing.get_size_ratio(
             self._output_saved_model_path, self._input_saved_model_path
         ),
-        0.4,
+        0.46,
     )
 
 

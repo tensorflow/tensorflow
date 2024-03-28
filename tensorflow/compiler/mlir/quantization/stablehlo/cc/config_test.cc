@@ -147,10 +147,12 @@ TEST(ExpandPresetsTest, ExpandUnspecifiedPreset) {
   EXPECT_FALSE(new_config.has_pipeline_config());
 }
 
-TEST(ExpandPresetsTest, ExpandStaticRangePtqPreset) {
+TEST(ExpandPresetsTest, ExpandStaticRangePtqEnableFullIntquantization) {
   QuantizationConfig config{};
   RepresentativeDatasetConfig& preset_dataset_config =
       *config.mutable_static_range_ptq_preset()->add_representative_datasets();
+  config.mutable_static_range_ptq_preset()->set_enable_full_int_quantization(
+      true);
   preset_dataset_config.mutable_tf_record()->set_path("/test/path");
 
   const QuantizationConfig new_config = ExpandPresets(config);
@@ -185,6 +187,21 @@ TEST(ExpandPresetsTest, ExpandStaticRangePtqPreset) {
               StrEq("/test/path"));
 }
 
+TEST(ExpandPresetsTest, ExpandStaticRangePtqPresetDefault) {
+  QuantizationConfig config{};
+  RepresentativeDatasetConfig& preset_dataset_config =
+      *config.mutable_static_range_ptq_preset()->add_representative_datasets();
+  preset_dataset_config.mutable_tf_record()->set_path("/test/path");
+
+  const QuantizationConfig new_config = ExpandPresets(config);
+  ASSERT_THAT(new_config.specs().specs(), SizeIs(2));
+
+  const QuantizationSpec& spec = new_config.specs().specs(0);
+  EXPECT_THAT(spec.matcher().function_name().regex(),
+              StrEq("^.*(conv|dot|gather).*"));
+  EXPECT_TRUE(spec.method().has_static_range_ptq());
+}
+
 TEST(ExpandPresetsTest,
      ExpandStaticRangePtqPresetWithTopLevelRepresentativeDataset) {
   // Test the scenario where both
@@ -216,7 +233,8 @@ TEST(ExpandPresetsTest,
 
 TEST(ExpandPresetsTest, ExpandStaticRangePtqPresetThenAppendExplicitSpecs) {
   QuantizationConfig config{};
-  config.mutable_static_range_ptq_preset();
+  config.mutable_static_range_ptq_preset()->set_enable_full_int_quantization(
+      true);
 
   QuantizationSpec& user_provided_spec = *config.mutable_specs()->add_specs();
   user_provided_spec.mutable_matcher()->mutable_function_name()->set_regex(

@@ -254,6 +254,11 @@ class StableHloQuantizationPattern : public OpRewritePattern<RootOpT> {
 void PopulateComputeHeavyPatterns(MLIRContext& ctx, RewritePatternSet& patterns,
                                   bool enable_per_channel_quantized_weight);
 
+// Populates conversion patterns for all quantizable ops, including
+// ops that are not compute-heavy and data movement ops.
+void PopulateAllQuantizablePatterns(MLIRContext& ctx,
+                                    RewritePatternSet& patterns);
+
 // Populates pattern weight-only quantization.
 void PopulateQuantizeWeightOnlyPatterns(MLIRContext& ctx,
                                         RewritePatternSet& patterns);
