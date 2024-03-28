@@ -3164,6 +3164,48 @@ xla_cc_test(
 )
 
 cc_library(
+    name = "while_double_buffer_removal",
+    srcs = ["while_double_buffer_removal.cc"],
+    hdrs = ["while_double_buffer_removal.h"],
+    deps = [
+        ":hlo_alias_analysis",
+        ":hlo_pass",
+        ":pattern_matcher",
+        ":while_loop_analysis",
+        ":while_loop_simplifier",
+        ":while_loop_unroller",
+        "//xla:literal_util",
+        "//xla:shape_util",
+        "//xla:statusor",
+        "//xla:util",
+        "//xla/hlo/ir:hlo",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@local_tsl//tsl/platform:errors",
+        "@local_tsl//tsl/platform:statusor",
+    ],
+)
+
+xla_cc_test(
+    name = "while_double_buffer_removal_test",
+    srcs = ["while_double_buffer_removal_test.cc"],
+    deps = [
+        ":while_double_buffer_removal",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/utils:hlo_matchers",
+        "//xla/tests:hlo_test_base",
+        "//xla/tests:verified_hlo_module",
+        "//xla/tests:xla_internal_test_main",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_library(
     name = "while_loop_unroller",
     srcs = ["while_loop_unroller.cc"],
     hdrs = ["while_loop_unroller.h"],

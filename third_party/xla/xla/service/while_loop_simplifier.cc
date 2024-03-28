@@ -312,7 +312,7 @@ static StatusOr<HloInstruction*> RemoveDeadTupleIndices(
 // that tuple that is not used by the loop condition and is not used by the loop
 // body except to pass it to the next iteration of the loop, then we can remove
 // that element from the loop's tuples.
-static StatusOr<bool> TryRemoveDeadWhileParams(HloInstruction* while_op) {
+StatusOr<bool> TryRemoveDeadWhileParams(HloInstruction* while_op) {
   CHECK_EQ(while_op->opcode(), HloOpcode::kWhile);
 
   // Don't try this transformation if the while loop isn't removable, since if

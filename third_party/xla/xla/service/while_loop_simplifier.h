@@ -24,6 +24,8 @@ limitations under the License.
 
 namespace xla {
 
+StatusOr<bool> TryRemoveDeadWhileParams(HloInstruction* while_op);
+
 // HLO pass that makes the following transformations on while loops:
 //
 //  - A while loop with static trip count of 0 is deleted.
