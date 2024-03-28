@@ -2040,17 +2040,25 @@ class HloInstruction {
   }
 
   Status set_backend_config(const tsl::protobuf::Message& proto) {
+    absl::MutexLock lock(&backend_config_mutex_);
     backend_config_ = proto;
     return OkStatus();
   }
 
   bool preserve_layout() const { return metadata_->preserve_layout(); }
 
-  bool has_backend_config() const { return !backend_config_.empty(); }
+  bool has_backend_config() const {
+    absl::MutexLock lock(&backend_config_mutex_);
+    return !backend_config_.empty();
+  }
 
-  void clear_backend_config() { backend_config_.clear(); }
+  void clear_backend_config() {
+    absl::MutexLock lock(&backend_config_mutex_);
+    backend_config_.clear();
+  }
 
   void CopyBackendConfigFrom(const HloInstruction* other) {
+    absl::MutexLock lock(&backend_config_mutex_);
     backend_config_ = other->backend_config_.Clone();
   }
 
@@ -2102,9 +2110,11 @@ class HloInstruction {
   // Getter/setter for raw JSON-encoded backend config.  Prefer the
   // functions above that deal in proto Messages where possible.
   const std::string& raw_backend_config_string() const {
+    absl::MutexLock lock(&backend_config_mutex_);
     return backend_config_.GetRawString();
   }
   void set_raw_backend_config_string(std::string config_str) {
+    absl::MutexLock lock(&backend_config_mutex_);
     backend_config_ = std::move(config_str);
   }
 
@@ -2788,7 +2798,9 @@ class HloInstruction {
 
   // The backend-specific configuration for how a backend should compile this
   // HLO. See the documentation on backend_config().
-  mutable BackendConfigRep backend_config_;
+  mutable absl::Mutex backend_config_mutex_;
+  mutable BackendConfigRep backend_config_
+      ABSL_GUARDED_BY(backend_config_mutex_);
 
   // String identifier for instruction.
   std::string name_;
