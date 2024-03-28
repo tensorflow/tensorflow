@@ -19,7 +19,6 @@ limitations under the License.
 #include <ostream>
 #include <string>
 
-#include "absl/strings/string_view.h"
 #include "absl/types/optional.h"
 #include "tsl/lib/core/status_test_util.h"
 #include "tsl/platform/env.h"
