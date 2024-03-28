@@ -134,7 +134,12 @@ absl::StatusOr<tfrt::BefBuffer> LoadBefAndMlir(
     const std::string& saved_model_dir,
     tfrt_stub::FallbackState* fallback_state);
 
-absl::Status DeserializeAotMlirModule(
+absl::StatusOr<mlrt::bc::Buffer> LoadMlrtAndMlir(
+    const TfrtCompileOptions& options, mlir::ModuleOp mlir_module,
+    const std::string& saved_model_dir,
+    tfrt_stub::FallbackState* fallback_state);
+
+absl::Status DeserializeAoTMlirModule(
     absl::string_view saved_model_dir, mlir::MLIRContext* context,
     mlir::OwningOpRef<mlir::ModuleOp>* mlir_module);
 
