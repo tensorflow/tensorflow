@@ -23,6 +23,10 @@ limitations under the License.
 // StreamExecutor Host Kernel API
 //===----------------------------------------------------------------------===//
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 // StreamExecutor host kernel API is an integration point between a codegen
 // backend and a runtime. XLA:CPU backend compiles fusion regions to native
 // functions (via LLVM backend) that are compatible with a kernel API (and ABI),
@@ -76,5 +80,9 @@ typedef struct SE_HOST_KernelError SE_HOST_KernelError;
 // Host kernel API.
 typedef SE_HOST_KernelError* SE_HOST_Kernel(
     const SE_HOST_KernelCallFrame* call_frame);
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif  // XLA_STREAM_EXECUTOR_HOST_HOST_KERNEL_C_API_H_
