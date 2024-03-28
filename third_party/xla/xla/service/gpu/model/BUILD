@@ -424,6 +424,7 @@ cc_library(
     deps = [
         ":affine_map_printer",
         "//xla/hlo/ir:hlo",
+        "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/types:span",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",

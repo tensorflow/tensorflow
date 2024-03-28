@@ -26,6 +26,7 @@ limitations under the License.
 #include "mlir/IR/AffineMap.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/literal_util.h"
 #include "xla/service/gpu/model/affine_map_printer.h"
 #include "xla/service/gpu/model/indexing_analysis.h"
@@ -911,6 +912,71 @@ TEST_F(IndexingMapTest, ReplaceConstantRTVars_PartialRTVarRemoval) {
               s0 in [0, 512]
                 hlo: %constant = s64[12]{0} constant({...})
                 (d0) -> (d0 floordiv 2)
+              )"));
+}
+
+TEST_F(IndexingMapTest, ReplaceConstantRTVars_Add) {
+  auto constant = HloInstruction::CreateConstant(LiteralUtil::CreateR0(42));
+  auto broadcasted_constant = HloInstruction::CreateBroadcast(
+      ShapeUtil::MakeShape(PrimitiveType::S64, {12, 13, 24}), constant.get(),
+      {});
+  auto iota = HloInstruction::CreateIota(
+      ShapeUtil::MakeShape(PrimitiveType::S64, {12, 13, 24}), 2);
+  auto addition = HloInstruction::CreateBinary(
+      ShapeUtil::MakeShape(PrimitiveType::S64, {12, 13, 24}), HloOpcode::kAdd,
+      broadcasted_constant.get(), iota.get());
+
+  // The iota dimension is the last dimension in (d0, 7, 2 * d0), hence this
+  // composes to 42 + 2 * d0
+  IndexingMap indexing_map(
+      ParseAffineMap("(d0)[s0] -> (d0, s0)", &mlir_context_),
+      /*dimensions=*/{{0, 11}},
+      /*range_vars=*/{},
+      {RTVar{Interval{0, 11}, addition.get(),
+             ParseAffineMap("(d0) -> (d0, 7, 2 * d0)", &mlir_context_)}});
+
+  indexing_map.Simplify(GetIndexingMapForInstruction);
+
+  EXPECT_THAT(indexing_map.ToString(printer_), MatchIndexingString(R"(
+              (d0) -> (d0, d0 * 2 + 42)
+              domain:
+              d0 in [0, 11]
+              )"));
+}
+
+TEST_F(IndexingMapTest, ReplaceConstantRTVars_Multiply) {
+  auto iota0 = HloInstruction::CreateIota(
+      ShapeUtil::MakeShape(PrimitiveType::S64, {12, 12}), 0);
+  auto iota1 = HloInstruction::CreateIota(
+      ShapeUtil::MakeShape(PrimitiveType::S64, {12}), 0);
+  auto broadcast1 = HloInstruction::CreateBroadcast(
+      ShapeUtil::MakeShape(PrimitiveType::S64, {12, 12}), iota1.get(), {1});
+  auto multiplication = HloInstruction::CreateBinary(
+      ShapeUtil::MakeShape(PrimitiveType::S64, {12, 12}), HloOpcode::kMultiply,
+      iota0.get(), broadcast1.get());
+  auto reverse = HloInstruction::CreateReverse(
+      ShapeUtil::MakeShape(PrimitiveType::S64, {12, 12}), multiplication.get(),
+      {0});
+
+  // Iota0: [[0, ..., 0], [1, ..., 1], ..., [11, ..., 11]]
+  // Iota1: [0, ..., 11]
+  // Broadcast1: [[0, 1, ..., 11], [0, 1, ..., 11], ..., [0, 1, ..., 11]]
+  // Mul: [[0, .., 0], [0, 1, ..., 11], [0, 2, ..., 22], ..., [0, 11, ..., 121]]
+  // Reverse: [[0, 11, ..., 121], [0, 10, ..., 110], ..., [0, ..., 0]]
+  // Therefore (d0, d0) evaluates to: (11 - d0) * d0.
+  IndexingMap indexing_map(
+      ParseAffineMap("(d0)[s0] -> (d0, s0)", &mlir_context_),
+      /*dimensions=*/{{0, 11}},
+      /*range_vars=*/{},
+      {RTVar{Interval{0, 11}, reverse.get(),
+             ParseAffineMap("(d0) -> (d0, d0)", &mlir_context_)}});
+
+  indexing_map.Simplify(GetIndexingMapForInstruction);
+
+  EXPECT_THAT(indexing_map.ToString(printer_), MatchIndexingString(R"(
+              (d0) -> (d0, (-d0 + 11) * d0)
+              domain:
+              d0 in [0, 11]
               )"));
 }
 
