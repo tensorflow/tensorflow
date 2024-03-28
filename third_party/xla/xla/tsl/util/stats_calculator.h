@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_TSL_UTIL_STATS_CALCULATOR_H_
-#define TENSORFLOW_TSL_UTIL_STATS_CALCULATOR_H_
+#ifndef XLA_TSL_UTIL_STATS_CALCULATOR_H_
+#define XLA_TSL_UTIL_STATS_CALCULATOR_H_
 
 #include <stdlib.h>
 
@@ -26,7 +26,7 @@ limitations under the License.
 #include <string>
 #include <vector>
 
-#include "tsl/util/stat_summarizer_options.h"
+#include "xla/tsl/util/stat_summarizer_options.h"
 
 namespace tsl {
 
@@ -198,4 +198,4 @@ class StatsCalculator {
 
 }  // namespace tsl
 
-#endif  // TENSORFLOW_TSL_UTIL_STATS_CALCULATOR_H_
+#endif  // XLA_TSL_UTIL_STATS_CALCULATOR_H_

@@ -7459,12 +7459,12 @@ xla_cc_binary(
         ":cpu_plugin",
         "//xla:status",
         "//xla/tools:xla_compile_lib",
+        "//xla/tsl/util:command_line_flags",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/strings",
         "@local_tsl//tsl/platform:platform_port",
         "@local_tsl//tsl/platform:types",
-        "@local_tsl//tsl/util:command_line_flags",
     ] + if_cuda_is_configured([
         "//xla/service/gpu:executable_proto_cc",
         "//xla/service/gpu:gpu_compiler",
@@ -7654,10 +7654,10 @@ cc_library(
         "//xla:statusor",
         "//xla:util",
         "//xla:xla_proto_cc",
+        "//xla/tsl/util:command_line_flags",
         "@com_google_absl//absl/strings",
         "@local_tsl//tsl/platform:protobuf",
         "@local_tsl//tsl/platform:statusor",
-        "@local_tsl//tsl/util:command_line_flags",
     ],
 )
 

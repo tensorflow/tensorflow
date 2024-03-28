@@ -566,6 +566,7 @@ cc_library(
         ":platform",
         ":stream_executor_headers",
         ":stream_executor_internal",
+        "//xla/tsl/util:env_var",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/functional:any_invocable",
         "@com_google_absl//absl/log",
@@ -582,7 +583,6 @@ cc_library(
         "@local_tsl//tsl/platform:stacktrace",
         "@local_tsl//tsl/platform:status",
         "@local_tsl//tsl/platform:statusor",
-        "@local_tsl//tsl/util:env_var",
     ],
 )
 

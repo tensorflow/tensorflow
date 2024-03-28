@@ -41,6 +41,7 @@ limitations under the License.
 #include "xla/tools/hlo_module_loader.h"
 #include "xla/tools/hlo_opt/opt_lib.h"
 #include "xla/tools/run_hlo_module.h"
+#include "xla/tsl/util/command_line_flags.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/init_main.h"
@@ -48,7 +49,6 @@ limitations under the License.
 #include "tsl/platform/path.h"
 #include "tsl/platform/status.h"
 #include "tsl/platform/statusor.h"
-#include "tsl/util/command_line_flags.h"
 
 namespace {
 const char* const kUsage = R"(

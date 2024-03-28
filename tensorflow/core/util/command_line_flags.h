@@ -20,8 +20,8 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "xla/tsl/util/command_line_flags.h"
 #include "tensorflow/core/platform/types.h"
-#include "tsl/util/command_line_flags.h"
 
 namespace tensorflow {
 using tsl::Flag;   // NOLINT

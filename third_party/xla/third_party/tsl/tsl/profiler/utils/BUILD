@@ -213,12 +213,12 @@ cc_library(
         "//tsl/platform:types",
         "//tsl/profiler/lib:context_types",
         "//tsl/profiler/protobuf:xplane_proto_cc",
-        "//tsl/util:stats_calculator_portable",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/strings",
+        "@local_xla//xla/tsl/util:stats_calculator_portable",
     ],
 )
 

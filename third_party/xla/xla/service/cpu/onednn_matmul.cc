@@ -35,8 +35,8 @@ limitations under the License.
 #include "xla/service/cpu/runtime_lightweight_check.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/tsl/util/onednn_threadpool.h"
 #include "tsl/platform/logging.h"
-#include "tsl/util/onednn_threadpool.h"
 
 namespace xla {
 namespace cpu {

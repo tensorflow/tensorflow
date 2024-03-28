@@ -106,7 +106,7 @@ _test_size_override = {
             "@local_tsl//tsl/platform:env",
             "@local_tsl//tsl/platform:status",
             "@local_tsl//tsl/platform:subprocess",
-            "@local_tsl//tsl/util:command_line_flags",
+            "@local_xla//xla/tsl/util:command_line_flags",
         ],
         "//tensorflow:android": [
             "//tensorflow/core:portable_tensorflow_lib",

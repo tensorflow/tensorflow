@@ -50,6 +50,7 @@ if(NOT TENSORFLOW_SOURCE_DIR)
 endif()
 set(TF_SOURCE_DIR "${TENSORFLOW_SOURCE_DIR}/tensorflow")
 set(TSL_SOURCE_DIR "${TENSORFLOW_SOURCE_DIR}/third_party/xla/third_party/tsl")
+set(XLA_SOURCE_DIR "${TENSORFLOW_SOURCE_DIR}/third_party/xla/")
 set(TFLITE_SOURCE_DIR "${CMAKE_CURRENT_LIST_DIR}")
 set(CMAKE_MODULE_PATH
   "${TFLITE_SOURCE_DIR}/tools/cmake/modules"
@@ -161,6 +162,7 @@ find_package(ruy REQUIRED)
 # Include TSL, which is in tensorflow/third_party
 include_directories(
   ${TSL_SOURCE_DIR}
+  ${XLA_SOURCE_DIR}
 )
 # Download necessary dependencies.
 # Download pthreadpool source package if it doesn't exist.

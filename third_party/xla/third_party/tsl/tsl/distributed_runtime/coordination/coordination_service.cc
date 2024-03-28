@@ -32,6 +32,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/notification.h"
 #include "absl/time/time.h"
+#include "xla/tsl/util/device_name_utils.h"
 #include "tsl/distributed_runtime/call_options.h"
 #include "tsl/distributed_runtime/coordination/coordination_client.h"
 #include "tsl/distributed_runtime/coordination/coordination_service_error_util.h"
@@ -45,7 +46,6 @@ limitations under the License.
 #include "tsl/platform/thread_annotations.h"
 #include "tsl/protobuf/coordination_config.pb.h"
 #include "tsl/protobuf/coordination_service.pb.h"
-#include "tsl/util/device_name_utils.h"
 
 namespace tsl {
 namespace {

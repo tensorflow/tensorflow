@@ -875,7 +875,7 @@ tf_cuda_library(
         "@com_google_absl//absl/strings",
         "@eigen_archive//:eigen3",
         "@local_tsl//tsl/framework:device_type",
-        "@local_tsl//tsl/util:byte_swap_array",
+        "@local_xla//xla/tsl/util:byte_swap_array",
     ],
     alwayslink = 1,
 )

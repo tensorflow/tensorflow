@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_TSL_UTIL_PROTO_PROTO_UTILS_H_
-#define TENSORFLOW_TSL_UTIL_PROTO_PROTO_UTILS_H_
+#ifndef XLA_TSL_UTIL_PROTO_PROTO_UTILS_H_
+#define XLA_TSL_UTIL_PROTO_PROTO_UTILS_H_
 
 #include "google/protobuf/duration.pb.h"
 #include "absl/time/time.h"
@@ -39,4 +39,4 @@ inline absl::Duration FromDurationProto(google::protobuf::Duration proto) {
 }  // namespace proto_utils
 }  // namespace tsl
 
-#endif  // TENSORFLOW_TSL_UTIL_PROTO_PROTO_UTILS_H_
+#endif  // XLA_TSL_UTIL_PROTO_PROTO_UTILS_H_

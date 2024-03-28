@@ -217,8 +217,8 @@ cc_library(
         "//tsl/platform:str_util",
         "//tsl/platform:stringpiece",
         "//tsl/platform:types",
-        "//tsl/util:env_var",
         "@curl",
+        "@local_xla//xla/tsl/util:env_var",
     ],
 )
 

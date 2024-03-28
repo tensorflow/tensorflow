@@ -149,8 +149,8 @@ cc_library(
         "//tsl/platform:errors",
         "//tsl/platform:macros",
         "//tsl/platform:statusor",
-        "//tsl/util:env_var",
         "@com_google_absl//absl/strings:string_view",
+        "@local_xla//xla/tsl/util:env_var",
     ],
 )
 
