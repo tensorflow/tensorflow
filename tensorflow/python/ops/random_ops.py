@@ -25,6 +25,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_random_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import shape_util
+from tensorflow.python.ops import check_ops
 
 # go/tf-wildcard-import
 # pylint: disable=wildcard-import
@@ -300,6 +301,10 @@ def random_uniform(shape,
     if not minval_is_zero or not maxval_is_one or dtype.is_integer:
       minval = ops.convert_to_tensor(minval, dtype=dtype, name="min")
       maxval = ops.convert_to_tensor(maxval, dtype=dtype, name="max")
+    check_ops.assert_less(minval, maxval, 
+                   message= "`minval` should be less than `maxval`. ",
+                   summarize=None, 
+                   name=None)
     seed1, seed2 = random_seed.get_seed(seed)
     if dtype.is_integer:
       result = gen_random_ops.random_uniform_int(
