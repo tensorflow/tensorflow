@@ -236,13 +236,21 @@ class MatrixDiagOp : public OpKernel {
         errors::InvalidArgument(
             "lower_diag_index must not be larger than upper_diag_index: ",
             lower_diag_index, " > ", upper_diag_index));
-    OP_REQUIRES(context,
-                lower_diag_index == upper_diag_index ||
-                    diagonal_shape.dim_size(diag_rank - 2) == num_diags,
-                errors::InvalidArgument(
-                    "The number of diagonals provided in the input does not "
-                    "match the lower_diag_index and upper_diag_index range."));
-
+    if (diag_rank == 1) {
+        OP_REQUIRES(context,
+            lower_diag_index == upper_diag_index ||
+                diagonal_shape.dim_size(diag_rank - 1) == num_diags,
+            absl::InvalidArgumentError(
+                "The number of diagonals provided in the input does not "
+                "match the lower_diag_index and upper_diag_index range."));
+    } else if (diag_rank > 1) {
+        OP_REQUIRES(context,
+            lower_diag_index == upper_diag_index ||
+                diagonal_shape.dim_size(diag_rank - 2) == num_diags,
+            absl::InvalidArgumentError(
+                "The number of diagonals provided in the input does not "
+                "match the lower_diag_index and upper_diag_index range."));
+    }
     const Eigen::Index max_diag_len = diagonal_shape.dim_size(diag_rank - 1);
     const Eigen::Index min_num_rows =
         max_diag_len - std::min(upper_diag_index, 0);
