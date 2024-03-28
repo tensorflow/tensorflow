@@ -1299,6 +1299,35 @@ TEST(OpVersionTest, VersioningBatchMatMulTest) {
   batch_mat_mul_params.asymmetric_quantize_inputs = true;
   EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 4);
 }
+TEST(OpVersionTest, VersioningTransposeConv3DOperatorTest) {
+  OpSignature fake_op_sig = {
+      .op = BuiltinOperator_CONV_3D_TRANSPOSE,
+      .inputs = CreateOpSignatureTensorSpecs(std::vector<TfLiteType>{
+          kTfLiteInt32, kTfLiteFloat32, kTfLiteFloat32}),
+  };
+  EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 1);
+
+  fake_op_sig = {
+      .op = BuiltinOperator_CONV_3D_TRANSPOSE,
+      .inputs = CreateOpSignatureTensorSpecs(
+          std::vector<TfLiteType>{kTfLiteInt32, kTfLiteInt8, kTfLiteInt8}),
+  };
+  EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 2);
+
+  fake_op_sig = {
+      .op = BuiltinOperator_CONV_3D_TRANSPOSE,
+      .inputs = CreateOpSignatureTensorSpecs(std::vector<TfLiteType>{
+          kTfLiteInt32, kTfLiteInt8, kTfLiteInt8, kTfLiteInt32}),
+  };
+  EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 2);
+
+  fake_op_sig = {
+      .op = BuiltinOperator_CONV_3D_TRANSPOSE,
+      .inputs = CreateOpSignatureTensorSpecs(
+          std::vector<TfLiteType>{kTfLiteInt32, kTfLiteInt8, kTfLiteInt16}),
+  };
+  EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 2);
+}
 TEST(OpVersionTest, VersioningSquaredDifferenceTest) {
   // Default.
   OpSignature fake_op_sig = {
