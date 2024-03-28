@@ -102,12 +102,6 @@ struct GraphImportConfig {
 };
 
 struct GraphExportConfig {
-  // Whether to export shape attribute for the NodeDefs in the GraphDef.
-  bool export_shapes = true;
-  // Whether to export library field in the GraphDef.
-  bool export_library = true;
-  // Whether to export debug original node name in the GraphDef.
-  bool export_debug_info = true;
   // Whether to export the entry function to function library instead of the
   // graph.
   bool export_entry_func_to_flib = false;
