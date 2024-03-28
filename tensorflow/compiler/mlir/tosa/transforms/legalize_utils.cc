@@ -43,6 +43,154 @@ limitations under the License.
 namespace mlir {
 namespace tosa {
 
+std::optional<Value> convertTFConv2DCommon(
+    PatternRewriter& rewriter, Operation* op, RankedTensorType output_type,
+    Value input, Value filter, Value bias, ArrayAttr strides_attr,
+    ArrayAttr dilations_attr, ArrayAttr explicit_padding_attr,
+    StringRef padding_ref, StringRef data_format_ref) {
+  RankedTensorType input_type = dyn_cast<RankedTensorType>(input.getType());
+  RankedTensorType filter_type = dyn_cast<RankedTensorType>(filter.getType());
+  // Not a ranked tensor output
+  if (!input_type) return std::nullopt;
+  if (!filter_type) return std::nullopt;
+
+  // Transpose [H, W, I, O] to [O, H, W, I]
+  auto filter_shape = filter_type.getShape();
+  SmallVector<int64_t, 4> a1_transpose_dims;
+  a1_transpose_dims.push_back(filter_shape[3]);
+  a1_transpose_dims.push_back(filter_shape[0]);
+  a1_transpose_dims.push_back(filter_shape[1]);
+  a1_transpose_dims.push_back(filter_shape[2]);
+  std::optional<Value> a1_filter_transpose_perm = getConstTensor<int32_t>(
+      rewriter, op, /*vec=*/{3, 0, 1, 2}, /*shape=*/{4});
+
+  if (!a1_filter_transpose_perm) return std::nullopt;
+
+  auto a1_filter_transpose_op = CreateOpAndInfer<tosa::TransposeOp>(
+      rewriter, op->getLoc(),
+      tensorflow::GetTypeFromTFTensorShape(a1_transpose_dims,
+                                           filter_type.getElementType()),
+      filter, a1_filter_transpose_perm.value());
+
+  // Only support NHWC now.
+  if (data_format_ref.str() != "NHWC") {
+    op->emitWarning("convertTDConv2DCommon only supports NHWC!");
+    return std::nullopt;
+  }
+
+  DenseI64ArrayAttr stride;
+  DenseI64ArrayAttr dilation;
+  DenseI64ArrayAttr pad;
+  {
+    if (!strides_attr) {
+      stride = rewriter.getDenseI64ArrayAttr({1, 1});
+    } else {
+      // Note: hardcoded to NHWC for now
+      int64_t stride_h = strides_attr[1].cast<IntegerAttr>().getInt();
+      int64_t stride_w = strides_attr[2].cast<IntegerAttr>().getInt();
+      stride = rewriter.getDenseI64ArrayAttr({stride_h, stride_w});
+    }
+  }
+  {
+    if (!dilations_attr) {
+      dilation = rewriter.getDenseI64ArrayAttr({1, 1});
+    } else {
+      // Note: hardcoded to NHWC for now
+      int64_t dilation_h = dilations_attr[1].cast<IntegerAttr>().getInt();
+      int64_t dilation_w = dilations_attr[2].cast<IntegerAttr>().getInt();
+      dilation = rewriter.getDenseI64ArrayAttr({dilation_h, dilation_w});
+    }
+  }
+  {
+    tensorflow::Padding tf_pad;
+    if (!GetPaddingFromString(padding_ref.str(), &tf_pad).ok()) {
+      op->emitWarning("Could not get padding data from padding string term!");
+      return std::nullopt;
+    }
+
+    tensorflow::TensorFormat data_format_tf;
+    if (!FormatFromString(data_format_ref.str(), &data_format_tf))
+      return std::nullopt;
+
+    if (tf_pad == tensorflow::Padding::EXPLICIT) {
+      pad = getPaddingValuesFromExplicitPadAttr(explicit_padding_attr,
+                                                data_format_tf, rewriter);
+    } else {
+      if (!getPaddingValuesFromPadType(tf_pad, data_format_tf,
+                                       0,  // tensorflow::FORMAT_HWIO
+                                       input_type, filter_type, stride,
+                                       dilation, rewriter, pad))
+        return std::nullopt;
+    }
+  }
+
+  return CreateOpAndInfer<tosa::Conv2DOp>(
+             rewriter, op->getLoc(), output_type, input,
+             a1_filter_transpose_op.getResult(), bias, pad, stride, dilation)
+      .getResult();
+}
+
+std::optional<Value> convertTFConv3DCommon(
+    PatternRewriter& rewriter, Operation* op, ShapedType output_type,
+    Value input, Value filter, Value bias, ArrayAttr strides_attr,
+    ArrayAttr dilations_attr, StringRef padding_ref,
+    StringRef data_format_ref) {
+  DenseI64ArrayAttr strides;
+  if (!strides_attr) {
+    // Defaults to [1, 1, 1].
+    strides = rewriter.getDenseI64ArrayAttr({1, 1, 1});
+  } else {
+    int64_t stride_d = strides_attr[1].cast<IntegerAttr>().getInt();
+    int64_t stride_h = strides_attr[2].cast<IntegerAttr>().getInt();
+    int64_t stride_w = strides_attr[3].cast<IntegerAttr>().getInt();
+    strides = rewriter.getDenseI64ArrayAttr({stride_d, stride_h, stride_w});
+  }
+
+  DenseI64ArrayAttr dilations;
+  if (!dilations_attr) {
+    // Defaults to [1, 1, 1].
+    dilations = rewriter.getDenseI64ArrayAttr({1, 1, 1});
+  } else {
+    int64_t dilation_d = dilations_attr[1].cast<IntegerAttr>().getInt();
+    int64_t dilation_h = dilations_attr[2].cast<IntegerAttr>().getInt();
+    int64_t dilation_w = dilations_attr[3].cast<IntegerAttr>().getInt();
+    dilations =
+        rewriter.getDenseI64ArrayAttr({dilation_d, dilation_h, dilation_w});
+  }
+
+  DenseI64ArrayAttr pads;
+  {
+    RankedTensorType input_type = input.getType().cast<RankedTensorType>();
+    RankedTensorType filter_type = filter.getType().cast<RankedTensorType>();
+
+    tensorflow::TensorFormat data_format_tf;
+    if (!FormatFromString(data_format_ref, &data_format_tf)) {
+      return std::nullopt;
+    }
+
+    tensorflow::Padding tf_pad;
+    if (!GetPaddingFromString(padding_ref.str(), &tf_pad).ok()) {
+      (void)rewriter.notifyMatchFailure(
+          op, "could not get padding data from padding string term");
+      return std::nullopt;
+    }
+
+    if (tf_pad == tensorflow::Padding::EXPLICIT) {
+      (void)rewriter.notifyMatchFailure(op, "don't have explicit padding");
+      return std::nullopt;
+    }
+
+    if (!getPaddingValuesFromPadType(tf_pad, data_format_tf, 0, input_type,
+                                     filter_type, strides, dilations, rewriter,
+                                     pads)) {
+      return std::nullopt;
+    }
+  }
+
+  return convertConv3DCommon(rewriter, op, output_type, input, filter, bias,
+                             pads, strides, dilations, data_format_ref);
+}
+
 LogicalResult getDynamicDims(PatternRewriter& rewriter, Operation* op,
                              Value value, llvm::SmallVector<Value>& dims) {
   auto value_ty = dyn_cast<ShapedType>(value.getType());
@@ -778,6 +926,76 @@ template std::optional<Value> getConstTensor<int32_t>(PatternRewriter&,
                                                       Operation*,
                                                       ArrayRef<int32_t> vec,
                                                       ArrayRef<int64_t> shape);
+
+llvm::SmallVector<int64_t> getOutputSpatialSizeRemainder(
+    tensorflow::TensorFormat data_format_tf, ShapedType input_type,
+    DenseI64ArrayAttr kernel_size, DenseI64ArrayAttr pads,
+    DenseI64ArrayAttr strides, DenseI64ArrayAttr dilations) {
+  llvm::SmallVector<int64_t> output_size_remainder;
+
+  const int nb_spatial_dims =
+      GetTensorSpatialDims(input_type.getRank(), data_format_tf);
+  for (int spatial_dim = 0; spatial_dim < nb_spatial_dims; spatial_dim++) {
+    const int64_t in_size = input_type.getDimSize(GetTensorSpatialDimIndex(
+        input_type.getRank(), data_format_tf, spatial_dim));
+    const int64_t full_pad =
+        pads[2 * spatial_dim + 0] + pads[2 * spatial_dim + 1];
+
+    const int64_t full_size =
+        in_size - 1 + full_pad -
+        (kernel_size[spatial_dim] - 1) * dilations[spatial_dim];
+    output_size_remainder.push_back(full_size % strides[spatial_dim]);
+  }
+
+  return output_size_remainder;
+}
+
+Value getInputSlicedToItsUsedSize(PatternRewriter& rewriter, Operation* op,
+                                  tensorflow::TensorFormat data_format_tf,
+                                  ShapedType input_type, Value input_val,
+                                  DenseI64ArrayAttr kernel_size,
+                                  DenseI64ArrayAttr pads,
+                                  DenseI64ArrayAttr strides,
+                                  DenseI64ArrayAttr dilations) {
+  const int nb_spatial_dims =
+      GetTensorSpatialDims(input_type.getRank(), data_format_tf);
+  // Don't slice the input if any spatial dimension is dynamic
+  for (int spatial_dim = 0; spatial_dim < nb_spatial_dims; spatial_dim++) {
+    if (input_type.isDynamicDim(GetTensorSpatialDimIndex(
+            input_type.getRank(), data_format_tf, spatial_dim))) {
+      return input_val;
+    }
+  }
+
+  const llvm::SmallVector<int64_t> output_size_remainder =
+      getOutputSpatialSizeRemainder(data_format_tf, input_type, kernel_size,
+                                    pads, strides, dilations);
+
+  const bool need_slicing =
+      llvm::any_of(output_size_remainder, [](int64_t v) { return v > 0; });
+  const bool zero_pads =
+      llvm::all_of(pads.asArrayRef(), [](int64_t v) { return v == 0; });
+  if (need_slicing && zero_pads) {
+    llvm::SmallVector<int64_t> start(input_type.getRank(), 0);
+    llvm::SmallVector<int64_t> size =
+        tensorflow::ConvertMlirShapeToTF(input_type.getShape());
+    for (int spatial_dim = 0; spatial_dim < nb_spatial_dims; spatial_dim++) {
+      const int index = GetTensorSpatialDimIndex(input_type.getRank(),
+                                                 data_format_tf, spatial_dim);
+      size[index] -= output_size_remainder[spatial_dim];
+    }
+
+    auto slice_op = CreateOpAndInfer<tosa::SliceOp>(
+        rewriter, op->getLoc(),
+        UnrankedTensorType::get(input_type.getElementType()), input_val,
+        rewriter.getDenseI64ArrayAttr(start),
+        rewriter.getDenseI64ArrayAttr(size));
+
+    return slice_op.getResult();
+  }
+
+  return input_val;
+}
 
 // Check if scale32 mode is used for given output_element_type
 bool isScale32(mlir::quant::UniformQuantizedType output_element_type) {
