@@ -20,29 +20,34 @@ from tensorflow.python.ops import variables
 
 
 def convert_data_format(data_format, ndim):
-  if data_format == 'channels_last':
-    if ndim == 3:
-      return 'NWC'
-    elif ndim == 4:
-      return 'NHWC'
-    elif ndim == 5:
-      return 'NDHWC'
-    else:
-      raise ValueError(f'Input rank: {ndim} not supported. We only support '
-                       'input rank 3, 4 or 5.')
-  elif data_format == 'channels_first':
-    if ndim == 3:
-      return 'NCW'
-    elif ndim == 4:
-      return 'NCHW'
-    elif ndim == 5:
-      return 'NCDHW'
-    else:
-      raise ValueError(f'Input rank: {ndim} not supported. We only support '
-                       'input rank 3, 4 or 5.')
-  else:
-    raise ValueError(f'Invalid data_format: {data_format}. We only support '
-                     '"channels_first" or "channels_last"')
+    match data_format:
+        case 'channels_last':
+            match ndim:
+                case 3:
+                    return 'NWC'
+                case 4:
+                    return 'NHWC'
+                case 5:
+                    return 'NDHWC'
+                case _:
+                    raise ValueError(f'Input rank: {ndim} not supported. We only support '
+                                     'input rank 3, 4, or 5.')
+
+        case 'channels_first':
+            match ndim:
+                case 3:
+                    return 'NCW'
+                case 4:
+                    return 'NCHW'
+                case 5:
+                    return 'NCDHW'
+                case _:
+                    raise ValueError(f'Input rank: {ndim} not supported. We only support '
+                                     'input rank 3, 4, or 5.')
+
+        case _:
+            raise ValueError(f'Invalid data_format: {data_format}. We only support '
+                             '"channels_first" or "channels_last"')
 
 
 def normalize_tuple(value, n, name):
