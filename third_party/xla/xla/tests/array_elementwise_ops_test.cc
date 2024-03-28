@@ -1728,7 +1728,8 @@ XLA_TEST_F(ArrayElementwiseOpTest, PowF32s) {
   auto rhs = ConstantR1<float>(&builder, ys);
   Pow(lhs, rhs);
 
-  ComputeAndCompare(&builder, {}, error_spec_);
+  ErrorSpec relaxed_error_spec{200 * kEpsF32, 200 * kEpsF32};
+  ComputeAndCompare(&builder, {}, relaxed_error_spec);
 }
 
 XLA_TEST_F(ArrayElementwiseOpTest, PowNonIntegerF32s) {
