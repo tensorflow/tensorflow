@@ -150,37 +150,6 @@ struct PerAxis {
   static constexpr Axis axis = kAxis;
 };
 
-// Gets a string representation of the given DataType.
-constexpr const char* ToString(DataType t) {
-  switch (t) {
-    case DataType::kI1:
-      return "I1";
-      break;
-    case DataType::kSI4:
-      return "SI4";
-      break;
-    case DataType::kSI8:
-      return "SI8";
-      break;
-    case DataType::kSI16:
-      return "SI16";
-      break;
-    case DataType::kSI32:
-      return "SI32";
-      break;
-    case DataType::kBF16:
-      return "BF16";
-      break;
-    case DataType::kF16:
-      return "F16";
-      break;
-    case DataType::kF32:
-      return "F32";
-      break;
-  }
-  return "Unknown data type";
-}
-
 // Helps getting a human readable typed test parameter name.
 template <class T>
 struct ParamName;
@@ -388,6 +357,26 @@ using PerAxisQuantizedTestTypes = MapTypes<PerAxis0, QuantizedTestTypes>;
 template <class Op>
 struct SupportedOpDataType {
   static constexpr DataType kStorageType = DataType::kF32;
+};
+
+// Customization point for generic tests that need to create a supported output
+// tensor for an op but that don't care what that type is.
+//
+// Specialize this in the test file if `SupportedOpDataType<Op>::kStorageType`
+// isn't supported by the op under test.
+template <class Op>
+struct SupportedOpOutputDataType {
+  static constexpr DataType kStorageType =
+      SupportedOpDataType<Op>::kStorageType;
+};
+
+// Customization point for generic tests that need a valid attribute
+// configuration to create an op but that don't care what that configuration is.
+//
+// Specialize this in the test file if F32 isn't supported by the op under test.
+template <class Op>
+struct SupportedOpAttributes {
+  static typename Op::Attributes Get() { return {}; };
 };
 
 // Builds a TensorType object and returns it in a variant that can be passed to

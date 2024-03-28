@@ -71,7 +71,7 @@ class BinaryElementwiseOpShapePropagationTest : public ::testing::Test {
     return lhs_tensor_.shape() == output_tensor_.shape();
   }
 
-  Op op_ = Create(typename Op::Attributes{});
+  Op op_ = Create(SupportedOpAttributes<Op>::Get());
   Tensor lhs_tensor_ = {
       .type = TensorType{.shape = Shape({2, 3, 4}),
                          .element_type = SupportedOpDataType<Op>::kStorageType},
@@ -82,7 +82,8 @@ class BinaryElementwiseOpShapePropagationTest : public ::testing::Test {
       .data = nullptr};
   Tensor output_tensor_ = {
       .type = TensorType{.shape = Shape(),
-                         .element_type = SupportedOpDataType<Op>::kStorageType},
+                         .element_type =
+                             SupportedOpOutputDataType<Op>::kStorageType},
       .data = nullptr};
 };
 
