@@ -194,6 +194,7 @@ cc_library(
     ],
     deps = [
         ":tf_dialect_to_executor",
+        "//tensorflow/compiler/mlir/tensorflow:attribute_utils",
         "//tensorflow/compiler/mlir/tensorflow:bridge_logger",
         "//tensorflow/compiler/mlir/tensorflow:dump_mlir_util",
         "//tensorflow/compiler/mlir/tensorflow:error_util",
@@ -232,6 +233,7 @@ tf_cc_test(
     deps = [
         ":cluster_tf",
         "//tensorflow/compiler/mlir:register_common_dialects",
+        "//tensorflow/compiler/mlir/tensorflow:attribute_utils",
         "//tensorflow/compiler/mlir/tensorflow:tf_dialect_lib",
         "//tensorflow/core/lib/monitoring:cell_reader",
         "//tensorflow/core/platform:resource_loader",
@@ -241,7 +243,6 @@ tf_cc_test(
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Parser",
         "@local_tsl//tsl/lib/core:status_test_util",
-        "@local_tsl//tsl/lib/monitoring:test_utils",
         "@local_tsl//tsl/platform:status",
     ],
 )

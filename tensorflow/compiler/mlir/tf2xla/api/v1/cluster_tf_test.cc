@@ -27,6 +27,7 @@ limitations under the License.
 #include "mlir/IR/OwningOpRef.h"  // from @llvm-project
 #include "mlir/Parser/Parser.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/register_common_dialects.h"
+#include "tensorflow/compiler/mlir/tensorflow/utils/attribute_utils.h"
 #include "tensorflow/core/lib/monitoring/cell_reader.h"
 #include "tensorflow/core/platform/resource_loader.h"
 #include "tsl/lib/core/status_test_util.h"
@@ -84,8 +85,11 @@ TEST_F(SessionClusterTensorflowDialectTest, ClustersTf) {
   TF_EXPECT_OK(
       RunSessionTf2xlaClusteringBridge(*mlir_module_,
                                        /*is_in_fallback_enabled_mode=*/false));
-  EXPECT_EQ(
-      compilation_status.Delta("tpu", "v1", "fallback_disabled", "success"), 1);
+  EXPECT_EQ(compilation_status.Delta(mlir::TF::kMlirPh1BridgeCounterReplicated,
+                                     mlir::TF::kMlirPh1BridgeCounterV1,
+                                     mlir::TF::kMlirPh1BridgeCounterTpu,
+                                     "fallback_disabled", "success"),
+            1);
 }
 
 TEST_F(SessionClusterTensorflowDialectTest, FailsWithMultipleSubmodules) {
@@ -98,8 +102,11 @@ TEST_F(SessionClusterTensorflowDialectTest, FailsWithMultipleSubmodules) {
                                        /*is_in_fallback_enabled_mode=*/false)
           .ok());
 
-  EXPECT_EQ(
-      compilation_status.Delta("tpu", "v1", "fallback_disabled", "failure"), 1);
+  EXPECT_EQ(compilation_status.Delta(mlir::TF::kMlirPh1BridgeCounterReplicated,
+                                     mlir::TF::kMlirPh1BridgeCounterV1,
+                                     mlir::TF::kMlirPh1BridgeCounterTpu,
+                                     "fallback_disabled", "failure"),
+            1);
 }
 
 }  // namespace
