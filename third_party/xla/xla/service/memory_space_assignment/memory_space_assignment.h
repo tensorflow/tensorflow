@@ -1499,6 +1499,7 @@ class AlternateMemoryBestFitHeap
   std::string buffer_info_str_;
   std::string allocation_info_str_;
   std::string instruction_schedule_str_;
+  int retry_number_;
 };
 
 }  // namespace memory_space_assignment

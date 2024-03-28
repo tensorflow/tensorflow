@@ -1010,6 +1010,9 @@ bool AlternateMemoryBestFitHeap::IsUseAllowedInAlternateMemory(
     return false;
   }
   if (use.instruction->opcode() == HloOpcode::kWhile) {
+    if (retry_number_ > 0) {
+      return false;
+    }
     HloComputation* while_body = use.instruction->while_body();
 
     // We don't want to allocate this buffer in alternate memory if it will be
@@ -1750,10 +1753,10 @@ AlternateMemoryBestFitHeap::Finish() {
 
     // Retry allocating this value with larger limits if allocation fails.
     bool repacked = false;
-    for (int retry_number = 0; retry_number < options_.max_retries;
-         retry_number++) {
+    for (retry_number_ = 0; retry_number_ < options_.max_retries;
+         retry_number_++) {
       AddRequiredAssignmentsForColocatedIntervals(colocated_intervals);
-      options_.prefetch_interval_picker->SetRetryNumber(retry_number);
+      options_.prefetch_interval_picker->SetRetryNumber(retry_number_);
       TF_ASSIGN_OR_RETURN(
           Result result,
           AllocateAllocationValues(absl::MakeSpan(allocation_values)));
@@ -1761,7 +1764,7 @@ AlternateMemoryBestFitHeap::Finish() {
               << absl::StrFormat("%x", static_cast<int>(result));
       if (result_requires_uncommit(result)) {
         UncommitPendingChunks(absl::MakeSpan(allocation_values));
-        VLOG(2) << "Couldn't allocate. Retry number " << retry_number;
+        VLOG(2) << "Couldn't allocate. Retry number " << retry_number_;
       } else if ((result_is(result, Result::kFailOutOfMemory) ||
                   options_.repack_after_every_allocation) &&
                  num_repacks_ < options_.max_repacks && !repacked) {
@@ -1780,7 +1783,7 @@ AlternateMemoryBestFitHeap::Finish() {
         // repack_after_every_allocation is on.
         if (*repack_status || options_.repack_after_every_allocation) {
           ImportRepackedAllocations();
-          --retry_number;
+          --retry_number_;
         }
         if (*repack_status) {
           ++num_repacks_successful_;
@@ -1806,7 +1809,7 @@ AlternateMemoryBestFitHeap::Finish() {
                 },
                 site);
           }
-          --retry_number;
+          --retry_number_;
           continue;
         }
 
