@@ -400,12 +400,12 @@ DataServiceClient::CreateWorkerClient(const TaskInfo& task_info) {
       return CreateAlternativeWorkerClientWithGrpcFallback(*transfer_server,
                                                            task_info);
     }
-    LOG(INFO) << "Failed to find transfer server for default data transfer "
-                 "protocol '"
-              << default_protocol << "' for worker '"
-              << task_info.worker_address()
-              << "'; falling back to grpc. Original error: "
-              << transfer_server.status();
+    VLOG(1) << "Failed to find transfer server for default data transfer "
+               "protocol '"
+            << default_protocol << "' for worker '"
+            << task_info.worker_address()
+            << "'; falling back to grpc. Original error: "
+            << transfer_server.status();
     metrics::RecordTFDataServiceDataTransferProtocolFallback(
         default_protocol, error::Code::NOT_FOUND,
         "Failed to find transfer server for default protocol");
