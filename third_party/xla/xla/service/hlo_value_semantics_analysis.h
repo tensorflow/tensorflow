@@ -419,8 +419,8 @@ class HloValueSemanticsPropagation : public DfsHloVisitorWithDefault {
       HloInstruction* instruction, absl::Span<const int64_t> operand_indices,
       absl::Span<const ShapeIndex> operand_shape_indices = {}) const;
   Status HandleTupleLike(HloInstruction* tuple_like);
-  Status HandleCollectiveStart(HloInstruction* collective_start);
-  Status HandleCollectiveDone(HloInstruction* collective_done);
+  Status HandleCollectiveOrCopyStart(HloInstruction* op_start);
+  Status HandleCollectiveOrCopyDone(HloInstruction* op_done);
   HloValueSemanticsAnalysis* analysis_;
 };
 
