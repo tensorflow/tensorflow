@@ -38,12 +38,16 @@ class IOTest(test_base.DatasetTestBase, parameterized.TestCase):
     os.mkdir(self._checkpoint_prefix)
     self._save_dir = os.path.join(self.get_temp_dir(), "save")
     os.mkdir(self._save_dir)
+    self._corrupted_dataset_dir = os.path.join(self.get_temp_dir(), 'cdd')
+    os.mkdir(self._corrupted_dataset_dir)
+
 
   def tearDown(self):
     super(IOTest, self).tearDown()
     shutil.rmtree(self._test_dir)
     shutil.rmtree(self._checkpoint_prefix)
     shutil.rmtree(self._save_dir)
+    shutil.rmtree(self._corrupted_dataset_dir)
 
   @combinations.generate(
       combinations.times(
@@ -136,6 +140,32 @@ class IOTest(test_base.DatasetTestBase, parameterized.TestCase):
     next_element = self.getNext(dataset)
     for _ in range(30):
       self.evaluate(next_element())
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testReadTruncateSnapshotWithIgnoreErrors(self):
+    dataset = dataset_ops.Dataset.from_tensor_slices(["abcd", "1234", "zxcv"])
+
+    self.evaluate(dataset.save(self._corrupted_dataset_dir))
+
+    list_dir = [f'{self._corrupted_dataset_dir}/{p}' 
+                for p in os.listdir(self._corrupted_dataset_dir)]
+    run_id_dir = [p for p in list_dir if os.path.isdir(p)][0]
+    _snapshot_path = (f'{self._corrupted_dataset_dir}/'
+                      f'{run_id_dir}/00000000.shard/'
+                      f'00000000.snapshot')
+
+    with open(_snapshot_path, 'rb') as file:
+      b = file.read()
+    ba = bytearray(b)
+    ba[39] += 1
+    with open(_snapshot_path, 'wb') as file:
+      file.write(bytes(ba))
+
+    dataset2 = dataset_ops.Dataset.load(self._corrupted_dataset_dir, 
+                                        dataset.element_spec)
+    dataset2 = dataset2.ignore_errors()
+    self.assertEqual(self.evaluate(dataset2.cardinality()), 1)
+
 
 
 class LoadCheckpointTest(IOTest, checkpoint_test_base.CheckpointTestBase):
