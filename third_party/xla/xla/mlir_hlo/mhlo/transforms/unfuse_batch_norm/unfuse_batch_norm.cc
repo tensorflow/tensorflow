@@ -33,8 +33,8 @@ namespace mhlo {
 
 namespace {
 
-// Broadcasts the 1D value tensor 'value_1d' to the shape of 'result_type'. If
-// 'shape_value' is initialized, creates a dynamic broadcast, otherwise creates
+// Broadcasts the 1D value tensor 'value1d' to the shape of 'resultType'. If
+// 'shapeValue' is initialized, creates a dynamic broadcast, otherwise creates
 // a static broadcast.
 Value broadcastToFeatureDim(Location loc, RankedTensorType resultType,
                             Value value1d, Value shapeValue, int64_t featureDim,
@@ -104,7 +104,7 @@ class UnfuseBatchNormInferencePattern
   using OpRewritePattern<mhlo::BatchNormInferenceOp>::OpRewritePattern;
 
   LogicalResult matchAndRewrite(mhlo::BatchNormInferenceOp bnOp,
-                                PatternRewriter& rewriter) const override {
+                                PatternRewriter &rewriter) const override {
     // Enforce type invariants.
     // Note that we deduce the actual element type from the variance,
     // which should not be subject to quantization at a higher level.
@@ -118,46 +118,47 @@ class UnfuseBatchNormInferencePattern
     if (!fpType) {
       return failure();
     }
-    int64_t featureDim = bnOp.getFeatureIndex();
 
-    // Add epsilon to the variance and sqrt to get stddev:
-    // stddev = sqrt(variance + epsilon)
+    // result = (x - mean) * scale / sqrt(variance + epsilon) + offset
+    // Let multiplier = scale / sqrt(variance + epsilon), to compute
+    // (x - mean) * scale / sqrt(variance + epsilon) + offset,
+    // is then to compute (x * multiplier) + (offset - mean * multiplier).
+
     auto epsilon =
         materializeEpsilon(bnOp.getOperation(), bnOp.getEpsilonAttr(), fpType,
                            bnOp.getVariance(), varianceType, rewriter);
     if (!epsilon) {
       return failure();
     }
-    Value stddev = rewriter.create<mhlo::AddOp>(bnOp.getLoc(),
-                                                bnOp.getVariance(), epsilon);
-    stddev = rewriter.create<mhlo::SqrtOp>(bnOp.getLoc(), stddev);
 
-    // Broadcast all terms.
+    // Compute multiplier = scale / sqrt(variance + epsilon)
+    Value multiplier = rewriter.create<mhlo::AddOp>(
+        bnOp.getLoc(), bnOp.getVariance(), epsilon);
+    multiplier = rewriter.create<mhlo::RsqrtOp>(bnOp.getLoc(), multiplier);
+    multiplier = rewriter.create<mhlo::MulOp>(bnOp.getLoc(), multiplier,
+                                              bnOp.getScale());
+
+    // Compute rhs = offset - mean * multiplier
+    Value rhs =
+        rewriter.create<mhlo::MulOp>(bnOp.getLoc(), multiplier, bnOp.getMean());
+    rhs =
+        rewriter.create<mhlo::SubtractOp>(bnOp.getLoc(), bnOp.getOffset(), rhs);
+
+    // Broadcast `multiplier` and `rhs`
     Value shapeValue;
     if (!inputType.hasStaticShape()) {
       shapeValue = getShapeValue(bnOp.getLoc(), bnOp.getOperand(), rewriter);
     }
-    auto broadcastScale =
-        broadcastToFeatureDim(bnOp.getLoc(), inputType, bnOp.getScale(),
-                              shapeValue, featureDim, rewriter);
-    auto broadcastOffset =
-        broadcastToFeatureDim(bnOp.getLoc(), inputType, bnOp.getOffset(),
-                              shapeValue, featureDim, rewriter);
-    auto broadcastMean =
-        broadcastToFeatureDim(bnOp.getLoc(), inputType, bnOp.getMean(),
-                              shapeValue, featureDim, rewriter);
-    auto broadcastStddev = broadcastToFeatureDim(
-        bnOp.getLoc(), inputType, stddev, shapeValue, featureDim, rewriter);
+    int64_t featureDim = bnOp.getFeatureIndex();
+    auto broadcastMultiplier = broadcastToFeatureDim(
+        bnOp.getLoc(), inputType, multiplier, shapeValue, featureDim, rewriter);
+    auto broadcastRhs = broadcastToFeatureDim(bnOp.getLoc(), inputType, rhs,
+                                              shapeValue, featureDim, rewriter);
 
-    // Compute:
-    // scale * (input - mean) / stddev + offset
-    Value result = rewriter.create<mhlo::SubtractOp>(
-        bnOp.getLoc(), bnOp.getOperand(), broadcastMean);
-    result =
-        rewriter.create<mhlo::MulOp>(bnOp.getLoc(), result, broadcastScale);
-    result =
-        rewriter.create<mhlo::DivOp>(bnOp.getLoc(), result, broadcastStddev);
-    rewriter.replaceOpWithNewOp<mhlo::AddOp>(bnOp, result, broadcastOffset);
+    // Computes x * multiplier + rhs
+    Value lhs = rewriter.create<mhlo::MulOp>(bnOp.getLoc(), bnOp.getOperand(),
+                                             broadcastMultiplier);
+    rewriter.replaceOpWithNewOp<mhlo::AddOp>(bnOp, lhs, broadcastRhs);
 
     return success();
   }
