@@ -66,6 +66,17 @@ class ResizeBilinearGradOp : public XlaOpKernel {
 #endif
 };
 
+class ResizeNearestNeighborGradOp : public XlaOpKernel {
+ public:
+  explicit ResizeNearestNeighborGradOp(OpKernelConstruction* ctx);
+
+  void Compile(XlaOpKernelContext* ctx) override;
+
+ protected:
+  bool align_corners_;
+  bool half_pixel_centers_ = true;
+};
+
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_COMPILER_TF2XLA_KERNELS_IMAGE_RESIZE_OPS_H_
