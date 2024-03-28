@@ -177,8 +177,8 @@ class MklConvFwdPrimitive : public MklPrimitive {
 
   void Execute(const Tinput* src_data, const Tfilter* filter_data,
                const void* bias_data, const Toutput* dst_data,
-               const Tinput* bn_scale_data, const Tinput* bn_mean_data,
-               const Tinput* bn_offset_data, const Tinput* bn_rsqrt_data,
+               const float* bn_scale_data, const float* bn_mean_data,
+               const float* bn_offset_data, const float* bn_rsqrt_data,
                const MklConvFwdParams& convFwdDims,
                std::shared_ptr<stream> fwd_stream, void* sp_data) {
 #if defined(DNNL_AARCH64_USE_ACL) && defined(ENABLE_ONEDNN_OPENMP)
@@ -212,13 +212,13 @@ class MklConvFwdPrimitive : public MklPrimitive {
     }
     if (bn_scale_data != nullptr) {
       context_.bn_scale_mem->set_data_handle(
-          static_cast<void*>(const_cast<Tinput*>(bn_scale_data)) FWD_STREAM);
+          static_cast<void*>(const_cast<float*>(bn_scale_data)) FWD_STREAM);
       context_.bn_mean_mem->set_data_handle(
-          static_cast<void*>(const_cast<Tinput*>(bn_mean_data)) FWD_STREAM);
+          static_cast<void*>(const_cast<float*>(bn_mean_data)) FWD_STREAM);
       context_.bn_rsqrt_mem->set_data_handle(
-          static_cast<void*>(const_cast<Tinput*>(bn_rsqrt_data)) FWD_STREAM);
+          static_cast<void*>(const_cast<float*>(bn_rsqrt_data)) FWD_STREAM);
       context_.bn_offset_mem->set_data_handle(
-          static_cast<void*>(const_cast<Tinput*>(bn_offset_data)) FWD_STREAM);
+          static_cast<void*>(const_cast<float*>(bn_offset_data)) FWD_STREAM);
     }
     context_.dst_mem->set_data_handle(
         static_cast<void*>(const_cast<Toutput*>(dst_data)) FWD_STREAM);
@@ -414,13 +414,13 @@ class MklConvFwdPrimitive : public MklPrimitive {
               : MklTensorFormatToMklDnnDataFormat(convFwdDims.tf_fmt);
 
       context_.bn_scale_md.reset(new memory::desc(
-          {convFwdDims.fuse_bn_dims}, MklDnnType<Tinput>(), fused_bn_arg_fmt));
+          {convFwdDims.fuse_bn_dims}, MklDnnType<float>(), fused_bn_arg_fmt));
       context_.bn_mean_md.reset(new memory::desc(
-          {convFwdDims.fuse_bn_dims}, MklDnnType<Tinput>(), fused_bn_arg_fmt));
+          {convFwdDims.fuse_bn_dims}, MklDnnType<float>(), fused_bn_arg_fmt));
       context_.bn_rsqrt_md.reset(new memory::desc(
-          {convFwdDims.fuse_bn_dims}, MklDnnType<Tinput>(), fused_bn_arg_fmt));
+          {convFwdDims.fuse_bn_dims}, MklDnnType<float>(), fused_bn_arg_fmt));
       context_.bn_offset_md.reset(new memory::desc(
-          {convFwdDims.fuse_bn_dims}, MklDnnType<Tinput>(), fused_bn_arg_fmt));
+          {convFwdDims.fuse_bn_dims}, MklDnnType<float>(), fused_bn_arg_fmt));
     }
 
     // Check if there is any fusions as post-ops
@@ -474,9 +474,8 @@ class MklConvFwdPrimitive : public MklPrimitive {
         } else if (post_op_param.name == "wei_scale") {
           is_scale_set.insert({"wei", true});
           const int scale_size = post_op_param.param.size();
-          const int mask = scale_size == 1            ? 0
-                           : convFwdDims.is_depthwise ? 3
-                                                      : 1;
+          const int mask =
+              scale_size == 1 ? 0 : convFwdDims.is_depthwise ? 3 : 1;
           post_ops_attr.set_scales_mask(DNNL_ARG_WEIGHTS, mask);
           context_.wei_scale_md.reset(new memory::desc(
               {scale_size}, MklDnnType<float>(), memory::format_tag::x));
@@ -1075,23 +1074,23 @@ class MklConvOp : public OpKernel {
       } else if (fuse_bn_) {
         const Tensor& bn_scale_tensor =
             MklGetInput(context, kInputIndex_BN_Scale);
-        Tinput* bn_scale_data = static_cast<Tinput*>(
-            const_cast<Tinput*>(bn_scale_tensor.flat<Tinput>().data()));
+        float* bn_scale_data = static_cast<float*>(
+            const_cast<float*>(bn_scale_tensor.flat<float>().data()));
         const Tensor& bn_mean_tensor =
             MklGetInput(context, kInputIndex_BN_Mean);
-        Tinput* bn_mean_data = static_cast<Tinput*>(
-            const_cast<Tinput*>(bn_mean_tensor.flat<Tinput>().data()));
+        float* bn_mean_data = static_cast<float*>(
+            const_cast<float*>(bn_mean_tensor.flat<float>().data()));
         const Tensor& bn_offset_tensor =
             MklGetInput(context, kInputIndex_BN_Offset);
-        Tinput* bn_offset_data = static_cast<Tinput*>(
-            const_cast<Tinput*>(bn_offset_tensor.flat<Tinput>().data()));
+        float* bn_offset_data = static_cast<float*>(
+            const_cast<float*>(bn_offset_tensor.flat<float>().data()));
 
         Tensor bn_rsqrt_tensor;
         OP_REQUIRES_OK(context,
-                       context->allocate_temp(DataTypeToEnum<Tinput>::v(),
+                       context->allocate_temp(DataTypeToEnum<float>::v(),
                                               fuse_bn_shape, &bn_rsqrt_tensor));
-        Tinput* bn_rsqrt_data = static_cast<Tinput*>(
-            const_cast<Tinput*>(bn_rsqrt_tensor.flat<Tinput>().data()));
+        float* bn_rsqrt_data = static_cast<float*>(
+            const_cast<float*>(bn_rsqrt_tensor.flat<float>().data()));
         this->ComputeBNScale(context, epsilon_, kInputIndex_BN_Variance,
                              bn_rsqrt_data);
         conv_fwd->Execute(src_data, filter_data, nullptr, dst_data,
@@ -1221,7 +1220,7 @@ class MklConvOp : public OpKernel {
   }
 
   virtual void ComputeBNScale(OpKernelContext* context, float epsilon,
-                              int bn_variance_index, Tinput* scale_buf_ptr) {
+                              int bn_variance_index, float* scale_buf_ptr) {
     OP_REQUIRES(context, false,
                 absl::UnimplementedError(
                     "Compute BN scale not expected in base class"));
@@ -1650,6 +1649,15 @@ class MklFusedConvOp
           context, num_args == 4,
           absl::InvalidArgumentError(
               "Fused Conv2D with batchnorm must have 4 extra argument"));
+      std::vector<DataType> TArgs;
+      OP_REQUIRES_OK(context, context->GetAttr("TArgs", &TArgs));
+      OP_REQUIRES(context, TArgs.size() == 4,
+                  absl::InvalidArgumentError(
+                      "FusedConv2D TArgs size expected to be 4"));
+      for (int i = 0; i < 4; ++i) {
+        OP_REQUIRES(context, TArgs.at(i) == DT_FLOAT,
+                    absl::InvalidArgumentError("TArgs must be DT_FLOAT"));
+      }
       this->set_fuse_bn(true, epsilon);
     } else if (fused_ops == std::vector<string>{"BiasAdd", "Relu"}) {
       this->set_fuse_biasadd(true);
@@ -1697,6 +1705,15 @@ class MklFusedConvOp
           context, num_args == 4,
           absl::InvalidArgumentError(
               "Fused Conv2D with batchnorm must have 4 extra argument"));
+      std::vector<DataType> TArgs;
+      OP_REQUIRES_OK(context, context->GetAttr("TArgs", &TArgs));
+      OP_REQUIRES(context, TArgs.size() == 4,
+                  absl::InvalidArgumentError(
+                      "FusedConv2D TArgs size expected to be 4"));
+      for (int i = 0; i < 4; ++i) {
+        OP_REQUIRES(context, TArgs.at(i) == DT_FLOAT,
+                    absl::InvalidArgumentError("TArgs must be DT_FLOAT"));
+      }
       this->set_fuse_bn(true, epsilon);
       this->set_fuse_activation(true, dnnl::algorithm::eltwise_relu);
     } else if (fused_ops == std::vector<string>{"FusedBatchNorm", "Relu6"}) {
@@ -1706,6 +1723,15 @@ class MklFusedConvOp
           context, num_args == 4,
           absl::InvalidArgumentError(
               "Fused Conv2D with batchnorm must have 4 extra argument"));
+      std::vector<DataType> TArgs;
+      OP_REQUIRES_OK(context, context->GetAttr("TArgs", &TArgs));
+      OP_REQUIRES(context, TArgs.size() == 4,
+                  absl::InvalidArgumentError(
+                      "FusedConv2D TArgs size expected to be 4"));
+      for (int i = 0; i < 4; ++i) {
+        OP_REQUIRES(context, TArgs.at(i) == DT_FLOAT,
+                    absl::InvalidArgumentError("TArgs must be DT_FLOAT"));
+      }
       this->set_fuse_bn(true, epsilon);
       this->SET_FUSE_ACTIVATION_FOR_RELU6;
     } else if (fused_ops == std::vector<string>{"FusedBatchNorm", "Elu"}) {
@@ -1715,6 +1741,15 @@ class MklFusedConvOp
           context, num_args == 4,
           absl::InvalidArgumentError(
               "Fused Conv2D with batchnorm must have 4 extra argument"));
+      std::vector<DataType> TArgs;
+      OP_REQUIRES_OK(context, context->GetAttr("TArgs", &TArgs));
+      OP_REQUIRES(context, TArgs.size() == 4,
+                  absl::InvalidArgumentError(
+                      "FusedConv2D TArgs size expected to be 4"));
+      for (int i = 0; i < 4; ++i) {
+        OP_REQUIRES(context, TArgs.at(i) == DT_FLOAT,
+                    absl::InvalidArgumentError("TArgs must be DT_FLOAT"));
+      }
       this->set_fuse_bn(true, epsilon);
       this->set_fuse_activation(true, dnnl::algorithm::eltwise_elu, 1.0);
     } else if (fused_ops ==
@@ -1727,6 +1762,15 @@ class MklFusedConvOp
           context, num_args == 4,
           absl::InvalidArgumentError(
               "Fused Conv2D with batchnorm must have 4 extra argument"));
+      std::vector<DataType> TArgs;
+      OP_REQUIRES_OK(context, context->GetAttr("TArgs", &TArgs));
+      OP_REQUIRES(context, TArgs.size() == 4,
+                  absl::InvalidArgumentError(
+                      "FusedConv2D TArgs size expected to be 4"));
+      for (int i = 0; i < 4; ++i) {
+        OP_REQUIRES(context, TArgs.at(i) == DT_FLOAT,
+                    absl::InvalidArgumentError("TArgs must be DT_FLOAT"));
+      }
       this->set_fuse_bn(true, epsilon);
       this->set_fuse_activation(true, dnnl::algorithm::eltwise_relu,
                                 leakyrelu_alpha);
@@ -1802,12 +1846,12 @@ class MklFusedConvOp
   }
 
   void ComputeBNScale(OpKernelContext* context, float epsilon,
-                      int bn_variance_index, Tinput* scale_buf_ptr) override {
+                      int bn_variance_index, float* scale_buf_ptr) override {
     const Tensor& bn_var_tensor = MklGetInput(context, bn_variance_index);
 
-    Eigen::Tensor<Tinput, 1, Eigen::RowMajor> bn_rsqrt =
-        (bn_var_tensor.flat<Tinput>() + static_cast<Tinput>(epsilon)).rsqrt();
-    Tinput* bn_rsqrt_data = bn_rsqrt.data();
+    Eigen::Tensor<float, 1, Eigen::RowMajor> bn_rsqrt =
+        (bn_var_tensor.flat<float>() + static_cast<float>(epsilon)).rsqrt();
+    float* bn_rsqrt_data = bn_rsqrt.data();
     int64_t num_elem = bn_var_tensor.shape().dim_size(0);
     for (int64_t i = 0; i < num_elem; i++) {
       scale_buf_ptr[i] = bn_rsqrt_data[i];
