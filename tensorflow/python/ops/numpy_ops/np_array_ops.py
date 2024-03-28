@@ -926,6 +926,11 @@ def swapaxes(a, axis1, axis2):  # pylint: disable=missing-docstring
       return x
 
     return nest.map_structure(f, axes)
+  
+  if axis2 < -array_ops.rank(a) or axis2 >= array_ops.rank(a):
+    raise ValueError(
+        f"Argument `axis` = {axis2} not in range "
+        f"[{-array_ops.rank(a)}, {array_ops.rank(a)})")
 
   if (
       a.shape.rank is not None
