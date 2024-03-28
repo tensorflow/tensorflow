@@ -299,6 +299,7 @@ tf_cc_test(
     name = "pre_calibration_test",
     srcs = ["pre_calibration_test.cc"],
     deps = [
+        ":config",
         ":pre_calibration",
         "//tensorflow/compiler/mlir/quantization/common:test_base",
         "//tensorflow/compiler/mlir/quantization/stablehlo:quantization_config_proto_cc",

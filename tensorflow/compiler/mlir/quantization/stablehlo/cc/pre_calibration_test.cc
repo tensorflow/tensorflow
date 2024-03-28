@@ -25,6 +25,7 @@ limitations under the License.
 #include "mlir/IR/OwningOpRef.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/quantization/common/test_base.h"
+#include "tensorflow/compiler/mlir/quantization/stablehlo/cc/config.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/quantization_config.pb.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/passes/tf_quant_ops.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/quantization_options.pb.h"
@@ -34,6 +35,8 @@ limitations under the License.
 namespace mlir::quant::stablehlo {
 namespace {
 
+using ::stablehlo::quantization::ExpandPresets;
+using ::stablehlo::quantization::PopulateDefaults;
 using ::stablehlo::quantization::QuantizationConfig;
 using ::testing::Contains;
 using ::testing::SizeIs;
@@ -92,8 +95,11 @@ TEST_F(PreCalibrationComponentTest,
   )mlir");
   ASSERT_TRUE(module_op);
 
+  QuantizationConfig quantization_config{};
+  quantization_config.mutable_static_range_ptq_preset();
+  quantization_config = ExpandPresets(PopulateDefaults(quantization_config));
   absl::StatusOr<ModuleOp> pre_calibration_result =
-      component.Run(*module_op, QuantizationConfig());
+      component.Run(*module_op, quantization_config);
 
   EXPECT_THAT(pre_calibration_result, IsOk());
 
