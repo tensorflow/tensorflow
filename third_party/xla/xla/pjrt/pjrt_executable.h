@@ -32,6 +32,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/client/executable_build_options.h"
+#include "xla/debug_options_flags.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/layout.h"
 #include "xla/pjrt/compile_options.pb.h"
@@ -245,8 +246,13 @@ struct ExecuteOptions {
   // caller thread or launched to a separate thread. By default, the
   // implementation may choose either strategy or use a heuristic to decide.
   // Currently it is only applied to CPU implementations
-  enum class ExecutionMode { kDefault = 0, kSynchronous, kAsynchronous };
-  ExecutionMode execution_mode = ExecutionMode::kDefault;
+  enum class ExecutionMode {
+    kDefault = 0,
+    kSynchronous = 1,
+    kAsynchronous = 2
+  };
+  ExecutionMode execution_mode =
+      ExecutionMode(GetDebugOptionsFromFlags().xla_force_execution_mode());
 
   // A set of indices denoting the input buffers that should not be donated.
   // An input buffer may be non-donable, for example, if it is referenced more

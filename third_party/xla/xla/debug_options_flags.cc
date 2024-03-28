@@ -117,6 +117,7 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
 
   opts.set_xla_allow_excess_precision(true);
   opts.set_xla_force_host_platform_device_count(1);
+  opts.set_xla_force_execution_mode(0);
   constexpr int64_t kDefaultThreshold = 30 * 1024 * 1024;
   opts.set_xla_gpu_all_reduce_combine_threshold_bytes(kDefaultThreshold);
   opts.set_xla_gpu_all_gather_combine_threshold_bytes(kDefaultThreshold);
@@ -758,6 +759,14 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       "from context switching but we let the user override this behavior to "
       "help run tests on the host that run models in parallel across multiple "
       "devices."));
+  flag_list->push_back(tsl::Flag(
+      "xla_force_execution_mode",
+      int32_setter_for(&DebugOptions::set_xla_force_execution_mode),
+      debug_options->xla_force_execution_mode(),
+      "Force exeuciton mode on the backend. 0 = default on the backend; 1 = "
+      "synchronous mode where executions will always be invoked in the caller "
+      "thread ; 2 = asynchronous mode where executions will always be launched "
+      "to a separate thread."));
   flag_list->push_back(tsl::Flag(
       "xla_gpu_disable_gpuasm_optimizations",
       bool_setter_for(&DebugOptions::set_xla_gpu_disable_gpuasm_optimizations),

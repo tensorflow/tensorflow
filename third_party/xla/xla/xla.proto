@@ -204,6 +204,14 @@ message DebugOptions {
   // the host that run models in parallel across multiple devices.
   int32 xla_force_host_platform_device_count = 102;
 
+  // Force execution mode, only useful on CPU backend now. Defaults to 0.
+  // 0: Default mode, choosed by the backend.
+  // 1: Synchronous mode, executions will always be invoked in the caller
+  //    thread.
+  // 2: Asynchronous mode, executions will always be launched to a separate
+  //    thread.
+  int32 xla_force_execution_mode = 286;
+
   // If set to true XLA:GPU invokes `ptxas` with -O0 (default is -O3).
   bool xla_gpu_disable_gpuasm_optimizations = 103;
 
@@ -729,7 +737,7 @@ message DebugOptions {
   // 3: + Nontrivial noncontracting dimension reshapes/transposes.
   int32 xla_gpu_cudnn_gemm_fusion_level = 285;
 
-  // Next id: 286
+  // Next id: 287
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.

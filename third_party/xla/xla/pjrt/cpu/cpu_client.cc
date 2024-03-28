@@ -1400,6 +1400,10 @@ absl::StatusOr<PjRtLoadedExecutable::Result> TfrtCpuExecutable::ExecuteHelper(
             }
           }
 
+          for (auto& donation_transaction : donation_transactions) {
+            std::move(donation_transaction).Commit();
+          }
+
           // Set denormal and rounding behavior to match the default TF
           // ThreadPool behavior.
           tsl::port::ScopedFlushDenormal flush;
@@ -1420,10 +1424,6 @@ absl::StatusOr<PjRtLoadedExecutable::Result> TfrtCpuExecutable::ExecuteHelper(
                                                nullptr, buffer_pointers.data(),
                                                &status, nullptr);
             error_message = xla::CustomCallStatusGetMessage(&status);
-          }
-
-          for (auto& donation_transaction : donation_transactions) {
-            std::move(donation_transaction).Commit();
           }
 
           if (error_message) {

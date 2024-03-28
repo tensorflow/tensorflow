@@ -238,6 +238,7 @@ cc_library(
         ":execute_options_proto_cc",
         ":pjrt_common",
         ":pjrt_layout",
+        "//xla:debug_options_flags",
         "//xla:shape_layout",
         "//xla:shape_util",
         "//xla:status",
