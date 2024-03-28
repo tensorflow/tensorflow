@@ -2952,3 +2952,13 @@ func.func @test_broadcast_to_i48(%arg0: tensor<1x1x13x1xi48>) -> (tensor<7x7x13x
   %1 = "tfl.broadcast_to"(%arg0, %shape) : (tensor<1x1x13x1xi48>, tensor<4xi64>) -> tensor<7x7x13x7xi48>
   return %1 : tensor<7x7x13x7xi48>
 }
+
+// -----
+
+// CHECK-LABEL: test_mul_with_unequal_ranks
+// CHECK: %[[VAR0:.*]] = tosa.reshape %arg1 {new_shape = array<i64: 1, 1, 1, 384>} : (tensor<384xf32>) -> tensor<1x1x1x384xf32>
+// CHECK: %[[VAR1:.*]] = tosa.mul %arg0, %[[VAR0]] {shift = 0 : i32} : (tensor<?x135x240x384xf32>, tensor<1x1x1x384xf32>)
+func.func @test_mul_with_unequal_ranks(%arg0: tensor<?x135x240x384xf32>, %arg1: tensor<384xf32>) -> tensor<?x135x240x384xf32> {
+  %0 = "tfl.mul"(%arg0, %arg1) {fused_activation_function = "NONE"} : (tensor<?x135x240x384xf32>, tensor<384xf32>) -> tensor<?x135x240x384xf32>
+  func.return %0 : tensor<?x135x240x384xf32>
+}
