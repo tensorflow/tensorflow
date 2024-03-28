@@ -3797,7 +3797,7 @@ absl::StatusOr<AutoShardingResult> AutoShardingImplementation::RunAutoSharding(
     std::vector<spmd::NodeStrategyIdx> s_val;
     std::vector<spmd::EdgeStrategyIdx> e_val;
     double objective = -1.0;
-    std::string request_name = absl::StrCat("mesh_idx_", mesh_idx);
+    std::string request_name = absl::StrCat("llama_mesh_idx_", mesh_idx);
     auto solver_result =
         Solve(*module, *hlo_live_range, liveness_node_set, liveness_edge_set,
               strategy_map, strategy_groups, cost_graph, alias_set, option_,
