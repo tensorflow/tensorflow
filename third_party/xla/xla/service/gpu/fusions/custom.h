@@ -50,9 +50,9 @@ class CustomFusion : public FusionInterface {
 // compile-time instead of allocating a new buffer for it at runtime by
 // translating the static slice into offset + size of the original buffer passed
 // into the custom call `%gemm`.
-class DynamicAddressComputationFusion : public FusionInterface {
+class AddressComputationFusion : public FusionInterface {
  public:
-  explicit DynamicAddressComputationFusion(const HloFusionAnalysis& analysis)
+  explicit AddressComputationFusion(const HloFusionAnalysis& analysis)
       : analysis_(analysis) {}
 
   absl::StatusOr<FusionEmissionResult> Emit(

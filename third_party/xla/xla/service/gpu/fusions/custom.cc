@@ -122,7 +122,7 @@ absl::StatusOr<BufferAllocation::Slice> GetOperandSlice(
     if (!IsContiguousSlice(slice_instr->operand(0)->shape(),
                            slice_instr->shape())) {
       return absl::InternalError(
-          "DynamicAddressComputationFusion only handles contiguous slices "
+          "AddressComputationFusion only handles contiguous slices "
           "currently");
     }
 
@@ -239,7 +239,7 @@ absl::StatusOr<BufferAllocation::Slice> GetResultSlice(
                                ->update()
                                ->shape())) {
       return absl::InternalError(
-          "DynamicAddressComputationFusion only handles contiguous slices "
+          "AddressComputationFusion only handles contiguous slices "
           "currently");
     }
   }
@@ -726,7 +726,7 @@ absl::StatusOr<FusionEmissionResult> CustomFusion::Emit(
   return result;
 }
 
-absl::StatusOr<FusionEmissionResult> DynamicAddressComputationFusion::Emit(
+absl::StatusOr<FusionEmissionResult> AddressComputationFusion::Emit(
     IrEmitterContext& ir_emitter_context,
     const HloFusionInstruction& fusion) const {
   const HloFusionAdaptor& adaptor = analysis_.fusion();
@@ -735,7 +735,7 @@ absl::StatusOr<FusionEmissionResult> DynamicAddressComputationFusion::Emit(
       [](auto node) { return node.opcode() == HloOpcode::kCustomCall; });
   if (maybe_custom_call_adaptor == std::nullopt) {
     return absl::InternalError(
-        "DynamicAddressComputationFusion requires a CustomCall hero");
+        "AddressComputationFusion requires a CustomCall hero");
   }
 
   const auto& custom_call = *static_cast<const HloCustomCallInstruction*>(

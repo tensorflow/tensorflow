@@ -287,6 +287,7 @@ cc_library(
         "//tensorflow/core/tfrt/fallback:fallback_state",
         "//tensorflow/core/tfrt/graph_executor",
         "//tensorflow/core/tfrt/graph_executor:graph_execution_options",
+        "//tensorflow/core/tfrt/mlrt/bytecode",
         "//tensorflow/core/tfrt/runtime",
         "//tensorflow/core/tfrt/saved_model/utils:serialize_utils",
         "@com_google_absl//absl/container:flat_hash_map",
