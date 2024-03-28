@@ -187,6 +187,7 @@ cc_library(
         "//tensorflow/compiler/jit:flags_headers",
         "//tensorflow/compiler/mlir/tensorflow/transforms:tensorflow_passes",
         "//tensorflow/compiler/mlir/tensorflow/transforms:verify_no_outside_compilation_markers_pass",
+        "//tensorflow/compiler/mlir/tensorflow/transforms/sparsecore:sparsecore_passes",
         "//tensorflow/compiler/mlir/tf2xla/internal/passes:clustering_passes",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/log",

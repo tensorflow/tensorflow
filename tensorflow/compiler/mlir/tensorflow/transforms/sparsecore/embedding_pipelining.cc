@@ -157,7 +157,7 @@ return selected_results
 #include "tensorflow/compiler/mlir/tensorflow/utils/attribute_utils.h"
 
 #define GEN_PASS_DEF_EMBEDDINGPIPELININGPASS
-#include "tensorflow/compiler/mlir/tensorflow/transforms/tf_passes.h.inc"
+#include "tensorflow/compiler/mlir/tensorflow/transforms/sparsecore/sparsecore_passes.h.inc"
 
 static constexpr char kEmbeddingPipelining[] = "_embedding_pipelining";
 static constexpr char kEmbeddingPipeliningInlineAttr[] =
@@ -1289,7 +1289,7 @@ LogicalResult StartStep0(OpBuilder& builder, Location& loc,
   func::FuncOp orig_parent_func =
       callers.backward->getParentOfType<func::FuncOp>();
 
-  std::vector<Value> operands = loop_operands_nm0;
+  const std::vector<Value>& operands = loop_operands_nm0;
 
   // Input types will be the same as the original loop body.
   std::vector<Type> input_types = GetValueTypes(operands);
@@ -1373,7 +1373,7 @@ LogicalResult StartStep1(OpBuilder& builder, Location& loc,
   func::FuncOp orig_parent_func =
       callers.backward->getParentOfType<func::FuncOp>();
 
-  std::vector<Value> operands = loop_operands_1;
+  const std::vector<Value>& operands = loop_operands_1;
 
   // Input types will be the same as the original loop body.
   std::vector<Type> input_types = GetValueTypes(operands);

@@ -31,7 +31,6 @@ limitations under the License.
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
-#include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 
 namespace mlir {
@@ -42,7 +41,7 @@ constexpr char kMiniBatchSplitsAttr[] = "mini_batch_splits";
 constexpr char kMiniBatchCsrAttr[] = "mini_batch_in_csr";
 
 #define GEN_PASS_DEF_EMBEDDINGPROGRAMKEYPASS
-#include "tensorflow/compiler/mlir/tensorflow/transforms/tf_passes.h.inc"
+#include "tensorflow/compiler/mlir/tensorflow/transforms/sparsecore/sparsecore_passes.h.inc"
 
 struct EmbeddingProgramKeyPass
     : public impl::EmbeddingProgramKeyPassBase<EmbeddingProgramKeyPass> {
