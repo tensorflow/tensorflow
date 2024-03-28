@@ -181,6 +181,7 @@ py_strict_library(
     srcs_version = "PY3",
     deps = [
         "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/data/ops:options",
         "//tensorflow/python/data/util:random_seed",
         "//tensorflow/python/framework:tensor",
         "//tensorflow/python/ops:dataset_ops_gen",
