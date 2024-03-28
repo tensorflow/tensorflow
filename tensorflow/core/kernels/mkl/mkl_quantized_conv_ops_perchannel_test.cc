@@ -190,5 +190,112 @@ TEST_F(QuantizedConv2DPerChannelTest, SmallOldAPI) { TestSmall(true); }
 
 TEST_F(QuantizedConv2DPerChannelTest, SmallNewAPI) { TestSmall(false); }
 
+class QuantizedConv3DPerChannelTest : public OpsTestBase {};
+
+TEST_F(QuantizedConv3DPerChannelTest, Small) {
+  string padding = "VALID";
+  const int stride = 1;
+  TF_ASSERT_OK(
+      NodeDefBuilder("quantized_conv_perchannel_op", "_FusedQuantizedConv3D")
+          .Attr("Thost_inputs",
+                {DT_QUINT8, DT_QINT8, DT_FLOAT, DT_FLOAT, DT_FLOAT, DT_FLOAT})
+          .Attr("Thost_outputs", {DT_QINT32, DT_FLOAT, DT_FLOAT})
+          .Attr("Tdevice_inputs", std::vector<DataType>())
+          .Attr("Tdevice_outputs", std::vector<DataType>())
+          .Attr("Tinput", DT_QUINT8)
+          .Attr("Tfilter", DT_QINT8)
+          .Attr("Tsummand", DT_QINT32)
+          .Attr("out_type", DT_QINT32)
+          .Attr("strides", {1, stride, stride, stride, 1})
+          .Attr("padding", padding)
+          .Input(FakeInput())
+          .Input(FakeInput())
+          .Finalize(node_def()));
+  TF_ASSERT_OK(InitOp());
+
+  const int channel_depth = 1;
+  const int image_width = 4;
+  const int image_height = 4;
+  const int image_batch_count = 1;
+  const int image_depth = 2;
+  // NDHWC = 1, 2, 4, 4, 1
+
+  // Image -> uint8
+  const float image_min = 0.0f;
+  const float image_max = 255.0f;
+
+  // The image matrix is:
+  // |  1 |  2 |  3 |  4 |
+  // |  5 |  6 |  7 |  8 |
+  // |  9 | 10 | 11 | 12 |
+  // | 13 | 14 | 15 | 16 |
+
+  // | 17 | 18 | 19 | 20 |
+  // | 21 | 22 | 23 | 24 |
+  // | 25 | 26 | 27 | 28 |
+  // | 29 | 30 | 31 | 32 |
+
+  Tensor image_float(DT_FLOAT, {image_batch_count, image_depth, image_height,
+                                image_width, channel_depth});
+  test::FillValues<float>(
+      &image_float,
+      {1,  2,  3,  4,  5,  6,  7,  8,  9,  10, 11, 12, 13, 14, 15, 16,
+       17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32});
+  Tensor image_quantized =
+      FloatTensorToQuantized<quint8>(image_float, image_min, image_max);
+
+  const int filter_size = 2;
+  const int filter_count = 2;
+
+  // Filter -> int8 with symmetric range
+  const float filter_min = -127.0f;
+  const float filter_max = 127.0f;
+
+  // The filter matrix is:
+  // | 1 | 0 |
+  // | 0 | 1 |
+
+  // | 0 | 1 |
+  // | 0 | 0 |
+
+  Tensor filter_float(DT_FLOAT, {filter_size, filter_size, filter_size,
+                                 channel_depth, filter_count});
+  test::FillValues<float>(&filter_float,
+                          {1, 1, 0, 0, 0, 0, 1, 1, 0, 0, 1, 1, 0, 0, 0, 0});
+  Tensor filter_quantized =
+      FloatTensorToQuantized<qint8>(filter_float, filter_min, filter_max);
+
+  AddInputFromArray<quint8>(image_quantized.shape(),
+                            image_quantized.flat<quint8>());
+  AddInputFromArray<qint8>(filter_quantized.shape(),
+                           filter_quantized.flat<qint8>());
+  AddInputFromArray<float>(TensorShape({1}), {image_min});
+  AddInputFromArray<float>(TensorShape({1}), {image_max});
+  AddInputFromArray<float>(TensorShape({2}), {filter_min, filter_min});
+  AddInputFromArray<float>(TensorShape({2}), {filter_max, filter_max});
+
+  TF_ASSERT_OK(RunOpKernel());
+
+  // We're sliding the 2x2x2 filter across the 2x4x4 image, with the 'VALID'
+  // padding mode.
+  // This means we should end up with this matrix:
+  // | 25 | 28 | 31 |
+  // | 37 | 40 | 43 |
+  // | 49 | 52 | 55 |
+
+  // Output -> float
+  Tensor expected_float(DT_FLOAT, TensorShape({1, 1, 3, 3, 2}));
+  test::FillValues<float>(
+      &expected_float,
+      {25, 25, 28, 28, 31, 31, 37, 37, 40, 40, 43, 43, 49, 49, 52, 52, 55, 55});
+
+  const Tensor& output = *GetOutput(0);
+  const float output_min = GetOutput(1)->flat<float>()(0);
+  const float output_max = GetOutput(2)->flat<float>()(0);
+  Tensor output_float =
+      QuantizedTensorToFloat<qint32>(output, output_min, output_max);
+  test::ExpectTensorNear<float>(expected_float, output_float, 1.0);
+}
+
 }  // namespace tensorflow
 #endif  // INTEL_MKL && ENABLE_MKL

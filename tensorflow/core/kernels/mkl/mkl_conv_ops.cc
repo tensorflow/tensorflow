@@ -2459,7 +2459,9 @@ class MklQuantizedConvOp
       reorder_attr.set_scales_mask(DNNL_ARG_DST, 0);
 #endif  // !ENABLE_ONEDNN_V3
       auto summand_md = memory::desc(output_dims_mkl_order, MklDnnType<Tbias>(),
-                                     memory::format_tag::nhwc);
+                                     output_dims_mkl_order.size() == 4
+                                         ? memory::format_tag::nhwc
+                                         : memory::format_tag::ndhwc);
       void* summand_buf =
           static_cast<void*>(const_cast<Tbias*>(summand.flat<Tbias>().data()));
       void* dst_buf =
@@ -3036,6 +3038,10 @@ REGISTER_MKL_KERNEL_ALL_INPUT_AND_BIAS_TYPES("_FusedQuantizedConv2D",
 REGISTER_MKL_KERNEL_ALL_INPUT_AND_BIAS_TYPES("_FusedQuantizedDepthwiseConv2D",
                                              MklQuantizedConvOp, qint32, qint32,
                                              true, quantized_fusions::none, -1)
+REGISTER_MKL_KERNEL_ALL_INPUT_AND_BIAS_TYPES("_FusedQuantizedConv3D",
+                                             MklQuantizedConvOp, qint32, qint32,
+                                             false, quantized_fusions::none,
+                                             -1);
 #undef LABEL
 #define LABEL .Label(mkl_op_registry::kMklQuantizedOpLabel)
 #undef SUMMAND_TYPE_CONSTRAINT
@@ -3079,6 +3085,22 @@ REGISTER_MKL_KERNEL_ALL_INPUT_AND_BIAS_TYPES("_FusedQuantizedDepthwiseConv2D",
 REGISTER_MKL_KERNEL_ALL_INPUT_AND_BIAS_TYPES("_FusedQuantizedDepthwiseConv2D",
                                              MklQuantizedConvOp, qint8, quint8,
                                              true, quantized_fusions::none, -1);
+REGISTER_MKL_KERNEL_ALL_INPUT_AND_BIAS_TYPES("_FusedQuantizedConv3D",
+                                             MklQuantizedConvOp, qint8, qint8,
+                                             false, quantized_fusions::none,
+                                             -1);
+REGISTER_MKL_KERNEL_ALL_INPUT_AND_BIAS_TYPES("_FusedQuantizedConv3D",
+                                             MklQuantizedConvOp, quint8, qint8,
+                                             false, quantized_fusions::none,
+                                             -1);
+REGISTER_MKL_KERNEL_ALL_INPUT_AND_BIAS_TYPES("_FusedQuantizedConv3D",
+                                             MklQuantizedConvOp, quint8, quint8,
+                                             false, quantized_fusions::none,
+                                             -1);
+REGISTER_MKL_KERNEL_ALL_INPUT_AND_BIAS_TYPES("_FusedQuantizedConv3D",
+                                             MklQuantizedConvOp, qint8, quint8,
+                                             false, quantized_fusions::none,
+                                             -1);
 #undef LABEL
 #undef SUMMAND_TYPE_CONSTRAINT
 #undef BIAS_TYPE_CONSTRAINT
