@@ -58,7 +58,7 @@ static std::string InitializeTmpDir() {
 
 static std::string* GetTmpDir() {
   static std::string tmp_dir = InitializeTmpDir();
-  if (tmp_dir == "")
+  if (tmp_dir.empty())
     return nullptr;
   else
     return &tmp_dir;
