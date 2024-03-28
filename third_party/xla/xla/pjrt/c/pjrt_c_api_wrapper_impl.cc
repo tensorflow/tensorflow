@@ -340,11 +340,22 @@ PJRT_Error* PJRT_Error_GetCode(PJRT_Error_GetCode_Args* args) {
 
 // ---------------------------------- Plugin -----------------------------------
 
-PJRT_Error* PJRT_Plugin_Attributes(PJRT_Plugin_Attributes_Args* args) {
+PJRT_Error* PJRT_Plugin_Attributes_Empty(PJRT_Plugin_Attributes_Args* args) {
   PJRT_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
       "PJRT_Plugin_Attributes_Args", PJRT_Plugin_Attributes_Args_STRUCT_SIZE,
       args->struct_size));
   args->num_attributes = 0;
+  return nullptr;
+}
+
+PJRT_Error* PJRT_Plugin_Attributes_Xla(PJRT_Plugin_Attributes_Args* args) {
+  PJRT_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
+      "PJRT_Plugin_Attributes_Args", PJRT_Plugin_Attributes_Args_STRUCT_SIZE,
+      args->struct_size));
+  const std::vector<PJRT_NamedValue>& attributes =
+      pjrt::GetXlaPluginCAttributes();
+  args->num_attributes = attributes.size();
+  args->attributes = attributes.data();
   return nullptr;
 }
 
@@ -2269,7 +2280,8 @@ namespace pjrt {
 PJRT_Api CreatePjrtApi(PJRT_Client_Create* create_fn,
                        PJRT_TopologyDescription_Create* topology_create_fn,
                        PJRT_Plugin_Initialize* plugin_initialize_fn,
-                       PJRT_Extension_Base* extension_start) {
+                       PJRT_Extension_Base* extension_start,
+                       PJRT_Plugin_Attributes* plugin_attributes_fn) {
   return PJRT_Api{
       /*struct_size=*/PJRT_Api_STRUCT_SIZE,
       /*extension_start=*/extension_start,
@@ -2285,7 +2297,7 @@ PJRT_Api CreatePjrtApi(PJRT_Client_Create* create_fn,
       /*PJRT_Error_GetCode=*/pjrt::PJRT_Error_GetCode,
 
       /*PJRT_Plugin_Initialize=*/plugin_initialize_fn,
-      /*PJRT_Plugin_Attributes=*/pjrt::PJRT_Plugin_Attributes,
+      /*PJRT_Plugin_Attributes=*/plugin_attributes_fn,
 
       /*PJRT_Event_Destroy=*/pjrt::PJRT_Event_Destroy,
       /*PJRT_Event_IsReady=*/pjrt::PJRT_Event_IsReady,

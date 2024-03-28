@@ -156,6 +156,10 @@ xla::Status ValidateCreateOptions(
     const absl::flat_hash_map<std::string, PJRT_NamedValue_Type>&
         expected_name_and_types);
 
+// Returns attributes for plugin that uses XLA compiler. The attributes have the
+// lifetime of the process.
+const std::vector<PJRT_NamedValue>& GetXlaPluginCAttributes();
+
 // Helper function for checking the actual C API argument struct size is greater
 // than or equal to the expected size. The actual struct size can be larger if
 // it comes from a forwards-compatible caller built at a later version than this

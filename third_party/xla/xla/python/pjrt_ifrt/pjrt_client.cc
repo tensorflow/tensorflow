@@ -71,6 +71,9 @@ PjRtClient::attributes() const {
     attributes.insert(
         {"pjrt_c_api_minor_version",
          ClientAttribute(plugin_attributes->pjrt_c_api_minor_version)});
+    for (const auto& [key, value] : plugin_attributes->attributes) {
+      attributes.insert({key, value});
+    }
   }
 
   return attributes;
