@@ -348,6 +348,24 @@ cc_test(
 )
 
 cc_test(
+    name = "group_normalization_test",
+    srcs = ["group_normalization_test.cc"],
+    tags = [
+        "noasan",
+        "nomsan",
+        "notsan",
+        "requires-gpu-nvidia",
+    ],
+    deps = [
+        ":cl_test",
+        "//tensorflow/lite/delegates/gpu/common:operations",
+        "//tensorflow/lite/delegates/gpu/common:status",
+        "//tensorflow/lite/delegates/gpu/common/tasks:group_normalization_test_util",
+        "@com_google_googletest//:gtest_main_no_heapcheck",
+    ],
+)
+
+cc_test(
     name = "lstm_test",
     srcs = ["lstm_test.cc"],
     tags = [
@@ -776,6 +794,7 @@ test_suite(
         "elementwise_test",
         "fully_connected_test",
         "gather_test",
+        "group_normalization_test",
         "lstm_test",
         "max_unpooling_test",
         "mean_stddev_normalization_test",

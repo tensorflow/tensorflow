@@ -64,6 +64,9 @@ enum class OperationType {
   GELU,
   GREATER,
   GREATER_EQUAL,
+  GROUP_NORMALIZATION,
+  GROUP_NORM_MEAN,
+  GROUP_NORM_VAR,
   HARD_SWISH,
   LESS,
   LESS_EQUAL,
@@ -635,6 +638,21 @@ struct QuantizeAndDequantizeAttributes {
 struct GatherAttributes {
   Axis axis = Axis::UNKNOWN;
   Tensor<Linear, DataType::INT32> indices;
+};
+
+struct GroupNormalizationAttributes{
+  int axis = -1;
+  int groups = 32;
+  bool centre = true;
+  bool scale = true;
+  int num_of_runtime_inputs = 0;
+  float epsilon = 1e-5;
+  Tensor<Linear, DataType::FLOAT32> gamma;
+  Tensor<Linear, DataType::FLOAT32> beta;
+};
+
+struct GroupNormVarAttributes{
+  int num_groups = 32;
 };
 
 struct OneHotAttributes {
