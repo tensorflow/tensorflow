@@ -33,17 +33,17 @@ struct Logistic {
     constexpr T one = static_cast<T>(1);
     return one / (one + std::exp(-v));
   }
-
-  template <>
-  F16 operator()(F16 v) const {
-    return F16(operator()(static_cast<float>(v)));
-  }
-
-  template <>
-  BF16 operator()(BF16 v) const {
-    return BF16(operator()(static_cast<float>(v)));
-  }
 };
+
+template <>
+F16 Logistic::operator()(F16 v) const {
+  return F16(operator()(static_cast<float>(v)));
+}
+
+template <>
+BF16 Logistic::operator()(BF16 v) const {
+  return BF16(operator()(static_cast<float>(v)));
+}
 
 LogisticOp Create(LogisticOp::Attributes) { return {}; }
 
