@@ -2901,6 +2901,7 @@ cc_library(
     hdrs = ["cudnn_support_utils.h"],
     deps = [
         ":cublas_cudnn",
+        ":variant_visitor",
         "//xla:shape_util",
         "//xla:statusor",
         "//xla:util",
@@ -2917,6 +2918,10 @@ cc_library(
 xla_cc_test(
     name = "cudnn_support_utils_test",
     srcs = ["cudnn_support_utils_test.cc"],
+    local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]) + if_rocm_is_configured([
+        "TENSORFLOW_USE_ROCM=1",
+    ]),
+    tags = tf_cuda_tests_tags(),
     deps = [
         ":cudnn_support_utils",
         "//xla:shape_util",
@@ -2948,6 +2953,7 @@ cc_library(
         ":cudnn_support_utils",
         ":ir_emission_utils",
         ":stream_executor_util",
+        ":variant_visitor",
         "//xla:literal_util",
         "//xla:shape_util",
         "//xla:status",
@@ -2971,6 +2977,10 @@ cc_library(
 xla_cc_test(
     name = "cudnn_pad_for_convolutions_test",
     srcs = ["cudnn_pad_for_convolutions_test.cc"],
+    local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]) + if_rocm_is_configured([
+        "TENSORFLOW_USE_ROCM=1",
+    ]),
+    tags = tf_cuda_tests_tags(),
     deps = [
         ":cublas_cudnn",
         ":cudnn_pad_for_convolutions",
@@ -2992,6 +3002,7 @@ cc_library(
         ":cublas_cudnn",
         ":cudnn_support_utils",
         ":stream_executor_util",
+        ":variant_visitor",
         "//xla:shape_util",
         "//xla:status",
         "//xla:statusor",
@@ -3018,6 +3029,10 @@ cc_library(
 xla_cc_test(
     name = "cudnn_vectorize_convolutions_test",
     srcs = ["cudnn_vectorize_convolutions_test.cc"],
+    local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]) + if_rocm_is_configured([
+        "TENSORFLOW_USE_ROCM=1",
+    ]),
+    tags = tf_cuda_tests_tags(),
     deps = [
         ":backend_configs_cc",
         ":cublas_cudnn",
@@ -4099,6 +4114,9 @@ cc_library(
         ":conv_algorithm_picker",
         ":cublas_pad_for_gemms",
         ":cublas_padding_requirements",
+        ":cudnn_pad_for_convolutions",
+        ":cudnn_simplify_padding",
+        ":cudnn_vectorize_convolutions",
         ":cusolver_rewriter",
         ":gemm_algorithm_picker",
         ":gemm_rewriter",

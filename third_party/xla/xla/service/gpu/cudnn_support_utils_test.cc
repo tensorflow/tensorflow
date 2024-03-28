@@ -73,6 +73,14 @@ class CudnnSupportUtilsTest : public HloTestBase {
     }
     return call;
   }
+
+  const se::GpuComputeCapability get_gpu_compute_capability() const {
+#ifdef GOOGLE_CUDA
+    return se::CudaComputeCapability{7, 5};
+#elif TENSORFLOW_USE_ROCM
+    return se::RocmComputeCapability{"gfx908"};
+#endif
+  }
 };
 
 TEST_F(CudnnSupportUtilsTest,
@@ -90,16 +98,17 @@ TEST_F(CudnnSupportUtilsTest,
                     .value();
 
   HloCustomCallInstruction* conv;
+  auto gpu_cc = get_gpu_compute_capability();
   TF_ASSERT_OK_AND_ASSIGN(conv,
                           GetCustomCall(module.get(), "__cudnn$convForward"));
 
-  EXPECT_THAT(CudnnSupportsOptimizedIntegerConvolution({7, 5}, *conv, 4),
+  EXPECT_THAT(CudnnSupportsOptimizedIntegerConvolution(gpu_cc, *conv, 4),
               IsOkAndHolds(true));
-  EXPECT_THAT(CudnnSupportsOptimizedIntegerConvolution({7, 5}, *conv, 32),
+  EXPECT_THAT(CudnnSupportsOptimizedIntegerConvolution(gpu_cc, *conv, 32),
               IsOkAndHolds(true));
-  EXPECT_THAT(CudnnSupportsOptimizedIntegerConvolution({7, 5}, *conv, 7),
+  EXPECT_THAT(CudnnSupportsOptimizedIntegerConvolution(gpu_cc, *conv, 7),
               IsOkAndHolds(false));
-  EXPECT_THAT(CudnnSupportsOptimizedIntegerConvolution({7, 5}, *conv, 1),
+  EXPECT_THAT(CudnnSupportsOptimizedIntegerConvolution(gpu_cc, *conv, 1),
               IsOkAndHolds(false));  // 1 is not considered a vector size
 }
 
@@ -121,17 +130,39 @@ TEST_F(CudnnSupportUtilsTest,
   TF_ASSERT_OK_AND_ASSIGN(conv,
                           GetCustomCall(module.get(), "__cudnn$convForward"));
 
+#ifdef GOOGLE_CUDA
   // cc6.1 allows for int8x4
-  EXPECT_THAT(CudnnSupportsOptimizedIntegerConvolution({6, 0}, *conv, 4),
+  EXPECT_THAT(CudnnSupportsOptimizedIntegerConvolution(
+                  se::CudaComputeCapability{6, 0}, *conv, 4),
               IsOkAndHolds(false));
-  EXPECT_THAT(CudnnSupportsOptimizedIntegerConvolution({6, 1}, *conv, 4),
+  EXPECT_THAT(CudnnSupportsOptimizedIntegerConvolution(
+                  se::CudaComputeCapability{6, 1}, *conv, 4),
               IsOkAndHolds(true));
 
   // cc7.5+ allows for int8x32
-  EXPECT_THAT(CudnnSupportsOptimizedIntegerConvolution({7, 4}, *conv, 32),
+  EXPECT_THAT(CudnnSupportsOptimizedIntegerConvolution(
+                  se::CudaComputeCapability{7, 4}, *conv, 32),
               IsOkAndHolds(false));
-  EXPECT_THAT(CudnnSupportsOptimizedIntegerConvolution({7, 5}, *conv, 32),
+  EXPECT_THAT(CudnnSupportsOptimizedIntegerConvolution(
+                  se::CudaComputeCapability{7, 5}, *conv, 32),
               IsOkAndHolds(true));
+#elif TENSORFLOW_USE_ROCM
+  // gfx908+ allows for int8x4
+  EXPECT_THAT(CudnnSupportsOptimizedIntegerConvolution(
+                  se::RocmComputeCapability("gfx906"), *conv, 4),
+              IsOkAndHolds(false));
+  EXPECT_THAT(CudnnSupportsOptimizedIntegerConvolution(
+                  se::RocmComputeCapability("gfx908"), *conv, 4),
+              IsOkAndHolds(true));
+
+  // gfx908+ allows for int8x32
+  EXPECT_THAT(CudnnSupportsOptimizedIntegerConvolution(
+                  se::RocmComputeCapability("gfx906"), *conv, 32),
+              IsOkAndHolds(false));
+  EXPECT_THAT(CudnnSupportsOptimizedIntegerConvolution(
+                  se::RocmComputeCapability("gfx908"), *conv, 32),
+              IsOkAndHolds(true));
+#endif
 }
 
 TEST_F(CudnnSupportUtilsTest,
@@ -149,9 +180,10 @@ TEST_F(CudnnSupportUtilsTest,
                        .value();
 
   HloCustomCallInstruction* conv;
+  auto gpu_cc = get_gpu_compute_capability();
   TF_ASSERT_OK_AND_ASSIGN(
       conv, GetCustomCall(moduleFwd.get(), "__cudnn$convForward"));
-  EXPECT_THAT(CudnnSupportsOptimizedIntegerConvolution({7, 5}, *conv, 32),
+  EXPECT_THAT(CudnnSupportsOptimizedIntegerConvolution(gpu_cc, *conv, 32),
               IsOkAndHolds(true));
 
   auto moduleBwdFilter = ParseAndReturnVerifiedModule(R"(
@@ -169,7 +201,7 @@ TEST_F(CudnnSupportUtilsTest,
 
   TF_ASSERT_OK_AND_ASSIGN(
       conv, GetCustomCall(moduleBwdFilter.get(), "__cudnn$convBackwardFilter"));
-  EXPECT_THAT(CudnnSupportsOptimizedIntegerConvolution({7, 5}, *conv, 32),
+  EXPECT_THAT(CudnnSupportsOptimizedIntegerConvolution(gpu_cc, *conv, 32),
               IsOkAndHolds(false));
 
   auto moduleBwdInput = ParseAndReturnVerifiedModule(R"(
@@ -187,7 +219,7 @@ TEST_F(CudnnSupportUtilsTest,
 
   TF_ASSERT_OK_AND_ASSIGN(
       conv, GetCustomCall(moduleBwdInput.get(), "__cudnn$convBackwardInput"));
-  EXPECT_THAT(CudnnSupportsOptimizedIntegerConvolution({7, 5}, *conv, 32),
+  EXPECT_THAT(CudnnSupportsOptimizedIntegerConvolution(gpu_cc, *conv, 32),
               IsOkAndHolds(false));
 }
 
@@ -205,11 +237,12 @@ TEST_F(CudnnSupportUtilsTest,
   })")
                            .value();
   HloCustomCallInstruction* conv;
+  auto gpu_cc = get_gpu_compute_capability();
   TF_ASSERT_OK_AND_ASSIGN(
       conv, GetCustomCall(moduleS8InOut.get(), "__cudnn$convForward"));
-  EXPECT_THAT(CudnnSupportsOptimizedIntegerConvolution({7, 5}, *conv, 4),
+  EXPECT_THAT(CudnnSupportsOptimizedIntegerConvolution(gpu_cc, *conv, 4),
               IsOkAndHolds(true));
-  EXPECT_THAT(CudnnSupportsOptimizedIntegerConvolution({7, 5}, *conv, 32),
+  EXPECT_THAT(CudnnSupportsOptimizedIntegerConvolution(gpu_cc, *conv, 32),
               IsOkAndHolds(true));
 
   auto moduleS8InF32Out = ParseAndReturnVerifiedModule(R"(
@@ -225,9 +258,9 @@ TEST_F(CudnnSupportUtilsTest,
                               .value();
   TF_ASSERT_OK_AND_ASSIGN(
       conv, GetCustomCall(moduleS8InF32Out.get(), "__cudnn$convForward"));
-  EXPECT_THAT(CudnnSupportsOptimizedIntegerConvolution({7, 5}, *conv, 4),
+  EXPECT_THAT(CudnnSupportsOptimizedIntegerConvolution(gpu_cc, *conv, 4),
               IsOkAndHolds(true));
-  EXPECT_THAT(CudnnSupportsOptimizedIntegerConvolution({7, 5}, *conv, 32),
+  EXPECT_THAT(CudnnSupportsOptimizedIntegerConvolution(gpu_cc, *conv, 32),
               IsOkAndHolds(false));  // imma output must also be int8_t
 
   auto moduleF32InF32Out = ParseAndReturnVerifiedModule(R"(
@@ -243,9 +276,9 @@ TEST_F(CudnnSupportUtilsTest,
                                .value();
   TF_ASSERT_OK_AND_ASSIGN(
       conv, GetCustomCall(moduleF32InF32Out.get(), "__cudnn$convForward"));
-  EXPECT_THAT(CudnnSupportsOptimizedIntegerConvolution({7, 5}, *conv, 4),
+  EXPECT_THAT(CudnnSupportsOptimizedIntegerConvolution(gpu_cc, *conv, 4),
               IsOkAndHolds(false));
-  EXPECT_THAT(CudnnSupportsOptimizedIntegerConvolution({7, 5}, *conv, 32),
+  EXPECT_THAT(CudnnSupportsOptimizedIntegerConvolution(gpu_cc, *conv, 32),
               IsOkAndHolds(false));
 }
 
@@ -264,12 +297,13 @@ TEST_F(CudnnSupportUtilsTest,
   })")
                     .value();
   HloCustomCallInstruction* conv;
+  auto gpu_cc = get_gpu_compute_capability();
   TF_ASSERT_OK_AND_ASSIGN(conv,
                           GetCustomCall(module.get(), "__cudnn$convForward"));
 
-  EXPECT_THAT(CudnnSupportsOptimizedIntegerConvolution({7, 5}, *conv, 4),
+  EXPECT_THAT(CudnnSupportsOptimizedIntegerConvolution(gpu_cc, *conv, 4),
               IsOkAndHolds(false));
-  EXPECT_THAT(CudnnSupportsOptimizedIntegerConvolution({7, 5}, *conv, 32),
+  EXPECT_THAT(CudnnSupportsOptimizedIntegerConvolution(gpu_cc, *conv, 32),
               IsOkAndHolds(false));
 }
 
@@ -287,11 +321,12 @@ TEST_F(CudnnSupportUtilsTest,
   })")
                     .value();
   HloCustomCallInstruction* conv;
+  auto gpu_cc = get_gpu_compute_capability();
   TF_ASSERT_OK_AND_ASSIGN(conv,
                           GetCustomCall(module.get(), "__cudnn$convForward"));
-  EXPECT_THAT(CudnnSupportsOptimizedIntegerConvolution({7, 5}, *conv, 4),
+  EXPECT_THAT(CudnnSupportsOptimizedIntegerConvolution(gpu_cc, *conv, 4),
               IsOkAndHolds(false));
-  EXPECT_THAT(CudnnSupportsOptimizedIntegerConvolution({7, 5}, *conv, 32),
+  EXPECT_THAT(CudnnSupportsOptimizedIntegerConvolution(gpu_cc, *conv, 32),
               IsOkAndHolds(false));
 }
 
@@ -309,11 +344,12 @@ TEST_F(CudnnSupportUtilsTest,
   })")
                                      .value();
   HloCustomCallInstruction* conv;
+  auto gpu_cc = get_gpu_compute_capability();
   TF_ASSERT_OK_AND_ASSIGN(conv, GetCustomCall(moduleFilterCoversInput.get(),
                                               "__cudnn$convForward"));
-  EXPECT_THAT(CudnnSupportsOptimizedIntegerConvolution({7, 5}, *conv, 4),
+  EXPECT_THAT(CudnnSupportsOptimizedIntegerConvolution(gpu_cc, *conv, 4),
               IsOkAndHolds(true));
-  EXPECT_THAT(CudnnSupportsOptimizedIntegerConvolution({7, 5}, *conv, 32),
+  EXPECT_THAT(CudnnSupportsOptimizedIntegerConvolution(gpu_cc, *conv, 32),
               IsOkAndHolds(false));
 
   auto moduleFilterAlmostCoversInput = ParseAndReturnVerifiedModule(R"(
@@ -330,9 +366,9 @@ TEST_F(CudnnSupportUtilsTest,
   TF_ASSERT_OK_AND_ASSIGN(conv,
                           GetCustomCall(moduleFilterAlmostCoversInput.get(),
                                         "__cudnn$convForward"));
-  EXPECT_THAT(CudnnSupportsOptimizedIntegerConvolution({7, 5}, *conv, 4),
+  EXPECT_THAT(CudnnSupportsOptimizedIntegerConvolution(gpu_cc, *conv, 4),
               IsOkAndHolds(true));
-  EXPECT_THAT(CudnnSupportsOptimizedIntegerConvolution({7, 5}, *conv, 32),
+  EXPECT_THAT(CudnnSupportsOptimizedIntegerConvolution(gpu_cc, *conv, 32),
               IsOkAndHolds(true));
 }
 

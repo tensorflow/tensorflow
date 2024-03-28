@@ -34,6 +34,9 @@ class CudnnPadForConvolutions : public HloModulePass {
   explicit CudnnPadForConvolutions(se::CudaComputeCapability compute_capability)
       : compute_capability_(compute_capability) {}
 
+  explicit CudnnPadForConvolutions(se::RocmComputeCapability compute_capability)
+      : compute_capability_(compute_capability) {}
+
   absl::string_view name() const override {
     return "cudnn_pad_for_convolutions";
   }
@@ -44,7 +47,7 @@ class CudnnPadForConvolutions : public HloModulePass {
       const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 
  private:
-  const se::CudaComputeCapability compute_capability_;
+  const se::GpuComputeCapability compute_capability_;
 };
 
 }  // namespace gpu

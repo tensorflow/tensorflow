@@ -21,6 +21,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/primitive_util.h"
 #include "xla/service/gpu/cublas_cudnn.h"
+#include "xla/service/gpu/variant_visitor.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/stream_executor/device_description.h"
@@ -33,7 +34,7 @@ namespace xla {
 namespace gpu {
 
 absl::StatusOr<bool> CudnnSupportsOptimizedIntegerConvolution(
-    const se::CudaComputeCapability& compute_capability,
+    const se::GpuComputeCapability& compute_capability,
     HloCustomCallInstruction& conv, int vector_size) {
   TF_ASSIGN_OR_RETURN(auto kind, GetCudnnConvKind(&conv));
   const Shape& input_shape = conv.operand(0)->shape();
@@ -48,13 +49,22 @@ absl::StatusOr<bool> CudnnSupportsOptimizedIntegerConvolution(
     return false;
   }
 
-  // Require cc6.1+ for any vectorized integer convolutions
-  // Require cc7.5+ for any IMMA convolutions
-  if ((vector_size == 32 && !compute_capability.IsAtLeast(7, 5)) ||
-      !compute_capability.IsAtLeast(6, 1)) {
-    VLOG(3) << "Compute capability " << compute_capability.ToString()
-            << " is not sufficent for int8x" << vector_size
-            << " vectorization.";
+  bool disabled = std::visit(
+      VariantVisitor{[&](const se::CudaComputeCapability& cc) {
+                       // Require cc6.1+ for any vectorized integer convolutions
+                       // Require cc7.5+ for any IMMA convolutions
+                       return (vector_size == 32 && !cc.IsAtLeast(7, 5)) ||
+                              !cc.IsAtLeast(6, 1);
+                     },
+                     [](const se::RocmComputeCapability& cc) {
+                       // Skip architectures below MI100
+                       return !cc.gfx9_mi100_or_later();
+                     }},
+      compute_capability);
+
+  if (disabled) {
+    VLOG(3) << "This compute capability is not sufficent for int8x"
+            << vector_size << " vectorization.";
     return false;
   }
 

@@ -33,7 +33,7 @@ namespace gpu {
 // This function does not guarantee that a convolution will be padded and/or
 // vectorized. It only checks that it is a valid candiate for such optimization.
 absl::StatusOr<bool> CudnnSupportsOptimizedIntegerConvolution(
-    const se::CudaComputeCapability& compute_capability,
+    const se::GpuComputeCapability& compute_capability,
     HloCustomCallInstruction& conv, int vector_size);
 
 // Represents configuration for the reshape-transpose-reshape operations that

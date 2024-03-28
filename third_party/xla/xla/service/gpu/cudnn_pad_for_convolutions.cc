@@ -35,6 +35,7 @@ limitations under the License.
 #include "xla/service/gpu/cublas_cudnn.h"
 #include "xla/service/gpu/cudnn_support_utils.h"
 #include "xla/service/gpu/stream_executor_util.h"
+#include "xla/service/gpu/variant_visitor.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/status.h"
@@ -315,7 +316,7 @@ static absl::StatusOr<bool> TryResolvePaddedShapesForTensorCore(
 // Adds padding to cudnn integer convolutions to make input and output feature
 // maps multiples of pad_to (usually 4 or 32).
 absl::StatusOr<bool> TryResolvePaddedShapesForIntegerConvolution(
-    int pad_to, const se::CudaComputeCapability& compute_capability,
+    int pad_to, const se::GpuComputeCapability& compute_capability,
     HloCustomCallInstruction* conv, std::vector<Shape>* new_input_shapes_ptr,
     Shape* new_result_shape_ptr) {
   TF_ASSIGN_OR_RETURN(auto kind, GetCudnnConvKind(conv));
@@ -490,13 +491,26 @@ absl::StatusOr<bool> CudnnPadForConvolutions::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   bool changed = false;
+  bool is8by32_supported =
+      std::visit(VariantVisitor{[](const se::CudaComputeCapability& cc) {
+                                  // Try to (re)vectorize to int8x32 if this is
+                                  // an sm75+ GPU.  If we can't, fall back to
+                                  // int8x4.
+                                  return cc.IsAtLeast(7, 5);
+                                },
+                                [](const se::RocmComputeCapability& cc) {
+                                  // Skip architectures below MI100
+                                  return cc.gfx9_mi100_or_later();
+                                }},
+                 compute_capability_);
+
   for (HloComputation* comp :
        module->MakeNonfusionComputations(execution_threads)) {
     for (HloCustomCallInstruction* conv : GetRelevantConvs(comp)) {
       // On Turing and later (sm75+), pad to multiples of 32 bytes if possible,
       // because that lets us use the fast int8x32 data type.
       bool local_changed = false;
-      if (compute_capability_.IsAtLeast(7, 5)) {
+      if (is8by32_supported) {
         TF_ASSIGN_OR_RETURN(
             local_changed,
             ResolveAndPad(conv, absl::bind_front(
@@ -512,7 +526,16 @@ absl::StatusOr<bool> CudnnPadForConvolutions::Run(
       }
       changed |= local_changed;
     }
-    if (compute_capability_.IsAtLeast(se::CudaComputeCapability::VOLTA)) {
+    bool isVolta = std::visit(
+        VariantVisitor{[](const se::CudaComputeCapability& cc) {
+                         return cc.IsAtLeast(se::CudaComputeCapability::VOLTA);
+                       },
+                       [](const se::RocmComputeCapability& cc) {
+                         return cc.gfx9_mi100_or_later();
+                       }},
+        compute_capability_);
+
+    if (isVolta) {
       for (HloCustomCallInstruction* conv : GetRelevantConvs(comp)) {
         TF_ASSIGN_OR_RETURN(
             bool local_changed,

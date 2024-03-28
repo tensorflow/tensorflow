@@ -54,6 +54,11 @@ class CudnnVectorizeConvolutions : public HloModulePass {
       : compute_capability_(compute_capability),
         cudnn_version_(cudnn_version) {}
 
+  explicit CudnnVectorizeConvolutions(
+      se::RocmComputeCapability compute_capability)
+      : compute_capability_(compute_capability),
+        cudnn_version_(se::dnn::VersionInfo{8, 3, 0}) {}
+
   absl::string_view name() const override {
     return "cudnn_vectorize_convolutions";
   }
@@ -63,7 +68,7 @@ class CudnnVectorizeConvolutions : public HloModulePass {
       const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 
  private:
-  const se::CudaComputeCapability compute_capability_;
+  const se::GpuComputeCapability compute_capability_;
   const se::dnn::VersionInfo cudnn_version_;
 };
 
