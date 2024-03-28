@@ -94,6 +94,16 @@ void SparseFillEmptyRowsOpImpl(OpKernelContext* context,
   OP_REQUIRES_ASYNC(context, dense_shape_t.NumElements() != 0,
                     errors::InvalidArgument("Dense shape cannot be empty."),
                     done);
+  // Validation for negative dims inside `dense_shape`.
+  auto dense_shape_vec = dense_shape_t.vec<int>();
+  for (int i = 0; i < dense_shape_vec.shape().dim_size(0); ++i) {
+    if (dense_shape_vec(i) < 0 ) {
+      return errors::InvalidArgument(
+          "The dense_shape should be non-negative "
+          "but found ",
+          dense_shape_vec(i), " at index ", i);
+    }
+  }
 
   using FunctorType =
       functor::FillEmptyRows<Device, T, Tindex, /*RaggedOperands=*/false>;
