@@ -32,17 +32,17 @@ struct Sign {
     constexpr T zero = static_cast<T>(0);
     return v < zero ? -one : (v > zero ? one : v);
   }
-
-  template <>
-  F16 operator()(F16 v) const {
-    return static_cast<F16>(operator()(static_cast<float>(v)));
-  }
-
-  template <>
-  BF16 operator()(BF16 v) const {
-    return static_cast<BF16>(operator()(static_cast<float>(v)));
-  }
 };
+
+template <>
+F16 Sign::operator()(F16 v) const {
+  return static_cast<F16>(operator()(static_cast<float>(v)));
+}
+
+template <>
+BF16 Sign::operator()(BF16 v) const {
+  return static_cast<BF16>(operator()(static_cast<float>(v)));
+}
 
 SignOp Create(SignOp::Attributes) { return {}; }
 

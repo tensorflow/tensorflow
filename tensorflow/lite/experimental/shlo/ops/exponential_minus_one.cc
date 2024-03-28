@@ -32,17 +32,17 @@ struct ExponentialMinusOne {
   T operator()(T v) const {
     return std::expm1(v);
   }
-
-  template <>
-  F16 operator()(F16 v) const {
-    return F16(operator()(static_cast<float>(v)));
-  }
-
-  template <>
-  BF16 operator()(BF16 v) const {
-    return BF16(operator()(static_cast<float>(v)));
-  }
 };
+
+template <>
+F16 ExponentialMinusOne::operator()(F16 v) const {
+  return F16(operator()(static_cast<float>(v)));
+}
+
+template <>
+BF16 ExponentialMinusOne::operator()(BF16 v) const {
+  return BF16(operator()(static_cast<float>(v)));
+}
 
 ExponentialMinusOneOp Create(ExponentialMinusOneOp::Attributes) { return {}; }
 
