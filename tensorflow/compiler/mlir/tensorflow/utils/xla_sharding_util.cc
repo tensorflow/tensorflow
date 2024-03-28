@@ -15,10 +15,15 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/tensorflow/utils/xla_sharding_util.h"
 
+#include <cstdint>
+#include <map>
 #include <numeric>
 #include <string>
 #include <utility>
 
+#include "absl/log/log.h"
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/STLExtras.h"
@@ -152,16 +157,21 @@ mlir::LogicalResult HandleTileShardedInputs(
   // are created such that input data is sharded in row major order.
   // Split nodes at ith depth from the original input node represent nodes
   // that split the input data at i-th dimension.
-  const auto& dimension_splits = input_sharding.tile_assignment_dimensions();
-  for (const auto& num_splits_and_index : llvm::enumerate(dimension_splits)) {
-    const int num_splits = num_splits_and_index.value();
-    const int dimension_index = num_splits_and_index.index();
-    if (num_splits == 1) continue;
+  auto dimension_to_splits_map =
+      GetDimensionIndicesAndNumSplitsFromSharding(input_sharding);
+  if (!dimension_to_splits_map.ok()) {
+    LOG(ERROR) << dimension_to_splits_map.status();
+    return mlir::failure();
+  }
+
+  for (const auto& dimension_and_num_splits : *dimension_to_splits_map) {
+    const int dimension = dimension_and_num_splits.first;
+    const int num_splits = dimension_and_num_splits.second;
 
     // Creates root split op.
     if (split_ops_for_tiled_input.empty()) {
       mlir::TF::SplitOp root_split_op;
-      auto result = CreateSplitOp(num_splits, dimension_index, location,
+      auto result = CreateSplitOp(num_splits, dimension, location,
                                   original_source, builder, &root_split_op);
       if (mlir::failed(result)) return mlir::failure();
 
@@ -176,7 +186,7 @@ mlir::LogicalResult HandleTileShardedInputs(
       for (auto parent_split_output_value : split_op.getResults()) {
         mlir::TF::SplitOp child_split_op;
         auto result =
-            CreateSplitOp(num_splits, dimension_index, location,
+            CreateSplitOp(num_splits, dimension, location,
                           parent_split_output_value, builder, &child_split_op);
         if (mlir::failed(result)) return mlir::failure();
 
@@ -188,12 +198,21 @@ mlir::LogicalResult HandleTileShardedInputs(
   }
 
   // `split_ops_for_tiled_input` now includes final split nodes
-  // from which sharded data will be fed into TPUExcute ops -- sorted by
+  // from which sharded data will be fed into TPUExecute ops -- sorted by
   // row major order.
+  tiled_inputs->clear();
   tiled_inputs->reserve(input_sharding.tile_assignment_devices_size());
-  for (auto split_op : split_ops_for_tiled_input)
-    tiled_inputs->append(split_op.getResults().begin(),
-                         split_op.getResults().end());
+  for (auto split_op : split_ops_for_tiled_input) {
+    for (auto split_op_output : split_op.getResults()) {
+      int64_t repeat_count =
+          input_sharding.replicate_on_last_tile_dim()
+              ? *input_sharding.tile_assignment_dimensions().rbegin()
+              : 1;
+      for (int64_t i = 0; i < repeat_count; ++i) {
+        tiled_inputs->push_back(split_op_output);
+      }
+    }
+  }
 
   return mlir::success();
 }
@@ -204,6 +223,29 @@ bool UnsupportedPartitionedShardingType(xla::OpSharding::Type sharding) {
 }
 
 }  // namespace
+
+absl::StatusOr<std::map<int, int>> GetDimensionIndicesAndNumSplitsFromSharding(
+    const xla::OpSharding& sharding) {
+  int64_t tensor_tile_rank = sharding.tile_assignment_dimensions_size();
+  if (sharding.replicate_on_last_tile_dim()) {
+    tensor_tile_rank--;
+  }
+
+  std::map<int, int> dimension_to_splits_map;
+  for (int dim_index = 0; dim_index < tensor_tile_rank; ++dim_index) {
+    if (sharding.tile_assignment_dimensions(dim_index) > 1) {
+      dimension_to_splits_map.emplace(
+          dim_index, sharding.tile_assignment_dimensions(dim_index));
+    }
+  }
+
+  if (dimension_to_splits_map.empty()) {
+    return absl::InvalidArgumentError(absl::StrCat(
+        "Arg has unnecessary tiled sharding: ", sharding.DebugString()));
+  }
+
+  return dimension_to_splits_map;
+}
 
 int GetDimsFromXLAShardingTiled(const xla::OpSharding& xla_sharding) {
   return xla_sharding.tile_assignment_dimensions_size() -
@@ -478,15 +520,25 @@ mlir::LogicalResult GetTileShardedOutputsToMerge(
   const xla::OpSharding& sharding =
       output_sharding_config[cluster_func_output_index];
   outputs_to_merge->reserve(sharding.tile_assignment_devices_size());
-  for (const auto logical_device_id : sharding.tile_assignment_devices()) {
+  for (const auto& core_id_and_index :
+       llvm::enumerate(sharding.tile_assignment_devices())) {
+    auto core_id = core_id_and_index.value();
+    auto tile_index = core_id_and_index.index();
+
+    int last_tile_dim_size = *sharding.tile_assignment_dimensions().rbegin();
+    if (sharding.replicate_on_last_tile_dim() &&
+        tile_index % last_tile_dim_size != 0) {
+      continue;
+    }
+
     int region_output_index;
-    auto status = LookupClusterToCoreIndex(
-        location, cluster_to_core_index, logical_device_id,
-        cluster_func_output_index, &region_output_index);
+    auto status = LookupClusterToCoreIndex(location, cluster_to_core_index,
+                                           core_id, cluster_func_output_index,
+                                           &region_output_index);
     if (failed(status)) return mlir::failure();
     const auto output_from_logical_device =
-        new_parallel_execute.GetRegionOutputs(
-            cluster_idx + logical_device_id)[region_output_index];
+        new_parallel_execute.GetRegionOutputs(cluster_idx +
+                                              core_id)[region_output_index];
     outputs_to_merge->emplace_back(output_from_logical_device);
   }
 
@@ -518,12 +570,18 @@ mlir::LogicalResult HandleTileShardedOutputs(
   // devices to a single replica output.
   const xla::OpSharding& sharding =
       output_sharding_config[cluster_func_output_index];
-  int concat_dimension = sharding.tile_assignment_dimensions_size() - 1;
-  for (auto num_splits : llvm::reverse(sharding.tile_assignment_dimensions())) {
-    if (num_splits == 1) {
-      --concat_dimension;
-      continue;
-    }
+
+  auto dimension_to_splits_map =
+      GetDimensionIndicesAndNumSplitsFromSharding(sharding);
+  if (!dimension_to_splits_map.ok()) {
+    LOG(ERROR) << dimension_to_splits_map.status();
+    return mlir::failure();
+  }
+
+  for (auto it = dimension_to_splits_map->rbegin();
+       it != dimension_to_splits_map->rend(); ++it) {
+    int concat_dimension = it->first;
+    int num_splits = it->second;
 
     llvm::SmallVector<mlir::Value, 4> new_outputs;
     new_outputs.reserve(num_splits);
@@ -539,7 +597,6 @@ mlir::LogicalResult HandleTileShardedOutputs(
     }
 
     std::swap(new_outputs, outputs_to_merge);
-    --concat_dimension;
   }
 
   assert(outputs_to_merge.size() == 1);
