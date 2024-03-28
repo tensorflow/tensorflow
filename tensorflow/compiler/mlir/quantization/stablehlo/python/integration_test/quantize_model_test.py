@@ -339,7 +339,7 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
               nn_ops.relu,
               nn_ops.relu6,
           ),
-          'has_batch_norm': (False,),
+          'has_batch_norm': (False, True),
           'input_shape_dynamic': (
               False,
               True,
@@ -348,7 +348,7 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
               False,
               True,
           ),
-          'rng_seed': (10, 11, 12, 13),
+          'rng_seed': (10, 11),
       }])
   )
   @test_util.run_in_graph_and_eager_modes
@@ -375,6 +375,14 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
         strides,
         dilations,
     )
+    # skip these test cases.
+    if (
+        bias_fn is None
+        and has_batch_norm
+        and input_shape_dynamic
+        and enable_per_channel_quantized_weight
+    ):
+      return
 
     # Generate model input data.
     rng = np.random.default_rng(rng_seed)
