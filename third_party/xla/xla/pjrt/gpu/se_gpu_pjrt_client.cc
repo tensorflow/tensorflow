@@ -26,6 +26,7 @@ limitations under the License.
 #include <string>
 #include <string_view>
 #include <utility>
+#include <variant>
 #include <vector>
 
 #include "absl/base/thread_annotations.h"
@@ -755,7 +756,7 @@ absl::StatusOr<std::vector<se::MultiDeviceAdapter::AllocatorInfo>>
 CreateCudaAsyncAllocator(
     se::Platform* platform,
     const std::map<int, std::unique_ptr<LocalDeviceState>>& addressable_devices,
-    double memory_fraction, bool preallocate) {
+    std::variant<double, int64_t> memory_allocation, bool preallocate) {
   CHECK_GT(addressable_devices.size(), 0);
   std::vector<se::MultiDeviceAdapter::AllocatorInfo> allocators;
 
@@ -769,11 +770,18 @@ CreateCudaAsyncAllocator(
       return Unavailable("Failed to query available memory from device %i",
                          device_ordinal);
     }
-    // To allow full GPU memory to be visible to the Cuda Async allocator
-    // if using unified memory.
-    // When unified memory is enabled, allow GPU memory oversubscription by
-    // setting memory_fraction > 1.
-    size_t allocator_memory = total_memory * memory_fraction;
+    size_t allocator_memory;
+    if (std::holds_alternative<int64_t>(memory_allocation)) {
+      // If absolute memory size is set, use it instead of default fraction
+      // value.
+      allocator_memory = std::get<int64_t>(memory_allocation);
+    } else {
+      // To allow full GPU memory to be visible to the Cuda Async allocator
+      // if using unified memory.
+      // When unified memory is enabled, allow GPU memory oversubscription by
+      // setting memory_fraction > 1.
+      allocator_memory = total_memory * std::get<double>(memory_allocation);
+    }
     if (preallocate) {
       LOG(INFO) << "XLA backend allocating " << allocator_memory
                 << " bytes on device " << device_ordinal
@@ -803,7 +811,7 @@ absl::StatusOr<std::vector<se::MultiDeviceAdapter::AllocatorInfo>>
 CreateCudaAsyncAllocator(
     se::Platform* platform,
     const std::map<int, std::unique_ptr<LocalDeviceState>>& addressable_devices,
-    double memory_fraction, bool preallocate) {
+    std::variant<double, int64_t> memory_allocation, bool preallocate) {
   return FailedPrecondition("CUDA async allocator requires CUDA >= 11.2");
 }
 
@@ -836,7 +844,7 @@ GetStreamExecutorGpuDeviceAllocator(
   switch (allocator_config.kind) {
     case GpuAllocatorConfig::Kind::kCudaAsync: {
       auto allocators_or = CreateCudaAsyncAllocator(
-          platform, addressable_devices, allocator_config.memory_fraction,
+          platform, addressable_devices, allocator_config.memory_allocation,
           allocator_config.preallocate);
       if (allocators_or.ok()) {
         LOG(INFO) << "Using CUDA async allocator.";
@@ -855,7 +863,7 @@ GetStreamExecutorGpuDeviceAllocator(
         TF_ASSIGN_OR_RETURN(
             auto bfc_allocator,
             CreateBFCAllocator(ordinal_and_device.second->executor(),
-                               allocator_config.memory_fraction,
+                               allocator_config.memory_allocation,
                                allocator_config.preallocate));
         allocators.emplace_back(std::move(bfc_allocator),
                                 ordinal_and_device.second->compute_stream(),
@@ -880,10 +888,9 @@ GetStreamExecutorGpuDeviceAllocator(
   for (const auto& ordinal_and_device : addressable_devices) {
     TF_ASSIGN_OR_RETURN(
         auto collective_bfc_allocator,
-        CreateCollectiveBFCAllocator(
-            ordinal_and_device.second->executor(),
-            /*memory_fraction=*/1.0 - allocator_config.memory_fraction,
-            allocator_config.collective_memory_size));
+        CreateCollectiveBFCAllocator(ordinal_and_device.second->executor(),
+                                     allocator_config.memory_allocation,
+                                     allocator_config.collective_memory_size));
     allocators.emplace_back(std::move(collective_bfc_allocator),
                             ordinal_and_device.second->compute_stream(),
                             /*memory_space=*/1);

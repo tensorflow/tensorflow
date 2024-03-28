@@ -468,7 +468,7 @@ class GpuAllocatorConfig:
   def __init__(
       self,
       kind: Kind = ...,
-      memory_fraction: float = ...,
+      memory_allocation: Union[float, int] = ...,
       preallocate: bool = ...,
       collective_memory_size: int = ...,
   ) -> None: ...

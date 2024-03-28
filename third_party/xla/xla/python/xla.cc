@@ -337,7 +337,7 @@ NB_MODULE(xla_extension, m_nb) {
   nb::class_<GpuAllocatorConfig> alloc_config(m_nb, "GpuAllocatorConfig");
   alloc_config.def(nb::init<>())
       .def_rw("kind", &GpuAllocatorConfig::kind)
-      .def_rw("memory_fraction", &GpuAllocatorConfig::memory_fraction)
+      .def_rw("memory_allocation", &GpuAllocatorConfig::memory_allocation)
       .def_rw("preallocate", &GpuAllocatorConfig::preallocate)
       .def_rw("collective_memory_size",
               &GpuAllocatorConfig::collective_memory_size);

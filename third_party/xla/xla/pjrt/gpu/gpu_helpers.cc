@@ -15,11 +15,15 @@ limitations under the License.
 
 #include "xla/pjrt/gpu/gpu_helpers.h"
 
+#include <cmath>
+#include <cstddef>
+#include <cstdint>
 #include <memory>
 #include <optional>
 #include <set>
 #include <string>
 #include <utility>
+#include <variant>
 #include <vector>
 
 #include "xla/client/client_library.h"
@@ -72,7 +76,8 @@ void EnablePeerAccess(absl::Span<se::StreamExecutor* const> executors) {
 
 // Builds a BFCAllocator for all local GPUs.
 absl::StatusOr<std::unique_ptr<tsl::BFCAllocator>> CreateBFCAllocator(
-    se::StreamExecutor* executor, double memory_fraction, bool preallocate) {
+    se::StreamExecutor* executor,
+    std::variant<double, int64_t> memory_allocation, bool preallocate) {
   bool enable_unified_memory;
   Status status = tsl::ReadBoolFromEnvVar("TF_FORCE_UNIFIED_MEMORY", false,
                                           &enable_unified_memory);
@@ -96,13 +101,21 @@ absl::StatusOr<std::unique_ptr<tsl::BFCAllocator>> CreateBFCAllocator(
     return Unavailable("Failed to query available memory from device %i",
                        device_ordinal);
   }
-  // To allow full GPU memory to be visible to the BFC allocator if using
-  // unified memory.
-  // When unified memory is enabled, allow GPU memory oversubscription by
-  // setting memory_fraction > 1.
-  size_t allocator_memory = enable_unified_memory
-                                ? total_memory * fmax(1.0, memory_fraction)
-                                : total_memory * memory_fraction;
+  size_t allocator_memory;
+  if (std::holds_alternative<int64_t>(memory_allocation)) {
+    // If absolute memory size is set, use it instead of default fraction value.
+    allocator_memory = std::get<int64_t>(memory_allocation);
+  } else {
+    // To allow full GPU memory to be visible to the BFC allocator if using
+    // unified memory.
+    // When unified memory is enabled, allow GPU memory oversubscription by
+    // setting memory_fraction > 1.
+    double memory_fraction = std::get<double>(memory_allocation);
+    allocator_memory = enable_unified_memory
+                           ? total_memory * fmax(1.0, memory_fraction)
+                           : total_memory * memory_fraction;
+  }
+
   if (preallocate) {
     LOG(INFO) << "XLA backend allocating " << allocator_memory
               << " bytes on device " << device_ordinal << " for BFCAllocator.";
@@ -120,7 +133,8 @@ absl::StatusOr<std::unique_ptr<tsl::BFCAllocator>> CreateBFCAllocator(
 
 // Builds a BFCAllocator for all local GPUs that uses collective memory.
 absl::StatusOr<std::unique_ptr<tsl::BFCAllocator>> CreateCollectiveBFCAllocator(
-    se::StreamExecutor* executor, double memory_fraction,
+    se::StreamExecutor* executor,
+    std::variant<double, int64_t> memory_allocation,
     size_t collective_memory_size) {
   int device_ordinal = executor->device_ordinal();
   auto sub_allocator = std::make_unique<se::DeviceMemAllocator>(
@@ -136,8 +150,17 @@ absl::StatusOr<std::unique_ptr<tsl::BFCAllocator>> CreateCollectiveBFCAllocator(
                        device_ordinal);
   }
   bool preallocate = collective_memory_size != 0;
-  size_t allocator_memory =
-      preallocate ? collective_memory_size : total_memory * memory_fraction;
+  size_t allocator_memory;
+  if (preallocate) {
+    allocator_memory = collective_memory_size;
+  } else {
+    if (std::holds_alternative<int64_t>(memory_allocation)) {
+      allocator_memory = total_memory - std::get<int64_t>(memory_allocation);
+    } else {
+      allocator_memory =
+          total_memory * (1.0 - std::get<double>(memory_allocation));
+    }
+  }
 
   if (preallocate) {
     LOG(INFO) << "XLA backend allocating " << allocator_memory

@@ -102,7 +102,7 @@ PJRT_Error* PJRT_Client_Create(PJRT_Client_Create_Args* args) {
   }
   if (auto it = create_options.find("memory_fraction");
       it != create_options.end()) {
-    allocator_config.memory_fraction = std::get<float>(it->second);
+    allocator_config.memory_allocation = std::get<float>(it->second);
   }
   if (auto it = create_options.find("preallocate");
       it != create_options.end()) {

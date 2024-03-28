@@ -16,10 +16,12 @@ limitations under the License.
 #ifndef XLA_PJRT_GPU_GPU_HELPERS_H_
 #define XLA_PJRT_GPU_GPU_HELPERS_H_
 
+#include <cstdint>
 #include <memory>
 #include <optional>
 #include <set>
 #include <string>
+#include <variant>
 
 #include "absl/types/span.h"
 #include "xla/client/local_client.h"
@@ -48,12 +50,13 @@ struct GpuAllocatorConfig {
   };
   Kind kind = Kind::kDefault;
 
-  // Only used if kind == kBFC. The maximum fraction of available memory to
-  // allocate. This is the default value of XLA_PYTHON_CLIENT_MEM_FRACTION.
-  double memory_fraction = 0.75;
+  // Only used if kind == kBFC. Can be the maximum fraction of available memory
+  // to allocate or an absolute size of reserved memory space for GPU system in
+  // bytes. The default faction value is XLA_PYTHON_CLIENT_MEM_FRACTION.
+  std::variant<double, int64_t> memory_allocation = 0.75;
 
   // Only used if kind == kBFC. If true, the allocator will immediately allocate
-  // the maximum amount allowed by `memory_fraction`. This reduces
+  // the maximum amount allowed by `memory_allocation`. This reduces
   // fragmentation, allowing more of the total memory to be used. If false, the
   // allocator will allocate more memory as allocations are requested.
   bool preallocate = true;
@@ -71,11 +74,13 @@ std::unique_ptr<tsl::BFCAllocator> GetGpuHostAllocator(
 
 // Builds a BFCAllocator for all local GPUs.
 absl::StatusOr<std::unique_ptr<tsl::BFCAllocator>> CreateBFCAllocator(
-    se::StreamExecutor* executor, double memory_fraction, bool preallocate);
+    se::StreamExecutor* executor,
+    std::variant<double, int64_t> memory_allocation, bool preallocate);
 
 // Builds a BFCAllocator for all local GPUs that uses collective memory.
 absl::StatusOr<std::unique_ptr<tsl::BFCAllocator>> CreateCollectiveBFCAllocator(
-    se::StreamExecutor* executor, double memory_fraction,
+    se::StreamExecutor* executor,
+    std::variant<double, int64_t> memory_allocation,
     size_t collective_memory_size);
 
 }  // namespace xla

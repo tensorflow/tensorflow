@@ -99,8 +99,8 @@ def make_gpu_client(
     config.kind = _xla.GpuAllocatorConfig.Kind.BFC
   if allocator == 'cuda_async':
     config.kind = _xla.GpuAllocatorConfig.Kind.CUDA_ASYNC
-  if 'memory_fraction' in options:
-    config.memory_fraction = options['memory_fraction']
+  if 'memory_allocation' in options:
+    config.memory_allocation = options['memory_allocation']
   if 'preallocate' in options:
     config.preallocate = options['preallocate']
   if 'collective_memory_size' in options:
@@ -227,7 +227,7 @@ def generate_pjrt_gpu_plugin_options() -> _NameValueMapping:
     )
   options['allocator'] = allocator
   if memory_fraction:
-    options['memory_fraction'] = float(memory_fraction)
+    options['memory_allocation'] = float(memory_fraction)
   if preallocate:
     options['preallocate'] = preallocate not in ('false', 'False', '0')
   if collective_memory_size:
