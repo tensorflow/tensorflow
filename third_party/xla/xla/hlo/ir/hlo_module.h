@@ -505,12 +505,18 @@ class HloModule {
   const HloInputOutputAliasConfig& input_output_alias_config() const {
     return input_output_alias_config_;
   }
+  void set_input_output_alias_config(HloInputOutputAliasConfig config) {
+    input_output_alias_config_ = std::move(config);
+  }
 
   // buffer_donor_config_ indicates the set of input buffer donors that are
   // expected from the module.
   HloBufferDonorConfig& buffer_donor_config() { return buffer_donor_config_; }
   const HloBufferDonorConfig& buffer_donor_config() const {
     return buffer_donor_config_;
+  }
+  void set_buffer_donor_config(HloBufferDonorConfig config) {
+    buffer_donor_config_ = std::move(config);
   }
 
   // Returns an id that is unique to this module across all modules created over
