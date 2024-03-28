@@ -188,7 +188,7 @@ class TpuEmbeddingV3CheckpointAdapter(
       return cls(None)
     layouts = sparse_core_layout_pb2.SparseCoreTableLayouts()
     layouts.ParseFromString(sparsecore_layouts_str)
-    logging.vlog(1, "Loaded layouts from checkpoint: %s", layouts)
+    logging.info("Loaded layouts from checkpoint: %s", layouts)
     return cls(layouts)
 
   def initialize_reshard_callbacks(
@@ -224,13 +224,25 @@ class TpuEmbeddingV3CheckpointAdapter(
     # TODO(b/326644391): First unshard then shard.
     raise NotImplementedError("Changing topology is not implemented yet.")
 
-  def is_layouts_same(self, embedding_layouts) -> bool:
+  def is_layouts_same(self, embedding_layouts) -> bool|ValueError:
     """Returns True if the all the embedding and checkpoint layouts are the same."""
-    if self._checkpoint_layouts.keys() == embedding_layouts.keys():
-      for key, layout in self._checkpoint_layouts.items():
-        if not compare.ProtoEq(layout, embedding_layouts[key]):
-          return False
-      return True
+    if self._checkpoint_layouts.keys() != embedding_layouts.keys():
+      return ValueError(
+          "Layouts in checkpoint and embedding must have the same keys. found"
+          " %s and %s",
+          self._checkpoint_layouts.keys(),
+          embedding_layouts.keys(),
+      )
+    for key, layout in self._checkpoint_layouts.items():
+      if not compare.ProtoEq(layout, embedding_layouts[key]):
+        logging.info(
+            "Layouts do not match for %s; %s vs %s",
+            key,
+            layout,
+            embedding_layouts[key],
+        )
+        return False
+    return True
 
   def is_applicable(self, trackable: trackable_base.Trackable) -> bool:
     # issubclass(trackable, TPUEmbeddingBase) adds circular deps, hence using
@@ -247,6 +259,8 @@ class TpuEmbeddingV3CheckpointAdapter(
       return False
     # Only if both checkpoint and embedding have layouts and they match,
     # no resharding needed.
+    logging.info("embedding_layouts: %s", embedding_layouts)
+    logging.info("self._checkpoint_layouts: %s", self._checkpoint_layouts)
     if (
         self._checkpoint_layouts
         and embedding_layouts
