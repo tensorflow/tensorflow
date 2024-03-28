@@ -2293,12 +2293,11 @@ TEST(XlaBuilderTest, UnboundedScatter) {
 
   XlaComputation update_computation;
   {
-    std::unique_ptr<XlaBuilder> sub_builder = b.CreateSubBuilder("add");
-    XlaOp arg0 = Parameter(sub_builder.get(), 0,
-                           ShapeUtil::MakeScalarShape(F32), "arg0");
-    XlaOp arg1 = Parameter(sub_builder.get(), 1,
-                           ShapeUtil::MakeScalarShape(F32), "arg1");
-    Add(arg0, arg1);
+    const std::unique_ptr<XlaBuilder> sub_builder = b.CreateSubBuilder("add");
+    Add(Parameter(sub_builder.get(), 0, ShapeUtil::MakeScalarShape(F32),
+                  "arg0"),
+        Parameter(sub_builder.get(), 1, ShapeUtil::MakeScalarShape(F32),
+                  "arg1"));
     TF_ASSERT_OK_AND_ASSIGN(update_computation, sub_builder->Build());
   }
 
@@ -2397,6 +2396,47 @@ TEST(XlaBuilderTest,
          Parameter(&b, 2, ehs, "ehs"));
   EXPECT_THAT(BuildHloModule(b),
               StatusIs(_, HasSubstr("Unimplemented implicit broadcast.")));
+}
+
+TEST(XlaBuilderTest, UnboundedSelectAndScatter) {
+  XlaBuilder b(TestName());
+  TF_ASSERT_OK_AND_ASSIGN(const Shape operand, ParseShape("f32[?, 10]"));
+  TF_ASSERT_OK_AND_ASSIGN(const Shape source, ParseShape("f32[?, 10]"));
+  TF_ASSERT_OK_AND_ASSIGN(const Shape init_value, ParseShape("f32[]"));
+  TF_ASSERT_OK_AND_ASSIGN(const Shape expected, ParseShape("f32[?, 10]"));
+
+  XlaComputation select;
+  {
+    const std::unique_ptr<XlaBuilder> sub_builder =
+        b.CreateSubBuilder("compare");
+    Compare(Parameter(sub_builder.get(), 0, ShapeUtil::MakeScalarShape(F32),
+                      "arg0"),
+            Parameter(sub_builder.get(), 1, ShapeUtil::MakeScalarShape(F32),
+                      "arg1"),
+            ComparisonDirection::kGe);
+    TF_ASSERT_OK_AND_ASSIGN(select, sub_builder->Build());
+  }
+
+  XlaComputation scatter;
+  {
+    const std::unique_ptr<XlaBuilder> sub_builder = b.CreateSubBuilder("add");
+    Add(Parameter(sub_builder.get(), 0, ShapeUtil::MakeScalarShape(F32),
+                  "arg0"),
+        Parameter(sub_builder.get(), 1, ShapeUtil::MakeScalarShape(F32),
+                  "arg1"));
+    TF_ASSERT_OK_AND_ASSIGN(scatter, sub_builder->Build());
+  }
+
+  SelectAndScatter(Parameter(&b, 0, operand, "operand"), select,
+                   /*window_dimensions=*/
+                   std::array<int64_t, 2>({3, 1}),
+                   /*window_strides=*/std::array<int64_t, 2>({2, 1}),
+                   Padding::kValid, Parameter(&b, 1, source, "source"),
+                   Parameter(&b, 2, init_value, "init_value"), scatter);
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module, BuildHloModule(b));
+  EXPECT_THAT(GetRoot(*module),
+              GmockMatch(m::Op().WithShapeEqualTo(&expected)));
 }
 
 TEST(XlaBuilderTest, UnboundedSlice) {
