@@ -40,10 +40,12 @@ from local_xla.xla import xla_data_pb2
 
 # NOTE: `import <name> as <name>` is required for names to be exported.
 # See PEP 484 & <https://github.com/google/jax/issues/7570>
-# pylint: disable=g-importing-member,useless-import-alias,unused-import
+# pylint: disable=g-importing-member,useless-import-alias,unused-import,g-multiple-import
 # LINT.IfChange
 from ._types import (
     make_ndarray as make_ndarray,
+    dtype_to_etype as dtype_to_etype,
+    etype_to_dtype as etype_to_dtype,
 )
 # TODO(wrengr): We can't import the `NdarrayTree` defined in the pyi file.
 # So re-defining it here for now.

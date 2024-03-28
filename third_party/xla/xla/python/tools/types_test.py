@@ -148,14 +148,12 @@ class MakeNdarrayValidTest(parameterized.TestCase):
 
   def testHasCorrectDtype(self, proto, arr):
     """Test that the result has the right dtype."""
-    # Silence [unused-argument] warning.
-    del proto
-    # TODO(wrengr): Add pybind for `xla::PrimitiveTypeToDtype`,
-    # so that we can avoid hard-coding the expected np.dtype.
-    # Alternatively, we could use `xla_client.dtype_to_etype` (ideally
-    # after refactoring that into a small library, so we need not pull in
-    # all the rest of xla_client).
-    self.assertEqual(np.float64, arr.dtype)
+    e = proto.shape.element_type
+    d = arr.dtype
+    with self.subTest(msg='etype_to_dtype'):
+      self.assertEqual(types.etype_to_dtype(e), d)
+    with self.subTest(msg='dtype_to_etype'):
+      self.assertEqual(e, types.dtype_to_etype(d))
 
   def testHasCorrectRank(self, proto, arr):
     """Test that the result has the right rank."""

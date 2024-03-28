@@ -63,6 +63,7 @@ tsl_pybind_extension(
         "//xla:literal",
         "//xla:xla_data_proto_cc",
         "//xla/python:logging",
+        "//xla/python:nb_numpy",
         "//xla/python:types",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",

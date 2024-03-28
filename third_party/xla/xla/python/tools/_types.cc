@@ -25,6 +25,7 @@ limitations under the License.
 #include "pybind11_protobuf/native_proto_caster.h"  // from @pybind11_protobuf
 #include "xla/literal.h"
 #include "xla/python/logging.h"
+#include "xla/python/nb_numpy.h"
 #include "xla/python/types.h"
 #include "xla/xla_data.pb.h"
 // NOTE: The tsl-numpy header forbids importing the actual NumPy arrayobject.h
@@ -58,6 +59,19 @@ absl::StatusOr<py::object> MakeNdarray(const xla::LiteralProto& proto) {
 
   // Convert `nb::object` into `py::object`.
   return py::reinterpret_steal<py::object>(nbobj.release().ptr());
+}
+
+// Partial reversion of cl/617156835, until we can get the proto-casters
+// (and hence the extension) switched over to nanobind.
+// TODO(wrengr): Or can we mix `{py,nb}::module_::def` calls??
+absl::StatusOr<xla::PrimitiveType> DtypeToEtype(const py::dtype& py_d) {
+  auto nb_d = nb::borrow<xla::nb_dtype>(py_d.ptr());
+  return xla::DtypeToPrimitiveType(nb_d);
+}
+
+absl::StatusOr<py::dtype> EtypeToDtype(xla::PrimitiveType p) {
+  TF_ASSIGN_OR_RETURN(xla::nb_dtype nb_d, xla::PrimitiveTypeToNbDtype(p));
+  return py::reinterpret_steal<py::dtype>(nb_d.release().ptr());
 }
 }  // namespace
 
@@ -98,7 +112,8 @@ PYBIND11_MODULE(_types, py_m) {
   py::module_::import("ml_dtypes");
 
   // Ensure that tsl-numpy initializes datastructures of the actual-NumPy
-  // implementation, and does whatever else tsl-numpy needs.
+  // implementation, and does whatever else tsl-numpy needs.  This is
+  // also necessary for using the `xla::nb_dtype` type.
   tsl::ImportNumpy();
 
   // Declare that C++ can `nb::cast` from `std::shared_ptr<xla::Literal>`
@@ -123,6 +138,22 @@ PYBIND11_MODULE(_types, py_m) {
     into an `xla::Literal` and then converts that literal into a tree
     of tuples with leaves being `numpy.ndarray` views of array-shaped
     sub-literals.
+  )pbdoc");
+
+  // This method name is based on `xla_client.dtype_to_etype`.
+  // NOTE: `xla_client` uses a Python class wrapping the protobuf-enum,
+  // rather than using the protobuf-enum directly.  See the module docstring
+  // in "types.py" for more explanation on why.
+  py_m.def("dtype_to_etype", &DtypeToEtype, py::arg("dtype").none(false),
+           py::pos_only(), R"pbdoc(
+    Converts `numpy.dtype` into
+    `tensorflow.compiler.xla.xla_data_pb2.PrimitiveType`.
+  )pbdoc");
+
+  py_m.def("etype_to_dtype", &EtypeToDtype, py::arg("ptype").none(false),
+           py::pos_only(), R"pbdoc(
+    Converts `tensorflow.compiler.xla.xla_data_pb2.PrimitiveType` into
+    `numpy.dtype`.
   )pbdoc");
   // LINT.ThenChange(_types.pyi)
 }
