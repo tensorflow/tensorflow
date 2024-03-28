@@ -1160,11 +1160,12 @@ Status ShapeVerifier::HandleBitcast(HloInstruction* bitcast) {
           (ShapeUtil::ArrayDataSize(output_shape) ==
            ShapeUtil::ArrayDataSize(operand_shape)))) {
       return Internal(
-          "Bitcast cannot have different shape sizes of output (%d) and "
+          "%s: Bitcast cannot have different shape sizes of output (%d) and "
           "operand "
           "(%d) (%s) (%s)",
-          opts_.shape_size(output_shape), opts_.shape_size(operand_shape),
-          output_shape.ToString(true), operand_shape.ToString(true));
+          bitcast->ToString(), opts_.shape_size(output_shape),
+          opts_.shape_size(operand_shape), output_shape.ToString(true),
+          operand_shape.ToString(true));
     }
   }
   return OkStatus();
@@ -1975,7 +1976,8 @@ Status ShapeVerifier::VerifyEntryComputationLayout(const HloModule& module) {
     if (!ShapesSame(parameter->shape(), layout.parameter_shape(i),
                     Shape::Equal()
                         .IgnoreTilesInLayout()
-                        .IgnoreTailPaddingAlignmentInElements())) {
+                        .IgnoreTailPaddingAlignmentInElements()
+                        .IgnoreMemorySpaceInLayout())) {
       return Internal(
           "Shape of the entry computation parameter %d is %s should be "
           "compatible to the one specified in module's entry computation "
