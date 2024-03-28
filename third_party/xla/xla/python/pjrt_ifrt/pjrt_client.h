@@ -52,6 +52,21 @@ class PjRtCompatibleClient
       std::shared_ptr<PjRtBuffer> pjrt_buffer) = 0;
   virtual absl::StatusOr<tsl::RCReference<PjRtCompatibleArray>> CreatePjRtArray(
       Shape shape, PjRtBuffers pjrt_buffers) = 0;
+  virtual absl::StatusOr<tsl::RCReference<PjRtCompatibleArray>> CreatePjRtArray(
+      DType dtype, Shape shape, std::shared_ptr<const Sharding> sharding,
+      PjRtBuffers pjrt_buffers) = 0;
+
+  absl::StatusOr<tsl::RCReference<Array>> MakeArrayFromHostBuffer(
+      const void* data, DType dtype, Shape shape,
+      std::optional<absl::Span<const int64_t>> byte_strides,
+      std::shared_ptr<const Sharding> sharding,
+      Client::HostBufferSemantics semantics,
+      std::function<void()> on_done_with_host_buffer) override;
+
+  absl::StatusOr<tsl::RCReference<Array>> AssembleArrayFromSingleDeviceArrays(
+      Shape shape, std::shared_ptr<const Sharding> sharding,
+      absl::Span<tsl::RCReference<Array>> arrays,
+      ArrayCopySemantics semantics) override;
 
   static char ID;  // NOLINT
 };
@@ -74,22 +89,13 @@ class PjRtClient final
       std::shared_ptr<PjRtBuffer> pjrt_buffer) override;
   absl::StatusOr<tsl::RCReference<PjRtCompatibleArray>> CreatePjRtArray(
       Shape shape, PjRtBuffers pjrt_buffers) override;
+  absl::StatusOr<tsl::RCReference<PjRtCompatibleArray>> CreatePjRtArray(
+      DType dtype, Shape shape, std::shared_ptr<const Sharding> sharding,
+      PjRtBuffers pjrt_buffers) override;
 
   // Client implementation.
 
   ~PjRtClient() override = default;
-
-  absl::StatusOr<tsl::RCReference<Array>> MakeArrayFromHostBuffer(
-      const void* data, DType dtype, Shape shape,
-      std::optional<absl::Span<const int64_t>> byte_strides,
-      std::shared_ptr<const Sharding> sharding,
-      Client::HostBufferSemantics semantics,
-      std::function<void()> on_done_with_host_buffer) override;
-
-  absl::StatusOr<tsl::RCReference<Array>> AssembleArrayFromSingleDeviceArrays(
-      Shape shape, std::shared_ptr<const Sharding> sharding,
-      absl::Span<tsl::RCReference<Array>> arrays,
-      ArrayCopySemantics semantics) override;
 
   absl::StatusOr<tsl::RCReference<Tuple>> MakeTuple(
       absl::Span<tsl::RCReference<Value>> values) override;
