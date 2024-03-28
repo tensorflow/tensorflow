@@ -51,6 +51,7 @@ cc_library(
         ":tfrt_fallback_common",
         ":tfrt_fallback_opdefs",
         "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:BytecodeOpInterface",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:SideEffectInterfaces",
         "@llvm-project//mlir:Support",
@@ -254,6 +255,7 @@ cc_library(
         ":tfrt_fallback_opdefs",
         ":tfrt_gpu_opdefs_inc_gen",
         "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:BytecodeOpInterface",
         "@llvm-project//mlir:IR",
     ],
 )
