@@ -509,9 +509,12 @@ bool QrExpander::InstructionMatchesPattern(HloInstruction* instruction) {
 
 absl::StatusOr<HloInstruction*> QrExpander::ExpandInstruction(
     HloInstruction* instruction) {
-  const std::string name =
+  std::string name =
       absl::StrFormat("xla.%s_%s", instruction->custom_call_target(),
                       instruction->operand(0)->shape().ToString());
+  if (instruction->custom_call_target() == kHouseholderProductCustomCallName) {
+    name += "_" + instruction->operand(1)->shape().ToString();
+  }
 
   HloModule* module = instruction->GetModule();
 
