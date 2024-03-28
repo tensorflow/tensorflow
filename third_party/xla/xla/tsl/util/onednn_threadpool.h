@@ -14,8 +14,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_TSL_UTIL_ONEDNN_THREADPOOL_H_
-#define TENSORFLOW_TSL_UTIL_ONEDNN_THREADPOOL_H_
+#ifndef XLA_TSL_UTIL_ONEDNN_THREADPOOL_H_
+#define XLA_TSL_UTIL_ONEDNN_THREADPOOL_H_
 #ifdef INTEL_MKL
 
 #include <list>
@@ -190,4 +190,4 @@ class OneDnnThreadPool {
 }  // namespace tsl
 
 #endif  // INTEL_MKL
-#endif  // TENSORFLOW_TSL_UTIL_ONEDNN_THREADPOOL_H_
+#endif  // XLA_TSL_UTIL_ONEDNN_THREADPOOL_H_

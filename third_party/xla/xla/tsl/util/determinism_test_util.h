@@ -12,16 +12,27 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#ifndef XLA_TSL_UTIL_DETERMINISM_TEST_UTIL_H_
+#define XLA_TSL_UTIL_DETERMINISM_TEST_UTIL_H_
 
-#ifndef TENSORFLOW_TSL_UTIL_DETERMINISM_H_
-#define TENSORFLOW_TSL_UTIL_DETERMINISM_H_
+#include "xla/tsl/util/determinism.h"
 
 namespace tsl {
+namespace test {
 
-bool OpDeterminismRequired();
-bool OpOrderDeterminismRequired();
-void EnableOpDeterminism(bool enabled);
+// Enables determinism for a single test method.
+class DeterministicOpsScope {
+ public:
+  DeterministicOpsScope() : was_enabled_(OpDeterminismRequired()) {
+    EnableOpDeterminism(true);
+  }
+  ~DeterministicOpsScope() { EnableOpDeterminism(was_enabled_); }
 
+ private:
+  const bool was_enabled_;
+};
+
+}  // namespace test
 }  // namespace tsl
 
-#endif  // TENSORFLOW_TSL_UTIL_DETERMINISM_H_
+#endif  // XLA_TSL_UTIL_DETERMINISM_TEST_UTIL_H_

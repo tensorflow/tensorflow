@@ -15,8 +15,8 @@ limitations under the License.
 
 // The utility to check Cudnn dependency and set Cudnn-related flags.
 
-#ifndef TENSORFLOW_TSL_UTIL_USE_CUDNN_H_
-#define TENSORFLOW_TSL_UTIL_USE_CUDNN_H_
+#ifndef XLA_TSL_UTIL_USE_CUDNN_H_
+#define XLA_TSL_UTIL_USE_CUDNN_H_
 
 #include <cstdint>
 
@@ -40,4 +40,4 @@ bool ShouldCudnnGroupedConvolutionBeUsed(const int32_t filter_rows,
                                          const int32_t out_depth);
 }  // namespace tsl
 
-#endif  // TENSORFLOW_TSL_UTIL_USE_CUDNN_H_
+#endif  // XLA_TSL_UTIL_USE_CUDNN_H_

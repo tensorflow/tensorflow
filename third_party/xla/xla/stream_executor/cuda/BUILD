@@ -396,6 +396,7 @@ cuda_only_cc_library(
         "//xla/stream_executor/gpu:gpu_timer_header",
         "//xla/stream_executor/platform",
         "//xla/tsl/cuda:cudnn",
+        "//xla/tsl/util:env_var",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:flat_hash_map",
@@ -420,7 +421,6 @@ cuda_only_cc_library(
         "@local_tsl//tsl/platform:tensor_float_32_hdr_lib",
         "@local_tsl//tsl/platform:tensor_float_32_utils",
         "@local_tsl//tsl/protobuf:dnn_proto_cc",
-        "@local_tsl//tsl/util:env_var",
     ],
     alwayslink = True,
 )

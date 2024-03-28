@@ -32,8 +32,8 @@ limitations under the License.
 #include "xla/service/hlo_cost_analysis.h"
 #include "xla/service/pattern_matcher.h"
 #include "xla/status_macros.h"
+#include "xla/tsl/util/onednn_threadpool.h"
 #include "tsl/platform/logging.h"  // IWYU pragma: keep
-#include "tsl/util/onednn_threadpool.h"
 
 namespace xla {
 namespace cpu {

@@ -32,11 +32,11 @@ limitations under the License.
 #include "absl/strings/str_join.h"
 #include "xla/stream_executor/gpu/gpu_init.h"  // IWYU pragma: keep
 #include "xla/stream_executor/stream_executor.h"  // IWYU pragma: keep
+#include "xla/tsl/util/env_var.h"  // IWYU pragma: keep
 #include "tsl/framework/allocator.h"
 #include "tsl/framework/device_id.h"
 #include "tsl/platform/logging.h"
 #include "tsl/platform/mutex.h"
-#include "tsl/util/env_var.h"  // IWYU pragma: keep
 
 namespace stream_executor {
 

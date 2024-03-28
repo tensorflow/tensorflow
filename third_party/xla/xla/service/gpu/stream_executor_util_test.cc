@@ -23,7 +23,7 @@ limitations under the License.
 #include "absl/time/time.h"
 #include "xla/autotuning.pb.h"
 #include "xla/service/hlo_module_config.h"
-#include "tsl/util/proto/proto_utils.h"
+#include "xla/tsl/util/proto/proto_utils.h"
 
 namespace xla::gpu {
 namespace {

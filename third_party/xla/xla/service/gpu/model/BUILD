@@ -744,6 +744,7 @@ cc_library(
             "//xla/service:hlo_runner",
             "//xla/service:platform_util",
             "//xla/stream_executor:device_description",
+            "//xla/tsl/util:command_line_flags",
             "@com_google_absl//absl/log",
             "@com_google_absl//absl/strings",
             "@com_google_absl//absl/strings:str_format",
@@ -751,7 +752,6 @@ cc_library(
             "@local_tsl//tsl/platform:path",
             "@local_tsl//tsl/platform:platform_port",
             "@local_tsl//tsl/platform:status",
-            "@local_tsl//tsl/util:command_line_flags",
         ],
     )
     for sm in [

@@ -14,9 +14,9 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/common_runtime/eager/execute_node.h"
 
+#include "xla/tsl/util/env_var.h"
 #include "tensorflow/core/common_runtime/eager/context.h"
 #include "tensorflow/core/lib/core/errors.h"
-#include "tsl/util/env_var.h"
 
 namespace tensorflow {
 

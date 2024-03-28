@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_TSL_UTIL_STAT_SUMMARIZER_OPTIONS_H_
-#define TENSORFLOW_TSL_UTIL_STAT_SUMMARIZER_OPTIONS_H_
+#ifndef XLA_TSL_UTIL_STAT_SUMMARIZER_OPTIONS_H_
+#define XLA_TSL_UTIL_STAT_SUMMARIZER_OPTIONS_H_
 namespace tsl {
 // Used to control the output of the statistics summarizer;
 struct StatSummarizerOptions {
@@ -41,4 +41,4 @@ struct StatSummarizerOptions {
 };
 }  // namespace tsl
 
-#endif  // TENSORFLOW_TSL_UTIL_STAT_SUMMARIZER_OPTIONS_H_
+#endif  // XLA_TSL_UTIL_STAT_SUMMARIZER_OPTIONS_H_
