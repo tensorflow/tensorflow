@@ -826,6 +826,18 @@ class QuantizedConvTest : public OpsTestBase {
       if (fused_ops[i] == "Relu") {
         last_op = "with_relu";
         out_op = ops::Relu(root.WithOpName(last_op), out_op);
+      } else if (std::find(fused_ops.begin(), fused_ops.end(),
+                           "_FusedHardSwish") != fused_ops.end()) {
+        last_op = "with_hard_swish";
+        auto const_three = ops::Const(root.WithOpName("add_input"), {3.0f}, {});
+        auto const_one_sixth =
+            ops::Const(root.WithOpName("one_sixth"), {1.0f / 6.0f}, {});
+        auto add = ops::AddV2(root.WithOpName("addv2"), const_three, out_op);
+        auto relu6 = ops::Relu6(root.WithOpName("relu_6"), add);
+        auto mul_one_sixth =
+            ops::Mul(root.WithOpName("mul_one_sixth"), const_one_sixth, relu6);
+        auto mul_output =
+            ops::Mul(root.WithOpName(last_op), mul_one_sixth, out_op);
       }
     }
 
@@ -1047,6 +1059,14 @@ TEST_F(QuantizedConvTest, DWBiasAddReluRequantizeFusion) {
 TEST_F(QuantizedConvTest, DWUnsignedInputBiasAddReluRequantizeFusion) {
   // We need higher tolerance for quint8 input/output
   TestBiasAddFusion<quint8, quint8>(true, true, "Relu", 4.0);
+}
+
+TEST_F(QuantizedConvTest, BiasAddHardSwishRequantizeFusion) {
+  TestBiasAddFusion<qint8, qint8>(true, false, "_FusedHardSwish");
+}
+
+TEST_F(QuantizedConvTest, DWBiasAddHardSwishRequantizeFusion) {
+  TestBiasAddFusion<qint8, qint8>(true, true, "_FusedHardSwish");
 }
 
 TEST_F(QuantizedConvTest, BiasAddSumReluRequantizeFusion) {
