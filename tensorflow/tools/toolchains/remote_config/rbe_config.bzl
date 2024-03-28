@@ -1,9 +1,9 @@
 """Macro that creates external repositories for remote config."""
 
 load("//tensorflow/tools/toolchains/remote_config:containers.bzl", "containers")
-load("//third_party/gpus:cuda_configure.bzl", "remote_cuda_configure")
+load("//third_party/gpus:hermetic_cuda_configure.bzl", "hermetic_cuda_configure")
 load("//third_party/gpus:rocm_configure.bzl", "remote_rocm_configure")
-load("//third_party/nccl:nccl_configure.bzl", "remote_nccl_configure")
+load("//third_party/nccl:hermetic_nccl_configure.bzl", "hermetic_nccl_configure")
 load("//third_party/py:python_configure.bzl", "local_python_configure", "remote_python_configure")
 load("//third_party/remote_config:remote_platform_configure.bzl", "remote_platform_configure")
 load("//third_party/tensorrt:tensorrt_configure.bzl", "remote_tensorrt_configure")
@@ -41,8 +41,7 @@ def _tensorflow_rbe_config(name, compiler, python_versions, os, rocm_version = N
             "TF_ENABLE_XLA": "1",
             "TF_CUDNN_VERSION": cudnn_version,
             "TF_CUDA_VERSION": cuda_version,
-            "CUDNN_INSTALL_PATH": cudnn_install_path if cudnn_install_path != None else "/usr/lib/x86_64-linux-gnu",
-            "TF_NEED_TENSORRT": "1",
+            "TF_NEED_TENSORRT": "0",
             "TF_TENSORRT_VERSION": tensorrt_version if tensorrt_version != None else "",
             "TENSORRT_INSTALL_PATH": tensorrt_install_path if tensorrt_install_path != None else "/usr/lib/x86_64-linux-gnu",
             "GCC_HOST_COMPILER_PATH": compiler if not compiler.endswith("clang") else "",
@@ -58,13 +57,13 @@ def _tensorflow_rbe_config(name, compiler, python_versions, os, rocm_version = N
             "Pool": "default",
         }
 
-        remote_cuda_configure(
+        hermetic_cuda_configure(
             name = "%s_config_cuda" % name,
             environ = env,
             exec_properties = exec_properties,
         )
 
-        remote_nccl_configure(
+        hermetic_nccl_configure(
             name = "%s_config_nccl" % name,
             environ = env,
             exec_properties = exec_properties,
@@ -175,13 +174,13 @@ def sigbuild_tf_configs(name_container_map, env):
             "Pool": "default",
         }
 
-        remote_cuda_configure(
+        hermetic_cuda_configure(
             name = "%s_config_cuda" % name,
             environ = env,
             exec_properties = exec_properties,
         )
 
-        remote_nccl_configure(
+        hermetic_nccl_configure(
             name = "%s_config_nccl" % name,
             environ = env,
             exec_properties = exec_properties,

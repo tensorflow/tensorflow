@@ -1,4 +1,5 @@
 load("//tensorflow:strict.default.bzl", "py_strict_library", "py_strict_test")
+load("//tensorflow:tensorflow.bzl", "if_cuda_configured", "if_oss")
 
 # copybara:uncomment package(default_applicable_licenses = ["//tensorflow:license"])
 
@@ -199,6 +200,10 @@ py_strict_test(
         "--num_generated_cases=90",
         "--enable_x64",  # Needed to enable dtype check
     ],
+    data = if_oss(if_cuda_configured([
+        "@cuda_nvcc//:ptxas",
+        "@cuda_nvcc//:nvvm",
+    ])),
     python_version = "PY3",
     shard_count = 20,
     srcs_version = "PY2AND3",

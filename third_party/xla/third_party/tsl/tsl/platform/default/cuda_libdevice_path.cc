@@ -31,6 +31,7 @@ limitations under the License.
 
 #if !defined(PLATFORM_GOOGLE)
 #include "third_party/gpus/cuda/cuda_config.h"
+#include "tsl/platform/env.h"
 #endif
 #include "tsl/platform/logging.h"
 
@@ -40,6 +41,17 @@ std::vector<std::string> CandidateCudaRoots() {
 #if !defined(PLATFORM_GOOGLE)
   auto roots = std::vector<std::string>{TF_CUDA_TOOLKIT_PATH,
                                         std::string("/usr/local/cuda")};
+  std::string runfiles_str = "runfiles";
+  std::string executable_dir = tsl::Env::Default()->GetExecutablePath();
+  std::string hermetic_nvcc_dir =
+      io::JoinPath(executable_dir + "." + runfiles_str, "cuda_nvcc");
+  roots.push_back(hermetic_nvcc_dir);
+  std::string runfiles_dir = tsl::Env::Default()->GetRunfilesDir();
+  std::size_t runfiles_ind = runfiles_dir.rfind(runfiles_str);
+  hermetic_nvcc_dir =
+      io::JoinPath(runfiles_dir.substr(0, runfiles_ind + runfiles_str.length()),
+                   "cuda_nvcc");
+  roots.push_back(hermetic_nvcc_dir);
 
 #if defined(PLATFORM_POSIX) && !defined(__APPLE__)
   Dl_info info;

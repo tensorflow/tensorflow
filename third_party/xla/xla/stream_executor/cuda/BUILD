@@ -1,5 +1,5 @@
 load("@bazel_skylib//rules:common_settings.bzl", "bool_flag")
-load("@local_tsl//tsl:tsl.bzl", "if_google", "if_nccl", "internal_visibility", "tsl_copts")
+load("@local_tsl//tsl:tsl.bzl", "if_google", "if_nccl", "if_oss", "internal_visibility", "tsl_copts")
 load(
     "@local_tsl//tsl/platform:build_config_root.bzl",
     "if_static",
@@ -562,6 +562,9 @@ cuda_only_cc_library(
     name = "cuda_asm_compiler",
     srcs = ["cuda_asm_compiler.cc"],
     copts = tf_additional_gpu_compilation_copts(),
+    data = if_oss(if_cuda_is_configured([
+        "@cuda_nvcc//:nvlink",
+    ])),
     deps = [
         "//xla:status_macros",
         "//xla/stream_executor:stream_executor_headers",
