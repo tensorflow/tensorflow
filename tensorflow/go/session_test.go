@@ -52,7 +52,7 @@ func TestSessionRunNeg(t *testing.T) {
 				t.Fatal(err)
 			}
 			graph, inp, out := createTestGraph(t, t1.DataType())
-			s, err := NewSession(graph, &SessionOptions{})
+			s, err := NewSession(graph, &SessionOptions{}, nil)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -116,7 +116,7 @@ func TestMultipleInput(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	session, err := NewSession(graph, nil)
+	session, err := NewSession(graph, nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -219,7 +219,7 @@ func TestSessionRunConcat(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	s, err := NewSession(g, &SessionOptions{})
+	s, err := NewSession(g, &SessionOptions{}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -255,7 +255,7 @@ func TestSessionWithStringTensors(t *testing.T) {
 			Input: []Input{hash.Output(0)},
 		})
 	)
-	s, err := NewSession(g, nil)
+	s, err := NewSession(g, nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -282,7 +282,7 @@ func TestConcurrency(t *testing.T) {
 	}
 
 	graph, inp, out := createTestGraph(t, tensor.DataType())
-	s, err := NewSession(graph, &SessionOptions{})
+	s, err := NewSession(graph, &SessionOptions{}, nil)
 	if err != nil {
 		t.Fatalf("NewSession(): %v", err)
 	}
@@ -316,7 +316,7 @@ func ExamplePartialRun() {
 		plusB, _ = Add(g, "plusB", plus3, b)     // ((a + 2) + 3) + b
 
 	)
-	sess, err := NewSession(g, nil)
+	sess, err := NewSession(g, nil, nil)
 	if err != nil {
 		panic(err)
 	}
@@ -385,7 +385,7 @@ func TestSessionConfig(t *testing.T) {
 		t.Fatal(err)
 	}
 	opts := SessionOptions{Config: []byte("(\x01")}
-	s, err := NewSession(graph, &opts)
+	s, err := NewSession(graph, &opts, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -399,7 +399,7 @@ func TestSessionConfig(t *testing.T) {
 }
 
 func TestListDevices(t *testing.T) {
-	s, err := NewSession(NewGraph(), nil)
+	s, err := NewSession(NewGraph(), nil, nil)
 	if err != nil {
 		t.Fatalf("NewSession(): %v", err)
 	}
@@ -429,5 +429,13 @@ func TestDeviceStringNoMemoryLimit(t *testing.T) {
 	want := "(Device: name \"foo\", type bar, no memory limit)"
 	if got != want {
 		t.Errorf("Got \"%s\", want \"%s\"", got, want)
+	}
+}
+
+func TestRunOptions(t *testing.T) {
+	runOpts := &RunOptions{Config: []byte{16, 1}} // timeout_in_ms:1
+	_, err := NewSession(NewGraph(), &SessionOptions{}, runOpts)
+	if err != nil {
+		t.Fatalf("NewSession(): %v", err)
 	}
 }

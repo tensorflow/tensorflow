@@ -40,6 +40,8 @@ import (
 type Session struct {
 	c *C.TF_Session
 
+	runOptions *C.TF_Buffer
+
 	// For ensuring that:
 	// - Close() blocks on all Run() calls to complete.
 	// - Close() can be called multiple times.
@@ -49,7 +51,7 @@ type Session struct {
 
 // NewSession creates a new execution session with the associated graph.
 // options may be nil to use the default options.
-func NewSession(graph *Graph, options *SessionOptions) (*Session, error) {
+func NewSession(graph *Graph, options *SessionOptions, runOptions *RunOptions) (*Session, error) {
 	status := newStatus()
 	cOpt, doneOpt, err := options.c()
 	defer doneOpt()
@@ -61,7 +63,16 @@ func NewSession(graph *Graph, options *SessionOptions) (*Session, error) {
 		return nil, err
 	}
 
-	s := &Session{c: cSess}
+	var cRunOptions *C.TF_Buffer
+	if runOptions != nil {
+		// TF_NewBufferFromString makes a copy of the input and sets an appropriate deallocator.
+		// Useful for passing in read-only, input protobufs.
+		//
+		// This particular cRunOptions structure with data inside would be deallocated with C.TF_DeleteBuffer during Session.Close().
+		cRunOptions = C.TF_NewBufferFromString(C.CBytes(runOptions.Config), C.size_t(len(runOptions.Config)))
+	}
+
+	s := &Session{c: cSess, runOptions: cRunOptions}
 	runtime.SetFinalizer(s, func(s *Session) { s.Close() })
 	return s, nil
 }
@@ -143,7 +154,7 @@ func (s *Session) Run(feeds map[Output]*Tensor, fetches []Output, targets []*Ope
 
 	c := newCRunArgs(feeds, fetches, targets)
 	status := newStatus()
-	C.TF_SessionRun(s.c, nil,
+	C.TF_SessionRun(s.c, s.runOptions,
 		ptrOutput(c.feeds), ptrTensor(c.feedTensors), C.int(len(feeds)),
 		ptrOutput(c.fetches), ptrTensor(c.fetchTensors), C.int(len(fetches)),
 		ptrOperation(c.targets), C.int(len(targets)),
@@ -283,6 +294,14 @@ func (s *Session) Close() error {
 	}
 	C.TF_DeleteSession(s.c, status.c)
 	s.c = nil
+
+	if s.runOptions != nil {
+		// We don't need to care about deallocating tfRunOptions.data using C.free(s.runOptions.data), cuz
+		// tfRunOptions structure was created with TF_NewBufferFromString which sets an appropriate deallocator by itself.
+		// So, DeleteBuffer shoud be enough to free underlying data.
+		C.TF_DeleteBuffer(s.runOptions)
+	}
+
 	return status.Err()
 }
 
@@ -313,6 +332,14 @@ type SessionOptions struct {
 	// lifetime, session calls may fail immediately.
 	Target string
 
+	// Config is a binary-serialized representation of the
+	// tensorflow.ConfigProto protocol message
+	// (https://www.tensorflow.org/code/tensorflow/core/protobuf/config.proto).
+	Config []byte
+}
+
+// RunOptions contains configuration information for a session run.
+type RunOptions struct {
 	// Config is a binary-serialized representation of the
 	// tensorflow.ConfigProto protocol message
 	// (https://www.tensorflow.org/code/tensorflow/core/protobuf/config.proto).
