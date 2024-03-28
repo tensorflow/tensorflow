@@ -37,15 +37,14 @@ namespace xla {
 bool InferDotShardingFromOperands(
     HloInstruction* instruction, const CallGraph& call_graph,
     const dot_as_convolution_util::DotConvolutionDimsInfo& dnums,
-    bool may_combine_partial_sharding, bool is_spmd);
+    bool may_combine_partial_sharding);
 
 // Infers the shardings for a convolution HLO op from the shardings on its
 // operands, which are expected to have sharding annotations.
 bool InferConvolutionShardingFromOperands(HloInstruction* instruction,
                                           const CallGraph& call_graph,
                                           int64_t aggressiveness,
-                                          bool may_combine_partial_sharding,
-                                          bool is_spmd);
+                                          bool may_combine_partial_sharding);
 
 // Remove Sharding custom-call instruction by folding the sharding attribute
 // to its operand. If the operand already has a different sharding, insert a
@@ -78,11 +77,10 @@ int64_t ComputeNonRootUsers(const HloInstruction* instr);
 
 // Infers broadcast ops' operand sharding, based on its output sharding.
 std::optional<HloSharding> InferBroadcastOperandSharding(
-    const HloInstruction& instruction, bool is_spmd = true);
+    const HloInstruction& instruction);
 
 bool InferReduceShardingFromOperand(HloInstruction* instruction,
-                                    bool may_combine_partial_sharding,
-                                    bool is_spmd);
+                                    bool may_combine_partial_sharding);
 
 // Propagates sharding information around the graph. HLOs that have shardings
 // are kept as-is, those that do not have shardings are given shardings based on
@@ -92,15 +90,14 @@ class ShardingPropagation : public HloModulePass {
   using ComputationMap =
       absl::flat_hash_map<const HloComputation*, HloInstruction*>;
   explicit ShardingPropagation(
-      bool is_spmd = false, bool propagate_metadata = false,
+      bool propagate_metadata = false,
       absl::Span<const bool> allow_spmd_sharding_propagation_to_output =
           {false},
       absl::Span<const bool> allow_spmd_sharding_propagation_to_parameters =
           {false},
       bool cse_prevention_only = false,
       std::unique_ptr<CustomCallShardingHelper> sharding_helper = nullptr)
-      : is_spmd_(is_spmd),
-        propagate_metadata_(propagate_metadata),
+      : propagate_metadata_(propagate_metadata),
         allow_spmd_sharding_propagation_to_output_(
             absl::c_any_of(allow_spmd_sharding_propagation_to_output,
                            [](bool v) { return v; })),
@@ -135,7 +132,7 @@ class ShardingPropagation : public HloModulePass {
 
   static std::optional<HloSharding> GetShardingFromUser(
       const HloInstruction& instruction, const HloInstruction& user,
-      int64_t aggressiveness, bool is_spmd, const CallGraph& call_graph);
+      int64_t aggressiveness, const CallGraph& call_graph);
 
   // Canonicalizes entry_computation_layouts by calling
   // module.layout_canonicalization_callback(), which gives canolicalized
@@ -157,12 +154,10 @@ class ShardingPropagation : public HloModulePass {
   bool InferShardingFromUsers(
       HloInstruction* instruction,
       const ShardingPropagation::ComputationMap& computation_map,
-      int64_t aggressiveness, bool is_spmd,
-      const CustomCallShardingHelper* sharding_helper,
+      int64_t aggressiveness, const CustomCallShardingHelper* sharding_helper,
       const CallGraph& call_graph);
 
   std::unique_ptr<CustomCallShardingHelper> sharding_helper_;
-  bool is_spmd_;
   bool propagate_metadata_;
   bool allow_spmd_sharding_propagation_to_output_;
   bool allow_spmd_sharding_propagation_to_parameters_;

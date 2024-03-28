@@ -2136,15 +2136,7 @@ static Status InferXlaShardingFromNeighbors(
   return absl::OkStatus();
 }
 
-bool UseSpmdForXlaPartitioning(const Node* replicate_node) {
-  bool spmd_attr;
-  if (!replicate_node ||
-      !TryGetNodeAttr(replicate_node->attrs(), "use_spmd_for_xla_partitioning",
-                      &spmd_attr)) {
-    spmd_attr = false;
-  }
-  return spmd_attr;
-}
+bool UseSpmdForXlaPartitioning(const Node* replicate_node) { return true; }
 
 std::string FormatNodeAndShardingMsg(
     const std::optional<NodeAndSharding>& node_and_sharding) {
