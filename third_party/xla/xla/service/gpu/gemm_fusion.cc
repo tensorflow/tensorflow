@@ -794,7 +794,7 @@ bool IsSupportedByTriton(PrecisionConfig::Algorithm algorithm,
   switch (algorithm) {
     case PrecisionConfig::ALG_DOT_TF32_TF32_F32:
       if (cuda_compute_capability) {
-        return cuda_compute_capability->IsAtLeastAmpere();
+        return true;
       }
       return false;
     case PrecisionConfig::ALG_DOT_BF16_BF16_F32:
@@ -802,7 +802,7 @@ bool IsSupportedByTriton(PrecisionConfig::Algorithm algorithm,
     case PrecisionConfig::ALG_DOT_BF16_BF16_F32_X3:
     case PrecisionConfig::ALG_DOT_BF16_BF16_F32_X6:
       if (cuda_compute_capability) {
-        return cuda_compute_capability->IsAtLeastAmpere();
+        return true;
       }
       if (rocm_compute_capability) {
         return rocm_compute_capability->has_bf16_dtype_support();
@@ -852,8 +852,7 @@ FusionDecision CanTritonHandleGEMM(
         return true;
       case BF16:
         if (cuda_compute_capability) {
-          return cuda_compute_capability->IsAtLeast(
-              stream_executor::CudaComputeCapability::AMPERE);
+          return true;
         }
         if (rocm_compute_capability) {
           return rocm_compute_capability->has_bf16_dtype_support();
@@ -908,6 +907,13 @@ bool ShouldTritonHandleGEMM(HloDotInstruction& dot,
 absl::StatusOr<bool> GemmFusion::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
+  auto cuda_compute_capability =
+      std::get_if<se::CudaComputeCapability>(&gpu_version_);
+  if (!cuda_compute_capability || !cuda_compute_capability->IsAtLeastAmpere()) {
+    return absl::FailedPreconditionError(
+        "Triton support is only enabled for Ampere GPUs and up.");
+  }
+
   bool changed = false;
   for (HloComputation* computation :
        module->MakeNonfusionComputations(execution_threads)) {

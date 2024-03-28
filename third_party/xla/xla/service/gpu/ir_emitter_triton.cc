@@ -351,8 +351,7 @@ Value Compare(ImplicitLocOpBuilder& b, ValueRange values,
 
 Value Maximum(ImplicitLocOpBuilder& b, const se::DeviceDescription& device_info,
               ValueRange values) {
-  if (mlir::getElementTypeOrSelf(values[0]).isa<mlir::FloatType>() &&
-      device_info.cuda_compute_capability().IsAtLeastAmpere()) {
+  if (mlir::getElementTypeOrSelf(values[0]).isa<mlir::FloatType>()) {
     return b.create<ma::MaximumFOp>(values);
   }
   // logic: isNaN(lhs) || (!isNan(rhs) && lhs >= rhs) ? lhs : rhs
@@ -373,8 +372,7 @@ Value Maximum(ImplicitLocOpBuilder& b, const se::DeviceDescription& device_info,
 
 Value Minimum(ImplicitLocOpBuilder& b, const se::DeviceDescription& device_info,
               ValueRange values) {
-  if (mlir::getElementTypeOrSelf(values[0]).isa<mlir::FloatType>() &&
-      device_info.cuda_compute_capability().IsAtLeastAmpere()) {
+  if (mlir::getElementTypeOrSelf(values[0]).isa<mlir::FloatType>()) {
     return b.create<ma::MinimumFOp>(values);
   }
   // logic: isNaN(lhs) || (!isNan(rhs) && lhs <= rhs) ? lhs : rhs
@@ -969,10 +967,9 @@ absl::Status CreateTritonPipeline(
   pm.addPass(mt::gpu::createOptimizeDotOperandsPass());
   pm.addPass(mlir::createCSEPass());
 
-  if (cc.IsAtLeastAmpere()) {
-    pm.addPass(mt::gpu::createPipelinePass(config.num_stages, config.num_warps,
-                                           config.num_ctas, ccAsInt));
-  }
+  pm.addPass(mt::gpu::createPipelinePass(config.num_stages, config.num_warps,
+                                         config.num_ctas, ccAsInt));
+
   if (!cc.IsAtLeastHopper()) {
     pm.addPass(mt::gpu::createPrefetchPass());
   }
@@ -1907,9 +1904,7 @@ bool Is6xBfloat16MatMul(const HloDotInstruction* dot_instr,
   if (algorithm == PrecisionConfig::ALG_UNSET) {
     const HloModule* hlo_module = dot_instr->GetModule();
     Type f32 = builder.getF32Type();
-    // BF16 datatype is not supported before Ampere.
-    return device_info.cuda_compute_capability().IsAtLeastAmpere() &&
-           hlo_module->config()
+    return hlo_module->config()
                .debug_options()
                .xla_gpu_enable_bf16_6way_gemm() &&
            dot_input_lhs.getType().cast<ShapedType>().getElementType() == f32 &&
@@ -1929,9 +1924,7 @@ bool Is3xBfloat16MatMul(const HloDotInstruction* dot_instr,
   if (algorithm == PrecisionConfig::ALG_UNSET) {
     const HloModule* hlo_module = dot_instr->GetModule();
     Type f32 = builder.getF32Type();
-    // BF16 datatype is not supported before Ampere.
-    return device_info.cuda_compute_capability().IsAtLeastAmpere() &&
-           hlo_module->config()
+    return hlo_module->config()
                .debug_options()
                .xla_gpu_enable_bf16_3way_gemm() &&
            dot_input_lhs.getType().cast<ShapedType>().getElementType() == f32 &&
@@ -2186,7 +2179,6 @@ absl::Status EmitMatMul(mlir::OpBuilder builder,
     Value accumulator_next;
     if (Is6xBfloat16MatMul(dot_instr, b, dot_input_lhs, dot_input_rhs,
                            device_info)) {
-      CHECK(device_info.cuda_compute_capability().IsAtLeastAmpere());
       absl::StatusOr<Value> accumulator_next_or = Emit6xBfloat16MatMul(
           b, dot_input_lhs, dot_input_rhs, iter_args.back());
       TF_CHECK_OK(accumulator_next_or.status());
@@ -2753,6 +2745,11 @@ absl::StatusOr<TritonWrapperResult> TritonWrapper(
     const se::DeviceDescription& device_info, const TritonGemmConfig& config,
     llvm::Module* llvm_module, TritonIrEmitter ir_emitter,
     mlir::MLIRContext& mlir_context) {
+  if (!cc.IsAtLeastAmpere()) {
+    return absl::FailedPreconditionError(
+        "Triton support is only enabled for Ampere GPUs and up.");
+  }
+
   auto debug_options = GetDebugOptionsFromFlags();
   if (debug_options.xla_gpu_enable_triton_hopper()) {
     // Set environment variables for consumption by Triton.
@@ -2782,6 +2779,11 @@ absl::StatusOr<TritonWrapperResult> CompileTritonToLLVM(
     const se::DeviceDescription& device_info, const TritonGemmConfig& config,
     mlir::ModuleOp triton_module, llvm::Module* llvm_module,
     mlir::MLIRContext& mlir_context) {
+  if (!cc.IsAtLeastAmpere()) {
+    return absl::FailedPreconditionError(
+        "Triton support is only enabled for Ampere GPUs and up.");
+  }
+
   bool should_verify =
       (hlo_config.debug_options().xla_gpu_llvm_verification_level() >= 1);
 #ifndef NDEBUG

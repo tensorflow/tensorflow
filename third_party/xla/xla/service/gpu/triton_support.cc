@@ -61,15 +61,13 @@ bool IsTritonSupportedDataType(PrimitiveType type,
     case F32:
       return true;
     case BF16:
-      return std::visit(
-          VariantVisitor{[](const se::CudaComputeCapability& cc) {
-                           return cc.IsAtLeast(
-                               stream_executor::CudaComputeCapability::AMPERE);
-                         },
-                         [](const se::RocmComputeCapability& cc) {
-                           return cc.has_bf16_dtype_support();
-                         }},
-          gpu_version);
+      return std::visit(VariantVisitor{[](const se::CudaComputeCapability& cc) {
+                                         return true;
+                                       },
+                                       [](const se::RocmComputeCapability& cc) {
+                                         return cc.has_bf16_dtype_support();
+                                       }},
+                        gpu_version);
     default:
       return false;
   }
