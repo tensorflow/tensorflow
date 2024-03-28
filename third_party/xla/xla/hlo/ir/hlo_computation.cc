@@ -136,7 +136,8 @@ HloComputation::HloComputation(
     HloInstruction* root_instruction)
     : unique_id_(-1),
       root_instruction_(root_instruction),
-      name_(NameUniquer::GetSanitizedName(name)) {
+      name_(NameUniquer::GetSanitizedName(name)),
+      num_live_instructions_(0) {
   param_instructions_.resize(parameter_count, nullptr);
   bool root_found = false;
   for (auto& instruction : *instructions) {
@@ -167,10 +168,10 @@ HloComputation::~HloComputation() {
     CHECK(async_start_->async_wrapped_computation() == this);
     async_start_->ClearCalledComputations();
   }
+  Cleanup();
   for (const auto& i : instructions_) {
     delete i.inst();
   }
-  Cleanup();
 }
 
 void HloComputation::SetInstruction(HloInstruction* instruction,
@@ -228,7 +229,7 @@ HloInstruction* HloComputation::AddInstructionInternal(
   VLOG(2) << "Adding instruction " << pinst << " " << pinst->name()
           << " from computation " << name() << " opcode " << info.opcode();
   uint32_t index = instructions_.size();
-  instruction_indices_[pinst] = index;
+  num_live_instructions_++;
   pinst->index_in_parent_ = index;
   instructions_.push_back(info);
   return pinst;
@@ -453,9 +454,8 @@ Status HloComputation::RemoveInstructionImpl(HloInstruction* instruction,
       << "instruction " << instruction->name()
       << " has control successors and cannot be removed";
 
-  auto inst_it = instruction_indices_.find(instruction);
-  TF_RET_CHECK(inst_it != instruction_indices_.end());
-  HloInstructionInfo* info = &instructions_[inst_it->second];
+  HloInstructionInfo* info = &instructions_[instruction->index_in_parent_];
+  DCHECK_EQ(info->inst(), instruction);
   info->inst()->set_parent(nullptr);
   to_be_deleted_.push_back(info->inst());  // Takes ownership
   to_be_deleted_.back()->DetachFromOperandsAndUsers();
@@ -471,9 +471,58 @@ Status HloComputation::RemoveInstructionImpl(HloInstruction* instruction,
   // TODO(jeff): should we set info->opcode to something?
   info->inst_ =
       nullptr;  // Leave a hole: this is no longer part of "instructions()"
-  instruction_indices_.erase(inst_it);
-  instruction->index_in_parent_ = ~0u;
+  num_live_instructions_--;
+  DCHECK_EQ(instructions_.size() - to_be_deleted_.size(),
+            num_live_instructions_)
+      << "instructions_.size(): " << instructions_.size()
+      << ", to_be_deleted_.size(): " << to_be_deleted_.size();
   return OkStatus();
+}
+
+void HloComputation::Cleanup() {
+  if (to_be_deleted_.empty()) return;
+
+  // If there are instructions to be deleted, there must be >0 live ones.
+  // Otherwise we deleted *all* instructions, which is probably a bug.
+  DCHECK_GT(num_live_instructions_, 0);
+
+  // Replacement, i.e. the rightmost "live" (a.k.a. non-deleted) instruction in
+  // the vector.
+  HloInstructionInfo* repl = &instructions_.back();
+  for (HloInstruction* del_insn : to_be_deleted_) {
+    int del_index = del_insn->index_in_parent_;
+    HloInstructionInfo* del = &instructions_[del_index];
+    DCHECK(del->inst() == nullptr);
+
+    delete del_insn;
+
+    // Find the replacement by moving to the left, if needed.
+    while (repl >= instructions_.data() && repl->inst() == nullptr) {
+      repl--;
+    }
+    CHECK_GE(repl, instructions_.data())
+        << "There should be at least one live instruction";
+    if (del > repl) continue;  // "del" already to the right of repl.
+
+    // Overwrite the deleted entry with the live one.
+    HloInstruction* live_instruction = repl->inst();
+    int live_index = del_index;
+    // Small optimization: instead of std::swap(), just overwrite *del. This
+    // requires us to also move repl to the left since otherwise we might use
+    // again the live entry we just copied.
+    *del = *repl;
+    repl--;
+
+    // Update reverse mapping.
+    live_instruction->index_in_parent_ = live_index;
+  }
+
+  DCHECK_EQ(instructions_.size() - to_be_deleted_.size(),
+            num_live_instructions_)
+      << "instructions_.size(): " << instructions_.size()
+      << ", to_be_deleted_.size(): " << to_be_deleted_.size();
+  to_be_deleted_.clear();
+  instructions_.resize(num_live_instructions_);
 }
 
 void HloComputation::set_root_instruction(HloInstruction* new_root_instruction,
@@ -647,7 +696,7 @@ std::vector<HloInstruction*> HloComputation::MakeInstructionPostOrder(
                                   post_order, &dfs_stack_scratch);
     }
   }
-  CHECK_EQ(instruction_indices_.size(), post_order.size())
+  CHECK_EQ(num_live_instructions_, post_order.size())
       << "number of instructions does not match post order size";
   return post_order;
 }
