@@ -817,6 +817,24 @@ Shape ShapeUtil::PrependMajorDimension(int64_t bound, Shape shape) {
   return Shape::Equal().IgnoreDynamicDimension().IgnoreLayout()(lhs, rhs);
 }
 
+/* static */ bool ShapeUtil::CompatibleWithShard(const Shape& lhs,
+                                                 const Shape& rhs,
+                                                 int sharding) {
+  if (Shape::Equal().IgnoreDynamicDimension().IgnoreLayout()(lhs, rhs)) {
+    return true;
+  }
+  if (lhs.IsArray()) {
+    for (int i = 0; i < lhs.rank(); i++) {
+      Shape l = lhs;
+      l.mutable_dimensions()[i] = sharding * lhs.dimensions(i);
+      if (Shape::Equal().IgnoreDynamicDimension().IgnoreLayout()(l, rhs)) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
 /* static */ bool ShapeUtil::CompatibleIgnoringElementType(const Shape& lhs,
                                                            const Shape& rhs) {
   return Shape::Equal()

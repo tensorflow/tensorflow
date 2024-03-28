@@ -259,6 +259,9 @@ class ShapeUtil {
   // compatibility.
   static bool Compatible(const Shape& lhs, const Shape& rhs);
 
+  static bool CompatibleWithShard(const Shape& lhs, const Shape& rhs,
+                                  int sharding);
+
   // Returns true if the rank and dimension sizes are identical. Element type
   // and layout are ignored. Tuple elements are compared recursively for
   // compatibility.

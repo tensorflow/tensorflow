@@ -372,6 +372,20 @@ class LayoutAssignment : public HloModulePass {
     return SetInstructionLayout(shape_with_layout, instruction, mandatory, dfs,
                                 allow_alias, current_priority_);
   }
+  virtual Shape ExpectCalleeOutputShapeForCall(
+      const HloInstruction* instruction) {
+    return instruction->shape();
+  }
+
+  virtual Shape ShardedShape(const HloInstruction* call, const Shape& shape,
+                             int param_id = -1) {
+    return shape;
+  }
+  virtual Shape UnShardedShape(const HloInstruction* call, const Shape& shape,
+                               int param_id = -1) {
+    return shape;
+  }
+
   Status SetInstructionLayout(const Shape& shape_with_layout,
                               const HloInstruction* instruction, bool mandatory,
                               bool dfs, bool allow_alias, int64_t priority);
@@ -418,6 +432,10 @@ class LayoutAssignment : public HloModulePass {
                                       const Layout& existing_layout) {
     return false;
   }
+  virtual bool ShapeCompatible(const Shape& shape_with_layout,
+                               const HloInstruction* instruction) {
+    return ShapeUtil::Compatible(shape_with_layout, instruction->shape());
+  }
   // Should be made consistent with the ChooseOperandLayoutFromOutputLayout
   // except that a boolean instead of concrete layout is returned.
   virtual bool OperandLayoutAlwaysPropagateForward(const HloInstruction* user);
@@ -451,7 +469,8 @@ class LayoutAssignment : public HloModulePass {
   virtual Status PropagateResultConstraint(
       const ComputationLayoutConstraint& layout_constraint,
       LayoutConstraints* constraints);
-
+  Status CheckCallLayout(HloInstruction* call,
+                         const ComputationLayout& computation_layout);
   virtual Layout GetUnconstrainedLayout(const LogicalBuffer& buffer) {
     return LayoutUtil::GetDefaultLayoutForShape(buffer.shape());
   }
