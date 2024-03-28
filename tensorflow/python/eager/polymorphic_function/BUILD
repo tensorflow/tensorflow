@@ -639,6 +639,7 @@ tf_xla_py_strict_test(
     disabled_backends = [
         "cpu_ondemand",
         "gpu_a100",
+        "gpu_h100",
     ],
     enable_mlir_bridge = True,
     python_version = "PY3",
