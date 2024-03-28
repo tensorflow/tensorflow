@@ -729,6 +729,11 @@ struct Conv3DParams {
   int dilation_width;
   int dilation_height;
   int dilation_depth;
+  int32_t input_offset;
+  int32_t output_offset;
+  // uint8_t, etc, activation params.
+  int32_t quantized_activation_min;
+  int32_t quantized_activation_max;
   // float activation params.
   float float_activation_min;
   float float_activation_max;

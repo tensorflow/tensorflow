@@ -830,6 +830,18 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
       }
       return 1;
     }
+    case BuiltinOperator_CONV_3D:
+      if (op_sig.inputs.at(0).type == kTfLiteInt8 &&
+          op_sig.inputs.at(1).type == kTfLiteInt8 &&
+          op_sig.outputs.at(0).type == kTfLiteInt8) {
+        return 2;
+      }
+      if (op_sig.inputs.at(0).type == kTfLiteInt16 &&
+          op_sig.inputs.at(1).type == kTfLiteInt8 &&
+          op_sig.outputs.at(0).type == kTfLiteInt16) {
+        return 2;
+      }
+      return 1;
 
     case BuiltinOperator_PAD:
     case BuiltinOperator_PADV2:
