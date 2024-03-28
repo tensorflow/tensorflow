@@ -257,6 +257,7 @@ class CompileOptions:
   device_assignment: Optional[DeviceAssignment]
   compile_portable_executable: bool
   env_option_overrides: List[Tuple[str, str]]
+  pgle_data_collecting_retries: int
 
 def register_custom_call_target(
     fn_name: str, capsule: Any, platform: str, api_version: int = ...,
@@ -507,6 +508,7 @@ class Client:
       computation: Union[str, bytes],
       compile_options: CompileOptions = ...,
       host_callbacks: Sequence[Any] = ...,
+      distributed_client: Optional[DistributedRuntimeClient] = ...,
   ) -> LoadedExecutable: ...
   def serialize_executable(self, executable: LoadedExecutable) -> bytes: ...
   def deserialize_executable(

@@ -39,6 +39,7 @@ limitations under the License.
 #include "third_party/nanobind/include/nanobind/stl/string_view.h"  // IWYU pragma: keep
 #include "third_party/nanobind/include/nanobind/stl/vector.h"  // IWYU pragma: keep
 #include "xla/literal.h"
+#include "xla/pjrt/distributed/client.h"
 #include "xla/pjrt/mlir_to_hlo.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_common.h"
@@ -253,7 +254,8 @@ class CompileOnlyPyClient : public PyClient {
 
   absl::StatusOr<std::shared_ptr<PjRtExecutable>> CompileUnloaded(
       std::string_view mlir_module, CompileOptions options,
-      std::vector<nb::capsule> host_callbacks) {
+      std::vector<nb::capsule> host_callbacks,
+      std::shared_ptr<DistributedRuntimeClient> distributed_client) {
     if (!host_callbacks.empty()) {
       return Unimplemented(
           "Compiling with host_callbacks not available with compile-only "
@@ -289,17 +291,21 @@ void RegisterCompileOnlyClient(nb::module_& m) {
       .def(
           "compile",
           [](CompileOnlyPyClient& self, nb::bytes mlir_module,
-             CompileOptions options, std::vector<nb::capsule> host_callbacks) {
+             CompileOptions options, std::vector<nb::capsule> host_callbacks,
+             std::shared_ptr<DistributedRuntimeClient> distributed_client) {
             return ValueOrThrow(self.CompileUnloaded(
                 std::string_view(mlir_module.c_str(), mlir_module.size()),
-                std::move(options), std::move(host_callbacks)));
+                std::move(options), std::move(host_callbacks),
+                distributed_client));
           },
           nb::arg("computation"), nb::arg("compile_options") = CompileOptions(),
-          nb::arg("host_callbacks") = std::vector<nb::capsule>())
+          nb::arg("host_callbacks") = std::vector<nb::capsule>(),
+          nb::arg("distributed_client") = nullptr)
       .def(
           "compile", ValueOrThrowWrapper(&CompileOnlyPyClient::CompileUnloaded),
           nb::arg("computation"), nb::arg("compile_options") = CompileOptions(),
-          nb::arg("host_callbacks") = std::vector<nb::capsule>());
+          nb::arg("host_callbacks") = std::vector<nb::capsule>(),
+          nb::arg("distributed_client") = nullptr);
 }
 
 }  // namespace xla

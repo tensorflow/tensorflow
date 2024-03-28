@@ -81,6 +81,7 @@ StatusOr<CompileOptionsProto> CompileOptions::ToProto() const {
                       executable_build_options.ToProto());
   output.set_compile_portable_executable(compile_portable_executable);
   output.set_profile_version(profile_version);
+  output.set_pgle_data_collecting_retries(pgle_data_collecting_retries);
   if (multi_slice_config != nullptr) {
     output.set_serialized_multi_slice_config(multi_slice_config->Serialize());
   }

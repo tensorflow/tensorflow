@@ -124,6 +124,8 @@ message CompileOptionsProto {
   map<string, OptionOverrideProto> env_option_overrides = 7;
 
   stream_executor.GpuTargetConfigProto target_config = 8;
+
+  bool pgle_data_collecting_retries = 9;
 }
 
 // Helper for serializing opaque executables alongside CompileOptions.

@@ -34,6 +34,7 @@ limitations under the License.
 #include "third_party/nanobind/include/nanobind/nanobind.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/layout.h"
+#include "xla/pjrt/distributed/client.h"
 #include "xla/pjrt/exceptions.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_common.h"
@@ -42,6 +43,7 @@ limitations under the License.
 #include "xla/python/ifrt/array.h"
 #include "xla/python/ifrt/executable.h"
 #include "xla/python/nb_class_ptr.h"
+#include "xla/python/pgle_session.h"
 #include "xla/python/pjrt_ifrt/pjrt_executable.h"
 #include "xla/python/py_array.h"
 #include "xla/python/py_client.h"
@@ -136,7 +138,9 @@ class PyLoadedExecutable {
       nb_class_ptr<PyClient> client,
       std::unique_ptr<ifrt::LoadedExecutable> ifrt_loaded_executable,
       std::optional<nb_traceback> traceback,
-      std::optional<std::string> fingerprint);
+      std::optional<std::string> fingerprint,
+      std::optional<PyClient::IfrtCompileParameters> compile_parameters,
+      std::shared_ptr<DistributedRuntimeClient> distributed_client);
   ~PyLoadedExecutable();
 
   nb_class_ptr<PyClient> client() const { return client_; }
@@ -237,6 +241,8 @@ class PyLoadedExecutable {
  private:
   friend class PyClient;
 
+  absl::Status RecompileWithPgleFdoIfNeeded();
+
   nb_class_ptr<PyClient> client_;
   std::unique_ptr<ifrt::LoadedExecutable> ifrt_loaded_executable_;
   std::optional<nb_traceback> traceback_;
@@ -245,6 +251,11 @@ class PyLoadedExecutable {
   // same fingerprint. nullopt on platforms or executables where fingerprints
   // aren't implemented.
   std::optional<std::string> fingerprint_;
+
+  // Module and compile options necessary for recompilation with PGLE.
+  std::optional<PyClient::IfrtCompileParameters> compile_parameters_;
+  std::shared_ptr<DistributedRuntimeClient> distributed_client_;
+  std::shared_ptr<PGLESessionRunner> pgle_session_runner_;
 
   // The options to pass to `executable_.Execute`.
   ExecuteOptions options_;

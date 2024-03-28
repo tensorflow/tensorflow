@@ -280,6 +280,7 @@ cc_library(
 cc_library(
     name = "py_client",
     srcs = [
+        "pgle_session.cc",
         "py_array.cc",
         "py_client.cc",
         "py_compile_only_client.cc",
@@ -292,6 +293,7 @@ cc_library(
         "sharding.cc",
     ],
     hdrs = [
+        "pgle_session.h",
         "py_array.h",
         "py_client.h",
         "py_compile_only_client.h",
@@ -314,6 +316,7 @@ cc_library(
     ]),
     features = ["-use_header_modules"],
     deps = [
+        ":aggregate_profile",
         ":callback",
         ":nb_absl_span",
         ":nb_class_ptr",
@@ -327,6 +330,7 @@ cc_library(
         ":transfer_guard_lib",
         ":types",
         ":util",
+        ":xplane_to_profile_instructions",
         # placeholder for index annotation deps
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/base",
@@ -334,11 +338,13 @@ cc_library(
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/hash",
+        "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/synchronization",
+        "@com_google_absl//absl/time",
         "@com_google_absl//absl/types:span",
         "@com_google_absl//absl/types:variant",
         "//third_party/nanobind",
@@ -353,6 +359,8 @@ cc_library(
         "//xla:util",
         "//xla:xla_data_proto_cc",
         "//xla/client:xla_builder",
+        "//xla/client:xla_computation",
+        "//xla/client/lib:arithmetic",
         "//xla/hlo/ir:hlo",
         "//xla/pjrt:exceptions",
         "//xla/pjrt:host_callback",
@@ -368,6 +376,8 @@ cc_library(
         "//xla/pjrt:pjrt_stream_executor_client",
         "//xla/pjrt:status_casters",
         "//xla/pjrt:transpose",
+        "//xla/pjrt/distributed",
+        "//xla/pjrt/distributed:client",
         "//xla/python/ifrt",
         "//xla/python/pjrt_ifrt",
         "//xla/python/pjrt_ifrt:xla_host_callback_proto_cc",
@@ -385,7 +395,9 @@ cc_library(
         "@local_tsl//tsl/platform:ml_dtypes",
         "@local_tsl//tsl/platform:status",
         "@local_tsl//tsl/platform:statusor",
+        "@local_tsl//tsl/profiler/lib:profiler_session",
         "@local_tsl//tsl/profiler/lib:traceme",
+        "@local_tsl//tsl/profiler/protobuf:profiled_instructions_proto_cc",
         "@local_tsl//tsl/python/lib/core:numpy",
         "@com_google_protobuf//:protobuf",
         "@llvm-project//llvm:Support",
@@ -1381,5 +1393,28 @@ cc_library(
     deps = [
         "//third_party/nanobind",
         "@com_google_absl//absl/container:flat_hash_set",
+    ],
+)
+
+cc_library(
+    name = "aggregate_profile",
+    srcs = ["aggregate_profile.cc"],
+    hdrs = ["aggregate_profile.h"],
+    deps = [
+        ":xplane_to_profile_instructions",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/types:span",
+        "@local_tsl//tsl/profiler/protobuf:profiled_instructions_proto_cc",
+    ],
+)
+
+xla_cc_test(
+    name = "aggregate_profile_test",
+    srcs = ["aggregate_profile_test.cc"],
+    deps = [
+        ":aggregate_profile",
+        "@com_google_absl//absl/types:span",
+        "@local_tsl//tsl/platform:test",
+        "@local_tsl//tsl/platform:test_main",
     ],
 )

@@ -27,13 +27,16 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/types/span.h"
+#include "llvm/Support/Casting.h"
 #include "third_party/nanobind/include/nanobind/nanobind.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/layout.h"
+#include "xla/pjrt/distributed/client.h"
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/pjrt/pjrt_future.h"
 #include "xla/pjrt/pjrt_layout.h"
@@ -44,11 +47,14 @@ limitations under the License.
 #include "xla/python/ifrt/memory.h"
 #include "xla/python/ifrt/sharding.h"
 #include "xla/python/nb_class_ptr.h"
+#include "xla/python/pgle_session.h"
+#include "xla/python/pjrt_ifrt/pjrt_client.h"
 #include "xla/python/py_array.h"
 #include "xla/python/py_client.h"
 #include "xla/python/py_device.h"
 #include "xla/python/traceback.h"
 #include "tsl/concurrency/ref_count.h"
+#include "tsl/platform/errors.h"
 #include "tsl/platform/fingerprint.h"
 #include "tsl/platform/logging.h"
 #include "tsl/platform/status.h"
@@ -79,11 +85,15 @@ PyLoadedExecutable::PyLoadedExecutable(
     nb_class_ptr<PyClient> client,
     std::unique_ptr<ifrt::LoadedExecutable> ifrt_loaded_executable,
     std::optional<nb_traceback> traceback,
-    std::optional<std::string> fingerprint)
+    std::optional<std::string> fingerprint,
+    std::optional<PyClient::IfrtCompileParameters> compile_parameters,
+    std::shared_ptr<DistributedRuntimeClient> distributed_client)
     : client_(std::move(client)),
       ifrt_loaded_executable_(std::move(ifrt_loaded_executable)),
       traceback_(std::move(traceback)),
-      fingerprint_(std::move(fingerprint)) {
+      fingerprint_(std::move(fingerprint)),
+      compile_parameters_(std::move(compile_parameters)),
+      distributed_client_(std::move(distributed_client)) {
   CHECK(PyGILState_Check());
   next_ = client_->executables_;
   client_->executables_ = this;
@@ -98,6 +108,12 @@ PyLoadedExecutable::PyLoadedExecutable(
             << ": " << *fingerprint_;
   }
   options_.use_major_to_minor_data_layout_for_callbacks = true;
+  pgle_session_runner_ = client_->pgle_session_runner_factory_->Create(
+      compile_parameters_.has_value()
+          ? std::make_optional(compile_parameters_->compile_options
+                                   .pgle_data_collecting_retries)
+          : std::nullopt,
+      fingerprint_, distributed_client_);
 }
 
 PyLoadedExecutable::~PyLoadedExecutable() {
@@ -390,9 +406,18 @@ absl::StatusOr<PyExecuteResults> PyLoadedExecutable::ExecuteSharded(
     returned_futures.emplace();
   }
   absl::Span<const ExecuteShardedArg> span_args = args;
-  return ExecuteShardedOnLocalDevicesInternal(
-      options_, client_, ifrt_loaded_executable_.get(), span_args,
-      returned_futures, /*attach_status_to_results=*/with_tokens);
+  absl::StatusOr<PyExecuteResults> results;
+
+  // If FDO profile were collected before recompile with data provided.
+  TF_RETURN_IF_ERROR(RecompileWithPgleFdoIfNeeded());
+  // Run and collect profile guided estimator info if needed
+  {
+    auto pgle_session = pgle_session_runner_->Run(client_->process_index());
+    results = ExecuteShardedOnLocalDevicesInternal(
+        options_, client_, ifrt_loaded_executable_.get(), span_args,
+        returned_futures, /*attach_status_to_results=*/with_tokens);
+  }
+  return results;
 }
 
 absl::StatusOr<std::vector<std::shared_ptr<HloModule>>>
@@ -433,6 +458,42 @@ std::optional<std::vector<OpSharding>> PyLoadedExecutable::GetOutputShardings()
 
 void PyLoadedExecutable::KeepAlive(nb::object obj) {
   keepalives_.push_back(std::move(obj));
+}
+
+absl::Status PyLoadedExecutable::RecompileWithPgleFdoIfNeeded() {
+  if (!compile_parameters_.has_value() || !fingerprint_.has_value() ||
+      // If module already uses FDO profile do not recompile.
+      !compile_parameters_->compile_options.executable_build_options
+           .fdo_profile()
+           .empty()) {
+    return absl::OkStatus();
+  }
+
+  auto* pjrt_compatible_client =
+      llvm::dyn_cast_or_null<ifrt::PjRtCompatibleClient>(
+          client_->ifrt_client_.get());
+  if (pjrt_compatible_client == nullptr) {
+    return absl::OkStatus();
+  }
+
+  TF_ASSIGN_OR_RETURN(auto fdo_profile,
+                      pgle_session_runner_->GetFdoProfile(
+                          pjrt_compatible_client->pjrt_client(),
+                          compile_parameters_->compile_options));
+  if (!fdo_profile.has_value()) {
+    return absl::OkStatus();
+  }
+  compile_parameters_->compile_options.executable_build_options.set_fdo_profile(
+      fdo_profile.value());
+  // Delete old ifrt loaded executable.
+  Delete();
+  TF_ASSIGN_OR_RETURN(ifrt_loaded_executable_,
+                      PyClient::CompileIfrt(client_, *compile_parameters_));
+  TF_ASSIGN_OR_RETURN(fingerprint_, ifrt_loaded_executable_->Fingerprint());
+
+  // Reset compile parameters to prevent further recompilation.
+  compile_parameters_ = std::nullopt;
+  return absl::OkStatus();
 }
 
 }  // namespace xla

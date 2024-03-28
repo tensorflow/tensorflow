@@ -902,6 +902,14 @@ void BuildXlaCompilerSubmodule(nb::module_& m) {
             options.profile_version = profile_version;
           })
       .def_prop_rw(
+          "pgle_data_collecting_retries",
+          [](const CompileOptions& options) {
+            return options.pgle_data_collecting_retries;
+          },
+          [](CompileOptions& options, int pgle_data_collecting_retries) {
+            options.pgle_data_collecting_retries = pgle_data_collecting_retries;
+          })
+      .def_prop_rw(
           "device_assignment",
           [](const CompileOptions& options) -> std::optional<DeviceAssignment> {
             return options.executable_build_options.has_device_assignment()

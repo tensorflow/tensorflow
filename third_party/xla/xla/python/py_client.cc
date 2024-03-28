@@ -48,6 +48,7 @@ limitations under the License.
 #include "third_party/nanobind/include/nanobind/stl/variant.h"  // IWYU pragma: keep
 #include "third_party/nanobind/include/nanobind/stl/vector.h"  // IWYU pragma: keep
 #include "xla/literal.h"
+#include "xla/pjrt/distributed/client.h"
 #include "xla/pjrt/exceptions.h"
 #include "xla/pjrt/mlir_to_hlo.h"
 #include "xla/pjrt/pjrt_client.h"
@@ -430,7 +431,8 @@ MakeIfrtDeserializeExecutableOptions(std::optional<CompileOptions> options,
 
 /* static */ absl::StatusOr<nb_class_ptr<PyLoadedExecutable>> PyClient::Compile(
     nb_class_ptr<PyClient> client, std::string mlir_module,
-    CompileOptions options, std::vector<nb::capsule> host_callbacks) {
+    CompileOptions options, std::vector<nb::capsule> host_callbacks,
+    std::shared_ptr<DistributedRuntimeClient> distributed_runtime_client) {
   // Pass allocated device memory size to compile options for pjrt compatible
   // backends.
   auto* pjrt_compatible_client =
@@ -453,26 +455,40 @@ MakeIfrtDeserializeExecutableOptions(std::optional<CompileOptions> options,
     }
   }
 
+  IfrtCompileParameters parameters(
+      {std::move(mlir_module), std::move(options), std::move(host_callbacks)});
+  TF_ASSIGN_OR_RETURN(
+      std::unique_ptr<ifrt::LoadedExecutable> ifrt_loaded_executable,
+      CompileIfrt(client, parameters));
+  TF_ASSIGN_OR_RETURN(std::optional<std::string> fingerprint,
+                      ifrt_loaded_executable->Fingerprint());
+  auto traceback = Traceback::Get();
+
+  return make_nb_class<PyLoadedExecutable>(
+      std::move(client), std::move(ifrt_loaded_executable),
+      std::move(traceback), std::move(fingerprint), std::move(parameters),
+      std::move(distributed_runtime_client));
+}
+
+/* static */ absl::StatusOr<std::unique_ptr<ifrt::LoadedExecutable>>
+PyClient::CompileIfrt(nb_class_ptr<PyClient> client,
+                      IfrtCompileParameters parameters) {
   std::unique_ptr<ifrt::LoadedExecutable> ifrt_loaded_executable;
-  std::optional<std::string> fingerprint;
   auto ifrt_compile_options =
-      MakeIfrtCompileOptions(std::move(options), std::move(host_callbacks));
+      MakeIfrtCompileOptions(std::move(parameters.compile_options),
+                             std::move(parameters.host_callbacks));
   {
     nb::gil_scoped_release gil_release;
     mlir::MLIRContext context;
     TF_ASSIGN_OR_RETURN(mlir::OwningOpRef<mlir::ModuleOp> module,
-                        ParseMlirModuleString(mlir_module, context));
+                        ParseMlirModuleString(parameters.mlir_module, context));
     TF_ASSIGN_OR_RETURN(
         ifrt_loaded_executable,
-        client->ifrt_client_->GetDefaultCompiler()->Compile(
+        client->ifrt_client()->GetDefaultCompiler()->Compile(
             std::make_unique<xla::ifrt::XlaProgram>(module.get()),
             std::move(ifrt_compile_options)));
-    TF_ASSIGN_OR_RETURN(fingerprint, ifrt_loaded_executable->Fingerprint());
   }
-  auto traceback = Traceback::Get();
-  return make_nb_class<PyLoadedExecutable>(
-      std::move(client), std::move(ifrt_loaded_executable),
-      std::move(traceback), std::move(fingerprint));
+  return ifrt_loaded_executable;
 }
 
 absl::StatusOr<nb::bytes> PyClient::SerializeExecutable(
@@ -503,7 +519,7 @@ PyClient::DeserializeExecutable(nb_class_ptr<PyClient> client,
   auto traceback = Traceback::Get();
   return make_nb_class<PyLoadedExecutable>(
       std::move(client), std::move(ifrt_loaded_executable),
-      std::move(traceback), std::move(fingerprint));
+      std::move(traceback), std::move(fingerprint), std::nullopt, nullptr);
 }
 
 namespace {
@@ -744,24 +760,29 @@ PyType_Slot PyClient::slots_[] = {
       .def(
           "compile",
           [](nb_class_ptr<PyClient> client, nb::bytes mlir_module,
-             CompileOptions options, std::vector<nb::capsule> host_callbacks) {
+             CompileOptions options, std::vector<nb::capsule> host_callbacks,
+             std::shared_ptr<DistributedRuntimeClient> distributed_client) {
             return ValueOrThrow(PyClient::Compile(
                 std::move(client),
                 std::string(mlir_module.c_str(), mlir_module.size()),
-                std::move(options), std::move(host_callbacks)));
+                std::move(options), std::move(host_callbacks),
+                std::move(distributed_client)));
           },
           nb::arg("computation"), nb::arg("compile_options") = CompileOptions(),
-          nb::arg("host_callbacks") = std::vector<nb::capsule>())
+          nb::arg("host_callbacks") = std::vector<nb::capsule>(),
+          nb::arg("distributed_client") = nullptr)
       .def(
           "compile",
           [](nb_class_ptr<PyClient> client, std::string mlir_module,
-             CompileOptions options, std::vector<nb::capsule> host_callbacks) {
+             CompileOptions options, std::vector<nb::capsule> host_callbacks,
+             std::shared_ptr<DistributedRuntimeClient> distributed_client) {
             return ValueOrThrow(PyClient::Compile(
                 std::move(client), std::move(mlir_module), std::move(options),
-                std::move(host_callbacks)));
+                std::move(host_callbacks), std::move(distributed_client)));
           },
           nb::arg("computation"), nb::arg("compile_options") = CompileOptions(),
-          nb::arg("host_callbacks") = std::vector<nb::capsule>())
+          nb::arg("host_callbacks") = std::vector<nb::capsule>(),
+          nb::arg("distributed_client") = nullptr)
       .def("serialize_executable",
            xla::ValueOrThrowWrapper(&PyClient::SerializeExecutable))
       .def(

@@ -33,12 +33,15 @@ limitations under the License.
 #include "llvm/Support/Casting.h"
 #include "third_party/nanobind/include/nanobind/nanobind.h"
 #include "xla/client/xla_builder.h"
+#include "xla/pjrt/distributed/client.h"
 #include "xla/pjrt/exceptions.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/python/ifrt/client.h"
 #include "xla/python/ifrt/device.h"
+#include "xla/python/ifrt/executable.h"
 #include "xla/python/nb_class_ptr.h"
+#include "xla/python/pgle_session.h"
 #include "xla/python/pjrt_ifrt/pjrt_client.h"
 #include "xla/shape.h"
 
@@ -151,7 +154,17 @@ class PyClient {
 
   static absl::StatusOr<nb_class_ptr<PyLoadedExecutable>> Compile(
       nb_class_ptr<PyClient> client, std::string mlir_module,
-      CompileOptions options, std::vector<nanobind::capsule> host_callbacks);
+      CompileOptions options, std::vector<nanobind::capsule> host_callbacks,
+      std::shared_ptr<DistributedRuntimeClient> distributed_runtime_client);
+
+  struct IfrtCompileParameters {
+    std::string mlir_module;
+    CompileOptions compile_options;
+    std::vector<nanobind::capsule> host_callbacks;
+  };
+
+  static absl::StatusOr<std::unique_ptr<ifrt::LoadedExecutable>> CompileIfrt(
+      nb_class_ptr<PyClient> client, IfrtCompileParameters parameters);
 
   absl::StatusOr<nanobind::bytes> SerializeExecutable(
       const PyLoadedExecutable& executable) const;
@@ -239,6 +252,8 @@ class PyClient {
 
   PyLoadedExecutable* executables_ = nullptr;
   PyArray_Storage* arrays_ = nullptr;
+  std::unique_ptr<PGLESessionRunnerFactory> pgle_session_runner_factory_ =
+      std::make_unique<PGLESessionRunnerFactory>();
 
   absl::flat_hash_map<ifrt::Device*, nb_class_ptr<PyDevice>> devices_;
   absl::flat_hash_map<PjRtMemorySpace*, nb_class_ptr<PyMemorySpace>>

@@ -91,6 +91,9 @@ struct CompileOptions {
   // compiled for one device doesn't run on another.
   bool compile_portable_executable = false;
 
+  // Profile guided estimator retries amount.
+  int pgle_data_collecting_retries = 0;
+
   // XLA compilation profile version.
   int64_t profile_version = 0;
 
