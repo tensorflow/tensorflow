@@ -57,6 +57,12 @@ limitations under the License.
 
 #include "xla/ffi/api/c_api.h"
 
+#ifdef __has_builtin
+#define XLA_FFI_HAS_BUILTIN(x) __has_builtin(x)
+#else
+#define XLA_FFI_HAS_BUILTIN(x) 0
+#endif
+
 #if __has_attribute(always_inline)
 #define XLA_FFI_ATTRIBUTE_ALWAYS_INLINE inline __attribute__((always_inline))
 #elif defined(_MSC_VER)
@@ -73,7 +79,7 @@ limitations under the License.
 #define XLA_FFI_ATTRIBUTE_NEVER_INLINE
 #endif
 
-#if __has_builtin(__builtin_expect)
+#if XLA_FFI_HAS_BUILTIN(__builtin_expect)
 #define XLA_FFI_PREDICT_FALSE(x) (__builtin_expect(false || (x), false))
 #define XLA_FFI_PREDICT_TRUE(x) (__builtin_expect(false || (x), true))
 #else
