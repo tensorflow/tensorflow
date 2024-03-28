@@ -13,9 +13,12 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <cstddef>
 #include <iterator>
 #include <memory>
+#include <optional>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "llvm/ADT/STLExtras.h"
@@ -32,6 +35,9 @@ limitations under the License.
 #include "mlir/IR/Value.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Pass/PassRegistry.h"
+#include "mlir/Support/LLVM.h"
+#include "xla/hlo/ir/hlo_sharding.h"
+#include "xla/translate/mhlo_to_hlo/attribute_exporter.h"
 
 namespace mlir {
 namespace mhlo {
@@ -40,6 +46,8 @@ namespace mhlo {
 #include "mhlo/transforms/mhlo_passes.h.inc"
 
 namespace {
+
+constexpr StringRef kShardingAttr = "mhlo.sharding";
 
 // This pass assumes the function to be expanded has no callees, to be specific,
 // the function is more like the main function.
@@ -50,6 +58,31 @@ class ExpandHloTuplesPass
   ExpandHloTuplesPass(const ExpandHloTuplesPass&) = default;
   explicit ExpandHloTuplesPass(const std::string& entryFunctionName) {
     entry_function_name_ = entryFunctionName;
+  }
+
+  // Returns a vector of xla::HloSharding for each tuple element from the given
+  // `shardingAttr`, if it can be converted successfully into a
+  // xla::HloSharding, which is of type tuple with the same number of tuple
+  // elements as `expectedNumElements`, otherwise returns an empty vector.
+  std::vector<xla::HloSharding> getTupleShardingsOrEmpty(
+      StringAttr shardingAttr, size_t expectedNumElements) {
+    if (!shardingAttr) {
+      return {};
+    }
+    const std::optional<xla::OpSharding> shardingProto =
+        xla::ConvertSharding(shardingAttr.getValue());
+    if (!shardingProto) {
+      return {};
+    }
+    auto hloSharding = xla::HloSharding::FromProto(*shardingProto);
+    if (!hloSharding.ok()) {
+      return {};
+    }
+    if (hloSharding->tuple_elements().size() == expectedNumElements) {
+      return std::move(hloSharding->tuple_elements());
+    }
+
+    return {};
   }
 
   // Expands the mhlo.tuple used in return op. Also updates function
@@ -80,16 +113,27 @@ class ExpandHloTuplesPass
         int originalArgumentIndex = argument.getArgNumber();
         int argumentIndex = originalArgumentIndex;
         SmallVector<Value, 4> flattenedOperands;
+        std::vector<xla::HloSharding> hloShardings =
+            getTupleShardingsOrEmpty(func.getArgAttrOfType<StringAttr>(
+                                         originalArgumentIndex, kShardingAttr),
+                                     tupleType.size());
+
         // insert the flattened tuples after the original tuple.
         Location loc = func.getBody().getLoc();
-        for (auto flattenedType : tupleType.getTypes()) {
+        OpBuilder builder(func.getBody());
+        for (auto [index, flattenedType] :
+             llvm::enumerate(tupleType.getTypes())) {
           expandedInputTypes.push_back(flattenedType);
           func.insertArgument(++argumentIndex, flattenedType, {}, loc);
           flattenedOperands.push_back(func.getArgument(argumentIndex));
+          if (!hloShardings.empty()) {
+            func.setArgAttr(
+                argumentIndex, kShardingAttr,
+                builder.getStringAttr(hloShardings[index].ToString()));
+          }
         }
 
         // Construct a new tuple and rewire it.
-        OpBuilder builder(func.getBody());
         builder.setInsertionPointToStart(&func.getBody().front());
         auto newTuple =
             builder.create<mhlo::TupleOp>(loc, tupleType, flattenedOperands);
@@ -108,17 +152,34 @@ class ExpandHloTuplesPass
     // Expand all tuples in old return operands.
     SmallVector<Value, 4> expandedReturnOperands;
     SmallVector<Type, 4> expandedResultTypes;
-    for (auto value : returnOp.getOperands()) {
+    SmallVector<Attribute, 4> expandedResultShardingAttrs;
+    for (OpOperand& operand : returnOp->getOpOperands()) {
+      unsigned int originalResultIndex = operand.getOperandNumber();
+      Value value = operand.get();
       if (auto tupleTy = value.getType().dyn_cast<TupleType>()) {
         llvm::copy(tupleTy.getTypes(), std::back_inserter(expandedResultTypes));
-        for (auto [index, ty] : llvm::enumerate(tupleTy.getTypes())) {
+
+        std::vector<xla::HloSharding> hloShardings =
+            getTupleShardingsOrEmpty(func.getResultAttrOfType<StringAttr>(
+                                         originalResultIndex, kShardingAttr),
+                                     tupleTy.size());
+        for (auto [index, flattenedType] :
+             llvm::enumerate(tupleTy.getTypes())) {
           expandedReturnOperands.push_back(
-              builder.createOrFold<mhlo::GetTupleElementOp>(value.getLoc(), ty,
-                                                            value, index));
+              builder.createOrFold<mhlo::GetTupleElementOp>(
+                  value.getLoc(), flattenedType, value, index));
+          if (hloShardings.empty()) {
+            expandedResultShardingAttrs.push_back(Attribute());
+          } else {
+            expandedResultShardingAttrs.push_back(
+                builder.getStringAttr(hloShardings[index].ToString()));
+          }
         }
       } else {
         expandedReturnOperands.push_back(value);
         expandedResultTypes.push_back(value.getType());
+        expandedResultShardingAttrs.push_back(
+            func.getResultAttr(originalResultIndex, kShardingAttr));
       }
     }
 
@@ -130,6 +191,16 @@ class ExpandHloTuplesPass
     auto newFuncType = FunctionType::get(
         oldFuncType.getContext(), expandedInputTypes, expandedResultTypes);
     func.setType(newFuncType);
+
+    for (auto [resultIndex, shardingAttr] :
+         llvm::enumerate(expandedResultShardingAttrs)) {
+      if (shardingAttr) {
+        func.setResultAttr(resultIndex, kShardingAttr, shardingAttr);
+      } else {
+        func.removeResultAttr(resultIndex,
+                              builder.getStringAttr(kShardingAttr));
+      }
+    }
   }
 
   void runOnOperation() override {
