@@ -1628,17 +1628,35 @@ LogicalResult ConvertTFLTransposeConvOp::matchAndRewrite(
       dyn_cast<ShapedType>(tfl_conv_op.getWeights().getType());
   ShapedType output_type =
       dyn_cast<ShapedType>(tfl_conv_op.getResult().getType());
+
   // Not a ranked tensor output
   if (!input_type) return failure();
   if (!output_type) return failure();
   if (!filter_type) return failure();
 
   bool input_is_qtype =
-      input_type.getElementType().isa<mlir::quant::QuantizedType>();
+      isa<mlir::quant::QuantizedType>(input_type.getElementType());
   bool filter_is_qtype =
-      filter_type.getElementType().isa<mlir::quant::QuantizedType>();
+      isa<mlir::quant::QuantizedType>(filter_type.getElementType());
   bool output_is_qtype =
-      output_type.getElementType().isa<mlir::quant::QuantizedType>();
+      isa<mlir::quant::QuantizedType>(output_type.getElementType());
+
+  const bool has_bias =
+      tfl_conv_op.getBias() && !isa<NoneType>(tfl_conv_op.getBias().getType());
+
+  if (has_bias) {
+    RankedTensorType bias_type =
+        dyn_cast<RankedTensorType>(tfl_conv_op.getBias().getType());
+    bool bias_is_qtype =
+        isa<mlir::quant::QuantizedType>(bias_type.getElementType());
+
+    if (input_is_qtype != bias_is_qtype) {
+      return rewriter.notifyMatchFailure(
+          op,
+          "input/bias tensor should "
+          "be all quantized or all floating-point");
+    }
+  }
 
   if ((input_is_qtype != filter_is_qtype) ||
       (input_is_qtype != output_is_qtype)) {
@@ -1699,34 +1717,43 @@ LogicalResult ConvertTFLTransposeConvOp::matchAndRewrite(
     return failure();
   }
 
-  std::optional<Value> zero_bias;
-  if (input_is_qtype) {
-    uint32_t input_bits =
-        dyn_cast<mlir::quant::QuantizedType>(input_type.getElementType())
-            .getStorageTypeIntegralWidth();
-    uint32_t weight_bits =
-        dyn_cast<mlir::quant::QuantizedType>(filter_type.getElementType())
-            .getStorageTypeIntegralWidth();
-
-    if (input_bits == 16 && weight_bits == 8) {
-      SmallVector<APInt> vec(output_channel, APInt(48, 0, true));
-      zero_bias = getConstTensor<APInt>(rewriter, op, vec, {output_channel});
-    } else {
-      SmallVector<int32_t> vec(output_channel, 0);
-      zero_bias = getConstTensor<int32_t>(rewriter, op, vec, {output_channel});
-    }
+  Value bias_val;
+  if (has_bias) {
+    bias_val = tfl_conv_op.getBias();
   } else {
-    SmallVector<float> vec(output_channel, 0.0f);
-    zero_bias = getConstTensor<float>(rewriter, op, vec, {output_channel});
+    std::optional<Value> zero_bias;
+    if (input_is_qtype) {
+      uint32_t input_bits =
+          cast<mlir::quant::QuantizedType>(input_type.getElementType())
+              .getStorageTypeIntegralWidth();
+      uint32_t weight_bits =
+          cast<mlir::quant::QuantizedType>(filter_type.getElementType())
+              .getStorageTypeIntegralWidth();
+
+      if (input_bits == 16 && weight_bits == 8) {
+        // For signed 16x8, the output is accumulated into int48
+        SmallVector<APInt> vec(output_channel, APInt(48, 0, true));
+        zero_bias = getConstTensor<APInt>(rewriter, op, vec, {output_channel});
+      } else {
+        SmallVector<int32_t> vec(output_channel, 0);
+        zero_bias =
+            getConstTensor<int32_t>(rewriter, op, vec, {output_channel});
+      }
+    } else {
+      SmallVector<float> vec(output_channel, 0.0f);
+      zero_bias = getConstTensor<float>(rewriter, op, vec, {output_channel});
+    }
+
+    if (!zero_bias) return failure();
+    bias_val = zero_bias.value();
   }
 
-  if (!zero_bias) return failure();
-  Type bias_ety = zero_bias->getType().cast<ShapedType>().getElementType();
+  Type bias_ety = cast<ShapedType>(bias_val.getType()).getElementType();
 
   auto a1_conv2d_op = CreateOpAndInfer<tosa::TransposeConv2DOp>(
       rewriter, op->getLoc(), output_type.clone(bias_ety),
-      tfl_conv_op.getInput(), tfl_conv_op.getWeights(), zero_bias.value(),
-      outpad, stride, output_shape);
+      tfl_conv_op.getInput(), tfl_conv_op.getWeights(), bias_val, outpad,
+      stride, output_shape);
 
   Value conv2d_output;
   if (input_is_qtype) {
