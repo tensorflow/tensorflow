@@ -155,7 +155,7 @@ std::optional<IndexingMap> MlirTransposeFusion::ComputeThreadIdToOutputIndexing(
           tiling_.GetNumBlocks(), tiling_.GetThreadTileSize(),
           permuted_tiled_shape.dimensions()),
       GetBitcastMap(permuted_tiled_shape, hero.shape(), mlir_context));
-  map.Simplify();
+  map.Simplify(GetIndexingMapForInstruction);
   return map;
 }
 
@@ -165,7 +165,7 @@ IndexingMap MlirTransposeFusion::ComputeThreadIdToInputIndexing(
       GetIndexingMapForTiling(tiling_, mlir_context),
       GetBitcastMap(tiling_.GetXlaShape(), hero.operand(0)->shape(),
                     mlir_context));
-  map.Simplify();
+  map.Simplify(GetIndexingMapForInstruction);
   return map;
 }
 
@@ -207,7 +207,7 @@ IndexingMap GetSharedMemoryWriteIndexingMap(
       thread_id_indexing.GetRangeVars(),
       thread_id_indexing.GetRTVars(),
       thread_id_indexing.GetConstraints()};
-  shmem_write_indexing.Simplify();
+  shmem_write_indexing.Simplify(GetIndexingMapForInstruction);
   return shmem_write_indexing;
 }
 

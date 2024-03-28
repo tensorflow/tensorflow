@@ -40,6 +40,7 @@ limitations under the License.
 #include "xla/service/gpu/fusions/mlir/elemental_hlo_to_mlir.h"
 #include "xla/service/gpu/hlo_fusion_analysis.h"
 #include "xla/service/gpu/launch_dimensions.h"
+#include "xla/service/gpu/model/indexing_analysis.h"
 #include "xla/service/gpu/model/indexing_map.h"
 #include "xla/xla_data.pb.h"
 
@@ -111,7 +112,7 @@ absl::Status MlirInPlaceDynamicUpdateSliceFusion::EmitEntryFunction(
   auto indexing = *ComputeThreadIdToInputIndexing(
       /*root_index=*/0,
       /*hero_operand_index=*/kDUSUpdateIndex, mlir_context);
-  indexing.Simplify();
+  indexing.Simplify(GetIndexingMapForInstruction);
   indexing.RemoveUnusedSymbols();
 
   int num_inputs = fusion.fused_instructions_computation()->num_parameters();

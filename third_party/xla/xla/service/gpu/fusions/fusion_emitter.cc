@@ -49,6 +49,7 @@ limitations under the License.
 #include "xla/service/gpu/kernel_arguments.h"
 #include "xla/service/gpu/kernel_reuse_cache.h"
 #include "xla/service/gpu/launch_dimensions.h"
+#include "xla/service/gpu/model/indexing_analysis.h"
 #include "xla/service/gpu/model/indexing_map.h"
 #include "xla/service/gpu/runtime/kernel_thunk.h"
 #include "xla/service/gpu/target_util.h"
@@ -196,7 +197,7 @@ IndexingMap KernelFusionInterface::GetDefaultThreadIdIndexingMap(
   } else {
     indexing_map.AddConstraint(linear_index, Interval{0, num_elements - 1});
   }
-  indexing_map.Simplify();
+  indexing_map.Simplify(GetIndexingMapForInstruction);
   return indexing_map;
 }
 

@@ -2442,7 +2442,7 @@ absl::Status EmitTiledSoftMax(mlir::OpBuilder builder,
 
     IndexingMap program_id_to_input_tile_indexing = ComposeIndexingMaps(
         program_id_to_output_tile_indexing, tiled_hlo_instruction.indexing_map);
-    program_id_to_input_tile_indexing.Simplify();
+    program_id_to_input_tile_indexing.Simplify(GetIndexingMapForInstruction);
 
     // Manually compute pointer offset to avoid materialized fully parallel
     // dimensions in the tile. Current codegen tried to avoid size-1 dims.

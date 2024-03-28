@@ -306,7 +306,7 @@ std::optional<IndexingMap> TransposeFusion::ComputeThreadIdToOutputIndexing(
           tiling_.GetNumBlocks(), tiling_.GetThreadTileSize(),
           permuted_tiled_shape.dimensions()),
       GetBitcastMap(permuted_tiled_shape, hero.shape(), ctx));
-  map.Simplify();
+  map.Simplify(GetIndexingMapForInstruction);
   return map;
 }
 
@@ -318,7 +318,7 @@ std::optional<IndexingMap> TransposeFusion::ComputeThreadIdToInputIndexing(
   auto map = ComposeIndexingMaps(
       GetIndexingMapForTiling(tiling_, ctx),
       GetBitcastMap(tiling_.GetXlaShape(), hero.operand(0)->shape(), ctx));
-  map.Simplify();
+  map.Simplify(GetIndexingMapForInstruction);
   return map;
 }
 

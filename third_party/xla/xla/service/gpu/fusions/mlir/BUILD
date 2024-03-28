@@ -285,6 +285,7 @@ cc_library(
         "//xla/mlir_hlo:map_mhlo_to_scalar_op",
         "//xla/service/gpu:ir_emission_utils",
         "//xla/service/gpu/fusions/mlir/ir:xla_gpu",
+        "//xla/service/gpu/model:indexing_analysis",
         "//xla/service/gpu/model:indexing_map",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:flat_hash_map",

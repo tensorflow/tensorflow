@@ -37,6 +37,7 @@ limitations under the License.
 #include "xla/service/gpu/ir_emitter_context.h"
 #include "xla/service/gpu/ir_emitter_nested.h"
 #include "xla/service/gpu/launch_dimensions.h"
+#include "xla/service/gpu/model/indexing_analysis.h"
 #include "xla/service/gpu/parallel_loop_emitter.h"
 #include "xla/service/llvm_ir/fused_ir_emitter.h"
 #include "xla/service/llvm_ir/ir_array.h"
@@ -275,7 +276,7 @@ std::optional<IndexingMap> ScatterFusion::ComputeThreadIdToInputIndexing(
         RangeVarsFromTensorSizes({scatter_indices_shape.dimensions(1)}),
         /*rt_vars=*/{}};
     auto scatter_indices_map = scatter_update_map * updates_to_indices_map;
-    scatter_indices_map.Simplify();
+    scatter_indices_map.Simplify(GetIndexingMapForInstruction);
     return scatter_indices_map;
   }
   return scatter_update_map;

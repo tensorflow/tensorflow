@@ -38,6 +38,7 @@ limitations under the License.
 #include "xla/service/gpu/fusions/mlir/elemental_hlo_to_mlir.h"
 #include "xla/service/gpu/fusions/mlir/ir/xla_gpu_ops.h"
 #include "xla/service/gpu/launch_dimensions.h"
+#include "xla/service/gpu/model/indexing_analysis.h"
 #include "xla/shape.h"
 #include "xla/status_macros.h"
 #include "xla/xla_data.pb.h"
@@ -87,7 +88,7 @@ std::optional<IndexingMap> MlirLoopFusion::ComputeThreadIdToInputIndexing(
   CHECK_EQ(output_to_input_indexing_set.size(), 1);
   IndexingMap thread_id_to_input_indexing_map = ComposeIndexingMaps(
       *thread_id_to_output_indexing, *output_to_input_indexing_set.begin());
-  thread_id_to_input_indexing_map.Simplify();
+  thread_id_to_input_indexing_map.Simplify(GetIndexingMapForInstruction);
   return thread_id_to_input_indexing_map;
 }
 

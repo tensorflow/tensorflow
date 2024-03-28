@@ -424,7 +424,6 @@ cc_library(
     deps = [
         ":affine_map_printer",
         "//xla/hlo/ir:hlo",
-        "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/types:span",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
@@ -438,8 +437,12 @@ xla_cc_test(
     srcs = ["indexing_map_test.cc"],
     deps = [
         ":affine_map_printer",
+        ":indexing_analysis",
         ":indexing_map",
         ":indexing_test_utils",
+        "//xla:literal_util",
+        "//xla:shape_util",
+        "//xla/hlo/ir:hlo",
         "//xla/tests:hlo_test_base",
         "//xla/tests:xla_internal_test_main",
         "@com_google_googletest//:gtest",
