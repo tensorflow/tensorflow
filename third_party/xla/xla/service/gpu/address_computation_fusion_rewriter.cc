@@ -424,115 +424,118 @@ absl::StatusOr<bool> AddressComputationFusionRewriter::Run(
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   if (!module->has_schedule()) return Internal("module is not scheduled");
 
+  HloSchedule& schedule = module->schedule();
   auto process_slices = [&](bool dynamic) -> absl::StatusOr<bool> {
-    absl::flat_hash_map<HloInstruction*,
-                        std::pair<UseDefDataflowPaths, DefUseDataflowPaths>>
-        matches;
+    bool changed = false;
 
     // Collect all potential custom call matches in the non-fusion computations.
+    // TODO(vuson): test multiple matched pattern in the same computation.
     for (HloComputation* computation : module->computations()) {
       if (computation->IsFusionComputation()) continue;
       for (HloInstruction* instr : computation->instructions()) {
-        if (IsLegacyCublasMatmul(*instr) ||
-            (!dynamic && IsCustomCall(instr, platform_name_))) {
-          auto sliced_operand_paths = GetSlicedOperandPaths(instr, dynamic);
-          bool has_sliced_operand_paths = sliced_operand_paths.size() > 1;
-          DefUseDataflowPaths sliced_user_paths{};
-          if (dynamic) sliced_user_paths = GetSlicedUserPaths(instr);
-
-          bool has_sliced_user_paths =
-              absl::c_any_of(sliced_user_paths, [&](auto& sliced_user_path) {
-                return !sliced_user_path.empty();
-              });
-
-          if (absl::c_any_of(sliced_user_paths, [&](auto& sliced_user_path) {
-                return DynCast<HloDynamicUpdateSliceInstruction>(
-                           sliced_user_path.back()) == nullptr;
-              })) {
-            return absl::InternalError(
-                "Expect sliced user path to end with a DUS.");
-          }
-
-          if (has_sliced_operand_paths || has_sliced_user_paths) {
-            matches[instr] = std::make_pair(std::move(sliced_operand_paths),
-                                            std::move(sliced_user_paths));
-          }
+        if (!IsLegacyCublasMatmul(*instr) &&
+            !IsCustomCall(instr, platform_name_)) {
+          continue;
         }
-      }
-    }
 
-    if (matches.empty()) return false;
-
-    HloSchedule& schedule = module->schedule();
-    for (auto& kv : matches) {
-      auto& [operand_matches, sliced_user_paths] = kv.second;
-      std::vector<HloInstruction*> matches;
-      absl::c_copy(operand_matches, std::back_inserter(matches));
-
-      for (auto& sliced_user_path : sliced_user_paths)
-        absl::c_copy(sliced_user_path, std::back_inserter(matches));
-
-      auto captures = GetPatternCaptures(matches);
-      auto sorted_operand_matches = GetSortedMatches(operand_matches);
-
-      TF_ASSIGN_OR_RETURN(HloComputation * fusion_body,
-                          CreateFusionBody(module, sorted_operand_matches,
-                                           sliced_user_paths, captures));
-
-      TF_ASSIGN_OR_RETURN(HloInstruction * fusion,
-                          CreateFusionInstruction(module, kv.first, captures,
-                                                  fusion_body, dynamic));
-
-      // As we are running after scheduling we have to keep it valid.
-      HloComputation* parent = kv.first->parent();
-      // Update schedule to replace the custom call instruction with the fusion
-      // instruction.
-      // Removal of the rest of the instructions in the sequence is handled by
-      // schedule update below.
-      HloInstructionSequence& sequence = schedule.GetOrCreateSequence(parent);
-      sequence.replace_instruction(kv.first, fusion);
-
-      if (fusion->shape().IsTuple()) {
-        TF_RETURN_IF_ERROR(parent->ReplaceInstructionWithDifferentShape(
-            const_cast<HloInstruction*>(kv.first), fusion));
-        for (auto& sliced_user_path : sliced_user_paths) {
-          auto old_gte =
-              Cast<HloGetTupleElementInstruction>(sliced_user_path.front());
-          HloInstruction* gte =
-              parent->AddInstruction(HloInstruction::CreateGetTupleElement(
-                  fusion, old_gte->tuple_index()));
-          TF_RETURN_IF_ERROR(
-              parent->ReplaceInstruction(sliced_user_path.back(), gte));
+        if (dynamic && IsCustomCall(instr, platform_name_)) {
+          continue;
         }
-      } else {
-        auto* old_instr = const_cast<HloInstruction*>(kv.first);
-        if (sliced_user_paths.empty()) {
-          // The only case where a tuple-shaped original hero op is fused into a
-          // non-tuple-shaped fusion is there's only one element of the original
-          // tuple being used. In that case, we need to replace that single
-          // get-tuple-element (instead of the hero op) with the fusion
-          // instruction.
-          if (kv.first->shape().IsTuple()) {
-            if (kv.first->user_count() != 1 ||
-                !DynCast<HloGetTupleElementInstruction>(
-                    kv.first->users().front())) {
-              return absl::InternalError(
-                  "Expect a single get-tuple-element user of the original "
-                  "tuple-shaped hero op when address computation fusion does "
-                  "not return a tuple");
-            }
-            old_instr = kv.first->users().front();
+
+        UseDefDataflowPaths sliced_operand_paths =
+            GetSlicedOperandPaths(instr, dynamic);
+        bool has_sliced_operand_paths = sliced_operand_paths.size() > 1;
+
+        DefUseDataflowPaths sliced_user_paths{};
+        if (dynamic) sliced_user_paths = GetSlicedUserPaths(instr);
+
+        bool has_sliced_user_paths = absl::c_any_of(
+            sliced_user_paths,
+            [&](auto& sliced_user_path) { return !sliced_user_path.empty(); });
+
+        if (absl::c_any_of(sliced_user_paths, [&](auto& sliced_user_path) {
+              return DynCast<HloDynamicUpdateSliceInstruction>(
+                         sliced_user_path.back()) == nullptr;
+            })) {
+          return absl::InternalError(
+              "Expect sliced user path to end with a DUS.");
+        }
+
+        if (!has_sliced_operand_paths && !has_sliced_user_paths) {
+          continue;
+        }
+
+        // Rewrite the matched instructions into an address computation fusion.
+        std::vector<HloInstruction*> matches;
+        absl::c_copy(sliced_operand_paths, std::back_inserter(matches));
+
+        for (auto& sliced_user_path : sliced_user_paths)
+          absl::c_copy(sliced_user_path, std::back_inserter(matches));
+
+        auto captures = GetPatternCaptures(matches);
+        auto sorted_operand_matches = GetSortedMatches(sliced_operand_paths);
+
+        TF_ASSIGN_OR_RETURN(HloComputation * fusion_body,
+                            CreateFusionBody(module, sorted_operand_matches,
+                                             sliced_user_paths, captures));
+
+        TF_ASSIGN_OR_RETURN(HloInstruction * fusion,
+                            CreateFusionInstruction(module, instr, captures,
+                                                    fusion_body, dynamic));
+
+        // As we are running after scheduling we have to keep it valid.
+        // Update schedule to replace the custom call instruction with the
+        // fusion instruction. Removal of the rest of the instructions in the
+        // sequence is handled by schedule update below.
+        HloInstructionSequence& sequence =
+            schedule.GetOrCreateSequence(computation);
+        sequence.replace_instruction(instr, fusion);
+
+        if (fusion->shape().IsTuple()) {
+          TF_RETURN_IF_ERROR(computation->ReplaceInstructionWithDifferentShape(
+              const_cast<HloInstruction*>(instr), fusion));
+          for (auto& sliced_user_path : sliced_user_paths) {
+            auto old_gte =
+                Cast<HloGetTupleElementInstruction>(sliced_user_path.front());
+            HloInstruction* gte = computation->AddInstruction(
+                HloInstruction::CreateGetTupleElement(fusion,
+                                                      old_gte->tuple_index()));
+            TF_RETURN_IF_ERROR(
+                computation->ReplaceInstruction(sliced_user_path.back(), gte));
           }
         } else {
-          old_instr = sliced_user_paths.front().back();
+          auto* old_instr = instr;
+          if (sliced_user_paths.empty()) {
+            // The only case where a tuple-shaped original hero op is fused into
+            // a non-tuple-shaped fusion is there's only one element of the
+            // original tuple being used. In that case, we need to replace that
+            // single get-tuple-element (instead of the hero op) with the fusion
+            // instruction.
+            if (instr->shape().IsTuple()) {
+              if (instr->user_count() != 1 ||
+                  !DynCast<HloGetTupleElementInstruction>(
+                      instr->users().front())) {
+                return absl::InternalError(
+                    "Expect a single get-tuple-element user of the original "
+                    "tuple-shaped hero op when address computation fusion does "
+                    "not return a tuple");
+              }
+              old_instr = instr->users().front();
+            }
+          } else {
+            old_instr = sliced_user_paths.front().back();
+          }
+          TF_RETURN_IF_ERROR(
+              computation->ReplaceInstruction(old_instr, fusion));
         }
-        TF_RETURN_IF_ERROR(parent->ReplaceInstruction(old_instr, fusion));
+
+        changed = true;
       }
     }
 
     TF_RETURN_IF_ERROR(module->schedule().Update());
 
-    return true;
+    return changed;
   };
 
   // TODO(vuson): unify dynamic_address_computation and address_computation
