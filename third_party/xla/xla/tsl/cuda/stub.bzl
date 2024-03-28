@@ -21,6 +21,7 @@ def cuda_stub(name, srcs):
         cmd = select({
             "@local_tsl//tsl:linux_aarch64": "$(location //third_party/implib_so:make_stub) $< --outdir $(RULEDIR) --target aarch64",
             "@local_tsl//tsl:linux_x86_64": "$(location //third_party/implib_so:make_stub) $< --outdir $(RULEDIR) --target x86_64",
+            "@local_tsl//tsl:linux_ppc64le": "$(location //third_party/implib_so:make_stub) $< --outdir $(RULEDIR) --target powerpc64le",
             "//conditions:default": "NOT_IMPLEMENTED_FOR_THIS_PLATFORM_OR_ARCHITECTURE",
         }),
     )
