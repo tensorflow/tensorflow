@@ -10,6 +10,31 @@ workspace(name = "tsl")
 
 # buildifier: disable=load-on-top
 
+# Initialize hermetic Python
+load("//third_party/py:python_init_rules.bzl", "python_init_rules")
+
+python_init_rules()
+
+load("//third_party/py:python_init_repositories.bzl", "python_init_repositories")
+
+python_init_repositories(
+    requirements = {
+        "3.11": "//:requirements_lock_3_11.txt",
+    },
+)
+
+load("//third_party/py:python_init_toolchains.bzl", "python_init_toolchains")
+
+python_init_toolchains()
+
+load("//third_party/py:python_init_pip.bzl", "python_init_pip")
+
+python_init_pip()
+
+load("@pypi//:requirements.bzl", "install_deps")
+
+install_deps()
+
 load(":workspace3.bzl", "tsl_workspace3")
 
 tsl_workspace3()
