@@ -218,6 +218,7 @@ cc_library(
         "//tsl/platform:stringpiece",
         "//tsl/platform:types",
         "//tsl/util:env_var",
+        "@com_google_absl//absl/strings",
         "@curl",
     ],
 )
@@ -438,7 +439,7 @@ tsl_cc_test(
     deps = [
         ":curl_http_request",
         "//tsl/lib/core:status_test_util",
-        "//tsl/platform:env_impl",
+        "//tsl/platform:errors",
         "//tsl/platform:path",
         "//tsl/platform:platform_port",
         "//tsl/platform:test",
