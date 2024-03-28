@@ -15,7 +15,7 @@ limitations under the License.
 
 // Implementation of HostExecutor class [of those methods not defined in the
 // class declaration].
-#include "xla/stream_executor/host/host_gpu_executor.h"
+#include "xla/stream_executor/host/host_executor.h"
 
 #include <stdint.h>
 #include <string.h>

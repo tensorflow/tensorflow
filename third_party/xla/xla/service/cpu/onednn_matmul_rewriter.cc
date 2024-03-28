@@ -333,12 +333,15 @@ bool OneDnnMatMulRewriter::ShouldRewrite(const HloInstruction* dot_instr) {
       ShapeUtil::IsZeroElementArray(output_shape)) {
     return false;
   }
-  // OneDNN only supports 2 <= rank <= kOneDnnMaxNDims.
-  if (lhs_shape.rank() != rhs_shape.rank() ||
-      rhs_shape.rank() != output_shape.rank() || lhs_shape.rank() < 2 ||
-      lhs_shape.rank() > kOneDnnMaxNDims) {
+  // OneDNN only supports rank <= kOneDnnMaxNDims and singular non-contracting
+  // dimensions. We should not rewrite if any of these conditions are violated.
+  if (lhs_shape.rank() <= 0 || lhs_shape.rank() > kOneDnnMaxNDims ||
+      rhs_shape.rank() <= 0 || rhs_shape.rank() > kOneDnnMaxNDims ||
+      output_shape.rank() > std::min({lhs_shape.rank(), rhs_shape.rank(),
+                                      static_cast<int64_t>(kOneDnnMaxNDims)})) {
     return false;
   }
+
   // Layout should be row-major, contraction dimensions captures transpose
   // scenarios in last two dimensions.
   if (!IsRowMajor(lhs_shape) || !IsRowMajor(rhs_shape) ||
@@ -362,7 +365,7 @@ bool OneDnnMatMulRewriter::ShouldRewrite(const HloInstruction* dot_instr) {
   auto num_flops = xla::HloCostAnalysis::GetDotFlops(lhs_shape, output_shape,
                                                      dot_dim_numbers);
   auto rank = output_shape.rank();
-  auto flops_threshold = (rank == 2) ? (1 << 24) : (1 << 19);
+  auto flops_threshold = (rank <= 2) ? (1 << 24) : (1 << 19);
   return (num_flops >= flops_threshold);
 }
 
@@ -375,10 +378,11 @@ class OneDnnMatMulRewriteVisitor : public DfsHloRewriteVisitor {
     auto pattern = m::Op(&dot_instr).WithOpcode(HloOpcode::kDot);
     if (!Match(instr, pattern)) return OkStatus();
 
-    auto dot_dim_numbers = dot_instr->dot_dimension_numbers();
-    TF_RETURN_IF_ERROR(ValidateDotDimensionNumbers(dot_dim_numbers));
-
+    TF_RETURN_IF_ERROR(
+        ValidateDotDimensionNumbers(dot_instr->dot_dimension_numbers()));
     if (!OneDnnMatMulRewriter::ShouldRewrite(dot_instr)) return OkStatus();
+    TF_ASSIGN_OR_RETURN(dot_instr, ReconfigureDotDimensions(dot_instr));
+    auto dot_dim_numbers = dot_instr->dot_dimension_numbers();
     const Shape& lhs_shape = dot_instr->operand(0)->shape();
     const Shape& rhs_shape = dot_instr->operand(1)->shape();
     const Shape& output_shape = dot_instr->shape();
@@ -629,6 +633,83 @@ class OneDnnMatMulRewriteVisitor : public DfsHloRewriteVisitor {
     }
 
     return ReplaceWithNewInstruction(activation, std::move(output));
+  }
+
+  // This function changes dot instruction for supported matrix
+  // multiplication scenarios. In particular, it changes the shape
+  // of lhs, rhs and result arrays.
+  //    - lhs configuration scenario
+  //      lhs:    [batch_dims,contracting_dim] to [batch_dims,1,contracting_dim]
+  //      result: [batch_dims,feature_dim] to [batch_dims,1,feature_dim]
+  //
+  //    - rhs configuration scenario
+  //      rhs:    [batch_dims,contracting_dim] to [batch_dims,contracting_dim,1]
+  //      result: [batch_dims,feature_dim] to [batch_dims,feature_dim, 1]
+  //
+  //    - both lhs and rhs configuration scenario
+  //      lhs:    [batch_dims,contracting_dim] to [batch_dims,1,contracting_dim]
+  //      rhs:    [batch_dims,contracting_dim] to [batch_dims,contracting_dim,1]
+  //      result: [batch_dims] to [batch_dims,1,1]
+  StatusOr<HloInstruction*> ReconfigureDotDimensions(
+      HloInstruction* dot_instr) {
+    HloInstruction* lhs = dot_instr->mutable_operand(0);
+    HloInstruction* rhs = dot_instr->mutable_operand(1);
+    DotDimensionNumbers dim_numbers = dot_instr->dot_dimension_numbers();
+
+    auto lhs_batch_dims = dim_numbers.lhs_batch_dimensions();
+    auto lhs_contraction_dims = dim_numbers.lhs_contracting_dimensions();
+    bool is_lhs_vector = lhs->shape().rank() ==
+                         (lhs_batch_dims.size() + lhs_contraction_dims.size());
+
+    auto rhs_batch_dims = dim_numbers.rhs_batch_dimensions();
+    auto rhs_contraction_dims = dim_numbers.rhs_contracting_dimensions();
+    bool is_rhs_vector = rhs->shape().rank() ==
+                         (rhs_batch_dims.size() + rhs_contraction_dims.size());
+
+    if (!is_lhs_vector && !is_rhs_vector) return dot_instr;
+
+    std::vector<int64_t> adjusted_lhs_dims(lhs->shape().dimensions().begin(),
+                                           lhs->shape().dimensions().end());
+    std::vector<int64_t> adjusted_rhs_dims(rhs->shape().dimensions().begin(),
+                                           rhs->shape().dimensions().end());
+    std::vector<int64_t> adjusted_dot_dims(
+        dot_instr->shape().dimensions().begin(),
+        dot_instr->shape().dimensions().end());
+
+    if (is_lhs_vector) {
+      auto lhs_it = adjusted_lhs_dims.begin() + lhs_batch_dims.size();
+      adjusted_lhs_dims.insert(lhs_it, 1, 1);
+      auto result_it = adjusted_dot_dims.begin() + lhs_batch_dims.size();
+      adjusted_dot_dims.insert(result_it, 1, 1);
+      auto lhs_contraction_dim =
+          dot_instr->dot_dimension_numbers().lhs_contracting_dimensions(0);
+      dim_numbers.set_lhs_contracting_dimensions(0, lhs_contraction_dim + 1);
+      lhs = lhs->AddInstruction(HloInstruction::CreateBitcast(
+          ShapeUtil::MakeShape(lhs->shape().element_type(), adjusted_lhs_dims),
+          lhs));
+    }
+
+    if (is_rhs_vector) {
+      auto it = adjusted_rhs_dims.end();
+      adjusted_rhs_dims.insert(it, 1, 1);
+      auto result_it = adjusted_dot_dims.end();
+      adjusted_dot_dims.insert(result_it, 1, 1);
+      rhs = rhs->AddInstruction(HloInstruction::CreateBitcast(
+          ShapeUtil::MakeShape(rhs->shape().element_type(), adjusted_rhs_dims),
+          rhs));
+    }
+
+    HloInstruction* adjusted_dot =
+        dot_instr->AddInstruction(HloInstruction::CreateDot(
+            ShapeUtil::MakeShape(dot_instr->shape().element_type(),
+                                 adjusted_dot_dims),
+            lhs, rhs, dim_numbers, dot_instr->precision_config()));
+
+    HloInstruction* replacement_instr = adjusted_dot->AddInstruction(
+        HloInstruction::CreateBitcast(dot_instr->shape(), adjusted_dot));
+
+    TF_RETURN_IF_ERROR(ReplaceInstruction(dot_instr, replacement_instr));
+    return adjusted_dot;
   }
 };
 
