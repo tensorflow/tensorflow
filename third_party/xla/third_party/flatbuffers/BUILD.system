@@ -1,0 +1,43 @@
+licenses(["notice"])  # Apache 2.0
+
+filegroup(
+    name = "LICENSE.txt",
+    visibility = ["//visibility:public"],
+)
+
+# Public flatc library to compile flatbuffer files at runtime.
+cc_library(
+    name = "flatbuffers",
+    linkopts = ["-lflatbuffers"],
+    visibility = ["//visibility:public"],
+)
+
+# Public flatc compiler library.
+cc_library(
+    name = "flatc_library",
+    linkopts = ["-lflatbuffers"],
+    visibility = ["//visibility:public"],
+)
+
+genrule(
+    name = "lnflatc",
+    outs = ["flatc.bin"],
+    cmd = "ln -s $$(which flatc) $@",
+)
+
+# Public flatc compiler.
+sh_binary(
+    name = "flatc",
+    srcs = ["flatc.bin"],
+    visibility = ["//visibility:public"],
+)
+
+cc_library(
+    name = "runtime_cc",
+    visibility = ["//visibility:public"],
+)
+
+py_library(
+    name = "runtime_py",
+    visibility = ["//visibility:public"],
+)

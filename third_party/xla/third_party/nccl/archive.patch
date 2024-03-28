@@ -1,0 +1,113 @@
+diff --git a/src/device/common.cu b/src/device/common.cu.cc
+similarity index 100%
+rename from src/device/common.cu
+rename to src/device/common.cu.cc
+diff --git a/src/device/common.h b/src/device/common.h
+index 97581f7..134fdb8 100644
+--- a/src/device/common.h
++++ b/src/device/common.h
+@@ -15,7 +15,7 @@
+ #define COLL_UNROLL (ncclCollUnroll())
+ 
+ typedef void(*ncclDevFuncPtr_t)();
+-extern __device__ ncclDevFuncPtr_t const ncclDevFuncTable[];
++extern __device__ ncclDevFuncPtr_t ncclDevFuncTable[];
+ 
+ struct ncclShmemGroup {
+   ncclConnInfo *recvConns[NCCL_MAX_NVLS_ARITY];
+diff --git a/src/device/generate.py b/src/device/generate.py
+index 0b053de..87bf6cb 100755
+--- a/src/device/generate.py
++++ b/src/device/generate.py
+@@ -195,7 +195,7 @@ kernel_funcs = sorted(set(best_kernel(*fn) for fn in primary_funcs))
+ ################################################################################
+ 
+ # Generate <gensrc>/device_table.cu
+-with open(os.path.join(gensrc, "device_table.cu"), "w") as f:
++with open(os.path.join(gensrc, "device_table.cu.cc"), "w") as f:
+   out = f.write
+   out('#include "common.h"\n')
+   out("\n")
+@@ -210,7 +210,7 @@ with open(os.path.join(gensrc, "device_table.cu"), "w") as f:
+       out("#endif\n")
+   out("\n")
+ 
+-  out("__device__ ncclDevFuncPtr_t const ncclDevFuncTable[] = {\n");
++  out("__device__ ncclDevFuncPtr_t ncclDevFuncTable[] = {\n");
+   index = 0
+   for fn in primary_funcs:
+     sym = paste("_", "ncclDevFunc", *fn)
+@@ -257,28 +257,45 @@ with open(os.path.join(gensrc, "host_table.cc"), "w") as f:
+ 
+   # List of all kernel function pointers.
+   out("extern int const ncclDevKernelCount = %d;\n" % len(kernel_funcs))
+-  out("extern void* const ncclDevKernelList[] = {\n")
++
+   index = 0
+   for kfn in kernel_funcs:
+     cudart, _ = required_cuda(*kfn)
+     sym = paste("_", "ncclDevKernel", *kfn)
+     if cudart != 0: out("#if CUDART_VERSION >= %d\n" % cudart)
+-    out("/*%4d*/ (void*)%s,\n" % (index, sym));
+-    if cudart != 0: out("#else\n" "/*%4d*/ nullptr,\n" "#endif\n" % index)
++    out("/*%4d*/ void* %s_ptr = (void*)%s;\n" % (index, sym, sym));
++    if cudart != 0:
++      out("#else\n/*%4d*/ void* %s_ptr = nullptr;\n#endif\n" % (index, sym));
++    index += 1
++
++  out("extern void* const ncclDevKernelList[] = {\n")
++  index = 0
++  for kfn in kernel_funcs:
++    sym = paste("_", "ncclDevKernel", *kfn)
++    out("/*%4d*/ %s_ptr,\n" % (index, sym));
+     index += 1
+   out("nullptr};\n")
+   out("\n")
+ 
+   # Maps primary id to kernel function pointer.
+-  out("extern void* const ncclDevKernelForFunc[] = {\n")
++
+   index = 0
+   for fn in primary_funcs:
+     kfn = best_kernel(*fn)
+     sym = paste("_", "ncclDevKernel", *kfn)
+     cudart, _ = required_cuda(*kfn)
+     if cudart != 0: out("#if CUDART_VERSION >= %d\n" % cudart)
+-    out("/*%4d*/ (void*)%s,\n" % (index, sym))
+-    if cudart != 0: out("#else\n" "/*%4d*/ nullptr,\n" "#endif\n" % index)
++    out("/*%4d*/ void* %s_ptr_%d = (void*)%s;\n" % (index, sym, index, sym))
++    if cudart != 0:
++      out("#else\n" "/*%4d*/ void* %s_ptr_%d = nullptr;\n" "#endif\n" % (index, sym, index))
++    index += 1
++
++  out("extern void* const ncclDevKernelForFunc[] = {\n")
++  index = 0
++  for fn in primary_funcs:
++    kfn = best_kernel(*fn)
++    sym = paste("_", "ncclDevKernel", *kfn)
++    out("/*%4d*/ %s_ptr_%d,\n" % (index, sym, index))
+     index += 1
+   out("nullptr};\n")
+   out("\n")
+@@ -297,7 +314,7 @@ with open(os.path.join(gensrc, "host_table.cc"), "w") as f:
+ # "coll" is reflected in the name: formally that no two funcs having different
+ # coll's map to the same filename.
+ def impl_filename(coll, redop, ty, algo, proto):
+-  return "%s.cu" % paste("_", coll_camel_to_lower[coll], redop and redop.lower(), ty)
++  return "%s.cu.cc" % paste("_", coll_camel_to_lower[coll], redop and redop.lower(), ty)
+ 
+ # Partition the functions and kernels to the .cu filenames. The partition is
+ # a dictionary mapping filename to (coll, func-tuple list)
+@@ -318,7 +335,7 @@ name_to_kernels = partition_by_name(kfn for kfn in kernel_funcs if kfn[0]!="Gene
+ with open(os.path.join(gensrc, "rules.mk"), "w") as f:
+   out = f.write
+   impl_names = sorted(name_to_funcs.keys())
+-  names = impl_names + ["host_table.cc", "device_table.cu"]
++  names = impl_names + ["host_table.cc", "device_table.cu.cc"]
+   out("LIB_OBJS_GEN = $(patsubst %, $(OBJDIR)/genobj/%.o, {names})\n"
+       .format(names=" ".join(names)))
+   out("\n")
+diff --git a/src/device/onerank.cu b/src/device/onerank.cu.cc
+similarity index 100%
+rename from src/device/onerank.cu
+rename to src/device/onerank.cu.cc
