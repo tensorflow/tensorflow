@@ -66,7 +66,7 @@ def QuantizeCompositeFunctionsPass : Pass<"stablehlo-quantize-composite-function
     Option<"enable_weight_only_",
         "enable-weight-only",
         "bool", /*default=*/"false",
-        "Whether to produce weight-only quantized op for dot_general op.">,
+        "Whether to produce weight-only quantized op for convolution and dot_general op.">,
   ];
   let dependentDialects = [
     "mlir::arith::ArithDialect",
@@ -105,7 +105,7 @@ def QuantizePass : Pass<"stablehlo-quantize", "mlir::ModuleOp"> {
     Option<"enable_weight_only_",
         "enable-weight-only",
         "bool", /*default=*/"false",
-        "Whether to produce weight-only quantized op for dot_general op.">,
+        "Whether to produce weight-only quantized op for convolution and dot_general op.">,
   ];
   let dependentDialects = [
     "mlir::stablehlo::StablehloDialect",

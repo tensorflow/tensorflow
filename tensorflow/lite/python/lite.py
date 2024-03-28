@@ -638,6 +638,7 @@ class TFLiteConverterBase:
     # Provides specs for quantization, whether preset or custom.
     self._experimental_quantization_options = None  # Deprecated
     self.experimental_use_stablehlo_quantizer = False
+    self.experimental_stablehlo_quantizer_config = None
     # Initializes conversion metadata.
     self.exclude_conversion_metadata = False
     self._metadata = conversion_metadata_fb.ConversionMetadataT()
@@ -816,6 +817,9 @@ class TFLiteConverterBase:
         "use_buffer_offset": self._experimental_use_buffer_offset,
         "reduce_type_precision": self._experimental_reduce_type_precision,
         "use_stablehlo_quantizer": self.experimental_use_stablehlo_quantizer,
+        "stablehlo_quantizer_config": (
+            self.experimental_stablehlo_quantizer_config
+        ),
         "qdq_conversion_mode": self._experimental_qdq_conversion_mode,
         "disable_per_channel_quantization_for_dense_layers": (
             self._experimental_disable_per_channel_quantization_for_dense_layers
@@ -842,7 +846,11 @@ class TFLiteConverterBase:
       )
 
     if self.experimental_use_stablehlo_quantizer:
-      if Optimize.DEFAULT in self.optimizations and self.representative_dataset:
+      if (
+          self.experimental_stablehlo_quantizer_config is None
+          and Optimize.DEFAULT in self.optimizations
+          and self.representative_dataset
+      ):
         if len(self._saved_model_exported_names) != 1:
           raise ValueError(
               "StableHLO quantizer is only supported when converting from a"
@@ -876,8 +884,22 @@ class TFLiteConverterBase:
         )
 
         args["quantization_config"] = quantization_config
+      elif self.experimental_stablehlo_quantizer_config is not None and (
+          self.experimental_stablehlo_quantizer_config.HasField(
+              "static_range_ptq_preset"
+          )
+          or self.experimental_stablehlo_quantizer_config.HasField(
+              "weight_only_preset"
+          )
+      ):
+        args["quantization_config"] = (
+            self.experimental_stablehlo_quantizer_config
+        )
       else:
-        raise ValueError("StableHLO quantizer only supports static-range PTQ.")
+        raise ValueError(
+            "StableHLO quantizer only supports static-range and weight-only"
+            " PTQ."
+        )
 
     return args
 

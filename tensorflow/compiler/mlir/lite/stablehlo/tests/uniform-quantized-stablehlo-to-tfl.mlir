@@ -1472,3 +1472,48 @@ func.func @float_dynamic_slice(%arg0: tensor<4x4xf32>, %arg1: tensor<i64>, %arg2
 // CHECK-NOT: tfl.minimum
 // CHECK-NOT: tfl.maximum
 // CHECK-NOT: tfl.slice
+
+// -----
+
+// Tests that a hybrid quantized dot_general is splitted into dequantize and float
+// dot_general.
+
+// CHECK-LABEL: func @dot_general_hybrid
+// CHECK-SAME: %[[ARG0:.+]]: tensor<1x2x3x4xf32>
+func.func @dot_general_hybrid(%arg0: tensor<1x2x3x4xf32>) -> tensor<1x2x3x5xf32> {
+  %0 = stablehlo.constant() {value = dense<1> : tensor<1x2x4x5xi8>} : () -> tensor<1x2x4x5x!quant.uniform<i8:f32, 1.000000e+0>>
+  %1 = "stablehlo.dot_general"(%arg0, %0) {
+    dot_dimension_numbers = #stablehlo.dot<
+      lhs_batching_dimensions = [0, 1],
+      rhs_batching_dimensions = [0, 1],
+      lhs_contracting_dimensions = [3],
+      rhs_contracting_dimensions = [2]>,
+      precision_config = [#stablehlo<precision DEFAULT>, #stablehlo<precision DEFAULT>]
+  } : (tensor<1x2x3x4xf32>, tensor<1x2x4x5x!quant.uniform<i8:f32, 1.000000e+0>>) -> tensor<1x2x3x5xf32>
+  return %1 : tensor<1x2x3x5xf32>
+}
+
+// CHECK: %[[WEIGHT:.+]] = stablehlo.constant() {value = dense<1> : tensor<1x2x4x5xi8>} : () -> tensor<1x2x4x5x!quant.uniform<i8:f32, 1.000000e+00>>
+// CHECK: %[[DQ:.+]] = "tfl.dequantize"(%[[WEIGHT]]) : (tensor<1x2x4x5x!quant.uniform<i8:f32, 1.000000e+00>>) -> tensor<1x2x4x5xf32>
+// CHECK: %[[DOT:.+]] = stablehlo.dot_general %[[ARG0]], %[[DQ]], batching_dims = [0, 1] x [0, 1], contracting_dims = [3] x [2], precision = [DEFAULT, DEFAULT] : (tensor<1x2x3x4xf32>, tensor<1x2x4x5xf32>) -> tensor<1x2x3x5xf32>
+// CHECK: return %[[DOT]]
+
+// -----
+
+// Tests that a hybrid quantized convolution is splitted into dequantize and
+// float convolution.
+
+// CHECK-LABEL: func @convolution_hybrid
+// CHECK-SAME: %[[ARG0:.+]]: tensor<1x3x3x4xf32>
+func.func @convolution_hybrid(%arg0: tensor<1x3x3x4xf32>) -> tensor<1x3x3x2xf32> {
+  %0 = stablehlo.constant() {value = dense<3> : tensor<3x3x4x2xi8>} : () -> tensor<3x3x4x2x!quant.uniform<i8:f32:3, {2.000000e+2, 3.000000e+3}>>
+  %1 = stablehlo.convolution(%arg0, %0) dim_numbers = [b, 0, 1, f]x[0, 1, i, o]->[b, 0, 1, f], window = {pad = [[1, 1], [1, 1]]} {batch_group_count = 1 : i64, feature_group_count = 1 : i64} : (tensor<1x3x3x4xf32>, tensor<3x3x4x2x!quant.uniform<i8:f32:3, {2.000000e+2, 3.000000e+3}>>) -> tensor<1x3x3x2xf32>
+  return %1 : tensor<1x3x3x2xf32>
+}
+
+// CHECK: %[[WEIGHT:.+]] = stablehlo.constant() {value = dense<3> : tensor<3x3x4x2xi8>} : () -> tensor<3x3x4x2x!quant.uniform<i8:f32:3, {2.000000e+02,3.000000e+03}>>
+// CHECK: %[[DQ:.+]] = "tfl.dequantize"(%[[WEIGHT]]) : (tensor<3x3x4x2x!quant.uniform<i8:f32:3, {2.000000e+02,3.000000e+03}>>) -> tensor<3x3x4x2xf32>
+// CHECK: %[[CONV:.+]] = stablehlo.convolution(%[[ARG0]], %[[DQ]])
+// CHECK{LITERAL}: dim_numbers = [b, 0, 1, f]x[0, 1, i, o]->[b, 0, 1, f], window = {pad = [[1, 1], [1, 1]]} {batch_group_count = 1 : i64, feature_group_count = 1 : i64}
+// CHECK-SAME: (tensor<1x3x3x4xf32>, tensor<3x3x4x2xf32>) -> tensor<1x3x3x2xf32>
+// CHECK: return %[[CONV]]

@@ -2108,12 +2108,46 @@ class RewriteQuantizedDynamicSliceOp
   }
 };
 
+// Splits dot-like hybrid quantized StableHLO ops into tfl.dequantize and float
+// StableHLO op.
+// Legalization of float StableHLO op depends on existing passes for conversion
+// of StableHLO -> MHLO -> TF -> TFL.
+template <typename OpType>
+class RewriteHybridQuantizedDotLikeOp : public OpRewritePattern<OpType> {
+ public:
+  using OpRewritePattern<OpType>::OpRewritePattern;
+
+  LogicalResult match(OpType op) const override {
+    if (op->getNumOperands() != 2 || op->getNumResults() != 1) {
+      return failure();
+    }
+    // Lhs and result should not be quantized and rhs should be quantized.
+    return success(!IsQuantizedTensorType(op->getOperand(0).getType()) &&
+                   IsQuantizedTensorType(op->getOperand(1).getType()) &&
+                   !IsQuantizedTensorType(op->getResult(0).getType()));
+  }
+
+  void rewrite(OpType op, PatternRewriter& rewriter) const override {
+    Value rhs = op.getOperand(1);
+    Type lhs_element_type =
+        op.getOperand(0).getType().template cast<TensorType>().getElementType();
+    Type dequantized_rhs_type =
+        quant::CloneTypeWithNewElementType(rhs.getType(), lhs_element_type);
+    auto dq = rewriter.create<TFL::DequantizeOp>(
+        op->getLoc(), /*output=*/dequantized_rhs_type,
+        /*input=*/rhs);
+    op.setOperand(1, dq);
+  }
+};
+
 void UniformQuantizedStableHloToTflPass::runOnOperation() {
   func::FuncOp func_op = getOperation();
   MLIRContext& ctx = getContext();
 
   RewritePatternSet patterns(&ctx);
-  patterns.add<RewriteUniformDequantizeOp, RewriteUniformQuantizeOp,
+  patterns.add<RewriteHybridQuantizedDotLikeOp<stablehlo::ConvolutionOp>,
+               RewriteHybridQuantizedDotLikeOp<stablehlo::DotGeneralOp>,
+               RewriteUniformDequantizeOp, RewriteUniformQuantizeOp,
                RewriteQuantizedBroadcastInDimOp, RewriteQuantizedConcatenateOp,
                RewriteQuantizedConvolutionOp,
                RewriteQuantizedDotGeneralOpToTflFullyConnectedOrBatchMatmulOp,
