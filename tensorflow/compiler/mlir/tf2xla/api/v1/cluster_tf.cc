@@ -152,7 +152,8 @@ tensorflow::Status RecordStatusIfError(const std::string error_prefix,
   }
 
   tensorflow::metrics::UpdateTfMlirBridgeFirstPhaseCounter(
-      /*device_type=*/"tpu", /*bridge_version=*/"v1",
+      /*bridge_type=*/"replicated", /*bridge_version=*/"v1",
+      /*device_type*/ "tpu",
       /*fallback_enabled=*/is_in_fallback_enabled_mode,
       /*result=*/"failure");
   tsl::error_logging::Log(kBridgeComponent,
@@ -221,7 +222,8 @@ tensorflow::Status RunSessionTf2xlaClusteringBridge(
       RunClusteringPipelineOnSubmodule(module, is_in_fallback_enabled_mode));
 
   tensorflow::metrics::UpdateTfMlirBridgeFirstPhaseCounter(
-      /*device_type=*/"tpu", /*bridge_version=*/"v1",
+      /*bridge_type=*/"replicated", /*bridge_version=*/"v1",
+      /*device_type*/ "tpu",
       /*n_fallback_enabled*/ is_in_fallback_enabled_mode,
       /*result=*/"success");
 

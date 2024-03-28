@@ -121,6 +121,7 @@ void CreateNonTPULowerClusterToRuntimeOpsPassPipeline(
 // TODO(b/306728216): Move this out of the Bridge component and into a Host
 // runtime component.
 tensorflow::Status RecordIfErrorStatus(const std::string error_prefix,
+                                       std::string bridge_type,
                                        tsl::DeviceType device_type,
                                        absl::Status status) {
   if (status.ok()) {
@@ -129,7 +130,8 @@ tensorflow::Status RecordIfErrorStatus(const std::string error_prefix,
 
   VLOG(2) << error_prefix << " " << status;
   tensorflow::metrics::UpdateTfMlirBridgeFirstPhaseCounter(
-      device_type.type_string(), /*bridge_version=*/"v2",
+      bridge_type,
+      /*bridge_version=*/"v2", device_type.type_string(),
       /*fallback_enabled=*/false,
       /*result=*/"failure");
 
@@ -194,10 +196,13 @@ absl::Status RunLowerClusterToRuntimeOpsPassPipeline(
         module, llvm::StringRef(), &runtime_lowering);
   }
 
+  std::string bridge_type = xla_device_type == DeviceType(DEVICE_TPU_XLA_JIT)
+                                ? "replicated"
+                                : "nonreplicated";
   auto result_status = diag_handler.ConsumeStatus();
   TF_RETURN_IF_ERROR(
       RecordIfErrorStatus(/*error_prefix=*/"lower_cluster_to_runtime",
-                          xla_device_type, result_status));
+                          bridge_type, xla_device_type, result_status));
 
   return absl::OkStatus();
 }

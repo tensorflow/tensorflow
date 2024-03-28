@@ -167,8 +167,8 @@ TEST_F(LowerClusterToRuntimeOpsTest, ErrorsWithBadCluster) {
                    *mlir_module_, DeviceType(DEVICE_TPU_XLA_JIT))
                    .ok());
 
-  EXPECT_EQ(compilation_status.Delta("XLA_TPU_JIT", "v2", "fallback_disabled",
-                                     "failure"),
+  EXPECT_EQ(compilation_status.Delta("replicated", "v2", "XLA_TPU_JIT",
+                                     "fallback_disabled", "failure"),
             1);
 }
 

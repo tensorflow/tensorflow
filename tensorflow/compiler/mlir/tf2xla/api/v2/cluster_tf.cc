@@ -114,6 +114,7 @@ tensorflow::Status RunTFXLABridge(
 
 tensorflow::Status RecordIfErrorStatus(const std::string error_prefix,
                                        bool fallback_enabled,
+                                       std::string bridge_type,
                                        std::string device_type,
                                        absl::Status status) {
   if (status.ok()) {
@@ -122,7 +123,7 @@ tensorflow::Status RecordIfErrorStatus(const std::string error_prefix,
 
   VLOG(2) << error_prefix << " " << status;
   tensorflow::metrics::UpdateTfMlirBridgeFirstPhaseCounter(
-      device_type, /*bridge_version=*/"v2",
+      /*bridge_type*/ bridge_type, /*bridge_version=*/"v2", device_type,
       /*fallback_enabled=*/fallback_enabled,
       /*result=*/"failure");
 
@@ -162,7 +163,7 @@ void CreateReplicatedClusteringPipelineV2(OpPassManager &pm) {
 tensorflow::Status RunFunctionTf2xlaClusteringBridge(
     ModuleOp module, bool is_supported_by_replicated_brige,
     bool is_in_fallback_enabled_mode, llvm::StringRef module_name) {
-  std::string device_type_filter =
+  std::string device_type =
       is_supported_by_replicated_brige ? "tpu" : "cpu/gpu";
 
   VLOG(2)
@@ -186,14 +187,16 @@ tensorflow::Status RunFunctionTf2xlaClusteringBridge(
                 },
                 module_name, /*dump_prefix=*/"tf_xla_bridge_v2_nonreplicated");
 
+  std::string bridge_type =
+      is_supported_by_replicated_brige ? "replicated" : "nonreplicated";
   // TODO(b/317798386): add is_supported_by_replicated_brige as a filter.
   TF_RETURN_IF_ERROR(RecordIfErrorStatus(
       /*error_prefix=*/"clustering_v2", is_in_fallback_enabled_mode,
-      device_type_filter, clustering_status));
+      bridge_type, device_type, clustering_status));
 
   // TODO(b/317798386): add is_supported_by_replicated_brige as a filter.
   tensorflow::metrics::UpdateTfMlirBridgeFirstPhaseCounter(
-      device_type_filter, /*bridge_version=*/"v2",
+      bridge_type, /*bridge_version=*/"v2", device_type,
       /*fallback_enabled=*/is_in_fallback_enabled_mode,
       /*result=*/"success");
 
