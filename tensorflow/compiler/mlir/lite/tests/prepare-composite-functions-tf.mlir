@@ -1014,7 +1014,7 @@ func.func private @dense_image_warp_invalid_output_type(%arg0: tensor<2x4x4x1xf3
 // -----
 
 module {
-func.func @my_composite_op_150(%arg0: tensor<4x4xf32>, %arg1: tensor<4x4xf32>, %arg2: tensor<4x4xf32>) -> (tensor<*xf32>, tensor<*xf32>) attributes {tf._implements = #tf_type.func<@my_composite_op, {example_option = 10 : i64, tfl_fusable_op = true}>} {
+func.func @my_composite_op_150(%arg0: tensor<4x4xf32>, %arg1: tensor<4x4xf32>, %arg2: tensor<4x4xf32>) -> (tensor<*xf32>, tensor<*xf32>) attributes {tf._implements = #tf_type.func<@my_composite_op, {example_option = 10 : i64, example_str = "value 1.01", tfl_fusable_op = true}>} {
   %0 = "tf.AddV2"(%arg0, %arg1) {device = ""} : (tensor<4x4xf32>, tensor<4x4xf32>) -> tensor<*xf32>
   %1 = "tf.Identity"(%0) {device = ""} : (tensor<*xf32>) -> tensor<*xf32>
   %2 = "tf.Mul"(%0, %arg2) {device = ""} : (tensor<*xf32>, tensor<4x4xf32>) -> tensor<*xf32>
@@ -1022,8 +1022,8 @@ func.func @my_composite_op_150(%arg0: tensor<4x4xf32>, %arg1: tensor<4x4xf32>, %
   func.return %1, %3 : tensor<*xf32>, tensor<*xf32>
 }
 
-// CHECK-LABEL: func @my_composite_op_150(%arg0: tensor<4x4xf32>, %arg1: tensor<4x4xf32>, %arg2: tensor<4x4xf32>) -> (tensor<*xf32>, tensor<*xf32>) attributes {tf._implements = #tf_type.func<@my_composite_op, {example_option = 10 : i64, tfl_fusable_op = true}>} {
-// CHECK-NEXT:  %0:2 = "tfl.custom"(%arg0, %arg1, %arg2) {custom_code = "my_composite_op", custom_option = #tfl<const_bytes : "0x6578616D706C655F6F7074696F6E0001100101010A04022401">} : (tensor<4x4xf32>, tensor<4x4xf32>, tensor<4x4xf32>) -> (tensor<*xf32>, tensor<*xf32>)
+// CHECK-LABEL: func @my_composite_op_150(%arg0: tensor<4x4xf32>, %arg1: tensor<4x4xf32>, %arg2: tensor<4x4xf32>) -> (tensor<*xf32>, tensor<*xf32>) attributes {tf._implements = #tf_type.func<@my_composite_op, {example_option = 10 : i64, example_str = "value 1.01", tfl_fusable_op = true}>} {
+// CHECK-NEXT:  %0:2 = "tfl.custom"(%arg0, %arg1, %arg2) {custom_code = "my_composite_op", custom_option = #tfl<const_bytes : "0x6578616D706C655F6F7074696F6E006578616D706C655F737472000A76616C756520312E30310002281A0201020A120414042401">} : (tensor<4x4xf32>, tensor<4x4xf32>, tensor<4x4xf32>) -> (tensor<*xf32>, tensor<*xf32>)
 // CHECK-NEXT:  return %0#0, %0#1 : tensor<*xf32>, tensor<*xf32>
 // CHECK-NEXT: }
 
