@@ -26,6 +26,7 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "absl/container/inlined_vector.h"
 #include "tensorflow/lite/experimental/shlo/data_type.h"
+#include "tensorflow/lite/experimental/shlo/ops/util.h"
 #include "tensorflow/lite/experimental/shlo/quantized_tensor_element_type.h"
 #include "tensorflow/lite/experimental/shlo/shape.h"
 #include "tensorflow/lite/experimental/shlo/tensor.h"
@@ -149,37 +150,6 @@ struct PerAxis {
   using Param = TestParamT;
   static constexpr Axis axis = kAxis;
 };
-
-// Gets a string representation of the given DataType.
-constexpr const char* ToString(DataType t) {
-  switch (t) {
-    case DataType::kI1:
-      return "I1";
-      break;
-    case DataType::kSI4:
-      return "SI4";
-      break;
-    case DataType::kSI8:
-      return "SI8";
-      break;
-    case DataType::kSI16:
-      return "SI16";
-      break;
-    case DataType::kSI32:
-      return "SI32";
-      break;
-    case DataType::kBF16:
-      return "BF16";
-      break;
-    case DataType::kF16:
-      return "F16";
-      break;
-    case DataType::kF32:
-      return "F32";
-      break;
-  }
-  return "Unknown data type";
-}
 
 // Helps getting a human readable typed test parameter name.
 template <class T>
