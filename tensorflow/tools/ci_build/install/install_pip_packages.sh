@@ -18,8 +18,11 @@ set -e
 
 # Get the latest version of pip so it recognize manylinux2010
 wget https://bootstrap.pypa.io/get-pip.py
-python3.6 get-pip.py
+python3.9 get-pip.py
 rm -f get-pip.py
+
+# Upgrade pip3 to latest version
+python3.9 -m pip install --upgrade pip
 
 # Install pip packages from whl files to avoid the time-consuming process of
 # building from source.
@@ -30,13 +33,13 @@ pip3 install wheel==0.31.1
 
 # Install last working version of setuptools. This must happen before we install
 # absl-py, which uses install_requires notation introduced in setuptools 20.5.
-pip3 install --upgrade setuptools==39.1.0
+pip3 install --upgrade setuptools>=39.1.0
 
 pip3 install virtualenv
 
 # Install six and future.
 pip3 install --upgrade six==1.12.0
-pip3 install "future>=0.17.1"
+pip3 install --upgrade future>=0.17.1
 
 # Install absl-py.
 pip3 install --upgrade absl-py
@@ -62,15 +65,16 @@ rm -rf /usr/lib/python3/dist-packages/six*
 if $(cat /etc/*-release | grep -q 14.04); then
   pip3 install --upgrade numpy==1.14.5
 else
-  pip3 install --upgrade numpy~=1.19.2
+  pip3 install --upgrade numpy>=1.19.5
 fi
 
-pip3 install scipy==1.4.1
+pip3 install --upgrade scipy>=1.6.0
 
-pip3 install scikit-learn==0.18.1
+pip3 install --upgrade joblib>=1.2.0 threadpoolctl>=2.0.0
+pip3 install --upgrade scikit-learn>=1.0.0
 
 # pandas required by `inflow`
-pip3 install pandas==0.19.2
+pip3 install --upgrade pandas>=0.19.2
 
 # Benchmark tests require the following:
 pip3 install psutil
