@@ -641,6 +641,9 @@ class MklConvBackpropCommonOp : public OpKernel {
     OP_REQUIRES(context, FormatFromString(data_format_str, &data_format_),
                 errors::InvalidArgument("Invalid data format"));
     OP_REQUIRES_OK(context, context->GetAttr("strides", &strides_));
+    if (strides_.size() < 4) {
+        return errors::InvalidArgument("strides dimensions must not be < 4. ");
+    }
     int stride_n = GetTensorDim(strides_, data_format_, 'N');
     int stride_c = GetTensorDim(strides_, data_format_, 'C');
     OP_REQUIRES(
