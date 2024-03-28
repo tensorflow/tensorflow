@@ -2072,6 +2072,7 @@ py_strict_library(
         ":array_ops_stack",
         ":bitwise_ops_gen",
         ":data_flow_ops_gen",
+        ":logging_ops_gen",
         ":math_ops_gen",
         ":nn_ops_gen",
         ":sparse_ops_gen",
