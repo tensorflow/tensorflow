@@ -3218,3 +3218,20 @@ func.func @testDilate(%arg0: tensor<3x4x5xf32>) -> tensor<5x7x9xf32> {
   func.return %0 : tensor<5x7x9xf32>
   // CHECK: return %0 : tensor<5x7x9xf32>
 }
+
+// -----
+
+// CHECK-LABEL: violateThreshold
+func.func @violateThreshold(%arg0: tensor<f32>) -> tensor<f32> {
+  // expected-error @+1 {{'tfl.quantize' op Quant scale (1.334441e+36) too large}}
+  %0 = "tfl.quantize"(%arg0) {qtype = tensor<!quant.uniform<i8:f32, 1.3344405750530544E+36:127>>, volatile} : (tensor<f32>) -> tensor<!quant.uniform<i8:f32, 1.3344405750530544E+36:127>>
+  func.return %0 : tensor<!quant.uniform<i8:f32, 1.3344405750530544E+36:127>>
+}
+
+// -----
+
+// CHECK-LABEL: satisfyThreshold
+func.func @satisfyThreshold(%arg0: tensor<f32>) -> tensor<f32> {
+  %0 = "tfl.quantize"(%arg0) {qtype = tensor<!quant.uniform<i8:f32, 0.3344405750530544:127>>, volatile} : (tensor<f32>) -> tensor<!quant.uniform<i8:f32, 0.3344405750530544:127>>
+  func.return %0 : tensor<!quant.uniform<i8:f32, 0.3344405750530544:127>>
+}
