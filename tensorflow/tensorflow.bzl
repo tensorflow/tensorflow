@@ -1,4 +1,4 @@
-"""Provides build configuration for TensorFlow."""
+"""Provides build configuration for TensorFlow. Test."""
 
 load(
     "//tensorflow:py.default.bzl",
