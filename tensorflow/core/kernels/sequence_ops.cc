@@ -96,8 +96,9 @@ class RangeOp : public OpKernel {
       size = Eigen::divup(Eigen::numext::abs(limit - start),
                           Eigen::numext::abs(delta));
     } else {
-      auto size_auto =
-          Eigen::numext::ceil(Eigen::numext::abs((limit - start) / delta));
+      using U = std::make_unsigned_t<T>;
+      auto size_auto = Eigen::numext::ceil(
+          (U(std::max(start, limit)) - U(std::min(start, limit))) / delta;);
       OP_REQUIRES(
           context, size_auto <= std::numeric_limits<int64_t>::max(),
           errors::InvalidArgument("Requires ((limit - start) / delta) <= ",
