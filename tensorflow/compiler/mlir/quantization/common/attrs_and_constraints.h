@@ -49,6 +49,12 @@ inline constexpr std::array<int64_t, 4> kNhwcToNchwPermutation = {0, 3, 1, 2};
 // permutation of `kNchwToNhwcPermutation`.
 inline constexpr std::array<int64_t, 4> kNchwToNhwcPermutation = {0, 2, 3, 1};
 
+// Permutation from the OIHW (== (output features, input features, height,
+// width)) tensor format to HWIO. This is commonly used to transpose convolution
+// weights represented as OIHW format to HWIO, which is more desirable for
+// certain downstream optimization passes (e.g. XLA).
+inline constexpr std::array<int64_t, 4> kOihwToHwioPermutation = {2, 3, 1, 0};
+
 // Returns true if the value has static shape.
 bool HasStaticShape(Value value);
 
