@@ -1071,6 +1071,159 @@ TEST_F(AddressComputationFusionRewriterTest, SimpleCustomCallLegacy) {
                             });
 }
 
+TEST_F(AddressComputationFusionRewriterTest, TupleSliceCustomCallLegacy) {
+  XlaBuilder b(TestName());
+  CustomCall(
+      &b, "Callback_Void",
+      /*operands=*/
+      {
+          Tuple(&b,
+                {
+                    Slice(Broadcast(ConstantR0WithType(&b, F32, 5), {8, 8}),
+                          {0, 0}, {4, 8}, {1, 1}),
+                    Broadcast(ConstantR0WithType(&b, F32, 2), {256}),
+                }),
+          Tuple(&b,
+                {
+                    Broadcast(ConstantR0WithType(&b, F32, 3), {1024}),
+                    Broadcast(ConstantR0WithType(&b, F32, 4), {8}),
+                }),
+      },
+      ShapeUtil::MakeShape(F32, {128}), /*opaque=*/"");
+  TF_ASSERT_OK_AND_ASSIGN(auto computation, b.Build());
+  xla::HloModuleConfig hlo_config(
+      xla::ProgramShape(computation.proto().host_program_shape()),
+      /*ignore_layouts=*/false);
+  DebugOptions debug_options = GetDebugOptionsForTest();
+  debug_options.set_xla_gpu_enable_address_computation_fusion(false);
+  hlo_config.set_debug_options(debug_options);
+  TF_ASSERT_OK_AND_ASSIGN(auto hlo, xla::HloModule::CreateFromProto(
+                                        computation.proto(), hlo_config));
+  TF_ASSERT_OK_AND_ASSIGN(
+      HloSchedule schedule,
+      ScheduleModule(hlo.get(), [](const BufferValue& buffer) {
+        return ShapeUtil::ByteSizeOf(buffer.shape(), /*pointer_size=*/8);
+      }));
+  TF_CHECK_OK(hlo->set_schedule(std::move(schedule)));
+
+  const char* expected = R"(
+    ; CHECK:     %address-computation {{.*}} {
+    ; CHECK-DAG:   [[P2:%[^ ]+]] = f32[8,8]{1,0} parameter(2)
+    ; CHECK-DAG:   [[S0:%[^ ]+]] = f32[4,8]{1,0} slice([[P2]]), slice={[0:4], [0:8]}
+    ; CHECK-DAG:   [[P1:%[^ ]+]] = f32[256]{0} parameter(1)
+    ; CHECK-DAG:   [[T0:%[^ ]+]] = (f32[4,8]{1,0}, f32[256]{0}) tuple([[S0]], [[P1]])
+    ; CHECK-DAG:   [[P0:%[^ ]+]] = (f32[1024]{0}, f32[8]{0}) parameter(0)
+    ; CHECK:       ROOT [[CC:%[^ ]+]] = f32[128]{0} custom-call([[T0]], [[P0]]),
+    ; CHECK:              custom_call_target="Callback_Void"
+    ; CHECK:     }
+
+    ; CHECK:     ENTRY %{{.*}} {
+    ; CHECK:       ROOT [[FUSION:%[^ ]+]] = f32[128]{0} fusion(
+    ; CHECK:         kind=kCustom, calls=%address-computation,
+    ; CHECK:         backend_config={
+    ; CHECK:           "kind":"__custom_fusion",
+    ; CHECK:           "custom_fusion_config":{"name":"address_computation"}
+    ; CHECK:         }
+    ; CHECK:     }
+  )";
+
+  auto device = TestGpuDeviceInfo::RTXA6000DeviceInfo();
+  RunAndFilecheckHloRewrite(hlo->ToString(),
+                            AddressComputationFusionRewriter(PLATFORM),
+                            expected, [](HloModule* module) {
+                              EXPECT_TRUE(module->has_schedule());
+                              TF_CHECK_OK(module->schedule().Verify());
+                            });
+}
+
+TEST_F(AddressComputationFusionRewriterTest, TupledOutputCustomCallLegacy) {
+  XlaBuilder b(TestName());
+  auto custom_call = CustomCall(
+      &b, "Callback_Void",
+      /*operands=*/
+      {
+          Tuple(&b,
+                {
+                    Slice(Broadcast(ConstantR0WithType(&b, F32, 5), {8, 8}),
+                          {0, 0}, {4, 8}, {1, 1}),
+                    Broadcast(ConstantR0WithType(&b, F32, 2), {256}),
+                }),
+          Tuple(&b,
+                {
+                    Broadcast(ConstantR0WithType(&b, F32, 3), {1024}),
+                    Broadcast(ConstantR0WithType(&b, F32, 4), {8}),
+                }),
+      },
+      ShapeUtil::MakeTupleShape({
+          ShapeUtil::MakeShape(F32, {8}),
+          ShapeUtil::MakeTupleShape({
+              ShapeUtil::MakeShape(F32, {128}),
+              ShapeUtil::MakeShape(F32, {256}),
+          }),
+          ShapeUtil::MakeShape(F32, {1024}),
+          ShapeUtil::MakeShape(F32, {4, 8}),
+      }),
+      /*opaque=*/"");
+  Tuple(&b, {GetTupleElement(GetTupleElement(custom_call, 1), 0),
+             GetTupleElement(custom_call, 2)});
+  TF_ASSERT_OK_AND_ASSIGN(auto computation, b.Build());
+  xla::HloModuleConfig hlo_config(
+      xla::ProgramShape(computation.proto().host_program_shape()),
+      /*ignore_layouts=*/false);
+  DebugOptions debug_options = GetDebugOptionsForTest();
+  debug_options.set_xla_gpu_enable_address_computation_fusion(false);
+  hlo_config.set_debug_options(debug_options);
+  TF_ASSERT_OK_AND_ASSIGN(auto hlo, xla::HloModule::CreateFromProto(
+                                        computation.proto(), hlo_config));
+  TF_ASSERT_OK_AND_ASSIGN(
+      HloSchedule schedule,
+      ScheduleModule(hlo.get(), [](const BufferValue& buffer) {
+        return ShapeUtil::ByteSizeOf(buffer.shape(), /*pointer_size=*/8);
+      }));
+  TF_CHECK_OK(hlo->set_schedule(std::move(schedule)));
+
+  const char* expected = R"(
+    ; CHECK:     %address-computation {{.*}} {
+    ; CHECK-DAG:   [[P0:%[^ ]+]] = (f32[1024]{0}, f32[8]{0}) parameter(0)
+    ; CHECK-DAG:   [[P1:%[^ ]+]] = f32[256]{0} parameter(1)
+    ; CHECK-DAG:   [[P2:%[^ ]+]] = f32[8,8]{1,0} parameter(2)
+    ; CHECK-DAG:   [[S0:%[^ ]+]] = f32[4,8]{1,0} slice([[P2]]), slice={[0:4], [0:8]}
+    ; CHECK-DAG:   [[T0:%[^ ]+]] = (f32[4,8]{1,0}, f32[256]{0}) tuple([[S0]], [[P1]])
+    ; CHECK:       [[CC:%[^ ]+]] = (f32[8]{0}, (f32[128]{0}, f32[256]{0}), f32[1024]{0}, f32[4,8]{1,0}) custom-call([[T0]], [[P0]]),
+    ; CHECK:              custom_call_target="Callback_Void"
+    ; CHECK-DAG:   [[GTE0:%[^ ]+]] = f32[8]{0} get-tuple-element([[CC]]), index=0
+    ; CHECK-DAG:   [[GTE1:%[^ ]+]] = (f32[128]{0}, f32[256]{0}) get-tuple-element([[CC]]), index=1
+    ; CHECK-DAG:   [[GTE2:%[^ ]+]] = f32[128]{0} get-tuple-element([[GTE1]]), index=0
+    ; CHECK-DAG:   [[GTE3:%[^ ]+]] = f32[256]{0} get-tuple-element([[GTE1]]), index=1
+    ; CHECK-DAG:   [[T1:%[^ ]+]] = (f32[128]{0}, f32[256]{0}) tuple([[GTE2]], [[GTE3]])
+    ; CHECK-DAG:   [[GTE4:%[^ ]+]] = f32[1024]{0} get-tuple-element([[CC]]), index=2
+    ; CHECK-DAG:   [[GTE5:%[^ ]+]] = f32[4,8]{1,0} get-tuple-element([[CC]]), index=3
+    ; CHECK:       ROOT {{.*}} = (f32[8]{0}, (f32[128]{0}, f32[256]{0}), f32[1024]{0}, f32[4,8]{1,0}) tuple([[GTE0]], [[T1]], [[GTE4]], [[GTE5]])
+    ; CHECK:     }
+
+    ; CHECK:     ENTRY %{{.*}} {
+    ; CHECK:       [[FUSION:%[^ ]+]] = (f32[8]{0}, (f32[128]{0}, f32[256]{0}), f32[1024]{0}, f32[4,8]{1,0}) fusion
+    ; CHECK:         kind=kCustom, calls=%address-computation,
+    ; CHECK:         backend_config={
+    ; CHECK:           "kind":"__custom_fusion",
+    ; CHECK:           "custom_fusion_config":{"name":"address_computation"}
+    ; CHECK:         }
+    ; CHECK-DAG:   [[GTE6:%[^ ]+]] = f32[1024]{0} get-tuple-element([[FUSION]]), index=2
+    ; CHECK-DAG:   [[GTE7:%[^ ]+]] = (f32[128]{0}, f32[256]{0}) get-tuple-element([[FUSION]]), index=1
+    ; CHECK-DAG:   [[GTE8:%[^ ]+]] = f32[128]{0} get-tuple-element([[GTE7]]), index=0
+    ; CHECK:       ROOT {{.*}} = (f32[128]{0}, f32[1024]{0}) tuple([[GTE8]], [[GTE6]])
+    ; CHECK:     }
+  )";
+
+  auto device = TestGpuDeviceInfo::RTXA6000DeviceInfo();
+  RunAndFilecheckHloRewrite(hlo->ToString(),
+                            AddressComputationFusionRewriter(PLATFORM),
+                            expected, [](HloModule* module) {
+                              EXPECT_TRUE(module->has_schedule());
+                              TF_CHECK_OK(module->schedule().Verify());
+                            });
+}
+
 TEST_F(AddressComputationFusionRewriterTest, UnalignedSlice) {
   XlaBuilder b(TestName());
   CustomCall(
