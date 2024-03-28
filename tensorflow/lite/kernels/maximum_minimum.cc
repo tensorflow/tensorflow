@@ -71,6 +71,20 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
                           op_context.input2->type);
   op_context.output->type = op_context.input1->type;
 
+  TF_LITE_ENSURE_EQ(context, op_context.input1->params.scale,
+                    op_context.input2->params.scale);
+  TF_LITE_ENSURE_EQ(context, op_context.input1->params.scale,
+                    op_context.output->params.scale);
+  TF_LITE_ENSURE_EQ(context, op_context.input1->params.zero_point,
+                    op_context.input2->params.zero_point);
+  TF_LITE_ENSURE_EQ(context, op_context.input1->params.zero_point,
+                    op_context.output->params.zero_point);
+  if (op_context.input1->type == kTfLiteInt16) {
+    TF_LITE_ENSURE_EQ(context, op_context.input1->params.zero_point, 0);
+    TF_LITE_ENSURE_EQ(context, op_context.input2->params.zero_point, 0);
+    TF_LITE_ENSURE_EQ(context, op_context.output->params.zero_point, 0);
+  }
+
   bool requires_broadcast =
       !HaveSameShapes(op_context.input1, op_context.input2);
 
