@@ -26,6 +26,8 @@ def make_round_tests(options):
   test_parameters = [{
       "input_dtype": [tf.float32],
       "input_shape": [[], [1], [1, 2], [5, 6, 7, 8], [3, 4, 5, 6]],
+      "fully_quantize": [False, True],
+      "quantize_mode_16x8": [False, True],
   }]
 
   def build_graph(parameters):

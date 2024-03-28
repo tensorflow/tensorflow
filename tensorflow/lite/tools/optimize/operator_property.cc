@@ -983,6 +983,16 @@ OperatorProperty GetOperatorProperty(OpVariant op_variant, int number_of_bits) {
       };
       property.version = 1;
       break;
+    case BuiltinOperator_ROUND: {
+      property.inputs = {{0, {}}};
+      TensorProperty tensor_property;
+      tensor_property.restriction = true;
+      tensor_property.restricted_value_int8 = {1.0f, 0};
+      tensor_property.restricted_value_int16 = {1.0f, 0};
+      property.outputs = {{0, tensor_property}};
+      property.version = 2;
+      break;
+    }
     case BuiltinOperator_SELECT:
       property.inputs = {{1, tensor_property_default},
                          {2, tensor_property_default}};

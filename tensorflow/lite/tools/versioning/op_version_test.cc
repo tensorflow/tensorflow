@@ -1192,6 +1192,31 @@ TEST(OpVersionTest, VersioningResizeNearestNeighborTest) {
   };
   EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 4);
 }
+TEST(OpVersionTest, VersioningRound) {
+  // Default
+  OpSignature fake_op_sig = {
+      .op = BuiltinOperator_ROUND,
+      .inputs = CreateOpSignatureTensorSpecs(kTfLiteFloat32),
+      .outputs = CreateOpSignatureTensorSpecs(kTfLiteFloat32),
+  };
+  EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 1);
+
+  // int8 is version 2.
+  fake_op_sig = {
+      .op = BuiltinOperator_ROUND,
+      .inputs = CreateOpSignatureTensorSpecs(kTfLiteInt8),
+      .outputs = CreateOpSignatureTensorSpecs(kTfLiteInt8),
+  };
+  EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 2);
+
+  // int16 is version 2.
+  fake_op_sig = {
+      .op = BuiltinOperator_ROUND,
+      .inputs = CreateOpSignatureTensorSpecs(kTfLiteInt16),
+      .outputs = CreateOpSignatureTensorSpecs(kTfLiteInt16),
+  };
+  EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 2);
+}
 TEST(OpVersionTest, VersioningAbsTest) {
   // Default.
   OpSignature fake_op_sig = {

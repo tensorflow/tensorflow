@@ -2334,7 +2334,9 @@ def TFL_OneHotOp : TFL_Op<"one_hot", [
 
 def TFL_RoundOp: TFL_Op<"round", [
     Pure,
-    TF_SameOperandsAndResultTypeResolveRef]> {
+    SameOperandsAndResultShape,
+    TFL_SameFirstOperandAndFirstResultElementType,
+    FixedOutputRangeInterface]> {
   let summary = "Round operator";
 
   let description = [{
@@ -2342,18 +2344,34 @@ Rounds the values of a tensor to the nearest integer, element-wise.
   }];
 
   let arguments = (ins
-    TFL_FpTensor:$x
+    TFL_TensorOf<[F32, QI8, QI16]>:$x
   );
 
   let results = (outs
-    TFL_FpTensor:$y
+    TFL_TensorOf<[F32, QI8, QI16]>:$y
   );
 
+  // This builder doesn't work with quantized type, so it can only be used by
+  // non-quantization tablegen patterns. Currently, it is used by the
+  // elementwise-move reordering pattern in the optimize_patterns.td
+  let builders = [
+    OpBuilder<(ins "Value":$input),
+    [{
+      $_state.addOperands({input});
+      $_state.addTypes(input.getType());
+    }]>
+  ];
+
   let extraClassDeclaration = [{
-    // Returns whether the return types are compatible.
-    static bool isCompatibleReturnTypes(TypeRange l, TypeRange r) {
-      return TF::ArraysAreCastCompatible(l, r);
-    }
+  // FixedOutputRangeInterface:
+  quant::UniformQuantizedType GetFixedOutputRange(
+      bool is_signed, int bit_width) {
+    auto result_type = getY().getType();
+    // zero_point = 0
+    // scale = 1.0
+    return quant::GetFixedOutputRange(is_signed, bit_width, result_type,
+        /*scale=*/1.0, /*zero_point=*/0);
+  }
   }];
 }
 
