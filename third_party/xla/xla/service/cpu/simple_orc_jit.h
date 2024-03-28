@@ -137,6 +137,8 @@ class SimpleOrcJIT : public llvm::JITEventListener {
   llvm::JITEventListener* perf_jit_event_listener_;
 };
 
+llvm::SmallVector<std::string, 0> DetectMachineAttributes();
+
 }  // namespace cpu
 }  // namespace xla
 

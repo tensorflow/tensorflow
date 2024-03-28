@@ -17,6 +17,7 @@ limitations under the License.
 #define XLA_PJRT_CPU_CPU_TOPOLOGY_H_
 
 #include <memory>
+#include <string>
 #include <utility>
 #include <vector>
 
@@ -37,11 +38,16 @@ class CpuTopology {
     }
   };
 
-  explicit CpuTopology(std::vector<CpuDevice> cpu_deices)
-      : cpu_devices_(std::move(cpu_deices)) {}
+  explicit CpuTopology(std::vector<CpuDevice> cpu_devices,
+                       std::vector<std::string> machine_attributes)
+      : cpu_devices_(std::move(cpu_devices)),
+        machine_attributes_(std::move(machine_attributes)) {}
 
   int number_of_devices() const { return cpu_devices_.size(); }
   absl::Span<const CpuDevice> devices() const { return cpu_devices_; }
+  absl::Span<const std::string> machine_attributes() const {
+    return machine_attributes_;
+  }
 
   static std::unique_ptr<const CpuTopology> FromProto(
       const CpuTopologyProto& proto);
@@ -49,6 +55,7 @@ class CpuTopology {
 
  private:
   const std::vector<CpuDevice> cpu_devices_;
+  const std::vector<std::string> machine_attributes_;
 };
 
 }  // namespace xla

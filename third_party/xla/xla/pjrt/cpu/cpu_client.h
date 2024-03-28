@@ -106,18 +106,20 @@ class TfrtCpuTopologyDescription : public PjRtTopologyDescription {
   static TfrtCpuTopologyDescription Create(
       PjRtPlatformId platform_id, absl::string_view platform_name,
       absl::string_view platform_version,
-      absl::Span<const std::unique_ptr<TfrtCpuDevice>> devices);
+      absl::Span<const std::unique_ptr<TfrtCpuDevice>> devices,
+      llvm::SmallVector<std::string, 0> machine_attributes);
 
   // `cpu_device_ids` is the list of logical device ids for the CPU devices and
   // will be used to initialize the CPU topology.
   TfrtCpuTopologyDescription(
       const PjRtPlatformId platform_id, const absl::string_view platform_name,
       const absl::string_view platform_version,
-      const std::vector<CpuTopology::CpuDevice> cpu_devices)
+      const std::vector<CpuTopology::CpuDevice> cpu_devices,
+      const std::vector<std::string> machine_attributes)
       : platform_id_(platform_id),
         platform_name_(platform_name),
         platform_version_(platform_version),
-        cpu_topology_(std::move(cpu_devices)) {}
+        cpu_topology_(std::move(cpu_devices), std::move(machine_attributes)) {}
 
   bool operator==(const TfrtCpuTopologyDescription& other) const {
     return this->platform_id() == other.platform_id() &&

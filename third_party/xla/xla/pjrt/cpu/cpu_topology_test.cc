@@ -29,6 +29,7 @@ TEST(CpuTopology, FromProto) {
       R"pb(
         cpu_devices:
         [ { id: 1, process_index: 2, local_hardware_id: 3 }]
+        machine_attributes: [ "x86_64", "Intel" ]
       )pb",
       &msg));
 
@@ -37,15 +38,21 @@ TEST(CpuTopology, FromProto) {
   EXPECT_EQ(cpu_topology->devices()[0].id, 1);
   EXPECT_EQ(cpu_topology->devices()[0].process_index, 2);
   EXPECT_EQ(cpu_topology->devices()[0].local_hardware_id, 3);
+  EXPECT_EQ(cpu_topology->machine_attributes().size(), 2);
+  EXPECT_EQ(cpu_topology->machine_attributes()[0], "x86_64");
+  EXPECT_EQ(cpu_topology->machine_attributes()[1], "Intel");
 }
 
 TEST(CpuTopology, ToProto) {
-  CpuTopology cpu_topology({{1, 2, 3}});
+  CpuTopology cpu_topology({{1, 2, 3}}, {"ab", "cd"});
   CpuTopologyProto msg = cpu_topology.ToProto();
   EXPECT_EQ(msg.cpu_devices_size(), 1);
   EXPECT_EQ(msg.cpu_devices(0).id(), 1);
   EXPECT_EQ(msg.cpu_devices(0).process_index(), 2);
   EXPECT_EQ(msg.cpu_devices(0).local_hardware_id(), 3);
+  EXPECT_EQ(msg.machine_attributes_size(), 2);
+  EXPECT_EQ(msg.machine_attributes(0), "ab");
+  EXPECT_EQ(msg.machine_attributes(1), "cd");
 }
 
 }  // namespace

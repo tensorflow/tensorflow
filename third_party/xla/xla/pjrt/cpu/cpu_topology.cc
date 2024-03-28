@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <cstddef>
 #include <memory>
+#include <string>
 #include <utility>
 #include <vector>
 
@@ -29,11 +30,21 @@ std::unique_ptr<const CpuTopology> CpuTopology::FromProto(
 
   for (size_t i = 0; i < cpu_topology_proto.cpu_devices_size(); ++i) {
     auto& cpu_device_proto = cpu_topology_proto.cpu_devices(i);
-    devices.push_back({cpu_device_proto.id(), cpu_device_proto.process_index(),
-                       cpu_device_proto.local_hardware_id()});
+    CpuDevice cpu_device(cpu_device_proto.id(),
+                         cpu_device_proto.process_index(),
+                         cpu_device_proto.local_hardware_id());
+
+    devices.push_back(cpu_device);
   }
 
-  return std::make_unique<CpuTopology>(std::move(devices));
+  std::vector<std::string> machine_attributes;
+  machine_attributes.reserve(cpu_topology_proto.machine_attributes_size());
+  for (size_t i = 0; i < cpu_topology_proto.machine_attributes_size(); ++i) {
+    machine_attributes.push_back(cpu_topology_proto.machine_attributes(i));
+  }
+
+  return std::make_unique<CpuTopology>(std::move(devices),
+                                       std::move(machine_attributes));
 }
 
 CpuTopologyProto CpuTopology::ToProto() const {
@@ -43,6 +54,9 @@ CpuTopologyProto CpuTopology::ToProto() const {
     cpu_device_proto->set_id(cpu_device.id);
     cpu_device_proto->set_process_index(cpu_device.process_index);
     cpu_device_proto->set_local_hardware_id(cpu_device.local_hardware_id);
+  }
+  for (const std::string& machine_attribute : machine_attributes_) {
+    proto.add_machine_attributes(machine_attribute);
   }
   return proto;
 }

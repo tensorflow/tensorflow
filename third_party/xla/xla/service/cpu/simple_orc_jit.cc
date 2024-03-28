@@ -79,7 +79,6 @@ extern "C" uint16_t __truncdfbf2(double);
 
 namespace xla {
 namespace cpu {
-namespace {
 
 llvm::SmallVector<std::string, 0> DetectMachineAttributes() {
   llvm::SmallVector<std::string, 0> result;
@@ -92,6 +91,8 @@ llvm::SmallVector<std::string, 0> DetectMachineAttributes() {
   }
   return result;
 }
+
+namespace {
 
 class DefaultMemoryMapper final
     : public llvm::SectionMemoryManager::MemoryMapper {
