@@ -111,6 +111,20 @@ TEST_F(GemvRewriterTest, DotNotRewriteVectorVectorMultiplication) {
   RunAndFilecheckHloRewrite(hlo, GemvRewriter(), /*expected=*/std::nullopt);
 }
 
+TEST_F(GemvRewriterTest, DotNotRewriteMatrixMatrixMultiplication) {
+  const char* hlo = R"(
+  HloModule m
+
+  ENTRY e {
+    p0 = f32[5,7] parameter(0)
+    p1 = f32[7,32] parameter(1)
+    ROOT d = f32[5,32] dot(p0, p1),
+      lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  })";
+
+  RunAndFilecheckHloRewrite(hlo, GemvRewriter(), /*expected=*/std::nullopt);
+}
+
 TEST_F(GemvRewriterTest, DoNotRewriteDotsWithNonNormalizedLayout) {
   const char* hlo = R"(
   HloModule m
