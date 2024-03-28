@@ -63,8 +63,8 @@ absl::StatusOr<bool> ChangeOpDataType::Run(
         continue;
       }
 #if defined(INTEL_MKL) && defined(ENABLE_ONEDNN_V3)
-      if (instr->opcode == HloOpcode::kDot &&
-          OneDnnMatMulRewriter::ShouldRewrite(instr)) {
+      if (instr->opcode() == HloOpcode::kDot &&
+          cpu::OneDnnMatMulRewriter::ShouldRewrite(instr)) {
         continue;
       }
 #endif  // INTEL_MKL && ENABLE_ONEDNN_V3
