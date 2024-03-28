@@ -70,6 +70,12 @@ namespace xla {
 namespace gpu {
 namespace {
 
+constexpr unsigned kLHSOperandIndex = 0;
+constexpr unsigned kRHSOperandIndex = 1;
+
+constexpr unsigned kGEMMOutputBufferIndex = 0;
+constexpr unsigned kGEMMWorkspaceBufferIndex = 1;
+
 absl::StatusOr<std::unique_ptr<Thunk>> BuildCustomKernelThunkForFusion(
     IrEmitterContext& ir_emitter_context, const HloFusionInstruction& fusion,
     CustomKernel custom_kernel) {
@@ -144,12 +150,14 @@ absl::StatusOr<FusionEmissionResult> EmitGemm(
   TF_ASSIGN_OR_RETURN(
       BufferAllocation::Slice lhs_slice,
       GetSliceWithUpdatedOffsetAndSize(buffer_assignment, adaptor, fusion,
-                                       *custom_call.operand(0), /*index=*/{}));
+                                       *custom_call.operand(kLHSOperandIndex),
+                                       /*index=*/{}));
 
   TF_ASSIGN_OR_RETURN(
       BufferAllocation::Slice rhs_slice,
       GetSliceWithUpdatedOffsetAndSize(buffer_assignment, adaptor, fusion,
-                                       *custom_call.operand(1), /*index=*/{}));
+                                       *custom_call.operand(kRHSOperandIndex),
+                                       /*index=*/{}));
 
   BufferAllocation::Slice output;
   std::optional<BufferAllocation::Slice> workspace;
@@ -161,10 +169,11 @@ absl::StatusOr<FusionEmissionResult> EmitGemm(
     TF_ASSIGN_OR_RETURN(output,
                         GetAllocationSlice(buffer_assignment, &fusion, {}));
   } else {
-    TF_ASSIGN_OR_RETURN(output,
-                        GetAllocationSlice(buffer_assignment, &fusion, {0}));
+    TF_ASSIGN_OR_RETURN(output, GetAllocationSlice(buffer_assignment, &fusion,
+                                                   {kGEMMOutputBufferIndex}));
     TF_ASSIGN_OR_RETURN(workspace,
-                        GetAllocationSlice(buffer_assignment, &fusion, {1}));
+                        GetAllocationSlice(buffer_assignment, &fusion,
+                                           {kGEMMWorkspaceBufferIndex}));
   }
 
   bool deterministic_ops =
@@ -249,15 +258,15 @@ absl::StatusOr<FusionEmissionResult> EmitDynamicSlicedGemm(
         slice_instr->index_operands().front()->shape().element_type()));
   };
 
-  TF_ASSIGN_OR_RETURN(
-      BufferAllocation::Slice lhs_slice,
-      get_original_operand_slice(custom_call.operand(0), /*index=*/{}));
+  TF_ASSIGN_OR_RETURN(BufferAllocation::Slice lhs_slice,
+                      get_original_operand_slice(
+                          custom_call.operand(kLHSOperandIndex), /*index=*/{}));
   collect_slice_info();
 
   slice_instr = nullptr;
-  TF_ASSIGN_OR_RETURN(
-      BufferAllocation::Slice rhs_slice,
-      get_original_operand_slice(custom_call.operand(1), /*index=*/{}));
+  TF_ASSIGN_OR_RETURN(BufferAllocation::Slice rhs_slice,
+                      get_original_operand_slice(
+                          custom_call.operand(kRHSOperandIndex), /*index=*/{}));
   collect_slice_info();
 
   slice_instr = nullptr;
@@ -309,13 +318,15 @@ absl::StatusOr<FusionEmissionResult> EmitDynamicSlicedGemm(
     slice_instr = nullptr;
     collect_slice_info();
   } else {
-    TF_ASSIGN_OR_RETURN(output,
-                        get_original_result_slice(&custom_call, /*index=*/{0}));
+    TF_ASSIGN_OR_RETURN(
+        output, get_original_result_slice(&custom_call,
+                                          /*index=*/{kGEMMOutputBufferIndex}));
     collect_slice_info();
     // TODO(vuson): If we want to support slices of workspace, we'd need to
     // start `HloFindIf` with `get-tuple-element` with the right index.
-    TF_ASSIGN_OR_RETURN(workspace, GetAllocationSlice(buffer_assignment,
-                                                      &fusion, /*index=*/{1}));
+    TF_ASSIGN_OR_RETURN(
+        workspace, GetAllocationSlice(buffer_assignment, &fusion,
+                                      /*index=*/{kGEMMWorkspaceBufferIndex}));
     slice_instr = nullptr;
     collect_slice_info();
     fake_allocations[3] = std::make_unique<BufferAllocation>(
@@ -340,18 +351,18 @@ absl::StatusOr<FusionEmissionResult> EmitDynamicSlicedGemm(
       GemmConfig::For(static_cast<const HloInstruction*>(&custom_call)));
 
   int64_t lhs_byte_size =
-      ShapeUtil::ByteSizeOf(custom_call.operand(0)->shape());
-  fake_allocations[0] = std::make_unique<BufferAllocation>(
-      /*index=*/0, lhs_byte_size, /*color=*/0);
-  BufferAllocation::Slice slice_lhs_fake(fake_allocations[0].get(), 0,
-                                         lhs_byte_size);
+      ShapeUtil::ByteSizeOf(custom_call.operand(kLHSOperandIndex)->shape());
+  fake_allocations[kLHSOperandIndex] = std::make_unique<BufferAllocation>(
+      /*index=*/kLHSOperandIndex, lhs_byte_size, /*color=*/0);
+  BufferAllocation::Slice slice_lhs_fake(
+      fake_allocations[kLHSOperandIndex].get(), 0, lhs_byte_size);
 
   int64_t rhs_byte_size =
-      ShapeUtil::ByteSizeOf(custom_call.operand(1)->shape());
-  fake_allocations[1] = std::make_unique<BufferAllocation>(
-      /*index=*/1, rhs_byte_size, /*color=*/0);
-  BufferAllocation::Slice slice_rhs_fake(fake_allocations[1].get(), 0,
-                                         rhs_byte_size);
+      ShapeUtil::ByteSizeOf(custom_call.operand(kRHSOperandIndex)->shape());
+  fake_allocations[kRHSOperandIndex] = std::make_unique<BufferAllocation>(
+      /*index=*/kRHSOperandIndex, rhs_byte_size, /*color=*/0);
+  BufferAllocation::Slice slice_rhs_fake(
+      fake_allocations[kRHSOperandIndex].get(), 0, rhs_byte_size);
 
   fake_allocations[2] = std::make_unique<BufferAllocation>(
       /*index=*/2, out_fake_byte_size, /*color=*/0);
