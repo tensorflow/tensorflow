@@ -42,10 +42,6 @@ def ConvertQuantStatOp : Pat<(quantfork_StatisticsOp $value, $layer_stats, $axis
 // Binary ops patterns.
 //===----------------------------------------------------------------------===//
 
-def ConvertTFLLogicalAndOp : Pat<(TFL_LogicalAndOp $l, $r), (Tosa_LogicalAndOp $l, $r)>;
-def ConvertTFLLogicalOrOp : Pat<(TFL_LogicalOrOp $l, $r), (Tosa_LogicalOrOp $l, $r)>;
-def ConvertTFLPowOp : Pat<(TFL_PowOp $l, $r), (Tosa_PowOp $l, $r)>;
-
 //===----------------------------------------------------------------------===//
 // Ternary ops patterns.
 //===----------------------------------------------------------------------===//
