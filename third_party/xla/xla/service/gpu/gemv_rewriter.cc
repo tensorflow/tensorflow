@@ -75,6 +75,11 @@ class GemvRewriterVisitor : public DfsHloRewriteVisitor {
         dim_numbers.rhs_batch_dimensions_size() +
             dim_numbers.rhs_contracting_dimensions_size() + 1;
 
+    // Skip matrix-matrix multiplication.
+    if (lhs_has_non_contracting_dim && rhs_has_non_contracting_dim) {
+      return absl::OkStatus();
+    }
+
     // Skip vector-vector multiplication.
     if (!lhs_has_non_contracting_dim && !rhs_has_non_contracting_dim) {
       return absl::OkStatus();
