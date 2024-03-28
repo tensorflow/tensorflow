@@ -195,6 +195,7 @@ def _get_numpy_include(repository_ctx, python_bin):
         ],
         error_msg = "Problem getting numpy include path.",
         error_details = "Is numpy installed?",
+        allow_failure = True,
     ).stdout.splitlines()[0]
 
 def _create_local_python_repository(repository_ctx):
