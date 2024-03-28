@@ -2179,7 +2179,7 @@ Status SetHloShardingPostProcessing(
     const HloInstructionSequence& sequence, const StrategyMap& strategy_map,
     const CostGraph& cost_graph, absl::Span<const NodeStrategyIdx> s_val,
     const ClusterEnvironment& cluster_env, const bool crash_at_error,
-    absl::flat_hash_map<std::string, std::vector<HloSharding>>*
+    absl::flat_hash_map<std::string, std::vector<HloSharding>>&
         preserve_shardings) {
   const std::vector<HloInstruction*>& instructions = sequence.instructions();
   const Array<int64_t>& device_mesh = cluster_env.device_mesh_;
@@ -2269,8 +2269,8 @@ Status SetHloShardingPostProcessing(
       // In the analysis itself, we use replicated strategies as a stand-in for
       // the (expected) maximal sharding annotations that send-done ops usually
       // have. Here we restore these maximal shardings if present.
-      auto preserved_sharding_iter = preserve_shardings->find(inst->name());
-      if (preserved_sharding_iter != preserve_shardings->end()) {
+      auto preserved_sharding_iter = preserve_shardings.find(inst->name());
+      if (preserved_sharding_iter != preserve_shardings.end()) {
         const auto& preserved_sharding = preserved_sharding_iter->second;
         if (preserved_sharding.size() > 1) {
           std::vector<Shape> tuple_elements_shape(
@@ -2295,8 +2295,8 @@ Status SetHloShardingPostProcessing(
       // In the analysis itself, we use replicated strategies as a stand-in for
       // the (expected) maximal sharding annotations that send ops usually
       // have. Here we restore these maximal shardings if present.
-      auto preserved_sharding_iter = preserve_shardings->find(inst->name());
-      if (preserved_sharding_iter != preserve_shardings->end()) {
+      auto preserved_sharding_iter = preserve_shardings.find(inst->name());
+      if (preserved_sharding_iter != preserve_shardings.end()) {
         const auto& preserved_sharding = preserved_sharding_iter->second;
         if (preserved_sharding.size() > 1) {
           inst->set_sharding(
@@ -2365,7 +2365,7 @@ Status SetHloShardingPostProcessing(
               }
             }
             FixMixedMeshShapeReshardingGetTupleElementWithTupleOutput(
-                inst, dst_shardings, device_mesh, preserve_shardings);
+                inst, dst_shardings, device_mesh);
             break;
           }
 
@@ -3846,7 +3846,7 @@ absl::StatusOr<AutoShardingResult> AutoShardingImplementation::RunAutoSharding(
       if (!SetHloShardingPostProcessing(
                sequence, strategy_map, cost_graph, s_val, cluster_env,
                /* crash_at_error */ !option_.try_multiple_mesh_shapes,
-               &preserve_shardings)
+               preserve_shardings)
                .ok()) {
         return AutoShardingResult::kModuleUnchanged;
       }
