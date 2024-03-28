@@ -119,27 +119,15 @@ TEST(BitcastOpModel, BitcastUInt32Toint16) {
                                  (uint32_t)UINT16_MAX};
   m.PopulateTensor<uint32_t>(m.input(), input);
   ASSERT_EQ(m.Invoke(), kTfLiteOk);
-#if defined(__BYTE_ORDER__) && defined(__ORDER_BIG_ENDIAN__) && \
-    __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
-  // 00..01 00..00
-  // 00..00 11..11
-  std::vector<int16_t> output = {1, 0, 0, -1};
-#else
   // 00..00 00..01
   // 11..11 00..00
   std::vector<int16_t> output = {0, 1, -1, 0};
-#endif
   EXPECT_THAT(m.ExtractVector<int16_t>(m.output()), ElementsAreArray(output));
 }
 
 TEST(BitcastOpModel, BitcastInt16ToUint32) {
   BitcastOpModel m({TensorType_INT16, {2, 1, 2}}, {TensorType_UINT32, {2, 1}});
-#if defined(__BYTE_ORDER__) && defined(__ORDER_BIG_ENDIAN__) && \
-    __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
-  std::vector<int16_t> input = {1, 0, 0, -1};
-#else
   std::vector<int16_t> input = {0, 1, -1, 0};
-#endif
   m.PopulateTensor<int16_t>(m.input(), input);
   ASSERT_EQ(m.Invoke(), kTfLiteOk);
   std::vector<uint32_t> output = {(uint32_t)UINT16_MAX + 1,
