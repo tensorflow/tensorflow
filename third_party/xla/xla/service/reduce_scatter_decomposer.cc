@@ -34,6 +34,8 @@ limitations under the License.
 
 namespace xla {
 
+namespace {}  // namespace
+
 absl::StatusOr<bool> ReduceScatterDecomposer::Run(
     HloModule *module,
     const absl::flat_hash_set<absl::string_view> &execution_threads) {
@@ -53,7 +55,25 @@ absl::StatusOr<bool> ReduceScatterDecomposer::Run(
       if (rs->channel_id()) {
         channel_id = next_channel_id++;
       }
+      if (should_decompose_) {
+        if (should_decompose_(rs)) {
+          if (avoid_decompose_) {
+            VLOG(0) << "Wants to decompose: " << rs->ToString();
+            HloInstruction *new_rs = avoid_decompose_(rs, should_decompose_);
+            if (new_rs) {
+              VLOG(0) << "New rs: " << new_rs->ToString();
+              TF_RETURN_IF_ERROR(rs->ReplaceAllUsesWith(new_rs));
+              TF_RETURN_IF_ERROR(rs->parent()->RemoveInstruction(rs));
+              continue;
+            }
+            VLOG(0) << "Actually decompose";
+          }
+        } else {
+          continue;
+        }
+      }
 
+      VLOG(2) << "Decompose: " << rs->ToString();
       // Create an all-reduce
       HloComputation *apply_clone = module->AddComputationAndUnifyNamesAndIds(
           rs->to_apply()->Clone(), /*is_entry=*/false);
