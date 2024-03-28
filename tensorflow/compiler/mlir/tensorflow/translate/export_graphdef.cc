@@ -421,7 +421,7 @@ Status Exporter::AddInstructionNode(Operation* inst) {
                           inst, name, /*ignore_unregistered_attrs=*/false));
   UseOriginalFunctionNames(*node_def);
 
-  TF_ASSIGN_OR_RETURN(Node * node, graph_->AddNode(*node_def));
+  TF_ASSIGN_OR_RETURN(Node * node, graph_->AddNode(std::move(*node_def)));
   DCHECK(node != nullptr);
   nodes_[inst] = node;
   return OkStatus();
@@ -436,7 +436,7 @@ bool IsEntryFunctionArg(BlockArgument arg) {
 Status Exporter::AddArgumentNode(BlockArgument arg, unsigned index,
                                  llvm::StringRef name) {
   TF_ASSIGN_OR_RETURN(auto node_def, GetArgumentNode(arg, index, name));
-  TF_ASSIGN_OR_RETURN(Node * node, graph_->AddNode(*node_def));
+  TF_ASSIGN_OR_RETURN(Node * node, graph_->AddNode(std::move(*node_def)));
   args_[arg] = node;
   return OkStatus();
 }
@@ -455,7 +455,7 @@ Status Exporter::AddFetchNode(FuncOp function, mlir::tf_executor::FetchOp fetch,
         GetReturnNode(function, operand_and_idx.value(),
                       operand_and_idx.index(),
                       names.empty() ? "" : names[operand_and_idx.index()]));
-    TF_ASSIGN_OR_RETURN(Node * node, graph_->AddNode(*node_def));
+    TF_ASSIGN_OR_RETURN(Node * node, graph_->AddNode(std::move(*node_def)));
     return_nodes.push_back(node);
   }
   return OkStatus();
