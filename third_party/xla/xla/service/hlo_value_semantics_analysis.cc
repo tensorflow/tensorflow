@@ -556,6 +556,36 @@ absl::Status EinsumDepthAnalysis::HandleRecvDone(HloInstruction* recv_done) {
   return OkStatus();
 }
 
+absl::Status EinsumDepthAnalysis::HandleAsyncStart(
+    HloInstruction* async_start) {
+  auto depth_iter = GetDepthTreeOrDie(async_start);
+  const ShapeTree<int> depth_tree = depth_iter->second;
+  TF_ASSIGN_OR_RETURN(ShapeTree<int> output_depth_tree,
+                      depth_tree.SubShapeTree({1}));
+  return HandleCalledComputation(*(async_start->async_wrapped_computation()),
+                                 output_depth_tree, async_start->operands());
+}
+
+absl::Status EinsumDepthAnalysis::HandleAsyncDone(HloInstruction* async_done) {
+  auto depth_iter = GetDepthTreeOrDie(async_done);
+  const ShapeTree<int> depth_tree = depth_iter->second;
+  HloInstruction* async_start = async_done->mutable_operand(0);
+  auto async_start_depth_iter = GetOrCreateDepthTree(async_start);
+  ShapeTree<int>& async_start_depth = async_start_depth_iter->second;
+  async_start_depth.ForEachMutableElement(
+      [&depth_tree, &async_start_depth](const ShapeIndex& index, int* depth) {
+        if (!async_start_depth.IsLeaf(index)) {
+          return;
+        }
+        if (index.front() == 1) {
+          ShapeIndex output_index = index;
+          output_index.pop_front();
+          *depth = MergeDepth(*depth, depth_tree.element(output_index));
+        }
+      });
+  return OkStatus();
+}
+
 namespace {
 
 int MergeHeight(int original_height, int new_height) {
@@ -864,6 +894,39 @@ absl::Status EinsumHeightAnalysis::HandleAllReduce(HloInstruction* all_reduce) {
     return DefaultAction(all_reduce);
   }
   return HandleTupleLike(all_reduce);
+}
+
+absl::Status EinsumHeightAnalysis::HandleAsyncStart(
+    HloInstruction* async_start) {
+  RETURN_IF_HEIGHT_EXISTS(async_start);
+  TF_RETURN_IF_ERROR(
+      HandleCalledComputation(*(async_start->async_wrapped_computation()),
+                              async_start->mutable_operands()));
+  auto root_height_iter = GetHeightTreeOrDie(
+      async_start->async_wrapped_computation()->root_instruction());
+  auto height_iter = GetOrCreateHeightTree(async_start);
+  ShapeTree<int>& height_tree = height_iter->second;
+  SetHeight(height_tree, root_height_iter->second, {}, {1});
+  for (int operand_index = 0; operand_index < async_start->operands().size();
+       ++operand_index) {
+    HloInstruction* operand = async_start->mutable_operands()[operand_index];
+    auto operand_height_iter = GetHeightTreeOrDie(operand);
+    ShapeTree<int>& operand_height_tree = operand_height_iter->second;
+    SetHeight(height_tree, operand_height_tree, {}, {0, operand_index});
+  }
+  return OkStatus();
+}
+
+absl::Status EinsumHeightAnalysis::HandleAsyncDone(HloInstruction* async_done) {
+  RETURN_IF_HEIGHT_EXISTS(async_done);
+  auto height_iter = GetOrCreateHeightTree(async_done);
+  auto& height_tree = height_iter->second;
+  HloInstruction* async_start = async_done->mutable_operand(0);
+  auto async_start_height_iter = GetHeightTreeOrDie(async_start);
+  const ShapeTree<int>& async_start_height_tree =
+      async_start_height_iter->second;
+  SetHeight(height_tree, async_start_height_tree, {1}, {});
+  return OkStatus();
 }
 
 std::string HloValueSemanticLabelToString(HloValueSemanticLabel label) {
@@ -1506,7 +1569,8 @@ HloValueSemanticsPropagation::ComputeSemanticsFromOperands(
                      ? ShapeIndex()
                      : operand_shape_indices[operand_index]);
     auto operand_height_iter = analysis_->GetEinsumHeightMap().find(operand);
-    CHECK(operand_height_iter != analysis_->GetEinsumHeightMap().end());
+    CHECK(operand_height_iter != analysis_->GetEinsumHeightMap().end())
+        << "operand: " << operand->name();
     VLOG(3) << __func__ << ", operand_index: " << operand_index
             << ", operand: " << operand->name()
             << ", operand_semantics: " << operand_semantics->ToString()
@@ -1775,102 +1839,71 @@ absl::Status HloValueSemanticsPropagation::HandleDynamicUpdateSlice(
 
 absl::Status HloValueSemanticsPropagation::HandleCopyStart(
     HloInstruction* copy_start) {
-  RETURN_IF_ALREADY_PROPAGATED(copy_start);
-  ShapeTree<const HloValueSemantics*> semantics_shape_tree(copy_start->shape());
-  const ShapeTree<const HloValueSemantics*>& operand_semantics_shape_tree =
-      analysis_->GetInstructionSemantics(copy_start->operand(0));
-  analysis_->DeepCopyHloValueSemantics(semantics_shape_tree,
-                                       operand_semantics_shape_tree, {}, {0});
-  analysis_->DeepCopyHloValueSemantics(semantics_shape_tree,
-                                       operand_semantics_shape_tree, {}, {1});
-  semantics_shape_tree.ForEachMutableElement(
-      [this, copy_start](const ShapeIndex& shape_index,
-                         const HloValueSemantics** semantics) {
-        if (shape_index.empty()) {
-          *semantics = analysis_->NewHloValueSemantics(
-              HloValueSemanticLabel::kTupleOrToken, {copy_start, shape_index});
-        }
-        if (shape_index == ShapeIndex{2}) {
-          *semantics = analysis_->NewHloValueSemantics(
-              HloValueSemanticLabel::kRandom, {copy_start, shape_index});
-        }
-        if (shape_index == ShapeIndex{3}) {
-          *semantics = analysis_->NewHloValueSemantics(
-              HloValueSemanticLabel::kRandom, {copy_start, shape_index});
-        }
-      });
-  analysis_->SetHloValueSemantics(copy_start, semantics_shape_tree);
-  return OkStatus();
+  return HandleCollectiveOrCopyStart(copy_start);
 }
 
 absl::Status HloValueSemanticsPropagation::HandleCopyDone(
     HloInstruction* copy_done) {
-  RETURN_IF_ALREADY_PROPAGATED(copy_done);
-  const ShapeTree<const HloValueSemantics*>& operand_semantics_shape_tree =
-      analysis_->GetInstructionSemantics(copy_done->operand(0));
-  analysis_->DeepCopyHloValueSemantics(copy_done, operand_semantics_shape_tree,
-                                       {0});
-  return OkStatus();
+  return HandleCollectiveOrCopyDone(copy_done);
 }
 
-absl::Status HloValueSemanticsPropagation::HandleCollectiveStart(
-    HloInstruction* collective_start) {
-  RETURN_IF_ALREADY_PROPAGATED(collective_start);
-  ShapeTree<const HloValueSemantics*> semantics_shape_tree(
-      collective_start->shape());
+absl::Status HloValueSemanticsPropagation::HandleCollectiveOrCopyStart(
+    HloInstruction* op_start) {
+  RETURN_IF_ALREADY_PROPAGATED(op_start);
+  ShapeTree<const HloValueSemantics*> semantics_shape_tree(op_start->shape());
   const ShapeTree<const HloValueSemantics*>& operand_semantics_shape_tree =
-      analysis_->GetInstructionSemantics(collective_start->operand(0));
+      analysis_->GetInstructionSemantics(op_start->operand(0));
   analysis_->DeepCopyHloValueSemantics(semantics_shape_tree,
                                        operand_semantics_shape_tree, {}, {0});
   analysis_->DeepCopyHloValueSemantics(semantics_shape_tree,
                                        operand_semantics_shape_tree, {}, {1});
   semantics_shape_tree.ForEachMutableElement(
-      [this, collective_start](const ShapeIndex& shape_index,
-                               const HloValueSemantics** semantics) {
+      [this, op_start](const ShapeIndex& shape_index,
+                       const HloValueSemantics** semantics) {
         if (shape_index.empty()) {
           *semantics = analysis_->NewHloValueSemantics(
-              HloValueSemanticLabel::kTupleOrToken, {collective_start, {}});
+              HloValueSemanticLabel::kTupleOrToken, {op_start, {}});
         }
         if (shape_index == ShapeIndex{2}) {
           *semantics = analysis_->NewHloValueSemantics(
-              HloValueSemanticLabel::kRandom, {collective_start, shape_index});
+              HloValueSemanticLabel::kRandom, {op_start, shape_index});
         }
         if (shape_index == ShapeIndex{3}) {
           *semantics = analysis_->NewHloValueSemantics(
-              HloValueSemanticLabel::kRandom, {collective_start, shape_index});
+              HloValueSemanticLabel::kRandom, {op_start, shape_index});
         }
       });
-  analysis_->SetHloValueSemantics(collective_start, semantics_shape_tree);
+  analysis_->SetHloValueSemantics(op_start, semantics_shape_tree);
   return OkStatus();
 }
 
-absl::Status HloValueSemanticsPropagation::HandleCollectiveDone(
-    HloInstruction* collective_done) {
-  RETURN_IF_ALREADY_PROPAGATED(collective_done);
+absl::Status HloValueSemanticsPropagation::HandleCollectiveOrCopyDone(
+    HloInstruction* op_done) {
+  RETURN_IF_ALREADY_PROPAGATED(op_done);
   const ShapeTree<const HloValueSemantics*>& operand_semantics_shape_tree =
-      analysis_->GetInstructionSemantics(collective_done->operand(0));
-  analysis_->DeepCopyHloValueSemantics(collective_done,
-                                       operand_semantics_shape_tree, {1});
+      analysis_->GetInstructionSemantics(op_done->operand(0));
+  analysis_->DeepCopyHloValueSemantics(op_done, operand_semantics_shape_tree,
+                                       {1});
   return OkStatus();
 }
 
 absl::Status HloValueSemanticsPropagation::HandleAllGatherStart(
     HloInstruction* all_gather_start) {
-  return HandleCollectiveStart(all_gather_start);
+  return HandleCollectiveOrCopyStart(all_gather_start);
 }
 
 absl::Status HloValueSemanticsPropagation::HandleAllGatherDone(
     HloInstruction* all_gather_done) {
-  return HandleCollectiveDone(all_gather_done);
+  return HandleCollectiveOrCopyDone(all_gather_done);
 }
 
 absl::Status HloValueSemanticsPropagation::HandleCollectivePermuteStart(
     HloInstruction* collective_permute_start) {
-  return HandleCollectiveStart(collective_permute_start);
+  return HandleCollectiveOrCopyStart(collective_permute_start);
 }
 absl::Status HloValueSemanticsPropagation::HandleCollectivePermuteDone(
     HloInstruction* collective_permute_done) {
-  return HandleCollectiveDone(collective_permute_done);
+  return HandleCollectiveOrCopyDone(collective_permute_done);
 }
 absl::Status HloValueSemanticsPropagation::HandleGather(
     HloInstruction* gather) {
@@ -1917,10 +1950,13 @@ absl::Status HloValueSemanticsPropagation::HandleAllReduce(
 absl::Status HloValueSemanticsPropagation::HandleAsyncStart(
     HloInstruction* async_start) {
   RETURN_IF_ALREADY_PROPAGATED(async_start);
-  const HloValueSemantics* semantics = analysis_->NewHloValueSemantics(
-      HloValueSemanticLabel::kTupleOrToken, {async_start, {}});
+  HloComputation* computation = async_start->async_wrapped_computation();
+  TF_RETURN_IF_ERROR(
+      analysis_->RunOnComputation(*computation, async_start->operands()));
+  const ShapeTree<const HloValueSemantics*>& root_semantics =
+      analysis_->GetInstructionSemantics(computation->root_instruction());
   ShapeTree<const HloValueSemantics*> semantics_shape_tree(async_start->shape(),
-                                                           semantics);
+                                                           nullptr);
   for (int operand_index = 0; operand_index < async_start->operand_count();
        ++operand_index) {
     HloInstruction* operand = async_start->mutable_operand(operand_index);
@@ -1929,27 +1965,17 @@ absl::Status HloValueSemanticsPropagation::HandleAsyncStart(
     analysis_->DeepCopyHloValueSemantics(
         semantics_shape_tree, operand_semantics_tree, {}, {0, operand_index});
   }
-  std::vector<int64_t> operand_indices(async_start->operand_count());
-  std::iota(operand_indices.begin(), operand_indices.end(), 0);
-  TF_ASSIGN_OR_RETURN(
-      HloValueSemantics output_semantics,
-      ComputeSemanticsFromOperands(async_start, operand_indices));
+  analysis_->DeepCopyHloValueSemantics(semantics_shape_tree, root_semantics, {},
+                                       {1});
   semantics_shape_tree.ForEachMutableElement(
-      [&output_semantics, &semantics_shape_tree, this, async_start](
+      [&semantics_shape_tree, this, async_start](
           const ShapeIndex& index, const HloValueSemantics** semantics_ptr) {
-        if (index.empty() || index.front() == 0) {
-          return;
-        }
         if (!semantics_shape_tree.IsLeaf(index)) {
           *semantics_ptr = analysis_->NewHloValueSemantics(
               HloValueSemanticLabel::kTupleOrToken, {async_start, {}});
           return;
         }
-        if (index.front() == 1) {
-          *semantics_ptr = AddSemantics(output_semantics);
-          return;
-        }
-        if (index.front() == 2) {
+        if (index.front() == 2 || index.front() == 3) {
           *semantics_ptr = analysis_->NewHloValueSemantics(
               HloValueSemanticLabel::kRandom, {async_start, {}});
         }
@@ -1957,6 +1983,7 @@ absl::Status HloValueSemanticsPropagation::HandleAsyncStart(
   analysis_->SetHloValueSemantics(async_start, semantics_shape_tree);
   return OkStatus();
 }
+
 absl::Status HloValueSemanticsPropagation::HandleAsyncDone(
     HloInstruction* async_done) {
   RETURN_IF_ALREADY_PROPAGATED(async_done);
