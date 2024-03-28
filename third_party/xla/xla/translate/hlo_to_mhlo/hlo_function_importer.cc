@@ -127,6 +127,19 @@ bool DotIsDefault(const HloInstruction* instruction) {
   return protobuf_util::ProtobufEquals(dnums, default_dimension_numbers);
 }
 
+void FlattenTupleSharding(
+    const HloSharding& sharding,
+    llvm::SmallVectorImpl<const HloSharding*>& flattened_shardings) {
+  if (!sharding.IsTuple()) {
+    flattened_shardings.push_back(&sharding);
+    return;
+  }
+
+  for (const HloSharding& child_sharding : sharding.tuple_elements()) {
+    FlattenTupleSharding(child_sharding, flattened_shardings);
+  }
+}
+
 // Clean up the GetTupleElementOp, created during the flattening of
 // tuple arguments and return values, if eligible for folding. Removal of
 // get-tuple-element can transitively make the defining TupleOp dead to be
@@ -437,6 +450,10 @@ absl::StatusOr<FuncOp> HloFunctionImporter::ImportAsFunc(
   llvm::SmallVector<Type, 4> args, rets;
   TF_RETURN_IF_ERROR(GetMlirTypes(computation.parameter_instructions(), &args));
   TF_RETURN_IF_ERROR(GetMlirTypes({computation.root_instruction()}, &rets));
+  CHECK_EQ(rets.size(), 1);
+  Type rootType = rets.front();
+  rets.clear();
+  FlattenTupleType(rootType, rets);
   auto func_type = mlir::FunctionType::get(context_, args, rets);
 
   // Construct the MLIR function and map arguments.
@@ -475,13 +492,18 @@ absl::StatusOr<FuncOp> HloFunctionImporter::ImportAsFunc(
     }
   }
   if (computation.root_instruction()->has_sharding()) {
-    auto result = computation.root_instruction();
-    if (function.getNumResults() != 1) {
-      return Internal("Expected only a single result but got %d",
-                      function.getNumResults());
+    auto result_sharding = computation.root_instruction()->sharding();
+    llvm::SmallVector<const HloSharding*> flattened_shardings;
+    FlattenTupleSharding(result_sharding, flattened_shardings);
+    if (function.getNumResults() != flattened_shardings.size()) {
+      return Internal("Expected %d flattened shardings but got %d",
+                      function.getNumResults(), flattened_shardings.size());
     }
-    function.setResultAttr(0, kShardingAttr,
-                           ConvertSharding(result->sharding(), builder_));
+    for (auto [ret_index, ret_sharding] :
+         llvm::enumerate(flattened_shardings)) {
+      function.setResultAttr(ret_index, kShardingAttr,
+                             ConvertSharding(*ret_sharding, builder_));
+    }
   }
   if (computation.execution_thread() != "main") {
     function->setAttr("execution_thread",
@@ -525,7 +547,7 @@ absl::StatusOr<FuncOp> HloFunctionImporter::ImportAsFunc(
 
   mlir::Block* block = function.addEntryBlock();
   TF_RETURN_IF_ERROR(ImportInstructions(computation, block,
-                                        /*flatten_region_arg_tuple=*/false));
+                                        /*flatten_region_arg_tuple=*/true));
 
   return function;
 }
@@ -593,7 +615,8 @@ Status HloFunctionImporter::ImportInstructions(
   mlir::Location loc = builder.getUnknownLoc();
 
   Value result;
-  if (!llvm::isa<FuncOp>(block->getParentOp()) && flatten_region_arg_tuple) {
+  bool is_func_op = llvm::isa<FuncOp>(block->getParentOp());
+  if (!is_func_op && flatten_region_arg_tuple) {
     // 'effective_arguments' stores the mhlo value corresponding to each
     // computation parameter. The value could be a BlockArgument, if the
     // corresponding computation parameter is non-tuple typed, or a TupleOp,
@@ -644,17 +667,18 @@ Status HloFunctionImporter::ImportInstructions(
   }
 
   // Create terminator op depending on the parent op of this region.
-  if (llvm::isa<FuncOp>(block->getParentOp())) {
-    builder.create<mlir::func::ReturnOp>(loc, result);
+  llvm::SmallVector<Value> return_operands;
+  if (flatten_region_arg_tuple) {
+    // Flatten tuples in results of this region.
+    FlattenTupleValue(&builder, loc, result, return_operands);
   } else {
-    if (flatten_region_arg_tuple) {
-      // Flatten tuples in results of this region.
-      llvm::SmallVector<Value> flattened_return_operands;
-      FlattenTupleValue(&builder, loc, result, flattened_return_operands);
-      builder.create<mlir::mhlo::ReturnOp>(loc, flattened_return_operands);
-    } else {
-      builder.create<mlir::mhlo::ReturnOp>(loc, result);
-    }
+    return_operands.push_back(result);
+  }
+
+  if (is_func_op) {
+    builder.create<mlir::func::ReturnOp>(loc, return_operands);
+  } else {
+    builder.create<mlir::mhlo::ReturnOp>(loc, return_operands);
   }
 
   CleanUpTupleOps(block, &builder);
