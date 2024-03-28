@@ -742,6 +742,7 @@ cc_library(
         "@llvm-project//mlir:QuantOps",
         "@llvm-project//mlir:SideEffectInterfaces",
         "@llvm-project//mlir:Support",
+        "@llvm-project//mlir:TransformUtils",
         "@llvm-project//mlir:Transforms",
         "@local_xla//xla:status",
         "@local_xla//xla:statusor",

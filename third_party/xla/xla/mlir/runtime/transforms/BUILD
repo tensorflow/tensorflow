@@ -80,6 +80,7 @@ cc_library(
     deps = [
         "//xla/mlir/runtime/ir:rt",
         "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:TransformUtils",
         "@llvm-project//mlir:Transforms",
     ],
 )
@@ -93,6 +94,7 @@ xla_cc_test(
         "//xla/mlir/runtime/ir:rt",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:MemRefDialect",
+        "@llvm-project//mlir:TransformUtils",
         "@llvm-project//mlir:Transforms",
         "@local_tsl//tsl/platform:test",
         "@local_tsl//tsl/platform:test_main",
@@ -170,6 +172,7 @@ cc_library(
     deps = [
         ":custom_call_encoding",
         "//xla/runtime:type_id",
+        "@llvm-project//mlir:TransformUtils",
         "@llvm-project//mlir:Transforms",
     ],
 )

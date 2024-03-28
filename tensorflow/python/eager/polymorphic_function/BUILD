@@ -1,7 +1,7 @@
 load("//tensorflow:pytype.default.bzl", "pytype_strict_library")
 load("//tensorflow:strict.default.bzl", "py_strict_library")
 load("//tensorflow:tensorflow.default.bzl", "cuda_py_strict_test", "tf_py_strict_test")
-load("//tensorflow/compiler/tests:build_defs.bzl", "tf_xla_py_strict_test")
+load("//tensorflow/compiler/tests:build_defs.bzl", "tf_xla_py_strict_test", "tf_xla_py_test")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -633,7 +633,7 @@ py_strict_library(
     ],
 )
 
-tf_xla_py_strict_test(
+tf_xla_py_test(
     name = "compiler_ir_test",
     srcs = ["compiler_ir_test.py"],
     disabled_backends = [
@@ -652,6 +652,8 @@ tf_xla_py_strict_test(
     deps = [
         ":compiler_ir",
         ":polymorphic_function",
+        "//tensorflow/compiler/jit:xla_cpu_jit",
+        "//tensorflow/compiler/jit:xla_gpu_jit",
         "//tensorflow/compiler/tests:xla_test",
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:dtypes",
