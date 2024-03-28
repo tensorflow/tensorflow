@@ -1420,6 +1420,38 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "resource_mgr",
+    srcs = ["resource_mgr.cc"],
+    hdrs = ["resource_mgr.h"],
+    deps = [
+        ":common_shape_fns",
+        ":device_attributes_proto_cc",
+        ":node_def_proto_cc",
+        ":node_def_util",
+        ":resource_base",
+        ":resource_handle",
+        ":tensor",
+        ":tensor_shape",
+        ":tensor_types",
+        ":type_index",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:framework_lite",
+        "//tensorflow/core:lib_headers_for_pybind",
+        "//tensorflow/core:portable_gif_internal",
+        "//tensorflow/core/lib/core:errors",
+        "//tensorflow/core/lib/gtl:map_util",
+        "//tensorflow/core/lib/hash",
+        "//tensorflow/core/lib/strings:scanner",
+        "//tensorflow/core/lib/strings:str_util",
+        "//tensorflow/core/lib/strings:stringprintf",
+        "//tensorflow/core/platform:stacktrace",
+        "//tensorflow/core/platform:thread_annotations",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/types:variant",
+    ],
+)
+
 # All framework protos are self-contained, i.e. they only import other
 # protos from the same package, so we can build the protos here and then
 # link them from core:protos_all without circular dependencies.

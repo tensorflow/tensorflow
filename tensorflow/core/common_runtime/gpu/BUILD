@@ -446,6 +446,7 @@ cc_library(
     features = ["-layering_check"],
     deps = [
         ":gpu_scheduling_metrics_storage",
+        "//tensorflow/core/framework:resource_base",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:fixed_array",
         "@com_google_absl//absl/container:node_hash_map",
@@ -465,6 +466,7 @@ tf_cc_test(
     deps = [
         ":gpu_scheduling_metrics_storage",
         ":gpu_serving_device_selector",
+        "//tensorflow/core/platform:refcount",
         "@com_google_absl//absl/time",
         "@com_google_googletest//:gtest_main",
         "@local_tsl//tsl/framework:serving_device_selector",

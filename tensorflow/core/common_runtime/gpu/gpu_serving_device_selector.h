@@ -24,10 +24,32 @@ limitations under the License.
 #include "absl/container/node_hash_map.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
+#include "tensorflow/core/framework/resource_base.h"
 #include "tsl/framework/serving_device_selector.h"
 
 namespace tensorflow {
 namespace gpu {
+class GpuServingDeviceSelector;
+const char kGpuServingDeviceSelectorResourceName[] =
+    "gpu_serving_device_selector";
+
+class GpuServingDeviceSelectorResource : public ResourceBase {
+ public:
+  explicit GpuServingDeviceSelectorResource(
+      int num_devices, std::unique_ptr<tsl::ServingDeviceSelector::Policy>
+                           device_selector_policy)
+      : selector_(std::make_unique<GpuServingDeviceSelector>(
+            num_devices, std::move(device_selector_policy))) {}
+
+  std::string DebugString() const override {
+    return "GpuServingDeviceSelectorResource";
+  };
+
+  GpuServingDeviceSelector* selector() const { return selector_.get(); }
+
+ private:
+  std::unique_ptr<GpuServingDeviceSelector> selector_;
+};
 
 class GpuServingDeviceSelector : public tsl::ServingDeviceSelector {
  public:
