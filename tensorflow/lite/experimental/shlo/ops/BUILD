@@ -992,3 +992,32 @@ cc_test(
         "@com_google_googletest//:gtest_main",
     ],
 )
+
+cc_library(
+    name = "minimum",
+    srcs = ["minimum.cc"],
+    hdrs = ["minimum.h"],
+    deps = [
+        ":binary_elementwise",
+        ":util",
+        "//tensorflow/lite/experimental/shlo:dispatch",
+        "//tensorflow/lite/experimental/shlo:tensor",
+        "@com_google_absl//absl/status",
+    ],
+)
+
+cc_test(
+    name = "minimum_test",
+    srcs = ["minimum_test.cc"],
+    deps = [
+        ":binary_elementwise_test_util",
+        ":minimum",
+        ":test_util",
+        "//tensorflow/lite/experimental/shlo:quantize",
+        "//tensorflow/lite/experimental/shlo:quantized_tensor_element_type",
+        "//tensorflow/lite/experimental/shlo:shape",
+        "//tensorflow/lite/experimental/shlo:status_matcher",
+        "//tensorflow/lite/experimental/shlo:tensor",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
