@@ -73,32 +73,27 @@ typedef struct TfLiteOperator TfLiteOperator;
 // \param version      Version of the op.  See
 //                     https://www.tensorflow.org/lite/guide/ops_version
 //
-// \warning This is an experimental API and subject to change.
 TFL_CAPI_EXPORT extern TfLiteOperator* TfLiteOperatorCreate(
     TfLiteBuiltinOperator builtin_code, const char* custom_name, int version);
 
 // Destroys the TfLiteOperator instance.
 //
-// \warning This is an experimental API and subject to change.
 TFL_CAPI_EXPORT extern void TfLiteOperatorDelete(TfLiteOperator* registration);
 
 // Return the builtin op code of the provided external 'registration'.
 //
-// \warning This is an experimental API and subject to change.
 TFL_CAPI_EXPORT extern TfLiteBuiltinOperator TfLiteOperatorGetBuiltInCode(
     const TfLiteOperator* registration);
 
 /// Returns the custom name of the provided 'registration'. The returned pointer
 /// will be non-null iff the op is a custom op.
 ///
-/// \warning This is an experimental API and subject to change.
 TFL_CAPI_EXPORT extern const char* TfLiteOperatorGetCustomName(
     const TfLiteOperator* registration);
 
 /// Return the OP version of the provided external 'registration'.  Return -1
 /// in case of error, or if the provided address is null.
 ///
-/// \warning This is an experimental API and subject to change.
 TFL_CAPI_EXPORT extern int TfLiteOperatorGetVersion(
     const TfLiteOperator* registration);
 
@@ -107,7 +102,6 @@ TFL_CAPI_EXPORT extern int TfLiteOperatorGetVersion(
 // The callback is called to initialize the op from serialized data.
 // Please refer `init` of `TfLiteRegistration` for the detail.
 //
-// \warning This is an experimental API and subject to change.
 TFL_CAPI_EXPORT extern void TfLiteOperatorSetInit(
     TfLiteOperator* registration,
     void* (*init)(TfLiteOpaqueContext* context, const char* buffer,
@@ -120,7 +114,6 @@ TFL_CAPI_EXPORT extern void TfLiteOperatorSetInit(
 // the `init` callback.
 // Please refer `free` of `TfLiteRegistration` for the detail.
 //
-// \warning This is an experimental API and subject to change.
 TFL_CAPI_EXPORT extern void TfLiteOperatorSetFree(
     TfLiteOperator* registration,
     void (*free)(TfLiteOpaqueContext* context, void* data));
@@ -130,7 +123,6 @@ TFL_CAPI_EXPORT extern void TfLiteOperatorSetFree(
 // The callback is called when the inputs of operator have been resized.
 // Please refer `prepare` of `TfLiteRegistration` for the detail.
 //
-// \warning This is an experimental API and subject to change.
 TFL_CAPI_EXPORT extern void TfLiteOperatorSetPrepare(
     TfLiteOperator* registration,
     TfLiteStatus (*prepare)(TfLiteOpaqueContext* context,
@@ -141,7 +133,6 @@ TFL_CAPI_EXPORT extern void TfLiteOperatorSetPrepare(
 // The callback is called when the operator is executed.
 // Please refer `invoke` of `TfLiteRegistration` for the detail.
 //
-// \warning This is an experimental API and subject to change.
 TFL_CAPI_EXPORT extern void TfLiteOperatorSetInvoke(
     TfLiteOperator* registration,
     TfLiteStatus (*invoke)(TfLiteOpaqueContext* context,
@@ -165,7 +156,6 @@ TFL_CAPI_EXPORT extern void TfLiteOperatorSetAsyncKernel(
 /// This is a bitmask. Please refer to `inplace_operator` field of
 /// `TfLiteRegistration` for details.
 ///
-/// \warning This is an experimental API and subject to change.
 TFL_CAPI_EXPORT extern void TfLiteOperatorSetInplaceOperator(
     TfLiteOperator* registration, uint64_t inplace_operator);
 
