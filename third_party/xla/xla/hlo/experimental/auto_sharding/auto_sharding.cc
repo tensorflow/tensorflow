@@ -4101,16 +4101,7 @@ absl::StatusOr<bool> AutoSharding::Run(
 
   absl::StatusOr<bool> module_is_changed;
   if (skip_auto_sharding) {
-    VLOG(1) << "Solver timed out. Will now rely on sharding propagation to "
-               "perform sharding.";
-    if (!ModuleHasUserShardings(module)) {
-      LOG(WARNING)
-          << "The auto-sharding solver has timed out without a solution. "
-             "Further, as the input module does not contain any sharding "
-             "annotations, we cannot rely on sharding propagation to perform "
-             "heuristic-guided sharding. The module therefore may not be "
-             "sharded leading to low performance.";
-    }
+    LOG(FATAL) << "The auto-sharding solver has timed out without a solution.";
     module_is_changed = false;
   } else {
     std::string trying_to_find;
