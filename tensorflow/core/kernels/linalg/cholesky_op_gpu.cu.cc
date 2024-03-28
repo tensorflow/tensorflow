@@ -224,6 +224,7 @@ class CholeskyOpGpu : public AsyncOpKernel {
   }
 };
 
+REGISTER_LINALG_OP_GPU("Cholesky", (CholeskyOpGpu<Eigen::half>), half);
 REGISTER_LINALG_OP_GPU("Cholesky", (CholeskyOpGpu<float>), float);
 REGISTER_LINALG_OP_GPU("Cholesky", (CholeskyOpGpu<double>), double);
 REGISTER_LINALG_OP_GPU("Cholesky", (CholeskyOpGpu<complex64>), complex64);
