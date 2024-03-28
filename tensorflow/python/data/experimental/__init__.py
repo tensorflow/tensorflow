@@ -54,6 +54,7 @@ See [Importing Data](https://tensorflow.org/guide/datasets) for an overview.
 @@dense_to_ragged_batch
 @@dense_to_sparse_batch
 @@distribute
+@@distributed_save
 @@enable_debug_mode
 @@enumerate_dataset
 @@from_list

@@ -59,6 +59,16 @@
     built with support for a given CPU target. This can be useful for skipping
     target-specific tests if a target is not supported.
 
+*   `tf.data`
+    * Support `data.experimental.distribued_save` and add `wait` to
+      `tf.data.Dataset.load`. `distribued_save` uses tf.data service
+      (https://www.tensorflow.org/api_docs/python/tf/data/experimental/service)
+      to write distributed dataset snapshots. The call is non-blocking and
+      returns without waiting for the snapshot to finish. Setting `wait=True` to
+      `tf.data.Dataset.load` allows the snapshots to be read while they are
+      being written. The default is `False` for backward compatibility. It will
+      raise an error if the requested snapshot does not exist.
+
 ### Bug Fixes and Other Changes
 
 * <SIMILAR TO ABOVE SECTION, BUT FOR OTHER IMPORTANT CHANGES / BUG FIXES>

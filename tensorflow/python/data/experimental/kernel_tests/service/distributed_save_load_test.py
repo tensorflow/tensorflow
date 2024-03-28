@@ -68,7 +68,7 @@ class DistributedSaveLoadTest(
         distributed_save_op.distributed_save(
             dataset, snapshot_dir.full_path, cluster.dispatcher_address()))
 
-    dataset = load_op._load_with_retry(snapshot_dir.full_path)
+    dataset = dataset_ops.Dataset.load(snapshot_dir.full_path, wait=True)
     self.assertDatasetProduces(
         dataset,
         list(range(num_elements)) * num_repetitions,
@@ -83,7 +83,7 @@ class DistributedSaveLoadTest(
     snapshot_dir = data_service_test_base.TempDir()
 
     def load_thread_fn():
-      dataset = load_op._load_with_retry(snapshot_dir.full_path)
+      dataset = dataset_ops.Dataset.load(snapshot_dir.full_path, wait=True)
       self.assertDatasetProduces(
           dataset, list(range(10)), assert_items_equal=True)
     load_thread = threading.Thread(target=load_thread_fn, name="load_thread")
@@ -125,7 +125,7 @@ class DistributedSaveLoadTest(
         distributed_save_op.distributed_save(
             dataset, snapshot_dir.full_path, cluster.dispatcher_address()))
 
-    dataset = load_op._load_with_retry(snapshot_dir.full_path)
+    dataset = dataset_ops.Dataset.load(snapshot_dir.full_path, wait=True)
     dataset = dataset.repeat(num_repetitions)
     output = self.getDatasetOutput(dataset)
     output_per_repetition = [
@@ -166,8 +166,10 @@ class DistributedSaveLoadTest(
           num_parallel_calls=dataset_ops.AUTOTUNE)
 
     dataset = dataset_ops.Dataset.range(num_repetitions).flat_map(
-        lambda _: load_op._load_with_retry(
-            snapshot_dir.full_path, reader_func=_interleave_shuffled_chunks))
+        lambda _: dataset_ops.Dataset.load(
+            snapshot_dir.full_path,
+            reader_func=_interleave_shuffled_chunks,
+            wait=True))
 
     output = self.getDatasetOutput(dataset)
     output_per_repetition = [
@@ -201,7 +203,7 @@ class DistributedSaveLoadTest(
         distributed_save_op.distributed_save(
             dataset, snapshot_dir.full_path, cluster.dispatcher_address()))
 
-    dataset = load_op._load_with_retry(snapshot_dir.full_path)
+    dataset = dataset_ops.Dataset.load(snapshot_dir.full_path, wait=True)
     if repeated_load > 1:
       dataset = dataset.repeat(repeated_load)
     dataset = dataset.apply(
@@ -233,7 +235,7 @@ class DistributedSaveLoadTest(
     loaded_datasets = []
     for i in range(len(datasets)):
       snapshot_path = os.path.join(snapshot_dir.full_path, f"dataset_{i}")
-      loaded_datasets.append(load_op._load_with_retry(snapshot_path))
+      loaded_datasets.append(dataset_ops.Dataset.load(snapshot_path, wait=True))
     dataset = dataset_ops.Dataset.sample_from_datasets(
         loaded_datasets,
         weights=[1.0] * num_datasets,
@@ -262,7 +264,7 @@ class DistributedSaveLoadTest(
         distributed_save_op.distributed_save(
             dataset, snapshot_dir.full_path, cluster.dispatcher_address()))
 
-    dataset = load_op._load_with_retry(snapshot_dir.full_path)
+    dataset = dataset_ops.Dataset.load(snapshot_dir.full_path, wait=True)
     self.assertDatasetProduces(
         dataset,
         list(range(num_elements)) * num_datasets * num_repetitions,
@@ -282,7 +284,7 @@ class DistributedSaveLoadTest(
         distributed_save_op.distributed_save(
             dataset, snapshot_dir.full_path, cluster.dispatcher_address()))
 
-    dataset = load_op._load_with_retry(snapshot_dir.full_path)
+    dataset = dataset_ops.Dataset.load(snapshot_dir.full_path, wait=True)
     indexes, elements = map(list, zip(*self.getDatasetOutput(dataset)))
     if num_workers == 1:
       self.assertCountEqual(indexes, list(range(9)))
@@ -300,7 +302,7 @@ class DistributedSaveLoadTest(
             dataset, snapshot_dir.full_path, cluster.dispatcher_address()))
 
     with self.assertRaises(errors.InvalidArgumentError):
-      dataset = load_op._load_with_retry(snapshot_dir.full_path)
+      dataset = dataset_ops.Dataset.load(snapshot_dir.full_path, wait=True)
       self.getDatasetOutput(dataset)
 
   @combinations.generate(
@@ -315,7 +317,7 @@ class DistributedSaveLoadTest(
         distributed_save_op.distributed_save(
             dataset, snapshot_dir.full_path, cluster.dispatcher_address()))
 
-    dataset = load_op._load_with_retry(snapshot_dir.full_path)
+    dataset = dataset_ops.Dataset.load(snapshot_dir.full_path, wait=True)
     self.assertDatasetProduces(
         dataset, list(range(num_elements)), assert_items_equal=True)
 
@@ -323,7 +325,7 @@ class DistributedSaveLoadTest(
     # the same output.
     os.remove(os.path.join(
         snapshot_dir.full_path, dataset_ops.DATASET_SPEC_FILENAME))
-    dataset = load_op._load_with_retry(snapshot_dir.full_path)
+    dataset = dataset_ops.Dataset.load(snapshot_dir.full_path, wait=True)
     self.assertDatasetProduces(
         dataset, list(range(num_elements)), assert_items_equal=True)
 
@@ -339,7 +341,7 @@ class DistributedSaveLoadTest(
         distributed_save_op.distributed_save(
             dataset, snapshot_dir.full_path, cluster.dispatcher_address()))
 
-    dataset = load_op._load_with_retry(snapshot_dir.full_path)
+    dataset = dataset_ops.Dataset.load(snapshot_dir.full_path, wait=True)
     self.assertDatasetProduces(
         dataset, list(range(num_elements)), assert_items_equal=True)
 
@@ -349,16 +351,15 @@ class DistributedSaveLoadTest(
       f.write("")
 
     # Reads element_spec from the metadata file.
-    dataset = load_op._load_with_retry(snapshot_dir.full_path)
+    dataset = dataset_ops.Dataset.load(snapshot_dir.full_path, wait=True)
     self.assertDatasetProduces(
         dataset, list(range(num_elements)), assert_items_equal=True)
 
   @combinations.generate(test_base.default_test_combinations())
   def test_snapshot_does_not_exist(self):
-    load_op._LOAD_TIMEOUT_SECONDS = 5
     snapshot_dir = data_service_test_base.TempDir()
     with self.assertRaises(errors.NotFoundError):
-      dataset = load_op._load_with_retry(snapshot_dir.full_path)
+      dataset = dataset_ops.Dataset.load(snapshot_dir.full_path, wait=False)
       self.getDatasetOutput(dataset)
 
   @combinations.generate(
@@ -439,7 +440,7 @@ class SaveLoadCheckpointTest(
             dataset, snapshot_dir.full_path, cluster.dispatcher_address()))
 
     def _build_ds() -> dataset_ops.Dataset:
-      dataset = load_op._load_with_retry(snapshot_dir.full_path)
+      dataset = dataset_ops.Dataset.load(snapshot_dir.full_path, wait=True)
       if num_repetitions > 1:
         dataset = dataset.repeat(num_repetitions)
       return dataset
@@ -478,7 +479,7 @@ class SaveLoadCheckpointTest(
             dataset, snapshot_dir.full_path, cluster.dispatcher_address()))
 
     def _build_ds() -> dataset_ops.Dataset:
-      dataset = load_op._load_with_retry(snapshot_dir.full_path)
+      dataset = dataset_ops.Dataset.load(snapshot_dir.full_path, wait=True)
       dataset = dataset.repeat(num_repetitions)
       # Skips the first repetition. The remaining repetitions should be
       # deterministic.

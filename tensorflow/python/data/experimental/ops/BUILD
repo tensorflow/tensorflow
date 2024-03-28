@@ -103,6 +103,7 @@ py_strict_library(
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/ops:experimental_dataset_ops_gen",
         "//tensorflow/python/saved_model:nested_structure_coder",
+        "//tensorflow/python/util:tf_export",
     ],
 )
 

@@ -137,6 +137,19 @@ class IOTest(test_base.DatasetTestBase, parameterized.TestCase):
     for _ in range(30):
       self.evaluate(next_element())
 
+  @combinations.generate(test_base.default_test_combinations())
+  def testWaitIsUnsupported(self):
+    dataset = dataset_ops.Dataset.range(42)
+    self.evaluate(dataset.save(self._test_dir))
+
+    with self.assertRaisesRegex(
+        ValueError,
+        "only supported for distributed tf.data snapshot."):
+      _ = dataset_ops.Dataset.load(
+          self._test_dir,
+          element_spec=dataset.element_spec,
+          wait=True)
+
 
 class LoadCheckpointTest(IOTest, checkpoint_test_base.CheckpointTestBase):
 
