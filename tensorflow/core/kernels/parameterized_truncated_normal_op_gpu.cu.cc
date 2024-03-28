@@ -132,8 +132,6 @@ __global__ void __launch_bounds__(1024)
                 (normMax >= T(0.))) ||
                ((normMax > kStdDevsInsideBoundsToUseRandnSampler) &&
                 (normMin <= T(0.)))) {
-      Eigen::array<T, 4> n;
-
       int numIterations = 0;
       while (numIterations < kMaxIterations) {
         const auto randn = normal_dist(&gen);
