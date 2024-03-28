@@ -50,6 +50,10 @@ class HostStream : public internal::StreamInterface {
   // (if any) and clears the error status.
   absl::Status BlockUntilDone();
 
+  void SetPriority(StreamPriority /*priority*/) override {}
+
+  void SetPriority(int /*priority*/) override {}
+
  private:
   bool WorkAvailable() TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
   void WorkLoop();
