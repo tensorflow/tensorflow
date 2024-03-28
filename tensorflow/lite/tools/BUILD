@@ -409,6 +409,8 @@ cc_library(
     hdrs = ["utils.h"],
     deps = [
         ":logging",
+        "//tensorflow/lite/c:c_api_types",
+        "//tensorflow/lite/c:common",
         "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/kernels:kernel_util",
     ],
