@@ -964,7 +964,7 @@ LogicalResult ConvertTFLDivOp::matchAndRewrite(
   Value div_op;
   if (element_type.isa<IntegerType>()) {
     div_op =
-        CreateOpAndInfer<tosa::DivOp>(rewriter, op->getLoc(), output_type,
+        CreateOpAndInfer<tosa::IntDivOp>(rewriter, op->getLoc(), output_type,
                                       tfl_div_op.getLhs(), tfl_div_op.getRhs())
             .getResult();
   } else {

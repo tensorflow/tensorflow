@@ -2685,8 +2685,8 @@ std::optional<Value> convertFloorDivOp(PatternRewriter& rewriter, Operation* op,
   Type element_type = output_type.getElementType();
 
   if (element_type.isa<IntegerType>()) {
-    return CreateOpAndInfer<tosa::DivOp>(rewriter, op->getLoc(), output_type,
-                                         lhs_value, rhs_value)
+    return CreateOpAndInfer<tosa::IntDivOp>(rewriter, op->getLoc(), output_type,
+                                            lhs_value, rhs_value)
         .getResult();
   }
 

@@ -520,8 +520,8 @@ LogicalResult ConvertTFRealDivOp::matchAndRewrite(
   Type element_type = output_type.getElementType();
 
   if (element_type.isa<IntegerType>()) {
-    CreateReplaceOpAndInfer<tosa::DivOp>(rewriter, op, output_type,
-                                         tf_div_op.getX(), tf_div_op.getY());
+    CreateReplaceOpAndInfer<tosa::IntDivOp>(rewriter, op, output_type,
+                                            tf_div_op.getX(), tf_div_op.getY());
     return success();
   }
 
