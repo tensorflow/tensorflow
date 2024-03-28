@@ -667,6 +667,7 @@ TEST_P(LeakyReluOpTest, LeakyReluInt16) {
       GetRegistration());
 }
 
+
 TEST(QuantizedActivationsOpTest, Relu0To1Int8) {
   const float kMin = 0;
   const float kMax = 1;
@@ -687,29 +688,6 @@ TEST(QuantizedActivationsOpTest, Relu0To1Int8) {
                                                         0.3, 0.0, 1.0, 0.0,  //
                                                     },
                                                     kQuantizedTolerance)));
-}
-
-TEST(QuantizedActivationsOpTest, Relu1Int8) {
-  const float kMin = -1;
-  const float kMax = 1;
-  QuantizedActivationsOpModel m(
-      BuiltinOperator_RELU_N1_TO_1,
-      /*input=*/{TensorType_INT8, {1, 2, 4, 1}, 2 * kMin, kMax},
-      /*output=*/{TensorType_INT8, {1, 2, 4, 1}, 2 * kMin, kMax});
-
-  m.SetInput<int8_t>({
-      0.0, -0.6, 0.2, -0.4,  //
-      0.3, -2.0, 1.1, -0.1,  //
-  });
-  ASSERT_EQ(m.Invoke(), kTfLiteOk);
-
-  EXPECT_THAT(m.GetDequantizedOutput<int8_t>(),
-              ElementsAreArray(ArrayFloatNear(
-                  {
-                      0.0, -0.6, 0.2, -0.4,  //
-                      0.3, -1.0, 1.0, -0.1,  //
-                  },
-                  kQuantizedTolerance)));
 }
 
 TEST(QuantizedActivationsOpTest, Relu0To1UInt8) {
@@ -735,27 +713,49 @@ TEST(QuantizedActivationsOpTest, Relu0To1UInt8) {
                   kQuantizedTolerance)));
 }
 
-TEST(QuantizedActivationsOpTest, Relu1UInt8) {
+template <typename integer_dtype>
+void QuantizedActivationsOpTestRelu1() {
   const float kMin = -1;
-  const float kMax = 1;
+  const float kMax =
+      std::numeric_limits<integer_dtype>::max() /
+      static_cast<float>(std::numeric_limits<integer_dtype>::max() + 1);
   QuantizedActivationsOpModel m(
       BuiltinOperator_RELU_N1_TO_1,
-      /*input=*/{TensorType_UINT8, {1, 2, 4, 1}, 2 * kMin, kMax},
-      /*output=*/{TensorType_UINT8, {1, 2, 4, 1}, 2 * kMin, kMax});
+      /*input=*/
+      {GetTensorType<integer_dtype>(), {1, 2, 4, 1}, 2 * kMin, 2 * kMax},
+      /*output=*/
+      {GetTensorType<integer_dtype>(), {1, 2, 4, 1}, 2 * kMin, 2 * kMax});
 
-  m.SetInput<uint8_t>({
+  m.SetInput<integer_dtype>({
       0.0, -0.6, 0.2, -0.4,  //
       0.3, -2.0, 1.1, -0.1,  //
   });
   ASSERT_EQ(m.Invoke(), kTfLiteOk);
 
-  EXPECT_THAT(m.GetDequantizedOutput<uint8_t>(),
+  float kTestQuantizedTolerance =
+      GetTensorType<integer_dtype>() == TensorType_INT16
+          ? kQuantizedToleranceInt16
+          : kQuantizedTolerance;
+
+  EXPECT_THAT(m.GetDequantizedOutput<integer_dtype>(),
               ElementsAreArray(ArrayFloatNear(
                   {
                       0.0, -0.6, 0.2, -0.4,  //
                       0.3, -1.0, 1.0, -0.1,  //
                   },
-                  kQuantizedTolerance)));
+                  kTestQuantizedTolerance)));
+}
+
+TEST(QuantizedActivationsOpTest, Relu1UInt8) {
+  QuantizedActivationsOpTestRelu1<uint8_t>();
+}
+
+TEST(QuantizedActivationsOpTest, Relu1Int8) {
+  QuantizedActivationsOpTestRelu1<int8_t>();
+}
+
+TEST(QuantizedActivationsOpTest, Relu1Int16) {
+  QuantizedActivationsOpTestRelu1<int16_t>();
 }
 
 TEST(QuantizedActivationsOpTest, Relu6Int8) {
@@ -2608,14 +2608,19 @@ TEST_P(PReluOpTest, PReluInt8SameShapes) {
   const float kMin = -1;
   const float kMax = 127.f / 128.f;
   QuantizedPReluOpModel m({TensorType_INT8, {1, 2, 2, 3}, kMin, kMax},
-                          {TensorType_INT8, {1, 1, 3}, kMin, kMax});
+                          {TensorType_INT8, {1, 2, 2, 3}, kMin, kMax});
   m.SetInput<int8_t>({
       0.0f, 0.0f, 0.0f,        // Row 1, Column 1
       0.5f, 0.5f, 0.5f,        // Row 1, Column 2
       -1.0f, -1.0f, -1.0f,     // Row 2, Column 1
       -0.25f, -0.25f, -0.25f,  // Row 2, Column 2
   });
-  m.SetAlpha<int8_t>({0.0f, 0.5f, -0.5f});
+  m.SetAlpha<int8_t>({
+      0.0f, 0.5f, -0.5f,  // Row 1, Column 1
+      0.0f, 0.5f, -0.5f,  // Row 1, Column 2
+      0.0f, 0.5f, -0.5f,  // Row 2, Column 1
+      0.0f, 0.5f, -0.5f,  // Row 2, Column 2
+  });
   ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetDequantizedOutput<int8_t>(),
               ElementsAreArray(ArrayFloatNear(
@@ -2632,6 +2637,73 @@ TEST_P(PReluOpTest, PReluInt8SameShapes) {
                                          0, -64, 64,  // Row 2, Column 1
                                          0, -16, 16,  // Row 2, Column 2
                                      }));
+}
+
+TEST_P(PReluOpTest, PReluInt16) {
+  const float kMin = -1;
+  const float kMax = 32767.f / 32768.f;
+  QuantizedPReluOpModel m({TensorType_INT16, {1, 2, 2, 3}, kMin, kMax},
+                          {TensorType_INT16, {1, 1, 3}, kMin, kMax});
+  m.SetInput<int16_t>({
+      0.0f, 0.0f, 0.0f,        // Row 1, Column 1
+      0.5f, 0.5f, 0.5f,        // Row 1, Column 2
+      -1.0f, -1.0f, -1.0f,     // Row 2, Column 1
+      -0.25f, -0.25f, -0.25f,  // Row 2, Column 2
+  });
+  m.SetAlpha<int16_t>({0.0f, 0.5f, -0.5f});
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  EXPECT_THAT(m.GetDequantizedOutput<int16_t>(),
+              ElementsAreArray(ArrayFloatNear(
+                  {
+                      0.0f, 0.0f, 0.0f,       // Row 1, Column 1
+                      0.5f, 0.5f, 0.5f,       // Row 1, Column 2
+                      0.0f, -0.5f, 0.5f,      // Row 2, Column 1
+                      0.0f, -0.125f, 0.125f,  // Row 2, Column 2
+                  },
+                  kQuantizedToleranceInt16)));
+  EXPECT_THAT(m.GetOutput<int16_t>(),
+              ElementsAreArray({
+                  0, 0, 0,              // Row 1, Column 1
+                  16384, 16384, 16384,  // Row 1, Column 2
+                  0, -16384, 16384,     // Row 2, Column 1
+                  0, -4096, 4096,       // Row 2, Column 2
+              }));
+}
+
+TEST_P(PReluOpTest, PReluInt16SameShapes) {
+  const float kMin = -1;
+  const float kMax = 32767.f / 32768.f;
+  QuantizedPReluOpModel m({TensorType_INT16, {1, 2, 2, 3}, kMin, kMax},
+                          {TensorType_INT16, {1, 2, 2, 3}, kMin, kMax});
+  m.SetInput<int16_t>({
+      0.0f, 0.0f, 0.0f,        // Row 1, Column 1
+      0.5f, 0.5f, 0.5f,        // Row 1, Column 2
+      -1.0f, -1.0f, -1.0f,     // Row 2, Column 1
+      -0.25f, -0.25f, -0.25f,  // Row 2, Column 2
+  });
+  m.SetAlpha<int16_t>({
+      0.0f, 0.5f, -0.5f,  // Row 1, Column 1
+      0.0f, 0.5f, -0.5f,  // Row 1, Column 2
+      0.0f, 0.5f, -0.5f,  // Row 2, Column 1
+      0.0f, 0.5f, -0.5f,  // Row 2, Column 2
+  });
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  EXPECT_THAT(m.GetDequantizedOutput<int16_t>(),
+              ElementsAreArray(ArrayFloatNear(
+                  {
+                      0.0f, 0.0f, 0.0f,       // Row 1, Column 1
+                      0.5f, 0.5f, 0.5f,       // Row 1, Column 2
+                      0.0f, -0.5f, 0.5f,      // Row 2, Column 1
+                      0.0f, -0.125f, 0.125f,  // Row 2, Column 2
+                  },
+                  kQuantizedToleranceInt16)));
+  EXPECT_THAT(m.GetOutput<int16_t>(),
+              ElementsAreArray({
+                  0, 0, 0,              // Row 1, Column 1
+                  16384, 16384, 16384,  // Row 1, Column 2
+                  0, -16384, 16384,     // Row 2, Column 1
+                  0, -4096, 4096,       // Row 2, Column 2
+              }));
 }
 
 class LeakyReluOpModel : public SingleOpModel {

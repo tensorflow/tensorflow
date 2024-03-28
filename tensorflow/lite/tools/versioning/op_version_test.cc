@@ -1353,7 +1353,64 @@ TEST(OpVersionTest, VersioningBroadcastToTest) {
   };
   EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 3);
 }
+TEST(OpVersionTest, VersioningReluN1To1Test) {
+  OpSignature fake_op_sig = {
+      .op = BuiltinOperator_RELU_N1_TO_1,
+      .inputs = CreateOpSignatureTensorSpecs(kTfLiteFloat32),
+      .outputs = CreateOpSignatureTensorSpecs(kTfLiteFloat32),
+  };
+  EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 1);
+  fake_op_sig = {
+      .op = BuiltinOperator_RELU_N1_TO_1,
+      .inputs = CreateOpSignatureTensorSpecs(kTfLiteUInt8),
+      .outputs = CreateOpSignatureTensorSpecs(kTfLiteUInt8),
+  };
+  EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 1);
+  fake_op_sig = {
+      .op = BuiltinOperator_RELU_N1_TO_1,
+      .inputs = CreateOpSignatureTensorSpecs(kTfLiteInt8),
+      .outputs = CreateOpSignatureTensorSpecs(kTfLiteInt8),
+  };
+  EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 1);
 
+  fake_op_sig = {
+      .op = BuiltinOperator_RELU_N1_TO_1,
+      .inputs = CreateOpSignatureTensorSpecs(kTfLiteInt16),
+      .outputs = CreateOpSignatureTensorSpecs(kTfLiteInt16),
+  };
+  EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 2);
+}
+TEST(OpVersionTest, VersioningPreluTest) {
+  OpSignature fake_op_sig = {
+      .op = BuiltinOperator_PRELU,
+      .inputs = CreateOpSignatureTensorSpecs(
+          std::vector<TfLiteType>{kTfLiteFloat32, kTfLiteFloat32}),
+      .outputs = CreateOpSignatureTensorSpecs(kTfLiteFloat32),
+  };
+  EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 1);
+  fake_op_sig = {
+      .op = BuiltinOperator_PRELU,
+      .inputs = CreateOpSignatureTensorSpecs(
+          std::vector<TfLiteType>{kTfLiteUInt8, kTfLiteUInt8}),
+      .outputs = CreateOpSignatureTensorSpecs(kTfLiteUInt8),
+  };
+  EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 1);
+  fake_op_sig = {
+      .op = BuiltinOperator_PRELU,
+      .inputs = CreateOpSignatureTensorSpecs(
+          std::vector<TfLiteType>{kTfLiteInt8, kTfLiteInt8}),
+      .outputs = CreateOpSignatureTensorSpecs(kTfLiteInt8),
+  };
+  EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 1);
+
+  fake_op_sig = {
+      .op = BuiltinOperator_PRELU,
+      .inputs = CreateOpSignatureTensorSpecs(
+          std::vector<TfLiteType>{kTfLiteInt16, kTfLiteInt16}),
+      .outputs = CreateOpSignatureTensorSpecs(kTfLiteInt16),
+  };
+  EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 2);
+}
 TEST(OpVersionTest, VersioningGeluTest) {
   OpSignature fake_op_sig;
   fake_op_sig.op = BuiltinOperator_GELU;

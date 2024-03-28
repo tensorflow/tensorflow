@@ -693,7 +693,8 @@ TfLiteStatus PreluPrepare(TfLiteContext* context, TfLiteNode* node) {
 
   output->type = input->type;
 
-  if (output->type == kTfLiteUInt8 || output->type == kTfLiteInt8) {
+  if (output->type == kTfLiteUInt8 || output->type == kTfLiteInt8 ||
+      output->type == kTfLiteInt16) {
     // prelu(x) = x if x >= 0 else x * alpha.
     // So if we translate that for quantized computation:
     //
@@ -718,6 +719,12 @@ TfLiteStatus PreluPrepare(TfLiteContext* context, TfLiteNode* node) {
                        &data->output_shift_1);
     QuantizeMultiplier(real_multiplier_2, &data->output_multiplier_2,
                        &data->output_shift_2);
+  }
+
+  if (input->type == kTfLiteInt16) {
+    TF_LITE_ENSURE_EQ(context, input->params.zero_point, 0);
+    TF_LITE_ENSURE_EQ(context, output->params.zero_point, 0);
+    TF_LITE_ENSURE_EQ(context, alpha->params.zero_point, 0);
   }
 
   data->requires_broadcast = !HaveSameShapes(input, alpha);
@@ -825,12 +832,16 @@ TfLiteStatus Relu1Eval(TfLiteContext* context, TfLiteNode* node) {
       return kTfLiteOk;
     }
     case kTfLiteInt8: {
-      QuantizedReluX<int8_t>(-1, 1, input, output, data);
+      QuantizedReluX<int8_t>(-1.0f, 1.0f, input, output, data);
       return kTfLiteOk;
     }
+    case kTfLiteInt16: {
+      QuantizedReluX<int16_t>(-1.0f, 1.0f, input, output, data);
+      return kTfLiteOk;
+    } break;
     default:
       TF_LITE_KERNEL_LOG(context,
-                         "Only float32, uint8, int8 supported "
+                         "Only float32, uint8, int8 and int16 supported "
                          "currently, got %s.",
                          TfLiteTypeGetName(input->type));
       return kTfLiteError;
@@ -1446,6 +1457,30 @@ TfLiteStatus LogSoftmaxEval(TfLiteContext* context, TfLiteNode* node) {
 }
 
 template <typename T>
+void QuantizedPreluEval(const TfLiteTensor* input, const TfLiteTensor* alpha,
+                        TfLiteTensor* output, const PreluOpData* data) {
+  PreluParams op_params;
+  op_params.input_offset = -input->params.zero_point;
+  op_params.alpha_offset = -alpha->params.zero_point;
+  op_params.output_offset = output->params.zero_point;
+  op_params.output_multiplier_1 = data->output_multiplier_1;
+  op_params.output_shift_1 = data->output_shift_1;
+  op_params.output_multiplier_2 = data->output_multiplier_2;
+  op_params.output_shift_2 = data->output_shift_2;
+  if (data->requires_broadcast) {
+    reference_ops::BroadcastPrelu4DSlow(
+        op_params, GetTensorShape(input), GetTensorData<T>(input),
+        GetTensorShape(alpha), GetTensorData<T>(alpha), GetTensorShape(output),
+        GetTensorData<T>(output));
+  } else {
+    reference_ops::Prelu(op_params, GetTensorShape(input),
+                         GetTensorData<T>(input), GetTensorShape(alpha),
+                         GetTensorData<T>(alpha), GetTensorShape(output),
+                         GetTensorData<T>(output));
+  }
+}
+
+template <typename T>
 T ApplyPrelu(T input, T alpha) {
   return input >= 0.0 ? input : input * alpha;
 }
@@ -1497,54 +1532,22 @@ TfLiteStatus PreluEval(TfLiteContext* context, TfLiteNode* node) {
       return kTfLiteOk;
     }
     case kTfLiteUInt8: {
-      PreluParams op_params;
-      op_params.input_offset = -input->params.zero_point;
-      op_params.alpha_offset = -alpha->params.zero_point;
-      op_params.output_offset = output->params.zero_point;
-      op_params.output_multiplier_1 = data->output_multiplier_1;
-      op_params.output_shift_1 = data->output_shift_1;
-      op_params.output_multiplier_2 = data->output_multiplier_2;
-      op_params.output_shift_2 = data->output_shift_2;
-      if (data->requires_broadcast) {
-        reference_ops::BroadcastPrelu4DSlow(
-            op_params, GetTensorShape(input), GetTensorData<uint8_t>(input),
-            GetTensorShape(alpha), GetTensorData<uint8_t>(alpha),
-            GetTensorShape(output), GetTensorData<uint8_t>(output));
-      } else {
-        reference_ops::Prelu(
-            op_params, GetTensorShape(input), GetTensorData<uint8_t>(input),
-            GetTensorShape(alpha), GetTensorData<uint8_t>(alpha),
-            GetTensorShape(output), GetTensorData<uint8_t>(output));
-      }
+      QuantizedPreluEval<uint8_t>(input, alpha, output, data);
       return kTfLiteOk;
     }
     case kTfLiteInt8: {
-      PreluParams op_params;
-      op_params.input_offset = -input->params.zero_point;
-      op_params.alpha_offset = -alpha->params.zero_point;
-      op_params.output_offset = output->params.zero_point;
-      op_params.output_multiplier_1 = data->output_multiplier_1;
-      op_params.output_shift_1 = data->output_shift_1;
-      op_params.output_multiplier_2 = data->output_multiplier_2;
-      op_params.output_shift_2 = data->output_shift_2;
-      if (data->requires_broadcast) {
-        reference_ops::BroadcastPrelu4DSlow(
-            op_params, GetTensorShape(input), GetTensorData<int8_t>(input),
-            GetTensorShape(alpha), GetTensorData<int8_t>(alpha),
-            GetTensorShape(output), GetTensorData<int8_t>(output));
-      } else {
-        reference_ops::Prelu(
-            op_params, GetTensorShape(input), GetTensorData<int8_t>(input),
-            GetTensorShape(alpha), GetTensorData<int8_t>(alpha),
-            GetTensorShape(output), GetTensorData<int8_t>(output));
-      }
+      QuantizedPreluEval<int8_t>(input, alpha, output, data);
+      return kTfLiteOk;
+    }
+    case kTfLiteInt16: {
+      QuantizedPreluEval<int16_t>(input, alpha, output, data);
       return kTfLiteOk;
     }
     default:
-      TF_LITE_KERNEL_LOG(
-          context,
-          "Only float32 and uint8 and int8 are supported currently, got %s.",
-          TfLiteTypeGetName(input->type));
+      TF_LITE_KERNEL_LOG(context,
+                         "Only float32 and uint8 and int8 and int16 are "
+                         "supported currently, got %s.",
+                         TfLiteTypeGetName(input->type));
       return kTfLiteError;
   }
 }

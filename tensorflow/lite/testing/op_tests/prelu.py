@@ -49,6 +49,7 @@ def make_prelu_tests(options):
           "input_shape": [[1, 10, 10, 3], [3, 3, 3, 3]],
           "shared_axes": [[1, 2], [1]],
           "fully_quantize": [True],
+          "quant_16x8": [False, True],
           "input_range": [(-10, 10)],
       },
       {

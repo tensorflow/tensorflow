@@ -931,7 +931,6 @@ OperatorProperty GetOperatorProperty(OpVariant op_variant, int number_of_bits) {
                          {1, tensor_property_default}};
       property.outputs = {{0, tensor_property_default}};
       property.version = 1;
-      property.quantizable_int16 = false;
       break;
     case BuiltinOperator_LEAKY_RELU:
       property.inputs = {{0, tensor_property_default}};
@@ -948,7 +947,6 @@ OperatorProperty GetOperatorProperty(OpVariant op_variant, int number_of_bits) {
       property.inputs = {{0, tensor_property_default}};
       property.outputs = {{0, tensor_property_default}};
       property.version = 1;
-      property.quantizable_int16 = false;
       break;
     case BuiltinOperator_RESHAPE:
       property.inputs = {{0, tensor_property_default}};

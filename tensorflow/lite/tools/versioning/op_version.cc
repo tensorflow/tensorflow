@@ -798,6 +798,8 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
       return 1;
 
     case BuiltinOperator_LEAKY_RELU:
+    case BuiltinOperator_PRELU:
+    case BuiltinOperator_RELU_N1_TO_1:
       if (op_sig.inputs.at(0).type == kTfLiteInt16) {
         return 2;
       }

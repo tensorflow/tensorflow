@@ -27,7 +27,12 @@ def make_relu1_tests(options):
   # Chose a set of parameters
   test_parameters = [{
       "input_shape": [[], [1, 1, 1, 1], [1, 3, 4, 3], [3, 15, 14, 3]],
-      "fully_quantize": [True, False],
+      "fully_quantize": [False],
+      "input_range": [(-2, 8)]
+  }, {
+      "input_shape": [[], [1, 1, 1, 1], [1, 3, 4, 3], [3, 15, 14, 3]],
+      "fully_quantize": [True],
+      "quant_16x8": [False, True],
       "input_range": [(-2, 8)]
   }]
 
