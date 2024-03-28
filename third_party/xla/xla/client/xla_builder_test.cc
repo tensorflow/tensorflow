@@ -1791,22 +1791,24 @@ TEST_P(XlaBuilderUnboundedUnaryOpTest, UnboundedUnaryOpTest) {
   TF_ASSERT_OK_AND_ASSIGN(Shape operand, ParseShape(GetParam().operand));
   TF_ASSERT_OK_AND_ASSIGN(Shape expected, ParseShape(GetParam().expected));
   GetParam().unary_op(Parameter(&b, 0, operand, "operand"));
-  TF_ASSERT_OK_AND_ASSIGN(auto module, BuildHloModule(b));
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
+                          BuildHloModule(b));
   EXPECT_THAT(GetRoot(*module),
               GmockMatch(m::Op().WithShapeEqualTo(&expected)));
 }
 
 TEST_P(XlaBuilderUnboundedBinaryOpTest, UnboundedBinaryOpTest) {
   XlaBuilder b(TestName());
-  TF_ASSERT_OK_AND_ASSIGN(Shape lhs, ParseShape(GetParam().lhs));
-  TF_ASSERT_OK_AND_ASSIGN(Shape rhs, ParseShape(GetParam().rhs));
-  TF_ASSERT_OK_AND_ASSIGN(Shape expected, ParseShape(GetParam().expected));
+  TF_ASSERT_OK_AND_ASSIGN(const Shape lhs, ParseShape(GetParam().lhs));
+  TF_ASSERT_OK_AND_ASSIGN(const Shape rhs, ParseShape(GetParam().rhs));
+  TF_ASSERT_OK_AND_ASSIGN(const Shape expected,
+                          ParseShape(GetParam().expected));
   GetParam().binary_op(Parameter(&b, 0, lhs, "lhs"),
                        Parameter(&b, 1, rhs, "rhs"),
                        GetParam().broadcast_dimensions);
-  if (auto result = BuildHloModule(b); result.ok()) {
-    std::unique_ptr<HloModule> module = std::move(*result);
-    EXPECT_THAT(GetRoot(*module),
+  if (const auto result = BuildHloModule(b); result.ok()) {
+    ASSERT_NE(*result, nullptr);
+    EXPECT_THAT(GetRoot(**result),
                 GmockMatch(m::Op().WithShapeEqualTo(&expected)));
   } else {
     ASSERT_TRUE(GetParam().error_message.has_value());
@@ -1856,7 +1858,7 @@ TEST(XlaBuilderTest, UnboundedAnd) {
   TF_ASSERT_OK_AND_ASSIGN(Shape expected,
                           ParseShape("s32[?, ?, 2, 2, <=2, <=2, ?]"));
   And(Parameter(&b, 0, lhs, "lhs"), Parameter(&b, 1, rhs, "rhs"),
-      /*broadcast_dimensions=*/absl::Span<const int64_t>{});
+      /*broadcast_dimensions=*/empty_array);
   TF_ASSERT_OK_AND_ASSIGN(auto module, BuildHloModule(b));
   EXPECT_THAT(GetRoot(*module),
               GmockMatch(m::Op().WithShapeEqualTo(&expected)));
@@ -2167,6 +2169,45 @@ TEST(XlaBuilderTest, UnboundedGather) {
               GmockMatch(m::Op().WithShapeEqualTo(&expected)));
 }
 
+TEST(XlaBuilderTest, UnboundedMap) {
+  XlaBuilder b(TestName());
+  TF_ASSERT_OK_AND_ASSIGN(Shape operand0, ParseShape("f32[2, ?, ?]"));
+  TF_ASSERT_OK_AND_ASSIGN(Shape operand1, ParseShape("f32[?, 3, ?]"));
+  TF_ASSERT_OK_AND_ASSIGN(Shape expected, ParseShape("f32[2, ?, ?]"));
+
+  XlaComputation computation;
+  {
+    const std::unique_ptr<XlaBuilder> sub_builder = b.CreateSubBuilder("add");
+    Add(Parameter(sub_builder.get(), 0, ShapeUtil::MakeScalarShape(F32),
+                  "arg0"),
+        Parameter(sub_builder.get(), 1, ShapeUtil::MakeScalarShape(F32),
+                  "arg1"));
+    TF_ASSERT_OK_AND_ASSIGN(computation, sub_builder->Build());
+  }
+
+  Map(&b, /*operands=*/
+      {Parameter(&b, 0, operand0, "operand0"),
+       Parameter(&b, 1, operand1, "operand1")},
+      computation, /*dimensions=*/{0, 1, 2},
+      /*static_operands=*/{});
+
+  TF_ASSERT_OK_AND_ASSIGN(const std::unique_ptr<HloModule> module,
+                          BuildHloModule(b));
+  EXPECT_THAT(GetRoot(*module),
+              GmockMatch(m::Op().WithShapeEqualTo(&expected)));
+}
+
+TEST(XlaBuilderTest, UnboundedOptimizationBarrier) {
+  XlaBuilder b(TestName());
+  TF_ASSERT_OK_AND_ASSIGN(const Shape operand, ParseShape("f32[?, 10]"));
+  TF_ASSERT_OK_AND_ASSIGN(const Shape expected, ParseShape("f32[?, 10]"));
+  OptimizationBarrier(Parameter(&b, 0, operand, "operand"));
+  TF_ASSERT_OK_AND_ASSIGN(const std::unique_ptr<HloModule> module,
+                          BuildHloModule(b));
+  EXPECT_THAT(GetRoot(*module),
+              GmockMatch(m::Op().WithShapeEqualTo(&expected)));
+}
+
 TEST(XlaBuilderTest, UnboundedOr) {
   XlaBuilder b(TestName());
   TF_ASSERT_OK_AND_ASSIGN(const Shape lhs,
@@ -2177,7 +2218,8 @@ TEST(XlaBuilderTest, UnboundedOr) {
                           ParseShape("s32[?, ?, 2, 2, <=2, <=2, ?]"));
   Or(Parameter(&b, 0, lhs, "lhs"), Parameter(&b, 1, rhs, "rhs"),
      /*broadcast_dimensions=*/empty_array);
-  TF_ASSERT_OK_AND_ASSIGN(const auto module, BuildHloModule(b));
+  TF_ASSERT_OK_AND_ASSIGN(const std::unique_ptr<HloModule> module,
+                          BuildHloModule(b));
   EXPECT_THAT(GetRoot(*module),
               GmockMatch(m::Op().WithShapeEqualTo(&expected)));
 }
@@ -2227,6 +2269,17 @@ TEST(XlaBuilderTest, UnboundedReduce) {
        Parameter(&b, 2, input2, "input2")},
       {init, init, init}, sum, {1});
   TF_ASSERT_OK_AND_ASSIGN(auto module, BuildHloModule(b));
+  EXPECT_THAT(GetRoot(*module),
+              GmockMatch(m::Op().WithShapeEqualTo(&expected)));
+}
+
+TEST(XlaBuilderTest, UnboundedReducePrecision) {
+  XlaBuilder b(TestName());
+  TF_ASSERT_OK_AND_ASSIGN(const Shape operand, ParseShape("f32[?, 10]"));
+  TF_ASSERT_OK_AND_ASSIGN(const Shape expected, ParseShape("f32[?, 10]"));
+  ReducePrecision(Parameter(&b, 0, operand, "operand"), /*exponent_bits=*/2,
+                  /*mantissa_bits=*/2);
+  TF_ASSERT_OK_AND_ASSIGN(const auto module, BuildHloModule(b));
   EXPECT_THAT(GetRoot(*module),
               GmockMatch(m::Op().WithShapeEqualTo(&expected)));
 }
@@ -2293,12 +2346,11 @@ TEST(XlaBuilderTest, UnboundedScatter) {
 
   XlaComputation update_computation;
   {
-    std::unique_ptr<XlaBuilder> sub_builder = b.CreateSubBuilder("add");
-    XlaOp arg0 = Parameter(sub_builder.get(), 0,
-                           ShapeUtil::MakeScalarShape(F32), "arg0");
-    XlaOp arg1 = Parameter(sub_builder.get(), 1,
-                           ShapeUtil::MakeScalarShape(F32), "arg1");
-    Add(arg0, arg1);
+    const std::unique_ptr<XlaBuilder> sub_builder = b.CreateSubBuilder("add");
+    Add(Parameter(sub_builder.get(), 0, ShapeUtil::MakeScalarShape(F32),
+                  "arg0"),
+        Parameter(sub_builder.get(), 1, ShapeUtil::MakeScalarShape(F32),
+                  "arg1"));
     TF_ASSERT_OK_AND_ASSIGN(update_computation, sub_builder->Build());
   }
 
@@ -2399,6 +2451,47 @@ TEST(XlaBuilderTest,
               StatusIs(_, HasSubstr("Unimplemented implicit broadcast.")));
 }
 
+TEST(XlaBuilderTest, UnboundedSelectAndScatter) {
+  XlaBuilder b(TestName());
+  TF_ASSERT_OK_AND_ASSIGN(const Shape operand, ParseShape("f32[?, 10]"));
+  TF_ASSERT_OK_AND_ASSIGN(const Shape source, ParseShape("f32[?, 10]"));
+  TF_ASSERT_OK_AND_ASSIGN(const Shape init_value, ParseShape("f32[]"));
+  TF_ASSERT_OK_AND_ASSIGN(const Shape expected, ParseShape("f32[?, 10]"));
+
+  XlaComputation select;
+  {
+    const std::unique_ptr<XlaBuilder> sub_builder =
+        b.CreateSubBuilder("compare");
+    Compare(Parameter(sub_builder.get(), 0, ShapeUtil::MakeScalarShape(F32),
+                      "arg0"),
+            Parameter(sub_builder.get(), 1, ShapeUtil::MakeScalarShape(F32),
+                      "arg1"),
+            ComparisonDirection::kGe);
+    TF_ASSERT_OK_AND_ASSIGN(select, sub_builder->Build());
+  }
+
+  XlaComputation scatter;
+  {
+    const std::unique_ptr<XlaBuilder> sub_builder = b.CreateSubBuilder("add");
+    Add(Parameter(sub_builder.get(), 0, ShapeUtil::MakeScalarShape(F32),
+                  "arg0"),
+        Parameter(sub_builder.get(), 1, ShapeUtil::MakeScalarShape(F32),
+                  "arg1"));
+    TF_ASSERT_OK_AND_ASSIGN(scatter, sub_builder->Build());
+  }
+
+  SelectAndScatter(Parameter(&b, 0, operand, "operand"), select,
+                   /*window_dimensions=*/
+                   std::array<int64_t, 2>({3, 1}),
+                   /*window_strides=*/std::array<int64_t, 2>({2, 1}),
+                   Padding::kValid, Parameter(&b, 1, source, "source"),
+                   Parameter(&b, 2, init_value, "init_value"), scatter);
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module, BuildHloModule(b));
+  EXPECT_THAT(GetRoot(*module),
+              GmockMatch(m::Op().WithShapeEqualTo(&expected)));
+}
+
 TEST(XlaBuilderTest, UnboundedSlice) {
   XlaBuilder b(TestName());
   TF_ASSERT_OK_AND_ASSIGN(Shape operand, ParseShape("f32[1, <=3, ?]"));
@@ -2425,6 +2518,22 @@ TEST(XlaBuilderTest, UnboundedTranspose) {
               GmockMatch(m::Op().WithShapeEqualTo(&expected)));
 }
 
+TEST(XlaBuilderTest, UnboundedXor) {
+  XlaBuilder b(TestName());
+  TF_ASSERT_OK_AND_ASSIGN(const Shape lhs,
+                          ParseShape("s32[1, ?, 2, ?, <=2, ?, ?]"));
+  TF_ASSERT_OK_AND_ASSIGN(const Shape rhs,
+                          ParseShape("s32[?, 1, ?, 2, ?, <=2, ?]"));
+  TF_ASSERT_OK_AND_ASSIGN(const Shape expected,
+                          ParseShape("s32[?, ?, 2, 2, <=2, <=2, ?]"));
+  Xor(Parameter(&b, 0, lhs, "lhs"), Parameter(&b, 1, rhs, "rhs"),
+      /*broadcast_dimensions=*/empty_array);
+  TF_ASSERT_OK_AND_ASSIGN(const std::unique_ptr<HloModule> module,
+                          BuildHloModule(b));
+  EXPECT_THAT(GetRoot(*module),
+              GmockMatch(m::Op().WithShapeEqualTo(&expected)));
+}
+
 INSTANTIATE_TEST_SUITE_P(UnboundedDynamism, XlaBuilderUnboundedUnaryOpTest,
                          ::testing::ValuesIn<UnaryOpTestCase>(
                              {{"f32[?]", "f32[?]", &Abs},
@@ -2442,6 +2551,7 @@ INSTANTIATE_TEST_SUITE_P(UnboundedDynamism, XlaBuilderUnboundedUnaryOpTest,
                               {"f32[?]", "f32[?]", &Log1p},
                               {"f32[?]", "f32[?]", &Logistic},
                               {"f32[?]", "f32[?]", &Neg},
+                              {"s32[?]", "s32[?]", &Not},
                               {"u32[?]", "u32[?]", &PopulationCount},
                               {"f32[?]", "f32[?]", &Real},
                               {"f32[?]", "f32[?]", &Round},
@@ -2464,6 +2574,11 @@ INSTANTIATE_TEST_SUITE_P(
          /*broadcast_dimensions=*/empty_array, "f32[?, ?, 2, 2, <=2, <=2, ?]",
          &Atan2},
         {"f32[1, ?, 2, ?, <=2, ?, ?]", "f32[?, 1, ?, 2, ?, <=2, ?]",
+         /*broadcast_dimensions=*/empty_array, "c64[?, ?, 2, 2, <=2, <=2, ?]",
+         &Complex},
+        {"f32[?, 10]", "f32[1]", /*broadcast_dimensions=*/zero_array,
+         "c64[?, 10]", &Complex},
+        {"f32[1, ?, 2, ?, <=2, ?, ?]", "f32[?, 1, ?, 2, ?, <=2, ?]",
          /*broadcast_dimensions=*/empty_array, "f32[?, ?, 2, 2, <=2, <=2, ?]",
          &Div},
         {"f32[?, 10]", "f32[1]", /*broadcast_dimensions=*/zero_array,
@@ -2473,6 +2588,11 @@ INSTANTIATE_TEST_SUITE_P(
          &Max},
         {"f32[?, 10]", "f32[1]", /*broadcast_dimensions=*/zero_array,
          "f32[?, 10]", &Max},
+        {"f32[1, ?, 2, ?, <=2, ?, ?]", "f32[?, 1, ?, 2, ?, <=2, ?]",
+         /*broadcast_dimensions=*/empty_array, "f32[?, ?, 2, 2, <=2, <=2, ?]",
+         &Min},
+        {"f32[?, 10]", "f32[1]", /*broadcast_dimensions=*/zero_array,
+         "f32[?, 10]", &Min},
         {"f32[1, ?, 2, ?, <=2, ?, ?]", "f32[?, 1, ?, 2, ?, <=2, ?]",
          /*broadcast_dimensions=*/empty_array, "f32[?, ?, 2, 2, <=2, <=2, ?]",
          &Mul},
@@ -2485,6 +2605,26 @@ INSTANTIATE_TEST_SUITE_P(
          &Pow},
         {"f32[?, 10]", "f32[1]", /*broadcast_dimensions=*/zero_array,
          "f32[?, 10]", &Pow},
+        {"f32[1, ?, 2, ?, <=2, ?, ?]", "f32[?, 1, ?, 2, ?, <=2, ?]",
+         /*broadcast_dimensions=*/empty_array, "f32[?, ?, 2, 2, <=2, <=2, ?]",
+         &Rem},
+        {"f32[?, 10]", "f32[1]", /*broadcast_dimensions=*/zero_array,
+         "f32[?, 10]", &Rem},
+        {"f32[1, ?, 2, ?, <=2, ?, ?]", "f32[?, 1, ?, 2, ?, <=2, ?]",
+         /*broadcast_dimensions=*/empty_array, "f32[?, ?, 2, 2, <=2, <=2, ?]",
+         &ShiftLeft},
+        {"f32[?, 10]", "f32[1]", /*broadcast_dimensions=*/zero_array,
+         "f32[?, 10]", &ShiftLeft},
+        {"f32[1, ?, 2, ?, <=2, ?, ?]", "f32[?, 1, ?, 2, ?, <=2, ?]",
+         /*broadcast_dimensions=*/empty_array, "f32[?, ?, 2, 2, <=2, <=2, ?]",
+         &ShiftRightArithmetic},
+        {"f32[?, 10]", "f32[1]", /*broadcast_dimensions=*/zero_array,
+         "f32[?, 10]", &ShiftRightArithmetic},
+        {"f32[1, ?, 2, ?, <=2, ?, ?]", "f32[?, 1, ?, 2, ?, <=2, ?]",
+         /*broadcast_dimensions=*/empty_array, "f32[?, ?, 2, 2, <=2, <=2, ?]",
+         &ShiftRightLogical},
+        {"f32[?, 10]", "f32[1]", /*broadcast_dimensions=*/zero_array,
+         "f32[?, 10]", &ShiftRightLogical},
         {"f32[1, ?, 2, ?, <=2, ?, ?]", "f32[?, 1, ?, 2, ?, <=2, ?]",
          /*broadcast_dimensions=*/empty_array, "f32[?, ?, 2, 2, <=2, <=2, ?]",
          &Sub},
