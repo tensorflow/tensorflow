@@ -43,6 +43,7 @@ limitations under the License.
 #include "xla/status_macros.h"
 #include "xla/stream_executor/platform_manager.h"
 #include "tensorflow/core/common_runtime/dma_helper.h"
+#include "tensorflow/core/common_runtime/gpu/gpu_serving_device_selector.h"
 #include "tensorflow/core/common_runtime/gpu_device_context.h"
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/op.h"
@@ -58,6 +59,7 @@ limitations under the License.
 #include "tensorflow/core/tfrt/common/async_value_tensor.h"
 #include "tensorflow/core/util/stream_executor_util.h"
 #include "tsl/framework/device_id_utils.h"
+#include "tsl/framework/serving_device_selector_policies.h"
 #include "tsl/platform/status.h"
 #include "tsl/platform/statusor.h"
 
@@ -863,12 +865,35 @@ Status RunPjRtExecutable(
   TF_ASSIGN_OR_RETURN(xla::PjRtDevice * device,
                       pjrt_client->LookupAddressableDevice(pjrt_device_id));
 
+  gpu::GpuServingDeviceSelectorResource* device_selector_resource = nullptr;
+  if (device_type == DEVICE_GPU) {
+    auto rm = ctx->resource_manager();
+    TF_RETURN_IF_ERROR(rm->LookupOrCreate<
+                       gpu::GpuServingDeviceSelectorResource>(
+        rm->default_container(), gpu::kGpuServingDeviceSelectorResourceName,
+        &device_selector_resource,
+        [&](gpu::GpuServingDeviceSelectorResource** device_selector_resource) {
+          *device_selector_resource = new gpu::GpuServingDeviceSelectorResource(
+              pjrt_client->addressable_device_count(),
+              std::make_unique<tsl::RoundRobinPolicy>());
+          return absl::OkStatus();
+        }));
+    core::ScopedUnref device_selector_resource_ref(device_selector_resource);
+
+    TF_ASSIGN_OR_RETURN(absl::string_view fingerprint,
+                        executable->FingerprintExecutable());
+    device_selector_resource->selector()->Enqueue(pjrt_device_id, fingerprint);
+  }
   TF_ASSIGN_OR_RETURN(
       std::vector<std::unique_ptr<xla::PjRtBuffer>> execute_outputs,
       RunPjRtExecutable(num_missing_prefix_ctx_inputs, inputs,
                         variable_snapshots, updated_variables, device_type,
                         use_pjrt_tensor_buffer, compilation_result, device,
                         pjrt_client, executable));
+  if (device_selector_resource != nullptr) {
+    device_selector_resource->selector()->Completed(pjrt_device_id,
+                                                    /*had_error=*/false);
+  }
 
   TF_RETURN_IF_ERROR(PopulateCtxOutputsFromPjRtExecutableOutputs(
       num_missing_prefix_ctx_inputs, inputs, updated_variables,

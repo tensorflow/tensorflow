@@ -36,6 +36,7 @@ limitations under the License.
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/service/compiler.h"
 #include "xla/stream_executor/platform_manager.h"
+#include "tensorflow/core/common_runtime/gpu/gpu_serving_device_selector.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/resource_mgr.h"
@@ -47,6 +48,8 @@ limitations under the License.
 #include "tensorflow/core/tfrt/common/pjrt_util.h"
 #include "tensorflow/core/tpu/tpu_defs.h"
 #include "tsl/framework/device_type.h"
+#include "tsl/platform/errors.h"
+#include "tsl/platform/refcount.h"
 
 namespace tensorflow {
 namespace {
@@ -340,6 +343,22 @@ Status GetOrCreatePjRtDeviceCompilerAndProfiler(
               CreatePjRtDeviceCompiler(compilation_device_type, pjrt_client);
           return absl::OkStatus();
         }));
+
+    // Delete the GpuServingDeviceSelectorResource and create a new one if
+    // PjRtClient has changed.
+    if (device_type == DEVICE_GPU) {
+      gpu::GpuServingDeviceSelectorResource* device_selector_resource = nullptr;
+      if (rm->Lookup(rm->default_container(),
+                     gpu::kGpuServingDeviceSelectorResourceName,
+                     &device_selector_resource)
+              .ok()) {
+        TF_RETURN_IF_ERROR(rm->Delete<gpu::GpuServingDeviceSelectorResource>(
+            rm->default_container(),
+            gpu::kGpuServingDeviceSelectorResourceName));
+      }
+      tsl::core::ScopedUnref device_selector_resource_ref(
+          device_selector_resource);
+    }
   }
 
   TF_RETURN_IF_ERROR(rm->LookupOrCreate<DeviceCompilationProfiler>(
