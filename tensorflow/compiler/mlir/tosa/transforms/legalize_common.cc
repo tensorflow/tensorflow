@@ -779,16 +779,15 @@ std::optional<Value> convertConcatV2Op(PatternRewriter& rewriter, Operation* op,
   }
 
   mlir::quant::UniformQuantizedType result_quant_type =
-      result_type.getElementType()
-          .dyn_cast_or_null<mlir::quant::UniformQuantizedType>();
+      dyn_cast<mlir::quant::UniformQuantizedType>(result_type.getElementType());
 
   SmallVector<Value> values_rescaled;
 
   for (auto v : values) {
     RankedTensorType operand_type = dyn_cast<RankedTensorType>(v.getType());
     mlir::quant::UniformQuantizedType operand_quant_type =
-        operand_type.getElementType()
-            .dyn_cast_or_null<mlir::quant::UniformQuantizedType>();
+        dyn_cast<mlir::quant::UniformQuantizedType>(
+            operand_type.getElementType());
 
     // tfl.concat currently allows different scales for each input tensor, which
     // TFlite team will fix in:
@@ -2005,11 +2004,9 @@ std::optional<Value> convertLogSoftmaxOp(PatternRewriter& rewriter,
   }
 
   mlir::quant::UniformQuantizedType in_quant_type =
-      input_type.getElementType()
-          .dyn_cast_or_null<mlir::quant::UniformQuantizedType>();
+      dyn_cast<mlir::quant::UniformQuantizedType>(input_type.getElementType());
   mlir::quant::UniformQuantizedType out_quant_type =
-      output_type.getElementType()
-          .dyn_cast_or_null<mlir::quant::UniformQuantizedType>();
+      dyn_cast<mlir::quant::UniformQuantizedType>(output_type.getElementType());
   if (in_quant_type || out_quant_type) {
     (void)rewriter.notifyMatchFailure(
         op, "quantized log_softmax lowering not implemented yet");
@@ -3442,7 +3439,9 @@ std::optional<Value> convertResizeOp(PatternRewriter& rewriter, Operation* op,
       // to TFLite reference. But this eventually should be fixed in TFLite
       // reference
       Value cst_zero = getTosaConstTensorSingleI32(rewriter, op, 0);
-      Value cst_twenty = getTosaConstTensorSingleI32(rewriter, op, 20);
+      Value cst_twenty = getTosaConstTensorSingleI32(
+          rewriter, op, log2(scale_x_n * scale_y_n));
+      auto output_bool_type = output_acc_type.clone(rewriter.getI1Type());
 
       auto ge_op = CreateOpAndInfer<tosa::GreaterEqualOp>(
           rewriter, op->getLoc(), output_bool_type, resize_op.getResult(),
@@ -4875,6 +4874,32 @@ std::optional<Value> convertBroadcastToOp(PatternRewriter& rewriter,
 
   (void)rewriter.notifyMatchFailure(op, "Unsupported element type");
   return std::nullopt;
+}
+
+// Lowers cast operator to a sequence of TOSA ops.
+std::optional<Value> convertCastOp(PatternRewriter& rewriter, Operation* op,
+                                   Value input, RankedTensorType output_type) {
+  auto input_type = input.getType().cast<ShapedType>();
+  auto input_element_type = input_type.getElementType();
+  bool input_is_qtype =
+      input_element_type.isa<mlir::quant::UniformQuantizedType>();
+
+  Value cast_input = input;
+
+  if (input_is_qtype) {
+    auto input_element_qtype =
+        input_element_type.cast<mlir::quant::UniformQuantizedType>();
+    auto zero_point = input_element_qtype.getZeroPoint();
+    if (zero_point != 0) {
+      cast_input =
+          removeZeroPointAndCastToInt32(rewriter, op, input, zero_point);
+    }
+  }
+
+  auto cast_op = CreateOpAndInfer<tosa::CastOp>(rewriter, op->getLoc(),
+                                                output_type, cast_input);
+
+  return cast_op.getResult();
 }
 
 };  // namespace tosa
