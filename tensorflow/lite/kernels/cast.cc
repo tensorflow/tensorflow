@@ -48,6 +48,17 @@ void copyCast(const float* in, int32_t* out, int num_elements) {
   });
 }
 
+void copyCast(const float* in, int16_t* out, int num_elements) {
+  float min_int_float =
+      std::nextafterf((float)std::numeric_limits<int16_t>::min(), 0);
+  float max_int_float =
+      std::nextafterf((float)std::numeric_limits<int16_t>::max(), 0);
+  std::transform(in, in + num_elements, out, [=](float a) {
+    return static_cast<int16_t>(
+        std::max(std::min(a, max_int_float), min_int_float));
+  });
+}
+
 template <typename FromT, typename ToT>
 void copyCast(const FromT* in, ToT* out, int num_elements) {
   std::transform(in, in + num_elements, out,
