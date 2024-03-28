@@ -26,6 +26,7 @@ limitations under the License.
 #include <string>
 #include <string_view>
 #include <utility>
+#include <variant>
 #include <vector>
 
 #include "absl/base/thread_annotations.h"
@@ -38,8 +39,8 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/numbers.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
-#include "absl/strings/str_split.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/time/time.h"
@@ -994,15 +995,16 @@ Status BuildDistributedDevices(
 }
 
 std::string MakeComputeCapabilityString(const se::DeviceDescription* desc) {
-  std::string compute_capability;
-#if GOOGLE_CUDA
-  se::CudaComputeCapability cc = desc->cuda_compute_capability();
-  compute_capability =
-      std::to_string(cc.major) + "." + std::to_string(cc.minor);
-#else   // GOOGLE_CUDA
-  compute_capability = desc->rocm_compute_capability().gfx_version();
-#endif  // GOOGLE_CUDA
-  return compute_capability;
+  se::GpuComputeCapability cc = desc->gpu_compute_capability();
+  if (std::holds_alternative<se::CudaComputeCapability>(cc)) {
+    auto nvcc = std::get<se::CudaComputeCapability>(cc);
+    return absl::StrCat(nvcc.major, ".", nvcc.minor);
+  } else if (std::holds_alternative<se::RocmComputeCapability>(cc)) {
+    auto rocmcc = std::get<se::RocmComputeCapability>(cc);
+    return rocmcc.gfx_version();
+  } else {
+    return "unknown";
+  }
 }
 
 StreamExecutorGpuDevice::StreamExecutorGpuDevice(
