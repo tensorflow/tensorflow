@@ -245,6 +245,47 @@ TEST_F(ElementalHloToMlirTest, ReduceWindow) {
   )"));
 }
 
+TEST_F(ElementalHloToMlirTest, ReduceWindowWithRescaling) {
+  TF_EXPECT_OK(Run(R"(
+    add {
+      p0 = f32[] parameter(0)
+      p1 = f32[] parameter(1)
+      ROOT sum = f32[] add(p0, p1)
+    }
+
+    ENTRY main {
+      p0 = f32[42,12,8] parameter(0)
+      p1 = f32[] parameter(1)
+      ROOT r = f32[19,12,8] reduce-window(p0, p1), window={
+                                                size=8x1x1
+                                                stride=4x1x1
+                                                pad=0_0x0_0x0_0
+                                                lhs_dilate=2x1x1
+                                               },
+                                               to_apply=add
+    })",
+                   R"(
+    // CHECK:      @main_r(
+    // CHECK-SAME:   %[[ARG0:.*]]: tensor<42x12x8xf32>
+    // CHECK-SAME:   %[[ARG1:.*]]: tensor<f32>
+    // CHECK-SAME:   %[[X:arg[0-9]*]]: index {{[^}]*}}},
+    // CHECK-SAME:   %[[Y:arg[0-9]*]]: index {{[^}]*}}},
+    // CHECK-SAME:   %[[Z:arg[0-9]*]]: index {{[^}]*}}}) -> f32
+    // CHECK-DAG:  %[[C0:.*]] = arith.constant 0 : index
+    // CHECK-DAG:  %[[C1:.*]] = arith.constant 1 : index
+    // CHECK-DAG:  %[[C4:.*]] = arith.constant 4 : index
+
+    // We have a window size of 8, but expect a loop from 0 to 4
+    // due to the base dilation of 2 and the applied symbol rescaling:
+    // CHECK:      scf.for %[[I:.*]] = %[[C0]] to %[[C4]] step %[[C1]]
+    // CHECK:      %[[K:.*]] = affine.apply affine_map<()[s0, s1] ->
+    // If symbol rescaling wasn't working we would have a
+    // `s0 floordiv <base_dilation>` in the map:
+    // CHECK-SAME: (s0 + s1 * 2)>()[%[[I]], %[[X]]]
+    // CHECK:      tensor.extract %[[ARG0]][%[[K]], %[[Y]], %[[Z]]]
+  )"));
+}
+
 TEST_F(ElementalHloToMlirTest, Concatenate) {
   TF_EXPECT_OK(Run(R"(
     ENTRY main {

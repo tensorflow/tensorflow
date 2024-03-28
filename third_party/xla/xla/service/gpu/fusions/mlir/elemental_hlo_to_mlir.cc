@@ -311,7 +311,8 @@ absl::StatusOr<SmallVector<Value>> EmitReduceWindow(
   MLIRContext* mlir_context = b.getContext();
   HloInstructionIndexing indexing =
       ComputeOutputToInputIndexing(instr, 0, mlir_context);
-  const auto& indexing_map = *indexing.indexing_maps[0].begin();
+  auto indexing_map = *indexing.indexing_maps[0].begin();
+  indexing_map.RescaleSymbols();
 
   auto reduce_window = DynCast<HloReduceWindowInstruction>(instr);
   CHECK(reduce_window != nullptr);
@@ -1228,9 +1229,6 @@ void GetLoopBoundsFromIndexingMap(ImplicitLocOpBuilder& b,
   for (const Interval& bound : indexing_map.GetSymbolBounds()) {
     lbs->push_back(b.create<ConstantIndexOp>(bound.lower));
     ubs->push_back(b.create<ConstantIndexOp>(bound.upper + 1));
-    // Note that this is not optimal, when there are mod constraints on symbols,
-    // e.g. for reduce-window. In that case we have to extract loop steps from
-    // the mod constraints.
     steps->push_back(c1);
   }
 }
