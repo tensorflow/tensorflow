@@ -22,6 +22,7 @@ limitations under the License.
 #include "absl/cleanup/cleanup.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "tensorflow/compiler/tf2xla/shape_util.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "xla/client/xla_builder.h"
@@ -191,11 +192,11 @@ void CompileSendTPUEmbeddingGradients(
   std::vector<xla::Shape> gradient_shapes;
   auto builder = ctx->builder();
   gradient_shapes.reserve(gradients.size());
-  for (xla::XlaOp op : gradients) {
-    // Gradient layout information is added by XLA, so we can just create
-    // default layout information.
-    xla::Shape gradient_shape = builder->GetShape(op).value();
-    xla::LayoutUtil::SetToDefaultLayout(&gradient_shape);
+  for (int i = 0; i < gradients.size(); ++i) {
+    DataType dtype = ctx->input_type(i);
+    xla::Shape gradient_shape;
+    OP_REQUIRES_OK(ctx, TensorShapeToXLAShape(dtype, tf_gradient_shapes[i],
+                                              &gradient_shape));
     gradient_shapes.push_back(gradient_shape);
   }
 
