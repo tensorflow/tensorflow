@@ -4248,6 +4248,8 @@ def squeeze(input, axis=None, name=None, squeeze_dims=None):
                                                 squeeze_dims)
   if np.isscalar(axis):
     axis = [axis]
+  if type(axis) != list:
+    raise ValueError("Argument `axis` must be an `int` or a `list` of ints.")
   return gen_array_ops.squeeze(input, axis, name)
 
 
