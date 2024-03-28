@@ -26,6 +26,7 @@ limitations under the License.
 #include <variant>
 #include <vector>
 
+#include "absl/base/no_destructor.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/status/status.h"
@@ -559,6 +560,23 @@ absl::Status ValidateCreateOptions(
     }
   }
   return absl::OkStatus();
+}
+
+const std::vector<PJRT_NamedValue>& GetXlaPluginCAttributes() {
+  static const absl::NoDestructor<std::vector<PJRT_NamedValue>> c_values([] {
+    static const absl::NoDestructor<std::string> xla_version("xla_version");
+    PJRT_NamedValue c_value;
+    c_value.struct_size = PJRT_NamedValue_STRUCT_SIZE;
+    c_value.extension_start = nullptr;
+    c_value.name = xla_version->c_str();
+    c_value.name_size = xla_version->size();
+    c_value.type = PJRT_NamedValue_Type::PJRT_NamedValue_kInt64;
+    // TODO(b/327203806): figure out where to keep the xla_version.
+    c_value.int64_value = 1;
+    c_value.value_size = 1;
+    return std::vector<PJRT_NamedValue>{c_value};
+  }());
+  return *c_values;
 }
 
 static std::string StructSizeErrorMsg(absl::string_view struct_name,

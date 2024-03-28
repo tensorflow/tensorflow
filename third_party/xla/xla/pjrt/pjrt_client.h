@@ -441,6 +441,7 @@ class PjRtLoadedExecutable;
 struct PjRtPluginAttributes {
   int64_t pjrt_c_api_major_version;
   int64_t pjrt_c_api_minor_version;
+  absl::flat_hash_map<std::string, PjRtValueType> attributes;
 };
 
 // Encapsulates the state of Python session with XLA.

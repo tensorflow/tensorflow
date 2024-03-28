@@ -265,10 +265,7 @@ class PjRtCApiClient : public PjRtClient {
 
   absl::string_view platform_version() const override;
 
-  std::optional<PjRtPluginAttributes> plugin_attributes() const override {
-    return PjRtPluginAttributes{c_api_->pjrt_api_version.major_version,
-                                c_api_->pjrt_api_version.minor_version};
-  }
+  std::optional<PjRtPluginAttributes> plugin_attributes() const override;
 
   // TODO(b/244756954): Rethink this function altogether
   PjRtRuntimeType runtime_type() const override {
@@ -415,6 +412,7 @@ class PjRtCApiClient : public PjRtClient {
 
  private:
   void InitDevicesAndMemorySpaces();
+  void InitAttributes();
 
   StatusOr<std::unique_ptr<PjRtBuffer>> BufferFromHostBufferInternalImpl(
       const void* data, PrimitiveType type, absl::Span<int64_t const> dims,
@@ -444,6 +442,7 @@ class PjRtCApiClient : public PjRtClient {
   const std::string platform_version_;
   const std::string platform_name_;
   const PjRtPlatformId platform_id_;
+  absl::flat_hash_map<std::string, xla::PjRtValueType> attributes_;
 };
 
 class PjRtCApiBuffer : public PjRtBuffer {
