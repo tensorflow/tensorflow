@@ -1139,13 +1139,18 @@ cc_library(
     ]),
 )
 
+cc_library(
+    name = "logging",
+    srcs = ["logging.cc"],
+    hdrs = ["logging.h"],
+    deps = [
+        "@com_google_absl//absl/log:initialize",
+    ],
+)
+
 tsl_pybind_extension(
     name = "xla_extension",
-    srcs = [
-        "logging.cc",
-        "logging.h",
-        "xla.cc",
-    ],
+    srcs = ["xla.cc"],
     copts = [
         "-fexceptions",
         "-fno-strict-aliasing",
@@ -1176,6 +1181,7 @@ tsl_pybind_extension(
         ":custom_call_sharding",
         ":dlpack",
         ":jax_jit",
+        ":logging",
         ":mlir",
         ":nb_absl_flat_hash_map",
         ":nb_absl_span",
