@@ -33,6 +33,9 @@ limitations under the License.
 #include "third_party/nanobind/include/nanobind/stl/vector.h"  // IWYU pragma: keep
 #include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/hlo/utils/hlo_sharding_util.h"
+#include "xla/pjrt/c/pjrt_c_api.h"
+#include "xla/pjrt/c/pjrt_c_api_custom_partitioner_extension.h"
+#include "xla/pjrt/c/pjrt_c_api_helpers.h"
 #include "xla/python/custom_partition_callback.h"
 #include "xla/python/inspect_sharding.h"
 #include "xla/shape.h"
@@ -210,15 +213,43 @@ void BuildCustomCallShardingPybindAPI(nb::module_& m) {
       "register_custom_call_partitioner",
       [](std::string name, nb::object prop_user_sharding, nb::object partition,
          nb::object infer_sharding_from_operands,
-         bool can_side_effecting_have_replicated_sharding) {
+         bool can_side_effecting_have_replicated_sharding,
+         std::optional<nb::capsule> c_api) {
         auto* c_fns =
             (new PyCustomCallPartitionerCallbacks(prop_user_sharding, partition,
                                                   infer_sharding_from_operands))
                 ->callbacks();
         c_fns->can_side_effecting_have_replicated_sharding =
             can_side_effecting_have_replicated_sharding;
-        RegisterCustomCallPartitioner(
-            name, jax::CreateCApiCustomCallPartitioner(c_fns));
+        if (!c_api.has_value()) {
+          RegisterCustomCallPartitioner(
+              name, jax::CreateCApiCustomCallPartitioner(c_fns));
+          return;
+        }
+
+        if (std::string_view(c_api->name()) != "pjrt_c_api") {
+          throw absl::InvalidArgumentError(
+              "Argument to register_custom_call_partitioner was not a "
+              "pjrt_c_api capsule.");
+        }
+        auto* c_api_value = static_cast<const PJRT_Api*>(c_api->data());
+        PJRT_Custom_Partitioner_Extension* extension =
+            pjrt::FindExtension<PJRT_Custom_Partitioner_Extension>(
+                c_api_value,
+                PJRT_Extension_Type::PJRT_Extension_Type_Custom_Partitioner);
+        if (extension == nullptr) {
+          return;
+        }
+        PJRT_Register_Custom_Partitioner_Args args;
+        args.struct_size = PJRT_Register_Custom_Partitioner_Args_STRUCT_SIZE;
+        args.name = name.c_str();
+        args.name_size = name.size();
+        args.callbacks = c_fns;
+        pjrt::LogFatalIfPjrtError(
+            reinterpret_cast<const PJRT_Custom_Partitioner_Extension*>(
+                extension)
+                ->register_custom_partitioner(&args),
+            c_api_value);
       },
       R"(Registers a partitioner for a custom-call operation.
 
@@ -236,7 +267,8 @@ Args:
 )",
       nb::arg("name"), nb::arg("prop_user_sharding"), nb::arg("partition"),
       nb::arg("infer_sharding_from_operands"),
-      nb::arg("can_side_effecting_have_replicated_sharding") = false);
+      nb::arg("can_side_effecting_have_replicated_sharding") = false,
+      nb::arg("c_api").none() = std::nullopt);
   m.def("encode_inspect_sharding_callback",
         [](nb::object handler) -> nb::bytes {
           JAX_InspectSharding_Callback cb;
