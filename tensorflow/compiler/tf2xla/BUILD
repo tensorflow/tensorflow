@@ -1172,11 +1172,11 @@ cc_library(
     hdrs = ["mlir_bridge_pass.h"],
     visibility = [":internal"],
     deps = [
-        ":tf2xla_defs",
         ":xla_op_registry",
         "//tensorflow/compiler/jit:flags",
         "//tensorflow/compiler/mlir:mlir_graph_optimization_pass",
         "//tensorflow/compiler/mlir/tensorflow",
+        "//tensorflow/compiler/mlir/tensorflow:attribute_utils",
         "//tensorflow/compiler/mlir/tensorflow:device_util",
         "//tensorflow/compiler/mlir/tensorflow/transforms/host_runtime:lower_cluster_to_runtime_ops",
         "//tensorflow/compiler/mlir/tf2xla:mlir_bridge_rollout_policy",
