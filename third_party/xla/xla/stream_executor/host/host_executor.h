@@ -16,8 +16,8 @@ limitations under the License.
 // Declares the HostExecutor class, which is a CPU-only implementation of
 // the StreamExecutor interface. For now, this is used for testing and to
 // examine the performance of host-based StreamExecutor code.
-#ifndef XLA_STREAM_EXECUTOR_HOST_HOST_GPU_EXECUTOR_H_
-#define XLA_STREAM_EXECUTOR_HOST_HOST_GPU_EXECUTOR_H_
+#ifndef XLA_STREAM_EXECUTOR_HOST_HOST_EXECUTOR_H_
+#define XLA_STREAM_EXECUTOR_HOST_HOST_EXECUTOR_H_
 
 #include <cstddef>
 #include <cstdint>
@@ -147,4 +147,4 @@ class HostExecutor : public internal::StreamExecutorInterface {
 }  // namespace host
 }  // namespace stream_executor
 
-#endif  // XLA_STREAM_EXECUTOR_HOST_HOST_GPU_EXECUTOR_H_
+#endif  // XLA_STREAM_EXECUTOR_HOST_HOST_EXECUTOR_H_
