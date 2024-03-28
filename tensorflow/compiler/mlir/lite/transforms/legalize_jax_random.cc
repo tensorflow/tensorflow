@@ -47,10 +47,10 @@ limitations under the License.
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
+#include "stablehlo/dialect/StablehloOps.h"  // from @stablehlo
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_dialect.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
-#include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 
 namespace mlir {
 namespace TFL {
@@ -99,7 +99,7 @@ void LegalizeJaxRandomPass::runOnOperation() {
   }
   auto result_shape_attr = builder.getI32TensorAttr(result_shape_i32);
   Value result_shape_tensor =
-      builder.create<mhlo::ConstantOp>(result_shape_attr);
+      builder.create<stablehlo::ConstantOp>(result_shape_attr);
   auto custom_code =
       IsJaxRandomUniform(func) ? "RandomUniform" : "RandomStandardNormal";
 
@@ -112,7 +112,7 @@ void LegalizeJaxRandomPass::runOnOperation() {
                                  ValueRange(result_shape_tensor_vec),
                                  custom_code, attr)
           .getResult(0);
-  Value tulple_result = builder.create<mhlo::TupleOp>(random_result);
+  Value tulple_result = builder.create<stablehlo::TupleOp>(random_result);
   builder.create<mlir::func::ReturnOp>(tulple_result);
 }
 }  // namespace
