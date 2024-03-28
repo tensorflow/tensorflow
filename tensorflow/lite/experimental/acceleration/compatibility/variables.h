@@ -91,6 +91,21 @@ enum class CompatibilityStatus {
 
 }  // namespace gpu
 
+namespace metadata {
+// Latency measured while running test.
+constexpr char kLatency[] = "tflite.latency";
+
+// Frame time measured while running test.
+constexpr char kFrameTime[] = "tflite.frame_time";
+
+// Maximum number of gl context a device can run before crashing.
+constexpr char kMaxGlContextCount[] = "tflite.max_gl_context_count";
+
+// Maximum number of concurrent decoders.
+constexpr char kMaxConcurrentDecoders[] = "tflite.max_concurrent_decoders";
+
+}  // namespace metadata
+
 }  // namespace acceleration
 }  // namespace tflite
 
