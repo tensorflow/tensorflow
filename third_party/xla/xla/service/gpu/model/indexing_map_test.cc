@@ -826,6 +826,94 @@ TEST_F(IndexingMapTest, ReplaceConstantRTVars_ConstraintsGetUpdated) {
               )"));
 }
 
+TEST_F(IndexingMapTest, ReplaceConstantRTVars_Broadcast) {
+  auto iota = HloInstruction::CreateIota(
+      ShapeUtil::MakeShape(PrimitiveType::S64, {12}), 0);
+  auto transpose = HloInstruction::CreateBroadcast(
+      ShapeUtil::MakeShape(PrimitiveType::S64, {32, 12}), iota.get(), {1});
+
+  // (d0, 11): d0 maps into the broadcasted dimension, so it doesn't matter
+  // and 11 maps to 11 in iota.
+  IndexingMap indexing_map(
+      ParseAffineMap("(d0)[s0] -> (d0, s0)", &mlir_context_),
+      /*dimensions=*/{{0, 31}},
+      /*range_vars=*/{},
+      {RTVar{Interval{0, 11}, transpose.get(),
+             ParseAffineMap("(d0) -> (d0, 11)", &mlir_context_)}});
+
+  indexing_map.Simplify(GetIndexingMapForInstruction);
+
+  EXPECT_THAT(indexing_map.ToString(printer_), MatchIndexingString(R"(
+              (d0) -> (d0, 11)
+              domain:
+              d0 in [0, 31]
+              )"));
+}
+
+TEST_F(IndexingMapTest, ReplaceConstantRTVars_ChainedNoncomputeOps) {
+  auto iota = HloInstruction::CreateIota(
+      ShapeUtil::MakeShape(PrimitiveType::S64, {12}), 0);
+  auto reverse = HloInstruction::CreateReverse(
+      ShapeUtil::MakeShape(PrimitiveType::S64, {12}), iota.get(), {0});
+  auto reshape = HloInstruction::CreateReshape(
+      ShapeUtil::MakeShape(PrimitiveType::S64, {3, 4}), reverse.get());
+  auto broadcast = HloInstruction::CreateBroadcast(
+      ShapeUtil::MakeShape(PrimitiveType::S64, {36, 3, 4}), reshape.get(),
+      {1, 2});
+
+  // - Iota: [0, 1, ,,,, 11]
+  // - Reverse: [11, 10, ..., 0]
+  // - Reshape: [[11, 10, 9, 8], [7, 6, 5, 4], [3, 2, 1, 0]]
+  // - Coordinates: (d0 floordiv 12, 3)
+  // - y-coordinate=3 means we index into [8, 4, 0]
+  // - x-coordinate=(d0 floordiv 12) means our constant looks like this:
+  //   [8, ..., 8, 4, ..., 4, 0, ..., 0]
+  // - Hence our final expression: (d0 floordiv 12) * -4 + 8
+  IndexingMap indexing_map(
+      ParseAffineMap("(d0)[s0] -> (d0, s0)", &mlir_context_),
+      /*dimensions=*/{{0, 35}},
+      /*range_vars=*/{},
+      {RTVar{
+          Interval{0, 11}, broadcast.get(),
+          ParseAffineMap("(d0) -> (d0, d0 floordiv 12, 3)", &mlir_context_)}});
+
+  indexing_map.Simplify(GetIndexingMapForInstruction);
+
+  EXPECT_THAT(indexing_map.ToString(printer_), MatchIndexingString(R"(
+              (d0) -> (d0, (d0 floordiv 12) * -4 + 8)
+              domain:
+              d0 in [0, 35]
+              )"));
+}
+
+TEST_F(IndexingMapTest, ReplaceConstantRTVars_PartialRTVarRemoval) {
+  auto iota = HloInstruction::CreateConstant(
+      LiteralUtil::CreateR1<int64_t>({1, 7, 25, 1, 7, 25, 1, 7, 25, 1, 7, 25}));
+  auto broadcast = HloInstruction::CreateBroadcast(
+      ShapeUtil::MakeShape(PrimitiveType::S64, {24, 12}), iota.get(), {1});
+
+  // (d0, d0 floordiv 2): d0 maps into the broadcasted dimension, so it can't be
+  // removed, but d0 floordiv 2 doesn't yield an affine expression so we need to
+  // keep the RTVar, but can optimize it by removing the broadcast.
+  IndexingMap indexing_map(
+      ParseAffineMap("(d0)[s0] -> (d0, s0)", &mlir_context_),
+      /*dimensions=*/{{0, 23}},
+      /*range_vars=*/{},
+      {RTVar{Interval{0, 512}, broadcast.get(),
+             ParseAffineMap("(d0) -> (d0, d0 floordiv 2)", &mlir_context_)}});
+
+  indexing_map.Simplify(GetIndexingMapForInstruction);
+
+  EXPECT_THAT(indexing_map.ToString(printer_), MatchIndexingString(R"(
+              (d0)[s0] -> (d0, s0)
+              domain:
+              d0 in [0, 23]
+              s0 in [0, 512]
+                hlo: %constant = s64[12]{0} constant({...})
+                (d0) -> (d0 floordiv 2)
+              )"));
+}
+
 }  // namespace
 }  // namespace gpu
 }  // namespace xla

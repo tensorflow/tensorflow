@@ -25,6 +25,7 @@ limitations under the License.
 #include <sstream>
 #include <string>
 #include <utility>
+#include <variant>
 #include <vector>
 
 #include "absl/types/span.h"
@@ -38,6 +39,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
+#include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/service/gpu/model/affine_map_printer.h"
 #include "tsl/platform/logging.h"  // IWYU pragma: keep
 
@@ -1337,26 +1339,50 @@ bool IndexingMap::RescaleSymbols() {
   return !to_delete.empty();
 }
 
-static std::optional<AffineExpr> FoldsIntoConstantIndexingExpression(
-    const HloInstruction* instr, const mlir::AffineMap& affine_map,
-    MLIRContext* mlir_context,
+// Returns either:
+// 1. an AffineExpr if the RTVar folds entirely into a constant expression
+// 2. an updated RTVar if some partial optimization was possible
+// 3. an unchanged RTVar if no optimization was possible
+static std::variant<AffineExpr, RTVar> OptimizeRTVar(
+    RTVar rt_var, MLIRContext* mlir_context,
     IndexingMap::IndexingMapProvider indexing_map_provider) {
-  if (auto constant_expr = DynCast<HloConstantInstruction>(instr)) {
-    if (affine_map.isConstant()) {
-      const auto idx = affine_map.getConstantResults();
-      return getAffineConstantExpr(
-          constant_expr->literal().GetIntegralAsS64(idx).value(), mlir_context);
+  while (true) {
+    if (auto constant_expr = DynCast<HloConstantInstruction>(rt_var.hlo)) {
+      if (rt_var.map.isConstant()) {
+        const auto idx = rt_var.map.getConstantResults();
+        return getAffineConstantExpr(
+            constant_expr->literal().GetIntegralAsS64(idx).value(),
+            mlir_context);
+      }
+      return rt_var;
     }
-    return std::nullopt;
-  }
 
-  if (auto iota_expr = DynCast<HloIotaInstruction>(instr)) {
-    auto iota_dimension = iota_expr->iota_dimension();
-    CHECK(iota_dimension < affine_map.getNumResults());
-    return affine_map.getResults()[iota_dimension];
-  }
+    if (auto iota_expr = DynCast<HloIotaInstruction>(rt_var.hlo)) {
+      auto iota_dimension = iota_expr->iota_dimension();
+      CHECK(iota_dimension < rt_var.map.getNumResults());
+      return rt_var.map.getResults()[iota_dimension];
+    }
 
-  return std::nullopt;
+    auto is_indexing_transformation = [](const HloInstruction* instr) {
+      return instr->opcode() == HloOpcode::kBitcast ||
+             instr->opcode() == HloOpcode::kBroadcast ||
+             instr->opcode() == HloOpcode::kReshape ||
+             instr->opcode() == HloOpcode::kReverse ||
+             instr->opcode() == HloOpcode::kSlice ||
+             instr->opcode() == HloOpcode::kTranspose;
+    };
+
+    if (is_indexing_transformation(rt_var.hlo)) {
+      auto instr_indexing_map =
+          indexing_map_provider(rt_var.hlo, 0, mlir_context);
+
+      rt_var.hlo = rt_var.hlo->operand(0);
+      rt_var.map = instr_indexing_map.GetAffineMap().compose(rt_var.map);
+      continue;
+    }
+
+    return rt_var;
+  }
 }
 
 bool IndexingMap::ReplaceConstantRTVars(
@@ -1365,22 +1391,34 @@ bool IndexingMap::ReplaceConstantRTVars(
 
   std::vector<size_t> to_delete;
 
-  for (const auto& [index, rt_var] : llvm::enumerate(rt_vars_)) {
-    auto folded_expr = FoldsIntoConstantIndexingExpression(
-        rt_var.hlo, rt_var.map, GetMLIRContext(), indexing_map_provider);
-    if (!folded_expr.has_value()) continue;
+  for (auto index = 0; index < rt_vars_.size(); ++index) {
+    auto& rt_var = rt_vars_[index];
+    auto result =
+        OptimizeRTVar(rt_var, GetMLIRContext(), indexing_map_provider);
 
+    // If we got an RTVar back, then we just replace it and move on.
+    if (std::holds_alternative<RTVar>(result)) {
+      rt_var = std::get<RTVar>(std::move(result));
+      continue;
+    }
+
+    // But if we received an AffineExpr we can eliminate the RTVar from
+    // all expressions in the indexing map.
+    auto folded_expr = std::get<AffineExpr>(std::move(result));
+
+    // range_vars and rt_vars share the symbol space, with the rt_vars coming
+    // after the range_vars.
     auto symbol_index = range_vars_.size() + index;
     affine_map_ = affine_map_.replace(
         {{mlir::getAffineSymbolExpr(symbol_index, GetMLIRContext()),
-          folded_expr.value()}});
+          folded_expr}});
 
     llvm::DenseMap<AffineExpr, AffineExpr> replacements;
 
     for (const auto& [constraint, interval] : constraints_) {
       auto modified_constraint = constraint.replace(
           mlir::getAffineSymbolExpr(symbol_index, GetMLIRContext()),
-          folded_expr.value());
+          folded_expr);
 
       if (constraint == modified_constraint) continue;
       replacements[constraint] = modified_constraint;
