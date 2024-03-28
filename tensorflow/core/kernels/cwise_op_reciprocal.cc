@@ -16,11 +16,13 @@ limitations under the License.
 #include "tensorflow/core/kernels/cwise_ops_common.h"
 
 namespace tensorflow {
+	
 REGISTER6(UnaryOp, CPU, "Inv", functor::inverse, float, Eigen::half, double,
           bfloat16, complex64, complex128);
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #if !defined(MLIR_GENERATED_GPU_KERNELS_ENABLED)
-REGISTER6(UnaryOp, GPU, "Inv", functor::inverse, float, Eigen::half, double,
+// Added int64 for the Inv operation on GPU
+REGISTER7(UnaryOp, GPU, "Inv", functor::inverse, float, Eigen::half, double,
           int64, complex64, complex128);
 #endif
 REGISTER(UnaryOp, GPU, "Inv", functor::inverse, bfloat16);
@@ -33,20 +35,24 @@ REGISTER4(SimpleBinaryOp, GPU, "InvGrad", functor::inverse_grad, float,
           Eigen::half, bfloat16, double);
 #endif
 
-REGISTER6(UnaryOp, CPU, "Reciprocal", functor::inverse, float, Eigen::half,
-          bfloat16, double, complex64, complex128);
+// Updated to REGISTER7 to include DT_INT64 for the Reciprocal operation on CPU
+REGISTER7(UnaryOp, CPU, "Reciprocal", functor::inverse, float, Eigen::half,
+          bfloat16, double, int64, complex64, complex128);
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #if !defined(MLIR_GENERATED_GPU_KERNELS_ENABLED)
-REGISTER6(UnaryOp, GPU, "Reciprocal", functor::inverse, float, Eigen::half,
+// Also updated here for GPU
+REGISTER7(UnaryOp, GPU, "Reciprocal", functor::inverse, float, Eigen::half,
           double, int64, complex64, complex128);
 #endif
 REGISTER(UnaryOp, GPU, "Reciprocal", functor::inverse, bfloat16);
 #endif
 
-REGISTER6(SimpleBinaryOp, CPU, "ReciprocalGrad", functor::inverse_grad, float,
-          Eigen::half, bfloat16, double, complex64, complex128);
+// Added int64 for the ReciprocalGrad operation on CPU
+REGISTER7(SimpleBinaryOp, CPU, "ReciprocalGrad", functor::inverse_grad, float,
+          Eigen::half, bfloat16, double, int64, complex64, complex128);
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-REGISTER4(SimpleBinaryOp, GPU, "ReciprocalGrad", functor::inverse_grad, float,
-          Eigen::half, bfloat16, double);
+// Also included int64 for GPU
+REGISTER5(SimpleBinaryOp, GPU, "ReciprocalGrad", functor::inverse_grad, float,
+          Eigen::half, bfloat16, double, int64);
 #endif
 }  // namespace tensorflow
