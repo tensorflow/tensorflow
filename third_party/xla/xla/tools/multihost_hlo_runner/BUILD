@@ -51,6 +51,7 @@ xla_cc_binary(
         "//xla/service:gpu_plugin",
     ]) + if_cuda([
         "//xla/stream_executor:cuda_platform",
+        "//third_party/py/jax/jaxlib:gpu_kernels",  # fixdeps: keep
     ]) + if_rocm([
         "//xla/stream_executor:rocm_platform",
     ]),
