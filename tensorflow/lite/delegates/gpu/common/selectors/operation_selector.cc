@@ -770,6 +770,7 @@ absl::Status GPUOperationFromNodePart0(
     case OperationType::SIN:
     case OperationType::SQRT:
     case OperationType::SQUARE:
+    case OperationType::FLOOR:
     case OperationType::TANH: {
       GPUOperation operation;
       if (inputs[0]->tensor.shape != outputs[0]->tensor.shape) {
