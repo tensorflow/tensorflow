@@ -166,13 +166,6 @@ void populateGroupReductionDimensionsPatterns(MLIRContext *context,
                                               RewritePatternSet *patterns,
                                               bool preferColumnsReductions);
 
-/// Populate rank specialization clustering and lowering patterns.
-void populateRankSpecializationClusterPatterns(MLIRContext *context,
-                                               RewritePatternSet *patterns);
-void populateRankSpecializationToSCFPatterns(MLIRContext *context,
-                                             RewritePatternSet *patterns,
-                                             int64_t maxTargetRank);
-
 /// Populate sparse tensor specific rewriting patterns.
 void populateSparseRewritingPatterns(RewritePatternSet *patterns,
                                      MLIRContext *ctx);
