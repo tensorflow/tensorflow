@@ -48,17 +48,17 @@ struct Log {
   T operator()(T v) const {
     return std::log(v);
   }
-
-  template <>
-  F16 operator()<F16>(F16 val) const {
-    return F16(operator()(static_cast<float>(val)));
-  }
-
-  template <>
-  BF16 operator()<BF16>(BF16 val) const {
-    return BF16(operator()(static_cast<float>(val)));
-  }
 } log_ref;
+
+template <>
+F16 Log::operator()<F16>(F16 val) const {
+  return F16(operator()(static_cast<float>(val)));
+}
+
+template <>
+BF16 Log::operator()<BF16>(BF16 val) const {
+  return BF16(operator()(static_cast<float>(val)));
+}
 
 INSTANTIATE_TYPED_TEST_SUITE_P(Log, UnaryElementwiseOpShapePropagationTest,
                                LogOp, TestParamNames);

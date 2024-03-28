@@ -28,11 +28,12 @@ struct Not {
   T operator()(T v) const {
     return ~v;
   }
-  template <>
-  bool operator()(bool v) const {
-    return !v;
-  }
 };
+
+template <>
+bool Not::operator()(bool v) const {
+  return !v;
+}
 
 NotOp Create(NotOp::Attributes) { return {}; }
 
