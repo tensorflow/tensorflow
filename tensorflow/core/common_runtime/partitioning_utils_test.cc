@@ -165,6 +165,101 @@ TEST_F(PartitioningUtilsTest, TwoDevices) {
   ASSERT_EQ(3, part2->num_op_nodes());
 }
 
+TEST_F(PartitioningUtilsTest, PartitionGraphWithUniqueName) {
+  auto graph_to_partition = [&]() {
+    // A graph with three nodes that are on two devices.
+    // x(_Arg, device0) -> id_x(Identity, device1) -> ret_x(_Retval, device0)
+    auto graph = std::make_unique<Graph>(OpRegistry::Global());
+    Scope scope = Scope::NewRootScope();
+    Scope scope1 = scope.WithDevice(device0_->name());
+    Scope scope2 = scope.WithDevice(device1_->name());
+
+    auto x = ops::_Arg(scope1.WithOpName("x"), DT_FLOAT, 0);
+    auto id_x = ops::Identity(scope2.WithOpName("id_x"), x);
+    auto ret_x = ops::_Retval(scope1.WithOpName("ret_x"), id_x, 0);
+    auto s0 = scope.ToGraph(graph.get());
+
+    FunctionLibraryDefinition flib_def(OpRegistry::Global());
+    Placer placer(graph.get(), "", &flib_def, &device_set_, device0_);
+    auto s1 = placer.Run();
+
+    return std::move(graph);
+  };
+
+  auto partion_graph_with_unique_name = [&](std::unique_ptr<Graph> graph) {
+    static absl::Mutex tensor_name_map_mu(absl::kConstInit);
+    static absl::flat_hash_map<std::string, int> tensor_name_map
+        ABSL_GUARDED_BY(tensor_name_map_mu);
+
+    auto tensor_name_func = [&](const Edge* edge) -> std::string {
+      std::string tensor_name_attr =
+        absl::StrCat("edge_", edge->id(), "_", edge->src()->name());
+
+      absl::MutexLock lock(&tensor_name_map_mu);
+      auto it = tensor_name_map.find(tensor_name_attr);
+      if (it != tensor_name_map.end()) {
+        int current_id = it->second;
+        ++it->second;
+        tensor_name_attr = absl::StrCat(tensor_name_attr, "_", current_id);
+      } else {
+        tensor_name_map[tensor_name_attr] = 1;
+      }
+      return tensor_name_attr;
+    };
+
+    std::unordered_map<string, std::unique_ptr<Graph>> subgraphs;
+    Status status =
+        PartitionFunctionGraph(device_set_, std::move(graph), &subgraphs,
+                               tensor_name_func);
+    return subgraphs;
+  };
+
+  // There might be a race condition when two threads running graph partition
+  // at the same time.
+  // We need to ensure the global uniqueness of the tensor name
+  // for send/recv pairs.
+  // For details, see issue #62523.
+  std::string send_name_1, recv_name_1;
+  std::string send_name_2, recv_name_2;
+
+  std::unique_ptr<Graph> graph_1 = graph_to_partition();
+  std::unordered_map<string, std::unique_ptr<Graph>> subgraphs_1 =
+    partion_graph_with_unique_name(std::move(graph_1));
+
+  const auto& sg1_part1 = subgraphs_1["/job:a/replica:0/task:0/device:CPU:0"];
+  for (auto* op : sg1_part1->op_nodes()) {
+    if (op->IsSend()) {
+      auto attrs = op->attrs();
+      TF_ASSERT_OK(GetNodeAttr(attrs, "tensor_name", &send_name_1));
+    } else if (op->IsRecv()) {
+      auto attrs = op->attrs();
+      // recv_name_1 = SummarizeAttrValue(*attrs.Find("tensor_name"));
+      TF_ASSERT_OK(GetNodeAttr(attrs, "tensor_name", &recv_name_1));
+    }
+  }
+
+  std::unique_ptr<Graph> graph_2 = graph_to_partition();
+  std::unordered_map<string, std::unique_ptr<Graph>> subgraphs_2 =
+    partion_graph_with_unique_name(std::move(graph_2));
+
+  const auto& sg2_part1 = subgraphs_2["/job:a/replica:0/task:0/device:CPU:0"];
+  for (auto* op : sg2_part1->op_nodes()) {
+    if (op->IsSend()) {
+      auto attrs = op->attrs();
+      TF_ASSERT_OK(GetNodeAttr(attrs, "tensor_name", &send_name_2));
+    } else if (op->IsRecv()) {
+      auto attrs = op->attrs();
+      TF_ASSERT_OK(GetNodeAttr(attrs, "tensor_name", &recv_name_2));
+    }
+  }
+
+  ASSERT_TRUE(send_name_1 == "edge_1_x");
+  ASSERT_TRUE(send_name_2 == "edge_1_x_1");
+
+  ASSERT_TRUE(recv_name_1 == "edge_2_id_x");
+  ASSERT_TRUE(recv_name_2 == "edge_2_id_x_1");
+}
+
 TEST_F(PartitioningUtilsTest, InsertTransferOpsWithOneDevice) {
   // A graph with three nodes that are on the same device.
   // x(_Arg, device0) -> id_x(Identity, device0) -> ret_x(_Retval, device0)
