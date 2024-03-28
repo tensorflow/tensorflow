@@ -1,5 +1,5 @@
 ################################################################################
-FROM ubuntu:20.04 as builder
+FROM ubuntu:20.04@sha256:ed4a42283d9943135ed87d4ee34e542f7f5ad9ecf2f244870e23122f703f91c2 as builder
 ################################################################################
 
 # Install devtoolset build dependencies
@@ -16,7 +16,7 @@ COPY builder.devtoolset/glibc2.17-inline.patch /glibc2.17-inline.patch
 RUN /build_devtoolset.sh devtoolset-9 /dt9
 
 ################################################################################
-FROM nvidia/cuda:12.3.1-base-ubuntu20.04 as devel
+FROM nvidia/cuda:12.3.1-base-ubuntu20.04@sha256:0654b44e2515f03b811496d0e2d67e9e2b81ca1f6ed225361bb3e3bb67d22e18 as devel
 ################################################################################
 COPY --from=builder /dt9 /dt9
 
