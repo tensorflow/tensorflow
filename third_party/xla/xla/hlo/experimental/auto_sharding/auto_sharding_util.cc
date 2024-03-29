@@ -2199,29 +2199,6 @@ void EnumerateAllPossibleMeshShapesHelper(
   }
 }
 
-std::vector<std::vector<int64_t>> EnumerateAllPossibleMeshShapes(
-    const int64_t num_devices, int num_mesh_dims, bool symmetrical_mesh_dims) {
-  std::vector<std::vector<int64_t>> result;
-  EnumerateAllPossibleMeshShapesHelper(num_devices, num_mesh_dims, {}, result);
-
-  if (symmetrical_mesh_dims) {
-    absl::flat_hash_set<absl::btree_multiset<int64_t>> dedup_result;
-    for (const std::vector<int64_t>& mesh_shape : result) {
-      dedup_result.insert(
-          absl::btree_multiset<int64_t>(mesh_shape.begin(), mesh_shape.end()));
-    }
-
-    result.clear();
-
-    for (const absl::btree_multiset<int64_t>& mesh_shape_set : dedup_result) {
-      result.push_back(
-          std::vector<int64_t>(mesh_shape_set.begin(), mesh_shape_set.end()));
-    }
-  }
-
-  return result;
-}
-
 std::vector<std::vector<int64_t>> InferMeshShapesToTry(
     const HloModule& module) {
   int64_t sharding_1d = -1;
@@ -2280,10 +2257,24 @@ std::vector<std::vector<int64_t>> InferOrEnumerateMeshShapesToTry(
     bool symmetrical_mesh_dims) {
   std::vector<std::vector<int64_t>> mesh_shapes = InferMeshShapesToTry(module);
   if (mesh_shapes.empty()) {
-    mesh_shapes = spmd::EnumerateAllPossibleMeshShapes(
-        num_devices, num_mesh_dims,
-        /* symmetrical_mesh_dims */ symmetrical_mesh_dims);
+    EnumerateAllPossibleMeshShapesHelper(num_devices, num_mesh_dims, {},
+                                         mesh_shapes);
   }
+  if (symmetrical_mesh_dims) {
+    absl::flat_hash_set<absl::btree_multiset<int64_t>> dedup_result;
+    for (const std::vector<int64_t>& mesh_shape : mesh_shapes) {
+      dedup_result.insert(
+          absl::btree_multiset<int64_t>(mesh_shape.begin(), mesh_shape.end()));
+    }
+
+    mesh_shapes.clear();
+
+    for (const absl::btree_multiset<int64_t>& mesh_shape_set : dedup_result) {
+      mesh_shapes.push_back(
+          std::vector<int64_t>(mesh_shape_set.begin(), mesh_shape_set.end()));
+    }
+  }
+
   return mesh_shapes;
 }
 
