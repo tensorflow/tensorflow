@@ -10,6 +10,7 @@ load("//third_party:repo.bzl", "tf_http_archive", "tf_mirror_urls")
 # Import third party repository rules. See go/tfbr-thirdparty.
 load("//third_party/dlpack:workspace.bzl", dlpack = "repo")
 load("//third_party/gloo:workspace.bzl", gloo = "repo")
+load("//third_party/mpitrampoline:workspace.bzl", mpitrampoline = "repo")
 load("//third_party/nanobind:workspace.bzl", nanobind = "repo")
 load("//third_party/robin_map:workspace.bzl", robin_map = "repo")
 load("//third_party/stablehlo:workspace.bzl", stablehlo = "repo")
@@ -19,6 +20,7 @@ def _initialize_third_party():
     """ Load third party repositories.  See above load() statements. """
     dlpack()
     gloo()
+    mpitrampoline()
     nanobind()
     robin_map()
     stablehlo()

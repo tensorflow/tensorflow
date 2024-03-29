@@ -1262,6 +1262,12 @@ tsl_pybind_extension(
             "//xla/pjrt/cpu:gloo_kv_store",
         ],
     }) + select({
+        # mpitrampoline does not build on windows
+        "@local_tsl//tsl:windows": [],
+        "//conditions:default": [
+            "//xla/pjrt/cpu:mpi_collectives",
+        ],
+    }) + select({
         ":gpu_enabled": [
             "//xla/pjrt/gpu:se_gpu_pjrt_client",
         ],
