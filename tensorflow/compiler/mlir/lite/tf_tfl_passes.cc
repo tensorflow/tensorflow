@@ -144,14 +144,17 @@ void AddPreQuantizationStableHloToTfPasses(
   pass_manager.addPass(
       mlir::odml::CreateLegalizeTFXlaCallModuleToStablehloPass());
 
-  // Add CHLO to StableHLO Decompositions:
-  // This is needed since we are relying on XlaCallModule uses MHLO
-  // specific features like mhlo::ErfOp which aren't supported
-  // in StableHLO, but we have CHLO->StableHLO decompositions to legalize.
+  // Legalize MHLO to StableHLO should be moved closer to where it is needed
+  // There are some entry points that start with HLO->MHLO like
+  // jax_to_tfl_flatbuffer.cc which can likely be updated to emit StableHLO
+  // to be consistent with other entrypoints.
   pass_manager.addPass(mlir::mhlo::createHloLegalizeToStablehloPass());
+
+  // Decompose CHLO into StableHLO ops
+  // TODO(b/331843141): There are some CHLO's like TopK which we could instead
+  // lower to TFL ops.
   mlir::stablehlo::experimental::createChloLegalizeToStablehloPipeline(
       pass_manager);
-  pass_manager.addPass(mlir::mhlo::createHloLegalizeToStablehloPass());
 
   // The following two passes find specific uniform quantization patterns in
   // StableHLO and converts them to TFLite ops that accept or produce uniform
@@ -168,7 +171,6 @@ void AddPreQuantizationStableHloToTfPasses(
   pass_manager.addNestedPass<mlir::func::FuncOp>(
       mlir::odml::CreateUniformQuantizedStableHloToTflPass());
 
-  pass_manager.addPass(mlir::mhlo::createStablehloLegalizeToHloPass());
   // Legalize jax random to tflite custom op.
   // The CreateLegalizeJaxRandom Pass has to stay at because we need to replace
   // the random function body before being inlined.
@@ -176,6 +178,7 @@ void AddPreQuantizationStableHloToTfPasses(
       mlir::TFL::CreateLegalizeJaxRandomPass());
 
   // Canonicalize, CSE etc.
+  pass_manager.addPass(mlir::mhlo::createStablehloLegalizeToHloPass());
   pass_manager.addNestedPass<mlir::func::FuncOp>(
       mlir::createCanonicalizerPass());
   pass_manager.addNestedPass<mlir::func::FuncOp>(mlir::createCSEPass());

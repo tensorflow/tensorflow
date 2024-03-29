@@ -747,6 +747,7 @@ cc_library(
         "@local_xla//xla:status",
         "@local_xla//xla:statusor",
         "@local_xla//xla/mlir_hlo",
+        "@stablehlo//:stablehlo_ops",
     ],
 )
 
@@ -886,6 +887,7 @@ cc_library(
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TransformUtils",
         "@local_xla//xla/mlir_hlo",
+        "@stablehlo//:stablehlo_ops",
     ],
 )
 
