@@ -26,6 +26,7 @@ filegroup(
 filegroup(
     name = "portable_all_op_kernels",
     srcs = [
+        "group_by_window_dataset_op.cc",
         "lookup_ops.cc",
         "take_while_dataset_op.cc",
         "threadpool_dataset_op.cc",
