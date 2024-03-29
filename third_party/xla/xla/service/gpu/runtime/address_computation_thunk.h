@@ -45,6 +45,7 @@ class AddressComputationThunk : public Thunk {
   AddressComputationThunk(
       ThunkInfo thunk_info, std::unique_ptr<ThunkSequence> embedded_thunk,
       std::vector<std::optional<const BufferAllocation::Slice>> arguments,
+      std::vector<std::unique_ptr<BufferAllocation>> fake_allocations_,
       std::vector<std::optional<std::vector<BufferAllocation::Slice>>>
           offset_buffer_indices,
       std::vector<std::optional<const Shape>> orig_shapes,
@@ -63,6 +64,7 @@ class AddressComputationThunk : public Thunk {
   std::unique_ptr<SequentialThunk> embedded_thunk_;
   std::vector<std::optional<const BufferAllocation::Slice>>
       embedded_thunk_arguments_;
+  std::vector<std::unique_ptr<BufferAllocation>> fake_allocations_;
   std::vector<std::optional<std::vector<BufferAllocation::Slice>>>
       offset_buffer_indices_;
   std::vector<std::optional<const Shape>> orig_shapes_;

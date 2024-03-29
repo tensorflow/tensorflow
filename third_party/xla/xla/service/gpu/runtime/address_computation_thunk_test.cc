@@ -83,17 +83,30 @@ TEST(AddressComputationThunkTest, SlicedGemm) {
   // Prepare embedded and address computation thunks.
 
   // Preparing buffer allocation slices for thunk creations.
+  std::vector<std::unique_ptr<BufferAllocation>> fake_allocations(4);
+
+  fake_allocations.push_back(
+      std::make_unique<BufferAllocation>(/*index=*/0, rhs_length, /*color=*/0));
+  BufferAllocation::Slice slice_lhs_fake(fake_allocations.back().get(), 0,
+                                         rhs_length);
+
   BufferAllocation alloc_lhs(/*index=*/0, lhs_length, /*color=*/0);
   BufferAllocation::Slice slice_lhs(&alloc_lhs, 0, lhs_length);
 
-  BufferAllocation alloc_rhs(/*index=*/1, rhs_length, /*color=*/0);
-  BufferAllocation::Slice slice_rhs(&alloc_rhs, 0, rhs_length);
+  fake_allocations.push_back(
+      std::make_unique<BufferAllocation>(/*index=*/1, rhs_length, /*color=*/0));
+  BufferAllocation::Slice slice_rhs(fake_allocations.back().get(), 0,
+                                    rhs_length);
 
-  BufferAllocation alloc_out(/*index=*/2, out_length, /*color=*/0);
-  BufferAllocation::Slice slice_out(&alloc_out, 0, out_length);
+  fake_allocations.push_back(
+      std::make_unique<BufferAllocation>(/*index=*/2, out_length, /*color=*/0));
+  BufferAllocation::Slice slice_out(fake_allocations.back().get(), 0,
+                                    out_length);
 
-  BufferAllocation alloc_workspace(/*index=*/3, 1024 * 1024, /*color=*/0);
-  BufferAllocation::Slice slice_workspace(&alloc_workspace, 0, 1024 * 1024);
+  fake_allocations.push_back(std::make_unique<BufferAllocation>(
+      /*index=*/3, 1024 * 1024, /*color=*/0));
+  BufferAllocation::Slice slice_workspace(fake_allocations.back().get(), 0,
+                                          1024 * 1024);
 
   BufferAllocation alloc_lhs_offset_0(/*index=*/4, offset_length,
                                       /*color=*/0);
@@ -104,9 +117,6 @@ TEST(AddressComputationThunkTest, SlicedGemm) {
                                       /*color=*/0);
   BufferAllocation::Slice slice_lhs_offset_1(&alloc_lhs_offset_1, 0,
                                              offset_length);
-
-  BufferAllocation alloc_lhs_fake(/*index=*/0, rhs_length, /*color=*/0);
-  BufferAllocation::Slice slice_lhs_fake(&alloc_lhs_fake, 0, rhs_length);
 
   // Preparing config for GEMM thunk.
   auto config =
@@ -130,6 +140,7 @@ TEST(AddressComputationThunkTest, SlicedGemm) {
       Thunk::ThunkInfo(nullptr),
       std::make_unique<ThunkSequence>(std::move(seq)),
       {slice_lhs, slice_rhs, slice_out, slice_workspace},
+      std::move(fake_allocations),
       {lhs_offsets, std::nullopt, std::nullopt, std::nullopt},
       {ShapeUtil::MakeShape(PrimitiveType::F32, {2, 4}), std::nullopt,
        std::nullopt, std::nullopt},
@@ -212,17 +223,33 @@ TEST(AddressComputationThunkTest, SlicedNonContiguousGemm) {
   // Prepare embedded and address computation thunks.
 
   // Preparing buffer allocation slices for thunk creations.
+  std::vector<std::unique_ptr<BufferAllocation>> fake_allocations(4);
+
+  fake_allocations.push_back(std::make_unique<BufferAllocation>(
+      /*index=*/0, slice_length, /*color=*/0));
+  BufferAllocation::Slice slice_lhs_fake(fake_allocations.back().get(), 0,
+                                         slice_length);
+
+  fake_allocations.push_back(std::make_unique<BufferAllocation>(
+      /*index=*/1, slice_length, /*color=*/0));
+  BufferAllocation::Slice slice_rhs_fake(fake_allocations.back().get(), 0,
+                                         slice_length);
+
   BufferAllocation alloc_lhs(/*index=*/0, lhs_length, /*color=*/0);
   BufferAllocation::Slice slice_lhs(&alloc_lhs, 0, lhs_length);
 
   BufferAllocation alloc_rhs(/*index=*/1, rhs_length, /*color=*/0);
   BufferAllocation::Slice slice_rhs(&alloc_rhs, 0, rhs_length);
 
-  BufferAllocation alloc_out(/*index=*/2, out_length, /*color=*/0);
-  BufferAllocation::Slice slice_out(&alloc_out, 0, out_length);
+  fake_allocations.push_back(
+      std::make_unique<BufferAllocation>(/*index=*/2, out_length, /*color=*/0));
+  BufferAllocation::Slice slice_out(fake_allocations.back().get(), 0,
+                                    out_length);
 
-  BufferAllocation alloc_workspace(/*index=*/3, 1024 * 1024, /*color=*/0);
-  BufferAllocation::Slice slice_workspace(&alloc_workspace, 0, 1024 * 1024);
+  fake_allocations.push_back(std::make_unique<BufferAllocation>(
+      /*index=*/3, 1024 * 1024, /*color=*/0));
+  BufferAllocation::Slice slice_workspace(fake_allocations.back().get(), 0,
+                                          1024 * 1024);
 
   BufferAllocation alloc_lhs_offset_0(/*index=*/4, offset_length,
                                       /*color=*/0);
@@ -243,12 +270,6 @@ TEST(AddressComputationThunkTest, SlicedNonContiguousGemm) {
                                       /*color=*/0);
   BufferAllocation::Slice slice_rhs_offset_1(&alloc_rhs_offset_1, 0,
                                              offset_length);
-
-  BufferAllocation alloc_lhs_fake(/*index=*/0, slice_length, /*color=*/0);
-  BufferAllocation::Slice slice_lhs_fake(&alloc_lhs_fake, 0, slice_length);
-
-  BufferAllocation alloc_rhs_fake(/*index=*/1, slice_length, /*color=*/0);
-  BufferAllocation::Slice slice_rhs_fake(&alloc_rhs_fake, 0, slice_length);
 
   // Preparing config for GEMM thunk.
   auto config =
@@ -274,6 +295,7 @@ TEST(AddressComputationThunkTest, SlicedNonContiguousGemm) {
       Thunk::ThunkInfo(nullptr),
       std::make_unique<ThunkSequence>(std::move(seq)),
       {slice_lhs, slice_rhs, slice_out, slice_workspace},
+      std::move(fake_allocations),
       {lhs_offsets, rhs_offsets, std::nullopt, std::nullopt},
       {ShapeUtil::MakeShape(PrimitiveType::F32, {2, 4}),
        ShapeUtil::MakeShape(PrimitiveType::F32, {4, 3}), std::nullopt,
@@ -362,17 +384,33 @@ TEST(AddressComputationThunkTest, MulipleSlicedOperandsGemm) {
   // Prepare embedded and address computation thunks.
 
   // Preparing buffer allocation slices for thunk creations.
+  std::vector<std::unique_ptr<BufferAllocation>> fake_allocations(4);
+
+  fake_allocations.push_back(std::make_unique<BufferAllocation>(
+      /*index=*/0, slice_length, /*color=*/0));
+  BufferAllocation::Slice slice_lhs_fake(fake_allocations.back().get(), 0,
+                                         slice_length);
+
+  fake_allocations.push_back(std::make_unique<BufferAllocation>(
+      /*index=*/1, slice_length, /*color=*/0));
+  BufferAllocation::Slice slice_rhs_fake(fake_allocations.back().get(), 0,
+                                         slice_length);
+
   BufferAllocation alloc_lhs(/*index=*/0, length, /*color=*/0);
   BufferAllocation::Slice slice_lhs(&alloc_lhs, 0, length);
 
   BufferAllocation alloc_rhs(/*index=*/1, length, /*color=*/0);
   BufferAllocation::Slice slice_rhs(&alloc_rhs, 0, length);
 
-  BufferAllocation alloc_out(/*index=*/2, out_length, /*color=*/0);
-  BufferAllocation::Slice slice_out(&alloc_out, 0, out_length);
+  fake_allocations.push_back(
+      std::make_unique<BufferAllocation>(/*index=*/2, out_length, /*color=*/0));
+  BufferAllocation::Slice slice_out(fake_allocations.back().get(), 0,
+                                    out_length);
 
-  BufferAllocation alloc_workspace(/*index=*/3, 1024 * 1024, /*color=*/0);
-  BufferAllocation::Slice slice_workspace(&alloc_workspace, 0, 1024 * 1024);
+  fake_allocations.push_back(std::make_unique<BufferAllocation>(
+      /*index=*/3, 1024 * 1024, /*color=*/0));
+  BufferAllocation::Slice slice_workspace(fake_allocations.back().get(), 0,
+                                          1024 * 1024);
 
   BufferAllocation alloc_lhs_offset_0(/*index=*/4, offset_length,
                                       /*color=*/0);
@@ -393,12 +431,6 @@ TEST(AddressComputationThunkTest, MulipleSlicedOperandsGemm) {
                                       /*color=*/0);
   BufferAllocation::Slice slice_rhs_offset_1(&alloc_rhs_offset_1, 0,
                                              offset_length);
-
-  BufferAllocation alloc_lhs_fake(/*index=*/0, slice_length, /*color=*/0);
-  BufferAllocation::Slice slice_lhs_fake(&alloc_lhs, 0, slice_length);
-
-  BufferAllocation alloc_rhs_fake(/*index=*/1, slice_length, /*color=*/0);
-  BufferAllocation::Slice slice_rhs_fake(&alloc_rhs, 0, slice_length);
 
   // Preparing config for GEMM thunk.
   auto config =
@@ -424,6 +456,7 @@ TEST(AddressComputationThunkTest, MulipleSlicedOperandsGemm) {
       Thunk::ThunkInfo(nullptr),
       std::make_unique<ThunkSequence>(std::move(seq)),
       {slice_lhs, slice_rhs, slice_out, slice_workspace},
+      std::move(fake_allocations),
       {lhs_offsets, rhs_offsets, std::nullopt, std::nullopt},
       {ShapeUtil::MakeShape(PrimitiveType::F32, {2, 4}),
        ShapeUtil::MakeShape(PrimitiveType::F32, {8, 1}), std::nullopt,
@@ -542,11 +575,21 @@ TEST(AddressComputationThunkTest, SlicedMemcpy) {
   // Prepare embedded and address computation thunks.
 
   // Preparing buffer allocation slices for thunk creations.
+  std::vector<std::unique_ptr<BufferAllocation>> fake_allocations(2);
+
+  // Fake slices for embedded thunk creation.
+  fake_allocations.push_back(std::make_unique<BufferAllocation>(
+      /*index=*/0, slice_length, /*color=*/0));
+  BufferAllocation::Slice slice_src_fake(fake_allocations.back().get(), 0,
+                                         slice_length);
+
   BufferAllocation alloc_src(/*index=*/0, src_length, /*color=*/0);
   BufferAllocation::Slice slice_src(&alloc_src, 0, src_length);
 
-  BufferAllocation alloc_dst(/*index=*/1, dst_length, /*color=*/0);
-  BufferAllocation::Slice slice_dst(&alloc_dst, 0, dst_length);
+  fake_allocations.push_back(
+      std::make_unique<BufferAllocation>(/*index=*/1, dst_length, /*color=*/0));
+  BufferAllocation::Slice slice_dst(fake_allocations.back().get(), 0,
+                                    dst_length);
 
   BufferAllocation alloc_offset_0(/*index=*/2, offset_length, /*color=*/0);
   BufferAllocation::Slice slice_offset_0(&alloc_offset_0, 0, offset_length);
@@ -559,10 +602,6 @@ TEST(AddressComputationThunkTest, SlicedMemcpy) {
 
   BufferAllocation alloc_offset_3(/*index=*/5, offset_length, /*color=*/0);
   BufferAllocation::Slice slice_offset_3(&alloc_offset_3, 0, offset_length);
-
-  // Fake slices for embedded thunk creation.
-  BufferAllocation alloc_src_fake(/*index=*/0, slice_length, /*color=*/0);
-  BufferAllocation::Slice slice_src_fake(&alloc_src_fake, 0, slice_length);
 
   // Preparing custom call thunk: setting up call target and operands + results
   // buffers.
@@ -589,7 +628,7 @@ TEST(AddressComputationThunkTest, SlicedMemcpy) {
   AddressComputationThunk thunk(
       Thunk::ThunkInfo(nullptr),
       std::make_unique<ThunkSequence>(std::move(seq)), {slice_src, slice_dst},
-      {slice_offsets, std::nullopt},
+      std::move(fake_allocations), {slice_offsets, std::nullopt},
       {ShapeUtil::MakeShape(PrimitiveType::S32, {8, 8, 10, 8}), std::nullopt},
       // Make sure to pass a dst shape with the same rank as src shape (i.e.
       // original slice result and not bitcasted one)
@@ -672,6 +711,19 @@ TEST(AddressComputationThunkTest, SlicedOutputMemcpy) {
   // Prepare embedded and address computation thunks.
 
   // Preparing buffer allocation slices for thunk creations.
+  std::vector<std::unique_ptr<BufferAllocation>> fake_allocations(2);
+
+  // Fake slices for embedded thunk creation.
+  fake_allocations.push_back(std::make_unique<BufferAllocation>(
+      /*index=*/0, slice_length, /*color=*/0));
+  BufferAllocation::Slice slice_src_fake(fake_allocations.back().get(), 0,
+                                         slice_length);
+
+  fake_allocations.push_back(std::make_unique<BufferAllocation>(
+      /*index=*/1, slice_length, /*color=*/0));
+  BufferAllocation::Slice slice_dst_fake(fake_allocations.back().get(), 0,
+                                         slice_length);
+
   BufferAllocation alloc_src(/*index=*/0, src_length, /*color=*/0);
   BufferAllocation::Slice slice_src(&alloc_src, 0, src_length);
 
@@ -710,13 +762,6 @@ TEST(AddressComputationThunkTest, SlicedOutputMemcpy) {
   BufferAllocation::Slice slice_dst_offset_3(&alloc_dst_offset_3, 0,
                                              offset_length);
 
-  // Fake slices for embedded thunk creation.
-  BufferAllocation alloc_src_fake(/*index=*/0, slice_length, /*color=*/0);
-  BufferAllocation::Slice slice_src_fake(&alloc_src_fake, 0, slice_length);
-
-  BufferAllocation alloc_dst_fake(/*index=*/1, slice_length, /*color=*/0);
-  BufferAllocation::Slice slice_dst_fake(&alloc_dst_fake, 0, slice_length);
-
   // Preparing custom call thunk: setting up call target and operands + results
   // buffers.
   auto registration = xla::ffi::FindHandler("__xla_test$$memcpy", PLATFORM);
@@ -746,7 +791,7 @@ TEST(AddressComputationThunkTest, SlicedOutputMemcpy) {
   AddressComputationThunk thunk(
       Thunk::ThunkInfo(nullptr),
       std::make_unique<ThunkSequence>(std::move(seq)), {slice_src, slice_dst},
-      {slice_src_offsets, slice_dst_offsets},
+      std::move(fake_allocations), {slice_src_offsets, slice_dst_offsets},
       {ShapeUtil::MakeShape(PrimitiveType::S32, {8, 8, 10, 2}),
        ShapeUtil::MakeShape(PrimitiveType::S32, {2, 2, 2, 2})},
       // Make sure to pass a dst shape with the same rank as src shape (i.e.
@@ -849,6 +894,28 @@ TEST(AddressComputationThunkTest, SlicedGemmArbitraryArgumentOrder) {
   // Prepare embedded and address computation thunks.
 
   // Preparing buffer allocation slices for thunk creations.
+  std::vector<std::unique_ptr<BufferAllocation>> fake_allocations(4);
+
+  fake_allocations.push_back(
+      std::make_unique<BufferAllocation>(/*index=*/0, rhs_length, /*color=*/0));
+  BufferAllocation::Slice slice_lhs_fake(fake_allocations.back().get(), 0,
+                                         rhs_length);
+
+  fake_allocations.push_back(
+      std::make_unique<BufferAllocation>(/*index=*/1, rhs_length, /*color=*/0));
+  BufferAllocation::Slice slice_rhs_fake(fake_allocations.back().get(), 0,
+                                         rhs_length);
+
+  fake_allocations.push_back(
+      std::make_unique<BufferAllocation>(/*index=*/2, out_length, /*color=*/0));
+  BufferAllocation::Slice slice_out_fake(fake_allocations.back().get(), 0,
+                                         out_length);
+
+  fake_allocations.push_back(std::make_unique<BufferAllocation>(
+      /*index=*/3, 1024 * 1024, /*color=*/0));
+  BufferAllocation::Slice slice_workspace_fake(fake_allocations.back().get(), 0,
+                                               1024 * 1024);
+
   BufferAllocation alloc_lhs(/*index=*/1, lhs_length, /*color=*/0);
   BufferAllocation::Slice slice_lhs(&alloc_lhs, 0, lhs_length);
 
@@ -871,9 +938,6 @@ TEST(AddressComputationThunkTest, SlicedGemmArbitraryArgumentOrder) {
   BufferAllocation::Slice slice_lhs_offset_1(&alloc_lhs_offset_1, 0,
                                              offset_length);
 
-  BufferAllocation alloc_lhs_fake(/*index=*/1, rhs_length, /*color=*/0);
-  BufferAllocation::Slice slice_lhs_fake(&alloc_lhs_fake, 0, rhs_length);
-
   // Preparing config for GEMM thunk.
   auto config =
       GemmConfig::For(ShapeUtil::MakeShape(PrimitiveType::F32, {1, 3}), {}, {1},
@@ -886,8 +950,8 @@ TEST(AddressComputationThunkTest, SlicedGemmArbitraryArgumentOrder) {
   // Creating embedded GEMM thunk.
   ThunkSequence seq;
   seq.emplace_back(std::make_unique<GemmThunk>(
-      Thunk::ThunkInfo(nullptr), config.value(), slice_lhs_fake, slice_rhs,
-      slice_out, slice_workspace, /*deterministic=*/true));
+      Thunk::ThunkInfo(nullptr), config.value(), slice_lhs_fake, slice_rhs_fake,
+      slice_out_fake, slice_workspace_fake, /*deterministic=*/true));
 
   // Wrapping address computation thunk around the GEMM thunk.
   std::vector<BufferAllocation::Slice> lhs_offsets{slice_lhs_offset_0,
@@ -896,6 +960,7 @@ TEST(AddressComputationThunkTest, SlicedGemmArbitraryArgumentOrder) {
       Thunk::ThunkInfo(nullptr),
       std::make_unique<ThunkSequence>(std::move(seq)),
       {slice_lhs, slice_rhs, slice_out, slice_workspace},
+      std::move(fake_allocations),
       {lhs_offsets, std::nullopt, std::nullopt, std::nullopt},
       {ShapeUtil::MakeShape(PrimitiveType::F32, {2, 4}), std::nullopt,
        std::nullopt, std::nullopt},
@@ -977,6 +1042,28 @@ TEST(AddressComputationThunkTest, SlicedGemmArbitraryNumberOfArguments) {
   // Prepare embedded and address computation thunks.
 
   // Preparing buffer allocation slices for thunk creations.
+  std::vector<std::unique_ptr<BufferAllocation>> fake_allocations(4);
+
+  fake_allocations.push_back(
+      std::make_unique<BufferAllocation>(/*index=*/0, rhs_length, /*color=*/0));
+  BufferAllocation::Slice slice_lhs_fake(fake_allocations.back().get(), 0,
+                                         rhs_length);
+
+  fake_allocations.push_back(
+      std::make_unique<BufferAllocation>(/*index=*/1, rhs_length, /*color=*/0));
+  BufferAllocation::Slice slice_rhs_fake(fake_allocations.back().get(), 0,
+                                         rhs_length);
+
+  fake_allocations.push_back(
+      std::make_unique<BufferAllocation>(/*index=*/2, out_length, /*color=*/0));
+  BufferAllocation::Slice slice_out_fake(fake_allocations.back().get(), 0,
+                                         out_length);
+
+  fake_allocations.push_back(std::make_unique<BufferAllocation>(
+      /*index=*/3, 1024 * 1024, /*color=*/0));
+  BufferAllocation::Slice slice_workspace_fake(fake_allocations.back().get(), 0,
+                                               1024 * 1024);
+
   BufferAllocation alloc_lhs(/*index=*/7, lhs_length, /*color=*/0);
   BufferAllocation::Slice slice_lhs(&alloc_lhs, 0, lhs_length);
 
@@ -999,9 +1086,6 @@ TEST(AddressComputationThunkTest, SlicedGemmArbitraryNumberOfArguments) {
   BufferAllocation::Slice slice_lhs_offset_1(&alloc_lhs_offset_1, 0,
                                              offset_length);
 
-  BufferAllocation alloc_lhs_fake(/*index=*/7, rhs_length, /*color=*/0);
-  BufferAllocation::Slice slice_lhs_fake(&alloc_lhs_fake, 0, rhs_length);
-
   // Preparing config for GEMM thunk.
   auto config =
       GemmConfig::For(ShapeUtil::MakeShape(PrimitiveType::F32, {1, 3}), {}, {1},
@@ -1014,8 +1098,8 @@ TEST(AddressComputationThunkTest, SlicedGemmArbitraryNumberOfArguments) {
   // Creating embedded GEMM thunk.
   ThunkSequence seq;
   seq.emplace_back(std::make_unique<GemmThunk>(
-      Thunk::ThunkInfo(nullptr), config.value(), slice_lhs_fake, slice_rhs,
-      slice_out, slice_workspace, /*deterministic=*/true));
+      Thunk::ThunkInfo(nullptr), config.value(), slice_lhs_fake, slice_rhs_fake,
+      slice_out_fake, slice_workspace_fake, /*deterministic=*/true));
 
   // Wrapping address computation thunk around the GEMM thunk.
   std::vector<BufferAllocation::Slice> lhs_offsets{slice_lhs_offset_0,
@@ -1024,6 +1108,7 @@ TEST(AddressComputationThunkTest, SlicedGemmArbitraryNumberOfArguments) {
       Thunk::ThunkInfo(nullptr),
       std::make_unique<ThunkSequence>(std::move(seq)),
       {slice_lhs, slice_rhs, slice_out, slice_workspace},
+      std::move(fake_allocations),
       {lhs_offsets, std::nullopt, std::nullopt, std::nullopt},
       {ShapeUtil::MakeShape(PrimitiveType::F32, {2, 4}), std::nullopt,
        std::nullopt, std::nullopt},
@@ -1106,17 +1191,30 @@ TEST(AddressComputationThunkTest, SlicedTupledOperandGemm) {
   // Prepare embedded and address computation thunks.
 
   // Preparing buffer allocation slices for thunk creations.
+  std::vector<std::unique_ptr<BufferAllocation>> fake_allocations(4);
+
+  fake_allocations.push_back(
+      std::make_unique<BufferAllocation>(/*index=*/0, rhs_length, /*color=*/0));
+  BufferAllocation::Slice slice_lhs_fake(fake_allocations.back().get(), 0,
+                                         rhs_length);
+
   BufferAllocation alloc_lhs(/*index=*/0, 3 * lhs_length, /*color=*/0);
   BufferAllocation::Slice slice_lhs(&alloc_lhs, lhs_length, lhs_length);
 
-  BufferAllocation alloc_rhs(/*index=*/1, rhs_length, /*color=*/0);
-  BufferAllocation::Slice slice_rhs(&alloc_rhs, 0, rhs_length);
+  fake_allocations.push_back(
+      std::make_unique<BufferAllocation>(/*index=*/1, rhs_length, /*color=*/0));
+  BufferAllocation::Slice slice_rhs(fake_allocations.back().get(), 0,
+                                    rhs_length);
 
-  BufferAllocation alloc_out(/*index=*/2, out_length, /*color=*/0);
-  BufferAllocation::Slice slice_out(&alloc_out, 0, out_length);
+  fake_allocations.push_back(
+      std::make_unique<BufferAllocation>(/*index=*/2, out_length, /*color=*/0));
+  BufferAllocation::Slice slice_out(fake_allocations.back().get(), 0,
+                                    out_length);
 
-  BufferAllocation alloc_workspace(/*index=*/3, 1024 * 1024, /*color=*/0);
-  BufferAllocation::Slice slice_workspace(&alloc_workspace, 0, 1024 * 1024);
+  fake_allocations.push_back(std::make_unique<BufferAllocation>(
+      /*index=*/3, 1024 * 1024, /*color=*/0));
+  BufferAllocation::Slice slice_workspace(fake_allocations.back().get(), 0,
+                                          1024 * 1024);
 
   BufferAllocation alloc_lhs_offset_0(/*index=*/4, offset_length,
                                       /*color=*/0);
@@ -1127,9 +1225,6 @@ TEST(AddressComputationThunkTest, SlicedTupledOperandGemm) {
                                       /*color=*/0);
   BufferAllocation::Slice slice_lhs_offset_1(&alloc_lhs_offset_1, 0,
                                              offset_length);
-
-  BufferAllocation alloc_lhs_fake(/*index=*/0, rhs_length, /*color=*/0);
-  BufferAllocation::Slice slice_lhs_fake(&alloc_lhs_fake, 0, rhs_length);
 
   // Preparing config for GEMM thunk.
   auto config =
@@ -1153,6 +1248,7 @@ TEST(AddressComputationThunkTest, SlicedTupledOperandGemm) {
       Thunk::ThunkInfo(nullptr),
       std::make_unique<ThunkSequence>(std::move(seq)),
       {slice_lhs, slice_rhs, slice_out, slice_workspace},
+      std::move(fake_allocations),
       {lhs_offsets, std::nullopt, std::nullopt, std::nullopt},
       {ShapeUtil::MakeShape(PrimitiveType::F32, {2, 4}), std::nullopt,
        std::nullopt, std::nullopt},
@@ -1244,6 +1340,19 @@ TEST(AddressComputationThunkTest, SlicedMemcpyOOB) {
   // Prepare embedded and address computation thunks.
 
   // Preparing buffer allocation slices for thunk creations.
+  std::vector<std::unique_ptr<BufferAllocation>> fake_allocations(2);
+
+  // Fake slices for embedded thunk creation.
+  fake_allocations.push_back(std::make_unique<BufferAllocation>(
+      /*index=*/0, slice_length, /*color=*/0));
+  BufferAllocation::Slice slice_src_fake(fake_allocations.back().get(), 0,
+                                         slice_length);
+
+  fake_allocations.push_back(std::make_unique<BufferAllocation>(
+      /*index=*/1, slice_length, /*color=*/0));
+  BufferAllocation::Slice slice_dst_fake(fake_allocations.back().get(), 0,
+                                         slice_length);
+
   BufferAllocation alloc_src(/*index=*/0, src_length, /*color=*/0);
   BufferAllocation::Slice slice_src(&alloc_src, 0, src_length);
 
@@ -1282,13 +1391,6 @@ TEST(AddressComputationThunkTest, SlicedMemcpyOOB) {
   BufferAllocation::Slice slice_dst_offset_3(&alloc_dst_offset_3, 0,
                                              offset_length);
 
-  // Fake slices for embedded thunk creation.
-  BufferAllocation alloc_src_fake(/*index=*/0, slice_length, /*color=*/0);
-  BufferAllocation::Slice slice_src_fake(&alloc_src_fake, 0, slice_length);
-
-  BufferAllocation alloc_dst_fake(/*index=*/1, slice_length, /*color=*/0);
-  BufferAllocation::Slice slice_dst_fake(&alloc_dst_fake, 0, slice_length);
-
   // Preparing custom call thunk: setting up call target and operands + results
   // buffers.
   auto registration = xla::ffi::FindHandler("__xla_test$$memcpy", PLATFORM);
@@ -1318,7 +1420,7 @@ TEST(AddressComputationThunkTest, SlicedMemcpyOOB) {
   AddressComputationThunk thunk(
       Thunk::ThunkInfo(nullptr),
       std::make_unique<ThunkSequence>(std::move(seq)), {slice_src, slice_dst},
-      {slice_src_offsets, slice_dst_offsets},
+      std::move(fake_allocations), {slice_src_offsets, slice_dst_offsets},
       {ShapeUtil::MakeShape(PrimitiveType::S32, {8, 8, 10, 2}),
        ShapeUtil::MakeShape(PrimitiveType::S32, {2, 2, 2, 2})},
       // Make sure to pass a dst shape with the same rank as src shape (i.e.

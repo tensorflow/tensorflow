@@ -295,6 +295,12 @@ absl::StatusOr<FusionEmissionResult> EmitDynamicSlicedGemm(
   int64_t out_fake_byte_size = ShapeUtil::ByteSizeOf(
       custom_call.shape().IsArray() ? custom_call.shape()
                                     : custom_call.shape().tuple_shapes(0));
+
+  // Handling cases where multiple operands share the same buffer, with
+  // different offset by creating new fake allocations so each operand will have
+  // a different buffer index. The slices can thus always start at offset 0.
+  // AddressComputationThunk will take care of the offset adjustment.
+  std::vector<std::unique_ptr<BufferAllocation>> fake_allocations(4);
   if (fusion.shape().IsArray()) {
     TF_ASSIGN_OR_RETURN(output,
                         get_original_result_slice(&custom_call, /*index=*/{}));
@@ -312,8 +318,10 @@ absl::StatusOr<FusionEmissionResult> EmitDynamicSlicedGemm(
                                                       &fusion, /*index=*/{1}));
     slice_instr = nullptr;
     collect_slice_info();
-    slice_workspace_fake =
-        BufferAllocation::Slice(workspace->allocation(), 0, workspace->size());
+    fake_allocations[3] = std::make_unique<BufferAllocation>(
+        /*index=*/3, workspace->size(), /*color=*/0);
+    slice_workspace_fake = BufferAllocation::Slice(fake_allocations[3].get(), 0,
+                                                   workspace->size());
   }
 
   if (absl::c_all_of(offset_buffer_indices, [&](auto offset_slices) {
@@ -331,20 +339,23 @@ absl::StatusOr<FusionEmissionResult> EmitDynamicSlicedGemm(
       GemmConfig config,
       GemmConfig::For(static_cast<const HloInstruction*>(&custom_call)));
 
-  // TODO(vuson): handle cases where LHS and RHS share the same buffer, with
-  // different offset. In such cases, the fake slices need to contain the
-  // correct offset instead of default value 0.
   int64_t lhs_byte_size =
       ShapeUtil::ByteSizeOf(custom_call.operand(0)->shape());
-  BufferAllocation::Slice slice_lhs_fake(lhs_slice.allocation(), 0,
+  fake_allocations[0] = std::make_unique<BufferAllocation>(
+      /*index=*/0, lhs_byte_size, /*color=*/0);
+  BufferAllocation::Slice slice_lhs_fake(fake_allocations[0].get(), 0,
                                          lhs_byte_size);
 
   int64_t rhs_byte_size =
       ShapeUtil::ByteSizeOf(custom_call.operand(1)->shape());
-  BufferAllocation::Slice slice_rhs_fake(rhs_slice.allocation(), 0,
+  fake_allocations[1] = std::make_unique<BufferAllocation>(
+      /*index=*/1, rhs_byte_size, /*color=*/0);
+  BufferAllocation::Slice slice_rhs_fake(fake_allocations[1].get(), 0,
                                          rhs_byte_size);
 
-  BufferAllocation::Slice slice_out_fake(output.allocation(), 0,
+  fake_allocations[2] = std::make_unique<BufferAllocation>(
+      /*index=*/2, out_fake_byte_size, /*color=*/0);
+  BufferAllocation::Slice slice_out_fake(fake_allocations[2].get(), 0,
                                          out_fake_byte_size);
   ThunkSequence seq;
   seq.emplace_back(std::make_unique<GemmThunk>(
@@ -358,7 +369,8 @@ absl::StatusOr<FusionEmissionResult> EmitDynamicSlicedGemm(
   auto thunk = std::make_unique<AddressComputationThunk>(
       Thunk::ThunkInfo::WithProfileAnnotation(&custom_call),
       std::make_unique<ThunkSequence>(std::move(seq)), arguments,
-      offset_buffer_indices, orig_shapes, sliced_shapes, offset_byte_sizes);
+      std::move(fake_allocations), offset_buffer_indices, orig_shapes,
+      sliced_shapes, offset_byte_sizes);
 
   FusionEmissionResult result;
   result.thunks.push_back(std::move(thunk));
@@ -602,6 +614,8 @@ absl::StatusOr<FusionEmissionResult> AddressComputationFusion::Emit(
 absl::StatusOr<FusionEmissionResult> DynamicAddressComputationFusion::Emit(
     IrEmitterContext& ir_emitter_context,
     const HloFusionInstruction& fusion) const {
+  // std::cerr << "TYB \n"
+  //           << fusion.fused_instructions_computation()->ToString() << '\n';
   const HloFusionAdaptor& adaptor = analysis_.fusion();
   auto maybe_custom_call_adaptor = HloFindIf(
       adaptor.GetRoots(), adaptor,

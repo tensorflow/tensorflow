@@ -46,6 +46,7 @@ namespace gpu {
 AddressComputationThunk::AddressComputationThunk(
     ThunkInfo thunk_info, std::unique_ptr<ThunkSequence> embedded_thunk,
     std::vector<std::optional<const BufferAllocation::Slice>> arguments,
+    std::vector<std::unique_ptr<BufferAllocation>> fake_allocations,
     std::vector<std::optional<std::vector<BufferAllocation::Slice>>>
         offset_buffer_indices,
     std::vector<std::optional<const Shape>> orig_shapes,
@@ -55,6 +56,7 @@ AddressComputationThunk::AddressComputationThunk(
       embedded_thunk_(std::make_unique<SequentialThunk>(
           ThunkInfo(thunk_info.op), std::move(*embedded_thunk))),
       embedded_thunk_arguments_(std::move(arguments)),
+      fake_allocations_(std::move(fake_allocations)),
       offset_buffer_indices_(std::move(offset_buffer_indices)),
       orig_shapes_(std::move(orig_shapes)),
       sliced_shapes_(std::move(sliced_shapes)),
@@ -113,8 +115,8 @@ absl::Status AddressComputationThunk::ExecuteOnStream(
     const ExecuteParams& params) {
   auto& stream = *params.stream;
   const BufferAllocations& orig_allocations = *params.buffer_allocations;
-  std::vector<se::DeviceMemoryBase> new_buffers(orig_allocations.size(),
-                                                se::DeviceMemoryBase());
+  std::vector<se::DeviceMemoryBase> new_buffers(
+      embedded_thunk_arguments_.size(), se::DeviceMemoryBase());
 
   // Get memory allocation for copying offsets from device.
   int64_t* offsets_base = [&] {
@@ -136,10 +138,9 @@ absl::Status AddressComputationThunk::ExecuteOnStream(
     // `argument_slice` within `orig_allocations`
     se::DeviceMemoryBase orig_argument =
         orig_allocations.GetDeviceAddress(*argument_slice);
-    auto buffer_idx = argument_slice->index();
 
     if (offset_slice == std::nullopt) {
-      new_buffers[buffer_idx] = orig_argument;
+      new_buffers[argument_idx] = orig_argument;
       continue;
     }
 
@@ -185,7 +186,8 @@ absl::Status AddressComputationThunk::ExecuteOnStream(
       new_offset += start * stride;
     }
 
-    new_buffers[buffer_idx] = orig_argument.GetByteSlice(new_offset, new_size);
+    new_buffers[argument_idx] =
+        orig_argument.GetByteSlice(new_offset, new_size);
   }
 
   // Safe to create a local BufferAllocations here since buffers are only slices
