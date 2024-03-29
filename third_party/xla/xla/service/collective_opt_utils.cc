@@ -267,12 +267,13 @@ bool IsPerIdOffset(const HloInstruction* offset, int64_t shard_size,
   return true;
 }
 
-ReduceScatterSpec SpecFromReduceScatterInstr(const HloInstruction* rs_instr,
-                                             int64_t num_partitions,
-                                             int64_t num_replicas,
-                                             bool is_constrain_layout,
-                                             bool use_global_device_ids,
-                                             bool is_cross_module) {
+std::optional<ReduceScatterSpec> SpecFromReduceScatterInstr(
+    const HloInstruction* rs_instr, int64_t num_partitions,
+    int64_t num_replicas, int64_t min_rank, bool is_constrain_layout,
+    bool use_global_device_ids, bool is_cross_module) {
+  if (rs_instr->shape().rank() < min_rank) {
+    return std::nullopt;
+  }
   CHECK(rs_instr->opcode() == HloOpcode::kReduceScatter);
   ReduceScatterSpec spec;
   spec.split_dim = rs_instr->dimensions(0);
@@ -303,7 +304,7 @@ std::optional<ReduceScatterSpec> MatchReduceScatter(
     HloPredicate match_partition_id, HloPredicate match_replica_id) {
   if (ar->opcode() == HloOpcode::kReduceScatter) {
     return SpecFromReduceScatterInstr(
-        ar, num_partitions, num_replicas, ar->constrain_layout(),
+        ar, num_partitions, num_replicas, min_rank, ar->constrain_layout(),
         ar->use_global_device_ids(), ar->channel_id().has_value());
   }
   auto spec = MatchWithDynamicSlice(
