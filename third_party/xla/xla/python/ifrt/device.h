@@ -51,6 +51,8 @@ class DeviceList {
   // better performance.
   using Devices = absl::InlinedVector<Device*, kInlineDeviceSize>;
 
+  DeviceList() : DeviceList(Devices()) {}
+
   // Constructor with a pre-populated `devices`.
   explicit DeviceList(Devices devices);
 

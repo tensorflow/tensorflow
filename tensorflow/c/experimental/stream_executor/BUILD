@@ -45,6 +45,8 @@ cc_library(
         "//tensorflow/core/common_runtime/device:device_utils",
         "//tensorflow/core/platform:strcat",
         "@com_google_absl//absl/functional:any_invocable",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings:str_format",
         "@local_tsl//tsl/platform:status",
         "@local_xla//xla/stream_executor",
         "@local_xla//xla/stream_executor:platform",
