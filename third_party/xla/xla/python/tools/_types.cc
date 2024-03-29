@@ -33,7 +33,7 @@ limitations under the License.
 // is fine); however, tsl-numpy does reexport NumPy's arrayobject.h header.
 // Since one of the TF headers above already includes tsl-numpy, therefore
 // we must include it down here rather than including actual NumPy directly.
-#include "tsl/python/lib/core/numpy.h"
+#include "xla/tsl/python/lib/core/numpy.h"
 
 namespace py = ::pybind11;
 namespace nb = ::nanobind;

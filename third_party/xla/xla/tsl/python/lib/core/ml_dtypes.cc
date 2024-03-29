@@ -12,14 +12,14 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include "tsl/python/lib/core/ml_dtypes.h"
+#include "xla/tsl/python/lib/core/ml_dtypes.h"
 
 #include <atomic>
 #include <exception>
 
 // Must be included first to ensure `NPY_NO_DEPRECATED_API` is defined.
 // clang-format off
-#include "tsl/python/lib/core/numpy.h"  // IWYU pragma: keep
+#include "xla/tsl/python/lib/core/numpy.h"  // IWYU pragma: keep
 // clang-format on
 #include "numpy/ndarraytypes.h"
 #include "absl/base/attributes.h"

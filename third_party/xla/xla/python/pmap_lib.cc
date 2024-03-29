@@ -68,13 +68,13 @@ limitations under the License.
 #include "xla/python/traceback.h"
 #include "xla/python/types.h"
 #include "xla/status_macros.h"
+#include "xla/tsl/python/lib/core/numpy.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/concurrency/ref_count.h"
 #include "tsl/platform/logging.h"
 #include "tsl/platform/statusor.h"
 #include "tsl/profiler/lib/traceme.h"
-#include "tsl/python/lib/core/numpy.h"
 
 namespace jax {
 
