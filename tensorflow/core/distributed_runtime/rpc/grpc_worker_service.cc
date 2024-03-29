@@ -532,7 +532,7 @@ void GrpcWorker::GrpcRecvTensorAsync(CallOptions* opts,
         AllocatorAttributes alloc_attrs;
         alloc_attrs.set_gpu_compatible(true);
         alloc_attrs.set_on_host(true);
-        profiler::ScopedMemoryDebugAnnotation op_annotation(
+        tsl::profiler::ScopedMemoryDebugAnnotation op_annotation(
             "GrpcWorker::RecvTensorAsync::consumer_callback",
             request->step_id(), "dynamic", val.dtype(),
             [shape = val.shape()]() { return shape.DebugString(); });
@@ -669,7 +669,7 @@ void GrpcWorker::RecvBufAsync(CallOptions* opts, const RecvBufRequest* request,
           AllocatorAttributes cpu_attr;
           cpu_attr.set_gpu_compatible(true);
           cpu_attr.set_nic_compatible(true);
-          profiler::ScopedMemoryDebugAnnotation op_annotation(
+          tsl::profiler::ScopedMemoryDebugAnnotation op_annotation(
               "GrpcWorker::RecvBufAsync::consumer_callback", request->step_id(),
               "dynamic", hook->prod_value->dtype(),
               [hook]() { return hook->prod_value->shape().DebugString(); });
