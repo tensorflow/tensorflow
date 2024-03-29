@@ -29,9 +29,8 @@ namespace xla {
 class ReduceScatterDecomposer : public HloModulePass {
  public:
   explicit ReduceScatterDecomposer(
-      std::function<void(Shape&)> update_layout = nullptr,
-      std::function<bool(const HloInstruction*)> should_decompose = nullptr)
-      : update_layout_(update_layout), should_decompose_(should_decompose) {}
+      std::function<void(Shape&)> update_layout = nullptr)
+      : update_layout_(update_layout) {}
   absl::string_view name() const override {
     return "reduce-scatter-decomposer";
   }
@@ -41,7 +40,6 @@ class ReduceScatterDecomposer : public HloModulePass {
       HloModule* module,
       const absl::flat_hash_set<absl::string_view>& execution_threads) override;
   std::function<void(Shape&)> update_layout_;
-  std::function<bool(const HloInstruction*)> should_decompose_;
 };
 
 }  // namespace xla
