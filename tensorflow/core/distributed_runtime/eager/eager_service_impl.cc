@@ -130,8 +130,8 @@ Status GetEagerOperationAndNumRetvals(const Operation& operation,
                                      eager_executor, remote_func_params));
 
   {
-    profiler::TraceMe activity("EagerService:RemoteTensorHandleInternal",
-                               profiler::TraceMeLevel::kVerbose);
+    tsl::profiler::TraceMe activity("EagerService:RemoteTensorHandleInternal",
+                                    tsl::profiler::TraceMeLevel::kVerbose);
     for (const auto& input : operation.op_inputs()) {
       tensorflow::TensorHandle* handle;
       if (input.has_remote_handle()) {
@@ -695,12 +695,12 @@ Status EagerServiceImpl::ExecuteOp(CallOptions* call_opts,
 Status EagerServiceImpl::Enqueue(CallOptions* call_opts,
                                  const EnqueueRequest* request,
                                  EnqueueResponse* response, uint64 stream_id) {
-  profiler::TraceMe activity(
+  tsl::profiler::TraceMe activity(
       [&] {
         return absl::StrCat(
             "EagerService:Enqueue#debug_str=", request->DebugString(), "#");
       },
-      profiler::TraceMeLevel::kInfo);
+      tsl::profiler::TraceMeLevel::kInfo);
   ServerContext* context = nullptr;
   TF_RETURN_IF_ERROR(GetServerContext(request->context_id(), &context));
   core::ScopedUnref context_unref(context);
