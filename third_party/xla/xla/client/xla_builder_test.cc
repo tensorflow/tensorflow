@@ -1857,6 +1857,19 @@ TEST(XlaBuilderTest, UnboundedAddUnsupportedImplicitBroadcast) {
               StatusIs(_, HasSubstr(kBroadcastDimensionMismatch)));
 }
 
+TEST(XlaBuilderTest, UnboundedAllGather) {
+  XlaBuilder b(TestName());
+  TF_ASSERT_OK_AND_ASSIGN(const Shape operand, ParseShape("f32[?, 10]"));
+  TF_ASSERT_OK_AND_ASSIGN(const Shape expected, ParseShape("f32[?, 10]"));
+  AllGather(Parameter(&b, 0, operand, "operand"), /*all_gather_dimension=*/0,
+            /*shard_count=*/2,
+            /*replica_groups=*/{});
+  TF_ASSERT_OK_AND_ASSIGN(const std::unique_ptr<HloModule> module,
+                          BuildHloModule(b));
+  EXPECT_THAT(GetRoot(*module),
+              GmockMatch(m::Op().WithShapeEqualTo(&expected)));
+}
+
 TEST(XlaBuilderTest, UnboundedAnd) {
   XlaBuilder b(TestName());
   TF_ASSERT_OK_AND_ASSIGN(const Shape lhs,
@@ -2185,6 +2198,23 @@ TEST(XlaBuilderTest, UnboundedDynamicSlice) {
                },
                /*slice_sizes=*/{2, 2});
   TF_ASSERT_OK_AND_ASSIGN(const auto module, BuildHloModule(b));
+  EXPECT_THAT(GetRoot(*module),
+              GmockMatch(m::Op().WithShapeEqualTo(&expected)));
+}
+
+TEST(XlaBuilderTest, UnboundedDynamicUpdateSlice) {
+  XlaBuilder b(TestName());
+  TF_ASSERT_OK_AND_ASSIGN(const Shape operand, ParseShape("f32[?, 10]"));
+  TF_ASSERT_OK_AND_ASSIGN(const Shape update, ParseShape("f32[?, 5]"));
+  TF_ASSERT_OK_AND_ASSIGN(const Shape start_indices, ParseShape("s32[]"));
+  TF_ASSERT_OK_AND_ASSIGN(const Shape expected, ParseShape("f32[?, 10]"));
+  DynamicUpdateSlice(Parameter(&b, 0, operand, "operand"),
+                     Parameter(&b, 1, update, "update"),
+                     /*start_indices=*/
+                     {Parameter(&b, 2, start_indices, "start_indices0"),
+                      Parameter(&b, 3, start_indices, "start_indices1")});
+  TF_ASSERT_OK_AND_ASSIGN(const std::unique_ptr<HloModule> module,
+                          BuildHloModule(b));
   EXPECT_THAT(GetRoot(*module),
               GmockMatch(m::Op().WithShapeEqualTo(&expected)));
 }

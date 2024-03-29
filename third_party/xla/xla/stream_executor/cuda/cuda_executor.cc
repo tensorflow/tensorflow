@@ -866,7 +866,12 @@ absl::Status GpuExecutor::BlockHostUntilDone(Stream* stream) {
   return GpuDriver::SynchronizeStream(context_, AsGpuStreamValue(stream));
 }
 
-blas::BlasSupport* GpuExecutor::CreateBlas() {
+blas::BlasSupport* GpuExecutor::AsBlas() {
+  absl::MutexLock lock(&mu_);
+  if (blas_ != nullptr) {
+    return blas_.get();
+  }
+
   PluginRegistry* registry = PluginRegistry::Instance();
   absl::StatusOr<PluginRegistry::BlasFactory> status =
       registry->GetFactory<PluginRegistry::BlasFactory>(cuda::kCudaPlatformId);
@@ -876,7 +881,9 @@ blas::BlasSupport* GpuExecutor::CreateBlas() {
     return nullptr;
   }
 
-  return status.value()(this);
+  auto blas = status.value()(this);
+  blas_.reset(blas);
+  return blas_.get();
 }
 
 dnn::DnnSupport* GpuExecutor::AsDnn() {
