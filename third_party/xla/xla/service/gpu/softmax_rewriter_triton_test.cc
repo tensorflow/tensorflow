@@ -1770,10 +1770,11 @@ ENTRY main {
     if (std::holds_alternative<FusionDecision>(decision)) {
       std::string actual_decision =
           std::get<FusionDecision>(decision).Explain();
-      EXPECT_THAT(actual_decision,
-                  AnyOf(HasSubstr("Root is not elementwise binary"),
-                        HasSubstr("Reduce has a non-constant second operand "
-                                  "and/or is variadic")));
+      EXPECT_THAT(
+          actual_decision,
+          AnyOf(HasSubstr("Root is not elementwise binary"),
+                HasSubstr("Reduction init value should be a constant or a "
+                          "convert of a constant.")));
       unmatched++;
     } else {
       matched++;

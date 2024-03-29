@@ -59,38 +59,6 @@ bool HasDefaultLayout(const Shape& shape) {
          LayoutUtil::IsMonotonicWithDim0Major(shape.layout());
 }
 
-bool IsTritonSupportedInstruction(const HloInstruction* instr,
-                                  const se::GpuComputeCapability& gpu_version) {
-  if (!instr->shape().IsArray()) {
-    return false;
-  }
-
-  if (!IsTritonSupportedDataType(instr->shape().element_type(), gpu_version)) {
-    return false;
-  }
-
-  for (const HloInstruction* operand : instr->operands()) {
-    if (!IsTritonSupportedDataType(operand->shape().element_type(),
-                                   gpu_version)) {
-      return false;
-    }
-  }
-
-  // TODO(bchetioui): expand with non-trivial instructions.
-  if (instr->IsElementwise()) {
-    return IsTritonSupportedElementwise(instr->opcode(),
-                                        instr->shape().element_type());
-  }
-
-  switch (instr->opcode()) {
-    case HloOpcode::kBitcast:
-    case HloOpcode::kParameter:
-      return true;
-    default:
-      return false;
-  }
-}
-
 // Returns true if a trivially connected producer of 'consumer' with opcode
 // 'opcode' exists. If such an instruction is found, the value of 'producer' is
 // set to it. The definition of "trivial" operations is as given in
@@ -268,7 +236,7 @@ bool IsTriviallyFusible(HloInstruction* instr,
   }
 
   if (instr->IsElementwise() && instr->operand_count() == 1) {
-    return IsTritonSupportedInstruction(instr, gpu_version);
+    return static_cast<bool>(IsTritonSupportedInstruction(*instr, gpu_version));
   }
 
   // Elementwise binary ops are trivially fusible if the operands are the same,
@@ -280,7 +248,8 @@ bool IsTriviallyFusible(HloInstruction* instr,
     // Elementwise binary ops should be fused if both operands are the same and
     // if the operand is triton supported.
     if (operand_0 == operand_1) {
-      return IsTritonSupportedInstruction(instr, gpu_version);
+      return static_cast<bool>(
+          IsTritonSupportedInstruction(*instr, gpu_version));
     }
 
     // For simplicity we only fuse elementwise binary ops with splat operands
@@ -291,7 +260,8 @@ bool IsTriviallyFusible(HloInstruction* instr,
          IsSupportedBroadcastOfParameter(*operand_0)) ^
         (IsBroadcastOfScalarConstant(*operand_1) ||
          IsSupportedBroadcastOfParameter(*operand_1))) {
-      return IsTritonSupportedInstruction(instr, gpu_version);
+      return static_cast<bool>(
+          IsTritonSupportedInstruction(*instr, gpu_version));
     }
   }
 
@@ -335,14 +305,6 @@ bool IsTriviallyConnectedProducerOf(
   }
 
   return false;
-}
-
-bool IsTritonSupportedComputation(const HloComputation* computation,
-                                  const se::GpuComputeCapability& gpu_version) {
-  return absl::c_all_of(
-      computation->instructions(), [&](const HloInstruction* instr) {
-        return IsTritonSupportedInstruction(instr, gpu_version);
-      });
 }
 
 // Finds the first non-fusible producer of a diamond. This instruction is either
@@ -447,7 +409,7 @@ SoftmaxRewriterTriton::MatchesTritonCompatibleClosedReductionDiamond(
     return "Root is not elementwise binary.";
   }
 
-  if (!IsTritonSupportedInstruction(instr, gpu_version_)) {
+  if (!IsTritonSupportedInstruction(*instr, gpu_version_)) {
     return "Root is not supported for Triton instruction.";
   }
 
@@ -471,13 +433,11 @@ SoftmaxRewriterTriton::MatchesTritonCompatibleClosedReductionDiamond(
     return "Broadcast or reduce have non-default layouts.";
   }
 
-  if (!(reduce->operand_count() == 2 &&
-        reduce->operand(1)->opcode() == HloOpcode::kConstant)) {
-    return "Reduce has a non-constant second operand and/or is variadic.";
-  }
-
-  if (!(IsTritonSupportedComputation(reduce->to_apply(), gpu_version_))) {
-    return "Unsupported reduction by Triton.";
+  if (CodegenDecision is_supported =
+          IsTritonSupportedInstruction(*reduce, gpu_version_);
+      !is_supported) {
+    VLOG(3) << is_supported.Explain();
+    return is_supported;
   }
 
   if (!HasOneUse(broadcast) || !HasOneUse(reduce)) {
@@ -485,11 +445,6 @@ SoftmaxRewriterTriton::MatchesTritonCompatibleClosedReductionDiamond(
   }
 
   producer = reduce->mutable_operand(0);
-
-  if (reduce->dimensions().size() != 1 ||
-      reduce->dimensions(0) != producer->shape().rank() - 1) {
-    return "Reduction is not a row-reduction of a single operand.";
-  }
 
   if (absl::c_linear_search(broadcast->dimensions(),
                             broadcast->shape().rank() - 1)) {

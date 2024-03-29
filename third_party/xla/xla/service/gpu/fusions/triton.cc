@@ -153,6 +153,7 @@ absl::StatusOr<FusionEmissionResult> TritonFusion::Emit(
         triton_config.set_split_k(1);
         triton_config.set_num_stages(1);
         triton_config.set_num_warps(2);
+        triton_config.set_num_ctas(1);
       }
       TF_ASSIGN_OR_RETURN(
           TritonGemmConfig config,
