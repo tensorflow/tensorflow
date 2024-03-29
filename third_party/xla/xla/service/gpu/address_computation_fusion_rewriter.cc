@@ -59,13 +59,20 @@ namespace {
 
 // A dataflow path flowing from a definition to a user.
 using DefUseDataflowPath = absl::InlinedVector<HloInstruction*, 2>;
+
 // All dataflow paths flowing from a definition to all users. Each user will
 // have a separate entry in the vector.
 using DefUseDataflowPaths = absl::InlinedVector<DefUseDataflowPath, 4>;
+
 // A dataflow path flowing from a user to a definition.
 using UseDefDataflowPath = absl::InlinedVector<HloInstruction*, 4>;
+
 // All dataflow paths flowing from a user to all definitions of its operands.
 using UseDefDataflowPaths = absl::InlinedVector<HloInstruction*, 8>;
+
+using DataflowPathView = absl::Span<HloInstruction* const>;
+using DataflowPathsView = absl::Span<DataflowPathView>;
+
 using InstructionSet = absl::flat_hash_set<HloInstruction*>;
 
 bool IsNoOp(const HloInstruction* hlo) {
@@ -262,7 +269,7 @@ DefUseDataflowPaths GetSlicedUserPaths(const HloInstruction* instr) {
 }
 
 absl::InlinedVector<HloInstruction*, 4> GetPatternCaptures(
-    absl::Span<HloInstruction* const> matches) {
+    DataflowPathView matches) {
   absl::InlinedVector<HloInstruction*, 4> captures;
 
   InstructionSet matched_instrs(matches.begin(), matches.end());
@@ -280,7 +287,7 @@ absl::InlinedVector<HloInstruction*, 4> GetPatternCaptures(
 }
 
 Status CreateRootTuple(HloInstruction* hero, HloComputation::Builder& builder,
-                       DefUseDataflowPaths sliced_user_paths,
+                       DataflowPathsView sliced_user_paths,
                        absl::flat_hash_map<const HloInstruction*,
                                            HloInstruction*>& instr_mapping) {
   unsigned tuple_size = hero->shape().tuple_shapes_size();
@@ -314,9 +321,8 @@ Status CreateRootTuple(HloInstruction* hero, HloComputation::Builder& builder,
 }
 
 absl::StatusOr<HloComputation*> CreateFusionBody(
-    HloModule* module, absl::Span<HloInstruction* const> sliced_operand_paths,
-    DefUseDataflowPaths sliced_user_paths,
-    absl::Span<HloInstruction* const> captures) {
+    HloModule* module, DataflowPathView sliced_operand_paths,
+    DataflowPathsView sliced_user_paths, DataflowPathView captures) {
   HloComputation::Builder builder("address-computation");
 
   // A mapping from original instructions to instructions in the fusion body.
@@ -366,9 +372,8 @@ absl::StatusOr<HloComputation*> CreateFusionBody(
 }
 
 absl::StatusOr<HloInstruction*> CreateFusionInstruction(
-    HloModule* module, HloInstruction* orig,
-    absl::Span<HloInstruction* const> captures, HloComputation* body,
-    bool dynamic) {
+    HloModule* module, HloInstruction* orig, DataflowPathView captures,
+    HloComputation* body, bool dynamic) {
   HloComputation* parent = orig->parent();
 
   // Add a fusion operation calling outlined fusion computation.
@@ -446,14 +451,21 @@ absl::StatusOr<bool> AddressComputationFusionRewriter::Run(
       std::vector<HloInstruction*> matched_instrs;
       absl::c_copy(sliced_operand_paths, std::back_inserter(matched_instrs));
 
-      for (auto& sliced_user_path : sliced_user_paths)
+      std::vector<DataflowPathView> sliced_user_paths_view;
+      for (auto& sliced_user_path : sliced_user_paths) {
         absl::c_copy(sliced_user_path, std::back_inserter(matched_instrs));
+        DataflowPathView sliced_user_path_view{&sliced_user_path.front(),
+                                               sliced_user_path.size()};
+        sliced_user_paths_view.push_back(std::move(sliced_user_path_view));
+      }
 
       auto captures = GetPatternCaptures(matched_instrs);
 
-      TF_ASSIGN_OR_RETURN(HloComputation * fusion_body,
-                          CreateFusionBody(module, sliced_operand_paths,
-                                           sliced_user_paths, captures));
+      TF_ASSIGN_OR_RETURN(
+          HloComputation * fusion_body,
+          CreateFusionBody(module, sliced_operand_paths,
+                           DataflowPathsView(sliced_user_paths_view),
+                           captures));
 
       TF_ASSIGN_OR_RETURN(HloInstruction * fusion,
                           CreateFusionInstruction(module, hero, captures,
