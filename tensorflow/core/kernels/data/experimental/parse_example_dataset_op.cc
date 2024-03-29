@@ -410,9 +410,9 @@ class ParseExampleDatasetOp : public UnaryDatasetOpKernel {
         RecordStop(ctx);
         result->notification.WaitForNotification();
         RecordStart(ctx);
-        profiler::TraceMe traceme([&] {
-          return profiler::TraceMeEncode("ParseExampleConsume",
-                                         {{"element_id", result->id}});
+        tsl::profiler::TraceMe traceme([&] {
+          return tsl::profiler::TraceMeEncode("ParseExampleConsume",
+                                              {{"element_id", result->id}});
         });
         return ProcessResult(ctx, result, out_tensors, end_of_sequence);
       }
@@ -581,9 +581,9 @@ class ParseExampleDatasetOp : public UnaryDatasetOpKernel {
       void CallFunction(const std::shared_ptr<IteratorContext>& ctx,
                         const std::shared_ptr<InvocationResult>& result)
           TF_LOCKS_EXCLUDED(*mu_) {
-        profiler::TraceMe traceme([&] {
-          return profiler::TraceMeEncode("ParseExampleProduce",
-                                         {{"element_id", result->id}});
+        tsl::profiler::TraceMe traceme([&] {
+          return tsl::profiler::TraceMeEncode("ParseExampleProduce",
+                                              {{"element_id", result->id}});
         });
         // Get the next input element.
         std::vector<Tensor> input_element;
