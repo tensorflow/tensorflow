@@ -597,8 +597,12 @@ try-import %workspace%/.bazelrc.user
 # Build TensorFlow v2.
 test:release_base --test_size_filters=small,medium
 
+# Ensure release_base is set on linux
+build:release_linux_base --config=release_base
+
 # Target the AVX instruction set
 build:release_linux_base --config=avx_linux
+
 # Enable support for all targets
 build:release_base --config=cpu_cross
 
@@ -679,11 +683,13 @@ build:unsupported_gpu_linux --action_env=GCC_HOST_COMPILER_PATH="/dt9/usr/bin/gc
 build:unsupported_gpu_linux --crosstool_top=@ubuntu20.04-gcc9_manylinux2014-cuda11.2-cudnn8.1-tensorrt7.2_config_cuda//crosstool:toolchain
 
 build:release_cpu_macos --config=avx_linux
-test:release_cpu_macos --config=release_base
 
 # Base build configs for macOS
 build:release_macos_base --action_env  DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer
 build:release_macos_base --define=no_nccl_support=true --output_filter=^$
+
+# Ensure release_base is set on mac
+build:release_macos_base --config=release_base
 
 # Build configs for macOS x86
 build:release_macos_x86 --config=release_macos_base
@@ -714,10 +720,12 @@ test:release_macos_x86 --config=release_macos_base
 # Test configs for macOS Arm64
 test:release_macos_arm64 --config=release_macos_base
 
+# Ensure release_base is set on windows
+build:release_cpu_windows --config=release_base
+
 # TODO(kanglan): Update windows configs after b/289091160 is fixed
 build:release_cpu_windows --config=avx_win
 build:release_cpu_windows --define=no_tensorflow_py_deps=true
-test:release_cpu_windows --config=release_base
 
 # Exclude TFRT integration for anything but Linux.
 build:android --config=no_tfrt
