@@ -464,6 +464,10 @@ class TfrtSession : public tensorflow::Session {
   Status ListDevices(std::vector<DeviceAttributes>* response) override {
     return errors::Unimplemented("TfrtSession::ListDevices is Unimplemented.");
   }
+  Status LocalDeviceManager(const DeviceMgr** output) override {
+    *output = &graph_executor_->fallback_state().device_manager();
+    return absl::OkStatus();
+  }
 
  private:
   tfrt::HostContext* GetHostContext() {
