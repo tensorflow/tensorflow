@@ -1852,8 +1852,7 @@ AutoShardingSolverResult CallSolver(
   if (max_cost) {
     request.mutable_max_cost()->set_coeff(*max_cost);
   }
-  for (const auto& [edge, edge_cost] : cost_graph.edge_communication_costs_) {
-    const auto& edge_memory_cost = cost_graph.edge_memory_costs_.at(edge);
+  for (const auto& [edge, edge_cost] : cost_graph.edge_costs_) {
     AutoShardingSolverRequest_Pair raw_edge;
     raw_edge.set_first(edge.first);
     raw_edge.set_second(edge.second);
@@ -1862,8 +1861,8 @@ AutoShardingSolverResult CallSolver(
     AutoShardingSolverRequest_Costs mij;
     for (NodeStrategyIdx i = 0; i < edge_cost.n_; i++) {
       for (NodeStrategyIdx j = 0; j < edge_cost.m_; j++) {
-        rij.add_costs(edge_cost(i, j));
-        mij.add_costs(edge_memory_cost(i, j));
+        rij.add_costs(edge_cost(i, j).communication_cost);
+        mij.add_costs(edge_cost(i, j).memory_cost);
       }
     }
     request.mutable_resharding_costs()->Add(std::move(rij));
@@ -1929,8 +1928,8 @@ AutoShardingSolverResult CallSolver(
   for (const auto& pair : alias_set) {
     const StrategyGroup* src_strategy_group = strategy_groups[pair.first];
     const StrategyGroup* dst_strategy_group = strategy_groups[pair.second];
-    Matrix raw_cost(src_strategy_group->strategies.size(),
-                    dst_strategy_group->strategies.size());
+    Matrix<double> raw_cost(src_strategy_group->strategies.size(),
+                            dst_strategy_group->strategies.size());
     for (NodeStrategyIdx i = 0; i < src_strategy_group->strategies.size();
          ++i) {
       for (NodeStrategyIdx j = 0; j < dst_strategy_group->strategies.size();
@@ -3782,7 +3781,7 @@ absl::StatusOr<AutoShardingResult> AutoShardingImplementation::RunAutoSharding(
     std::vector<absl::flat_hash_set<spmd::EdgeIdx>> node_to_edges(
         strategy_groups.size());
     spmd::EdgeIdx edge_idx = 0;
-    for (const auto& [edge, _] : cost_graph.edge_communication_costs_) {
+    for (const auto& [edge, _] : cost_graph.edge_costs_) {
       node_to_edges[edge.second].insert(edge_idx);
       ++edge_idx;
     }
