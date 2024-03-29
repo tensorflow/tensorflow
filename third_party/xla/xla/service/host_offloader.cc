@@ -222,28 +222,34 @@ Status HostOffloader::HandleMoveToHostCustomCall(HloInstruction* custom_call) {
   // Save a pointer to this custom call for when we want to remove it later.
   custom_calls_to_remove_.emplace(custom_call);
 
-  // We expect that the DUS is the only user of this custom call.
-  if (custom_call->user_count() != 1) {
+  // We expect that either the custom call is the root or the DUS is the only
+  // user of this custom call.
+  if (!custom_call->IsRoot() && custom_call->user_count() != 1) {
     return FailedPrecondition(
-        "Expecting custom call %s to only have 1 user; it has %d users: [%s]",
+        "Expecting custom call %s to either be the root or only have 1 user; "
+        "it is not the root and has %d users: [%s]",
         custom_call->name(), custom_call->user_count(),
         absl::StrJoin(custom_call->users(), ", ",
                       [](std::string* out, const HloInstruction* user) {
                         out->append(user->name());
                       }));
   }
-  HloInstruction* op_being_annotated = custom_call->users()[0];
 
-  // Skip past any bitcasts.
-  while (op_being_annotated->opcode() == HloOpcode::kBitcast) {
-    VLOG(1) << "Skipping bitcast " << op_being_annotated->ToString();
-    op_being_annotated = op_being_annotated->users()[0];
+  HloInstruction* consumer = nullptr;
+  if (!custom_call->IsRoot()) {
+    consumer = custom_call->users().at(0);
+    // Skip past any bitcasts.
+    while (consumer != nullptr && consumer->opcode() == HloOpcode::kBitcast) {
+      VLOG(1) << "Skipping bitcast " << consumer->ToString();
+      consumer = consumer->users().at(0);
+    }
   }
 
-  if (op_being_annotated->opcode() == HloOpcode::kDynamicUpdateSlice) {
-    TF_RETURN_IF_ERROR(MemoryOnlyOffloadStartingWithDus(op_being_annotated));
-  } else if (op_being_annotated->opcode() == HloOpcode::kCopy) {
-    TF_RETURN_IF_ERROR(MemoryOnlyOffloadStartingWithCopy(op_being_annotated));
+  if (consumer != nullptr &&
+      consumer->opcode() == HloOpcode::kDynamicUpdateSlice) {
+    TF_RETURN_IF_ERROR(MemoryOnlyOffloadStartingWithDus(consumer));
+  } else if (consumer != nullptr && consumer->opcode() == HloOpcode::kCopy) {
+    TF_RETURN_IF_ERROR(MemoryOnlyOffloadStartingWithCopy(consumer));
   } else {
     TF_ASSIGN_OR_RETURN(bool did_output_streaming,
                         TryOutputStreaming(custom_call));

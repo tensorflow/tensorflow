@@ -17,7 +17,7 @@ limitations under the License.
 
 #include <array>
 #include <cstdint>
-#include <string>
+#include <memory>
 #include <utility>
 #include <vector>
 
@@ -26,15 +26,18 @@ limitations under the License.
 #include "absl/container/inlined_vector.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
+#include "absl/status/status.h"
+#include "absl/strings/str_format.h"
+#include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/service/call_graph.h"
 #include "xla/service/hlo_value.h"
 #include "xla/service/host_memory_offload_annotations.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/status.h"
-#include "xla/statusor.h"
 #include "xla/util.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/statusor.h"
@@ -336,8 +339,11 @@ absl::StatusOr<bool> ProcessAnnotationForCopyMovement(
            instruction->parent()->IsEntryComputation();
   };
 
+  if (instruction->IsRoot()) {
+    return false;
+  }
   HloInstruction* starting_instr =
-      FindDUSFromAnnotation(instruction->users()[0]);
+      FindDUSFromAnnotation(instruction->users().at(0));
   // If it's the pure copy case reset instruction.
   if (starting_instr->opcode() != HloOpcode::kDynamicUpdateSlice) {
     starting_instr = instruction;

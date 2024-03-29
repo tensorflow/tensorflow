@@ -1952,7 +1952,8 @@ Status ShapeVerifier::VerifyEntryComputationLayout(const HloModule& module) {
                   result_layout.shape(),
                   Shape::Equal()
                       .IgnoreTilesInLayout()
-                      .IgnoreTailPaddingAlignmentInElements())) {
+                      .IgnoreTailPaddingAlignmentInElements()
+                      .IgnoreMemorySpaceInLayout())) {
     return Internal(
         "Shape of the root instruction of entry computation (%s) should be "
         "compatible to one specified in module's entry computation layout (%s)",
