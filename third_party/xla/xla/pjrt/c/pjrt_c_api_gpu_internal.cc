@@ -32,6 +32,7 @@ limitations under the License.
 #include "xla/ffi/ffi.h"
 #include "xla/ffi/ffi_api.h"
 #include "xla/pjrt/c/pjrt_c_api.h"
+#include "xla/pjrt/c/pjrt_c_api_custom_partitioner_extension.h"
 #include "xla/pjrt/c/pjrt_c_api_gpu_extension.h"
 #include "xla/pjrt/c/pjrt_c_api_helpers.h"
 #include "xla/pjrt/c/pjrt_c_api_profiler_extension.h"
@@ -42,6 +43,7 @@ limitations under the License.
 #include "xla/pjrt/pjrt_common.h"
 #include "xla/pjrt/pjrt_compiler.h"
 #include "xla/pjrt/pjrt_device_description.h"
+#include "xla/python/custom_partition_callback.h"
 #include "xla/service/compiler.h"
 #include "xla/service/custom_call_target_registry.h"
 #include "xla/stream_executor/device_description.h"
@@ -198,6 +200,24 @@ PJRT_Profiler_Extension profiler_extension{
     /*profiler_api=*/&profiler_api,
 };
 
+PJRT_Error* PJRT_Register_Custom_Partitioner(
+    PJRT_Register_Custom_Partitioner_Args* args) {
+  PJRT_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
+      "PJRT_Register_Custom_Partitioner_Args",
+      PJRT_Register_Custom_Partitioner_Args_STRUCT_SIZE, args->struct_size));
+  std::string name(args->name, args->name_size);
+  RegisterCustomCallPartitioner(
+      name, jax::CreateCApiCustomCallPartitioner(args->callbacks));
+  return nullptr;
+}
+
+PJRT_Custom_Partitioner_Extension custom_partitioner{
+    /*struct_size=*/PJRT_Gpu_Custom_Call_STRUCT_SIZE,
+    /*type=*/PJRT_Extension_Type::PJRT_Extension_Type_Custom_Partitioner,
+    /*next=*/reinterpret_cast<PJRT_Extension_Base*>(&profiler_extension),
+    /*register_custom_partitioner=*/PJRT_Register_Custom_Partitioner,
+};
+
 PJRT_Error* PJRT_Gpu_Register_Custom_Call(
     PJRT_Gpu_Register_Custom_Call_Args* args) {
   PJRT_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
@@ -228,7 +248,7 @@ const PJRT_Api* GetGpuPjrtApi() {
   static PJRT_Gpu_Custom_Call custom_call{
       /*struct_size=*/PJRT_Gpu_Custom_Call_STRUCT_SIZE,
       /*type=*/PJRT_Extension_Type::PJRT_Extension_Type_Gpu_Custom_Call,
-      /*next=*/reinterpret_cast<PJRT_Extension_Base*>(&profiler_extension),
+      /*next=*/reinterpret_cast<PJRT_Extension_Base*>(&custom_partitioner),
       /*custom_call=*/PJRT_Gpu_Register_Custom_Call,
   };
   static const PJRT_Api pjrt_api =

@@ -54,6 +54,15 @@ cc_library(
 )
 
 cc_library(
+    name = "pjrt_c_api_custom_partitioner_extension_hdrs",
+    hdrs = ["pjrt_c_api_custom_partitioner_extension.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":pjrt_c_api_hdrs",
+    ],
+)
+
+cc_library(
     name = "pjrt_c_api_wrapper_impl",
     srcs = ["pjrt_c_api_wrapper_impl.cc"],
     hdrs = ["pjrt_c_api_wrapper_impl.h"],
@@ -166,6 +175,7 @@ cc_library(
     hdrs = ["pjrt_c_api_gpu_internal.h"],
     visibility = ["//visibility:public"],
     deps = [
+        ":pjrt_c_api_custom_partitioner_extension_hdrs",
         ":pjrt_c_api_gpu_extension_hdrs",
         ":pjrt_c_api_hdrs",
         ":pjrt_c_api_helpers",
@@ -186,6 +196,7 @@ cc_library(
         "//xla/pjrt/gpu:gpu_helpers",
         "//xla/pjrt/gpu:se_gpu_pjrt_client",
         "//xla/pjrt/gpu:se_gpu_pjrt_compiler",  # To register GPU AOT compiler
+        "//xla/python:custom_partition_callback",
         "//xla/python:inspect_sharding",  # To register "InspectSharding" custom partitioning handler.
         "//xla/service:compiler",
         "//xla/service:custom_call_target_registry",
