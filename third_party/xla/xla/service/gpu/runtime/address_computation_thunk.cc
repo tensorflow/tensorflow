@@ -49,8 +49,8 @@ AddressComputationThunk::AddressComputationThunk(
     std::vector<std::unique_ptr<BufferAllocation>> fake_allocations,
     std::vector<std::optional<std::vector<BufferAllocation::Slice>>>
         offset_buffer_indices,
-    std::vector<std::optional<const Shape>> orig_shapes,
-    std::vector<std::optional<const Shape>> sliced_shapes,
+    std::vector<std::optional<Shape>> orig_shapes,
+    std::vector<std::optional<Shape>> sliced_shapes,
     std::vector<std::optional<uint64_t>> offset_byte_sizes)
     : Thunk(Kind::kAddressComputation, thunk_info),
       embedded_thunk_(std::make_unique<SequentialThunk>(

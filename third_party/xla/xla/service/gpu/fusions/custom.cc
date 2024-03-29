@@ -199,10 +199,10 @@ absl::StatusOr<FusionEmissionResult> EmitDynamicSlicedGemm(
       ir_emitter_context.buffer_assignment();
 
   std::vector<std::optional<std::vector<BufferAllocation::Slice>>>
-      offset_buffer_indices;
-  std::vector<std::optional<const Shape>> orig_shapes;
-  std::vector<std::optional<const Shape>> sliced_shapes;
-  std::vector<std::optional<uint64_t>> offset_byte_sizes;
+      offset_buffer_indices(4, std::nullopt);
+  std::vector<std::optional<Shape>> orig_shapes(4, std::nullopt);
+  std::vector<std::optional<Shape>> sliced_shapes(4, std::nullopt);
+  std::vector<std::optional<uint64_t>> offset_byte_sizes(4, std::nullopt);
 
   HloDynamicIndexInstruction* slice_instr = nullptr;
   auto get_original_operand_slice =
@@ -231,12 +231,8 @@ absl::StatusOr<FusionEmissionResult> EmitDynamicSlicedGemm(
                               fusion.operand(param->parameter_number()), index);
   };
 
-  auto collect_slice_info = [&]() {
+  auto collect_slice_info = [&](unsigned idx) {
     if (slice_instr == nullptr) {
-      offset_buffer_indices.push_back(std::nullopt);
-      orig_shapes.push_back(std::nullopt);
-      sliced_shapes.push_back(std::nullopt);
-      offset_byte_sizes.push_back(std::nullopt);
       return;
     }
 
@@ -249,27 +245,29 @@ absl::StatusOr<FusionEmissionResult> EmitDynamicSlicedGemm(
                              /*index=*/{})
               .value());
     }
-    offset_buffer_indices.push_back(offset_slices);
-    orig_shapes.push_back(slice_instr->operand(0)->shape());
-    sliced_shapes.push_back(DynCast<HloDynamicSliceInstruction>(slice_instr)
-                                ? slice_instr->shape()
-                                : slice_instr->operand(1)->shape());
-    offset_byte_sizes.push_back(ShapeUtil::ByteSizeOfPrimitiveType(
-        slice_instr->index_operands().front()->shape().element_type()));
+    offset_buffer_indices[idx] = std::move(offset_slices);
+    orig_shapes[idx] = slice_instr->operand(0)->shape();
+    sliced_shapes[idx] = DynCast<HloDynamicSliceInstruction>(slice_instr)
+                             ? slice_instr->shape()
+                             : slice_instr->operand(1)->shape();
+    offset_byte_sizes[idx] = ShapeUtil::ByteSizeOfPrimitiveType(
+        slice_instr->index_operands().front()->shape().element_type());
+
+    // Reset `slice_instr` for the next call to `collect_slice_info()`.
+    slice_instr = nullptr;
   };
 
+  unsigned argument_idx = 0;
   TF_ASSIGN_OR_RETURN(BufferAllocation::Slice lhs_slice,
                       get_original_operand_slice(
-                          custom_call.operand(kLHSOperandIndex), /*index=*/{}));
-  collect_slice_info();
+                          custom_call.operand(argument_idx), /*index=*/{}));
+  collect_slice_info(argument_idx++);
 
-  slice_instr = nullptr;
   TF_ASSIGN_OR_RETURN(BufferAllocation::Slice rhs_slice,
                       get_original_operand_slice(
-                          custom_call.operand(kRHSOperandIndex), /*index=*/{}));
-  collect_slice_info();
+                          custom_call.operand(argument_idx), /*index=*/{}));
+  collect_slice_info(argument_idx++);
 
-  slice_instr = nullptr;
   BufferAllocation::Slice output;
   std::optional<BufferAllocation::Slice> workspace = std::nullopt;
   std::optional<BufferAllocation::Slice> slice_workspace_fake = std::nullopt;
@@ -313,22 +311,18 @@ absl::StatusOr<FusionEmissionResult> EmitDynamicSlicedGemm(
   if (fusion.shape().IsArray()) {
     TF_ASSIGN_OR_RETURN(output,
                         get_original_result_slice(&custom_call, /*index=*/{}));
-    collect_slice_info();
-    // Collect slice info for std::nullopt workspace.
-    slice_instr = nullptr;
-    collect_slice_info();
+    collect_slice_info(argument_idx);
   } else {
     TF_ASSIGN_OR_RETURN(
         output, get_original_result_slice(&custom_call,
                                           /*index=*/{kGEMMOutputBufferIndex}));
-    collect_slice_info();
+    collect_slice_info(argument_idx++);
     // TODO(vuson): If we want to support slices of workspace, we'd need to
     // start `HloFindIf` with `get-tuple-element` with the right index.
     TF_ASSIGN_OR_RETURN(
         workspace, GetAllocationSlice(buffer_assignment, &fusion,
                                       /*index=*/{kGEMMWorkspaceBufferIndex}));
-    slice_instr = nullptr;
-    collect_slice_info();
+    collect_slice_info(argument_idx);
     fake_allocations[3] = std::make_unique<BufferAllocation>(
         /*index=*/3, workspace->size(), /*color=*/0);
     slice_workspace_fake = BufferAllocation::Slice(fake_allocations[3].get(), 0,
