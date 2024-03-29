@@ -2102,20 +2102,39 @@ class RewriteQuantizedAddOp : public OpRewritePattern<stablehlo::AddOp> {
   }
 };
 
+// Rewrites quantized `stablehlo.constant` to `tfl.pseudo_qconst`.
+class RewriteQuantizedConstantOp
+    : public OpRewritePattern<stablehlo::ConstantOp> {
+ public:
+  using OpRewritePattern<stablehlo::ConstantOp>::OpRewritePattern;
+
+  LogicalResult match(stablehlo::ConstantOp op) const override {
+    return success(IsQuantizedTensorType(op.getOutput().getType()));
+  }
+
+  void rewrite(stablehlo::ConstantOp op,
+               PatternRewriter& rewriter) const override {
+    rewriter.replaceOpWithNewOp<TFL::QConstOp>(
+        op, /*qtype=*/TypeAttr::get(op.getOutput().getType()),
+        /*value=*/op.getValue());
+  }
+};
+
 void UniformQuantizedStableHloToTflPass::runOnOperation() {
   func::FuncOp func_op = getOperation();
   MLIRContext& ctx = getContext();
 
   RewritePatternSet patterns(&ctx);
   patterns.add<RewriteUniformDequantizeOp, RewriteUniformQuantizeOp,
-               RewriteQuantizedBroadcastInDimOp, RewriteQuantizedConcatenateOp,
+               RewriteQuantizedAddOp, RewriteQuantizedBroadcastInDimOp,
+               RewriteQuantizedConcatenateOp, RewriteQuantizedConstantOp,
                RewriteQuantizedConvolutionOp,
                RewriteQuantizedDotGeneralOpToTflFullyConnectedOrBatchMatmulOp,
                RewriteQuantizedDynamicReshapeOp, RewriteQuantizedDynamicSliceOp,
                RewriteQuantizedGatherOp, RewriteQuantizedPadOp,
                RewriteQuantizedReduceWindowOpWithMax, RewriteQuantizedReshapeOp,
                RewriteQuantizedSelectOp, RewriteQuantizedSliceOp,
-               RewriteQuantizedTransposeOp, RewriteQuantizedAddOp>(&ctx);
+               RewriteQuantizedTransposeOp>(&ctx);
 
   if (failed(applyPatternsAndFoldGreedily(func_op, std::move(patterns)))) {
     func_op.emitError() << "Failed to convert stablehlo ops with uniform "

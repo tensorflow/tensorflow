@@ -1506,3 +1506,32 @@ func.func @add_i32(%arg0: tensor<1x3x!quant.uniform<i32:f32:1, {1.000000e+0, 1.0
 // CHECK-LABEL: func @add_i32
 // CHECK: stablehlo.add
 // CHECK-NOT: tfl.add
+
+// -----
+
+// Tests that a quantized `stablehlo.constant` is converted into `tfl.qconst`.
+
+// CHECK-LABEL: func @quantized_constant
+func.func @quantized_constant() -> tensor<1x2x4x5x!quant.uniform<i8:f32, 1.000000e+0>> {
+  %0 = stablehlo.constant() {value = dense<1> : tensor<1x2x4x5xi8>} : () -> tensor<1x2x4x5x!quant.uniform<i8:f32, 1.000000e+0>>
+  return %0 : tensor<1x2x4x5x!quant.uniform<i8:f32, 1.000000e+0>>
+}
+
+// CHECK: %[[QCONST:.+]] = "tfl.pseudo_qconst"() {qtype = tensor<1x2x4x5x!quant.uniform<i8:f32, 1.000000e+00>>, value = dense<1> : tensor<1x2x4x5xi8>}
+// CHECK-SAME: () -> tensor<1x2x4x5x!quant.uniform<i8:f32, 1.000000e+00>>
+// CHECK: return %[[QCONST]]
+
+// -----
+
+// Tests that a float `stablehlo.constant` is not converted into `tfl.qconst`.
+
+// CHECK-LABEL: func @float_constant
+func.func @float_constant() -> tensor<1x2x4x5xf32> {
+  %0 = stablehlo.constant() {value = dense<1.0> : tensor<1x2x4x5xf32>} : () -> tensor<1x2x4x5xf32>
+  return %0 : tensor<1x2x4x5xf32>
+}
+
+// CHECK: stablehlo.constant
+// CHECK-NOT: tfl.pseudo_qconst
+// CHECK-NOT: tfl.pseudo_const
+// CHECK-NOT: arith.constant
