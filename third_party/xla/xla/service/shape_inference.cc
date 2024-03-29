@@ -3165,7 +3165,7 @@ ShapeInference::InferCollectivePermuteDoneShape(const Shape& operand_shape) {
   for (int64_t dim = 0; dim < operand_shape.rank(); ++dim) {
     const int64_t input_dim_size = operand_shape.dimensions(dim);
     const int64_t update_dim_size = update_shape.dimensions(dim);
-    if (update_dim_size < 0) {
+    if (!IsUnboundedDynamicSize(update_dim_size) && update_dim_size < 0) {
       return InvalidArgument(
           "Size index %d to dynamic update slice must be >= 0.",
           update_dim_size);
