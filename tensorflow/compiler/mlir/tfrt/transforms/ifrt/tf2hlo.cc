@@ -128,6 +128,7 @@ absl::StatusOr<tensorflow::tpu::TPUCompileMetadataProto> GetCompileMetadata(
 
   // Create a default device assignment if one is not given by the model.
   if (!metadata.has_device_assignment()) {
+    // TODO(b/316068010): integrate core selection.
     TF_ASSIGN_OR_RETURN(
         auto device_assignment,
         ifrt_client.GetDefaultDeviceAssignment(

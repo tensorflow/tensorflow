@@ -87,37 +87,21 @@ absl::StatusOr<std::vector<DtypeAndShape>> BuildDtypeAndShape(
 }
 
 absl::StatusOr<xla::DeviceAssignment> GetXlaDeviceAssignment(
-    const xla::ifrt::Client& ifrt_client,
     const tensorflow::tpu::TPUCompileMetadataProto& compile_metadata) {
-  int num_replicas = compile_metadata.num_replicas();
-  int num_partitions = compile_metadata.num_cores_per_replica();
-
-  VLOG(2) << " Number of replcas is " << num_replicas
-          << " and num_partitions is " << num_partitions;
-
-  if (num_replicas > 1) {
-    return absl::UnimplementedError(
-        absl::StrCat("Only support single replica, but replica number is ",
-                     num_replicas, " and num_partitions is ", num_partitions));
+  if (!compile_metadata.has_device_assignment()) {
+    return absl::InternalError("No device assignment found.");
   }
-
-  if (compile_metadata.has_device_assignment()) {
-    TF_ASSIGN_OR_RETURN(std::unique_ptr<xla::DeviceAssignment> da,
-                        xla::DeviceAssignment::Deserialize(
-                            compile_metadata.device_assignment()));
-
-    return *std::move(da);
-  } else {
-    // TODO(b/316068010): integrate core selection.
-    return ifrt_client.GetDefaultDeviceAssignment(num_replicas, num_partitions);
-  }
+  TF_ASSIGN_OR_RETURN(
+      std::unique_ptr<xla::DeviceAssignment> da,
+      xla::DeviceAssignment::Deserialize(compile_metadata.device_assignment()));
+  return *da;
 }
 
 absl::StatusOr<std::vector<xla::ifrt::Device*>> GetAssignedDevices(
     const xla::ifrt::Client& ifrt_client,
     const tensorflow::tpu::TPUCompileMetadataProto& compile_metadata) {
   TF_ASSIGN_OR_RETURN(auto device_assignment,
-                      GetXlaDeviceAssignment(ifrt_client, compile_metadata));
+                      GetXlaDeviceAssignment(compile_metadata));
 
   const int num_devices =
       device_assignment.replica_count() * device_assignment.computation_count();
@@ -173,9 +157,8 @@ IfrtServingExecutable::CreateExecutableSynchronously(
                      num_replicas, " and num_partitions is ", num_partitions));
   }
 
-  TF_ASSIGN_OR_RETURN(
-      xla::DeviceAssignment da,
-      GetXlaDeviceAssignment(*ifrt_client_, tf2hlo_result.compile_metadata));
+  TF_ASSIGN_OR_RETURN(xla::DeviceAssignment da,
+                      GetXlaDeviceAssignment(tf2hlo_result.compile_metadata));
 
   VLOG(2) << "Device assignment :" << da.ToString();
 
