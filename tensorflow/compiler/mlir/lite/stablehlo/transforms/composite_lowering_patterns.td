@@ -20,3 +20,9 @@ include "mlir/Dialect/Func/IR/FuncOps.td"
 include "mhlo/IR/hlo_ops.td"
 include "tensorflow/compiler/mlir/lite/ir/tfl_ops.td"
 
+
+def LegalizeHardSwishComposite: Pat<
+                    (MHLO_CompositeOp:$old_value
+                    (variadic $input),
+                    ConstantStrAttr<StrAttr, "aten.hardswish.default">, $_, $_, $_),
+                    (TFL_HardSwishOp $input)>;
