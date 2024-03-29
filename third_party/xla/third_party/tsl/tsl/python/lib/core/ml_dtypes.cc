@@ -17,13 +17,16 @@ limitations under the License.
 #include <atomic>
 #include <exception>
 
+// Must be included first to ensure `NPY_NO_DEPRECATED_API` is defined.
+// clang-format off
+#include "tsl/python/lib/core/numpy.h"  // IWYU pragma: keep
+// clang-format on
 #include "numpy/ndarraytypes.h"
 #include "absl/base/attributes.h"
 #include "absl/base/call_once.h"
 #include "pybind11/gil.h"  // from @pybind11
 #include "pybind11/numpy.h"  // from @pybind11
 #include "pybind11/pybind11.h"  // from @pybind11
-#include "tsl/python/lib/core/numpy.h"  // IWYU pragma: keep
 
 namespace tsl {
 namespace ml_dtypes {
