@@ -2317,9 +2317,9 @@ IndexingMap ComputeProgramIdToOutputTileIndexing(
 // Computes the base pointer offset for the given pid and shape.
 // `tile_offset_indexing` is a mapping from
 // (program_id) -> [tile_offset0, ..., tile_offsetN]
-StatusOr<Value> ComputeBasePtrOffset(ImplicitLocOpBuilder b, Value pid,
-                                     const Shape& shape,
-                                     const IndexingMap& tile_offset_indexing) {
+absl::StatusOr<Value> ComputeBasePtrOffset(
+    ImplicitLocOpBuilder b, Value pid, const Shape& shape,
+    const IndexingMap& tile_offset_indexing) {
   ArrayRef<mlir::AffineExpr> dimension_exprs =
       tile_offset_indexing.GetAffineMap().getResults();
 
