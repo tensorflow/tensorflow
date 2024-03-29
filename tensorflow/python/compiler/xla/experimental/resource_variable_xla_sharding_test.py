@@ -131,6 +131,56 @@ class ResourceVariableXlaShardingTest(test.TestCase):
         sharding_proto,
     )
 
+  def test_disabling_xla_sharding_ops_temporarily(self):
+    w = variables.Variable(
+        initial_value=math_ops.range(8, dtype=dtypes.float32),
+        name='w',
+    )
+    self.assertIsInstance(w, resource_variable_ops.BaseResourceVariable)
+
+    context.enable_xla_sharding_for_resource_variables()
+    with context.temporarily_disable_xla_sharding_for_resource_variables():
+      with self.assertRaisesRegex(
+          AttributeError,
+          '.*Tensor.op is undefined when eager execution is enabled.*',
+      ):
+        xla_sharding.split(
+            w,
+            split_dimension=0,
+            num_devices=8,
+        )
+
+    # xla_sharding_for_resource_variables is enabled again. Following line
+    # doesn't throw an error.
+    xla_sharding.split(
+        w,
+        split_dimension=0,
+        num_devices=8,
+    )
+
+    context.disable_xla_sharding_for_resource_variables()
+    with context.temporarily_disable_xla_sharding_for_resource_variables():
+      with self.assertRaisesRegex(
+          AttributeError,
+          '.*Tensor.op is undefined when eager execution is enabled.*',
+      ):
+        xla_sharding.split(
+            w,
+            split_dimension=0,
+            num_devices=8,
+        )
+
+    # xla_sharding_for_resource_variables stays disabled.
+    with self.assertRaisesRegex(
+        AttributeError,
+        '.*Tensor.op is undefined when eager execution is enabled.*',
+    ):
+      xla_sharding.split(
+          w,
+          split_dimension=0,
+          num_devices=8,
+      )
+
 
 if __name__ == '__main__':
   test.main()
