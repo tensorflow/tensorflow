@@ -163,10 +163,13 @@ xla_cc_test(
 xla_test(
     name = "gemm_rewrite_test",
     srcs = ["gemm_rewrite_test.cc"],
-    backends = ["gpu"],
+    backends = [
+        "gpu_h100",
+    ],
     local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]) + if_rocm_is_configured([
         "TENSORFLOW_USE_ROCM=1",
     ]),
+    tags = ["demand"],
     deps = [
         ":gpu_codegen_test",
         "//xla:error_spec",
