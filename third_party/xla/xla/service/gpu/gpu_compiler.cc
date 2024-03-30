@@ -1286,6 +1286,17 @@ absl::Status GpuCompiler::OptimizeHloModule(
   TF_RETURN_IF_ERROR(OptimizeHloPostLayoutAssignment(
       hlo_module, stream_exec, options, gpu_target_config, thread_pool.get()));
 
+  // This is a "low effort, high impact" fusion that should be run first.
+  if (hlo_module->config()
+          .debug_options()
+          .xla_gpu_enable_address_computation_fusion()) {
+    HloPassPipeline pipeline("address-computation");
+    TF_ASSIGN_OR_RETURN(se::Platform * platform,
+                        se::PlatformManager::PlatformWithId(PlatformId()));
+    pipeline.AddPass<AddressComputationFusionRewriter>(platform->Name());
+    TF_RETURN_IF_ERROR(pipeline.Run(hlo_module).status());
+  }
+
   TF_RETURN_IF_ERROR(RunFusionPasses(hlo_module, gpu_target_config,
                                      thread_pool.get(),
                                      ShapeSizeBytesFunction()));
@@ -2216,16 +2227,6 @@ absl::Status GpuCompiler::RunPostSchedulingPipelines(
       VLOG(1) << "HloRematerialization saved "
               << sizes.before_bytes - sizes.after_bytes << " bytes";
     }
-  }
-
-  if (module->config()
-          .debug_options()
-          .xla_gpu_enable_address_computation_fusion()) {
-    HloPassPipeline pipeline("address-computation");
-    TF_ASSIGN_OR_RETURN(se::Platform * platform,
-                        se::PlatformManager::PlatformWithId(PlatformId()));
-    pipeline.AddPass<AddressComputationFusionRewriter>(platform->Name());
-    TF_RETURN_IF_ERROR(pipeline.Run(module).status());
   }
 
   {

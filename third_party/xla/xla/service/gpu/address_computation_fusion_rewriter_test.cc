@@ -51,7 +51,7 @@ class AddressComputationFusionRewriterTest : public HloTestBase {};
 
 TEST_F(AddressComputationFusionRewriterTest, SimpleGemm) {
   const char* hlo = R"(
-    HloModule test, is_scheduled=true
+    HloModule test
 
     ENTRY %main.9 {
       %p0 = f16[2,8,8]{2,1,0} parameter(0)
@@ -107,15 +107,12 @@ TEST_F(AddressComputationFusionRewriterTest, SimpleGemm) {
 
   auto device = TestGpuDeviceInfo::RTXA6000DeviceInfo();
   RunAndFilecheckHloRewrite(hlo, AddressComputationFusionRewriter(PLATFORM),
-                            expected, [](HloModule* module) {
-                              EXPECT_TRUE(module->has_schedule());
-                              TF_CHECK_OK(module->schedule().Verify());
-                            });
+                            expected);
 }
 
 TEST_F(AddressComputationFusionRewriterTest, SimpleGemmWithWorkspace) {
   const char* hlo = R"(
-    HloModule test, is_scheduled=true
+    HloModule test
 
     ENTRY %main.9 {
       %p0 = f16[2,8,8]{2,1,0} parameter(0)
@@ -175,15 +172,12 @@ TEST_F(AddressComputationFusionRewriterTest, SimpleGemmWithWorkspace) {
 
   auto device = TestGpuDeviceInfo::RTXA6000DeviceInfo();
   RunAndFilecheckHloRewrite(hlo, AddressComputationFusionRewriter(PLATFORM),
-                            expected, [](HloModule* module) {
-                              EXPECT_TRUE(module->has_schedule());
-                              TF_CHECK_OK(module->schedule().Verify());
-                            });
+                            expected);
 }
 
 TEST_F(AddressComputationFusionRewriterTest, SimpleGemmWorkspaceIgnored) {
   const char* hlo = R"(
-    HloModule test, is_scheduled=true
+    HloModule test
 
     ENTRY %main.9 {
       %p0 = f16[2,8,8]{2,1,0} parameter(0)
@@ -245,15 +239,12 @@ TEST_F(AddressComputationFusionRewriterTest, SimpleGemmWorkspaceIgnored) {
 
   auto device = TestGpuDeviceInfo::RTXA6000DeviceInfo();
   RunAndFilecheckHloRewrite(hlo, AddressComputationFusionRewriter(PLATFORM),
-                            expected, [](HloModule* module) {
-                              EXPECT_TRUE(module->has_schedule());
-                              TF_CHECK_OK(module->schedule().Verify());
-                            });
+                            expected);
 }
 
 TEST_F(AddressComputationFusionRewriterTest, SimpleGemmNotRoot) {
   const char* hlo = R"(
-    HloModule test, is_scheduled=true
+    HloModule test
 
     ENTRY %main.9 {
       %p0 = f16[2,8,8]{2,1,0} parameter(0)
@@ -311,16 +302,13 @@ TEST_F(AddressComputationFusionRewriterTest, SimpleGemmNotRoot) {
 
   auto device = TestGpuDeviceInfo::RTXA6000DeviceInfo();
   RunAndFilecheckHloRewrite(hlo, AddressComputationFusionRewriter(PLATFORM),
-                            expected, [](HloModule* module) {
-                              EXPECT_TRUE(module->has_schedule());
-                              TF_CHECK_OK(module->schedule().Verify());
-                            });
+                            expected);
 }
 
 TEST_F(AddressComputationFusionRewriterTest,
        SimpleGemmOperandHasMultipleUsers) {
   const char* hlo = R"(
-    HloModule test, is_scheduled=true
+    HloModule test
 
     ENTRY %main.9 {
       %p0 = f16[2,8,8]{2,1,0} parameter(0)
@@ -380,16 +368,13 @@ TEST_F(AddressComputationFusionRewriterTest,
 
   auto device = TestGpuDeviceInfo::RTXA6000DeviceInfo();
   RunAndFilecheckHloRewrite(hlo, AddressComputationFusionRewriter(PLATFORM),
-                            expected, [](HloModule* module) {
-                              EXPECT_TRUE(module->has_schedule());
-                              TF_CHECK_OK(module->schedule().Verify());
-                            });
+                            expected);
 }
 
 TEST_F(AddressComputationFusionRewriterTest,
        SimpleGemmOperandsHaveMultipleUsers) {
   const char* hlo = R"(
-    HloModule test, is_scheduled=true
+    HloModule test
 
     ENTRY %main.9 {
       %p0 = f16[2,8,8]{2,1,0} parameter(0)
@@ -448,7 +433,7 @@ TEST_F(AddressComputationFusionRewriterTest,
 
 TEST_F(AddressComputationFusionRewriterTest, SimpleGemmSlicingNotParameter) {
   const char* hlo = R"(
-    HloModule test, is_scheduled=true
+    HloModule test
 
     ENTRY %main.9 {
       %p0 = f16[4,8,8]{2,1,0} parameter(0)
@@ -510,15 +495,12 @@ TEST_F(AddressComputationFusionRewriterTest, SimpleGemmSlicingNotParameter) {
 
   auto device = TestGpuDeviceInfo::RTXA6000DeviceInfo();
   RunAndFilecheckHloRewrite(hlo, AddressComputationFusionRewriter(PLATFORM),
-                            expected, [](HloModule* module) {
-                              EXPECT_TRUE(module->has_schedule());
-                              TF_CHECK_OK(module->schedule().Verify());
-                            });
+                            expected);
 }
 
 TEST_F(AddressComputationFusionRewriterTest, SimpleGemmNotContiguousSlice) {
   const char* hlo = R"(
-    HloModule test, is_scheduled=true
+    HloModule test
 
     ENTRY %main.9 {
       %p0 = f16[2,8,8]{2,1,0} parameter(0)
@@ -557,7 +539,7 @@ TEST_F(AddressComputationFusionRewriterTest, SimpleGemmNotContiguousSlice) {
 
 TEST_F(AddressComputationFusionRewriterTest, SimpleGemmNonNoOpInSliceChain) {
   const char* hlo = R"(
-    HloModule test, is_scheduled=true
+    HloModule test
 
     ENTRY %main.9 {
       %p0 = f16[2,8,8]{2,1,0} parameter(0)
@@ -600,7 +582,7 @@ TEST_F(AddressComputationFusionRewriterTest, SimpleGemmNonNoOpInSliceChain) {
 
 TEST_F(AddressComputationFusionRewriterTest, SimpleGemmDuplicateOperand) {
   const char* hlo = R"(
-    HloModule test, is_scheduled=true
+    HloModule test
 
     ENTRY %main {
       %p0 = (f32[100,100]{1,0}, f32[100,100]{1,0}) parameter(0)
@@ -674,15 +656,12 @@ TEST_F(AddressComputationFusionRewriterTest, SimpleGemmDuplicateOperand) {
 
   auto device = TestGpuDeviceInfo::RTXA6000DeviceInfo();
   RunAndFilecheckHloRewrite(hlo, AddressComputationFusionRewriter(PLATFORM),
-                            expected, [](HloModule* module) {
-                              EXPECT_TRUE(module->has_schedule());
-                              TF_CHECK_OK(module->schedule().Verify());
-                            });
+                            expected);
 }
 
 TEST_F(AddressComputationFusionRewriterTest, SimpleGemmReverseOperandOrder) {
   const char* hlo = R"(
-    HloModule test, is_scheduled=true
+    HloModule test
 
     ENTRY %main.9 {
       %p0 = f16[2,8,8]{2,1,0} parameter(1)
@@ -740,15 +719,12 @@ TEST_F(AddressComputationFusionRewriterTest, SimpleGemmReverseOperandOrder) {
 
   auto device = TestGpuDeviceInfo::RTXA6000DeviceInfo();
   RunAndFilecheckHloRewrite(hlo, AddressComputationFusionRewriter(PLATFORM),
-                            expected, [](HloModule* module) {
-                              EXPECT_TRUE(module->has_schedule());
-                              TF_CHECK_OK(module->schedule().Verify());
-                            });
+                            expected);
 }
 
 TEST_F(AddressComputationFusionRewriterTest, SimpleGemmReverseOperandOrder2) {
   const char* hlo = R"(
-    HloModule test, is_scheduled=true
+    HloModule test
 
     ENTRY %main.9 {
       %p0 = f16[2,8,8]{2,1,0} parameter(0)
@@ -806,15 +782,12 @@ TEST_F(AddressComputationFusionRewriterTest, SimpleGemmReverseOperandOrder2) {
 
   auto device = TestGpuDeviceInfo::RTXA6000DeviceInfo();
   RunAndFilecheckHloRewrite(hlo, AddressComputationFusionRewriter(PLATFORM),
-                            expected, [](HloModule* module) {
-                              EXPECT_TRUE(module->has_schedule());
-                              TF_CHECK_OK(module->schedule().Verify());
-                            });
+                            expected);
 }
 
 TEST_F(AddressComputationFusionRewriterTest, SimpleGemmOperandAliasingOutput) {
   const char* hlo = R"(
-    HloModule test, is_scheduled=true
+    HloModule test
 
     ENTRY %main.9 {
       %p0 = (f32[100,100]{1,0}, f32[100,100]{1,0}) parameter(0)
@@ -873,15 +846,12 @@ TEST_F(AddressComputationFusionRewriterTest, SimpleGemmOperandAliasingOutput) {
 
   auto device = TestGpuDeviceInfo::RTXA6000DeviceInfo();
   RunAndFilecheckHloRewrite(hlo, AddressComputationFusionRewriter(PLATFORM),
-                            expected, [](HloModule* module) {
-                              EXPECT_TRUE(module->has_schedule());
-                              TF_CHECK_OK(module->schedule().Verify());
-                            });
+                            expected);
 }
 
 TEST_F(AddressComputationFusionRewriterTest, SimpleGemmOperandsFromSameSlice) {
   const char* hlo = R"(
-    HloModule test, is_scheduled=true
+    HloModule test
 
     ENTRY %main.9 {
       %p0 = f16[2,8,8]{2,1,0} parameter(0)
@@ -934,10 +904,7 @@ TEST_F(AddressComputationFusionRewriterTest, SimpleGemmOperandsFromSameSlice) {
 
   auto device = TestGpuDeviceInfo::RTXA6000DeviceInfo();
   RunAndFilecheckHloRewrite(hlo, AddressComputationFusionRewriter(PLATFORM),
-                            expected, [](HloModule* module) {
-                              EXPECT_TRUE(module->has_schedule());
-                              TF_CHECK_OK(module->schedule().Verify());
-                            });
+                            expected);
 }
 
 static absl::Status Memcpy(se::Stream* stream, ffi::BufferBase src,
@@ -977,12 +944,12 @@ TEST_F(AddressComputationFusionRewriterTest, SimpleCustomCall) {
   hlo_config.set_debug_options(debug_options);
   TF_ASSERT_OK_AND_ASSIGN(auto hlo, xla::HloModule::CreateFromProto(
                                         computation.proto(), hlo_config));
-  TF_ASSERT_OK_AND_ASSIGN(
-      HloSchedule schedule,
-      ScheduleModule(hlo.get(), [](const BufferValue& buffer) {
-        return ShapeUtil::ByteSizeOf(buffer.shape(), /*pointer_size=*/8);
-      }));
-  TF_CHECK_OK(hlo->set_schedule(std::move(schedule)));
+  // TF_ASSERT_OK_AND_ASSIGN(
+  //     HloSchedule schedule,
+  //     ScheduleModule(hlo.get(), [](const BufferValue& buffer) {
+  //       return ShapeUtil::ByteSizeOf(buffer.shape(), /*pointer_size=*/8);
+  //     }));
+  // TF_CHECK_OK(hlo->set_schedule(std::move(schedule)));
 
   const char* expected = R"(
     ; CHECK:     %address-computation {{.*}} {
@@ -1006,12 +973,8 @@ TEST_F(AddressComputationFusionRewriterTest, SimpleCustomCall) {
   )";
 
   auto device = TestGpuDeviceInfo::RTXA6000DeviceInfo();
-  RunAndFilecheckHloRewrite(hlo->ToString(),
-                            AddressComputationFusionRewriter(PLATFORM),
-                            expected, [](HloModule* module) {
-                              EXPECT_TRUE(module->has_schedule());
-                              TF_CHECK_OK(module->schedule().Verify());
-                            });
+  RunAndFilecheckHloRewrite(
+      hlo->ToString(), AddressComputationFusionRewriter(PLATFORM), expected);
 }
 
 void Callback_Void(se::gpu::GpuStreamHandle stream, void** buffers,
@@ -1035,12 +998,12 @@ TEST_F(AddressComputationFusionRewriterTest, SimpleCustomCallLegacy) {
   hlo_config.set_debug_options(debug_options);
   TF_ASSERT_OK_AND_ASSIGN(auto hlo, xla::HloModule::CreateFromProto(
                                         computation.proto(), hlo_config));
-  TF_ASSERT_OK_AND_ASSIGN(
-      HloSchedule schedule,
-      ScheduleModule(hlo.get(), [](const BufferValue& buffer) {
-        return ShapeUtil::ByteSizeOf(buffer.shape(), /*pointer_size=*/8);
-      }));
-  TF_CHECK_OK(hlo->set_schedule(std::move(schedule)));
+  // TF_ASSERT_OK_AND_ASSIGN(
+  //     HloSchedule schedule,
+  //     ScheduleModule(hlo.get(), [](const BufferValue& buffer) {
+  //       return ShapeUtil::ByteSizeOf(buffer.shape(), /*pointer_size=*/8);
+  //     }));
+  // TF_CHECK_OK(hlo->set_schedule(std::move(schedule)));
 
   const char* expected = R"(
     ; CHECK:     %address-computation {{.*}} {
@@ -1063,12 +1026,8 @@ TEST_F(AddressComputationFusionRewriterTest, SimpleCustomCallLegacy) {
   )";
 
   auto device = TestGpuDeviceInfo::RTXA6000DeviceInfo();
-  RunAndFilecheckHloRewrite(hlo->ToString(),
-                            AddressComputationFusionRewriter(PLATFORM),
-                            expected, [](HloModule* module) {
-                              EXPECT_TRUE(module->has_schedule());
-                              TF_CHECK_OK(module->schedule().Verify());
-                            });
+  RunAndFilecheckHloRewrite(
+      hlo->ToString(), AddressComputationFusionRewriter(PLATFORM), expected);
 }
 
 TEST_F(AddressComputationFusionRewriterTest, TupleSliceCustomCallLegacy) {
@@ -1099,12 +1058,12 @@ TEST_F(AddressComputationFusionRewriterTest, TupleSliceCustomCallLegacy) {
   hlo_config.set_debug_options(debug_options);
   TF_ASSERT_OK_AND_ASSIGN(auto hlo, xla::HloModule::CreateFromProto(
                                         computation.proto(), hlo_config));
-  TF_ASSERT_OK_AND_ASSIGN(
-      HloSchedule schedule,
-      ScheduleModule(hlo.get(), [](const BufferValue& buffer) {
-        return ShapeUtil::ByteSizeOf(buffer.shape(), /*pointer_size=*/8);
-      }));
-  TF_CHECK_OK(hlo->set_schedule(std::move(schedule)));
+  // TF_ASSERT_OK_AND_ASSIGN(
+  //     HloSchedule schedule,
+  //     ScheduleModule(hlo.get(), [](const BufferValue& buffer) {
+  //       return ShapeUtil::ByteSizeOf(buffer.shape(), /*pointer_size=*/8);
+  //     }));
+  // TF_CHECK_OK(hlo->set_schedule(std::move(schedule)));
 
   const char* expected = R"(
     ; CHECK:     %address-computation {{.*}} {
@@ -1128,12 +1087,8 @@ TEST_F(AddressComputationFusionRewriterTest, TupleSliceCustomCallLegacy) {
   )";
 
   auto device = TestGpuDeviceInfo::RTXA6000DeviceInfo();
-  RunAndFilecheckHloRewrite(hlo->ToString(),
-                            AddressComputationFusionRewriter(PLATFORM),
-                            expected, [](HloModule* module) {
-                              EXPECT_TRUE(module->has_schedule());
-                              TF_CHECK_OK(module->schedule().Verify());
-                            });
+  RunAndFilecheckHloRewrite(
+      hlo->ToString(), AddressComputationFusionRewriter(PLATFORM), expected);
 }
 
 TEST_F(AddressComputationFusionRewriterTest, TupledOutputCustomCallLegacy) {
@@ -1175,12 +1130,12 @@ TEST_F(AddressComputationFusionRewriterTest, TupledOutputCustomCallLegacy) {
   hlo_config.set_debug_options(debug_options);
   TF_ASSERT_OK_AND_ASSIGN(auto hlo, xla::HloModule::CreateFromProto(
                                         computation.proto(), hlo_config));
-  TF_ASSERT_OK_AND_ASSIGN(
-      HloSchedule schedule,
-      ScheduleModule(hlo.get(), [](const BufferValue& buffer) {
-        return ShapeUtil::ByteSizeOf(buffer.shape(), /*pointer_size=*/8);
-      }));
-  TF_CHECK_OK(hlo->set_schedule(std::move(schedule)));
+  // TF_ASSERT_OK_AND_ASSIGN(
+  //     HloSchedule schedule,
+  //     ScheduleModule(hlo.get(), [](const BufferValue& buffer) {
+  //       return ShapeUtil::ByteSizeOf(buffer.shape(), /*pointer_size=*/8);
+  //     }));
+  // TF_CHECK_OK(hlo->set_schedule(std::move(schedule)));
 
   const char* expected = R"(
     ; CHECK:     %address-computation {{.*}} {
@@ -1216,12 +1171,8 @@ TEST_F(AddressComputationFusionRewriterTest, TupledOutputCustomCallLegacy) {
   )";
 
   auto device = TestGpuDeviceInfo::RTXA6000DeviceInfo();
-  RunAndFilecheckHloRewrite(hlo->ToString(),
-                            AddressComputationFusionRewriter(PLATFORM),
-                            expected, [](HloModule* module) {
-                              EXPECT_TRUE(module->has_schedule());
-                              TF_CHECK_OK(module->schedule().Verify());
-                            });
+  RunAndFilecheckHloRewrite(
+      hlo->ToString(), AddressComputationFusionRewriter(PLATFORM), expected);
 }
 
 TEST_F(AddressComputationFusionRewriterTest, UnalignedSlice) {
@@ -1240,12 +1191,12 @@ TEST_F(AddressComputationFusionRewriterTest, UnalignedSlice) {
   hlo_config.set_debug_options(debug_options);
   TF_ASSERT_OK_AND_ASSIGN(auto hlo, xla::HloModule::CreateFromProto(
                                         computation.proto(), hlo_config));
-  TF_ASSERT_OK_AND_ASSIGN(
-      HloSchedule schedule,
-      ScheduleModule(hlo.get(), [](const BufferValue& buffer) {
-        return ShapeUtil::ByteSizeOf(buffer.shape(), /*pointer_size=*/8);
-      }));
-  TF_CHECK_OK(hlo->set_schedule(std::move(schedule)));
+  // TF_ASSERT_OK_AND_ASSIGN(
+  //     HloSchedule schedule,
+  //     ScheduleModule(hlo.get(), [](const BufferValue& buffer) {
+  //       return ShapeUtil::ByteSizeOf(buffer.shape(), /*pointer_size=*/8);
+  //     }));
+  // TF_CHECK_OK(hlo->set_schedule(std::move(schedule)));
 
   auto device = TestGpuDeviceInfo::RTXA6000DeviceInfo();
   RunAndFilecheckHloRewrite(hlo->ToString(),
@@ -1255,7 +1206,7 @@ TEST_F(AddressComputationFusionRewriterTest, UnalignedSlice) {
 
 TEST_F(AddressComputationFusionRewriterTest, DynamicSimpleGemm) {
   const char* hlo = R"(
-    HloModule test, is_scheduled=true
+    HloModule test
 
     ENTRY main.9 {
       p0 = f16[2,8,8]{2,1,0} parameter(0)
@@ -1315,15 +1266,12 @@ TEST_F(AddressComputationFusionRewriterTest, DynamicSimpleGemm) {
 
   auto device = TestGpuDeviceInfo::RTXA6000DeviceInfo();
   RunAndFilecheckHloRewrite(hlo, AddressComputationFusionRewriter(PLATFORM),
-                            expected, [](HloModule* module) {
-                              EXPECT_TRUE(module->has_schedule());
-                              TF_CHECK_OK(module->schedule().Verify());
-                            });
+                            expected);
 }
 
 TEST_F(AddressComputationFusionRewriterTest, DynamicSimpleGemmWithWorkspace) {
   const char* hlo = R"(
-    HloModule test, is_scheduled=true
+    HloModule test
 
     ENTRY main.9 {
       p0 = f16[2,8,8]{2,1,0} parameter(0)
@@ -1388,16 +1336,13 @@ TEST_F(AddressComputationFusionRewriterTest, DynamicSimpleGemmWithWorkspace) {
 
   auto device = TestGpuDeviceInfo::RTXA6000DeviceInfo();
   RunAndFilecheckHloRewrite(hlo, AddressComputationFusionRewriter(PLATFORM),
-                            expected, [](HloModule* module) {
-                              EXPECT_TRUE(module->has_schedule());
-                              TF_CHECK_OK(module->schedule().Verify());
-                            });
+                            expected);
 }
 
 TEST_F(AddressComputationFusionRewriterTest,
        DynamicSimpleGemmWorkspaceIgnored) {
   const char* hlo = R"(
-    HloModule test, is_scheduled=true
+    HloModule test
 
     ENTRY main.9 {
       p0 = f16[2,8,8]{2,1,0} parameter(0)
@@ -1463,15 +1408,12 @@ TEST_F(AddressComputationFusionRewriterTest,
 
   auto device = TestGpuDeviceInfo::RTXA6000DeviceInfo();
   RunAndFilecheckHloRewrite(hlo, AddressComputationFusionRewriter(PLATFORM),
-                            expected, [](HloModule* module) {
-                              EXPECT_TRUE(module->has_schedule());
-                              TF_CHECK_OK(module->schedule().Verify());
-                            });
+                            expected);
 }
 
 TEST_F(AddressComputationFusionRewriterTest, DynamicSimpleGemmNotRoot) {
   const char* hlo = R"(
-    HloModule test, is_scheduled=true
+    HloModule test
 
     ENTRY main.9 {
       p0 = f16[2,8,8]{2,1,0} parameter(0)
@@ -1533,15 +1475,12 @@ TEST_F(AddressComputationFusionRewriterTest, DynamicSimpleGemmNotRoot) {
 
   auto device = TestGpuDeviceInfo::RTXA6000DeviceInfo();
   RunAndFilecheckHloRewrite(hlo, AddressComputationFusionRewriter(PLATFORM),
-                            expected, [](HloModule* module) {
-                              EXPECT_TRUE(module->has_schedule());
-                              TF_CHECK_OK(module->schedule().Verify());
-                            });
+                            expected);
 }
 
 TEST_F(AddressComputationFusionRewriterTest, DUSSimpleGemm) {
   const char* hlo = R"(
-    HloModule test, is_scheduled=true
+    HloModule test
 
     ENTRY main.9 {
       p0 = f16[1,8,8]{2,1,0} parameter(0)
@@ -1600,15 +1539,12 @@ TEST_F(AddressComputationFusionRewriterTest, DUSSimpleGemm) {
 
   auto device = TestGpuDeviceInfo::RTXA6000DeviceInfo();
   RunAndFilecheckHloRewrite(hlo, AddressComputationFusionRewriter(PLATFORM),
-                            expected, [](HloModule* module) {
-                              EXPECT_TRUE(module->has_schedule());
-                              TF_CHECK_OK(module->schedule().Verify());
-                            });
+                            expected);
 }
 
 TEST_F(AddressComputationFusionRewriterTest, DUSSimpleGemmNotRoot) {
   const char* hlo = R"(
-    HloModule test, is_scheduled=true
+    HloModule test
 
     ENTRY main.9 {
       p0 = f16[2,8,8]{2,1,0} parameter(0)
@@ -1676,15 +1612,12 @@ TEST_F(AddressComputationFusionRewriterTest, DUSSimpleGemmNotRoot) {
 
   auto device = TestGpuDeviceInfo::RTXA6000DeviceInfo();
   RunAndFilecheckHloRewrite(hlo, AddressComputationFusionRewriter(PLATFORM),
-                            expected, [](HloModule* module) {
-                              EXPECT_TRUE(module->has_schedule());
-                              TF_CHECK_OK(module->schedule().Verify());
-                            });
+                            expected);
 }
 
 TEST_F(AddressComputationFusionRewriterTest, DUSSimpleGemmWithWorkspace) {
   const char* hlo = R"(
-    HloModule test, is_scheduled=true
+    HloModule test
 
     ENTRY main.9 {
       p0 = f16[2,8,8]{2,1,0} parameter(0)
@@ -1762,15 +1695,12 @@ TEST_F(AddressComputationFusionRewriterTest, DUSSimpleGemmWithWorkspace) {
 
   auto device = TestGpuDeviceInfo::RTXA6000DeviceInfo();
   RunAndFilecheckHloRewrite(hlo, AddressComputationFusionRewriter(PLATFORM),
-                            expected, [](HloModule* module) {
-                              EXPECT_TRUE(module->has_schedule());
-                              TF_CHECK_OK(module->schedule().Verify());
-                            });
+                            expected);
 }
 
 TEST_F(AddressComputationFusionRewriterTest, DUSSimpleGemmWorkspaceIgnored) {
   const char* hlo = R"(
-    HloModule test, is_scheduled=true
+    HloModule test
 
     ENTRY %main.9 {
       %p0 = f16[8,8]{1,0} parameter(0)
@@ -1833,10 +1763,7 @@ TEST_F(AddressComputationFusionRewriterTest, DUSSimpleGemmWorkspaceIgnored) {
 
   auto device = TestGpuDeviceInfo::RTXA6000DeviceInfo();
   RunAndFilecheckHloRewrite(hlo, AddressComputationFusionRewriter(PLATFORM),
-                            expected, [](HloModule* module) {
-                              EXPECT_TRUE(module->has_schedule());
-                              TF_CHECK_OK(module->schedule().Verify());
-                            });
+                            expected);
 }
 
 }  // namespace xla::gpu

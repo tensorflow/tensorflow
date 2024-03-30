@@ -349,16 +349,21 @@ ENTRY main {
 )";
 
   HloModuleConfig config;
-  DebugOptions debug_options = GetDebugOptionsForTest();
-  config.set_debug_options(GetDebugOptionsForTest());
+  DebugOptions triton_enabled_debug_options = GetDebugOptionsForTest();
+  triton_enabled_debug_options.set_xla_gpu_enable_address_computation_fusion(
+      false);
+  config.set_debug_options(triton_enabled_debug_options);
   config.set_replica_count(1);
   config.set_num_partitions(1);
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseAndReturnVerifiedModule(hlo_string, config));
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> triton_enabled_module,
                           GetOptimizedModule(std::move(module)));
-  debug_options.set_xla_gpu_enable_triton_gemm(false);
-  config.set_debug_options(debug_options);
+  DebugOptions triton_disabled_debug_options = GetDebugOptionsForTest();
+  triton_disabled_debug_options.set_xla_gpu_enable_address_computation_fusion(
+      false);
+  triton_disabled_debug_options.set_xla_gpu_enable_triton_gemm(false);
+  config.set_debug_options(triton_disabled_debug_options);
   TF_ASSERT_OK_AND_ASSIGN(module,
                           ParseAndReturnVerifiedModule(hlo_string, config));
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> triton_disabled_module,

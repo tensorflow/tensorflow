@@ -404,8 +404,6 @@ absl::StatusOr<HloInstruction*> CreateFusionInstruction(
 absl::StatusOr<bool> AddressComputationFusionRewriter::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
-  if (!module->has_schedule()) return Internal("module is not scheduled");
-
   auto process_slices = [&](bool dynamic) -> absl::StatusOr<bool> {
     absl::flat_hash_map<HloInstruction*,
                         std::pair<UseDefDataflowPaths, DefUseDataflowPaths>>
@@ -445,7 +443,6 @@ absl::StatusOr<bool> AddressComputationFusionRewriter::Run(
 
     if (matches.empty()) return false;
 
-    HloSchedule& schedule = module->schedule();
     for (auto& [hero, paths] : matches) {
       auto& [sliced_operand_paths, sliced_user_paths] = paths;
       std::vector<HloInstruction*> matched_instrs;
@@ -471,15 +468,7 @@ absl::StatusOr<bool> AddressComputationFusionRewriter::Run(
                           CreateFusionInstruction(module, hero, captures,
                                                   fusion_body, dynamic));
 
-      // As we are running after scheduling we have to keep it valid.
       HloComputation* parent = hero->parent();
-      // Update schedule to replace the custom call instruction with the fusion
-      // instruction.
-      // Removal of the rest of the instructions in the sequence is handled by
-      // schedule update below.
-      HloInstructionSequence& sequence = schedule.GetOrCreateSequence(parent);
-      sequence.replace_instruction(hero, fusion);
-
       if (fusion->shape().IsTuple()) {
         TF_RETURN_IF_ERROR(parent->ReplaceInstructionWithDifferentShape(
             const_cast<HloInstruction*>(hero), fusion));
@@ -518,8 +507,6 @@ absl::StatusOr<bool> AddressComputationFusionRewriter::Run(
             parent->ReplaceInstruction(instr_to_be_replaced, fusion));
       }
     }
-
-    TF_RETURN_IF_ERROR(module->schedule().Update());
 
     return true;
   };
