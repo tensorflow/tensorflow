@@ -168,9 +168,9 @@ class DeviceNameUtils {
   // and local versions of the device spec. Returns the newer version of the
   // device spec. If we were unable to interpret / parse "fullname" returns
   // an error and *canonical_name is set to "".
-  static Status CanonicalizeDeviceName(StringPiece fullname,
-                                       StringPiece basename,
-                                       std::string* canonical_name);
+  static absl::Status CanonicalizeDeviceName(StringPiece fullname,
+                                             StringPiece basename,
+                                             std::string* canonical_name);
 
   // Returns true if "name" specifies any non-trivial constraint on the device.
   static bool HasSomeDetails(const ParsedName& name) {
@@ -202,15 +202,16 @@ class DeviceNameUtils {
   // Merges the device specifications in "*target" and "other", and
   // stores the result in "*target". Returns OK if "*target" and
   // "other" are compatible, otherwise returns an error.
-  static Status MergeDevNames(ParsedName* target, const ParsedName& other) {
+  static absl::Status MergeDevNames(ParsedName* target,
+                                    const ParsedName& other) {
     return MergeDevNames(target, other, false);
   }
-  static Status MergeDevNames(ParsedName* target, const ParsedName& other,
-                              bool allow_soft_placement);
+  static absl::Status MergeDevNames(ParsedName* target, const ParsedName& other,
+                                    bool allow_soft_placement);
   // Same as MergeDevNames with allow_soft_placement=true, but instead of
   // clearing conflicting fields, overrides them with `other`'s values.
-  static Status MergeOverrideDevNames(ParsedName* target,
-                                      const ParsedName& other);
+  static absl::Status MergeOverrideDevNames(ParsedName* target,
+                                            const ParsedName& other);
 
   // Merges the device specifications in "*target" and "other", and
   // stores the result in "*target" by setting all unset values in target with
@@ -271,8 +272,8 @@ class DeviceNameUtils {
 
   // Returns name of the CPU:0 device on the same host as the device
   // `device_name`.
-  static Status DeviceNameToCpuDeviceName(const std::string& device_name,
-                                          std::string* host_device_name);
+  static absl::Status DeviceNameToCpuDeviceName(const std::string& device_name,
+                                                std::string* host_device_name);
 
   static bool CompareFullNames(const StringPiece& a, const StringPiece& b) {
     ParsedName parsed_a;
