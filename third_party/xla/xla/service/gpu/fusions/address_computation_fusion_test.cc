@@ -159,7 +159,7 @@ TEST_F(AddressComputationFusionTest, CublasGemmSimple) {
     %p0 = bf16[2,8,8]{2,1,0} parameter(0), sharding={replicated}
     %p1 = bf16[2,8,8]{2,1,0} parameter(1), sharding={replicated}
     ROOT %fusion.2 = bf16[8,8]{1,0} fusion(%p0, %p1), kind=kCustom, calls=%fused_computation,
-        backend_config={"fusion_backend_config":{"kind":"__custom_fusion","custom_fusion_config":{"name":"address_computation"}}}
+        backend_config={"fusion_backend_config":{"kind":"__custom_fusion","custom_fusion_config":{"name":"dynamic_address_computation"}}}
   })";
 
   EXPECT_TRUE(RunAndCompareTwoModules(hlo_ref, hlo_opt, GetRefModuleConfig(),
@@ -241,7 +241,7 @@ TEST_F(AddressComputationFusionTest, CublasGemmWithWorkspace) {
     %p0 = f16[2,8,8]{2,1,0} parameter(0), sharding={replicated}
     %p1 = f16[2,8,8]{2,1,0} parameter(1), sharding={replicated}
     ROOT %fusion.2 = (f16[8,8]{1,0}, s8[256]{0}) fusion(%p0, %p1), kind=kCustom, calls=%fused_computation,
-        backend_config={"fusion_backend_config":{"kind":"__custom_fusion","custom_fusion_config":{"name":"address_computation"}}}
+        backend_config={"fusion_backend_config":{"kind":"__custom_fusion","custom_fusion_config":{"name":"dynamic_address_computation"}}}
   })";
 
   EXPECT_TRUE(RunAndCompareTwoModules(hlo_ref, hlo_opt, GetRefModuleConfig(),
@@ -320,7 +320,7 @@ TEST_F(AddressComputationFusionTest, ContiguousSlice) {
     %p0 = bf16[2,8,8]{2,1,0} parameter(0), sharding={replicated}
     %p1 = bf16[8,8,10,8]{3,2,1,0} parameter(1), sharding={replicated}
     ROOT %fusion.2 = bf16[4,8]{1,0} fusion(%p0, %p1), kind=kCustom, calls=%fused_computation,
-        backend_config={"fusion_backend_config":{"kind":"__custom_fusion","custom_fusion_config":{"name":"address_computation"}}}
+        backend_config={"fusion_backend_config":{"kind":"__custom_fusion","custom_fusion_config":{"name":"dynamic_address_computation"}}}
   })";
 
   EXPECT_TRUE(RunAndCompareTwoModules(hlo_ref, hlo_opt, GetRefModuleConfig(),
@@ -399,7 +399,7 @@ TEST_F(AddressComputationFusionTest, ContiguousSliceNonDefaultLayout) {
     %p0 = bf16[2,8,8]{1,2,0} parameter(0), sharding={replicated}
     %p1 = bf16[8,8,10,8]{1,2,3,0} parameter(1), sharding={replicated}
     ROOT %fusion.2 = bf16[4,8]{1,0} fusion(%p0, %p1), kind=kCustom, calls=%fused_computation,
-        backend_config={"fusion_backend_config":{"kind":"__custom_fusion","custom_fusion_config":{"name":"address_computation"}}}
+        backend_config={"fusion_backend_config":{"kind":"__custom_fusion","custom_fusion_config":{"name":"dynamic_address_computation"}}}
   })";
 
   EXPECT_TRUE(RunAndCompareTwoModules(hlo_ref, hlo_opt, GetRefModuleConfig(),
@@ -529,7 +529,7 @@ TEST_F(AddressComputationFusionTest, OperandIsSlicedGetTupleElement) {
       calls=%address-computation,
       backend_config={
         "fusion_backend_config":{
-          "kind":"__custom_fusion","custom_fusion_config":{"name":"address_computation"}
+          "kind":"__custom_fusion","custom_fusion_config":{"name":"dynamic_address_computation"}
         }
       }
   })";
@@ -615,7 +615,7 @@ TEST_F(AddressComputationFusionTest, ReversedOperandOrder) {
       calls=%address-computation,
       backend_config={
         "fusion_backend_config":{
-          "kind":"__custom_fusion","custom_fusion_config":{"name":"address_computation"}
+          "kind":"__custom_fusion","custom_fusion_config":{"name":"dynamic_address_computation"}
         }
       }
   })";
@@ -746,7 +746,7 @@ TEST_F(AddressComputationFusionTest, SingleOperandComputation) {
       calls=%address-computation,
       backend_config={
         "fusion_backend_config":{
-          "kind":"__custom_fusion","custom_fusion_config":{"name":"address_computation"}
+          "kind":"__custom_fusion","custom_fusion_config":{"name":"dynamic_address_computation"}
         }
       }
   })";
@@ -837,7 +837,7 @@ TEST_F(AddressComputationFusionTest, SlicedOperandAliasingOutput) {
       output_to_operand_aliasing={{0}: (1, {})},
       backend_config={
         "fusion_backend_config":{
-          "kind":"__custom_fusion","custom_fusion_config":{"name":"address_computation"}
+          "kind":"__custom_fusion","custom_fusion_config":{"name":"dynamic_address_computation"}
         }
       }
   })";

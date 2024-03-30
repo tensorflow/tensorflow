@@ -147,75 +147,24 @@ absl::StatusOr<FusionEmissionResult> EmitGemm(
   const BufferAssignment& buffer_assignment =
       ir_emitter_context.buffer_assignment();
 
-  TF_ASSIGN_OR_RETURN(
-      BufferAllocation::Slice lhs_slice,
-      GetSliceWithUpdatedOffsetAndSize(buffer_assignment, adaptor, fusion,
-                                       *custom_call.operand(kLHSOperandIndex),
-                                       /*index=*/{}));
-
-  TF_ASSIGN_OR_RETURN(
-      BufferAllocation::Slice rhs_slice,
-      GetSliceWithUpdatedOffsetAndSize(buffer_assignment, adaptor, fusion,
-                                       *custom_call.operand(kRHSOperandIndex),
-                                       /*index=*/{}));
-
-  BufferAllocation::Slice output;
-  std::optional<BufferAllocation::Slice> workspace;
-
-  // Result of a legacy cuBLAS custom call can be a tuple if we explicitly
-  // allocate workspace buffer in HLO. If result is an array, it means that
-  // workspace is not available, and cuBLAS will allocate its own workspace.
-  if (custom_call.shape().IsArray()) {
-    TF_ASSIGN_OR_RETURN(output,
-                        GetAllocationSlice(buffer_assignment, &fusion, {}));
-  } else {
-    TF_ASSIGN_OR_RETURN(output, GetAllocationSlice(buffer_assignment, &fusion,
-                                                   {kGEMMOutputBufferIndex}));
-    TF_ASSIGN_OR_RETURN(workspace,
-                        GetAllocationSlice(buffer_assignment, &fusion,
-                                           {kGEMMWorkspaceBufferIndex}));
-  }
-
-  bool deterministic_ops =
-      ir_emitter_context.debug_options().xla_gpu_deterministic_ops();
-
-  TF_ASSIGN_OR_RETURN(
-      GemmConfig config,
-      GemmConfig::For(static_cast<const HloInstruction*>(&custom_call)));
-  auto thunk = std::make_unique<GemmThunk>(
-      Thunk::ThunkInfo::WithProfileAnnotation(&custom_call), std::move(config),
-      lhs_slice, rhs_slice, output, workspace, deterministic_ops);
-
-  FusionEmissionResult result;
-  result.thunks.push_back(std::move(thunk));
-  return result;
-}
-
-absl::StatusOr<FusionEmissionResult> EmitDynamicSlicedGemm(
-    IrEmitterContext& ir_emitter_context, const HloFusionAdaptor& adaptor,
-    const HloFusionInstruction& fusion,
-    const HloCustomCallInstruction& custom_call) {
-  const BufferAssignment& buffer_assignment =
-      ir_emitter_context.buffer_assignment();
-
   std::vector<std::optional<std::vector<BufferAllocation::Slice>>>
       offset_buffer_indices(4, std::nullopt);
   std::vector<std::optional<Shape>> orig_shapes(4, std::nullopt);
   std::vector<std::optional<Shape>> sliced_shapes(4, std::nullopt);
   std::vector<std::optional<uint64_t>> offset_byte_sizes(4, std::nullopt);
 
-  HloDynamicIndexInstruction* slice_instr = nullptr;
+  std::vector<HloInstruction*> slice_instrs(4, nullptr);
   auto get_original_operand_slice =
-      [&](const HloInstruction* start,
-          const ShapeIndex& index) -> absl::StatusOr<BufferAllocation::Slice> {
-    auto* param = DynCast<HloParameterInstruction>(start);
-    auto slice_adaptor = HloFindIf(
-        {HloInstructionAdaptor(*start)}, adaptor,
-        [](auto node) { return node.opcode() == HloOpcode::kDynamicSlice; });
+      [&](const HloInstruction* start, const ShapeIndex& index,
+          unsigned param_idx) -> absl::StatusOr<BufferAllocation::Slice> {
+    auto slice_adaptor =
+        HloFindIf({HloInstructionAdaptor(*start)}, adaptor, [](auto node) {
+          return IsOpcodeAnyOf<HloOpcode::kDynamicSlice, HloOpcode::kSlice>(
+              node);
+        });
     if (slice_adaptor.has_value()) {
-      slice_instr = const_cast<HloDynamicIndexInstruction*>(
-          static_cast<const HloDynamicIndexInstruction*>(
-              &slice_adaptor->instruction()));
+      auto* slice_instr =
+          const_cast<HloInstruction*>(&slice_adaptor->instruction());
 
       if (!IsContiguousSlice(slice_instr->operand(0)->shape(),
                              slice_instr->shape())) {
@@ -224,14 +173,49 @@ absl::StatusOr<FusionEmissionResult> EmitDynamicSlicedGemm(
             "currently");
       }
 
-      param = Cast<HloParameterInstruction>(slice_instr->operand(0));
+      slice_instrs[param_idx] = slice_instr;
+
+      const auto* param =
+          Cast<HloParameterInstruction>(slice_instr->operand(0));
+      TF_ASSIGN_OR_RETURN(
+          BufferAllocation::Slice orig_slice,
+          GetAllocationSlice(buffer_assignment,
+                             fusion.operand(param->parameter_number()), index));
+
+      if (auto* static_slice = DynCast<HloSliceInstruction>(slice_instr)) {
+        // Update static slices.
+        const Shape& src_shape = static_slice->operand(0)->shape();
+        const Shape& dst_shape = static_slice->shape();
+        int64_t size = ShapeUtil::ByteSizeOf(dst_shape);
+
+        // Given this slice
+        // f16[1,4,8]{2,1,0} slice(f16[2,8,8]{2,1,0}),
+        //                         slice={[1:2], [4:8], [0:8]}
+        //
+        // The offset of the slice should be:
+        //    slice_starts(0) * 8 * 8 * sizeof(f16) +
+        //    slice_starts(1) * 8 * sizeof(f16)
+        int64_t offset = orig_slice.offset();
+        for (auto [start, stride] :
+             llvm::zip(static_slice->slice_starts(),
+                       *ShapeUtil::ByteStrides(src_shape))) {
+          offset += start * stride;
+        }
+
+        return BufferAllocation::Slice(orig_slice.allocation(), offset, size);
+      }
+
+      return orig_slice;
     }
 
+    const auto* param = DynCast<HloParameterInstruction>(start);
     return GetAllocationSlice(buffer_assignment,
                               fusion.operand(param->parameter_number()), index);
   };
 
   auto collect_slice_info = [&](unsigned idx) {
+    auto* slice_instr =
+        DynCastOrNull<HloDynamicIndexInstruction>(slice_instrs[idx]);
     if (slice_instr == nullptr) {
       return;
     }
@@ -252,29 +236,26 @@ absl::StatusOr<FusionEmissionResult> EmitDynamicSlicedGemm(
                              : slice_instr->operand(1)->shape();
     offset_byte_sizes[idx] = ShapeUtil::ByteSizeOfPrimitiveType(
         slice_instr->index_operands().front()->shape().element_type());
-
-    // Reset `slice_instr` for the next call to `collect_slice_info()`.
-    slice_instr = nullptr;
   };
 
-  unsigned argument_idx = 0;
+  unsigned param_idx = 0;
   TF_ASSIGN_OR_RETURN(BufferAllocation::Slice lhs_slice,
-                      get_original_operand_slice(
-                          custom_call.operand(argument_idx), /*index=*/{}));
-  collect_slice_info(argument_idx++);
+                      get_original_operand_slice(custom_call.operand(param_idx),
+                                                 /*index=*/{}, param_idx));
+  collect_slice_info(param_idx++);
 
   TF_ASSIGN_OR_RETURN(BufferAllocation::Slice rhs_slice,
-                      get_original_operand_slice(
-                          custom_call.operand(argument_idx), /*index=*/{}));
-  collect_slice_info(argument_idx++);
+                      get_original_operand_slice(custom_call.operand(param_idx),
+                                                 /*index=*/{}, param_idx));
+  collect_slice_info(param_idx++);
 
   BufferAllocation::Slice output;
   std::optional<BufferAllocation::Slice> workspace = std::nullopt;
   std::optional<BufferAllocation::Slice> slice_workspace_fake = std::nullopt;
 
   auto get_original_result_slice =
-      [&](const HloInstruction* start,
-          const ShapeIndex& index) -> absl::StatusOr<BufferAllocation::Slice> {
+      [&](const HloInstruction* start, const ShapeIndex& index,
+          unsigned param_idx) -> absl::StatusOr<BufferAllocation::Slice> {
     auto slice_adaptor = HloFindIf(
         {HloInstructionAdaptor(*start)}, adaptor,
         [](auto node) {
@@ -282,9 +263,9 @@ absl::StatusOr<FusionEmissionResult> EmitDynamicSlicedGemm(
         },
         false);
     if (slice_adaptor.has_value()) {
-      slice_instr = const_cast<HloDynamicIndexInstruction*>(
-          static_cast<const HloDynamicIndexInstruction*>(
-              &slice_adaptor->instruction()));
+      auto* slice_instr =
+          const_cast<HloInstruction*>(&slice_adaptor->instruction());
+      slice_instrs[param_idx] = slice_instr;
 
       if (!IsContiguousSlice(slice_instr->shape(),
                              Cast<HloDynamicUpdateSliceInstruction>(slice_instr)
@@ -299,44 +280,42 @@ absl::StatusOr<FusionEmissionResult> EmitDynamicSlicedGemm(
     return GetAllocationSlice(buffer_assignment, &fusion, index);
   };
 
-  int64_t out_fake_byte_size = ShapeUtil::ByteSizeOf(
-      custom_call.shape().IsArray() ? custom_call.shape()
-                                    : custom_call.shape().tuple_shapes(0));
-
   // Handling cases where multiple operands share the same buffer, with
   // different offset by creating new fake allocations so each operand will have
   // a different buffer index. The slices can thus always start at offset 0.
   // AddressComputationThunk will take care of the offset adjustment.
   std::vector<std::unique_ptr<BufferAllocation>> fake_allocations(4);
   if (fusion.shape().IsArray()) {
-    TF_ASSIGN_OR_RETURN(output,
-                        get_original_result_slice(&custom_call, /*index=*/{}));
-    collect_slice_info(argument_idx);
+    TF_ASSIGN_OR_RETURN(output, get_original_result_slice(
+                                    &custom_call, /*index=*/{}, param_idx));
+    collect_slice_info(param_idx);
   } else {
     TF_ASSIGN_OR_RETURN(
-        output, get_original_result_slice(&custom_call,
-                                          /*index=*/{kGEMMOutputBufferIndex}));
-    collect_slice_info(argument_idx++);
+        output,
+        get_original_result_slice(
+            &custom_call, /*index=*/{kGEMMOutputBufferIndex}, param_idx));
+    collect_slice_info(param_idx++);
+
     // TODO(vuson): If we want to support slices of workspace, we'd need to
     // start `HloFindIf` with `get-tuple-element` with the right index.
     TF_ASSIGN_OR_RETURN(
         workspace, GetAllocationSlice(buffer_assignment, &fusion,
                                       /*index=*/{kGEMMWorkspaceBufferIndex}));
-    collect_slice_info(argument_idx);
-    fake_allocations[3] = std::make_unique<BufferAllocation>(
-        /*index=*/3, workspace->size(), /*color=*/0);
-    slice_workspace_fake = BufferAllocation::Slice(fake_allocations[3].get(), 0,
-                                                   workspace->size());
+    collect_slice_info(param_idx);
+    fake_allocations[param_idx] = std::make_unique<BufferAllocation>(
+        /*index=*/param_idx, workspace->size(), /*color=*/0);
+    slice_workspace_fake = BufferAllocation::Slice(
+        fake_allocations[param_idx].get(), 0, workspace->size());
   }
 
-  if (absl::c_all_of(offset_buffer_indices, [&](auto offset_slices) {
-        return offset_slices == std::nullopt;
-      }))
+  if (absl::c_all_of(slice_instrs, [&](auto slice_instr) {
+        return slice_instr == nullptr;
+      })) {
     return absl::InternalError(
         "DynamicAddressComputationFusion expects at least one sliced "
         "operand/result");
+  }
 
-  // Creating embedded GEMM thunk.
   bool deterministic_ops =
       ir_emitter_context.debug_options().xla_gpu_deterministic_ops();
 
@@ -344,38 +323,55 @@ absl::StatusOr<FusionEmissionResult> EmitDynamicSlicedGemm(
       GemmConfig config,
       GemmConfig::For(static_cast<const HloInstruction*>(&custom_call)));
 
-  int64_t lhs_byte_size =
-      ShapeUtil::ByteSizeOf(custom_call.operand(kLHSOperandIndex)->shape());
-  fake_allocations[kLHSOperandIndex] = std::make_unique<BufferAllocation>(
-      /*index=*/kLHSOperandIndex, lhs_byte_size, /*color=*/0);
-  BufferAllocation::Slice slice_lhs_fake(
-      fake_allocations[kLHSOperandIndex].get(), 0, lhs_byte_size);
+  std::unique_ptr<Thunk> thunk;
+  auto thunk_info = Thunk::ThunkInfo::WithProfileAnnotation(&custom_call);
 
-  int64_t rhs_byte_size =
-      ShapeUtil::ByteSizeOf(custom_call.operand(kRHSOperandIndex)->shape());
-  fake_allocations[kRHSOperandIndex] = std::make_unique<BufferAllocation>(
-      /*index=*/kRHSOperandIndex, rhs_byte_size, /*color=*/0);
-  BufferAllocation::Slice slice_rhs_fake(
-      fake_allocations[kRHSOperandIndex].get(), 0, rhs_byte_size);
+  if (absl::c_any_of(slice_instrs, [&](auto slice_instr) {
+        return DynCastOrNull<HloDynamicIndexInstruction>(slice_instr) !=
+               nullptr;
+      })) {
+    // Creating embedded GEMM thunk.
+    unsigned arg_idx = 0;
+    int64_t lhs_byte_size =
+        ShapeUtil::ByteSizeOf(custom_call.operand(arg_idx)->shape());
+    fake_allocations[arg_idx] = std::make_unique<BufferAllocation>(
+        /*index=*/arg_idx, lhs_byte_size, /*color=*/0);
+    BufferAllocation::Slice slice_lhs_fake(fake_allocations[arg_idx].get(), 0,
+                                           lhs_byte_size);
 
-  fake_allocations[2] = std::make_unique<BufferAllocation>(
-      /*index=*/2, out_fake_byte_size, /*color=*/0);
-  BufferAllocation::Slice slice_out_fake(fake_allocations[2].get(), 0,
-                                         out_fake_byte_size);
-  ThunkSequence seq;
-  seq.emplace_back(std::make_unique<GemmThunk>(
-      Thunk::ThunkInfo::WithProfileAnnotation(&custom_call), std::move(config),
-      slice_lhs_fake, slice_rhs_fake, slice_out_fake, slice_workspace_fake,
-      deterministic_ops));
+    arg_idx++;
+    int64_t rhs_byte_size =
+        ShapeUtil::ByteSizeOf(custom_call.operand(arg_idx)->shape());
+    fake_allocations[arg_idx] = std::make_unique<BufferAllocation>(
+        /*index=*/arg_idx, rhs_byte_size, /*color=*/0);
+    BufferAllocation::Slice slice_rhs_fake(fake_allocations[arg_idx].get(), 0,
+                                           rhs_byte_size);
 
-  std::vector<std::optional<const BufferAllocation::Slice>> arguments{
-      lhs_slice, rhs_slice, output, workspace};
+    arg_idx++;
+    int64_t out_fake_byte_size = ShapeUtil::ByteSizeOf(
+        custom_call.shape().IsArray() ? custom_call.shape()
+                                      : custom_call.shape().tuple_shapes(0));
+    fake_allocations[arg_idx] = std::make_unique<BufferAllocation>(
+        /*index=*/arg_idx, out_fake_byte_size, /*color=*/0);
+    BufferAllocation::Slice slice_out_fake(fake_allocations[arg_idx].get(), 0,
+                                           out_fake_byte_size);
+    ThunkSequence seq;
+    seq.emplace_back(std::make_unique<GemmThunk>(
+        thunk_info, std::move(config), slice_lhs_fake, slice_rhs_fake,
+        slice_out_fake, slice_workspace_fake, deterministic_ops));
 
-  auto thunk = std::make_unique<AddressComputationThunk>(
-      Thunk::ThunkInfo::WithProfileAnnotation(&custom_call),
-      std::make_unique<ThunkSequence>(std::move(seq)), arguments,
-      std::move(fake_allocations), offset_buffer_indices, orig_shapes,
-      sliced_shapes, offset_byte_sizes);
+    std::vector<std::optional<const BufferAllocation::Slice>> arguments{
+        lhs_slice, rhs_slice, output, workspace};
+
+    thunk = std::make_unique<AddressComputationThunk>(
+        thunk_info, std::make_unique<ThunkSequence>(std::move(seq)), arguments,
+        std::move(fake_allocations), offset_buffer_indices, orig_shapes,
+        sliced_shapes, offset_byte_sizes);
+  } else {
+    thunk = std::make_unique<GemmThunk>(thunk_info, std::move(config),
+                                        lhs_slice, rhs_slice, output, workspace,
+                                        deterministic_ops);
+  }
 
   FusionEmissionResult result;
   result.thunks.push_back(std::move(thunk));
@@ -633,8 +629,7 @@ absl::StatusOr<FusionEmissionResult> DynamicAddressComputationFusion::Emit(
   const auto& custom_call = *static_cast<const HloCustomCallInstruction*>(
       &maybe_custom_call_adaptor->instruction());
   if (IsLegacyCublasMatmul(custom_call)) {
-    return EmitDynamicSlicedGemm(ir_emitter_context, adaptor, fusion,
-                                 custom_call);
+    return EmitGemm(ir_emitter_context, adaptor, fusion, custom_call);
   }
 
   return absl::UnimplementedError(absl::StrCat(
