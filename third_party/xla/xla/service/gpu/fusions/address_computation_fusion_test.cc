@@ -27,6 +27,7 @@ limitations under the License.
 #include "xla/ffi/ffi_api.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/custom_call_target_registry.h"
+#include "xla/service/gpu/address_computation_fusion_rewriter.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/service_executable_run_options.h"
 #include "xla/shape.h"
@@ -887,14 +888,14 @@ TEST_F(AddressComputationFusionTest, CustomCallSimple) {
   TF_ASSERT_OK_AND_ASSIGN(auto hlo_ref, xla::HloModule::CreateFromProto(
                                             computation.proto(), hlo_config));
 
-  debug_options.set_xla_gpu_enable_address_computation_fusion(true);
-  hlo_config.set_debug_options(debug_options);
   TF_ASSERT_OK_AND_ASSIGN(auto hlo_opt, xla::HloModule::CreateFromProto(
                                             computation.proto(), hlo_config));
+  AddressComputationFusionRewriter pass(PLATFORM);
+  TF_ASSERT_OK_AND_ASSIGN(auto changed, this->RunHloPass(&pass, hlo_opt.get()));
+  EXPECT_TRUE(changed);
 
   EXPECT_TRUE(RunAndCompareTwoModules(std::move(hlo_ref), std::move(hlo_opt),
-                                      error_spec,
-                                      /*run_hlo_passes=*/false));
+                                      error_spec, /*run_hlo_passes=*/false));
 }
 
 static absl::Status SubBuffers(se::Stream* stream, ffi::BufferBase src0,
@@ -993,9 +994,12 @@ TEST_F(AddressComputationFusionTest, CustomCallWithTuple) {
   TF_ASSERT_OK_AND_ASSIGN(auto hlo_opt, xla::HloModule::CreateFromProto(
                                             computation.proto(), hlo_config));
 
+  AddressComputationFusionRewriter pass(PLATFORM);
+  TF_ASSERT_OK_AND_ASSIGN(auto changed, this->RunHloPass(&pass, hlo_opt.get()));
+  EXPECT_TRUE(changed);
+
   EXPECT_TRUE(RunAndCompareTwoModules(std::move(hlo_ref), std::move(hlo_opt),
-                                      error_spec,
-                                      /*run_hlo_passes=*/false));
+                                      error_spec, /*run_hlo_passes=*/false));
 }
 
 static absl::Status NoOp(se::Stream* stream, ffi::BufferBase operand) {
@@ -1039,6 +1043,10 @@ TEST_F(AddressComputationFusionTest, NilTuple) {
   TF_ASSERT_OK_AND_ASSIGN(auto hlo_opt, xla::HloModule::CreateFromProto(
                                             computation.proto(), hlo_config));
 
+  AddressComputationFusionRewriter pass(PLATFORM);
+  TF_ASSERT_OK_AND_ASSIGN(auto changed, this->RunHloPass(&pass, hlo_opt.get()));
+  EXPECT_TRUE(changed);
+
   EXPECT_TRUE(RunAndCompareTwoModules(std::move(hlo_ref), std::move(hlo_opt),
                                       error_spec,
                                       /*run_hlo_passes=*/false));
@@ -1079,6 +1087,10 @@ TEST_F(AddressComputationFusionTest, CustomCallLegacyAPI) {
   TF_ASSERT_OK_AND_ASSIGN(auto hlo_opt, xla::HloModule::CreateFromProto(
                                             computation.proto(), hlo_config));
 
+  AddressComputationFusionRewriter pass(PLATFORM);
+  TF_ASSERT_OK_AND_ASSIGN(auto changed, this->RunHloPass(&pass, hlo_opt.get()));
+  EXPECT_TRUE(changed);
+
   EXPECT_TRUE(RunAndCompareTwoModules(std::move(hlo_ref), std::move(hlo_opt),
                                       error_spec,
                                       /*run_hlo_passes=*/false));
@@ -1112,6 +1124,10 @@ TEST_F(AddressComputationFusionTest, NilTupleLegacyAPI) {
   hlo_config.set_debug_options(debug_options);
   TF_ASSERT_OK_AND_ASSIGN(auto hlo_opt, xla::HloModule::CreateFromProto(
                                             computation.proto(), hlo_config));
+
+  AddressComputationFusionRewriter pass(PLATFORM);
+  TF_ASSERT_OK_AND_ASSIGN(auto changed, this->RunHloPass(&pass, hlo_opt.get()));
+  EXPECT_TRUE(changed);
 
   EXPECT_TRUE(RunAndCompareTwoModules(std::move(hlo_ref), std::move(hlo_opt),
                                       error_spec,
