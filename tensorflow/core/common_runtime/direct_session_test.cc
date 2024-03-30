@@ -68,9 +68,9 @@ limitations under the License.
 namespace tensorflow {
 namespace {
 
-CallableOptions MakeCallableOptions(gtl::ArraySlice<string> feeds,
-                                    gtl::ArraySlice<string> fetches,
-                                    gtl::ArraySlice<string> targets) {
+CallableOptions MakeCallableOptions(absl::Span<const string> feeds,
+                                    absl::Span<const string> fetches,
+                                    absl::Span<const string> targets) {
   CallableOptions ret;
   for (const string& feed : feeds) {
     ret.add_feed(feed);
@@ -1444,7 +1444,7 @@ TEST(DirectSessionTest, SessionSyncRun_DeepGraph) {
   std::vector<Node*> nodes;
   nodes.reserve(1024);
 
-  auto make_expensive_noop = [&g](gtl::ArraySlice<Node*> control_deps) {
+  auto make_expensive_noop = [&g](absl::Span<Node* const> control_deps) {
     Node* ret;
     auto builder = NodeBuilder(g.NewName("N"), "ExpensiveNoop");
     for (Node* control_dep : control_deps) {
@@ -2850,7 +2850,7 @@ class DirectSessionCollectiveTest : public ::testing::Test {
             {{"group_size", 2},
              {"group_key", 1},
              {"instance_key", instance_key},
-             {"subdiv_offsets", gtl::ArraySlice<int32>({0})},
+             {"subdiv_offsets", absl::Span<const int32>({0})},
              {"merge_op", "Add"},
              {"final_op", "Div"},
              {"T", DT_FLOAT}},

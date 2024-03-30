@@ -241,8 +241,8 @@ class DirectSession : public Session {
   // Retrieves an already existing set of executors to run 'inputs' and
   // 'outputs', or creates and caches them for future use.
   ::tensorflow::Status GetOrCreateExecutors(
-      gtl::ArraySlice<string> inputs, gtl::ArraySlice<string> outputs,
-      gtl::ArraySlice<string> target_nodes,
+      absl::Span<const string> inputs, absl::Span<const string> outputs,
+      absl::Span<const string> target_nodes,
       ExecutorsAndKeys** executors_and_keys, RunStateArgs* run_state_args);
 
   // Creates a set of executors to run the subgraph defined by
