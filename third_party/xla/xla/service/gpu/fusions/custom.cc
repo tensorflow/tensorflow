@@ -70,9 +70,6 @@ namespace xla {
 namespace gpu {
 namespace {
 
-constexpr unsigned kLHSOperandIndex = 0;
-constexpr unsigned kRHSOperandIndex = 1;
-
 constexpr unsigned kGEMMOutputBufferIndex = 0;
 constexpr unsigned kGEMMWorkspaceBufferIndex = 1;
 
@@ -615,8 +612,6 @@ absl::StatusOr<FusionEmissionResult> AddressComputationFusion::Emit(
 absl::StatusOr<FusionEmissionResult> DynamicAddressComputationFusion::Emit(
     IrEmitterContext& ir_emitter_context,
     const HloFusionInstruction& fusion) const {
-  // std::cerr << "TYB \n"
-  //           << fusion.fused_instructions_computation()->ToString() << '\n';
   const HloFusionAdaptor& adaptor = analysis_.fusion();
   auto maybe_custom_call_adaptor = HloFindIf(
       adaptor.GetRoots(), adaptor,
