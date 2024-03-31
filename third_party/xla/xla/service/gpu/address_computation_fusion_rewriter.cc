@@ -160,6 +160,11 @@ UseDefDataflowPaths GetSlicedOperandPaths(const HloInstruction* instr) {
     if (aliased_operands.contains(instr->operand_index(operand))) continue;
     UseDefDataflowPath maybe_sliced_operand_path;
     bool slice_found = false;
+    // TODO: currently HloFindIf exits upon encountering the first node that
+    // matches. This works well if each operand only has 1 data flow (i.e. only
+    // flows through unary op). We might want to keep finding until the queue is
+    // empty: if the operand is a tuple, it might have different data flows
+    // (i.e. 1 for each element).
     auto maybe_slice_adaptor =
         HloFindIf({HloInstructionAdaptor(*operand)}, *fusion, [&](auto node) {
           const HloInstruction* cur = &node.instruction();
@@ -410,7 +415,7 @@ absl::StatusOr<bool> AddressComputationFusionRewriter::Run(
       if (computation->IsFusionComputation()) continue;
       for (HloInstruction* instr : computation->instructions()) {
         if (IsLegacyCublasMatmul(*instr) ||
-            (!dynamic && IsCustomCall(instr, platform_name_))) {
+            (IsCustomCall(instr, platform_name_))) {
           UseDefDataflowPaths sliced_operand_paths =
               GetSlicedOperandPaths(instr);
           bool has_sliced_operand_paths = sliced_operand_paths.size() > 1;
